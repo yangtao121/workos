@@ -99,12 +99,14 @@ cgroup/resource enforcement；生产认证、Credential Vault 与 live provider 
 1. Project 切换异步串线：绑定状态从全局值改为按 `project_id` 隔离（`bindingDrafts`、
    `bindingSaving`、`bindingFeedback` map），每次保存持有不可变 project ID 与单调递增 operation
    token；continuation 只在 token 仍为该项目最新时写编辑器状态，服务端返回始终更新同 ID 列表缓存。
-   移除旧的 `bindingProjectID` 初始化 effect，编辑器在切换后立即以目标 Project 持久化 binding 惰性
-   初始化。新增两个 deferred-Promise 确定性测试：
+   移除旧的 `bindingProjectID` 初始化 effect。本轮审核更正：实现实际以长期 `bindingDrafts` map 保存
+   每 Project 的 draft，切回时会恢复未保存 selection，不满足"以持久化 binding 初始化"的要求，
+   已在第二轮修复中移除该 map。新增两个 deferred-Promise 确定性测试：
    - A 保存 pending 期间切到 B；A 成功后仅 A 列表项更新（revision 2），B 的选中值、feedback 均不被
      覆盖，B 仍可按自己的 selection 保存（第二次调用携带 project-2 / revision 8 / fake）。
    - A 保存返回 `Code.Aborted`、`GetProject` refresh 未完成时切到 B；refresh 返回只更新 A 缓存，
-     B 的 draft 与提示不变；切回 A 时显示刷新后的 revision 2 与 conflict 提示。
+     B 的 draft 与提示不变。本轮审核更正：当时实现与断言允许切回 A 后显示过期 conflict 提示，
+     违反第一轮 Prompt 的 active 条件，已在第二轮修复与测试中更正。
 2. Catalog 非 ready 保存门禁：`HarnessSettings.draftCanSave` 增加 `catalogState === "ready"` 前提；
    loading、error 或 provider 不在当前 Catalog 时禁止提交具体 provider，`Use Global Default` 不依赖
    Catalog 仍可保存；已保存但 unknown/unavailable 的 binding 保持显示且可解除。新增组件测试覆盖
@@ -127,3 +129,67 @@ cgroup/resource enforcement；生产认证、Credential Vault 与 live provider 
   root-owned 文件、无新增 migration/secret 形态、PostgreSQL volume 未删除。
 - 修复提交：`fix: isolate harness settings state by project`；提交后 `git status --short` 为空；
   未 merge、未 push。
+
+### 第二轮审核阻断项（2026-08-23 UTC，状态 active）
+
+静态审核确认第一轮实现未满足 Project 切换语义，上一节中"切换后以目标 Project 持久化 binding 惰性
+初始化"与"切回 A 时显示 conflict 提示"两条描述与代码实际行为不符：`bindingDrafts` 是长期 map，
+切回会恢复未保存 draft 与过期 feedback。本轮修复范围：
+
+1. 阻断项一（未保存 draft 恢复）：active Project ID 变化时编辑器必须从该 Project 当前缓存的持久化
+   binding 原子重置；离开即丢弃未保存 selection 与旧 feedback，不得出现一帧旧 draft。
+2. 阻断项二（inactive 响应写入编辑器状态）：成功、普通失败、conflict refresh 响应到达时若目标
+   Project 已不是 active，只允许更新同 ID Project 缓存，不得写入 draft/feedback/saving；token 失效
+   检查必须先于 `replaceProject`；卸载时所有 binding token 失效，pending Promise 完成不得调用任何
+   binding state setter。
+3. 门禁：根目录 `.gitattributes` 补文件末尾 POSIX newline，例外规则不变。
+
+第二轮修复实现（2026-08-23 UTC）：
+
+- 状态模型：移除长期 `bindingDrafts`/`bindingFeedback` map。编辑器改为单一
+  `BindingEditor { project_id, draft, feedback? }`，仅属于当前 active Project；active Project ID 变化时在
+  渲染期内同步丢弃旧编辑器（React previous-render anchor 模式），不存在任何一帧旧 draft，切回时以该
+  Project 当前缓存持久化 binding 重新初始化。每 Project pending/save token 与 generation 保存在
+  `bindingOperationsRef`；渲染期维护同步 `activeProjectIdRef`。
+- 响应隔离：成功、普通失败、conflict refresh 均先检查 token/generation（在 `replaceProject` 之前），
+  token 有效时更新同 ID Project 缓存；仅当响应到达时 `activeProjectIdRef` 仍指向该 Project 才写编辑器
+  draft/feedback。卸载时 generation +1 使全部 binding token 失效，pending Promise 完成（resolve 或
+  reject）不再调用任何 binding state setter。
+- 新增/修正确定性测试（deferred Promise，desktop-web 由 15 增至 20，全部通过）：
+  1. 未保存 draft 丢弃：A 持久 Global，选 Fake 不保存，切 B 再切回 → 重新选中 Global、保存按钮
+     disabled、旧 feedback 不存在；已完成保存的 feedback 同样随离开丢弃。
+  2. inactive success：A 保存 pending 时切 B，A 成功后 B 完全不变且仍可独立保存；切回 A 显示响应
+     revision/binding，但不显示 `Harness setting saved.`。
+  3. inactive conflict refresh：A refresh pending 时切 B，refresh 返回 B 不变；切回 A 显示刷新后的
+     revision/binding，但不显示 `changed elsewhere`（修正原反向断言）。
+  4. inactive ordinary failure：A 请求 Unavailable 失败前切 B；切回 A 无过期错误，draft 来自持久化
+     binding，保存按钮 disabled。
+  5. unmount：binding Promise pending 时 unmount，随后 resolve（成功路径）与 reject+refresh 返回
+     （conflict 路径）均不产生 state update 或 console error/act 警告。
+  6. 反序完成：A/B 并发保存，B 先成功、A 后成功；B 的 saved feedback 不被 A 清除，切回 A 显示 A 自己
+     的 revision/binding 且无过期提示。
+  7. 保留第一轮全部测试（成功串线、Catalog non-ready、Global Default、unknown/unavailable、credential
+     不渲染、provider snapshot）。
+- 验收门禁额外修复（Desktop 内最小改动，先于本分支即存在、由验收数据累积触发）：持久 volume 中
+  `workos_core.projects` 已达 103 行，超过 `listProjects` 首页 `pageSize: 100`，新建 Project 不在刷新页
+  内导致无 active 卡片，`make test-deepseek-fixture` 与 `make test-e2e` 的 create-then-assert 流程失败；
+  同时 `createProject` 在 `await` 后访问 `event.currentTarget.reset()` 抛 TypeError（每次成功创建均弹
+  错误 toast，页面快照证实）。修复：await 前捕获 form element（与 `submitTask` 现有模式一致），创建
+  成功后将返回 Project upsert 进列表使其立即可见可激活。新增单测覆盖首页不含新 Project 的场景。未改
+  Proto、migration、Core/Harness/Gateway 行为或分页协议。
+- `.gitattributes` 仅补末尾换行，`sdk/protocol/src/gen/**` 例外规则原样保留。
+
+第二轮修复后验收命令（实际执行，2026-08-23 UTC）：
+
+- `make generate` 连续两次：通过，生成树与 README 无漂移，工作树仅含 4 个预期修改文件。
+- `make check`：通过；Proto/架构/Go/TypeScript、eslint、prettier、desktop-web production build 与
+  desktop-web 20 tests 全部通过。
+- `make test-integration`：通过；TestProjectToHarnessVerticalSlice PASS，restart persistence verified。
+- `make test-deepseek-fixture`：通过；TestDeepSeekProjectBindingFixtureVerticalSlice PASS（8.26s）、
+  restart persistence verified、Playwright fixture spec 1/1 passed。
+- `make test-e2e`：通过；foundation spec 1 passed，fixture-only spec 按设计 skipped。
+- `buf breaking --against '.git#branch=main'`：通过，无 breaking change。
+- `git diff --check`、`git diff --check main...HEAD`：通过。
+- `docs/structure.md` 未变化；无 root-owned 文件、无 untracked 测试产物、无新增 migration/SQL；未使用
+  真实 DeepSeek Key（仅 Makefile 既有 `workos-fixture-only-not-a-real-key`）；未删除 PostgreSQL volume。
+- 修复提交：`fix: reset harness editor on project changes`；未 merge、未 push。

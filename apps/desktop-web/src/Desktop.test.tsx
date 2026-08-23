@@ -153,6 +153,255 @@ describe("Desktop harness workflow", () => {
       expectedRevision: 8n,
       selection: { case: "providerId", value: "fake" },
     });
+
+    // A's success settled while A was inactive: returning to A shows the
+    // response revision/binding from the updated cache, but no stale
+    // success feedback.
+    await userEvent.click(screen.getByRole("button", { name: /Project One revision 2/ }));
+    expect(
+      screen.getByRole<HTMLInputElement>("radio", { name: "Select Fake Harness" }).checked,
+    ).toBe(true);
+    expect(screen.getAllByText("revision 2")).toHaveLength(2);
+    expect(screen.queryByText("Harness setting saved.")).toBeNull();
+  });
+
+  it("discards an unsaved draft and its feedback when leaving and returning to a Project", async () => {
+    const setBinding = vi.fn(() =>
+      Promise.resolve({ project: project("project-1", "Project One", 2n, "fake") }),
+    );
+    render(
+      <Desktop
+        workosClients={clientFixture({
+          projects: [
+            project("project-1", "Project One", 1n),
+            project("project-2", "Project Two", 8n, "deepseek"),
+          ],
+          setBinding,
+        })}
+      />,
+    );
+
+    await userEvent.click(await screen.findByRole("button", { name: "Project settings" }));
+    expect(
+      screen.getByRole<HTMLInputElement>("radio", { name: "Use Global Default" }).checked,
+    ).toBe(true);
+
+    // An unsaved selection must not survive a round-trip through Project Two.
+    await userEvent.click(screen.getByRole("radio", { name: "Select Fake Harness" }));
+    expect(saveButton().disabled).toBe(false);
+    await userEvent.click(screen.getByRole("button", { name: /Project Two revision 8/ }));
+    await userEvent.click(screen.getByRole("button", { name: /Project One revision 1/ }));
+    expect(
+      screen.getByRole<HTMLInputElement>("radio", { name: "Use Global Default" }).checked,
+    ).toBe(true);
+    expect(saveButton().disabled).toBe(true);
+    expect(screen.queryByText(/Harness setting saved|changed elsewhere/)).toBeNull();
+
+    // Saved feedback is equally bound to the visit that produced it.
+    await userEvent.click(screen.getByRole("radio", { name: "Select Fake Harness" }));
+    await userEvent.click(saveButton());
+    expect(await screen.findByText("Harness setting saved.")).toBeTruthy();
+
+    await userEvent.click(screen.getByRole("radio", { name: "Use Global Default" }));
+    await userEvent.click(screen.getByRole("button", { name: /Project Two revision 8/ }));
+    await userEvent.click(screen.getByRole("button", { name: /Project One revision 2/ }));
+    expect(
+      screen.getByRole<HTMLInputElement>("radio", { name: "Select Fake Harness" }).checked,
+    ).toBe(true);
+    expect(saveButton().disabled).toBe(true);
+    expect(screen.queryByText("Harness setting saved.")).toBeNull();
+  });
+
+  it("drops an ordinary failure that settles while its Project is inactive", async () => {
+    const pending = deferred<never>();
+    const setBinding = vi.fn(() => pending.promise);
+    render(
+      <Desktop
+        workosClients={clientFixture({
+          projects: [
+            project("project-1", "Project One", 1n),
+            project("project-2", "Project Two", 8n, "deepseek"),
+          ],
+          setBinding,
+        })}
+      />,
+    );
+
+    await userEvent.click(await screen.findByRole("button", { name: "Project settings" }));
+    await userEvent.click(screen.getByRole("radio", { name: "Select Fake Harness" }));
+    await userEvent.click(screen.getByRole("button", { name: "Save harness setting" }));
+    expect(setBinding).toHaveBeenCalledWith({
+      projectId: "project-1",
+      expectedRevision: 1n,
+      selection: { case: "providerId", value: "fake" },
+    });
+
+    await userEvent.click(screen.getByRole("button", { name: /Project Two revision 8/ }));
+    await act(async () => {
+      await pending.reject(new ConnectError("offline", Code.Unavailable)).catch(() => undefined);
+    });
+    expect(
+      screen.getByRole<HTMLInputElement>("radio", { name: "Select DeepSeek Harness" }).checked,
+    ).toBe(true);
+    expect(
+      screen.queryByText(
+        "Provider catalog is temporarily unavailable. Global Default can still be selected.",
+      ),
+    ).toBeNull();
+
+    await userEvent.click(screen.getByRole("button", { name: /Project One revision 1/ }));
+    expect(
+      screen.getByRole<HTMLInputElement>("radio", { name: "Use Global Default" }).checked,
+    ).toBe(true);
+    expect(
+      screen.queryByText(
+        "Provider catalog is temporarily unavailable. Global Default can still be selected.",
+      ),
+    ).toBeNull();
+    expect(saveButton().disabled).toBe(true);
+  });
+
+  it("keeps concurrent saves on different Projects isolated when they complete in reverse order", async () => {
+    const pendingOne = deferred<{ project: Project }>();
+    const pendingTwo = deferred<{ project: Project }>();
+    const setBinding = vi.fn((request: { projectId: string }) =>
+      request.projectId === "project-1" ? pendingOne.promise : pendingTwo.promise,
+    );
+    render(
+      <Desktop
+        workosClients={clientFixture({
+          projects: [
+            project("project-1", "Project One", 1n),
+            project("project-2", "Project Two", 8n, "deepseek"),
+          ],
+          setBinding,
+        })}
+      />,
+    );
+
+    await userEvent.click(await screen.findByRole("button", { name: "Project settings" }));
+    await userEvent.click(screen.getByRole("radio", { name: "Select Fake Harness" }));
+    await userEvent.click(screen.getByRole("button", { name: "Save harness setting" }));
+
+    await userEvent.click(screen.getByRole("button", { name: /Project Two revision 8/ }));
+    await userEvent.click(screen.getByRole("radio", { name: "Select Fake Harness" }));
+    await userEvent.click(screen.getByRole("button", { name: "Save harness setting" }));
+    expect(setBinding).toHaveBeenNthCalledWith(1, {
+      projectId: "project-1",
+      expectedRevision: 1n,
+      selection: { case: "providerId", value: "fake" },
+    });
+    expect(setBinding).toHaveBeenNthCalledWith(2, {
+      projectId: "project-2",
+      expectedRevision: 8n,
+      selection: { case: "providerId", value: "fake" },
+    });
+
+    // The later save settles first; the active editor only sees its own result.
+    await act(async () => {
+      await pendingTwo.resolve({ project: project("project-2", "Project Two", 9n, "fake") });
+    });
+    expect(await screen.findByText("Harness setting saved.")).toBeTruthy();
+    expect(
+      screen.getByRole<HTMLInputElement>("radio", { name: "Select Fake Harness" }).checked,
+    ).toBe(true);
+
+    // Project One's earlier save settles while inactive: it may refresh its
+    // own cache entry but must not clear Project Two's editor feedback.
+    await act(async () => {
+      await pendingOne.resolve({ project: project("project-1", "Project One", 2n, "fake") });
+    });
+    expect(screen.getByText("Harness setting saved.")).toBeTruthy();
+    expect(
+      screen.getByRole<HTMLInputElement>("radio", { name: "Select Fake Harness" }).checked,
+    ).toBe(true);
+
+    await userEvent.click(screen.getByRole("button", { name: /Project One revision 2/ }));
+    expect(
+      screen.getByRole<HTMLInputElement>("radio", { name: "Select Fake Harness" }).checked,
+    ).toBe(true);
+    expect(screen.getAllByText("revision 2")).toHaveLength(2);
+    expect(screen.queryByText("Harness setting saved.")).toBeNull();
+  });
+
+  it("ignores binding responses that settle after the Desktop unmounts", async () => {
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    try {
+      const pending = deferred<{ project: Project }>();
+      const first = render(
+        <Desktop
+          workosClients={clientFixture({
+            projects: [project("project-1", "Project One", 1n)],
+            setBinding: vi.fn(() => pending.promise),
+          })}
+        />,
+      );
+      await userEvent.click(await screen.findByRole("button", { name: "Project settings" }));
+      await userEvent.click(screen.getByRole("radio", { name: "Select Fake Harness" }));
+      await userEvent.click(screen.getByRole("button", { name: "Save harness setting" }));
+      first.unmount();
+      await act(async () => {
+        await pending.resolve({ project: project("project-1", "Project One", 2n, "fake") });
+      });
+
+      // The conflict-refresh continuation must be equally inert after
+      // unmount: the save rejects, GetProject stays pending, then the tree
+      // goes away before the refresh returns.
+      const refresh = deferred<{ project: Project }>();
+      const second = render(
+        <Desktop
+          workosClients={clientFixture({
+            projects: [project("project-1", "Project One", 1n)],
+            setBinding: vi.fn(() =>
+              Promise.reject(new ConnectError("project revision conflict", Code.Aborted)),
+            ),
+            getProject: vi.fn(() => refresh.promise),
+          })}
+        />,
+      );
+      await userEvent.click(await screen.findByRole("button", { name: "Project settings" }));
+      await userEvent.click(screen.getByRole("radio", { name: "Select Fake Harness" }));
+      await userEvent.click(screen.getByRole("button", { name: "Save harness setting" }));
+      await waitFor(() => {
+        expect(refresh.promise).toBeTruthy();
+      });
+      second.unmount();
+      await act(async () => {
+        await refresh.resolve({ project: project("project-1", "Project One", 2n, "fake") });
+      });
+      expect(consoleError).not.toHaveBeenCalled();
+    } finally {
+      consoleError.mockRestore();
+    }
+  });
+
+  it("activates a newly created Project even when it is missing from the refreshed first page", async () => {
+    const created = project("project-3", "Project Three", 1n);
+    render(
+      <Desktop
+        workosClients={clientFixture({
+          // The persisted page returned by listProjects stays capped at the
+          // two original Projects, as it does once the workspace exceeds the
+          // page size.
+          projects: [
+            project("project-1", "Project One", 1n),
+            project("project-2", "Project Two", 8n, "deepseek"),
+          ],
+          createProject: vi.fn(() => Promise.resolve({ project: created })),
+        })}
+      />,
+    );
+
+    const nameInput = await screen.findByRole("textbox", { name: "Project name" });
+    await userEvent.type(nameInput, "Project Three");
+    await userEvent.click(screen.getByRole("button", { name: "Create space" }));
+
+    const createdCard = await screen.findByRole("button", { name: /Project Three revision 1/ });
+    expect(createdCard.className).toContain("active");
+    expect((nameInput as HTMLInputElement).value).toBe("");
+    expect(screen.queryByRole("alert")).toBeNull();
+    await userEvent.click(screen.getByRole("button", { name: "Project settings" }));
+    expect(screen.getByText("Harness provider")).toBeTruthy();
   });
 
   it("isolates a conflict refresh to its Project while the user edits another Project", async () => {
@@ -199,12 +448,16 @@ describe("Desktop harness workflow", () => {
     expect(
       screen.getByRole<HTMLInputElement>("radio", { name: "Select Fake Harness" }).checked,
     ).toBe(true);
-    expect(screen.getByText(/changed elsewhere/)).toBeTruthy();
+    // The refresh settled while Project One was inactive, so its conflict
+    // feedback must not resurface; only the refreshed cache initializes the
+    // editor.
+    expect(screen.queryByText(/changed elsewhere/)).toBeNull();
   });
 });
 
 function clientFixture({
   projects,
+  createProject = vi.fn(),
   setBinding = vi.fn(),
   getProject = vi.fn(),
   submitTask = vi.fn(),
@@ -212,6 +465,7 @@ function clientFixture({
   getTask = vi.fn(),
 }: {
   projects: Project[];
+  createProject?: ReturnType<typeof vi.fn>;
   setBinding?: ReturnType<typeof vi.fn>;
   getProject?: ReturnType<typeof vi.fn>;
   submitTask?: ReturnType<typeof vi.fn>;
@@ -222,7 +476,7 @@ function clientFixture({
     projects: {
       listProjects: vi.fn(() => Promise.resolve({ projects, page: undefined })),
       getProject,
-      createProject: vi.fn(),
+      createProject,
     },
     projectHarnessBindings: { setProjectHarnessBinding: setBinding },
     harnessCatalog: { getHarnessCatalog: vi.fn(() => Promise.resolve(providerCatalog())) },
@@ -233,6 +487,10 @@ function clientFixture({
 async function* eventStream(events: AgentEvent[]) {
   await Promise.resolve();
   for (const event of events) yield { event };
+}
+
+function saveButton(): HTMLButtonElement {
+  return screen.getByRole<HTMLButtonElement>("button", { name: "Save harness setting" });
 }
 
 function deferred<T>() {
@@ -248,7 +506,10 @@ function deferred<T>() {
       resolve(value);
       return promise;
     },
-    reject,
+    reject: (reason?: unknown) => {
+      reject(reason);
+      return promise;
+    },
   };
 }
 

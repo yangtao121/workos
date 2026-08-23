@@ -29,17 +29,31 @@ export function Desktop({ workosClients = clients }: { workosClients?: WorkOSCli
   const [catalogState, setCatalogState] = useState<CatalogState>("loading");
   const [catalogError, setCatalogError] = useState<string>();
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [bindingDrafts, setBindingDrafts] = useState<Record<string, HarnessSelection>>({});
   const [bindingSaving, setBindingSaving] = useState<Record<string, boolean>>({});
-  const [bindingFeedback, setBindingFeedback] = useState<
-    Record<string, BindingFeedback | undefined>
-  >({});
-  const bindingOperationTokens = useRef<Record<string, number>>({});
+  const [bindingEditor, setBindingEditor] = useState<BindingEditor>();
+  const [editorProjectId, setEditorProjectId] = useState<string | undefined>(activeProjectId);
+  const activeProjectIdRef = useRef<string | undefined>(activeProjectId);
+  const bindingOperationsRef = useRef<{ generation: number; tokens: Record<string, number> }>({
+    generation: 0,
+    tokens: {},
+  });
   const [windows, dispatch] = useReducer(windowReducer, initialWindowState);
   const activeProject = projects.find((project) => project.id === activeProjectId);
-  const bindingDraft: HarnessSelection = activeProject
-    ? (bindingDrafts[activeProject.id] ?? selectionFromProject(activeProject))
-    : { kind: "global" };
+  activeProjectIdRef.current = activeProjectId;
+
+  // Switching Projects discards the previous editor synchronously during the
+  // render that changes the active Project, so an unsaved draft or stale
+  // feedback is never painted, not even for one frame, and never restored.
+  if (editorProjectId !== activeProjectId) {
+    setEditorProjectId(activeProjectId);
+    setBindingEditor(undefined);
+  }
+  const activeEditor = bindingEditor?.projectId === activeProject?.id ? bindingEditor : undefined;
+  const bindingDraft: HarnessSelection = activeEditor
+    ? activeEditor.draft
+    : activeProject
+      ? selectionFromProject(activeProject)
+      : { kind: "global" };
 
   const refreshProjects = useCallback(async () => {
     const response = await workosClients.projects.listProjects({
@@ -90,9 +104,18 @@ export function Desktop({ workosClients = clients }: { workosClients?: WorkOSCli
     });
   }, []);
 
+  useEffect(() => {
+    // Unmount invalidates every in-flight binding operation so a pending
+    // Promise that settles afterwards cannot touch any binding state.
+    return () => {
+      bindingOperationsRef.current.generation += 1;
+    };
+  }, []);
+
   async function createProject(event: SyntheticEvent<HTMLFormElement>) {
     event.preventDefault();
-    const form = new FormData(event.currentTarget);
+    const formElement = event.currentTarget;
+    const form = new FormData(formElement);
     const name = formString(form, "name");
     if (!name) return;
     setError(undefined);
@@ -104,8 +127,18 @@ export function Desktop({ workosClients = clients }: { workosClients?: WorkOSCli
         workspaceRefs: [],
       });
       await refreshProjects();
-      if (response.project) setActiveProjectId(response.project.id);
-      event.currentTarget.reset();
+      const created = response.project;
+      if (created) {
+        // listProjects is page-limited, so a fresh Project can be missing
+        // from the refreshed first page; upsert keeps it selectable.
+        setProjects((current) =>
+          current.some((candidate) => candidate.id === created.id)
+            ? current
+            : current.concat(created),
+        );
+        setActiveProjectId(created.id);
+      }
+      formElement.reset();
     } catch (reason) {
       setError(asMessage(reason));
     }
@@ -117,73 +150,86 @@ export function Desktop({ workosClients = clients }: { workosClients?: WorkOSCli
     );
   }
 
-  async function saveHarnessBinding(projectId: string) {
+  async function saveHarnessBinding(projectId: string, draft: HarnessSelection) {
     const project = projects.find((candidate) => candidate.id === projectId);
     if (!project || bindingSaving[projectId]) return;
-    const token = (bindingOperationTokens.current[projectId] ?? 0) + 1;
-    bindingOperationTokens.current[projectId] = token;
-    const isLatest = () => bindingOperationTokens.current[projectId] === token;
+    const token = (bindingOperationsRef.current.tokens[projectId] ?? 0) + 1;
+    bindingOperationsRef.current.tokens[projectId] = token;
+    const generation = bindingOperationsRef.current.generation;
+    const isLive = () =>
+      bindingOperationsRef.current.generation === generation &&
+      bindingOperationsRef.current.tokens[projectId] === token;
+    const isActive = () => activeProjectIdRef.current === projectId;
     setBindingSaving((current) => ({ ...current, [projectId]: true }));
-    setBindingFeedback((current) => ({ ...current, [projectId]: undefined }));
+    setBindingEditor((current) =>
+      current?.projectId === projectId ? { ...current, feedback: undefined } : current,
+    );
     try {
       const response = await workosClients.projectHarnessBindings.setProjectHarnessBinding({
         projectId,
         expectedRevision: project.revision,
         selection:
-          bindingDraft.kind === "provider"
-            ? { case: "providerId", value: bindingDraft.providerId }
+          draft.kind === "provider"
+            ? { case: "providerId", value: draft.providerId }
             : { case: "useGlobalDefault", value: true },
       });
       const updated = response.project;
       if (!updated) throw new Error("missing project response");
+      if (!isLive()) return;
       replaceProject(updated);
-      if (!isLatest()) return;
-      setBindingDrafts((current) => ({
-        ...current,
-        [projectId]: selectionFromProject(updated),
-      }));
-      setBindingFeedback((current) => ({
-        ...current,
-        [projectId]: { text: "Harness setting saved.", isError: false },
-      }));
+      if (isActive()) {
+        setBindingEditor({
+          projectId,
+          draft: selectionFromProject(updated),
+          feedback: { text: "Harness setting saved.", isError: false },
+        });
+      }
     } catch (reason) {
       if (reason instanceof ConnectError && reason.code === Code.Aborted) {
         try {
           const refreshedResponse = await workosClients.projects.getProject({ projectId });
           const refreshed = refreshedResponse.project;
           if (!refreshed) throw new Error("missing refreshed project");
+          if (!isLive()) return;
           replaceProject(refreshed);
-          if (!isLatest()) return;
-          setBindingDrafts((current) => ({
-            ...current,
-            [projectId]: selectionFromProject(refreshed),
-          }));
-          setBindingFeedback((current) => ({
-            ...current,
-            [projectId]: {
-              text: "Project settings changed elsewhere. The latest revision was loaded.",
-              isError: true,
-            },
-          }));
+          if (isActive()) {
+            setBindingEditor({
+              projectId,
+              draft: selectionFromProject(refreshed),
+              feedback: {
+                text: "Project settings changed elsewhere. The latest revision was loaded.",
+                isError: true,
+              },
+            });
+          }
         } catch {
-          if (!isLatest()) return;
-          setBindingFeedback((current) => ({
-            ...current,
-            [projectId]: {
-              text: "Project settings changed elsewhere and could not be refreshed.",
-              isError: true,
-            },
-          }));
+          if (!isLive()) return;
+          if (isActive()) {
+            setBindingEditor((current) =>
+              current?.projectId === projectId
+                ? {
+                    ...current,
+                    feedback: {
+                      text: "Project settings changed elsewhere and could not be refreshed.",
+                      isError: true,
+                    },
+                  }
+                : current,
+            );
+          }
         }
       } else {
-        if (!isLatest()) return;
-        setBindingFeedback((current) => ({
-          ...current,
-          [projectId]: { text: bindingErrorMessage(reason), isError: true },
-        }));
+        if (!isLive()) return;
+        if (isActive()) {
+          setBindingEditor((current) =>
+            current?.projectId === projectId
+              ? { ...current, feedback: { text: bindingErrorMessage(reason), isError: true } }
+              : current,
+          );
+        }
       }
     } finally {
-      if (isLatest()) {
+      if (isLive()) {
         setBindingSaving((current) => ({ ...current, [projectId]: false }));
       }
     }
@@ -293,21 +339,16 @@ export function Desktop({ workosClients = clients }: { workosClients?: WorkOSCli
               catalogError={catalogError}
               catalogState={catalogState}
               draft={bindingDraft}
-              feedback={bindingFeedback[activeProject.id]?.text}
-              feedbackIsError={bindingFeedback[activeProject.id]?.isError}
+              feedback={activeEditor?.feedback?.text}
+              feedbackIsError={activeEditor?.feedback?.isError}
               project={activeProject}
               saving={bindingSaving[activeProject.id] ?? false}
               onRetry={() => void refreshCatalog()}
-              onSave={() => void saveHarnessBinding(activeProject.id)}
+              onSave={() => {
+                void saveHarnessBinding(activeProject.id, bindingDraft);
+              }}
               onSelectionChange={(selection) => {
-                setBindingDrafts((current) => ({
-                  ...current,
-                  [activeProject.id]: selection,
-                }));
-                setBindingFeedback((current) => ({
-                  ...current,
-                  [activeProject.id]: undefined,
-                }));
+                setBindingEditor({ projectId: activeProject.id, draft: selection });
               }}
             />
           ) : null}
@@ -374,6 +415,14 @@ export function Desktop({ workosClients = clients }: { workosClients?: WorkOSCli
 interface BindingFeedback {
   text: string;
   isError: boolean;
+}
+
+// The editor belongs to the Project the user is currently viewing; drafts and
+// feedback never outlive the visit during which they were produced.
+interface BindingEditor {
+  projectId: string;
+  draft: HarnessSelection;
+  feedback?: BindingFeedback | undefined;
 }
 
 function bindingErrorMessage(reason: unknown): string {
