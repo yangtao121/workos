@@ -23,7 +23,7 @@ Project 协作；Harness、App、Surface、Workload 与 Incident 均通过稳定
 | Harness Broker | harness-host | `working` | Fake, Generic CLI, and typed provider execution tests |
 | DeepSeek Harness Adapter | harness-host | `working` | official runtime + keyless streaming fixture integration and browser E2E |
 | Desktop Shell | desktop-web | `working` | foundation + DeepSeek fixture Catalog/binding E2E |
-| App Registry | workos-core | `contract-only` | workos.app.v1 |
+| App Registry | workos-core | `working` | schema-backed immutable registration + persistence |
 | Artifact | workos-core | `contract-only` | workos.artifact.v1 |
 | Runtime / Surface | runtime-host | `scaffolded` | capability probe; runners unavailable |
 | Reliability | reliability-host | `scaffolded` | health; enforcement unavailable |

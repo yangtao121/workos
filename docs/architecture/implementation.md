@@ -5,14 +5,14 @@
 
 ## 进程所有权
 
-| 进程             | 当前所有权                                                                                                  | 不拥有                            |
-| ---------------- | ----------------------------------------------------------------------------------------------------------- | --------------------------------- |
-| workos-gateway   | TLS、identity、capability、公开 API、静态 Shell                                                             | Project/Harness 状态              |
-| workos-core      | Project、Task Router、Event Backbone、Harness Catalog facade、binding orchestration、App/Artifact contracts | Provider 进程、credential、cgroup |
-| harness-host     | Broker、Provider Adapter、run execution                                                                     | Project 数据、公开 API            |
-| runtime-host     | Workload、runner、Surface                                                                                   | Incident 决策、业务数据           |
-| reliability-host | Supervisor、Incident、Repair/Deploy ports                                                                   | App 业务逻辑、Harness 路由        |
-| indexer          | Archive/RAG/indexing                                                                                        | 原始业务表写权限                  |
+| 进程             | 当前所有权                                                                                                            | 不拥有                            |
+| ---------------- | --------------------------------------------------------------------------------------------------------------------- | --------------------------------- |
+| workos-gateway   | TLS、identity、capability、公开 API、静态 Shell                                                                       | Project/Harness 状态              |
+| workos-core      | Project、Task Router、Event Backbone、Harness Catalog facade、binding orchestration、App Registry、Artifact contracts | Provider 进程、credential、cgroup |
+| harness-host     | Broker、Provider Adapter、run execution                                                                               | Project 数据、公开 API            |
+| runtime-host     | Workload、runner、Surface                                                                                             | Incident 决策、业务数据           |
+| reliability-host | Supervisor、Incident、Repair/Deploy ports                                                                             | App 业务逻辑、Harness 路由        |
+| indexer          | Archive/RAG/indexing                                                                                                  | 原始业务表写权限                  |
 
 服务之间使用版本化 Connect API 与 durable event，不共享 internal package 或直接查询对方 schema。
 
@@ -40,6 +40,35 @@ Core: owner/revision check → Catalog health check → server preset → Projec
 Gateway 使用 public service allowlist，不能把同时拥有 `ExecuteTask` / `CancelRun` 的 private
 `HarnessHostService` 暴露给浏览器。Catalog 不缓存、不持久化瞬时 health，也不参与 Core readiness；
 Task 只持久化 Submit 时解析的 stable provider ID。clear binding 不依赖 Catalog。
+
+## App Registry
+
+App Registry 把一个版本化 manifest 变成 Core 持有的不可变事实。链路固定为：
+
+```text
+Desktop → Gateway public AppRegistryService → Core
+Core: 结构安全检查 → YAML→JSON 规范化 → canonical JSON bytes
+  → canonical v1 JSON Schema 校验（仅嵌入资源，无网络）→ semantic policy
+  → digest → Core-owned app_versions 事实 → Get/List 投影
+```
+
+- 唯一 Schema 事实源是 `schemas/workos-app-manifest-v1.schema.json`，经同目录 `schemas/embed.go`
+  原地嵌入进程；YAML/Schema 适配在 `internal/core/appregistry/adapters/manifestvalidator`，
+  domain 不接触 YAML、validator、pgx 或 Connect。
+- digest 基于校验后 canonical JSON（key 排序、数字/bool/null 确定编码、permissions 集合排序），
+  格式 `sha256:<hex>`；YAML whitespace/key order 等价 → 相同 digest。
+- `(owner, app_id, version) → 唯一 manifest_digest` 与 `(owner, idempotency_key) → 唯一注册` 由
+  PostgreSQL UNIQUE 约束保证；冲突映射为 `AlreadyExists` / `Aborted`，重放返回原记录。
+- current version 按 SemVer precedence 在 Go domain 比较（release 高于对应 prerelease、numeric
+  identifier 按数值）；`GetApp` 空 version 返回 current，显式 version 返回该 immutable version。
+- public 注册 fail closed：`scope=system` 与 `runtime.type=trusted` 拒绝；permissions 必须属于
+  集中定义的 capability vocabulary；manifest 中 secret 形态的 key/value 按路径拒绝，且此检查
+  不是 Credential Vault/DLP 替代品。permissions 只是 requested permissions。
+- `ListApps(project_id)` 先经中立 orchestration port 验证 Project 属于 owner 且未归档，返回该
+  owner 的 Registry catalog；它不是 installation state，`Project.installed_app_ids` 由未来的
+  install 命令负责。App Registry 不查询 Project/Agent 表。
+- 违规输出只含字段路径与规则说明（排序、去重、数量/长度上限），不含原始 YAML value；错误映射
+  不回传 SQL、constraint、路径或 validator 内部信息。
 
 ## 状态与失败
 

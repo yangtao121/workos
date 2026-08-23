@@ -314,9 +314,14 @@ func (x *RegisterAppRequest) GetManifestYaml() []byte {
 	return nil
 }
 
+// GetAppRequest fetches one owner-scoped app. An empty version returns the
+// current (highest SemVer precedence) registered version; an explicit
+// version returns that immutable version. Registered apps are never an
+// installation state.
 type GetAppRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	AppId         string                 `protobuf:"bytes,1,opt,name=app_id,json=appId,proto3" json:"app_id,omitempty"`
+	Version       string                 `protobuf:"bytes,2,opt,name=version,proto3" json:"version,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -358,6 +363,18 @@ func (x *GetAppRequest) GetAppId() string {
 	return ""
 }
 
+func (x *GetAppRequest) GetVersion() string {
+	if x != nil {
+		return x.Version
+	}
+	return ""
+}
+
+// ListAppsRequest lists the current version of every app registered by the
+// owner, ordered by app ID. A non-empty project_id first verifies the
+// project belongs to the owner and is not archived, then returns the owner's
+// registry catalog usable in that project context; it is NOT the installed
+// app list (Project.installed_app_ids is owned by future install commands).
 type ListAppsRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	ProjectId     string                 `protobuf:"bytes,1,opt,name=project_id,json=projectId,proto3" json:"project_id,omitempty"`
@@ -574,9 +591,10 @@ const file_workos_app_v1_app_proto_rawDesc = "" +
 	"normalized\"b\n" +
 	"\x12RegisterAppRequest\x12'\n" +
 	"\x0fidempotency_key\x18\x01 \x01(\tR\x0eidempotencyKey\x12#\n" +
-	"\rmanifest_yaml\x18\x02 \x01(\fR\fmanifestYaml\"&\n" +
+	"\rmanifest_yaml\x18\x02 \x01(\fR\fmanifestYaml\"@\n" +
 	"\rGetAppRequest\x12\x15\n" +
-	"\x06app_id\x18\x01 \x01(\tR\x05appId\"c\n" +
+	"\x06app_id\x18\x01 \x01(\tR\x05appId\x12\x18\n" +
+	"\aversion\x18\x02 \x01(\tR\aversion\"c\n" +
 	"\x0fListAppsRequest\x12\x1d\n" +
 	"\n" +
 	"project_id\x18\x01 \x01(\tR\tprojectId\x121\n" +

@@ -1,5 +1,6 @@
 // Command restart is an acceptance helper used by make test-integration to
-// prove that completed task state and event cursors survive process restarts.
+// prove that completed task state and app registry facts survive process
+// restarts.
 package main
 
 import (
@@ -15,8 +16,12 @@ import (
 
 	agentv1 "github.com/yangtao121/workos/gen/go/workos/agent/v1"
 	"github.com/yangtao121/workos/gen/go/workos/agent/v1/agentv1connect"
+	appv1 "github.com/yangtao121/workos/gen/go/workos/app/v1"
+	"github.com/yangtao121/workos/gen/go/workos/app/v1/appv1connect"
+	commonv1 "github.com/yangtao121/workos/gen/go/workos/common/v1"
 	projectv1 "github.com/yangtao121/workos/gen/go/workos/project/v1"
 	"github.com/yangtao121/workos/gen/go/workos/project/v1/projectv1connect"
+	manifestvalidator "github.com/yangtao121/workos/internal/core/appregistry/adapters/manifestvalidator"
 )
 
 func main() {
@@ -28,7 +33,7 @@ func main() {
 
 func run() error {
 	if len(os.Args) < 2 {
-		return errors.New("usage: restart seed | restart verify TASK_ID")
+		return errors.New("usage: restart seed | restart verify TASK_ID | restart app-seed | restart app-verify APP_ID_A APP_ID_B")
 	}
 	baseURL := os.Getenv("WORKOS_TEST_URL")
 	if baseURL == "" {
@@ -37,7 +42,7 @@ func run() error {
 	client := &http.Client{Transport: &http.Transport{
 		Proxy: nil, DialContext: (&net.Dialer{Timeout: 2 * time.Second}).DialContext,
 	}}
-	ctx, cancel := context.WithTimeout(context.Background(), 25*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 40*time.Second)
 	defer cancel()
 	if err := waitReady(ctx, client, baseURL); err != nil {
 		return err
@@ -50,8 +55,15 @@ func run() error {
 			return errors.New("verify requires a task id")
 		}
 		return verify(ctx, client, baseURL, os.Args[2])
+	case "app-seed":
+		return appSeed(ctx, client, baseURL)
+	case "app-verify":
+		if len(os.Args) != 4 {
+			return errors.New("app-verify requires two app ids")
+		}
+		return appVerify(ctx, client, baseURL, os.Args[2], os.Args[3])
 	default:
-		return errors.New("usage: restart seed | restart verify TASK_ID")
+		return errors.New("usage: restart seed | restart verify TASK_ID | restart app-seed | restart app-verify APP_ID_A APP_ID_B")
 	}
 }
 
@@ -157,6 +169,128 @@ func verify(ctx context.Context, client *http.Client, baseURL, taskID string) er
 		return fmt.Errorf("unexpected restored event stream: count=%d provider=%q", count, startedProvider)
 	}
 	fmt.Printf("restart persistence verified for task %s\n", taskID)
+	return nil
+}
+
+// appManifest renders the fixed restart manifest. Digests are re-derived
+// through the canonical validator at verify time, proving determinism.
+func appManifest(appID, name, version string) []byte {
+	return []byte(fmt.Sprintf(`apiVersion: workos.app/v1
+id: %s
+name: %s
+version: %s
+scope: user
+runtime:
+  type: container
+  command: ["./serve"]
+surfaces:
+  - id: main
+    renderer: web-bundle
+permissions: [artifact.read]
+resources: {}
+health: {}
+maintainer: {}
+`, appID, name, version))
+}
+
+type restartApp struct {
+	id       string
+	name     string
+	versions []string
+	current  string
+}
+
+func restartApps(stamp int64) []restartApp {
+	return []restartApp{
+		{
+			id: fmt.Sprintf("restart-alpha-%d", stamp), name: "Restart Alpha",
+			versions: []string{"1.0.0", "1.10.0", "1.10.0-rc.7"}, current: "1.10.0",
+		},
+		{
+			id: fmt.Sprintf("restart-beta-%d", stamp), name: "Restart Beta",
+			versions: []string{"0.9.0", "1.0.0-rc.5"}, current: "1.0.0-rc.5",
+		},
+	}
+}
+
+func appSeed(ctx context.Context, client *http.Client, baseURL string) error {
+	apps := appv1connect.NewAppRegistryServiceClient(client, baseURL)
+	stamp := time.Now().UnixNano()
+	for _, app := range restartApps(stamp) {
+		for _, version := range app.versions {
+			if _, err := apps.RegisterApp(ctx, connect.NewRequest(&appv1.RegisterAppRequest{
+				IdempotencyKey: fmt.Sprintf("restart-app-%s-%s", app.id, version),
+				ManifestYaml:   appManifest(app.id, app.name, version),
+			})); err != nil {
+				return fmt.Errorf("register %s@%s: %w", app.id, version, err)
+			}
+		}
+	}
+	seeded := restartApps(stamp)
+	fmt.Printf("%s %s\n", seeded[0].id, seeded[1].id)
+	return nil
+}
+
+func appVerify(ctx context.Context, client *http.Client, baseURL, appIDA, appIDB string) error {
+	validator, err := manifestvalidator.New()
+	if err != nil {
+		return fmt.Errorf("load canonical validator: %w", err)
+	}
+	apps := appv1connect.NewAppRegistryServiceClient(client, baseURL)
+	var expected []restartApp
+	for _, app := range []restartApp{
+		{id: appIDA, name: "Restart Alpha", versions: []string{"1.0.0", "1.10.0", "1.10.0-rc.7"}, current: "1.10.0"},
+		{id: appIDB, name: "Restart Beta", versions: []string{"0.9.0", "1.0.0-rc.5"}, current: "1.0.0-rc.5"},
+	} {
+		expected = append(expected, app)
+	}
+
+	for _, app := range expected {
+		for _, version := range app.versions {
+			manifest, violations := validator.Validate(appManifest(app.id, app.name, version))
+			if len(violations) > 0 {
+				return fmt.Errorf("fixed manifest became invalid: %v", violations)
+			}
+			stored, err := apps.GetApp(ctx, connect.NewRequest(&appv1.GetAppRequest{AppId: app.id, Version: version}))
+			if err != nil {
+				return fmt.Errorf("get %s@%s after restart: %w", app.id, version, err)
+			}
+			if stored.Msg.GetApp().GetManifestDigest() != manifest.Digest {
+				return fmt.Errorf("digest for %s@%s changed across restart", app.id, version)
+			}
+		}
+		current, err := apps.GetApp(ctx, connect.NewRequest(&appv1.GetAppRequest{AppId: app.id}))
+		if err != nil {
+			return fmt.Errorf("get current %s after restart: %w", app.id, err)
+		}
+		if current.Msg.GetApp().GetVersion() != app.current {
+			return fmt.Errorf("current version for %s is %s, want %s", app.id, current.Msg.GetApp().GetVersion(), app.current)
+		}
+	}
+
+	seen := map[string]string{}
+	token := ""
+	for {
+		page, err := apps.ListApps(ctx, connect.NewRequest(&appv1.ListAppsRequest{
+			Page: &commonv1.PageRequest{PageSize: 2, PageToken: token},
+		}))
+		if err != nil {
+			return fmt.Errorf("list apps after restart: %w", err)
+		}
+		for _, app := range page.Msg.GetApps() {
+			seen[app.GetId()] = app.GetVersion()
+		}
+		if page.Msg.GetPage().GetNextPageToken() == "" {
+			break
+		}
+		token = page.Msg.GetPage().GetNextPageToken()
+	}
+	for _, app := range expected {
+		if seen[app.id] != app.current {
+			return fmt.Errorf("list current for %s is %q, want %q", app.id, seen[app.id], app.current)
+		}
+	}
+	fmt.Printf("app registry persistence verified for %s, %s\n", appIDA, appIDB)
 	return nil
 }
 

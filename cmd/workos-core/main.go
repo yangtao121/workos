@@ -16,6 +16,10 @@ import (
 	agentpostgres "github.com/yangtao121/workos/internal/core/agent/adapters/postgres"
 	agentapp "github.com/yangtao121/workos/internal/core/agent/application"
 	agenttransport "github.com/yangtao121/workos/internal/core/agent/transport"
+	manifestvalidator "github.com/yangtao121/workos/internal/core/appregistry/adapters/manifestvalidator"
+	appregistrypostgres "github.com/yangtao121/workos/internal/core/appregistry/adapters/postgres"
+	appregistryapp "github.com/yangtao121/workos/internal/core/appregistry/application"
+	appregistrytransport "github.com/yangtao121/workos/internal/core/appregistry/transport"
 	cataloghost "github.com/yangtao121/workos/internal/core/harnesscatalog/adapters/harnesshost"
 	catalogapp "github.com/yangtao121/workos/internal/core/harnesscatalog/application"
 	catalogtransport "github.com/yangtao121/workos/internal/core/harnesscatalog/transport"
@@ -96,15 +100,27 @@ func run(logger *slog.Logger) error {
 	executionPath, executionHandler := taskexecutionv1connect.NewTaskExecutionServiceHandler(agenttransport.NewExecution(agentService))
 	mux.Handle(executionPath, executionHandler)
 
-	appPath, appHandler := appv1connect.NewAppRegistryServiceHandler(appv1connect.UnimplementedAppRegistryServiceHandler{})
-	mux.Handle(appPath, appHandler)
+	manifestValidator, err := manifestvalidator.New()
+	if err != nil {
+		return err
+	}
+	projectDirectory, err := orchestration.NewProjectDirectory(projectService)
+	if err != nil {
+		return err
+	}
+	appService, err := appregistryapp.New(appregistrypostgres.New(pool), manifestValidator, projectDirectory, generator)
+	if err != nil {
+		return err
+	}
+	appPath, appHandler := appv1connect.NewAppRegistryServiceHandler(appregistrytransport.New(appService))
+	mux.Handle(appPath, identity.Middleware(appHandler))
 	artifactPath, artifactHandler := artifactv1connect.NewArtifactServiceHandler(artifactv1connect.UnimplementedArtifactServiceHandler{})
 	mux.Handle(artifactPath, artifactHandler)
 	systemPath, systemHandler := commonv1connect.NewSystemServiceHandler(systemhandler.New("workos-core", commonv1.HealthState_HEALTH_STATE_HEALTHY,
 		&commonv1.FeatureCapability{Id: "project", Available: true},
 		&commonv1.FeatureCapability{Id: "agent-task", Available: true},
 		&commonv1.FeatureCapability{Id: "harness-catalog", Available: true},
-		&commonv1.FeatureCapability{Id: "app-registry", Available: false, Reason: "contract only"},
+		&commonv1.FeatureCapability{Id: "app-registry", Available: true},
 		&commonv1.FeatureCapability{Id: "artifact", Available: false, Reason: "contract only"},
 	))
 	mux.Handle(systemPath, systemHandler)

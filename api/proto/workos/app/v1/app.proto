@@ -37,10 +37,20 @@ message RegisterAppRequest {
   bytes manifest_yaml = 2;
 }
 
+// GetAppRequest fetches one owner-scoped app. An empty version returns the
+// current (highest SemVer precedence) registered version; an explicit
+// version returns that immutable version. Registered apps are never an
+// installation state.
 message GetAppRequest {
   string app_id = 1;
+  string version = 2;
 }
 
+// ListAppsRequest lists the current version of every app registered by the
+// owner, ordered by app ID. A non-empty project_id first verifies the
+// project belongs to the owner and is not archived, then returns the owner's
+// registry catalog usable in that project context; it is NOT the installed
+// app list (Project.installed_app_ids is owned by future install commands).
 message ListAppsRequest {
   string project_id = 1;
   workos.common.v1.PageRequest page = 2;

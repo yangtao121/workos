@@ -89,6 +89,7 @@ services:
       GOPATH: /tmp/workos-go
       GOMODCACHE: /go/pkg/mod
       GOPROXY: ${GOPROXY:-https://goproxy.cn,direct}
+      GODEBUG: netdns=cgo
       WORKOS_DEEPSEEK_FIXTURE_ADDRESS: 127.0.0.1:18086
       WORKOS_DEEPSEEK_FIXTURE_KEY: workos-fixture-only-not-a-real-key
     volumes:

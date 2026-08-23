@@ -67,6 +67,8 @@ func TestPrivateConnectServicesAreNotForwarded(t *testing.T) {
 		"/workos.harness.v1.HarnessHostService/ExecuteTask",
 		"/workos.harness.v1.HarnessHostService/CancelRun",
 		"/workos.taskexecution.v1.TaskExecutionService/ClaimTask",
+		"/workos.surface.v1.SurfaceService/CreateSurface",
+		"/workos.workload.v1.WorkloadService/StartWorkload",
 	} {
 		response := httptest.NewRecorder()
 		handler.ServeHTTP(response, httptest.NewRequest(http.MethodPost, path, nil))

@@ -14,8 +14,8 @@ PLAYWRIGHT_DOWNLOAD_HOST ?= https://npmmirror.com/mirrors/playwright
 PYPI_MIRROR ?= https://mirrors.aliyun.com/pypi
 USER_FLAGS := --user $(shell id -u):$(shell id -g) -e HOME=/tmp
 MOUNT := -v $(CURDIR):$(WORKDIR) -w $(WORKDIR)
-GO_RUN := docker run --rm $(USER_FLAGS) -e GOPATH=/tmp/workos-go -e GOMODCACHE=/go/pkg/mod -e GOPROXY=$(GOPROXY) $(MOUNT) -v workos-go-cache:/go/pkg/mod $(GO_IMAGE)
-GO_HOST_RUN := docker run --rm --network host $(USER_FLAGS) -e GOPATH=/tmp/workos-go -e GOMODCACHE=/go/pkg/mod -e GOPROXY=$(GOPROXY) $(MOUNT) -v workos-go-cache:/go/pkg/mod $(GO_IMAGE)
+GO_RUN := docker run --rm $(USER_FLAGS) -e HOME=/tmp -e GOPATH=/tmp/workos-go -e GOMODCACHE=/go/pkg/mod -e GOPROXY=$(GOPROXY) -e GODEBUG=netdns=cgo $(MOUNT) -v workos-go-cache:/go/pkg/mod $(GO_IMAGE)
+GO_HOST_RUN := docker run --rm --network host $(USER_FLAGS) -e HOME=/tmp/workos-go -e GOMODCACHE=/go/pkg/mod -e GOPROXY=$(GOPROXY) -e GODEBUG=netdns=cgo $(MOUNT) -v workos-go-cache:/go/pkg/mod $(GO_IMAGE)
 NODE_RUN := docker run --rm $(USER_FLAGS) -e COREPACK_NPM_REGISTRY=$(NPM_REGISTRY) -e npm_config_registry=$(NPM_REGISTRY) $(MOUNT) $(NODE_IMAGE)
 BUF_RUN := docker run --rm $(USER_FLAGS) $(MOUNT) $(BUF_IMAGE)
 SQLC_RUN := docker run --rm $(USER_FLAGS) -v $(CURDIR):/src -w /src $(SQLC_IMAGE)
@@ -69,8 +69,11 @@ test-integration:
 	docker compose up -d --build postgres bootstrap workos-core harness-host workos-gateway
 	$(GO_HOST_RUN) go test -tags=integration -count=1 -v ./tests/integration
 	@set -eu; task_id="$$( $(GO_HOST_RUN) go run ./tests/restart seed )"; \
+		app_ref="$$( $(GO_HOST_RUN) go run ./tests/restart app-seed )"; \
+		set -- $$app_ref; \
 		docker compose restart workos-core harness-host >/dev/null; \
-		$(GO_HOST_RUN) go run ./tests/restart verify "$$task_id"
+		$(GO_HOST_RUN) go run ./tests/restart verify "$$task_id"; \
+		$(GO_HOST_RUN) go run ./tests/restart app-verify "$$1" "$$2"
 
 test-deepseek-fixture: e2e-image
 	@set -eu; \

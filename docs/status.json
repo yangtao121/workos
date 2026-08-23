@@ -53,8 +53,8 @@
     {
       "name": "App Registry",
       "process": "workos-core",
-      "status": "contract-only",
-      "evidence": "workos.app.v1"
+      "status": "working",
+      "evidence": "schema-backed immutable registration + persistence"
     },
     {
       "name": "Artifact",
