@@ -1,6 +1,6 @@
 # Task: App Manifest Registry vertical slice
 
-- 状态：done（2026-08-23 第二轮审核 5 个阻断项已修复，全部验收门禁重新通过；合并须经第三轮静态复审）
+- 状态：done（2026-08-23 第三轮审核唯一阻断项——migration scratch cleanup 未覆盖 CREATE 后失败路径——已修复，全部验收门禁重新通过；合并须经审核者复审后本地 `--ff-only`）
 - Owner/Agent：app registry builder
 - 进程/模块：workos-core `internal/core/appregistry`；workos-gateway allowlist 复用；`schemas/` embed
 - 依赖：canonical `workos-app-manifest-v1.schema.json`、`workos.app.v1` 契约、`001_foundation.sql`、Project application（ListApps project 上下文校验）
@@ -89,7 +89,7 @@ internal/core/appregistry: domain → application → ports ← adapters/postgre
 - [x] Manifest validator：结构安全、Schema 违规、policy fail closed、credential-shaped key（4 形态）、digest 等价性、violation 上限/排序/去重
 - [x] Domain/application/transport：幂等/冲突/owner 隔离/SemVer current/显式 version/分页/Project 上下文/错误净化
 - [x] PostgreSQL：migration 空库+现有 volume 前向执行；并发注册由真实约束裁决（含 loser `AlreadyExists` 与 key 未消费证明）；Gateway 注册→Get/List→Core 重启持久化
-- [x] 测试资源零残留：migration scratch database 连续两次零新增；高基数分页 fixture 精确清理并验证归零
+- [x] 测试资源零残留：migration scratch database 连续两次零新增（含 CREATE 后 Close 失败等异常路径回归证明）；高基数分页 fixture 精确清理并验证归零
 - [x] `make generate` 二次执行无差异
 - [x] `make check`
 - [x] `make test-integration`
@@ -115,9 +115,10 @@ internal/core/appregistry: domain → application → ports ← adapters/postgre
 ## 审核历史（压缩）
 
 - 第一轮审核（`docs/prompts/20260823-review-app-manifest-registry.md`，针对 `8e48d92`）：确认 6 个阻断项——幂等映射未持久化、分页 token 用原始 page_size、256 KiB 限制晚于 Connect 解码、mapping key 未校验且 secret 测试在 duplicate-key 路径假通过、Get/List 物化全部版本、Makefile/GODEBUG 回归。修复提交 `42755bd`（003 migration、summary streaming、Connect read max、key guard、tokenization、Makefile 恢复）。
-- 第二轮审核（`docs/prompts/20260823-review-2-app-manifest-registry.md`，针对 `42755bd`）：确认 5 个阻断项并全部在本轮修复——credential-shaped 字符串作为 map key 可入库、migration scratch database cleanup 在已关闭连接上执行、高基数分页 fixture 每次污染 acceptance volume、并发 immutable-version 测试未断言 loser 错误码与 key 消费、本任务记录顶部仍描述已删除的 002-only 结构。早期证据中不成立的部分已在第一轮结论中作废，不再与当前设计并列。
+- 第二轮审核（`docs/prompts/20260823-review-2-app-manifest-registry.md`，针对 `42755bd`）：确认 5 个阻断项并全部在该轮修复——credential-shaped 字符串作为 map key 可入库、migration scratch database cleanup 在已关闭连接上执行、高基数分页 fixture 每次污染 acceptance volume、并发 immutable-version 测试未断言 loser 错误码与 key 消费、本任务记录顶部仍描述已删除的 002-only 结构。早期证据中不成立的部分已在第一轮结论中作废，不再与当前设计并列。
+- 第三轮审核（`docs/prompts/20260823-review-3-app-manifest-registry.md`，针对 `98eafaa`）：确认 1 个合并阻断项——scratch cleanup 注册晚于 creation connection Close（Close 失败即 `t.Fatalf`，本轮数据库泄漏），且 cleanup 最终 admin Close 使用无界 `context.Background()`。本轮修复：cleanup 在 CREATE DATABASE 之前注册（幂等 `DROP DATABASE IF EXISTS … WITH (FORCE)`，覆盖 CREATE 不确定错误）、生命周期核心改为可检查的 error-returning helper（`provisionScratchDatabase`/`dropScratchDatabaseWithLifecycle`）、全部 admin Close 有界，并新增两个异常路径回归测试与变异验证。
 
-## 2026-08-23 第二轮修复后最终证据
+## 2026-08-23 第二轮修复后证据（历史，scratch 生命周期在第三轮进一步加固）
 
 分支 `feat/app-manifest-registry`（基于 `42755bd`，修复提交见 git log），全部命令实际执行：
 
@@ -135,6 +136,24 @@ internal/core/appregistry: domain → application → ports ← adapters/postgre
 - `make test-e2e`：通过（foundation spec 1 passed，fixture-only spec 按设计 skipped）。
 - `buf breaking --against '.git#branch=main'`：通过。
 - `git diff --check`、`git diff --check main...HEAD`：通过；`docs/structure.md` 无变化；`002_app_registry.sql` 与 `8e48d92` 逐字节一致、`003` 未修改、无新增 migration；无 root-owned 文件或 untracked 测试产物；`workos_workos-postgres` volume 未删除；未 merge、未 push、未使用真实 Key（全部 fixture 假 credential，未访问真实 Provider 网络）。
+
+## 2026-08-23 第三轮修复后最终证据
+
+分支 `feat/app-manifest-registry`（基于 `98eafaa`，修复提交见 git log），全部命令实际执行：
+
+- scratch cleanup 失败路径回归证明（`tests/integration/app_registry_migration_test.go`）：
+  - `TestScratchDatabaseCleanupSurvivesCreationCloseFailure`：CREATE DATABASE 成功后注入确定性的 creation connection Close 失败（未导出 `scratchAdminLifecycle` seam，无网络抖动/随机 sleep/共享库污染），断言错误以 checkable error 返回给调用方、cleanup 在错误上报前已注册并执行精确名称的 `DROP DATABASE IF EXISTS … WITH (FORCE)`（`pgx.Identifier` quote）、`pg_database` 精确查询该名称已不存在、creation 与 cleanup 的 exec/close context 全部有 deadline。
+  - `TestScratchDatabaseCleanupReportsFailuresWithBoundedContexts`：cleanup 自身生命周期——DROP 在 cleanup 新建的 admin connection 上以有界 context 执行、最终 admin Close 同样有界（不再使用无界 `context.Background()`）、Close 错误返回给调用方不吞掉、精确名称 DROP 实际发生（库不存在）。
+  - 生命周期结构：`provisionScratchDatabase` 在 admin connect 成功后、CREATE DATABASE 执行前注册幂等 exact-name cleanup，因此 CREATE 不确定错误（服务端已建、客户端收到失败）、creation Close 失败、`t.Fatal`、panic、提前返回均不遗留本轮数据库；CREATE/DROP/Close 错误全部成为明确 test error。
+  - 变异验证：临时把 cleanup 注册移回 creation Close 之后（复现第三轮指出的缺陷顺序），`TestScratchDatabaseCleanupSurvivesCreationCloseFailure` 立即失败（"cleanup must drop exactly the created name … got []"）并实际泄漏本轮名称，随后恢复修复版，并仅按该精确名称清除变异运行产生的这一个数据库。
+- 定向验证（Makefile 同等 Docker runner、`--network host`、HOME/GOPATH/module cache 配置一致）：`go test -tags=integration -count=1 -run 'TestScratchDatabaseCleanup|TestAppRegistryMigration' ./tests/integration` 连续两次通过；运行前、第一次后、第二次后的 scratch 集合完全相同，均为 6 个历史残留（`workos_migration_test_1787498316725324135`、`…5495588`、`…439446423137`、`…439446610484`、`…480690229539`、`…480690854487`），零新增；`make test-integration` 全量运行后集合仍为同一 6 个；历史残留仅登记，未经授权未删除。
+- `make generate` 连续两次：通过，第二次无差异。
+- `make check`：通过（buf format/lint、sqlc vet、gofmt、go vet/test、架构守卫、eslint、prettier、web build、status render --check）。
+- `make test-integration`：通过（App Registry 纵向 9 子测试含高基数分页精确清理、并发 loser `AlreadyExists`、TrustBoundary；migration 空库/003 backfill；restart 持久化 verified）。
+- `make test-deepseek-fixture`：通过（Go fixture 测试 + restart verify + Playwright fixture spec 1 passed）。
+- `make test-e2e`：通过（foundation spec 1 passed，fixture-only spec 按设计 skipped）。
+- `buf breaking --against '.git#branch=main'`：通过。
+- `git diff --check`、`git diff --check main...HEAD`：通过；`002_app_registry.sql` 与 `8e48d92` 逐字节一致、`003` 未修改、`internal/platform/migrations/files/` 仍为 001/002/003 三个文件（无新增 migration）；`docs/structure.md` 无变化；worktree 无 root-owned 文件或临时产物；`workos_workos-postgres` volume 未删除；未 merge、未 push、未使用真实 Key（全部 fixture 假 credential，未访问真实 Provider 网络）。
 
 ## 限制与后续
 
