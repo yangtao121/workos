@@ -57,27 +57,35 @@ func run() error {
 
 func seed(ctx context.Context, client *http.Client, baseURL string) error {
 	projects := projectv1connect.NewProjectServiceClient(client, baseURL)
+	bindings := projectv1connect.NewProjectHarnessBindingServiceClient(client, baseURL)
 	tasks := agentv1connect.NewAgentTaskServiceClient(client, baseURL)
 	key := fmt.Sprintf("restart-project-%d", time.Now().UnixNano())
 	providerID := os.Getenv("WORKOS_TEST_PROVIDER")
 	if providerID == "" {
 		providerID = "fake"
 	}
-	create := &projectv1.CreateProjectRequest{IdempotencyKey: key, Name: "Restart Persistence"}
-	if providerID != "fake" {
-		create.HarnessBinding = &projectv1.HarnessBinding{
-			ProviderId: providerID, InstancePolicy: projectv1.HarnessInstancePolicy_HARNESS_INSTANCE_POLICY_EPHEMERAL,
-			ResourcePolicyId: "restart-fixture",
-		}
-	}
-	created, err := projects.CreateProject(ctx, connect.NewRequest(create))
+	created, err := projects.CreateProject(ctx, connect.NewRequest(&projectv1.CreateProjectRequest{IdempotencyKey: key, Name: "Restart Persistence"}))
 	if err != nil {
 		return fmt.Errorf("create restart project: %w", err)
+	}
+	activeProject := created.Msg.GetProject()
+	if providerID != "fake" {
+		bound, err := bindings.SetProjectHarnessBinding(ctx, connect.NewRequest(&projectv1.SetProjectHarnessBindingRequest{
+			ProjectId: activeProject.GetId(), ExpectedRevision: activeProject.GetRevision(),
+			Selection: &projectv1.SetProjectHarnessBindingRequest_ProviderId{ProviderId: providerID},
+		}))
+		if err != nil {
+			return fmt.Errorf("bind restart project: %w", err)
+		}
+		activeProject = bound.Msg.GetProject()
+		if activeProject.GetHarnessBinding().GetCredentialRef() != "" {
+			return errors.New("server binding unexpectedly exposed a credential reference")
+		}
 	}
 	response, err := tasks.SubmitTask(ctx, connect.NewRequest(&agentv1.SubmitTaskRequest{
 		IdempotencyKey: "task-" + key,
 		Input: &agentv1.AgentTaskInput{
-			TargetScope: &agentv1.TargetScope{Scope: &agentv1.TargetScope_ProjectId{ProjectId: created.Msg.GetProject().GetId()}},
+			TargetScope: &agentv1.TargetScope{Scope: &agentv1.TargetScope_ProjectId{ProjectId: activeProject.GetId()}},
 			Role:        "general", Goal: "persist this completed run across service restart",
 		},
 	}))
@@ -103,6 +111,7 @@ func seed(ctx context.Context, client *http.Client, baseURL string) error {
 
 func verify(ctx context.Context, client *http.Client, baseURL, taskID string) error {
 	tasks := agentv1connect.NewAgentTaskServiceClient(client, baseURL)
+	projects := projectv1connect.NewProjectServiceClient(client, baseURL)
 	response, err := tasks.GetTask(ctx, connect.NewRequest(&agentv1.GetTaskRequest{TaskId: taskID}))
 	if err != nil {
 		return fmt.Errorf("get task after restart: %w", err)
@@ -114,6 +123,18 @@ func verify(ctx context.Context, client *http.Client, baseURL, taskID string) er
 	}
 	if task.GetState() != agentv1.AgentTaskState_AGENT_TASK_STATE_COMPLETED || task.GetLastEventSequence() < 2 || task.GetProviderId() != expectedProvider {
 		return fmt.Errorf("task was not durably completed: state=%s sequence=%d", task.GetState(), task.GetLastEventSequence())
+	}
+	projectID := task.GetInput().GetTargetScope().GetProjectId()
+	projectResponse, err := projects.GetProject(ctx, connect.NewRequest(&projectv1.GetProjectRequest{ProjectId: projectID}))
+	if err != nil {
+		return fmt.Errorf("get bound project after restart: %w", err)
+	}
+	if expectedProvider == "fake" {
+		if projectResponse.Msg.GetProject().GetHarnessBinding() != nil {
+			return errors.New("global-default Project unexpectedly gained a persisted binding")
+		}
+	} else if binding := projectResponse.Msg.GetProject().GetHarnessBinding(); binding.GetProviderId() != expectedProvider || binding.GetCredentialRef() != "" {
+		return fmt.Errorf("Project binding was not durably restored: provider=%q", binding.GetProviderId())
 	}
 	stream, err := tasks.WatchTaskEvents(ctx, connect.NewRequest(&agentv1.WatchTaskEventsRequest{
 		TaskId: taskID,

@@ -20,7 +20,7 @@ func (p *Provider) Describe() *harnessv1.HarnessProviderInfo {
 	return &harnessv1.HarnessProviderInfo{
 		Id: "fake", DisplayName: "Deterministic Fake Harness", AdapterVersion: "1.0.0",
 		Health:       commonv1.HealthState_HEALTH_STATE_HEALTHY,
-		Capabilities: &harnessv1.HarnessCapabilities{Streaming: true, Resume: true, StructuredArtifacts: true, UsageReporting: true},
+		Capabilities: &harnessv1.HarnessCapabilities{Streaming: true, UsageReporting: true},
 	}
 }
 

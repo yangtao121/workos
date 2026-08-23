@@ -6,6 +6,16 @@ The foundation is intentionally safe only on a single Linux host. Device enrollm
 
 `compose.yaml` runs PostgreSQL and all six stable processes on loopback. It is the reproducible development and acceptance environment, not a production topology.
 
+Core reaches the private harness-host address through `WORKOS_HARNESS_URL` only for provider description. The Gateway exposes Core's separate read-only Catalog facade and Project binding command; it does not forward the private Harness execution/cancellation service. Provider credentials belong only to harness-host and must not be injected into Core, Gateway, or Desktop.
+
+The non-secret Project binding preset is configured on Core with:
+
+- `WORKOS_PROJECT_HARNESS_INSTANCE_POLICY`
+- `WORKOS_PROJECT_HARNESS_PROFILE_ID`
+- `WORKOS_PROJECT_HARNESS_RESOURCE_POLICY_ID`
+
+The resource policy value is currently a persisted policy reference, not evidence that resource enforcement exists. Catalog timeout is controlled by `WORKOS_AGENT_CATALOG_TIMEOUT`; Catalog failure does not participate in Core readiness.
+
 The repository defaults are chosen for development in mainland China:
 
 - Go modules: goproxy.cn
@@ -31,6 +41,8 @@ make e2e-image \
 Base container images still use the operator's Docker registry configuration. Alibaba Cloud accelerators are account/region specific, so configure the Docker daemon with the accelerator assigned to that machine or override `GO_IMAGE`, `NODE_IMAGE`, and `RUNTIME_IMAGE`; do not commit a personal accelerator URL.
 
 Keep `PLAYWRIGHT_VERSION` in the Makefile aligned with `@playwright/test` in `apps/desktop-web/package.json` whenever Playwright is upgraded.
+
+`make test-deepseek-fixture` starts a loopback API fixture with a fake credential, exercises the public Catalog/binding browser flow, and stops only that fixture container when it exits. It neither needs nor performs a live DeepSeek smoke and never removes the PostgreSQL volume.
 
 Enable local OTLP traces with:
 

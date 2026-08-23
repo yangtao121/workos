@@ -75,6 +75,9 @@ button {
 }
 .mission-control {
   width: 340px;
+  max-height: calc(100vh - 150px);
+  padding-right: 8px;
+  overflow-y: auto;
 }
 .mission-control > p {
   color: #8d9aab;
@@ -122,6 +125,126 @@ button {
   background: transparent;
   border: 0;
   outline: 0;
+}
+.mission-control > .workos-button {
+  width: 100%;
+  margin-top: 12px;
+}
+
+.harness-settings {
+  margin-top: 12px;
+  padding: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 16px;
+  background: rgba(8, 13, 21, 0.82);
+}
+.harness-settings > header {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 10px;
+}
+.harness-settings header p,
+.harness-settings h2 {
+  margin: 0;
+}
+.harness-settings header p,
+.harness-settings header > span,
+.harness-settings small {
+  color: #8d9aab;
+  font-size: 11px;
+}
+.harness-settings h2 {
+  margin-top: 3px;
+  font-size: 17px;
+}
+.harness-settings fieldset {
+  margin: 14px 0;
+  padding: 0;
+  border: 0;
+}
+.harness-settings legend {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+}
+.provider-option {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 10px;
+  margin-top: 9px;
+  padding: 11px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.035);
+}
+.provider-option:has(input:checked) {
+  border-color: rgba(110, 166, 234, 0.75);
+  background: rgba(81, 130, 193, 0.2);
+}
+.provider-option > span {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.provider-option em {
+  color: #d6b875;
+  font-size: 11px;
+  font-style: normal;
+}
+.provider-option.health-unavailable,
+.provider-option.current-unknown {
+  border-color: rgba(194, 94, 101, 0.4);
+}
+.provider-option.health-degraded {
+  border-color: rgba(214, 184, 117, 0.45);
+}
+.provider-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+.provider-badges b {
+  padding: 2px 6px;
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.09);
+  color: #b9c9dc;
+  font-size: 9px;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+.capability-list {
+  margin: 5px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 3px;
+  list-style: none;
+}
+.capability-list li {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  color: #aab7c8;
+  font-size: 10px;
+}
+.capability-list b {
+  color: #8494a8;
+  font-weight: 500;
+}
+.catalog-state,
+.binding-feedback {
+  color: #aab7c8;
+  font-size: 12px;
+}
+.catalog-error,
+.binding-feedback.error {
+  color: #efb0b5;
+}
+.catalog-error .workos-button {
+  margin-top: 5px;
 }
 
 .workos-window {
@@ -171,8 +294,31 @@ button {
   height: calc(100% - 48px);
   padding: 20px;
   display: grid;
-  grid-template-rows: auto 1fr;
+  grid-template-rows: auto auto 1fr;
   gap: 18px;
+}
+.task-snapshot {
+  margin: 0;
+  padding: 9px 11px;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 4px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+  background: rgba(0, 0, 0, 0.13);
+  font-size: 11px;
+}
+.task-snapshot dt {
+  color: #8291a4;
+}
+.task-snapshot dd {
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  color: #d8e3f0;
+  font-family: ui-monospace, monospace;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .task-composer {
   display: grid;

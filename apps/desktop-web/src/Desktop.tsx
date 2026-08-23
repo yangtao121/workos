@@ -1,30 +1,63 @@
-import { useCallback, useEffect, useMemo, useReducer, useState, type SyntheticEvent } from "react";
+import { Code, ConnectError } from "@connectrpc/connect";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useReducer,
+  useRef,
+  useState,
+  type SyntheticEvent,
+} from "react";
 import { AgentTimeline } from "@workos/agent-center";
-import { createWorkOSClients } from "@workos/agent-sdk";
-import type { AgentEvent, AgentTask, Project } from "@workos/protocol";
+import { createWorkOSClients, type WorkOSClients } from "@workos/agent-sdk";
+import type { AgentEvent, AgentTask, GetHarnessCatalogResponse, Project } from "@workos/protocol";
 import { Button } from "@workos/ui-kit";
 import { initialWindowState, windowReducer } from "@workos/window-manager";
-import { taskStatus } from "./model.js";
+import { HarnessSettings, type CatalogState } from "./HarnessSettings.js";
+import { selectionFromProject, taskStatus, type HarnessSelection } from "./model.js";
 
 const clients = createWorkOSClients(window.location.origin);
 
-export function Desktop() {
+export function Desktop({ workosClients = clients }: { workosClients?: WorkOSClients } = {}) {
   const [projects, setProjects] = useState<Project[]>([]);
   const [activeProjectId, setActiveProjectId] = useState<string>();
   const [events, setEvents] = useState<AgentEvent[]>([]);
   const [task, setTask] = useState<AgentTask>();
   const [error, setError] = useState<string>();
   const [loading, setLoading] = useState(true);
+  const [catalog, setCatalog] = useState<GetHarnessCatalogResponse>();
+  const [catalogState, setCatalogState] = useState<CatalogState>("loading");
+  const [catalogError, setCatalogError] = useState<string>();
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [bindingDraft, setBindingDraft] = useState<HarnessSelection>({ kind: "global" });
+  const [bindingSaving, setBindingSaving] = useState(false);
+  const [bindingFeedback, setBindingFeedback] = useState<string>();
+  const [bindingFeedbackIsError, setBindingFeedbackIsError] = useState(false);
   const [windows, dispatch] = useReducer(windowReducer, initialWindowState);
+  const bindingProjectID = useRef<string | undefined>(undefined);
   const activeProject = projects.find((project) => project.id === activeProjectId);
 
   const refreshProjects = useCallback(async () => {
-    const response = await clients.projects.listProjects({
+    const response = await workosClients.projects.listProjects({
       page: { pageSize: 100, pageToken: "" },
     });
     setProjects(response.projects);
     setActiveProjectId((current) => current ?? response.projects[0]?.id);
-  }, []);
+  }, [workosClients]);
+
+  const refreshCatalog = useCallback(async () => {
+    setCatalogState("loading");
+    setCatalogError(undefined);
+    try {
+      const response = await workosClients.harnessCatalog.getHarnessCatalog({});
+      setCatalog(response);
+      setCatalogState("ready");
+    } catch {
+      setCatalog(undefined);
+      setCatalogState("error");
+      setCatalogError("Provider catalog is temporarily unavailable.");
+    }
+  }, [workosClients]);
 
   useEffect(() => {
     void refreshProjects()
@@ -35,6 +68,18 @@ export function Desktop() {
         setLoading(false);
       });
   }, [refreshProjects]);
+
+  useEffect(() => {
+    void refreshCatalog();
+  }, [refreshCatalog]);
+
+  useEffect(() => {
+    if (!activeProject || bindingProjectID.current === activeProject.id) return;
+    bindingProjectID.current = activeProject.id;
+    setBindingDraft(selectionFromProject(activeProject));
+    setBindingFeedback(undefined);
+    setBindingFeedbackIsError(false);
+  }, [activeProject]);
 
   useEffect(() => {
     dispatch({
@@ -56,7 +101,7 @@ export function Desktop() {
     if (!name) return;
     setError(undefined);
     try {
-      const response = await clients.projects.createProject({
+      const response = await workosClients.projects.createProject({
         idempotencyKey: crypto.randomUUID(),
         name,
         icon: "◈",
@@ -70,6 +115,53 @@ export function Desktop() {
     }
   }
 
+  function replaceProject(project: Project) {
+    setProjects((current) =>
+      current.map((candidate) => (candidate.id === project.id ? project : candidate)),
+    );
+  }
+
+  async function saveHarnessBinding() {
+    if (!activeProject || bindingSaving) return;
+    setBindingSaving(true);
+    setBindingFeedback(undefined);
+    setBindingFeedbackIsError(false);
+    try {
+      const response = await workosClients.projectHarnessBindings.setProjectHarnessBinding({
+        projectId: activeProject.id,
+        expectedRevision: activeProject.revision,
+        selection:
+          bindingDraft.kind === "provider"
+            ? { case: "providerId", value: bindingDraft.providerId }
+            : { case: "useGlobalDefault", value: true },
+      });
+      if (!response.project) throw new Error("missing project response");
+      replaceProject(response.project);
+      setBindingDraft(selectionFromProject(response.project));
+      setBindingFeedback("Harness setting saved.");
+    } catch (reason) {
+      if (reason instanceof ConnectError && reason.code === Code.Aborted) {
+        try {
+          const refreshed = await workosClients.projects.getProject({
+            projectId: activeProject.id,
+          });
+          if (refreshed.project) {
+            replaceProject(refreshed.project);
+            setBindingDraft(selectionFromProject(refreshed.project));
+          }
+          setBindingFeedback("Project settings changed elsewhere. The latest revision was loaded.");
+        } catch {
+          setBindingFeedback("Project settings changed elsewhere and could not be refreshed.");
+        }
+      } else {
+        setBindingFeedback(bindingErrorMessage(reason));
+      }
+      setBindingFeedbackIsError(true);
+    } finally {
+      setBindingSaving(false);
+    }
+  }
+
   async function submitTask(event: SyntheticEvent<HTMLFormElement>) {
     event.preventDefault();
     const formElement = event.currentTarget;
@@ -77,9 +169,10 @@ export function Desktop() {
     const goal = formString(form, "goal");
     if (!goal || !activeProjectId) return;
     setEvents([]);
+    setTask(undefined);
     setError(undefined);
     try {
-      const response = await clients.agentTasks.submitTask({
+      const response = await workosClients.agentTasks.submitTask({
         idempotencyKey: crypto.randomUUID(),
         input: {
           targetScope: { scope: { case: "projectId", value: activeProjectId } },
@@ -95,14 +188,14 @@ export function Desktop() {
       if (!response.task) return;
       setTask(response.task);
       formElement.reset();
-      for await (const item of clients.agentTasks.watchTaskEvents({
+      for await (const item of workosClients.agentTasks.watchTaskEvents({
         taskId: response.task.id,
         afterSequence: 0n,
       })) {
         const received = item.event;
         if (received) setEvents((current) => [...current, received]);
       }
-      const latest = await clients.agentTasks.getTask({ taskId: response.task.id });
+      const latest = await workosClients.agentTasks.getTask({ taskId: response.task.id });
       if (latest.task) setTask(latest.task);
     } catch (reason) {
       setError(asMessage(reason));
@@ -157,6 +250,35 @@ export function Desktop() {
               <Button type="submit">Create space</Button>
             </form>
           </div>
+          <Button
+            aria-expanded={settingsOpen}
+            disabled={!activeProject}
+            onClick={() => {
+              setSettingsOpen((current) => !current);
+            }}
+            type="button"
+          >
+            {settingsOpen ? "Close project settings" : "Project settings"}
+          </Button>
+          {settingsOpen && activeProject ? (
+            <HarnessSettings
+              catalog={catalog}
+              catalogError={catalogError}
+              catalogState={catalogState}
+              draft={bindingDraft}
+              feedback={bindingFeedback}
+              feedbackIsError={bindingFeedbackIsError}
+              project={activeProject}
+              saving={bindingSaving}
+              onRetry={() => void refreshCatalog()}
+              onSave={() => void saveHarnessBinding()}
+              onSelectionChange={(selection) => {
+                setBindingDraft(selection);
+                setBindingFeedback(undefined);
+                setBindingFeedbackIsError(false);
+              }}
+            />
+          ) : null}
         </aside>
 
         {windows.windows.map((windowState) => (
@@ -186,6 +308,14 @@ export function Desktop() {
                   Run task
                 </Button>
               </form>
+              {task ? (
+                <dl className="task-snapshot" aria-label="Task provider snapshot">
+                  <dt>Provider snapshot</dt>
+                  <dd>{task.providerId || "unknown"}</dd>
+                  <dt>Task</dt>
+                  <dd>{task.id}</dd>
+                </dl>
+              ) : null}
               <AgentTimeline events={events} />
             </div>
           </section>
@@ -207,6 +337,21 @@ export function Desktop() {
       </nav>
     </main>
   );
+}
+
+function bindingErrorMessage(reason: unknown): string {
+  if (!(reason instanceof ConnectError)) return "Harness setting could not be saved.";
+  switch (reason.code) {
+    case Code.FailedPrecondition:
+      return "That provider cannot be selected right now. Refresh the catalog and try again.";
+    case Code.NotFound:
+      return "The project no longer exists.";
+    case Code.Unavailable:
+    case Code.DeadlineExceeded:
+      return "Provider catalog is temporarily unavailable. Global Default can still be selected.";
+    default:
+      return "Harness setting could not be saved.";
+  }
 }
 
 function asMessage(reason: unknown): string {

@@ -72,7 +72,7 @@ test-integration:
 		docker compose restart workos-core harness-host >/dev/null; \
 		$(GO_HOST_RUN) go run ./tests/restart verify "$$task_id"
 
-test-deepseek-fixture:
+test-deepseek-fixture: e2e-image
 	@set -eu; \
 		cleanup() { docker compose --profile deepseek-fixture stop deepseek-api-fixture >/dev/null 2>&1 || true; }; \
 		trap cleanup EXIT INT TERM; \
@@ -84,7 +84,15 @@ test-deepseek-fixture:
 		$(GO_HOST_RUN) go test -tags='integration deepseekfixture' -count=1 -run '^TestDeepSeekProjectBindingFixtureVerticalSlice$$' -v ./tests/integration; \
 		task_id="$$( $(GO_HOST_RUN) sh -c 'WORKOS_TEST_PROVIDER=deepseek go run ./tests/restart seed' )"; \
 		docker compose restart workos-core harness-host >/dev/null; \
-		$(GO_HOST_RUN) sh -c 'WORKOS_TEST_PROVIDER=deepseek go run ./tests/restart verify "$$1"' _ "$$task_id"
+		$(GO_HOST_RUN) sh -c 'WORKOS_TEST_PROVIDER=deepseek go run ./tests/restart verify "$$1"' _ "$$task_id"; \
+		docker run --rm --network host $(USER_FLAGS) \
+			-e PLAYWRIGHT_BROWSERS_PATH=/ms-playwright \
+			-e WORKOS_E2E_URL=http://127.0.0.1:8080 \
+			-e WORKOS_E2E_OUTPUT_DIR=/tmp/workos-playwright-results \
+			-e WORKOS_DEEPSEEK_FIXTURE_E2E=true \
+			-v $(CURDIR):$(WORKDIR) \
+			-w $(WORKDIR)/apps/desktop-web \
+			$(E2E_IMAGE) pnpm exec playwright test deepseek-fixture.spec.ts
 
 e2e-image:
 	docker build \

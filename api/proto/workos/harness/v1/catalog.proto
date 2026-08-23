@@ -1,0 +1,20 @@
+syntax = "proto3";
+
+package workos.harness.v1;
+
+import "workos/harness/v1/harness.proto";
+
+option go_package = "github.com/yangtao121/workos/gen/go/workos/harness/v1;harnessv1";
+
+message GetHarnessCatalogRequest {}
+
+message GetHarnessCatalogResponse {
+  repeated HarnessProviderInfo providers = 1;
+  string default_provider_id = 2;
+}
+
+// HarnessCatalogService is the public, read-only provider discovery facade.
+// Harness execution and cancellation remain private to HarnessHostService.
+service HarnessCatalogService {
+  rpc GetHarnessCatalog(GetHarnessCatalogRequest) returns (GetHarnessCatalogResponse) {}
+}

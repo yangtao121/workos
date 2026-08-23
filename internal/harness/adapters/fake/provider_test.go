@@ -35,3 +35,11 @@ func TestProviderEmitsOneCanonicalTerminalEvent(t *testing.T) {
 		t.Fatalf("unexpected normalized goal %q", got)
 	}
 }
+
+func TestProviderAdvertisesOnlyImplementedCapabilities(t *testing.T) {
+	t.Parallel()
+	caps := New(fixedID("run-1")).Describe().GetCapabilities()
+	if !caps.GetStreaming() || !caps.GetUsageReporting() || caps.GetPersistentSessions() || caps.GetResume() || caps.GetSteerDuringRun() || caps.GetApprovals() || caps.GetToolRegistration() || caps.GetMcp() || caps.GetSubagents() || caps.GetWorkspaceMount() || caps.GetStructuredArtifacts() {
+		t.Fatalf("fake provider overclaimed capabilities: %#v", caps)
+	}
+}

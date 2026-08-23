@@ -22,6 +22,16 @@ type Handler struct {
 	logger *slog.Logger
 }
 
+var publicServicePrefixes = []string{
+	"/workos.agent.v1.AgentTaskService/",
+	"/workos.app.v1.AppRegistryService/",
+	"/workos.artifact.v1.ArtifactService/",
+	"/workos.common.v1.SystemService/",
+	"/workos.harness.v1.HarnessCatalogService/",
+	"/workos.project.v1.ProjectHarnessBindingService/",
+	"/workos.project.v1.ProjectService/",
+}
+
 func New(cfg config.Config, logger *slog.Logger) (*Handler, error) {
 	target, err := url.Parse(cfg.Services.Core)
 	if err != nil {
@@ -44,7 +54,7 @@ func New(cfg config.Config, logger *slog.Logger) (*Handler, error) {
 }
 
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	if strings.HasPrefix(r.URL.Path, "/workos.") {
+	if publicConnectPath(r.URL.Path) {
 		if !h.config.Auth.DevBypass {
 			http.Error(w, "device session required", http.StatusUnauthorized)
 			return
@@ -52,7 +62,20 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.proxy.ServeHTTP(w, r)
 		return
 	}
+	if strings.HasPrefix(r.URL.Path, "/workos.") {
+		http.NotFound(w, r)
+		return
+	}
 	h.serveStatic(w, r)
+}
+
+func publicConnectPath(path string) bool {
+	for _, prefix := range publicServicePrefixes {
+		if strings.HasPrefix(path, prefix) {
+			return true
+		}
+	}
+	return false
 }
 
 func (h *Handler) serveStatic(w http.ResponseWriter, r *http.Request) {

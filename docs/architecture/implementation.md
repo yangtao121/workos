@@ -5,14 +5,14 @@
 
 ## 进程所有权
 
-| 进程             | 当前所有权                                                   | 不拥有                     |
-| ---------------- | ------------------------------------------------------------ | -------------------------- |
-| workos-gateway   | TLS、identity、capability、公开 API、静态 Shell              | Project/Harness 状态       |
-| workos-core      | Project、Task Router、Event Backbone、App/Artifact contracts | Provider 进程、cgroup      |
-| harness-host     | Broker、Provider Adapter、run execution                      | Project 数据、公开 API     |
-| runtime-host     | Workload、runner、Surface                                    | Incident 决策、业务数据    |
-| reliability-host | Supervisor、Incident、Repair/Deploy ports                    | App 业务逻辑、Harness 路由 |
-| indexer          | Archive/RAG/indexing                                         | 原始业务表写权限           |
+| 进程             | 当前所有权                                                                                                  | 不拥有                            |
+| ---------------- | ----------------------------------------------------------------------------------------------------------- | --------------------------------- |
+| workos-gateway   | TLS、identity、capability、公开 API、静态 Shell                                                             | Project/Harness 状态              |
+| workos-core      | Project、Task Router、Event Backbone、Harness Catalog facade、binding orchestration、App/Artifact contracts | Provider 进程、credential、cgroup |
+| harness-host     | Broker、Provider Adapter、run execution                                                                     | Project 数据、公开 API            |
+| runtime-host     | Workload、runner、Surface                                                                                   | Incident 决策、业务数据           |
+| reliability-host | Supervisor、Incident、Repair/Deploy ports                                                                   | App 业务逻辑、Harness 路由        |
+| indexer          | Archive/RAG/indexing                                                                                        | 原始业务表写权限                  |
 
 服务之间使用版本化 Connect API 与 durable event，不共享 internal package 或直接查询对方 schema。
 
@@ -26,6 +26,20 @@ Desktop → Gateway → Core: WatchTaskEvents(after_sequence)
 ```
 
 断线不会取消任务；事件流可从持久化 sequence 恢复。取消命令是幂等状态转换，不依赖客户端连接。
+
+Provider discovery 与 Project binding 使用独立边界：
+
+```text
+Desktop → Gateway → Core HarnessCatalogService
+Core → harness-host private HarnessHostService.DescribeProviders
+
+Desktop → Gateway → Core ProjectHarnessBindingService
+Core: owner/revision check → Catalog health check → server preset → Project update
+```
+
+Gateway 使用 public service allowlist，不能把同时拥有 `ExecuteTask` / `CancelRun` 的 private
+`HarnessHostService` 暴露给浏览器。Catalog 不缓存、不持久化瞬时 health，也不参与 Core readiness；
+Task 只持久化 Submit 时解析的 stable provider ID。clear binding 不依赖 Catalog。
 
 ## 状态与失败
 

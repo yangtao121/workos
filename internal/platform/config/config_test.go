@@ -36,6 +36,51 @@ func TestDeepSeekDefaultsAreDisabledAndSecretFree(t *testing.T) {
 	}
 }
 
+func TestCatalogAndBindingDefaultsAreSafeAndSecretFree(t *testing.T) {
+	t.Parallel()
+	cfg := defaults()
+	if cfg.Services.Harness != "http://127.0.0.1:8082" || cfg.Agent.CatalogTimeout != 2*time.Second || cfg.Agent.ProjectBinding.InstancePolicy != "ephemeral" || cfg.Agent.ProjectBinding.ProfileID != "" || cfg.Agent.ProjectBinding.ResourcePolicyID != "project-no-tools" {
+		t.Fatalf("unexpected Catalog/binding defaults: services=%#v agent=%#v", cfg.Services, cfg.Agent)
+	}
+}
+
+func TestLoadCatalogAndBindingEnvironment(t *testing.T) {
+	t.Setenv("WORKOS_CONFIG_FILE", "")
+	_ = os.Unsetenv("WORKOS_CONFIG_FILE")
+	t.Setenv("WORKOS_HARNESS_URL", "http://harness.internal:8082")
+	t.Setenv("WORKOS_AGENT_CATALOG_TIMEOUT", "3s")
+	t.Setenv("WORKOS_PROJECT_HARNESS_INSTANCE_POLICY", "lazy")
+	t.Setenv("WORKOS_PROJECT_HARNESS_PROFILE_ID", "general")
+	t.Setenv("WORKOS_PROJECT_HARNESS_RESOURCE_POLICY_ID", "project-safe")
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Services.Harness != "http://harness.internal:8082" || cfg.Agent.CatalogTimeout != 3*time.Second || cfg.Agent.ProjectBinding.InstancePolicy != "lazy" || cfg.Agent.ProjectBinding.ProfileID != "general" || cfg.Agent.ProjectBinding.ResourcePolicyID != "project-safe" {
+		t.Fatalf("unexpected Catalog/binding environment mapping: services=%#v agent=%#v", cfg.Services, cfg.Agent)
+	}
+}
+
+func TestCoreRejectsInvalidCatalogAndBindingConfiguration(t *testing.T) {
+	t.Parallel()
+	for _, mutate := range []func(*Config){
+		func(cfg *Config) { cfg.Services.Harness = "relative-host" },
+		func(cfg *Config) { cfg.Agent.DefaultProvider = " " },
+		func(cfg *Config) { cfg.Agent.CatalogTimeout = 31 * time.Second },
+		func(cfg *Config) { cfg.Agent.ProjectBinding.InstancePolicy = "magic" },
+		func(cfg *Config) { cfg.Agent.ProjectBinding.ResourcePolicyID = "" },
+	} {
+		cfg := defaults()
+		mutate(&cfg)
+		if err := cfg.ValidateCore(); err == nil {
+			t.Fatalf("invalid Core configuration was accepted: %#v", cfg)
+		}
+	}
+	if err := defaults().ValidateCore(); err != nil {
+		t.Fatalf("safe Core defaults were rejected: %v", err)
+	}
+}
+
 func TestLoadDeepSeekEnvironment(t *testing.T) {
 	for _, key := range []string{
 		"WORKOS_CONFIG_FILE", "WORKOS_DEEPSEEK_ENABLED", "DEEPSEEK_API_KEY", "WORKOS_DEEPSEEK_BASE_URL",

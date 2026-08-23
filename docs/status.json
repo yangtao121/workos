@@ -12,7 +12,13 @@
       "name": "Project",
       "process": "workos-core",
       "status": "working",
-      "evidence": "tests/integration/foundation_test.go"
+      "evidence": "revision-safe server-preset binding integration + browser E2E"
+    },
+    {
+      "name": "Harness Provider Catalog",
+      "process": "workos-core",
+      "status": "working",
+      "evidence": "public Catalog integration + default/DeepSeek fixture browser E2E"
     },
     {
       "name": "Event Backbone",
@@ -36,13 +42,13 @@
       "name": "DeepSeek Harness Adapter",
       "process": "harness-host",
       "status": "working",
-      "evidence": "official runtime + keyless streaming fixture integration"
+      "evidence": "official runtime + keyless streaming fixture integration and browser E2E"
     },
     {
       "name": "Desktop Shell",
       "process": "desktop-web",
       "status": "working",
-      "evidence": "apps/desktop-web/e2e/foundation.spec.ts"
+      "evidence": "foundation + DeepSeek fixture Catalog/binding E2E"
     },
     {
       "name": "App Registry",

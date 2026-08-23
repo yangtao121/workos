@@ -53,6 +53,32 @@ func TestPublicAPIRejectsMissingDeviceSession(t *testing.T) {
 	}
 }
 
+func TestPrivateConnectServicesAreNotForwarded(t *testing.T) {
+	t.Parallel()
+	var coreCalled atomic.Bool
+	core := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { coreCalled.Store(true) }))
+	defer core.Close()
+	handler := newTestHandler(t, config.Config{
+		Services: config.URLs{Core: core.URL},
+		Auth:     config.Auth{DevBypass: true, OwnerID: "owner-1", DeviceID: "device-1"},
+	})
+	for _, path := range []string{
+		"/workos.harness.v1.HarnessHostService/DescribeProviders",
+		"/workos.harness.v1.HarnessHostService/ExecuteTask",
+		"/workos.harness.v1.HarnessHostService/CancelRun",
+		"/workos.taskexecution.v1.TaskExecutionService/ClaimTask",
+	} {
+		response := httptest.NewRecorder()
+		handler.ServeHTTP(response, httptest.NewRequest(http.MethodPost, path, nil))
+		if response.Code != http.StatusNotFound {
+			t.Errorf("private path %s returned %d", path, response.Code)
+		}
+	}
+	if coreCalled.Load() {
+		t.Fatal("gateway forwarded a private Connect service")
+	}
+}
+
 func TestSPAFallbackUsesHTMLContentType(t *testing.T) {
 	t.Parallel()
 	directory := t.TempDir()

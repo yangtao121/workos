@@ -16,12 +16,13 @@ Project 协作；Harness、App、Surface、Workload 与 Incident 均通过稳定
 | 模块 | 进程 | 状态 | 证据 |
 | --- | --- | --- | --- |
 | Access Gateway | workos-gateway | `scaffolded` | health/config boundary |
-| Project | workos-core | `working` | tests/integration/foundation_test.go |
+| Project | workos-core | `working` | revision-safe server-preset binding integration + browser E2E |
+| Harness Provider Catalog | workos-core | `working` | public Catalog integration + default/DeepSeek fixture browser E2E |
 | Event Backbone | workos-core | `working` | persisted ordered stream + resume integration |
 | Agent Task Router | workos-core | `working` | Project binding snapshot + idempotency integration |
 | Harness Broker | harness-host | `working` | Fake, Generic CLI, and typed provider execution tests |
-| DeepSeek Harness Adapter | harness-host | `working` | official runtime + keyless streaming fixture integration |
-| Desktop Shell | desktop-web | `working` | apps/desktop-web/e2e/foundation.spec.ts |
+| DeepSeek Harness Adapter | harness-host | `working` | official runtime + keyless streaming fixture integration and browser E2E |
+| Desktop Shell | desktop-web | `working` | foundation + DeepSeek fixture Catalog/binding E2E |
 | App Registry | workos-core | `contract-only` | workos.app.v1 |
 | Artifact | workos-core | `contract-only` | workos.artifact.v1 |
 | Runtime / Surface | runtime-host | `scaffolded` | capability probe; runners unavailable |
@@ -89,11 +90,29 @@ make down              # 停止开发栈
 - 设置 `OTEL_EXPORTER_OTLP_ENDPOINT` 即可启用六个进程的 OTLP/HTTP trace；示例见
   [部署说明](deploy/README.md)。
 
+### Project Harness 设置
+
+Desktop 的 Project settings 从 Gateway 查询 canonical Provider Catalog，并显示 provider stable ID、
+adapter version、真实 health 与 capability。浏览器只调用 Core 的只读 `HarnessCatalogService`；包含
+`ExecuteTask` / `CancelRun` 的 `HarnessHostService` 仍是进程间私有接口，Gateway 不转发它。
+
+Project 可以选择 healthy 或 degraded provider，也可以清除 binding 以使用 Core 的 global default。
+starting、unavailable 与 unknown provider 不允许新绑定；已经存在但后来不可用或不再出现在 Catalog
+中的 binding 仍会显示并可解除。保存使用 Project revision 做乐观并发控制，Task 页面显示 Submit 时
+持久化的 `provider_id` 快照，Project 后续改绑不会改变旧 Task。
+
+客户端不提供 Key、credential ref 或内部 policy 输入。Core 为新 binding 注入非 secret 的
+`instance_policy` / `profile_id` / `resource_policy_id` preset；当前 resource policy 只是 binding reference，
+尚不代表 cgroup 或其他资源强制已经实现。Catalog 是可选能力，harness-host 暂时不可达不会影响
+Project CRUD、Core readiness 或已有 Task。
+
 ### DeepSeek Harness
 
 DeepSeek Provider 默认关闭；有 Key 也不会隐式启用。启用时只从
 `DEEPSEEK_API_KEY` 读取凭据，非 secret 参数使用 `WORKOS_DEEPSEEK_*` 环境变量。
 容器固定并校验官方 Harness runtime，常规 CI 只运行本地 fixture，不访问 DeepSeek 网络。
+`make test-deepseek-fixture` 还会从浏览器选择 DeepSeek、验证 Project revision、Task provider snapshot、
+ordered events 与改绑语义；它只使用 loopback API fixture 和明确的假 credential。
 配置、输入限制、测试方法和真实 API smoke 的限制见
 [adapter 说明](internal/harness/adapters/deepseek/README.md)。
 
@@ -102,7 +121,7 @@ DeepSeek Provider 默认关闭；有 Key 也不会隐式启用。启用时只从
 | 路径                       | 责任                                       |
 | -------------------------- | ------------------------------------------ |
 | `api/proto`                | 跨进程、Go/TypeScript 的 v1 事实契约       |
-| `internal/core`            | Project、Task Router、Event Backbone       |
+| `internal/core`            | Project、Catalog、binding、Task 与事件主干 |
 | `internal/harness`         | Broker 与 provider adapters                |
 | `internal/platform`        | identity、配置、迁移、日志、遥测等共享机制 |
 | `apps` / `clients` / `sdk` | Shell、可复用客户端模块与公共 SDK          |

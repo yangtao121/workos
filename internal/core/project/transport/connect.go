@@ -30,7 +30,7 @@ func (h *Handler) CreateProject(ctx context.Context, req *connect.Request[projec
 	if err != nil {
 		return nil, mapError(err)
 	}
-	return connect.NewResponse(&projectv1.CreateProjectResponse{Project: projectToProto(project)}), nil
+	return connect.NewResponse(&projectv1.CreateProjectResponse{Project: ProjectToProto(project)}), nil
 }
 
 func (h *Handler) GetProject(ctx context.Context, req *connect.Request[projectv1.GetProjectRequest]) (*connect.Response[projectv1.GetProjectResponse], error) {
@@ -42,7 +42,7 @@ func (h *Handler) GetProject(ctx context.Context, req *connect.Request[projectv1
 	if err != nil {
 		return nil, mapError(err)
 	}
-	return connect.NewResponse(&projectv1.GetProjectResponse{Project: projectToProto(project)}), nil
+	return connect.NewResponse(&projectv1.GetProjectResponse{Project: ProjectToProto(project)}), nil
 }
 
 func (h *Handler) ListProjects(ctx context.Context, req *connect.Request[projectv1.ListProjectsRequest]) (*connect.Response[projectv1.ListProjectsResponse], error) {
@@ -60,7 +60,7 @@ func (h *Handler) ListProjects(ctx context.Context, req *connect.Request[project
 	}
 	items := make([]*projectv1.Project, 0, len(projects))
 	for _, project := range projects {
-		items = append(items, projectToProto(project))
+		items = append(items, ProjectToProto(project))
 	}
 	next := ""
 	if pageSize > 0 && len(items) == pageSize {
@@ -83,7 +83,7 @@ func (h *Handler) UpdateProject(ctx context.Context, req *connect.Request[projec
 	if err != nil {
 		return nil, mapError(err)
 	}
-	return connect.NewResponse(&projectv1.UpdateProjectResponse{Project: projectToProto(project)}), nil
+	return connect.NewResponse(&projectv1.UpdateProjectResponse{Project: ProjectToProto(project)}), nil
 }
 
 func (h *Handler) ArchiveProject(ctx context.Context, req *connect.Request[projectv1.ArchiveProjectRequest]) (*connect.Response[projectv1.ArchiveProjectResponse], error) {
@@ -95,7 +95,7 @@ func (h *Handler) ArchiveProject(ctx context.Context, req *connect.Request[proje
 	if err != nil {
 		return nil, mapError(err)
 	}
-	return connect.NewResponse(&projectv1.ArchiveProjectResponse{Project: projectToProto(project)}), nil
+	return connect.NewResponse(&projectv1.ArchiveProjectResponse{Project: ProjectToProto(project)}), nil
 }
 
 func mapError(err error) error {
@@ -111,7 +111,8 @@ func mapError(err error) error {
 	}
 }
 
-func projectToProto(project domain.Project) *projectv1.Project {
+// ProjectToProto maps the Project domain entity for Core-owned public transports.
+func ProjectToProto(project domain.Project) *projectv1.Project {
 	result := &projectv1.Project{
 		Id: project.ID, OwnerUserId: project.OwnerUserID, Name: project.Name, Icon: project.Icon,
 		WorkspaceRefs: workspaceToProto(project.WorkspaceRefs), HarnessBinding: bindingToProto(project.HarnessBinding),

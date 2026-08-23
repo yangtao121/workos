@@ -15,6 +15,7 @@ import (
 
 	agentv1 "github.com/yangtao121/workos/gen/go/workos/agent/v1"
 	"github.com/yangtao121/workos/gen/go/workos/agent/v1/agentv1connect"
+	commonv1 "github.com/yangtao121/workos/gen/go/workos/common/v1"
 	harnessv1 "github.com/yangtao121/workos/gen/go/workos/harness/v1"
 	"github.com/yangtao121/workos/gen/go/workos/harness/v1/harnessv1connect"
 	projectv1 "github.com/yangtao121/workos/gen/go/workos/project/v1"
@@ -22,22 +23,23 @@ import (
 )
 
 func TestDeepSeekProjectBindingFixtureVerticalSlice(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
 	defer cancel()
 	client := &http.Client{Transport: &http.Transport{Proxy: nil, DialContext: (&net.Dialer{Timeout: 2 * time.Second}).DialContext}}
 	baseURL := "http://127.0.0.1:8080"
 	waitForFixture(t, ctx, client)
 	projects := projectv1connect.NewProjectServiceClient(client, baseURL)
+	bindings := projectv1connect.NewProjectHarnessBindingServiceClient(client, baseURL)
 	tasks := agentv1connect.NewAgentTaskServiceClient(client, baseURL)
-	harness := harnessv1connect.NewHarnessHostServiceClient(client, "http://127.0.0.1:8082")
+	catalogs := harnessv1connect.NewHarnessCatalogServiceClient(client, baseURL)
 
-	described, err := harness.DescribeProviders(ctx, connect.NewRequest(&harnessv1.DescribeProvidersRequest{}))
+	described, err := catalogs.GetHarnessCatalog(ctx, connect.NewRequest(&harnessv1.GetHarnessCatalogRequest{}))
 	if err != nil {
-		t.Fatalf("describe providers: %v", err)
+		t.Fatalf("get public provider catalog: %v", err)
 	}
 	deepSeekAvailable := false
 	for _, provider := range described.Msg.GetProviders() {
-		if provider.GetId() == "deepseek" && provider.GetHealth().String() == "HEALTH_STATE_HEALTHY" && provider.GetCapabilities().GetStreaming() && provider.GetCapabilities().GetUsageReporting() {
+		if provider.GetId() == "deepseek" && provider.GetHealth() == commonv1.HealthState_HEALTH_STATE_HEALTHY && provider.GetCapabilities().GetStreaming() && provider.GetCapabilities().GetUsageReporting() {
 			deepSeekAvailable = true
 		}
 	}
@@ -47,17 +49,22 @@ func TestDeepSeekProjectBindingFixtureVerticalSlice(t *testing.T) {
 
 	key := fmt.Sprintf("deepseek-fixture-project-%d", time.Now().UnixNano())
 	created, err := projects.CreateProject(ctx, connect.NewRequest(&projectv1.CreateProjectRequest{
-		IdempotencyKey: key,
-		Name:           "DeepSeek Fixture",
-		HarnessBinding: &projectv1.HarnessBinding{
-			ProviderId: "deepseek", InstancePolicy: projectv1.HarnessInstancePolicy_HARNESS_INSTANCE_POLICY_EPHEMERAL,
-			ResourcePolicyId: "fixture-no-tools",
-		},
+		IdempotencyKey: key, Name: "DeepSeek Fixture",
 	}))
 	if err != nil {
 		t.Fatalf("create DeepSeek project: %v", err)
 	}
-	project := created.Msg.GetProject()
+	bound, err := bindings.SetProjectHarnessBinding(ctx, connect.NewRequest(&projectv1.SetProjectHarnessBindingRequest{
+		ProjectId: created.Msg.GetProject().GetId(), ExpectedRevision: created.Msg.GetProject().GetRevision(),
+		Selection: &projectv1.SetProjectHarnessBindingRequest_ProviderId{ProviderId: "deepseek"},
+	}))
+	if err != nil {
+		t.Fatalf("bind DeepSeek through public orchestration: %v", err)
+	}
+	project := bound.Msg.GetProject()
+	if binding := project.GetHarnessBinding(); project.GetRevision() != 2 || binding.GetProviderId() != "deepseek" || binding.GetCredentialRef() != "" || binding.GetInstancePolicy() != projectv1.HarnessInstancePolicy_HARNESS_INSTANCE_POLICY_EPHEMERAL || binding.GetResourcePolicyId() != "project-no-tools" {
+		t.Fatalf("unexpected server-owned DeepSeek binding preset: %#v", project)
+	}
 	taskKey := "task-" + key
 	submitted, err := tasks.SubmitTask(ctx, connect.NewRequest(&agentv1.SubmitTaskRequest{
 		IdempotencyKey: taskKey,
@@ -75,14 +82,15 @@ func TestDeepSeekProjectBindingFixtureVerticalSlice(t *testing.T) {
 		t.Fatalf("task did not snapshot DeepSeek binding: %#v", task)
 	}
 
-	fakeBinding := &projectv1.HarnessBinding{
-		ProviderId: "fake", InstancePolicy: projectv1.HarnessInstancePolicy_HARNESS_INSTANCE_POLICY_EPHEMERAL,
-		ResourcePolicyId: "fixture-no-tools",
-	}
-	if _, err := projects.UpdateProject(ctx, connect.NewRequest(&projectv1.UpdateProjectRequest{
-		ProjectId: project.GetId(), ExpectedRevision: project.GetRevision(), HarnessBinding: fakeBinding,
-	})); err != nil {
+	rebound, err := bindings.SetProjectHarnessBinding(ctx, connect.NewRequest(&projectv1.SetProjectHarnessBindingRequest{
+		ProjectId: project.GetId(), ExpectedRevision: project.GetRevision(),
+		Selection: &projectv1.SetProjectHarnessBindingRequest_ProviderId{ProviderId: "fake"},
+	}))
+	if err != nil {
 		t.Fatalf("change project binding after submit: %v", err)
+	}
+	if rebound.Msg.GetProject().GetRevision() != 3 || rebound.Msg.GetProject().GetHarnessBinding().GetProviderId() != "fake" {
+		t.Fatalf("unexpected rebound Project: %#v", rebound.Msg.GetProject())
 	}
 	repeated, err := tasks.SubmitTask(ctx, connect.NewRequest(&agentv1.SubmitTaskRequest{
 		IdempotencyKey: taskKey,
@@ -145,6 +153,33 @@ func TestDeepSeekProjectBindingFixtureVerticalSlice(t *testing.T) {
 		t.Fatalf("DeepSeek task snapshot was not durable: %#v", got)
 	}
 
+	fakeTask, err := tasks.SubmitTask(ctx, connect.NewRequest(&agentv1.SubmitTaskRequest{
+		IdempotencyKey: "post-rebind-" + key,
+		Input: &agentv1.AgentTaskInput{
+			TargetScope: &agentv1.TargetScope{Scope: &agentv1.TargetScope_ProjectId{ProjectId: project.GetId()}},
+			Role:        "general", Goal: "prove only new tasks use the rebound fake provider",
+		},
+	}))
+	if err != nil {
+		t.Fatalf("submit post-rebind fake task: %v", err)
+	}
+	if fakeTask.Msg.GetTask().GetProviderId() != "fake" {
+		t.Fatalf("new task did not snapshot rebound provider: %#v", fakeTask.Msg.GetTask())
+	}
+	fakeStream, err := tasks.WatchTaskEvents(ctx, connect.NewRequest(&agentv1.WatchTaskEventsRequest{TaskId: fakeTask.Msg.GetTask().GetId()}))
+	if err != nil {
+		t.Fatalf("watch post-rebind fake task: %v", err)
+	}
+	fakeStarted := ""
+	for fakeStream.Receive() {
+		if started := fakeStream.Msg().GetEvent().GetRunStarted(); started != nil {
+			fakeStarted = started.GetProviderId()
+		}
+	}
+	if err := fakeStream.Err(); err != nil || fakeStarted != "fake" {
+		t.Fatalf("post-rebind fake stream failed: provider=%q error=%v", fakeStarted, err)
+	}
+
 	for _, failure := range []struct {
 		goal      string
 		retryable bool
@@ -156,7 +191,7 @@ func TestDeepSeekProjectBindingFixtureVerticalSlice(t *testing.T) {
 		{goal: "fixture server unavailable", retryable: true},
 	} {
 		t.Run(failure.goal, func(t *testing.T) {
-			assertDeepSeekFixtureFailure(t, ctx, projects, tasks, failure.goal, failure.retryable)
+			assertDeepSeekFixtureFailure(t, ctx, projects, bindings, tasks, failure.goal, failure.retryable)
 		})
 	}
 }
@@ -189,6 +224,7 @@ func assertDeepSeekFixtureFailure(
 	t *testing.T,
 	ctx context.Context,
 	projects projectv1connect.ProjectServiceClient,
+	bindings projectv1connect.ProjectHarnessBindingServiceClient,
 	tasks agentv1connect.AgentTaskServiceClient,
 	goal string,
 	retryable bool,
@@ -197,18 +233,21 @@ func assertDeepSeekFixtureFailure(
 	key := fmt.Sprintf("deepseek-failure-%d", time.Now().UnixNano())
 	created, err := projects.CreateProject(ctx, connect.NewRequest(&projectv1.CreateProjectRequest{
 		IdempotencyKey: key, Name: "DeepSeek Failure Fixture",
-		HarnessBinding: &projectv1.HarnessBinding{
-			ProviderId: "deepseek", InstancePolicy: projectv1.HarnessInstancePolicy_HARNESS_INSTANCE_POLICY_EPHEMERAL,
-			ResourcePolicyId: "fixture-no-tools",
-		},
 	}))
 	if err != nil {
 		t.Fatalf("create failure fixture project: %v", err)
 	}
+	bound, err := bindings.SetProjectHarnessBinding(ctx, connect.NewRequest(&projectv1.SetProjectHarnessBindingRequest{
+		ProjectId: created.Msg.GetProject().GetId(), ExpectedRevision: created.Msg.GetProject().GetRevision(),
+		Selection: &projectv1.SetProjectHarnessBindingRequest_ProviderId{ProviderId: "deepseek"},
+	}))
+	if err != nil {
+		t.Fatalf("bind failure fixture project: %v", err)
+	}
 	submitted, err := tasks.SubmitTask(ctx, connect.NewRequest(&agentv1.SubmitTaskRequest{
 		IdempotencyKey: "task-" + key,
 		Input: &agentv1.AgentTaskInput{
-			TargetScope: &agentv1.TargetScope{Scope: &agentv1.TargetScope_ProjectId{ProjectId: created.Msg.GetProject().GetId()}},
+			TargetScope: &agentv1.TargetScope{Scope: &agentv1.TargetScope_ProjectId{ProjectId: bound.Msg.GetProject().GetId()}},
 			Role:        "general", Goal: goal, Budget: &agentv1.AgentBudget{MaxTokens: 64, MaxRuntimeSeconds: 20},
 		},
 	}))
