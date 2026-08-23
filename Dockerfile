@@ -19,9 +19,6 @@ RUN npm install --global pnpm@11.4.0 --registry="${NPM_REGISTRY}" \
 FROM ${GO_IMAGE} AS build
 ARG GOPROXY=https://goproxy.cn,direct
 ENV GOPROXY=${GOPROXY}
-# Resolve module downloads through cgo/glibc DNS: pure-Go resolution prefers
-# AAAA records that are unreachable on some development networks.
-ENV GODEBUG=netdns=cgo
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download

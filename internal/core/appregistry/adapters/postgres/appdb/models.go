@@ -10,11 +10,17 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+type WorkosCoreAppRegistrationRequest struct {
+	OwnerUserID    string             `json:"owner_user_id"`
+	IdempotencyKey string             `json:"idempotency_key"`
+	RequestDigest  string             `json:"request_digest"`
+	AppVersionID   string             `json:"app_version_id"`
+	CreatedAt      pgtype.Timestamptz `json:"created_at"`
+}
+
 type WorkosCoreAppVersion struct {
 	ID                string             `json:"id"`
 	OwnerUserID       string             `json:"owner_user_id"`
-	IdempotencyKey    string             `json:"idempotency_key"`
-	RequestDigest     string             `json:"request_digest"`
 	AppID             string             `json:"app_id"`
 	Version           string             `json:"version"`
 	Scope             string             `json:"scope"`

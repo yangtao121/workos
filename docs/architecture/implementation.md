@@ -57,10 +57,28 @@ Core: 结构安全检查 → YAML→JSON 规范化 → canonical JSON bytes
   domain 不接触 YAML、validator、pgx 或 Connect。
 - digest 基于校验后 canonical JSON（key 排序、数字/bool/null 确定编码、permissions 集合排序），
   格式 `sha256:<hex>`；YAML whitespace/key order 等价 → 相同 digest。
-- `(owner, app_id, version) → 唯一 manifest_digest` 与 `(owner, idempotency_key) → 唯一注册` 由
-  PostgreSQL UNIQUE 约束保证；冲突映射为 `AlreadyExists` / `Aborted`，重放返回原记录。
+- `(owner, app_id, version) → 唯一 manifest_digest` 由 `app_versions` 的 UNIQUE 约束保证；`app_versions`
+  只保存 immutable manifest 事实。`(owner, idempotency_key) → 唯一注册` 由 `003` 迁移引入的
+  `app_registration_requests`（主键 owner+key、复合外键绑定同 owner 的 version、backfill 自 002 数据）
+  作为唯一幂等事实源保证。Register 在单事务内先按已消费 key 裁决（同请求重放、不同请求 `Aborted`），
+  再由 version 唯一约束仲裁插入，最后原子消费 key：每条成功响应的 key 都已持久化，失败事务不遗留
+  orphan version 或未消费 key；冲突映射为 `AlreadyExists` / `Aborted`。
+- 请求消息在 Connect handler 构造层（`WithReadMaxBytes` 384 KiB）于 protobuf/JSON 解码前设置上限，
+  覆盖 base64 膨胀与解压后内容（gzip bomb 拒绝为 `ResourceExhausted`）；application 层 256 KiB
+  manifest 字段检查保留。idempotency key（UTF-8、无控制字符、≤128 rune）、app_id/cursor（canonical
+  app-ID grammar）、project_id（UUID）在 application 边界校验，畸形输入为 `InvalidArgument`。
 - current version 按 SemVer precedence 在 Go domain 比较（release 高于对应 prerelease、numeric
-  identifier 按数值）；`GetApp` 空 version 返回 current，显式 version 返回该 immutable version。
+  identifier 按数值）；公开查询只选择 summary 列（不含 canonical_manifest），按 app ID 流式读取并用
+  固定大小 accumulator 折叠 current，内存受 page size 上限约束、不随历史 version 数量线性增长。
+  `GetApp` 空 version 返回 current，显式 version 返回该 immutable version；manifest 只在需要完整事实的
+  内部路径读取，不进入日志或公共响应。
+- `ListApps` page size 仅在 application 边界规范化一次（默认 50、上限 100、负数为 `InvalidArgument`），
+  repository 以 effective limit + 1 探测下一页并返回明确 page result，transport 原样转发 application
+  的 next token；恰好装满的最后一页不产生 token，翻页无重复、无遗漏。
+- mapping key（UTF-8、C0/C1/NUL 控制字符、长度 1..256）在任何 pointer 构造、map 插入、Schema 校验或
+  持久化之前校验，unsafe key 只报告父路径；secret key policy 以 tokenization（snake/kebab/camelCase）
+  匹配整词与复合词（accessToken、clientSecret、credentialValue、awsSecretAccessKey 等），不因字母片段
+  误杀邻近字段。
 - public 注册 fail closed：`scope=system` 与 `runtime.type=trusted` 拒绝；permissions 必须属于
   集中定义的 capability vocabulary；manifest 中 secret 形态的 key/value 按路径拒绝，且此检查
   不是 Credential Vault/DLP 替代品。permissions 只是 requested permissions。

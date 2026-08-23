@@ -233,22 +233,199 @@ func TestValidatorFailClosedOnTrustBoundary(t *testing.T) {
 func TestValidatorRejectsSecretShapedContentByPathOnly(t *testing.T) {
 	t.Parallel()
 	validator := newValidator(t)
-	cases := map[string]string{
-		"secret key name":    validUserManifest + "api_key: nothing\n",
-		"password key":       validUserManifest + "resources:\n  password: hunter2value-that-is-long\n",
-		"private key value":  validUserManifest + "resources:\n  note: " + "\"-----BEGIN RSA PRIVATE KEY-----MIIB\"\n",
-		"token shaped value": validUserManifest + "resources:\n  note: sk-1234567890abcdef12345678\n",
+	// Every case injects content into the single existing resources block of
+	// a structurally and schema-valid manifest, so only the secret policy can
+	// reject it. All values are obviously synthetic.
+	withResource := func(extra string) string {
+		return strings.Replace(validUserManifest,
+			"resources:\n  limits:\n    memory: 256\n",
+			"resources:\n  limits:\n    memory: 256\n"+extra, 1)
 	}
-	for name, yaml := range cases {
-		t.Run(name, func(t *testing.T) {
-			_, violations := validator.Validate([]byte(yaml))
+	withHealth := func(extra string) string {
+		return strings.Replace(validUserManifest, "health:\n  interval: 30\n", "health:\n  interval: 30\n"+extra, 1)
+	}
+	withMaintainer := func(extra string) string {
+		return strings.Replace(validUserManifest, "maintainer:\n  name: Example\n", "maintainer:\n  name: Example\n"+extra, 1)
+	}
+	cases := []struct {
+		name         string
+		yaml         string
+		wantPath     string
+		wantContains string
+	}{
+		{
+			name:         "password key in resources",
+			yaml:         withResource("  password: synthetic-not-a-real-value\n"),
+			wantPath:     "/resources/password",
+			wantContains: "field names that hold secrets are not allowed in manifests",
+		},
+		{
+			name:         "camelCase accessToken key in health",
+			yaml:         withHealth("  accessToken: synthetic-not-a-real-value\n"),
+			wantPath:     "/health/accessToken",
+			wantContains: "field names that hold secrets are not allowed in manifests",
+		},
+		{
+			name:         "camelCase clientSecret key in maintainer",
+			yaml:         withMaintainer("  clientSecret: synthetic-not-a-real-value\n"),
+			wantPath:     "/maintainer/clientSecret",
+			wantContains: "field names that hold secrets are not allowed in manifests",
+		},
+		{
+			name:         "camelCase credentialValue key",
+			yaml:         withResource("  credentialValue: synthetic-not-a-real-value\n"),
+			wantPath:     "/resources/credentialValue",
+			wantContains: "field names that hold secrets are not allowed in manifests",
+		},
+		{
+			name:         "camelCase awsSecretAccessKey key",
+			yaml:         withResource("  awsSecretAccessKey: synthetic-not-a-real-value\n"),
+			wantPath:     "/resources/awsSecretAccessKey",
+			wantContains: "field names that hold secrets are not allowed in manifests",
+		},
+		{
+			name:         "compound private key phrase",
+			yaml:         withResource("  private_key: synthetic-not-a-real-value\n"),
+			wantPath:     "/resources/private_key",
+			wantContains: "field names that hold secrets are not allowed in manifests",
+		},
+		{
+			name:         "pem-like value",
+			yaml:         withResource("  license: \"-----BEGIN SYNTHETIC PRIVATE KEY-----MIIBsynthetic\"\n"),
+			wantPath:     "/resources/license",
+			wantContains: "values that look like credentials are not allowed in manifests",
+		},
+		{
+			name:         "token-shaped synthetic value",
+			yaml:         withResource("  contact: sk-zzzz0123456789abcdef\n"),
+			wantPath:     "/resources/contact",
+			wantContains: "values that look like credentials are not allowed in manifests",
+		},
+		{
+			name:         "bearer-shaped synthetic value",
+			yaml:         withResource("  hook: \"Bearer zzzz0123456789abcdefgh\"\n"),
+			wantPath:     "/resources/hook",
+			wantContains: "values that look like credentials are not allowed in manifests",
+		},
+		{
+			name:         "jwt-shaped synthetic value",
+			yaml:         withResource("  session: eyJzzzzzz123456.eyJzzzzzz123456.zzsynthetic12345\n"),
+			wantPath:     "/resources/session",
+			wantContains: "values that look like credentials are not allowed in manifests",
+		},
+		{
+			name:         "aws-like synthetic value",
+			yaml:         withResource("  account: AKIAZZZZ0123456789AB\n"),
+			wantPath:     "/resources/account",
+			wantContains: "values that look like credentials are not allowed in manifests",
+		},
+	}
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			_, violations := validator.Validate([]byte(testCase.yaml))
 			if len(violations) == 0 {
-				t.Fatalf("secret-shaped content accepted in %s", name)
+				t.Fatalf("secret-shaped content accepted in %s", testCase.name)
+			}
+			if !violationMentions(violations, testCase.wantPath) {
+				t.Fatalf("expected a violation at %s, got %v", testCase.wantPath, violations)
+			}
+			if !violationMentions(violations, testCase.wantContains) {
+				t.Fatalf("expected policy message %q, got %v", testCase.wantContains, violations)
 			}
 			for _, violation := range violations {
-				if strings.Contains(violation, "hunter2value") || strings.Contains(violation, "sk-1234567890") ||
-					strings.Contains(violation, "MIIB") {
+				if strings.Contains(violation, "synthetic") || strings.Contains(violation, "zzzz") ||
+					strings.Contains(violation, "MIIB") || strings.Contains(violation, "AKIAZZ") {
 					t.Fatalf("violation leaked the secret value: %q", violation)
+				}
+			}
+		})
+	}
+
+	// Neighboring non-secret names inside the same free-form blocks must stay
+	// accepted: the policy matches whole tokens, not letter fragments.
+	neighbors := withResource("  keyboard_shortcut: ctrl-shift-k\n  monetization: off\n  sort_order: id\n  displayHint: compact\n")
+	if _, violations := validator.Validate([]byte(neighbors)); len(violations) != 0 {
+		t.Fatalf("non-secret neighbor names must be accepted, got %v", violations)
+	}
+}
+
+func TestSecretKeyTokenization(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		key    string
+		secret bool
+	}{
+		{"accessToken", true},
+		{"access_token", true},
+		{"clientSecret", true},
+		{"client-secret", true},
+		{"credentialValue", true},
+		{"awsSecretAccessKey", true},
+		{"aws_secret_access_key", true},
+		{"apiKey", true},
+		{"api_key", true},
+		{"apikey", true},
+		{"privateKey", true},
+		{"private_key", true},
+		{"X-Auth-Token", true},
+		{"authToken", true},
+		{"bearer", true},
+		{"passwd", true},
+		{"keyboard", false},
+		{"keyboard_shortcut", false},
+		{"monetization", false},
+		{"sort_order", false},
+		{"displayHint", false},
+		{"maxRetries", false},
+		{"name", false},
+		{"api", false},
+		{"key", false},
+	}
+	for _, testCase := range cases {
+		if got := secretBearingKey(testCase.key); got != testCase.secret {
+			t.Fatalf("secretBearingKey(%q) = %v, want %v", testCase.key, got, testCase.secret)
+		}
+	}
+}
+
+func TestValidatorRejectsUnsafeMappingKeys(t *testing.T) {
+	t.Parallel()
+	validator := newValidator(t)
+	const wantMessage = "mapping keys must be valid UTF-8, control-free, and between 1 and 256 characters"
+	cases := map[string]string{
+		"control character in resources":  "resources:\n  limits:\n    memory: 256\n  \"bad\\u0001key\": 1\n",
+		"control character in health":     "health:\n  interval: 30\n  \"bad\\u0007key\": 1\n",
+		"control character in maintainer": "maintainer:\n  name: Example\n  \"bad\\u007fkey\": 1\n",
+		"c1 control character":            "maintainer:\n  name: Example\n  \"bad\\u0085key\": 1\n",
+		"oversize key":                    "resources:\n  limits:\n    memory: 256\n  \"" + strings.Repeat("k", 257) + `": 1` + "\n",
+	}
+	for name, block := range cases {
+		t.Run(name, func(t *testing.T) {
+			yaml := strings.Replace(validUserManifest, "resources:\n  limits:\n    memory: 256\n", block, 1)
+			if strings.HasPrefix(block, "health:") {
+				yaml = strings.Replace(validUserManifest, "health:\n  interval: 30\n", block, 1)
+			} else if strings.HasPrefix(block, "maintainer:") {
+				yaml = strings.Replace(validUserManifest, "maintainer:\n  name: Example\n", block, 1)
+			}
+			result, violations := validator.Validate([]byte(yaml))
+			if len(violations) == 0 {
+				t.Fatalf("unsafe mapping key accepted: %#v", result)
+			}
+			if !violationMentions(violations, wantMessage) {
+				t.Fatalf("expected the key-safety rule, got %v", violations)
+			}
+			// The raw unsafe key must never appear in any violation: only the
+			// parent path is reported.
+			joined := strings.Join(violations, " ")
+			if strings.Contains(joined, "\x01") || strings.Contains(joined, "\x07") ||
+				strings.Contains(joined, "\x7f") || strings.Contains(joined, "bad") {
+				t.Fatalf("violation leaked the unsafe key: %q", joined)
+			}
+			// The violation reports the parent path, never a child pointer
+			// built from the unsafe key.
+			for _, violation := range violations {
+				if strings.Contains(violation, "u0001") || strings.Contains(violation, "u0085") {
+					t.Fatalf("violation embedded the escaped key: %q", violation)
 				}
 			}
 		})

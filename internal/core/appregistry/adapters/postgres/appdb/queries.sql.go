@@ -13,8 +13,8 @@ import (
 )
 
 const getAppVersion = `-- name: GetAppVersion :one
-SELECT id, owner_user_id, idempotency_key, request_digest, app_id, version, scope, name,
-       permissions, manifest_digest, canonical_manifest, created_at
+SELECT id, owner_user_id, app_id, version, scope, name, permissions,
+       manifest_digest, canonical_manifest, created_at
 FROM workos_core.app_versions
 WHERE owner_user_id = $1 AND app_id = $2 AND version = $3
 `
@@ -31,8 +31,6 @@ func (q *Queries) GetAppVersion(ctx context.Context, arg GetAppVersionParams) (W
 	err := row.Scan(
 		&i.ID,
 		&i.OwnerUserID,
-		&i.IdempotencyKey,
-		&i.RequestDigest,
 		&i.AppID,
 		&i.Version,
 		&i.Scope,
@@ -45,26 +43,19 @@ func (q *Queries) GetAppVersion(ctx context.Context, arg GetAppVersionParams) (W
 	return i, err
 }
 
-const getAppVersionByIdempotency = `-- name: GetAppVersionByIdempotency :one
-SELECT id, owner_user_id, idempotency_key, request_digest, app_id, version, scope, name,
-       permissions, manifest_digest, canonical_manifest, created_at
+const getAppVersionByID = `-- name: GetAppVersionByID :one
+SELECT id, owner_user_id, app_id, version, scope, name, permissions,
+       manifest_digest, canonical_manifest, created_at
 FROM workos_core.app_versions
-WHERE owner_user_id = $1 AND idempotency_key = $2
+WHERE id = $1
 `
 
-type GetAppVersionByIdempotencyParams struct {
-	OwnerUserID    string `json:"owner_user_id"`
-	IdempotencyKey string `json:"idempotency_key"`
-}
-
-func (q *Queries) GetAppVersionByIdempotency(ctx context.Context, arg GetAppVersionByIdempotencyParams) (WorkosCoreAppVersion, error) {
-	row := q.db.QueryRow(ctx, getAppVersionByIdempotency, arg.OwnerUserID, arg.IdempotencyKey)
+func (q *Queries) GetAppVersionByID(ctx context.Context, id string) (WorkosCoreAppVersion, error) {
+	row := q.db.QueryRow(ctx, getAppVersionByID, id)
 	var i WorkosCoreAppVersion
 	err := row.Scan(
 		&i.ID,
 		&i.OwnerUserID,
-		&i.IdempotencyKey,
-		&i.RequestDigest,
 		&i.AppID,
 		&i.Version,
 		&i.Scope,
@@ -77,67 +68,41 @@ func (q *Queries) GetAppVersionByIdempotency(ctx context.Context, arg GetAppVers
 	return i, err
 }
 
-const getAppVersions = `-- name: GetAppVersions :many
-SELECT id, owner_user_id, idempotency_key, request_digest, app_id, version, scope, name,
-       permissions, manifest_digest, canonical_manifest, created_at
-FROM workos_core.app_versions
-WHERE owner_user_id = $1 AND app_id = $2
-ORDER BY created_at, id
+const getRegistrationRequest = `-- name: GetRegistrationRequest :one
+SELECT owner_user_id, idempotency_key, request_digest, app_version_id, created_at
+FROM workos_core.app_registration_requests
+WHERE owner_user_id = $1 AND idempotency_key = $2
 `
 
-type GetAppVersionsParams struct {
-	OwnerUserID string `json:"owner_user_id"`
-	AppID       string `json:"app_id"`
+type GetRegistrationRequestParams struct {
+	OwnerUserID    string `json:"owner_user_id"`
+	IdempotencyKey string `json:"idempotency_key"`
 }
 
-func (q *Queries) GetAppVersions(ctx context.Context, arg GetAppVersionsParams) ([]WorkosCoreAppVersion, error) {
-	rows, err := q.db.Query(ctx, getAppVersions, arg.OwnerUserID, arg.AppID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var items []WorkosCoreAppVersion
-	for rows.Next() {
-		var i WorkosCoreAppVersion
-		if err := rows.Scan(
-			&i.ID,
-			&i.OwnerUserID,
-			&i.IdempotencyKey,
-			&i.RequestDigest,
-			&i.AppID,
-			&i.Version,
-			&i.Scope,
-			&i.Name,
-			&i.Permissions,
-			&i.ManifestDigest,
-			&i.CanonicalManifest,
-			&i.CreatedAt,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+func (q *Queries) GetRegistrationRequest(ctx context.Context, arg GetRegistrationRequestParams) (WorkosCoreAppRegistrationRequest, error) {
+	row := q.db.QueryRow(ctx, getRegistrationRequest, arg.OwnerUserID, arg.IdempotencyKey)
+	var i WorkosCoreAppRegistrationRequest
+	err := row.Scan(
+		&i.OwnerUserID,
+		&i.IdempotencyKey,
+		&i.RequestDigest,
+		&i.AppVersionID,
+		&i.CreatedAt,
+	)
+	return i, err
 }
 
 const insertAppVersion = `-- name: InsertAppVersion :execrows
 INSERT INTO workos_core.app_versions (
-    id, owner_user_id, idempotency_key, request_digest, app_id, version, scope, name,
-    permissions, manifest_digest, canonical_manifest, created_at
-) VALUES (
-    $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12
-)
+    id, owner_user_id, app_id, version, scope, name, permissions,
+    manifest_digest, canonical_manifest, created_at
+) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
 ON CONFLICT DO NOTHING
 `
 
 type InsertAppVersionParams struct {
 	ID                string             `json:"id"`
 	OwnerUserID       string             `json:"owner_user_id"`
-	IdempotencyKey    string             `json:"idempotency_key"`
-	RequestDigest     string             `json:"request_digest"`
 	AppID             string             `json:"app_id"`
 	Version           string             `json:"version"`
 	Scope             string             `json:"scope"`
@@ -152,8 +117,6 @@ func (q *Queries) InsertAppVersion(ctx context.Context, arg InsertAppVersionPara
 	result, err := q.db.Exec(ctx, insertAppVersion,
 		arg.ID,
 		arg.OwnerUserID,
-		arg.IdempotencyKey,
-		arg.RequestDigest,
 		arg.AppID,
 		arg.Version,
 		arg.Scope,
@@ -169,7 +132,36 @@ func (q *Queries) InsertAppVersion(ctx context.Context, arg InsertAppVersionPara
 	return result.RowsAffected(), nil
 }
 
-const listAppIDs = `-- name: ListAppIDs :many
+const insertRegistrationRequest = `-- name: InsertRegistrationRequest :execrows
+INSERT INTO workos_core.app_registration_requests (
+    owner_user_id, idempotency_key, request_digest, app_version_id, created_at
+) VALUES ($1, $2, $3, $4, $5)
+ON CONFLICT DO NOTHING
+`
+
+type InsertRegistrationRequestParams struct {
+	OwnerUserID    string             `json:"owner_user_id"`
+	IdempotencyKey string             `json:"idempotency_key"`
+	RequestDigest  string             `json:"request_digest"`
+	AppVersionID   string             `json:"app_version_id"`
+	CreatedAt      pgtype.Timestamptz `json:"created_at"`
+}
+
+func (q *Queries) InsertRegistrationRequest(ctx context.Context, arg InsertRegistrationRequestParams) (int64, error) {
+	result, err := q.db.Exec(ctx, insertRegistrationRequest,
+		arg.OwnerUserID,
+		arg.IdempotencyKey,
+		arg.RequestDigest,
+		arg.AppVersionID,
+		arg.CreatedAt,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const listAppIDPage = `-- name: ListAppIDPage :many
 SELECT DISTINCT app_id
 FROM workos_core.app_versions
 WHERE owner_user_id = $1
@@ -178,14 +170,14 @@ ORDER BY app_id
 LIMIT $3
 `
 
-type ListAppIDsParams struct {
+type ListAppIDPageParams struct {
 	OwnerUserID string `json:"owner_user_id"`
 	Cursor      string `json:"cursor"`
 	RowLimit    int32  `json:"row_limit"`
 }
 
-func (q *Queries) ListAppIDs(ctx context.Context, arg ListAppIDsParams) ([]string, error) {
-	rows, err := q.db.Query(ctx, listAppIDs, arg.OwnerUserID, arg.Cursor, arg.RowLimit)
+func (q *Queries) ListAppIDPage(ctx context.Context, arg ListAppIDPageParams) ([]string, error) {
+	rows, err := q.db.Query(ctx, listAppIDPage, arg.OwnerUserID, arg.Cursor, arg.RowLimit)
 	if err != nil {
 		return nil, err
 	}
@@ -197,53 +189,6 @@ func (q *Queries) ListAppIDs(ctx context.Context, arg ListAppIDsParams) ([]strin
 			return nil, err
 		}
 		items = append(items, app_id)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
-const listAppVersionsForApps = `-- name: ListAppVersionsForApps :many
-SELECT id, owner_user_id, idempotency_key, request_digest, app_id, version, scope, name,
-       permissions, manifest_digest, canonical_manifest, created_at
-FROM workos_core.app_versions
-WHERE owner_user_id = $1
-  AND app_id = ANY($2::text[])
-ORDER BY app_id, created_at, id
-`
-
-type ListAppVersionsForAppsParams struct {
-	OwnerUserID string   `json:"owner_user_id"`
-	AppIds      []string `json:"app_ids"`
-}
-
-func (q *Queries) ListAppVersionsForApps(ctx context.Context, arg ListAppVersionsForAppsParams) ([]WorkosCoreAppVersion, error) {
-	rows, err := q.db.Query(ctx, listAppVersionsForApps, arg.OwnerUserID, arg.AppIds)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var items []WorkosCoreAppVersion
-	for rows.Next() {
-		var i WorkosCoreAppVersion
-		if err := rows.Scan(
-			&i.ID,
-			&i.OwnerUserID,
-			&i.IdempotencyKey,
-			&i.RequestDigest,
-			&i.AppID,
-			&i.Version,
-			&i.Scope,
-			&i.Name,
-			&i.Permissions,
-			&i.ManifestDigest,
-			&i.CanonicalManifest,
-			&i.CreatedAt,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err

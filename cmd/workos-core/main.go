@@ -6,7 +6,6 @@ import (
 	"os"
 
 	"github.com/yangtao121/workos/gen/go/workos/agent/v1/agentv1connect"
-	"github.com/yangtao121/workos/gen/go/workos/app/v1/appv1connect"
 	"github.com/yangtao121/workos/gen/go/workos/artifact/v1/artifactv1connect"
 	commonv1 "github.com/yangtao121/workos/gen/go/workos/common/v1"
 	"github.com/yangtao121/workos/gen/go/workos/common/v1/commonv1connect"
@@ -112,7 +111,7 @@ func run(logger *slog.Logger) error {
 	if err != nil {
 		return err
 	}
-	appPath, appHandler := appv1connect.NewAppRegistryServiceHandler(appregistrytransport.New(appService))
+	appPath, appHandler := appregistrytransport.NewConnectHandler(appService)
 	mux.Handle(appPath, identity.Middleware(appHandler))
 	artifactPath, artifactHandler := artifactv1connect.NewArtifactServiceHandler(artifactv1connect.UnimplementedArtifactServiceHandler{})
 	mux.Handle(artifactPath, artifactHandler)

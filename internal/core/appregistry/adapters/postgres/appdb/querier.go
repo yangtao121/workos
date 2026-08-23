@@ -10,11 +10,11 @@ import (
 
 type Querier interface {
 	GetAppVersion(ctx context.Context, arg GetAppVersionParams) (WorkosCoreAppVersion, error)
-	GetAppVersionByIdempotency(ctx context.Context, arg GetAppVersionByIdempotencyParams) (WorkosCoreAppVersion, error)
-	GetAppVersions(ctx context.Context, arg GetAppVersionsParams) ([]WorkosCoreAppVersion, error)
+	GetAppVersionByID(ctx context.Context, id string) (WorkosCoreAppVersion, error)
+	GetRegistrationRequest(ctx context.Context, arg GetRegistrationRequestParams) (WorkosCoreAppRegistrationRequest, error)
 	InsertAppVersion(ctx context.Context, arg InsertAppVersionParams) (int64, error)
-	ListAppIDs(ctx context.Context, arg ListAppIDsParams) ([]string, error)
-	ListAppVersionsForApps(ctx context.Context, arg ListAppVersionsForAppsParams) ([]WorkosCoreAppVersion, error)
+	InsertRegistrationRequest(ctx context.Context, arg InsertRegistrationRequestParams) (int64, error)
+	ListAppIDPage(ctx context.Context, arg ListAppIDPageParams) ([]string, error)
 }
 
 var _ Querier = (*Queries)(nil)

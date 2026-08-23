@@ -39,66 +39,83 @@ func (fakeValidator) Validate(yamlBytes []byte) (domain.Manifest, []string) {
 	}, nil
 }
 
-// fakeRepository mirrors the PostgreSQL constraints so application semantics
-// can be tested without a database.
-type fakeRepository struct {
-	mu       sync.Mutex
-	versions []domain.AppVersion
-	failWith error
+// registrationRequest mirrors one app_registration_requests row.
+type registrationRequest struct {
+	OwnerUserID    string
+	IdempotencyKey string
+	RequestDigest  string
+	VersionID      string
 }
 
-func (r *fakeRepository) Register(_ context.Context, record domain.AppVersion) (domain.AppVersion, error) {
+// fakeRepository mirrors the PostgreSQL semantics: consumed idempotency keys
+// rule first, the immutable version unique constraint arbitrates inserts, and
+// every successful registration consumes its key exactly once.
+type fakeRepository struct {
+	mu        sync.Mutex
+	versions  []domain.AppVersion
+	requests  []registrationRequest
+	failWith  error
+	visitErr  error
+	listCalls []int
+}
+
+func (r *fakeRepository) Register(_ context.Context, record domain.AppVersion) (domain.AppVersionSummary, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if r.failWith != nil {
-		return domain.AppVersion{}, r.failWith
+		return domain.AppVersionSummary{}, r.failWith
 	}
-	for _, stored := range r.versions {
-		if stored.OwnerUserID == record.OwnerUserID && stored.IdempotencyKey == record.IdempotencyKey {
-			if stored.RequestDigest != record.RequestDigest {
-				return domain.AppVersion{}, domain.ErrIdempotencyConflict
+	// A consumed key dominates every other verdict.
+	for _, request := range r.requests {
+		if request.OwnerUserID == record.OwnerUserID && request.IdempotencyKey == record.IdempotencyKey {
+			if request.RequestDigest != record.RequestDigest {
+				return domain.AppVersionSummary{}, domain.ErrIdempotencyConflict
 			}
-			return stored, nil
+			for _, stored := range r.versions {
+				if stored.ID == request.VersionID {
+					return domain.SummaryOf(stored), nil
+				}
+			}
+			return domain.AppVersionSummary{}, errors.New("registration request references a missing version")
 		}
 	}
+	// The immutable version constraint arbitrates the insert.
 	for _, stored := range r.versions {
 		if stored.OwnerUserID == record.OwnerUserID && stored.AppID == record.AppID && stored.Version == record.Version {
-			if stored.ManifestDigest == record.ManifestDigest {
-				return stored, nil
+			if stored.ManifestDigest != record.ManifestDigest {
+				return domain.AppVersionSummary{}, domain.ErrVersionExists
 			}
-			return domain.AppVersion{}, domain.ErrVersionExists
+			r.requests = append(r.requests, registrationRequest{
+				OwnerUserID: record.OwnerUserID, IdempotencyKey: record.IdempotencyKey,
+				RequestDigest: record.RequestDigest, VersionID: stored.ID,
+			})
+			return domain.SummaryOf(stored), nil
 		}
 	}
+	// Fresh version: the mapping is consumed atomically with the insert.
 	r.versions = append(r.versions, record)
-	return record, nil
+	r.requests = append(r.requests, registrationRequest{
+		OwnerUserID: record.OwnerUserID, IdempotencyKey: record.IdempotencyKey,
+		RequestDigest: record.RequestDigest, VersionID: record.ID,
+	})
+	return domain.SummaryOf(record), nil
 }
 
-func (r *fakeRepository) GetVersion(_ context.Context, ownerUserID, appID, version string) (domain.AppVersion, error) {
+func (r *fakeRepository) GetVersion(_ context.Context, ownerUserID, appID, version string) (domain.AppVersionSummary, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	for _, stored := range r.versions {
 		if stored.OwnerUserID == ownerUserID && stored.AppID == appID && stored.Version == version {
-			return stored, nil
+			return domain.SummaryOf(stored), nil
 		}
 	}
-	return domain.AppVersion{}, domain.ErrNotFound
+	return domain.AppVersionSummary{}, domain.ErrNotFound
 }
 
-func (r *fakeRepository) GetAppVersions(_ context.Context, ownerUserID, appID string) ([]domain.AppVersion, error) {
+func (r *fakeRepository) ListAppIDPage(_ context.Context, ownerUserID, cursor string, limit int) ([]string, string, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	var result []domain.AppVersion
-	for _, stored := range r.versions {
-		if stored.OwnerUserID == ownerUserID && stored.AppID == appID {
-			result = append(result, stored)
-		}
-	}
-	return result, nil
-}
-
-func (r *fakeRepository) ListAppIDs(_ context.Context, ownerUserID, cursor string, limit int) ([]string, error) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
+	r.listCalls = append(r.listCalls, limit)
 	seen := map[string]bool{}
 	var ids []string
 	for _, stored := range r.versions {
@@ -108,28 +125,36 @@ func (r *fakeRepository) ListAppIDs(_ context.Context, ownerUserID, cursor strin
 		}
 	}
 	sort.Strings(ids)
-	if len(ids) > limit {
-		ids = ids[:limit]
+	if len(ids) <= limit {
+		return ids, "", nil
 	}
-	return ids, nil
+	page := ids[:limit]
+	return page, page[len(page)-1], nil
 }
 
-func (r *fakeRepository) GetVersionsForApps(_ context.Context, ownerUserID string, appIDs []string) ([]domain.AppVersion, error) {
+func (r *fakeRepository) VisitVersionSummaries(_ context.Context, ownerUserID string, appIDs []string, visit func(domain.AppVersionSummary) error) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	var result []domain.AppVersion
+	if r.visitErr != nil {
+		return r.visitErr
+	}
+	requested := make(map[string]bool, len(appIDs))
+	for _, appID := range appIDs {
+		requested[appID] = true
+	}
+	ordered := make([]domain.AppVersion, 0, len(r.versions))
 	for _, stored := range r.versions {
-		if stored.OwnerUserID != ownerUserID {
-			continue
-		}
-		for _, appID := range appIDs {
-			if stored.AppID == appID {
-				result = append(result, stored)
-				break
-			}
+		if stored.OwnerUserID == ownerUserID && requested[stored.AppID] {
+			ordered = append(ordered, stored)
 		}
 	}
-	return result, nil
+	sort.Slice(ordered, func(i, j int) bool { return ordered[i].AppID < ordered[j].AppID })
+	for _, stored := range ordered {
+		if err := visit(domain.SummaryOf(stored)); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 type fakeProjectDirectory struct {
@@ -179,12 +204,12 @@ func TestRegisterAndIdempotency(t *testing.T) {
 	if err != nil {
 		t.Fatalf("register: %v", err)
 	}
-	if first.AppID != "notes" || first.Version != "1.0.0" || first.RequestDigest != first.ManifestDigest {
-		t.Fatalf("unexpected record: %#v", first)
+	if first.AppID != "notes" || first.Version != "1.0.0" {
+		t.Fatalf("unexpected summary: %#v", first)
 	}
 
 	replay, err := service.Register(context.Background(), "owner-1", "key-1", manifestFor("notes", "Notes", "1.0.0"))
-	if err != nil || replay.ID != first.ID {
+	if err != nil || replay.ManifestDigest != first.ManifestDigest {
 		t.Fatalf("idempotent replay must return the stored record: %#v err=%v", replay, err)
 	}
 
@@ -198,18 +223,28 @@ func TestRegisterAndIdempotency(t *testing.T) {
 		t.Fatalf("same version with a different manifest must fail closed: %v", err)
 	}
 
+	// The review's core scenario: a second key over the same immutable fact
+	// must succeed AND persist, so reusing that key for another request is a
+	// conflict instead of a fresh registration.
 	sameDigestNewKey, err := service.Register(context.Background(), "owner-1", "key-3", manifestFor("notes", "Notes", "1.0.0"))
-	if err != nil || sameDigestNewKey.ID != first.ID {
+	if err != nil || sameDigestNewKey.ManifestDigest != first.ManifestDigest {
 		t.Fatalf("same version and digest under a new key must replay the original: %#v err=%v", sameDigestNewKey, err)
 	}
+	if _, err := service.Register(context.Background(), "owner-1", "key-3", manifestFor("notes", "Notes", "1.1.0")); !errors.Is(err, domain.ErrIdempotencyConflict) {
+		t.Fatalf("persisted key must conflict on a different request: %v", err)
+	}
 
-	// A different owner may register the same app id and version.
+	// A different owner may register the same app id and version independently.
 	foreign, err := service.Register(context.Background(), "owner-2", "key-1", manifestFor("notes", "Notes", "1.0.0"))
-	if err != nil || foreign.OwnerUserID != "owner-2" || foreign.ID == first.ID {
+	if err != nil || foreign.AppID != "notes" {
 		t.Fatalf("owner isolation failed: %#v err=%v", foreign, err)
 	}
 	if len(repository.versions) != 2 {
 		t.Fatalf("expected exactly two stored versions, got %d", len(repository.versions))
+	}
+	// owner-1 consumed key-1 and key-3; owner-2 consumed its own key-1.
+	if len(repository.requests) != 3 {
+		t.Fatalf("expected three persisted registration requests, got %d", len(repository.requests))
 	}
 }
 
@@ -225,6 +260,8 @@ func TestRegisterRejectsInvalidInput(t *testing.T) {
 		{name: "no owner", owner: "", key: "k", yaml: manifestFor("notes", "Notes", "1.0.0")},
 		{name: "no idempotency key", owner: "owner-1", key: "", yaml: manifestFor("notes", "Notes", "1.0.0")},
 		{name: "oversize key", owner: "owner-1", key: strings.Repeat("k", 129), yaml: manifestFor("notes", "Notes", "1.0.0")},
+		{name: "control character key", owner: "owner-1", key: "bad\x01key", yaml: manifestFor("notes", "Notes", "1.0.0")},
+		{name: "invalid utf8 key", owner: "owner-1", key: "bad\xffkey", yaml: manifestFor("notes", "Notes", "1.0.0")},
 		{name: "oversize manifest", owner: "owner-1", key: "k", yaml: make([]byte, domain.MaxManifestBytes+1)},
 	}
 	for _, testCase := range cases {
@@ -263,9 +300,19 @@ func TestGetReturnsCurrentAndExplicitVersions(t *testing.T) {
 	}
 }
 
-func TestListCurrentVersionsPerApp(t *testing.T) {
+func TestGetRejectsMalformedAppID(t *testing.T) {
 	t.Parallel()
 	service, _, _ := newTestService(nil)
+	for _, appID := range []string{"Bad_ID", "x", "", "-leading", "UPPER", strings.Repeat("a", 64)} {
+		if _, err := service.Get(context.Background(), "owner-1", appID, ""); !errors.Is(err, domain.ErrInvalid) {
+			t.Fatalf("malformed app id %q must be ErrInvalid, got %v", appID, err)
+		}
+	}
+}
+
+func TestListCurrentVersionsPerApp(t *testing.T) {
+	t.Parallel()
+	service, repository, _ := newTestService(nil)
 	registrations := []struct{ appID, version string }{
 		{"zeta-board", "1.0.0"}, {"zeta-board", "1.1.0"},
 		{"alpha-notes", "2.0.0"}, {"alpha-notes", "2.0.0-rc.1"},
@@ -281,49 +328,123 @@ func TestListCurrentVersionsPerApp(t *testing.T) {
 		t.Fatalf("list: %v", err)
 	}
 	var order []string
-	for _, record := range listed {
+	for _, record := range listed.Items {
 		order = append(order, record.AppID)
 	}
 	if strings.Join(order, ",") != "alpha-notes,mid-chart,zeta-board" {
 		t.Fatalf("list must return one current version per app sorted by app id: %v", order)
 	}
-	if listed[0].Version != "2.0.0" || listed[2].Version != "1.1.0" {
-		t.Fatalf("list must project the current version: %#v", listed)
+	if listed.Items[0].Version != "2.0.0" || listed.Items[2].Version != "1.1.0" {
+		t.Fatalf("list must project the current version: %#v", listed.Items)
 	}
 
 	paged, err := service.List(context.Background(), "owner-1", "", "", 2)
-	if err != nil || len(paged) != 2 || paged[1].AppID != "mid-chart" {
+	if err != nil || len(paged.Items) != 2 || paged.Items[1].AppID != "mid-chart" || paged.NextToken != "mid-chart" {
 		t.Fatalf("paging must be stable: %#v err=%v", paged, err)
 	}
 	resumed, err := service.List(context.Background(), "owner-1", "", "mid-chart", 2)
-	if err != nil || len(resumed) != 1 || resumed[0].AppID != "zeta-board" {
-		t.Fatalf("cursor must resume deterministically: %#v err=%v", resumed, err)
+	if err != nil || len(resumed.Items) != 1 || resumed.Items[0].AppID != "zeta-board" || resumed.NextToken != "" {
+		t.Fatalf("cursor must resume deterministically to a final page: %#v err=%v", resumed, err)
+	}
+
+	// An exactly-full page must not fabricate a cursor: repository probes
+	// limit+1 and only a real extra app produces a token.
+	if len(repository.listCalls) == 0 {
+		t.Fatal("expected repository paging calls")
 	}
 
 	foreign, err := service.List(context.Background(), "owner-2", "", "", 10)
-	if err != nil || len(foreign) != 0 {
+	if err != nil || len(foreign.Items) != 0 || foreign.NextToken != "" {
 		t.Fatalf("owner isolation failed: %#v err=%v", foreign, err)
+	}
+}
+
+func TestListPageSizeNormalizationAndBoundaries(t *testing.T) {
+	t.Parallel()
+	service, repository, _ := newTestService(nil)
+	for index := 0; index < 8; index++ {
+		appID := fmt.Sprintf("app-%02d", index)
+		if _, err := service.Register(context.Background(), "owner-1", fmt.Sprintf("key-%02d", index), manifestFor(appID, "App", "1.0.0")); err != nil {
+			t.Fatalf("register %s: %v", appID, err)
+		}
+	}
+
+	// Zero page size means the default; negative page size is an explicit
+	// request error, never a silent default.
+	defaultPage, err := service.List(context.Background(), "owner-1", "", "", 0)
+	if err != nil || len(defaultPage.Items) != 8 || defaultPage.NextToken != "" {
+		t.Fatalf("default page must hold every app without a token: %#v err=%v", defaultPage, err)
+	}
+	if _, err := service.List(context.Background(), "owner-1", "", "", -1); !errors.Is(err, domain.ErrInvalid) {
+		t.Fatalf("negative page size must be ErrInvalid: %v", err)
+	}
+
+	// Values above the maximum clamp at the application boundary exactly once.
+	repository.listCalls = nil
+	if _, err := service.List(context.Background(), "owner-1", "", "", 500); err != nil {
+		t.Fatalf("oversize page request: %v", err)
+	}
+	if len(repository.listCalls) != 1 || repository.listCalls[0] != maxPageSize {
+		t.Fatalf("page size must clamp to %d before the repository: %v", maxPageSize, repository.listCalls)
+	}
+
+	// A cursor is a last app ID and must obey the app-ID grammar.
+	for _, cursor := range []string{"not a cursor", strings.Repeat("x", 200), "UPPER-CASE"} {
+		if _, err := service.List(context.Background(), "owner-1", "", cursor, 10); !errors.Is(err, domain.ErrInvalid) {
+			t.Fatalf("malformed cursor %q must be ErrInvalid: %v", cursor, err)
+		}
+	}
+}
+
+func TestListExactlyFullPageHasNoFakeToken(t *testing.T) {
+	t.Parallel()
+	service, _, _ := newTestService(nil)
+	for index := 0; index < 3; index++ {
+		appID := fmt.Sprintf("exact-%02d", index)
+		if _, err := service.Register(context.Background(), "owner-1", fmt.Sprintf("key-%02d", index), manifestFor(appID, "App", "1.0.0")); err != nil {
+			t.Fatalf("register %s: %v", appID, err)
+		}
+	}
+	page, err := service.List(context.Background(), "owner-1", "", "", 3)
+	if err != nil || len(page.Items) != 3 || page.NextToken != "" {
+		t.Fatalf("exactly-full final page must have no next token: %#v err=%v", page, err)
+	}
+	// Following an anyway-empty page after the last app must be empty and
+	// terminal rather than looping.
+	next, err := service.List(context.Background(), "owner-1", "", "exact-02", 3)
+	if err != nil || len(next.Items) != 0 || next.NextToken != "" {
+		t.Fatalf("page after the last app must be empty: %#v err=%v", next, err)
 	}
 }
 
 func TestListProjectContextFailsClosed(t *testing.T) {
 	t.Parallel()
-	directory := fakeProjectDirectory{owner: "owner-1", archived: map[string]bool{"active": false, "gone": true}}
+	const (
+		activeProject   = "00000000-0000-7000-8000-000000000001"
+		archivedProject = "00000000-0000-7000-8000-000000000002"
+	)
+	directory := fakeProjectDirectory{owner: "owner-1", archived: map[string]bool{activeProject: false, archivedProject: true}}
 	service, _, _ := newTestService(directory)
 	if _, err := service.Register(context.Background(), "owner-1", "key-1", manifestFor("notes", "Notes", "1.0.0")); err != nil {
 		t.Fatalf("register: %v", err)
 	}
-	listed, err := service.List(context.Background(), "owner-1", "active", "", 10)
-	if err != nil || len(listed) != 1 {
+	listed, err := service.List(context.Background(), "owner-1", activeProject, "", 10)
+	if err != nil || len(listed.Items) != 1 {
 		t.Fatalf("active project context must list the registry catalog: %#v err=%v", listed, err)
 	}
-	for _, projectID := range []string{"gone", "missing"} {
+	for _, projectID := range []string{archivedProject, "00000000-0000-7000-8000-000000000003"} {
 		if _, err := service.List(context.Background(), "owner-1", projectID, "", 10); !errors.Is(err, domain.ErrNotFound) {
 			t.Fatalf("project %s must map to NotFound: %v", projectID, err)
 		}
 	}
-	if _, err := service.List(context.Background(), "owner-2", "active", "", 10); !errors.Is(err, domain.ErrNotFound) {
+	if _, err := service.List(context.Background(), "owner-2", activeProject, "", 10); !errors.Is(err, domain.ErrNotFound) {
 		t.Fatalf("foreign owner must not use the project context: %v", err)
+	}
+	// Malformed project identifiers are request errors, not database errors.
+	for _, projectID := range []string{"not-a-uuid", "00000000-0000-7000-8000"} {
+		if _, err := service.List(context.Background(), "owner-1", projectID, "", 10); !errors.Is(err, domain.ErrInvalid) {
+			t.Fatalf("malformed project id %q must be ErrInvalid: %v", projectID, err)
+		}
 	}
 }
 
@@ -342,6 +463,12 @@ func TestRepositoryFailureIsNotADomainError(t *testing.T) {
 		if errors.Is(err, sentinel) {
 			t.Fatalf("internal failure must not masquerade as %v", sentinel)
 		}
+	}
+
+	repository.failWith = nil
+	repository.visitErr = errors.New("result stream reset")
+	if _, err := service.Get(context.Background(), "owner-1", "notes", ""); err == nil || errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("stream failure must not masquerade as a domain outcome: %v", err)
 	}
 }
 

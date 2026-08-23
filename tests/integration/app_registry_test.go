@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"connectrpc.com/connect"
+	"github.com/jackc/pgx/v5"
 	appv1 "github.com/yangtao121/workos/gen/go/workos/app/v1"
 	"github.com/yangtao121/workos/gen/go/workos/app/v1/appv1connect"
 	commonv1 "github.com/yangtao121/workos/gen/go/workos/common/v1"
@@ -58,9 +59,38 @@ func appRegistryClients(t *testing.T) appv1connect.AppRegistryServiceClient {
 	return appv1connect.NewAppRegistryServiceClient(httpClient, baseURL)
 }
 
+// appRegistryDB opens a direct connection to the acceptance database so
+// persistence claims (mapping rows, version rows) are verified as facts
+// rather than inferred from responses.
+func appRegistryDB(t *testing.T) *pgx.Conn {
+	t.Helper()
+	databaseURL := os.Getenv("WORKOS_TEST_DATABASE_URL")
+	if databaseURL == "" {
+		databaseURL = "postgres://workos:workos@127.0.0.1:5432/workos?sslmode=disable"
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	conn, err := pgx.Connect(ctx, databaseURL)
+	if err != nil {
+		t.Skipf("postgres is not reachable for app registry facts: %v", err)
+	}
+	t.Cleanup(func() { conn.Close(context.Background()) }) //nolint:errcheck
+	return conn
+}
+
+func countRows(t *testing.T, query string, args ...any) int {
+	t.Helper()
+	conn := appRegistryDB(t)
+	var count int
+	if err := conn.QueryRow(context.Background(), query, args...).Scan(&count); err != nil {
+		t.Fatalf("count rows (%s): %v", query, err)
+	}
+	return count
+}
+
 func TestAppRegistryVerticalSlice(t *testing.T) {
 	t.Parallel()
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
 	defer cancel()
 	apps := appRegistryClients(t)
 
@@ -118,34 +148,193 @@ func TestAppRegistryVerticalSlice(t *testing.T) {
 		}
 	})
 
-	t.Run("IdempotencyAndImmutableVersions", func(t *testing.T) {
+	t.Run("IdempotencyMappingIsDurableAndAuthoritative", func(t *testing.T) {
 		idemID := fmt.Sprintf("idem-%d", stamp)
-		key := fmt.Sprintf("replay-%d", stamp)
+		keyFirst := fmt.Sprintf("replay-first-%d", stamp)
+		keySecond := fmt.Sprintf("replay-second-%d", stamp)
+
 		first, err := apps.RegisterApp(ctx, connect.NewRequest(&appv1.RegisterAppRequest{
-			IdempotencyKey: key, ManifestYaml: manifestFor(idemID, "Idempotent App", "1.0.0", "user"),
+			IdempotencyKey: keyFirst, ManifestYaml: manifestFor(idemID, "Idempotent App", "1.0.0", "user"),
 		}))
 		if err != nil {
 			t.Fatalf("first register: %v", err)
 		}
+
+		// A second key over the same immutable fact succeeds — and must be
+		// persisted, proven by reusing it for a different request.
+		second, err := apps.RegisterApp(ctx, connect.NewRequest(&appv1.RegisterAppRequest{
+			IdempotencyKey: keySecond, ManifestYaml: manifestFor(idemID, "Idempotent App", "1.0.0", "user"),
+		}))
+		if err != nil || second.Msg.GetApp().GetManifestDigest() != first.Msg.GetApp().GetManifestDigest() {
+			t.Fatalf("second key must replay the same immutable version: %#v err=%v", second.Msg, err)
+		}
+		if _, err := apps.RegisterApp(ctx, connect.NewRequest(&appv1.RegisterAppRequest{
+			IdempotencyKey: keySecond, ManifestYaml: manifestFor(idemID, "Idempotent App", "1.0.1", "user"),
+		})); connect.CodeOf(err) != connect.CodeAborted {
+			t.Fatalf("persisted second key must conflict on a different request, got %v", err)
+		}
+
+		// First-key replay and conflict semantics stay intact.
 		replayed, err := apps.RegisterApp(ctx, connect.NewRequest(&appv1.RegisterAppRequest{
-			IdempotencyKey: key, ManifestYaml: manifestFor(idemID, "Idempotent App", "1.0.0", "user"),
+			IdempotencyKey: keyFirst, ManifestYaml: manifestFor(idemID, "Idempotent App", "1.0.0", "user"),
 		}))
 		if err != nil || replayed.Msg.GetApp().GetManifestDigest() != first.Msg.GetApp().GetManifestDigest() {
 			t.Fatalf("idempotent replay diverged: %#v err=%v", replayed.Msg, err)
 		}
-
-		_, err = apps.RegisterApp(ctx, connect.NewRequest(&appv1.RegisterAppRequest{
-			IdempotencyKey: key, ManifestYaml: manifestFor(idemID, "Idempotent App", "1.0.1", "user"),
-		}))
-		if connect.CodeOf(err) != connect.CodeAborted {
+		if _, err := apps.RegisterApp(ctx, connect.NewRequest(&appv1.RegisterAppRequest{
+			IdempotencyKey: keyFirst, ManifestYaml: manifestFor(idemID, "Idempotent App", "2.0.0", "user"),
+		})); connect.CodeOf(err) != connect.CodeAborted {
 			t.Fatalf("same key different request must be Aborted, got %v", err)
 		}
-
-		_, err = apps.RegisterApp(ctx, connect.NewRequest(&appv1.RegisterAppRequest{
-			IdempotencyKey: fmt.Sprintf("other-%d", stamp), ManifestYaml: manifestFor(idemID, "Renamed App", "1.0.0", "user"),
-		}))
-		if connect.CodeOf(err) != connect.CodeAlreadyExists {
+		if _, err := apps.RegisterApp(ctx, connect.NewRequest(&appv1.RegisterAppRequest{
+			IdempotencyKey: fmt.Sprintf("version-conflict-%d", stamp), ManifestYaml: manifestFor(idemID, "Renamed App", "1.0.0", "user"),
+		})); connect.CodeOf(err) != connect.CodeAlreadyExists {
 			t.Fatalf("same version different manifest must be AlreadyExists, got %v", err)
+		}
+
+		// The database holds exactly one mapping per successful key and one
+		// immutable version for the app.
+		if got := countRows(t,
+			`SELECT count(*) FROM workos_core.app_registration_requests WHERE idempotency_key = ANY($1)`,
+			[]string{keyFirst, keySecond}); got != 2 {
+			t.Fatalf("expected two persisted request mappings, got %d", got)
+		}
+		if got := countRows(t,
+			`SELECT count(*) FROM workos_core.app_versions WHERE app_id = $1`, idemID); got != 1 {
+			t.Fatalf("expected one immutable version, got %d", got)
+		}
+	})
+
+	t.Run("ConcurrentRegistrationsAgreeOnOneFact", func(t *testing.T) {
+		appID := fmt.Sprintf("race-%d", stamp)
+
+		// Eight keys concurrently register the identical manifest: all must
+		// succeed against one immutable version, every key must be persisted,
+		// and every key must refuse a different request afterwards.
+		sameManifest := manifestFor(appID, "Race Same", "3.0.0", "user")
+		const concurrency = 8
+		keys := make([]string, concurrency)
+		for index := range keys {
+			keys[index] = fmt.Sprintf("race-same-%d-%d", stamp, index)
+		}
+		start := make(chan struct{})
+		results := make(chan error, concurrency)
+		var group sync.WaitGroup
+		for _, key := range keys {
+			group.Add(1)
+			go func(key string) {
+				defer group.Done()
+				<-start
+				_, err := apps.RegisterApp(ctx, connect.NewRequest(&appv1.RegisterAppRequest{
+					IdempotencyKey: key, ManifestYaml: sameManifest,
+				}))
+				results <- err
+			}(key)
+		}
+		close(start)
+		group.Wait()
+		close(results)
+		for err := range results {
+			if err != nil {
+				t.Fatalf("concurrent same-digest registration must replay: %v", err)
+			}
+		}
+		if got := countRows(t,
+			`SELECT count(*) FROM workos_core.app_registration_requests WHERE idempotency_key = ANY($1)`, keys); got != concurrency {
+			t.Fatalf("expected %d persisted request mappings, got %d", concurrency, got)
+		}
+		if got := countRows(t,
+			`SELECT count(*) FROM workos_core.app_versions WHERE app_id = $1 AND version = '3.0.0'`, appID); got != 1 {
+			t.Fatalf("expected one immutable version for the manifest, got %d", got)
+		}
+		for _, key := range keys {
+			if _, err := apps.RegisterApp(ctx, connect.NewRequest(&appv1.RegisterAppRequest{
+				IdempotencyKey: key, ManifestYaml: manifestFor(appID, "Race Same", "3.0.1", "user"),
+			})); connect.CodeOf(err) != connect.CodeAborted {
+				t.Fatalf("persisted key %s must conflict on a different request, got %v", key, err)
+			}
+		}
+
+		// One key concurrently registers two different manifests (different
+		// versions): exactly one becomes the durable fact, the other is
+		// Aborted and leaves neither a version nor a mapping behind.
+		sharedKey := fmt.Sprintf("race-shared-%d", stamp)
+		leftManifest := manifestFor(appID, "Race Left", "4.0.0", "user")
+		rightManifest := manifestFor(appID, "Race Right", "4.1.0", "user")
+		keyStart := make(chan struct{})
+		keyResults := make(chan error, 2)
+		go func() {
+			<-keyStart
+			_, err := apps.RegisterApp(ctx, connect.NewRequest(&appv1.RegisterAppRequest{IdempotencyKey: sharedKey, ManifestYaml: leftManifest}))
+			keyResults <- err
+		}()
+		go func() {
+			<-keyStart
+			_, err := apps.RegisterApp(ctx, connect.NewRequest(&appv1.RegisterAppRequest{IdempotencyKey: sharedKey, ManifestYaml: rightManifest}))
+			keyResults <- err
+		}()
+		close(keyStart)
+		firstErr, secondErr := <-keyResults, <-keyResults
+		if firstErr == nil && secondErr == nil {
+			t.Fatal("one of the two requests sharing a key must lose")
+		}
+		if firstErr != nil && secondErr != nil {
+			t.Fatalf("one request sharing a key must win: %v / %v", firstErr, secondErr)
+		}
+		var loserErr error
+		if firstErr != nil {
+			loserErr = firstErr
+		} else {
+			loserErr = secondErr
+		}
+		if connect.CodeOf(loserErr) != connect.CodeAborted {
+			t.Fatalf("the losing shared-key request must be Aborted, got %v / %v", firstErr, secondErr)
+		}
+		if got := countRows(t,
+			`SELECT count(*) FROM workos_core.app_registration_requests WHERE idempotency_key = $1`, sharedKey); got != 1 {
+			t.Fatalf("expected exactly one mapping for the shared key, got %d", got)
+		}
+		// The loser's version row must have been rolled back with its
+		// transaction: only the winner's version exists.
+		if got := countRows(t,
+			`SELECT count(*) FROM workos_core.app_versions WHERE app_id = $1 AND version IN ('4.0.0','4.1.0')`, appID); got != 1 {
+			t.Fatalf("the losing transaction must not leave an orphan version, got %d rows", got)
+		}
+
+		// Two keys racing the same version with different digests: one wins,
+		// the other gets AlreadyExists and the stored manifest never changes.
+		raceVersion := "5.0.0"
+		manifestA := manifestFor(appID, "Race A", raceVersion, "user")
+		manifestB := manifestFor(appID, "Race B", raceVersion, "user")
+		digestStart := make(chan struct{})
+		digestResults := make(chan error, 2)
+		go func() {
+			<-digestStart
+			_, err := apps.RegisterApp(ctx, connect.NewRequest(&appv1.RegisterAppRequest{
+				IdempotencyKey: fmt.Sprintf("race-digest-a-%d", stamp), ManifestYaml: manifestA}))
+			digestResults <- err
+		}()
+		go func() {
+			<-digestStart
+			_, err := apps.RegisterApp(ctx, connect.NewRequest(&appv1.RegisterAppRequest{
+				IdempotencyKey: fmt.Sprintf("race-digest-b-%d", stamp), ManifestYaml: manifestB}))
+			digestResults <- err
+		}()
+		close(digestStart)
+		digestFirst, digestSecond := <-digestResults, <-digestResults
+		if digestFirst == nil && digestSecond == nil {
+			t.Fatal("two different manifests for one version must not both register")
+		}
+		if digestFirst != nil && digestSecond != nil {
+			t.Fatalf("one registration must win the digest race: %v / %v", digestFirst, digestSecond)
+		}
+		stored, err := apps.GetApp(ctx, connect.NewRequest(&appv1.GetAppRequest{AppId: appID, Version: raceVersion}))
+		if err != nil {
+			t.Fatalf("get race winner: %v", err)
+		}
+		winner := stored.Msg.GetApp()
+		if winner.GetName() != "Race A" && winner.GetName() != "Race B" {
+			t.Fatalf("unexpected winner: %#v", winner)
 		}
 	})
 
@@ -172,20 +361,31 @@ func TestAppRegistryVerticalSlice(t *testing.T) {
 	})
 
 	t.Run("ListAppsCurrentPerAppOrderedAndPaged", func(t *testing.T) {
-		listed, err := apps.ListApps(ctx, connect.NewRequest(&appv1.ListAppsRequest{
-			Page: &commonv1.PageRequest{PageSize: 100},
-		}))
-		if err != nil {
-			t.Fatalf("list: %v", err)
-		}
+		// The persistent volume accumulates apps across runs, so walk pages
+		// (not one request) and assert global ordering plus both currents.
 		ids := map[string]*appv1.WorkOSApp{}
 		previous := ""
-		for _, app := range listed.Msg.GetApps() {
-			if app.GetId() <= previous {
-				t.Fatalf("list is not sorted by app id: %v", listed.Msg.GetApps())
+		token := ""
+		pages := 0
+		for {
+			page, err := apps.ListApps(ctx, connect.NewRequest(&appv1.ListAppsRequest{
+				Page: &commonv1.PageRequest{PageSize: 100, PageToken: token},
+			}))
+			if err != nil {
+				t.Fatalf("list: %v", err)
 			}
-			previous = app.GetId()
-			ids[app.GetId()] = app
+			for _, app := range page.Msg.GetApps() {
+				if app.GetId() <= previous {
+					t.Fatalf("list is not sorted by app id: %s after %s", app.GetId(), previous)
+				}
+				previous = app.GetId()
+				ids[app.GetId()] = app
+			}
+			pages++
+			if page.Msg.GetPage().GetNextPageToken() == "" || (ids[boardID] != nil && ids[notesID] != nil) {
+				break
+			}
+			token = page.Msg.GetPage().GetNextPageToken()
 		}
 		if board := ids[boardID]; board == nil || board.GetVersion() != "1.10.0" || board.GetManifestDigest() == "" {
 			t.Fatalf("board missing or wrong current version: %#v", board)
@@ -196,7 +396,7 @@ func TestAppRegistryVerticalSlice(t *testing.T) {
 
 		// Walk pages of one and collect; must include both registered apps.
 		collected := map[string]bool{}
-		token := ""
+		token = ""
 		for {
 			page, err := apps.ListApps(ctx, connect.NewRequest(&appv1.ListAppsRequest{
 				Page: &commonv1.PageRequest{PageSize: 1, PageToken: token},
@@ -217,6 +417,172 @@ func TestAppRegistryVerticalSlice(t *testing.T) {
 		}
 	})
 
+	t.Run("ListAppsPagingDefaultsClampAndExactFinalPage", func(t *testing.T) {
+		// More than one hundred apps force every paging rule to be real:
+		// the default page (50), the clamp (100), and the limit+1 probe.
+		const bulkCount = 105
+		bulkPrefix := fmt.Sprintf("bulk-%d-", stamp)
+		for index := 0; index < bulkCount; index++ {
+			appID := fmt.Sprintf("%s%03d", bulkPrefix, index)
+			if _, err := apps.RegisterApp(ctx, connect.NewRequest(&appv1.RegisterAppRequest{
+				IdempotencyKey: fmt.Sprintf("bulk-%d-%03d", stamp, index),
+				ManifestYaml:   manifestFor(appID, "Bulk App", "1.0.0", "user"),
+			})); err != nil {
+				t.Fatalf("register %s: %v", appID, err)
+			}
+		}
+
+		// No page block: the default page size is 50 and must be followed by
+		// a next token, so records beyond the default are reachable.
+		defaultPage, err := apps.ListApps(ctx, connect.NewRequest(&appv1.ListAppsRequest{}))
+		if err != nil {
+			t.Fatalf("default list: %v", err)
+		}
+		if len(defaultPage.Msg.GetApps()) != 50 {
+			t.Fatalf("default page must hold exactly 50 apps, got %d", len(defaultPage.Msg.GetApps()))
+		}
+		if defaultPage.Msg.GetPage().GetNextPageToken() == "" {
+			t.Fatal("default page must produce a next token when more apps exist")
+		}
+
+		// page_size above the maximum clamps to 100 with a next token.
+		overMax, err := apps.ListApps(ctx, connect.NewRequest(&appv1.ListAppsRequest{
+			Page: &commonv1.PageRequest{PageSize: 101},
+		}))
+		if err != nil {
+			t.Fatalf("over-max list: %v", err)
+		}
+		if len(overMax.Msg.GetApps()) != 100 {
+			t.Fatalf("page size must clamp to 100, got %d", len(overMax.Msg.GetApps()))
+		}
+		if overMax.Msg.GetPage().GetNextPageToken() == "" {
+			t.Fatal("clamped page must produce a next token when more apps exist")
+		}
+
+		// Full walk with the clamped page size: no duplicates, no loss,
+		// strictly ascending, and every bulk app is reachable.
+		seenAll := map[string]bool{}
+		previous := ""
+		pages := 0
+		token := ""
+		for {
+			page, err := apps.ListApps(ctx, connect.NewRequest(&appv1.ListAppsRequest{
+				Page: &commonv1.PageRequest{PageSize: 100, PageToken: token},
+			}))
+			if err != nil {
+				t.Fatalf("clamped walk page %d: %v", pages, err)
+			}
+			for _, app := range page.Msg.GetApps() {
+				if seenAll[app.GetId()] {
+					t.Fatalf("paged walk repeated app %s", app.GetId())
+				}
+				if app.GetId() <= previous {
+					t.Fatalf("paged walk is not ascending: %s after %s", app.GetId(), previous)
+				}
+				previous = app.GetId()
+				seenAll[app.GetId()] = true
+			}
+			pages++
+			if page.Msg.GetPage().GetNextPageToken() == "" {
+				break
+			}
+			token = page.Msg.GetPage().GetNextPageToken()
+		}
+		for index := 0; index < bulkCount; index++ {
+			appID := fmt.Sprintf("%s%03d", bulkPrefix, index)
+			if !seenAll[appID] {
+				t.Fatalf("bulk app %s unreachable through paging", appID)
+			}
+		}
+
+		// An exactly-full final page must not fabricate a token: walk with a
+		// page size that divides the total count exactly. The total is the
+		// walked size plus the padding needed to reach a multiple of the
+		// clamped page size.
+		total := len(seenAll)
+		if remainder := total % 100; remainder != 0 {
+			for index := 0; index < 100-remainder; index++ {
+				appID := fmt.Sprintf("pad-%d-%03d", stamp, index)
+				if _, err := apps.RegisterApp(ctx, connect.NewRequest(&appv1.RegisterAppRequest{
+					IdempotencyKey: fmt.Sprintf("pad-%d-%03d", stamp, index),
+					ManifestYaml:   manifestFor(appID, "Pad App", "1.0.0", "user"),
+				})); err != nil {
+					t.Fatalf("register %s: %v", appID, err)
+				}
+			}
+		}
+		token, fullPages := "", 0
+		var lastLen int
+		for {
+			page, err := apps.ListApps(ctx, connect.NewRequest(&appv1.ListAppsRequest{
+				Page: &commonv1.PageRequest{PageSize: 100, PageToken: token},
+			}))
+			if err != nil {
+				t.Fatalf("exact walk page %d: %v", fullPages, err)
+			}
+			lastLen = len(page.Msg.GetApps())
+			fullPages++
+			if page.Msg.GetPage().GetNextPageToken() == "" {
+				if lastLen != 100 {
+					t.Fatalf("padding must make the final page exactly full, got %d apps", lastLen)
+				}
+				break
+			}
+			token = page.Msg.GetPage().GetNextPageToken()
+		}
+
+		// Request-boundary rules: malformed cursors and identifiers are
+		// InvalidArgument, never database errors.
+		if _, err := apps.ListApps(ctx, connect.NewRequest(&appv1.ListAppsRequest{
+			Page: &commonv1.PageRequest{PageSize: 10, PageToken: "not a cursor"},
+		})); connect.CodeOf(err) != connect.CodeInvalidArgument {
+			t.Fatalf("malformed cursor must be InvalidArgument, got %v", err)
+		}
+		if _, err := apps.ListApps(ctx, connect.NewRequest(&appv1.ListAppsRequest{
+			ProjectId: "not-a-uuid",
+		})); connect.CodeOf(err) != connect.CodeInvalidArgument {
+			t.Fatalf("malformed project id must be InvalidArgument, got %v", err)
+		}
+		if _, err := apps.GetApp(ctx, connect.NewRequest(&appv1.GetAppRequest{AppId: "Bad_ID"})); connect.CodeOf(err) != connect.CodeInvalidArgument {
+			t.Fatalf("malformed app id must be InvalidArgument, got %v", err)
+		}
+		if _, err := apps.ListApps(ctx, connect.NewRequest(&appv1.ListAppsRequest{
+			Page: &commonv1.PageRequest{PageSize: -1},
+		})); connect.CodeOf(err) != connect.CodeInvalidArgument {
+			t.Fatalf("negative page size must be InvalidArgument, got %v", err)
+		}
+	})
+
+	t.Run("RequestSizeBoundariesHoldOnTheWire", func(t *testing.T) {
+		// One byte over the business limit is a stable InvalidArgument from
+		// the application/transport manifest guard.
+		oversize := make([]byte, 256*1024+1)
+		for index := range oversize {
+			oversize[index] = 'x'
+		}
+		if _, err := apps.RegisterApp(ctx, connect.NewRequest(&appv1.RegisterAppRequest{
+			IdempotencyKey: fmt.Sprintf("oversize-%d", stamp), ManifestYaml: oversize,
+		})); connect.CodeOf(err) != connect.CodeInvalidArgument {
+			t.Fatalf("oversize manifest must be InvalidArgument, got %v", err)
+		}
+
+		// Far beyond the handler's pre-decode read limit, the request is
+		// rejected before the business handler can run.
+		huge := make([]byte, 512*1024)
+		for index := range huge {
+			huge[index] = 'x'
+		}
+		_, err := apps.RegisterApp(ctx, connect.NewRequest(&appv1.RegisterAppRequest{
+			IdempotencyKey: fmt.Sprintf("huge-%d", stamp), ManifestYaml: huge,
+		}))
+		if connect.CodeOf(err) != connect.CodeResourceExhausted {
+			t.Fatalf("oversized wire request must be ResourceExhausted, got %v", err)
+		}
+		if strings.Contains(err.Error(), "xxxx") {
+			t.Fatalf("wire-limit error must not echo the body: %v", err)
+		}
+	})
+
 	t.Run("ListAppsProjectContext", func(t *testing.T) {
 		httpClient := &http.Client{Transport: &http.Transport{Proxy: nil, DialContext: (&net.Dialer{Timeout: 2 * time.Second}).DialContext}}
 		baseURL := os.Getenv("WORKOS_TEST_URL")
@@ -232,17 +598,26 @@ func TestAppRegistryVerticalSlice(t *testing.T) {
 			t.Fatalf("create project: %v", err)
 		}
 		project := created.Msg.GetProject()
-		inContext, err := apps.ListApps(ctx, connect.NewRequest(&appv1.ListAppsRequest{
-			ProjectId: project.GetId(), Page: &commonv1.PageRequest{PageSize: 100},
-		}))
-		if err != nil {
-			t.Fatalf("list with project context: %v", err)
-		}
+		// The owner's catalog has grown beyond one page; walk it inside the
+		// project context until both known apps appear or the walk ends.
 		found := 0
-		for _, app := range inContext.Msg.GetApps() {
-			if app.GetId() == boardID || app.GetId() == notesID {
-				found++
+		token := ""
+		for {
+			page, err := apps.ListApps(ctx, connect.NewRequest(&appv1.ListAppsRequest{
+				ProjectId: project.GetId(), Page: &commonv1.PageRequest{PageSize: 100, PageToken: token},
+			}))
+			if err != nil {
+				t.Fatalf("list with project context: %v", err)
 			}
+			for _, app := range page.Msg.GetApps() {
+				if app.GetId() == boardID || app.GetId() == notesID {
+					found++
+				}
+			}
+			if page.Msg.GetPage().GetNextPageToken() == "" || found == 2 {
+				break
+			}
+			token = page.Msg.GetPage().GetNextPageToken()
 		}
 		if found != 2 {
 			t.Fatalf("project context must list the owner registry catalog, found %d of 2", found)
@@ -267,11 +642,16 @@ func TestAppRegistryVerticalSlice(t *testing.T) {
 	})
 
 	t.Run("TrustBoundaryFailsClosed", func(t *testing.T) {
+		// The secret key is injected inside the existing resources block of a
+		// structurally valid manifest, so only the secret policy can reject.
+		secretManifest := strings.Replace(string(manifestFor(fmt.Sprintf("secret-%d", stamp), "Secret", "1.0.0", "user")),
+			"resources:\n  limits:\n    memory: 256",
+			"resources:\n  limits:\n    memory: 256\n  api_key: synthetic-not-a-real-value", 1)
 		for name, yaml := range map[string][]byte{
 			"system scope":     manifestFor(fmt.Sprintf("system-%d", stamp), "System", "1.0.0", "system"),
 			"trusted runtime":  []byte(strings.Replace(string(manifestFor(fmt.Sprintf("trusted-%d", stamp), "Trusted", "1.0.0", "user")), "type: container", "type: trusted", 1)),
 			"unknown capacity": []byte(strings.Replace(string(manifestFor(fmt.Sprintf("cap-%d", stamp), "Capability", "1.0.0", "user")), "permissions: [artifact.read, agent.task.run]", "permissions: [llm.unlimited]", 1)),
-			"secret key name":  []byte(string(manifestFor(fmt.Sprintf("secret-%d", stamp), "Secret", "1.0.0", "user")) + "api_key: not-a-real-value\n"),
+			"secret key name":  []byte(secretManifest),
 		} {
 			validated, err := apps.ValidateManifest(ctx, connect.NewRequest(&appv1.ValidateManifestRequest{Yaml: yaml}))
 			if err != nil || validated.Msg.GetValid() {
@@ -282,59 +662,6 @@ func TestAppRegistryVerticalSlice(t *testing.T) {
 			}))
 			if connect.CodeOf(err) != connect.CodeInvalidArgument {
 				t.Fatalf("%s must fail closed at registration, got %v", name, err)
-			}
-		}
-	})
-
-	t.Run("ConcurrentRegistrationHasOneWinner", func(t *testing.T) {
-		appID := fmt.Sprintf("race-%d", stamp)
-		manifestA := manifestFor(appID, "Race A", "3.0.0", "user")
-		manifestB := manifestFor(appID, "Race B", "3.0.0", "user")
-		results := make(chan error, 2)
-		go func() {
-			_, err := apps.RegisterApp(ctx, connect.NewRequest(&appv1.RegisterAppRequest{IdempotencyKey: "race-a-" + fmt.Sprint(stamp), ManifestYaml: manifestA}))
-			results <- err
-		}()
-		go func() {
-			_, err := apps.RegisterApp(ctx, connect.NewRequest(&appv1.RegisterAppRequest{IdempotencyKey: "race-b-" + fmt.Sprint(stamp), ManifestYaml: manifestB}))
-			results <- err
-		}()
-		first := <-results
-		second := <-results
-		if first == nil && second == nil {
-			t.Fatal("two different manifests for one version must not both register")
-		}
-		if first != nil && second != nil {
-			t.Fatalf("one registration must win the race: %v / %v", first, second)
-		}
-		stored, err := apps.GetApp(ctx, connect.NewRequest(&appv1.GetAppRequest{AppId: appID, Version: "3.0.0"}))
-		if err != nil {
-			t.Fatalf("get race winner: %v", err)
-		}
-		winner := stored.Msg.GetApp()
-		if winner.GetName() != "Race A" && winner.GetName() != "Race B" {
-			t.Fatalf("unexpected winner: %#v", winner)
-		}
-
-		// Concurrent identical registrations are all idempotent replays.
-		sameManifest := manifestFor(appID, winner.GetName(), "3.1.0", "user")
-		var group sync.WaitGroup
-		replayErrors := make(chan error, 8)
-		for i := 0; i < 8; i++ {
-			group.Add(1)
-			go func() {
-				defer group.Done()
-				_, err := apps.RegisterApp(ctx, connect.NewRequest(&appv1.RegisterAppRequest{
-					IdempotencyKey: fmt.Sprintf("race-same-%d-%d", stamp, i), ManifestYaml: sameManifest,
-				}))
-				replayErrors <- err
-			}()
-		}
-		group.Wait()
-		close(replayErrors)
-		for err := range replayErrors {
-			if err != nil {
-				t.Fatalf("concurrent same-digest registration must replay: %v", err)
 			}
 		}
 	})

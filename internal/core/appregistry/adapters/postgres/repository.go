@@ -15,10 +15,10 @@ import (
 )
 
 // Repository stores App versions in Core-owned PostgreSQL tables. Concurrency
-// is decided by the table's unique constraints, never by process state: the
-// loser of a race re-reads by (owner, app, version) and (owner, idempotency
-// key) inside the same transaction and returns either the stored immutable
-// fact or a deterministic conflict.
+// is decided by table constraints inside one transaction, never by process
+// state or a read-then-write race: the registration-request mapping is the
+// single idempotency authority, so a key is only consumed on the paths that
+// return success, and every success consumes it exactly once.
 type Repository struct {
 	pool    *pgxpool.Pool
 	queries *appdb.Queries
@@ -28,123 +28,201 @@ func New(pool *pgxpool.Pool) *Repository {
 	return &Repository{pool: pool, queries: appdb.New(pool)}
 }
 
-func (r *Repository) Register(ctx context.Context, record domain.AppVersion) (domain.AppVersion, error) {
+func (r *Repository) Register(ctx context.Context, record domain.AppVersion) (domain.AppVersionSummary, error) {
 	tx, err := r.pool.Begin(ctx)
 	if err != nil {
-		return domain.AppVersion{}, fmt.Errorf("begin register app version: %w", err)
+		return domain.AppVersionSummary{}, fmt.Errorf("begin register app version: %w", err)
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck
 	queries := r.queries.WithTx(tx)
 
-	existing, err := queries.GetAppVersionByIdempotency(ctx, appdb.GetAppVersionByIdempotencyParams{
+	// An already-consumed key rules first: same normalized request replays
+	// the stored fact, any different request conflicts, and neither outcome
+	// may be bypassed by the state of the target version.
+	request, err := queries.GetRegistrationRequest(ctx, appdb.GetRegistrationRequestParams{
 		OwnerUserID: record.OwnerUserID, IdempotencyKey: record.IdempotencyKey,
 	})
 	if err == nil {
-		if existing.RequestDigest != record.RequestDigest {
-			return domain.AppVersion{}, domain.ErrIdempotencyConflict
+		if request.RequestDigest != record.RequestDigest {
+			return domain.AppVersionSummary{}, domain.ErrIdempotencyConflict
 		}
-		return appVersionFromDB(existing), nil
+		version, err := queries.GetAppVersionByID(ctx, request.AppVersionID)
+		if err != nil {
+			return domain.AppVersionSummary{}, fmt.Errorf("query idempotent app version: %w", err)
+		}
+		return summaryFromDB(version), nil
 	}
 	if !errors.Is(err, pgx.ErrNoRows) {
-		return domain.AppVersion{}, fmt.Errorf("query app idempotency: %w", err)
+		return domain.AppVersionSummary{}, fmt.Errorf("query registration request: %w", err)
 	}
 
+	// The immutable version insert is arbitrated by the unique constraint.
 	rows, err := queries.InsertAppVersion(ctx, appdb.InsertAppVersionParams{
-		ID: record.ID, OwnerUserID: record.OwnerUserID, IdempotencyKey: record.IdempotencyKey,
-		RequestDigest: record.RequestDigest, AppID: record.AppID, Version: record.Version,
+		ID: record.ID, OwnerUserID: record.OwnerUserID, AppID: record.AppID, Version: record.Version,
 		Scope: string(record.Scope), Name: record.Name, Permissions: record.Permissions,
 		ManifestDigest: record.ManifestDigest, CanonicalManifest: record.CanonicalManifest,
 		CreatedAt: timestamp(record.CreatedAt),
 	})
 	if err != nil {
-		return domain.AppVersion{}, fmt.Errorf("insert app version: %w", err)
+		return domain.AppVersionSummary{}, fmt.Errorf("insert app version: %w", err)
+	}
+	if rows == 0 {
+		existing, err := queries.GetAppVersion(ctx, appdb.GetAppVersionParams{
+			OwnerUserID: record.OwnerUserID, AppID: record.AppID, Version: record.Version,
+		})
+		if err != nil {
+			return domain.AppVersionSummary{}, fmt.Errorf("query conflicting app version: %w", err)
+		}
+		if existing.ManifestDigest != record.ManifestDigest {
+			// The version fact is immutable, but a key consumed concurrently by
+			// a different request still dominates this verdict.
+			if consumed, keyErr := queries.GetRegistrationRequest(ctx, appdb.GetRegistrationRequestParams{
+				OwnerUserID: record.OwnerUserID, IdempotencyKey: record.IdempotencyKey,
+			}); keyErr == nil && consumed.RequestDigest != record.RequestDigest {
+				return domain.AppVersionSummary{}, domain.ErrIdempotencyConflict
+			} else if keyErr != nil && !errors.Is(keyErr, pgx.ErrNoRows) {
+				return domain.AppVersionSummary{}, fmt.Errorf("query conflicting registration request: %w", keyErr)
+			}
+			return domain.AppVersionSummary{}, domain.ErrVersionExists
+		}
+		// Same immutable fact under a new key: persist the mapping in the same
+		// transaction so the success is replayable by this key later.
+		return r.consumeKey(ctx, tx, queries, record, existing.ID, summaryFromDB(existing))
+	}
+
+	// Fresh version: consume the key atomically with the insert.
+	return r.consumeKey(ctx, tx, queries, record, record.ID, domain.SummaryOf(record))
+}
+
+// consumeKey inserts the registration-request mapping and commits. If another
+// transaction consumed the same key first, the loser re-reads the mapping:
+// the identical normalized request replays the stored fact, anything else is
+// a conflict, and the rolled-back loser leaves no orphan version or mapping.
+func (r *Repository) consumeKey(
+	ctx context.Context, tx pgx.Tx, queries *appdb.Queries,
+	record domain.AppVersion, versionID string, onSuccess domain.AppVersionSummary,
+) (domain.AppVersionSummary, error) {
+	rows, err := queries.InsertRegistrationRequest(ctx, appdb.InsertRegistrationRequestParams{
+		OwnerUserID: record.OwnerUserID, IdempotencyKey: record.IdempotencyKey,
+		RequestDigest: record.RequestDigest, AppVersionID: versionID, CreatedAt: timestamp(record.CreatedAt),
+	})
+	if err != nil {
+		return domain.AppVersionSummary{}, fmt.Errorf("insert registration request: %w", err)
 	}
 	if rows > 0 {
 		if err := tx.Commit(ctx); err != nil {
-			return domain.AppVersion{}, fmt.Errorf("commit register app version: %w", err)
+			return domain.AppVersionSummary{}, fmt.Errorf("commit register app version: %w", err)
 		}
-		return record, nil
+		return onSuccess, nil
 	}
-
-	byVersion, err := queries.GetAppVersion(ctx, appdb.GetAppVersionParams{
-		OwnerUserID: record.OwnerUserID, AppID: record.AppID, Version: record.Version,
-	})
-	if err == nil {
-		if byVersion.ManifestDigest == record.ManifestDigest {
-			return appVersionFromDB(byVersion), nil
-		}
-		return domain.AppVersion{}, domain.ErrVersionExists
-	}
-	if !errors.Is(err, pgx.ErrNoRows) {
-		return domain.AppVersion{}, fmt.Errorf("query conflicting app version: %w", err)
-	}
-
-	byKey, err := queries.GetAppVersionByIdempotency(ctx, appdb.GetAppVersionByIdempotencyParams{
+	consumed, err := queries.GetRegistrationRequest(ctx, appdb.GetRegistrationRequestParams{
 		OwnerUserID: record.OwnerUserID, IdempotencyKey: record.IdempotencyKey,
 	})
-	if err == nil {
-		if byKey.RequestDigest == record.RequestDigest {
-			return appVersionFromDB(byKey), nil
+	if err != nil {
+		return domain.AppVersionSummary{}, fmt.Errorf("classify consumed registration request: %w", err)
+	}
+	if consumed.RequestDigest != record.RequestDigest {
+		return domain.AppVersionSummary{}, domain.ErrIdempotencyConflict
+	}
+	version, err := queries.GetAppVersionByID(ctx, consumed.AppVersionID)
+	if err != nil {
+		return domain.AppVersionSummary{}, fmt.Errorf("query consumed app version: %w", err)
+	}
+	return summaryFromDB(version), nil
+}
+
+// summarySelect lists exactly the columns public projections and SemVer
+// comparison need; read paths never select the canonical manifest.
+const summarySelect = `
+SELECT owner_user_id, app_id, version, scope, name, permissions, manifest_digest
+FROM workos_core.app_versions`
+
+func (r *Repository) GetVersion(ctx context.Context, ownerUserID, appID, version string) (domain.AppVersionSummary, error) {
+	rows, err := r.pool.Query(ctx, summarySelect+`
+WHERE owner_user_id = $1 AND app_id = $2 AND version = $3
+LIMIT 1`, ownerUserID, appID, version)
+	if err != nil {
+		return domain.AppVersionSummary{}, appVersionError("query app version", err)
+	}
+	defer rows.Close()
+	if !rows.Next() {
+		if err := rows.Err(); err != nil {
+			return domain.AppVersionSummary{}, appVersionError("query app version", err)
 		}
-		return domain.AppVersion{}, domain.ErrIdempotencyConflict
+		return domain.AppVersionSummary{}, domain.ErrNotFound
 	}
-	if !errors.Is(err, pgx.ErrNoRows) {
-		return domain.AppVersion{}, fmt.Errorf("query conflicting app idempotency: %w", err)
+	summary, err := scanSummary(rows)
+	if err != nil {
+		return domain.AppVersionSummary{}, err
 	}
-	return domain.AppVersion{}, fmt.Errorf("register app version: insert conflict could not be classified")
+	return summary, nil
 }
 
-func (r *Repository) GetVersion(ctx context.Context, ownerUserID, appID, version string) (domain.AppVersion, error) {
-	value, err := r.queries.GetAppVersion(ctx, appdb.GetAppVersionParams{
-		OwnerUserID: ownerUserID, AppID: appID, Version: version,
-	})
-	return appVersionFromDB(value), appVersionError("query app version", err)
-}
-
-func (r *Repository) GetAppVersions(ctx context.Context, ownerUserID, appID string) ([]domain.AppVersion, error) {
-	values, err := r.queries.GetAppVersions(ctx, appdb.GetAppVersionsParams{
-		OwnerUserID: ownerUserID, AppID: appID,
+func (r *Repository) ListAppIDPage(ctx context.Context, ownerUserID, cursor string, limit int) ([]string, string, error) {
+	// Probe one row beyond the effective limit: only a real extra record
+	// produces a next cursor, so an exactly-full final page yields none.
+	appIDs, err := r.queries.ListAppIDPage(ctx, appdb.ListAppIDPageParams{
+		OwnerUserID: ownerUserID, Cursor: cursor, RowLimit: int32(limit + 1),
 	})
 	if err != nil {
-		return nil, appVersionError("list app versions", err)
+		return nil, "", appVersionError("list app ids", err)
 	}
-	result := make([]domain.AppVersion, 0, len(values))
-	for _, value := range values {
-		result = append(result, appVersionFromDB(value))
+	if len(appIDs) <= limit {
+		return appIDs, "", nil
 	}
-	return result, nil
+	page := appIDs[:limit]
+	return page, page[len(page)-1], nil
 }
 
-func (r *Repository) ListAppIDs(ctx context.Context, ownerUserID, cursor string, limit int) ([]string, error) {
-	return r.queries.ListAppIDs(ctx, appdb.ListAppIDsParams{
-		OwnerUserID: ownerUserID, Cursor: cursor, RowLimit: int32(limit),
-	})
-}
-
-func (r *Repository) GetVersionsForApps(ctx context.Context, ownerUserID string, appIDs []string) ([]domain.AppVersion, error) {
+// VisitVersionSummaries streams summaries grouped and ordered by app ID so
+// the caller can fold current versions with a fixed-size accumulator. Rows
+// are visited as the driver yields them instead of being materialized.
+func (r *Repository) VisitVersionSummaries(ctx context.Context, ownerUserID string, appIDs []string, visit func(domain.AppVersionSummary) error) error {
 	if len(appIDs) == 0 {
-		return nil, nil
+		return nil
 	}
-	values, err := r.queries.ListAppVersionsForApps(ctx, appdb.ListAppVersionsForAppsParams{
-		OwnerUserID: ownerUserID, AppIds: appIDs,
-	})
+	rows, err := r.pool.Query(ctx, summarySelect+`
+WHERE owner_user_id = $1 AND app_id = ANY($2::text[])
+ORDER BY app_id`, ownerUserID, appIDs)
 	if err != nil {
-		return nil, appVersionError("list app versions for apps", err)
+		return appVersionError("list app version summaries", err)
 	}
-	result := make([]domain.AppVersion, 0, len(values))
-	for _, value := range values {
-		result = append(result, appVersionFromDB(value))
+	defer rows.Close()
+	for rows.Next() {
+		summary, err := scanSummary(rows)
+		if err != nil {
+			return err
+		}
+		if err := visit(summary); err != nil {
+			return err
+		}
 	}
-	return result, nil
+	return appVersionError("iterate app version summaries", rows.Err())
 }
 
-func appVersionFromDB(value appdb.WorkosCoreAppVersion) domain.AppVersion {
-	return domain.AppVersion{
-		ID: value.ID, OwnerUserID: value.OwnerUserID, IdempotencyKey: value.IdempotencyKey,
-		RequestDigest: value.RequestDigest, AppID: value.AppID, Version: value.Version,
-		Scope: domain.Scope(value.Scope), Name: value.Name, Permissions: value.Permissions,
-		ManifestDigest: value.ManifestDigest, CanonicalManifest: value.CanonicalManifest,
-		CreatedAt: value.CreatedAt.Time,
+func scanSummary(rows pgx.Rows) (domain.AppVersionSummary, error) {
+	var (
+		ownerUserID string
+		scope       string
+		summary     domain.AppVersionSummary
+	)
+	if err := rows.Scan(
+		&ownerUserID, &summary.AppID, &summary.Version, &scope,
+		&summary.Name, &summary.Permissions, &summary.ManifestDigest,
+	); err != nil {
+		return domain.AppVersionSummary{}, appVersionError("scan app version summary", err)
+	}
+	summary.Scope = domain.Scope(scope)
+	return summary, nil
+}
+
+// summaryFromDB strips the manifest from a full-row read: only Register's
+// replay and classification paths load full rows, and even they return the
+// summary projection.
+func summaryFromDB(value appdb.WorkosCoreAppVersion) domain.AppVersionSummary {
+	return domain.AppVersionSummary{
+		AppID: value.AppID, Version: value.Version, Scope: domain.Scope(value.Scope),
+		Name: value.Name, Permissions: value.Permissions, ManifestDigest: value.ManifestDigest,
 	}
 }
 

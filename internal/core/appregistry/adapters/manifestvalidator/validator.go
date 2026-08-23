@@ -250,6 +250,14 @@ func (w *structureWalker) mapping(node *yaml.Node, path string, depth int) map[s
 			return nil
 		}
 		key := keyNode.Value
+		// Keys are validated before any pointer construction, map insertion,
+		// schema validation, or persistence, and unsafe keys are reported by
+		// parent path only so the raw key never reaches a violation message.
+		if !validMappingKey(key) {
+			w.add(path, "mapping keys must be valid UTF-8, control-free, and between 1 and 256 characters")
+			w.failed = true
+			return nil
+		}
 		if _, duplicate := result[key]; duplicate {
 			w.add(pointerChild(path, key), "duplicate mapping key")
 			w.failed = true
@@ -261,6 +269,27 @@ func (w *structureWalker) mapping(node *yaml.Node, path string, depth int) map[s
 		}
 	}
 	return result
+}
+
+// maxMappingKeyRunes bounds each mapping key so free-form blocks cannot use
+// pathological key lengths.
+const maxMappingKeyRunes = 256
+
+func validMappingKey(key string) bool {
+	if !utf8.ValidString(key) {
+		return false
+	}
+	count := 0
+	for _, r := range key {
+		if r < 0x20 || r == 0x7f || (r >= 0x80 && r <= 0x9f) {
+			return false
+		}
+		count++
+		if count > maxMappingKeyRunes {
+			return false
+		}
+	}
+	return count > 0
 }
 
 func (w *structureWalker) scalar(node *yaml.Node, path string) any {
@@ -340,7 +369,7 @@ func scanSecrets(value any, path string, add func(path, message string)) {
 	case map[string]any:
 		for key, child := range typed {
 			childPath := pointerChild(path, key)
-			if secretKeyPattern.MatchString(key) {
+			if secretBearingKey(key) {
 				add(childPath, "field names that hold secrets are not allowed in manifests")
 			}
 			scanSecrets(child, childPath, add)

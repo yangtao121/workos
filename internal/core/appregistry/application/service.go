@@ -36,10 +36,17 @@ type ManifestValidator interface {
 	Validate(yamlBytes []byte) (domain.Manifest, []string)
 }
 
+// PageResult is the explicit paging contract: items plus the next cursor as
+// decided by the repository probe. Transport forwards the token verbatim and
+// never recomputes paging from the raw request.
+type PageResult struct {
+	Items     []domain.AppVersionSummary
+	NextToken string
+}
+
 const (
-	defaultPageSize        = 50
-	maxPageSize            = 100
-	maxIdempotencyKeyRunes = 128
+	defaultPageSize = 50
+	maxPageSize     = 100
 )
 
 type Service struct {
@@ -71,16 +78,16 @@ func (s *Service) ValidateManifest(ctx context.Context, yamlBytes []byte) (domai
 }
 
 // Register validates and persists one immutable App version for the owner.
-func (s *Service) Register(ctx context.Context, ownerUserID, idempotencyKey string, yamlBytes []byte) (domain.AppVersion, error) {
-	if ownerUserID == "" || idempotencyKey == "" || len([]rune(idempotencyKey)) > maxIdempotencyKeyRunes || len(yamlBytes) == 0 || len(yamlBytes) > manifestLimit() {
-		return domain.AppVersion{}, domain.ErrInvalid
+func (s *Service) Register(ctx context.Context, ownerUserID, idempotencyKey string, yamlBytes []byte) (domain.AppVersionSummary, error) {
+	if ownerUserID == "" || !domain.ValidIdempotencyKey(idempotencyKey) || len(yamlBytes) == 0 || len(yamlBytes) > manifestLimit() {
+		return domain.AppVersionSummary{}, domain.ErrInvalid
 	}
 	manifest, violations := s.validator.Validate(yamlBytes)
 	if len(violations) > 0 {
-		return domain.AppVersion{}, domain.ErrInvalid
+		return domain.AppVersionSummary{}, domain.ErrInvalid
 	}
 	if _, ok := domain.ParseVersion(manifest.Version); !ok {
-		return domain.AppVersion{}, domain.ErrInvalid
+		return domain.AppVersionSummary{}, domain.ErrInvalid
 	}
 	record := domain.AppVersion{
 		ID: s.ids.New(), OwnerUserID: ownerUserID, AppID: manifest.ID, Version: manifest.Version,
@@ -92,76 +99,131 @@ func (s *Service) Register(ctx context.Context, ownerUserID, idempotencyKey stri
 }
 
 // Get returns the current version for an empty version, or the exact
-// immutable version when one is requested.
-func (s *Service) Get(ctx context.Context, ownerUserID, appID, version string) (domain.AppVersion, error) {
-	if ownerUserID == "" || appID == "" {
-		return domain.AppVersion{}, domain.ErrInvalid
+// immutable version when one is requested. Both paths read the bounded
+// summary projection only.
+func (s *Service) Get(ctx context.Context, ownerUserID, appID, version string) (domain.AppVersionSummary, error) {
+	if ownerUserID == "" || !domain.ValidAppID(appID) {
+		return domain.AppVersionSummary{}, domain.ErrInvalid
 	}
 	if version != "" {
 		if _, ok := domain.ParseVersion(version); !ok {
-			return domain.AppVersion{}, domain.ErrInvalid
+			return domain.AppVersionSummary{}, domain.ErrInvalid
 		}
 		return s.repository.GetVersion(ctx, ownerUserID, appID, version)
 	}
-	versions, err := s.repository.GetAppVersions(ctx, ownerUserID, appID)
+	current, ok, err := s.currentVersion(ctx, ownerUserID, appID)
 	if err != nil {
-		return domain.AppVersion{}, err
+		return domain.AppVersionSummary{}, err
 	}
-	current, ok := domain.CurrentVersion(versions)
 	if !ok {
-		return domain.AppVersion{}, domain.ErrNotFound
+		return domain.AppVersionSummary{}, domain.ErrNotFound
 	}
 	return current, nil
 }
 
 // List returns the current version of every registered app, ordered by app
-// ID, one page at a time. A non-empty projectID first proves the project
-// belongs to the owner and is not archived; the result is the owner's
-// registry catalog in that project context, never an installation state.
-func (s *Service) List(ctx context.Context, ownerUserID, projectID, cursor string, pageSize int) ([]domain.AppVersion, error) {
+// ID, one page at a time. The page size is normalized exactly once here:
+// zero means the default, values above the maximum clamp to it, and negative
+// values are rejected. A non-empty projectID first proves the project belongs
+// to the owner and is not archived; the result is the owner's registry
+// catalog in that project context, never an installation state.
+func (s *Service) List(ctx context.Context, ownerUserID, projectID, cursor string, pageSize int) (PageResult, error) {
 	if ownerUserID == "" {
-		return nil, domain.ErrInvalid
+		return PageResult{}, domain.ErrInvalid
 	}
-	if pageSize <= 0 {
+	switch {
+	case pageSize < 0:
+		return PageResult{}, domain.ErrInvalid
+	case pageSize == 0:
 		pageSize = defaultPageSize
-	}
-	if pageSize > maxPageSize {
+	case pageSize > maxPageSize:
 		pageSize = maxPageSize
 	}
+	if cursor != "" && !domain.ValidAppID(cursor) {
+		return PageResult{}, domain.ErrInvalid
+	}
 	if projectID != "" {
+		if !domain.ValidUUID(projectID) {
+			return PageResult{}, domain.ErrInvalid
+		}
 		if s.projects == nil {
-			return nil, errors.New("project directory is not configured")
+			return PageResult{}, errors.New("project directory is not configured")
 		}
 		if _, err := s.projects.Get(ctx, ownerUserID, projectID); err != nil {
 			if errors.Is(err, ErrProjectDenied) {
-				return nil, domain.ErrNotFound
+				return PageResult{}, domain.ErrNotFound
 			}
-			return nil, fmt.Errorf("resolve project context: %w", err)
+			return PageResult{}, fmt.Errorf("resolve project context: %w", err)
 		}
 	}
-	appIDs, err := s.repository.ListAppIDs(ctx, ownerUserID, cursor, pageSize)
+	appIDs, nextCursor, err := s.repository.ListAppIDPage(ctx, ownerUserID, cursor, pageSize)
 	if err != nil {
-		return nil, err
+		return PageResult{}, err
 	}
 	if len(appIDs) == 0 {
-		return []domain.AppVersion{}, nil
+		return PageResult{Items: []domain.AppVersionSummary{}, NextToken: ""}, nil
 	}
-	versions, err := s.repository.GetVersionsForApps(ctx, ownerUserID, appIDs)
+	currents, err := s.currentVersions(ctx, ownerUserID, appIDs)
+	if err != nil {
+		return PageResult{}, err
+	}
+	return PageResult{Items: currents, NextToken: nextCursor}, nil
+}
+
+// currentVersion folds the streamed summaries of one app into its SemVer
+// current version using a single-candidate accumulator.
+func (s *Service) currentVersion(ctx context.Context, ownerUserID, appID string) (domain.AppVersionSummary, bool, error) {
+	currents, err := s.currentVersions(ctx, ownerUserID, []string{appID})
+	if err != nil {
+		return domain.AppVersionSummary{}, false, err
+	}
+	if len(currents) == 0 {
+		return domain.AppVersionSummary{}, false, nil
+	}
+	return currents[0], true, nil
+}
+
+// currentVersions folds the repository's app-ID-ordered summary stream into
+// one current version per app. Memory is bounded by the accumulator (one
+// candidate) plus the result slice (one entry per requested app).
+func (s *Service) currentVersions(ctx context.Context, ownerUserID string, appIDs []string) ([]domain.AppVersionSummary, error) {
+	currents := make([]domain.AppVersionSummary, 0, len(appIDs))
+	var (
+		candidate      domain.AppVersionSummary
+		candidateParse domain.Version
+		haveCandidate  bool
+	)
+	err := s.repository.VisitVersionSummaries(ctx, ownerUserID, appIDs, func(summary domain.AppVersionSummary) error {
+		parsed, ok := domain.ParseVersion(summary.Version)
+		if !ok {
+			// Every stored version passed the validator; an unparseable one is
+			// a corrupted invariant, surfaced as a sanitized internal error.
+			return errStoredVersionCorrupt
+		}
+		if !haveCandidate || candidate.AppID != summary.AppID {
+			if haveCandidate {
+				currents = append(currents, candidate)
+			}
+			candidate, candidateParse, haveCandidate = summary, parsed, true
+			return nil
+		}
+		if domain.CompareVersion(parsed, candidateParse) > 0 {
+			candidate, candidateParse = summary, parsed
+		}
+		return nil
+	})
 	if err != nil {
 		return nil, err
 	}
-	grouped := make(map[string][]domain.AppVersion, len(appIDs))
-	for _, version := range versions {
-		grouped[version.AppID] = append(grouped[version.AppID], version)
+	if haveCandidate {
+		currents = append(currents, candidate)
 	}
-	result := make([]domain.AppVersion, 0, len(appIDs))
-	for _, appID := range appIDs {
-		if current, ok := domain.CurrentVersion(grouped[appID]); ok {
-			result = append(result, current)
-		}
-	}
-	return result, nil
+	return currents, nil
 }
+
+// errStoredVersionCorrupt has no domain conflict semantics, so transport maps
+// it to a sanitized Internal error.
+var errStoredVersionCorrupt = errors.New("stored app version is not parseable")
 
 func manifestLimit() int {
 	return domain.MaxManifestBytes

@@ -3,19 +3,44 @@ package transport
 import (
 	"context"
 	"errors"
+	"net/http"
 
 	"connectrpc.com/connect"
 
 	appv1 "github.com/yangtao121/workos/gen/go/workos/app/v1"
+	appv1connect "github.com/yangtao121/workos/gen/go/workos/app/v1/appv1connect"
 	commonv1 "github.com/yangtao121/workos/gen/go/workos/common/v1"
 	"github.com/yangtao121/workos/internal/core/appregistry/application"
 	"github.com/yangtao121/workos/internal/core/appregistry/domain"
 	"github.com/yangtao121/workos/internal/platform/identity"
 )
 
+// MaxRequestBytes bounds every AppRegistryService request message before the
+// Connect stack decodes it. It must accommodate the legal 256 KiB manifest in
+// every accepted wire form: binary protobuf framing (~5 bytes of tag and
+// length plus the 128-byte idempotency key ceiling) and the protojson
+// encoding, where the bytes manifest field inflates 4/3 through base64 to
+// ~350 KiB before field names and JSON punctuation. 384 KiB (393,216 bytes)
+// leaves headroom over both while staying a small explicit constant — the
+// library default is unlimited. The application-level 256 KiB manifest check
+// stays in place, so the wire budget only guards decode-time memory.
+const MaxRequestBytes = 384 * 1024
+
 type Handler struct{ service *application.Service }
 
 func New(service *application.Service) *Handler { return &Handler{service: service} }
+
+// NewConnectHandler wires the transport into a real Connect handler with the
+// registry's bounded-read configuration. Composition roots and tests must use
+// this constructor so the read limit is identical in production and tests;
+// the limit applies per decompressed request message and rejects oversize
+// bodies with ResourceExhausted before any business code runs.
+func NewConnectHandler(service *application.Service) (string, http.Handler) {
+	return appv1connect.NewAppRegistryServiceHandler(
+		New(service),
+		connect.WithReadMaxBytes(MaxRequestBytes),
+	)
+}
 
 func (h *Handler) ValidateManifest(ctx context.Context, req *connect.Request[appv1.ValidateManifestRequest]) (*connect.Response[appv1.ValidateManifestResponse], error) {
 	if _, err := identity.FromContext(ctx); err != nil {
@@ -47,7 +72,7 @@ func (h *Handler) RegisterApp(ctx context.Context, req *connect.Request[appv1.Re
 	if err != nil {
 		return nil, mapError(err)
 	}
-	return connect.NewResponse(&appv1.RegisterAppResponse{App: AppToProto(versionToProto(record))}), nil
+	return connect.NewResponse(&appv1.RegisterAppResponse{App: AppToProto(SummaryToProto(record))}), nil
 }
 
 func (h *Handler) GetApp(ctx context.Context, req *connect.Request[appv1.GetAppRequest]) (*connect.Response[appv1.GetAppResponse], error) {
@@ -59,7 +84,7 @@ func (h *Handler) GetApp(ctx context.Context, req *connect.Request[appv1.GetAppR
 	if err != nil {
 		return nil, mapError(err)
 	}
-	return connect.NewResponse(&appv1.GetAppResponse{App: AppToProto(versionToProto(record))}), nil
+	return connect.NewResponse(&appv1.GetAppResponse{App: AppToProto(SummaryToProto(record))}), nil
 }
 
 func (h *Handler) ListApps(ctx context.Context, req *connect.Request[appv1.ListAppsRequest]) (*connect.Response[appv1.ListAppsResponse], error) {
@@ -71,20 +96,18 @@ func (h *Handler) ListApps(ctx context.Context, req *connect.Request[appv1.ListA
 	if req.Msg.GetPage() != nil {
 		pageSize, pageToken = int(req.Msg.GetPage().GetPageSize()), req.Msg.GetPage().GetPageToken()
 	}
-	records, err := h.service.List(ctx, id.UserID, req.Msg.GetProjectId(), pageToken, pageSize)
+	result, err := h.service.List(ctx, id.UserID, req.Msg.GetProjectId(), pageToken, pageSize)
 	if err != nil {
 		return nil, mapError(err)
 	}
-	apps := make([]*appv1.WorkOSApp, 0, len(records))
-	for _, record := range records {
-		apps = append(apps, AppToProto(versionToProto(record)))
+	apps := make([]*appv1.WorkOSApp, 0, len(result.Items))
+	for _, summary := range result.Items {
+		apps = append(apps, AppToProto(SummaryToProto(summary)))
 	}
-	next := ""
-	if pageSize > 0 && len(apps) == pageSize {
-		next = apps[len(apps)-1].GetId()
-	}
+	// The application layer owns the effective page size and the limit+1
+	// probe; transport forwards its next token verbatim.
 	return connect.NewResponse(&appv1.ListAppsResponse{
-		Apps: apps, Page: &commonv1.PageResponse{NextPageToken: next},
+		Apps: apps, Page: &commonv1.PageResponse{NextPageToken: result.NextToken},
 	}), nil
 }
 
@@ -122,10 +145,10 @@ func manifestProjection(manifest domain.Manifest) AppSummary {
 	}
 }
 
-func versionToProto(record domain.AppVersion) AppSummary {
+func SummaryToProto(summary domain.AppVersionSummary) AppSummary {
 	return AppSummary{
-		ID: record.AppID, Name: record.Name, Version: record.Version,
-		Scope: record.Scope, Permissions: record.Permissions, ManifestDigest: record.ManifestDigest,
+		ID: summary.AppID, Name: summary.Name, Version: summary.Version,
+		Scope: summary.Scope, Permissions: summary.Permissions, ManifestDigest: summary.ManifestDigest,
 	}
 }
 
