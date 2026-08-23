@@ -29,13 +29,17 @@ export function Desktop({ workosClients = clients }: { workosClients?: WorkOSCli
   const [catalogState, setCatalogState] = useState<CatalogState>("loading");
   const [catalogError, setCatalogError] = useState<string>();
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [bindingDraft, setBindingDraft] = useState<HarnessSelection>({ kind: "global" });
-  const [bindingSaving, setBindingSaving] = useState(false);
-  const [bindingFeedback, setBindingFeedback] = useState<string>();
-  const [bindingFeedbackIsError, setBindingFeedbackIsError] = useState(false);
+  const [bindingDrafts, setBindingDrafts] = useState<Record<string, HarnessSelection>>({});
+  const [bindingSaving, setBindingSaving] = useState<Record<string, boolean>>({});
+  const [bindingFeedback, setBindingFeedback] = useState<
+    Record<string, BindingFeedback | undefined>
+  >({});
+  const bindingOperationTokens = useRef<Record<string, number>>({});
   const [windows, dispatch] = useReducer(windowReducer, initialWindowState);
-  const bindingProjectID = useRef<string | undefined>(undefined);
   const activeProject = projects.find((project) => project.id === activeProjectId);
+  const bindingDraft: HarnessSelection = activeProject
+    ? (bindingDrafts[activeProject.id] ?? selectionFromProject(activeProject))
+    : { kind: "global" };
 
   const refreshProjects = useCallback(async () => {
     const response = await workosClients.projects.listProjects({
@@ -72,14 +76,6 @@ export function Desktop({ workosClients = clients }: { workosClients?: WorkOSCli
   useEffect(() => {
     void refreshCatalog();
   }, [refreshCatalog]);
-
-  useEffect(() => {
-    if (!activeProject || bindingProjectID.current === activeProject.id) return;
-    bindingProjectID.current = activeProject.id;
-    setBindingDraft(selectionFromProject(activeProject));
-    setBindingFeedback(undefined);
-    setBindingFeedbackIsError(false);
-  }, [activeProject]);
 
   useEffect(() => {
     dispatch({
@@ -121,44 +117,75 @@ export function Desktop({ workosClients = clients }: { workosClients?: WorkOSCli
     );
   }
 
-  async function saveHarnessBinding() {
-    if (!activeProject || bindingSaving) return;
-    setBindingSaving(true);
-    setBindingFeedback(undefined);
-    setBindingFeedbackIsError(false);
+  async function saveHarnessBinding(projectId: string) {
+    const project = projects.find((candidate) => candidate.id === projectId);
+    if (!project || bindingSaving[projectId]) return;
+    const token = (bindingOperationTokens.current[projectId] ?? 0) + 1;
+    bindingOperationTokens.current[projectId] = token;
+    const isLatest = () => bindingOperationTokens.current[projectId] === token;
+    setBindingSaving((current) => ({ ...current, [projectId]: true }));
+    setBindingFeedback((current) => ({ ...current, [projectId]: undefined }));
     try {
       const response = await workosClients.projectHarnessBindings.setProjectHarnessBinding({
-        projectId: activeProject.id,
-        expectedRevision: activeProject.revision,
+        projectId,
+        expectedRevision: project.revision,
         selection:
           bindingDraft.kind === "provider"
             ? { case: "providerId", value: bindingDraft.providerId }
             : { case: "useGlobalDefault", value: true },
       });
-      if (!response.project) throw new Error("missing project response");
-      replaceProject(response.project);
-      setBindingDraft(selectionFromProject(response.project));
-      setBindingFeedback("Harness setting saved.");
+      const updated = response.project;
+      if (!updated) throw new Error("missing project response");
+      replaceProject(updated);
+      if (!isLatest()) return;
+      setBindingDrafts((current) => ({
+        ...current,
+        [projectId]: selectionFromProject(updated),
+      }));
+      setBindingFeedback((current) => ({
+        ...current,
+        [projectId]: { text: "Harness setting saved.", isError: false },
+      }));
     } catch (reason) {
       if (reason instanceof ConnectError && reason.code === Code.Aborted) {
         try {
-          const refreshed = await workosClients.projects.getProject({
-            projectId: activeProject.id,
-          });
-          if (refreshed.project) {
-            replaceProject(refreshed.project);
-            setBindingDraft(selectionFromProject(refreshed.project));
-          }
-          setBindingFeedback("Project settings changed elsewhere. The latest revision was loaded.");
+          const refreshedResponse = await workosClients.projects.getProject({ projectId });
+          const refreshed = refreshedResponse.project;
+          if (!refreshed) throw new Error("missing refreshed project");
+          replaceProject(refreshed);
+          if (!isLatest()) return;
+          setBindingDrafts((current) => ({
+            ...current,
+            [projectId]: selectionFromProject(refreshed),
+          }));
+          setBindingFeedback((current) => ({
+            ...current,
+            [projectId]: {
+              text: "Project settings changed elsewhere. The latest revision was loaded.",
+              isError: true,
+            },
+          }));
         } catch {
-          setBindingFeedback("Project settings changed elsewhere and could not be refreshed.");
+          if (!isLatest()) return;
+          setBindingFeedback((current) => ({
+            ...current,
+            [projectId]: {
+              text: "Project settings changed elsewhere and could not be refreshed.",
+              isError: true,
+            },
+          }));
         }
       } else {
-        setBindingFeedback(bindingErrorMessage(reason));
+        if (!isLatest()) return;
+        setBindingFeedback((current) => ({
+          ...current,
+          [projectId]: { text: bindingErrorMessage(reason), isError: true },
+        }));
       }
-      setBindingFeedbackIsError(true);
     } finally {
-      setBindingSaving(false);
+      if (isLatest()) {
+        setBindingSaving((current) => ({ ...current, [projectId]: false }));
+      }
     }
   }
 
@@ -266,16 +293,21 @@ export function Desktop({ workosClients = clients }: { workosClients?: WorkOSCli
               catalogError={catalogError}
               catalogState={catalogState}
               draft={bindingDraft}
-              feedback={bindingFeedback}
-              feedbackIsError={bindingFeedbackIsError}
+              feedback={bindingFeedback[activeProject.id]?.text}
+              feedbackIsError={bindingFeedback[activeProject.id]?.isError}
               project={activeProject}
-              saving={bindingSaving}
+              saving={bindingSaving[activeProject.id] ?? false}
               onRetry={() => void refreshCatalog()}
-              onSave={() => void saveHarnessBinding()}
+              onSave={() => void saveHarnessBinding(activeProject.id)}
               onSelectionChange={(selection) => {
-                setBindingDraft(selection);
-                setBindingFeedback(undefined);
-                setBindingFeedbackIsError(false);
+                setBindingDrafts((current) => ({
+                  ...current,
+                  [activeProject.id]: selection,
+                }));
+                setBindingFeedback((current) => ({
+                  ...current,
+                  [activeProject.id]: undefined,
+                }));
               }}
             />
           ) : null}
@@ -337,6 +369,11 @@ export function Desktop({ workosClients = clients }: { workosClients?: WorkOSCli
       </nav>
     </main>
   );
+}
+
+interface BindingFeedback {
+  text: string;
+  isError: boolean;
 }
 
 function bindingErrorMessage(reason: unknown): string {

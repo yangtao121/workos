@@ -90,3 +90,40 @@ Provider、tools/sessions/approvals、Runtime/Reliability/Indexer 等能力。
 cgroup/resource enforcement；生产认证、Credential Vault 与 live provider smoke 仍不在本任务范围。既有
 完整 `UpdateProject` v1 契约为兼容性继续保留，但新 Desktop/command 不提交或展示 credential 字段。
 未使用真实 Key，未运行真实 DeepSeek smoke，未删除 Docker volume。
+
+### 审核阻断项修复（2026-08-23 UTC）
+
+评审发现两个 Desktop 竞态与一个生成文件门禁问题，已修复并补确定性测试（desktop-web 测试从 12 增至
+15，全部通过）：
+
+1. Project 切换异步串线：绑定状态从全局值改为按 `project_id` 隔离（`bindingDrafts`、
+   `bindingSaving`、`bindingFeedback` map），每次保存持有不可变 project ID 与单调递增 operation
+   token；continuation 只在 token 仍为该项目最新时写编辑器状态，服务端返回始终更新同 ID 列表缓存。
+   移除旧的 `bindingProjectID` 初始化 effect，编辑器在切换后立即以目标 Project 持久化 binding 惰性
+   初始化。新增两个 deferred-Promise 确定性测试：
+   - A 保存 pending 期间切到 B；A 成功后仅 A 列表项更新（revision 2），B 的选中值、feedback 均不被
+     覆盖，B 仍可按自己的 selection 保存（第二次调用携带 project-2 / revision 8 / fake）。
+   - A 保存返回 `Code.Aborted`、`GetProject` refresh 未完成时切到 B；refresh 返回只更新 A 缓存，
+     B 的 draft 与提示不变；切回 A 时显示刷新后的 revision 2 与 conflict 提示。
+2. Catalog 非 ready 保存门禁：`HarnessSettings.draftCanSave` 增加 `catalogState === "ready"` 前提；
+   loading、error 或 provider 不在当前 Catalog 时禁止提交具体 provider，`Use Global Default` 不依赖
+   Catalog 仍可保存；已保存但 unknown/unavailable 的 binding 保持显示且可解除。新增组件测试覆盖
+   ready→loading→error→provider-消失 四种状态与全局默认兜底。
+3. 生成文件 whitespace：根目录新增 `.gitattributes`，仅对 `sdk/protocol/src/gen/**` 关闭
+   `blank-at-eof` 检查（protoc-gen-es 生成的 TS 文件以空行结尾），未放宽其他 whitespace 规则；
+   `git diff --check main...HEAD` 通过。
+
+修复后验收命令（实际执行，2026-08-23 UTC）：
+
+- `make generate` 三次执行：通过，无漂移；`gen/` 与 `sdk/protocol/src/gen/` 全树 SHA-256 一致，
+  README 与 `docs/status.json` 不变。
+- `make check`：通过；Go/Proto/架构、全部 workspace 与 desktop-web 15 tests 通过。
+- `make test-integration`：通过；默认纵向集成 + restart persistence verified。
+- `make test-deepseek-fixture`：通过；Go 主测试及 5 个失败映射子测试、restart helper、Playwright
+  fixture spec 1/1。
+- `make test-e2e`：通过；foundation 1/1，fixture-only spec 按设计 skip。
+- `buf breaking --against '.git#branch=main'`：通过，无 breaking change。
+- `git diff --check`、`git diff --check main...HEAD`：通过；`docs/structure.md` unchanged、无
+  root-owned 文件、无新增 migration/secret 形态、PostgreSQL volume 未删除。
+- 修复提交：`fix: isolate harness settings state by project`；提交后 `git status --short` 为空；
+  未 merge、未 push。

@@ -14,8 +14,12 @@ import {
   type HarnessProviderInfo,
   type Project,
 } from "@workos/protocol";
+import { act } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { Desktop } from "./Desktop.js";
+
+// React 19 act() requires this flag in jsdom to flush deferred promise updates.
+(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 afterEach(cleanup);
 
@@ -101,6 +105,102 @@ describe("Desktop harness workflow", () => {
     expect(await screen.findByText("Run started · deepseek")).toBeTruthy();
     expect(snapshot.textContent).not.toContain("fake");
   });
+
+  it("isolates a pending save from a Project switch so a late success cannot overwrite the other editor", async () => {
+    const pending = deferred<{ project: Project }>();
+    const setBinding = vi.fn(() => pending.promise);
+    render(
+      <Desktop
+        workosClients={clientFixture({
+          projects: [
+            project("project-1", "Project One", 1n),
+            project("project-2", "Project Two", 8n, "deepseek"),
+          ],
+          setBinding,
+        })}
+      />,
+    );
+
+    await userEvent.click(await screen.findByRole("button", { name: "Project settings" }));
+    await userEvent.click(screen.getByRole("radio", { name: "Select DeepSeek Harness" }));
+    await userEvent.click(screen.getByRole("button", { name: "Save harness setting" }));
+    expect(setBinding).toHaveBeenCalledWith({
+      projectId: "project-1",
+      expectedRevision: 1n,
+      selection: { case: "providerId", value: "deepseek" },
+    });
+
+    await userEvent.click(screen.getByRole("button", { name: /Project Two revision 8/ }));
+    expect(
+      screen.getByRole<HTMLInputElement>("radio", { name: "Select DeepSeek Harness" }).checked,
+    ).toBe(true);
+
+    await act(async () => {
+      await pending.resolve({ project: project("project-1", "Project One", 2n, "fake") });
+    });
+    expect(
+      screen.getByRole<HTMLInputElement>("radio", { name: "Select DeepSeek Harness" }).checked,
+    ).toBe(true);
+    expect(screen.queryByText("Harness setting saved.")).toBeNull();
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: /Project One revision 2/ })).toBeTruthy();
+    });
+
+    await userEvent.click(screen.getByRole("radio", { name: "Select Fake Harness" }));
+    await userEvent.click(screen.getByRole("button", { name: "Save harness setting" }));
+    expect(setBinding).toHaveBeenLastCalledWith({
+      projectId: "project-2",
+      expectedRevision: 8n,
+      selection: { case: "providerId", value: "fake" },
+    });
+  });
+
+  it("isolates a conflict refresh to its Project while the user edits another Project", async () => {
+    const refresh = deferred<{ project: Project }>();
+    const setBinding = vi.fn(() =>
+      Promise.reject(new ConnectError("project revision conflict", Code.Aborted)),
+    );
+    const getProject = vi.fn(() => refresh.promise);
+    render(
+      <Desktop
+        workosClients={clientFixture({
+          projects: [
+            project("project-1", "Project One", 1n),
+            project("project-2", "Project Two", 8n, "deepseek"),
+          ],
+          setBinding,
+          getProject,
+        })}
+      />,
+    );
+
+    await userEvent.click(await screen.findByRole("button", { name: "Project settings" }));
+    await userEvent.click(screen.getByRole("radio", { name: "Select DeepSeek Harness" }));
+    await userEvent.click(screen.getByRole("button", { name: "Save harness setting" }));
+    await waitFor(() => {
+      expect(getProject).toHaveBeenCalledWith({ projectId: "project-1" });
+    });
+
+    await userEvent.click(screen.getByRole("button", { name: /Project Two revision 8/ }));
+    expect(screen.queryByText(/changed elsewhere/)).toBeNull();
+
+    await act(async () => {
+      await refresh.resolve({ project: project("project-1", "Project One", 2n, "fake") });
+    });
+    expect(
+      screen.getByRole<HTMLInputElement>("radio", { name: "Select DeepSeek Harness" }).checked,
+    ).toBe(true);
+    expect(screen.queryByText(/changed elsewhere/)).toBeNull();
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: /Project One revision 2/ })).toBeTruthy();
+    });
+
+    await userEvent.click(screen.getByRole("button", { name: /Project One revision 2/ }));
+    expect(
+      screen.getByRole<HTMLInputElement>("radio", { name: "Select Fake Harness" }).checked,
+    ).toBe(true);
+    expect(screen.getByText(/changed elsewhere/)).toBeTruthy();
+  });
 });
 
 function clientFixture({
@@ -133,6 +233,23 @@ function clientFixture({
 async function* eventStream(events: AgentEvent[]) {
   await Promise.resolve();
   for (const event of events) yield { event };
+}
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  return {
+    promise,
+    resolve: (value: T) => {
+      resolve(value);
+      return promise;
+    },
+    reject,
+  };
 }
 
 function project(id: string, name: string, revision: bigint, providerId?: string): Project {

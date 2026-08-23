@@ -1,0 +1,3 @@
+# protoc-gen-es emits a blank line at EOF; generated protocol sources are the
+# only files exempt from the blank-at-eof diff check.
+sdk/protocol/src/gen/** whitespace=-blank-at-eof

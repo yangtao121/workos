@@ -157,6 +157,61 @@ describe("HarnessSettings", () => {
     await userEvent.click(screen.getByRole("button", { name: "Save harness setting" }));
     expect(saved.at(-1)).toEqual({ kind: "global" });
   });
+
+  it("blocks saving a specific provider while the catalog is loading, failing, or missing it", async () => {
+    const saved: HarnessSelection[] = [];
+    const fullCatalog = catalog([
+      provider("fake", "Fake Harness", HealthState.HEALTHY),
+      provider("deepseek", "DeepSeek Harness", HealthState.HEALTHY),
+    ]);
+    const { rerender } = render(
+      <ControlledSettings
+        catalog={fullCatalog}
+        catalogState="ready"
+        project={project("fake")}
+        onSave={(selection) => saved.push(selection)}
+      />,
+    );
+    await userEvent.click(screen.getByRole("radio", { name: "Select DeepSeek Harness" }));
+    const saveButton = () =>
+      screen.getByRole<HTMLButtonElement>("button", { name: "Save harness setting" });
+    expect(saveButton().disabled).toBe(false);
+
+    rerender(
+      <ControlledSettings
+        catalog={fullCatalog}
+        catalogState="loading"
+        project={project("fake")}
+        onSave={(selection) => saved.push(selection)}
+      />,
+    );
+    expect(saveButton().disabled).toBe(true);
+
+    rerender(
+      <ControlledSettings
+        catalog={fullCatalog}
+        catalogState="error"
+        project={project("fake")}
+        onSave={(selection) => saved.push(selection)}
+      />,
+    );
+    expect(saveButton().disabled).toBe(true);
+
+    rerender(
+      <ControlledSettings
+        catalog={catalog([provider("fake", "Fake Harness", HealthState.HEALTHY)])}
+        catalogState="ready"
+        project={project("fake")}
+        onSave={(selection) => saved.push(selection)}
+      />,
+    );
+    expect(saveButton().disabled).toBe(true);
+
+    await userEvent.click(screen.getByRole("radio", { name: "Use Global Default" }));
+    expect(saveButton().disabled).toBe(false);
+    await userEvent.click(saveButton());
+    expect(saved).toEqual([{ kind: "global" }]);
+  });
 });
 
 function ControlledSettings({

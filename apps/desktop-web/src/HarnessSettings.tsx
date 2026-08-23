@@ -61,7 +61,9 @@ export function HarnessSettings({
       : undefined;
   const draftCanSave =
     draft.kind === "global" ||
-    (draftProvider !== undefined && providerSelectable(draftProvider.health));
+    (catalogState === "ready" &&
+      draftProvider !== undefined &&
+      providerSelectable(draftProvider.health));
 
   function submit(event: SyntheticEvent<HTMLFormElement>) {
     event.preventDefault();
