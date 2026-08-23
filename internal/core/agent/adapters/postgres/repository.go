@@ -36,28 +36,6 @@ func (r *Repository) Create(ctx context.Context, task domain.Task, idempotencyKe
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck
 	queries := r.queries.WithTx(tx)
-	if task.ProjectID != "" {
-		binding, err := queries.GetProjectHarnessBinding(ctx, agentdb.GetProjectHarnessBindingParams{
-			ID: task.ProjectID, OwnerUserID: task.OwnerUserID,
-		})
-		if errors.Is(err, pgx.ErrNoRows) {
-			return domain.Task{}, domain.ErrProjectDenied
-		}
-		if err != nil {
-			return domain.Task{}, fmt.Errorf("resolve project harness: %w", err)
-		}
-		if len(binding) > 0 && string(binding) != "null" {
-			var value struct {
-				ProviderID string `json:"providerId"`
-			}
-			if err := json.Unmarshal(binding, &value); err != nil {
-				return domain.Task{}, fmt.Errorf("decode project harness: %w", err)
-			}
-			if value.ProviderID != "" {
-				task.ProviderID = value.ProviderID
-			}
-		}
-	}
 	rows, err := queries.InsertAgentTask(ctx, agentdb.InsertAgentTaskParams{
 		ID: task.ID, OwnerUserID: task.OwnerUserID, IdempotencyKey: idempotencyKey,
 		ProjectID: projectID, Input: task.Input, State: string(task.State), ProviderID: task.ProviderID,
@@ -70,7 +48,7 @@ func (r *Repository) Create(ctx context.Context, task domain.Task, idempotencyKe
 		if err := tx.Commit(ctx); err != nil {
 			return domain.Task{}, fmt.Errorf("commit idempotent task: %w", err)
 		}
-		return r.getByIdempotency(ctx, task.OwnerUserID, idempotencyKey)
+		return r.GetByIdempotency(ctx, task.OwnerUserID, idempotencyKey)
 	}
 	payload, err := json.Marshal(map[string]string{"taskId": task.ID})
 	if err != nil {
@@ -96,7 +74,7 @@ func (r *Repository) Get(ctx context.Context, ownerID, taskID string) (domain.Ta
 	return taskFromDB(value, err)
 }
 
-func (r *Repository) getByIdempotency(ctx context.Context, ownerID, key string) (domain.Task, error) {
+func (r *Repository) GetByIdempotency(ctx context.Context, ownerID, key string) (domain.Task, error) {
 	value, err := r.queries.GetAgentTaskByIdempotency(ctx, agentdb.GetAgentTaskByIdempotencyParams{
 		OwnerUserID: ownerID, IdempotencyKey: key,
 	})
@@ -281,12 +259,15 @@ func (r *Repository) AppendEvent(ctx context.Context, leaseID, workerID string, 
 	if domain.State(stream.State).Terminal() {
 		return domain.Event{}, domain.ErrTerminal
 	}
+	if event.EventType == "run_started" && (providerID == "" || providerID != stream.ProviderID) {
+		return domain.Event{}, domain.ErrProviderMismatch
+	}
 	event.TaskID, event.Sequence = stream.ID, stream.LastEventSequence+1
 	if err := addEventMetadata(&event); err != nil {
 		return domain.Event{}, err
 	}
 	if err := queries.AdvanceTaskState(ctx, agentdb.AdvanceTaskStateParams{
-		State: string(state), ProviderID: providerID, RunID: runID, Sequence: event.Sequence,
+		State: string(state), RunID: runID, Sequence: event.Sequence,
 		UpdatedAt: timestamp(now), TaskID: event.TaskID,
 	}); err != nil {
 		return domain.Event{}, fmt.Errorf("advance task state: %w", err)

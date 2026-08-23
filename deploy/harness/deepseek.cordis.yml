@@ -1,0 +1,42 @@
+# WorkOS-owned, no-tools composition for DeepSeek Harness runtime 0.1.1rc1.
+# Secrets and task content are supplied at process runtime and never stored here.
+- id: sdk-jsonrpc-server
+  name: "@deepseek-ai/dsh-sdk-jsonrpc-server"
+  config:
+    maxTokensAsSuccess: true
+
+- id: llm-deepseek
+  name: "@deepseek-ai/dsh-llm-deepseek"
+  config:
+    apiKeyEnv: DEEPSEEK_API_KEY
+    streamIdleTimeoutMs: !!js Number(process.env.DSH_LLM_STREAM_TIMEOUT_MS ?? 120000)
+    retryPolicy:
+      mode: normal
+      maxRetries: 2
+      backoff:
+        initialDelayMs: 500
+        maxDelayMs: 10000
+        jitterRatio: 0.1
+    models:
+      - id: deepseek-v4-flash
+        contextWindow: 1000000
+        maxTokens: 384000
+      - id: deepseek-v4-pro
+        contextWindow: 1000000
+        maxTokens: 384000
+
+- id: agent-spine
+  name: "@deepseek-ai/dsh-agent-spine-demo"
+  config:
+    includeHarnessIdentity: false
+    includeRuntimeContext: false
+    persona: >-
+      You are a general-purpose assistant. Complete the user's stated task using
+      only the conversation text. You have no tools, workspace, external context,
+      approval channel, persistent session, or delegation capability.
+    workspaceContext: false
+    skills:
+      enabled: false
+    toolBash: false
+    toolJobs: false
+    goals: false

@@ -24,13 +24,19 @@
       "name": "Agent Task Router",
       "process": "workos-core",
       "status": "working",
-      "evidence": "submit/lease/terminal lifecycle integration"
+      "evidence": "Project binding snapshot + idempotency integration"
     },
     {
       "name": "Harness Broker",
       "process": "harness-host",
       "status": "working",
-      "evidence": "Fake integration + Generic CLI contract tests"
+      "evidence": "Fake, Generic CLI, and typed provider execution tests"
+    },
+    {
+      "name": "DeepSeek Harness Adapter",
+      "process": "harness-host",
+      "status": "working",
+      "evidence": "official runtime + keyless streaming fixture integration"
     },
     {
       "name": "Desktop Shell",

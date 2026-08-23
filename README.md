@@ -18,8 +18,9 @@ Project 协作；Harness、App、Surface、Workload 与 Incident 均通过稳定
 | Access Gateway | workos-gateway | `scaffolded` | health/config boundary |
 | Project | workos-core | `working` | tests/integration/foundation_test.go |
 | Event Backbone | workos-core | `working` | persisted ordered stream + resume integration |
-| Agent Task Router | workos-core | `working` | submit/lease/terminal lifecycle integration |
-| Harness Broker | harness-host | `working` | Fake integration + Generic CLI contract tests |
+| Agent Task Router | workos-core | `working` | Project binding snapshot + idempotency integration |
+| Harness Broker | harness-host | `working` | Fake, Generic CLI, and typed provider execution tests |
+| DeepSeek Harness Adapter | harness-host | `working` | official runtime + keyless streaming fixture integration |
 | Desktop Shell | desktop-web | `working` | apps/desktop-web/e2e/foundation.spec.ts |
 | App Registry | workos-core | `contract-only` | workos.app.v1 |
 | Artifact | workos-core | `contract-only` | workos.artifact.v1 |
@@ -72,6 +73,7 @@ make dev
 ```bash
 make check             # 与 CI 相同的静态检查和单元测试
 make test-integration  # PostgreSQL、事件与进程集成测试
+make test-deepseek-fixture # 官方 DeepSeek Harness + 本地无密钥 API fixture
 make test-e2e          # Desktop → Project → Agent Task 浏览器链路
 make logs              # 查看开发栈日志
 make down              # 停止开发栈
@@ -86,6 +88,14 @@ make down              # 停止开发栈
 - `workosctl doctor` 检查配置、PostgreSQL、cgroup v2 和内部服务连接。
 - 设置 `OTEL_EXPORTER_OTLP_ENDPOINT` 即可启用六个进程的 OTLP/HTTP trace；示例见
   [部署说明](deploy/README.md)。
+
+### DeepSeek Harness
+
+DeepSeek Provider 默认关闭；有 Key 也不会隐式启用。启用时只从
+`DEEPSEEK_API_KEY` 读取凭据，非 secret 参数使用 `WORKOS_DEEPSEEK_*` 环境变量。
+容器固定并校验官方 Harness runtime，常规 CI 只运行本地 fixture，不访问 DeepSeek 网络。
+配置、输入限制、测试方法和真实 API smoke 的限制见
+[adapter 说明](internal/harness/adapters/deepseek/README.md)。
 
 ## 仓库地图
 

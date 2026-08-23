@@ -8,6 +8,7 @@ import (
 	commonv1 "github.com/yangtao121/workos/gen/go/workos/common/v1"
 	"github.com/yangtao121/workos/gen/go/workos/common/v1/commonv1connect"
 	"github.com/yangtao121/workos/gen/go/workos/harness/v1/harnessv1connect"
+	"github.com/yangtao121/workos/internal/harness/adapters/deepseek"
 	"github.com/yangtao121/workos/internal/harness/adapters/fake"
 	"github.com/yangtao121/workos/internal/harness/adapters/genericcli"
 	"github.com/yangtao121/workos/internal/harness/broker"
@@ -34,7 +35,13 @@ func run(logger *slog.Logger) error {
 	if err != nil {
 		return err
 	}
-	providers := []ports.Provider{fake.New(ids.UUIDv7{})}
+	deepSeekProvider := deepseek.New(deepseek.Config{
+		Enabled: cfg.Harness.DeepSeek.Enabled, Environment: cfg.Environment, APIKey: cfg.Harness.DeepSeek.APIKey,
+		BaseURL: cfg.Harness.DeepSeek.BaseURL, Model: cfg.Harness.DeepSeek.Model, Timeout: cfg.Harness.DeepSeek.Timeout,
+		RuntimePath: cfg.Harness.DeepSeek.RuntimePath, CordisConfigPath: cfg.Harness.DeepSeek.CordisConfigPath,
+		ConfigurationIssue: cfg.Harness.DeepSeek.ConfigurationIssue,
+	}, ids.UUIDv7{})
+	providers := []ports.Provider{fake.New(ids.UUIDv7{}), deepSeekProvider}
 	if cfg.Harness.Generic.Enabled {
 		provider, err := genericcli.New(genericcli.Config{Executable: cfg.Harness.Generic.Executable, Args: cfg.Harness.Generic.Args, Timeout: cfg.Harness.Generic.Timeout})
 		if err != nil {
@@ -53,6 +60,7 @@ func run(logger *slog.Logger) error {
 	systemPath, systemHandler := commonv1connect.NewSystemServiceHandler(systemhandler.New("harness-host", commonv1.HealthState_HEALTH_STATE_HEALTHY,
 		&commonv1.FeatureCapability{Id: "fake", Available: true},
 		&commonv1.FeatureCapability{Id: "generic-cli", Available: cfg.Harness.Generic.Enabled, Reason: "requires an absolute allowlisted executable"},
+		&commonv1.FeatureCapability{Id: "deepseek", Available: deepSeekProvider.Describe().GetHealth() == commonv1.HealthState_HEALTH_STATE_HEALTHY, Reason: deepSeekProvider.Describe().GetUnavailableReason()},
 	))
 	mux.Handle(systemPath, systemHandler)
 	return httpserver.Run("harness-host", cfg.HTTP.Address, mux, logger, "", "", cfg.Telemetry.OTLPEndpoint)

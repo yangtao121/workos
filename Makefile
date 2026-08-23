@@ -11,6 +11,7 @@ DEBIAN_MIRROR ?= https://mirrors.aliyun.com
 GOPROXY ?= https://goproxy.cn,direct
 NPM_REGISTRY ?= https://registry.npmmirror.com
 PLAYWRIGHT_DOWNLOAD_HOST ?= https://npmmirror.com/mirrors/playwright
+PYPI_MIRROR ?= https://mirrors.aliyun.com/pypi
 USER_FLAGS := --user $(shell id -u):$(shell id -g) -e HOME=/tmp
 MOUNT := -v $(CURDIR):$(WORKDIR) -w $(WORKDIR)
 GO_RUN := docker run --rm $(USER_FLAGS) -e GOPATH=/tmp/workos-go -e GOMODCACHE=/go/pkg/mod -e GOPROXY=$(GOPROXY) $(MOUNT) -v workos-go-cache:/go/pkg/mod $(GO_IMAGE)
@@ -19,7 +20,7 @@ NODE_RUN := docker run --rm $(USER_FLAGS) -e COREPACK_NPM_REGISTRY=$(NPM_REGISTR
 BUF_RUN := docker run --rm $(USER_FLAGS) $(MOUNT) $(BUF_IMAGE)
 SQLC_RUN := docker run --rm $(USER_FLAGS) -v $(CURDIR):/src -w /src $(SQLC_IMAGE)
 
-.PHONY: bootstrap generate docs check check-native proto-check go-check web-check test test-integration e2e-image test-e2e build web-build scaffold-module dev down logs clean
+.PHONY: bootstrap generate docs check check-native proto-check go-check web-check test test-integration test-deepseek-fixture e2e-image test-e2e build web-build scaffold-module dev down logs clean
 
 bootstrap:
 	@docker version >/dev/null
@@ -71,6 +72,20 @@ test-integration:
 		docker compose restart workos-core harness-host >/dev/null; \
 		$(GO_HOST_RUN) go run ./tests/restart verify "$$task_id"
 
+test-deepseek-fixture:
+	@set -eu; \
+		cleanup() { docker compose --profile deepseek-fixture stop deepseek-api-fixture >/dev/null 2>&1 || true; }; \
+		trap cleanup EXIT INT TERM; \
+		WORKOS_UID="$$(id -u)" WORKOS_GID="$$(id -g)" \
+		WORKOS_DEEPSEEK_ENABLED=true \
+		DEEPSEEK_API_KEY=workos-fixture-only-not-a-real-key \
+		WORKOS_DEEPSEEK_BASE_URL=http://127.0.0.1:18086 \
+		docker compose --profile deepseek-fixture up -d --build --force-recreate postgres bootstrap workos-core harness-host workos-gateway deepseek-api-fixture; \
+		$(GO_HOST_RUN) go test -tags='integration deepseekfixture' -count=1 -run '^TestDeepSeekProjectBindingFixtureVerticalSlice$$' -v ./tests/integration; \
+		task_id="$$( $(GO_HOST_RUN) sh -c 'WORKOS_TEST_PROVIDER=deepseek go run ./tests/restart seed' )"; \
+		docker compose restart workos-core harness-host >/dev/null; \
+		$(GO_HOST_RUN) sh -c 'WORKOS_TEST_PROVIDER=deepseek go run ./tests/restart verify "$$1"' _ "$$task_id"
+
 e2e-image:
 	docker build \
 		--build-arg DEBIAN_MIRROR=$(DEBIAN_MIRROR) \
@@ -94,6 +109,8 @@ build:
 	docker build \
 		--build-arg GOPROXY=$(GOPROXY) \
 		--build-arg NPM_REGISTRY=$(NPM_REGISTRY) \
+		--build-arg DEBIAN_MIRROR=$(DEBIAN_MIRROR) \
+		--build-arg PYPI_MIRROR=$(PYPI_MIRROR) \
 		-t workos:dev .
 
 web-build:

@@ -10,6 +10,7 @@ import (
 type Repository interface {
 	Create(context.Context, domain.Task, string) (domain.Task, error)
 	Get(context.Context, string, string) (domain.Task, error)
+	GetByIdempotency(context.Context, string, string) (domain.Task, error)
 	List(context.Context, string, string, string, int) ([]domain.Task, error)
 	Cancel(context.Context, string, string, string, time.Time) (domain.Task, *domain.Event, error)
 	ListEvents(context.Context, string, string, int64, int) ([]domain.Event, error)

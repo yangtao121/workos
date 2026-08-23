@@ -59,9 +59,18 @@ func seed(ctx context.Context, client *http.Client, baseURL string) error {
 	projects := projectv1connect.NewProjectServiceClient(client, baseURL)
 	tasks := agentv1connect.NewAgentTaskServiceClient(client, baseURL)
 	key := fmt.Sprintf("restart-project-%d", time.Now().UnixNano())
-	created, err := projects.CreateProject(ctx, connect.NewRequest(&projectv1.CreateProjectRequest{
-		IdempotencyKey: key, Name: "Restart Persistence",
-	}))
+	providerID := os.Getenv("WORKOS_TEST_PROVIDER")
+	if providerID == "" {
+		providerID = "fake"
+	}
+	create := &projectv1.CreateProjectRequest{IdempotencyKey: key, Name: "Restart Persistence"}
+	if providerID != "fake" {
+		create.HarnessBinding = &projectv1.HarnessBinding{
+			ProviderId: providerID, InstancePolicy: projectv1.HarnessInstancePolicy_HARNESS_INSTANCE_POLICY_EPHEMERAL,
+			ResourcePolicyId: "restart-fixture",
+		}
+	}
+	created, err := projects.CreateProject(ctx, connect.NewRequest(create))
 	if err != nil {
 		return fmt.Errorf("create restart project: %w", err)
 	}
@@ -76,6 +85,9 @@ func seed(ctx context.Context, client *http.Client, baseURL string) error {
 		return fmt.Errorf("submit restart task: %w", err)
 	}
 	taskID := response.Msg.GetTask().GetId()
+	if response.Msg.GetTask().GetProviderId() != providerID {
+		return fmt.Errorf("task provider snapshot mismatch: got %q want %q", response.Msg.GetTask().GetProviderId(), providerID)
+	}
 	stream, err := tasks.WatchTaskEvents(ctx, connect.NewRequest(&agentv1.WatchTaskEventsRequest{TaskId: taskID}))
 	if err != nil {
 		return fmt.Errorf("watch restart task: %w", err)
@@ -96,24 +108,32 @@ func verify(ctx context.Context, client *http.Client, baseURL, taskID string) er
 		return fmt.Errorf("get task after restart: %w", err)
 	}
 	task := response.Msg.GetTask()
-	if task.GetState() != agentv1.AgentTaskState_AGENT_TASK_STATE_COMPLETED || task.GetLastEventSequence() < 2 {
+	expectedProvider := os.Getenv("WORKOS_TEST_PROVIDER")
+	if expectedProvider == "" {
+		expectedProvider = "fake"
+	}
+	if task.GetState() != agentv1.AgentTaskState_AGENT_TASK_STATE_COMPLETED || task.GetLastEventSequence() < 2 || task.GetProviderId() != expectedProvider {
 		return fmt.Errorf("task was not durably completed: state=%s sequence=%d", task.GetState(), task.GetLastEventSequence())
 	}
 	stream, err := tasks.WatchTaskEvents(ctx, connect.NewRequest(&agentv1.WatchTaskEventsRequest{
-		TaskId: taskID, AfterSequence: task.GetLastEventSequence() - 1,
+		TaskId: taskID,
 	}))
 	if err != nil {
 		return fmt.Errorf("resume events after restart: %w", err)
 	}
 	count := 0
+	startedProvider := ""
 	for stream.Receive() {
 		count++
+		if started := stream.Msg().GetEvent().GetRunStarted(); started != nil {
+			startedProvider = started.GetProviderId()
+		}
 	}
 	if err := stream.Err(); err != nil {
 		return fmt.Errorf("read resumed event after restart: %w", err)
 	}
-	if count != 1 {
-		return fmt.Errorf("expected one resumed event after restart, got %d", count)
+	if int64(count) != task.GetLastEventSequence() || startedProvider != expectedProvider {
+		return fmt.Errorf("unexpected restored event stream: count=%d provider=%q", count, startedProvider)
 	}
 	fmt.Printf("restart persistence verified for task %s\n", taskID)
 	return nil

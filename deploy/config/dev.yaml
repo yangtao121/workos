@@ -13,6 +13,8 @@ auth:
   dev_bypass: true
   owner_id: 0198d7ea-2110-7c42-b659-c5e4d73bc337
   device_id: 0198d7ea-2110-7c42-b659-c5e4d73bc338
+agent:
+  default_provider: fake
 harness:
   worker_id: harness-host-local
   poll_interval: 250ms
@@ -21,6 +23,13 @@ harness:
     enabled: false
     executable: /usr/local/bin/generic-harness-fixture
     timeout: 2m
+  deepseek:
+    enabled: false
+    base_url: https://api.deepseek.com
+    model: deepseek-v4-flash
+    timeout: 2m
+    runtime_path: /usr/local/libexec/workos/dsh-jsonrpc-agent
+    cordis_config_path: /etc/workos/deepseek.cordis.yml
 telemetry:
   # Empty by default. Set OTEL_EXPORTER_OTLP_ENDPOINT to enable OTLP/HTTP traces.
   otlp_endpoint: ""

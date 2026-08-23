@@ -17,9 +17,18 @@ import (
 	"github.com/yangtao121/workos/internal/platform/identity"
 )
 
-type Handler struct{ service *application.Service }
+type Submitter interface {
+	Submit(context.Context, application.SubmitInput) (domain.Task, error)
+}
 
-func New(service *application.Service) *Handler { return &Handler{service: service} }
+type Handler struct {
+	service   *application.Service
+	submitter Submitter
+}
+
+func New(service *application.Service, submitter Submitter) *Handler {
+	return &Handler{service: service, submitter: submitter}
+}
 
 func (h *Handler) SubmitTask(ctx context.Context, req *connect.Request[agentv1.SubmitTaskRequest]) (*connect.Response[agentv1.SubmitTaskResponse], error) {
 	id, err := identity.FromContext(ctx)
@@ -45,7 +54,7 @@ func (h *Handler) SubmitTask(ctx context.Context, req *connect.Request[agentv1.S
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, domain.ErrInvalid)
 	}
-	task, err := h.service.Submit(ctx, application.SubmitInput{
+	task, err := h.submitter.Submit(ctx, application.SubmitInput{
 		OwnerUserID: id.UserID, IdempotencyKey: req.Msg.GetIdempotencyKey(), ProjectID: projectID, Payload: payload,
 	})
 	if err != nil {
@@ -172,6 +181,8 @@ func mapError(err error) error {
 	case errors.Is(err, domain.ErrLeaseLost):
 		return connect.NewError(connect.CodeAborted, err)
 	case errors.Is(err, domain.ErrTerminal):
+		return connect.NewError(connect.CodeFailedPrecondition, err)
+	case errors.Is(err, domain.ErrProviderMismatch):
 		return connect.NewError(connect.CodeFailedPrecondition, err)
 	default:
 		return connect.NewError(connect.CodeInternal, errors.New("agent task operation failed"))

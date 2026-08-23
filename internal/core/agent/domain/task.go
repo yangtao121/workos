@@ -7,11 +7,12 @@ import (
 )
 
 var (
-	ErrInvalid       = errors.New("invalid agent task")
-	ErrNotFound      = errors.New("agent task not found")
-	ErrLeaseLost     = errors.New("task execution lease is not active")
-	ErrTerminal      = errors.New("agent task is already terminal")
-	ErrProjectDenied = errors.New("project is outside the current identity scope")
+	ErrInvalid          = errors.New("invalid agent task")
+	ErrNotFound         = errors.New("agent task not found")
+	ErrLeaseLost        = errors.New("task execution lease is not active")
+	ErrTerminal         = errors.New("agent task is already terminal")
+	ErrProjectDenied    = errors.New("project is outside the current identity scope")
+	ErrProviderMismatch = errors.New("run provider does not match task provider snapshot")
 )
 
 type State string

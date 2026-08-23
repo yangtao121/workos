@@ -18,7 +18,6 @@ type Querier interface {
 	GetAgentTaskByIdempotency(ctx context.Context, arg GetAgentTaskByIdempotencyParams) (WorkosCoreAgentTask, error)
 	GetAgentTaskForUpdate(ctx context.Context, arg GetAgentTaskForUpdateParams) (WorkosCoreAgentTask, error)
 	GetAgentTaskUnscoped(ctx context.Context, id string) (WorkosCoreAgentTask, error)
-	GetProjectHarnessBinding(ctx context.Context, arg GetProjectHarnessBindingParams) ([]byte, error)
 	InsertAgentTask(ctx context.Context, arg InsertAgentTaskParams) (int64, error)
 	InsertTaskEvent(ctx context.Context, arg InsertTaskEventParams) error
 	InsertTaskOutbox(ctx context.Context, arg InsertTaskOutboxParams) error

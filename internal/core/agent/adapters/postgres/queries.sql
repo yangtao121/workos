@@ -1,8 +1,3 @@
--- name: GetProjectHarnessBinding :one
-SELECT harness_binding
-FROM workos_core.projects
-WHERE id = $1 AND owner_user_id = $2 AND archived_at IS NULL;
-
 -- name: InsertAgentTask :execrows
 INSERT INTO workos_core.agent_tasks (
     id, owner_user_id, idempotency_key, project_id, input, state, provider_id, created_at, updated_at
@@ -100,7 +95,7 @@ WHERE o.lease_id = sqlc.arg(lease_id) AND o.locked_by = sqlc.arg(worker_id)
 RETURNING t.cancellation_requested;
 
 -- name: LockTaskEventStream :one
-SELECT t.id, t.last_event_sequence, t.state
+SELECT t.id, t.last_event_sequence, t.state, t.provider_id
 FROM workos_events.outbox AS o
 JOIN workos_core.agent_tasks AS t ON t.id = o.aggregate_id
 WHERE o.lease_id = $1 AND o.locked_by = $2 AND o.processed_at IS NULL AND o.locked_until >= $3
@@ -109,7 +104,6 @@ FOR UPDATE OF o, t;
 -- name: AdvanceTaskState :exec
 UPDATE workos_core.agent_tasks
 SET state = sqlc.arg(state),
-    provider_id = COALESCE(NULLIF(sqlc.arg(provider_id)::text, ''), provider_id),
     run_id = COALESCE(NULLIF(sqlc.arg(run_id)::text, ''), run_id),
     last_event_sequence = sqlc.arg(sequence), updated_at = sqlc.arg(updated_at)
 WHERE id = sqlc.arg(task_id);

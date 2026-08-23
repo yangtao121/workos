@@ -15,6 +15,7 @@ import (
 	agentpostgres "github.com/yangtao121/workos/internal/core/agent/adapters/postgres"
 	agentapp "github.com/yangtao121/workos/internal/core/agent/application"
 	agenttransport "github.com/yangtao121/workos/internal/core/agent/transport"
+	"github.com/yangtao121/workos/internal/core/orchestration"
 	projectpostgres "github.com/yangtao121/workos/internal/core/project/adapters/postgres"
 	projectapp "github.com/yangtao121/workos/internal/core/project/application"
 	projecttransport "github.com/yangtao121/workos/internal/core/project/transport"
@@ -55,7 +56,11 @@ func run(logger *slog.Logger) error {
 	mux.Handle(projectPath, identity.Middleware(projectHandler))
 
 	agentService := agentapp.New(agentpostgres.New(pool), generator)
-	agentPath, agentHandler := agentv1connect.NewAgentTaskServiceHandler(agenttransport.New(agentService))
+	taskRouter, err := orchestration.NewTaskRouter(agentService, projectService, cfg.Agent.DefaultProvider)
+	if err != nil {
+		return err
+	}
+	agentPath, agentHandler := agentv1connect.NewAgentTaskServiceHandler(agenttransport.New(agentService, taskRouter))
 	mux.Handle(agentPath, identity.Middleware(agentHandler))
 	executionPath, executionHandler := taskexecutionv1connect.NewTaskExecutionServiceHandler(agenttransport.NewExecution(agentService))
 	mux.Handle(executionPath, executionHandler)

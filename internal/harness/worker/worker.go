@@ -13,6 +13,7 @@ import (
 	taskv1 "github.com/yangtao121/workos/gen/go/workos/taskexecution/v1"
 	"github.com/yangtao121/workos/gen/go/workos/taskexecution/v1/taskexecutionv1connect"
 	"github.com/yangtao121/workos/internal/harness/broker"
+	"github.com/yangtao121/workos/internal/harness/ports"
 	"github.com/yangtao121/workos/internal/platform/telemetry"
 )
 
@@ -109,7 +110,8 @@ func (w *Worker) process(parent context.Context, lease *taskv1.TaskLease) {
 		case err := <-result:
 			sawTerminal := <-terminal
 			if err != nil && !errors.Is(err, context.Canceled) && !sawTerminal {
-				failed := &agentv1.AgentEvent{Event: &agentv1.AgentEvent_RunFailed{RunFailed: &agentv1.RunFailed{Reason: err.Error(), Retryable: errors.Is(err, broker.ErrProviderUnavailable)}}}
+				reason, retryable := ports.FailureDetails(err)
+				failed := &agentv1.AgentEvent{Event: &agentv1.AgentEvent_RunFailed{RunFailed: &agentv1.RunFailed{Reason: reason, Retryable: retryable}}}
 				if _, appendErr := w.client.AppendTaskEvent(parent, connect.NewRequest(&taskv1.AppendTaskEventRequest{
 					LeaseId: lease.GetLeaseId(), WorkerId: w.id, Event: failed,
 				})); appendErr != nil {

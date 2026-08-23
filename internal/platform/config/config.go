@@ -1,6 +1,7 @@
 package config
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"net"
@@ -19,6 +20,7 @@ type Config struct {
 	HTTP        HTTP      `yaml:"http"`
 	Services    URLs      `yaml:"services"`
 	Auth        Auth      `yaml:"auth"`
+	Agent       Agent     `yaml:"agent"`
 	Harness     Harness   `yaml:"harness"`
 	Telemetry   Telemetry `yaml:"telemetry"`
 }
@@ -50,11 +52,16 @@ type Auth struct {
 	DeviceID  string `yaml:"device_id"`
 }
 
+type Agent struct {
+	DefaultProvider string `yaml:"default_provider"`
+}
+
 type Harness struct {
 	WorkerID     string        `yaml:"worker_id"`
 	PollInterval time.Duration `yaml:"poll_interval"`
 	CoreURL      string        `yaml:"core_url"`
 	Generic      GenericCLI    `yaml:"generic_cli"`
+	DeepSeek     DeepSeek      `yaml:"deepseek"`
 }
 
 type GenericCLI struct {
@@ -62,6 +69,20 @@ type GenericCLI struct {
 	Executable string        `yaml:"executable"`
 	Args       []string      `yaml:"args"`
 	Timeout    time.Duration `yaml:"timeout"`
+}
+
+type DeepSeek struct {
+	Enabled          bool          `yaml:"enabled"`
+	BaseURL          string        `yaml:"base_url"`
+	Model            string        `yaml:"model"`
+	Timeout          time.Duration `yaml:"timeout"`
+	RuntimePath      string        `yaml:"runtime_path"`
+	CordisConfigPath string        `yaml:"cordis_config_path"`
+	APIKey           string        `yaml:"-"`
+
+	// ConfigurationIssue lets harness-host start safely and expose an
+	// unavailable provider when an adapter-specific environment value is bad.
+	ConfigurationIssue string `yaml:"-"`
 }
 
 func defaults() Config {
@@ -77,10 +98,15 @@ func defaults() Config {
 			OwnerID:  "0198d7ea-2110-7c42-b659-c5e4d73bc337",
 			DeviceID: "0198d7ea-2110-7c42-b659-c5e4d73bc338",
 		},
+		Agent: Agent{DefaultProvider: "fake"},
 		Harness: Harness{
 			WorkerID: "harness-host-local", PollInterval: 250 * time.Millisecond,
 			CoreURL: "http://127.0.0.1:8081",
 			Generic: GenericCLI{Timeout: 2 * time.Minute},
+			DeepSeek: DeepSeek{
+				BaseURL: "https://api.deepseek.com", Model: "deepseek-v4-flash", Timeout: 2 * time.Minute,
+				RuntimePath: "/usr/local/libexec/workos/dsh-jsonrpc-agent", CordisConfigPath: "/etc/workos/deepseek.cordis.yml",
+			},
 		},
 	}
 }
@@ -93,7 +119,9 @@ func Load() (Config, error) {
 		if err != nil {
 			return Config{}, fmt.Errorf("read config: %w", err)
 		}
-		if err := yaml.Unmarshal(data, &cfg); err != nil {
+		decoder := yaml.NewDecoder(bytes.NewReader(data))
+		decoder.KnownFields(true)
+		if err := decoder.Decode(&cfg); err != nil {
 			return Config{}, fmt.Errorf("parse config: %w", err)
 		}
 	}
@@ -104,7 +132,29 @@ func Load() (Config, error) {
 	setString(&cfg.Harness.CoreURL, "WORKOS_CORE_URL")
 	setString(&cfg.Auth.OwnerID, "WORKOS_OWNER_ID")
 	setString(&cfg.Auth.DeviceID, "WORKOS_DEVICE_ID")
+	setString(&cfg.Agent.DefaultProvider, "WORKOS_AGENT_DEFAULT_PROVIDER")
+	setString(&cfg.Harness.DeepSeek.APIKey, "DEEPSEEK_API_KEY")
+	setString(&cfg.Harness.DeepSeek.BaseURL, "WORKOS_DEEPSEEK_BASE_URL")
+	setString(&cfg.Harness.DeepSeek.Model, "WORKOS_DEEPSEEK_MODEL")
+	setString(&cfg.Harness.DeepSeek.RuntimePath, "WORKOS_DEEPSEEK_RUNTIME_PATH")
+	setString(&cfg.Harness.DeepSeek.CordisConfigPath, "WORKOS_DEEPSEEK_CORDIS_CONFIG")
 	setString(&cfg.Telemetry.OTLPEndpoint, "OTEL_EXPORTER_OTLP_ENDPOINT")
+	if raw, ok := os.LookupEnv("WORKOS_DEEPSEEK_ENABLED"); ok {
+		value, err := strconv.ParseBool(raw)
+		if err != nil {
+			cfg.Harness.DeepSeek.ConfigurationIssue = "WORKOS_DEEPSEEK_ENABLED is invalid"
+		} else {
+			cfg.Harness.DeepSeek.Enabled = value
+		}
+	}
+	if raw, ok := os.LookupEnv("WORKOS_DEEPSEEK_TIMEOUT"); ok {
+		value, err := time.ParseDuration(raw)
+		if err != nil {
+			cfg.Harness.DeepSeek.ConfigurationIssue = "WORKOS_DEEPSEEK_TIMEOUT is invalid"
+		} else {
+			cfg.Harness.DeepSeek.Timeout = value
+		}
+	}
 	if raw, ok := os.LookupEnv("WORKOS_DEV_AUTH_BYPASS"); ok {
 		value, err := strconv.ParseBool(raw)
 		if err != nil {

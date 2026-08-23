@@ -8,6 +8,8 @@ x-workos-build: &workos-build
     NODE_IMAGE: ${NODE_IMAGE:-node:24.19.0-bookworm-slim}
     NPM_REGISTRY: ${NPM_REGISTRY:-https://registry.npmmirror.com}
     RUNTIME_IMAGE: ${RUNTIME_IMAGE:-debian:bookworm-slim}
+    DEBIAN_MIRROR: ${DEBIAN_MIRROR:-https://mirrors.aliyun.com}
+    PYPI_MIRROR: ${PYPI_MIRROR:-https://mirrors.aliyun.com/pypi}
 
 x-workos-service: &workos-service
   image: workos:dev
@@ -55,6 +57,7 @@ services:
     environment:
       <<: *workos-environment
       WORKOS_HTTP_ADDRESS: 127.0.0.1:8081
+      WORKOS_AGENT_DEFAULT_PROVIDER: ${WORKOS_AGENT_DEFAULT_PROVIDER:-fake}
 
   harness-host:
     <<: *workos-service
@@ -63,6 +66,29 @@ services:
       <<: *workos-environment
       WORKOS_HTTP_ADDRESS: 127.0.0.1:8082
       WORKOS_CORE_URL: http://127.0.0.1:8081
+      WORKOS_DEEPSEEK_ENABLED: ${WORKOS_DEEPSEEK_ENABLED:-false}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      WORKOS_DEEPSEEK_BASE_URL: ${WORKOS_DEEPSEEK_BASE_URL:-https://api.deepseek.com}
+      WORKOS_DEEPSEEK_MODEL: ${WORKOS_DEEPSEEK_MODEL:-deepseek-v4-flash}
+      WORKOS_DEEPSEEK_TIMEOUT: ${WORKOS_DEEPSEEK_TIMEOUT:-2m}
+
+  deepseek-api-fixture:
+    profiles: [deepseek-fixture]
+    image: ${GO_IMAGE:-golang:1.26.7-bookworm}
+    network_mode: host
+    user: "${WORKOS_UID:-1000}:${WORKOS_GID:-1000}"
+    working_dir: /workspace
+    command: ["go", "run", "./tests/fixtures/deepseekapi"]
+    environment:
+      HOME: /tmp
+      GOPATH: /tmp/workos-go
+      GOMODCACHE: /go/pkg/mod
+      GOPROXY: ${GOPROXY:-https://goproxy.cn,direct}
+      WORKOS_DEEPSEEK_FIXTURE_ADDRESS: 127.0.0.1:18086
+      WORKOS_DEEPSEEK_FIXTURE_KEY: workos-fixture-only-not-a-real-key
+    volumes:
+      - .:/workspace
+      - workos-go-cache:/go/pkg/mod
 
   runtime-host:
     <<: *workos-service
@@ -97,3 +123,4 @@ services:
 
 volumes:
   workos-postgres:
+  workos-go-cache:

@@ -11,6 +11,7 @@ The repository defaults are chosen for development in mainland China:
 - Go modules: goproxy.cn
 - npm/pnpm packages: npmmirror (also recorded in the root `.npmrc`)
 - Debian packages: Alibaba Cloud (`https://mirrors.aliyun.com`)
+- Python release artifacts: Alibaba Cloud PyPI (`https://mirrors.aliyun.com/pypi`), with pinned SHA-256 verification
 - Playwright browsers: npmmirror
 
 The browser E2E runner is built locally with `make e2e-image`; the resulting Docker layers are reused by later test runs. Every package route is an overridable Make or Compose variable. For example, an environment outside mainland China can use upstream services without changing tracked files:
@@ -18,6 +19,7 @@ The browser E2E runner is built locally with `make e2e-image`; the resulting Doc
 ```bash
 GOPROXY=https://proxy.golang.org,direct \
   NPM_REGISTRY=https://registry.npmjs.org \
+  PYPI_MIRROR=https://files.pythonhosted.org \
   make build
 
 make e2e-image \

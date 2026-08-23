@@ -14,6 +14,7 @@ type SubmitInput struct {
 	OwnerUserID    string
 	IdempotencyKey string
 	ProjectID      string
+	ProviderID     string
 	Payload        json.RawMessage
 }
 
@@ -28,16 +29,23 @@ func New(repository ports.Repository, generator ids.Generator) *Service {
 }
 
 func (s *Service) Submit(ctx context.Context, input SubmitInput) (domain.Task, error) {
-	if input.OwnerUserID == "" || input.IdempotencyKey == "" || len(input.Payload) == 0 {
+	if input.OwnerUserID == "" || input.IdempotencyKey == "" || input.ProviderID == "" || len(input.Payload) == 0 {
 		return domain.Task{}, domain.ErrInvalid
 	}
 	now := s.now()
 	task := domain.Task{
 		ID: s.ids.New(), OwnerUserID: input.OwnerUserID, ProjectID: input.ProjectID,
-		Input: input.Payload, State: domain.StateQueued, ProviderID: "fake",
+		Input: input.Payload, State: domain.StateQueued, ProviderID: input.ProviderID,
 		CreatedAt: now, UpdatedAt: now,
 	}
 	return s.repository.Create(ctx, task, input.IdempotencyKey)
+}
+
+func (s *Service) GetByIdempotency(ctx context.Context, ownerID, key string) (domain.Task, error) {
+	if ownerID == "" || key == "" {
+		return domain.Task{}, domain.ErrInvalid
+	}
+	return s.repository.GetByIdempotency(ctx, ownerID, key)
 }
 
 func (s *Service) Get(ctx context.Context, ownerID, taskID string) (domain.Task, error) {

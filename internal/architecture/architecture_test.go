@@ -98,6 +98,26 @@ func TestGeneratedSourcesKeepGeneratorMarkers(t *testing.T) {
 	}
 }
 
+func TestCorePostgresAdaptersDoNotQueryOtherModuleTables(t *testing.T) {
+	t.Parallel()
+	checks := []struct {
+		path      string
+		forbidden string
+	}{
+		{path: "internal/core/agent/adapters/postgres/queries.sql", forbidden: "workos_core.projects"},
+		{path: "internal/core/project/adapters/postgres/queries.sql", forbidden: "workos_core.agent_tasks"},
+	}
+	for _, check := range checks {
+		data, err := os.ReadFile(filepath.Join(repoRoot(), check.path))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(strings.ToLower(string(data)), check.forbidden) {
+			t.Errorf("module SQL boundary: %s references %s", check.path, check.forbidden)
+		}
+	}
+}
+
 func walkGo(t *testing.T, root string, visit func(path, importPath string)) {
 	t.Helper()
 	err := filepath.WalkDir(root, func(path string, entry fs.DirEntry, err error) error {

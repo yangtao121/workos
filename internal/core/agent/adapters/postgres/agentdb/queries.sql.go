@@ -15,25 +15,22 @@ import (
 const advanceTaskState = `-- name: AdvanceTaskState :exec
 UPDATE workos_core.agent_tasks
 SET state = $1,
-    provider_id = COALESCE(NULLIF($2::text, ''), provider_id),
-    run_id = COALESCE(NULLIF($3::text, ''), run_id),
-    last_event_sequence = $4, updated_at = $5
-WHERE id = $6
+    run_id = COALESCE(NULLIF($2::text, ''), run_id),
+    last_event_sequence = $3, updated_at = $4
+WHERE id = $5
 `
 
 type AdvanceTaskStateParams struct {
-	State      string             `json:"state"`
-	ProviderID string             `json:"provider_id"`
-	RunID      string             `json:"run_id"`
-	Sequence   int64              `json:"sequence"`
-	UpdatedAt  pgtype.Timestamptz `json:"updated_at"`
-	TaskID     string             `json:"task_id"`
+	State     string             `json:"state"`
+	RunID     string             `json:"run_id"`
+	Sequence  int64              `json:"sequence"`
+	UpdatedAt pgtype.Timestamptz `json:"updated_at"`
+	TaskID    string             `json:"task_id"`
 }
 
 func (q *Queries) AdvanceTaskState(ctx context.Context, arg AdvanceTaskStateParams) error {
 	_, err := q.db.Exec(ctx, advanceTaskState,
 		arg.State,
-		arg.ProviderID,
 		arg.RunID,
 		arg.Sequence,
 		arg.UpdatedAt,
@@ -206,24 +203,6 @@ func (q *Queries) GetAgentTaskUnscoped(ctx context.Context, id string) (WorkosCo
 		&i.UpdatedAt,
 	)
 	return i, err
-}
-
-const getProjectHarnessBinding = `-- name: GetProjectHarnessBinding :one
-SELECT harness_binding
-FROM workos_core.projects
-WHERE id = $1 AND owner_user_id = $2 AND archived_at IS NULL
-`
-
-type GetProjectHarnessBindingParams struct {
-	ID          string `json:"id"`
-	OwnerUserID string `json:"owner_user_id"`
-}
-
-func (q *Queries) GetProjectHarnessBinding(ctx context.Context, arg GetProjectHarnessBindingParams) ([]byte, error) {
-	row := q.db.QueryRow(ctx, getProjectHarnessBinding, arg.ID, arg.OwnerUserID)
-	var harness_binding []byte
-	err := row.Scan(&harness_binding)
-	return harness_binding, err
 }
 
 const insertAgentTask = `-- name: InsertAgentTask :execrows
@@ -444,7 +423,7 @@ func (q *Queries) ListTaskEvents(ctx context.Context, arg ListTaskEventsParams) 
 }
 
 const lockTaskEventStream = `-- name: LockTaskEventStream :one
-SELECT t.id, t.last_event_sequence, t.state
+SELECT t.id, t.last_event_sequence, t.state, t.provider_id
 FROM workos_events.outbox AS o
 JOIN workos_core.agent_tasks AS t ON t.id = o.aggregate_id
 WHERE o.lease_id = $1 AND o.locked_by = $2 AND o.processed_at IS NULL AND o.locked_until >= $3
@@ -461,12 +440,18 @@ type LockTaskEventStreamRow struct {
 	ID                string `json:"id"`
 	LastEventSequence int64  `json:"last_event_sequence"`
 	State             string `json:"state"`
+	ProviderID        string `json:"provider_id"`
 }
 
 func (q *Queries) LockTaskEventStream(ctx context.Context, arg LockTaskEventStreamParams) (LockTaskEventStreamRow, error) {
 	row := q.db.QueryRow(ctx, lockTaskEventStream, arg.LeaseID, arg.LockedBy, arg.LockedUntil)
 	var i LockTaskEventStreamRow
-	err := row.Scan(&i.ID, &i.LastEventSequence, &i.State)
+	err := row.Scan(
+		&i.ID,
+		&i.LastEventSequence,
+		&i.State,
+		&i.ProviderID,
+	)
 	return i, err
 }
 
