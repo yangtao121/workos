@@ -1,0 +1,99 @@
+name: workos
+
+x-workos-build: &workos-build
+  context: .
+  args:
+    GO_IMAGE: ${GO_IMAGE:-golang:1.26.7-bookworm}
+    GOPROXY: ${GOPROXY:-https://goproxy.cn,direct}
+    NODE_IMAGE: ${NODE_IMAGE:-node:24.19.0-bookworm-slim}
+    NPM_REGISTRY: ${NPM_REGISTRY:-https://registry.npmmirror.com}
+    RUNTIME_IMAGE: ${RUNTIME_IMAGE:-debian:bookworm-slim}
+
+x-workos-service: &workos-service
+  image: workos:dev
+  build: *workos-build
+  network_mode: host
+  restart: unless-stopped
+  environment: &workos-environment
+    WORKOS_DATABASE_URL: postgres://workos:workos@127.0.0.1:5432/workos?sslmode=disable
+    WORKOS_OWNER_ID: 0198d7ea-2110-7c42-b659-c5e4d73bc337
+    WORKOS_DEVICE_ID: 0198d7ea-2110-7c42-b659-c5e4d73bc338
+  depends_on:
+    bootstrap:
+      condition: service_completed_successfully
+
+services:
+  postgres:
+    image: postgres:18.6-bookworm
+    network_mode: host
+    environment:
+      POSTGRES_USER: workos
+      POSTGRES_PASSWORD: workos
+      POSTGRES_DB: workos
+    volumes:
+      - workos-postgres:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U workos -d workos -h 127.0.0.1"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+
+  bootstrap:
+    image: workos:dev
+    build: *workos-build
+    network_mode: host
+    command: ["/usr/local/bin/workosctl", "bootstrap"]
+    environment: *workos-environment
+    restart: "no"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  workos-core:
+    <<: *workos-service
+    command: ["/usr/local/bin/workos-core"]
+    environment:
+      <<: *workos-environment
+      WORKOS_HTTP_ADDRESS: 127.0.0.1:8081
+
+  harness-host:
+    <<: *workos-service
+    command: ["/usr/local/bin/harness-host"]
+    environment:
+      <<: *workos-environment
+      WORKOS_HTTP_ADDRESS: 127.0.0.1:8082
+      WORKOS_CORE_URL: http://127.0.0.1:8081
+
+  runtime-host:
+    <<: *workos-service
+    command: ["/usr/local/bin/runtime-host"]
+    environment:
+      <<: *workos-environment
+      WORKOS_HTTP_ADDRESS: 127.0.0.1:8083
+
+  reliability-host:
+    <<: *workos-service
+    command: ["/usr/local/bin/reliability-host"]
+    environment:
+      <<: *workos-environment
+      WORKOS_HTTP_ADDRESS: 127.0.0.1:8084
+
+  indexer:
+    <<: *workos-service
+    command: ["/usr/local/bin/indexer"]
+    environment:
+      <<: *workos-environment
+      WORKOS_HTTP_ADDRESS: 127.0.0.1:8085
+
+  workos-gateway:
+    <<: *workos-service
+    command: ["/usr/local/bin/workos-gateway"]
+    environment:
+      <<: *workos-environment
+      WORKOS_HTTP_ADDRESS: 127.0.0.1:8080
+      WORKOS_CORE_URL: http://127.0.0.1:8081
+      WORKOS_STATIC_DIR: /srv/workos/desktop
+      WORKOS_DEV_AUTH_BYPASS: "true"
+
+volumes:
+  workos-postgres:

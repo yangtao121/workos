@@ -1,0 +1,60 @@
+syntax = "proto3";
+
+package workos.taskexecution.v1;
+
+import "google/protobuf/duration.proto";
+import "google/protobuf/timestamp.proto";
+import "workos/agent/v1/agent.proto";
+
+option go_package = "github.com/yangtao121/workos/gen/go/workos/taskexecution/v1;taskexecutionv1";
+
+message TaskLease {
+  string lease_id = 1;
+  string worker_id = 2;
+  workos.agent.v1.AgentTask task = 3;
+  google.protobuf.Timestamp expires_at = 4;
+}
+
+message ClaimTaskRequest {
+  string worker_id = 1;
+  google.protobuf.Duration lease_duration = 2;
+}
+
+message ClaimTaskResponse {
+  optional TaskLease lease = 1;
+}
+
+message RenewTaskLeaseRequest {
+  string lease_id = 1;
+  string worker_id = 2;
+  google.protobuf.Duration lease_duration = 3;
+}
+
+message RenewTaskLeaseResponse {
+  google.protobuf.Timestamp expires_at = 1;
+  bool cancellation_requested = 2;
+}
+
+message AppendTaskEventRequest {
+  string lease_id = 1;
+  string worker_id = 2;
+  workos.agent.v1.AgentEvent event = 3;
+}
+
+message AppendTaskEventResponse {
+  workos.agent.v1.AgentEvent stored_event = 1;
+}
+
+message FinishTaskLeaseRequest {
+  string lease_id = 1;
+  string worker_id = 2;
+}
+
+message FinishTaskLeaseResponse {}
+
+service TaskExecutionService {
+  rpc ClaimTask(ClaimTaskRequest) returns (ClaimTaskResponse) {}
+  rpc RenewTaskLease(RenewTaskLeaseRequest) returns (RenewTaskLeaseResponse) {}
+  rpc AppendTaskEvent(AppendTaskEventRequest) returns (AppendTaskEventResponse) {}
+  rpc FinishTaskLease(FinishTaskLeaseRequest) returns (FinishTaskLeaseResponse) {}
+}

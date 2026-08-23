@@ -1,0 +1,50 @@
+services:
+  otel-collector:
+    image: otel/opentelemetry-collector:0.135.0
+    network_mode: host
+    command: ["--config=/etc/otelcol/config.yaml"]
+    volumes:
+      - ./deploy/otel-collector.yaml:/etc/otelcol/config.yaml:ro
+    restart: unless-stopped
+
+  workos-gateway:
+    environment:
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://127.0.0.1:4318
+    depends_on:
+      otel-collector:
+        condition: service_started
+
+  workos-core:
+    environment:
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://127.0.0.1:4318
+    depends_on:
+      otel-collector:
+        condition: service_started
+
+  harness-host:
+    environment:
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://127.0.0.1:4318
+    depends_on:
+      otel-collector:
+        condition: service_started
+
+  runtime-host:
+    environment:
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://127.0.0.1:4318
+    depends_on:
+      otel-collector:
+        condition: service_started
+
+  reliability-host:
+    environment:
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://127.0.0.1:4318
+    depends_on:
+      otel-collector:
+        condition: service_started
+
+  indexer:
+    environment:
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://127.0.0.1:4318
+    depends_on:
+      otel-collector:
+        condition: service_started

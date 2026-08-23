@@ -1,0 +1,44 @@
+syntax = "proto3";
+
+package workos.index.v1;
+
+import "workos/common/v1/common.proto";
+
+option go_package = "github.com/yangtao121/workos/gen/go/workos/index/v1;indexv1";
+
+message IndexContextRequest {
+  string project_id = 1;
+  repeated string context_refs = 2;
+}
+
+message IndexJob {
+  string id = 1;
+  string project_id = 2;
+  string state = 3;
+}
+
+message SearchRequest {
+  string project_id = 1;
+  string query = 2;
+  workos.common.v1.PageRequest page = 3;
+}
+
+message SearchHit {
+  string context_ref = 1;
+  string excerpt = 2;
+  double score = 3;
+}
+
+message SearchResponse {
+  repeated SearchHit hits = 1;
+  workos.common.v1.PageResponse page = 2;
+}
+
+message IndexContextResponse {
+  IndexJob job = 1;
+}
+
+service IndexService {
+  rpc IndexContext(IndexContextRequest) returns (IndexContextResponse) {}
+  rpc Search(SearchRequest) returns (SearchResponse) {}
+}

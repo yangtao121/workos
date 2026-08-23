@@ -1,0 +1,5 @@
+**/src/gen/**
+pnpm-lock.yaml
+LICENSE
+docs/structure.md
+

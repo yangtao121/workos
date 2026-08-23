@@ -1,0 +1,197 @@
+syntax = "proto3";
+
+package workos.agent.v1;
+
+import "google/protobuf/struct.proto";
+import "google/protobuf/timestamp.proto";
+import "workos/common/v1/common.proto";
+
+option go_package = "github.com/yangtao121/workos/gen/go/workos/agent/v1;agentv1";
+
+message TargetScope {
+  oneof scope {
+    bool global = 1;
+    string project_id = 2;
+  }
+}
+
+message ContextRef {
+  string type = 1;
+  string id = 2;
+  string revision = 3;
+}
+
+message AgentBudget {
+  int64 max_tokens = 1;
+  string max_cost_decimal = 2;
+  int64 max_runtime_seconds = 3;
+}
+
+message AgentTaskInput {
+  TargetScope target_scope = 1;
+  string role = 2;
+  string goal = 3;
+  repeated ContextRef context_refs = 4;
+  repeated string requested_capabilities = 5;
+  repeated string output_artifact_types = 6;
+  AgentBudget budget = 7;
+  string parent_task_id = 8;
+  string incident_id = 9;
+}
+
+enum AgentTaskState {
+  AGENT_TASK_STATE_UNSPECIFIED = 0;
+  AGENT_TASK_STATE_QUEUED = 1;
+  AGENT_TASK_STATE_RUNNING = 2;
+  AGENT_TASK_STATE_WAITING = 3;
+  AGENT_TASK_STATE_COMPLETED = 4;
+  AGENT_TASK_STATE_FAILED = 5;
+  AGENT_TASK_STATE_CANCELLED = 6;
+}
+
+message AgentTask {
+  string id = 1;
+  string owner_user_id = 2;
+  AgentTaskInput input = 3;
+  AgentTaskState state = 4;
+  string provider_id = 5;
+  string harness_instance_id = 6;
+  string run_id = 7;
+  int64 last_event_sequence = 8;
+  google.protobuf.Timestamp created_at = 9;
+  google.protobuf.Timestamp updated_at = 10;
+}
+
+message RunStarted {
+  string run_id = 1;
+  string provider_id = 2;
+}
+
+message AssistantDelta {
+  string text = 1;
+}
+
+message AssistantMessage {
+  string text = 1;
+}
+
+message ToolCallStarted {
+  string tool_call_id = 1;
+  string tool_name = 2;
+  google.protobuf.Struct input = 3;
+}
+
+message ToolCallCompleted {
+  string tool_call_id = 1;
+  bool success = 2;
+  google.protobuf.Struct output = 3;
+}
+
+message ApprovalRequired {
+  string approval_id = 1;
+  string title = 2;
+  string description = 3;
+}
+
+message ArtifactCreated {
+  string artifact_id = 1;
+  string artifact_type = 2;
+}
+
+message UsageRecorded {
+  int64 input_tokens = 1;
+  int64 output_tokens = 2;
+  string cost_decimal = 3;
+  string model = 4;
+}
+
+message RunWaiting {
+  string reason = 1;
+}
+
+message RunCompleted {
+  string summary = 1;
+}
+
+message RunFailed {
+  string reason = 1;
+  bool retryable = 2;
+}
+
+message RunCancelled {
+  string reason = 1;
+}
+
+message AgentEvent {
+  string id = 1;
+  string task_id = 2;
+  int64 sequence = 3;
+  google.protobuf.Timestamp occurred_at = 4;
+  oneof event {
+    RunStarted run_started = 10;
+    AssistantDelta assistant_delta = 11;
+    AssistantMessage assistant_message = 12;
+    ToolCallStarted tool_call_started = 13;
+    ToolCallCompleted tool_call_completed = 14;
+    ApprovalRequired approval_required = 15;
+    ArtifactCreated artifact_created = 16;
+    UsageRecorded usage_recorded = 17;
+    RunWaiting run_waiting = 18;
+    RunCompleted run_completed = 19;
+    RunFailed run_failed = 20;
+    RunCancelled run_cancelled = 21;
+  }
+}
+
+message SubmitTaskRequest {
+  string idempotency_key = 1;
+  AgentTaskInput input = 2;
+}
+
+message GetTaskRequest {
+  string task_id = 1;
+}
+
+message CancelTaskRequest {
+  string task_id = 1;
+  string reason = 2;
+}
+
+message WatchTaskEventsRequest {
+  string task_id = 1;
+  int64 after_sequence = 2;
+}
+
+message ListTasksRequest {
+  string project_id = 1;
+  workos.common.v1.PageRequest page = 2;
+}
+
+message ListTasksResponse {
+  repeated AgentTask tasks = 1;
+  workos.common.v1.PageResponse page = 2;
+}
+
+message SubmitTaskResponse {
+  AgentTask task = 1;
+}
+
+message GetTaskResponse {
+  AgentTask task = 1;
+}
+
+message CancelTaskResponse {
+  AgentTask task = 1;
+}
+
+message WatchTaskEventsResponse {
+  AgentEvent event = 1;
+}
+
+service AgentTaskService {
+  rpc SubmitTask(SubmitTaskRequest) returns (SubmitTaskResponse) {}
+  rpc GetTask(GetTaskRequest) returns (GetTaskResponse) {}
+  rpc ListTasks(ListTasksRequest) returns (ListTasksResponse) {}
+  rpc CancelTask(CancelTaskRequest) returns (CancelTaskResponse) {}
+  rpc WatchTaskEvents(WatchTaskEventsRequest) returns (stream WatchTaskEventsResponse) {}
+}

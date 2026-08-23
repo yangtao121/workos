@@ -1,0 +1,29 @@
+[Unit]
+Description=WorkOS process %i
+Documentation=file:/usr/share/doc/workos/deploy/README.md
+Wants=network-online.target
+After=network-online.target workos-bootstrap.service
+Requires=workos-bootstrap.service
+PartOf=workos.target
+
+[Service]
+Type=simple
+User=workos
+Group=workos
+EnvironmentFile=/etc/workos/workos.env
+EnvironmentFile=-/etc/workos/%i.env
+ExecStart=/usr/local/libexec/workos/%i
+Restart=on-failure
+RestartSec=2s
+TimeoutStopSec=20s
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectHome=yes
+ProtectSystem=strict
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+
+[Install]
+WantedBy=workos.target

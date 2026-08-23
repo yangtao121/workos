@@ -1,0 +1,62 @@
+syntax = "proto3";
+
+package workos.surface.v1;
+
+option go_package = "github.com/yangtao121/workos/gen/go/workos/surface/v1;surfacev1";
+
+enum SurfaceRenderer {
+  SURFACE_RENDERER_UNSPECIFIED = 0;
+  SURFACE_RENDERER_WEB_BUNDLE = 1;
+  SURFACE_RENDERER_WEB_SERVICE = 2;
+  SURFACE_RENDERER_DECLARATIVE = 3;
+  SURFACE_RENDERER_REMOTE_NATIVE = 4;
+}
+
+enum DeviceClass {
+  DEVICE_CLASS_UNSPECIFIED = 0;
+  DEVICE_CLASS_DESKTOP = 1;
+  DEVICE_CLASS_TABLET = 2;
+  DEVICE_CLASS_FOLDABLE = 3;
+  DEVICE_CLASS_PHONE = 4;
+}
+
+message Viewport {
+  int32 width = 1;
+  int32 height = 2;
+  double pixel_ratio = 3;
+}
+
+message SurfaceSession {
+  string id = 1;
+  string app_instance_id = 2;
+  string project_id = 3;
+  SurfaceRenderer renderer = 4;
+  string url = 5;
+  string bridge_token = 6;
+  bool resize = 7;
+  bool clipboard = 8;
+  bool file_picker = 9;
+}
+
+message CreateSurfaceRequest {
+  string app_instance_id = 1;
+  string project_id = 2;
+  DeviceClass device_class = 3;
+  Viewport viewport = 4;
+  SurfaceRenderer preferred_renderer = 5;
+}
+
+message CloseSurfaceRequest {
+  string surface_session_id = 1;
+}
+
+message CloseSurfaceResponse {}
+
+message CreateSurfaceResponse {
+  SurfaceSession session = 1;
+}
+
+service SurfaceService {
+  rpc CreateSurface(CreateSurfaceRequest) returns (CreateSurfaceResponse) {}
+  rpc CloseSurface(CloseSurfaceRequest) returns (CloseSurfaceResponse) {}
+}

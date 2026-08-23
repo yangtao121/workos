@@ -1,0 +1,26 @@
+environment: development
+database_url: postgres://workos:workos@127.0.0.1:5432/workos?sslmode=disable
+http:
+  address: 127.0.0.1:8080
+  static_dir: apps/desktop-web/dist
+services:
+  core: http://127.0.0.1:8081
+  harness: http://127.0.0.1:8082
+  runtime: http://127.0.0.1:8083
+  reliability: http://127.0.0.1:8084
+  indexer: http://127.0.0.1:8085
+auth:
+  dev_bypass: true
+  owner_id: 0198d7ea-2110-7c42-b659-c5e4d73bc337
+  device_id: 0198d7ea-2110-7c42-b659-c5e4d73bc338
+harness:
+  worker_id: harness-host-local
+  poll_interval: 250ms
+  core_url: http://127.0.0.1:8081
+  generic_cli:
+    enabled: false
+    executable: /usr/local/bin/generic-harness-fixture
+    timeout: 2m
+telemetry:
+  # Empty by default. Set OTEL_EXPORTER_OTLP_ENDPOINT to enable OTLP/HTTP traces.
+  otlp_endpoint: ""

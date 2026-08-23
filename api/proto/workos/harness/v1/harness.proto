@@ -1,0 +1,63 @@
+syntax = "proto3";
+
+package workos.harness.v1;
+
+import "workos/agent/v1/agent.proto";
+import "workos/common/v1/common.proto";
+
+option go_package = "github.com/yangtao121/workos/gen/go/workos/harness/v1;harnessv1";
+
+message HarnessCapabilities {
+  bool streaming = 1;
+  bool persistent_sessions = 2;
+  bool resume = 3;
+  bool steer_during_run = 4;
+  bool approvals = 5;
+  bool tool_registration = 6;
+  bool mcp = 7;
+  bool subagents = 8;
+  bool workspace_mount = 9;
+  bool structured_artifacts = 10;
+  bool usage_reporting = 11;
+}
+
+message HarnessProviderInfo {
+  string id = 1;
+  string display_name = 2;
+  string adapter_version = 3;
+  HarnessCapabilities capabilities = 4;
+  workos.common.v1.HealthState health = 5;
+  string unavailable_reason = 6;
+}
+
+message DescribeProvidersRequest {}
+
+message DescribeProvidersResponse {
+  repeated HarnessProviderInfo providers = 1;
+}
+
+message ExecuteTaskRequest {
+  string task_id = 1;
+  workos.agent.v1.AgentTaskInput input = 2;
+  string provider_id = 3;
+}
+
+message CancelRunRequest {
+  string task_id = 1;
+  string run_id = 2;
+  string reason = 3;
+}
+
+message CancelRunResponse {
+  bool accepted = 1;
+}
+
+message ExecuteTaskResponse {
+  workos.agent.v1.AgentEvent event = 1;
+}
+
+service HarnessHostService {
+  rpc DescribeProviders(DescribeProvidersRequest) returns (DescribeProvidersResponse) {}
+  rpc ExecuteTask(ExecuteTaskRequest) returns (stream ExecuteTaskResponse) {}
+  rpc CancelRun(CancelRunRequest) returns (CancelRunResponse) {}
+}

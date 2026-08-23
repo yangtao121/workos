@@ -1,0 +1,35 @@
+{
+  "name": "@workos/desktop-web",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "license": "Apache-2.0",
+  "scripts": {
+    "build": "tsc --noEmit && vite build",
+    "check": "tsc --noEmit && vitest run src",
+    "dev": "vite --host 127.0.0.1 --port 5173",
+    "test": "vitest run src",
+    "test:e2e": "playwright test",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@workos/agent-center": "workspace:*",
+    "@workos/agent-sdk": "workspace:*",
+    "@workos/protocol": "workspace:*",
+    "@workos/ui-kit": "workspace:*",
+    "@workos/window-manager": "workspace:*",
+    "react": "19.2.8",
+    "react-dom": "19.2.8"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.62.1",
+    "@rolldown/binding-linux-x64-gnu": "1.2.5",
+    "@types/node": "24.13.3",
+    "@types/react": "19.2.14",
+    "@types/react-dom": "19.2.3",
+    "@vitejs/plugin-react": "6.1.0",
+    "typescript": "5.9.2",
+    "vite": "8.2.2",
+    "vitest": "4.1.11"
+  }
+}

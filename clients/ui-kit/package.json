@@ -1,0 +1,22 @@
+{
+  "name": "@workos/ui-kit",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "license": "Apache-2.0",
+  "exports": {
+    ".": "./src/index.tsx"
+  },
+  "scripts": {
+    "check": "tsc --noEmit",
+    "typecheck": "tsc --noEmit"
+  },
+  "peerDependencies": {
+    "react": "^19.2.0"
+  },
+  "devDependencies": {
+    "@types/react": "19.2.14",
+    "react": "19.2.8",
+    "typescript": "5.9.2"
+  }
+}

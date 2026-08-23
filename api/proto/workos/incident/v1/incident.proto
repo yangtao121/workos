@@ -1,0 +1,74 @@
+syntax = "proto3";
+
+package workos.incident.v1;
+
+import "google/protobuf/timestamp.proto";
+import "workos/common/v1/common.proto";
+
+option go_package = "github.com/yangtao121/workos/gen/go/workos/incident/v1;incidentv1";
+
+enum IncidentSeverity {
+  INCIDENT_SEVERITY_UNSPECIFIED = 0;
+  INCIDENT_SEVERITY_INFO = 1;
+  INCIDENT_SEVERITY_WARNING = 2;
+  INCIDENT_SEVERITY_CRITICAL = 3;
+}
+
+enum IncidentState {
+  INCIDENT_STATE_UNSPECIFIED = 0;
+  INCIDENT_STATE_OPEN = 1;
+  INCIDENT_STATE_MITIGATED = 2;
+  INCIDENT_STATE_REPAIRING = 3;
+  INCIDENT_STATE_RESOLVED = 4;
+}
+
+message EvidenceRef {
+  string type = 1;
+  string ref = 2;
+  string digest = 3;
+}
+
+message Incident {
+  string id = 1;
+  string workload_id = 2;
+  string project_id = 3;
+  IncidentSeverity severity = 4;
+  IncidentState state = 5;
+  string policy_id = 6;
+  string summary = 7;
+  repeated EvidenceRef evidence = 8;
+  google.protobuf.Timestamp created_at = 9;
+  google.protobuf.Timestamp updated_at = 10;
+}
+
+message GetIncidentRequest {
+  string incident_id = 1;
+}
+
+message ListIncidentsRequest {
+  string project_id = 1;
+  workos.common.v1.PageRequest page = 2;
+}
+
+message ListIncidentsResponse {
+  repeated Incident incidents = 1;
+  workos.common.v1.PageResponse page = 2;
+}
+
+message AcknowledgeIncidentRequest {
+  string incident_id = 1;
+}
+
+message GetIncidentResponse {
+  Incident incident = 1;
+}
+
+message AcknowledgeIncidentResponse {
+  Incident incident = 1;
+}
+
+service IncidentService {
+  rpc GetIncident(GetIncidentRequest) returns (GetIncidentResponse) {}
+  rpc ListIncidents(ListIncidentsRequest) returns (ListIncidentsResponse) {}
+  rpc AcknowledgeIncident(AcknowledgeIncidentRequest) returns (AcknowledgeIncidentResponse) {}
+}

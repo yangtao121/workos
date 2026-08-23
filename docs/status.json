@@ -1,0 +1,78 @@
+{
+  "$schema": "./status.schema.json",
+  "updated": "2026-08-23",
+  "modules": [
+    {
+      "name": "Access Gateway",
+      "process": "workos-gateway",
+      "status": "scaffolded",
+      "evidence": "health/config boundary"
+    },
+    {
+      "name": "Project",
+      "process": "workos-core",
+      "status": "working",
+      "evidence": "tests/integration/foundation_test.go"
+    },
+    {
+      "name": "Event Backbone",
+      "process": "workos-core",
+      "status": "working",
+      "evidence": "persisted ordered stream + resume integration"
+    },
+    {
+      "name": "Agent Task Router",
+      "process": "workos-core",
+      "status": "working",
+      "evidence": "submit/lease/terminal lifecycle integration"
+    },
+    {
+      "name": "Harness Broker",
+      "process": "harness-host",
+      "status": "working",
+      "evidence": "Fake integration + Generic CLI contract tests"
+    },
+    {
+      "name": "Desktop Shell",
+      "process": "desktop-web",
+      "status": "working",
+      "evidence": "apps/desktop-web/e2e/foundation.spec.ts"
+    },
+    {
+      "name": "App Registry",
+      "process": "workos-core",
+      "status": "contract-only",
+      "evidence": "workos.app.v1"
+    },
+    {
+      "name": "Artifact",
+      "process": "workos-core",
+      "status": "contract-only",
+      "evidence": "workos.artifact.v1"
+    },
+    {
+      "name": "Runtime / Surface",
+      "process": "runtime-host",
+      "status": "scaffolded",
+      "evidence": "capability probe; runners unavailable"
+    },
+    {
+      "name": "Reliability",
+      "process": "reliability-host",
+      "status": "scaffolded",
+      "evidence": "health; enforcement unavailable"
+    },
+    {
+      "name": "Indexer",
+      "process": "indexer",
+      "status": "scaffolded",
+      "evidence": "health; indexing unavailable"
+    },
+    {
+      "name": "Mobile Shell",
+      "process": "mobile-shell",
+      "status": "contract-only",
+      "evidence": "device-class contract"
+    }
+  ]
+}

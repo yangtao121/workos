@@ -1,0 +1,12 @@
+.git
+.github
+.cache
+.tools
+.workos
+node_modules
+**/node_modules
+**/dist
+coverage
+playwright-report
+test-results
+

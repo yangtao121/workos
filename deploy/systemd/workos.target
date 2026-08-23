@@ -1,0 +1,13 @@
+[Unit]
+Description=WorkOS foundation services
+Requires=workos-bootstrap.service
+Wants=workos@workos-gateway.service
+Wants=workos@workos-core.service
+Wants=workos@harness-host.service
+Wants=workos@runtime-host.service
+Wants=workos@reliability-host.service
+Wants=workos@indexer.service
+After=workos-bootstrap.service
+
+[Install]
+WantedBy=multi-user.target

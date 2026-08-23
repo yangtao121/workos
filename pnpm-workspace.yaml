@@ -1,0 +1,9 @@
+packages:
+  - "apps/*"
+  - "clients/*"
+  - "sdk/*"
+
+allowBuilds:
+  unrs-resolver: false
+
+minimumReleaseAge: 1440

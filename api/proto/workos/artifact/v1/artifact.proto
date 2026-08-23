@@ -1,0 +1,52 @@
+syntax = "proto3";
+
+package workos.artifact.v1;
+
+import "google/protobuf/timestamp.proto";
+import "workos/common/v1/common.proto";
+
+option go_package = "github.com/yangtao121/workos/gen/go/workos/artifact/v1;artifactv1";
+
+message Artifact {
+  string id = 1;
+  string project_id = 2;
+  string type = 3;
+  string title = 4;
+  string media_type = 5;
+  string content_ref = 6;
+  string digest = 7;
+  google.protobuf.Timestamp created_at = 8;
+}
+
+message CreateArtifactRequest {
+  string idempotency_key = 1;
+  Artifact artifact = 2;
+}
+
+message GetArtifactRequest {
+  string artifact_id = 1;
+}
+
+message ListArtifactsRequest {
+  string project_id = 1;
+  workos.common.v1.PageRequest page = 2;
+}
+
+message ListArtifactsResponse {
+  repeated Artifact artifacts = 1;
+  workos.common.v1.PageResponse page = 2;
+}
+
+message CreateArtifactResponse {
+  Artifact artifact = 1;
+}
+
+message GetArtifactResponse {
+  Artifact artifact = 1;
+}
+
+service ArtifactService {
+  rpc CreateArtifact(CreateArtifactRequest) returns (CreateArtifactResponse) {}
+  rpc GetArtifact(GetArtifactRequest) returns (GetArtifactResponse) {}
+  rpc ListArtifacts(ListArtifactsRequest) returns (ListArtifactsResponse) {}
+}

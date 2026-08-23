@@ -1,0 +1,61 @@
+syntax = "proto3";
+
+package workos.common.v1;
+
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/yangtao121/workos/gen/go/workos/common/v1;commonv1";
+
+message IdentityContext {
+  string user_id = 1;
+  string device_id = 2;
+  string workload_id = 3;
+  string app_id = 4;
+  string project_id = 5;
+}
+
+message PageRequest {
+  int32 page_size = 1;
+  string page_token = 2;
+}
+
+message PageResponse {
+  string next_page_token = 1;
+}
+
+message Revision {
+  int64 value = 1;
+  google.protobuf.Timestamp updated_at = 2;
+}
+
+message FeatureCapability {
+  string id = 1;
+  bool available = 2;
+  string reason = 3;
+}
+
+enum HealthState {
+  HEALTH_STATE_UNSPECIFIED = 0;
+  HEALTH_STATE_STARTING = 1;
+  HEALTH_STATE_HEALTHY = 2;
+  HEALTH_STATE_DEGRADED = 3;
+  HEALTH_STATE_UNAVAILABLE = 4;
+}
+
+message ServiceHealth {
+  string service = 1;
+  string version = 2;
+  HealthState state = 3;
+  repeated FeatureCapability capabilities = 4;
+  google.protobuf.Timestamp observed_at = 5;
+}
+
+message GetServiceHealthRequest {}
+
+message GetServiceHealthResponse {
+  ServiceHealth health = 1;
+}
+
+service SystemService {
+  rpc GetServiceHealth(GetServiceHealthRequest) returns (GetServiceHealthResponse) {}
+}

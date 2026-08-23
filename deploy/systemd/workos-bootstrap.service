@@ -1,0 +1,21 @@
+[Unit]
+Description=WorkOS schema and owner bootstrap
+Documentation=file:/usr/share/doc/workos/deploy/README.md
+Wants=network-online.target
+After=network-online.target postgresql.service
+Before=workos.target
+
+[Service]
+Type=oneshot
+User=workos
+Group=workos
+EnvironmentFile=/etc/workos/workos.env
+ExecStart=/usr/local/libexec/workos/workosctl bootstrap
+RemainAfterExit=yes
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectHome=yes
+ProtectSystem=strict
+
+[Install]
+WantedBy=workos.target

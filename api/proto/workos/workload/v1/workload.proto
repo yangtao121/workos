@@ -1,0 +1,82 @@
+syntax = "proto3";
+
+package workos.workload.v1;
+
+option go_package = "github.com/yangtao121/workos/gen/go/workos/workload/v1;workloadv1";
+
+enum WorkloadKind {
+  WORKLOAD_KIND_UNSPECIFIED = 0;
+  WORKLOAD_KIND_APP = 1;
+  WORKLOAD_KIND_BACKGROUND_SERVICE = 2;
+  WORKLOAD_KIND_HARNESS = 3;
+  WORKLOAD_KIND_AGENT_TASK = 4;
+  WORKLOAD_KIND_REMOTE_BROWSER = 5;
+  WORKLOAD_KIND_NATIVE_SURFACE = 6;
+}
+
+enum WorkloadState {
+  WORKLOAD_STATE_UNSPECIFIED = 0;
+  WORKLOAD_STATE_PENDING = 1;
+  WORKLOAD_STATE_RUNNING = 2;
+  WORKLOAD_STATE_STOPPED = 3;
+  WORKLOAD_STATE_FAILED = 4;
+}
+
+message WorkloadIdentity {
+  string workload_id = 1;
+  WorkloadKind kind = 2;
+  string project_id = 3;
+  string app_id = 4;
+  string harness_instance_id = 5;
+  string version = 6;
+  string runtime_id = 7;
+  string cgroup_path = 8;
+  string owner_user_id = 9;
+  WorkloadState state = 10;
+}
+
+message InspectNodeRequest {}
+
+message NodeCapabilities {
+  bool cgroup_v2 = 1;
+  bool rootless_podman = 2;
+  bool container_runner = 3;
+  bool native_runner = 4;
+  string reason = 5;
+}
+
+message GetWorkloadRequest {
+  string workload_id = 1;
+}
+
+message StartWorkloadRequest {
+  WorkloadIdentity workload = 1;
+}
+
+message StopWorkloadRequest {
+  string workload_id = 1;
+  string reason = 2;
+}
+
+message InspectNodeResponse {
+  NodeCapabilities capabilities = 1;
+}
+
+message GetWorkloadResponse {
+  WorkloadIdentity workload = 1;
+}
+
+message StartWorkloadResponse {
+  WorkloadIdentity workload = 1;
+}
+
+message StopWorkloadResponse {
+  WorkloadIdentity workload = 1;
+}
+
+service WorkloadService {
+  rpc InspectNode(InspectNodeRequest) returns (InspectNodeResponse) {}
+  rpc GetWorkload(GetWorkloadRequest) returns (GetWorkloadResponse) {}
+  rpc StartWorkload(StartWorkloadRequest) returns (StartWorkloadResponse) {}
+  rpc StopWorkload(StopWorkloadRequest) returns (StopWorkloadResponse) {}
+}

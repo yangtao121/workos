@@ -1,0 +1,67 @@
+syntax = "proto3";
+
+package workos.app.v1;
+
+import "workos/common/v1/common.proto";
+
+option go_package = "github.com/yangtao121/workos/gen/go/workos/app/v1;appv1";
+
+enum AppScope {
+  APP_SCOPE_UNSPECIFIED = 0;
+  APP_SCOPE_SYSTEM = 1;
+  APP_SCOPE_USER = 2;
+  APP_SCOPE_PROJECT = 3;
+}
+
+message WorkOSApp {
+  string id = 1;
+  string name = 2;
+  string version = 3;
+  AppScope scope = 4;
+  repeated string permissions = 5;
+  string manifest_digest = 6;
+}
+
+message ValidateManifestRequest {
+  bytes yaml = 1;
+}
+
+message ValidateManifestResponse {
+  bool valid = 1;
+  repeated string violations = 2;
+  WorkOSApp normalized = 3;
+}
+
+message RegisterAppRequest {
+  string idempotency_key = 1;
+  bytes manifest_yaml = 2;
+}
+
+message GetAppRequest {
+  string app_id = 1;
+}
+
+message ListAppsRequest {
+  string project_id = 1;
+  workos.common.v1.PageRequest page = 2;
+}
+
+message ListAppsResponse {
+  repeated WorkOSApp apps = 1;
+  workos.common.v1.PageResponse page = 2;
+}
+
+message RegisterAppResponse {
+  WorkOSApp app = 1;
+}
+
+message GetAppResponse {
+  WorkOSApp app = 1;
+}
+
+service AppRegistryService {
+  rpc ValidateManifest(ValidateManifestRequest) returns (ValidateManifestResponse) {}
+  rpc RegisterApp(RegisterAppRequest) returns (RegisterAppResponse) {}
+  rpc GetApp(GetAppRequest) returns (GetAppResponse) {}
+  rpc ListApps(ListAppsRequest) returns (ListAppsResponse) {}
+}

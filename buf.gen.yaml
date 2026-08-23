@@ -1,0 +1,18 @@
+version: v2
+clean: true
+plugins:
+  - remote: buf.build/protocolbuffers/go:v1.36.11
+    out: gen/go
+    opt:
+      - paths=source_relative
+  - remote: buf.build/connectrpc/go:v1.18.1
+    out: gen/go
+    opt:
+      - paths=source_relative
+  - remote: buf.build/bufbuild/es:v2.14.0
+    out: sdk/protocol/src/gen
+    opt:
+      - target=ts
+      - import_extension=js
+inputs:
+  - directory: api/proto
