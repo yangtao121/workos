@@ -302,39 +302,114 @@ func TestAppRegistryVerticalSlice(t *testing.T) {
 		}
 
 		// Two keys racing the same version with different digests: one wins,
-		// the other gets AlreadyExists and the stored manifest never changes.
+		// the loser gets AlreadyExists (not Aborted or an internal error),
+		// the stored manifest never changes, and the loser's key is not
+		// consumed by the failed transaction.
 		raceVersion := "5.0.0"
-		manifestA := manifestFor(appID, "Race A", raceVersion, "user")
-		manifestB := manifestFor(appID, "Race B", raceVersion, "user")
+		type digestOutcome struct {
+			key    string
+			name   string
+			digest string
+			err    error
+		}
+		digestSides := []struct {
+			key      string
+			manifest []byte
+			name     string
+		}{
+			{key: fmt.Sprintf("race-digest-a-%d", stamp), manifest: manifestFor(appID, "Race A", raceVersion, "user"), name: "Race A"},
+			{key: fmt.Sprintf("race-digest-b-%d", stamp), manifest: manifestFor(appID, "Race B", raceVersion, "user"), name: "Race B"},
+		}
 		digestStart := make(chan struct{})
-		digestResults := make(chan error, 2)
-		go func() {
-			<-digestStart
-			_, err := apps.RegisterApp(ctx, connect.NewRequest(&appv1.RegisterAppRequest{
-				IdempotencyKey: fmt.Sprintf("race-digest-a-%d", stamp), ManifestYaml: manifestA}))
-			digestResults <- err
-		}()
-		go func() {
-			<-digestStart
-			_, err := apps.RegisterApp(ctx, connect.NewRequest(&appv1.RegisterAppRequest{
-				IdempotencyKey: fmt.Sprintf("race-digest-b-%d", stamp), ManifestYaml: manifestB}))
-			digestResults <- err
-		}()
+		digestResults := make(chan digestOutcome, len(digestSides))
+		for _, side := range digestSides {
+			go func(side struct {
+				key      string
+				manifest []byte
+				name     string
+			}) {
+				<-digestStart
+				response, err := apps.RegisterApp(ctx, connect.NewRequest(&appv1.RegisterAppRequest{
+					IdempotencyKey: side.key, ManifestYaml: side.manifest}))
+				outcome := digestOutcome{key: side.key, name: side.name, err: err}
+				if err == nil {
+					outcome.digest = response.Msg.GetApp().GetManifestDigest()
+				}
+				digestResults <- outcome
+			}(side)
+		}
 		close(digestStart)
-		digestFirst, digestSecond := <-digestResults, <-digestResults
-		if digestFirst == nil && digestSecond == nil {
-			t.Fatal("two different manifests for one version must not both register")
+		firstOutcome, secondOutcome := <-digestResults, <-digestResults
+		winners := 0
+		for _, outcome := range []digestOutcome{firstOutcome, secondOutcome} {
+			if outcome.err == nil {
+				winners++
+			}
 		}
-		if digestFirst != nil && digestSecond != nil {
-			t.Fatalf("one registration must win the digest race: %v / %v", digestFirst, digestSecond)
+		if winners != 1 {
+			t.Fatalf("exactly one registration must win the digest race: %v / %v", firstOutcome.err, secondOutcome.err)
 		}
+		var winner, loser digestOutcome
+		if firstOutcome.err == nil {
+			winner, loser = firstOutcome, secondOutcome
+		} else {
+			winner, loser = secondOutcome, firstOutcome
+		}
+		if code := connect.CodeOf(loser.err); code != connect.CodeAlreadyExists {
+			t.Fatalf("the losing digest race request must be AlreadyExists, got %v", loser.err)
+		}
+
+		// Database facts: only the winner's immutable version and digest
+		// exist, the winner's key maps to that version, and the loser's key
+		// has no mapping because only successful requests consume keys.
+		if got := countRows(t,
+			`SELECT count(*) FROM workos_core.app_versions WHERE app_id = $1 AND version = $2`, appID, raceVersion); got != 1 {
+			t.Fatalf("only the winner's immutable version may exist, got %d", got)
+		}
+		var storedDigest, storedID string
+		if err := appRegistryDB(t).QueryRow(context.Background(),
+			`SELECT manifest_digest, id FROM workos_core.app_versions WHERE app_id = $1 AND version = $2`,
+			appID, raceVersion).Scan(&storedDigest, &storedID); err != nil {
+			t.Fatalf("query raced version: %v", err)
+		}
+		if storedDigest != winner.digest {
+			t.Fatalf("stored digest must stay the winner's fact: %s vs %s", storedDigest, winner.digest)
+		}
+		var mappedID string
+		if err := appRegistryDB(t).QueryRow(context.Background(),
+			`SELECT app_version_id FROM workos_core.app_registration_requests WHERE idempotency_key = $1`,
+			winner.key).Scan(&mappedID); err != nil {
+			t.Fatalf("winner key must map to the winner version: %v", err)
+		}
+		if mappedID != storedID {
+			t.Fatalf("winner key mapped to version %s, want the winner version %s", mappedID, storedID)
+		}
+		if got := countRows(t,
+			`SELECT count(*) FROM workos_core.app_registration_requests WHERE idempotency_key = $1`, loser.key); got != 0 {
+			t.Fatalf("the failed loser key must not be consumed, found %d mappings", got)
+		}
+
+		// The loser's failed transaction must not have burned its key: a
+		// fresh, non-conflicting request under that key succeeds, and only
+		// then does the key behave as consumed for different requests.
+		recovered, err := apps.RegisterApp(ctx, connect.NewRequest(&appv1.RegisterAppRequest{
+			IdempotencyKey: loser.key, ManifestYaml: manifestFor(appID, "Race Loser Recovery", "5.0.1", "user"),
+		}))
+		if err != nil || recovered.Msg.GetApp().GetVersion() != "5.0.1" {
+			t.Fatalf("loser key must remain usable after AlreadyExists: %#v err=%v", recovered.Msg, err)
+		}
+		if _, err := apps.RegisterApp(ctx, connect.NewRequest(&appv1.RegisterAppRequest{
+			IdempotencyKey: loser.key, ManifestYaml: manifestFor(appID, "Race Loser Recovery", "5.0.2", "user"),
+		})); connect.CodeOf(err) != connect.CodeAborted {
+			t.Fatalf("reused loser key must conflict on a different request (Aborted), got %v", err)
+		}
+
 		stored, err := apps.GetApp(ctx, connect.NewRequest(&appv1.GetAppRequest{AppId: appID, Version: raceVersion}))
 		if err != nil {
 			t.Fatalf("get race winner: %v", err)
 		}
-		winner := stored.Msg.GetApp()
-		if winner.GetName() != "Race A" && winner.GetName() != "Race B" {
-			t.Fatalf("unexpected winner: %#v", winner)
+		if name := stored.Msg.GetApp().GetName(); name != winner.name {
+			t.Fatalf("unexpected winner persisted: %q", name)
 		}
 	})
 
@@ -420,16 +495,27 @@ func TestAppRegistryVerticalSlice(t *testing.T) {
 	t.Run("ListAppsPagingDefaultsClampAndExactFinalPage", func(t *testing.T) {
 		// More than one hundred apps force every paging rule to be real:
 		// the default page (50), the clamp (100), and the limit+1 probe.
+		// Every registration is recorded and removed again by the subtest
+		// cleanup so the shared acceptance volume does not grow per run; the
+		// paging assertions never assume an empty database.
 		const bulkCount = 105
 		bulkPrefix := fmt.Sprintf("bulk-%d-", stamp)
-		for index := 0; index < bulkCount; index++ {
-			appID := fmt.Sprintf("%s%03d", bulkPrefix, index)
+		var fixtureIDs, fixtureKeys []string
+		registerFixture := func(appID, key string) {
+			fixtureIDs = append(fixtureIDs, appID)
+			fixtureKeys = append(fixtureKeys, key)
 			if _, err := apps.RegisterApp(ctx, connect.NewRequest(&appv1.RegisterAppRequest{
-				IdempotencyKey: fmt.Sprintf("bulk-%d-%03d", stamp, index),
+				IdempotencyKey: key,
 				ManifestYaml:   manifestFor(appID, "Bulk App", "1.0.0", "user"),
 			})); err != nil {
 				t.Fatalf("register %s: %v", appID, err)
 			}
+		}
+		// Registered before the first fixture row exists so the removal also
+		// runs when a later step fails the subtest.
+		t.Cleanup(func() { removePagingFixture(t, fixtureKeys, fixtureIDs) })
+		for index := 0; index < bulkCount; index++ {
+			registerFixture(fmt.Sprintf("%s%03d", bulkPrefix, index), fmt.Sprintf("bulk-%d-%03d", stamp, index))
 		}
 
 		// No page block: the default page size is 50 and must be followed by
@@ -502,13 +588,7 @@ func TestAppRegistryVerticalSlice(t *testing.T) {
 		total := len(seenAll)
 		if remainder := total % 100; remainder != 0 {
 			for index := 0; index < 100-remainder; index++ {
-				appID := fmt.Sprintf("pad-%d-%03d", stamp, index)
-				if _, err := apps.RegisterApp(ctx, connect.NewRequest(&appv1.RegisterAppRequest{
-					IdempotencyKey: fmt.Sprintf("pad-%d-%03d", stamp, index),
-					ManifestYaml:   manifestFor(appID, "Pad App", "1.0.0", "user"),
-				})); err != nil {
-					t.Fatalf("register %s: %v", appID, err)
-				}
+				registerFixture(fmt.Sprintf("pad-%d-%03d", stamp, index), fmt.Sprintf("pad-%d-%03d", stamp, index))
 			}
 		}
 		token, fullPages := "", 0
@@ -647,15 +727,33 @@ func TestAppRegistryVerticalSlice(t *testing.T) {
 		secretManifest := strings.Replace(string(manifestFor(fmt.Sprintf("secret-%d", stamp), "Secret", "1.0.0", "user")),
 			"resources:\n  limits:\n    memory: 256",
 			"resources:\n  limits:\n    memory: 256\n  api_key: synthetic-not-a-real-value", 1)
+		// A synthetic prefixed-token-shaped string used as a mapping key hits
+		// the same credential-material policy from the key side.
+		credentialKeyManifest := strings.Replace(string(manifestFor(fmt.Sprintf("credkey-%d", stamp), "Credkey", "1.0.0", "user")),
+			"resources:\n  limits:\n    memory: 256",
+			"resources:\n  limits:\n    memory: 256\n  \"sk-zzzz0123456789abcdef\": 1", 1)
+		deniedApps := []string{
+			fmt.Sprintf("secret-%d", stamp),
+			fmt.Sprintf("system-%d", stamp),
+			fmt.Sprintf("trusted-%d", stamp),
+			fmt.Sprintf("cap-%d", stamp),
+			fmt.Sprintf("credkey-%d", stamp),
+		}
+		deniedKeys := []string{}
 		for name, yaml := range map[string][]byte{
-			"system scope":     manifestFor(fmt.Sprintf("system-%d", stamp), "System", "1.0.0", "system"),
-			"trusted runtime":  []byte(strings.Replace(string(manifestFor(fmt.Sprintf("trusted-%d", stamp), "Trusted", "1.0.0", "user")), "type: container", "type: trusted", 1)),
-			"unknown capacity": []byte(strings.Replace(string(manifestFor(fmt.Sprintf("cap-%d", stamp), "Capability", "1.0.0", "user")), "permissions: [artifact.read, agent.task.run]", "permissions: [llm.unlimited]", 1)),
-			"secret key name":  []byte(secretManifest),
+			"system scope":          manifestFor(fmt.Sprintf("system-%d", stamp), "System", "1.0.0", "system"),
+			"trusted runtime":       []byte(strings.Replace(string(manifestFor(fmt.Sprintf("trusted-%d", stamp), "Trusted", "1.0.0", "user")), "type: container", "type: trusted", 1)),
+			"unknown capacity":      []byte(strings.Replace(string(manifestFor(fmt.Sprintf("cap-%d", stamp), "Capability", "1.0.0", "user")), "permissions: [artifact.read, agent.task.run]", "permissions: [llm.unlimited]", 1)),
+			"secret key name":       []byte(secretManifest),
+			"credential-shaped key": []byte(credentialKeyManifest),
 		} {
+			deniedKeys = append(deniedKeys, fmt.Sprintf("deny-%s-%d", name, stamp))
 			validated, err := apps.ValidateManifest(ctx, connect.NewRequest(&appv1.ValidateManifestRequest{Yaml: yaml}))
 			if err != nil || validated.Msg.GetValid() {
 				t.Fatalf("%s must not validate: %#v err=%v", name, validated.Msg, err)
+			}
+			if joined := strings.Join(validated.Msg.GetViolations(), " "); strings.Contains(joined, "sk-zzzz") {
+				t.Fatalf("%s: violation leaked the synthetic credential-shaped key: %q", name, joined)
 			}
 			_, err = apps.RegisterApp(ctx, connect.NewRequest(&appv1.RegisterAppRequest{
 				IdempotencyKey: fmt.Sprintf("deny-%s-%d", name, stamp), ManifestYaml: yaml,
@@ -664,7 +762,77 @@ func TestAppRegistryVerticalSlice(t *testing.T) {
 				t.Fatalf("%s must fail closed at registration, got %v", name, err)
 			}
 		}
+		// A denied manifest must leave no facts behind: no app version and no
+		// consumed idempotency key.
+		if got := countRows(t,
+			`SELECT count(*) FROM workos_core.app_versions WHERE app_id = ANY($1)`, deniedApps); got != 0 {
+			t.Fatalf("denied registrations must not persist app versions, got %d", got)
+		}
+		if got := countRows(t,
+			`SELECT count(*) FROM workos_core.app_registration_requests WHERE idempotency_key = ANY($1)`, deniedKeys); got != 0 {
+			t.Fatalf("denied registrations must not consume idempotency keys, got %d", got)
+		}
 	})
+}
+
+// removePagingFixture deletes exactly the rows one paging run created: first
+// the registration-request mappings (the versions they reference are
+// RESTRICTed against deletion), then the immutable versions, both selected by
+// the run-unique stamp-derived key and app-ID sets. It never touches rows
+// outside those sets, and any database failure or surviving row fails the
+// test instead of leaking state into the next run.
+func removePagingFixture(t *testing.T, keys, appIDs []string) {
+	t.Helper()
+	if len(keys) == 0 && len(appIDs) == 0 {
+		return
+	}
+	databaseURL := os.Getenv("WORKOS_TEST_DATABASE_URL")
+	if databaseURL == "" {
+		databaseURL = "postgres://workos:workos@127.0.0.1:5432/workos?sslmode=disable"
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	conn, err := pgx.Connect(ctx, databaseURL)
+	if err != nil {
+		t.Errorf("cleanup: connect acceptance database: %v", err)
+		return
+	}
+	defer func() {
+		if err := conn.Close(context.Background()); err != nil {
+			t.Errorf("cleanup: close acceptance connection: %v", err)
+		}
+	}()
+	tx, err := conn.Begin(ctx)
+	if err != nil {
+		t.Errorf("cleanup: begin fixture removal: %v", err)
+		return
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck
+	if _, err := tx.Exec(ctx,
+		`DELETE FROM workos_core.app_registration_requests WHERE idempotency_key = ANY($1)`, keys); err != nil {
+		t.Errorf("cleanup: delete fixture request mappings: %v", err)
+		return
+	}
+	if _, err := tx.Exec(ctx,
+		`DELETE FROM workos_core.app_versions WHERE app_id = ANY($1)`, appIDs); err != nil {
+		t.Errorf("cleanup: delete fixture app versions: %v", err)
+		return
+	}
+	if err := tx.Commit(ctx); err != nil {
+		t.Errorf("cleanup: commit fixture removal: %v", err)
+		return
+	}
+	var leftover int
+	if err := conn.QueryRow(ctx, `
+		SELECT (SELECT count(*) FROM workos_core.app_registration_requests WHERE idempotency_key = ANY($1))
+		     + (SELECT count(*) FROM workos_core.app_versions WHERE app_id = ANY($2))`,
+		keys, appIDs).Scan(&leftover); err != nil {
+		t.Errorf("cleanup: verify fixture removal: %v", err)
+		return
+	}
+	if leftover != 0 {
+		t.Errorf("cleanup: %d fixture rows survived the removal", leftover)
+	}
 }
 
 func registerApp(t *testing.T, ctx context.Context, client appv1connect.AppRegistryServiceClient, appID, name, version, scope string) string {

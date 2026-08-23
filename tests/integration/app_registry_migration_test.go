@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -32,8 +33,11 @@ func migrationFileChecksum(t *testing.T, name string) string {
 	return hex.EncodeToString(digest[:])
 }
 
-// scratchDatabase creates an isolated database and returns its DSN plus a
-// cleanup that drops it.
+// scratchDatabase creates an isolated database and returns its DSN. The
+// cleanup is self-contained: the DROP runs on an admin connection opened
+// inside the cleanup itself, so it can never execute on a connection the
+// helper has already closed, and every DROP or close failure fails the test
+// instead of silently leaking the database.
 func scratchDatabase(t *testing.T) string {
 	t.Helper()
 	databaseURL := os.Getenv("WORKOS_TEST_DATABASE_URL")
@@ -47,14 +51,85 @@ func scratchDatabase(t *testing.T) string {
 	if err != nil {
 		t.Skipf("postgres is not reachable for the migration check: %v", err)
 	}
-	defer admin.Close(context.Background()) //nolint:errcheck
-	if _, err := admin.Exec(ctx, fmt.Sprintf(`CREATE DATABASE %s`, scratch)); err != nil {
+	if _, err := admin.Exec(ctx, fmt.Sprintf(`CREATE DATABASE %s`, pgx.Identifier{scratch}.Sanitize())); err != nil {
+		admin.Close(context.Background()) //nolint:errcheck
 		t.Fatalf("create scratch database: %v", err)
 	}
+	if err := admin.Close(ctx); err != nil {
+		t.Fatalf("close scratch creation connection: %v", err)
+	}
 	t.Cleanup(func() {
-		admin.Exec(context.Background(), fmt.Sprintf(`DROP DATABASE %s WITH (FORCE)`, scratch)) //nolint:errcheck
+		dropScratchDatabase(t, databaseURL, scratch)
 	})
 	return withDatabase(databaseURL, scratch)
+}
+
+// dropScratchDatabase removes exactly one scratch database by its generated,
+// safely quoted name — never a wildcard and never another test's database.
+// It uses its own bounded context, closes the admin connection afterwards,
+// and reports every failure through t.Errorf.
+func dropScratchDatabase(t *testing.T, databaseURL, database string) {
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	admin, err := pgx.Connect(ctx, withDatabase(databaseURL, "postgres"))
+	if err != nil {
+		t.Errorf("cleanup: connect to drop scratch database %s: %v", database, err)
+		return
+	}
+	defer func() {
+		if err := admin.Close(context.Background()); err != nil {
+			t.Errorf("cleanup: close admin connection for %s: %v", database, err)
+		}
+	}()
+	if _, err := admin.Exec(ctx, fmt.Sprintf(`DROP DATABASE %s WITH (FORCE)`, pgx.Identifier{database}.Sanitize())); err != nil {
+		t.Errorf("cleanup: drop scratch database %s: %v", database, err)
+	}
+}
+
+// TestScratchDatabaseCleanupDropsCreatedDatabase guards the cleanup lifecycle:
+// after the subtest that used the scratch database returns, its t.Cleanup has
+// run, so the database must be gone. A regression that closes the cleanup
+// connection when the helper returns (or swallows the DROP error) leaves the
+// database behind and fails here.
+func TestScratchDatabaseCleanupDropsCreatedDatabase(t *testing.T) {
+	t.Parallel()
+	databaseURL := os.Getenv("WORKOS_TEST_DATABASE_URL")
+	if databaseURL == "" {
+		databaseURL = "postgres://workos:workos@127.0.0.1:5432/workos?sslmode=disable"
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	admin, err := pgx.Connect(ctx, withDatabase(databaseURL, "postgres"))
+	if err != nil {
+		t.Skipf("postgres is not reachable for the migration check: %v", err)
+	}
+	defer admin.Close(context.Background()) //nolint:errcheck
+
+	var created string
+	t.Run("uses a scratch database", func(t *testing.T) {
+		dsn := scratchDatabase(t)
+		parsed, err := url.Parse(dsn)
+		if err != nil {
+			t.Fatalf("parse scratch dsn: %v", err)
+		}
+		created = strings.TrimPrefix(parsed.Path, "/")
+		if !strings.HasPrefix(created, "workos_migration_test_") {
+			t.Fatalf("unexpected scratch database name %q", created)
+		}
+		var exists bool
+		if err := admin.QueryRow(ctx,
+			`SELECT EXISTS (SELECT 1 FROM pg_database WHERE datname = $1)`, created).Scan(&exists); err != nil || !exists {
+			t.Fatalf("scratch database must exist while its test runs: %v %v", err, exists)
+		}
+	})
+	var exists bool
+	if err := admin.QueryRow(ctx,
+		`SELECT EXISTS (SELECT 1 FROM pg_database WHERE datname = $1)`, created).Scan(&exists); err != nil {
+		t.Fatalf("inspect scratch database after cleanup: %v", err)
+	}
+	if exists {
+		t.Fatalf("scratch database %s was not dropped by the test cleanup", created)
+	}
 }
 
 func execOn(t *testing.T, dsn string, statement string, args ...any) {

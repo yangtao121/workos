@@ -54,7 +54,7 @@
       "name": "App Registry",
       "process": "workos-core",
       "status": "working",
-      "evidence": "schema-backed immutable registration + durable idempotency + bounded paging/read + restart persistence"
+      "evidence": "schema-backed immutable registration + durable idempotency + bounded paging/read + credential-shaped key rejection + restart persistence"
     },
     {
       "name": "Artifact",

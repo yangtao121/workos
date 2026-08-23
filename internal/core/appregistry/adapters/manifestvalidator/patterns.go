@@ -95,15 +95,29 @@ func splitNameTokens(name string) []string {
 	return tokens
 }
 
-// secretValuePatterns match string values shaped like common credential
-// formats (private key headers, prefixed API tokens, bearer credentials,
-// AWS access key IDs, JWTs). Like the key policy, matches fail closed and
-// are reported by path only. Fixtures only ever use obviously synthetic
-// values shaped like these formats.
-var secretValuePatterns = []*regexp.Regexp{
+// credentialShapePatterns match strings shaped like common credential formats
+// (private key headers, prefixed API tokens, bearer credentials, AWS access
+// key IDs, JWTs). They are the single credential-shape rule, applied to both
+// string values and mapping keys so the two checks can never drift apart.
+// Like the name policy, matches fail closed and are reported by path only.
+// Fixtures only ever use obviously synthetic values shaped like these formats.
+var credentialShapePatterns = []*regexp.Regexp{
 	regexp.MustCompile(`-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----`),
 	regexp.MustCompile(`^(?:sk|rk|pk|ghp|gho|ghu|xoxb|xoxp|ak)-[A-Za-z0-9_=-]{16,}$`),
 	regexp.MustCompile(`(?i)^bearer\s+[A-Za-z0-9._~+/-]{16,}={0,2}$`),
 	regexp.MustCompile(`^AKIA[0-9A-Z]{16}$`),
 	regexp.MustCompile(`^eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{5,}$`),
+}
+
+// credentialShapedString reports whether the string itself is shaped like a
+// known credential format. It backs both the value scan and the mapping-key
+// guard: a key that carries credential material is exactly as dangerous as a
+// value that does.
+func credentialShapedString(value string) bool {
+	for _, pattern := range credentialShapePatterns {
+		if pattern.MatchString(value) {
+			return true
+		}
+	}
+	return false
 }

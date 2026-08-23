@@ -230,6 +230,110 @@ func TestValidatorFailClosedOnTrustBoundary(t *testing.T) {
 	}
 }
 
+// TestCredentialShapeRuleIsSharedByKeysAndValues pins the single
+// implementation both checks rely on: one list of shapes, positive and
+// negative, so a key can never be treated more permissively than a value.
+func TestCredentialShapeRuleIsSharedByKeysAndValues(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		value  string
+		shaped bool
+	}{
+		{"sk-zzzz0123456789abcdef", true},
+		{"ghp-zzzz0123456789abcdef", true},
+		{"eyJzzzzzz123456.eyJzzzzzz123456.zzsynthetic12345", true},
+		{"AKIAZZZZ0123456789AB", true},
+		{"-----BEGIN SYNTHETIC PRIVATE KEY-----", true},
+		{"Bearer zzzz0123456789abcdefgh", true},
+		{"note-taker", false},
+		{"ski_rating", false},
+		{"slack_channel", false},
+		{"memory", false},
+	}
+	for _, testCase := range cases {
+		if got := credentialShapedString(testCase.value); got != testCase.shaped {
+			t.Fatalf("credentialShapedString(%q) = %v, want %v", testCase.value, got, testCase.shaped)
+		}
+	}
+}
+
+// TestValidatorRejectsCredentialShapedMappingKeys proves the trust boundary
+// for credential material used as a mapping key: each shape is rejected by the
+// credential-material policy (not as a duplicate key or a schema error), only
+// the safe parent path is reported, and no normalized manifest survives. All
+// fixtures are obviously synthetic.
+func TestValidatorRejectsCredentialShapedMappingKeys(t *testing.T) {
+	t.Parallel()
+	validator := newValidator(t)
+	const policyMessage = "mapping keys that look like credentials are not allowed in manifests"
+	cases := []struct {
+		name     string
+		yaml     string
+		wantPath string
+	}{
+		{
+			name: "prefixed-token-shaped key in resources",
+			yaml: strings.Replace(validUserManifest,
+				"resources:\n  limits:\n    memory: 256\n",
+				"resources:\n  limits:\n    memory: 256\n  \"sk-zzzz0123456789abcdef\": 1\n", 1),
+			wantPath: "/resources",
+		},
+		{
+			name: "jwt-shaped key in health",
+			yaml: strings.Replace(validUserManifest,
+				"health:\n  interval: 30\n",
+				"health:\n  interval: 30\n  \"eyJzzzzzz123456.eyJzzzzzz123456.zzsynthetic12345\": 1\n", 1),
+			wantPath: "/health",
+		},
+		{
+			name: "aws-shaped key in maintainer",
+			yaml: strings.Replace(validUserManifest,
+				"maintainer:\n  name: Example\n",
+				"maintainer:\n  name: Example\n  \"AKIAZZZZ0123456789AB\": 1\n", 1),
+			wantPath: "/maintainer",
+		},
+		{
+			name: "pem-header-shaped key in resources",
+			yaml: strings.Replace(validUserManifest,
+				"resources:\n  limits:\n    memory: 256\n",
+				"resources:\n  limits:\n    memory: 256\n  \"-----BEGIN SYNTHETIC PRIVATE KEY-----\": 1\n", 1),
+			wantPath: "/resources",
+		},
+	}
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			result, violations := validator.Validate([]byte(testCase.yaml))
+			if len(violations) == 0 {
+				t.Fatalf("credential-shaped mapping key accepted: %#v", result)
+			}
+			if !violationMentions(violations, testCase.wantPath+": "+policyMessage) {
+				t.Fatalf("expected the credential-material policy at %s, got %v", testCase.wantPath, violations)
+			}
+			// The violation must not echo the key itself: no prefix, payload
+			// fragment, full key, or escaped form may survive.
+			joined := strings.Join(violations, " ")
+			for _, fragment := range []string{"sk-zzzz", "eyJ", "AKIA", "PRIVATE KEY", "zzzz", "synthetic", "~0", "~1"} {
+				if strings.Contains(joined, fragment) {
+					t.Fatalf("violation leaked the credential-shaped key: %q", joined)
+				}
+			}
+			if result.ID != "" || result.Digest != "" || len(result.CanonicalJSON) != 0 {
+				t.Fatalf("rejected manifest must not produce a normalized form: %#v", result)
+			}
+		})
+	}
+
+	// Neighboring non-credential keys in the same free-form blocks must stay
+	// accepted: the shape rule matches credential formats, not letter
+	// fragments.
+	neighbors := strings.Replace(validUserManifest,
+		"resources:\n  limits:\n    memory: 256\n",
+		"resources:\n  limits:\n    memory: 256\n  short_code: ab12\n  ski_rating: 5\n  slack_channel: general\n", 1)
+	if _, violations := validator.Validate([]byte(neighbors)); len(violations) != 0 {
+		t.Fatalf("non-credential neighbor keys must be accepted, got %v", violations)
+	}
+}
+
 func TestValidatorRejectsSecretShapedContentByPathOnly(t *testing.T) {
 	t.Parallel()
 	validator := newValidator(t)

@@ -51,12 +51,12 @@ Vault 或其他后续模块。
    - tests/integration/app_registry_migration_test.go
 2. 运行：
 
-       git status --short --branch
-       git log --oneline --decorate -8
-       git branch -vv
-       git diff --check
-       git diff --check main...HEAD
-       git diff --exit-code 8e48d92 -- internal/platform/migrations/files/002_app_registry.sql
+   git status --short --branch
+   git log --oneline --decorate -8
+   git branch -vv
+   git diff --check
+   git diff --check main...HEAD
+   git diff --exit-code 8e48d92 -- internal/platform/migrations/files/002_app_registry.sql
 
 3. 保留不属于本任务的改动。继续在当前功能分支工作，不得 reset、rebase 或直接修改 main。
 4. 将任务状态从 done 改回 active。修复和重新验收前将 App Registry 状态降为 scaffolded，并通过生成
@@ -124,7 +124,7 @@ tests/integration/app_registry_migration_test.go 的 scratchDatabase 当前逻�
     return dsn
 
 helper 返回时 defer 立即关闭 admin；测试结束时 cleanup 使用的是已关闭连接，而且忽略 DROP 错误。因此
-每次 migration integration run 都永久留下两个 workos_migration_test_* 数据库。
+每次 migration integration run 都永久留下两个 workos*migration_test*\* 数据库。
 
 第二轮审核只读查询已经确认当前 PostgreSQL 实例残留 6 个此类 scratch database。审核者没有删除它们，
 也没有删除 volume。
@@ -141,7 +141,7 @@ helper 返回时 defer 立即关闭 admin；测试结束时 cleanup 使用的是
 
 ### 验证要求
 
-- 在运行 migration tests 前记录 workos_migration_test_* 的精确名称集合。
+- 在运行 migration tests 前记录 workos*migration_test*\* 的精确名称集合。
 - 连续运行 migration integration tests 两次；每次结束后的集合必须与运行前完全相同，即不新增残留。
 - 增加能够防止“helper 返回即关闭 cleanup connection”回归的测试或可检查的 helper 设计。
 - 审核时已存在的 6 个历史残留只做清单和风险报告；没有用户明确授权时不要顺手删除。

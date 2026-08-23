@@ -258,6 +258,16 @@ func (w *structureWalker) mapping(node *yaml.Node, path string, depth int) map[s
 			w.failed = true
 			return nil
 		}
+		// The key itself may carry credential material (a prefixed token, JWT,
+		// AWS key ID, or PEM header used as a key). The shared credential-shape
+		// rule rejects it here — before any pointer construction, canonical
+		// encoding, or persistence — and reports only the parent path, never
+		// the key itself.
+		if credentialShapedString(key) {
+			w.add(path, "mapping keys that look like credentials are not allowed in manifests")
+			w.failed = true
+			return nil
+		}
 		if _, duplicate := result[key]; duplicate {
 			w.add(pointerChild(path, key), "duplicate mapping key")
 			w.failed = true
@@ -379,11 +389,8 @@ func scanSecrets(value any, path string, add func(path, message string)) {
 			scanSecrets(item, path+"/"+strconv.Itoa(index), add)
 		}
 	case string:
-		for _, pattern := range secretValuePatterns {
-			if pattern.MatchString(typed) {
-				add(path, "values that look like credentials are not allowed in manifests")
-				return
-			}
+		if credentialShapedString(typed) {
+			add(path, "values that look like credentials are not allowed in manifests")
 		}
 	}
 }

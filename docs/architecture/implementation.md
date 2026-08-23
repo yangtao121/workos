@@ -76,9 +76,10 @@ Core: 结构安全检查 → YAML→JSON 规范化 → canonical JSON bytes
   repository 以 effective limit + 1 探测下一页并返回明确 page result，transport 原样转发 application
   的 next token；恰好装满的最后一页不产生 token，翻页无重复、无遗漏。
 - mapping key（UTF-8、C0/C1/NUL 控制字符、长度 1..256）在任何 pointer 构造、map 插入、Schema 校验或
-  持久化之前校验，unsafe key 只报告父路径；secret key policy 以 tokenization（snake/kebab/camelCase）
-  匹配整词与复合词（accessToken、clientSecret、credentialValue、awsSecretAccessKey 等），不因字母片段
-  误杀邻近字段。
+  持久化之前校验，unsafe key 只报告父路径；key 本身形似 credential（prefixed token、JWT、AWS key ID、
+  PEM header）由与 value 共用的单一 credential-shape 规则在结构阶段拒绝，同样只报告父路径；secret key
+  policy 以 tokenization（snake/kebab/camelCase）匹配整词与复合词（accessToken、clientSecret、
+  credentialValue、awsSecretAccessKey 等），不因字母片段误杀邻近字段。
 - public 注册 fail closed：`scope=system` 与 `runtime.type=trusted` 拒绝；permissions 必须属于
   集中定义的 capability vocabulary；manifest 中 secret 形态的 key/value 按路径拒绝，且此检查
   不是 Credential Vault/DLP 替代品。permissions 只是 requested permissions。
