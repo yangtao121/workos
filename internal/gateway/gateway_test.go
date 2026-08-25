@@ -30,13 +30,20 @@ func TestDevelopmentProxyReplacesSpoofedIdentity(t *testing.T) {
 		Services: config.URLs{Core: core.URL},
 		Auth:     config.Auth{DevBypass: true, OwnerID: "owner-1", DeviceID: "device-1"},
 	})
-	request := httptest.NewRequest(http.MethodPost, "/workos.project.v1.ProjectService/ListProjects", nil)
-	request.Header.Set(identity.UserHeader, "attacker")
-	request.Header.Set(identity.DeviceHeader, "attacker")
-	response := httptest.NewRecorder()
-	handler.ServeHTTP(response, request)
-	if response.Code != http.StatusNoContent {
-		t.Fatalf("unexpected response %d", response.Code)
+	for _, path := range []string{
+		"/workos.project.v1.ProjectService/ListProjects",
+		"/workos.app.v1.AppInstallationService/InstallApp",
+		"/workos.app.v1.AppInstallationService/UninstallApp",
+		"/workos.app.v1.AppInstallationService/ListInstalledApps",
+	} {
+		request := httptest.NewRequest(http.MethodPost, path, nil)
+		request.Header.Set(identity.UserHeader, "attacker")
+		request.Header.Set(identity.DeviceHeader, "attacker")
+		response := httptest.NewRecorder()
+		handler.ServeHTTP(response, request)
+		if response.Code != http.StatusNoContent {
+			t.Errorf("path %s: unexpected response %d", path, response.Code)
+		}
 	}
 }
 

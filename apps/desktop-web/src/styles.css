@@ -425,3 +425,75 @@ button {
     grid-template-columns: 1fr auto;
   }
 }
+
+.app-library {
+  margin-top: 12px;
+  padding: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 16px;
+  background: rgba(8, 13, 21, 0.82);
+}
+.app-library > header {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 10px;
+}
+.app-library header p,
+.app-library h2 {
+  margin: 0;
+}
+.app-library header p,
+.app-library header > span,
+.app-library small {
+  color: #8d9aab;
+  font-size: 11px;
+}
+.app-library h2 {
+  margin-top: 3px;
+  font-size: 17px;
+}
+.app-list {
+  margin: 14px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.app-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  margin-bottom: 8px;
+}
+.app-row.installed {
+  border-color: rgba(94, 173, 133, 0.35);
+}
+.app-row > span {
+  display: grid;
+  gap: 2px;
+}
+.app-row strong {
+  font-size: 13px;
+}
+.library-state {
+  margin: 12px 0 0;
+  color: #8d9aab;
+  font-size: 12px;
+}
+.library-error {
+  border: 1px solid #aa5258;
+  border-radius: 12px;
+  background: #481f25;
+  padding: 10px 12px;
+}
+.library-feedback {
+  margin: 12px 0 0;
+  font-size: 12px;
+  color: #9fc3ae;
+}
+.library-feedback.error {
+  color: #e2a6aa;
+}

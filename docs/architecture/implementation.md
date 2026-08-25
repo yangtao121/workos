@@ -89,6 +89,58 @@ Core: 结构安全检查 → YAML→JSON 规范化 → canonical JSON bytes
 - 违规输出只含字段路径与规则说明（排序、去重、数量/长度上限），不含原始 YAML value；错误映射
   不回传 SQL、constraint、路径或 validator 内部信息。
 
+## Project App Installation
+
+Project App Installation 把 Registry 的一个 immutable version 变成 Project 持有的安装实例事实。
+链路固定为：
+
+```text
+Desktop App Library → Gateway public AppInstallationService → Core
+Core: identity → 幂等 key 裁决 → 中立 AppCatalog port 解析 current 或显式 version
+  → 一个 Project-owned 事务：installation/tombstone + idempotency result
+      + installed_app_ids 投影 + revision(+1) + project event(sequence=revision) + outbox
+  → List/Get Project / ListInstalledApps（Core restart 后仍成立）
+```
+
+- 契约是 additive 的 `workos.app.v1.AppInstallationService`（`InstallApp`/`UninstallApp`/
+  `ListInstalledApps`，`api/proto/workos/app/v1/installation.proto`）。installation ID 是持久
+  app instance identity（未来 Surface 的 `app_instance_id`），不代表 workload 已运行；响应不含
+  manifest、credential，也不声称 permissions 已授权。
+- 数据由 `004_project_app_installations.sql`（owner：workos-core Project Installation）持有：
+  `project_app_installations` 是安装事实的唯一权威（UUIDv7 id、pinned version/digest、
+  `uninstalled_at` NULL=active），partial unique `(project_id, app_id) WHERE uninstalled_at IS NULL`
+  保证一个 Project/app 至多一个 active row，tombstone 保留历史；复合 FK
+  `(project_id, owner_user_id) → projects` 把 owner 绑定下沉为数据库约束；不建立指向
+  `app_versions` 的跨模块 FK，Project SQL 不 join Registry 表。
+- `projects.installed_app_ids` 保持兼容投影（方案 1）：由 install/uninstall 事务在持有 project
+  行锁时从 active installation 聚合（`array_agg(app_id ORDER BY app_id)`）并写入同一条
+  revision UPDATE；普通 `UpdateProject` 不能接收或覆盖该列。
+- 幂等权威是 `project_app_installation_requests`（PK `(owner_user_id, idempotency_key)`，
+  install/uninstall 共用命名空间）：request digest 覆盖客户端 canonical 请求字段（command、
+  project、app、请求 version、expected revision、installation id），不含时间戳或解析结果，
+  因此空 version 安装的 replay 不会因 Registry current 变化而漂移；结果快照
+  （installation id + project revision + result_uninstalled_at）使 replay 精确返回第一次响应，
+  uninstall 在 tombstone 后仍可重放，失败请求不消费 key。
+- 并发完全由数据库裁决：mutation 以 `SELECT … FOR UPDATE` 锁定 owner-scoped project 行后比较
+  revision，与 `UpdateProject`/`ArchiveProject`/binding 的 guarded UPDATE 互斥；同 key 跨 project
+  由 mapping PK 仲裁；同 project 同 expected revision 恰有一个 winner，loser `Aborted`。
+  同 app 同 version 的确定 no-op 在锁内验证 revision 后原样返回，不新建 row、不增 revision、
+  不发事件；不同 version 是统一 `AlreadyExists`，不隐式升级。
+- 事件：`project.app.installed.v1` / `project.app.uninstalled.v1`，sequence = Project revision，
+  payload 只含稳定 ID 与 pinned version/digest。未知/他人/归档 Project、未知 App/installation
+  统一净化 `NotFound`；scope `system`/trusted fail closed。
+- 模块边界：installation 属于 `internal/core/project`（domain/application/ports/postgres），
+  application 只依赖中立 `AppCatalog` port，由 `internal/core/orchestration/app_catalog.go`
+  包装 App Registry application service；Registry 不反向查询 installation 表；域内 app ID
+  grammar / SemVer 语法 / digest / idempotency key 校验为本模块 domain 纯函数，不 import
+  appregistry internal package。
+- Desktop App Library（`apps/desktop-web/src/AppLibrary.tsx`）：为 active Project 列出 owner 的
+  Registry catalog（标识 active installation 与 pinned version），Install/Remove 使用
+  `crypto.randomUUID()` key 与当前 Project revision，成功后以服务端 revision + 重新读取的
+  project/installation list 为准；revision conflict 时重新加载并提示，不自动重放；Project
+  切换/卸载通过 key remount + generation guard 隔离。Desktop 现以 sessionStorage 记忆 reload
+  前的 active Project（不在首页时通过 `GetProject` 取回）。
+
 ## 状态与失败
 
 - liveness 表示进程事件循环存活，readiness 表示必需依赖可用。

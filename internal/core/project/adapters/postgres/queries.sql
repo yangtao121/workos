@@ -62,3 +62,71 @@ INSERT INTO workos_events.events (
 INSERT INTO workos_events.outbox (
     id, aggregate_type, aggregate_id, event_type, payload, occurred_at
 ) VALUES ($1, 'project', $2, $3, $4, $5);
+
+-- name: GetInstallationRequest :one
+SELECT owner_user_id, idempotency_key, command, request_digest, installation_id,
+       project_revision, result_uninstalled_at, created_at
+FROM workos_core.project_app_installation_requests
+WHERE owner_user_id = $1 AND idempotency_key = $2;
+
+-- name: InsertInstallationRequest :execrows
+INSERT INTO workos_core.project_app_installation_requests (
+    owner_user_id, idempotency_key, command, request_digest, installation_id,
+    project_revision, result_uninstalled_at, created_at
+) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+ON CONFLICT (owner_user_id, idempotency_key) DO NOTHING;
+
+-- name: LockProjectForInstallation :one
+SELECT id, owner_user_id, revision, archived_at
+FROM workos_core.projects
+WHERE owner_user_id = $1 AND id = $2
+FOR UPDATE;
+
+-- name: GetActiveInstallationByApp :one
+SELECT id, owner_user_id, project_id, app_id, version, manifest_digest, installed_at, uninstalled_at
+FROM workos_core.project_app_installations
+WHERE project_id = $1 AND app_id = $2 AND uninstalled_at IS NULL;
+
+-- name: GetInstallationById :one
+SELECT id, owner_user_id, project_id, app_id, version, manifest_digest, installed_at, uninstalled_at
+FROM workos_core.project_app_installations
+WHERE owner_user_id = $1 AND id = $2;
+
+-- name: InsertInstallation :exec
+INSERT INTO workos_core.project_app_installations (
+    id, owner_user_id, project_id, app_id, version, manifest_digest, installed_at
+) VALUES ($1, $2, $3, $4, $5, $6, $7);
+
+-- name: TombstoneInstallation :execrows
+UPDATE workos_core.project_app_installations
+SET uninstalled_at = sqlc.arg(uninstalled_at)
+WHERE owner_user_id = sqlc.arg(owner_user_id)
+  AND project_id = sqlc.arg(project_id)
+  AND id = sqlc.arg(id)
+  AND uninstalled_at IS NULL;
+
+-- name: ActiveInstallationAppIDs :one
+SELECT coalesce(array_agg(app_id ORDER BY app_id), '{}'::text[])::text[] AS app_ids
+FROM workos_core.project_app_installations
+WHERE project_id = sqlc.arg(project_id) AND uninstalled_at IS NULL;
+
+-- name: ApplyInstallationProjection :one
+UPDATE workos_core.projects
+SET revision = revision + 1,
+    updated_at = sqlc.arg(updated_at),
+    installed_app_ids = sqlc.arg(installed_app_ids)
+WHERE id = sqlc.arg(id)
+  AND owner_user_id = sqlc.arg(owner_user_id)
+  AND revision = sqlc.arg(expected_revision)
+  AND archived_at IS NULL
+RETURNING revision, updated_at;
+
+-- name: ListActiveInstallations :many
+SELECT id, owner_user_id, project_id, app_id, version, manifest_digest, installed_at, uninstalled_at
+FROM workos_core.project_app_installations
+WHERE owner_user_id = sqlc.arg(owner_user_id)
+  AND project_id = sqlc.arg(project_id)
+  AND app_id > sqlc.arg(cursor)
+  AND uninstalled_at IS NULL
+ORDER BY app_id
+LIMIT sqlc.arg(row_limit);

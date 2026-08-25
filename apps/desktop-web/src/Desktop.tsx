@@ -13,14 +13,30 @@ import { createWorkOSClients, type WorkOSClients } from "@workos/agent-sdk";
 import type { AgentEvent, AgentTask, GetHarnessCatalogResponse, Project } from "@workos/protocol";
 import { Button } from "@workos/ui-kit";
 import { initialWindowState, windowReducer } from "@workos/window-manager";
+import { AppLibrary } from "./AppLibrary.js";
 import { HarnessSettings, type CatalogState } from "./HarnessSettings.js";
 import { selectionFromProject, taskStatus, type HarnessSelection } from "./model.js";
 
 const clients = createWorkOSClients(window.location.origin);
 
+// The last active project survives a page reload so returning to the desktop
+// restores the context the user was working in. Storage failures (private
+// modes, embedded webviews) degrade to the previous first-project behavior.
+const ACTIVE_PROJECT_STORAGE_KEY = "workos.activeProjectId";
+
+function readStoredActiveProjectId(): string | undefined {
+  try {
+    return window.sessionStorage.getItem(ACTIVE_PROJECT_STORAGE_KEY) ?? undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 export function Desktop({ workosClients = clients }: { workosClients?: WorkOSClients } = {}) {
   const [projects, setProjects] = useState<Project[]>([]);
-  const [activeProjectId, setActiveProjectId] = useState<string>();
+  const [activeProjectId, setActiveProjectId] = useState<string | undefined>(
+    readStoredActiveProjectId,
+  );
   const [events, setEvents] = useState<AgentEvent[]>([]);
   const [task, setTask] = useState<AgentTask>();
   const [error, setError] = useState<string>();
@@ -29,6 +45,7 @@ export function Desktop({ workosClients = clients }: { workosClients?: WorkOSCli
   const [catalogState, setCatalogState] = useState<CatalogState>("loading");
   const [catalogError, setCatalogError] = useState<string>();
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [libraryOpen, setLibraryOpen] = useState(false);
   const [bindingSaving, setBindingSaving] = useState<Record<string, boolean>>({});
   const [bindingEditor, setBindingEditor] = useState<BindingEditor>();
   const [editorProjectId, setEditorProjectId] = useState<string | undefined>(activeProjectId);
@@ -55,12 +72,39 @@ export function Desktop({ workosClients = clients }: { workosClients?: WorkOSCli
       ? selectionFromProject(activeProject)
       : { kind: "global" };
 
+  useEffect(() => {
+    if (!activeProjectId) return;
+    try {
+      window.sessionStorage.setItem(ACTIVE_PROJECT_STORAGE_KEY, activeProjectId);
+    } catch {
+      // Selection persistence is best-effort; the in-memory selection stays.
+    }
+  }, [activeProjectId]);
+
   const refreshProjects = useCallback(async () => {
     const response = await workosClients.projects.listProjects({
       page: { pageSize: 100, pageToken: "" },
     });
-    setProjects(response.projects);
-    setActiveProjectId((current) => current ?? response.projects[0]?.id);
+    const listed = response.projects;
+    // The persisted selection may sit beyond the first project page; fetch
+    // it directly so a reload keeps the user's project active instead of
+    // silently switching to the oldest listed one.
+    const stored = activeProjectIdRef.current;
+    if (stored && !listed.some((project) => project.id === stored)) {
+      try {
+        const fetched = await workosClients.projects.getProject({ projectId: stored });
+        if (fetched.project) {
+          listed.push(fetched.project);
+        }
+      } catch {
+        // A stored project that no longer resolves falls back to the first
+        // listed project.
+      }
+    }
+    setProjects(listed);
+    setActiveProjectId((current) =>
+      current && listed.some((project) => project.id === current) ? current : listed[0]?.id,
+    );
   }, [workosClients]);
 
   const refreshCatalog = useCallback(async () => {
@@ -333,6 +377,27 @@ export function Desktop({ workosClients = clients }: { workosClients?: WorkOSCli
           >
             {settingsOpen ? "Close project settings" : "Project settings"}
           </Button>
+          <Button
+            aria-expanded={libraryOpen}
+            disabled={!activeProject}
+            onClick={() => {
+              setLibraryOpen((current) => !current);
+            }}
+            type="button"
+          >
+            {libraryOpen ? "Close App Library" : "App Library"}
+          </Button>
+          {/* Keying on the project id remounts the library when the active
+              project changes, so lists, feedback, and in-flight operations
+              never leak across projects. */}
+          {libraryOpen && activeProject ? (
+            <AppLibrary
+              key={activeProject.id}
+              project={activeProject}
+              workosClients={workosClients}
+              onProjectRefreshed={replaceProject}
+            />
+          ) : null}
           {settingsOpen && activeProject ? (
             <HarnessSettings
               catalog={catalog}

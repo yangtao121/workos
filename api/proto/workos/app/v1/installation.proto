@@ -1,0 +1,71 @@
+syntax = "proto3";
+
+package workos.app.v1;
+
+import "google/protobuf/timestamp.proto";
+import "workos/common/v1/common.proto";
+
+option go_package = "github.com/yangtao121/workos/gen/go/workos/app/v1;appv1";
+
+// AppInstallation is the durable instance identity of one registered app
+// version installed in a project. The id is the stable app instance identity
+// future surfaces reference as app_instance_id; an installation alone does
+// NOT mean any workload is running. Permissions in the registry manifest
+// remain requested permissions until a future grant flow exists.
+message AppInstallation {
+  string id = 1;
+  string project_id = 2;
+  string app_id = 3;
+  // Immutable registry version pinned at install time; a newer registry
+  // version never changes an existing installation.
+  string version = 4;
+  string manifest_digest = 5;
+  google.protobuf.Timestamp installed_at = 6;
+  optional google.protobuf.Timestamp uninstalled_at = 7;
+}
+
+// InstallAppRequest installs one owner-scoped app into the owner's active
+// project. An empty version resolves the registry's current version inside
+// this command and pins that exact immutable version and digest.
+message InstallAppRequest {
+  string idempotency_key = 1;
+  string project_id = 2;
+  string app_id = 3;
+  string version = 4;
+  int64 expected_project_revision = 5;
+}
+
+message InstallAppResponse {
+  AppInstallation installation = 1;
+  int64 project_revision = 2;
+}
+
+message UninstallAppRequest {
+  string idempotency_key = 1;
+  string project_id = 2;
+  string installation_id = 3;
+  int64 expected_project_revision = 4;
+}
+
+message UninstallAppResponse {
+  AppInstallation installation = 1;
+  int64 project_revision = 2;
+}
+
+// ListInstalledAppsRequest lists the active installations of one project,
+// ordered by app ID. Tombstoned installations are not listed.
+message ListInstalledAppsRequest {
+  string project_id = 1;
+  workos.common.v1.PageRequest page = 2;
+}
+
+message ListInstalledAppsResponse {
+  repeated AppInstallation installations = 1;
+  workos.common.v1.PageResponse page = 2;
+}
+
+service AppInstallationService {
+  rpc InstallApp(InstallAppRequest) returns (InstallAppResponse) {}
+  rpc UninstallApp(UninstallAppRequest) returns (UninstallAppResponse) {}
+  rpc ListInstalledApps(ListInstalledAppsRequest) returns (ListInstalledAppsResponse) {}
+}

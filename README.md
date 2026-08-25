@@ -10,7 +10,7 @@ Project 协作；Harness、App、Surface、Workload 与 Incident 均通过稳定
 
 <!-- status:start -->
 
-最后更新：2026-08-23
+最后更新：2026-08-25
 
 <!-- prettier-ignore -->
 | 模块 | 进程 | 状态 | 证据 |
@@ -22,8 +22,9 @@ Project 协作；Harness、App、Surface、Workload 与 Incident 均通过稳定
 | Agent Task Router | workos-core | `working` | Project binding snapshot + idempotency integration |
 | Harness Broker | harness-host | `working` | Fake, Generic CLI, and typed provider execution tests |
 | DeepSeek Harness Adapter | harness-host | `working` | official runtime + keyless streaming fixture integration and browser E2E |
-| Desktop Shell | desktop-web | `working` | foundation + DeepSeek fixture Catalog/binding E2E |
+| Desktop Shell | desktop-web | `working` | foundation + DeepSeek fixture Catalog/binding E2E + App Library install/remove E2E |
 | App Registry | workos-core | `working` | schema-backed immutable registration + durable idempotency + bounded paging/read + credential-shaped key rejection + restart persistence |
+| Project App Installation | workos-core | `working` | pinned version install/uninstall + revision/event/outbox transaction + durable idempotency + restart persistence + Desktop App Library browser E2E |
 | Artifact | workos-core | `contract-only` | workos.artifact.v1 |
 | Runtime / Surface | runtime-host | `scaffolded` | capability probe; runners unavailable |
 | Reliability | reliability-host | `scaffolded` | health; enforcement unavailable |

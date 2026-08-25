@@ -113,6 +113,17 @@ func run(logger *slog.Logger) error {
 	}
 	appPath, appHandler := appregistrytransport.NewConnectHandler(appService)
 	mux.Handle(appPath, identity.Middleware(appHandler))
+
+	appCatalog, err := orchestration.NewAppCatalog(appService)
+	if err != nil {
+		return err
+	}
+	installationService, err := projectapp.NewInstallationService(projectpostgres.New(pool), appCatalog, generator)
+	if err != nil {
+		return err
+	}
+	installationPath, installationHandler := projecttransport.NewInstallationConnectHandler(installationService)
+	mux.Handle(installationPath, identity.Middleware(installationHandler))
 	artifactPath, artifactHandler := artifactv1connect.NewArtifactServiceHandler(artifactv1connect.UnimplementedArtifactServiceHandler{})
 	mux.Handle(artifactPath, artifactHandler)
 	systemPath, systemHandler := commonv1connect.NewSystemServiceHandler(systemhandler.New("workos-core", commonv1.HealthState_HEALTH_STATE_HEALTHY,
@@ -120,6 +131,7 @@ func run(logger *slog.Logger) error {
 		&commonv1.FeatureCapability{Id: "agent-task", Available: true},
 		&commonv1.FeatureCapability{Id: "harness-catalog", Available: true},
 		&commonv1.FeatureCapability{Id: "app-registry", Available: true},
+		&commonv1.FeatureCapability{Id: "app-installation", Available: true},
 		&commonv1.FeatureCapability{Id: "artifact", Available: false, Reason: "contract only"},
 	))
 	mux.Handle(systemPath, systemHandler)

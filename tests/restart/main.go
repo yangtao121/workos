@@ -10,6 +10,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"strconv"
 	"time"
 
 	"connectrpc.com/connect"
@@ -33,7 +34,7 @@ func main() {
 
 func run() error {
 	if len(os.Args) < 2 {
-		return errors.New("usage: restart seed | restart verify TASK_ID | restart app-seed | restart app-verify APP_ID_A APP_ID_B")
+		return errors.New("usage: restart seed | restart verify TASK_ID | restart app-seed | restart app-verify APP_ID_A APP_ID_B | restart install-seed | restart install-verify PROJECT_ID INSTALLATION_ID KEY APP_ID SEED_REVISION")
 	}
 	baseURL := os.Getenv("WORKOS_TEST_URL")
 	if baseURL == "" {
@@ -62,8 +63,12 @@ func run() error {
 			return errors.New("app-verify requires two app ids")
 		}
 		return appVerify(ctx, client, baseURL, os.Args[2], os.Args[3])
+	case "install-seed":
+		return installSeed(ctx, client, baseURL)
+	case "install-verify":
+		return installVerify(ctx, client, baseURL)
 	default:
-		return errors.New("usage: restart seed | restart verify TASK_ID | restart app-seed | restart app-verify APP_ID_A APP_ID_B")
+		return errors.New("usage: restart seed | restart verify TASK_ID | restart app-seed | restart app-verify APP_ID_A APP_ID_B | restart install-seed | restart install-verify PROJECT_ID INSTALLATION_ID KEY APP_ID SEED_REVISION")
 	}
 }
 
@@ -291,6 +296,97 @@ func appVerify(ctx context.Context, client *http.Client, baseURL, appIDA, appIDB
 		}
 	}
 	fmt.Printf("app registry persistence verified for %s, %s\n", appIDA, appIDB)
+	return nil
+}
+
+// installSeed registers one app, installs it into a fresh project, prints
+// "<project id> <installation id> <install key>" for install-verify.
+func installSeed(ctx context.Context, client *http.Client, baseURL string) error {
+	apps := appv1connect.NewAppRegistryServiceClient(client, baseURL)
+	installations := appv1connect.NewAppInstallationServiceClient(client, baseURL)
+	projects := projectv1connect.NewProjectServiceClient(client, baseURL)
+	stamp := time.Now().UnixNano()
+	appID := fmt.Sprintf("restart-install-%d", stamp)
+	registered, err := apps.RegisterApp(ctx, connect.NewRequest(&appv1.RegisterAppRequest{
+		IdempotencyKey: fmt.Sprintf("restart-install-reg-%d", stamp),
+		ManifestYaml:   appManifest(appID, "Restart Install", "1.4.2"),
+	}))
+	if err != nil {
+		return fmt.Errorf("register restart install app: %w", err)
+	}
+	created, err := projects.CreateProject(ctx, connect.NewRequest(&projectv1.CreateProjectRequest{
+		IdempotencyKey: fmt.Sprintf("restart-install-project-%d", stamp), Name: "Restart Installation",
+	}))
+	if err != nil {
+		return fmt.Errorf("create restart install project: %w", err)
+	}
+	project := created.Msg.GetProject()
+	key := fmt.Sprintf("restart-install-key-%d", stamp)
+	installed, err := installations.InstallApp(ctx, connect.NewRequest(&appv1.InstallAppRequest{
+		IdempotencyKey: key, ProjectId: project.GetId(), AppId: appID, ExpectedProjectRevision: project.GetRevision(),
+	}))
+	if err != nil {
+		return fmt.Errorf("install restart app: %w", err)
+	}
+	installation := installed.Msg.GetInstallation()
+	if installation.GetVersion() != "1.4.2" || installation.GetManifestDigest() != registered.Msg.GetApp().GetManifestDigest() {
+		return fmt.Errorf("installation did not pin the registered version: %#v", installation)
+	}
+	if installed.Msg.GetProjectRevision() != project.GetRevision()+1 {
+		return fmt.Errorf("install revision bump missing: %d", installed.Msg.GetProjectRevision())
+	}
+	fmt.Printf("%s %s %s %s %d\n", project.GetId(), installation.GetId(), key, appID, project.GetRevision())
+	return nil
+}
+
+// installVerify proves the installation survived a Core restart: the project
+// projection still lists the app, the list still returns the pinned instance,
+// and the original idempotency key still replays the first result.
+func installVerify(ctx context.Context, client *http.Client, baseURL string) error {
+	if len(os.Args) != 7 {
+		return errors.New("install-verify requires PROJECT_ID INSTALLATION_ID KEY APP_ID SEED_REVISION")
+	}
+	projectID, installationID, key, appID := os.Args[2], os.Args[3], os.Args[4], os.Args[5]
+	seedRevision, err := strconv.ParseInt(os.Args[6], 10, 64)
+	if err != nil || seedRevision <= 0 {
+		return errors.New("install-verify requires PROJECT_ID INSTALLATION_ID KEY APP_ID SEED_REVISION")
+	}
+	installations := appv1connect.NewAppInstallationServiceClient(client, baseURL)
+	projects := projectv1connect.NewProjectServiceClient(client, baseURL)
+	listed, err := installations.ListInstalledApps(ctx, connect.NewRequest(&appv1.ListInstalledAppsRequest{ProjectId: projectID}))
+	if err != nil {
+		return fmt.Errorf("list installations after restart: %w", err)
+	}
+	found := ""
+	for _, installation := range listed.Msg.GetInstallations() {
+		if installation.GetAppId() == appID {
+			found = installation.GetId()
+		}
+	}
+	if found != installationID {
+		return fmt.Errorf("installation identity changed across restart: listed=%q want %q", found, installationID)
+	}
+	projectResponse, err := projects.GetProject(ctx, connect.NewRequest(&projectv1.GetProjectRequest{ProjectId: projectID}))
+	if err != nil {
+		return fmt.Errorf("get project after restart: %w", err)
+	}
+	ids := projectResponse.Msg.GetProject().GetInstalledAppIds()
+	if len(ids) != 1 || ids[0] != appID {
+		return fmt.Errorf("installed_app_ids projection lost across restart: %v", ids)
+	}
+	// The key was consumed by the exact first request (empty version, the
+	// project revision at seed time); replaying it with those canonical
+	// fields must succeed regardless of the registry's current version.
+	replayed, err := installations.InstallApp(ctx, connect.NewRequest(&appv1.InstallAppRequest{
+		IdempotencyKey: key, ProjectId: projectID, AppId: appID, ExpectedProjectRevision: seedRevision,
+	}))
+	if err != nil {
+		return fmt.Errorf("replay install key after restart: %w", err)
+	}
+	if replayed.Msg.GetInstallation().GetId() != installationID {
+		return fmt.Errorf("replay changed the installation identity: %q", replayed.Msg.GetInstallation().GetId())
+	}
+	fmt.Printf("installation persistence verified for %s\n", installationID)
 	return nil
 }
 

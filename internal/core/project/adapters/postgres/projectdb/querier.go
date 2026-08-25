@@ -9,13 +9,23 @@ import (
 )
 
 type Querier interface {
+	ActiveInstallationAppIDs(ctx context.Context, projectID string) ([]string, error)
+	ApplyInstallationProjection(ctx context.Context, arg ApplyInstallationProjectionParams) (ApplyInstallationProjectionRow, error)
 	ArchiveProject(ctx context.Context, arg ArchiveProjectParams) (WorkosCoreProject, error)
+	GetActiveInstallationByApp(ctx context.Context, arg GetActiveInstallationByAppParams) (WorkosCoreProjectAppInstallation, error)
+	GetInstallationById(ctx context.Context, arg GetInstallationByIdParams) (WorkosCoreProjectAppInstallation, error)
+	GetInstallationRequest(ctx context.Context, arg GetInstallationRequestParams) (WorkosCoreProjectAppInstallationRequest, error)
 	GetProject(ctx context.Context, arg GetProjectParams) (WorkosCoreProject, error)
 	GetProjectByIdempotency(ctx context.Context, arg GetProjectByIdempotencyParams) (WorkosCoreProject, error)
+	InsertInstallation(ctx context.Context, arg InsertInstallationParams) error
+	InsertInstallationRequest(ctx context.Context, arg InsertInstallationRequestParams) (int64, error)
 	InsertProject(ctx context.Context, arg InsertProjectParams) (int64, error)
 	InsertProjectEvent(ctx context.Context, arg InsertProjectEventParams) error
 	InsertProjectOutbox(ctx context.Context, arg InsertProjectOutboxParams) error
+	ListActiveInstallations(ctx context.Context, arg ListActiveInstallationsParams) ([]WorkosCoreProjectAppInstallation, error)
 	ListProjects(ctx context.Context, arg ListProjectsParams) ([]WorkosCoreProject, error)
+	LockProjectForInstallation(ctx context.Context, arg LockProjectForInstallationParams) (LockProjectForInstallationRow, error)
+	TombstoneInstallation(ctx context.Context, arg TombstoneInstallationParams) (int64, error)
 	UpdateProject(ctx context.Context, arg UpdateProjectParams) (WorkosCoreProject, error)
 }
 

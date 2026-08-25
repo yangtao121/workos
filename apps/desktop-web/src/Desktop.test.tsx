@@ -21,7 +21,12 @@ import { Desktop } from "./Desktop.js";
 // React 19 act() requires this flag in jsdom to flush deferred promise updates.
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  // The desktop persists the active project in sessionStorage across
+  // reloads; tests must not inherit a previous test's selection.
+  window.sessionStorage.clear();
+});
 
 describe("Desktop harness workflow", () => {
   it("reloads the Project after a revision conflict and resets the selection", async () => {

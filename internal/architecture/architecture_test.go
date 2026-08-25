@@ -107,7 +107,9 @@ func TestCorePostgresAdaptersDoNotQueryOtherModuleTables(t *testing.T) {
 	}{
 		{path: "internal/core/agent/adapters/postgres/queries.sql", forbidden: "workos_core.projects"},
 		{path: "internal/core/project/adapters/postgres/queries.sql", forbidden: "workos_core.agent_tasks"},
+		{path: "internal/core/project/adapters/postgres/queries.sql", forbidden: "workos_core.app_versions"},
 		{path: "internal/core/appregistry/adapters/postgres/queries.sql", forbidden: "workos_core.projects"},
+		{path: "internal/core/appregistry/adapters/postgres/queries.sql", forbidden: "workos_core.project_app_installations"},
 	}
 	for _, check := range checks {
 		data, err := os.ReadFile(filepath.Join(repoRoot(), check.path))

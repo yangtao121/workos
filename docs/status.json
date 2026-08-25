@@ -1,6 +1,6 @@
 {
   "$schema": "./status.schema.json",
-  "updated": "2026-08-23",
+  "updated": "2026-08-25",
   "modules": [
     {
       "name": "Access Gateway",
@@ -48,13 +48,19 @@
       "name": "Desktop Shell",
       "process": "desktop-web",
       "status": "working",
-      "evidence": "foundation + DeepSeek fixture Catalog/binding E2E"
+      "evidence": "foundation + DeepSeek fixture Catalog/binding E2E + App Library install/remove E2E"
     },
     {
       "name": "App Registry",
       "process": "workos-core",
       "status": "working",
       "evidence": "schema-backed immutable registration + durable idempotency + bounded paging/read + credential-shaped key rejection + restart persistence"
+    },
+    {
+      "name": "Project App Installation",
+      "process": "workos-core",
+      "status": "working",
+      "evidence": "pinned version install/uninstall + revision/event/outbox transaction + durable idempotency + restart persistence + Desktop App Library browser E2E"
     },
     {
       "name": "Artifact",

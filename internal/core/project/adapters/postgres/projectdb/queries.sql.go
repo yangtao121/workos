@@ -12,6 +12,57 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const activeInstallationAppIDs = `-- name: ActiveInstallationAppIDs :one
+SELECT coalesce(array_agg(app_id ORDER BY app_id), '{}'::text[])::text[] AS app_ids
+FROM workos_core.project_app_installations
+WHERE project_id = $1 AND uninstalled_at IS NULL
+`
+
+func (q *Queries) ActiveInstallationAppIDs(ctx context.Context, projectID string) ([]string, error) {
+	row := q.db.QueryRow(ctx, activeInstallationAppIDs, projectID)
+	var app_ids []string
+	err := row.Scan(&app_ids)
+	return app_ids, err
+}
+
+const applyInstallationProjection = `-- name: ApplyInstallationProjection :one
+UPDATE workos_core.projects
+SET revision = revision + 1,
+    updated_at = $1,
+    installed_app_ids = $2
+WHERE id = $3
+  AND owner_user_id = $4
+  AND revision = $5
+  AND archived_at IS NULL
+RETURNING revision, updated_at
+`
+
+type ApplyInstallationProjectionParams struct {
+	UpdatedAt        pgtype.Timestamptz `json:"updated_at"`
+	InstalledAppIds  []string           `json:"installed_app_ids"`
+	ID               string             `json:"id"`
+	OwnerUserID      string             `json:"owner_user_id"`
+	ExpectedRevision int64              `json:"expected_revision"`
+}
+
+type ApplyInstallationProjectionRow struct {
+	Revision  int64              `json:"revision"`
+	UpdatedAt pgtype.Timestamptz `json:"updated_at"`
+}
+
+func (q *Queries) ApplyInstallationProjection(ctx context.Context, arg ApplyInstallationProjectionParams) (ApplyInstallationProjectionRow, error) {
+	row := q.db.QueryRow(ctx, applyInstallationProjection,
+		arg.UpdatedAt,
+		arg.InstalledAppIds,
+		arg.ID,
+		arg.OwnerUserID,
+		arg.ExpectedRevision,
+	)
+	var i ApplyInstallationProjectionRow
+	err := row.Scan(&i.Revision, &i.UpdatedAt)
+	return i, err
+}
+
 const archiveProject = `-- name: ArchiveProject :one
 UPDATE workos_core.projects
 SET archived_at = $1, updated_at = $1, revision = revision + 1
@@ -53,6 +104,88 @@ func (q *Queries) ArchiveProject(ctx context.Context, arg ArchiveProjectParams) 
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.ArchivedAt,
+	)
+	return i, err
+}
+
+const getActiveInstallationByApp = `-- name: GetActiveInstallationByApp :one
+SELECT id, owner_user_id, project_id, app_id, version, manifest_digest, installed_at, uninstalled_at
+FROM workos_core.project_app_installations
+WHERE project_id = $1 AND app_id = $2 AND uninstalled_at IS NULL
+`
+
+type GetActiveInstallationByAppParams struct {
+	ProjectID string `json:"project_id"`
+	AppID     string `json:"app_id"`
+}
+
+func (q *Queries) GetActiveInstallationByApp(ctx context.Context, arg GetActiveInstallationByAppParams) (WorkosCoreProjectAppInstallation, error) {
+	row := q.db.QueryRow(ctx, getActiveInstallationByApp, arg.ProjectID, arg.AppID)
+	var i WorkosCoreProjectAppInstallation
+	err := row.Scan(
+		&i.ID,
+		&i.OwnerUserID,
+		&i.ProjectID,
+		&i.AppID,
+		&i.Version,
+		&i.ManifestDigest,
+		&i.InstalledAt,
+		&i.UninstalledAt,
+	)
+	return i, err
+}
+
+const getInstallationById = `-- name: GetInstallationById :one
+SELECT id, owner_user_id, project_id, app_id, version, manifest_digest, installed_at, uninstalled_at
+FROM workos_core.project_app_installations
+WHERE owner_user_id = $1 AND id = $2
+`
+
+type GetInstallationByIdParams struct {
+	OwnerUserID string `json:"owner_user_id"`
+	ID          string `json:"id"`
+}
+
+func (q *Queries) GetInstallationById(ctx context.Context, arg GetInstallationByIdParams) (WorkosCoreProjectAppInstallation, error) {
+	row := q.db.QueryRow(ctx, getInstallationById, arg.OwnerUserID, arg.ID)
+	var i WorkosCoreProjectAppInstallation
+	err := row.Scan(
+		&i.ID,
+		&i.OwnerUserID,
+		&i.ProjectID,
+		&i.AppID,
+		&i.Version,
+		&i.ManifestDigest,
+		&i.InstalledAt,
+		&i.UninstalledAt,
+	)
+	return i, err
+}
+
+const getInstallationRequest = `-- name: GetInstallationRequest :one
+SELECT owner_user_id, idempotency_key, command, request_digest, installation_id,
+       project_revision, result_uninstalled_at, created_at
+FROM workos_core.project_app_installation_requests
+WHERE owner_user_id = $1 AND idempotency_key = $2
+`
+
+type GetInstallationRequestParams struct {
+	OwnerUserID    string `json:"owner_user_id"`
+	IdempotencyKey string `json:"idempotency_key"`
+}
+
+func (q *Queries) GetInstallationRequest(ctx context.Context, arg GetInstallationRequestParams) (WorkosCoreProjectAppInstallationRequest, error) {
+	row := q.db.QueryRow(ctx, getInstallationRequest, arg.OwnerUserID, arg.IdempotencyKey)
+	var i WorkosCoreProjectAppInstallationRequest
+	err := row.Scan(
+		&i.OwnerUserID,
+		&i.IdempotencyKey,
+		&i.Command,
+		&i.RequestDigest,
+		&i.InstallationID,
+		&i.ProjectRevision,
+		&i.ResultUninstalledAt,
+		&i.CreatedAt,
 	)
 	return i, err
 }
@@ -127,6 +260,71 @@ func (q *Queries) GetProjectByIdempotency(ctx context.Context, arg GetProjectByI
 		&i.ArchivedAt,
 	)
 	return i, err
+}
+
+const insertInstallation = `-- name: InsertInstallation :exec
+INSERT INTO workos_core.project_app_installations (
+    id, owner_user_id, project_id, app_id, version, manifest_digest, installed_at
+) VALUES ($1, $2, $3, $4, $5, $6, $7)
+`
+
+type InsertInstallationParams struct {
+	ID             string             `json:"id"`
+	OwnerUserID    string             `json:"owner_user_id"`
+	ProjectID      string             `json:"project_id"`
+	AppID          string             `json:"app_id"`
+	Version        string             `json:"version"`
+	ManifestDigest string             `json:"manifest_digest"`
+	InstalledAt    pgtype.Timestamptz `json:"installed_at"`
+}
+
+func (q *Queries) InsertInstallation(ctx context.Context, arg InsertInstallationParams) error {
+	_, err := q.db.Exec(ctx, insertInstallation,
+		arg.ID,
+		arg.OwnerUserID,
+		arg.ProjectID,
+		arg.AppID,
+		arg.Version,
+		arg.ManifestDigest,
+		arg.InstalledAt,
+	)
+	return err
+}
+
+const insertInstallationRequest = `-- name: InsertInstallationRequest :execrows
+INSERT INTO workos_core.project_app_installation_requests (
+    owner_user_id, idempotency_key, command, request_digest, installation_id,
+    project_revision, result_uninstalled_at, created_at
+) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+ON CONFLICT (owner_user_id, idempotency_key) DO NOTHING
+`
+
+type InsertInstallationRequestParams struct {
+	OwnerUserID         string             `json:"owner_user_id"`
+	IdempotencyKey      string             `json:"idempotency_key"`
+	Command             string             `json:"command"`
+	RequestDigest       string             `json:"request_digest"`
+	InstallationID      string             `json:"installation_id"`
+	ProjectRevision     int64              `json:"project_revision"`
+	ResultUninstalledAt pgtype.Timestamptz `json:"result_uninstalled_at"`
+	CreatedAt           pgtype.Timestamptz `json:"created_at"`
+}
+
+func (q *Queries) InsertInstallationRequest(ctx context.Context, arg InsertInstallationRequestParams) (int64, error) {
+	result, err := q.db.Exec(ctx, insertInstallationRequest,
+		arg.OwnerUserID,
+		arg.IdempotencyKey,
+		arg.Command,
+		arg.RequestDigest,
+		arg.InstallationID,
+		arg.ProjectRevision,
+		arg.ResultUninstalledAt,
+		arg.CreatedAt,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const insertProject = `-- name: InsertProject :execrows
@@ -232,6 +430,58 @@ func (q *Queries) InsertProjectOutbox(ctx context.Context, arg InsertProjectOutb
 	return err
 }
 
+const listActiveInstallations = `-- name: ListActiveInstallations :many
+SELECT id, owner_user_id, project_id, app_id, version, manifest_digest, installed_at, uninstalled_at
+FROM workos_core.project_app_installations
+WHERE owner_user_id = $1
+  AND project_id = $2
+  AND app_id > $3
+  AND uninstalled_at IS NULL
+ORDER BY app_id
+LIMIT $4
+`
+
+type ListActiveInstallationsParams struct {
+	OwnerUserID string `json:"owner_user_id"`
+	ProjectID   string `json:"project_id"`
+	Cursor      string `json:"cursor"`
+	RowLimit    int32  `json:"row_limit"`
+}
+
+func (q *Queries) ListActiveInstallations(ctx context.Context, arg ListActiveInstallationsParams) ([]WorkosCoreProjectAppInstallation, error) {
+	rows, err := q.db.Query(ctx, listActiveInstallations,
+		arg.OwnerUserID,
+		arg.ProjectID,
+		arg.Cursor,
+		arg.RowLimit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []WorkosCoreProjectAppInstallation
+	for rows.Next() {
+		var i WorkosCoreProjectAppInstallation
+		if err := rows.Scan(
+			&i.ID,
+			&i.OwnerUserID,
+			&i.ProjectID,
+			&i.AppID,
+			&i.Version,
+			&i.ManifestDigest,
+			&i.InstalledAt,
+			&i.UninstalledAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listProjects = `-- name: ListProjects :many
 SELECT id, owner_user_id, idempotency_key, name, icon, workspace_refs, harness_binding,
        installed_app_ids, default_agent_role, knowledge_collection_id, artifact_collection_id,
@@ -290,6 +540,66 @@ func (q *Queries) ListProjects(ctx context.Context, arg ListProjectsParams) ([]W
 		return nil, err
 	}
 	return items, nil
+}
+
+const lockProjectForInstallation = `-- name: LockProjectForInstallation :one
+SELECT id, owner_user_id, revision, archived_at
+FROM workos_core.projects
+WHERE owner_user_id = $1 AND id = $2
+FOR UPDATE
+`
+
+type LockProjectForInstallationParams struct {
+	OwnerUserID string `json:"owner_user_id"`
+	ID          string `json:"id"`
+}
+
+type LockProjectForInstallationRow struct {
+	ID          string             `json:"id"`
+	OwnerUserID string             `json:"owner_user_id"`
+	Revision    int64              `json:"revision"`
+	ArchivedAt  pgtype.Timestamptz `json:"archived_at"`
+}
+
+func (q *Queries) LockProjectForInstallation(ctx context.Context, arg LockProjectForInstallationParams) (LockProjectForInstallationRow, error) {
+	row := q.db.QueryRow(ctx, lockProjectForInstallation, arg.OwnerUserID, arg.ID)
+	var i LockProjectForInstallationRow
+	err := row.Scan(
+		&i.ID,
+		&i.OwnerUserID,
+		&i.Revision,
+		&i.ArchivedAt,
+	)
+	return i, err
+}
+
+const tombstoneInstallation = `-- name: TombstoneInstallation :execrows
+UPDATE workos_core.project_app_installations
+SET uninstalled_at = $1
+WHERE owner_user_id = $2
+  AND project_id = $3
+  AND id = $4
+  AND uninstalled_at IS NULL
+`
+
+type TombstoneInstallationParams struct {
+	UninstalledAt pgtype.Timestamptz `json:"uninstalled_at"`
+	OwnerUserID   string             `json:"owner_user_id"`
+	ProjectID     string             `json:"project_id"`
+	ID            string             `json:"id"`
+}
+
+func (q *Queries) TombstoneInstallation(ctx context.Context, arg TombstoneInstallationParams) (int64, error) {
+	result, err := q.db.Exec(ctx, tombstoneInstallation,
+		arg.UninstalledAt,
+		arg.OwnerUserID,
+		arg.ProjectID,
+		arg.ID,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const updateProject = `-- name: UpdateProject :one

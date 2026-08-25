@@ -70,10 +70,13 @@ test-integration:
 	$(GO_HOST_RUN) go test -tags=integration -count=1 -v ./tests/integration
 	@set -eu; task_id="$$( $(GO_HOST_RUN) go run ./tests/restart seed )"; \
 		app_ref="$$( $(GO_HOST_RUN) go run ./tests/restart app-seed )"; \
+		install_ref="$$( $(GO_HOST_RUN) go run ./tests/restart install-seed )"; \
 		set -- $$app_ref; \
 		docker compose restart workos-core harness-host >/dev/null; \
 		$(GO_HOST_RUN) go run ./tests/restart verify "$$task_id"; \
-		$(GO_HOST_RUN) go run ./tests/restart app-verify "$$1" "$$2"
+		$(GO_HOST_RUN) go run ./tests/restart app-verify "$$1" "$$2"; \
+		set -- $$install_ref; \
+		$(GO_HOST_RUN) go run ./tests/restart install-verify "$$1" "$$2" "$$3" "$$4" "$$5"
 
 test-deepseek-fixture: e2e-image
 	@set -eu; \
