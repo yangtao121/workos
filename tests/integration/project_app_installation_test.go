@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"connectrpc.com/connect"
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	appv1 "github.com/yangtao121/workos/gen/go/workos/app/v1"
 	"github.com/yangtao121/workos/gen/go/workos/app/v1/appv1connect"
@@ -89,9 +90,18 @@ func TestProjectAppInstallationVerticalSlice(t *testing.T) {
 			installation.GetProjectId() != project.GetId() || installation.GetAppId() != boardID || installation.GetInstalledAt() == nil || installation.GetUninstalledAt() != nil {
 			t.Fatalf("installation must pin the resolved current version: %#v", installation)
 		}
-		// The pinned UUIDv7 instance identity is the future app instance id.
-		if len(installation.GetId()) != 36 || !strings.Contains(installation.GetId(), "-") {
-			t.Fatalf("installation id must be a UUID: %q", installation.GetId())
+		// The pinned instance identity is a real UUIDv7 issued by the
+		// composition root's generator — parse it and check version and
+		// variant, not just the string shape (UUIDv1/v4 would pass that).
+		parsedID, err := uuid.Parse(installation.GetId())
+		if err != nil {
+			t.Fatalf("installation id must be a parseable UUID: %q (%v)", installation.GetId(), err)
+		}
+		if parsedID.Version() != 7 {
+			t.Fatalf("installation id must be UUIDv7, got version %d: %q", parsedID.Version(), installation.GetId())
+		}
+		if parsedID.Variant() != uuid.RFC4122 {
+			t.Fatalf("installation id must use the RFC 4122 variant, got %v: %q", parsedID.Variant(), installation.GetId())
 		}
 		updated, err := projects.GetProject(ctx, connect.NewRequest(&projectv1.GetProjectRequest{ProjectId: project.GetId()}))
 		if err != nil {
@@ -277,10 +287,15 @@ func TestProjectAppInstallationVerticalSlice(t *testing.T) {
 			`SELECT count(*) FROM workos_core.project_app_installations WHERE id = $1 AND uninstalled_at IS NULL`, boardInstallation).Scan(&active); err != nil || active != 0 {
 			t.Fatalf("tombstoned installation must stay inactive: %v %d", err, active)
 		}
-		// Reinstalling with a fresh key creates a new instance identity.
+		// Reinstalling with a fresh key creates a new instance identity,
+		// itself a UUIDv7 from the real generator.
 		reinstalled := installApp(t, ctx, installations, fmt.Sprintf("install-reinstall-%d", stamp), project.GetId(), boardID, "2.0.0", revision+1)
 		if reinstalled.GetId() == boardInstallation {
 			t.Fatal("reinstall must produce a new instance id")
+		}
+		reinstalledID, err := uuid.Parse(reinstalled.GetId())
+		if err != nil || reinstalledID.Version() != 7 || reinstalledID.Variant() != uuid.RFC4122 {
+			t.Fatalf("reinstalled id must be a UUIDv7: %q (%v)", reinstalled.GetId(), err)
 		}
 		if reinstalled.GetVersion() != "2.0.0" {
 			t.Fatalf("reinstall pins the requested version: %#v", reinstalled)

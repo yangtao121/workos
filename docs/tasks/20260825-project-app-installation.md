@@ -1,6 +1,6 @@
 # Task: Project App Installation vertical slice
 
-- 状态：done（2026-08-25；全部验收门禁通过。合并须经审核者静态复审后本地 `--ff-only`）
+- 状态：done（2026-08-25 审核轮修复完成：005 owner 绑定 migration + 双 owner/upgrade/fail-closed 约束证据 + UUIDv7 与 explicit-version 断言补强，全部门禁重新通过；合并须经审核者复审后本地 `--ff-only`）
 - Owner/Agent：project installation builder
 - 进程/模块：workos-core `internal/core/project`（installation 子域）；`internal/core/orchestration`（App catalog bridge）；workos-gateway allowlist；desktop-web App Library
 - 依赖：App Registry（immutable version/digest，`002`/`003` 已执行）、`001_foundation.sql` 的 `projects.installed_app_ids`、Project revision/event/outbox 事务模式
@@ -43,7 +43,7 @@ Additive `api/proto/workos/app/v1/installation.proto`（package `workos.app.v1`�
 `004_project_app_installations.sql`（forward-only；001/002/003 逐字节未变）：
 
 - `workos_core.project_app_installations`：安装实例 authoritative fact。UUIDv7 `id` PK、`owner_user_id`、`project_id`、`app_id`、`version`、`manifest_digest`、`installed_at`、`uninstalled_at`（NULL=active）。partial unique `(project_id, app_id) WHERE uninstalled_at IS NULL`；复合 FK `(project_id, owner_user_id) → projects (id, owner_user_id)`（004 为 projects 增补 `UNIQUE (id, owner_user_id)`）；CHECK 收紧 app ID/version/digest 形态与 `uninstalled_at >= installed_at`。无跨模块 FK、不 join Registry 表。
-- `workos_core.project_app_installation_requests`：幂等权威。PK `(owner_user_id, idempotency_key)`、`command ('install'|'uninstall')`、`request_digest`（客户端 canonical 请求字段的 sha256 JSON：action/app_id/expected_project_revision/installation_id/project_id/version，不含时间戳或解析结果）、`installation_id`（FK RESTRICT）、`project_revision`（第一次响应 revision）、`result_uninstalled_at`（响应快照）、`created_at`。
+- `workos_core.project_app_installation_requests`：幂等权威。PK `(owner_user_id, idempotency_key)`、`command ('install'|'uninstall')`、`request_digest`（客户端 canonical 请求字段的 sha256 JSON：action/app_id/expected_project_revision/installation_id/project_id/version，不含时间戳或解析结果）、`installation_id`、`project_revision`（第一次响应 revision）、`result_uninstalled_at`（响应快照）、`created_at`。004 以单列 FK 引用 installation；**005**（`005_project_app_installation_request_owner.sql`，owner 同为 workos-core Project Installation）将其替换为 composite FK `(owner_user_id, installation_id) → project_app_installations (owner_user_id, id) ON DELETE RESTRICT`——持久幂等结果的 owner 必须与目标 installation 的 owner 一致（审核阻断项：004 允许 owner B 的 key 映射到 owner A 的 installation，形成永久不可重放的结果映射）。005 同时：以 `DO` 块在改动 schema 前 fail-closed 检查既有跨 owner 错配（发现即中止并报告数量，不删改数据）；为 installation 增加 `UNIQUE (owner_user_id, id)` 供 composite FK 引用；移除被该唯一键完全覆盖的 004 冗余非唯一索引 `project_app_installations_owner_idx`。
 - `projects.installed_app_ids`：方案 1（事务内派生投影）。install/uninstall 事务持有 project 行锁时 `array_agg(app_id ORDER BY app_id)` 聚合并写入同一条 revision UPDATE；普通 `UpdateProject` 的 SQL 不接收/不覆盖该列（原有行为保持）。
 
 ## 安装语义与不变式（最终现状）
@@ -123,3 +123,51 @@ transport：internal/core/project/transport/installation.go（仅生成协议类
 ## 下一任务
 
 **minimal Web Bundle Surface backed by installed app instance**：`SurfaceService.CreateSurface` 只接受真实存在的 installation ID 作为 `app_instance_id`。仍缺：bundle artifact 上传/托管契约（`workos.artifact.v1` 目前 contract-only）、Surface 会话生命周期与 runtime-host 托管边界、Surface URL 签名与 Gateway 路由策略。不得把本任务描述成 App 已可运行或可打开。
+
+## 审核轮修复（2026-08-25，fix: bind installation request results to owners）
+
+针对 `docs/prompts/20260825-review-project-app-installation.md`（提交 `c199731`）确认的阻断项与两处证据缺口，基于 `696c554` 修复。
+
+### 审核阻断项与修复
+
+静态审核确认：004 的 `project_app_installation_requests` 单列 FK 未把 mapping owner 绑定到目标 installation owner，数据库允许 `request(owner B) → installation(owner A)` 的永久不可重放结果映射。修复为 forward migration `005_project_app_installation_request_owner.sql`（owner：workos-core Project Installation；004 未改动，checksum 回归断言固定为审核记录的 `df364efc07892164611e4587288e46ddec491b187662f6271dd2907c5527e00b`）：
+
+1. `DO` 块在改动 schema 前 fail-closed 统计既有跨 owner 错配，>0 即中止并报告数量（不删改数据）；
+2. `project_app_installations` 增加 `UNIQUE (owner_user_id, id)`；
+3. 单列 FK 替换为 composite FK `(owner_user_id, installation_id) → project_app_installations (owner_user_id, id) ON DELETE RESTRICT`（与 App Registry 003 同构）；
+4. 移除被该唯一键完全覆盖的 004 冗余非唯一索引 `project_app_installations_owner_idx`（同列同序，owner-scoped id 查询由唯一键服务；未动其他索引）。
+
+未新增 `project_id` 绑定列：现有 PK `(owner_user_id, idempotency_key)` 的 owner-wide 语义与 replay 快照已覆盖任务要求，无不变量证据支持扩大 migration。
+
+### 新增 PostgreSQL/migration 证据（tests/integration/project_installation_migration_test.go）
+
+- `TestProjectInstallationRequestMappingOwnerBinding`：双 owner 各自 project/installation；同 owner mapping 持久；owner B → owner A installation 被 composite FK 拒绝；同一 key `shared-key` 两 owner 各自指向自己的 installation 均成功（owner-wide 命名空间未被错误收紧为全局）；tombstoned installation 仍可被 mapping 引用；`DELETE` 被 RESTRICT 拒绝。
+- `TestProjectInstallationMigrationFromEmptyDatabase`：pristine 001→005 链 + 004 checksum 断言 + 005 形状断言（005 已记录、composite FK 引用 `(owner_user_id, id)`、UNIQUE 存在、旧索引已删）。
+- `TestProjectInstallationMigration005Upgrades004EraData`：手工构造 004-era 合法数据（含 tombstone replay mapping）后前向执行 005：全部 mapping 保留、owner 关联不变。
+- `TestProjectInstallationMigration005FailsClosedOnCrossOwnerData`：004-era 数据 + 一条跨 owner mapping 时 `migrations.Run` 失败且错误指明 cross-owner；005 未记录、004 单列 FK 原样、错配行保留供只读核查。
+- `TestProjectInstallationMigrationAppliedToAcceptanceVolume`：验收 volume 上 005 形状 + 全部 mapping 与同 owner installation 可关联（总数=可关联数）。
+
+### 验收 volume upgrade 事实
+
+005 经 compose bootstrap 前向应用：执行前只读断言 269 条 mapping、跨 owner 错配 0；执行后 `schema_migrations` 记录 `005_project_app_installation_request_owner.sql`（checksum `45cb2bb4abb590656cb119e0517af3a220f94d279c43bec1eec754c5bf0a8781`，与文件 SHA-256 一致），269 条 mapping 全部保留、关联一致。（本轮中段 postgres 容器被外部终止一次（exit 255，干净 checkpoint 后），经 `docker compose up -d postgres` 原地恢复，volume 未删除、数据无损失。）
+
+### 证据补强
+
+- UUIDv7：纵向测试改用 `uuid.Parse` 解析真实 Gateway/Core 返回的 installation ID，断言 `Version()==7` 与 `Variant()==RFC4122`（重装 instance 同样断言）；不再依赖字符串外形。
+- explicit-version catalog：`registryRepoStub` 记录 `(owner, appID, version)` 调用；断言显式 `1.9.0` 原样进入 Registry immutable `GetVersion` 路径，空 version 仅进入 current summary 流（各恰好一次调用）；NotFound/Invalid/Internal 分类测试保留。
+
+### 门禁与资源计数（修复后，全部实际执行）
+
+定向 migration 测试连续两次通过，scratch database 集合前/后均为 6 个历史残留（零新增，未删除）。`make generate`×2 无新增差异；`make check`；`make test-integration`×2；`make test-deepseek-fixture`；`make test-e2e`（2 passed + fixture skipped）；`buf breaking --against '.git#branch=main'`；`git diff --check`、`git diff --check main...HEAD`；004 与 `696c554` 逐字节一致；001/002/003 与 `main` 逐字节一致；`docs/structure.md`、runtime-host、Surface capability 无变化；无 root-owned 文件；volume 未删除。
+
+| 表                                | 门禁前 | 第 1 次后   | 第 2 次后   |
+| --------------------------------- | ------ | ----------- | ----------- |
+| app_versions                      | 1160   | 1181（+21） | 1202（+21） |
+| app_registration_requests         | 1368   | 1397（+29） | 1426（+29） |
+| projects                          | 366    | 373（+7）   | 380（+7）   |
+| project_app_installations         | 202    | 208（+6）   | 213（+5）   |
+| project_app_installation_requests | 278    | 288（+10）  | 297（+9）   |
+| workos_events.events              | 2089   | 2118（+29） | 2147（+29） |
+| workos_events.outbox              | 1189   | 1210（+21） | 1231（+21） |
+
+增量与修复前基线一致（既有固定形态；高基数分页 fixture 每轮精确清理归零）。未决风险不变：no-op install 与并发 update 可同时成功（文档化语义）、Desktop 项目列表单页限制、安装不含运行时可用性事实。下一任务仍是 minimal Web Bundle Surface backed by installed app instance。

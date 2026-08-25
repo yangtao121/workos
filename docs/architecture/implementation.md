@@ -106,7 +106,8 @@ Core: identity → 幂等 key 裁决 → 中立 AppCatalog port 解析 current �
   `ListInstalledApps`，`api/proto/workos/app/v1/installation.proto`）。installation ID 是持久
   app instance identity（未来 Surface 的 `app_instance_id`），不代表 workload 已运行；响应不含
   manifest、credential，也不声称 permissions 已授权。
-- 数据由 `004_project_app_installations.sql`（owner：workos-core Project Installation）持有：
+- 数据由 `004_project_app_installations.sql` 与
+  `005_project_app_installation_request_owner.sql`（owner 均为 workos-core Project Installation）持有：
   `project_app_installations` 是安装事实的唯一权威（UUIDv7 id、pinned version/digest、
   `uninstalled_at` NULL=active），partial unique `(project_id, app_id) WHERE uninstalled_at IS NULL`
   保证一个 Project/app 至多一个 active row，tombstone 保留历史；复合 FK
@@ -120,7 +121,10 @@ Core: identity → 幂等 key 裁决 → 中立 AppCatalog port 解析 current �
   project、app、请求 version、expected revision、installation id），不含时间戳或解析结果，
   因此空 version 安装的 replay 不会因 Registry current 变化而漂移；结果快照
   （installation id + project revision + result_uninstalled_at）使 replay 精确返回第一次响应，
-  uninstall 在 tombstone 后仍可重放，失败请求不消费 key。
+  uninstall 在 tombstone 后仍可重放，失败请求不消费 key。`005` 以 composite FK
+  `(owner_user_id, installation_id) → project_app_installations (owner_user_id, id)` 把每条结果
+  映射绑定到同 owner 的 installation（引用 005 新增的 `UNIQUE (owner_user_id, id)`），数据库层
+  拒绝跨 owner 结果映射；005 在改 schema 前以 fail-closed 检查拒绝携带既有错配的升级。
 - 并发完全由数据库裁决：mutation 以 `SELECT … FOR UPDATE` 锁定 owner-scoped project 行后比较
   revision，与 `UpdateProject`/`ArchiveProject`/binding 的 guarded UPDATE 互斥；同 key 跨 project
   由 mapping PK 仲裁；同 project 同 expected revision 恰有一个 winner，loser `Aborted`。

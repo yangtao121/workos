@@ -11,19 +11,38 @@ import (
 	projectdomain "github.com/yangtao121/workos/internal/core/project/domain"
 )
 
+// catalogCall records what the App Registry repository actually received,
+// so tests assert the arguments crossed the bridge instead of trusting the
+// request to reach storage.
+type catalogCall struct {
+	ownerUserID string
+	appID       string
+	version     string
+}
+
 // registryRepoStub feeds a real App Registry application service so the
 // catalog bridge is exercised against the service type the composition root
-// wires, without any database.
+// wires, without any database. Calls are recorded on the shared calls slice.
 type registryRepoStub struct {
 	summary appregistrydomain.AppVersionSummary
 	err     error
+	// calls collects both the immutable GetVersion path and the current
+	// fold's summary stream; tests read it after Resolve returns.
+	calls *[]catalogCall
+}
+
+func (r registryRepoStub) record(ownerUserID, appID, version string) {
+	if r.calls != nil {
+		*r.calls = append(*r.calls, catalogCall{ownerUserID: ownerUserID, appID: appID, version: version})
+	}
 }
 
 func (r registryRepoStub) Register(context.Context, appregistrydomain.AppVersion) (appregistrydomain.AppVersionSummary, error) {
 	return appregistrydomain.AppVersionSummary{}, nil
 }
 
-func (r registryRepoStub) GetVersion(context.Context, string, string, string) (appregistrydomain.AppVersionSummary, error) {
+func (r registryRepoStub) GetVersion(_ context.Context, ownerUserID, appID, version string) (appregistrydomain.AppVersionSummary, error) {
+	r.record(ownerUserID, appID, version)
 	return r.summary, r.err
 }
 
@@ -31,7 +50,10 @@ func (r registryRepoStub) ListAppIDPage(context.Context, string, string, int) ([
 	return nil, "", nil
 }
 
-func (r registryRepoStub) VisitVersionSummaries(_ context.Context, _ string, _ []string, visit func(appregistrydomain.AppVersionSummary) error) error {
+func (r registryRepoStub) VisitVersionSummaries(_ context.Context, ownerUserID string, appIDs []string, visit func(appregistrydomain.AppVersionSummary) error) error {
+	for _, appID := range appIDs {
+		r.record(ownerUserID, appID, "")
+	}
 	if r.err != nil {
 		return r.err
 	}
@@ -67,16 +89,25 @@ func newCatalog(t *testing.T, repo registryRepoStub) *AppCatalog {
 
 func TestAppCatalogResolvesPinnedReference(t *testing.T) {
 	t.Parallel()
-	catalog := newCatalog(t, registryRepoStub{summary: appregistrydomain.AppVersionSummary{
-		AppID: "board-app", Version: "1.10.0", Scope: appregistrydomain.ScopeUser,
-		Name: "Board", Permissions: []string{"artifact.read"}, ManifestDigest: "sha256:" + hex64('a'),
-	}})
+	var calls []catalogCall
+	catalog := newCatalog(t, registryRepoStub{
+		summary: appregistrydomain.AppVersionSummary{
+			AppID: "board-app", Version: "1.10.0", Scope: appregistrydomain.ScopeUser,
+			Name: "Board", Permissions: []string{"artifact.read"}, ManifestDigest: "sha256:" + hex64('a'),
+		},
+		calls: &calls,
+	})
 	pinned, err := catalog.Resolve(context.Background(), "owner-1", "board-app", "")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if pinned.AppID != "board-app" || pinned.Version != "1.10.0" || pinned.ManifestDigest != "sha256:"+hex64('a') || pinned.Scope != "user" {
 		t.Fatalf("unexpected pinned reference: %#v", pinned)
+	}
+	// An empty requested version goes to the current fold's summary stream,
+	// never to the immutable GetVersion path with a fabricated version.
+	if len(calls) != 1 || calls[0] != (catalogCall{ownerUserID: "owner-1", appID: "board-app", version: ""}) {
+		t.Fatalf("current resolution must stream summaries for the requested app only: %#v", calls)
 	}
 	if pinned.Scope == "" {
 		t.Fatal("scope must be projected for the fail-closed check")
@@ -85,15 +116,23 @@ func TestAppCatalogResolvesPinnedReference(t *testing.T) {
 
 func TestAppCatalogExplicitVersionUsesImmutableRead(t *testing.T) {
 	t.Parallel()
-	var requestedVersion string
-	repo := registryRepoStub{summary: appregistrydomain.AppVersionSummary{AppID: "board-app", Version: "1.9.0"}}
+	var calls []catalogCall
+	repo := registryRepoStub{summary: appregistrydomain.AppVersionSummary{AppID: "board-app", Version: "1.9.0"}, calls: &calls}
 	catalog := newCatalog(t, repo)
 	pinned, err := catalog.Resolve(context.Background(), "owner-1", "board-app", "1.9.0")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if requestedVersion != "" || pinned.Version != "1.9.0" {
+	if pinned.Version != "1.9.0" {
 		t.Fatalf("explicit version must pin the immutable read: %#v", pinned)
+	}
+	// The explicit version must reach the registry's immutable GetVersion
+	// path verbatim, together with the owner and app id from the caller.
+	if len(calls) != 1 {
+		t.Fatalf("explicit resolution must make exactly one repository call, got %v", calls)
+	}
+	if calls[0] != (catalogCall{ownerUserID: "owner-1", appID: "board-app", version: "1.9.0"}) {
+		t.Fatalf("explicit version was not forwarded verbatim: %#v", calls[0])
 	}
 }
 
