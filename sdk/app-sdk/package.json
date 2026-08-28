@@ -8,13 +8,16 @@
     ".": "./src/index.ts"
   },
   "scripts": {
-    "check": "tsc --noEmit",
-    "typecheck": "tsc --noEmit"
+    "check": "tsc --noEmit && vitest run src",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run src"
   },
   "dependencies": {
-    "@workos/protocol": "workspace:*"
+    "@workos/protocol": "workspace:*",
+    "@workos/surface-sdk": "workspace:*"
   },
   "devDependencies": {
-    "typescript": "5.9.2"
+    "typescript": "5.9.2",
+    "vitest": "4.1.11"
   }
 }

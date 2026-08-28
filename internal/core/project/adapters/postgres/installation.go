@@ -62,7 +62,7 @@ func (r *Repository) ResolveActiveInstallation(ctx context.Context, ownerUserID,
 	value, err := r.queries.ResolveActiveInstallation(ctx, projectdb.ResolveActiveInstallationParams{
 		OwnerUserID: ownerUserID, ProjectID: projectID, ID: installationID,
 	})
-	return installationFromDB(value, err)
+	return installationFromResolver(value, err)
 }
 
 // Install executes one install command in a single transaction: lock and
@@ -90,13 +90,19 @@ func (r *Repository) Install(ctx context.Context, command ports.InstallCommand) 
 	})
 	if err == nil {
 		if active.Version == command.Pinned.Version && active.ManifestDigest == command.Pinned.ManifestDigest {
-			// Deterministic no-op under the lock: the expected revision was
-			// verified, so the key is consumed against the existing fact —
-			// without a second row, revision bump, or event.
-			existing, err := installationFromDB(active, nil)
+			existing, err := installationFromActiveByApp(active, nil)
 			if err != nil {
 				return ports.InstallationResult{}, err
 			}
+			if !equalGrants(existing.GrantedPermissions, command.GrantedPermissions) {
+				// Same pinned version but a different grant must never
+				// silently re-grant: uninstall + reinstall is the only
+				// grant-change path.
+				return ports.InstallationResult{}, domain.ErrAlreadyInstalled
+			}
+			// Deterministic no-op under the lock: the expected revision was
+			// verified, so the key is consumed against the existing fact —
+			// without a second row, revision bump, or event.
 			return r.commitInstallationRequest(ctx, tx, queries, projectdb.InsertInstallationRequestParams{
 				OwnerUserID: command.OwnerUserID, IdempotencyKey: command.IdempotencyKey,
 				Command: "install", RequestDigest: command.RequestDigest, InstallationID: existing.ID,
@@ -112,12 +118,14 @@ func (r *Repository) Install(ctx context.Context, command ports.InstallCommand) 
 	installation := domain.Installation{
 		ID: command.NewInstallationID, OwnerUserID: command.OwnerUserID, ProjectID: command.ProjectID,
 		AppID: command.AppID, Version: command.Pinned.Version, ManifestDigest: command.Pinned.ManifestDigest,
-		InstalledAt: command.Now,
+		GrantedPermissions: command.GrantedPermissions,
+		InstalledAt:        command.Now,
 	}
 	if err := queries.InsertInstallation(ctx, projectdb.InsertInstallationParams{
 		ID: installation.ID, OwnerUserID: installation.OwnerUserID, ProjectID: installation.ProjectID,
 		AppID: installation.AppID, Version: installation.Version, ManifestDigest: installation.ManifestDigest,
-		InstalledAt: timestamp(installation.InstalledAt),
+		GrantedPermissions: nonNilGranted(installation.GrantedPermissions),
+		InstalledAt:        timestamp(installation.InstalledAt),
 	}); err != nil {
 		return ports.InstallationResult{}, fmt.Errorf("insert installation: %w", err)
 	}
@@ -199,21 +207,9 @@ func (r *Repository) ListActive(ctx context.Context, ownerUserID, projectID, cur
 	if err != nil {
 		return nil, storeError("query project for installations", err)
 	}
-	values, err := r.queries.ListActiveInstallations(ctx, projectdb.ListActiveInstallationsParams{
+	return installationsFromList(r.queries.ListActiveInstallations(ctx, projectdb.ListActiveInstallationsParams{
 		OwnerUserID: ownerUserID, ProjectID: projectID, Cursor: cursor, RowLimit: int32(limit),
-	})
-	if err != nil {
-		return nil, storeError("list active installations", err)
-	}
-	installations := make([]domain.Installation, 0, len(values))
-	for _, value := range values {
-		installation, err := installationFromDB(value, nil)
-		if err != nil {
-			return nil, err
-		}
-		installations = append(installations, installation)
-	}
-	return installations, nil
+	}))
 }
 
 // classifyUnderLock locks the owner-scoped project row and resolves the
@@ -359,20 +355,89 @@ func (r *Repository) commitInstallationRequest(
 	return ports.InstallationResult{Installation: installation, ProjectRevision: consumed.ProjectRevision}, nil
 }
 
-func installationFromDB(value projectdb.WorkosCoreProjectAppInstallation, err error) (domain.Installation, error) {
+func installationFromDB(value projectdb.GetInstallationByIdRow, err error) (domain.Installation, error) {
 	if errors.Is(err, pgx.ErrNoRows) {
 		return domain.Installation{}, domain.ErrNotFound
 	}
 	if err != nil {
 		return domain.Installation{}, storeError("query installation", err)
 	}
-	installation := domain.Installation{
-		ID: value.ID, OwnerUserID: value.OwnerUserID, ProjectID: value.ProjectID,
-		AppID: value.AppID, Version: value.Version, ManifestDigest: value.ManifestDigest,
-		InstalledAt: value.InstalledAt.Time,
+	return installationFromColumns(
+		value.ID, value.OwnerUserID, value.ProjectID, value.AppID, value.Version, value.ManifestDigest,
+		value.GrantedPermissions, value.InstalledAt, value.UninstalledAt), nil
+}
+
+func installationFromActiveByApp(value projectdb.GetActiveInstallationByAppRow, err error) (domain.Installation, error) {
+	if errors.Is(err, pgx.ErrNoRows) {
+		return domain.Installation{}, domain.ErrNotFound
 	}
-	installation.UninstalledAt = timePtr(value.UninstalledAt)
-	return installation, nil
+	if err != nil {
+		return domain.Installation{}, storeError("query installation", err)
+	}
+	return installationFromColumns(
+		value.ID, value.OwnerUserID, value.ProjectID, value.AppID, value.Version, value.ManifestDigest,
+		value.GrantedPermissions, value.InstalledAt, value.UninstalledAt), nil
+}
+
+func installationFromResolver(value projectdb.ResolveActiveInstallationRow, err error) (domain.Installation, error) {
+	if errors.Is(err, pgx.ErrNoRows) {
+		return domain.Installation{}, domain.ErrNotFound
+	}
+	if err != nil {
+		return domain.Installation{}, storeError("query installation", err)
+	}
+	return installationFromColumns(
+		value.ID, value.OwnerUserID, value.ProjectID, value.AppID, value.Version, value.ManifestDigest,
+		value.GrantedPermissions, value.InstalledAt, value.UninstalledAt), nil
+}
+
+func installationsFromList(values []projectdb.ListActiveInstallationsRow, err error) ([]domain.Installation, error) {
+	if err != nil {
+		return nil, storeError("list installations", err)
+	}
+	installations := make([]domain.Installation, 0, len(values))
+	for _, value := range values {
+		installations = append(installations, installationFromColumns(
+			value.ID, value.OwnerUserID, value.ProjectID, value.AppID, value.Version, value.ManifestDigest,
+			value.GrantedPermissions, value.InstalledAt, value.UninstalledAt))
+	}
+	return installations, nil
+}
+
+func installationFromColumns(
+	id, ownerUserID, projectID, appID, version, manifestDigest string, grantedPermissions []string,
+	installedAt, uninstalledAt pgtype.Timestamptz,
+) domain.Installation {
+	installation := domain.Installation{
+		ID: id, OwnerUserID: ownerUserID, ProjectID: projectID,
+		AppID: appID, Version: version, ManifestDigest: manifestDigest,
+		GrantedPermissions: grantedPermissions,
+		InstalledAt:        installedAt.Time,
+	}
+	installation.UninstalledAt = timePtr(uninstalledAt)
+	return installation
+}
+
+// nonNilGranted maps a nil slice to the empty grant so the NOT NULL array
+// column never receives SQL NULL.
+func nonNilGranted(granted []string) []string {
+	if granted == nil {
+		return []string{}
+	}
+	return granted
+}
+
+// equalGrants compares two canonical (sorted, duplicate-free) grant sets.
+func equalGrants(stored, requested []string) bool {
+	if len(stored) != len(requested) {
+		return false
+	}
+	for index := range stored {
+		if stored[index] != requested[index] {
+			return false
+		}
+	}
+	return true
 }
 
 // storeError wraps a storage failure at the port boundary. Transient

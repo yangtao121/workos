@@ -102,6 +102,11 @@ maintainer: {}
     timeout: libraryTimeout,
   });
   await row.getByRole("button", { name: "Install", exact: true }).click();
+  // The consent dialog gates every install: this app requests only
+  // artifact.read, and the bridge needs neither capability, so an explicit
+  // empty grant is the right fixture.
+  await page.getByRole("dialog").waitFor({ timeout: libraryTimeout });
+  await page.getByRole("button", { name: "Install without permissions" }).click();
   await expect(row.getByText(/Installed · pinned 1\.0\.0/)).toBeVisible({
     timeout: libraryTimeout,
   });

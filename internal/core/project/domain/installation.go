@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -17,11 +18,20 @@ import (
 // v1 contract rules as request-boundary guards.
 var (
 	// ErrAlreadyInstalled marks installing an app whose project already has
-	// an active installation pinned to a different version.
+	// an active installation pinned to a different version — or to the same
+	// version but a different grant, which must never silently re-grant.
 	ErrAlreadyInstalled = errors.New("app is already installed with a different version")
 	// ErrIdempotencyConflict marks an installation command key that was
 	// consumed by a different canonical request.
 	ErrIdempotencyConflict = errors.New("installation idempotency key was used for a different request")
+	// ErrInvalidGrant marks a syntactically malformed grant snapshot: empty
+	// or control-character capability IDs, or duplicates. Transport maps it
+	// to a sanitized InvalidArgument.
+	ErrInvalidGrant = errors.New("granted permissions are malformed")
+	// ErrGrantNotRequested marks a grant that is not a subset of the pinned
+	// manifest version's requested permissions. Requesting a capability is
+	// never granting it; the verdict is a sanitized PermissionDenied.
+	ErrGrantNotRequested = errors.New("granted permission was not requested by the app")
 )
 
 // Installation is one durable app instance installed in a project. The ID is
@@ -34,18 +44,25 @@ type Installation struct {
 	AppID          string
 	Version        string
 	ManifestDigest string
-	InstalledAt    time.Time
-	UninstalledAt  *time.Time
+	// GrantedPermissions is the immutable install-time grant snapshot:
+	// canonical sorted, duplicate-free, always a subset of the pinned
+	// version's requested permissions. Empty means nothing was granted.
+	GrantedPermissions []string
+	InstalledAt        time.Time
+	UninstalledAt      *time.Time
 }
 
 // PinnedApp is the neutral registry reference an installation pins at command
 // time. Only these immutable identity fields are copied from the registry —
-// never manifests or credentials.
+// never manifests or credentials. Permissions carries the pinned version's
+// requested permission list; it is the subset boundary for grant validation
+// and never becomes a grant by itself.
 type PinnedApp struct {
 	AppID          string
 	Version        string
 	ManifestDigest string
 	Scope          string
+	Permissions    []string
 }
 
 // InstallableScope reports whether an app scope may pass through the install
@@ -204,4 +221,102 @@ func InstallationRequestDigest(command, projectID, appID, version, installationI
 	body, _ := json.Marshal(canonical)
 	sum := sha256.Sum256(body)
 	return "sha256:" + hex.EncodeToString(sum[:])
+}
+
+// InstallationRequestDigestWithGrants digests an install command that carries
+// an explicit grant snapshot. Empty grants keep the v1 digest above so every
+// request minted before grants existed replays identically after the upgrade;
+// a non-empty grant switches to the versioned v2 body that pins the canonical
+// sorted grant, so same-key/different-grant requests are stable Aborted
+// verdicts instead of silent re-grants.
+func InstallationRequestDigestWithGrants(command, projectID, appID, version, installationID string, expectedRevision int64, grantedPermissions []string) string {
+	if len(grantedPermissions) == 0 {
+		return InstallationRequestDigest(command, projectID, appID, version, installationID, expectedRevision)
+	}
+	// The canonical grant is already sorted by the application layer; sorting
+	// again here keeps the digest order independent no matter the caller.
+	sorted := make([]string, len(grantedPermissions))
+	copy(sorted, grantedPermissions)
+	sort.Strings(sorted)
+	canonical := struct {
+		Action           string   `json:"action"`
+		AppID            string   `json:"app_id"`
+		ExpectedRevision int64    `json:"expected_project_revision"`
+		Granted          []string `json:"granted_permissions"`
+		GrantVersion     string   `json:"grant_version"`
+		InstallationID   string   `json:"installation_id"`
+		ProjectID        string   `json:"project_id"`
+		Version          string   `json:"version"`
+	}{
+		Action: command, AppID: appID, ExpectedRevision: expectedRevision,
+		Granted: sorted, GrantVersion: "v2",
+		InstallationID: installationID, ProjectID: projectID, Version: version,
+	}
+	body, _ := json.Marshal(canonical)
+	sum := sha256.Sum256(body)
+	return "sha256:" + hex.EncodeToString(sum[:])
+}
+
+// CanonicalGrantShape validates the request-boundary grammar of a
+// client-submitted grant snapshot: capability IDs must be non-empty,
+// well-formed, and duplicate-free (ErrInvalidGrant). The returned grant is
+// canonically sorted; the subset rule against the pinned version's requested
+// permissions is a separate step (CanonicalInstallationGrant) that needs the
+// catalog result and therefore runs after resolution.
+func CanonicalGrantShape(granted []string) ([]string, error) {
+	if len(granted) == 0 {
+		return []string{}, nil
+	}
+	seen := make(map[string]struct{}, len(granted))
+	canonical := make([]string, 0, len(granted))
+	for _, id := range granted {
+		if !ValidCapabilityID(id) {
+			return nil, ErrInvalidGrant
+		}
+		if _, duplicate := seen[id]; duplicate {
+			return nil, ErrInvalidGrant
+		}
+		seen[id] = struct{}{}
+		canonical = append(canonical, id)
+	}
+	sort.Strings(canonical)
+	return canonical, nil
+}
+
+// CanonicalInstallationGrant re-checks an already canonicalized grant against
+// the pinned version's requested permissions: the whole set must be a subset
+// (ErrGrantNotRequested). Requesting a capability is never granting it.
+func CanonicalInstallationGrant(granted, requested []string) ([]string, error) {
+	if len(granted) == 0 {
+		return []string{}, nil
+	}
+	requestedSet := make(map[string]struct{}, len(requested))
+	for _, id := range requested {
+		requestedSet[id] = struct{}{}
+	}
+	for _, id := range granted {
+		if _, known := requestedSet[id]; !known {
+			return nil, ErrGrantNotRequested
+		}
+	}
+	return granted, nil
+}
+
+// ValidCapabilityID is the manifest-schema capability shape
+// (^[a-z][a-z0-9.-]+$). Vocabulary membership itself is the registry's
+// concern: a well-formed capability that the pinned manifest never requested
+// is rejected by the subset rule, so this module never needs its own copy of
+// the vocabulary.
+func ValidCapabilityID(value string) bool {
+	if len(value) < 2 || value[0] < 'a' || value[0] > 'z' {
+		return false
+	}
+	for index := 0; index < len(value); index++ {
+		c := value[index]
+		if (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '.' || c == '-' {
+			continue
+		}
+		return false
+	}
+	return true
 }

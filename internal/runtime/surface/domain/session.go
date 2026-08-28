@@ -27,6 +27,13 @@ var (
 	ErrUnsupported = errors.New("installed app has no supported surface")
 	// ErrUnavailable marks a temporarily unreachable Core resolver or store.
 	ErrUnavailable = errors.New("surface resolution is temporarily unavailable")
+	// ErrUnauthenticated marks a missing, malformed, expired, tampered, or
+	// wrong-device bridge credential. Transport maps every variant to one
+	// sanitized Unauthenticated verdict that never names the failed check.
+	ErrUnauthenticated = errors.New("bridge credential is not valid")
+	// ErrPermissionDenied marks a validated bridge session asking for a
+	// capability the installation grant never carried.
+	ErrPermissionDenied = errors.New("bridge capability is not granted")
 )
 
 // RendererWebBundle is the only implemented surface renderer.
@@ -47,21 +54,27 @@ type LaunchDescriptor struct {
 	Entrypoint     string
 }
 
-// SurfaceSession is one owner/device-bound surface launch.
+// SurfaceSession is one owner/device-bound surface launch. BridgeTokenHash
+// is the at-rest digest of the currently valid bridge credential (empty when
+// none was minted or it was invalidated); BridgeCapabilities is the effective
+// capability list computed at create time. Neither is ever projected into
+// public asset responses, logs, or errors.
 type SurfaceSession struct {
-	ID             string
-	OwnerUserID    string
-	DeviceID       string
-	IdempotencyKey string
-	RequestDigest  string
-	ProjectID      string
-	AppInstanceID  string
-	Renderer       string
-	Descriptor     LaunchDescriptor
-	Path           string
-	CreatedAt      time.Time
-	ExpiresAt      time.Time
-	ClosedAt       *time.Time
+	ID                 string
+	OwnerUserID        string
+	DeviceID           string
+	IdempotencyKey     string
+	RequestDigest      string
+	ProjectID          string
+	AppInstanceID      string
+	Renderer           string
+	Descriptor         LaunchDescriptor
+	Path               string
+	BridgeTokenHash    string
+	BridgeCapabilities []string
+	CreatedAt          time.Time
+	ExpiresAt          time.Time
+	ClosedAt           *time.Time
 }
 
 // ValidSessionUUID reports whether value is a canonical lowercase hyphenated

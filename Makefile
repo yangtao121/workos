@@ -72,6 +72,7 @@ test-integration:
 		app_ref="$$( $(GO_HOST_RUN) go run ./tests/restart app-seed )"; \
 		install_ref="$$( $(GO_HOST_RUN) go run ./tests/restart install-seed )"; \
 		surface_ref="$$( $(GO_HOST_RUN) go run ./tests/restart surface-seed )"; \
+		bridge_ref="$$( $(GO_HOST_RUN) go run ./tests/restart bridge-seed )"; \
 		set -- $$app_ref; \
 		docker compose restart workos-core harness-host runtime-host >/dev/null; \
 		$(GO_HOST_RUN) go run ./tests/restart verify "$$task_id"; \
@@ -79,7 +80,9 @@ test-integration:
 		set -- $$install_ref; \
 		$(GO_HOST_RUN) go run ./tests/restart install-verify "$$1" "$$2" "$$3" "$$4" "$$5"; \
 		set -- $$surface_ref; \
-		$(GO_HOST_RUN) go run ./tests/restart surface-verify "$$1" "$$2" "$$3" "$$4" "$$5"
+		$(GO_HOST_RUN) go run ./tests/restart surface-verify "$$1" "$$2" "$$3" "$$4" "$$5"; \
+		set -- $$bridge_ref; \
+		$(GO_HOST_RUN) go run ./tests/restart bridge-verify "$$1" "$$2" "$$3"
 
 test-deepseek-fixture: e2e-image
 	@set -eu; \

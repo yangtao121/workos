@@ -14,6 +14,7 @@ import (
 
 	"github.com/yangtao121/workos/internal/core/agent/adapters/postgres/agentdb"
 	"github.com/yangtao121/workos/internal/core/agent/domain"
+	"github.com/yangtao121/workos/internal/core/agent/ports"
 )
 
 type Repository struct {
@@ -72,6 +73,115 @@ func (r *Repository) Create(ctx context.Context, task domain.Task, idempotencyKe
 func (r *Repository) Get(ctx context.Context, ownerID, taskID string) (domain.Task, error) {
 	value, err := r.queries.GetAgentTask(ctx, agentdb.GetAgentTaskParams{OwnerUserID: ownerID, ID: taskID})
 	return taskFromDB(value, err)
+}
+
+// CreateForApp inserts the task, its App provenance mapping, and the task
+// outbox row in one transaction. Same-key races are arbitrated by the mapping
+// primary key: the loser re-reads the consumed mapping and replays the
+// winner's task exactly — or aborts — while its own partially created rows
+// roll back, so no orphan task, mapping, or outbox row can survive.
+func (r *Repository) CreateForApp(ctx context.Context, task domain.Task, provenance ports.AppTaskProvenance) (domain.Task, error) {
+	projectID, err := nullableUUID(task.ProjectID)
+	if err != nil {
+		return domain.Task{}, domain.ErrInvalid
+	}
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return domain.Task{}, fmt.Errorf("begin create app task: %w", err)
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck
+	queries := r.queries.WithTx(tx)
+	if _, err := queries.InsertAgentTask(ctx, agentdb.InsertAgentTaskParams{
+		ID: task.ID, OwnerUserID: task.OwnerUserID, IdempotencyKey: provenance.TaskIdempotencyKey,
+		ProjectID: projectID, Input: task.Input, State: string(task.State), ProviderID: task.ProviderID,
+		CreatedAt: timestamp(task.CreatedAt), UpdatedAt: timestamp(task.UpdatedAt),
+	}); err != nil {
+		return domain.Task{}, fmt.Errorf("insert app task: %w", err)
+	}
+	rows, err := queries.InsertAgentAppTaskRequest(ctx, agentdb.InsertAgentAppTaskRequestParams{
+		OwnerUserID: task.OwnerUserID, AppInstanceID: provenance.AppInstanceID,
+		ClientIdempotencyKey: provenance.ClientIdempotencyKey, RequestDigest: provenance.RequestDigest,
+		TaskID: task.ID, ProjectID: task.ProjectID, CreatedAt: timestamp(task.CreatedAt),
+	})
+	if err != nil {
+		return domain.Task{}, fmt.Errorf("insert app task mapping: %w", err)
+	}
+	if rows == 0 {
+		consumed, err := queries.GetAgentAppTaskRequest(ctx, agentdb.GetAgentAppTaskRequestParams{
+			OwnerUserID: task.OwnerUserID, AppInstanceID: provenance.AppInstanceID,
+			ClientIdempotencyKey: provenance.ClientIdempotencyKey,
+		})
+		if errors.Is(err, pgx.ErrNoRows) {
+			return domain.Task{}, fmt.Errorf("app task mapping vanished mid-transaction: %w", domain.ErrInvalid)
+		}
+		if err != nil {
+			return domain.Task{}, fmt.Errorf("classify app task mapping: %w", err)
+		}
+		if consumed.RequestDigest != provenance.RequestDigest {
+			return domain.Task{}, domain.ErrIdempotencyConflict
+		}
+		value, err := queries.GetAgentTask(ctx, agentdb.GetAgentTaskParams{OwnerUserID: task.OwnerUserID, ID: consumed.TaskID})
+		winner, err := taskFromDB(value, err)
+		if err != nil {
+			return domain.Task{}, err
+		}
+		return winner, nil
+	}
+	payload, err := json.Marshal(map[string]string{"taskId": task.ID})
+	if err != nil {
+		return domain.Task{}, fmt.Errorf("encode task request: %w", err)
+	}
+	outboxID, err := uuid.NewV7()
+	if err != nil {
+		return domain.Task{}, fmt.Errorf("generate task outbox id: %w", err)
+	}
+	if err := queries.InsertTaskOutbox(ctx, agentdb.InsertTaskOutboxParams{
+		ID: outboxID.String(), AggregateID: task.ID, Payload: payload, OccurredAt: timestamp(task.CreatedAt),
+	}); err != nil {
+		return domain.Task{}, fmt.Errorf("append task outbox: %w", err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return domain.Task{}, fmt.Errorf("commit app task: %w", err)
+	}
+	return task, nil
+}
+
+// GetAppTaskRequest reads one consumed (owner, app instance, client key)
+// mapping for replay adjudication.
+func (r *Repository) GetAppTaskRequest(ctx context.Context, ownerID, appInstanceID, clientKey string) (ports.AppTaskRequestRecord, bool, error) {
+	value, err := r.queries.GetAgentAppTaskRequest(ctx, agentdb.GetAgentAppTaskRequestParams{
+		OwnerUserID: ownerID, AppInstanceID: appInstanceID, ClientIdempotencyKey: clientKey,
+	})
+	return appTaskRequestRecord(value, err)
+}
+
+// GetAppTaskByTask reads the mapping proving one task was created by one app
+// installation of one owner.
+func (r *Repository) GetAppTaskByTask(ctx context.Context, ownerID, appInstanceID, taskID string) (ports.AppTaskRequestRecord, bool, error) {
+	value, err := r.queries.GetAgentAppTaskByTask(ctx, agentdb.GetAgentAppTaskByTaskParams{
+		OwnerUserID: ownerID, AppInstanceID: appInstanceID, TaskID: taskID,
+	})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return ports.AppTaskRequestRecord{}, false, nil
+	}
+	if err != nil {
+		return ports.AppTaskRequestRecord{}, false, fmt.Errorf("query app task mapping: %w", err)
+	}
+	return ports.AppTaskRequestRecord{
+		RequestDigest: value.RequestDigest, TaskID: value.TaskID, ProjectID: value.ProjectID,
+	}, true, nil
+}
+
+func appTaskRequestRecord(value agentdb.GetAgentAppTaskRequestRow, err error) (ports.AppTaskRequestRecord, bool, error) {
+	if errors.Is(err, pgx.ErrNoRows) {
+		return ports.AppTaskRequestRecord{}, false, nil
+	}
+	if err != nil {
+		return ports.AppTaskRequestRecord{}, false, fmt.Errorf("query app task mapping: %w", err)
+	}
+	return ports.AppTaskRequestRecord{
+		RequestDigest: value.RequestDigest, TaskID: value.TaskID, ProjectID: value.ProjectID,
+	}, true, nil
 }
 
 func (r *Repository) GetByIdempotency(ctx context.Context, ownerID, key string) (domain.Task, error) {

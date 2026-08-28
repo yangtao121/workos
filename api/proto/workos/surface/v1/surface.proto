@@ -34,12 +34,19 @@ message SurfaceSession {
   string project_id = 3;
   SurfaceRenderer renderer = 4;
   string url = 5;
+  // Ephemeral bridge credential for the trusted host that opened the
+  // surface. It is only delivered in this response, never leaves the trusted
+  // desktop/app-host memory, and expires with the session.
   string bridge_token = 6;
   bool resize = 7;
   bool clipboard = 8;
   bool file_picker = 9;
   google.protobuf.Timestamp created_at = 10;
   google.protobuf.Timestamp expires_at = 11;
+  // Effective bridge capabilities granted for this surface: the canonical
+  // intersection of the installation grant snapshot and the implemented
+  // bridge methods. Unimplemented capabilities never appear here.
+  repeated string bridge_capabilities = 12;
 }
 
 message CreateSurfaceRequest {

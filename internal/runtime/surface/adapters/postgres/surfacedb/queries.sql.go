@@ -11,6 +11,26 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const clearSessionBridgeToken = `-- name: ClearSessionBridgeToken :execrows
+UPDATE workos_runtime.surface_sessions
+SET bridge_token_hash = NULL
+WHERE owner_user_id = $1 AND device_id = $2 AND id = $3 AND closed_at IS NULL
+`
+
+type ClearSessionBridgeTokenParams struct {
+	OwnerUserID string `json:"owner_user_id"`
+	DeviceID    string `json:"device_id"`
+	ID          string `json:"id"`
+}
+
+func (q *Queries) ClearSessionBridgeToken(ctx context.Context, arg ClearSessionBridgeTokenParams) (int64, error) {
+	result, err := q.db.Exec(ctx, clearSessionBridgeToken, arg.OwnerUserID, arg.DeviceID, arg.ID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const closeSession = `-- name: CloseSession :execrows
 UPDATE workos_runtime.surface_sessions
 SET closed_at = $4
@@ -41,6 +61,7 @@ const getActiveSession = `-- name: GetActiveSession :one
 SELECT id, owner_user_id, device_id, idempotency_key, request_digest,
        project_id, app_instance_id, renderer, app_id, app_version,
        manifest_digest, artifact_id, artifact_digest, entrypoint, path,
+       bridge_token_hash, bridge_capabilities,
        created_at, expires_at, closed_at
 FROM workos_runtime.surface_sessions
 WHERE owner_user_id = $1 AND device_id = $2 AND id = $3
@@ -54,14 +75,37 @@ type GetActiveSessionParams struct {
 	Now         pgtype.Timestamptz `json:"now"`
 }
 
-func (q *Queries) GetActiveSession(ctx context.Context, arg GetActiveSessionParams) (WorkosRuntimeSurfaceSession, error) {
+type GetActiveSessionRow struct {
+	ID                 string             `json:"id"`
+	OwnerUserID        string             `json:"owner_user_id"`
+	DeviceID           string             `json:"device_id"`
+	IdempotencyKey     string             `json:"idempotency_key"`
+	RequestDigest      string             `json:"request_digest"`
+	ProjectID          string             `json:"project_id"`
+	AppInstanceID      string             `json:"app_instance_id"`
+	Renderer           string             `json:"renderer"`
+	AppID              string             `json:"app_id"`
+	AppVersion         string             `json:"app_version"`
+	ManifestDigest     string             `json:"manifest_digest"`
+	ArtifactID         string             `json:"artifact_id"`
+	ArtifactDigest     string             `json:"artifact_digest"`
+	Entrypoint         string             `json:"entrypoint"`
+	Path               string             `json:"path"`
+	BridgeTokenHash    pgtype.Text        `json:"bridge_token_hash"`
+	BridgeCapabilities []string           `json:"bridge_capabilities"`
+	CreatedAt          pgtype.Timestamptz `json:"created_at"`
+	ExpiresAt          pgtype.Timestamptz `json:"expires_at"`
+	ClosedAt           pgtype.Timestamptz `json:"closed_at"`
+}
+
+func (q *Queries) GetActiveSession(ctx context.Context, arg GetActiveSessionParams) (GetActiveSessionRow, error) {
 	row := q.db.QueryRow(ctx, getActiveSession,
 		arg.OwnerUserID,
 		arg.DeviceID,
 		arg.ID,
 		arg.Now,
 	)
-	var i WorkosRuntimeSurfaceSession
+	var i GetActiveSessionRow
 	err := row.Scan(
 		&i.ID,
 		&i.OwnerUserID,
@@ -78,6 +122,78 @@ func (q *Queries) GetActiveSession(ctx context.Context, arg GetActiveSessionPara
 		&i.ArtifactDigest,
 		&i.Entrypoint,
 		&i.Path,
+		&i.BridgeTokenHash,
+		&i.BridgeCapabilities,
+		&i.CreatedAt,
+		&i.ExpiresAt,
+		&i.ClosedAt,
+	)
+	return i, err
+}
+
+const getActiveSessionByBridgeToken = `-- name: GetActiveSessionByBridgeToken :one
+SELECT id, owner_user_id, device_id, idempotency_key, request_digest,
+       project_id, app_instance_id, renderer, app_id, app_version,
+       manifest_digest, artifact_id, artifact_digest, entrypoint, path,
+       bridge_token_hash, bridge_capabilities,
+       created_at, expires_at, closed_at
+FROM workos_runtime.surface_sessions
+WHERE owner_user_id = $1
+  AND bridge_token_hash = $2
+  AND closed_at IS NULL
+  AND expires_at > $3
+`
+
+type GetActiveSessionByBridgeTokenParams struct {
+	OwnerUserID string             `json:"owner_user_id"`
+	TokenHash   pgtype.Text        `json:"token_hash"`
+	Now         pgtype.Timestamptz `json:"now"`
+}
+
+type GetActiveSessionByBridgeTokenRow struct {
+	ID                 string             `json:"id"`
+	OwnerUserID        string             `json:"owner_user_id"`
+	DeviceID           string             `json:"device_id"`
+	IdempotencyKey     string             `json:"idempotency_key"`
+	RequestDigest      string             `json:"request_digest"`
+	ProjectID          string             `json:"project_id"`
+	AppInstanceID      string             `json:"app_instance_id"`
+	Renderer           string             `json:"renderer"`
+	AppID              string             `json:"app_id"`
+	AppVersion         string             `json:"app_version"`
+	ManifestDigest     string             `json:"manifest_digest"`
+	ArtifactID         string             `json:"artifact_id"`
+	ArtifactDigest     string             `json:"artifact_digest"`
+	Entrypoint         string             `json:"entrypoint"`
+	Path               string             `json:"path"`
+	BridgeTokenHash    pgtype.Text        `json:"bridge_token_hash"`
+	BridgeCapabilities []string           `json:"bridge_capabilities"`
+	CreatedAt          pgtype.Timestamptz `json:"created_at"`
+	ExpiresAt          pgtype.Timestamptz `json:"expires_at"`
+	ClosedAt           pgtype.Timestamptz `json:"closed_at"`
+}
+
+func (q *Queries) GetActiveSessionByBridgeToken(ctx context.Context, arg GetActiveSessionByBridgeTokenParams) (GetActiveSessionByBridgeTokenRow, error) {
+	row := q.db.QueryRow(ctx, getActiveSessionByBridgeToken, arg.OwnerUserID, arg.TokenHash, arg.Now)
+	var i GetActiveSessionByBridgeTokenRow
+	err := row.Scan(
+		&i.ID,
+		&i.OwnerUserID,
+		&i.DeviceID,
+		&i.IdempotencyKey,
+		&i.RequestDigest,
+		&i.ProjectID,
+		&i.AppInstanceID,
+		&i.Renderer,
+		&i.AppID,
+		&i.AppVersion,
+		&i.ManifestDigest,
+		&i.ArtifactID,
+		&i.ArtifactDigest,
+		&i.Entrypoint,
+		&i.Path,
+		&i.BridgeTokenHash,
+		&i.BridgeCapabilities,
 		&i.CreatedAt,
 		&i.ExpiresAt,
 		&i.ClosedAt,
@@ -89,6 +205,7 @@ const getSession = `-- name: GetSession :one
 SELECT id, owner_user_id, device_id, idempotency_key, request_digest,
        project_id, app_instance_id, renderer, app_id, app_version,
        manifest_digest, artifact_id, artifact_digest, entrypoint, path,
+       bridge_token_hash, bridge_capabilities,
        created_at, expires_at, closed_at
 FROM workos_runtime.surface_sessions
 WHERE owner_user_id = $1 AND device_id = $2 AND id = $3
@@ -100,9 +217,32 @@ type GetSessionParams struct {
 	ID          string `json:"id"`
 }
 
-func (q *Queries) GetSession(ctx context.Context, arg GetSessionParams) (WorkosRuntimeSurfaceSession, error) {
+type GetSessionRow struct {
+	ID                 string             `json:"id"`
+	OwnerUserID        string             `json:"owner_user_id"`
+	DeviceID           string             `json:"device_id"`
+	IdempotencyKey     string             `json:"idempotency_key"`
+	RequestDigest      string             `json:"request_digest"`
+	ProjectID          string             `json:"project_id"`
+	AppInstanceID      string             `json:"app_instance_id"`
+	Renderer           string             `json:"renderer"`
+	AppID              string             `json:"app_id"`
+	AppVersion         string             `json:"app_version"`
+	ManifestDigest     string             `json:"manifest_digest"`
+	ArtifactID         string             `json:"artifact_id"`
+	ArtifactDigest     string             `json:"artifact_digest"`
+	Entrypoint         string             `json:"entrypoint"`
+	Path               string             `json:"path"`
+	BridgeTokenHash    pgtype.Text        `json:"bridge_token_hash"`
+	BridgeCapabilities []string           `json:"bridge_capabilities"`
+	CreatedAt          pgtype.Timestamptz `json:"created_at"`
+	ExpiresAt          pgtype.Timestamptz `json:"expires_at"`
+	ClosedAt           pgtype.Timestamptz `json:"closed_at"`
+}
+
+func (q *Queries) GetSession(ctx context.Context, arg GetSessionParams) (GetSessionRow, error) {
 	row := q.db.QueryRow(ctx, getSession, arg.OwnerUserID, arg.DeviceID, arg.ID)
-	var i WorkosRuntimeSurfaceSession
+	var i GetSessionRow
 	err := row.Scan(
 		&i.ID,
 		&i.OwnerUserID,
@@ -119,6 +259,8 @@ func (q *Queries) GetSession(ctx context.Context, arg GetSessionParams) (WorkosR
 		&i.ArtifactDigest,
 		&i.Entrypoint,
 		&i.Path,
+		&i.BridgeTokenHash,
+		&i.BridgeCapabilities,
 		&i.CreatedAt,
 		&i.ExpiresAt,
 		&i.ClosedAt,
@@ -155,28 +297,31 @@ INSERT INTO workos_runtime.surface_sessions (
     id, owner_user_id, device_id, idempotency_key, request_digest,
     project_id, app_instance_id, renderer, app_id, app_version,
     manifest_digest, artifact_id, artifact_digest, entrypoint, path,
+    bridge_token_hash, bridge_capabilities,
     created_at, expires_at
-) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
+) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
 `
 
 type InsertSessionParams struct {
-	ID             string             `json:"id"`
-	OwnerUserID    string             `json:"owner_user_id"`
-	DeviceID       string             `json:"device_id"`
-	IdempotencyKey string             `json:"idempotency_key"`
-	RequestDigest  string             `json:"request_digest"`
-	ProjectID      string             `json:"project_id"`
-	AppInstanceID  string             `json:"app_instance_id"`
-	Renderer       string             `json:"renderer"`
-	AppID          string             `json:"app_id"`
-	AppVersion     string             `json:"app_version"`
-	ManifestDigest string             `json:"manifest_digest"`
-	ArtifactID     string             `json:"artifact_id"`
-	ArtifactDigest string             `json:"artifact_digest"`
-	Entrypoint     string             `json:"entrypoint"`
-	Path           string             `json:"path"`
-	CreatedAt      pgtype.Timestamptz `json:"created_at"`
-	ExpiresAt      pgtype.Timestamptz `json:"expires_at"`
+	ID                 string             `json:"id"`
+	OwnerUserID        string             `json:"owner_user_id"`
+	DeviceID           string             `json:"device_id"`
+	IdempotencyKey     string             `json:"idempotency_key"`
+	RequestDigest      string             `json:"request_digest"`
+	ProjectID          string             `json:"project_id"`
+	AppInstanceID      string             `json:"app_instance_id"`
+	Renderer           string             `json:"renderer"`
+	AppID              string             `json:"app_id"`
+	AppVersion         string             `json:"app_version"`
+	ManifestDigest     string             `json:"manifest_digest"`
+	ArtifactID         string             `json:"artifact_id"`
+	ArtifactDigest     string             `json:"artifact_digest"`
+	Entrypoint         string             `json:"entrypoint"`
+	Path               string             `json:"path"`
+	BridgeTokenHash    pgtype.Text        `json:"bridge_token_hash"`
+	BridgeCapabilities []string           `json:"bridge_capabilities"`
+	CreatedAt          pgtype.Timestamptz `json:"created_at"`
+	ExpiresAt          pgtype.Timestamptz `json:"expires_at"`
 }
 
 func (q *Queries) InsertSession(ctx context.Context, arg InsertSessionParams) error {
@@ -196,6 +341,8 @@ func (q *Queries) InsertSession(ctx context.Context, arg InsertSessionParams) er
 		arg.ArtifactDigest,
 		arg.Entrypoint,
 		arg.Path,
+		arg.BridgeTokenHash,
+		arg.BridgeCapabilities,
 		arg.CreatedAt,
 		arg.ExpiresAt,
 	)
@@ -224,6 +371,38 @@ func (q *Queries) InsertSessionRequest(ctx context.Context, arg InsertSessionReq
 		arg.RequestDigest,
 		arg.SessionID,
 		arg.CreatedAt,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const rotateSessionBridgeToken = `-- name: RotateSessionBridgeToken :execrows
+UPDATE workos_runtime.surface_sessions
+SET bridge_token_hash = $1
+WHERE owner_user_id = $2
+  AND device_id = $3
+  AND id = $4
+  AND closed_at IS NULL
+  AND expires_at > $5
+`
+
+type RotateSessionBridgeTokenParams struct {
+	TokenHash   pgtype.Text        `json:"token_hash"`
+	OwnerUserID string             `json:"owner_user_id"`
+	DeviceID    string             `json:"device_id"`
+	SessionID   string             `json:"session_id"`
+	Now         pgtype.Timestamptz `json:"now"`
+}
+
+func (q *Queries) RotateSessionBridgeToken(ctx context.Context, arg RotateSessionBridgeTokenParams) (int64, error) {
+	result, err := q.db.Exec(ctx, rotateSessionBridgeToken,
+		arg.TokenHash,
+		arg.OwnerUserID,
+		arg.DeviceID,
+		arg.SessionID,
+		arg.Now,
 	)
 	if err != nil {
 		return 0, err

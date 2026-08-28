@@ -14,10 +14,13 @@ type Querier interface {
 	AdvanceTaskState(ctx context.Context, arg AdvanceTaskStateParams) error
 	FinishPendingTaskRequest(ctx context.Context, arg FinishPendingTaskRequestParams) error
 	FinishTaskLease(ctx context.Context, arg FinishTaskLeaseParams) (int64, error)
+	GetAgentAppTaskByTask(ctx context.Context, arg GetAgentAppTaskByTaskParams) (GetAgentAppTaskByTaskRow, error)
+	GetAgentAppTaskRequest(ctx context.Context, arg GetAgentAppTaskRequestParams) (GetAgentAppTaskRequestRow, error)
 	GetAgentTask(ctx context.Context, arg GetAgentTaskParams) (WorkosCoreAgentTask, error)
 	GetAgentTaskByIdempotency(ctx context.Context, arg GetAgentTaskByIdempotencyParams) (WorkosCoreAgentTask, error)
 	GetAgentTaskForUpdate(ctx context.Context, arg GetAgentTaskForUpdateParams) (WorkosCoreAgentTask, error)
 	GetAgentTaskUnscoped(ctx context.Context, id string) (WorkosCoreAgentTask, error)
+	InsertAgentAppTaskRequest(ctx context.Context, arg InsertAgentAppTaskRequestParams) (int64, error)
 	InsertAgentTask(ctx context.Context, arg InsertAgentTaskParams) (int64, error)
 	InsertTaskEvent(ctx context.Context, arg InsertTaskEventParams) error
 	InsertTaskOutbox(ctx context.Context, arg InsertTaskOutboxParams) error

@@ -20,7 +20,8 @@
     "@workos/ui-kit": "workspace:*",
     "@workos/window-manager": "workspace:*",
     "react": "19.2.8",
-    "react-dom": "19.2.8"
+    "react-dom": "19.2.8",
+    "@workos/app-host": "workspace:*"
   },
   "devDependencies": {
     "@playwright/test": "1.62.1",

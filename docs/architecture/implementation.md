@@ -236,8 +236,71 @@ Desktop: sandboxed iframe（仅 allow-scripts）内渲染
   净化提示（NotFound/FailedPrecondition/Unavailable），重复点击防抖，Project 切换/卸载/卸载组件
   使旧响应 inert 并 best-effort `CloseSurface`；整个 Desktop 组件卸载时对仍打开的 app surface
   session 逐个 best-effort `CloseSurface`（ref 维护 live 集合、后端幂等；页面 crash/断网由 TTL
-  与逐请求 Core revalidation 兜底，unload RPC 不保证必达）；窗口关闭调用 `CloseSurface`；不读取/
-  转发 `bridge_token`（保持空），不注入 App Bridge。App window 与 Agent Center window 并存渲染。
+  与逐请求 Core revalidation 兜底，unload RPC 不保证必达）；窗口关闭调用 `CloseSurface`。
+  `bridge_token` 最初保持空；bridge 注入由后续的 Project-scoped App Agent Bridge 切片引入
+  （见下节），iframe 隔离属性不变。App window 与 Agent Center window 并存渲染。
+
+## Project-scoped App Agent Bridge
+
+App Bridge 让已安装的不可信 Web Bundle App 在用户显式批准后调用 Project-scoped Agent 任务。
+信任边界由 ADR-0002 固定；链路固定为：
+
+```text
+requested permission（manifest，永远只是请求）
+  → Desktop 安装确认（逐项 checkbox、默认全不选、显式 version）
+  → InstallApp 事务：installation + granted_permissions 排序快照（008 列）
+  → CreateSurface：Core resolver 返回 grant snapshot
+      → runtime 计算 effective capabilities = requested ∩ granted ∩ implemented
+      → session 持久 token hash（010）+ capabilities；响应携带一次性 token（轮换语义）
+  → 可信 Desktop 经 MessageChannel handshake 把受控 port 交给 iframe（token 不进 iframe）
+  → iframe agent.run/stream → port 有界请求 → AppHost 加 token metadata
+  → Gateway public AppBridgeService → runtime-host 验 token/session/device/capability
+  → Core private AppAgentService：再次验证 active installation + grant + Project 未归档
+      → 强制 target_scope = installation Project → Task Router provider snapshot
+  → Fake/Harness Broker 执行 → 持久事件流 → provenance-bound watch 流回 iframe
+```
+
+- Grant 唯一事实源是安装级快照（owner：workos-core Project Installation，
+  `project_app_installations.granted_permissions`，008 加列、默认空）：canonical 排序、无重复、
+  严格 ⊆ pinned version requested set；duplicate/malformed → `InvalidArgument`，不在 requested
+  set → 净化 `PermissionDenied`；同 version 同 grant 才 no-op，grant 变更只能 uninstall +
+  reinstall。安装幂等 digest 版本化：空 grant 沿用旧 digest（历史 replay 兼容），非空 grant 使用
+  `v2` digest（同 key 不同 grant 稳定 `Aborted`）。
+- App task provenance（owner：workos-core Agent，009 新表
+  `workos_core.agent_app_task_requests`）：PK `(owner, app_instance_id, client_key)` 命名空间化
+  client key；request digest 覆盖有界输入（role ≤64 rune、goal 1..16 KiB）；task + mapping +
+  outbox 单事务，same key/same digest 精确 replay 首次 provider snapshot，same key/different
+  digest `Aborted`，两个 App 同 client key 互不冲突；composite FK 绑定同 owner 的 task；
+  watch 需 provenance（owner + app_instance + project 一致），知道 task ID 不构成读取能力。
+  task 行自身 key 列存无关唯一值（App 幂等由 mapping 承担）。
+- bridge token（owner：runtime-host Surface，010 加列）：`crypto/rand` 256-bit、base64url；
+  at rest 只有 sha256 hash（NULL = 无有效凭证），常量时间比较；绑定 session 行的
+  owner/device/project/app_instance；有效期 = session expiry；每次成功 Create（fresh 或
+  open replay）轮换并立即失效旧 token，closed/expired replay 不铸造，Close 原子清除；
+  restart 后 token 继续有效（PostgreSQL 持久）。token 只出现在 CreateSurface response 与
+  `X-WorkOS-Bridge-Token` metadata；Gateway 只向 runtime Connect 路由转发，Core 路由与
+  `/surfaces/` asset 一律剥除；绝不进入 URL/cookie/storage/DOM/MessageChannel/日志。
+- public `workos.bridge.v1.AppBridgeService`（runtime-host）body 只有有界输入
+  （`agent.run`: key/role/goal；`agent.watch`: task id/after_sequence ≥ 0），owner/device/
+  project/app_instance 全部从 Gateway identity、validated token、stored session 派生；
+  Connect 读上限 32 KiB。private `workos.agent.v1.AppAgentService`（Core，不进 Gateway
+  allowlist）每次调用重新 ResolveActiveInstallation + grant + 词汇表校验（漂移=净化
+  Internal），强制 Project scope，canonical `AgentTaskInput` 不接受 iframe 的
+  capabilities/output types/budget/parent/incident/global scope。
+- effective capability 只包含 `agent.task.run`/`agent.event.watch`（当前唯一实现的两个方法）；
+  其他 granted permission（artifact/project/knowledge）只是存储事实，绝不因已 grant 而 working。
+- MessageChannel 协议（`@workos/surface-sdk` 单一定义）：版本 `workos.app-bridge/v1`；
+  parent 每次 iframe load 关旧 port、生成一次性 nonce、向 exact `iframe.contentWindow` 发送
+  versioned hello（`targetOrigin="*"`，安全来自 exact window 引用）并 transfer port；iframe
+  SDK 只接受 `event.source === window.parent` + 正确版本 + 恰好一个 port，在 port 上回 ack
+  nonce；parent 只接受一次正确 ack。单消息 ≤64 KiB、inflight ≤32、超时 15s；未 offer 的方法
+  双侧 fail closed；`agent.stream` 提前结束发送 cancel，只取消本地/server stream，durable
+  task 继续。业务 payload 复用 `@workos/protocol` 生成类型。
+- Desktop：安装确认对话框显示 exact version 的 requested permissions（默认全不选），提交排序
+  grant；已安装行显示 `Granted:` 摘要（空 grant 显示 none）；App window 显示
+  bridge pending/ready/failed/unavailable 状态，failed 可重试握手；bridge token 只存于
+  Desktop 的 ref（不进可序列化 window state/DOM）；Project 切换/关窗/卸载/iframe reload
+  关闭旧 port 并使迟到 response inert，Agent task 本身 durable。
 
 ## 状态与失败
 

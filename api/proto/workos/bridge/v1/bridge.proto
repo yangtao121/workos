@@ -1,0 +1,41 @@
+// Public runtime-host App Bridge for sandboxed web bundle surfaces.
+// The request bodies carry only bounded app input: owner, device, project,
+// app instance and capabilities are all derived server-side from the gateway
+// identity, the validated bridge token and the stored surface session.
+syntax = "proto3";
+
+package workos.bridge.v1;
+
+import "workos/agent/v1/agent.proto";
+
+option go_package = "github.com/yangtao121/workos/gen/go/workos/bridge/v1;bridgev1";
+
+message RunAgentTaskRequest {
+  // App-scoped client idempotency key (1..128 runes).
+  string idempotency_key = 1;
+  // Optional bounded role (max 64 runes).
+  string role = 2;
+  // Bounded non-empty goal (1..16 KiB UTF-8).
+  string goal = 3;
+}
+
+message RunAgentTaskResponse {
+  string task_id = 1;
+  workos.agent.v1.AgentTaskState state = 2;
+  int64 last_event_sequence = 3;
+}
+
+message WatchAgentTaskEventsRequest {
+  string task_id = 1;
+  // Resume cursor; must be >= 0.
+  int64 after_sequence = 2;
+}
+
+message WatchAgentTaskEventsResponse {
+  workos.agent.v1.AgentEvent event = 1;
+}
+
+service AppBridgeService {
+  rpc RunAgentTask(RunAgentTaskRequest) returns (RunAgentTaskResponse) {}
+  rpc WatchAgentTaskEvents(WatchAgentTaskEventsRequest) returns (stream WatchAgentTaskEventsResponse) {}
+}

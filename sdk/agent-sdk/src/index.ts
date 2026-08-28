@@ -2,6 +2,7 @@ import { createClient, type Client, type Transport } from "@connectrpc/connect";
 import { createConnectTransport } from "@connectrpc/connect-web";
 import {
   AgentTaskService,
+  AppBridgeService,
   AppInstallationService,
   AppRegistryService,
   ArtifactService,
@@ -20,6 +21,7 @@ export interface WorkOSClients {
   appInstallations: Client<typeof AppInstallationService>;
   artifacts: Client<typeof ArtifactService>;
   surfaces: Client<typeof SurfaceService>;
+  appBridge: Client<typeof AppBridgeService>;
 }
 
 export function createWorkOSClients(baseUrl: string, transport?: Transport): WorkOSClients {
@@ -33,5 +35,6 @@ export function createWorkOSClients(baseUrl: string, transport?: Transport): Wor
     appInstallations: createClient(AppInstallationService, activeTransport),
     artifacts: createClient(ArtifactService, activeTransport),
     surfaces: createClient(SurfaceService, activeTransport),
+    appBridge: createClient(AppBridgeService, activeTransport),
   };
 }

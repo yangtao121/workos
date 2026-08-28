@@ -42,6 +42,7 @@ var publicServicePrefixes = []string{
 // upstream. Workload and private host management stay unreachable here.
 var runtimeServicePrefixes = []string{
 	"/workos.surface.v1.SurfaceService/",
+	"/workos.bridge.v1.AppBridgeService/",
 }
 
 // surfaceAssetPrefix is the public, same-origin surface asset route.
@@ -62,10 +63,12 @@ func New(cfg config.Config, logger *slog.Logger) (*Handler, error) {
 // newUpstreamProxy builds one reverse proxy whose director always drops
 // client-supplied identity headers and re-injects the trusted owner/device
 // pair, so spoofing the inbound request can never reach an upstream. The
-// constructor rejects targets that could never work — relative paths,
-// scheme-less or unsupported-scheme strings, empty hosts — instead of
-// deferring the failure to the first request, even when composition-root
-// validation was bypassed.
+// bridge token header is scoped to the Runtime Connect routes only: the Core
+// director strips it, so the credential can never travel to Core services or
+// the Desktop SPA static handler, and nothing logs it. The constructor
+// rejects targets that could never work — relative paths, scheme-less or
+// unsupported-scheme strings, empty hosts — instead of deferring the failure
+// to the first request, even when composition-root validation was bypassed.
 func newUpstreamProxy(target string, cfg config.Config, logger *slog.Logger, name string) (*httputil.ReverseProxy, error) {
 	parsed, err := url.Parse(target)
 	if err != nil || !parsed.IsAbs() || parsed.Host == "" || (parsed.Scheme != "http" && parsed.Scheme != "https") {
@@ -79,6 +82,9 @@ func newUpstreamProxy(target string, cfg config.Config, logger *slog.Logger, nam
 		request.Header.Del(identity.DeviceHeader)
 		request.Header.Set(identity.UserHeader, cfg.Auth.OwnerID)
 		request.Header.Set(identity.DeviceHeader, cfg.Auth.DeviceID)
+		if name != "runtime" {
+			request.Header.Del(identity.BridgeTokenHeader)
+		}
 	}
 	proxy.ErrorHandler = func(w http.ResponseWriter, _ *http.Request, err error) {
 		logger.Error(name+" proxy failed", "error", err)

@@ -58,18 +58,32 @@ type CreateCommand struct {
 	PreferredRenderer string
 }
 
+// CreatedSurface is the create result: the session snapshot plus the bridge
+// credentials the trusted host only. BridgeToken is empty when no credential
+// is valid (a replay of a closed or expired session), and BridgeCapabilities
+// mirrors the session's effective capability list.
+type CreatedSurface struct {
+	Session            domain.SurfaceSession
+	BridgeToken        string
+	BridgeCapabilities []string
+}
+
 // Create resolves the installed instance through Core and persists the
-// owner/device-bound session. The idempotency ruling happens before
-// resolution so failed resolutions never consume the key; a replay returns
-// the first session snapshot even after it closed or expired.
-func (s *Service) Create(ctx context.Context, command CreateCommand) (domain.SurfaceSession, error) {
+// owner/device-bound session together with its effective bridge capabilities
+// and first bridge token. The idempotency ruling happens before resolution so
+// failed resolutions never consume the key; a replay returns the first
+// session snapshot even after it closed or expired — with a freshly rotated
+// token only while the session is still open and unexpired, because a
+// replayed create means a new trusted-host page load and the previous
+// credential must stop working (ADR-0002).
+func (s *Service) Create(ctx context.Context, command CreateCommand) (CreatedSurface, error) {
 	if command.OwnerUserID == "" || command.DeviceID == "" ||
 		!domain.ValidSessionIdempotencyKey(command.IdempotencyKey) ||
 		!domain.ValidSessionUUID(command.ProjectID) || !domain.ValidSessionUUID(command.AppInstanceID) ||
 		!domain.ValidDeviceClass(command.DeviceClass) ||
 		!domain.ValidViewport(command.ViewportWidth, command.ViewportHeight, command.ViewportRatio) ||
 		!domain.ValidPreferredRenderer(command.PreferredRenderer) {
-		return domain.SurfaceSession{}, domain.ErrInvalid
+		return CreatedSurface{}, domain.ErrInvalid
 	}
 	renderer := command.PreferredRenderer
 	if renderer == "" {
@@ -79,21 +93,25 @@ func (s *Service) Create(ctx context.Context, command CreateCommand) (domain.Sur
 		command.DeviceClass, command.ViewportWidth, command.ViewportHeight, command.ViewportRatio, renderer)
 	if stored, found, err := s.repository.LookupRequest(ctx, command.OwnerUserID, command.IdempotencyKey); found || err != nil {
 		if err != nil {
-			return domain.SurfaceSession{}, err
+			return CreatedSurface{}, err
 		}
 		if stored.RequestDigest != digest {
 			// A different trusted device (or any other canonical field)
 			// under the same key is a stable abort, decided by the key's
 			// stored digest rather than a session device lookup.
-			return domain.SurfaceSession{}, domain.ErrIdempotencyConflict
+			return CreatedSurface{}, domain.ErrIdempotencyConflict
 		}
-		return s.repository.GetSession(ctx, command.OwnerUserID, command.DeviceID, stored.SessionID)
+		session, err := s.repository.GetSession(ctx, command.OwnerUserID, command.DeviceID, stored.SessionID)
+		if err != nil {
+			return CreatedSurface{}, err
+		}
+		return s.replayBridge(ctx, command, session)
 	}
 	descriptor, err := s.resolver.ResolveWebBundle(ctx, ports.ResolveQuery{
 		ProjectID: command.ProjectID, AppInstanceID: command.AppInstanceID,
 	})
 	if err != nil {
-		return domain.SurfaceSession{}, mapResolverError(err)
+		return CreatedSurface{}, mapResolverError(err)
 	}
 	now := s.now()
 	session := domain.SurfaceSession{
@@ -106,12 +124,45 @@ func (s *Service) Create(ctx context.Context, command CreateCommand) (domain.Sur
 			ManifestDigest: descriptor.ManifestDigest, ArtifactID: descriptor.ArtifactID,
 			ArtifactDigest: descriptor.ArtifactDigest, Entrypoint: descriptor.Entrypoint,
 		},
-		CreatedAt: now, ExpiresAt: now.Add(s.ttl),
+		BridgeCapabilities: domain.EffectiveBridgeCapabilities(descriptor.GrantedPermissions),
+		CreatedAt:          now, ExpiresAt: now.Add(s.ttl),
 	}
 	session.Path = domain.SessionPath(session.ID)
-	return s.repository.Create(ctx, ports.CreateSessionCommand{
-		Session: session, IdempotencyKey: command.IdempotencyKey, RequestDigest: digest,
+	token, err := domain.NewBridgeToken()
+	if err != nil {
+		return CreatedSurface{}, err
+	}
+	created, err := s.repository.Create(ctx, ports.CreateSessionCommand{
+		Session: session, BridgeTokenHash: domain.HashBridgeToken(token),
+		IdempotencyKey: command.IdempotencyKey, RequestDigest: digest,
 	})
+	if err != nil {
+		return CreatedSurface{}, err
+	}
+	return CreatedSurface{Session: created, BridgeToken: token, BridgeCapabilities: created.BridgeCapabilities}, nil
+}
+
+// replayBridge rotates the bridge credential for an open, unexpired replayed
+// session and clears it for anything else: a closed or expired session never
+// regains a working credential through replay.
+func (s *Service) replayBridge(ctx context.Context, command CreateCommand, session domain.SurfaceSession) (CreatedSurface, error) {
+	result := CreatedSurface{Session: session, BridgeCapabilities: session.BridgeCapabilities}
+	now := s.now()
+	if session.ClosedAt != nil || !now.Before(session.ExpiresAt) {
+		return result, nil
+	}
+	token, err := domain.NewBridgeToken()
+	if err != nil {
+		return CreatedSurface{}, err
+	}
+	if err := s.repository.RotateBridgeToken(ctx, ports.RotateBridgeTokenCommand{
+		OwnerUserID: command.OwnerUserID, DeviceID: command.DeviceID, SessionID: session.ID,
+		TokenHash: domain.HashBridgeToken(token), Now: now,
+	}); err != nil {
+		return CreatedSurface{}, err
+	}
+	result.BridgeToken = token
+	return result, nil
 }
 
 // Close tombstones the owner/device-bound session. Repeated closes by the

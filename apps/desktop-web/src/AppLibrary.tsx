@@ -26,6 +26,18 @@ interface LibraryFeedback {
   isError: boolean;
 }
 
+interface InstallConsent {
+  app: WorkOSApp;
+  selected: string[];
+  submitting: boolean;
+}
+
+// Grants are stored canonically sorted, so the dialog submits the sorted
+// selection and the server validates the rest.
+function sortedCapabilities(values: string[]): string[] {
+  return [...values].sort((left, right) => left.localeCompare(right));
+}
+
 // AppLibrary lists the owner's registry catalog for the active project,
 // marks active installations with their pinned version, and installs or
 // removes apps through the public AppInstallationService. It never guesses
@@ -45,6 +57,10 @@ export function AppLibrary({
   const [busyAppIds, setBusyAppIds] = useState<Record<string, boolean>>({});
   const [feedback, setFeedback] = useState<LibraryFeedback>();
   const [openingAppIds, setOpeningAppIds] = useState<Record<string, boolean>>({});
+  // The install consent flow: the exact registry version's requested
+  // permissions are listed, every checkbox starts unchecked, and the user's
+  // explicit selection becomes the installation's immutable grant snapshot.
+  const [consent, setConsent] = useState<InstallConsent>();
   // Generation guards every in-flight promise: switching projects or
   // unmounting invalidates late responses so they cannot pollute state.
   const generationRef = useRef(0);
@@ -140,17 +156,25 @@ export function AppLibrary({
     [project.revision, refreshProjectAndInstallations],
   );
 
-  const install = useCallback(
-    (app: WorkOSApp) => {
-      void runMutation(app.id, async (revision) => {
+  // Install opens the consent dialog for the exact registry version on
+  // display: the user sees that version's requested permissions and the
+  // server pins exactly that version, so the approved set can never drift
+  // from the installed one.
+  const confirmInstall = useCallback(
+    (consentState: InstallConsent) => {
+      setConsent({ ...consentState, submitting: true });
+      void runMutation(consentState.app.id, async (revision) => {
         await workosClients.appInstallations.installApp({
           idempotencyKey: crypto.randomUUID(),
           projectId: project.id,
-          appId: app.id,
-          version: "",
+          appId: consentState.app.id,
+          // Explicit version: what the user approved is what gets installed.
+          version: consentState.app.version,
           expectedProjectRevision: revision,
+          grantedPermissions: sortedCapabilities(consentState.selected),
         });
       });
+      setConsent(undefined);
     },
     [project.id, runMutation, workosClients],
   );
@@ -275,10 +299,15 @@ export function AppLibrary({
                     {app.id} · registry {app.version}
                   </small>
                   {installation ? (
-                    <small>
-                      Installed · pinned {installation.version} ·{" "}
-                      {shortDigest(installation.manifestDigest)}
-                    </small>
+                    <>
+                      <small>
+                        Installed · pinned {installation.version} ·{" "}
+                        {shortDigest(installation.manifestDigest)}
+                      </small>
+                      <small className="app-row-granted">
+                        Granted: {grantedSummary(installation.grantedPermissions)}
+                      </small>
+                    </>
                   ) : null}
                 </span>
                 {installation ? (
@@ -306,7 +335,7 @@ export function AppLibrary({
                   <Button
                     disabled={busy}
                     onClick={() => {
-                      install(app);
+                      setConsent({ app, selected: [], submitting: false });
                     }}
                     type="button"
                   >
@@ -324,6 +353,9 @@ export function AppLibrary({
                   Installed · pinned {installation.version} ·{" "}
                   {shortDigest(installation.manifestDigest)}
                 </small>
+                <small className="app-row-granted">
+                  Granted: {grantedSummary(installation.grantedPermissions)}
+                </small>
               </span>
               <Button
                 disabled={busyAppIds[installation.appId] ?? false}
@@ -338,8 +370,84 @@ export function AppLibrary({
           ))}
         </ul>
       ) : null}
+
+      {consent ? (
+        <div className="consent-backdrop" role="presentation">
+          <div
+            aria-describedby="app-consent-description"
+            aria-labelledby="app-consent-title"
+            aria-modal="true"
+            className="app-consent"
+            role="dialog"
+          >
+            <h3 id="app-consent-title">
+              Install {consent.app.name || consent.app.id} {consent.app.version}
+            </h3>
+            <p id="app-consent-description">
+              Requested permissions for registry version {consent.app.version}. Nothing is granted
+              by default; changing this later requires removing and reinstalling the app.
+            </p>
+            {consent.app.permissions.length === 0 ? (
+              <p className="app-consent-note">This app requests no permissions.</p>
+            ) : (
+              <ul className="app-consent-list">
+                {consent.app.permissions.map((permission) => (
+                  <li key={permission}>
+                    <label>
+                      <input
+                        aria-label={permission}
+                        checked={consent.selected.includes(permission)}
+                        onChange={(event) => {
+                          setConsent((current) => {
+                            if (!current) return current;
+                            return event.target.checked
+                              ? { ...current, selected: current.selected.concat(permission) }
+                              : {
+                                  ...current,
+                                  selected: current.selected.filter((id) => id !== permission),
+                                };
+                          });
+                        }}
+                        type="checkbox"
+                      />
+                      <span>{permission}</span>
+                    </label>
+                  </li>
+                ))}
+              </ul>
+            )}
+            <div className="app-consent-actions">
+              <Button
+                disabled={consent.submitting}
+                onClick={() => {
+                  confirmInstall(consent);
+                }}
+                type="button"
+              >
+                {consent.selected.length === 0
+                  ? "Install without permissions"
+                  : `Install with ${String(consent.selected.length)} permission${consent.selected.length === 1 ? "" : "s"}`}
+              </Button>
+              <Button
+                disabled={consent.submitting}
+                onClick={() => {
+                  setConsent(undefined);
+                }}
+                type="button"
+              >
+                Cancel
+              </Button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </section>
   );
+}
+
+function grantedSummary(granted: readonly string[] | undefined): string {
+  if (!granted || granted.length === 0) return "none";
+  return granted.join(", ");
 }
 
 // listAllCatalogApps walks the owner's registry catalog pages in the project

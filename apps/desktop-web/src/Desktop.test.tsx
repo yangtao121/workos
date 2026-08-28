@@ -474,6 +474,7 @@ function surfaceSession(
     renderer: 1,
     url: `/surfaces/${sessionId}/`,
     bridgeToken: "",
+    bridgeCapabilities: [],
     resize: false,
     clipboard: false,
     filePicker: false,

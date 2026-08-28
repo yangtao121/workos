@@ -69,9 +69,14 @@ test("installs a registered app into a project and persists it across reloads", 
     hasNotText: `${appId}-other`,
   });
   await row.getByRole("button", { name: "Install", exact: true }).click();
+  // The consent dialog gates every install: this app requests no permissions,
+  // so the only path forward is an explicit empty grant.
+  await page.getByRole("dialog").waitFor({ timeout: libraryTimeout });
+  await page.getByRole("button", { name: "Install without permissions" }).click();
   await expect(row.getByText(/Installed · pinned 1\.0\.0/)).toBeVisible({
     timeout: libraryTimeout,
   });
+  await expect(row.getByText("Granted: none")).toBeVisible({ timeout: libraryTimeout });
   await expect(row.getByRole("button", { name: "Remove" })).toBeVisible();
 
   // The project projection reflects the server-confirmed installation.

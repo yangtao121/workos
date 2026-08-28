@@ -9,6 +9,12 @@ import (
 const (
 	UserHeader   = "X-WorkOS-User-ID"
 	DeviceHeader = "X-WorkOS-Device-ID"
+	// BridgeTokenHeader carries the ephemeral surface bridge credential on
+	// App Bridge RPC metadata, presented by the trusted desktop host only.
+	// The gateway forwards it to runtime-host Connect routes exclusively and
+	// strips it from every Core route and /surfaces/ asset request; it is
+	// never logged anywhere.
+	BridgeTokenHeader = "X-WorkOS-Bridge-Token"
 )
 
 type contextKey struct{}

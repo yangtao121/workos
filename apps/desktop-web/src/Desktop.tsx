@@ -20,7 +20,7 @@ import type {
 import { Button } from "@workos/ui-kit";
 import { initialWindowState, windowReducer } from "@workos/window-manager";
 import { AppLibrary } from "./AppLibrary.js";
-import { AppSurface } from "./AppSurface.js";
+import { AppSurface, type SurfaceBridgeCredentials } from "./AppSurface.js";
 import { HarnessSettings, type CatalogState } from "./HarnessSettings.js";
 import { selectionFromProject, taskStatus, type HarnessSelection } from "./model.js";
 
@@ -68,6 +68,11 @@ export function Desktop({ workosClients = clients }: { workosClients?: WorkOSCli
   // maintained explicitly at open/close points to avoid re-closing sessions
   // that project switches or window closes already dismissed.
   const openSurfaceSessionsRef = useRef<{ surfaceSessionId: string }[]>([]);
+  // Bridge credentials live only here — a plain ref the trusted host reads.
+  // They never enter window-manager state (which is serializable), React
+  // state, the DOM, or any log: the iframe receives a MessagePort, never the
+  // token behind it.
+  const bridgeCredentialsRef = useRef<Map<string, SurfaceBridgeCredentials>>(new Map());
   const activeProject = projects.find((project) => project.id === activeProjectId);
   activeProjectIdRef.current = activeProjectId;
 
@@ -177,6 +182,7 @@ export function Desktop({ workosClients = clients }: { workosClients?: WorkOSCli
   useEffect(() => {
     return () => {
       for (const item of openSurfaceSessionsRef.current) {
+        bridgeCredentialsRef.current.delete(item.surfaceSessionId);
         void workosClients.surfaces
           .closeSurface({ surfaceSessionId: item.surfaceSessionId })
           .catch(() => undefined);
@@ -199,6 +205,7 @@ export function Desktop({ workosClients = clients }: { workosClients?: WorkOSCli
         openSurfaceSessionsRef.current = openSurfaceSessionsRef.current.filter(
           (open) => open.surfaceSessionId !== item.surface?.surfaceSessionId,
         );
+        bridgeCredentialsRef.current.delete(item.surface.surfaceSessionId);
         void workosClients.surfaces
           .closeSurface({ surfaceSessionId: item.surface.surfaceSessionId })
           .catch(() => undefined);
@@ -253,6 +260,12 @@ export function Desktop({ workosClients = clients }: { workosClients?: WorkOSCli
     openSurfaceSessionsRef.current = openSurfaceSessionsRef.current.concat({
       surfaceSessionId: session.id,
     });
+    if (session.bridgeToken !== "") {
+      bridgeCredentialsRef.current.set(session.id, {
+        token: session.bridgeToken,
+        capabilities: [...session.bridgeCapabilities],
+      });
+    }
     dispatch({
       type: "open",
       window: {
@@ -279,6 +292,7 @@ export function Desktop({ workosClients = clients }: { workosClients?: WorkOSCli
       openSurfaceSessionsRef.current = openSurfaceSessionsRef.current.filter(
         (item) => item.surfaceSessionId !== target.surface?.surfaceSessionId,
       );
+      bridgeCredentialsRef.current.delete(target.surface.surfaceSessionId);
       void workosClients.surfaces
         .closeSurface({ surfaceSessionId: target.surface.surfaceSessionId })
         .catch(() => undefined);
@@ -548,7 +562,11 @@ export function Desktop({ workosClients = clients }: { workosClients?: WorkOSCli
               <span>{activeProject?.name ?? "No project"}</span>
             </header>
             {windowState.kind === "app-surface" && windowState.surface ? (
-              <AppSurface surface={windowState.surface} />
+              <AppSurface
+                surface={windowState.surface}
+                bridge={bridgeCredentialsRef.current.get(windowState.surface.surfaceSessionId)}
+                appBridge={workosClients.appBridge}
+              />
             ) : (
               <div className="agent-center-body">
                 <form className="task-composer" onSubmit={(event) => void submitTask(event)}>

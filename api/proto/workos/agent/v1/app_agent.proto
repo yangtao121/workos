@@ -1,0 +1,46 @@
+// Private Core-owned App Agent execution for installed project apps.
+// Not on the gateway allowlist; only runtime-host reaches it with trusted
+// identity. Every call re-resolves the active installation and its grant
+// snapshot from authoritative Core facts; runtime-provided identity fields
+// are derived from the validated surface session, never from public input.
+syntax = "proto3";
+
+package workos.agent.v1;
+
+import "workos/agent/v1/agent.proto";
+
+option go_package = "github.com/yangtao121/workos/gen/go/workos/agent/v1;agentv1";
+
+message RunAgentTaskRequest {
+  // Both ids are the surface session's stored facts, re-validated here
+  // against the active same-owner installation.
+  string project_id = 1;
+  string app_instance_id = 2;
+  // App-scoped idempotency key; its durable namespace is
+  // (owner, app_instance_id, client key), enforced by Core.
+  string client_idempotency_key = 3;
+  string role = 4;
+  string goal = 5;
+}
+
+message RunAgentTaskResponse {
+  string task_id = 1;
+  AgentTaskState state = 2;
+  int64 last_event_sequence = 3;
+}
+
+message WatchAgentTaskEventsRequest {
+  string project_id = 1;
+  string app_instance_id = 2;
+  string task_id = 3;
+  int64 after_sequence = 4;
+}
+
+message WatchAgentTaskEventsResponse {
+  AgentEvent event = 1;
+}
+
+service AppAgentService {
+  rpc RunAgentTask(RunAgentTaskRequest) returns (RunAgentTaskResponse) {}
+  rpc WatchAgentTaskEvents(WatchAgentTaskEventsRequest) returns (stream WatchAgentTaskEventsResponse) {}
+}

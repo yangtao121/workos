@@ -531,3 +531,78 @@ button {
 .library-feedback.error {
   color: #e2a6aa;
 }
+
+/* Install consent dialog */
+.consent-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(8, 12, 20, 0.72);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 20;
+}
+
+.app-consent {
+  background: #131b2b;
+  border: 1px solid #2b3a55;
+  border-radius: 12px;
+  padding: 18px 20px;
+  max-width: 420px;
+  width: 88%;
+  color: #e7edf7;
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.5);
+}
+
+.app-consent h3 {
+  margin: 0 0 8px;
+  font-size: 16px;
+}
+
+.app-consent p {
+  margin: 0 0 10px;
+  font-size: 12.5px;
+  color: #9fb0c9;
+}
+
+.app-consent-note {
+  font-style: italic;
+}
+
+.app-consent-list {
+  list-style: none;
+  margin: 0 0 12px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.app-consent-list label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: #e7edf7;
+}
+
+.app-consent-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.app-row-granted {
+  color: #8fd6a5;
+}
+
+/* Surface bridge states */
+.surface-bridge-error {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.surface-retry {
+  align-self: flex-start;
+}

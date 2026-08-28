@@ -30,7 +30,7 @@
       "name": "Agent Task Router",
       "process": "workos-core",
       "status": "working",
-      "evidence": "Project binding snapshot + idempotency integration"
+      "evidence": "Project binding snapshot + user idempotency + project-scoped App principal/provenance with durable (owner, app_instance, client key) digest adjudication (real PostgreSQL concurrency + restart)"
     },
     {
       "name": "Harness Broker",
@@ -48,7 +48,7 @@
       "name": "Desktop Shell",
       "process": "desktop-web",
       "status": "working",
-      "evidence": "foundation + DeepSeek fixture Catalog/binding E2E + App Library install/remove E2E + sandboxed Web Bundle window E2E incl. opaque-origin top-level sandbox proof + unmount best-effort close"
+      "evidence": "foundation + DeepSeek fixture Catalog/binding E2E + App Library install/remove + explicit permission consent E2E + sandboxed Web Bundle window with opaque-origin MessageChannel App Bridge (browser E2E runs a real project task) + unmount best-effort close"
     },
     {
       "name": "App Registry",
@@ -60,7 +60,7 @@
       "name": "Project App Installation",
       "process": "workos-core",
       "status": "working",
-      "evidence": "pinned version install/uninstall + revision/event/outbox transaction + durable idempotency + restart persistence + Desktop App Library browser E2E"
+      "evidence": "pinned version install/uninstall + immutable explicit grant snapshot (subset of requested, canonical, install-time only) + revision/event/outbox transaction + durable idempotency + restart persistence + Desktop consent E2E"
     },
     {
       "name": "Artifact",
@@ -72,7 +72,7 @@
       "name": "Runtime / Surface",
       "process": "runtime-host",
       "status": "working",
-      "evidence": "Web Bundle surfaces only: device-bound durable idempotent sessions + canonical UUIDv7/finite-viewport boundaries + renderer fail-closed + restart persistence + per-request Core revalidation + transient-outage Unavailable/503 classification + server-enforced CSP sandbox (top-level opaque E2E) + real-PostgreSQL concurrency races; container/native runners unavailable"
+      "evidence": "Web Bundle surfaces only: durable idempotent device-bound sessions + per-request Core revalidation + token-validated minimal App Bridge (agent.task.run / agent.event.watch only, 256-bit token, sha256 at rest, rotation + restart persistence, real integration/restart evidence); container/native runners unavailable"
     },
     {
       "name": "Reliability",

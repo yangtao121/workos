@@ -39,8 +39,12 @@ type AppInstallation struct {
 	ManifestDigest string                 `protobuf:"bytes,5,opt,name=manifest_digest,json=manifestDigest,proto3" json:"manifest_digest,omitempty"`
 	InstalledAt    *timestamppb.Timestamp `protobuf:"bytes,6,opt,name=installed_at,json=installedAt,proto3" json:"installed_at,omitempty"`
 	UninstalledAt  *timestamppb.Timestamp `protobuf:"bytes,7,opt,name=uninstalled_at,json=uninstalledAt,proto3,oneof" json:"uninstalled_at,omitempty"`
-	unknownFields  protoimpl.UnknownFields
-	sizeCache      protoimpl.SizeCache
+	// Immutable install-time grant snapshot: the canonical sorted subset of the
+	// pinned version's requested permissions the user explicitly approved.
+	// Empty means no capability was granted; it never defaults to the request.
+	GrantedPermissions []string `protobuf:"bytes,8,rep,name=granted_permissions,json=grantedPermissions,proto3" json:"granted_permissions,omitempty"`
+	unknownFields      protoimpl.UnknownFields
+	sizeCache          protoimpl.SizeCache
 }
 
 func (x *AppInstallation) Reset() {
@@ -122,6 +126,13 @@ func (x *AppInstallation) GetUninstalledAt() *timestamppb.Timestamp {
 	return nil
 }
 
+func (x *AppInstallation) GetGrantedPermissions() []string {
+	if x != nil {
+		return x.GrantedPermissions
+	}
+	return nil
+}
+
 // InstallAppRequest installs one owner-scoped app into the owner's active
 // project. An empty version resolves the registry's current version inside
 // this command and pins that exact immutable version and digest.
@@ -132,8 +143,13 @@ type InstallAppRequest struct {
 	AppId                   string                 `protobuf:"bytes,3,opt,name=app_id,json=appId,proto3" json:"app_id,omitempty"`
 	Version                 string                 `protobuf:"bytes,4,opt,name=version,proto3" json:"version,omitempty"`
 	ExpectedProjectRevision int64                  `protobuf:"varint,5,opt,name=expected_project_revision,json=expectedProjectRevision,proto3" json:"expected_project_revision,omitempty"`
-	unknownFields           protoimpl.UnknownFields
-	sizeCache               protoimpl.SizeCache
+	// Explicit install-time grant snapshot submitted by the client. It must be
+	// a subset of the pinned version's requested permissions; duplicates or
+	// unknown capabilities are rejected. An omitted field still means an empty
+	// grant: requesting a permission never grants it.
+	GrantedPermissions []string `protobuf:"bytes,6,rep,name=granted_permissions,json=grantedPermissions,proto3" json:"granted_permissions,omitempty"`
+	unknownFields      protoimpl.UnknownFields
+	sizeCache          protoimpl.SizeCache
 }
 
 func (x *InstallAppRequest) Reset() {
@@ -199,6 +215,13 @@ func (x *InstallAppRequest) GetExpectedProjectRevision() int64 {
 		return x.ExpectedProjectRevision
 	}
 	return 0
+}
+
+func (x *InstallAppRequest) GetGrantedPermissions() []string {
+	if x != nil {
+		return x.GrantedPermissions
+	}
+	return nil
 }
 
 type InstallAppResponse struct {
@@ -483,7 +506,7 @@ var File_workos_app_v1_installation_proto protoreflect.FileDescriptor
 
 const file_workos_app_v1_installation_proto_rawDesc = "" +
 	"\n" +
-	" workos/app/v1/installation.proto\x12\rworkos.app.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1dworkos/common/v1/common.proto\"\xb4\x02\n" +
+	" workos/app/v1/installation.proto\x12\rworkos.app.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1dworkos/common/v1/common.proto\"\xe5\x02\n" +
 	"\x0fAppInstallation\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x1d\n" +
 	"\n" +
@@ -492,15 +515,17 @@ const file_workos_app_v1_installation_proto_rawDesc = "" +
 	"\aversion\x18\x04 \x01(\tR\aversion\x12'\n" +
 	"\x0fmanifest_digest\x18\x05 \x01(\tR\x0emanifestDigest\x12=\n" +
 	"\finstalled_at\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampR\vinstalledAt\x12F\n" +
-	"\x0euninstalled_at\x18\a \x01(\v2\x1a.google.protobuf.TimestampH\x00R\runinstalledAt\x88\x01\x01B\x11\n" +
-	"\x0f_uninstalled_at\"\xc8\x01\n" +
+	"\x0euninstalled_at\x18\a \x01(\v2\x1a.google.protobuf.TimestampH\x00R\runinstalledAt\x88\x01\x01\x12/\n" +
+	"\x13granted_permissions\x18\b \x03(\tR\x12grantedPermissionsB\x11\n" +
+	"\x0f_uninstalled_at\"\xf9\x01\n" +
 	"\x11InstallAppRequest\x12'\n" +
 	"\x0fidempotency_key\x18\x01 \x01(\tR\x0eidempotencyKey\x12\x1d\n" +
 	"\n" +
 	"project_id\x18\x02 \x01(\tR\tprojectId\x12\x15\n" +
 	"\x06app_id\x18\x03 \x01(\tR\x05appId\x12\x18\n" +
 	"\aversion\x18\x04 \x01(\tR\aversion\x12:\n" +
-	"\x19expected_project_revision\x18\x05 \x01(\x03R\x17expectedProjectRevision\"\x83\x01\n" +
+	"\x19expected_project_revision\x18\x05 \x01(\x03R\x17expectedProjectRevision\x12/\n" +
+	"\x13granted_permissions\x18\x06 \x03(\tR\x12grantedPermissions\"\x83\x01\n" +
 	"\x12InstallAppResponse\x12B\n" +
 	"\finstallation\x18\x01 \x01(\v2\x1e.workos.app.v1.AppInstallationR\finstallation\x12)\n" +
 	"\x10project_revision\x18\x02 \x01(\x03R\x0fprojectRevision\"\xc2\x01\n" +

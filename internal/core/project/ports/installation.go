@@ -29,19 +29,23 @@ type StoredInstallationRequest struct {
 
 // InstallCommand is one fully validated install command. The application has
 // already resolved the pinned registry version through the neutral catalog
-// port and computed the canonical request digest; the repository executes
-// installation, projection, revision, event, outbox, and idempotency mapping
-// in one transaction.
+// port, canonicalized the grant snapshot against the pinned version's
+// requested permissions, and computed the canonical request digest; the
+// repository executes installation, projection, revision, event, outbox, and
+// idempotency mapping in one transaction.
 type InstallCommand struct {
-	OwnerUserID       string
-	IdempotencyKey    string
-	ProjectID         string
-	AppID             string
-	Pinned            domain.PinnedApp
-	ExpectedRevision  int64
-	RequestDigest     string
-	NewInstallationID string
-	Now               time.Time
+	OwnerUserID    string
+	IdempotencyKey string
+	ProjectID      string
+	AppID          string
+	Pinned         domain.PinnedApp
+	// GrantedPermissions is the canonical sorted grant snapshot to persist;
+	// it is already a validated subset of Pinned.Permissions.
+	GrantedPermissions []string
+	ExpectedRevision   int64
+	RequestDigest      string
+	NewInstallationID  string
+	Now                time.Time
 }
 
 // UninstallCommand is one fully validated uninstall command.

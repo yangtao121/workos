@@ -199,14 +199,21 @@ type SurfaceSession struct {
 	ProjectId     string                 `protobuf:"bytes,3,opt,name=project_id,json=projectId,proto3" json:"project_id,omitempty"`
 	Renderer      SurfaceRenderer        `protobuf:"varint,4,opt,name=renderer,proto3,enum=workos.surface.v1.SurfaceRenderer" json:"renderer,omitempty"`
 	Url           string                 `protobuf:"bytes,5,opt,name=url,proto3" json:"url,omitempty"`
-	BridgeToken   string                 `protobuf:"bytes,6,opt,name=bridge_token,json=bridgeToken,proto3" json:"bridge_token,omitempty"`
-	Resize        bool                   `protobuf:"varint,7,opt,name=resize,proto3" json:"resize,omitempty"`
-	Clipboard     bool                   `protobuf:"varint,8,opt,name=clipboard,proto3" json:"clipboard,omitempty"`
-	FilePicker    bool                   `protobuf:"varint,9,opt,name=file_picker,json=filePicker,proto3" json:"file_picker,omitempty"`
-	CreatedAt     *timestamppb.Timestamp `protobuf:"bytes,10,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
-	ExpiresAt     *timestamppb.Timestamp `protobuf:"bytes,11,opt,name=expires_at,json=expiresAt,proto3" json:"expires_at,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	// Ephemeral bridge credential for the trusted host that opened the
+	// surface. It is only delivered in this response, never leaves the trusted
+	// desktop/app-host memory, and expires with the session.
+	BridgeToken string                 `protobuf:"bytes,6,opt,name=bridge_token,json=bridgeToken,proto3" json:"bridge_token,omitempty"`
+	Resize      bool                   `protobuf:"varint,7,opt,name=resize,proto3" json:"resize,omitempty"`
+	Clipboard   bool                   `protobuf:"varint,8,opt,name=clipboard,proto3" json:"clipboard,omitempty"`
+	FilePicker  bool                   `protobuf:"varint,9,opt,name=file_picker,json=filePicker,proto3" json:"file_picker,omitempty"`
+	CreatedAt   *timestamppb.Timestamp `protobuf:"bytes,10,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	ExpiresAt   *timestamppb.Timestamp `protobuf:"bytes,11,opt,name=expires_at,json=expiresAt,proto3" json:"expires_at,omitempty"`
+	// Effective bridge capabilities granted for this surface: the canonical
+	// intersection of the installation grant snapshot and the implemented
+	// bridge methods. Unimplemented capabilities never appear here.
+	BridgeCapabilities []string `protobuf:"bytes,12,rep,name=bridge_capabilities,json=bridgeCapabilities,proto3" json:"bridge_capabilities,omitempty"`
+	unknownFields      protoimpl.UnknownFields
+	sizeCache          protoimpl.SizeCache
 }
 
 func (x *SurfaceSession) Reset() {
@@ -312,6 +319,13 @@ func (x *SurfaceSession) GetCreatedAt() *timestamppb.Timestamp {
 func (x *SurfaceSession) GetExpiresAt() *timestamppb.Timestamp {
 	if x != nil {
 		return x.ExpiresAt
+	}
+	return nil
+}
+
+func (x *SurfaceSession) GetBridgeCapabilities() []string {
+	if x != nil {
+		return x.BridgeCapabilities
 	}
 	return nil
 }
@@ -533,7 +547,7 @@ const file_workos_surface_v1_surface_proto_rawDesc = "" +
 	"\x05width\x18\x01 \x01(\x05R\x05width\x12\x16\n" +
 	"\x06height\x18\x02 \x01(\x05R\x06height\x12\x1f\n" +
 	"\vpixel_ratio\x18\x03 \x01(\x01R\n" +
-	"pixelRatio\"\xa9\x03\n" +
+	"pixelRatio\"\xda\x03\n" +
 	"\x0eSurfaceSession\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12&\n" +
 	"\x0fapp_instance_id\x18\x02 \x01(\tR\rappInstanceId\x12\x1d\n" +
@@ -550,7 +564,8 @@ const file_workos_surface_v1_surface_proto_rawDesc = "" +
 	"created_at\x18\n" +
 	" \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x129\n" +
 	"\n" +
-	"expires_at\x18\v \x01(\v2\x1a.google.protobuf.TimestampR\texpiresAt\"\xd5\x02\n" +
+	"expires_at\x18\v \x01(\v2\x1a.google.protobuf.TimestampR\texpiresAt\x12/\n" +
+	"\x13bridge_capabilities\x18\f \x03(\tR\x12bridgeCapabilities\"\xd5\x02\n" +
 	"\x14CreateSurfaceRequest\x12&\n" +
 	"\x0fapp_instance_id\x18\x01 \x01(\tR\rappInstanceId\x12\x1d\n" +
 	"\n" +

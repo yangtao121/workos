@@ -45,7 +45,7 @@ func (h *Handler) CreateSurface(ctx context.Context, req *connect.Request[surfac
 		// session row, no idempotency key consumption.
 		return nil, connect.NewError(connect.CodeInvalidArgument, err)
 	}
-	session, err := h.service.Create(ctx, application.CreateCommand{
+	created, err := h.service.Create(ctx, application.CreateCommand{
 		OwnerUserID:       id.UserID,
 		DeviceID:          id.DeviceID,
 		IdempotencyKey:    req.Msg.GetIdempotencyKey(),
@@ -60,7 +60,12 @@ func (h *Handler) CreateSurface(ctx context.Context, req *connect.Request[surfac
 	if err != nil {
 		return nil, mapError(err)
 	}
-	return connect.NewResponse(&surfacev1.CreateSurfaceResponse{Session: SessionToProto(session)}), nil
+	// The bridge token rides only in this response: the trusted desktop/app-host
+	// keeps it in memory and presents it on App Bridge RPC metadata. It never
+	// enters the iframe, URLs, storage, DOM, or logs.
+	return connect.NewResponse(&surfacev1.CreateSurfaceResponse{
+		Session: SessionToProto(created.Session, created.BridgeToken),
+	}), nil
 }
 
 func (h *Handler) CloseSurface(ctx context.Context, req *connect.Request[surfacev1.CloseSurfaceRequest]) (*connect.Response[surfacev1.CloseSurfaceResponse], error) {
@@ -75,15 +80,19 @@ func (h *Handler) CloseSurface(ctx context.Context, req *connect.Request[surface
 }
 
 // SessionToProto projects the durable session fact. The URL is the
-// same-origin relative path only; the bridge token stays empty and every
-// unimplemented capability flag stays false.
-func SessionToProto(session domain.SurfaceSession) *surfacev1.SurfaceSession {
+// same-origin relative path only. bridgeToken is the ephemeral credential for
+// the trusted host (empty when no token is valid — e.g. a closed/expired
+// replay); the effective capability list carries only implemented and granted
+// methods, and every unimplemented capability flag stays false.
+func SessionToProto(session domain.SurfaceSession, bridgeToken string) *surfacev1.SurfaceSession {
 	return &surfacev1.SurfaceSession{
 		Id: session.ID, AppInstanceId: session.AppInstanceID, ProjectId: session.ProjectID,
-		Renderer:  surfacev1.SurfaceRenderer_SURFACE_RENDERER_WEB_BUNDLE,
-		Url:       session.Path,
-		CreatedAt: timestamppb.New(session.CreatedAt),
-		ExpiresAt: timestamppb.New(session.ExpiresAt),
+		Renderer:           surfacev1.SurfaceRenderer_SURFACE_RENDERER_WEB_BUNDLE,
+		Url:                session.Path,
+		BridgeToken:        bridgeToken,
+		BridgeCapabilities: session.BridgeCapabilities,
+		CreatedAt:          timestamppb.New(session.CreatedAt),
+		ExpiresAt:          timestamppb.New(session.ExpiresAt),
 	}
 }
 

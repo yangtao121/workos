@@ -43,5 +43,8 @@ func (c *AppCatalog) Resolve(ctx context.Context, ownerUserID, appID, version st
 	return projectdomain.PinnedApp{
 		AppID: summary.AppID, Version: summary.Version,
 		ManifestDigest: summary.ManifestDigest, Scope: string(summary.Scope),
+		// Requested permissions travel as the subset boundary for grant
+		// validation; they never become a grant by themselves.
+		Permissions: summary.Permissions,
 	}, nil
 }

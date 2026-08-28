@@ -22,6 +22,10 @@ message AppInstallation {
   string manifest_digest = 5;
   google.protobuf.Timestamp installed_at = 6;
   optional google.protobuf.Timestamp uninstalled_at = 7;
+  // Immutable install-time grant snapshot: the canonical sorted subset of the
+  // pinned version's requested permissions the user explicitly approved.
+  // Empty means no capability was granted; it never defaults to the request.
+  repeated string granted_permissions = 8;
 }
 
 // InstallAppRequest installs one owner-scoped app into the owner's active
@@ -33,6 +37,11 @@ message InstallAppRequest {
   string app_id = 3;
   string version = 4;
   int64 expected_project_revision = 5;
+  // Explicit install-time grant snapshot submitted by the client. It must be
+  // a subset of the pinned version's requested permissions; duplicates or
+  // unknown capabilities are rejected. An omitted field still means an empty
+  // grant: requesting a permission never grants it.
+  repeated string granted_permissions = 6;
 }
 
 message InstallAppResponse {

@@ -40,6 +40,7 @@ func (h *InstallationHandler) InstallApp(ctx context.Context, req *connect.Reque
 		OwnerUserID: id.UserID, IdempotencyKey: req.Msg.GetIdempotencyKey(),
 		ProjectID: req.Msg.GetProjectId(), AppID: req.Msg.GetAppId(),
 		Version: req.Msg.GetVersion(), ExpectedRevision: req.Msg.GetExpectedProjectRevision(),
+		GrantedPermissions: req.Msg.GetGrantedPermissions(),
 	})
 	if err != nil {
 		return nil, mapInstallationError(err)
@@ -103,6 +104,10 @@ func mapInstallationError(err error) error {
 		return connect.NewError(connect.CodeNotFound, errors.New("project, app, or installation is not available"))
 	case errors.Is(err, domain.ErrAlreadyInstalled):
 		return connect.NewError(connect.CodeAlreadyExists, errors.New("app is already installed with a different version"))
+	case errors.Is(err, domain.ErrInvalidGrant):
+		return connect.NewError(connect.CodeInvalidArgument, errors.New("granted permissions are malformed"))
+	case errors.Is(err, domain.ErrGrantNotRequested):
+		return connect.NewError(connect.CodePermissionDenied, errors.New("granted permission was not requested by the app"))
 	case errors.Is(err, domain.ErrIdempotencyConflict):
 		return connect.NewError(connect.CodeAborted, errors.New("idempotency key was already used for a different request"))
 	case errors.Is(err, domain.ErrConflict):
@@ -113,12 +118,13 @@ func mapInstallationError(err error) error {
 }
 
 // InstallationToProto maps the installation domain entity to the public
-// projection.
+// projection, including the immutable grant snapshot.
 func InstallationToProto(installation domain.Installation) *appv1.AppInstallation {
 	result := &appv1.AppInstallation{
 		Id: installation.ID, ProjectId: installation.ProjectID, AppId: installation.AppID,
 		Version: installation.Version, ManifestDigest: installation.ManifestDigest,
-		InstalledAt: timestamppb.New(installation.InstalledAt),
+		GrantedPermissions: installation.GrantedPermissions,
+		InstalledAt:        timestamppb.New(installation.InstalledAt),
 	}
 	if installation.UninstalledAt != nil {
 		result.UninstalledAt = timestamppb.New(*installation.UninstalledAt)

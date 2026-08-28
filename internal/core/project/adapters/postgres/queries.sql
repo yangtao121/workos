@@ -83,17 +83,17 @@ WHERE owner_user_id = $1 AND id = $2
 FOR UPDATE;
 
 -- name: GetActiveInstallationByApp :one
-SELECT id, owner_user_id, project_id, app_id, version, manifest_digest, installed_at, uninstalled_at
+SELECT id, owner_user_id, project_id, app_id, version, manifest_digest, granted_permissions, installed_at, uninstalled_at
 FROM workos_core.project_app_installations
 WHERE project_id = $1 AND app_id = $2 AND uninstalled_at IS NULL;
 
 -- name: GetInstallationById :one
-SELECT id, owner_user_id, project_id, app_id, version, manifest_digest, installed_at, uninstalled_at
+SELECT id, owner_user_id, project_id, app_id, version, manifest_digest, granted_permissions, installed_at, uninstalled_at
 FROM workos_core.project_app_installations
 WHERE owner_user_id = $1 AND id = $2;
 
 -- name: ResolveActiveInstallation :one
-SELECT i.id, i.owner_user_id, i.project_id, i.app_id, i.version, i.manifest_digest, i.installed_at, i.uninstalled_at
+SELECT i.id, i.owner_user_id, i.project_id, i.app_id, i.version, i.manifest_digest, i.granted_permissions, i.installed_at, i.uninstalled_at
 FROM workos_core.project_app_installations i
 JOIN workos_core.projects p
   ON p.id = i.project_id AND p.owner_user_id = i.owner_user_id AND p.archived_at IS NULL
@@ -104,8 +104,8 @@ WHERE i.owner_user_id = sqlc.arg(owner_user_id)
 
 -- name: InsertInstallation :exec
 INSERT INTO workos_core.project_app_installations (
-    id, owner_user_id, project_id, app_id, version, manifest_digest, installed_at
-) VALUES ($1, $2, $3, $4, $5, $6, $7);
+    id, owner_user_id, project_id, app_id, version, manifest_digest, granted_permissions, installed_at
+) VALUES ($1, $2, $3, $4, $5, $6, $7, $8);
 
 -- name: TombstoneInstallation :execrows
 UPDATE workos_core.project_app_installations
@@ -132,7 +132,7 @@ WHERE id = sqlc.arg(id)
 RETURNING revision, updated_at;
 
 -- name: ListActiveInstallations :many
-SELECT id, owner_user_id, project_id, app_id, version, manifest_digest, installed_at, uninstalled_at
+SELECT id, owner_user_id, project_id, app_id, version, manifest_digest, granted_permissions, installed_at, uninstalled_at
 FROM workos_core.project_app_installations
 WHERE owner_user_id = sqlc.arg(owner_user_id)
   AND project_id = sqlc.arg(project_id)

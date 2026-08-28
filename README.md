@@ -19,14 +19,14 @@ Project 协作；Harness、App、Surface、Workload 与 Incident 均通过稳定
 | Project | workos-core | `working` | revision-safe server-preset binding integration + browser E2E |
 | Harness Provider Catalog | workos-core | `working` | public Catalog integration + default/DeepSeek fixture browser E2E |
 | Event Backbone | workos-core | `working` | persisted ordered stream + resume integration |
-| Agent Task Router | workos-core | `working` | Project binding snapshot + idempotency integration |
+| Agent Task Router | workos-core | `working` | Project binding snapshot + user idempotency + project-scoped App principal/provenance with durable (owner, app_instance, client key) digest adjudication (real PostgreSQL concurrency + restart) |
 | Harness Broker | harness-host | `working` | Fake, Generic CLI, and typed provider execution tests |
 | DeepSeek Harness Adapter | harness-host | `working` | official runtime + keyless streaming fixture integration and browser E2E |
-| Desktop Shell | desktop-web | `working` | foundation + DeepSeek fixture Catalog/binding E2E + App Library install/remove E2E + sandboxed Web Bundle window E2E incl. opaque-origin top-level sandbox proof + unmount best-effort close |
+| Desktop Shell | desktop-web | `working` | foundation + DeepSeek fixture Catalog/binding E2E + App Library install/remove + explicit permission consent E2E + sandboxed Web Bundle window with opaque-origin MessageChannel App Bridge (browser E2E runs a real project task) + unmount best-effort close |
 | App Registry | workos-core | `working` | schema-backed immutable registration + durable idempotency + bounded paging/read + credential-shaped key rejection + restart persistence |
-| Project App Installation | workos-core | `working` | pinned version install/uninstall + revision/event/outbox transaction + durable idempotency + restart persistence + Desktop App Library browser E2E |
+| Project App Installation | workos-core | `working` | pinned version install/uninstall + immutable explicit grant snapshot (subset of requested, canonical, install-time only) + revision/event/outbox transaction + durable idempotency + restart persistence + Desktop consent E2E |
 | Artifact | workos-core | `scaffolded` | web bundle subtype only: bounded upload, canonical digest, durable idempotency; generic artifact storage unimplemented |
-| Runtime / Surface | runtime-host | `working` | Web Bundle surfaces only: device-bound durable idempotent sessions + canonical UUIDv7/finite-viewport boundaries + renderer fail-closed + restart persistence + per-request Core revalidation + transient-outage Unavailable/503 classification + server-enforced CSP sandbox (top-level opaque E2E) + real-PostgreSQL concurrency races; container/native runners unavailable |
+| Runtime / Surface | runtime-host | `working` | Web Bundle surfaces only: durable idempotent device-bound sessions + per-request Core revalidation + token-validated minimal App Bridge (agent.task.run / agent.event.watch only, 256-bit token, sha256 at rest, rotation + restart persistence, real integration/restart evidence); container/native runners unavailable |
 | Reliability | reliability-host | `scaffolded` | health; enforcement unavailable |
 | Indexer | indexer | `scaffolded` | health; indexing unavailable |
 | Mobile Shell | mobile-shell | `contract-only` | device-class contract |

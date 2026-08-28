@@ -288,8 +288,17 @@ func TestWebBundleSurfaceVerticalSlice(t *testing.T) {
 		if session.GetUrl() != "/surfaces/"+session.GetId()+"/" {
 			t.Fatalf("session url must be the same-origin relative path: %q", session.GetUrl())
 		}
-		if session.GetBridgeToken() != "" || session.GetClipboard() || session.GetFilePicker() || session.GetResize() {
-			t.Fatalf("unimplemented surface capabilities must stay false and the bridge token empty: %#v", session)
+		// The bridge credential is now minted for every open session; the
+		// app requested only artifact.read, so no bridge capability is
+		// effective, and the unimplemented flags stay false.
+		if len(session.GetBridgeToken()) != 43 {
+			t.Fatalf("bridge token missing for an open session: %#v", session)
+		}
+		if len(session.GetBridgeCapabilities()) != 0 {
+			t.Fatalf("unrequested capabilities leaked: %v", session.GetBridgeCapabilities())
+		}
+		if session.GetClipboard() || session.GetFilePicker() || session.GetResize() {
+			t.Fatalf("unimplemented surface capabilities must stay false: %#v", session)
 		}
 		if session.GetCreatedAt() == nil || session.GetExpiresAt() == nil {
 			t.Fatal("session times missing")

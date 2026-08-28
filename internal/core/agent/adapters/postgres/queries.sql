@@ -119,3 +119,19 @@ SET processed_at = $1, lease_id = NULL, locked_by = NULL, locked_until = NULL
 FROM workos_core.agent_tasks AS t
 WHERE o.lease_id = $2 AND o.locked_by = $3 AND t.id = o.aggregate_id
   AND t.state IN ('completed', 'failed', 'cancelled');
+
+-- name: InsertAgentAppTaskRequest :execrows
+INSERT INTO workos_core.agent_app_task_requests (
+    owner_user_id, app_instance_id, client_idempotency_key, request_digest, task_id, project_id, created_at
+) VALUES ($1, $2, $3, $4, $5, $6, $7)
+ON CONFLICT (owner_user_id, app_instance_id, client_idempotency_key) DO NOTHING;
+
+-- name: GetAgentAppTaskRequest :one
+SELECT request_digest, task_id, project_id
+FROM workos_core.agent_app_task_requests
+WHERE owner_user_id = $1 AND app_instance_id = $2 AND client_idempotency_key = $3;
+
+-- name: GetAgentAppTaskByTask :one
+SELECT request_digest, task_id, project_id
+FROM workos_core.agent_app_task_requests
+WHERE owner_user_id = $1 AND app_instance_id = $2 AND task_id = $3;

@@ -77,6 +77,56 @@ func (q *Queries) FinishTaskLease(ctx context.Context, arg FinishTaskLeaseParams
 	return result.RowsAffected(), nil
 }
 
+const getAgentAppTaskByTask = `-- name: GetAgentAppTaskByTask :one
+SELECT request_digest, task_id, project_id
+FROM workos_core.agent_app_task_requests
+WHERE owner_user_id = $1 AND app_instance_id = $2 AND task_id = $3
+`
+
+type GetAgentAppTaskByTaskParams struct {
+	OwnerUserID   string `json:"owner_user_id"`
+	AppInstanceID string `json:"app_instance_id"`
+	TaskID        string `json:"task_id"`
+}
+
+type GetAgentAppTaskByTaskRow struct {
+	RequestDigest string `json:"request_digest"`
+	TaskID        string `json:"task_id"`
+	ProjectID     string `json:"project_id"`
+}
+
+func (q *Queries) GetAgentAppTaskByTask(ctx context.Context, arg GetAgentAppTaskByTaskParams) (GetAgentAppTaskByTaskRow, error) {
+	row := q.db.QueryRow(ctx, getAgentAppTaskByTask, arg.OwnerUserID, arg.AppInstanceID, arg.TaskID)
+	var i GetAgentAppTaskByTaskRow
+	err := row.Scan(&i.RequestDigest, &i.TaskID, &i.ProjectID)
+	return i, err
+}
+
+const getAgentAppTaskRequest = `-- name: GetAgentAppTaskRequest :one
+SELECT request_digest, task_id, project_id
+FROM workos_core.agent_app_task_requests
+WHERE owner_user_id = $1 AND app_instance_id = $2 AND client_idempotency_key = $3
+`
+
+type GetAgentAppTaskRequestParams struct {
+	OwnerUserID          string `json:"owner_user_id"`
+	AppInstanceID        string `json:"app_instance_id"`
+	ClientIdempotencyKey string `json:"client_idempotency_key"`
+}
+
+type GetAgentAppTaskRequestRow struct {
+	RequestDigest string `json:"request_digest"`
+	TaskID        string `json:"task_id"`
+	ProjectID     string `json:"project_id"`
+}
+
+func (q *Queries) GetAgentAppTaskRequest(ctx context.Context, arg GetAgentAppTaskRequestParams) (GetAgentAppTaskRequestRow, error) {
+	row := q.db.QueryRow(ctx, getAgentAppTaskRequest, arg.OwnerUserID, arg.AppInstanceID, arg.ClientIdempotencyKey)
+	var i GetAgentAppTaskRequestRow
+	err := row.Scan(&i.RequestDigest, &i.TaskID, &i.ProjectID)
+	return i, err
+}
+
 const getAgentTask = `-- name: GetAgentTask :one
 SELECT id, owner_user_id, idempotency_key, project_id, input, state, provider_id,
        harness_instance_id, run_id, last_event_sequence, cancellation_requested, created_at, updated_at
@@ -203,6 +253,39 @@ func (q *Queries) GetAgentTaskUnscoped(ctx context.Context, id string) (WorkosCo
 		&i.UpdatedAt,
 	)
 	return i, err
+}
+
+const insertAgentAppTaskRequest = `-- name: InsertAgentAppTaskRequest :execrows
+INSERT INTO workos_core.agent_app_task_requests (
+    owner_user_id, app_instance_id, client_idempotency_key, request_digest, task_id, project_id, created_at
+) VALUES ($1, $2, $3, $4, $5, $6, $7)
+ON CONFLICT (owner_user_id, app_instance_id, client_idempotency_key) DO NOTHING
+`
+
+type InsertAgentAppTaskRequestParams struct {
+	OwnerUserID          string             `json:"owner_user_id"`
+	AppInstanceID        string             `json:"app_instance_id"`
+	ClientIdempotencyKey string             `json:"client_idempotency_key"`
+	RequestDigest        string             `json:"request_digest"`
+	TaskID               string             `json:"task_id"`
+	ProjectID            string             `json:"project_id"`
+	CreatedAt            pgtype.Timestamptz `json:"created_at"`
+}
+
+func (q *Queries) InsertAgentAppTaskRequest(ctx context.Context, arg InsertAgentAppTaskRequestParams) (int64, error) {
+	result, err := q.db.Exec(ctx, insertAgentAppTaskRequest,
+		arg.OwnerUserID,
+		arg.AppInstanceID,
+		arg.ClientIdempotencyKey,
+		arg.RequestDigest,
+		arg.TaskID,
+		arg.ProjectID,
+		arg.CreatedAt,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const insertAgentTask = `-- name: InsertAgentTask :execrows

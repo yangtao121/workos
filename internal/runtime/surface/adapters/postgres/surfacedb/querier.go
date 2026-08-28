@@ -9,12 +9,15 @@ import (
 )
 
 type Querier interface {
+	ClearSessionBridgeToken(ctx context.Context, arg ClearSessionBridgeTokenParams) (int64, error)
 	CloseSession(ctx context.Context, arg CloseSessionParams) (int64, error)
-	GetActiveSession(ctx context.Context, arg GetActiveSessionParams) (WorkosRuntimeSurfaceSession, error)
-	GetSession(ctx context.Context, arg GetSessionParams) (WorkosRuntimeSurfaceSession, error)
+	GetActiveSession(ctx context.Context, arg GetActiveSessionParams) (GetActiveSessionRow, error)
+	GetActiveSessionByBridgeToken(ctx context.Context, arg GetActiveSessionByBridgeTokenParams) (GetActiveSessionByBridgeTokenRow, error)
+	GetSession(ctx context.Context, arg GetSessionParams) (GetSessionRow, error)
 	GetSessionRequest(ctx context.Context, arg GetSessionRequestParams) (WorkosRuntimeSurfaceSessionRequest, error)
 	InsertSession(ctx context.Context, arg InsertSessionParams) error
 	InsertSessionRequest(ctx context.Context, arg InsertSessionRequestParams) (int64, error)
+	RotateSessionBridgeToken(ctx context.Context, arg RotateSessionBridgeTokenParams) (int64, error)
 }
 
 var _ Querier = (*Queries)(nil)

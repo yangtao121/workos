@@ -226,3 +226,98 @@ func TestNewRejectsUnusableUpstreamTargets(t *testing.T) {
 		t.Fatal("invalid runtime URL accepted alongside a valid core URL")
 	}
 }
+
+func TestAppBridgeRoutesReachRuntimeOnly(t *testing.T) {
+	t.Parallel()
+	var coreCalled, runtimeCalled atomic.Bool
+	core := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { coreCalled.Store(true) }))
+	defer core.Close()
+	runtime := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+		runtimeCalled.Store(true)
+		// The bridge token must survive to the runtime Connect route.
+		if got := request.Header.Get(identity.BridgeTokenHeader); got != "token-1" {
+			t.Errorf("runtime upstream missing bridge token: %q", got)
+		}
+		if got := request.Header.Get(identity.UserHeader); got != "owner-1" {
+			t.Errorf("runtime upstream saw spoofed identity %q", got)
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer runtime.Close()
+	handler := newTestHandler(t, config.Config{
+		Services: config.URLs{Core: core.URL, Runtime: runtime.URL},
+		Auth:     config.Auth{DevBypass: true, OwnerID: "owner-1", DeviceID: "device-1"},
+	})
+	for _, path := range []string{
+		"/workos.bridge.v1.AppBridgeService/RunAgentTask",
+		"/workos.bridge.v1.AppBridgeService/WatchAgentTaskEvents",
+	} {
+		request := httptest.NewRequest(http.MethodPost, path, nil)
+		request.Header.Set(identity.UserHeader, "attacker")
+		request.Header.Set(identity.DeviceHeader, "attacker")
+		request.Header.Set(identity.BridgeTokenHeader, "token-1")
+		response := httptest.NewRecorder()
+		handler.ServeHTTP(response, request)
+		if response.Code != http.StatusNoContent {
+			t.Errorf("bridge path %s returned %d", path, response.Code)
+		}
+	}
+	if !runtimeCalled.Load() {
+		t.Fatal("AppBridgeService never reached the runtime upstream")
+	}
+
+	// The same credential on a Core route and on the asset route is stripped.
+	coreCalled.Store(false)
+	for _, path := range []string{
+		"/workos.project.v1.ProjectService/ListProjects",
+		"/surfaces/0198d7ea-2110-7c42-b659-c5e4d73bc337/",
+	} {
+		request := httptest.NewRequest(http.MethodGet, path, nil)
+		request.Header.Set(identity.BridgeTokenHeader, "token-1")
+		response := httptest.NewRecorder()
+		handler.ServeHTTP(response, request)
+	}
+	// Capture what Core saw by re-sending with an inspecting upstream.
+	inspected := ""
+	inspector := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, request *http.Request) {
+		inspected = request.Header.Get(identity.BridgeTokenHeader)
+	}))
+	defer inspector.Close()
+	coreHandler := newTestHandler(t, config.Config{
+		Services: config.URLs{Core: inspector.URL, Runtime: runtime.URL},
+		Auth:     config.Auth{DevBypass: true, OwnerID: "owner-1", DeviceID: "device-1"},
+	})
+	request := httptest.NewRequest(http.MethodPost, "/workos.agent.v1.AgentTaskService/SubmitTask", nil)
+	request.Header.Set(identity.BridgeTokenHeader, "token-1")
+	response := httptest.NewRecorder()
+	coreHandler.ServeHTTP(response, request)
+	if inspected != "" {
+		t.Fatalf("bridge token leaked to a Core route: %q", inspected)
+	}
+}
+
+func TestPrivateAppAgentServiceIsNotForwarded(t *testing.T) {
+	t.Parallel()
+	var coreCalled, runtimeCalled atomic.Bool
+	core := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { coreCalled.Store(true) }))
+	defer core.Close()
+	runtime := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { runtimeCalled.Store(true) }))
+	defer runtime.Close()
+	handler := newTestHandler(t, config.Config{
+		Services: config.URLs{Core: core.URL, Runtime: runtime.URL},
+		Auth:     config.Auth{DevBypass: true, OwnerID: "owner-1", DeviceID: "device-1"},
+	})
+	for _, path := range []string{
+		"/workos.agent.v1.AppAgentService/RunAgentTask",
+		"/workos.agent.v1.AppAgentService/WatchAgentTaskEvents",
+	} {
+		response := httptest.NewRecorder()
+		handler.ServeHTTP(response, httptest.NewRequest(http.MethodPost, path, nil))
+		if response.Code != http.StatusNotFound {
+			t.Errorf("private AppAgent path %s returned %d", path, response.Code)
+		}
+	}
+	if coreCalled.Load() || runtimeCalled.Load() {
+		t.Fatal("gateway forwarded the private Core AppAgent service")
+	}
+}

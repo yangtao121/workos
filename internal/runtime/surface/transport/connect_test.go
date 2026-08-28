@@ -94,9 +94,41 @@ func (r *handlerRepository) Create(_ context.Context, command ports.CreateSessio
 		}
 		return r.sessions[stored.SessionID], nil
 	}
-	r.sessions[command.Session.ID] = command.Session
-	r.requests[key] = ports.StoredSessionRequest{RequestDigest: command.RequestDigest, SessionID: command.Session.ID}
-	return command.Session, nil
+	session := command.Session
+	session.BridgeTokenHash = command.BridgeTokenHash
+	r.sessions[session.ID] = session
+	r.requests[key] = ports.StoredSessionRequest{RequestDigest: command.RequestDigest, SessionID: session.ID}
+	return session, nil
+}
+
+func (r *handlerRepository) RotateBridgeToken(_ context.Context, command ports.RotateBridgeTokenCommand) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	session, ok := r.sessions[command.SessionID]
+	if !ok || session.OwnerUserID != command.OwnerUserID || session.DeviceID != command.DeviceID {
+		return domain.ErrNotFound
+	}
+	if session.ClosedAt != nil || !session.ExpiresAt.After(command.Now) {
+		return domain.ErrNotFound
+	}
+	session.BridgeTokenHash = command.TokenHash
+	r.sessions[command.SessionID] = session
+	return nil
+}
+
+func (r *handlerRepository) GetActiveSessionByBridgeToken(_ context.Context, ownerUserID, tokenHash string, now time.Time) (domain.SurfaceSession, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for _, session := range r.sessions {
+		if session.OwnerUserID != ownerUserID || session.BridgeTokenHash != tokenHash {
+			continue
+		}
+		if session.ClosedAt != nil || !session.ExpiresAt.After(now) {
+			continue
+		}
+		return session, nil
+	}
+	return domain.SurfaceSession{}, domain.ErrNotFound
 }
 
 func (r *handlerRepository) Close(_ context.Context, ownerUserID, deviceID, sessionID string, now time.Time) (domain.SurfaceSession, error) {

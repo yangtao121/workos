@@ -165,10 +165,14 @@ func (x *ResolveWebBundleRequest) GetAppInstanceId() string {
 }
 
 type ResolveWebBundleResponse struct {
-	state         protoimpl.MessageState     `protogen:"open.v1"`
-	Launch        *WebBundleLaunchDescriptor `protobuf:"bytes,1,opt,name=launch,proto3" json:"launch,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state  protoimpl.MessageState     `protogen:"open.v1"`
+	Launch *WebBundleLaunchDescriptor `protobuf:"bytes,1,opt,name=launch,proto3" json:"launch,omitempty"`
+	// The active installation's immutable grant snapshot, re-read from
+	// authoritative Core facts on every resolution so the runtime can compute
+	// effective bridge capabilities without trusting stale state.
+	GrantedPermissions []string `protobuf:"bytes,2,rep,name=granted_permissions,json=grantedPermissions,proto3" json:"granted_permissions,omitempty"`
+	unknownFields      protoimpl.UnknownFields
+	sizeCache          protoimpl.SizeCache
 }
 
 func (x *ResolveWebBundleResponse) Reset() {
@@ -204,6 +208,13 @@ func (*ResolveWebBundleResponse) Descriptor() ([]byte, []int) {
 func (x *ResolveWebBundleResponse) GetLaunch() *WebBundleLaunchDescriptor {
 	if x != nil {
 		return x.Launch
+	}
+	return nil
+}
+
+func (x *ResolveWebBundleResponse) GetGrantedPermissions() []string {
+	if x != nil {
+		return x.GrantedPermissions
 	}
 	return nil
 }
@@ -348,9 +359,10 @@ const file_workos_surface_v1_surface_resolver_proto_rawDesc = "" +
 	"\x17ResolveWebBundleRequest\x12\x1d\n" +
 	"\n" +
 	"project_id\x18\x01 \x01(\tR\tprojectId\x12&\n" +
-	"\x0fapp_instance_id\x18\x02 \x01(\tR\rappInstanceId\"`\n" +
+	"\x0fapp_instance_id\x18\x02 \x01(\tR\rappInstanceId\"\x91\x01\n" +
 	"\x18ResolveWebBundleResponse\x12D\n" +
-	"\x06launch\x18\x01 \x01(\v2,.workos.surface.v1.WebBundleLaunchDescriptorR\x06launch\"\x81\x01\n" +
+	"\x06launch\x18\x01 \x01(\v2,.workos.surface.v1.WebBundleLaunchDescriptorR\x06launch\x12/\n" +
+	"\x13granted_permissions\x18\x02 \x03(\tR\x12grantedPermissions\"\x81\x01\n" +
 	"\x19ReadWebBundleAssetRequest\x12\x1d\n" +
 	"\n" +
 	"project_id\x18\x01 \x01(\tR\tprojectId\x12&\n" +

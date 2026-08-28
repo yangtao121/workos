@@ -8,6 +8,8 @@ import (
 	"errors"
 	"time"
 
+	agentv1 "github.com/yangtao121/workos/gen/go/workos/agent/v1"
+
 	"github.com/yangtao121/workos/internal/runtime/surface/domain"
 )
 
@@ -31,13 +33,16 @@ var (
 )
 
 // LaunchDescriptor mirrors the Core-resolved immutable launch fact.
+// GrantedPermissions is the installation grant snapshot re-read from Core on
+// every resolution; it feeds effective bridge capability computation only.
 type LaunchDescriptor struct {
-	AppID          string
-	Version        string
-	ManifestDigest string
-	ArtifactID     string
-	ArtifactDigest string
-	Entrypoint     string
+	AppID              string
+	Version            string
+	ManifestDigest     string
+	ArtifactID         string
+	ArtifactDigest     string
+	Entrypoint         string
+	GrantedPermissions []string
 }
 
 // ResolveQuery identifies one installed instance for launch resolution.
@@ -70,18 +75,31 @@ type LaunchResolver interface {
 }
 
 // CreateSessionCommand is one fully validated create command. The
-// application has already resolved the launch descriptor; the repository
-// persists the session and the idempotency mapping in one transaction.
+// application has already resolved the launch descriptor, computed the
+// effective bridge capabilities, and minted the initial bridge token; the
+// repository persists the session (with its token digest) and the idempotency
+// mapping in one transaction.
 type CreateSessionCommand struct {
-	Session        domain.SurfaceSession
-	IdempotencyKey string
-	RequestDigest  string
+	Session         domain.SurfaceSession
+	BridgeTokenHash string
+	IdempotencyKey  string
+	RequestDigest   string
 }
 
 // StoredSessionRequest is the persisted result of one consumed create key.
 type StoredSessionRequest struct {
 	RequestDigest string
 	SessionID     string
+}
+
+// RotateBridgeTokenCommand stores the digest of one freshly minted bridge
+// token, invalidating the previous credential atomically.
+type RotateBridgeTokenCommand struct {
+	OwnerUserID string
+	DeviceID    string
+	SessionID   string
+	TokenHash   string
+	Now         time.Time
 }
 
 // SessionRepository owns the surface session facts. Same-key races are
@@ -102,4 +120,62 @@ type SessionRepository interface {
 	// Close tombstones the session on first close; a repeated same
 	// owner/device close is a successful no-op; anything else is NotFound.
 	Close(ctx context.Context, ownerUserID, deviceID, sessionID string, now time.Time) (domain.SurfaceSession, error)
+	// RotateBridgeToken stores the digest of a freshly minted bridge token on
+	// the open, unexpired, owner/device-bound session; anything else is
+	// NotFound and nothing changes.
+	RotateBridgeToken(ctx context.Context, command RotateBridgeTokenCommand) error
+	// GetActiveSessionByBridgeToken resolves the open, unexpired session
+	// currently carrying the token digest, owner-scoped.
+	GetActiveSessionByBridgeToken(ctx context.Context, ownerUserID, tokenHash string, now time.Time) (domain.SurfaceSession, error)
+}
+
+// AppTaskSubmission is the canonical result of one bridge task creation,
+// projected from the Core App Agent response.
+type AppTaskSubmission struct {
+	TaskID            string
+	State             string
+	LastEventSequence int64
+}
+
+// AppAgentRunQuery identifies one bridge task creation. Every field is
+// derived server-side from the validated token and session.
+type AppAgentRunQuery struct {
+	ProjectID     string
+	AppInstanceID string
+	ClientKey     string
+	Role          string
+	Goal          string
+}
+
+// AppAgentWatchQuery identifies one bridge event watch resume.
+type AppAgentWatchQuery struct {
+	ProjectID     string
+	AppInstanceID string
+	TaskID        string
+	AfterSequence int64
+}
+
+// AppAgent sentinels classify Core App Agent verdicts for the bridge path.
+var (
+	// ErrAppAgentUnavailable marks a temporarily unreachable Core service.
+	ErrAppAgentUnavailable = errors.New("core app agent service is unavailable")
+	// ErrAppAgentDenied marks a sanitized Core denial: the installation,
+	// grant, or provenance re-validation failed server-side after the
+	// runtime checks passed. It carries no Core internals.
+	ErrAppAgentDenied = errors.New("core app agent denied the request")
+	// ErrAppAgentConflict marks the Core idempotency verdict: the same app
+	// client key was already consumed by a different canonical request.
+	ErrAppAgentConflict = errors.New("core app agent reported an idempotency conflict")
+)
+
+// AppAgentClient is the private Core App Agent transport port. Implementations
+// forward the trusted owner/device identity from the context and map transport
+// failures to the sentinels above. Event callbacks receive the canonical
+// generated event type — the runtime never defines a second DTO.
+type AppAgentClient interface {
+	RunAgentTask(ctx context.Context, query AppAgentRunQuery) (AppTaskSubmission, error)
+	// WatchAgentTaskEvents streams persisted events from Core until the task
+	// reaches its terminal state or the context is canceled. Canceling only
+	// ends the stream; the durable Agent task itself continues.
+	WatchAgentTaskEvents(ctx context.Context, query AppAgentWatchQuery, onEvent func(*agentv1.AgentEvent) error) error
 }

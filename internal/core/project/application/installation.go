@@ -70,6 +70,11 @@ type InstallInput struct {
 	AppID            string
 	Version          string
 	ExpectedRevision int64
+	// GrantedPermissions is the client-submitted grant snapshot in client
+	// order; the install path canonicalizes it (sort/dedupe/grammar) before
+	// it can become a durable fact and checks it against the pinned
+	// version's requested permissions.
+	GrantedPermissions []string
 }
 
 // UninstallInput is one validated-boundary uninstall command request.
@@ -85,14 +90,21 @@ type UninstallInput struct {
 // ruling happens before any catalog resolution so an empty requested version
 // can never drift between the first attempt and its replay, and the
 // repository re-arbitrates the key inside the transaction for concurrent
-// same-key commands.
+// same-key commands. The grant snapshot is canonicalized up front (its
+// sorted form is part of the request digest) and checked against the pinned
+// version's requested permissions after catalog resolution, so a grant can
+// never exceed what the exact pinned manifest version asked for.
 func (s *InstallationService) Install(ctx context.Context, input InstallInput) (ports.InstallationResult, error) {
 	if input.OwnerUserID == "" || !domain.ValidInstallationIdempotencyKey(input.IdempotencyKey) ||
 		!domain.ValidInstallationUUID(input.ProjectID) || !domain.ValidInstallationAppID(input.AppID) ||
 		(input.Version != "" && !domain.ValidInstallationVersion(input.Version)) || input.ExpectedRevision <= 0 {
 		return ports.InstallationResult{}, domain.ErrInvalid
 	}
-	digest := domain.InstallationRequestDigest("install", input.ProjectID, input.AppID, input.Version, "", input.ExpectedRevision)
+	grant, err := domain.CanonicalGrantShape(input.GrantedPermissions)
+	if err != nil {
+		return ports.InstallationResult{}, err
+	}
+	digest := domain.InstallationRequestDigestWithGrants("install", input.ProjectID, input.AppID, input.Version, "", input.ExpectedRevision, grant)
 	if result, found, err := s.replayIfConsumed(ctx, input.OwnerUserID, input.IdempotencyKey, digest); found || err != nil {
 		return result, err
 	}
@@ -107,10 +119,15 @@ func (s *InstallationService) Install(ctx context.Context, input InstallInput) (
 	if !domain.InstallableScope(pinned.Scope) {
 		return ports.InstallationResult{}, errAppScopeViolated
 	}
+	grant, err = domain.CanonicalInstallationGrant(grant, pinned.Permissions)
+	if err != nil {
+		return ports.InstallationResult{}, err
+	}
 	return s.repository.Install(ctx, ports.InstallCommand{
 		OwnerUserID: input.OwnerUserID, IdempotencyKey: input.IdempotencyKey,
 		ProjectID: input.ProjectID, AppID: input.AppID, Pinned: pinned,
-		ExpectedRevision: input.ExpectedRevision, RequestDigest: digest,
+		GrantedPermissions: grant,
+		ExpectedRevision:   input.ExpectedRevision, RequestDigest: digest,
 		NewInstallationID: s.ids.New(), Now: s.now(),
 	})
 }

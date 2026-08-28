@@ -144,6 +144,18 @@ func run(logger *slog.Logger) error {
 	resolverPath, resolverHandler := orchestrationtransport.NewSurfaceResolverConnectHandler(launchResolver)
 	mux.Handle(resolverPath, identity.Middleware(resolverHandler))
 
+	// The private App Agent service composes installation authority with the
+	// Task Router: every bridge call re-validates the active installation and
+	// its grant snapshot before any task is created or watched. Only
+	// runtime-host reaches it on the private listener; it never enters the
+	// gateway allowlist.
+	appAgentService, err := orchestration.NewAppAgentService(installationService, taskRouter)
+	if err != nil {
+		return err
+	}
+	appAgentPath, appAgentHandler := orchestrationtransport.NewAppAgentConnectHandler(appAgentService)
+	mux.Handle(appAgentPath, identity.Middleware(appAgentHandler))
+
 	artifactPath, artifactHandler := artifacttransport.NewConnectHandler(artifactService)
 	mux.Handle(artifactPath, identity.Middleware(artifactHandler))
 	systemPath, systemHandler := commonv1connect.NewSystemServiceHandler(systemhandler.New("workos-core", commonv1.HealthState_HEALTH_STATE_HEALTHY,

@@ -14,14 +14,18 @@ import (
 
 // LaunchDescriptor is the neutral immutable launch fact the private resolver
 // hands to runtime-host: the pinned registry identity plus the exact bundle
-// artifact and its entrypoint.
+// artifact and its entrypoint. GrantedPermissions rides along as the
+// installation's separate immutable grant snapshot re-read on every
+// resolution — it is authorization input for the runtime's effective bridge
+// capability computation, not part of the launch identity.
 type LaunchDescriptor struct {
-	AppID          string
-	Version        string
-	ManifestDigest string
-	ArtifactID     string
-	ArtifactDigest string
-	Entrypoint     string
+	AppID              string
+	Version            string
+	ManifestDigest     string
+	ArtifactID         string
+	ArtifactDigest     string
+	Entrypoint         string
+	GrantedPermissions []string
 }
 
 // ErrLaunchUnsupported marks an installed app whose pinned version has no
@@ -102,7 +106,8 @@ func (r *SurfaceLaunchResolver) ResolveWebBundle(ctx context.Context, ownerUserI
 		AppID: installation.AppID, Version: installation.Version,
 		ManifestDigest: resolution.ManifestDigest,
 		ArtifactID:     resolution.Ref.ArtifactID, ArtifactDigest: resolution.Ref.ArtifactDigest,
-		Entrypoint: bundle.Entrypoint,
+		Entrypoint:         bundle.Entrypoint,
+		GrantedPermissions: installation.GrantedPermissions,
 	}, nil
 }
 

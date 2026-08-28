@@ -26,14 +26,14 @@ import { AppLibrary } from "./AppLibrary.js";
 
 afterEach(cleanup);
 
-function app(id: string, version: string): WorkOSApp {
+function app(id: string, version: string, permissions: string[] = []): WorkOSApp {
   return {
     $typeName: "workos.app.v1.WorkOSApp",
     id,
     name: id.replace(/-/g, " "),
     version,
     scope: AppScope.USER,
-    permissions: [],
+    permissions,
     manifestDigest: `sha256:${id.padEnd(64, "0").slice(0, 64)}`,
   };
 }
@@ -48,6 +48,7 @@ function installation(id: string, appId: string, version: string): AppInstallati
     manifestDigest: `sha256:${appId.padEnd(64, "0").slice(0, 64)}`,
     installedAt: { $typeName: "google.protobuf.Timestamp", seconds: 1787000000n, nanos: 0 },
     uninstalledAt: undefined,
+    grantedPermissions: [],
   };
 }
 
@@ -280,13 +281,19 @@ describe("App Library", () => {
       />,
     );
     await userEvent.click(await screen.findByRole("button", { name: "Install" }));
+    // The consent dialog appears; the fixture app requests nothing, so the
+    // only path forward is an explicit empty grant under the exact version.
+    expect(await screen.findByRole("dialog")).toBeTruthy();
+    expect(screen.getByText(/Requested permissions for registry version 1\.0\.0/)).toBeTruthy();
+    await userEvent.click(screen.getByRole("button", { name: "Install without permissions" }));
     await waitFor(() => {
       expect(installApp).toHaveBeenCalledWith({
         idempotencyKey: expect.any(String) as string,
         projectId: "project-1",
         appId: "board-app",
-        version: "",
+        version: "1.0.0",
         expectedProjectRevision: 2n,
+        grantedPermissions: [],
       });
     });
     await waitFor(() => {
@@ -296,6 +303,50 @@ describe("App Library", () => {
     });
     await waitFor(() => {
       expect(screen.getByText(/Installed · pinned 1\.0\.0/)).toBeTruthy();
+    });
+  });
+
+  it("grants exactly the explicitly selected subset with the explicit version", async () => {
+    const installApp = vi.fn(() =>
+      Promise.resolve({
+        $typeName: "workos.app.v1.InstallAppResponse",
+        installation: installation("installation-9", "board-app", "1.0.0"),
+        projectRevision: 3n,
+      } satisfies InstallAppResponse),
+    );
+    const clients = clientsFixture({
+      apps: [app("board-app", "1.0.0", ["agent.task.run", "agent.event.watch"])],
+      installApp,
+    });
+    render(
+      <AppLibrary
+        project={project("project-1", 2n)}
+        workosClients={clients}
+        onProjectRefreshed={() => undefined}
+        onSurfaceOpened={() => undefined}
+        onInstallationRemoved={() => undefined}
+      />,
+    );
+    await userEvent.click(await screen.findByRole("button", { name: "Install" }));
+    const dialog = await screen.findByRole("dialog");
+    expect(dialog).toBeTruthy();
+    // Every requested permission checkbox defaults to unchecked.
+    for (const capability of ["agent.task.run", "agent.event.watch"]) {
+      const checkbox = screen.getByRole("checkbox", { name: capability });
+      expect((checkbox as HTMLInputElement).checked).toBe(false);
+    }
+    await userEvent.click(screen.getByRole("checkbox", { name: "agent.event.watch" }));
+    await userEvent.click(screen.getByRole("checkbox", { name: "agent.task.run" }));
+    await userEvent.click(screen.getByRole("button", { name: "Install with 2 permissions" }));
+    await waitFor(() => {
+      expect(installApp).toHaveBeenCalledWith({
+        idempotencyKey: expect.any(String) as string,
+        projectId: "project-1",
+        appId: "board-app",
+        version: "1.0.0",
+        expectedProjectRevision: 2n,
+        grantedPermissions: ["agent.event.watch", "agent.task.run"],
+      });
     });
   });
 
@@ -371,6 +422,9 @@ describe("App Library", () => {
       />,
     );
     await userEvent.click(await screen.findByRole("button", { name: "Install" }));
+    await userEvent.click(
+      await screen.findByRole("button", { name: "Install without permissions" }),
+    );
     await waitFor(() => {
       expect(
         screen.getByText("Project settings changed elsewhere. The latest revision was loaded."),
@@ -403,6 +457,9 @@ describe("App Library", () => {
       />,
     );
     await userEvent.click(await screen.findByRole("button", { name: "Install" }));
+    await userEvent.click(
+      await screen.findByRole("button", { name: "Install without permissions" }),
+    );
     await waitFor(() => {
       expect(
         screen.getByText(

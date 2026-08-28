@@ -53,6 +53,7 @@ func (r *Resolver) ResolveWebBundle(ctx context.Context, query ports.ResolveQuer
 		AppID: descriptor.GetAppId(), Version: descriptor.GetVersion(),
 		ManifestDigest: descriptor.GetManifestDigest(), ArtifactID: descriptor.GetArtifactId(),
 		ArtifactDigest: descriptor.GetArtifactDigest(), Entrypoint: descriptor.GetEntrypoint(),
+		GrantedPermissions: response.Msg.GetGrantedPermissions(),
 	}, nil
 }
 

@@ -12,8 +12,11 @@ import (
 )
 
 type fakeAgents struct {
-	existing  *agentdomain.Task
-	submitted []agentapp.SubmitInput
+	existing               *agentdomain.Task
+	submitted              []agentapp.SubmitInput
+	appSubmitted           []agentapp.AppSubmitInput
+	appReplayTask          *agentdomain.Task
+	appReplayDigestDiffers bool
 }
 
 func (f *fakeAgents) GetByIdempotency(context.Context, string, string) (agentdomain.Task, error) {
@@ -26,6 +29,29 @@ func (f *fakeAgents) GetByIdempotency(context.Context, string, string) (agentdom
 func (f *fakeAgents) Submit(_ context.Context, input agentapp.SubmitInput) (agentdomain.Task, error) {
 	f.submitted = append(f.submitted, input)
 	return agentdomain.Task{ID: "new-task", ProviderID: input.ProviderID}, nil
+}
+
+func (f *fakeAgents) SubmitForApp(_ context.Context, input agentapp.AppSubmitInput) (agentdomain.Task, error) {
+	f.appSubmitted = append(f.appSubmitted, input)
+	return agentdomain.Task{ID: "new-app-task", ProviderID: input.ProviderID}, nil
+}
+
+func (f *fakeAgents) GetAppTaskByIdempotency(context.Context, string, string, string) (agentdomain.Task, string, bool, error) {
+	if f.appReplayDigestDiffers {
+		return agentdomain.Task{}, "sha256:different", true, nil
+	}
+	if f.appReplayTask != nil {
+		return *f.appReplayTask, agentdomain.AppTaskRequestDigest("role", "goal"), true, nil
+	}
+	return agentdomain.Task{}, "", false, nil
+}
+
+func (f *fakeAgents) GetAppTask(context.Context, string, string, string) (agentdomain.Task, string, error) {
+	return agentdomain.Task{}, "", agentdomain.ErrNotFound
+}
+
+func (f *fakeAgents) AppTaskEvents(context.Context, string, string, string, int64, int) ([]agentdomain.Event, error) {
+	return nil, agentdomain.ErrNotFound
 }
 
 type fakeProjects struct {
@@ -131,5 +157,74 @@ func TestTaskRouterRejectsInaccessibleOrArchivedProject(t *testing.T) {
 				t.Fatalf("expected project denial, got %v", err)
 			}
 		})
+	}
+}
+
+func TestTaskRouterSubmitForAppReplaysBeforeProjectLookup(t *testing.T) {
+	t.Parallel()
+	first := agentdomain.Task{ID: "first-app-task", ProviderID: "bound"}
+	agents := &fakeAgents{appReplayTask: &first}
+	projects := &fakeProjects{}
+	router, err := NewTaskRouter(agents, projects, "fake")
+	if err != nil {
+		t.Fatal(err)
+	}
+	task, err := router.SubmitForApp(context.Background(), agentapp.AppSubmitInput{
+		OwnerUserID: "owner-1", AppInstanceID: "instance-1", ClientIdempotencyKey: "key-1",
+		RequestDigest: agentdomain.AppTaskRequestDigest("role", "goal"),
+		ProjectID:     "project-1", Role: "role", Goal: "goal",
+	})
+	if err != nil || task.ID != "first-app-task" || task.ProviderID != "bound" {
+		t.Fatalf("replay failed: %v %+v", err, task)
+	}
+	if len(agents.appSubmitted) != 0 {
+		t.Fatal("replay must not resubmit")
+	}
+	if projects.gets != 0 {
+		t.Fatal("replay must not consult the project")
+	}
+}
+
+func TestTaskRouterSubmitForAppConflictsOnDifferentRequest(t *testing.T) {
+	t.Parallel()
+	agents := &fakeAgents{appReplayDigestDiffers: true}
+	router, err := NewTaskRouter(agents, &fakeProjects{}, "fake")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = router.SubmitForApp(context.Background(), agentapp.AppSubmitInput{
+		OwnerUserID: "owner-1", AppInstanceID: "instance-1", ClientIdempotencyKey: "key-1",
+		RequestDigest: agentdomain.AppTaskRequestDigest("role", "goal"),
+		ProjectID:     "project-1", Role: "role", Goal: "goal",
+	})
+	if !errors.Is(err, agentdomain.ErrIdempotencyConflict) {
+		t.Fatalf("different-request verdict: %v", err)
+	}
+}
+
+func TestTaskRouterSubmitForAppSnapshotsProjectProvider(t *testing.T) {
+	t.Parallel()
+	agents := &fakeAgents{}
+	projects := &fakeProjects{project: projectdomain.Project{
+		ID: "project-1", OwnerUserID: "owner-1",
+		HarnessBinding: &projectdomain.HarnessBinding{ProviderID: "deepseek"},
+	}}
+	router, err := NewTaskRouter(agents, projects, "fake")
+	if err != nil {
+		t.Fatal(err)
+	}
+	task, err := router.SubmitForApp(context.Background(), agentapp.AppSubmitInput{
+		OwnerUserID: "owner-1", AppInstanceID: "instance-1", ClientIdempotencyKey: "key-1",
+		RequestDigest: agentdomain.AppTaskRequestDigest("role", "goal"),
+		ProjectID:     "project-1", Role: "role", Goal: "goal",
+	})
+	if err != nil || task.ProviderID != "deepseek" {
+		t.Fatalf("provider snapshot missing: %v %+v", err, task)
+	}
+	if len(agents.appSubmitted) != 1 || agents.appSubmitted[0].ProviderID != "deepseek" {
+		t.Fatalf("submission missing provider snapshot: %+v", agents.appSubmitted)
+	}
+	if agents.appSubmitted[0].RequestDigest != agentdomain.AppTaskRequestDigest("role", "goal") {
+		t.Fatal("digest not forwarded")
 	}
 }

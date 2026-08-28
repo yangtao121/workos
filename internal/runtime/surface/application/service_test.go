@@ -86,9 +86,47 @@ func (r *fakeRepository) Create(_ context.Context, command ports.CreateSessionCo
 		}
 		return r.sessions[stored.SessionID], nil
 	}
-	r.sessions[command.Session.ID] = command.Session
-	r.requests[key] = ports.StoredSessionRequest{RequestDigest: command.RequestDigest, SessionID: command.Session.ID}
-	return command.Session, nil
+	session := command.Session
+	session.BridgeTokenHash = command.BridgeTokenHash
+	r.sessions[session.ID] = session
+	r.requests[key] = ports.StoredSessionRequest{RequestDigest: command.RequestDigest, SessionID: session.ID}
+	return session, nil
+}
+
+func (r *fakeRepository) RotateBridgeToken(_ context.Context, command ports.RotateBridgeTokenCommand) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.failWith != nil {
+		return r.failWith
+	}
+	session, ok := r.sessions[command.SessionID]
+	if !ok || session.OwnerUserID != command.OwnerUserID || session.DeviceID != command.DeviceID {
+		return domain.ErrNotFound
+	}
+	if session.ClosedAt != nil || !session.ExpiresAt.After(command.Now) {
+		return domain.ErrNotFound
+	}
+	session.BridgeTokenHash = command.TokenHash
+	r.sessions[command.SessionID] = session
+	return nil
+}
+
+func (r *fakeRepository) GetActiveSessionByBridgeToken(_ context.Context, ownerUserID, tokenHash string, now time.Time) (domain.SurfaceSession, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.failWith != nil {
+		return domain.SurfaceSession{}, r.failWith
+	}
+	for _, session := range r.sessions {
+		if session.OwnerUserID != ownerUserID || session.BridgeTokenHash != tokenHash {
+			continue
+		}
+		if session.ClosedAt != nil || !session.ExpiresAt.After(now) {
+			continue
+		}
+		return session, nil
+	}
+	return domain.SurfaceSession{}, domain.ErrNotFound
 }
 
 func (r *fakeRepository) Close(_ context.Context, ownerUserID, deviceID, sessionID string, now time.Time) (domain.SurfaceSession, error) {
@@ -176,10 +214,11 @@ func TestCreatePersistsOwnerDeviceBoundSession(t *testing.T) {
 	t.Parallel()
 	repository := newFakeRepository()
 	service := newTestService(repository, &fakeResolver{descriptor: launchDescriptor()})
-	session, err := service.Create(context.Background(), validCommand("key-1"))
+	created, err := service.Create(context.Background(), validCommand("key-1"))
 	if err != nil {
 		t.Fatalf("create failed: %v", err)
 	}
+	session := created.Session
 	if session.OwnerUserID != testOwner || session.DeviceID != testDevice {
 		t.Fatal("session not owner/device bound")
 	}
@@ -207,7 +246,7 @@ func TestCreateIdempotencyAndConflicts(t *testing.T) {
 		t.Fatal(err)
 	}
 	replayed, err := service.Create(ctx, validCommand("key-1"))
-	if err != nil || replayed.ID != first.ID {
+	if err != nil || replayed.Session.ID != first.Session.ID {
 		t.Fatalf("same-key replay failed: %v", err)
 	}
 	mutated := validCommand("key-1")
@@ -295,15 +334,15 @@ func TestSameKeyFromAnotherTrustedDeviceAborts(t *testing.T) {
 	}
 	// The original device still replays the first session snapshot.
 	replayed, err := service.Create(ctx, validCommand("key-1"))
-	if err != nil || replayed.ID != first.ID {
+	if err != nil || replayed.Session.ID != first.Session.ID {
 		t.Fatalf("same-device replay broken by device binding: %v", err)
 	}
 	// Even closed, the replay is exact — and the other device stays aborted.
-	if _, err := service.Close(ctx, testOwner, testDevice, first.ID); err != nil {
+	if _, err := service.Close(ctx, testOwner, testDevice, first.Session.ID); err != nil {
 		t.Fatal(err)
 	}
 	replayed, err = service.Create(ctx, validCommand("key-1"))
-	if err != nil || replayed.ID != first.ID || replayed.ClosedAt == nil {
+	if err != nil || replayed.Session.ID != first.Session.ID || replayed.Session.ClosedAt == nil {
 		t.Fatalf("closed-session replay must return the first snapshot: %v %+v", err, replayed)
 	}
 	if _, err := service.Create(ctx, otherDevice); !errors.Is(err, domain.ErrIdempotencyConflict) {
@@ -315,7 +354,7 @@ func TestSameKeyFromAnotherTrustedDeviceAborts(t *testing.T) {
 		command.DeviceID = otherDevice.DeviceID
 		return command
 	}())
-	if err != nil || second.ID == first.ID {
+	if err != nil || second.Session.ID == first.Session.ID {
 		t.Fatalf("independent key on another device failed: %v", err)
 	}
 }
@@ -325,10 +364,11 @@ func TestCloseIsIdempotentAndScoped(t *testing.T) {
 	repository := newFakeRepository()
 	service := newTestService(repository, &fakeResolver{descriptor: launchDescriptor()})
 	ctx := context.Background()
-	session, err := service.Create(ctx, validCommand("key-1"))
+	created, err := service.Create(ctx, validCommand("key-1"))
 	if err != nil {
 		t.Fatal(err)
 	}
+	session := created.Session
 	closed, err := service.Close(ctx, testOwner, testDevice, session.ID)
 	if err != nil || closed.ClosedAt == nil {
 		t.Fatalf("first close failed: %v", err)
@@ -345,7 +385,7 @@ func TestCloseIsIdempotentAndScoped(t *testing.T) {
 	}
 	// A replay of the create key still returns the first (closed) snapshot.
 	replayed, err := service.Create(ctx, validCommand("key-1"))
-	if err != nil || replayed.ID != session.ID || replayed.ClosedAt == nil {
+	if err != nil || replayed.Session.ID != session.ID || replayed.Session.ClosedAt == nil {
 		t.Fatalf("replay after close must not resurrect: %v %+v", err, replayed)
 	}
 }
@@ -362,10 +402,11 @@ func TestServeAssetFailsClosed(t *testing.T) {
 	}
 	service := newTestService(repository, resolver)
 	ctx := context.Background()
-	session, err := service.Create(ctx, validCommand("key-1"))
+	created, err := service.Create(ctx, validCommand("key-1"))
 	if err != nil {
 		t.Fatal(err)
 	}
+	session := created.Session
 	asset, err := service.ServeAsset(ctx, testOwner, testDevice, session.ID, "")
 	if err != nil || string(asset.Content) != "<p>ok</p>" {
 		t.Fatalf("entrypoint asset failed: %v", err)
@@ -393,10 +434,11 @@ func TestServeAssetFailsClosed(t *testing.T) {
 		t.Fatalf("closed session still serving: %v", err)
 	}
 	// Core unavailability maps to Unavailable for the HTTP 503 path.
-	session2, err := service.Create(ctx, validCommand("key-2"))
+	session2Created, err := service.Create(ctx, validCommand("key-2"))
 	if err != nil {
 		t.Fatal(err)
 	}
+	session2 := session2Created.Session
 	resolver.assetErr = ports.ErrResolverUnavailable
 	if _, err := service.ServeAsset(ctx, testOwner, testDevice, session2.ID, ""); !errors.Is(err, domain.ErrUnavailable) {
 		t.Fatalf("core unavailability verdict: %v", err)
@@ -408,10 +450,11 @@ func TestExpiredSessionsFailClosed(t *testing.T) {
 	repository := newFakeRepository()
 	service := newTestService(repository, &fakeResolver{descriptor: launchDescriptor()})
 	ctx := context.Background()
-	session, err := service.Create(ctx, validCommand("key-1"))
+	created, err := service.Create(ctx, validCommand("key-1"))
 	if err != nil {
 		t.Fatal(err)
 	}
+	session := created.Session
 	repository.mu.Lock()
 	expired := session
 	expired.ExpiresAt = expired.CreatedAt.Add(-time.Second)
@@ -480,12 +523,12 @@ func TestConcurrentSameKeyCreatesOneSessionFact(t *testing.T) {
 			<-start
 			command := validCommand("race-key")
 			command.DeviceID = device
-			session, err := service.Create(context.Background(), command)
+			created, err := service.Create(context.Background(), command)
 			if err != nil {
 				failures <- err
 				return
 			}
-			results <- session
+			results <- created.Session
 		}(device)
 	}
 	close(start)
@@ -516,10 +559,11 @@ func TestConcurrentCloseAndAssetServeLinearizesClose(t *testing.T) {
 		}}
 		service := newTestService(repository, resolver)
 		ctx := context.Background()
-		session, err := service.Create(ctx, validCommand("key-1"))
+		created, err := service.Create(ctx, validCommand("key-1"))
 		if err != nil {
 			t.Fatal(err)
 		}
+		session := created.Session
 		var group sync.WaitGroup
 		start := make(chan struct{})
 		served := make(chan error, 1)

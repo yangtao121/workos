@@ -56,6 +56,7 @@ func (h *SurfaceResolverHandler) ResolveWebBundle(ctx context.Context, req *conn
 			ArtifactId:     descriptor.ArtifactID, ArtifactDigest: descriptor.ArtifactDigest,
 			Entrypoint: descriptor.Entrypoint,
 		},
+		GrantedPermissions: descriptor.GrantedPermissions,
 	}), nil
 }
 

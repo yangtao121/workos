@@ -7,6 +7,7 @@ import (
 	"os"
 	"strings"
 
+	agentv1connect "github.com/yangtao121/workos/gen/go/workos/agent/v1/agentv1connect"
 	commonv1 "github.com/yangtao121/workos/gen/go/workos/common/v1"
 	"github.com/yangtao121/workos/gen/go/workos/common/v1/commonv1connect"
 	surfacev1connect "github.com/yangtao121/workos/gen/go/workos/surface/v1/surfacev1connect"
@@ -62,13 +63,29 @@ func run(logger *slog.Logger) error {
 	if err != nil {
 		return err
 	}
+	privateCoreAppAgent := agentv1connect.NewAppAgentServiceClient(telemetry.HTTPClient(), cfg.Services.Core)
+	appAgentClient, err := surfacecoreclient.NewAppAgent(privateCoreAppAgent)
+	if err != nil {
+		return err
+	}
 	generator := ids.UUIDv7{}
-	surfaceService, err := surfaceapp.New(surfacepostgres.New(pool), resolverClient, generator, cfg.Surface.SessionTTL)
+	sessionStore := surfacepostgres.New(pool)
+	surfaceService, err := surfaceapp.New(sessionStore, resolverClient, generator, cfg.Surface.SessionTTL)
 	if err != nil {
 		return err
 	}
 	surfacePath, surfaceHandler := surfacetransport.NewConnectHandler(surfaceService)
 	mux.Handle(surfacePath, identity.Middleware(surfaceHandler))
+	// The public App Bridge validates the ephemeral bridge token against the
+	// stored session facts, gates each method on the effective capability
+	// list, and forwards to the private Core App Agent service — which
+	// re-validates the active installation and its grant again.
+	bridgeService, err := surfaceapp.NewBridgeService(sessionStore, appAgentClient)
+	if err != nil {
+		return err
+	}
+	bridgePath, bridgeHandler := surfacetransport.NewBridgeConnectHandler(bridgeService)
+	mux.Handle(bridgePath, identity.Middleware(bridgeHandler))
 	// The asset route is served ahead of the ServeMux: mux path cleaning
 	// would redirect traversal-shaped requests instead of letting the asset
 	// policy fail closed on the raw path.
@@ -86,6 +103,7 @@ func run(logger *slog.Logger) error {
 		&commonv1.FeatureCapability{Id: "container-runner", Available: false, Reason: "not implemented"},
 		&commonv1.FeatureCapability{Id: "native-runner", Available: false, Reason: "not implemented"},
 		&commonv1.FeatureCapability{Id: "surface-broker", Available: true, Reason: "web bundle surfaces only"},
+		&commonv1.FeatureCapability{Id: "app-bridge", Available: true, Reason: "agent.task.run and agent.event.watch only"},
 	))
 	mux.Handle(systemPath, systemHandler)
 	return httpserver.Run("runtime-host", cfg.HTTP.Address, root, logger, "", "", cfg.Telemetry.OTLPEndpoint)

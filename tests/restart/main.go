@@ -38,7 +38,7 @@ func main() {
 
 func run() error {
 	if len(os.Args) < 2 {
-		return errors.New("usage: restart seed | restart verify TASK_ID | restart app-seed | restart app-verify APP_ID_A APP_ID_B | restart install-seed | restart install-verify PROJECT_ID INSTALLATION_ID KEY APP_ID SEED_REVISION | restart surface-seed | restart surface-verify SESSION_URL SESSION_ID PROJECT_ID INSTALLATION_ID KEY")
+		return errors.New("usage: restart seed | restart verify TASK_ID | restart app-seed | restart app-verify APP_ID_A APP_ID_B | restart install-seed | restart install-verify PROJECT_ID INSTALLATION_ID KEY APP_ID SEED_REVISION | restart surface-seed | restart surface-verify SESSION_URL SESSION_ID PROJECT_ID INSTALLATION_ID KEY | restart bridge-seed | restart bridge-verify TOKEN TASK_ID KEY")
 	}
 	baseURL := os.Getenv("WORKOS_TEST_URL")
 	if baseURL == "" {
@@ -75,8 +75,15 @@ func run() error {
 		return surfaceSeed(ctx, client, baseURL)
 	case "surface-verify":
 		return surfaceVerify(ctx, client, baseURL)
+	case "bridge-seed":
+		return bridgeSeed(ctx, client, baseURL)
+	case "bridge-verify":
+		if len(os.Args) != 5 {
+			return errors.New("bridge-verify requires TOKEN TASK_ID KEY")
+		}
+		return bridgeVerify(ctx, client, baseURL, os.Args[2], os.Args[3], os.Args[4])
 	default:
-		return errors.New("usage: restart seed | restart verify TASK_ID | restart app-seed | restart app-verify APP_ID_A APP_ID_B | restart install-seed | restart install-verify PROJECT_ID INSTALLATION_ID KEY APP_ID SEED_REVISION | restart surface-seed | restart surface-verify SESSION_URL SESSION_ID PROJECT_ID INSTALLATION_ID KEY")
+		return errors.New("usage: restart seed | restart verify TASK_ID | restart app-seed | restart app-verify APP_ID_A APP_ID_B | restart install-seed | restart install-verify PROJECT_ID INSTALLATION_ID KEY APP_ID SEED_REVISION | restart surface-seed | restart surface-verify SESSION_URL SESSION_ID PROJECT_ID INSTALLATION_ID KEY | restart bridge-seed | restart bridge-verify TOKEN TASK_ID KEY")
 	}
 }
 

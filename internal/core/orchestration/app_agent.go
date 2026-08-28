@@ -1,0 +1,126 @@
+package orchestration
+
+import (
+	"context"
+	"errors"
+
+	agentapp "github.com/yangtao121/workos/internal/core/agent/application"
+	agentdomain "github.com/yangtao121/workos/internal/core/agent/domain"
+	appregistrydomain "github.com/yangtao121/workos/internal/core/appregistry/domain"
+	projectdomain "github.com/yangtao121/workos/internal/core/project/domain"
+)
+
+// The bridge capabilities this slice actually implements. A grant only becomes
+// an effective capability when a working executor exists for it; everything
+// else stays a stored grant fact and never appears in a session's capability
+// list.
+const (
+	AppBridgeCapabilityAgentTaskRun    = "agent.task.run"
+	AppBridgeCapabilityAgentEventWatch = "agent.event.watch"
+)
+
+// ErrAppNotGranted marks a validated session asking for a capability the
+// installation's grant snapshot does not carry. Transport maps it to a
+// sanitized PermissionDenied.
+var ErrAppNotGranted = errors.New("app capability is not granted")
+
+// errAppGrantCorrupt marks a stored grant snapshot containing a capability ID
+// outside the canonical vocabulary. Like every immutable-invariant drift it is
+// a sanitized Internal verdict, never a silent downgrade.
+var errAppGrantCorrupt = errors.New("stored app grant snapshot is inconsistent")
+
+// AppTaskGateway is the narrow Agent-module surface the App Agent service
+// needs. The TaskRouter implements it; the composition root passes the
+// concrete service. Provider selection, project binding snapshots, and the
+// Agent tables stay inside the Agent module.
+type AppTaskGateway interface {
+	SubmitForApp(ctx context.Context, input agentapp.AppSubmitInput) (agentdomain.Task, error)
+	GetAppTaskByIdempotency(ctx context.Context, ownerUserID, appInstanceID, clientKey string) (agentdomain.Task, string, bool, error)
+	GetAppTask(ctx context.Context, ownerUserID, appInstanceID, taskID string) (agentdomain.Task, string, error)
+	AppTaskEvents(ctx context.Context, ownerUserID, appInstanceID, taskID string, after int64, limit int) ([]agentdomain.Event, error)
+}
+
+// AppAgentService is the private Core authority for App bridge calls: every
+// request re-resolves the active installation and its grant snapshot from
+// authoritative facts, enforces the capability per method, and forces the
+// installation's project scope. Runtime-supplied identifiers are derived from
+// the validated surface session; they are re-checked here, never trusted.
+type AppAgentService struct {
+	installations installationSource
+	tasks         AppTaskGateway
+}
+
+func NewAppAgentService(installations installationSource, tasks AppTaskGateway) (*AppAgentService, error) {
+	if installations == nil || tasks == nil {
+		return nil, errors.New("app agent service requires installation and task dependencies")
+	}
+	return &AppAgentService{installations: installations, tasks: tasks}, nil
+}
+
+// RunAgentTask authorizes one project-scoped App task submission and routes it
+// through the Task Router. The canonical request digest covers only the
+// bounded client input (role, goal); replay returns the first provider
+// snapshot without re-resolving the binding.
+func (s *AppAgentService) RunAgentTask(ctx context.Context, ownerUserID, projectID, appInstanceID, clientKey, role, goal string) (agentdomain.Task, error) {
+	if _, err := s.authorize(ctx, ownerUserID, projectID, appInstanceID, AppBridgeCapabilityAgentTaskRun); err != nil {
+		return agentdomain.Task{}, err
+	}
+	return s.tasks.SubmitForApp(ctx, agentapp.AppSubmitInput{
+		OwnerUserID:          ownerUserID,
+		AppInstanceID:        appInstanceID,
+		ClientIdempotencyKey: clientKey,
+		RequestDigest:        agentdomain.AppTaskRequestDigest(role, goal),
+		ProjectID:            projectID,
+		Role:                 role,
+		Goal:                 goal,
+	})
+}
+
+// WatchAgentTaskEvents authorizes one App event watch: same owner, same
+// project, and a task whose durable provenance maps to exactly this app
+// installation. Knowing a task ID string grants nothing. The returned task
+// carries the state and last event sequence the stream loop needs.
+func (s *AppAgentService) WatchAgentTaskEvents(ctx context.Context, ownerUserID, projectID, appInstanceID, taskID string, after int64, limit int) (agentdomain.Task, []agentdomain.Event, error) {
+	if _, err := s.authorize(ctx, ownerUserID, projectID, appInstanceID, AppBridgeCapabilityAgentEventWatch); err != nil {
+		return agentdomain.Task{}, nil, err
+	}
+	task, mappedProject, err := s.tasks.GetAppTask(ctx, ownerUserID, appInstanceID, taskID)
+	if err != nil {
+		return agentdomain.Task{}, nil, err
+	}
+	if mappedProject != projectID {
+		// The provenance snapshot proves the task belongs to a different
+		// project than the caller's installation: a sanitized miss.
+		return agentdomain.Task{}, nil, agentdomain.ErrNotFound
+	}
+	events, err := s.tasks.AppTaskEvents(ctx, ownerUserID, appInstanceID, taskID, after, limit)
+	if err != nil {
+		return agentdomain.Task{}, nil, err
+	}
+	return task, events, nil
+}
+
+// authorize walks the authoritative chain shared by both bridge methods:
+// canonical capability, active same-owner installation under a non-archived
+// project, and the exact grant. Every verdict here is derived from Core
+// facts, never from the runtime's snapshot.
+func (s *AppAgentService) authorize(ctx context.Context, ownerUserID, projectID, appInstanceID, capability string) (projectdomain.Installation, error) {
+	if ownerUserID == "" || !appregistrydomain.KnownPermission(capability) {
+		return projectdomain.Installation{}, projectdomain.ErrInvalid
+	}
+	installation, err := s.installations.ResolveActiveInstallation(ctx, ownerUserID, projectID, appInstanceID)
+	if err != nil {
+		return projectdomain.Installation{}, err
+	}
+	for _, granted := range installation.GrantedPermissions {
+		if !appregistrydomain.KnownPermission(granted) {
+			// Stored grants are canonical vocabulary subsets; anything else
+			// is corruption and must not degrade into "no capability".
+			return projectdomain.Installation{}, errAppGrantCorrupt
+		}
+		if granted == capability {
+			return installation, nil
+		}
+	}
+	return projectdomain.Installation{}, ErrAppNotGranted
+}
