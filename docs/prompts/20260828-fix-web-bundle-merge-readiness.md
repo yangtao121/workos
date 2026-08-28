@@ -100,7 +100,7 @@ acceptance volume has owner-inconsistent mappings: 434 total, 435 owner-consiste
 
 - 在 `tests/integration/project_installation_migration_test.go` 中把该断言改为**单条 SQL、单个 statement
   snapshot** 的一致性判断。优先直接统计 owner 不匹配/缺失的 mapping（`LEFT JOIN ... WHERE
-  matched installation IS NULL`）并断言为 0；也可以在一条语句中同时返回 total/resolvable。
+matched installation IS NULL`）并断言为 0；也可以在一条语句中同时返回 total/resolvable。
 - 保持对 005 owner-bound composite FK 的真实验证强度；不得删除 `t.Parallel()`、不得 skip、不得加
   retry/sleep、不得仅放宽为大小比较。
 - 不得清理共享 volume 来“修复”计数；历史数据必须原样保留。

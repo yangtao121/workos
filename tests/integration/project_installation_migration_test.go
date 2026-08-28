@@ -665,20 +665,22 @@ func TestProjectInstallationMigrationAppliedToAcceptanceVolume(t *testing.T) {
 	// The 005 owner binding must be present on the volume itself.
 	assertInstallation005Shape(t, ctx, conn)
 	// Every persisted mapping resolves to an installation of the same owner:
-	// the count of joins equals the count of mappings, so no mapping points
-	// at a foreign or missing installation.
-	var mappings, resolvable int
-	if err := conn.QueryRow(ctx, `SELECT count(*) FROM workos_core.project_app_installation_requests`).Scan(&mappings); err != nil {
-		t.Fatalf("count mappings on acceptance volume: %v", err)
-	}
+	// the owner-inconsistent count comes from ONE statement, so the shared
+	// acceptance volume is observed through a single statement snapshot.
+	// Counting total and joined rows with two independent SELECTs reads two
+	// separate snapshots under Read Committed, and any parallel test
+	// committing a new mapping between them makes the joined count exceed
+	// the total — an observation race, not a foreign-key violation.
+	var ownerInconsistent int
 	if err := conn.QueryRow(ctx, `
 		SELECT count(*) FROM workos_core.project_app_installation_requests r
-		JOIN workos_core.project_app_installations i
-		  ON r.installation_id = i.id AND r.owner_user_id = i.owner_user_id`).Scan(&resolvable); err != nil {
-		t.Fatalf("count owner-consistent mappings on acceptance volume: %v", err)
+		LEFT JOIN workos_core.project_app_installations i
+		  ON r.installation_id = i.id AND r.owner_user_id = i.owner_user_id
+		WHERE i.id IS NULL`).Scan(&ownerInconsistent); err != nil {
+		t.Fatalf("count owner-inconsistent mappings on acceptance volume: %v", err)
 	}
-	if mappings != resolvable {
-		t.Fatalf("acceptance volume has owner-inconsistent mappings: %d total, %d owner-consistent", mappings, resolvable)
+	if ownerInconsistent != 0 {
+		t.Fatalf("acceptance volume has %d owner-inconsistent mappings", ownerInconsistent)
 	}
 }
 

@@ -46,9 +46,15 @@ func IsTransient(err error) bool {
 	// Server-reported failures with a protocol error code: classify by the
 	// SQLSTATE class only — connection exceptions (08), insufficient
 	// resources (53), operator intervention (57: admin shutdown, crash
-	// recovery, statement timeout), and system I/O errors (58).
+	// recovery, statement timeout), and system I/O errors (58). Malformed or
+	// truncated codes (empty, shorter than the class prefix) are never
+	// transient: an availability verdict must never depend on guessing from
+	// a malformed value.
 	var pgErr *pgconn.PgError
 	if errors.As(err, &pgErr) {
+		if len(pgErr.Code) < 2 {
+			return false
+		}
 		switch pgErr.Code[:2] {
 		case "08", "53", "57", "58":
 			return true

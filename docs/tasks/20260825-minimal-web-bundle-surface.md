@@ -1,10 +1,19 @@
 # Task: Minimal Web Bundle Surface vertical slice
 
-- 状态：done（2026-08-28 审核阻断项全部修复并重跑完整门禁通过；合并仍须经审核者复审后本地
-  `--ff-only`。修复提交：见分支 HEAD 的 `fix:` 提交。）
+- 状态：done（实现与首轮审核修复完成），**等待合并就绪复审**：行为复审基本通过后，2026-08-28 合并
+  就绪复审（`docs/prompts/20260828-fix-web-bundle-merge-readiness.md`）确认分支仍不满足
+  `--ff-only` 合并条件（历史污染 blob、acceptance-volume 计数 flake、dbtransient 健壮性）。三项
+  修复在干净候选分支 `feat/web-bundle-surface-merge-candidate` 完成，合并证据以下方
+  "2026-08-28 合并就绪修复"一节与该候选 HEAD 为准，不再引用污染分支的提交。
 - 历史状态：done 曾于 2026-08-25 宣布（实现提交 `9ad7ffa`），被 2026-08-28 审核撤销并降级为
-  active；2026-08-28 修复后凭新证据恢复 done。原始结论中"无 root-owned/临时文件"与"并发已覆盖"
-  两项陈述被审核证伪（见下方阻断项一/八），已在原交接记录处标注，不再作为事实引用。
+  active；同日修复后凭新证据恢复 done（修复提交 `2f1cad8`，见下方"2026-08-28 审核阻断项/修复记录"
+  两节）。原始结论中"无 root-owned/临时文件"与"并发已覆盖"两项陈述被审核证伪（阻断项一/八），
+  已在原交接处标注。
+- 事实漂移说明（2026-08-28 合并就绪复审开始时核对）：合并就绪 prompt 记载被审核 HEAD 为
+  `2f1cad8`、领先 `main` 3 个提交；实际核对时污染分支 `feat/minimal-web-bundle-surface` 已被
+  审核者的 prompt 提交推进到 `f55a870`、领先 4 个提交（新增仅 `20260828-fix-web-bundle-merge-
+readiness.md` 文档）。物化以分支最终树 `f55a870` 为准，与 prompt 记载的 `2f1cad8` 树只差该
+  prompt 文档；两个提交号均作为审核历史保留。
 - Owner/Agent：web bundle surface builder
 - 进程/模块：workos-core `internal/core/artifact`（新增）、`internal/core/appregistry`（web-bundle launch descriptor）、`internal/core/project`（active installation 解析）、`internal/core/orchestration`（private SurfaceLaunchResolverService）；runtime-host `internal/runtime/surface`（新增 Surface Broker）；workos-gateway（Runtime upstream + `/surfaces/` 路由）；desktop-web（App window + sandboxed iframe）
 - 依赖：App Registry（`002`/`003`）、Project App Installation（`004`/`005`）、`workos.surface.v1`/`workos.artifact.v1` contract、Gateway identity 注入模式
@@ -211,6 +220,62 @@ Close / uninstall / expiry → subsequent asset requests fail closed（404）
 - 最终一致性：006 `628cc5099617c078352612b20bee3f83cefb166a8e5e25ea386da61da317cc27`、007
   `b3fed6b62cbcd6af4d29f73076e83940393e79fd6351f2acaafdf909ec34a986` 与审核记录一致；001–005 对
   `main` 逐字节不变；无 008；`docs/structure.md` 无变化；根目录 `restart` 不再 tracked/存在。
+
+## 2026-08-28 合并就绪修复（候选分支）
+
+合并就绪复审确认的三个问题及修复。全部工作在干净候选分支
+`feat/web-bundle-surface-merge-candidate` 上完成（从本地 `main` `1ca3262` 精确创建，`main` 是其
+直接祖先）；污染分支 `feat/minimal-web-bundle-surface` 保留本地仅作审计。
+
+1. **历史污染 blob**：`feat/minimal-web-bundle-surface` 虽在最终树删除了 `restart`，但对象审计
+   显示 blob `2dd6362e90c544487d391314732aa4063eabee41`（19,126,918 字节 ELF）仍经实现/修复提交
+   在 `main..HEAD` 可达，`--ff-only` 会把它永久带入 `main`。修复：以 `git diff --binary main
+f55a870 | git apply --index` 把被审核分支**最终树**物化为候选分支上的单一提交
+   `7dc3f7a feat: implement minimal web bundle surfaces`（树与 `f55a870` 逐字节一致，`git diff
+f55a870 HEAD` 为空）。候选分支 `main..HEAD` 对象审计：最大 blob 为 31,182 字节测试文件，
+   无 `2dd6362e`、无路径 `restart`、无 `restart` 历史；根目录无 `restart`、`tests/restart/`
+   源码与精确 `/restart` ignore 规则保留。
+2. **acceptance-volume 一致性 flake**：`TestProjectInstallationMigrationAppliedToAcceptanceVolume`
+   曾用两条独立 `SELECT count(*)`（total 与 join）在 Read Committed 下读共享 volume，并行测试在
+   两条语句之间提交新 mapping 时出现 "434 total, 435 owner-consistent" 的观测竞态（非数据损坏，
+   该文件相对 `main` 未改；单独复跑与第二次完整门禁均通过佐证）。修复：改为**单条 SQL 单
+   statement snapshot** 的 `LEFT JOIN … WHERE i.id IS NULL` 计数并断言为 0；保留 `t.Parallel()`、
+   不 skip、不 retry/sleep，005 owner-bound composite FK 验证强度不变，共享 volume 数据原样保留。
+3. **dbtransient 健壮性**：`IsTransient` 原对 `pgErr.Code[:2]` 直接切片，空/1 字符畸形 SQLSTATE
+   （畸形代理/测试 double 可构造）会 panic。修复：切片前检查长度，短 code 安全返回 false，不按
+   message 猜测。新增 `internal/platform/dbtransient/transient_test.go` 钉死分类矩阵：nil、
+   普通/wrapped 错误、wrapped `context.DeadlineExceeded`、真实 `net.Error`（真实拨号超时）与
+   wrapped `*net.OpError`、`*pgconn.PgError` 08/53/57/58 class 为 transient；23/42/00 class、
+   `context.Canceled`、空/1 字符 code、未知 class 为非 transient。`go test -race -count=2
+./internal/platform/dbtransient ./internal/runtime/...` exit 0。
+
+### 合并就绪验收（实际运行，候选分支上执行）
+
+- `make generate` ×2：exit 0/0，第二次后无生成漂移（README 状态区块仅经工具因 status.json 更新）。
+- `git diff --check`：0；`git diff --check main...HEAD`：0。
+- `make check`：exit 0（首轮失败为两个 markdown 未过 prettier——含审核者 prompt 文档本身——
+  以 `prettier --write` 工具修复后通过；失败与修复事实保留于此）。
+- `buf breaking --against '.git#branch=main'`：exit 0。
+- `go test -race -count=2 ./internal/platform/dbtransient ./internal/runtime/...`：exit 0。
+- 真实 PostgreSQL 定向 race（Surface concurrency / create-close race / Artifact rollback /
+  Artifact concurrency / Surface durability，`-race -tags=integration`）：exit 0。
+- `TestProjectInstallationMigrationAppliedToAcceptanceVolume` `-count=10` 定向复跑：exit 0；
+  连续两轮完整 `make test-integration`（各含 restart seed/verify，session `01a0494c…` /
+  `01a0494e…`）均 exit 0、28 测试 PASS，非失败后重试。
+- `make test-deepseek-fixture`：exit 0（仅 Makefile 内置 fixture 假凭据）。
+- `make test-e2e`：exit 0（3 passed / 1 fixture-only skipped）。
+- 计数（持久验收 volume）：第一轮前 artifacts=20/requests=20/files=40/sessions=50/
+  session_requests=50/versions=1443/installations=312/events=2791/outbox=1659；第一轮后
+  22/22/44/56/56/1467/322/2828/1688；第二轮后 24/24/48/62/62/1491/331/2865/1717。Web Bundle
+  切片增量两轮完全一致（artifact +2、session +6、files +4、version +24、event +37、outbox +29）；
+  installations +10/+9 的 1 行差异经逐行核对为既有安装并发测试的锁内 no-op（第二轮
+  `inst-race-two` 萁复为 no-op 未产生新行，调度相关、先于本轮存在），非本轮修复引入。scratch
+  database 每轮后保持且仅保持既有 6 个历史库，零新增。
+- 最终一致性：001–005 对 `main` 逐字节不变；006 `628cc5099617c078352612b20bee3f83cefb166a8e5e25ea386da61da317cc27`、
+  007 `b3fed6b62cbcd6af4d29f73076e83940393e79fd6351f2acaafdf909ec34a986` 保持；无 008；
+  `docs/structure.md` 不变；无 Proto/Schema/migration 变更；候选分支 `main..HEAD` 对象扫描无
+  ELF/大 blob（最大 31,182 字节测试文件）、无路径 `restart`、污染 blob `2dd6362e` 不可达；
+  secret 扫描仅核对是否命中、不回显内容。
 
 ## 交接
 
