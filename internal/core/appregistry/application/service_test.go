@@ -112,6 +112,20 @@ func (r *fakeRepository) GetVersion(_ context.Context, ownerUserID, appID, versi
 	return domain.AppVersionSummary{}, domain.ErrNotFound
 }
 
+func (r *fakeRepository) GetVersionManifest(_ context.Context, ownerUserID, appID, version string) (string, []byte, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.failWith != nil {
+		return "", nil, r.failWith
+	}
+	for _, stored := range r.versions {
+		if stored.OwnerUserID == ownerUserID && stored.AppID == appID && stored.Version == version {
+			return stored.ManifestDigest, stored.CanonicalManifest, nil
+		}
+	}
+	return "", nil, domain.ErrNotFound
+}
+
 func (r *fakeRepository) ListAppIDPage(_ context.Context, ownerUserID, cursor string, limit int) ([]string, string, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -185,7 +199,7 @@ func (g *countingGenerator) New() string {
 func newTestService(projects ProjectDirectory) (*Service, *fakeRepository, *countingGenerator) {
 	repository := &fakeRepository{}
 	generator := &countingGenerator{}
-	service, err := New(repository, fakeValidator{}, projects, generator)
+	service, err := New(repository, fakeValidator{}, projects, nil, generator)
 	if err != nil {
 		panic(err)
 	}
@@ -474,3 +488,121 @@ func TestRepositoryFailureIsNotADomainError(t *testing.T) {
 
 // Compile-time proof that the fake satisfies the port contract.
 var _ ports.Repository = (*fakeRepository)(nil)
+
+// bundleArtifactDirectory is the neutral ArtifactDirectory fake: it denies
+// anything except the exact (owner, artifact, digest) triple it knows.
+type bundleArtifactDirectory struct {
+	artifactID     string
+	artifactDigest string
+	ownerUserID    string
+	failWith       error
+}
+
+func (d *bundleArtifactDirectory) VerifyWebBundle(_ context.Context, ownerUserID, artifactID, digest string) error {
+	if d.failWith != nil {
+		return d.failWith
+	}
+	if ownerUserID == d.ownerUserID && artifactID == d.artifactID && digest == d.artifactDigest {
+		return nil
+	}
+	return ErrArtifactDenied
+}
+
+const webBundleManifestYAML = "apiVersion: workos.app/v1\nid: bundle-app\nname: Bundle App\nversion: 1.0.0\nscope: user\n" +
+	"runtime:\n  type: web-bundle\n  artifactId: 0198d7ea-2110-7c42-b659-c5e4d73bc343\n" +
+	"  artifactDigest: sha256:%s\nsurfaces:\n  - id: main\n    renderer: web-bundle\n" +
+	"permissions: [artifact.read]\nresources: {}\nhealth: {}\nmaintainer: {}\n"
+
+type bundleValidator struct{}
+
+func (bundleValidator) Validate(yamlBytes []byte) (domain.Manifest, []string) {
+	if !strings.Contains(string(yamlBytes), "type: web-bundle") {
+		return domain.Manifest{}, []string{"not a web bundle manifest"}
+	}
+	digest := ""
+	for _, line := range strings.Split(string(yamlBytes), "\n") {
+		if strings.HasPrefix(line, "  artifactDigest: ") {
+			digest = strings.TrimSpace(strings.TrimPrefix(line, "  artifactDigest: "))
+		}
+	}
+	canonical := []byte(`{"id":"bundle-app","runtime":{"artifactDigest":"` + digest + `","artifactId":"0198d7ea-2110-7c42-b659-c5e4d73bc343","type":"web-bundle"},"version":"1.0.0"}`)
+	ref, ok := domain.ParseWebBundleRef(canonical)
+	if !ok {
+		return domain.Manifest{}, []string{"web bundle reference is malformed"}
+	}
+	return domain.Manifest{
+		ID: "bundle-app", Version: "1.0.0", Scope: domain.ScopeUser,
+		RuntimeType: domain.RuntimeTypeWebBundle, WebBundle: &ref,
+		CanonicalJSON: canonical, Digest: domain.ManifestDigest(canonical),
+	}, nil
+}
+
+func newBundleService(repository ports.Repository, directory ArtifactDirectory) *Service {
+	service, err := New(repository, bundleValidator{}, nil, directory, &countingGenerator{})
+	if err != nil {
+		panic(err)
+	}
+	return service
+}
+
+func TestRegisterVerifiesWebBundleReference(t *testing.T) {
+	t.Parallel()
+	owner := "owner-1"
+	digest := strings.Repeat("a", 64)
+	repository := &fakeRepository{}
+	directory := &bundleArtifactDirectory{artifactID: "0198d7ea-2110-7c42-b659-c5e4d73bc343", artifactDigest: "sha256:" + digest, ownerUserID: owner}
+	service := newBundleService(repository, directory)
+	ctx := context.Background()
+
+	if _, err := service.Register(ctx, owner, "bundle-1", []byte(fmt.Sprintf(webBundleManifestYAML, digest))); err != nil {
+		t.Fatalf("verified bundle manifest rejected: %v", err)
+	}
+	// The registry stored the launchable version.
+	if resolution, err := service.ResolveWebBundle(ctx, owner, "bundle-app", "1.0.0"); err != nil || resolution.Ref.ArtifactID != directory.artifactID {
+		t.Fatalf("resolve after register failed: %v %+v", err, resolution)
+	}
+
+	// Foreign artifact: sanitized NotFound, nothing persisted.
+	foreign := &bundleArtifactDirectory{ownerUserID: "owner-2", artifactID: "0198d7ea-2110-7c42-b659-c5e4d73bc343", artifactDigest: "sha256:" + digest}
+	foreignService := newBundleService(&fakeRepository{}, foreign)
+	if _, err := foreignService.Register(ctx, owner, "bundle-2", []byte(fmt.Sprintf(webBundleManifestYAML, digest))); !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("foreign artifact verdict: %v", err)
+	}
+	// Digest mismatch: ErrArtifactDenied maps to NotFound by the port contract.
+	mismatch := &bundleArtifactDirectory{ownerUserID: owner, artifactID: "0198d7ea-2110-7c42-b659-c5e4d73bc343", artifactDigest: "sha256:" + strings.Repeat("b", 64)}
+	mismatchService := newBundleService(&fakeRepository{}, mismatch)
+	if _, err := mismatchService.Register(ctx, owner, "bundle-3", []byte(fmt.Sprintf(webBundleManifestYAML, digest))); !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("mismatched digest verdict: %v", err)
+	}
+	// Infrastructure failure is not a domain verdict.
+	failing := &bundleArtifactDirectory{failWith: errors.New("artifact store unreachable")}
+	failingService := newBundleService(&fakeRepository{}, failing)
+	if _, err := failingService.Register(ctx, owner, "bundle-4", []byte(fmt.Sprintf(webBundleManifestYAML, digest))); err == nil || errors.Is(err, domain.ErrNotFound) || errors.Is(err, domain.ErrInvalid) {
+		t.Fatalf("infrastructure error surfaced as domain verdict: %v", err)
+	}
+}
+
+func TestResolveWebBundleVerdicts(t *testing.T) {
+	t.Parallel()
+	owner := "owner-1"
+	repository := &fakeRepository{}
+	service := newBundleService(repository, &bundleArtifactDirectory{})
+	ctx := context.Background()
+	if _, err := service.ResolveWebBundle(ctx, owner, "unknown-app", "1.0.0"); !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("unknown app verdict: %v", err)
+	}
+	if _, err := service.ResolveWebBundle(ctx, owner, "bundle-app", ""); !errors.Is(err, domain.ErrInvalid) {
+		t.Fatalf("empty version verdict: %v", err)
+	}
+	// A legacy (non-bundle) version resolves as unsupported.
+	legacy, err := New(repository, fakeValidator{}, nil, nil, &countingGenerator{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := legacy.Register(ctx, owner, "legacy-key-1", []byte(fmt.Sprintf(testManifestYAML, "legacy-app", "Legacy", "1.0.0"))); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := legacy.ResolveWebBundle(ctx, owner, "legacy-app", "1.0.0"); !errors.Is(err, ErrUnsupportedRuntime) {
+		t.Fatalf("legacy version verdict: %v", err)
+	}
+}

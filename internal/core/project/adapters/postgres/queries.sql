@@ -92,6 +92,16 @@ SELECT id, owner_user_id, project_id, app_id, version, manifest_digest, installe
 FROM workos_core.project_app_installations
 WHERE owner_user_id = $1 AND id = $2;
 
+-- name: ResolveActiveInstallation :one
+SELECT i.id, i.owner_user_id, i.project_id, i.app_id, i.version, i.manifest_digest, i.installed_at, i.uninstalled_at
+FROM workos_core.project_app_installations i
+JOIN workos_core.projects p
+  ON p.id = i.project_id AND p.owner_user_id = i.owner_user_id AND p.archived_at IS NULL
+WHERE i.owner_user_id = sqlc.arg(owner_user_id)
+  AND i.project_id = sqlc.arg(project_id)
+  AND i.id = sqlc.arg(id)
+  AND i.uninstalled_at IS NULL;
+
 -- name: InsertInstallation :exec
 INSERT INTO workos_core.project_app_installations (
     id, owner_user_id, project_id, app_id, version, manifest_digest, installed_at

@@ -145,6 +145,100 @@ Core: identity → 幂等 key 裁决 → 中立 AppCatalog port 解析 current �
   切换/卸载通过 key remount + generation guard 隔离。Desktop 现以 sessionStorage 记忆 reload
   前的 active Project（不在首页时通过 `GetProject` 取回）。
 
+## Minimal Web Bundle Surface
+
+Web Bundle Surface 把已安装实例变成真实可打开的 App 窗口。链路固定为：
+
+```text
+测试/开发者客户端 → Gateway public ArtifactService.CreateArtifact → Core
+Core Artifact: identity → 有界 WebBundleContent 校验/规范化
+  → canonical bundle digest（与提交顺序无关）→ immutable metadata/files + 持久幂等
+
+RegisterApp（runtime.type=web-bundle + artifactId/artifactDigest）
+  → 中立 ArtifactDirectory 验证 same-owner artifact + exact digest
+  → immutable Registry version（digest 覆盖 descriptor）
+
+Desktop App Library: Open → Gateway public SurfaceService → runtime-host
+runtime-host: identity → 幂等裁决 → 私有 Core SurfaceLaunchResolverService
+Core resolver: active installation → exact pinned version → manifest digest 一致
+  → same-owner artifact + exact digest → 单个有界 asset
+runtime-host: owner/device-bound session（TTL/Close/重启持久）
+Gateway /surfaces/<session>/… → runtime-host → Core 每次 revalidate
+Desktop: sandboxed iframe（仅 allow-scripts）内渲染
+```
+
+- Artifact（owner：workos-core Artifact，`internal/core/artifact`）只实现 `app.web-bundle.v1`
+  subtype：显式 `repeated WebBundleFile` 上传（≤128 files、总 ≤2 MiB、单文件 ≤512 KiB、path
+  ≤240 ASCII bytes，拒绝空/绝对/反斜杠/dot-segment/重复 slash/percent-encoding/重复与 case-fold
+  collision），entrypoint 必须是 bundle 内 `.html`；media type 仅由服务端按受控扩展名表派生，
+  未知/可执行类型拒绝；canonical digest 以长度前缀编码覆盖版本标识、entrypoint 与按 path 排序
+  的 path+bytes，文件顺序无关、任何内容变化敏感。client 只能提交 title，server-owned 字段
+  （id/project/type/media/content_ref/digest/时间/计数）非空即拒。`(owner, idempotency_key)`
+  持久幂等（同 canonical request replay、不同 `Aborted`、失败不消费 key），metadata/files/
+  idempotency 单事务；public Get/List 永不返回文件 bytes。数据由 `006_web_bundle_artifacts.sql`
+  持有，无跨模块 FK。
+- Manifest v1 additive launch descriptor：`runtime.type` 增加 `web-bundle`，`runtime.artifactId`
+  （UUIDv7）/`runtime.artifactDigest`（sha256）由 Schema pattern + Go cross-field policy 双重校验
+  （缺一拒绝、image/command/port 禁止、仅允许单一 web-bundle surface）；canonical digest 覆盖
+  descriptor；legacy manifest 不受影响。Register 经 registry application 的中立 `ArtifactDirectory`
+  port（orchestration 包装 Artifact service）验证 same-owner + exact digest；foreign/unknown/digest
+  mismatch 统一净化 `NotFound`。缺 launch descriptor 的既有 App 安装后 `CreateSurface` 为
+  `FailedPrecondition`，不回退固定页面。
+- Core 私有 resolver（`workos.surface.v1.SurfaceLaunchResolverService`，不进 Gateway allowlist）
+  每次从权威事实解析：`ResolveActiveInstallation`（active + 同 owner + 同 project + project 未
+  归档，一条 SQL join 本模块表）→ exact pinned version 的 canonical manifest（`GetVersionManifest`，
+  内部读取）→ manifest digest 与 installation snapshot 完全一致（漂移=净化 Internal）→
+  `VerifyWebBundle`/`ReadVerifiedWebBundleAsset`（same-owner + exact digest + 单文件）。runtime-host
+  不导入任何 `internal/core/*` package，不查询/FK Core 表。
+- Surface Broker（owner：runtime-host，`internal/runtime/surface`，`007_surface_sessions.sql`）：
+  session 为 owner/device-bound 事实（UUIDv7 id、canonical request digest、Core 返回的 immutable
+  descriptor snapshot、`/surfaces/<id>/` 相对路径、UTC created/expires/closed）。canonical create
+  digest 明确覆盖 Gateway 注入的可信 `device_id`（仅来自 identity context，绝不在 public request
+  body），因此 `(owner, idempotency_key)` mapping 的裁决与 device 无关地权威：同 key 不同可信
+  device 或任何 canonical 字段不同 → 稳定 `Aborted`；同 key/device/相同 request 即使已关闭/过期
+  也精确 replay 第一次 snapshot。`CreateSurface` 幂等裁决先于 Core 解析（失败不消费 key；replay
+  不自动复活）；preferred renderer 只接受 UNSPECIFIED（默认 web-bundle）与 WEB_BUNDLE，其余
+  已声明值与未知 enum 数值在 transport 边界 `InvalidArgument`，不触 resolver、不消费 key；
+  project/installation/session/cursor 标识按 canonical UUIDv7 校验（hyphen/lowercase/version 7/
+  RFC variant），viewport 拒绝 NaN/±Inf 并把 0/-0 归一为唯一 unspecified 语义；TTL 经
+  `WORKOS_SURFACE_SESSION_TTL`（默认 15m，启动校验 1m..24h）；`CloseSurface` owner/device-scoped
+  幂等；expired/closed/foreign asset 统一 404。并发由 `(owner, idempotency_key)` mapping PK 在
+  单事务内裁决（真实 PostgreSQL 双 pool 并发测试覆盖 same-key race、different-request 零
+  orphan、Create/Close/asset barrier race 与事务中途回滚）。
+- 错误分类（本切片各 port）：`internal/platform/dbtransient` 在 adapter 边界按 Go 错误类型与
+  SQLSTATE class（08 连接/53 资源/57 运维介入/58 系统 I/O）区分暂时不可达与不变量破坏，不读
+  constraint 名或错误文本。四个 postgres adapter（Artifact/Project/Registry/Runtime Surface）把
+  transient 失败包装为各自 `ports.ErrStoreUnavailable`：Runtime Create/Close 返回净化
+  `CodeUnavailable`、asset 返回净化 503（不再伪装"资源不存在"）；private Core resolver 的
+  Project/Registry/Artifact store outage 返回净化 `CodeUnavailable`，runtime 转换为 public
+  `Unavailable`/503；digest drift、descriptor corruption、未知错误继续净化 Internal；
+  Gateway→Core/Runtime upstream failure 继续固定 503。
+- 资产 HTTP 边界（runtime-host `/surfaces/`）：仅 GET/HEAD（405 + Allow），响应固定
+  CSP（default-src 'none'、script-src 'self'、connect-src 'none'、frame-ancestors 'self'、
+  worker-src 'none' 及服务端强制的 `sandbox allow-scripts`——绝不含 `allow-same-origin`/forms/
+  popups/top-navigation/downloads/storage，使 HTML/SVG 等一切文档即使在 Desktop iframe 之外
+  顶层打开也保持 opaque origin）、nosniff、no-referrer、no-store；MIME/ETag 来自服务端存储事实；
+  路径仅接受未编码的安全相对 POSIX path（traversal/双重编码/反斜杠/dot-segment/重复 slash 均
+  404）；对外只有 404/405/503 与固定短消息。每次 asset 请求都经 Core revalidate active
+  installation，uninstall/archive 后立即 fail closed。
+- Gateway 增加受控 Runtime upstream（`WORKOS_RUNTIME_URL`，启动 fail-fast 校验 absolute
+  http(s)+非空 host，`gateway.New` proxy 构造器对 target 形态二次校验）：仅
+  `workos.surface.v1.SurfaceService` 与 `/surfaces/` 前缀路由到 runtime-host，两条路径同一
+  device-session gate，Director 删除客户端伪造的 identity headers 后写入 trusted owner/device；
+  `WorkloadService`/private resolver/host RPC 继续 404；upstream 失败净化 503，不落入 Desktop SPA
+  fallback。`SurfaceSession.url` 是同 origin 相对路径（仅 session UUID + asset path），session ID
+  不是授权凭据。
+- Desktop（`apps/desktop-web`）：window state 引入 discriminated `kind`（agent-center /
+  app-surface）；App Library 对 installed app 显示 `Open`（`crypto.randomUUID()` key、当前
+  project/installation、desktop device class、实际 viewport、`WEB_BUNDLE` renderer），成功后在
+  Window Manager 内创建 App window，iframe `sandbox="allow-scripts"`（无 allow-same-origin/
+  forms/popups/storage）+ `referrerPolicy="no-referrer"`，只使用返回的相对 URL；失败映射为
+  净化提示（NotFound/FailedPrecondition/Unavailable），重复点击防抖，Project 切换/卸载/卸载组件
+  使旧响应 inert 并 best-effort `CloseSurface`；整个 Desktop 组件卸载时对仍打开的 app surface
+  session 逐个 best-effort `CloseSurface`（ref 维护 live 集合、后端幂等；页面 crash/断网由 TTL
+  与逐请求 Core revalidation 兜底，unload RPC 不保证必达）；窗口关闭调用 `CloseSurface`；不读取/
+  转发 `bridge_token`（保持空），不注入 App Bridge。App window 与 Agent Center window 并存渲染。
+
 ## 状态与失败
 
 - liveness 表示进程事件循环存活，readiness 表示必需依赖可用。

@@ -10,10 +10,17 @@ import {
 } from "react";
 import { AgentTimeline } from "@workos/agent-center";
 import { createWorkOSClients, type WorkOSClients } from "@workos/agent-sdk";
-import type { AgentEvent, AgentTask, GetHarnessCatalogResponse, Project } from "@workos/protocol";
+import type {
+  AgentEvent,
+  AgentTask,
+  GetHarnessCatalogResponse,
+  Project,
+  SurfaceSession,
+} from "@workos/protocol";
 import { Button } from "@workos/ui-kit";
 import { initialWindowState, windowReducer } from "@workos/window-manager";
 import { AppLibrary } from "./AppLibrary.js";
+import { AppSurface } from "./AppSurface.js";
 import { HarnessSettings, type CatalogState } from "./HarnessSettings.js";
 import { selectionFromProject, taskStatus, type HarnessSelection } from "./model.js";
 
@@ -55,6 +62,12 @@ export function Desktop({ workosClients = clients }: { workosClients?: WorkOSCli
     tokens: {},
   });
   const [windows, dispatch] = useReducer(windowReducer, initialWindowState);
+  // Live app-surface sessions, mirrored from the window state so the unmount
+  // cleanup never reads a stale closure of `windows`. Best-effort closes are
+  // idempotent server-side, so a rare duplicate call is harmless; the ref is
+  // maintained explicitly at open/close points to avoid re-closing sessions
+  // that project switches or window closes already dismissed.
+  const openSurfaceSessionsRef = useRef<{ surfaceSessionId: string }[]>([]);
   const activeProject = projects.find((project) => project.id === activeProjectId);
   activeProjectIdRef.current = activeProjectId;
 
@@ -142,6 +155,7 @@ export function Desktop({ workosClients = clients }: { workosClients?: WorkOSCli
         id: "agent-center",
         appId: "agent-center",
         title: "Agent Center",
+        kind: "agent-center",
         rect: { x: 0, y: 0, width: 620, height: 520 },
         mode: "normal",
       },
@@ -155,6 +169,45 @@ export function Desktop({ workosClients = clients }: { workosClients?: WorkOSCli
       bindingOperationsRef.current.generation += 1;
     };
   }, []);
+
+  // Leaving the Desktop entirely makes its still-open app surfaces inert:
+  // each one gets a best-effort Close (idempotent server-side) instead of
+  // waiting out the session TTL. Page crash or network loss still relies on
+  // the TTL and per-request Core revalidation; no unload RPC is guaranteed.
+  useEffect(() => {
+    return () => {
+      for (const item of openSurfaceSessionsRef.current) {
+        void workosClients.surfaces
+          .closeSurface({ surfaceSessionId: item.surfaceSessionId })
+          .catch(() => undefined);
+      }
+    };
+    // The cleanup runs exactly once per Desktop lifetime; the ref always
+    // carries the live session set, and the clients identity is stable.
+  }, [workosClients]);
+
+  // Switching projects closes the previous project's app windows; their
+  // sessions are closed best-effort and the backend keeps failing closed.
+  useEffect(() => {
+    if (!activeProjectId) return;
+    for (const item of windows.windows) {
+      if (
+        item.kind === "app-surface" &&
+        item.surface &&
+        item.surface.projectId !== activeProjectId
+      ) {
+        openSurfaceSessionsRef.current = openSurfaceSessionsRef.current.filter(
+          (open) => open.surfaceSessionId !== item.surface?.surfaceSessionId,
+        );
+        void workosClients.surfaces
+          .closeSurface({ surfaceSessionId: item.surface.surfaceSessionId })
+          .catch(() => undefined);
+        dispatch({ type: "close", id: item.id });
+      }
+    }
+    // Deliberately driven by project switches only: user-initiated closes go
+    // through closeWindow, and re-running for window changes would loop.
+  }, [activeProjectId]);
 
   async function createProject(event: SyntheticEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -192,6 +245,55 @@ export function Desktop({ workosClients = clients }: { workosClients?: WorkOSCli
     setProjects((current) =>
       current.map((candidate) => (candidate.id === project.id ? project : candidate)),
     );
+  }
+
+  // A newly created surface opens one App window. Windows key on the surface
+  // session, so a repeated open of the same session can never duplicate it.
+  function surfaceOpened(session: SurfaceSession) {
+    openSurfaceSessionsRef.current = openSurfaceSessionsRef.current.concat({
+      surfaceSessionId: session.id,
+    });
+    dispatch({
+      type: "open",
+      window: {
+        id: `surface-${session.id}`,
+        appId: session.appInstanceId,
+        title: "App",
+        kind: "app-surface",
+        surface: {
+          surfaceSessionId: session.id,
+          url: session.url,
+          projectId: session.projectId,
+        },
+        rect: { x: 0, y: 0, width: 900, height: 620 },
+        mode: "normal",
+      },
+    });
+  }
+
+  // Closing a window closes its server session best-effort; Core's active-
+  // installation revalidation remains the final authority either way.
+  function closeWindow(windowId: string) {
+    const target = windows.windows.find((item) => item.id === windowId);
+    if (target?.kind === "app-surface" && target.surface) {
+      openSurfaceSessionsRef.current = openSurfaceSessionsRef.current.filter(
+        (item) => item.surfaceSessionId !== target.surface?.surfaceSessionId,
+      );
+      void workosClients.surfaces
+        .closeSurface({ surfaceSessionId: target.surface.surfaceSessionId })
+        .catch(() => undefined);
+    }
+    dispatch({ type: "close", id: windowId });
+  }
+
+  // Uninstalling an app closes its windows so a removed instance leaves no
+  // orphan surfaces behind.
+  function installationRemoved(installationId: string) {
+    for (const item of windows.windows) {
+      if (item.kind === "app-surface" && item.appId === installationId) {
+        closeWindow(item.id);
+      }
+    }
   }
 
   async function saveHarnessBinding(projectId: string, draft: HarnessSelection) {
@@ -396,6 +498,8 @@ export function Desktop({ workosClients = clients }: { workosClients?: WorkOSCli
               project={activeProject}
               workosClients={workosClients}
               onProjectRefreshed={replaceProject}
+              onSurfaceOpened={surfaceOpened}
+              onInstallationRemoved={installationRemoved}
             />
           ) : null}
           {settingsOpen && activeProject ? (
@@ -421,7 +525,9 @@ export function Desktop({ workosClients = clients }: { workosClients?: WorkOSCli
 
         {windows.windows.map((windowState) => (
           <section
-            className="workos-window"
+            className={
+              windowState.kind === "app-surface" ? "workos-window app-window" : "workos-window"
+            }
             key={windowState.id}
             style={{ zIndex: windowState.zIndex }}
           >
@@ -429,33 +535,44 @@ export function Desktop({ workosClients = clients }: { workosClients?: WorkOSCli
               <div className="traffic-lights">
                 <i />
                 <i />
-                <i />
+                <button
+                  aria-label={`Close ${windowState.title}`}
+                  className="traffic-close"
+                  onClick={() => {
+                    closeWindow(windowState.id);
+                  }}
+                  type="button"
+                />
               </div>
               <strong>{windowState.title}</strong>
               <span>{activeProject?.name ?? "No project"}</span>
             </header>
-            <div className="agent-center-body">
-              <form className="task-composer" onSubmit={(event) => void submitTask(event)}>
-                <textarea
-                  aria-label="Agent goal"
-                  name="goal"
-                  placeholder="Ask the current project agent…"
-                  disabled={!activeProjectId}
-                />
-                <Button disabled={!activeProjectId} type="submit">
-                  Run task
-                </Button>
-              </form>
-              {task ? (
-                <dl className="task-snapshot" aria-label="Task provider snapshot">
-                  <dt>Provider snapshot</dt>
-                  <dd>{task.providerId || "unknown"}</dd>
-                  <dt>Task</dt>
-                  <dd>{task.id}</dd>
-                </dl>
-              ) : null}
-              <AgentTimeline events={events} />
-            </div>
+            {windowState.kind === "app-surface" && windowState.surface ? (
+              <AppSurface surface={windowState.surface} />
+            ) : (
+              <div className="agent-center-body">
+                <form className="task-composer" onSubmit={(event) => void submitTask(event)}>
+                  <textarea
+                    aria-label="Agent goal"
+                    name="goal"
+                    placeholder="Ask the current project agent…"
+                    disabled={!activeProjectId}
+                  />
+                  <Button disabled={!activeProjectId} type="submit">
+                    Run task
+                  </Button>
+                </form>
+                {task ? (
+                  <dl className="task-snapshot" aria-label="Task provider snapshot">
+                    <dt>Provider snapshot</dt>
+                    <dd>{task.providerId || "unknown"}</dd>
+                    <dt>Task</dt>
+                    <dd>{task.id}</dd>
+                  </dl>
+                ) : null}
+                <AgentTimeline events={events} />
+              </div>
+            )}
           </section>
         ))}
 

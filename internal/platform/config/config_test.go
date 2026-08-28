@@ -130,3 +130,105 @@ func TestDeepSeekKeyIsRejectedFromYAML(t *testing.T) {
 		t.Fatal("expected YAML credential field to be rejected")
 	}
 }
+
+func TestSurfaceSessionTTLEnvironment(t *testing.T) {
+	t.Setenv("WORKOS_SURFACE_SESSION_TTL", "45m")
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	if cfg.Surface.SessionTTL != 45*time.Minute {
+		t.Fatalf("ttl not applied: %v", cfg.Surface.SessionTTL)
+	}
+	t.Setenv("WORKOS_SURFACE_SESSION_TTL", "-5m")
+	if _, err := Load(); err == nil {
+		t.Fatal("negative TTL accepted")
+	}
+	t.Setenv("WORKOS_SURFACE_SESSION_TTL", "garbage")
+	if _, err := Load(); err == nil {
+		t.Fatal("malformed TTL accepted")
+	}
+}
+
+func TestValidateRuntimeHost(t *testing.T) {
+	cfg := defaults()
+	if err := cfg.ValidateRuntimeHost(); err != nil {
+		t.Fatalf("defaults rejected: %v", err)
+	}
+	cfg.Services.Core = "ftp://core"
+	if err := cfg.ValidateRuntimeHost(); err == nil {
+		t.Fatal("non-http core URL accepted")
+	}
+	cfg = defaults()
+	cfg.Surface.SessionTTL = 30 * time.Second
+	if err := cfg.ValidateRuntimeHost(); err == nil {
+		t.Fatal("undersized TTL accepted")
+	}
+	cfg.Surface.SessionTTL = 25 * time.Hour
+	if err := cfg.ValidateRuntimeHost(); err == nil {
+		t.Fatal("oversized TTL accepted")
+	}
+}
+
+func TestValidateGatewayRequiresRuntimeURL(t *testing.T) {
+	cfg := defaults()
+	cfg.HTTP.Address = "127.0.0.1:8080"
+	cfg.Services.Core = "http://127.0.0.1:8081"
+	cfg.Services.Runtime = "::not-a-url::"
+	if err := cfg.ValidateGateway(); err == nil {
+		t.Fatal("malformed runtime URL accepted")
+	}
+	cfg.Services.Runtime = "http://127.0.0.1:8083"
+	if err := cfg.ValidateGateway(); err != nil {
+		t.Fatalf("valid runtime URL rejected: %v", err)
+	}
+}
+
+// TestValidateGatewayRejectsUnusableUpstreams pins the startup fail-fast
+// contract: both upstreams must be absolute http(s) URLs with a host, so a
+// bad value can never survive startup and fail lazily on first request.
+func TestValidateGatewayRejectsUnusableUpstreams(t *testing.T) {
+	t.Parallel()
+	invalid := []string{
+		"",
+		"surfaces/local-relative",
+		"127.0.0.1:8083",
+		"ftp://127.0.0.1:8083",
+		"http://",
+		"https://",
+		"//127.0.0.1:8083",
+	}
+	for _, target := range invalid {
+		cfg := defaults()
+		cfg.Services.Runtime = target
+		if err := cfg.ValidateGateway(); err == nil {
+			t.Errorf("invalid runtime URL %q accepted", target)
+		}
+		cfg = defaults()
+		cfg.Services.Core = target
+		if err := cfg.ValidateGateway(); err == nil {
+			t.Errorf("invalid core URL %q accepted", target)
+		}
+	}
+	for _, target := range []string{"http://127.0.0.1:8083", "https://runtime.internal:8443"} {
+		cfg := defaults()
+		cfg.Services.Runtime = target
+		if err := cfg.ValidateGateway(); err != nil {
+			t.Errorf("valid runtime URL %q rejected: %v", target, err)
+		}
+	}
+	if err := defaults().ValidateGateway(); err != nil {
+		t.Fatalf("safe defaults rejected: %v", err)
+	}
+}
+
+func TestRuntimeURLEnvironment(t *testing.T) {
+	t.Setenv("WORKOS_RUNTIME_URL", "http://127.0.0.1:9099")
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	if cfg.Services.Runtime != "http://127.0.0.1:9099" {
+		t.Fatalf("runtime URL not applied: %v", cfg.Services.Runtime)
+	}
+}

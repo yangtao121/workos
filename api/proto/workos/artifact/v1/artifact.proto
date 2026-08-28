@@ -16,11 +16,35 @@ message Artifact {
   string content_ref = 6;
   string digest = 7;
   google.protobuf.Timestamp created_at = 8;
+  int64 total_size_bytes = 9;
+  int32 file_count = 10;
+}
+
+// WebBundleFile is one regular file of a web bundle upload. The path is an
+// untrusted relative POSIX path; the server validates, normalizes, and derives
+// the stored media type. File order in the request never affects the canonical
+// bundle digest.
+message WebBundleFile {
+  string path = 1;
+  bytes content = 2;
+}
+
+// WebBundleContent is the explicit web bundle upload payload. Archives
+// (ZIP/TAR) are deliberately out of scope: the file list keeps the upload
+// surface bounded and auditable.
+message WebBundleContent {
+  string entrypoint = 1;
+  repeated WebBundleFile files = 2;
 }
 
 message CreateArtifactRequest {
   string idempotency_key = 1;
   Artifact artifact = 2;
+  // web_bundle is the only supported artifact payload in this slice. When it
+  // is set, the artifact metadata may carry only the title; server-owned
+  // fields (id, project_id, type, media_type, content_ref, digest,
+  // created_at) must be empty and are rejected otherwise.
+  WebBundleContent web_bundle = 3;
 }
 
 message GetArtifactRequest {

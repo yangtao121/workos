@@ -24,17 +24,19 @@ const (
 )
 
 type Artifact struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
-	ProjectId     string                 `protobuf:"bytes,2,opt,name=project_id,json=projectId,proto3" json:"project_id,omitempty"`
-	Type          string                 `protobuf:"bytes,3,opt,name=type,proto3" json:"type,omitempty"`
-	Title         string                 `protobuf:"bytes,4,opt,name=title,proto3" json:"title,omitempty"`
-	MediaType     string                 `protobuf:"bytes,5,opt,name=media_type,json=mediaType,proto3" json:"media_type,omitempty"`
-	ContentRef    string                 `protobuf:"bytes,6,opt,name=content_ref,json=contentRef,proto3" json:"content_ref,omitempty"`
-	Digest        string                 `protobuf:"bytes,7,opt,name=digest,proto3" json:"digest,omitempty"`
-	CreatedAt     *timestamppb.Timestamp `protobuf:"bytes,8,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state          protoimpl.MessageState `protogen:"open.v1"`
+	Id             string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	ProjectId      string                 `protobuf:"bytes,2,opt,name=project_id,json=projectId,proto3" json:"project_id,omitempty"`
+	Type           string                 `protobuf:"bytes,3,opt,name=type,proto3" json:"type,omitempty"`
+	Title          string                 `protobuf:"bytes,4,opt,name=title,proto3" json:"title,omitempty"`
+	MediaType      string                 `protobuf:"bytes,5,opt,name=media_type,json=mediaType,proto3" json:"media_type,omitempty"`
+	ContentRef     string                 `protobuf:"bytes,6,opt,name=content_ref,json=contentRef,proto3" json:"content_ref,omitempty"`
+	Digest         string                 `protobuf:"bytes,7,opt,name=digest,proto3" json:"digest,omitempty"`
+	CreatedAt      *timestamppb.Timestamp `protobuf:"bytes,8,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	TotalSizeBytes int64                  `protobuf:"varint,9,opt,name=total_size_bytes,json=totalSizeBytes,proto3" json:"total_size_bytes,omitempty"`
+	FileCount      int32                  `protobuf:"varint,10,opt,name=file_count,json=fileCount,proto3" json:"file_count,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
 }
 
 func (x *Artifact) Reset() {
@@ -123,17 +125,147 @@ func (x *Artifact) GetCreatedAt() *timestamppb.Timestamp {
 	return nil
 }
 
+func (x *Artifact) GetTotalSizeBytes() int64 {
+	if x != nil {
+		return x.TotalSizeBytes
+	}
+	return 0
+}
+
+func (x *Artifact) GetFileCount() int32 {
+	if x != nil {
+		return x.FileCount
+	}
+	return 0
+}
+
+// WebBundleFile is one regular file of a web bundle upload. The path is an
+// untrusted relative POSIX path; the server validates, normalizes, and derives
+// the stored media type. File order in the request never affects the canonical
+// bundle digest.
+type WebBundleFile struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Path          string                 `protobuf:"bytes,1,opt,name=path,proto3" json:"path,omitempty"`
+	Content       []byte                 `protobuf:"bytes,2,opt,name=content,proto3" json:"content,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *WebBundleFile) Reset() {
+	*x = WebBundleFile{}
+	mi := &file_workos_artifact_v1_artifact_proto_msgTypes[1]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *WebBundleFile) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*WebBundleFile) ProtoMessage() {}
+
+func (x *WebBundleFile) ProtoReflect() protoreflect.Message {
+	mi := &file_workos_artifact_v1_artifact_proto_msgTypes[1]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use WebBundleFile.ProtoReflect.Descriptor instead.
+func (*WebBundleFile) Descriptor() ([]byte, []int) {
+	return file_workos_artifact_v1_artifact_proto_rawDescGZIP(), []int{1}
+}
+
+func (x *WebBundleFile) GetPath() string {
+	if x != nil {
+		return x.Path
+	}
+	return ""
+}
+
+func (x *WebBundleFile) GetContent() []byte {
+	if x != nil {
+		return x.Content
+	}
+	return nil
+}
+
+// WebBundleContent is the explicit web bundle upload payload. Archives
+// (ZIP/TAR) are deliberately out of scope: the file list keeps the upload
+// surface bounded and auditable.
+type WebBundleContent struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Entrypoint    string                 `protobuf:"bytes,1,opt,name=entrypoint,proto3" json:"entrypoint,omitempty"`
+	Files         []*WebBundleFile       `protobuf:"bytes,2,rep,name=files,proto3" json:"files,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *WebBundleContent) Reset() {
+	*x = WebBundleContent{}
+	mi := &file_workos_artifact_v1_artifact_proto_msgTypes[2]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *WebBundleContent) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*WebBundleContent) ProtoMessage() {}
+
+func (x *WebBundleContent) ProtoReflect() protoreflect.Message {
+	mi := &file_workos_artifact_v1_artifact_proto_msgTypes[2]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use WebBundleContent.ProtoReflect.Descriptor instead.
+func (*WebBundleContent) Descriptor() ([]byte, []int) {
+	return file_workos_artifact_v1_artifact_proto_rawDescGZIP(), []int{2}
+}
+
+func (x *WebBundleContent) GetEntrypoint() string {
+	if x != nil {
+		return x.Entrypoint
+	}
+	return ""
+}
+
+func (x *WebBundleContent) GetFiles() []*WebBundleFile {
+	if x != nil {
+		return x.Files
+	}
+	return nil
+}
+
 type CreateArtifactRequest struct {
 	state          protoimpl.MessageState `protogen:"open.v1"`
 	IdempotencyKey string                 `protobuf:"bytes,1,opt,name=idempotency_key,json=idempotencyKey,proto3" json:"idempotency_key,omitempty"`
 	Artifact       *Artifact              `protobuf:"bytes,2,opt,name=artifact,proto3" json:"artifact,omitempty"`
-	unknownFields  protoimpl.UnknownFields
-	sizeCache      protoimpl.SizeCache
+	// web_bundle is the only supported artifact payload in this slice. When it
+	// is set, the artifact metadata may carry only the title; server-owned
+	// fields (id, project_id, type, media_type, content_ref, digest,
+	// created_at) must be empty and are rejected otherwise.
+	WebBundle     *WebBundleContent `protobuf:"bytes,3,opt,name=web_bundle,json=webBundle,proto3" json:"web_bundle,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *CreateArtifactRequest) Reset() {
 	*x = CreateArtifactRequest{}
-	mi := &file_workos_artifact_v1_artifact_proto_msgTypes[1]
+	mi := &file_workos_artifact_v1_artifact_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -145,7 +277,7 @@ func (x *CreateArtifactRequest) String() string {
 func (*CreateArtifactRequest) ProtoMessage() {}
 
 func (x *CreateArtifactRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_workos_artifact_v1_artifact_proto_msgTypes[1]
+	mi := &file_workos_artifact_v1_artifact_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -158,7 +290,7 @@ func (x *CreateArtifactRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateArtifactRequest.ProtoReflect.Descriptor instead.
 func (*CreateArtifactRequest) Descriptor() ([]byte, []int) {
-	return file_workos_artifact_v1_artifact_proto_rawDescGZIP(), []int{1}
+	return file_workos_artifact_v1_artifact_proto_rawDescGZIP(), []int{3}
 }
 
 func (x *CreateArtifactRequest) GetIdempotencyKey() string {
@@ -175,6 +307,13 @@ func (x *CreateArtifactRequest) GetArtifact() *Artifact {
 	return nil
 }
 
+func (x *CreateArtifactRequest) GetWebBundle() *WebBundleContent {
+	if x != nil {
+		return x.WebBundle
+	}
+	return nil
+}
+
 type GetArtifactRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	ArtifactId    string                 `protobuf:"bytes,1,opt,name=artifact_id,json=artifactId,proto3" json:"artifact_id,omitempty"`
@@ -184,7 +323,7 @@ type GetArtifactRequest struct {
 
 func (x *GetArtifactRequest) Reset() {
 	*x = GetArtifactRequest{}
-	mi := &file_workos_artifact_v1_artifact_proto_msgTypes[2]
+	mi := &file_workos_artifact_v1_artifact_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -196,7 +335,7 @@ func (x *GetArtifactRequest) String() string {
 func (*GetArtifactRequest) ProtoMessage() {}
 
 func (x *GetArtifactRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_workos_artifact_v1_artifact_proto_msgTypes[2]
+	mi := &file_workos_artifact_v1_artifact_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -209,7 +348,7 @@ func (x *GetArtifactRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetArtifactRequest.ProtoReflect.Descriptor instead.
 func (*GetArtifactRequest) Descriptor() ([]byte, []int) {
-	return file_workos_artifact_v1_artifact_proto_rawDescGZIP(), []int{2}
+	return file_workos_artifact_v1_artifact_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *GetArtifactRequest) GetArtifactId() string {
@@ -229,7 +368,7 @@ type ListArtifactsRequest struct {
 
 func (x *ListArtifactsRequest) Reset() {
 	*x = ListArtifactsRequest{}
-	mi := &file_workos_artifact_v1_artifact_proto_msgTypes[3]
+	mi := &file_workos_artifact_v1_artifact_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -241,7 +380,7 @@ func (x *ListArtifactsRequest) String() string {
 func (*ListArtifactsRequest) ProtoMessage() {}
 
 func (x *ListArtifactsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_workos_artifact_v1_artifact_proto_msgTypes[3]
+	mi := &file_workos_artifact_v1_artifact_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -254,7 +393,7 @@ func (x *ListArtifactsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListArtifactsRequest.ProtoReflect.Descriptor instead.
 func (*ListArtifactsRequest) Descriptor() ([]byte, []int) {
-	return file_workos_artifact_v1_artifact_proto_rawDescGZIP(), []int{3}
+	return file_workos_artifact_v1_artifact_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *ListArtifactsRequest) GetProjectId() string {
@@ -281,7 +420,7 @@ type ListArtifactsResponse struct {
 
 func (x *ListArtifactsResponse) Reset() {
 	*x = ListArtifactsResponse{}
-	mi := &file_workos_artifact_v1_artifact_proto_msgTypes[4]
+	mi := &file_workos_artifact_v1_artifact_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -293,7 +432,7 @@ func (x *ListArtifactsResponse) String() string {
 func (*ListArtifactsResponse) ProtoMessage() {}
 
 func (x *ListArtifactsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_workos_artifact_v1_artifact_proto_msgTypes[4]
+	mi := &file_workos_artifact_v1_artifact_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -306,7 +445,7 @@ func (x *ListArtifactsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListArtifactsResponse.ProtoReflect.Descriptor instead.
 func (*ListArtifactsResponse) Descriptor() ([]byte, []int) {
-	return file_workos_artifact_v1_artifact_proto_rawDescGZIP(), []int{4}
+	return file_workos_artifact_v1_artifact_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *ListArtifactsResponse) GetArtifacts() []*Artifact {
@@ -332,7 +471,7 @@ type CreateArtifactResponse struct {
 
 func (x *CreateArtifactResponse) Reset() {
 	*x = CreateArtifactResponse{}
-	mi := &file_workos_artifact_v1_artifact_proto_msgTypes[5]
+	mi := &file_workos_artifact_v1_artifact_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -344,7 +483,7 @@ func (x *CreateArtifactResponse) String() string {
 func (*CreateArtifactResponse) ProtoMessage() {}
 
 func (x *CreateArtifactResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_workos_artifact_v1_artifact_proto_msgTypes[5]
+	mi := &file_workos_artifact_v1_artifact_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -357,7 +496,7 @@ func (x *CreateArtifactResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateArtifactResponse.ProtoReflect.Descriptor instead.
 func (*CreateArtifactResponse) Descriptor() ([]byte, []int) {
-	return file_workos_artifact_v1_artifact_proto_rawDescGZIP(), []int{5}
+	return file_workos_artifact_v1_artifact_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *CreateArtifactResponse) GetArtifact() *Artifact {
@@ -376,7 +515,7 @@ type GetArtifactResponse struct {
 
 func (x *GetArtifactResponse) Reset() {
 	*x = GetArtifactResponse{}
-	mi := &file_workos_artifact_v1_artifact_proto_msgTypes[6]
+	mi := &file_workos_artifact_v1_artifact_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -388,7 +527,7 @@ func (x *GetArtifactResponse) String() string {
 func (*GetArtifactResponse) ProtoMessage() {}
 
 func (x *GetArtifactResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_workos_artifact_v1_artifact_proto_msgTypes[6]
+	mi := &file_workos_artifact_v1_artifact_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -401,7 +540,7 @@ func (x *GetArtifactResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetArtifactResponse.ProtoReflect.Descriptor instead.
 func (*GetArtifactResponse) Descriptor() ([]byte, []int) {
-	return file_workos_artifact_v1_artifact_proto_rawDescGZIP(), []int{6}
+	return file_workos_artifact_v1_artifact_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *GetArtifactResponse) GetArtifact() *Artifact {
@@ -415,7 +554,7 @@ var File_workos_artifact_v1_artifact_proto protoreflect.FileDescriptor
 
 const file_workos_artifact_v1_artifact_proto_rawDesc = "" +
 	"\n" +
-	"!workos/artifact/v1/artifact.proto\x12\x12workos.artifact.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1dworkos/common/v1/common.proto\"\xf6\x01\n" +
+	"!workos/artifact/v1/artifact.proto\x12\x12workos.artifact.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1dworkos/common/v1/common.proto\"\xbf\x02\n" +
 	"\bArtifact\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x1d\n" +
 	"\n" +
@@ -428,10 +567,24 @@ const file_workos_artifact_v1_artifact_proto_rawDesc = "" +
 	"contentRef\x12\x16\n" +
 	"\x06digest\x18\a \x01(\tR\x06digest\x129\n" +
 	"\n" +
-	"created_at\x18\b \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\"z\n" +
+	"created_at\x18\b \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x12(\n" +
+	"\x10total_size_bytes\x18\t \x01(\x03R\x0etotalSizeBytes\x12\x1d\n" +
+	"\n" +
+	"file_count\x18\n" +
+	" \x01(\x05R\tfileCount\"=\n" +
+	"\rWebBundleFile\x12\x12\n" +
+	"\x04path\x18\x01 \x01(\tR\x04path\x12\x18\n" +
+	"\acontent\x18\x02 \x01(\fR\acontent\"k\n" +
+	"\x10WebBundleContent\x12\x1e\n" +
+	"\n" +
+	"entrypoint\x18\x01 \x01(\tR\n" +
+	"entrypoint\x127\n" +
+	"\x05files\x18\x02 \x03(\v2!.workos.artifact.v1.WebBundleFileR\x05files\"\xbf\x01\n" +
 	"\x15CreateArtifactRequest\x12'\n" +
 	"\x0fidempotency_key\x18\x01 \x01(\tR\x0eidempotencyKey\x128\n" +
-	"\bartifact\x18\x02 \x01(\v2\x1c.workos.artifact.v1.ArtifactR\bartifact\"5\n" +
+	"\bartifact\x18\x02 \x01(\v2\x1c.workos.artifact.v1.ArtifactR\bartifact\x12C\n" +
+	"\n" +
+	"web_bundle\x18\x03 \x01(\v2$.workos.artifact.v1.WebBundleContentR\twebBundle\"5\n" +
 	"\x12GetArtifactRequest\x12\x1f\n" +
 	"\vartifact_id\x18\x01 \x01(\tR\n" +
 	"artifactId\"h\n" +
@@ -463,38 +616,42 @@ func file_workos_artifact_v1_artifact_proto_rawDescGZIP() []byte {
 	return file_workos_artifact_v1_artifact_proto_rawDescData
 }
 
-var file_workos_artifact_v1_artifact_proto_msgTypes = make([]protoimpl.MessageInfo, 7)
+var file_workos_artifact_v1_artifact_proto_msgTypes = make([]protoimpl.MessageInfo, 9)
 var file_workos_artifact_v1_artifact_proto_goTypes = []any{
 	(*Artifact)(nil),               // 0: workos.artifact.v1.Artifact
-	(*CreateArtifactRequest)(nil),  // 1: workos.artifact.v1.CreateArtifactRequest
-	(*GetArtifactRequest)(nil),     // 2: workos.artifact.v1.GetArtifactRequest
-	(*ListArtifactsRequest)(nil),   // 3: workos.artifact.v1.ListArtifactsRequest
-	(*ListArtifactsResponse)(nil),  // 4: workos.artifact.v1.ListArtifactsResponse
-	(*CreateArtifactResponse)(nil), // 5: workos.artifact.v1.CreateArtifactResponse
-	(*GetArtifactResponse)(nil),    // 6: workos.artifact.v1.GetArtifactResponse
-	(*timestamppb.Timestamp)(nil),  // 7: google.protobuf.Timestamp
-	(*v1.PageRequest)(nil),         // 8: workos.common.v1.PageRequest
-	(*v1.PageResponse)(nil),        // 9: workos.common.v1.PageResponse
+	(*WebBundleFile)(nil),          // 1: workos.artifact.v1.WebBundleFile
+	(*WebBundleContent)(nil),       // 2: workos.artifact.v1.WebBundleContent
+	(*CreateArtifactRequest)(nil),  // 3: workos.artifact.v1.CreateArtifactRequest
+	(*GetArtifactRequest)(nil),     // 4: workos.artifact.v1.GetArtifactRequest
+	(*ListArtifactsRequest)(nil),   // 5: workos.artifact.v1.ListArtifactsRequest
+	(*ListArtifactsResponse)(nil),  // 6: workos.artifact.v1.ListArtifactsResponse
+	(*CreateArtifactResponse)(nil), // 7: workos.artifact.v1.CreateArtifactResponse
+	(*GetArtifactResponse)(nil),    // 8: workos.artifact.v1.GetArtifactResponse
+	(*timestamppb.Timestamp)(nil),  // 9: google.protobuf.Timestamp
+	(*v1.PageRequest)(nil),         // 10: workos.common.v1.PageRequest
+	(*v1.PageResponse)(nil),        // 11: workos.common.v1.PageResponse
 }
 var file_workos_artifact_v1_artifact_proto_depIdxs = []int32{
-	7,  // 0: workos.artifact.v1.Artifact.created_at:type_name -> google.protobuf.Timestamp
-	0,  // 1: workos.artifact.v1.CreateArtifactRequest.artifact:type_name -> workos.artifact.v1.Artifact
-	8,  // 2: workos.artifact.v1.ListArtifactsRequest.page:type_name -> workos.common.v1.PageRequest
-	0,  // 3: workos.artifact.v1.ListArtifactsResponse.artifacts:type_name -> workos.artifact.v1.Artifact
-	9,  // 4: workos.artifact.v1.ListArtifactsResponse.page:type_name -> workos.common.v1.PageResponse
-	0,  // 5: workos.artifact.v1.CreateArtifactResponse.artifact:type_name -> workos.artifact.v1.Artifact
-	0,  // 6: workos.artifact.v1.GetArtifactResponse.artifact:type_name -> workos.artifact.v1.Artifact
-	1,  // 7: workos.artifact.v1.ArtifactService.CreateArtifact:input_type -> workos.artifact.v1.CreateArtifactRequest
-	2,  // 8: workos.artifact.v1.ArtifactService.GetArtifact:input_type -> workos.artifact.v1.GetArtifactRequest
-	3,  // 9: workos.artifact.v1.ArtifactService.ListArtifacts:input_type -> workos.artifact.v1.ListArtifactsRequest
-	5,  // 10: workos.artifact.v1.ArtifactService.CreateArtifact:output_type -> workos.artifact.v1.CreateArtifactResponse
-	6,  // 11: workos.artifact.v1.ArtifactService.GetArtifact:output_type -> workos.artifact.v1.GetArtifactResponse
-	4,  // 12: workos.artifact.v1.ArtifactService.ListArtifacts:output_type -> workos.artifact.v1.ListArtifactsResponse
-	10, // [10:13] is the sub-list for method output_type
-	7,  // [7:10] is the sub-list for method input_type
-	7,  // [7:7] is the sub-list for extension type_name
-	7,  // [7:7] is the sub-list for extension extendee
-	0,  // [0:7] is the sub-list for field type_name
+	9,  // 0: workos.artifact.v1.Artifact.created_at:type_name -> google.protobuf.Timestamp
+	1,  // 1: workos.artifact.v1.WebBundleContent.files:type_name -> workos.artifact.v1.WebBundleFile
+	0,  // 2: workos.artifact.v1.CreateArtifactRequest.artifact:type_name -> workos.artifact.v1.Artifact
+	2,  // 3: workos.artifact.v1.CreateArtifactRequest.web_bundle:type_name -> workos.artifact.v1.WebBundleContent
+	10, // 4: workos.artifact.v1.ListArtifactsRequest.page:type_name -> workos.common.v1.PageRequest
+	0,  // 5: workos.artifact.v1.ListArtifactsResponse.artifacts:type_name -> workos.artifact.v1.Artifact
+	11, // 6: workos.artifact.v1.ListArtifactsResponse.page:type_name -> workos.common.v1.PageResponse
+	0,  // 7: workos.artifact.v1.CreateArtifactResponse.artifact:type_name -> workos.artifact.v1.Artifact
+	0,  // 8: workos.artifact.v1.GetArtifactResponse.artifact:type_name -> workos.artifact.v1.Artifact
+	3,  // 9: workos.artifact.v1.ArtifactService.CreateArtifact:input_type -> workos.artifact.v1.CreateArtifactRequest
+	4,  // 10: workos.artifact.v1.ArtifactService.GetArtifact:input_type -> workos.artifact.v1.GetArtifactRequest
+	5,  // 11: workos.artifact.v1.ArtifactService.ListArtifacts:input_type -> workos.artifact.v1.ListArtifactsRequest
+	7,  // 12: workos.artifact.v1.ArtifactService.CreateArtifact:output_type -> workos.artifact.v1.CreateArtifactResponse
+	8,  // 13: workos.artifact.v1.ArtifactService.GetArtifact:output_type -> workos.artifact.v1.GetArtifactResponse
+	6,  // 14: workos.artifact.v1.ArtifactService.ListArtifacts:output_type -> workos.artifact.v1.ListArtifactsResponse
+	12, // [12:15] is the sub-list for method output_type
+	9,  // [9:12] is the sub-list for method input_type
+	9,  // [9:9] is the sub-list for extension type_name
+	9,  // [9:9] is the sub-list for extension extendee
+	0,  // [0:9] is the sub-list for field type_name
 }
 
 func init() { file_workos_artifact_v1_artifact_proto_init() }
@@ -508,7 +665,7 @@ func file_workos_artifact_v1_artifact_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_workos_artifact_v1_artifact_proto_rawDesc), len(file_workos_artifact_v1_artifact_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   7,
+			NumMessages:   9,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

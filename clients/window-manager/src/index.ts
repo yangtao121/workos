@@ -7,10 +7,25 @@ export interface Rect {
 
 export type WindowMode = "normal" | "minimized" | "maximized" | "fullscreen";
 
+// The discriminated window kind: Agent Center windows render the task
+// composer; app-surface windows render one sandboxed installed-app surface.
+export type WindowKind = "agent-center" | "app-surface";
+
+// AppSurfaceRef binds a window to one durable surface session. The URL is
+// the same-origin relative path returned by CreateSurface — never a private
+// Core/Runtime address.
+export interface AppSurfaceRef {
+  surfaceSessionId: string;
+  url: string;
+  projectId: string;
+}
+
 export interface WorkOSWindow {
   id: string;
   appId: string;
   title: string;
+  kind: WindowKind;
+  surface?: AppSurfaceRef | undefined;
   rect: Rect;
   restoreRect: Rect;
   mode: WindowMode;

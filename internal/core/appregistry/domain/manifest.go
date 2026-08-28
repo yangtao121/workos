@@ -52,14 +52,92 @@ func Permissions() []string {
 // Manifest is the validated, immutable fact extracted from one manifest
 // document. CanonicalJSON is the normalized manifest value (canonical JSON,
 // permissions sorted) and Digest is derived from exactly those bytes.
+// RuntimeType and WebBundle project the additive launch descriptor: they are
+// derived from exactly the canonical bytes, never from a second schema.
 type Manifest struct {
 	ID            string
 	Name          string
 	Version       string
 	Scope         Scope
 	Permissions   []string
+	RuntimeType   string
+	WebBundle     *WebBundleRef
 	CanonicalJSON []byte
 	Digest        string
+}
+
+// RuntimeTypeWebBundle marks manifests whose single supported surface is an
+// immutable web bundle artifact.
+const RuntimeTypeWebBundle = "web-bundle"
+
+// WebBundleRef is the launch descriptor a manifest pins: the owner's exact
+// immutable artifact and its canonical digest. The digest is part of the
+// canonical manifest bytes, so the manifest digest covers it.
+type WebBundleRef struct {
+	ArtifactID     string
+	ArtifactDigest string
+}
+
+// ParseWebBundleRef extracts the launch descriptor from canonical manifest
+// bytes. It is the trusted internal read used when resolving installed
+// instances: anything unexpected is a corrupt invariant, reported by ok=false
+// rather than an error with content.
+func ParseWebBundleRef(canonical []byte) (WebBundleRef, bool) {
+	var document struct {
+		Runtime struct {
+			Type           string `json:"type"`
+			ArtifactID     string `json:"artifactId"`
+			ArtifactDigest string `json:"artifactDigest"`
+		} `json:"runtime"`
+	}
+	if err := json.Unmarshal(canonical, &document); err != nil {
+		return WebBundleRef{}, false
+	}
+	if document.Runtime.Type != RuntimeTypeWebBundle {
+		return WebBundleRef{}, false
+	}
+	if !ValidWebBundleArtifactID(document.Runtime.ArtifactID) ||
+		!ValidWebBundleArtifactDigest(document.Runtime.ArtifactDigest) {
+		return WebBundleRef{}, false
+	}
+	return WebBundleRef{
+		ArtifactID:     document.Runtime.ArtifactID,
+		ArtifactDigest: document.Runtime.ArtifactDigest,
+	}, true
+}
+
+// ValidWebBundleArtifactID matches the schema's UUIDv7-shaped artifact id.
+func ValidWebBundleArtifactID(value string) bool {
+	if len(value) != 36 {
+		return false
+	}
+	for index, c := range []byte(value) {
+		switch index {
+		case 8, 13, 18, 23:
+			if c != '-' {
+				return false
+			}
+		default:
+			if (c < '0' || c > '9') && (c < 'a' || c > 'f') {
+				return false
+			}
+		}
+	}
+	// UUIDv7 markers: version nibble 7 and RFC variant.
+	return value[14] == '7' && (value[19] == '8' || value[19] == '9' || value[19] == 'a' || value[19] == 'b')
+}
+
+// ValidWebBundleArtifactDigest matches the canonical sha256 digest shape.
+func ValidWebBundleArtifactDigest(value string) bool {
+	if len(value) != len(DigestPrefix)+64 || value[:len(DigestPrefix)] != DigestPrefix {
+		return false
+	}
+	for _, c := range value[len(DigestPrefix):] {
+		if (c < '0' || c > '9') && (c < 'a' || c > 'f') {
+			return false
+		}
+	}
+	return true
 }
 
 // DigestPrefix is the fixed format of a manifest digest: sha256 lowercase hex.

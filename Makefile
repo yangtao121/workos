@@ -66,17 +66,20 @@ check-native:
 test: go-check web-check
 
 test-integration:
-	docker compose up -d --build postgres bootstrap workos-core harness-host workos-gateway
+	docker compose up -d --build postgres bootstrap workos-core harness-host runtime-host workos-gateway
 	$(GO_HOST_RUN) go test -tags=integration -count=1 -v ./tests/integration
 	@set -eu; task_id="$$( $(GO_HOST_RUN) go run ./tests/restart seed )"; \
 		app_ref="$$( $(GO_HOST_RUN) go run ./tests/restart app-seed )"; \
 		install_ref="$$( $(GO_HOST_RUN) go run ./tests/restart install-seed )"; \
+		surface_ref="$$( $(GO_HOST_RUN) go run ./tests/restart surface-seed )"; \
 		set -- $$app_ref; \
-		docker compose restart workos-core harness-host >/dev/null; \
+		docker compose restart workos-core harness-host runtime-host >/dev/null; \
 		$(GO_HOST_RUN) go run ./tests/restart verify "$$task_id"; \
 		$(GO_HOST_RUN) go run ./tests/restart app-verify "$$1" "$$2"; \
 		set -- $$install_ref; \
-		$(GO_HOST_RUN) go run ./tests/restart install-verify "$$1" "$$2" "$$3" "$$4" "$$5"
+		$(GO_HOST_RUN) go run ./tests/restart install-verify "$$1" "$$2" "$$3" "$$4" "$$5"; \
+		set -- $$surface_ref; \
+		$(GO_HOST_RUN) go run ./tests/restart surface-verify "$$1" "$$2" "$$3" "$$4" "$$5"
 
 test-deepseek-fixture: e2e-image
 	@set -eu; \
@@ -110,7 +113,7 @@ e2e-image:
 		-f deploy/e2e/Dockerfile deploy/e2e
 
 test-e2e: e2e-image
-	docker compose up -d --build postgres bootstrap workos-core harness-host workos-gateway
+	docker compose up -d --build postgres bootstrap workos-core harness-host runtime-host workos-gateway
 	docker run --rm --network host $(USER_FLAGS) \
 		-e PLAYWRIGHT_BROWSERS_PATH=/ms-playwright \
 		-e WORKOS_E2E_URL=http://127.0.0.1:8080 \

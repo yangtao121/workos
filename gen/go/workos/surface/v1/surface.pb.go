@@ -9,6 +9,7 @@ package surfacev1
 import (
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
+	timestamppb "google.golang.org/protobuf/types/known/timestamppb"
 	reflect "reflect"
 	sync "sync"
 	unsafe "unsafe"
@@ -202,6 +203,8 @@ type SurfaceSession struct {
 	Resize        bool                   `protobuf:"varint,7,opt,name=resize,proto3" json:"resize,omitempty"`
 	Clipboard     bool                   `protobuf:"varint,8,opt,name=clipboard,proto3" json:"clipboard,omitempty"`
 	FilePicker    bool                   `protobuf:"varint,9,opt,name=file_picker,json=filePicker,proto3" json:"file_picker,omitempty"`
+	CreatedAt     *timestamppb.Timestamp `protobuf:"bytes,10,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	ExpiresAt     *timestamppb.Timestamp `protobuf:"bytes,11,opt,name=expires_at,json=expiresAt,proto3" json:"expires_at,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -299,6 +302,20 @@ func (x *SurfaceSession) GetFilePicker() bool {
 	return false
 }
 
+func (x *SurfaceSession) GetCreatedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.CreatedAt
+	}
+	return nil
+}
+
+func (x *SurfaceSession) GetExpiresAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.ExpiresAt
+	}
+	return nil
+}
+
 type CreateSurfaceRequest struct {
 	state             protoimpl.MessageState `protogen:"open.v1"`
 	AppInstanceId     string                 `protobuf:"bytes,1,opt,name=app_instance_id,json=appInstanceId,proto3" json:"app_instance_id,omitempty"`
@@ -306,6 +323,7 @@ type CreateSurfaceRequest struct {
 	DeviceClass       DeviceClass            `protobuf:"varint,3,opt,name=device_class,json=deviceClass,proto3,enum=workos.surface.v1.DeviceClass" json:"device_class,omitempty"`
 	Viewport          *Viewport              `protobuf:"bytes,4,opt,name=viewport,proto3" json:"viewport,omitempty"`
 	PreferredRenderer SurfaceRenderer        `protobuf:"varint,5,opt,name=preferred_renderer,json=preferredRenderer,proto3,enum=workos.surface.v1.SurfaceRenderer" json:"preferred_renderer,omitempty"`
+	IdempotencyKey    string                 `protobuf:"bytes,6,opt,name=idempotency_key,json=idempotencyKey,proto3" json:"idempotency_key,omitempty"`
 	unknownFields     protoimpl.UnknownFields
 	sizeCache         protoimpl.SizeCache
 }
@@ -373,6 +391,13 @@ func (x *CreateSurfaceRequest) GetPreferredRenderer() SurfaceRenderer {
 		return x.PreferredRenderer
 	}
 	return SurfaceRenderer_SURFACE_RENDERER_UNSPECIFIED
+}
+
+func (x *CreateSurfaceRequest) GetIdempotencyKey() string {
+	if x != nil {
+		return x.IdempotencyKey
+	}
+	return ""
 }
 
 type CloseSurfaceRequest struct {
@@ -503,12 +528,12 @@ var File_workos_surface_v1_surface_proto protoreflect.FileDescriptor
 
 const file_workos_surface_v1_surface_proto_rawDesc = "" +
 	"\n" +
-	"\x1fworkos/surface/v1/surface.proto\x12\x11workos.surface.v1\"Y\n" +
+	"\x1fworkos/surface/v1/surface.proto\x12\x11workos.surface.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"Y\n" +
 	"\bViewport\x12\x14\n" +
 	"\x05width\x18\x01 \x01(\x05R\x05width\x12\x16\n" +
 	"\x06height\x18\x02 \x01(\x05R\x06height\x12\x1f\n" +
 	"\vpixel_ratio\x18\x03 \x01(\x01R\n" +
-	"pixelRatio\"\xb3\x02\n" +
+	"pixelRatio\"\xa9\x03\n" +
 	"\x0eSurfaceSession\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12&\n" +
 	"\x0fapp_instance_id\x18\x02 \x01(\tR\rappInstanceId\x12\x1d\n" +
@@ -520,14 +545,20 @@ const file_workos_surface_v1_surface_proto_rawDesc = "" +
 	"\x06resize\x18\a \x01(\bR\x06resize\x12\x1c\n" +
 	"\tclipboard\x18\b \x01(\bR\tclipboard\x12\x1f\n" +
 	"\vfile_picker\x18\t \x01(\bR\n" +
-	"filePicker\"\xac\x02\n" +
+	"filePicker\x129\n" +
+	"\n" +
+	"created_at\x18\n" +
+	" \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x129\n" +
+	"\n" +
+	"expires_at\x18\v \x01(\v2\x1a.google.protobuf.TimestampR\texpiresAt\"\xd5\x02\n" +
 	"\x14CreateSurfaceRequest\x12&\n" +
 	"\x0fapp_instance_id\x18\x01 \x01(\tR\rappInstanceId\x12\x1d\n" +
 	"\n" +
 	"project_id\x18\x02 \x01(\tR\tprojectId\x12A\n" +
 	"\fdevice_class\x18\x03 \x01(\x0e2\x1e.workos.surface.v1.DeviceClassR\vdeviceClass\x127\n" +
 	"\bviewport\x18\x04 \x01(\v2\x1b.workos.surface.v1.ViewportR\bviewport\x12Q\n" +
-	"\x12preferred_renderer\x18\x05 \x01(\x0e2\".workos.surface.v1.SurfaceRendererR\x11preferredRenderer\"C\n" +
+	"\x12preferred_renderer\x18\x05 \x01(\x0e2\".workos.surface.v1.SurfaceRendererR\x11preferredRenderer\x12'\n" +
+	"\x0fidempotency_key\x18\x06 \x01(\tR\x0eidempotencyKey\"C\n" +
 	"\x13CloseSurfaceRequest\x12,\n" +
 	"\x12surface_session_id\x18\x01 \x01(\tR\x10surfaceSessionId\"\x16\n" +
 	"\x14CloseSurfaceResponse\"T\n" +
@@ -572,22 +603,25 @@ var file_workos_surface_v1_surface_proto_goTypes = []any{
 	(*CloseSurfaceRequest)(nil),   // 5: workos.surface.v1.CloseSurfaceRequest
 	(*CloseSurfaceResponse)(nil),  // 6: workos.surface.v1.CloseSurfaceResponse
 	(*CreateSurfaceResponse)(nil), // 7: workos.surface.v1.CreateSurfaceResponse
+	(*timestamppb.Timestamp)(nil), // 8: google.protobuf.Timestamp
 }
 var file_workos_surface_v1_surface_proto_depIdxs = []int32{
 	0, // 0: workos.surface.v1.SurfaceSession.renderer:type_name -> workos.surface.v1.SurfaceRenderer
-	1, // 1: workos.surface.v1.CreateSurfaceRequest.device_class:type_name -> workos.surface.v1.DeviceClass
-	2, // 2: workos.surface.v1.CreateSurfaceRequest.viewport:type_name -> workos.surface.v1.Viewport
-	0, // 3: workos.surface.v1.CreateSurfaceRequest.preferred_renderer:type_name -> workos.surface.v1.SurfaceRenderer
-	3, // 4: workos.surface.v1.CreateSurfaceResponse.session:type_name -> workos.surface.v1.SurfaceSession
-	4, // 5: workos.surface.v1.SurfaceService.CreateSurface:input_type -> workos.surface.v1.CreateSurfaceRequest
-	5, // 6: workos.surface.v1.SurfaceService.CloseSurface:input_type -> workos.surface.v1.CloseSurfaceRequest
-	7, // 7: workos.surface.v1.SurfaceService.CreateSurface:output_type -> workos.surface.v1.CreateSurfaceResponse
-	6, // 8: workos.surface.v1.SurfaceService.CloseSurface:output_type -> workos.surface.v1.CloseSurfaceResponse
-	7, // [7:9] is the sub-list for method output_type
-	5, // [5:7] is the sub-list for method input_type
-	5, // [5:5] is the sub-list for extension type_name
-	5, // [5:5] is the sub-list for extension extendee
-	0, // [0:5] is the sub-list for field type_name
+	8, // 1: workos.surface.v1.SurfaceSession.created_at:type_name -> google.protobuf.Timestamp
+	8, // 2: workos.surface.v1.SurfaceSession.expires_at:type_name -> google.protobuf.Timestamp
+	1, // 3: workos.surface.v1.CreateSurfaceRequest.device_class:type_name -> workos.surface.v1.DeviceClass
+	2, // 4: workos.surface.v1.CreateSurfaceRequest.viewport:type_name -> workos.surface.v1.Viewport
+	0, // 5: workos.surface.v1.CreateSurfaceRequest.preferred_renderer:type_name -> workos.surface.v1.SurfaceRenderer
+	3, // 6: workos.surface.v1.CreateSurfaceResponse.session:type_name -> workos.surface.v1.SurfaceSession
+	4, // 7: workos.surface.v1.SurfaceService.CreateSurface:input_type -> workos.surface.v1.CreateSurfaceRequest
+	5, // 8: workos.surface.v1.SurfaceService.CloseSurface:input_type -> workos.surface.v1.CloseSurfaceRequest
+	7, // 9: workos.surface.v1.SurfaceService.CreateSurface:output_type -> workos.surface.v1.CreateSurfaceResponse
+	6, // 10: workos.surface.v1.SurfaceService.CloseSurface:output_type -> workos.surface.v1.CloseSurfaceResponse
+	9, // [9:11] is the sub-list for method output_type
+	7, // [7:9] is the sub-list for method input_type
+	7, // [7:7] is the sub-list for extension type_name
+	7, // [7:7] is the sub-list for extension extendee
+	0, // [0:7] is the sub-list for field type_name
 }
 
 func init() { file_workos_surface_v1_surface_proto_init() }

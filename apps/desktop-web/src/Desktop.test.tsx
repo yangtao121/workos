@@ -13,6 +13,7 @@ import {
   type GetHarnessCatalogResponse,
   type HarnessProviderInfo,
   type Project,
+  type SurfaceSession,
 } from "@workos/protocol";
 import { act } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -460,6 +461,37 @@ describe("Desktop harness workflow", () => {
   });
 });
 
+function surfaceSession(
+  sessionId: string,
+  installationId: string,
+  projectId: string,
+): SurfaceSession {
+  return {
+    $typeName: "workos.surface.v1.SurfaceSession",
+    id: sessionId,
+    appInstanceId: installationId,
+    projectId,
+    renderer: 1,
+    url: `/surfaces/${sessionId}/`,
+    bridgeToken: "",
+    resize: false,
+    clipboard: false,
+    filePicker: false,
+  };
+}
+
+function installedApp(appId: string, installationId: string, projectId: string) {
+  return {
+    $typeName: "workos.app.v1.AppInstallation",
+    id: installationId,
+    projectId,
+    appId,
+    version: "1.0.0",
+    manifestDigest: "sha256:" + "a".repeat(64),
+    installedAt: { seconds: 1787000000n, nanos: 0 },
+  };
+}
+
 function clientFixture({
   projects,
   createProject = vi.fn(),
@@ -486,6 +518,18 @@ function clientFixture({
     projectHarnessBindings: { setProjectHarnessBinding: setBinding },
     harnessCatalog: { getHarnessCatalog: vi.fn(() => Promise.resolve(providerCatalog())) },
     agentTasks: { submitTask, watchTaskEvents, getTask },
+    appRegistry: {
+      listApps: vi.fn(() => Promise.resolve({ apps: [], page: { nextPageToken: "" } })),
+    },
+    appInstallations: {
+      listInstalledApps: vi.fn(() =>
+        Promise.resolve({ installations: [], page: { nextPageToken: "" } }),
+      ),
+      installApp: vi.fn(),
+      uninstallApp: vi.fn(),
+    },
+    artifacts: { createArtifact: vi.fn(), getArtifact: vi.fn(), listArtifacts: vi.fn() },
+    surfaces: { createSurface: vi.fn(), closeSurface: vi.fn() },
   } as unknown as WorkOSClients;
 }
 
@@ -606,3 +650,165 @@ function provider(id: string, displayName: string): HarnessProviderInfo {
     },
   };
 }
+
+describe("app surface windows", () => {
+  it("opens an installed app into a sandboxed surface window and closes its session", async () => {
+    const user = userEvent.setup();
+    const session = surfaceSession(
+      "0198d7ea-2110-7c42-b659-c5e4d73bc341",
+      "0198d7ea-2110-7c42-b659-c5e4d73bc342",
+      "p1",
+    );
+    const catalogApp = {
+      $typeName: "workos.app.v1.WorkOSApp",
+      id: "notes-app",
+      name: "Notes",
+      version: "1.0.0",
+      scope: 2,
+      permissions: [],
+      manifestDigest: "sha256:" + "a".repeat(64),
+    };
+    const clients = clientFixture({ projects: [project("p1", "Alpha", 1n)] });
+    (clients.appRegistry.listApps as ReturnType<typeof vi.fn>).mockReturnValue(
+      Promise.resolve({ apps: [catalogApp], page: { nextPageToken: "" } }),
+    );
+    (clients.appInstallations.listInstalledApps as ReturnType<typeof vi.fn>).mockReturnValue(
+      Promise.resolve({
+        installations: [installedApp("notes-app", session.appInstanceId, "p1")],
+        page: { nextPageToken: "" },
+      }),
+    );
+    (clients.surfaces.createSurface as ReturnType<typeof vi.fn>).mockReturnValue(
+      Promise.resolve({ session }),
+    );
+    const closeSurface = vi.fn(() =>
+      Promise.resolve({ $typeName: "workos.surface.v1.CloseSurfaceResponse" }),
+    ) as unknown as typeof clients.surfaces.closeSurface;
+    clients.surfaces.closeSurface = closeSurface;
+
+    render(<Desktop workosClients={clients} />);
+    await screen.findAllByText("Alpha");
+    await user.click(screen.getByRole("button", { name: "App Library" }));
+    await screen.findByText(/Installed · pinned 1\.0\.0/);
+    await user.click(screen.getByRole("button", { name: "Open" }));
+
+    const frame = await screen.findByTestId("app-surface-frame");
+    expect(frame.getAttribute("sandbox")).toBe("allow-scripts");
+    expect(frame.getAttribute("referrerpolicy")).toBe("no-referrer");
+    expect(frame.getAttribute("src")).toBe("/surfaces/0198d7ea-2110-7c42-b659-c5e4d73bc341/");
+    // The agent center window is still rendered alongside the app window.
+    expect(screen.getByLabelText("Agent goal")).toBeTruthy();
+
+    await user.click(screen.getByRole("button", { name: "Close App" }));
+    await waitFor(() => {
+      expect(closeSurface).toHaveBeenCalledWith({ surfaceSessionId: session.id });
+    });
+    expect(screen.queryByTestId("app-surface-frame")).toBeNull();
+    expect(screen.getByLabelText("Agent goal")).toBeTruthy();
+  });
+
+  it("closes surface windows of other projects when the active project switches", async () => {
+    const user = userEvent.setup();
+    const session = surfaceSession(
+      "0198d7ea-2110-7c42-b659-c5e4d73bc341",
+      "0198d7ea-2110-7c42-b659-c5e4d73bc342",
+      "p1",
+    );
+    const clients = clientFixture({
+      projects: [project("p1", "Alpha", 1n), project("p2", "Beta", 1n)],
+    });
+    (clients.appRegistry.listApps as ReturnType<typeof vi.fn>).mockReturnValue(
+      Promise.resolve({
+        apps: [
+          {
+            $typeName: "workos.app.v1.WorkOSApp",
+            id: "notes-app",
+            name: "Notes",
+            version: "1.0.0",
+            scope: 2,
+            permissions: [],
+            manifestDigest: "sha256:" + "a".repeat(64),
+          },
+        ],
+        page: { nextPageToken: "" },
+      }),
+    );
+    (clients.appInstallations.listInstalledApps as ReturnType<typeof vi.fn>).mockReturnValue(
+      Promise.resolve({
+        installations: [installedApp("notes-app", session.appInstanceId, "p1")],
+        page: { nextPageToken: "" },
+      }),
+    );
+    (clients.surfaces.createSurface as ReturnType<typeof vi.fn>).mockReturnValue(
+      Promise.resolve({ session }),
+    );
+    const closeSurface = vi.fn(() =>
+      Promise.resolve({ $typeName: "workos.surface.v1.CloseSurfaceResponse" }),
+    ) as unknown as typeof clients.surfaces.closeSurface;
+    clients.surfaces.closeSurface = closeSurface;
+
+    render(<Desktop workosClients={clients} />);
+    await screen.findAllByText("Alpha");
+    await user.click(screen.getByRole("button", { name: "App Library" }));
+    await user.click(screen.getByRole("button", { name: "Open" }));
+    expect(await screen.findByTestId("app-surface-frame")).toBeTruthy();
+
+    await user.click(screen.getByRole("button", { name: /Beta revision 1/ }));
+    await waitFor(() => {
+      expect(closeSurface).toHaveBeenCalledWith({ surfaceSessionId: session.id });
+    });
+    expect(screen.queryByTestId("app-surface-frame")).toBeNull();
+  });
+
+  // Leaving the Desktop entirely must not leave open sessions to age out via
+  // TTL: every still-open app surface gets a best-effort idempotent Close.
+  it("closes still-open app surfaces when the Desktop unmounts", async () => {
+    const user = userEvent.setup();
+    const session = surfaceSession(
+      "0198d7ea-2110-7c42-b659-c5e4d73bc341",
+      "0198d7ea-2110-7c42-b659-c5e4d73bc342",
+      "p1",
+    );
+    const clients = clientFixture({ projects: [project("p1", "Alpha", 1n)] });
+    (clients.appRegistry.listApps as ReturnType<typeof vi.fn>).mockReturnValue(
+      Promise.resolve({
+        apps: [
+          {
+            $typeName: "workos.app.v1.WorkOSApp",
+            id: "notes-app",
+            name: "Notes",
+            version: "1.0.0",
+            scope: 2,
+            permissions: [],
+            manifestDigest: "sha256:" + "a".repeat(64),
+          },
+        ],
+        page: { nextPageToken: "" },
+      }),
+    );
+    (clients.appInstallations.listInstalledApps as ReturnType<typeof vi.fn>).mockReturnValue(
+      Promise.resolve({
+        installations: [installedApp("notes-app", session.appInstanceId, "p1")],
+        page: { nextPageToken: "" },
+      }),
+    );
+    (clients.surfaces.createSurface as ReturnType<typeof vi.fn>).mockReturnValue(
+      Promise.resolve({ session }),
+    );
+    const closeSurface = vi.fn(() =>
+      Promise.resolve({ $typeName: "workos.surface.v1.CloseSurfaceResponse" }),
+    ) as unknown as typeof clients.surfaces.closeSurface;
+    clients.surfaces.closeSurface = closeSurface;
+
+    const mounted = render(<Desktop workosClients={clients} />);
+    await screen.findAllByText("Alpha");
+    await user.click(screen.getByRole("button", { name: "App Library" }));
+    await user.click(screen.getByRole("button", { name: "Open" }));
+    expect(await screen.findByTestId("app-surface-frame")).toBeTruthy();
+
+    mounted.unmount();
+    await waitFor(() => {
+      expect(closeSurface).toHaveBeenCalledWith({ surfaceSessionId: session.id });
+    });
+  });
+});

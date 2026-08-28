@@ -350,8 +350,13 @@ func (v *Validator) policy(tree map[string]any, add func(path, message string)) 
 		add("/scope", "scope 'system' requires a trusted installation path and cannot be self-registered")
 	}
 	if runtime, ok := tree["runtime"].(map[string]any); ok {
-		if runtimeType, ok := runtime["type"].(string); ok && runtimeType == "trusted" {
-			add("/runtime/type", "runtime type 'trusted' requires a trusted installation path and cannot be self-registered")
+		if runtimeType, ok := runtime["type"].(string); ok {
+			switch runtimeType {
+			case "trusted":
+				add("/runtime/type", "runtime type 'trusted' requires a trusted installation path and cannot be self-registered")
+			case domain.RuntimeTypeWebBundle:
+				webBundlePolicy(runtime, tree, add)
+			}
 		}
 	}
 	if version, ok := tree["version"].(string); ok {
@@ -372,6 +377,40 @@ func (v *Validator) policy(tree map[string]any, add func(path, message string)) 
 	}
 	scanSecrets(tree, "", add)
 	scanStrings(tree, "", add)
+}
+
+// webBundlePolicy enforces the cross-field rules of the additive web-bundle
+// launch descriptor: the exact immutable artifact reference is required,
+// container-style runtime fields are rejected, and exactly one supported
+// web-bundle surface may be declared (this slice has a single deterministic
+// entry surface).
+func webBundlePolicy(runtime map[string]any, tree map[string]any, add func(path, message string)) {
+	artifactID, hasID := runtime["artifactId"].(string)
+	artifactDigest, hasDigest := runtime["artifactDigest"].(string)
+	if !hasID || !domain.ValidWebBundleArtifactID(artifactID) {
+		add("/runtime/artifactId", "runtime type 'web-bundle' requires a valid UUIDv7 artifactId")
+	}
+	if !hasDigest || !domain.ValidWebBundleArtifactDigest(artifactDigest) {
+		add("/runtime/artifactDigest", "runtime type 'web-bundle' requires a sha256 artifactDigest")
+	}
+	for _, field := range []string{"image", "command", "port"} {
+		if _, present := runtime[field]; present {
+			add("/runtime/"+field, "runtime type 'web-bundle' does not allow container runtime fields")
+		}
+	}
+	surfaces, ok := tree["surfaces"].([]any)
+	if !ok || len(surfaces) != 1 {
+		add("/surfaces", "runtime type 'web-bundle' requires exactly one surface")
+		return
+	}
+	surface, ok := surfaces[0].(map[string]any)
+	if !ok {
+		add("/surfaces/0", "runtime type 'web-bundle' requires exactly one surface")
+		return
+	}
+	if renderer, _ := surface["renderer"].(string); renderer != "web-bundle" {
+		add("/surfaces/0/renderer", "runtime type 'web-bundle' only supports the 'web-bundle' renderer")
+	}
 }
 
 func scanSecrets(value any, path string, add func(path, message string)) {
@@ -463,6 +502,16 @@ func manifestFromTree(tree map[string]any, canonical []byte) domain.Manifest {
 		for _, item := range permissions {
 			if capability, ok := item.(string); ok {
 				manifest.Permissions = append(manifest.Permissions, capability)
+			}
+		}
+	}
+	if runtime, ok := tree["runtime"].(map[string]any); ok {
+		if runtimeType, ok := runtime["type"].(string); ok {
+			manifest.RuntimeType = runtimeType
+		}
+		if runtimeType, _ := runtime["type"].(string); runtimeType == domain.RuntimeTypeWebBundle {
+			if ref, ok := domain.ParseWebBundleRef(canonical); ok {
+				manifest.WebBundle = &ref
 			}
 		}
 	}

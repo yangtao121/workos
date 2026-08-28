@@ -14,7 +14,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file workos/artifact/v1/artifact.proto.
  */
 export const file_workos_artifact_v1_artifact: GenFile = /*@__PURE__*/
-  fileDesc("CiF3b3Jrb3MvYXJ0aWZhY3QvdjEvYXJ0aWZhY3QucHJvdG8SEndvcmtvcy5hcnRpZmFjdC52MSKwAQoIQXJ0aWZhY3QSCgoCaWQYASABKAkSEgoKcHJvamVjdF9pZBgCIAEoCRIMCgR0eXBlGAMgASgJEg0KBXRpdGxlGAQgASgJEhIKCm1lZGlhX3R5cGUYBSABKAkSEwoLY29udGVudF9yZWYYBiABKAkSDgoGZGlnZXN0GAcgASgJEi4KCmNyZWF0ZWRfYXQYCCABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wImAKFUNyZWF0ZUFydGlmYWN0UmVxdWVzdBIXCg9pZGVtcG90ZW5jeV9rZXkYASABKAkSLgoIYXJ0aWZhY3QYAiABKAsyHC53b3Jrb3MuYXJ0aWZhY3QudjEuQXJ0aWZhY3QiKQoSR2V0QXJ0aWZhY3RSZXF1ZXN0EhMKC2FydGlmYWN0X2lkGAEgASgJIlcKFExpc3RBcnRpZmFjdHNSZXF1ZXN0EhIKCnByb2plY3RfaWQYASABKAkSKwoEcGFnZRgCIAEoCzIdLndvcmtvcy5jb21tb24udjEuUGFnZVJlcXVlc3QidgoVTGlzdEFydGlmYWN0c1Jlc3BvbnNlEi8KCWFydGlmYWN0cxgBIAMoCzIcLndvcmtvcy5hcnRpZmFjdC52MS5BcnRpZmFjdBIsCgRwYWdlGAIgASgLMh4ud29ya29zLmNvbW1vbi52MS5QYWdlUmVzcG9uc2UiSAoWQ3JlYXRlQXJ0aWZhY3RSZXNwb25zZRIuCghhcnRpZmFjdBgBIAEoCzIcLndvcmtvcy5hcnRpZmFjdC52MS5BcnRpZmFjdCJFChNHZXRBcnRpZmFjdFJlc3BvbnNlEi4KCGFydGlmYWN0GAEgASgLMhwud29ya29zLmFydGlmYWN0LnYxLkFydGlmYWN0MsYCCg9BcnRpZmFjdFNlcnZpY2USaQoOQ3JlYXRlQXJ0aWZhY3QSKS53b3Jrb3MuYXJ0aWZhY3QudjEuQ3JlYXRlQXJ0aWZhY3RSZXF1ZXN0Gioud29ya29zLmFydGlmYWN0LnYxLkNyZWF0ZUFydGlmYWN0UmVzcG9uc2UiABJgCgtHZXRBcnRpZmFjdBImLndvcmtvcy5hcnRpZmFjdC52MS5HZXRBcnRpZmFjdFJlcXVlc3QaJy53b3Jrb3MuYXJ0aWZhY3QudjEuR2V0QXJ0aWZhY3RSZXNwb25zZSIAEmYKDUxpc3RBcnRpZmFjdHMSKC53b3Jrb3MuYXJ0aWZhY3QudjEuTGlzdEFydGlmYWN0c1JlcXVlc3QaKS53b3Jrb3MuYXJ0aWZhY3QudjEuTGlzdEFydGlmYWN0c1Jlc3BvbnNlIgBCQ1pBZ2l0aHViLmNvbS95YW5ndGFvMTIxL3dvcmtvcy9nZW4vZ28vd29ya29zL2FydGlmYWN0L3YxO2FydGlmYWN0djFiBnByb3RvMw", [file_google_protobuf_timestamp, file_workos_common_v1_common]);
+  fileDesc("CiF3b3Jrb3MvYXJ0aWZhY3QvdjEvYXJ0aWZhY3QucHJvdG8SEndvcmtvcy5hcnRpZmFjdC52MSLeAQoIQXJ0aWZhY3QSCgoCaWQYASABKAkSEgoKcHJvamVjdF9pZBgCIAEoCRIMCgR0eXBlGAMgASgJEg0KBXRpdGxlGAQgASgJEhIKCm1lZGlhX3R5cGUYBSABKAkSEwoLY29udGVudF9yZWYYBiABKAkSDgoGZGlnZXN0GAcgASgJEi4KCmNyZWF0ZWRfYXQYCCABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wEhgKEHRvdGFsX3NpemVfYnl0ZXMYCSABKAMSEgoKZmlsZV9jb3VudBgKIAEoBSIuCg1XZWJCdW5kbGVGaWxlEgwKBHBhdGgYASABKAkSDwoHY29udGVudBgCIAEoDCJYChBXZWJCdW5kbGVDb250ZW50EhIKCmVudHJ5cG9pbnQYASABKAkSMAoFZmlsZXMYAiADKAsyIS53b3Jrb3MuYXJ0aWZhY3QudjEuV2ViQnVuZGxlRmlsZSKaAQoVQ3JlYXRlQXJ0aWZhY3RSZXF1ZXN0EhcKD2lkZW1wb3RlbmN5X2tleRgBIAEoCRIuCghhcnRpZmFjdBgCIAEoCzIcLndvcmtvcy5hcnRpZmFjdC52MS5BcnRpZmFjdBI4Cgp3ZWJfYnVuZGxlGAMgASgLMiQud29ya29zLmFydGlmYWN0LnYxLldlYkJ1bmRsZUNvbnRlbnQiKQoSR2V0QXJ0aWZhY3RSZXF1ZXN0EhMKC2FydGlmYWN0X2lkGAEgASgJIlcKFExpc3RBcnRpZmFjdHNSZXF1ZXN0EhIKCnByb2plY3RfaWQYASABKAkSKwoEcGFnZRgCIAEoCzIdLndvcmtvcy5jb21tb24udjEuUGFnZVJlcXVlc3QidgoVTGlzdEFydGlmYWN0c1Jlc3BvbnNlEi8KCWFydGlmYWN0cxgBIAMoCzIcLndvcmtvcy5hcnRpZmFjdC52MS5BcnRpZmFjdBIsCgRwYWdlGAIgASgLMh4ud29ya29zLmNvbW1vbi52MS5QYWdlUmVzcG9uc2UiSAoWQ3JlYXRlQXJ0aWZhY3RSZXNwb25zZRIuCghhcnRpZmFjdBgBIAEoCzIcLndvcmtvcy5hcnRpZmFjdC52MS5BcnRpZmFjdCJFChNHZXRBcnRpZmFjdFJlc3BvbnNlEi4KCGFydGlmYWN0GAEgASgLMhwud29ya29zLmFydGlmYWN0LnYxLkFydGlmYWN0MsYCCg9BcnRpZmFjdFNlcnZpY2USaQoOQ3JlYXRlQXJ0aWZhY3QSKS53b3Jrb3MuYXJ0aWZhY3QudjEuQ3JlYXRlQXJ0aWZhY3RSZXF1ZXN0Gioud29ya29zLmFydGlmYWN0LnYxLkNyZWF0ZUFydGlmYWN0UmVzcG9uc2UiABJgCgtHZXRBcnRpZmFjdBImLndvcmtvcy5hcnRpZmFjdC52MS5HZXRBcnRpZmFjdFJlcXVlc3QaJy53b3Jrb3MuYXJ0aWZhY3QudjEuR2V0QXJ0aWZhY3RSZXNwb25zZSIAEmYKDUxpc3RBcnRpZmFjdHMSKC53b3Jrb3MuYXJ0aWZhY3QudjEuTGlzdEFydGlmYWN0c1JlcXVlc3QaKS53b3Jrb3MuYXJ0aWZhY3QudjEuTGlzdEFydGlmYWN0c1Jlc3BvbnNlIgBCQ1pBZ2l0aHViLmNvbS95YW5ndGFvMTIxL3dvcmtvcy9nZW4vZ28vd29ya29zL2FydGlmYWN0L3YxO2FydGlmYWN0djFiBnByb3RvMw", [file_google_protobuf_timestamp, file_workos_common_v1_common]);
 
 /**
  * @generated from message workos.artifact.v1.Artifact
@@ -59,6 +59,16 @@ export type Artifact = Message<"workos.artifact.v1.Artifact"> & {
    * @generated from field: google.protobuf.Timestamp created_at = 8;
    */
   createdAt?: Timestamp | undefined;
+
+  /**
+   * @generated from field: int64 total_size_bytes = 9;
+   */
+  totalSizeBytes: bigint;
+
+  /**
+   * @generated from field: int32 file_count = 10;
+   */
+  fileCount: number;
 };
 
 /**
@@ -67,6 +77,59 @@ export type Artifact = Message<"workos.artifact.v1.Artifact"> & {
  */
 export const ArtifactSchema: GenMessage<Artifact> = /*@__PURE__*/
   messageDesc(file_workos_artifact_v1_artifact, 0);
+
+/**
+ * WebBundleFile is one regular file of a web bundle upload. The path is an
+ * untrusted relative POSIX path; the server validates, normalizes, and derives
+ * the stored media type. File order in the request never affects the canonical
+ * bundle digest.
+ *
+ * @generated from message workos.artifact.v1.WebBundleFile
+ */
+export type WebBundleFile = Message<"workos.artifact.v1.WebBundleFile"> & {
+  /**
+   * @generated from field: string path = 1;
+   */
+  path: string;
+
+  /**
+   * @generated from field: bytes content = 2;
+   */
+  content: Uint8Array;
+};
+
+/**
+ * Describes the message workos.artifact.v1.WebBundleFile.
+ * Use `create(WebBundleFileSchema)` to create a new message.
+ */
+export const WebBundleFileSchema: GenMessage<WebBundleFile> = /*@__PURE__*/
+  messageDesc(file_workos_artifact_v1_artifact, 1);
+
+/**
+ * WebBundleContent is the explicit web bundle upload payload. Archives
+ * (ZIP/TAR) are deliberately out of scope: the file list keeps the upload
+ * surface bounded and auditable.
+ *
+ * @generated from message workos.artifact.v1.WebBundleContent
+ */
+export type WebBundleContent = Message<"workos.artifact.v1.WebBundleContent"> & {
+  /**
+   * @generated from field: string entrypoint = 1;
+   */
+  entrypoint: string;
+
+  /**
+   * @generated from field: repeated workos.artifact.v1.WebBundleFile files = 2;
+   */
+  files: WebBundleFile[];
+};
+
+/**
+ * Describes the message workos.artifact.v1.WebBundleContent.
+ * Use `create(WebBundleContentSchema)` to create a new message.
+ */
+export const WebBundleContentSchema: GenMessage<WebBundleContent> = /*@__PURE__*/
+  messageDesc(file_workos_artifact_v1_artifact, 2);
 
 /**
  * @generated from message workos.artifact.v1.CreateArtifactRequest
@@ -81,6 +144,16 @@ export type CreateArtifactRequest = Message<"workos.artifact.v1.CreateArtifactRe
    * @generated from field: workos.artifact.v1.Artifact artifact = 2;
    */
   artifact?: Artifact | undefined;
+
+  /**
+   * web_bundle is the only supported artifact payload in this slice. When it
+   * is set, the artifact metadata may carry only the title; server-owned
+   * fields (id, project_id, type, media_type, content_ref, digest,
+   * created_at) must be empty and are rejected otherwise.
+   *
+   * @generated from field: workos.artifact.v1.WebBundleContent web_bundle = 3;
+   */
+  webBundle?: WebBundleContent | undefined;
 };
 
 /**
@@ -88,7 +161,7 @@ export type CreateArtifactRequest = Message<"workos.artifact.v1.CreateArtifactRe
  * Use `create(CreateArtifactRequestSchema)` to create a new message.
  */
 export const CreateArtifactRequestSchema: GenMessage<CreateArtifactRequest> = /*@__PURE__*/
-  messageDesc(file_workos_artifact_v1_artifact, 1);
+  messageDesc(file_workos_artifact_v1_artifact, 3);
 
 /**
  * @generated from message workos.artifact.v1.GetArtifactRequest
@@ -105,7 +178,7 @@ export type GetArtifactRequest = Message<"workos.artifact.v1.GetArtifactRequest"
  * Use `create(GetArtifactRequestSchema)` to create a new message.
  */
 export const GetArtifactRequestSchema: GenMessage<GetArtifactRequest> = /*@__PURE__*/
-  messageDesc(file_workos_artifact_v1_artifact, 2);
+  messageDesc(file_workos_artifact_v1_artifact, 4);
 
 /**
  * @generated from message workos.artifact.v1.ListArtifactsRequest
@@ -127,7 +200,7 @@ export type ListArtifactsRequest = Message<"workos.artifact.v1.ListArtifactsRequ
  * Use `create(ListArtifactsRequestSchema)` to create a new message.
  */
 export const ListArtifactsRequestSchema: GenMessage<ListArtifactsRequest> = /*@__PURE__*/
-  messageDesc(file_workos_artifact_v1_artifact, 3);
+  messageDesc(file_workos_artifact_v1_artifact, 5);
 
 /**
  * @generated from message workos.artifact.v1.ListArtifactsResponse
@@ -149,7 +222,7 @@ export type ListArtifactsResponse = Message<"workos.artifact.v1.ListArtifactsRes
  * Use `create(ListArtifactsResponseSchema)` to create a new message.
  */
 export const ListArtifactsResponseSchema: GenMessage<ListArtifactsResponse> = /*@__PURE__*/
-  messageDesc(file_workos_artifact_v1_artifact, 4);
+  messageDesc(file_workos_artifact_v1_artifact, 6);
 
 /**
  * @generated from message workos.artifact.v1.CreateArtifactResponse
@@ -166,7 +239,7 @@ export type CreateArtifactResponse = Message<"workos.artifact.v1.CreateArtifactR
  * Use `create(CreateArtifactResponseSchema)` to create a new message.
  */
 export const CreateArtifactResponseSchema: GenMessage<CreateArtifactResponse> = /*@__PURE__*/
-  messageDesc(file_workos_artifact_v1_artifact, 5);
+  messageDesc(file_workos_artifact_v1_artifact, 7);
 
 /**
  * @generated from message workos.artifact.v1.GetArtifactResponse
@@ -183,7 +256,7 @@ export type GetArtifactResponse = Message<"workos.artifact.v1.GetArtifactRespons
  * Use `create(GetArtifactResponseSchema)` to create a new message.
  */
 export const GetArtifactResponseSchema: GenMessage<GetArtifactResponse> = /*@__PURE__*/
-  messageDesc(file_workos_artifact_v1_artifact, 6);
+  messageDesc(file_workos_artifact_v1_artifact, 8);
 
 /**
  * @generated from service workos.artifact.v1.ArtifactService

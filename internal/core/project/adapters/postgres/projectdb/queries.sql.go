@@ -573,6 +573,39 @@ func (q *Queries) LockProjectForInstallation(ctx context.Context, arg LockProjec
 	return i, err
 }
 
+const resolveActiveInstallation = `-- name: ResolveActiveInstallation :one
+SELECT i.id, i.owner_user_id, i.project_id, i.app_id, i.version, i.manifest_digest, i.installed_at, i.uninstalled_at
+FROM workos_core.project_app_installations i
+JOIN workos_core.projects p
+  ON p.id = i.project_id AND p.owner_user_id = i.owner_user_id AND p.archived_at IS NULL
+WHERE i.owner_user_id = $1
+  AND i.project_id = $2
+  AND i.id = $3
+  AND i.uninstalled_at IS NULL
+`
+
+type ResolveActiveInstallationParams struct {
+	OwnerUserID string `json:"owner_user_id"`
+	ProjectID   string `json:"project_id"`
+	ID          string `json:"id"`
+}
+
+func (q *Queries) ResolveActiveInstallation(ctx context.Context, arg ResolveActiveInstallationParams) (WorkosCoreProjectAppInstallation, error) {
+	row := q.db.QueryRow(ctx, resolveActiveInstallation, arg.OwnerUserID, arg.ProjectID, arg.ID)
+	var i WorkosCoreProjectAppInstallation
+	err := row.Scan(
+		&i.ID,
+		&i.OwnerUserID,
+		&i.ProjectID,
+		&i.AppID,
+		&i.Version,
+		&i.ManifestDigest,
+		&i.InstalledAt,
+		&i.UninstalledAt,
+	)
+	return i, err
+}
+
 const tombstoneInstallation = `-- name: TombstoneInstallation :execrows
 UPDATE workos_core.project_app_installations
 SET uninstalled_at = $1

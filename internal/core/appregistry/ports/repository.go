@@ -2,9 +2,16 @@ package ports
 
 import (
 	"context"
+	"errors"
 
 	"github.com/yangtao121/workos/internal/core/appregistry/domain"
 )
+
+// ErrStoreUnavailable marks a temporarily unreachable Registry store. The
+// postgres adapter wraps transient driver failures with it at the port
+// boundary; transports map it to a sanitized Unavailable. Invariant and
+// constraint failures keep their own verdicts and stay Internal.
+var ErrStoreUnavailable = errors.New("app registry store is temporarily unavailable")
 
 // Repository persists immutable App versions and the authoritative
 // registration-request idempotency mapping. Register must rely on database
@@ -16,6 +23,10 @@ import (
 type Repository interface {
 	Register(context.Context, domain.AppVersion) (domain.AppVersionSummary, error)
 	GetVersion(ctx context.Context, ownerUserID, appID, version string) (domain.AppVersionSummary, error)
+	// GetVersionManifest reads the exact immutable version's manifest digest
+	// and canonical bytes. It is the internal read for installed-instance
+	// resolution; public projections never expose the manifest.
+	GetVersionManifest(ctx context.Context, ownerUserID, appID, version string) (digest string, canonical []byte, err error)
 	// ListAppIDPage returns at most limit distinct app IDs after cursor plus
 	// the next cursor, or an empty next cursor when no further apps exist. The
 	// implementation probes limit+1 rows so it never fabricates a cursor for an

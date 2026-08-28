@@ -19,9 +19,13 @@ import (
 	"github.com/yangtao121/workos/gen/go/workos/agent/v1/agentv1connect"
 	appv1 "github.com/yangtao121/workos/gen/go/workos/app/v1"
 	"github.com/yangtao121/workos/gen/go/workos/app/v1/appv1connect"
+	artifactv1 "github.com/yangtao121/workos/gen/go/workos/artifact/v1"
+	"github.com/yangtao121/workos/gen/go/workos/artifact/v1/artifactv1connect"
 	commonv1 "github.com/yangtao121/workos/gen/go/workos/common/v1"
 	projectv1 "github.com/yangtao121/workos/gen/go/workos/project/v1"
 	"github.com/yangtao121/workos/gen/go/workos/project/v1/projectv1connect"
+	surfacev1 "github.com/yangtao121/workos/gen/go/workos/surface/v1"
+	"github.com/yangtao121/workos/gen/go/workos/surface/v1/surfacev1connect"
 	manifestvalidator "github.com/yangtao121/workos/internal/core/appregistry/adapters/manifestvalidator"
 )
 
@@ -34,7 +38,7 @@ func main() {
 
 func run() error {
 	if len(os.Args) < 2 {
-		return errors.New("usage: restart seed | restart verify TASK_ID | restart app-seed | restart app-verify APP_ID_A APP_ID_B | restart install-seed | restart install-verify PROJECT_ID INSTALLATION_ID KEY APP_ID SEED_REVISION")
+		return errors.New("usage: restart seed | restart verify TASK_ID | restart app-seed | restart app-verify APP_ID_A APP_ID_B | restart install-seed | restart install-verify PROJECT_ID INSTALLATION_ID KEY APP_ID SEED_REVISION | restart surface-seed | restart surface-verify SESSION_URL SESSION_ID PROJECT_ID INSTALLATION_ID KEY")
 	}
 	baseURL := os.Getenv("WORKOS_TEST_URL")
 	if baseURL == "" {
@@ -67,8 +71,12 @@ func run() error {
 		return installSeed(ctx, client, baseURL)
 	case "install-verify":
 		return installVerify(ctx, client, baseURL)
+	case "surface-seed":
+		return surfaceSeed(ctx, client, baseURL)
+	case "surface-verify":
+		return surfaceVerify(ctx, client, baseURL)
 	default:
-		return errors.New("usage: restart seed | restart verify TASK_ID | restart app-seed | restart app-verify APP_ID_A APP_ID_B | restart install-seed | restart install-verify PROJECT_ID INSTALLATION_ID KEY APP_ID SEED_REVISION")
+		return errors.New("usage: restart seed | restart verify TASK_ID | restart app-seed | restart app-verify APP_ID_A APP_ID_B | restart install-seed | restart install-verify PROJECT_ID INSTALLATION_ID KEY APP_ID SEED_REVISION | restart surface-seed | restart surface-verify SESSION_URL SESSION_ID PROJECT_ID INSTALLATION_ID KEY")
 	}
 }
 
@@ -411,4 +419,133 @@ func waitReady(ctx context.Context, client *http.Client, baseURL string) error {
 		case <-ticker.C:
 		}
 	}
+}
+
+// surfaceSeed drives the full web bundle chain once and prints
+// "<session url> <session id> <project id> <installation id> <create key>"
+// for surface-verify.
+func surfaceSeed(ctx context.Context, client *http.Client, baseURL string) error {
+	projects := projectv1connect.NewProjectServiceClient(client, baseURL)
+	artifacts := artifactv1connect.NewArtifactServiceClient(client, baseURL)
+	apps := appv1connect.NewAppRegistryServiceClient(client, baseURL)
+	installations := appv1connect.NewAppInstallationServiceClient(client, baseURL)
+	surfaces := surfacev1connect.NewSurfaceServiceClient(client, baseURL)
+	stamp := time.Now().UnixNano()
+	appID := fmt.Sprintf("restart-surface-%d", stamp)
+
+	created, err := artifacts.CreateArtifact(ctx, connect.NewRequest(&artifactv1.CreateArtifactRequest{
+		IdempotencyKey: fmt.Sprintf("restart-surface-artifact-%d", stamp),
+		Artifact:       &artifactv1.Artifact{Title: "Restart Surface"},
+		WebBundle: &artifactv1.WebBundleContent{
+			Entrypoint: "index.html",
+			Files: []*artifactv1.WebBundleFile{
+				{Path: "index.html", Content: []byte("<!doctype html><title>Restart Surface</title><div id=\"root\"></div><script src=\"app.js\"></script>")},
+				{Path: "app.js", Content: []byte("document.getElementById('root').textContent = 'restart-surface-ok';")},
+			},
+		},
+	}))
+	if err != nil {
+		return fmt.Errorf("create restart artifact: %w", err)
+	}
+	artifact := created.Msg.GetArtifact()
+
+	manifest := fmt.Sprintf(`apiVersion: workos.app/v1
+id: %s
+name: Restart Surface App
+version: 1.0.0
+scope: user
+runtime:
+  type: web-bundle
+  artifactId: %s
+  artifactDigest: %s
+surfaces:
+  - id: main
+    renderer: web-bundle
+    route: /
+permissions: [artifact.read]
+resources: {}
+health: {}
+maintainer: {}
+`, appID, artifact.GetId(), artifact.GetDigest())
+	if _, err := apps.RegisterApp(ctx, connect.NewRequest(&appv1.RegisterAppRequest{
+		IdempotencyKey: fmt.Sprintf("restart-surface-register-%d", stamp), ManifestYaml: []byte(manifest),
+	})); err != nil {
+		return fmt.Errorf("register restart surface app: %w", err)
+	}
+	projectResponse, err := projects.CreateProject(ctx, connect.NewRequest(&projectv1.CreateProjectRequest{
+		IdempotencyKey: fmt.Sprintf("restart-surface-project-%d", stamp), Name: "Restart Surface",
+	}))
+	if err != nil {
+		return fmt.Errorf("create restart surface project: %w", err)
+	}
+	project := projectResponse.Msg.GetProject()
+	key := fmt.Sprintf("restart-surface-open-%d", stamp)
+	installed, err := installations.InstallApp(ctx, connect.NewRequest(&appv1.InstallAppRequest{
+		IdempotencyKey: fmt.Sprintf("restart-surface-install-%d", stamp),
+		ProjectId:      project.GetId(), AppId: appID, ExpectedProjectRevision: project.GetRevision(),
+	}))
+	if err != nil {
+		return fmt.Errorf("install restart surface app: %w", err)
+	}
+	opened, err := surfaces.CreateSurface(ctx, connect.NewRequest(&surfacev1.CreateSurfaceRequest{
+		IdempotencyKey:    key,
+		AppInstanceId:     installed.Msg.GetInstallation().GetId(),
+		ProjectId:         project.GetId(),
+		DeviceClass:       surfacev1.DeviceClass_DEVICE_CLASS_DESKTOP,
+		Viewport:          &surfacev1.Viewport{Width: 1280, Height: 800, PixelRatio: 2},
+		PreferredRenderer: surfacev1.SurfaceRenderer_SURFACE_RENDERER_WEB_BUNDLE,
+	}))
+	if err != nil {
+		return fmt.Errorf("open restart surface: %w", err)
+	}
+	session := opened.Msg.GetSession()
+	fmt.Printf("%s %s %s %s %s\n", session.GetUrl(), session.GetId(), project.GetId(), installed.Msg.GetInstallation().GetId(), key)
+	return nil
+}
+
+// surfaceVerify proves the surface facts survived process restarts: the
+// session URL still serves with the security headers, the create key still
+// replays the same session, and closing revokes the assets.
+func surfaceVerify(ctx context.Context, client *http.Client, baseURL string) error {
+	if len(os.Args) != 7 {
+		return errors.New("surface-verify requires SESSION_URL SESSION_ID PROJECT_ID INSTALLATION_ID KEY")
+	}
+	sessionURL, sessionID, projectID, installationID, key := os.Args[2], os.Args[3], os.Args[4], os.Args[5], os.Args[6]
+	surfaces := surfacev1connect.NewSurfaceServiceClient(client, baseURL)
+
+	response, err := client.Get(baseURL + sessionURL)
+	if err != nil {
+		return fmt.Errorf("read surface after restart: %w", err)
+	}
+	response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		return fmt.Errorf("surface asset unavailable after restart: status=%d", response.StatusCode)
+	}
+	if response.Header.Get("Content-Security-Policy") == "" || response.Header.Get("X-Content-Type-Options") != "nosniff" {
+		return errors.New("surface security headers lost after restart")
+	}
+
+	replayed, err := surfaces.CreateSurface(ctx, connect.NewRequest(&surfacev1.CreateSurfaceRequest{
+		IdempotencyKey: key, AppInstanceId: installationID, ProjectId: projectID,
+		DeviceClass:       surfacev1.DeviceClass_DEVICE_CLASS_DESKTOP,
+		Viewport:          &surfacev1.Viewport{Width: 1280, Height: 800, PixelRatio: 2},
+		PreferredRenderer: surfacev1.SurfaceRenderer_SURFACE_RENDERER_WEB_BUNDLE,
+	}))
+	if err != nil || replayed.Msg.GetSession().GetId() != sessionID {
+		return fmt.Errorf("surface create key did not replay after restart: %v", err)
+	}
+
+	if _, err := surfaces.CloseSurface(ctx, connect.NewRequest(&surfacev1.CloseSurfaceRequest{SurfaceSessionId: sessionID})); err != nil {
+		return fmt.Errorf("close surface after restart: %w", err)
+	}
+	closed, err := client.Get(baseURL + sessionURL)
+	if err != nil {
+		return fmt.Errorf("read closed surface: %w", err)
+	}
+	closed.Body.Close()
+	if closed.StatusCode != http.StatusNotFound {
+		return fmt.Errorf("closed surface must fail closed after restart: status=%d", closed.StatusCode)
+	}
+	fmt.Printf("surface persistence verified for session %s\n", sessionID)
+	return nil
 }

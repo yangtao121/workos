@@ -66,6 +66,10 @@ type InstallationRepository interface {
 	// GetInstallation reads one installation by owner-scoped ID; it is the
 	// replay projection source for consumed keys.
 	GetInstallation(ctx context.Context, ownerUserID, installationID string) (domain.Installation, error)
+	// ResolveActiveInstallation reads one active installation of the owner's
+	// non-archived project; anything else is NotFound. It is the authority for
+	// installed-instance surface resolution.
+	ResolveActiveInstallation(ctx context.Context, ownerUserID, projectID, installationID string) (domain.Installation, error)
 	Install(ctx context.Context, command InstallCommand) (InstallationResult, error)
 	Uninstall(ctx context.Context, command UninstallCommand) (InstallationResult, error)
 	// ListActive returns at most limit active installations ordered by app ID

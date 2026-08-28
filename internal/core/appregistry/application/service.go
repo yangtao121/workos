@@ -30,6 +30,19 @@ type ProjectDirectory interface {
 	Get(ctx context.Context, ownerUserID, projectID string) (ProjectSummary, error)
 }
 
+// ErrArtifactDenied marks a manifest's web bundle reference that the owner
+// cannot use: missing, foreign, or digest-mismatched. Transport maps it to
+// NotFound so it is indistinguishable from an unknown artifact.
+var ErrArtifactDenied = errors.New("referenced artifact is not available")
+
+// ArtifactDirectory verifies a manifest's web bundle reference against the
+// owner's immutable artifacts. It is the neutral port implemented by the
+// orchestration layer over the Artifact module; the registry never imports
+// artifact adapters or SQL.
+type ArtifactDirectory interface {
+	VerifyWebBundle(ctx context.Context, ownerUserID, artifactID, artifactDigest string) error
+}
+
 // ManifestValidator turns untrusted YAML bytes into either a validated
 // manifest or bounded, value-free violations.
 type ManifestValidator interface {
@@ -53,16 +66,17 @@ type Service struct {
 	repository ports.Repository
 	validator  ManifestValidator
 	projects   ProjectDirectory
+	artifacts  ArtifactDirectory
 	ids        ids.Generator
 	now        func() time.Time
 }
 
-func New(repository ports.Repository, validator ManifestValidator, projects ProjectDirectory, generator ids.Generator) (*Service, error) {
+func New(repository ports.Repository, validator ManifestValidator, projects ProjectDirectory, artifacts ArtifactDirectory, generator ids.Generator) (*Service, error) {
 	if repository == nil || validator == nil || generator == nil {
 		return nil, errors.New("app registry requires repository, validator, and id generator")
 	}
 	return &Service{
-		repository: repository, validator: validator, projects: projects,
+		repository: repository, validator: validator, projects: projects, artifacts: artifacts,
 		ids: generator, now: func() time.Time { return time.Now().UTC() },
 	}, nil
 }
@@ -78,6 +92,9 @@ func (s *Service) ValidateManifest(ctx context.Context, yamlBytes []byte) (domai
 }
 
 // Register validates and persists one immutable App version for the owner.
+// A web-bundle launch descriptor is verified against the owner's immutable
+// artifact before anything is persisted: the artifact must exist, belong to
+// the same owner, and carry the exact referenced digest.
 func (s *Service) Register(ctx context.Context, ownerUserID, idempotencyKey string, yamlBytes []byte) (domain.AppVersionSummary, error) {
 	if ownerUserID == "" || !domain.ValidIdempotencyKey(idempotencyKey) || len(yamlBytes) == 0 || len(yamlBytes) > manifestLimit() {
 		return domain.AppVersionSummary{}, domain.ErrInvalid
@@ -89,6 +106,17 @@ func (s *Service) Register(ctx context.Context, ownerUserID, idempotencyKey stri
 	if _, ok := domain.ParseVersion(manifest.Version); !ok {
 		return domain.AppVersionSummary{}, domain.ErrInvalid
 	}
+	if manifest.WebBundle != nil {
+		if s.artifacts == nil {
+			return domain.AppVersionSummary{}, errors.New("artifact directory is not configured")
+		}
+		if err := s.artifacts.VerifyWebBundle(ctx, ownerUserID, manifest.WebBundle.ArtifactID, manifest.WebBundle.ArtifactDigest); err != nil {
+			if errors.Is(err, ErrArtifactDenied) {
+				return domain.AppVersionSummary{}, domain.ErrNotFound
+			}
+			return domain.AppVersionSummary{}, fmt.Errorf("verify web bundle reference: %w", err)
+		}
+	}
 	record := domain.AppVersion{
 		ID: s.ids.New(), OwnerUserID: ownerUserID, AppID: manifest.ID, Version: manifest.Version,
 		Scope: manifest.Scope, Name: manifest.Name, Permissions: manifest.Permissions,
@@ -96,6 +124,40 @@ func (s *Service) Register(ctx context.Context, ownerUserID, idempotencyKey stri
 		IdempotencyKey: idempotencyKey, RequestDigest: manifest.Digest, CreatedAt: s.now(),
 	}
 	return s.repository.Register(ctx, record)
+}
+
+// ErrUnsupportedRuntime marks an app version whose manifest has no supported
+// web bundle launch descriptor. The surface path maps it to
+// FailedPrecondition: the installation is healthy, but not launchable in
+// this slice.
+var ErrUnsupportedRuntime = errors.New("app version has no supported web bundle runtime")
+
+// WebBundleResolution is the exact launch fact of one immutable version: the
+// manifest digest plus the descriptor parsed from the canonical bytes.
+type WebBundleResolution struct {
+	ManifestDigest string
+	Ref            domain.WebBundleRef
+}
+
+// ResolveWebBundle resolves the exact immutable version's launch descriptor
+// for the installed-instance resolver. It reads the version's canonical
+// manifest only; no registry current is involved.
+func (s *Service) ResolveWebBundle(ctx context.Context, ownerUserID, appID, version string) (WebBundleResolution, error) {
+	if ownerUserID == "" || !domain.ValidAppID(appID) {
+		return WebBundleResolution{}, domain.ErrInvalid
+	}
+	if _, ok := domain.ParseVersion(version); !ok {
+		return WebBundleResolution{}, domain.ErrInvalid
+	}
+	digest, canonical, err := s.repository.GetVersionManifest(ctx, ownerUserID, appID, version)
+	if err != nil {
+		return WebBundleResolution{}, err
+	}
+	ref, ok := domain.ParseWebBundleRef(canonical)
+	if !ok {
+		return WebBundleResolution{}, ErrUnsupportedRuntime
+	}
+	return WebBundleResolution{ManifestDigest: digest, Ref: ref}, nil
 }
 
 // Get returns the current version for an empty version, or the exact

@@ -1,6 +1,13 @@
 import { Code, ConnectError } from "@connectrpc/connect";
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { AppInstallation, Project, WorkOSApp } from "@workos/protocol";
+import {
+  DeviceClass,
+  SurfaceRenderer,
+  type AppInstallation,
+  type Project,
+  type SurfaceSession,
+  type WorkOSApp,
+} from "@workos/protocol";
 import { Button } from "@workos/ui-kit";
 import type { WorkOSClients } from "@workos/agent-sdk";
 
@@ -8,8 +15,10 @@ export type LibraryState = "loading" | "ready" | "error";
 
 interface AppLibraryProps {
   project: Project;
-  workosClients: Pick<WorkOSClients, "appRegistry" | "appInstallations" | "projects">;
+  workosClients: Pick<WorkOSClients, "appRegistry" | "appInstallations" | "projects" | "surfaces">;
   onProjectRefreshed: (project: Project) => void;
+  onSurfaceOpened: (session: SurfaceSession) => void;
+  onInstallationRemoved: (installationId: string) => void;
 }
 
 interface LibraryFeedback {
@@ -22,13 +31,20 @@ interface LibraryFeedback {
 // removes apps through the public AppInstallationService. It never guesses
 // local state: after every mutation it re-reads the project (server-owned
 // revision) and the installation list.
-export function AppLibrary({ project, workosClients, onProjectRefreshed }: AppLibraryProps) {
+export function AppLibrary({
+  project,
+  workosClients,
+  onProjectRefreshed,
+  onSurfaceOpened,
+  onInstallationRemoved,
+}: AppLibraryProps) {
   const [state, setState] = useState<LibraryState>("loading");
   const [error, setError] = useState<string>();
   const [apps, setApps] = useState<WorkOSApp[]>([]);
   const [installations, setInstallations] = useState<AppInstallation[]>([]);
   const [busyAppIds, setBusyAppIds] = useState<Record<string, boolean>>({});
   const [feedback, setFeedback] = useState<LibraryFeedback>();
+  const [openingAppIds, setOpeningAppIds] = useState<Record<string, boolean>>({});
   // Generation guards every in-flight promise: switching projects or
   // unmounting invalidates late responses so they cannot pollute state.
   const generationRef = useRef(0);
@@ -148,9 +164,59 @@ export function AppLibrary({ project, workosClients, onProjectRefreshed }: AppLi
           installationId: installation.id,
           expectedProjectRevision: revision,
         });
+        onInstallationRemoved(installation.id);
       });
     },
-    [project.id, runMutation, workosClients],
+    [onInstallationRemoved, project.id, runMutation, workosClients],
+  );
+
+  // Open launches one installed instance as a surface. The idempotency key is
+  // fresh per click, the identity comes only from the gateway session, and
+  // stale responses after a project switch or unmount are inert — a late
+  // session is closed best-effort because nothing renders it anymore.
+  const open = useCallback(
+    (installation: AppInstallation) => {
+      if (openingAppIds[installation.appId]) return;
+      setOpeningAppIds((current) => ({ ...current, [installation.appId]: true }));
+      setFeedback(undefined);
+      const generation = generationRef.current;
+      const isLive = () => generation === generationRef.current;
+      void workosClients.surfaces
+        .createSurface({
+          idempotencyKey: crypto.randomUUID(),
+          appInstanceId: installation.id,
+          projectId: project.id,
+          deviceClass: DeviceClass.DESKTOP,
+          viewport: {
+            width: window.innerWidth,
+            height: window.innerHeight,
+            pixelRatio: window.devicePixelRatio,
+          },
+          preferredRenderer: SurfaceRenderer.WEB_BUNDLE,
+        })
+        .then((response) => {
+          const session = response.session;
+          if (!session) throw new Error("missing surface session");
+          if (!isLive()) {
+            void workosClients.surfaces
+              .closeSurface({ surfaceSessionId: session.id })
+              .catch(() => undefined);
+            return;
+          }
+          onSurfaceOpened(session);
+        })
+        .catch((reason: unknown) => {
+          if (isLive()) {
+            setFeedback({ text: openErrorMessage(reason), isError: true });
+          }
+        })
+        .finally(() => {
+          if (isLive()) {
+            setOpeningAppIds((current) => ({ ...current, [installation.appId]: false }));
+          }
+        });
+    },
+    [onSurfaceOpened, openingAppIds, project.id, workosClients],
   );
 
   const installationByApp = new Map(installations.map((item) => [item.appId, item]));
@@ -216,15 +282,26 @@ export function AppLibrary({ project, workosClients, onProjectRefreshed }: AppLi
                   ) : null}
                 </span>
                 {installation ? (
-                  <Button
-                    disabled={busy}
-                    onClick={() => {
-                      remove(installation);
-                    }}
-                    type="button"
-                  >
-                    {busy ? "Removing…" : "Remove"}
-                  </Button>
+                  <span className="app-row-actions">
+                    <Button
+                      disabled={busy || openingAppIds[app.id] === true}
+                      onClick={() => {
+                        open(installation);
+                      }}
+                      type="button"
+                    >
+                      {openingAppIds[app.id] === true ? "Opening…" : "Open"}
+                    </Button>
+                    <Button
+                      disabled={busy || openingAppIds[app.id] === true}
+                      onClick={() => {
+                        remove(installation);
+                      }}
+                      type="button"
+                    >
+                      {busy ? "Removing…" : "Remove"}
+                    </Button>
+                  </span>
                 ) : (
                   <Button
                     disabled={busy}
@@ -305,6 +382,21 @@ async function listAllInstallations(
 
 function shortDigest(digest: string): string {
   return digest.length > 19 ? `${digest.slice(0, 19)}…` : digest;
+}
+
+function openErrorMessage(reason: unknown): string {
+  if (!(reason instanceof ConnectError)) return "The app surface could not be opened.";
+  switch (reason.code) {
+    case Code.NotFound:
+      return "The installed app or project is no longer available.";
+    case Code.FailedPrecondition:
+      return "This app version has no supported web bundle, so it cannot be opened yet.";
+    case Code.Unavailable:
+    case Code.DeadlineExceeded:
+      return "The surface runtime is temporarily unavailable. Try again shortly.";
+    default:
+      return "The app surface could not be opened.";
+  }
 }
 
 function installErrorMessage(reason: unknown): string {

@@ -2,9 +2,16 @@ package ports
 
 import (
 	"context"
+	"errors"
 
 	"github.com/yangtao121/workos/internal/core/project/domain"
 )
+
+// ErrStoreUnavailable marks a temporarily unreachable Project store. The
+// postgres adapter wraps transient driver failures with it at the port
+// boundary; transports map it to a sanitized Unavailable. Invariant and
+// constraint failures keep their own verdicts and stay Internal.
+var ErrStoreUnavailable = errors.New("project store is temporarily unavailable")
 
 type Repository interface {
 	Create(context.Context, domain.Project, string) (domain.Project, error)

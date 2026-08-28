@@ -38,6 +38,10 @@ func (r *stubInstallationRepository) LookupInstallationRequest(context.Context, 
 	return ports.StoredInstallationRequest{}, false, nil
 }
 
+func (*stubInstallationRepository) ResolveActiveInstallation(_ context.Context, _, _, _ string) (domain.Installation, error) {
+	return domain.Installation{}, domain.ErrNotFound
+}
+
 func (r *stubInstallationRepository) GetInstallation(context.Context, string, string) (domain.Installation, error) {
 	return domain.Installation{}, domain.ErrNotFound
 }

@@ -14,6 +14,7 @@ import (
 	"github.com/yangtao121/workos/internal/core/project/adapters/postgres/projectdb"
 	"github.com/yangtao121/workos/internal/core/project/domain"
 	"github.com/yangtao121/workos/internal/core/project/ports"
+	"github.com/yangtao121/workos/internal/platform/dbtransient"
 )
 
 // Installation repository methods live on the same Repository as Project
@@ -51,6 +52,15 @@ func (r *Repository) LookupInstallationRequest(ctx context.Context, ownerUserID,
 func (r *Repository) GetInstallation(ctx context.Context, ownerUserID, installationID string) (domain.Installation, error) {
 	value, err := r.queries.GetInstallationById(ctx, projectdb.GetInstallationByIdParams{
 		OwnerUserID: ownerUserID, ID: installationID,
+	})
+	return installationFromDB(value, err)
+}
+
+// ResolveActiveInstallation reads the active installation of an owner's
+// non-archived project in one query; every miss maps to a sanitized NotFound.
+func (r *Repository) ResolveActiveInstallation(ctx context.Context, ownerUserID, projectID, installationID string) (domain.Installation, error) {
+	value, err := r.queries.ResolveActiveInstallation(ctx, projectdb.ResolveActiveInstallationParams{
+		OwnerUserID: ownerUserID, ProjectID: projectID, ID: installationID,
 	})
 	return installationFromDB(value, err)
 }
@@ -187,13 +197,13 @@ func (r *Repository) ListActive(ctx context.Context, ownerUserID, projectID, cur
 		return nil, domain.ErrNotFound
 	}
 	if err != nil {
-		return nil, fmt.Errorf("query project for installations: %w", err)
+		return nil, storeError("query project for installations", err)
 	}
 	values, err := r.queries.ListActiveInstallations(ctx, projectdb.ListActiveInstallationsParams{
 		OwnerUserID: ownerUserID, ProjectID: projectID, Cursor: cursor, RowLimit: int32(limit),
 	})
 	if err != nil {
-		return nil, fmt.Errorf("list active installations: %w", err)
+		return nil, storeError("list active installations", err)
 	}
 	installations := make([]domain.Installation, 0, len(values))
 	for _, value := range values {
@@ -354,7 +364,7 @@ func installationFromDB(value projectdb.WorkosCoreProjectAppInstallation, err er
 		return domain.Installation{}, domain.ErrNotFound
 	}
 	if err != nil {
-		return domain.Installation{}, fmt.Errorf("query installation: %w", err)
+		return domain.Installation{}, storeError("query installation", err)
 	}
 	installation := domain.Installation{
 		ID: value.ID, OwnerUserID: value.OwnerUserID, ProjectID: value.ProjectID,
@@ -363,6 +373,22 @@ func installationFromDB(value projectdb.WorkosCoreProjectAppInstallation, err er
 	}
 	installation.UninstalledAt = timePtr(value.UninstalledAt)
 	return installation, nil
+}
+
+// storeError wraps a storage failure at the port boundary. Transient
+// dependency failures (unreachable server, broken connection, resource
+// exhaustion) carry the ErrStoreUnavailable sentinel so transports can
+// answer a sanitized Unavailable; every other failure stays an opaque
+// internal error — classification never reads SQLSTATE message text or
+// constraint names.
+func storeError(operation string, err error) error {
+	if err == nil {
+		return nil
+	}
+	if dbtransient.IsTransient(err) {
+		return fmt.Errorf("%s: %w: %w", operation, ports.ErrStoreUnavailable, err)
+	}
+	return fmt.Errorf("%s: %w", operation, err)
 }
 
 func timePtr(value pgtype.Timestamptz) *time.Time {

@@ -2,6 +2,8 @@ syntax = "proto3";
 
 package workos.surface.v1;
 
+import "google/protobuf/timestamp.proto";
+
 option go_package = "github.com/yangtao121/workos/gen/go/workos/surface/v1;surfacev1";
 
 enum SurfaceRenderer {
@@ -36,6 +38,8 @@ message SurfaceSession {
   bool resize = 7;
   bool clipboard = 8;
   bool file_picker = 9;
+  google.protobuf.Timestamp created_at = 10;
+  google.protobuf.Timestamp expires_at = 11;
 }
 
 message CreateSurfaceRequest {
@@ -44,6 +48,7 @@ message CreateSurfaceRequest {
   DeviceClass device_class = 3;
   Viewport viewport = 4;
   SurfaceRenderer preferred_renderer = 5;
+  string idempotency_key = 6;
 }
 
 message CloseSurfaceRequest {

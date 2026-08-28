@@ -4,9 +4,11 @@ import {
   AgentTaskService,
   AppInstallationService,
   AppRegistryService,
+  ArtifactService,
   HarnessCatalogService,
   ProjectHarnessBindingService,
   ProjectService,
+  SurfaceService,
 } from "@workos/protocol";
 
 export interface WorkOSClients {
@@ -16,6 +18,8 @@ export interface WorkOSClients {
   agentTasks: Client<typeof AgentTaskService>;
   appRegistry: Client<typeof AppRegistryService>;
   appInstallations: Client<typeof AppInstallationService>;
+  artifacts: Client<typeof ArtifactService>;
+  surfaces: Client<typeof SurfaceService>;
 }
 
 export function createWorkOSClients(baseUrl: string, transport?: Transport): WorkOSClients {
@@ -27,5 +31,7 @@ export function createWorkOSClients(baseUrl: string, transport?: Transport): Wor
     agentTasks: createClient(AgentTaskService, activeTransport),
     appRegistry: createClient(AppRegistryService, activeTransport),
     appInstallations: createClient(AppInstallationService, activeTransport),
+    artifacts: createClient(ArtifactService, activeTransport),
+    surfaces: createClient(SurfaceService, activeTransport),
   };
 }

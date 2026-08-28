@@ -31,6 +31,14 @@ func (f *fakeRepository) LookupInstallationRequest(_ context.Context, _, key str
 	return stored, ok, nil
 }
 
+func (f *fakeRepository) ResolveActiveInstallation(_ context.Context, ownerUserID, projectID, installationID string) (domain.Installation, error) {
+	installation, ok := f.byID[installationID]
+	if !ok || installation.OwnerUserID != ownerUserID || installation.ProjectID != projectID || installation.UninstalledAt != nil {
+		return domain.Installation{}, domain.ErrNotFound
+	}
+	return installation, nil
+}
+
 func (f *fakeRepository) GetInstallation(_ context.Context, _, installationID string) (domain.Installation, error) {
 	installation, ok := f.byID[installationID]
 	if !ok {

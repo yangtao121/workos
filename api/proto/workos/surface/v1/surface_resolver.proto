@@ -1,0 +1,48 @@
+// Private Core-owned installed-instance resolution for web bundle surfaces.
+// Not on the gateway allowlist; only runtime-host reaches it with trusted
+// identity, and every call re-resolves from authoritative Core facts.
+syntax = "proto3";
+
+package workos.surface.v1;
+
+option go_package = "github.com/yangtao121/workos/gen/go/workos/surface/v1;surfacev1";
+
+// WebBundleLaunchDescriptor is the neutral, immutable launch fact for one
+// installed instance: the pinned registry identity plus the exact bundle
+// artifact it references.
+message WebBundleLaunchDescriptor {
+  string app_id = 1;
+  string version = 2;
+  string manifest_digest = 3;
+  string artifact_id = 4;
+  string artifact_digest = 5;
+  string entrypoint = 6;
+}
+
+message ResolveWebBundleRequest {
+  string project_id = 1;
+  string app_instance_id = 2;
+}
+
+message ResolveWebBundleResponse {
+  WebBundleLaunchDescriptor launch = 1;
+}
+
+message ReadWebBundleAssetRequest {
+  string project_id = 1;
+  string app_instance_id = 2;
+  // asset_path is the normalized relative bundle path (empty means the
+  // entrypoint); the server rejects anything outside the pinned bundle.
+  string asset_path = 3;
+}
+
+message ReadWebBundleAssetResponse {
+  bytes content = 1;
+  string media_type = 2;
+  string etag = 3;
+}
+
+service SurfaceLaunchResolverService {
+  rpc ResolveWebBundle(ResolveWebBundleRequest) returns (ResolveWebBundleResponse) {}
+  rpc ReadWebBundleAsset(ReadWebBundleAssetRequest) returns (ReadWebBundleAssetResponse) {}
+}

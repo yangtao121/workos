@@ -1,6 +1,7 @@
 package manifestvalidator
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
@@ -617,4 +618,95 @@ func violationMentions(violations []string, fragment string) bool {
 		}
 	}
 	return false
+}
+
+const validWebBundleManifestTemplate = `apiVersion: workos.app/v1
+id: notes-bundle
+name: Notes Bundle
+version: 1.0.0
+scope: user
+runtime:
+  type: web-bundle
+  artifactId: 0198d7ea-2110-7c42-b659-c5e4d73bc343
+  artifactDigest: sha256:%s
+surfaces:
+  - id: main
+    renderer: web-bundle
+    route: /
+    adaptive: true
+permissions: [artifact.read]
+resources: {}
+health: {}
+maintainer: {}
+`
+
+func webBundleManifest(artifactID, digest string) []byte {
+	rendered := fmt.Sprintf(validWebBundleManifestTemplate, digest)
+	if artifactID != "" {
+		rendered = strings.Replace(rendered, "artifactId: 0198d7ea-2110-7c42-b659-c5e4d73bc343", "artifactId: "+artifactID, 1)
+	}
+	return []byte(rendered)
+}
+
+func TestValidatorAcceptsWebBundleManifest(t *testing.T) {
+	t.Parallel()
+	validator := newValidator(t)
+	manifest, violations := validator.Validate(webBundleManifest("", strings.Repeat("a", 64)))
+	if len(violations) > 0 {
+		t.Fatalf("valid web bundle manifest rejected: %v", violations)
+	}
+	if manifest.RuntimeType != "web-bundle" || manifest.WebBundle == nil {
+		t.Fatalf("launch descriptor not projected: %+v", manifest)
+	}
+	if manifest.WebBundle.ArtifactID != "0198d7ea-2110-7c42-b659-c5e4d73bc343" ||
+		manifest.WebBundle.ArtifactDigest != "sha256:"+strings.Repeat("a", 64) {
+		t.Fatalf("descriptor mismatch: %+v", manifest.WebBundle)
+	}
+	if !domain.ValidWebBundleArtifactID(manifest.WebBundle.ArtifactID) {
+		t.Fatal("schema and domain artifact grammar diverged")
+	}
+}
+
+func TestValidatorEnforcesWebBundleCrossFieldRules(t *testing.T) {
+	t.Parallel()
+	validator := newValidator(t)
+	cases := map[string][]byte{
+		"missing digest": []byte(strings.Replace(string(webBundleManifest("", strings.Repeat("a", 64))),
+			"  artifactDigest: sha256:"+strings.Repeat("a", 64)+"\n", "", 1)),
+		"bad digest": webBundleManifest("", "ZZZ"+strings.Repeat("a", 61)),
+		"missing id": webBundleManifest("not-a-uuid", strings.Repeat("a", 64)),
+		"non-v7 id":  webBundleManifest("0198d7ea-1110-4c42-b659-c5e4d73bc343", strings.Repeat("a", 64)),
+		"container image": []byte(strings.Replace(string(webBundleManifest("", strings.Repeat("a", 64))),
+			"  artifactDigest:", "  image: busybox\n  artifactDigest:", 1)),
+		"container command": []byte(strings.Replace(string(webBundleManifest("", strings.Repeat("a", 64))),
+			"  artifactDigest:", "  command: [\"x\"]\n  artifactDigest:", 1)),
+		"container port": []byte(strings.Replace(string(webBundleManifest("", strings.Repeat("a", 64))),
+			"  artifactDigest:", "  port: 8080\n  artifactDigest:", 1)),
+		"multiple surfaces": []byte(strings.Replace(string(webBundleManifest("", strings.Repeat("a", 64))),
+			"surfaces:\n  - id: main", "surfaces:\n  - id: main", 1)),
+		"wrong renderer": []byte(strings.Replace(string(webBundleManifest("", strings.Repeat("a", 64))),
+			"renderer: web-bundle", "renderer: declarative", 1)),
+	}
+	// Add a second surface for the multiple-surfaces case explicitly.
+	cases["multiple surfaces"] = []byte(strings.Replace(string(cases["multiple surfaces"]),
+		"permissions:", "  - id: second\n    renderer: web-bundle\npermissions:", 1))
+	for name, manifest := range cases {
+		if _, violations := validator.Validate(manifest); len(violations) == 0 {
+			t.Errorf("%s: manifest accepted", name)
+		}
+	}
+}
+
+func TestValidatorLegacyManifestsStillPass(t *testing.T) {
+	t.Parallel()
+	validator := newValidator(t)
+	for name, manifest := range map[string]string{"user": validUserManifest, "project": validProjectManifest} {
+		parsed, violations := validator.Validate([]byte(manifest))
+		if len(violations) > 0 {
+			t.Fatalf("%s legacy manifest regressed: %v", name, violations)
+		}
+		if parsed.WebBundle != nil {
+			t.Fatalf("%s legacy manifest gained a bundle descriptor", name)
+		}
+	}
 }

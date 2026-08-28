@@ -41,6 +41,10 @@ func (r registryRepoStub) Register(context.Context, appregistrydomain.AppVersion
 	return appregistrydomain.AppVersionSummary{}, nil
 }
 
+func (registryRepoStub) GetVersionManifest(_ context.Context, _, _, _ string) (string, []byte, error) {
+	return "", nil, nil
+}
+
 func (r registryRepoStub) GetVersion(_ context.Context, ownerUserID, appID, version string) (appregistrydomain.AppVersionSummary, error) {
 	r.record(ownerUserID, appID, version)
 	return r.summary, r.err
@@ -76,7 +80,7 @@ func (staticGenerator) New() string { return "01999999-9999-7999-8999-9999999999
 
 func newCatalog(t *testing.T, repo registryRepoStub) *AppCatalog {
 	t.Helper()
-	service, err := appregistryapp.New(repo, voidValidator{}, nil, staticGenerator{})
+	service, err := appregistryapp.New(repo, voidValidator{}, nil, nil, staticGenerator{})
 	if err != nil {
 		t.Fatal(err)
 	}

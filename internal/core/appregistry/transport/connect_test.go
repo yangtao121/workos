@@ -63,6 +63,10 @@ func (r *stubRepository) Register(_ context.Context, record domain.AppVersion) (
 	return domain.SummaryOf(record), nil
 }
 
+func (r *stubRepository) GetVersionManifest(_ context.Context, ownerUserID, appID, version string) (string, []byte, error) {
+	return "", nil, domain.ErrNotFound
+}
+
 func (r *stubRepository) GetVersion(_ context.Context, ownerUserID, appID, version string) (domain.AppVersionSummary, error) {
 	for _, stored := range r.stored {
 		if stored.OwnerUserID == ownerUserID && stored.AppID == appID && stored.Version == version {
@@ -115,7 +119,7 @@ func (staticGenerator) New() string { return "01999999-9999-7999-8999-9999999999
 
 func newHandler(t *testing.T) *Handler {
 	t.Helper()
-	service, err := application.New(&stubRepository{}, stubValidator{}, stubProjects{}, staticGenerator{})
+	service, err := application.New(&stubRepository{}, stubValidator{}, stubProjects{}, nil, staticGenerator{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -132,7 +136,7 @@ func withIdentity(ctx context.Context) context.Context {
 func newHTTPServer(t *testing.T) (*httptest.Server, *stubRepository) {
 	t.Helper()
 	repository := &stubRepository{}
-	service, err := application.New(repository, stubValidator{}, stubProjects{}, staticGenerator{})
+	service, err := application.New(repository, stubValidator{}, stubProjects{}, nil, staticGenerator{})
 	if err != nil {
 		t.Fatal(err)
 	}

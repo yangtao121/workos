@@ -27,11 +27,23 @@
       "required": ["type"],
       "properties": {
         "type": {
-          "enum": ["trusted", "container", "background-service", "remote-native", "remote-browser"]
+          "enum": [
+            "trusted",
+            "container",
+            "background-service",
+            "remote-native",
+            "remote-browser",
+            "web-bundle"
+          ]
         },
         "image": { "type": "string" },
         "command": { "type": "array", "items": { "type": "string" }, "minItems": 1 },
-        "port": { "type": "integer", "minimum": 1, "maximum": 65535 }
+        "port": { "type": "integer", "minimum": 1, "maximum": 65535 },
+        "artifactId": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+        },
+        "artifactDigest": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" }
       },
       "additionalProperties": false
     },

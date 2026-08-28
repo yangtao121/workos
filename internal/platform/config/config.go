@@ -23,7 +23,13 @@ type Config struct {
 	Auth        Auth      `yaml:"auth"`
 	Agent       Agent     `yaml:"agent"`
 	Harness     Harness   `yaml:"harness"`
+	Surface     Surface   `yaml:"surface"`
 	Telemetry   Telemetry `yaml:"telemetry"`
+}
+
+// Surface configures the runtime-host Surface Broker session lifetime.
+type Surface struct {
+	SessionTTL time.Duration `yaml:"session_ttl"`
 }
 
 // Telemetry configures the optional OTLP/HTTP trace exporter. An empty endpoint
@@ -120,6 +126,7 @@ func defaults() Config {
 				RuntimePath: "/usr/local/libexec/workos/dsh-jsonrpc-agent", CordisConfigPath: "/etc/workos/deepseek.cordis.yml",
 			},
 		},
+		Surface: Surface{SessionTTL: 15 * time.Minute},
 	}
 }
 
@@ -142,6 +149,7 @@ func Load() (Config, error) {
 	setString(&cfg.HTTP.StaticDir, "WORKOS_STATIC_DIR")
 	setString(&cfg.Services.Core, "WORKOS_CORE_URL")
 	setString(&cfg.Services.Harness, "WORKOS_HARNESS_URL")
+	setString(&cfg.Services.Runtime, "WORKOS_RUNTIME_URL")
 	setString(&cfg.Harness.CoreURL, "WORKOS_CORE_URL")
 	setString(&cfg.Auth.OwnerID, "WORKOS_OWNER_ID")
 	setString(&cfg.Auth.DeviceID, "WORKOS_DEVICE_ID")
@@ -178,6 +186,13 @@ func Load() (Config, error) {
 		}
 		cfg.Agent.CatalogTimeout = value
 	}
+	if raw, ok := os.LookupEnv("WORKOS_SURFACE_SESSION_TTL"); ok {
+		value, err := time.ParseDuration(raw)
+		if err != nil || value <= 0 {
+			return Config{}, errors.New("WORKOS_SURFACE_SESSION_TTL must be a positive duration")
+		}
+		cfg.Surface.SessionTTL = value
+	}
 	if raw, ok := os.LookupEnv("WORKOS_DEV_AUTH_BYPASS"); ok {
 		value, err := strconv.ParseBool(raw)
 		if err != nil {
@@ -192,6 +207,18 @@ func setString(dst *string, key string) {
 	if value, ok := os.LookupEnv(key); ok {
 		*dst = value
 	}
+}
+
+// validUpstreamURL accepts exactly the shapes a reverse-proxy upstream can
+// have: an absolute http/https URL with a non-empty host. Relative paths,
+// scheme-less strings, unsupported schemes, and empty values are rejected at
+// startup so a bad upstream can never fail lazily on first request.
+func validUpstreamURL(raw string) bool {
+	parsed, err := url.Parse(raw)
+	if err != nil || !parsed.IsAbs() || parsed.Host == "" {
+		return false
+	}
+	return parsed.Scheme == "http" || parsed.Scheme == "https"
 }
 
 // ValidateGateway enforces fail-closed public binding rules.
@@ -209,8 +236,24 @@ func (c Config) ValidateGateway() error {
 	if c.Auth.OwnerID == "" || c.Auth.DeviceID == "" {
 		return errors.New("owner and device identity are required")
 	}
-	if _, err := url.ParseRequestURI(c.Services.Core); err != nil {
-		return fmt.Errorf("invalid core URL: %w", err)
+	if !validUpstreamURL(c.Services.Core) {
+		return errors.New("invalid core URL: must be an absolute http(s) URL with a host")
+	}
+	if !validUpstreamURL(c.Services.Runtime) {
+		return errors.New("invalid runtime URL: must be an absolute http(s) URL with a host")
+	}
+	return nil
+}
+
+// ValidateRuntimeHost checks Runtime-owned routing and surface session
+// configuration before the surface broker begins accepting requests.
+func (c Config) ValidateRuntimeHost() error {
+	coreURL, err := url.Parse(c.Services.Core)
+	if err != nil || !coreURL.IsAbs() || coreURL.Host == "" || (coreURL.Scheme != "http" && coreURL.Scheme != "https") {
+		return errors.New("invalid Core service URL")
+	}
+	if c.Surface.SessionTTL < time.Minute || c.Surface.SessionTTL > 24*time.Hour {
+		return errors.New("surface session TTL must be between 1m and 24h")
 	}
 	return nil
 }

@@ -25,6 +25,7 @@ type Querier interface {
 	ListActiveInstallations(ctx context.Context, arg ListActiveInstallationsParams) ([]WorkosCoreProjectAppInstallation, error)
 	ListProjects(ctx context.Context, arg ListProjectsParams) ([]WorkosCoreProject, error)
 	LockProjectForInstallation(ctx context.Context, arg LockProjectForInstallationParams) (LockProjectForInstallationRow, error)
+	ResolveActiveInstallation(ctx context.Context, arg ResolveActiveInstallationParams) (WorkosCoreProjectAppInstallation, error)
 	TombstoneInstallation(ctx context.Context, arg TombstoneInstallationParams) (int64, error)
 	UpdateProject(ctx context.Context, arg UpdateProjectParams) (WorkosCoreProject, error)
 }

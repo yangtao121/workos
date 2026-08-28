@@ -12,6 +12,8 @@ import (
 
 	"github.com/yangtao121/workos/internal/core/appregistry/adapters/postgres/appdb"
 	"github.com/yangtao121/workos/internal/core/appregistry/domain"
+	"github.com/yangtao121/workos/internal/core/appregistry/ports"
+	"github.com/yangtao121/workos/internal/platform/dbtransient"
 )
 
 // Repository stores App versions in Core-owned PostgreSQL tables. Concurrency
@@ -158,6 +160,23 @@ LIMIT 1`, ownerUserID, appID, version)
 	return summary, nil
 }
 
+// GetVersionManifest reads the exact immutable version's digest and canonical
+// bytes for installed-instance resolution. This is the only internal consumer
+// of the stored manifest; public reads keep using the summary projection.
+func (r *Repository) GetVersionManifest(ctx context.Context, ownerUserID, appID, version string) (string, []byte, error) {
+	var digest string
+	var canonical []byte
+	err := r.pool.QueryRow(ctx, `
+SELECT manifest_digest, canonical_manifest
+FROM workos_core.app_versions
+WHERE owner_user_id = $1 AND app_id = $2 AND version = $3
+LIMIT 1`, ownerUserID, appID, version).Scan(&digest, &canonical)
+	if err != nil {
+		return "", nil, appVersionError("query app version manifest", err)
+	}
+	return digest, canonical, nil
+}
+
 func (r *Repository) ListAppIDPage(ctx context.Context, ownerUserID, cursor string, limit int) ([]string, string, error) {
 	// Probe one row beyond the effective limit: only a real extra record
 	// produces a next cursor, so an exactly-full final page yields none.
@@ -230,10 +249,23 @@ func appVersionError(operation string, err error) error {
 	if errors.Is(err, pgx.ErrNoRows) {
 		return domain.ErrNotFound
 	}
-	if err != nil {
-		return fmt.Errorf("%s: %w", operation, err)
+	return storeError(operation, err)
+}
+
+// storeError wraps a storage failure at the port boundary. Transient
+// dependency failures (unreachable server, broken connection, resource
+// exhaustion) carry the ErrStoreUnavailable sentinel so transports can
+// answer a sanitized Unavailable; every other failure stays an opaque
+// internal error — classification never reads SQLSTATE message text or
+// constraint names.
+func storeError(operation string, err error) error {
+	if err == nil {
+		return nil
 	}
-	return nil
+	if dbtransient.IsTransient(err) {
+		return fmt.Errorf("%s: %w: %w", operation, ports.ErrStoreUnavailable, err)
+	}
+	return fmt.Errorf("%s: %w", operation, err)
 }
 
 func timestamp(value time.Time) pgtype.Timestamptz {

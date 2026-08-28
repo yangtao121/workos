@@ -54,3 +54,31 @@ sql:
             go_type:
               import: encoding/json
               type: RawMessage
+  - engine: postgresql
+    schema: internal/platform/migrations/files
+    queries: internal/core/artifact/adapters/postgres/queries.sql
+    gen:
+      go:
+        package: artifactdb
+        out: internal/core/artifact/adapters/postgres/artifactdb
+        sql_package: pgx/v5
+        emit_interface: true
+        emit_json_tags: true
+        omit_unused_structs: true
+        overrides:
+          - db_type: uuid
+            go_type: string
+  - engine: postgresql
+    schema: internal/platform/migrations/files
+    queries: internal/runtime/surface/adapters/postgres/queries.sql
+    gen:
+      go:
+        package: surfacedb
+        out: internal/runtime/surface/adapters/postgres/surfacedb
+        sql_package: pgx/v5
+        emit_interface: true
+        emit_json_tags: true
+        omit_unused_structs: true
+        overrides:
+          - db_type: uuid
+            go_type: string

@@ -101,6 +101,8 @@ services:
     environment:
       <<: *workos-environment
       WORKOS_HTTP_ADDRESS: 127.0.0.1:8083
+      WORKOS_CORE_URL: http://127.0.0.1:8081
+      WORKOS_SURFACE_SESSION_TTL: ${WORKOS_SURFACE_SESSION_TTL:-15m}
 
   reliability-host:
     <<: *workos-service
@@ -123,6 +125,7 @@ services:
       <<: *workos-environment
       WORKOS_HTTP_ADDRESS: 127.0.0.1:8080
       WORKOS_CORE_URL: http://127.0.0.1:8081
+      WORKOS_RUNTIME_URL: http://127.0.0.1:8083
       WORKOS_STATIC_DIR: /srv/workos/desktop
       WORKOS_DEV_AUTH_BYPASS: "true"
 

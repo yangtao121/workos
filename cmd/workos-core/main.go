@@ -6,7 +6,6 @@ import (
 	"os"
 
 	"github.com/yangtao121/workos/gen/go/workos/agent/v1/agentv1connect"
-	"github.com/yangtao121/workos/gen/go/workos/artifact/v1/artifactv1connect"
 	commonv1 "github.com/yangtao121/workos/gen/go/workos/common/v1"
 	"github.com/yangtao121/workos/gen/go/workos/common/v1/commonv1connect"
 	"github.com/yangtao121/workos/gen/go/workos/harness/v1/harnessv1connect"
@@ -19,6 +18,9 @@ import (
 	appregistrypostgres "github.com/yangtao121/workos/internal/core/appregistry/adapters/postgres"
 	appregistryapp "github.com/yangtao121/workos/internal/core/appregistry/application"
 	appregistrytransport "github.com/yangtao121/workos/internal/core/appregistry/transport"
+	artifactpostgres "github.com/yangtao121/workos/internal/core/artifact/adapters/postgres"
+	artifactapp "github.com/yangtao121/workos/internal/core/artifact/application"
+	artifacttransport "github.com/yangtao121/workos/internal/core/artifact/transport"
 	cataloghost "github.com/yangtao121/workos/internal/core/harnesscatalog/adapters/harnesshost"
 	catalogapp "github.com/yangtao121/workos/internal/core/harnesscatalog/application"
 	catalogtransport "github.com/yangtao121/workos/internal/core/harnesscatalog/transport"
@@ -107,7 +109,15 @@ func run(logger *slog.Logger) error {
 	if err != nil {
 		return err
 	}
-	appService, err := appregistryapp.New(appregistrypostgres.New(pool), manifestValidator, projectDirectory, generator)
+	artifactService, err := artifactapp.New(artifactpostgres.New(pool), generator)
+	if err != nil {
+		return err
+	}
+	artifactDirectory, err := orchestration.NewArtifactDirectory(artifactService)
+	if err != nil {
+		return err
+	}
+	appService, err := appregistryapp.New(appregistrypostgres.New(pool), manifestValidator, projectDirectory, artifactDirectory, generator)
 	if err != nil {
 		return err
 	}
@@ -124,15 +134,26 @@ func run(logger *slog.Logger) error {
 	}
 	installationPath, installationHandler := projecttransport.NewInstallationConnectHandler(installationService)
 	mux.Handle(installationPath, identity.Middleware(installationHandler))
-	artifactPath, artifactHandler := artifactv1connect.NewArtifactServiceHandler(artifactv1connect.UnimplementedArtifactServiceHandler{})
-	mux.Handle(artifactPath, artifactHandler)
+
+	// The private installed-instance resolver composes the three authoritative
+	// module services; only runtime-host reaches it on the private listener.
+	launchResolver, err := orchestration.NewSurfaceLaunchResolver(installationService, appService, artifactService)
+	if err != nil {
+		return err
+	}
+	resolverPath, resolverHandler := orchestrationtransport.NewSurfaceResolverConnectHandler(launchResolver)
+	mux.Handle(resolverPath, identity.Middleware(resolverHandler))
+
+	artifactPath, artifactHandler := artifacttransport.NewConnectHandler(artifactService)
+	mux.Handle(artifactPath, identity.Middleware(artifactHandler))
 	systemPath, systemHandler := commonv1connect.NewSystemServiceHandler(systemhandler.New("workos-core", commonv1.HealthState_HEALTH_STATE_HEALTHY,
 		&commonv1.FeatureCapability{Id: "project", Available: true},
 		&commonv1.FeatureCapability{Id: "agent-task", Available: true},
 		&commonv1.FeatureCapability{Id: "harness-catalog", Available: true},
 		&commonv1.FeatureCapability{Id: "app-registry", Available: true},
 		&commonv1.FeatureCapability{Id: "app-installation", Available: true},
-		&commonv1.FeatureCapability{Id: "artifact", Available: false, Reason: "contract only"},
+		&commonv1.FeatureCapability{Id: "artifact", Available: true, Reason: "web bundle subtype only"},
+		&commonv1.FeatureCapability{Id: "surface-launch-resolution", Available: true},
 	))
 	mux.Handle(systemPath, systemHandler)
 	return httpserver.Run("workos-core", cfg.HTTP.Address, mux, logger, "", "", cfg.Telemetry.OTLPEndpoint)

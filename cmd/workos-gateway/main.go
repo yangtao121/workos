@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"strings"
 
 	"github.com/yangtao121/workos/internal/gateway"
 	"github.com/yangtao121/workos/internal/platform/config"
@@ -51,6 +52,15 @@ func run(logger *slog.Logger) error {
 		return nil
 	}
 	mux := httpserver.NewMux("workos-gateway", ready)
-	mux.Handle("/", handler)
-	return httpserver.Run("workos-gateway", cfg.HTTP.Address, mux, logger, cfg.HTTP.TLSCertFile, cfg.HTTP.TLSKeyFile, cfg.Telemetry.OTLPEndpoint)
+	// Only health endpoints route through the ServeMux: its path cleaning
+	// would redirect dot-segment or double-slash surface requests before the
+	// gateway's fail-closed /surfaces/ policy can reject them.
+	root := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasPrefix(r.URL.Path, "/healthz") || strings.HasPrefix(r.URL.Path, "/readyz") {
+			mux.ServeHTTP(w, r)
+			return
+		}
+		handler.ServeHTTP(w, r)
+	})
+	return httpserver.Run("workos-gateway", cfg.HTTP.Address, root, logger, cfg.HTTP.TLSCertFile, cfg.HTTP.TLSKeyFile, cfg.Telemetry.OTLPEndpoint)
 }

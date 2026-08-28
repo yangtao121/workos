@@ -1,12 +1,12 @@
 {
   "$schema": "./status.schema.json",
-  "updated": "2026-08-25",
+  "updated": "2026-08-28",
   "modules": [
     {
       "name": "Access Gateway",
       "process": "workos-gateway",
       "status": "scaffolded",
-      "evidence": "health/config boundary"
+      "evidence": "core+runtime upstreams, surface routing, identity injection; device auth scaffolded"
     },
     {
       "name": "Project",
@@ -48,7 +48,7 @@
       "name": "Desktop Shell",
       "process": "desktop-web",
       "status": "working",
-      "evidence": "foundation + DeepSeek fixture Catalog/binding E2E + App Library install/remove E2E"
+      "evidence": "foundation + DeepSeek fixture Catalog/binding E2E + App Library install/remove E2E + sandboxed Web Bundle window E2E incl. opaque-origin top-level sandbox proof + unmount best-effort close"
     },
     {
       "name": "App Registry",
@@ -65,14 +65,14 @@
     {
       "name": "Artifact",
       "process": "workos-core",
-      "status": "contract-only",
-      "evidence": "workos.artifact.v1"
+      "status": "scaffolded",
+      "evidence": "web bundle subtype only: bounded upload, canonical digest, durable idempotency; generic artifact storage unimplemented"
     },
     {
       "name": "Runtime / Surface",
       "process": "runtime-host",
-      "status": "scaffolded",
-      "evidence": "capability probe; runners unavailable"
+      "status": "working",
+      "evidence": "Web Bundle surfaces only: device-bound durable idempotent sessions + canonical UUIDv7/finite-viewport boundaries + renderer fail-closed + restart persistence + per-request Core revalidation + transient-outage Unavailable/503 classification + server-enforced CSP sandbox (top-level opaque E2E) + real-PostgreSQL concurrency races; container/native runners unavailable"
     },
     {
       "name": "Reliability",

@@ -134,6 +134,17 @@ func (s *InstallationService) Uninstall(ctx context.Context, input UninstallInpu
 	})
 }
 
+// ResolveActiveInstallation is the authority read for installed-instance
+// surface resolution: the installation must be active, belong to the owner's
+// project, and sit under a non-archived project. Unknown, foreign, archived,
+// or tombstoned instances are sanitized NotFound verdicts.
+func (s *InstallationService) ResolveActiveInstallation(ctx context.Context, ownerUserID, projectID, installationID string) (domain.Installation, error) {
+	if ownerUserID == "" || !domain.ValidInstallationUUID(projectID) || !domain.ValidInstallationUUID(installationID) {
+		return domain.Installation{}, domain.ErrInvalid
+	}
+	return s.repository.ResolveActiveInstallation(ctx, ownerUserID, projectID, installationID)
+}
+
 // ListInstalled returns one page of active installations ordered by app ID.
 // The page size is normalized exactly once here: zero means the default,
 // values above the maximum clamp to it, negative values are rejected.

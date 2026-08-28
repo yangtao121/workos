@@ -6,11 +6,14 @@ import userEvent from "@testing-library/user-event";
 import type { WorkOSClients } from "@workos/agent-sdk";
 import {
   AppScope,
+  DeviceClass,
+  SurfaceRenderer,
   type AppInstallation,
   type InstallAppResponse,
   type ListAppsResponse,
   type ListInstalledAppsResponse,
   type Project,
+  type SurfaceSession,
   type UninstallAppResponse,
   type WorkOSApp,
 } from "@workos/protocol";
@@ -73,6 +76,8 @@ interface LibraryFixture {
   getProject?: ReturnType<typeof vi.fn>;
   listApps?: ReturnType<typeof vi.fn>;
   listInstalledApps?: ReturnType<typeof vi.fn>;
+  createSurface?: ReturnType<typeof vi.fn>;
+  closeSurface?: ReturnType<typeof vi.fn>;
 }
 
 function clientsFixture(fixture: LibraryFixture) {
@@ -123,6 +128,28 @@ function clientsFixture(fixture: LibraryFixture) {
       getProject:
         fixture.getProject ?? vi.fn(() => Promise.resolve({ project: project("project-1", 2n) })),
     },
+    surfaces: {
+      createSurface:
+        fixture.createSurface ??
+        vi.fn(() =>
+          Promise.resolve({
+            $typeName: "workos.surface.v1.CreateSurfaceResponse",
+            session: {
+              $typeName: "workos.surface.v1.SurfaceSession",
+              id: "surface-session-1",
+              appInstanceId: "installation-1",
+              projectId: "project-1",
+              renderer: SurfaceRenderer.WEB_BUNDLE,
+              url: "/surfaces/surface-session-1/",
+              bridgeToken: "",
+              resize: false,
+              clipboard: false,
+              filePicker: false,
+            } as SurfaceSession,
+          }),
+        ),
+      closeSurface: fixture.closeSurface ?? vi.fn(() => Promise.resolve({})),
+    },
   } as unknown as WorkOSClients;
 }
 
@@ -157,6 +184,8 @@ describe("App Library", () => {
         project={project("project-1", 2n)}
         workosClients={clients}
         onProjectRefreshed={() => undefined}
+        onSurfaceOpened={() => undefined}
+        onInstallationRemoved={() => undefined}
       />,
     );
     // The loading state exists only until the catalog resolves; asserting
@@ -175,6 +204,8 @@ describe("App Library", () => {
         project={project("project-1", 1n)}
         workosClients={clientsFixture({})}
         onProjectRefreshed={() => undefined}
+        onSurfaceOpened={() => undefined}
+        onInstallationRemoved={() => undefined}
       />,
     );
     expect(await screen.findByText("No apps have been registered yet.")).toBeTruthy();
@@ -198,6 +229,8 @@ describe("App Library", () => {
         project={project("project-1", 1n)}
         workosClients={clients}
         onProjectRefreshed={() => undefined}
+        onSurfaceOpened={() => undefined}
+        onInstallationRemoved={() => undefined}
       />,
     );
     const alert = await screen.findByRole("alert");
@@ -242,6 +275,8 @@ describe("App Library", () => {
         project={project("project-1", 2n)}
         workosClients={clients}
         onProjectRefreshed={onProjectRefreshed}
+        onSurfaceOpened={() => undefined}
+        onInstallationRemoved={() => undefined}
       />,
     );
     await userEvent.click(await screen.findByRole("button", { name: "Install" }));
@@ -295,6 +330,8 @@ describe("App Library", () => {
         project={project("project-1", 2n)}
         workosClients={clients}
         onProjectRefreshed={() => undefined}
+        onSurfaceOpened={() => undefined}
+        onInstallationRemoved={() => undefined}
       />,
     );
     await userEvent.click(await screen.findByRole("button", { name: "Remove" }));
@@ -329,6 +366,8 @@ describe("App Library", () => {
         project={project("project-1", 2n)}
         workosClients={clients}
         onProjectRefreshed={onProjectRefreshed}
+        onSurfaceOpened={() => undefined}
+        onInstallationRemoved={() => undefined}
       />,
     );
     await userEvent.click(await screen.findByRole("button", { name: "Install" }));
@@ -359,6 +398,8 @@ describe("App Library", () => {
         project={project("project-1", 2n)}
         workosClients={clients}
         onProjectRefreshed={() => undefined}
+        onSurfaceOpened={() => undefined}
+        onInstallationRemoved={() => undefined}
       />,
     );
     await userEvent.click(await screen.findByRole("button", { name: "Install" }));
@@ -387,6 +428,8 @@ describe("App Library", () => {
           project={project("project-1", 2n)}
           workosClients={clients}
           onProjectRefreshed={() => undefined}
+          onSurfaceOpened={() => undefined}
+          onInstallationRemoved={() => undefined}
         />,
       );
       await userEvent.click(await screen.findByRole("button", { name: "Install" }));
@@ -417,6 +460,8 @@ describe("App Library", () => {
           project={project("project-1", 2n)}
           workosClients={firstClients}
           onProjectRefreshed={() => undefined}
+          onSurfaceOpened={() => undefined}
+          onInstallationRemoved={() => undefined}
         />,
       );
       await userEvent.click(await first.findByRole("button", { name: "Install" }));
@@ -427,6 +472,8 @@ describe("App Library", () => {
           project={project("project-2", 5n)}
           workosClients={clientsFixture({ apps: [app("notes-app", "1.0.0")] })}
           onProjectRefreshed={() => undefined}
+          onSurfaceOpened={() => undefined}
+          onInstallationRemoved={() => undefined}
         />,
       );
       await act(async () => {
@@ -442,5 +489,112 @@ describe("App Library", () => {
     } finally {
       consoleError.mockRestore();
     }
+  });
+});
+
+describe("App Library open", () => {
+  it("opens an installed app through CreateSurface with a fresh idempotency key", async () => {
+    const user = userEvent.setup();
+    const onSurfaceOpened = vi.fn();
+    const clients = clientsFixture({
+      apps: [app("board-app", "2.0.0")],
+      installations: [installation("installation-1", "board-app", "1.9.0")],
+    });
+    render(
+      <AppLibrary
+        project={project("project-1", 2n)}
+        workosClients={clients}
+        onProjectRefreshed={() => undefined}
+        onSurfaceOpened={onSurfaceOpened}
+        onInstallationRemoved={() => undefined}
+      />,
+    );
+    await screen.findByText(/Installed · pinned 1\.9\.0/);
+    await user.click(screen.getByRole("button", { name: "Open" }));
+    await waitFor(() => {
+      expect(onSurfaceOpened).toHaveBeenCalledTimes(1);
+    });
+    const session = onSurfaceOpened.mock.calls[0]?.[0] as SurfaceSession;
+    expect(session.id).toBe("surface-session-1");
+    expect(session.url).toBe("/surfaces/surface-session-1/");
+    const request = (clients.surfaces.createSurface as ReturnType<typeof vi.fn>).mock
+      .calls[0]?.[0] as {
+      idempotencyKey: string;
+      appInstanceId: string;
+      projectId: string;
+      deviceClass: DeviceClass;
+      preferredRenderer: SurfaceRenderer;
+      viewport: { width: number };
+    };
+    expect(request.idempotencyKey).toEqual(expect.any(String));
+    expect(request.appInstanceId).toBe("installation-1");
+    expect(request.projectId).toBe("project-1");
+    expect(request.deviceClass).toBe(DeviceClass.DESKTOP);
+    expect(request.preferredRenderer).toBe(SurfaceRenderer.WEB_BUNDLE);
+    expect(request.viewport.width).toBeGreaterThan(0);
+  });
+
+  it("blocks duplicate opens while one is in flight and reports sanitized errors", async () => {
+    const user = userEvent.setup();
+    const pending = deferred<{ session: SurfaceSession }>();
+    const clients = clientsFixture({
+      apps: [app("board-app", "2.0.0")],
+      installations: [installation("installation-1", "board-app", "1.9.0")],
+      createSurface: vi.fn(() => pending.promise),
+    });
+    render(
+      <AppLibrary
+        project={project("project-1", 2n)}
+        workosClients={clients}
+        onProjectRefreshed={() => undefined}
+        onSurfaceOpened={() => undefined}
+        onInstallationRemoved={() => undefined}
+      />,
+    );
+    await screen.findByText(/Installed · pinned 1\.9\.0/);
+    await user.click(screen.getByRole("button", { name: "Open" }));
+    await user.click(screen.getByRole("button", { name: "Opening…" }));
+    expect(clients.surfaces.createSurface).toHaveBeenCalledTimes(1);
+    void pending.reject(new ConnectError("no supported web bundle", Code.FailedPrecondition));
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toContain("no supported web bundle");
+    expect(screen.getByRole("button", { name: "Open" })).toBeTruthy();
+  });
+
+  it("closes a session that resolves after the library unmounted", async () => {
+    const user = userEvent.setup();
+    const pending = deferred<{ session: SurfaceSession }>();
+    const closeSurface = vi.fn(() => Promise.resolve({}));
+    const clients = clientsFixture({
+      apps: [app("board-app", "2.0.0")],
+      installations: [installation("installation-1", "board-app", "1.9.0")],
+      createSurface: vi.fn(() => pending.promise),
+      closeSurface,
+    });
+    const view = render(
+      <AppLibrary
+        project={project("project-1", 2n)}
+        workosClients={clients}
+        onProjectRefreshed={() => undefined}
+        onSurfaceOpened={() => undefined}
+        onInstallationRemoved={() => undefined}
+      />,
+    );
+    await screen.findByText(/Installed · pinned 1\.9\.0/);
+    await user.click(screen.getByRole("button", { name: "Open" }));
+    view.unmount();
+    void pending.resolve({
+      session: {
+        $typeName: "workos.surface.v1.SurfaceSession",
+        id: "late-session",
+        appInstanceId: "installation-1",
+        projectId: "project-1",
+        renderer: SurfaceRenderer.WEB_BUNDLE,
+        url: "/surfaces/late-session/",
+      } as SurfaceSession,
+    });
+    await waitFor(() => {
+      expect(closeSurface).toHaveBeenCalledWith({ surfaceSessionId: "late-session" });
+    });
   });
 });
