@@ -35,6 +35,10 @@
 - 实现、测试、模块文档、任务记录和 `docs/status.json` 同步更新。
 - `make generate` 后工作树无生成差异，`make check` 通过。
 - 新公共行为有单元/集成测试；跨进程用户链路有 E2E 或明确的测试任务。
+- 任何改变用户可见 UI 的任务，都必须按 `docs/ui/README.md` 更新对应 client 的
+  `current/` 截图，并保存任务级 `before/`、`after/` 对比；任务记录必须链接这些证据。
+- UI 截图必须使用固定 viewport 和确定性 fixture，禁止包含真实凭据、真实用户数据或
+  依赖外部服务才能复现的内容；无法提供视觉证据时任务不得标记 done。
 - 日志不包含 secret、provider raw credential 或用户内容全文。
 - 如果功能没有端到端证据，状态最高只能是 scaffolded。
 
