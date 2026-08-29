@@ -802,6 +802,131 @@ func TestAgentStoreOutageIsUnavailableNotInternal(t *testing.T) {
 	}
 }
 
+// TestAgentOutboxTransientFailureIsUnavailableNotInternal pins the outbox
+// append inside CreateForApp to the transient-failure contract. Every
+// earlier statement of the transaction succeeds; the failure is raised
+// exactly at the outbox INSERT by a trigger that throws SQLSTATE 53000
+// (insufficient resources, transient class 53). The verdict through the real
+// private transport must be sanitized Unavailable — never Internal, never
+// leaking the injected message — and dropping the injection lets the same
+// idempotency key succeed end to end, proving the rolled-back transaction
+// consumed nothing. The previous implementation wrapped this insert in a
+// plain fmt.Errorf, which returned Internal here.
+func TestAgentOutboxTransientFailureIsUnavailableNotInternal(t *testing.T) {
+	t.Parallel()
+	dsn := scratchDatabase(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 40*time.Second)
+	defer cancel()
+	if err := migrations.Run(ctx, dsn); err != nil {
+		t.Fatalf("migrations: %v", err)
+	}
+	pool, err := pgxpool.New(ctx, dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pool.Close()
+
+	// Inject a deterministic transient failure at the outbox append only.
+	if _, err := pool.Exec(ctx, `CREATE FUNCTION workos_events.raise_outbox_outage() RETURNS trigger AS $$
+BEGIN
+  RAISE EXCEPTION 'injected outbox outage for regression test' USING ERRCODE = '53000';
+END $$ LANGUAGE plpgsql`); err != nil {
+		t.Fatalf("create outage function: %v", err)
+	}
+	if _, err := pool.Exec(ctx, `CREATE TRIGGER outbox_outage BEFORE INSERT ON workos_events.outbox
+FOR EACH ROW WHEN (NEW.event_type = 'agent.task.requested.v1')
+EXECUTE FUNCTION workos_events.raise_outbox_outage()`); err != nil {
+		t.Fatalf("create outage trigger: %v", err)
+	}
+	t.Cleanup(func() {
+		_, _ = pool.Exec(context.Background(), "DROP TRIGGER IF EXISTS outbox_outage ON workos_events.outbox")
+		_, _ = pool.Exec(context.Background(), "DROP FUNCTION IF EXISTS workos_events.raise_outbox_outage()")
+	})
+
+	installation := projectdomain.Installation{
+		ID: newUUIDForTest(330), OwnerUserID: newUUIDForTest(331), ProjectID: newUUIDForTest(332),
+		AppID: "outbox-outage-app", Version: "1.0.0",
+		ManifestDigest:     "sha256:" + strings.Repeat("6", 64),
+		GrantedPermissions: []string{"agent.event.watch", "agent.task.run"},
+	}
+	// agent_tasks references users and projects; seed both rows the way the
+	// acceptance volume bootstrap does, so the transaction proceeds past
+	// every earlier statement and fails exactly at the outbox append.
+	if _, err := pool.Exec(ctx,
+		"INSERT INTO workos_core.users (id, kind, display_name, created_at) VALUES ($1, 'owner', 'Outbox Outage Owner', now()) ON CONFLICT DO NOTHING",
+		installation.OwnerUserID,
+	); err != nil {
+		t.Fatalf("seed owner user: %v", err)
+	}
+	if _, err := pool.Exec(ctx,
+		"INSERT INTO workos_core.projects (id, owner_user_id, idempotency_key, name, knowledge_collection_id, artifact_collection_id, created_at, updated_at) VALUES ($1, $2, 'outbox-outage-project', 'Outbox Outage', $3, $4, now(), now())",
+		installation.ProjectID, installation.OwnerUserID, newUUIDForTest(334), newUUIDForTest(335),
+	); err != nil {
+		t.Fatalf("seed project row: %v", err)
+	}
+	agentRepository := agentpostgres.New(pool)
+	agents := agentapp.New(agentRepository, ids.UUIDv7{})
+	router, err := orchestration.NewTaskRouter(agents, projectpostgres.New(pool), "fake")
+	if err != nil {
+		t.Fatal(err)
+	}
+	appAgent, err := orchestration.NewAppAgentService(&staticInstallations{installation: installation}, router)
+	if err != nil {
+		t.Fatal(err)
+	}
+	path, handler := agentv1connect.NewAppAgentServiceHandler(orchestrationtransport.NewAppAgent(appAgent))
+	mux := http.NewServeMux()
+	mux.Handle(path, identity.Middleware(handler))
+	server := httptest.NewServer(mux)
+	t.Cleanup(server.Close)
+
+	client := agentv1connect.NewAppAgentServiceClient(server.Client(), server.URL)
+	newRequest := func() *connect.Request[agentv1.RunAgentTaskRequest] {
+		request := connect.NewRequest(&agentv1.RunAgentTaskRequest{
+			ProjectId: installation.ProjectID, AppInstanceId: installation.ID,
+			ClientIdempotencyKey: "outbox-outage-key", Goal: "goal under outbox outage",
+		})
+		request.Header().Set(identity.UserHeader, installation.OwnerUserID)
+		request.Header().Set(identity.DeviceHeader, newUUIDForTest(333))
+		return request
+	}
+
+	_, runErr := client.RunAgentTask(ctx, newRequest())
+	if connect.CodeOf(runErr) != connect.CodeUnavailable {
+		t.Fatalf("outbox outage verdict: %v", runErr)
+	}
+	text := fmt.Sprint(runErr)
+	for _, leaked := range []string{"injected outbox outage", "postgres://", "SQLSTATE", "53000"} {
+		if strings.Contains(text, leaked) {
+			t.Fatalf("outage error leaked %q: %v", leaked, runErr)
+		}
+	}
+
+	// The failure was precisely the outbox append: with the injection gone,
+	// the same idempotency key succeeds end to end and leaves exactly one
+	// requested outbox row for the created task.
+	if _, err := pool.Exec(ctx, "DROP TRIGGER outbox_outage ON workos_events.outbox"); err != nil {
+		t.Fatalf("drop trigger: %v", err)
+	}
+	response, retryErr := client.RunAgentTask(ctx, newRequest())
+	if retryErr != nil {
+		t.Fatalf("retry after removing the injection: %v", retryErr)
+	}
+	if response.Msg.GetTaskId() == "" {
+		t.Fatal("retry created no task")
+	}
+	var outboxCount int
+	if err := pool.QueryRow(ctx,
+		`SELECT count(*) FROM workos_events.outbox WHERE event_type = 'agent.task.requested.v1' AND aggregate_id = $1`,
+		response.Msg.GetTaskId(),
+	).Scan(&outboxCount); err != nil {
+		t.Fatalf("count outbox rows: %v", err)
+	}
+	if outboxCount != 1 {
+		t.Fatalf("expected exactly one requested outbox row, got %d", outboxCount)
+	}
+}
+
 // TestSurfaceCloseClearsBridgeTokenInStorage proves the atomic close: after
 // CloseSurface, the at-rest bridge_token_hash column is SQL NULL — verified
 // by reading the column directly, not by inferring from a failed token
@@ -1061,6 +1186,17 @@ func TestSurfaceReplayRotationLinearizesAcrossRotators(t *testing.T) {
 		// own credential is the fact its own snapshot carries.
 		if result.created.Session.BridgeTokenHash != surfacedomain.HashBridgeToken(result.created.BridgeToken) {
 			t.Fatal("replay response paired its credential with a hash it was not stored under")
+		}
+		// The full snapshot must survive the atomic rotation: descriptor,
+		// capabilities, and expiry are part of the fact the response claims.
+		if result.created.Session.Descriptor != seeded.Session.Descriptor {
+			t.Fatalf("rotation response lost the launch descriptor: %+v", result.created.Session.Descriptor)
+		}
+		if len(result.created.Session.BridgeCapabilities) != len(seeded.Session.BridgeCapabilities) {
+			t.Fatal("rotation response lost the bridge capabilities")
+		}
+		if !result.created.Session.ExpiresAt.Equal(seeded.Session.ExpiresAt) {
+			t.Fatal("rotation response drifted the session expiry")
 		}
 		observedHashes[result.created.Session.BridgeTokenHash] = struct{}{}
 	}

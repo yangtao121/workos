@@ -343,7 +343,7 @@ bridge_token_hash=NULL WHERE … AND closed_at IS NULL`，删除先后两条语�
    保持未调用）、double-ack teardown（后续流量不再处理）、ack 带额外字段/超大 ack 体
    握手失败。
 4. **Agent 写 outbox 暂时故障映射（中高）**：`internal/core/agent/adapters/postgres/
-   repository.go` 的 `InsertTaskOutbox` 错误由普通 `fmt.Errorf` 改为 `storeError`（附
+repository.go` 的 `InsertTaskOutbox` 错误由普通 `fmt.Errorf` 改为 `storeError`（附
    `ErrStoreUnavailable` sentinel），CreateForApp 与 canonical Create 两处 outbox append
    同步修复（canonical 传输层当前不映射该 sentinel，行为不变、无回归风险；Bridge 应用
    路径经既有 orchestration 映射为 sanitized Unavailable）。
@@ -366,3 +366,42 @@ bridge_token_hash=NULL WHERE … AND closed_at IS NULL`，删除先后两条语�
 - `make test-e2e`：exit 0（`app-bridge.spec.ts` 等全部通过；本轮不改用户可见 UI，无新截图）。
 - `git diff --check main...HEAD`：干净（`queries.sql` EOF 空行已移除）；001–010 逐字节
   不变；测试与错误文本不含 token/DSN/SQLSTATE。
+
+> **更正（2026-08-29 第三轮评审）**：上面"`make check`：exit 0"与"prettier 干净"在第二轮
+> 提交时并不成立——第二轮在跑完 `make check` 之后又编辑了本任务记录，未重跑门禁，导致提交
+> `7f9bb53` 中本文件不符合 Prettier 格式、`make check` exit 2。已格式化修复；本条保留作为
+> 事实记录。流程教训：文档也是 `make check` 的受检对象，任何记录编辑后必须重跑门禁。
+
+## 2026-08-29 第三轮评审修复记录
+
+1. **原子轮换返回 Session 丢失 descriptor（中高）**：`surfacedbLaunchDescriptor` 的类型分支
+   未包含新生成的 `RotateSessionBridgeTokenRow`，走 default 返回空 descriptor。修复：补上该
+   case；并在 adapter 包新增纯单元测试 `TestSessionRowShapesCarryLaunchDescriptor`，把全部
+   四个返回完整 session 行的 sqlc Row 形状钉在该投影上——未来任何 Row 形状缺 case 会在此
+   失败而不是静默丢字段。回归证据：临时移除该 case 后单元测试报 "descriptor projection
+   lost fields for surfacedb.RotateSessionBridgeTokenRow"。集成侧
+   `TestSurfaceReplayRotationLinearizesAcrossRotators` 逐响应断言扩展为完整快照：descriptor、
+   bridge capabilities、expiry 均与 seed create 一致，不再只查 ID/token/hash。
+2. **门禁失败：`make check` exit 2（门禁）**：见上方更正。本轮起文档编辑纳入门禁顺序：
+   记录最后写、写完即重跑 `make check`。
+3. **outbox 暂时故障缺真实回归（测试缺口）**：既有 outage 测试的连接池指向关闭端口，事务
+   一开始就失败，覆盖不到 outbox append。新增集成测试
+   `TestAgentOutboxTransientFailureIsUnavailableNotInternal`：在 scratch 库对
+   `workos_events.outbox` 建 BEFORE INSERT 触发器，仅对 `agent.task.requested.v1` 事件抛
+   SQLSTATE 53000（insufficient resources，transient 类 53）；事务内更早的 task/mapping
+   INSERT 全部成功（owner/project 行按既有 bootstrap 方式真实种子化，project 仓储为真实
+   `projectpostgres`）。断言：真实 private transport 全链返回 sanitized Unavailable，错误
+   文本不含注入消息/DSN/SQLSTATE/53000；删除触发器后同 idempotency key 重试端到端成功且
+   `workos_events.outbox` 恰好一行 requested 事件——证明失败点恰为 outbox append、回滚事务
+   未消费 key。回归证据：临时还原 outbox 的普通 `fmt.Errorf` 后该测试报
+   "internal: app agent operation failed"（FAIL），新实现 PASS。
+
+### 第三轮修复后门禁（实际运行，提交前）
+
+- `make check`：exit 0（本文件经 Prettier 格式化后运行，文档编辑已在门禁之前完成）。
+- `make generate` ×2：`git status --short` 快照对比零新增差异。
+- `buf breaking --against '.git#branch=main'`：exit 0（proto 未变更）。
+- `go test -race ./internal/core/agent/... ./internal/core/project/... ./internal/core/orchestration/... ./internal/runtime/...`：exit 0。
+- `make test-integration`：exit 0（含两个新增/扩展测试）。
+- `make test-e2e`：exit 0（本轮 TS/UI 零改动，重跑确认无回归；无新截图）。
+- `git diff --check main...HEAD`：干净；001–010 逐字节不变。

@@ -194,7 +194,9 @@ func sessionParams(session domain.SurfaceSession, bridgeTokenHash string) surfac
 }
 
 // surfacedbLaunchDescriptor mirrors the descriptor columns of any session row
-// shape (the sqlc Row structs are field-identical).
+// shape. Every sqlc Row that returns a full session row MUST be listed here:
+// a missing case silently yields an empty descriptor, so
+// TestSessionRowShapesCarryLaunchDescriptor pins the coverage.
 func surfacedbLaunchDescriptor(row any) domain.LaunchDescriptor {
 	switch value := row.(type) {
 	case surfacedb.GetSessionRow:
@@ -202,6 +204,8 @@ func surfacedbLaunchDescriptor(row any) domain.LaunchDescriptor {
 	case surfacedb.GetActiveSessionRow:
 		return domain.LaunchDescriptor{AppID: value.AppID, Version: value.AppVersion, ManifestDigest: value.ManifestDigest, ArtifactID: value.ArtifactID, ArtifactDigest: value.ArtifactDigest, Entrypoint: value.Entrypoint}
 	case surfacedb.GetActiveSessionByBridgeTokenRow:
+		return domain.LaunchDescriptor{AppID: value.AppID, Version: value.AppVersion, ManifestDigest: value.ManifestDigest, ArtifactID: value.ArtifactID, ArtifactDigest: value.ArtifactDigest, Entrypoint: value.Entrypoint}
+	case surfacedb.RotateSessionBridgeTokenRow:
 		return domain.LaunchDescriptor{AppID: value.AppID, Version: value.AppVersion, ManifestDigest: value.ManifestDigest, ArtifactID: value.ArtifactID, ArtifactDigest: value.ArtifactDigest, Entrypoint: value.Entrypoint}
 	default:
 		return domain.LaunchDescriptor{}
