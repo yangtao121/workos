@@ -95,7 +95,10 @@ var workspaceKinds = map[string]struct{}{
 
 func NormalizeName(value string) (string, error) {
 	value = strings.TrimSpace(value)
-	if value == "" || len([]rune(value)) > MaxNameRunes {
+	// The trimmed name follows the same text grammar as every other
+	// client-supplied field: valid UTF-8, no C0/C1 control characters, so an
+	// interior newline or escape survives trimming but never reaches storage.
+	if !requiredText(value, MaxNameRunes) {
 		return "", ErrInvalid
 	}
 	return value, nil

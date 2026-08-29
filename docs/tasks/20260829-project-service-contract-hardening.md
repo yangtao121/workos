@@ -80,7 +80,9 @@ workload、新 Provider、credential vault、installation/Surface/App Bridge 协
 ### Branch / Commit
 
 - branch：`fix/project-service-contract-hardening`（自本地 main 3e2e428 创建）
-- commit：见 `git log -1`（单一聚焦提交；未 merge、未 push）
+- commit：`2249477`（原始契约实现）+ 修正轮提交（见 `git log`；未 merge、未 push）。
+  修正轮的代码、测试、migration 与文档修复全部已提交，工作树无未提交残留——直接
+  merge 本 branch 得到的是修复后版本，不会合入 2249477 的旧实现。
 
 ### 实际修改文件
 
@@ -122,29 +124,35 @@ workload、新 Provider、credential vault、installation/Surface/App Bridge 协
 
 基线（改动前记录）：
 
-| 命令 | 结果 | 归属 |
-| --- | --- | --- |
-| `make bootstrap` | PASS | — |
-| `make check` | FAIL（web-check prettier） | 既有问题：`docs/prompts/20260829-next-agent-project-service-contract-hardening.md`（3e2e428 引入）格式不符合 prettier；与本任务无关，本任务已格式化修复 |
-| `make test-integration` | PASS（exit 0） | — |
-| `make test-e2e` | PASS（5 passed, 1 skipped） | deepseek-fixture spec 在无 fixture profile 时按设计 skip |
+| 命令                    | 结果                        | 归属                                                                                                                                                    |
+| ----------------------- | --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `make bootstrap`        | PASS                        | —                                                                                                                                                       |
+| `make check`            | FAIL（web-check prettier）  | 既有问题：`docs/prompts/20260829-next-agent-project-service-contract-hardening.md`（3e2e428 引入）格式不符合 prettier；与本任务无关，本任务已格式化修复 |
+| `make test-integration` | PASS（exit 0）              | —                                                                                                                                                       |
+| `make test-e2e`         | PASS（5 passed, 1 skipped） | deepseek-fixture spec 在无 fixture profile 时按设计 skip                                                                                                |
 
 改动后（全部在 branch 上执行）：
 
-| 命令 | 结果 |
-| --- | --- |
-| `make bootstrap` | PASS |
-| `make generate`（连续两次） | PASS，两次 `git status` 无差异（生成无漂移） |
-| `make check` | PASS |
-| `make test-integration`（第 1 次） | PASS |
-| `make test-integration`（第 2 次） | PASS |
-| `make test-e2e` | PASS |
-| `make test-deepseek-fixture` | PASS |
-| `go test -race ./internal/core/project/...` | PASS |
-| `go test ./...`（make check 内） | PASS |
-| 定向：`go test -tags=integration -run 'TestProjectCreateRequests|TestProjectCreateIdempotency|TestProjectListPagination|TestProjectServiceCreatePath'` | PASS |
-| 定向：`go test -tags=integration -run 'TestProjectToHarnessVerticalSlice'` | PASS |
-| `git diff --check` | 干净 |
+> 更正（2026-08-29 修正轮）：本表最初记录的 `make check` PASS 不实——提交 2249477 后
+> `make check` 实际失败（web-check prettier 报本任务记录自身第 1 行格式不合格），复审
+> 还发现 migration 013 CHECK NULL 漏洞、NormalizeName 缺控制字符拒绝、快照重放缺
+> 语义 fail-closed 校验、并发测试未证明跨进程独立 ID 五个缺陷。全部修复与复验见下节
+> 「修正轮」，本表保留为原始（部分不实）记录，不得再作为验收依据。
+
+| 命令                                                                                                                                    | 结果                                           |
+| --------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------- |
+| `make bootstrap`                                                                                                                        | PASS                                           |
+| `make generate`（连续两次）                                                                                                             | PASS，两次 `git status` 无差异（生成无漂移）   |
+| `make check`                                                                                                                            | PASS（该声明当时不实，见上方更正与修正轮复验） |
+| `make test-integration`（第 1 次）                                                                                                      | PASS                                           |
+| `make test-integration`（第 2 次）                                                                                                      | PASS                                           |
+| `make test-e2e`                                                                                                                         | PASS                                           |
+| `make test-deepseek-fixture`                                                                                                            | PASS                                           |
+| `go test -race ./internal/core/project/...`                                                                                             | PASS                                           |
+| `go test ./...`（make check 内）                                                                                                        | PASS                                           |
+| 定向：`go test -tags=integration`（ProjectService 契约测试集：CreateRequests / CreateIdempotency / ListPagination / ServiceCreatePath） | PASS                                           |
+| 定向：`go test -tags=integration -run 'TestProjectToHarnessVerticalSlice'`                                                              | PASS                                           |
+| `git diff --check`                                                                                                                      | 干净                                           |
 
 必须项对照：
 
@@ -175,3 +183,102 @@ workload、新 Provider、credential vault、installation/Surface/App Bridge 协
 - List 的 keyset 分页按 UUIDv7/id 边界，不承诺 snapshot isolation（与既有语义一致，已在
   测试注释中固定）。
 - 下一步产品主线（App Agent approval / quota-budget policy）可直接依赖本契约。
+
+## 修正轮（2026-08-29，契约复审）
+
+提交 2249477 的复审发现五个缺陷（1–5），第二轮复审再发现三个缺陷（6–8），全部在本
+branch 上修复；013 未进入 main，原位修正（非新 migration）符合"未发布 migration 由本
+任务拥有"的边界。全部修复已以独立提交落盘（见「Branch / Commit」），不残留未提交状态。
+
+### 缺陷与修复
+
+1. **任务记录 make check 声明不实**：2249477 后 `make check` 实际失败（prettier 报本
+   任务记录格式不合格）。修复：本记录按 prettier 重排，声明改为如实历史（见上方更正
+   块），并以修正轮复验表取代验收依据。
+2. **NormalizeName 只做 trim + 长度**：`A\nB` 这类含内部 C0/C1 控制字符或非法 UTF-8 的
+   name 会被接受，违反 implementation.md 的统一文本语法。修复：trim 后走与其它字段
+   相同的 `requiredText` 语法（valid UTF-8、无 C0/C1、1–120 code points），新增
+   domain/集成用例（`A\nB`、C1、NUL、非法 UTF-8、trim 后残留 DEL）。
+3. **migration 013 result CHECK 的 NULL 漏洞**：`result ->> 'result_version' = '1'` 在
+   键缺失时比较结果为 NULL，PostgreSQL CHECK 放行未版本化快照；`->>` 文本比较还会把
+   数值 `1` 误判合法。修复：改为 `result -> 'result_version' IS NOT DISTINCT FROM
+'"1"'::jsonb`（jsonb 类型敏感等值，缺失键判 FALSE）；ADR-0004 的 SQL 与理由同步
+   更新；shape 集成测试新增"缺失 result_version / 数值 result_version 必须拒绝"断言。
+   验收卷 80 行存量 mapping 全部满足新谓词（已验证），未发布 migration 原位修复并
+   同步卷上 checksum（操作记录见下）。
+4. **快照重放缺语义 fail-closed**：`decodeCreateResult` 只验 JSON 结构与时间格式，
+   owner 不匹配、非 UUIDv7 ID、revision ≠ 1、Create 携带 archived、字段语法损坏的
+   快照都会被当作合法首次响应返回。修复：新增 `validateCreateSnapshot`——owner 必须等
+   于请求 owner 且为 canonical UUIDv7，project/collection ID 为 canonical UUIDv7，
+   revision 必须 = 1（ports.CreateCommand 契约），ArchivedAt 必须为空，name 必须是
+   NormalizeName 的不动点，icon/refs/binding 走 domain 语法；任何违反都是 opaque
+   Internal，绝不返回语义损坏数据。新增 `repository_create_snapshot_test.go` 单元矩阵。
+5. **并发测试复用同一 command**：两个连接共用同一 `ports.CreateCommand`（同一服务端
+   ID、同一时间戳、同一 collection ID），不能证明"两个真实进程各自生成事实后，loser
+   精确采用 winner 快照"。修复：左右连接各自持独立 Project ID（999/9fe）、独立
+   knowledge/artifact collection ID、独立时钟（`now` / `now+1s`），仅共享 canonical
+   request（name/icon/refs/binding）与 key；断言恰一方返回自己的 ID（物理 winner），
+   另一方（loser）经 `sameProject` 逐字段比较器全字段等于 winner 响应——winner 的
+   ID、collection ID 与时间戳，而非 loser 自己提交的任何事实——loser 自己的 ID 不
+   产生 project/event/outbox，事件与 outbox 挂在 winner ID 下；count 断言对数据库
+   裁决顺序对称（任一方都可能赢）。父测试连跑 6 次覆盖两种裁决顺序。
+6. **（第二轮）快照未与请求 digest 交叉验证**：`LookupCreateRequest` 分别返回 digest
+   与快照，application 只比较 digest——若 result 列的 name 等请求承载字段被篡改成另一
+   组仍合法的值，系统会把错误快照当作合法重放返回。修复：`decodeCreateResult` 接收
+   stored digest，在语义校验后用 `domain.CreateRequestDigest` 对解码出的 name/icon/
+   refs/binding 重算 digest 并与 stored digest 精确比对，不一致即 opaque Internal
+   （LookupCreateRequest 与 adjudicateLostCreate 两条路径都过这道闸）；单元矩阵新增
+   "改名为另一合法值 / 换 icon / 翻转 ref 只读位 / 用外来 digest 裁决" 四个 fail-closed
+   用例。
+7. **（第二轮）首响应不变量未完全固定**：create 命令恒产生空 `InstalledAppIDs`、空
+   `DefaultAgentRole`、`created == updated` 单一时刻（application/service.go Create），
+   但快照校验仍允许非空 App/role、允许 updated 晚于 created。修复：`validateCreateSnapshot`
+   拒绝非空 InstalledAppIDs 与非空 DefaultAgentRole，`decodeCreateResult` 要求
+   `created.Equal(updated)`（非零），单元矩阵新增 apps/role/updated-before/updated-after
+   用例。至此快照全部字段要么被 digest 钉住（请求承载字段），要么被首响应不变量钉住
+   （ID/owner/revision/archived/apps/role/时刻）。
+8. **（第二轮）记录表格被管道符破坏 + 并发证据描述不符**：改动后复验表中
+   `-run` 过滤器内的未转义管道符把一行命令拆成五列伪表格；且并发测试（上一条修复后）
+   仅独立 Project ID，与"独立 identifiers 和 timestamps"的描述不符。修复：表格改为
+   不含管道符的等价描述；并发测试按上一条升级为 ID/collection/时钟全独立。
+
+### 修正轮实际修改文件
+
+- `internal/core/project/domain/project.go`（NormalizeName 语法）
+- `internal/core/project/adapters/postgres/repository.go`（decodeCreateResult +
+  validateCreateSnapshot，两个调用点传 owner）
+- `internal/platform/migrations/files/013_project_create_requests.sql`（CHECK 谓词）
+- `docs/decisions/0004-project-create-idempotency.md`（SQL 与谓词理由同步）
+- 测试：`domain/project_test.go`、`adapters/postgres/repository_create_snapshot_test.go`
+  （新增）、`tests/integration/project_service_contract_test.go`（shape 负例 + 并发
+  重写 + sameProject 比较器）
+- 本任务记录
+
+### 修正轮验证命令与结果
+
+| 命令                                                                                                                                               | 结果                                         |
+| -------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------- |
+| `gofmt -l cmd internal tests`                                                                                                                      | 空                                           |
+| `go vet ./internal/core/project/...`、`go vet -tags=integration ./tests/integration`                                                               | PASS                                         |
+| `go test -race ./internal/core/project/...`                                                                                                        | PASS                                         |
+| 定向：`go test -tags=integration -count=1`（ProjectService 契约测试集）                                                                            | PASS                                         |
+| `go test -tags=integration -count=6 -run 'TestProjectCreateIdempotencyAgainstRealPostgres'`                                                        | PASS（两种并发裁决顺序均覆盖，第二轮后复跑） |
+| 第二轮单元矩阵：digest 交叉验证（改名/换 icon/翻转 ref/外来 digest）与 apps/role/时刻不变量全部 fail closed                                        | PASS                                         |
+| 验收卷 013 原位修复：DROP/ADD CONSTRAINT + schema_migrations checksum 同步；80 行存量全部满足新谓词；缺失 result_version 探测被 CHECK 拒绝且零残留 | 完成                                         |
+| `make generate`（连续两次）                                                                                                                        | PASS，两次 `git status` 无差异               |
+| `make check`（proto lint、sqlc vet、go vet+test、TS architecture/eslint/prettier/web build、README 状态一致）                                      | PASS（exit 0）                               |
+| `make test-integration`（全量 + seed→restart→verify 持久化链路）                                                                                   | PASS（exit 0，50 个测试通过）                |
+
+以上为第一轮修复的复验；第二、三轮（digest 交叉验证、不变量补全、表格/并发测试
+修正）的复验已重跑并通过：单元与集成行如上（count=6 与契约测试集均为修正后代码），
+`make check`、`make test-integration`、`make generate` 二次无差异在提交前整树重跑。
+
+### 修正轮残余风险
+
+- 验收卷曾以旧 013 checksum 记录 schema_migrations；因 013 未发布，本次以原位
+  ALTER + checksum 同步修复（80 行数据保留）。若未来出现"volume checksum 与文件
+  不一致"的报错，应核对是否为本次修复前的旧卷。
+- `validateCreateSnapshot` 将 create 首响应不变量（revision=1、未归档、canonical
+  UUIDv7、空 apps/role、单一创建时刻、digest 交叉一致）固化为重放前置条件；未来若
+  create 语义变化（例如允许携带 app 安装创建），必须同步扩展该校验与新 ADR，否则
+  重放会 fail closed——这是有意的守门行为。

@@ -155,6 +155,17 @@ func assertProjectCreateRequestsShape(t *testing.T, ctx context.Context, conn *p
 	if err := insert("shape-bad-result", "sha256:"+repeat("b", 64), `{"result_version":"2","project":{}}`); err == nil {
 		t.Fatal("unknown result version must be rejected")
 	}
+	// A missing result_version must fail the CHECK, not slip through as a
+	// NULL comparison: the version predicate is a NOT DISTINCT jsonb
+	// equality, so an unversioned object can never be persisted.
+	if err := insert("shape-missing-version", "sha256:"+repeat("c", 64), `{"project":{}}`); err == nil {
+		t.Fatal("missing result_version must be rejected")
+	}
+	// The version marker is the JSON string "1"; a numeric 1 is a different
+	// jsonb value and must be refused.
+	if err := insert("shape-numeric-version", "sha256:"+repeat("d", 64), `{"result_version":1,"project":{}}`); err == nil {
+		t.Fatal("numeric result_version must be rejected")
+	}
 }
 
 // TestProjectCreateRequestsMigrationForwardsLegacyVolume replays the
@@ -284,6 +295,46 @@ func (h *contractHarness) createCommand(t *testing.T, key, name, projectID strin
 	}
 	digest := domain.CreateRequestDigest(project.Name, project.Icon, project.WorkspaceRefs, project.HarnessBinding)
 	return ports.CreateCommand{Project: project, IdempotencyKey: key, RequestDigest: digest, Now: now}
+}
+
+// sameProject compares two Project responses on every public field. Times
+// use Equal because winner and loser construct their values through
+// different paths (in-memory clock value vs persisted snapshot decode).
+func sameProject(a, b domain.Project) bool {
+	if a.ID != b.ID || a.OwnerUserID != b.OwnerUserID || a.Name != b.Name || a.Icon != b.Icon ||
+		a.Revision != b.Revision || a.DefaultAgentRole != b.DefaultAgentRole ||
+		a.KnowledgeCollectionID != b.KnowledgeCollectionID || a.ArtifactCollectionID != b.ArtifactCollectionID {
+		return false
+	}
+	if !a.CreatedAt.Equal(b.CreatedAt) || !a.UpdatedAt.Equal(b.UpdatedAt) {
+		return false
+	}
+	if (a.ArchivedAt == nil) != (b.ArchivedAt == nil) {
+		return false
+	}
+	if a.ArchivedAt != nil && !a.ArchivedAt.Equal(*b.ArchivedAt) {
+		return false
+	}
+	if (a.HarnessBinding == nil) != (b.HarnessBinding == nil) {
+		return false
+	}
+	if a.HarnessBinding != nil && *a.HarnessBinding != *b.HarnessBinding {
+		return false
+	}
+	if len(a.WorkspaceRefs) != len(b.WorkspaceRefs) || len(a.InstalledAppIDs) != len(b.InstalledAppIDs) {
+		return false
+	}
+	for index, ref := range a.WorkspaceRefs {
+		if ref != b.WorkspaceRefs[index] {
+			return false
+		}
+	}
+	for index, app := range a.InstalledAppIDs {
+		if app != b.InstalledAppIDs[index] {
+			return false
+		}
+	}
+	return true
 }
 
 // count runs one counting assertion against the harness database.
@@ -416,49 +467,88 @@ func TestProjectCreateIdempotencyAgainstRealPostgres(t *testing.T) {
 	})
 
 	t.Run("ConcurrentSameRequestOneWinnerAndReplay", func(t *testing.T) {
-		command := harness.createCommand(t, "race-same-key", "Raced Same", "01999999-9999-7999-8999-999999999999", now)
+		// Two real processes never share a command object: each mints its
+		// own project identifier, its own collection identifiers, and reads
+		// its own clock before racing. Only the canonical request — the
+		// name, icon, workspace refs, and binding that feed the digest —
+		// is identical, which is exactly what the public contract
+		// arbitrates on.
+		leftCommand := harness.createCommand(t, "race-same-key", "Raced Same", "01999999-9999-7999-8999-999999999999", now)
+		rightCommand := harness.createCommand(t, "race-same-key", "Raced Same", "01999999-9999-7999-8999-9999999999fe", now.Add(time.Second))
+		rightCommand.Project.KnowledgeCollectionID = "01999999-9999-7999-8999-9999999999fd"
+		rightCommand.Project.ArtifactCollectionID = "01999999-9999-7999-8999-9999999999fc"
+		if leftCommand.RequestDigest != rightCommand.RequestDigest {
+			t.Fatal("fixture setup: identical requests must carry identical digests")
+		}
+		if leftCommand.Project.CreatedAt.Equal(rightCommand.Project.CreatedAt) {
+			t.Fatal("fixture setup: each process must read its own clock")
+		}
 		start := make(chan struct{})
 		type outcome struct {
+			command ports.CreateCommand
 			project domain.Project
 			err     error
 		}
 		results := make(chan outcome, 2)
 		var group sync.WaitGroup
-		for _, repository := range []*postgres.Repository{harness.left, harness.right} {
+		for _, contestant := range []struct {
+			repository *postgres.Repository
+			command    ports.CreateCommand
+		}{
+			{harness.left, leftCommand}, {harness.right, rightCommand},
+		} {
 			group.Add(1)
-			go func(repository *postgres.Repository) {
+			go func(repository *postgres.Repository, command ports.CreateCommand) {
 				defer group.Done()
 				<-start
 				project, err := repository.CreateProject(context.Background(), command)
-				results <- outcome{project: project, err: err}
-			}(repository)
+				results <- outcome{command: command, project: project, err: err}
+			}(contestant.repository, contestant.command)
 		}
 		close(start)
 		group.Wait()
 		close(results)
-		projectIDs := make([]string, 0, 2)
+		outcomes := make([]outcome, 0, 2)
 		for result := range results {
 			// The database guarantees one winner and one replay; a loser
 			// error would mean the adjudication is not durable.
 			if result.err != nil {
 				t.Fatalf("same-request race must not produce a loser error, got %v", result.err)
 			}
-			projectIDs = append(projectIDs, result.project.ID)
+			outcomes = append(outcomes, result)
 		}
-		if len(projectIDs) != 2 || projectIDs[0] != projectIDs[1] {
-			t.Fatalf("replay must return the winner's project: %v", projectIDs)
+		// Exactly one contestant returns its own requested identifier —
+		// the physical insert winner. The other is the loser: it must have
+		// adopted the winner's first response wholesale, its own
+		// identifiers and timestamps never leaking into the verdict.
+		winner, loser := outcomes[0], outcomes[1]
+		if winner.project.ID != winner.command.Project.ID {
+			winner, loser = loser, winner
+		}
+		if winner.project.ID != winner.command.Project.ID {
+			t.Fatalf("exactly one contestant must return its own identifier: %#v / %#v", outcomes[0].project, outcomes[1].project)
+		}
+		if loser.project.ID != winner.project.ID {
+			t.Fatalf("loser must adopt the winner's project, got %s want %s (its own request was %s)",
+				loser.project.ID, winner.project.ID, loser.command.Project.ID)
+		}
+		if !sameProject(winner.project, loser.project) {
+			t.Fatalf("loser must return the winner's exact first response:\nwinner %#v\nloser  %#v", winner.project, loser.project)
 		}
 		// 991, 992, 993, the legacy 995, and this race's single winner.
 		if total := harness.count(t, `SELECT count(*) FROM workos_core.projects WHERE owner_user_id = $1`, harness.owner); total != 5 {
 			t.Fatalf("race must yield exactly one additional project: %d", total)
 		}
+		if total := harness.count(t, `SELECT count(*) FROM workos_core.projects WHERE id = $1`, loser.command.Project.ID); total != 0 {
+			t.Fatalf("the losing identifier must not exist as a project row: %d", total)
+		}
 		if total := harness.count(t, `SELECT count(*) FROM workos_core.project_create_requests WHERE idempotency_key = 'race-same-key'`); total != 1 {
 			t.Fatalf("race must consume the key exactly once: %d", total)
 		}
-		if total := harness.count(t, `SELECT count(*) FROM workos_events.events WHERE stream_id = '01999999-9999-7999-8999-999999999999'`); total != 1 {
+		if total := harness.count(t, `SELECT count(*) FROM workos_events.events WHERE stream_id = $1`, winner.project.ID); total != 1 {
 			t.Fatalf("race must append exactly one event: %d", total)
 		}
-		if total := harness.count(t, `SELECT count(*) FROM workos_events.outbox WHERE aggregate_id = '01999999-9999-7999-8999-999999999999'`); total != 1 {
+		if total := harness.count(t, `SELECT count(*) FROM workos_events.outbox WHERE aggregate_id = $1`, winner.project.ID); total != 1 {
 			t.Fatalf("race must append exactly one outbox row: %d", total)
 		}
 	})

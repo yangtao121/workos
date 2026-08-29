@@ -31,7 +31,8 @@ func New(pool *pgxpool.Pool) *Repository {
 
 // LookupCreateRequest returns the stored adjudication of a consumed create
 // key. The result snapshot column is authoritative: it is decoded without
-// ever consulting the mutable projects row.
+// ever consulting the mutable projects row, and it is cross-validated
+// against the stored request digest before it can be served.
 func (r *Repository) LookupCreateRequest(ctx context.Context, ownerUserID, idempotencyKey string) (ports.StoredCreateRequest, bool, error) {
 	stored, err := r.queries.GetCreateRequest(ctx, projectdb.GetCreateRequestParams{
 		OwnerUserID: ownerUserID, IdempotencyKey: idempotencyKey,
@@ -42,7 +43,7 @@ func (r *Repository) LookupCreateRequest(ctx context.Context, ownerUserID, idemp
 	if err != nil {
 		return ports.StoredCreateRequest{}, false, storeError("query project create request", err)
 	}
-	result, err := decodeCreateResult(stored.Result)
+	result, err := decodeCreateResult(stored.Result, ownerUserID, stored.RequestDigest)
 	if err != nil {
 		return ports.StoredCreateRequest{}, true, err
 	}
@@ -122,7 +123,7 @@ func (r *Repository) adjudicateLostCreate(ctx context.Context, queries *projectd
 	if stored.RequestDigest != command.RequestDigest {
 		return domain.Project{}, domain.ErrIdempotencyConflict
 	}
-	return decodeCreateResult(stored.Result)
+	return decodeCreateResult(stored.Result, command.Project.OwnerUserID, stored.RequestDigest)
 }
 
 func (r *Repository) GetProject(ctx context.Context, ownerUserID, projectID string) (domain.Project, error) {
@@ -362,9 +363,15 @@ type createSnapshotColumns struct {
 }
 
 // decodeCreateResult restores the first response from its persisted
-// snapshot. A snapshot that fails to decode or violates the version marker
-// is invariant corruption and stays an opaque internal error.
-func decodeCreateResult(value []byte) (domain.Project, error) {
+// snapshot. A snapshot that fails to decode, violates the version marker, or
+// breaks any create-time invariant — the requesting owner, canonical UUIDv7
+// identifiers, revision 1, never archived, no installed apps or agent role,
+// the single creation instant, every field grammar the create command
+// enforces — or whose request-bearing fields no longer reproduce the stored
+// request digest, is invariant corruption and stays an opaque internal
+// error: replays fail closed instead of returning structurally decodable but
+// semantically damaged data.
+func decodeCreateResult(value []byte, ownerUserID, requestDigest string) (domain.Project, error) {
 	var snapshot createResultSnapshot
 	if err := json.Unmarshal(value, &snapshot); err != nil {
 		return domain.Project{}, fmt.Errorf("decode project create result: %w", err)
@@ -373,6 +380,9 @@ func decodeCreateResult(value []byte) (domain.Project, error) {
 		return domain.Project{}, fmt.Errorf("decode project create result: unsupported result version %q", snapshot.ResultVersion)
 	}
 	stored := snapshot.Project
+	if err := validateCreateSnapshot(&stored, ownerUserID); err != nil {
+		return domain.Project{}, err
+	}
 	project := domain.Project{
 		ID: stored.ID, OwnerUserID: stored.OwnerUserID, Name: stored.Name, Icon: stored.Icon,
 		WorkspaceRefs:   stored.WorkspaceRefs,
@@ -394,7 +404,19 @@ func decodeCreateResult(value []byte) (domain.Project, error) {
 	if err != nil {
 		return domain.Project{}, err
 	}
+	// The create command stamps one instant on both fields; anything else is
+	// not a first response.
+	if created.IsZero() || !created.Equal(updated) {
+		return domain.Project{}, fmt.Errorf("decode project create result: inconsistent first-response timestamps")
+	}
 	project.CreatedAt, project.UpdatedAt = created, updated
+	// The digest covers exactly the request-bearing fields (name, icon,
+	// refs, binding). Recomputing it over the decoded snapshot proves the
+	// snapshot still is the response to the request the digest pinned — a
+	// tampered but well-formed snapshot can never be served as a replay.
+	if replayed := domain.CreateRequestDigest(project.Name, project.Icon, project.WorkspaceRefs, project.HarnessBinding); replayed != requestDigest {
+		return domain.Project{}, fmt.Errorf("decode project create result: snapshot fields do not match the stored request digest")
+	}
 	if stored.ArchivedAt != nil {
 		archived, err := parseSnapshotTime(*stored.ArchivedAt)
 		if err != nil {
@@ -406,6 +428,58 @@ func decodeCreateResult(value []byte) (domain.Project, error) {
 		project.HarnessBinding = stored.HarnessBinding
 	}
 	return project, nil
+}
+
+// validateCreateSnapshot enforces the create-time invariants of a first
+// response (ADR-0004 §3): a snapshot is only ever the exact projection the
+// create command built, so anything else in the column is corruption and
+// must never be served as a replay. Every verdict here is an opaque internal
+// error; the transport sanitizes it without leaking snapshot content.
+func validateCreateSnapshot(stored *snapshotProject, ownerUserID string) error {
+	if stored.OwnerUserID != ownerUserID {
+		return fmt.Errorf("decode project create result: snapshot owner does not match the request owner")
+	}
+	if !domain.ValidProjectUUID(stored.OwnerUserID) {
+		return fmt.Errorf("decode project create result: snapshot owner is not a canonical identifier")
+	}
+	if !domain.ValidProjectUUID(stored.ID) {
+		return fmt.Errorf("decode project create result: snapshot project id is not a canonical identifier")
+	}
+	if !domain.ValidProjectUUID(stored.KnowledgeCollectionID) || !domain.ValidProjectUUID(stored.ArtifactCollectionID) {
+		return fmt.Errorf("decode project create result: snapshot collection ids are not canonical identifiers")
+	}
+	// The first response of a create is always revision 1, never archived,
+	// installs no apps, and carries no default agent role (the application's
+	// create command builds exactly that shape; ADR-0004 §3).
+	if stored.Revision != 1 {
+		return fmt.Errorf("decode project create result: first-response revision must be 1, got %d", stored.Revision)
+	}
+	if stored.ArchivedAt != nil {
+		return fmt.Errorf("decode project create result: first response can never be archived")
+	}
+	if len(stored.InstalledAppIDs) != 0 {
+		return fmt.Errorf("decode project create result: first response can never carry installed apps")
+	}
+	if stored.DefaultAgentRole != "" {
+		return fmt.Errorf("decode project create result: first response can never carry a default agent role")
+	}
+	// The stored name must be the fixed point of name normalization: it was
+	// written from an already-normalized value, so anything that trims
+	// differently, carries control characters, or breaks the length grammar
+	// is corruption.
+	if normalized, err := domain.NormalizeName(stored.Name); err != nil || normalized != stored.Name {
+		return fmt.Errorf("decode project create result: snapshot name violates the name grammar")
+	}
+	if domain.ValidateIcon(stored.Icon) != nil {
+		return fmt.Errorf("decode project create result: snapshot icon violates the icon grammar")
+	}
+	if domain.ValidateWorkspaceRefs(stored.WorkspaceRefs) != nil {
+		return fmt.Errorf("decode project create result: snapshot workspace refs violate the reference grammar")
+	}
+	if domain.ValidateBinding(stored.HarnessBinding) != nil {
+		return fmt.Errorf("decode project create result: snapshot harness binding violates the binding grammar")
+	}
+	return nil
 }
 
 func parseSnapshotTime(value string) (time.Time, error) {

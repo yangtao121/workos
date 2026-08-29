@@ -13,6 +13,10 @@
 --   * request_digest pins the canonical client request (versioned sha256);
 --   * result pins the versioned first-response Project snapshot, so replays
 --     return the exact first response even after the project row mutated.
+--     The version predicate compares jsonb values with IS NOT DISTINCT FROM:
+--     a plain equality would evaluate to NULL — and therefore pass — whenever
+--     result_version is missing, and a ->> text compare would also admit a
+--     numeric 1; both shapes must be refused.
 --
 -- The projects table keeps its existing data and constraints unchanged; its
 -- UNIQUE (owner_user_id, idempotency_key) index remains the physical insert
@@ -25,7 +29,7 @@ CREATE TABLE workos_core.project_create_requests (
     owner_user_id uuid NOT NULL REFERENCES workos_core.users (id),
     idempotency_key text NOT NULL CHECK (char_length(idempotency_key) BETWEEN 1 AND 128),
     request_digest text NOT NULL CHECK (request_digest ~ '^sha256:[0-9a-f]{64}$'),
-    result jsonb NOT NULL CHECK (jsonb_typeof(result) = 'object' AND result ->> 'result_version' = '1'),
+    result jsonb NOT NULL CHECK (jsonb_typeof(result) = 'object' AND result -> 'result_version' IS NOT DISTINCT FROM '"1"'::jsonb),
     created_at timestamptz NOT NULL,
     PRIMARY KEY (owner_user_id, idempotency_key)
 );

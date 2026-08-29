@@ -32,12 +32,16 @@ CREATE TABLE workos_core.project_create_requests (
     owner_user_id uuid NOT NULL REFERENCES workos_core.users (id),
     idempotency_key text NOT NULL CHECK (char_length(idempotency_key) BETWEEN 1 AND 128),
     request_digest text NOT NULL CHECK (request_digest ~ '^sha256:[0-9a-f]{64}$'),
-    result jsonb NOT NULL CHECK (jsonb_typeof(result) = 'object' AND result ->> 'result_version' = '1'),
+    result jsonb NOT NULL CHECK (jsonb_typeof(result) = 'object' AND result -> 'result_version' IS NOT DISTINCT FROM '"1"'::jsonb),
     created_at timestamptz NOT NULL,
     PRIMARY KEY (owner_user_id, idempotency_key)
 );
 ```
 
+- `result` 列的版本谓词用 jsonb 等值 `IS NOT DISTINCT FROM '"1"'` 判定：普通等值在
+  `result_version` 缺失时结果是 NULL——PostgreSQL CHECK 视 NULL 为通过；`->>` 文本比较
+  还会把数值 `1` 误判为合法。缺失键与错误类型都必须落库前拒绝，重放层再以 Go 侧
+  fail-closed 校验兜底。
 - `projects` 的既有数据与约束（含 `UNIQUE (owner_user_id, idempotency_key)` 与
   `idempotency_key` 列）全部保留：该唯一索引继续作为并发插入的物理仲裁，不重建历史表、
   不做 broad rewrite。可变 row 不再是幂等裁决依据；mapping row 才是。

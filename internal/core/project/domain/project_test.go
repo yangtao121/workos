@@ -24,6 +24,19 @@ func TestNormalizeName(t *testing.T) {
 	if _, err := NormalizeName(multibyte + "◈"); !errors.Is(err, ErrInvalid) {
 		t.Fatal("121 code-point name must be rejected")
 	}
+	// The trimmed name obeys the shared text grammar: interior control
+	// characters and invalid UTF-8 survive trimming but are rejected.
+	for name, value := range map[string]string{
+		"interior newline":   "A\nB",
+		"interior c1":        "A\x9fB",
+		"interior nul":       "A\x00B",
+		"invalid utf8":       "\xff\xfe",
+		"control after trim": "\n\t control \x7f",
+	} {
+		if _, err := NormalizeName(value); !errors.Is(err, ErrInvalid) {
+			t.Errorf("%s: expected ErrInvalid, got %v", name, err)
+		}
+	}
 }
 
 func TestHarnessBindingRequiresExplicitPolicy(t *testing.T) {
