@@ -48,7 +48,7 @@
       "name": "Desktop Shell",
       "process": "desktop-web",
       "status": "working",
-      "evidence": "foundation + DeepSeek fixture Catalog/binding E2E + App Library install/remove + explicit permission consent E2E + Manage permissions dialog for full grant replacement (revoke/re-grant browser E2E reopens on the new epoch; before/after visual records) + sandboxed Web Bundle window with opaque-origin MessageChannel App Bridge (browser E2E runs a real project task) + unmount best-effort close"
+      "evidence": "foundation + DeepSeek fixture Catalog/binding E2E + App Library install/remove + explicit permission consent E2E + Manage permissions dialog for full grant replacement (revoke/re-grant browser E2E reopens on the new epoch; before/after visual records) + sandboxed Web Bundle window with opaque-origin MessageChannel App Bridge (browser E2E runs a real project task) + unmount best-effort close + library row and project revision adopt the Set response even when the post-save re-read fails (fault-injected before/after visual record)"
     },
     {
       "name": "App Registry",
@@ -60,7 +60,7 @@
       "name": "Project App Installation",
       "process": "workos-core",
       "status": "working",
-      "evidence": "pinned version install/uninstall + explicit canonical grant set (subset of requested) now replaceable via SetAppGrants full replacement with grant revision epoch + single-transaction revision/event/outbox + deterministic no-op that still consumes its key + durable idempotency with grant/revision result snapshot (real PostgreSQL concurrency + restart) + Desktop consent & manage-permissions E2E"
+      "evidence": "pinned version install/uninstall + explicit canonical grant set (subset of requested) now replaceable via SetAppGrants full replacement with grant revision epoch + single-transaction revision/event/outbox + deterministic no-op that still consumes its key + durable idempotency with grant/revision result snapshot (real PostgreSQL concurrency + restart) + Desktop consent & manage-permissions E2E + review hardening: pre-decode wire budget on public installation RPCs (oversize/gzip bombs ResourceExhausted before business code) + real-pgx transient outages surface as retryable Unavailable end to end"
     },
     {
       "name": "Artifact",
