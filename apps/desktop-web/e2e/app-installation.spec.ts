@@ -12,13 +12,23 @@ version: ${version}
 scope: user
 runtime:
   type: container
-  command: ["./serve"]
+  image: localhost/workos-e2e-fixture@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+  command: ["/workos-e2e-fixture", "serve"]
+  port: 8080
 surfaces:
   - id: main
-    renderer: web-bundle
+    renderer: web-service
+    route: /
 permissions: [artifact.read]
-resources: {}
-health: {}
+resources:
+  cpuHard: 1
+  memoryHighMb: 64
+  memoryMaxMb: 96
+  pidsMax: 32
+health:
+  httpPath: /health
+  startupSeconds: 10
+  restartLimit: 2
 maintainer: {}
 `;
 

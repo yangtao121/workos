@@ -24,6 +24,7 @@ import { AppLibrary } from "./AppLibrary.js";
 import { ApprovalsView } from "./ApprovalsView.js";
 import { AppSurface, type SurfaceBridgeCredentials } from "./AppSurface.js";
 import { HarnessSettings, type CatalogState } from "./HarnessSettings.js";
+import { SystemMonitor } from "./SystemMonitor.js";
 import { UsageView } from "./UsageView.js";
 import { selectionFromProject, taskStatus, type HarnessSelection } from "./model.js";
 
@@ -176,6 +177,23 @@ export function Desktop({ workosClients = clients }: { workosClients?: WorkOSCli
         title: "Agent Center",
         kind: "agent-center",
         rect: { x: 386, y: 28, width: 620, height: 560 },
+        mode: "normal",
+      },
+    });
+  }, []);
+
+  // System Monitor is a normal, non-permanent window opened from the dock:
+  // closing it never affects supervision, and an unreachable reliability
+  // upstream only degrades this window.
+  const openSystemMonitor = useCallback(() => {
+    dispatch({
+      type: "open",
+      window: {
+        id: "system-monitor",
+        appId: "system-monitor",
+        title: "System Monitor",
+        kind: "system-monitor",
+        rect: { x: 120, y: 80, width: 560, height: 420 },
         mode: "normal",
       },
     });
@@ -632,6 +650,8 @@ export function Desktop({ workosClients = clients }: { workosClients?: WorkOSCli
                 bridge={bridgeCredentialsRef.current.get(windowState.surface.surfaceSessionId)}
                 appBridge={workosClients.appBridge}
               />
+            ) : windowState.kind === "system-monitor" ? (
+              <SystemMonitor projectId={activeProjectId} workosClients={workosClients} />
             ) : (
               <div className="agent-center-body">
                 <div className="agent-views" role="tablist" aria-label="Agent Center views">
@@ -706,6 +726,14 @@ export function Desktop({ workosClients = clients }: { workosClients?: WorkOSCli
             {item}
           </button>
         ))}
+        <button
+          type="button"
+          aria-label="Open System Monitor"
+          data-testid="open-system-monitor"
+          onClick={openSystemMonitor}
+        >
+          ⏻
+        </button>
       </nav>
     </main>
   );

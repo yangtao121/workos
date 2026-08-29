@@ -327,7 +327,10 @@ export function AppLibrary({
             height: window.innerHeight,
             pixelRatio: window.devicePixelRatio,
           },
-          preferredRenderer: SurfaceRenderer.WEB_BUNDLE,
+          // The server selects the renderer from the exact installed
+          // descriptor: web bundles open as before, supervised container
+          // apps start their workload first (bounded copy below).
+          preferredRenderer: SurfaceRenderer.UNSPECIFIED,
         })
         .then((response) => {
           const session = response.session;
@@ -673,7 +676,7 @@ function openErrorMessage(reason: unknown): string {
     case Code.NotFound:
       return "The installed app or project is no longer available.";
     case Code.FailedPrecondition:
-      return "This app version has no supported web bundle, so it cannot be opened yet.";
+      return "This app version has no supported surface renderer in this deployment, so it cannot be opened yet.";
     case Code.Unavailable:
     case Code.DeadlineExceeded:
       return "The surface runtime is temporarily unavailable. Try again shortly.";
