@@ -129,6 +129,19 @@ export function AppLibrary({
     [onProjectRefreshed],
   );
 
+  // A save whose post-save re-read failed still carries the server truth in
+  // its Set response: merge that confirmed installation in place so the row
+  // shows the saved grant, and forward only the revision. Every other project
+  // field stays from the last complete read — the Set response does not carry
+  // them, but the revision is the server fact it does carry.
+  const installationSaved = useCallback(
+    (saved: AppInstallation, savedRevision: bigint) => {
+      setInstallations((current) => current.map((item) => (item.id === saved.id ? saved : item)));
+      onProjectRefreshed({ ...project, revision: savedRevision });
+    },
+    [onProjectRefreshed, project],
+  );
+
   const refreshProjectAndInstallations = useCallback(
     async (isLive: () => boolean) => {
       const facts = await readFacts();
@@ -526,6 +539,7 @@ export function AppLibrary({
           onGrantsApplied={(installationId) => {
             onInstallationGrantsChanged?.(installationId);
           }}
+          onInstallationSaved={installationSaved}
           project={project}
           readFacts={readFacts}
           workosClients={workosClients}

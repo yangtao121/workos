@@ -855,6 +855,101 @@ describe("App Library permissions", () => {
     );
   });
 
+  it("adopts the Set response facts when the post-save re-read fails", async () => {
+    const user = userEvent.setup();
+    const boardPinned = app("board-app", "1.0.0", ["agent.task.run"]);
+    const getApp = vi.fn((request: { appId: string }) =>
+      Promise.resolve({
+        $typeName: "workos.app.v1.GetAppResponse",
+        app: request.appId === "board-app" ? boardPinned : app("notes-app", "1.0.0"),
+      } satisfies GetAppResponse),
+    );
+    const boardGranted = installation("installation-board", "board-app", "1.0.0", {
+      grantedPermissions: ["agent.task.run"],
+      grantRevision: 1n,
+    });
+    const notesInstalled = installation("installation-notes", "notes-app", "1.0.0", {
+      grantedPermissions: [],
+      grantRevision: 1n,
+    });
+    const boardRevoked = installation("installation-board", "board-app", "1.0.0", {
+      grantedPermissions: [],
+      grantRevision: 2n,
+    });
+    const grantedPage = (rows: AppInstallation[]): ListInstalledAppsResponse => ({
+      $typeName: "workos.app.v1.ListInstalledAppsResponse",
+      installations: rows,
+      page: { $typeName: "workos.common.v1.PageResponse", nextPageToken: "" },
+    });
+    const clients = clientsFixture({
+      apps: [boardPinned, app("notes-app", "1.0.0")],
+      getApp,
+      setAppGrants: vi.fn(() =>
+        Promise.resolve({
+          $typeName: "workos.app.v1.SetAppGrantsResponse",
+          installation: boardRevoked,
+          projectRevision: 3n,
+        } satisfies SetAppGrantsResponse),
+      ),
+      // The dialog-opening read resolves, but the post-save re-read fails, so
+      // only the Set response can carry the saved facts back to the library.
+      getProject: vi
+        .fn()
+        .mockResolvedValueOnce({ project: project("project-1", 2n) })
+        .mockRejectedValueOnce(new ConnectError("offline", Code.Unavailable)),
+      listInstalledApps: vi
+        .fn()
+        // Initial library load and the dialog-opening fresh read.
+        .mockResolvedValueOnce(grantedPage([boardGranted, notesInstalled]))
+        .mockResolvedValueOnce(grantedPage([boardGranted, notesInstalled]))
+        // The failed post-save re-read races this page and loses to the
+        // rejection above; the page must never be adopted.
+        .mockResolvedValue(grantedPage([boardGranted, notesInstalled])),
+    });
+    const onProjectRefreshed = vi.fn();
+    render(
+      <AppLibrary
+        project={project("project-1", 2n)}
+        workosClients={clients}
+        onProjectRefreshed={onProjectRefreshed}
+        onSurfaceOpened={() => undefined}
+        onInstallationRemoved={() => undefined}
+      />,
+    );
+    await screen.findByText("Granted: agent.task.run · grant revision 1");
+
+    const boardRow = (await screen.findByText("board app")).closest("li") as HTMLElement;
+    await user.click(within(boardRow).getByRole("button", { name: "Manage permissions" }));
+    const dialog = await screen.findByRole("dialog");
+    expect(dialog.textContent).toContain("Current grant revision 1");
+    await user.click(screen.getByRole("checkbox", { name: "agent.task.run" }));
+    await user.click(screen.getByRole("button", { name: "Revoke all permissions" }));
+
+    expect(
+      await screen.findByText(
+        "Permissions saved. Reopen the app for the new permissions to take effect.",
+      ),
+    ).toBeTruthy();
+    // The row adopts the server-confirmed installation from the Set response
+    // even though the re-read failed — no Close or reload needed — and the
+    // untouched row keeps its own facts.
+    const refreshedRow = screen
+      .getByText("Granted: none · grant revision 2")
+      .closest("li") as HTMLElement;
+    expect(within(refreshedRow).getByText(/board app/)).toBeTruthy();
+    const notesRow = screen
+      .getByText("Granted: none · grant revision 1")
+      .closest("li") as HTMLElement;
+    expect(within(notesRow).getByText(/notes app/)).toBeTruthy();
+    // Only the revision is forwarded from the Set response; every other
+    // project field stays from the last complete read.
+    await waitFor(() => {
+      expect(onProjectRefreshed).toHaveBeenLastCalledWith(
+        expect.objectContaining({ id: "project-1", revision: 3n }) as unknown as Project,
+      );
+    });
+  });
+
   it("replaces one installation's grant end to end and notifies the host for exactly that installation", async () => {
     const user = userEvent.setup();
     const boardPinned = app("board-app", "1.0.0", ["agent.task.run", "agent.event.watch"]);

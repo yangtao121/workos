@@ -17,6 +17,12 @@ interface PermissionDialogProps {
   readFacts: () => Promise<PermissionFacts>;
   onFactsRefreshed: (facts: PermissionFacts) => void;
   onGrantsApplied: (installationId: string) => void;
+  // Fired when a server-confirmed SetAppGrants could not be followed by a
+  // fresh facts read: the Set response still carries the saved installation
+  // and the new project revision, so the parent adopts those server facts
+  // instead of staying on its pre-save view. On the normal path the complete
+  // re-read facts (onFactsRefreshed) are authoritative and this stays silent.
+  onInstallationSaved: (installation: AppInstallation, projectRevision: bigint) => void;
   onCancel: () => void;
 }
 
@@ -100,6 +106,7 @@ export function PermissionDialog({
   readFacts,
   onFactsRefreshed,
   onGrantsApplied,
+  onInstallationSaved,
   onCancel,
 }: PermissionDialogProps) {
   const [phase, setPhase] = useState<DialogPhase>("loading");
@@ -235,7 +242,14 @@ export function PermissionDialog({
         if (fresh) nextGrant = editableFrom(fresh);
       } catch {
         // The re-read is best-effort; the Set response below already carries
-        // the authoritative saved grant.
+        // the authoritative saved grant. Still propagate the server-confirmed
+        // installation and project revision so the parent's rows do not stay
+        // on the pre-save facts just because the re-read failed. The fresh
+        // facts remain reserved for the success path above, where they are
+        // more complete than the Set response.
+        if (applied && isLive()) {
+          onInstallationSaved(applied, response.projectRevision);
+        }
       }
       if (!isLive()) return;
       setGrant(nextGrant ?? (applied ? editableFrom(applied) : grant));
@@ -254,6 +268,7 @@ export function PermissionDialog({
     installation.id,
     onFactsRefreshed,
     onGrantsApplied,
+    onInstallationSaved,
     phase,
     project.id,
     project.revision,

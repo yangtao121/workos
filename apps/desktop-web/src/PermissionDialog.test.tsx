@@ -118,6 +118,7 @@ interface RenderOptions {
   projectRevision?: bigint;
   clients?: Pick<WorkOSClients, "appRegistry" | "appInstallations">;
   facts?: PermissionFacts;
+  readFacts?: () => Promise<PermissionFacts>;
 }
 
 function renderDialog({
@@ -125,30 +126,43 @@ function renderDialog({
   projectRevision = 5n,
   clients,
   facts,
+  readFacts,
 }: RenderOptions = {}) {
   const activeProject = project("project-1", projectRevision);
   const activeClients = clients ?? dialogClients({});
-  const readFacts = vi.fn(
-    () =>
-      new Promise<PermissionFacts>((resolve) => {
-        resolve(facts ?? { project: activeProject, installations: [installation] });
-      }),
-  );
+  const activeReadFacts =
+    readFacts ??
+    vi.fn(
+      () =>
+        new Promise<PermissionFacts>((resolve) => {
+          resolve(facts ?? { project: activeProject, installations: [installation] });
+        }),
+    );
   const onFactsRefreshed = vi.fn();
   const onGrantsApplied = vi.fn();
+  const onInstallationSaved = vi.fn();
   const onCancel = vi.fn();
   const view = render(
     <PermissionDialog
       installation={installation}
       project={activeProject}
       workosClients={activeClients}
-      readFacts={readFacts}
+      readFacts={activeReadFacts}
       onFactsRefreshed={onFactsRefreshed}
       onGrantsApplied={onGrantsApplied}
+      onInstallationSaved={onInstallationSaved}
       onCancel={onCancel}
     />,
   );
-  return { view, readFacts, onFactsRefreshed, onGrantsApplied, onCancel, clients: activeClients };
+  return {
+    view,
+    readFacts: activeReadFacts,
+    onFactsRefreshed,
+    onGrantsApplied,
+    onInstallationSaved,
+    onCancel,
+    clients: activeClients,
+  };
 }
 
 function saveButton(): HTMLButtonElement {
@@ -476,7 +490,7 @@ describe("PermissionDialog success and liveness", () => {
       project: project("project-1", 6n),
       installations: [applied],
     };
-    const { onFactsRefreshed, onGrantsApplied, readFacts } = renderDialog({
+    const { onFactsRefreshed, onGrantsApplied, onInstallationSaved, readFacts } = renderDialog({
       clients,
       facts: freshFacts,
     });
@@ -493,6 +507,9 @@ describe("PermissionDialog success and liveness", () => {
     expect(onGrantsApplied).toHaveBeenCalledWith("installation-1");
     expect(readFacts).toHaveBeenCalledTimes(1);
     expect(onFactsRefreshed).toHaveBeenCalledWith(freshFacts);
+    // The complete re-read facts are authoritative here, so the Set-response
+    // fallback callback stays silent.
+    expect(onInstallationSaved).not.toHaveBeenCalled();
     // Each explicit Save mints its own idempotency key.
     const request = (
       setAppGrants.mock.calls as unknown as Array<[{ idempotencyKey: string }]>
@@ -517,6 +534,7 @@ describe("PermissionDialog success and liveness", () => {
         readFacts={readFacts}
         onFactsRefreshed={vi.fn()}
         onGrantsApplied={onGrantsApplied}
+        onInstallationSaved={vi.fn()}
         onCancel={vi.fn()}
       />,
     );
@@ -531,13 +549,44 @@ describe("PermissionDialog success and liveness", () => {
     expect(onGrantsApplied).toHaveBeenCalledWith("installation-1");
   });
 
+  it("propagates the server-confirmed installation and revision when the post-save re-read fails", async () => {
+    const user = userEvent.setup();
+    const applied = installationFixture({ grantedPermissions: [], grantRevision: 3n });
+    const clients = dialogClients({
+      setAppGrants: vi.fn(() => Promise.resolve(setAppGrantsResponse(applied, 6n))),
+    });
+    const { onFactsRefreshed, onGrantsApplied, onInstallationSaved } = renderDialog({
+      clients,
+      readFacts: vi.fn(() => Promise.reject(new ConnectError("offline", Code.Unavailable))),
+    });
+
+    await user.click(await screen.findByRole("checkbox", { name: "agent.task.run" }));
+    await user.click(screen.getByRole("button", { name: "Revoke all permissions" }));
+
+    expect(
+      await screen.findByText(
+        "Permissions saved. Reopen the app for the new permissions to take effect.",
+      ),
+    ).toBeTruthy();
+    expect(onGrantsApplied).toHaveBeenCalledTimes(1);
+    expect(onGrantsApplied).toHaveBeenCalledWith("installation-1");
+    // The parent still gets the server facts, straight from the Set response:
+    // the saved installation plus the new project revision.
+    expect(onInstallationSaved).toHaveBeenCalledTimes(1);
+    expect(onInstallationSaved).toHaveBeenCalledWith(applied, 6n);
+    // The re-read never delivered facts, so onFactsRefreshed stays silent.
+    expect(onFactsRefreshed).not.toHaveBeenCalled();
+  });
+
   it("ignores a late success that settles after the dialog unmounted", async () => {
     const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
     try {
       const user = userEvent.setup();
       const pending = deferred<SetAppGrantsResponse>();
       const clients = dialogClients({ setAppGrants: vi.fn(() => pending.promise) });
-      const { view, onGrantsApplied, onFactsRefreshed } = renderDialog({ clients });
+      const { view, onGrantsApplied, onFactsRefreshed, onInstallationSaved } = renderDialog({
+        clients,
+      });
 
       await user.click(await screen.findByRole("checkbox", { name: "agent.task.run" }));
       await user.click(screen.getByRole("button", { name: "Revoke all permissions" }));
@@ -552,6 +601,7 @@ describe("PermissionDialog success and liveness", () => {
       });
       expect(onGrantsApplied).not.toHaveBeenCalled();
       expect(onFactsRefreshed).not.toHaveBeenCalled();
+      expect(onInstallationSaved).not.toHaveBeenCalled();
       expect(consoleError).not.toHaveBeenCalled();
     } finally {
       consoleError.mockRestore();
