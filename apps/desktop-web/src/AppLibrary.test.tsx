@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { Code, ConnectError } from "@connectrpc/connect";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { WorkOSClients } from "@workos/agent-sdk";
 import {
@@ -9,10 +9,12 @@ import {
   DeviceClass,
   SurfaceRenderer,
   type AppInstallation,
+  type GetAppResponse,
   type InstallAppResponse,
   type ListAppsResponse,
   type ListInstalledAppsResponse,
   type Project,
+  type SetAppGrantsResponse,
   type SurfaceSession,
   type UninstallAppResponse,
   type WorkOSApp,
@@ -38,7 +40,12 @@ function app(id: string, version: string, permissions: string[] = []): WorkOSApp
   };
 }
 
-function installation(id: string, appId: string, version: string): AppInstallation {
+function installation(
+  id: string,
+  appId: string,
+  version: string,
+  overrides: Partial<AppInstallation> = {},
+): AppInstallation {
   return {
     $typeName: "workos.app.v1.AppInstallation",
     id,
@@ -50,6 +57,7 @@ function installation(id: string, appId: string, version: string): AppInstallati
     uninstalledAt: undefined,
     grantedPermissions: [],
     grantRevision: 1n,
+    ...overrides,
   };
 }
 
@@ -75,7 +83,9 @@ interface LibraryFixture {
   installations?: AppInstallation[];
   installApp?: ReturnType<typeof vi.fn>;
   uninstallApp?: ReturnType<typeof vi.fn>;
+  setAppGrants?: ReturnType<typeof vi.fn>;
   getProject?: ReturnType<typeof vi.fn>;
+  getApp?: ReturnType<typeof vi.fn>;
   listApps?: ReturnType<typeof vi.fn>;
   listInstalledApps?: ReturnType<typeof vi.fn>;
   createSurface?: ReturnType<typeof vi.fn>;
@@ -96,6 +106,14 @@ function clientsFixture(fixture: LibraryFixture) {
             page: { $typeName: "workos.common.v1.PageResponse", nextPageToken: "" },
           } satisfies ListAppsResponse),
         ),
+      getApp:
+        fixture.getApp ??
+        vi.fn(() =>
+          Promise.resolve({
+            $typeName: "workos.app.v1.GetAppResponse",
+            app: apps[0],
+          } satisfies GetAppResponse),
+        ),
     },
     appInstallations: {
       installApp:
@@ -115,6 +133,15 @@ function clientsFixture(fixture: LibraryFixture) {
             installation: installation("installation-1", "board-app", "1.0.0"),
             projectRevision: 2n,
           } satisfies UninstallAppResponse),
+        ),
+      setAppGrants:
+        fixture.setAppGrants ??
+        vi.fn(() =>
+          Promise.resolve({
+            $typeName: "workos.app.v1.SetAppGrantsResponse",
+            installation: installation("installation-1", "board-app", "1.0.0"),
+            projectRevision: 3n,
+          } satisfies SetAppGrantsResponse),
         ),
       listInstalledApps:
         fixture.listInstalledApps ??
@@ -654,5 +681,216 @@ describe("App Library open", () => {
     await waitFor(() => {
       expect(closeSurface).toHaveBeenCalledWith({ surfaceSessionId: "late-session" });
     });
+  });
+});
+
+describe("App Library permissions", () => {
+  it("shows the grant revision on installed rows and manages the exact pinned version", async () => {
+    const user = userEvent.setup();
+    // The catalog current version (2.0.0) requests a different set; only the
+    // installation's pinned 1.9.0 requested permissions may be the basis.
+    const getApp = vi.fn(() =>
+      Promise.resolve({
+        $typeName: "workos.app.v1.GetAppResponse",
+        app: app("board-app", "1.9.0", ["agent.task.run", "agent.event.watch"]),
+      } satisfies GetAppResponse),
+    );
+    const clients = clientsFixture({
+      apps: [app("board-app", "2.0.0", ["artifact.read"])],
+      installations: [
+        installation("installation-1", "board-app", "1.9.0", {
+          grantedPermissions: ["agent.task.run"],
+          grantRevision: 4n,
+        }),
+      ],
+      getApp,
+    });
+    render(
+      <AppLibrary
+        project={project("project-1", 2n)}
+        workosClients={clients}
+        onProjectRefreshed={() => undefined}
+        onSurfaceOpened={() => undefined}
+        onInstallationRemoved={() => undefined}
+      />,
+    );
+    await screen.findByText(/Installed · pinned 1\.9\.0/);
+    expect(screen.getByText("Granted: agent.task.run · grant revision 4")).toBeTruthy();
+
+    await user.click(screen.getByRole("button", { name: "Manage permissions" }));
+    expect(await screen.findByRole("dialog")).toBeTruthy();
+    expect(getApp).toHaveBeenCalledWith({ appId: "board-app", version: "1.9.0" });
+    expect(screen.getByText(/pinned version 1\.9\.0/)).toBeTruthy();
+    expect(screen.getByText(/Current grant revision 4/)).toBeTruthy();
+    expect(screen.getByRole("checkbox", { name: "agent.task.run" })).toBeTruthy();
+    expect(screen.getByRole("checkbox", { name: "agent.event.watch" })).toBeTruthy();
+    expect(screen.queryByRole("checkbox", { name: "artifact.read" })).toBeNull();
+  });
+
+  it("keeps installed-but-catalog-unavailable rows removable without guessing a requested set", async () => {
+    const user = userEvent.setup();
+    const uninstallApp = vi.fn(() =>
+      Promise.resolve({
+        $typeName: "workos.app.v1.UninstallAppResponse",
+        installation: installation("installation-x", "board-app", "1.9.0"),
+        projectRevision: 3n,
+      } satisfies UninstallAppResponse),
+    );
+    const clients = clientsFixture({
+      apps: [app("notes-app", "1.0.0")],
+      installations: [
+        installation("installation-x", "board-app", "1.9.0", {
+          grantedPermissions: ["agent.task.run"],
+          grantRevision: 2n,
+        }),
+      ],
+      uninstallApp,
+      getProject: vi.fn(() => Promise.resolve({ project: project("project-1", 3n) })),
+    });
+    render(
+      <AppLibrary
+        project={project("project-1", 2n)}
+        workosClients={clients}
+        onProjectRefreshed={() => undefined}
+        onSurfaceOpened={() => undefined}
+        onInstallationRemoved={() => undefined}
+      />,
+    );
+    await screen.findByText("Manage permissions unavailable");
+    expect(screen.queryByRole("button", { name: "Manage permissions" })).toBeNull();
+    expect(screen.getByText("Granted: agent.task.run · grant revision 2")).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: "Remove" }));
+    await waitFor(() => {
+      expect(uninstallApp).toHaveBeenCalledWith({
+        idempotencyKey: expect.any(String) as string,
+        projectId: "project-1",
+        installationId: "installation-x",
+        expectedProjectRevision: 2n,
+      });
+    });
+  });
+
+  it("install consent no longer claims permissions require a reinstall", async () => {
+    const user = userEvent.setup();
+    render(
+      <AppLibrary
+        project={project("project-1", 2n)}
+        workosClients={clientsFixture({ apps: [app("board-app", "1.0.0", ["artifact.read"])] })}
+        onProjectRefreshed={() => undefined}
+        onSurfaceOpened={() => undefined}
+        onInstallationRemoved={() => undefined}
+      />,
+    );
+    await user.click(await screen.findByRole("button", { name: "Install" }));
+    const dialog = await screen.findByRole("dialog");
+    expect(dialog.textContent).toContain("you can change these later from Manage permissions.");
+    expect(dialog.textContent).not.toContain("reinstall");
+    // Nothing is granted by default: the install-time semantics are unchanged.
+    expect(screen.getByRole<HTMLInputElement>("checkbox", { name: "artifact.read" }).checked).toBe(
+      false,
+    );
+  });
+
+  it("replaces one installation's grant end to end and notifies the host for exactly that installation", async () => {
+    const user = userEvent.setup();
+    const boardPinned = app("board-app", "1.0.0", ["agent.task.run", "agent.event.watch"]);
+    const getApp = vi.fn((request: { appId: string }) =>
+      Promise.resolve({
+        $typeName: "workos.app.v1.GetAppResponse",
+        app: request.appId === "board-app" ? boardPinned : app("notes-app", "1.0.0"),
+      } satisfies GetAppResponse),
+    );
+    const boardGranted = installation("installation-board", "board-app", "1.0.0", {
+      grantedPermissions: ["agent.task.run", "agent.event.watch"],
+      grantRevision: 1n,
+    });
+    const notesInstalled = installation("installation-notes", "notes-app", "1.0.0", {
+      grantedPermissions: [],
+      grantRevision: 1n,
+    });
+    const boardRevoked = installation("installation-board", "board-app", "1.0.0", {
+      grantedPermissions: [],
+      grantRevision: 2n,
+    });
+    const setAppGrants = vi.fn(() =>
+      Promise.resolve({
+        $typeName: "workos.app.v1.SetAppGrantsResponse",
+        installation: boardRevoked,
+        projectRevision: 3n,
+      } satisfies SetAppGrantsResponse),
+    );
+    const clients = clientsFixture({
+      apps: [boardPinned, app("notes-app", "1.0.0")],
+      getApp,
+      setAppGrants,
+      getProject: vi.fn(() => Promise.resolve({ project: project("project-1", 3n) })),
+      listInstalledApps: vi
+        .fn()
+        .mockResolvedValueOnce({
+          $typeName: "workos.app.v1.ListInstalledAppsResponse",
+          installations: [boardGranted, notesInstalled],
+          page: { $typeName: "workos.common.v1.PageResponse", nextPageToken: "" },
+        } satisfies ListInstalledAppsResponse)
+        .mockResolvedValue({
+          $typeName: "workos.app.v1.ListInstalledAppsResponse",
+          installations: [boardRevoked, notesInstalled],
+          page: { $typeName: "workos.common.v1.PageResponse", nextPageToken: "" },
+        } satisfies ListInstalledAppsResponse),
+    });
+    const onProjectRefreshed = vi.fn();
+    const onInstallationGrantsChanged = vi.fn();
+    render(
+      <AppLibrary
+        project={project("project-1", 2n)}
+        workosClients={clients}
+        onProjectRefreshed={onProjectRefreshed}
+        onSurfaceOpened={() => undefined}
+        onInstallationRemoved={() => undefined}
+        onInstallationGrantsChanged={onInstallationGrantsChanged}
+      />,
+    );
+    const boardRow = (await screen.findByText("board app")).closest("li") as HTMLElement;
+    await user.click(within(boardRow).getByRole("button", { name: "Manage permissions" }));
+
+    const dialog = await screen.findByRole("dialog");
+    expect(dialog.textContent).toContain("Current grant revision 1");
+    for (const capability of ["agent.task.run", "agent.event.watch"]) {
+      await user.click(screen.getByRole("checkbox", { name: capability }));
+    }
+    expect(screen.getByText("Removing agent.task.run")).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: "Revoke all permissions" }));
+
+    expect(
+      await screen.findByText(
+        "Permissions saved. Reopen the app for the new permissions to take effect.",
+      ),
+    ).toBeTruthy();
+    expect(setAppGrants).toHaveBeenCalledWith({
+      idempotencyKey: expect.any(String) as string,
+      projectId: "project-1",
+      installationId: "installation-board",
+      expectedProjectRevision: 2n,
+      grantedPermissions: [],
+    });
+    // Only the managed installation is reported for window teardown.
+    expect(onInstallationGrantsChanged).toHaveBeenCalledTimes(1);
+    expect(onInstallationGrantsChanged).toHaveBeenCalledWith("installation-board");
+    await waitFor(() => {
+      expect(onProjectRefreshed).toHaveBeenCalledWith(
+        expect.objectContaining({ revision: 3n }) as unknown as Project,
+      );
+    });
+
+    await user.click(screen.getByRole("button", { name: "Close" }));
+    expect(screen.queryByRole("dialog")).toBeNull();
+    // The refreshed server list drives the row: revoked at grant revision 2.
+    const refreshedRow = screen
+      .getByText("Granted: none · grant revision 2")
+      .closest("li") as HTMLElement;
+    expect(within(refreshedRow).getByText(/board app/)).toBeTruthy();
+    const notesRow = screen
+      .getByText("Granted: none · grant revision 1")
+      .closest("li") as HTMLElement;
+    expect(within(notesRow).getByText(/notes app/)).toBeTruthy();
   });
 });

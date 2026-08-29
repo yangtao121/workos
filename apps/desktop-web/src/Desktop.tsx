@@ -303,6 +303,14 @@ export function Desktop({ workosClients = clients }: { workosClients?: WorkOSCli
   // Uninstalling an app closes its windows so a removed instance leaves no
   // orphan surfaces behind.
   function installationRemoved(installationId: string) {
+    closeInstallationWindows(installationId);
+  }
+
+  // A server-confirmed grant change invalidates every still-open surface of
+  // exactly that installation (the backend already denies their bridge calls
+  // by grant revision); closing the windows is the best-effort local teardown
+  // so the user reopens with the new capabilities.
+  function closeInstallationWindows(installationId: string) {
     for (const item of windows.windows) {
       if (item.kind === "app-surface" && item.appId === installationId) {
         closeWindow(item.id);
@@ -514,6 +522,7 @@ export function Desktop({ workosClients = clients }: { workosClients?: WorkOSCli
               onProjectRefreshed={replaceProject}
               onSurfaceOpened={surfaceOpened}
               onInstallationRemoved={installationRemoved}
+              onInstallationGrantsChanged={closeInstallationWindows}
             />
           ) : null}
           {settingsOpen && activeProject ? (

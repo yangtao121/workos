@@ -490,6 +490,8 @@ function installedApp(appId: string, installationId: string, projectId: string) 
     version: "1.0.0",
     manifestDigest: "sha256:" + "a".repeat(64),
     installedAt: { seconds: 1787000000n, nanos: 0 },
+    grantedPermissions: [],
+    grantRevision: 1n,
   };
 }
 
@@ -521,6 +523,7 @@ function clientFixture({
     agentTasks: { submitTask, watchTaskEvents, getTask },
     appRegistry: {
       listApps: vi.fn(() => Promise.resolve({ apps: [], page: { nextPageToken: "" } })),
+      getApp: vi.fn(() => Promise.resolve({ app: undefined })),
     },
     appInstallations: {
       listInstalledApps: vi.fn(() =>
@@ -528,6 +531,7 @@ function clientFixture({
       ),
       installApp: vi.fn(),
       uninstallApp: vi.fn(),
+      setAppGrants: vi.fn(),
     },
     artifacts: { createArtifact: vi.fn(), getArtifact: vi.fn(), listArtifacts: vi.fn() },
     surfaces: { createSurface: vi.fn(), closeSurface: vi.fn() },
@@ -811,5 +815,124 @@ describe("app surface windows", () => {
     await waitFor(() => {
       expect(closeSurface).toHaveBeenCalledWith({ surfaceSessionId: session.id });
     });
+  });
+
+  // A saved grant change must tear down exactly the managed installation's
+  // surfaces: another installed app's window and session stay untouched.
+  it("closes only the managed installation's surfaces after a grant change", async () => {
+    const user = userEvent.setup();
+    const boardSession = surfaceSession(
+      "0198d7ea-2110-7c42-b659-c5e4d73bc341",
+      "installation-board",
+      "p1",
+    );
+    const notesSession = surfaceSession(
+      "0198d7ea-2110-7c42-b659-c5e4d73bc399",
+      "installation-notes",
+      "p1",
+    );
+    const boardApp = {
+      $typeName: "workos.app.v1.WorkOSApp",
+      id: "board-app",
+      name: "Board",
+      version: "1.0.0",
+      scope: 2,
+      permissions: ["agent.task.run"],
+      manifestDigest: "sha256:" + "a".repeat(64),
+    };
+    const notesApp = {
+      $typeName: "workos.app.v1.WorkOSApp",
+      id: "notes-app",
+      name: "Notes",
+      version: "1.0.0",
+      scope: 2,
+      permissions: [],
+      manifestDigest: "sha256:" + "a".repeat(64),
+    };
+    const clients = clientFixture({ projects: [project("p1", "Alpha", 1n)] });
+    (clients.appRegistry.listApps as ReturnType<typeof vi.fn>).mockReturnValue(
+      Promise.resolve({ apps: [boardApp, notesApp], page: { nextPageToken: "" } }),
+    );
+    clients.appRegistry.getApp = vi.fn((request: { appId: string }) =>
+      Promise.resolve({ app: request.appId === "board-app" ? boardApp : notesApp }),
+    ) as unknown as typeof clients.appRegistry.getApp;
+    (clients.appInstallations.listInstalledApps as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce({
+        installations: [
+          {
+            ...installedApp("board-app", "installation-board", "p1"),
+            grantedPermissions: ["agent.task.run"],
+          },
+          installedApp("notes-app", "installation-notes", "p1"),
+        ],
+        page: { nextPageToken: "" },
+      })
+      .mockResolvedValue({
+        installations: [
+          {
+            ...installedApp("board-app", "installation-board", "p1"),
+            grantedPermissions: [],
+            grantRevision: 2n,
+          },
+          installedApp("notes-app", "installation-notes", "p1"),
+        ],
+        page: { nextPageToken: "" },
+      });
+    clients.surfaces.createSurface = vi.fn((request: { appInstanceId: string }) =>
+      Promise.resolve({
+        session: request.appInstanceId === "installation-board" ? boardSession : notesSession,
+      }),
+    ) as unknown as typeof clients.surfaces.createSurface;
+    const closeSurface = vi.fn(() =>
+      Promise.resolve({ $typeName: "workos.surface.v1.CloseSurfaceResponse" }),
+    ) as unknown as typeof clients.surfaces.closeSurface;
+    clients.surfaces.closeSurface = closeSurface;
+    (clients.appInstallations.setAppGrants as ReturnType<typeof vi.fn>).mockResolvedValue({
+      installation: {
+        ...installedApp("board-app", "installation-board", "p1"),
+        grantedPermissions: [],
+        grantRevision: 2n,
+      },
+      projectRevision: 2n,
+    });
+    (clients.projects.getProject as ReturnType<typeof vi.fn>).mockResolvedValue({
+      project: project("p1", "Alpha", 2n),
+    });
+
+    render(<Desktop workosClients={clients} />);
+    await screen.findAllByText("Alpha");
+    await user.click(screen.getByRole("button", { name: "App Library" }));
+    // Both apps are installed, so both rows show the pinned version.
+    await screen.findAllByText(/Installed · pinned 1\.0\.0/);
+    // Open both apps: one surface window each. The rows are queried fresh
+    // each time because the buttons re-render between the two opens.
+    await user.click(screen.getAllByRole("button", { name: "Open" })[0] as HTMLElement);
+    expect(await screen.findByTitle(`App surface ${boardSession.id}`)).toBeTruthy();
+    await user.click(screen.getAllByRole("button", { name: "Open" })[1] as HTMLElement);
+    expect(await screen.findByTitle(`App surface ${notesSession.id}`)).toBeTruthy();
+
+    // Revoke board's only permission through the manage dialog.
+    await user.click(
+      screen.getAllByRole("button", { name: "Manage permissions" })[0] as HTMLElement,
+    );
+    expect(await screen.findByRole("dialog")).toBeTruthy();
+    await user.click(screen.getByRole("checkbox", { name: "agent.task.run" }));
+    await user.click(screen.getByRole("button", { name: "Revoke all permissions" }));
+
+    expect(
+      await screen.findByText(
+        "Permissions saved. Reopen the app for the new permissions to take effect.",
+      ),
+    ).toBeTruthy();
+    // The managed installation's surface is closed best-effort; the other
+    // app's window and session are untouched.
+    await waitFor(() => {
+      expect(closeSurface).toHaveBeenCalledWith({ surfaceSessionId: boardSession.id });
+    });
+    expect(closeSurface).not.toHaveBeenCalledWith({ surfaceSessionId: notesSession.id });
+    expect(screen.queryByTitle(`App surface ${boardSession.id}`)).toBeNull();
+    expect(screen.getByTitle(`App surface ${notesSession.id}`)).toBeTruthy();
+    // The row reflects the server-confirmed replacement.
+    expect(screen.getByText("Granted: none · grant revision 2")).toBeTruthy();
   });
 });

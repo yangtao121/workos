@@ -10,6 +10,7 @@ import {
 } from "@workos/protocol";
 import { Button } from "@workos/ui-kit";
 import type { WorkOSClients } from "@workos/agent-sdk";
+import { PermissionDialog, type PermissionFacts } from "./PermissionDialog.js";
 
 export type LibraryState = "loading" | "ready" | "error";
 
@@ -19,6 +20,9 @@ interface AppLibraryProps {
   onProjectRefreshed: (project: Project) => void;
   onSurfaceOpened: (session: SurfaceSession) => void;
   onInstallationRemoved: (installationId: string) => void;
+  // Fired once a SetAppGrants save was server-confirmed: the Desktop tears
+  // down every still-open window/session of exactly that installation.
+  onInstallationGrantsChanged?: (installationId: string) => void;
 }
 
 interface LibraryFeedback {
@@ -49,6 +53,7 @@ export function AppLibrary({
   onProjectRefreshed,
   onSurfaceOpened,
   onInstallationRemoved,
+  onInstallationGrantsChanged,
 }: AppLibraryProps) {
   const [state, setState] = useState<LibraryState>("loading");
   const [error, setError] = useState<string>();
@@ -58,9 +63,13 @@ export function AppLibrary({
   const [feedback, setFeedback] = useState<LibraryFeedback>();
   const [openingAppIds, setOpeningAppIds] = useState<Record<string, boolean>>({});
   // The install consent flow: the exact registry version's requested
-  // permissions are listed, every checkbox starts unchecked, and the user's
-  // explicit selection becomes the installation's immutable grant snapshot.
+  // permissions are listed and every checkbox starts unchecked; the user's
+  // explicit selection becomes the installation's first grant.
   const [consent, setConsent] = useState<InstallConsent>();
+  // The permission dialog edits one installation's grant as a full
+  // replacement (ADR-0003). The captured installation is kept stable for the
+  // dialog's lifetime; the dialog reloads fresh facts itself on conflicts.
+  const [managing, setManaging] = useState<AppInstallation>();
   // Generation guards every in-flight promise: switching projects or
   // unmounting invalidates late responses so they cannot pollute state.
   const generationRef = useRef(0);
@@ -99,19 +108,34 @@ export function AppLibrary({
     void refresh();
   }, [refresh]);
 
+  // readFacts re-reads the server-owned project revision and installation
+  // list; callers apply them under their own liveness guard so the permission
+  // dialog can adopt the same fresh facts without duplicating the walk.
+  const readFacts = useCallback(async (): Promise<PermissionFacts> => {
+    const [projectResponse, active] = await Promise.all([
+      workosClients.projects.getProject({ projectId: project.id }),
+      listAllInstallations(workosClients, project.id),
+    ]);
+    const refreshed = projectResponse.project;
+    if (!refreshed) throw new Error("missing refreshed project");
+    return { project: refreshed, installations: active };
+  }, [project.id, workosClients]);
+
+  const applyFacts = useCallback(
+    (facts: PermissionFacts) => {
+      onProjectRefreshed(facts.project);
+      setInstallations(facts.installations);
+    },
+    [onProjectRefreshed],
+  );
+
   const refreshProjectAndInstallations = useCallback(
     async (isLive: () => boolean) => {
-      const [projectResponse, active] = await Promise.all([
-        workosClients.projects.getProject({ projectId: project.id }),
-        listAllInstallations(workosClients, project.id),
-      ]);
-      const refreshed = projectResponse.project;
-      if (!refreshed) throw new Error("missing refreshed project");
+      const facts = await readFacts();
       if (!isLive()) return;
-      onProjectRefreshed(refreshed);
-      setInstallations(active);
+      applyFacts(facts);
     },
-    [onProjectRefreshed, project.id, workosClients],
+    [applyFacts, readFacts],
   );
 
   const runMutation = useCallback(
@@ -305,7 +329,8 @@ export function AppLibrary({
                         {shortDigest(installation.manifestDigest)}
                       </small>
                       <small className="app-row-granted">
-                        Granted: {grantedSummary(installation.grantedPermissions)}
+                        Granted: {grantedSummary(installation.grantedPermissions)} · grant revision{" "}
+                        {installation.grantRevision.toString()}
                       </small>
                     </>
                   ) : null}
@@ -320,6 +345,16 @@ export function AppLibrary({
                       type="button"
                     >
                       {openingAppIds[app.id] === true ? "Opening…" : "Open"}
+                    </Button>
+                    <Button
+                      disabled={busy || openingAppIds[app.id] === true}
+                      onClick={() => {
+                        setFeedback(undefined);
+                        setManaging(installation);
+                      }}
+                      type="button"
+                    >
+                      Manage permissions
                     </Button>
                     <Button
                       disabled={busy || openingAppIds[app.id] === true}
@@ -354,8 +389,13 @@ export function AppLibrary({
                   {shortDigest(installation.manifestDigest)}
                 </small>
                 <small className="app-row-granted">
-                  Granted: {grantedSummary(installation.grantedPermissions)}
+                  Granted: {grantedSummary(installation.grantedPermissions)} · grant revision{" "}
+                  {installation.grantRevision.toString()}
                 </small>
+                {/* The app is absent from the owner's current catalog, so its
+                    exact pinned requested set cannot be resolved here: never
+                    guess one. Removing stays available. */}
+                <small>Manage permissions unavailable</small>
               </span>
               <Button
                 disabled={busyAppIds[installation.appId] ?? false}
@@ -385,7 +425,7 @@ export function AppLibrary({
             </h3>
             <p id="app-consent-description">
               Requested permissions for registry version {consent.app.version}. Nothing is granted
-              by default; changing this later requires removing and reinstalling the app.
+              by default; you can change these later from Manage permissions.
             </p>
             {consent.app.permissions.length === 0 ? (
               <p className="app-consent-note">This app requests no permissions.</p>
@@ -440,6 +480,23 @@ export function AppLibrary({
             </div>
           </div>
         </div>
+      ) : null}
+
+      {managing ? (
+        <PermissionDialog
+          installation={managing}
+          key={managing.id}
+          onCancel={() => {
+            setManaging(undefined);
+          }}
+          onFactsRefreshed={applyFacts}
+          onGrantsApplied={(installationId) => {
+            onInstallationGrantsChanged?.(installationId);
+          }}
+          project={project}
+          readFacts={readFacts}
+          workosClients={workosClients}
+        />
       ) : null}
     </section>
   );
