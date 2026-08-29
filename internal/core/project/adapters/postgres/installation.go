@@ -39,7 +39,7 @@ func (r *Repository) LookupInstallationRequest(ctx context.Context, ownerUserID,
 		return ports.StoredInstallationRequest{}, false, nil
 	}
 	if err != nil {
-		return ports.StoredInstallationRequest{}, false, fmt.Errorf("query installation request: %w", err)
+		return ports.StoredInstallationRequest{}, false, storeError("query installation request", err)
 	}
 	return storedInstallationRequest(stored), true, nil
 }
@@ -82,7 +82,7 @@ func (r *Repository) ResolveActiveInstallation(ctx context.Context, ownerUserID,
 func (r *Repository) Install(ctx context.Context, command ports.InstallCommand) (ports.InstallationResult, error) {
 	tx, err := r.pool.Begin(ctx)
 	if err != nil {
-		return ports.InstallationResult{}, fmt.Errorf("begin install app: %w", err)
+		return ports.InstallationResult{}, storeError("begin install app", err)
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck
 	queries := r.queries.WithTx(tx)
@@ -126,7 +126,7 @@ func (r *Repository) Install(ctx context.Context, command ports.InstallCommand) 
 		return ports.InstallationResult{}, domain.ErrAlreadyInstalled
 	}
 	if !errors.Is(err, pgx.ErrNoRows) {
-		return ports.InstallationResult{}, fmt.Errorf("query active installation: %w", err)
+		return ports.InstallationResult{}, storeError("query active installation", err)
 	}
 
 	installation := domain.Installation{
@@ -142,7 +142,7 @@ func (r *Repository) Install(ctx context.Context, command ports.InstallCommand) 
 		GrantedPermissions: nonNilGranted(installation.GrantedPermissions),
 		InstalledAt:        timestamp(installation.InstalledAt),
 	}); err != nil {
-		return ports.InstallationResult{}, fmt.Errorf("insert installation: %w", err)
+		return ports.InstallationResult{}, storeError("insert installation", err)
 	}
 	projection, err := applyProjection(ctx, queries, command.OwnerUserID, command.ProjectID, command.ExpectedRevision, command.Now)
 	if err != nil {
@@ -172,7 +172,7 @@ const installTimeGrantRevision = 1
 func (r *Repository) Uninstall(ctx context.Context, command ports.UninstallCommand) (ports.InstallationResult, error) {
 	tx, err := r.pool.Begin(ctx)
 	if err != nil {
-		return ports.InstallationResult{}, fmt.Errorf("begin uninstall app: %w", err)
+		return ports.InstallationResult{}, storeError("begin uninstall app", err)
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck
 	queries := r.queries.WithTx(tx)
@@ -198,7 +198,7 @@ func (r *Repository) Uninstall(ctx context.Context, command ports.UninstallComma
 		ID: installation.ID, UninstalledAt: timestamp(command.Now),
 	})
 	if err != nil {
-		return ports.InstallationResult{}, fmt.Errorf("tombstone installation: %w", err)
+		return ports.InstallationResult{}, storeError("tombstone installation", err)
 	}
 	if rows == 0 {
 		return ports.InstallationResult{}, domain.ErrNotFound
@@ -249,7 +249,7 @@ var errPinnedIdentityDrift = errors.New("installation pinned identity drifted")
 func (r *Repository) SetAppGrants(ctx context.Context, command ports.SetAppGrantsCommand) (ports.InstallationResult, error) {
 	tx, err := r.pool.Begin(ctx)
 	if err != nil {
-		return ports.InstallationResult{}, fmt.Errorf("begin set app grants: %w", err)
+		return ports.InstallationResult{}, storeError("begin set app grants", err)
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck
 	queries := r.queries.WithTx(tx)
@@ -387,7 +387,7 @@ func classifyUnderLock(
 		return ports.InstallationResult{}, true, domain.ErrNotFound
 	}
 	if err != nil {
-		return ports.InstallationResult{}, true, fmt.Errorf("lock project for installation: %w", err)
+		return ports.InstallationResult{}, true, storeError("lock project for installation", err)
 	}
 	// Re-check the key under the lock: an identical concurrent command that
 	// already committed replays instead of conflicting on the advanced
@@ -410,7 +410,7 @@ func classifyUnderLock(
 		return ports.InstallationResult{Installation: installation, ProjectRevision: stored.ProjectRevision}, true, nil
 	}
 	if !errors.Is(err, pgx.ErrNoRows) {
-		return ports.InstallationResult{}, true, fmt.Errorf("query installation request under lock: %w", err)
+		return ports.InstallationResult{}, true, storeError("query installation request under lock", err)
 	}
 	if project.Revision != expectedRevision {
 		return ports.InstallationResult{}, true, domain.ErrConflict
@@ -424,7 +424,7 @@ func classifyUnderLock(
 func applyProjection(ctx context.Context, queries *projectdb.Queries, ownerUserID, projectID string, expectedRevision int64, now time.Time) (projectdb.ApplyInstallationProjectionRow, error) {
 	appIDs, err := queries.ActiveInstallationAppIDs(ctx, projectID)
 	if err != nil {
-		return projectdb.ApplyInstallationProjectionRow{}, fmt.Errorf("collect active app ids: %w", err)
+		return projectdb.ApplyInstallationProjectionRow{}, storeError("collect active app ids", err)
 	}
 	projection, err := queries.ApplyInstallationProjection(ctx, projectdb.ApplyInstallationProjectionParams{
 		UpdatedAt: timestamp(now), InstalledAppIds: appIDs,
@@ -434,7 +434,7 @@ func applyProjection(ctx context.Context, queries *projectdb.Queries, ownerUserI
 		return projectdb.ApplyInstallationProjectionRow{}, domain.ErrConflict
 	}
 	if err != nil {
-		return projectdb.ApplyInstallationProjectionRow{}, fmt.Errorf("apply installation projection: %w", err)
+		return projectdb.ApplyInstallationProjectionRow{}, storeError("apply installation projection", err)
 	}
 	return projection, nil
 }
@@ -492,7 +492,7 @@ func appendProjectEventOutbox(ctx context.Context, queries *projectdb.Queries, s
 		ID: eventID.String(), StreamID: streamID, Sequence: sequence, EventType: eventType,
 		Payload: payload, OccurredAt: timestamp(occurredAt),
 	}); err != nil {
-		return fmt.Errorf("append installation event: %w", err)
+		return storeError("append installation event", err)
 	}
 	outboxID, err := uuid.NewV7()
 	if err != nil {
@@ -502,7 +502,7 @@ func appendProjectEventOutbox(ctx context.Context, queries *projectdb.Queries, s
 		ID: outboxID.String(), AggregateID: streamID, EventType: eventType,
 		Payload: payload, OccurredAt: timestamp(occurredAt),
 	}); err != nil {
-		return fmt.Errorf("append installation outbox: %w", err)
+		return storeError("append installation outbox", err)
 	}
 	return nil
 }
@@ -519,11 +519,11 @@ func (r *Repository) commitInstallationRequest(
 ) (ports.InstallationResult, error) {
 	rows, err := queries.InsertInstallationRequest(ctx, params)
 	if err != nil {
-		return ports.InstallationResult{}, fmt.Errorf("insert installation request: %w", err)
+		return ports.InstallationResult{}, storeError("insert installation request", err)
 	}
 	if rows > 0 {
 		if err := tx.Commit(ctx); err != nil {
-			return ports.InstallationResult{}, fmt.Errorf("commit installation command: %w", err)
+			return ports.InstallationResult{}, storeError("commit installation command", err)
 		}
 		return onSuccess, nil
 	}
@@ -531,7 +531,7 @@ func (r *Repository) commitInstallationRequest(
 		OwnerUserID: params.OwnerUserID, IdempotencyKey: params.IdempotencyKey,
 	})
 	if err != nil {
-		return ports.InstallationResult{}, fmt.Errorf("classify consumed installation request: %w", err)
+		return ports.InstallationResult{}, storeError("classify consumed installation request", err)
 	}
 	if consumed.RequestDigest != params.RequestDigest {
 		return ports.InstallationResult{}, domain.ErrIdempotencyConflict
