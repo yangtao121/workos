@@ -16,18 +16,23 @@ version: 1.10.0
 scope: user
 runtime:
   type: container
-  command: ["./serve"]
+  image: localhost/workos-note-fixture@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+  command: ["/workos-note-fixture", "serve"]
   port: 8080
 surfaces:
   - id: main
-    renderer: web-bundle
-    route: /notes
+    renderer: web-service
+    route: /
 permissions: [artifact.read, agent.task.run]
 resources:
-  limits:
-    memory: 256
+  cpuHard: 1
+  memoryHighMb: 64
+  memoryMaxMb: 96
+  pidsMax: 32
 health:
-  interval: 30
+  httpPath: /health
+  startupSeconds: 10
+  restartLimit: 2
 maintainer:
   name: Example
 `
@@ -141,7 +146,7 @@ func TestValidatorReportsSchemaViolationsSafely(t *testing.T) {
 		},
 		{
 			name:     "invalid surface renderer",
-			yaml:     strings.Replace(validUserManifest, "renderer: web-bundle", "renderer: native", 1),
+			yaml:     strings.Replace(validUserManifest, "renderer: web-service", "renderer: native", 1),
 			wantPath: "/surfaces/0/renderer",
 		},
 		{
@@ -275,15 +280,15 @@ func TestValidatorRejectsCredentialShapedMappingKeys(t *testing.T) {
 		{
 			name: "prefixed-token-shaped key in resources",
 			yaml: strings.Replace(validUserManifest,
-				"resources:\n  limits:\n    memory: 256\n",
-				"resources:\n  limits:\n    memory: 256\n  \"sk-zzzz0123456789abcdef\": 1\n", 1),
+				"resources:\n  cpuHard: 1\n  memoryHighMb: 64\n  memoryMaxMb: 96\n  pidsMax: 32\n",
+				"resources:\n  cpuHard: 1\n  \"sk-zzzz0123456789abcdef\": 1\n", 1),
 			wantPath: "/resources",
 		},
 		{
 			name: "jwt-shaped key in health",
 			yaml: strings.Replace(validUserManifest,
-				"health:\n  interval: 30\n",
-				"health:\n  interval: 30\n  \"eyJzzzzzz123456.eyJzzzzzz123456.zzsynthetic12345\": 1\n", 1),
+				"health:\n  httpPath: /health\n  startupSeconds: 10\n  restartLimit: 2\n",
+				"health:\n  httpPath: /health\n  \"eyJzzzzzz123456.eyJzzzzzz123456.zzsynthetic12345\": 1\n", 1),
 			wantPath: "/health",
 		},
 		{
@@ -296,8 +301,8 @@ func TestValidatorRejectsCredentialShapedMappingKeys(t *testing.T) {
 		{
 			name: "pem-header-shaped key in resources",
 			yaml: strings.Replace(validUserManifest,
-				"resources:\n  limits:\n    memory: 256\n",
-				"resources:\n  limits:\n    memory: 256\n  \"-----BEGIN SYNTHETIC PRIVATE KEY-----\": 1\n", 1),
+				"resources:\n  cpuHard: 1\n  memoryHighMb: 64\n  memoryMaxMb: 96\n  pidsMax: 32\n",
+				"resources:\n  cpuHard: 1\n  \"-----BEGIN SYNTHETIC PRIVATE KEY-----\": 1\n", 1),
 			wantPath: "/resources",
 		},
 	}
@@ -328,8 +333,8 @@ func TestValidatorRejectsCredentialShapedMappingKeys(t *testing.T) {
 	// accepted: the shape rule matches credential formats, not letter
 	// fragments.
 	neighbors := strings.Replace(validUserManifest,
-		"resources:\n  limits:\n    memory: 256\n",
-		"resources:\n  limits:\n    memory: 256\n  short_code: ab12\n  ski_rating: 5\n  slack_channel: general\n", 1)
+		"maintainer:\n  name: Example\n",
+		"maintainer:\n  name: Example\n  short_code: ab12\n  ski_rating: 5\n  slack_channel: general\n", 1)
 	if _, violations := validator.Validate([]byte(neighbors)); len(violations) != 0 {
 		t.Fatalf("non-credential neighbor keys must be accepted, got %v", violations)
 	}
@@ -338,16 +343,14 @@ func TestValidatorRejectsCredentialShapedMappingKeys(t *testing.T) {
 func TestValidatorRejectsSecretShapedContentByPathOnly(t *testing.T) {
 	t.Parallel()
 	validator := newValidator(t)
-	// Every case injects content into the single existing resources block of
-	// a structurally and schema-valid manifest, so only the secret policy can
-	// reject it. All values are obviously synthetic.
+	// Every case injects content into the single free-form maintainer block
+	// of a structurally and schema-valid manifest, so only the secret policy
+	// can reject it (the container resources/health blocks are strict). All
+	// values are obviously synthetic.
 	withResource := func(extra string) string {
 		return strings.Replace(validUserManifest,
-			"resources:\n  limits:\n    memory: 256\n",
-			"resources:\n  limits:\n    memory: 256\n"+extra, 1)
-	}
-	withHealth := func(extra string) string {
-		return strings.Replace(validUserManifest, "health:\n  interval: 30\n", "health:\n  interval: 30\n"+extra, 1)
+			"maintainer:\n  name: Example\n",
+			"maintainer:\n  name: Example\n"+extra, 1)
 	}
 	withMaintainer := func(extra string) string {
 		return strings.Replace(validUserManifest, "maintainer:\n  name: Example\n", "maintainer:\n  name: Example\n"+extra, 1)
@@ -361,13 +364,13 @@ func TestValidatorRejectsSecretShapedContentByPathOnly(t *testing.T) {
 		{
 			name:         "password key in resources",
 			yaml:         withResource("  password: synthetic-not-a-real-value\n"),
-			wantPath:     "/resources/password",
+			wantPath:     "/maintainer/password",
 			wantContains: "field names that hold secrets are not allowed in manifests",
 		},
 		{
-			name:         "camelCase accessToken key in health",
-			yaml:         withHealth("  accessToken: synthetic-not-a-real-value\n"),
-			wantPath:     "/health/accessToken",
+			name:         "camelCase accessToken key in maintainer",
+			yaml:         withMaintainer("  accessToken: synthetic-not-a-real-value\n"),
+			wantPath:     "/maintainer/accessToken",
 			wantContains: "field names that hold secrets are not allowed in manifests",
 		},
 		{
@@ -379,49 +382,49 @@ func TestValidatorRejectsSecretShapedContentByPathOnly(t *testing.T) {
 		{
 			name:         "camelCase credentialValue key",
 			yaml:         withResource("  credentialValue: synthetic-not-a-real-value\n"),
-			wantPath:     "/resources/credentialValue",
+			wantPath:     "/maintainer/credentialValue",
 			wantContains: "field names that hold secrets are not allowed in manifests",
 		},
 		{
 			name:         "camelCase awsSecretAccessKey key",
 			yaml:         withResource("  awsSecretAccessKey: synthetic-not-a-real-value\n"),
-			wantPath:     "/resources/awsSecretAccessKey",
+			wantPath:     "/maintainer/awsSecretAccessKey",
 			wantContains: "field names that hold secrets are not allowed in manifests",
 		},
 		{
 			name:         "compound private key phrase",
 			yaml:         withResource("  private_key: synthetic-not-a-real-value\n"),
-			wantPath:     "/resources/private_key",
+			wantPath:     "/maintainer/private_key",
 			wantContains: "field names that hold secrets are not allowed in manifests",
 		},
 		{
 			name:         "pem-like value",
 			yaml:         withResource("  license: \"-----BEGIN SYNTHETIC PRIVATE KEY-----MIIBsynthetic\"\n"),
-			wantPath:     "/resources/license",
+			wantPath:     "/maintainer/license",
 			wantContains: "values that look like credentials are not allowed in manifests",
 		},
 		{
 			name:         "token-shaped synthetic value",
 			yaml:         withResource("  contact: sk-zzzz0123456789abcdef\n"),
-			wantPath:     "/resources/contact",
+			wantPath:     "/maintainer/contact",
 			wantContains: "values that look like credentials are not allowed in manifests",
 		},
 		{
 			name:         "bearer-shaped synthetic value",
 			yaml:         withResource("  hook: \"Bearer zzzz0123456789abcdefgh\"\n"),
-			wantPath:     "/resources/hook",
+			wantPath:     "/maintainer/hook",
 			wantContains: "values that look like credentials are not allowed in manifests",
 		},
 		{
 			name:         "jwt-shaped synthetic value",
 			yaml:         withResource("  session: eyJzzzzzz123456.eyJzzzzzz123456.zzsynthetic12345\n"),
-			wantPath:     "/resources/session",
+			wantPath:     "/maintainer/session",
 			wantContains: "values that look like credentials are not allowed in manifests",
 		},
 		{
 			name:         "aws-like synthetic value",
 			yaml:         withResource("  account: AKIAZZZZ0123456789AB\n"),
-			wantPath:     "/resources/account",
+			wantPath:     "/maintainer/account",
 			wantContains: "values that look like credentials are not allowed in manifests",
 		},
 	}
@@ -498,17 +501,17 @@ func TestValidatorRejectsUnsafeMappingKeys(t *testing.T) {
 	validator := newValidator(t)
 	const wantMessage = "mapping keys must be valid UTF-8, control-free, and between 1 and 256 characters"
 	cases := map[string]string{
-		"control character in resources":  "resources:\n  limits:\n    memory: 256\n  \"bad\\u0001key\": 1\n",
-		"control character in health":     "health:\n  interval: 30\n  \"bad\\u0007key\": 1\n",
+		"control character in resources":  "resources:\n  cpuHard: 1\n  \"bad\\u0001key\": 1\n",
+		"control character in health":     "health:\n  httpPath: /health\n  \"bad\\u0007key\": 1\n",
 		"control character in maintainer": "maintainer:\n  name: Example\n  \"bad\\u007fkey\": 1\n",
 		"c1 control character":            "maintainer:\n  name: Example\n  \"bad\\u0085key\": 1\n",
-		"oversize key":                    "resources:\n  limits:\n    memory: 256\n  \"" + strings.Repeat("k", 257) + `": 1` + "\n",
+		"oversize key":                    "resources:\n  cpuHard: 1\n  \"" + strings.Repeat("k", 257) + `": 1` + "\n",
 	}
 	for name, block := range cases {
 		t.Run(name, func(t *testing.T) {
-			yaml := strings.Replace(validUserManifest, "resources:\n  limits:\n    memory: 256\n", block, 1)
+			yaml := strings.Replace(validUserManifest, "resources:\n  cpuHard: 1\n  memoryHighMb: 64\n  memoryMaxMb: 96\n  pidsMax: 32\n", block, 1)
 			if strings.HasPrefix(block, "health:") {
-				yaml = strings.Replace(validUserManifest, "health:\n  interval: 30\n", block, 1)
+				yaml = strings.Replace(validUserManifest, "health:\n  httpPath: /health\n  startupSeconds: 10\n  restartLimit: 2\n", block, 1)
 			} else if strings.HasPrefix(block, "maintainer:") {
 				yaml = strings.Replace(validUserManifest, "maintainer:\n  name: Example\n", block, 1)
 			}

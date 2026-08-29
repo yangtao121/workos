@@ -43,6 +43,16 @@ func (resolverRegistry) ResolveWebBundle(context.Context, string, string, string
 	}, nil
 }
 
+func (resolverRegistry) ResolveSurfaceLaunch(context.Context, string, string, string) (appregistryapp.SurfaceResolution, error) {
+	return appregistryapp.SurfaceResolution{
+		ManifestDigest: "sha256:" + resolverHex('a'),
+		WebBundle: &appregistrydomain.WebBundleRef{
+			ArtifactID:     "0198d7ea-2110-7c42-b659-c5e4d73bc343",
+			ArtifactDigest: "sha256:" + resolverHex('b'),
+		},
+	}, nil
+}
+
 type resolverArtifacts struct{}
 
 func (resolverArtifacts) VerifyWebBundle(context.Context, string, string, string) (artifactapp.BundleSummary, error) {

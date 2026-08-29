@@ -60,9 +60,51 @@ type webBundleRegistry interface {
 	ResolveWebBundle(ctx context.Context, ownerUserID, appID, version string) (appregistryapp.WebBundleResolution, error)
 }
 
+// surfaceRegistry is the renderer-neutral registry surface the generic
+// resolution consumes; the concrete App Registry application service
+// implements it alongside ResolveWebBundle.
+type surfaceRegistry interface {
+	ResolveSurfaceLaunch(ctx context.Context, ownerUserID, appID, version string) (appregistryapp.SurfaceResolution, error)
+}
+
 type webBundleArtifacts interface {
 	VerifyWebBundle(ctx context.Context, ownerUserID, artifactID, digest string) (artifactapp.BundleSummary, error)
 	ReadVerifiedWebBundleAsset(ctx context.Context, ownerUserID, artifactID, digest, path string) (artifactdomain.BundleFile, error)
+}
+
+// SurfaceLaunchKind distinguishes the supported launch profiles of one
+// installed instance.
+type SurfaceLaunchKind string
+
+const (
+	LaunchKindWebBundle           SurfaceLaunchKind = "web-bundle"
+	LaunchKindWebServiceContainer SurfaceLaunchKind = "web-service-container"
+)
+
+// ContainerDescriptor is the neutral immutable container launch fact: the
+// digest-pinned image reference, bounded argv, container port, the requested
+// (never effective) resource/health policies, and the fixed surface route.
+type ContainerDescriptor struct {
+	AppID          string
+	Version        string
+	ManifestDigest string
+	Image          string
+	Command        []string
+	Port           int64
+	Resources      appregistrydomain.ContainerResourcePolicy
+	Health         appregistrydomain.ContainerHealthPolicy
+	Route          string
+}
+
+// SurfaceLaunch is the generic resolution result: the resolved launch kind
+// plus the kind-specific immutable descriptor, with the installation's grant
+// facts riding along exactly as in the web-bundle resolution.
+type SurfaceLaunch struct {
+	Kind               SurfaceLaunchKind
+	GrantedPermissions []string
+	GrantRevision      int64
+	WebBundle          *LaunchDescriptor
+	Container          *ContainerDescriptor
 }
 
 // SurfaceLaunchResolver composes the authoritative module services behind the
@@ -71,6 +113,7 @@ type webBundleArtifacts interface {
 type SurfaceLaunchResolver struct {
 	installations installationSource
 	apps          webBundleRegistry
+	generic       surfaceRegistry
 	artifacts     webBundleArtifacts
 }
 
@@ -82,7 +125,11 @@ func NewSurfaceLaunchResolver(
 	if installations == nil || apps == nil || artifacts == nil {
 		return nil, errors.New("surface launch resolver requires installation, registry, and artifact services")
 	}
-	return &SurfaceLaunchResolver{installations: installations, apps: apps, artifacts: artifacts}, nil
+	generic, ok := apps.(surfaceRegistry)
+	if !ok {
+		return nil, errors.New("surface launch resolver requires a renderer-neutral registry")
+	}
+	return &SurfaceLaunchResolver{installations: installations, apps: apps, generic: generic, artifacts: artifacts}, nil
 }
 
 // ResolveWebBundle resolves one installed instance to its exact launch
@@ -115,6 +162,77 @@ func (r *SurfaceLaunchResolver) ResolveWebBundle(ctx context.Context, ownerUserI
 		GrantedPermissions: installation.GrantedPermissions,
 		GrantRevision:      installation.GrantRevision,
 	}, nil
+}
+
+// ResolveSurfaceLaunch resolves one installed instance to its exact
+// renderer-neutral launch facts: active same-owner installation, exact pinned
+// registry version, manifest digest equality, and — for web bundles — the
+// same-owner artifact carrying exactly the referenced digest. Unsupported
+// runtimes are ErrLaunchUnsupported; digest drift or profile corruption is
+// errLaunchCorrupt.
+func (r *SurfaceLaunchResolver) ResolveSurfaceLaunch(ctx context.Context, ownerUserID, projectID, appInstanceID string) (SurfaceLaunch, error) {
+	if ownerUserID == "" {
+		return SurfaceLaunch{}, projectdomain.ErrInvalid
+	}
+	installation, err := r.installations.ResolveActiveInstallation(ctx, ownerUserID, projectID, appInstanceID)
+	if err != nil {
+		return SurfaceLaunch{}, err
+	}
+	resolution, err := r.generic.ResolveSurfaceLaunch(ctx, ownerUserID, installation.AppID, installation.Version)
+	switch {
+	case errors.Is(err, appregistrydomain.ErrNotFound), errors.Is(err, appregistrydomain.ErrInvalid):
+		return SurfaceLaunch{}, err
+	case errors.Is(err, appregistryapp.ErrUnsupportedRuntime):
+		return SurfaceLaunch{}, ErrLaunchUnsupported
+	case err != nil:
+		return SurfaceLaunch{}, fmt.Errorf("resolve registry launch descriptor: %w", err)
+	}
+	if resolution.ManifestDigest != installation.ManifestDigest {
+		return SurfaceLaunch{}, errLaunchCorrupt
+	}
+	switch {
+	case resolution.WebBundle != nil:
+		bundle, err := r.artifacts.VerifyWebBundle(ctx, ownerUserID, resolution.WebBundle.ArtifactID, resolution.WebBundle.ArtifactDigest)
+		switch {
+		case errors.Is(err, artifactdomain.ErrNotFound):
+			return SurfaceLaunch{}, artifactdomain.ErrNotFound
+		case errors.Is(err, artifactdomain.ErrDigestMismatch):
+			return SurfaceLaunch{}, errLaunchCorrupt
+		case errors.Is(err, artifactdomain.ErrInvalid):
+			return SurfaceLaunch{}, artifactdomain.ErrInvalid
+		case err != nil:
+			return SurfaceLaunch{}, fmt.Errorf("verify launch artifact: %w", err)
+		}
+		return SurfaceLaunch{
+			Kind: LaunchKindWebBundle,
+			WebBundle: &LaunchDescriptor{
+				AppID: installation.AppID, Version: installation.Version,
+				ManifestDigest: resolution.ManifestDigest,
+				ArtifactID:     resolution.WebBundle.ArtifactID, ArtifactDigest: resolution.WebBundle.ArtifactDigest,
+				Entrypoint: bundle.Entrypoint,
+			},
+			GrantedPermissions: installation.GrantedPermissions,
+			GrantRevision:      installation.GrantRevision,
+		}, nil
+	case resolution.Container != nil:
+		launch := resolution.Container
+		// The stored canonical manifest re-parsed successfully, so every
+		// grammar below holds; the projection stays neutral by construction.
+		return SurfaceLaunch{
+			Kind: LaunchKindWebServiceContainer,
+			Container: &ContainerDescriptor{
+				AppID: installation.AppID, Version: installation.Version,
+				ManifestDigest: resolution.ManifestDigest,
+				Image:          launch.Image, Command: append([]string(nil), launch.Command...),
+				Port: launch.Port, Resources: launch.Resources, Health: launch.Health,
+				Route: "/",
+			},
+			GrantedPermissions: installation.GrantedPermissions,
+			GrantRevision:      installation.GrantRevision,
+		}, nil
+	default:
+		return SurfaceLaunch{}, errLaunchCorrupt
+	}
 }
 
 // ReadWebBundleAsset resolves the instance and returns exactly one bounded

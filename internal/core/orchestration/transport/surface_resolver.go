@@ -61,6 +61,58 @@ func (h *SurfaceResolverHandler) ResolveWebBundle(ctx context.Context, req *conn
 	}), nil
 }
 
+// ResolveSurfaceLaunch is the renderer-neutral private resolution: the oneof
+// response carries exactly the supported descriptor, with the same grant
+// facts and the same sanitized error mapping as the web-bundle RPCs.
+func (h *SurfaceResolverHandler) ResolveSurfaceLaunch(ctx context.Context, req *connect.Request[surfacev1.ResolveSurfaceLaunchRequest]) (*connect.Response[surfacev1.ResolveSurfaceLaunchResponse], error) {
+	id, err := identity.FromContext(ctx)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeUnauthenticated, err)
+	}
+	launch, err := h.resolver.ResolveSurfaceLaunch(ctx, id.UserID, req.Msg.GetProjectId(), req.Msg.GetAppInstanceId())
+	if err != nil {
+		return nil, mapResolverError(err)
+	}
+	response := &surfacev1.ResolveSurfaceLaunchResponse{
+		GrantedPermissions: launch.GrantedPermissions,
+		GrantRevision:      launch.GrantRevision,
+	}
+	switch launch.Kind {
+	case orchestration.LaunchKindWebBundle:
+		descriptor := launch.WebBundle
+		response.Launch = &surfacev1.ResolveSurfaceLaunchResponse_WebBundle{
+			WebBundle: &surfacev1.WebBundleLaunchDescriptor{
+				AppId: descriptor.AppID, Version: descriptor.Version,
+				ManifestDigest: descriptor.ManifestDigest,
+				ArtifactId:     descriptor.ArtifactID, ArtifactDigest: descriptor.ArtifactDigest,
+				Entrypoint: descriptor.Entrypoint,
+			},
+		}
+	case orchestration.LaunchKindWebServiceContainer:
+		descriptor := launch.Container
+		response.Launch = &surfacev1.ResolveSurfaceLaunchResponse_WebServiceContainer{
+			WebServiceContainer: &surfacev1.ContainerLaunchDescriptor{
+				AppId: descriptor.AppID, Version: descriptor.Version,
+				ManifestDigest: descriptor.ManifestDigest,
+				Image:          descriptor.Image, Command: descriptor.Command, Port: int32(descriptor.Port),
+				Resources: &surfacev1.ContainerResourcePolicy{
+					CpuHardCores: descriptor.Resources.CPUHardCores,
+					MemoryHighMb: int32(descriptor.Resources.MemoryHighMB),
+					MemoryMaxMb:  int32(descriptor.Resources.MemoryMaxMB),
+					PidsMax:      int32(descriptor.Resources.PidsMax),
+				},
+				Health: &surfacev1.ContainerHealthPolicy{
+					HttpPath:       descriptor.Health.HTTPPath,
+					StartupSeconds: int32(descriptor.Health.StartupSeconds),
+					RestartLimit:   int32(descriptor.Health.RestartLimit),
+				},
+				SurfaceRoute: descriptor.Route,
+			},
+		}
+	}
+	return connect.NewResponse(response), nil
+}
+
 func (h *SurfaceResolverHandler) ReadWebBundleAsset(ctx context.Context, req *connect.Request[surfacev1.ReadWebBundleAssetRequest]) (*connect.Response[surfacev1.ReadWebBundleAssetResponse], error) {
 	id, err := identity.FromContext(ctx)
 	if err != nil {
