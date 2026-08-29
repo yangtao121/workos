@@ -130,7 +130,8 @@ func preferredRendererFromProto(renderer surfacev1.SurfaceRenderer) (string, err
 // mapError converts surface failures to Connect codes with sanitized
 // messages: no SQL, paths, manifests, or bundle content. Transient store or
 // resolver failures are Unavailable; unknown and invariant failures stay
-// Internal.
+// Internal. A stale grant-epoch replay is one fixed FailedPrecondition that
+// never names the current or stored revision or grants.
 func mapError(err error) error {
 	switch {
 	case errors.Is(err, domain.ErrInvalid):
@@ -139,8 +140,16 @@ func mapError(err error) error {
 		return connect.NewError(connect.CodeNotFound, errors.New("surface session or installed app is not available"))
 	case errors.Is(err, domain.ErrIdempotencyConflict):
 		return connect.NewError(connect.CodeAborted, errors.New("idempotency key was already used for a different request"))
+	case errors.Is(err, domain.ErrGrantEpochStale):
+		// ADR-0003 §3: the caller must reopen with a new create key; the
+		// verdict is fixed and content-free.
+		return connect.NewError(connect.CodeFailedPrecondition, errors.New("surface grants changed; create a new surface with a new idempotency key"))
 	case errors.Is(err, domain.ErrUnsupported):
 		return connect.NewError(connect.CodeFailedPrecondition, errors.New("installed app version has no supported web bundle"))
+	case errors.Is(err, ports.ErrResolverCorrupt):
+		// A resolution that violates a stored-fact invariant (e.g. a grant
+		// epoch below 1) is corruption, never a client verdict.
+		return connect.NewError(connect.CodeInternal, errors.New("surface resolution failed"))
 	case errors.Is(err, domain.ErrUnavailable), errors.Is(err, ports.ErrStoreUnavailable), errors.Is(err, ports.ErrResolverUnavailable):
 		return connect.NewError(connect.CodeUnavailable, errors.New("surface is temporarily unavailable"))
 	default:

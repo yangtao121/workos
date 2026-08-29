@@ -181,6 +181,7 @@ func newSurfaceServer(t *testing.T) (surfacev1connect.SurfaceServiceClient, *han
 		ArtifactID:     "0198d7ea-2110-7c42-b659-c5e4d73bc343",
 		ArtifactDigest: "sha256:" + strings.Repeat("b", 64),
 		Entrypoint:     "index.html",
+		GrantRevision:  2,
 	}}
 	service, err := application.New(repository, resolver, &countingGenerator{}, 15*time.Minute)
 	if err != nil {
@@ -315,3 +316,91 @@ func TestCreateSurfaceClassifiesStoreFailures(t *testing.T) {
 
 var _ ports.SessionRepository = (*handlerRepository)(nil)
 var _ ports.LaunchResolver = (*handlerResolver)(nil)
+
+// TestCreateSurfaceReplayFailsClosedOnGrantEpochChange drives the ADR-0003 §3
+// replay rule through the real Connect handler: a same-key replay re-resolves
+// through Core, and once the installation grant epoch moved (a SetAppGrants
+// mutation), the replay answers one fixed sanitized FailedPrecondition — no
+// current or stored revision, no grant content — without rotating a usable
+// credential onto the old-epoch session. A fresh key reopens under the new
+// epoch.
+func TestCreateSurfaceReplayFailsClosedOnGrantEpochChange(t *testing.T) {
+	t.Parallel()
+	client, repository, resolver := newSurfaceServer(t)
+	ctx := context.Background()
+	first, err := client.CreateSurface(ctx, createRequest("epoch-key", surfacev1.SurfaceRenderer_SURFACE_RENDERER_UNSPECIFIED, 2, connectDevice))
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	sessionID := first.Msg.GetSession().GetId()
+	repository.mu.Lock()
+	createdEpoch := repository.sessions[sessionID].InstallationGrantRevision
+	repository.mu.Unlock()
+	if createdEpoch != 2 {
+		t.Fatalf("persisted epoch = %d, want resolver epoch 2", createdEpoch)
+	}
+
+	// Same epoch: the existing replay contract survives unchanged.
+	replayed, err := client.CreateSurface(ctx, createRequest("epoch-key", surfacev1.SurfaceRenderer_SURFACE_RENDERER_UNSPECIFIED, 2, connectDevice))
+	if err != nil || replayed.Msg.GetSession().GetId() != sessionID || replayed.Msg.GetSession().GetBridgeToken() == "" {
+		t.Fatalf("same-epoch replay failed: %v", err)
+	}
+
+	// The grant mutates: Core now resolves epoch 3 for the same instance.
+	resolver.descriptor.GrantRevision = 3
+	_, err = client.CreateSurface(ctx, createRequest("epoch-key", surfacev1.SurfaceRenderer_SURFACE_RENDERER_UNSPECIFIED, 2, connectDevice))
+	if connect.CodeOf(err) != connect.CodeFailedPrecondition {
+		t.Fatalf("changed-epoch replay verdict %v, want FailedPrecondition", err)
+	}
+	message := err.Error()
+	// The verdict is one fixed short message: the word "grants" is the
+	// caller-facing fact, but no revision value or grant content may appear.
+	for _, leak := range []string{"2", "3", "revision"} {
+		if strings.Contains(message, leak) {
+			t.Fatalf("replay error leaks %q: %s", leak, message)
+		}
+	}
+	repository.mu.Lock()
+	afterHash := repository.sessions[sessionID].BridgeTokenHash
+	afterEpoch := repository.sessions[sessionID].InstallationGrantRevision
+	repository.mu.Unlock()
+	if afterHash != domain.HashBridgeToken(replayed.Msg.GetSession().GetBridgeToken()) {
+		t.Fatal("changed-epoch replay rotated the session credential")
+	}
+	if afterEpoch != 2 {
+		t.Fatalf("changed-epoch replay rewrote the persisted epoch to %d", afterEpoch)
+	}
+
+	// A fresh create key reopens under the new epoch.
+	reopened, err := client.CreateSurface(ctx, createRequest("epoch-key-2", surfacev1.SurfaceRenderer_SURFACE_RENDERER_UNSPECIFIED, 2, connectDevice))
+	if err != nil {
+		t.Fatalf("fresh key create failed: %v", err)
+	}
+	repository.mu.Lock()
+	reopenedEpoch := repository.sessions[reopened.Msg.GetSession().GetId()].InstallationGrantRevision
+	repository.mu.Unlock()
+	if reopenedEpoch != 3 {
+		t.Fatalf("reopened epoch = %d, want 3", reopenedEpoch)
+	}
+}
+
+// TestCreateSurfaceRejectsCorruptResolverRevision pins the transport verdict
+// for an untrustworthy resolution (grant epoch below 1): a sanitized Internal,
+// never a session row and never a client error.
+func TestCreateSurfaceRejectsCorruptResolverRevision(t *testing.T) {
+	t.Parallel()
+	for _, revision := range []int64{0, -2} {
+		client, repository, resolver := newSurfaceServer(t)
+		resolver.descriptor.GrantRevision = revision
+		_, err := client.CreateSurface(context.Background(), createRequest("corrupt-key", surfacev1.SurfaceRenderer_SURFACE_RENDERER_UNSPECIFIED, 2, connectDevice))
+		if connect.CodeOf(err) != connect.CodeInternal {
+			t.Fatalf("revision %d verdict %v, want Internal", revision, err)
+		}
+		if strings.Contains(err.Error(), "revision") {
+			t.Fatalf("internal error leaks resolution detail: %s", err.Error())
+		}
+		if len(repository.sessions) != 0 || len(repository.requests) != 0 {
+			t.Fatalf("revision %d persisted state", revision)
+		}
+	}
+}

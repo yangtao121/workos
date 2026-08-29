@@ -34,6 +34,14 @@ var (
 	// ErrPermissionDenied marks a validated bridge session asking for a
 	// capability the installation grant never carried.
 	ErrPermissionDenied = errors.New("bridge capability is not granted")
+	// ErrGrantEpochStale marks a create-key replay whose freshly Core-resolved
+	// installation grant revision no longer equals the persisted session epoch
+	// (ADR-0003 §3). The replay fails closed: no rotation, no usable token
+	// bound to the superseded epoch, and the caller must open a new surface
+	// under a new create key. Transport maps it to one sanitized
+	// FailedPrecondition that never names the current or stored revision or
+	// grants.
+	ErrGrantEpochStale = errors.New("surface session grant epoch is stale")
 )
 
 // RendererWebBundle is the only implemented surface renderer.
@@ -57,7 +65,10 @@ type LaunchDescriptor struct {
 // SurfaceSession is one owner/device-bound surface launch. BridgeTokenHash
 // is the at-rest digest of the currently valid bridge credential (empty when
 // none was minted or it was invalidated); BridgeCapabilities is the effective
-// capability list computed at create time. Neither is ever projected into
+// capability list computed at create time. InstallationGrantRevision is the
+// create-time installation grant epoch Core's private resolver returned; it is
+// the session's pinned authorization epoch, derived only from that persisted
+// snapshot on every private Core call. None of them is ever projected into
 // public asset responses, logs, or errors.
 type SurfaceSession struct {
 	ID                 string
@@ -72,9 +83,15 @@ type SurfaceSession struct {
 	Path               string
 	BridgeTokenHash    string
 	BridgeCapabilities []string
-	CreatedAt          time.Time
-	ExpiresAt          time.Time
-	ClosedAt           *time.Time
+	// InstallationGrantRevision is the Core-resolved grant epoch snapshotted
+	// at create time (ADR-0003 §7). It is never a constant and never a client
+	// input: the application persists exactly what the resolver returned, and
+	// every private run/watch request derives it from the validated session
+	// row so Core's exact-equality comparison can fail closed old sessions.
+	InstallationGrantRevision int64
+	CreatedAt                 time.Time
+	ExpiresAt                 time.Time
+	ClosedAt                  *time.Time
 }
 
 // ValidSessionUUID reports whether value is a canonical lowercase hyphenated

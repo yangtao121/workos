@@ -3,6 +3,7 @@ package transport
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -186,6 +187,28 @@ func TestBridgeErrorsStaySanitized(t *testing.T) {
 	assertBridgeCode(t, err, "internal")
 	if strings.Contains(err.Error(), secret) || strings.Contains(err.Error(), "5432") {
 		t.Fatalf("error leaked internals: %v", err)
+	}
+}
+
+// TestBridgeCoreDenialMapsToFixedPublicPermissionDenied pins the public end
+// of the revocation error chain: the coreclient's sanitized private-denial
+// sentinel (what Core returns on an installation grant epoch mismatch,
+// ADR-0003 §7) surfaces as one fixed public PermissionDenied message with no
+// revision value, grant, or Core detail.
+func TestBridgeCoreDenialMapsToFixedPublicPermissionDenied(t *testing.T) {
+	t.Parallel()
+	service := &fakeBridgeService{runErr: fmt.Errorf("%w: %s", ports.ErrAppAgentDenied, "app capability is not granted")}
+	client := newBridgeServer(t, service)
+	err := runCall(client, bridgeValidToken, "k", "", "g")
+	assertBridgeCode(t, err, "permission_denied")
+	message := err.Error()
+	if !strings.Contains(message, "bridge capability is not granted") {
+		t.Fatalf("unexpected public denial message: %s", message)
+	}
+	for _, leak := range []string{"revision", "epoch", "grant revision", "core"} {
+		if strings.Contains(message, leak) {
+			t.Fatalf("public denial message leaks %q: %s", leak, message)
+		}
 	}
 }
 

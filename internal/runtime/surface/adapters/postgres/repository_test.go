@@ -43,3 +43,31 @@ func TestSessionRowShapesCarryLaunchDescriptor(t *testing.T) {
 		})
 	}
 }
+
+// TestSessionRowShapesCarryGrantRevision pins surfacedbGrantRevision to every
+// sqlc row shape that returns a full session row, mirroring the descriptor
+// coverage above: a missing case silently yields epoch 0, which no validated
+// session may ever carry (migration 012 backfills 1 and the CHECK rejects
+// anything below it).
+func TestSessionRowShapesCarryGrantRevision(t *testing.T) {
+	const want int64 = 7
+	cases := []struct {
+		name string
+		row  any
+	}{
+		{"GetSession", surfacedb.GetSessionRow{InstallationGrantRevision: want}},
+		{"GetActiveSession", surfacedb.GetActiveSessionRow{InstallationGrantRevision: want}},
+		{"GetActiveSessionByBridgeToken", surfacedb.GetActiveSessionByBridgeTokenRow{InstallationGrantRevision: want}},
+		{"RotateSessionBridgeToken", surfacedb.RotateSessionBridgeTokenRow{InstallationGrantRevision: want}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := surfacedbGrantRevision(tc.row); got != want {
+				t.Fatalf("grant revision projection lost the epoch for %T: %d", tc.row, got)
+			}
+		})
+	}
+	if got := surfacedbGrantRevision(struct{}{}); got != 0 {
+		t.Fatalf("unknown row shape must fail closed to 0, got %d", got)
+	}
+}

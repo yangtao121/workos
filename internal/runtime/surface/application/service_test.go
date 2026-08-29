@@ -225,6 +225,10 @@ func launchDescriptor() ports.LaunchDescriptor {
 		ArtifactID:     "0198d7ea-2110-7c42-b659-c5e4d73bc343",
 		ArtifactDigest: "sha256:" + strings.Repeat("b", 64),
 		Entrypoint:     "index.html",
+		// A real post-backfill epoch — neither the migration backfill 1 nor
+		// the zero value — so persistence tests prove the resolver's value
+		// flows through, not a constant.
+		GrantRevision: 4,
 	}
 }
 
@@ -276,6 +280,216 @@ func TestCreateIdempotencyAndConflicts(t *testing.T) {
 	mutatedProject.ProjectID = "0198d7ea-2110-7c42-b659-c5e4d73bc349"
 	if _, err := service.Create(ctx, mutatedProject); !errors.Is(err, domain.ErrIdempotencyConflict) {
 		t.Fatalf("different project did not abort: %v", err)
+	}
+}
+
+// grantEpochDescriptor is one Core resolution carrying an explicit grant set
+// and epoch, the shape SetAppGrants makes authoritative.
+func grantEpochDescriptor(grant []string, revision int64) ports.LaunchDescriptor {
+	descriptor := launchDescriptor()
+	descriptor.GrantedPermissions = grant
+	descriptor.GrantRevision = revision
+	return descriptor
+}
+
+// TestCreatePersistsResolverGrantRevision pins the epoch data flow: whatever
+// Core's resolver returns — a real post-mutation epoch like 7, not the
+// backfill 1 and not the zero value — is exactly what the session persists.
+func TestCreatePersistsResolverGrantRevision(t *testing.T) {
+	t.Parallel()
+	repository := newFakeRepository()
+	resolver := &fakeResolver{descriptor: grantEpochDescriptor([]string{domain.BridgeCapabilityAgentTaskRun}, 7)}
+	service := newTestService(repository, resolver)
+	created, err := service.Create(context.Background(), validCommand("epoch-key"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if created.Session.InstallationGrantRevision != 7 {
+		t.Fatalf("session epoch = %d, want resolver epoch 7", created.Session.InstallationGrantRevision)
+	}
+	repository.mu.Lock()
+	stored := repository.sessions[created.Session.ID]
+	repository.mu.Unlock()
+	if stored.InstallationGrantRevision != 7 {
+		t.Fatalf("persisted epoch = %d, want 7", stored.InstallationGrantRevision)
+	}
+	if stored.BridgeCapabilities == nil || len(stored.BridgeCapabilities) != 1 || stored.BridgeCapabilities[0] != domain.BridgeCapabilityAgentTaskRun {
+		t.Fatalf("effective capabilities = %v, want the granted∩implemented snapshot", stored.BridgeCapabilities)
+	}
+}
+
+// TestCreateFailsClosedOnUntrustworthyGrantRevision pins the trust invariant:
+// a resolution whose epoch is below 1 is corruption, not a usable resolution.
+// The application refuses it with the sanitized ErrResolverCorrupt verdict,
+// persists nothing, and leaves the create key unconsumed — epoch 0 can never
+// reach storage (the DB CHECK would also reject it; the application answers
+// first with a clean fixed error).
+func TestCreateFailsClosedOnUntrustworthyGrantRevision(t *testing.T) {
+	t.Parallel()
+	for _, revision := range []int64{0, -3} {
+		repository := newFakeRepository()
+		resolver := &fakeResolver{descriptor: grantEpochDescriptor(nil, revision)}
+		service := newTestService(repository, resolver)
+		_, err := service.Create(context.Background(), validCommand("corrupt-key"))
+		if !errors.Is(err, ports.ErrResolverCorrupt) {
+			t.Fatalf("revision %d verdict %v, want ErrResolverCorrupt", revision, err)
+		}
+		if len(repository.sessions) != 0 || len(repository.requests) != 0 {
+			t.Fatalf("revision %d persisted a session or consumed the key", revision)
+		}
+	}
+}
+
+// TestCreateReplayComparesGrantEpoch drives the ADR-0003 §3 replay matrix:
+// a matching epoch keeps the existing replay behavior (exact session plus a
+// recorded token rotation); a changed epoch fails closed with
+// ErrGrantEpochStale before any rotation, so no usable credential bound to
+// the superseded epoch is ever minted, the stored snapshot (epoch and
+// effective capabilities) is untouched, and only a fresh create key reopens
+// under the new grant.
+func TestCreateReplayComparesGrantEpoch(t *testing.T) {
+	t.Parallel()
+	repository := newFakeRepository()
+	resolver := &fakeResolver{descriptor: grantEpochDescriptor([]string{domain.BridgeCapabilityAgentTaskRun}, 4)}
+	service := newTestService(repository, resolver)
+	ctx := context.Background()
+
+	first, err := service.Create(ctx, validCommand("epoch-key"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	firstHash := domain.HashBridgeToken(first.BridgeToken)
+
+	// Same epoch: the existing replay contract — same session, rotated token.
+	replayed, err := service.Create(ctx, validCommand("epoch-key"))
+	if err != nil || replayed.Session.ID != first.Session.ID {
+		t.Fatalf("same-epoch replay failed: %v", err)
+	}
+	if replayed.BridgeToken == "" || domain.HashBridgeToken(replayed.BridgeToken) == firstHash {
+		t.Fatal("same-epoch replay did not rotate a fresh credential")
+	}
+	repository.mu.Lock()
+	storedHashAfterReplay := repository.sessions[first.Session.ID].BridgeTokenHash
+	repository.mu.Unlock()
+	if storedHashAfterReplay != domain.HashBridgeToken(replayed.BridgeToken) {
+		t.Fatal("replay rotation was not persisted")
+	}
+
+	// The grant mutates (SetAppGrants): epoch 5, watch capability added.
+	resolver.descriptor = grantEpochDescriptor(
+		[]string{domain.BridgeCapabilityAgentTaskRun, domain.BridgeCapabilityAgentEventWatch}, 5)
+
+	_, err = service.Create(ctx, validCommand("epoch-key"))
+	if !errors.Is(err, domain.ErrGrantEpochStale) {
+		t.Fatalf("changed-epoch replay verdict %v, want ErrGrantEpochStale", err)
+	}
+	if strings.Contains(err.Error(), "4") || strings.Contains(err.Error(), "5") {
+		t.Fatalf("stale-epoch verdict leaks a revision value: %v", err)
+	}
+	repository.mu.Lock()
+	stored := repository.sessions[first.Session.ID]
+	repository.mu.Unlock()
+	// No rotation: the last credential is still the same-epoch replay's.
+	if stored.BridgeTokenHash != storedHashAfterReplay {
+		t.Fatal("changed-epoch replay rotated a credential")
+	}
+	// The persisted snapshot is untouched — no local grant diff, no epoch bump.
+	if stored.InstallationGrantRevision != 4 {
+		t.Fatalf("changed-epoch replay rewrote the session epoch to %d", stored.InstallationGrantRevision)
+	}
+	if len(stored.BridgeCapabilities) != 1 || stored.BridgeCapabilities[0] != domain.BridgeCapabilityAgentTaskRun {
+		t.Fatalf("changed-epoch replay mutated the capability snapshot: %v", stored.BridgeCapabilities)
+	}
+
+	// Only a fresh create key reopens under the new grant: new session, new
+	// epoch, and capabilities recomputed from the new grant ∩ implemented
+	// methods.
+	reopened, err := service.Create(ctx, validCommand("epoch-key-2"))
+	if err != nil {
+		t.Fatalf("fresh key after grant change failed: %v", err)
+	}
+	if reopened.Session.ID == first.Session.ID {
+		t.Fatal("fresh key replayed the old session")
+	}
+	if reopened.Session.InstallationGrantRevision != 5 {
+		t.Fatalf("reopened epoch = %d, want 5", reopened.Session.InstallationGrantRevision)
+	}
+	if len(reopened.Session.BridgeCapabilities) != 2 {
+		t.Fatalf("reopened capabilities = %v, want both granted methods", reopened.Session.BridgeCapabilities)
+	}
+}
+
+// TestClosedReplayWithChangedEpochStillFailsClosed pins the interaction with
+// the existing "closed sessions never regain a credential" rule: a changed
+// epoch fails closed with the stale verdict regardless of session state, and
+// a closed session with a matching epoch still returns its snapshot without
+// minting anything.
+func TestClosedReplayWithChangedEpochStillFailsClosed(t *testing.T) {
+	t.Parallel()
+	repository := newFakeRepository()
+	resolver := &fakeResolver{descriptor: grantEpochDescriptor(nil, 2)}
+	service := newTestService(repository, resolver)
+	ctx := context.Background()
+	created, err := service.Create(ctx, validCommand("closed-key"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.Close(ctx, testOwner, testDevice, created.Session.ID); err != nil {
+		t.Fatal(err)
+	}
+	// Matching epoch on a closed session: the existing exact, token-free
+	// replay.
+	replayed, err := service.Create(ctx, validCommand("closed-key"))
+	if err != nil || replayed.Session.ID != created.Session.ID || replayed.BridgeToken != "" {
+		t.Fatalf("closed same-epoch replay changed shape: %v %+v", err, replayed)
+	}
+	// Changed epoch: fail closed even for the closed session.
+	resolver.descriptor = grantEpochDescriptor(nil, 3)
+	if _, err := service.Create(ctx, validCommand("closed-key")); !errors.Is(err, domain.ErrGrantEpochStale) {
+		t.Fatalf("closed changed-epoch replay verdict %v, want ErrGrantEpochStale", err)
+	}
+}
+
+// TestConcurrentArbitrationLoserFailsClosedOnEpochMismatch pins the
+// concurrent-replay form of the rule: when the repository's in-transaction
+// arbitration returns a winning session pinned to a different grant epoch
+// than this request resolved, the loser must not rotate a credential onto
+// that session — it fails closed exactly like a sequential replay.
+func TestConcurrentArbitrationLoserFailsClosedOnEpochMismatch(t *testing.T) {
+	t.Parallel()
+	repository := newFakeRepository()
+	resolver := &fakeResolver{descriptor: grantEpochDescriptor(nil, 6)}
+	service := newTestService(repository, resolver)
+
+	winnerToken, err := domain.NewBridgeToken()
+	if err != nil {
+		t.Fatal(err)
+	}
+	winner := domain.SurfaceSession{
+		ID: "0198d7ea-2110-7c42-b659-c5e4d73bc381", OwnerUserID: testOwner, DeviceID: testDevice,
+		IdempotencyKey: "key-1", RequestDigest: domain.CreateRequestDigest(testDevice, "0198d7ea-2110-7c42-b659-c5e4d73bc341",
+			"0198d7ea-2110-7c42-b659-c5e4d73bc342", "desktop", 1024, 768, 2, domain.RendererWebBundle),
+		ProjectID: "0198d7ea-2110-7c42-b659-c5e4d73bc341", AppInstanceID: "0198d7ea-2110-7c42-b659-c5e4d73bc342",
+		Renderer:                  domain.RendererWebBundle,
+		BridgeTokenHash:           domain.HashBridgeToken(winnerToken),
+		BridgeCapabilities:        []string{},
+		InstallationGrantRevision: 5, // the winner opened under an older epoch
+		CreatedAt:                 time.Now().UTC().Add(-time.Minute), ExpiresAt: time.Now().UTC().Add(time.Hour),
+	}
+	winner.Path = domain.SessionPath(winner.ID)
+	repository.mu.Lock()
+	repository.sessions[winner.ID] = winner
+	repository.mu.Unlock()
+	repository.internalWinner = &winner
+
+	if _, err := service.Create(context.Background(), validCommand("key-1")); !errors.Is(err, domain.ErrGrantEpochStale) {
+		t.Fatalf("loser verdict %v, want ErrGrantEpochStale", err)
+	}
+	repository.mu.Lock()
+	storedHash := repository.sessions[winner.ID].BridgeTokenHash
+	repository.mu.Unlock()
+	if storedHash != domain.HashBridgeToken(winnerToken) {
+		t.Fatal("loser rotated a credential onto the superseded-epoch winner")
 	}
 }
 
@@ -654,7 +868,10 @@ func TestConcurrentArbitrationLoserRotatesToken(t *testing.T) {
 			ArtifactDigest: "sha256:" + strings.Repeat("b", 64), Entrypoint: "index.html"},
 		BridgeTokenHash:    domain.HashBridgeToken(winnerToken),
 		BridgeCapabilities: []string{},
-		CreatedAt:          time.Now().UTC().Add(-time.Minute), ExpiresAt: time.Now().UTC().Add(time.Hour),
+		// The winner resolved the same epoch this request resolves, so the
+		// loser's rotation is a same-epoch replay.
+		InstallationGrantRevision: launchDescriptor().GrantRevision,
+		CreatedAt:                 time.Now().UTC().Add(-time.Minute), ExpiresAt: time.Now().UTC().Add(time.Hour),
 	}
 	winner.Path = domain.SessionPath(winner.ID)
 	repository.mu.Lock()

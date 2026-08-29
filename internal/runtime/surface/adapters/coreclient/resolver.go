@@ -54,6 +54,10 @@ func (r *Resolver) ResolveWebBundle(ctx context.Context, query ports.ResolveQuer
 		ManifestDigest: descriptor.GetManifestDigest(), ArtifactID: descriptor.GetArtifactId(),
 		ArtifactDigest: descriptor.GetArtifactDigest(), Entrypoint: descriptor.GetEntrypoint(),
 		GrantedPermissions: response.Msg.GetGrantedPermissions(),
+		// The authoritative grant epoch rides with the same resolution as the
+		// grant snapshot; the application layer refuses a value below 1
+		// before anything is persisted (ADR-0003 §7).
+		GrantRevision: response.Msg.GetGrantRevision(),
 	}, nil
 }
 

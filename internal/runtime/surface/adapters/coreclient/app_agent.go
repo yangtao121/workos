@@ -37,7 +37,11 @@ func (a *AppAgent) RunAgentTask(ctx context.Context, query ports.AppAgentRunQuer
 	}
 	request := connect.NewRequest(&agentv1.RunAgentTaskRequest{
 		ProjectId: query.ProjectID, AppInstanceId: query.AppInstanceID,
-		ClientIdempotencyKey: query.ClientKey, Role: query.Role, Goal: query.Goal,
+		// The grant epoch comes exclusively from the validated session
+		// snapshot the application derived; a public bridge body can never
+		// supply or override it (ADR-0003 §7).
+		InstallationGrantRevision: query.InstallationGrantRevision,
+		ClientIdempotencyKey:      query.ClientKey, Role: query.Role, Goal: query.Goal,
 	})
 	request.Header().Set(identity.UserHeader, identityValue.UserID)
 	request.Header().Set(identity.DeviceHeader, identityValue.DeviceID)
@@ -60,6 +64,9 @@ func (a *AppAgent) WatchAgentTaskEvents(ctx context.Context, query ports.AppAgen
 	request := connect.NewRequest(&agentv1.WatchAgentTaskEventsRequest{
 		ProjectId: query.ProjectID, AppInstanceId: query.AppInstanceID,
 		TaskId: query.TaskID, AfterSequence: query.AfterSequence,
+		// Same session-derived grant epoch as the run call: Core compares it
+		// on every polling round and ends the stream on any mismatch.
+		InstallationGrantRevision: query.InstallationGrantRevision,
 	})
 	request.Header().Set(identity.UserHeader, identityValue.UserID)
 	request.Header().Set(identity.DeviceHeader, identityValue.DeviceID)

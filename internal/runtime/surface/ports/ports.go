@@ -25,6 +25,12 @@ var (
 	// ErrResolverUnsupported marks an installed app whose pinned version has
 	// no supported web bundle descriptor.
 	ErrResolverUnsupported = errors.New("installed app has no supported web bundle")
+	// ErrResolverCorrupt marks a Core resolution that violates a stored-fact
+	// invariant — most importantly an installation grant revision below 1
+	// (ADR-0003 §7: the revision is authoritative and must never reach storage
+	// as an unusable epoch). It is a sanitized Internal, never persisted and
+	// never compared: the surface fails closed instead of trusting it.
+	ErrResolverCorrupt = errors.New("core surface resolver returned an inconsistent resolution")
 	// ErrStoreUnavailable marks a temporarily unreachable session store. The
 	// postgres adapter wraps transient driver failures with it at the port
 	// boundary; transports map it to a sanitized Unavailable. Invariant
@@ -35,6 +41,10 @@ var (
 // LaunchDescriptor mirrors the Core-resolved immutable launch fact.
 // GrantedPermissions is the installation grant snapshot re-read from Core on
 // every resolution; it feeds effective bridge capability computation only.
+// GrantRevision is the authoritative installation grant epoch read from the
+// same Core facts: the application persists it into the surface session and
+// derives every private authorization comparison from that snapshot; public
+// inputs can never supply or override it.
 type LaunchDescriptor struct {
 	AppID              string
 	Version            string
@@ -43,6 +53,7 @@ type LaunchDescriptor struct {
 	ArtifactDigest     string
 	Entrypoint         string
 	GrantedPermissions []string
+	GrantRevision      int64
 }
 
 // ResolveQuery identifies one installed instance for launch resolution.
@@ -141,21 +152,32 @@ type AppTaskSubmission struct {
 }
 
 // AppAgentRunQuery identifies one bridge task creation. Every field is
-// derived server-side from the validated token and session.
+// derived server-side from the validated token and session — including the
+// installation grant epoch, which comes exclusively from the persisted
+// session snapshot and can never be submitted by a public bridge body,
+// MessageChannel envelope, or iframe SDK.
 type AppAgentRunQuery struct {
 	ProjectID     string
 	AppInstanceID string
-	ClientKey     string
-	Role          string
-	Goal          string
+	// InstallationGrantRevision is the session's create-time grant epoch.
+	// Core compares it for exact equality against the active installation's
+	// current revision on every run call (ADR-0003 §7).
+	InstallationGrantRevision int64
+	ClientKey                 string
+	Role                      string
+	Goal                      string
 }
 
-// AppAgentWatchQuery identifies one bridge event watch resume.
+// AppAgentWatchQuery identifies one bridge event watch resume. As with the
+// run query, every field is derived server-side from the validated session.
 type AppAgentWatchQuery struct {
 	ProjectID     string
 	AppInstanceID string
 	TaskID        string
 	AfterSequence int64
+	// InstallationGrantRevision is the session's create-time grant epoch,
+	// compared by Core for exact equality on every watch polling round.
+	InstallationGrantRevision int64
 }
 
 // AppAgent sentinels classify Core App Agent verdicts for the bridge path.

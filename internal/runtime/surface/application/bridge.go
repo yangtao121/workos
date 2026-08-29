@@ -35,8 +35,11 @@ func NewBridgeService(repository ports.SessionRepository, appAgent ports.AppAgen
 
 // RunAgentTask validates the presented bridge token and submits one
 // project-scoped App task through the Core App Agent service. The canonical
-// request is bounded to (idempotency key, role, goal); project and app
-// instance come from the stored session.
+// request is bounded to (idempotency key, role, goal); project, app instance,
+// and the installation grant epoch come from the stored session — Core
+// re-validates the epoch against the active installation on every call
+// (ADR-0003 §7), so a superseded grant fails closed server-side even though
+// the local capability snapshot still lists the method.
 func (s *BridgeService) RunAgentTask(ctx context.Context, ownerUserID, deviceID, token, idempotencyKey, role, goal string) (ports.AppTaskSubmission, error) {
 	session, err := s.authorize(ctx, ownerUserID, deviceID, token, domain.BridgeCapabilityAgentTaskRun)
 	if err != nil {
@@ -44,13 +47,18 @@ func (s *BridgeService) RunAgentTask(ctx context.Context, ownerUserID, deviceID,
 	}
 	return s.appAgent.RunAgentTask(ctx, ports.AppAgentRunQuery{
 		ProjectID: session.ProjectID, AppInstanceID: session.AppInstanceID,
-		ClientKey: idempotencyKey, Role: role, Goal: goal,
+		// Derived exclusively from the validated session row: a public bridge
+		// body cannot influence the epoch that Core compares.
+		InstallationGrantRevision: session.InstallationGrantRevision,
+		ClientKey:                 idempotencyKey, Role: role, Goal: goal,
 	})
 }
 
 // StreamAgentEvents validates the presented bridge token and streams one
 // App-created task's persisted events from Core. Ending the stream never
-// cancels the durable Agent task.
+// cancels the durable Agent task. The watch carries the session's persisted
+// grant epoch; Core re-authorizes it on every polling round and ends the
+// stream once a grant mutation supersedes it.
 func (s *BridgeService) StreamAgentEvents(ctx context.Context, ownerUserID, deviceID, token, taskID string, after int64, onEvent func(*agentv1.AgentEvent) error) error {
 	session, err := s.authorize(ctx, ownerUserID, deviceID, token, domain.BridgeCapabilityAgentEventWatch)
 	if err != nil {
@@ -59,6 +67,7 @@ func (s *BridgeService) StreamAgentEvents(ctx context.Context, ownerUserID, devi
 	return s.appAgent.WatchAgentTaskEvents(ctx, ports.AppAgentWatchQuery{
 		ProjectID: session.ProjectID, AppInstanceID: session.AppInstanceID,
 		TaskID: taskID, AfterSequence: after,
+		InstallationGrantRevision: session.InstallationGrantRevision,
 	}, onEvent)
 }
 

@@ -112,6 +112,7 @@ func (r *Repository) GetActiveSession(ctx context.Context, ownerUserID, deviceID
 	return sessionFromColumns(row.ID, row.OwnerUserID, row.DeviceID, row.IdempotencyKey, row.RequestDigest,
 		row.ProjectID, row.AppInstanceID, row.Renderer,
 		surfacedbLaunchDescriptor(row), row.Path, row.BridgeTokenHash.String, row.BridgeCapabilities,
+		surfacedbGrantRevision(row),
 		row.CreatedAt, row.ExpiresAt, row.ClosedAt), nil
 }
 
@@ -147,6 +148,7 @@ func (r *Repository) RotateBridgeToken(ctx context.Context, command ports.Rotate
 	return sessionFromColumns(row.ID, row.OwnerUserID, row.DeviceID, row.IdempotencyKey, row.RequestDigest,
 		row.ProjectID, row.AppInstanceID, row.Renderer,
 		surfacedbLaunchDescriptor(row), row.Path, row.BridgeTokenHash.String, row.BridgeCapabilities,
+		surfacedbGrantRevision(row),
 		row.CreatedAt, row.ExpiresAt, row.ClosedAt), nil
 }
 
@@ -162,6 +164,7 @@ func (r *Repository) GetActiveSessionByBridgeToken(ctx context.Context, ownerUse
 	return sessionFromColumns(row.ID, row.OwnerUserID, row.DeviceID, row.IdempotencyKey, row.RequestDigest,
 		row.ProjectID, row.AppInstanceID, row.Renderer,
 		surfacedbLaunchDescriptor(row), row.Path, row.BridgeTokenHash.String, row.BridgeCapabilities,
+		surfacedbGrantRevision(row),
 		row.CreatedAt, row.ExpiresAt, row.ClosedAt), nil
 }
 
@@ -175,6 +178,7 @@ func (r *Repository) readSession(ctx context.Context, queries *surfacedb.Queries
 	return sessionFromColumns(row.ID, row.OwnerUserID, row.DeviceID, row.IdempotencyKey, row.RequestDigest,
 		row.ProjectID, row.AppInstanceID, row.Renderer,
 		surfacedbLaunchDescriptor(row), row.Path, row.BridgeTokenHash.String, row.BridgeCapabilities,
+		surfacedbGrantRevision(row),
 		row.CreatedAt, row.ExpiresAt, row.ClosedAt), nil
 }
 
@@ -187,9 +191,12 @@ func sessionParams(session domain.SurfaceSession, bridgeTokenHash string) surfac
 		AppVersion: session.Descriptor.Version, ManifestDigest: session.Descriptor.ManifestDigest,
 		ArtifactID: session.Descriptor.ArtifactID, ArtifactDigest: session.Descriptor.ArtifactDigest,
 		Entrypoint: session.Descriptor.Entrypoint, Path: session.Path,
-		BridgeTokenHash:    tokenHashParam(bridgeTokenHash),
-		BridgeCapabilities: nonNilCapabilities(session.BridgeCapabilities),
-		CreatedAt:          timestamp(session.CreatedAt), ExpiresAt: timestamp(session.ExpiresAt),
+		// The grant epoch is always the resolver-resolved value the
+		// application snapshotted — never a constant (queries.sql contract).
+		InstallationGrantRevision: session.InstallationGrantRevision,
+		BridgeTokenHash:           tokenHashParam(bridgeTokenHash),
+		BridgeCapabilities:        nonNilCapabilities(session.BridgeCapabilities),
+		CreatedAt:                 timestamp(session.CreatedAt), ExpiresAt: timestamp(session.ExpiresAt),
 	}
 }
 
@@ -212,23 +219,46 @@ func surfacedbLaunchDescriptor(row any) domain.LaunchDescriptor {
 	}
 }
 
+// surfacedbGrantRevision mirrors the installation grant epoch column of any
+// session row shape. It follows the same exhaustive-switch discipline as
+// surfacedbLaunchDescriptor: every sqlc Row that returns a full session row
+// MUST be listed here, and TestSessionRowShapesCarryGrantRevision pins the
+// coverage — a missing case silently yields epoch 0, which no validated
+// session may ever carry.
+func surfacedbGrantRevision(row any) int64 {
+	switch value := row.(type) {
+	case surfacedb.GetSessionRow:
+		return value.InstallationGrantRevision
+	case surfacedb.GetActiveSessionRow:
+		return value.InstallationGrantRevision
+	case surfacedb.GetActiveSessionByBridgeTokenRow:
+		return value.InstallationGrantRevision
+	case surfacedb.RotateSessionBridgeTokenRow:
+		return value.InstallationGrantRevision
+	default:
+		return 0
+	}
+}
+
 func sessionFromColumns(
 	id, ownerUserID, deviceID, idempotencyKey, requestDigest string,
 	projectID, appInstanceID, renderer string,
 	descriptor domain.LaunchDescriptor, path string,
 	bridgeTokenHash string, bridgeCapabilities []string,
+	installationGrantRevision int64,
 	createdAt, expiresAt pgtype.Timestamptz, closedAt pgtype.Timestamptz,
 ) domain.SurfaceSession {
 	session := domain.SurfaceSession{
 		ID: id, OwnerUserID: ownerUserID, DeviceID: deviceID,
 		IdempotencyKey: idempotencyKey, RequestDigest: requestDigest,
 		ProjectID: projectID, AppInstanceID: appInstanceID,
-		Renderer:           renderer,
-		Descriptor:         descriptor,
-		Path:               path,
-		BridgeTokenHash:    bridgeTokenHash,
-		BridgeCapabilities: bridgeCapabilities,
-		CreatedAt:          createdAt.Time, ExpiresAt: expiresAt.Time,
+		Renderer:                  renderer,
+		Descriptor:                descriptor,
+		Path:                      path,
+		BridgeTokenHash:           bridgeTokenHash,
+		BridgeCapabilities:        bridgeCapabilities,
+		InstallationGrantRevision: installationGrantRevision,
+		CreatedAt:                 createdAt.Time, ExpiresAt: expiresAt.Time,
 	}
 	if closedAt.Valid {
 		closed := closedAt.Time

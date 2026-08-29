@@ -69,13 +69,18 @@ type CreatedSurface struct {
 }
 
 // Create resolves the installed instance through Core and persists the
-// owner/device-bound session together with its effective bridge capabilities
-// and first bridge token. The idempotency ruling happens before resolution so
-// failed resolutions never consume the key; a replay returns the first
-// session snapshot even after it closed or expired — with a freshly rotated
-// token only while the session is still open and unexpired, because a
-// replayed create means a new trusted-host page load and the previous
-// credential must stop working (ADR-0002).
+// owner/device-bound session together with its effective bridge capabilities,
+// the Core-resolved installation grant epoch, and the first bridge token. The
+// idempotency ruling happens before resolution so failed resolutions never
+// consume the key; a replay returns the first session snapshot even after it
+// closed or expired — with a freshly rotated token only while the session is
+// still open and unexpired, because a replayed create means a new trusted-host
+// page load and the previous credential must stop working (ADR-0002).
+// Every replay re-resolves through Core and requires the current installation
+// grant epoch to equal the session's persisted epoch (ADR-0003 §3): a grant
+// mutation since the first create fails the replay closed without rotating
+// out a token bound to the superseded epoch — the caller must use a new
+// create key.
 func (s *Service) Create(ctx context.Context, command CreateCommand) (CreatedSurface, error) {
 	if command.OwnerUserID == "" || command.DeviceID == "" ||
 		!domain.ValidSessionIdempotencyKey(command.IdempotencyKey) ||
@@ -105,13 +110,18 @@ func (s *Service) Create(ctx context.Context, command CreateCommand) (CreatedSur
 		if err != nil {
 			return CreatedSurface{}, err
 		}
-		return s.replayBridge(ctx, command, session)
+		// The replay re-resolves the authoritative grant epoch: the stored
+		// snapshot alone must never authorize rotating a credential that a
+		// later SetAppGrants mutation has already superseded.
+		descriptor, err := s.resolveLaunch(ctx, command)
+		if err != nil {
+			return CreatedSurface{}, err
+		}
+		return s.replayBridge(ctx, command, session, descriptor.GrantRevision)
 	}
-	descriptor, err := s.resolver.ResolveWebBundle(ctx, ports.ResolveQuery{
-		ProjectID: command.ProjectID, AppInstanceID: command.AppInstanceID,
-	})
+	descriptor, err := s.resolveLaunch(ctx, command)
 	if err != nil {
-		return CreatedSurface{}, mapResolverError(err)
+		return CreatedSurface{}, err
 	}
 	now := s.now()
 	session := domain.SurfaceSession{
@@ -125,7 +135,10 @@ func (s *Service) Create(ctx context.Context, command CreateCommand) (CreatedSur
 			ArtifactDigest: descriptor.ArtifactDigest, Entrypoint: descriptor.Entrypoint,
 		},
 		BridgeCapabilities: domain.EffectiveBridgeCapabilities(descriptor.GrantedPermissions),
-		CreatedAt:          now, ExpiresAt: now.Add(s.ttl),
+		// The pinned authorization epoch is exactly what Core resolved —
+		// never a constant and never a client input (ADR-0003 §7).
+		InstallationGrantRevision: descriptor.GrantRevision,
+		CreatedAt:                 now, ExpiresAt: now.Add(s.ttl),
 	}
 	session.Path = domain.SessionPath(session.ID)
 	token, err := domain.NewBridgeToken()
@@ -147,7 +160,30 @@ func (s *Service) Create(ctx context.Context, command CreateCommand) (CreatedSur
 	// persisted, so returning it would hand out an unverifiable credential.
 	// Rotate instead — the returned token becomes a real, recorded rotation
 	// on the winning session (and stays empty for a closed/expired winner).
-	return s.replayBridge(ctx, command, created)
+	// The same epoch check guards this concurrent-replay form: if the winner
+	// persisted a different grant epoch than this request resolved, the
+	// response fails closed instead of minting a superseded-epoch credential.
+	return s.replayBridge(ctx, command, created, descriptor.GrantRevision)
+}
+
+// resolveLaunch resolves the launch facts through Core and enforces the
+// grant-epoch trust invariant. A resolution whose GrantRevision is below 1 is
+// an untrusted resolution — a stored-fact invariant drift, not a client
+// error — so the surface fails closed with the sanitized ErrResolverCorrupt
+// verdict (Internal at transport) instead of persisting or comparing epoch 0.
+// The database CHECK would also reject 0, but the application layer refuses
+// first with a clean, fixed error.
+func (s *Service) resolveLaunch(ctx context.Context, command CreateCommand) (ports.LaunchDescriptor, error) {
+	descriptor, err := s.resolver.ResolveWebBundle(ctx, ports.ResolveQuery{
+		ProjectID: command.ProjectID, AppInstanceID: command.AppInstanceID,
+	})
+	if err != nil {
+		return ports.LaunchDescriptor{}, mapResolverError(err)
+	}
+	if descriptor.GrantRevision < 1 {
+		return ports.LaunchDescriptor{}, fmt.Errorf("resolve installed instance: %w", ports.ErrResolverCorrupt)
+	}
+	return descriptor, nil
 }
 
 // replayBridge rotates the bridge credential for an open, unexpired replayed
@@ -158,8 +194,14 @@ func (s *Service) Create(ctx context.Context, command CreateCommand) (CreatedSur
 // token. Concurrent rotations serialize on the row and each response pairs
 // its credential with the hash it was stored under; a later rotation
 // invalidates an earlier response's credential through a recorded rotation,
-// never through an inconsistent pairing.
-func (s *Service) replayBridge(ctx context.Context, command CreateCommand, session domain.SurfaceSession) (CreatedSurface, error) {
+// never through an inconsistent pairing. A replay whose freshly resolved
+// grant epoch no longer equals the session's persisted epoch fails closed
+// before any rotation (ADR-0003 §3): no token bound to the superseded epoch
+// is ever minted, and the caller must open a new surface under a new key.
+func (s *Service) replayBridge(ctx context.Context, command CreateCommand, session domain.SurfaceSession, resolvedGrantRevision int64) (CreatedSurface, error) {
+	if resolvedGrantRevision != session.InstallationGrantRevision {
+		return CreatedSurface{}, domain.ErrGrantEpochStale
+	}
 	result := CreatedSurface{Session: session, BridgeCapabilities: session.BridgeCapabilities}
 	now := s.now()
 	if session.ClosedAt != nil || !now.Before(session.ExpiresAt) {

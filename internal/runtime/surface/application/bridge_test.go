@@ -98,10 +98,11 @@ func (r *bridgeRepository) GetActiveSessionByBridgeToken(_ context.Context, owne
 }
 
 type bridgeAppAgent struct {
-	runResult ports.AppTaskSubmission
-	runErr    error
-	watchErr  error
-	queries   []ports.AppAgentRunQuery
+	runResult    ports.AppTaskSubmission
+	runErr       error
+	watchErr     error
+	queries      []ports.AppAgentRunQuery
+	watchQueries []ports.AppAgentWatchQuery
 }
 
 func (a *bridgeAppAgent) RunAgentTask(_ context.Context, query ports.AppAgentRunQuery) (ports.AppTaskSubmission, error) {
@@ -112,7 +113,8 @@ func (a *bridgeAppAgent) RunAgentTask(_ context.Context, query ports.AppAgentRun
 	return a.runResult, nil
 }
 
-func (a *bridgeAppAgent) WatchAgentTaskEvents(_ context.Context, _ ports.AppAgentWatchQuery, _ func(*agentv1.AgentEvent) error) error {
+func (a *bridgeAppAgent) WatchAgentTaskEvents(_ context.Context, query ports.AppAgentWatchQuery, _ func(*agentv1.AgentEvent) error) error {
+	a.watchQueries = append(a.watchQueries, query)
 	return a.watchErr
 }
 
@@ -128,7 +130,10 @@ func newBridgeTest(t *testing.T) (*BridgeService, *bridgeRepository, *bridgeAppA
 		ID: "0198d7ea-2110-7c42-b659-c5e4d73bc351", OwnerUserID: "owner-1", DeviceID: "device-1",
 		ProjectID: "0198d7ea-2110-7c42-b659-c5e4d73bc352", AppInstanceID: "0198d7ea-2110-7c42-b659-c5e4d73bc353",
 		BridgeCapabilities: []string{"agent.task.run", "agent.event.watch"},
-		ExpiresAt:          time.Now().UTC().Add(time.Hour),
+		// A real persisted epoch — not 1 and not 0 — so forwarding assertions
+		// prove the session snapshot is the source.
+		InstallationGrantRevision: 9,
+		ExpiresAt:                 time.Now().UTC().Add(time.Hour),
 	}
 	token, err := domain.NewBridgeToken()
 	if err != nil {
@@ -155,6 +160,28 @@ func TestBridgeRunAuthorizesAndDerivesScopeFromSession(t *testing.T) {
 	}
 	if query.ClientKey != "client-key" || query.Goal != "goal" {
 		t.Fatalf("bounded input not forwarded: %+v", query)
+	}
+}
+
+// TestBridgeForwardsSessionGrantEpoch pins the private-call epoch source
+// (ADR-0003 §7): run and watch queries carry exactly the validated session
+// row's persisted InstallationGrantRevision. The public RunAgentTask /
+// StreamAgentEvents signatures accept no revision-shaped input at all, so a
+// bridge body or MessageChannel envelope structurally cannot influence the
+// epoch Core compares.
+func TestBridgeForwardsSessionGrantEpoch(t *testing.T) {
+	service, _, appAgent, token := newBridgeTest(t)
+	if _, err := service.RunAgentTask(context.Background(), "owner-1", "device-1", token, "client-key", "role", "goal"); err != nil {
+		t.Fatal(err)
+	}
+	if len(appAgent.queries) != 1 || appAgent.queries[0].InstallationGrantRevision != 9 {
+		t.Fatalf("run query epoch not derived from session: %+v", appAgent.queries)
+	}
+	if err := service.StreamAgentEvents(context.Background(), "owner-1", "device-1", token, "task-1", 0, func(*agentv1.AgentEvent) error { return nil }); err != nil {
+		t.Fatal(err)
+	}
+	if len(appAgent.watchQueries) != 1 || appAgent.watchQueries[0].InstallationGrantRevision != 9 {
+		t.Fatalf("watch query epoch not derived from session: %+v", appAgent.watchQueries)
 	}
 }
 
