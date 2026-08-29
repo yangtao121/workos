@@ -396,6 +396,12 @@ func decodeCreateResult(value []byte, ownerUserID, requestDigest string) (domain
 	if project.InstalledAppIDs == nil {
 		project.InstalledAppIDs = []string{}
 	}
+	// Restore the binding before the digest check: the binding is a
+	// digest-covered request field, so it must participate in the
+	// recomputation exactly as it was submitted.
+	if stored.HarnessBinding != nil {
+		project.HarnessBinding = stored.HarnessBinding
+	}
 	created, err := parseSnapshotTime(stored.CreatedAt)
 	if err != nil {
 		return domain.Project{}, err
@@ -423,9 +429,6 @@ func decodeCreateResult(value []byte, ownerUserID, requestDigest string) (domain
 			return domain.Project{}, err
 		}
 		project.ArchivedAt = &archived
-	}
-	if stored.HarnessBinding != nil {
-		project.HarnessBinding = stored.HarnessBinding
 	}
 	return project, nil
 }

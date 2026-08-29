@@ -368,9 +368,20 @@ func TestProjectCreateIdempotencyAgainstRealPostgres(t *testing.T) {
 
 	t.Run("SameRequestReplaysExactFirstResponse", func(t *testing.T) {
 		command := harness.createCommand(t, key, "Idempotent Project", "01999999-9999-7999-8999-999999999991", now)
+		// The request carries a harness binding, mirroring what the
+		// application does: the digest is computed over the binding too,
+		// so the replay must restore it from the snapshot verbatim.
+		command.Project.HarnessBinding = &domain.HarnessBinding{
+			ProviderID: "fake", InstancePolicy: "ephemeral", ProfileID: "preset-1",
+			CredentialRef: "cred-ref", ResourcePolicyID: "foundation",
+		}
+		command.RequestDigest = domain.CreateRequestDigest(command.Project.Name, command.Project.Icon, command.Project.WorkspaceRefs, command.Project.HarnessBinding)
 		first, err := harness.left.CreateProject(context.Background(), command)
 		if err != nil {
 			t.Fatalf("first create: %v", err)
+		}
+		if first.HarnessBinding == nil || first.HarnessBinding.ProviderID != "fake" {
+			t.Fatalf("first response must carry the binding: %+v", first.HarnessBinding)
 		}
 		// A different pool — as a second process would be — replays the
 		// identical request.
@@ -378,9 +389,7 @@ func TestProjectCreateIdempotencyAgainstRealPostgres(t *testing.T) {
 		if err != nil {
 			t.Fatalf("replay: %v", err)
 		}
-		if replayed.ID != first.ID || replayed.Revision != first.Revision ||
-			!replayed.CreatedAt.Equal(first.CreatedAt) || !replayed.UpdatedAt.Equal(first.UpdatedAt) ||
-			replayed.Name != first.Name || len(replayed.WorkspaceRefs) != len(first.WorkspaceRefs) {
+		if !sameProject(first, replayed) {
 			t.Fatalf("replay must return the exact first response:\nfirst   %#v\nreplay  %#v", first, replayed)
 		}
 		if harness.count(t, `SELECT count(*) FROM workos_core.projects WHERE owner_user_id = $1`, harness.owner) != 1 {

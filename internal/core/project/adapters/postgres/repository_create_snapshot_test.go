@@ -118,3 +118,57 @@ func TestDecodeCreateResultFailsClosedOnInvariantDamage(t *testing.T) {
 		t.Fatal("snapshot adjudicated against a foreign digest must fail closed")
 	}
 }
+
+// A create with a non-null harness binding must replay exactly: the binding
+// is a digest-covered request field, so the decoder has to restore it before
+// recomputing the digest. This round trip is the regression for the ordering
+// bug where the binding was re-attached only after the digest check — legal
+// bound replays came back Internal because the recompute saw a nil binding.
+func TestDecodeCreateResultRoundTripsHarnessBinding(t *testing.T) {
+	t.Parallel()
+	owner := "01999999-9999-7999-8999-999999999915"
+	now := time.Date(2026, 8, 29, 10, 0, 0, 0, time.UTC)
+	binding := &domain.HarnessBinding{
+		ProviderID: "fake", InstancePolicy: "ephemeral", ProfileID: "preset-1",
+		CredentialRef: "cred-ref", ResourcePolicyID: "foundation",
+	}
+	valid := domain.Project{
+		ID: "01999999-9999-7999-8999-999999999916", OwnerUserID: owner, Name: "Bound Snapshot",
+		WorkspaceRefs: []domain.WorkspaceRef{
+			{ID: "ws-1", Kind: "WORKSPACE_KIND_LOCAL_DIRECTORY", URI: "file:///work/x"},
+		},
+		HarnessBinding:        binding,
+		InstalledAppIDs:       []string{},
+		KnowledgeCollectionID: "01999999-9999-7999-8999-999999999917",
+		ArtifactCollectionID:  "01999999-9999-7999-8999-999999999918",
+		Revision:              1, CreatedAt: now, UpdatedAt: now,
+	}
+	columns, err := encodeCreateResult(valid)
+	if err != nil {
+		t.Fatalf("encode bound snapshot: %v", err)
+	}
+	digest := domain.CreateRequestDigest(valid.Name, valid.Icon, valid.WorkspaceRefs, valid.HarnessBinding)
+
+	decoded, err := decodeCreateResult(columns.Result, owner, digest)
+	if err != nil {
+		t.Fatalf("bound snapshot must round trip: %v", err)
+	}
+	if decoded.HarnessBinding == nil || *decoded.HarnessBinding != *binding {
+		t.Fatalf("binding must survive the round trip verbatim: %+v", decoded.HarnessBinding)
+	}
+
+	// Stripping the binding from a bound snapshot is well-formed but no
+	// longer reproduces the digest: fail closed.
+	var snapshot createResultSnapshot
+	if err := json.Unmarshal(columns.Result, &snapshot); err != nil {
+		t.Fatalf("decode fixture: %v", err)
+	}
+	snapshot.Project.HarnessBinding = nil
+	body, err := json.Marshal(snapshot)
+	if err != nil {
+		t.Fatalf("encode fixture: %v", err)
+	}
+	if _, err := decodeCreateResult(body, owner, digest); err == nil {
+		t.Fatal("bound snapshot served without its binding must fail the digest cross-check")
+	}
+}

@@ -186,9 +186,10 @@ workload、新 Provider、credential vault、installation/Surface/App Bridge 协
 
 ## 修正轮（2026-08-29，契约复审）
 
-提交 2249477 的复审发现五个缺陷（1–5），第二轮复审再发现三个缺陷（6–8），全部在本
-branch 上修复；013 未进入 main，原位修正（非新 migration）符合"未发布 migration 由本
-任务拥有"的边界。全部修复已以独立提交落盘（见「Branch / Commit」），不残留未提交状态。
+提交 2249477 的复审发现五个缺陷（1–5），第二轮复审再发现三个缺陷（6–8），第三轮复审
+发现一个 P1 回归（9），全部在本 branch 上修复；013 未进入 main，原位修正（非新
+migration）符合"未发布 migration 由本任务拥有"的边界。全部修复已以独立提交落盘
+（见「Branch / Commit」），不残留未提交状态。
 
 ### 缺陷与修复
 
@@ -241,6 +242,15 @@ branch 上修复；013 未进入 main，原位修正（非新 migration）符合
    `-run` 过滤器内的未转义管道符把一行命令拆成五列伪表格；且并发测试（上一条修复后）
    仅独立 Project ID，与"独立 identifiers 和 timestamps"的描述不符。修复：表格改为
    不含管道符的等价描述；并发测试按上一条升级为 ID/collection/时钟全独立。
+9. **（第三轮，P1）非空 harness_binding 的合法重放被摘要校验误杀**：digest 交叉验证
+   在 binding 重新挂载到 Project 之前执行——binding 是 digest 覆盖字段，重算时按 nil
+   参与，任何携带 binding 的合法同 key 重放都会摘要失配返回 Internal；新增单元矩阵的
+   合法基准恰好无 binding，未暴露此缺陷。修复：binding 恢复提前到摘要重算之前；
+   新增 `TestDecodeCreateResultRoundTripsHarnessBinding`（binding 全程往返 + 剥离
+   binding 必须摘要失配 fail closed），集成 `SameRequestReplaysExactFirstResponse`
+   升级为携带 binding 的请求（digest 覆盖 binding，重放经 `sameProject` 全字段断言，
+   含 binding）。变异验证：把重算参数临时改回 nil 时新单测即失败，证明测试对该缺陷
+   敏感。
 
 ### 修正轮实际修改文件
 
