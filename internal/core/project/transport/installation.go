@@ -28,8 +28,32 @@ func NewInstallationHandler(service *application.InstallationService) *Installat
 	return &InstallationHandler{service: service}
 }
 
+// MaxRequestBytes bounds every AppInstallationService request message before
+// the Connect stack decodes it. The capability grammar puts no length cap on
+// a single granted permission, but a legal grant set is always a subset of
+// the pinned manifest version's requested permissions, and those strings —
+// like the requested version itself — come from a registry manifest of at
+// most 256 KiB, so grant and version content together never exceed that
+// document. The requests carry no bytes fields, so no base64 inflation needs
+// covering: binary protobuf adds only framing, and protojson adds field
+// names, JSON punctuation, and the scalar ceilings (the 128-rune idempotency
+// key, 63-byte app ID, and UUID fields) — a few KiB in every accepted wire
+// form. 288 KiB (294,912 bytes) holds the 256 KiB content ceiling with 32 KiB
+// of headroom while staying a small explicit constant — the library default
+// is unlimited. The application-level grant shape and requested-subset
+// checks stay in place, so the wire budget only guards decode-time memory.
+const MaxRequestBytes = 288 * 1024
+
+// NewInstallationConnectHandler wires the transport into a real Connect
+// handler with the bounded-read configuration. Composition roots and tests
+// must use this constructor so the read limit is identical in production and
+// tests; the limit applies per decompressed request message and rejects
+// oversize bodies with ResourceExhausted before any business code runs.
 func NewInstallationConnectHandler(service *application.InstallationService) (string, http.Handler) {
-	return appv1connect.NewAppInstallationServiceHandler(NewInstallationHandler(service))
+	return appv1connect.NewAppInstallationServiceHandler(
+		NewInstallationHandler(service),
+		connect.WithReadMaxBytes(MaxRequestBytes),
+	)
 }
 
 func (h *InstallationHandler) InstallApp(ctx context.Context, req *connect.Request[appv1.InstallAppRequest]) (*connect.Response[appv1.InstallAppResponse], error) {

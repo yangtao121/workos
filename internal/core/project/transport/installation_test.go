@@ -3,6 +3,7 @@ package transport
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -38,6 +39,8 @@ type stubInstallationRepository struct {
 	setResult  ports.InstallationResult
 	setErr     error
 	setCalls   int
+	// installCalls counts wire-level Install commands that survived decode.
+	installCalls int
 }
 
 func (r *stubInstallationRepository) LookupInstallationRequest(context.Context, string, string) (ports.StoredInstallationRequest, bool, error) {
@@ -58,7 +61,8 @@ func (r *stubInstallationRepository) GetInstallation(context.Context, string, st
 	return domain.Installation{}, domain.ErrNotFound
 }
 
-func (r *stubInstallationRepository) Install(context.Context, ports.InstallCommand) (ports.InstallationResult, error) {
+func (r *stubInstallationRepository) Install(_ context.Context, _ ports.InstallCommand) (ports.InstallationResult, error) {
+	r.installCalls++
 	return r.result, r.err
 }
 
@@ -400,4 +404,114 @@ func repeat(value string, count int) string {
 		result = append(result, value...)
 	}
 	return string(result[:count])
+}
+
+// oversizedGrantSet builds distinct well-formed capability IDs whose decoded
+// form exceeds the transport read limit, mirroring the reported tens of
+// thousands of items shape: only the wire budget — not grammar, duplicates,
+// or the subset rule — can reject it before decoding.
+func oversizedGrantSet() []string {
+	grants := make([]string, 0, 30000)
+	for index := 0; index < 30000; index++ {
+		grants = append(grants, "cap."+fmt.Sprintf("%06d", index)+".aaaa")
+	}
+	return grants
+}
+
+func TestInstallAppRejectsOversizedGrantsBeforeDecode(t *testing.T) {
+	t.Parallel()
+	repository := &stubInstallationRepository{}
+	server := newInstallationHTTPServer(t, repository)
+	client := appv1connect.NewAppInstallationServiceClient(server.Client(), server.URL)
+
+	// A legal grant set drawn from the pinned requested permissions passes
+	// the wire budget and reaches the business handler.
+	legal := connect.NewRequest(&appv1.InstallAppRequest{
+		IdempotencyKey: "wire-limit", ProjectId: projectID, AppId: "board-app", ExpectedProjectRevision: 1,
+		GrantedPermissions: []string{"agent.task.run"},
+	})
+	legal.Header().Set(identity.UserHeader, ownerID)
+	legal.Header().Set(identity.DeviceHeader, "device-1")
+	if _, err := client.InstallApp(context.Background(), legal); err != nil {
+		t.Fatalf("legal-size grant request must pass the wire budget: %v", err)
+	}
+	if repository.installCalls != 1 {
+		t.Fatalf("legal request must reach the business handler: %d calls", repository.installCalls)
+	}
+
+	request := connect.NewRequest(&appv1.InstallAppRequest{
+		IdempotencyKey: "oversize", ProjectId: projectID, AppId: "board-app", ExpectedProjectRevision: 1,
+		GrantedPermissions: oversizedGrantSet(),
+	})
+	request.Header().Set(identity.UserHeader, ownerID)
+	request.Header().Set(identity.DeviceHeader, "device-1")
+	_, err := client.InstallApp(context.Background(), request)
+	if connect.CodeOf(err) != connect.CodeResourceExhausted {
+		t.Fatalf("oversized install request must be ResourceExhausted before decoding, got %v", err)
+	}
+	if strings.Contains(err.Error(), "cap.") {
+		t.Fatalf("oversize error must not echo the body: %v", err)
+	}
+	if repository.installCalls != 1 {
+		t.Fatalf("business handler must not execute for oversized bodies: %d calls", repository.installCalls)
+	}
+}
+
+func TestSetAppGrantsRejectsOversizedGrantsBeforeDecode(t *testing.T) {
+	t.Parallel()
+	repository := &stubInstallationRepository{active: activeSetGrantsInstallation()}
+	server := newInstallationHTTPServer(t, repository)
+	client := appv1connect.NewAppInstallationServiceClient(server.Client(), server.URL)
+
+	// One well-formed capability ID far beyond the read limit: a single
+	// string, so only size — not count, duplicates, or grammar — can reject.
+	request := connect.NewRequest(&appv1.SetAppGrantsRequest{
+		IdempotencyKey: "oversize", ProjectId: projectID, InstallationId: installation,
+		ExpectedProjectRevision: 4,
+		GrantedPermissions:      []string{"c" + repeat("a", MaxRequestBytes+128*1024)},
+	})
+	request.Header().Set(identity.UserHeader, ownerID)
+	request.Header().Set(identity.DeviceHeader, "device-1")
+	_, err := client.SetAppGrants(context.Background(), request)
+	if connect.CodeOf(err) != connect.CodeResourceExhausted {
+		t.Fatalf("oversized set-grants request must be ResourceExhausted before decoding, got %v", err)
+	}
+	if strings.Contains(err.Error(), "aaaaa") {
+		t.Fatalf("oversize error must not echo the body: %v", err)
+	}
+	if repository.setCalls != 0 {
+		t.Fatalf("business handler must not execute for oversized bodies: %d calls", repository.setCalls)
+	}
+}
+
+func TestInstallationRejectsDecompressionBombs(t *testing.T) {
+	t.Parallel()
+	repository := &stubInstallationRepository{active: activeSetGrantsInstallation()}
+	server := newInstallationHTTPServer(t, repository)
+	client := appv1connect.NewAppInstallationServiceClient(server.Client(), server.URL, connect.WithSendGzip())
+
+	// A tiny compressed body whose decompressed message far exceeds the read
+	// limit must be rejected on the decompressed size, not the wire size.
+	bomb := []string{"c" + repeat("a", MaxRequestBytes*4)}
+	install := connect.NewRequest(&appv1.InstallAppRequest{
+		IdempotencyKey: "bomb", ProjectId: projectID, AppId: "board-app", ExpectedProjectRevision: 1,
+		GrantedPermissions: bomb,
+	})
+	install.Header().Set(identity.UserHeader, ownerID)
+	install.Header().Set(identity.DeviceHeader, "device-1")
+	if _, err := client.InstallApp(context.Background(), install); connect.CodeOf(err) != connect.CodeResourceExhausted {
+		t.Fatalf("install decompression bomb must be ResourceExhausted, got %v", err)
+	}
+	setGrants := connect.NewRequest(&appv1.SetAppGrantsRequest{
+		IdempotencyKey: "bomb", ProjectId: projectID, InstallationId: installation,
+		ExpectedProjectRevision: 4, GrantedPermissions: bomb,
+	})
+	setGrants.Header().Set(identity.UserHeader, ownerID)
+	setGrants.Header().Set(identity.DeviceHeader, "device-1")
+	if _, err := client.SetAppGrants(context.Background(), setGrants); connect.CodeOf(err) != connect.CodeResourceExhausted {
+		t.Fatalf("set-grants decompression bomb must be ResourceExhausted, got %v", err)
+	}
+	if repository.installCalls != 0 || repository.setCalls != 0 {
+		t.Fatalf("business handler must not execute for bombs: install=%d set=%d", repository.installCalls, repository.setCalls)
+	}
 }
