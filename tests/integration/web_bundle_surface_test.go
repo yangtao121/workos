@@ -213,12 +213,19 @@ func TestWebBundleSurfaceVerticalSlice(t *testing.T) {
 		if err != nil || got.Msg.GetArtifact().GetDigest() != artifact.GetDigest() {
 			t.Fatalf("get artifact failed: %v", err)
 		}
-		// The persistent acceptance database accumulates artifacts for the
-		// fixed gateway identity across runs, so membership must be proven by
-		// following the paging cursor instead of assuming a single page.
+		// ListArtifacts is ordered ascending by UUIDv7 id, so the artifact
+		// created moments ago sorts at the tail, and the persistent
+		// acceptance database keeps accumulating artifacts for the fixed
+		// gateway identity across runs. Membership therefore has to be
+		// proven by following the paging cursor chain to exhaustion; the
+		// page counter below only guards against a server paging defect,
+		// it is not a data volume limit.
 		found := false
 		token := ""
-		for pages := 0; !found && pages < 20; pages++ {
+		for pages := 0; ; pages++ {
+			if pages > 1000 {
+				t.Fatal("server paging did not terminate")
+			}
 			listed, err := artifacts.ListArtifacts(ctx, connect.NewRequest(&artifactv1.ListArtifactsRequest{
 				Page: &commonv1.PageRequest{PageSize: 100, PageToken: token},
 			}))
@@ -231,7 +238,7 @@ func TestWebBundleSurfaceVerticalSlice(t *testing.T) {
 				}
 			}
 			token = listed.Msg.GetPage().GetNextPageToken()
-			if token == "" {
+			if found || token == "" {
 				break
 			}
 		}
