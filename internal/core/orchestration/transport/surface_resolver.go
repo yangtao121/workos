@@ -57,6 +57,7 @@ func (h *SurfaceResolverHandler) ResolveWebBundle(ctx context.Context, req *conn
 			Entrypoint: descriptor.Entrypoint,
 		},
 		GrantedPermissions: descriptor.GrantedPermissions,
+		GrantRevision:      descriptor.GrantRevision,
 	}), nil
 }
 

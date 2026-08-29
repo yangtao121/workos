@@ -44,12 +44,19 @@ type Installation struct {
 	AppID          string
 	Version        string
 	ManifestDigest string
-	// GrantedPermissions is the immutable install-time grant snapshot:
-	// canonical sorted, duplicate-free, always a subset of the pinned
-	// version's requested permissions. Empty means nothing was granted.
+	// GrantedPermissions is the current canonical grant snapshot: canonical
+	// sorted, duplicate-free, always a subset of the pinned version's
+	// requested permissions. Historically an immutable install-time snapshot;
+	// since the mutable-grants flow (ADR-0003) it is the user's last confirmed
+	// complete set. Empty means nothing was granted.
 	GrantedPermissions []string
-	InstalledAt        time.Time
-	UninstalledAt      *time.Time
+	// GrantRevision is the authorization epoch of GrantedPermissions: it
+	// starts at 1 when the installation is created and increases by exactly
+	// one only when the grant set actually changes. Clients can never submit
+	// or predict it.
+	GrantRevision int64
+	InstalledAt   time.Time
+	UninstalledAt *time.Time
 }
 
 // PinnedApp is the neutral registry reference an installation pins at command
@@ -251,6 +258,37 @@ func InstallationRequestDigestWithGrants(command, projectID, appID, version, ins
 		Action: command, AppID: appID, ExpectedRevision: expectedRevision,
 		Granted: sorted, GrantVersion: "v2",
 		InstallationID: installationID, ProjectID: projectID, Version: version,
+	}
+	body, _ := json.Marshal(canonical)
+	sum := sha256.Sum256(body)
+	return "sha256:" + hex.EncodeToString(sum[:])
+}
+
+// SetGrantsRequestDigest digests the canonical client request of the
+// SetAppGrants full-replacement command (ADR-0003). It covers exactly the
+// client-submitted facts — the command version marker, project, installation,
+// expected Project revision, and the canonical sorted target grant set — so
+// same-key replays compare verbatim while any change of command, project,
+// installation, revision, or grant is a different request. Timestamps, random
+// identifiers, and server-resolved facts (catalog results, current grant,
+// current grant revision) never enter it. The grant list is sorted here so the
+// digest is order independent no matter the caller, and empty still means
+// "revoke all" — a distinct digest component, never a fallback.
+func SetGrantsRequestDigest(projectID, installationID string, expectedRevision int64, grantedPermissions []string) string {
+	sorted := make([]string, len(grantedPermissions))
+	copy(sorted, grantedPermissions)
+	sort.Strings(sorted)
+	canonical := struct {
+		Command          string   `json:"command"`
+		ExpectedRevision int64    `json:"expected_project_revision"`
+		Granted          []string `json:"granted_permissions"`
+		GrantVersion     string   `json:"grant_version"`
+		InstallationID   string   `json:"installation_id"`
+		ProjectID        string   `json:"project_id"`
+	}{
+		Command: "set-grants/v1", ExpectedRevision: expectedRevision,
+		Granted: sorted, GrantVersion: "v1",
+		InstallationID: installationID, ProjectID: projectID,
 	}
 	body, _ := json.Marshal(canonical)
 	sum := sha256.Sum256(body)

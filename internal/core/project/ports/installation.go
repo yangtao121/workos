@@ -16,15 +16,20 @@ type InstallationResult struct {
 }
 
 // StoredInstallationRequest is the persisted result of one consumed
-// installation command key. ResultUninstalledAt snapshots the response's
-// tombstone field so replays return the first result even after a later
-// command changed the installation row.
+// installation command key. The result snapshot columns pin the response's
+// tombstone field, grant set, and grant epoch so replays return the first
+// result even after a later SetAppGrants or uninstall changed the row.
 type StoredInstallationRequest struct {
 	Command             string
 	RequestDigest       string
 	InstallationID      string
 	ProjectRevision     int64
 	ResultUninstalledAt *time.Time
+	// ResultGrantedPermissions and ResultGrantRevision snapshot the grant
+	// facts the first response carried; the result columns are NOT NULL with
+	// history backfilled, so both are always authoritative.
+	ResultGrantedPermissions []string
+	ResultGrantRevision      int64
 }
 
 // InstallCommand is one fully validated install command. The application has
@@ -59,6 +64,31 @@ type UninstallCommand struct {
 	Now              time.Time
 }
 
+// SetAppGrantsCommand is one fully validated full-replacement grant command
+// (ADR-0003). The application has already canonicalized the target grant,
+// resolved the exact pinned registry version through the neutral catalog port,
+// checked the target against that version's requested permissions, and
+// computed the canonical request digest; the repository re-verifies pinned
+// identity and stored invariants under the project lock and executes the
+// deterministic no-op or the atomic grant/revision/event/outbox/idempotency
+// mutation in one transaction.
+type SetAppGrantsCommand struct {
+	OwnerUserID    string
+	IdempotencyKey string
+	ProjectID      string
+	InstallationID string
+	// Pinned is the exact registry version resolved from the installation's
+	// pinned facts; the repository re-checks identity equality under the lock
+	// and uses its requested permissions for the stored-subset invariant.
+	Pinned domain.PinnedApp
+	// GrantedPermissions is the canonical sorted target set; it is already a
+	// validated subset of Pinned.Permissions. Empty means revoke all.
+	GrantedPermissions []string
+	ExpectedRevision   int64
+	RequestDigest      string
+	Now                time.Time
+}
+
 // InstallationRepository owns the installation facts. Concurrent commands are
 // arbitrated by the database: the project row lock serializes mutations
 // against every other Project revision writer, and the request-mapping
@@ -76,6 +106,14 @@ type InstallationRepository interface {
 	ResolveActiveInstallation(ctx context.Context, ownerUserID, projectID, installationID string) (domain.Installation, error)
 	Install(ctx context.Context, command InstallCommand) (InstallationResult, error)
 	Uninstall(ctx context.Context, command UninstallCommand) (InstallationResult, error)
+	// SetAppGrants replaces one active installation's entire grant set in one
+	// transaction. A target equal to the current canonical grant is a
+	// deterministic no-op that still consumes the key; a real change bumps the
+	// installation grant revision and the Project revision by exactly one and
+	// commits the grant update, project event, outbox, and idempotency result
+	// atomically. Stored-grant or revision invariant corruption is a sanitized
+	// Internal, never a silent repair.
+	SetAppGrants(ctx context.Context, command SetAppGrantsCommand) (InstallationResult, error)
 	// ListActive returns at most limit active installations ordered by app ID
 	// after the cursor; a missing, foreign, or archived project is NotFound.
 	ListActive(ctx context.Context, ownerUserID, projectID, cursor string, limit int) ([]domain.Installation, error)

@@ -21,10 +21,13 @@ import (
 )
 
 // AppAgentRunner is the orchestration service surface the handler needs; the
-// composition root passes the concrete service, tests pass fakes.
+// composition root passes the concrete service, tests pass fakes. The grant
+// revision arrives on every run call and every watch polling round from the
+// runtime's validated session snapshot; Core re-compares it against the
+// current installation epoch inside the service.
 type AppAgentRunner interface {
-	RunAgentTask(ctx context.Context, ownerUserID, projectID, appInstanceID, clientKey, role, goal string) (agentdomain.Task, error)
-	WatchAgentTaskEvents(ctx context.Context, ownerUserID, projectID, appInstanceID, taskID string, after int64, limit int) (agentdomain.Task, []agentdomain.Event, error)
+	RunAgentTask(ctx context.Context, ownerUserID, projectID, appInstanceID string, installationGrantRevision int64, clientKey, role, goal string) (agentdomain.Task, error)
+	WatchAgentTaskEvents(ctx context.Context, ownerUserID, projectID, appInstanceID string, installationGrantRevision int64, taskID string, after int64, limit int) (agentdomain.Task, []agentdomain.Event, error)
 }
 
 // AppAgentHandler exposes the private Core App Agent service. It is never on
@@ -56,7 +59,7 @@ func (h *AppAgentHandler) RunAgentTask(ctx context.Context, req *connect.Request
 	}
 	task, err := h.service.RunAgentTask(
 		ctx, id.UserID, req.Msg.GetProjectId(), req.Msg.GetAppInstanceId(),
-		req.Msg.GetClientIdempotencyKey(), req.Msg.GetRole(), req.Msg.GetGoal(),
+		req.Msg.GetInstallationGrantRevision(), req.Msg.GetClientIdempotencyKey(), req.Msg.GetRole(), req.Msg.GetGoal(),
 	)
 	if err != nil {
 		return nil, mapAppAgentError(err)
@@ -80,9 +83,12 @@ func (h *AppAgentHandler) WatchAgentTaskEvents(ctx context.Context, req *connect
 	for {
 		task, events, listErr := h.service.WatchAgentTaskEvents(
 			ctx, id.UserID, req.Msg.GetProjectId(), req.Msg.GetAppInstanceId(),
-			req.Msg.GetTaskId(), after, 100,
+			req.Msg.GetInstallationGrantRevision(), req.Msg.GetTaskId(), after, 100,
 		)
 		if listErr != nil {
+			// Any polling-round failure — including a grant-revision mismatch
+			// after a real SetAppGrants commit — terminates the stream without
+			// forwarding further events to the stale epoch.
 			return mapAppAgentError(listErr)
 		}
 		for _, stored := range events {
@@ -133,6 +139,8 @@ func mapAppAgentError(err error) error {
 		return connect.NewError(connect.CodePermissionDenied, errors.New("app project is not available"))
 	case errors.Is(err, orchestration.ErrAppNotGranted):
 		return connect.NewError(connect.CodePermissionDenied, errors.New("app capability is not granted"))
+	case errors.Is(err, orchestration.ErrAppGrantStale):
+		return connect.NewError(connect.CodePermissionDenied, errors.New("app surface session is no longer authorized"))
 	case errors.Is(err, domain.ErrIdempotencyConflict):
 		return connect.NewError(connect.CodeAborted, errors.New("idempotency key was already used for a different request"))
 	case errors.Is(err, projectports.ErrStoreUnavailable), errors.Is(err, agentports.ErrStoreUnavailable):

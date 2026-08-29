@@ -26,6 +26,13 @@ var errAppScopeViolated = errors.New("resolved app scope is not installable")
 // broken invariant upstream.
 var errCatalogCorrupt = errors.New("resolved app reference is malformed")
 
+// errPinnedIdentityDrift marks a catalog result that no longer matches the
+// installation's pinned identity facts. Registry versions are immutable and
+// installations are immutable in identity, so drift can only be corruption;
+// the verdict stays a sanitized Internal and never authorizes a grant change
+// against different facts.
+var errPinnedIdentityDrift = errors.New("installation pinned identity drifted")
+
 // AppCatalog resolves one installable registry version for the owner. It is
 // the neutral application port: the orchestration layer adapts the App
 // Registry application service, and the Project module never touches
@@ -84,6 +91,18 @@ type UninstallInput struct {
 	ProjectID        string
 	InstallationID   string
 	ExpectedRevision int64
+}
+
+// SetAppGrantsInput is one validated-boundary full-replacement grant command
+// request. GrantedPermissions is the complete target set in client order;
+// empty means revoke all and never falls back to requested permissions.
+type SetAppGrantsInput struct {
+	OwnerUserID        string
+	IdempotencyKey     string
+	ProjectID          string
+	InstallationID     string
+	ExpectedRevision   int64
+	GrantedPermissions []string
 }
 
 // Install pins one registry version into the project. The idempotency
@@ -151,6 +170,64 @@ func (s *InstallationService) Uninstall(ctx context.Context, input UninstallInpu
 	})
 }
 
+// SetAppGrants replaces one active installation's entire grant set
+// (ADR-0003). The adjudication order is fixed: validate and canonicalize the
+// target grant, digest the canonical client request, replay an already
+// consumed key before any catalog resolution, read the owner-scoped active
+// installation, resolve the exact pinned version's requested permissions
+// through the neutral catalog port, verify the pinned identity and the
+// target-subset rule, then hand the command to the repository, which
+// re-arbitrates everything under the project row lock in one transaction.
+// The client never submits app identity, requested sets, grant revisions, or
+// the new Project revision; all of those are re-derived here and under the
+// lock.
+func (s *InstallationService) SetAppGrants(ctx context.Context, input SetAppGrantsInput) (ports.InstallationResult, error) {
+	if input.OwnerUserID == "" || !domain.ValidInstallationIdempotencyKey(input.IdempotencyKey) ||
+		!domain.ValidInstallationUUID(input.ProjectID) || !domain.ValidInstallationUUID(input.InstallationID) ||
+		input.ExpectedRevision <= 0 {
+		return ports.InstallationResult{}, domain.ErrInvalid
+	}
+	grant, err := domain.CanonicalGrantShape(input.GrantedPermissions)
+	if err != nil {
+		return ports.InstallationResult{}, err
+	}
+	digest := domain.SetGrantsRequestDigest(input.ProjectID, input.InstallationID, input.ExpectedRevision, grant)
+	if result, found, err := s.replayIfConsumed(ctx, input.OwnerUserID, input.IdempotencyKey, digest); found || err != nil {
+		return result, err
+	}
+	installation, err := s.repository.ResolveActiveInstallation(ctx, input.OwnerUserID, input.ProjectID, input.InstallationID)
+	if err != nil {
+		return ports.InstallationResult{}, err
+	}
+	// Resolve the exact pinned version — never the registry current — so the
+	// subset ceiling is the immutable manifest the installation actually
+	// pinned at command time.
+	pinned, err := s.catalog.Resolve(ctx, input.OwnerUserID, installation.AppID, installation.Version)
+	if err != nil {
+		return ports.InstallationResult{}, err
+	}
+	if pinned.AppID != installation.AppID || !domain.ValidInstallationVersion(pinned.Version) ||
+		!domain.ValidInstallationManifestDigest(pinned.ManifestDigest) {
+		return ports.InstallationResult{}, errCatalogCorrupt
+	}
+	if pinned.Version != installation.Version || pinned.ManifestDigest != installation.ManifestDigest {
+		return ports.InstallationResult{}, errPinnedIdentityDrift
+	}
+	if !domain.InstallableScope(pinned.Scope) {
+		return ports.InstallationResult{}, errAppScopeViolated
+	}
+	grant, err = domain.CanonicalInstallationGrant(grant, pinned.Permissions)
+	if err != nil {
+		return ports.InstallationResult{}, err
+	}
+	return s.repository.SetAppGrants(ctx, ports.SetAppGrantsCommand{
+		OwnerUserID: input.OwnerUserID, IdempotencyKey: input.IdempotencyKey,
+		ProjectID: input.ProjectID, InstallationID: input.InstallationID,
+		Pinned: pinned, GrantedPermissions: grant,
+		ExpectedRevision: input.ExpectedRevision, RequestDigest: digest, Now: s.now(),
+	})
+}
+
 // ResolveActiveInstallation is the authority read for installed-instance
 // surface resolution: the installation must be active, belong to the owner's
 // project, and sit under a non-archived project. Unknown, foreign, archived,
@@ -193,7 +270,10 @@ func (s *InstallationService) ListInstalled(ctx context.Context, ownerUserID, pr
 
 // replayIfConsumed resolves an already-consumed key: the identical canonical
 // request replays the stored first result, anything else conflicts. It runs
-// before catalog resolution so registry changes cannot alter replays.
+// before catalog resolution so registry changes cannot alter replays. The
+// persisted result snapshot — tombstone, grant set, and grant epoch — is
+// authoritative for the replayed projection, so a later SetAppGrants or
+// uninstall can never leak a mutated row into the first response's replay.
 func (s *InstallationService) replayIfConsumed(ctx context.Context, ownerUserID, idempotencyKey, digest string) (ports.InstallationResult, bool, error) {
 	stored, found, err := s.repository.LookupInstallationRequest(ctx, ownerUserID, idempotencyKey)
 	if err != nil || !found {
@@ -207,5 +287,7 @@ func (s *InstallationService) replayIfConsumed(ctx context.Context, ownerUserID,
 		return ports.InstallationResult{}, true, err
 	}
 	installation.UninstalledAt = stored.ResultUninstalledAt
+	installation.GrantedPermissions = stored.ResultGrantedPermissions
+	installation.GrantRevision = stored.ResultGrantRevision
 	return ports.InstallationResult{Installation: installation, ProjectRevision: stored.ProjectRevision}, true, nil
 }

@@ -21,24 +21,32 @@ import (
 )
 
 type fakeAppAgentService struct {
-	task        agentdomain.Task
-	err         error
-	events      []agentdomain.Event
-	watchTask   agentdomain.Task
-	calls       int
-	lastRunArgs [6]string
+	task         agentdomain.Task
+	err          error
+	events       []agentdomain.Event
+	watchTask    agentdomain.Task
+	calls        int
+	watchCalls   int
+	lastRunArgs  [6]string
+	lastRevision int64
+	watchErr     error
 }
 
-func (f *fakeAppAgentService) RunAgentTask(_ context.Context, owner, project, instance, key, role, goal string) (agentdomain.Task, error) {
+func (f *fakeAppAgentService) RunAgentTask(_ context.Context, owner, project, instance string, revision int64, key, role, goal string) (agentdomain.Task, error) {
 	f.calls++
 	f.lastRunArgs = [6]string{owner, project, instance, key, role, goal}
+	f.lastRevision = revision
 	if f.err != nil {
 		return agentdomain.Task{}, f.err
 	}
 	return f.task, nil
 }
 
-func (f *fakeAppAgentService) WatchAgentTaskEvents(_ context.Context, _, _, _, _ string, _ int64, _ int) (agentdomain.Task, []agentdomain.Event, error) {
+func (f *fakeAppAgentService) WatchAgentTaskEvents(_ context.Context, _, _, _ string, _ int64, _ string, _ int64, _ int) (agentdomain.Task, []agentdomain.Event, error) {
+	f.watchCalls++
+	if f.watchErr != nil {
+		return agentdomain.Task{}, nil, f.watchErr
+	}
 	if f.err != nil {
 		return agentdomain.Task{}, nil, f.err
 	}
@@ -53,6 +61,7 @@ func helperRunRequest(project, instance, key, role, goal string) *connect.Reques
 	return connect.NewRequest(&agentv1.RunAgentTaskRequest{
 		ProjectId: project, AppInstanceId: instance,
 		ClientIdempotencyKey: key, Role: role, Goal: goal,
+		InstallationGrantRevision: 2,
 	})
 }
 
@@ -79,6 +88,55 @@ func TestAppAgentHandlerRunMapsCanonicalResponse(t *testing.T) {
 	}
 	if service.lastRunArgs[0] != "owner-1" {
 		t.Fatal("owner must come from the identity context only")
+	}
+	// The session-derived grant revision crosses the wire boundary verbatim.
+	if service.lastRevision != 2 {
+		t.Fatalf("run must forward the request grant revision, got %d", service.lastRevision)
+	}
+}
+
+// TestAppAgentHandlerWatchForwardsSessionRevisionAndTerminatesOnStaleEpoch
+// pins the private watch wiring: the request epoch reaches every polling
+// round, and a stale-epoch denial from the service ends the stream with the
+// sanitized PermissionDenied instead of forwarding events.
+func TestAppAgentHandlerWatchForwardsSessionRevisionAndTerminatesOnStaleEpoch(t *testing.T) {
+	t.Parallel()
+	service := &fakeAppAgentService{
+		watchTask: agentdomain.Task{ID: "task-1", State: agentdomain.StateRunning, LastEventSequence: 0},
+		watchErr:  orchestration.ErrAppGrantStale,
+	}
+	path, handler := agentv1connect.NewAppAgentServiceHandler(NewAppAgent(service))
+	mux := http.NewServeMux()
+	mux.Handle(path, identity.Middleware(handler))
+	server := httptest.NewServer(mux)
+	t.Cleanup(server.Close)
+	client := agentv1connect.NewAppAgentServiceClient(server.Client(), server.URL)
+	request := connect.NewRequest(&agentv1.WatchAgentTaskEventsRequest{
+		ProjectId: "proj", AppInstanceId: "inst", TaskId: "task-1", AfterSequence: 0,
+		InstallationGrantRevision: 3,
+	})
+	request.Header().Set(identity.UserHeader, "owner-1")
+	request.Header().Set(identity.DeviceHeader, "device-1")
+	stream, err := client.WatchAgentTaskEvents(context.Background(), request)
+	if err != nil {
+		t.Fatalf("watch dial failed: %v", err)
+	}
+	for stream.Receive() {
+		t.Fatal("a stale-epoch watch must not forward any event")
+	}
+	if code := connect.CodeOf(stream.Err()); code != connect.CodePermissionDenied {
+		t.Fatalf("stale epoch must end the stream as PermissionDenied, got %v", stream.Err())
+	}
+	// The wire message is a fixed sanitized sentence: it never carries the
+	// current epoch, the session epoch, or any grant fact.
+	message := stream.Err().Error()
+	for _, leak := range []string{"3", "grant", "revision", "epoch"} {
+		if strings.Contains(message, leak) {
+			t.Fatalf("stale-epoch message leaked %q: %v", leak, message)
+		}
+	}
+	if service.watchCalls != 1 {
+		t.Fatalf("the first polling round must already deny, got %d rounds", service.watchCalls)
 	}
 }
 
@@ -136,6 +194,7 @@ func TestAppAgentHandlerErrorMatrix(t *testing.T) {
 		{"not found", agentdomain.ErrNotFound, "not_found"},
 		{"project denied", agentdomain.ErrProjectDenied, "permission_denied"},
 		{"not granted", orchestration.ErrAppNotGranted, "permission_denied"},
+		{"stale grant epoch", orchestration.ErrAppGrantStale, "permission_denied"},
 		{"conflict", agentdomain.ErrIdempotencyConflict, "aborted"},
 		{"project store unavailable", projectports.ErrStoreUnavailable, "unavailable"},
 		{"agent store unavailable", agentports.ErrStoreUnavailable, "unavailable"},

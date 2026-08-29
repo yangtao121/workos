@@ -41,11 +41,20 @@ func (r *Repository) LookupInstallationRequest(ctx context.Context, ownerUserID,
 	if err != nil {
 		return ports.StoredInstallationRequest{}, false, fmt.Errorf("query installation request: %w", err)
 	}
+	return storedInstallationRequest(stored), true, nil
+}
+
+// storedInstallationRequest projects the persisted request row; the result
+// snapshot columns are NOT NULL with history backfilled, so the grant and
+// epoch snapshot are always the first response's authoritative facts.
+func storedInstallationRequest(stored projectdb.GetInstallationRequestRow) ports.StoredInstallationRequest {
 	return ports.StoredInstallationRequest{
 		Command: stored.Command, RequestDigest: stored.RequestDigest,
 		InstallationID: stored.InstallationID, ProjectRevision: stored.ProjectRevision,
-		ResultUninstalledAt: timePtr(stored.ResultUninstalledAt),
-	}, true, nil
+		ResultUninstalledAt:      timePtr(stored.ResultUninstalledAt),
+		ResultGrantedPermissions: stored.ResultGrantedPermissions,
+		ResultGrantRevision:      stored.ResultGrantRevision,
+	}
 }
 
 // GetInstallation reads one installation by owner-scoped ID.
@@ -96,21 +105,22 @@ func (r *Repository) Install(ctx context.Context, command ports.InstallCommand) 
 			}
 			if !equalGrants(existing.GrantedPermissions, command.GrantedPermissions) {
 				// Same pinned version but a different grant must never
-				// silently re-grant: uninstall + reinstall is the only
+				// silently re-grant: an explicit Set command is the only
 				// grant-change path.
 				return ports.InstallationResult{}, domain.ErrAlreadyInstalled
 			}
 			// Deterministic no-op under the lock: the expected revision was
 			// verified, so the key is consumed against the existing fact —
 			// without a second row, revision bump, or event. The result
-			// snapshot pins the first-response grant and its epoch so a later
-			// replay never returns a mutated row.
+			// snapshot pins the first-response grant and its epoch (read from
+			// the locked row, not a constant) so a later replay never returns
+			// a mutated row.
 			return r.commitInstallationRequest(ctx, tx, queries, projectdb.InsertInstallationRequestParams{
 				OwnerUserID: command.OwnerUserID, IdempotencyKey: command.IdempotencyKey,
 				Command: "install", RequestDigest: command.RequestDigest, InstallationID: existing.ID,
 				ProjectRevision:          command.ExpectedRevision,
 				ResultGrantedPermissions: nonNilGranted(existing.GrantedPermissions),
-				ResultGrantRevision:      installTimeGrantRevision, CreatedAt: timestamp(command.Now),
+				ResultGrantRevision:      existing.GrantRevision, CreatedAt: timestamp(command.Now),
 			}, ports.InstallationResult{Installation: existing, ProjectRevision: command.ExpectedRevision})
 		}
 		return ports.InstallationResult{}, domain.ErrAlreadyInstalled
@@ -123,6 +133,7 @@ func (r *Repository) Install(ctx context.Context, command ports.InstallCommand) 
 		ID: command.NewInstallationID, OwnerUserID: command.OwnerUserID, ProjectID: command.ProjectID,
 		AppID: command.AppID, Version: command.Pinned.Version, ManifestDigest: command.Pinned.ManifestDigest,
 		GrantedPermissions: command.GrantedPermissions,
+		GrantRevision:      installTimeGrantRevision,
 		InstalledAt:        command.Now,
 	}
 	if err := queries.InsertInstallation(ctx, projectdb.InsertInstallationParams{
@@ -149,9 +160,11 @@ func (r *Repository) Install(ctx context.Context, command ports.InstallCommand) 
 	}, ports.InstallationResult{Installation: installation, ProjectRevision: projection.Revision})
 }
 
-// installTimeGrantRevision is the grant epoch every install command creates
-// its installation at. The SetAppGrants flow owns later epochs; until it
-// exists, 1 is the only value a fresh or no-op install can persist.
+// installTimeGrantRevision is the grant epoch a fresh install creates its
+// installation at (the column default after the mutable-grants migration).
+// It only ever describes a newly inserted row; every snapshot of an existing
+// installation must read GrantRevision from the locked row instead, so a
+// replay of an old key never confuses a later SetAppGrants epoch with 1.
 const installTimeGrantRevision = 1
 
 // Uninstall tombstones one active installation in a single transaction with
@@ -205,10 +218,140 @@ func (r *Repository) Uninstall(ctx context.Context, command ports.UninstallComma
 		ProjectRevision: projection.Revision, ResultUninstalledAt: timestamp(tombstone),
 		ResultGrantedPermissions: nonNilGranted(installation.GrantedPermissions),
 		// The uninstall response reports the grant and epoch as of this
-		// transaction; with no grant-mutation flow yet that epoch is 1.
-		ResultGrantRevision: installTimeGrantRevision,
+		// transaction, read from the locked installation row — not a constant,
+		// so a later replay returns the facts the first response carried.
+		ResultGrantRevision: installation.GrantRevision,
 		CreatedAt:           timestamp(command.Now),
 	}, ports.InstallationResult{Installation: installation, ProjectRevision: projection.Revision})
+}
+
+// errGrantInvariantCorrupt marks a stored grant snapshot or grant revision
+// that violates the canonical invariants (sorted, duplicate-free, every entry
+// inside the pinned version's requested set, revision >= 1). Any drift here is
+// internal corruption: the command fails closed with a sanitized Internal and
+// is never silently repaired by the user's update.
+var errGrantInvariantCorrupt = errors.New("stored installation grant facts are inconsistent")
+
+// errPinnedIdentityDrift marks a re-read installation whose pinned identity
+// no longer equals the catalog-resolved facts. Registry versions are
+// immutable, so drift is corruption — never an upgrade path.
+var errPinnedIdentityDrift = errors.New("installation pinned identity drifted")
+
+// SetAppGrants replaces one active installation's entire grant set in a
+// single transaction (ADR-0003). Under the owner-scoped project lock it
+// re-arbitrates the idempotency key and expected revision, re-reads the
+// active installation, re-verifies the pinned identity and the stored-grant
+// invariants, then either consumes the key against unchanged facts
+// (deterministic no-op: no revision bump, no event) or atomically applies
+// the new grant with grant_revision+1, Project revision+1, the
+// project.app.grants.updated.v1 event, the outbox row, and the idempotency
+// result snapshot.
+func (r *Repository) SetAppGrants(ctx context.Context, command ports.SetAppGrantsCommand) (ports.InstallationResult, error) {
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return ports.InstallationResult{}, fmt.Errorf("begin set app grants: %w", err)
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck
+	queries := r.queries.WithTx(tx)
+
+	// Lock, replay/conflict, and expected-revision arbitration share the exact
+	// classifyUnderLock path of install/uninstall, so grant mutation joins the
+	// same expected_project_revision serialization domain.
+	if result, handled, err := classifyUnderLock(ctx, queries, command.OwnerUserID, command.IdempotencyKey, command.ProjectID, command.ExpectedRevision, command.RequestDigest); handled {
+		return result, err
+	}
+
+	// Re-read the installation under the lock: foreign project, unknown, or
+	// already uninstalled are indistinguishable sanitized misses (no TOCTOU
+	// against a concurrent uninstall that held the lock first).
+	value, err := queries.GetInstallationById(ctx, projectdb.GetInstallationByIdParams{
+		OwnerUserID: command.OwnerUserID, ID: command.InstallationID,
+	})
+	installation, err := installationFromDB(value, err)
+	if err != nil {
+		return ports.InstallationResult{}, err
+	}
+	if installation.ProjectID != command.ProjectID || installation.UninstalledAt != nil {
+		return ports.InstallationResult{}, domain.ErrNotFound
+	}
+	// The pinned identity the application resolved must still equal the
+	// installation row; registry versions are immutable, so drift is
+	// corruption, never an upgrade path.
+	if installation.AppID != command.Pinned.AppID ||
+		installation.Version != command.Pinned.Version || installation.ManifestDigest != command.Pinned.ManifestDigest {
+		return ports.InstallationResult{}, errPinnedIdentityDrift
+	}
+	if err := validateStoredGrantInvariant(installation, command.Pinned); err != nil {
+		return ports.InstallationResult{}, err
+	}
+
+	// Deterministic no-op: the target set equals the current canonical grant.
+	// The key is still consumed with a snapshot of the current facts; neither
+	// revision, the event, the outbox, nor updated_at may move.
+	if equalGrants(installation.GrantedPermissions, command.GrantedPermissions) {
+		return r.commitInstallationRequest(ctx, tx, queries, projectdb.InsertInstallationRequestParams{
+			OwnerUserID: command.OwnerUserID, IdempotencyKey: command.IdempotencyKey,
+			Command: "set-grants", RequestDigest: command.RequestDigest, InstallationID: installation.ID,
+			ProjectRevision:          command.ExpectedRevision,
+			ResultGrantedPermissions: nonNilGranted(installation.GrantedPermissions),
+			ResultGrantRevision:      installation.GrantRevision, CreatedAt: timestamp(command.Now),
+		}, ports.InstallationResult{Installation: installation, ProjectRevision: command.ExpectedRevision})
+	}
+
+	updated, err := queries.SetInstallationGrants(ctx, projectdb.SetInstallationGrantsParams{
+		GrantedPermissions: nonNilGranted(command.GrantedPermissions),
+		OwnerUserID:        command.OwnerUserID, ProjectID: command.ProjectID, ID: installation.ID,
+	})
+	if errors.Is(err, pgx.ErrNoRows) {
+		// The WHERE clause still guards active rows; under the project lock
+		// this is unreachable except for drift, so fail closed as a miss.
+		return ports.InstallationResult{}, domain.ErrNotFound
+	}
+	if err != nil {
+		return ports.InstallationResult{}, storeError("set installation grants", err)
+	}
+	installation.GrantedPermissions = updated.GrantedPermissions
+	installation.GrantRevision = updated.GrantRevision
+	projection, err := applyProjection(ctx, queries, command.OwnerUserID, command.ProjectID, command.ExpectedRevision, command.Now)
+	if err != nil {
+		return ports.InstallationResult{}, err
+	}
+	if err := appendAppGrantsUpdatedEvent(ctx, queries, installation, projection.Revision, command.Now); err != nil {
+		return ports.InstallationResult{}, err
+	}
+	return r.commitInstallationRequest(ctx, tx, queries, projectdb.InsertInstallationRequestParams{
+		OwnerUserID: command.OwnerUserID, IdempotencyKey: command.IdempotencyKey,
+		Command: "set-grants", RequestDigest: command.RequestDigest, InstallationID: installation.ID,
+		ProjectRevision:          projection.Revision,
+		ResultGrantedPermissions: nonNilGranted(installation.GrantedPermissions),
+		ResultGrantRevision:      installation.GrantRevision, CreatedAt: timestamp(command.Now),
+	}, ports.InstallationResult{Installation: installation, ProjectRevision: projection.Revision})
+}
+
+// validateStoredGrantInvariant checks the persisted grant facts under the
+// lock: the epoch must be a positive integer and the grant list must be
+// canonical (grammar-valid, sorted, duplicate-free) and a subset of the
+// pinned version's requested permissions. Corruption is reported, never
+// repaired by the incoming command.
+func validateStoredGrantInvariant(installation domain.Installation, pinned domain.PinnedApp) error {
+	if installation.GrantRevision < installTimeGrantRevision {
+		return errGrantInvariantCorrupt
+	}
+	previous := ""
+	for _, entry := range installation.GrantedPermissions {
+		if !domain.ValidCapabilityID(entry) {
+			return errGrantInvariantCorrupt
+		}
+		if previous != "" && entry <= previous {
+			// Unsorted or duplicated: both violate the canonical form.
+			return errGrantInvariantCorrupt
+		}
+		previous = entry
+	}
+	if _, err := domain.CanonicalInstallationGrant(installation.GrantedPermissions, pinned.Permissions); err != nil {
+		return errGrantInvariantCorrupt
+	}
+	return nil
 }
 
 // ListActive returns active installations ordered by app ID after the
@@ -263,7 +406,7 @@ func classifyUnderLock(
 		if err != nil {
 			return ports.InstallationResult{}, true, err
 		}
-		installation.UninstalledAt = timePtr(stored.ResultUninstalledAt)
+		installation = applyRequestSnapshot(installation, storedInstallationRequest(stored))
 		return ports.InstallationResult{Installation: installation, ProjectRevision: stored.ProjectRevision}, true, nil
 	}
 	if !errors.Is(err, pgx.ErrNoRows) {
@@ -307,12 +450,46 @@ func appendInstallationEvent(ctx context.Context, queries *projectdb.Queries, in
 	if err != nil {
 		return fmt.Errorf("encode installation event: %w", err)
 	}
+	return appendProjectEventOutbox(ctx, queries, installation.ProjectID, eventType, revision, payload, occurredAt)
+}
+
+// appGrantsUpdatedEvent is the versioned event type of a real SetAppGrants
+// change (ADR-0003); a same-set no-op emits nothing.
+const appGrantsUpdatedEvent = "project.app.grants.updated.v1"
+
+// appGrantsUpdatedPayload builds the event payload of one real grant change.
+// It carries the complete canonical grant set (not an added/removed diff) so
+// consumers can rebuild the current authorization fact without history, plus
+// only stable, non-sensitive identifiers: no manifest, goal, task/event
+// content, token, credential, or raw user content.
+func appGrantsUpdatedPayload(installation domain.Installation, revision, grantRevision int64, granted []string) (json.RawMessage, error) {
+	return json.Marshal(map[string]any{
+		"projectId": installation.ProjectID, "revision": revision, "installationId": installation.ID,
+		"appId": installation.AppID, "version": installation.Version, "manifestDigest": installation.ManifestDigest,
+		"grantRevision": grantRevision, "grantedPermissions": granted,
+	})
+}
+
+// appendAppGrantsUpdatedEvent appends the project.app.grants.updated.v1
+// event and outbox row with sequence equal to the new Project revision.
+func appendAppGrantsUpdatedEvent(ctx context.Context, queries *projectdb.Queries, installation domain.Installation, revision int64, occurredAt time.Time) error {
+	payload, err := appGrantsUpdatedPayload(installation, revision, installation.GrantRevision, installation.GrantedPermissions)
+	if err != nil {
+		return fmt.Errorf("encode app grants event: %w", err)
+	}
+	return appendProjectEventOutbox(ctx, queries, installation.ProjectID, appGrantsUpdatedEvent, revision, payload, occurredAt)
+}
+
+// appendProjectEventOutbox writes one project stream event and one outbox
+// row with UUIDv7 identifiers inside the caller's transaction; sequence is
+// always the new Project revision.
+func appendProjectEventOutbox(ctx context.Context, queries *projectdb.Queries, streamID, eventType string, sequence int64, payload []byte, occurredAt time.Time) error {
 	eventID, err := uuid.NewV7()
 	if err != nil {
 		return fmt.Errorf("generate installation event id: %w", err)
 	}
 	if err := queries.InsertProjectEvent(ctx, projectdb.InsertProjectEventParams{
-		ID: eventID.String(), StreamID: installation.ProjectID, Sequence: revision, EventType: eventType,
+		ID: eventID.String(), StreamID: streamID, Sequence: sequence, EventType: eventType,
 		Payload: payload, OccurredAt: timestamp(occurredAt),
 	}); err != nil {
 		return fmt.Errorf("append installation event: %w", err)
@@ -322,7 +499,7 @@ func appendInstallationEvent(ctx context.Context, queries *projectdb.Queries, in
 		return fmt.Errorf("generate installation outbox id: %w", err)
 	}
 	if err := queries.InsertProjectOutbox(ctx, projectdb.InsertProjectOutboxParams{
-		ID: outboxID.String(), AggregateID: installation.ProjectID, EventType: eventType,
+		ID: outboxID.String(), AggregateID: streamID, EventType: eventType,
 		Payload: payload, OccurredAt: timestamp(occurredAt),
 	}); err != nil {
 		return fmt.Errorf("append installation outbox: %w", err)
@@ -366,8 +543,19 @@ func (r *Repository) commitInstallationRequest(
 	if err != nil {
 		return ports.InstallationResult{}, err
 	}
-	installation.UninstalledAt = timePtr(consumed.ResultUninstalledAt)
+	installation = applyRequestSnapshot(installation, storedInstallationRequest(consumed))
 	return ports.InstallationResult{Installation: installation, ProjectRevision: consumed.ProjectRevision}, nil
+}
+
+// applyRequestSnapshot overlays the persisted first-response snapshot onto
+// the current installation row so a replay returns the facts the first
+// command returned — tombstone, grant set, and grant epoch — even after a
+// later SetAppGrants or uninstall mutated the row.
+func applyRequestSnapshot(installation domain.Installation, stored ports.StoredInstallationRequest) domain.Installation {
+	installation.UninstalledAt = stored.ResultUninstalledAt
+	installation.GrantedPermissions = stored.ResultGrantedPermissions
+	installation.GrantRevision = stored.ResultGrantRevision
+	return installation
 }
 
 func installationFromDB(value projectdb.GetInstallationByIdRow, err error) (domain.Installation, error) {
@@ -379,7 +567,7 @@ func installationFromDB(value projectdb.GetInstallationByIdRow, err error) (doma
 	}
 	return installationFromColumns(
 		value.ID, value.OwnerUserID, value.ProjectID, value.AppID, value.Version, value.ManifestDigest,
-		value.GrantedPermissions, value.InstalledAt, value.UninstalledAt), nil
+		value.GrantedPermissions, value.GrantRevision, value.InstalledAt, value.UninstalledAt), nil
 }
 
 func installationFromActiveByApp(value projectdb.GetActiveInstallationByAppRow, err error) (domain.Installation, error) {
@@ -391,7 +579,7 @@ func installationFromActiveByApp(value projectdb.GetActiveInstallationByAppRow, 
 	}
 	return installationFromColumns(
 		value.ID, value.OwnerUserID, value.ProjectID, value.AppID, value.Version, value.ManifestDigest,
-		value.GrantedPermissions, value.InstalledAt, value.UninstalledAt), nil
+		value.GrantedPermissions, value.GrantRevision, value.InstalledAt, value.UninstalledAt), nil
 }
 
 func installationFromResolver(value projectdb.ResolveActiveInstallationRow, err error) (domain.Installation, error) {
@@ -403,7 +591,7 @@ func installationFromResolver(value projectdb.ResolveActiveInstallationRow, err 
 	}
 	return installationFromColumns(
 		value.ID, value.OwnerUserID, value.ProjectID, value.AppID, value.Version, value.ManifestDigest,
-		value.GrantedPermissions, value.InstalledAt, value.UninstalledAt), nil
+		value.GrantedPermissions, value.GrantRevision, value.InstalledAt, value.UninstalledAt), nil
 }
 
 func installationsFromList(values []projectdb.ListActiveInstallationsRow, err error) ([]domain.Installation, error) {
@@ -414,19 +602,20 @@ func installationsFromList(values []projectdb.ListActiveInstallationsRow, err er
 	for _, value := range values {
 		installations = append(installations, installationFromColumns(
 			value.ID, value.OwnerUserID, value.ProjectID, value.AppID, value.Version, value.ManifestDigest,
-			value.GrantedPermissions, value.InstalledAt, value.UninstalledAt))
+			value.GrantedPermissions, value.GrantRevision, value.InstalledAt, value.UninstalledAt))
 	}
 	return installations, nil
 }
 
 func installationFromColumns(
-	id, ownerUserID, projectID, appID, version, manifestDigest string, grantedPermissions []string,
+	id, ownerUserID, projectID, appID, version, manifestDigest string, grantedPermissions []string, grantRevision int64,
 	installedAt, uninstalledAt pgtype.Timestamptz,
 ) domain.Installation {
 	installation := domain.Installation{
 		ID: id, OwnerUserID: ownerUserID, ProjectID: projectID,
 		AppID: appID, Version: version, ManifestDigest: manifestDigest,
 		GrantedPermissions: grantedPermissions,
+		GrantRevision:      grantRevision,
 		InstalledAt:        installedAt.Time,
 	}
 	installation.UninstalledAt = timePtr(uninstalledAt)

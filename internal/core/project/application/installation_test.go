@@ -24,6 +24,17 @@ type fakeRepository struct {
 	installLog []ports.InstallCommand
 	listed     []domain.Installation
 	listErr    error
+	resolveErr error
+	// setLog records every SetAppGrants command that reached the repository.
+	setLog []ports.SetAppGrantsCommand
+	// setFn, when set, replaces the simulated transaction so failure paths
+	// can be injected.
+	setFn func(command ports.SetAppGrantsCommand) (ports.InstallationResult, error)
+	// projectRevision models the Project aggregate revision the transaction
+	// domain would move; events/outbox mirror the same-commit facts.
+	projectRevision int64
+	events          []string
+	outbox          []string
 }
 
 func (f *fakeRepository) LookupInstallationRequest(_ context.Context, _, key string) (ports.StoredInstallationRequest, bool, error) {
@@ -32,6 +43,9 @@ func (f *fakeRepository) LookupInstallationRequest(_ context.Context, _, key str
 }
 
 func (f *fakeRepository) ResolveActiveInstallation(_ context.Context, ownerUserID, projectID, installationID string) (domain.Installation, error) {
+	if f.resolveErr != nil {
+		return domain.Installation{}, f.resolveErr
+	}
 	installation, ok := f.byID[installationID]
 	if !ok || installation.OwnerUserID != ownerUserID || installation.ProjectID != projectID || installation.UninstalledAt != nil {
 		return domain.Installation{}, domain.ErrNotFound
@@ -52,7 +66,8 @@ func (f *fakeRepository) Install(_ context.Context, command ports.InstallCommand
 	return ports.InstallationResult{Installation: domain.Installation{
 		ID: command.NewInstallationID, OwnerUserID: command.OwnerUserID, ProjectID: command.ProjectID,
 		AppID: command.AppID, Version: command.Pinned.Version, ManifestDigest: command.Pinned.ManifestDigest,
-		InstalledAt: command.Now,
+		GrantRevision: 1,
+		InstalledAt:   command.Now,
 	}, ProjectRevision: command.ExpectedRevision + 1}, nil
 }
 
@@ -64,6 +79,61 @@ func (f *fakeRepository) Uninstall(_ context.Context, command ports.UninstallCom
 	tombstone := command.Now
 	installation.UninstalledAt = &tombstone
 	return ports.InstallationResult{Installation: installation, ProjectRevision: command.ExpectedRevision + 1}, nil
+}
+
+// SetAppGrants simulates the repository transaction contract: deterministic
+// no-op (key consumed, nothing moves) or the atomic real change (grant
+// revision +1, Project revision +1, exactly one grants-updated event and
+// outbox row, key consumed with the new snapshot).
+func (f *fakeRepository) SetAppGrants(_ context.Context, command ports.SetAppGrantsCommand) (ports.InstallationResult, error) {
+	f.setLog = append(f.setLog, command)
+	if f.setFn != nil {
+		return f.setFn(command)
+	}
+	installation, ok := f.byID[command.InstallationID]
+	if !ok || installation.OwnerUserID != command.OwnerUserID || installation.ProjectID != command.ProjectID || installation.UninstalledAt != nil {
+		return ports.InstallationResult{}, domain.ErrNotFound
+	}
+	if f.projectRevision != 0 && f.projectRevision != command.ExpectedRevision {
+		return ports.InstallationResult{}, domain.ErrConflict
+	}
+	if equalCanonicalGrants(installation.GrantedPermissions, command.GrantedPermissions) {
+		f.requests[command.IdempotencyKey] = ports.StoredInstallationRequest{
+			Command: "set-grants", RequestDigest: command.RequestDigest, InstallationID: installation.ID,
+			ProjectRevision:          command.ExpectedRevision,
+			ResultGrantedPermissions: installation.GrantedPermissions,
+			ResultGrantRevision:      installation.GrantRevision,
+		}
+		return ports.InstallationResult{Installation: installation, ProjectRevision: command.ExpectedRevision}, nil
+	}
+	installation.GrantedPermissions = command.GrantedPermissions
+	installation.GrantRevision++
+	f.byID[installation.ID] = installation
+	newRevision := command.ExpectedRevision + 1
+	f.projectRevision = newRevision
+	f.events = append(f.events, "project.app.grants.updated.v1")
+	f.outbox = append(f.outbox, "project.app.grants.updated.v1")
+	f.requests[command.IdempotencyKey] = ports.StoredInstallationRequest{
+		Command: "set-grants", RequestDigest: command.RequestDigest, InstallationID: installation.ID,
+		ProjectRevision:          newRevision,
+		ResultGrantedPermissions: installation.GrantedPermissions,
+		ResultGrantRevision:      installation.GrantRevision,
+	}
+	return ports.InstallationResult{Installation: installation, ProjectRevision: newRevision}, nil
+}
+
+// equalCanonicalGrants compares two already-canonical grant sets in the shape
+// the repository contract guarantees.
+func equalCanonicalGrants(stored, target []string) bool {
+	if len(stored) != len(target) {
+		return false
+	}
+	for index := range stored {
+		if stored[index] != target[index] {
+			return false
+		}
+	}
+	return true
 }
 
 func (f *fakeRepository) ListActive(_ context.Context, _, _, _ string, limit int) ([]domain.Installation, error) {

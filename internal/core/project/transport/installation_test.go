@@ -31,15 +31,27 @@ type stubInstallationRepository struct {
 	result ports.InstallationResult
 	err    error
 	items  []domain.Installation
-	listFn func(owner, project, cursor string, limit int) ([]domain.Installation, error)
+	// active backs the SetAppGrants authority read; zero means NotFound.
+	active     *domain.Installation
+	resolveErr error
+	listFn     func(owner, project, cursor string, limit int) ([]domain.Installation, error)
+	setResult  ports.InstallationResult
+	setErr     error
+	setCalls   int
 }
 
 func (r *stubInstallationRepository) LookupInstallationRequest(context.Context, string, string) (ports.StoredInstallationRequest, bool, error) {
 	return ports.StoredInstallationRequest{}, false, nil
 }
 
-func (*stubInstallationRepository) ResolveActiveInstallation(_ context.Context, _, _, _ string) (domain.Installation, error) {
-	return domain.Installation{}, domain.ErrNotFound
+func (r *stubInstallationRepository) ResolveActiveInstallation(_ context.Context, _, _, _ string) (domain.Installation, error) {
+	if r.resolveErr != nil {
+		return domain.Installation{}, r.resolveErr
+	}
+	if r.active == nil {
+		return domain.Installation{}, domain.ErrNotFound
+	}
+	return *r.active, nil
 }
 
 func (r *stubInstallationRepository) GetInstallation(context.Context, string, string) (domain.Installation, error) {
@@ -54,6 +66,11 @@ func (r *stubInstallationRepository) Uninstall(context.Context, ports.UninstallC
 	return r.result, r.err
 }
 
+func (r *stubInstallationRepository) SetAppGrants(_ context.Context, _ ports.SetAppGrantsCommand) (ports.InstallationResult, error) {
+	r.setCalls++
+	return r.setResult, r.setErr
+}
+
 func (r *stubInstallationRepository) ListActive(_ context.Context, ownerUserID, projectID, cursor string, limit int) ([]domain.Installation, error) {
 	if r.listFn != nil {
 		return r.listFn(ownerUserID, projectID, cursor, limit)
@@ -61,10 +78,14 @@ func (r *stubInstallationRepository) ListActive(_ context.Context, ownerUserID, 
 	return r.items, nil
 }
 
+// stubCatalog resolves the pinned version the transport fixtures install and
+// manage grants for, with a requested-permission ceiling.
 type stubCatalog struct{}
 
 func (stubCatalog) Resolve(context.Context, string, string, string) (domain.PinnedApp, error) {
-	return domain.PinnedApp{AppID: "board-app", Version: "1.2.0", ManifestDigest: "sha256:" + repeat("a", 64), Scope: "user"}, nil
+	pinned := domain.PinnedApp{AppID: "board-app", Version: "1.2.0", ManifestDigest: "sha256:" + repeat("a", 64), Scope: "user"}
+	pinned.Permissions = []string{"agent.event.watch", "agent.task.run", "artifact.read"}
+	return pinned, nil
 }
 
 type staticGenerator struct{}
@@ -255,6 +276,122 @@ func leaksInternals(message string) bool {
 		}
 	}
 	return false
+}
+
+// activeSetGrantsInstallation is the installation the SetAppGrants wire path
+// resolves: pinned exactly to the stubCatalog version and digest.
+func activeSetGrantsInstallation() *domain.Installation {
+	return &domain.Installation{
+		ID: installation, OwnerUserID: ownerID, ProjectID: projectID, AppID: "board-app",
+		Version: "1.2.0", ManifestDigest: "sha256:" + repeat("a", 64),
+		GrantedPermissions: []string{"agent.task.run"}, GrantRevision: 1,
+		InstalledAt: time.Now().UTC(),
+	}
+}
+
+func TestSetAppGrantsUnauthenticatedWithoutIdentity(t *testing.T) {
+	t.Parallel()
+	handler := newInstallationHandler(t, &stubInstallationRepository{})
+	_, err := handler.SetAppGrants(context.Background(), connect.NewRequest(&appv1.SetAppGrantsRequest{}))
+	if connect.CodeOf(err) != connect.CodeUnauthenticated {
+		t.Fatalf("set grants without identity must be Unauthenticated, got %v", err)
+	}
+}
+
+func TestSetAppGrantsMapsDomainErrorsToSanitizedCodes(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name     string
+		err      error
+		expected connect.Code
+	}{
+		{"invalid", domain.ErrInvalid, connect.CodeInvalidArgument},
+		{"malformed grant", domain.ErrInvalidGrant, connect.CodeInvalidArgument},
+		{"not requested", domain.ErrGrantNotRequested, connect.CodePermissionDenied},
+		{"missing project", domain.ErrNotFound, connect.CodeNotFound},
+		{"catalog denial", application.ErrAppNotInstallable, connect.CodeNotFound},
+		{"stale revision", domain.ErrConflict, connect.CodeAborted},
+		{"idempotency conflict", domain.ErrIdempotencyConflict, connect.CodeAborted},
+		{"store unavailable", ports.ErrStoreUnavailable, connect.CodeUnavailable},
+		{"invariant corruption", errors.New("stored installation grant facts are inconsistent"), connect.CodeInternal},
+		{"internal", errors.New("sql: constraint project_app_installations_pkey violated"), connect.CodeInternal},
+	}
+	for _, testCase := range cases {
+		repository := &stubInstallationRepository{active: activeSetGrantsInstallation(), setErr: testCase.err}
+		handler := newInstallationHandler(t, repository)
+		_, err := handler.SetAppGrants(withIdentity(context.Background()), connect.NewRequest(&appv1.SetAppGrantsRequest{
+			IdempotencyKey: "key", ProjectId: projectID, InstallationId: installation,
+			ExpectedProjectRevision: 4, GrantedPermissions: []string{"agent.task.run"},
+		}))
+		if connect.CodeOf(err) != testCase.expected {
+			t.Fatalf("%s: expected %v, got %v", testCase.name, testCase.expected, err)
+		}
+		if err != nil && leaksInternals(err.Error()) {
+			t.Errorf("%s: error leaked internals: %v", testCase.name, err)
+		}
+	}
+	// Grant-shape and shape-only failures never reach the repository.
+	shape := &stubInstallationRepository{active: activeSetGrantsInstallation()}
+	handler := newInstallationHandler(t, shape)
+	if _, err := handler.SetAppGrants(withIdentity(context.Background()), connect.NewRequest(&appv1.SetAppGrantsRequest{
+		IdempotencyKey: "key", ProjectId: projectID, InstallationId: installation,
+		ExpectedProjectRevision: 4, GrantedPermissions: []string{"agent.task.run", "agent.task.run"},
+	})); connect.CodeOf(err) != connect.CodeInvalidArgument {
+		t.Fatalf("duplicate grant must be InvalidArgument, got %v", err)
+	}
+	if shape.setCalls != 0 {
+		t.Fatal("malformed grant must not reach the repository")
+	}
+}
+
+func TestSetAppGrantsResponseProjectionCarriesGrantRevision(t *testing.T) {
+	t.Parallel()
+	installedAt := time.Now().UTC()
+	projected := ports.InstallationResult{
+		Installation: domain.Installation{
+			ID: installation, OwnerUserID: ownerID, ProjectID: projectID, AppID: "board-app",
+			Version: "1.2.0", ManifestDigest: "sha256:" + repeat("a", 64),
+			GrantedPermissions: []string{"agent.task.run", "artifact.read"}, GrantRevision: 2, InstalledAt: installedAt,
+		},
+		ProjectRevision: 5,
+	}
+	repository := &stubInstallationRepository{active: activeSetGrantsInstallation(), setResult: projected, result: projected}
+	handler := newInstallationHandler(t, repository)
+	response, err := handler.SetAppGrants(withIdentity(context.Background()), connect.NewRequest(&appv1.SetAppGrantsRequest{
+		IdempotencyKey: "key", ProjectId: projectID, InstallationId: installation,
+		ExpectedProjectRevision: 4, GrantedPermissions: []string{"agent.task.run", "artifact.read"},
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	proto := response.Msg.GetInstallation()
+	if proto.GetId() != installation || proto.GetGrantRevision() != 2 ||
+		!equalProtoGrants(proto.GetGrantedPermissions(), []string{"agent.task.run", "artifact.read"}) ||
+		response.Msg.GetProjectRevision() != 5 {
+		t.Fatalf("unexpected projection: %#v", proto)
+	}
+	// Every installation projection carries the epoch, including install.
+	install, err := handler.InstallApp(withIdentity(context.Background()), connect.NewRequest(&appv1.InstallAppRequest{
+		IdempotencyKey: "key", ProjectId: projectID, AppId: "board-app", ExpectedProjectRevision: 4,
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if install.Msg.GetInstallation().GetGrantRevision() != 2 {
+		t.Fatalf("install projection must carry the grant revision: %#v", install.Msg.GetInstallation())
+	}
+}
+
+func equalProtoGrants(actual, expected []string) bool {
+	if len(actual) != len(expected) {
+		return false
+	}
+	for index := range actual {
+		if actual[index] != expected[index] {
+			return false
+		}
+	}
+	return true
 }
 
 func repeat(value string, count int) string {

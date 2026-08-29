@@ -13,6 +13,7 @@ import (
 	commonv1 "github.com/yangtao121/workos/gen/go/workos/common/v1"
 	"github.com/yangtao121/workos/internal/core/project/application"
 	"github.com/yangtao121/workos/internal/core/project/domain"
+	"github.com/yangtao121/workos/internal/core/project/ports"
 	"github.com/yangtao121/workos/internal/platform/identity"
 )
 
@@ -93,18 +94,35 @@ func (h *InstallationHandler) ListInstalledApps(ctx context.Context, req *connec
 	}), nil
 }
 
-// SetAppGrants is the additive full-replacement grant command added with the
-// mutable-grants contract (ADR-0003). The Core application/repository wiring
-// is implemented by the follow-up vertical slice; until it lands this
-// handler fails closed with a fixed sanitized Unimplemented instead of
-// accepting or mutating anything.
+// SetAppGrants is the full-replacement grant command (ADR-0003). The owner
+// comes only from the identity context; the adjudication — canonical target,
+// exact pinned version subset ceiling, replay, revision arbitration — lives
+// in the application and repository.
 func (h *InstallationHandler) SetAppGrants(ctx context.Context, req *connect.Request[appv1.SetAppGrantsRequest]) (*connect.Response[appv1.SetAppGrantsResponse], error) {
-	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("SetAppGrants is not implemented yet"))
+	id, err := identity.FromContext(ctx)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeUnauthenticated, err)
+	}
+	result, err := h.service.SetAppGrants(ctx, application.SetAppGrantsInput{
+		OwnerUserID: id.UserID, IdempotencyKey: req.Msg.GetIdempotencyKey(),
+		ProjectID: req.Msg.GetProjectId(), InstallationID: req.Msg.GetInstallationId(),
+		ExpectedRevision:   req.Msg.GetExpectedProjectRevision(),
+		GrantedPermissions: req.Msg.GetGrantedPermissions(),
+	})
+	if err != nil {
+		return nil, mapInstallationError(err)
+	}
+	return connect.NewResponse(&appv1.SetAppGrantsResponse{
+		Installation: InstallationToProto(result.Installation), ProjectRevision: result.ProjectRevision,
+	}), nil
 }
 
 // mapInstallationError converts installation failures to Connect codes with
-// sanitized messages: no SQL, constraint names, catalog internals, or owner
-// details.
+// sanitized messages: no SQL, constraint names, catalog internals, grant
+// contents, or owner details. Stored-fact corruption and pinned-identity
+// drift fall through to the sanitized Internal default; a temporarily
+// unreachable Project store (or catalog dependency surfaced through the
+// neutral port as the same sentinel) stays a retryable Unavailable.
 func mapInstallationError(err error) error {
 	switch {
 	case errors.Is(err, domain.ErrInvalid):
@@ -121,18 +139,21 @@ func mapInstallationError(err error) error {
 		return connect.NewError(connect.CodeAborted, errors.New("idempotency key was already used for a different request"))
 	case errors.Is(err, domain.ErrConflict):
 		return connect.NewError(connect.CodeAborted, errors.New("project revision conflict"))
+	case errors.Is(err, ports.ErrStoreUnavailable):
+		return connect.NewError(connect.CodeUnavailable, errors.New("app installation service is temporarily unavailable"))
 	default:
 		return connect.NewError(connect.CodeInternal, errors.New("app installation operation failed"))
 	}
 }
 
 // InstallationToProto maps the installation domain entity to the public
-// projection, including the immutable grant snapshot.
+// projection, including the current canonical grant set and its epoch.
 func InstallationToProto(installation domain.Installation) *appv1.AppInstallation {
 	result := &appv1.AppInstallation{
 		Id: installation.ID, ProjectId: installation.ProjectID, AppId: installation.AppID,
 		Version: installation.Version, ManifestDigest: installation.ManifestDigest,
 		GrantedPermissions: installation.GrantedPermissions,
+		GrantRevision:      installation.GrantRevision,
 		InstalledAt:        timestamppb.New(installation.InstalledAt),
 	}
 	if installation.UninstalledAt != nil {

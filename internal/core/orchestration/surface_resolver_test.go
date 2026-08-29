@@ -29,7 +29,10 @@ func activeInstallation(appID, version, digest string) projectdomain.Installatio
 	return projectdomain.Installation{
 		ID: resolveInstance, OwnerUserID: resolveOwner, ProjectID: resolveProject,
 		AppID: appID, Version: version, ManifestDigest: digest,
-		InstalledAt: time.Now().UTC(),
+		// Post-mutable-grants rows always carry an epoch; fixtures default to
+		// the install-time epoch 1.
+		GrantRevision: 1,
+		InstalledAt:   time.Now().UTC(),
 	}
 }
 
@@ -99,8 +102,10 @@ func newResolver(installations *fakeInstallations, registry *fakeRegistry, artif
 
 func TestResolveWebBundleHappyPath(t *testing.T) {
 	t.Parallel()
+	current := activeInstallation("notes", "1.2.0", manifestDigest)
+	current.GrantRevision = 4
 	resolver := newResolver(
-		&fakeInstallations{installation: activeInstallation("notes", "1.2.0", manifestDigest)},
+		&fakeInstallations{installation: current},
 		&fakeRegistry{resolution: bundleResolution(manifestDigest)},
 		&fakeArtifacts{summary: artifactapp.BundleSummary{Entrypoint: "index.html"}},
 	)
@@ -112,6 +117,11 @@ func TestResolveWebBundleHappyPath(t *testing.T) {
 		descriptor.ManifestDigest != manifestDigest || descriptor.ArtifactID != resolveArtifactID ||
 		descriptor.ArtifactDigest != artifactDigest || descriptor.Entrypoint != "index.html" {
 		t.Fatalf("unexpected descriptor: %+v", descriptor)
+	}
+	// The authoritative grant epoch rides along with the grant set so the
+	// runtime can persist both into the surface session.
+	if descriptor.GrantRevision != 4 {
+		t.Fatalf("descriptor must carry the installation grant revision, got %d", descriptor.GrantRevision)
 	}
 }
 

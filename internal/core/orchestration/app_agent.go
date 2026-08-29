@@ -24,6 +24,14 @@ const (
 // sanitized PermissionDenied.
 var ErrAppNotGranted = errors.New("app capability is not granted")
 
+// ErrAppGrantStale marks a private run/watch call whose session-derived grant
+// revision no longer equals the active installation's current epoch — the
+// immediate-revocation verdict of ADR-0003. It is deliberately the same
+// verdict for a mismatch and for an absent (<= 0) revision so no caller can
+// distinguish why the epoch check failed, and the sanitized message never
+// reveals the current revision or grants.
+var ErrAppGrantStale = errors.New("app surface session grant revision is stale")
+
 // errAppGrantCorrupt marks a stored grant snapshot containing a capability ID
 // outside the canonical vocabulary. Like every immutable-invariant drift it is
 // a sanitized Internal verdict, never a silent downgrade.
@@ -60,9 +68,12 @@ func NewAppAgentService(installations installationSource, tasks AppTaskGateway) 
 // RunAgentTask authorizes one project-scoped App task submission and routes it
 // through the Task Router. The canonical request digest covers only the
 // bounded client input (role, goal); replay returns the first provider
-// snapshot without re-resolving the binding.
-func (s *AppAgentService) RunAgentTask(ctx context.Context, ownerUserID, projectID, appInstanceID, clientKey, role, goal string) (agentdomain.Task, error) {
-	if _, err := s.authorize(ctx, ownerUserID, projectID, appInstanceID, AppBridgeCapabilityAgentTaskRun); err != nil {
+// snapshot without re-resolving the binding. installationGrantRevision is the
+// session-persisted epoch derived by the runtime from its validated surface
+// session; it is compared for exact equality against the re-resolved active
+// installation on every call, never trusted.
+func (s *AppAgentService) RunAgentTask(ctx context.Context, ownerUserID, projectID, appInstanceID string, installationGrantRevision int64, clientKey, role, goal string) (agentdomain.Task, error) {
+	if _, err := s.authorize(ctx, ownerUserID, projectID, appInstanceID, installationGrantRevision, AppBridgeCapabilityAgentTaskRun); err != nil {
 		return agentdomain.Task{}, err
 	}
 	return s.tasks.SubmitForApp(ctx, agentapp.AppSubmitInput{
@@ -79,9 +90,12 @@ func (s *AppAgentService) RunAgentTask(ctx context.Context, ownerUserID, project
 // WatchAgentTaskEvents authorizes one App event watch: same owner, same
 // project, and a task whose durable provenance maps to exactly this app
 // installation. Knowing a task ID string grants nothing. The returned task
-// carries the state and last event sequence the stream loop needs.
-func (s *AppAgentService) WatchAgentTaskEvents(ctx context.Context, ownerUserID, projectID, appInstanceID, taskID string, after int64, limit int) (agentdomain.Task, []agentdomain.Event, error) {
-	if _, err := s.authorize(ctx, ownerUserID, projectID, appInstanceID, AppBridgeCapabilityAgentEventWatch); err != nil {
+// carries the state and last event sequence the stream loop needs. Every
+// polling round re-runs the full authorization including the grant-revision
+// equality check, so a real grant change terminates the stream on the next
+// round instead of streaming new events to the old epoch.
+func (s *AppAgentService) WatchAgentTaskEvents(ctx context.Context, ownerUserID, projectID, appInstanceID string, installationGrantRevision int64, taskID string, after int64, limit int) (agentdomain.Task, []agentdomain.Event, error) {
+	if _, err := s.authorize(ctx, ownerUserID, projectID, appInstanceID, installationGrantRevision, AppBridgeCapabilityAgentEventWatch); err != nil {
 		return agentdomain.Task{}, nil, err
 	}
 	task, mappedProject, err := s.tasks.GetAppTask(ctx, ownerUserID, appInstanceID, taskID)
@@ -102,15 +116,24 @@ func (s *AppAgentService) WatchAgentTaskEvents(ctx context.Context, ownerUserID,
 
 // authorize walks the authoritative chain shared by both bridge methods:
 // canonical capability, active same-owner installation under a non-archived
-// project, and the exact grant. Every verdict here is derived from Core
-// facts, never from the runtime's snapshot.
-func (s *AppAgentService) authorize(ctx context.Context, ownerUserID, projectID, appInstanceID, capability string) (projectdomain.Installation, error) {
+// project, the session-derived grant epoch, and the exact grant. Every
+// verdict here is derived from Core facts, never from the runtime's snapshot.
+// The epoch comparison precedes grant validation so any real grant change —
+// even one that keeps the requested capability in the new set — fails every
+// method of an old session (ADR-0003).
+func (s *AppAgentService) authorize(ctx context.Context, ownerUserID, projectID, appInstanceID string, installationGrantRevision int64, capability string) (projectdomain.Installation, error) {
 	if ownerUserID == "" || !appregistrydomain.KnownPermission(capability) {
 		return projectdomain.Installation{}, projectdomain.ErrInvalid
 	}
 	installation, err := s.installations.ResolveActiveInstallation(ctx, ownerUserID, projectID, appInstanceID)
 	if err != nil {
 		return projectdomain.Installation{}, err
+	}
+	// A private request can only carry a revision derived from a validated
+	// session snapshot. Absent (<= 0) and mismatched revisions are the same
+	// indistinguishable stale verdict; the current revision never leaks.
+	if installationGrantRevision <= 0 || installation.GrantRevision != installationGrantRevision {
+		return projectdomain.Installation{}, ErrAppGrantStale
 	}
 	if err := validateStoredGrant(installation.GrantedPermissions); err != nil {
 		return projectdomain.Installation{}, err
