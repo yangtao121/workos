@@ -202,3 +202,9 @@ func TestRuntimeAssetOutageServes503(t *testing.T) {
 		t.Fatalf("outage response lost the sandbox directive: %q", csp)
 	}
 }
+
+func (silentResolver) ResolveSurfaceLaunch(context.Context, surfaceports.ResolveQuery) (surfaceports.ResolvedLaunch, error) {
+	// The outage tests wire web-bundle paths only; a silent resolver stays
+	// equally unreachable on the generic resolution path.
+	return surfaceports.ResolvedLaunch{}, surfaceports.ErrResolverUnavailable
+}

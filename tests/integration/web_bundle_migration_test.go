@@ -54,6 +54,12 @@ func TestAllMigrationChecksumsArePinned(t *testing.T) {
 		"010_surface_bridge_tokens.sql":                  bridgeToken010,
 		"011_mutable_project_app_grants.sql":             mutableGrants011,
 		"012_surface_grant_revision.sql":                 surfaceGrant012,
+		"013_project_create_requests.sql":                "18de5d8271d669cbc7ca1aa0440927f792a1b555dc96208507369d8942691210",
+		"014_agent_app_policy_quota.sql":                 "dd92c010d10192c432cb17d2b75222fae608c7bfbde79d240917c4eb7aa65f4a",
+		// 015/016 are this slice's pristine additions (ADR-0006); everything
+		// above them must stay byte-identical.
+		"015_runtime_workloads.sql":     "5920e2ed23dd3b68cd79cc92d6244f0e275a288373887f90b4df19519f996775",
+		"016_reliability_incidents.sql": "468f0d888b31bb0fff6a5c6c84129bb6063ee9bfad6338834621204236280f9c",
 	}
 	for name, want := range pinned {
 		if got := migrationFileChecksum(t, name); got != want {

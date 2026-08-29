@@ -344,9 +344,11 @@ func TestWebBundleSurfaceVerticalSlice(t *testing.T) {
 			t.Fatalf("surface key conflict verdict: %v", conflict)
 		}
 		// A declared-but-unimplemented renderer is a stable InvalidArgument
-		// that consumes nothing: the same key then opens with the implemented
+		// that consumes nothing; an implemented renderer that mismatches the
+		// pinned descriptor (web-service on a web-bundle app) is a stable
+		// FailedPrecondition. The same key then opens with the implemented
 		// renderer.
-		_, unsupported := surfaces.CreateSurface(ctx, connect.NewRequest(&surfacev1.CreateSurfaceRequest{
+		_, mismatched := surfaces.CreateSurface(ctx, connect.NewRequest(&surfacev1.CreateSurfaceRequest{
 			IdempotencyKey:    fmt.Sprintf("surface-renderer-%d", stamp),
 			AppInstanceId:     installation.GetId(),
 			ProjectId:         project.GetId(),
@@ -354,8 +356,8 @@ func TestWebBundleSurfaceVerticalSlice(t *testing.T) {
 			Viewport:          &surfacev1.Viewport{Width: 1280, Height: 800, PixelRatio: 2},
 			PreferredRenderer: surfacev1.SurfaceRenderer_SURFACE_RENDERER_WEB_SERVICE,
 		}))
-		if connect.CodeOf(unsupported) != connect.CodeInvalidArgument {
-			t.Fatalf("web-service renderer verdict: %v", unsupported)
+		if connect.CodeOf(mismatched) != connect.CodeFailedPrecondition {
+			t.Fatalf("web-service renderer verdict: %v", mismatched)
 		}
 		declared, err := surfaces.CreateSurface(ctx, connect.NewRequest(&surfacev1.CreateSurfaceRequest{
 			IdempotencyKey:    fmt.Sprintf("surface-renderer-%d", stamp),
@@ -587,18 +589,44 @@ func TestWebBundleSurfaceVerticalSlice(t *testing.T) {
 
 	t.Run("LegacyAppsHaveNoSurface", func(t *testing.T) {
 		legacyID := fmt.Sprintf("bundle-legacy-%d", stamp)
-		registerApp(t, ctx, appRegistryClients(t), legacyID, "Legacy", "1.0.0", "user")
+		// A runtime profile with no supported surface descriptor: the app
+		// registers and installs, but CreateSurface fails closed.
+		legacyManifest := fmt.Sprintf(`apiVersion: workos.app/v1
+id: %s
+name: Legacy
+version: 1.0.0
+scope: user
+runtime:
+  type: background-service
+  command: ["python", "board.py"]
+surfaces:
+  - id: board
+    renderer: declarative
+    adaptive: true
+permissions: [project.read]
+resources: {}
+health: {}
+maintainer: {}
+`, legacyID)
+		registerResponse, err := appRegistryClients(t).RegisterApp(ctx, connect.NewRequest(&appv1.RegisterAppRequest{
+			IdempotencyKey: fmt.Sprintf("legacy-register-%d", stamp),
+			ManifestYaml:   []byte(legacyManifest),
+		}))
+		if err != nil {
+			t.Fatalf("register legacy app: %v", err)
+		}
+		_ = registerResponse
 		legacyProject := createIntegrationProject(t, ctx, projects, "Web Bundle Legacy", fmt.Sprintf("surface-legacy-project-%d", stamp))
 		legacyInstallation := installApp(t, ctx, installations, fmt.Sprintf("surface-legacy-install-%d", stamp), legacyProject.GetId(), legacyID, "", legacyProject.GetRevision())
-		_, err := surfaces.CreateSurface(ctx, connect.NewRequest(&surfacev1.CreateSurfaceRequest{
+		_, legacyErr := surfaces.CreateSurface(ctx, connect.NewRequest(&surfacev1.CreateSurfaceRequest{
 			IdempotencyKey: fmt.Sprintf("surface-legacy-open-%d", stamp),
 			AppInstanceId:  legacyInstallation.GetId(),
 			ProjectId:      legacyProject.GetId(),
 			DeviceClass:    surfacev1.DeviceClass_DEVICE_CLASS_DESKTOP,
 			Viewport:       &surfacev1.Viewport{Width: 1280, Height: 800, PixelRatio: 1},
 		}))
-		if connect.CodeOf(err) != connect.CodeFailedPrecondition {
-			t.Fatalf("legacy app surface verdict: %v", err)
+		if connect.CodeOf(legacyErr) != connect.CodeFailedPrecondition {
+			t.Fatalf("legacy app surface verdict: %v", legacyErr)
 		}
 	})
 }

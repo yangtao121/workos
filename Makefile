@@ -20,7 +20,7 @@ NODE_RUN := docker run --rm $(USER_FLAGS) -e COREPACK_NPM_REGISTRY=$(NPM_REGISTR
 BUF_RUN := docker run --rm $(USER_FLAGS) $(MOUNT) $(BUF_IMAGE)
 SQLC_RUN := docker run --rm $(USER_FLAGS) -v $(CURDIR):/src -w /src $(SQLC_IMAGE)
 
-.PHONY: bootstrap generate docs check check-native proto-check go-check web-check test test-integration test-deepseek-fixture e2e-image test-e2e build web-build scaffold-module dev down logs clean
+.PHONY: bootstrap generate docs check check-native proto-check go-check web-check test test-integration test-deepseek-fixture e2e-image test-e2e test-podman-fixture build web-build scaffold-module dev down logs clean
 
 bootstrap:
 	@docker version >/dev/null
@@ -120,6 +120,18 @@ e2e-image:
 		--build-arg PLAYWRIGHT_VERSION=$(PLAYWRIGHT_VERSION) \
 		-t $(E2E_IMAGE) \
 		-f deploy/e2e/Dockerfile deploy/e2e
+
+# The opt-in REAL rootless Podman + cgroup v2 gate (ADR-0006). It fails
+# loudly — never silently passes — on hosts without verified rootless
+# capability: the real container/cgroup/Incident evidence cannot be produced
+# without it.
+test-podman-fixture:
+	@command -v podman >/dev/null 2>&1 || { \
+		echo "test-podman-fixture: BLOCKED — podman is not available on this host."; \
+		echo "Install rootless podman (with unprivileged user namespaces and cgroup v2) and re-run."; \
+		exit 1; \
+	}
+	$(GO_HOST_RUN) go test -tags=podmanfixture -count=1 -v ./tests/podmanfixture
 
 test-e2e: e2e-image
 	docker compose up -d --build postgres bootstrap workos-core harness-host runtime-host workos-gateway
