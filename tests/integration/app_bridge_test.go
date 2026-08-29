@@ -614,6 +614,9 @@ func newSurfaceApplication(repository surfaceports.SessionRepository) (*surfacea
 		ManifestDigest: "sha256:" + strings.Repeat("3", 64),
 		ArtifactID:     newUUIDForTest(97), ArtifactDigest: "sha256:" + strings.Repeat("4", 64),
 		Entrypoint: "index.html",
+		// ADR-0003: the resolver's authoritative grant epoch must be >= 1;
+		// the static fixture pins the initial epoch exactly like Core does.
+		GrantRevision: 1,
 	}}, ids.UUIDv7{}, 15*time.Minute)
 }
 
@@ -772,6 +775,7 @@ func TestAgentStoreOutageIsUnavailableNotInternal(t *testing.T) {
 			AppID: "outage-app", Version: "1.0.0",
 			ManifestDigest:     "sha256:" + strings.Repeat("5", 64),
 			GrantedPermissions: []string{"agent.event.watch", "agent.task.run"},
+			GrantRevision:      1,
 		}
 		return installation
 	}()}
@@ -790,6 +794,10 @@ func TestAgentStoreOutageIsUnavailableNotInternal(t *testing.T) {
 	request := connect.NewRequest(&agentv1.RunAgentTaskRequest{
 		ProjectId: installations.installation.ProjectID, AppInstanceId: installations.installation.ID,
 		ClientIdempotencyKey: "outage-key", Goal: "goal",
+		// The private epoch field stands in for the runtime's validated
+		// session snapshot; it must match the installation's epoch so the
+		// outage under test is the Agent store, not the epoch check.
+		InstallationGrantRevision: 1,
 	})
 	request.Header().Set(identity.UserHeader, installations.installation.OwnerUserID)
 	request.Header().Set(identity.DeviceHeader, newUUIDForTest(304))
@@ -848,6 +856,7 @@ EXECUTE FUNCTION workos_events.raise_outbox_outage()`); err != nil {
 		AppID: "outbox-outage-app", Version: "1.0.0",
 		ManifestDigest:     "sha256:" + strings.Repeat("6", 64),
 		GrantedPermissions: []string{"agent.event.watch", "agent.task.run"},
+		GrantRevision:      1,
 	}
 	// agent_tasks references users and projects; seed both rows the way the
 	// acceptance volume bootstrap does, so the transaction proceeds past
@@ -885,6 +894,9 @@ EXECUTE FUNCTION workos_events.raise_outbox_outage()`); err != nil {
 		request := connect.NewRequest(&agentv1.RunAgentTaskRequest{
 			ProjectId: installation.ProjectID, AppInstanceId: installation.ID,
 			ClientIdempotencyKey: "outbox-outage-key", Goal: "goal under outbox outage",
+			// Match the installation's epoch so the injected failure is the
+			// outbox append, not the grant-epoch check.
+			InstallationGrantRevision: 1,
 		})
 		request.Header().Set(identity.UserHeader, installation.OwnerUserID)
 		request.Header().Set(identity.DeviceHeader, newUUIDForTest(333))

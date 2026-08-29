@@ -727,6 +727,70 @@ describe("App Library permissions", () => {
     expect(screen.queryByRole("checkbox", { name: "artifact.read" })).toBeNull();
   });
 
+  it("re-resolves fresh grant facts before opening the permission editor", async () => {
+    const user = userEvent.setup();
+    // The library row is a stale cache entry from before a grant change in
+    // another tab: it still shows the epoch-1 [run] grant, while the server
+    // already holds an empty grant at epoch 2 and a later project revision.
+    const staleRow = installation("installation-1", "board-app", "1.9.0", {
+      grantedPermissions: ["agent.task.run"],
+      grantRevision: 1n,
+    });
+    const freshRow = installation("installation-1", "board-app", "1.9.0", {
+      grantedPermissions: [],
+      grantRevision: 2n,
+    });
+    const installedPage = (rows: AppInstallation[]): ListInstalledAppsResponse => ({
+      $typeName: "workos.app.v1.ListInstalledAppsResponse",
+      installations: rows,
+      page: { $typeName: "workos.common.v1.PageResponse", nextPageToken: "" },
+    });
+    const listInstalledApps = vi.fn();
+    listInstalledApps
+      .mockReturnValueOnce(Promise.resolve(installedPage([staleRow])))
+      .mockReturnValue(Promise.resolve(installedPage([freshRow])));
+    const onProjectRefreshed = vi.fn();
+    const clients = clientsFixture({
+      apps: [app("board-app", "1.9.0", ["agent.task.run", "agent.event.watch"])],
+      installations: [staleRow],
+      getApp: vi.fn(() =>
+        Promise.resolve({
+          $typeName: "workos.app.v1.GetAppResponse",
+          app: app("board-app", "1.9.0", ["agent.task.run", "agent.event.watch"]),
+        } satisfies GetAppResponse),
+      ),
+      listInstalledApps,
+      getProject: vi.fn(() => Promise.resolve({ project: project("project-1", 3n) })),
+    });
+    render(
+      <AppLibrary
+        project={project("project-1", 2n)}
+        workosClients={clients}
+        onProjectRefreshed={onProjectRefreshed}
+        onSurfaceOpened={() => undefined}
+        onInstallationRemoved={() => undefined}
+      />,
+    );
+    await screen.findByText("Granted: agent.task.run · grant revision 1");
+
+    await user.click(screen.getByRole("button", { name: "Manage permissions" }));
+    const dialog = await screen.findByRole("dialog");
+    // The editor seeds from the server's current facts, not the stale row:
+    // empty checkboxes at grant revision 2, and the row itself refreshes.
+    expect(within(dialog).getByText(/Current grant revision 2/)).toBeTruthy();
+    expect(
+      within(dialog)
+        .getByRole("checkbox", { name: "agent.task.run" })
+        .matches('input[type="checkbox"]:not(:checked)'),
+    ).toBeTruthy();
+    await waitFor(() => {
+      expect(onProjectRefreshed).toHaveBeenCalledWith(
+        expect.objectContaining({ revision: 3n }) as unknown as Project,
+      );
+    });
+    expect(await screen.findByText("Granted: none · grant revision 2")).toBeTruthy();
+  });
+
   it("keeps installed-but-catalog-unavailable rows removable without guessing a requested set", async () => {
     const user = userEvent.setup();
     const uninstallApp = vi.fn(() =>
@@ -826,6 +890,13 @@ describe("App Library permissions", () => {
       getProject: vi.fn(() => Promise.resolve({ project: project("project-1", 3n) })),
       listInstalledApps: vi
         .fn()
+        // Initial library load and the dialog-opening fresh read both see
+        // the granted epoch-1 row; only the post-save read sees revocation.
+        .mockResolvedValueOnce({
+          $typeName: "workos.app.v1.ListInstalledAppsResponse",
+          installations: [boardGranted, notesInstalled],
+          page: { $typeName: "workos.common.v1.PageResponse", nextPageToken: "" },
+        } satisfies ListInstalledAppsResponse)
         .mockResolvedValueOnce({
           $typeName: "workos.app.v1.ListInstalledAppsResponse",
           installations: [boardGranted, notesInstalled],

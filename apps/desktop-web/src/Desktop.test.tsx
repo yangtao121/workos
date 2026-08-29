@@ -867,6 +867,18 @@ describe("app surface windows", () => {
         ],
         page: { nextPageToken: "" },
       })
+      // The dialog-opening fresh read still sees the granted epoch-1 row;
+      // only the post-save reads see the revocation.
+      .mockResolvedValueOnce({
+        installations: [
+          {
+            ...installedApp("board-app", "installation-board", "p1"),
+            grantedPermissions: ["agent.task.run"],
+          },
+          installedApp("notes-app", "installation-notes", "p1"),
+        ],
+        page: { nextPageToken: "" },
+      })
       .mockResolvedValue({
         installations: [
           {

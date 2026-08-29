@@ -138,6 +138,39 @@ export function AppLibrary({
     [applyFacts, readFacts],
   );
 
+  // Opening the permission editor always resolves fresh server facts first:
+  // the row being edited may be a stale cache entry from before a grant
+  // change in another tab or on another device, and both the checkbox seed
+  // and the Save's expected revision must describe the installation's
+  // current grant, not the moment this library last listed it.
+  const openingManageRef = useRef(false);
+  const openManaging = useCallback(
+    async (row: AppInstallation) => {
+      if (openingManageRef.current) return;
+      openingManageRef.current = true;
+      try {
+        const facts = await readFacts();
+        const fresh = facts.installations.find((item) => item.id === row.id);
+        if (!fresh) {
+          // The installation vanished (e.g. uninstalled elsewhere): adopt the
+          // fresh facts and never open an editor for a gone installation.
+          applyFacts(facts);
+          setFeedback({ text: "The app is no longer installed.", isError: true });
+          return;
+        }
+        applyFacts(facts);
+        setManaging(fresh);
+      } catch {
+        // Facts unavailable: edit from the cached row. The server still
+        // arbitrates the Save, and a revision conflict reloads fresh facts.
+        setManaging(row);
+      } finally {
+        openingManageRef.current = false;
+      }
+    },
+    [applyFacts, readFacts],
+  );
+
   const runMutation = useCallback(
     async (appId: string, mutation: (revision: bigint) => Promise<void>) => {
       setBusyAppIds((current) => ({ ...current, [appId]: true }));
@@ -350,7 +383,7 @@ export function AppLibrary({
                       disabled={busy || openingAppIds[app.id] === true}
                       onClick={() => {
                         setFeedback(undefined);
-                        setManaging(installation);
+                        void openManaging(installation);
                       }}
                       type="button"
                     >

@@ -320,7 +320,8 @@ func TestSurfaceSessionRepositoryDurability(t *testing.T) {
 		IdempotencyKey: "durable-key", RequestDigest: "sha256:" + strings.Repeat("c", 64),
 		ProjectID: newUUIDForTest(55), AppInstanceID: newUUIDForTest(56),
 		Renderer: surfacedomain.RendererWebBundle, Descriptor: descriptor,
-		Path: "", CreatedAt: now, ExpiresAt: now.Add(15 * time.Minute),
+		InstallationGrantRevision: 1,
+		Path:                      "", CreatedAt: now, ExpiresAt: now.Add(15 * time.Minute),
 	}
 	session.Path = surfacedomain.SessionPath(session.ID)
 	created, err := repository.Create(ctx, surfaceports.CreateSessionCommand{
@@ -406,7 +407,8 @@ func TestSurfaceSessionRepositoryConcurrency(t *testing.T) {
 				ArtifactID:     newUUIDForTest(66), ArtifactDigest: "sha256:" + strings.Repeat("b", 64),
 				Entrypoint: "index.html",
 			},
-			CreatedAt: now, ExpiresAt: now.Add(15 * time.Minute),
+			InstallationGrantRevision: 1,
+			CreatedAt:                 now, ExpiresAt: now.Add(15 * time.Minute),
 		}
 		session.Path = surfacedomain.SessionPath(session.ID)
 		return session
@@ -599,7 +601,8 @@ func TestSurfaceSessionCreateCloseAssetRace(t *testing.T) {
 			ArtifactID:     newUUIDForTest(86), ArtifactDigest: "sha256:" + strings.Repeat("b", 64),
 			Entrypoint: "index.html",
 		},
-		CreatedAt: now, ExpiresAt: now.Add(15 * time.Minute),
+		InstallationGrantRevision: 1,
+		CreatedAt:                 now, ExpiresAt: now.Add(15 * time.Minute),
 	}
 	session.Path = surfacedomain.SessionPath(session.ID)
 	if _, err := repository.Create(ctx, surfaceports.CreateSessionCommand{

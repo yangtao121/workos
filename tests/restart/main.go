@@ -36,9 +36,12 @@ func main() {
 	}
 }
 
+// usage documents every acceptance-helper subcommand.
+const usage = "usage: restart seed | restart verify TASK_ID | restart app-seed | restart app-verify APP_ID_A APP_ID_B | restart install-seed | restart install-verify PROJECT_ID INSTALLATION_ID KEY APP_ID SEED_REVISION | restart surface-seed | restart surface-verify SESSION_URL SESSION_ID PROJECT_ID INSTALLATION_ID KEY | restart bridge-seed | restart bridge-verify TOKEN TASK_ID KEY | restart grants-seed | restart grants-verify TOKEN PROJECT_ID INSTALLATION_ID SURFACE_KEY SET_KEY SET_PROJECT_REVISION"
+
 func run() error {
 	if len(os.Args) < 2 {
-		return errors.New("usage: restart seed | restart verify TASK_ID | restart app-seed | restart app-verify APP_ID_A APP_ID_B | restart install-seed | restart install-verify PROJECT_ID INSTALLATION_ID KEY APP_ID SEED_REVISION | restart surface-seed | restart surface-verify SESSION_URL SESSION_ID PROJECT_ID INSTALLATION_ID KEY | restart bridge-seed | restart bridge-verify TOKEN TASK_ID KEY")
+		return errors.New(usage)
 	}
 	baseURL := os.Getenv("WORKOS_TEST_URL")
 	if baseURL == "" {
@@ -82,8 +85,19 @@ func run() error {
 			return errors.New("bridge-verify requires TOKEN TASK_ID KEY")
 		}
 		return bridgeVerify(ctx, client, baseURL, os.Args[2], os.Args[3], os.Args[4])
+	case "grants-seed":
+		return grantsSeed(ctx, client, baseURL)
+	case "grants-verify":
+		if len(os.Args) != 8 {
+			return errors.New("grants-verify requires TOKEN PROJECT_ID INSTALLATION_ID SURFACE_KEY SET_KEY SET_PROJECT_REVISION")
+		}
+		setRevision, err := strconv.ParseInt(os.Args[7], 10, 64)
+		if err != nil || setRevision <= 1 {
+			return errors.New("grants-verify requires TOKEN PROJECT_ID INSTALLATION_ID SURFACE_KEY SET_KEY SET_PROJECT_REVISION")
+		}
+		return grantsVerify(ctx, client, baseURL, os.Args[2], os.Args[3], os.Args[4], os.Args[5], os.Args[6], setRevision)
 	default:
-		return errors.New("usage: restart seed | restart verify TASK_ID | restart app-seed | restart app-verify APP_ID_A APP_ID_B | restart install-seed | restart install-verify PROJECT_ID INSTALLATION_ID KEY APP_ID SEED_REVISION | restart surface-seed | restart surface-verify SESSION_URL SESSION_ID PROJECT_ID INSTALLATION_ID KEY | restart bridge-seed | restart bridge-verify TOKEN TASK_ID KEY")
+		return errors.New(usage)
 	}
 }
 

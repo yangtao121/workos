@@ -169,17 +169,28 @@ maintainer: {}
     timeout: 90_000,
   });
 
-  // Tab 2 (same browser identity, so the same owner and project space):
-  // revoke every permission from the Manage-permissions dialog. The dialog
-  // edits the exact pinned version and starts from the current grant.
+  // Tab 2 (same browser identity, so the same owner): revoke every
+  // permission from the Manage-permissions dialog. The dialog edits the exact
+  // pinned version and starts from the current grant. A new tab starts with
+  // its own sessionStorage and the sidebar lists only the first project
+  // page, so the card of this run's project need not be rendered at all;
+  // seeding the app's own persisted-selection key lands the tab on the
+  // project directly (the desktop resolves a stored id via GetProject even
+  // beyond the first page — its supported reload path).
+  const activeProjectId = await page.evaluate(() =>
+    window.sessionStorage.getItem("workos.activeProjectId"),
+  );
+  expect(activeProjectId).toBeTruthy();
   const pageTwo = await page.context().newPage();
+  await pageTwo.addInitScript((id: string | null) => {
+    if (id !== null) {
+      window.sessionStorage.setItem("workos.activeProjectId", id);
+    }
+  }, activeProjectId);
   await pageTwo.goto("/");
-  // A new tab has its own sessionStorage, so the desktop opens onto the
-  // first-listed project: select this test's project card explicitly.
-  await pageTwo
-    .locator(".mission-control")
-    .getByRole("button", { name: new RegExp(`E2E Grants ${stamp}`) })
-    .click();
+  await expect(pageTwo.locator(".project-switcher")).toContainText(`E2E Grants ${stamp}`, {
+    timeout: libraryTimeout,
+  });
   await pageTwo.getByRole("button", { name: "App Library" }).click();
   const rowTwo = pageTwo.locator(".app-library .app-row", { hasText: appId });
   await expect(rowTwo.getByText(/grant revision 1/)).toBeVisible({ timeout: libraryTimeout });
@@ -241,6 +252,9 @@ maintainer: {}
     timeout: libraryTimeout,
   });
   await expect(row.getByText(/grant revision 3/)).toBeVisible({ timeout: libraryTimeout });
+  // Dismiss the saved dialog before reopening the surface.
+  await manageAgain.getByRole("button", { name: "Close" }).click();
+  await expect(manageAgain).not.toBeVisible();
 
   // Reopen: the fresh surface carries the new grant epoch, and the very same
   // bridge flow reaches a Fake Harness terminal event again.
