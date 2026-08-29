@@ -83,7 +83,7 @@ describe("HarnessSettings", () => {
     expect(fakeCapabilities.getByText("Approvals").nextElementSibling?.textContent).toBe(
       "unavailable",
     );
-    expect(fakeCapabilities.getAllByRole("listitem")).toHaveLength(11);
+    expect(fakeCapabilities.getAllByRole("listitem")).toHaveLength(13);
   });
 
   it("keeps an unknown current binding visible and never renders credential data", async () => {
@@ -315,6 +315,8 @@ function provider(
       workspaceMount: false,
       structuredArtifacts: false,
       usageReporting: false,
+      hardTokenBudget: false,
+      hardRuntimeDeadline: false,
       ...enabled,
     },
   };

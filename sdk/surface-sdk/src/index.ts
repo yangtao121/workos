@@ -96,6 +96,8 @@ export type BridgeErrorCode =
   | "permission_denied"
   | "not_found"
   | "aborted"
+  | "failed_precondition"
+  | "resource_exhausted"
   | "unavailable"
   | "internal"
   | "timeout"
@@ -110,6 +112,8 @@ export const BRIDGE_ERROR_MESSAGES: Record<BridgeErrorCode, string> = {
   permission_denied: "This app does not have that capability.",
   not_found: "The task is not available to this app.",
   aborted: "The idempotency key was already used for a different request.",
+  failed_precondition: "The task cannot start right now.",
+  resource_exhausted: "The task allowance is exhausted for today.",
   unavailable: "The bridge is temporarily unavailable.",
   internal: "The bridge failed unexpectedly.",
   timeout: "The bridge request timed out.",

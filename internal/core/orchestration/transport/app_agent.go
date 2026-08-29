@@ -141,8 +141,14 @@ func mapAppAgentError(err error) error {
 		return connect.NewError(connect.CodePermissionDenied, errors.New("app capability is not granted"))
 	case errors.Is(err, orchestration.ErrAppGrantStale):
 		return connect.NewError(connect.CodePermissionDenied, errors.New("app surface session is no longer authorized"))
-	case errors.Is(err, domain.ErrIdempotencyConflict):
+	case errors.Is(err, domain.ErrIdempotencyConflict), errors.Is(err, domain.ErrPolicyStale):
 		return connect.NewError(connect.CodeAborted, errors.New("idempotency key was already used for a different request"))
+	case errors.Is(err, domain.ErrPolicyBlocksRuns):
+		return connect.NewError(connect.CodePermissionDenied, errors.New("app policy blocks new runs"))
+	case errors.Is(err, domain.ErrApprovalNotPending), errors.Is(err, domain.ErrProviderCapabilityMissing):
+		return connect.NewError(connect.CodeFailedPrecondition, errors.New("app task cannot start right now"))
+	case errors.Is(err, domain.ErrQuotaExhausted), errors.Is(err, domain.ErrQuotaBreached):
+		return connect.NewError(connect.CodeResourceExhausted, errors.New("app agent daily quota is exhausted"))
 	case errors.Is(err, projectports.ErrStoreUnavailable), errors.Is(err, agentports.ErrStoreUnavailable):
 		return connect.NewError(connect.CodeUnavailable, errors.New("app agent service is temporarily unavailable"))
 	default:

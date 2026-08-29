@@ -36,6 +36,13 @@ type HarnessCapabilities struct {
 	WorkspaceMount      bool                   `protobuf:"varint,9,opt,name=workspace_mount,json=workspaceMount,proto3" json:"workspace_mount,omitempty"`
 	StructuredArtifacts bool                   `protobuf:"varint,10,opt,name=structured_artifacts,json=structuredArtifacts,proto3" json:"structured_artifacts,omitempty"`
 	UsageReporting      bool                   `protobuf:"varint,11,opt,name=usage_reporting,json=usageReporting,proto3" json:"usage_reporting,omitempty"`
+	// The adapter demonstrably enforces AgentBudget.max_tokens as a hard output
+	// budget and reports usage against it (ADR-0005). Adapters that cannot
+	// enforce it must report false.
+	HardTokenBudget bool `protobuf:"varint,12,opt,name=hard_token_budget,json=hardTokenBudget,proto3" json:"hard_token_budget,omitempty"`
+	// The adapter demonstrably enforces AgentBudget.max_runtime_seconds as a
+	// hard runtime deadline (stop the run even if the provider streams forever).
+	HardRuntimeDeadline bool `protobuf:"varint,13,opt,name=hard_runtime_deadline,json=hardRuntimeDeadline,proto3" json:"hard_runtime_deadline,omitempty"`
 	unknownFields       protoimpl.UnknownFields
 	sizeCache           protoimpl.SizeCache
 }
@@ -143,6 +150,20 @@ func (x *HarnessCapabilities) GetStructuredArtifacts() bool {
 func (x *HarnessCapabilities) GetUsageReporting() bool {
 	if x != nil {
 		return x.UsageReporting
+	}
+	return false
+}
+
+func (x *HarnessCapabilities) GetHardTokenBudget() bool {
+	if x != nil {
+		return x.HardTokenBudget
+	}
+	return false
+}
+
+func (x *HarnessCapabilities) GetHardRuntimeDeadline() bool {
+	if x != nil {
+		return x.HardRuntimeDeadline
 	}
 	return false
 }
@@ -523,7 +544,7 @@ var File_workos_harness_v1_harness_proto protoreflect.FileDescriptor
 
 const file_workos_harness_v1_harness_proto_rawDesc = "" +
 	"\n" +
-	"\x1fworkos/harness/v1/harness.proto\x12\x11workos.harness.v1\x1a\x1bworkos/agent/v1/agent.proto\x1a\x1dworkos/common/v1/common.proto\"\xa6\x03\n" +
+	"\x1fworkos/harness/v1/harness.proto\x12\x11workos.harness.v1\x1a\x1bworkos/agent/v1/agent.proto\x1a\x1dworkos/common/v1/common.proto\"\x86\x04\n" +
 	"\x13HarnessCapabilities\x12\x1c\n" +
 	"\tstreaming\x18\x01 \x01(\bR\tstreaming\x12/\n" +
 	"\x13persistent_sessions\x18\x02 \x01(\bR\x12persistentSessions\x12\x16\n" +
@@ -536,7 +557,9 @@ const file_workos_harness_v1_harness_proto_rawDesc = "" +
 	"\x0fworkspace_mount\x18\t \x01(\bR\x0eworkspaceMount\x121\n" +
 	"\x14structured_artifacts\x18\n" +
 	" \x01(\bR\x13structuredArtifacts\x12'\n" +
-	"\x0fusage_reporting\x18\v \x01(\bR\x0eusageReporting\"\xa3\x02\n" +
+	"\x0fusage_reporting\x18\v \x01(\bR\x0eusageReporting\x12*\n" +
+	"\x11hard_token_budget\x18\f \x01(\bR\x0fhardTokenBudget\x122\n" +
+	"\x15hard_runtime_deadline\x18\r \x01(\bR\x13hardRuntimeDeadline\"\xa3\x02\n" +
 	"\x13HarnessProviderInfo\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12!\n" +
 	"\fdisplay_name\x18\x02 \x01(\tR\vdisplayName\x12'\n" +

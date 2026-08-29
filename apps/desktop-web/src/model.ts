@@ -18,7 +18,9 @@ export type HarnessCapabilityID =
   | "subagents"
   | "workspaceMount"
   | "structuredArtifacts"
-  | "usageReporting";
+  | "usageReporting"
+  | "hardTokenBudget"
+  | "hardRuntimeDeadline";
 
 export interface CapabilityEntry {
   id: HarnessCapabilityID;
@@ -74,6 +76,8 @@ export function capabilityEntries(capabilities?: HarnessCapabilities): Capabilit
     ["workspaceMount", "Workspace mount"],
     ["structuredArtifacts", "Structured artifacts"],
     ["usageReporting", "Usage reporting"],
+    ["hardTokenBudget", "Hard token budget"],
+    ["hardRuntimeDeadline", "Hard runtime deadline"],
   ];
   return definitions.map(([id, label]) => ({
     id,

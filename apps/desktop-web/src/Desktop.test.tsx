@@ -652,6 +652,8 @@ function provider(id: string, displayName: string): HarnessProviderInfo {
       workspaceMount: false,
       structuredArtifacts: false,
       usageReporting: true,
+      hardTokenBudget: false,
+      hardRuntimeDeadline: false,
     },
   };
 }

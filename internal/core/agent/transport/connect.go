@@ -14,6 +14,7 @@ import (
 	commonv1 "github.com/yangtao121/workos/gen/go/workos/common/v1"
 	"github.com/yangtao121/workos/internal/core/agent/application"
 	"github.com/yangtao121/workos/internal/core/agent/domain"
+	"github.com/yangtao121/workos/internal/core/agent/ports"
 	"github.com/yangtao121/workos/internal/platform/identity"
 )
 
@@ -184,6 +185,19 @@ func mapError(err error) error {
 		return connect.NewError(connect.CodeFailedPrecondition, err)
 	case errors.Is(err, domain.ErrProviderMismatch):
 		return connect.NewError(connect.CodeFailedPrecondition, err)
+	// Policy/approval/quota verdicts (ADR-0005). Every message stays the
+	// fixed sentinel text — no policy numbers, quota counters, goals, or raw
+	// causes leak into a public response.
+	case errors.Is(err, domain.ErrPolicyStale), errors.Is(err, domain.ErrIdempotencyConflict), errors.Is(err, domain.ErrApprovalAlreadyDecided):
+		return connect.NewError(connect.CodeAborted, err)
+	case errors.Is(err, domain.ErrPolicyBlocksRuns):
+		return connect.NewError(connect.CodePermissionDenied, err)
+	case errors.Is(err, domain.ErrApprovalNotPending), errors.Is(err, domain.ErrProviderCapabilityMissing):
+		return connect.NewError(connect.CodeFailedPrecondition, err)
+	case errors.Is(err, domain.ErrQuotaExhausted), errors.Is(err, domain.ErrQuotaBreached):
+		return connect.NewError(connect.CodeResourceExhausted, err)
+	case errors.Is(err, ports.ErrStoreUnavailable):
+		return connect.NewError(connect.CodeUnavailable, errors.New("agent store is temporarily unavailable"))
 	default:
 		return connect.NewError(connect.CodeInternal, errors.New("agent task operation failed"))
 	}

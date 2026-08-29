@@ -23,6 +23,10 @@ export function bridgeCodeFromTransportError(reason: unknown): BridgeErrorCode {
         return "not_found";
       case Code.Aborted:
         return "aborted";
+      case Code.FailedPrecondition:
+        return "failed_precondition";
+      case Code.ResourceExhausted:
+        return "resource_exhausted";
       case Code.Unavailable:
       case Code.DeadlineExceeded:
       case Code.Canceled:

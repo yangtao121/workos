@@ -9,6 +9,7 @@ import {
   DeviceClass,
   SurfaceRenderer,
   type AppInstallation,
+  type GetAppPolicyResponse,
   type GetAppResponse,
   type InstallAppResponse,
   type ListAppsResponse,
@@ -80,6 +81,7 @@ function project(id: string, revision: bigint): Project {
 
 interface LibraryFixture {
   apps?: WorkOSApp[];
+  getAppPolicy?: ReturnType<typeof vi.fn>;
   installations?: AppInstallation[];
   installApp?: ReturnType<typeof vi.fn>;
   uninstallApp?: ReturnType<typeof vi.fn>;
@@ -96,6 +98,30 @@ function clientsFixture(fixture: LibraryFixture) {
   const apps = fixture.apps ?? [];
   const installations = fixture.installations ?? [];
   return {
+    appPolicies: {
+      getAppPolicy:
+        fixture.getAppPolicy ??
+        vi.fn((request: { installationId: string }) =>
+          Promise.resolve({
+            $typeName: "workos.agent.v1.GetAppPolicyResponse",
+            policy: {
+              $typeName: "workos.agent.v1.AppAgentPolicy",
+              projectId: "project-1",
+              installationId: request.installationId,
+              spec: {
+                $typeName: "workos.agent.v1.AppAgentPolicySpec",
+                executionMode: 1,
+                maxOutputTokensPerTask: 4096n,
+                maxRuntimeSecondsPerTask: 120n,
+                maxTasksPerUtcDay: 50n,
+                maxReservedOutputTokensPerUtcDay: 204800n,
+              },
+              source: 1,
+              policyRevision: 1n,
+            },
+          } satisfies GetAppPolicyResponse),
+        ),
+    },
     appRegistry: {
       listApps:
         fixture.listApps ??

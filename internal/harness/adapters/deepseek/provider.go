@@ -55,6 +55,11 @@ func (p *Provider) Describe() *harnessv1.HarnessProviderInfo {
 		Capabilities: &harnessv1.HarnessCapabilities{
 			Streaming:      true,
 			UsageReporting: true,
+			// The pinned runtime enforces max_tokens as a real provider cap
+			// and the adapter maps max_runtime_seconds onto a hard process
+			// deadline; tests prove both contracts (ADR-0005).
+			HardTokenBudget:     true,
+			HardRuntimeDeadline: true,
 		},
 	}
 }

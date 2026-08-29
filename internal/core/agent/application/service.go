@@ -26,6 +26,9 @@ type SubmitInput struct {
 // orchestration App Agent service) has already validated the active
 // installation and its grant and pinned the project scope; this layer owns
 // the canonical bounded payload and the durable App provenance mapping.
+// Enforcement carries the server-derived budget and the effective policy
+// snapshot the task is created under — the App can never submit budget or
+// policy values of its own.
 type AppSubmitInput struct {
 	OwnerUserID          string
 	AppInstanceID        string
@@ -36,8 +39,22 @@ type AppSubmitInput struct {
 	RequestDigest string
 	ProjectID     string
 	ProviderID    string
-	Role          string
-	Goal          string
+	// AppID is the installation's pinned app identity, resolved by the
+	// authorizer from trusted facts and persisted for audit display.
+	AppID       string
+	Role        string
+	Goal        string
+	Enforcement AppRunEnforcement
+}
+
+// AppRunEnforcement is the adjudicated execution contract for one fresh App
+// run: the effective policy identity snapshotted onto the task and the
+// server-derived budget the harness worker and adapter must enforce.
+type AppRunEnforcement struct {
+	Policy                ports.PolicySnapshot
+	MaxOutputTokensTask   int64
+	MaxRuntimeSecondsTask int64
+	Daily                 ports.DailyAllowance
 }
 
 type Service struct {
@@ -70,30 +87,81 @@ func (s *Service) GetByIdempotency(ctx context.Context, ownerID, key string) (do
 	return s.repository.GetByIdempotency(ctx, ownerID, key)
 }
 
-// SubmitForApp creates one App-principal project task plus its durable
-// provenance mapping in the repository's single transaction. The task row's
-// own idempotency_key column deliberately carries an unrelated unique value:
-// the durable (owner, app instance, client key) mapping is the App idempotency
-// authority, so two apps of the same owner can reuse one client key.
+// SubmitForApp creates one queued App-principal project task under the
+// adjudicated allow path: the task, its durable provenance mapping, the
+// guarded daily quota reservation, and the claimable outbox row commit in the
+// repository's single transaction. The task row's own idempotency_key column
+// deliberately carries an unrelated unique value: the durable (owner, app
+// instance, client key) mapping is the App idempotency authority, so two apps
+// of the same owner can reuse one client key.
 func (s *Service) SubmitForApp(ctx context.Context, input AppSubmitInput) (domain.Task, error) {
+	task, provenance, err := s.prepareAppTask(ctx, input, domain.StateQueued)
+	if err != nil {
+		return domain.Task{}, err
+	}
+	return s.repository.CreateForApp(ctx, task, provenance, input.Enforcement.Policy, input.Enforcement.Daily)
+}
+
+// SubmitForAppApproval creates one waiting App task plus its pending pre-run
+// approval under the adjudicated require-approval path. No claimable outbox
+// row and no quota reservation exist until the owner approves.
+func (s *Service) SubmitForAppApproval(ctx context.Context, input AppSubmitInput) (domain.Task, domain.Approval, error) {
+	task, provenance, err := s.prepareAppTask(ctx, input, domain.StateWaiting)
+	if err != nil {
+		return domain.Task{}, domain.Approval{}, err
+	}
+	approval := domain.Approval{
+		ID:            s.ids.New(),
+		OwnerUserID:   input.OwnerUserID,
+		AppInstanceID: input.AppInstanceID,
+		ProjectID:     input.ProjectID,
+		TaskID:        task.ID,
+		AppID:         input.AppID,
+		GoalExcerpt:   domain.ApprovalGoalExcerpt(input.Goal),
+		ProviderID:    input.ProviderID,
+		Source:        input.Enforcement.Policy.Source,
+		Spec:          input.Enforcement.Policy.Spec,
+		Revision:      input.Enforcement.Policy.Revision,
+		State:         domain.ApprovalPending,
+		CreatedAt:     task.CreatedAt,
+		UpdatedAt:     task.CreatedAt,
+	}
+	return s.repository.CreateForAppApproval(ctx, task, approval, provenance)
+}
+
+// prepareAppTask validates the bounded bridge input and the adjudicated
+// enforcement contract, then builds the canonical task (payload includes the
+// server-derived budget; the client digest stays role/goal only).
+func (s *Service) prepareAppTask(ctx context.Context, input AppSubmitInput, state domain.State) (domain.Task, ports.AppTaskProvenance, error) {
 	if input.OwnerUserID == "" || input.ProviderID == "" ||
 		!domain.ValidAppClientIdempotencyKey(input.ClientIdempotencyKey) ||
 		!domain.ValidAppTaskUUID(input.AppInstanceID) || !domain.ValidAppTaskUUID(input.ProjectID) ||
 		!domain.ValidAppTaskRole(input.Role) || !domain.ValidAppTaskGoal(input.Goal) ||
 		len(input.RequestDigest) != len("sha256:")+64 {
-		return domain.Task{}, domain.ErrInvalid
+		return domain.Task{}, ports.AppTaskProvenance{}, domain.ErrInvalid
 	}
-	payload, err := canonicalAppTaskPayload(input.ProjectID, input.Role, input.Goal)
+	enforcement := input.Enforcement
+	switch enforcement.Policy.Source {
+	case domain.PolicySourceSystemDefault, domain.PolicySourceExplicit:
+	default:
+		return domain.Task{}, ports.AppTaskProvenance{}, domain.ErrInvalid
+	}
+	if enforcement.Policy.Revision <= 0 || len(enforcement.Policy.SpecDigest) != len("sha256:")+64 ||
+		enforcement.MaxOutputTokensTask <= 0 || enforcement.MaxRuntimeSecondsTask <= 0 ||
+		enforcement.Daily.MaxTasks <= 0 || enforcement.Daily.MaxReservedOutputTokens <= 0 {
+		return domain.Task{}, ports.AppTaskProvenance{}, domain.ErrInvalid
+	}
+	payload, err := canonicalAppTaskPayload(input.ProjectID, input.Role, input.Goal, enforcement.MaxOutputTokensTask, enforcement.MaxRuntimeSecondsTask)
 	if err != nil {
-		return domain.Task{}, domain.ErrInvalid
+		return domain.Task{}, ports.AppTaskProvenance{}, domain.ErrInvalid
 	}
 	now := s.now()
 	task := domain.Task{
 		ID: s.ids.New(), OwnerUserID: input.OwnerUserID, ProjectID: input.ProjectID,
-		Input: payload, State: domain.StateQueued, ProviderID: input.ProviderID,
+		Input: payload, State: state, ProviderID: input.ProviderID,
 		CreatedAt: now, UpdatedAt: now,
 	}
-	return s.repository.CreateForApp(ctx, task, ports.AppTaskProvenance{
+	return task, ports.AppTaskProvenance{
 		// Opaque unique value for the task row's own key column: the durable
 		// mapping below is the App idempotency authority, so two apps of the
 		// same owner can reuse one client key.
@@ -101,7 +169,7 @@ func (s *Service) SubmitForApp(ctx context.Context, input AppSubmitInput) (domai
 		AppInstanceID:        input.AppInstanceID,
 		ClientIdempotencyKey: input.ClientIdempotencyKey,
 		RequestDigest:        input.RequestDigest,
-	})
+	}, nil
 }
 
 // GetAppTaskByIdempotency is the replay projection source for bridge runs: it
@@ -162,17 +230,22 @@ func (s *Service) AppTaskEvents(ctx context.Context, ownerID, appInstanceID, tas
 }
 
 // canonicalAppTaskPayload builds the canonical AgentTaskInput the harness
-// worker consumes: the project scope is forced to the installation's project
-// and nothing else is settable — requested capabilities, output artifact
-// types, budget, parent/incident references, and global scope cannot be
-// smuggled through a bridge request.
-func canonicalAppTaskPayload(projectID, role, goal string) (json.RawMessage, error) {
+// worker consumes: the project scope is forced to the installation's project,
+// and the budget is the server-derived policy enforcement — requested
+// capabilities, output artifact types, parent/incident references, global
+// scope, and any client-supplied budget cannot be smuggled through a bridge
+// request.
+func canonicalAppTaskPayload(projectID, role, goal string, maxOutputTokens, maxRuntimeSeconds int64) (json.RawMessage, error) {
 	payload, err := protojson.Marshal(&agentv1.AgentTaskInput{
 		TargetScope: &agentv1.TargetScope{
 			Scope: &agentv1.TargetScope_ProjectId{ProjectId: projectID},
 		},
 		Role: role,
 		Goal: goal,
+		Budget: &agentv1.AgentBudget{
+			MaxTokens:         maxOutputTokens,
+			MaxRuntimeSeconds: maxRuntimeSeconds,
+		},
 	})
 	if err != nil {
 		return nil, fmt.Errorf("canonical app task payload: %w", err)
@@ -225,9 +298,9 @@ func (s *Service) Renew(ctx context.Context, leaseID, workerID string, duration 
 	return s.repository.Renew(ctx, leaseID, workerID, duration, s.now())
 }
 
-func (s *Service) AppendEvent(ctx context.Context, leaseID, workerID, eventType string, payload json.RawMessage, state domain.State, providerID, runID string) (domain.Event, error) {
+func (s *Service) AppendEvent(ctx context.Context, leaseID, workerID, eventType string, payload json.RawMessage, state domain.State, providerID, runID string, usage *domain.UsageReport) (domain.Event, error) {
 	event := domain.Event{ID: s.ids.New(), EventType: eventType, Payload: payload, OccurredAt: s.now()}
-	return s.repository.AppendEvent(ctx, leaseID, workerID, event, state, providerID, runID, s.now())
+	return s.repository.AppendEvent(ctx, leaseID, workerID, event, state, providerID, runID, usage, s.now())
 }
 
 func (s *Service) Finish(ctx context.Context, leaseID, workerID string) error {

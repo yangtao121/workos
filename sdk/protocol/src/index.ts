@@ -1,4 +1,5 @@
 export * from "./gen/workos/agent/v1/agent_pb.js";
+export * from "./gen/workos/agent/v1/app_policy_pb.js";
 export * from "./gen/workos/app/v1/app_pb.js";
 export * from "./gen/workos/app/v1/installation_pb.js";
 export * from "./gen/workos/artifact/v1/artifact_pb.js";

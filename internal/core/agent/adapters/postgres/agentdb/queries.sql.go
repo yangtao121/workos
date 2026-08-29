@@ -39,6 +39,95 @@ func (q *Queries) AdvanceTaskState(ctx context.Context, arg AdvanceTaskStatePara
 	return err
 }
 
+const decideAgentAppApproval = `-- name: DecideAgentAppApproval :execrows
+UPDATE workos_core.agent_app_approvals
+SET state = $1, decided_idempotency_key = $2,
+    decision_digest = $3, decided_at = $4, updated_at = $4
+WHERE owner_user_id = $5 AND id = $6 AND state = 'pending'
+`
+
+type DecideAgentAppApprovalParams struct {
+	State          string             `json:"state"`
+	IdempotencyKey pgtype.Text        `json:"idempotency_key"`
+	DecisionDigest pgtype.Text        `json:"decision_digest"`
+	DecidedAt      pgtype.Timestamptz `json:"decided_at"`
+	OwnerUserID    string             `json:"owner_user_id"`
+	ApprovalID     string             `json:"approval_id"`
+}
+
+func (q *Queries) DecideAgentAppApproval(ctx context.Context, arg DecideAgentAppApprovalParams) (int64, error) {
+	result, err := q.db.Exec(ctx, decideAgentAppApproval,
+		arg.State,
+		arg.IdempotencyKey,
+		arg.DecisionDigest,
+		arg.DecidedAt,
+		arg.OwnerUserID,
+		arg.ApprovalID,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const expirePendingApprovals = `-- name: ExpirePendingApprovals :many
+UPDATE workos_core.agent_app_approvals
+SET state = 'expired', updated_at = $1
+WHERE owner_user_id = $2 AND app_instance_id = $3 AND state = 'pending'
+RETURNING id, task_id
+`
+
+type ExpirePendingApprovalsParams struct {
+	UpdatedAt     pgtype.Timestamptz `json:"updated_at"`
+	OwnerUserID   string             `json:"owner_user_id"`
+	AppInstanceID string             `json:"app_instance_id"`
+}
+
+type ExpirePendingApprovalsRow struct {
+	ID     string `json:"id"`
+	TaskID string `json:"task_id"`
+}
+
+func (q *Queries) ExpirePendingApprovals(ctx context.Context, arg ExpirePendingApprovalsParams) ([]ExpirePendingApprovalsRow, error) {
+	rows, err := q.db.Query(ctx, expirePendingApprovals, arg.UpdatedAt, arg.OwnerUserID, arg.AppInstanceID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ExpirePendingApprovalsRow
+	for rows.Next() {
+		var i ExpirePendingApprovalsRow
+		if err := rows.Scan(&i.ID, &i.TaskID); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const expireTaskPendingApproval = `-- name: ExpireTaskPendingApproval :execrows
+UPDATE workos_core.agent_app_approvals
+SET state = 'expired', updated_at = $1
+WHERE owner_user_id = $2 AND task_id = $3 AND state = 'pending'
+`
+
+type ExpireTaskPendingApprovalParams struct {
+	UpdatedAt   pgtype.Timestamptz `json:"updated_at"`
+	OwnerUserID string             `json:"owner_user_id"`
+	TaskID      string             `json:"task_id"`
+}
+
+func (q *Queries) ExpireTaskPendingApproval(ctx context.Context, arg ExpireTaskPendingApprovalParams) (int64, error) {
+	result, err := q.db.Exec(ctx, expireTaskPendingApproval, arg.UpdatedAt, arg.OwnerUserID, arg.TaskID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const finishPendingTaskRequest = `-- name: FinishPendingTaskRequest :exec
 UPDATE workos_events.outbox
 SET processed_at = $1
@@ -77,6 +166,238 @@ func (q *Queries) FinishTaskLease(ctx context.Context, arg FinishTaskLeaseParams
 	return result.RowsAffected(), nil
 }
 
+const getAgentAppApproval = `-- name: GetAgentAppApproval :one
+SELECT owner_user_id, id, app_instance_id, project_id, task_id, app_id, goal_excerpt, provider_id,
+       max_output_tokens_per_task, max_runtime_seconds_per_task, max_tasks_per_utc_day,
+       max_reserved_output_tokens_per_utc_day, policy_revision, state,
+       decided_idempotency_key, decision_digest, decided_at, created_at, updated_at
+FROM workos_core.agent_app_approvals
+WHERE owner_user_id = $1 AND id = $2
+`
+
+type GetAgentAppApprovalParams struct {
+	OwnerUserID string `json:"owner_user_id"`
+	ID          string `json:"id"`
+}
+
+func (q *Queries) GetAgentAppApproval(ctx context.Context, arg GetAgentAppApprovalParams) (WorkosCoreAgentAppApproval, error) {
+	row := q.db.QueryRow(ctx, getAgentAppApproval, arg.OwnerUserID, arg.ID)
+	var i WorkosCoreAgentAppApproval
+	err := row.Scan(
+		&i.OwnerUserID,
+		&i.ID,
+		&i.AppInstanceID,
+		&i.ProjectID,
+		&i.TaskID,
+		&i.AppID,
+		&i.GoalExcerpt,
+		&i.ProviderID,
+		&i.MaxOutputTokensPerTask,
+		&i.MaxRuntimeSecondsPerTask,
+		&i.MaxTasksPerUtcDay,
+		&i.MaxReservedOutputTokensPerUtcDay,
+		&i.PolicyRevision,
+		&i.State,
+		&i.DecidedIdempotencyKey,
+		&i.DecisionDigest,
+		&i.DecidedAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const getAgentAppApprovalForUpdate = `-- name: GetAgentAppApprovalForUpdate :one
+SELECT owner_user_id, id, app_instance_id, project_id, task_id, app_id, goal_excerpt, provider_id,
+       max_output_tokens_per_task, max_runtime_seconds_per_task, max_tasks_per_utc_day,
+       max_reserved_output_tokens_per_utc_day, policy_revision, state,
+       decided_idempotency_key, decision_digest, decided_at, created_at, updated_at
+FROM workos_core.agent_app_approvals
+WHERE owner_user_id = $1 AND id = $2
+FOR UPDATE
+`
+
+type GetAgentAppApprovalForUpdateParams struct {
+	OwnerUserID string `json:"owner_user_id"`
+	ID          string `json:"id"`
+}
+
+func (q *Queries) GetAgentAppApprovalForUpdate(ctx context.Context, arg GetAgentAppApprovalForUpdateParams) (WorkosCoreAgentAppApproval, error) {
+	row := q.db.QueryRow(ctx, getAgentAppApprovalForUpdate, arg.OwnerUserID, arg.ID)
+	var i WorkosCoreAgentAppApproval
+	err := row.Scan(
+		&i.OwnerUserID,
+		&i.ID,
+		&i.AppInstanceID,
+		&i.ProjectID,
+		&i.TaskID,
+		&i.AppID,
+		&i.GoalExcerpt,
+		&i.ProviderID,
+		&i.MaxOutputTokensPerTask,
+		&i.MaxRuntimeSecondsPerTask,
+		&i.MaxTasksPerUtcDay,
+		&i.MaxReservedOutputTokensPerUtcDay,
+		&i.PolicyRevision,
+		&i.State,
+		&i.DecidedIdempotencyKey,
+		&i.DecisionDigest,
+		&i.DecidedAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const getAgentAppDailyReservations = `-- name: GetAgentAppDailyReservations :one
+SELECT tasks_reserved, output_tokens_reserved, policy_revision
+FROM workos_core.agent_app_daily_reservations
+WHERE owner_user_id = $1 AND app_instance_id = $2 AND utc_date = $3
+`
+
+type GetAgentAppDailyReservationsParams struct {
+	OwnerUserID   string      `json:"owner_user_id"`
+	AppInstanceID string      `json:"app_instance_id"`
+	UtcDate       pgtype.Date `json:"utc_date"`
+}
+
+type GetAgentAppDailyReservationsRow struct {
+	TasksReserved        int64 `json:"tasks_reserved"`
+	OutputTokensReserved int64 `json:"output_tokens_reserved"`
+	PolicyRevision       int64 `json:"policy_revision"`
+}
+
+func (q *Queries) GetAgentAppDailyReservations(ctx context.Context, arg GetAgentAppDailyReservationsParams) (GetAgentAppDailyReservationsRow, error) {
+	row := q.db.QueryRow(ctx, getAgentAppDailyReservations, arg.OwnerUserID, arg.AppInstanceID, arg.UtcDate)
+	var i GetAgentAppDailyReservationsRow
+	err := row.Scan(&i.TasksReserved, &i.OutputTokensReserved, &i.PolicyRevision)
+	return i, err
+}
+
+const getAgentAppDailyUsage = `-- name: GetAgentAppDailyUsage :one
+SELECT tasks_recorded, input_tokens_recorded, output_tokens_recorded,
+       cost_decimal_recorded, quota_breached
+FROM workos_core.agent_app_daily_usage
+WHERE owner_user_id = $1 AND app_instance_id = $2 AND utc_date = $3
+`
+
+type GetAgentAppDailyUsageParams struct {
+	OwnerUserID   string      `json:"owner_user_id"`
+	AppInstanceID string      `json:"app_instance_id"`
+	UtcDate       pgtype.Date `json:"utc_date"`
+}
+
+type GetAgentAppDailyUsageRow struct {
+	TasksRecorded        int64          `json:"tasks_recorded"`
+	InputTokensRecorded  int64          `json:"input_tokens_recorded"`
+	OutputTokensRecorded int64          `json:"output_tokens_recorded"`
+	CostDecimalRecorded  pgtype.Numeric `json:"cost_decimal_recorded"`
+	QuotaBreached        bool           `json:"quota_breached"`
+}
+
+func (q *Queries) GetAgentAppDailyUsage(ctx context.Context, arg GetAgentAppDailyUsageParams) (GetAgentAppDailyUsageRow, error) {
+	row := q.db.QueryRow(ctx, getAgentAppDailyUsage, arg.OwnerUserID, arg.AppInstanceID, arg.UtcDate)
+	var i GetAgentAppDailyUsageRow
+	err := row.Scan(
+		&i.TasksRecorded,
+		&i.InputTokensRecorded,
+		&i.OutputTokensRecorded,
+		&i.CostDecimalRecorded,
+		&i.QuotaBreached,
+	)
+	return i, err
+}
+
+const getAgentAppPolicy = `-- name: GetAgentAppPolicy :one
+SELECT owner_user_id, app_instance_id, project_id, execution_mode,
+       max_output_tokens_per_task, max_runtime_seconds_per_task, max_tasks_per_utc_day,
+       max_reserved_output_tokens_per_utc_day, spec_digest, policy_revision, created_at, updated_at
+FROM workos_core.agent_app_policies
+WHERE owner_user_id = $1 AND app_instance_id = $2
+`
+
+type GetAgentAppPolicyParams struct {
+	OwnerUserID   string `json:"owner_user_id"`
+	AppInstanceID string `json:"app_instance_id"`
+}
+
+func (q *Queries) GetAgentAppPolicy(ctx context.Context, arg GetAgentAppPolicyParams) (WorkosCoreAgentAppPolicy, error) {
+	row := q.db.QueryRow(ctx, getAgentAppPolicy, arg.OwnerUserID, arg.AppInstanceID)
+	var i WorkosCoreAgentAppPolicy
+	err := row.Scan(
+		&i.OwnerUserID,
+		&i.AppInstanceID,
+		&i.ProjectID,
+		&i.ExecutionMode,
+		&i.MaxOutputTokensPerTask,
+		&i.MaxRuntimeSecondsPerTask,
+		&i.MaxTasksPerUtcDay,
+		&i.MaxReservedOutputTokensPerUtcDay,
+		&i.SpecDigest,
+		&i.PolicyRevision,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const getAgentAppPolicyForUpdate = `-- name: GetAgentAppPolicyForUpdate :one
+SELECT owner_user_id, app_instance_id, project_id, execution_mode,
+       max_output_tokens_per_task, max_runtime_seconds_per_task, max_tasks_per_utc_day,
+       max_reserved_output_tokens_per_utc_day, spec_digest, policy_revision, created_at, updated_at
+FROM workos_core.agent_app_policies
+WHERE owner_user_id = $1 AND app_instance_id = $2
+FOR UPDATE
+`
+
+type GetAgentAppPolicyForUpdateParams struct {
+	OwnerUserID   string `json:"owner_user_id"`
+	AppInstanceID string `json:"app_instance_id"`
+}
+
+func (q *Queries) GetAgentAppPolicyForUpdate(ctx context.Context, arg GetAgentAppPolicyForUpdateParams) (WorkosCoreAgentAppPolicy, error) {
+	row := q.db.QueryRow(ctx, getAgentAppPolicyForUpdate, arg.OwnerUserID, arg.AppInstanceID)
+	var i WorkosCoreAgentAppPolicy
+	err := row.Scan(
+		&i.OwnerUserID,
+		&i.AppInstanceID,
+		&i.ProjectID,
+		&i.ExecutionMode,
+		&i.MaxOutputTokensPerTask,
+		&i.MaxRuntimeSecondsPerTask,
+		&i.MaxTasksPerUtcDay,
+		&i.MaxReservedOutputTokensPerUtcDay,
+		&i.SpecDigest,
+		&i.PolicyRevision,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const getAgentAppPolicyRequest = `-- name: GetAgentAppPolicyRequest :one
+SELECT request_digest, result
+FROM workos_core.agent_app_policy_requests
+WHERE owner_user_id = $1 AND idempotency_key = $2
+`
+
+type GetAgentAppPolicyRequestParams struct {
+	OwnerUserID    string `json:"owner_user_id"`
+	IdempotencyKey string `json:"idempotency_key"`
+}
+
+type GetAgentAppPolicyRequestRow struct {
+	RequestDigest string          `json:"request_digest"`
+	Result        json.RawMessage `json:"result"`
+}
+
+func (q *Queries) GetAgentAppPolicyRequest(ctx context.Context, arg GetAgentAppPolicyRequestParams) (GetAgentAppPolicyRequestRow, error) {
+	row := q.db.QueryRow(ctx, getAgentAppPolicyRequest, arg.OwnerUserID, arg.IdempotencyKey)
+	var i GetAgentAppPolicyRequestRow
+	err := row.Scan(&i.RequestDigest, &i.Result)
+	return i, err
+}
+
 const getAgentAppTaskByTask = `-- name: GetAgentAppTaskByTask :one
 SELECT request_digest, task_id, project_id
 FROM workos_core.agent_app_task_requests
@@ -100,6 +421,24 @@ func (q *Queries) GetAgentAppTaskByTask(ctx context.Context, arg GetAgentAppTask
 	var i GetAgentAppTaskByTaskRow
 	err := row.Scan(&i.RequestDigest, &i.TaskID, &i.ProjectID)
 	return i, err
+}
+
+const getAgentAppTaskOwnerTask = `-- name: GetAgentAppTaskOwnerTask :one
+SELECT app_instance_id
+FROM workos_core.agent_app_task_requests
+WHERE owner_user_id = $1 AND task_id = $2
+`
+
+type GetAgentAppTaskOwnerTaskParams struct {
+	OwnerUserID string `json:"owner_user_id"`
+	TaskID      string `json:"task_id"`
+}
+
+func (q *Queries) GetAgentAppTaskOwnerTask(ctx context.Context, arg GetAgentAppTaskOwnerTaskParams) (string, error) {
+	row := q.db.QueryRow(ctx, getAgentAppTaskOwnerTask, arg.OwnerUserID, arg.TaskID)
+	var app_instance_id string
+	err := row.Scan(&app_instance_id)
+	return app_instance_id, err
 }
 
 const getAgentAppTaskRequest = `-- name: GetAgentAppTaskRequest :one
@@ -129,7 +468,8 @@ func (q *Queries) GetAgentAppTaskRequest(ctx context.Context, arg GetAgentAppTas
 
 const getAgentTask = `-- name: GetAgentTask :one
 SELECT id, owner_user_id, idempotency_key, project_id, input, state, provider_id,
-       harness_instance_id, run_id, last_event_sequence, cancellation_requested, created_at, updated_at
+       harness_instance_id, run_id, last_event_sequence, cancellation_requested, created_at, updated_at,
+       policy_source, policy_revision, policy_spec_digest, budget_max_output_tokens, budget_max_runtime_seconds
 FROM workos_core.agent_tasks
 WHERE owner_user_id = $1 AND id = $2
 `
@@ -156,13 +496,19 @@ func (q *Queries) GetAgentTask(ctx context.Context, arg GetAgentTaskParams) (Wor
 		&i.CancellationRequested,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.PolicySource,
+		&i.PolicyRevision,
+		&i.PolicySpecDigest,
+		&i.BudgetMaxOutputTokens,
+		&i.BudgetMaxRuntimeSeconds,
 	)
 	return i, err
 }
 
 const getAgentTaskByIdempotency = `-- name: GetAgentTaskByIdempotency :one
 SELECT id, owner_user_id, idempotency_key, project_id, input, state, provider_id,
-       harness_instance_id, run_id, last_event_sequence, cancellation_requested, created_at, updated_at
+       harness_instance_id, run_id, last_event_sequence, cancellation_requested, created_at, updated_at,
+       policy_source, policy_revision, policy_spec_digest, budget_max_output_tokens, budget_max_runtime_seconds
 FROM workos_core.agent_tasks
 WHERE owner_user_id = $1 AND idempotency_key = $2
 `
@@ -189,13 +535,19 @@ func (q *Queries) GetAgentTaskByIdempotency(ctx context.Context, arg GetAgentTas
 		&i.CancellationRequested,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.PolicySource,
+		&i.PolicyRevision,
+		&i.PolicySpecDigest,
+		&i.BudgetMaxOutputTokens,
+		&i.BudgetMaxRuntimeSeconds,
 	)
 	return i, err
 }
 
 const getAgentTaskForUpdate = `-- name: GetAgentTaskForUpdate :one
 SELECT id, owner_user_id, idempotency_key, project_id, input, state, provider_id,
-       harness_instance_id, run_id, last_event_sequence, cancellation_requested, created_at, updated_at
+       harness_instance_id, run_id, last_event_sequence, cancellation_requested, created_at, updated_at,
+       policy_source, policy_revision, policy_spec_digest, budget_max_output_tokens, budget_max_runtime_seconds
 FROM workos_core.agent_tasks
 WHERE owner_user_id = $1 AND id = $2
 FOR UPDATE
@@ -223,13 +575,19 @@ func (q *Queries) GetAgentTaskForUpdate(ctx context.Context, arg GetAgentTaskFor
 		&i.CancellationRequested,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.PolicySource,
+		&i.PolicyRevision,
+		&i.PolicySpecDigest,
+		&i.BudgetMaxOutputTokens,
+		&i.BudgetMaxRuntimeSeconds,
 	)
 	return i, err
 }
 
 const getAgentTaskUnscoped = `-- name: GetAgentTaskUnscoped :one
 SELECT id, owner_user_id, idempotency_key, project_id, input, state, provider_id,
-       harness_instance_id, run_id, last_event_sequence, cancellation_requested, created_at, updated_at
+       harness_instance_id, run_id, last_event_sequence, cancellation_requested, created_at, updated_at,
+       policy_source, policy_revision, policy_spec_digest, budget_max_output_tokens, budget_max_runtime_seconds
 FROM workos_core.agent_tasks
 WHERE id = $1
 `
@@ -251,8 +609,91 @@ func (q *Queries) GetAgentTaskUnscoped(ctx context.Context, id string) (WorkosCo
 		&i.CancellationRequested,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.PolicySource,
+		&i.PolicyRevision,
+		&i.PolicySpecDigest,
+		&i.BudgetMaxOutputTokens,
+		&i.BudgetMaxRuntimeSeconds,
 	)
 	return i, err
+}
+
+const insertAgentAppApproval = `-- name: InsertAgentAppApproval :execrows
+INSERT INTO workos_core.agent_app_approvals (
+    owner_user_id, id, app_instance_id, project_id, task_id, app_id, goal_excerpt, provider_id,
+    max_output_tokens_per_task, max_runtime_seconds_per_task, max_tasks_per_utc_day,
+    max_reserved_output_tokens_per_utc_day, policy_revision, state, created_at, updated_at
+) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, 'pending', $14, $14)
+ON CONFLICT (owner_user_id, id) DO NOTHING
+`
+
+type InsertAgentAppApprovalParams struct {
+	OwnerUserID                      string             `json:"owner_user_id"`
+	ID                               string             `json:"id"`
+	AppInstanceID                    string             `json:"app_instance_id"`
+	ProjectID                        string             `json:"project_id"`
+	TaskID                           string             `json:"task_id"`
+	AppID                            string             `json:"app_id"`
+	GoalExcerpt                      string             `json:"goal_excerpt"`
+	ProviderID                       string             `json:"provider_id"`
+	MaxOutputTokensPerTask           int64              `json:"max_output_tokens_per_task"`
+	MaxRuntimeSecondsPerTask         int64              `json:"max_runtime_seconds_per_task"`
+	MaxTasksPerUtcDay                int64              `json:"max_tasks_per_utc_day"`
+	MaxReservedOutputTokensPerUtcDay int64              `json:"max_reserved_output_tokens_per_utc_day"`
+	PolicyRevision                   int64              `json:"policy_revision"`
+	CreatedAt                        pgtype.Timestamptz `json:"created_at"`
+}
+
+func (q *Queries) InsertAgentAppApproval(ctx context.Context, arg InsertAgentAppApprovalParams) (int64, error) {
+	result, err := q.db.Exec(ctx, insertAgentAppApproval,
+		arg.OwnerUserID,
+		arg.ID,
+		arg.AppInstanceID,
+		arg.ProjectID,
+		arg.TaskID,
+		arg.AppID,
+		arg.GoalExcerpt,
+		arg.ProviderID,
+		arg.MaxOutputTokensPerTask,
+		arg.MaxRuntimeSecondsPerTask,
+		arg.MaxTasksPerUtcDay,
+		arg.MaxReservedOutputTokensPerUtcDay,
+		arg.PolicyRevision,
+		arg.CreatedAt,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const insertAgentAppPolicyRequest = `-- name: InsertAgentAppPolicyRequest :execrows
+INSERT INTO workos_core.agent_app_policy_requests (
+    owner_user_id, idempotency_key, request_digest, result, created_at
+) VALUES ($1, $2, $3, $4, $5)
+ON CONFLICT (owner_user_id, idempotency_key) DO NOTHING
+`
+
+type InsertAgentAppPolicyRequestParams struct {
+	OwnerUserID    string             `json:"owner_user_id"`
+	IdempotencyKey string             `json:"idempotency_key"`
+	RequestDigest  string             `json:"request_digest"`
+	Result         json.RawMessage    `json:"result"`
+	CreatedAt      pgtype.Timestamptz `json:"created_at"`
+}
+
+func (q *Queries) InsertAgentAppPolicyRequest(ctx context.Context, arg InsertAgentAppPolicyRequestParams) (int64, error) {
+	result, err := q.db.Exec(ctx, insertAgentAppPolicyRequest,
+		arg.OwnerUserID,
+		arg.IdempotencyKey,
+		arg.RequestDigest,
+		arg.Result,
+		arg.CreatedAt,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const insertAgentAppTaskRequest = `-- name: InsertAgentAppTaskRequest :execrows
@@ -290,21 +731,27 @@ func (q *Queries) InsertAgentAppTaskRequest(ctx context.Context, arg InsertAgent
 
 const insertAgentTask = `-- name: InsertAgentTask :execrows
 INSERT INTO workos_core.agent_tasks (
-    id, owner_user_id, idempotency_key, project_id, input, state, provider_id, created_at, updated_at
-) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+    id, owner_user_id, idempotency_key, project_id, input, state, provider_id, created_at, updated_at,
+    policy_source, policy_revision, policy_spec_digest, budget_max_output_tokens, budget_max_runtime_seconds
+) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
 ON CONFLICT (owner_user_id, idempotency_key) DO NOTHING
 `
 
 type InsertAgentTaskParams struct {
-	ID             string             `json:"id"`
-	OwnerUserID    string             `json:"owner_user_id"`
-	IdempotencyKey string             `json:"idempotency_key"`
-	ProjectID      pgtype.UUID        `json:"project_id"`
-	Input          json.RawMessage    `json:"input"`
-	State          string             `json:"state"`
-	ProviderID     string             `json:"provider_id"`
-	CreatedAt      pgtype.Timestamptz `json:"created_at"`
-	UpdatedAt      pgtype.Timestamptz `json:"updated_at"`
+	ID                      string             `json:"id"`
+	OwnerUserID             string             `json:"owner_user_id"`
+	IdempotencyKey          string             `json:"idempotency_key"`
+	ProjectID               pgtype.UUID        `json:"project_id"`
+	Input                   json.RawMessage    `json:"input"`
+	State                   string             `json:"state"`
+	ProviderID              string             `json:"provider_id"`
+	CreatedAt               pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt               pgtype.Timestamptz `json:"updated_at"`
+	PolicySource            pgtype.Text        `json:"policy_source"`
+	PolicyRevision          pgtype.Int8        `json:"policy_revision"`
+	PolicySpecDigest        pgtype.Text        `json:"policy_spec_digest"`
+	BudgetMaxOutputTokens   pgtype.Int8        `json:"budget_max_output_tokens"`
+	BudgetMaxRuntimeSeconds pgtype.Int8        `json:"budget_max_runtime_seconds"`
 }
 
 func (q *Queries) InsertAgentTask(ctx context.Context, arg InsertAgentTaskParams) (int64, error) {
@@ -318,6 +765,11 @@ func (q *Queries) InsertAgentTask(ctx context.Context, arg InsertAgentTaskParams
 		arg.ProviderID,
 		arg.CreatedAt,
 		arg.UpdatedAt,
+		arg.PolicySource,
+		arg.PolicyRevision,
+		arg.PolicySpecDigest,
+		arg.BudgetMaxOutputTokens,
+		arg.BudgetMaxRuntimeSeconds,
 	)
 	if err != nil {
 		return 0, err
@@ -398,9 +850,78 @@ func (q *Queries) LeaseTask(ctx context.Context, arg LeaseTaskParams) error {
 	return err
 }
 
+const listAgentAppApprovals = `-- name: ListAgentAppApprovals :many
+SELECT owner_user_id, id, app_instance_id, project_id, task_id, app_id, goal_excerpt, provider_id,
+       max_output_tokens_per_task, max_runtime_seconds_per_task, max_tasks_per_utc_day,
+       max_reserved_output_tokens_per_utc_day, policy_revision, state,
+       decided_idempotency_key, decision_digest, decided_at, created_at, updated_at
+FROM workos_core.agent_app_approvals
+WHERE owner_user_id = $1
+  AND id > $2
+  AND ($3::text = '' OR project_id = $3::uuid)
+  AND ($4::text = '' OR state = $4)
+ORDER BY id
+LIMIT $5
+`
+
+type ListAgentAppApprovalsParams struct {
+	OwnerUserID string `json:"owner_user_id"`
+	Cursor      string `json:"cursor"`
+	ProjectID   string `json:"project_id"`
+	State       string `json:"state"`
+	RowLimit    int32  `json:"row_limit"`
+}
+
+func (q *Queries) ListAgentAppApprovals(ctx context.Context, arg ListAgentAppApprovalsParams) ([]WorkosCoreAgentAppApproval, error) {
+	rows, err := q.db.Query(ctx, listAgentAppApprovals,
+		arg.OwnerUserID,
+		arg.Cursor,
+		arg.ProjectID,
+		arg.State,
+		arg.RowLimit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []WorkosCoreAgentAppApproval
+	for rows.Next() {
+		var i WorkosCoreAgentAppApproval
+		if err := rows.Scan(
+			&i.OwnerUserID,
+			&i.ID,
+			&i.AppInstanceID,
+			&i.ProjectID,
+			&i.TaskID,
+			&i.AppID,
+			&i.GoalExcerpt,
+			&i.ProviderID,
+			&i.MaxOutputTokensPerTask,
+			&i.MaxRuntimeSecondsPerTask,
+			&i.MaxTasksPerUtcDay,
+			&i.MaxReservedOutputTokensPerUtcDay,
+			&i.PolicyRevision,
+			&i.State,
+			&i.DecidedIdempotencyKey,
+			&i.DecisionDigest,
+			&i.DecidedAt,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listAgentTasks = `-- name: ListAgentTasks :many
 SELECT id, owner_user_id, idempotency_key, project_id, input, state, provider_id,
-       harness_instance_id, run_id, last_event_sequence, cancellation_requested, created_at, updated_at
+       harness_instance_id, run_id, last_event_sequence, cancellation_requested, created_at, updated_at,
+       policy_source, policy_revision, policy_spec_digest, budget_max_output_tokens, budget_max_runtime_seconds
 FROM workos_core.agent_tasks
 WHERE owner_user_id = $1
   AND ($2::text = '' OR project_id = $2::uuid)
@@ -444,6 +965,11 @@ func (q *Queries) ListAgentTasks(ctx context.Context, arg ListAgentTasksParams) 
 			&i.CancellationRequested,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.PolicySource,
+			&i.PolicyRevision,
+			&i.PolicySpecDigest,
+			&i.BudgetMaxOutputTokens,
+			&i.BudgetMaxRuntimeSeconds,
 		); err != nil {
 			return nil, err
 		}
@@ -506,7 +1032,8 @@ func (q *Queries) ListTaskEvents(ctx context.Context, arg ListTaskEventsParams) 
 }
 
 const lockTaskEventStream = `-- name: LockTaskEventStream :one
-SELECT t.id, t.last_event_sequence, t.state, t.provider_id
+SELECT t.id, t.owner_user_id, t.last_event_sequence, t.state, t.provider_id, t.created_at,
+       t.budget_max_output_tokens
 FROM workos_events.outbox AS o
 JOIN workos_core.agent_tasks AS t ON t.id = o.aggregate_id
 WHERE o.lease_id = $1 AND o.locked_by = $2 AND o.processed_at IS NULL AND o.locked_until >= $3
@@ -520,10 +1047,13 @@ type LockTaskEventStreamParams struct {
 }
 
 type LockTaskEventStreamRow struct {
-	ID                string `json:"id"`
-	LastEventSequence int64  `json:"last_event_sequence"`
-	State             string `json:"state"`
-	ProviderID        string `json:"provider_id"`
+	ID                    string             `json:"id"`
+	OwnerUserID           string             `json:"owner_user_id"`
+	LastEventSequence     int64              `json:"last_event_sequence"`
+	State                 string             `json:"state"`
+	ProviderID            string             `json:"provider_id"`
+	CreatedAt             pgtype.Timestamptz `json:"created_at"`
+	BudgetMaxOutputTokens pgtype.Int8        `json:"budget_max_output_tokens"`
 }
 
 func (q *Queries) LockTaskEventStream(ctx context.Context, arg LockTaskEventStreamParams) (LockTaskEventStreamRow, error) {
@@ -531,11 +1061,37 @@ func (q *Queries) LockTaskEventStream(ctx context.Context, arg LockTaskEventStre
 	var i LockTaskEventStreamRow
 	err := row.Scan(
 		&i.ID,
+		&i.OwnerUserID,
 		&i.LastEventSequence,
 		&i.State,
 		&i.ProviderID,
+		&i.CreatedAt,
+		&i.BudgetMaxOutputTokens,
 	)
 	return i, err
+}
+
+const markAgentAppUsageBreach = `-- name: MarkAgentAppUsageBreach :exec
+UPDATE workos_core.agent_app_daily_usage
+SET quota_breached = true, updated_at = $1
+WHERE owner_user_id = $2 AND app_instance_id = $3 AND utc_date = $4
+`
+
+type MarkAgentAppUsageBreachParams struct {
+	UpdatedAt     pgtype.Timestamptz `json:"updated_at"`
+	OwnerUserID   string             `json:"owner_user_id"`
+	AppInstanceID string             `json:"app_instance_id"`
+	UtcDate       pgtype.Date        `json:"utc_date"`
+}
+
+func (q *Queries) MarkAgentAppUsageBreach(ctx context.Context, arg MarkAgentAppUsageBreachParams) error {
+	_, err := q.db.Exec(ctx, markAgentAppUsageBreach,
+		arg.UpdatedAt,
+		arg.OwnerUserID,
+		arg.AppInstanceID,
+		arg.UtcDate,
+	)
+	return err
 }
 
 const markTaskCancelled = `-- name: MarkTaskCancelled :exec
@@ -598,6 +1154,77 @@ func (q *Queries) RenewTaskLease(ctx context.Context, arg RenewTaskLeaseParams) 
 	return cancellation_requested, err
 }
 
+const requestTaskCancellation = `-- name: RequestTaskCancellation :exec
+UPDATE workos_core.agent_tasks
+SET cancellation_requested = true, updated_at = $1
+WHERE id = $2
+`
+
+type RequestTaskCancellationParams struct {
+	UpdatedAt pgtype.Timestamptz `json:"updated_at"`
+	ID        string             `json:"id"`
+}
+
+func (q *Queries) RequestTaskCancellation(ctx context.Context, arg RequestTaskCancellationParams) error {
+	_, err := q.db.Exec(ctx, requestTaskCancellation, arg.UpdatedAt, arg.ID)
+	return err
+}
+
+const reserveAgentAppDailyQuota = `-- name: ReserveAgentAppDailyQuota :one
+INSERT INTO workos_core.agent_app_daily_reservations (
+    owner_user_id, app_instance_id, utc_date, tasks_reserved, output_tokens_reserved,
+    policy_revision, created_at, updated_at
+) VALUES ($1, $2, $3, 1, $4, $5, $6, $6)
+ON CONFLICT (owner_user_id, app_instance_id, utc_date) DO UPDATE SET
+    tasks_reserved = agent_app_daily_reservations.tasks_reserved + 1,
+    output_tokens_reserved = agent_app_daily_reservations.output_tokens_reserved + EXCLUDED.output_tokens_reserved,
+    policy_revision = EXCLUDED.policy_revision,
+    updated_at = EXCLUDED.updated_at
+WHERE agent_app_daily_reservations.tasks_reserved < $7::bigint
+  AND agent_app_daily_reservations.output_tokens_reserved + EXCLUDED.output_tokens_reserved
+      <= $8::bigint
+  AND NOT EXISTS (
+      SELECT 1 FROM workos_core.agent_app_daily_usage AS u
+      WHERE u.owner_user_id = agent_app_daily_reservations.owner_user_id
+        AND u.app_instance_id = agent_app_daily_reservations.app_instance_id
+        AND u.utc_date = agent_app_daily_reservations.utc_date
+        AND u.quota_breached
+  )
+RETURNING tasks_reserved, output_tokens_reserved
+`
+
+type ReserveAgentAppDailyQuotaParams struct {
+	OwnerUserID          string             `json:"owner_user_id"`
+	AppInstanceID        string             `json:"app_instance_id"`
+	UtcDate              pgtype.Date        `json:"utc_date"`
+	OutputTokensReserved int64              `json:"output_tokens_reserved"`
+	PolicyRevision       int64              `json:"policy_revision"`
+	CreatedAt            pgtype.Timestamptz `json:"created_at"`
+	MaxTasks             int64              `json:"max_tasks"`
+	MaxReservedTokens    int64              `json:"max_reserved_tokens"`
+}
+
+type ReserveAgentAppDailyQuotaRow struct {
+	TasksReserved        int64 `json:"tasks_reserved"`
+	OutputTokensReserved int64 `json:"output_tokens_reserved"`
+}
+
+func (q *Queries) ReserveAgentAppDailyQuota(ctx context.Context, arg ReserveAgentAppDailyQuotaParams) (ReserveAgentAppDailyQuotaRow, error) {
+	row := q.db.QueryRow(ctx, reserveAgentAppDailyQuota,
+		arg.OwnerUserID,
+		arg.AppInstanceID,
+		arg.UtcDate,
+		arg.OutputTokensReserved,
+		arg.PolicyRevision,
+		arg.CreatedAt,
+		arg.MaxTasks,
+		arg.MaxReservedTokens,
+	)
+	var i ReserveAgentAppDailyQuotaRow
+	err := row.Scan(&i.TasksReserved, &i.OutputTokensReserved)
+	return i, err
+}
+
 const selectTaskClaim = `-- name: SelectTaskClaim :one
 SELECT o.aggregate_id
 FROM workos_events.outbox AS o
@@ -633,4 +1260,164 @@ func (q *Queries) TaskBelongsToOwner(ctx context.Context, arg TaskBelongsToOwner
 	var allowed bool
 	err := row.Scan(&allowed)
 	return allowed, err
+}
+
+const updateAgentAppPolicyRequestResult = `-- name: UpdateAgentAppPolicyRequestResult :exec
+UPDATE workos_core.agent_app_policy_requests
+SET result = $1
+WHERE owner_user_id = $2 AND idempotency_key = $3
+`
+
+type UpdateAgentAppPolicyRequestResultParams struct {
+	Result         json.RawMessage `json:"result"`
+	OwnerUserID    string          `json:"owner_user_id"`
+	IdempotencyKey string          `json:"idempotency_key"`
+}
+
+func (q *Queries) UpdateAgentAppPolicyRequestResult(ctx context.Context, arg UpdateAgentAppPolicyRequestResultParams) error {
+	_, err := q.db.Exec(ctx, updateAgentAppPolicyRequestResult, arg.Result, arg.OwnerUserID, arg.IdempotencyKey)
+	return err
+}
+
+const upsertAgentAppDailyUsage = `-- name: UpsertAgentAppDailyUsage :exec
+INSERT INTO workos_core.agent_app_daily_usage (
+    owner_user_id, app_instance_id, utc_date, tasks_recorded,
+    input_tokens_recorded, output_tokens_recorded, cost_decimal_recorded, created_at, updated_at
+) VALUES ($1, $2, $3, $4, $5, $6, $7::numeric, $8, $8)
+ON CONFLICT (owner_user_id, app_instance_id, utc_date) DO UPDATE SET
+    tasks_recorded = agent_app_daily_usage.tasks_recorded + EXCLUDED.tasks_recorded,
+    input_tokens_recorded = agent_app_daily_usage.input_tokens_recorded + EXCLUDED.input_tokens_recorded,
+    output_tokens_recorded = agent_app_daily_usage.output_tokens_recorded + EXCLUDED.output_tokens_recorded,
+    cost_decimal_recorded = COALESCE(EXCLUDED.cost_decimal_recorded, agent_app_daily_usage.cost_decimal_recorded),
+    updated_at = EXCLUDED.updated_at
+`
+
+type UpsertAgentAppDailyUsageParams struct {
+	OwnerUserID          string             `json:"owner_user_id"`
+	AppInstanceID        string             `json:"app_instance_id"`
+	UtcDate              pgtype.Date        `json:"utc_date"`
+	TasksRecorded        int64              `json:"tasks_recorded"`
+	InputTokensRecorded  int64              `json:"input_tokens_recorded"`
+	OutputTokensRecorded int64              `json:"output_tokens_recorded"`
+	Column7              pgtype.Numeric     `json:"column_7"`
+	CreatedAt            pgtype.Timestamptz `json:"created_at"`
+}
+
+func (q *Queries) UpsertAgentAppDailyUsage(ctx context.Context, arg UpsertAgentAppDailyUsageParams) error {
+	_, err := q.db.Exec(ctx, upsertAgentAppDailyUsage,
+		arg.OwnerUserID,
+		arg.AppInstanceID,
+		arg.UtcDate,
+		arg.TasksRecorded,
+		arg.InputTokensRecorded,
+		arg.OutputTokensRecorded,
+		arg.Column7,
+		arg.CreatedAt,
+	)
+	return err
+}
+
+const upsertAgentAppPolicy = `-- name: UpsertAgentAppPolicy :one
+INSERT INTO workos_core.agent_app_policies (
+    owner_user_id, app_instance_id, project_id, execution_mode,
+    max_output_tokens_per_task, max_runtime_seconds_per_task, max_tasks_per_utc_day,
+    max_reserved_output_tokens_per_utc_day, spec_digest, policy_revision, created_at, updated_at
+) VALUES (
+    $1, $2, $3, $4, $5, $6, $7, $8, $9, 1, $10, $10
+)
+ON CONFLICT (owner_user_id, app_instance_id) DO UPDATE SET
+    project_id = EXCLUDED.project_id,
+    execution_mode = EXCLUDED.execution_mode,
+    max_output_tokens_per_task = EXCLUDED.max_output_tokens_per_task,
+    max_runtime_seconds_per_task = EXCLUDED.max_runtime_seconds_per_task,
+    max_tasks_per_utc_day = EXCLUDED.max_tasks_per_utc_day,
+    max_reserved_output_tokens_per_utc_day = EXCLUDED.max_reserved_output_tokens_per_utc_day,
+    spec_digest = EXCLUDED.spec_digest,
+    policy_revision = agent_app_policies.policy_revision + 1,
+    updated_at = EXCLUDED.updated_at
+WHERE agent_app_policies.spec_digest IS DISTINCT FROM EXCLUDED.spec_digest
+  AND agent_app_policies.policy_revision = $11::bigint
+RETURNING policy_revision, (xmax = 0) AS inserted
+`
+
+type UpsertAgentAppPolicyParams struct {
+	OwnerUserID                      string             `json:"owner_user_id"`
+	AppInstanceID                    string             `json:"app_instance_id"`
+	ProjectID                        string             `json:"project_id"`
+	ExecutionMode                    string             `json:"execution_mode"`
+	MaxOutputTokensPerTask           int64              `json:"max_output_tokens_per_task"`
+	MaxRuntimeSecondsPerTask         int64              `json:"max_runtime_seconds_per_task"`
+	MaxTasksPerUtcDay                int64              `json:"max_tasks_per_utc_day"`
+	MaxReservedOutputTokensPerUtcDay int64              `json:"max_reserved_output_tokens_per_utc_day"`
+	SpecDigest                       string             `json:"spec_digest"`
+	CreatedAt                        pgtype.Timestamptz `json:"created_at"`
+	ExpectedRevision                 int64              `json:"expected_revision"`
+}
+
+type UpsertAgentAppPolicyRow struct {
+	PolicyRevision int64 `json:"policy_revision"`
+	Inserted       bool  `json:"inserted"`
+}
+
+func (q *Queries) UpsertAgentAppPolicy(ctx context.Context, arg UpsertAgentAppPolicyParams) (UpsertAgentAppPolicyRow, error) {
+	row := q.db.QueryRow(ctx, upsertAgentAppPolicy,
+		arg.OwnerUserID,
+		arg.AppInstanceID,
+		arg.ProjectID,
+		arg.ExecutionMode,
+		arg.MaxOutputTokensPerTask,
+		arg.MaxRuntimeSecondsPerTask,
+		arg.MaxTasksPerUtcDay,
+		arg.MaxReservedOutputTokensPerUtcDay,
+		arg.SpecDigest,
+		arg.CreatedAt,
+		arg.ExpectedRevision,
+	)
+	var i UpsertAgentAppPolicyRow
+	err := row.Scan(&i.PolicyRevision, &i.Inserted)
+	return i, err
+}
+
+const upsertAgentTaskUsage = `-- name: UpsertAgentTaskUsage :one
+INSERT INTO workos_core.agent_task_usage (
+    owner_user_id, task_id, input_tokens, output_tokens, cost_decimal, model, updated_at
+) VALUES ($1, $2, $3, $4, $5::numeric, $6, $7)
+ON CONFLICT (owner_user_id, task_id) DO UPDATE SET
+    input_tokens = agent_task_usage.input_tokens + EXCLUDED.input_tokens,
+    output_tokens = agent_task_usage.output_tokens + EXCLUDED.output_tokens,
+    cost_decimal = COALESCE(EXCLUDED.cost_decimal, agent_task_usage.cost_decimal),
+    model = CASE WHEN EXCLUDED.model <> '' THEN EXCLUDED.model ELSE agent_task_usage.model END,
+    updated_at = EXCLUDED.updated_at
+RETURNING input_tokens, output_tokens, (xmax = 0) AS inserted
+`
+
+type UpsertAgentTaskUsageParams struct {
+	OwnerUserID  string             `json:"owner_user_id"`
+	TaskID       string             `json:"task_id"`
+	InputTokens  int64              `json:"input_tokens"`
+	OutputTokens int64              `json:"output_tokens"`
+	Column5      pgtype.Numeric     `json:"column_5"`
+	Model        string             `json:"model"`
+	UpdatedAt    pgtype.Timestamptz `json:"updated_at"`
+}
+
+type UpsertAgentTaskUsageRow struct {
+	InputTokens  int64 `json:"input_tokens"`
+	OutputTokens int64 `json:"output_tokens"`
+	Inserted     bool  `json:"inserted"`
+}
+
+func (q *Queries) UpsertAgentTaskUsage(ctx context.Context, arg UpsertAgentTaskUsageParams) (UpsertAgentTaskUsageRow, error) {
+	row := q.db.QueryRow(ctx, upsertAgentTaskUsage,
+		arg.OwnerUserID,
+		arg.TaskID,
+		arg.InputTokens,
+		arg.OutputTokens,
+		arg.Column5,
+		arg.Model,
+		arg.UpdatedAt,
+	)
+	var i UpsertAgentTaskUsageRow
+	err := row.Scan(&i.InputTokens, &i.OutputTokens, &i.Inserted)
+	return i, err
 }

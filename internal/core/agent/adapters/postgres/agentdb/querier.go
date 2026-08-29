@@ -12,27 +12,48 @@ import (
 
 type Querier interface {
 	AdvanceTaskState(ctx context.Context, arg AdvanceTaskStateParams) error
+	DecideAgentAppApproval(ctx context.Context, arg DecideAgentAppApprovalParams) (int64, error)
+	ExpirePendingApprovals(ctx context.Context, arg ExpirePendingApprovalsParams) ([]ExpirePendingApprovalsRow, error)
+	ExpireTaskPendingApproval(ctx context.Context, arg ExpireTaskPendingApprovalParams) (int64, error)
 	FinishPendingTaskRequest(ctx context.Context, arg FinishPendingTaskRequestParams) error
 	FinishTaskLease(ctx context.Context, arg FinishTaskLeaseParams) (int64, error)
+	GetAgentAppApproval(ctx context.Context, arg GetAgentAppApprovalParams) (WorkosCoreAgentAppApproval, error)
+	GetAgentAppApprovalForUpdate(ctx context.Context, arg GetAgentAppApprovalForUpdateParams) (WorkosCoreAgentAppApproval, error)
+	GetAgentAppDailyReservations(ctx context.Context, arg GetAgentAppDailyReservationsParams) (GetAgentAppDailyReservationsRow, error)
+	GetAgentAppDailyUsage(ctx context.Context, arg GetAgentAppDailyUsageParams) (GetAgentAppDailyUsageRow, error)
+	GetAgentAppPolicy(ctx context.Context, arg GetAgentAppPolicyParams) (WorkosCoreAgentAppPolicy, error)
+	GetAgentAppPolicyForUpdate(ctx context.Context, arg GetAgentAppPolicyForUpdateParams) (WorkosCoreAgentAppPolicy, error)
+	GetAgentAppPolicyRequest(ctx context.Context, arg GetAgentAppPolicyRequestParams) (GetAgentAppPolicyRequestRow, error)
 	GetAgentAppTaskByTask(ctx context.Context, arg GetAgentAppTaskByTaskParams) (GetAgentAppTaskByTaskRow, error)
+	GetAgentAppTaskOwnerTask(ctx context.Context, arg GetAgentAppTaskOwnerTaskParams) (string, error)
 	GetAgentAppTaskRequest(ctx context.Context, arg GetAgentAppTaskRequestParams) (GetAgentAppTaskRequestRow, error)
 	GetAgentTask(ctx context.Context, arg GetAgentTaskParams) (WorkosCoreAgentTask, error)
 	GetAgentTaskByIdempotency(ctx context.Context, arg GetAgentTaskByIdempotencyParams) (WorkosCoreAgentTask, error)
 	GetAgentTaskForUpdate(ctx context.Context, arg GetAgentTaskForUpdateParams) (WorkosCoreAgentTask, error)
 	GetAgentTaskUnscoped(ctx context.Context, id string) (WorkosCoreAgentTask, error)
+	InsertAgentAppApproval(ctx context.Context, arg InsertAgentAppApprovalParams) (int64, error)
+	InsertAgentAppPolicyRequest(ctx context.Context, arg InsertAgentAppPolicyRequestParams) (int64, error)
 	InsertAgentAppTaskRequest(ctx context.Context, arg InsertAgentAppTaskRequestParams) (int64, error)
 	InsertAgentTask(ctx context.Context, arg InsertAgentTaskParams) (int64, error)
 	InsertTaskEvent(ctx context.Context, arg InsertTaskEventParams) error
 	InsertTaskOutbox(ctx context.Context, arg InsertTaskOutboxParams) error
 	LeaseTask(ctx context.Context, arg LeaseTaskParams) error
+	ListAgentAppApprovals(ctx context.Context, arg ListAgentAppApprovalsParams) ([]WorkosCoreAgentAppApproval, error)
 	ListAgentTasks(ctx context.Context, arg ListAgentTasksParams) ([]WorkosCoreAgentTask, error)
 	ListTaskEvents(ctx context.Context, arg ListTaskEventsParams) ([]ListTaskEventsRow, error)
 	LockTaskEventStream(ctx context.Context, arg LockTaskEventStreamParams) (LockTaskEventStreamRow, error)
+	MarkAgentAppUsageBreach(ctx context.Context, arg MarkAgentAppUsageBreachParams) error
 	MarkTaskCancelled(ctx context.Context, arg MarkTaskCancelledParams) error
 	MarkTaskRunning(ctx context.Context, arg MarkTaskRunningParams) error
 	RenewTaskLease(ctx context.Context, arg RenewTaskLeaseParams) (bool, error)
+	RequestTaskCancellation(ctx context.Context, arg RequestTaskCancellationParams) error
+	ReserveAgentAppDailyQuota(ctx context.Context, arg ReserveAgentAppDailyQuotaParams) (ReserveAgentAppDailyQuotaRow, error)
 	SelectTaskClaim(ctx context.Context, lockedUntil pgtype.Timestamptz) (string, error)
 	TaskBelongsToOwner(ctx context.Context, arg TaskBelongsToOwnerParams) (bool, error)
+	UpdateAgentAppPolicyRequestResult(ctx context.Context, arg UpdateAgentAppPolicyRequestResultParams) error
+	UpsertAgentAppDailyUsage(ctx context.Context, arg UpsertAgentAppDailyUsageParams) error
+	UpsertAgentAppPolicy(ctx context.Context, arg UpsertAgentAppPolicyParams) (UpsertAgentAppPolicyRow, error)
+	UpsertAgentTaskUsage(ctx context.Context, arg UpsertAgentTaskUsageParams) (UpsertAgentTaskUsageRow, error)
 }
 
 var _ Querier = (*Queries)(nil)

@@ -30,3 +30,6 @@ test-results/
 # Accidental local build output (go build ./tests/restart writes ./restart);
 # the exact root path only — tests/restart/ source stays tracked.
 /restart
+
+# Nested pnpm stores created by containerized installs
+.pnpm-store/

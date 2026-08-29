@@ -14,7 +14,7 @@ import (
 )
 
 func TestProviderAcceptsCanonicalNDJSON(t *testing.T) {
-	provider := helperProvider(t, "valid", time.Second)
+	provider := helperProvider(t, "valid", time.Second*time.Duration(helperTimeoutScale))
 	var events []*agentv1.AgentEvent
 	err := provider.Run(context.Background(), "task-1", &agentv1.AgentTaskInput{Goal: "hello"}, func(event *agentv1.AgentEvent) error {
 		events = append(events, event)
@@ -38,7 +38,7 @@ func TestProviderRejectsMalformedAndIncompleteStreams(t *testing.T) {
 		{"after-terminal", "after a terminal event"},
 	} {
 		t.Run(test.mode, func(t *testing.T) {
-			provider := helperProvider(t, test.mode, time.Second)
+			provider := helperProvider(t, test.mode, time.Second*time.Duration(helperTimeoutScale))
 			err := provider.Run(context.Background(), "task-1", &agentv1.AgentTaskInput{Goal: "hello"}, func(*agentv1.AgentEvent) error { return nil })
 			if err == nil || !strings.Contains(err.Error(), test.want) {
 				t.Fatalf("expected %q error, got %v", test.want, err)

@@ -27,6 +27,7 @@ import (
 	agentpostgres "github.com/yangtao121/workos/internal/core/agent/adapters/postgres"
 	agentapp "github.com/yangtao121/workos/internal/core/agent/application"
 	agentdomain "github.com/yangtao121/workos/internal/core/agent/domain"
+	agentports "github.com/yangtao121/workos/internal/core/agent/ports"
 	"github.com/yangtao121/workos/internal/core/orchestration"
 	orchestrationtransport "github.com/yangtao121/workos/internal/core/orchestration/transport"
 	projectpostgres "github.com/yangtao121/workos/internal/core/project/adapters/postgres"
@@ -359,10 +360,22 @@ func (s *seqIDs) New() string {
 }
 
 func bridgeSubmitInput(owner, appInstance, project, key, digest, goal string) agentapp.AppSubmitInput {
+	spec := agentdomain.SystemDefaultPolicy().Spec
 	return agentapp.AppSubmitInput{
 		OwnerUserID: owner, AppInstanceID: appInstance,
 		ClientIdempotencyKey: key, RequestDigest: digest,
 		ProjectID: project, ProviderID: "fake", Goal: goal,
+		Enforcement: agentapp.AppRunEnforcement{
+			Policy: agentports.PolicySnapshot{
+				Source:     agentdomain.PolicySourceSystemDefault,
+				Revision:   agentdomain.SystemDefaultPolicyVersion,
+				SpecDigest: spec.Digest(), Spec: spec,
+			},
+			MaxOutputTokensTask: spec.MaxOutputTokensPerTask, MaxRuntimeSecondsTask: spec.MaxRuntimeSecondsPerTask,
+			Daily: agentports.DailyAllowance{
+				MaxTasks: spec.MaxTasksPerUTCDay, MaxReservedOutputTokens: spec.MaxReservedOutputTokensPerUTCDay,
+			},
+		},
 	}
 }
 
@@ -735,11 +748,41 @@ func (f *staticInstallations) ResolveActiveInstallation(
 // hits the Agent store before any other dependency.
 func newRouterForOutage(agentRepository *agentpostgres.Repository) *orchestration.TaskRouter {
 	agents := agentapp.New(agentRepository, ids.UUIDv7{})
-	router, err := orchestration.NewTaskRouter(agents, projectOutageProjects(), "fake")
+	router, err := orchestration.NewTaskRouter(agents, projectOutageProjects(), outagePolicies{}, outageProviders{}, "fake")
 	if err != nil {
 		panic(err)
 	}
 	return router
+}
+
+// outagePolicies isolates the Agent-store outage from the policy resolution:
+// the fake answers the finite system default without touching any store.
+type outagePolicies struct{}
+
+func (outagePolicies) EffectivePolicy(context.Context, string, string, string) (agentdomain.Policy, error) {
+	return agentdomain.SystemDefaultPolicy(), nil
+}
+
+// outageProviders answers the full budget contract for the default provider.
+type outageProviders struct{}
+
+func (outageProviders) Capabilities(context.Context, string) (agentports.ProviderCapabilities, error) {
+	return agentports.ProviderCapabilities{HardTokenBudget: true, HardRuntimeDeadline: true, UsageReporting: true}, nil
+}
+
+// staticDefaultPolicies is an alias fact for in-process routers that only
+// exercise authorization, not policy adjudication.
+type staticDefaultPolicies struct{}
+
+func (staticDefaultPolicies) EffectivePolicy(context.Context, string, string, string) (agentdomain.Policy, error) {
+	return agentdomain.SystemDefaultPolicy(), nil
+}
+
+// staticFullCapabilities answers the complete budget contract.
+type staticFullCapabilities struct{}
+
+func (staticFullCapabilities) Capabilities(context.Context, string) (agentports.ProviderCapabilities, error) {
+	return agentports.ProviderCapabilities{HardTokenBudget: true, HardRuntimeDeadline: true, UsageReporting: true}, nil
 }
 
 var _ = projectpostgres.New
@@ -876,7 +919,7 @@ EXECUTE FUNCTION workos_events.raise_outbox_outage()`); err != nil {
 	}
 	agentRepository := agentpostgres.New(pool)
 	agents := agentapp.New(agentRepository, ids.UUIDv7{})
-	router, err := orchestration.NewTaskRouter(agents, projectapp.New(projectpostgres.New(pool), ids.UUIDv7{}), "fake")
+	router, err := orchestration.NewTaskRouter(agents, projectapp.New(projectpostgres.New(pool), ids.UUIDv7{}), outagePolicies{}, outageProviders{}, "fake")
 	if err != nil {
 		t.Fatal(err)
 	}

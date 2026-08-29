@@ -188,6 +188,9 @@ var (
 	// grant, or provenance re-validation failed server-side after the
 	// runtime checks passed. It carries no Core internals.
 	ErrAppAgentDenied = errors.New("core app agent denied the request")
+	// ErrAppAgentExhausted marks the Core quota verdict: the installation's
+	// UTC daily allowance is exhausted or circuit-broken (ADR-0005).
+	ErrAppAgentExhausted = errors.New("core app agent reported the daily allowance as exhausted")
 	// ErrAppAgentConflict marks the Core idempotency verdict: the same app
 	// client key was already consumed by a different canonical request.
 	ErrAppAgentConflict = errors.New("core app agent reported an idempotency conflict")

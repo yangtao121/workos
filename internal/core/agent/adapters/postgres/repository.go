@@ -58,6 +58,10 @@ func (r *Repository) Create(ctx context.Context, task domain.Task, idempotencyKe
 		ID: task.ID, OwnerUserID: task.OwnerUserID, IdempotencyKey: idempotencyKey,
 		ProjectID: projectID, Input: task.Input, State: string(task.State), ProviderID: task.ProviderID,
 		CreatedAt: timestamp(task.CreatedAt), UpdatedAt: timestamp(task.UpdatedAt),
+		// User-submitted tasks carry no policy enforcement in this slice: the
+		// snapshot columns stay NULL (no fabricated history).
+		PolicySource: pgtype.Text{}, PolicyRevision: pgtype.Int8{}, PolicySpecDigest: pgtype.Text{},
+		BudgetMaxOutputTokens: pgtype.Int8{}, BudgetMaxRuntimeSeconds: pgtype.Int8{},
 	})
 	if err != nil {
 		return domain.Task{}, fmt.Errorf("insert task: %w", err)
@@ -102,12 +106,16 @@ func (r *Repository) Get(ctx context.Context, ownerID, taskID string) (domain.Ta
 	return taskFromDB(value, nil)
 }
 
-// CreateForApp inserts the task, its App provenance mapping, and the task
-// outbox row in one transaction. Same-key races are arbitrated by the mapping
-// primary key: the loser re-reads the consumed mapping and replays the
-// winner's task exactly — or aborts — while its own partially created rows
-// roll back, so no orphan task, mapping, or outbox row can survive.
-func (r *Repository) CreateForApp(ctx context.Context, task domain.Task, provenance ports.AppTaskProvenance) (domain.Task, error) {
+// CreateForApp inserts the task, its App provenance mapping, the guarded
+// daily quota reservation, and the task outbox row in one transaction
+// (policy mode allow). Same-key races are arbitrated by the mapping primary
+// key: the loser re-reads the consumed mapping and replays the winner's task
+// exactly — or aborts — while its own partially created rows roll back, so no
+// orphan task, mapping, reservation, or outbox row can survive. When the
+// guarded reservation cannot fit the policy's UTC daily allowance the whole
+// transaction fails with domain.ErrQuotaExhausted and the App run key is not
+// consumed.
+func (r *Repository) CreateForApp(ctx context.Context, task domain.Task, provenance ports.AppTaskProvenance, snapshot ports.PolicySnapshot, daily ports.DailyAllowance) (domain.Task, error) {
 	projectID, err := nullableUUID(task.ProjectID)
 	if err != nil {
 		return domain.Task{}, domain.ErrInvalid
@@ -122,6 +130,11 @@ func (r *Repository) CreateForApp(ctx context.Context, task domain.Task, provena
 		ID: task.ID, OwnerUserID: task.OwnerUserID, IdempotencyKey: provenance.TaskIdempotencyKey,
 		ProjectID: projectID, Input: task.Input, State: string(task.State), ProviderID: task.ProviderID,
 		CreatedAt: timestamp(task.CreatedAt), UpdatedAt: timestamp(task.UpdatedAt),
+		PolicySource:            text(string(snapshot.Source)),
+		PolicyRevision:          pgtype.Int8{Int64: snapshot.Revision, Valid: true},
+		PolicySpecDigest:        text(snapshot.SpecDigest),
+		BudgetMaxOutputTokens:   pgtype.Int8{Int64: snapshot.Spec.MaxOutputTokensPerTask, Valid: true},
+		BudgetMaxRuntimeSeconds: pgtype.Int8{Int64: snapshot.Spec.MaxRuntimeSecondsPerTask, Valid: true},
 	}); err != nil {
 		return domain.Task{}, storeError("insert app task", err)
 	}
@@ -134,25 +147,25 @@ func (r *Repository) CreateForApp(ctx context.Context, task domain.Task, provena
 		return domain.Task{}, storeError("insert app task mapping", err)
 	}
 	if rows == 0 {
-		consumed, err := queries.GetAgentAppTaskRequest(ctx, agentdb.GetAgentAppTaskRequestParams{
-			OwnerUserID: task.OwnerUserID, AppInstanceID: provenance.AppInstanceID,
-			ClientIdempotencyKey: provenance.ClientIdempotencyKey,
-		})
-		if errors.Is(err, pgx.ErrNoRows) {
-			return domain.Task{}, fmt.Errorf("app task mapping vanished mid-transaction: %w", domain.ErrInvalid)
-		}
-		if err != nil {
-			return domain.Task{}, storeError("classify app task mapping", err)
-		}
-		if consumed.RequestDigest != provenance.RequestDigest {
-			return domain.Task{}, domain.ErrIdempotencyConflict
-		}
-		value, err := queries.GetAgentTask(ctx, agentdb.GetAgentTaskParams{OwnerUserID: task.OwnerUserID, ID: consumed.TaskID})
-		winner, err := taskFromDB(value, err)
-		if err != nil {
-			return domain.Task{}, err
-		}
-		return winner, nil
+		winner, err := r.replayAppTaskMapping(ctx, queries, task.OwnerUserID, provenance)
+		return winner, err
+	}
+	// Guarded daily reservation: the WHERE clause refuses the increment when
+	// either ceiling would be crossed, so two concurrent Core instances can
+	// never oversell the last slot — the loser's transaction rolls back with
+	// no task, mapping, or reservation.
+	if _, err := queries.ReserveAgentAppDailyQuota(ctx, agentdb.ReserveAgentAppDailyQuotaParams{
+		OwnerUserID: task.OwnerUserID, AppInstanceID: provenance.AppInstanceID,
+		UtcDate:              utcDate(task.CreatedAt),
+		OutputTokensReserved: snapshot.Spec.MaxOutputTokensPerTask,
+		PolicyRevision:       snapshot.Revision,
+		CreatedAt:            timestamp(task.CreatedAt),
+		MaxTasks:             daily.MaxTasks,
+		MaxReservedTokens:    daily.MaxReservedOutputTokens,
+	}); errors.Is(err, pgx.ErrNoRows) {
+		return domain.Task{}, domain.ErrQuotaExhausted
+	} else if err != nil {
+		return domain.Task{}, storeError("reserve app task quota", err)
 	}
 	payload, err := json.Marshal(map[string]string{"taskId": task.ID})
 	if err != nil {
@@ -175,6 +188,126 @@ func (r *Repository) CreateForApp(ctx context.Context, task domain.Task, provena
 		return domain.Task{}, storeError("commit app task", err)
 	}
 	return task, nil
+}
+
+// replayAppTaskMapping classifies a lost same-key race: the winner's mapping
+// digest either replays its task exactly or aborts this request. The caller's
+// transaction (including any partially written task rows) rolls back.
+func (r *Repository) replayAppTaskMapping(ctx context.Context, queries *agentdb.Queries, ownerID string, provenance ports.AppTaskProvenance) (domain.Task, error) {
+	consumed, err := queries.GetAgentAppTaskRequest(ctx, agentdb.GetAgentAppTaskRequestParams{
+		OwnerUserID: ownerID, AppInstanceID: provenance.AppInstanceID,
+		ClientIdempotencyKey: provenance.ClientIdempotencyKey,
+	})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return domain.Task{}, fmt.Errorf("app task mapping vanished mid-transaction: %w", domain.ErrInvalid)
+	}
+	if err != nil {
+		return domain.Task{}, storeError("classify app task mapping", err)
+	}
+	if consumed.RequestDigest != provenance.RequestDigest {
+		return domain.Task{}, domain.ErrIdempotencyConflict
+	}
+	value, err := queries.GetAgentTask(ctx, agentdb.GetAgentTaskParams{OwnerUserID: ownerID, ID: consumed.TaskID})
+	return taskFromDB(value, err)
+}
+
+// CreateForAppApproval inserts the waiting task, the App provenance mapping,
+// the pending approval with its full policy-spec snapshot, and the
+// approval_required event in one transaction. It deliberately creates no
+// claimable outbox row and reserves no quota: a waiting task is not an
+// enqueued task, and a rejected or expired approval never consumes a single
+// reserved task or token.
+func (r *Repository) CreateForAppApproval(ctx context.Context, task domain.Task, approval domain.Approval, provenance ports.AppTaskProvenance) (domain.Task, domain.Approval, error) {
+	projectID, err := nullableUUID(task.ProjectID)
+	if err != nil {
+		return domain.Task{}, domain.Approval{}, domain.ErrInvalid
+	}
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return domain.Task{}, domain.Approval{}, storeError("begin create app approval", err)
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck
+	queries := r.queries.WithTx(tx)
+	if _, err := queries.InsertAgentTask(ctx, agentdb.InsertAgentTaskParams{
+		ID: task.ID, OwnerUserID: task.OwnerUserID, IdempotencyKey: provenance.TaskIdempotencyKey,
+		ProjectID: projectID, Input: task.Input, State: string(task.State), ProviderID: task.ProviderID,
+		CreatedAt: timestamp(task.CreatedAt), UpdatedAt: timestamp(task.UpdatedAt),
+		PolicySource:            text(string(approval.Source)),
+		PolicyRevision:          pgtype.Int8{Int64: approval.Revision, Valid: true},
+		PolicySpecDigest:        text(approval.Spec.Digest()),
+		BudgetMaxOutputTokens:   pgtype.Int8{Int64: approval.Spec.MaxOutputTokensPerTask, Valid: true},
+		BudgetMaxRuntimeSeconds: pgtype.Int8{Int64: approval.Spec.MaxRuntimeSecondsPerTask, Valid: true},
+	}); err != nil {
+		return domain.Task{}, domain.Approval{}, storeError("insert app task", err)
+	}
+	rows, err := queries.InsertAgentAppTaskRequest(ctx, agentdb.InsertAgentAppTaskRequestParams{
+		OwnerUserID: task.OwnerUserID, AppInstanceID: provenance.AppInstanceID,
+		ClientIdempotencyKey: provenance.ClientIdempotencyKey, RequestDigest: provenance.RequestDigest,
+		TaskID: task.ID, ProjectID: task.ProjectID, CreatedAt: timestamp(task.CreatedAt),
+	})
+	if err != nil {
+		return domain.Task{}, domain.Approval{}, storeError("insert app task mapping", err)
+	}
+	if rows == 0 {
+		winner, err := r.replayAppTaskMapping(ctx, queries, task.OwnerUserID, provenance)
+		return winner, domain.Approval{}, err
+	}
+	if rows, err := queries.InsertAgentAppApproval(ctx, agentdb.InsertAgentAppApprovalParams{
+		OwnerUserID: approval.OwnerUserID, ID: approval.ID, AppInstanceID: approval.AppInstanceID,
+		ProjectID: approval.ProjectID, TaskID: approval.TaskID, AppID: approval.AppID,
+		GoalExcerpt:                      approval.GoalExcerpt,
+		ProviderID:                       approval.ProviderID,
+		MaxOutputTokensPerTask:           approval.Spec.MaxOutputTokensPerTask,
+		MaxRuntimeSecondsPerTask:         approval.Spec.MaxRuntimeSecondsPerTask,
+		MaxTasksPerUtcDay:                approval.Spec.MaxTasksPerUTCDay,
+		MaxReservedOutputTokensPerUtcDay: approval.Spec.MaxReservedOutputTokensPerUTCDay,
+		PolicyRevision:                   approval.Revision, CreatedAt: timestamp(approval.CreatedAt),
+	}); err != nil {
+		return domain.Task{}, domain.Approval{}, storeError("insert app approval", err)
+	} else if rows == 0 {
+		return domain.Task{}, domain.Approval{}, fmt.Errorf("approval id collision: %w", domain.ErrInvalid)
+	}
+	if err := advanceTaskWithSystemEvent(ctx, queries, &task, task.State, "approval_required", approvalRequiredPayload(approval), task.CreatedAt); err != nil {
+		return domain.Task{}, domain.Approval{}, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return domain.Task{}, domain.Approval{}, storeError("commit app approval", err)
+	}
+	approval.UpdatedAt = task.CreatedAt
+	return task, approval, nil
+}
+
+// advanceTaskWithSystemEvent advances the task's state and sequence and
+// persists one Core-generated lifecycle event in the same transaction.
+func advanceTaskWithSystemEvent(ctx context.Context, queries *agentdb.Queries, task *domain.Task, state domain.State, eventType string, payload json.RawMessage, occurredAt time.Time) error {
+	task.LastEventSequence++
+	if err := queries.AdvanceTaskState(ctx, agentdb.AdvanceTaskStateParams{
+		State: string(state), RunID: "", Sequence: task.LastEventSequence,
+		UpdatedAt: timestamp(occurredAt), TaskID: task.ID,
+	}); err != nil {
+		return fmt.Errorf("advance task state: %w", err)
+	}
+	eventID, err := uuid.NewV7()
+	if err != nil {
+		return fmt.Errorf("generate system event id: %w", err)
+	}
+	event := domain.Event{ID: eventID.String(), TaskID: task.ID, Sequence: task.LastEventSequence, EventType: eventType, Payload: payload, OccurredAt: occurredAt}
+	if err := addEventMetadata(&event); err != nil {
+		return err
+	}
+	return insertEvent(ctx, queries, event)
+}
+
+// approvalRequiredPayload encodes the canonical approval_required event body.
+func approvalRequiredPayload(approval domain.Approval) json.RawMessage {
+	payload, _ := json.Marshal(map[string]any{
+		"approvalRequired": map[string]any{
+			"approvalId":  approval.ID,
+			"title":       "App task approval",
+			"description": approval.GoalExcerpt,
+		},
+	})
+	return payload
 }
 
 // GetAppTaskRequest reads one consumed (owner, app instance, client key)
@@ -283,6 +416,14 @@ func (r *Repository) Cancel(ctx context.Context, ownerID, taskID, reason string,
 	if err := insertEvent(ctx, queries, event); err != nil {
 		return domain.Task{}, nil, err
 	}
+	// A cancelled waiting task can no longer be decided: its pending approval
+	// expires in the same transaction so the owner's list never shows a
+	// decideable approval whose task is gone.
+	if _, err := queries.ExpireTaskPendingApproval(ctx, agentdb.ExpireTaskPendingApprovalParams{
+		UpdatedAt: timestamp(now), OwnerUserID: ownerID, TaskID: taskID,
+	}); err != nil {
+		return domain.Task{}, nil, fmt.Errorf("expire cancelled task approval: %w", err)
+	}
 	if err := queries.FinishPendingTaskRequest(ctx, agentdb.FinishPendingTaskRequestParams{
 		ProcessedAt: timestamp(now), AggregateID: task.ID,
 	}); err != nil {
@@ -377,7 +518,7 @@ func (r *Repository) Renew(ctx context.Context, leaseID, workerID string, durati
 	return expires, cancelled, nil
 }
 
-func (r *Repository) AppendEvent(ctx context.Context, leaseID, workerID string, event domain.Event, state domain.State, providerID, runID string, now time.Time) (domain.Event, error) {
+func (r *Repository) AppendEvent(ctx context.Context, leaseID, workerID string, event domain.Event, state domain.State, providerID, runID string, usage *domain.UsageReport, now time.Time) (domain.Event, error) {
 	leaseUUID, err := requiredUUID(leaseID)
 	if err != nil {
 		return domain.Event{}, domain.ErrLeaseLost
@@ -416,10 +557,76 @@ func (r *Repository) AppendEvent(ctx context.Context, leaseID, workerID string, 
 	if err := insertEvent(ctx, queries, event); err != nil {
 		return domain.Event{}, err
 	}
+	if usage != nil {
+		if err := r.projectUsage(ctx, queries, stream, *usage, now); err != nil {
+			return domain.Event{}, err
+		}
+	}
 	if err := tx.Commit(ctx); err != nil {
 		return domain.Event{}, fmt.Errorf("commit task event: %w", err)
 	}
 	return event, nil
+}
+
+// projectUsage accumulates one validated usage observation into the
+// Agent-owned per-task and per-bucket usage facts inside the event's
+// transaction. User-submitted tasks (no App provenance) have no bucket and
+// are skipped. When the cumulative reported output crosses the task's
+// reserved budget the bucket records an auditable breach and the task is
+// deterministically flagged for cancellation — the worker's next lease
+// renewal observes the flag and stops the run (ADR-0005 §6).
+func (r *Repository) projectUsage(ctx context.Context, queries *agentdb.Queries, stream agentdb.LockTaskEventStreamRow, usage domain.UsageReport, now time.Time) error {
+	appInstanceID, err := queries.GetAgentAppTaskOwnerTask(ctx, agentdb.GetAgentAppTaskOwnerTaskParams{
+		OwnerUserID: stream.OwnerUserID, TaskID: stream.ID,
+	})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil
+	}
+	if err != nil {
+		return storeError("resolve usage bucket", err)
+	}
+	var cost pgtype.Numeric
+	if usage.CostDecimal != "" {
+		if err := cost.Scan(usage.CostDecimal); err != nil {
+			return fmt.Errorf("decode usage cost: %w", domain.ErrInvalid)
+		}
+	}
+	accumulated, err := queries.UpsertAgentTaskUsage(ctx, agentdb.UpsertAgentTaskUsageParams{
+		OwnerUserID: stream.OwnerUserID, TaskID: stream.ID,
+		InputTokens: usage.InputTokens, OutputTokens: usage.OutputTokens,
+		Column5: cost, Model: usage.Model, UpdatedAt: timestamp(now),
+	})
+	if err != nil {
+		return storeError("record task usage", err)
+	}
+	bucket := utcDate(stream.CreatedAt.Time)
+	tasksRecorded := int64(0)
+	if accumulated.Inserted {
+		tasksRecorded = 1
+	}
+	if err := queries.UpsertAgentAppDailyUsage(ctx, agentdb.UpsertAgentAppDailyUsageParams{
+		OwnerUserID: stream.OwnerUserID, AppInstanceID: appInstanceID,
+		UtcDate: bucket, TasksRecorded: tasksRecorded,
+		InputTokensRecorded: usage.InputTokens, OutputTokensRecorded: usage.OutputTokens,
+		Column7: cost, CreatedAt: timestamp(now),
+	}); err != nil {
+		return storeError("record bucket usage", err)
+	}
+	if stream.BudgetMaxOutputTokens.Valid && stream.BudgetMaxOutputTokens.Int64 > 0 &&
+		accumulated.OutputTokens > stream.BudgetMaxOutputTokens.Int64 {
+		if err := queries.MarkAgentAppUsageBreach(ctx, agentdb.MarkAgentAppUsageBreachParams{
+			UpdatedAt: timestamp(now), OwnerUserID: stream.OwnerUserID,
+			AppInstanceID: appInstanceID, UtcDate: bucket,
+		}); err != nil {
+			return storeError("mark usage breach", err)
+		}
+		if err := queries.RequestTaskCancellation(ctx, agentdb.RequestTaskCancellationParams{
+			UpdatedAt: timestamp(now), ID: stream.ID,
+		}); err != nil {
+			return storeError("request breach cancellation", err)
+		}
+	}
+	return nil
 }
 
 func (r *Repository) FinishLease(ctx context.Context, leaseID, workerID string, now time.Time) error {
@@ -489,6 +696,12 @@ func timestamp(value time.Time) pgtype.Timestamptz {
 
 func text(value string) pgtype.Text {
 	return pgtype.Text{String: value, Valid: true}
+}
+
+// utcDate normalizes a timestamp to its UTC calendar day for quota buckets.
+func utcDate(value time.Time) pgtype.Date {
+	day := value.UTC()
+	return pgtype.Date{Time: time.Date(day.Year(), day.Month(), day.Day(), 0, 0, 0, 0, time.UTC), Valid: true}
 }
 
 func addEventMetadata(event *domain.Event) error {

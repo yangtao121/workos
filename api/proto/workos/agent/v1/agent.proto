@@ -4,6 +4,7 @@ package workos.agent.v1;
 
 import "google/protobuf/struct.proto";
 import "google/protobuf/timestamp.proto";
+import "workos/agent/v1/app_policy.proto";
 import "workos/common/v1/common.proto";
 
 option go_package = "github.com/yangtao121/workos/gen/go/workos/agent/v1;agentv1";
@@ -122,6 +123,18 @@ message RunCancelled {
   string reason = 1;
 }
 
+// Core-generated: the owner decided a pre-run approval for this task.
+message ApprovalDecided {
+  string approval_id = 1;
+  AppAgentApprovalDecision decision = 2;
+}
+
+// Core-generated: a real policy change invalidated this pending approval; the
+// task never queued.
+message ApprovalExpired {
+  string approval_id = 1;
+}
+
 message AgentEvent {
   string id = 1;
   string task_id = 2;
@@ -140,6 +153,10 @@ message AgentEvent {
     RunCompleted run_completed = 19;
     RunFailed run_failed = 20;
     RunCancelled run_cancelled = 21;
+    // Additive Core-generated approval lifecycle events (ADR-0005); existing
+    // field numbers 10-21 are immutable.
+    ApprovalDecided approval_decided = 22;
+    ApprovalExpired approval_expired = 23;
   }
 }
 

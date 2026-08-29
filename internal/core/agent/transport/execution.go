@@ -50,11 +50,22 @@ func (h *ExecutionHandler) AppendTaskEvent(ctx context.Context, req *connect.Req
 	}
 	event.Id, event.TaskId, event.Sequence, event.OccurredAt = "", "", 0, nil
 	eventType, state, providerID, runID := classifyEvent(event)
+	var usage *domain.UsageReport
+	if recorded := event.GetUsageRecorded(); recorded != nil {
+		report := domain.UsageReport{
+			InputTokens: recorded.GetInputTokens(), OutputTokens: recorded.GetOutputTokens(),
+			CostDecimal: recorded.GetCostDecimal(), Model: recorded.GetModel(),
+		}
+		if err := report.Validate(); err != nil {
+			return nil, connect.NewError(connect.CodeInvalidArgument, err)
+		}
+		usage = &report
+	}
 	payload, err := protojson.Marshal(event)
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, domain.ErrInvalid)
 	}
-	stored, err := h.service.AppendEvent(ctx, req.Msg.GetLeaseId(), req.Msg.GetWorkerId(), eventType, payload, state, providerID, runID)
+	stored, err := h.service.AppendEvent(ctx, req.Msg.GetLeaseId(), req.Msg.GetWorkerId(), eventType, payload, state, providerID, runID, usage)
 	if err != nil {
 		return nil, mapError(err)
 	}

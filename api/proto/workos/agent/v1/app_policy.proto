@@ -1,0 +1,188 @@
+syntax = "proto3";
+
+package workos.agent.v1;
+
+import "google/protobuf/timestamp.proto";
+import "workos/common/v1/common.proto";
+
+option go_package = "github.com/yangtao121/workos/gen/go/workos/agent/v1;agentv1";
+
+// Execution mode applied to fresh App Agent tasks by the Agent-owned
+// installation policy. The policy never widens the installation grant: a mode
+// of ALLOW still requires the current grant to authorize agent.task.run.
+enum AppAgentExecutionMode {
+  APP_AGENT_EXECUTION_MODE_UNSPECIFIED = 0;
+  APP_AGENT_EXECUTION_MODE_ALLOW = 1;
+  APP_AGENT_EXECUTION_MODE_REQUIRE_APPROVAL = 2;
+  APP_AGENT_EXECUTION_MODE_BLOCK = 3;
+}
+
+enum AppAgentPolicySource {
+  APP_AGENT_POLICY_SOURCE_UNSPECIFIED = 0;
+  // Versioned, finite default pinned by code and ADR-0005; used when no
+  // explicit policy row exists. Never unlimited.
+  APP_AGENT_POLICY_SOURCE_SYSTEM_DEFAULT = 1;
+  APP_AGENT_POLICY_SOURCE_EXPLICIT = 2;
+}
+
+// Full replacement policy spec. Every limit is a positive finite number with a
+// fixed upper bound; zero, negative, or overflowing values are
+// InvalidArgument. Unlimited is not expressible.
+message AppAgentPolicySpec {
+  AppAgentExecutionMode execution_mode = 1;
+  int64 max_output_tokens_per_task = 2;
+  int64 max_runtime_seconds_per_task = 3;
+  int64 max_tasks_per_utc_day = 4;
+  int64 max_reserved_output_tokens_per_utc_day = 5;
+}
+
+message AppAgentPolicy {
+  string project_id = 1;
+  string installation_id = 2;
+  AppAgentPolicySpec spec = 3;
+  AppAgentPolicySource source = 4;
+  // Explicit rows start at 1 and increment only on real spec changes. The
+  // system default reports its own pinned version.
+  int64 policy_revision = 5;
+}
+
+message GetAppPolicyRequest {
+  string project_id = 1;
+  string installation_id = 2;
+}
+
+message GetAppPolicyResponse {
+  AppAgentPolicy policy = 1;
+}
+
+message SetAppPolicyRequest {
+  string idempotency_key = 1;
+  string project_id = 2;
+  string installation_id = 3;
+  AppAgentPolicySpec spec = 4;
+  // 0 asserts no explicit policy exists yet; a positive value must equal the
+  // current explicit policy revision. Mismatches are stable Aborted.
+  int64 expected_policy_revision = 5;
+}
+
+message SetAppPolicyResponse {
+  AppAgentPolicy policy = 1;
+}
+
+// Owner-only read/write surface for the App Agent execution policy. The App
+// itself (bridge/iframe) has no access to this service.
+service AgentAppPolicyService {
+  rpc GetAppPolicy(GetAppPolicyRequest) returns (GetAppPolicyResponse) {}
+  rpc SetAppPolicy(SetAppPolicyRequest) returns (SetAppPolicyResponse) {}
+}
+
+enum AppAgentApprovalState {
+  APP_AGENT_APPROVAL_STATE_UNSPECIFIED = 0;
+  APP_AGENT_APPROVAL_STATE_PENDING = 1;
+  APP_AGENT_APPROVAL_STATE_APPROVED = 2;
+  APP_AGENT_APPROVAL_STATE_REJECTED = 3;
+  // Invalidated by a real policy change before any decision; its task never
+  // queues.
+  APP_AGENT_APPROVAL_STATE_EXPIRED = 4;
+}
+
+enum AppAgentApprovalDecision {
+  APP_AGENT_APPROVAL_DECISION_UNSPECIFIED = 0;
+  APP_AGENT_APPROVAL_DECISION_APPROVE = 1;
+  APP_AGENT_APPROVAL_DECISION_REJECT = 2;
+}
+
+// One pre-run approval request for a waiting App task. approval_id is a plain
+// resource identifier, not a bearer token; only the owner can decide.
+message AgentApproval {
+  string approval_id = 1;
+  string task_id = 2;
+  string project_id = 3;
+  string installation_id = 4;
+  string app_id = 5;
+  // Bounded untrusted task summary derived from the App goal; clients must
+  // render it as text only.
+  string goal_excerpt = 6;
+  int64 max_output_tokens_per_task = 7;
+  int64 max_runtime_seconds_per_task = 8;
+  int64 policy_revision = 9;
+  string provider_id = 10;
+  AppAgentApprovalState state = 11;
+  google.protobuf.Timestamp created_at = 12;
+  optional google.protobuf.Timestamp decided_at = 13;
+}
+
+message ListApprovalsRequest {
+  // Optional project filter.
+  string project_id = 1;
+  // UNSPECIFIED returns approvals in any state.
+  AppAgentApprovalState state = 2;
+  workos.common.v1.PageRequest page = 3;
+}
+
+message ListApprovalsResponse {
+  repeated AgentApproval approvals = 1;
+  workos.common.v1.PageResponse page = 2;
+}
+
+message GetApprovalRequest {
+  string approval_id = 1;
+}
+
+message GetApprovalResponse {
+  AgentApproval approval = 1;
+}
+
+message DecideApprovalRequest {
+  string idempotency_key = 1;
+  string approval_id = 2;
+  AppAgentApprovalDecision decision = 3;
+}
+
+message DecideApprovalResponse {
+  AgentApproval approval = 1;
+}
+
+// Owner-only pre-run approval surface. Unknown or foreign approvals are
+// indistinguishable NotFound. The App bridge/iframe surface can only observe
+// the waiting task event; it can never decide.
+service AgentApprovalService {
+  rpc ListApprovals(ListApprovalsRequest) returns (ListApprovalsResponse) {}
+  rpc GetApproval(GetApprovalRequest) returns (GetApprovalResponse) {}
+  rpc DecideApproval(DecideApprovalRequest) returns (DecideApprovalResponse) {}
+}
+
+// Observed usage projection for one (installation, UTC date) bucket, separate
+// from the reserved allowance. cost fields are only populated when a verified
+// observation exists; empty means unavailable, never zero.
+message AgentAppDailyUsage {
+  string installation_id = 1;
+  // Bucket date in YYYY-MM-DD UTC.
+  string utc_date = 2;
+  int64 tasks_reserved = 3;
+  int64 output_tokens_reserved = 4;
+  int64 tasks_recorded = 5;
+  int64 input_tokens_recorded = 6;
+  int64 output_tokens_recorded = 7;
+  string cost_decimal_recorded = 8;
+  // A reported usage breach tripped the deterministic circuit break for this
+  // bucket; fresh runs fail closed until the next UTC day.
+  bool quota_breached = 9;
+  int64 policy_revision = 10;
+}
+
+message GetAppUsageRequest {
+  string project_id = 1;
+  string installation_id = 2;
+  // Empty defaults to the current UTC date; format YYYY-MM-DD.
+  string utc_date = 3;
+}
+
+message GetAppUsageResponse {
+  AgentAppDailyUsage usage = 1;
+}
+
+// Owner-only read-only usage projection surface.
+service AgentAppUsageService {
+  rpc GetAppUsage(GetAppUsageRequest) returns (GetAppUsageResponse) {}
+}

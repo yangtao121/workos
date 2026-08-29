@@ -44,7 +44,7 @@ describe("harness presentation", () => {
   });
 
   it("reports absent capabilities as unavailable", () => {
-    expect(capabilityEntries(undefined)).toHaveLength(11);
+    expect(capabilityEntries(undefined)).toHaveLength(13);
     expect(capabilityEntries(undefined).every((entry) => !entry.available)).toBe(true);
   });
 });

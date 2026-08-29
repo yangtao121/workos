@@ -102,6 +102,8 @@ func mapAppAgentError(err error) error {
 		return fmt.Errorf("%w: %s", ports.ErrAppAgentDenied, "app request was rejected")
 	case connect.CodeAborted:
 		return fmt.Errorf("%w: %s", ports.ErrAppAgentConflict, "idempotency conflict")
+	case connect.CodeResourceExhausted:
+		return fmt.Errorf("%w: %s", ports.ErrAppAgentExhausted, "daily allowance is exhausted")
 	case connect.CodeDataLoss:
 		return fmt.Errorf("core app agent returned an invalid event stream: %w", err)
 	case connect.CodeUnavailable, connect.CodeDeadlineExceeded, connect.CodeCanceled:

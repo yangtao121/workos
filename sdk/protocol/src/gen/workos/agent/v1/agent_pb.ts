@@ -6,6 +6,8 @@ import type { GenEnum, GenFile, GenMessage, GenService } from "@bufbuild/protobu
 import { enumDesc, fileDesc, messageDesc, serviceDesc } from "@bufbuild/protobuf/codegenv2";
 import type { Timestamp } from "@bufbuild/protobuf/wkt";
 import { file_google_protobuf_struct, file_google_protobuf_timestamp } from "@bufbuild/protobuf/wkt";
+import type { AppAgentApprovalDecision } from "./app_policy_pb.js";
+import { file_workos_agent_v1_app_policy } from "./app_policy_pb.js";
 import type { PageRequest, PageResponse } from "../../common/v1/common_pb.js";
 import { file_workos_common_v1_common } from "../../common/v1/common_pb.js";
 import type { JsonObject, Message } from "@bufbuild/protobuf";
@@ -14,7 +16,7 @@ import type { JsonObject, Message } from "@bufbuild/protobuf";
  * Describes the file workos/agent/v1/agent.proto.
  */
 export const file_workos_agent_v1_agent: GenFile = /*@__PURE__*/
-  fileDesc("Cht3b3Jrb3MvYWdlbnQvdjEvYWdlbnQucHJvdG8SD3dvcmtvcy5hZ2VudC52MSI+CgtUYXJnZXRTY29wZRIQCgZnbG9iYWwYASABKAhIABIUCgpwcm9qZWN0X2lkGAIgASgJSABCBwoFc2NvcGUiOAoKQ29udGV4dFJlZhIMCgR0eXBlGAEgASgJEgoKAmlkGAIgASgJEhAKCHJldmlzaW9uGAMgASgJIlgKC0FnZW50QnVkZ2V0EhIKCm1heF90b2tlbnMYASABKAMSGAoQbWF4X2Nvc3RfZGVjaW1hbBgCIAEoCRIbChNtYXhfcnVudGltZV9zZWNvbmRzGAMgASgDIq0CCg5BZ2VudFRhc2tJbnB1dBIyCgx0YXJnZXRfc2NvcGUYASABKAsyHC53b3Jrb3MuYWdlbnQudjEuVGFyZ2V0U2NvcGUSDAoEcm9sZRgCIAEoCRIMCgRnb2FsGAMgASgJEjEKDGNvbnRleHRfcmVmcxgEIAMoCzIbLndvcmtvcy5hZ2VudC52MS5Db250ZXh0UmVmEh4KFnJlcXVlc3RlZF9jYXBhYmlsaXRpZXMYBSADKAkSHQoVb3V0cHV0X2FydGlmYWN0X3R5cGVzGAYgAygJEiwKBmJ1ZGdldBgHIAEoCzIcLndvcmtvcy5hZ2VudC52MS5BZ2VudEJ1ZGdldBIWCg5wYXJlbnRfdGFza19pZBgIIAEoCRITCgtpbmNpZGVudF9pZBgJIAEoCSLNAgoJQWdlbnRUYXNrEgoKAmlkGAEgASgJEhUKDW93bmVyX3VzZXJfaWQYAiABKAkSLgoFaW5wdXQYAyABKAsyHy53b3Jrb3MuYWdlbnQudjEuQWdlbnRUYXNrSW5wdXQSLgoFc3RhdGUYBCABKA4yHy53b3Jrb3MuYWdlbnQudjEuQWdlbnRUYXNrU3RhdGUSEwoLcHJvdmlkZXJfaWQYBSABKAkSGwoTaGFybmVzc19pbnN0YW5jZV9pZBgGIAEoCRIOCgZydW5faWQYByABKAkSGwoTbGFzdF9ldmVudF9zZXF1ZW5jZRgIIAEoAxIuCgpjcmVhdGVkX2F0GAkgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcBIuCgp1cGRhdGVkX2F0GAogASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcCIxCgpSdW5TdGFydGVkEg4KBnJ1bl9pZBgBIAEoCRITCgtwcm92aWRlcl9pZBgCIAEoCSIeCg5Bc3Npc3RhbnREZWx0YRIMCgR0ZXh0GAEgASgJIiAKEEFzc2lzdGFudE1lc3NhZ2USDAoEdGV4dBgBIAEoCSJiCg9Ub29sQ2FsbFN0YXJ0ZWQSFAoMdG9vbF9jYWxsX2lkGAEgASgJEhEKCXRvb2xfbmFtZRgCIAEoCRImCgVpbnB1dBgDIAEoCzIXLmdvb2dsZS5wcm90b2J1Zi5TdHJ1Y3QiYwoRVG9vbENhbGxDb21wbGV0ZWQSFAoMdG9vbF9jYWxsX2lkGAEgASgJEg8KB3N1Y2Nlc3MYAiABKAgSJwoGb3V0cHV0GAMgASgLMhcuZ29vZ2xlLnByb3RvYnVmLlN0cnVjdCJLChBBcHByb3ZhbFJlcXVpcmVkEhMKC2FwcHJvdmFsX2lkGAEgASgJEg0KBXRpdGxlGAIgASgJEhMKC2Rlc2NyaXB0aW9uGAMgASgJIj0KD0FydGlmYWN0Q3JlYXRlZBITCgthcnRpZmFjdF9pZBgBIAEoCRIVCg1hcnRpZmFjdF90eXBlGAIgASgJImEKDVVzYWdlUmVjb3JkZWQSFAoMaW5wdXRfdG9rZW5zGAEgASgDEhUKDW91dHB1dF90b2tlbnMYAiABKAMSFAoMY29zdF9kZWNpbWFsGAMgASgJEg0KBW1vZGVsGAQgASgJIhwKClJ1bldhaXRpbmcSDgoGcmVhc29uGAEgASgJIh8KDFJ1bkNvbXBsZXRlZBIPCgdzdW1tYXJ5GAEgASgJIi4KCVJ1bkZhaWxlZBIOCgZyZWFzb24YASABKAkSEQoJcmV0cnlhYmxlGAIgASgIIh4KDFJ1bkNhbmNlbGxlZBIOCgZyZWFzb24YASABKAkitQYKCkFnZW50RXZlbnQSCgoCaWQYASABKAkSDwoHdGFza19pZBgCIAEoCRIQCghzZXF1ZW5jZRgDIAEoAxIvCgtvY2N1cnJlZF9hdBgEIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXASMgoLcnVuX3N0YXJ0ZWQYCiABKAsyGy53b3Jrb3MuYWdlbnQudjEuUnVuU3RhcnRlZEgAEjoKD2Fzc2lzdGFudF9kZWx0YRgLIAEoCzIfLndvcmtvcy5hZ2VudC52MS5Bc3Npc3RhbnREZWx0YUgAEj4KEWFzc2lzdGFudF9tZXNzYWdlGAwgASgLMiEud29ya29zLmFnZW50LnYxLkFzc2lzdGFudE1lc3NhZ2VIABI9ChF0b29sX2NhbGxfc3RhcnRlZBgNIAEoCzIgLndvcmtvcy5hZ2VudC52MS5Ub29sQ2FsbFN0YXJ0ZWRIABJBChN0b29sX2NhbGxfY29tcGxldGVkGA4gASgLMiIud29ya29zLmFnZW50LnYxLlRvb2xDYWxsQ29tcGxldGVkSAASPgoRYXBwcm92YWxfcmVxdWlyZWQYDyABKAsyIS53b3Jrb3MuYWdlbnQudjEuQXBwcm92YWxSZXF1aXJlZEgAEjwKEGFydGlmYWN0X2NyZWF0ZWQYECABKAsyIC53b3Jrb3MuYWdlbnQudjEuQXJ0aWZhY3RDcmVhdGVkSAASOAoOdXNhZ2VfcmVjb3JkZWQYESABKAsyHi53b3Jrb3MuYWdlbnQudjEuVXNhZ2VSZWNvcmRlZEgAEjIKC3J1bl93YWl0aW5nGBIgASgLMhsud29ya29zLmFnZW50LnYxLlJ1bldhaXRpbmdIABI2Cg1ydW5fY29tcGxldGVkGBMgASgLMh0ud29ya29zLmFnZW50LnYxLlJ1bkNvbXBsZXRlZEgAEjAKCnJ1bl9mYWlsZWQYFCABKAsyGi53b3Jrb3MuYWdlbnQudjEuUnVuRmFpbGVkSAASNgoNcnVuX2NhbmNlbGxlZBgVIAEoCzIdLndvcmtvcy5hZ2VudC52MS5SdW5DYW5jZWxsZWRIAEIHCgVldmVudCJcChFTdWJtaXRUYXNrUmVxdWVzdBIXCg9pZGVtcG90ZW5jeV9rZXkYASABKAkSLgoFaW5wdXQYAiABKAsyHy53b3Jrb3MuYWdlbnQudjEuQWdlbnRUYXNrSW5wdXQiIQoOR2V0VGFza1JlcXVlc3QSDwoHdGFza19pZBgBIAEoCSI0ChFDYW5jZWxUYXNrUmVxdWVzdBIPCgd0YXNrX2lkGAEgASgJEg4KBnJlYXNvbhgCIAEoCSJBChZXYXRjaFRhc2tFdmVudHNSZXF1ZXN0Eg8KB3Rhc2tfaWQYASABKAkSFgoOYWZ0ZXJfc2VxdWVuY2UYAiABKAMiUwoQTGlzdFRhc2tzUmVxdWVzdBISCgpwcm9qZWN0X2lkGAEgASgJEisKBHBhZ2UYAiABKAsyHS53b3Jrb3MuY29tbW9uLnYxLlBhZ2VSZXF1ZXN0ImwKEUxpc3RUYXNrc1Jlc3BvbnNlEikKBXRhc2tzGAEgAygLMhoud29ya29zLmFnZW50LnYxLkFnZW50VGFzaxIsCgRwYWdlGAIgASgLMh4ud29ya29zLmNvbW1vbi52MS5QYWdlUmVzcG9uc2UiPgoSU3VibWl0VGFza1Jlc3BvbnNlEigKBHRhc2sYASABKAsyGi53b3Jrb3MuYWdlbnQudjEuQWdlbnRUYXNrIjsKD0dldFRhc2tSZXNwb25zZRIoCgR0YXNrGAEgASgLMhoud29ya29zLmFnZW50LnYxLkFnZW50VGFzayI+ChJDYW5jZWxUYXNrUmVzcG9uc2USKAoEdGFzaxgBIAEoCzIaLndvcmtvcy5hZ2VudC52MS5BZ2VudFRhc2siRQoXV2F0Y2hUYXNrRXZlbnRzUmVzcG9uc2USKgoFZXZlbnQYASABKAsyGy53b3Jrb3MuYWdlbnQudjEuQWdlbnRFdmVudCroAQoOQWdlbnRUYXNrU3RhdGUSIAocQUdFTlRfVEFTS19TVEFURV9VTlNQRUNJRklFRBAAEhsKF0FHRU5UX1RBU0tfU1RBVEVfUVVFVUVEEAESHAoYQUdFTlRfVEFTS19TVEFURV9SVU5OSU5HEAISHAoYQUdFTlRfVEFTS19TVEFURV9XQUlUSU5HEAMSHgoaQUdFTlRfVEFTS19TVEFURV9DT01QTEVURUQQBBIbChdBR0VOVF9UQVNLX1NUQVRFX0ZBSUxFRBAFEh4KGkFHRU5UX1RBU0tfU1RBVEVfQ0FOQ0VMTEVEEAYy1AMKEEFnZW50VGFza1NlcnZpY2USVwoKU3VibWl0VGFzaxIiLndvcmtvcy5hZ2VudC52MS5TdWJtaXRUYXNrUmVxdWVzdBojLndvcmtvcy5hZ2VudC52MS5TdWJtaXRUYXNrUmVzcG9uc2UiABJOCgdHZXRUYXNrEh8ud29ya29zLmFnZW50LnYxLkdldFRhc2tSZXF1ZXN0GiAud29ya29zLmFnZW50LnYxLkdldFRhc2tSZXNwb25zZSIAElQKCUxpc3RUYXNrcxIhLndvcmtvcy5hZ2VudC52MS5MaXN0VGFza3NSZXF1ZXN0GiIud29ya29zLmFnZW50LnYxLkxpc3RUYXNrc1Jlc3BvbnNlIgASVwoKQ2FuY2VsVGFzaxIiLndvcmtvcy5hZ2VudC52MS5DYW5jZWxUYXNrUmVxdWVzdBojLndvcmtvcy5hZ2VudC52MS5DYW5jZWxUYXNrUmVzcG9uc2UiABJoCg9XYXRjaFRhc2tFdmVudHMSJy53b3Jrb3MuYWdlbnQudjEuV2F0Y2hUYXNrRXZlbnRzUmVxdWVzdBooLndvcmtvcy5hZ2VudC52MS5XYXRjaFRhc2tFdmVudHNSZXNwb25zZSIAMAFCPVo7Z2l0aHViLmNvbS95YW5ndGFvMTIxL3dvcmtvcy9nZW4vZ28vd29ya29zL2FnZW50L3YxO2FnZW50djFiBnByb3RvMw", [file_google_protobuf_struct, file_google_protobuf_timestamp, file_workos_common_v1_common]);
+  fileDesc("Cht3b3Jrb3MvYWdlbnQvdjEvYWdlbnQucHJvdG8SD3dvcmtvcy5hZ2VudC52MSI+CgtUYXJnZXRTY29wZRIQCgZnbG9iYWwYASABKAhIABIUCgpwcm9qZWN0X2lkGAIgASgJSABCBwoFc2NvcGUiOAoKQ29udGV4dFJlZhIMCgR0eXBlGAEgASgJEgoKAmlkGAIgASgJEhAKCHJldmlzaW9uGAMgASgJIlgKC0FnZW50QnVkZ2V0EhIKCm1heF90b2tlbnMYASABKAMSGAoQbWF4X2Nvc3RfZGVjaW1hbBgCIAEoCRIbChNtYXhfcnVudGltZV9zZWNvbmRzGAMgASgDIq0CCg5BZ2VudFRhc2tJbnB1dBIyCgx0YXJnZXRfc2NvcGUYASABKAsyHC53b3Jrb3MuYWdlbnQudjEuVGFyZ2V0U2NvcGUSDAoEcm9sZRgCIAEoCRIMCgRnb2FsGAMgASgJEjEKDGNvbnRleHRfcmVmcxgEIAMoCzIbLndvcmtvcy5hZ2VudC52MS5Db250ZXh0UmVmEh4KFnJlcXVlc3RlZF9jYXBhYmlsaXRpZXMYBSADKAkSHQoVb3V0cHV0X2FydGlmYWN0X3R5cGVzGAYgAygJEiwKBmJ1ZGdldBgHIAEoCzIcLndvcmtvcy5hZ2VudC52MS5BZ2VudEJ1ZGdldBIWCg5wYXJlbnRfdGFza19pZBgIIAEoCRITCgtpbmNpZGVudF9pZBgJIAEoCSLNAgoJQWdlbnRUYXNrEgoKAmlkGAEgASgJEhUKDW93bmVyX3VzZXJfaWQYAiABKAkSLgoFaW5wdXQYAyABKAsyHy53b3Jrb3MuYWdlbnQudjEuQWdlbnRUYXNrSW5wdXQSLgoFc3RhdGUYBCABKA4yHy53b3Jrb3MuYWdlbnQudjEuQWdlbnRUYXNrU3RhdGUSEwoLcHJvdmlkZXJfaWQYBSABKAkSGwoTaGFybmVzc19pbnN0YW5jZV9pZBgGIAEoCRIOCgZydW5faWQYByABKAkSGwoTbGFzdF9ldmVudF9zZXF1ZW5jZRgIIAEoAxIuCgpjcmVhdGVkX2F0GAkgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcBIuCgp1cGRhdGVkX2F0GAogASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcCIxCgpSdW5TdGFydGVkEg4KBnJ1bl9pZBgBIAEoCRITCgtwcm92aWRlcl9pZBgCIAEoCSIeCg5Bc3Npc3RhbnREZWx0YRIMCgR0ZXh0GAEgASgJIiAKEEFzc2lzdGFudE1lc3NhZ2USDAoEdGV4dBgBIAEoCSJiCg9Ub29sQ2FsbFN0YXJ0ZWQSFAoMdG9vbF9jYWxsX2lkGAEgASgJEhEKCXRvb2xfbmFtZRgCIAEoCRImCgVpbnB1dBgDIAEoCzIXLmdvb2dsZS5wcm90b2J1Zi5TdHJ1Y3QiYwoRVG9vbENhbGxDb21wbGV0ZWQSFAoMdG9vbF9jYWxsX2lkGAEgASgJEg8KB3N1Y2Nlc3MYAiABKAgSJwoGb3V0cHV0GAMgASgLMhcuZ29vZ2xlLnByb3RvYnVmLlN0cnVjdCJLChBBcHByb3ZhbFJlcXVpcmVkEhMKC2FwcHJvdmFsX2lkGAEgASgJEg0KBXRpdGxlGAIgASgJEhMKC2Rlc2NyaXB0aW9uGAMgASgJIj0KD0FydGlmYWN0Q3JlYXRlZBITCgthcnRpZmFjdF9pZBgBIAEoCRIVCg1hcnRpZmFjdF90eXBlGAIgASgJImEKDVVzYWdlUmVjb3JkZWQSFAoMaW5wdXRfdG9rZW5zGAEgASgDEhUKDW91dHB1dF90b2tlbnMYAiABKAMSFAoMY29zdF9kZWNpbWFsGAMgASgJEg0KBW1vZGVsGAQgASgJIhwKClJ1bldhaXRpbmcSDgoGcmVhc29uGAEgASgJIh8KDFJ1bkNvbXBsZXRlZBIPCgdzdW1tYXJ5GAEgASgJIi4KCVJ1bkZhaWxlZBIOCgZyZWFzb24YASABKAkSEQoJcmV0cnlhYmxlGAIgASgIIh4KDFJ1bkNhbmNlbGxlZBIOCgZyZWFzb24YASABKAkiYwoPQXBwcm92YWxEZWNpZGVkEhMKC2FwcHJvdmFsX2lkGAEgASgJEjsKCGRlY2lzaW9uGAIgASgOMikud29ya29zLmFnZW50LnYxLkFwcEFnZW50QXBwcm92YWxEZWNpc2lvbiImCg9BcHByb3ZhbEV4cGlyZWQSEwoLYXBwcm92YWxfaWQYASABKAkisQcKCkFnZW50RXZlbnQSCgoCaWQYASABKAkSDwoHdGFza19pZBgCIAEoCRIQCghzZXF1ZW5jZRgDIAEoAxIvCgtvY2N1cnJlZF9hdBgEIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXASMgoLcnVuX3N0YXJ0ZWQYCiABKAsyGy53b3Jrb3MuYWdlbnQudjEuUnVuU3RhcnRlZEgAEjoKD2Fzc2lzdGFudF9kZWx0YRgLIAEoCzIfLndvcmtvcy5hZ2VudC52MS5Bc3Npc3RhbnREZWx0YUgAEj4KEWFzc2lzdGFudF9tZXNzYWdlGAwgASgLMiEud29ya29zLmFnZW50LnYxLkFzc2lzdGFudE1lc3NhZ2VIABI9ChF0b29sX2NhbGxfc3RhcnRlZBgNIAEoCzIgLndvcmtvcy5hZ2VudC52MS5Ub29sQ2FsbFN0YXJ0ZWRIABJBChN0b29sX2NhbGxfY29tcGxldGVkGA4gASgLMiIud29ya29zLmFnZW50LnYxLlRvb2xDYWxsQ29tcGxldGVkSAASPgoRYXBwcm92YWxfcmVxdWlyZWQYDyABKAsyIS53b3Jrb3MuYWdlbnQudjEuQXBwcm92YWxSZXF1aXJlZEgAEjwKEGFydGlmYWN0X2NyZWF0ZWQYECABKAsyIC53b3Jrb3MuYWdlbnQudjEuQXJ0aWZhY3RDcmVhdGVkSAASOAoOdXNhZ2VfcmVjb3JkZWQYESABKAsyHi53b3Jrb3MuYWdlbnQudjEuVXNhZ2VSZWNvcmRlZEgAEjIKC3J1bl93YWl0aW5nGBIgASgLMhsud29ya29zLmFnZW50LnYxLlJ1bldhaXRpbmdIABI2Cg1ydW5fY29tcGxldGVkGBMgASgLMh0ud29ya29zLmFnZW50LnYxLlJ1bkNvbXBsZXRlZEgAEjAKCnJ1bl9mYWlsZWQYFCABKAsyGi53b3Jrb3MuYWdlbnQudjEuUnVuRmFpbGVkSAASNgoNcnVuX2NhbmNlbGxlZBgVIAEoCzIdLndvcmtvcy5hZ2VudC52MS5SdW5DYW5jZWxsZWRIABI8ChBhcHByb3ZhbF9kZWNpZGVkGBYgASgLMiAud29ya29zLmFnZW50LnYxLkFwcHJvdmFsRGVjaWRlZEgAEjwKEGFwcHJvdmFsX2V4cGlyZWQYFyABKAsyIC53b3Jrb3MuYWdlbnQudjEuQXBwcm92YWxFeHBpcmVkSABCBwoFZXZlbnQiXAoRU3VibWl0VGFza1JlcXVlc3QSFwoPaWRlbXBvdGVuY3lfa2V5GAEgASgJEi4KBWlucHV0GAIgASgLMh8ud29ya29zLmFnZW50LnYxLkFnZW50VGFza0lucHV0IiEKDkdldFRhc2tSZXF1ZXN0Eg8KB3Rhc2tfaWQYASABKAkiNAoRQ2FuY2VsVGFza1JlcXVlc3QSDwoHdGFza19pZBgBIAEoCRIOCgZyZWFzb24YAiABKAkiQQoWV2F0Y2hUYXNrRXZlbnRzUmVxdWVzdBIPCgd0YXNrX2lkGAEgASgJEhYKDmFmdGVyX3NlcXVlbmNlGAIgASgDIlMKEExpc3RUYXNrc1JlcXVlc3QSEgoKcHJvamVjdF9pZBgBIAEoCRIrCgRwYWdlGAIgASgLMh0ud29ya29zLmNvbW1vbi52MS5QYWdlUmVxdWVzdCJsChFMaXN0VGFza3NSZXNwb25zZRIpCgV0YXNrcxgBIAMoCzIaLndvcmtvcy5hZ2VudC52MS5BZ2VudFRhc2sSLAoEcGFnZRgCIAEoCzIeLndvcmtvcy5jb21tb24udjEuUGFnZVJlc3BvbnNlIj4KElN1Ym1pdFRhc2tSZXNwb25zZRIoCgR0YXNrGAEgASgLMhoud29ya29zLmFnZW50LnYxLkFnZW50VGFzayI7Cg9HZXRUYXNrUmVzcG9uc2USKAoEdGFzaxgBIAEoCzIaLndvcmtvcy5hZ2VudC52MS5BZ2VudFRhc2siPgoSQ2FuY2VsVGFza1Jlc3BvbnNlEigKBHRhc2sYASABKAsyGi53b3Jrb3MuYWdlbnQudjEuQWdlbnRUYXNrIkUKF1dhdGNoVGFza0V2ZW50c1Jlc3BvbnNlEioKBWV2ZW50GAEgASgLMhsud29ya29zLmFnZW50LnYxLkFnZW50RXZlbnQq6AEKDkFnZW50VGFza1N0YXRlEiAKHEFHRU5UX1RBU0tfU1RBVEVfVU5TUEVDSUZJRUQQABIbChdBR0VOVF9UQVNLX1NUQVRFX1FVRVVFRBABEhwKGEFHRU5UX1RBU0tfU1RBVEVfUlVOTklORxACEhwKGEFHRU5UX1RBU0tfU1RBVEVfV0FJVElORxADEh4KGkFHRU5UX1RBU0tfU1RBVEVfQ09NUExFVEVEEAQSGwoXQUdFTlRfVEFTS19TVEFURV9GQUlMRUQQBRIeChpBR0VOVF9UQVNLX1NUQVRFX0NBTkNFTExFRBAGMtQDChBBZ2VudFRhc2tTZXJ2aWNlElcKClN1Ym1pdFRhc2sSIi53b3Jrb3MuYWdlbnQudjEuU3VibWl0VGFza1JlcXVlc3QaIy53b3Jrb3MuYWdlbnQudjEuU3VibWl0VGFza1Jlc3BvbnNlIgASTgoHR2V0VGFzaxIfLndvcmtvcy5hZ2VudC52MS5HZXRUYXNrUmVxdWVzdBogLndvcmtvcy5hZ2VudC52MS5HZXRUYXNrUmVzcG9uc2UiABJUCglMaXN0VGFza3MSIS53b3Jrb3MuYWdlbnQudjEuTGlzdFRhc2tzUmVxdWVzdBoiLndvcmtvcy5hZ2VudC52MS5MaXN0VGFza3NSZXNwb25zZSIAElcKCkNhbmNlbFRhc2sSIi53b3Jrb3MuYWdlbnQudjEuQ2FuY2VsVGFza1JlcXVlc3QaIy53b3Jrb3MuYWdlbnQudjEuQ2FuY2VsVGFza1Jlc3BvbnNlIgASaAoPV2F0Y2hUYXNrRXZlbnRzEicud29ya29zLmFnZW50LnYxLldhdGNoVGFza0V2ZW50c1JlcXVlc3QaKC53b3Jrb3MuYWdlbnQudjEuV2F0Y2hUYXNrRXZlbnRzUmVzcG9uc2UiADABQj1aO2dpdGh1Yi5jb20veWFuZ3RhbzEyMS93b3Jrb3MvZ2VuL2dvL3dvcmtvcy9hZ2VudC92MTthZ2VudHYxYgZwcm90bzM", [file_google_protobuf_struct, file_google_protobuf_timestamp, file_workos_agent_v1_app_policy, file_workos_common_v1_common]);
 
 /**
  * @generated from message workos.agent.v1.TargetScope
@@ -483,6 +485,50 @@ export const RunCancelledSchema: GenMessage<RunCancelled> = /*@__PURE__*/
   messageDesc(file_workos_agent_v1_agent, 16);
 
 /**
+ * Core-generated: the owner decided a pre-run approval for this task.
+ *
+ * @generated from message workos.agent.v1.ApprovalDecided
+ */
+export type ApprovalDecided = Message<"workos.agent.v1.ApprovalDecided"> & {
+  /**
+   * @generated from field: string approval_id = 1;
+   */
+  approvalId: string;
+
+  /**
+   * @generated from field: workos.agent.v1.AppAgentApprovalDecision decision = 2;
+   */
+  decision: AppAgentApprovalDecision;
+};
+
+/**
+ * Describes the message workos.agent.v1.ApprovalDecided.
+ * Use `create(ApprovalDecidedSchema)` to create a new message.
+ */
+export const ApprovalDecidedSchema: GenMessage<ApprovalDecided> = /*@__PURE__*/
+  messageDesc(file_workos_agent_v1_agent, 17);
+
+/**
+ * Core-generated: a real policy change invalidated this pending approval; the
+ * task never queued.
+ *
+ * @generated from message workos.agent.v1.ApprovalExpired
+ */
+export type ApprovalExpired = Message<"workos.agent.v1.ApprovalExpired"> & {
+  /**
+   * @generated from field: string approval_id = 1;
+   */
+  approvalId: string;
+};
+
+/**
+ * Describes the message workos.agent.v1.ApprovalExpired.
+ * Use `create(ApprovalExpiredSchema)` to create a new message.
+ */
+export const ApprovalExpiredSchema: GenMessage<ApprovalExpired> = /*@__PURE__*/
+  messageDesc(file_workos_agent_v1_agent, 18);
+
+/**
  * @generated from message workos.agent.v1.AgentEvent
  */
 export type AgentEvent = Message<"workos.agent.v1.AgentEvent"> & {
@@ -581,6 +627,21 @@ export type AgentEvent = Message<"workos.agent.v1.AgentEvent"> & {
      */
     value: RunCancelled;
     case: "runCancelled";
+  } | {
+    /**
+     * Additive Core-generated approval lifecycle events (ADR-0005); existing
+     * field numbers 10-21 are immutable.
+     *
+     * @generated from field: workos.agent.v1.ApprovalDecided approval_decided = 22;
+     */
+    value: ApprovalDecided;
+    case: "approvalDecided";
+  } | {
+    /**
+     * @generated from field: workos.agent.v1.ApprovalExpired approval_expired = 23;
+     */
+    value: ApprovalExpired;
+    case: "approvalExpired";
   } | { case: undefined; value?: undefined };
 };
 
@@ -589,7 +650,7 @@ export type AgentEvent = Message<"workos.agent.v1.AgentEvent"> & {
  * Use `create(AgentEventSchema)` to create a new message.
  */
 export const AgentEventSchema: GenMessage<AgentEvent> = /*@__PURE__*/
-  messageDesc(file_workos_agent_v1_agent, 17);
+  messageDesc(file_workos_agent_v1_agent, 19);
 
 /**
  * @generated from message workos.agent.v1.SubmitTaskRequest
@@ -611,7 +672,7 @@ export type SubmitTaskRequest = Message<"workos.agent.v1.SubmitTaskRequest"> & {
  * Use `create(SubmitTaskRequestSchema)` to create a new message.
  */
 export const SubmitTaskRequestSchema: GenMessage<SubmitTaskRequest> = /*@__PURE__*/
-  messageDesc(file_workos_agent_v1_agent, 18);
+  messageDesc(file_workos_agent_v1_agent, 20);
 
 /**
  * @generated from message workos.agent.v1.GetTaskRequest
@@ -628,7 +689,7 @@ export type GetTaskRequest = Message<"workos.agent.v1.GetTaskRequest"> & {
  * Use `create(GetTaskRequestSchema)` to create a new message.
  */
 export const GetTaskRequestSchema: GenMessage<GetTaskRequest> = /*@__PURE__*/
-  messageDesc(file_workos_agent_v1_agent, 19);
+  messageDesc(file_workos_agent_v1_agent, 21);
 
 /**
  * @generated from message workos.agent.v1.CancelTaskRequest
@@ -650,7 +711,7 @@ export type CancelTaskRequest = Message<"workos.agent.v1.CancelTaskRequest"> & {
  * Use `create(CancelTaskRequestSchema)` to create a new message.
  */
 export const CancelTaskRequestSchema: GenMessage<CancelTaskRequest> = /*@__PURE__*/
-  messageDesc(file_workos_agent_v1_agent, 20);
+  messageDesc(file_workos_agent_v1_agent, 22);
 
 /**
  * @generated from message workos.agent.v1.WatchTaskEventsRequest
@@ -672,7 +733,7 @@ export type WatchTaskEventsRequest = Message<"workos.agent.v1.WatchTaskEventsReq
  * Use `create(WatchTaskEventsRequestSchema)` to create a new message.
  */
 export const WatchTaskEventsRequestSchema: GenMessage<WatchTaskEventsRequest> = /*@__PURE__*/
-  messageDesc(file_workos_agent_v1_agent, 21);
+  messageDesc(file_workos_agent_v1_agent, 23);
 
 /**
  * @generated from message workos.agent.v1.ListTasksRequest
@@ -694,7 +755,7 @@ export type ListTasksRequest = Message<"workos.agent.v1.ListTasksRequest"> & {
  * Use `create(ListTasksRequestSchema)` to create a new message.
  */
 export const ListTasksRequestSchema: GenMessage<ListTasksRequest> = /*@__PURE__*/
-  messageDesc(file_workos_agent_v1_agent, 22);
+  messageDesc(file_workos_agent_v1_agent, 24);
 
 /**
  * @generated from message workos.agent.v1.ListTasksResponse
@@ -716,7 +777,7 @@ export type ListTasksResponse = Message<"workos.agent.v1.ListTasksResponse"> & {
  * Use `create(ListTasksResponseSchema)` to create a new message.
  */
 export const ListTasksResponseSchema: GenMessage<ListTasksResponse> = /*@__PURE__*/
-  messageDesc(file_workos_agent_v1_agent, 23);
+  messageDesc(file_workos_agent_v1_agent, 25);
 
 /**
  * @generated from message workos.agent.v1.SubmitTaskResponse
@@ -733,7 +794,7 @@ export type SubmitTaskResponse = Message<"workos.agent.v1.SubmitTaskResponse"> &
  * Use `create(SubmitTaskResponseSchema)` to create a new message.
  */
 export const SubmitTaskResponseSchema: GenMessage<SubmitTaskResponse> = /*@__PURE__*/
-  messageDesc(file_workos_agent_v1_agent, 24);
+  messageDesc(file_workos_agent_v1_agent, 26);
 
 /**
  * @generated from message workos.agent.v1.GetTaskResponse
@@ -750,7 +811,7 @@ export type GetTaskResponse = Message<"workos.agent.v1.GetTaskResponse"> & {
  * Use `create(GetTaskResponseSchema)` to create a new message.
  */
 export const GetTaskResponseSchema: GenMessage<GetTaskResponse> = /*@__PURE__*/
-  messageDesc(file_workos_agent_v1_agent, 25);
+  messageDesc(file_workos_agent_v1_agent, 27);
 
 /**
  * @generated from message workos.agent.v1.CancelTaskResponse
@@ -767,7 +828,7 @@ export type CancelTaskResponse = Message<"workos.agent.v1.CancelTaskResponse"> &
  * Use `create(CancelTaskResponseSchema)` to create a new message.
  */
 export const CancelTaskResponseSchema: GenMessage<CancelTaskResponse> = /*@__PURE__*/
-  messageDesc(file_workos_agent_v1_agent, 26);
+  messageDesc(file_workos_agent_v1_agent, 28);
 
 /**
  * @generated from message workos.agent.v1.WatchTaskEventsResponse
@@ -784,7 +845,7 @@ export type WatchTaskEventsResponse = Message<"workos.agent.v1.WatchTaskEventsRe
  * Use `create(WatchTaskEventsResponseSchema)` to create a new message.
  */
 export const WatchTaskEventsResponseSchema: GenMessage<WatchTaskEventsResponse> = /*@__PURE__*/
-  messageDesc(file_workos_agent_v1_agent, 27);
+  messageDesc(file_workos_agent_v1_agent, 29);
 
 /**
  * @generated from enum workos.agent.v1.AgentTaskState

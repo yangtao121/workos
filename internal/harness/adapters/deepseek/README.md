@@ -29,6 +29,11 @@ does not cross the WorkOS provider, Core, Proto, or database boundary.
 - `max_tokens` defaults to 8192 and accepts at most 384000. The effective local
   runtime limit is the smaller of the configured timeout and
   `max_runtime_seconds`, capped at ten minutes.
+- The adapter declares `hard_token_budget` and `hard_runtime_deadline` (ADR-0005)
+  because both are provably enforced: the provider caps output at `max_tokens`
+  and the adapter kills the runtime subprocess at the mapped deadline. WorkOS
+  pre-run approval is unrelated to provider tool approvals and is never mapped
+  onto `approvals`.
 - The adapter emits text deltas, one bounded aggregate assistant message,
   provider token usage, and one terminal event. Cost stays empty because no
   changing price table is embedded in WorkOS.

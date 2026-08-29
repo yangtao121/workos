@@ -249,10 +249,6 @@ button {
 
 .workos-window {
   position: absolute;
-  top: 70px;
-  right: 7vw;
-  width: min(620px, 52vw);
-  height: min(590px, 70vh);
   overflow: hidden;
   border: 1px solid rgba(255, 255, 255, 0.14);
   border-radius: 18px;
@@ -449,8 +445,11 @@ button {
   }
   .workos-window {
     inset: 180px 12px 72px;
-    width: auto;
-    height: auto;
+    left: 12px !important;
+    right: 12px !important;
+    top: 180px !important;
+    width: auto !important;
+    height: auto !important;
   }
   .agent-status {
     display: none;
@@ -642,4 +641,179 @@ button {
 
 .surface-retry {
   align-self: flex-start;
+}
+
+/* Agent Center views (Tasks / Approvals / Usage) */
+.agent-views {
+  display: flex;
+  gap: 0.4rem;
+  margin-bottom: 0.5rem;
+}
+
+.agent-view-tab {
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 999px;
+  color: inherit;
+  cursor: pointer;
+  padding: 0.2rem 0.8rem;
+}
+
+.agent-view-tab.active {
+  background: rgba(255, 255, 255, 0.14);
+  border-color: rgba(255, 255, 255, 0.5);
+  font-weight: 600;
+}
+
+.approvals-state {
+  color: inherit;
+  opacity: 0.8;
+}
+
+.approval-list {
+  display: grid;
+  gap: 0.6rem;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.approval-row {
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 10px;
+  display: flex;
+  gap: 0.6rem;
+  justify-content: space-between;
+  padding: 0.6rem;
+}
+
+.approval-facts {
+  display: grid;
+  gap: 0.15rem;
+  min-width: 0;
+}
+
+.approval-facts small {
+  opacity: 0.75;
+}
+
+.approval-goal {
+  font-family: inherit;
+  margin: 0.25rem 0 0;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.approval-row-actions {
+  align-items: flex-start;
+  display: flex;
+  gap: 0.4rem;
+}
+
+.approval-history {
+  display: grid;
+  gap: 0.25rem;
+  list-style: none;
+  margin: 0.25rem 0 0;
+  padding: 0;
+}
+
+.approval-history li {
+  opacity: 0.75;
+}
+
+.approval-history li[data-state="expired"] {
+  text-decoration: line-through;
+}
+
+.usage-view {
+  display: grid;
+  gap: 0.6rem;
+}
+
+.usage-note {
+  margin: 0;
+  opacity: 0.75;
+}
+
+.usage-list {
+  display: grid;
+  gap: 0.6rem;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.usage-row {
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 10px;
+  display: grid;
+  gap: 0.25rem;
+  padding: 0.6rem;
+}
+
+.usage-row dl {
+  display: grid;
+  gap: 0.15rem 0.75rem;
+  grid-template-columns: max-content 1fr;
+  margin: 0;
+}
+
+.usage-row dt {
+  opacity: 0.7;
+}
+
+.usage-row dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+/* Agent policy dialog */
+.app-policy-dialog {
+  background: #1c1f26;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 14px;
+  color: #e8eaf0;
+  display: grid;
+  gap: 0.6rem;
+  max-height: 86vh;
+  max-width: 460px;
+  overflow: auto;
+  padding: 1rem 1.2rem;
+  width: min(460px, 92vw);
+}
+
+.app-policy-dialog header {
+  display: grid;
+}
+
+.app-policy-dialog header small {
+  opacity: 0.7;
+}
+
+.app-policy-dialog fieldset {
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 8px;
+  display: grid;
+  gap: 0.4rem;
+  padding: 0.6rem;
+}
+
+.app-policy-dialog label {
+  align-items: center;
+  display: flex;
+  gap: 0.4rem;
+  justify-content: space-between;
+}
+
+.app-policy-dialog .policy-note,
+.app-policy-dialog .policy-facts {
+  margin: 0;
+  opacity: 0.8;
+}
+
+.policy-dialog-actions {
+  display: flex;
+  gap: 0.5rem;
+  justify-content: flex-end;
 }

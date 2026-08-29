@@ -91,13 +91,8 @@ func run(logger *slog.Logger) error {
 	bindingPath, bindingHandler := projectconnect.NewProjectHarnessBindingServiceHandler(orchestrationtransport.New(binder))
 	mux.Handle(bindingPath, identity.Middleware(bindingHandler))
 
-	agentService := agentapp.New(agentpostgres.New(pool), generator)
-	taskRouter, err := orchestration.NewTaskRouter(agentService, projectService, cfg.Agent.DefaultProvider)
-	if err != nil {
-		return err
-	}
-	agentPath, agentHandler := agentv1connect.NewAgentTaskServiceHandler(agenttransport.New(agentService, taskRouter))
-	mux.Handle(agentPath, identity.Middleware(agentHandler))
+	agentRepository := agentpostgres.New(pool)
+	agentService := agentapp.New(agentRepository, generator)
 	executionPath, executionHandler := taskexecutionv1connect.NewTaskExecutionServiceHandler(agenttransport.NewExecution(agentService))
 	mux.Handle(executionPath, executionHandler)
 
@@ -134,6 +129,43 @@ func run(logger *slog.Logger) error {
 	}
 	installationPath, installationHandler := projecttransport.NewInstallationConnectHandler(installationService)
 	mux.Handle(installationPath, identity.Middleware(installationHandler))
+
+	// The Agent policy/approval/usage facts revalidate installation liveness
+	// through the neutral facts adapter above; they never touch Project
+	// tables. The three public services are owner-only surfaces behind the
+	// Gateway identity.
+	installationFactsAdapter, err := orchestration.NewInstallationFacts(installationService)
+	if err != nil {
+		return err
+	}
+	providerCapabilitiesAdapter, err := orchestration.NewProviderCapabilities(catalogService)
+	if err != nil {
+		return err
+	}
+	policyService, err := agentapp.NewPolicyService(agentRepository, installationFactsAdapter, generator)
+	if err != nil {
+		return err
+	}
+	approvalService, err := agentapp.NewApprovalService(agentRepository, installationFactsAdapter, providerCapabilitiesAdapter)
+	if err != nil {
+		return err
+	}
+	usageService, err := agentapp.NewUsageService(agentRepository, installationFactsAdapter)
+	if err != nil {
+		return err
+	}
+	taskRouter, err := orchestration.NewTaskRouter(agentService, projectService, policyService, providerCapabilitiesAdapter, cfg.Agent.DefaultProvider)
+	if err != nil {
+		return err
+	}
+	agentPath, agentHandler := agentv1connect.NewAgentTaskServiceHandler(agenttransport.New(agentService, taskRouter))
+	mux.Handle(agentPath, identity.Middleware(agentHandler))
+	policyPath, policyHandler := agenttransport.NewPolicyConnectHandler(policyService)
+	mux.Handle(policyPath, identity.Middleware(policyHandler))
+	approvalPath, approvalHandler := agenttransport.NewApprovalConnectHandler(approvalService)
+	mux.Handle(approvalPath, identity.Middleware(approvalHandler))
+	usagePath, usageHandler := agenttransport.NewUsageConnectHandler(usageService)
+	mux.Handle(usagePath, identity.Middleware(usageHandler))
 
 	// The private installed-instance resolver composes the three authoritative
 	// module services; only runtime-host reaches it on the private listener.

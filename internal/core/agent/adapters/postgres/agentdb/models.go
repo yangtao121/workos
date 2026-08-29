@@ -10,18 +10,60 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+type WorkosCoreAgentAppApproval struct {
+	OwnerUserID                      string             `json:"owner_user_id"`
+	ID                               string             `json:"id"`
+	AppInstanceID                    string             `json:"app_instance_id"`
+	ProjectID                        string             `json:"project_id"`
+	TaskID                           string             `json:"task_id"`
+	AppID                            string             `json:"app_id"`
+	GoalExcerpt                      string             `json:"goal_excerpt"`
+	ProviderID                       string             `json:"provider_id"`
+	MaxOutputTokensPerTask           int64              `json:"max_output_tokens_per_task"`
+	MaxRuntimeSecondsPerTask         int64              `json:"max_runtime_seconds_per_task"`
+	MaxTasksPerUtcDay                int64              `json:"max_tasks_per_utc_day"`
+	MaxReservedOutputTokensPerUtcDay int64              `json:"max_reserved_output_tokens_per_utc_day"`
+	PolicyRevision                   int64              `json:"policy_revision"`
+	State                            string             `json:"state"`
+	DecidedIdempotencyKey            pgtype.Text        `json:"decided_idempotency_key"`
+	DecisionDigest                   pgtype.Text        `json:"decision_digest"`
+	DecidedAt                        pgtype.Timestamptz `json:"decided_at"`
+	CreatedAt                        pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt                        pgtype.Timestamptz `json:"updated_at"`
+}
+
+type WorkosCoreAgentAppPolicy struct {
+	OwnerUserID                      string             `json:"owner_user_id"`
+	AppInstanceID                    string             `json:"app_instance_id"`
+	ProjectID                        string             `json:"project_id"`
+	ExecutionMode                    string             `json:"execution_mode"`
+	MaxOutputTokensPerTask           int64              `json:"max_output_tokens_per_task"`
+	MaxRuntimeSecondsPerTask         int64              `json:"max_runtime_seconds_per_task"`
+	MaxTasksPerUtcDay                int64              `json:"max_tasks_per_utc_day"`
+	MaxReservedOutputTokensPerUtcDay int64              `json:"max_reserved_output_tokens_per_utc_day"`
+	SpecDigest                       string             `json:"spec_digest"`
+	PolicyRevision                   int64              `json:"policy_revision"`
+	CreatedAt                        pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt                        pgtype.Timestamptz `json:"updated_at"`
+}
+
 type WorkosCoreAgentTask struct {
-	ID                    string             `json:"id"`
-	OwnerUserID           string             `json:"owner_user_id"`
-	IdempotencyKey        string             `json:"idempotency_key"`
-	ProjectID             pgtype.UUID        `json:"project_id"`
-	Input                 json.RawMessage    `json:"input"`
-	State                 string             `json:"state"`
-	ProviderID            string             `json:"provider_id"`
-	HarnessInstanceID     string             `json:"harness_instance_id"`
-	RunID                 string             `json:"run_id"`
-	LastEventSequence     int64              `json:"last_event_sequence"`
-	CancellationRequested bool               `json:"cancellation_requested"`
-	CreatedAt             pgtype.Timestamptz `json:"created_at"`
-	UpdatedAt             pgtype.Timestamptz `json:"updated_at"`
+	ID                      string             `json:"id"`
+	OwnerUserID             string             `json:"owner_user_id"`
+	IdempotencyKey          string             `json:"idempotency_key"`
+	ProjectID               pgtype.UUID        `json:"project_id"`
+	Input                   json.RawMessage    `json:"input"`
+	State                   string             `json:"state"`
+	ProviderID              string             `json:"provider_id"`
+	HarnessInstanceID       string             `json:"harness_instance_id"`
+	RunID                   string             `json:"run_id"`
+	LastEventSequence       int64              `json:"last_event_sequence"`
+	CancellationRequested   bool               `json:"cancellation_requested"`
+	CreatedAt               pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt               pgtype.Timestamptz `json:"updated_at"`
+	PolicySource            pgtype.Text        `json:"policy_source"`
+	PolicyRevision          pgtype.Int8        `json:"policy_revision"`
+	PolicySpecDigest        pgtype.Text        `json:"policy_spec_digest"`
+	BudgetMaxOutputTokens   pgtype.Int8        `json:"budget_max_output_tokens"`
+	BudgetMaxRuntimeSeconds pgtype.Int8        `json:"budget_max_runtime_seconds"`
 }

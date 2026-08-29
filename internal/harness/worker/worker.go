@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"sync/atomic"
 	"time"
 
 	"connectrpc.com/connect"
@@ -22,9 +23,12 @@ const leaseDuration = 30 * time.Second
 type Worker struct {
 	id           string
 	pollInterval time.Duration
-	client       taskexecutionv1connect.TaskExecutionServiceClient
-	broker       *broker.Broker
-	logger       *slog.Logger
+	// heartbeat is the lease-renewal cadence; it is a field so tests can
+	// shorten the 10s default without waiting real lease windows.
+	heartbeat time.Duration
+	client    taskexecutionv1connect.TaskExecutionServiceClient
+	broker    *broker.Broker
+	logger    *slog.Logger
 }
 
 func New(id, coreURL string, pollInterval time.Duration, value *broker.Broker, logger *slog.Logger) *Worker {
@@ -32,7 +36,7 @@ func New(id, coreURL string, pollInterval time.Duration, value *broker.Broker, l
 		pollInterval = 250 * time.Millisecond
 	}
 	return &Worker{
-		id: id, pollInterval: pollInterval, broker: value, logger: logger,
+		id: id, pollInterval: pollInterval, heartbeat: leaseDuration / 3, broker: value, logger: logger,
 		client: taskexecutionv1connect.NewTaskExecutionServiceClient(telemetry.HTTPClient(), coreURL),
 	}
 }
@@ -68,19 +72,31 @@ func (w *Worker) claim(ctx context.Context) (*taskv1.TaskLease, error) {
 }
 
 func (w *Worker) process(parent context.Context, lease *taskv1.TaskLease) {
-	ctx, cancel := context.WithCancel(parent)
+	runCtx, cancel := context.WithCancel(parent)
 	defer cancel()
 	task := lease.GetTask()
+	// The server-derived runtime deadline is enforced here, independently of
+	// the adapter: even a provider that ignores context cancellation is
+	// cancelled with the run, and the fallback below emits exactly one
+	// terminal event and finishes the lease (ADR-0005 §5).
+	var deadlineHit atomic.Bool
+	if seconds := task.GetInput().GetBudget().GetMaxRuntimeSeconds(); seconds > 0 {
+		timer := time.AfterFunc(time.Duration(seconds)*time.Second, func() {
+			deadlineHit.Store(true)
+			cancel()
+		})
+		defer timer.Stop()
+	}
 	result := make(chan error, 1)
 	terminal := make(chan bool, 1)
 
 	go func() {
 		sawTerminal := false
-		err := w.broker.Run(ctx, task.GetId(), task.GetProviderId(), task.GetInput(), func(event *agentv1.AgentEvent) error {
+		err := w.broker.Run(runCtx, task.GetId(), task.GetProviderId(), task.GetInput(), func(event *agentv1.AgentEvent) error {
 			if isTerminal(event) {
 				sawTerminal = true
 			}
-			_, appendErr := w.client.AppendTaskEvent(ctx, connect.NewRequest(&taskv1.AppendTaskEventRequest{
+			_, appendErr := w.client.AppendTaskEvent(runCtx, connect.NewRequest(&taskv1.AppendTaskEventRequest{
 				LeaseId: lease.GetLeaseId(), WorkerId: w.id, Event: event,
 			}))
 			return appendErr
@@ -89,7 +105,7 @@ func (w *Worker) process(parent context.Context, lease *taskv1.TaskLease) {
 		result <- err
 	}()
 
-	heartbeat := time.NewTicker(leaseDuration / 3)
+	heartbeat := time.NewTicker(w.heartbeat)
 	defer heartbeat.Stop()
 	for {
 		select {
@@ -109,16 +125,35 @@ func (w *Worker) process(parent context.Context, lease *taskv1.TaskLease) {
 			}
 		case err := <-result:
 			sawTerminal := <-terminal
-			if err != nil && !errors.Is(err, context.Canceled) && !sawTerminal {
-				reason, retryable := ports.FailureDetails(err)
-				failed := &agentv1.AgentEvent{Event: &agentv1.AgentEvent_RunFailed{RunFailed: &agentv1.RunFailed{Reason: reason, Retryable: retryable}}}
-				if _, appendErr := w.client.AppendTaskEvent(parent, connect.NewRequest(&taskv1.AppendTaskEventRequest{
-					LeaseId: lease.GetLeaseId(), WorkerId: w.id, Event: failed,
-				})); appendErr != nil {
-					w.logger.Warn("append provider failure failed", "task_id", task.GetId(), "error", appendErr)
-					return
+			if err != nil && !sawTerminal {
+				cancelled := errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded)
+				switch {
+				case cancelled && deadlineHit.Load():
+					// The server-derived deadline stopped the run; the task
+					// was not cancelled by the owner, so this worker owns the
+					// deterministic terminal event.
+					failed := &agentv1.AgentEvent{Event: &agentv1.AgentEvent_RunFailed{RunFailed: &agentv1.RunFailed{
+						Reason: "provider run exceeded its runtime deadline",
+					}}}
+					if _, appendErr := w.client.AppendTaskEvent(parent, connect.NewRequest(&taskv1.AppendTaskEventRequest{
+						LeaseId: lease.GetLeaseId(), WorkerId: w.id, Event: failed,
+					})); appendErr != nil {
+						w.logger.Warn("append deadline failure failed", "task_id", task.GetId(), "error", appendErr)
+						return
+					}
+				case cancelled:
+					// Owner cancellation: Core has already appended the
+					// authoritative run_cancelled terminal event itself.
+				default:
+					reason, retryable := ports.FailureDetails(err)
+					failed := &agentv1.AgentEvent{Event: &agentv1.AgentEvent_RunFailed{RunFailed: &agentv1.RunFailed{Reason: reason, Retryable: retryable}}}
+					if _, appendErr := w.client.AppendTaskEvent(parent, connect.NewRequest(&taskv1.AppendTaskEventRequest{
+						LeaseId: lease.GetLeaseId(), WorkerId: w.id, Event: failed,
+					})); appendErr != nil {
+						w.logger.Warn("append provider failure failed", "task_id", task.GetId(), "error", appendErr)
+						return
+					}
 				}
-				sawTerminal = true
 			}
 			if err == nil && !sawTerminal {
 				failed := &agentv1.AgentEvent{Event: &agentv1.AgentEvent_RunFailed{RunFailed: &agentv1.RunFailed{Reason: "provider ended without a terminal event"}}}

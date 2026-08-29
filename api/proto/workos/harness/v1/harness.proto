@@ -19,6 +19,13 @@ message HarnessCapabilities {
   bool workspace_mount = 9;
   bool structured_artifacts = 10;
   bool usage_reporting = 11;
+  // The adapter demonstrably enforces AgentBudget.max_tokens as a hard output
+  // budget and reports usage against it (ADR-0005). Adapters that cannot
+  // enforce it must report false.
+  bool hard_token_budget = 12;
+  // The adapter demonstrably enforces AgentBudget.max_runtime_seconds as a
+  // hard runtime deadline (stop the run even if the provider streams forever).
+  bool hard_runtime_deadline = 13;
 }
 
 message HarnessProviderInfo {

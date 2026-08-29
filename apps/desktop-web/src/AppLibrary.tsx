@@ -11,12 +11,16 @@ import {
 import { Button } from "@workos/ui-kit";
 import type { WorkOSClients } from "@workos/agent-sdk";
 import { PermissionDialog, type PermissionFacts } from "./PermissionDialog.js";
+import { PolicyDialog, policySummaryLabel } from "./PolicyDialog.js";
 
 export type LibraryState = "loading" | "ready" | "error";
 
 interface AppLibraryProps {
   project: Project;
-  workosClients: Pick<WorkOSClients, "appRegistry" | "appInstallations" | "projects" | "surfaces">;
+  workosClients: Pick<
+    WorkOSClients,
+    "appRegistry" | "appInstallations" | "projects" | "surfaces" | "appPolicies"
+  >;
   onProjectRefreshed: (project: Project) => void;
   onSurfaceOpened: (session: SurfaceSession) => void;
   onInstallationRemoved: (installationId: string) => void;
@@ -70,6 +74,10 @@ export function AppLibrary({
   // replacement (ADR-0003). The captured installation is kept stable for the
   // dialog's lifetime; the dialog reloads fresh facts itself on conflicts.
   const [managing, setManaging] = useState<AppInstallation>();
+  // The Agent policy dialog edits one installation's execution policy
+  // (ADR-0005); the per-installation summaries render on the installed rows.
+  const [policyManaging, setPolicyManaging] = useState<AppInstallation>();
+  const [policySummaries, setPolicySummaries] = useState<Record<string, string>>({});
   // Generation guards every in-flight promise: switching projects or
   // unmounting invalidates late responses so they cannot pollute state.
   const generationRef = useRef(0);
@@ -95,6 +103,7 @@ export function AppLibrary({
       setApps(catalog);
       setInstallations(active);
       setState("ready");
+      refreshPolicySummaries(active);
     } catch {
       if (!isLive()) return;
       setApps([]);
@@ -107,6 +116,35 @@ export function AppLibrary({
   useEffect(() => {
     void refresh();
   }, [refresh]);
+
+  // refreshPolicySummaries resolves the effective policy label per installed
+  // row. Failures degrade to the placeholder, never to a wrong label.
+  const refreshPolicySummaries = useCallback(
+    (active: AppInstallation[]) => {
+      const generation = generationRef.current;
+      void Promise.all(
+        active.map(async (installation) => {
+          try {
+            const response = await workosClients.appPolicies.getAppPolicy({
+              projectId: project.id,
+              installationId: installation.id,
+            });
+            return response.policy ? policySummaryLabel(response.policy) : "";
+          } catch {
+            return "";
+          }
+        }),
+      ).then((summaries) => {
+        if (generation !== generationRef.current) return;
+        const next: Record<string, string> = {};
+        active.forEach((installation, index) => {
+          if (summaries[index]) next[installation.id] = summaries[index];
+        });
+        setPolicySummaries(next);
+      });
+    },
+    [project.id, workosClients],
+  );
 
   // readFacts re-reads the server-owned project revision and installation
   // list; callers apply them under their own liveness guard so the permission
@@ -125,8 +163,11 @@ export function AppLibrary({
     (facts: PermissionFacts) => {
       onProjectRefreshed(facts.project);
       setInstallations(facts.installations);
+      // Install/uninstall/grant flows replace the installation list without
+      // a full refresh; policy labels follow the fresh list.
+      refreshPolicySummaries(facts.installations);
     },
-    [onProjectRefreshed],
+    [onProjectRefreshed, refreshPolicySummaries],
   );
 
   // A save whose post-save re-read failed still carries the server truth in
@@ -378,6 +419,9 @@ export function AppLibrary({
                         Granted: {grantedSummary(installation.grantedPermissions)} · grant revision{" "}
                         {installation.grantRevision.toString()}
                       </small>
+                      <small className="app-row-policy">
+                        Agent policy: {policySummaries[installation.id] ?? "…"}
+                      </small>
                     </>
                   ) : null}
                 </span>
@@ -401,6 +445,16 @@ export function AppLibrary({
                       type="button"
                     >
                       Manage permissions
+                    </Button>
+                    <Button
+                      disabled={busy || openingAppIds[app.id] === true}
+                      onClick={() => {
+                        setFeedback(undefined);
+                        setPolicyManaging(installation);
+                      }}
+                      type="button"
+                    >
+                      Agent policy
                     </Button>
                     <Button
                       disabled={busy || openingAppIds[app.id] === true}
@@ -526,6 +580,23 @@ export function AppLibrary({
             </div>
           </div>
         </div>
+      ) : null}
+
+      {policyManaging ? (
+        <PolicyDialog
+          installation={policyManaging}
+          key={policyManaging.id}
+          onClose={() => {
+            setPolicyManaging(undefined);
+          }}
+          onSaved={(installationId, policy) => {
+            setPolicySummaries((current) => ({
+              ...current,
+              [installationId]: policySummaryLabel(policy),
+            }));
+          }}
+          workosClients={workosClients}
+        />
       ) : null}
 
       {managing ? (

@@ -1,4 +1,4 @@
-import type { AgentEvent } from "@workos/protocol";
+import { AppAgentApprovalDecision, type AgentEvent } from "@workos/protocol";
 
 export function describeAgentEvent(event: AgentEvent): string {
   switch (event.event.case) {
@@ -19,7 +19,11 @@ export function describeAgentEvent(event: AgentEvent): string {
     case "runWaiting":
       return `Waiting · ${event.event.value.reason}`;
     case "approvalRequired":
-      return `Approval · ${event.event.value.title}`;
+      return `Approval required · waiting for user decision · ${event.event.value.title}`;
+    case "approvalDecided":
+      return `Approval ${event.event.value.decision === AppAgentApprovalDecision.APPROVE ? "approved" : "rejected"}`;
+    case "approvalExpired":
+      return "Approval expired · policy changed before a decision";
     case "artifactCreated":
       return `Artifact · ${event.event.value.artifactType}`;
     case "toolCallStarted":

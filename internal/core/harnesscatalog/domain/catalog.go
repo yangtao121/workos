@@ -26,6 +26,11 @@ type Capabilities struct {
 	WorkspaceMount      bool
 	StructuredArtifacts bool
 	UsageReporting      bool
+	// HardTokenBudget and HardRuntimeDeadline are only true when the adapter
+	// demonstrably enforces the corresponding AgentBudget field (ADR-0005);
+	// adapters that cannot enforce them must report false.
+	HardTokenBudget     bool
+	HardRuntimeDeadline bool
 }
 
 type Provider struct {

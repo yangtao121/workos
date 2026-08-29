@@ -6,6 +6,7 @@ import {
   useReducer,
   useRef,
   useState,
+  type MouseEvent as ReactMouseEvent,
   type SyntheticEvent,
 } from "react";
 import { AgentTimeline } from "@workos/agent-center";
@@ -20,8 +21,10 @@ import type {
 import { Button } from "@workos/ui-kit";
 import { initialWindowState, windowReducer } from "@workos/window-manager";
 import { AppLibrary } from "./AppLibrary.js";
+import { ApprovalsView } from "./ApprovalsView.js";
 import { AppSurface, type SurfaceBridgeCredentials } from "./AppSurface.js";
 import { HarnessSettings, type CatalogState } from "./HarnessSettings.js";
+import { UsageView } from "./UsageView.js";
 import { selectionFromProject, taskStatus, type HarnessSelection } from "./model.js";
 
 const clients = createWorkOSClients(window.location.origin);
@@ -30,6 +33,16 @@ const clients = createWorkOSClients(window.location.origin);
 // restores the context the user was working in. Storage failures (private
 // modes, embedded webviews) degrade to the previous first-project behavior.
 const ACTIVE_PROJECT_STORAGE_KEY = "workos.activeProjectId";
+
+// The Agent Center window keeps three views inside one window; no view is a
+// permanent side panel (docs/structure.md 11.5).
+type AgentView = "tasks" | "approvals" | "usage";
+
+const AGENT_VIEWS: Array<[AgentView, string]> = [
+  ["tasks", "Tasks"],
+  ["approvals", "Approvals"],
+  ["usage", "Usage"],
+];
 
 function readStoredActiveProjectId(): string | undefined {
   try {
@@ -62,6 +75,7 @@ export function Desktop({ workosClients = clients }: { workosClients?: WorkOSCli
     tokens: {},
   });
   const [windows, dispatch] = useReducer(windowReducer, initialWindowState);
+  const [agentView, setAgentView] = useState<AgentView>("tasks");
   // Live app-surface sessions, mirrored from the window state so the unmount
   // cleanup never reads a stale closure of `windows`. Best-effort closes are
   // idempotent server-side, so a rare duplicate call is harmless; the ref is
@@ -161,7 +175,7 @@ export function Desktop({ workosClients = clients }: { workosClients?: WorkOSCli
         appId: "agent-center",
         title: "Agent Center",
         kind: "agent-center",
-        rect: { x: 0, y: 0, width: 620, height: 520 },
+        rect: { x: 386, y: 28, width: 620, height: 560 },
         mode: "normal",
       },
     });
@@ -278,7 +292,10 @@ export function Desktop({ workosClients = clients }: { workosClients?: WorkOSCli
           url: session.url,
           projectId: session.projectId,
         },
-        rect: { x: 0, y: 0, width: 900, height: 620 },
+        // The app window opens over the launch area, beside — not on top of —
+        // the Agent Center window, so approvals and usage stay reachable while
+        // an app task runs. The header drag lets the user rearrange further.
+        rect: { x: 40, y: 300, width: 656, height: 560 },
         mode: "normal",
       },
     });
@@ -298,6 +315,34 @@ export function Desktop({ workosClients = clients }: { workosClients?: WorkOSCli
         .catch(() => undefined);
     }
     dispatch({ type: "close", id: windowId });
+  }
+
+  // beginWindowDrag starts a header drag for one managed window. The
+  // reducer owns the geometry; the drag previews via inline style and commits
+  // the translated rect on mouseup. Traffic lights never start a drag.
+  function beginWindowDrag(event: ReactMouseEvent<HTMLElement>, windowId: string) {
+    if ((event.target as HTMLElement).closest(".traffic-lights")) return;
+    const target = event.currentTarget;
+    const startX = event.clientX;
+    const startY = event.clientY;
+    const box = target.getBoundingClientRect();
+    const originX = box.left;
+    const originY = box.top;
+    let lastX = originX;
+    let lastY = originY;
+    const onMove = (move: MouseEvent) => {
+      lastX = originX + (move.clientX - startX);
+      lastY = originY + (move.clientY - startY);
+      target.style.left = `${String(lastX)}px`;
+      target.style.top = `${String(lastY)}px`;
+    };
+    const onUp = () => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+      dispatch({ type: "move", id: windowId, x: lastX, y: lastY });
+    };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
   }
 
   // Uninstalling an app closes its windows so a removed instance leaves no
@@ -552,9 +597,20 @@ export function Desktop({ workosClients = clients }: { workosClients?: WorkOSCli
               windowState.kind === "app-surface" ? "workos-window app-window" : "workos-window"
             }
             key={windowState.id}
-            style={{ zIndex: windowState.zIndex }}
+            style={{
+              zIndex: windowState.zIndex,
+              left: windowState.rect.x,
+              top: windowState.rect.y,
+              width: windowState.rect.width,
+              height: windowState.rect.height,
+            }}
           >
-            <header>
+            <header
+              onMouseDown={(event) => {
+                dispatch({ type: "focus", id: windowState.id });
+                beginWindowDrag(event, windowState.id);
+              }}
+            >
               <div className="traffic-lights">
                 <i />
                 <i />
@@ -578,26 +634,60 @@ export function Desktop({ workosClients = clients }: { workosClients?: WorkOSCli
               />
             ) : (
               <div className="agent-center-body">
-                <form className="task-composer" onSubmit={(event) => void submitTask(event)}>
-                  <textarea
-                    aria-label="Agent goal"
-                    name="goal"
-                    placeholder="Ask the current project agent…"
-                    disabled={!activeProjectId}
-                  />
-                  <Button disabled={!activeProjectId} type="submit">
-                    Run task
-                  </Button>
-                </form>
-                {task ? (
-                  <dl className="task-snapshot" aria-label="Task provider snapshot">
-                    <dt>Provider snapshot</dt>
-                    <dd>{task.providerId || "unknown"}</dd>
-                    <dt>Task</dt>
-                    <dd>{task.id}</dd>
-                  </dl>
+                <div className="agent-views" role="tablist" aria-label="Agent Center views">
+                  {AGENT_VIEWS.map(([view, label]) => (
+                    <button
+                      aria-selected={agentView === view}
+                      className={agentView === view ? "agent-view-tab active" : "agent-view-tab"}
+                      key={view}
+                      onClick={() => {
+                        setAgentView(view);
+                      }}
+                      role="tab"
+                      type="button"
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+                {agentView === "approvals" ? (
+                  activeProjectId ? (
+                    <ApprovalsView projectId={activeProjectId} workosClients={workosClients} />
+                  ) : (
+                    <p className="empty-state">Create a project to manage approvals.</p>
+                  )
                 ) : null}
-                <AgentTimeline events={events} />
+                {agentView === "usage" ? (
+                  activeProjectId ? (
+                    <UsageView projectId={activeProjectId} workosClients={workosClients} />
+                  ) : (
+                    <p className="empty-state">Create a project to see agent usage.</p>
+                  )
+                ) : null}
+                {agentView === "tasks" ? (
+                  <>
+                    <form className="task-composer" onSubmit={(event) => void submitTask(event)}>
+                      <textarea
+                        aria-label="Agent goal"
+                        name="goal"
+                        placeholder="Ask the current project agent…"
+                        disabled={!activeProjectId}
+                      />
+                      <Button disabled={!activeProjectId} type="submit">
+                        Run task
+                      </Button>
+                    </form>
+                    {task ? (
+                      <dl className="task-snapshot" aria-label="Task provider snapshot">
+                        <dt>Provider snapshot</dt>
+                        <dd>{task.providerId || "unknown"}</dd>
+                        <dt>Task</dt>
+                        <dd>{task.id}</dd>
+                      </dl>
+                    ) : null}
+                    <AgentTimeline events={events} />
+                  </>
+                ) : null}
               </div>
             )}
           </section>

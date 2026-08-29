@@ -1135,6 +1135,105 @@ func (x *RunCancelled) GetReason() string {
 	return ""
 }
 
+// Core-generated: the owner decided a pre-run approval for this task.
+type ApprovalDecided struct {
+	state         protoimpl.MessageState   `protogen:"open.v1"`
+	ApprovalId    string                   `protobuf:"bytes,1,opt,name=approval_id,json=approvalId,proto3" json:"approval_id,omitempty"`
+	Decision      AppAgentApprovalDecision `protobuf:"varint,2,opt,name=decision,proto3,enum=workos.agent.v1.AppAgentApprovalDecision" json:"decision,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ApprovalDecided) Reset() {
+	*x = ApprovalDecided{}
+	mi := &file_workos_agent_v1_agent_proto_msgTypes[17]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ApprovalDecided) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ApprovalDecided) ProtoMessage() {}
+
+func (x *ApprovalDecided) ProtoReflect() protoreflect.Message {
+	mi := &file_workos_agent_v1_agent_proto_msgTypes[17]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ApprovalDecided.ProtoReflect.Descriptor instead.
+func (*ApprovalDecided) Descriptor() ([]byte, []int) {
+	return file_workos_agent_v1_agent_proto_rawDescGZIP(), []int{17}
+}
+
+func (x *ApprovalDecided) GetApprovalId() string {
+	if x != nil {
+		return x.ApprovalId
+	}
+	return ""
+}
+
+func (x *ApprovalDecided) GetDecision() AppAgentApprovalDecision {
+	if x != nil {
+		return x.Decision
+	}
+	return AppAgentApprovalDecision_APP_AGENT_APPROVAL_DECISION_UNSPECIFIED
+}
+
+// Core-generated: a real policy change invalidated this pending approval; the
+// task never queued.
+type ApprovalExpired struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	ApprovalId    string                 `protobuf:"bytes,1,opt,name=approval_id,json=approvalId,proto3" json:"approval_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ApprovalExpired) Reset() {
+	*x = ApprovalExpired{}
+	mi := &file_workos_agent_v1_agent_proto_msgTypes[18]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ApprovalExpired) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ApprovalExpired) ProtoMessage() {}
+
+func (x *ApprovalExpired) ProtoReflect() protoreflect.Message {
+	mi := &file_workos_agent_v1_agent_proto_msgTypes[18]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ApprovalExpired.ProtoReflect.Descriptor instead.
+func (*ApprovalExpired) Descriptor() ([]byte, []int) {
+	return file_workos_agent_v1_agent_proto_rawDescGZIP(), []int{18}
+}
+
+func (x *ApprovalExpired) GetApprovalId() string {
+	if x != nil {
+		return x.ApprovalId
+	}
+	return ""
+}
+
 type AgentEvent struct {
 	state      protoimpl.MessageState `protogen:"open.v1"`
 	Id         string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
@@ -1155,6 +1254,8 @@ type AgentEvent struct {
 	//	*AgentEvent_RunCompleted
 	//	*AgentEvent_RunFailed
 	//	*AgentEvent_RunCancelled
+	//	*AgentEvent_ApprovalDecided
+	//	*AgentEvent_ApprovalExpired
 	Event         isAgentEvent_Event `protobuf_oneof:"event"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -1162,7 +1263,7 @@ type AgentEvent struct {
 
 func (x *AgentEvent) Reset() {
 	*x = AgentEvent{}
-	mi := &file_workos_agent_v1_agent_proto_msgTypes[17]
+	mi := &file_workos_agent_v1_agent_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1174,7 +1275,7 @@ func (x *AgentEvent) String() string {
 func (*AgentEvent) ProtoMessage() {}
 
 func (x *AgentEvent) ProtoReflect() protoreflect.Message {
-	mi := &file_workos_agent_v1_agent_proto_msgTypes[17]
+	mi := &file_workos_agent_v1_agent_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1187,7 +1288,7 @@ func (x *AgentEvent) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AgentEvent.ProtoReflect.Descriptor instead.
 func (*AgentEvent) Descriptor() ([]byte, []int) {
-	return file_workos_agent_v1_agent_proto_rawDescGZIP(), []int{17}
+	return file_workos_agent_v1_agent_proto_rawDescGZIP(), []int{19}
 }
 
 func (x *AgentEvent) GetId() string {
@@ -1333,6 +1434,24 @@ func (x *AgentEvent) GetRunCancelled() *RunCancelled {
 	return nil
 }
 
+func (x *AgentEvent) GetApprovalDecided() *ApprovalDecided {
+	if x != nil {
+		if x, ok := x.Event.(*AgentEvent_ApprovalDecided); ok {
+			return x.ApprovalDecided
+		}
+	}
+	return nil
+}
+
+func (x *AgentEvent) GetApprovalExpired() *ApprovalExpired {
+	if x != nil {
+		if x, ok := x.Event.(*AgentEvent_ApprovalExpired); ok {
+			return x.ApprovalExpired
+		}
+	}
+	return nil
+}
+
 type isAgentEvent_Event interface {
 	isAgentEvent_Event()
 }
@@ -1385,6 +1504,16 @@ type AgentEvent_RunCancelled struct {
 	RunCancelled *RunCancelled `protobuf:"bytes,21,opt,name=run_cancelled,json=runCancelled,proto3,oneof"`
 }
 
+type AgentEvent_ApprovalDecided struct {
+	// Additive Core-generated approval lifecycle events (ADR-0005); existing
+	// field numbers 10-21 are immutable.
+	ApprovalDecided *ApprovalDecided `protobuf:"bytes,22,opt,name=approval_decided,json=approvalDecided,proto3,oneof"`
+}
+
+type AgentEvent_ApprovalExpired struct {
+	ApprovalExpired *ApprovalExpired `protobuf:"bytes,23,opt,name=approval_expired,json=approvalExpired,proto3,oneof"`
+}
+
 func (*AgentEvent_RunStarted) isAgentEvent_Event() {}
 
 func (*AgentEvent_AssistantDelta) isAgentEvent_Event() {}
@@ -1409,6 +1538,10 @@ func (*AgentEvent_RunFailed) isAgentEvent_Event() {}
 
 func (*AgentEvent_RunCancelled) isAgentEvent_Event() {}
 
+func (*AgentEvent_ApprovalDecided) isAgentEvent_Event() {}
+
+func (*AgentEvent_ApprovalExpired) isAgentEvent_Event() {}
+
 type SubmitTaskRequest struct {
 	state          protoimpl.MessageState `protogen:"open.v1"`
 	IdempotencyKey string                 `protobuf:"bytes,1,opt,name=idempotency_key,json=idempotencyKey,proto3" json:"idempotency_key,omitempty"`
@@ -1419,7 +1552,7 @@ type SubmitTaskRequest struct {
 
 func (x *SubmitTaskRequest) Reset() {
 	*x = SubmitTaskRequest{}
-	mi := &file_workos_agent_v1_agent_proto_msgTypes[18]
+	mi := &file_workos_agent_v1_agent_proto_msgTypes[20]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1431,7 +1564,7 @@ func (x *SubmitTaskRequest) String() string {
 func (*SubmitTaskRequest) ProtoMessage() {}
 
 func (x *SubmitTaskRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_workos_agent_v1_agent_proto_msgTypes[18]
+	mi := &file_workos_agent_v1_agent_proto_msgTypes[20]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1444,7 +1577,7 @@ func (x *SubmitTaskRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SubmitTaskRequest.ProtoReflect.Descriptor instead.
 func (*SubmitTaskRequest) Descriptor() ([]byte, []int) {
-	return file_workos_agent_v1_agent_proto_rawDescGZIP(), []int{18}
+	return file_workos_agent_v1_agent_proto_rawDescGZIP(), []int{20}
 }
 
 func (x *SubmitTaskRequest) GetIdempotencyKey() string {
@@ -1470,7 +1603,7 @@ type GetTaskRequest struct {
 
 func (x *GetTaskRequest) Reset() {
 	*x = GetTaskRequest{}
-	mi := &file_workos_agent_v1_agent_proto_msgTypes[19]
+	mi := &file_workos_agent_v1_agent_proto_msgTypes[21]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1482,7 +1615,7 @@ func (x *GetTaskRequest) String() string {
 func (*GetTaskRequest) ProtoMessage() {}
 
 func (x *GetTaskRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_workos_agent_v1_agent_proto_msgTypes[19]
+	mi := &file_workos_agent_v1_agent_proto_msgTypes[21]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1495,7 +1628,7 @@ func (x *GetTaskRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetTaskRequest.ProtoReflect.Descriptor instead.
 func (*GetTaskRequest) Descriptor() ([]byte, []int) {
-	return file_workos_agent_v1_agent_proto_rawDescGZIP(), []int{19}
+	return file_workos_agent_v1_agent_proto_rawDescGZIP(), []int{21}
 }
 
 func (x *GetTaskRequest) GetTaskId() string {
@@ -1515,7 +1648,7 @@ type CancelTaskRequest struct {
 
 func (x *CancelTaskRequest) Reset() {
 	*x = CancelTaskRequest{}
-	mi := &file_workos_agent_v1_agent_proto_msgTypes[20]
+	mi := &file_workos_agent_v1_agent_proto_msgTypes[22]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1527,7 +1660,7 @@ func (x *CancelTaskRequest) String() string {
 func (*CancelTaskRequest) ProtoMessage() {}
 
 func (x *CancelTaskRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_workos_agent_v1_agent_proto_msgTypes[20]
+	mi := &file_workos_agent_v1_agent_proto_msgTypes[22]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1540,7 +1673,7 @@ func (x *CancelTaskRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CancelTaskRequest.ProtoReflect.Descriptor instead.
 func (*CancelTaskRequest) Descriptor() ([]byte, []int) {
-	return file_workos_agent_v1_agent_proto_rawDescGZIP(), []int{20}
+	return file_workos_agent_v1_agent_proto_rawDescGZIP(), []int{22}
 }
 
 func (x *CancelTaskRequest) GetTaskId() string {
@@ -1567,7 +1700,7 @@ type WatchTaskEventsRequest struct {
 
 func (x *WatchTaskEventsRequest) Reset() {
 	*x = WatchTaskEventsRequest{}
-	mi := &file_workos_agent_v1_agent_proto_msgTypes[21]
+	mi := &file_workos_agent_v1_agent_proto_msgTypes[23]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1579,7 +1712,7 @@ func (x *WatchTaskEventsRequest) String() string {
 func (*WatchTaskEventsRequest) ProtoMessage() {}
 
 func (x *WatchTaskEventsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_workos_agent_v1_agent_proto_msgTypes[21]
+	mi := &file_workos_agent_v1_agent_proto_msgTypes[23]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1592,7 +1725,7 @@ func (x *WatchTaskEventsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WatchTaskEventsRequest.ProtoReflect.Descriptor instead.
 func (*WatchTaskEventsRequest) Descriptor() ([]byte, []int) {
-	return file_workos_agent_v1_agent_proto_rawDescGZIP(), []int{21}
+	return file_workos_agent_v1_agent_proto_rawDescGZIP(), []int{23}
 }
 
 func (x *WatchTaskEventsRequest) GetTaskId() string {
@@ -1619,7 +1752,7 @@ type ListTasksRequest struct {
 
 func (x *ListTasksRequest) Reset() {
 	*x = ListTasksRequest{}
-	mi := &file_workos_agent_v1_agent_proto_msgTypes[22]
+	mi := &file_workos_agent_v1_agent_proto_msgTypes[24]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1631,7 +1764,7 @@ func (x *ListTasksRequest) String() string {
 func (*ListTasksRequest) ProtoMessage() {}
 
 func (x *ListTasksRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_workos_agent_v1_agent_proto_msgTypes[22]
+	mi := &file_workos_agent_v1_agent_proto_msgTypes[24]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1644,7 +1777,7 @@ func (x *ListTasksRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListTasksRequest.ProtoReflect.Descriptor instead.
 func (*ListTasksRequest) Descriptor() ([]byte, []int) {
-	return file_workos_agent_v1_agent_proto_rawDescGZIP(), []int{22}
+	return file_workos_agent_v1_agent_proto_rawDescGZIP(), []int{24}
 }
 
 func (x *ListTasksRequest) GetProjectId() string {
@@ -1671,7 +1804,7 @@ type ListTasksResponse struct {
 
 func (x *ListTasksResponse) Reset() {
 	*x = ListTasksResponse{}
-	mi := &file_workos_agent_v1_agent_proto_msgTypes[23]
+	mi := &file_workos_agent_v1_agent_proto_msgTypes[25]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1683,7 +1816,7 @@ func (x *ListTasksResponse) String() string {
 func (*ListTasksResponse) ProtoMessage() {}
 
 func (x *ListTasksResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_workos_agent_v1_agent_proto_msgTypes[23]
+	mi := &file_workos_agent_v1_agent_proto_msgTypes[25]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1696,7 +1829,7 @@ func (x *ListTasksResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListTasksResponse.ProtoReflect.Descriptor instead.
 func (*ListTasksResponse) Descriptor() ([]byte, []int) {
-	return file_workos_agent_v1_agent_proto_rawDescGZIP(), []int{23}
+	return file_workos_agent_v1_agent_proto_rawDescGZIP(), []int{25}
 }
 
 func (x *ListTasksResponse) GetTasks() []*AgentTask {
@@ -1722,7 +1855,7 @@ type SubmitTaskResponse struct {
 
 func (x *SubmitTaskResponse) Reset() {
 	*x = SubmitTaskResponse{}
-	mi := &file_workos_agent_v1_agent_proto_msgTypes[24]
+	mi := &file_workos_agent_v1_agent_proto_msgTypes[26]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1734,7 +1867,7 @@ func (x *SubmitTaskResponse) String() string {
 func (*SubmitTaskResponse) ProtoMessage() {}
 
 func (x *SubmitTaskResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_workos_agent_v1_agent_proto_msgTypes[24]
+	mi := &file_workos_agent_v1_agent_proto_msgTypes[26]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1747,7 +1880,7 @@ func (x *SubmitTaskResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SubmitTaskResponse.ProtoReflect.Descriptor instead.
 func (*SubmitTaskResponse) Descriptor() ([]byte, []int) {
-	return file_workos_agent_v1_agent_proto_rawDescGZIP(), []int{24}
+	return file_workos_agent_v1_agent_proto_rawDescGZIP(), []int{26}
 }
 
 func (x *SubmitTaskResponse) GetTask() *AgentTask {
@@ -1766,7 +1899,7 @@ type GetTaskResponse struct {
 
 func (x *GetTaskResponse) Reset() {
 	*x = GetTaskResponse{}
-	mi := &file_workos_agent_v1_agent_proto_msgTypes[25]
+	mi := &file_workos_agent_v1_agent_proto_msgTypes[27]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1778,7 +1911,7 @@ func (x *GetTaskResponse) String() string {
 func (*GetTaskResponse) ProtoMessage() {}
 
 func (x *GetTaskResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_workos_agent_v1_agent_proto_msgTypes[25]
+	mi := &file_workos_agent_v1_agent_proto_msgTypes[27]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1791,7 +1924,7 @@ func (x *GetTaskResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetTaskResponse.ProtoReflect.Descriptor instead.
 func (*GetTaskResponse) Descriptor() ([]byte, []int) {
-	return file_workos_agent_v1_agent_proto_rawDescGZIP(), []int{25}
+	return file_workos_agent_v1_agent_proto_rawDescGZIP(), []int{27}
 }
 
 func (x *GetTaskResponse) GetTask() *AgentTask {
@@ -1810,7 +1943,7 @@ type CancelTaskResponse struct {
 
 func (x *CancelTaskResponse) Reset() {
 	*x = CancelTaskResponse{}
-	mi := &file_workos_agent_v1_agent_proto_msgTypes[26]
+	mi := &file_workos_agent_v1_agent_proto_msgTypes[28]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1822,7 +1955,7 @@ func (x *CancelTaskResponse) String() string {
 func (*CancelTaskResponse) ProtoMessage() {}
 
 func (x *CancelTaskResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_workos_agent_v1_agent_proto_msgTypes[26]
+	mi := &file_workos_agent_v1_agent_proto_msgTypes[28]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1835,7 +1968,7 @@ func (x *CancelTaskResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CancelTaskResponse.ProtoReflect.Descriptor instead.
 func (*CancelTaskResponse) Descriptor() ([]byte, []int) {
-	return file_workos_agent_v1_agent_proto_rawDescGZIP(), []int{26}
+	return file_workos_agent_v1_agent_proto_rawDescGZIP(), []int{28}
 }
 
 func (x *CancelTaskResponse) GetTask() *AgentTask {
@@ -1854,7 +1987,7 @@ type WatchTaskEventsResponse struct {
 
 func (x *WatchTaskEventsResponse) Reset() {
 	*x = WatchTaskEventsResponse{}
-	mi := &file_workos_agent_v1_agent_proto_msgTypes[27]
+	mi := &file_workos_agent_v1_agent_proto_msgTypes[29]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1866,7 +1999,7 @@ func (x *WatchTaskEventsResponse) String() string {
 func (*WatchTaskEventsResponse) ProtoMessage() {}
 
 func (x *WatchTaskEventsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_workos_agent_v1_agent_proto_msgTypes[27]
+	mi := &file_workos_agent_v1_agent_proto_msgTypes[29]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1879,7 +2012,7 @@ func (x *WatchTaskEventsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WatchTaskEventsResponse.ProtoReflect.Descriptor instead.
 func (*WatchTaskEventsResponse) Descriptor() ([]byte, []int) {
-	return file_workos_agent_v1_agent_proto_rawDescGZIP(), []int{27}
+	return file_workos_agent_v1_agent_proto_rawDescGZIP(), []int{29}
 }
 
 func (x *WatchTaskEventsResponse) GetEvent() *AgentEvent {
@@ -1893,7 +2026,7 @@ var File_workos_agent_v1_agent_proto protoreflect.FileDescriptor
 
 const file_workos_agent_v1_agent_proto_rawDesc = "" +
 	"\n" +
-	"\x1bworkos/agent/v1/agent.proto\x12\x0fworkos.agent.v1\x1a\x1cgoogle/protobuf/struct.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1dworkos/common/v1/common.proto\"Q\n" +
+	"\x1bworkos/agent/v1/agent.proto\x12\x0fworkos.agent.v1\x1a\x1cgoogle/protobuf/struct.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a workos/agent/v1/app_policy.proto\x1a\x1dworkos/common/v1/common.proto\"Q\n" +
 	"\vTargetScope\x12\x18\n" +
 	"\x06global\x18\x01 \x01(\bH\x00R\x06global\x12\x1f\n" +
 	"\n" +
@@ -1977,7 +2110,14 @@ const file_workos_agent_v1_agent_proto_rawDesc = "" +
 	"\x06reason\x18\x01 \x01(\tR\x06reason\x12\x1c\n" +
 	"\tretryable\x18\x02 \x01(\bR\tretryable\"&\n" +
 	"\fRunCancelled\x12\x16\n" +
-	"\x06reason\x18\x01 \x01(\tR\x06reason\"\x8e\b\n" +
+	"\x06reason\x18\x01 \x01(\tR\x06reason\"y\n" +
+	"\x0fApprovalDecided\x12\x1f\n" +
+	"\vapproval_id\x18\x01 \x01(\tR\n" +
+	"approvalId\x12E\n" +
+	"\bdecision\x18\x02 \x01(\x0e2).workos.agent.v1.AppAgentApprovalDecisionR\bdecision\"2\n" +
+	"\x0fApprovalExpired\x12\x1f\n" +
+	"\vapproval_id\x18\x01 \x01(\tR\n" +
+	"approvalId\"\xac\t\n" +
 	"\n" +
 	"AgentEvent\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x17\n" +
@@ -2000,7 +2140,9 @@ const file_workos_agent_v1_agent_proto_rawDesc = "" +
 	"\rrun_completed\x18\x13 \x01(\v2\x1d.workos.agent.v1.RunCompletedH\x00R\frunCompleted\x12;\n" +
 	"\n" +
 	"run_failed\x18\x14 \x01(\v2\x1a.workos.agent.v1.RunFailedH\x00R\trunFailed\x12D\n" +
-	"\rrun_cancelled\x18\x15 \x01(\v2\x1d.workos.agent.v1.RunCancelledH\x00R\frunCancelledB\a\n" +
+	"\rrun_cancelled\x18\x15 \x01(\v2\x1d.workos.agent.v1.RunCancelledH\x00R\frunCancelled\x12M\n" +
+	"\x10approval_decided\x18\x16 \x01(\v2 .workos.agent.v1.ApprovalDecidedH\x00R\x0fapprovalDecided\x12M\n" +
+	"\x10approval_expired\x18\x17 \x01(\v2 .workos.agent.v1.ApprovalExpiredH\x00R\x0fapprovalExpiredB\a\n" +
 	"\x05event\"s\n" +
 	"\x11SubmitTaskRequest\x12'\n" +
 	"\x0fidempotency_key\x18\x01 \x01(\tR\x0eidempotencyKey\x125\n" +
@@ -2058,7 +2200,7 @@ func file_workos_agent_v1_agent_proto_rawDescGZIP() []byte {
 }
 
 var file_workos_agent_v1_agent_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_workos_agent_v1_agent_proto_msgTypes = make([]protoimpl.MessageInfo, 28)
+var file_workos_agent_v1_agent_proto_msgTypes = make([]protoimpl.MessageInfo, 30)
 var file_workos_agent_v1_agent_proto_goTypes = []any{
 	(AgentTaskState)(0),             // 0: workos.agent.v1.AgentTaskState
 	(*TargetScope)(nil),             // 1: workos.agent.v1.TargetScope
@@ -2078,21 +2220,24 @@ var file_workos_agent_v1_agent_proto_goTypes = []any{
 	(*RunCompleted)(nil),            // 15: workos.agent.v1.RunCompleted
 	(*RunFailed)(nil),               // 16: workos.agent.v1.RunFailed
 	(*RunCancelled)(nil),            // 17: workos.agent.v1.RunCancelled
-	(*AgentEvent)(nil),              // 18: workos.agent.v1.AgentEvent
-	(*SubmitTaskRequest)(nil),       // 19: workos.agent.v1.SubmitTaskRequest
-	(*GetTaskRequest)(nil),          // 20: workos.agent.v1.GetTaskRequest
-	(*CancelTaskRequest)(nil),       // 21: workos.agent.v1.CancelTaskRequest
-	(*WatchTaskEventsRequest)(nil),  // 22: workos.agent.v1.WatchTaskEventsRequest
-	(*ListTasksRequest)(nil),        // 23: workos.agent.v1.ListTasksRequest
-	(*ListTasksResponse)(nil),       // 24: workos.agent.v1.ListTasksResponse
-	(*SubmitTaskResponse)(nil),      // 25: workos.agent.v1.SubmitTaskResponse
-	(*GetTaskResponse)(nil),         // 26: workos.agent.v1.GetTaskResponse
-	(*CancelTaskResponse)(nil),      // 27: workos.agent.v1.CancelTaskResponse
-	(*WatchTaskEventsResponse)(nil), // 28: workos.agent.v1.WatchTaskEventsResponse
-	(*timestamppb.Timestamp)(nil),   // 29: google.protobuf.Timestamp
-	(*structpb.Struct)(nil),         // 30: google.protobuf.Struct
-	(*v1.PageRequest)(nil),          // 31: workos.common.v1.PageRequest
-	(*v1.PageResponse)(nil),         // 32: workos.common.v1.PageResponse
+	(*ApprovalDecided)(nil),         // 18: workos.agent.v1.ApprovalDecided
+	(*ApprovalExpired)(nil),         // 19: workos.agent.v1.ApprovalExpired
+	(*AgentEvent)(nil),              // 20: workos.agent.v1.AgentEvent
+	(*SubmitTaskRequest)(nil),       // 21: workos.agent.v1.SubmitTaskRequest
+	(*GetTaskRequest)(nil),          // 22: workos.agent.v1.GetTaskRequest
+	(*CancelTaskRequest)(nil),       // 23: workos.agent.v1.CancelTaskRequest
+	(*WatchTaskEventsRequest)(nil),  // 24: workos.agent.v1.WatchTaskEventsRequest
+	(*ListTasksRequest)(nil),        // 25: workos.agent.v1.ListTasksRequest
+	(*ListTasksResponse)(nil),       // 26: workos.agent.v1.ListTasksResponse
+	(*SubmitTaskResponse)(nil),      // 27: workos.agent.v1.SubmitTaskResponse
+	(*GetTaskResponse)(nil),         // 28: workos.agent.v1.GetTaskResponse
+	(*CancelTaskResponse)(nil),      // 29: workos.agent.v1.CancelTaskResponse
+	(*WatchTaskEventsResponse)(nil), // 30: workos.agent.v1.WatchTaskEventsResponse
+	(*timestamppb.Timestamp)(nil),   // 31: google.protobuf.Timestamp
+	(*structpb.Struct)(nil),         // 32: google.protobuf.Struct
+	(AppAgentApprovalDecision)(0),   // 33: workos.agent.v1.AppAgentApprovalDecision
+	(*v1.PageRequest)(nil),          // 34: workos.common.v1.PageRequest
+	(*v1.PageResponse)(nil),         // 35: workos.common.v1.PageResponse
 }
 var file_workos_agent_v1_agent_proto_depIdxs = []int32{
 	1,  // 0: workos.agent.v1.AgentTaskInput.target_scope:type_name -> workos.agent.v1.TargetScope
@@ -2100,46 +2245,49 @@ var file_workos_agent_v1_agent_proto_depIdxs = []int32{
 	3,  // 2: workos.agent.v1.AgentTaskInput.budget:type_name -> workos.agent.v1.AgentBudget
 	4,  // 3: workos.agent.v1.AgentTask.input:type_name -> workos.agent.v1.AgentTaskInput
 	0,  // 4: workos.agent.v1.AgentTask.state:type_name -> workos.agent.v1.AgentTaskState
-	29, // 5: workos.agent.v1.AgentTask.created_at:type_name -> google.protobuf.Timestamp
-	29, // 6: workos.agent.v1.AgentTask.updated_at:type_name -> google.protobuf.Timestamp
-	30, // 7: workos.agent.v1.ToolCallStarted.input:type_name -> google.protobuf.Struct
-	30, // 8: workos.agent.v1.ToolCallCompleted.output:type_name -> google.protobuf.Struct
-	29, // 9: workos.agent.v1.AgentEvent.occurred_at:type_name -> google.protobuf.Timestamp
-	6,  // 10: workos.agent.v1.AgentEvent.run_started:type_name -> workos.agent.v1.RunStarted
-	7,  // 11: workos.agent.v1.AgentEvent.assistant_delta:type_name -> workos.agent.v1.AssistantDelta
-	8,  // 12: workos.agent.v1.AgentEvent.assistant_message:type_name -> workos.agent.v1.AssistantMessage
-	9,  // 13: workos.agent.v1.AgentEvent.tool_call_started:type_name -> workos.agent.v1.ToolCallStarted
-	10, // 14: workos.agent.v1.AgentEvent.tool_call_completed:type_name -> workos.agent.v1.ToolCallCompleted
-	11, // 15: workos.agent.v1.AgentEvent.approval_required:type_name -> workos.agent.v1.ApprovalRequired
-	12, // 16: workos.agent.v1.AgentEvent.artifact_created:type_name -> workos.agent.v1.ArtifactCreated
-	13, // 17: workos.agent.v1.AgentEvent.usage_recorded:type_name -> workos.agent.v1.UsageRecorded
-	14, // 18: workos.agent.v1.AgentEvent.run_waiting:type_name -> workos.agent.v1.RunWaiting
-	15, // 19: workos.agent.v1.AgentEvent.run_completed:type_name -> workos.agent.v1.RunCompleted
-	16, // 20: workos.agent.v1.AgentEvent.run_failed:type_name -> workos.agent.v1.RunFailed
-	17, // 21: workos.agent.v1.AgentEvent.run_cancelled:type_name -> workos.agent.v1.RunCancelled
-	4,  // 22: workos.agent.v1.SubmitTaskRequest.input:type_name -> workos.agent.v1.AgentTaskInput
-	31, // 23: workos.agent.v1.ListTasksRequest.page:type_name -> workos.common.v1.PageRequest
-	5,  // 24: workos.agent.v1.ListTasksResponse.tasks:type_name -> workos.agent.v1.AgentTask
-	32, // 25: workos.agent.v1.ListTasksResponse.page:type_name -> workos.common.v1.PageResponse
-	5,  // 26: workos.agent.v1.SubmitTaskResponse.task:type_name -> workos.agent.v1.AgentTask
-	5,  // 27: workos.agent.v1.GetTaskResponse.task:type_name -> workos.agent.v1.AgentTask
-	5,  // 28: workos.agent.v1.CancelTaskResponse.task:type_name -> workos.agent.v1.AgentTask
-	18, // 29: workos.agent.v1.WatchTaskEventsResponse.event:type_name -> workos.agent.v1.AgentEvent
-	19, // 30: workos.agent.v1.AgentTaskService.SubmitTask:input_type -> workos.agent.v1.SubmitTaskRequest
-	20, // 31: workos.agent.v1.AgentTaskService.GetTask:input_type -> workos.agent.v1.GetTaskRequest
-	23, // 32: workos.agent.v1.AgentTaskService.ListTasks:input_type -> workos.agent.v1.ListTasksRequest
-	21, // 33: workos.agent.v1.AgentTaskService.CancelTask:input_type -> workos.agent.v1.CancelTaskRequest
-	22, // 34: workos.agent.v1.AgentTaskService.WatchTaskEvents:input_type -> workos.agent.v1.WatchTaskEventsRequest
-	25, // 35: workos.agent.v1.AgentTaskService.SubmitTask:output_type -> workos.agent.v1.SubmitTaskResponse
-	26, // 36: workos.agent.v1.AgentTaskService.GetTask:output_type -> workos.agent.v1.GetTaskResponse
-	24, // 37: workos.agent.v1.AgentTaskService.ListTasks:output_type -> workos.agent.v1.ListTasksResponse
-	27, // 38: workos.agent.v1.AgentTaskService.CancelTask:output_type -> workos.agent.v1.CancelTaskResponse
-	28, // 39: workos.agent.v1.AgentTaskService.WatchTaskEvents:output_type -> workos.agent.v1.WatchTaskEventsResponse
-	35, // [35:40] is the sub-list for method output_type
-	30, // [30:35] is the sub-list for method input_type
-	30, // [30:30] is the sub-list for extension type_name
-	30, // [30:30] is the sub-list for extension extendee
-	0,  // [0:30] is the sub-list for field type_name
+	31, // 5: workos.agent.v1.AgentTask.created_at:type_name -> google.protobuf.Timestamp
+	31, // 6: workos.agent.v1.AgentTask.updated_at:type_name -> google.protobuf.Timestamp
+	32, // 7: workos.agent.v1.ToolCallStarted.input:type_name -> google.protobuf.Struct
+	32, // 8: workos.agent.v1.ToolCallCompleted.output:type_name -> google.protobuf.Struct
+	33, // 9: workos.agent.v1.ApprovalDecided.decision:type_name -> workos.agent.v1.AppAgentApprovalDecision
+	31, // 10: workos.agent.v1.AgentEvent.occurred_at:type_name -> google.protobuf.Timestamp
+	6,  // 11: workos.agent.v1.AgentEvent.run_started:type_name -> workos.agent.v1.RunStarted
+	7,  // 12: workos.agent.v1.AgentEvent.assistant_delta:type_name -> workos.agent.v1.AssistantDelta
+	8,  // 13: workos.agent.v1.AgentEvent.assistant_message:type_name -> workos.agent.v1.AssistantMessage
+	9,  // 14: workos.agent.v1.AgentEvent.tool_call_started:type_name -> workos.agent.v1.ToolCallStarted
+	10, // 15: workos.agent.v1.AgentEvent.tool_call_completed:type_name -> workos.agent.v1.ToolCallCompleted
+	11, // 16: workos.agent.v1.AgentEvent.approval_required:type_name -> workos.agent.v1.ApprovalRequired
+	12, // 17: workos.agent.v1.AgentEvent.artifact_created:type_name -> workos.agent.v1.ArtifactCreated
+	13, // 18: workos.agent.v1.AgentEvent.usage_recorded:type_name -> workos.agent.v1.UsageRecorded
+	14, // 19: workos.agent.v1.AgentEvent.run_waiting:type_name -> workos.agent.v1.RunWaiting
+	15, // 20: workos.agent.v1.AgentEvent.run_completed:type_name -> workos.agent.v1.RunCompleted
+	16, // 21: workos.agent.v1.AgentEvent.run_failed:type_name -> workos.agent.v1.RunFailed
+	17, // 22: workos.agent.v1.AgentEvent.run_cancelled:type_name -> workos.agent.v1.RunCancelled
+	18, // 23: workos.agent.v1.AgentEvent.approval_decided:type_name -> workos.agent.v1.ApprovalDecided
+	19, // 24: workos.agent.v1.AgentEvent.approval_expired:type_name -> workos.agent.v1.ApprovalExpired
+	4,  // 25: workos.agent.v1.SubmitTaskRequest.input:type_name -> workos.agent.v1.AgentTaskInput
+	34, // 26: workos.agent.v1.ListTasksRequest.page:type_name -> workos.common.v1.PageRequest
+	5,  // 27: workos.agent.v1.ListTasksResponse.tasks:type_name -> workos.agent.v1.AgentTask
+	35, // 28: workos.agent.v1.ListTasksResponse.page:type_name -> workos.common.v1.PageResponse
+	5,  // 29: workos.agent.v1.SubmitTaskResponse.task:type_name -> workos.agent.v1.AgentTask
+	5,  // 30: workos.agent.v1.GetTaskResponse.task:type_name -> workos.agent.v1.AgentTask
+	5,  // 31: workos.agent.v1.CancelTaskResponse.task:type_name -> workos.agent.v1.AgentTask
+	20, // 32: workos.agent.v1.WatchTaskEventsResponse.event:type_name -> workos.agent.v1.AgentEvent
+	21, // 33: workos.agent.v1.AgentTaskService.SubmitTask:input_type -> workos.agent.v1.SubmitTaskRequest
+	22, // 34: workos.agent.v1.AgentTaskService.GetTask:input_type -> workos.agent.v1.GetTaskRequest
+	25, // 35: workos.agent.v1.AgentTaskService.ListTasks:input_type -> workos.agent.v1.ListTasksRequest
+	23, // 36: workos.agent.v1.AgentTaskService.CancelTask:input_type -> workos.agent.v1.CancelTaskRequest
+	24, // 37: workos.agent.v1.AgentTaskService.WatchTaskEvents:input_type -> workos.agent.v1.WatchTaskEventsRequest
+	27, // 38: workos.agent.v1.AgentTaskService.SubmitTask:output_type -> workos.agent.v1.SubmitTaskResponse
+	28, // 39: workos.agent.v1.AgentTaskService.GetTask:output_type -> workos.agent.v1.GetTaskResponse
+	26, // 40: workos.agent.v1.AgentTaskService.ListTasks:output_type -> workos.agent.v1.ListTasksResponse
+	29, // 41: workos.agent.v1.AgentTaskService.CancelTask:output_type -> workos.agent.v1.CancelTaskResponse
+	30, // 42: workos.agent.v1.AgentTaskService.WatchTaskEvents:output_type -> workos.agent.v1.WatchTaskEventsResponse
+	38, // [38:43] is the sub-list for method output_type
+	33, // [33:38] is the sub-list for method input_type
+	33, // [33:33] is the sub-list for extension type_name
+	33, // [33:33] is the sub-list for extension extendee
+	0,  // [0:33] is the sub-list for field type_name
 }
 
 func init() { file_workos_agent_v1_agent_proto_init() }
@@ -2147,11 +2295,12 @@ func file_workos_agent_v1_agent_proto_init() {
 	if File_workos_agent_v1_agent_proto != nil {
 		return
 	}
+	file_workos_agent_v1_app_policy_proto_init()
 	file_workos_agent_v1_agent_proto_msgTypes[0].OneofWrappers = []any{
 		(*TargetScope_Global)(nil),
 		(*TargetScope_ProjectId)(nil),
 	}
-	file_workos_agent_v1_agent_proto_msgTypes[17].OneofWrappers = []any{
+	file_workos_agent_v1_agent_proto_msgTypes[19].OneofWrappers = []any{
 		(*AgentEvent_RunStarted)(nil),
 		(*AgentEvent_AssistantDelta)(nil),
 		(*AgentEvent_AssistantMessage)(nil),
@@ -2164,6 +2313,8 @@ func file_workos_agent_v1_agent_proto_init() {
 		(*AgentEvent_RunCompleted)(nil),
 		(*AgentEvent_RunFailed)(nil),
 		(*AgentEvent_RunCancelled)(nil),
+		(*AgentEvent_ApprovalDecided)(nil),
+		(*AgentEvent_ApprovalExpired)(nil),
 	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
@@ -2171,7 +2322,7 @@ func file_workos_agent_v1_agent_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_workos_agent_v1_agent_proto_rawDesc), len(file_workos_agent_v1_agent_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   28,
+			NumMessages:   30,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

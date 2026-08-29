@@ -34,6 +34,9 @@ func TestConfigAndDescribe(t *testing.T) {
 		if !caps.GetStreaming() || !caps.GetUsageReporting() || caps.GetPersistentSessions() || caps.GetResume() || caps.GetSteerDuringRun() || caps.GetApprovals() || caps.GetToolRegistration() || caps.GetMcp() || caps.GetSubagents() || caps.GetWorkspaceMount() || caps.GetStructuredArtifacts() {
 			t.Fatalf("provider overclaimed capabilities: %#v", caps)
 		}
+		if !caps.GetHardTokenBudget() || !caps.GetHardRuntimeDeadline() {
+			t.Fatalf("provider underclaimed the proven budget contract: %#v", caps)
+		}
 	})
 
 	t.Run("explicit valid configuration", func(t *testing.T) {

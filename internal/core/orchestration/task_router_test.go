@@ -8,13 +8,57 @@ import (
 
 	agentapp "github.com/yangtao121/workos/internal/core/agent/application"
 	agentdomain "github.com/yangtao121/workos/internal/core/agent/domain"
+	agentports "github.com/yangtao121/workos/internal/core/agent/ports"
 	projectdomain "github.com/yangtao121/workos/internal/core/project/domain"
 )
+
+type fakePolicies struct {
+	policy agentdomain.Policy
+	err    error
+}
+
+func (f *fakePolicies) EffectivePolicy(context.Context, string, string, string) (agentdomain.Policy, error) {
+	if f.err != nil {
+		return agentdomain.Policy{}, f.err
+	}
+	policy := f.policy
+	if policy.Spec.Mode == "" {
+		policy = agentdomain.SystemDefaultPolicy()
+	}
+	return policy, nil
+}
+
+type fakeProviders struct {
+	capabilities agentports.ProviderCapabilities
+	err          error
+	lookups      int
+}
+
+func (f *fakeProviders) Capabilities(_ context.Context, providerID string) (agentports.ProviderCapabilities, error) {
+	f.lookups++
+	if f.err != nil {
+		return agentports.ProviderCapabilities{}, f.err
+	}
+	if providerID == "unknown" {
+		return agentports.ProviderCapabilities{}, agentdomain.ErrNotFound
+	}
+	capabilities := f.capabilities
+	if !capabilities.UsageReporting && !capabilities.HardRuntimeDeadline && !capabilities.HardTokenBudget {
+		capabilities = agentports.ProviderCapabilities{HardTokenBudget: true, HardRuntimeDeadline: true, UsageReporting: true}
+	}
+	return capabilities, nil
+}
+
+// newTestRouter wires the default allow-policy adjudication fakes.
+func newTestRouter(agents *fakeAgents, projects *fakeProjects) (*TaskRouter, error) {
+	return NewTaskRouter(agents, projects, &fakePolicies{}, &fakeProviders{}, "fake")
+}
 
 type fakeAgents struct {
 	existing               *agentdomain.Task
 	submitted              []agentapp.SubmitInput
 	appSubmitted           []agentapp.AppSubmitInput
+	appApprovalSubmitted   []agentapp.AppSubmitInput
 	appReplayTask          *agentdomain.Task
 	appReplayDigestDiffers bool
 }
@@ -34,6 +78,11 @@ func (f *fakeAgents) Submit(_ context.Context, input agentapp.SubmitInput) (agen
 func (f *fakeAgents) SubmitForApp(_ context.Context, input agentapp.AppSubmitInput) (agentdomain.Task, error) {
 	f.appSubmitted = append(f.appSubmitted, input)
 	return agentdomain.Task{ID: "new-app-task", ProviderID: input.ProviderID}, nil
+}
+
+func (f *fakeAgents) SubmitForAppApproval(_ context.Context, input agentapp.AppSubmitInput) (agentdomain.Task, agentdomain.Approval, error) {
+	f.appApprovalSubmitted = append(f.appApprovalSubmitted, input)
+	return agentdomain.Task{ID: "waiting-app-task", ProviderID: input.ProviderID}, agentdomain.Approval{ID: "approval-1", TaskID: "waiting-app-task"}, nil
 }
 
 func (f *fakeAgents) GetAppTaskByIdempotency(context.Context, string, string, string) (agentdomain.Task, string, bool, error) {
@@ -89,7 +138,7 @@ func TestTaskRouterResolvesProviderSnapshots(t *testing.T) {
 			t.Parallel()
 			agents := &fakeAgents{}
 			projects := &fakeProjects{project: test.project}
-			router, err := NewTaskRouter(agents, projects, "fake")
+			router, err := newTestRouter(agents, projects)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -116,7 +165,7 @@ func TestTaskRouterReturnsIdempotentTaskBeforeProjectLookup(t *testing.T) {
 	projects := &fakeProjects{
 		project: projectdomain.Project{HarnessBinding: &projectdomain.HarnessBinding{ProviderID: "fake"}},
 	}
-	router, err := NewTaskRouter(agents, projects, "fake")
+	router, err := newTestRouter(agents, projects)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -146,7 +195,7 @@ func TestTaskRouterRejectsInaccessibleOrArchivedProject(t *testing.T) {
 		test := test
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
-			router, err := NewTaskRouter(&fakeAgents{}, test.projects, "fake")
+			router, err := newTestRouter(&fakeAgents{}, test.projects)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -165,7 +214,7 @@ func TestTaskRouterSubmitForAppReplaysBeforeProjectLookup(t *testing.T) {
 	first := agentdomain.Task{ID: "first-app-task", ProviderID: "bound"}
 	agents := &fakeAgents{appReplayTask: &first}
 	projects := &fakeProjects{}
-	router, err := NewTaskRouter(agents, projects, "fake")
+	router, err := newTestRouter(agents, projects)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -188,7 +237,7 @@ func TestTaskRouterSubmitForAppReplaysBeforeProjectLookup(t *testing.T) {
 func TestTaskRouterSubmitForAppConflictsOnDifferentRequest(t *testing.T) {
 	t.Parallel()
 	agents := &fakeAgents{appReplayDigestDiffers: true}
-	router, err := NewTaskRouter(agents, &fakeProjects{}, "fake")
+	router, err := newTestRouter(agents, &fakeProjects{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -209,7 +258,7 @@ func TestTaskRouterSubmitForAppSnapshotsProjectProvider(t *testing.T) {
 		ID: "project-1", OwnerUserID: "owner-1",
 		HarnessBinding: &projectdomain.HarnessBinding{ProviderID: "deepseek"},
 	}}
-	router, err := NewTaskRouter(agents, projects, "fake")
+	router, err := newTestRouter(agents, projects)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -226,5 +275,100 @@ func TestTaskRouterSubmitForAppSnapshotsProjectProvider(t *testing.T) {
 	}
 	if agents.appSubmitted[0].RequestDigest != agentdomain.AppTaskRequestDigest("role", "goal") {
 		t.Fatal("digest not forwarded")
+	}
+	if agents.appSubmitted[0].Enforcement.Policy.Source != agentdomain.PolicySourceSystemDefault ||
+		agents.appSubmitted[0].Enforcement.MaxOutputTokensTask != 4096 ||
+		agents.appSubmitted[0].Enforcement.Daily.MaxTasks != 50 {
+		t.Fatalf("policy enforcement missing: %+v", agents.appSubmitted[0].Enforcement)
+	}
+}
+
+func TestTaskRouterSubmitForAppRoutesRequireApprovalMode(t *testing.T) {
+	t.Parallel()
+	agents := &fakeAgents{}
+	policies := &fakePolicies{policy: agentdomain.Policy{
+		Spec: agentdomain.PolicySpec{
+			Mode: agentdomain.PolicyModeRequireApproval, MaxOutputTokensPerTask: 128,
+			MaxRuntimeSecondsPerTask: 60, MaxTasksPerUTCDay: 3, MaxReservedOutputTokensPerUTCDay: 384,
+		},
+		Source: agentdomain.PolicySourceExplicit, Revision: 2,
+	}}
+	router, err := NewTaskRouter(agents, &fakeProjects{}, policies, &fakeProviders{}, "fake")
+	if err != nil {
+		t.Fatal(err)
+	}
+	task, err := router.SubmitForApp(context.Background(), agentapp.AppSubmitInput{
+		OwnerUserID: "owner-1", AppInstanceID: "instance-1", ClientIdempotencyKey: "key-1",
+		RequestDigest: agentdomain.AppTaskRequestDigest("role", "goal"),
+		ProjectID:     "project-1", Role: "role", Goal: "goal",
+	})
+	if err != nil || task.ID != "waiting-app-task" {
+		t.Fatalf("approval handoff failed: %v %+v", err, task)
+	}
+	if len(agents.appApprovalSubmitted) != 1 || len(agents.appSubmitted) != 0 {
+		t.Fatalf("mode routed to the wrong enqueue path: allow=%d approval=%d", len(agents.appSubmitted), len(agents.appApprovalSubmitted))
+	}
+	if agents.appApprovalSubmitted[0].Enforcement.MaxOutputTokensTask != 128 {
+		t.Fatalf("approval enforcement missing: %+v", agents.appApprovalSubmitted[0].Enforcement)
+	}
+}
+
+func TestTaskRouterSubmitForAppBlockModeFailsClosed(t *testing.T) {
+	t.Parallel()
+	agents := &fakeAgents{}
+	policies := &fakePolicies{policy: agentdomain.Policy{
+		Spec: agentdomain.PolicySpec{
+			Mode: agentdomain.PolicyModeBlock, MaxOutputTokensPerTask: 128,
+			MaxRuntimeSecondsPerTask: 60, MaxTasksPerUTCDay: 3, MaxReservedOutputTokensPerUTCDay: 384,
+		},
+		Source: agentdomain.PolicySourceExplicit, Revision: 2,
+	}}
+	router, err := NewTaskRouter(agents, &fakeProjects{}, policies, &fakeProviders{}, "fake")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = router.SubmitForApp(context.Background(), agentapp.AppSubmitInput{
+		OwnerUserID: "owner-1", AppInstanceID: "instance-1", ClientIdempotencyKey: "key-1",
+		RequestDigest: agentdomain.AppTaskRequestDigest("role", "goal"),
+		ProjectID:     "project-1", Role: "role", Goal: "goal",
+	})
+	if !errors.Is(err, agentdomain.ErrPolicyBlocksRuns) {
+		t.Fatalf("block mode verdict: %v", err)
+	}
+	if len(agents.appSubmitted) != 0 || len(agents.appApprovalSubmitted) != 0 {
+		t.Fatal("block mode must not enqueue anything")
+	}
+}
+
+func TestTaskRouterSubmitForAppRejectsMissingProviderBudgetContract(t *testing.T) {
+	t.Parallel()
+	agents := &fakeAgents{}
+	router, err := NewTaskRouter(agents, &fakeProjects{}, &fakePolicies{}, &fakeProviders{}, "unknown")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = router.SubmitForApp(context.Background(), agentapp.AppSubmitInput{
+		OwnerUserID: "owner-1", AppInstanceID: "instance-1", ClientIdempotencyKey: "key-1",
+		RequestDigest: agentdomain.AppTaskRequestDigest("role", "goal"),
+		ProjectID:     "project-1", Role: "role", Goal: "goal",
+	})
+	if !errors.Is(err, agentdomain.ErrProviderCapabilityMissing) {
+		t.Fatalf("provider capability verdict: %v", err)
+	}
+	partial := &fakeProviders{capabilities: agentports.ProviderCapabilities{HardTokenBudget: true, UsageReporting: true}}
+	router, err = NewTaskRouter(agents, &fakeProjects{}, &fakePolicies{}, partial, "fake")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = router.SubmitForApp(context.Background(), agentapp.AppSubmitInput{
+		OwnerUserID: "owner-1", AppInstanceID: "instance-1", ClientIdempotencyKey: "key-2",
+		RequestDigest: agentdomain.AppTaskRequestDigest("role", "goal"),
+		ProjectID:     "project-1", Role: "role", Goal: "goal",
+	})
+	if !errors.Is(err, agentdomain.ErrProviderCapabilityMissing) {
+		t.Fatalf("partial capability verdict: %v", err)
+	}
+	if len(agents.appSubmitted) != 0 {
+		t.Fatal("capability-missing runs must not enqueue")
 	}
 }

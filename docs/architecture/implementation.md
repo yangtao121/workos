@@ -434,6 +434,73 @@ Core 每次授权（每次 run、每个 watch polling round）重新解析 activ
   `installation_grant_revision` 快照列（backfill 1）。001–010 逐字节不变，由 checksum 集成
   测试钉住。
 
+## App Agent 预算策略、运行前审批与配额
+
+ADR-0005 让 Agent 域为每个 active installation 持有执行策略：grant 回答
+"能否调用 bridge method"，policy 回答"新任务怎么跑、最多花多少"。链路固定为：
+
+```text
+Desktop App Library → Gateway public AgentAppPolicyService → Core Agent
+Core: identity → 有界 spec 验证 → 中立 InstallationSource 重验 installation 活性
+  → Agent 事务：consumed-key replay/conflict 裁决 → expected_policy_revision 乐观并发
+      → policy upsert（真实变化 revision+1）+ 原子失效全部 pending approval（其
+        waiting task 终止为 cancelled + approval_expired 事件）+ 首响应快照
+
+App bridge run（fresh key）固定裁决序：
+replay（client digest 仍只覆盖 role/goal）→ grant/epoch 授权（既有）
+  → effective policy（explicit row 或版本化 system default）→ provider snapshot
+  → provider capability（hard_token_budget + hard_runtime_deadline + usage_reporting
+    全部显式支持，缺失为净化 FailedPrecondition）
+  → execution_mode：
+      allow            → 单事务：task(policy/budget 快照) + provenance + guarded
+                          daily reservation + claimable outbox
+      require_approval → 单事务：waiting task + provenance + pending approval
+                          （完整 policy spec 快照）+ approval_required 事件；
+                          不建 outbox、不占额度
+      block            → 净化 PermissionDenied，零副作用，不消费 run key
+      quota 不足       → 净化 ResourceExhausted，事务回滚，key 未消费
+
+Owner decide（public AgentApprovalService，Gateway identity）：
+重验 installation/grant/policy revision/provider capability（任何漂移 fail closed
+FailedPrecondition 且保持 pending）→ 单事务：decision idempotency replay/conflict
+→ guarded reservation（approve）→ waiting→queued + approval_decided 事件 + outbox
+（approve）或 task cancelled + approval_decided + run_cancelled（reject）
+
+worker 续租观察 cancellation_requested → 确定性取消；usage_recorded 事件与
+task event 同事务累计 agent_task_usage 与 bucket usage projection；reported
+output 超过任务 reservation → bucket breach + 确定性 cancellation_requested，
+breached bucket 的后续 fresh run fail closed（ResourceExhausted）
+```
+
+- 事实 owner 全部在 `workos-core Agent`（migration `014`）：`agent_app_policies`
+  （explicit 策略行 + revision epoch）、`agent_app_policy_requests`（owner-scoped
+  幂等 + 版本化首响应快照，ADR-0004 模式）、`agent_app_approvals`（含完整 policy
+  spec 快照与 decision 幂等键/digest）、`agent_app_daily_reservations`（UTC 日
+  bucket，guarded UPDATE 防超卖）、`agent_app_daily_usage`（观测投影，breach
+  标记）、`agent_task_usage`（任务级累计）；`agent_tasks` 增加 additive、NULLable
+  的 policy/budget 快照列（014 之前的任务保持 NULL，不伪造历史）。跨模块只存
+  ID 快照，无跨模块 FK/SQL；installation 活性每次经中立 port 重验。
+- 无 explicit row 时使用版本化有限 system default v1（allow、4096 token/任务、
+  120s、50 任务/日、204800 token/日）；零/负数/超界/未知 enum 一律
+  `InvalidArgument`，不存在 unlimited 语义。policy 变化不隐式取消已
+  queued/running/terminal 任务，不改 Project revision/grant revision/Surface。
+- 三个 public service（`AgentAppPolicyService` / `AgentApprovalService` /
+  `AgentAppUsageService`）进入 Gateway allowlist，全部 identity 保护的
+  owner-scoped 读/决策；private `AppAgentService` 仍不公开。App Bridge request、
+  runtime→Core request 与 MessageChannel envelope 不新增 budget/policy 字段；
+  `AgentTaskInput.budget` 只由 Core 从 effective policy 注入。
+- Harness 侧 `HarnessCapabilities` 增加 additive `hard_token_budget` 与
+  `hard_runtime_deadline`：Fake/DeepSeek 经测试证明后声明 true（Fake 的确定性
+  token cap 截断 + ctx deadline；DeepSeek 的 provider-side max_tokens cap 与
+  进程级 runtime deadline）；Generic CLI 如实 false，其上的 App run 入队前被
+  拒绝（FailedPrecondition），不 fallback。worker 用 server-derived
+  `max_runtime_seconds` 建立独立 deadline：即使 adapter 忽略 context，worker
+  也取消 run、合成恰好一个 terminal 事件并正确结束 lease。
+- 明确未实现并如实报告：provider/tool-call 中途审批（未来 Harness `approve()`
+  协议）、vendor-neutral 金额硬上限（`max_cost_decimal` 只作可选已验证观测，
+  无版本化定价源前不做 enforcement）、per-stream 中途 token 切断（当前 adapter
+  usage 为 run 末聚合，circuit break 依赖 usage 事件 + worker 续租检查点）。
+
 ## 状态与失败
 
 - liveness 表示进程事件循环存活，readiness 表示必需依赖可用。

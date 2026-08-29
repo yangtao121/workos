@@ -124,6 +124,8 @@ func mapBridgeError(err error) error {
 		return connect.NewError(connect.CodeNotFound, errors.New("app task is not available"))
 	case errors.Is(err, ports.ErrAppAgentConflict):
 		return connect.NewError(connect.CodeAborted, errors.New("idempotency key was already used for a different request"))
+	case errors.Is(err, ports.ErrAppAgentExhausted):
+		return connect.NewError(connect.CodeResourceExhausted, errors.New("app task allowance is exhausted"))
 	case errors.Is(err, ports.ErrAppAgentDenied):
 		return connect.NewError(connect.CodePermissionDenied, errors.New("bridge capability is not granted"))
 	case errors.Is(err, domain.ErrUnavailable), errors.Is(err, ports.ErrStoreUnavailable), errors.Is(err, ports.ErrAppAgentUnavailable):
