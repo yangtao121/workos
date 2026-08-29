@@ -547,16 +547,21 @@ func TestBridgeTokenDurabilityAcrossRestart(t *testing.T) {
 	if session.ID != created.Session.ID {
 		t.Fatal("token resolved to a different session")
 	}
-	// Rotation invalidates the previous credential.
+	// Rotation invalidates the previous credential, and the atomic
+	// UPDATE ... RETURNING hands back exactly the row this rotation wrote.
 	replacement, err := surfacedomain.NewBridgeToken()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := restarted.RotateBridgeToken(ctx, surfaceports.RotateBridgeTokenCommand{
+	rotated, err := restarted.RotateBridgeToken(ctx, surfaceports.RotateBridgeTokenCommand{
 		OwnerUserID: owner, DeviceID: device, SessionID: created.Session.ID,
 		TokenHash: surfacedomain.HashBridgeToken(replacement), Now: time.Now().UTC(),
-	}); err != nil {
+	})
+	if err != nil {
 		t.Fatalf("rotate failed: %v", err)
+	}
+	if rotated.BridgeTokenHash != surfacedomain.HashBridgeToken(replacement) {
+		t.Fatal("rotation did not return the row as of its own write")
 	}
 	if _, err := restarted.GetActiveSessionByBridgeToken(ctx, owner, surfacedomain.HashBridgeToken(created.BridgeToken), time.Now().UTC()); err == nil {
 		t.Fatal("previous token still valid after rotation")
@@ -971,6 +976,117 @@ func countScratchRows(t *testing.T, pool *pgxpool.Pool, query string, args ...an
 		t.Fatalf("count scratch rows: %v", err)
 	}
 	return count
+}
+
+// TestSurfaceReplayRotationLinearizesAcrossRotators drives six concurrent
+// replays of one already-consumed create key through six real pools, so
+// every call takes the bridge-token rotation path against the same row.
+// The rotation and its read are one atomic UPDATE ... RETURNING, so every
+// response must pair its own credential with the hash stored at its own
+// linearization point — the previous rotate-then-separately-re-read
+// implementation interleaved the two steps and returned a token next to a
+// later rotation's hash, which this per-response assertion fails on. The
+// surviving session fact stays single, and the final persisted hash is one
+// of the returned credentials (the last linearized rotation).
+func TestSurfaceReplayRotationLinearizesAcrossRotators(t *testing.T) {
+	t.Parallel()
+	dsn := scratchDatabase(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 40*time.Second)
+	defer cancel()
+	if err := migrations.Run(ctx, dsn); err != nil {
+		t.Fatalf("migrations: %v", err)
+	}
+	owner, device := newUUIDForTest(320), newUUIDForTest(321)
+	command := surfaceCreateCommand(owner, device, "replay-race-key")
+
+	seedPool, err := pgxpool.New(ctx, dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer seedPool.Close()
+	seedApp, err := newSurfaceApplication(surfacepostgres.New(seedPool))
+	if err != nil {
+		t.Fatal(err)
+	}
+	seeded, err := seedApp.Create(ctx, command)
+	if err != nil {
+		t.Fatalf("seed create: %v", err)
+	}
+	if seeded.BridgeToken == "" {
+		t.Fatal("seed create returned no credential")
+	}
+
+	const rotators = 6
+	start := make(chan struct{})
+	var group sync.WaitGroup
+	type outcome struct {
+		created surfaceCreated
+		err     error
+	}
+	results := make(chan outcome, rotators)
+	for range rotators {
+		pool, err := pgxpool.New(ctx, dsn)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer pool.Close()
+		app, err := newSurfaceApplication(surfacepostgres.New(pool))
+		if err != nil {
+			t.Fatal(err)
+		}
+		group.Add(1)
+		go func(app surfaceApp) {
+			defer group.Done()
+			<-start
+			created, err := app.Create(ctx, command)
+			results <- outcome{created, err}
+		}(app)
+	}
+	close(start)
+	group.Wait()
+	close(results)
+
+	observedHashes := map[string]struct{}{}
+	for result := range results {
+		if result.err != nil {
+			t.Fatalf("replay race surfaced an error: %v", result.err)
+		}
+		if result.created.Session.ID != seeded.Session.ID {
+			t.Fatalf("replay produced a foreign session %s", result.created.Session.ID)
+		}
+		if result.created.BridgeToken == "" {
+			t.Fatal("open-session replay returned no credential")
+		}
+		// Per-response pairing: the atomic rotation guarantees this response's
+		// own credential is the fact its own snapshot carries.
+		if result.created.Session.BridgeTokenHash != surfacedomain.HashBridgeToken(result.created.BridgeToken) {
+			t.Fatal("replay response paired its credential with a hash it was not stored under")
+		}
+		observedHashes[result.created.Session.BridgeTokenHash] = struct{}{}
+	}
+	if len(observedHashes) != rotators {
+		t.Fatalf("expected %d distinct rotations, saw %d", rotators, len(observedHashes))
+	}
+
+	var finalHash *string
+	if err := seedPool.QueryRow(ctx,
+		"SELECT bridge_token_hash FROM workos_runtime.surface_sessions WHERE id = $1",
+		seeded.Session.ID,
+	).Scan(&finalHash); err != nil {
+		t.Fatalf("read final session row: %v", err)
+	}
+	if finalHash == nil || *finalHash == "" {
+		t.Fatal("final bridge_token_hash is NULL on an open session")
+	}
+	if _, ok := observedHashes[*finalHash]; !ok {
+		t.Fatal("final persisted hash never belonged to any returned credential")
+	}
+	if countScratchRows(t, seedPool, `SELECT count(*) FROM workos_runtime.surface_sessions WHERE owner_user_id = $1`, owner) != 1 {
+		t.Fatal("replay race left more than one session fact")
+	}
+	if countScratchRows(t, seedPool, `SELECT count(*) FROM workos_runtime.surface_session_requests WHERE owner_user_id = $1`, owner) != 1 {
+		t.Fatal("replay race left more than one request mapping")
+	}
 }
 
 func sessionIDOf(ids map[string]struct{}) string {

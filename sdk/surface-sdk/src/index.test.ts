@@ -87,4 +87,31 @@ describe("message bounds", () => {
     expect(postOversize).toThrow(BridgeProtocolError);
     expect(sent).toHaveLength(1);
   });
+
+  it("converts unserializable envelopes into the stable invalid_argument error", () => {
+    const request: {
+      version: typeof APP_BRIDGE_VERSION;
+      type: "request";
+      requestId: string;
+      method: "agent.run";
+      payload: unknown;
+    } = {
+      version: APP_BRIDGE_VERSION,
+      type: "request",
+      requestId: "r",
+      method: "agent.run",
+      payload: { idempotencyKey: "k", goal: "g" },
+    };
+    const cyclic: Record<string, unknown> = { value: 1 };
+    cyclic["self"] = cyclic;
+    request.payload = cyclic;
+    expect(() => encodeBridgeMessage(request as never)).toThrow(BridgeProtocolError);
+    try {
+      encodeBridgeMessage(request as never);
+    } catch (error: unknown) {
+      // A cyclic payload is a caller bug with a stable code — never a raw
+      // TypeError leaking out of JSON.stringify.
+      expect((error as BridgeProtocolError).code).toBe("invalid_argument");
+    }
+  });
 });

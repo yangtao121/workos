@@ -165,6 +165,37 @@ describe("App Bridge host handshake", () => {
     port.postMessage({ version: "workos.app-bridge/v0", type: "ack", nonce: "nonce-1" });
     await expect(host.ready).rejects.toThrow(BridgeProtocolError);
   });
+
+  it("fails closed on an ack with extra fields or an oversize ack body", async () => {
+    const extra = setup({ timeoutMs: 200 });
+    framePortOf(extra.hellos).postMessage({
+      version: APP_BRIDGE_VERSION,
+      type: "ack",
+      nonce: "nonce-1",
+      smuggled: true,
+    });
+    await expect(extra.host.ready).rejects.toThrow(BridgeProtocolError);
+
+    const oversize = setup({ timeoutMs: 200 });
+    framePortOf(oversize.hellos).postMessage({
+      version: APP_BRIDGE_VERSION,
+      type: "ack",
+      nonce: "nonce-1",
+      padding: "x".repeat(70_000),
+    });
+    await expect(oversize.host.ready).rejects.toThrow(BridgeProtocolError);
+  });
+
+  it("settles the handshake closed on teardown without a late failure callback", async () => {
+    const { host, onHandshakeFailed } = setup({ timeoutMs: 25 });
+    host.close();
+    await expect(host.ready).rejects.toThrow(BridgeProtocolError);
+    // The stale handshake timer must never fire onHandshakeFailed after the
+    // explicit close: a successor host may already own the frame, and the
+    // callback would overwrite its state.
+    await new Promise((resolve) => setTimeout(resolve, 60));
+    expect(onHandshakeFailed).not.toHaveBeenCalled();
+  });
 });
 
 async function handshakenHost(options?: {
@@ -561,5 +592,182 @@ describe("App Bridge host untrusted-port boundary", () => {
     expect(byId.get("req-stream")).toBe("not_found");
     expect(typedRun).toHaveBeenCalledTimes(1);
     expect(typedWatch).toHaveBeenCalledTimes(1);
+  });
+
+  it("answers a cyclic payload with invalid_argument instead of crashing", async () => {
+    const { port, received, runAgentTask } = hangingSetup();
+    const payload: Record<string, unknown> = { idempotencyKey: "k", goal: "g" };
+    payload["self"] = payload;
+    expect(() => {
+      port.postMessage({
+        version: APP_BRIDGE_VERSION,
+        type: "request",
+        requestId: "req-cyclic",
+        method: "agent.run",
+        payload,
+      });
+    }).not.toThrow();
+    await flush();
+    const last = received.at(-1);
+    if (!last) throw new Error("no error envelope");
+    expect(last.data).toMatchObject({ type: "error", code: "invalid_argument" });
+    expect(runAgentTask).not.toHaveBeenCalled();
+  });
+
+  it("answers a BigInt payload with invalid_argument instead of crashing on stringify", async () => {
+    const { port, received, runAgentTask } = hangingSetup();
+    expect(() => {
+      port.postMessage({
+        version: APP_BRIDGE_VERSION,
+        type: "request",
+        requestId: "req-bigint",
+        method: "agent.run",
+        payload: { idempotencyKey: "k", goal: "g", extra: BigInt(1) },
+      });
+    }).not.toThrow();
+    await flush();
+    const last = received.at(-1);
+    if (!last) throw new Error("no error envelope");
+    expect(last.data).toMatchObject({ type: "error", code: "invalid_argument" });
+    expect(runAgentTask).not.toHaveBeenCalled();
+  });
+
+  it("rejects an oversized request with a hostile ID without echoing it back", async () => {
+    const { port, received, runAgentTask } = hangingSetup();
+    // The size gate runs before the ID gate: an oversized envelope with an
+    // oversized ID must be rejected without ever echoing the ID, or the
+    // outbound error envelope itself would trip the message bound and throw
+    // inside the port listener.
+    port.postMessage({
+      version: APP_BRIDGE_VERSION,
+      type: "request",
+      requestId: "a".repeat(80_000),
+      method: "agent.run",
+      payload: { idempotencyKey: "k", goal: "g" },
+    });
+    await flush();
+    const last = received.at(-1);
+    if (!last) throw new Error("no error envelope");
+    const error = last.data as { type: string; code: string; requestId: string };
+    expect(error.type).toBe("error");
+    expect(error.code).toBe("oversize");
+    expect(error.requestId).toBe("");
+    expect(JSON.stringify(error).length).toBeLessThan(512);
+    expect(runAgentTask).not.toHaveBeenCalled();
+  });
+
+  it("never echoes a non-canonical ID verbatim in a validation error", async () => {
+    const { port, received } = await handshakenHost();
+    port.postMessage({
+      version: APP_BRIDGE_VERSION,
+      type: "request",
+      requestId: "bad id!",
+      method: "agent.run",
+      payload: { idempotencyKey: "k", goal: "g" },
+    });
+    await flush();
+    const last = received.at(-1);
+    if (!last) throw new Error("no error envelope");
+    expect(last.data).toMatchObject({
+      type: "error",
+      code: "invalid_argument",
+      requestId: "",
+    });
+  });
+
+  it("enforces the protobuf int64 upper bound on the stream cursor", async () => {
+    const watchAgentTaskEvents = vi.fn<AppBridgeTransport["watchAgentTaskEvents"]>(() =>
+      Promise.resolve(),
+    );
+    const { port, received } = await handshakenHost({ transport: { watchAgentTaskEvents } });
+    port.postMessage({
+      version: APP_BRIDGE_VERSION,
+      type: "request",
+      requestId: "req-over",
+      method: "agent.stream",
+      // 2^63: serializing this server-side would fail as an opaque internal
+      // error, so the host must reject it as invalid_argument up front.
+      payload: { taskId: CANONICAL_TASK_ID, afterSequence: "9223372036854775808" },
+    });
+    port.postMessage({
+      version: APP_BRIDGE_VERSION,
+      type: "request",
+      requestId: "req-max",
+      method: "agent.stream",
+      payload: { taskId: CANONICAL_TASK_ID, afterSequence: "9223372036854775807" },
+    });
+    await flush();
+    await flush();
+    const byId = new Map(
+      received
+        .filter((event) => (event.data as { type: string }).type === "error")
+        .map((event) => [
+          (event.data as { requestId: string }).requestId,
+          (event.data as { code: string }).code,
+        ]),
+    );
+    expect(byId.get("req-over")).toBe("invalid_argument");
+    expect(byId.has("req-max")).toBe(false);
+    expect(watchAgentTaskEvents).toHaveBeenCalledTimes(1);
+    expect(watchAgentTaskEvents.mock.calls[0]?.[0]).toEqual({
+      taskId: CANONICAL_TASK_ID,
+      afterSequence: "9223372036854775807",
+    });
+  });
+
+  it("validates cancels: malformed fails closed, unknown-but-canonical stays silent", async () => {
+    const { port, received } = await handshakenHost();
+    port.postMessage({
+      version: APP_BRIDGE_VERSION,
+      type: "cancel",
+      requestId: "req-x",
+      smuggled: true,
+    });
+    await flush();
+    let last = received.at(-1);
+    if (!last) throw new Error("no error envelope");
+    expect(last.data).toMatchObject({
+      type: "error",
+      code: "invalid_argument",
+      requestId: "req-x",
+    });
+    port.postMessage({ version: APP_BRIDGE_VERSION, type: "cancel", requestId: "bad id!" });
+    await flush();
+    last = received.at(-1);
+    if (!last) throw new Error("no second error envelope");
+    expect(last.data).toMatchObject({
+      type: "error",
+      code: "invalid_argument",
+      requestId: "",
+    });
+    const count = received.length;
+    port.postMessage({ version: APP_BRIDGE_VERSION, type: "cancel", requestId: "req-unknown" });
+    await flush();
+    expect(received.length).toBe(count);
+  });
+
+  it("fails the host closed on a second ack instead of silently ignoring it", async () => {
+    const { port, received } = await handshakenHost();
+    await flush();
+    port.postMessage({ version: APP_BRIDGE_VERSION, type: "ack", nonce: "nonce-1" });
+    await flush();
+    const last = received.at(-1);
+    if (!last) throw new Error("no error envelope");
+    expect(last.data).toMatchObject({
+      type: "error",
+      code: "invalid_argument",
+      requestId: "",
+    });
+    // The host is torn down: further port traffic is ignored, nothing posts.
+    const count = received.length;
+    port.postMessage({
+      version: APP_BRIDGE_VERSION,
+      type: "request",
+      requestId: "req-after",
+      method: "agent.run",
+      payload: { idempotencyKey: "k", goal: "g" },
+    });
+    await flush();
+    expect(received.length).toBe(count);
   });
 });

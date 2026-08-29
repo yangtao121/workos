@@ -152,10 +152,13 @@ func (s *Service) Create(ctx context.Context, command CreateCommand) (CreatedSur
 
 // replayBridge rotates the bridge credential for an open, unexpired replayed
 // session and clears it for anything else: a closed or expired session never
-// regains a working credential through replay. The returned session snapshot
-// is re-read after the rotation so its BridgeTokenHash is exactly the
-// persisted fact backing the returned token — a response never pairs a
-// credential with a hash it was not stored under.
+// regains a working credential through replay. The rotation and the read are
+// one atomic UPDATE ... RETURNING — the operation's linearization point — so
+// the returned snapshot is the persisted fact backing exactly the returned
+// token. Concurrent rotations serialize on the row and each response pairs
+// its credential with the hash it was stored under; a later rotation
+// invalidates an earlier response's credential through a recorded rotation,
+// never through an inconsistent pairing.
 func (s *Service) replayBridge(ctx context.Context, command CreateCommand, session domain.SurfaceSession) (CreatedSurface, error) {
 	result := CreatedSurface{Session: session, BridgeCapabilities: session.BridgeCapabilities}
 	now := s.now()
@@ -166,13 +169,10 @@ func (s *Service) replayBridge(ctx context.Context, command CreateCommand, sessi
 	if err != nil {
 		return CreatedSurface{}, err
 	}
-	if err := s.repository.RotateBridgeToken(ctx, ports.RotateBridgeTokenCommand{
+	stored, err := s.repository.RotateBridgeToken(ctx, ports.RotateBridgeTokenCommand{
 		OwnerUserID: command.OwnerUserID, DeviceID: command.DeviceID, SessionID: session.ID,
 		TokenHash: domain.HashBridgeToken(token), Now: now,
-	}); err != nil {
-		return CreatedSurface{}, err
-	}
-	stored, err := s.repository.GetSession(ctx, command.OwnerUserID, command.DeviceID, session.ID)
+	})
 	if err != nil {
 		return CreatedSurface{}, err
 	}

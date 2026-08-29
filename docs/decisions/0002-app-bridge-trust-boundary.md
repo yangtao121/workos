@@ -30,10 +30,22 @@ iframe 的 `event.origin` 是字符串 `"null"`，不能作为身份。握手安
   协议版本与 type、UTF-8 byte size ≤ 64 KiB（不是 UTF-16 `string.length`）、canonical 有界
   request ID、允许方法、exact payload shape（未知/多余字段 fail closed）与字段边界
   （key ≤128 rune、role ≤64 rune、goal ≤16 KiB、task ID canonical UUID、cursor 为无符号十进制
-  字符串）、in-flight ≤ 32、重复 request ID 拒绝。超时真正登记并清理 pending：run 超时后迟到
-  结果 inert；stream 超时 abort 本地/server stream。close/reload/unmount 清空全部 timer、
-  pending 与 stream。SDK 的 outbound request/cancel 使用同一个 bounded helper，两端共享
-  `MAX_SINGLE_MESSAGE_BYTES` 语义。
+  字符串且 ≤ int64 上限——超出 int64 的 cursor 只会在服务端序列化时变成不透明 Internal，
+  必须在 host 就地拒绝为 `invalid_argument`）、in-flight ≤ 32、重复 request ID 拒绝。
+  超时真正登记并清理 pending：run 超时后迟到结果 inert；stream 超时 abort 本地/server stream。
+  close/reload/unmount 清空全部 timer、pending 与 stream。SDK 的 outbound request/cancel 使用
+  同一个 bounded helper，两端共享 `MAX_SINGLE_MESSAGE_BYTES` 语义。
+- 验证顺序与回显有界：byte size 在一切校验之前、对原始 untrusted 值度量，且度量本身
+  throw-safe（structured clone 可以投递循环结构与 BigInt，host 的 listener 内绝不运行可能
+  抛错的 `JSON.stringify`；不可序列化即 `invalid_argument`）。size 在 ID 校验之前：恶意超大
+  request ID 不会先被回显。错误回显只逐字复制 canonical ID（`safeRequestId`），其余坍缩为
+  空 correlation ID，因此 outbound error envelope 恒有界、不可能反过来触发 outbound size
+  保护。ack 与 cancel 同样有完整 shape + size 校验：ack 必须 exact `{version,type,nonce}`
+  且 nonce 有界；cancel 必须 exact `{version,type,requestId}` 且 ID canonical（canonical ID
+  的未知流 cancel 视为良性竞态静默忽略）。握手完成后的第二次 ack 是协议违例：回错误并以
+  `bridge_closed` 拆除 host，绝不静默忽略。显式 close/teardown 原子结算未完成握手（清
+  timer、reject ready），且不触发 `onHandshakeFailed`——旧 host 的迟到超时回调不得覆盖
+  后继 host 的 ready 状态。
 
 ### 2. bridge token：随机 256-bit secret，sha256 at rest，session 生命周期
 
@@ -51,12 +63,14 @@ iframe 的 `event.origin` 是字符串 `"null"`，不能作为身份。握手安
   覆盖旧 hash——旧 token 立即失效；closed/expired session 的 replay 不铸造 token（返回空
   `bridge_token`）；`CloseSurface` 清空 hash。单实例假设：同一 session 只有一个 runtime 写 hash；
   未来多实例共享需要迁移到签名 token + 共享密钥轮换，本任务不假装支持。
-- 并发首次 Create 的线性化：仓库事务内的 mapping PK 裁决可能让一个并发 loser 返回赢家的
-  session。此时 loser 本地铸造的 token 从未落库——按本 ADR 它必须原样丢弃，loser 对返回的
-  open session 执行一次真实轮换并返回轮换后的 token；响应中的 session snapshot 在轮换后重读，
-  保证每个成功响应都是“凭证 ↔ 持久 hash”配对。最终库内 hash 恒等于最后一次线性化成功的
-  Create 所返回 token 的 hash；旧 token 的失效始终来自这条已记录的轮换，不存在“从未存储”的
-  有效响应凭证。该语义被 fake 与真实 PostgreSQL 并发测试共同钉死。
+- 并发首次 Create 与并发 replay 的线性化：仓库事务内的 mapping PK 裁决可能让一个并发 loser
+  返回赢家的 session。此时 loser 本地铸造的 token 从未落库——按本 ADR 它必须原样丢弃，
+  loser 对返回的 open session 执行一次真实轮换并返回轮换后的 token。轮换与读回是同一条
+  原子 `UPDATE … RETURNING`（操作自身的线性化点）：并发的多次轮换在该行上串行，每个响应
+  的 snapshot 都与“它自己的凭证被存储时的 hash”配对——响应绝不把 token 与后续轮换的 hash
+  配成对；更早响应凭证的失效始终来自那条被记录的后续轮换，不存在“从未存储”的有效响应
+  凭证。最终库内 hash 恒等于最后一次线性化轮换所返回 token 的 hash。该语义被 fake 与真实
+  PostgreSQL 多 rotator 并发测试共同钉死（逐响应配对断言，非仅终态断言）。
 - 关闭的原子性：首次 close 的 tombstone 与 `bridge_token_hash = NULL` 是同一条 UPDATE 的两个
   SET 分支，不存在“先关闭再清除”的窗口；repeated close 幂等保留首次 `closed_at`。
 - 披露面：token 只出现在 `CreateSurface` Connect response（可信 Desktop 内存）与 AppBridge 专用

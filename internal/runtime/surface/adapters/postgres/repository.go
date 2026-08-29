@@ -130,20 +130,24 @@ func (r *Repository) Close(ctx context.Context, ownerUserID, deviceID, sessionID
 }
 
 // RotateBridgeToken stores the digest of one freshly minted bridge token on
-// the open, unexpired, owner/device-bound session, invalidating the previous
-// credential. Anything else is NotFound and nothing changes.
-func (r *Repository) RotateBridgeToken(ctx context.Context, command ports.RotateBridgeTokenCommand) error {
-	rows, err := r.queries.RotateSessionBridgeToken(ctx, surfacedb.RotateSessionBridgeTokenParams{
+// the open, unexpired, owner/device-bound session and returns the row as of
+// that write. The UPDATE ... RETURNING is atomic: concurrent rotations
+// serialize on the row and each caller's snapshot pairs its own credential
+// with the hash it was stored under, so a response can never pair a token
+// with a later rotation's hash. Zero rows (closed, expired, or foreign) is
+// a sanitized NotFound and nothing changes.
+func (r *Repository) RotateBridgeToken(ctx context.Context, command ports.RotateBridgeTokenCommand) (domain.SurfaceSession, error) {
+	row, err := r.queries.RotateSessionBridgeToken(ctx, surfacedb.RotateSessionBridgeTokenParams{
 		OwnerUserID: command.OwnerUserID, DeviceID: command.DeviceID, SessionID: command.SessionID,
 		TokenHash: pgtype.Text{String: command.TokenHash, Valid: true}, Now: timestamp(command.Now),
 	})
 	if err != nil {
-		return storeError("rotate surface bridge token", err)
+		return domain.SurfaceSession{}, sessionError("rotate surface bridge token", err)
 	}
-	if rows == 0 {
-		return domain.ErrNotFound
-	}
-	return nil
+	return sessionFromColumns(row.ID, row.OwnerUserID, row.DeviceID, row.IdempotencyKey, row.RequestDigest,
+		row.ProjectID, row.AppInstanceID, row.Renderer,
+		surfacedbLaunchDescriptor(row), row.Path, row.BridgeTokenHash.String, row.BridgeCapabilities,
+		row.CreatedAt, row.ExpiresAt, row.ClosedAt), nil
 }
 
 // GetActiveSessionByBridgeToken resolves the open, unexpired session that

@@ -1,6 +1,7 @@
 # Task: Minimal Project-scoped Agent App Bridge vertical slice
 
-- 状态：completed（含 2026-08-29 审核阻断项修复，见下方"2026-08-29 修复记录"）
+- 状态：completed（含 2026-08-29 两轮审核阻断项修复，见下方"2026-08-29 修复记录"与
+  "2026-08-29 第二轮评审修复记录"）
 - Owner/Agent：project agent app bridge builder
 - 进程/模块：workos-core `internal/core/project`（installation grant snapshot）、`internal/core/agent`（App principal/provenance/idempotency）、`internal/core/orchestration`（private AppAgentService + grant revalidation）；runtime-host `internal/runtime/surface`（bridge token + public AppBridgeService）；workos-gateway（AppBridge allowlist）；desktop-web / app-host / app-sdk / surface-sdk（MessageChannel bridge + permission consent）
 - 依赖：App Registry（`002`/`003`）、Project App Installation（`004`/`005`）、Web Bundle Artifact（`006`）、Surface Session（`007`）、Agent Task Router、Harness Broker、Fake Harness、Gateway identity 注入
@@ -198,8 +199,10 @@ harness` → Close App；桌面 DOM 断言不含 `X-WorkOS-Bridge-Token`）。�
 ### 对象卫生
 
 分支新增对象最大 blob 为 ~423 KiB 截图（<2 MiB 上限）；无 ELF/编译产物/临时数据库文件；
-无 root-owned 文件；`git diff --check` 与 `git diff --check main...HEAD` 干净；
-`docs/structure.md` 无变化；secret 扫描无命中。
+无 root-owned 文件；`git diff --check` 与 `git diff --check main...HEAD` 当时在暂存内容上
+通过（注：该轮提交 `a7a651f` 实际引入了 `queries.sql` 末尾空行，使第二条在提交后的
+分支区间上失败——见下方第二轮"更正"，已修复）；`docs/structure.md` 无变化；secret 扫描
+无命中。
 
 ### UI 视觉证据
 
@@ -299,3 +302,67 @@ bridge_token_hash=NULL WHERE … AND closed_at IS NULL`，删除先后两条语�
 - `git diff --check main...HEAD`：干净；001–010 逐字节不变；无 UI 像素变化（本轮修复不
   改变用户可见界面，未新增截图）；无 root-owned/临时文件；错误与测试文本不含 token/
   DSN/SQLSTATE（host 测试以布尔量断言 header，不回显值）。
+
+> **更正（2026-08-29 第二轮评审）**：上一行在本分支当时提交（HEAD=`a7a651f`）上并不成立——
+> `internal/runtime/surface/adapters/postgres/queries.sql:66` 文件末尾多一个空行，使
+> `git diff --check main...HEAD` 实际失败。当时的记录为误报；该空行已在本轮修复中移除并
+> 在提交前重新实测。此条保留作为事实记录，不再声称第一轮该门禁通过。
+
+## 2026-08-29 第二轮评审修复记录
+
+第二轮评审提出 6 项问题（1 高 / 1 高 / 2 中高 / 1 中 / 1 门禁事实），逐项修复与回归证据：
+
+1. **Bridge token 并发轮换线性化（高）**：`replayBridge` 原先"先 Rotate、再单独 GetSession"，
+   两个并发 replay 可使 A 返回 token-A 配 hash-B 的无效配对。修复：端口方法
+   `SessionRepository.RotateBridgeToken` 改为原子 `UPDATE … RETURNING` 并返回本轮换写入后的
+   session 行（操作的线性化点）；`queries.sql` `RotateSessionBridgeToken` 由 `:execrows` 改
+   `:one RETURNING`（sqlc 重新生成）；fake 仓储同步实现原子语义。回归：单测
+   `TestConcurrentSameKeyCreatesReturnPersistedCredentials` 扩为 8 路并发并**逐响应**断言
+   `Session.BridgeTokenHash == HashBridgeToken(token)`，新增
+   `TestConcurrentReplaysPairTokenWithOwnRotation`（8 路并发 replay，全部走轮换路径）；
+   临时还原两步实现后两组测试均报 "paired its credential with a foreign hash"（5 次运行），
+   新实现通过。集成新增 `TestSurfaceReplayRotationLinearizesAcrossRotators`：6 个真实连接池
+   并发 replay 同一已消费 key，逐响应配对 + 恰好 1 session/1 mapping + 终态 hash ∈ 返回
+   凭证集合；重启测试的直连 RotateBridgeToken 亦断言返回行即本轮换写入。
+2. **AppHost 对恶意 MessagePort 输入的未捕获异常（高）**：`envelopeByteSize` 改为
+   throw-safe（循环结构/BigInt 返回 null → `invalid_argument`），listener 内不再运行可能抛错
+   的 `JSON.stringify`；byte size 校验前移到 request ID 校验**之前**（原始值先度量）；
+   错误回显经 `safeRequestId` 只逐字复制 canonical ID，其余坍缩为空串——超大恶意 ID 不可能
+   被回显成 outbound oversize 异常；ack 与 cancel 补齐完整 shape（exact keys）+ size +
+   字段校验（ack：exact `{version,type,nonce}`、nonce ≤128；cancel：exact
+   `{version,type,requestId}`、canonical ID；canonical 未知流 cancel 保持良性静默）。
+   `sdk/surface-sdk` `encodeBridgeMessage` 对不可序列化 envelope 抛稳定
+   `BridgeProtocolError("invalid_argument")`，不再泄漏裸 TypeError。回归：cyclic/BigInt/
+   80KB hostile ID/非 canonical ID 回显/cancel 畸形等用例；在旧实现上 9 个新 host 测试
+   全部失败（其中 3 个未捕获异常正是所修 bug），新实现 27/27 通过。
+3. **握手生命周期 fail closed（中高）**：`close()` 经统一 `teardown()` 结算未完成握手——
+   清除握手 timer、以 `bridge_closed` reject `ready`（不触发 `onHandshakeFailed`，避免旧
+   host 迟到回调覆盖后继 iframe 的 ready 状态）；`ready` 挂 no-op catch 防止显式关闭产生
+   unhandled rejection。握手完成后的第二次 ack 不再静默忽略：回 `invalid_argument` 并
+   teardown 拆除 host。回归：close-before-handshake（原超时窗口内 `onHandshakeFailed`
+   保持未调用）、double-ack teardown（后续流量不再处理）、ack 带额外字段/超大 ack 体
+   握手失败。
+4. **Agent 写 outbox 暂时故障映射（中高）**：`internal/core/agent/adapters/postgres/
+   repository.go` 的 `InsertTaskOutbox` 错误由普通 `fmt.Errorf` 改为 `storeError`（附
+   `ErrStoreUnavailable` sentinel），CreateForApp 与 canonical Create 两处 outbox append
+   同步修复（canonical 传输层当前不映射该 sentinel，行为不变、无回归风险；Bridge 应用
+   路径经既有 orchestration 映射为 sanitized Unavailable）。
+5. **cursor int64 上限（中）**：`validStreamPayload` 在 20 位数字格式校验之外增加
+   `BigInt(afterSequence) <= 2^63-1`；超出 int64 的 cursor 在 host 即拒绝为
+   `invalid_argument`，不再流入服务端序列化变成不透明 Internal。回归：`9223372036854775808`
+   拒绝且 transport 未被调用，`9223372036854775807` 正常透传。
+6. **门禁与事实记录一致（门禁）**：移除 `queries.sql` 文件末尾空行；本轮在提交前重跑
+   `git diff --check main...HEAD`（见下）；任务记录更正第一轮的误报并保留原文加更正声明。
+
+### 第二轮修复后门禁（实际运行，提交前）
+
+- `make check`：exit 0（eslint 修正 no-confusing-void-expression ×2、
+  no-unnecessary-type-assertion ×2 后通过；gofmt/prettier 干净）。
+- `make generate` ×2：以 `git status --short` 快照对比，两次生成均零新增差异。
+- `buf breaking --against '.git#branch=main'`：exit 0（proto 未变更）。
+- `go test -race ./internal/core/agent/... ./internal/core/project/... ./internal/core/orchestration/... ./internal/runtime/...`：exit 0。
+- `make test-integration`：exit 0（含新增
+  `TestSurfaceReplayRotationLinearizesAcrossRotators`）。
+- `make test-e2e`：exit 0（`app-bridge.spec.ts` 等全部通过；本轮不改用户可见 UI，无新截图）。
+- `git diff --check main...HEAD`：干净（`queries.sql` EOF 空行已移除）；001–010 逐字节
+  不变；测试与错误文本不含 token/DSN/SQLSTATE。

@@ -79,7 +79,11 @@ func (r *Repository) Create(ctx context.Context, task domain.Task, idempotencyKe
 	if err := queries.InsertTaskOutbox(ctx, agentdb.InsertTaskOutboxParams{
 		ID: outboxID.String(), AggregateID: task.ID, Payload: payload, OccurredAt: timestamp(task.CreatedAt),
 	}); err != nil {
-		return domain.Task{}, fmt.Errorf("append task outbox: %w", err)
+		// The outbox append is a storage step like any other: a transient
+		// PostgreSQL failure here must carry the ErrStoreUnavailable
+		// sentinel so transports answer sanitized Unavailable, never a raw
+		// Internal with database detail.
+		return domain.Task{}, storeError("append task outbox", err)
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return domain.Task{}, fmt.Errorf("commit task: %w", err)
@@ -161,7 +165,11 @@ func (r *Repository) CreateForApp(ctx context.Context, task domain.Task, provena
 	if err := queries.InsertTaskOutbox(ctx, agentdb.InsertTaskOutboxParams{
 		ID: outboxID.String(), AggregateID: task.ID, Payload: payload, OccurredAt: timestamp(task.CreatedAt),
 	}); err != nil {
-		return domain.Task{}, fmt.Errorf("append task outbox: %w", err)
+		// The outbox append is a storage step like any other: a transient
+		// PostgreSQL failure here must carry the ErrStoreUnavailable
+		// sentinel so transports answer sanitized Unavailable, never a raw
+		// Internal with database detail.
+		return domain.Task{}, storeError("append task outbox", err)
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return domain.Task{}, storeError("commit app task", err)

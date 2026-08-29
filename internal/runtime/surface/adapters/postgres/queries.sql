@@ -43,14 +43,19 @@ SET closed_at = sqlc.arg(now),
     bridge_token_hash = NULL
 WHERE owner_user_id = $1 AND device_id = $2 AND id = $3 AND closed_at IS NULL;
 
--- name: RotateSessionBridgeToken :execrows
+-- name: RotateSessionBridgeToken :one
 UPDATE workos_runtime.surface_sessions
 SET bridge_token_hash = sqlc.arg(token_hash)
 WHERE owner_user_id = sqlc.arg(owner_user_id)
   AND device_id = sqlc.arg(device_id)
   AND id = sqlc.arg(session_id)
   AND closed_at IS NULL
-  AND expires_at > sqlc.arg(now);
+  AND expires_at > sqlc.arg(now)
+RETURNING id, owner_user_id, device_id, idempotency_key, request_digest,
+          project_id, app_instance_id, renderer, app_id, app_version,
+          manifest_digest, artifact_id, artifact_digest, entrypoint, path,
+          bridge_token_hash, bridge_capabilities,
+          created_at, expires_at, closed_at;
 
 -- name: GetActiveSessionByBridgeToken :one
 SELECT id, owner_user_id, device_id, idempotency_key, request_digest,
@@ -63,4 +68,3 @@ WHERE owner_user_id = sqlc.arg(owner_user_id)
   AND bridge_token_hash = sqlc.arg(token_hash)
   AND closed_at IS NULL
   AND expires_at > sqlc.arg(now);
-

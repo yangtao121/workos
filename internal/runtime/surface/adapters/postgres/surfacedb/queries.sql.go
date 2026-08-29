@@ -359,7 +359,7 @@ func (q *Queries) InsertSessionRequest(ctx context.Context, arg InsertSessionReq
 	return result.RowsAffected(), nil
 }
 
-const rotateSessionBridgeToken = `-- name: RotateSessionBridgeToken :execrows
+const rotateSessionBridgeToken = `-- name: RotateSessionBridgeToken :one
 UPDATE workos_runtime.surface_sessions
 SET bridge_token_hash = $1
 WHERE owner_user_id = $2
@@ -367,6 +367,11 @@ WHERE owner_user_id = $2
   AND id = $4
   AND closed_at IS NULL
   AND expires_at > $5
+RETURNING id, owner_user_id, device_id, idempotency_key, request_digest,
+          project_id, app_instance_id, renderer, app_id, app_version,
+          manifest_digest, artifact_id, artifact_digest, entrypoint, path,
+          bridge_token_hash, bridge_capabilities,
+          created_at, expires_at, closed_at
 `
 
 type RotateSessionBridgeTokenParams struct {
@@ -377,16 +382,59 @@ type RotateSessionBridgeTokenParams struct {
 	Now         pgtype.Timestamptz `json:"now"`
 }
 
-func (q *Queries) RotateSessionBridgeToken(ctx context.Context, arg RotateSessionBridgeTokenParams) (int64, error) {
-	result, err := q.db.Exec(ctx, rotateSessionBridgeToken,
+type RotateSessionBridgeTokenRow struct {
+	ID                 string             `json:"id"`
+	OwnerUserID        string             `json:"owner_user_id"`
+	DeviceID           string             `json:"device_id"`
+	IdempotencyKey     string             `json:"idempotency_key"`
+	RequestDigest      string             `json:"request_digest"`
+	ProjectID          string             `json:"project_id"`
+	AppInstanceID      string             `json:"app_instance_id"`
+	Renderer           string             `json:"renderer"`
+	AppID              string             `json:"app_id"`
+	AppVersion         string             `json:"app_version"`
+	ManifestDigest     string             `json:"manifest_digest"`
+	ArtifactID         string             `json:"artifact_id"`
+	ArtifactDigest     string             `json:"artifact_digest"`
+	Entrypoint         string             `json:"entrypoint"`
+	Path               string             `json:"path"`
+	BridgeTokenHash    pgtype.Text        `json:"bridge_token_hash"`
+	BridgeCapabilities []string           `json:"bridge_capabilities"`
+	CreatedAt          pgtype.Timestamptz `json:"created_at"`
+	ExpiresAt          pgtype.Timestamptz `json:"expires_at"`
+	ClosedAt           pgtype.Timestamptz `json:"closed_at"`
+}
+
+func (q *Queries) RotateSessionBridgeToken(ctx context.Context, arg RotateSessionBridgeTokenParams) (RotateSessionBridgeTokenRow, error) {
+	row := q.db.QueryRow(ctx, rotateSessionBridgeToken,
 		arg.TokenHash,
 		arg.OwnerUserID,
 		arg.DeviceID,
 		arg.SessionID,
 		arg.Now,
 	)
-	if err != nil {
-		return 0, err
-	}
-	return result.RowsAffected(), nil
+	var i RotateSessionBridgeTokenRow
+	err := row.Scan(
+		&i.ID,
+		&i.OwnerUserID,
+		&i.DeviceID,
+		&i.IdempotencyKey,
+		&i.RequestDigest,
+		&i.ProjectID,
+		&i.AppInstanceID,
+		&i.Renderer,
+		&i.AppID,
+		&i.AppVersion,
+		&i.ManifestDigest,
+		&i.ArtifactID,
+		&i.ArtifactDigest,
+		&i.Entrypoint,
+		&i.Path,
+		&i.BridgeTokenHash,
+		&i.BridgeCapabilities,
+		&i.CreatedAt,
+		&i.ExpiresAt,
+		&i.ClosedAt,
+	)
+	return i, err
 }

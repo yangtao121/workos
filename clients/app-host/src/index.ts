@@ -97,13 +97,28 @@ const capabilityMethods: Record<string, BridgeMethod> = {
 const MAX_IDEMPOTENCY_KEY_CHARS = 128;
 const MAX_ROLE_CHARS = 64;
 const MAX_GOAL_BYTES = 16 * 1024;
+const MAX_NONCE_CHARS = 128;
 const requestIdPattern = /^[A-Za-z0-9-]{1,64}$/;
 const taskIdPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const cursorPattern = /^[0-9]{1,20}$/;
+// The canonical cursor is a protobuf int64 sequence number: values past the
+// int64 maximum would only fail server-side serialization as an opaque
+// internal error, so the upper bound is enforced here as invalid_argument.
+const MAX_INT64_SEQUENCE = 9223372036854775807n;
 
-/** UTF-8 byte size of an envelope — the wire bound, not a UTF-16 length. */
-function envelopeByteSize(envelope: unknown): number {
-  return new TextEncoder().encode(JSON.stringify(envelope)).length;
+/**
+ * UTF-8 byte size of an envelope — the wire bound, not a UTF-16 length.
+ * Returns null when the value cannot be serialized at all (cyclic
+ * structures, BigInt values): the untrusted frame can deliver both over the
+ * structured-clone port, and measurement must never throw inside the port
+ * listener.
+ */
+function envelopeByteSize(envelope: unknown): number | null {
+  try {
+    return new TextEncoder().encode(JSON.stringify(envelope)).length;
+  } catch {
+    return null;
+  }
 }
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
@@ -119,6 +134,17 @@ function hasExactKeys(payload: Record<string, unknown>, keys: readonly string[])
   );
 }
 
+/**
+ * The request ID an error response may echo: only a canonical ID is copied
+ * verbatim; anything else (oversized, wrong type, hostile) collapses to the
+ * empty correlation ID so the outbound error envelope is always bounded and
+ * can never trip the outbound size guard itself.
+ */
+function safeRequestId(envelope: unknown): string {
+  const id = isPlainObject(envelope) ? envelope["requestId"] : undefined;
+  return typeof id === "string" && requestIdPattern.test(id) ? id : "";
+}
+
 function validRunPayload(payload: unknown): payload is BridgeRunPayload {
   if (!isPlainObject(payload)) return false;
   // role is optional in the protocol: exactly the 2-key or 3-key shape.
@@ -126,6 +152,7 @@ function validRunPayload(payload: unknown): payload is BridgeRunPayload {
   const withoutRole = hasExactKeys(payload, ["goal", "idempotencyKey"]);
   if (!withRole && !withoutRole) return false;
   const { goal, idempotencyKey, role } = payload;
+  const goalSize = envelopeByteSize(goal);
   return (
     typeof idempotencyKey === "string" &&
     idempotencyKey.length >= 1 &&
@@ -133,7 +160,8 @@ function validRunPayload(payload: unknown): payload is BridgeRunPayload {
     (role === undefined || (typeof role === "string" && role.length <= MAX_ROLE_CHARS)) &&
     typeof goal === "string" &&
     goal.length >= 1 &&
-    envelopeByteSize(goal) <= MAX_GOAL_BYTES
+    goalSize !== null &&
+    goalSize <= MAX_GOAL_BYTES
   );
 }
 
@@ -146,7 +174,8 @@ function validStreamPayload(payload: unknown): payload is BridgeStreamPayload {
     typeof taskId === "string" &&
     taskIdPattern.test(taskId) &&
     typeof afterSequence === "string" &&
-    cursorPattern.test(afterSequence)
+    cursorPattern.test(afterSequence) &&
+    BigInt(afterSequence) <= MAX_INT64_SEQUENCE
   );
 }
 
@@ -197,16 +226,20 @@ export function openAppBridgeHost(options: AppBridgeHostOptions): AppBridgeHost 
     streams.clear();
   };
 
-  // The port listener below settles the handshake exactly once.
-  let settleHandshake: ((error?: BridgeProtocolError) => void) | undefined;
+  // The port listener below settles the handshake exactly once. `notify`
+  // is false only for an explicit local teardown: closing this host must
+  // never fire a late onHandshakeFailed into a successor host's state.
+  let settleHandshake: ((error?: BridgeProtocolError, notify?: boolean) => void) | undefined;
 
   const ready = new Promise<void>((resolve, reject) => {
-    const finishHandshake = (error?: BridgeProtocolError) => {
+    const finishHandshake = (error?: BridgeProtocolError, notify = true) => {
       settleHandshake = undefined;
       window.clearTimeout(timer);
       if (error !== undefined) {
         reject(error);
-        options.onHandshakeFailed?.(error);
+        if (notify) {
+          options.onHandshakeFailed?.(error);
+        }
         return;
       }
       handshaked = true;
@@ -218,6 +251,10 @@ export function openAppBridgeHost(options: AppBridgeHostOptions): AppBridgeHost 
     }, timeoutMs);
     settleHandshake = finishHandshake;
   });
+  // An explicit close settles `ready` as failed even when nobody awaits it;
+  // this no-op handler keeps that rejection from surfacing as unhandled
+  // while real consumers still observe it.
+  void ready.catch(() => {});
 
   const respondError = (requestId: string, code: BridgeErrorCode): void => {
     if (closed || !handshaked) return;
@@ -229,40 +266,102 @@ export function openAppBridgeHost(options: AppBridgeHostOptions): AppBridgeHost 
     });
   };
 
+  // Single teardown path for close() and for fatal protocol violations:
+  // settles an unfinished handshake silently, fails every in-flight
+  // operation, and stops listening.
+  const teardown = (): void => {
+    if (closed) return;
+    closed = true;
+    settleHandshake?.(new BridgeProtocolError("bridge_closed"), false);
+    failAll();
+    channel.port1.onmessage = null;
+    channel.port1.close();
+  };
+
   // The ack and every later request arrive on the port; messages from any
-  // other window/port can never reach this listener.
+  // other window/port can never reach this listener. Size is gated before
+  // anything else — even the handshake path never serializes or stores an
+  // unbounded payload, and measurement can itself fail on cyclic/BigInt
+  // values from the untrusted frame.
   channel.port1.onmessage = (event: MessageEvent) => {
     if (closed) return;
     const envelope: unknown = event.data;
+    const size = envelopeByteSize(envelope);
+    if (size === null || size > MAX_SINGLE_MESSAGE_BYTES) {
+      const failure = size === null ? "invalid_argument" : "oversize";
+      if (!handshaked) {
+        settleHandshake?.(new BridgeProtocolError(failure));
+      } else {
+        respondError(safeRequestId(envelope), failure);
+      }
+      return;
+    }
     if (!isFrameEnvelope(envelope)) return;
     if (!handshaked) {
-      // Exactly one ack with the exact nonce starts the session; anything
-      // else (wrong nonce, wrong version, double ack, early request) fails.
+      // Exactly one exact-shape ack with the exact nonce starts the session;
+      // anything else (wrong nonce, extra fields, double ack, early request)
+      // fails the handshake closed.
       const ack = envelope as Partial<BridgeAck>;
-      if (ack.type === "ack" && ack.nonce === nonce) {
+      const exactAck =
+        isPlainObject(envelope) &&
+        hasExactKeys(envelope, ["version", "type", "nonce"]) &&
+        ack.type === "ack" &&
+        typeof ack.nonce === "string" &&
+        ack.nonce.length <= MAX_NONCE_CHARS &&
+        ack.nonce === nonce;
+      if (exactAck) {
         settleHandshake?.();
       } else {
         settleHandshake?.(new BridgeProtocolError("bridge_closed"));
       }
       return;
     }
+    if (envelope.type === "ack") {
+      // A second ack after the handshake completed is a protocol violation:
+      // fail the host closed, never silently ignore it.
+      respondError(safeRequestId(envelope), "invalid_argument");
+      teardown();
+      return;
+    }
     if (envelope.type === "request") {
       dispatch(envelope);
       return;
     }
-    if (envelope.type === "cancel") {
-      const entry = streams.get(envelope.requestId);
-      if (entry) {
-        window.clearTimeout(entry.timer);
-        entry.controller.abort();
-        streams.delete(envelope.requestId);
-      }
+    // Cancel: exact shape and canonical ID. A well-formed cancel for an
+    // already-finished stream is a benign race; anything malformed is a
+    // protocol violation with a stable error.
+    const cancelId =
+      isPlainObject(envelope) &&
+      hasExactKeys(envelope, ["version", "type", "requestId"]) &&
+      typeof envelope["requestId"] === "string" &&
+      requestIdPattern.test(envelope["requestId"])
+        ? envelope["requestId"]
+        : undefined;
+    if (cancelId === undefined) {
+      respondError(safeRequestId(envelope), "invalid_argument");
+      return;
+    }
+    const entry = streams.get(cancelId);
+    if (entry) {
+      window.clearTimeout(entry.timer);
+      entry.controller.abort();
+      streams.delete(cancelId);
     }
   };
 
   /** Validates one untrusted inbound request; returns the stable failure code
-   * or null when the request may proceed to the transport. */
+   * or null when the request may proceed to the transport. Size is checked
+   * first, on the raw value: a hostile ID must never be echoed before the
+   * message's own bound has been enforced, and measurement can fail on
+   * cyclic structures or BigInt values. */
   const validateRequest = (request: BridgeRequest): BridgeErrorCode | null => {
+    const size = envelopeByteSize(request);
+    if (size === null) {
+      return "invalid_argument";
+    }
+    if (size > MAX_SINGLE_MESSAGE_BYTES) {
+      return "oversize";
+    }
     if (typeof request.requestId !== "string" || !requestIdPattern.test(request.requestId)) {
       return "invalid_argument";
     }
@@ -278,9 +377,6 @@ export function openAppBridgeHost(options: AppBridgeHostOptions): AppBridgeHost 
     if (pending.size + streams.size >= MAX_INFLIGHT_REQUESTS) {
       return "too_many_inflight";
     }
-    if (envelopeByteSize(request) > MAX_SINGLE_MESSAGE_BYTES) {
-      return "oversize";
-    }
     if (request.method === "agent.run") {
       return validRunPayload(request.payload) ? null : "invalid_argument";
     }
@@ -290,7 +386,9 @@ export function openAppBridgeHost(options: AppBridgeHostOptions): AppBridgeHost 
   const dispatch = (request: BridgeRequest): void => {
     const failure = validateRequest(request);
     if (failure !== null) {
-      respondError(request.requestId, failure);
+      // The echo is bounded: only a canonical ID is copied verbatim, so the
+      // outbound error envelope can never exceed the message bound itself.
+      respondError(safeRequestId(request), failure);
       return;
     }
     if (request.method === "agent.run") {
@@ -401,10 +499,7 @@ export function openAppBridgeHost(options: AppBridgeHostOptions): AppBridgeHost 
 
   return {
     close() {
-      if (closed) return;
-      closed = true;
-      failAll();
-      channel.port1.close();
+      teardown();
     },
     ready,
   };

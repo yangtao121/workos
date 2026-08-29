@@ -16,7 +16,7 @@ type Querier interface {
 	GetSessionRequest(ctx context.Context, arg GetSessionRequestParams) (WorkosRuntimeSurfaceSessionRequest, error)
 	InsertSession(ctx context.Context, arg InsertSessionParams) error
 	InsertSessionRequest(ctx context.Context, arg InsertSessionRequestParams) (int64, error)
-	RotateSessionBridgeToken(ctx context.Context, arg RotateSessionBridgeTokenParams) (int64, error)
+	RotateSessionBridgeToken(ctx context.Context, arg RotateSessionBridgeTokenParams) (RotateSessionBridgeTokenRow, error)
 }
 
 var _ Querier = (*Queries)(nil)

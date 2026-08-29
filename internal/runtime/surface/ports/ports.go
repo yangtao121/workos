@@ -121,9 +121,12 @@ type SessionRepository interface {
 	// owner/device close is a successful no-op; anything else is NotFound.
 	Close(ctx context.Context, ownerUserID, deviceID, sessionID string, now time.Time) (domain.SurfaceSession, error)
 	// RotateBridgeToken stores the digest of a freshly minted bridge token on
-	// the open, unexpired, owner/device-bound session; anything else is
-	// NotFound and nothing changes.
-	RotateBridgeToken(ctx context.Context, command RotateBridgeTokenCommand) error
+	// the open, unexpired, owner/device-bound session and returns that
+	// session's row as of this rotation — one atomic UPDATE ... RETURNING is
+	// the operation's linearization point, so the returned snapshot is the
+	// persisted fact backing exactly this credential even when further
+	// rotations follow. Anything else is NotFound and nothing changes.
+	RotateBridgeToken(ctx context.Context, command RotateBridgeTokenCommand) (domain.SurfaceSession, error)
 	// GetActiveSessionByBridgeToken resolves the open, unexpired session
 	// currently carrying the token digest, owner-scoped.
 	GetActiveSessionByBridgeToken(ctx context.Context, ownerUserID, tokenHash string, now time.Time) (domain.SurfaceSession, error)

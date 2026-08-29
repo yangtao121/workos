@@ -75,8 +75,8 @@ func (r *bridgeRepository) Close(_ context.Context, owner, device, id string, no
 	return session, nil
 }
 
-func (r *bridgeRepository) RotateBridgeToken(context.Context, ports.RotateBridgeTokenCommand) error {
-	return nil
+func (r *bridgeRepository) RotateBridgeToken(context.Context, ports.RotateBridgeTokenCommand) (domain.SurfaceSession, error) {
+	return domain.SurfaceSession{}, nil
 }
 
 func (r *bridgeRepository) GetActiveSessionByBridgeToken(_ context.Context, owner, tokenHash string, now time.Time) (domain.SurfaceSession, error) {

@@ -110,22 +110,24 @@ func (r *fakeRepository) Create(_ context.Context, command ports.CreateSessionCo
 	return session, nil
 }
 
-func (r *fakeRepository) RotateBridgeToken(_ context.Context, command ports.RotateBridgeTokenCommand) error {
+func (r *fakeRepository) RotateBridgeToken(_ context.Context, command ports.RotateBridgeTokenCommand) (domain.SurfaceSession, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if r.failWith != nil {
-		return r.failWith
+		return domain.SurfaceSession{}, r.failWith
 	}
 	session, ok := r.sessions[command.SessionID]
 	if !ok || session.OwnerUserID != command.OwnerUserID || session.DeviceID != command.DeviceID {
-		return domain.ErrNotFound
+		return domain.SurfaceSession{}, domain.ErrNotFound
 	}
 	if session.ClosedAt != nil || !session.ExpiresAt.After(command.Now) {
-		return domain.ErrNotFound
+		return domain.SurfaceSession{}, domain.ErrNotFound
 	}
 	session.BridgeTokenHash = command.TokenHash
 	r.sessions[command.SessionID] = session
-	return nil
+	// The store returns the row as of this rotation, atomically: the
+	// snapshot never mixes another rotation's hash with this credential.
+	return session, nil
 }
 
 func (r *fakeRepository) GetActiveSessionByBridgeToken(_ context.Context, ownerUserID, tokenHash string, now time.Time) (domain.SurfaceSession, error) {
@@ -687,33 +689,36 @@ func TestConcurrentArbitrationLoserRotatesToken(t *testing.T) {
 	}
 }
 
-// TestConcurrentSameKeyCreatesReturnPersistedCredentials drives two same-key
-// creates through a barrier and asserts, for every successful response, that
-// the returned token matches the session fact the repository persisted for
-// that response's linearization point, and that exactly one session/mapping
-// survives.
+// TestConcurrentSameKeyCreatesReturnPersistedCredentials drives eight
+// same-key creates through a barrier and asserts, for every successful
+// response, that the returned session snapshot pairs the returned token with
+// exactly the hash that token was stored under — the pairing is checked
+// per response, not just at the end, because that is what the old
+// rotate-then-re-read implementation got wrong under interleaving. It also
+// asserts that exactly one session/mapping survives and that the final
+// stored hash is one of the returned credentials' hashes (the last
+// linearized rotation).
 func TestConcurrentSameKeyCreatesReturnPersistedCredentials(t *testing.T) {
 	t.Parallel()
 	repository := newFakeRepository()
 	service := newTestService(repository, &fakeResolver{descriptor: launchDescriptor()})
+	const rotators = 8
 	var group sync.WaitGroup
 	start := make(chan struct{})
-	results := make(chan CreatedSurface, 2)
-	failures := make(chan error, 2)
-	for _, device := range []string{testDevice, testDevice} {
+	results := make(chan CreatedSurface, rotators)
+	failures := make(chan error, rotators)
+	for range rotators {
 		group.Add(1)
-		go func(device string) {
+		go func() {
 			defer group.Done()
 			<-start
-			command := validCommand("race-key")
-			command.DeviceID = device
-			created, err := service.Create(context.Background(), command)
+			created, err := service.Create(context.Background(), validCommand("race-key"))
 			if err != nil {
 				failures <- err
 				return
 			}
 			results <- created
-		}(device)
+		}()
 	}
 	close(start)
 	group.Wait()
@@ -724,15 +729,20 @@ func TestConcurrentSameKeyCreatesReturnPersistedCredentials(t *testing.T) {
 	}
 	observedHashes := map[string]struct{}{}
 	ids := map[string]struct{}{}
-	finalHash := ""
 	for created := range results {
 		ids[created.Session.ID] = struct{}{}
 		if created.BridgeToken == "" {
 			t.Fatal("open-session create returned no credential")
 		}
-		hash := domain.HashBridgeToken(created.BridgeToken)
-		observedHashes[hash] = struct{}{}
-		finalHash = created.Session.BridgeTokenHash
+		// Per-response pairing: this response's own credential must be the
+		// fact its own snapshot carries — never a later rotation's hash.
+		if created.Session.BridgeTokenHash != domain.HashBridgeToken(created.BridgeToken) {
+			t.Fatalf("response %s paired its credential with a foreign hash", created.Session.ID)
+		}
+		observedHashes[domain.HashBridgeToken(created.BridgeToken)] = struct{}{}
+	}
+	if len(observedHashes) != rotators {
+		t.Fatalf("expected %d distinct rotations, saw %d", rotators, len(observedHashes))
 	}
 	if len(ids) != 1 {
 		t.Fatalf("same-key race produced %d distinct sessions", len(ids))
@@ -746,12 +756,80 @@ func TestConcurrentSameKeyCreatesReturnPersistedCredentials(t *testing.T) {
 	if len(stored) != 1 {
 		t.Fatalf("same-key race left %d session facts", len(stored))
 	}
+	if !finalHashOwned(stored, observedHashes) {
+		t.Fatal("final persisted hash never belonged to any returned credential")
+	}
+}
+
+// TestConcurrentReplaysPairTokenWithOwnRotation drives eight concurrent
+// replays of one already-consumed key, so every call takes the rotation
+// path. Each response must pair its own freshly minted token with the hash
+// that token was stored under at its own linearization point — the old
+// rotate-then-separately-re-read implementation interleaved the two steps
+// and returned a token next to a later rotation's hash.
+func TestConcurrentReplaysPairTokenWithOwnRotation(t *testing.T) {
+	t.Parallel()
+	repository := newFakeRepository()
+	service := newTestService(repository, &fakeResolver{descriptor: launchDescriptor()})
+	seeded, err := service.Create(context.Background(), validCommand("replay-key"))
+	if err != nil {
+		t.Fatalf("seed create failed: %v", err)
+	}
+	const rotators = 8
+	var group sync.WaitGroup
+	start := make(chan struct{})
+	results := make(chan CreatedSurface, rotators)
+	failures := make(chan error, rotators)
+	for range rotators {
+		group.Add(1)
+		go func() {
+			defer group.Done()
+			<-start
+			created, err := service.Create(context.Background(), validCommand("replay-key"))
+			if err != nil {
+				failures <- err
+				return
+			}
+			results <- created
+		}()
+	}
+	close(start)
+	group.Wait()
+	close(results)
+	close(failures)
+	for err := range failures {
+		t.Fatalf("replay race surfaced an error: %v", err)
+	}
+	observedHashes := map[string]struct{}{}
+	for range rotators {
+		created := <-results
+		if created.Session.ID != seeded.Session.ID {
+			t.Fatalf("replay produced a foreign session %s", created.Session.ID)
+		}
+		if created.BridgeToken == "" {
+			t.Fatal("open-session replay returned no credential")
+		}
+		if created.Session.BridgeTokenHash != domain.HashBridgeToken(created.BridgeToken) {
+			t.Fatal("replay response paired its credential with a foreign hash")
+		}
+		observedHashes[domain.HashBridgeToken(created.BridgeToken)] = struct{}{}
+	}
+	if len(observedHashes) != rotators {
+		t.Fatalf("expected %d distinct rotations, saw %d", rotators, len(observedHashes))
+	}
+	repository.mu.Lock()
+	stored := repository.sessions[seeded.Session.ID]
+	repository.mu.Unlock()
+	if _, ok := observedHashes[stored.BridgeTokenHash]; !ok {
+		t.Fatal("final persisted hash never belonged to any returned credential")
+	}
+}
+
+func finalHashOwned(stored map[string]domain.SurfaceSession, observed map[string]struct{}) bool {
 	for _, session := range stored {
-		if _, ok := observedHashes[session.BridgeTokenHash]; !ok {
-			t.Fatal("final persisted hash never belonged to any returned credential")
+		if _, ok := observed[session.BridgeTokenHash]; ok {
+			return true
 		}
 	}
-	if finalHash == "" {
-		t.Fatal("no response carried the linearized hash")
-	}
+	return false
 }

@@ -161,9 +161,17 @@ export function isEnvelope(value: unknown): value is BridgeEnvelope {
  * structured-clone-safe object.
  */
 export function encodeBridgeMessage(envelope: BridgeEnvelope): string {
-  const encoded = JSON.stringify(envelope, (_key, value: unknown) =>
-    typeof value === "bigint" ? value.toString() : value,
-  );
+  let encoded: string;
+  try {
+    encoded = JSON.stringify(envelope, (_key, value: unknown) =>
+      typeof value === "bigint" ? value.toString() : value,
+    );
+  } catch {
+    // Cyclic structures cannot be measured or sent: surface the failure as
+    // the stable protocol error, never as a raw TypeError from inside
+    // JSON.stringify.
+    throw new BridgeProtocolError("invalid_argument");
+  }
   if (new TextEncoder().encode(encoded).length > MAX_SINGLE_MESSAGE_BYTES) {
     throw new BridgeProtocolError("oversize");
   }
