@@ -93,6 +93,15 @@ func (h *InstallationHandler) ListInstalledApps(ctx context.Context, req *connec
 	}), nil
 }
 
+// SetAppGrants is the additive full-replacement grant command added with the
+// mutable-grants contract (ADR-0003). The Core application/repository wiring
+// is implemented by the follow-up vertical slice; until it lands this
+// handler fails closed with a fixed sanitized Unimplemented instead of
+// accepting or mutating anything.
+func (h *InstallationHandler) SetAppGrants(ctx context.Context, req *connect.Request[appv1.SetAppGrantsRequest]) (*connect.Response[appv1.SetAppGrantsResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("SetAppGrants is not implemented yet"))
+}
+
 // mapInstallationError converts installation failures to Connect codes with
 // sanitized messages: no SQL, constraint names, catalog internals, or owner
 // details.

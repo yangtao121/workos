@@ -22,10 +22,18 @@ message AppInstallation {
   string manifest_digest = 5;
   google.protobuf.Timestamp installed_at = 6;
   optional google.protobuf.Timestamp uninstalled_at = 7;
-  // Immutable install-time grant snapshot: the canonical sorted subset of the
-  // pinned version's requested permissions the user explicitly approved.
-  // Empty means no capability was granted; it never defaults to the request.
+  // The current canonical complete grant set: the user's last successful
+  // confirmation, canonical sorted and duplicate-free, always a subset of the
+  // pinned version's requested permissions. Historically an immutable
+  // install-time snapshot; since ADR-0003 it can be explicitly replaced via
+  // SetAppGrants. Empty (or omitted) means no capability was granted; it
+  // never falls back to the requested permissions.
   repeated string granted_permissions = 8;
+  // Authorization epoch of the grant set above: starts at 1 when the
+  // installation is created and increases by exactly one only when the grant
+  // set actually changes. Core increments it inside the SetAppGrants
+  // transaction; clients can never submit or predict it.
+  int64 grant_revision = 9;
 }
 
 // InstallAppRequest installs one owner-scoped app into the owner's active
@@ -73,8 +81,36 @@ message ListInstalledAppsResponse {
   workos.common.v1.PageResponse page = 2;
 }
 
+// SetAppGrantsRequest replaces one installation's entire grant set. The
+// request is a full replacement, not an incremental add/remove patch: the
+// granted_permissions field carries the complete final set the user wants.
+message SetAppGrantsRequest {
+  string idempotency_key = 1;
+  string project_id = 2;
+  string installation_id = 3;
+  int64 expected_project_revision = 4;
+  // Complete replacement target set (canonical sorted, duplicate-free subset
+  // of the pinned version's requested permissions). Empty (or omitted) means
+  // revoke all; it never falls back to requested permissions.
+  repeated string granted_permissions = 5;
+}
+
+message SetAppGrantsResponse {
+  AppInstallation installation = 1;
+  int64 project_revision = 2;
+}
+
 service AppInstallationService {
   rpc InstallApp(InstallAppRequest) returns (InstallAppResponse) {}
   rpc UninstallApp(UninstallAppRequest) returns (UninstallAppResponse) {}
   rpc ListInstalledApps(ListInstalledAppsRequest) returns (ListInstalledAppsResponse) {}
+  // SetAppGrants replaces the installation's whole grant set in one command.
+  // A target set equal to the current grant is a deterministic no-op: the
+  // idempotency key is still durably consumed and replays exactly, but the
+  // project revision, grant revision, events, and timestamps do not change.
+  // A real change bumps both revisions by exactly one and commits the
+  // installation update, project event, outbox, and idempotency result in a
+  // single transaction. The command is serialized against every other
+  // project mutation by expected_project_revision.
+  rpc SetAppGrants(SetAppGrantsRequest) returns (SetAppGrantsResponse) {}
 }

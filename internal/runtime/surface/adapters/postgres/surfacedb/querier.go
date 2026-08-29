@@ -14,6 +14,10 @@ type Querier interface {
 	GetActiveSessionByBridgeToken(ctx context.Context, arg GetActiveSessionByBridgeTokenParams) (GetActiveSessionByBridgeTokenRow, error)
 	GetSession(ctx context.Context, arg GetSessionParams) (GetSessionRow, error)
 	GetSessionRequest(ctx context.Context, arg GetSessionRequestParams) (WorkosRuntimeSurfaceSessionRequest, error)
+	// installation_grant_revision is the create-time grant epoch Core's private
+	// resolver returned for this session; the application must always pass the
+	// resolved value, never a constant, so a session created after a SetAppGrants
+	// mutation pins the epoch the user re-opened under.
 	InsertSession(ctx context.Context, arg InsertSessionParams) error
 	InsertSessionRequest(ctx context.Context, arg InsertSessionRequestParams) (int64, error)
 	RotateSessionBridgeToken(ctx context.Context, arg RotateSessionBridgeTokenParams) (RotateSessionBridgeTokenRow, error)

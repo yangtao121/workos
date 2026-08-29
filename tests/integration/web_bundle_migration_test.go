@@ -33,10 +33,12 @@ const (
 	installationGrant008 = "180ba05df3c54c45d16dd1c67f8b45cacdde8d6ac1a77ae5338abc3dd0055766"
 	appTaskProvenance009 = "233ea77ca9f3dc0d18362c0cc2a650eb288c5bc90d0c0e01e3ec9428b6f411db"
 	bridgeToken010       = "91f47007a071915e0d6c2b39f35f2611f2b1f30c72781d113fd801368045896a"
+	mutableGrants011     = "1b85383b53f23829151cacca44c5f400f1fb9ca1e06f4836767a3c40f354775f"
+	surfaceGrant012      = "9b8335b1a7936ef96b5b5aaeeeac8b351768bb5c98152bfed6d80bbd904bcc89"
 )
 
 // TestAllMigrationChecksumsArePinned pins every shipped migration file
-// byte-for-byte, so editing history anywhere in 001..010 fails here first.
+// byte-for-byte, so editing history anywhere in 001..012 fails here first.
 func TestAllMigrationChecksumsArePinned(t *testing.T) {
 	t.Parallel()
 	pinned := map[string]string{
@@ -50,6 +52,8 @@ func TestAllMigrationChecksumsArePinned(t *testing.T) {
 		"008_project_installation_grants.sql":            installationGrant008,
 		"009_agent_app_task_provenance.sql":              appTaskProvenance009,
 		"010_surface_bridge_tokens.sql":                  bridgeToken010,
+		"011_mutable_project_app_grants.sql":             mutableGrants011,
+		"012_surface_grant_revision.sql":                 surfaceGrant012,
 	}
 	for name, want := range pinned {
 		if got := migrationFileChecksum(t, name); got != want {

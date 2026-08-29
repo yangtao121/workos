@@ -102,11 +102,15 @@ func (r *Repository) Install(ctx context.Context, command ports.InstallCommand) 
 			}
 			// Deterministic no-op under the lock: the expected revision was
 			// verified, so the key is consumed against the existing fact —
-			// without a second row, revision bump, or event.
+			// without a second row, revision bump, or event. The result
+			// snapshot pins the first-response grant and its epoch so a later
+			// replay never returns a mutated row.
 			return r.commitInstallationRequest(ctx, tx, queries, projectdb.InsertInstallationRequestParams{
 				OwnerUserID: command.OwnerUserID, IdempotencyKey: command.IdempotencyKey,
 				Command: "install", RequestDigest: command.RequestDigest, InstallationID: existing.ID,
-				ProjectRevision: command.ExpectedRevision, CreatedAt: timestamp(command.Now),
+				ProjectRevision:          command.ExpectedRevision,
+				ResultGrantedPermissions: nonNilGranted(existing.GrantedPermissions),
+				ResultGrantRevision:      installTimeGrantRevision, CreatedAt: timestamp(command.Now),
 			}, ports.InstallationResult{Installation: existing, ProjectRevision: command.ExpectedRevision})
 		}
 		return ports.InstallationResult{}, domain.ErrAlreadyInstalled
@@ -139,9 +143,16 @@ func (r *Repository) Install(ctx context.Context, command ports.InstallCommand) 
 	return r.commitInstallationRequest(ctx, tx, queries, projectdb.InsertInstallationRequestParams{
 		OwnerUserID: command.OwnerUserID, IdempotencyKey: command.IdempotencyKey,
 		Command: "install", RequestDigest: command.RequestDigest, InstallationID: installation.ID,
-		ProjectRevision: projection.Revision, CreatedAt: timestamp(command.Now),
+		ProjectRevision:          projection.Revision,
+		ResultGrantedPermissions: nonNilGranted(installation.GrantedPermissions),
+		ResultGrantRevision:      installTimeGrantRevision, CreatedAt: timestamp(command.Now),
 	}, ports.InstallationResult{Installation: installation, ProjectRevision: projection.Revision})
 }
+
+// installTimeGrantRevision is the grant epoch every install command creates
+// its installation at. The SetAppGrants flow owns later epochs; until it
+// exists, 1 is the only value a fresh or no-op install can persist.
+const installTimeGrantRevision = 1
 
 // Uninstall tombstones one active installation in a single transaction with
 // the same revision/projection/event/outbox/idempotency guarantees.
@@ -192,7 +203,11 @@ func (r *Repository) Uninstall(ctx context.Context, command ports.UninstallComma
 		OwnerUserID: command.OwnerUserID, IdempotencyKey: command.IdempotencyKey,
 		Command: "uninstall", RequestDigest: command.RequestDigest, InstallationID: installation.ID,
 		ProjectRevision: projection.Revision, ResultUninstalledAt: timestamp(tombstone),
-		CreatedAt: timestamp(command.Now),
+		ResultGrantedPermissions: nonNilGranted(installation.GrantedPermissions),
+		// The uninstall response reports the grant and epoch as of this
+		// transaction; with no grant-mutation flow yet that epoch is 1.
+		ResultGrantRevision: installTimeGrantRevision,
+		CreatedAt:           timestamp(command.Now),
 	}, ports.InstallationResult{Installation: installation, ProjectRevision: projection.Revision})
 }
 

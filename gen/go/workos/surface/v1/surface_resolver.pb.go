@@ -167,12 +167,18 @@ func (x *ResolveWebBundleRequest) GetAppInstanceId() string {
 type ResolveWebBundleResponse struct {
 	state  protoimpl.MessageState     `protogen:"open.v1"`
 	Launch *WebBundleLaunchDescriptor `protobuf:"bytes,1,opt,name=launch,proto3" json:"launch,omitempty"`
-	// The active installation's immutable grant snapshot, re-read from
-	// authoritative Core facts on every resolution so the runtime can compute
-	// effective bridge capabilities without trusting stale state.
+	// The active installation's grant set, re-read from authoritative Core
+	// facts on every resolution so the runtime can compute effective bridge
+	// capabilities without trusting stale state.
 	GrantedPermissions []string `protobuf:"bytes,2,rep,name=granted_permissions,json=grantedPermissions,proto3" json:"granted_permissions,omitempty"`
-	unknownFields      protoimpl.UnknownFields
-	sizeCache          protoimpl.SizeCache
+	// The authoritative installation grant epoch, read from the same Core
+	// facts as granted_permissions in the same resolution. The runtime must
+	// persist it into the surface session and derive every private
+	// authorization comparison from that snapshot; public inputs can never
+	// supply or override it.
+	GrantRevision int64 `protobuf:"varint,3,opt,name=grant_revision,json=grantRevision,proto3" json:"grant_revision,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *ResolveWebBundleResponse) Reset() {
@@ -217,6 +223,13 @@ func (x *ResolveWebBundleResponse) GetGrantedPermissions() []string {
 		return x.GrantedPermissions
 	}
 	return nil
+}
+
+func (x *ResolveWebBundleResponse) GetGrantRevision() int64 {
+	if x != nil {
+		return x.GrantRevision
+	}
+	return 0
 }
 
 type ReadWebBundleAssetRequest struct {
@@ -359,10 +372,11 @@ const file_workos_surface_v1_surface_resolver_proto_rawDesc = "" +
 	"\x17ResolveWebBundleRequest\x12\x1d\n" +
 	"\n" +
 	"project_id\x18\x01 \x01(\tR\tprojectId\x12&\n" +
-	"\x0fapp_instance_id\x18\x02 \x01(\tR\rappInstanceId\"\x91\x01\n" +
+	"\x0fapp_instance_id\x18\x02 \x01(\tR\rappInstanceId\"\xb8\x01\n" +
 	"\x18ResolveWebBundleResponse\x12D\n" +
 	"\x06launch\x18\x01 \x01(\v2,.workos.surface.v1.WebBundleLaunchDescriptorR\x06launch\x12/\n" +
-	"\x13granted_permissions\x18\x02 \x03(\tR\x12grantedPermissions\"\x81\x01\n" +
+	"\x13granted_permissions\x18\x02 \x03(\tR\x12grantedPermissions\x12%\n" +
+	"\x0egrant_revision\x18\x03 \x01(\x03R\rgrantRevision\"\x81\x01\n" +
 	"\x19ReadWebBundleAssetRequest\x12\x1d\n" +
 	"\n" +
 	"project_id\x18\x01 \x01(\tR\tprojectId\x12&\n" +

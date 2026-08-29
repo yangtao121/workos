@@ -14,7 +14,7 @@ type Querier interface {
 	ArchiveProject(ctx context.Context, arg ArchiveProjectParams) (WorkosCoreProject, error)
 	GetActiveInstallationByApp(ctx context.Context, arg GetActiveInstallationByAppParams) (GetActiveInstallationByAppRow, error)
 	GetInstallationById(ctx context.Context, arg GetInstallationByIdParams) (GetInstallationByIdRow, error)
-	GetInstallationRequest(ctx context.Context, arg GetInstallationRequestParams) (WorkosCoreProjectAppInstallationRequest, error)
+	GetInstallationRequest(ctx context.Context, arg GetInstallationRequestParams) (GetInstallationRequestRow, error)
 	GetProject(ctx context.Context, arg GetProjectParams) (WorkosCoreProject, error)
 	GetProjectByIdempotency(ctx context.Context, arg GetProjectByIdempotencyParams) (WorkosCoreProject, error)
 	InsertInstallation(ctx context.Context, arg InsertInstallationParams) error
@@ -26,6 +26,7 @@ type Querier interface {
 	ListProjects(ctx context.Context, arg ListProjectsParams) ([]WorkosCoreProject, error)
 	LockProjectForInstallation(ctx context.Context, arg LockProjectForInstallationParams) (LockProjectForInstallationRow, error)
 	ResolveActiveInstallation(ctx context.Context, arg ResolveActiveInstallationParams) (ResolveActiveInstallationRow, error)
+	SetInstallationGrants(ctx context.Context, arg SetInstallationGrantsParams) (SetInstallationGrantsRow, error)
 	TombstoneInstallation(ctx context.Context, arg TombstoneInstallationParams) (int64, error)
 	UpdateProject(ctx context.Context, arg UpdateProjectParams) (WorkosCoreProject, error)
 }

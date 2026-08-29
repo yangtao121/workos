@@ -109,7 +109,7 @@ func (q *Queries) ArchiveProject(ctx context.Context, arg ArchiveProjectParams) 
 }
 
 const getActiveInstallationByApp = `-- name: GetActiveInstallationByApp :one
-SELECT id, owner_user_id, project_id, app_id, version, manifest_digest, granted_permissions, installed_at, uninstalled_at
+SELECT id, owner_user_id, project_id, app_id, version, manifest_digest, granted_permissions, grant_revision, installed_at, uninstalled_at
 FROM workos_core.project_app_installations
 WHERE project_id = $1 AND app_id = $2 AND uninstalled_at IS NULL
 `
@@ -127,6 +127,7 @@ type GetActiveInstallationByAppRow struct {
 	Version            string             `json:"version"`
 	ManifestDigest     string             `json:"manifest_digest"`
 	GrantedPermissions []string           `json:"granted_permissions"`
+	GrantRevision      int64              `json:"grant_revision"`
 	InstalledAt        pgtype.Timestamptz `json:"installed_at"`
 	UninstalledAt      pgtype.Timestamptz `json:"uninstalled_at"`
 }
@@ -142,6 +143,7 @@ func (q *Queries) GetActiveInstallationByApp(ctx context.Context, arg GetActiveI
 		&i.Version,
 		&i.ManifestDigest,
 		&i.GrantedPermissions,
+		&i.GrantRevision,
 		&i.InstalledAt,
 		&i.UninstalledAt,
 	)
@@ -149,7 +151,7 @@ func (q *Queries) GetActiveInstallationByApp(ctx context.Context, arg GetActiveI
 }
 
 const getInstallationById = `-- name: GetInstallationById :one
-SELECT id, owner_user_id, project_id, app_id, version, manifest_digest, granted_permissions, installed_at, uninstalled_at
+SELECT id, owner_user_id, project_id, app_id, version, manifest_digest, granted_permissions, grant_revision, installed_at, uninstalled_at
 FROM workos_core.project_app_installations
 WHERE owner_user_id = $1 AND id = $2
 `
@@ -167,6 +169,7 @@ type GetInstallationByIdRow struct {
 	Version            string             `json:"version"`
 	ManifestDigest     string             `json:"manifest_digest"`
 	GrantedPermissions []string           `json:"granted_permissions"`
+	GrantRevision      int64              `json:"grant_revision"`
 	InstalledAt        pgtype.Timestamptz `json:"installed_at"`
 	UninstalledAt      pgtype.Timestamptz `json:"uninstalled_at"`
 }
@@ -182,6 +185,7 @@ func (q *Queries) GetInstallationById(ctx context.Context, arg GetInstallationBy
 		&i.Version,
 		&i.ManifestDigest,
 		&i.GrantedPermissions,
+		&i.GrantRevision,
 		&i.InstalledAt,
 		&i.UninstalledAt,
 	)
@@ -190,7 +194,8 @@ func (q *Queries) GetInstallationById(ctx context.Context, arg GetInstallationBy
 
 const getInstallationRequest = `-- name: GetInstallationRequest :one
 SELECT owner_user_id, idempotency_key, command, request_digest, installation_id,
-       project_revision, result_uninstalled_at, created_at
+       project_revision, result_uninstalled_at, result_granted_permissions,
+       result_grant_revision, created_at
 FROM workos_core.project_app_installation_requests
 WHERE owner_user_id = $1 AND idempotency_key = $2
 `
@@ -200,9 +205,22 @@ type GetInstallationRequestParams struct {
 	IdempotencyKey string `json:"idempotency_key"`
 }
 
-func (q *Queries) GetInstallationRequest(ctx context.Context, arg GetInstallationRequestParams) (WorkosCoreProjectAppInstallationRequest, error) {
+type GetInstallationRequestRow struct {
+	OwnerUserID              string             `json:"owner_user_id"`
+	IdempotencyKey           string             `json:"idempotency_key"`
+	Command                  string             `json:"command"`
+	RequestDigest            string             `json:"request_digest"`
+	InstallationID           string             `json:"installation_id"`
+	ProjectRevision          int64              `json:"project_revision"`
+	ResultUninstalledAt      pgtype.Timestamptz `json:"result_uninstalled_at"`
+	ResultGrantedPermissions []string           `json:"result_granted_permissions"`
+	ResultGrantRevision      int64              `json:"result_grant_revision"`
+	CreatedAt                pgtype.Timestamptz `json:"created_at"`
+}
+
+func (q *Queries) GetInstallationRequest(ctx context.Context, arg GetInstallationRequestParams) (GetInstallationRequestRow, error) {
 	row := q.db.QueryRow(ctx, getInstallationRequest, arg.OwnerUserID, arg.IdempotencyKey)
-	var i WorkosCoreProjectAppInstallationRequest
+	var i GetInstallationRequestRow
 	err := row.Scan(
 		&i.OwnerUserID,
 		&i.IdempotencyKey,
@@ -211,6 +229,8 @@ func (q *Queries) GetInstallationRequest(ctx context.Context, arg GetInstallatio
 		&i.InstallationID,
 		&i.ProjectRevision,
 		&i.ResultUninstalledAt,
+		&i.ResultGrantedPermissions,
+		&i.ResultGrantRevision,
 		&i.CreatedAt,
 	)
 	return i, err
@@ -322,20 +342,23 @@ func (q *Queries) InsertInstallation(ctx context.Context, arg InsertInstallation
 const insertInstallationRequest = `-- name: InsertInstallationRequest :execrows
 INSERT INTO workos_core.project_app_installation_requests (
     owner_user_id, idempotency_key, command, request_digest, installation_id,
-    project_revision, result_uninstalled_at, created_at
-) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+    project_revision, result_uninstalled_at, result_granted_permissions,
+    result_grant_revision, created_at
+) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
 ON CONFLICT (owner_user_id, idempotency_key) DO NOTHING
 `
 
 type InsertInstallationRequestParams struct {
-	OwnerUserID         string             `json:"owner_user_id"`
-	IdempotencyKey      string             `json:"idempotency_key"`
-	Command             string             `json:"command"`
-	RequestDigest       string             `json:"request_digest"`
-	InstallationID      string             `json:"installation_id"`
-	ProjectRevision     int64              `json:"project_revision"`
-	ResultUninstalledAt pgtype.Timestamptz `json:"result_uninstalled_at"`
-	CreatedAt           pgtype.Timestamptz `json:"created_at"`
+	OwnerUserID              string             `json:"owner_user_id"`
+	IdempotencyKey           string             `json:"idempotency_key"`
+	Command                  string             `json:"command"`
+	RequestDigest            string             `json:"request_digest"`
+	InstallationID           string             `json:"installation_id"`
+	ProjectRevision          int64              `json:"project_revision"`
+	ResultUninstalledAt      pgtype.Timestamptz `json:"result_uninstalled_at"`
+	ResultGrantedPermissions []string           `json:"result_granted_permissions"`
+	ResultGrantRevision      int64              `json:"result_grant_revision"`
+	CreatedAt                pgtype.Timestamptz `json:"created_at"`
 }
 
 func (q *Queries) InsertInstallationRequest(ctx context.Context, arg InsertInstallationRequestParams) (int64, error) {
@@ -347,6 +370,8 @@ func (q *Queries) InsertInstallationRequest(ctx context.Context, arg InsertInsta
 		arg.InstallationID,
 		arg.ProjectRevision,
 		arg.ResultUninstalledAt,
+		arg.ResultGrantedPermissions,
+		arg.ResultGrantRevision,
 		arg.CreatedAt,
 	)
 	if err != nil {
@@ -459,7 +484,7 @@ func (q *Queries) InsertProjectOutbox(ctx context.Context, arg InsertProjectOutb
 }
 
 const listActiveInstallations = `-- name: ListActiveInstallations :many
-SELECT id, owner_user_id, project_id, app_id, version, manifest_digest, granted_permissions, installed_at, uninstalled_at
+SELECT id, owner_user_id, project_id, app_id, version, manifest_digest, granted_permissions, grant_revision, installed_at, uninstalled_at
 FROM workos_core.project_app_installations
 WHERE owner_user_id = $1
   AND project_id = $2
@@ -484,6 +509,7 @@ type ListActiveInstallationsRow struct {
 	Version            string             `json:"version"`
 	ManifestDigest     string             `json:"manifest_digest"`
 	GrantedPermissions []string           `json:"granted_permissions"`
+	GrantRevision      int64              `json:"grant_revision"`
 	InstalledAt        pgtype.Timestamptz `json:"installed_at"`
 	UninstalledAt      pgtype.Timestamptz `json:"uninstalled_at"`
 }
@@ -510,6 +536,7 @@ func (q *Queries) ListActiveInstallations(ctx context.Context, arg ListActiveIns
 			&i.Version,
 			&i.ManifestDigest,
 			&i.GrantedPermissions,
+			&i.GrantRevision,
 			&i.InstalledAt,
 			&i.UninstalledAt,
 		); err != nil {
@@ -615,7 +642,7 @@ func (q *Queries) LockProjectForInstallation(ctx context.Context, arg LockProjec
 }
 
 const resolveActiveInstallation = `-- name: ResolveActiveInstallation :one
-SELECT i.id, i.owner_user_id, i.project_id, i.app_id, i.version, i.manifest_digest, i.granted_permissions, i.installed_at, i.uninstalled_at
+SELECT i.id, i.owner_user_id, i.project_id, i.app_id, i.version, i.manifest_digest, i.granted_permissions, i.grant_revision, i.installed_at, i.uninstalled_at
 FROM workos_core.project_app_installations i
 JOIN workos_core.projects p
   ON p.id = i.project_id AND p.owner_user_id = i.owner_user_id AND p.archived_at IS NULL
@@ -639,6 +666,7 @@ type ResolveActiveInstallationRow struct {
 	Version            string             `json:"version"`
 	ManifestDigest     string             `json:"manifest_digest"`
 	GrantedPermissions []string           `json:"granted_permissions"`
+	GrantRevision      int64              `json:"grant_revision"`
 	InstalledAt        pgtype.Timestamptz `json:"installed_at"`
 	UninstalledAt      pgtype.Timestamptz `json:"uninstalled_at"`
 }
@@ -654,6 +682,61 @@ func (q *Queries) ResolveActiveInstallation(ctx context.Context, arg ResolveActi
 		&i.Version,
 		&i.ManifestDigest,
 		&i.GrantedPermissions,
+		&i.GrantRevision,
+		&i.InstalledAt,
+		&i.UninstalledAt,
+	)
+	return i, err
+}
+
+const setInstallationGrants = `-- name: SetInstallationGrants :one
+UPDATE workos_core.project_app_installations
+SET granted_permissions = $1,
+    grant_revision = grant_revision + 1
+WHERE owner_user_id = $2
+  AND project_id = $3
+  AND id = $4
+  AND uninstalled_at IS NULL
+RETURNING id, owner_user_id, project_id, app_id, version, manifest_digest, granted_permissions, grant_revision, installed_at, uninstalled_at
+`
+
+type SetInstallationGrantsParams struct {
+	GrantedPermissions []string `json:"granted_permissions"`
+	OwnerUserID        string   `json:"owner_user_id"`
+	ProjectID          string   `json:"project_id"`
+	ID                 string   `json:"id"`
+}
+
+type SetInstallationGrantsRow struct {
+	ID                 string             `json:"id"`
+	OwnerUserID        string             `json:"owner_user_id"`
+	ProjectID          string             `json:"project_id"`
+	AppID              string             `json:"app_id"`
+	Version            string             `json:"version"`
+	ManifestDigest     string             `json:"manifest_digest"`
+	GrantedPermissions []string           `json:"granted_permissions"`
+	GrantRevision      int64              `json:"grant_revision"`
+	InstalledAt        pgtype.Timestamptz `json:"installed_at"`
+	UninstalledAt      pgtype.Timestamptz `json:"uninstalled_at"`
+}
+
+func (q *Queries) SetInstallationGrants(ctx context.Context, arg SetInstallationGrantsParams) (SetInstallationGrantsRow, error) {
+	row := q.db.QueryRow(ctx, setInstallationGrants,
+		arg.GrantedPermissions,
+		arg.OwnerUserID,
+		arg.ProjectID,
+		arg.ID,
+	)
+	var i SetInstallationGrantsRow
+	err := row.Scan(
+		&i.ID,
+		&i.OwnerUserID,
+		&i.ProjectID,
+		&i.AppID,
+		&i.Version,
+		&i.ManifestDigest,
+		&i.GrantedPermissions,
+		&i.GrantRevision,
 		&i.InstalledAt,
 		&i.UninstalledAt,
 	)

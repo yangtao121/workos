@@ -49,6 +49,7 @@ function installation(id: string, appId: string, version: string): AppInstallati
     installedAt: { $typeName: "google.protobuf.Timestamp", seconds: 1787000000n, nanos: 0 },
     uninstalledAt: undefined,
     grantedPermissions: [],
+    grantRevision: 1n,
   };
 }
 

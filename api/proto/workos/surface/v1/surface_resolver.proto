@@ -26,10 +26,16 @@ message ResolveWebBundleRequest {
 
 message ResolveWebBundleResponse {
   WebBundleLaunchDescriptor launch = 1;
-  // The active installation's immutable grant snapshot, re-read from
-  // authoritative Core facts on every resolution so the runtime can compute
-  // effective bridge capabilities without trusting stale state.
+  // The active installation's grant set, re-read from authoritative Core
+  // facts on every resolution so the runtime can compute effective bridge
+  // capabilities without trusting stale state.
   repeated string granted_permissions = 2;
+  // The authoritative installation grant epoch, read from the same Core
+  // facts as granted_permissions in the same resolution. The runtime must
+  // persist it into the surface session and derive every private
+  // authorization comparison from that snapshot; public inputs can never
+  // supply or override it.
+  int64 grant_revision = 3;
 }
 
 message ReadWebBundleAssetRequest {

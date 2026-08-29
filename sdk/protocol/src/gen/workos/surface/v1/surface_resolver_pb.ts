@@ -14,7 +14,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file workos/surface/v1/surface_resolver.proto.
  */
 export const file_workos_surface_v1_surface_resolver: GenFile = /*@__PURE__*/
-  fileDesc("Cih3b3Jrb3Mvc3VyZmFjZS92MS9zdXJmYWNlX3Jlc29sdmVyLnByb3RvEhF3b3Jrb3Muc3VyZmFjZS52MSKXAQoZV2ViQnVuZGxlTGF1bmNoRGVzY3JpcHRvchIOCgZhcHBfaWQYASABKAkSDwoHdmVyc2lvbhgCIAEoCRIXCg9tYW5pZmVzdF9kaWdlc3QYAyABKAkSEwoLYXJ0aWZhY3RfaWQYBCABKAkSFwoPYXJ0aWZhY3RfZGlnZXN0GAUgASgJEhIKCmVudHJ5cG9pbnQYBiABKAkiRgoXUmVzb2x2ZVdlYkJ1bmRsZVJlcXVlc3QSEgoKcHJvamVjdF9pZBgBIAEoCRIXCg9hcHBfaW5zdGFuY2VfaWQYAiABKAkidQoYUmVzb2x2ZVdlYkJ1bmRsZVJlc3BvbnNlEjwKBmxhdW5jaBgBIAEoCzIsLndvcmtvcy5zdXJmYWNlLnYxLldlYkJ1bmRsZUxhdW5jaERlc2NyaXB0b3ISGwoTZ3JhbnRlZF9wZXJtaXNzaW9ucxgCIAMoCSJcChlSZWFkV2ViQnVuZGxlQXNzZXRSZXF1ZXN0EhIKCnByb2plY3RfaWQYASABKAkSFwoPYXBwX2luc3RhbmNlX2lkGAIgASgJEhIKCmFzc2V0X3BhdGgYAyABKAkiTwoaUmVhZFdlYkJ1bmRsZUFzc2V0UmVzcG9uc2USDwoHY29udGVudBgBIAEoDBISCgptZWRpYV90eXBlGAIgASgJEgwKBGV0YWcYAyABKAkyggIKHFN1cmZhY2VMYXVuY2hSZXNvbHZlclNlcnZpY2USbQoQUmVzb2x2ZVdlYkJ1bmRsZRIqLndvcmtvcy5zdXJmYWNlLnYxLlJlc29sdmVXZWJCdW5kbGVSZXF1ZXN0Gisud29ya29zLnN1cmZhY2UudjEuUmVzb2x2ZVdlYkJ1bmRsZVJlc3BvbnNlIgAScwoSUmVhZFdlYkJ1bmRsZUFzc2V0Eiwud29ya29zLnN1cmZhY2UudjEuUmVhZFdlYkJ1bmRsZUFzc2V0UmVxdWVzdBotLndvcmtvcy5zdXJmYWNlLnYxLlJlYWRXZWJCdW5kbGVBc3NldFJlc3BvbnNlIgBCQVo/Z2l0aHViLmNvbS95YW5ndGFvMTIxL3dvcmtvcy9nZW4vZ28vd29ya29zL3N1cmZhY2UvdjE7c3VyZmFjZXYxYgZwcm90bzM");
+  fileDesc("Cih3b3Jrb3Mvc3VyZmFjZS92MS9zdXJmYWNlX3Jlc29sdmVyLnByb3RvEhF3b3Jrb3Muc3VyZmFjZS52MSKXAQoZV2ViQnVuZGxlTGF1bmNoRGVzY3JpcHRvchIOCgZhcHBfaWQYASABKAkSDwoHdmVyc2lvbhgCIAEoCRIXCg9tYW5pZmVzdF9kaWdlc3QYAyABKAkSEwoLYXJ0aWZhY3RfaWQYBCABKAkSFwoPYXJ0aWZhY3RfZGlnZXN0GAUgASgJEhIKCmVudHJ5cG9pbnQYBiABKAkiRgoXUmVzb2x2ZVdlYkJ1bmRsZVJlcXVlc3QSEgoKcHJvamVjdF9pZBgBIAEoCRIXCg9hcHBfaW5zdGFuY2VfaWQYAiABKAkijQEKGFJlc29sdmVXZWJCdW5kbGVSZXNwb25zZRI8CgZsYXVuY2gYASABKAsyLC53b3Jrb3Muc3VyZmFjZS52MS5XZWJCdW5kbGVMYXVuY2hEZXNjcmlwdG9yEhsKE2dyYW50ZWRfcGVybWlzc2lvbnMYAiADKAkSFgoOZ3JhbnRfcmV2aXNpb24YAyABKAMiXAoZUmVhZFdlYkJ1bmRsZUFzc2V0UmVxdWVzdBISCgpwcm9qZWN0X2lkGAEgASgJEhcKD2FwcF9pbnN0YW5jZV9pZBgCIAEoCRISCgphc3NldF9wYXRoGAMgASgJIk8KGlJlYWRXZWJCdW5kbGVBc3NldFJlc3BvbnNlEg8KB2NvbnRlbnQYASABKAwSEgoKbWVkaWFfdHlwZRgCIAEoCRIMCgRldGFnGAMgASgJMoICChxTdXJmYWNlTGF1bmNoUmVzb2x2ZXJTZXJ2aWNlEm0KEFJlc29sdmVXZWJCdW5kbGUSKi53b3Jrb3Muc3VyZmFjZS52MS5SZXNvbHZlV2ViQnVuZGxlUmVxdWVzdBorLndvcmtvcy5zdXJmYWNlLnYxLlJlc29sdmVXZWJCdW5kbGVSZXNwb25zZSIAEnMKElJlYWRXZWJCdW5kbGVBc3NldBIsLndvcmtvcy5zdXJmYWNlLnYxLlJlYWRXZWJCdW5kbGVBc3NldFJlcXVlc3QaLS53b3Jrb3Muc3VyZmFjZS52MS5SZWFkV2ViQnVuZGxlQXNzZXRSZXNwb25zZSIAQkFaP2dpdGh1Yi5jb20veWFuZ3RhbzEyMS93b3Jrb3MvZ2VuL2dvL3dvcmtvcy9zdXJmYWNlL3YxO3N1cmZhY2V2MWIGcHJvdG8z");
 
 /**
  * WebBundleLaunchDescriptor is the neutral, immutable launch fact for one
@@ -94,13 +94,24 @@ export type ResolveWebBundleResponse = Message<"workos.surface.v1.ResolveWebBund
   launch?: WebBundleLaunchDescriptor | undefined;
 
   /**
-   * The active installation's immutable grant snapshot, re-read from
-   * authoritative Core facts on every resolution so the runtime can compute
-   * effective bridge capabilities without trusting stale state.
+   * The active installation's grant set, re-read from authoritative Core
+   * facts on every resolution so the runtime can compute effective bridge
+   * capabilities without trusting stale state.
    *
    * @generated from field: repeated string granted_permissions = 2;
    */
   grantedPermissions: string[];
+
+  /**
+   * The authoritative installation grant epoch, read from the same Core
+   * facts as granted_permissions in the same resolution. The runtime must
+   * persist it into the surface session and derive every private
+   * authorization comparison from that snapshot; public inputs can never
+   * supply or override it.
+   *
+   * @generated from field: int64 grant_revision = 3;
+   */
+  grantRevision: bigint;
 };
 
 /**

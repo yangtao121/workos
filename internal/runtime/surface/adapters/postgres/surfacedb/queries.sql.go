@@ -42,7 +42,7 @@ const getActiveSession = `-- name: GetActiveSession :one
 SELECT id, owner_user_id, device_id, idempotency_key, request_digest,
        project_id, app_instance_id, renderer, app_id, app_version,
        manifest_digest, artifact_id, artifact_digest, entrypoint, path,
-       bridge_token_hash, bridge_capabilities,
+       bridge_token_hash, bridge_capabilities, installation_grant_revision,
        created_at, expires_at, closed_at
 FROM workos_runtime.surface_sessions
 WHERE owner_user_id = $1 AND device_id = $2 AND id = $3
@@ -57,26 +57,27 @@ type GetActiveSessionParams struct {
 }
 
 type GetActiveSessionRow struct {
-	ID                 string             `json:"id"`
-	OwnerUserID        string             `json:"owner_user_id"`
-	DeviceID           string             `json:"device_id"`
-	IdempotencyKey     string             `json:"idempotency_key"`
-	RequestDigest      string             `json:"request_digest"`
-	ProjectID          string             `json:"project_id"`
-	AppInstanceID      string             `json:"app_instance_id"`
-	Renderer           string             `json:"renderer"`
-	AppID              string             `json:"app_id"`
-	AppVersion         string             `json:"app_version"`
-	ManifestDigest     string             `json:"manifest_digest"`
-	ArtifactID         string             `json:"artifact_id"`
-	ArtifactDigest     string             `json:"artifact_digest"`
-	Entrypoint         string             `json:"entrypoint"`
-	Path               string             `json:"path"`
-	BridgeTokenHash    pgtype.Text        `json:"bridge_token_hash"`
-	BridgeCapabilities []string           `json:"bridge_capabilities"`
-	CreatedAt          pgtype.Timestamptz `json:"created_at"`
-	ExpiresAt          pgtype.Timestamptz `json:"expires_at"`
-	ClosedAt           pgtype.Timestamptz `json:"closed_at"`
+	ID                        string             `json:"id"`
+	OwnerUserID               string             `json:"owner_user_id"`
+	DeviceID                  string             `json:"device_id"`
+	IdempotencyKey            string             `json:"idempotency_key"`
+	RequestDigest             string             `json:"request_digest"`
+	ProjectID                 string             `json:"project_id"`
+	AppInstanceID             string             `json:"app_instance_id"`
+	Renderer                  string             `json:"renderer"`
+	AppID                     string             `json:"app_id"`
+	AppVersion                string             `json:"app_version"`
+	ManifestDigest            string             `json:"manifest_digest"`
+	ArtifactID                string             `json:"artifact_id"`
+	ArtifactDigest            string             `json:"artifact_digest"`
+	Entrypoint                string             `json:"entrypoint"`
+	Path                      string             `json:"path"`
+	BridgeTokenHash           pgtype.Text        `json:"bridge_token_hash"`
+	BridgeCapabilities        []string           `json:"bridge_capabilities"`
+	InstallationGrantRevision int64              `json:"installation_grant_revision"`
+	CreatedAt                 pgtype.Timestamptz `json:"created_at"`
+	ExpiresAt                 pgtype.Timestamptz `json:"expires_at"`
+	ClosedAt                  pgtype.Timestamptz `json:"closed_at"`
 }
 
 func (q *Queries) GetActiveSession(ctx context.Context, arg GetActiveSessionParams) (GetActiveSessionRow, error) {
@@ -105,6 +106,7 @@ func (q *Queries) GetActiveSession(ctx context.Context, arg GetActiveSessionPara
 		&i.Path,
 		&i.BridgeTokenHash,
 		&i.BridgeCapabilities,
+		&i.InstallationGrantRevision,
 		&i.CreatedAt,
 		&i.ExpiresAt,
 		&i.ClosedAt,
@@ -116,7 +118,7 @@ const getActiveSessionByBridgeToken = `-- name: GetActiveSessionByBridgeToken :o
 SELECT id, owner_user_id, device_id, idempotency_key, request_digest,
        project_id, app_instance_id, renderer, app_id, app_version,
        manifest_digest, artifact_id, artifact_digest, entrypoint, path,
-       bridge_token_hash, bridge_capabilities,
+       bridge_token_hash, bridge_capabilities, installation_grant_revision,
        created_at, expires_at, closed_at
 FROM workos_runtime.surface_sessions
 WHERE owner_user_id = $1
@@ -132,26 +134,27 @@ type GetActiveSessionByBridgeTokenParams struct {
 }
 
 type GetActiveSessionByBridgeTokenRow struct {
-	ID                 string             `json:"id"`
-	OwnerUserID        string             `json:"owner_user_id"`
-	DeviceID           string             `json:"device_id"`
-	IdempotencyKey     string             `json:"idempotency_key"`
-	RequestDigest      string             `json:"request_digest"`
-	ProjectID          string             `json:"project_id"`
-	AppInstanceID      string             `json:"app_instance_id"`
-	Renderer           string             `json:"renderer"`
-	AppID              string             `json:"app_id"`
-	AppVersion         string             `json:"app_version"`
-	ManifestDigest     string             `json:"manifest_digest"`
-	ArtifactID         string             `json:"artifact_id"`
-	ArtifactDigest     string             `json:"artifact_digest"`
-	Entrypoint         string             `json:"entrypoint"`
-	Path               string             `json:"path"`
-	BridgeTokenHash    pgtype.Text        `json:"bridge_token_hash"`
-	BridgeCapabilities []string           `json:"bridge_capabilities"`
-	CreatedAt          pgtype.Timestamptz `json:"created_at"`
-	ExpiresAt          pgtype.Timestamptz `json:"expires_at"`
-	ClosedAt           pgtype.Timestamptz `json:"closed_at"`
+	ID                        string             `json:"id"`
+	OwnerUserID               string             `json:"owner_user_id"`
+	DeviceID                  string             `json:"device_id"`
+	IdempotencyKey            string             `json:"idempotency_key"`
+	RequestDigest             string             `json:"request_digest"`
+	ProjectID                 string             `json:"project_id"`
+	AppInstanceID             string             `json:"app_instance_id"`
+	Renderer                  string             `json:"renderer"`
+	AppID                     string             `json:"app_id"`
+	AppVersion                string             `json:"app_version"`
+	ManifestDigest            string             `json:"manifest_digest"`
+	ArtifactID                string             `json:"artifact_id"`
+	ArtifactDigest            string             `json:"artifact_digest"`
+	Entrypoint                string             `json:"entrypoint"`
+	Path                      string             `json:"path"`
+	BridgeTokenHash           pgtype.Text        `json:"bridge_token_hash"`
+	BridgeCapabilities        []string           `json:"bridge_capabilities"`
+	InstallationGrantRevision int64              `json:"installation_grant_revision"`
+	CreatedAt                 pgtype.Timestamptz `json:"created_at"`
+	ExpiresAt                 pgtype.Timestamptz `json:"expires_at"`
+	ClosedAt                  pgtype.Timestamptz `json:"closed_at"`
 }
 
 func (q *Queries) GetActiveSessionByBridgeToken(ctx context.Context, arg GetActiveSessionByBridgeTokenParams) (GetActiveSessionByBridgeTokenRow, error) {
@@ -175,6 +178,7 @@ func (q *Queries) GetActiveSessionByBridgeToken(ctx context.Context, arg GetActi
 		&i.Path,
 		&i.BridgeTokenHash,
 		&i.BridgeCapabilities,
+		&i.InstallationGrantRevision,
 		&i.CreatedAt,
 		&i.ExpiresAt,
 		&i.ClosedAt,
@@ -186,7 +190,7 @@ const getSession = `-- name: GetSession :one
 SELECT id, owner_user_id, device_id, idempotency_key, request_digest,
        project_id, app_instance_id, renderer, app_id, app_version,
        manifest_digest, artifact_id, artifact_digest, entrypoint, path,
-       bridge_token_hash, bridge_capabilities,
+       bridge_token_hash, bridge_capabilities, installation_grant_revision,
        created_at, expires_at, closed_at
 FROM workos_runtime.surface_sessions
 WHERE owner_user_id = $1 AND device_id = $2 AND id = $3
@@ -199,26 +203,27 @@ type GetSessionParams struct {
 }
 
 type GetSessionRow struct {
-	ID                 string             `json:"id"`
-	OwnerUserID        string             `json:"owner_user_id"`
-	DeviceID           string             `json:"device_id"`
-	IdempotencyKey     string             `json:"idempotency_key"`
-	RequestDigest      string             `json:"request_digest"`
-	ProjectID          string             `json:"project_id"`
-	AppInstanceID      string             `json:"app_instance_id"`
-	Renderer           string             `json:"renderer"`
-	AppID              string             `json:"app_id"`
-	AppVersion         string             `json:"app_version"`
-	ManifestDigest     string             `json:"manifest_digest"`
-	ArtifactID         string             `json:"artifact_id"`
-	ArtifactDigest     string             `json:"artifact_digest"`
-	Entrypoint         string             `json:"entrypoint"`
-	Path               string             `json:"path"`
-	BridgeTokenHash    pgtype.Text        `json:"bridge_token_hash"`
-	BridgeCapabilities []string           `json:"bridge_capabilities"`
-	CreatedAt          pgtype.Timestamptz `json:"created_at"`
-	ExpiresAt          pgtype.Timestamptz `json:"expires_at"`
-	ClosedAt           pgtype.Timestamptz `json:"closed_at"`
+	ID                        string             `json:"id"`
+	OwnerUserID               string             `json:"owner_user_id"`
+	DeviceID                  string             `json:"device_id"`
+	IdempotencyKey            string             `json:"idempotency_key"`
+	RequestDigest             string             `json:"request_digest"`
+	ProjectID                 string             `json:"project_id"`
+	AppInstanceID             string             `json:"app_instance_id"`
+	Renderer                  string             `json:"renderer"`
+	AppID                     string             `json:"app_id"`
+	AppVersion                string             `json:"app_version"`
+	ManifestDigest            string             `json:"manifest_digest"`
+	ArtifactID                string             `json:"artifact_id"`
+	ArtifactDigest            string             `json:"artifact_digest"`
+	Entrypoint                string             `json:"entrypoint"`
+	Path                      string             `json:"path"`
+	BridgeTokenHash           pgtype.Text        `json:"bridge_token_hash"`
+	BridgeCapabilities        []string           `json:"bridge_capabilities"`
+	InstallationGrantRevision int64              `json:"installation_grant_revision"`
+	CreatedAt                 pgtype.Timestamptz `json:"created_at"`
+	ExpiresAt                 pgtype.Timestamptz `json:"expires_at"`
+	ClosedAt                  pgtype.Timestamptz `json:"closed_at"`
 }
 
 func (q *Queries) GetSession(ctx context.Context, arg GetSessionParams) (GetSessionRow, error) {
@@ -242,6 +247,7 @@ func (q *Queries) GetSession(ctx context.Context, arg GetSessionParams) (GetSess
 		&i.Path,
 		&i.BridgeTokenHash,
 		&i.BridgeCapabilities,
+		&i.InstallationGrantRevision,
 		&i.CreatedAt,
 		&i.ExpiresAt,
 		&i.ClosedAt,
@@ -278,33 +284,38 @@ INSERT INTO workos_runtime.surface_sessions (
     id, owner_user_id, device_id, idempotency_key, request_digest,
     project_id, app_instance_id, renderer, app_id, app_version,
     manifest_digest, artifact_id, artifact_digest, entrypoint, path,
-    bridge_token_hash, bridge_capabilities,
+    bridge_token_hash, bridge_capabilities, installation_grant_revision,
     created_at, expires_at
-) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
+) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)
 `
 
 type InsertSessionParams struct {
-	ID                 string             `json:"id"`
-	OwnerUserID        string             `json:"owner_user_id"`
-	DeviceID           string             `json:"device_id"`
-	IdempotencyKey     string             `json:"idempotency_key"`
-	RequestDigest      string             `json:"request_digest"`
-	ProjectID          string             `json:"project_id"`
-	AppInstanceID      string             `json:"app_instance_id"`
-	Renderer           string             `json:"renderer"`
-	AppID              string             `json:"app_id"`
-	AppVersion         string             `json:"app_version"`
-	ManifestDigest     string             `json:"manifest_digest"`
-	ArtifactID         string             `json:"artifact_id"`
-	ArtifactDigest     string             `json:"artifact_digest"`
-	Entrypoint         string             `json:"entrypoint"`
-	Path               string             `json:"path"`
-	BridgeTokenHash    pgtype.Text        `json:"bridge_token_hash"`
-	BridgeCapabilities []string           `json:"bridge_capabilities"`
-	CreatedAt          pgtype.Timestamptz `json:"created_at"`
-	ExpiresAt          pgtype.Timestamptz `json:"expires_at"`
+	ID                        string             `json:"id"`
+	OwnerUserID               string             `json:"owner_user_id"`
+	DeviceID                  string             `json:"device_id"`
+	IdempotencyKey            string             `json:"idempotency_key"`
+	RequestDigest             string             `json:"request_digest"`
+	ProjectID                 string             `json:"project_id"`
+	AppInstanceID             string             `json:"app_instance_id"`
+	Renderer                  string             `json:"renderer"`
+	AppID                     string             `json:"app_id"`
+	AppVersion                string             `json:"app_version"`
+	ManifestDigest            string             `json:"manifest_digest"`
+	ArtifactID                string             `json:"artifact_id"`
+	ArtifactDigest            string             `json:"artifact_digest"`
+	Entrypoint                string             `json:"entrypoint"`
+	Path                      string             `json:"path"`
+	BridgeTokenHash           pgtype.Text        `json:"bridge_token_hash"`
+	BridgeCapabilities        []string           `json:"bridge_capabilities"`
+	InstallationGrantRevision int64              `json:"installation_grant_revision"`
+	CreatedAt                 pgtype.Timestamptz `json:"created_at"`
+	ExpiresAt                 pgtype.Timestamptz `json:"expires_at"`
 }
 
+// installation_grant_revision is the create-time grant epoch Core's private
+// resolver returned for this session; the application must always pass the
+// resolved value, never a constant, so a session created after a SetAppGrants
+// mutation pins the epoch the user re-opened under.
 func (q *Queries) InsertSession(ctx context.Context, arg InsertSessionParams) error {
 	_, err := q.db.Exec(ctx, insertSession,
 		arg.ID,
@@ -324,6 +335,7 @@ func (q *Queries) InsertSession(ctx context.Context, arg InsertSessionParams) er
 		arg.Path,
 		arg.BridgeTokenHash,
 		arg.BridgeCapabilities,
+		arg.InstallationGrantRevision,
 		arg.CreatedAt,
 		arg.ExpiresAt,
 	)
@@ -370,7 +382,7 @@ WHERE owner_user_id = $2
 RETURNING id, owner_user_id, device_id, idempotency_key, request_digest,
           project_id, app_instance_id, renderer, app_id, app_version,
           manifest_digest, artifact_id, artifact_digest, entrypoint, path,
-          bridge_token_hash, bridge_capabilities,
+          bridge_token_hash, bridge_capabilities, installation_grant_revision,
           created_at, expires_at, closed_at
 `
 
@@ -383,26 +395,27 @@ type RotateSessionBridgeTokenParams struct {
 }
 
 type RotateSessionBridgeTokenRow struct {
-	ID                 string             `json:"id"`
-	OwnerUserID        string             `json:"owner_user_id"`
-	DeviceID           string             `json:"device_id"`
-	IdempotencyKey     string             `json:"idempotency_key"`
-	RequestDigest      string             `json:"request_digest"`
-	ProjectID          string             `json:"project_id"`
-	AppInstanceID      string             `json:"app_instance_id"`
-	Renderer           string             `json:"renderer"`
-	AppID              string             `json:"app_id"`
-	AppVersion         string             `json:"app_version"`
-	ManifestDigest     string             `json:"manifest_digest"`
-	ArtifactID         string             `json:"artifact_id"`
-	ArtifactDigest     string             `json:"artifact_digest"`
-	Entrypoint         string             `json:"entrypoint"`
-	Path               string             `json:"path"`
-	BridgeTokenHash    pgtype.Text        `json:"bridge_token_hash"`
-	BridgeCapabilities []string           `json:"bridge_capabilities"`
-	CreatedAt          pgtype.Timestamptz `json:"created_at"`
-	ExpiresAt          pgtype.Timestamptz `json:"expires_at"`
-	ClosedAt           pgtype.Timestamptz `json:"closed_at"`
+	ID                        string             `json:"id"`
+	OwnerUserID               string             `json:"owner_user_id"`
+	DeviceID                  string             `json:"device_id"`
+	IdempotencyKey            string             `json:"idempotency_key"`
+	RequestDigest             string             `json:"request_digest"`
+	ProjectID                 string             `json:"project_id"`
+	AppInstanceID             string             `json:"app_instance_id"`
+	Renderer                  string             `json:"renderer"`
+	AppID                     string             `json:"app_id"`
+	AppVersion                string             `json:"app_version"`
+	ManifestDigest            string             `json:"manifest_digest"`
+	ArtifactID                string             `json:"artifact_id"`
+	ArtifactDigest            string             `json:"artifact_digest"`
+	Entrypoint                string             `json:"entrypoint"`
+	Path                      string             `json:"path"`
+	BridgeTokenHash           pgtype.Text        `json:"bridge_token_hash"`
+	BridgeCapabilities        []string           `json:"bridge_capabilities"`
+	InstallationGrantRevision int64              `json:"installation_grant_revision"`
+	CreatedAt                 pgtype.Timestamptz `json:"created_at"`
+	ExpiresAt                 pgtype.Timestamptz `json:"expires_at"`
+	ClosedAt                  pgtype.Timestamptz `json:"closed_at"`
 }
 
 func (q *Queries) RotateSessionBridgeToken(ctx context.Context, arg RotateSessionBridgeTokenParams) (RotateSessionBridgeTokenRow, error) {
@@ -432,6 +445,7 @@ func (q *Queries) RotateSessionBridgeToken(ctx context.Context, arg RotateSessio
 		&i.Path,
 		&i.BridgeTokenHash,
 		&i.BridgeCapabilities,
+		&i.InstallationGrantRevision,
 		&i.CreatedAt,
 		&i.ExpiresAt,
 		&i.ClosedAt,

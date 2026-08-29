@@ -18,7 +18,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file workos/agent/v1/app_agent.proto.
  */
 export const file_workos_agent_v1_app_agent: GenFile = /*@__PURE__*/
-  fileDesc("Ch93b3Jrb3MvYWdlbnQvdjEvYXBwX2FnZW50LnByb3RvEg93b3Jrb3MuYWdlbnQudjEifgoTUnVuQWdlbnRUYXNrUmVxdWVzdBISCgpwcm9qZWN0X2lkGAEgASgJEhcKD2FwcF9pbnN0YW5jZV9pZBgCIAEoCRIeChZjbGllbnRfaWRlbXBvdGVuY3lfa2V5GAMgASgJEgwKBHJvbGUYBCABKAkSDAoEZ29hbBgFIAEoCSJ0ChRSdW5BZ2VudFRhc2tSZXNwb25zZRIPCgd0YXNrX2lkGAEgASgJEi4KBXN0YXRlGAIgASgOMh8ud29ya29zLmFnZW50LnYxLkFnZW50VGFza1N0YXRlEhsKE2xhc3RfZXZlbnRfc2VxdWVuY2UYAyABKAMicwobV2F0Y2hBZ2VudFRhc2tFdmVudHNSZXF1ZXN0EhIKCnByb2plY3RfaWQYASABKAkSFwoPYXBwX2luc3RhbmNlX2lkGAIgASgJEg8KB3Rhc2tfaWQYAyABKAkSFgoOYWZ0ZXJfc2VxdWVuY2UYBCABKAMiSgocV2F0Y2hBZ2VudFRhc2tFdmVudHNSZXNwb25zZRIqCgVldmVudBgBIAEoCzIbLndvcmtvcy5hZ2VudC52MS5BZ2VudEV2ZW50MukBCg9BcHBBZ2VudFNlcnZpY2USXQoMUnVuQWdlbnRUYXNrEiQud29ya29zLmFnZW50LnYxLlJ1bkFnZW50VGFza1JlcXVlc3QaJS53b3Jrb3MuYWdlbnQudjEuUnVuQWdlbnRUYXNrUmVzcG9uc2UiABJ3ChRXYXRjaEFnZW50VGFza0V2ZW50cxIsLndvcmtvcy5hZ2VudC52MS5XYXRjaEFnZW50VGFza0V2ZW50c1JlcXVlc3QaLS53b3Jrb3MuYWdlbnQudjEuV2F0Y2hBZ2VudFRhc2tFdmVudHNSZXNwb25zZSIAMAFCPVo7Z2l0aHViLmNvbS95YW5ndGFvMTIxL3dvcmtvcy9nZW4vZ28vd29ya29zL2FnZW50L3YxO2FnZW50djFiBnByb3RvMw", [file_workos_agent_v1_agent]);
+  fileDesc("Ch93b3Jrb3MvYWdlbnQvdjEvYXBwX2FnZW50LnByb3RvEg93b3Jrb3MuYWdlbnQudjEiowEKE1J1bkFnZW50VGFza1JlcXVlc3QSEgoKcHJvamVjdF9pZBgBIAEoCRIXCg9hcHBfaW5zdGFuY2VfaWQYAiABKAkSHgoWY2xpZW50X2lkZW1wb3RlbmN5X2tleRgDIAEoCRIMCgRyb2xlGAQgASgJEgwKBGdvYWwYBSABKAkSIwobaW5zdGFsbGF0aW9uX2dyYW50X3JldmlzaW9uGAYgASgDInQKFFJ1bkFnZW50VGFza1Jlc3BvbnNlEg8KB3Rhc2tfaWQYASABKAkSLgoFc3RhdGUYAiABKA4yHy53b3Jrb3MuYWdlbnQudjEuQWdlbnRUYXNrU3RhdGUSGwoTbGFzdF9ldmVudF9zZXF1ZW5jZRgDIAEoAyKYAQobV2F0Y2hBZ2VudFRhc2tFdmVudHNSZXF1ZXN0EhIKCnByb2plY3RfaWQYASABKAkSFwoPYXBwX2luc3RhbmNlX2lkGAIgASgJEg8KB3Rhc2tfaWQYAyABKAkSFgoOYWZ0ZXJfc2VxdWVuY2UYBCABKAMSIwobaW5zdGFsbGF0aW9uX2dyYW50X3JldmlzaW9uGAUgASgDIkoKHFdhdGNoQWdlbnRUYXNrRXZlbnRzUmVzcG9uc2USKgoFZXZlbnQYASABKAsyGy53b3Jrb3MuYWdlbnQudjEuQWdlbnRFdmVudDLpAQoPQXBwQWdlbnRTZXJ2aWNlEl0KDFJ1bkFnZW50VGFzaxIkLndvcmtvcy5hZ2VudC52MS5SdW5BZ2VudFRhc2tSZXF1ZXN0GiUud29ya29zLmFnZW50LnYxLlJ1bkFnZW50VGFza1Jlc3BvbnNlIgASdwoUV2F0Y2hBZ2VudFRhc2tFdmVudHMSLC53b3Jrb3MuYWdlbnQudjEuV2F0Y2hBZ2VudFRhc2tFdmVudHNSZXF1ZXN0Gi0ud29ya29zLmFnZW50LnYxLldhdGNoQWdlbnRUYXNrRXZlbnRzUmVzcG9uc2UiADABQj1aO2dpdGh1Yi5jb20veWFuZ3RhbzEyMS93b3Jrb3MvZ2VuL2dvL3dvcmtvcy9hZ2VudC92MTthZ2VudHYxYgZwcm90bzM", [file_workos_agent_v1_agent]);
 
 /**
  * @generated from message workos.agent.v1.RunAgentTaskRequest
@@ -54,6 +54,18 @@ export type RunAgentTaskRequest = Message<"workos.agent.v1.RunAgentTaskRequest">
    * @generated from field: string goal = 5;
    */
   goal: string;
+
+  /**
+   * Grant epoch of the installation as persisted in the validated surface
+   * session at create time. Derived by runtime-host from that snapshot only;
+   * public bridge bodies, MessageChannel envelopes, and iframe SDKs can
+   * never submit it. Core compares it for exact equality against the active
+   * installation's current grant_revision on every run call; any mismatch
+   * fails closed.
+   *
+   * @generated from field: int64 installation_grant_revision = 6;
+   */
+  installationGrantRevision: bigint;
 };
 
 /**
@@ -113,6 +125,17 @@ export type WatchAgentTaskEventsRequest = Message<"workos.agent.v1.WatchAgentTas
    * @generated from field: int64 after_sequence = 4;
    */
   afterSequence: bigint;
+
+  /**
+   * Grant epoch derived by runtime-host from the validated surface session's
+   * persisted snapshot; public callers can never submit it. Core compares it
+   * for exact equality against the active installation's current
+   * grant_revision on every polling round of the watch stream; any mismatch
+   * terminates the stream without forwarding further events.
+   *
+   * @generated from field: int64 installation_grant_revision = 5;
+   */
+  installationGrantRevision: bigint;
 };
 
 /**

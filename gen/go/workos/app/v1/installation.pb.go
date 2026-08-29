@@ -39,12 +39,20 @@ type AppInstallation struct {
 	ManifestDigest string                 `protobuf:"bytes,5,opt,name=manifest_digest,json=manifestDigest,proto3" json:"manifest_digest,omitempty"`
 	InstalledAt    *timestamppb.Timestamp `protobuf:"bytes,6,opt,name=installed_at,json=installedAt,proto3" json:"installed_at,omitempty"`
 	UninstalledAt  *timestamppb.Timestamp `protobuf:"bytes,7,opt,name=uninstalled_at,json=uninstalledAt,proto3,oneof" json:"uninstalled_at,omitempty"`
-	// Immutable install-time grant snapshot: the canonical sorted subset of the
-	// pinned version's requested permissions the user explicitly approved.
-	// Empty means no capability was granted; it never defaults to the request.
+	// The current canonical complete grant set: the user's last successful
+	// confirmation, canonical sorted and duplicate-free, always a subset of the
+	// pinned version's requested permissions. Historically an immutable
+	// install-time snapshot; since ADR-0003 it can be explicitly replaced via
+	// SetAppGrants. Empty (or omitted) means no capability was granted; it
+	// never falls back to the requested permissions.
 	GrantedPermissions []string `protobuf:"bytes,8,rep,name=granted_permissions,json=grantedPermissions,proto3" json:"granted_permissions,omitempty"`
-	unknownFields      protoimpl.UnknownFields
-	sizeCache          protoimpl.SizeCache
+	// Authorization epoch of the grant set above: starts at 1 when the
+	// installation is created and increases by exactly one only when the grant
+	// set actually changes. Core increments it inside the SetAppGrants
+	// transaction; clients can never submit or predict it.
+	GrantRevision int64 `protobuf:"varint,9,opt,name=grant_revision,json=grantRevision,proto3" json:"grant_revision,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *AppInstallation) Reset() {
@@ -131,6 +139,13 @@ func (x *AppInstallation) GetGrantedPermissions() []string {
 		return x.GrantedPermissions
 	}
 	return nil
+}
+
+func (x *AppInstallation) GetGrantRevision() int64 {
+	if x != nil {
+		return x.GrantRevision
+	}
+	return 0
 }
 
 // InstallAppRequest installs one owner-scoped app into the owner's active
@@ -502,11 +517,145 @@ func (x *ListInstalledAppsResponse) GetPage() *v1.PageResponse {
 	return nil
 }
 
+// SetAppGrantsRequest replaces one installation's entire grant set. The
+// request is a full replacement, not an incremental add/remove patch: the
+// granted_permissions field carries the complete final set the user wants.
+type SetAppGrantsRequest struct {
+	state                   protoimpl.MessageState `protogen:"open.v1"`
+	IdempotencyKey          string                 `protobuf:"bytes,1,opt,name=idempotency_key,json=idempotencyKey,proto3" json:"idempotency_key,omitempty"`
+	ProjectId               string                 `protobuf:"bytes,2,opt,name=project_id,json=projectId,proto3" json:"project_id,omitempty"`
+	InstallationId          string                 `protobuf:"bytes,3,opt,name=installation_id,json=installationId,proto3" json:"installation_id,omitempty"`
+	ExpectedProjectRevision int64                  `protobuf:"varint,4,opt,name=expected_project_revision,json=expectedProjectRevision,proto3" json:"expected_project_revision,omitempty"`
+	// Complete replacement target set (canonical sorted, duplicate-free subset
+	// of the pinned version's requested permissions). Empty (or omitted) means
+	// revoke all; it never falls back to requested permissions.
+	GrantedPermissions []string `protobuf:"bytes,5,rep,name=granted_permissions,json=grantedPermissions,proto3" json:"granted_permissions,omitempty"`
+	unknownFields      protoimpl.UnknownFields
+	sizeCache          protoimpl.SizeCache
+}
+
+func (x *SetAppGrantsRequest) Reset() {
+	*x = SetAppGrantsRequest{}
+	mi := &file_workos_app_v1_installation_proto_msgTypes[7]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SetAppGrantsRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SetAppGrantsRequest) ProtoMessage() {}
+
+func (x *SetAppGrantsRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_workos_app_v1_installation_proto_msgTypes[7]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SetAppGrantsRequest.ProtoReflect.Descriptor instead.
+func (*SetAppGrantsRequest) Descriptor() ([]byte, []int) {
+	return file_workos_app_v1_installation_proto_rawDescGZIP(), []int{7}
+}
+
+func (x *SetAppGrantsRequest) GetIdempotencyKey() string {
+	if x != nil {
+		return x.IdempotencyKey
+	}
+	return ""
+}
+
+func (x *SetAppGrantsRequest) GetProjectId() string {
+	if x != nil {
+		return x.ProjectId
+	}
+	return ""
+}
+
+func (x *SetAppGrantsRequest) GetInstallationId() string {
+	if x != nil {
+		return x.InstallationId
+	}
+	return ""
+}
+
+func (x *SetAppGrantsRequest) GetExpectedProjectRevision() int64 {
+	if x != nil {
+		return x.ExpectedProjectRevision
+	}
+	return 0
+}
+
+func (x *SetAppGrantsRequest) GetGrantedPermissions() []string {
+	if x != nil {
+		return x.GrantedPermissions
+	}
+	return nil
+}
+
+type SetAppGrantsResponse struct {
+	state           protoimpl.MessageState `protogen:"open.v1"`
+	Installation    *AppInstallation       `protobuf:"bytes,1,opt,name=installation,proto3" json:"installation,omitempty"`
+	ProjectRevision int64                  `protobuf:"varint,2,opt,name=project_revision,json=projectRevision,proto3" json:"project_revision,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
+}
+
+func (x *SetAppGrantsResponse) Reset() {
+	*x = SetAppGrantsResponse{}
+	mi := &file_workos_app_v1_installation_proto_msgTypes[8]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SetAppGrantsResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SetAppGrantsResponse) ProtoMessage() {}
+
+func (x *SetAppGrantsResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_workos_app_v1_installation_proto_msgTypes[8]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SetAppGrantsResponse.ProtoReflect.Descriptor instead.
+func (*SetAppGrantsResponse) Descriptor() ([]byte, []int) {
+	return file_workos_app_v1_installation_proto_rawDescGZIP(), []int{8}
+}
+
+func (x *SetAppGrantsResponse) GetInstallation() *AppInstallation {
+	if x != nil {
+		return x.Installation
+	}
+	return nil
+}
+
+func (x *SetAppGrantsResponse) GetProjectRevision() int64 {
+	if x != nil {
+		return x.ProjectRevision
+	}
+	return 0
+}
+
 var File_workos_app_v1_installation_proto protoreflect.FileDescriptor
 
 const file_workos_app_v1_installation_proto_rawDesc = "" +
 	"\n" +
-	" workos/app/v1/installation.proto\x12\rworkos.app.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1dworkos/common/v1/common.proto\"\xe5\x02\n" +
+	" workos/app/v1/installation.proto\x12\rworkos.app.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1dworkos/common/v1/common.proto\"\x8c\x03\n" +
 	"\x0fAppInstallation\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x1d\n" +
 	"\n" +
@@ -516,7 +665,8 @@ const file_workos_app_v1_installation_proto_rawDesc = "" +
 	"\x0fmanifest_digest\x18\x05 \x01(\tR\x0emanifestDigest\x12=\n" +
 	"\finstalled_at\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampR\vinstalledAt\x12F\n" +
 	"\x0euninstalled_at\x18\a \x01(\v2\x1a.google.protobuf.TimestampH\x00R\runinstalledAt\x88\x01\x01\x12/\n" +
-	"\x13granted_permissions\x18\b \x03(\tR\x12grantedPermissionsB\x11\n" +
+	"\x13granted_permissions\x18\b \x03(\tR\x12grantedPermissions\x12%\n" +
+	"\x0egrant_revision\x18\t \x01(\x03R\rgrantRevisionB\x11\n" +
 	"\x0f_uninstalled_at\"\xf9\x01\n" +
 	"\x11InstallAppRequest\x12'\n" +
 	"\x0fidempotency_key\x18\x01 \x01(\tR\x0eidempotencyKey\x12\x1d\n" +
@@ -544,12 +694,23 @@ const file_workos_app_v1_installation_proto_rawDesc = "" +
 	"\x04page\x18\x02 \x01(\v2\x1d.workos.common.v1.PageRequestR\x04page\"\x95\x01\n" +
 	"\x19ListInstalledAppsResponse\x12D\n" +
 	"\rinstallations\x18\x01 \x03(\v2\x1e.workos.app.v1.AppInstallationR\rinstallations\x122\n" +
-	"\x04page\x18\x02 \x01(\v2\x1e.workos.common.v1.PageResponseR\x04page2\xb2\x02\n" +
+	"\x04page\x18\x02 \x01(\v2\x1e.workos.common.v1.PageResponseR\x04page\"\xf3\x01\n" +
+	"\x13SetAppGrantsRequest\x12'\n" +
+	"\x0fidempotency_key\x18\x01 \x01(\tR\x0eidempotencyKey\x12\x1d\n" +
+	"\n" +
+	"project_id\x18\x02 \x01(\tR\tprojectId\x12'\n" +
+	"\x0finstallation_id\x18\x03 \x01(\tR\x0einstallationId\x12:\n" +
+	"\x19expected_project_revision\x18\x04 \x01(\x03R\x17expectedProjectRevision\x12/\n" +
+	"\x13granted_permissions\x18\x05 \x03(\tR\x12grantedPermissions\"\x85\x01\n" +
+	"\x14SetAppGrantsResponse\x12B\n" +
+	"\finstallation\x18\x01 \x01(\v2\x1e.workos.app.v1.AppInstallationR\finstallation\x12)\n" +
+	"\x10project_revision\x18\x02 \x01(\x03R\x0fprojectRevision2\x8d\x03\n" +
 	"\x16AppInstallationService\x12S\n" +
 	"\n" +
 	"InstallApp\x12 .workos.app.v1.InstallAppRequest\x1a!.workos.app.v1.InstallAppResponse\"\x00\x12Y\n" +
 	"\fUninstallApp\x12\".workos.app.v1.UninstallAppRequest\x1a#.workos.app.v1.UninstallAppResponse\"\x00\x12h\n" +
-	"\x11ListInstalledApps\x12'.workos.app.v1.ListInstalledAppsRequest\x1a(.workos.app.v1.ListInstalledAppsResponse\"\x00B9Z7github.com/yangtao121/workos/gen/go/workos/app/v1;appv1b\x06proto3"
+	"\x11ListInstalledApps\x12'.workos.app.v1.ListInstalledAppsRequest\x1a(.workos.app.v1.ListInstalledAppsResponse\"\x00\x12Y\n" +
+	"\fSetAppGrants\x12\".workos.app.v1.SetAppGrantsRequest\x1a#.workos.app.v1.SetAppGrantsResponse\"\x00B9Z7github.com/yangtao121/workos/gen/go/workos/app/v1;appv1b\x06proto3"
 
 var (
 	file_workos_app_v1_installation_proto_rawDescOnce sync.Once
@@ -563,7 +724,7 @@ func file_workos_app_v1_installation_proto_rawDescGZIP() []byte {
 	return file_workos_app_v1_installation_proto_rawDescData
 }
 
-var file_workos_app_v1_installation_proto_msgTypes = make([]protoimpl.MessageInfo, 7)
+var file_workos_app_v1_installation_proto_msgTypes = make([]protoimpl.MessageInfo, 9)
 var file_workos_app_v1_installation_proto_goTypes = []any{
 	(*AppInstallation)(nil),           // 0: workos.app.v1.AppInstallation
 	(*InstallAppRequest)(nil),         // 1: workos.app.v1.InstallAppRequest
@@ -572,29 +733,34 @@ var file_workos_app_v1_installation_proto_goTypes = []any{
 	(*UninstallAppResponse)(nil),      // 4: workos.app.v1.UninstallAppResponse
 	(*ListInstalledAppsRequest)(nil),  // 5: workos.app.v1.ListInstalledAppsRequest
 	(*ListInstalledAppsResponse)(nil), // 6: workos.app.v1.ListInstalledAppsResponse
-	(*timestamppb.Timestamp)(nil),     // 7: google.protobuf.Timestamp
-	(*v1.PageRequest)(nil),            // 8: workos.common.v1.PageRequest
-	(*v1.PageResponse)(nil),           // 9: workos.common.v1.PageResponse
+	(*SetAppGrantsRequest)(nil),       // 7: workos.app.v1.SetAppGrantsRequest
+	(*SetAppGrantsResponse)(nil),      // 8: workos.app.v1.SetAppGrantsResponse
+	(*timestamppb.Timestamp)(nil),     // 9: google.protobuf.Timestamp
+	(*v1.PageRequest)(nil),            // 10: workos.common.v1.PageRequest
+	(*v1.PageResponse)(nil),           // 11: workos.common.v1.PageResponse
 }
 var file_workos_app_v1_installation_proto_depIdxs = []int32{
-	7,  // 0: workos.app.v1.AppInstallation.installed_at:type_name -> google.protobuf.Timestamp
-	7,  // 1: workos.app.v1.AppInstallation.uninstalled_at:type_name -> google.protobuf.Timestamp
+	9,  // 0: workos.app.v1.AppInstallation.installed_at:type_name -> google.protobuf.Timestamp
+	9,  // 1: workos.app.v1.AppInstallation.uninstalled_at:type_name -> google.protobuf.Timestamp
 	0,  // 2: workos.app.v1.InstallAppResponse.installation:type_name -> workos.app.v1.AppInstallation
 	0,  // 3: workos.app.v1.UninstallAppResponse.installation:type_name -> workos.app.v1.AppInstallation
-	8,  // 4: workos.app.v1.ListInstalledAppsRequest.page:type_name -> workos.common.v1.PageRequest
+	10, // 4: workos.app.v1.ListInstalledAppsRequest.page:type_name -> workos.common.v1.PageRequest
 	0,  // 5: workos.app.v1.ListInstalledAppsResponse.installations:type_name -> workos.app.v1.AppInstallation
-	9,  // 6: workos.app.v1.ListInstalledAppsResponse.page:type_name -> workos.common.v1.PageResponse
-	1,  // 7: workos.app.v1.AppInstallationService.InstallApp:input_type -> workos.app.v1.InstallAppRequest
-	3,  // 8: workos.app.v1.AppInstallationService.UninstallApp:input_type -> workos.app.v1.UninstallAppRequest
-	5,  // 9: workos.app.v1.AppInstallationService.ListInstalledApps:input_type -> workos.app.v1.ListInstalledAppsRequest
-	2,  // 10: workos.app.v1.AppInstallationService.InstallApp:output_type -> workos.app.v1.InstallAppResponse
-	4,  // 11: workos.app.v1.AppInstallationService.UninstallApp:output_type -> workos.app.v1.UninstallAppResponse
-	6,  // 12: workos.app.v1.AppInstallationService.ListInstalledApps:output_type -> workos.app.v1.ListInstalledAppsResponse
-	10, // [10:13] is the sub-list for method output_type
-	7,  // [7:10] is the sub-list for method input_type
-	7,  // [7:7] is the sub-list for extension type_name
-	7,  // [7:7] is the sub-list for extension extendee
-	0,  // [0:7] is the sub-list for field type_name
+	11, // 6: workos.app.v1.ListInstalledAppsResponse.page:type_name -> workos.common.v1.PageResponse
+	0,  // 7: workos.app.v1.SetAppGrantsResponse.installation:type_name -> workos.app.v1.AppInstallation
+	1,  // 8: workos.app.v1.AppInstallationService.InstallApp:input_type -> workos.app.v1.InstallAppRequest
+	3,  // 9: workos.app.v1.AppInstallationService.UninstallApp:input_type -> workos.app.v1.UninstallAppRequest
+	5,  // 10: workos.app.v1.AppInstallationService.ListInstalledApps:input_type -> workos.app.v1.ListInstalledAppsRequest
+	7,  // 11: workos.app.v1.AppInstallationService.SetAppGrants:input_type -> workos.app.v1.SetAppGrantsRequest
+	2,  // 12: workos.app.v1.AppInstallationService.InstallApp:output_type -> workos.app.v1.InstallAppResponse
+	4,  // 13: workos.app.v1.AppInstallationService.UninstallApp:output_type -> workos.app.v1.UninstallAppResponse
+	6,  // 14: workos.app.v1.AppInstallationService.ListInstalledApps:output_type -> workos.app.v1.ListInstalledAppsResponse
+	8,  // 15: workos.app.v1.AppInstallationService.SetAppGrants:output_type -> workos.app.v1.SetAppGrantsResponse
+	12, // [12:16] is the sub-list for method output_type
+	8,  // [8:12] is the sub-list for method input_type
+	8,  // [8:8] is the sub-list for extension type_name
+	8,  // [8:8] is the sub-list for extension extendee
+	0,  // [0:8] is the sub-list for field type_name
 }
 
 func init() { file_workos_app_v1_installation_proto_init() }
@@ -609,7 +775,7 @@ func file_workos_app_v1_installation_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_workos_app_v1_installation_proto_rawDesc), len(file_workos_app_v1_installation_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   7,
+			NumMessages:   9,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

@@ -38,8 +38,15 @@ type RunAgentTaskRequest struct {
 	ClientIdempotencyKey string `protobuf:"bytes,3,opt,name=client_idempotency_key,json=clientIdempotencyKey,proto3" json:"client_idempotency_key,omitempty"`
 	Role                 string `protobuf:"bytes,4,opt,name=role,proto3" json:"role,omitempty"`
 	Goal                 string `protobuf:"bytes,5,opt,name=goal,proto3" json:"goal,omitempty"`
-	unknownFields        protoimpl.UnknownFields
-	sizeCache            protoimpl.SizeCache
+	// Grant epoch of the installation as persisted in the validated surface
+	// session at create time. Derived by runtime-host from that snapshot only;
+	// public bridge bodies, MessageChannel envelopes, and iframe SDKs can
+	// never submit it. Core compares it for exact equality against the active
+	// installation's current grant_revision on every run call; any mismatch
+	// fails closed.
+	InstallationGrantRevision int64 `protobuf:"varint,6,opt,name=installation_grant_revision,json=installationGrantRevision,proto3" json:"installation_grant_revision,omitempty"`
+	unknownFields             protoimpl.UnknownFields
+	sizeCache                 protoimpl.SizeCache
 }
 
 func (x *RunAgentTaskRequest) Reset() {
@@ -105,6 +112,13 @@ func (x *RunAgentTaskRequest) GetGoal() string {
 		return x.Goal
 	}
 	return ""
+}
+
+func (x *RunAgentTaskRequest) GetInstallationGrantRevision() int64 {
+	if x != nil {
+		return x.InstallationGrantRevision
+	}
+	return 0
 }
 
 type RunAgentTaskResponse struct {
@@ -173,8 +187,14 @@ type WatchAgentTaskEventsRequest struct {
 	AppInstanceId string                 `protobuf:"bytes,2,opt,name=app_instance_id,json=appInstanceId,proto3" json:"app_instance_id,omitempty"`
 	TaskId        string                 `protobuf:"bytes,3,opt,name=task_id,json=taskId,proto3" json:"task_id,omitempty"`
 	AfterSequence int64                  `protobuf:"varint,4,opt,name=after_sequence,json=afterSequence,proto3" json:"after_sequence,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	// Grant epoch derived by runtime-host from the validated surface session's
+	// persisted snapshot; public callers can never submit it. Core compares it
+	// for exact equality against the active installation's current
+	// grant_revision on every polling round of the watch stream; any mismatch
+	// terminates the stream without forwarding further events.
+	InstallationGrantRevision int64 `protobuf:"varint,5,opt,name=installation_grant_revision,json=installationGrantRevision,proto3" json:"installation_grant_revision,omitempty"`
+	unknownFields             protoimpl.UnknownFields
+	sizeCache                 protoimpl.SizeCache
 }
 
 func (x *WatchAgentTaskEventsRequest) Reset() {
@@ -235,6 +255,13 @@ func (x *WatchAgentTaskEventsRequest) GetAfterSequence() int64 {
 	return 0
 }
 
+func (x *WatchAgentTaskEventsRequest) GetInstallationGrantRevision() int64 {
+	if x != nil {
+		return x.InstallationGrantRevision
+	}
+	return 0
+}
+
 type WatchAgentTaskEventsResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Event         *AgentEvent            `protobuf:"bytes,1,opt,name=event,proto3" json:"event,omitempty"`
@@ -283,24 +310,26 @@ var File_workos_agent_v1_app_agent_proto protoreflect.FileDescriptor
 
 const file_workos_agent_v1_app_agent_proto_rawDesc = "" +
 	"\n" +
-	"\x1fworkos/agent/v1/app_agent.proto\x12\x0fworkos.agent.v1\x1a\x1bworkos/agent/v1/agent.proto\"\xba\x01\n" +
+	"\x1fworkos/agent/v1/app_agent.proto\x12\x0fworkos.agent.v1\x1a\x1bworkos/agent/v1/agent.proto\"\xfa\x01\n" +
 	"\x13RunAgentTaskRequest\x12\x1d\n" +
 	"\n" +
 	"project_id\x18\x01 \x01(\tR\tprojectId\x12&\n" +
 	"\x0fapp_instance_id\x18\x02 \x01(\tR\rappInstanceId\x124\n" +
 	"\x16client_idempotency_key\x18\x03 \x01(\tR\x14clientIdempotencyKey\x12\x12\n" +
 	"\x04role\x18\x04 \x01(\tR\x04role\x12\x12\n" +
-	"\x04goal\x18\x05 \x01(\tR\x04goal\"\x96\x01\n" +
+	"\x04goal\x18\x05 \x01(\tR\x04goal\x12>\n" +
+	"\x1binstallation_grant_revision\x18\x06 \x01(\x03R\x19installationGrantRevision\"\x96\x01\n" +
 	"\x14RunAgentTaskResponse\x12\x17\n" +
 	"\atask_id\x18\x01 \x01(\tR\x06taskId\x125\n" +
 	"\x05state\x18\x02 \x01(\x0e2\x1f.workos.agent.v1.AgentTaskStateR\x05state\x12.\n" +
-	"\x13last_event_sequence\x18\x03 \x01(\x03R\x11lastEventSequence\"\xa4\x01\n" +
+	"\x13last_event_sequence\x18\x03 \x01(\x03R\x11lastEventSequence\"\xe4\x01\n" +
 	"\x1bWatchAgentTaskEventsRequest\x12\x1d\n" +
 	"\n" +
 	"project_id\x18\x01 \x01(\tR\tprojectId\x12&\n" +
 	"\x0fapp_instance_id\x18\x02 \x01(\tR\rappInstanceId\x12\x17\n" +
 	"\atask_id\x18\x03 \x01(\tR\x06taskId\x12%\n" +
-	"\x0eafter_sequence\x18\x04 \x01(\x03R\rafterSequence\"Q\n" +
+	"\x0eafter_sequence\x18\x04 \x01(\x03R\rafterSequence\x12>\n" +
+	"\x1binstallation_grant_revision\x18\x05 \x01(\x03R\x19installationGrantRevision\"Q\n" +
 	"\x1cWatchAgentTaskEventsResponse\x121\n" +
 	"\x05event\x18\x01 \x01(\v2\x1b.workos.agent.v1.AgentEventR\x05event2\xe9\x01\n" +
 	"\x0fAppAgentService\x12]\n" +

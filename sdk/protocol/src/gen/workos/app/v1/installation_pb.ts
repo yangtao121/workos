@@ -14,7 +14,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file workos/app/v1/installation.proto.
  */
 export const file_workos_app_v1_installation: GenFile = /*@__PURE__*/
-  fileDesc("CiB3b3Jrb3MvYXBwL3YxL2luc3RhbGxhdGlvbi5wcm90bxINd29ya29zLmFwcC52MSKGAgoPQXBwSW5zdGFsbGF0aW9uEgoKAmlkGAEgASgJEhIKCnByb2plY3RfaWQYAiABKAkSDgoGYXBwX2lkGAMgASgJEg8KB3ZlcnNpb24YBCABKAkSFwoPbWFuaWZlc3RfZGlnZXN0GAUgASgJEjAKDGluc3RhbGxlZF9hdBgGIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXASNwoOdW5pbnN0YWxsZWRfYXQYByABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wSACIAQESGwoTZ3JhbnRlZF9wZXJtaXNzaW9ucxgIIAMoCUIRCg9fdW5pbnN0YWxsZWRfYXQioQEKEUluc3RhbGxBcHBSZXF1ZXN0EhcKD2lkZW1wb3RlbmN5X2tleRgBIAEoCRISCgpwcm9qZWN0X2lkGAIgASgJEg4KBmFwcF9pZBgDIAEoCRIPCgd2ZXJzaW9uGAQgASgJEiEKGWV4cGVjdGVkX3Byb2plY3RfcmV2aXNpb24YBSABKAMSGwoTZ3JhbnRlZF9wZXJtaXNzaW9ucxgGIAMoCSJkChJJbnN0YWxsQXBwUmVzcG9uc2USNAoMaW5zdGFsbGF0aW9uGAEgASgLMh4ud29ya29zLmFwcC52MS5BcHBJbnN0YWxsYXRpb24SGAoQcHJvamVjdF9yZXZpc2lvbhgCIAEoAyJ+ChNVbmluc3RhbGxBcHBSZXF1ZXN0EhcKD2lkZW1wb3RlbmN5X2tleRgBIAEoCRISCgpwcm9qZWN0X2lkGAIgASgJEhcKD2luc3RhbGxhdGlvbl9pZBgDIAEoCRIhChlleHBlY3RlZF9wcm9qZWN0X3JldmlzaW9uGAQgASgDImYKFFVuaW5zdGFsbEFwcFJlc3BvbnNlEjQKDGluc3RhbGxhdGlvbhgBIAEoCzIeLndvcmtvcy5hcHAudjEuQXBwSW5zdGFsbGF0aW9uEhgKEHByb2plY3RfcmV2aXNpb24YAiABKAMiWwoYTGlzdEluc3RhbGxlZEFwcHNSZXF1ZXN0EhIKCnByb2plY3RfaWQYASABKAkSKwoEcGFnZRgCIAEoCzIdLndvcmtvcy5jb21tb24udjEuUGFnZVJlcXVlc3QigAEKGUxpc3RJbnN0YWxsZWRBcHBzUmVzcG9uc2USNQoNaW5zdGFsbGF0aW9ucxgBIAMoCzIeLndvcmtvcy5hcHAudjEuQXBwSW5zdGFsbGF0aW9uEiwKBHBhZ2UYAiABKAsyHi53b3Jrb3MuY29tbW9uLnYxLlBhZ2VSZXNwb25zZTKyAgoWQXBwSW5zdGFsbGF0aW9uU2VydmljZRJTCgpJbnN0YWxsQXBwEiAud29ya29zLmFwcC52MS5JbnN0YWxsQXBwUmVxdWVzdBohLndvcmtvcy5hcHAudjEuSW5zdGFsbEFwcFJlc3BvbnNlIgASWQoMVW5pbnN0YWxsQXBwEiIud29ya29zLmFwcC52MS5Vbmluc3RhbGxBcHBSZXF1ZXN0GiMud29ya29zLmFwcC52MS5Vbmluc3RhbGxBcHBSZXNwb25zZSIAEmgKEUxpc3RJbnN0YWxsZWRBcHBzEicud29ya29zLmFwcC52MS5MaXN0SW5zdGFsbGVkQXBwc1JlcXVlc3QaKC53b3Jrb3MuYXBwLnYxLkxpc3RJbnN0YWxsZWRBcHBzUmVzcG9uc2UiAEI5WjdnaXRodWIuY29tL3lhbmd0YW8xMjEvd29ya29zL2dlbi9nby93b3Jrb3MvYXBwL3YxO2FwcHYxYgZwcm90bzM", [file_google_protobuf_timestamp, file_workos_common_v1_common]);
+  fileDesc("CiB3b3Jrb3MvYXBwL3YxL2luc3RhbGxhdGlvbi5wcm90bxINd29ya29zLmFwcC52MSKeAgoPQXBwSW5zdGFsbGF0aW9uEgoKAmlkGAEgASgJEhIKCnByb2plY3RfaWQYAiABKAkSDgoGYXBwX2lkGAMgASgJEg8KB3ZlcnNpb24YBCABKAkSFwoPbWFuaWZlc3RfZGlnZXN0GAUgASgJEjAKDGluc3RhbGxlZF9hdBgGIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXASNwoOdW5pbnN0YWxsZWRfYXQYByABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wSACIAQESGwoTZ3JhbnRlZF9wZXJtaXNzaW9ucxgIIAMoCRIWCg5ncmFudF9yZXZpc2lvbhgJIAEoA0IRCg9fdW5pbnN0YWxsZWRfYXQioQEKEUluc3RhbGxBcHBSZXF1ZXN0EhcKD2lkZW1wb3RlbmN5X2tleRgBIAEoCRISCgpwcm9qZWN0X2lkGAIgASgJEg4KBmFwcF9pZBgDIAEoCRIPCgd2ZXJzaW9uGAQgASgJEiEKGWV4cGVjdGVkX3Byb2plY3RfcmV2aXNpb24YBSABKAMSGwoTZ3JhbnRlZF9wZXJtaXNzaW9ucxgGIAMoCSJkChJJbnN0YWxsQXBwUmVzcG9uc2USNAoMaW5zdGFsbGF0aW9uGAEgASgLMh4ud29ya29zLmFwcC52MS5BcHBJbnN0YWxsYXRpb24SGAoQcHJvamVjdF9yZXZpc2lvbhgCIAEoAyJ+ChNVbmluc3RhbGxBcHBSZXF1ZXN0EhcKD2lkZW1wb3RlbmN5X2tleRgBIAEoCRISCgpwcm9qZWN0X2lkGAIgASgJEhcKD2luc3RhbGxhdGlvbl9pZBgDIAEoCRIhChlleHBlY3RlZF9wcm9qZWN0X3JldmlzaW9uGAQgASgDImYKFFVuaW5zdGFsbEFwcFJlc3BvbnNlEjQKDGluc3RhbGxhdGlvbhgBIAEoCzIeLndvcmtvcy5hcHAudjEuQXBwSW5zdGFsbGF0aW9uEhgKEHByb2plY3RfcmV2aXNpb24YAiABKAMiWwoYTGlzdEluc3RhbGxlZEFwcHNSZXF1ZXN0EhIKCnByb2plY3RfaWQYASABKAkSKwoEcGFnZRgCIAEoCzIdLndvcmtvcy5jb21tb24udjEuUGFnZVJlcXVlc3QigAEKGUxpc3RJbnN0YWxsZWRBcHBzUmVzcG9uc2USNQoNaW5zdGFsbGF0aW9ucxgBIAMoCzIeLndvcmtvcy5hcHAudjEuQXBwSW5zdGFsbGF0aW9uEiwKBHBhZ2UYAiABKAsyHi53b3Jrb3MuY29tbW9uLnYxLlBhZ2VSZXNwb25zZSKbAQoTU2V0QXBwR3JhbnRzUmVxdWVzdBIXCg9pZGVtcG90ZW5jeV9rZXkYASABKAkSEgoKcHJvamVjdF9pZBgCIAEoCRIXCg9pbnN0YWxsYXRpb25faWQYAyABKAkSIQoZZXhwZWN0ZWRfcHJvamVjdF9yZXZpc2lvbhgEIAEoAxIbChNncmFudGVkX3Blcm1pc3Npb25zGAUgAygJImYKFFNldEFwcEdyYW50c1Jlc3BvbnNlEjQKDGluc3RhbGxhdGlvbhgBIAEoCzIeLndvcmtvcy5hcHAudjEuQXBwSW5zdGFsbGF0aW9uEhgKEHByb2plY3RfcmV2aXNpb24YAiABKAMyjQMKFkFwcEluc3RhbGxhdGlvblNlcnZpY2USUwoKSW5zdGFsbEFwcBIgLndvcmtvcy5hcHAudjEuSW5zdGFsbEFwcFJlcXVlc3QaIS53b3Jrb3MuYXBwLnYxLkluc3RhbGxBcHBSZXNwb25zZSIAElkKDFVuaW5zdGFsbEFwcBIiLndvcmtvcy5hcHAudjEuVW5pbnN0YWxsQXBwUmVxdWVzdBojLndvcmtvcy5hcHAudjEuVW5pbnN0YWxsQXBwUmVzcG9uc2UiABJoChFMaXN0SW5zdGFsbGVkQXBwcxInLndvcmtvcy5hcHAudjEuTGlzdEluc3RhbGxlZEFwcHNSZXF1ZXN0Gigud29ya29zLmFwcC52MS5MaXN0SW5zdGFsbGVkQXBwc1Jlc3BvbnNlIgASWQoMU2V0QXBwR3JhbnRzEiIud29ya29zLmFwcC52MS5TZXRBcHBHcmFudHNSZXF1ZXN0GiMud29ya29zLmFwcC52MS5TZXRBcHBHcmFudHNSZXNwb25zZSIAQjlaN2dpdGh1Yi5jb20veWFuZ3RhbzEyMS93b3Jrb3MvZ2VuL2dvL3dvcmtvcy9hcHAvdjE7YXBwdjFiBnByb3RvMw", [file_google_protobuf_timestamp, file_workos_common_v1_common]);
 
 /**
  * AppInstallation is the durable instance identity of one registered app
@@ -65,13 +65,26 @@ export type AppInstallation = Message<"workos.app.v1.AppInstallation"> & {
   uninstalledAt?: Timestamp | undefined;
 
   /**
-   * Immutable install-time grant snapshot: the canonical sorted subset of the
-   * pinned version's requested permissions the user explicitly approved.
-   * Empty means no capability was granted; it never defaults to the request.
+   * The current canonical complete grant set: the user's last successful
+   * confirmation, canonical sorted and duplicate-free, always a subset of the
+   * pinned version's requested permissions. Historically an immutable
+   * install-time snapshot; since ADR-0003 it can be explicitly replaced via
+   * SetAppGrants. Empty (or omitted) means no capability was granted; it
+   * never falls back to the requested permissions.
    *
    * @generated from field: repeated string granted_permissions = 8;
    */
   grantedPermissions: string[];
+
+  /**
+   * Authorization epoch of the grant set above: starts at 1 when the
+   * installation is created and increases by exactly one only when the grant
+   * set actually changes. Core increments it inside the SetAppGrants
+   * transaction; clients can never submit or predict it.
+   *
+   * @generated from field: int64 grant_revision = 9;
+   */
+  grantRevision: bigint;
 };
 
 /**
@@ -256,6 +269,73 @@ export const ListInstalledAppsResponseSchema: GenMessage<ListInstalledAppsRespon
   messageDesc(file_workos_app_v1_installation, 6);
 
 /**
+ * SetAppGrantsRequest replaces one installation's entire grant set. The
+ * request is a full replacement, not an incremental add/remove patch: the
+ * granted_permissions field carries the complete final set the user wants.
+ *
+ * @generated from message workos.app.v1.SetAppGrantsRequest
+ */
+export type SetAppGrantsRequest = Message<"workos.app.v1.SetAppGrantsRequest"> & {
+  /**
+   * @generated from field: string idempotency_key = 1;
+   */
+  idempotencyKey: string;
+
+  /**
+   * @generated from field: string project_id = 2;
+   */
+  projectId: string;
+
+  /**
+   * @generated from field: string installation_id = 3;
+   */
+  installationId: string;
+
+  /**
+   * @generated from field: int64 expected_project_revision = 4;
+   */
+  expectedProjectRevision: bigint;
+
+  /**
+   * Complete replacement target set (canonical sorted, duplicate-free subset
+   * of the pinned version's requested permissions). Empty (or omitted) means
+   * revoke all; it never falls back to requested permissions.
+   *
+   * @generated from field: repeated string granted_permissions = 5;
+   */
+  grantedPermissions: string[];
+};
+
+/**
+ * Describes the message workos.app.v1.SetAppGrantsRequest.
+ * Use `create(SetAppGrantsRequestSchema)` to create a new message.
+ */
+export const SetAppGrantsRequestSchema: GenMessage<SetAppGrantsRequest> = /*@__PURE__*/
+  messageDesc(file_workos_app_v1_installation, 7);
+
+/**
+ * @generated from message workos.app.v1.SetAppGrantsResponse
+ */
+export type SetAppGrantsResponse = Message<"workos.app.v1.SetAppGrantsResponse"> & {
+  /**
+   * @generated from field: workos.app.v1.AppInstallation installation = 1;
+   */
+  installation?: AppInstallation | undefined;
+
+  /**
+   * @generated from field: int64 project_revision = 2;
+   */
+  projectRevision: bigint;
+};
+
+/**
+ * Describes the message workos.app.v1.SetAppGrantsResponse.
+ * Use `create(SetAppGrantsResponseSchema)` to create a new message.
+ */
+export const SetAppGrantsResponseSchema: GenMessage<SetAppGrantsResponse> = /*@__PURE__*/
+  messageDesc(file_workos_app_v1_installation, 8);
+
+/**
  * @generated from service workos.app.v1.AppInstallationService
  */
 export const AppInstallationService: GenService<{
@@ -282,6 +362,23 @@ export const AppInstallationService: GenService<{
     methodKind: "unary";
     input: typeof ListInstalledAppsRequestSchema;
     output: typeof ListInstalledAppsResponseSchema;
+  },
+  /**
+   * SetAppGrants replaces the installation's whole grant set in one command.
+   * A target set equal to the current grant is a deterministic no-op: the
+   * idempotency key is still durably consumed and replays exactly, but the
+   * project revision, grant revision, events, and timestamps do not change.
+   * A real change bumps both revisions by exactly one and commits the
+   * installation update, project event, outbox, and idempotency result in a
+   * single transaction. The command is serialized against every other
+   * project mutation by expected_project_revision.
+   *
+   * @generated from rpc workos.app.v1.AppInstallationService.SetAppGrants
+   */
+  setAppGrants: {
+    methodKind: "unary";
+    input: typeof SetAppGrantsRequestSchema;
+    output: typeof SetAppGrantsResponseSchema;
   },
 }> = /*@__PURE__*/
   serviceDesc(file_workos_app_v1_installation, 0);

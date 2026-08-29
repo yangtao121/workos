@@ -27,14 +27,3 @@ type WorkosCoreProject struct {
 	UpdatedAt             pgtype.Timestamptz `json:"updated_at"`
 	ArchivedAt            pgtype.Timestamptz `json:"archived_at"`
 }
-
-type WorkosCoreProjectAppInstallationRequest struct {
-	OwnerUserID         string             `json:"owner_user_id"`
-	IdempotencyKey      string             `json:"idempotency_key"`
-	Command             string             `json:"command"`
-	RequestDigest       string             `json:"request_digest"`
-	InstallationID      string             `json:"installation_id"`
-	ProjectRevision     int64              `json:"project_revision"`
-	ResultUninstalledAt pgtype.Timestamptz `json:"result_uninstalled_at"`
-	CreatedAt           pgtype.Timestamptz `json:"created_at"`
-}

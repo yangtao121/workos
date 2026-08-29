@@ -65,15 +65,17 @@ INSERT INTO workos_events.outbox (
 
 -- name: GetInstallationRequest :one
 SELECT owner_user_id, idempotency_key, command, request_digest, installation_id,
-       project_revision, result_uninstalled_at, created_at
+       project_revision, result_uninstalled_at, result_granted_permissions,
+       result_grant_revision, created_at
 FROM workos_core.project_app_installation_requests
 WHERE owner_user_id = $1 AND idempotency_key = $2;
 
 -- name: InsertInstallationRequest :execrows
 INSERT INTO workos_core.project_app_installation_requests (
     owner_user_id, idempotency_key, command, request_digest, installation_id,
-    project_revision, result_uninstalled_at, created_at
-) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+    project_revision, result_uninstalled_at, result_granted_permissions,
+    result_grant_revision, created_at
+) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
 ON CONFLICT (owner_user_id, idempotency_key) DO NOTHING;
 
 -- name: LockProjectForInstallation :one
@@ -83,17 +85,17 @@ WHERE owner_user_id = $1 AND id = $2
 FOR UPDATE;
 
 -- name: GetActiveInstallationByApp :one
-SELECT id, owner_user_id, project_id, app_id, version, manifest_digest, granted_permissions, installed_at, uninstalled_at
+SELECT id, owner_user_id, project_id, app_id, version, manifest_digest, granted_permissions, grant_revision, installed_at, uninstalled_at
 FROM workos_core.project_app_installations
 WHERE project_id = $1 AND app_id = $2 AND uninstalled_at IS NULL;
 
 -- name: GetInstallationById :one
-SELECT id, owner_user_id, project_id, app_id, version, manifest_digest, granted_permissions, installed_at, uninstalled_at
+SELECT id, owner_user_id, project_id, app_id, version, manifest_digest, granted_permissions, grant_revision, installed_at, uninstalled_at
 FROM workos_core.project_app_installations
 WHERE owner_user_id = $1 AND id = $2;
 
 -- name: ResolveActiveInstallation :one
-SELECT i.id, i.owner_user_id, i.project_id, i.app_id, i.version, i.manifest_digest, i.granted_permissions, i.installed_at, i.uninstalled_at
+SELECT i.id, i.owner_user_id, i.project_id, i.app_id, i.version, i.manifest_digest, i.granted_permissions, i.grant_revision, i.installed_at, i.uninstalled_at
 FROM workos_core.project_app_installations i
 JOIN workos_core.projects p
   ON p.id = i.project_id AND p.owner_user_id = i.owner_user_id AND p.archived_at IS NULL
@@ -101,6 +103,16 @@ WHERE i.owner_user_id = sqlc.arg(owner_user_id)
   AND i.project_id = sqlc.arg(project_id)
   AND i.id = sqlc.arg(id)
   AND i.uninstalled_at IS NULL;
+
+-- name: SetInstallationGrants :one
+UPDATE workos_core.project_app_installations
+SET granted_permissions = sqlc.arg(granted_permissions),
+    grant_revision = grant_revision + 1
+WHERE owner_user_id = sqlc.arg(owner_user_id)
+  AND project_id = sqlc.arg(project_id)
+  AND id = sqlc.arg(id)
+  AND uninstalled_at IS NULL
+RETURNING id, owner_user_id, project_id, app_id, version, manifest_digest, granted_permissions, grant_revision, installed_at, uninstalled_at;
 
 -- name: InsertInstallation :exec
 INSERT INTO workos_core.project_app_installations (
@@ -132,7 +144,7 @@ WHERE id = sqlc.arg(id)
 RETURNING revision, updated_at;
 
 -- name: ListActiveInstallations :many
-SELECT id, owner_user_id, project_id, app_id, version, manifest_digest, granted_permissions, installed_at, uninstalled_at
+SELECT id, owner_user_id, project_id, app_id, version, manifest_digest, granted_permissions, grant_revision, installed_at, uninstalled_at
 FROM workos_core.project_app_installations
 WHERE owner_user_id = sqlc.arg(owner_user_id)
   AND project_id = sqlc.arg(project_id)

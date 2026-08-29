@@ -42,6 +42,9 @@ const (
 	// AppInstallationServiceListInstalledAppsProcedure is the fully-qualified name of the
 	// AppInstallationService's ListInstalledApps RPC.
 	AppInstallationServiceListInstalledAppsProcedure = "/workos.app.v1.AppInstallationService/ListInstalledApps"
+	// AppInstallationServiceSetAppGrantsProcedure is the fully-qualified name of the
+	// AppInstallationService's SetAppGrants RPC.
+	AppInstallationServiceSetAppGrantsProcedure = "/workos.app.v1.AppInstallationService/SetAppGrants"
 )
 
 // AppInstallationServiceClient is a client for the workos.app.v1.AppInstallationService service.
@@ -49,6 +52,15 @@ type AppInstallationServiceClient interface {
 	InstallApp(context.Context, *connect.Request[v1.InstallAppRequest]) (*connect.Response[v1.InstallAppResponse], error)
 	UninstallApp(context.Context, *connect.Request[v1.UninstallAppRequest]) (*connect.Response[v1.UninstallAppResponse], error)
 	ListInstalledApps(context.Context, *connect.Request[v1.ListInstalledAppsRequest]) (*connect.Response[v1.ListInstalledAppsResponse], error)
+	// SetAppGrants replaces the installation's whole grant set in one command.
+	// A target set equal to the current grant is a deterministic no-op: the
+	// idempotency key is still durably consumed and replays exactly, but the
+	// project revision, grant revision, events, and timestamps do not change.
+	// A real change bumps both revisions by exactly one and commits the
+	// installation update, project event, outbox, and idempotency result in a
+	// single transaction. The command is serialized against every other
+	// project mutation by expected_project_revision.
+	SetAppGrants(context.Context, *connect.Request[v1.SetAppGrantsRequest]) (*connect.Response[v1.SetAppGrantsResponse], error)
 }
 
 // NewAppInstallationServiceClient constructs a client for the workos.app.v1.AppInstallationService
@@ -80,6 +92,12 @@ func NewAppInstallationServiceClient(httpClient connect.HTTPClient, baseURL stri
 			connect.WithSchema(appInstallationServiceMethods.ByName("ListInstalledApps")),
 			connect.WithClientOptions(opts...),
 		),
+		setAppGrants: connect.NewClient[v1.SetAppGrantsRequest, v1.SetAppGrantsResponse](
+			httpClient,
+			baseURL+AppInstallationServiceSetAppGrantsProcedure,
+			connect.WithSchema(appInstallationServiceMethods.ByName("SetAppGrants")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -88,6 +106,7 @@ type appInstallationServiceClient struct {
 	installApp        *connect.Client[v1.InstallAppRequest, v1.InstallAppResponse]
 	uninstallApp      *connect.Client[v1.UninstallAppRequest, v1.UninstallAppResponse]
 	listInstalledApps *connect.Client[v1.ListInstalledAppsRequest, v1.ListInstalledAppsResponse]
+	setAppGrants      *connect.Client[v1.SetAppGrantsRequest, v1.SetAppGrantsResponse]
 }
 
 // InstallApp calls workos.app.v1.AppInstallationService.InstallApp.
@@ -105,12 +124,26 @@ func (c *appInstallationServiceClient) ListInstalledApps(ctx context.Context, re
 	return c.listInstalledApps.CallUnary(ctx, req)
 }
 
+// SetAppGrants calls workos.app.v1.AppInstallationService.SetAppGrants.
+func (c *appInstallationServiceClient) SetAppGrants(ctx context.Context, req *connect.Request[v1.SetAppGrantsRequest]) (*connect.Response[v1.SetAppGrantsResponse], error) {
+	return c.setAppGrants.CallUnary(ctx, req)
+}
+
 // AppInstallationServiceHandler is an implementation of the workos.app.v1.AppInstallationService
 // service.
 type AppInstallationServiceHandler interface {
 	InstallApp(context.Context, *connect.Request[v1.InstallAppRequest]) (*connect.Response[v1.InstallAppResponse], error)
 	UninstallApp(context.Context, *connect.Request[v1.UninstallAppRequest]) (*connect.Response[v1.UninstallAppResponse], error)
 	ListInstalledApps(context.Context, *connect.Request[v1.ListInstalledAppsRequest]) (*connect.Response[v1.ListInstalledAppsResponse], error)
+	// SetAppGrants replaces the installation's whole grant set in one command.
+	// A target set equal to the current grant is a deterministic no-op: the
+	// idempotency key is still durably consumed and replays exactly, but the
+	// project revision, grant revision, events, and timestamps do not change.
+	// A real change bumps both revisions by exactly one and commits the
+	// installation update, project event, outbox, and idempotency result in a
+	// single transaction. The command is serialized against every other
+	// project mutation by expected_project_revision.
+	SetAppGrants(context.Context, *connect.Request[v1.SetAppGrantsRequest]) (*connect.Response[v1.SetAppGrantsResponse], error)
 }
 
 // NewAppInstallationServiceHandler builds an HTTP handler from the service implementation. It
@@ -138,6 +171,12 @@ func NewAppInstallationServiceHandler(svc AppInstallationServiceHandler, opts ..
 		connect.WithSchema(appInstallationServiceMethods.ByName("ListInstalledApps")),
 		connect.WithHandlerOptions(opts...),
 	)
+	appInstallationServiceSetAppGrantsHandler := connect.NewUnaryHandler(
+		AppInstallationServiceSetAppGrantsProcedure,
+		svc.SetAppGrants,
+		connect.WithSchema(appInstallationServiceMethods.ByName("SetAppGrants")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/workos.app.v1.AppInstallationService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case AppInstallationServiceInstallAppProcedure:
@@ -146,6 +185,8 @@ func NewAppInstallationServiceHandler(svc AppInstallationServiceHandler, opts ..
 			appInstallationServiceUninstallAppHandler.ServeHTTP(w, r)
 		case AppInstallationServiceListInstalledAppsProcedure:
 			appInstallationServiceListInstalledAppsHandler.ServeHTTP(w, r)
+		case AppInstallationServiceSetAppGrantsProcedure:
+			appInstallationServiceSetAppGrantsHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -165,4 +206,8 @@ func (UnimplementedAppInstallationServiceHandler) UninstallApp(context.Context, 
 
 func (UnimplementedAppInstallationServiceHandler) ListInstalledApps(context.Context, *connect.Request[v1.ListInstalledAppsRequest]) (*connect.Response[v1.ListInstalledAppsResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("workos.app.v1.AppInstallationService.ListInstalledApps is not implemented"))
+}
+
+func (UnimplementedAppInstallationServiceHandler) SetAppGrants(context.Context, *connect.Request[v1.SetAppGrantsRequest]) (*connect.Response[v1.SetAppGrantsResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("workos.app.v1.AppInstallationService.SetAppGrants is not implemented"))
 }

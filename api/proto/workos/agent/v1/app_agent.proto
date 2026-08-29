@@ -21,6 +21,13 @@ message RunAgentTaskRequest {
   string client_idempotency_key = 3;
   string role = 4;
   string goal = 5;
+  // Grant epoch of the installation as persisted in the validated surface
+  // session at create time. Derived by runtime-host from that snapshot only;
+  // public bridge bodies, MessageChannel envelopes, and iframe SDKs can
+  // never submit it. Core compares it for exact equality against the active
+  // installation's current grant_revision on every run call; any mismatch
+  // fails closed.
+  int64 installation_grant_revision = 6;
 }
 
 message RunAgentTaskResponse {
@@ -34,6 +41,12 @@ message WatchAgentTaskEventsRequest {
   string app_instance_id = 2;
   string task_id = 3;
   int64 after_sequence = 4;
+  // Grant epoch derived by runtime-host from the validated surface session's
+  // persisted snapshot; public callers can never submit it. Core compares it
+  // for exact equality against the active installation's current
+  // grant_revision on every polling round of the watch stream; any mismatch
+  // terminates the stream without forwarding further events.
+  int64 installation_grant_revision = 5;
 }
 
 message WatchAgentTaskEventsResponse {
