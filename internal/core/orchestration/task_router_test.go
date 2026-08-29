@@ -44,7 +44,10 @@ func (f *fakeProviders) Capabilities(_ context.Context, providerID string) (agen
 	}
 	capabilities := f.capabilities
 	if !capabilities.UsageReporting && !capabilities.HardRuntimeDeadline && !capabilities.HardTokenBudget {
-		capabilities = agentports.ProviderCapabilities{HardTokenBudget: true, HardRuntimeDeadline: true, UsageReporting: true}
+		capabilities = agentports.ProviderCapabilities{
+			HardTokenBudget: true, HardRuntimeDeadline: true, UsageReporting: true,
+			MaxOutputTokens: 384_000, MaxRuntimeSeconds: 600,
+		}
 	}
 	return capabilities, nil
 }
@@ -368,7 +371,37 @@ func TestTaskRouterSubmitForAppRejectsMissingProviderBudgetContract(t *testing.T
 	if !errors.Is(err, agentdomain.ErrProviderCapabilityMissing) {
 		t.Fatalf("partial capability verdict: %v", err)
 	}
+	// A complete contract with maxima below the policy budget is equally
+	// unusable: the adapter would only refuse the run after the queue slot
+	// and the daily reservation were already spent.
+	underpowered := &fakeProviders{capabilities: agentports.ProviderCapabilities{
+		HardTokenBudget: true, HardRuntimeDeadline: true, UsageReporting: true,
+		MaxOutputTokens: 4_096, MaxRuntimeSeconds: 600,
+	}}
+	policy := agentdomain.SystemDefaultPolicy()
+	policy.Spec.MaxOutputTokensPerTask = 8_192
+	router, err = NewTaskRouter(agents, &fakeProjects{}, &fixedPolicies{policy: policy}, underpowered, "fake")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = router.SubmitForApp(context.Background(), agentapp.AppSubmitInput{
+		OwnerUserID: "owner-1", AppInstanceID: "instance-1", ClientIdempotencyKey: "key-3",
+		RequestDigest: agentdomain.AppTaskRequestDigest("role", "goal"),
+		ProjectID:     "project-1", Role: "role", Goal: "goal",
+	})
+	if !errors.Is(err, agentdomain.ErrProviderCapabilityMissing) {
+		t.Fatalf("over-budget policy verdict: %v", err)
+	}
 	if len(agents.appSubmitted) != 0 {
 		t.Fatal("capability-missing runs must not enqueue")
 	}
+}
+
+// fixedPolicies serves one explicit policy regardless of the installation.
+type fixedPolicies struct {
+	policy agentdomain.Policy
+}
+
+func (f *fixedPolicies) EffectivePolicy(context.Context, string, string, string) (agentdomain.Policy, error) {
+	return f.policy, nil
 }

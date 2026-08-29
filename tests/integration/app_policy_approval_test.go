@@ -18,6 +18,7 @@ import (
 	appv1 "github.com/yangtao121/workos/gen/go/workos/app/v1"
 	bridgev1 "github.com/yangtao121/workos/gen/go/workos/bridge/v1"
 	bridgev1connect "github.com/yangtao121/workos/gen/go/workos/bridge/v1/bridgev1connect"
+	projectv1 "github.com/yangtao121/workos/gen/go/workos/project/v1"
 	surfacev1 "github.com/yangtao121/workos/gen/go/workos/surface/v1"
 )
 
@@ -246,8 +247,11 @@ func TestAppAgentRequireApprovalVerticalSlice(t *testing.T) {
 		ApprovalId:     approval.GetApprovalId(),
 		Decision:       agentv1.AppAgentApprovalDecision_APP_AGENT_APPROVAL_DECISION_APPROVE,
 	}))
-	if err != nil || decided.Msg.GetApproval().GetState() != agentv1.AppAgentApprovalState_APP_AGENT_APPROVAL_STATE_APPROVED {
-		t.Fatalf("approve failed: %v %+v", err, decided.Msg.GetApproval())
+	if err != nil {
+		t.Fatalf("approve failed: %v", err)
+	}
+	if decided.Msg.GetApproval().GetState() != agentv1.AppAgentApprovalState_APP_AGENT_APPROVAL_STATE_APPROVED {
+		t.Fatalf("approve state wrong: %+v", decided.Msg.GetApproval())
 	}
 
 	t.Run("DecisionIdempotency", func(t *testing.T) {
@@ -650,5 +654,89 @@ func TestAppAgentForeignIsolation(t *testing.T) {
 		ProjectId: fixture.projectID, InstallationId: "018f0000-0000-7000-8000-0000000000de",
 	})); connect.CodeOf(err) != connect.CodeNotFound {
 		t.Fatalf("foreign installation must be NotFound: %v", err)
+	}
+}
+
+// TestAppAgentRejectSurvivesUninstalledWorld proves the decision asymmetry:
+// once the installation is gone an approve must still fail closed — the world
+// the approval was created in no longer exists — while a reject must keep
+// working, so the owner can never be trapped with an undecideable pending
+// approval. Before the uninstall, an approve against the uninstalled world is
+// refused; after it, the reject terminates the waiting task normally.
+func TestAppAgentRejectSurvivesUninstalledWorld(t *testing.T) {
+	t.Parallel()
+	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
+	defer cancel()
+	fixture := newPolicyFixture(t, ctx, "Uninstalled Reject Slice")
+	bridge := bridgeClients(t)
+	policies := policyClients(t)
+	approvals := approvalClients(t)
+	installations := installationClients(t)
+	projects := integrationProjectClients(t)
+
+	if _, err := policies.SetAppPolicy(ctx, connect.NewRequest(&agentv1.SetAppPolicyRequest{
+		IdempotencyKey: fmt.Sprintf("uninstalled-policy-%d", fixture.stamp),
+		ProjectId:      fixture.projectID, InstallationId: fixture.installation,
+		Spec:                   requireApprovalPolicy(agentv1.AppAgentExecutionMode_APP_AGENT_EXECUTION_MODE_REQUIRE_APPROVAL, 256, 60, 5, 1280),
+		ExpectedPolicyRevision: 0,
+	})); err != nil {
+		t.Fatalf("set policy: %v", err)
+	}
+	run := fixture.run(t, ctx, bridge, fmt.Sprintf("uninstalled-run-%d", fixture.stamp), fmt.Sprintf("Uninstalled reject fixture %d", fixture.stamp))
+	listed, err := approvals.ListApprovals(ctx, connect.NewRequest(&agentv1.ListApprovalsRequest{
+		ProjectId: fixture.projectID, State: agentv1.AppAgentApprovalState_APP_AGENT_APPROVAL_STATE_PENDING,
+	}))
+	if err != nil || len(listed.Msg.GetApprovals()) != 1 {
+		t.Fatalf("pending approvals wrong: %v", err)
+	}
+	approvalID := listed.Msg.GetApprovals()[0].GetApprovalId()
+
+	project, err := projects.GetProject(ctx, connect.NewRequest(&projectv1.GetProjectRequest{ProjectId: fixture.projectID}))
+	if err != nil {
+		t.Fatalf("read project: %v", err)
+	}
+	if _, err := installations.UninstallApp(ctx, connect.NewRequest(&appv1.UninstallAppRequest{
+		IdempotencyKey: fmt.Sprintf("uninstalled-uninstall-%d", fixture.stamp),
+		ProjectId:      fixture.projectID, InstallationId: fixture.installation,
+		ExpectedProjectRevision: project.Msg.GetProject().GetRevision(),
+	})); err != nil {
+		t.Fatalf("uninstall: %v", err)
+	}
+
+	// Approve fails closed: no installation, no enqueue, approval stays
+	// pending.
+	if _, err := approvals.DecideApproval(ctx, connect.NewRequest(&agentv1.DecideApprovalRequest{
+		IdempotencyKey: fmt.Sprintf("uninstalled-approve-%d", fixture.stamp),
+		ApprovalId:     approvalID,
+		Decision:       agentv1.AppAgentApprovalDecision_APP_AGENT_APPROVAL_DECISION_APPROVE,
+	})); connect.CodeOf(err) != connect.CodeFailedPrecondition {
+		t.Fatalf("approve after uninstall verdict: %v", err)
+	}
+	still, err := approvals.GetApproval(ctx, connect.NewRequest(&agentv1.GetApprovalRequest{ApprovalId: approvalID}))
+	if err != nil || still.Msg.GetApproval().GetState() != agentv1.AppAgentApprovalState_APP_AGENT_APPROVAL_STATE_PENDING {
+		t.Fatalf("approval must stay pending after refused approve: %v %+v", err, still.Msg.GetApproval())
+	}
+
+	// Reject works: the waiting task terminates without ever queueing.
+	decided, err := approvals.DecideApproval(ctx, connect.NewRequest(&agentv1.DecideApprovalRequest{
+		IdempotencyKey: fmt.Sprintf("uninstalled-reject-%d", fixture.stamp),
+		ApprovalId:     approvalID,
+		Decision:       agentv1.AppAgentApprovalDecision_APP_AGENT_APPROVAL_DECISION_REJECT,
+	}))
+	if err != nil || decided.Msg.GetApproval().GetState() != agentv1.AppAgentApprovalState_APP_AGENT_APPROVAL_STATE_REJECTED {
+		t.Fatalf("reject after uninstall failed: %v %+v", err, decided.Msg.GetApproval())
+	}
+	task, err := agentTaskClients(t).GetTask(ctx, connect.NewRequest(&agentv1.GetTaskRequest{TaskId: run.GetTaskId()}))
+	if err != nil || task.Msg.GetTask().GetState() != agentv1.AgentTaskState_AGENT_TASK_STATE_CANCELLED {
+		t.Fatalf("rejected task must be cancelled: %v %+v", err, task.Msg.GetTask())
+	}
+	// The refused approve key never decided anything; the reject key replays
+	// exactly.
+	if _, err := approvals.DecideApproval(ctx, connect.NewRequest(&agentv1.DecideApprovalRequest{
+		IdempotencyKey: fmt.Sprintf("uninstalled-reject-%d", fixture.stamp),
+		ApprovalId:     approvalID,
+		Decision:       agentv1.AppAgentApprovalDecision_APP_AGENT_APPROVAL_DECISION_REJECT,
+	})); err != nil || decided.Msg.GetApproval().GetState() != agentv1.AppAgentApprovalState_APP_AGENT_APPROVAL_STATE_REJECTED {
+		t.Fatalf("reject replay diverged: %v", err)
 	}
 }

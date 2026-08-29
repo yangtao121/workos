@@ -216,7 +216,11 @@ func (r *Repository) replayAppTaskMapping(ctx context.Context, queries *agentdb.
 // approval_required event in one transaction. It deliberately creates no
 // claimable outbox row and reserves no quota: a waiting task is not an
 // enqueued task, and a rejected or expired approval never consumes a single
-// reserved task or token.
+// reserved task or token. Inside the installation's policy-chain lock the
+// approval's policy snapshot is re-verified against the stored fact, so a
+// SetPolicy committing before this transaction is never shadowed by a stale
+// pending approval, and one committing after it always sees and expires the
+// approval.
 func (r *Repository) CreateForAppApproval(ctx context.Context, task domain.Task, approval domain.Approval, provenance ports.AppTaskProvenance) (domain.Task, domain.Approval, error) {
 	projectID, err := nullableUUID(task.ProjectID)
 	if err != nil {
@@ -228,6 +232,12 @@ func (r *Repository) CreateForAppApproval(ctx context.Context, task domain.Task,
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck
 	queries := r.queries.WithTx(tx)
+	if err := lockAgentAppPolicyChain(ctx, queries, task.OwnerUserID, approval.AppInstanceID); err != nil {
+		return domain.Task{}, domain.Approval{}, err
+	}
+	if err := verifyApprovalPolicyChain(ctx, queries, approval); err != nil {
+		return domain.Task{}, domain.Approval{}, err
+	}
 	if _, err := queries.InsertAgentTask(ctx, agentdb.InsertAgentTaskParams{
 		ID: task.ID, OwnerUserID: task.OwnerUserID, IdempotencyKey: provenance.TaskIdempotencyKey,
 		ProjectID: projectID, Input: task.Input, State: string(task.State), ProviderID: task.ProviderID,
@@ -275,6 +285,43 @@ func (r *Repository) CreateForAppApproval(ctx context.Context, task domain.Task,
 	}
 	approval.UpdatedAt = task.CreatedAt
 	return task, approval, nil
+}
+
+// verifyApprovalPolicyChain re-checks, inside the policy-chain lock, that the
+// approval still carries the installation's effective policy: the versioned
+// system default only while no explicit row exists, and otherwise the exact
+// stored revision, spec, and project binding. Any drift means a policy change
+// the caller's pre-transaction read could not have seen — the verdict fails
+// the whole transaction with nothing consumed.
+func verifyApprovalPolicyChain(ctx context.Context, queries *agentdb.Queries, approval domain.Approval) error {
+	value, err := queries.GetAgentAppPolicy(ctx, agentdb.GetAgentAppPolicyParams{
+		OwnerUserID: approval.OwnerUserID, AppInstanceID: approval.AppInstanceID,
+	})
+	switch {
+	case errors.Is(err, pgx.ErrNoRows):
+		defaultPolicy := domain.SystemDefaultPolicy()
+		if approval.Source != domain.PolicySourceSystemDefault ||
+			approval.Revision != defaultPolicy.Revision ||
+			approval.Spec != defaultPolicy.Spec {
+			return domain.ErrPolicyStale
+		}
+		return nil
+	case err != nil:
+		return storeError("query app policy", err)
+	}
+	policy, err := policyFromDB(value)
+	if err != nil {
+		return err
+	}
+	if policy.ProjectID != approval.ProjectID {
+		return fmt.Errorf("policy project binding: %w", domain.ErrPolicyCorrupt)
+	}
+	if approval.Source != domain.PolicySourceExplicit ||
+		policy.Revision != approval.Revision ||
+		policy.Spec != approval.Spec {
+		return domain.ErrPolicyStale
+	}
+	return nil
 }
 
 // advanceTaskWithSystemEvent advances the task's state and sequence and
@@ -624,6 +671,27 @@ func (r *Repository) projectUsage(ctx context.Context, queries *agentdb.Queries,
 			UpdatedAt: timestamp(now), ID: stream.ID,
 		}); err != nil {
 			return storeError("request breach cancellation", err)
+		}
+		// Deterministic termination, in this same transaction: the task is
+		// cancelled here, so a provider completion racing the breach is
+		// refused by the terminal state instead of surviving until the
+		// worker's next heartbeat observes the cancellation flag.
+		payload, err := json.Marshal(map[string]any{
+			"runCancelled": map[string]string{"reason": "app task exceeded its reserved output token budget"},
+		})
+		if err != nil {
+			return fmt.Errorf("encode breach cancellation event: %w", err)
+		}
+		breached := domain.Task{ID: stream.ID, LastEventSequence: stream.LastEventSequence + 1}
+		if err := advanceTaskWithSystemEvent(ctx, queries, &breached, domain.StateCancelled, "run_cancelled", payload, now); err != nil {
+			return err
+		}
+		// The breached task can never be claimed; its pending request row is
+		// finished so the outbox holds no unprocessed zombie.
+		if err := queries.FinishPendingTaskRequest(ctx, agentdb.FinishPendingTaskRequestParams{
+			ProcessedAt: timestamp(now), AggregateID: stream.ID,
+		}); err != nil {
+			return fmt.Errorf("finish breached task request: %w", err)
 		}
 	}
 	return nil

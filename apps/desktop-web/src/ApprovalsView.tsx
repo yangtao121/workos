@@ -64,38 +64,46 @@ export function ApprovalsView({
   const [approvals, setApprovals] = useState<AgentApproval[]>([]);
   const [feedback, setFeedback] = useState<Feedback>();
   const [busy, setBusy] = useState<Record<string, "APPROVE" | "REJECT" | undefined>>({});
+  // Latest-project refs: a decision that resolves after the owner switched
+  // projects must never paint the old project's list or feedback.
   const generationRef = useRef(0);
+  const projectIdRef = useRef(projectId);
+  projectIdRef.current = projectId;
 
-  const refresh = useCallback(async () => {
-    const generation = generationRef.current;
-    setState("loading");
-    try {
-      const response = await workosClients.approvals.listApprovals({
-        projectId,
-        page: { pageSize: 100, pageToken: "" },
-      });
-      if (generationRef.current !== generation) return;
-      setApprovals(response.approvals);
-      setState("ready");
-    } catch {
-      if (generationRef.current !== generation) return;
-      setState("error");
-    }
-  }, [workosClients, projectId]);
+  // Every refresh invalidates all earlier refreshes, so a late response from
+  // a previous project is discarded even if it resolves last.
+  const refresh = useCallback(
+    async (targetProjectId: string) => {
+      const generation = ++generationRef.current;
+      setState("loading");
+      try {
+        const response = await workosClients.approvals.listApprovals({
+          projectId: targetProjectId,
+          page: { pageSize: 100, pageToken: "" },
+        });
+        if (generationRef.current !== generation) return;
+        setApprovals(response.approvals);
+        setState("ready");
+      } catch {
+        if (generationRef.current !== generation) return;
+        setState("error");
+      }
+    },
+    [workosClients],
+  );
 
   useEffect(() => {
-    // A late response from a previous project must not paint this one's list.
-    generationRef.current += 1;
-    void refresh();
-    return () => {
-      generationRef.current += 1;
-    };
-  }, [refresh]);
+    // A project switch must not carry the previous project's decision
+    // feedback into the new list.
+    setFeedback(undefined);
+    void refresh(projectId);
+  }, [refresh, projectId]);
 
   async function decide(approvalId: string, decision: "APPROVE" | "REJECT") {
     if (busy[approvalId]) return;
     setBusy((current) => ({ ...current, [approvalId]: decision }));
     setFeedback(undefined);
+    const decidedProjectId = projectIdRef.current;
     try {
       await workosClients.approvals.decideApproval({
         idempotencyKey: crypto.randomUUID(),
@@ -105,18 +113,30 @@ export function ApprovalsView({
             ? AppAgentApprovalDecision.APPROVE
             : AppAgentApprovalDecision.REJECT,
       });
-      await refresh();
-      setFeedback({
-        text:
-          decision === "APPROVE"
-            ? "Task approved and queued. The app's daily allowance now reserves this run."
-            : "Task rejected. It will never execute and reserved no quota.",
-        isError: false,
-      });
-      onDecided?.();
+      // The owner may have switched projects while the decision was in
+      // flight; refresh whatever project is current, but report the decision
+      // only where it happened.
+      await refresh(projectIdRef.current);
+      if (projectIdRef.current === decidedProjectId) {
+        setFeedback({
+          text:
+            decision === "APPROVE"
+              ? "Task approved and queued. The app's daily allowance now reserves this run."
+              : "Task rejected. It will never execute and reserved no quota.",
+          isError: false,
+        });
+        onDecided?.();
+      }
     } catch (reason) {
-      await refresh();
-      setFeedback({ text: decideErrorMessage(reason), isError: true });
+      if (projectIdRef.current === decidedProjectId) {
+        await refresh(decidedProjectId);
+        // The owner may also have switched away while the refresh above was
+        // in flight; the error belongs to the project the decision was made
+        // in, never to whatever is on screen now.
+        if (projectIdRef.current === decidedProjectId) {
+          setFeedback({ text: decideErrorMessage(reason), isError: true });
+        }
+      }
     } finally {
       setBusy((current) => {
         const next = { ...current, [approvalId]: undefined };
@@ -138,7 +158,7 @@ export function ApprovalsView({
         <p>Approvals are temporarily unavailable.</p>
         <Button
           onClick={() => {
-            void refresh();
+            void refresh(projectIdRef.current);
           }}
           type="button"
         >

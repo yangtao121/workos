@@ -173,6 +173,10 @@ func stateToProto(state domain.State) agentv1.AgentTaskState {
 
 func mapError(err error) error {
 	switch {
+	case errors.Is(err, domain.ErrPolicyCorrupt):
+		// Storage corruption is an internal fact: a sanitized Internal, never
+		// a client input error, never carrying storage detail outward.
+		return connect.NewError(connect.CodeInternal, errors.New("agent task operation failed"))
 	case errors.Is(err, domain.ErrInvalid):
 		return connect.NewError(connect.CodeInvalidArgument, err)
 	case errors.Is(err, domain.ErrNotFound):

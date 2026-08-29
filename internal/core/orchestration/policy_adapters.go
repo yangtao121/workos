@@ -77,6 +77,8 @@ func (a *providerCapabilities) Capabilities(ctx context.Context, providerID stri
 			HardTokenBudget:     provider.Capabilities.HardTokenBudget,
 			HardRuntimeDeadline: provider.Capabilities.HardRuntimeDeadline,
 			UsageReporting:      provider.Capabilities.UsageReporting,
+			MaxOutputTokens:     provider.Capabilities.MaxOutputTokens,
+			MaxRuntimeSeconds:   provider.Capabilities.MaxRuntimeSeconds,
 		}, nil
 	}
 	return agentports.ProviderCapabilities{}, agentdomain.ErrNotFound

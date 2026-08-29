@@ -2,6 +2,8 @@ package application
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"testing"
 	"time"
 
@@ -23,7 +25,11 @@ type stubRepository struct {
 
 	approvalToReturn domain.Approval
 	approvalErr      error
+	approvalCalls    int
 	decideCmd        *ports.DecideApprovalCommand
+
+	approvalPage       []domain.Approval
+	listApprovalsLimit int
 
 	usage ports.DailyUsage
 }
@@ -100,11 +106,16 @@ func (s *stubRepository) GetPolicyRequest(context.Context, string, string) (port
 }
 
 func (s *stubRepository) GetApproval(context.Context, string, string) (domain.Approval, error) {
+	s.approvalCalls++
 	return s.approvalToReturn, s.approvalErr
 }
 
-func (s *stubRepository) ListApprovals(context.Context, string, string, domain.ApprovalState, string, int) ([]domain.Approval, error) {
-	return nil, nil
+func (s *stubRepository) ListApprovals(_ context.Context, _ string, _ string, _ domain.ApprovalState, _ string, limit int) ([]domain.Approval, error) {
+	s.listApprovalsLimit = limit
+	if len(s.approvalPage) > limit {
+		return s.approvalPage[:limit], nil
+	}
+	return s.approvalPage, nil
 }
 
 func (s *stubRepository) DecideApproval(_ context.Context, command ports.DecideApprovalCommand) (domain.Approval, error) {
@@ -148,7 +159,10 @@ const testProject = "018f0000-0000-7000-8000-0000000000ab"
 const testInstance = "018f0000-0000-7000-8000-0000000000cd"
 
 func completeCapabilities() ports.ProviderCapabilities {
-	return ports.ProviderCapabilities{HardTokenBudget: true, HardRuntimeDeadline: true, UsageReporting: true}
+	return ports.ProviderCapabilities{
+		HardTokenBudget: true, HardRuntimeDeadline: true, UsageReporting: true,
+		MaxOutputTokens: 384_000, MaxRuntimeSeconds: 600,
+	}
 }
 
 func TestPolicyServiceSetPolicyValidatesBeforeTouchingFacts(t *testing.T) {
@@ -270,7 +284,7 @@ func TestApprovalServiceDecideFailsClosedOnDriftedWorld(t *testing.T) {
 	})
 	t.Run("policy revision drifted", func(t *testing.T) {
 		t.Parallel()
-		repository := &stubRepository{approvalToReturn: base, getPolicy: domain.Policy{Spec: spec, Source: domain.PolicySourceExplicit, Revision: 2}, getPolicyFound: true}
+		repository := &stubRepository{approvalToReturn: base, getPolicy: domain.Policy{ProjectID: testProject, Spec: spec, Source: domain.PolicySourceExplicit, Revision: 2}, getPolicyFound: true}
 		service := newTest(repository, &stubInstallations{facts: ports.InstallationFacts{GrantedPermissions: []string{"agent.task.run"}}}, &stubProviders{capabilities: completeCapabilities()})
 		if _, err := service.Decide(context.Background(), input(base.ID)); err != domain.ErrApprovalNotPending {
 			t.Fatalf("verdict: %v", err)
@@ -279,15 +293,76 @@ func TestApprovalServiceDecideFailsClosedOnDriftedWorld(t *testing.T) {
 			t.Fatal("decision reached the store despite drifted policy")
 		}
 	})
+	t.Run("policy project binding drifted", func(t *testing.T) {
+		t.Parallel()
+		repository := &stubRepository{approvalToReturn: base, getPolicy: domain.Policy{ProjectID: "018f0000-0000-7000-8000-0000000000ee", Spec: spec, Source: domain.PolicySourceExplicit, Revision: 1}, getPolicyFound: true}
+		service := newTest(repository, &stubInstallations{facts: ports.InstallationFacts{GrantedPermissions: []string{"agent.task.run"}}}, &stubProviders{capabilities: completeCapabilities()})
+		if _, err := service.Decide(context.Background(), input(base.ID)); !errors.Is(err, domain.ErrPolicyCorrupt) {
+			t.Fatalf("verdict: %v", err)
+		}
+		if repository.decideCmd != nil {
+			t.Fatal("decision reached the store despite corrupt project binding")
+		}
+	})
+	t.Run("policy spec drifted without revision", func(t *testing.T) {
+		t.Parallel()
+		drifted := spec
+		drifted.MaxOutputTokensPerTask++
+		repository := &stubRepository{approvalToReturn: base, getPolicy: domain.Policy{ProjectID: testProject, Spec: drifted, Source: domain.PolicySourceExplicit, Revision: 1}, getPolicyFound: true}
+		service := newTest(repository, &stubInstallations{facts: ports.InstallationFacts{GrantedPermissions: []string{"agent.task.run"}}}, &stubProviders{capabilities: completeCapabilities()})
+		if _, err := service.Decide(context.Background(), input(base.ID)); err != domain.ErrApprovalNotPending {
+			t.Fatalf("verdict: %v", err)
+		}
+		if repository.decideCmd != nil {
+			t.Fatal("decision reached the store despite drifted policy spec")
+		}
+	})
 	t.Run("provider capability lost", func(t *testing.T) {
 		t.Parallel()
-		repository := &stubRepository{approvalToReturn: base, getPolicy: domain.Policy{Spec: spec, Source: domain.PolicySourceExplicit, Revision: 1}, getPolicyFound: true}
+		repository := &stubRepository{approvalToReturn: base, getPolicy: domain.Policy{ProjectID: testProject, Spec: spec, Source: domain.PolicySourceExplicit, Revision: 1}, getPolicyFound: true}
 		service := newTest(repository, &stubInstallations{facts: ports.InstallationFacts{GrantedPermissions: []string{"agent.task.run"}}}, &stubProviders{capabilities: ports.ProviderCapabilities{HardTokenBudget: true}})
 		if _, err := service.Decide(context.Background(), input(base.ID)); err != domain.ErrProviderCapabilityMissing {
 			t.Fatalf("verdict: %v", err)
 		}
 		if repository.decideCmd != nil {
 			t.Fatal("decision reached the store despite lost capability")
+		}
+	})
+	t.Run("provider maxima below the approved budget", func(t *testing.T) {
+		t.Parallel()
+		// A complete contract whose enforced maxima cannot hold the approval's
+		// snapshot would only be refused inside the adapter — after the daily
+		// reservation and the queue slot. The approve must fail closed here.
+		underpowered := completeCapabilities()
+		underpowered.MaxOutputTokens = spec.MaxOutputTokensPerTask - 1
+		repository := &stubRepository{approvalToReturn: base, getPolicy: domain.Policy{ProjectID: testProject, Spec: spec, Source: domain.PolicySourceExplicit, Revision: 1}, getPolicyFound: true}
+		service := newTest(repository, &stubInstallations{facts: ports.InstallationFacts{GrantedPermissions: []string{"agent.task.run"}}}, &stubProviders{capabilities: underpowered})
+		if _, err := service.Decide(context.Background(), input(base.ID)); err != domain.ErrProviderCapabilityMissing {
+			t.Fatalf("verdict: %v", err)
+		}
+		if repository.decideCmd != nil {
+			t.Fatal("decision reached the store despite underpowered provider")
+		}
+	})
+	t.Run("reject skips the world revalidation", func(t *testing.T) {
+		t.Parallel()
+		// A reject must stay possible after the installation is gone and the
+		// provider is unreachable: revoking a waiting run can never depend on
+		// the world the approval was created in.
+		repository := &stubRepository{approvalToReturn: base}
+		service := newTest(repository, &stubInstallations{err: domain.ErrNotFound}, &stubProviders{err: domain.ErrNotFound})
+		reject := DecideInput{OwnerUserID: "owner", ApprovalID: base.ID, Decision: domain.ApprovalDecisionReject, IdempotencyKey: "reject-key"}
+		if _, err := service.Decide(context.Background(), reject); err != nil {
+			t.Fatalf("reject despite dead world: %v", err)
+		}
+		if repository.decideCmd == nil || repository.decideCmd.Decision != domain.ApprovalDecisionReject {
+			t.Fatalf("reject not forwarded: %+v", repository.decideCmd)
+		}
+		if repository.decideCmd.DecisionDigest != domain.DecideApprovalRequestDigest(base.ID, domain.ApprovalDecisionReject) {
+			t.Fatal("reject digest not derived")
+		}
+		if repository.approvalCalls != 1 || repository.policyCalls != 0 {
+			t.Fatalf("reject must not revalidate the world: approvals=%d policies=%d", repository.approvalCalls, repository.policyCalls)
 		}
 	})
 	t.Run("expired approval short-circuits", func(t *testing.T) {
@@ -305,7 +380,7 @@ func TestApprovalServiceDecideFailsClosedOnDriftedWorld(t *testing.T) {
 	})
 	t.Run("healthy world reaches the transaction", func(t *testing.T) {
 		t.Parallel()
-		repository := &stubRepository{approvalToReturn: base, getPolicy: domain.Policy{Spec: spec, Source: domain.PolicySourceExplicit, Revision: 1}, getPolicyFound: true}
+		repository := &stubRepository{approvalToReturn: base, getPolicy: domain.Policy{ProjectID: testProject, Spec: spec, Source: domain.PolicySourceExplicit, Revision: 1}, getPolicyFound: true}
 		service := newTest(repository, &stubInstallations{facts: ports.InstallationFacts{GrantedPermissions: []string{"agent.task.run", "agent.event.watch"}}}, &stubProviders{capabilities: completeCapabilities()})
 		if _, err := service.Decide(context.Background(), input(base.ID)); err != nil {
 			t.Fatalf("decide failed: %v", err)
@@ -319,11 +394,70 @@ func TestApprovalServiceDecideFailsClosedOnDriftedWorld(t *testing.T) {
 	})
 	t.Run("rejected decision unknown provider", func(t *testing.T) {
 		t.Parallel()
-		repository := &stubRepository{approvalToReturn: base, getPolicy: domain.Policy{Spec: spec, Source: domain.PolicySourceExplicit, Revision: 1}, getPolicyFound: true}
+		repository := &stubRepository{approvalToReturn: base, getPolicy: domain.Policy{ProjectID: testProject, Spec: spec, Source: domain.PolicySourceExplicit, Revision: 1}, getPolicyFound: true}
 		service := newTest(repository, &stubInstallations{facts: ports.InstallationFacts{GrantedPermissions: []string{"agent.task.run"}}}, &stubProviders{capabilities: completeCapabilities()})
 		input := DecideInput{OwnerUserID: "owner", ApprovalID: base.ID, Decision: domain.ApprovalDecision("maybe"), IdempotencyKey: "k"}
 		if _, err := service.Decide(context.Background(), input); err == nil {
 			t.Fatal("unknown decision accepted")
+		}
+	})
+}
+
+// TestApprovalServiceListPagination pins the paging contract: the service
+// probes one row beyond the effective page size, so the next-page token is
+// present exactly when a further page exists — never on a full final page —
+// and the oversize clamp still probes with the clamped size.
+func TestApprovalServiceListPagination(t *testing.T) {
+	t.Parallel()
+	newService := func(repository *stubRepository) *ApprovalService {
+		service, err := NewApprovalService(repository, &stubInstallations{}, &stubProviders{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return service
+	}
+	approvals := func(count int) []domain.Approval {
+		page := make([]domain.Approval, count)
+		for index := range page {
+			page[index] = domain.Approval{ID: fmt.Sprintf("018f0000-0000-7000-8000-%012d", index), State: domain.ApprovalPending}
+		}
+		return page
+	}
+
+	t.Run("default page probes one beyond and returns the token", func(t *testing.T) {
+		repository := &stubRepository{approvalPage: approvals(51)}
+		page, next, err := newService(repository).List(context.Background(), "owner", "", "", "", 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(page) != 50 || next != page[49].ID {
+			t.Fatalf("default page wrong: len=%d next=%q", len(page), next)
+		}
+		if repository.listApprovalsLimit != 51 {
+			t.Fatalf("probe must fetch effective limit + 1, got %d", repository.listApprovalsLimit)
+		}
+	})
+	t.Run("full final page yields no phantom token", func(t *testing.T) {
+		repository := &stubRepository{approvalPage: approvals(50)}
+		page, next, err := newService(repository).List(context.Background(), "owner", "", "", "", 50)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(page) != 50 || next != "" {
+			t.Fatalf("final full page must not advertise a next page: len=%d next=%q", len(page), next)
+		}
+	})
+	t.Run("oversize request is clamped before the probe", func(t *testing.T) {
+		repository := &stubRepository{approvalPage: approvals(101)}
+		page, next, err := newService(repository).List(context.Background(), "owner", "", "", "", 150)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if repository.listApprovalsLimit != 101 {
+			t.Fatalf("oversize clamp must probe 101, got %d", repository.listApprovalsLimit)
+		}
+		if len(page) != 100 || next != page[99].ID {
+			t.Fatalf("clamped page wrong: len=%d next=%q", len(page), next)
 		}
 	})
 }

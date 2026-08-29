@@ -20,15 +20,24 @@ import (
 
 const leaseDuration = 30 * time.Second
 
+// abortGrace is how long a deadline-hit worker keeps waiting for the provider
+// to observe the run-context cancellation before abandoning it. A provider
+// that ignores cancellation must not pin the lease forever: the worker still
+// owns exactly one terminal event and a finished lease (ADR-0005 §5).
+const abortGrace = 5 * time.Second
+
 type Worker struct {
 	id           string
 	pollInterval time.Duration
 	// heartbeat is the lease-renewal cadence; it is a field so tests can
 	// shorten the 10s default without waiting real lease windows.
 	heartbeat time.Duration
-	client    taskexecutionv1connect.TaskExecutionServiceClient
-	broker    *broker.Broker
-	logger    *slog.Logger
+	// abandonAfter is the post-deadline grace; a field so tests can shorten
+	// the 5s default.
+	abandonAfter time.Duration
+	client       taskexecutionv1connect.TaskExecutionServiceClient
+	broker       *broker.Broker
+	logger       *slog.Logger
 }
 
 func New(id, coreURL string, pollInterval time.Duration, value *broker.Broker, logger *slog.Logger) *Worker {
@@ -36,7 +45,8 @@ func New(id, coreURL string, pollInterval time.Duration, value *broker.Broker, l
 		pollInterval = 250 * time.Millisecond
 	}
 	return &Worker{
-		id: id, pollInterval: pollInterval, heartbeat: leaseDuration / 3, broker: value, logger: logger,
+		id: id, pollInterval: pollInterval, heartbeat: leaseDuration / 3, abandonAfter: abortGrace,
+		broker: value, logger: logger,
 		client: taskexecutionv1connect.NewTaskExecutionServiceClient(telemetry.HTTPClient(), coreURL),
 	}
 }
@@ -80,25 +90,49 @@ func (w *Worker) process(parent context.Context, lease *taskv1.TaskLease) {
 	// cancelled with the run, and the fallback below emits exactly one
 	// terminal event and finishes the lease (ADR-0005 §5).
 	var deadlineHit atomic.Bool
+	var deadlineC <-chan time.Time
 	if seconds := task.GetInput().GetBudget().GetMaxRuntimeSeconds(); seconds > 0 {
-		timer := time.AfterFunc(time.Duration(seconds)*time.Second, func() {
-			deadlineHit.Store(true)
-			cancel()
-		})
+		timer := time.NewTimer(time.Duration(seconds) * time.Second)
 		defer timer.Stop()
+		deadlineC = timer.C
 	}
+	// Non-nil once the deadline has fired; the abandon path below then bounds
+	// how long a cancellation-ignoring provider may keep the lease.
+	var abandonC <-chan time.Time
 	result := make(chan error, 1)
 	terminal := make(chan bool, 1)
 
+	// appendTerminal writes one synthetic terminal event. A failure is logged
+	// and never retried here: the caller still attempts FinishTaskLease,
+	// which the server only honours once the task is terminal, so a failed
+	// append keeps the lease alive exactly when a terminal event is missing.
+	appendTerminal := func(event *agentv1.AgentEvent, stage string) {
+		if _, appendErr := w.client.AppendTaskEvent(parent, connect.NewRequest(&taskv1.AppendTaskEventRequest{
+			LeaseId: lease.GetLeaseId(), WorkerId: w.id, Event: event,
+		})); appendErr != nil {
+			w.logger.Warn(stage, "task_id", task.GetId(), "error", appendErr)
+		}
+	}
+	finishLease := func(stage string) {
+		if _, finishErr := w.client.FinishTaskLease(parent, connect.NewRequest(&taskv1.FinishTaskLeaseRequest{
+			LeaseId: lease.GetLeaseId(), WorkerId: w.id,
+		})); finishErr != nil {
+			w.logger.Warn("finish task lease failed", "task_id", task.GetId(), "stage", stage, "error", finishErr)
+		}
+	}
+
 	go func() {
+		// sawTerminal means a terminal event was durably appended — set only
+		// after the append succeeded, never before, so a lost terminal write
+		// still gets the deterministic fallback below.
 		sawTerminal := false
 		err := w.broker.Run(runCtx, task.GetId(), task.GetProviderId(), task.GetInput(), func(event *agentv1.AgentEvent) error {
-			if isTerminal(event) {
-				sawTerminal = true
-			}
 			_, appendErr := w.client.AppendTaskEvent(runCtx, connect.NewRequest(&taskv1.AppendTaskEventRequest{
 				LeaseId: lease.GetLeaseId(), WorkerId: w.id, Event: event,
 			}))
+			if appendErr == nil && isTerminal(event) {
+				sawTerminal = true
+			}
 			return appendErr
 		})
 		terminal <- sawTerminal
@@ -123,6 +157,23 @@ func (w *Worker) process(parent context.Context, lease *taskv1.TaskLease) {
 			if response.Msg.GetCancellationRequested() {
 				cancel()
 			}
+		case <-deadlineC:
+			deadlineHit.Store(true)
+			cancel()
+			grace := time.NewTimer(w.abandonAfter)
+			defer grace.Stop()
+			abandonC = grace.C
+		case <-abandonC:
+			// The provider ignored the cancellation past the grace window.
+			// This worker still owns the deterministic terminal event and the
+			// lease end; the abandoned run's later appends fail against the
+			// finished lease server-side.
+			w.logger.Warn("provider ignored run cancellation; abandoning", "task_id", task.GetId())
+			appendTerminal(&agentv1.AgentEvent{Event: &agentv1.AgentEvent_RunFailed{RunFailed: &agentv1.RunFailed{
+				Reason: "provider run exceeded its runtime deadline",
+			}}}, "append abandoned deadline failure failed")
+			finishLease("abandoned")
+			return
 		case err := <-result:
 			sawTerminal := <-terminal
 			if err != nil && !sawTerminal {
@@ -132,43 +183,25 @@ func (w *Worker) process(parent context.Context, lease *taskv1.TaskLease) {
 					// The server-derived deadline stopped the run; the task
 					// was not cancelled by the owner, so this worker owns the
 					// deterministic terminal event.
-					failed := &agentv1.AgentEvent{Event: &agentv1.AgentEvent_RunFailed{RunFailed: &agentv1.RunFailed{
+					appendTerminal(&agentv1.AgentEvent{Event: &agentv1.AgentEvent_RunFailed{RunFailed: &agentv1.RunFailed{
 						Reason: "provider run exceeded its runtime deadline",
-					}}}
-					if _, appendErr := w.client.AppendTaskEvent(parent, connect.NewRequest(&taskv1.AppendTaskEventRequest{
-						LeaseId: lease.GetLeaseId(), WorkerId: w.id, Event: failed,
-					})); appendErr != nil {
-						w.logger.Warn("append deadline failure failed", "task_id", task.GetId(), "error", appendErr)
-						return
-					}
+					}}}, "append deadline failure failed")
 				case cancelled:
 					// Owner cancellation: Core has already appended the
 					// authoritative run_cancelled terminal event itself.
 				default:
 					reason, retryable := ports.FailureDetails(err)
-					failed := &agentv1.AgentEvent{Event: &agentv1.AgentEvent_RunFailed{RunFailed: &agentv1.RunFailed{Reason: reason, Retryable: retryable}}}
-					if _, appendErr := w.client.AppendTaskEvent(parent, connect.NewRequest(&taskv1.AppendTaskEventRequest{
-						LeaseId: lease.GetLeaseId(), WorkerId: w.id, Event: failed,
-					})); appendErr != nil {
-						w.logger.Warn("append provider failure failed", "task_id", task.GetId(), "error", appendErr)
-						return
-					}
+					appendTerminal(&agentv1.AgentEvent{Event: &agentv1.AgentEvent_RunFailed{RunFailed: &agentv1.RunFailed{Reason: reason, Retryable: retryable}}}, "append provider failure failed")
 				}
 			}
 			if err == nil && !sawTerminal {
-				failed := &agentv1.AgentEvent{Event: &agentv1.AgentEvent_RunFailed{RunFailed: &agentv1.RunFailed{Reason: "provider ended without a terminal event"}}}
-				if _, appendErr := w.client.AppendTaskEvent(parent, connect.NewRequest(&taskv1.AppendTaskEventRequest{
-					LeaseId: lease.GetLeaseId(), WorkerId: w.id, Event: failed,
-				})); appendErr != nil {
-					w.logger.Warn("append missing terminal failure failed", "task_id", task.GetId(), "error", appendErr)
-					return
-				}
+				appendTerminal(&agentv1.AgentEvent{Event: &agentv1.AgentEvent_RunFailed{RunFailed: &agentv1.RunFailed{Reason: "provider ended without a terminal event"}}}, "append missing terminal failure failed")
 			}
-			if _, finishErr := w.client.FinishTaskLease(parent, connect.NewRequest(&taskv1.FinishTaskLeaseRequest{
-				LeaseId: lease.GetLeaseId(), WorkerId: w.id,
-			})); finishErr != nil {
-				w.logger.Warn("finish task lease failed", "task_id", task.GetId(), "error", finishErr)
-			}
+			// Always attempt the finish: the server-side guard honours it
+			// only once the task is terminal, so it cleans up exactly when a
+			// terminal event exists and no-ops (keeping the lease) when one
+			// is still missing.
+			finishLease("result")
 			return
 		}
 	}

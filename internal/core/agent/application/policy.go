@@ -3,6 +3,7 @@ package application
 import (
 	"context"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/yangtao121/workos/internal/core/agent/domain"
@@ -30,29 +31,47 @@ func NewPolicyService(repository ports.Repository, installations ports.Installat
 
 // EffectivePolicy resolves the policy governing fresh App runs for one
 // installation: the explicit owner-set row, or the versioned system default.
-// Liveness of the (owner, project, installation) triple is revalidated first;
-// unknown, foreign, uninstalled, or archived-project facts are a sanitized
-// NotFound.
+// The stored project binding is verified against the active installation's
+// project — a row bound to a different project is corruption and fails
+// closed, never a silently re-bound policy.
 func (s *PolicyService) EffectivePolicy(ctx context.Context, ownerUserID, projectID, appInstanceID string) (domain.Policy, error) {
+	policy, facts, err := effectivePolicy(ctx, s.repository, s.installations, ownerUserID, projectID, appInstanceID)
+	if err != nil {
+		return domain.Policy{}, err
+	}
+	policy.AppID = facts.AppID
+	return policy, nil
+}
+
+// effectivePolicy is the shared read path for every policy consumer:
+// installation liveness first, then the explicit row — whose project binding
+// must equal the installation's project — or the versioned system default.
+func effectivePolicy(ctx context.Context, repository ports.Repository, installations ports.InstallationSource, ownerUserID, projectID, appInstanceID string) (domain.Policy, ports.InstallationFacts, error) {
 	if ownerUserID == "" || !domain.ValidAppTaskUUID(projectID) || !domain.ValidAppTaskUUID(appInstanceID) {
-		return domain.Policy{}, domain.ErrInvalid
+		return domain.Policy{}, ports.InstallationFacts{}, domain.ErrInvalid
 	}
-	facts, err := s.installations.ResolveActiveInstallation(ctx, ownerUserID, projectID, appInstanceID)
+	facts, err := installations.ResolveActiveInstallation(ctx, ownerUserID, projectID, appInstanceID)
 	if err != nil {
-		return domain.Policy{}, err
+		return domain.Policy{}, ports.InstallationFacts{}, err
 	}
-	policy, found, err := s.repository.GetPolicy(ctx, ownerUserID, appInstanceID)
+	policy, found, err := repository.GetPolicy(ctx, ownerUserID, appInstanceID)
 	if err != nil {
-		return domain.Policy{}, err
+		return domain.Policy{}, ports.InstallationFacts{}, err
 	}
-	if !found {
+	if found {
+		// Format-valid project values are not enough: a misbound or drifted
+		// row must never serve this installation under a silently rewritten
+		// binding.
+		if policy.ProjectID != projectID {
+			return domain.Policy{}, ports.InstallationFacts{}, fmt.Errorf("policy project binding: %w", domain.ErrPolicyCorrupt)
+		}
+	} else {
 		policy = domain.SystemDefaultPolicy()
 	}
 	policy.OwnerUserID = ownerUserID
 	policy.AppInstanceID = appInstanceID
 	policy.ProjectID = projectID
-	policy.AppID = facts.AppID
-	return policy, nil
+	return policy, facts, nil
 }
 
 // SetPolicy applies one full-replacement policy mutation. The canonical

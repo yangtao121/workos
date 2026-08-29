@@ -77,21 +77,6 @@ func (s *UsageService) AppDailyUsageWithPolicy(ctx context.Context, ownerUserID,
 }
 
 func (s *UsageService) effectivePolicyForUsage(ctx context.Context, ownerUserID, projectID, appInstanceID string) (domain.Policy, error) {
-	if ownerUserID == "" || !domain.ValidAppTaskUUID(projectID) || !domain.ValidAppTaskUUID(appInstanceID) {
-		return domain.Policy{}, domain.ErrInvalid
-	}
-	if _, err := s.installations.ResolveActiveInstallation(ctx, ownerUserID, projectID, appInstanceID); err != nil {
-		return domain.Policy{}, err
-	}
-	policy, found, err := s.repository.GetPolicy(ctx, ownerUserID, appInstanceID)
-	if err != nil {
-		return domain.Policy{}, err
-	}
-	if !found {
-		policy = domain.SystemDefaultPolicy()
-	}
-	policy.OwnerUserID = ownerUserID
-	policy.AppInstanceID = appInstanceID
-	policy.ProjectID = projectID
-	return policy, nil
+	policy, _, err := effectivePolicy(ctx, s.repository, s.installations, ownerUserID, projectID, appInstanceID)
+	return policy, err
 }

@@ -26,6 +26,12 @@ message HarnessCapabilities {
   // The adapter demonstrably enforces AgentBudget.max_runtime_seconds as a
   // hard runtime deadline (stop the run even if the provider streams forever).
   bool hard_runtime_deadline = 13;
+  // The enforced per-run budget maxima this adapter actually accepts. Core
+  // must refuse fresh App runs whose policy budget exceeds either maximum
+  // before queueing or reserving anything (ADR-0005 pre-run capability
+  // verification). Zero means the matching hard capability is unsupported.
+  int64 max_output_tokens = 14;
+  int64 max_runtime_seconds = 15;
 }
 
 message HarnessProviderInfo {

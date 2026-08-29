@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"hash/fnv"
 	"time"
 
 	"github.com/google/uuid"
@@ -15,10 +16,36 @@ import (
 	"github.com/yangtao121/workos/internal/core/agent/ports"
 )
 
+// agentAppPolicyLockNamespace pins the advisory-lock namespace every policy-
+// chain transaction shares, so the per-installation key space below never
+// collides with another advisory-lock user.
+const agentAppPolicyLockNamespace = 0x61706F6C // "apol"
+
+// lockAgentAppPolicyChain takes the transaction-scoped advisory lock that
+// linearizes one installation's policy chain (SetPolicy invalidation,
+// waiting-approval creation, and approval). The lock exists even when no
+// policy row does, so a first SetPolicy can never interleave between an
+// approval transaction's policy read and its durable state transition.
+func lockAgentAppPolicyChain(ctx context.Context, queries *agentdb.Queries, ownerUserID, appInstanceID string) error {
+	hash := fnv.New32a()
+	hash.Write([]byte(ownerUserID))
+	hash.Write([]byte{0})
+	hash.Write([]byte(appInstanceID))
+	if err := queries.LockAgentAppPolicyChain(ctx, agentdb.LockAgentAppPolicyChainParams{
+		LockNamespace: agentAppPolicyLockNamespace, LockKey: int32(hash.Sum32()),
+	}); err != nil {
+		return storeError("lock app policy chain", err)
+	}
+	return nil
+}
+
 // policyFromDB projects one stored policy row. Stored rows are written
-// canonical; any drift is caller-visible corruption, not a silent default.
-func policyFromDB(value agentdb.WorkosCoreAgentAppPolicy) domain.Policy {
-	return domain.Policy{
+// canonical, so the projection validates the stored fact: positive revision,
+// bound project, spec grammar, and the recomputed spec digest must all match
+// what the writer persisted — any drift is caller-visible corruption, not a
+// silent default.
+func policyFromDB(value agentdb.WorkosCoreAgentAppPolicy) (domain.Policy, error) {
+	policy := domain.Policy{
 		OwnerUserID:   value.OwnerUserID,
 		AppInstanceID: value.AppInstanceID,
 		ProjectID:     value.ProjectID,
@@ -32,6 +59,16 @@ func policyFromDB(value agentdb.WorkosCoreAgentAppPolicy) domain.Policy {
 		Source:   domain.PolicySourceExplicit,
 		Revision: value.PolicyRevision,
 	}
+	if policy.Revision <= 0 || !domain.ValidAppTaskUUID(policy.ProjectID) {
+		return domain.Policy{}, fmt.Errorf("policy identity: %w", domain.ErrPolicyCorrupt)
+	}
+	if err := policy.Spec.Validate(); err != nil {
+		return domain.Policy{}, fmt.Errorf("policy spec: %w", domain.ErrPolicyCorrupt)
+	}
+	if value.SpecDigest != policy.Spec.Digest() {
+		return domain.Policy{}, fmt.Errorf("policy digest: %w", domain.ErrPolicyCorrupt)
+	}
+	return policy, nil
 }
 
 func (r *Repository) GetPolicy(ctx context.Context, ownerUserID, appInstanceID string) (domain.Policy, bool, error) {
@@ -44,7 +81,11 @@ func (r *Repository) GetPolicy(ctx context.Context, ownerUserID, appInstanceID s
 	if err != nil {
 		return domain.Policy{}, false, storeError("query app policy", err)
 	}
-	return policyFromDB(value), true, nil
+	policy, err := policyFromDB(value)
+	if err != nil {
+		return domain.Policy{}, false, err
+	}
+	return policy, true, nil
 }
 
 // GetPolicyRequest reads one consumed SetAppPolicy key with its stored
@@ -76,17 +117,40 @@ func (r *Repository) SetPolicy(ctx context.Context, command ports.SetPolicyComma
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck
 	queries := r.queries.WithTx(tx)
+	// The chain lock linearizes this invalidation scan against waiting-
+	// approval creation: any approval created after this point carries the
+	// revision this transaction is about to write, any approval created
+	// before it is visible to the scan below.
+	if err := lockAgentAppPolicyChain(ctx, queries, command.OwnerUserID, command.AppInstanceID); err != nil {
+		return domain.Policy{}, ports.SetPolicyResult{}, err
+	}
 
 	existing, err := queries.GetAgentAppPolicyForUpdate(ctx, agentdb.GetAgentAppPolicyForUpdateParams{
 		OwnerUserID: command.OwnerUserID, AppInstanceID: command.AppInstanceID,
 	})
 	// An absent policy row is the normal first-Set case; anything else that
 	// failed to read is a real storage failure.
+	existingPolicy := domain.Policy{}
 	existingFound := true
 	if errors.Is(err, pgx.ErrNoRows) {
 		existingFound = false
 	} else if err != nil {
 		return domain.Policy{}, ports.SetPolicyResult{}, storeError("lock app policy", err)
+	}
+	if existingFound {
+		// Validate the stored row before any verdict: a drifted row is
+		// corruption and fails closed for every caller — including one whose
+		// different spec would otherwise silently overwrite the corrupt fact.
+		if existingPolicy, err = policyFromDB(existing); err != nil {
+			return domain.Policy{}, ports.SetPolicyResult{}, err
+		}
+		if existingPolicy.ProjectID != command.ProjectID {
+			// Project is a persistent installation snapshot, not a mutable field
+			// SetPolicy may repair. Reject before the request key is inserted so
+			// neither a no-op nor a real change can consume the key or overwrite
+			// the corrupt binding.
+			return domain.Policy{}, ports.SetPolicyResult{}, fmt.Errorf("policy project binding: %w", domain.ErrPolicyCorrupt)
+		}
 	}
 
 	// The idempotency key is consumed even by a deterministic no-op, and a
@@ -143,7 +207,7 @@ func (r *Repository) SetPolicy(ctx context.Context, command ports.SetPolicyComma
 	if existingFound && existing.SpecDigest == command.SpecDigest {
 		// Deterministic no-op: identical spec, no revision bump, no approval
 		// invalidation — but the key stays consumed and replays exactly.
-		policy = policyFromDB(existing)
+		policy = existingPolicy
 		changed = false
 	} else {
 		expected := int64(-1)
@@ -277,6 +341,37 @@ func approvalFromDB(value agentdb.WorkosCoreAgentAppApproval) domain.Approval {
 	return approval
 }
 
+// hydrateApprovalPolicySnapshot joins the approval's persisted numeric limits
+// to its immutable task policy source/digest. The digest determines the one
+// canonical execution mode without inventing a second policy snapshot column;
+// any mismatch between the two Agent-owned facts is internal corruption.
+func hydrateApprovalPolicySnapshot(approval *domain.Approval, task domain.Task, value agentdb.WorkosCoreAgentTask) error {
+	if approval == nil || task.ID != approval.TaskID || task.OwnerUserID != approval.OwnerUserID ||
+		task.ProjectID != approval.ProjectID || task.ProviderID != approval.ProviderID ||
+		!value.PolicySource.Valid || !value.PolicyRevision.Valid ||
+		!value.PolicySpecDigest.Valid || !value.BudgetMaxOutputTokens.Valid ||
+		!value.BudgetMaxRuntimeSeconds.Valid ||
+		value.PolicyRevision.Int64 != approval.Revision ||
+		value.BudgetMaxOutputTokens.Int64 != approval.Spec.MaxOutputTokensPerTask ||
+		value.BudgetMaxRuntimeSeconds.Int64 != approval.Spec.MaxRuntimeSecondsPerTask {
+		return fmt.Errorf("approval policy snapshot: %w", domain.ErrPolicyCorrupt)
+	}
+	source := domain.PolicySource(value.PolicySource.String)
+	if source != domain.PolicySourceExplicit && source != domain.PolicySourceSystemDefault {
+		return fmt.Errorf("approval policy source: %w", domain.ErrPolicyCorrupt)
+	}
+	for _, mode := range []domain.PolicyMode{domain.PolicyModeAllow, domain.PolicyModeRequireApproval, domain.PolicyModeBlock} {
+		candidate := approval.Spec
+		candidate.Mode = mode
+		if candidate.Validate() == nil && candidate.Digest() == value.PolicySpecDigest.String {
+			approval.Source = source
+			approval.Spec = candidate
+			return nil
+		}
+	}
+	return fmt.Errorf("approval policy digest: %w", domain.ErrPolicyCorrupt)
+}
+
 func (r *Repository) GetApproval(ctx context.Context, ownerUserID, approvalID string) (domain.Approval, error) {
 	value, err := r.queries.GetAgentAppApproval(ctx, agentdb.GetAgentAppApprovalParams{
 		OwnerUserID: ownerUserID, ID: approvalID,
@@ -287,7 +382,19 @@ func (r *Repository) GetApproval(ctx context.Context, ownerUserID, approvalID st
 	if err != nil {
 		return domain.Approval{}, storeError("query app approval", err)
 	}
-	return approvalFromDB(value), nil
+	approval := approvalFromDB(value)
+	taskValue, err := r.queries.GetAgentTask(ctx, agentdb.GetAgentTaskParams{OwnerUserID: ownerUserID, ID: approval.TaskID})
+	task, err := taskFromDB(taskValue, err)
+	if errors.Is(err, domain.ErrNotFound) {
+		return domain.Approval{}, fmt.Errorf("approval task snapshot: %w", domain.ErrPolicyCorrupt)
+	}
+	if err != nil {
+		return domain.Approval{}, err
+	}
+	if err := hydrateApprovalPolicySnapshot(&approval, task, taskValue); err != nil {
+		return domain.Approval{}, err
+	}
+	return approval, nil
 }
 
 func (r *Repository) ListApprovals(ctx context.Context, ownerUserID, projectID string, state domain.ApprovalState, cursor string, limit int) ([]domain.Approval, error) {
@@ -320,6 +427,28 @@ func (r *Repository) DecideApproval(ctx context.Context, command ports.DecideApp
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck
 	queries := r.queries.WithTx(tx)
+	lockedAppInstanceID := ""
+	if command.Decision == domain.ApprovalDecisionApprove {
+		// Discover the immutable policy-chain key without taking the approval
+		// row first. Every policy-sensitive transaction must acquire the chain
+		// lock before row locks; otherwise SetPolicy (policy row -> approval
+		// row) and DecideApproval (approval row -> policy row) can deadlock or
+		// let an approval observe the old committed policy while a replacement
+		// is waiting to invalidate it.
+		candidate, err := queries.GetAgentAppApproval(ctx, agentdb.GetAgentAppApprovalParams{
+			OwnerUserID: command.OwnerUserID, ID: command.ApprovalID,
+		})
+		if errors.Is(err, pgx.ErrNoRows) {
+			return domain.Approval{}, domain.ErrNotFound
+		}
+		if err != nil {
+			return domain.Approval{}, storeError("query app approval policy chain", err)
+		}
+		lockedAppInstanceID = candidate.AppInstanceID
+		if err := lockAgentAppPolicyChain(ctx, queries, command.OwnerUserID, lockedAppInstanceID); err != nil {
+			return domain.Approval{}, err
+		}
+	}
 	value, err := queries.GetAgentAppApprovalForUpdate(ctx, agentdb.GetAgentAppApprovalForUpdateParams{
 		OwnerUserID: command.OwnerUserID, ID: command.ApprovalID,
 	})
@@ -330,6 +459,9 @@ func (r *Repository) DecideApproval(ctx context.Context, command ports.DecideApp
 		return domain.Approval{}, storeError("lock app approval", err)
 	}
 	approval := approvalFromDB(value)
+	if lockedAppInstanceID != "" && approval.AppInstanceID != lockedAppInstanceID {
+		return domain.Approval{}, fmt.Errorf("approval policy chain binding: %w", domain.ErrPolicyCorrupt)
+	}
 
 	switch approval.State {
 	case domain.ApprovalExpired:
@@ -361,6 +493,19 @@ func (r *Repository) DecideApproval(ctx context.Context, command ports.DecideApp
 	}
 	if task.State != domain.StateWaiting {
 		return domain.Approval{}, domain.ErrApprovalNotPending
+	}
+	if command.Decision == domain.ApprovalDecisionApprove {
+		// The task is the durable authority for the source/digest snapshot; the
+		// approval table stores the full numeric spec and revision. Rebuild the
+		// complete identity under the policy-chain/approval/task locks, then
+		// re-check the current policy before any quota reservation or outbox
+		// write.
+		if err := hydrateApprovalPolicySnapshot(&approval, task, taskValue); err != nil {
+			return domain.Approval{}, err
+		}
+		if err := verifyApprovalPolicyChain(ctx, queries, approval); err != nil {
+			return domain.Approval{}, err
+		}
 	}
 
 	decidedEventPayload := func(decision string) (json.RawMessage, error) {

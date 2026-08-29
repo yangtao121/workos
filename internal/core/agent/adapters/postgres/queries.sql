@@ -160,6 +160,14 @@ SELECT owner_user_id, app_instance_id, project_id, execution_mode,
 FROM workos_core.agent_app_policies
 WHERE owner_user_id = $1 AND app_instance_id = $2;
 
+-- name: LockAgentAppPolicyChain :exec
+-- Serializes every transaction that reads-or-writes one installation's policy
+-- chain (SetPolicy invalidation scans, waiting-approval creation). The
+-- transaction-scoped advisory lock exists even when no policy row does, so a
+-- first SetPolicy can never interleave between an approval-creation's policy
+-- read and its pending-approval insert.
+SELECT pg_advisory_xact_lock(sqlc.arg('lock_namespace')::int, sqlc.arg('lock_key')::int);
+
 -- name: GetAgentAppPolicyForUpdate :one
 SELECT owner_user_id, app_instance_id, project_id, execution_mode,
        max_output_tokens_per_task, max_runtime_seconds_per_task, max_tasks_per_utc_day,
@@ -301,7 +309,10 @@ INSERT INTO workos_core.agent_task_usage (
 ON CONFLICT (owner_user_id, task_id) DO UPDATE SET
     input_tokens = agent_task_usage.input_tokens + EXCLUDED.input_tokens,
     output_tokens = agent_task_usage.output_tokens + EXCLUDED.output_tokens,
-    cost_decimal = COALESCE(EXCLUDED.cost_decimal, agent_task_usage.cost_decimal),
+    cost_decimal = CASE
+        WHEN agent_task_usage.cost_decimal IS NULL AND EXCLUDED.cost_decimal IS NULL THEN NULL
+        ELSE COALESCE(agent_task_usage.cost_decimal, 0) + COALESCE(EXCLUDED.cost_decimal, 0)
+    END,
     model = CASE WHEN EXCLUDED.model <> '' THEN EXCLUDED.model ELSE agent_task_usage.model END,
     updated_at = EXCLUDED.updated_at
 RETURNING input_tokens, output_tokens, (xmax = 0) AS inserted;
@@ -315,7 +326,10 @@ ON CONFLICT (owner_user_id, app_instance_id, utc_date) DO UPDATE SET
     tasks_recorded = agent_app_daily_usage.tasks_recorded + EXCLUDED.tasks_recorded,
     input_tokens_recorded = agent_app_daily_usage.input_tokens_recorded + EXCLUDED.input_tokens_recorded,
     output_tokens_recorded = agent_app_daily_usage.output_tokens_recorded + EXCLUDED.output_tokens_recorded,
-    cost_decimal_recorded = COALESCE(EXCLUDED.cost_decimal_recorded, agent_app_daily_usage.cost_decimal_recorded),
+    cost_decimal_recorded = CASE
+        WHEN agent_app_daily_usage.cost_decimal_recorded IS NULL AND EXCLUDED.cost_decimal_recorded IS NULL THEN NULL
+        ELSE COALESCE(agent_app_daily_usage.cost_decimal_recorded, 0) + COALESCE(EXCLUDED.cost_decimal_recorded, 0)
+    END,
     updated_at = EXCLUDED.updated_at;
 
 -- name: MarkAgentAppUsageBreach :exec

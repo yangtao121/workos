@@ -34,6 +34,8 @@ func (h *Handler) GetHarnessCatalog(ctx context.Context, _ *connect.Request[harn
 				WorkspaceMount: provider.Capabilities.WorkspaceMount, StructuredArtifacts: provider.Capabilities.StructuredArtifacts,
 				UsageReporting:  provider.Capabilities.UsageReporting,
 				HardTokenBudget: provider.Capabilities.HardTokenBudget, HardRuntimeDeadline: provider.Capabilities.HardRuntimeDeadline,
+				MaxOutputTokens:   provider.Capabilities.MaxOutputTokens,
+				MaxRuntimeSeconds: provider.Capabilities.MaxRuntimeSeconds,
 			},
 		})
 	}

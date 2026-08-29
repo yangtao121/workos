@@ -654,6 +654,8 @@ function provider(id: string, displayName: string): HarnessProviderInfo {
       usageReporting: true,
       hardTokenBudget: false,
       hardRuntimeDeadline: false,
+      maxOutputTokens: 0n,
+      maxRuntimeSeconds: 0n,
     },
   };
 }

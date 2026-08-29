@@ -31,6 +31,12 @@ type Capabilities struct {
 	// adapters that cannot enforce them must report false.
 	HardTokenBudget     bool
 	HardRuntimeDeadline bool
+	// MaxOutputTokens and MaxRuntimeSeconds are the enforced per-run budget
+	// maxima the adapter accepts; zero means the matching hard capability is
+	// unsupported. Core refuses fresh App runs whose policy budget exceeds
+	// them before any queue or reservation.
+	MaxOutputTokens   int64
+	MaxRuntimeSeconds int64
 }
 
 type Provider struct {

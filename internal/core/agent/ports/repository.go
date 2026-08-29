@@ -69,17 +69,31 @@ type InstallationSource interface {
 }
 
 // ProviderCapabilities is the budget-contract subset of the harness catalog
-// a fresh App run must verify before enqueueing.
+// a fresh App run must verify before enqueueing. The maxima are the enforced
+// per-run budget bounds the provider declared; zero means the corresponding
+// hard capability is unsupported.
 type ProviderCapabilities struct {
 	HardTokenBudget     bool
 	HardRuntimeDeadline bool
 	UsageReporting      bool
+	MaxOutputTokens     int64
+	MaxRuntimeSeconds   int64
 }
 
 // Complete reports whether the provider explicitly supports the full budget
 // contract App runs are adjudicated against.
 func (c ProviderCapabilities) Complete() bool {
 	return c.HardTokenBudget && c.HardRuntimeDeadline && c.UsageReporting
+}
+
+// Supports reports whether the provider enforces the full budget contract and
+// accepts the given per-task limits. A policy budget beyond the provider's
+// enforced maxima would only fail inside the adapter — after the quota
+// reservation and the queue slot — so it must fail closed here instead.
+func (c ProviderCapabilities) Supports(maxOutputTokens, maxRuntimeSeconds int64) bool {
+	return c.Complete() &&
+		c.MaxOutputTokens > 0 && c.MaxOutputTokens >= maxOutputTokens &&
+		c.MaxRuntimeSeconds > 0 && c.MaxRuntimeSeconds >= maxRuntimeSeconds
 }
 
 // ProviderCatalog resolves provider budget capabilities. Unknown providers

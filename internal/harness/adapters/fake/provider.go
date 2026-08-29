@@ -41,6 +41,10 @@ func (p *Provider) Describe() *harnessv1.HarnessProviderInfo {
 			// the reported usage never exceeds an accepted token cap.
 			HardTokenBudget:     true,
 			HardRuntimeDeadline: true,
+			// The enforced maxima validateBudget refuses budgets beyond, so
+			// Core can reject over-bound policies before queueing.
+			MaxOutputTokens:   maxOutputTokenCap,
+			MaxRuntimeSeconds: maxRuntimeSecondsCap,
 		},
 	}
 }

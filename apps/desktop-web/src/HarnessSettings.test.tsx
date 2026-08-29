@@ -317,6 +317,8 @@ function provider(
       usageReporting: false,
       hardTokenBudget: false,
       hardRuntimeDeadline: false,
+      maxOutputTokens: 0n,
+      maxRuntimeSeconds: 0n,
       ...enabled,
     },
   };

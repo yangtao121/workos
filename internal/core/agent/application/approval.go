@@ -28,23 +28,25 @@ func NewApprovalService(repository ports.Repository, installations ports.Install
 
 // List pages the owner's approvals in deterministic id order with optional
 // project/state filters. Foreign or unknown projects simply yield no rows —
-// the owner namespace bounds everything.
-func (s *ApprovalService) List(ctx context.Context, ownerUserID, projectID string, state domain.ApprovalState, cursor string, limit int) ([]domain.Approval, error) {
+// the owner namespace bounds everything. One extra row is fetched beyond the
+// effective page size so the next-page token is only produced when a further
+// page actually exists; a full final page yields no phantom token.
+func (s *ApprovalService) List(ctx context.Context, ownerUserID, projectID string, state domain.ApprovalState, cursor string, limit int) ([]domain.Approval, string, error) {
 	if ownerUserID == "" {
-		return nil, domain.ErrInvalid
+		return nil, "", domain.ErrInvalid
 	}
 	if projectID != "" && !domain.ValidAppTaskUUID(projectID) {
-		return nil, domain.ErrInvalid
+		return nil, "", domain.ErrInvalid
 	}
 	switch state {
 	case domain.ApprovalState(""):
 		state = ""
 	case domain.ApprovalPending, domain.ApprovalApproved, domain.ApprovalRejected, domain.ApprovalExpired:
 	default:
-		return nil, domain.ErrInvalid
+		return nil, "", domain.ErrInvalid
 	}
 	if cursor != "" && !domain.ValidAppTaskUUID(cursor) {
-		return nil, domain.ErrInvalid
+		return nil, "", domain.ErrInvalid
 	}
 	if limit <= 0 {
 		limit = 50
@@ -52,7 +54,16 @@ func (s *ApprovalService) List(ctx context.Context, ownerUserID, projectID strin
 	if limit > 100 {
 		limit = 100
 	}
-	return s.repository.ListApprovals(ctx, ownerUserID, projectID, state, cursor, limit)
+	page, err := s.repository.ListApprovals(ctx, ownerUserID, projectID, state, cursor, limit+1)
+	if err != nil {
+		return nil, "", err
+	}
+	next := ""
+	if len(page) > limit {
+		page = page[:limit]
+		next = page[len(page)-1].ID
+	}
+	return page, next, nil
 }
 
 // Get reads one approval. Unknown or foreign approval IDs are the same
@@ -64,14 +75,17 @@ func (s *ApprovalService) Get(ctx context.Context, ownerUserID, approvalID strin
 	return s.repository.GetApproval(ctx, ownerUserID, approvalID)
 }
 
-// Decide adjudicates one owner decision. Before anything durable happens the
-// service revalidates the world the approval was created in: installation
+// Decide adjudicates one owner decision. An approve revalidates the world the
+// approval was created in before anything durable happens: installation
 // liveness and grant membership, policy identity (the approval's policy
 // revision must still be the effective one), and the provider's budget
-// contract. Any revalidation failure is fail-closed FailedPrecondition
-// semantics and keeps the approval pending; only the final repository
-// transaction can move the approval, reserve quota, and enqueue the task
-// atomically.
+// contract including its enforced per-task maxima. A reject runs no such
+// revalidation — revoking a waiting run must stay possible after the
+// installation is uninstalled, the grant revoked, or the provider lost, or a
+// changed world could trap the approval as pending forever. Any approve
+// revalidation failure is fail-closed FailedPrecondition semantics and keeps
+// the approval pending; only the final repository transaction can move the
+// approval, reserve quota, and enqueue the task atomically.
 func (s *ApprovalService) Decide(ctx context.Context, input DecideInput) (domain.Approval, error) {
 	if input.OwnerUserID == "" || !domain.ValidAppTaskUUID(input.ApprovalID) ||
 		!domain.ValidAppClientIdempotencyKey(input.IdempotencyKey) {
@@ -94,8 +108,10 @@ func (s *ApprovalService) Decide(ctx context.Context, input DecideInput) (domain
 		// verdict is computed by the repository inside its transaction.
 		return s.decide(ctx, input)
 	}
-	if err := s.revalidate(ctx, approval); err != nil {
-		return domain.Approval{}, err
+	if input.Decision == domain.ApprovalDecisionApprove {
+		if err := s.revalidate(ctx, approval); err != nil {
+			return domain.Approval{}, err
+		}
 	}
 	return s.decide(ctx, input)
 }
@@ -113,13 +129,16 @@ func (s *ApprovalService) decide(ctx context.Context, input DecideInput) (domain
 
 // revalidate walks the fail-closed chain: the installation must still be
 // active under a non-archived project, its current grant must still carry
-// agent.task.run, and the effective policy revision must still equal the
-// revision the approval was created under (a real policy change has already
-// expired the approval — any observed drift here is corruption-tier and
-// treated as not-pending), and the provider must still declare the budget
-// contract.
+// agent.task.run, and the effective policy identity (project binding,
+// revision, and full spec) must still equal the snapshot the approval was
+// created under (a real policy change has already expired the approval — any
+// observed drift here is corruption-tier or treated as not-pending), and the
+// provider must still declare the budget contract.
 func (s *ApprovalService) revalidate(ctx context.Context, approval domain.Approval) error {
-	facts, err := s.installations.ResolveActiveInstallation(ctx, approval.OwnerUserID, approval.ProjectID, approval.AppInstanceID)
+	// Use the same effective-policy resolver as fresh runs and usage reads so a
+	// format-valid policy row bound to another project can never be approved
+	// under a silently rewritten binding.
+	effective, facts, err := effectivePolicy(ctx, s.repository, s.installations, approval.OwnerUserID, approval.ProjectID, approval.AppInstanceID)
 	if err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
 			return domain.ErrApprovalNotPending
@@ -136,15 +155,7 @@ func (s *ApprovalService) revalidate(ctx context.Context, approval domain.Approv
 	if !granted {
 		return domain.ErrApprovalNotPending
 	}
-	policy, found, err := s.repository.GetPolicy(ctx, approval.OwnerUserID, approval.AppInstanceID)
-	if err != nil {
-		return err
-	}
-	effective := policy
-	if !found {
-		effective = domain.SystemDefaultPolicy()
-	}
-	if effective.Revision != approval.Revision {
+	if effective.Source != approval.Source || effective.Revision != approval.Revision || effective.Spec != approval.Spec {
 		return domain.ErrApprovalNotPending
 	}
 	capabilities, err := s.providers.Capabilities(ctx, approval.ProviderID)
@@ -154,7 +165,9 @@ func (s *ApprovalService) revalidate(ctx context.Context, approval domain.Approv
 		}
 		return err
 	}
-	if !capabilities.Complete() {
+	if !capabilities.Supports(approval.Spec.MaxOutputTokensPerTask, approval.Spec.MaxRuntimeSecondsPerTask) {
+		// A policy budget beyond the provider's enforced maxima must fail
+		// closed here, not inside the adapter after quota was reserved.
 		return domain.ErrProviderCapabilityMissing
 	}
 	return nil

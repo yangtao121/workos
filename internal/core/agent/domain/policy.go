@@ -39,6 +39,12 @@ var (
 	// deadline, and usage-reporting contract. Transport maps it to
 	// FailedPrecondition.
 	ErrProviderCapabilityMissing = errors.New("provider does not support the required budget contract")
+	// ErrPolicyCorrupt marks a stored policy fact that fails its own
+	// integrity validation: spec grammar, positive revision, bound project,
+	// or the recomputed spec digest. It is storage corruption — an internal
+	// fact that must fail closed as a sanitized Internal, never as a client
+	// input error, and never carrying storage detail into a public message.
+	ErrPolicyCorrupt = errors.New("stored app agent policy is corrupt")
 )
 
 // PolicyMode is the execution mode a policy applies to fresh App tasks.
@@ -221,8 +227,9 @@ func EncodePolicyResult(policy Policy) ([]byte, error) {
 }
 
 // DecodePolicyResult rehydrates a stored first-response snapshot. Corrupt
-// snapshots are storage corruption: they surface as invalid-domain errors,
-// never as a guessed policy.
+// snapshots are storage corruption: they surface as ErrPolicyCorrupt (a
+// sanitized internal error), never as a guessed policy or a client input
+// error.
 func DecodePolicyResult(payload []byte) (Policy, error) {
 	var snapshot struct {
 		ResultVersion                    string `json:"result_version"`
@@ -235,10 +242,10 @@ func DecodePolicyResult(payload []byte) (Policy, error) {
 		PolicyRevision                   int64  `json:"policyRevision"`
 	}
 	if err := json.Unmarshal(payload, &snapshot); err != nil {
-		return Policy{}, ErrInvalid
+		return Policy{}, ErrPolicyCorrupt
 	}
 	if snapshot.ResultVersion != PolicyResultSnapshotVersion || snapshot.PolicyRevision <= 0 || !ValidAppTaskUUID(snapshot.ProjectID) {
-		return Policy{}, ErrInvalid
+		return Policy{}, ErrPolicyCorrupt
 	}
 	spec := PolicySpec{
 		Mode:                             PolicyMode(snapshot.ExecutionMode),
@@ -248,7 +255,7 @@ func DecodePolicyResult(payload []byte) (Policy, error) {
 		MaxReservedOutputTokensPerUTCDay: snapshot.MaxReservedOutputTokensPerUTCDay,
 	}
 	if err := spec.Validate(); err != nil {
-		return Policy{}, err
+		return Policy{}, ErrPolicyCorrupt
 	}
 	return Policy{
 		ProjectID: snapshot.ProjectID,

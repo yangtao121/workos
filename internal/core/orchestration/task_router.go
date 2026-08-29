@@ -159,6 +159,12 @@ func (r *TaskRouter) adjudicateAppRun(ctx context.Context, input *agentapp.AppSu
 	if !capabilities.Complete() {
 		return "", nil, agentdomain.ErrProviderCapabilityMissing
 	}
+	if !capabilities.Supports(policy.Spec.MaxOutputTokensPerTask, policy.Spec.MaxRuntimeSecondsPerTask) {
+		// Beyond the provider's enforced maxima the adapter would only refuse
+		// the run after the quota reservation and the queue slot; refusing
+		// here keeps the capability verification pre-run (ADR-0005).
+		return "", nil, agentdomain.ErrProviderCapabilityMissing
+	}
 	input.ProviderID = providerID
 	input.AppID = policy.AppID
 	input.Enforcement = agentapp.AppRunEnforcement{

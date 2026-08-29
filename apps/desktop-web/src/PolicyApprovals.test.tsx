@@ -13,6 +13,7 @@ import type {
   ListApprovalsResponse,
 } from "@workos/protocol";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { act } from "react";
 import { ApprovalsView } from "./ApprovalsView.js";
 import { PolicyDialog } from "./PolicyDialog.js";
 import { UsageView } from "./UsageView.js";
@@ -139,6 +140,120 @@ describe("ApprovalsView", () => {
       />,
     );
     expect(await screen.findByText(/No tasks are waiting/)).toBeTruthy();
+  });
+
+  it("keeps a deferred decision from painting across a project switch", async () => {
+    const user = userEvent.setup();
+    // The decide call rejects while the owner is still on project cc, and the
+    // refresh inside the catch path stays pending until after the owner has
+    // switched to project ee — the exact interleaving that used to paint the
+    // old project's error under the new project's list.
+    let rejectDecide!: (reason: ConnectError) => void;
+    const decideApproval = vi.fn(
+      () =>
+        new Promise<never>((_, reject) => {
+          rejectDecide = reject;
+        }),
+    );
+    let resolveStaleRefresh!: (value: ListApprovalsResponse) => void;
+    const listApprovals = vi
+      .fn()
+      .mockImplementationOnce(() =>
+        Promise.resolve({
+          $typeName: "workos.agent.v1.ListApprovalsResponse",
+          approvals: [approval()],
+          page: { $typeName: "workos.common.v1.PageResponse", nextPageToken: "" },
+        } satisfies ListApprovalsResponse),
+      )
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            resolveStaleRefresh = resolve;
+          }),
+      )
+      .mockImplementation(() =>
+        Promise.resolve({
+          $typeName: "workos.agent.v1.ListApprovalsResponse",
+          approvals: [],
+          page: { $typeName: "workos.common.v1.PageResponse", nextPageToken: "" },
+        } satisfies ListApprovalsResponse),
+      );
+    const { rerender } = render(
+      <ApprovalsView
+        projectId="018f0000-0000-7000-8000-0000000000cc"
+        workosClients={approvalsFixture(listApprovals, decideApproval)}
+      />,
+    );
+    await screen.findByText("Summarize the fixture");
+    await user.click(screen.getByRole("button", { name: "Reject" }));
+    expect(decideApproval).toHaveBeenCalledTimes(1);
+    // act(...) flushes the catch path's state updates (rejection handling and
+    // the pending old-project refresh) so no warning escapes the wrapper.
+    await act(async () => {
+      rejectDecide(new ConnectError("decided", Code.Aborted));
+      await Promise.resolve();
+    });
+    rerender(
+      <ApprovalsView
+        projectId="018f0000-0000-7000-8000-0000000000ee"
+        workosClients={approvalsFixture(listApprovals, decideApproval)}
+      />,
+    );
+    // The new project's refresh wins; then the superseded old-project refresh
+    // resolves last.
+    await waitFor(() => {
+      expect(screen.getByText(/No tasks are waiting/)).toBeTruthy();
+    });
+    act(() => {
+      resolveStaleRefresh({
+        $typeName: "workos.agent.v1.ListApprovalsResponse",
+        approvals: [approval()],
+        page: { $typeName: "workos.common.v1.PageResponse", nextPageToken: "" },
+      });
+    });
+    await waitFor(() => {
+      const calls = (listApprovals as ReturnType<typeof vi.fn>).mock.calls as Array<
+        [{ projectId: string }]
+      >;
+      return calls.length >= 3;
+    });
+    // The old project's error must never surface under the new project.
+    expect(screen.queryByText(/already decided elsewhere/)).toBeNull();
+    expect(screen.getByText(/No tasks are waiting/)).toBeTruthy();
+  });
+
+  it("clears decision feedback when the project switches", async () => {
+    const user = userEvent.setup();
+    const listApprovals = vi.fn((request: { projectId: string }) =>
+      Promise.resolve({
+        $typeName: "workos.agent.v1.ListApprovalsResponse",
+        approvals: request.projectId === "018f0000-0000-7000-8000-0000000000cc" ? [approval()] : [],
+        page: { $typeName: "workos.common.v1.PageResponse", nextPageToken: "" },
+      } satisfies ListApprovalsResponse),
+    );
+    const decideApproval = vi.fn(() =>
+      Promise.resolve({
+        $typeName: "workos.agent.v1.DecideApprovalResponse",
+        approval: approval({ state: 2 }),
+      }),
+    );
+    const { rerender } = render(
+      <ApprovalsView
+        projectId="018f0000-0000-7000-8000-0000000000cc"
+        workosClients={approvalsFixture(listApprovals, decideApproval)}
+      />,
+    );
+    await screen.findByText("Summarize the fixture");
+    await user.click(screen.getByRole("button", { name: "Approve" }));
+    expect(await screen.findByText(/approved and queued/)).toBeTruthy();
+    rerender(
+      <ApprovalsView
+        projectId="018f0000-0000-7000-8000-0000000000ee"
+        workosClients={approvalsFixture(listApprovals, decideApproval)}
+      />,
+    );
+    await screen.findByText(/No tasks are waiting/);
+    expect(screen.queryByText(/approved and queued/)).toBeNull();
   });
 });
 

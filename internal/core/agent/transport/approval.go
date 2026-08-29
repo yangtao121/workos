@@ -2,6 +2,7 @@ package transport
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 
 	"connectrpc.com/connect"
@@ -48,18 +49,23 @@ func approvalStateToProto(state domain.ApprovalState) agentv1.AppAgentApprovalSt
 	}
 }
 
-func approvalFromProto(state agentv1.AppAgentApprovalState) domain.ApprovalState {
+// approvalStateFromProto maps the wire state filter. UNSPECIFIED means no
+// filter; any unknown value is a client contract violation, never an
+// all-states wildcard.
+func approvalStateFromProto(state agentv1.AppAgentApprovalState) (domain.ApprovalState, error) {
 	switch state {
+	case agentv1.AppAgentApprovalState_APP_AGENT_APPROVAL_STATE_UNSPECIFIED:
+		return "", nil
 	case agentv1.AppAgentApprovalState_APP_AGENT_APPROVAL_STATE_PENDING:
-		return domain.ApprovalPending
+		return domain.ApprovalPending, nil
 	case agentv1.AppAgentApprovalState_APP_AGENT_APPROVAL_STATE_APPROVED:
-		return domain.ApprovalApproved
+		return domain.ApprovalApproved, nil
 	case agentv1.AppAgentApprovalState_APP_AGENT_APPROVAL_STATE_REJECTED:
-		return domain.ApprovalRejected
+		return domain.ApprovalRejected, nil
 	case agentv1.AppAgentApprovalState_APP_AGENT_APPROVAL_STATE_EXPIRED:
-		return domain.ApprovalExpired
+		return domain.ApprovalExpired, nil
 	default:
-		return domain.ApprovalState("")
+		return "", fmt.Errorf("unknown approval state filter: %w", domain.ErrInvalid)
 	}
 }
 
@@ -94,7 +100,11 @@ func (h *ApprovalHandler) ListApprovals(ctx context.Context, req *connect.Reques
 	if req.Msg.Page != nil {
 		limit, cursor = int(req.Msg.Page.PageSize), req.Msg.Page.PageToken
 	}
-	approvals, err := h.service.List(ctx, id.UserID, req.Msg.GetProjectId(), approvalFromProto(req.Msg.GetState()), cursor, limit)
+	state, err := approvalStateFromProto(req.Msg.GetState())
+	if err != nil {
+		return nil, mapError(err)
+	}
+	approvals, next, err := h.service.List(ctx, id.UserID, req.Msg.GetProjectId(), state, cursor, limit)
 	if err != nil {
 		return nil, mapError(err)
 	}
@@ -102,10 +112,8 @@ func (h *ApprovalHandler) ListApprovals(ctx context.Context, req *connect.Reques
 	for _, approval := range approvals {
 		items = append(items, approvalToProto(approval))
 	}
-	next := ""
-	if limit > 0 && len(items) == limit {
-		next = items[len(items)-1].GetApprovalId()
-	}
+	// The service already resolved the next-page token from a limit+1 probe:
+	// present only when a further page exists, never on a full final page.
 	return connect.NewResponse(&agentv1.ListApprovalsResponse{Approvals: items, Page: &commonv1.PageResponse{NextPageToken: next}}), nil
 }
 

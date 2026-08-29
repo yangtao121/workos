@@ -763,11 +763,15 @@ func (outagePolicies) EffectivePolicy(context.Context, string, string, string) (
 	return agentdomain.SystemDefaultPolicy(), nil
 }
 
-// outageProviders answers the full budget contract for the default provider.
+// outageProviders answers the full budget contract with enforced per-task
+// maxima above every fixture budget.
 type outageProviders struct{}
 
 func (outageProviders) Capabilities(context.Context, string) (agentports.ProviderCapabilities, error) {
-	return agentports.ProviderCapabilities{HardTokenBudget: true, HardRuntimeDeadline: true, UsageReporting: true}, nil
+	return agentports.ProviderCapabilities{
+		HardTokenBudget: true, HardRuntimeDeadline: true, UsageReporting: true,
+		MaxOutputTokens: 384_000, MaxRuntimeSeconds: 600,
+	}, nil
 }
 
 // staticDefaultPolicies is an alias fact for in-process routers that only
@@ -778,11 +782,15 @@ func (staticDefaultPolicies) EffectivePolicy(context.Context, string, string, st
 	return agentdomain.SystemDefaultPolicy(), nil
 }
 
-// staticFullCapabilities answers the complete budget contract.
+// staticFullCapabilities answers the complete budget contract with enforced
+// per-task maxima above every fixture budget.
 type staticFullCapabilities struct{}
 
 func (staticFullCapabilities) Capabilities(context.Context, string) (agentports.ProviderCapabilities, error) {
-	return agentports.ProviderCapabilities{HardTokenBudget: true, HardRuntimeDeadline: true, UsageReporting: true}, nil
+	return agentports.ProviderCapabilities{
+		HardTokenBudget: true, HardRuntimeDeadline: true, UsageReporting: true,
+		MaxOutputTokens: 384_000, MaxRuntimeSeconds: 600,
+	}, nil
 }
 
 var _ = projectpostgres.New

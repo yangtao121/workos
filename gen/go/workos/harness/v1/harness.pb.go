@@ -43,8 +43,14 @@ type HarnessCapabilities struct {
 	// The adapter demonstrably enforces AgentBudget.max_runtime_seconds as a
 	// hard runtime deadline (stop the run even if the provider streams forever).
 	HardRuntimeDeadline bool `protobuf:"varint,13,opt,name=hard_runtime_deadline,json=hardRuntimeDeadline,proto3" json:"hard_runtime_deadline,omitempty"`
-	unknownFields       protoimpl.UnknownFields
-	sizeCache           protoimpl.SizeCache
+	// The enforced per-run budget maxima this adapter actually accepts. Core
+	// must refuse fresh App runs whose policy budget exceeds either maximum
+	// before queueing or reserving anything (ADR-0005 pre-run capability
+	// verification). Zero means the matching hard capability is unsupported.
+	MaxOutputTokens   int64 `protobuf:"varint,14,opt,name=max_output_tokens,json=maxOutputTokens,proto3" json:"max_output_tokens,omitempty"`
+	MaxRuntimeSeconds int64 `protobuf:"varint,15,opt,name=max_runtime_seconds,json=maxRuntimeSeconds,proto3" json:"max_runtime_seconds,omitempty"`
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
 }
 
 func (x *HarnessCapabilities) Reset() {
@@ -166,6 +172,20 @@ func (x *HarnessCapabilities) GetHardRuntimeDeadline() bool {
 		return x.HardRuntimeDeadline
 	}
 	return false
+}
+
+func (x *HarnessCapabilities) GetMaxOutputTokens() int64 {
+	if x != nil {
+		return x.MaxOutputTokens
+	}
+	return 0
+}
+
+func (x *HarnessCapabilities) GetMaxRuntimeSeconds() int64 {
+	if x != nil {
+		return x.MaxRuntimeSeconds
+	}
+	return 0
 }
 
 type HarnessProviderInfo struct {
@@ -544,7 +564,7 @@ var File_workos_harness_v1_harness_proto protoreflect.FileDescriptor
 
 const file_workos_harness_v1_harness_proto_rawDesc = "" +
 	"\n" +
-	"\x1fworkos/harness/v1/harness.proto\x12\x11workos.harness.v1\x1a\x1bworkos/agent/v1/agent.proto\x1a\x1dworkos/common/v1/common.proto\"\x86\x04\n" +
+	"\x1fworkos/harness/v1/harness.proto\x12\x11workos.harness.v1\x1a\x1bworkos/agent/v1/agent.proto\x1a\x1dworkos/common/v1/common.proto\"\xe2\x04\n" +
 	"\x13HarnessCapabilities\x12\x1c\n" +
 	"\tstreaming\x18\x01 \x01(\bR\tstreaming\x12/\n" +
 	"\x13persistent_sessions\x18\x02 \x01(\bR\x12persistentSessions\x12\x16\n" +
@@ -559,7 +579,9 @@ const file_workos_harness_v1_harness_proto_rawDesc = "" +
 	" \x01(\bR\x13structuredArtifacts\x12'\n" +
 	"\x0fusage_reporting\x18\v \x01(\bR\x0eusageReporting\x12*\n" +
 	"\x11hard_token_budget\x18\f \x01(\bR\x0fhardTokenBudget\x122\n" +
-	"\x15hard_runtime_deadline\x18\r \x01(\bR\x13hardRuntimeDeadline\"\xa3\x02\n" +
+	"\x15hard_runtime_deadline\x18\r \x01(\bR\x13hardRuntimeDeadline\x12*\n" +
+	"\x11max_output_tokens\x18\x0e \x01(\x03R\x0fmaxOutputTokens\x12.\n" +
+	"\x13max_runtime_seconds\x18\x0f \x01(\x03R\x11maxRuntimeSeconds\"\xa3\x02\n" +
 	"\x13HarnessProviderInfo\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12!\n" +
 	"\fdisplay_name\x18\x02 \x01(\tR\vdisplayName\x12'\n" +

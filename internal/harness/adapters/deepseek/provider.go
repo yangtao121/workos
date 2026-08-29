@@ -60,6 +60,10 @@ func (p *Provider) Describe() *harnessv1.HarnessProviderInfo {
 			// deadline; tests prove both contracts (ADR-0005).
 			HardTokenBudget:     true,
 			HardRuntimeDeadline: true,
+			// The enforced maxima prepareInput refuses budgets beyond, so Core
+			// can reject over-bound policies before queueing or reserving.
+			MaxOutputTokens:   MaximumMaxTokens,
+			MaxRuntimeSeconds: int64(MaximumTimeout / time.Second),
 		},
 	}
 }

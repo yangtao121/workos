@@ -41,6 +41,12 @@ type Querier interface {
 	ListAgentAppApprovals(ctx context.Context, arg ListAgentAppApprovalsParams) ([]WorkosCoreAgentAppApproval, error)
 	ListAgentTasks(ctx context.Context, arg ListAgentTasksParams) ([]WorkosCoreAgentTask, error)
 	ListTaskEvents(ctx context.Context, arg ListTaskEventsParams) ([]ListTaskEventsRow, error)
+	// Serializes every transaction that reads-or-writes one installation's policy
+	// chain (SetPolicy invalidation scans, waiting-approval creation). The
+	// transaction-scoped advisory lock exists even when no policy row does, so a
+	// first SetPolicy can never interleave between an approval-creation's policy
+	// read and its pending-approval insert.
+	LockAgentAppPolicyChain(ctx context.Context, arg LockAgentAppPolicyChainParams) error
 	LockTaskEventStream(ctx context.Context, arg LockTaskEventStreamParams) (LockTaskEventStreamRow, error)
 	MarkAgentAppUsageBreach(ctx context.Context, arg MarkAgentAppUsageBreachParams) error
 	MarkTaskCancelled(ctx context.Context, arg MarkTaskCancelledParams) error
