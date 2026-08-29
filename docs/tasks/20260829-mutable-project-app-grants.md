@@ -1,6 +1,6 @@
 # Task: Mutable Project App Grants 与立即撤销纵向切片
 
-- 状态：completed（实现、测试门禁、UI 视觉记录与文档同步均完成；分支待协调方审核后提交/合并）
+- 状态：done（实现、测试门禁、UI 视觉记录与文档同步均完成；分支待后续审核者审查并决定合并）
 - Owner/Agent：orchestrator（ZCode 主智能体）+ 多个并行实现子智能体
 - 进程/模块：workos-core（Project Installation、orchestration AppAgent/Surface resolver）、
   runtime-host（Surface session/App Bridge）、workos-gateway（既有 allowlist 前缀自动公开）、
