@@ -44,8 +44,22 @@ var (
 	ErrGrantEpochStale = errors.New("surface session grant epoch is stale")
 )
 
-// RendererWebBundle is the only implemented surface renderer.
-const RendererWebBundle = "web-bundle"
+// Implemented surface renderers. Web-bundle sessions serve the immutable
+// artifact; web-service sessions proxy a supervised, digest-pinned container
+// workload (ADR-0006 §5).
+const (
+	RendererWebBundle  = "web-bundle"
+	RendererWebService = "web-service"
+)
+
+// RendererAuto markers: the request digest distinguishes a renderer=auto
+// create from an explicit renderer create, because the server resolves the
+// kind from the pinned descriptor instead of trusting a client value. The
+// segment names are canonical digest inputs, never display strings.
+const (
+	rendererAutoWebBundle  = "auto:web-bundle"
+	rendererAutoWebService = "auto:web-service"
+)
 
 // MaxSessionIdempotencyKeyRunes bounds the create-command key.
 const MaxSessionIdempotencyKeyRunes = 128
@@ -71,15 +85,21 @@ type LaunchDescriptor struct {
 // snapshot on every private Core call. None of them is ever projected into
 // public asset responses, logs, or errors.
 type SurfaceSession struct {
-	ID                 string
-	OwnerUserID        string
-	DeviceID           string
-	IdempotencyKey     string
-	RequestDigest      string
-	ProjectID          string
-	AppInstanceID      string
-	Renderer           string
-	Descriptor         LaunchDescriptor
+	ID             string
+	OwnerUserID    string
+	DeviceID       string
+	IdempotencyKey string
+	RequestDigest  string
+	ProjectID      string
+	AppInstanceID  string
+	Renderer       string
+	Descriptor     LaunchDescriptor
+	// WorkloadID and WorkloadGeneration are the web-service session's
+	// server-resolved launch target: the durable workload the session was
+	// opened against and its exact generation. A generation drift or a
+	// stopped workload fails every proxy request closed (ADR-0006 §5).
+	WorkloadID         string
+	WorkloadGeneration int64
 	Path               string
 	BridgeTokenHash    string
 	BridgeCapabilities []string
@@ -160,10 +180,15 @@ func ValidDeviceClass(value string) bool {
 	}
 }
 
-// ValidPreferredRenderer accepts only unspecified or the implemented
-// renderer.
+// ValidPreferredRenderer accepts unspecified (server-selected) or one of the
+// implemented renderers.
 func ValidPreferredRenderer(value string) bool {
-	return value == "" || value == RendererWebBundle
+	switch value {
+	case "", RendererWebBundle, RendererWebService:
+		return true
+	default:
+		return false
+	}
 }
 
 // ViewportBounds are the accepted surface viewport extents.

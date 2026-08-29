@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"time"
 
 	agentv1connect "github.com/yangtao121/workos/gen/go/workos/agent/v1/agentv1connect"
 	commonv1 "github.com/yangtao121/workos/gen/go/workos/common/v1"
@@ -25,6 +26,11 @@ import (
 	surfaceapp "github.com/yangtao121/workos/internal/runtime/surface/application"
 	surfacetransport "github.com/yangtao121/workos/internal/runtime/surface/transport"
 	runtimetransport "github.com/yangtao121/workos/internal/runtime/transport"
+	workloadpodman "github.com/yangtao121/workos/internal/runtime/workload/adapters/podman"
+	workloadpostgres "github.com/yangtao121/workos/internal/runtime/workload/adapters/postgres"
+	workloadapp "github.com/yangtao121/workos/internal/runtime/workload/application"
+	workloadports "github.com/yangtao121/workos/internal/runtime/workload/ports"
+	workloadtransport "github.com/yangtao121/workos/internal/runtime/workload/transport"
 )
 
 func main() {
@@ -33,6 +39,19 @@ func main() {
 		logger.Error("service stopped", "error", err)
 		os.Exit(1)
 	}
+}
+
+// workloadCapability projects the verified runner capability honestly: the
+// reason carries the fixed probe verdict, never engine internals.
+func workloadCapability(capability workloadports.Capability, id string) *commonv1.FeatureCapability {
+	if capability.Available {
+		return &commonv1.FeatureCapability{Id: id, Available: true}
+	}
+	reason := capability.Reason
+	if reason == "" {
+		reason = "verified rootless capability unavailable"
+	}
+	return &commonv1.FeatureCapability{Id: id, Available: false, Reason: reason}
 }
 
 func run(logger *slog.Logger) error {
@@ -70,7 +89,83 @@ func run(logger *slog.Logger) error {
 	}
 	generator := ids.UUIDv7{}
 	sessionStore := surfacepostgres.New(pool)
-	surfaceService, err := surfaceapp.New(sessionStore, resolverClient, generator, cfg.Surface.SessionTTL)
+
+	// The Workload Manager owns supervised containers in runtime-owned
+	// tables. The Podman adapter is constructed eagerly but the capability
+	// verdict always comes from its bounded probe: a host without verified
+	// rootless Podman + cgroup v2 reports the runner unavailable and every
+	// container launch refuses — there is no fallback engine (ADR-0006 §4).
+	workloadStore, err := workloadpostgres.New(pool)
+	if err != nil {
+		return err
+	}
+	var engine workloadports.Engine
+	var cgroupReader workloadports.CgroupReader
+	podmanEngine, engineErr := workloadpodman.New(cfg.Runtime.PodmanBin)
+	if engineErr == nil {
+		engine = podmanEngine
+		reader, readerErr := workloadpodman.NewCgroupReader()
+		if readerErr != nil {
+			return readerErr
+		}
+		cgroupReader = reader
+	} else {
+		engine = workloadpodman.NewUnavailableEngine("podman executable is not available")
+		cgroupReader = workloadpodman.NewUnavailableCgroupReader()
+	}
+	verifier := &coreInstallationVerifier{resolver: resolverClient}
+	references := &surfaceReferenceSource{sessions: sessionStore}
+	manager, err := workloadapp.New(workloadStore, engine, cgroupReader,
+		workloadpodman.NewProber(), verifier, references, generator, workloadapp.Config{
+			ReconcileInterval: cfg.Runtime.ReconcileInterval,
+			IdleTTL:           cfg.Runtime.IdleTTL,
+			OperationTimeout:  cfg.Runtime.OperationTimeout,
+			CoreGrace:         cfg.Runtime.CoreGrace,
+			LeaseTTL:          cfg.Runtime.LeaseTTL,
+			InstanceName:      cfg.Runtime.InstanceName,
+		}, logger)
+	if err != nil {
+		return err
+	}
+	capability, _ := manager.ProbeRunner(ctx)
+	if capability.Available {
+		logger.Info("rootless container capability verified")
+	} else {
+		logger.Warn("verified rootless container capability unavailable", "reason", capability.Reason)
+	}
+	// The reconcile loop converges every crash window between the database
+	// and the engine, re-validates installations through Core, and enforces
+	// the idle TTL. Deterministic code; no Harness or model involvement.
+	reconcileStop := make(chan struct{})
+	defer close(reconcileStop)
+	go func() {
+		ticker := time.NewTicker(cfg.Runtime.ReconcileInterval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-reconcileStop:
+				return
+			case <-ticker.C:
+				reconcileCtx, cancel := context.WithTimeout(ctx, cfg.Runtime.OperationTimeout)
+				if err := manager.Reconcile(reconcileCtx); err != nil {
+					logger.Info("workload reconcile pending", "error", err)
+				}
+				cancel()
+			}
+		}
+	}()
+
+	// The private supervised-workload control service: reached by the
+	// trusted private-network reliability host only. It is never registered
+	// on the gateway allowlist.
+	supervisedPath, supervisedHandler := workloadtransport.NewSupervisedWorkloadHandler(
+		workloadtransport.ApplicationManager(manager))
+	mux.Handle(supervisedPath, supervisedHandler)
+
+	surfaceService, err := surfaceapp.NewWithWorkloads(sessionStore, resolverClient,
+		&surfaceWorkloadLauncher{manager: manager}, generator, cfg.Surface.SessionTTL)
 	if err != nil {
 		return err
 	}
@@ -100,9 +195,9 @@ func run(logger *slog.Logger) error {
 
 	systemPath, systemHandler := commonv1connect.NewSystemServiceHandler(systemhandler.New("runtime-host", commonv1.HealthState_HEALTH_STATE_HEALTHY,
 		&commonv1.FeatureCapability{Id: "node-inspection", Available: true},
-		&commonv1.FeatureCapability{Id: "container-runner", Available: false, Reason: "not implemented"},
+		workloadCapability(capability, "container-runner"),
 		&commonv1.FeatureCapability{Id: "native-runner", Available: false, Reason: "not implemented"},
-		&commonv1.FeatureCapability{Id: "surface-broker", Available: true, Reason: "web bundle surfaces only"},
+		&commonv1.FeatureCapability{Id: "surface-broker", Available: true, Reason: "web bundle and supervised web service surfaces"},
 		&commonv1.FeatureCapability{Id: "app-bridge", Available: true, Reason: "agent.task.run and agent.event.watch only"},
 	))
 	mux.Handle(systemPath, systemHandler)

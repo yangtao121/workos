@@ -42,6 +42,7 @@ const getActiveSession = `-- name: GetActiveSession :one
 SELECT id, owner_user_id, device_id, idempotency_key, request_digest,
        project_id, app_instance_id, renderer, app_id, app_version,
        manifest_digest, artifact_id, artifact_digest, entrypoint, path,
+       workload_id, workload_generation,
        bridge_token_hash, bridge_capabilities, installation_grant_revision,
        created_at, expires_at, closed_at
 FROM workos_runtime.surface_sessions
@@ -68,10 +69,12 @@ type GetActiveSessionRow struct {
 	AppID                     string             `json:"app_id"`
 	AppVersion                string             `json:"app_version"`
 	ManifestDigest            string             `json:"manifest_digest"`
-	ArtifactID                string             `json:"artifact_id"`
-	ArtifactDigest            string             `json:"artifact_digest"`
-	Entrypoint                string             `json:"entrypoint"`
+	ArtifactID                pgtype.UUID        `json:"artifact_id"`
+	ArtifactDigest            pgtype.Text        `json:"artifact_digest"`
+	Entrypoint                pgtype.Text        `json:"entrypoint"`
 	Path                      string             `json:"path"`
+	WorkloadID                pgtype.UUID        `json:"workload_id"`
+	WorkloadGeneration        pgtype.Int8        `json:"workload_generation"`
 	BridgeTokenHash           pgtype.Text        `json:"bridge_token_hash"`
 	BridgeCapabilities        []string           `json:"bridge_capabilities"`
 	InstallationGrantRevision int64              `json:"installation_grant_revision"`
@@ -104,6 +107,8 @@ func (q *Queries) GetActiveSession(ctx context.Context, arg GetActiveSessionPara
 		&i.ArtifactDigest,
 		&i.Entrypoint,
 		&i.Path,
+		&i.WorkloadID,
+		&i.WorkloadGeneration,
 		&i.BridgeTokenHash,
 		&i.BridgeCapabilities,
 		&i.InstallationGrantRevision,
@@ -118,6 +123,7 @@ const getActiveSessionByBridgeToken = `-- name: GetActiveSessionByBridgeToken :o
 SELECT id, owner_user_id, device_id, idempotency_key, request_digest,
        project_id, app_instance_id, renderer, app_id, app_version,
        manifest_digest, artifact_id, artifact_digest, entrypoint, path,
+       workload_id, workload_generation,
        bridge_token_hash, bridge_capabilities, installation_grant_revision,
        created_at, expires_at, closed_at
 FROM workos_runtime.surface_sessions
@@ -145,10 +151,12 @@ type GetActiveSessionByBridgeTokenRow struct {
 	AppID                     string             `json:"app_id"`
 	AppVersion                string             `json:"app_version"`
 	ManifestDigest            string             `json:"manifest_digest"`
-	ArtifactID                string             `json:"artifact_id"`
-	ArtifactDigest            string             `json:"artifact_digest"`
-	Entrypoint                string             `json:"entrypoint"`
+	ArtifactID                pgtype.UUID        `json:"artifact_id"`
+	ArtifactDigest            pgtype.Text        `json:"artifact_digest"`
+	Entrypoint                pgtype.Text        `json:"entrypoint"`
 	Path                      string             `json:"path"`
+	WorkloadID                pgtype.UUID        `json:"workload_id"`
+	WorkloadGeneration        pgtype.Int8        `json:"workload_generation"`
 	BridgeTokenHash           pgtype.Text        `json:"bridge_token_hash"`
 	BridgeCapabilities        []string           `json:"bridge_capabilities"`
 	InstallationGrantRevision int64              `json:"installation_grant_revision"`
@@ -176,6 +184,8 @@ func (q *Queries) GetActiveSessionByBridgeToken(ctx context.Context, arg GetActi
 		&i.ArtifactDigest,
 		&i.Entrypoint,
 		&i.Path,
+		&i.WorkloadID,
+		&i.WorkloadGeneration,
 		&i.BridgeTokenHash,
 		&i.BridgeCapabilities,
 		&i.InstallationGrantRevision,
@@ -190,6 +200,7 @@ const getSession = `-- name: GetSession :one
 SELECT id, owner_user_id, device_id, idempotency_key, request_digest,
        project_id, app_instance_id, renderer, app_id, app_version,
        manifest_digest, artifact_id, artifact_digest, entrypoint, path,
+       workload_id, workload_generation,
        bridge_token_hash, bridge_capabilities, installation_grant_revision,
        created_at, expires_at, closed_at
 FROM workos_runtime.surface_sessions
@@ -214,10 +225,12 @@ type GetSessionRow struct {
 	AppID                     string             `json:"app_id"`
 	AppVersion                string             `json:"app_version"`
 	ManifestDigest            string             `json:"manifest_digest"`
-	ArtifactID                string             `json:"artifact_id"`
-	ArtifactDigest            string             `json:"artifact_digest"`
-	Entrypoint                string             `json:"entrypoint"`
+	ArtifactID                pgtype.UUID        `json:"artifact_id"`
+	ArtifactDigest            pgtype.Text        `json:"artifact_digest"`
+	Entrypoint                pgtype.Text        `json:"entrypoint"`
 	Path                      string             `json:"path"`
+	WorkloadID                pgtype.UUID        `json:"workload_id"`
+	WorkloadGeneration        pgtype.Int8        `json:"workload_generation"`
 	BridgeTokenHash           pgtype.Text        `json:"bridge_token_hash"`
 	BridgeCapabilities        []string           `json:"bridge_capabilities"`
 	InstallationGrantRevision int64              `json:"installation_grant_revision"`
@@ -245,6 +258,8 @@ func (q *Queries) GetSession(ctx context.Context, arg GetSessionParams) (GetSess
 		&i.ArtifactDigest,
 		&i.Entrypoint,
 		&i.Path,
+		&i.WorkloadID,
+		&i.WorkloadGeneration,
 		&i.BridgeTokenHash,
 		&i.BridgeCapabilities,
 		&i.InstallationGrantRevision,
@@ -279,14 +294,40 @@ func (q *Queries) GetSessionRequest(ctx context.Context, arg GetSessionRequestPa
 	return i, err
 }
 
+const hasActiveSessionForInstance = `-- name: HasActiveSessionForInstance :one
+SELECT EXISTS (
+    SELECT 1 FROM workos_runtime.surface_sessions
+    WHERE owner_user_id = $1
+      AND app_instance_id = $2
+      AND closed_at IS NULL
+      AND expires_at > $3
+) AS has_active
+`
+
+type HasActiveSessionForInstanceParams struct {
+	OwnerUserID   string             `json:"owner_user_id"`
+	AppInstanceID string             `json:"app_instance_id"`
+	Now           pgtype.Timestamptz `json:"now"`
+}
+
+// The idle-TTL source for the Workload Manager: whether any open, unexpired
+// session still references the installed instance.
+func (q *Queries) HasActiveSessionForInstance(ctx context.Context, arg HasActiveSessionForInstanceParams) (bool, error) {
+	row := q.db.QueryRow(ctx, hasActiveSessionForInstance, arg.OwnerUserID, arg.AppInstanceID, arg.Now)
+	var has_active bool
+	err := row.Scan(&has_active)
+	return has_active, err
+}
+
 const insertSession = `-- name: InsertSession :exec
 INSERT INTO workos_runtime.surface_sessions (
     id, owner_user_id, device_id, idempotency_key, request_digest,
     project_id, app_instance_id, renderer, app_id, app_version,
     manifest_digest, artifact_id, artifact_digest, entrypoint, path,
+    workload_id, workload_generation,
     bridge_token_hash, bridge_capabilities, installation_grant_revision,
     created_at, expires_at
-) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)
+) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22)
 `
 
 type InsertSessionParams struct {
@@ -301,10 +342,12 @@ type InsertSessionParams struct {
 	AppID                     string             `json:"app_id"`
 	AppVersion                string             `json:"app_version"`
 	ManifestDigest            string             `json:"manifest_digest"`
-	ArtifactID                string             `json:"artifact_id"`
-	ArtifactDigest            string             `json:"artifact_digest"`
-	Entrypoint                string             `json:"entrypoint"`
+	ArtifactID                pgtype.UUID        `json:"artifact_id"`
+	ArtifactDigest            pgtype.Text        `json:"artifact_digest"`
+	Entrypoint                pgtype.Text        `json:"entrypoint"`
 	Path                      string             `json:"path"`
+	WorkloadID                pgtype.UUID        `json:"workload_id"`
+	WorkloadGeneration        pgtype.Int8        `json:"workload_generation"`
 	BridgeTokenHash           pgtype.Text        `json:"bridge_token_hash"`
 	BridgeCapabilities        []string           `json:"bridge_capabilities"`
 	InstallationGrantRevision int64              `json:"installation_grant_revision"`
@@ -333,6 +376,8 @@ func (q *Queries) InsertSession(ctx context.Context, arg InsertSessionParams) er
 		arg.ArtifactDigest,
 		arg.Entrypoint,
 		arg.Path,
+		arg.WorkloadID,
+		arg.WorkloadGeneration,
 		arg.BridgeTokenHash,
 		arg.BridgeCapabilities,
 		arg.InstallationGrantRevision,
@@ -382,6 +427,7 @@ WHERE owner_user_id = $2
 RETURNING id, owner_user_id, device_id, idempotency_key, request_digest,
           project_id, app_instance_id, renderer, app_id, app_version,
           manifest_digest, artifact_id, artifact_digest, entrypoint, path,
+          workload_id, workload_generation,
           bridge_token_hash, bridge_capabilities, installation_grant_revision,
           created_at, expires_at, closed_at
 `
@@ -406,10 +452,12 @@ type RotateSessionBridgeTokenRow struct {
 	AppID                     string             `json:"app_id"`
 	AppVersion                string             `json:"app_version"`
 	ManifestDigest            string             `json:"manifest_digest"`
-	ArtifactID                string             `json:"artifact_id"`
-	ArtifactDigest            string             `json:"artifact_digest"`
-	Entrypoint                string             `json:"entrypoint"`
+	ArtifactID                pgtype.UUID        `json:"artifact_id"`
+	ArtifactDigest            pgtype.Text        `json:"artifact_digest"`
+	Entrypoint                pgtype.Text        `json:"entrypoint"`
 	Path                      string             `json:"path"`
+	WorkloadID                pgtype.UUID        `json:"workload_id"`
+	WorkloadGeneration        pgtype.Int8        `json:"workload_generation"`
 	BridgeTokenHash           pgtype.Text        `json:"bridge_token_hash"`
 	BridgeCapabilities        []string           `json:"bridge_capabilities"`
 	InstallationGrantRevision int64              `json:"installation_grant_revision"`
@@ -443,6 +491,8 @@ func (q *Queries) RotateSessionBridgeToken(ctx context.Context, arg RotateSessio
 		&i.ArtifactDigest,
 		&i.Entrypoint,
 		&i.Path,
+		&i.WorkloadID,
+		&i.WorkloadGeneration,
 		&i.BridgeTokenHash,
 		&i.BridgeCapabilities,
 		&i.InstallationGrantRevision,

@@ -206,3 +206,11 @@ func TestAssetHandlerMapsUnavailableOnly(t *testing.T) {
 		t.Fatalf("core unavailability status %d", response.StatusCode)
 	}
 }
+
+func (f *assetFixture) ServeSurface(ctx context.Context, owner, device, sessionID, path string) (ports.SurfaceContent, error) {
+	asset, err := f.ServeAsset(ctx, owner, device, sessionID, path)
+	if err != nil {
+		return ports.SurfaceContent{}, err
+	}
+	return ports.SurfaceContent{Kind: ports.ContentAsset, Asset: asset}, nil
+}

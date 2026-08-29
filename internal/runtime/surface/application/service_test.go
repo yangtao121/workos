@@ -169,6 +169,7 @@ func (r *fakeRepository) Close(_ context.Context, ownerUserID, deviceID, session
 // fakeResolver stands in for the Core client with the port sentinels.
 type fakeResolver struct {
 	descriptor ports.LaunchDescriptor
+	resolved   ports.ResolvedLaunch
 	assets     map[string]ports.Asset
 	resolveErr error
 	assetErr   error
@@ -181,6 +182,26 @@ func (f *fakeResolver) ResolveWebBundle(context.Context, ports.ResolveQuery) (po
 		return ports.LaunchDescriptor{}, f.resolveErr
 	}
 	return f.descriptor, nil
+}
+
+func (f *fakeResolver) ResolveSurfaceLaunch(_ context.Context, _ ports.ResolveQuery) (ports.ResolvedLaunch, error) {
+	f.calls.Add(1)
+	if f.resolveErr != nil {
+		return ports.ResolvedLaunch{}, f.resolveErr
+	}
+	if f.resolved.Kind == "" {
+		resolved := ports.ResolvedLaunch{
+			Kind:  ports.LaunchKindWebBundle,
+			AppID: f.descriptor.AppID, Version: f.descriptor.Version,
+			ManifestDigest: f.descriptor.ManifestDigest,
+			ArtifactID:     f.descriptor.ArtifactID, ArtifactDigest: f.descriptor.ArtifactDigest,
+			Entrypoint:         f.descriptor.Entrypoint,
+			GrantedPermissions: f.descriptor.GrantedPermissions,
+			GrantRevision:      f.descriptor.GrantRevision,
+		}
+		return resolved, nil
+	}
+	return f.resolved, nil
 }
 
 func (f *fakeResolver) ReadWebBundleAsset(_ context.Context, query ports.AssetQuery) (ports.Asset, error) {
@@ -506,7 +527,7 @@ func TestCreateValidationFailuresDoNotConsumeKey(t *testing.T) {
 		func() CreateCommand { c := validCommand("k"); c.AppInstanceID = "nope"; return c }(),
 		func() CreateCommand { c := validCommand("k"); c.DeviceClass = ""; return c }(),
 		func() CreateCommand { c := validCommand("k"); c.ViewportWidth = 0; return c }(),
-		func() CreateCommand { c := validCommand("k"); c.PreferredRenderer = "web-service"; return c }(),
+		func() CreateCommand { c := validCommand("k"); c.PreferredRenderer = "native"; return c }(),
 		func() CreateCommand { c := validCommand("k"); c.ViewportRatio = math.NaN(); return c }(),
 		func() CreateCommand { c := validCommand("k"); c.ViewportRatio = math.Inf(1); return c }(),
 		func() CreateCommand {
@@ -1049,4 +1070,19 @@ func finalHashOwned(stored map[string]domain.SurfaceSession, observed map[string
 		}
 	}
 	return false
+}
+
+func (r *fakeRepository) HasActiveSurface(_ context.Context, ownerUserID, appInstanceID string, now time.Time) (bool, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.failWith != nil {
+		return false, r.failWith
+	}
+	for _, session := range r.sessions {
+		if session.OwnerUserID == ownerUserID && session.AppInstanceID == appInstanceID &&
+			session.ClosedAt == nil && session.ExpiresAt.After(now) {
+			return true, nil
+		}
+	}
+	return false, nil
 }

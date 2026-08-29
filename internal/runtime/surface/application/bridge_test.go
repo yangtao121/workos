@@ -278,3 +278,7 @@ func TestBridgeTokenNeverAppearsInErrors(t *testing.T) {
 		t.Fatal("token leaked into error")
 	}
 }
+
+func (r *bridgeRepository) HasActiveSurface(context.Context, string, string, time.Time) (bool, error) {
+	return false, nil
+}

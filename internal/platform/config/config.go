@@ -16,15 +16,41 @@ import (
 
 // Config is shared deployment configuration. Each process reads only its owned section.
 type Config struct {
-	Environment string    `yaml:"environment"`
-	DatabaseURL string    `yaml:"database_url"`
-	HTTP        HTTP      `yaml:"http"`
-	Services    URLs      `yaml:"services"`
-	Auth        Auth      `yaml:"auth"`
-	Agent       Agent     `yaml:"agent"`
-	Harness     Harness   `yaml:"harness"`
-	Surface     Surface   `yaml:"surface"`
-	Telemetry   Telemetry `yaml:"telemetry"`
+	Environment string      `yaml:"environment"`
+	DatabaseURL string      `yaml:"database_url"`
+	HTTP        HTTP        `yaml:"http"`
+	Services    URLs        `yaml:"services"`
+	Auth        Auth        `yaml:"auth"`
+	Agent       Agent       `yaml:"agent"`
+	Harness     Harness     `yaml:"harness"`
+	Surface     Surface     `yaml:"surface"`
+	Runtime     Runtime     `yaml:"runtime"`
+	Reliability Reliability `yaml:"reliability"`
+	Telemetry   Telemetry   `yaml:"telemetry"`
+}
+
+// Reliability configures the supervisor loop: the poll cadence, the stable
+// streak behind resolution, and the per-poll incident budget.
+type Reliability struct {
+	PollInterval         time.Duration `yaml:"poll_interval"`
+	PollTimeout          time.Duration `yaml:"poll_timeout"`
+	StablePollsToResolve int64         `yaml:"stable_polls_to_resolve"`
+	MaxIncidentsPerPoll  int           `yaml:"max_incidents_per_poll"`
+}
+
+// Runtime configures the runtime-host Workload Manager timers and the
+// verified rootless engine executable. The manager refuses to start on
+// out-of-bounds values, and the capability verdict always comes from the
+// engine probe — never from the presence of the binary.
+type Runtime struct {
+	PodmanBin         string        `yaml:"podman_bin"`
+	IdleTTL           time.Duration `yaml:"idle_ttl"`
+	ReconcileInterval time.Duration `yaml:"reconcile_interval"`
+	OperationTimeout  time.Duration `yaml:"operation_timeout"`
+	CoreGrace         time.Duration `yaml:"core_grace"`
+	LeaseTTL          time.Duration `yaml:"lease_ttl"`
+	InstanceName      string        `yaml:"instance_name"`
+	DeviceID          string        `yaml:"device_id"`
 }
 
 // Surface configures the runtime-host Surface Broker session lifetime.
@@ -127,6 +153,22 @@ func defaults() Config {
 			},
 		},
 		Surface: Surface{SessionTTL: 15 * time.Minute},
+		Runtime: Runtime{
+			PodmanBin:         "podman",
+			IdleTTL:           5 * time.Minute,
+			ReconcileInterval: 15 * time.Second,
+			OperationTimeout:  2 * time.Minute,
+			CoreGrace:         2 * time.Minute,
+			LeaseTTL:          30 * time.Second,
+			InstanceName:      "runtime-host-local",
+			DeviceID:          "0198d7ea-2110-7c42-b659-c5e4d73bc339",
+		},
+		Reliability: Reliability{
+			PollInterval:         5 * time.Second,
+			PollTimeout:          4 * time.Second,
+			StablePollsToResolve: 3,
+			MaxIncidentsPerPoll:  16,
+		},
 	}
 }
 
@@ -186,6 +228,35 @@ func Load() (Config, error) {
 		}
 		cfg.Agent.CatalogTimeout = value
 	}
+	setString(&cfg.Runtime.PodmanBin, "WORKOS_RUNTIME_PODMAN_BIN")
+	setString(&cfg.Runtime.InstanceName, "WORKOS_RUNTIME_INSTANCE_NAME")
+	setString(&cfg.Runtime.DeviceID, "WORKOS_RUNTIME_DEVICE_ID")
+	for _, override := range []struct {
+		key   string
+		dst   *time.Duration
+		lower string
+	}{
+		{"WORKOS_RUNTIME_IDLE_TTL", &cfg.Runtime.IdleTTL, "WORKOS_RUNTIME_IDLE_TTL"},
+		{"WORKOS_RUNTIME_RECONCILE_INTERVAL", &cfg.Runtime.ReconcileInterval, "WORKOS_RUNTIME_RECONCILE_INTERVAL"},
+		{"WORKOS_RUNTIME_OPERATION_TIMEOUT", &cfg.Runtime.OperationTimeout, "WORKOS_RUNTIME_OPERATION_TIMEOUT"},
+		{"WORKOS_RUNTIME_CORE_GRACE", &cfg.Runtime.CoreGrace, "WORKOS_RUNTIME_CORE_GRACE"},
+		{"WORKOS_RUNTIME_LEASE_TTL", &cfg.Runtime.LeaseTTL, "WORKOS_RUNTIME_LEASE_TTL"},
+	} {
+		if raw, ok := os.LookupEnv(override.key); ok {
+			value, err := time.ParseDuration(raw)
+			if err != nil || value <= 0 {
+				return Config{}, fmt.Errorf("%s must be a positive duration", override.lower)
+			}
+			*override.dst = value
+		}
+	}
+	if raw, ok := os.LookupEnv("WORKOS_RELIABILITY_POLL_INTERVAL"); ok {
+		value, err := time.ParseDuration(raw)
+		if err != nil || value <= 0 {
+			return Config{}, errors.New("WORKOS_RELIABILITY_POLL_INTERVAL must be a positive duration")
+		}
+		cfg.Reliability.PollInterval = value
+	}
 	if raw, ok := os.LookupEnv("WORKOS_SURFACE_SESSION_TTL"); ok {
 		value, err := time.ParseDuration(raw)
 		if err != nil || value <= 0 {
@@ -242,6 +313,9 @@ func (c Config) ValidateGateway() error {
 	if !validUpstreamURL(c.Services.Runtime) {
 		return errors.New("invalid runtime URL: must be an absolute http(s) URL with a host")
 	}
+	if strings.TrimSpace(c.Services.Reliability) != "" && !validUpstreamURL(c.Services.Reliability) {
+		return errors.New("invalid reliability URL: must be an absolute http(s) URL with a host")
+	}
 	return nil
 }
 
@@ -254,6 +328,34 @@ func (c Config) ValidateRuntimeHost() error {
 	}
 	if c.Surface.SessionTTL < time.Minute || c.Surface.SessionTTL > 24*time.Hour {
 		return errors.New("surface session TTL must be between 1m and 24h")
+	}
+	if strings.TrimSpace(c.Runtime.InstanceName) == "" {
+		return errors.New("runtime instance name is required")
+	}
+	if c.Runtime.DeviceID == "" {
+		return errors.New("runtime service device identity is required")
+	}
+	return nil
+}
+
+// ValidateReliabilityHost checks the supervisor loop bounds before the
+// reliability host begins observing.
+func (c Config) ValidateReliabilityHost() error {
+	runtimeURL, err := url.Parse(c.Services.Runtime)
+	if err != nil || !runtimeURL.IsAbs() || runtimeURL.Host == "" || (runtimeURL.Scheme != "http" && runtimeURL.Scheme != "https") {
+		return errors.New("invalid Runtime service URL")
+	}
+	if c.Reliability.PollInterval < time.Second || c.Reliability.PollInterval > time.Hour {
+		return errors.New("reliability poll interval must be between 1s and 1h")
+	}
+	if c.Reliability.PollTimeout < 100*time.Millisecond || c.Reliability.PollTimeout >= c.Reliability.PollInterval {
+		return errors.New("reliability poll timeout must be positive and below the poll interval")
+	}
+	if c.Reliability.StablePollsToResolve < 1 || c.Reliability.StablePollsToResolve > 1000 {
+		return errors.New("reliability stable poll threshold must be between 1 and 1000")
+	}
+	if c.Reliability.MaxIncidentsPerPoll < 1 || c.Reliability.MaxIncidentsPerPoll > 1000 {
+		return errors.New("reliability per-poll incident budget must be between 1 and 1000")
 	}
 	return nil
 }

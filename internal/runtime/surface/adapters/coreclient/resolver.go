@@ -61,6 +61,66 @@ func (r *Resolver) ResolveWebBundle(ctx context.Context, query ports.ResolveQuer
 	}, nil
 }
 
+// ResolveSurfaceLaunch is the renderer-neutral resolution. The oneof response
+// is projected onto the neutral port facts; a response without a launch side
+// is a Core invariant failure surfaced as the sanitized corrupt verdict.
+func (r *Resolver) ResolveSurfaceLaunch(ctx context.Context, query ports.ResolveQuery) (ports.ResolvedLaunch, error) {
+	identityValue, err := identity.FromContext(ctx)
+	if err != nil {
+		return ports.ResolvedLaunch{}, err
+	}
+	request := connect.NewRequest(&surfacev1.ResolveSurfaceLaunchRequest{
+		ProjectId: query.ProjectID, AppInstanceId: query.AppInstanceID,
+	})
+	request.Header().Set(identity.UserHeader, identityValue.UserID)
+	request.Header().Set(identity.DeviceHeader, identityValue.DeviceID)
+	response, err := r.client.ResolveSurfaceLaunch(ctx, request)
+	if err != nil {
+		return ports.ResolvedLaunch{}, mapError(err)
+	}
+	resolved := ports.ResolvedLaunch{
+		GrantedPermissions: response.Msg.GetGrantedPermissions(),
+		GrantRevision:      response.Msg.GetGrantRevision(),
+	}
+	switch typed := response.Msg.GetLaunch().(type) {
+	case *surfacev1.ResolveSurfaceLaunchResponse_WebBundle:
+		bundle := typed.WebBundle
+		resolved.Kind = ports.LaunchKindWebBundle
+		resolved.AppID = bundle.GetAppId()
+		resolved.Version = bundle.GetVersion()
+		resolved.ManifestDigest = bundle.GetManifestDigest()
+		resolved.ArtifactID = bundle.GetArtifactId()
+		resolved.ArtifactDigest = bundle.GetArtifactDigest()
+		resolved.Entrypoint = bundle.GetEntrypoint()
+		return resolved, nil
+	case *surfacev1.ResolveSurfaceLaunchResponse_WebServiceContainer:
+		container := typed.WebServiceContainer
+		resolved.AppID = container.GetAppId()
+		resolved.Version = container.GetVersion()
+		resolved.ManifestDigest = container.GetManifestDigest()
+		resolved.Kind = ports.LaunchKindWebServiceContainer
+		resolved.Image = container.GetImage()
+		resolved.Command = container.GetCommand()
+		resolved.Port = int64(container.GetPort())
+		if policy := container.GetResources(); policy != nil {
+			resolved.Resources = ports.ContainerPolicy{
+				CPUHardCores: policy.GetCpuHardCores(), MemoryHighMB: int64(policy.GetMemoryHighMb()),
+				MemoryMaxMB: int64(policy.GetMemoryMaxMb()), PidsMax: int64(policy.GetPidsMax()),
+			}
+		}
+		if policy := container.GetHealth(); policy != nil {
+			resolved.Health = ports.HealthPolicy{
+				HTTPPath: policy.GetHttpPath(), StartupSeconds: int64(policy.GetStartupSeconds()),
+				RestartLimit: int64(policy.GetRestartLimit()),
+			}
+		}
+		resolved.Route = container.GetSurfaceRoute()
+		return resolved, nil
+	default:
+		return ports.ResolvedLaunch{}, fmt.Errorf("core surface resolver returned no launch descriptor")
+	}
+}
+
 func (r *Resolver) ReadWebBundleAsset(ctx context.Context, query ports.AssetQuery) (ports.Asset, error) {
 	identityValue, err := identity.FromContext(ctx)
 	if err != nil {

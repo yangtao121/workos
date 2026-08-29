@@ -14,6 +14,9 @@ type Querier interface {
 	GetActiveSessionByBridgeToken(ctx context.Context, arg GetActiveSessionByBridgeTokenParams) (GetActiveSessionByBridgeTokenRow, error)
 	GetSession(ctx context.Context, arg GetSessionParams) (GetSessionRow, error)
 	GetSessionRequest(ctx context.Context, arg GetSessionRequestParams) (WorkosRuntimeSurfaceSessionRequest, error)
+	// The idle-TTL source for the Workload Manager: whether any open, unexpired
+	// session still references the installed instance.
+	HasActiveSessionForInstance(ctx context.Context, arg HasActiveSessionForInstanceParams) (bool, error)
 	// installation_grant_revision is the create-time grant epoch Core's private
 	// resolver returned for this session; the application must always pass the
 	// resolved value, never a constant, so a session created after a SetAppGrants

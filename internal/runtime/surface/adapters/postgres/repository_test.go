@@ -6,6 +6,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgtype"
+
 	"github.com/yangtao121/workos/internal/runtime/surface/adapters/postgres/surfacedb"
 	"github.com/yangtao121/workos/internal/runtime/surface/domain"
 )
@@ -22,8 +25,14 @@ func TestSessionRowShapesCarryLaunchDescriptor(t *testing.T) {
 		ArtifactDigest: "sha256:" + strings.Repeat("b", 64),
 		Entrypoint:     "index.html",
 	}
-	columns := func() (appID, appVersion, manifestDigest, artifactID, artifactDigest, entrypoint string) {
-		return want.AppID, want.Version, want.ManifestDigest, want.ArtifactID, want.ArtifactDigest, want.Entrypoint
+	columns := func() (appID, appVersion, manifestDigest string, artifactID pgtype.UUID, artifactDigest, entrypoint pgtype.Text) {
+		artifact := pgtype.UUID{}
+		if parsed, err := uuid.Parse(want.ArtifactID); err == nil {
+			artifact = pgtype.UUID{Bytes: parsed, Valid: true}
+		}
+		return want.AppID, want.Version, want.ManifestDigest, artifact,
+			pgtype.Text{String: want.ArtifactDigest, Valid: true},
+			pgtype.Text{String: want.Entrypoint, Valid: true}
 	}
 	appID, appVersion, manifestDigest, artifactID, artifactDigest, entrypoint := columns()
 	cases := []struct {

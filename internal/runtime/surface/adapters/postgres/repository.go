@@ -9,6 +9,8 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/google/uuid"
+
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -109,9 +111,10 @@ func (r *Repository) GetActiveSession(ctx context.Context, ownerUserID, deviceID
 	if err != nil {
 		return domain.SurfaceSession{}, sessionError("query active surface session", err)
 	}
+	workloadID, workloadGeneration := surfacedbWorkloadReference(row)
 	return sessionFromColumns(row.ID, row.OwnerUserID, row.DeviceID, row.IdempotencyKey, row.RequestDigest,
 		row.ProjectID, row.AppInstanceID, row.Renderer,
-		surfacedbLaunchDescriptor(row), row.Path, row.BridgeTokenHash.String, row.BridgeCapabilities,
+		surfacedbLaunchDescriptor(row), workloadID, workloadGeneration, row.Path, row.BridgeTokenHash.String, row.BridgeCapabilities,
 		surfacedbGrantRevision(row),
 		row.CreatedAt, row.ExpiresAt, row.ClosedAt), nil
 }
@@ -145,9 +148,10 @@ func (r *Repository) RotateBridgeToken(ctx context.Context, command ports.Rotate
 	if err != nil {
 		return domain.SurfaceSession{}, sessionError("rotate surface bridge token", err)
 	}
+	workloadID, workloadGeneration := surfacedbWorkloadReference(row)
 	return sessionFromColumns(row.ID, row.OwnerUserID, row.DeviceID, row.IdempotencyKey, row.RequestDigest,
 		row.ProjectID, row.AppInstanceID, row.Renderer,
-		surfacedbLaunchDescriptor(row), row.Path, row.BridgeTokenHash.String, row.BridgeCapabilities,
+		surfacedbLaunchDescriptor(row), workloadID, workloadGeneration, row.Path, row.BridgeTokenHash.String, row.BridgeCapabilities,
 		surfacedbGrantRevision(row),
 		row.CreatedAt, row.ExpiresAt, row.ClosedAt), nil
 }
@@ -161,9 +165,10 @@ func (r *Repository) GetActiveSessionByBridgeToken(ctx context.Context, ownerUse
 	if err != nil {
 		return domain.SurfaceSession{}, sessionError("query surface session by bridge token", err)
 	}
+	workloadID, workloadGeneration := surfacedbWorkloadReference(row)
 	return sessionFromColumns(row.ID, row.OwnerUserID, row.DeviceID, row.IdempotencyKey, row.RequestDigest,
 		row.ProjectID, row.AppInstanceID, row.Renderer,
-		surfacedbLaunchDescriptor(row), row.Path, row.BridgeTokenHash.String, row.BridgeCapabilities,
+		surfacedbLaunchDescriptor(row), workloadID, workloadGeneration, row.Path, row.BridgeTokenHash.String, row.BridgeCapabilities,
 		surfacedbGrantRevision(row),
 		row.CreatedAt, row.ExpiresAt, row.ClosedAt), nil
 }
@@ -175,22 +180,23 @@ func (r *Repository) readSession(ctx context.Context, queries *surfacedb.Queries
 	if err != nil {
 		return domain.SurfaceSession{}, sessionError("query surface session", err)
 	}
+	workloadID, workloadGeneration := surfacedbWorkloadReference(row)
 	return sessionFromColumns(row.ID, row.OwnerUserID, row.DeviceID, row.IdempotencyKey, row.RequestDigest,
 		row.ProjectID, row.AppInstanceID, row.Renderer,
-		surfacedbLaunchDescriptor(row), row.Path, row.BridgeTokenHash.String, row.BridgeCapabilities,
+		surfacedbLaunchDescriptor(row), workloadID, workloadGeneration, row.Path, row.BridgeTokenHash.String, row.BridgeCapabilities,
 		surfacedbGrantRevision(row),
 		row.CreatedAt, row.ExpiresAt, row.ClosedAt), nil
 }
 
 func sessionParams(session domain.SurfaceSession, bridgeTokenHash string) surfacedb.InsertSessionParams {
-	return surfacedb.InsertSessionParams{
+	params := surfacedb.InsertSessionParams{
 		ID: session.ID, OwnerUserID: session.OwnerUserID, DeviceID: session.DeviceID,
 		IdempotencyKey: session.IdempotencyKey, RequestDigest: session.RequestDigest,
 		ProjectID: session.ProjectID, AppInstanceID: session.AppInstanceID,
 		Renderer: session.Renderer, AppID: session.Descriptor.AppID,
 		AppVersion: session.Descriptor.Version, ManifestDigest: session.Descriptor.ManifestDigest,
-		ArtifactID: session.Descriptor.ArtifactID, ArtifactDigest: session.Descriptor.ArtifactDigest,
-		Entrypoint: session.Descriptor.Entrypoint, Path: session.Path,
+		ArtifactID: pgtype.UUID{}, ArtifactDigest: pgtype.Text{}, Entrypoint: pgtype.Text{},
+		Path: session.Path,
 		// The grant epoch is always the resolver-resolved value the
 		// application snapshotted — never a constant (queries.sql contract).
 		InstallationGrantRevision: session.InstallationGrantRevision,
@@ -198,6 +204,36 @@ func sessionParams(session domain.SurfaceSession, bridgeTokenHash string) surfac
 		BridgeCapabilities:        nonNilCapabilities(session.BridgeCapabilities),
 		CreatedAt:                 timestamp(session.CreatedAt), ExpiresAt: timestamp(session.ExpiresAt),
 	}
+	// The renderer-specific columns are mutually exclusive by the database
+	// CHECK: web-bundle rows carry the artifact facts, web-service rows the
+	// workload reference. Nothing here can satisfy a foreign renderer.
+	switch session.Renderer {
+	case domain.RendererWebBundle:
+		if parsed, err := uuid.Parse(session.Descriptor.ArtifactID); err == nil {
+			params.ArtifactID = pgtype.UUID{Bytes: parsed, Valid: true}
+		}
+		params.ArtifactDigest = pgtype.Text{String: session.Descriptor.ArtifactDigest, Valid: session.Descriptor.ArtifactDigest != ""}
+		params.Entrypoint = pgtype.Text{String: session.Descriptor.Entrypoint, Valid: session.Descriptor.Entrypoint != ""}
+	case domain.RendererWebService:
+		if parsed, err := uuid.Parse(session.WorkloadID); err == nil {
+			params.WorkloadID = pgtype.UUID{Bytes: parsed, Valid: true}
+		}
+		params.WorkloadGeneration = pgtype.Int8{Int64: session.WorkloadGeneration, Valid: session.WorkloadGeneration > 0}
+	}
+	return params
+}
+
+// HasActiveSurface answers whether any open, unexpired session still
+// references the installed instance; it is the Workload Manager's idle-TTL
+// source.
+func (r *Repository) HasActiveSurface(ctx context.Context, ownerUserID, appInstanceID string, now time.Time) (bool, error) {
+	row, err := r.queries.HasActiveSessionForInstance(ctx, surfacedb.HasActiveSessionForInstanceParams{
+		OwnerUserID: ownerUserID, AppInstanceID: appInstanceID, Now: timestamp(now),
+	})
+	if err != nil {
+		return false, storeError("query active surface reference", err)
+	}
+	return row, nil
 }
 
 // surfacedbLaunchDescriptor mirrors the descriptor columns of any session row
@@ -205,17 +241,51 @@ func sessionParams(session domain.SurfaceSession, bridgeTokenHash string) surfac
 // a missing case silently yields an empty descriptor, so
 // TestSessionRowShapesCarryLaunchDescriptor pins the coverage.
 func surfacedbLaunchDescriptor(row any) domain.LaunchDescriptor {
+	appID, version, manifestDigest := "", "", ""
+	artifactID, artifactDigest, entrypoint := "", "", ""
+	workloadID := ""
+	workloadGeneration := int64(0)
 	switch value := row.(type) {
 	case surfacedb.GetSessionRow:
-		return domain.LaunchDescriptor{AppID: value.AppID, Version: value.AppVersion, ManifestDigest: value.ManifestDigest, ArtifactID: value.ArtifactID, ArtifactDigest: value.ArtifactDigest, Entrypoint: value.Entrypoint}
+		appID, version, manifestDigest = value.AppID, value.AppVersion, value.ManifestDigest
+		artifactID, artifactDigest, entrypoint = uuidText(value.ArtifactID), value.ArtifactDigest.String, value.Entrypoint.String
+		workloadID, workloadGeneration = uuidText(value.WorkloadID), value.WorkloadGeneration.Int64
 	case surfacedb.GetActiveSessionRow:
-		return domain.LaunchDescriptor{AppID: value.AppID, Version: value.AppVersion, ManifestDigest: value.ManifestDigest, ArtifactID: value.ArtifactID, ArtifactDigest: value.ArtifactDigest, Entrypoint: value.Entrypoint}
+		appID, version, manifestDigest = value.AppID, value.AppVersion, value.ManifestDigest
+		artifactID, artifactDigest, entrypoint = uuidText(value.ArtifactID), value.ArtifactDigest.String, value.Entrypoint.String
+		workloadID, workloadGeneration = uuidText(value.WorkloadID), value.WorkloadGeneration.Int64
 	case surfacedb.GetActiveSessionByBridgeTokenRow:
-		return domain.LaunchDescriptor{AppID: value.AppID, Version: value.AppVersion, ManifestDigest: value.ManifestDigest, ArtifactID: value.ArtifactID, ArtifactDigest: value.ArtifactDigest, Entrypoint: value.Entrypoint}
+		appID, version, manifestDigest = value.AppID, value.AppVersion, value.ManifestDigest
+		artifactID, artifactDigest, entrypoint = uuidText(value.ArtifactID), value.ArtifactDigest.String, value.Entrypoint.String
+		workloadID, workloadGeneration = uuidText(value.WorkloadID), value.WorkloadGeneration.Int64
 	case surfacedb.RotateSessionBridgeTokenRow:
-		return domain.LaunchDescriptor{AppID: value.AppID, Version: value.AppVersion, ManifestDigest: value.ManifestDigest, ArtifactID: value.ArtifactID, ArtifactDigest: value.ArtifactDigest, Entrypoint: value.Entrypoint}
+		appID, version, manifestDigest = value.AppID, value.AppVersion, value.ManifestDigest
+		artifactID, artifactDigest, entrypoint = uuidText(value.ArtifactID), value.ArtifactDigest.String, value.Entrypoint.String
+		workloadID, workloadGeneration = uuidText(value.WorkloadID), value.WorkloadGeneration.Int64
 	default:
 		return domain.LaunchDescriptor{}
+	}
+	_ = workloadID
+	_ = workloadGeneration
+	return domain.LaunchDescriptor{AppID: appID, Version: version, ManifestDigest: manifestDigest, ArtifactID: artifactID, ArtifactDigest: artifactDigest, Entrypoint: entrypoint}
+}
+
+// surfacedbWorkloadReference mirrors the web-service workload columns of any
+// session row shape, under the same exhaustive-switch discipline: every sqlc
+// Row that returns a full session row MUST be listed here, and the row-shape
+// tests pin the coverage — a missing case silently loses the proxy target.
+func surfacedbWorkloadReference(row any) (string, int64) {
+	switch value := row.(type) {
+	case surfacedb.GetSessionRow:
+		return uuidText(value.WorkloadID), value.WorkloadGeneration.Int64
+	case surfacedb.GetActiveSessionRow:
+		return uuidText(value.WorkloadID), value.WorkloadGeneration.Int64
+	case surfacedb.GetActiveSessionByBridgeTokenRow:
+		return uuidText(value.WorkloadID), value.WorkloadGeneration.Int64
+	case surfacedb.RotateSessionBridgeTokenRow:
+		return uuidText(value.WorkloadID), value.WorkloadGeneration.Int64
+	default:
+		return "", 0
 	}
 }
 
@@ -243,7 +313,7 @@ func surfacedbGrantRevision(row any) int64 {
 func sessionFromColumns(
 	id, ownerUserID, deviceID, idempotencyKey, requestDigest string,
 	projectID, appInstanceID, renderer string,
-	descriptor domain.LaunchDescriptor, path string,
+	descriptor domain.LaunchDescriptor, workloadID string, workloadGeneration int64, path string,
 	bridgeTokenHash string, bridgeCapabilities []string,
 	installationGrantRevision int64,
 	createdAt, expiresAt pgtype.Timestamptz, closedAt pgtype.Timestamptz,
@@ -254,6 +324,8 @@ func sessionFromColumns(
 		ProjectID: projectID, AppInstanceID: appInstanceID,
 		Renderer:                  renderer,
 		Descriptor:                descriptor,
+		WorkloadID:                workloadID,
+		WorkloadGeneration:        workloadGeneration,
 		Path:                      path,
 		BridgeTokenHash:           bridgeTokenHash,
 		BridgeCapabilities:        bridgeCapabilities,
@@ -265,6 +337,14 @@ func sessionFromColumns(
 		session.ClosedAt = &closed
 	}
 	return session
+}
+
+// uuidText renders a nullable uuid column as the plain string fact.
+func uuidText(value pgtype.UUID) string {
+	if !value.Valid {
+		return ""
+	}
+	return value.String()
 }
 
 // tokenHashParam maps an empty hash to SQL NULL ("no currently valid
