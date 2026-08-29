@@ -2,10 +2,18 @@ package ports
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"github.com/yangtao121/workos/internal/core/agent/domain"
 )
+
+// ErrStoreUnavailable marks a temporarily unreachable Agent store. The
+// postgres adapter wraps transient driver failures (connection, resource,
+// operator intervention) with it at the port boundary using the shared
+// dbtransient classification; transports map it to a sanitized retryable
+// Unavailable. Invariant/constraint failures stay opaque internal errors.
+var ErrStoreUnavailable = errors.New("agent store is temporarily unavailable")
 
 // AppTaskProvenance is the durable App fact bound to one bridge-created task:
 // which app installation of which owner used which client key, and the

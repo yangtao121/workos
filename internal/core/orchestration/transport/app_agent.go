@@ -13,6 +13,7 @@ import (
 	agentv1connect "github.com/yangtao121/workos/gen/go/workos/agent/v1/agentv1connect"
 	"github.com/yangtao121/workos/internal/core/agent/domain"
 	agentdomain "github.com/yangtao121/workos/internal/core/agent/domain"
+	agentports "github.com/yangtao121/workos/internal/core/agent/ports"
 	"github.com/yangtao121/workos/internal/core/orchestration"
 	projectdomain "github.com/yangtao121/workos/internal/core/project/domain"
 	projectports "github.com/yangtao121/workos/internal/core/project/ports"
@@ -134,7 +135,7 @@ func mapAppAgentError(err error) error {
 		return connect.NewError(connect.CodePermissionDenied, errors.New("app capability is not granted"))
 	case errors.Is(err, domain.ErrIdempotencyConflict):
 		return connect.NewError(connect.CodeAborted, errors.New("idempotency key was already used for a different request"))
-	case errors.Is(err, projectports.ErrStoreUnavailable):
+	case errors.Is(err, projectports.ErrStoreUnavailable), errors.Is(err, agentports.ErrStoreUnavailable):
 		return connect.NewError(connect.CodeUnavailable, errors.New("app agent service is temporarily unavailable"))
 	default:
 		return connect.NewError(connect.CodeInternal, errors.New("app agent operation failed"))

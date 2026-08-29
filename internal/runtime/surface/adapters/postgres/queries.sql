@@ -37,6 +37,12 @@ FROM workos_runtime.surface_sessions
 WHERE owner_user_id = $1 AND device_id = $2 AND id = $3
   AND closed_at IS NULL AND expires_at > sqlc.arg(now);
 
+-- name: CloseSession :execrows
+UPDATE workos_runtime.surface_sessions
+SET closed_at = sqlc.arg(now),
+    bridge_token_hash = NULL
+WHERE owner_user_id = $1 AND device_id = $2 AND id = $3 AND closed_at IS NULL;
+
 -- name: RotateSessionBridgeToken :execrows
 UPDATE workos_runtime.surface_sessions
 SET bridge_token_hash = sqlc.arg(token_hash)
@@ -58,12 +64,3 @@ WHERE owner_user_id = sqlc.arg(owner_user_id)
   AND closed_at IS NULL
   AND expires_at > sqlc.arg(now);
 
--- name: ClearSessionBridgeToken :execrows
-UPDATE workos_runtime.surface_sessions
-SET bridge_token_hash = NULL
-WHERE owner_user_id = $1 AND device_id = $2 AND id = $3 AND closed_at IS NULL;
-
--- name: CloseSession :execrows
-UPDATE workos_runtime.surface_sessions
-SET closed_at = sqlc.arg(now)
-WHERE owner_user_id = $1 AND device_id = $2 AND id = $3 AND closed_at IS NULL;

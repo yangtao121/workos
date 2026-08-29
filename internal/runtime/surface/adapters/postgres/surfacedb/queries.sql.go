@@ -11,29 +11,10 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-const clearSessionBridgeToken = `-- name: ClearSessionBridgeToken :execrows
-UPDATE workos_runtime.surface_sessions
-SET bridge_token_hash = NULL
-WHERE owner_user_id = $1 AND device_id = $2 AND id = $3 AND closed_at IS NULL
-`
-
-type ClearSessionBridgeTokenParams struct {
-	OwnerUserID string `json:"owner_user_id"`
-	DeviceID    string `json:"device_id"`
-	ID          string `json:"id"`
-}
-
-func (q *Queries) ClearSessionBridgeToken(ctx context.Context, arg ClearSessionBridgeTokenParams) (int64, error) {
-	result, err := q.db.Exec(ctx, clearSessionBridgeToken, arg.OwnerUserID, arg.DeviceID, arg.ID)
-	if err != nil {
-		return 0, err
-	}
-	return result.RowsAffected(), nil
-}
-
 const closeSession = `-- name: CloseSession :execrows
 UPDATE workos_runtime.surface_sessions
-SET closed_at = $4
+SET closed_at = $4,
+    bridge_token_hash = NULL
 WHERE owner_user_id = $1 AND device_id = $2 AND id = $3 AND closed_at IS NULL
 `
 

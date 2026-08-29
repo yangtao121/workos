@@ -39,6 +39,8 @@ type NodePort = {
   close: () => void;
 };
 
+const CANONICAL_TASK_ID = "0198d7ea-2110-7c42-b659-c5e4d73bc371";
+
 function flush(): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, 0));
 }
@@ -56,6 +58,24 @@ function framePortOf(hellos: RecordedHello[]): NodePort {
 }
 
 function setup(options?: {
+  capabilities?: string[];
+  timeoutMs?: number;
+  transport?: Partial<AppBridgeTransport>;
+}): ReturnType<typeof setupImplementation> {
+  const normalized: Parameters<typeof setupImplementation>[0] = {};
+  if (options?.capabilities !== undefined) {
+    normalized.capabilities = options.capabilities;
+  }
+  if (options?.timeoutMs !== undefined) {
+    normalized.timeoutMs = options.timeoutMs;
+  }
+  if (options?.transport !== undefined) {
+    normalized.transport = options.transport;
+  }
+  return setupImplementation(normalized);
+}
+
+function setupImplementation(options: {
   capabilities?: string[];
   timeoutMs?: number;
   transport?: Partial<AppBridgeTransport>;
@@ -80,15 +100,15 @@ function setup(options?: {
   const transport: AppBridgeTransport = {
     runAgentTask,
     watchAgentTaskEvents,
-    ...options?.transport,
+    ...options.transport,
   };
   const onHandshakeComplete = vi.fn();
   const onHandshakeFailed = vi.fn();
   const host = openAppBridgeHost({
     frameWindow: frameWindow as unknown as Window,
-    capabilities: options?.capabilities ?? ["agent.task.run", "agent.event.watch"],
+    capabilities: options.capabilities ?? ["agent.task.run", "agent.event.watch"],
     transport,
-    timeoutMs: options?.timeoutMs ?? REQUEST_TIMEOUT_MS,
+    timeoutMs: options.timeoutMs ?? REQUEST_TIMEOUT_MS,
     nonceGenerator: () => "nonce-1",
     channelFactory: () => channel as unknown as MessageChannel,
     onHandshakeComplete,
@@ -147,22 +167,22 @@ describe("App Bridge host handshake", () => {
   });
 });
 
-describe("App Bridge host dispatch", () => {
-  async function handshakenHost(options?: {
-    capabilities?: string[];
-    transport?: Partial<AppBridgeTransport>;
-  }) {
-    const setupResult = setup(options);
-    const port = framePortOf(setupResult.hellos);
-    const received: { data: unknown }[] = [];
-    port.onmessage = (event) => {
-      received.push(event);
-    };
-    port.postMessage({ version: APP_BRIDGE_VERSION, type: "ack", nonce: "nonce-1" });
-    await setupResult.host.ready;
-    return { ...setupResult, port, received };
-  }
+async function handshakenHost(options?: {
+  capabilities?: string[];
+  transport?: Partial<AppBridgeTransport>;
+}) {
+  const setupResult = setup(options);
+  const port = framePortOf(setupResult.hellos);
+  const received: { data: unknown }[] = [];
+  port.onmessage = (event) => {
+    received.push(event);
+  };
+  port.postMessage({ version: APP_BRIDGE_VERSION, type: "ack", nonce: "nonce-1" });
+  await setupResult.host.ready;
+  return { ...setupResult, port, received };
+}
 
+describe("App Bridge host dispatch", () => {
   it("dispatches agent.run to the transport and answers with the canonical result", async () => {
     const { runAgentTask, port, received } = await handshakenHost();
     port.postMessage({
@@ -259,7 +279,7 @@ describe("App Bridge host dispatch", () => {
       type: "request",
       requestId: "req-s",
       method: "agent.stream",
-      payload: { taskId: "task-1", afterSequence: "0" },
+      payload: { taskId: CANONICAL_TASK_ID, afterSequence: "0" },
     });
     await flush();
     push?.({ id: "e1" });
@@ -337,5 +357,209 @@ describe("App Bridge host dispatch", () => {
     });
     await flush();
     expect(before).not.toHaveBeenCalled();
+  });
+});
+
+describe("App Bridge host untrusted-port boundary", () => {
+  function hangingSetup(options?: { timeoutMs?: number }) {
+    let releaseRun: ((result: AppBridgeRunResult) => void) | undefined;
+    const runAgentTask = vi.fn<
+      (input: { idempotencyKey: string; goal: string }) => Promise<AppBridgeRunResult>
+    >(
+      (input) =>
+        new Promise<AppBridgeRunResult>((resolve) => {
+          releaseRun = (result: AppBridgeRunResult) => {
+            resolve({ ...result, taskId: input.idempotencyKey });
+          };
+        }),
+    );
+    const transport: Partial<AppBridgeTransport> = { runAgentTask };
+    const setupOptions: Parameters<typeof setupImplementation>[0] = { transport };
+    if (options?.timeoutMs !== undefined) {
+      setupOptions.timeoutMs = options.timeoutMs;
+    }
+    const setupResult = setup(setupOptions);
+    const port = framePortOf(setupResult.hellos);
+    const received: { data: unknown }[] = [];
+    port.onmessage = (event) => {
+      received.push(event);
+    };
+    port.postMessage({ version: APP_BRIDGE_VERSION, type: "ack", nonce: "nonce-1" });
+    return { ...setupResult, port, received, releaseRun, runAgentTask };
+  }
+
+  it("rejects an inbound oversize request measured in UTF-8 bytes (multibyte goal)", async () => {
+    const { port, received, runAgentTask } = hangingSetup();
+    // ~68 KB of UTF-8 from only ~34 K UTF-16 units: a string-length check
+    // would pass; the byte-size bound must not.
+    const goal = "\u{1F680}".repeat(17_000);
+    port.postMessage({
+      version: APP_BRIDGE_VERSION,
+      type: "request",
+      requestId: "req-big",
+      method: "agent.run",
+      payload: { idempotencyKey: "k", role: "", goal },
+    });
+    await flush();
+    const last = received.at(-1);
+    if (!last) throw new Error("no error envelope");
+    expect((last.data as { code: string }).code).toBe("oversize");
+    expect(runAgentTask).not.toHaveBeenCalled();
+  });
+
+  it("enforces the in-flight bound against direct port traffic (33rd request)", async () => {
+    const { port, received, runAgentTask } = hangingSetup();
+    for (let index = 1; index <= 33; index += 1) {
+      port.postMessage({
+        version: APP_BRIDGE_VERSION,
+        type: "request",
+        requestId: `req-${String(index)}`,
+        method: "agent.run",
+        payload: { idempotencyKey: `k${String(index)}`, role: "", goal: "g" },
+      });
+    }
+    await flush();
+    expect(runAgentTask).toHaveBeenCalledTimes(32);
+    const errors = received.filter((event) => (event.data as { type: string }).type === "error");
+    expect(errors).toHaveLength(1);
+    expect((errors[0]?.data as { code: string }).code).toBe("too_many_inflight");
+  });
+
+  it("rejects a duplicate request ID without a second transport call", async () => {
+    const { port, received, runAgentTask } = hangingSetup();
+    for (const _ of [1, 2]) {
+      void _;
+      port.postMessage({
+        version: APP_BRIDGE_VERSION,
+        type: "request",
+        requestId: "req-dup",
+        method: "agent.run",
+        payload: { idempotencyKey: "k", role: "", goal: "g" },
+      });
+    }
+    await flush();
+    expect(runAgentTask).toHaveBeenCalledTimes(1);
+    const last = received.at(-1);
+    if (!last) throw new Error("no error envelope");
+    expect((last.data as { code: string }).code).toBe("invalid_argument");
+  });
+
+  it("times out a hanging run and keeps the late result inert", async () => {
+    const { received, releaseRun } = await (async () => {
+      const harness = hangingSetup({ timeoutMs: 25 });
+      harness.port.postMessage({
+        version: APP_BRIDGE_VERSION,
+        type: "request",
+        requestId: "req-slow",
+        method: "agent.run",
+        payload: { idempotencyKey: "k", role: "", goal: "g" },
+      });
+      await new Promise((resolve) => setTimeout(resolve, 40));
+      return harness;
+    })();
+    const last = received.at(-1);
+    if (!last) throw new Error("no timeout envelope");
+    expect((last.data as { code: string }).code).toBe("timeout");
+    const count = received.length;
+    // The late transport result must find no pending owner: nothing posted.
+    releaseRun?.({ taskId: "late", state: "queued", lastEventSequence: "0" });
+    await flush();
+    expect(received.length).toBe(count);
+  });
+
+  it("drops a late run result after close without posting", async () => {
+    const harness = hangingSetup();
+    harness.port.postMessage({
+      version: APP_BRIDGE_VERSION,
+      type: "request",
+      requestId: "req-closed",
+      method: "agent.run",
+      payload: { idempotencyKey: "k", role: "", goal: "g" },
+    });
+    await flush();
+    const count = harness.received.length;
+    harness.host.close();
+    harness.releaseRun?.({ taskId: "late-after-close", state: "queued", lastEventSequence: "0" });
+    await flush();
+    expect(harness.received.length).toBe(count);
+  });
+
+  it("fails closed on malformed cursors and unknown payload fields", async () => {
+    const { port, received, runAgentTask } = await handshakenHost();
+    const post = (payload: unknown, requestId: string) => {
+      port.postMessage({
+        version: APP_BRIDGE_VERSION,
+        type: "request",
+        requestId,
+        method: "agent.stream",
+        payload,
+      });
+    };
+    post({ taskId: CANONICAL_TASK_ID, afterSequence: "-1" }, "req-neg");
+    post({ taskId: CANONICAL_TASK_ID, afterSequence: "not-a-number" }, "req-nan");
+    post({ taskId: CANONICAL_TASK_ID, afterSequence: "0", smuggled: true }, "req-extra");
+    post({ taskId: CANONICAL_TASK_ID }, "req-missing");
+    await flush();
+    await flush();
+    const errors = received.filter((event) => (event.data as { type: string }).type === "error");
+    expect(errors).toHaveLength(4);
+    for (const error of errors) {
+      expect((error.data as { code: string }).code).toBe("invalid_argument");
+    }
+    expect(runAgentTask).not.toHaveBeenCalled();
+  });
+
+  it("rejects a non-canonical request ID shape", async () => {
+    const { port, received, runAgentTask } = await handshakenHost();
+    port.postMessage({
+      version: APP_BRIDGE_VERSION,
+      type: "request",
+      requestId: "x".repeat(65),
+      method: "agent.run",
+      payload: { idempotencyKey: "k", role: "", goal: "g" },
+    });
+    await flush();
+    const last = received.at(-1);
+    if (!last) throw new Error("no error envelope");
+    expect((last.data as { code: string }).code).toBe("invalid_argument");
+    expect(runAgentTask).not.toHaveBeenCalled();
+  });
+
+  it("preserves typed transport codes for run and stream alike", async () => {
+    const typedRun = vi.fn(() => Promise.reject(new BridgeProtocolError("permission_denied")));
+    const typedWatch = vi.fn(() => Promise.reject(new BridgeProtocolError("not_found")));
+    const runTransport: Partial<AppBridgeTransport> = {
+      runAgentTask: typedRun,
+      watchAgentTaskEvents: typedWatch,
+    };
+    const { port, received } = await handshakenHost({ transport: runTransport });
+    port.postMessage({
+      version: APP_BRIDGE_VERSION,
+      type: "request",
+      requestId: "req-run",
+      method: "agent.run",
+      payload: { idempotencyKey: "k", role: "", goal: "g" },
+    });
+    port.postMessage({
+      version: APP_BRIDGE_VERSION,
+      type: "request",
+      requestId: "req-stream",
+      method: "agent.stream",
+      payload: { taskId: CANONICAL_TASK_ID, afterSequence: "0" },
+    });
+    await flush();
+    await flush();
+    const byId = new Map(
+      received
+        .filter((event) => (event.data as { type: string }).type === "error")
+        .map((event) => [
+          (event.data as { requestId: string }).requestId,
+          (event.data as { code: string }).code,
+        ]),
+    );
+    expect(byId.get("req-run")).toBe("permission_denied");
+    expect(byId.get("req-stream")).toBe("not_found");
+    expect(typedRun).toHaveBeenCalledTimes(1);
+    expect(typedWatch).toHaveBeenCalledTimes(1);
   });
 });

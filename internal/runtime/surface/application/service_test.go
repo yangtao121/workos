@@ -7,6 +7,7 @@ import (
 	"math"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -27,6 +28,10 @@ type fakeRepository struct {
 	sessions map[string]domain.SurfaceSession
 	requests map[string]ports.StoredSessionRequest
 	failWith error
+	// internalWinner simulates the repository's in-transaction arbitration:
+	// the application-level lookup misses, but Create returns a pre-seeded
+	// winning session instead of persisting the caller's fresh one.
+	internalWinner *domain.SurfaceSession
 }
 
 func newFakeRepository() *fakeRepository {
@@ -38,6 +43,12 @@ func (r *fakeRepository) LookupRequest(_ context.Context, ownerUserID, key strin
 	defer r.mu.Unlock()
 	if r.failWith != nil {
 		return ports.StoredSessionRequest{}, false, r.failWith
+	}
+	if r.internalWinner != nil {
+		// The arbitration winner is invisible to the application-level
+		// lookup, exactly like a concurrent insert that commits between the
+		// lookup and the mapping insert.
+		return ports.StoredSessionRequest{}, false, nil
 	}
 	stored, ok := r.requests[ownerUserID+"/"+key]
 	return stored, ok, nil
@@ -85,6 +96,12 @@ func (r *fakeRepository) Create(_ context.Context, command ports.CreateSessionCo
 			return domain.SurfaceSession{}, domain.ErrIdempotencyConflict
 		}
 		return r.sessions[stored.SessionID], nil
+	}
+	if r.internalWinner != nil {
+		winner := *r.internalWinner
+		r.sessions[winner.ID] = winner
+		r.requests[key] = ports.StoredSessionRequest{RequestDigest: command.RequestDigest, SessionID: winner.ID}
+		return winner, nil
 	}
 	session := command.Session
 	session.BridgeTokenHash = command.BridgeTokenHash
@@ -153,11 +170,11 @@ type fakeResolver struct {
 	assets     map[string]ports.Asset
 	resolveErr error
 	assetErr   error
-	calls      int
+	calls      atomic.Int64
 }
 
 func (f *fakeResolver) ResolveWebBundle(context.Context, ports.ResolveQuery) (ports.LaunchDescriptor, error) {
-	f.calls++
+	f.calls.Add(1)
 	if f.resolveErr != nil {
 		return ports.LaunchDescriptor{}, f.resolveErr
 	}
@@ -175,11 +192,10 @@ func (f *fakeResolver) ReadWebBundleAsset(_ context.Context, query ports.AssetQu
 	return asset, nil
 }
 
-type staticGenerator struct{ counter int }
+type staticGenerator struct{ counter atomic.Int64 }
 
 func (g *staticGenerator) New() string {
-	g.counter++
-	return fmt.Sprintf("0198d7ea-2110-7c42-b659-%010dab", g.counter)
+	return fmt.Sprintf("0198d7ea-2110-7c42-b659-%010dab", g.counter.Add(1))
 }
 
 func newTestService(repository ports.SessionRepository, resolver ports.LaunchResolver) *Service {
@@ -288,7 +304,7 @@ func TestCreateValidationFailuresDoNotConsumeKey(t *testing.T) {
 			t.Errorf("invalid command %d accepted: %v", index, err)
 		}
 	}
-	if resolver.calls != 0 {
+	if resolver.calls.Load() != 0 {
 		t.Fatal("resolver was called before validation passed")
 	}
 	if _, ok := repository.requests[testOwner+"/k"]; ok {
@@ -607,3 +623,135 @@ func collectFailures(channel chan error) []error {
 
 var _ ports.SessionRepository = (*fakeRepository)(nil)
 var _ ports.LaunchResolver = (*fakeResolver)(nil)
+
+// TestConcurrentArbitrationLoserRotatesToken pins the concurrent-create
+// credential contract: when the repository's in-transaction arbitration
+// returns another create's winning session, the loser must NOT return its
+// locally minted (never-persisted) token. The response credential must be a
+// real rotation recorded on the winning session.
+func TestConcurrentArbitrationLoserRotatesToken(t *testing.T) {
+	t.Parallel()
+	repository := newFakeRepository()
+	service := newTestService(repository, &fakeResolver{descriptor: launchDescriptor()})
+	ctx := context.Background()
+
+	// Seed the arbitration winner: an open session whose persisted hash
+	// belongs to a different create.
+	winnerToken, err := domain.NewBridgeToken()
+	if err != nil {
+		t.Fatal(err)
+	}
+	winner := domain.SurfaceSession{
+		ID: "0198d7ea-2110-7c42-b659-c5e4d73bc371", OwnerUserID: testOwner, DeviceID: testDevice,
+		IdempotencyKey: "key-1", RequestDigest: domain.CreateRequestDigest(testDevice, "0198d7ea-2110-7c42-b659-c5e4d73bc341",
+			"0198d7ea-2110-7c42-b659-c5e4d73bc342", "desktop", 1024, 768, 2, domain.RendererWebBundle),
+		ProjectID: "0198d7ea-2110-7c42-b659-c5e4d73bc341", AppInstanceID: "0198d7ea-2110-7c42-b659-c5e4d73bc342",
+		Renderer: domain.RendererWebBundle,
+		Descriptor: domain.LaunchDescriptor{AppID: "notes-app", Version: "1.0.0",
+			ManifestDigest: "sha256:" + strings.Repeat("a", 64), ArtifactID: "0198d7ea-2110-7c42-b659-c5e4d73bc343",
+			ArtifactDigest: "sha256:" + strings.Repeat("b", 64), Entrypoint: "index.html"},
+		BridgeTokenHash:    domain.HashBridgeToken(winnerToken),
+		BridgeCapabilities: []string{},
+		CreatedAt:          time.Now().UTC().Add(-time.Minute), ExpiresAt: time.Now().UTC().Add(time.Hour),
+	}
+	winner.Path = domain.SessionPath(winner.ID)
+	repository.mu.Lock()
+	repository.sessions[winner.ID] = winner
+	repository.mu.Unlock()
+	repository.internalWinner = &winner
+
+	created, err := service.Create(ctx, validCommand("key-1"))
+	if err != nil {
+		t.Fatalf("loser create failed: %v", err)
+	}
+	if created.Session.ID != winner.ID {
+		t.Fatalf("loser did not return the winning session: %s", created.Session.ID)
+	}
+	if created.BridgeToken == "" {
+		t.Fatal("loser returned no credential for an open session")
+	}
+	if domain.HashBridgeToken(created.BridgeToken) == domain.HashBridgeToken(winnerToken) {
+		t.Fatal("loser reused the winner's token instead of rotating")
+	}
+	// The returned credential is a real persisted fact of this session.
+	repository.mu.Lock()
+	storedHash := repository.sessions[winner.ID].BridgeTokenHash
+	repository.mu.Unlock()
+	if storedHash != domain.HashBridgeToken(created.BridgeToken) {
+		t.Fatal("returned token hash is not the persisted session fact")
+	}
+	// The rotation invalidated the winner's earlier credential — an explicit
+	// recorded rotation, never "the token was never stored".
+	if storedHash == domain.HashBridgeToken(winnerToken) {
+		t.Fatal("winner token was not rotated out")
+	}
+}
+
+// TestConcurrentSameKeyCreatesReturnPersistedCredentials drives two same-key
+// creates through a barrier and asserts, for every successful response, that
+// the returned token matches the session fact the repository persisted for
+// that response's linearization point, and that exactly one session/mapping
+// survives.
+func TestConcurrentSameKeyCreatesReturnPersistedCredentials(t *testing.T) {
+	t.Parallel()
+	repository := newFakeRepository()
+	service := newTestService(repository, &fakeResolver{descriptor: launchDescriptor()})
+	var group sync.WaitGroup
+	start := make(chan struct{})
+	results := make(chan CreatedSurface, 2)
+	failures := make(chan error, 2)
+	for _, device := range []string{testDevice, testDevice} {
+		group.Add(1)
+		go func(device string) {
+			defer group.Done()
+			<-start
+			command := validCommand("race-key")
+			command.DeviceID = device
+			created, err := service.Create(context.Background(), command)
+			if err != nil {
+				failures <- err
+				return
+			}
+			results <- created
+		}(device)
+	}
+	close(start)
+	group.Wait()
+	close(results)
+	close(failures)
+	for err := range failures {
+		t.Fatalf("race surfaced an error: %v", err)
+	}
+	observedHashes := map[string]struct{}{}
+	ids := map[string]struct{}{}
+	finalHash := ""
+	for created := range results {
+		ids[created.Session.ID] = struct{}{}
+		if created.BridgeToken == "" {
+			t.Fatal("open-session create returned no credential")
+		}
+		hash := domain.HashBridgeToken(created.BridgeToken)
+		observedHashes[hash] = struct{}{}
+		finalHash = created.Session.BridgeTokenHash
+	}
+	if len(ids) != 1 {
+		t.Fatalf("same-key race produced %d distinct sessions", len(ids))
+	}
+	repository.mu.Lock()
+	stored := map[string]domain.SurfaceSession{}
+	for id, session := range repository.sessions {
+		stored[id] = session
+	}
+	repository.mu.Unlock()
+	if len(stored) != 1 {
+		t.Fatalf("same-key race left %d session facts", len(stored))
+	}
+	for _, session := range stored {
+		if _, ok := observedHashes[session.BridgeTokenHash]; !ok {
+			t.Fatal("final persisted hash never belonged to any returned credential")
+		}
+	}
+	if finalHash == "" {
+		t.Fatal("no response carried the linearized hash")
+	}
+}

@@ -13,6 +13,7 @@ import (
 	agentv1 "github.com/yangtao121/workos/gen/go/workos/agent/v1"
 	agentv1connect "github.com/yangtao121/workos/gen/go/workos/agent/v1/agentv1connect"
 	agentdomain "github.com/yangtao121/workos/internal/core/agent/domain"
+	agentports "github.com/yangtao121/workos/internal/core/agent/ports"
 	"github.com/yangtao121/workos/internal/core/orchestration"
 	projectdomain "github.com/yangtao121/workos/internal/core/project/domain"
 	projectports "github.com/yangtao121/workos/internal/core/project/ports"
@@ -136,7 +137,8 @@ func TestAppAgentHandlerErrorMatrix(t *testing.T) {
 		{"project denied", agentdomain.ErrProjectDenied, "permission_denied"},
 		{"not granted", orchestration.ErrAppNotGranted, "permission_denied"},
 		{"conflict", agentdomain.ErrIdempotencyConflict, "aborted"},
-		{"store unavailable", projectports.ErrStoreUnavailable, "unavailable"},
+		{"project store unavailable", projectports.ErrStoreUnavailable, "unavailable"},
+		{"agent store unavailable", agentports.ErrStoreUnavailable, "unavailable"},
 		{"unknown", errors.New("pgx something"), "internal"},
 	}
 	for _, testCase := range cases {

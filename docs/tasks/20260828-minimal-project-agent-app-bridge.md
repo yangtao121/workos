@@ -1,6 +1,6 @@
 # Task: Minimal Project-scoped Agent App Bridge vertical slice
 
-- 状态：active
+- 状态：completed（含 2026-08-29 审核阻断项修复，见下方"2026-08-29 修复记录"）
 - Owner/Agent：project agent app bridge builder
 - 进程/模块：workos-core `internal/core/project`（installation grant snapshot）、`internal/core/agent`（App principal/provenance/idempotency）、`internal/core/orchestration`（private AppAgentService + grant revalidation）；runtime-host `internal/runtime/surface`（bridge token + public AppBridgeService）；workos-gateway（AppBridge allowlist）；desktop-web / app-host / app-sdk / surface-sdk（MessageChannel bridge + permission consent）
 - 依赖：App Registry（`002`/`003`）、Project App Installation（`004`/`005`）、Web Bundle Artifact（`006`）、Surface Session（`007`）、Agent Task Router、Harness Broker、Fake Harness、Gateway identity 注入
@@ -155,7 +155,7 @@ for task …`（restart 后 token 仍解析、run key replay 同一 task、事�
 harness` → Close App；桌面 DOM 断言不含 `X-WorkOS-Bridge-Token`）。旧 spec 已更新为走
   consent 对话框。
 - `make test-deepseek-fixture`：exit 0（仅 fixture 假凭据）。
-- `go test -race ./internal/core/agent/... ./internal/core/project/... ./internal/core/orchestration/... ./internal/runtime/...`：exit 0。
+- `go test -race ./internal/core/agent/... ./internal/core/project/... ./internal/core/orchestration/... ./internal/runtime/...`：exit 0（2026-08-29 修复了 application 测试桩 `fakeResolver.calls`/`staticGenerator.counter` 的数据竞争后，以 `-count=1` 与并发定向 `-count=10` 复验）。
 - TypeScript 定向：`@workos/surface-sdk` 4、`@workos/app-sdk` 10、`@workos/app-host` 10、
   `apps/desktop-web` 36 个 vitest 全部通过（handshake wrong-source/nonce replay/double
   ack/timeout、unoffered method、inflight 上限、stream cancel、late response inert、
@@ -220,3 +220,82 @@ harness` → Close App；桌面 DOM 断言不含 `X-WorkOS-Bridge-Token`）。�
   grant 只是持久事实，executor 与 approval/budget 留待后续。
 - 建议下一独立任务（二选一）：mutable grant/revocation + approval/budget policy；或
   rootless Web Service/container runner + Workload 最小链路。
+
+## 2026-08-29 审核阻断项修复记录
+
+审核确认 8 项阻断（token 网关泄漏面、并发首次 Create 的未落库 token、close 后 hash 未清、
+AppHost 未强制不可信 MessagePort 边界、MessagePort 错误语义坍缩、Agent PostgreSQL 暂时故障
+映射 Internal、stored grant 部分校验提前放行、race 命令实际失败）。全部在
+`feat/minimal-project-agent-app-bridge` 修复，逐项与回归证据：
+
+1. **Token 只进 public AppBridge RPC**：Gateway director 改为默认剥除
+   `X-WorkOS-Bridge-Token`，仅当路径前缀为 `/workos.bridge.v1.AppBridgeService/` 时恢复
+   （路径谓词决定，与 upstream 名称无关）。回归 `TestAppBridgeRoutesReachRuntimeOnly`
+   重写：Core/Runtime upstream 分别检header布尔量，断言 AppBridge 两路由保留、
+   SurfaceService、`/surfaces/` 两条 asset、Core public 路由剥除；旧实现在该测试下失败。
+2. **并发首次 Create 的 token 线性化**：repository 事务内 mapping PK 裁决的 loser 不再返回
+   本地铸造但从未落库的 token——对返回的 open session 执行真实 `RotateBridgeToken` 并重读
+   session，响应中“凭证 ↔ 持久 hash”恒配对；最终 hash 恒为最后一次线性化成功响应的
+   token。回归：application 单测 `TestConcurrentArbitrationLoserRotatesToken`（fake
+   internalWinner 模式）、`TestConcurrentSameKeyCreatesReturnPersistedCredentials`；真实
+   PostgreSQL `TestSurfaceCreateConcurrencyTokenPersistence`（双 pool barrier，逐响应
+   配对断言 + final hash 归属 + 单 session/mapping 零 orphan）——已验证对旧实现失败
+   （临时还原旧逻辑后 3 次运行 2 次稳定 FAIL on pairing 断言）。
+3. **Close 原子清 hash**：`CloseSession` UPDATE 改为单语句 `SET closed_at=$now,
+bridge_token_hash=NULL WHERE … AND closed_at IS NULL`，删除先后两条语句的错误次序；
+   sqlc 重新生成（未手改 surfacedb）。回归 `TestSurfaceCloseClearsBridgeTokenInStorage`
+   直查列值断言 SQL NULL + 首次 closed_at 保留 + repeated close 幂等 + foreign NotFound。
+4. **可信 AppHost 强制不可信边界**：`clients/app-host` 在 dispatch 前自行校验入站 envelope：
+   UTF-8 byte size（`TextEncoder`，非 `string.length`）、canonical request ID、方法 allowlist、
+   exact payload shape（未知/缺失字段、字段类型与既有 key/role/goal/task/cursor 边界）、
+   in-flight ≤32（run+stream 合计）、重复 request ID；run timeout 真正登记 pending（迟到结果
+   inert），stream timeout abort 本地/server stream；close 清空全部 timer/pending/stream。
+   `@workos/app-sdk` outbound request/cancel 改用共享 `postBridgeMessage`；
+   `encodeBridgeMessage` 以 UTF-8 字节测量（BigInt 安全）。新回归：multibyte oversize
+   （34K UTF-16 单元 / 68K UTF-8 字节，string-length 检查必然漏过）、33 个直发请求、
+   duplicate ID、真实 timeout + 迟到结果 inert、close 后迟到 run、畸形 cursor/多余字段/
+   缺字段、超长 request ID、typed code run/stream——旧行为下必然失败。
+5. **稳定错误语义**：新增 `apps/desktop-web/src/bridgeErrors.ts`——Connect code 到共享
+   `BridgeErrorCode` 的有限映射（六类 + DeadlineExceeded/Canceled→unavailable + 本地解析
+   失败→invalid_argument + 其余→internal），run/stream 同一映射；host 只接受 typed
+   `BridgeProtocolError`，其他折叠 internal/unavailable。AppSurface transport 抛 typed 错误；
+   raw message 永不跨 port（`bridgeErrors.test.ts` 断言固定安全短消息）。host 回归钉住
+   permission_denied/not_found 在 run/stream 上一致。
+6. **Agent store 暂时故障 → Unavailable**：`internal/core/agent/ports` 新增
+   `ErrStoreUnavailable`；postgres adapter 以 `dbtransient` 分类包装 Bridge 调用路径
+   （CreateForApp 全事务、GetAppTaskRequest、GetAppTaskByTask、Get/taskFromDB、
+   ListEvents/event authorize）；private Core transport 增加映射 → sanitized Unavailable；
+   Runtime coreclient（CodeUnavailable→sentinel）与 public Bridge（→503/Unavailable）原有
+   链路保持。回归：transport error matrix 新增 agent sentinel 用例；真实 outage integration
+   `TestAgentStoreOutageIsUnavailableNotInternal`（真 pgx pool 指向关闭端口 + 真实
+   orchestration/transport 全链 → Unavailable，且错误不含 DSN/SQLSTATE）。
+7. **Stored grant 完整校验**：`AppAgentService.authorize` 先以 `validateStoredGrant` 校验
+   整个快照（vocabulary、排序、无重复），再判定目标 capability；任何漂移（含“合法 capability
+   在前、损坏值在后”）都是净化 Internal，不再提前 return。回归
+   `TestAppAgentValidatesEntireGrantBeforeMembership`（unknown-before/after、duplicate、
+   unsorted、run/watch 分离）。
+8. **Race 门禁真实通过**：`fakeResolver.calls`、`staticGenerator.counter` 改 `atomic`；审核
+   命令 `go test -race ./internal/core/agent/... ./internal/core/project/... ./internal/core/orchestration/... ./internal/runtime/...`
+   exit 0（并发定向测试 `-count=10` 复验），未删除并发测试、未去掉 `-race`。
+
+### 2026-08-29 修复后门禁（实际运行）
+
+- `make check`：exit 0。
+- `make generate` ×2 + `git diff --exit-code`：两次均无差异。
+- `buf breaking --against '.git#branch=main'`：exit 0。
+- `go test -race …`（审核命令）：exit 0。
+- `make test-integration`：exit 0；31 个 integration/migration 测试 PASS；restart 五组
+  seed/verify 全通过（含 `bridge persistence verified`）；资源计数（持久验收 volume）：
+  artifacts 74→79、surface_sessions 158→168、session_requests 158→168、agent_tasks
+  423→428、agent_app_task_requests 24→27、events 3583→3644、outbox 2176→2217，增量与本
+  任务测试 seed 一致；scratch database 保持且仅保持既有 6 个历史库，零新增泄漏；
+  `workos_workos-postgres` volume 未删除。
+- `make test-deepseek-fixture`：exit 0（仅 Makefile 内置 fixture 假凭据，未访问真实
+  Provider）。
+- `make test-e2e`：exit 0（4 passed，含 `app-bridge.spec.ts`）。
+- TS：`@workos/surface-sdk` 4、`@workos/app-sdk` 11、`@workos/app-host` 18、
+  `apps/desktop-web` 39（含 bridgeErrors 新测试）全部通过；`pnpm --filter … check`（tsc +
+  vitest）亦通过。
+- `git diff --check main...HEAD`：干净；001–010 逐字节不变；无 UI 像素变化（本轮修复不
+  改变用户可见界面，未新增截图）；无 root-owned/临时文件；错误与测试文本不含 token/
+  DSN/SQLSTATE（host 测试以布尔量断言 header，不回显值）。

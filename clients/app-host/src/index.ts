@@ -5,14 +5,24 @@
 // authorization truth of its own — every request is re-validated server-side,
 // and the bridge token stays in the caller's memory and travels only as RPC
 // metadata, never through this port.
+//
+// The iframe is an UNTRUSTED peer: it can bypass @workos/app-sdk and post
+// arbitrary structured-clone payloads straight at the port. This module
+// therefore re-validates every inbound envelope itself — protocol version,
+// UTF-8 byte size, bounded canonical request IDs, allow-listed methods,
+// exact payload shapes and field bounds, in-flight concurrency, duplicate
+// IDs — and fails closed with stable error codes before any transport call.
 import {
   APP_BRIDGE_VERSION,
   BridgeProtocolError,
+  MAX_INFLIGHT_REQUESTS,
+  MAX_SINGLE_MESSAGE_BYTES,
   REQUEST_TIMEOUT_MS,
   isFrameEnvelope,
   postBridgeHello,
   postBridgeMessage,
   type BridgeAck,
+  type BridgeErrorCode,
   type BridgeMethod,
   type BridgeRequest,
   type BridgeRunPayload,
@@ -37,7 +47,9 @@ export interface AppBridgeRunResult {
 /**
  * The transport the Desktop wires in: the public AppBridgeService calls with
  * the surface's bridge token already attached as metadata. The host never
- * sees the token itself.
+ * sees the token itself. Implementations signal stable client-facing codes by
+ * throwing BridgeProtocolError; any other thrown value is collapsed to
+ * `internal` and its details never cross the port.
  */
 export interface AppBridgeTransport {
   runAgentTask(input: BridgeRunPayload): Promise<AppBridgeRunResult>;
@@ -80,6 +92,64 @@ const capabilityMethods: Record<string, BridgeMethod> = {
   "agent.event.watch": "agent.stream",
 };
 
+// Request-boundary grammar enforced on the untrusted inbound stream. These
+// mirror the server contract: the runtime re-validates everything again.
+const MAX_IDEMPOTENCY_KEY_CHARS = 128;
+const MAX_ROLE_CHARS = 64;
+const MAX_GOAL_BYTES = 16 * 1024;
+const requestIdPattern = /^[A-Za-z0-9-]{1,64}$/;
+const taskIdPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+const cursorPattern = /^[0-9]{1,20}$/;
+
+/** UTF-8 byte size of an envelope — the wire bound, not a UTF-16 length. */
+function envelopeByteSize(envelope: unknown): number {
+  return new TextEncoder().encode(JSON.stringify(envelope)).length;
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/** Exact-key shape check: unknown and missing fields both fail closed. */
+function hasExactKeys(payload: Record<string, unknown>, keys: readonly string[]): boolean {
+  const actual = Object.keys(payload);
+  return (
+    actual.length === keys.length &&
+    keys.every((key) => Object.prototype.hasOwnProperty.call(payload, key))
+  );
+}
+
+function validRunPayload(payload: unknown): payload is BridgeRunPayload {
+  if (!isPlainObject(payload)) return false;
+  // role is optional in the protocol: exactly the 2-key or 3-key shape.
+  const withRole = hasExactKeys(payload, ["goal", "idempotencyKey", "role"]);
+  const withoutRole = hasExactKeys(payload, ["goal", "idempotencyKey"]);
+  if (!withRole && !withoutRole) return false;
+  const { goal, idempotencyKey, role } = payload;
+  return (
+    typeof idempotencyKey === "string" &&
+    idempotencyKey.length >= 1 &&
+    idempotencyKey.length <= MAX_IDEMPOTENCY_KEY_CHARS &&
+    (role === undefined || (typeof role === "string" && role.length <= MAX_ROLE_CHARS)) &&
+    typeof goal === "string" &&
+    goal.length >= 1 &&
+    envelopeByteSize(goal) <= MAX_GOAL_BYTES
+  );
+}
+
+function validStreamPayload(payload: unknown): payload is BridgeStreamPayload {
+  if (!isPlainObject(payload) || !hasExactKeys(payload, ["afterSequence", "taskId"])) {
+    return false;
+  }
+  const { afterSequence, taskId } = payload;
+  return (
+    typeof taskId === "string" &&
+    taskIdPattern.test(taskId) &&
+    typeof afterSequence === "string" &&
+    cursorPattern.test(afterSequence)
+  );
+}
+
 /**
  * openAppBridgeHost performs the parent half of the handshake: generate a
  * one-time nonce, create a fresh MessageChannel, post the versioned hello to
@@ -102,19 +172,26 @@ export function openAppBridgeHost(options: AppBridgeHostOptions): AppBridgeHost 
   const channel = options.channelFactory?.() ?? new MessageChannel();
   let closed = false;
   let handshaked = false;
-  const pending = new Map<
-    string,
-    { reject: (error: BridgeProtocolError) => void; timer: number }
-  >();
-  const streams = new Map<string, AbortController>();
+  // Pending runs and live streams both count against the in-flight bound;
+  // timers are owned by their entries so teardown and timeouts always clean
+  // up the exact operation that timed out.
+  const pending = new Map<string, { timer: number }>();
+  const streams = new Map<string, { controller: AbortController; timer: number }>();
 
-  const failAll = (code: ConstructorParameters<typeof BridgeProtocolError>[0]) => {
+  const clearPending = (requestId: string): void => {
+    const entry = pending.get(requestId);
+    if (!entry) return;
+    window.clearTimeout(entry.timer);
+    pending.delete(requestId);
+  };
+
+  const failAll = (): void => {
     for (const entry of pending.values()) {
       window.clearTimeout(entry.timer);
-      entry.reject(new BridgeProtocolError(code));
     }
     pending.clear();
-    for (const controller of streams.values()) {
+    for (const { controller, timer } of streams.values()) {
+      window.clearTimeout(timer);
       controller.abort();
     }
     streams.clear();
@@ -142,6 +219,16 @@ export function openAppBridgeHost(options: AppBridgeHostOptions): AppBridgeHost 
     settleHandshake = finishHandshake;
   });
 
+  const respondError = (requestId: string, code: BridgeErrorCode): void => {
+    if (closed || !handshaked) return;
+    postBridgeMessage(channel.port1, {
+      version: APP_BRIDGE_VERSION,
+      type: "error",
+      requestId,
+      code,
+    });
+  };
+
   // The ack and every later request arrive on the port; messages from any
   // other window/port can never reach this listener.
   channel.port1.onmessage = (event: MessageEvent) => {
@@ -160,89 +247,125 @@ export function openAppBridgeHost(options: AppBridgeHostOptions): AppBridgeHost 
       return;
     }
     if (envelope.type === "request") {
-      void dispatch(envelope);
+      dispatch(envelope);
       return;
     }
     if (envelope.type === "cancel") {
-      const controller = streams.get(envelope.requestId);
-      if (controller) {
-        controller.abort();
+      const entry = streams.get(envelope.requestId);
+      if (entry) {
+        window.clearTimeout(entry.timer);
+        entry.controller.abort();
         streams.delete(envelope.requestId);
       }
     }
   };
 
-  const respondError = (
-    requestId: string,
-    code: ConstructorParameters<typeof BridgeProtocolError>[0],
-  ) => {
-    if (closed || !handshaked) return;
-    postBridgeMessage(channel.port1, {
-      version: APP_BRIDGE_VERSION,
-      type: "error",
-      requestId,
-      code,
-    });
-  };
-
-  const dispatch = async (request: BridgeRequest) => {
-    const timer = window.setTimeout(() => {
-      if (pending.delete(request.requestId)) {
-        respondError(request.requestId, "timeout");
-      }
-    }, timeoutMs);
-
+  /** Validates one untrusted inbound request; returns the stable failure code
+   * or null when the request may proceed to the transport. */
+  const validateRequest = (request: BridgeRequest): BridgeErrorCode | null => {
+    if (typeof request.requestId !== "string" || !requestIdPattern.test(request.requestId)) {
+      return "invalid_argument";
+    }
+    if (pending.has(request.requestId) || streams.has(request.requestId)) {
+      // Duplicate ID: the first operation still owns it.
+      return "invalid_argument";
+    }
     if (!methods.includes(request.method)) {
       // Fail closed even if the frame asks for a method this surface was
       // never offered — the advertisement is not the only gate.
-      window.clearTimeout(timer);
-      respondError(request.requestId, "permission_denied");
+      return "permission_denied";
+    }
+    if (pending.size + streams.size >= MAX_INFLIGHT_REQUESTS) {
+      return "too_many_inflight";
+    }
+    if (envelopeByteSize(request) > MAX_SINGLE_MESSAGE_BYTES) {
+      return "oversize";
+    }
+    if (request.method === "agent.run") {
+      return validRunPayload(request.payload) ? null : "invalid_argument";
+    }
+    return validStreamPayload(request.payload) ? null : "invalid_argument";
+  };
+
+  const dispatch = (request: BridgeRequest): void => {
+    const failure = validateRequest(request);
+    if (failure !== null) {
+      respondError(request.requestId, failure);
       return;
     }
     if (request.method === "agent.run") {
-      const payload: unknown = request.payload;
-      const runPayload = payload as Partial<BridgeRunPayload>;
-      if (typeof runPayload.idempotencyKey !== "string" || typeof runPayload.goal !== "string") {
-        window.clearTimeout(timer);
-        respondError(request.requestId, "invalid_argument");
-        return;
-      }
-      let result: AppBridgeRunResult;
-      try {
-        result = await options.transport.runAgentTask(runPayload as BridgeRunPayload);
-      } catch {
-        // A stable internal code — the transport failure detail never
-        // crosses the port.
-        window.clearTimeout(timer);
-        respondError(request.requestId, "internal");
-        return;
-      }
-      window.clearTimeout(timer);
-      postBridgeMessage(channel.port1, {
-        version: APP_BRIDGE_VERSION,
-        type: "response",
-        requestId: request.requestId,
-        payload: result,
-      });
+      const payload = request.payload as BridgeRunPayload;
+      const entry = {
+        timer: window.setTimeout(() => {
+          // The timeout is the linearization of cleanup: the pending entry
+          // is removed first so a late transport result finds no owner and
+          // stays inert.
+          if (pending.delete(request.requestId)) {
+            respondError(request.requestId, "timeout");
+          }
+        }, timeoutMs),
+      };
+      pending.set(request.requestId, entry);
+      void options.transport
+        .runAgentTask(payload)
+        .then((result) => {
+          if (!pending.has(request.requestId)) return; // timed out or closed: inert
+          clearPending(request.requestId);
+          if (closed || !handshaked) return;
+          postBridgeMessage(channel.port1, {
+            version: APP_BRIDGE_VERSION,
+            type: "response",
+            requestId: request.requestId,
+            payload: result,
+          });
+        })
+        .catch((reason: unknown) => {
+          if (!pending.has(request.requestId)) return;
+          clearPending(request.requestId);
+          const code: BridgeErrorCode =
+            reason instanceof BridgeProtocolError ? reason.code : "internal";
+          respondError(request.requestId, code);
+        });
       return;
     }
 
-    // agent.stream: acknowledge immediately, then forward canonical events
-    // until the server stream completes; a frame cancel aborts only the
-    // local/server stream, never the durable task.
-    const payload: unknown = request.payload;
-    const streamPayload = payload as Partial<BridgeStreamPayload>;
-    if (typeof streamPayload.taskId !== "string" || streamPayload.taskId === "") {
-      window.clearTimeout(timer);
-      respondError(request.requestId, "invalid_argument");
-      return;
-    }
+    // agent.stream: acknowledge implicitly by streaming; forward canonical
+    // events until the server stream completes. The in-flight timer aborts
+    // the local/server stream if it never completes; a frame cancel aborts
+    // only this stream, never the durable task.
+    const payload = request.payload as BridgeStreamPayload;
     const controller = new AbortController();
-    streams.set(request.requestId, controller);
-    window.clearTimeout(timer);
-    try {
-      await options.transport.watchAgentTaskEvents(
-        streamPayload as BridgeStreamPayload,
+    const entry = {
+      controller,
+      timer: window.setTimeout(() => {
+        if (streams.delete(request.requestId)) {
+          controller.abort();
+          respondError(request.requestId, "timeout");
+        }
+      }, timeoutMs),
+    };
+    streams.set(request.requestId, entry);
+    const settle = (failure: BridgeErrorCode | null): void => {
+      const live = streams.get(request.requestId);
+      if (!live || live.controller !== controller) return; // canceled/closed: inert
+      window.clearTimeout(live.timer);
+      streams.delete(request.requestId);
+      if (failure !== null) {
+        respondError(request.requestId, failure);
+        return;
+      }
+      if (!controller.signal.aborted && !closed) {
+        postBridgeMessage(channel.port1, {
+          version: APP_BRIDGE_VERSION,
+          type: "response",
+          requestId: request.requestId,
+          payload: { done: true },
+        });
+      }
+    };
+    void options.transport
+      .watchAgentTaskEvents(
+        payload,
         (event) => {
           if (closed || controller.signal.aborted) {
             return;
@@ -255,22 +378,17 @@ export function openAppBridgeHost(options: AppBridgeHostOptions): AppBridgeHost 
           });
         },
         controller.signal,
+      )
+      .then(
+        () => {
+          settle(null);
+        },
+        (reason: unknown) => {
+          const code: BridgeErrorCode =
+            reason instanceof BridgeProtocolError ? reason.code : "unavailable";
+          settle(code);
+        },
       );
-      if (!controller.signal.aborted && !closed) {
-        postBridgeMessage(channel.port1, {
-          version: APP_BRIDGE_VERSION,
-          type: "response",
-          requestId: request.requestId,
-          payload: { done: true },
-        });
-      }
-    } catch {
-      if (!controller.signal.aborted && !closed) {
-        respondError(request.requestId, "unavailable");
-      }
-    } finally {
-      streams.delete(request.requestId);
-    }
   };
 
   // Hello: only to the exact contentWindow of the iframe's current document,
@@ -285,7 +403,7 @@ export function openAppBridgeHost(options: AppBridgeHostOptions): AppBridgeHost 
     close() {
       if (closed) return;
       closed = true;
-      failAll("bridge_closed");
+      failAll();
       channel.port1.close();
     },
     ready,

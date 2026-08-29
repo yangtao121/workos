@@ -112,15 +112,36 @@ func (s *AppAgentService) authorize(ctx context.Context, ownerUserID, projectID,
 	if err != nil {
 		return projectdomain.Installation{}, err
 	}
+	if err := validateStoredGrant(installation.GrantedPermissions); err != nil {
+		return projectdomain.Installation{}, err
+	}
 	for _, granted := range installation.GrantedPermissions {
-		if !appregistrydomain.KnownPermission(granted) {
-			// Stored grants are canonical vocabulary subsets; anything else
-			// is corruption and must not degrade into "no capability".
-			return projectdomain.Installation{}, errAppGrantCorrupt
-		}
 		if granted == capability {
 			return installation, nil
 		}
 	}
 	return projectdomain.Installation{}, ErrAppNotGranted
+}
+
+// validateStoredGrant checks the entire stored grant snapshot before any
+// capability decision: every entry must belong to the canonical vocabulary,
+// the list must be canonically sorted and duplicate-free. Checking the whole
+// snapshot first (instead of returning on the first membership hit) keeps
+// trailing corruption — e.g. a valid capability followed by an unknown or
+// duplicated entry — a fail-closed Internal verdict rather than a successful
+// authorization. Stored grants are written canonical; any drift is internal
+// corruption and must not degrade into "no capability" or a silent grant.
+func validateStoredGrant(granted []string) error {
+	previous := ""
+	for _, entry := range granted {
+		if !appregistrydomain.KnownPermission(entry) {
+			return errAppGrantCorrupt
+		}
+		if previous != "" && entry <= previous {
+			// Unsorted or duplicated: both violate the canonical form.
+			return errAppGrantCorrupt
+		}
+		previous = entry
+	}
+	return nil
 }

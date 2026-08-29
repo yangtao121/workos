@@ -213,3 +213,17 @@ describe("WorkOSAppBridge calls", () => {
     await expect(pending).resolves.toMatchObject({ taskId: "task-1" });
   });
 });
+
+describe("WorkOSAppBridge outbound bounds", () => {
+  it("rejects an oversize outbound request locally without posting", async () => {
+    const { bridge, port } = await connectedBridge();
+    // ~68 KB of UTF-8 goal: the shared bounded post helper must reject it
+    // client-side, before any envelope reaches the port.
+    const goal = "\u{1F680}".repeat(17_000);
+    await expect(bridge.agent.run({ idempotencyKey: "k", role: "", goal })).rejects.toMatchObject({
+      code: "oversize",
+    });
+    // Only the handshake ack was ever posted.
+    expect(port.sent).toHaveLength(1);
+  });
+});

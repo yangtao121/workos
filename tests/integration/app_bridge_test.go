@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -26,6 +27,11 @@ import (
 	agentpostgres "github.com/yangtao121/workos/internal/core/agent/adapters/postgres"
 	agentapp "github.com/yangtao121/workos/internal/core/agent/application"
 	agentdomain "github.com/yangtao121/workos/internal/core/agent/domain"
+	"github.com/yangtao121/workos/internal/core/orchestration"
+	orchestrationtransport "github.com/yangtao121/workos/internal/core/orchestration/transport"
+	projectpostgres "github.com/yangtao121/workos/internal/core/project/adapters/postgres"
+	projectdomain "github.com/yangtao121/workos/internal/core/project/domain"
+	"github.com/yangtao121/workos/internal/platform/identity"
 	"github.com/yangtao121/workos/internal/platform/ids"
 	"github.com/yangtao121/workos/internal/platform/migrations"
 	surfacepostgres "github.com/yangtao121/workos/internal/runtime/surface/adapters/postgres"
@@ -581,6 +587,22 @@ func (r *staticResolver) ReadWebBundleAsset(context.Context, surfaceports.AssetQ
 	return surfaceports.Asset{}, surfaceports.ErrResolverNotFound
 }
 
+type surfaceApp interface {
+	Create(context.Context, surfaceapp.CreateCommand) (surfaceapp.CreatedSurface, error)
+	Close(context.Context, string, string, string) (surfacedomain.SurfaceSession, error)
+}
+
+type surfaceCreated = surfaceapp.CreatedSurface
+
+func surfaceCreateCommand(owner, device, key string) surfaceapp.CreateCommand {
+	return surfaceapp.CreateCommand{
+		OwnerUserID: owner, DeviceID: device, IdempotencyKey: key,
+		ProjectID: newUUIDForTest(395), AppInstanceID: newUUIDForTest(396),
+		DeviceClass: "desktop", ViewportWidth: 1024, ViewportHeight: 768, ViewportRatio: 1,
+		PreferredRenderer: surfacedomain.RendererWebBundle,
+	}
+}
+
 func newSurfaceApplication(repository surfaceports.SessionRepository) (*surfaceapp.Service, error) {
 	return surfaceapp.New(repository, &staticResolver{descriptor: surfaceports.LaunchDescriptor{
 		AppID: "restart-app", Version: "1.0.0",
@@ -684,4 +706,276 @@ func TestAppBridgeRevocationAndUserVisibility(t *testing.T) {
 
 type agentappSubmitter interface {
 	SubmitForApp(context.Context, agentapp.AppSubmitInput) (agentdomain.Task, error)
+}
+
+// staticInstallations satisfies the orchestration installation source with a
+// fixed active installation so an Agent-store outage can be isolated from the
+// Project store.
+type staticInstallations struct {
+	installation projectdomain.Installation
+}
+
+func (f *staticInstallations) ResolveActiveInstallation(
+	context.Context, string, string, string,
+) (projectdomain.Installation, error) {
+	return f.installation, nil
+}
+
+// newRouterForOutage composes the real Agent application service (backed by
+// the outage pool) with the real Task Router; the replay-first mapping lookup
+// hits the Agent store before any other dependency.
+func newRouterForOutage(agentRepository *agentpostgres.Repository) *orchestration.TaskRouter {
+	agents := agentapp.New(agentRepository, ids.UUIDv7{})
+	router, err := orchestration.NewTaskRouter(agents, projectOutageProjects(), "fake")
+	if err != nil {
+		panic(err)
+	}
+	return router
+}
+
+var _ = projectpostgres.New
+
+func projectOutageProjects() orchestration.Projects {
+	return &outageProjects{}
+}
+
+type outageProjects struct{}
+
+func (f *outageProjects) Get(context.Context, string, string) (projectdomain.Project, error) {
+	return projectdomain.Project{}, projectdomain.ErrNotFound
+}
+
+// TestAgentStoreOutageIsUnavailableNotInternal proves the Agent-owned store
+// outage classification end to end through the private Core App Agent
+// transport: a transient PostgreSQL failure (real pool pointed at a closed
+// port) wrapped by the Agent adapter surfaces as sanitized retryable
+// Unavailable — never Internal, and never a leak of DSN, SQL, or constraint.
+func TestAgentStoreOutageIsUnavailableNotInternal(t *testing.T) {
+	t.Parallel()
+	// A pool whose server never accepts connections.
+	outagePort := "127.0.0.1:1"
+	outageURL := fmt.Sprintf("postgres://workos:workos@%s/workos?sslmode=disable", outagePort)
+	outagePool, err := pgxpool.New(context.Background(), outageURL)
+	if err != nil {
+		t.Fatalf("open outage pool: %v", err)
+	}
+	defer outagePool.Close()
+
+	installations := &staticInstallations{installation: func() projectdomain.Installation {
+		installation := projectdomain.Installation{
+			ID: newUUIDForTest(301), OwnerUserID: newUUIDForTest(302), ProjectID: newUUIDForTest(303),
+			AppID: "outage-app", Version: "1.0.0",
+			ManifestDigest:     "sha256:" + strings.Repeat("5", 64),
+			GrantedPermissions: []string{"agent.event.watch", "agent.task.run"},
+		}
+		return installation
+	}()}
+	agentRepository := agentpostgres.New(outagePool)
+	appAgent, err := orchestration.NewAppAgentService(installations, newRouterForOutage(agentRepository))
+	if err != nil {
+		t.Fatal(err)
+	}
+	path, handler := agentv1connect.NewAppAgentServiceHandler(orchestrationtransport.NewAppAgent(appAgent))
+	mux := http.NewServeMux()
+	mux.Handle(path, identity.Middleware(handler))
+	server := httptest.NewServer(mux)
+	t.Cleanup(server.Close)
+
+	client := agentv1connect.NewAppAgentServiceClient(server.Client(), server.URL)
+	request := connect.NewRequest(&agentv1.RunAgentTaskRequest{
+		ProjectId: installations.installation.ProjectID, AppInstanceId: installations.installation.ID,
+		ClientIdempotencyKey: "outage-key", Goal: "goal",
+	})
+	request.Header().Set(identity.UserHeader, installations.installation.OwnerUserID)
+	request.Header().Set(identity.DeviceHeader, newUUIDForTest(304))
+	_, runErr := client.RunAgentTask(context.Background(), request)
+	if connect.CodeOf(runErr) != connect.CodeUnavailable {
+		t.Fatalf("agent store outage verdict: %v", runErr)
+	}
+	if strings.Contains(fmt.Sprint(runErr), "postgres://") || strings.Contains(fmt.Sprint(runErr), "SQLSTATE") {
+		t.Fatalf("outage error leaked internals: %v", runErr)
+	}
+}
+
+// TestSurfaceCloseClearsBridgeTokenInStorage proves the atomic close: after
+// CloseSurface, the at-rest bridge_token_hash column is SQL NULL — verified
+// by reading the column directly, not by inferring from a failed token
+// lookup — while the first closed_at timestamp survives repeated closes.
+func TestSurfaceCloseClearsBridgeTokenInStorage(t *testing.T) {
+	t.Parallel()
+	dsn := scratchDatabase(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 40*time.Second)
+	defer cancel()
+	if err := migrations.Run(ctx, dsn); err != nil {
+		t.Fatalf("migrations: %v", err)
+	}
+	pool, err := pgxpool.New(ctx, dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pool.Close()
+	repository := surfacepostgres.New(pool)
+	application, err := newSurfaceApplication(repository)
+	if err != nil {
+		t.Fatal(err)
+	}
+	owner, device := newUUIDForTest(310), newUUIDForTest(311)
+	created, err := application.Create(ctx, surfaceCreateCommand(owner, device, "close-null-key"))
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	if created.BridgeToken == "" {
+		t.Fatal("open create returned no credential")
+	}
+	closed, err := application.Close(ctx, owner, device, created.Session.ID)
+	if err != nil || closed.ClosedAt == nil {
+		t.Fatalf("close failed: %v", err)
+	}
+	firstClosedAt := *closed.ClosedAt
+
+	var tokenHash *string
+	var closedAt *time.Time
+	if err := pool.QueryRow(ctx,
+		"SELECT bridge_token_hash, closed_at FROM workos_runtime.surface_sessions WHERE id = $1",
+		created.Session.ID,
+	).Scan(&tokenHash, &closedAt); err != nil {
+		t.Fatalf("read closed session row: %v", err)
+	}
+	if tokenHash != nil {
+		t.Fatal("bridge_token_hash must be SQL NULL after close")
+	}
+	if closedAt == nil || !closedAt.Equal(firstClosedAt) {
+		t.Fatal("first closed_at was not preserved")
+	}
+
+	// Repeated close is an idempotent success and preserves the first close.
+	reopened, err := application.Close(ctx, owner, device, created.Session.ID)
+	if err != nil || reopened.ClosedAt == nil || !reopened.ClosedAt.Equal(firstClosedAt) {
+		t.Fatalf("repeated close changed the first result: %v", err)
+	}
+	// Foreign/missing sessions stay sanitized NotFound.
+	if _, err := application.Close(ctx, owner, newUUIDForTest(312), created.Session.ID); err == nil {
+		t.Fatal("foreign device close succeeded")
+	}
+}
+
+// TestSurfaceCreateConcurrencyTokenPersistence drives two same-key creates
+// through two real pools and asserts the credential contract end to end:
+// every successful response carries a token whose hash was the persisted
+// session fact at its linearization point, the final stored hash equals one
+// of the returned tokens' hashes (the last linearized rotation), exactly one
+// session fact and mapping survive, and the pre-rotation token's
+// invalidation comes from the recorded rotation — not from never being
+// stored.
+func TestSurfaceCreateConcurrencyTokenPersistence(t *testing.T) {
+	t.Parallel()
+	dsn := scratchDatabase(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 40*time.Second)
+	defer cancel()
+	if err := migrations.Run(ctx, dsn); err != nil {
+		t.Fatalf("migrations: %v", err)
+	}
+	leftPool, err := pgxpool.New(ctx, dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer leftPool.Close()
+	rightPool, err := pgxpool.New(ctx, dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rightPool.Close()
+	left := surfacepostgres.New(leftPool)
+	right := surfacepostgres.New(rightPool)
+	leftApp, err := newSurfaceApplication(left)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rightApp, err := newSurfaceApplication(right)
+	if err != nil {
+		t.Fatal(err)
+	}
+	owner, device := newUUIDForTest(313), newUUIDForTest(314)
+	command := surfaceCreateCommand(owner, device, "token-race-key")
+
+	start := make(chan struct{})
+	var group sync.WaitGroup
+	type outcome struct {
+		created surfaceCreated
+		err     error
+	}
+	results := make(chan outcome, 2)
+	for _, app := range []surfaceApp{leftApp, rightApp} {
+		group.Add(1)
+		go func(app surfaceApp) {
+			defer group.Done()
+			<-start
+			created, err := app.Create(ctx, command)
+			results <- outcome{created, err}
+		}(app)
+	}
+	close(start)
+	group.Wait()
+	close(results)
+
+	var tokens []string
+	ids := map[string]struct{}{}
+	for result := range results {
+		if result.err != nil {
+			t.Fatalf("race surfaced an error: %v", result.err)
+		}
+		if result.created.BridgeToken == "" {
+			t.Fatal("open-session create returned no credential")
+		}
+		// Every response pairs its credential with the persisted fact it was
+		// stored under — the old implementation returned the arbitration
+		// winner's session with the loser's never-persisted token, which
+		// this assertion fails on.
+		if result.created.Session.BridgeTokenHash != surfacedomain.HashBridgeToken(result.created.BridgeToken) {
+			t.Fatal("response paired a credential with a hash it was not stored under")
+		}
+		tokens = append(tokens, result.created.BridgeToken)
+		ids[result.created.Session.ID] = struct{}{}
+	}
+	if len(ids) != 1 {
+		t.Fatalf("same-key race produced %d sessions", len(ids))
+	}
+
+	// The final persisted hash must be one of the returned credentials' hashes
+	// — the last linearized rotation — and must resolve through the token
+	// lookup on a fresh pool ("restarted process").
+	session, lookupErr := left.GetActiveSessionByBridgeToken(ctx, owner, surfacedomain.HashBridgeToken(tokens[0]), time.Now().UTC())
+	if lookupErr != nil {
+		// tokens[0] was rotated out by the later linearization: the winner of
+		// the rotation order must be tokens[1], and its hash is stored.
+		session, lookupErr = left.GetActiveSessionByBridgeToken(ctx, owner, surfacedomain.HashBridgeToken(tokens[1]), time.Now().UTC())
+		if lookupErr != nil {
+			t.Fatalf("neither returned credential resolves: %v", lookupErr)
+		}
+	}
+	if session.ID != sessionIDOf(ids) {
+		t.Fatal("token resolved to a different session")
+	}
+	if countScratchRows(t, leftPool, `SELECT count(*) FROM workos_runtime.surface_sessions WHERE owner_user_id = $1`, owner) != 1 {
+		t.Fatal("race left more than one session fact")
+	}
+	if countScratchRows(t, leftPool, `SELECT count(*) FROM workos_runtime.surface_session_requests WHERE owner_user_id = $1`, owner) != 1 {
+		t.Fatal("race left more than one request mapping")
+	}
+}
+
+func countScratchRows(t *testing.T, pool *pgxpool.Pool, query string, args ...any) int {
+	t.Helper()
+	var count int
+	if err := pool.QueryRow(context.Background(), query, args...).Scan(&count); err != nil {
+		t.Fatalf("count scratch rows: %v", err)
+	}
+	return count
+}
+
+func sessionIDOf(ids map[string]struct{}) string {
+	for id := range ids {
+		return id
+	}
+	return ""
 }

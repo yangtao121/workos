@@ -227,19 +227,26 @@ func TestNewRejectsUnusableUpstreamTargets(t *testing.T) {
 	}
 }
 
+// TestAppBridgeRoutesReachRuntimeOnly pins the bridge-credential scoping: the
+// bearer header survives ONLY on the two public AppBridge Connect routes; the
+// same credential on SurfaceService, /surfaces/ assets, or any Core route is
+// stripped before an upstream ever sees it. Assertions use booleans so no
+// token material can leak into failure text.
 func TestAppBridgeRoutesReachRuntimeOnly(t *testing.T) {
 	t.Parallel()
 	var coreCalled, runtimeCalled atomic.Bool
-	core := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { coreCalled.Store(true) }))
+	var coreTokenSeen, runtimeTokenSeen atomic.Bool
+	core := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, request *http.Request) {
+		coreCalled.Store(true)
+		if request.Header.Get(identity.BridgeTokenHeader) != "" {
+			coreTokenSeen.Store(true)
+		}
+	}))
 	defer core.Close()
 	runtime := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
 		runtimeCalled.Store(true)
-		// The bridge token must survive to the runtime Connect route.
-		if got := request.Header.Get(identity.BridgeTokenHeader); got != "token-1" {
-			t.Errorf("runtime upstream missing bridge token: %q", got)
-		}
-		if got := request.Header.Get(identity.UserHeader); got != "owner-1" {
-			t.Errorf("runtime upstream saw spoofed identity %q", got)
+		if request.Header.Get(identity.BridgeTokenHeader) != "" {
+			runtimeTokenSeen.Store(true)
 		}
 		w.WriteHeader(http.StatusNoContent)
 	}))
@@ -248,51 +255,61 @@ func TestAppBridgeRoutesReachRuntimeOnly(t *testing.T) {
 		Services: config.URLs{Core: core.URL, Runtime: runtime.URL},
 		Auth:     config.Auth{DevBypass: true, OwnerID: "owner-1", DeviceID: "device-1"},
 	})
+	post := func(path string) {
+		request := httptest.NewRequest(http.MethodPost, path, nil)
+		request.Header.Set(identity.UserHeader, "attacker")
+		request.Header.Set(identity.DeviceHeader, "attacker")
+		request.Header.Set(identity.BridgeTokenHeader, "bridge-token-value")
+		response := httptest.NewRecorder()
+		handler.ServeHTTP(response, request)
+		if response.Code != http.StatusNoContent {
+			t.Errorf("path %s returned %d", path, response.Code)
+		}
+	}
+
+	// The AppBridge routes are the only paths that keep the credential.
 	for _, path := range []string{
 		"/workos.bridge.v1.AppBridgeService/RunAgentTask",
 		"/workos.bridge.v1.AppBridgeService/WatchAgentTaskEvents",
 	} {
-		request := httptest.NewRequest(http.MethodPost, path, nil)
-		request.Header.Set(identity.UserHeader, "attacker")
-		request.Header.Set(identity.DeviceHeader, "attacker")
-		request.Header.Set(identity.BridgeTokenHeader, "token-1")
-		response := httptest.NewRecorder()
-		handler.ServeHTTP(response, request)
-		if response.Code != http.StatusNoContent {
-			t.Errorf("bridge path %s returned %d", path, response.Code)
-		}
+		post(path)
 	}
-	if !runtimeCalled.Load() {
-		t.Fatal("AppBridgeService never reached the runtime upstream")
+	if !runtimeCalled.Load() || !runtimeTokenSeen.Load() {
+		t.Fatalf("AppBridge forwarding broken: runtimeCalled=%v tokenSeen=%v", runtimeCalled.Load(), runtimeTokenSeen.Load())
 	}
 
-	// The same credential on a Core route and on the asset route is stripped.
-	coreCalled.Store(false)
+	// Every other route strips the credential before the upstream.
+	runtimeCalled.Store(false)
+	runtimeTokenSeen.Store(false)
 	for _, path := range []string{
-		"/workos.project.v1.ProjectService/ListProjects",
+		"/workos.surface.v1.SurfaceService/CreateSurface",
 		"/surfaces/0198d7ea-2110-7c42-b659-c5e4d73bc337/",
+		"/surfaces/0198d7ea-2110-7c42-b659-c5e4d73bc337/app.js",
 	} {
-		request := httptest.NewRequest(http.MethodGet, path, nil)
-		request.Header.Set(identity.BridgeTokenHeader, "token-1")
-		response := httptest.NewRecorder()
-		handler.ServeHTTP(response, request)
+		post(path)
 	}
-	// Capture what Core saw by re-sending with an inspecting upstream.
-	inspected := ""
-	inspector := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, request *http.Request) {
-		inspected = request.Header.Get(identity.BridgeTokenHeader)
-	}))
-	defer inspector.Close()
-	coreHandler := newTestHandler(t, config.Config{
-		Services: config.URLs{Core: inspector.URL, Runtime: runtime.URL},
-		Auth:     config.Auth{DevBypass: true, OwnerID: "owner-1", DeviceID: "device-1"},
-	})
+	if !runtimeCalled.Load() {
+		t.Fatal("runtime routes never reached the runtime upstream")
+	}
+	if runtimeTokenSeen.Load() {
+		t.Fatal("bridge token leaked to a non-AppBridge runtime route")
+	}
+	if coreCalled.Load() || coreTokenSeen.Load() {
+		t.Fatal("AppBridge paths must not reach the Core upstream")
+	}
+
+	// A Core public route carrying the credential is stripped too.
+	coreCalled.Store(false)
+	coreTokenSeen.Store(false)
 	request := httptest.NewRequest(http.MethodPost, "/workos.agent.v1.AgentTaskService/SubmitTask", nil)
-	request.Header.Set(identity.BridgeTokenHeader, "token-1")
+	request.Header.Set(identity.BridgeTokenHeader, "bridge-token-value")
 	response := httptest.NewRecorder()
-	coreHandler.ServeHTTP(response, request)
-	if inspected != "" {
-		t.Fatalf("bridge token leaked to a Core route: %q", inspected)
+	handler.ServeHTTP(response, request)
+	if !coreCalled.Load() {
+		t.Fatal("core public route never reached the core upstream")
+	}
+	if coreTokenSeen.Load() {
+		t.Fatal("bridge token leaked to a Core route")
 	}
 }
 

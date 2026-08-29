@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Client } from "@connectrpc/connect";
 import type { AppBridgeService } from "@workos/protocol";
+import { BridgeProtocolError } from "@workos/surface-sdk";
 import { openAppBridgeHost, type AppBridgeHost, type AppBridgeTransport } from "@workos/app-host";
+import { asBridgeProtocolError } from "./bridgeErrors.js";
 import type { AppSurfaceRef } from "@workos/window-manager";
 
 export type SurfaceWindowState = "loading" | "ready" | "closed";
@@ -35,26 +37,39 @@ function buildTransport(
   const headers = { "X-WorkOS-Bridge-Token": credentials.token };
   return {
     async runAgentTask(input) {
-      const response = await appBridge.runAgentTask(
-        {
-          idempotencyKey: input.idempotencyKey,
-          role: input.role ?? "",
-          goal: input.goal,
-        },
-        { headers },
-      );
-      return {
-        taskId: response.taskId,
-        state: response.state.toString(),
-        lastEventSequence: response.lastEventSequence.toString(),
-      };
+      try {
+        const response = await appBridge.runAgentTask(
+          {
+            idempotencyKey: input.idempotencyKey,
+            role: input.role ?? "",
+            goal: input.goal,
+          },
+          { headers },
+        );
+        return {
+          taskId: response.taskId,
+          state: response.state.toString(),
+          lastEventSequence: response.lastEventSequence.toString(),
+        };
+      } catch (reason: unknown) {
+        // Stable, safe code projection: run and stream share one mapping.
+        throw asBridgeProtocolError(reason);
+      }
     },
     watchAgentTaskEvents(input, onEvent, signal) {
       return new Promise((resolve, reject) => {
         void (async () => {
           try {
+            let afterSequence: bigint;
+            try {
+              afterSequence = BigInt(input.afterSequence || "0");
+            } catch {
+              // A malformed local cursor is the caller's argument error, not
+              // an availability problem.
+              throw new BridgeProtocolError("invalid_argument");
+            }
             for await (const response of appBridge.watchAgentTaskEvents(
-              { taskId: input.taskId, afterSequence: BigInt(input.afterSequence || "0") },
+              { taskId: input.taskId, afterSequence },
               { headers, signal },
             )) {
               if (response.event) {
@@ -63,7 +78,7 @@ function buildTransport(
             }
             resolve();
           } catch (reason: unknown) {
-            reject(reason instanceof Error ? reason : new Error("bridge stream failed"));
+            reject(asBridgeProtocolError(reason));
           }
         })();
       });

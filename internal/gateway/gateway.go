@@ -82,8 +82,16 @@ func newUpstreamProxy(target string, cfg config.Config, logger *slog.Logger, nam
 		request.Header.Del(identity.DeviceHeader)
 		request.Header.Set(identity.UserHeader, cfg.Auth.OwnerID)
 		request.Header.Set(identity.DeviceHeader, cfg.Auth.DeviceID)
-		if name != "runtime" {
-			request.Header.Del(identity.BridgeTokenHeader)
+		// The bridge credential is stripped by default on every route — Core
+		// public/private RPCs, SurfaceService, /surfaces/ assets, Desktop
+		// static/fallback — and re-attached only on the public AppBridge
+		// Connect routes, so a malicious client cannot move a bridge token
+		// sideways through any other WorkOS path. The path predicate decides,
+		// never the upstream name or what the client "normally" sends.
+		bridgeToken := request.Header.Get(identity.BridgeTokenHeader)
+		request.Header.Del(identity.BridgeTokenHeader)
+		if appBridgeConnectPath(request.URL.Path) && bridgeToken != "" {
+			request.Header.Set(identity.BridgeTokenHeader, bridgeToken)
 		}
 	}
 	proxy.ErrorHandler = func(w http.ResponseWriter, _ *http.Request, err error) {
@@ -91,6 +99,13 @@ func newUpstreamProxy(target string, cfg config.Config, logger *slog.Logger, nam
 		http.Error(w, "workos "+name+" unavailable", http.StatusServiceUnavailable)
 	}
 	return proxy, nil
+}
+
+// appBridgeConnectPath reports whether the request targets the public
+// AppBridge Connect service — the only route allowed to carry the bridge
+// credential to an upstream.
+func appBridgeConnectPath(path string) bool {
+	return strings.HasPrefix(path, "/workos.bridge.v1.AppBridgeService/")
 }
 
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {

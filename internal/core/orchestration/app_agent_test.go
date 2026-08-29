@@ -102,6 +102,38 @@ func TestAppAgentRunRequiresExactGrant(t *testing.T) {
 	}
 }
 
+// TestAppAgentValidatesEntireGrantBeforeMembership pins the full-snapshot
+// validation: a valid capability followed by trailing corruption must fail
+// closed as an internal invariant, never authorize.
+func TestAppAgentValidatesEntireGrantBeforeMembership(t *testing.T) {
+	t.Parallel()
+	cases := map[string][]string{
+		"unknown after the requested capability":  {"agent.task.run", "totally.unknown"},
+		"unknown before the requested capability": {"totally.unknown", "agent.task.run"},
+		"duplicate entries":                       {"agent.task.run", "agent.task.run"},
+		"unsorted entries":                        {"agent.task.run", "agent.event.watch"},
+	}
+	for name, grant := range cases {
+		service := newAppAgent(grantedInstallation(grant...), &fakeAppTasks{})
+		if _, err := service.RunAgentTask(context.Background(), resolveOwner, resolveProject, resolveInstance, "k", "", "goal"); err == nil || errors.Is(err, ErrAppNotGranted) {
+			t.Errorf("%s: verdict must be an internal invariant, got %v", name, err)
+		}
+	}
+	// The canonical sorted run+watch grant keeps both methods working, and a
+	// single-capability grant keeps the separation exact.
+	both := newAppAgent(grantedInstallation("agent.event.watch", "agent.task.run"), &fakeAppTasks{})
+	if _, err := both.RunAgentTask(context.Background(), resolveOwner, resolveProject, resolveInstance, "k", "", "goal"); err != nil {
+		t.Errorf("canonical grant rejected: %v", err)
+	}
+	if _, _, err := both.WatchAgentTaskEvents(context.Background(), resolveOwner, resolveProject, resolveInstance, "task-1", 0, 100); !errors.Is(err, agentdomain.ErrNotFound) {
+		t.Errorf("watch on canonical grant should pass authorization (failure is provenance): %v", err)
+	}
+	runOnly := newAppAgent(grantedInstallation("agent.task.run"), &fakeAppTasks{})
+	if _, _, err := runOnly.WatchAgentTaskEvents(context.Background(), resolveOwner, resolveProject, resolveInstance, "task-1", 0, 100); !errors.Is(err, ErrAppNotGranted) {
+		t.Errorf("watch with run-only grant verdict: %v", err)
+	}
+}
+
 func TestAppAgentWatchRequiresWatchGrantAndProvenance(t *testing.T) {
 	t.Parallel()
 	tasks := &fakeAppTasks{task: grantedTask("task-1"), taskProj: resolveProject, events: []agentdomain.Event{{ID: "e1", Sequence: 1}}}

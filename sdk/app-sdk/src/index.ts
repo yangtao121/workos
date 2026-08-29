@@ -10,6 +10,7 @@ import {
   MAX_INFLIGHT_REQUESTS,
   REQUEST_TIMEOUT_MS,
   isParentEnvelope,
+  postBridgeMessage,
   type BridgeMethod,
   type BridgeRunPayload,
   type BridgeRunResult,
@@ -189,17 +190,22 @@ function createBridge(
       pending.set(requestId, { resolve, reject, onEvent, timer });
       onRegistered?.(requestId);
       try {
-        port.postMessage({
+        // Outbound traffic uses the same bounded helper as the trusted host:
+        // the single-message bound is enforced on this side too, not only in
+        // tests of a helper nothing calls.
+        postBridgeMessage(port, {
           version: APP_BRIDGE_VERSION,
           type: "request",
           requestId,
           method,
           payload,
         });
-      } catch {
+      } catch (error) {
         window.clearTimeout(timer);
         pending.delete(requestId);
-        reject(new BridgeProtocolError("bridge_closed"));
+        reject(
+          error instanceof BridgeProtocolError ? error : new BridgeProtocolError("bridge_closed"),
+        );
       }
     });
   };
@@ -289,7 +295,7 @@ function createBridge(
                     pending.delete(streamRequestId);
                   }
                   try {
-                    port.postMessage({
+                    postBridgeMessage(port, {
                       version: APP_BRIDGE_VERSION,
                       type: "cancel",
                       requestId: streamRequestId,

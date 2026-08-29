@@ -9,7 +9,6 @@ import (
 )
 
 type Querier interface {
-	ClearSessionBridgeToken(ctx context.Context, arg ClearSessionBridgeTokenParams) (int64, error)
 	CloseSession(ctx context.Context, arg CloseSessionParams) (int64, error)
 	GetActiveSession(ctx context.Context, arg GetActiveSessionParams) (GetActiveSessionRow, error)
 	GetActiveSessionByBridgeToken(ctx context.Context, arg GetActiveSessionByBridgeTokenParams) (GetActiveSessionByBridgeTokenRow, error)

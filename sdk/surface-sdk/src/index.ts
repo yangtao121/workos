@@ -153,8 +153,10 @@ export function isEnvelope(value: unknown): value is BridgeEnvelope {
 }
 
 /**
- * Serializes one envelope for the size bound. Canonical proto payloads may
- * carry bigint int64 fields, which JSON.stringify cannot serialize — they are
+ * Serializes one envelope and enforces the single-message bound measured in
+ * UTF-8 bytes — the wire quantity, not a UTF-16 `string.length` that
+ * multibyte payloads can hide behind. Canonical proto payloads may carry
+ * bigint int64 fields, which JSON.stringify cannot serialize — they are
  * stringified only for the measurement; postMessage transports the original
  * structured-clone-safe object.
  */
@@ -162,7 +164,7 @@ export function encodeBridgeMessage(envelope: BridgeEnvelope): string {
   const encoded = JSON.stringify(envelope, (_key, value: unknown) =>
     typeof value === "bigint" ? value.toString() : value,
   );
-  if (encoded.length > MAX_SINGLE_MESSAGE_BYTES) {
+  if (new TextEncoder().encode(encoded).length > MAX_SINGLE_MESSAGE_BYTES) {
     throw new BridgeProtocolError("oversize");
   }
   return encoded;

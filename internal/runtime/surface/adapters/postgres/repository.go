@@ -115,29 +115,16 @@ func (r *Repository) GetActiveSession(ctx context.Context, ownerUserID, deviceID
 		row.CreatedAt, row.ExpiresAt, row.ClosedAt), nil
 }
 
-// Close tombstones on first close and atomically clears the bridge token so
-// a closed session can never regain a working credential; a repeated close by
-// the same owner/device returns the stored session unchanged; anything else
-// is NotFound.
+// Close tombstones on first close and clears the bridge token hash in the
+// same single atomic UPDATE, so a closed session can never retain an at-rest
+// credential (ADR-0002). A repeated close by the same owner/device matches
+// zero rows and returns the stored session unchanged; a foreign or missing
+// session is a sanitized NotFound.
 func (r *Repository) Close(ctx context.Context, ownerUserID, deviceID, sessionID string, now time.Time) (domain.SurfaceSession, error) {
-	tx, err := r.pool.Begin(ctx)
-	if err != nil {
-		return domain.SurfaceSession{}, storeError("begin close surface session", err)
-	}
-	defer tx.Rollback(ctx) //nolint:errcheck
-	queries := r.queries.WithTx(tx)
-	if _, err := queries.CloseSession(ctx, surfacedb.CloseSessionParams{
+	if _, err := r.queries.CloseSession(ctx, surfacedb.CloseSessionParams{
 		OwnerUserID: ownerUserID, DeviceID: deviceID, ID: sessionID, Now: timestamp(now),
 	}); err != nil {
 		return domain.SurfaceSession{}, sessionError("close surface session", err)
-	}
-	if _, err := queries.ClearSessionBridgeToken(ctx, surfacedb.ClearSessionBridgeTokenParams{
-		OwnerUserID: ownerUserID, DeviceID: deviceID, ID: sessionID,
-	}); err != nil {
-		return domain.SurfaceSession{}, storeError("clear surface bridge token", err)
-	}
-	if err := tx.Commit(ctx); err != nil {
-		return domain.SurfaceSession{}, storeError("commit close surface session", err)
 	}
 	return r.readSession(ctx, r.queries, ownerUserID, deviceID, sessionID)
 }

@@ -15,7 +15,24 @@ import (
 	"github.com/yangtao121/workos/internal/core/agent/adapters/postgres/agentdb"
 	"github.com/yangtao121/workos/internal/core/agent/domain"
 	"github.com/yangtao121/workos/internal/core/agent/ports"
+	"github.com/yangtao121/workos/internal/platform/dbtransient"
 )
+
+// storeError wraps a storage failure at the port boundary. Transient
+// dependency failures (unreachable server, broken connection, resource
+// exhaustion) carry the ErrStoreUnavailable sentinel so transports can answer
+// a sanitized retryable Unavailable; every other failure stays an opaque
+// internal error — classification never reads SQLSTATE message text or
+// constraint names.
+func storeError(operation string, err error) error {
+	if err == nil {
+		return nil
+	}
+	if dbtransient.IsTransient(err) {
+		return fmt.Errorf("%s: %w: %w", operation, ports.ErrStoreUnavailable, err)
+	}
+	return fmt.Errorf("%s: %w", operation, err)
+}
 
 type Repository struct {
 	pool    *pgxpool.Pool
@@ -72,7 +89,13 @@ func (r *Repository) Create(ctx context.Context, task domain.Task, idempotencyKe
 
 func (r *Repository) Get(ctx context.Context, ownerID, taskID string) (domain.Task, error) {
 	value, err := r.queries.GetAgentTask(ctx, agentdb.GetAgentTaskParams{OwnerUserID: ownerID, ID: taskID})
-	return taskFromDB(value, err)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return domain.Task{}, domain.ErrNotFound
+	}
+	if err != nil {
+		return domain.Task{}, storeError("query agent task", err)
+	}
+	return taskFromDB(value, nil)
 }
 
 // CreateForApp inserts the task, its App provenance mapping, and the task
@@ -87,7 +110,7 @@ func (r *Repository) CreateForApp(ctx context.Context, task domain.Task, provena
 	}
 	tx, err := r.pool.Begin(ctx)
 	if err != nil {
-		return domain.Task{}, fmt.Errorf("begin create app task: %w", err)
+		return domain.Task{}, storeError("begin create app task", err)
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck
 	queries := r.queries.WithTx(tx)
@@ -96,7 +119,7 @@ func (r *Repository) CreateForApp(ctx context.Context, task domain.Task, provena
 		ProjectID: projectID, Input: task.Input, State: string(task.State), ProviderID: task.ProviderID,
 		CreatedAt: timestamp(task.CreatedAt), UpdatedAt: timestamp(task.UpdatedAt),
 	}); err != nil {
-		return domain.Task{}, fmt.Errorf("insert app task: %w", err)
+		return domain.Task{}, storeError("insert app task", err)
 	}
 	rows, err := queries.InsertAgentAppTaskRequest(ctx, agentdb.InsertAgentAppTaskRequestParams{
 		OwnerUserID: task.OwnerUserID, AppInstanceID: provenance.AppInstanceID,
@@ -104,7 +127,7 @@ func (r *Repository) CreateForApp(ctx context.Context, task domain.Task, provena
 		TaskID: task.ID, ProjectID: task.ProjectID, CreatedAt: timestamp(task.CreatedAt),
 	})
 	if err != nil {
-		return domain.Task{}, fmt.Errorf("insert app task mapping: %w", err)
+		return domain.Task{}, storeError("insert app task mapping", err)
 	}
 	if rows == 0 {
 		consumed, err := queries.GetAgentAppTaskRequest(ctx, agentdb.GetAgentAppTaskRequestParams{
@@ -115,7 +138,7 @@ func (r *Repository) CreateForApp(ctx context.Context, task domain.Task, provena
 			return domain.Task{}, fmt.Errorf("app task mapping vanished mid-transaction: %w", domain.ErrInvalid)
 		}
 		if err != nil {
-			return domain.Task{}, fmt.Errorf("classify app task mapping: %w", err)
+			return domain.Task{}, storeError("classify app task mapping", err)
 		}
 		if consumed.RequestDigest != provenance.RequestDigest {
 			return domain.Task{}, domain.ErrIdempotencyConflict
@@ -141,7 +164,7 @@ func (r *Repository) CreateForApp(ctx context.Context, task domain.Task, provena
 		return domain.Task{}, fmt.Errorf("append task outbox: %w", err)
 	}
 	if err := tx.Commit(ctx); err != nil {
-		return domain.Task{}, fmt.Errorf("commit app task: %w", err)
+		return domain.Task{}, storeError("commit app task", err)
 	}
 	return task, nil
 }
@@ -165,7 +188,7 @@ func (r *Repository) GetAppTaskByTask(ctx context.Context, ownerID, appInstanceI
 		return ports.AppTaskRequestRecord{}, false, nil
 	}
 	if err != nil {
-		return ports.AppTaskRequestRecord{}, false, fmt.Errorf("query app task mapping: %w", err)
+		return ports.AppTaskRequestRecord{}, false, storeError("query app task mapping by task", err)
 	}
 	return ports.AppTaskRequestRecord{
 		RequestDigest: value.RequestDigest, TaskID: value.TaskID, ProjectID: value.ProjectID,
@@ -177,7 +200,7 @@ func appTaskRequestRecord(value agentdb.GetAgentAppTaskRequestRow, err error) (p
 		return ports.AppTaskRequestRecord{}, false, nil
 	}
 	if err != nil {
-		return ports.AppTaskRequestRecord{}, false, fmt.Errorf("query app task mapping: %w", err)
+		return ports.AppTaskRequestRecord{}, false, storeError("query app task mapping", err)
 	}
 	return ports.AppTaskRequestRecord{
 		RequestDigest: value.RequestDigest, TaskID: value.TaskID, ProjectID: value.ProjectID,
@@ -266,7 +289,7 @@ func (r *Repository) Cancel(ctx context.Context, ownerID, taskID, reason string,
 func (r *Repository) ListEvents(ctx context.Context, ownerID, taskID string, after int64, limit int) ([]domain.Event, error) {
 	allowed, err := r.queries.TaskBelongsToOwner(ctx, agentdb.TaskBelongsToOwnerParams{ID: taskID, OwnerUserID: ownerID})
 	if err != nil {
-		return nil, fmt.Errorf("authorize event stream: %w", err)
+		return nil, storeError("authorize event stream", err)
 	}
 	if !allowed {
 		return nil, domain.ErrNotFound
@@ -275,7 +298,7 @@ func (r *Repository) ListEvents(ctx context.Context, ownerID, taskID string, aft
 		StreamID: taskID, Sequence: after, Limit: int32(limit),
 	})
 	if err != nil {
-		return nil, fmt.Errorf("list task events: %w", err)
+		return nil, storeError("list task events", err)
 	}
 	result := make([]domain.Event, 0, len(values))
 	for _, value := range values {
@@ -413,7 +436,7 @@ func taskFromDB(value agentdb.WorkosCoreAgentTask, err error) (domain.Task, erro
 		return domain.Task{}, domain.ErrNotFound
 	}
 	if err != nil {
-		return domain.Task{}, fmt.Errorf("query agent task: %w", err)
+		return domain.Task{}, storeError("query agent task", err)
 	}
 	projectID := ""
 	if value.ProjectID.Valid {

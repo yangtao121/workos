@@ -25,6 +25,15 @@ iframe 的 `event.origin` 是字符串 `"null"`，不能作为身份。握手安
 - reload/navigation/project 切换/关闭都关闭旧 port、拒绝旧 pending request、旧 nonce/port 复用
   一律拒绝。授权从不在客户端终结：MessagePort 只是浏览器内 capability handle，每个请求仍由
   runtime 与 core 服务端再验证。
+- 可信 host 强制执行不可信边界。iframe 是不可信方，可以完全绕过 `@workos/app-sdk` 直接
+  `port.postMessage`，因此 host（`clients/app-host`）在 dispatch 前自行验证每条入站 envelope：
+  协议版本与 type、UTF-8 byte size ≤ 64 KiB（不是 UTF-16 `string.length`）、canonical 有界
+  request ID、允许方法、exact payload shape（未知/多余字段 fail closed）与字段边界
+  （key ≤128 rune、role ≤64 rune、goal ≤16 KiB、task ID canonical UUID、cursor 为无符号十进制
+  字符串）、in-flight ≤ 32、重复 request ID 拒绝。超时真正登记并清理 pending：run 超时后迟到
+  结果 inert；stream 超时 abort 本地/server stream。close/reload/unmount 清空全部 timer、
+  pending 与 stream。SDK 的 outbound request/cancel 使用同一个 bounded helper，两端共享
+  `MAX_SINGLE_MESSAGE_BYTES` 语义。
 
 ### 2. bridge token：随机 256-bit secret，sha256 at rest，session 生命周期
 
@@ -42,6 +51,14 @@ iframe 的 `event.origin` 是字符串 `"null"`，不能作为身份。握手安
   覆盖旧 hash——旧 token 立即失效；closed/expired session 的 replay 不铸造 token（返回空
   `bridge_token`）；`CloseSurface` 清空 hash。单实例假设：同一 session 只有一个 runtime 写 hash；
   未来多实例共享需要迁移到签名 token + 共享密钥轮换，本任务不假装支持。
+- 并发首次 Create 的线性化：仓库事务内的 mapping PK 裁决可能让一个并发 loser 返回赢家的
+  session。此时 loser 本地铸造的 token 从未落库——按本 ADR 它必须原样丢弃，loser 对返回的
+  open session 执行一次真实轮换并返回轮换后的 token；响应中的 session snapshot 在轮换后重读，
+  保证每个成功响应都是“凭证 ↔ 持久 hash”配对。最终库内 hash 恒等于最后一次线性化成功的
+  Create 所返回 token 的 hash；旧 token 的失效始终来自这条已记录的轮换，不存在“从未存储”的
+  有效响应凭证。该语义被 fake 与真实 PostgreSQL 并发测试共同钉死。
+- 关闭的原子性：首次 close 的 tombstone 与 `bridge_token_hash = NULL` 是同一条 UPDATE 的两个
+  SET 分支，不存在“先关闭再清除”的窗口；repeated close 幂等保留首次 `closed_at`。
 - 披露面：token 只出现在 `CreateSurface` Connect response（可信 Desktop 内存）与 AppBridge 专用
   header `x-workos-bridge-token`；绝不进入 URL、cookie、storage、DOM、MessageChannel payload、
   日志、错误、trace。Gateway 只把它转发到 runtime Connect 路由，Core 路由与 `/surfaces/` asset
@@ -109,6 +126,15 @@ token at rest（hash in session row）假设同一 session 的 Create/Close/veri
 
 - token 不进 iframe：iframe 是不可信渲染环境；MessagePort + 服务端验证已足够表达 capability，
   bearer secret 进入 iframe 只会把信任边界退化回客户端。
+- 携带 token 的 Gateway 路由集合是显式 allowlist（`/workos.bridge.v1.AppBridgeService/`）而非
+  “所有 Runtime 上游”：以 upstream 名称决定会 SurfaceService/asset 一起放行。默认剥除、按路径
+  精确恢复，恶意客户端无法把 bearer 侧向带入其他 WorkOS 路径。
+- 稳定错误语义：Desktop Connect adapter 把 transport 失败投影为有限 `BridgeErrorCode`
+  （InvalidArgument/Unauthenticated/PermissionDenied/NotFound/Aborted/Unavailable → 同名码，
+  DeadlineExceeded/Canceled 归入 unavailable，其余 → internal，本地解析失败 → invalid_argument），
+  host 只接受该类型并回固定短消息；run 与 stream 共用同一映射，同一服务端 verdict 不因 RPC
+  形态改变类别。raw Connect message、SQL、DSN、token、goal/event 全文、stack 与内部地址永远
+  不跨过 MessagePort。
 - grant 做成安装级不可变快照：让“用户批准过什么”成为可审计的持久事实，避免 requested/grent
   混淆，也避免为最小切片引入 mutable policy engine。
 - 每次调用双侧再验证（runtime 查 token/session，core 查 installation/grant）：任何一侧的缓存

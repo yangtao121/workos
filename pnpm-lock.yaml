@@ -44,6 +44,9 @@ importers:
       '@workos/protocol':
         specifier: workspace:*
         version: link:../../sdk/protocol
+      '@workos/surface-sdk':
+        specifier: workspace:*
+        version: link:../../sdk/surface-sdk
       '@workos/ui-kit':
         specifier: workspace:*
         version: link:../../clients/ui-kit
