@@ -1,6 +1,6 @@
 {
   "$schema": "./status.schema.json",
-  "updated": "2026-08-28",
+  "updated": "2026-08-29",
   "modules": [
     {
       "name": "Access Gateway",
@@ -48,7 +48,7 @@
       "name": "Desktop Shell",
       "process": "desktop-web",
       "status": "working",
-      "evidence": "foundation + DeepSeek fixture Catalog/binding E2E + App Library install/remove + explicit permission consent E2E + sandboxed Web Bundle window with opaque-origin MessageChannel App Bridge (browser E2E runs a real project task) + unmount best-effort close"
+      "evidence": "foundation + DeepSeek fixture Catalog/binding E2E + App Library install/remove + explicit permission consent E2E + Manage permissions dialog for full grant replacement (revoke/re-grant browser E2E reopens on the new epoch; before/after visual records) + sandboxed Web Bundle window with opaque-origin MessageChannel App Bridge (browser E2E runs a real project task) + unmount best-effort close"
     },
     {
       "name": "App Registry",
@@ -60,7 +60,7 @@
       "name": "Project App Installation",
       "process": "workos-core",
       "status": "working",
-      "evidence": "pinned version install/uninstall + immutable explicit grant snapshot (subset of requested, canonical, install-time only) + revision/event/outbox transaction + durable idempotency + restart persistence + Desktop consent E2E"
+      "evidence": "pinned version install/uninstall + explicit canonical grant set (subset of requested) now replaceable via SetAppGrants full replacement with grant revision epoch + single-transaction revision/event/outbox + deterministic no-op that still consumes its key + durable idempotency with grant/revision result snapshot (real PostgreSQL concurrency + restart) + Desktop consent & manage-permissions E2E"
     },
     {
       "name": "Artifact",
@@ -72,7 +72,7 @@
       "name": "Runtime / Surface",
       "process": "runtime-host",
       "status": "working",
-      "evidence": "Web Bundle surfaces only: durable idempotent device-bound sessions + per-request Core revalidation + token-validated minimal App Bridge (agent.task.run / agent.event.watch only, 256-bit token, sha256 at rest, rotation + restart persistence, real integration/restart evidence); container/native runners unavailable"
+      "evidence": "Web Bundle surfaces only: durable idempotent device-bound sessions + per-request Core revalidation + token-validated minimal App Bridge (agent.task.run / agent.event.watch only, 256-bit token, sha256 at rest, rotation + restart persistence) + sessions persist the installation grant revision and Core re-compares it every run/watch round, so any real grant change fails old surfaces closed and terminates their watch streams (integration + restart evidence); container/native runners unavailable"
     },
     {
       "name": "Reliability",

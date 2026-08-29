@@ -117,11 +117,13 @@ Core: identity → 幂等 key 裁决 → 中立 AppCatalog port 解析 current �
   行锁时从 active installation 聚合（`array_agg(app_id ORDER BY app_id)`）并写入同一条
   revision UPDATE；普通 `UpdateProject` 不能接收或覆盖该列。
 - 幂等权威是 `project_app_installation_requests`（PK `(owner_user_id, idempotency_key)`，
-  install/uninstall 共用命名空间）：request digest 覆盖客户端 canonical 请求字段（command、
-  project、app、请求 version、expected revision、installation id），不含时间戳或解析结果，
-  因此空 version 安装的 replay 不会因 Registry current 变化而漂移；结果快照
-  （installation id + project revision + result_uninstalled_at）使 replay 精确返回第一次响应，
-  uninstall 在 tombstone 后仍可重放，失败请求不消费 key。`005` 以 composite FK
+  install/uninstall/set-grants 共用命名空间，见下文 Mutable Project App Grants）：request digest
+  覆盖客户端 canonical 请求字段（command、project、app、请求 version、expected revision、
+  installation id），不含时间戳或解析结果，因此空 version 安装的 replay 不会因 Registry
+  current 变化而漂移；结果快照（installation id + project revision + result_uninstalled_at +
+  `011` 的 result grant/revision 快照）使 replay 精确返回第一次响应——grant 可变后，历史
+  install/uninstall key 的重放返回第一次响应的 grant 事实而非后来被 Set 更新的行——uninstall
+  在 tombstone 后仍可重放，失败请求不消费 key。`005` 以 composite FK
   `(owner_user_id, installation_id) → project_app_installations (owner_user_id, id)` 把每条结果
   映射绑定到同 owner 的 installation（引用 005 新增的 `UNIQUE (owner_user_id, id)`），数据库层
   拒绝跨 owner 结果映射；005 在改 schema 前以 fail-closed 检查拒绝携带既有错配的升级。
@@ -243,7 +245,8 @@ Desktop: sandboxed iframe（仅 allow-scripts）内渲染
 ## Project-scoped App Agent Bridge
 
 App Bridge 让已安装的不可信 Web Bundle App 在用户显式批准后调用 Project-scoped Agent 任务。
-信任边界由 ADR-0002 固定；链路固定为：
+信任边界由 ADR-0002 固定（其中 §3 的“installation grant 在安装生命周期内不可变”自 ADR-0003
+起被局部取代，其余边界不变）；链路固定为：
 
 ```text
 requested permission（manifest，永远只是请求）
@@ -260,11 +263,12 @@ requested permission（manifest，永远只是请求）
   → Fake/Harness Broker 执行 → 持久事件流 → provenance-bound watch 流回 iframe
 ```
 
-- Grant 唯一事实源是安装级快照（owner：workos-core Project Installation，
+- Grant 唯一事实源是安装级事实（owner：workos-core Project Installation，
   `project_app_installations.granted_permissions`，008 加列、默认空）：canonical 排序、无重复、
   严格 ⊆ pinned version requested set；duplicate/malformed → `InvalidArgument`，不在 requested
-  set → 净化 `PermissionDenied`；同 version 同 grant 才 no-op，grant 变更只能 uninstall +
-  reinstall。安装幂等 digest 版本化：空 grant 沿用旧 digest（历史 replay 兼容），非空 grant 使用
+  set → 净化 `PermissionDenied`。grant 集合自 ADR-0003 起可经 `SetAppGrants` 全量替换
+  （见下节），不再只能 uninstall + reinstall；同 version 同 grant 的重装仍是确定 no-op。
+  安装幂等 digest 版本化：空 grant 沿用旧 digest（历史 replay 兼容），非空 grant 使用
   `v2` digest（同 key 不同 grant 稳定 `Aborted`）。
 - App task provenance（owner：workos-core Agent，009 新表
   `workos_core.agent_app_task_requests`）：PK `(owner, app_instance_id, client_key)` 命名空间化
@@ -297,10 +301,89 @@ requested permission（manifest，永远只是请求）
   双侧 fail closed；`agent.stream` 提前结束发送 cancel，只取消本地/server stream，durable
   task 继续。业务 payload 复用 `@workos/protocol` 生成类型。
 - Desktop：安装确认对话框显示 exact version 的 requested permissions（默认全不选），提交排序
-  grant；已安装行显示 `Granted:` 摘要（空 grant 显示 none）；App window 显示
+  grant；已安装行显示 `Granted:` 摘要与 grant revision（空 grant 显示 none）及
+  `Manage permissions` 入口（见下节）；App window 显示
   bridge pending/ready/failed/unavailable 状态，failed 可重试握手；bridge token 只存于
   Desktop 的 ref（不进可序列化 window state/DOM）；Project 切换/关窗/卸载/iframe reload
   关闭旧 port 并使迟到 response inert，Agent task 本身 durable。
+
+## Mutable Project App Grants
+
+ADR-0003 让用户在不卸载 App 的前提下显式替换一个 installation 的 grant 集合（局部替代
+ADR-0002 §3 的“安装生命周期内不可变”；ADR-0002 的 iframe 边界、bridge token、provenance、
+每次调用二次授权与 Gateway 信任边界全部不变）。链路固定为：
+
+```text
+Desktop Manage permissions → Gateway public AppInstallationService.SetAppGrants → Core
+Core: identity → 幂等 key 裁决（install/uninstall/set-grants 共用命名空间）
+  → 中立 AppCatalog 解析 exact pinned version requested set（服务端重解析，不信客户端）
+  → 一个 Project-owned 事务：installation grant + grant_revision(+1) + idempotency result
+      + Project revision(+1) + project.app.grants.updated.v1(sequence=revision) + outbox
+CreateSurface：Core resolver 返回 grant snapshot + grant_revision
+  → runtime 把 revision 持久化进 Surface session（012，backfill 1）
+  → 私有 AppAgentService Run/Watch 携带 session 派生 revision
+Core 每次授权（每次 run、每个 watch polling round）重新解析 active installation
+  → current grant_revision 必须与 session revision 完全相等，再校验整个 current grant
+```
+
+- `SetAppGrants` 是 full replacement：`granted_permissions` 表达用户想要的完整最终集合，
+  空数组/省略明确表示撤销全部，绝不回退为 manifest requested permissions；输入 canonical
+  排序、去重、校验 grammar，目标集合必须是 exact pinned version requested permissions 的
+  子集。客户端不能提交 app ID/version/manifest digest/requested set/grant revision/新 Project
+  revision——全部由 Core 在事务内重新解析与裁决。
+- 幂等沿用 `project_app_installation_requests (owner_user_id, idempotency_key)` 共用命名空间；
+  Set 请求的 canonical digest 覆盖 command 版本标记、project、installation、expected
+  revision 与 canonical 排序目标集合，不含时间/随机 ID/服务端解析结果。same key/same digest
+  精确 replay 第一次响应；same key/different digest 稳定 `Aborted`（含跨命令、跨 project
+  复用）；失败请求不消费 key。结果快照持久化 grant/revision
+  （`result_granted_permissions`、`result_grant_revision`），使 grant 可变后历史 key 的重放
+  返回第一次响应的事实。
+- 真实变更（集合改变）：grant revision +1 且 Project revision +1，installation 更新、
+  Project revision、project event、outbox、idempotency result 在同一事务提交；事件
+  `project.app.grants.updated.v1` payload 只含稳定非敏感事实（projectId/revision/
+  installationId/appId/version/manifestDigest/grantRevision/完整 canonical grantedPermissions）。
+  same-set no-op：两个 revision、event、outbox、updated timestamp 均不变，但成功请求的
+  idempotency key 仍被持久消费并可精确重放。
+- Project revision 与 installation grant revision 是两个独立事实：前者是 Project 聚合的
+  optimistic concurrency 基准，后者是单个 installation 的授权 epoch（从 1 起，仅在集合真实
+  改变时恰好 +1）。grant mutation 与其他 Project mutation 由同一 Project row lock/guard 按
+  `expected_project_revision` 串行化，数据库裁决：同 revision 恰一个 winner、loser `Aborted`；
+  Set 与 Uninstall 竞争同一 revision 时同样只有一个能落库。
+- 错误映射：malformed/duplicate/越界输入 `InvalidArgument`；非 pinned requested 子集 → 净化
+  `PermissionDenied`；未知/他人/归档 Project、未知/foreign/uninstalled installation → 净化
+  `NotFound`；stale expected revision → `Aborted`；stored grant/revision/digest invariant
+  漂移视为 corruption → 净化 `Internal`，不静默修复。错误文本为固定短消息，不泄露 SQL、
+  constraint、current revision 或 current grants。
+- 任何真实 grant 变更使旧 Surface 的全部 bridge 方法失效：effective capability 是 Surface
+  session 创建时的快照；grant revision 变化（无论 capability 是否在新旧集合共有）后，所有旧
+  session 的 App Bridge 方法一律失败。失效的是 bridge 方法而非静态资产——installation 仍
+  active 时 Web Bundle 资产照常服务，iframe 可继续渲染，但每次 bridge 调用在 Core 的 revision
+  比对处失败（public bridge 层净化 `PermissionDenied`）。旧 CreateSurface key 的重放在
+  revision 不一致时 fail closed（净化 `FailedPrecondition`），不铸造绑定旧 epoch 的新 token。
+- 线性化点是 Core Project transaction commit：commit 之后进入 Core authorization read 的新
+  run/watch 必须失败；已在 commit 前通过授权的并发请求可能完成。已打开的 watch stream 在
+  Core 下一次 polling reauthorization（既有 200ms 轮询）发现 epoch mismatch 时终止，不再向
+  旧 epoch 流送事件；撤权不是 CancelTask，既有 durable Agent task 不被隐式取消。
+- runtime 与 core 之间只传 session 派生的 revision：Core `ResolveWebBundle` 返回 authoritative
+  `grant_revision`，runtime `CreateSurface` 持久化进 Surface session，私有 AppAgent Run/Watch
+  请求携带该字段；它只能由 runtime 的 validated session 派生，public App Bridge body、
+  MessageChannel envelope 与 iframe SDK 不增加该字段。runtime 不查询 Core schema，Core 不查询
+  runtime schema，无跨 schema FK——撤销完全由私有 RPC 上的 revision 相等比对实现。
+- runtime/desktop 职责是 best-effort：Desktop 在本地保存成功后 best-effort 关闭该 installation
+  的 open window/MessagePort 并 `CloseSurface`；服务端安全不依赖该客户端动作（旧 token 在
+  Core 每轮比对处失败）。Manage permissions 对话框以 exact pinned version 的 requested set
+  为上限渲染 checkbox、以 current grant 为初值（绝非默认全选），Save 提交排序后的完整替换
+  集合；revision conflict 时重新加载 fresh facts 并要求用户重新确认，不重放旧选择；对话框
+  校验 registry 返回的 app id/version/manifest digest 与 installation pinned 事实完全一致，
+  任何漂移 fail closed 不可编辑。已安装行显示 `Granted:` 摘要与 grant revision；App 不在
+  catalog 中无法解析 pinned requested set 时明确显示 Manage permissions unavailable。
+- 数据：migration `011_mutable_project_app_grants.sql`（owner：workos-core Project Installation）
+  增加 `project_app_installations.grant_revision`（backfill 1）、扩展 request `command` 约束
+  至 `set-grants`、增加 `result_granted_permissions`/`result_grant_revision` 快照列并从
+  owner-bound installation fail-closed 回填历史 mapping；migration
+  `012_surface_grant_revision.sql`（owner：runtime-host Surface）为 session 增加
+  `installation_grant_revision` 快照列（backfill 1）。001–010 逐字节不变，由 checksum 集成
+  测试钉住。
 
 ## 状态与失败
 

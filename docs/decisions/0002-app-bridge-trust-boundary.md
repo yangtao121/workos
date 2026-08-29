@@ -2,6 +2,10 @@
 
 - 状态：Accepted
 - 日期：2026-08-28
+- 局部 superseded：§3 中"installation grant 在安装生命周期内不可变、更改只能
+  uninstall + reinstall"的局部决定已被 [ADR-0003](0003-mutable-app-grants.md) 取代
+  （grant 可经 `SetAppGrants` 全量替换）；本 ADR 的其余边界（iframe 隔离、bridge
+  token、provenance、每次调用二次授权、Gateway 信任边界）不变。
 
 ## 背景
 
