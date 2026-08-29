@@ -164,7 +164,6 @@ canonical digest、幂等重放、并发裁决和 UI 审核。请求中的空数
 
    它必须明确替代 ADR-0002 中“installation grant 在安装生命周期内不可变”的局部决定，但不能改变
    ADR-0002 的 iframe、token、provenance、二次授权和 Gateway 信任边界。ADR 至少决定：
-
    - full-replacement Set 命令为何优于增量 add/remove；
    - Project revision 与 installation grant revision 各自用途；
    - 何时递增、no-op 是否递增；
@@ -201,12 +200,12 @@ canonical digest、幂等重放、并发裁决和 UI 审核。请求中的空数
 
 ### 1. 四种不同事实
 
-| 概念 | owner | 语义 |
-| --- | --- | --- |
-| requested permissions | Core App Registry immutable version | App 只提出请求，永不自动授权 |
-| current installation grant | Core Project Installation | 用户最后一次成功确认的 canonical 完整集合 |
-| installation grant revision | Core Project Installation | 从 1 开始、仅在 grant 集合真实改变时 +1 |
-| effective Surface capabilities | runtime Surface session | 创建时的 `current grant ∩ implemented bridge methods` 快照 |
+| 概念                           | owner                               | 语义                                                       |
+| ------------------------------ | ----------------------------------- | ---------------------------------------------------------- |
+| requested permissions          | Core App Registry immutable version | App 只提出请求，永不自动授权                               |
+| current installation grant     | Core Project Installation           | 用户最后一次成功确认的 canonical 完整集合                  |
+| installation grant revision    | Core Project Installation           | 从 1 开始、仅在 grant 集合真实改变时 +1                    |
+| effective Surface capabilities | runtime Surface session             | 创建时的 `current grant ∩ implemented bridge methods` 快照 |
 
 Project revision 是整个 Project 聚合的 optimistic concurrency/事件 sequence；grant revision 是单个
 installation 的授权 epoch。两者不能相互替代，也不能由客户端自行递增。
@@ -400,17 +399,17 @@ replay 的既有不铸造语义保持不变。
 
 ## 错误映射
 
-| 条件 | public Connect 结果 |
-| --- | --- |
-| malformed key/UUID/revision/grant、重复 capability | `InvalidArgument` |
-| target grant 不是 exact requested set 子集 | `PermissionDenied` |
-| unknown/foreign/archived Project，unknown/foreign/uninstalled installation | 净化 `NotFound` |
-| stale expected Project revision | `Aborted` |
-| same idempotency key / different canonical request | `Aborted` |
-| Registry exact version 不存在或不属于 owner | 净化 `NotFound` |
-| pinned digest/存储 grant/revision invariant 漂移 | 净化 `Internal` |
-| PostgreSQL/Core/Runtime 暂时不可用 | `Unavailable` |
-| old Surface grant revision mismatch | public Bridge 净化 `PermissionDenied` |
+| 条件                                                                       | public Connect 结果                   |
+| -------------------------------------------------------------------------- | ------------------------------------- |
+| malformed key/UUID/revision/grant、重复 capability                         | `InvalidArgument`                     |
+| target grant 不是 exact requested set 子集                                 | `PermissionDenied`                    |
+| unknown/foreign/archived Project，unknown/foreign/uninstalled installation | 净化 `NotFound`                       |
+| stale expected Project revision                                            | `Aborted`                             |
+| same idempotency key / different canonical request                         | `Aborted`                             |
+| Registry exact version 不存在或不属于 owner                                | 净化 `NotFound`                       |
+| pinned digest/存储 grant/revision invariant 漂移                           | 净化 `Internal`                       |
+| PostgreSQL/Core/Runtime 暂时不可用                                         | `Unavailable`                         |
+| old Surface grant revision mismatch                                        | public Bridge 净化 `PermissionDenied` |
 
 错误文本必须是固定短消息，不包含 capability 输入原文、current grant/revision、foreign resource
 存在性、SQL/constraint/DSN、manifest、token、goal、event 或 stack。
