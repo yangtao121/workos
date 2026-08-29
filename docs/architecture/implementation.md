@@ -501,6 +501,104 @@ breached bucket 的后续 fresh run fail closed（ResourceExhausted）
   无版本化定价源前不做 enforcement）、per-stream 中途 token 切断（当前 adapter
   usage 为 run 末聚合，circuit break 依赖 usage 事件 + worker 续租检查点）。
 
+## 受监督的 Rootless Web Service Workload（ADR-0006，2026-08-29）
+
+container manifest profile 让一个 Project 中已安装、digest-pinned 的 Personal Web App 在
+runtime-host 以 rootless Podman + cgroup v2 hard limits 启动，通过只读 Web Service Surface 在
+Desktop 窗口内渲染；reliability-host 观测真实 Workload 并执行有限 restart/stop。事实 owner：
+
+```text
+canonical container manifest + immutable version   → workos-core App Registry
+active installation + pinned digest + grants       → workos-core Project Installation
+resolved neutral launch descriptor（oneof）        → Core orchestration 只读投影
+effective resource/health policy（clamp）          → runtime-host Workload Manager
+Workload identity/generation/container/cgroup      → runtime-host Workload Manager
+Surface session/token/grant epoch                  → runtime-host Surface Broker
+neutral observation（bounded numeric facts）       → runtime-host 只读输出
+supervision 决策/Incident/action ledger            → reliability-host
+```
+
+- **Container manifest profile**：`runtime.type=container` 要求严格
+  `name@sha256:<64 lowercase hex>`（单 `@`、无 tag、无 credential、可选 registry 端口）、bounded
+  argv（1..16 项、每项 1..4096 且无控制字符）、container port；`resources`
+  （cpuHard 0.1..4、memoryHighMb 16..1024 ≤ memoryMaxMb 32..2048、pidsMax 8..512，整数 grammar）
+  与 `health`（httpPath、startupSeconds 1..120、restartLimit 0..8）对 container 是 strict shape
+  （未知字段 fail closed）；恰好一个 `web-service` surface、route 固定 `/`；web-bundle artifact
+  字段混入即拒。Schema（allOf/if-then）+ Go `containerPolicy` 双重校验；canonical digest 覆盖全部
+  container/resource/health 字段（键序无关、任何 policy/argv/image 变化敏感）。Registry 只做
+  syntax/security policy，不访问 engine、不检查本机 image。
+- **Core 私有 `ResolveSurfaceLaunch`**（additive RPC，oneof
+  `web_bundle | web_service_container`，仍不进 Gateway allowlist）：active installation → exact
+  pinned version → installation digest 一致（漂移=净化 Internal）→ web-bundle 侧维持 artifact
+  verify；container 侧返回中立 immutable facts（image/argv/port/requested policy/route），永不
+  返回 engine flags、host endpoint、container ID 或 effective policy。stored manifest 不满足自身
+  profile = `FailedPrecondition`（不静默补默认）。
+- **Runtime Workload Manager**（owner：runtime-host，`internal/runtime/workload`，
+  migration `015`）：durable `workos_runtime.workloads`（owner/project/instance/app/digest、
+  requested vs effective policy、generation、state 机 pending/starting/running/stopping/stopped/
+  failed、restart_count、engine container identity、loopback endpoint、engine-inspected cgroup
+  path、health/exit 分类、lease）+ `workload_operations`（ensure/restart/terminate 的 durable
+  idempotency：同 key+同 canonical digest 精确 replay、不同命令稳定 Aborted、失败不消费 key）。
+  一个 owner+instance 至多一个 active Workload（partial unique index）。crash-window 协议：DB
+  reserve → engine create/start（deterministic name `workos-wl-<id>` + 完整 WorkOS labels）→
+  inspect/cgroup/health 验证 → persist；启动 reconcile + 周期 reconcile（lease 线性化）重驱中断
+  操作、失败 exited workload 并清理 exact orphan；无完整 WorkOS labels 的外部容器永不触碰。
+  Core 重验：definitive NotFound → 立即 stop（uninstalled）；transient Unavailable 超出
+  bounded grace → fail-safe stop；idle TTL（无 active session）→ 确定性 stop。effective policy
+  由 server-owned maxima（PolicyVersion v1）clamp 请求；启动时回读真实 cgroup 值核对，未生效即
+  fail closed。
+- **Rootless Podman adapter**（`adapters/podman`）：全部经 argv 直呼（绝对可执行、deadline、
+  bounded output，无 shell、无 raw stderr 外泄）；启动 probe（有界 `podman info --format json`）
+  要求 rootless=true + cgroup v2 + delegated subtree + `--internal` WorkOS 网络，任一缺失如实
+  unavailable，绝不 fallback Docker/rootful/裸进程；`--pull=never` + exact digest ref（本地缺
+  image=FailedPrecondition，不访问 registry）；`--restart=no`（重启权只属 Reliability）、
+  read-only rootfs、有界 noexec tmpfs、`--cap-drop=all`、no-new-privileges、无 host
+  mount/device/env、`--network workos-app-internal`（无外部 egress）、仅 `127.0.0.1::port` 随机
+  发布、`--pids-limit/--memory/--memory-reservation/--cpu-quota`。endpoint 从 engine inspect
+  取得并验证 loopback 后才持久化；cgroup path 从 container PID 解析并验证位于本进程 delegated
+  subtree（拒绝 traversal/空段/host cgroup）。compose 里的 runtime-host 诚实报告
+  container-runner unavailable；systemd 部署说明给出仅针对 runtime-host 的最小 drop-in。
+- **Web Service Surface**（`internal/runtime/surface` 扩展）：`UNSPECIFIED` = server 依 pinned
+  descriptor 选择 renderer；显式 WEB_BUNDLE/WEB_SERVICE 必须精确匹配，否则 `FailedPrecondition`。
+  create digest：auto 请求携带解析后的 kind（`auto:<kind>`），显式请求沿用原公式；历史 v1 行
+  （`"" → web-bundle`）按精确映射重放，升级不 Aborted、auto 与显式不同键。web-service session
+  持久引用 `workload_id + workload_generation`（renderer-specific 互斥 CHECK，migration `015`），
+  Create 仅在 exact container running 且 startup health 通过后返回；启动失败不消费 create key，
+  已建 workload 由 reconcile 收敛。`/surfaces/<session>/...` 对 web-service 只允许 GET/HEAD
+  （405+Allow）、拒绝 query/upgrade/写方法；不转发 Cookie/Authorization/bridge token/identity/
+  Forwarded/Host/hop-by-hop，剥除 Set-Cookie/认证 challenge/Server/hop-by-hop；backend 只能是
+  server-owned、已验证 loopback endpoint（client/manifest URL 永不参与，杜绝 SSRF）；响应 media
+  type 白名单外降级 octet-stream、header 预算/8MiB body cap/超时有限、redirect 仅在通过 surface
+  path grammar 后重写回 session 前缀；每响应覆盖固定 WorkOS CSP + nosniff/no-referrer/no-store，
+  backend 无法放宽。每请求重验：identity → active session → Core active installation + pinned
+  digest → workload running 且 generation 精确匹配；uninstall/stop/generation drift 立即 404。
+  grant 变化沿 ADR-0003：bridge 方法在 Core epoch 比较处失败，旧内容不新增授权。
+- **Reliability**（owner：reliability-host，`internal/reliability`，migration `016`）：经私有
+  版本化 `workos.workload.v1.SupervisedWorkloadService`（ListObservations/RestartWorkload/
+  TerminateWorkload，仍不进 Gateway allowlist）取得中立 observation（稳定 ID、generation、状态、
+  health verdict、exit 分类、有界 cgroup 计数；无 endpoint/cgroup path/container ID/内容）并执行
+  幂等控制。决策全部确定性：unexpected exit（含 OOM/pids 特化分类，抑制通用重复上报）、健康失败
+  连续episode、OOM/pids 事件 → 每个 `(workload, generation, violation, occurrence)` 恰好一个
+  Incident（occurrence digest unique，at-least-once 重放不重复）；restart 经 per-incident durable
+  action key（同 key replay 同一结果，Runtime 侧同 key replay 保证 crash window 不二次重启）；
+  runtime 回 `limit_exhausted` → 一次性上报 restart 预算 Incident 并确定性 stop（无无限 crash
+  loop）；连续稳定观测达阈值 → mitigated→resolved（acknowledge 是 owner 的独立事实，幂等 key +
+  revision）。Reliability 不查 Runtime schema、不碰 Podman；Harness/Core/模型全停时 cgroup hard
+  limits 与既定 policy 独立生效。IncidentService 经 Gateway 可选 Reliability upstream 公开
+  （`/workos.incident.v1.IncidentService/`，identity 注入 + owner scope + 有界分页 limit+1 +
+  固定错误矩阵）；Gateway core readiness 不因 Reliability 不可达而失败，bridge header 在该路由
+  仍被剥除。
+- **Desktop**：App Library Open 提交 `UNSPECIFIED`（server-selected renderer），Web Bundle 链路
+  不变；container App 的 Open 显示 bounded in-flight 文案、迟到响应 inert。新增普通（非永久）
+  System Monitor 窗口：列出当前 Project 的 sanitized Incident（severity/state/violation/restart
+  outcome/acknowledged）与一次性 acknowledge；Reliability 不可达时仅该窗口降级，不影响
+  Desktop/Agent/App Library；不显示 cgroup path、host port、container ID、raw 日志。
+- 明确 unavailable（如实报告）：真实 rootless 证据链（fixture image→digest pin→E2E→浏览器截图）
+  需要 `make test-podman-fixture` 通过的主机；无该证据时 `container-runner`/Reliability 相关
+  capability 与 docs/status.json 不升级，代码路径以 fake engine/单元/集成测试与 opt-in fixture
+  门禁交付。write transport（POST/表单/WebSocket）、network capability、repair/deployment/
+  rollback、background-service/native runner 仍 unavailable。
+
 ## 状态与失败
 
 - liveness 表示进程事件循环存活，readiness 表示必需依赖可用。

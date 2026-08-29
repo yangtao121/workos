@@ -72,13 +72,13 @@
       "name": "Runtime / Surface",
       "process": "runtime-host",
       "status": "working",
-      "evidence": "Web Bundle surfaces only: durable idempotent device-bound sessions + per-request Core revalidation + token-validated minimal App Bridge (agent.task.run / agent.event.watch only, 256-bit token, sha256 at rest, rotation + restart persistence) + sessions persist the installation grant revision and Core re-compares it every run/watch round, so any real grant change fails old surfaces closed and terminates their watch streams (integration + restart evidence); container/native runners unavailable"
+      "evidence": "Web Bundle surfaces only (working): durable idempotent device-bound sessions + per-request Core revalidation + token-validated minimal App Bridge (agent.task.run / agent.event.watch only, 256-bit token, sha256 at rest, rotation + restart persistence) + sessions persist the installation grant revision and Core re-compares it every run/watch round; supervised web-service container slice implemented on main-adjacent branch behind ADR-0006 (strict container manifest profile, Core ResolveSurfaceLaunch oneof, runtime Workload Manager 015 with durable idempotent ensure/restart/terminate + crash-window reconciliation, rootless Podman adapter with capability probe + cgroup v2 read-back, read-only loopback web-service proxy with fixed CSP; fake-engine unit tests + argv-adapter tests pass) but NOT working: no real rootless Podman evidence on any acceptance host yet; container/native runners unavailable until make test-podman-fixture passes on a real host"
     },
     {
       "name": "Reliability",
       "process": "reliability-host",
       "status": "scaffolded",
-      "evidence": "health; enforcement unavailable"
+      "evidence": "health + supervision loop implemented (observation -> occurrence-deduped incidents -> bounded idempotent restart/stop via private SupervisedWorkloadService, migration 016 incidents/actions/checkpoints/progress, owner-scoped public IncidentService via optional gateway upstream, fake-driven decision tests) but NOT working: no real observation->incident->restart evidence yet; enforcement upgrade blocked on real rootless Podman evidence (make test-podman-fixture); repair-orchestrator/deployment unavailable"
     },
     {
       "name": "Indexer",
