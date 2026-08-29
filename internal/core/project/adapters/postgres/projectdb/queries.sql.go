@@ -150,6 +150,30 @@ func (q *Queries) GetActiveInstallationByApp(ctx context.Context, arg GetActiveI
 	return i, err
 }
 
+const getCreateRequest = `-- name: GetCreateRequest :one
+SELECT owner_user_id, idempotency_key, request_digest, result, created_at
+FROM workos_core.project_create_requests
+WHERE owner_user_id = $1 AND idempotency_key = $2
+`
+
+type GetCreateRequestParams struct {
+	OwnerUserID    string `json:"owner_user_id"`
+	IdempotencyKey string `json:"idempotency_key"`
+}
+
+func (q *Queries) GetCreateRequest(ctx context.Context, arg GetCreateRequestParams) (WorkosCoreProjectCreateRequest, error) {
+	row := q.db.QueryRow(ctx, getCreateRequest, arg.OwnerUserID, arg.IdempotencyKey)
+	var i WorkosCoreProjectCreateRequest
+	err := row.Scan(
+		&i.OwnerUserID,
+		&i.IdempotencyKey,
+		&i.RequestDigest,
+		&i.Result,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
 const getInstallationById = `-- name: GetInstallationById :one
 SELECT id, owner_user_id, project_id, app_id, version, manifest_digest, granted_permissions, grant_revision, installed_at, uninstalled_at
 FROM workos_core.project_app_installations
@@ -306,6 +330,35 @@ func (q *Queries) GetProjectByIdempotency(ctx context.Context, arg GetProjectByI
 		&i.ArchivedAt,
 	)
 	return i, err
+}
+
+const insertCreateRequest = `-- name: InsertCreateRequest :execrows
+INSERT INTO workos_core.project_create_requests (
+    owner_user_id, idempotency_key, request_digest, result, created_at
+) VALUES ($1, $2, $3, $4, $5)
+ON CONFLICT (owner_user_id, idempotency_key) DO NOTHING
+`
+
+type InsertCreateRequestParams struct {
+	OwnerUserID    string             `json:"owner_user_id"`
+	IdempotencyKey string             `json:"idempotency_key"`
+	RequestDigest  string             `json:"request_digest"`
+	Result         json.RawMessage    `json:"result"`
+	CreatedAt      pgtype.Timestamptz `json:"created_at"`
+}
+
+func (q *Queries) InsertCreateRequest(ctx context.Context, arg InsertCreateRequestParams) (int64, error) {
+	result, err := q.db.Exec(ctx, insertCreateRequest,
+		arg.OwnerUserID,
+		arg.IdempotencyKey,
+		arg.RequestDigest,
+		arg.Result,
+		arg.CreatedAt,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const insertInstallation = `-- name: InsertInstallation :exec

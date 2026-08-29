@@ -66,7 +66,7 @@ func run(logger *slog.Logger) error {
 
 	generator := ids.UUIDv7{}
 	projectService := projectapp.New(projectpostgres.New(pool), generator)
-	projectPath, projectHandler := projectconnect.NewProjectServiceHandler(projecttransport.New(projectService))
+	projectPath, projectHandler := projecttransport.NewProjectConnectHandler(projectService)
 	mux.Handle(projectPath, identity.Middleware(projectHandler))
 
 	privateHarnessClient := harnessv1connect.NewHarnessHostServiceClient(telemetry.HTTPClient(), cfg.Services.Harness)

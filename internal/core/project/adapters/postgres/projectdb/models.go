@@ -27,3 +27,11 @@ type WorkosCoreProject struct {
 	UpdatedAt             pgtype.Timestamptz `json:"updated_at"`
 	ArchivedAt            pgtype.Timestamptz `json:"archived_at"`
 }
+
+type WorkosCoreProjectCreateRequest struct {
+	OwnerUserID    string             `json:"owner_user_id"`
+	IdempotencyKey string             `json:"idempotency_key"`
+	RequestDigest  string             `json:"request_digest"`
+	Result         json.RawMessage    `json:"result"`
+	CreatedAt      pgtype.Timestamptz `json:"created_at"`
+}

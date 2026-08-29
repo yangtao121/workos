@@ -13,7 +13,7 @@
 
 这不是新增产品功能，也不是只把几个 fmt.Errorf 换成 sentinel。最终链路必须闭合：
 
-~~~text
+```text
 bounded public wire request
   → canonical application validation
   → owner-scoped PostgreSQL transaction
@@ -21,7 +21,7 @@ bounded public wire request
   → project + event + outbox atomic commit
   → deterministic page result
   → sanitized Connect error
-~~~
+```
 
 持续推进到实现、测试、架构文档、任务记录、状态事实源和单一聚焦提交全部完成。不要 merge 或
 push。只有遇到以下情况才停止并留下证据与选项：必须破坏现有 v1 字段/编号、修改已执行
@@ -87,7 +87,6 @@ policy。但 Project 是 installation、Surface、Agent task 和后续预算策�
 ## 开始前必须完成
 
 1. 完整阅读：
-
    - AGENTS.md、README.md、CONTRIBUTING.md；
    - docs/structure.md 中 Project、App、Harness capability、Credential Vault、事件/outbox、数据
      存储和第一版产品边界；
@@ -109,41 +108,40 @@ policy。但 Project 是 installation、Surface、Agent task 和后续预算策�
 
 2. 运行并记录：
 
-   ~~~sh
+   ```sh
    git status --short --branch
    git log --oneline --decorate -12
    git branch -vv
    git diff --check
-   ~~~
+   ```
 
    保留不属于本任务的改动；不得 reset、rebase、checkout 覆盖用户文件，也不得删除或重建用户的
    持久验收数据库。
 
 3. 从执行时的本地 main 创建独立 branch/worktree，建议：
 
-   ~~~text
+   ```text
    fix/project-service-contract-hardening
-   ~~~
+   ```
 
    禁止直接在 main 实现，不要 merge 或 push。
 
 4. 从 docs/tasks/TEMPLATE.md 创建：
 
-   ~~~text
+   ```text
    docs/tasks/20260829-project-service-contract-hardening.md
-   ~~~
+   ```
 
    初始状态设为 active，写清 public contract、表 owner、migration、幂等 digest/结果快照、历史
    key 兼容策略、分页、错误矩阵、请求上限、并发测试、非目标和验收。
 
 5. 为 CreateProject 持久幂等建立聚焦 ADR，建议：
 
-   ~~~text
+   ```text
    docs/decisions/0004-project-create-idempotency.md
-   ~~~
+   ```
 
    ADR 至少决定：
-
    - 为什么可变 projects row 不能作为 Create 第一次响应的幂等事实源；
    - canonical request digest 覆盖哪些规范化字段；
    - 第一次响应如何以版本化、可验证的内部结果快照持久化；
@@ -155,12 +153,12 @@ policy。但 Project 是 installation、Surface、Agent task 和后续预算策�
 
 6. 运行并记录基线：
 
-   ~~~sh
+   ```sh
    make bootstrap
    make check
    make test-integration
    make test-e2e
-   ~~~
+   ```
 
    基线失败必须记录证据与归属。不得通过删 volume、TRUNCATE、broad DELETE、跳过测试、降低断言、
    固定成功响应或删除历史测试绕过。
@@ -171,13 +169,13 @@ policy。但 Project 是 installation、Surface、Agent task 和后续预算策�
 
 Create 请求的 canonical digest 必须覆盖所有影响首次 Project 内容的客户端输入，并明确版本：
 
-~~~text
+```text
 command/version marker
 normalized name
 icon
 ordered workspace refs（含每个公开字段）
 optional harness binding（含 presence 与每个公开 reference/policy 字段）
-~~~
+```
 
 不要把 owner、idempotency key、服务端生成 ID、时间、revision 或当前数据库状态混入 request digest。
 owner + key 是命名空间，不是请求内容。必须先按 application 语义完成规范化/验证，再以无歧义的
@@ -282,15 +280,15 @@ ErrStoreUnavailable。应将 installation.go 中现有 storeError 提取到同 p
 
 transport 的固定映射为：
 
-| 条件 | Connect code | 对外消息 |
-| --- | --- | --- |
-| 未认证 identity | Unauthenticated | 固定短消息 |
-| malformed/越界/矛盾输入 | InvalidArgument | 固定短消息 |
-| missing 或 foreign-owned Project | NotFound | 固定短消息 |
-| stale revision / idempotency digest conflict | Aborted | 固定短消息 |
-| PostgreSQL 短暂不可用 | Unavailable | 固定短消息 |
-| 解码后请求超限 | ResourceExhausted | Connect 固定消息 |
-| invariant、损坏持久数据、未知错误 | Internal | project operation failed |
+| 条件                                         | Connect code      | 对外消息                 |
+| -------------------------------------------- | ----------------- | ------------------------ |
+| 未认证 identity                              | Unauthenticated   | 固定短消息               |
+| malformed/越界/矛盾输入                      | InvalidArgument   | 固定短消息               |
+| missing 或 foreign-owned Project             | NotFound          | 固定短消息               |
+| stale revision / idempotency digest conflict | Aborted           | 固定短消息               |
+| PostgreSQL 短暂不可用                        | Unavailable       | 固定短消息               |
+| 解码后请求超限                               | ResourceExhausted | Connect 固定消息         |
+| invariant、损坏持久数据、未知错误            | Internal          | project operation failed |
 
 不得把 raw domain error、pgx error、SQLSTATE 文本、DSN、constraint 或输入值直接放进 Connect message。
 错误判断必须使用 errors.Is，保留内部 cause 供测试分类，但日志仍需净化。
@@ -397,7 +395,7 @@ README 的状态区块只能由工具生成。若没有 UI 变化，任务记录
 
 按仓库实际 Make target 调整，但不得降低覆盖：
 
-~~~sh
+```sh
 make bootstrap
 make generate
 git status --short
@@ -410,7 +408,7 @@ make test-e2e
 make test-deepseek-fixture
 go test -race ./internal/core/project/...
 git diff --check
-~~~
+```
 
 还必须显式运行并在任务记录中列出：
 
@@ -431,21 +429,20 @@ make generate 后必须再次执行并证明工作树无生成差异。任何失
 1. 只提交本任务文件，不混入其他智能体或用户改动。
 2. 提交前检查：
 
-   ~~~sh
+   ```sh
    git status --short
    git diff --check
    git diff --stat
    git diff --name-only
-   ~~~
+   ```
 
 3. 创建一个聚焦 commit；建议消息：
 
-   ~~~text
+   ```text
    fix: harden project service contracts
-   ~~~
+   ```
 
 4. 不要 merge，不要 push，不要改 main。最终交接必须给出：
-
    - branch 与 commit SHA；
    - 实际修改文件；
    - Create idempotency schema、digest、snapshot、legacy 和并发语义；

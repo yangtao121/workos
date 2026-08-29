@@ -12,7 +12,7 @@
       "name": "Project",
       "process": "workos-core",
       "status": "working",
-      "evidence": "revision-safe server-preset binding integration + browser E2E"
+      "evidence": "revision-safe server-preset binding integration + browser E2E + contract hardening: pre-decode wire budget on public ProjectService RPCs + bounded application validation (name/icon/refs/binding limits, UUIDv7 id/cursor grammar, ambiguous-update rejection) + durable create idempotency with canonical request digest and versioned first-response snapshot in project_create_requests (013): same key/same request replays the exact first response across restarts, different request is stable Aborted, failures never consume the key, legacy keys fail closed (real PostgreSQL concurrency + commit/transient-failure rollback evidence) + application-owned pagination with exact last-page tokens + sanitized fixed error matrix with real-pgx Unavailable mapping"
     },
     {
       "name": "Harness Provider Catalog",

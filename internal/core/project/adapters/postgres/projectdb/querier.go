@@ -13,10 +13,12 @@ type Querier interface {
 	ApplyInstallationProjection(ctx context.Context, arg ApplyInstallationProjectionParams) (ApplyInstallationProjectionRow, error)
 	ArchiveProject(ctx context.Context, arg ArchiveProjectParams) (WorkosCoreProject, error)
 	GetActiveInstallationByApp(ctx context.Context, arg GetActiveInstallationByAppParams) (GetActiveInstallationByAppRow, error)
+	GetCreateRequest(ctx context.Context, arg GetCreateRequestParams) (WorkosCoreProjectCreateRequest, error)
 	GetInstallationById(ctx context.Context, arg GetInstallationByIdParams) (GetInstallationByIdRow, error)
 	GetInstallationRequest(ctx context.Context, arg GetInstallationRequestParams) (GetInstallationRequestRow, error)
 	GetProject(ctx context.Context, arg GetProjectParams) (WorkosCoreProject, error)
 	GetProjectByIdempotency(ctx context.Context, arg GetProjectByIdempotencyParams) (WorkosCoreProject, error)
+	InsertCreateRequest(ctx context.Context, arg InsertCreateRequestParams) (int64, error)
 	InsertInstallation(ctx context.Context, arg InsertInstallationParams) error
 	InsertInstallationRequest(ctx context.Context, arg InsertInstallationRequestParams) (int64, error)
 	InsertProject(ctx context.Context, arg InsertProjectParams) (int64, error)

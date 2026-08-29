@@ -41,6 +41,55 @@ Gateway 使用 public service allowlist，不能把同时拥有 `ExecuteTask` / 
 `HarnessHostService` 暴露给浏览器。Catalog 不缓存、不持久化瞬时 health，也不参与 Core readiness；
 Task 只持久化 Submit 时解析的 stable provider ID。clear binding 不依赖 Catalog。
 
+## ProjectService 基础契约
+
+public `workos.project.v1.ProjectService`（Create/Get/List/Update/Archive）的基础公开契约由
+application 边界与 Core-owned PostgreSQL 事务共同裁决（ADR-0004）：
+
+```text
+Desktop → Gateway public ProjectService → Core（identity → 有界解码 → 语义验证）
+Create: canonical digest 裁决 → 单事务：project row + create-request mapping（首次响应快照）
+        + project.created.v1 event + outbox → 净化响应
+List: application 规范化 page size → repository limit+1 探测 → 明确 page result
+```
+
+- 请求在 Connect handler 构造层（`WithReadMaxBytes` 128 KiB）于解码前受限。上限由全部合法
+  字段的最大值推导（16 个 workspace ref、1 KiB URI 等约 90 KiB 合法上界 + headroom），覆盖
+  base64 膨胀与 gzip 解压后内容；超限为 `ResourceExhausted`，业务代码零执行。同一 mux 中其他
+  handler 的独立上限不受影响。
+- 输入验证拥有明确、文档化的上限：name（trim 后 1–120 code points）、icon（≤128）、workspace
+  refs（≤16 个，id ≤128 / uri ≤1024 / logical_mount ≤128 code points，id 与非空 mount 唯一）、
+  harness binding 引用（provider/policy ≤128、credential_ref ≤256，仍只是有界 opaque
+  reference）。全部文本要求 valid UTF-8 并拒绝 C0/C1 控制字符；WorkspaceKind 拒绝
+  UNSPECIFIED 与未知数值；Project ID 与 List cursor 使用同一 canonical UUIDv7 validator；
+  expected_revision 必须为正；`clear_harness_binding` 与同时提供 binding、
+  `replace_workspace_refs=false` 携带非空 refs 均为 `InvalidArgument`。畸形输入在任何
+  存在性读取之前被拒绝。
+- Create 幂等权威是 `workos_core.project_create_requests`（migration `013`，PK
+  `(owner_user_id, idempotency_key)`，owner：workos-core Project）：canonical request digest
+  覆盖 command 版本标记、规范化 name、icon、提交顺序的 workspace refs（含全部公开字段）与
+  optional binding presence，不含 owner/时间/服务端 ID/数据库状态；`result` 列持久化版本化
+  （`result_version=1`）的首次响应 Project 快照。same key/same digest 跨请求、跨进程、跨重启
+  精确重放第一次响应（Project 后续 Update/Archive 不影响重放）；same key/different digest
+  稳定 `Aborted`；失败事务不消费 key。并发完全由数据库裁决：`projects` 上保留的
+  `UNIQUE (owner_user_id, idempotency_key)` 是插入物理仲裁，落败事务在锁内重读 mapping 后
+  replay 或冲突；winner 的 project、mapping、event、outbox 单事务原子提交。
+- legacy 兼容（诚实、fail closed）：013 之前的 project row 没有请求记录与首次响应快照，对其
+  key 的 Create 重放统一 `Aborted`（与 digest conflict 同一净化消息，避免双消息存在性
+  oracle）；迁移不伪造 digest、不从可变 row 伪造"首次结果"。
+- 分页由 application 明确裁决：page size 仅在 application 规范化一次（默认 50、上限 100、
+  负数为 `InvalidArgument`），repository 以 effective limit + 1 探测下一页，transport 原样
+  转发 application 的 next token；恰好装满的最后一页不产生 token，翻页无重复、无遗漏。
+- 错误矩阵（固定净化消息，`errors.Is` 判定，不泄漏 SQL/constraint/输入）：未认证 →
+  `Unauthenticated`；malformed/越界/矛盾输入 → `InvalidArgument`；missing/foreign Project →
+  `NotFound`；stale revision 与 idempotency conflict → `Aborted`；PostgreSQL 暂时不可用 →
+  `Unavailable`（真实 pgx 断连由共享 `storeError`/dbtransient 分类，installation 与基础
+  repository 共用同一实现）；invariant/损坏持久数据/未知错误 → `Internal`（project operation
+  failed）。持久化 JSON 解码失败与 UUID 生成失败属于程序错误，永不映射为 Unavailable。
+- Update/Archive 的 optimistic concurrency（owner + project + expected revision）、event
+  sequence = Project revision、event+outbox 同事务、foreign Project 不泄漏存在性等既有语义
+  不变；Archive 先做存在性读取，missing 与 stale revision 分别映射 `NotFound`/`Aborted`。
+
 ## App Registry
 
 App Registry 把一个版本化 manifest 变成 Core 持有的不可变事实。链路固定为：

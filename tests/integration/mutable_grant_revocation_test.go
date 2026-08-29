@@ -301,7 +301,7 @@ func TestGrantEpochWatchStreamTerminates(t *testing.T) {
 	// harness worker polls this scratch database, so submitted tasks stay
 	// queued (non-terminal) indefinitely.
 	router, err := orchestration.NewTaskRouter(
-		agentapp.New(agentpostgres.New(pool), ids.UUIDv7{}), projectpostgres.New(pool), "fake",
+		agentapp.New(agentpostgres.New(pool), ids.UUIDv7{}), projectapp.New(projectpostgres.New(pool), ids.UUIDv7{}), "fake",
 	)
 	if err != nil {
 		t.Fatal(err)

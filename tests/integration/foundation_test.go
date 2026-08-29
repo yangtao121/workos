@@ -66,16 +66,33 @@ func TestProjectToHarnessVerticalSlice(t *testing.T) {
 		t.Fatalf("unexpected project: %#v", project)
 	}
 
+	// Same key + same request replays the exact first response: same id,
+	// same revision, same timestamps — even though the wire request is a
+	// separate call.
 	repeated, err := projects.CreateProject(ctx, connect.NewRequest(&projectv1.CreateProjectRequest{
-		IdempotencyKey: key, Name: "ignored duplicate name",
+		IdempotencyKey: key, Name: "Foundation Integration", Icon: "◈",
 	}))
 	if err != nil {
 		t.Fatalf("repeat idempotent create: %v", err)
 	}
-	if repeated.Msg.GetProject().GetId() != project.GetId() {
-		t.Fatal("idempotent create returned a different project")
+	replay := repeated.Msg.GetProject()
+	if replay.GetId() != project.GetId() || replay.GetRevision() != project.GetRevision() ||
+		!replay.GetCreatedAt().AsTime().Equal(project.GetCreatedAt().AsTime()) ||
+		!replay.GetUpdatedAt().AsTime().Equal(project.GetUpdatedAt().AsTime()) {
+		t.Fatalf("idempotent replay must return the exact first response: %#v vs %#v", replay, project)
 	}
 
+	// Same key + different request is a stable, sanitized conflict — it
+	// must never silently return the old project.
+	_, conflictErr := projects.CreateProject(ctx, connect.NewRequest(&projectv1.CreateProjectRequest{
+		IdempotencyKey: key, Name: "ignored duplicate name",
+	}))
+	if connect.CodeOf(conflictErr) != connect.CodeAborted {
+		t.Fatalf("same key with a different request must be Aborted, got %v", conflictErr)
+	}
+
+	// A later Update must not leak into the replay: the first response's
+	// facts are pinned durably.
 	updatedName := "Foundation Verified"
 	updated, err := projects.UpdateProject(ctx, connect.NewRequest(&projectv1.UpdateProjectRequest{
 		ProjectId: project.GetId(), ExpectedRevision: project.GetRevision(), Name: &updatedName,
@@ -85,6 +102,16 @@ func TestProjectToHarnessVerticalSlice(t *testing.T) {
 	}
 	if updated.Msg.GetProject().GetRevision() != 2 {
 		t.Fatalf("expected revision 2, got %d", updated.Msg.GetProject().GetRevision())
+	}
+	afterUpdate, err := projects.CreateProject(ctx, connect.NewRequest(&projectv1.CreateProjectRequest{
+		IdempotencyKey: key, Name: "Foundation Integration", Icon: "◈",
+	}))
+	if err != nil {
+		t.Fatalf("replay after update: %v", err)
+	}
+	postUpdateReplay := afterUpdate.Msg.GetProject()
+	if postUpdateReplay.GetName() != "Foundation Integration" || postUpdateReplay.GetRevision() != 1 {
+		t.Fatalf("replay after update must return the first response snapshot: %#v", postUpdateReplay)
 	}
 	_, err = projects.UpdateProject(ctx, connect.NewRequest(&projectv1.UpdateProjectRequest{
 		ProjectId: project.GetId(), ExpectedRevision: 1, Name: &updatedName,

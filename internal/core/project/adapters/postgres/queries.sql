@@ -143,6 +143,17 @@ WHERE id = sqlc.arg(id)
   AND archived_at IS NULL
 RETURNING revision, updated_at;
 
+-- name: GetCreateRequest :one
+SELECT owner_user_id, idempotency_key, request_digest, result, created_at
+FROM workos_core.project_create_requests
+WHERE owner_user_id = $1 AND idempotency_key = $2;
+
+-- name: InsertCreateRequest :execrows
+INSERT INTO workos_core.project_create_requests (
+    owner_user_id, idempotency_key, request_digest, result, created_at
+) VALUES ($1, $2, $3, $4, $5)
+ON CONFLICT (owner_user_id, idempotency_key) DO NOTHING;
+
 -- name: ListActiveInstallations :many
 SELECT id, owner_user_id, project_id, app_id, version, manifest_digest, granted_permissions, grant_revision, installed_at, uninstalled_at
 FROM workos_core.project_app_installations

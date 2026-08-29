@@ -30,6 +30,7 @@ import (
 	"github.com/yangtao121/workos/internal/core/orchestration"
 	orchestrationtransport "github.com/yangtao121/workos/internal/core/orchestration/transport"
 	projectpostgres "github.com/yangtao121/workos/internal/core/project/adapters/postgres"
+	projectapp "github.com/yangtao121/workos/internal/core/project/application"
 	projectdomain "github.com/yangtao121/workos/internal/core/project/domain"
 	"github.com/yangtao121/workos/internal/platform/identity"
 	"github.com/yangtao121/workos/internal/platform/ids"
@@ -875,7 +876,7 @@ EXECUTE FUNCTION workos_events.raise_outbox_outage()`); err != nil {
 	}
 	agentRepository := agentpostgres.New(pool)
 	agents := agentapp.New(agentRepository, ids.UUIDv7{})
-	router, err := orchestration.NewTaskRouter(agents, projectpostgres.New(pool), "fake")
+	router, err := orchestration.NewTaskRouter(agents, projectapp.New(projectpostgres.New(pool), ids.UUIDv7{}), "fake")
 	if err != nil {
 		t.Fatal(err)
 	}

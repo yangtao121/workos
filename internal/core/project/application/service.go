@@ -9,6 +9,7 @@ import (
 	"github.com/yangtao121/workos/internal/platform/ids"
 )
 
+// CreateInput is one validated-boundary create command request.
 type CreateInput struct {
 	OwnerUserID    string
 	IdempotencyKey string
@@ -18,6 +19,7 @@ type CreateInput struct {
 	HarnessBinding *domain.HarnessBinding
 }
 
+// UpdateInput is one validated-boundary update command request.
 type UpdateInput struct {
 	OwnerUserID          string
 	ProjectID            string
@@ -30,6 +32,19 @@ type UpdateInput struct {
 	ClearHarnessBinding  bool
 }
 
+// Page is the explicit paging contract: the application owns the effective
+// page size and the next-page probe, so the transport never guesses a token
+// from the raw request page size.
+type Page struct {
+	Items     []domain.Project
+	NextToken string
+}
+
+const (
+	defaultPageSize = 50
+	maxPageSize     = 100
+)
+
 type Service struct {
 	repository ports.Repository
 	ids        ids.Generator
@@ -40,13 +55,38 @@ func New(repository ports.Repository, generator ids.Generator) *Service {
 	return &Service{repository: repository, ids: generator, now: func() time.Time { return time.Now().UTC() }}
 }
 
+// Create executes one idempotent create command (ADR-0004). Validation and
+// normalization happen first and never consume the key; the canonical request
+// digest is computed from the normalized inputs; an already-consumed key with
+// the identical digest replays the persisted first response exactly, and a
+// different digest is a stable conflict. The authoritative same-key race
+// adjudication lives inside the repository's single transaction.
 func (s *Service) Create(ctx context.Context, input CreateInput) (domain.Project, error) {
-	name, err := domain.NormalizeName(input.Name)
-	if err != nil || input.OwnerUserID == "" || input.IdempotencyKey == "" {
+	if input.OwnerUserID == "" || !domain.ValidIdempotencyKey(input.IdempotencyKey) {
 		return domain.Project{}, domain.ErrInvalid
+	}
+	name, err := domain.NormalizeName(input.Name)
+	if err != nil {
+		return domain.Project{}, err
+	}
+	if err := domain.ValidateIcon(input.Icon); err != nil {
+		return domain.Project{}, err
+	}
+	if err := domain.ValidateWorkspaceRefs(input.WorkspaceRefs); err != nil {
+		return domain.Project{}, err
 	}
 	if err := domain.ValidateBinding(input.HarnessBinding); err != nil {
 		return domain.Project{}, err
+	}
+	digest := domain.CreateRequestDigest(name, input.Icon, input.WorkspaceRefs, input.HarnessBinding)
+	if stored, found, err := s.repository.LookupCreateRequest(ctx, input.OwnerUserID, input.IdempotencyKey); found || err != nil {
+		if err != nil {
+			return domain.Project{}, err
+		}
+		if stored.RequestDigest != digest {
+			return domain.Project{}, domain.ErrIdempotencyConflict
+		}
+		return stored.Result, nil
 	}
 	now := s.now()
 	project := domain.Project{
@@ -55,42 +95,105 @@ func (s *Service) Create(ctx context.Context, input CreateInput) (domain.Project
 		InstalledAppIDs: []string{}, KnowledgeCollectionID: s.ids.New(), ArtifactCollectionID: s.ids.New(),
 		Revision: 1, CreatedAt: now, UpdatedAt: now,
 	}
-	return s.repository.Create(ctx, project, input.IdempotencyKey)
+	return s.repository.CreateProject(ctx, ports.CreateCommand{
+		Project: project, IdempotencyKey: input.IdempotencyKey,
+		RequestDigest: digest, Now: now,
+	})
 }
 
+// Get reads one owner-scoped project. The identifier is validated at this
+// boundary so malformed input is a sanitized invalid-argument verdict rather
+// than a store round trip.
 func (s *Service) Get(ctx context.Context, ownerID, projectID string) (domain.Project, error) {
-	if ownerID == "" || projectID == "" {
+	if ownerID == "" || !domain.ValidProjectUUID(projectID) {
 		return domain.Project{}, domain.ErrInvalid
 	}
-	return s.repository.Get(ctx, ownerID, projectID)
+	return s.repository.GetProject(ctx, ownerID, projectID)
 }
 
-func (s *Service) List(ctx context.Context, ownerID, cursor string, limit int, includeArchived bool) ([]domain.Project, error) {
+// ListProjects returns one page of projects. The page size is normalized
+// exactly once here — zero means the default, values above the maximum clamp
+// to it, negative values are rejected — and the repository probes
+// effective+1 so the next token is only issued when a next page truly
+// exists.
+func (s *Service) ListProjects(ctx context.Context, ownerID, cursor string, pageSize int, includeArchived bool) (Page, error) {
 	if ownerID == "" {
-		return nil, domain.ErrInvalid
+		return Page{}, domain.ErrInvalid
 	}
-	if limit <= 0 {
-		limit = 50
+	switch {
+	case pageSize < 0:
+		return Page{}, domain.ErrInvalid
+	case pageSize == 0:
+		pageSize = defaultPageSize
+	case pageSize > maxPageSize:
+		pageSize = maxPageSize
 	}
-	if limit > 100 {
-		limit = 100
+	if cursor != "" && !domain.ValidProjectUUID(cursor) {
+		return Page{}, domain.ErrInvalid
 	}
-	return s.repository.List(ctx, ownerID, cursor, limit, includeArchived)
+	items, err := s.repository.ListProjects(ctx, ownerID, cursor, pageSize+1, includeArchived)
+	if err != nil {
+		return Page{}, err
+	}
+	if len(items) <= pageSize {
+		return Page{Items: items, NextToken: ""}, nil
+	}
+	page := items[:pageSize]
+	return Page{Items: page, NextToken: page[len(page)-1].ID}, nil
 }
 
+// Update mutates one project under optimistic concurrency. All input is
+// validated before any read — a positive expected revision is required,
+// clearing the binding and providing one are contradictory, workspace refs
+// without the replace flag would be silently ignored, and field content has
+// to pass its grammar — so ambiguous input is an InvalidArgument that never
+// touches the store. Existence and revision arbitration stay with the
+// owner-scoped guarded update.
 func (s *Service) Update(ctx context.Context, input UpdateInput) (domain.Project, error) {
+	if input.OwnerUserID == "" || !domain.ValidProjectUUID(input.ProjectID) {
+		return domain.Project{}, domain.ErrInvalid
+	}
+	if input.ExpectedRevision <= 0 {
+		return domain.Project{}, domain.ErrInvalid
+	}
+	if input.ClearHarnessBinding && input.HarnessBinding != nil {
+		return domain.Project{}, domain.ErrInvalid
+	}
+	if !input.ReplaceWorkspaceRefs && len(input.WorkspaceRefs) > 0 {
+		return domain.Project{}, domain.ErrInvalid
+	}
+	var name *string
+	if input.Name != nil {
+		normalized, err := domain.NormalizeName(*input.Name)
+		if err != nil {
+			return domain.Project{}, err
+		}
+		name = &normalized
+	}
+	if input.Icon != nil {
+		if err := domain.ValidateIcon(*input.Icon); err != nil {
+			return domain.Project{}, err
+		}
+	}
+	if input.ReplaceWorkspaceRefs {
+		if err := domain.ValidateWorkspaceRefs(input.WorkspaceRefs); err != nil {
+			return domain.Project{}, err
+		}
+	}
+	if input.HarnessBinding != nil && !input.ClearHarnessBinding {
+		if err := domain.ValidateBinding(input.HarnessBinding); err != nil {
+			return domain.Project{}, err
+		}
+	}
 	project, err := s.Get(ctx, input.OwnerUserID, input.ProjectID)
 	if err != nil {
 		return domain.Project{}, err
 	}
-	if input.ExpectedRevision <= 0 || project.ArchivedAt != nil {
+	if project.ArchivedAt != nil {
 		return domain.Project{}, domain.ErrConflict
 	}
-	if input.Name != nil {
-		project.Name, err = domain.NormalizeName(*input.Name)
-		if err != nil {
-			return domain.Project{}, err
-		}
+	if name != nil {
+		project.Name = *name
 	}
 	if input.Icon != nil {
 		project.Icon = *input.Icon
@@ -101,19 +204,30 @@ func (s *Service) Update(ctx context.Context, input UpdateInput) (domain.Project
 	if input.ClearHarnessBinding {
 		project.HarnessBinding = nil
 	} else if input.HarnessBinding != nil {
-		if err := domain.ValidateBinding(input.HarnessBinding); err != nil {
-			return domain.Project{}, err
-		}
 		project.HarnessBinding = input.HarnessBinding
 	}
 	project.UpdatedAt = s.now()
 	project.Revision = input.ExpectedRevision + 1
-	return s.repository.Update(ctx, project, input.ExpectedRevision)
+	return s.repository.UpdateProject(ctx, project, input.ExpectedRevision)
 }
 
+// Archive tombstones one project under optimistic concurrency. The
+// existence/ownership read happens first so a missing or foreign project is
+// a sanitized NotFound — the guarded UPDATE alone could not distinguish that
+// from a stale revision.
 func (s *Service) Archive(ctx context.Context, ownerID, projectID string, expectedRevision int64) (domain.Project, error) {
-	if ownerID == "" || projectID == "" || expectedRevision <= 0 {
+	if ownerID == "" || !domain.ValidProjectUUID(projectID) {
 		return domain.Project{}, domain.ErrInvalid
 	}
-	return s.repository.Archive(ctx, ownerID, projectID, expectedRevision)
+	if expectedRevision <= 0 {
+		return domain.Project{}, domain.ErrInvalid
+	}
+	project, err := s.Get(ctx, ownerID, projectID)
+	if err != nil {
+		return domain.Project{}, err
+	}
+	if project.ArchivedAt != nil {
+		return domain.Project{}, domain.ErrConflict
+	}
+	return s.repository.ArchiveProject(ctx, ownerID, projectID, expectedRevision)
 }
