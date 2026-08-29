@@ -213,16 +213,26 @@ func TestWebBundleSurfaceVerticalSlice(t *testing.T) {
 		if err != nil || got.Msg.GetArtifact().GetDigest() != artifact.GetDigest() {
 			t.Fatalf("get artifact failed: %v", err)
 		}
-		listed, err := artifacts.ListArtifacts(ctx, connect.NewRequest(&artifactv1.ListArtifactsRequest{
-			Page: &commonv1.PageRequest{PageSize: 100},
-		}))
-		if err != nil {
-			t.Fatalf("list artifacts: %v", err)
-		}
+		// The persistent acceptance database accumulates artifacts for the
+		// fixed gateway identity across runs, so membership must be proven by
+		// following the paging cursor instead of assuming a single page.
 		found := false
-		for _, candidate := range listed.Msg.GetArtifacts() {
-			if candidate.GetId() == artifact.GetId() {
-				found = true
+		token := ""
+		for pages := 0; !found && pages < 20; pages++ {
+			listed, err := artifacts.ListArtifacts(ctx, connect.NewRequest(&artifactv1.ListArtifactsRequest{
+				Page: &commonv1.PageRequest{PageSize: 100, PageToken: token},
+			}))
+			if err != nil {
+				t.Fatalf("list artifacts: %v", err)
+			}
+			for _, candidate := range listed.Msg.GetArtifacts() {
+				if candidate.GetId() == artifact.GetId() {
+					found = true
+				}
+			}
+			token = listed.Msg.GetPage().GetNextPageToken()
+			if token == "" {
+				break
 			}
 		}
 		if !found {
