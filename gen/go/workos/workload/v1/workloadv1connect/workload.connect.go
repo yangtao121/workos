@@ -23,6 +23,9 @@ const _ = connect.IsAtLeastVersion1_13_0
 const (
 	// WorkloadServiceName is the fully-qualified name of the WorkloadService service.
 	WorkloadServiceName = "workos.workload.v1.WorkloadService"
+	// SupervisedWorkloadServiceName is the fully-qualified name of the SupervisedWorkloadService
+	// service.
+	SupervisedWorkloadServiceName = "workos.workload.v1.SupervisedWorkloadService"
 )
 
 // These constants are the fully-qualified names of the RPCs defined in this package. They're
@@ -45,6 +48,15 @@ const (
 	// WorkloadServiceStopWorkloadProcedure is the fully-qualified name of the WorkloadService's
 	// StopWorkload RPC.
 	WorkloadServiceStopWorkloadProcedure = "/workos.workload.v1.WorkloadService/StopWorkload"
+	// SupervisedWorkloadServiceListObservationsProcedure is the fully-qualified name of the
+	// SupervisedWorkloadService's ListObservations RPC.
+	SupervisedWorkloadServiceListObservationsProcedure = "/workos.workload.v1.SupervisedWorkloadService/ListObservations"
+	// SupervisedWorkloadServiceRestartWorkloadProcedure is the fully-qualified name of the
+	// SupervisedWorkloadService's RestartWorkload RPC.
+	SupervisedWorkloadServiceRestartWorkloadProcedure = "/workos.workload.v1.SupervisedWorkloadService/RestartWorkload"
+	// SupervisedWorkloadServiceTerminateWorkloadProcedure is the fully-qualified name of the
+	// SupervisedWorkloadService's TerminateWorkload RPC.
+	SupervisedWorkloadServiceTerminateWorkloadProcedure = "/workos.workload.v1.SupervisedWorkloadService/TerminateWorkload"
 )
 
 // WorkloadServiceClient is a client for the workos.workload.v1.WorkloadService service.
@@ -193,4 +205,147 @@ func (UnimplementedWorkloadServiceHandler) StartWorkload(context.Context, *conne
 
 func (UnimplementedWorkloadServiceHandler) StopWorkload(context.Context, *connect.Request[v1.StopWorkloadRequest]) (*connect.Response[v1.StopWorkloadResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("workos.workload.v1.WorkloadService.StopWorkload is not implemented"))
+}
+
+// SupervisedWorkloadServiceClient is a client for the workos.workload.v1.SupervisedWorkloadService
+// service.
+type SupervisedWorkloadServiceClient interface {
+	// ListObservations returns the neutral observation snapshot of every
+	// supervised workload known to this runtime host.
+	ListObservations(context.Context, *connect.Request[v1.ListObservationsRequest]) (*connect.Response[v1.ListObservationsResponse], error)
+	// RestartWorkload deterministically recreates the workload's container with
+	// the exact pinned image/argv/policy and a new generation. The runtime
+	// enforces the persisted restart limit and returns a sanitized
+	// FailedPrecondition once it is exhausted; the decision to stop afterwards
+	// belongs to the caller.
+	RestartWorkload(context.Context, *connect.Request[v1.RestartWorkloadRequest]) (*connect.Response[v1.RestartWorkloadResponse], error)
+	// StopWorkload deterministically stops and removes the workload's container
+	// by its exact identity. Idempotent by action key.
+	TerminateWorkload(context.Context, *connect.Request[v1.TerminateWorkloadRequest]) (*connect.Response[v1.TerminateWorkloadResponse], error)
+}
+
+// NewSupervisedWorkloadServiceClient constructs a client for the
+// workos.workload.v1.SupervisedWorkloadService service. By default, it uses the Connect protocol
+// with the binary Protobuf Codec, asks for gzipped responses, and sends uncompressed requests. To
+// use the gRPC or gRPC-Web protocols, supply the connect.WithGRPC() or connect.WithGRPCWeb()
+// options.
+//
+// The URL supplied here should be the base URL for the Connect or gRPC server (for example,
+// http://api.acme.com or https://acme.com/grpc).
+func NewSupervisedWorkloadServiceClient(httpClient connect.HTTPClient, baseURL string, opts ...connect.ClientOption) SupervisedWorkloadServiceClient {
+	baseURL = strings.TrimRight(baseURL, "/")
+	supervisedWorkloadServiceMethods := v1.File_workos_workload_v1_workload_proto.Services().ByName("SupervisedWorkloadService").Methods()
+	return &supervisedWorkloadServiceClient{
+		listObservations: connect.NewClient[v1.ListObservationsRequest, v1.ListObservationsResponse](
+			httpClient,
+			baseURL+SupervisedWorkloadServiceListObservationsProcedure,
+			connect.WithSchema(supervisedWorkloadServiceMethods.ByName("ListObservations")),
+			connect.WithClientOptions(opts...),
+		),
+		restartWorkload: connect.NewClient[v1.RestartWorkloadRequest, v1.RestartWorkloadResponse](
+			httpClient,
+			baseURL+SupervisedWorkloadServiceRestartWorkloadProcedure,
+			connect.WithSchema(supervisedWorkloadServiceMethods.ByName("RestartWorkload")),
+			connect.WithClientOptions(opts...),
+		),
+		terminateWorkload: connect.NewClient[v1.TerminateWorkloadRequest, v1.TerminateWorkloadResponse](
+			httpClient,
+			baseURL+SupervisedWorkloadServiceTerminateWorkloadProcedure,
+			connect.WithSchema(supervisedWorkloadServiceMethods.ByName("TerminateWorkload")),
+			connect.WithClientOptions(opts...),
+		),
+	}
+}
+
+// supervisedWorkloadServiceClient implements SupervisedWorkloadServiceClient.
+type supervisedWorkloadServiceClient struct {
+	listObservations  *connect.Client[v1.ListObservationsRequest, v1.ListObservationsResponse]
+	restartWorkload   *connect.Client[v1.RestartWorkloadRequest, v1.RestartWorkloadResponse]
+	terminateWorkload *connect.Client[v1.TerminateWorkloadRequest, v1.TerminateWorkloadResponse]
+}
+
+// ListObservations calls workos.workload.v1.SupervisedWorkloadService.ListObservations.
+func (c *supervisedWorkloadServiceClient) ListObservations(ctx context.Context, req *connect.Request[v1.ListObservationsRequest]) (*connect.Response[v1.ListObservationsResponse], error) {
+	return c.listObservations.CallUnary(ctx, req)
+}
+
+// RestartWorkload calls workos.workload.v1.SupervisedWorkloadService.RestartWorkload.
+func (c *supervisedWorkloadServiceClient) RestartWorkload(ctx context.Context, req *connect.Request[v1.RestartWorkloadRequest]) (*connect.Response[v1.RestartWorkloadResponse], error) {
+	return c.restartWorkload.CallUnary(ctx, req)
+}
+
+// TerminateWorkload calls workos.workload.v1.SupervisedWorkloadService.TerminateWorkload.
+func (c *supervisedWorkloadServiceClient) TerminateWorkload(ctx context.Context, req *connect.Request[v1.TerminateWorkloadRequest]) (*connect.Response[v1.TerminateWorkloadResponse], error) {
+	return c.terminateWorkload.CallUnary(ctx, req)
+}
+
+// SupervisedWorkloadServiceHandler is an implementation of the
+// workos.workload.v1.SupervisedWorkloadService service.
+type SupervisedWorkloadServiceHandler interface {
+	// ListObservations returns the neutral observation snapshot of every
+	// supervised workload known to this runtime host.
+	ListObservations(context.Context, *connect.Request[v1.ListObservationsRequest]) (*connect.Response[v1.ListObservationsResponse], error)
+	// RestartWorkload deterministically recreates the workload's container with
+	// the exact pinned image/argv/policy and a new generation. The runtime
+	// enforces the persisted restart limit and returns a sanitized
+	// FailedPrecondition once it is exhausted; the decision to stop afterwards
+	// belongs to the caller.
+	RestartWorkload(context.Context, *connect.Request[v1.RestartWorkloadRequest]) (*connect.Response[v1.RestartWorkloadResponse], error)
+	// StopWorkload deterministically stops and removes the workload's container
+	// by its exact identity. Idempotent by action key.
+	TerminateWorkload(context.Context, *connect.Request[v1.TerminateWorkloadRequest]) (*connect.Response[v1.TerminateWorkloadResponse], error)
+}
+
+// NewSupervisedWorkloadServiceHandler builds an HTTP handler from the service implementation. It
+// returns the path on which to mount the handler and the handler itself.
+//
+// By default, handlers support the Connect, gRPC, and gRPC-Web protocols with the binary Protobuf
+// and JSON codecs. They also support gzip compression.
+func NewSupervisedWorkloadServiceHandler(svc SupervisedWorkloadServiceHandler, opts ...connect.HandlerOption) (string, http.Handler) {
+	supervisedWorkloadServiceMethods := v1.File_workos_workload_v1_workload_proto.Services().ByName("SupervisedWorkloadService").Methods()
+	supervisedWorkloadServiceListObservationsHandler := connect.NewUnaryHandler(
+		SupervisedWorkloadServiceListObservationsProcedure,
+		svc.ListObservations,
+		connect.WithSchema(supervisedWorkloadServiceMethods.ByName("ListObservations")),
+		connect.WithHandlerOptions(opts...),
+	)
+	supervisedWorkloadServiceRestartWorkloadHandler := connect.NewUnaryHandler(
+		SupervisedWorkloadServiceRestartWorkloadProcedure,
+		svc.RestartWorkload,
+		connect.WithSchema(supervisedWorkloadServiceMethods.ByName("RestartWorkload")),
+		connect.WithHandlerOptions(opts...),
+	)
+	supervisedWorkloadServiceTerminateWorkloadHandler := connect.NewUnaryHandler(
+		SupervisedWorkloadServiceTerminateWorkloadProcedure,
+		svc.TerminateWorkload,
+		connect.WithSchema(supervisedWorkloadServiceMethods.ByName("TerminateWorkload")),
+		connect.WithHandlerOptions(opts...),
+	)
+	return "/workos.workload.v1.SupervisedWorkloadService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case SupervisedWorkloadServiceListObservationsProcedure:
+			supervisedWorkloadServiceListObservationsHandler.ServeHTTP(w, r)
+		case SupervisedWorkloadServiceRestartWorkloadProcedure:
+			supervisedWorkloadServiceRestartWorkloadHandler.ServeHTTP(w, r)
+		case SupervisedWorkloadServiceTerminateWorkloadProcedure:
+			supervisedWorkloadServiceTerminateWorkloadHandler.ServeHTTP(w, r)
+		default:
+			http.NotFound(w, r)
+		}
+	})
+}
+
+// UnimplementedSupervisedWorkloadServiceHandler returns CodeUnimplemented from all methods.
+type UnimplementedSupervisedWorkloadServiceHandler struct{}
+
+func (UnimplementedSupervisedWorkloadServiceHandler) ListObservations(context.Context, *connect.Request[v1.ListObservationsRequest]) (*connect.Response[v1.ListObservationsResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("workos.workload.v1.SupervisedWorkloadService.ListObservations is not implemented"))
+}
+
+func (UnimplementedSupervisedWorkloadServiceHandler) RestartWorkload(context.Context, *connect.Request[v1.RestartWorkloadRequest]) (*connect.Response[v1.RestartWorkloadResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("workos.workload.v1.SupervisedWorkloadService.RestartWorkload is not implemented"))
+}
+
+func (UnimplementedSupervisedWorkloadServiceHandler) TerminateWorkload(context.Context, *connect.Request[v1.TerminateWorkloadRequest]) (*connect.Response[v1.TerminateWorkloadResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("workos.workload.v1.SupervisedWorkloadService.TerminateWorkload is not implemented"))
 }

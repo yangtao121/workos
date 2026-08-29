@@ -35,10 +35,25 @@ message Incident {
   IncidentSeverity severity = 4;
   IncidentState state = 5;
   string policy_id = 6;
+  // summary is a fixed short phrase mapped from the violation enum; raw
+  // engine output, HTTP bodies, logs, and user content never enter it.
   string summary = 7;
   repeated EvidenceRef evidence = 8;
   google.protobuf.Timestamp created_at = 9;
   google.protobuf.Timestamp updated_at = 10;
+  // Owner scope and durable supervision facts (additive, ADR-0006).
+  string owner_user_id = 11;
+  string app_instance_id = 12;
+  string app_id = 13;
+  IncidentViolation violation = 14;
+  int64 workload_generation = 15;
+  // Monotonic revision of this incident row; every persisted state change
+  // increments it. Clients use it as an etag on acknowledge.
+  int64 revision = 16;
+  google.protobuf.Timestamp acknowledged_at = 17;
+  google.protobuf.Timestamp mitigated_at = 18;
+  google.protobuf.Timestamp resolved_at = 19;
+  IncidentRestartOutcome restart_outcome = 20;
 }
 
 message GetIncidentRequest {
@@ -57,6 +72,10 @@ message ListIncidentsResponse {
 
 message AcknowledgeIncidentRequest {
   string incident_id = 1;
+  // Durable idempotency key for this external write. Same key replays the
+  // first decision; acknowledge marks the incident reviewed by its owner and
+  // never claims the fault is repaired.
+  string idempotency_key = 2;
 }
 
 message GetIncidentResponse {
@@ -71,4 +90,26 @@ service IncidentService {
   rpc GetIncident(GetIncidentRequest) returns (GetIncidentResponse) {}
   rpc ListIncidents(ListIncidentsRequest) returns (ListIncidentsResponse) {}
   rpc AcknowledgeIncident(AcknowledgeIncidentRequest) returns (AcknowledgeIncidentResponse) {}
+}
+
+// ---------------------------------------------------------------------------
+// Additive supervision facts (ADR-0006). All new fields are appended after the
+// original field numbers; nothing above is renumbered or reused.
+// ---------------------------------------------------------------------------
+
+enum IncidentViolation {
+  INCIDENT_VIOLATION_UNSPECIFIED = 0;
+  INCIDENT_VIOLATION_UNEXPECTED_EXIT = 1;
+  INCIDENT_VIOLATION_HEALTH_FAILURE = 2;
+  INCIDENT_VIOLATION_OOM = 3;
+  INCIDENT_VIOLATION_PIDS_LIMIT = 4;
+  INCIDENT_VIOLATION_RESTART_LIMIT_EXHAUSTED = 5;
+}
+
+enum IncidentRestartOutcome {
+  INCIDENT_RESTART_OUTCOME_UNSPECIFIED = 0;
+  INCIDENT_RESTART_OUTCOME_PENDING = 1;
+  INCIDENT_RESTART_OUTCOME_RESTARTED = 2;
+  INCIDENT_RESTART_OUTCOME_STOPPED = 3;
+  INCIDENT_RESTART_OUTCOME_FAILED = 4;
 }

@@ -137,6 +137,72 @@ func (WorkloadState) EnumDescriptor() ([]byte, []int) {
 	return file_workos_workload_v1_workload_proto_rawDescGZIP(), []int{1}
 }
 
+// SupervisedWorkloadState is the durable lifecycle state machine of one
+// supervised workload. pending/starting cover the reserved DB facts before the
+// engine side effect is confirmed; running is the verified steady state;
+// stopping/stopped are the ordered shutdown facts; failed marks a startup or
+// runtime failure that no automatic actor is currently retrying.
+type SupervisedWorkloadState int32
+
+const (
+	SupervisedWorkloadState_SUPERVISED_WORKLOAD_STATE_UNSPECIFIED SupervisedWorkloadState = 0
+	SupervisedWorkloadState_SUPERVISED_WORKLOAD_STATE_PENDING     SupervisedWorkloadState = 1
+	SupervisedWorkloadState_SUPERVISED_WORKLOAD_STATE_STARTING    SupervisedWorkloadState = 2
+	SupervisedWorkloadState_SUPERVISED_WORKLOAD_STATE_RUNNING     SupervisedWorkloadState = 3
+	SupervisedWorkloadState_SUPERVISED_WORKLOAD_STATE_STOPPING    SupervisedWorkloadState = 4
+	SupervisedWorkloadState_SUPERVISED_WORKLOAD_STATE_STOPPED     SupervisedWorkloadState = 5
+	SupervisedWorkloadState_SUPERVISED_WORKLOAD_STATE_FAILED      SupervisedWorkloadState = 6
+)
+
+// Enum value maps for SupervisedWorkloadState.
+var (
+	SupervisedWorkloadState_name = map[int32]string{
+		0: "SUPERVISED_WORKLOAD_STATE_UNSPECIFIED",
+		1: "SUPERVISED_WORKLOAD_STATE_PENDING",
+		2: "SUPERVISED_WORKLOAD_STATE_STARTING",
+		3: "SUPERVISED_WORKLOAD_STATE_RUNNING",
+		4: "SUPERVISED_WORKLOAD_STATE_STOPPING",
+		5: "SUPERVISED_WORKLOAD_STATE_STOPPED",
+		6: "SUPERVISED_WORKLOAD_STATE_FAILED",
+	}
+	SupervisedWorkloadState_value = map[string]int32{
+		"SUPERVISED_WORKLOAD_STATE_UNSPECIFIED": 0,
+		"SUPERVISED_WORKLOAD_STATE_PENDING":     1,
+		"SUPERVISED_WORKLOAD_STATE_STARTING":    2,
+		"SUPERVISED_WORKLOAD_STATE_RUNNING":     3,
+		"SUPERVISED_WORKLOAD_STATE_STOPPING":    4,
+		"SUPERVISED_WORKLOAD_STATE_STOPPED":     5,
+		"SUPERVISED_WORKLOAD_STATE_FAILED":      6,
+	}
+)
+
+func (x SupervisedWorkloadState) Enum() *SupervisedWorkloadState {
+	p := new(SupervisedWorkloadState)
+	*p = x
+	return p
+}
+
+func (x SupervisedWorkloadState) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (SupervisedWorkloadState) Descriptor() protoreflect.EnumDescriptor {
+	return file_workos_workload_v1_workload_proto_enumTypes[2].Descriptor()
+}
+
+func (SupervisedWorkloadState) Type() protoreflect.EnumType {
+	return &file_workos_workload_v1_workload_proto_enumTypes[2]
+}
+
+func (x SupervisedWorkloadState) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use SupervisedWorkloadState.Descriptor instead.
+func (SupervisedWorkloadState) EnumDescriptor() ([]byte, []int) {
+	return file_workos_workload_v1_workload_proto_rawDescGZIP(), []int{2}
+}
+
 type WorkloadIdentity struct {
 	state             protoimpl.MessageState `protogen:"open.v1"`
 	WorkloadId        string                 `protobuf:"bytes,1,opt,name=workload_id,json=workloadId,proto3" json:"workload_id,omitempty"`
@@ -681,6 +747,484 @@ func (x *StopWorkloadResponse) GetWorkload() *WorkloadIdentity {
 	return nil
 }
 
+// WorkloadObservation is one neutral, bounded read of a supervised workload.
+// It carries stable identity plus numeric facts only: no cgroup path, no
+// loopback endpoint, no container ID, no raw process error, no log or HTTP
+// content. It is an input to the reliability policy engine, never an Incident
+// verdict.
+type WorkloadObservation struct {
+	state          protoimpl.MessageState  `protogen:"open.v1"`
+	WorkloadId     string                  `protobuf:"bytes,1,opt,name=workload_id,json=workloadId,proto3" json:"workload_id,omitempty"`
+	Generation     int64                   `protobuf:"varint,2,opt,name=generation,proto3" json:"generation,omitempty"`
+	State          SupervisedWorkloadState `protobuf:"varint,3,opt,name=state,proto3,enum=workos.workload.v1.SupervisedWorkloadState" json:"state,omitempty"`
+	OwnerUserId    string                  `protobuf:"bytes,4,opt,name=owner_user_id,json=ownerUserId,proto3" json:"owner_user_id,omitempty"`
+	ProjectId      string                  `protobuf:"bytes,5,opt,name=project_id,json=projectId,proto3" json:"project_id,omitempty"`
+	AppInstanceId  string                  `protobuf:"bytes,6,opt,name=app_instance_id,json=appInstanceId,proto3" json:"app_instance_id,omitempty"`
+	AppId          string                  `protobuf:"bytes,7,opt,name=app_id,json=appId,proto3" json:"app_id,omitempty"`
+	ManifestDigest string                  `protobuf:"bytes,8,opt,name=manifest_digest,json=manifestDigest,proto3" json:"manifest_digest,omitempty"`
+	// HealthVerdict values (fixed grammar, mirrored from the domain):
+	// "unknown" | "ok" | "failing".
+	HealthVerdict string `protobuf:"bytes,9,opt,name=health_verdict,json=healthVerdict,proto3" json:"health_verdict,omitempty"`
+	// ExitCategory values (fixed grammar): "none" | "exited" | "oom" |
+	// "pids" | "unknown".
+	ExitCategory string `protobuf:"bytes,10,opt,name=exit_category,json=exitCategory,proto3" json:"exit_category,omitempty"`
+	RestartCount int32  `protobuf:"varint,11,opt,name=restart_count,json=restartCount,proto3" json:"restart_count,omitempty"`
+	// Bounded numeric counters read from the real cgroup at observation time.
+	// 0 means "not available"; deltas are computed by the consumer.
+	CpuUsageUsec       uint64 `protobuf:"varint,12,opt,name=cpu_usage_usec,json=cpuUsageUsec,proto3" json:"cpu_usage_usec,omitempty"`
+	MemoryCurrentBytes uint64 `protobuf:"varint,13,opt,name=memory_current_bytes,json=memoryCurrentBytes,proto3" json:"memory_current_bytes,omitempty"`
+	MemoryPeakBytes    uint64 `protobuf:"varint,14,opt,name=memory_peak_bytes,json=memoryPeakBytes,proto3" json:"memory_peak_bytes,omitempty"`
+	MemoryEventsOom    uint64 `protobuf:"varint,15,opt,name=memory_events_oom,json=memoryEventsOom,proto3" json:"memory_events_oom,omitempty"`
+	PidsCurrent        uint64 `protobuf:"varint,16,opt,name=pids_current,json=pidsCurrent,proto3" json:"pids_current,omitempty"`
+	PidsEventsPeak     uint64 `protobuf:"varint,17,opt,name=pids_events_peak,json=pidsEventsPeak,proto3" json:"pids_events_peak,omitempty"`
+	// True when the workload has no open surface session referencing it.
+	Idle          bool   `protobuf:"varint,18,opt,name=idle,proto3" json:"idle,omitempty"`
+	ObservedAt    string `protobuf:"bytes,19,opt,name=observed_at,json=observedAt,proto3" json:"observed_at,omitempty"` // RFC 3339 UTC
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *WorkloadObservation) Reset() {
+	*x = WorkloadObservation{}
+	mi := &file_workos_workload_v1_workload_proto_msgTypes[10]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *WorkloadObservation) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*WorkloadObservation) ProtoMessage() {}
+
+func (x *WorkloadObservation) ProtoReflect() protoreflect.Message {
+	mi := &file_workos_workload_v1_workload_proto_msgTypes[10]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use WorkloadObservation.ProtoReflect.Descriptor instead.
+func (*WorkloadObservation) Descriptor() ([]byte, []int) {
+	return file_workos_workload_v1_workload_proto_rawDescGZIP(), []int{10}
+}
+
+func (x *WorkloadObservation) GetWorkloadId() string {
+	if x != nil {
+		return x.WorkloadId
+	}
+	return ""
+}
+
+func (x *WorkloadObservation) GetGeneration() int64 {
+	if x != nil {
+		return x.Generation
+	}
+	return 0
+}
+
+func (x *WorkloadObservation) GetState() SupervisedWorkloadState {
+	if x != nil {
+		return x.State
+	}
+	return SupervisedWorkloadState_SUPERVISED_WORKLOAD_STATE_UNSPECIFIED
+}
+
+func (x *WorkloadObservation) GetOwnerUserId() string {
+	if x != nil {
+		return x.OwnerUserId
+	}
+	return ""
+}
+
+func (x *WorkloadObservation) GetProjectId() string {
+	if x != nil {
+		return x.ProjectId
+	}
+	return ""
+}
+
+func (x *WorkloadObservation) GetAppInstanceId() string {
+	if x != nil {
+		return x.AppInstanceId
+	}
+	return ""
+}
+
+func (x *WorkloadObservation) GetAppId() string {
+	if x != nil {
+		return x.AppId
+	}
+	return ""
+}
+
+func (x *WorkloadObservation) GetManifestDigest() string {
+	if x != nil {
+		return x.ManifestDigest
+	}
+	return ""
+}
+
+func (x *WorkloadObservation) GetHealthVerdict() string {
+	if x != nil {
+		return x.HealthVerdict
+	}
+	return ""
+}
+
+func (x *WorkloadObservation) GetExitCategory() string {
+	if x != nil {
+		return x.ExitCategory
+	}
+	return ""
+}
+
+func (x *WorkloadObservation) GetRestartCount() int32 {
+	if x != nil {
+		return x.RestartCount
+	}
+	return 0
+}
+
+func (x *WorkloadObservation) GetCpuUsageUsec() uint64 {
+	if x != nil {
+		return x.CpuUsageUsec
+	}
+	return 0
+}
+
+func (x *WorkloadObservation) GetMemoryCurrentBytes() uint64 {
+	if x != nil {
+		return x.MemoryCurrentBytes
+	}
+	return 0
+}
+
+func (x *WorkloadObservation) GetMemoryPeakBytes() uint64 {
+	if x != nil {
+		return x.MemoryPeakBytes
+	}
+	return 0
+}
+
+func (x *WorkloadObservation) GetMemoryEventsOom() uint64 {
+	if x != nil {
+		return x.MemoryEventsOom
+	}
+	return 0
+}
+
+func (x *WorkloadObservation) GetPidsCurrent() uint64 {
+	if x != nil {
+		return x.PidsCurrent
+	}
+	return 0
+}
+
+func (x *WorkloadObservation) GetPidsEventsPeak() uint64 {
+	if x != nil {
+		return x.PidsEventsPeak
+	}
+	return 0
+}
+
+func (x *WorkloadObservation) GetIdle() bool {
+	if x != nil {
+		return x.Idle
+	}
+	return false
+}
+
+func (x *WorkloadObservation) GetObservedAt() string {
+	if x != nil {
+		return x.ObservedAt
+	}
+	return ""
+}
+
+type ListObservationsRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListObservationsRequest) Reset() {
+	*x = ListObservationsRequest{}
+	mi := &file_workos_workload_v1_workload_proto_msgTypes[11]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListObservationsRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListObservationsRequest) ProtoMessage() {}
+
+func (x *ListObservationsRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_workos_workload_v1_workload_proto_msgTypes[11]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListObservationsRequest.ProtoReflect.Descriptor instead.
+func (*ListObservationsRequest) Descriptor() ([]byte, []int) {
+	return file_workos_workload_v1_workload_proto_rawDescGZIP(), []int{11}
+}
+
+type ListObservationsResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Observations  []*WorkloadObservation `protobuf:"bytes,1,rep,name=observations,proto3" json:"observations,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListObservationsResponse) Reset() {
+	*x = ListObservationsResponse{}
+	mi := &file_workos_workload_v1_workload_proto_msgTypes[12]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListObservationsResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListObservationsResponse) ProtoMessage() {}
+
+func (x *ListObservationsResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_workos_workload_v1_workload_proto_msgTypes[12]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListObservationsResponse.ProtoReflect.Descriptor instead.
+func (*ListObservationsResponse) Descriptor() ([]byte, []int) {
+	return file_workos_workload_v1_workload_proto_rawDescGZIP(), []int{12}
+}
+
+func (x *ListObservationsResponse) GetObservations() []*WorkloadObservation {
+	if x != nil {
+		return x.Observations
+	}
+	return nil
+}
+
+type RestartWorkloadRequest struct {
+	state      protoimpl.MessageState `protogen:"open.v1"`
+	WorkloadId string                 `protobuf:"bytes,1,opt,name=workload_id,json=workloadId,proto3" json:"workload_id,omitempty"`
+	// action_key is the caller's durable idempotency key for exactly this
+	// restart decision. Same key replays the same result across caller and
+	// runtime restarts; a reused key with a different decision identity is a
+	// stable conflict.
+	ActionKey     string `protobuf:"bytes,2,opt,name=action_key,json=actionKey,proto3" json:"action_key,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RestartWorkloadRequest) Reset() {
+	*x = RestartWorkloadRequest{}
+	mi := &file_workos_workload_v1_workload_proto_msgTypes[13]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RestartWorkloadRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RestartWorkloadRequest) ProtoMessage() {}
+
+func (x *RestartWorkloadRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_workos_workload_v1_workload_proto_msgTypes[13]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RestartWorkloadRequest.ProtoReflect.Descriptor instead.
+func (*RestartWorkloadRequest) Descriptor() ([]byte, []int) {
+	return file_workos_workload_v1_workload_proto_rawDescGZIP(), []int{13}
+}
+
+func (x *RestartWorkloadRequest) GetWorkloadId() string {
+	if x != nil {
+		return x.WorkloadId
+	}
+	return ""
+}
+
+func (x *RestartWorkloadRequest) GetActionKey() string {
+	if x != nil {
+		return x.ActionKey
+	}
+	return ""
+}
+
+type RestartWorkloadResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Generation    int64                  `protobuf:"varint,1,opt,name=generation,proto3" json:"generation,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RestartWorkloadResponse) Reset() {
+	*x = RestartWorkloadResponse{}
+	mi := &file_workos_workload_v1_workload_proto_msgTypes[14]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RestartWorkloadResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RestartWorkloadResponse) ProtoMessage() {}
+
+func (x *RestartWorkloadResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_workos_workload_v1_workload_proto_msgTypes[14]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RestartWorkloadResponse.ProtoReflect.Descriptor instead.
+func (*RestartWorkloadResponse) Descriptor() ([]byte, []int) {
+	return file_workos_workload_v1_workload_proto_rawDescGZIP(), []int{14}
+}
+
+func (x *RestartWorkloadResponse) GetGeneration() int64 {
+	if x != nil {
+		return x.Generation
+	}
+	return 0
+}
+
+type TerminateWorkloadRequest struct {
+	state      protoimpl.MessageState `protogen:"open.v1"`
+	WorkloadId string                 `protobuf:"bytes,1,opt,name=workload_id,json=workloadId,proto3" json:"workload_id,omitempty"`
+	ActionKey  string                 `protobuf:"bytes,2,opt,name=action_key,json=actionKey,proto3" json:"action_key,omitempty"`
+	// StopReason values (fixed grammar): "policy" | "restart_limit" |
+	// "uninstalled" | "idle" | "fail_safe".
+	Reason        string `protobuf:"bytes,3,opt,name=reason,proto3" json:"reason,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *TerminateWorkloadRequest) Reset() {
+	*x = TerminateWorkloadRequest{}
+	mi := &file_workos_workload_v1_workload_proto_msgTypes[15]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *TerminateWorkloadRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*TerminateWorkloadRequest) ProtoMessage() {}
+
+func (x *TerminateWorkloadRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_workos_workload_v1_workload_proto_msgTypes[15]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use TerminateWorkloadRequest.ProtoReflect.Descriptor instead.
+func (*TerminateWorkloadRequest) Descriptor() ([]byte, []int) {
+	return file_workos_workload_v1_workload_proto_rawDescGZIP(), []int{15}
+}
+
+func (x *TerminateWorkloadRequest) GetWorkloadId() string {
+	if x != nil {
+		return x.WorkloadId
+	}
+	return ""
+}
+
+func (x *TerminateWorkloadRequest) GetActionKey() string {
+	if x != nil {
+		return x.ActionKey
+	}
+	return ""
+}
+
+func (x *TerminateWorkloadRequest) GetReason() string {
+	if x != nil {
+		return x.Reason
+	}
+	return ""
+}
+
+type TerminateWorkloadResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *TerminateWorkloadResponse) Reset() {
+	*x = TerminateWorkloadResponse{}
+	mi := &file_workos_workload_v1_workload_proto_msgTypes[16]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *TerminateWorkloadResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*TerminateWorkloadResponse) ProtoMessage() {}
+
+func (x *TerminateWorkloadResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_workos_workload_v1_workload_proto_msgTypes[16]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use TerminateWorkloadResponse.ProtoReflect.Descriptor instead.
+func (*TerminateWorkloadResponse) Descriptor() ([]byte, []int) {
+	return file_workos_workload_v1_workload_proto_rawDescGZIP(), []int{16}
+}
+
 var File_workos_workload_v1_workload_proto protoreflect.FileDescriptor
 
 const file_workos_workload_v1_workload_proto_rawDesc = "" +
@@ -725,7 +1269,52 @@ const file_workos_workload_v1_workload_proto_rawDesc = "" +
 	"\x15StartWorkloadResponse\x12@\n" +
 	"\bworkload\x18\x01 \x01(\v2$.workos.workload.v1.WorkloadIdentityR\bworkload\"X\n" +
 	"\x14StopWorkloadResponse\x12@\n" +
-	"\bworkload\x18\x01 \x01(\v2$.workos.workload.v1.WorkloadIdentityR\bworkload*\xe7\x01\n" +
+	"\bworkload\x18\x01 \x01(\v2$.workos.workload.v1.WorkloadIdentityR\bworkload\"\xe7\x05\n" +
+	"\x13WorkloadObservation\x12\x1f\n" +
+	"\vworkload_id\x18\x01 \x01(\tR\n" +
+	"workloadId\x12\x1e\n" +
+	"\n" +
+	"generation\x18\x02 \x01(\x03R\n" +
+	"generation\x12A\n" +
+	"\x05state\x18\x03 \x01(\x0e2+.workos.workload.v1.SupervisedWorkloadStateR\x05state\x12\"\n" +
+	"\rowner_user_id\x18\x04 \x01(\tR\vownerUserId\x12\x1d\n" +
+	"\n" +
+	"project_id\x18\x05 \x01(\tR\tprojectId\x12&\n" +
+	"\x0fapp_instance_id\x18\x06 \x01(\tR\rappInstanceId\x12\x15\n" +
+	"\x06app_id\x18\a \x01(\tR\x05appId\x12'\n" +
+	"\x0fmanifest_digest\x18\b \x01(\tR\x0emanifestDigest\x12%\n" +
+	"\x0ehealth_verdict\x18\t \x01(\tR\rhealthVerdict\x12#\n" +
+	"\rexit_category\x18\n" +
+	" \x01(\tR\fexitCategory\x12#\n" +
+	"\rrestart_count\x18\v \x01(\x05R\frestartCount\x12$\n" +
+	"\x0ecpu_usage_usec\x18\f \x01(\x04R\fcpuUsageUsec\x120\n" +
+	"\x14memory_current_bytes\x18\r \x01(\x04R\x12memoryCurrentBytes\x12*\n" +
+	"\x11memory_peak_bytes\x18\x0e \x01(\x04R\x0fmemoryPeakBytes\x12*\n" +
+	"\x11memory_events_oom\x18\x0f \x01(\x04R\x0fmemoryEventsOom\x12!\n" +
+	"\fpids_current\x18\x10 \x01(\x04R\vpidsCurrent\x12(\n" +
+	"\x10pids_events_peak\x18\x11 \x01(\x04R\x0epidsEventsPeak\x12\x12\n" +
+	"\x04idle\x18\x12 \x01(\bR\x04idle\x12\x1f\n" +
+	"\vobserved_at\x18\x13 \x01(\tR\n" +
+	"observedAt\"\x19\n" +
+	"\x17ListObservationsRequest\"g\n" +
+	"\x18ListObservationsResponse\x12K\n" +
+	"\fobservations\x18\x01 \x03(\v2'.workos.workload.v1.WorkloadObservationR\fobservations\"X\n" +
+	"\x16RestartWorkloadRequest\x12\x1f\n" +
+	"\vworkload_id\x18\x01 \x01(\tR\n" +
+	"workloadId\x12\x1d\n" +
+	"\n" +
+	"action_key\x18\x02 \x01(\tR\tactionKey\"9\n" +
+	"\x17RestartWorkloadResponse\x12\x1e\n" +
+	"\n" +
+	"generation\x18\x01 \x01(\x03R\n" +
+	"generation\"r\n" +
+	"\x18TerminateWorkloadRequest\x12\x1f\n" +
+	"\vworkload_id\x18\x01 \x01(\tR\n" +
+	"workloadId\x12\x1d\n" +
+	"\n" +
+	"action_key\x18\x02 \x01(\tR\tactionKey\x12\x16\n" +
+	"\x06reason\x18\x03 \x01(\tR\x06reason\"\x1b\n" +
+	"\x19TerminateWorkloadResponse*\xe7\x01\n" +
 	"\fWorkloadKind\x12\x1d\n" +
 	"\x19WORKLOAD_KIND_UNSPECIFIED\x10\x00\x12\x15\n" +
 	"\x11WORKLOAD_KIND_APP\x10\x01\x12$\n" +
@@ -739,12 +1328,24 @@ const file_workos_workload_v1_workload_proto_rawDesc = "" +
 	"\x16WORKLOAD_STATE_PENDING\x10\x01\x12\x1a\n" +
 	"\x16WORKLOAD_STATE_RUNNING\x10\x02\x12\x1a\n" +
 	"\x16WORKLOAD_STATE_STOPPED\x10\x03\x12\x19\n" +
-	"\x15WORKLOAD_STATE_FAILED\x10\x042\xa2\x03\n" +
+	"\x15WORKLOAD_STATE_FAILED\x10\x04*\xaf\x02\n" +
+	"\x17SupervisedWorkloadState\x12)\n" +
+	"%SUPERVISED_WORKLOAD_STATE_UNSPECIFIED\x10\x00\x12%\n" +
+	"!SUPERVISED_WORKLOAD_STATE_PENDING\x10\x01\x12&\n" +
+	"\"SUPERVISED_WORKLOAD_STATE_STARTING\x10\x02\x12%\n" +
+	"!SUPERVISED_WORKLOAD_STATE_RUNNING\x10\x03\x12&\n" +
+	"\"SUPERVISED_WORKLOAD_STATE_STOPPING\x10\x04\x12%\n" +
+	"!SUPERVISED_WORKLOAD_STATE_STOPPED\x10\x05\x12$\n" +
+	" SUPERVISED_WORKLOAD_STATE_FAILED\x10\x062\xa2\x03\n" +
 	"\x0fWorkloadService\x12`\n" +
 	"\vInspectNode\x12&.workos.workload.v1.InspectNodeRequest\x1a'.workos.workload.v1.InspectNodeResponse\"\x00\x12`\n" +
 	"\vGetWorkload\x12&.workos.workload.v1.GetWorkloadRequest\x1a'.workos.workload.v1.GetWorkloadResponse\"\x00\x12f\n" +
 	"\rStartWorkload\x12(.workos.workload.v1.StartWorkloadRequest\x1a).workos.workload.v1.StartWorkloadResponse\"\x00\x12c\n" +
-	"\fStopWorkload\x12'.workos.workload.v1.StopWorkloadRequest\x1a(.workos.workload.v1.StopWorkloadResponse\"\x00BCZAgithub.com/yangtao121/workos/gen/go/workos/workload/v1;workloadv1b\x06proto3"
+	"\fStopWorkload\x12'.workos.workload.v1.StopWorkloadRequest\x1a(.workos.workload.v1.StopWorkloadResponse\"\x002\xee\x02\n" +
+	"\x19SupervisedWorkloadService\x12o\n" +
+	"\x10ListObservations\x12+.workos.workload.v1.ListObservationsRequest\x1a,.workos.workload.v1.ListObservationsResponse\"\x00\x12l\n" +
+	"\x0fRestartWorkload\x12*.workos.workload.v1.RestartWorkloadRequest\x1a+.workos.workload.v1.RestartWorkloadResponse\"\x00\x12r\n" +
+	"\x11TerminateWorkload\x12,.workos.workload.v1.TerminateWorkloadRequest\x1a-.workos.workload.v1.TerminateWorkloadResponse\"\x00BCZAgithub.com/yangtao121/workos/gen/go/workos/workload/v1;workloadv1b\x06proto3"
 
 var (
 	file_workos_workload_v1_workload_proto_rawDescOnce sync.Once
@@ -758,43 +1359,59 @@ func file_workos_workload_v1_workload_proto_rawDescGZIP() []byte {
 	return file_workos_workload_v1_workload_proto_rawDescData
 }
 
-var file_workos_workload_v1_workload_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
-var file_workos_workload_v1_workload_proto_msgTypes = make([]protoimpl.MessageInfo, 10)
+var file_workos_workload_v1_workload_proto_enumTypes = make([]protoimpl.EnumInfo, 3)
+var file_workos_workload_v1_workload_proto_msgTypes = make([]protoimpl.MessageInfo, 17)
 var file_workos_workload_v1_workload_proto_goTypes = []any{
-	(WorkloadKind)(0),             // 0: workos.workload.v1.WorkloadKind
-	(WorkloadState)(0),            // 1: workos.workload.v1.WorkloadState
-	(*WorkloadIdentity)(nil),      // 2: workos.workload.v1.WorkloadIdentity
-	(*InspectNodeRequest)(nil),    // 3: workos.workload.v1.InspectNodeRequest
-	(*NodeCapabilities)(nil),      // 4: workos.workload.v1.NodeCapabilities
-	(*GetWorkloadRequest)(nil),    // 5: workos.workload.v1.GetWorkloadRequest
-	(*StartWorkloadRequest)(nil),  // 6: workos.workload.v1.StartWorkloadRequest
-	(*StopWorkloadRequest)(nil),   // 7: workos.workload.v1.StopWorkloadRequest
-	(*InspectNodeResponse)(nil),   // 8: workos.workload.v1.InspectNodeResponse
-	(*GetWorkloadResponse)(nil),   // 9: workos.workload.v1.GetWorkloadResponse
-	(*StartWorkloadResponse)(nil), // 10: workos.workload.v1.StartWorkloadResponse
-	(*StopWorkloadResponse)(nil),  // 11: workos.workload.v1.StopWorkloadResponse
+	(WorkloadKind)(0),                 // 0: workos.workload.v1.WorkloadKind
+	(WorkloadState)(0),                // 1: workos.workload.v1.WorkloadState
+	(SupervisedWorkloadState)(0),      // 2: workos.workload.v1.SupervisedWorkloadState
+	(*WorkloadIdentity)(nil),          // 3: workos.workload.v1.WorkloadIdentity
+	(*InspectNodeRequest)(nil),        // 4: workos.workload.v1.InspectNodeRequest
+	(*NodeCapabilities)(nil),          // 5: workos.workload.v1.NodeCapabilities
+	(*GetWorkloadRequest)(nil),        // 6: workos.workload.v1.GetWorkloadRequest
+	(*StartWorkloadRequest)(nil),      // 7: workos.workload.v1.StartWorkloadRequest
+	(*StopWorkloadRequest)(nil),       // 8: workos.workload.v1.StopWorkloadRequest
+	(*InspectNodeResponse)(nil),       // 9: workos.workload.v1.InspectNodeResponse
+	(*GetWorkloadResponse)(nil),       // 10: workos.workload.v1.GetWorkloadResponse
+	(*StartWorkloadResponse)(nil),     // 11: workos.workload.v1.StartWorkloadResponse
+	(*StopWorkloadResponse)(nil),      // 12: workos.workload.v1.StopWorkloadResponse
+	(*WorkloadObservation)(nil),       // 13: workos.workload.v1.WorkloadObservation
+	(*ListObservationsRequest)(nil),   // 14: workos.workload.v1.ListObservationsRequest
+	(*ListObservationsResponse)(nil),  // 15: workos.workload.v1.ListObservationsResponse
+	(*RestartWorkloadRequest)(nil),    // 16: workos.workload.v1.RestartWorkloadRequest
+	(*RestartWorkloadResponse)(nil),   // 17: workos.workload.v1.RestartWorkloadResponse
+	(*TerminateWorkloadRequest)(nil),  // 18: workos.workload.v1.TerminateWorkloadRequest
+	(*TerminateWorkloadResponse)(nil), // 19: workos.workload.v1.TerminateWorkloadResponse
 }
 var file_workos_workload_v1_workload_proto_depIdxs = []int32{
 	0,  // 0: workos.workload.v1.WorkloadIdentity.kind:type_name -> workos.workload.v1.WorkloadKind
 	1,  // 1: workos.workload.v1.WorkloadIdentity.state:type_name -> workos.workload.v1.WorkloadState
-	2,  // 2: workos.workload.v1.StartWorkloadRequest.workload:type_name -> workos.workload.v1.WorkloadIdentity
-	4,  // 3: workos.workload.v1.InspectNodeResponse.capabilities:type_name -> workos.workload.v1.NodeCapabilities
-	2,  // 4: workos.workload.v1.GetWorkloadResponse.workload:type_name -> workos.workload.v1.WorkloadIdentity
-	2,  // 5: workos.workload.v1.StartWorkloadResponse.workload:type_name -> workos.workload.v1.WorkloadIdentity
-	2,  // 6: workos.workload.v1.StopWorkloadResponse.workload:type_name -> workos.workload.v1.WorkloadIdentity
-	3,  // 7: workos.workload.v1.WorkloadService.InspectNode:input_type -> workos.workload.v1.InspectNodeRequest
-	5,  // 8: workos.workload.v1.WorkloadService.GetWorkload:input_type -> workos.workload.v1.GetWorkloadRequest
-	6,  // 9: workos.workload.v1.WorkloadService.StartWorkload:input_type -> workos.workload.v1.StartWorkloadRequest
-	7,  // 10: workos.workload.v1.WorkloadService.StopWorkload:input_type -> workos.workload.v1.StopWorkloadRequest
-	8,  // 11: workos.workload.v1.WorkloadService.InspectNode:output_type -> workos.workload.v1.InspectNodeResponse
-	9,  // 12: workos.workload.v1.WorkloadService.GetWorkload:output_type -> workos.workload.v1.GetWorkloadResponse
-	10, // 13: workos.workload.v1.WorkloadService.StartWorkload:output_type -> workos.workload.v1.StartWorkloadResponse
-	11, // 14: workos.workload.v1.WorkloadService.StopWorkload:output_type -> workos.workload.v1.StopWorkloadResponse
-	11, // [11:15] is the sub-list for method output_type
-	7,  // [7:11] is the sub-list for method input_type
-	7,  // [7:7] is the sub-list for extension type_name
-	7,  // [7:7] is the sub-list for extension extendee
-	0,  // [0:7] is the sub-list for field type_name
+	3,  // 2: workos.workload.v1.StartWorkloadRequest.workload:type_name -> workos.workload.v1.WorkloadIdentity
+	5,  // 3: workos.workload.v1.InspectNodeResponse.capabilities:type_name -> workos.workload.v1.NodeCapabilities
+	3,  // 4: workos.workload.v1.GetWorkloadResponse.workload:type_name -> workos.workload.v1.WorkloadIdentity
+	3,  // 5: workos.workload.v1.StartWorkloadResponse.workload:type_name -> workos.workload.v1.WorkloadIdentity
+	3,  // 6: workos.workload.v1.StopWorkloadResponse.workload:type_name -> workos.workload.v1.WorkloadIdentity
+	2,  // 7: workos.workload.v1.WorkloadObservation.state:type_name -> workos.workload.v1.SupervisedWorkloadState
+	13, // 8: workos.workload.v1.ListObservationsResponse.observations:type_name -> workos.workload.v1.WorkloadObservation
+	4,  // 9: workos.workload.v1.WorkloadService.InspectNode:input_type -> workos.workload.v1.InspectNodeRequest
+	6,  // 10: workos.workload.v1.WorkloadService.GetWorkload:input_type -> workos.workload.v1.GetWorkloadRequest
+	7,  // 11: workos.workload.v1.WorkloadService.StartWorkload:input_type -> workos.workload.v1.StartWorkloadRequest
+	8,  // 12: workos.workload.v1.WorkloadService.StopWorkload:input_type -> workos.workload.v1.StopWorkloadRequest
+	14, // 13: workos.workload.v1.SupervisedWorkloadService.ListObservations:input_type -> workos.workload.v1.ListObservationsRequest
+	16, // 14: workos.workload.v1.SupervisedWorkloadService.RestartWorkload:input_type -> workos.workload.v1.RestartWorkloadRequest
+	18, // 15: workos.workload.v1.SupervisedWorkloadService.TerminateWorkload:input_type -> workos.workload.v1.TerminateWorkloadRequest
+	9,  // 16: workos.workload.v1.WorkloadService.InspectNode:output_type -> workos.workload.v1.InspectNodeResponse
+	10, // 17: workos.workload.v1.WorkloadService.GetWorkload:output_type -> workos.workload.v1.GetWorkloadResponse
+	11, // 18: workos.workload.v1.WorkloadService.StartWorkload:output_type -> workos.workload.v1.StartWorkloadResponse
+	12, // 19: workos.workload.v1.WorkloadService.StopWorkload:output_type -> workos.workload.v1.StopWorkloadResponse
+	15, // 20: workos.workload.v1.SupervisedWorkloadService.ListObservations:output_type -> workos.workload.v1.ListObservationsResponse
+	17, // 21: workos.workload.v1.SupervisedWorkloadService.RestartWorkload:output_type -> workos.workload.v1.RestartWorkloadResponse
+	19, // 22: workos.workload.v1.SupervisedWorkloadService.TerminateWorkload:output_type -> workos.workload.v1.TerminateWorkloadResponse
+	16, // [16:23] is the sub-list for method output_type
+	9,  // [9:16] is the sub-list for method input_type
+	9,  // [9:9] is the sub-list for extension type_name
+	9,  // [9:9] is the sub-list for extension extendee
+	0,  // [0:9] is the sub-list for field type_name
 }
 
 func init() { file_workos_workload_v1_workload_proto_init() }
@@ -807,10 +1424,10 @@ func file_workos_workload_v1_workload_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_workos_workload_v1_workload_proto_rawDesc), len(file_workos_workload_v1_workload_proto_rawDesc)),
-			NumEnums:      2,
-			NumMessages:   10,
+			NumEnums:      3,
+			NumMessages:   17,
 			NumExtensions: 0,
-			NumServices:   1,
+			NumServices:   2,
 		},
 		GoTypes:           file_workos_workload_v1_workload_proto_goTypes,
 		DependencyIndexes: file_workos_workload_v1_workload_proto_depIdxs,

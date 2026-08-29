@@ -14,7 +14,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file workos/surface/v1/surface_resolver.proto.
  */
 export const file_workos_surface_v1_surface_resolver: GenFile = /*@__PURE__*/
-  fileDesc("Cih3b3Jrb3Mvc3VyZmFjZS92MS9zdXJmYWNlX3Jlc29sdmVyLnByb3RvEhF3b3Jrb3Muc3VyZmFjZS52MSKXAQoZV2ViQnVuZGxlTGF1bmNoRGVzY3JpcHRvchIOCgZhcHBfaWQYASABKAkSDwoHdmVyc2lvbhgCIAEoCRIXCg9tYW5pZmVzdF9kaWdlc3QYAyABKAkSEwoLYXJ0aWZhY3RfaWQYBCABKAkSFwoPYXJ0aWZhY3RfZGlnZXN0GAUgASgJEhIKCmVudHJ5cG9pbnQYBiABKAkiRgoXUmVzb2x2ZVdlYkJ1bmRsZVJlcXVlc3QSEgoKcHJvamVjdF9pZBgBIAEoCRIXCg9hcHBfaW5zdGFuY2VfaWQYAiABKAkijQEKGFJlc29sdmVXZWJCdW5kbGVSZXNwb25zZRI8CgZsYXVuY2gYASABKAsyLC53b3Jrb3Muc3VyZmFjZS52MS5XZWJCdW5kbGVMYXVuY2hEZXNjcmlwdG9yEhsKE2dyYW50ZWRfcGVybWlzc2lvbnMYAiADKAkSFgoOZ3JhbnRfcmV2aXNpb24YAyABKAMiXAoZUmVhZFdlYkJ1bmRsZUFzc2V0UmVxdWVzdBISCgpwcm9qZWN0X2lkGAEgASgJEhcKD2FwcF9pbnN0YW5jZV9pZBgCIAEoCRISCgphc3NldF9wYXRoGAMgASgJIk8KGlJlYWRXZWJCdW5kbGVBc3NldFJlc3BvbnNlEg8KB2NvbnRlbnQYASABKAwSEgoKbWVkaWFfdHlwZRgCIAEoCRIMCgRldGFnGAMgASgJMoICChxTdXJmYWNlTGF1bmNoUmVzb2x2ZXJTZXJ2aWNlEm0KEFJlc29sdmVXZWJCdW5kbGUSKi53b3Jrb3Muc3VyZmFjZS52MS5SZXNvbHZlV2ViQnVuZGxlUmVxdWVzdBorLndvcmtvcy5zdXJmYWNlLnYxLlJlc29sdmVXZWJCdW5kbGVSZXNwb25zZSIAEnMKElJlYWRXZWJCdW5kbGVBc3NldBIsLndvcmtvcy5zdXJmYWNlLnYxLlJlYWRXZWJCdW5kbGVBc3NldFJlcXVlc3QaLS53b3Jrb3Muc3VyZmFjZS52MS5SZWFkV2ViQnVuZGxlQXNzZXRSZXNwb25zZSIAQkFaP2dpdGh1Yi5jb20veWFuZ3RhbzEyMS93b3Jrb3MvZ2VuL2dvL3dvcmtvcy9zdXJmYWNlL3YxO3N1cmZhY2V2MWIGcHJvdG8z");
+  fileDesc("Cih3b3Jrb3Mvc3VyZmFjZS92MS9zdXJmYWNlX3Jlc29sdmVyLnByb3RvEhF3b3Jrb3Muc3VyZmFjZS52MSKXAQoZV2ViQnVuZGxlTGF1bmNoRGVzY3JpcHRvchIOCgZhcHBfaWQYASABKAkSDwoHdmVyc2lvbhgCIAEoCRIXCg9tYW5pZmVzdF9kaWdlc3QYAyABKAkSEwoLYXJ0aWZhY3RfaWQYBCABKAkSFwoPYXJ0aWZhY3RfZGlnZXN0GAUgASgJEhIKCmVudHJ5cG9pbnQYBiABKAkiRgoXUmVzb2x2ZVdlYkJ1bmRsZVJlcXVlc3QSEgoKcHJvamVjdF9pZBgBIAEoCRIXCg9hcHBfaW5zdGFuY2VfaWQYAiABKAkijQEKGFJlc29sdmVXZWJCdW5kbGVSZXNwb25zZRI8CgZsYXVuY2gYASABKAsyLC53b3Jrb3Muc3VyZmFjZS52MS5XZWJCdW5kbGVMYXVuY2hEZXNjcmlwdG9yEhsKE2dyYW50ZWRfcGVybWlzc2lvbnMYAiADKAkSFgoOZ3JhbnRfcmV2aXNpb24YAyABKAMiXAoZUmVhZFdlYkJ1bmRsZUFzc2V0UmVxdWVzdBISCgpwcm9qZWN0X2lkGAEgASgJEhcKD2FwcF9pbnN0YW5jZV9pZBgCIAEoCRISCgphc3NldF9wYXRoGAMgASgJIk8KGlJlYWRXZWJCdW5kbGVBc3NldFJlc3BvbnNlEg8KB2NvbnRlbnQYASABKAwSEgoKbWVkaWFfdHlwZRgCIAEoCRIMCgRldGFnGAMgASgJInIKF0NvbnRhaW5lclJlc291cmNlUG9saWN5EhYKDmNwdV9oYXJkX2NvcmVzGAEgASgBEhYKDm1lbW9yeV9oaWdoX21iGAIgASgFEhUKDW1lbW9yeV9tYXhfbWIYAyABKAUSEAoIcGlkc19tYXgYBCABKAUiWgoVQ29udGFpbmVySGVhbHRoUG9saWN5EhEKCWh0dHBfcGF0aBgBIAEoCRIXCg9zdGFydHVwX3NlY29uZHMYAiABKAUSFQoNcmVzdGFydF9saW1pdBgDIAEoBSKTAgoZQ29udGFpbmVyTGF1bmNoRGVzY3JpcHRvchIOCgZhcHBfaWQYASABKAkSDwoHdmVyc2lvbhgCIAEoCRIXCg9tYW5pZmVzdF9kaWdlc3QYAyABKAkSDQoFaW1hZ2UYBCABKAkSDwoHY29tbWFuZBgFIAMoCRIMCgRwb3J0GAYgASgFEj0KCXJlc291cmNlcxgHIAEoCzIqLndvcmtvcy5zdXJmYWNlLnYxLkNvbnRhaW5lclJlc291cmNlUG9saWN5EjgKBmhlYWx0aBgIIAEoCzIoLndvcmtvcy5zdXJmYWNlLnYxLkNvbnRhaW5lckhlYWx0aFBvbGljeRIVCg1zdXJmYWNlX3JvdXRlGAkgASgJIkoKG1Jlc29sdmVTdXJmYWNlTGF1bmNoUmVxdWVzdBISCgpwcm9qZWN0X2lkGAEgASgJEhcKD2FwcF9pbnN0YW5jZV9pZBgCIAEoCSLwAQocUmVzb2x2ZVN1cmZhY2VMYXVuY2hSZXNwb25zZRJCCgp3ZWJfYnVuZGxlGAEgASgLMiwud29ya29zLnN1cmZhY2UudjEuV2ViQnVuZGxlTGF1bmNoRGVzY3JpcHRvckgAEk0KFXdlYl9zZXJ2aWNlX2NvbnRhaW5lchgCIAEoCzIsLndvcmtvcy5zdXJmYWNlLnYxLkNvbnRhaW5lckxhdW5jaERlc2NyaXB0b3JIABIbChNncmFudGVkX3Blcm1pc3Npb25zGAMgAygJEhYKDmdyYW50X3JldmlzaW9uGAQgASgDQggKBmxhdW5jaDL9AgocU3VyZmFjZUxhdW5jaFJlc29sdmVyU2VydmljZRJtChBSZXNvbHZlV2ViQnVuZGxlEioud29ya29zLnN1cmZhY2UudjEuUmVzb2x2ZVdlYkJ1bmRsZVJlcXVlc3QaKy53b3Jrb3Muc3VyZmFjZS52MS5SZXNvbHZlV2ViQnVuZGxlUmVzcG9uc2UiABJzChJSZWFkV2ViQnVuZGxlQXNzZXQSLC53b3Jrb3Muc3VyZmFjZS52MS5SZWFkV2ViQnVuZGxlQXNzZXRSZXF1ZXN0Gi0ud29ya29zLnN1cmZhY2UudjEuUmVhZFdlYkJ1bmRsZUFzc2V0UmVzcG9uc2UiABJ5ChRSZXNvbHZlU3VyZmFjZUxhdW5jaBIuLndvcmtvcy5zdXJmYWNlLnYxLlJlc29sdmVTdXJmYWNlTGF1bmNoUmVxdWVzdBovLndvcmtvcy5zdXJmYWNlLnYxLlJlc29sdmVTdXJmYWNlTGF1bmNoUmVzcG9uc2UiAEJBWj9naXRodWIuY29tL3lhbmd0YW8xMjEvd29ya29zL2dlbi9nby93b3Jrb3Mvc3VyZmFjZS92MTtzdXJmYWNldjFiBnByb3RvMw");
 
 /**
  * WebBundleLaunchDescriptor is the neutral, immutable launch fact for one
@@ -179,6 +179,202 @@ export const ReadWebBundleAssetResponseSchema: GenMessage<ReadWebBundleAssetResp
   messageDesc(file_workos_surface_v1_surface_resolver, 4);
 
 /**
+ * ContainerResourcePolicy is the App's REQUESTED resource policy, projected
+ * verbatim from the canonical manifest. It is not an authorization: the
+ * runtime adjudicates it against server-owned maxima and persists the
+ * effective policy; these values never size the container directly.
+ *
+ * @generated from message workos.surface.v1.ContainerResourcePolicy
+ */
+export type ContainerResourcePolicy = Message<"workos.surface.v1.ContainerResourcePolicy"> & {
+  /**
+   * @generated from field: double cpu_hard_cores = 1;
+   */
+  cpuHardCores: number;
+
+  /**
+   * @generated from field: int32 memory_high_mb = 2;
+   */
+  memoryHighMb: number;
+
+  /**
+   * @generated from field: int32 memory_max_mb = 3;
+   */
+  memoryMaxMb: number;
+
+  /**
+   * @generated from field: int32 pids_max = 4;
+   */
+  pidsMax: number;
+};
+
+/**
+ * Describes the message workos.surface.v1.ContainerResourcePolicy.
+ * Use `create(ContainerResourcePolicySchema)` to create a new message.
+ */
+export const ContainerResourcePolicySchema: GenMessage<ContainerResourcePolicy> = /*@__PURE__*/
+  messageDesc(file_workos_surface_v1_surface_resolver, 5);
+
+/**
+ * ContainerHealthPolicy is the App's REQUESTED health policy, projected
+ * verbatim from the canonical manifest.
+ *
+ * @generated from message workos.surface.v1.ContainerHealthPolicy
+ */
+export type ContainerHealthPolicy = Message<"workos.surface.v1.ContainerHealthPolicy"> & {
+  /**
+   * @generated from field: string http_path = 1;
+   */
+  httpPath: string;
+
+  /**
+   * @generated from field: int32 startup_seconds = 2;
+   */
+  startupSeconds: number;
+
+  /**
+   * @generated from field: int32 restart_limit = 3;
+   */
+  restartLimit: number;
+};
+
+/**
+ * Describes the message workos.surface.v1.ContainerHealthPolicy.
+ * Use `create(ContainerHealthPolicySchema)` to create a new message.
+ */
+export const ContainerHealthPolicySchema: GenMessage<ContainerHealthPolicy> = /*@__PURE__*/
+  messageDesc(file_workos_surface_v1_surface_resolver, 6);
+
+/**
+ * ContainerLaunchDescriptor is the neutral, immutable launch fact for one
+ * installed container instance: the pinned registry identity, the exact
+ * digest-pinned OCI image reference, the bounded argv, the container port,
+ * and the requested (never effective) resource/health policy. It never
+ * carries engine flags, host endpoints, container IDs, credentials, or
+ * effective policy.
+ *
+ * @generated from message workos.surface.v1.ContainerLaunchDescriptor
+ */
+export type ContainerLaunchDescriptor = Message<"workos.surface.v1.ContainerLaunchDescriptor"> & {
+  /**
+   * @generated from field: string app_id = 1;
+   */
+  appId: string;
+
+  /**
+   * @generated from field: string version = 2;
+   */
+  version: string;
+
+  /**
+   * @generated from field: string manifest_digest = 3;
+   */
+  manifestDigest: string;
+
+  /**
+   * @generated from field: string image = 4;
+   */
+  image: string;
+
+  /**
+   * @generated from field: repeated string command = 5;
+   */
+  command: string[];
+
+  /**
+   * @generated from field: int32 port = 6;
+   */
+  port: number;
+
+  /**
+   * @generated from field: workos.surface.v1.ContainerResourcePolicy resources = 7;
+   */
+  resources?: ContainerResourcePolicy | undefined;
+
+  /**
+   * @generated from field: workos.surface.v1.ContainerHealthPolicy health = 8;
+   */
+  health?: ContainerHealthPolicy | undefined;
+
+  /**
+   * @generated from field: string surface_route = 9;
+   */
+  surfaceRoute: string;
+};
+
+/**
+ * Describes the message workos.surface.v1.ContainerLaunchDescriptor.
+ * Use `create(ContainerLaunchDescriptorSchema)` to create a new message.
+ */
+export const ContainerLaunchDescriptorSchema: GenMessage<ContainerLaunchDescriptor> = /*@__PURE__*/
+  messageDesc(file_workos_surface_v1_surface_resolver, 7);
+
+/**
+ * @generated from message workos.surface.v1.ResolveSurfaceLaunchRequest
+ */
+export type ResolveSurfaceLaunchRequest = Message<"workos.surface.v1.ResolveSurfaceLaunchRequest"> & {
+  /**
+   * @generated from field: string project_id = 1;
+   */
+  projectId: string;
+
+  /**
+   * @generated from field: string app_instance_id = 2;
+   */
+  appInstanceId: string;
+};
+
+/**
+ * Describes the message workos.surface.v1.ResolveSurfaceLaunchRequest.
+ * Use `create(ResolveSurfaceLaunchRequestSchema)` to create a new message.
+ */
+export const ResolveSurfaceLaunchRequestSchema: GenMessage<ResolveSurfaceLaunchRequest> = /*@__PURE__*/
+  messageDesc(file_workos_surface_v1_surface_resolver, 8);
+
+/**
+ * @generated from message workos.surface.v1.ResolveSurfaceLaunchResponse
+ */
+export type ResolveSurfaceLaunchResponse = Message<"workos.surface.v1.ResolveSurfaceLaunchResponse"> & {
+  /**
+   * @generated from oneof workos.surface.v1.ResolveSurfaceLaunchResponse.launch
+   */
+  launch: {
+    /**
+     * @generated from field: workos.surface.v1.WebBundleLaunchDescriptor web_bundle = 1;
+     */
+    value: WebBundleLaunchDescriptor;
+    case: "webBundle";
+  } | {
+    /**
+     * @generated from field: workos.surface.v1.ContainerLaunchDescriptor web_service_container = 2;
+     */
+    value: ContainerLaunchDescriptor;
+    case: "webServiceContainer";
+  } | { case: undefined; value?: undefined };
+
+  /**
+   * The active installation's grant set and epoch, re-read from the same
+   * authoritative Core facts as the launch descriptor (same semantics as
+   * ResolveWebBundleResponse fields 2 and 3).
+   *
+   * @generated from field: repeated string granted_permissions = 3;
+   */
+  grantedPermissions: string[];
+
+  /**
+   * @generated from field: int64 grant_revision = 4;
+   */
+  grantRevision: bigint;
+};
+
+/**
+ * Describes the message workos.surface.v1.ResolveSurfaceLaunchResponse.
+ * Use `create(ResolveSurfaceLaunchResponseSchema)` to create a new message.
+ */
+export const ResolveSurfaceLaunchResponseSchema: GenMessage<ResolveSurfaceLaunchResponse> = /*@__PURE__*/
+  messageDesc(file_workos_surface_v1_surface_resolver, 9);
+
+/**
  * @generated from service workos.surface.v1.SurfaceLaunchResolverService
  */
 export const SurfaceLaunchResolverService: GenService<{
@@ -197,6 +393,21 @@ export const SurfaceLaunchResolverService: GenService<{
     methodKind: "unary";
     input: typeof ReadWebBundleAssetRequestSchema;
     output: typeof ReadWebBundleAssetResponseSchema;
+  },
+  /**
+   * ResolveSurfaceLaunch is the generic renderer-neutral resolution: it
+   * returns the exact installed descriptor under a oneof so the runtime can
+   * select the supported renderer. Unknown/foreign/archived/uninstalled
+   * installations are NotFound; a stored canonical manifest that violates its
+   * own profile is sanitized Internal; a healthy but unsupported runtime is
+   * FailedPrecondition.
+   *
+   * @generated from rpc workos.surface.v1.SurfaceLaunchResolverService.ResolveSurfaceLaunch
+   */
+  resolveSurfaceLaunch: {
+    methodKind: "unary";
+    input: typeof ResolveSurfaceLaunchRequestSchema;
+    output: typeof ResolveSurfaceLaunchResponseSchema;
   },
 }> = /*@__PURE__*/
   serviceDesc(file_workos_surface_v1_surface_resolver, 0);
