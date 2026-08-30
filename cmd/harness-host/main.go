@@ -7,6 +7,7 @@ import (
 
 	commonv1 "github.com/yangtao121/workos/gen/go/workos/common/v1"
 	"github.com/yangtao121/workos/gen/go/workos/common/v1/commonv1connect"
+	"github.com/yangtao121/workos/gen/go/workos/credential/v1/credentialv1connect"
 	"github.com/yangtao121/workos/gen/go/workos/harness/v1/harnessv1connect"
 	"github.com/yangtao121/workos/internal/harness/adapters/deepseek"
 	"github.com/yangtao121/workos/internal/harness/adapters/fake"
@@ -19,7 +20,9 @@ import (
 	"github.com/yangtao121/workos/internal/platform/httpserver"
 	"github.com/yangtao121/workos/internal/platform/ids"
 	"github.com/yangtao121/workos/internal/platform/logging"
+	"github.com/yangtao121/workos/internal/platform/privatetls"
 	"github.com/yangtao121/workos/internal/platform/systemhandler"
+	"github.com/yangtao121/workos/internal/platform/telemetry"
 )
 
 func main() {
@@ -35,8 +38,28 @@ func run(logger *slog.Logger) error {
 	if err != nil {
 		return err
 	}
+	// The private execution channel is the only path to TaskExecution and
+	// CredentialLease RPCs: without its client identity this process cannot
+	// claim tasks at all, so startup fails instead of polling in the dark.
+	if err := cfg.ValidateHarness(); err != nil {
+		return err
+	}
+	clientTLS, err := privatetls.ClientConfig(privatetls.Identity{
+		CAFile:       cfg.Harness.ExecutionCAFile,
+		CertFile:     cfg.Harness.ExecutionCertFile,
+		KeyFile:      cfg.Harness.ExecutionKeyFile,
+		PeerIdentity: privatetls.IdentityCore,
+	})
+	if err != nil {
+		return err
+	}
+	executionClient := telemetry.HTTPClientWithTLS(clientTLS)
+	// DeepSeek has no long-lived API key anymore: it runs only with a
+	// task-bound credential lease derived from the active task lease
+	// (ADR-0009). A legacy DEEPSEEK_API_KEY surfaces as a configuration
+	// issue and keeps the provider honestly unavailable.
 	deepSeekProvider := deepseek.New(deepseek.Config{
-		Enabled: cfg.Harness.DeepSeek.Enabled, Environment: cfg.Environment, APIKey: cfg.Harness.DeepSeek.APIKey,
+		Enabled: cfg.Harness.DeepSeek.Enabled, Environment: cfg.Environment,
 		BaseURL: cfg.Harness.DeepSeek.BaseURL, Model: cfg.Harness.DeepSeek.Model, Timeout: cfg.Harness.DeepSeek.Timeout,
 		RuntimePath: cfg.Harness.DeepSeek.RuntimePath, CordisConfigPath: cfg.Harness.DeepSeek.CordisConfigPath,
 		ConfigurationIssue: cfg.Harness.DeepSeek.ConfigurationIssue,
@@ -52,7 +75,8 @@ func run(logger *slog.Logger) error {
 	value := broker.New(providers...)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	go worker.New(cfg.Harness.WorkerID, cfg.Harness.CoreURL, cfg.Harness.PollInterval, value, logger).Run(ctx)
+	credentialClient := credentialv1connect.NewCredentialLeaseServiceClient(executionClient, cfg.Harness.ExecutionURL)
+	go worker.New(cfg.Harness.WorkerID, cfg.Harness.ExecutionURL, cfg.Harness.PollInterval, value, logger, credentialClient, executionClient).Run(ctx)
 
 	mux := httpserver.NewMux("harness-host", nil)
 	harnessPath, harnessHandler := harnessv1connect.NewHarnessHostServiceHandler(harnesstransport.New(value))

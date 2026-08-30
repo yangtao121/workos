@@ -63,6 +63,11 @@ func TestPrivateConnectServicesAreNotForwarded(t *testing.T) {
 		"/workos.harness.v1.HarnessHostService/ExecuteTask",
 		"/workos.harness.v1.HarnessHostService/CancelRun",
 		"/workos.taskexecution.v1.TaskExecutionService/ClaimTask",
+		"/workos.taskexecution.v1.TaskExecutionService/AppendTaskArtifact",
+		"/workos.credential.v1.CredentialLeaseService/AcquireTaskCredential",
+		"/workos.credential.v1.CredentialAdminService/PutCredential",
+		"/workos.credential.v1.CredentialAdminService/RotateCredential",
+		"/workos.credential.v1.CredentialAdminService/RevokeCredential",
 		"/workos.surface.v1.SurfaceLaunchResolverService/ResolveWebBundle",
 		"/workos.workload.v1.WorkloadService/StartWorkload",
 	} {

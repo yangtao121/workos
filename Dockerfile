@@ -34,6 +34,11 @@ RUN CGO_ENABLED=0 go build -trimpath -ldflags='-s -w' -o /out/workos-gateway ./c
     && CGO_ENABLED=0 go build -trimpath -ldflags='-s -w' -o /out/indexer ./cmd/indexer \
     && CGO_ENABLED=0 go build -trimpath -ldflags='-s -w' -o /out/workosctl ./cmd/workosctl \
     && CGO_ENABLED=0 go build -trimpath -ldflags='-s -w' -o /out/generic-harness-fixture ./cmd/generic-harness-fixture
+COPY tests ./tests
+# workos-dev-fixture is DEV/CI-only: it generates the throwaway execution
+# CA/leaf identities and the dev vault master key. It is never a production
+# provisioning tool (ADR-0009).
+RUN CGO_ENABLED=0 go build -trimpath -ldflags='-s -w' -o /out/workos-dev-fixture ./tests/devauth
 
 FROM ${RUNTIME_IMAGE} AS deepseek-runtime
 ARG DEBIAN_MIRROR
@@ -76,7 +81,7 @@ COPY --from=build /out/ /usr/local/bin/
 # The gateway-owned admin Unix socket lives here in production pairing mode
 # (systemd provides RuntimeDirectory on hosts; the image ships the mount
 # point for containerized runs).
-RUN install -d -m 0755 -o 10001 -g 10001 /run/workos /run/workos/tls
+RUN install -d -m 0755 -o 10001 -g 10001 /run/workos /run/workos/tls /run/workos/execution
 USER 10001:10001
 WORKDIR /tmp
-EXPOSE 8080 8081 8082 8083 8084 8085
+EXPOSE 8080 8081 8082 8083 8084 8085 8086

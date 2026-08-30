@@ -5,14 +5,14 @@
 
 ## 进程所有权
 
-| 进程             | 当前所有权                                                                                                            | 不拥有                            |
-| ---------------- | --------------------------------------------------------------------------------------------------------------------- | --------------------------------- |
-| workos-gateway   | TLS、identity/device auth、capability、公开 API、静态 Shell                                                           | Project/Harness 状态              |
-| workos-core      | Project、Task Router、Event Backbone、Harness Catalog facade、binding orchestration、App Registry、Artifact contracts | Provider 进程、credential、cgroup |
-| harness-host     | Broker、Provider Adapter、run execution                                                                               | Project 数据、公开 API            |
-| runtime-host     | Workload、runner、Surface                                                                                             | Incident 决策、业务数据           |
-| reliability-host | Supervisor、Incident、Repair/Deploy ports                                                                             | App 业务逻辑、Harness 路由        |
-| indexer          | Archive/RAG/indexing                                                                                                  | 原始业务表写权限                  |
+| 进程             | 当前所有权                                                                                                                                             | 不拥有                     |
+| ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------- |
+| workos-gateway   | TLS、identity/device auth、capability、公开 API、静态 Shell                                                                                            | Project/Harness 状态       |
+| workos-core      | Project、Task Router、Event Backbone、Harness Catalog facade、binding orchestration、App Registry、Artifact contracts、Credential Vault（sealed 事实） | Provider 进程、cgroup      |
+| harness-host     | Broker、Provider Adapter、run execution                                                                                                                | Project 数据、公开 API     |
+| runtime-host     | Workload、runner、Surface                                                                                                                              | Incident 决策、业务数据    |
+| reliability-host | Supervisor、Incident、Repair/Deploy ports                                                                                                              | App 业务逻辑、Harness 路由 |
+| indexer          | Archive/RAG/indexing                                                                                                                                   | 原始业务表写权限           |
 
 服务之间使用版本化 Connect API 与 durable event，不共享 internal package 或直接查询对方 schema。
 
@@ -755,6 +755,62 @@ supervision 决策/Incident/action ledger            → reliability-host
   门禁交付；Podman fixture 使用唯一 image tag、在 after snapshot 前精确清理，且只证明 adapter/
   cgroup boundary，不冒充跨进程 E2E。write transport（POST/表单/WebSocket）、network capability、repair/deployment/
   rollback、background-service/native runner 仍 unavailable。
+
+## Central Credential Vault 与私有 harness 执行通道（ADR-0009，2026-08-30）
+
+长期 provider credential 的唯一 durable authority 是 workos-core Credential Vault
+（`internal/core/credential`，migrations `023`/`024`）。本文早先"workos-core 不拥有
+credential"的表述由此显式取代。事实边界：
+
+```text
+operator 0600 文件/stdin → workosctl 进程内存
+  → Core credential admin Unix socket（0600，仅 CredentialAdminService，16 KiB pre-decode）
+  → canonical 校验 → master-key 派生的 keyed request digest（HMAC-SHA256）
+  → AES-256-GCM seal（CSPRNG nonce，AAD 绑定 version/owner/ID/consumer/purpose/revision）
+  → workos_core.provider_credentials（只有 nonce+ciphertext，绝无 plaintext）
+
+active harness worker → Core 私有 mTLS listener（TLS 1.3，URI SAN 精确身份）
+  → AcquireTaskCredential(task_lease_id, worker_id)
+  → 单事务：Agent tx-scoped authority 锁定 active lease 并读取 durable snapshot
+     + Credential tx-scoped store 验证 exact revision 并物理仲裁插入 short lease
+  → 一次 bounded in-memory secret 交付 → 该 task 的 allowlisted child env
+```
+
+- 模块内规则：credential material 1–8192 bytes（不 trim，拒 NUL/CR/LF）；consumer ID 为
+  1–128 ASCII `[-a-z0-9._]`；purpose 第一版仅 `provider-api-key.v1`；每个
+  `(owner, consumer, purpose)` 至多一个 active credential；rotate/revoke 保持逻辑 ID 且
+  revision 严格 +1；admin 幂等使用 keyed digest + versioned 首响应快照（失败不消费 key）。
+  master key 来自绝对路径、非 symlink、owner-only、恰好 32 raw bytes 的文件；认证失败=
+  stored corruption→净化 Internal，不 fallback 明文。Go 无形式化 zeroization，实现只做
+  best-effort 覆写并承认该限制。
+- Task credential snapshot（agent-owned `agent_task_credentials`，无跨模块 FK）：fresh user
+  task、App allow 与 waiting-approval task 都在任何 queue/outbox/reservation 前解析 exact
+  `(credential_id, revision)` 并与 task 同事务持久化；idempotency replay 返回首次 snapshot
+  不漂移；approval decide 时经中立 port 重验，漂移保持 pending（FailedPrecondition）。
+- short lease（`task_credential_leases`，`task_lease_id` 唯一）：Acquire 只接受
+  task lease + worker；response-loss replay 返回同一 lease 行与同一 revision；Renew 只延长到
+  新的 active task lease expiry 且永不再返回 secret，并重验 credential revision；rotate/revoke
+  后下一次 heartbeat（≤10s）收到 invalid verdict，worker cancel 并 kill child；Release 幂等；
+  过期由有界 sweep + 读路径双重收敛。
+- 双私有 listener：Core 进程内新增 credential admin Unix socket 与 mutual TLS 1.3 harness
+  execution listener（仅 `TaskExecutionService` + `CredentialLeaseService`，URI SAN
+  `urn:workos:core` / `urn:workos:harness-host`，private CA 双端验证，CA 私钥不进常驻进程）。
+  普通 Core HTTP mux 删除 TaskExecution 注册；TaskExecution 与全部 Credential RPC 对 Gateway
+  保持确定性 404。mTLS 只证明 Core↔harness execution 身份，不是全系统 service mesh。
+- Catalog owner-aware projection：provider 声明 `requires_task_credential_lease` 时，owner 缺
+  active credential 则该 provider 投影 unavailable（固定安全文案，无 foreign 存在性 oracle）；
+  ProjectHarnessBinding 的 `credential_ref` 由服务端注入（active credential 的 UUIDv7 opaque
+  reference），客户端不可提交。缺 master key/admin socket 时 vault 如实 unavailable，
+  credential-required provider 对新 binding/run fail closed，其余 Core 功能正常启动。
+- DeepSeek：`Config.APIKey` 与 `DEEPSEEK_API_KEY` 读取路径删除；legacy env 只产生 sanitized
+  迁移指引 configuration issue；provider 声明 `requires_task_credential_lease=true`，仅在
+  consumer/purpose 匹配且未过期的 neutral lease 下启动 child，child env 只含该 task 的
+  lease secret，不跨 task 缓存。dev/CI 的执行通道身份与 dev master key 由一次性
+  workos-dev-fixture 在共享 runtime volume 内生成（UID 匹配容器用户）；生产经 systemd
+  credential/file provisioning，workos-dev-fixture 永不是生产工具。
+- 门禁：`make test-credential-vault`（真实 PostgreSQL + Core mTLS listener + harness-host +
+  workosctl admin socket + 本地 DeepSeek fixture；missing/granted/revoked 三阶段）。
+  `023`/`024` 为新 forward-only migration，001–022 逐字节不变。
 
 ## 状态与失败
 

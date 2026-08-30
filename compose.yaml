@@ -20,6 +20,22 @@ x-workos-service: &workos-service
     WORKOS_DATABASE_URL: postgres://workos:workos@127.0.0.1:5432/workos?sslmode=disable
     WORKOS_OWNER_ID: 0198d7ea-2110-7c42-b659-c5e4d73bc337
     WORKOS_DEVICE_ID: 0198d7ea-2110-7c42-b659-c5e4d73bc338
+    # Dev/CI credential vault + private mTLS execution channel (ADR-0009).
+    # Material is generated once by the bootstrap one-shot into the shared
+    # runtime volume and is owned by the container user; production
+    # provisions it through systemd credentials / file facilities instead.
+    WORKOS_CREDENTIAL_MASTER_KEY_FILE: /run/workos/vault-master.key
+    WORKOS_CREDENTIAL_ADMIN_SOCKET: /run/workos/credential-admin.sock
+    WORKOS_CORE_EXECUTION_ADDRESS: 127.0.0.1:8086
+    WORKOS_CORE_EXECUTION_CA_FILE: /run/workos/execution/ca.crt
+    WORKOS_CORE_EXECUTION_CERT_FILE: /run/workos/execution/core.crt
+    WORKOS_CORE_EXECUTION_KEY_FILE: /run/workos/execution/core.key
+    WORKOS_CORE_EXECUTION_URL: https://127.0.0.1:8086
+    WORKOS_HARNESS_EXECUTION_CA_FILE: /run/workos/execution/ca.crt
+    WORKOS_HARNESS_EXECUTION_CERT_FILE: /run/workos/execution/harness.crt
+    WORKOS_HARNESS_EXECUTION_KEY_FILE: /run/workos/execution/harness.key
+  volumes: &workos-runtime-volume
+    - workos-core-runtime:/run/workos
   depends_on:
     bootstrap:
       condition: service_completed_successfully
@@ -44,9 +60,13 @@ services:
     image: workos:dev
     build: *workos-build
     network_mode: host
-    command: ["/usr/local/bin/workosctl", "bootstrap"]
+    # The one-shot bootstrap also provisions the DEV-ONLY fixture material:
+    # the execution CA/leaf identities and the vault master key. This is a
+    # development convenience; production provisioning never runs this.
+    command: ["/bin/sh", "-c", "workosctl bootstrap && workos-dev-fixture -root /run/workos"]
     environment: *workos-environment
     restart: "no"
+    volumes: *workos-runtime-volume
     depends_on:
       postgres:
         condition: service_healthy
@@ -71,8 +91,10 @@ services:
       <<: *workos-environment
       WORKOS_HTTP_ADDRESS: 127.0.0.1:8082
       WORKOS_CORE_URL: http://127.0.0.1:8081
+      # The harness-host never holds a long-lived DeepSeek API key (ADR-0009):
+      # provider credentials live encrypted in the Core Credential Vault and
+      # reach the adapter only as short-lived, task-bound leases.
       WORKOS_DEEPSEEK_ENABLED: ${WORKOS_DEEPSEEK_ENABLED:-false}
-      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
       WORKOS_DEEPSEEK_BASE_URL: ${WORKOS_DEEPSEEK_BASE_URL:-https://api.deepseek.com}
       WORKOS_DEEPSEEK_MODEL: ${WORKOS_DEEPSEEK_MODEL:-deepseek-v4-flash}
       WORKOS_DEEPSEEK_TIMEOUT: ${WORKOS_DEEPSEEK_TIMEOUT:-2m}
@@ -162,3 +184,4 @@ services:
 volumes:
   workos-postgres:
   workos-go-cache:
+  workos-core-runtime:

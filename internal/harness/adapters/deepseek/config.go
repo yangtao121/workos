@@ -31,12 +31,15 @@ var supportedModels = map[string]struct{}{
 	"deepseek-v4-pro":   {},
 }
 
-// Config contains only process-local adapter configuration. APIKey is populated
-// from DEEPSEEK_API_KEY by the platform config loader and must never be serialized.
+// Config contains only process-local adapter configuration. It deliberately
+// has no API key field: since ADR-0009 the long-lived provider credential
+// lives encrypted in the Core Credential Vault and reaches the adapter only
+// as a short-lived, task-bound, in-memory lease. A DEEPSEEK_API_KEY in the
+// harness-host environment is a legacy misconfiguration and is reported as
+// such — never silently used.
 type Config struct {
 	Enabled            bool
 	Environment        string
-	APIKey             string
 	BaseURL            string
 	Model              string
 	Timeout            time.Duration
@@ -85,12 +88,6 @@ func validateConfig(config Config) error {
 	}
 	if !config.Enabled {
 		return errors.New("DeepSeek provider is disabled")
-	}
-	if config.APIKey == "" {
-		return errors.New("DeepSeek API key is not configured")
-	}
-	if len(config.APIKey) > 8*1024 || strings.ContainsAny(config.APIKey, "\r\n") {
-		return errors.New("DeepSeek API key is invalid")
 	}
 	parsed, err := url.Parse(config.BaseURL)
 	if err != nil || !parsed.IsAbs() || parsed.Host == "" || parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" {

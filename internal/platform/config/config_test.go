@@ -77,7 +77,9 @@ func TestCoreRejectsInvalidCatalogAndBindingConfiguration(t *testing.T) {
 			t.Fatalf("invalid Core configuration was accepted: %#v", cfg)
 		}
 	}
-	if err := defaults().ValidateCore(); err != nil {
+	safe := defaults()
+	safe.Execution = Execution{Address: "127.0.0.1:8086", CAFile: "/etc/workos/execution/ca.crt", CertFile: "/etc/workos/execution/core.crt", KeyFile: "/etc/workos/execution/core.key"}
+	if err := safe.ValidateCore(); err != nil {
 		t.Fatalf("safe Core defaults were rejected: %v", err)
 	}
 }
@@ -91,7 +93,6 @@ func TestLoadDeepSeekEnvironment(t *testing.T) {
 		_ = os.Unsetenv(key)
 	}
 	t.Setenv("WORKOS_DEEPSEEK_ENABLED", "true")
-	t.Setenv("DEEPSEEK_API_KEY", "fixture-secret")
 	t.Setenv("WORKOS_DEEPSEEK_BASE_URL", "https://fixture.invalid")
 	t.Setenv("WORKOS_DEEPSEEK_MODEL", "deepseek-v4-pro")
 	t.Setenv("WORKOS_DEEPSEEK_TIMEOUT", "45s")
@@ -102,7 +103,7 @@ func TestLoadDeepSeekEnvironment(t *testing.T) {
 		t.Fatal(err)
 	}
 	got := cfg.Harness.DeepSeek
-	if !got.Enabled || got.APIKey != "fixture-secret" || got.BaseURL != "https://fixture.invalid" || got.Model != "deepseek-v4-pro" || got.Timeout != 45*time.Second || got.RuntimePath != "/opt/dsh" || got.CordisConfigPath != "/opt/cordis.yml" || got.ConfigurationIssue != "" {
+	if !got.Enabled || got.BaseURL != "https://fixture.invalid" || got.Model != "deepseek-v4-pro" || got.Timeout != 45*time.Second || got.RuntimePath != "/opt/dsh" || got.CordisConfigPath != "/opt/cordis.yml" || got.ConfigurationIssue != "" {
 		t.Fatalf("unexpected DeepSeek environment mapping: %#v", got)
 	}
 }

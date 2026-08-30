@@ -15,9 +15,15 @@ does not cross the WorkOS provider, Core, Proto, or database boundary.
 
 - The provider is registered but disabled by default. A configured key never
   implicitly enables it.
-- `DEEPSEEK_API_KEY` is the only credential input. It is passed only to the
-  allowlisted child environment and the official runtime sends it as the HTTP
-  Authorization header. WorkOS never logs it or includes it in an event.
+- The adapter holds NO long-lived credential. Since ADR-0009 the long-lived
+  API key lives encrypted in the Core Credential Vault; every run requires a
+  short-lived, task-bound credential lease (`requires_task_credential_lease`)
+  derived by Core from the active task lease over the private mTLS execution
+  channel. The lease secret is passed only to the allowlisted child
+  environment of that one task and the official runtime sends it as the HTTP
+  Authorization header. WorkOS never logs it or includes it in an event. A
+  legacy `DEEPSEEK_API_KEY` in the harness-host environment produces a
+  sanitized configuration issue (migration direction) and is never read.
 - Production base URLs require HTTPS. Development and test may use HTTP only
   for a literal loopback host, enabling the keyless fixture.
 - An empty role and the exact role `general` have the same fixed, no-tools
@@ -44,16 +50,20 @@ Non-secret defaults live in `deploy/config/dev.yaml`. To enable the adapter:
 
 ```bash
 export WORKOS_DEEPSEEK_ENABLED=true
-export DEEPSEEK_API_KEY='replace-with-a-new-key'
 export WORKOS_DEEPSEEK_MODEL=deepseek-v4-flash
 export WORKOS_DEEPSEEK_TIMEOUT=2m
+# store the credential once, over the Core admin Unix socket:
+printf '%s' 'the-key' | workosctl credential put --consumer deepseek
 docker compose up -d --build harness-host
 ```
 
 Optional overrides are `WORKOS_DEEPSEEK_BASE_URL`,
 `WORKOS_DEEPSEEK_RUNTIME_PATH`, and `WORKOS_DEEPSEEK_CORDIS_CONFIG`. Never put a
 real key in YAML, Compose source, a fixture, a command transcript, or a task
-record. A key pasted into chat or logs must be revoked before use.
+record. A key pasted into chat or logs must be revoked before use. The owner's
+vault credential is resolved by Core at binding time and snapshotted per task;
+rotating or revoking it stops new acquires and fails the next worker
+heartbeat.
 
 Provider health distinguishes disabled/misconfigured (`UNAVAILABLE`), a valid
 configuration (`HEALTHY`), and a transient provider/transport failure

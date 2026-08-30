@@ -16,14 +16,18 @@ type ApprovalService struct {
 	repository    ports.Repository
 	installations ports.InstallationSource
 	providers     ports.ProviderCatalog
-	now           func() time.Time
+	// credentials re-proves the waiting task's durable credential snapshot
+	// at decision time. A nil verifier fails closed for credential-bearing
+	// tasks (the vault is unavailable), which is the safe direction.
+	credentials ports.CredentialSnapshotVerifier
+	now         func() time.Time
 }
 
-func NewApprovalService(repository ports.Repository, installations ports.InstallationSource, providers ports.ProviderCatalog) (*ApprovalService, error) {
+func NewApprovalService(repository ports.Repository, installations ports.InstallationSource, providers ports.ProviderCatalog, credentials ports.CredentialSnapshotVerifier) (*ApprovalService, error) {
 	if repository == nil || installations == nil || providers == nil {
 		return nil, errors.New("approval service requires repository, installation, and provider dependencies")
 	}
-	return &ApprovalService{repository: repository, installations: installations, providers: providers, now: func() time.Time { return time.Now().UTC() }}, nil
+	return &ApprovalService{repository: repository, installations: installations, providers: providers, credentials: credentials, now: func() time.Time { return time.Now().UTC() }}, nil
 }
 
 // List pages the owner's approvals in deterministic id order with optional
@@ -169,6 +173,28 @@ func (s *ApprovalService) revalidate(ctx context.Context, approval domain.Approv
 		// A policy budget beyond the provider's enforced maxima must fail
 		// closed here, not inside the adapter after quota was reserved.
 		return domain.ErrProviderCapabilityMissing
+	}
+	// The waiting task's durable credential snapshot must still point at the
+	// owner's active credential revision. A revoke, rotate, or vault outage
+	// keeps the approval pending and never silently adopts new material
+	// (ADR-0009).
+	if capabilities.RequiresTaskCredentialLease {
+		task, err := s.repository.Get(ctx, approval.OwnerUserID, approval.TaskID)
+		if err != nil {
+			if errors.Is(err, domain.ErrNotFound) {
+				return domain.ErrApprovalNotPending
+			}
+			return err
+		}
+		if task.Credential == nil || s.credentials == nil {
+			return domain.ErrProviderCredentialMissing
+		}
+		if err := s.credentials.VerifySnapshot(ctx, approval.OwnerUserID, approval.ProviderID, task.Credential.CredentialID, task.Credential.Revision); err != nil {
+			if errors.Is(err, domain.ErrLeaseLost) {
+				return domain.ErrProviderCredentialMissing
+			}
+			return err
+		}
 	}
 	return nil
 }

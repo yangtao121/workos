@@ -26,13 +26,20 @@ const (
 )
 
 type TaskLease struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	LeaseId       string                 `protobuf:"bytes,1,opt,name=lease_id,json=leaseId,proto3" json:"lease_id,omitempty"`
-	WorkerId      string                 `protobuf:"bytes,2,opt,name=worker_id,json=workerId,proto3" json:"worker_id,omitempty"`
-	Task          *v1.AgentTask          `protobuf:"bytes,3,opt,name=task,proto3" json:"task,omitempty"`
-	ExpiresAt     *timestamppb.Timestamp `protobuf:"bytes,4,opt,name=expires_at,json=expiresAt,proto3" json:"expires_at,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state     protoimpl.MessageState `protogen:"open.v1"`
+	LeaseId   string                 `protobuf:"bytes,1,opt,name=lease_id,json=leaseId,proto3" json:"lease_id,omitempty"`
+	WorkerId  string                 `protobuf:"bytes,2,opt,name=worker_id,json=workerId,proto3" json:"worker_id,omitempty"`
+	Task      *v1.AgentTask          `protobuf:"bytes,3,opt,name=task,proto3" json:"task,omitempty"`
+	ExpiresAt *timestamppb.Timestamp `protobuf:"bytes,4,opt,name=expires_at,json=expiresAt,proto3" json:"expires_at,omitempty"`
+	// requires_task_credential mirrors the durable task credential snapshot:
+	// a worker that claims a task with this flag set must derive its
+	// short-lived credential lease through AcquireTaskCredential before
+	// starting the provider, and can never receive secret material anywhere
+	// else (ADR-0009). The flag itself carries no secret and no credential
+	// identity.
+	RequiresTaskCredential bool `protobuf:"varint,5,opt,name=requires_task_credential,json=requiresTaskCredential,proto3" json:"requires_task_credential,omitempty"`
+	unknownFields          protoimpl.UnknownFields
+	sizeCache              protoimpl.SizeCache
 }
 
 func (x *TaskLease) Reset() {
@@ -91,6 +98,13 @@ func (x *TaskLease) GetExpiresAt() *timestamppb.Timestamp {
 		return x.ExpiresAt
 	}
 	return nil
+}
+
+func (x *TaskLease) GetRequiresTaskCredential() bool {
+	if x != nil {
+		return x.RequiresTaskCredential
+	}
+	return false
 }
 
 type ClaimTaskRequest struct {
@@ -812,13 +826,14 @@ var File_workos_taskexecution_v1_execution_proto protoreflect.FileDescriptor
 
 const file_workos_taskexecution_v1_execution_proto_rawDesc = "" +
 	"\n" +
-	"'workos/taskexecution/v1/execution.proto\x12\x17workos.taskexecution.v1\x1a\x1egoogle/protobuf/duration.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1bworkos/agent/v1/agent.proto\x1a!workos/artifact/v1/artifact.proto\"\xae\x01\n" +
+	"'workos/taskexecution/v1/execution.proto\x12\x17workos.taskexecution.v1\x1a\x1egoogle/protobuf/duration.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1bworkos/agent/v1/agent.proto\x1a!workos/artifact/v1/artifact.proto\"\xe8\x01\n" +
 	"\tTaskLease\x12\x19\n" +
 	"\blease_id\x18\x01 \x01(\tR\aleaseId\x12\x1b\n" +
 	"\tworker_id\x18\x02 \x01(\tR\bworkerId\x12.\n" +
 	"\x04task\x18\x03 \x01(\v2\x1a.workos.agent.v1.AgentTaskR\x04task\x129\n" +
 	"\n" +
-	"expires_at\x18\x04 \x01(\v2\x1a.google.protobuf.TimestampR\texpiresAt\"q\n" +
+	"expires_at\x18\x04 \x01(\v2\x1a.google.protobuf.TimestampR\texpiresAt\x128\n" +
+	"\x18requires_task_credential\x18\x05 \x01(\bR\x16requiresTaskCredential\"q\n" +
 	"\x10ClaimTaskRequest\x12\x1b\n" +
 	"\tworker_id\x18\x01 \x01(\tR\bworkerId\x12@\n" +
 	"\x0elease_duration\x18\x02 \x01(\v2\x19.google.protobuf.DurationR\rleaseDuration\"\\\n" +

@@ -11,15 +11,16 @@ import (
 	"time"
 
 	agentv1 "github.com/yangtao121/workos/gen/go/workos/agent/v1"
+	"github.com/yangtao121/workos/internal/harness/ports"
 )
 
 func TestProviderAcceptsCanonicalNDJSON(t *testing.T) {
 	provider := helperProvider(t, "valid", time.Second*time.Duration(helperTimeoutScale))
 	var events []*agentv1.AgentEvent
-	err := provider.Run(context.Background(), "task-1", &agentv1.AgentTaskInput{Goal: "hello"}, func(event *agentv1.AgentEvent) error {
+	err := provider.Run(context.Background(), ports.Execution{TaskID: "task-1", Input: &agentv1.AgentTaskInput{Goal: "hello"}, Emit: func(event *agentv1.AgentEvent) error {
 		events = append(events, event)
 		return nil
-	}, nil)
+	}, Artifacts: nil})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -39,7 +40,7 @@ func TestProviderRejectsMalformedAndIncompleteStreams(t *testing.T) {
 	} {
 		t.Run(test.mode, func(t *testing.T) {
 			provider := helperProvider(t, test.mode, time.Second*time.Duration(helperTimeoutScale))
-			err := provider.Run(context.Background(), "task-1", &agentv1.AgentTaskInput{Goal: "hello"}, func(*agentv1.AgentEvent) error { return nil }, nil)
+			err := provider.Run(context.Background(), ports.Execution{TaskID: "task-1", Input: &agentv1.AgentTaskInput{Goal: "hello"}, Emit: func(*agentv1.AgentEvent) error { return nil }, Artifacts: nil})
 			if err == nil || !strings.Contains(err.Error(), test.want) {
 				t.Fatalf("expected %q error, got %v", test.want, err)
 			}
@@ -49,7 +50,7 @@ func TestProviderRejectsMalformedAndIncompleteStreams(t *testing.T) {
 
 func TestProviderEnforcesTimeout(t *testing.T) {
 	provider := helperProvider(t, "timeout", 25*time.Millisecond)
-	err := provider.Run(context.Background(), "task-1", &agentv1.AgentTaskInput{}, func(*agentv1.AgentEvent) error { return nil }, nil)
+	err := provider.Run(context.Background(), ports.Execution{TaskID: "task-1", Input: &agentv1.AgentTaskInput{}, Emit: func(*agentv1.AgentEvent) error { return nil }, Artifacts: nil})
 	if err == nil || !strings.Contains(err.Error(), "context deadline exceeded") {
 		t.Fatalf("expected deadline error, got %v", err)
 	}

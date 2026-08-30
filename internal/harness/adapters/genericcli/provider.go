@@ -50,10 +50,16 @@ func (p *Provider) Describe() *harnessv1.HarnessProviderInfo {
 
 // Run keeps structured artifact support honestly unsupported (ADR-0008): the
 // sink is ignored and requested artifact types are refused outright.
-func (p *Provider) Run(ctx context.Context, taskID string, input *agentv1.AgentTaskInput, emit ports.Emit, artifacts ports.ArtifactSink) error {
-	_ = artifacts
+func (p *Provider) Run(ctx context.Context, execution ports.Execution) error {
+	taskID, input, emit := execution.TaskID, execution.Input, execution.Emit
+	_ = execution.Artifacts
 	if len(input.GetOutputArtifactTypes()) != 0 {
 		return ports.NewRunError(ports.ErrorKindInvalidInput, "generic CLI harness does not support structured artifacts", false, nil)
+	}
+	// The generic CLI has no credential path: a credential lease attached to
+	// its execution is a protocol violation, never silently ignored.
+	if execution.Credential != nil {
+		return ports.NewRunError(ports.ErrorKindInvalidInput, "generic CLI harness does not accept credential leases", false, nil)
 	}
 	ctx, cancel := context.WithTimeout(ctx, p.config.Timeout)
 	defer cancel()

@@ -54,7 +54,7 @@ func (f *fakeProviders) Capabilities(_ context.Context, providerID string) (agen
 
 // newTestRouter wires the default allow-policy adjudication fakes.
 func newTestRouter(agents *fakeAgents, projects *fakeProjects) (*TaskRouter, error) {
-	return NewTaskRouter(agents, projects, &fakePolicies{}, &fakeProviders{}, "fake")
+	return NewTaskRouter(agents, projects, &fakePolicies{}, &fakeProviders{}, fakeCredentials{}, "fake")
 }
 
 type fakeAgents struct {
@@ -296,7 +296,7 @@ func TestTaskRouterSubmitForAppRoutesRequireApprovalMode(t *testing.T) {
 		},
 		Source: agentdomain.PolicySourceExplicit, Revision: 2,
 	}}
-	router, err := NewTaskRouter(agents, &fakeProjects{}, policies, &fakeProviders{}, "fake")
+	router, err := NewTaskRouter(agents, &fakeProjects{}, policies, &fakeProviders{}, fakeCredentials{}, "fake")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -326,7 +326,7 @@ func TestTaskRouterSubmitForAppBlockModeFailsClosed(t *testing.T) {
 		},
 		Source: agentdomain.PolicySourceExplicit, Revision: 2,
 	}}
-	router, err := NewTaskRouter(agents, &fakeProjects{}, policies, &fakeProviders{}, "fake")
+	router, err := NewTaskRouter(agents, &fakeProjects{}, policies, &fakeProviders{}, fakeCredentials{}, "fake")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -346,7 +346,7 @@ func TestTaskRouterSubmitForAppBlockModeFailsClosed(t *testing.T) {
 func TestTaskRouterSubmitForAppRejectsMissingProviderBudgetContract(t *testing.T) {
 	t.Parallel()
 	agents := &fakeAgents{}
-	router, err := NewTaskRouter(agents, &fakeProjects{}, &fakePolicies{}, &fakeProviders{}, "unknown")
+	router, err := NewTaskRouter(agents, &fakeProjects{}, &fakePolicies{}, &fakeProviders{}, fakeCredentials{}, "unknown")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -359,7 +359,7 @@ func TestTaskRouterSubmitForAppRejectsMissingProviderBudgetContract(t *testing.T
 		t.Fatalf("provider capability verdict: %v", err)
 	}
 	partial := &fakeProviders{capabilities: agentports.ProviderCapabilities{HardTokenBudget: true, UsageReporting: true}}
-	router, err = NewTaskRouter(agents, &fakeProjects{}, &fakePolicies{}, partial, "fake")
+	router, err = NewTaskRouter(agents, &fakeProjects{}, &fakePolicies{}, partial, fakeCredentials{}, "fake")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -380,7 +380,7 @@ func TestTaskRouterSubmitForAppRejectsMissingProviderBudgetContract(t *testing.T
 	}}
 	policy := agentdomain.SystemDefaultPolicy()
 	policy.Spec.MaxOutputTokensPerTask = 8_192
-	router, err = NewTaskRouter(agents, &fakeProjects{}, &fixedPolicies{policy: policy}, underpowered, "fake")
+	router, err = NewTaskRouter(agents, &fakeProjects{}, &fixedPolicies{policy: policy}, underpowered, fakeCredentials{}, "fake")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -456,7 +456,7 @@ func TestTaskRouterRejectsUnsupportedArtifactTypesWithZeroSideEffects(t *testing
 				// The unknown provider sentinel is keyed on the provider id.
 				providers.capabilities = agentports.ProviderCapabilities{}
 			}
-			router, err := NewTaskRouter(agents, projects, &fakePolicies{}, providers, "fake")
+			router, err := NewTaskRouter(agents, projects, &fakePolicies{}, providers, fakeCredentials{}, "fake")
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -484,7 +484,7 @@ func TestTaskRouterRejectsUnsupportedArtifactTypesWithZeroSideEffects(t *testing
 			HardTokenBudget: true, HardRuntimeDeadline: true, UsageReporting: true,
 			StructuredArtifacts: true, SupportedArtifactTypes: requested,
 		}}
-		router, err := NewTaskRouter(agents, &fakeProjects{}, &fakePolicies{}, providers, "fake")
+		router, err := NewTaskRouter(agents, &fakeProjects{}, &fakePolicies{}, providers, fakeCredentials{}, "fake")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -498,4 +498,12 @@ func TestTaskRouterRejectsUnsupportedArtifactTypesWithZeroSideEffects(t *testing
 			t.Fatalf("expected exactly one submit: %#v", agents.submitted)
 		}
 	})
+}
+
+// fakeCredentials resolves no credential: tests that need one assert the
+// fail-closed verdicts explicitly.
+type fakeCredentials struct{}
+
+func (fakeCredentials) ActiveSnapshot(context.Context, string, string) (agentports.CredentialSnapshotRef, error) {
+	return agentports.CredentialSnapshotRef{}, agentdomain.ErrNotFound
 }

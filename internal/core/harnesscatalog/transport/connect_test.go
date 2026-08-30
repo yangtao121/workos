@@ -8,6 +8,8 @@ import (
 
 	"connectrpc.com/connect"
 
+	"github.com/yangtao121/workos/internal/platform/identity"
+
 	harnessv1 "github.com/yangtao121/workos/gen/go/workos/harness/v1"
 	"github.com/yangtao121/workos/internal/core/harnesscatalog/application"
 	"github.com/yangtao121/workos/internal/core/harnesscatalog/domain"
@@ -33,7 +35,8 @@ func TestCatalogTransportUsesSafeCanonicalErrors(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		_, got := New(service).GetHarnessCatalog(context.Background(), connect.NewRequest(&harnessv1.GetHarnessCatalogRequest{}))
+		ctx := identity.WithContext(context.Background(), identity.Identity{UserID: "owner-1", DeviceID: "device-1"})
+		_, got := New(service).GetHarnessCatalog(ctx, connect.NewRequest(&harnessv1.GetHarnessCatalogRequest{}))
 		if connect.CodeOf(got) != test.code || got == nil || containsUnsafe(got.Error()) {
 			t.Fatalf("unsafe catalog transport error: code=%s err=%v", connect.CodeOf(got), got)
 		}

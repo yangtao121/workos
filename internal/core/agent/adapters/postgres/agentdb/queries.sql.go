@@ -563,6 +563,25 @@ func (q *Queries) GetAgentTaskByIdempotency(ctx context.Context, arg GetAgentTas
 	return i, err
 }
 
+const getAgentTaskCredential = `-- name: GetAgentTaskCredential :one
+SELECT task_id, provider_id, credential_id, credential_revision, created_at
+FROM workos_core.agent_task_credentials
+WHERE task_id = $1
+`
+
+func (q *Queries) GetAgentTaskCredential(ctx context.Context, taskID string) (WorkosCoreAgentTaskCredential, error) {
+	row := q.db.QueryRow(ctx, getAgentTaskCredential, taskID)
+	var i WorkosCoreAgentTaskCredential
+	err := row.Scan(
+		&i.TaskID,
+		&i.ProviderID,
+		&i.CredentialID,
+		&i.CredentialRevision,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
 const getAgentTaskForUpdate = `-- name: GetAgentTaskForUpdate :one
 SELECT id, owner_user_id, idempotency_key, project_id, input, state, provider_id,
        harness_instance_id, run_id, last_event_sequence, cancellation_requested, created_at, updated_at,
@@ -635,6 +654,25 @@ func (q *Queries) GetAgentTaskUnscoped(ctx context.Context, id string) (WorkosCo
 		&i.BudgetMaxRuntimeSeconds,
 	)
 	return i, err
+}
+
+const getTaskLeaseExpiry = `-- name: GetTaskLeaseExpiry :one
+SELECT o.locked_until
+FROM workos_events.outbox AS o
+WHERE o.lease_id = $1 AND o.locked_by = $2 AND o.processed_at IS NULL
+FOR UPDATE
+`
+
+type GetTaskLeaseExpiryParams struct {
+	LeaseID  pgtype.UUID `json:"lease_id"`
+	LockedBy pgtype.Text `json:"locked_by"`
+}
+
+func (q *Queries) GetTaskLeaseExpiry(ctx context.Context, arg GetTaskLeaseExpiryParams) (pgtype.Timestamptz, error) {
+	row := q.db.QueryRow(ctx, getTaskLeaseExpiry, arg.LeaseID, arg.LockedBy)
+	var locked_until pgtype.Timestamptz
+	err := row.Scan(&locked_until)
+	return locked_until, err
 }
 
 const getTaskPublicationEvent = `-- name: GetTaskPublicationEvent :one
@@ -836,6 +874,34 @@ func (q *Queries) InsertAgentTask(ctx context.Context, arg InsertAgentTaskParams
 		return 0, err
 	}
 	return result.RowsAffected(), nil
+}
+
+const insertAgentTaskCredential = `-- name: InsertAgentTaskCredential :exec
+INSERT INTO workos_core.agent_task_credentials (
+    task_id, provider_id, credential_id, credential_revision, created_at
+) VALUES ($1, $2, $3, $4, $5)
+`
+
+type InsertAgentTaskCredentialParams struct {
+	TaskID             string             `json:"task_id"`
+	ProviderID         string             `json:"provider_id"`
+	CredentialID       string             `json:"credential_id"`
+	CredentialRevision int64              `json:"credential_revision"`
+	CreatedAt          pgtype.Timestamptz `json:"created_at"`
+}
+
+// Durable per-task credential snapshot (ADR-0009): the exact credential ID
+// and revision a fresh task was admitted with, persisted in the same
+// transaction as the task row. No secret material is stored here.
+func (q *Queries) InsertAgentTaskCredential(ctx context.Context, arg InsertAgentTaskCredentialParams) error {
+	_, err := q.db.Exec(ctx, insertAgentTaskCredential,
+		arg.TaskID,
+		arg.ProviderID,
+		arg.CredentialID,
+		arg.CredentialRevision,
+		arg.CreatedAt,
+	)
+	return err
 }
 
 const insertTaskEvent = `-- name: InsertTaskEvent :exec
@@ -1149,6 +1215,49 @@ func (q *Queries) LockTaskArtifactStream(ctx context.Context, arg LockTaskArtifa
 		&i.State,
 		&i.ProviderID,
 		&i.CreatedAt,
+	)
+	return i, err
+}
+
+const lockTaskCredentialLeaseFacts = `-- name: LockTaskCredentialLeaseFacts :one
+SELECT t.id, t.owner_user_id, t.provider_id, o.locked_until,
+       c.credential_id, c.credential_revision
+FROM workos_events.outbox AS o
+JOIN workos_core.agent_tasks AS t ON t.id = o.aggregate_id
+LEFT JOIN workos_core.agent_task_credentials AS c ON c.task_id = t.id
+WHERE o.lease_id = $1 AND o.locked_by = $2 AND o.processed_at IS NULL AND o.locked_until >= $3
+FOR UPDATE OF o
+`
+
+type LockTaskCredentialLeaseFactsParams struct {
+	LeaseID     pgtype.UUID        `json:"lease_id"`
+	LockedBy    pgtype.Text        `json:"locked_by"`
+	LockedUntil pgtype.Timestamptz `json:"locked_until"`
+}
+
+type LockTaskCredentialLeaseFactsRow struct {
+	ID                 string             `json:"id"`
+	OwnerUserID        string             `json:"owner_user_id"`
+	ProviderID         string             `json:"provider_id"`
+	LockedUntil        pgtype.Timestamptz `json:"locked_until"`
+	CredentialID       pgtype.UUID        `json:"credential_id"`
+	CredentialRevision pgtype.Int8        `json:"credential_revision"`
+}
+
+// Credential-lease derivation inside the coordinator's transaction: the
+// outbox lease row is locked so a concurrent finish cannot race the derive.
+// The snapshot is LEFT JOINed: Required is derived from its presence, never
+// from caller input.
+func (q *Queries) LockTaskCredentialLeaseFacts(ctx context.Context, arg LockTaskCredentialLeaseFactsParams) (LockTaskCredentialLeaseFactsRow, error) {
+	row := q.db.QueryRow(ctx, lockTaskCredentialLeaseFacts, arg.LeaseID, arg.LockedBy, arg.LockedUntil)
+	var i LockTaskCredentialLeaseFactsRow
+	err := row.Scan(
+		&i.ID,
+		&i.OwnerUserID,
+		&i.ProviderID,
+		&i.LockedUntil,
+		&i.CredentialID,
+		&i.CredentialRevision,
 	)
 	return i, err
 }

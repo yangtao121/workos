@@ -101,7 +101,8 @@ func (p *Provider) Describe() *harnessv1.HarnessProviderInfo {
 	}
 }
 
-func (p *Provider) Run(ctx context.Context, taskID string, input *agentv1.AgentTaskInput, emit ports.Emit, artifacts ports.ArtifactSink) error {
+func (p *Provider) Run(ctx context.Context, execution ports.Execution) error {
+	taskID, input, emit, artifacts := execution.TaskID, execution.Input, execution.Emit, execution.Artifacts
 	outputTokens, err := p.validateBudget(input.GetBudget())
 	if err != nil {
 		return err

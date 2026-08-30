@@ -10,6 +10,7 @@ import (
 	harnessv1 "github.com/yangtao121/workos/gen/go/workos/harness/v1"
 	"github.com/yangtao121/workos/internal/core/harnesscatalog/application"
 	"github.com/yangtao121/workos/internal/core/harnesscatalog/domain"
+	"github.com/yangtao121/workos/internal/platform/identity"
 )
 
 type Handler struct{ service *application.Service }
@@ -17,7 +18,14 @@ type Handler struct{ service *application.Service }
 func New(service *application.Service) *Handler { return &Handler{service: service} }
 
 func (h *Handler) GetHarnessCatalog(ctx context.Context, _ *connect.Request[harnessv1.GetHarnessCatalogRequest]) (*connect.Response[harnessv1.GetHarnessCatalogResponse], error) {
-	catalog, err := h.service.Get(ctx)
+	id, err := identity.FromContext(ctx)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeUnauthenticated, errors.New("owner identity is required"))
+	}
+	// The public catalog is owner-aware (ADR-0009): providers that require a
+	// task credential lease are projected unavailable to owners without one,
+	// with a fixed reason and no foreign existence oracle.
+	catalog, err := h.service.GetForOwner(ctx, id.UserID)
 	if err != nil {
 		return nil, mapError(err)
 	}
@@ -34,9 +42,10 @@ func (h *Handler) GetHarnessCatalog(ctx context.Context, _ *connect.Request[harn
 				WorkspaceMount: provider.Capabilities.WorkspaceMount, StructuredArtifacts: provider.Capabilities.StructuredArtifacts,
 				UsageReporting:  provider.Capabilities.UsageReporting,
 				HardTokenBudget: provider.Capabilities.HardTokenBudget, HardRuntimeDeadline: provider.Capabilities.HardRuntimeDeadline,
-				MaxOutputTokens:        provider.Capabilities.MaxOutputTokens,
-				MaxRuntimeSeconds:      provider.Capabilities.MaxRuntimeSeconds,
-				SupportedArtifactTypes: provider.Capabilities.SupportedArtifactTypes,
+				MaxOutputTokens:             provider.Capabilities.MaxOutputTokens,
+				MaxRuntimeSeconds:           provider.Capabilities.MaxRuntimeSeconds,
+				SupportedArtifactTypes:      provider.Capabilities.SupportedArtifactTypes,
+				RequiresTaskCredentialLease: provider.Capabilities.RequiresTaskCredentialLease,
 			},
 		})
 	}

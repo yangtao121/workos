@@ -234,7 +234,8 @@ func mapError(err error) error {
 		return connect.NewError(connect.CodeAborted, err)
 	case errors.Is(err, domain.ErrPolicyBlocksRuns):
 		return connect.NewError(connect.CodePermissionDenied, err)
-	case errors.Is(err, domain.ErrApprovalNotPending), errors.Is(err, domain.ErrProviderCapabilityMissing):
+	case errors.Is(err, domain.ErrApprovalNotPending), errors.Is(err, domain.ErrProviderCapabilityMissing),
+		errors.Is(err, domain.ErrProviderCredentialMissing):
 		return connect.NewError(connect.CodeFailedPrecondition, err)
 	case errors.Is(err, domain.ErrQuotaExhausted), errors.Is(err, domain.ErrQuotaBreached):
 		return connect.NewError(connect.CodeResourceExhausted, err)

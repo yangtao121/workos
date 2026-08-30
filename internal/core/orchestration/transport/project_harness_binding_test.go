@@ -9,6 +9,8 @@ import (
 	"connectrpc.com/connect"
 
 	projectv1 "github.com/yangtao121/workos/gen/go/workos/project/v1"
+	agentdomain "github.com/yangtao121/workos/internal/core/agent/domain"
+	agentports "github.com/yangtao121/workos/internal/core/agent/ports"
 	catalogdomain "github.com/yangtao121/workos/internal/core/harnesscatalog/domain"
 	"github.com/yangtao121/workos/internal/core/orchestration"
 	projectapp "github.com/yangtao121/workos/internal/core/project/application"
@@ -43,7 +45,7 @@ func TestBindingTransportUsesIdentityAndReturnsServerPreset(t *testing.T) {
 	projects := &projectsFake{project: projectdomain.Project{ID: "project-1", OwnerUserID: "owner-1", Revision: 4}}
 	binder, err := orchestration.NewProjectHarnessBinder(projects, catalogFake{catalog: catalogdomain.Catalog{
 		Providers: []catalogdomain.Provider{{ID: "degraded", Health: catalogdomain.HealthDegraded}},
-	}}, orchestration.BindingPreset{InstancePolicy: "ephemeral", ResourcePolicyID: "project-no-tools"})
+	}}, stubBindingCredentials{}, orchestration.BindingPreset{InstancePolicy: "ephemeral", ResourcePolicyID: "project-no-tools"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -64,7 +66,7 @@ func TestBindingTransportUsesIdentityAndReturnsServerPreset(t *testing.T) {
 func TestBindingTransportRequiresIdentityAndExplicitSelection(t *testing.T) {
 	t.Parallel()
 	projects := &projectsFake{project: projectdomain.Project{ID: "project-1", Revision: 1}}
-	binder, err := orchestration.NewProjectHarnessBinder(projects, catalogFake{}, orchestration.BindingPreset{
+	binder, err := orchestration.NewProjectHarnessBinder(projects, catalogFake{}, stubBindingCredentials{}, orchestration.BindingPreset{
 		InstancePolicy: "ephemeral", ResourcePolicyID: "project-no-tools",
 	})
 	if err != nil {
@@ -114,4 +116,11 @@ func TestPublicBindingCommandHasNoPolicyOrCredentialInput(t *testing.T) {
 	if service == nil || service.Methods().Len() != 1 || service.Methods().ByName("SetProjectHarnessBinding") == nil {
 		t.Fatalf("unexpected public binding service: %v", service)
 	}
+}
+
+// stubBindingCredentials satisfies the binder's credential port.
+type stubBindingCredentials struct{}
+
+func (stubBindingCredentials) ActiveSnapshot(context.Context, string, string) (agentports.CredentialSnapshotRef, error) {
+	return agentports.CredentialSnapshotRef{}, agentdomain.ErrNotFound
 }

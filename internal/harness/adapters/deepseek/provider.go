@@ -64,24 +64,46 @@ func (p *Provider) Describe() *harnessv1.HarnessProviderInfo {
 			// can reject over-bound policies before queueing or reserving.
 			MaxOutputTokens:   MaximumMaxTokens,
 			MaxRuntimeSeconds: int64(MaximumTimeout / time.Second),
+			// The adapter never holds a long-lived API key: every run needs a
+			// short-lived, task-bound credential lease from the Core
+			// Credential Vault (ADR-0009).
+			RequiresTaskCredentialLease: true,
 		},
 	}
 }
 
 // Run keeps structured artifact support honestly unsupported: the sink is
 // ignored and prepareInput refuses any requested artifact type (ADR-0008).
-func (p *Provider) Run(ctx context.Context, taskID string, input *agentv1.AgentTaskInput, emit ports.Emit, artifacts ports.ArtifactSink) error {
-	_ = artifacts
+// Context references stay unsupported until their materialization protocol
+// exists; the credential lease, by contrast, is required on every run —
+// without a live lease matching this provider and purpose the run fails
+// closed before any child process starts.
+func (p *Provider) Run(ctx context.Context, execution ports.Execution) error {
+	taskID, input, emit := execution.TaskID, execution.Input, execution.Emit
+	_ = execution.Artifacts
 	if err := validateConfig(p.config); err != nil {
 		p.setHealth(commonv1.HealthState_HEALTH_STATE_UNAVAILABLE, err.Error())
 		return ports.NewRunError(ports.ErrorKindConfiguration, err.Error(), false, nil)
 	}
+	now := time.Now()
+	if !execution.Credential.ValidFor(ProviderID, ports.PurposeProviderAPIKeyV1, now) {
+		return ports.NewRunError(ports.ErrorKindConfiguration, "provider credential lease is missing, expired, or bound to another provider", false, nil)
+	}
+	lease := execution.Credential
+	// The secret exists only inside this run's child environment and only
+	// for this task. The lease buffer is overwritten best-effort when the
+	// run ends; Go cannot formally zeroize exec/string copies (ADR-0009).
+	defer func() {
+		for index := range lease.Secret {
+			lease.Secret[index] = 0
+		}
+	}()
 	prepared, err := prepareInput(input, p.config.Timeout)
 	if err != nil {
 		return err
 	}
 	runID := p.ids.New()
-	err = p.execute(ctx, taskID, runID, prepared, emit)
+	err = p.execute(ctx, taskID, runID, prepared, lease, emit)
 	if err == nil {
 		p.setHealth(commonv1.HealthState_HEALTH_STATE_HEALTHY, "")
 		return nil

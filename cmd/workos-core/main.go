@@ -2,8 +2,12 @@ package main
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"log/slog"
+	"net/http"
 	"os"
+	"time"
 
 	"github.com/yangtao121/workos/gen/go/workos/agent/v1/agentv1connect"
 	commonv1 "github.com/yangtao121/workos/gen/go/workos/common/v1"
@@ -20,6 +24,11 @@ import (
 	artifactpostgres "github.com/yangtao121/workos/internal/core/artifact/adapters/postgres"
 	artifactapp "github.com/yangtao121/workos/internal/core/artifact/application"
 	artifacttransport "github.com/yangtao121/workos/internal/core/artifact/transport"
+	credentialcipher "github.com/yangtao121/workos/internal/core/credential/adapters/cipher"
+	credentialpostgres "github.com/yangtao121/workos/internal/core/credential/adapters/postgres"
+	credentialapp "github.com/yangtao121/workos/internal/core/credential/application"
+	credentialports "github.com/yangtao121/workos/internal/core/credential/ports"
+	credentialtransport "github.com/yangtao121/workos/internal/core/credential/transport"
 	cataloghost "github.com/yangtao121/workos/internal/core/harnesscatalog/adapters/harnesshost"
 	catalogapp "github.com/yangtao121/workos/internal/core/harnesscatalog/application"
 	catalogtransport "github.com/yangtao121/workos/internal/core/harnesscatalog/transport"
@@ -34,6 +43,7 @@ import (
 	"github.com/yangtao121/workos/internal/platform/identity"
 	"github.com/yangtao121/workos/internal/platform/ids"
 	"github.com/yangtao121/workos/internal/platform/logging"
+	"github.com/yangtao121/workos/internal/platform/privatetls"
 	"github.com/yangtao121/workos/internal/platform/systemhandler"
 	"github.com/yangtao121/workos/internal/platform/telemetry"
 )
@@ -77,10 +87,33 @@ func run(logger *slog.Logger) error {
 	if err != nil {
 		return err
 	}
+
+	// Credential Vault (ADR-0009): the only durable authority for long-lived
+	// provider credential material. When the master key + admin socket are
+	// not configured the vault stays unavailable — every credential-bearing
+	// provider fails closed while Project, Agent, Artifact, and all other
+	// non-credential functions start normally.
+	var credentialService *credentialapp.Service
+	if cfg.Credential.MasterKeyFile != "" {
+		ciph, err := credentialcipher.Load(cfg.Credential.MasterKeyFile)
+		if err != nil {
+			return err
+		}
+		credentialService, err = credentialapp.New(credentialpostgres.New(pool), ciph)
+		if err != nil {
+			return err
+		}
+	}
+
+	// The public catalog is owner-aware: providers that require a task
+	// credential lease are projected unavailable to owners without one.
+	if _, err := catalogService.WithCredentialAvailability(orchestration.NewCredentialAvailability(credentialService)); err != nil {
+		return err
+	}
 	catalogPath, catalogHandler := harnessv1connect.NewHarnessCatalogServiceHandler(catalogtransport.New(catalogService))
 	mux.Handle(catalogPath, identity.Middleware(catalogHandler))
 
-	binder, err := orchestration.NewProjectHarnessBinder(projectService, catalogService, orchestration.BindingPreset{
+	binder, err := orchestration.NewProjectHarnessBinder(projectService, catalogService, orchestration.NewCredentialSnapshots(credentialService), orchestration.BindingPreset{
 		InstancePolicy: cfg.Agent.ProjectBinding.InstancePolicy, ProfileID: cfg.Agent.ProjectBinding.ProfileID,
 		ResourcePolicyID: cfg.Agent.ProjectBinding.ResourcePolicyID,
 	})
@@ -118,8 +151,37 @@ func run(logger *slog.Logger) error {
 	if err != nil {
 		return err
 	}
+
+	// The credential lease issuer composes the Agent task-lease authority
+	// with the vault inside one transaction: owner, provider, task, and the
+	// exact credential snapshot are always derived from the active task
+	// lease, never from the caller (ADR-0009). A nil vault still constructs
+	// the listener — acquire fails closed until the vault is configured.
+	credentialIssuer, err := orchestration.NewCredentialLeaseIssuer(
+		pool, agentRepository, credentialpostgres.New(pool), credentialCipherOrNil(credentialService), generator,
+	)
+	if err != nil {
+		return err
+	}
+
+	// The private execution listener is the ONLY place TaskExecution and
+	// CredentialLease RPCs exist. It requires mutually authenticated TLS
+	// with exact WorkOS process identities; the Gateway and every public
+	// surface deterministically cannot route here.
+	executionTLS, err := privatetls.ServerConfig(privatetls.Identity{
+		CAFile:       cfg.Execution.CAFile,
+		CertFile:     cfg.Execution.CertFile,
+		KeyFile:      cfg.Execution.KeyFile,
+		PeerIdentity: privatetls.IdentityHarnessHost,
+	})
+	if err != nil {
+		return err
+	}
+	executionMux := httpserver.NewMux("workos-core-execution", ready)
 	executionPath, executionHandler := agenttransport.NewExecutionConnectHandler(agentService, artifactMaterializer)
-	mux.Handle(executionPath, executionHandler)
+	executionMux.Handle(executionPath, executionHandler)
+	leasePath, leaseHandler := credentialtransport.NewLeaseConnectHandler(credentialIssuer)
+	executionMux.Handle(leasePath, leaseHandler)
 
 	manifestValidator, err := manifestvalidator.New()
 	if err != nil {
@@ -167,7 +229,7 @@ func run(logger *slog.Logger) error {
 	if err != nil {
 		return err
 	}
-	approvalService, err := agentapp.NewApprovalService(agentRepository, installationFactsAdapter, providerCapabilitiesAdapter)
+	approvalService, err := agentapp.NewApprovalService(agentRepository, installationFactsAdapter, providerCapabilitiesAdapter, orchestration.NewCredentialSnapshotVerifier(credentialService))
 	if err != nil {
 		return err
 	}
@@ -175,7 +237,7 @@ func run(logger *slog.Logger) error {
 	if err != nil {
 		return err
 	}
-	taskRouter, err := orchestration.NewTaskRouter(agentService, projectService, policyService, providerCapabilitiesAdapter, cfg.Agent.DefaultProvider)
+	taskRouter, err := orchestration.NewTaskRouter(agentService, projectService, policyService, providerCapabilitiesAdapter, orchestration.NewCredentialSnapshots(credentialService), cfg.Agent.DefaultProvider)
 	if err != nil {
 		return err
 	}
@@ -211,7 +273,7 @@ func run(logger *slog.Logger) error {
 
 	artifactPath, artifactHandler := artifacttransport.NewConnectHandler(artifactService)
 	mux.Handle(artifactPath, identity.Middleware(artifactHandler))
-	systemPath, systemHandler := commonv1connect.NewSystemServiceHandler(systemhandler.New("workos-core", commonv1.HealthState_HEALTH_STATE_HEALTHY,
+	capabilities := []*commonv1.FeatureCapability{
 		&commonv1.FeatureCapability{Id: "project", Available: true},
 		&commonv1.FeatureCapability{Id: "agent-task", Available: true},
 		&commonv1.FeatureCapability{Id: "harness-catalog", Available: true},
@@ -219,7 +281,88 @@ func run(logger *slog.Logger) error {
 		&commonv1.FeatureCapability{Id: "app-installation", Available: true},
 		&commonv1.FeatureCapability{Id: "artifact", Available: true, Reason: "web bundle subtype only"},
 		&commonv1.FeatureCapability{Id: "surface-launch-resolution", Available: true},
-	))
+	}
+	if credentialService != nil {
+		capabilities = append(capabilities, &commonv1.FeatureCapability{Id: "credential-vault", Available: true,
+			Reason: "provider API-key encrypted store + local admin socket + task-bound leases only"})
+	} else {
+		capabilities = append(capabilities, &commonv1.FeatureCapability{Id: "credential-vault", Available: false,
+			Reason: "credential master key and admin socket are not configured"})
+	}
+	systemPath, systemHandler := commonv1connect.NewSystemServiceHandler(systemhandler.New("workos-core", commonv1.HealthState_HEALTH_STATE_HEALTHY, capabilities...))
 	mux.Handle(systemPath, systemHandler)
-	return httpserver.Run("workos-core", cfg.HTTP.Address, mux, logger, "", "", cfg.Telemetry.OTLPEndpoint)
+
+	// The private execution listener and the credential admin socket share
+	// the Core lifecycle: a failure on either stops the whole process rather
+	// than serving an edge whose security path is broken.
+	executionErr := make(chan error, 1)
+	go func() {
+		executionErr <- httpserver.RunWithTLSConfigContext(ctx, "workos-core-execution", cfg.Execution.Address, executionMux, logger, executionTLS, cfg.Telemetry.OTLPEndpoint)
+	}()
+	var adminSocket *credentialtransport.AdminSocket
+	var adminErr chan error
+	if credentialService != nil {
+		_, adminHandler := credentialtransport.NewAdminConnectHandler(credentialService, cfg.Auth.OwnerID)
+		wrapped := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			adminHandler.ServeHTTP(w, r)
+		})
+		adminSocket, err = credentialtransport.ListenAdminSocket(cfg.Credential.AdminSocketPath, wrapped, logger)
+		if err != nil {
+			return err
+		}
+		adminErr = make(chan error, 1)
+		go func() { adminErr <- adminSocket.Serve() }()
+		defer func() {
+			shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			_ = adminSocket.Close(shutdownCtx)
+		}()
+		logger.Info("credential admin socket listening")
+		// Bounded housekeeping: expired credential leases are marked expired.
+		// Every read fails closed independently, so correctness never relies
+		// on this loop.
+		go func() {
+			ticker := time.NewTicker(time.Minute)
+			defer ticker.Stop()
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case <-ticker.C:
+					if _, err := credentialService.SweepExpiredLeases(ctx); err != nil {
+						logger.Warn("credential lease sweep failed", "error", err)
+					}
+				}
+			}
+		}()
+	}
+
+	serverErr := make(chan error, 1)
+	go func() {
+		serverErr <- httpserver.Run("workos-core", cfg.HTTP.Address, mux, logger, "", "", cfg.Telemetry.OTLPEndpoint)
+	}()
+	select {
+	case err := <-serverErr:
+		return err
+	case err := <-executionErr:
+		if err == nil {
+			err = errors.New("harness execution listener stopped unexpectedly")
+		}
+		return fmt.Errorf("harness execution listener failed: %w", err)
+	case err := <-adminErr:
+		if err == nil {
+			err = errors.New("credential admin socket stopped unexpectedly")
+		}
+		return fmt.Errorf("credential admin socket failed: %w", err)
+	}
+}
+
+// credentialCipherOrNil exposes the vault cipher to the lease issuer without
+// widening the application service. A nil vault keeps the issuer constructed
+// but strictly fail-closed (acquire answers unavailable).
+func credentialCipherOrNil(service *credentialapp.Service) credentialports.Cipher {
+	if service == nil {
+		return nil
+	}
+	return service.Cipher()
 }

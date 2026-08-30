@@ -55,8 +55,15 @@ type HarnessCapabilities struct {
 	// that are not on the resolved provider's exact list before queueing, and
 	// treats a bool/list drift as capability corruption — never as "all types".
 	SupportedArtifactTypes []string `protobuf:"bytes,16,rep,name=supported_artifact_types,json=supportedArtifactTypes,proto3" json:"supported_artifact_types,omitempty"`
-	unknownFields          protoimpl.UnknownFields
-	sizeCache              protoimpl.SizeCache
+	// The adapter requires a task-bound credential lease from the Core
+	// Credential Vault for every run: it can never read a long-lived API key
+	// from its own process environment (ADR-0009). Core derives the owner's
+	// active credential at binding time and snapshots its exact ID/revision
+	// onto every fresh task before queueing. Providers that report true are
+	// projected unavailable to owners without a matching active credential.
+	RequiresTaskCredentialLease bool `protobuf:"varint,17,opt,name=requires_task_credential_lease,json=requiresTaskCredentialLease,proto3" json:"requires_task_credential_lease,omitempty"`
+	unknownFields               protoimpl.UnknownFields
+	sizeCache                   protoimpl.SizeCache
 }
 
 func (x *HarnessCapabilities) Reset() {
@@ -199,6 +206,13 @@ func (x *HarnessCapabilities) GetSupportedArtifactTypes() []string {
 		return x.SupportedArtifactTypes
 	}
 	return nil
+}
+
+func (x *HarnessCapabilities) GetRequiresTaskCredentialLease() bool {
+	if x != nil {
+		return x.RequiresTaskCredentialLease
+	}
+	return false
 }
 
 type HarnessProviderInfo struct {
@@ -577,7 +591,7 @@ var File_workos_harness_v1_harness_proto protoreflect.FileDescriptor
 
 const file_workos_harness_v1_harness_proto_rawDesc = "" +
 	"\n" +
-	"\x1fworkos/harness/v1/harness.proto\x12\x11workos.harness.v1\x1a\x1bworkos/agent/v1/agent.proto\x1a\x1dworkos/common/v1/common.proto\"\x9c\x05\n" +
+	"\x1fworkos/harness/v1/harness.proto\x12\x11workos.harness.v1\x1a\x1bworkos/agent/v1/agent.proto\x1a\x1dworkos/common/v1/common.proto\"\xe1\x05\n" +
 	"\x13HarnessCapabilities\x12\x1c\n" +
 	"\tstreaming\x18\x01 \x01(\bR\tstreaming\x12/\n" +
 	"\x13persistent_sessions\x18\x02 \x01(\bR\x12persistentSessions\x12\x16\n" +
@@ -595,7 +609,8 @@ const file_workos_harness_v1_harness_proto_rawDesc = "" +
 	"\x15hard_runtime_deadline\x18\r \x01(\bR\x13hardRuntimeDeadline\x12*\n" +
 	"\x11max_output_tokens\x18\x0e \x01(\x03R\x0fmaxOutputTokens\x12.\n" +
 	"\x13max_runtime_seconds\x18\x0f \x01(\x03R\x11maxRuntimeSeconds\x128\n" +
-	"\x18supported_artifact_types\x18\x10 \x03(\tR\x16supportedArtifactTypes\"\xa3\x02\n" +
+	"\x18supported_artifact_types\x18\x10 \x03(\tR\x16supportedArtifactTypes\x12C\n" +
+	"\x1erequires_task_credential_lease\x18\x11 \x01(\bR\x1brequiresTaskCredentialLease\"\xa3\x02\n" +
 	"\x13HarnessProviderInfo\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12!\n" +
 	"\fdisplay_name\x18\x02 \x01(\tR\vdisplayName\x12'\n" +

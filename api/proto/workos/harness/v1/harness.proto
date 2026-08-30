@@ -38,6 +38,13 @@ message HarnessCapabilities {
   // that are not on the resolved provider's exact list before queueing, and
   // treats a bool/list drift as capability corruption — never as "all types".
   repeated string supported_artifact_types = 16;
+  // The adapter requires a task-bound credential lease from the Core
+  // Credential Vault for every run: it can never read a long-lived API key
+  // from its own process environment (ADR-0009). Core derives the owner's
+  // active credential at binding time and snapshots its exact ID/revision
+  // onto every fresh task before queueing. Providers that report true are
+  // projected unavailable to owners without a matching active credential.
+  bool requires_task_credential_lease = 17;
 }
 
 message HarnessProviderInfo {

@@ -24,6 +24,35 @@ type TaskStreamFacts struct {
 	LastEventSequence int64
 }
 
+// TaskCredentialFacts is what the credential-lease coordinator derives from
+// an active task lease: whether the task needs a provider credential at all,
+// and if so the exact snapshotted credential identity plus the lease's
+// current expiry that bounds any derived credential lease.
+type TaskCredentialFacts struct {
+	Required           bool
+	TaskID             string
+	OwnerUserID        string
+	ProviderID         string
+	CredentialID       string
+	CredentialRevision int64
+	TaskLeaseExpiresAt time.Time
+}
+
+// TaskCredentialAuthority is the Agent module's transaction-scoped
+// authority for credential lease derivation (ADR-0009). Implementations
+// touch only Agent-owned tables; the composition layer owns the transaction
+// that also inserts the Credential module's lease row.
+type TaskCredentialAuthority interface {
+	// ResolveTaskCredential proves taskLeaseID is an active, unexpired
+	// execution lease held by workerID on a non-terminal task, locks the
+	// lease row, and returns the task's durable credential snapshot facts.
+	// A lost, expired, or wrong-worker lease is domain.ErrLeaseLost.
+	ResolveTaskCredential(ctx context.Context, tx dbtx.Tx, taskLeaseID, workerID string, now time.Time) (TaskCredentialFacts, error)
+	// TaskLeaseExpiry returns the current expiry of the active task lease
+	// held by workerID, or found=false once it is finished or expired.
+	TaskLeaseExpiry(ctx context.Context, tx dbtx.Tx, taskLeaseID, workerID string, now time.Time) (time.Time, bool, error)
+}
+
 // TaskStreamStore is the Agent module's transaction-scoped stream
 // coordination port. Implementations write only Agent-owned tables inside
 // the caller's transaction; the composition layer owns the transaction

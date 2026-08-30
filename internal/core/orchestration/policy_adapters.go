@@ -74,13 +74,14 @@ func (a *providerCapabilities) Capabilities(ctx context.Context, providerID stri
 			continue
 		}
 		return agentports.ProviderCapabilities{
-			HardTokenBudget:        provider.Capabilities.HardTokenBudget,
-			HardRuntimeDeadline:    provider.Capabilities.HardRuntimeDeadline,
-			UsageReporting:         provider.Capabilities.UsageReporting,
-			MaxOutputTokens:        provider.Capabilities.MaxOutputTokens,
-			MaxRuntimeSeconds:      provider.Capabilities.MaxRuntimeSeconds,
-			StructuredArtifacts:    provider.Capabilities.StructuredArtifacts,
-			SupportedArtifactTypes: provider.Capabilities.SupportedArtifactTypes,
+			HardTokenBudget:             provider.Capabilities.HardTokenBudget,
+			HardRuntimeDeadline:         provider.Capabilities.HardRuntimeDeadline,
+			UsageReporting:              provider.Capabilities.UsageReporting,
+			MaxOutputTokens:             provider.Capabilities.MaxOutputTokens,
+			MaxRuntimeSeconds:           provider.Capabilities.MaxRuntimeSeconds,
+			StructuredArtifacts:         provider.Capabilities.StructuredArtifacts,
+			SupportedArtifactTypes:      provider.Capabilities.SupportedArtifactTypes,
+			RequiresTaskCredentialLease: provider.Capabilities.RequiresTaskCredentialLease,
 		}, nil
 	}
 	return agentports.ProviderCapabilities{}, agentdomain.ErrNotFound

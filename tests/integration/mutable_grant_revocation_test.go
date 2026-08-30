@@ -302,7 +302,7 @@ func TestGrantEpochWatchStreamTerminates(t *testing.T) {
 	// queued (non-terminal) indefinitely.
 	router, err := orchestration.NewTaskRouter(
 		agentapp.New(agentpostgres.New(pool), ids.UUIDv7{}), projectapp.New(projectpostgres.New(pool), ids.UUIDv7{}),
-		staticDefaultPolicies{}, staticFullCapabilities{}, "fake",
+		staticDefaultPolicies{}, staticFullCapabilities{}, outageCredentials{}, "fake",
 	)
 	if err != nil {
 		t.Fatal(err)

@@ -21,14 +21,14 @@ type fixedID string
 func (id fixedID) New() string { return string(id) }
 
 func TestConfigAndDescribe(t *testing.T) {
-	t.Run("disabled by default even with key", func(t *testing.T) {
-		provider := New(Config{APIKey: "not-a-real-key"}, fixedID("run-1"))
+	t.Run("unavailable when the adapter runtime is missing", func(t *testing.T) {
+		provider := New(Config{Enabled: true, Environment: "test"}, fixedID("run-1"))
 		description := provider.Describe()
 		if description.GetId() != ProviderID || description.GetAdapterVersion() != AdapterVersion {
 			t.Fatalf("unexpected provider identity: %#v", description)
 		}
-		if description.GetHealth() != commonv1.HealthState_HEALTH_STATE_UNAVAILABLE || !strings.Contains(description.GetUnavailableReason(), "disabled") {
-			t.Fatalf("disabled provider reported unexpected health: %#v", description)
+		if description.GetHealth() != commonv1.HealthState_HEALTH_STATE_UNAVAILABLE || description.GetUnavailableReason() == "" {
+			t.Fatalf("unavailable provider reported unexpected health: %#v", description)
 		}
 		caps := description.GetCapabilities()
 		if !caps.GetStreaming() || !caps.GetUsageReporting() || caps.GetPersistentSessions() || caps.GetResume() || caps.GetSteerDuringRun() || caps.GetApprovals() || caps.GetToolRegistration() || caps.GetMcp() || caps.GetSubagents() || caps.GetWorkspaceMount() || caps.GetStructuredArtifacts() {
@@ -51,8 +51,7 @@ func TestConfigAndDescribe(t *testing.T) {
 		mutate func(*Config)
 		want   string
 	}{
-		{"missing key", func(c *Config) { c.APIKey = "" }, "not configured"},
-		{"invalid key", func(c *Config) { c.APIKey = "value\nheader" }, "key is invalid"},
+
 		{"invalid URL", func(c *Config) { c.BaseURL = "://bad" }, "base URL is invalid"},
 		{"HTTP in production", func(c *Config) { c.Environment = "production" }, "must use HTTPS"},
 		{"invalid timeout", func(c *Config) { c.Timeout = 500 * time.Millisecond }, "between 1s and 10m"},
@@ -106,12 +105,12 @@ func TestInputPolicyAndBudgets(t *testing.T) {
 func TestProviderMapsOfficialRuntimeStreamInOrder(t *testing.T) {
 	provider := New(validConfig(t, "success"), fixedID("0198d7ea-2110-7c42-b659-c5e4d73bc400"))
 	var events []*agentv1.AgentEvent
-	err := provider.Run(context.Background(), "task-1", &agentv1.AgentTaskInput{
+	err := provider.Run(context.Background(), ports.Execution{TaskID: "task-1", Input: &agentv1.AgentTaskInput{
 		Goal: "hello", Budget: &agentv1.AgentBudget{MaxTokens: 99, MaxRuntimeSeconds: 4},
-	}, func(event *agentv1.AgentEvent) error {
+	}, Emit: func(event *agentv1.AgentEvent) error {
 		events = append(events, event)
 		return nil
-	}, nil)
+	}, Artifacts: nil, Credential: testLease()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -151,12 +150,12 @@ func TestProviderStopsImmediatelyWhenEmitFails(t *testing.T) {
 	provider := New(validConfig(t, "success"), fixedID("run-1"))
 	want := errors.New("append failed")
 	started := time.Now()
-	err := provider.Run(context.Background(), "task-1", &agentv1.AgentTaskInput{Goal: "hello"}, func(event *agentv1.AgentEvent) error {
+	err := provider.Run(context.Background(), ports.Execution{TaskID: "task-1", Input: &agentv1.AgentTaskInput{Goal: "hello"}, Emit: func(event *agentv1.AgentEvent) error {
 		if event.GetAssistantDelta() != nil {
 			return want
 		}
 		return nil
-	}, nil)
+	}, Artifacts: nil, Credential: testLease()})
 	if !errors.Is(err, want) || time.Since(started) > time.Second {
 		t.Fatalf("emit failure was not returned promptly: %v", err)
 	}
@@ -168,7 +167,7 @@ func TestProviderCancellationAndDeadlineStopRuntime(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		result := make(chan error, 1)
 		go func() {
-			result <- provider.Run(ctx, "task-1", &agentv1.AgentTaskInput{Goal: "hello"}, func(*agentv1.AgentEvent) error { return nil }, nil)
+			result <- provider.Run(ctx, ports.Execution{TaskID: "task-1", Input: &agentv1.AgentTaskInput{Goal: "hello"}, Emit: func(*agentv1.AgentEvent) error { return nil }, Artifacts: nil, Credential: testLease()})
 		}()
 		time.Sleep(50 * time.Millisecond)
 		cancel()
@@ -187,7 +186,7 @@ func TestProviderCancellationAndDeadlineStopRuntime(t *testing.T) {
 		config.Timeout = time.Second
 		provider := New(config, fixedID("run-1"))
 		started := time.Now()
-		err := provider.Run(context.Background(), "task-1", &agentv1.AgentTaskInput{Goal: "hello"}, func(*agentv1.AgentEvent) error { return nil }, nil)
+		err := provider.Run(context.Background(), ports.Execution{TaskID: "task-1", Input: &agentv1.AgentTaskInput{Goal: "hello"}, Emit: func(*agentv1.AgentEvent) error { return nil }, Artifacts: nil, Credential: testLease()})
 		var runErr *ports.RunError
 		if !errors.As(err, &runErr) || runErr.Kind != ports.ErrorKindTimeout || !runErr.Retryable || time.Since(started) > 2*time.Second {
 			t.Fatalf("unexpected deadline result: %v", err)
@@ -202,7 +201,7 @@ func TestProviderRejectsUnsafeRuntimeOutput(t *testing.T) {
 	for _, mode := range []string{"malformed", "unknown-event", "unexpected-content", "early-eof", "oversized"} {
 		t.Run(mode, func(t *testing.T) {
 			provider := New(validConfig(t, mode), fixedID("run-1"))
-			err := provider.Run(context.Background(), "task-1", &agentv1.AgentTaskInput{Goal: "hello"}, func(*agentv1.AgentEvent) error { return nil }, nil)
+			err := provider.Run(context.Background(), ports.Execution{TaskID: "task-1", Input: &agentv1.AgentTaskInput{Goal: "hello"}, Emit: func(*agentv1.AgentEvent) error { return nil }, Artifacts: nil, Credential: testLease()})
 			if err == nil {
 				t.Fatal("expected runtime output to be rejected")
 			}
@@ -238,12 +237,21 @@ func TestProviderClassifiesFailuresAndHealth(t *testing.T) {
 	}
 
 	provider := New(validConfig(t, "auth-error"), fixedID("run-1"))
-	err := provider.Run(context.Background(), "task-1", &agentv1.AgentTaskInput{Goal: "hello"}, func(*agentv1.AgentEvent) error { return nil }, nil)
+	err := provider.Run(context.Background(), ports.Execution{TaskID: "task-1", Input: &agentv1.AgentTaskInput{Goal: "hello"}, Emit: func(*agentv1.AgentEvent) error { return nil }, Artifacts: nil, Credential: testLease()})
 	if reason, retryable := ports.FailureDetails(err); retryable || reason != "DeepSeek authentication failed" {
 		t.Fatalf("unexpected public failure: %q retryable=%v", reason, retryable)
 	}
 	if got := provider.Describe(); got.GetHealth() != commonv1.HealthState_HEALTH_STATE_UNAVAILABLE || strings.Contains(got.GetUnavailableReason(), "not-a-real-key") {
 		t.Fatalf("unexpected post-auth health: %#v", got)
+	}
+}
+
+// testLease returns a live credential lease matching the adapter contract.
+func testLease() *ports.CredentialLease {
+	return &ports.CredentialLease{
+		ID: "0198d7ea-2110-7c42-b659-c5e4d73bc410", TaskLeaseID: "0198d7ea-2110-7c42-b659-c5e4d73bc411",
+		ConsumerID: ProviderID, Purpose: ports.PurposeProviderAPIKeyV1,
+		ExpiresAt: time.Now().Add(time.Hour), Secret: []byte("not-a-real-key"),
 	}
 }
 
@@ -258,7 +266,7 @@ func validConfig(t *testing.T, mode string) Config {
 		t.Fatal(err)
 	}
 	return Config{
-		Enabled: true, Environment: "test", APIKey: "not-a-real-key",
+		Enabled: true, Environment: "test",
 		BaseURL: "http://127.0.0.1:18080", Model: DefaultModel, Timeout: 4 * time.Second,
 		RuntimePath: executable, CordisConfigPath: cordis,
 		runtimeArgs: []string{"-test.run=^TestDeepSeekRuntimeHelper$"},

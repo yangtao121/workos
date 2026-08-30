@@ -89,6 +89,9 @@ func (r *Repository) Create(ctx context.Context, task domain.Task, idempotencyKe
 		// Internal with database detail.
 		return domain.Task{}, storeError("append task outbox", err)
 	}
+	if err := insertTaskCredentialSnapshot(ctx, queries, task); err != nil {
+		return domain.Task{}, err
+	}
 	if err := tx.Commit(ctx); err != nil {
 		return domain.Task{}, fmt.Errorf("commit task: %w", err)
 	}
@@ -103,7 +106,50 @@ func (r *Repository) Get(ctx context.Context, ownerID, taskID string) (domain.Ta
 	if err != nil {
 		return domain.Task{}, storeError("query agent task", err)
 	}
-	return taskFromDB(value, nil)
+	task, err := taskFromDB(value, nil)
+	if err != nil {
+		return domain.Task{}, err
+	}
+	if err := r.attachCredentialSnapshot(ctx, r.queries, &task); err != nil {
+		return domain.Task{}, err
+	}
+	return task, nil
+}
+
+// insertTaskCredentialSnapshot persists the durable credential snapshot in
+// the task's own transaction. A task without a snapshot (providers that need
+// no credential) writes nothing.
+func insertTaskCredentialSnapshot(ctx context.Context, queries *agentdb.Queries, task domain.Task) error {
+	if task.Credential == nil {
+		return nil
+	}
+	if err := queries.InsertAgentTaskCredential(ctx, agentdb.InsertAgentTaskCredentialParams{
+		TaskID: task.ID, ProviderID: task.ProviderID, CredentialID: task.Credential.CredentialID,
+		CredentialRevision: task.Credential.Revision, CreatedAt: timestamp(task.CreatedAt),
+	}); err != nil {
+		return storeError("insert task credential snapshot", err)
+	}
+	return nil
+}
+
+// attachCredentialSnapshot loads the durable snapshot for one task so
+// replay and claim paths verify history instead of re-resolving (ADR-0009).
+// A missing row means the provider needed no credential.
+func (r *Repository) attachCredentialSnapshot(ctx context.Context, queries *agentdb.Queries, task *domain.Task) error {
+	row, err := queries.GetAgentTaskCredential(ctx, task.ID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil
+	}
+	if err != nil {
+		return storeError("query task credential snapshot", err)
+	}
+	if row.ProviderID != task.ProviderID {
+		// A snapshot bound to a different provider than the task row is a
+		// stored-fact drift, not a replayable history.
+		return fmt.Errorf("task credential snapshot provider drift: %w", domain.ErrInvalid)
+	}
+	task.Credential = &domain.CredentialSnapshot{CredentialID: row.CredentialID, Revision: row.CredentialRevision}
+	return nil
 }
 
 // CreateForApp inserts the task, its App provenance mapping, the guarded
@@ -184,6 +230,9 @@ func (r *Repository) CreateForApp(ctx context.Context, task domain.Task, provena
 		// Internal with database detail.
 		return domain.Task{}, storeError("append task outbox", err)
 	}
+	if err := insertTaskCredentialSnapshot(ctx, queries, task); err != nil {
+		return domain.Task{}, err
+	}
 	if err := tx.Commit(ctx); err != nil {
 		return domain.Task{}, storeError("commit app task", err)
 	}
@@ -208,7 +257,14 @@ func (r *Repository) replayAppTaskMapping(ctx context.Context, queries *agentdb.
 		return domain.Task{}, domain.ErrIdempotencyConflict
 	}
 	value, err := queries.GetAgentTask(ctx, agentdb.GetAgentTaskParams{OwnerUserID: ownerID, ID: consumed.TaskID})
-	return taskFromDB(value, err)
+	task, err := taskFromDB(value, err)
+	if err != nil {
+		return domain.Task{}, err
+	}
+	if err := r.attachCredentialSnapshot(ctx, queries, &task); err != nil {
+		return domain.Task{}, err
+	}
+	return task, nil
 }
 
 // CreateForAppApproval inserts the waiting task, the App provenance mapping,
@@ -278,6 +334,9 @@ func (r *Repository) CreateForAppApproval(ctx context.Context, task domain.Task,
 		return domain.Task{}, domain.Approval{}, fmt.Errorf("approval id collision: %w", domain.ErrInvalid)
 	}
 	if err := advanceTaskWithSystemEvent(ctx, queries, &task, task.State, "approval_required", approvalRequiredPayload(approval), task.CreatedAt); err != nil {
+		return domain.Task{}, domain.Approval{}, err
+	}
+	if err := insertTaskCredentialSnapshot(ctx, queries, task); err != nil {
 		return domain.Task{}, domain.Approval{}, err
 	}
 	if err := tx.Commit(ctx); err != nil {
@@ -399,7 +458,16 @@ func (r *Repository) GetByIdempotency(ctx context.Context, ownerID, key string) 
 	value, err := r.queries.GetAgentTaskByIdempotency(ctx, agentdb.GetAgentTaskByIdempotencyParams{
 		OwnerUserID: ownerID, IdempotencyKey: key,
 	})
-	return taskFromDB(value, err)
+	task, err := taskFromDB(value, err)
+	if err != nil {
+		return domain.Task{}, err
+	}
+	// Replay must return the first task's durable snapshot so the router
+	// never re-adjudicates against a rotated or rebound credential.
+	if err := r.attachCredentialSnapshot(ctx, r.queries, &task); err != nil {
+		return domain.Task{}, err
+	}
+	return task, nil
 }
 
 func (r *Repository) List(ctx context.Context, ownerID, projectID, cursor string, limit int) ([]domain.Task, error) {
@@ -539,6 +607,11 @@ func (r *Repository) Claim(ctx context.Context, workerID string, duration time.D
 	value, err := queries.GetAgentTaskUnscoped(ctx, taskID)
 	task, err := taskFromDB(value, err)
 	if err != nil {
+		return nil, err
+	}
+	// The claim path carries the snapshot existence so the worker knows to
+	// derive its credential lease from this exact task lease (ADR-0009).
+	if err := r.attachCredentialSnapshot(ctx, queries, &task); err != nil {
 		return nil, err
 	}
 	if err := tx.Commit(ctx); err != nil {

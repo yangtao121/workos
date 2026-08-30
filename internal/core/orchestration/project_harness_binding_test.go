@@ -6,6 +6,8 @@ import (
 	"testing"
 	"time"
 
+	agentdomain "github.com/yangtao121/workos/internal/core/agent/domain"
+	agentports "github.com/yangtao121/workos/internal/core/agent/ports"
 	catalogdomain "github.com/yangtao121/workos/internal/core/harnesscatalog/domain"
 	projectapp "github.com/yangtao121/workos/internal/core/project/application"
 	projectdomain "github.com/yangtao121/workos/internal/core/project/domain"
@@ -57,7 +59,7 @@ func (f *bindingCatalogFake) Get(context.Context) (catalogdomain.Catalog, error)
 
 func newBindingTestBinder(t *testing.T, projects *bindingProjectsFake, catalog *bindingCatalogFake) *ProjectHarnessBinder {
 	t.Helper()
-	binder, err := NewProjectHarnessBinder(projects, catalog, BindingPreset{
+	binder, err := NewProjectHarnessBinder(projects, catalog, stubBindingCredentials{}, BindingPreset{
 		InstancePolicy: "ephemeral", ProfileID: "general", ResourcePolicyID: "project-no-tools",
 	})
 	if err != nil {
@@ -161,4 +163,12 @@ func TestProjectHarnessBinderPropagatesCatalogFailureOnlyForBind(t *testing.T) {
 	if !errors.Is(err, catalogdomain.ErrUnavailable) || catalog.gets != 1 || projects.updates != 0 {
 		t.Fatalf("unexpected catalog failure behavior: err=%v gets=%d updates=%d", err, catalog.gets, projects.updates)
 	}
+}
+
+// stubBindingCredentials satisfies the binder's credential port: no owner
+// credential resolves, so credential-requiring providers stay unbindable.
+type stubBindingCredentials struct{}
+
+func (stubBindingCredentials) ActiveSnapshot(context.Context, string, string) (agentports.CredentialSnapshotRef, error) {
+	return agentports.CredentialSnapshotRef{}, agentdomain.ErrNotFound
 }

@@ -100,6 +100,60 @@ func (r *Repository) PublicationEventMatches(ctx context.Context, tx dbtx.Tx, ex
 		row.OccurredAt.Time.Equal(canonical.OccurredAt) && sameJSON(row.Payload, canonical.Payload), nil
 }
 
+// ResolveTaskCredential proves the task lease is active and held by this
+// worker, locks the lease row against a concurrent finish, and returns the
+// task's durable credential snapshot facts (ADR-0009). Required is derived
+// from the snapshot's presence — never from caller input — so a worker can
+// never select owner, provider, credential ID, or revision.
+func (r *Repository) ResolveTaskCredential(ctx context.Context, tx dbtx.Tx, taskLeaseID, workerID string, now time.Time) (agentports.TaskCredentialFacts, error) {
+	leaseUUID, err := requiredUUID(taskLeaseID)
+	if err != nil {
+		return agentports.TaskCredentialFacts{}, agentdomain.ErrLeaseLost
+	}
+	row, err := r.queries.WithTx(tx).LockTaskCredentialLeaseFacts(ctx, agentdb.LockTaskCredentialLeaseFactsParams{
+		LeaseID: leaseUUID, LockedBy: text(workerID), LockedUntil: timestamp(now),
+	})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return agentports.TaskCredentialFacts{}, agentdomain.ErrLeaseLost
+	}
+	if err != nil {
+		return agentports.TaskCredentialFacts{}, fmt.Errorf("lock task credential lease facts: %w", err)
+	}
+	facts := agentports.TaskCredentialFacts{
+		TaskID: row.ID, OwnerUserID: row.OwnerUserID, ProviderID: row.ProviderID,
+		TaskLeaseExpiresAt: row.LockedUntil.Time,
+	}
+	if row.CredentialID.Valid {
+		facts.Required = true
+		facts.CredentialID = uuid.UUID(row.CredentialID.Bytes).String()
+		facts.CredentialRevision = row.CredentialRevision.Int64
+	}
+	return facts, nil
+}
+
+// TaskLeaseExpiry returns the current expiry of the active task lease held
+// by this worker, locking the lease row so the credential renewal commits
+// against exactly the expiry it observed.
+func (r *Repository) TaskLeaseExpiry(ctx context.Context, tx dbtx.Tx, taskLeaseID, workerID string, now time.Time) (time.Time, bool, error) {
+	leaseUUID, err := requiredUUID(taskLeaseID)
+	if err != nil {
+		return time.Time{}, false, agentdomain.ErrLeaseLost
+	}
+	expiry, err := r.queries.WithTx(tx).GetTaskLeaseExpiry(ctx, agentdb.GetTaskLeaseExpiryParams{
+		LeaseID: leaseUUID, LockedBy: text(workerID),
+	})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return time.Time{}, false, nil
+	}
+	if err != nil {
+		return time.Time{}, false, fmt.Errorf("read task lease expiry: %w", err)
+	}
+	if !expiry.Valid || expiry.Time.Before(now) {
+		return time.Time{}, false, nil
+	}
+	return expiry.Time, true, nil
+}
+
 func sameJSON(left, right []byte) bool {
 	var leftValue any
 	var rightValue any

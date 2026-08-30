@@ -748,7 +748,7 @@ func (f *staticInstallations) ResolveActiveInstallation(
 // hits the Agent store before any other dependency.
 func newRouterForOutage(agentRepository *agentpostgres.Repository) *orchestration.TaskRouter {
 	agents := agentapp.New(agentRepository, ids.UUIDv7{})
-	router, err := orchestration.NewTaskRouter(agents, projectOutageProjects(), outagePolicies{}, outageProviders{}, "fake")
+	router, err := orchestration.NewTaskRouter(agents, projectOutageProjects(), outagePolicies{}, outageProviders{}, outageCredentials{}, "fake")
 	if err != nil {
 		panic(err)
 	}
@@ -927,7 +927,7 @@ EXECUTE FUNCTION workos_events.raise_outbox_outage()`); err != nil {
 	}
 	agentRepository := agentpostgres.New(pool)
 	agents := agentapp.New(agentRepository, ids.UUIDv7{})
-	router, err := orchestration.NewTaskRouter(agents, projectapp.New(projectpostgres.New(pool), ids.UUIDv7{}), outagePolicies{}, outageProviders{}, "fake")
+	router, err := orchestration.NewTaskRouter(agents, projectapp.New(projectpostgres.New(pool), ids.UUIDv7{}), outagePolicies{}, outageProviders{}, outageCredentials{}, "fake")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1308,4 +1308,12 @@ func (r *staticResolver) ResolveSurfaceLaunch(_ context.Context, _ surfaceports.
 		GrantRevision:      r.descriptor.GrantRevision,
 		GrantedPermissions: r.descriptor.GrantedPermissions,
 	}, nil
+}
+
+// outageCredentials resolves no credential: credential-bearing providers are
+// never admitted in these outage scenarios.
+type outageCredentials struct{}
+
+func (outageCredentials) ActiveSnapshot(context.Context, string, string) (agentports.CredentialSnapshotRef, error) {
+	return agentports.CredentialSnapshotRef{}, agentdomain.ErrNotFound
 }

@@ -2,6 +2,7 @@ package ports
 
 import (
 	"context"
+	"time"
 
 	agentv1 "github.com/yangtao121/workos/gen/go/workos/agent/v1"
 	harnessv1 "github.com/yangtao121/workos/gen/go/workos/harness/v1"
@@ -26,7 +27,49 @@ type ArtifactOutput struct {
 // and must not emit its terminal event after a failed output.
 type ArtifactSink func(ArtifactOutput) error
 
+// Canonical credential purposes the lease contract understands.
+const PurposeProviderAPIKeyV1 = "provider-api-key.v1"
+
+// CredentialLease is the neutral short-lived task-bound credential grant a
+// worker derives from the Core Credential Vault (ADR-0009). Secret material
+// is supplied exactly once per lease, held only in memory, and never
+// logged, cached across tasks, or handed to any process other than the
+// allowlisted provider child of this one task.
+type CredentialLease struct {
+	ID                 string
+	TaskLeaseID        string
+	ConsumerID         string
+	Purpose            string
+	CredentialRevision int64
+	ExpiresAt          time.Time
+	Secret             []byte
+}
+
+// ValidFor reports whether this lease is a live grant for the given consumer
+// and purpose at the given instant.
+func (l *CredentialLease) ValidFor(consumerID, purpose string, now time.Time) bool {
+	if l == nil || l.ID == "" || len(l.Secret) == 0 {
+		return false
+	}
+	if l.ConsumerID != consumerID || l.Purpose != purpose {
+		return false
+	}
+	return now.Before(l.ExpiresAt)
+}
+
+// Execution is the neutral provider execution input: one struct, so the
+// provider contract grows by fields rather than unstructured positional
+// parameters. TaskID and Input are derived facts from the claimed task;
+// Credential is nil for providers (and tasks) that need no credential.
+type Execution struct {
+	TaskID     string
+	Input      *agentv1.AgentTaskInput
+	Emit       Emit
+	Artifacts  ArtifactSink
+	Credential *CredentialLease
+}
+
 type Provider interface {
 	Describe() *harnessv1.HarnessProviderInfo
-	Run(context.Context, string, *agentv1.AgentTaskInput, Emit, ArtifactSink) error
+	Run(context.Context, Execution) error
 }

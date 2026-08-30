@@ -67,3 +67,11 @@ type WorkosCoreAgentTask struct {
 	BudgetMaxOutputTokens   pgtype.Int8        `json:"budget_max_output_tokens"`
 	BudgetMaxRuntimeSeconds pgtype.Int8        `json:"budget_max_runtime_seconds"`
 }
+
+type WorkosCoreAgentTaskCredential struct {
+	TaskID             string             `json:"task_id"`
+	ProviderID         string             `json:"provider_id"`
+	CredentialID       string             `json:"credential_id"`
+	CredentialRevision int64              `json:"credential_revision"`
+	CreatedAt          pgtype.Timestamptz `json:"created_at"`
+}

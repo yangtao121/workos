@@ -18,10 +18,10 @@ func TestProviderEmitsOneCanonicalTerminalEvent(t *testing.T) {
 	t.Parallel()
 	provider := New(fixedID("run-1"))
 	var events []*agentv1.AgentEvent
-	err := provider.Run(context.Background(), "task-1", &agentv1.AgentTaskInput{Goal: "  verify foundation  "}, func(event *agentv1.AgentEvent) error {
+	err := provider.Run(context.Background(), ports.Execution{TaskID: "task-1", Input: &agentv1.AgentTaskInput{Goal: "  verify foundation  "}, Emit: func(event *agentv1.AgentEvent) error {
 		events = append(events, event)
 		return nil
-	}, nil)
+	}, Artifacts: nil})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -65,15 +65,15 @@ func TestProviderEnforcesTokenCap(t *testing.T) {
 	t.Parallel()
 	provider := New(fixedID("run-1"))
 	var usage *agentv1.UsageRecorded
-	err := provider.Run(context.Background(), "task-1", &agentv1.AgentTaskInput{
+	err := provider.Run(context.Background(), ports.Execution{TaskID: "task-1", Input: &agentv1.AgentTaskInput{
 		Goal:   "capped run",
 		Budget: &agentv1.AgentBudget{MaxTokens: 2},
-	}, func(event *agentv1.AgentEvent) error {
+	}, Emit: func(event *agentv1.AgentEvent) error {
 		if event.GetUsageRecorded() != nil {
 			usage = event.GetUsageRecorded()
 		}
 		return nil
-	}, nil)
+	}, Artifacts: nil})
 	if err != nil || usage == nil || usage.GetOutputTokens() != 2 {
 		t.Fatalf("token cap not enforced: %v %#v", err, usage)
 	}
@@ -88,7 +88,7 @@ func TestProviderRejectsInvalidBudgets(t *testing.T) {
 		"cost budget unsupported": {MaxCostDecimal: "0.25"},
 	}
 	for name, budget := range cases {
-		err := provider.Run(context.Background(), "task-1", &agentv1.AgentTaskInput{Goal: "g", Budget: budget}, func(*agentv1.AgentEvent) error { return nil }, nil)
+		err := provider.Run(context.Background(), ports.Execution{TaskID: "task-1", Input: &agentv1.AgentTaskInput{Goal: "g", Budget: budget}, Emit: func(*agentv1.AgentEvent) error { return nil }, Artifacts: nil})
 		var runErr *ports.RunError
 		if err == nil || !errors.As(err, &runErr) || runErr.Kind != ports.ErrorKindInvalidInput {
 			t.Fatalf("%s: expected invalid-input verdict, got %v", name, err)
@@ -102,11 +102,11 @@ func TestProviderStopsOnContextDeadline(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
 	defer cancel()
 	events := 0
-	err := provider.Run(ctx, "task-1", &agentv1.AgentTaskInput{Goal: "g"}, func(*agentv1.AgentEvent) error {
+	err := provider.Run(ctx, ports.Execution{TaskID: "task-1", Input: &agentv1.AgentTaskInput{Goal: "g"}, Emit: func(*agentv1.AgentEvent) error {
 		events++
 		<-ctx.Done()
 		return ctx.Err()
-	}, nil)
+	}, Artifacts: nil})
 	if !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("expected deadline verdict, got %v", err)
 	}
@@ -121,9 +121,7 @@ func TestProviderEmitsExactlyOneArtifactPerRequestedType(t *testing.T) {
 	var events []*agentv1.AgentEvent
 	var outputs []ports.ArtifactOutput
 	requested := []string{"document.markdown.v1", "code.unified-diff.v1"}
-	err := provider.Run(context.Background(), "task-1", &agentv1.AgentTaskInput{Goal: "g", OutputArtifactTypes: requested},
-		func(event *agentv1.AgentEvent) error { events = append(events, event); return nil },
-		func(output ports.ArtifactOutput) error { outputs = append(outputs, output); return nil })
+	err := provider.Run(context.Background(), ports.Execution{TaskID: "task-1", Input: &agentv1.AgentTaskInput{Goal: "g", OutputArtifactTypes: requested}, Emit: func(event *agentv1.AgentEvent) error { events = append(events, event); return nil }, Artifacts: func(output ports.ArtifactOutput) error { outputs = append(outputs, output); return nil }})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -144,9 +142,7 @@ func TestProviderEmitsExactlyOneArtifactPerRequestedType(t *testing.T) {
 	}
 	// Deterministic across runs.
 	var again []ports.ArtifactOutput
-	if err := provider.Run(context.Background(), "task-1", &agentv1.AgentTaskInput{Goal: "g", OutputArtifactTypes: requested},
-		func(*agentv1.AgentEvent) error { return nil },
-		func(output ports.ArtifactOutput) error { again = append(again, output); return nil }); err != nil {
+	if err := provider.Run(context.Background(), ports.Execution{TaskID: "task-1", Input: &agentv1.AgentTaskInput{Goal: "g", OutputArtifactTypes: requested}, Emit: func(*agentv1.AgentEvent) error { return nil }, Artifacts: func(output ports.ArtifactOutput) error { again = append(again, output); return nil }}); err != nil {
 		t.Fatal(err)
 	}
 	for i := range outputs {
@@ -179,9 +175,7 @@ func TestProviderRejectsInvalidArtifactRequests(t *testing.T) {
 		{"over the maximum", []string{"document.markdown.v1", "code.unified-diff.v1", "document.markdown.v1"}},
 	}
 	for _, testCase := range cases {
-		err := provider.Run(context.Background(), "task-1", &agentv1.AgentTaskInput{Goal: "g", OutputArtifactTypes: testCase.requested},
-			func(*agentv1.AgentEvent) error { return nil },
-			func(ports.ArtifactOutput) error { t.Fatalf("%s: output emitted", testCase.name); return nil })
+		err := provider.Run(context.Background(), ports.Execution{TaskID: "task-1", Input: &agentv1.AgentTaskInput{Goal: "g", OutputArtifactTypes: testCase.requested}, Emit: func(*agentv1.AgentEvent) error { return nil }, Artifacts: func(ports.ArtifactOutput) error { t.Fatalf("%s: output emitted", testCase.name); return nil }})
 		var runErr *ports.RunError
 		if !errors.As(err, &runErr) || runErr.Kind != ports.ErrorKindInvalidInput {
 			t.Fatalf("%s: expected invalid-input verdict, got %v", testCase.name, err)
@@ -193,14 +187,14 @@ func TestProviderAbortsRunWhenArtifactSinkFails(t *testing.T) {
 	t.Parallel()
 	provider := New(fixedID("run-1"))
 	sinkFailure := errors.New("materialization refused")
-	err := provider.Run(context.Background(), "task-1", &agentv1.AgentTaskInput{
+	err := provider.Run(context.Background(), ports.Execution{TaskID: "task-1", Input: &agentv1.AgentTaskInput{
 		Goal: "g", OutputArtifactTypes: []string{"document.markdown.v1"},
-	}, func(event *agentv1.AgentEvent) error {
+	}, Emit: func(event *agentv1.AgentEvent) error {
 		if event.GetRunCompleted() != nil {
 			t.Fatal("terminal event emitted after a failed materialization")
 		}
 		return nil
-	}, func(ports.ArtifactOutput) error { return sinkFailure })
+	}, Artifacts: func(ports.ArtifactOutput) error { return sinkFailure }})
 	if !errors.Is(err, sinkFailure) {
 		t.Fatalf("sink failure must abort the run: %v", err)
 	}

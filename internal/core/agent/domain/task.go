@@ -16,6 +16,11 @@ var (
 	ErrTerminal         = errors.New("agent task is already terminal")
 	ErrProjectDenied    = errors.New("project is outside the current identity scope")
 	ErrProviderMismatch = errors.New("run provider does not match task provider snapshot")
+	// ErrProviderCredentialMissing marks a fresh task whose resolved
+	// provider requires a task-bound credential lease but whose owner has no
+	// matching active credential in the vault (ADR-0009). It is a sanitized
+	// FailedPrecondition with zero side effects.
+	ErrProviderCredentialMissing = errors.New("provider requires a credential that is not configured")
 	// ErrIdempotencyConflict marks an App task client key that was already
 	// consumed by a different canonical request (same owner + app instance +
 	// client key, different digest). Transport maps it to a sanitized Aborted.
@@ -50,6 +55,21 @@ type Task struct {
 	CancellationRequested bool
 	CreatedAt             time.Time
 	UpdatedAt             time.Time
+	// Credential is the durable server-derived snapshot of the exact
+	// provider credential (opaque ID + revision) this task was admitted
+	// with. It is never part of the public task projection and never
+	// contains secret material; it exists so replay, approval decisions,
+	// and credential acquires verify history instead of silently adopting
+	// a rotated or rebound credential (ADR-0009).
+	Credential *CredentialSnapshot
+}
+
+// CredentialSnapshot is the opaque credential identity a fresh task was
+// admitted with. The ID is the vault's UUIDv7 reference; the revision pins
+// the exact secret generation.
+type CredentialSnapshot struct {
+	CredentialID string
+	Revision     int64
 }
 
 type Event struct {

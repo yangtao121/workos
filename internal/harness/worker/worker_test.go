@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"net/http"
 	"net/http/httptest"
 	"sync"
 	"testing"
@@ -15,6 +16,8 @@ import (
 	agentv1 "github.com/yangtao121/workos/gen/go/workos/agent/v1"
 	artifactv1 "github.com/yangtao121/workos/gen/go/workos/artifact/v1"
 	commonv1 "github.com/yangtao121/workos/gen/go/workos/common/v1"
+	credentialv1 "github.com/yangtao121/workos/gen/go/workos/credential/v1"
+	"github.com/yangtao121/workos/gen/go/workos/credential/v1/credentialv1connect"
 	harnessv1 "github.com/yangtao121/workos/gen/go/workos/harness/v1"
 	taskv1 "github.com/yangtao121/workos/gen/go/workos/taskexecution/v1"
 	"github.com/yangtao121/workos/gen/go/workos/taskexecution/v1/taskexecutionv1connect"
@@ -143,7 +146,7 @@ func (blockingHarnessProvider) Describe() *harnessv1.HarnessProviderInfo {
 	return &harnessv1.HarnessProviderInfo{Id: "blocking", Health: commonv1.HealthState_HEALTH_STATE_HEALTHY}
 }
 
-func (blockingHarnessProvider) Run(ctx context.Context, _ string, _ *agentv1.AgentTaskInput, _ ports.Emit, _ ports.ArtifactSink) error {
+func (blockingHarnessProvider) Run(ctx context.Context, _ ports.Execution) error {
 	<-ctx.Done()
 	return ctx.Err()
 }
@@ -161,11 +164,14 @@ func (completingProvider) Describe() *harnessv1.HarnessProviderInfo {
 	return &harnessv1.HarnessProviderInfo{Id: "completing", Health: commonv1.HealthState_HEALTH_STATE_HEALTHY}
 }
 
-func (completingProvider) Run(ctx context.Context, taskID string, input *agentv1.AgentTaskInput, emit ports.Emit, _ ports.ArtifactSink) error {
-	if err := emit(&agentv1.AgentEvent{Event: &agentv1.AgentEvent_AssistantMessage{AssistantMessage: &agentv1.AssistantMessage{Text: "working"}}}); err != nil {
+func (completingProvider) Run(ctx context.Context, execution ports.Execution) error {
+	taskID, input := execution.TaskID, execution.Input
+	_ = taskID
+	_ = input
+	if err := execution.Emit(&agentv1.AgentEvent{Event: &agentv1.AgentEvent_AssistantMessage{AssistantMessage: &agentv1.AssistantMessage{Text: "working"}}}); err != nil {
 		return err
 	}
-	return emit(&agentv1.AgentEvent{Event: &agentv1.AgentEvent_RunCompleted{RunCompleted: &agentv1.RunCompleted{Summary: "done"}}})
+	return execution.Emit(&agentv1.AgentEvent{Event: &agentv1.AgentEvent_RunCompleted{RunCompleted: &agentv1.RunCompleted{Summary: "done"}}})
 }
 
 // stubbornHarnessProvider does not respond to cancellation at all — it never
@@ -176,17 +182,67 @@ func (stubbornHarnessProvider) Describe() *harnessv1.HarnessProviderInfo {
 	return &harnessv1.HarnessProviderInfo{Id: "stubborn", Health: commonv1.HealthState_HEALTH_STATE_HEALTHY}
 }
 
-func (stubbornHarnessProvider) Run(context.Context, string, *agentv1.AgentTaskInput, ports.Emit, ports.ArtifactSink) error {
+func (stubbornHarnessProvider) Run(context.Context, ports.Execution) error {
 	<-neverClosed
 	return nil
 }
 
 func newWorkerTestServer(t *testing.T, core *fakeCore) *httptest.Server {
 	t.Helper()
-	_, handler := taskexecutionv1connect.NewTaskExecutionServiceHandler(core)
-	server := httptest.NewServer(handler)
+	return newWorkerTestServerWithVault(t, core, nil)
+}
+
+// newWorkerTestServerWithVault mounts the task execution handler plus an
+// optional credential lease handler on one (plain) test server. The lease
+// handler's behavior mirrors the core protocol: Acquire answers
+// required=false unless a grant is configured; renew returns valid=false
+// when configured to simulate revocation.
+func newWorkerTestServerWithVault(t *testing.T, core *fakeCore, vault *fakeVault) *httptest.Server {
+	t.Helper()
+	mux := http.NewServeMux()
+	executionPath, execution := taskexecutionv1connect.NewTaskExecutionServiceHandler(core)
+	mux.Handle(executionPath, execution)
+	if vault != nil {
+		leasePath, leaseHandler := credentialv1connect.NewCredentialLeaseServiceHandler(vault)
+		mux.Handle(leasePath, leaseHandler)
+	}
+	server := httptest.NewServer(mux)
 	t.Cleanup(server.Close)
 	return server
+}
+
+// fakeVault is the worker-test CredentialLeaseService double.
+type fakeVault struct {
+	mu      sync.Mutex
+	acquire int
+	grant   *credentialv1.AcquireTaskCredentialResponse
+	err     error
+	invalid bool
+}
+
+func (f *fakeVault) AcquireTaskCredential(_ context.Context, req *connect.Request[credentialv1.AcquireTaskCredentialRequest]) (*connect.Response[credentialv1.AcquireTaskCredentialResponse], error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.acquire++
+	if f.err != nil {
+		return nil, f.err
+	}
+	return connect.NewResponse(f.grant), nil
+}
+
+func (f *fakeVault) RenewTaskCredentialLease(context.Context, *connect.Request[credentialv1.RenewTaskCredentialLeaseRequest]) (*connect.Response[credentialv1.RenewTaskCredentialLeaseResponse], error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	valid := !f.invalid
+	expires := time.Now().Add(30 * time.Second)
+	if !valid {
+		expires = time.Time{}
+	}
+	return connect.NewResponse(&credentialv1.RenewTaskCredentialLeaseResponse{Valid: valid, ExpiresAt: timestamppb.New(expires)}), nil
+}
+
+func (f *fakeVault) ReleaseTaskCredentialLease(context.Context, *connect.Request[credentialv1.ReleaseTaskCredentialLeaseRequest]) (*connect.Response[credentialv1.ReleaseTaskCredentialLeaseResponse], error) {
+	return connect.NewResponse(&credentialv1.ReleaseTaskCredentialLeaseResponse{}), nil
 }
 
 func TestWorkerEnforcesServerDerivedRuntimeDeadline(t *testing.T) {
@@ -206,7 +262,7 @@ func TestWorkerEnforcesServerDerivedRuntimeDeadline(t *testing.T) {
 	}
 	server := newWorkerTestServer(t, core)
 
-	worker := New("worker-test", server.URL, 50*time.Millisecond, broker.New(blockingHarnessProvider{}), slog.Default())
+	worker := New("worker-test", server.URL, 50*time.Millisecond, broker.New(blockingHarnessProvider{}), slog.Default(), nil, nil)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	go worker.Run(ctx)
@@ -263,7 +319,7 @@ func TestWorkerAbandonsProviderThatIgnoresCancellation(t *testing.T) {
 	}
 	server := newWorkerTestServer(t, core)
 
-	worker := New("worker-test", server.URL, 50*time.Millisecond, broker.New(stubbornHarnessProvider{}), slog.Default())
+	worker := New("worker-test", server.URL, 50*time.Millisecond, broker.New(stubbornHarnessProvider{}), slog.Default(), nil, nil)
 	worker.abandonAfter = 100 * time.Millisecond
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -319,7 +375,7 @@ func TestWorkerRepairsALostTerminalAppend(t *testing.T) {
 	}
 	server := newWorkerTestServer(t, core)
 
-	worker := New("worker-test", server.URL, 20*time.Millisecond, broker.New(completingProvider{}), slog.Default())
+	worker := New("worker-test", server.URL, 20*time.Millisecond, broker.New(completingProvider{}), slog.Default(), nil, nil)
 	worker.heartbeat = 30 * time.Millisecond
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -362,7 +418,7 @@ func TestWorkerHonoursOwnerCancellationWithoutSyntheticTerminal(t *testing.T) {
 	}
 	server := newWorkerTestServer(t, core)
 
-	worker := New("worker-test", server.URL, 20*time.Millisecond, broker.New(blockingHarnessProvider{}), slog.Default())
+	worker := New("worker-test", server.URL, 20*time.Millisecond, broker.New(blockingHarnessProvider{}), slog.Default(), nil, nil)
 	worker.heartbeat = 30 * time.Millisecond
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -392,8 +448,8 @@ func (artifactSkippingProvider) Describe() *harnessv1.HarnessProviderInfo {
 	return &harnessv1.HarnessProviderInfo{Id: "skipping", Health: commonv1.HealthState_HEALTH_STATE_HEALTHY}
 }
 
-func (artifactSkippingProvider) Run(ctx context.Context, _ string, _ *agentv1.AgentTaskInput, emit ports.Emit, _ ports.ArtifactSink) error {
-	return emit(&agentv1.AgentEvent{Event: &agentv1.AgentEvent_RunCompleted{RunCompleted: &agentv1.RunCompleted{Summary: "done"}}})
+func (artifactSkippingProvider) Run(ctx context.Context, execution ports.Execution) error {
+	return execution.Emit(&agentv1.AgentEvent{Event: &agentv1.AgentEvent_RunCompleted{RunCompleted: &agentv1.RunCompleted{Summary: "done"}}})
 }
 
 // artifactEmittingProvider materializes the requested output, then completes.
@@ -403,11 +459,11 @@ func (artifactEmittingProvider) Describe() *harnessv1.HarnessProviderInfo {
 	return &harnessv1.HarnessProviderInfo{Id: "emitting", Health: commonv1.HealthState_HEALTH_STATE_HEALTHY}
 }
 
-func (artifactEmittingProvider) Run(ctx context.Context, _ string, _ *agentv1.AgentTaskInput, emit ports.Emit, artifacts ports.ArtifactSink) error {
-	if err := artifacts(ports.ArtifactOutput{Key: "document", Title: "Title", Type: "document.markdown.v1", Content: []byte("# hi\n")}); err != nil {
+func (artifactEmittingProvider) Run(ctx context.Context, execution ports.Execution) error {
+	if err := execution.Artifacts(ports.ArtifactOutput{Key: "document", Title: "Title", Type: "document.markdown.v1", Content: []byte("# hi\n")}); err != nil {
 		return err
 	}
-	return emit(&agentv1.AgentEvent{Event: &agentv1.AgentEvent_RunCompleted{RunCompleted: &agentv1.RunCompleted{Summary: "done"}}})
+	return execution.Emit(&agentv1.AgentEvent{Event: &agentv1.AgentEvent_RunCompleted{RunCompleted: &agentv1.RunCompleted{Summary: "done"}}})
 }
 
 func TestWorkerMaterializesRequestedArtifactsBeforeTerminal(t *testing.T) {
@@ -423,7 +479,7 @@ func TestWorkerMaterializesRequestedArtifactsBeforeTerminal(t *testing.T) {
 		},
 	}
 	server := newWorkerTestServer(t, core)
-	worker := New("worker-test", server.URL, 20*time.Millisecond, broker.New(artifactEmittingProvider{}), slog.Default())
+	worker := New("worker-test", server.URL, 20*time.Millisecond, broker.New(artifactEmittingProvider{}), slog.Default(), nil, nil)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	go worker.Run(ctx)
@@ -465,7 +521,7 @@ func TestWorkerFailsRunsThatSkipRequestedArtifacts(t *testing.T) {
 		},
 	}
 	server := newWorkerTestServer(t, core)
-	worker := New("worker-test", server.URL, 20*time.Millisecond, broker.New(artifactSkippingProvider{}), slog.Default())
+	worker := New("worker-test", server.URL, 20*time.Millisecond, broker.New(artifactSkippingProvider{}), slog.Default(), nil, nil)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	go worker.Run(ctx)
@@ -493,6 +549,150 @@ func TestWorkerFailsRunsThatSkipRequestedArtifacts(t *testing.T) {
 		case <-deadline:
 			t.Fatalf("worker never failed the artifact-skipping run: failed=%v finished=%d", failed, finished)
 		case <-time.After(20 * time.Millisecond):
+		}
+	}
+}
+
+// leaseVerifyingProvider refuses to run unless the execution carries a live
+// credential lease, proving the worker derives it before the provider starts.
+type leaseVerifyingProvider struct{ started chan struct{} }
+
+func (p leaseVerifyingProvider) Describe() *harnessv1.HarnessProviderInfo {
+	return &harnessv1.HarnessProviderInfo{Id: "lease", Health: commonv1.HealthState_HEALTH_STATE_HEALTHY}
+}
+
+func (p leaseVerifyingProvider) Run(ctx context.Context, execution ports.Execution) error {
+	if execution.Credential == nil || execution.Credential.ConsumerID != "deepseek" || len(execution.Credential.Secret) == 0 {
+		return ports.NewRunError(ports.ErrorKindConfiguration, "lease missing", false, nil)
+	}
+	close(p.started)
+	return execution.Emit(&agentv1.AgentEvent{Event: &agentv1.AgentEvent_RunCompleted{RunCompleted: &agentv1.RunCompleted{Summary: "done"}}})
+}
+
+func leaseTask() *taskv1.TaskLease {
+	return &taskv1.TaskLease{
+		LeaseId: "018f0000-0000-7000-8000-000000000010", WorkerId: "worker-test",
+		RequiresTaskCredential: true,
+		Task: &agentv1.AgentTask{
+			Id: "task-lease", ProviderId: "lease",
+			Input: &agentv1.AgentTaskInput{Goal: "lease"},
+		},
+		ExpiresAt: timestamppb.New(time.Now().Add(30 * time.Second)),
+	}
+}
+
+func TestWorkerFailsTaskWithoutProviderStartWhenAcquireFails(t *testing.T) {
+	t.Parallel()
+	core := &fakeCore{lease: leaseTask(), requireTerminalForFinish: true}
+	vault := &fakeVault{err: errors.New("vault unavailable")}
+	server := newWorkerTestServerWithVault(t, core, vault)
+	worker := New("worker-test", server.URL, time.Millisecond, broker.New(leaseVerifyingProvider{started: make(chan struct{})}), slog.Default(), vault, nil)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go worker.Run(ctx)
+
+	deadline := time.After(5 * time.Second)
+	for {
+		core.mu.Lock()
+		failed, finished := false, core.finished
+		for _, event := range core.appended {
+			if event.GetRunFailed() != nil {
+				failed = true
+			}
+		}
+		core.mu.Unlock()
+		if failed && finished == 1 {
+			return
+		}
+		select {
+		case <-deadline:
+			t.Fatalf("task did not fail closed without a lease: failed=%v finished=%d", failed, finished)
+		default:
+		}
+	}
+}
+
+func TestWorkerAcquiresLeaseBeforeProviderRuns(t *testing.T) {
+	t.Parallel()
+	core := &fakeCore{lease: leaseTask(), requireTerminalForFinish: true}
+	vault := &fakeVault{grant: &credentialv1.AcquireTaskCredentialResponse{
+		CredentialLeaseId: "lease-1", Required: true, ConsumerId: "deepseek",
+		Purpose: ports.PurposeProviderAPIKeyV1, Secret: []byte("synthetic"),
+		ExpiresAt: timestamppb.New(time.Now().Add(time.Minute)),
+	}}
+	server := newWorkerTestServerWithVault(t, core, vault)
+	started := make(chan struct{})
+	worker := New("worker-test", server.URL, time.Millisecond, broker.New(leaseVerifyingProvider{started: started}), slog.Default(), vault, nil)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go worker.Run(ctx)
+
+	deadline := time.After(5 * time.Second)
+	for {
+		select {
+		case <-started:
+			return
+		case <-deadline:
+			t.Fatal("provider never started on a valid lease")
+		default:
+		}
+	}
+}
+
+// leaseBlockingProvider blocks until its run context is cancelled, under the
+// provider id the lease task references.
+type leaseBlockingProvider struct{}
+
+func (leaseBlockingProvider) Describe() *harnessv1.HarnessProviderInfo {
+	return &harnessv1.HarnessProviderInfo{Id: "lease", Health: commonv1.HealthState_HEALTH_STATE_HEALTHY}
+}
+
+func (leaseBlockingProvider) Run(ctx context.Context, _ ports.Execution) error {
+	<-ctx.Done()
+	return ctx.Err()
+}
+
+func TestWorkerRevokedCredentialProducesTerminalFailure(t *testing.T) {
+	t.Parallel()
+	core := &fakeCore{lease: leaseTask(), requireTerminalForFinish: true}
+	vault := &fakeVault{grant: &credentialv1.AcquireTaskCredentialResponse{
+		CredentialLeaseId: "lease-1", Required: true, ConsumerId: "deepseek",
+		Purpose: ports.PurposeProviderAPIKeyV1, Secret: []byte("synthetic"),
+		ExpiresAt: timestamppb.New(time.Now().Add(time.Minute)),
+	}}
+	server := newWorkerTestServerWithVault(t, core, vault)
+	worker := New("worker-test", server.URL, 5*time.Millisecond, broker.New(leaseBlockingProvider{}), slog.Default(), vault, nil)
+	worker.heartbeat = 5 * time.Millisecond
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go worker.Run(ctx)
+	// Let the run start under a valid lease, then make renewals invalid.
+	time.Sleep(50 * time.Millisecond)
+	vault.mu.Lock()
+	vault.invalid = true
+	vault.mu.Unlock()
+
+	deadline := time.After(5 * time.Second)
+	for {
+		core.mu.Lock()
+		revoked, finished := false, core.finished
+		var reasons []string
+		for _, event := range core.appended {
+			if failed := event.GetRunFailed(); failed != nil {
+				reasons = append(reasons, failed.GetReason())
+				if failed.GetReason() == "provider credential is no longer valid" {
+					revoked = true
+				}
+			}
+		}
+		core.mu.Unlock()
+		if revoked && finished == 1 {
+			return
+		}
+		select {
+		case <-deadline:
+			t.Fatalf("revocation did not produce the deterministic terminal: revoked=%v finished=%d reasons=%q", revoked, finished, reasons)
+		default:
 		}
 	}
 }

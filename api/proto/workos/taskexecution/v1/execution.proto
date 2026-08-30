@@ -14,6 +14,13 @@ message TaskLease {
   string worker_id = 2;
   workos.agent.v1.AgentTask task = 3;
   google.protobuf.Timestamp expires_at = 4;
+  // requires_task_credential mirrors the durable task credential snapshot:
+  // a worker that claims a task with this flag set must derive its
+  // short-lived credential lease through AcquireTaskCredential before
+  // starting the provider, and can never receive secret material anywhere
+  // else (ADR-0009). The flag itself carries no secret and no credential
+  // identity.
+  bool requires_task_credential = 5;
 }
 
 message ClaimTaskRequest {

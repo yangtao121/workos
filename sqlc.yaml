@@ -2,6 +2,31 @@ version: "2"
 sql:
   - engine: postgresql
     schema: internal/platform/migrations/files
+    queries: internal/core/credential/adapters/postgres/queries.sql
+    gen:
+      go:
+        package: credentialdb
+        out: internal/core/credential/adapters/postgres/credentialdb
+        sql_package: pgx/v5
+        emit_interface: true
+        emit_json_tags: true
+        omit_unused_structs: true
+        overrides:
+          - db_type: uuid
+            go_type: string
+          - db_type: jsonb
+            go_type:
+              import: encoding/json
+              type: RawMessage
+          - db_type: timestamptz
+            go_type: time.Time
+          - db_type: timestamptz
+            nullable: true
+            go_type:
+              type: "time.Time"
+              pointer: true
+  - engine: postgresql
+    schema: internal/platform/migrations/files
     queries: internal/core/project/adapters/postgres/queries.sql
     gen:
       go:

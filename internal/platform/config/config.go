@@ -25,6 +25,8 @@ type Config struct {
 	Services    URLs        `yaml:"services"`
 	Auth        Auth        `yaml:"auth"`
 	Agent       Agent       `yaml:"agent"`
+	Credential  Credential  `yaml:"credential"`
+	Execution   Execution   `yaml:"execution"`
 	Harness     Harness     `yaml:"harness"`
 	Surface     Surface     `yaml:"surface"`
 	Runtime     Runtime     `yaml:"runtime"`
@@ -113,12 +115,39 @@ type HarnessBindingPreset struct {
 	ResourcePolicyID string `yaml:"resource_policy_id"`
 }
 
+// Credential configures the Core Credential Vault (ADR-0009). Both fields
+// are required together; when both are empty the vault is unavailable and
+// credential-bearing providers fail closed while every other Core function
+// starts normally. The master key file is read only by the vault's crypto
+// adapter and never enters configuration dumps or logs.
+type Credential struct {
+	MasterKeyFile   string `yaml:"master_key_file"`
+	AdminSocketPath string `yaml:"admin_socket_path"`
+}
+
+// Execution configures the Core's private mutually authenticated TLS harness
+// execution listener: the only place TaskExecution and CredentialLease RPCs
+// are served. Core and harness-host hold distinct leaf identities issued by
+// one explicit private CA; the CA private key never reaches either process.
+type Execution struct {
+	Address  string `yaml:"address"`
+	CAFile   string `yaml:"ca_file"`
+	CertFile string `yaml:"cert_file"`
+	KeyFile  string `yaml:"key_file"`
+}
+
 type Harness struct {
 	WorkerID     string        `yaml:"worker_id"`
 	PollInterval time.Duration `yaml:"poll_interval"`
 	CoreURL      string        `yaml:"core_url"`
 	Generic      GenericCLI    `yaml:"generic_cli"`
 	DeepSeek     DeepSeek      `yaml:"deepseek"`
+	// Execution identity for the private harness execution channel
+	// (client side). Required for harness-host to claim tasks at all.
+	ExecutionURL      string `yaml:"execution_url"`
+	ExecutionCAFile   string `yaml:"execution_ca_file"`
+	ExecutionCertFile string `yaml:"execution_cert_file"`
+	ExecutionKeyFile  string `yaml:"execution_key_file"`
 }
 
 type GenericCLI struct {
@@ -215,6 +244,16 @@ func Load() (Config, error) {
 	setString(&cfg.Auth.DeviceID, "WORKOS_DEVICE_ID")
 	setString(&cfg.Auth.PublicOrigin, "WORKOS_AUTH_PUBLIC_ORIGIN")
 	setString(&cfg.Auth.AdminSocketPath, "WORKOS_AUTH_ADMIN_SOCKET")
+	setString(&cfg.Credential.MasterKeyFile, "WORKOS_CREDENTIAL_MASTER_KEY_FILE")
+	setString(&cfg.Credential.AdminSocketPath, "WORKOS_CREDENTIAL_ADMIN_SOCKET")
+	setString(&cfg.Execution.Address, "WORKOS_CORE_EXECUTION_ADDRESS")
+	setString(&cfg.Execution.CAFile, "WORKOS_CORE_EXECUTION_CA_FILE")
+	setString(&cfg.Execution.CertFile, "WORKOS_CORE_EXECUTION_CERT_FILE")
+	setString(&cfg.Execution.KeyFile, "WORKOS_CORE_EXECUTION_KEY_FILE")
+	setString(&cfg.Harness.ExecutionURL, "WORKOS_CORE_EXECUTION_URL")
+	setString(&cfg.Harness.ExecutionCAFile, "WORKOS_HARNESS_EXECUTION_CA_FILE")
+	setString(&cfg.Harness.ExecutionCertFile, "WORKOS_HARNESS_EXECUTION_CERT_FILE")
+	setString(&cfg.Harness.ExecutionKeyFile, "WORKOS_HARNESS_EXECUTION_KEY_FILE")
 	for _, bound := range []struct {
 		key string
 		dst *time.Duration
@@ -235,7 +274,14 @@ func Load() (Config, error) {
 	setString(&cfg.Agent.ProjectBinding.InstancePolicy, "WORKOS_PROJECT_HARNESS_INSTANCE_POLICY")
 	setString(&cfg.Agent.ProjectBinding.ProfileID, "WORKOS_PROJECT_HARNESS_PROFILE_ID")
 	setString(&cfg.Agent.ProjectBinding.ResourcePolicyID, "WORKOS_PROJECT_HARNESS_RESOURCE_POLICY_ID")
-	setString(&cfg.Harness.DeepSeek.APIKey, "DEEPSEEK_API_KEY")
+	// DEEPSEEK_API_KEY is retired (ADR-0009): a set value is reported as a
+	// configuration issue directing the operator to the vault. The value is
+	// never read, never echoed, and never used — the harness-host DeepSeek
+	// provider will report unavailable until the credential moves to the
+	// Credential Vault.
+	if legacyKey, legacySet := os.LookupEnv("DEEPSEEK_API_KEY"); legacySet && strings.TrimSpace(legacyKey) != "" {
+		cfg.Harness.DeepSeek.ConfigurationIssue = "DEEPSEEK_API_KEY is retired: store the provider credential in the WorkOS Credential Vault with workosctl credential put"
+	}
 	setString(&cfg.Harness.DeepSeek.BaseURL, "WORKOS_DEEPSEEK_BASE_URL")
 	setString(&cfg.Harness.DeepSeek.Model, "WORKOS_DEEPSEEK_MODEL")
 	setString(&cfg.Harness.DeepSeek.RuntimePath, "WORKOS_DEEPSEEK_RUNTIME_PATH")
@@ -505,11 +551,51 @@ func (c Config) ValidateReliabilityHost() error {
 	return nil
 }
 
+// ValidateHarness checks the harness-host's private execution identity
+// before the worker starts claiming tasks: the mTLS execution channel is the
+// only path to TaskExecution and CredentialLease RPCs.
+func (c Config) ValidateHarness() error {
+	executionURL, err := url.Parse(c.Harness.ExecutionURL)
+	if err != nil || !executionURL.IsAbs() || executionURL.Host == "" || executionURL.Scheme != "https" {
+		return errors.New("harness execution URL must be an absolute https URL")
+	}
+	for _, field := range []string{c.Harness.ExecutionCAFile, c.Harness.ExecutionCertFile, c.Harness.ExecutionKeyFile} {
+		if strings.TrimSpace(field) == "" {
+			return errors.New("harness execution identity requires CA, certificate, and key files")
+		}
+	}
+	return nil
+}
+
 // ValidateCore checks Core-owned routing, Catalog, and binding configuration
 // before any public service begins accepting requests.
 func (c Config) ValidateCore() error {
 	if strings.TrimSpace(c.Agent.DefaultProvider) == "" {
 		return errors.New("agent default provider is required")
+	}
+	// The private harness execution listener is mandatory: plain TaskExecution
+	// RPCs no longer exist on the ordinary Core listener.
+	if strings.TrimSpace(c.Execution.Address) == "" {
+		return errors.New("harness execution listener address is required")
+	}
+	if _, _, err := net.SplitHostPort(c.Execution.Address); err != nil {
+		return fmt.Errorf("invalid harness execution address: %w", err)
+	}
+	for _, field := range []string{c.Execution.CAFile, c.Execution.CertFile, c.Execution.KeyFile} {
+		if strings.TrimSpace(field) == "" {
+			return errors.New("harness execution listener requires CA, certificate, and key files")
+		}
+	}
+	// The credential vault is all-or-nothing: partial configuration fails
+	// startup instead of half-serving secrets.
+	vaultSet := c.Credential.MasterKeyFile != "" || c.Credential.AdminSocketPath != ""
+	if vaultSet && (c.Credential.MasterKeyFile == "" || c.Credential.AdminSocketPath == "") {
+		return errors.New("credential vault requires both the master key file and the admin socket path")
+	}
+	if c.Credential.AdminSocketPath != "" {
+		if err := ValidateAdminSocketPath(c.Credential.AdminSocketPath); err != nil {
+			return err
+		}
 	}
 	harnessURL, err := url.Parse(c.Services.Harness)
 	if err != nil || !harnessURL.IsAbs() || harnessURL.Host == "" || (harnessURL.Scheme != "http" && harnessURL.Scheme != "https") {

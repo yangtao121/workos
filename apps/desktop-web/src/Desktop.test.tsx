@@ -666,6 +666,7 @@ function provider(id: string, displayName: string): HarnessProviderInfo {
       hardRuntimeDeadline: false,
       maxOutputTokens: 0n,
       maxRuntimeSeconds: 0n,
+      requiresTaskCredentialLease: false,
     },
   };
 }

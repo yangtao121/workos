@@ -9,6 +9,7 @@ import (
 	agentv1 "github.com/yangtao121/workos/gen/go/workos/agent/v1"
 	harnessv1 "github.com/yangtao121/workos/gen/go/workos/harness/v1"
 	"github.com/yangtao121/workos/internal/harness/broker"
+	"github.com/yangtao121/workos/internal/harness/ports"
 )
 
 type Handler struct{ broker *broker.Broker }
@@ -27,9 +28,12 @@ func (h *Handler) ExecuteTask(ctx context.Context, req *connect.Request[harnessv
 	// no lease-bound artifact sink, so structured artifact output is not
 	// materializable through it (ADR-0008). The fake adapter refuses such
 	// requests on this path.
-	err := h.broker.Run(ctx, req.Msg.GetTaskId(), req.Msg.GetProviderId(), req.Msg.GetInput(), func(event *agentv1.AgentEvent) error {
-		return stream.Send(&harnessv1.ExecuteTaskResponse{Event: event})
-	}, nil)
+	err := h.broker.Run(ctx, ports.Execution{
+		TaskID: req.Msg.GetTaskId(), Input: req.Msg.GetInput(),
+		Emit: func(event *agentv1.AgentEvent) error {
+			return stream.Send(&harnessv1.ExecuteTaskResponse{Event: event})
+		},
+	}, req.Msg.GetProviderId())
 	if errors.Is(err, broker.ErrProviderUnavailable) {
 		return connect.NewError(connect.CodeFailedPrecondition, err)
 	}

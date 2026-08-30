@@ -33,7 +33,7 @@ func main() {
 
 func run(ctx context.Context, args []string) error {
 	if len(args) == 0 {
-		return errors.New("usage: workosctl bootstrap | db migrate | owner init | doctor")
+		return errors.New("usage: workosctl bootstrap | db migrate | owner init | device pair | credential put|rotate|revoke|list | doctor")
 	}
 	cfg, err := config.Load()
 	if err != nil {
@@ -51,10 +51,12 @@ func run(ctx context.Context, args []string) error {
 		return initializeOwner(ctx, cfg)
 	case len(args) == 2 && args[0] == "device" && args[1] == "pair":
 		return devicePair(ctx, cfg)
+	case len(args) >= 2 && args[0] == "credential":
+		return runCredential(ctx, cfg, args[1:])
 	case len(args) == 1 && args[0] == "doctor":
 		return doctor(ctx, cfg)
 	default:
-		return errors.New("usage: workosctl bootstrap | db migrate | owner init | device pair | doctor")
+		return errors.New("usage: workosctl bootstrap | db migrate | owner init | device pair | credential put|rotate|revoke|list | doctor")
 	}
 }
 

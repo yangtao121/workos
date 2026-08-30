@@ -43,7 +43,7 @@ type streamState struct {
 	emit             ports.Emit
 }
 
-func (p *Provider) execute(parent context.Context, taskID, runID string, input preparedInput, emit ports.Emit) error {
+func (p *Provider) execute(parent context.Context, taskID, runID string, input preparedInput, lease *ports.CredentialLease, emit ports.Emit) error {
 	ctx, cancel := context.WithTimeout(parent, input.timeout)
 	defer cancel()
 
@@ -58,7 +58,7 @@ func (p *Provider) execute(parent context.Context, taskID, runID string, input p
 
 	command := exec.CommandContext(ctx, p.config.RuntimePath, p.config.runtimeArgs...)
 	command.Dir = runtimeDir
-	command.Env = p.runtimeEnvironment(runtimeDir, input)
+	command.Env = p.runtimeEnvironment(runtimeDir, input, lease)
 	command.Stderr = io.Discard
 	command.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	command.WaitDelay = shutdownTimeout
@@ -187,12 +187,16 @@ func (p *Provider) execute(parent context.Context, taskID, runID string, input p
 	}}})
 }
 
-func (p *Provider) runtimeEnvironment(runtimeDir string, input preparedInput) []string {
+// runtimeEnvironment builds the allowlisted child environment for exactly
+// this one task. The credential lease's secret material enters the child as
+// the runtime's API key variable and nowhere else: it never touches the
+// harness-host environment, configuration, logs, or any other task's child.
+func (p *Provider) runtimeEnvironment(runtimeDir string, input preparedInput, lease *ports.CredentialLease) []string {
 	environment := []string{
 		"HOME=" + runtimeDir,
 		"TMPDIR=" + runtimeDir,
 		"LANG=C.UTF-8",
-		"DEEPSEEK_API_KEY=" + p.config.APIKey,
+		"DEEPSEEK_API_KEY=" + string(lease.Secret),
 		"DEEPSEEK_BASE_URL=" + p.config.BaseURL,
 		"DSH_CORDIS_CONFIG=" + p.config.CordisConfigPath,
 		"DSH_CWD=" + runtimeDir,

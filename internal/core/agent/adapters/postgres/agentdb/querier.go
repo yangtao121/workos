@@ -32,8 +32,10 @@ type Querier interface {
 	GetAgentAppTaskRequest(ctx context.Context, arg GetAgentAppTaskRequestParams) (GetAgentAppTaskRequestRow, error)
 	GetAgentTask(ctx context.Context, arg GetAgentTaskParams) (WorkosCoreAgentTask, error)
 	GetAgentTaskByIdempotency(ctx context.Context, arg GetAgentTaskByIdempotencyParams) (WorkosCoreAgentTask, error)
+	GetAgentTaskCredential(ctx context.Context, taskID string) (WorkosCoreAgentTaskCredential, error)
 	GetAgentTaskForUpdate(ctx context.Context, arg GetAgentTaskForUpdateParams) (WorkosCoreAgentTask, error)
 	GetAgentTaskUnscoped(ctx context.Context, id string) (WorkosCoreAgentTask, error)
+	GetTaskLeaseExpiry(ctx context.Context, arg GetTaskLeaseExpiryParams) (pgtype.Timestamptz, error)
 	// Replay verification for one Core-minted artifact publication. The
 	// coordinator supplies the exact immutable identity; this query never
 	// searches across task streams or treats an Artifact mapping as authority
@@ -43,6 +45,10 @@ type Querier interface {
 	InsertAgentAppPolicyRequest(ctx context.Context, arg InsertAgentAppPolicyRequestParams) (int64, error)
 	InsertAgentAppTaskRequest(ctx context.Context, arg InsertAgentAppTaskRequestParams) (int64, error)
 	InsertAgentTask(ctx context.Context, arg InsertAgentTaskParams) (int64, error)
+	// Durable per-task credential snapshot (ADR-0009): the exact credential ID
+	// and revision a fresh task was admitted with, persisted in the same
+	// transaction as the task row. No secret material is stored here.
+	InsertAgentTaskCredential(ctx context.Context, arg InsertAgentTaskCredentialParams) error
 	InsertTaskEvent(ctx context.Context, arg InsertTaskEventParams) error
 	InsertTaskOutbox(ctx context.Context, arg InsertTaskOutboxParams) error
 	LeaseTask(ctx context.Context, arg LeaseTaskParams) error
@@ -56,6 +62,11 @@ type Querier interface {
 	// read and its pending-approval insert.
 	LockAgentAppPolicyChain(ctx context.Context, arg LockAgentAppPolicyChainParams) error
 	LockTaskArtifactStream(ctx context.Context, arg LockTaskArtifactStreamParams) (LockTaskArtifactStreamRow, error)
+	// Credential-lease derivation inside the coordinator's transaction: the
+	// outbox lease row is locked so a concurrent finish cannot race the derive.
+	// The snapshot is LEFT JOINed: Required is derived from its presence, never
+	// from caller input.
+	LockTaskCredentialLeaseFacts(ctx context.Context, arg LockTaskCredentialLeaseFactsParams) (LockTaskCredentialLeaseFactsRow, error)
 	LockTaskEventStream(ctx context.Context, arg LockTaskEventStreamParams) (LockTaskEventStreamRow, error)
 	MarkAgentAppUsageBreach(ctx context.Context, arg MarkAgentAppUsageBreachParams) error
 	MarkTaskCancelled(ctx context.Context, arg MarkTaskCancelledParams) error

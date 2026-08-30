@@ -42,6 +42,12 @@ type Capabilities struct {
 	// demonstrably produces (ADR-0008). Any bool/list drift is capability
 	// corruption, never "all types": the catalog surfaces it as unavailable.
 	SupportedArtifactTypes []string
+	// RequiresTaskCredentialLease is true when the adapter can only run with
+	// a task-bound credential lease from the Core Credential Vault
+	// (ADR-0009). The owner-aware catalog projection reports such providers
+	// unavailable to owners without a matching active credential, with a
+	// fixed reason that never discloses credential existence or state.
+	RequiresTaskCredentialLease bool
 }
 
 type Provider struct {

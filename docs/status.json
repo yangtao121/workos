@@ -21,6 +21,12 @@
       "evidence": "public Catalog integration + default/DeepSeek fixture browser E2E"
     },
     {
+      "name": "Credential Vault",
+      "process": "workos-core",
+      "status": "working",
+      "evidence": "provider API-key encrypted store + local admin Unix socket + task-bound leases only (ADR-0009, migrations 023/024): AES-256-GCM at rest under a master-key file (absolute non-symlink owner-only 32 raw bytes, HMAC-derived keyed idempotency digests), server-derived opaque credential_ref in HarnessBinding, exact per-task (credential_id, revision) snapshots resolved pre-enqueue and re-verified at approval, AcquireTaskCredential derived solely from the active task lease over the mutual TLS 1.3 harness execution listener (URI SAN exact identity), response-loss replay/renew/release/revocation/expiry convergence, DeepSeek runs only on a live lease with the legacy DEEPSEEK_API_KEY env path retired (make test-credential-vault missing/granted/revoked phases on real PostgreSQL + workosctl admin socket + local DeepSeek fixture). Not covered: OAuth/Codex/GitHub/cloud credentials, secret reveal/export UI, master-key online rotation, multi-owner catalog overlay, mDNS/public exposure"
+    },
+    {
       "name": "Event Backbone",
       "process": "workos-core",
       "status": "working",
@@ -42,7 +48,7 @@
       "name": "DeepSeek Harness Adapter",
       "process": "harness-host",
       "status": "working",
-      "evidence": "official runtime + keyless streaming fixture integration and browser E2E"
+      "evidence": "official runtime + keyless streaming fixture integration and browser E2E; since ADR-0009 the adapter holds no long-lived key: every run requires a task-bound credential lease from the Core Credential Vault (requires_task_credential_lease), the legacy DEEPSEEK_API_KEY env path is retired with a sanitized migration issue, and the lease secret reaches only that task's allowlisted child env"
     },
     {
       "name": "Desktop Shell",

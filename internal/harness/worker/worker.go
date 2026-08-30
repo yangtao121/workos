@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"net/http"
 	"sync/atomic"
 	"time"
 
@@ -11,12 +12,22 @@ import (
 	"google.golang.org/protobuf/types/known/durationpb"
 
 	agentv1 "github.com/yangtao121/workos/gen/go/workos/agent/v1"
+	credentialv1 "github.com/yangtao121/workos/gen/go/workos/credential/v1"
 	taskv1 "github.com/yangtao121/workos/gen/go/workos/taskexecution/v1"
 	"github.com/yangtao121/workos/gen/go/workos/taskexecution/v1/taskexecutionv1connect"
 	"github.com/yangtao121/workos/internal/harness/broker"
 	"github.com/yangtao121/workos/internal/harness/ports"
 	"github.com/yangtao121/workos/internal/platform/telemetry"
 )
+
+// CredentialLeases is the worker's view of the Core Credential Vault's
+// lease service. It is served only on the Core private mTLS execution
+// listener; the client is built by the composition root.
+type CredentialLeases interface {
+	AcquireTaskCredential(context.Context, *connect.Request[credentialv1.AcquireTaskCredentialRequest]) (*connect.Response[credentialv1.AcquireTaskCredentialResponse], error)
+	RenewTaskCredentialLease(context.Context, *connect.Request[credentialv1.RenewTaskCredentialLeaseRequest]) (*connect.Response[credentialv1.RenewTaskCredentialLeaseResponse], error)
+	ReleaseTaskCredentialLease(context.Context, *connect.Request[credentialv1.ReleaseTaskCredentialLeaseRequest]) (*connect.Response[credentialv1.ReleaseTaskCredentialLeaseResponse], error)
+}
 
 const leaseDuration = 30 * time.Second
 
@@ -36,18 +47,28 @@ type Worker struct {
 	// the 5s default.
 	abandonAfter time.Duration
 	client       taskexecutionv1connect.TaskExecutionServiceClient
+	credentials  CredentialLeases
 	broker       *broker.Broker
 	logger       *slog.Logger
 }
 
-func New(id, coreURL string, pollInterval time.Duration, value *broker.Broker, logger *slog.Logger) *Worker {
+// New builds the worker. httpClient is the caller-owned transport to the
+// Core private execution listener — for the real composition root this is
+// the mutually authenticated TLS client; nil falls back to the platform
+// default (tests). The worker has no other transport: claim, renew, append,
+// finish, artifact, and credential RPCs all ride this one authenticated
+// client (ADR-0009).
+func New(id, coreURL string, pollInterval time.Duration, value *broker.Broker, logger *slog.Logger, credentials CredentialLeases, httpClient *http.Client) *Worker {
 	if pollInterval <= 0 {
 		pollInterval = 250 * time.Millisecond
 	}
+	if httpClient == nil {
+		httpClient = telemetry.HTTPClient()
+	}
 	return &Worker{
 		id: id, pollInterval: pollInterval, heartbeat: leaseDuration / 3, abandonAfter: abortGrace,
-		broker: value, logger: logger,
-		client: taskexecutionv1connect.NewTaskExecutionServiceClient(telemetry.HTTPClient(), coreURL),
+		broker: value, logger: logger, credentials: credentials,
+		client: taskexecutionv1connect.NewTaskExecutionServiceClient(httpClient, coreURL),
 	}
 }
 
@@ -85,6 +106,37 @@ func (w *Worker) process(parent context.Context, lease *taskv1.TaskLease) {
 	runCtx, cancel := context.WithCancel(parent)
 	defer cancel()
 	task := lease.GetTask()
+	// A task whose durable snapshot requires a provider credential derives
+	// its short-lived credential lease from the active task lease before any
+	// provider starts (ADR-0009). The lease rides the same mTLS execution
+	// channel and the same heartbeat: an invalid verdict or an error cancels
+	// the run, so the provider child never outlives its authorization.
+	var credentialLease *ports.CredentialLease
+	if lease.GetRequiresTaskCredential() {
+		if w.credentials == nil {
+			w.failWithoutProvider(parent, lease, "credential lease service is unavailable")
+			return
+		}
+		response, err := w.credentials.AcquireTaskCredential(parent, connect.NewRequest(&credentialv1.AcquireTaskCredentialRequest{
+			TaskLeaseId: lease.GetLeaseId(), WorkerId: w.id,
+		}))
+		if err != nil {
+			w.failWithoutProvider(parent, lease, "provider credential lease is not available")
+			return
+		}
+		if grant := response.Msg; grant.GetRequired() && len(grant.GetSecret()) > 0 {
+			credentialLease = &ports.CredentialLease{
+				ID: grant.GetCredentialLeaseId(), TaskLeaseID: grant.GetTaskLeaseId(),
+				ConsumerID: grant.GetConsumerId(), Purpose: grant.GetPurpose(),
+				CredentialRevision: grant.GetCredentialRevision(),
+				ExpiresAt:          grant.GetExpiresAt().AsTime(), Secret: grant.GetSecret(),
+			}
+		} else if grant.GetRequired() {
+			w.failWithoutProvider(parent, lease, "provider credential lease is not available")
+			return
+		}
+		defer w.releaseCredentialLease(lease, credentialLease)
+	}
 	// The server-derived runtime deadline is enforced here, independently of
 	// the adapter: even a provider that ignores context cancellation is
 	// cancelled with the run, and the fallback below emits exactly one
@@ -99,6 +151,10 @@ func (w *Worker) process(parent context.Context, lease *taskv1.TaskLease) {
 	// Non-nil once the deadline has fired; the abandon path below then bounds
 	// how long a cancellation-ignoring provider may keep the lease.
 	var abandonC <-chan time.Time
+	// credentialRevoked marks a credential lease that went invalid (revoke,
+	// rotate, or lost task lease): unlike an owner cancellation the worker
+	// itself owns the deterministic terminal event here.
+	var credentialRevoked atomic.Bool
 	result := make(chan error, 1)
 	terminal := make(chan bool, 1)
 
@@ -148,22 +204,24 @@ func (w *Worker) process(parent context.Context, lease *taskv1.TaskLease) {
 			emittedTypes[output.Type] = true
 			return nil
 		}
-		err := w.broker.Run(runCtx, task.GetId(), task.GetProviderId(), task.GetInput(), func(event *agentv1.AgentEvent) error {
-			// A completion that would leave requested artifact outputs
-			// missing fails closed here — before the terminal event lands —
-			// so the task deterministically ends with the failure below
-			// instead of pretending the artifact contract was fulfilled.
-			if _, completed := event.Event.(*agentv1.AgentEvent_RunCompleted); completed && missingArtifactTypes(requestedTypes, emittedTypes) {
-				return ports.NewRunError(ports.ErrorKindProtocol, "provider completed without materializing every requested artifact output", false, nil)
-			}
-			_, appendErr := w.client.AppendTaskEvent(runCtx, connect.NewRequest(&taskv1.AppendTaskEventRequest{
-				LeaseId: lease.GetLeaseId(), WorkerId: w.id, Event: event,
-			}))
-			if appendErr == nil && isTerminal(event) {
-				sawTerminal = true
-			}
-			return appendErr
-		}, artifacts)
+		err := w.broker.Run(runCtx, ports.Execution{
+			TaskID: task.GetId(), Input: task.GetInput(), Credential: credentialLease, Artifacts: artifacts,
+			Emit: func(event *agentv1.AgentEvent) error {
+				// A completion that would leave requested artifact outputs
+				// missing fails closed here — before the terminal event lands —
+				// so the task deterministically ends with the failure below
+				// instead of pretending the artifact contract was fulfilled.
+				if _, completed := event.Event.(*agentv1.AgentEvent_RunCompleted); completed && missingArtifactTypes(requestedTypes, emittedTypes) {
+					return ports.NewRunError(ports.ErrorKindProtocol, "provider completed without materializing every requested artifact output", false, nil)
+				}
+				_, appendErr := w.client.AppendTaskEvent(runCtx, connect.NewRequest(&taskv1.AppendTaskEventRequest{
+					LeaseId: lease.GetLeaseId(), WorkerId: w.id, Event: event,
+				}))
+				if appendErr == nil && isTerminal(event) {
+					sawTerminal = true
+				}
+				return appendErr
+			}}, task.GetProviderId())
 		terminal <- sawTerminal
 		result <- err
 	}()
@@ -186,6 +244,24 @@ func (w *Worker) process(parent context.Context, lease *taskv1.TaskLease) {
 			if response.Msg.GetCancellationRequested() {
 				cancel()
 			}
+			if credentialLease != nil {
+				// Revocation, rotation, a lost task lease, or a vault outage
+				// must stop the provider child within one bounded heartbeat.
+				verdict, renewErr := w.credentials.RenewTaskCredentialLease(parent, connect.NewRequest(&credentialv1.RenewTaskCredentialLeaseRequest{
+					CredentialLeaseId: credentialLease.ID, TaskLeaseId: lease.GetLeaseId(), WorkerId: w.id,
+				}))
+				if renewErr != nil || !verdict.Msg.GetValid() {
+					w.logger.Warn("provider credential lease is no longer valid", "task_id", task.GetId())
+					// Mirror the deadline path: cancel the run and bound how
+					// long a cancellation-ignoring provider may keep the
+					// lease; the deterministic terminal below then lands.
+					credentialRevoked.Store(true)
+					cancel()
+					grace := time.NewTimer(w.abandonAfter)
+					defer grace.Stop()
+					abandonC = grace.C
+				}
+			}
 		case <-deadlineC:
 			deadlineHit.Store(true)
 			cancel()
@@ -196,11 +272,19 @@ func (w *Worker) process(parent context.Context, lease *taskv1.TaskLease) {
 			// The provider ignored the cancellation past the grace window.
 			// This worker still owns the deterministic terminal event and the
 			// lease end; the abandoned run's later appends fail against the
-			// finished lease server-side.
-			w.logger.Warn("provider ignored run cancellation; abandoning", "task_id", task.GetId())
-			appendTerminal(&agentv1.AgentEvent{Event: &agentv1.AgentEvent_RunFailed{RunFailed: &agentv1.RunFailed{
-				Reason: "provider run exceeded its runtime deadline",
-			}}}, "append abandoned deadline failure failed")
+			// finished lease server-side. The reason records which stop path
+			// fired: runtime deadline or invalid credential lease.
+			if credentialRevoked.Load() {
+				w.logger.Warn("provider ignored credential revocation; abandoning", "task_id", task.GetId())
+				appendTerminal(&agentv1.AgentEvent{Event: &agentv1.AgentEvent_RunFailed{RunFailed: &agentv1.RunFailed{
+					Reason: "provider credential is no longer valid",
+				}}}, "append abandoned credential failure failed")
+			} else {
+				w.logger.Warn("provider ignored run cancellation; abandoning", "task_id", task.GetId())
+				appendTerminal(&agentv1.AgentEvent{Event: &agentv1.AgentEvent_RunFailed{RunFailed: &agentv1.RunFailed{
+					Reason: "provider run exceeded its runtime deadline",
+				}}}, "append abandoned deadline failure failed")
+			}
 			finishLease("abandoned")
 			return
 		case err := <-result:
@@ -215,6 +299,12 @@ func (w *Worker) process(parent context.Context, lease *taskv1.TaskLease) {
 					appendTerminal(&agentv1.AgentEvent{Event: &agentv1.AgentEvent_RunFailed{RunFailed: &agentv1.RunFailed{
 						Reason: "provider run exceeded its runtime deadline",
 					}}}, "append deadline failure failed")
+				case cancelled && credentialRevoked.Load():
+					// The credential lease went invalid: no run_cancelled
+					// exists server-side, so this worker owns the terminal.
+					appendTerminal(&agentv1.AgentEvent{Event: &agentv1.AgentEvent_RunFailed{RunFailed: &agentv1.RunFailed{
+						Reason: "provider credential is no longer valid",
+					}}}, "append credential revocation failure failed")
 				case cancelled:
 					// Owner cancellation: Core has already appended the
 					// authoritative run_cancelled terminal event itself.
@@ -233,6 +323,40 @@ func (w *Worker) process(parent context.Context, lease *taskv1.TaskLease) {
 			finishLease("result")
 			return
 		}
+	}
+}
+
+// failWithoutProvider deterministically terminates a task that could not
+// obtain its credential lease before the provider started: exactly one
+// non-retryable terminal event and a finished lease. No child process and no
+// provider side effect exists at this point.
+func (w *Worker) failWithoutProvider(parent context.Context, lease *taskv1.TaskLease, reason string) {
+	if _, err := w.client.AppendTaskEvent(parent, connect.NewRequest(&taskv1.AppendTaskEventRequest{
+		LeaseId: lease.GetLeaseId(), WorkerId: w.id,
+		Event: &agentv1.AgentEvent{Event: &agentv1.AgentEvent_RunFailed{RunFailed: &agentv1.RunFailed{Reason: reason}}},
+	})); err != nil {
+		w.logger.Warn("append credential failure failed", "task_id", lease.GetTask().GetId(), "error", err)
+	}
+	if _, err := w.client.FinishTaskLease(parent, connect.NewRequest(&taskv1.FinishTaskLeaseRequest{
+		LeaseId: lease.GetLeaseId(), WorkerId: w.id,
+	})); err != nil {
+		w.logger.Warn("finish lease after credential failure failed", "task_id", lease.GetTask().GetId(), "error", err)
+	}
+}
+
+// releaseCredentialLease is the worker's best-effort defer. Server-side
+// expiry bounds the lease regardless: a lost release never extends exposure
+// beyond the task lease expiry.
+func (w *Worker) releaseCredentialLease(lease *taskv1.TaskLease, credentialLease *ports.CredentialLease) {
+	if credentialLease == nil || w.credentials == nil {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if _, err := w.credentials.ReleaseTaskCredentialLease(ctx, connect.NewRequest(&credentialv1.ReleaseTaskCredentialLeaseRequest{
+		CredentialLeaseId: credentialLease.ID, TaskLeaseId: lease.GetLeaseId(), WorkerId: w.id,
+	})); err != nil {
+		w.logger.Warn("release task credential lease failed", "task_id", lease.GetTask().GetId(), "error", err)
 	}
 }
 

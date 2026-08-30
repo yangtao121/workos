@@ -68,10 +68,11 @@ type InstallationSource interface {
 	ResolveActiveInstallation(ctx context.Context, ownerUserID, projectID, installationID string) (InstallationFacts, error)
 }
 
-// ProviderCapabilities is the budget-contract and artifact-capability subset
-// of the harness catalog a fresh run is verified against before enqueueing.
-// The maxima are the enforced per-run budget bounds the provider declared;
-// zero means the corresponding hard capability is unsupported.
+// ProviderCapabilities is the budget-contract, artifact-capability, and
+// credential subset of the harness catalog a fresh run is verified against
+// before enqueueing. The maxima are the enforced per-run budget bounds the
+// provider declared; zero means the corresponding hard capability is
+// unsupported.
 type ProviderCapabilities struct {
 	HardTokenBudget     bool
 	HardRuntimeDeadline bool
@@ -83,6 +84,32 @@ type ProviderCapabilities struct {
 	// outside the resolved provider's exact list before queueing.
 	StructuredArtifacts    bool
 	SupportedArtifactTypes []string
+	// RequiresTaskCredentialLease is true when the provider can only run
+	// with a task-bound credential lease from the Core Credential Vault
+	// (ADR-0009). Fresh tasks for such providers are admitted only when the
+	// owner has an active credential; the exact snapshot is resolved and
+	// persisted before any queue, outbox, reservation, or waiting approval.
+	RequiresTaskCredentialLease bool
+}
+
+// CredentialSnapshotRef is the opaque credential identity resolved for a
+// fresh task: the vault's credential ID and its exact revision.
+type CredentialSnapshotRef struct {
+	CredentialID string
+	Revision     int64
+}
+
+// CredentialSnapshots resolves the owner's active credential for one
+// consumer. Unknown/revoked facts surface as domain.ErrNotFound.
+type CredentialSnapshots interface {
+	ActiveSnapshot(ctx context.Context, ownerUserID, consumerID string) (CredentialSnapshotRef, error)
+}
+
+// CredentialSnapshotVerifier re-proves that one task's durable snapshot
+// still points at the active credential revision. A revoke or rotate fails
+// closed as domain.ErrLeaseLost; unknown credentials are indistinguishable.
+type CredentialSnapshotVerifier interface {
+	VerifySnapshot(ctx context.Context, ownerUserID, consumerID, credentialID string, revision int64) error
 }
 
 // Complete reports whether the provider explicitly supports the full budget

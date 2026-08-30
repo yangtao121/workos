@@ -903,7 +903,7 @@ func TestAppAgentPolicyBindingFailsClosedEverywhere(t *testing.T) {
 		t.Fatalf("corrupt row was overwritten: project=%s digest=%s revision=%d", storedProject, storedDigest, storedRevision)
 	}
 
-	approvalService, err := agentapp.NewApprovalService(h.left, staticChainInstallations{}, staticFullCapabilities{})
+	approvalService, err := agentapp.NewApprovalService(h.left, staticChainInstallations{}, staticFullCapabilities{}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

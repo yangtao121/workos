@@ -62,7 +62,10 @@ func TestDeepSeekProjectBindingFixtureVerticalSlice(t *testing.T) {
 		t.Fatalf("bind DeepSeek through public orchestration: %v", err)
 	}
 	project := bound.Msg.GetProject()
-	if binding := project.GetHarnessBinding(); project.GetRevision() != 2 || binding.GetProviderId() != "deepseek" || binding.GetCredentialRef() != "" || binding.GetInstancePolicy() != projectv1.HarnessInstancePolicy_HARNESS_INSTANCE_POLICY_EPHEMERAL || binding.GetResourcePolicyId() != "project-no-tools" {
+	// The server-derived credential_ref must be present (the operator stored
+	// the synthetic fixture credential in the vault) and is a non-bearer
+	// opaque UUID the client never chose (ADR-0009).
+	if binding := project.GetHarnessBinding(); project.GetRevision() != 2 || binding.GetProviderId() != "deepseek" || len(binding.GetCredentialRef()) != 36 || binding.GetInstancePolicy() != projectv1.HarnessInstancePolicy_HARNESS_INSTANCE_POLICY_EPHEMERAL || binding.GetResourcePolicyId() != "project-no-tools" {
 		t.Fatalf("unexpected server-owned DeepSeek binding preset: %#v", project)
 	}
 	taskKey := "task-" + key

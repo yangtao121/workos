@@ -16,12 +16,13 @@ LAN_PAIRING_CAPTURE_DIR ?= $(CURDIR)/docs/ui/desktop-web/changes/20260830-lan-de
 USER_FLAGS := --user $(shell id -u):$(shell id -g) -e HOME=/tmp
 MOUNT := -v $(CURDIR):$(WORKDIR) -w $(WORKDIR)
 GO_RUN := docker run --rm $(USER_FLAGS) -e GOPATH=/tmp/workos-go -e GOMODCACHE=/go/pkg/mod -e GOPROXY=$(GOPROXY) $(MOUNT) -v workos-go-cache:/go/pkg/mod $(GO_IMAGE)
-GO_HOST_RUN := docker run --rm --network host $(USER_FLAGS) -e GOPATH=/tmp/workos-go -e GOMODCACHE=/go/pkg/mod -e GOPROXY=$(GOPROXY) $(MOUNT) -v workos-go-cache:/go/pkg/mod $(GO_IMAGE)
+GO_HOST_RUN_BASE := docker run --rm --network host $(USER_FLAGS) -e GOPATH=/tmp/workos-go -e GOMODCACHE=/go/pkg/mod -e GOPROXY=$(GOPROXY) $(MOUNT) -v workos-go-cache:/go/pkg/mod
+GO_HOST_RUN := $(GO_HOST_RUN_BASE) $(GO_IMAGE)
 NODE_RUN := docker run --rm $(USER_FLAGS) -e COREPACK_NPM_REGISTRY=$(NPM_REGISTRY) -e npm_config_registry=$(NPM_REGISTRY) $(MOUNT) $(NODE_IMAGE)
 BUF_RUN := docker run --rm $(USER_FLAGS) $(MOUNT) $(BUF_IMAGE)
 SQLC_RUN := docker run --rm $(USER_FLAGS) -v $(CURDIR):/src -w /src $(SQLC_IMAGE)
 
-.PHONY: bootstrap generate docs check check-native proto-check go-check web-check test test-integration test-deepseek-fixture e2e-image test-e2e test-podman-fixture test-lan-pairing capture-lan-pairing-visual build web-build scaffold-module dev down logs clean
+.PHONY: bootstrap generate docs check check-native proto-check go-check web-check test test-integration test-deepseek-fixture test-credential-vault e2e-image test-e2e test-podman-fixture test-lan-pairing capture-lan-pairing-visual build web-build scaffold-module dev down logs clean
 
 bootstrap:
 	@docker version >/dev/null
@@ -91,15 +92,63 @@ test-integration:
 		set -- $$policy_ref; \
 		$(GO_HOST_RUN) go run ./tests/restart policy-verify "$$1" "$$2" "$$3" "$$4" "$$5" "$$6" "$$7" "$$8"
 
+# The Credential Vault acceptance gate (ADR-0009): real PostgreSQL, the Core
+# private mTLS execution listener, harness-host, the workosctl credential
+# admin Unix socket, and the local DeepSeek fixture — never the public
+# internet. Missing vault → credential-bearing providers fail closed; storing
+# the synthetic credential over the real admin socket → binding carries a
+# server-derived credential_ref and a full task runs on a task-bound lease;
+# core+harness restart preserves the lease facts; revocation blocks new binds
+# and acquires.
+test-credential-vault:
+	@set -eu; \
+		cleanup() { docker compose --profile deepseek-fixture stop deepseek-api-fixture >/dev/null 2>&1 || true; }; \
+		trap cleanup EXIT INT TERM; \
+		active_deepseek_id() { \
+			docker compose exec -T workos-core /usr/local/bin/workosctl credential list 2>/dev/null | awk '\
+				/^id: /{id=$$2} /^consumer: /{consumer=$$2} /^status: /{status=$$2} \
+				consumer=="deepseek" && status=="ACTIVE"{print id; exit}'; \
+		}; \
+		echo "== phase 1: no active credential → credential-bearing providers fail closed =="; \
+		WORKOS_UID="$$(id -u)" WORKOS_GID="$$(id -g)" \
+		WORKOS_DEEPSEEK_ENABLED=true \
+		WORKOS_DEEPSEEK_BASE_URL=http://127.0.0.1:18086 \
+		docker compose --profile deepseek-fixture up -d --build --force-recreate postgres bootstrap workos-core harness-host workos-gateway deepseek-api-fixture; \
+		docker compose exec -T workos-core /bin/sh -c 'test -f /run/workos/execution/ca.crt && test -f /run/workos/execution/core.crt && test -f /run/workos/execution/harness.crt'; \
+		cred_id="$$(active_deepseek_id)"; \
+		if [ -z "$$cred_id" ]; then \
+			$(GO_HOST_RUN_BASE) -e WORKOS_TEST_VAULT_PHASE=missing $(GO_IMAGE) go test -tags=integration -count=1 -run '^TestCredentialVaultStackPhase$$' -v ./tests/integration; \
+			printf '%s' 'workos-fixture-only-not-a-real-key' | docker compose exec -T workos-core /bin/sh -c "/usr/local/bin/workosctl credential put --consumer deepseek --purpose provider-api-key.v1 --label 'vault fixture' --idempotency-key 'vault-fixture-$$(date +%s%N)'"; \
+			cred_id="$$(active_deepseek_id)"; \
+		else \
+			echo "an active deepseek credential already exists; phase 1 skipped"; \
+		fi; \
+		cred_rev="$$(docker compose exec -T workos-core /usr/local/bin/workosctl credential list 2>/dev/null | awk '/^id: /{id=$$2} /^consumer: /{consumer=$$2} /^revision: /{revision=$$2} /^status: /{status=$$2} consumer=="deepseek" && status=="ACTIVE"{print revision; exit}')"; \
+		test -n "$$cred_id" && test -n "$$cred_rev"; \
+		echo "== phase 1b: in-process vault protocol against real PostgreSQL =="; \
+		$(GO_HOST_RUN) go test -tags=integration -count=1 -run 'TestVaultPutRotateRevokeLifecycle|TestVaultSealedMaterialFailsClosed|TestCredentialLeaseStateMachine' -v ./tests/integration; \
+		echo "== phase 2: granted → binding + lease-bound task over the local fixture =="; \
+		$(GO_HOST_RUN_BASE) -e WORKOS_TEST_VAULT_PHASE=granted $(GO_IMAGE) go test -tags=integration -count=1 -run '^TestCredentialVaultStackPhase$$' -v ./tests/integration; \
+		echo "== phase 2b: core + harness restart persistence =="; \
+		task_id="$$( $(GO_HOST_RUN) sh -c 'WORKOS_TEST_PROVIDER=deepseek go run ./tests/restart seed' )"; \
+		docker compose restart workos-core harness-host >/dev/null; \
+		$(GO_HOST_RUN) sh -c 'WORKOS_TEST_PROVIDER=deepseek go run ./tests/restart verify "$$1"' _ "$$task_id"; \
+		echo "== phase 3: revocation blocks new binds and acquires =="; \
+		docker compose exec -T workos-core /bin/sh -c "/usr/local/bin/workosctl credential revoke --credential '$$cred_id' --expected-revision $$cred_rev --idempotency-key 'vault-fixture-revoke-$$(date +%s%N)'" >/dev/null; \
+		$(GO_HOST_RUN_BASE) -e WORKOS_TEST_VAULT_PHASE=revoked $(GO_IMAGE) go test -tags=integration -count=1 -run '^TestCredentialVaultStackPhase$$' -v ./tests/integration; \
+		echo "test-credential-vault: PASS"
+
 test-deepseek-fixture: e2e-image
 	@set -eu; \
 		cleanup() { docker compose --profile deepseek-fixture stop deepseek-api-fixture >/dev/null 2>&1 || true; }; \
 		trap cleanup EXIT INT TERM; \
 		WORKOS_UID="$$(id -u)" WORKOS_GID="$$(id -g)" \
 		WORKOS_DEEPSEEK_ENABLED=true \
-		DEEPSEEK_API_KEY=workos-fixture-only-not-a-real-key \
 		WORKOS_DEEPSEEK_BASE_URL=http://127.0.0.1:18086 \
 		docker compose --profile deepseek-fixture up -d --build --force-recreate postgres bootstrap workos-core harness-host workos-gateway deepseek-api-fixture; \
+		if ! docker compose exec -T workos-core /usr/local/bin/workosctl credential list 2>/dev/null | awk '/^consumer: /{consumer=$$2} /^status: /{status=$$2} consumer=="deepseek" && status=="ACTIVE"{found=1} END{exit !found}'; then \
+			printf '%s' 'workos-fixture-only-not-a-real-key' | docker compose exec -T workos-core /bin/sh -c "/usr/local/bin/workosctl credential put --consumer deepseek --purpose provider-api-key.v1 --label 'deepseek fixture' --idempotency-key 'deepseek-fixture-$$(date +%s%N)'"; \
+		fi; \
 		$(GO_HOST_RUN) go test -tags='integration deepseekfixture' -count=1 -run '^TestDeepSeekProjectBindingFixtureVerticalSlice$$' -v ./tests/integration; \
 		task_id="$$( $(GO_HOST_RUN) sh -c 'WORKOS_TEST_PROVIDER=deepseek go run ./tests/restart seed' )"; \
 		docker compose restart workos-core harness-host >/dev/null; \

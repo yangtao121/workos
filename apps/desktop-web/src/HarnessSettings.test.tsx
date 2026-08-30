@@ -320,6 +320,7 @@ function provider(
       hardRuntimeDeadline: false,
       maxOutputTokens: 0n,
       maxRuntimeSeconds: 0n,
+      requiresTaskCredentialLease: false,
       ...enabled,
     },
   };

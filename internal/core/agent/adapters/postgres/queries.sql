@@ -363,3 +363,35 @@ ON CONFLICT (owner_user_id, app_instance_id, utc_date) DO UPDATE SET
 UPDATE workos_core.agent_app_daily_usage
 SET quota_breached = true, updated_at = $1
 WHERE owner_user_id = $2 AND app_instance_id = $3 AND utc_date = $4;
+
+-- Durable per-task credential snapshot (ADR-0009): the exact credential ID
+-- and revision a fresh task was admitted with, persisted in the same
+-- transaction as the task row. No secret material is stored here.
+-- name: InsertAgentTaskCredential :exec
+INSERT INTO workos_core.agent_task_credentials (
+    task_id, provider_id, credential_id, credential_revision, created_at
+) VALUES ($1, $2, $3, $4, $5);
+
+-- name: GetAgentTaskCredential :one
+SELECT task_id, provider_id, credential_id, credential_revision, created_at
+FROM workos_core.agent_task_credentials
+WHERE task_id = $1;
+
+-- Credential-lease derivation inside the coordinator's transaction: the
+-- outbox lease row is locked so a concurrent finish cannot race the derive.
+-- The snapshot is LEFT JOINed: Required is derived from its presence, never
+-- from caller input.
+-- name: LockTaskCredentialLeaseFacts :one
+SELECT t.id, t.owner_user_id, t.provider_id, o.locked_until,
+       c.credential_id, c.credential_revision
+FROM workos_events.outbox AS o
+JOIN workos_core.agent_tasks AS t ON t.id = o.aggregate_id
+LEFT JOIN workos_core.agent_task_credentials AS c ON c.task_id = t.id
+WHERE o.lease_id = $1 AND o.locked_by = $2 AND o.processed_at IS NULL AND o.locked_until >= $3
+FOR UPDATE OF o;
+
+-- name: GetTaskLeaseExpiry :one
+SELECT o.locked_until
+FROM workos_events.outbox AS o
+WHERE o.lease_id = $1 AND o.locked_by = $2 AND o.processed_at IS NULL
+FOR UPDATE;

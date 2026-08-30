@@ -39,20 +39,46 @@ type Projects interface {
 	Get(context.Context, string, string) (projectdomain.Project, error)
 }
 
+// CredentialSnapshots resolves the owner's active vault credential for one
+// consumer so a fresh credential-bearing task is admitted with an exact,
+// durable snapshot (ADR-0009).
+type CredentialSnapshots interface {
+	ActiveSnapshot(ctx context.Context, ownerUserID, consumerID string) (agentports.CredentialSnapshotRef, error)
+}
+
 type TaskRouter struct {
 	agents          AgentTasks
 	projects        Projects
 	policies        AgentAppPolicies
 	providers       AgentProviderCapabilities
+	credentials     CredentialSnapshots
 	defaultProvider string
 }
 
-func NewTaskRouter(agents AgentTasks, projects Projects, policies AgentAppPolicies, providers AgentProviderCapabilities, defaultProvider string) (*TaskRouter, error) {
+func NewTaskRouter(agents AgentTasks, projects Projects, policies AgentAppPolicies, providers AgentProviderCapabilities, credentials CredentialSnapshots, defaultProvider string) (*TaskRouter, error) {
 	defaultProvider = strings.TrimSpace(defaultProvider)
-	if agents == nil || projects == nil || policies == nil || providers == nil || defaultProvider == "" {
-		return nil, errors.New("task router requires agent, project, policy, provider, and default provider dependencies")
+	if agents == nil || projects == nil || policies == nil || providers == nil || credentials == nil || defaultProvider == "" {
+		return nil, errors.New("task router requires agent, project, policy, provider, credential, and default provider dependencies")
 	}
-	return &TaskRouter{agents: agents, projects: projects, policies: policies, providers: providers, defaultProvider: defaultProvider}, nil
+	return &TaskRouter{agents: agents, projects: projects, policies: policies, providers: providers, credentials: credentials, defaultProvider: defaultProvider}, nil
+}
+
+// resolveCredentialSnapshot derives the durable credential snapshot for one
+// fresh task. A provider that requires a task credential lease is admitted
+// only with an exact active (ID, revision) pair; anything else fails closed
+// before any queue, outbox, reservation, or waiting approval exists.
+func (r *TaskRouter) resolveCredentialSnapshot(ctx context.Context, ownerUserID, providerID string, requires bool) (*agentports.CredentialSnapshotRef, error) {
+	if !requires {
+		return nil, nil
+	}
+	snapshot, err := r.credentials.ActiveSnapshot(ctx, ownerUserID, providerID)
+	if errors.Is(err, agentdomain.ErrNotFound) {
+		return nil, agentdomain.ErrProviderCredentialMissing
+	}
+	if err != nil {
+		return nil, fmt.Errorf("resolve provider credential snapshot: %w", err)
+	}
+	return &snapshot, nil
 }
 
 func (r *TaskRouter) Submit(ctx context.Context, input agentapp.SubmitInput) (agentdomain.Task, error) {
@@ -103,6 +129,20 @@ func (r *TaskRouter) Submit(ctx context.Context, input agentapp.SubmitInput) (ag
 	}
 
 	input.ProviderID = providerID
+	capabilities, capErr := r.providers.Capabilities(ctx, providerID)
+	if errors.Is(capErr, agentdomain.ErrNotFound) {
+		return agentdomain.Task{}, agentdomain.ErrProviderCapabilityMissing
+	}
+	if capErr != nil {
+		return agentdomain.Task{}, fmt.Errorf("resolve provider credential requirements: %w", capErr)
+	}
+	snapshot, err := r.resolveCredentialSnapshot(ctx, input.OwnerUserID, providerID, capabilities.RequiresTaskCredentialLease)
+	if err != nil {
+		return agentdomain.Task{}, err
+	}
+	if snapshot != nil {
+		input.Credential = &agentdomain.CredentialSnapshot{CredentialID: snapshot.CredentialID, Revision: snapshot.Revision}
+	}
 	return r.agents.Submit(ctx, input)
 }
 
@@ -189,6 +229,13 @@ func (r *TaskRouter) adjudicateAppRun(ctx context.Context, input *agentapp.AppSu
 		return "", nil, agentdomain.ErrProviderCapabilityMissing
 	}
 	input.ProviderID = providerID
+	snapshot, err := r.resolveCredentialSnapshot(ctx, input.OwnerUserID, providerID, capabilities.RequiresTaskCredentialLease)
+	if err != nil {
+		return "", nil, err
+	}
+	if snapshot != nil {
+		input.Credential = &agentdomain.CredentialSnapshot{CredentialID: snapshot.CredentialID, Revision: snapshot.Revision}
+	}
 	input.AppID = policy.AppID
 	input.Enforcement = agentapp.AppRunEnforcement{
 		Policy: agentports.PolicySnapshot{

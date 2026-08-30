@@ -249,7 +249,7 @@ func TestApprovalServiceDecideFailsClosedOnDriftedWorld(t *testing.T) {
 		Spec: spec, Revision: 1, State: domain.ApprovalPending,
 	}
 	newTest := func(repository *stubRepository, installations *stubInstallations, providers *stubProviders) *ApprovalService {
-		service, err := NewApprovalService(repository, installations, providers)
+		service, err := NewApprovalService(repository, installations, providers, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -410,7 +410,7 @@ func TestApprovalServiceDecideFailsClosedOnDriftedWorld(t *testing.T) {
 func TestApprovalServiceListPagination(t *testing.T) {
 	t.Parallel()
 	newService := func(repository *stubRepository) *ApprovalService {
-		service, err := NewApprovalService(repository, &stubInstallations{}, &stubProviders{})
+		service, err := NewApprovalService(repository, &stubInstallations{}, &stubProviders{}, nil)
 		if err != nil {
 			t.Fatal(err)
 		}

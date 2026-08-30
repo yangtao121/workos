@@ -64,7 +64,13 @@ func (h *ExecutionHandler) ClaimTask(ctx context.Context, req *connect.Request[t
 	}
 	response := &taskv1.ClaimTaskResponse{}
 	if lease != nil {
-		response.Lease = &taskv1.TaskLease{LeaseId: lease.ID, WorkerId: lease.WorkerID, Task: taskToProto(lease.Task), ExpiresAt: timestamppb.New(lease.ExpiresAt)}
+		response.Lease = &taskv1.TaskLease{
+			LeaseId: lease.ID, WorkerId: lease.WorkerID, Task: taskToProto(lease.Task), ExpiresAt: timestamppb.New(lease.ExpiresAt),
+			// The flag mirrors the durable snapshot: secret material flows
+			// only through AcquireTaskCredential on this same authenticated
+			// channel (ADR-0009).
+			RequiresTaskCredential: lease.Task.Credential != nil,
+		}
 	}
 	return connect.NewResponse(response), nil
 }

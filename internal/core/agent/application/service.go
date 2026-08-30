@@ -25,6 +25,11 @@ type SubmitInput struct {
 	// verifies the resolved provider's exact supported list before any task
 	// row exists; the payload itself stays the wire input.
 	OutputArtifactTypes []string
+	// Credential is the server-resolved durable snapshot the task router
+	// derived for credential-bearing providers before any task row exists
+	// (ADR-0009). The client can never submit one; nil means the provider
+	// needs no credential.
+	Credential *domain.CredentialSnapshot
 }
 
 // AppSubmitInput is one bridge-submitted project task. The caller (the
@@ -50,6 +55,9 @@ type AppSubmitInput struct {
 	Role        string
 	Goal        string
 	Enforcement AppRunEnforcement
+	// Credential is the server-resolved durable credential snapshot the
+	// router derived pre-adjudication (ADR-0009); never client-supplied.
+	Credential *domain.CredentialSnapshot
 }
 
 // AppRunEnforcement is the adjudicated execution contract for one fresh App
@@ -80,7 +88,7 @@ func (s *Service) Submit(ctx context.Context, input SubmitInput) (domain.Task, e
 	task := domain.Task{
 		ID: s.ids.New(), OwnerUserID: input.OwnerUserID, ProjectID: input.ProjectID,
 		Input: input.Payload, State: domain.StateQueued, ProviderID: input.ProviderID,
-		CreatedAt: now, UpdatedAt: now,
+		CreatedAt: now, UpdatedAt: now, Credential: input.Credential,
 	}
 	return s.repository.Create(ctx, task, input.IdempotencyKey)
 }
@@ -164,7 +172,7 @@ func (s *Service) prepareAppTask(ctx context.Context, input AppSubmitInput, stat
 	task := domain.Task{
 		ID: s.ids.New(), OwnerUserID: input.OwnerUserID, ProjectID: input.ProjectID,
 		Input: payload, State: state, ProviderID: input.ProviderID,
-		CreatedAt: now, UpdatedAt: now,
+		CreatedAt: now, UpdatedAt: now, Credential: input.Credential,
 	}
 	return task, ports.AppTaskProvenance{
 		// Opaque unique value for the task row's own key column: the durable

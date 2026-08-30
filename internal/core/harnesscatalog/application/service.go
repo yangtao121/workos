@@ -22,6 +22,10 @@ const (
 type Service struct {
 	source            ports.Source
 	defaultProviderID string
+	// credentials is the optional owner-aware vault overlay. When it is nil
+	// the vault is not wired and every credential-requiring provider is
+	// projected unavailable to every owner — never silently selectable.
+	credentials ports.CredentialAvailability
 }
 
 func New(source ports.Source, defaultProviderID string) (*Service, error) {
@@ -29,6 +33,51 @@ func New(source ports.Source, defaultProviderID string) (*Service, error) {
 		return nil, errors.New("catalog requires a source and valid default provider")
 	}
 	return &Service{source: source, defaultProviderID: defaultProviderID}, nil
+}
+
+// WithCredentialAvailability wires the owner-aware credential overlay.
+func (s *Service) WithCredentialAvailability(credentials ports.CredentialAvailability) (*Service, error) {
+	if credentials == nil {
+		return nil, errors.New("catalog credential overlay requires an availability source")
+	}
+	s.credentials = credentials
+	return s, nil
+}
+
+// GetForOwner is the public catalog projection for one owner: providers that
+// require a task credential lease are unavailable unless the vault holds an
+// active credential for this owner and consumer. The reason is a fixed safe
+// sentence: it never discloses whether a foreign credential, credential ID,
+// revision, or key state exists. An overlay storage failure fails closed for
+// the whole read.
+func (s *Service) GetForOwner(ctx context.Context, ownerUserID string) (domain.Catalog, error) {
+	catalog, err := s.Get(ctx)
+	if err != nil {
+		return domain.Catalog{}, err
+	}
+	if ownerUserID == "" {
+		return domain.Catalog{}, domain.ErrUnavailable
+	}
+	for index := range catalog.Providers {
+		provider := &catalog.Providers[index]
+		if !provider.Capabilities.RequiresTaskCredentialLease {
+			continue
+		}
+		if s.credentials == nil {
+			provider.Health = domain.HealthUnavailable
+			provider.UnavailableReason = publicReason(domain.HealthUnavailable)
+			continue
+		}
+		available, err := s.credentials.Available(ctx, ownerUserID, provider.ID)
+		if err != nil {
+			return domain.Catalog{}, domain.ErrUnavailable
+		}
+		if !available {
+			provider.Health = domain.HealthUnavailable
+			provider.UnavailableReason = publicReason(domain.HealthUnavailable)
+		}
+	}
+	return catalog, nil
 }
 
 func (s *Service) Get(ctx context.Context) (domain.Catalog, error) {

@@ -3,6 +3,8 @@
 package telemetry
 
 import (
+	"crypto/tls"
+
 	"context"
 	"fmt"
 	"net/http"
@@ -71,6 +73,15 @@ func Handler(service string, handler http.Handler) http.Handler {
 // HTTPClient propagates trace context on internal HTTP and Connect calls.
 func HTTPClient() *http.Client {
 	return &http.Client{Transport: otelhttp.NewTransport(http.DefaultTransport, otelhttp.WithFilter(shouldTrace))}
+}
+
+// HTTPClientWithTLS builds a client whose base transport carries an explicit
+// TLS configuration (the private mTLS execution channel) while keeping the
+// same trace propagation behavior as HTTPClient.
+func HTTPClientWithTLS(tlsConfig *tls.Config) *http.Client {
+	base := http.DefaultTransport.(*http.Transport).Clone()
+	base.TLSClientConfig = tlsConfig
+	return &http.Client{Transport: otelhttp.NewTransport(base, otelhttp.WithFilter(shouldTrace))}
 }
 
 func shouldTrace(request *http.Request) bool {
