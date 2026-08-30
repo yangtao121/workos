@@ -1,12 +1,14 @@
 package application
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/yangtao121/workos/internal/core/artifact/domain"
 	"github.com/yangtao121/workos/internal/core/artifact/ports"
@@ -19,13 +21,22 @@ type fakeRepository struct {
 	artifacts map[string]domain.Artifact
 	files     map[string]map[string]domain.BundleFile
 	requests  map[string]ports.CreateCommand
-	failWith  error
+	reviews   map[string]struct {
+		fact    domain.ReviewArtifact
+		content domain.NormalizedReviewContent
+	}
+	projectListIDs []string
+	failWith       error
 }
 
 func newFakeRepository() *fakeRepository {
 	return &fakeRepository{
 		artifacts: map[string]domain.Artifact{}, files: map[string]map[string]domain.BundleFile{},
 		requests: map[string]ports.CreateCommand{},
+		reviews: map[string]struct {
+			fact    domain.ReviewArtifact
+			content domain.NormalizedReviewContent
+		}{},
 	}
 }
 
@@ -336,6 +347,84 @@ func TestRepositoryFailureIsSanitized(t *testing.T) {
 	}
 }
 
+type fakeProjectScope struct {
+	err       error
+	ownerID   string
+	projectID string
+}
+
+func (s *fakeProjectScope) ValidateReadableProject(_ context.Context, ownerUserID, projectID string) error {
+	s.ownerID, s.projectID = ownerUserID, projectID
+	return s.err
+}
+
+func TestPrepareReviewOutputCanonicalizesUTF8AndMintsServerFacts(t *testing.T) {
+	t.Parallel()
+	service := newTestService(newFakeRepository())
+	command, err := service.PrepareReviewOutput(
+		testOwner, otherUUID, "0198d7ea-2110-7c42-b659-c5e4d73bc339",
+		"document", "  中文审阅  ", domain.TypeMarkdown, []byte("第一行\r\n第二行 🧪\r\n"),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if command.Artifact.Title != "中文审阅" ||
+		!bytes.Equal(command.Content, []byte("第一行\n第二行 🧪\n")) ||
+		command.Artifact.ByteCount != len(command.Content) || command.Artifact.LineCount != 2 ||
+		!domain.ValidArtifactUUID(command.Artifact.ID) || !domain.ValidStoredUTCTime(command.Artifact.CreatedAt) {
+		t.Fatalf("unexpected canonical command: %#v %q", command.Artifact, command.Content)
+	}
+	if command.RequestDigest != domain.ReviewOutputRequestDigest(
+		command.Artifact.ProjectID, command.Artifact.SourceTask, command.Artifact.OutputKey,
+		command.Artifact.Title, command.Artifact.Digest,
+	) {
+		t.Fatal("prepared request digest did not cover canonical facts")
+	}
+}
+
+func TestGetReviewRevalidatesProjectBinding(t *testing.T) {
+	t.Parallel()
+	repository := newFakeRepository()
+	service := newTestService(repository)
+	artifactID := "0198d7ea-2110-7c42-b659-c5e4d73bc340"
+	content, err := domain.NormalizeReviewContent(domain.TypeMarkdown, []byte("中文\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	fact := domain.ReviewArtifact{
+		ID: artifactID, OwnerUserID: testOwner, ProjectID: otherUUID,
+		SourceTask: "0198d7ea-2110-7c42-b659-c5e4d73bc339", OutputKey: "document",
+		Type: domain.TypeMarkdown, Title: "Review", MediaType: domain.MediaTypeMarkdown,
+		Digest: content.Digest, ByteCount: content.ByteCount, LineCount: content.LineCount,
+		CreatedAt: time.Unix(1756500000, 0).UTC(),
+	}
+	repository.reviews[ownerKey(testOwner, artifactID)] = struct {
+		fact    domain.ReviewArtifact
+		content domain.NormalizedReviewContent
+	}{fact: fact, content: content}
+
+	if _, _, err := service.GetReview(context.Background(), testOwner, artifactID); !errors.Is(err, domain.ErrCorrupt) {
+		t.Fatalf("unwired project scope did not fail closed: %v", err)
+	}
+	scope := &fakeProjectScope{}
+	if _, err := service.WithProjectScope(scope); err != nil {
+		t.Fatal(err)
+	}
+	got, gotContent, err := service.GetReview(context.Background(), testOwner, artifactID)
+	if err != nil || got.ID != artifactID || !bytes.Equal(gotContent.Content, content.Content) ||
+		scope.ownerID != testOwner || scope.projectID != otherUUID {
+		t.Fatalf("project-bound read failed: %v %#v", err, got)
+	}
+	scope.err = domain.ErrNotFound
+	if _, _, err := service.GetReview(context.Background(), testOwner, artifactID); !errors.Is(err, domain.ErrCorrupt) {
+		t.Fatalf("stored project binding drift was not corruption: %v", err)
+	}
+	scope.err = fmt.Errorf("scope down: %w", ports.ErrStoreUnavailable)
+	if _, _, err := service.GetReview(context.Background(), testOwner, artifactID); !errors.Is(err, ports.ErrStoreUnavailable) {
+		t.Fatalf("scope outage lost Unavailable classification: %v", err)
+	}
+}
+
 func TestNewRejectsMissingDependencies(t *testing.T) {
 	t.Parallel()
 	if _, err := New(nil, &staticGenerator{}); err == nil {
@@ -350,10 +439,16 @@ var _ ports.Repository = (*fakeRepository)(nil)
 var _ ids.Generator = (*staticGenerator)(nil)
 
 func (r *fakeRepository) GetReviewContent(_ context.Context, ownerUserID, artifactID string) (domain.ReviewArtifact, domain.NormalizedReviewContent, error) {
+	if review, ok := r.reviews[ownerKey(ownerUserID, artifactID)]; ok {
+		return review.fact, review.content, nil
+	}
 	return domain.ReviewArtifact{}, domain.NormalizedReviewContent{}, domain.ErrNotFound
 }
 
 func (r *fakeRepository) ListProjectReviewIDsPage(_ context.Context, ownerUserID, projectID, cursor string, limit int) ([]string, string, error) {
+	if r.projectListIDs != nil {
+		return r.projectListIDs, "", nil
+	}
 	return nil, "", nil
 }
 

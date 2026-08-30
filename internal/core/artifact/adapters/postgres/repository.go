@@ -133,11 +133,7 @@ func (r *Repository) Get(ctx context.Context, ownerUserID, artifactID string) (d
 	if err != nil {
 		return domain.Artifact{}, artifactError("query artifact", err)
 	}
-	artifact := artifactFromUnion(stored)
-	if !domain.ValidStoredArtifact(artifact) {
-		return domain.Artifact{}, domain.ErrCorrupt
-	}
-	return artifact, nil
+	return artifactFromUnion(stored)
 }
 
 func (r *Repository) ListIDsPage(ctx context.Context, ownerUserID, cursor string, limit int) ([]string, string, error) {
@@ -168,9 +164,9 @@ func (r *Repository) VisitSummaries(ctx context.Context, ownerUserID string, ids
 		return artifactError("list artifact summaries", err)
 	}
 	for _, row := range rows {
-		artifact := artifactFromSummariesUnion(row)
-		if !domain.ValidStoredArtifact(artifact) {
-			return domain.ErrCorrupt
+		artifact, err := artifactFromSummariesUnion(row)
+		if err != nil {
+			return err
 		}
 		if err := visit(artifact); err != nil {
 			return err

@@ -44,17 +44,21 @@ func (q *Queries) GetArtifact(ctx context.Context, arg GetArtifactParams) (Worko
 
 const getArtifactMetadataUnion = `-- name: GetArtifactMetadataUnion :one
 SELECT id, owner_user_id, type, title, media_type, content_ref, digest,
-       file_count, total_size_bytes, created_at, entrypoint, project_id, source_task_id
+       file_count, total_size_bytes, created_at, entrypoint, project_id, source_task_id,
+       output_key, line_count, review_content
 FROM (
     SELECT id, owner_user_id, type, title, media_type, content_ref, digest,
            file_count, total_size_bytes, created_at, entrypoint,
-           NULL::uuid AS project_id, NULL::uuid AS source_task_id
+           NULL::uuid AS project_id, NULL::uuid AS source_task_id,
+           NULL::text AS output_key, NULL::integer AS line_count,
+           NULL::bytea AS review_content
     FROM workos_core.web_bundle_artifacts w
     WHERE w.owner_user_id = $1 AND w.id = $2
     UNION ALL
     SELECT id, owner_user_id, type, title, media_type, ''::text AS content_ref, digest,
            1 AS file_count, byte_count AS total_size_bytes, created_at,
-           ''::text AS entrypoint, project_id, source_task_id
+           ''::text AS entrypoint, project_id, source_task_id,
+           output_key, line_count, content AS review_content
     FROM workos_core.project_review_artifacts p
     WHERE p.owner_user_id = $1 AND p.id = $2
 ) AS artifact
@@ -79,6 +83,9 @@ type GetArtifactMetadataUnionRow struct {
 	Entrypoint     string             `json:"entrypoint"`
 	ProjectID      pgtype.UUID        `json:"project_id"`
 	SourceTaskID   pgtype.UUID        `json:"source_task_id"`
+	OutputKey      pgtype.Text        `json:"output_key"`
+	LineCount      pgtype.Int4        `json:"line_count"`
+	ReviewContent  []byte             `json:"review_content"`
 }
 
 // Metadata projection shared by both implemented subtypes. Exactly one branch
@@ -101,6 +108,9 @@ func (q *Queries) GetArtifactMetadataUnion(ctx context.Context, arg GetArtifactM
 		&i.Entrypoint,
 		&i.ProjectID,
 		&i.SourceTaskID,
+		&i.OutputKey,
+		&i.LineCount,
+		&i.ReviewContent,
 	)
 	return i, err
 }
@@ -199,31 +209,16 @@ func (q *Queries) GetReviewArtifactOutput(ctx context.Context, arg GetReviewArti
 
 const getReviewFact = `-- name: GetReviewFact :one
 SELECT id, owner_user_id, type, title, media_type, digest, project_id, source_task_id,
-       output_key, byte_count, line_count, created_at
+       output_key, byte_count, line_count, content, created_at
 FROM workos_core.project_review_artifacts
 WHERE id = $1::uuid
 `
 
-type GetReviewFactRow struct {
-	ID           string             `json:"id"`
-	OwnerUserID  string             `json:"owner_user_id"`
-	Type         string             `json:"type"`
-	Title        string             `json:"title"`
-	MediaType    string             `json:"media_type"`
-	Digest       string             `json:"digest"`
-	ProjectID    string             `json:"project_id"`
-	SourceTaskID string             `json:"source_task_id"`
-	OutputKey    string             `json:"output_key"`
-	ByteCount    int32              `json:"byte_count"`
-	LineCount    int32              `json:"line_count"`
-	CreatedAt    pgtype.Timestamptz `json:"created_at"`
-}
-
 // Replay read of one stored review artifact row (identity re-validated by
 // the caller against the lease-derived owner/project/task).
-func (q *Queries) GetReviewFact(ctx context.Context, artifactID string) (GetReviewFactRow, error) {
+func (q *Queries) GetReviewFact(ctx context.Context, artifactID string) (WorkosCoreProjectReviewArtifact, error) {
 	row := q.db.QueryRow(ctx, getReviewFact, artifactID)
-	var i GetReviewFactRow
+	var i WorkosCoreProjectReviewArtifact
 	err := row.Scan(
 		&i.ID,
 		&i.OwnerUserID,
@@ -236,6 +231,7 @@ func (q *Queries) GetReviewFact(ctx context.Context, artifactID string) (GetRevi
 		&i.OutputKey,
 		&i.ByteCount,
 		&i.LineCount,
+		&i.Content,
 		&i.CreatedAt,
 	)
 	return i, err
@@ -556,17 +552,21 @@ func (q *Queries) ListArtifactSummaries(ctx context.Context, arg ListArtifactSum
 
 const listArtifactSummariesUnion = `-- name: ListArtifactSummariesUnion :many
 SELECT id, owner_user_id, type, title, media_type, content_ref, digest,
-       file_count, total_size_bytes, created_at, entrypoint, project_id, source_task_id
+       file_count, total_size_bytes, created_at, entrypoint, project_id, source_task_id,
+       output_key, line_count, review_content
 FROM (
     SELECT id, owner_user_id, type, title, media_type, content_ref, digest,
            file_count, total_size_bytes, created_at, entrypoint,
-           NULL::uuid AS project_id, NULL::uuid AS source_task_id
+           NULL::uuid AS project_id, NULL::uuid AS source_task_id,
+           NULL::text AS output_key, NULL::integer AS line_count,
+           NULL::bytea AS review_content
     FROM workos_core.web_bundle_artifacts w
     WHERE w.owner_user_id = $1 AND w.id = ANY($2::uuid[])
     UNION ALL
     SELECT id, owner_user_id, type, title, media_type, ''::text AS content_ref, digest,
            1 AS file_count, byte_count AS total_size_bytes, created_at,
-           ''::text AS entrypoint, project_id, source_task_id
+           ''::text AS entrypoint, project_id, source_task_id,
+           output_key, line_count, content AS review_content
     FROM workos_core.project_review_artifacts p
     WHERE p.owner_user_id = $1 AND p.id = ANY($2::uuid[])
 ) AS artifact
@@ -592,6 +592,9 @@ type ListArtifactSummariesUnionRow struct {
 	Entrypoint     string             `json:"entrypoint"`
 	ProjectID      pgtype.UUID        `json:"project_id"`
 	SourceTaskID   pgtype.UUID        `json:"source_task_id"`
+	OutputKey      pgtype.Text        `json:"output_key"`
+	LineCount      pgtype.Int4        `json:"line_count"`
+	ReviewContent  []byte             `json:"review_content"`
 }
 
 // Summary projection shared by both subtypes for exactly the given IDs.
@@ -618,6 +621,9 @@ func (q *Queries) ListArtifactSummariesUnion(ctx context.Context, arg ListArtifa
 			&i.Entrypoint,
 			&i.ProjectID,
 			&i.SourceTaskID,
+			&i.OutputKey,
+			&i.LineCount,
+			&i.ReviewContent,
 		); err != nil {
 			return nil, err
 		}

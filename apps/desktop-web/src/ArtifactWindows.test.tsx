@@ -239,6 +239,23 @@ describe("Artifact Center", () => {
     });
     expect(screen.queryByText("Project A stale document")).toBeNull();
   });
+
+  it("fails closed when a list item is bound to another Project", async () => {
+    const mismatched = { ...reviewArtifact("artifact-1"), projectId: "project-2" };
+    render(
+      <ArtifactCenter
+        projectId="project-1"
+        workosClients={clientFixture({
+          listArtifacts: vi.fn(() =>
+            Promise.resolve({ artifacts: [mismatched], page: { nextPageToken: "" } }),
+          ),
+        })}
+        onOpenArtifact={() => {}}
+      />,
+    );
+    expect(await screen.findByText("Artifact list could not be loaded.")).toBeTruthy();
+    expect(screen.queryByText(mismatched.title)).toBeNull();
+  });
 });
 
 describe("Timeline artifact events", () => {
@@ -305,6 +322,68 @@ describe("Timeline artifact events", () => {
     await screen.findByText("Artifact unavailable.");
     expect(getReviewArtifact).toHaveBeenCalled();
   });
+
+  it("rejects a typed response bound to a different Project", async () => {
+    const wrongProject = { ...reviewArtifact("artifact-1"), projectId: "project-2" };
+    const getReviewArtifact = vi.fn(() =>
+      Promise.resolve({ artifact: wrongProject, content: markdownContent() }),
+    );
+    render(
+      <ArtifactViewerWindow
+        artifactId="artifact-1"
+        projectId="project-1"
+        workosClients={clientFixture({ getReviewArtifact })}
+      />,
+    );
+    expect(await screen.findByText("Artifact unavailable.")).toBeTruthy();
+  });
+
+  it("does not paint a late task event after the active Project switches", async () => {
+    let release: (() => void) | undefined;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    async function* delayedStream() {
+      await gate;
+      yield { event: artifactCreatedEvent("task-1", "artifact-1") };
+    }
+    const submitted = {
+      $typeName: "workos.agent.v1.AgentTask",
+      id: "task-1",
+      ownerUserId: "local-user",
+      state: AgentTaskState.RUNNING,
+      providerId: "fake",
+      harnessInstanceId: "",
+      runId: "",
+      lastEventSequence: 0n,
+    };
+    const workosClients = clientFixture({});
+    workosClients.projects.listProjects = vi.fn(() =>
+      Promise.resolve({
+        projects: [
+          project("project-1", "Project One", 1n),
+          project("project-2", "Project Two", 1n),
+        ],
+        page: undefined,
+      }),
+    ) as never;
+    workosClients.agentTasks = {
+      submitTask: vi.fn(() => Promise.resolve({ task: submitted })),
+      watchTaskEvents: vi.fn(() => delayedStream()),
+      getTask: vi.fn(() => Promise.resolve({ task: submitted })),
+    } as never;
+    render(<Desktop workosClients={workosClients} />);
+
+    await userEvent.type(await screen.findByRole("textbox", { name: "Agent goal" }), "review");
+    await userEvent.click(screen.getByRole("button", { name: "Run task" }));
+    expect(await screen.findByText("task-1")).toBeTruthy();
+    await userEvent.click(screen.getByRole("button", { name: /Project Two revision 1/ }));
+    release?.();
+    await waitFor(() => {
+      expect(screen.queryByText("task-1")).toBeNull();
+      expect(screen.queryByRole("button", { name: /Artifact · document.markdown.v1/ })).toBeNull();
+    });
+  });
 });
 
 // renderArtifactViewerForProbe mounts the viewer window body exactly like the
@@ -316,6 +395,7 @@ function renderArtifactViewerForProbe(getReviewArtifact: ReturnType<typeof vi.fn
     <Fragment>
       <ArtifactViewerWindow
         artifactId="artifact-missing"
+        projectId="project-1"
         workosClients={clientFixture({ getReviewArtifact })}
       />
     </Fragment>,
@@ -355,6 +435,15 @@ describe("Inert rendering", () => {
     expect(document.querySelectorAll("blockquote")).toHaveLength(1);
     expect(document.querySelector("strong")?.textContent).toBe("bold");
     expect(document.querySelectorAll("code").length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("renders hash-prefixed non-headings as inert paragraphs without stalling", () => {
+    render(<MarkdownView text={"#not-a-heading\n####### also-not-a-heading\nplain"} />);
+    const view = document.querySelector(".markdown-view") as HTMLElement;
+    expect(view.textContent).toContain("#not-a-heading");
+    expect(view.textContent).toContain("####### also-not-a-heading");
+    expect(view.textContent).toContain("plain");
+    expect(view.querySelector("h1, h2, h3, h4")).toBeNull();
   });
 
   it("renders diff paths and content as inert text", () => {
@@ -400,5 +489,13 @@ describe("Inert rendering", () => {
       />,
     );
     expect(screen.getByRole("heading", { name: "Fake Harness Review Document" })).toBeTruthy();
+    rerender(
+      <ArtifactViewer
+        artifact={reviewArtifact("artifact-1")}
+        content={new Uint8Array([0xff, 0xfe])}
+        loading={false}
+      />,
+    );
+    expect(screen.getByText("Artifact unavailable.")).toBeTruthy();
   });
 });

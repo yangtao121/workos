@@ -3,6 +3,7 @@ package ports
 import (
 	"context"
 	"errors"
+	"time"
 
 	"github.com/yangtao121/workos/internal/core/artifact/domain"
 	"github.com/yangtao121/workos/internal/platform/dbtx"
@@ -48,9 +49,14 @@ type ReviewOutputCommand struct {
 // exact first-published timeline event reference.
 type TaskOutputRecord struct {
 	RequestDigest string
+	OwnerUserID   string
+	ProjectID     string
+	TaskID        string
+	OutputKey     string
 	ArtifactID    string
 	ArtifactType  string
 	Publication   domain.PublicationRecord
+	CreatedAt     time.Time
 }
 
 // ProjectScope is the neutral project liveness port for review artifact

@@ -37,9 +37,10 @@ func New(repository ports.Repository, generator ids.Generator) (*Service, error)
 	return &Service{repository: repository, ids: generator, now: func() time.Time { return time.Now().UTC() }}, nil
 }
 
-// WithProjectScope attaches the neutral project liveness port that
-// project-scoped review reads require. Without it the project list stays
-// unsupported and review content reads still work by artifact ID.
+// WithProjectScope attaches the neutral project liveness port that every
+// project-scoped review read requires. The production composition root must
+// always wire it; without it review reads fail closed rather than treating an
+// Artifact row as authority for Project ownership.
 func (s *Service) WithProjectScope(scope ports.ProjectScope) (*Service, error) {
 	if scope == nil {
 		return nil, errors.New("artifact service requires a project scope port")
@@ -82,7 +83,16 @@ func (s *Service) Get(ctx context.Context, ownerUserID, artifactID string) (doma
 	if ownerUserID == "" || !domain.ValidArtifactUUID(artifactID) {
 		return domain.Artifact{}, domain.ErrInvalid
 	}
-	return s.repository.Get(ctx, ownerUserID, artifactID)
+	artifact, err := s.repository.Get(ctx, ownerUserID, artifactID)
+	if err != nil {
+		return domain.Artifact{}, err
+	}
+	if domain.IsReviewType(artifact.Type) {
+		if err := s.validateStoredProjectBinding(ctx, ownerUserID, artifact.ProjectID); err != nil {
+			return domain.Artifact{}, err
+		}
+	}
+	return artifact, nil
 }
 
 // List returns one page of the owner's artifacts ordered by ID. An empty
@@ -128,11 +138,35 @@ func (s *Service) List(ctx context.Context, ownerUserID, projectID, cursor strin
 		return ports.PageResult{}, err
 	}
 	items := make([]domain.Artifact, 0, len(idsPage))
+	expected := make(map[string]bool, len(idsPage))
+	for _, id := range idsPage {
+		if expected[id] || !domain.ValidArtifactUUID(id) {
+			return ports.PageResult{}, domain.ErrCorrupt
+		}
+		expected[id] = true
+	}
+	lastID := ""
 	if err := s.repository.VisitSummaries(ctx, ownerUserID, idsPage, func(artifact domain.Artifact) error {
+		if !expected[artifact.ID] || (lastID != "" && artifact.ID <= lastID) {
+			return domain.ErrCorrupt
+		}
+		if projectID != "" && (!domain.IsReviewType(artifact.Type) || artifact.ProjectID != projectID) {
+			return domain.ErrCorrupt
+		}
+		if projectID == "" && domain.IsReviewType(artifact.Type) {
+			if err := s.validateStoredProjectBinding(ctx, ownerUserID, artifact.ProjectID); err != nil {
+				return err
+			}
+		}
+		delete(expected, artifact.ID)
+		lastID = artifact.ID
 		items = append(items, artifact)
 		return nil
 	}); err != nil {
 		return ports.PageResult{}, err
+	}
+	if len(expected) != 0 {
+		return ports.PageResult{}, domain.ErrCorrupt
 	}
 	return ports.PageResult{Items: items, NextToken: nextCursor}, nil
 }
@@ -183,7 +217,29 @@ func (s *Service) GetReview(ctx context.Context, ownerUserID, artifactID string)
 		}
 		return domain.ReviewArtifact{}, domain.NormalizedReviewContent{}, domain.ErrUnsupported
 	}
+	if err != nil {
+		return domain.ReviewArtifact{}, domain.NormalizedReviewContent{}, err
+	}
+	if scopeErr := s.validateStoredProjectBinding(ctx, ownerUserID, fact.ProjectID); scopeErr != nil {
+		return domain.ReviewArtifact{}, domain.NormalizedReviewContent{}, scopeErr
+	}
 	return fact, content, err
+}
+
+func (s *Service) validateStoredProjectBinding(ctx context.Context, ownerUserID, projectID string) error {
+	if s.projects == nil {
+		return domain.ErrCorrupt
+	}
+	if err := s.projects.ValidateReadableProject(ctx, ownerUserID, projectID); err != nil {
+		if errors.Is(err, domain.ErrNotFound) {
+			// The owner-scoped immutable Artifact row was already found. A
+			// missing/foreign Project is therefore provenance drift, not a
+			// caller-visible existence verdict.
+			return domain.ErrCorrupt
+		}
+		return err
+	}
+	return nil
 }
 
 // PrepareReviewOutput validates one untrusted provider artifact output and
@@ -194,7 +250,7 @@ func (s *Service) GetReview(ctx context.Context, ownerUserID, artifactID string)
 // nothing is consumed or persisted, so validation failures never consume the
 // output key.
 func (s *Service) PrepareReviewOutput(ownerUserID, projectID, taskID, outputKey, rawTitle, artifactType string, rawContent []byte) (ports.ReviewOutputCommand, error) {
-	if ownerUserID == "" || !domain.ValidArtifactUUID(projectID) || !domain.ValidArtifactUUID(taskID) ||
+	if !domain.ValidArtifactUUID(ownerUserID) || !domain.ValidArtifactUUID(projectID) || !domain.ValidArtifactUUID(taskID) ||
 		!domain.ValidReviewOutputKey(outputKey) {
 		return ports.ReviewOutputCommand{}, domain.ErrInvalid
 	}
@@ -210,11 +266,16 @@ func (s *Service) PrepareReviewOutput(ownerUserID, projectID, taskID, outputKey,
 	if err != nil {
 		return ports.ReviewOutputCommand{}, err
 	}
+	artifactID := s.ids.New()
+	createdAt := domain.CanonicalUTCTime(s.now())
+	if !domain.ValidArtifactUUID(artifactID) || !domain.ValidStoredUTCTime(createdAt) {
+		return ports.ReviewOutputCommand{}, domain.ErrCorrupt
+	}
 	fact := domain.ReviewArtifact{
-		ID: s.ids.New(), OwnerUserID: ownerUserID, ProjectID: projectID,
+		ID: artifactID, OwnerUserID: ownerUserID, ProjectID: projectID,
 		SourceTask: taskID, OutputKey: outputKey, Type: canonicalType, Title: title,
 		MediaType: mediaType, Digest: normalized.Digest, ByteCount: normalized.ByteCount,
-		LineCount: normalized.LineCount, CreatedAt: s.now(),
+		LineCount: normalized.LineCount, CreatedAt: createdAt,
 	}
 	return ports.ReviewOutputCommand{
 		Artifact:      fact,

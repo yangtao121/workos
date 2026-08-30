@@ -16,6 +16,7 @@ import (
 	"github.com/yangtao121/workos/internal/core/agent/domain"
 	"github.com/yangtao121/workos/internal/core/agent/ports"
 	artifactdomain "github.com/yangtao121/workos/internal/core/artifact/domain"
+	artifactports "github.com/yangtao121/workos/internal/core/artifact/ports"
 	"github.com/yangtao121/workos/internal/platform/identity"
 )
 
@@ -245,6 +246,8 @@ func mapError(err error) error {
 		return connect.NewError(connect.CodeFailedPrecondition, errors.New("artifact output conflicts with an already-materialized output"))
 	case errors.Is(err, artifactdomain.ErrCorrupt):
 		return connect.NewError(connect.CodeInternal, errors.New("agent task operation failed"))
+	case errors.Is(err, artifactports.ErrStoreUnavailable):
+		return connect.NewError(connect.CodeUnavailable, errors.New("artifact store is temporarily unavailable"))
 	case errors.Is(err, ports.ErrStoreUnavailable):
 		return connect.NewError(connect.CodeUnavailable, errors.New("agent store is temporarily unavailable"))
 	default:

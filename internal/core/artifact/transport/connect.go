@@ -18,8 +18,8 @@ import (
 	"github.com/yangtao121/workos/internal/platform/identity"
 )
 
-// MaxRequestBytes bounds every ArtifactService request message before the
-// Connect stack decodes it. The legal web bundle payload is at most 2 MiB of
+// MaxRequestBytes bounds CreateArtifact before the Connect stack decodes it.
+// The legal web bundle payload is at most 2 MiB of
 // file bytes; protojson inflates bytes 4/3 through base64 to ~2.8 MiB before
 // field names, paths, and JSON punctuation. 4 MiB (4,194,304 bytes) covers
 // that with headroom while staying a small explicit constant — the library
@@ -34,10 +34,24 @@ func New(service *application.Service) *Handler { return &Handler{service: servi
 // bounded-read configuration. Composition roots and tests must use this
 // constructor so the read limit is identical in production and tests.
 func NewConnectHandler(service *application.Service) (string, http.Handler) {
-	return artifactv1connect.NewArtifactServiceHandler(
+	path, createHandler := artifactv1connect.NewArtifactServiceHandler(
 		New(service),
 		connect.WithReadMaxBytes(MaxRequestBytes),
 	)
+	readPath, readHandler := artifactv1connect.NewArtifactServiceHandler(
+		New(service),
+		connect.WithReadMaxBytes(MaxReadRequestBytes),
+	)
+	if readPath != path {
+		panic("generated ArtifactService handlers returned inconsistent paths")
+	}
+	return path, http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		if request.URL.Path == artifactv1connect.ArtifactServiceCreateArtifactProcedure {
+			createHandler.ServeHTTP(response, request)
+			return
+		}
+		readHandler.ServeHTTP(response, request)
+	})
 }
 
 func (h *Handler) CreateArtifact(ctx context.Context, req *connect.Request[artifactv1.CreateArtifactRequest]) (*connect.Response[artifactv1.CreateArtifactResponse], error) {
@@ -112,11 +126,10 @@ func (h *Handler) ListArtifacts(ctx context.Context, req *connect.Request[artifa
 	}), nil
 }
 
-// MaxReadRequestBytes bounds the review read/list/get requests. All their
-// fields are bounded-grammar identifiers, so the service-level Create budget
-// (MaxRequestBytes, needed by the web bundle upload) stays, and these
-// handlers enforce the tighter contract directly on the decoded message
-// before any application code runs.
+// MaxReadRequestBytes bounds public read/list/get requests in their Connect
+// handler before decompression/decoding reaches business code. They carry
+// only bounded identifiers and pagination fields; CreateArtifact is routed
+// through its separate upload-sized handler above.
 const MaxReadRequestBytes = 32 * 1024
 
 // rejectOversizeRead enforces the review read budget. A decoded message

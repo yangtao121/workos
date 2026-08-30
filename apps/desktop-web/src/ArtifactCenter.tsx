@@ -84,6 +84,16 @@ export function ArtifactCenter({ projectId, workosClients, onOpenArtifact }: Art
           page: { pageSize: PAGE_SIZE, pageToken: cursor },
         });
         if (!isLive(generation)) return;
+        if (
+          response.artifacts.some(
+            (artifact) =>
+              artifact.projectId !== projectId ||
+              (artifact.type !== "document.markdown.v1" &&
+                artifact.type !== "code.unified-diff.v1"),
+          )
+        ) {
+          throw new Error("artifact list binding mismatch");
+        }
         setState((current) => ({
           items: cursor === "" ? response.artifacts : [...current.items, ...response.artifacts],
           nextPageToken: response.page?.nextPageToken ?? "",

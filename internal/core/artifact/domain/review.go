@@ -39,6 +39,11 @@ const (
 	MaxReviewContentLines  = 20000
 	MaxReviewLineBytes     = 16 * 1024
 	MaxReviewOutputKeyRuns = 64
+	// MaxReviewWireContentBytes allows the largest canonical document to be
+	// represented with CRLF line endings before normalization. Every CRLF can
+	// add at most one byte per legal line; the canonical byte and line limits
+	// are still enforced after normalization.
+	MaxReviewWireContentBytes = MaxReviewContentBytes + MaxReviewContentLines
 )
 
 // ErrOutputConflict marks a materialization whose (task, output key) identity
@@ -126,15 +131,22 @@ func NormalizeReviewContent(artifactType string, raw []byte) (NormalizedReviewCo
 	if _, _, ok := ReviewType(artifactType); !ok {
 		return NormalizedReviewContent{}, ErrInvalid
 	}
-	if len(raw) == 0 || len(raw) > MaxReviewContentBytes {
+	if len(raw) == 0 || len(raw) > MaxReviewWireContentBytes {
 		return NormalizedReviewContent{}, ErrInvalid
 	}
 	if !utf8.Valid(raw) {
 		return NormalizedReviewContent{}, ErrInvalid
 	}
 	content := bytes.ReplaceAll(raw, []byte("\r\n"), []byte("\n"))
-	for _, b := range content {
-		if b == 0 || (b < 0x20 && b != '\n' && b != '\t') || b == 0x7f || (b >= 0x80 && b <= 0x9f) {
+	if len(content) > MaxReviewContentBytes {
+		return NormalizedReviewContent{}, ErrInvalid
+	}
+	// Controls are Unicode code points, not arbitrary UTF-8 bytes. Iterating
+	// raw bytes would reject valid multibyte text whenever a continuation byte
+	// happened to fall in 0x80..0x9f (for example ordinary Chinese text).
+	for _, character := range string(content) {
+		if character == 0 || (character < 0x20 && character != '\n' && character != '\t') ||
+			character == 0x7f || (character >= 0x80 && character <= 0x9f) {
 			return NormalizedReviewContent{}, ErrInvalid
 		}
 	}
@@ -227,12 +239,40 @@ type PublicationRecord struct {
 	OccurredAt time.Time
 }
 
+// ValidStoredPublicationRecord verifies the immutable reference needed to
+// replay the first Core-minted timeline publication. A malformed identity,
+// non-positive sequence, or non-UTC/out-of-range timestamp is corruption.
+func ValidStoredPublicationRecord(publication PublicationRecord) bool {
+	return ValidArtifactUUID(publication.EventID) && publication.EventSeq > 0 &&
+		ValidStoredUTCTime(publication.OccurredAt)
+}
+
+// ValidStoredUTCTime accepts only finite protobuf-representable UTC
+// timestamps. PostgreSQL timestamptz stores instants, while this guard also
+// protects projections from infinity/out-of-range values and adapters that
+// accidentally reintroduce a non-UTC offset.
+func ValidStoredUTCTime(value time.Time) bool {
+	if value.IsZero() {
+		return false
+	}
+	_, offset := value.Zone()
+	year := value.UTC().Year()
+	return offset == 0 && year >= 1 && year <= 9999 && value.Equal(CanonicalUTCTime(value))
+}
+
+// CanonicalUTCTime matches PostgreSQL timestamptz's microsecond precision so
+// the first response, durable row/event payload, and every replay expose the
+// exact same timestamp rather than drifting by discarded nanoseconds.
+func CanonicalUTCTime(value time.Time) time.Time {
+	return value.UTC().Truncate(time.Microsecond)
+}
+
 // ValidStoredReviewFact revalidates one stored review artifact row on every
 // read and replay: UUID grammar, canonical type/media pairing, title and
 // output key grammar, digest shape, and bounded counts. Stored rows are
 // immutable, so any drift is internal corruption, never a client error.
 func ValidStoredReviewFact(artifact ReviewArtifact) bool {
-	if !ValidArtifactUUID(artifact.ID) || artifact.OwnerUserID == "" ||
+	if !ValidArtifactUUID(artifact.ID) || !ValidArtifactUUID(artifact.OwnerUserID) ||
 		!ValidArtifactUUID(artifact.ProjectID) || !ValidArtifactUUID(artifact.SourceTask) ||
 		!ValidReviewOutputKey(artifact.OutputKey) {
 		return false
@@ -241,7 +281,8 @@ func ValidStoredReviewFact(artifact ReviewArtifact) bool {
 	if !ok || expectedMedia != artifact.MediaType {
 		return false
 	}
-	if !ValidArtifactTitle(artifact.Title) || !ValidArtifactDigest(artifact.Digest) {
+	canonicalTitle, titleOK := NormalizeReviewTitle(artifact.Title)
+	if !titleOK || canonicalTitle != artifact.Title || !ValidArtifactDigest(artifact.Digest) {
 		return false
 	}
 	if artifact.ByteCount < 1 || artifact.ByteCount > MaxReviewContentBytes {
@@ -250,7 +291,7 @@ func ValidStoredReviewFact(artifact ReviewArtifact) bool {
 	if artifact.LineCount < 1 || artifact.LineCount > MaxReviewContentLines {
 		return false
 	}
-	return !artifact.CreatedAt.IsZero()
+	return ValidStoredUTCTime(artifact.CreatedAt)
 }
 
 // ValidStoredArtifact revalidates one stored metadata row of either subtype
@@ -259,7 +300,7 @@ func ValidStoredReviewFact(artifact ReviewArtifact) bool {
 func ValidStoredArtifact(artifact Artifact) bool {
 	if !ValidArtifactUUID(artifact.ID) || artifact.OwnerUserID == "" ||
 		!ValidArtifactTitle(artifact.Title) || !ValidArtifactDigest(artifact.Digest) ||
-		artifact.CreatedAt.IsZero() {
+		!ValidStoredUTCTime(artifact.CreatedAt) {
 		return false
 	}
 	switch artifact.Type {
@@ -269,9 +310,13 @@ func ValidStoredArtifact(artifact Artifact) bool {
 			artifact.TotalSizeBytes >= 1 && artifact.ContentRef != ""
 	case TypeMarkdown, TypeUnifiedDiff:
 		_, expectedMedia, ok := ReviewType(artifact.Type)
+		canonicalTitle, titleOK := NormalizeReviewTitle(artifact.Title)
 		return ok && artifact.MediaType == expectedMedia &&
+			ValidArtifactUUID(artifact.OwnerUserID) && titleOK && canonicalTitle == artifact.Title &&
 			ValidArtifactUUID(artifact.ProjectID) && ValidArtifactUUID(artifact.SourceTaskID) &&
-			artifact.FileCount == 1 && artifact.TotalSizeBytes >= 1
+			artifact.FileCount == 1 && artifact.TotalSizeBytes >= 1 &&
+			artifact.TotalSizeBytes <= MaxReviewContentBytes && artifact.ContentRef == "" &&
+			artifact.Entrypoint == ""
 	default:
 		return false
 	}

@@ -37,6 +37,10 @@ docker run --rm --network host … workos-playwright:1.62.1 \
 ```
 
 - `make test-artifact-review`：真实链路门禁（与截图分开命名、分开说明）。
+- 合并就绪审核在修复后的 production build 上用同一命令连续复跑两次：Timeline、Center、Diff
+  与既有证据逐字节一致；Markdown capture 稳定地产生 1 个 pixel / 1 个 RGB channel / delta 1
+  的栅格差异（无 DOM、文案、布局或交互差异），因此从同一次 capture 同步更新 Markdown 的
+  `after/` 与 `current/`，两者重新逐字节一致。
 
 ## 文件
 

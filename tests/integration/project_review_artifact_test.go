@@ -31,6 +31,10 @@ import (
 // on the acceptance volume, so any later edit is a hard failure.
 const reviewArtifacts021 = "80cb4466c5d8ddb35513b8f87dbc79963269e53fb11ec01d3daa3ba77850b5fe"
 
+// 022 is forward-only because 021 may already be applied on an acceptance
+// volume. Its checksum is pinned after the integrity constraints are final.
+const reviewArtifacts022 = "5f7c4a88525d9d47123246a67b5b8dc2b3d59355d892652c0bc59b38976244e6"
+
 // reviewFixture bundles the materialization stack over one scratch database.
 type reviewFixture struct {
 	dsn          string
@@ -137,6 +141,17 @@ func TestProjectReviewArtifactMigrationConstraints(t *testing.T) {
 	t.Parallel()
 	f := newReviewFixture(t)
 	ctx := context.Background()
+	for name, want := range map[string]string{
+		"021_project_review_artifacts.sql":          reviewArtifacts021,
+		"022_project_review_artifact_integrity.sql": reviewArtifacts022,
+	} {
+		var got string
+		if err := f.pool.QueryRow(ctx,
+			`SELECT checksum FROM workos_meta.schema_migrations WHERE name = $1`, name,
+		).Scan(&got); err != nil || got != want {
+			t.Fatalf("migration %s checksum = %q (%v), want %q", name, got, err, want)
+		}
+	}
 	for _, probe := range []struct {
 		name      string
 		artifact  string
@@ -158,6 +173,22 @@ func TestProjectReviewArtifactMigrationConstraints(t *testing.T) {
 			probe.outputKey, probe.byteLen); err == nil {
 			t.Fatalf("%s: constraint not enforced", probe.name)
 		}
+	}
+	if _, err := f.pool.Exec(ctx, `INSERT INTO workos_core.project_review_artifacts (
+		id, owner_user_id, type, title, media_type, digest, project_id, source_task_id,
+		output_key, byte_count, line_count, content, created_at
+	) VALUES ($1, $2, 'document.markdown.v1', 't', 'text/markdown; charset=utf-8',
+		'sha256:' || repeat('a', 64), $3, $4, 'size-drift', 2, 1, decode('78', 'hex'), now())`,
+		newUUIDForTest(952), f.owner, f.project, newUUIDForTest(953)); err == nil {
+		t.Fatal("byte_count/content drift constraint not enforced")
+	}
+	if _, err := f.pool.Exec(ctx, `INSERT INTO workos_core.project_review_artifacts (
+		id, owner_user_id, type, title, media_type, digest, project_id, source_task_id,
+		output_key, byte_count, line_count, content, created_at
+	) VALUES ($1, $2, 'document.markdown.v1', 't', 'text/markdown; charset=utf-8',
+		'sha256:' || repeat('a', 64), $3, $4, 'infinite-time', 1, 1, decode('78', 'hex'), 'infinity')`,
+		newUUIDForTest(954), f.owner, f.project, newUUIDForTest(955)); err == nil {
+		t.Fatal("infinite artifact timestamp constraint not enforced")
 	}
 }
 
@@ -243,6 +274,15 @@ func TestReviewArtifactRejectsLostLeaseAndForeignReads(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	projectScope, err := orchestration.NewArtifactProjectScope(
+		projectapp.New(projectpostgres.New(f.pool), ids.UUIDv7{}),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := application.WithProjectScope(projectScope); err != nil {
+		t.Fatal(err)
+	}
 	if _, _, err := application.GetReview(ctx, "01999999-9999-7999-8999-000000000099", artifact.GetId()); !errors.Is(err, artifactdomain.ErrNotFound) {
 		t.Fatalf("foreign owner must be NotFound, got %v", err)
 	}
@@ -253,10 +293,42 @@ func TestReviewArtifactRejectsLostLeaseAndForeignReads(t *testing.T) {
 
 	// Stored corruption is Internal, never NotFound or InvalidArgument.
 	execScratch(t, f.pool, `UPDATE workos_core.project_review_artifacts SET content = $2 WHERE id = $1`,
-		artifact.GetId(), []byte("# Tampered\n"))
+		artifact.GetId(), []byte("# Jello\n"))
 	if _, _, err := application.GetReview(ctx, f.owner, artifact.GetId()); err == nil ||
 		errors.Is(err, artifactdomain.ErrNotFound) || errors.Is(err, artifactdomain.ErrInvalid) {
 		t.Fatalf("stored corruption must surface as internal, got %v", err)
+	}
+	if _, err := application.Get(ctx, f.owner, artifact.GetId()); !errors.Is(err, artifactdomain.ErrCorrupt) {
+		t.Fatalf("metadata Get must also revalidate stored content, got %v", err)
+	}
+}
+
+func TestReviewArtifactReplayVerifiesDurableAgentPublication(t *testing.T) {
+	t.Parallel()
+	f := newReviewFixture(t)
+	ctx := context.Background()
+	artifact, _, err := f.materializer.MaterializeTaskArtifact(ctx, f.leaseID, f.worker, "document",
+		"Review", "document.markdown.v1", []byte("# Hello\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.pool.Exec(ctx, `UPDATE workos_core.project_review_artifact_outputs
+		SET project_id = $2 WHERE task_id = $1 AND output_key = 'document'`,
+		f.task, newUUIDForTest(957)); err == nil {
+		t.Fatal("output mapping was allowed to drift from its Artifact-owned binding")
+	}
+	// The Artifact mapping deliberately has no cross-module FK into the Agent
+	// event table. If its reference drifts, replay must verify the Agent-owned
+	// row rather than reconstructing and returning a fabricated event.
+	execScratch(t, f.pool, `UPDATE workos_core.project_review_artifact_outputs
+		SET event_id = $2 WHERE task_id = $1 AND output_key = 'document'`,
+		f.task, newUUIDForTest(956))
+	if _, _, err := f.materializer.MaterializeTaskArtifact(ctx, f.leaseID, f.worker, "document",
+		"Review", "document.markdown.v1", []byte("# Hello\n")); !errors.Is(err, artifactdomain.ErrCorrupt) {
+		t.Fatalf("missing durable publication was replayed: artifact=%s err=%v", artifact.GetId(), err)
+	}
+	if f.eventCount(t, "artifact_created") != 1 || f.artifactCount(t) != 1 {
+		t.Fatal("corrupt replay wrote a second artifact or event")
 	}
 }
 

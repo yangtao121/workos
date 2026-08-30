@@ -1,12 +1,13 @@
 # Task: Project Agent Markdown / Diff Artifact Review 纵向切片
 
-- 状态：done
+- 状态：done（实现后合并就绪审核已补强持久化/回放/UI 边界；全量门禁重新通过）
 - Owner/Agent：feat/project-artifact-review 实现智能体
 - 进程/模块：workos-core（Artifact、Agent、orchestration、harnesscatalog）、harness-host
   （Fake adapter、worker、broker）、workos-gateway（回归）、desktop-web（Agent Center、
   Artifact Center、Artifact Viewer）
 - 依赖：LAN 设备配对与持久 Gateway 会话（已合入 main）；不依赖 Reliability/Podman 证据。
-- 提交：见分支 `feat/project-artifact-review`（不 merge、不 push）。
+- 提交：实现提交 `46dbe9c`；审核修复见分支 `feat/project-artifact-review` 的
+  `fix: harden project artifact review invariants`。用户后续明确授权审核通过后合并本地 `main`；不 push。
 
 ## 目标与范围
 
@@ -25,9 +26,11 @@ Unified Diff Artifact，Desktop 从 Timeline / Artifact Center 打开只读审�
 - `harness.proto`：`HarnessCapabilities.supported_artifact_types = 16`（exact list，与
   `structured_artifacts` bool 一致性由 catalog 校验，漂移视为 corruption → unavailable）。
 - `AgentEvent.ArtifactCreated` 字段号 16 不变，内容不进事件。
-- Migration `021_project_review_artifacts.sql`：`workos_core.project_review_artifacts` +
+- Migrations `021_project_review_artifacts.sql` + `022_project_review_artifact_integrity.sql`：
+  `workos_core.project_review_artifacts` +
   `project_review_artifact_outputs`（(task, output_key) PK、(task, task+type) 唯一索引、
-  publication 引用列）；001–020 逐字节未动，021 checksum 已钉住
+  publication 引用列）；022 forward-only 增加 Artifact-owned full-binding composite FK、content
+  byte-count 与 finite timestamp 约束；001–021 历史 migration 逐字节未动，021/022 checksum 已钉住
   （`tests/integration/project_review_artifact_test.go`）。
 
 ## 实现要点
@@ -50,13 +53,33 @@ Unified Diff Artifact，Desktop 从 Timeline / Artifact Center 打开只读审�
   （generation guard、Project 切换隔离/关闭跨 Project viewer）、只读 inert Markdown/Diff
   renderer（`clients/artifact-viewer`，无 HTML parser/dangerouslySetInnerHTML/网络/存储）。
 
+## 合并就绪审核修复（2026-08-30）
+
+- 修正 content control 校验按 Unicode code point 而非 UTF-8 continuation byte 判断；中文/emoji 正常
+  接受，实际 C0/C1 仍拒绝。CRLF wire representation 先保留最多每行一个额外 byte headroom，再对
+  normalized content 严格执行 512 KiB。
+- stored review/mapping 的 UUIDv7、canonical title/content、digest/count、UTC 微秒时间与完整
+  owner/project/task/output/type binding 每次 read/replay 重验；新增 022 物理约束，不改已执行 021。
+- replay 必须命中并语义匹配真实 Agent-owned durable event，不能仅凭 Artifact mapping 重建一个不存在
+  的 timeline event；首次响应与 PostgreSQL replay 时间精度一致。
+- metadata Get/List 也读取同 snapshot 的 review bytes 并重算 canonical digest/count；所有 review Get/
+  List 通过中立 Project port 重验 binding，missing Project fact 作为 stored corruption，不形成 oracle。
+- public Create/read 与 private materialization 分别使用 4 MiB / 32 KiB / 768 KiB pre-decode budget，
+  protobuf、JSON、gzip 与合法最大请求均有测试。
+- Viewer fatal-decode UTF-8 并校验 Project/artifact/type/media/count/size；修复 hash-prefixed 非 heading
+  导致 Markdown parser 不推进的无限循环；Project switch abort + generation guard 阻止迟到 task event，
+  重复打开窗口会 focus 既有实例。
+- 审核轮第一次全量 integration 中，本切片全部 Artifact 测试通过，但既有 App Registry exact-final-page
+  测试受并行共享验收库写入影响出现一次计数抖动；该测试隔离重跑通过，随后完整
+  `make test-integration`（含全部并行测试与 restart 阶段）干净通过，未修改其断言或清理共享 volume。
+
 ## 验收（全部真实执行）
 
 - [x] Domain/application 单元测试：grammar 边界、digest golden、CRLF/bounds、corruption、
       replay/conflict、global/unrequested type、事件 payload canonical（`go test ./...` 全绿）
 - [x] `go test -race`（artifact/agent/harness/orchestration）全绿
 - [x] PostgreSQL integration（`go test -tags=integration ./tests/integration` 全套 9.3s ok）：
-      021 forward + 约束、并发 8-goroutine 唯一 winner、replay/冲突/类型槽、lease/foreign、
+      021/022 forward + 约束、并发 8-goroutine 唯一 winner、replay/冲突/类型槽、lease/foreign、
       corruption→Internal、分页 exact last page、restart 后 replay/list、digest 覆盖面
 - [x] Harness：Fake 两类输出（确定性、terminal 前、恰一次/type）、无效请求拒绝、sink 失败
       中止 run、DeepSeek/Generic 仍 false/empty、worker 缺失 type fail closed、超时/取消回归
@@ -75,23 +98,25 @@ Unified Diff Artifact，Desktop 从 Timeline / Artifact Center 打开只读审�
 
 ## 必跑命令结果汇总
 
-| 命令                                        | 结果                                                             |
-| ------------------------------------------- | ---------------------------------------------------------------- |
-| `make bootstrap` / `make check`             | ✅（基线与本分支均通过）                                         |
-| `make test-integration`                     | ✅                                                               |
-| `make test-deepseek-fixture`                | ✅                                                               |
-| `make test-lan-pairing`                     | ✅                                                               |
-| `make test-e2e`                             | ✅（含本切片回归；基线期一次镜像构建 registry 抖动，重建后通过） |
-| `make test-artifact-review`（新增）         | ✅                                                               |
-| `make test-podman-fixture`                  | 非本任务门禁（宿主无 rootless Podman，未冒充）                   |
-| `buf breaking --against '.git#branch=main'` | ✅ additive only                                                 |
+| 命令                                                            | 结果                                                             |
+| --------------------------------------------------------------- | ---------------------------------------------------------------- |
+| `make bootstrap` / `make check`                                 | ✅（基线、实现与审核修复后均通过）                               |
+| `make test-integration`                                         | ✅                                                               |
+| `make test-deepseek-fixture`                                    | ✅                                                               |
+| `make test-lan-pairing`                                         | ✅                                                               |
+| `make test-e2e`                                                 | ✅（含本切片回归；基线期一次镜像构建 registry 抖动，重建后通过） |
+| `make test-artifact-review`（新增）                             | ✅                                                               |
+| `make test-podman-fixture`                                      | 非本任务门禁（宿主无 rootless Podman，未冒充）                   |
+| `buf breaking api/proto --against '.git#branch=main'`           | ✅ additive only                                                 |
+| `go test -race`（Artifact/Agent/orchestration/Harness）         | ✅                                                               |
+| deterministic artifact visual capture + `after/current` compare | ✅（四组同名文件逐字节一致）                                     |
 
 ## 交接
 
 - 已知边界（诚实 unavailable）：review subtype 仅两个文本型；Object Store/图片/PDF/patch
   apply/审批/`context_refs` 读取/App Bridge artifact.\*/DeepSeek 结构化输出全部未实现。
 - 风险：`project_review_artifact_outputs` 的 publication 引用列（event_id/sequence/occurred_at）
-  是 Artifact 表中的 Agent 事实引用，仅为幂等 replay 服务；ADR-0008 §1 有说明。若未来事件
-  stream 改版需同步评估该列的迁移。
+  是 Artifact 表中的 Agent 事实引用，仅为幂等 replay 服务；回放时会经 Agent port 验证实际事件，
+  但数据库层刻意不建跨模块 FK。若未来事件 stream 改版需同步评估该列的迁移。
 - 下一步建议：Agent `context_refs` 引用 review artifact、Artifact 审批 deep link、移动端
   viewer 均可复用本切片的 typed read 与 renderer allowlist。

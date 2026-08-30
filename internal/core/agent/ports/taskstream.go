@@ -38,4 +38,8 @@ type TaskStreamStore interface {
 	// already carries its server-assigned identity and sequence) and advances
 	// the stream's event sequence without changing the task state.
 	AppendPublicationEvent(ctx context.Context, tx dbtx.Tx, stream TaskStreamFacts, event domain.Event) error
+	// PublicationEventMatches verifies that replay points at the exact
+	// durable Agent event originally published. Missing or drifting rows
+	// return false; storage failures remain errors for the caller to classify.
+	PublicationEventMatches(ctx context.Context, tx dbtx.Tx, expected domain.Event) (bool, error)
 }

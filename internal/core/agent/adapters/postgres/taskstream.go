@@ -7,8 +7,10 @@ package postgres
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"reflect"
 	"time"
 
 	"github.com/google/uuid"
@@ -73,6 +75,38 @@ func (r *Repository) AppendPublicationEvent(ctx context.Context, tx dbtx.Tx, str
 		return fmt.Errorf("advance publication sequence: %w", err)
 	}
 	return nil
+}
+
+// PublicationEventMatches proves that an Artifact output replay references
+// the exact Agent-owned event committed by the first materialization. The
+// output mapping is an idempotency reference, not a substitute authority for
+// the timeline row, so missing or drifting event facts fail closed.
+func (r *Repository) PublicationEventMatches(ctx context.Context, tx dbtx.Tx, expected agentdomain.Event) (bool, error) {
+	row, err := r.queries.WithTx(tx).GetTaskPublicationEvent(ctx, agentdb.GetTaskPublicationEventParams{
+		EventID: expected.ID, TaskID: expected.TaskID, EventSequence: expected.Sequence,
+	})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return false, nil
+	}
+	if err != nil {
+		return false, storeError("query task publication event", err)
+	}
+	canonical := expected
+	if err := addEventMetadata(&canonical); err != nil {
+		return false, err
+	}
+	return row.ID == canonical.ID && row.StreamID == canonical.TaskID &&
+		row.Sequence == canonical.Sequence && row.EventType == canonical.EventType &&
+		row.OccurredAt.Time.Equal(canonical.OccurredAt) && sameJSON(row.Payload, canonical.Payload), nil
+}
+
+func sameJSON(left, right []byte) bool {
+	var leftValue any
+	var rightValue any
+	if json.Unmarshal(left, &leftValue) != nil || json.Unmarshal(right, &rightValue) != nil {
+		return false
+	}
+	return reflect.DeepEqual(leftValue, rightValue)
 }
 
 func uuidTextValue(value pgtype.UUID) string {

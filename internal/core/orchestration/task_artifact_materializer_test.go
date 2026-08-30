@@ -1,6 +1,7 @@
 package orchestration
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -55,7 +56,7 @@ func (f *fakeStreams) LockTaskArtifactStream(_ context.Context, _ dbtx.Tx, _, _ 
 	}
 	input := f.input
 	if input == "" {
-		input = `{"outputArtifactTypes":["document.markdown.v1","code.unified-diff.v1"],"goal":"synthetic"}`
+		input = `{"targetScope":{"projectId":"0198d7ea-0000-7000-8000-000000000004"},"outputArtifactTypes":["document.markdown.v1","code.unified-diff.v1"],"goal":"synthetic"}`
 	}
 	return agentports.TaskStreamFacts{
 		TaskID: taskID, OwnerUserID: ownerID, ProjectID: project, ProviderID: "fake",
@@ -87,6 +88,24 @@ func (f *fakeStreams) AppendPublicationEvent(_ context.Context, _ dbtx.Tx, strea
 	f.events = append(f.events, event)
 	f.lastSequence = event.Sequence
 	return nil
+}
+
+func (f *fakeStreams) PublicationEventMatches(_ context.Context, _ dbtx.Tx, expected agentdomain.Event) (bool, error) {
+	for _, stored := range f.events {
+		if stored.ID != expected.ID || stored.TaskID != expected.TaskID ||
+			stored.Sequence != expected.Sequence || stored.EventType != expected.EventType ||
+			!stored.OccurredAt.Equal(expected.OccurredAt) {
+			continue
+		}
+		var storedProto agentv1.AgentEvent
+		var expectedProto agentv1.AgentEvent
+		if protojson.Unmarshal(stored.Payload, &storedProto) != nil || protojson.Unmarshal(expected.Payload, &expectedProto) != nil {
+			return false, nil
+		}
+		return storedProto.GetArtifactCreated().GetArtifactId() == expectedProto.GetArtifactCreated().GetArtifactId() &&
+			storedProto.GetArtifactCreated().GetArtifactType() == expectedProto.GetArtifactCreated().GetArtifactType(), nil
+	}
+	return false, nil
 }
 
 // fakeReviewOutputs stands in for the Artifact module's transaction-scoped
@@ -131,8 +150,11 @@ func (f *fakeReviewOutputs) InsertTaskOutput(_ context.Context, _ dbtx.Tx, comma
 		return 0, errors.New("insert refused an invalid stored fact")
 	}
 	f.outputs[outputIdentity(command.Artifact.SourceTask, command.Artifact.OutputKey)] = artifactports.TaskOutputRecord{
-		RequestDigest: command.RequestDigest, ArtifactID: command.Artifact.ID,
+		RequestDigest: command.RequestDigest, OwnerUserID: command.Artifact.OwnerUserID,
+		ProjectID: command.Artifact.ProjectID, TaskID: command.Artifact.SourceTask,
+		OutputKey: command.Artifact.OutputKey, ArtifactID: command.Artifact.ID,
 		ArtifactType: command.Artifact.Type, Publication: command.Publication,
+		CreatedAt: command.Artifact.CreatedAt,
 	}
 	f.facts[command.Artifact.ID] = command.Artifact
 	f.contents[command.Artifact.ID] = command.Content
@@ -143,6 +165,12 @@ func (f *fakeReviewOutputs) ReviewArtifactByID(_ context.Context, _ dbtx.Tx, art
 	fact, found := f.facts[artifactID]
 	if !found {
 		return artifactdomain.ReviewArtifact{}, artifactdomain.ErrNotFound
+	}
+	normalized, err := artifactdomain.NormalizeReviewContent(fact.Type, f.contents[artifactID])
+	if err != nil || !bytes.Equal(normalized.Content, f.contents[artifactID]) ||
+		!artifactdomain.ValidStoredReviewFact(fact) || normalized.Digest != fact.Digest ||
+		normalized.ByteCount != fact.ByteCount || normalized.LineCount != fact.LineCount {
+		return artifactdomain.ReviewArtifact{}, artifactdomain.ErrCorrupt
 	}
 	return fact, nil
 }
@@ -210,7 +238,9 @@ func TestMaterializerReplaysAfterResponseLoss(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if first.GetId() != second.GetId() || firstEvent.GetSequence() != secondEvent.GetSequence() {
+	if first.GetId() != second.GetId() || firstEvent.GetSequence() != secondEvent.GetSequence() ||
+		!first.GetCreatedAt().AsTime().Equal(second.GetCreatedAt().AsTime()) ||
+		!firstEvent.GetOccurredAt().AsTime().Equal(secondEvent.GetOccurredAt().AsTime()) {
 		t.Fatalf("replay diverged: %s/%d vs %s/%d", first.GetId(), firstEvent.GetSequence(), second.GetId(), secondEvent.GetSequence())
 	}
 	if secondEvent.GetSequence() != 3 {
@@ -238,7 +268,7 @@ func TestMaterializerConflictFailsClosed(t *testing.T) {
 
 func TestMaterializerRejectsUnrequestedTypesAndGlobalScope(t *testing.T) {
 	m, streams, _ := newMaterializer(t)
-	streams.input = `{"outputArtifactTypes":["document.markdown.v1"],"goal":"synthetic"}`
+	streams.input = `{"targetScope":{"projectId":"0198d7ea-0000-7000-8000-000000000004"},"outputArtifactTypes":["document.markdown.v1"],"goal":"synthetic"}`
 	if _, _, err := m.MaterializeTaskArtifact(context.Background(), leaseID, "worker-1", "sneaky",
 		"Title", "code.unified-diff.v1", []byte("diff\n")); err == nil {
 		t.Fatal("unrequested type accepted")
@@ -305,5 +335,74 @@ func TestMaterializerEventPayloadIsCanonical(t *testing.T) {
 	}
 	if len(streams.events[0].Payload) > 512 {
 		t.Fatalf("publication payload carries more than the reference: %s", streams.events[0].Payload)
+	}
+}
+
+func TestMaterializerRejectsStoredReplayCorruption(t *testing.T) {
+	t.Parallel()
+	for name, corrupt := range map[string]func(*fakeStreams, *fakeReviewOutputs, string){
+		"mapping owner binding": func(_ *fakeStreams, outputs *fakeReviewOutputs, identity string) {
+			record := outputs.outputs[identity]
+			record.OwnerUserID = "0198d7ea-0000-7000-8000-000000000099"
+			outputs.outputs[identity] = record
+		},
+		"mapping output binding": func(_ *fakeStreams, outputs *fakeReviewOutputs, identity string) {
+			record := outputs.outputs[identity]
+			record.OutputKey = "other"
+			outputs.outputs[identity] = record
+		},
+		"publication sequence": func(streams *fakeStreams, outputs *fakeReviewOutputs, identity string) {
+			record := outputs.outputs[identity]
+			record.Publication.EventSeq = streams.lastSequence + 1
+			outputs.outputs[identity] = record
+		},
+		"missing Agent event": func(streams *fakeStreams, _ *fakeReviewOutputs, _ string) {
+			streams.events = nil
+		},
+		"artifact output binding": func(_ *fakeStreams, outputs *fakeReviewOutputs, identity string) {
+			record := outputs.outputs[identity]
+			fact := outputs.facts[record.ArtifactID]
+			fact.OutputKey = "other"
+			outputs.facts[record.ArtifactID] = fact
+		},
+		"artifact content": func(_ *fakeStreams, outputs *fakeReviewOutputs, identity string) {
+			record := outputs.outputs[identity]
+			outputs.contents[record.ArtifactID] = []byte("# tampered\n")
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			m, streams, outputs := newMaterializer(t)
+			if _, _, err := materializeMarkdown(m, []byte("# Hello\n")); err != nil {
+				t.Fatal(err)
+			}
+			identity := outputIdentity(taskID, "document")
+			corrupt(streams, outputs, identity)
+			if _, _, err := materializeMarkdown(m, []byte("# Hello\n")); !errors.Is(err, artifactdomain.ErrCorrupt) {
+				t.Fatalf("stored replay corruption must fail Internal, got %v", err)
+			}
+			if len(streams.events) > 1 {
+				t.Fatalf("corrupt replay published a second event: %d", len(streams.events))
+			}
+		})
+	}
+}
+
+func TestMaterializerRejectsCorruptTaskSnapshot(t *testing.T) {
+	t.Parallel()
+	for name, input := range map[string]string{
+		"malformed":       `{`,
+		"wrong project":   `{"targetScope":{"projectId":"0198d7ea-0000-7000-8000-000000000005"},"outputArtifactTypes":["document.markdown.v1"]}`,
+		"duplicate types": `{"targetScope":{"projectId":"0198d7ea-0000-7000-8000-000000000004"},"outputArtifactTypes":["document.markdown.v1","document.markdown.v1"]}`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			m, streams, outputs := newMaterializer(t)
+			streams.input = input
+			if _, _, err := materializeMarkdown(m, []byte("中文审阅\n")); !errors.Is(err, artifactdomain.ErrCorrupt) {
+				t.Fatalf("corrupt task snapshot accepted: %v", err)
+			}
+			if len(outputs.facts) != 0 || len(streams.events) != 0 {
+				t.Fatal("corrupt task snapshot wrote output facts")
+			}
+		})
 	}
 }

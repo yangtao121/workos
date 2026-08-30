@@ -17,6 +17,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
+	"strings"
 	"time"
 
 	"google.golang.org/protobuf/encoding/protojson"
@@ -43,6 +45,7 @@ type TaskTxSource interface {
 type TaskStreamStore interface {
 	LockTaskArtifactStream(ctx context.Context, tx dbtx.Tx, leaseID, workerID string, now time.Time) (agentports.TaskStreamFacts, error)
 	AppendPublicationEvent(ctx context.Context, tx dbtx.Tx, stream agentports.TaskStreamFacts, event agentdomain.Event) error
+	PublicationEventMatches(ctx context.Context, tx dbtx.Tx, expected agentdomain.Event) (bool, error)
 }
 
 // ReviewOutputStore is the Artifact module's transaction-scoped adjudication
@@ -84,7 +87,7 @@ func NewTaskArtifactMaterializer(
 // an already-consumed (task, output key) — or a second artifact of an
 // already-materialized type — fails closed with a stable conflict.
 func (m *TaskArtifactMaterializer) MaterializeTaskArtifact(ctx context.Context, leaseID, workerID, outputKey, rawTitle, artifactType string, content []byte) (*artifactv1.Artifact, *agentv1.AgentEvent, error) {
-	now := m.now()
+	now := artifactdomain.CanonicalUTCTime(m.now())
 	tx, err := m.pool.Begin(ctx)
 	if err != nil {
 		return nil, nil, fmt.Errorf("begin artifact materialization: %w", err)
@@ -98,6 +101,9 @@ func (m *TaskArtifactMaterializer) MaterializeTaskArtifact(ctx context.Context, 
 	if err != nil {
 		return nil, nil, err
 	}
+	if !validTaskArtifactStream(stream) {
+		return nil, nil, artifactdomain.ErrCorrupt
+	}
 
 	// 2. Scope and request verification: project review artifacts exist only
 	// for project-scoped tasks, and only for types the task actually
@@ -106,7 +112,7 @@ func (m *TaskArtifactMaterializer) MaterializeTaskArtifact(ctx context.Context, 
 	if stream.ProjectID == "" {
 		return nil, nil, artifactdomain.ErrInvalid
 	}
-	requested, err := requestedArtifactTypes(stream.Input)
+	requested, err := requestedArtifactTypes(stream.Input, stream.ProjectID)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -121,6 +127,9 @@ func (m *TaskArtifactMaterializer) MaterializeTaskArtifact(ctx context.Context, 
 	if existing, found, findErr := m.artifacts.FindTaskOutput(ctx, tx, stream.TaskID, outputKey); findErr != nil {
 		return nil, nil, findErr
 	} else if found {
+		if !validTaskOutputRecord(existing, stream, outputKey) {
+			return nil, nil, artifactdomain.ErrCorrupt
+		}
 		digest, digestable := artifactapp.ReviewOutputRequestDigestFor(
 			stream.ProjectID, stream.TaskID, outputKey, rawTitle, artifactType, content,
 		)
@@ -141,6 +150,9 @@ func (m *TaskArtifactMaterializer) MaterializeTaskArtifact(ctx context.Context, 
 	publication := artifactdomain.PublicationRecord{
 		EventID: m.ids.New(), EventSeq: stream.LastEventSequence + 1, OccurredAt: now,
 	}
+	if !artifactdomain.ValidStoredPublicationRecord(publication) {
+		return nil, nil, artifactdomain.ErrCorrupt
+	}
 	command.Publication = publication
 
 	// 5. Atomic insert: artifact row + adjudication mapping. Zero rows means
@@ -155,10 +167,16 @@ func (m *TaskArtifactMaterializer) MaterializeTaskArtifact(ctx context.Context, 
 		if findErr != nil {
 			return nil, nil, findErr
 		}
+		if found && !validTaskOutputRecord(existing, stream, outputKey) {
+			return nil, nil, artifactdomain.ErrCorrupt
+		}
 		if found && existing.RequestDigest == command.RequestDigest {
 			return m.replay(ctx, tx, stream, existing)
 		}
 		return nil, nil, artifactdomain.ErrOutputConflict
+	}
+	if rows != 1 {
+		return nil, nil, artifactdomain.ErrCorrupt
 	}
 
 	// 6. Core-minted publication: exactly one artifact_created event per
@@ -190,21 +208,90 @@ func (m *TaskArtifactMaterializer) replay(ctx context.Context, tx dbtx.Tx, strea
 	// The mapping must agree with the lease-derived provenance; anything
 	// else is stored corruption, not a client error.
 	if fact.OwnerUserID != stream.OwnerUserID || fact.ProjectID != stream.ProjectID ||
-		fact.SourceTask != stream.TaskID || fact.Type != existing.ArtifactType {
+		fact.SourceTask != stream.TaskID || fact.OutputKey != existing.OutputKey ||
+		fact.Type != existing.ArtifactType || !fact.CreatedAt.Equal(existing.CreatedAt) {
+		return nil, nil, artifactdomain.ErrCorrupt
+	}
+	expectedEvent, err := agentapp.NewArtifactPublicationEvent(
+		existing.Publication.EventID, stream.TaskID, existing.Publication.EventSeq,
+		existing.Publication.OccurredAt, fact.ID, fact.Type,
+	)
+	if err != nil {
+		return nil, nil, artifactdomain.ErrCorrupt
+	}
+	matches, err := m.streams.PublicationEventMatches(ctx, tx, expectedEvent)
+	if err != nil {
+		return nil, nil, err
+	}
+	if !matches {
 		return nil, nil, artifactdomain.ErrCorrupt
 	}
 	return reviewArtifactProto(fact), publicationProto(stream, existing.Publication, fact), nil
 }
 
-// requestedArtifactTypes decodes the task's canonical input into the set of
-// requested output artifact types.
-func requestedArtifactTypes(input []byte) (map[string]bool, error) {
+func validTaskArtifactStream(stream agentports.TaskStreamFacts) bool {
+	if !artifactdomain.ValidArtifactUUID(stream.TaskID) ||
+		!artifactdomain.ValidArtifactUUID(stream.OwnerUserID) ||
+		stream.ProviderID == "" || stream.ProviderID != strings.TrimSpace(stream.ProviderID) ||
+		stream.LastEventSequence < 0 || stream.LastEventSequence == math.MaxInt64 {
+		return false
+	}
+	if stream.ProjectID != "" && !artifactdomain.ValidArtifactUUID(stream.ProjectID) {
+		return false
+	}
+	return stream.State == agentdomain.StateRunning || stream.State == agentdomain.StateWaiting
+}
+
+func validTaskOutputRecord(record artifactports.TaskOutputRecord, stream agentports.TaskStreamFacts, outputKey string) bool {
+	if !artifactdomain.ValidArtifactDigest(record.RequestDigest) ||
+		!artifactdomain.ValidArtifactUUID(record.OwnerUserID) ||
+		!artifactdomain.ValidArtifactUUID(record.ProjectID) ||
+		!artifactdomain.ValidArtifactUUID(record.TaskID) ||
+		!artifactdomain.ValidReviewOutputKey(record.OutputKey) ||
+		!artifactdomain.ValidArtifactUUID(record.ArtifactID) ||
+		!artifactdomain.IsReviewType(record.ArtifactType) ||
+		!artifactdomain.ValidStoredPublicationRecord(record.Publication) ||
+		!artifactdomain.ValidStoredUTCTime(record.CreatedAt) {
+		return false
+	}
+	return record.OwnerUserID == stream.OwnerUserID && record.ProjectID == stream.ProjectID &&
+		record.TaskID == stream.TaskID && record.OutputKey == outputKey &&
+		record.Publication.EventSeq <= stream.LastEventSequence
+}
+
+// requestedArtifactTypes decodes and revalidates the task's immutable input
+// snapshot. Drift between the stored target scope and task row, an unknown or
+// duplicate type, or an over-wide list is stored corruption rather than a
+// provider InvalidArgument verdict.
+func requestedArtifactTypes(input []byte, projectID string) (map[string]bool, error) {
 	var parsed agentv1.AgentTaskInput
 	if err := protojson.Unmarshal(input, &parsed); err != nil {
-		return nil, artifactdomain.ErrInvalid
+		return nil, artifactdomain.ErrCorrupt
+	}
+	scope := parsed.GetTargetScope()
+	if scope == nil {
+		return nil, artifactdomain.ErrCorrupt
+	}
+	switch target := scope.Scope.(type) {
+	case *agentv1.TargetScope_ProjectId:
+		if projectID == "" || target.ProjectId != projectID {
+			return nil, artifactdomain.ErrCorrupt
+		}
+	case *agentv1.TargetScope_Global:
+		if !target.Global || projectID != "" {
+			return nil, artifactdomain.ErrCorrupt
+		}
+	default:
+		return nil, artifactdomain.ErrCorrupt
 	}
 	types := make(map[string]bool, len(parsed.GetOutputArtifactTypes()))
+	if len(parsed.GetOutputArtifactTypes()) > 2 {
+		return nil, artifactdomain.ErrCorrupt
+	}
 	for _, requested := range parsed.GetOutputArtifactTypes() {
+		if !artifactdomain.IsReviewType(requested) || types[requested] {
+			return nil, artifactdomain.ErrCorrupt
+		}
 		types[requested] = true
 	}
 	return types, nil

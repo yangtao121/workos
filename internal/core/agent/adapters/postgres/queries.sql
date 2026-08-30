@@ -70,6 +70,18 @@ WHERE stream_type = 'agent-task' AND stream_id = $1 AND sequence > $2
 ORDER BY sequence
 LIMIT $3;
 
+-- Replay verification for one Core-minted artifact publication. The
+-- coordinator supplies the exact immutable identity; this query never
+-- searches across task streams or treats an Artifact mapping as authority
+-- for Agent-owned event data.
+-- name: GetTaskPublicationEvent :one
+SELECT id, stream_id, sequence, event_type, payload, occurred_at
+FROM workos_events.events
+WHERE stream_type = 'agent-task'
+  AND id = sqlc.arg(event_id)::uuid
+  AND stream_id = sqlc.arg(task_id)::uuid
+  AND sequence = sqlc.arg(event_sequence);
+
 -- name: SelectTaskClaim :one
 SELECT o.aggregate_id
 FROM workos_events.outbox AS o

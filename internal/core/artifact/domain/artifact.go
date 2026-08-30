@@ -355,7 +355,7 @@ func ValidArtifactTitle(value string) bool {
 	}
 	count := 0
 	for _, r := range value {
-		if r < 0x20 || r == 0x7f {
+		if r < 0x20 || r == 0x7f || (r >= 0x80 && r <= 0x9f) {
 			return false
 		}
 		count++

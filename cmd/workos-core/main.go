@@ -5,14 +5,11 @@ import (
 	"log/slog"
 	"os"
 
-	"connectrpc.com/connect"
-
 	"github.com/yangtao121/workos/gen/go/workos/agent/v1/agentv1connect"
 	commonv1 "github.com/yangtao121/workos/gen/go/workos/common/v1"
 	"github.com/yangtao121/workos/gen/go/workos/common/v1/commonv1connect"
 	"github.com/yangtao121/workos/gen/go/workos/harness/v1/harnessv1connect"
 	projectconnect "github.com/yangtao121/workos/gen/go/workos/project/v1/projectv1connect"
-	"github.com/yangtao121/workos/gen/go/workos/taskexecution/v1/taskexecutionv1connect"
 	agentpostgres "github.com/yangtao121/workos/internal/core/agent/adapters/postgres"
 	agentapp "github.com/yangtao121/workos/internal/core/agent/application"
 	agenttransport "github.com/yangtao121/workos/internal/core/agent/transport"
@@ -121,10 +118,7 @@ func run(logger *slog.Logger) error {
 	if err != nil {
 		return err
 	}
-	executionPath, executionHandler := taskexecutionv1connect.NewTaskExecutionServiceHandler(
-		agenttransport.NewExecution(agentService, artifactMaterializer),
-		connect.WithReadMaxBytes(agenttransport.MaxExecutionRequestBytes),
-	)
+	executionPath, executionHandler := agenttransport.NewExecutionConnectHandler(agentService, artifactMaterializer)
 	mux.Handle(executionPath, executionHandler)
 
 	manifestValidator, err := manifestvalidator.New()

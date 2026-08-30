@@ -52,17 +52,21 @@ WHERE a.owner_user_id = $1 AND a.id = $2 AND f.path = $3;
 -- Provenance columns are NULL on the side that does not carry them.
 -- name: GetArtifactMetadataUnion :one
 SELECT id, owner_user_id, type, title, media_type, content_ref, digest,
-       file_count, total_size_bytes, created_at, entrypoint, project_id, source_task_id
+       file_count, total_size_bytes, created_at, entrypoint, project_id, source_task_id,
+       output_key, line_count, review_content
 FROM (
     SELECT id, owner_user_id, type, title, media_type, content_ref, digest,
            file_count, total_size_bytes, created_at, entrypoint,
-           NULL::uuid AS project_id, NULL::uuid AS source_task_id
+           NULL::uuid AS project_id, NULL::uuid AS source_task_id,
+           NULL::text AS output_key, NULL::integer AS line_count,
+           NULL::bytea AS review_content
     FROM workos_core.web_bundle_artifacts w
     WHERE w.owner_user_id = sqlc.arg(owner_user_id) AND w.id = sqlc.arg(artifact_id)
     UNION ALL
     SELECT id, owner_user_id, type, title, media_type, ''::text AS content_ref, digest,
            1 AS file_count, byte_count AS total_size_bytes, created_at,
-           ''::text AS entrypoint, project_id, source_task_id
+           ''::text AS entrypoint, project_id, source_task_id,
+           output_key, line_count, content AS review_content
     FROM workos_core.project_review_artifacts p
     WHERE p.owner_user_id = sqlc.arg(owner_user_id) AND p.id = sqlc.arg(artifact_id)
 ) AS artifact;
@@ -84,17 +88,21 @@ LIMIT sqlc.arg(row_limit);
 -- Summary projection shared by both subtypes for exactly the given IDs.
 -- name: ListArtifactSummariesUnion :many
 SELECT id, owner_user_id, type, title, media_type, content_ref, digest,
-       file_count, total_size_bytes, created_at, entrypoint, project_id, source_task_id
+       file_count, total_size_bytes, created_at, entrypoint, project_id, source_task_id,
+       output_key, line_count, review_content
 FROM (
     SELECT id, owner_user_id, type, title, media_type, content_ref, digest,
            file_count, total_size_bytes, created_at, entrypoint,
-           NULL::uuid AS project_id, NULL::uuid AS source_task_id
+           NULL::uuid AS project_id, NULL::uuid AS source_task_id,
+           NULL::text AS output_key, NULL::integer AS line_count,
+           NULL::bytea AS review_content
     FROM workos_core.web_bundle_artifacts w
     WHERE w.owner_user_id = sqlc.arg(owner_user_id) AND w.id = ANY(sqlc.arg(ids)::uuid[])
     UNION ALL
     SELECT id, owner_user_id, type, title, media_type, ''::text AS content_ref, digest,
            1 AS file_count, byte_count AS total_size_bytes, created_at,
-           ''::text AS entrypoint, project_id, source_task_id
+           ''::text AS entrypoint, project_id, source_task_id,
+           output_key, line_count, content AS review_content
     FROM workos_core.project_review_artifacts p
     WHERE p.owner_user_id = sqlc.arg(owner_user_id) AND p.id = ANY(sqlc.arg(ids)::uuid[])
 ) AS artifact
@@ -156,6 +164,6 @@ ON CONFLICT DO NOTHING;
 -- the caller against the lease-derived owner/project/task).
 -- name: GetReviewFact :one
 SELECT id, owner_user_id, type, title, media_type, digest, project_id, source_task_id,
-       output_key, byte_count, line_count, created_at
+       output_key, byte_count, line_count, content, created_at
 FROM workos_core.project_review_artifacts
 WHERE id = sqlc.arg(artifact_id)::uuid;

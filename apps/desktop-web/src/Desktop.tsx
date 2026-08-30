@@ -81,6 +81,8 @@ export function Desktop({
   const [bindingEditor, setBindingEditor] = useState<BindingEditor>();
   const [editorProjectId, setEditorProjectId] = useState<string | undefined>(activeProjectId);
   const activeProjectIdRef = useRef<string | undefined>(activeProjectId);
+  const taskGenerationRef = useRef(0);
+  const taskAbortRef = useRef<AbortController | undefined>(undefined);
   const bindingOperationsRef = useRef<{ generation: number; tokens: Record<string, number> }>({
     generation: 0,
     tokens: {},
@@ -122,6 +124,21 @@ export function Desktop({
     } catch {
       // Selection persistence is best-effort; the in-memory selection stays.
     }
+  }, [activeProjectId]);
+
+  // Task/timeline state belongs to exactly one Project. A switch invalidates
+  // every outstanding submit/stream continuation before clearing the old
+  // snapshot, so a late Project-A event cannot paint into Project B.
+  useEffect(() => {
+    taskAbortRef.current?.abort();
+    taskAbortRef.current = undefined;
+    taskGenerationRef.current += 1;
+    setEvents([]);
+    setTask(undefined);
+    setError(undefined);
+    return () => {
+      taskAbortRef.current?.abort();
+    };
   }, [activeProjectId]);
 
   const refreshProjects = useCallback(async () => {
@@ -559,7 +576,14 @@ export function Desktop({
     const formElement = event.currentTarget;
     const form = new FormData(formElement);
     const goal = formString(form, "goal");
-    if (!goal || !activeProjectId) return;
+    const taskProjectId = activeProjectId;
+    if (!goal || !taskProjectId) return;
+    taskAbortRef.current?.abort();
+    const abortController = new AbortController();
+    taskAbortRef.current = abortController;
+    const generation = ++taskGenerationRef.current;
+    const isLive = () =>
+      taskGenerationRef.current === generation && activeProjectIdRef.current === taskProjectId;
     const outputArtifactTypes: string[] = [];
     if (form.get("artifact-markdown") === "on") outputArtifactTypes.push("document.markdown.v1");
     if (form.get("artifact-diff") === "on") outputArtifactTypes.push("code.unified-diff.v1");
@@ -567,33 +591,48 @@ export function Desktop({
     setTask(undefined);
     setError(undefined);
     try {
-      const response = await workosClients.agentTasks.submitTask({
-        idempotencyKey: crypto.randomUUID(),
-        input: {
-          targetScope: { scope: { case: "projectId", value: activeProjectId } },
-          role: "general",
-          goal,
-          contextRefs: [],
-          requestedCapabilities: [],
-          outputArtifactTypes,
-          parentTaskId: "",
-          incidentId: "",
+      const response = await workosClients.agentTasks.submitTask(
+        {
+          idempotencyKey: crypto.randomUUID(),
+          input: {
+            targetScope: { scope: { case: "projectId", value: taskProjectId } },
+            role: "general",
+            goal,
+            contextRefs: [],
+            requestedCapabilities: [],
+            outputArtifactTypes,
+            parentTaskId: "",
+            incidentId: "",
+          },
         },
-      });
-      if (!response.task) return;
+        { signal: abortController.signal },
+      );
+      if (!isLive() || !response.task) return;
       setTask(response.task);
       formElement.reset();
-      for await (const item of workosClients.agentTasks.watchTaskEvents({
-        taskId: response.task.id,
-        afterSequence: 0n,
-      })) {
+      for await (const item of workosClients.agentTasks.watchTaskEvents(
+        {
+          taskId: response.task.id,
+          afterSequence: 0n,
+        },
+        { signal: abortController.signal },
+      )) {
+        if (!isLive()) break;
         const received = item.event;
         if (received) setEvents((current) => [...current, received]);
       }
-      const latest = await workosClients.agentTasks.getTask({ taskId: response.task.id });
-      if (latest.task) setTask(latest.task);
+      if (!isLive()) return;
+      const latest = await workosClients.agentTasks.getTask(
+        { taskId: response.task.id },
+        { signal: abortController.signal },
+      );
+      if (isLive() && latest.task) setTask(latest.task);
     } catch (reason) {
-      setError(asMessage(reason));
+      if (isLive()) setError(asMessage(reason));
+    } finally {
+      if (taskAbortRef.current === abortController) {
+        taskAbortRef.current = undefined;
+      }
     }
   }
 
@@ -759,6 +798,7 @@ export function Desktop({
             ) : windowState.kind === "artifact-viewer" && windowState.artifact ? (
               <ArtifactViewerWindow
                 artifactId={windowState.artifact.artifactId}
+                projectId={windowState.artifact.projectId}
                 workosClients={workosClients}
               />
             ) : windowState.kind === "device-center" ? (

@@ -5,6 +5,7 @@
 package postgres
 
 import (
+	"bytes"
 	"context"
 	"errors"
 
@@ -34,7 +35,7 @@ func (r *Repository) GetReviewContent(ctx context.Context, ownerUserID, artifact
 		return domain.ReviewArtifact{}, domain.NormalizedReviewContent{}, domain.ErrCorrupt
 	}
 	normalized, err := domain.NormalizeReviewContent(artifact.Type, stored.Content)
-	if err != nil || normalized.Digest != artifact.Digest ||
+	if err != nil || !bytes.Equal(normalized.Content, stored.Content) || normalized.Digest != artifact.Digest ||
 		normalized.ByteCount != artifact.ByteCount || normalized.LineCount != artifact.LineCount {
 		return domain.ReviewArtifact{}, domain.NormalizedReviewContent{}, domain.ErrCorrupt
 	}
@@ -68,14 +69,35 @@ func (r *Repository) FindTaskOutput(ctx context.Context, tx dbtx.Tx, taskID, out
 	if err != nil {
 		return ports.TaskOutputRecord{}, false, storeError("query review artifact output", err)
 	}
-	return ports.TaskOutputRecord{
+	record := ports.TaskOutputRecord{
 		RequestDigest: row.RequestDigest,
+		OwnerUserID:   row.OwnerUserID,
+		ProjectID:     row.ProjectID,
+		TaskID:        row.TaskID,
+		OutputKey:     row.OutputKey,
 		ArtifactID:    row.ArtifactID,
 		ArtifactType:  row.ArtifactType,
 		Publication: domain.PublicationRecord{
 			EventID: row.EventID, EventSeq: row.EventSequence, OccurredAt: row.EventOccurredAt.Time,
 		},
-	}, true, nil
+		CreatedAt: row.CreatedAt.Time,
+	}
+	if !validStoredTaskOutputRecord(record) {
+		return ports.TaskOutputRecord{}, false, domain.ErrCorrupt
+	}
+	return record, true, nil
+}
+
+func validStoredTaskOutputRecord(record ports.TaskOutputRecord) bool {
+	return domain.ValidArtifactDigest(record.RequestDigest) &&
+		domain.ValidArtifactUUID(record.OwnerUserID) &&
+		domain.ValidArtifactUUID(record.ProjectID) &&
+		domain.ValidArtifactUUID(record.TaskID) &&
+		domain.ValidReviewOutputKey(record.OutputKey) &&
+		domain.ValidArtifactUUID(record.ArtifactID) &&
+		domain.IsReviewType(record.ArtifactType) &&
+		domain.ValidStoredPublicationRecord(record.Publication) &&
+		domain.ValidStoredUTCTime(record.CreatedAt)
 }
 
 // InsertTaskOutput persists the immutable artifact row and the adjudication
@@ -83,6 +105,19 @@ func (r *Repository) FindTaskOutput(ctx context.Context, tx dbtx.Tx, taskID, out
 // insert is the physical arbiter for both the (task, output key) identity and
 // the (task, type) slot; zero rows tells the coordinator to re-classify.
 func (r *Repository) InsertTaskOutput(ctx context.Context, tx dbtx.Tx, command ports.ReviewOutputCommand) (int64, error) {
+	normalized, normalizeErr := domain.NormalizeReviewContent(command.Artifact.Type, command.Content)
+	if normalizeErr != nil || !bytes.Equal(normalized.Content, command.Content) ||
+		!domain.ValidStoredReviewFact(command.Artifact) ||
+		normalized.Digest != command.Artifact.Digest ||
+		normalized.ByteCount != command.Artifact.ByteCount ||
+		normalized.LineCount != command.Artifact.LineCount ||
+		!domain.ValidArtifactDigest(command.RequestDigest) ||
+		command.RequestDigest != domain.ReviewOutputRequestDigest(
+			command.Artifact.ProjectID, command.Artifact.SourceTask, command.Artifact.OutputKey,
+			command.Artifact.Title, command.Artifact.Digest,
+		) || !domain.ValidStoredPublicationRecord(command.Publication) {
+		return 0, domain.ErrCorrupt
+	}
 	queries := r.queries.WithTx(tx)
 	if err := queries.InsertReviewArtifact(ctx, artifactdb.InsertReviewArtifactParams{
 		ID: command.Artifact.ID, OwnerUserID: command.Artifact.OwnerUserID,
@@ -119,21 +154,16 @@ func (r *Repository) ReviewArtifactByID(ctx context.Context, tx dbtx.Tx, artifac
 	if err != nil {
 		return domain.ReviewArtifact{}, artifactError("query review fact", err)
 	}
-	artifact := reviewFactFromRow(stored)
+	artifact := reviewFactFromModel(stored)
 	if !domain.ValidStoredReviewFact(artifact) {
 		return domain.ReviewArtifact{}, domain.ErrCorrupt
 	}
-	return artifact, nil
-}
-
-func reviewFactFromRow(row artifactdb.GetReviewFactRow) domain.ReviewArtifact {
-	return domain.ReviewArtifact{
-		ID: row.ID, OwnerUserID: row.OwnerUserID, ProjectID: row.ProjectID,
-		SourceTask: row.SourceTaskID, OutputKey: row.OutputKey, Type: row.Type,
-		Title: row.Title, MediaType: row.MediaType, Digest: row.Digest,
-		ByteCount: int(row.ByteCount), LineCount: int(row.LineCount),
-		CreatedAt: row.CreatedAt.Time,
+	normalized, normalizeErr := domain.NormalizeReviewContent(artifact.Type, stored.Content)
+	if normalizeErr != nil || !bytes.Equal(normalized.Content, stored.Content) || normalized.Digest != artifact.Digest ||
+		normalized.ByteCount != artifact.ByteCount || normalized.LineCount != artifact.LineCount {
+		return domain.ReviewArtifact{}, domain.ErrCorrupt
 	}
+	return artifact, nil
 }
 
 func reviewFactFromModel(row artifactdb.WorkosCoreProjectReviewArtifact) domain.ReviewArtifact {
@@ -146,16 +176,53 @@ func reviewFactFromModel(row artifactdb.WorkosCoreProjectReviewArtifact) domain.
 	}
 }
 
-func artifactFromUnion(row artifactdb.GetArtifactMetadataUnionRow) domain.Artifact {
-	return unionArtifact(row.ID, row.OwnerUserID, row.Type, row.Title, row.MediaType,
+func artifactFromUnion(row artifactdb.GetArtifactMetadataUnionRow) (domain.Artifact, error) {
+	artifact := unionArtifact(row.ID, row.OwnerUserID, row.Type, row.Title, row.MediaType,
 		row.ContentRef, row.Digest, row.Entrypoint, row.FileCount, row.TotalSizeBytes,
 		row.CreatedAt, row.ProjectID, row.SourceTaskID)
+	return validateUnionArtifact(artifact, row.OutputKey, row.LineCount, row.ReviewContent)
 }
 
-func artifactFromSummariesUnion(row artifactdb.ListArtifactSummariesUnionRow) domain.Artifact {
-	return unionArtifact(row.ID, row.OwnerUserID, row.Type, row.Title, row.MediaType,
+func artifactFromSummariesUnion(row artifactdb.ListArtifactSummariesUnionRow) (domain.Artifact, error) {
+	artifact := unionArtifact(row.ID, row.OwnerUserID, row.Type, row.Title, row.MediaType,
 		row.ContentRef, row.Digest, row.Entrypoint, row.FileCount, row.TotalSizeBytes,
 		row.CreatedAt, row.ProjectID, row.SourceTaskID)
+	return validateUnionArtifact(artifact, row.OutputKey, row.LineCount, row.ReviewContent)
+}
+
+// validateUnionArtifact fully revalidates review content even on metadata
+// Get/List reads. The public projection still omits bytes/output_key/counts,
+// but a corrupt immutable row can never pass merely because the caller asked
+// for metadata rather than the typed content endpoint.
+func validateUnionArtifact(artifact domain.Artifact, outputKey pgtype.Text, lineCount pgtype.Int4, content []byte) (domain.Artifact, error) {
+	if !domain.ValidStoredArtifact(artifact) {
+		return domain.Artifact{}, domain.ErrCorrupt
+	}
+	if !domain.IsReviewType(artifact.Type) {
+		if outputKey.Valid || lineCount.Valid || content != nil {
+			return domain.Artifact{}, domain.ErrCorrupt
+		}
+		return artifact, nil
+	}
+	if !outputKey.Valid || !lineCount.Valid || content == nil {
+		return domain.Artifact{}, domain.ErrCorrupt
+	}
+	fact := domain.ReviewArtifact{
+		ID: artifact.ID, OwnerUserID: artifact.OwnerUserID, ProjectID: artifact.ProjectID,
+		SourceTask: artifact.SourceTaskID, OutputKey: outputKey.String, Type: artifact.Type,
+		Title: artifact.Title, MediaType: artifact.MediaType, Digest: artifact.Digest,
+		ByteCount: int(artifact.TotalSizeBytes), LineCount: int(lineCount.Int32),
+		CreatedAt: artifact.CreatedAt,
+	}
+	if !domain.ValidStoredReviewFact(fact) {
+		return domain.Artifact{}, domain.ErrCorrupt
+	}
+	normalized, err := domain.NormalizeReviewContent(fact.Type, content)
+	if err != nil || !bytes.Equal(normalized.Content, content) || normalized.Digest != fact.Digest ||
+		normalized.ByteCount != fact.ByteCount || normalized.LineCount != fact.LineCount {
+		return domain.Artifact{}, domain.ErrCorrupt
+	}
+	return artifact, nil
 }
 
 func unionArtifact(id, ownerUserID, artifactType, title, mediaType, contentRef, digest, entrypoint string,

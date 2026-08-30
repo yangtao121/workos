@@ -23,7 +23,7 @@ type Querier interface {
 	GetReviewArtifactOutput(ctx context.Context, arg GetReviewArtifactOutputParams) (WorkosCoreProjectReviewArtifactOutput, error)
 	// Replay read of one stored review artifact row (identity re-validated by
 	// the caller against the lease-derived owner/project/task).
-	GetReviewFact(ctx context.Context, artifactID string) (GetReviewFactRow, error)
+	GetReviewFact(ctx context.Context, artifactID string) (WorkosCoreProjectReviewArtifact, error)
 	InsertArtifact(ctx context.Context, arg InsertArtifactParams) error
 	InsertArtifactRequest(ctx context.Context, arg InsertArtifactRequestParams) (int64, error)
 	InsertBundleFile(ctx context.Context, arg InsertBundleFileParams) error

@@ -21,7 +21,8 @@ Artifact 一直是 `scaffolded`：唯一可用 subtype 是作为 App launch payl
 
 - Review artifact 是 immutable Project/task-bound 事实：owner、project、source task、output
   key、canonical type、title、digest、byte/line counts、created time、content bytes 全部存储在
-  migration `021` 的 `workos_core.project_review_artifacts`，唯一 owner 为 Artifact 模块。
+  migration `021` 的 `workos_core.project_review_artifacts`，唯一 owner 为 Artifact 模块；已经执行并受
+  checksum 保护的 `021` 不修改，后续完整绑定与物理完整性约束由 forward-only migration `022` 补强。
 - 不新建第二个同义 service，不手写 DTO：复用 `internal/core/artifact` 的
   `domain → application → ports ← adapters`，与 Web Bundle 共享 metadata 读、分页、错误矩阵；
   Web Bundle 的 create/get/private asset 语义零回归，其 bytes 依旧不公开。
@@ -29,6 +30,9 @@ Artifact 一直是 `scaffolded`：唯一可用 subtype 是作为 App launch payl
   它是 provider retry / response loss 的 durable materialization identity。映射行额外记录
   `event_id / event_sequence / event_occurred_at` 三个 publication 引用，使 replay 能精确返回
   第一次发布的事件；事件本身与 task stream 仍归 Agent 所有，Artifact 表从不查询 Agent 表。
+- `022` 在 Artifact 自有两张表之间建立
+  `(artifact, owner, project, task, output key, type)` composite FK，并下沉 content byte count 与有限
+  timestamp CHECK；它不引用 Project、Agent 或 event 表，因而不改变模块 owner。
 - 不建跨模块 FK：project/task 是 Core 侧已验证的 snapshot ID；liveness 每次经中立 port
   （`ArtifactProjectScope`，仅公开 list 使用）在运行期重验，绝不 join 其他模块 schema。
 
@@ -92,6 +96,10 @@ COMMIT
 - request digest（`workos.review-artifact-output.v1`，长度前缀编码）覆盖 project、task、
   output key、归一化 title 与 content digest（content digest 再覆盖 canonical type + 归一化
   内容字节）；提交顺序、服务端身份、时间不参与。
+- replay 不把 Artifact-owned publication 引用当作 Agent 事件本身：协调器同时读取并逐字段验证对应
+  Agent-owned durable event（ID/task/sequence/type/payload/occurred time）；事件缺失或漂移均是 stored
+  corruption。Artifact/event 时间统一为 UTC 微秒精度，与 PostgreSQL `timestamptz` 的持久精度一致，
+  因而首次响应与 response-loss/restart replay 字节语义稳定。
 
 ### 5. Web Bundle bytes 依旧不公开；review 读 typed
 
@@ -106,6 +114,13 @@ COMMIT
   history，桌面审阅入口在归档后仍一致）；分页 repository limit+1 探测，满页无 phantom token。
 - `ListArtifacts` 无 project 过滤时保持 owner-wide，并跨两个 subtype 表做 ordered union（同一
   模块内的 adapter 实现合并）；project 过滤时列出该 project 的 review artifacts。
+- metadata Get/List 与 typed content read 都在各自 authoritative SQL snapshot 中取得 review content，
+  并重跑 canonical normalization、digest 与 count 校验；公开 projection 仍不返回 bytes。已经命中的
+  review row 还必须经中立 Project port 重验 owner/project binding，Project fact 漂移按 Internal 处理，
+  不降级成可探测的 NotFound。
+- Connect 构造层把 Artifact Create 的 4 MiB upload budget 与 public get/list/read 的 32 KiB budget
+  分路；private `AppendTaskArtifact` 固定 768 KiB。protobuf/JSON 及 gzip 解压后的超限均在业务代码前
+  `ResourceExhausted`，合法 512 KiB canonical content 保留 wire headroom。
 
 ### 6. Markdown 与 Diff 只读、inert、不可 apply
 
@@ -116,6 +131,8 @@ COMMIT
   blockquote/inline+fenced code 到 React 转义文本；diff 只按 file header/hunk header/addition/
   deletion/context/meta 分类样式，路径与正文一律转义文本。不提供 edit/apply/download-as-
   executable/本地文件读取。本切片不引入 Markdown/语法高亮依赖，允许列表由共享组件测试钉住。
+- Viewer 使用 fatal UTF-8 decode，并在渲染前再次拒绝空内容和超过 512 KiB 的 bytes；Project、artifact
+  ID、type/oneof、media type 与 byte count 任一响应绑定不一致时只显示固定 unavailable verdict。
 - Desktop 侧 Artifact Center 是普通内部窗口（非永久侧栏、不开浏览器 tab），key/remount 于
   active project，generation/abort guard 隔离迟到响应；Timeline 的 artifact 事件是可访问按钮，
   点击仍走 `ArtifactService` 拿权威内容；同 artifact 重复打开聚焦既有窗口。
@@ -155,4 +172,5 @@ COMMIT
 - v1 Proto 全部 additive（`Artifact.source_task_id=11`、`GetReviewArtifact`、
   `AppendTaskArtifact`、`supported_artifact_types=16`）；`ArtifactCreated` 字段号 16 不变；
   Buf breaking 对 main 通过。
-- migration `021` checksum 已钉住；`001`–`020` 零修改。
+- migrations `021` / `022` checksum 已钉住；`001`–`021` 历史 migration 零修改，完整性补强只通过
+  forward-only `022_project_review_artifact_integrity.sql` 交付。

@@ -1,6 +1,7 @@
 package transport
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"net/http/httptest"
@@ -14,6 +15,7 @@ import (
 	"github.com/yangtao121/workos/gen/go/workos/taskexecution/v1/taskexecutionv1connect"
 	"github.com/yangtao121/workos/internal/core/agent/domain"
 	artifactdomain "github.com/yangtao121/workos/internal/core/artifact/domain"
+	artifactports "github.com/yangtao121/workos/internal/core/artifact/ports"
 )
 
 // fakeMaterializer records the single materialization call and answers with
@@ -40,12 +42,12 @@ func (f *fakeMaterializer) MaterializeTaskArtifact(_ context.Context, leaseID, w
 		nil
 }
 
-func newExecutionServer(t *testing.T, materializer TaskArtifactMaterializer) taskexecutionv1connect.TaskExecutionServiceClient {
+func newExecutionServer(t *testing.T, materializer TaskArtifactMaterializer, options ...connect.ClientOption) taskexecutionv1connect.TaskExecutionServiceClient {
 	t.Helper()
-	_, handler := taskexecutionv1connect.NewTaskExecutionServiceHandler(NewExecution(nil, materializer))
+	_, handler := NewExecutionConnectHandler(nil, materializer)
 	server := httptest.NewServer(handler)
 	t.Cleanup(server.Close)
-	return taskexecutionv1connect.NewTaskExecutionServiceClient(server.Client(), server.URL)
+	return taskexecutionv1connect.NewTaskExecutionServiceClient(server.Client(), server.URL, options...)
 }
 
 func TestAppendTaskEventRejectsProviderBuiltArtifactCreated(t *testing.T) {
@@ -108,6 +110,66 @@ func TestAppendTaskArtifactRejectsUnknownContent(t *testing.T) {
 	}
 }
 
+func TestAppendTaskArtifactWireBudgetPrecedesBusinessCode(t *testing.T) {
+	t.Parallel()
+	for name, options := range map[string][]connect.ClientOption{
+		"protobuf":      nil,
+		"protobuf gzip": {connect.WithSendGzip()},
+		"json":          {connect.WithProtoJSON()},
+		"json gzip":     {connect.WithProtoJSON(), connect.WithSendGzip()},
+	} {
+		t.Run(name, func(t *testing.T) {
+			materializer := &fakeMaterializer{}
+			client := newExecutionServer(t, materializer, options...)
+			_, err := client.AppendTaskArtifact(context.Background(), connect.NewRequest(&taskv1.AppendTaskArtifactRequest{
+				LeaseId: "0198d7ea-0000-7000-8000-000000000001", WorkerId: "worker",
+				Artifact: &taskv1.TaskArtifactOutput{
+					OutputKey: "document", Title: "Oversized",
+					Content: &taskv1.TaskArtifactOutput_Markdown{Markdown: &taskv1.MarkdownArtifactContent{
+						Content: bytes.Repeat([]byte("x"), MaxExecutionRequestBytes+1024),
+					}},
+				},
+			}))
+			if connect.CodeOf(err) != connect.CodeResourceExhausted {
+				t.Fatalf("oversized private request must fail before decode, got %v", err)
+			}
+			if materializer.called {
+				t.Fatal("materializer ran for an oversized private request")
+			}
+		})
+	}
+}
+
+func TestAppendTaskArtifactWireBudgetAllowsMaximumCanonicalContent(t *testing.T) {
+	t.Parallel()
+	content := bytes.Repeat(
+		append(bytes.Repeat([]byte("x"), artifactdomain.MaxReviewLineBytes-1), '\n'),
+		artifactdomain.MaxReviewContentBytes/artifactdomain.MaxReviewLineBytes,
+	)
+	for name, options := range map[string][]connect.ClientOption{
+		"protobuf": nil,
+		"json":     {connect.WithProtoJSON()},
+	} {
+		t.Run(name, func(t *testing.T) {
+			materializer := &fakeMaterializer{}
+			client := newExecutionServer(t, materializer, options...)
+			_, err := client.AppendTaskArtifact(context.Background(), connect.NewRequest(&taskv1.AppendTaskArtifactRequest{
+				LeaseId: "0198d7ea-0000-7000-8000-000000000001", WorkerId: "worker",
+				Artifact: &taskv1.TaskArtifactOutput{
+					OutputKey: "document", Title: "Maximum",
+					Content: &taskv1.TaskArtifactOutput_Markdown{Markdown: &taskv1.MarkdownArtifactContent{Content: content}},
+				},
+			}))
+			if err != nil {
+				t.Fatalf("maximum canonical content did not have wire headroom: %v", err)
+			}
+			if !materializer.called || len(materializer.content) != len(content) {
+				t.Fatal("legal maximum request did not reach the materializer intact")
+			}
+		})
+	}
+}
+
 func TestMaterializerErrorMatrix(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
@@ -118,6 +180,8 @@ func TestMaterializerErrorMatrix(t *testing.T) {
 		{"lease lost", domain.ErrLeaseLost, connect.CodeAborted},
 		{"terminal", domain.ErrTerminal, connect.CodeFailedPrecondition},
 		{"output conflict", artifactdomain.ErrOutputConflict, connect.CodeFailedPrecondition},
+		{"artifact store unavailable", artifactports.ErrStoreUnavailable, connect.CodeUnavailable},
+		{"stored corruption", artifactdomain.ErrCorrupt, connect.CodeInternal},
 		{"invalid", domain.ErrInvalid, connect.CodeInvalidArgument},
 	}
 	for _, testCase := range cases {

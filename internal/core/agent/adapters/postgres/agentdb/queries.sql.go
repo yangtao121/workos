@@ -637,6 +637,48 @@ func (q *Queries) GetAgentTaskUnscoped(ctx context.Context, id string) (WorkosCo
 	return i, err
 }
 
+const getTaskPublicationEvent = `-- name: GetTaskPublicationEvent :one
+SELECT id, stream_id, sequence, event_type, payload, occurred_at
+FROM workos_events.events
+WHERE stream_type = 'agent-task'
+  AND id = $1::uuid
+  AND stream_id = $2::uuid
+  AND sequence = $3
+`
+
+type GetTaskPublicationEventParams struct {
+	EventID       string `json:"event_id"`
+	TaskID        string `json:"task_id"`
+	EventSequence int64  `json:"event_sequence"`
+}
+
+type GetTaskPublicationEventRow struct {
+	ID         string             `json:"id"`
+	StreamID   string             `json:"stream_id"`
+	Sequence   int64              `json:"sequence"`
+	EventType  string             `json:"event_type"`
+	Payload    json.RawMessage    `json:"payload"`
+	OccurredAt pgtype.Timestamptz `json:"occurred_at"`
+}
+
+// Replay verification for one Core-minted artifact publication. The
+// coordinator supplies the exact immutable identity; this query never
+// searches across task streams or treats an Artifact mapping as authority
+// for Agent-owned event data.
+func (q *Queries) GetTaskPublicationEvent(ctx context.Context, arg GetTaskPublicationEventParams) (GetTaskPublicationEventRow, error) {
+	row := q.db.QueryRow(ctx, getTaskPublicationEvent, arg.EventID, arg.TaskID, arg.EventSequence)
+	var i GetTaskPublicationEventRow
+	err := row.Scan(
+		&i.ID,
+		&i.StreamID,
+		&i.Sequence,
+		&i.EventType,
+		&i.Payload,
+		&i.OccurredAt,
+	)
+	return i, err
+}
+
 const insertAgentAppApproval = `-- name: InsertAgentAppApproval :execrows
 INSERT INTO workos_core.agent_app_approvals (
     owner_user_id, id, app_instance_id, project_id, task_id, app_id, goal_excerpt, provider_id,

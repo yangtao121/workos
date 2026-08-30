@@ -66,7 +66,7 @@ func TestNormalizeReviewTitle(t *testing.T) {
 	if _, ok := NormalizeReviewTitle(strings.Repeat("题", MaxArtifactTitleRunes+1)); ok {
 		t.Fatal("over-long title accepted")
 	}
-	for _, invalid := range []string{"", "   ", "line\nbreak", "tab\ttitle", "nul\x00title", "\x7f", "\x01ctrl"} {
+	for _, invalid := range []string{"", "   ", "line\nbreak", "tab\ttitle", "nul\x00title", "\x7f", "\x01ctrl", "c1\u0085title"} {
 		if _, ok := NormalizeReviewTitle(invalid); ok {
 			t.Fatalf("invalid title accepted: %q", invalid)
 		}
@@ -93,6 +93,11 @@ func TestNormalizeReviewContentCanonicalization(t *testing.T) {
 	if err != nil || changed.Digest == normalized.Digest {
 		t.Fatal("meaningful content change did not change the digest")
 	}
+	unicodeContent := []byte("中文审阅 ✅\nemoji: 🧪\n")
+	unicodeNormalized, err := NormalizeReviewContent(TypeMarkdown, unicodeContent)
+	if err != nil || !bytes.Equal(unicodeNormalized.Content, unicodeContent) {
+		t.Fatalf("valid multibyte UTF-8 was rejected or changed: %v %q", err, unicodeNormalized.Content)
+	}
 }
 
 func TestNormalizeReviewContentRejectsInvalidFacts(t *testing.T) {
@@ -104,7 +109,7 @@ func TestNormalizeReviewContentRejectsInvalidFacts(t *testing.T) {
 		"vertical tab":     {'a', 0x0b, 'b'},
 		"bell":             {'a', 0x07, 'b'},
 		"del":              {'a', 0x7f, 'b'},
-		"c1 control":       {'a', 0x85, 'b'},
+		"c1 control":       []byte("a\u0085b"),
 		"invalid utf8":     {0xff, 0xfe},
 		"over byte limit":  bytes.Repeat([]byte("a"), MaxReviewContentBytes+1),
 		"over line limit":  append(bytes.Repeat([]byte("x\n"), MaxReviewContentLines), 'x'),
@@ -122,10 +127,23 @@ func TestNormalizeReviewContentRejectsInvalidFacts(t *testing.T) {
 		"trailing lf":    []byte("line\n"),
 		"no trailing lf": []byte("line"),
 		"single newline": []byte("\n"),
+		"multibyte utf8": []byte("普通文本 🧪"),
 	} {
 		if _, err := NormalizeReviewContent(TypeMarkdown, content); err != nil {
 			t.Fatalf("valid %s content rejected: %v", name, err)
 		}
+	}
+	// Canonical size is measured after CRLF normalization. A legal maximum
+	// document may therefore be slightly larger on the private wire.
+	maximalCRLF := bytes.ReplaceAll(
+		bytes.Repeat(append(bytes.Repeat([]byte("a"), MaxReviewLineBytes-1), '\n'), 32),
+		[]byte("\n"), []byte("\r\n"),
+	)
+	if len(maximalCRLF) <= MaxReviewContentBytes {
+		t.Fatal("test fixture must exceed the canonical byte limit on the wire")
+	}
+	if normalized, err := NormalizeReviewContent(TypeMarkdown, maximalCRLF); err != nil || normalized.ByteCount != MaxReviewContentBytes {
+		t.Fatalf("maximal CRLF representation rejected: bytes=%d err=%v", normalized.ByteCount, err)
 	}
 }
 
@@ -167,7 +185,7 @@ func TestReviewDigestGoldenVectors(t *testing.T) {
 func TestValidStoredFactValidation(t *testing.T) {
 	t.Parallel()
 	valid := ReviewArtifact{
-		ID: "0198d7ea-0000-7000-8000-000000000001", OwnerUserID: "owner",
+		ID: "0198d7ea-0000-7000-8000-000000000001", OwnerUserID: "0198d7ea-0000-7000-8000-000000000009",
 		ProjectID: "0198d7ea-0000-7000-8000-000000000002", SourceTask: "0198d7ea-0000-7000-8000-000000000003",
 		OutputKey: "document", Type: TypeMarkdown, Title: "Title", MediaType: MediaTypeMarkdown,
 		Digest: ReviewContentDigest(TypeMarkdown, []byte("x")), ByteCount: 1, LineCount: 1,
@@ -178,6 +196,7 @@ func TestValidStoredFactValidation(t *testing.T) {
 	}
 	corruptions := []func(*ReviewArtifact){
 		func(f *ReviewArtifact) { f.ID = "not-a-uuid" },
+		func(f *ReviewArtifact) { f.OwnerUserID = "not-a-uuid" },
 		func(f *ReviewArtifact) { f.ProjectID = "" },
 		func(f *ReviewArtifact) { f.SourceTask = "0198d7ea-0000-7000-8000-000000000003 " },
 		func(f *ReviewArtifact) { f.OutputKey = "UPPER" },
@@ -186,7 +205,10 @@ func TestValidStoredFactValidation(t *testing.T) {
 		func(f *ReviewArtifact) { f.ByteCount = 0 },
 		func(f *ReviewArtifact) { f.LineCount = MaxReviewContentLines + 1 },
 		func(f *ReviewArtifact) { f.CreatedAt = zeroTime },
+		func(f *ReviewArtifact) { f.CreatedAt = validStoredTime.In(time.FixedZone("not-utc", 3600)) },
+		func(f *ReviewArtifact) { f.CreatedAt = validStoredTime.Add(time.Nanosecond) },
 		func(f *ReviewArtifact) { f.Title = "" },
+		func(f *ReviewArtifact) { f.Title = " Title " },
 	}
 	for index, corrupt := range corruptions {
 		fact := valid
@@ -208,7 +230,7 @@ func TestValidStoredArtifactCoversBothSubtypes(t *testing.T) {
 		t.Fatal("valid bundle metadata rejected")
 	}
 	review := Artifact{
-		ID: "0198d7ea-0000-7000-8000-000000000002", OwnerUserID: "owner", Type: TypeMarkdown,
+		ID: "0198d7ea-0000-7000-8000-000000000002", OwnerUserID: "0198d7ea-0000-7000-8000-000000000009", Type: TypeMarkdown,
 		Title: "Doc", MediaType: MediaTypeMarkdown, Digest: "sha256:" + strings.Repeat("b", 64),
 		FileCount: 1, TotalSizeBytes: 5, CreatedAt: validStoredTime,
 		ProjectID: "0198d7ea-0000-7000-8000-000000000003", SourceTaskID: "0198d7ea-0000-7000-8000-000000000004",
@@ -230,4 +252,26 @@ func TestValidStoredArtifactCoversBothSubtypes(t *testing.T) {
 		t.Fatal("unknown subtype accepted")
 	}
 	_ = utf8.Valid
+}
+
+func TestValidStoredPublicationRecord(t *testing.T) {
+	t.Parallel()
+	valid := PublicationRecord{
+		EventID: "0198d7ea-0000-7000-8000-000000000010", EventSeq: 3,
+		OccurredAt: validStoredTime,
+	}
+	if !ValidStoredPublicationRecord(valid) {
+		t.Fatal("valid publication rejected")
+	}
+	for _, corrupt := range []PublicationRecord{
+		{EventID: "not-a-uuid", EventSeq: 3, OccurredAt: validStoredTime},
+		{EventID: valid.EventID, EventSeq: 0, OccurredAt: validStoredTime},
+		{EventID: valid.EventID, EventSeq: 3, OccurredAt: zeroTime},
+		{EventID: valid.EventID, EventSeq: 3, OccurredAt: validStoredTime.In(time.FixedZone("plus-one", 3600))},
+		{EventID: valid.EventID, EventSeq: 3, OccurredAt: validStoredTime.Add(time.Nanosecond)},
+	} {
+		if ValidStoredPublicationRecord(corrupt) {
+			t.Fatalf("corrupt publication accepted: %#v", corrupt)
+		}
+	}
 }

@@ -65,7 +65,14 @@ export const initialWindowState: WindowState = { windows: [], nextZIndex: 1 };
 
 export function windowReducer(state: WindowState, action: WindowAction): WindowState {
   if (action.type === "open") {
-    if (state.windows.some((item) => item.id === action.window.id)) return state;
+    if (state.windows.some((item) => item.id === action.window.id)) {
+      return {
+        windows: state.windows.map((item) =>
+          item.id === action.window.id ? { ...item, zIndex: state.nextZIndex } : item,
+        ),
+        nextZIndex: state.nextZIndex + 1,
+      };
+    }
     return {
       windows: [
         ...state.windows,

@@ -40,9 +40,11 @@ function viewerError(reason: unknown): ViewerState {
 
 export function ArtifactViewerWindow({
   artifactId,
+  projectId,
   workosClients,
 }: {
   artifactId: string;
+  projectId: string;
   workosClients: WorkOSClients;
 }) {
   const [state, setState] = useState<ViewerState>(LOADING);
@@ -62,11 +64,34 @@ export function ArtifactViewerWindow({
         if (content?.case === "markdown" || content?.case === "unifiedDiff") {
           bytes = content.value.content;
         }
-        if (!response.artifact || !bytes) {
+        const artifact = response.artifact;
+        const typeMatches =
+          (artifact?.type === "document.markdown.v1" && content?.case === "markdown") ||
+          (artifact?.type === "code.unified-diff.v1" && content?.case === "unifiedDiff");
+        if (
+          !artifact ||
+          !bytes ||
+          artifact.id !== artifactId ||
+          artifact.projectId !== projectId ||
+          artifact.fileCount !== 1 ||
+          artifact.totalSizeBytes !== BigInt(bytes.byteLength) ||
+          !typeMatches
+        ) {
           setState(UNAVAILABLE);
           return;
         }
-        setState({ loading: false, artifact: response.artifact, content: bytes });
+        const expectedMediaType =
+          artifact.type === "document.markdown.v1"
+            ? "text/markdown; charset=utf-8"
+            : "text/x-diff; charset=utf-8";
+        if (
+          artifact.mediaType !== expectedMediaType ||
+          content.value.mediaType !== expectedMediaType
+        ) {
+          setState(UNAVAILABLE);
+          return;
+        }
+        setState({ loading: false, artifact, content: bytes });
       } catch (reason) {
         if (generationRef.current !== generation) return;
         setState(viewerError(reason));
@@ -75,7 +100,7 @@ export function ArtifactViewerWindow({
     return () => {
       generationRef.current += 1;
     };
-  }, [artifactId, workosClients]);
+  }, [artifactId, projectId, workosClients]);
 
   return (
     <div className="artifact-viewer-body">

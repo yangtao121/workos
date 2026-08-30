@@ -6,7 +6,8 @@
 import type { Artifact } from "@workos/protocol";
 import { Fragment, type ReactElement } from "react";
 
-const decoder = new TextDecoder("utf-8", { fatal: false });
+const decoder = new TextDecoder("utf-8", { fatal: true });
+const MAX_REVIEW_CONTENT_BYTES = 512 * 1024;
 
 export function decodeArtifactContent(content: Uint8Array): string {
   return decoder.decode(content);
@@ -33,7 +34,23 @@ export function ArtifactViewer({ artifact, content, loading, error }: ArtifactVi
   if (!artifact || !content) {
     return <p className="empty-state">Select an artifact to review.</p>;
   }
-  const text = decodeArtifactContent(content);
+  if (content.byteLength === 0 || content.byteLength > MAX_REVIEW_CONTENT_BYTES) {
+    return (
+      <p className="empty-state" role="alert">
+        Artifact unavailable.
+      </p>
+    );
+  }
+  let text: string;
+  try {
+    text = decodeArtifactContent(content);
+  } catch {
+    return (
+      <p className="empty-state" role="alert">
+        Artifact unavailable.
+      </p>
+    );
+  }
   if (artifact.type === "document.markdown.v1") {
     return <MarkdownView text={text} />;
   }
@@ -135,7 +152,7 @@ export function MarkdownView({ text }: { text: string }) {
       const current = lines[index] ?? "";
       if (
         current.trim() === "" ||
-        current.startsWith("#") ||
+        /^(#{1,6})\s+/.test(current) ||
         current.startsWith(">") ||
         current.startsWith("```") ||
         /^\s*([-*+]|\d+[.)])\s+/.test(current)

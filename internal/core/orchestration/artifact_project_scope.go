@@ -10,8 +10,10 @@ import (
 	"fmt"
 
 	artifactdomain "github.com/yangtao121/workos/internal/core/artifact/domain"
+	artifactports "github.com/yangtao121/workos/internal/core/artifact/ports"
 	projectapp "github.com/yangtao121/workos/internal/core/project/application"
 	projectdomain "github.com/yangtao121/workos/internal/core/project/domain"
+	projectports "github.com/yangtao121/workos/internal/core/project/ports"
 )
 
 type ArtifactProjectScope struct {
@@ -35,6 +37,8 @@ func (s *ArtifactProjectScope) ValidateReadableProject(ctx context.Context, owne
 	switch {
 	case errors.Is(err, projectdomain.ErrNotFound), errors.Is(err, projectdomain.ErrInvalid):
 		return artifactdomain.ErrNotFound
+	case errors.Is(err, projectports.ErrStoreUnavailable):
+		return fmt.Errorf("resolve project for artifact scope: %w", artifactports.ErrStoreUnavailable)
 	case err != nil:
 		return fmt.Errorf("resolve project for artifact scope: %w", err)
 	}

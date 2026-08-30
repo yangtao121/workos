@@ -3,6 +3,7 @@ package transport
 import (
 	"context"
 	"errors"
+	"net/http"
 	"time"
 
 	"connectrpc.com/connect"
@@ -13,6 +14,7 @@ import (
 	agentv1 "github.com/yangtao121/workos/gen/go/workos/agent/v1"
 	artifactv1 "github.com/yangtao121/workos/gen/go/workos/artifact/v1"
 	taskv1 "github.com/yangtao121/workos/gen/go/workos/taskexecution/v1"
+	"github.com/yangtao121/workos/gen/go/workos/taskexecution/v1/taskexecutionv1connect"
 	"github.com/yangtao121/workos/internal/core/agent/application"
 	"github.com/yangtao121/workos/internal/core/agent/domain"
 )
@@ -41,6 +43,17 @@ type ExecutionHandler struct {
 
 func NewExecution(service *application.Service, materializer TaskArtifactMaterializer) *ExecutionHandler {
 	return &ExecutionHandler{service: service, materialize: materializer}
+}
+
+// NewExecutionConnectHandler is the single construction path for the private
+// TaskExecution service. Its decompressed request budget is enforced by
+// Connect before protobuf/JSON decoding and therefore before a materializer
+// can observe an oversized or compressed-bomb payload.
+func NewExecutionConnectHandler(service *application.Service, materializer TaskArtifactMaterializer) (string, http.Handler) {
+	return taskexecutionv1connect.NewTaskExecutionServiceHandler(
+		NewExecution(service, materializer),
+		connect.WithReadMaxBytes(MaxExecutionRequestBytes),
+	)
 }
 
 func (h *ExecutionHandler) ClaimTask(ctx context.Context, req *connect.Request[taskv1.ClaimTaskRequest]) (*connect.Response[taskv1.ClaimTaskResponse], error) {
