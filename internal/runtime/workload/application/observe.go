@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/yangtao121/workos/internal/platform/identity"
 	"github.com/yangtao121/workos/internal/runtime/workload/domain"
 	"github.com/yangtao121/workos/internal/runtime/workload/ports"
 )
@@ -184,10 +185,15 @@ func (m *Manager) reconcileRunning(ctx context.Context, workload domain.Workload
 		m.failRunning(ctx, workload, category)
 		return
 	}
-	// Core re-validation: definitive uninstalled/archived stops immediately;
-	// transient Core outages burn the bounded grace before the fail-safe
-	// stop — hard limits keep enforcing while the grace burns.
-	verdict, verifyErr := m.verifier.VerifyLaunch(probeCtx, ports.LaunchQuery{
+	// Core re-validation under the workload owner's trusted identity (the
+	// private Core client requires the owner/device pair; the device is this
+	// runtime's own service identity). Definitive uninstalled/archived stops
+	// immediately; transient Core outages burn the bounded grace before the
+	// fail-safe stop — hard limits keep enforcing while the grace burns.
+	verifyCtx := identity.WithContext(probeCtx, identity.Identity{
+		UserID: workload.OwnerUserID, DeviceID: m.config.VerifyDeviceID,
+	})
+	verdict, verifyErr := m.verifier.VerifyLaunch(verifyCtx, ports.LaunchQuery{
 		OwnerUserID: workload.OwnerUserID, ProjectID: workload.ProjectID,
 		AppInstanceID: workload.AppInstanceID, ManifestDigest: workload.ManifestDigest,
 	})
@@ -205,7 +211,14 @@ func (m *Manager) reconcileRunning(ctx context.Context, workload domain.Workload
 			VerifiedAt: &verifiedAt,
 		}, now)
 	case verifyErr != nil || verdict == ports.LaunchUnknown:
-		if workload.LastVerifiedAt != nil && now.Sub(*workload.LastVerifiedAt) > m.config.CoreGrace {
+		// The grace is measured from the last successful verification (the
+		// launch itself anchors it); a pre-stamp legacy row falls back to its
+		// creation time so a nil stamp can never dodge the fail-safe.
+		anchor := workload.CreatedAt
+		if workload.LastVerifiedAt != nil {
+			anchor = *workload.LastVerifiedAt
+		}
+		if now.Sub(anchor) > m.config.CoreGrace {
 			_ = m.Terminate(ctx, ports.TerminateCommand{
 				WorkloadID: workload.ID, OperationKey: "reconcile:fail-safe", Reason: "fail_safe",
 			})

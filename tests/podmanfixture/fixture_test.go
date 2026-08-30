@@ -135,13 +135,36 @@ func TestRootlessFixtureImageLifecycle(t *testing.T) {
 	}
 
 	// ---- fixture image build (test-prep phase; the runtime never builds) ----
+	// The payload binary arrives prebuilt (the Makefile compiles it in the
+	// toolchain container and hands it over via WORKOS_PODMAN_FIXTURE_BINARY,
+	// so no Go toolchain is needed on the podman host); a host-native run
+	// with a Go toolchain may build it as a fallback.
+	binaryPath := os.Getenv("WORKOS_PODMAN_FIXTURE_BINARY")
+	if binaryPath == "" {
+		if _, err := exec.LookPath("go"); err != nil {
+			t.Skipf("BLOCKED: no prebuilt fixture binary (WORKOS_PODMAN_FIXTURE_BINARY) and no host Go toolchain to build it: %v", err)
+		}
+		binaryPath = filepath.Join(t.TempDir(), "workos-web-fixture")
+		build := exec.Command("go", "build", "-trimpath", "-o", binaryPath, "./fixture")
+		build.Dir = sourceDir()
+		build.Env = append(os.Environ(), "CGO_ENABLED=0")
+		if output, err := build.CombinedOutput(); err != nil {
+			t.Fatalf("build fixture binary: %v: %s", err, bounded(output))
+		}
+	}
+	if _, err := os.Stat(binaryPath); err != nil {
+		t.Fatalf("prebuilt fixture binary: %v", err)
+	}
+	// The image build context contains exactly the Containerfile and the
+	// payload under the deterministic name the Containerfile copies.
 	buildDir := t.TempDir()
-	binaryPath := filepath.Join(buildDir, "workos-web-fixture")
-	build := exec.Command("go", "build", "-trimpath", "-o", binaryPath, "./fixture")
-	build.Dir = sourceDir()
-	build.Env = append(os.Environ(), "CGO_ENABLED=0")
-	if output, err := build.CombinedOutput(); err != nil {
-		t.Fatalf("build fixture binary: %v: %s", err, bounded(output))
+	staged := filepath.Join(buildDir, "workos-web-fixture")
+	payload, err := os.ReadFile(binaryPath)
+	if err != nil {
+		t.Fatalf("read fixture binary: %v", err)
+	}
+	if err := os.WriteFile(staged, payload, 0o755); err != nil {
+		t.Fatalf("stage fixture binary: %v", err)
 	}
 	containerfile := "FROM scratch\nCOPY workos-web-fixture /workos-web-fixture\nENTRYPOINT [\"/workos-web-fixture\"]\n"
 	if err := os.WriteFile(filepath.Join(buildDir, "Containerfile"), []byte(containerfile), 0o644); err != nil {

@@ -37,6 +37,7 @@ type fakeController struct {
 	restarts      []string
 	stops         []string
 	restartResult ports.ControlResult
+	stopOutcome   ports.ControlOutcome
 }
 
 func (c *fakeController) Restart(_ context.Context, workloadID, actionKey string) (ports.ControlResult, error) {
@@ -50,7 +51,7 @@ func (c *fakeController) Stop(_ context.Context, workloadID, actionKey, _ string
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.stops = append(c.stops, actionKey)
-	return ports.ControlResult{Outcome: ports.ControlStopped}, nil
+	return ports.ControlResult{Outcome: c.stopOutcome}, nil
 }
 
 type fakeIncidentRepo struct {
@@ -84,6 +85,15 @@ func (r *fakeIncidentRepo) CreateIncident(_ context.Context, incident domain.Inc
 	r.incidents[incident.ID] = incident
 	r.digests[incident.OccurrenceDigest] = incident.ID
 	return true, nil
+}
+
+func (r *fakeIncidentRepo) GetIncidentByOccurrence(_ context.Context, digest string) (domain.Incident, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if id, ok := r.digests[digest]; ok {
+		return r.incidents[id], nil
+	}
+	return domain.Incident{}, domain.ErrNotFound
 }
 
 func (r *fakeIncidentRepo) GetIncident(_ context.Context, incidentID string) (domain.Incident, error) {
@@ -135,7 +145,7 @@ func (r *fakeIncidentRepo) MarkResolved(_ context.Context, incidentID string, no
 	return nil
 }
 
-func (r *fakeIncidentRepo) Acknowledge(_ context.Context, incidentID, _ string, now time.Time) error {
+func (r *fakeIncidentRepo) Acknowledge(_ context.Context, incidentID, _ string, _ string, now time.Time) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	incident, ok := r.incidents[incidentID]
@@ -357,7 +367,10 @@ func TestPollCreatesSeparateIncidentsPerViolation(t *testing.T) {
 // and closes the original episode as stopped — never an infinite loop.
 func TestPollStopsAfterRestartLimit(t *testing.T) {
 	observer := &fakeObserver{}
-	controller := &fakeController{restartResult: ports.ControlResult{Outcome: ports.ControlLimitExhausted}}
+	controller := &fakeController{
+		restartResult: ports.ControlResult{Outcome: ports.ControlLimitExhausted},
+		stopOutcome:   ports.ControlStopped,
+	}
 	repo := newFakeIncidentRepo()
 	supervisor := newSupervisor(t, observer, controller, repo)
 
@@ -412,3 +425,82 @@ type errUnavailableError struct{}
 func (errUnavailableError) Error() string { return "unavailable" }
 
 var errUnavailable = errUnavailableError{}
+
+// TestPollStopUnavailableStaysPendingAndRedrives pins the stop-semantics
+// repair: a stop that reports unavailable leaves the incident open and
+// pending (never marked stopped), and the next poll re-drives the same
+// action key to a verifiable stop.
+func TestPollStopUnavailableStaysPendingAndRedrives(t *testing.T) {
+	observer := &fakeObserver{}
+	controller := &fakeController{restartResult: ports.ControlResult{Outcome: ports.ControlRestarted, Generation: 2}}
+	repo := newFakeIncidentRepo()
+	supervisor := newSupervisor(t, observer, controller, repo)
+
+	observer.observations = []ports.Observation{
+		testObservation(ports.StateFailed, domain.HealthFailing, "exited"),
+	}
+	// First poll: restart fails at the runtime with the budget spent and the
+	// stop is unavailable — nothing may claim "stopped".
+	controller.restartResult = ports.ControlResult{Outcome: ports.ControlLimitExhausted}
+	controller.stopOutcome = ports.ControlUnavailable
+	if err := supervisor.Poll(context.Background()); err != nil {
+		t.Fatalf("poll 1: %v", err)
+	}
+	incident := findIncident(t, repo, domain.ViolationUnexpectedExit)
+	if incident.RestartOutcome == domain.OutcomeStopped || incident.State == domain.StateMitigated {
+		t.Fatalf("unavailable stop marked the episode stopped: %+v", incident)
+	}
+	if incident.State != domain.StateOpen || incident.RestartOutcome != domain.OutcomePending {
+		t.Fatalf("incident must stay open/pending after an unavailable stop: %+v", incident)
+	}
+	// Second poll with the stop now succeeding: the same action key re-drives
+	// and the episode closes as genuinely stopped.
+	controller.stopOutcome = ports.ControlStopped
+	if err := supervisor.Poll(context.Background()); err != nil {
+		t.Fatalf("poll 2: %v", err)
+	}
+	incident = findIncident(t, repo, domain.ViolationUnexpectedExit)
+	if incident.RestartOutcome != domain.OutcomeStopped {
+		t.Fatalf("episode outcome %v after a successful stop, want stopped", incident.RestartOutcome)
+	}
+	budget := findIncident(t, repo, domain.ViolationRestartLimit)
+	if budget.RestartOutcome != domain.OutcomeStopped {
+		t.Fatalf("budget incident outcome %v, want stopped", budget.RestartOutcome)
+	}
+	// Exactly one physical stop hit the controller: the retry replayed the
+	// recorded unavailable action instead of re-issuing a stop.
+	if len(controller.stops) != 2 {
+		t.Fatalf("stops %d, want 2 (one unavailable attempt + one success)", len(controller.stops))
+	}
+}
+
+// TestPollBudgetIncidentNeverRestarts pins the decision guard: the
+// restart-budget incident's decision is a stop, never another restart —
+// there is no path back into the spent budget.
+func TestPollBudgetIncidentNeverRestarts(t *testing.T) {
+	observer := &fakeObserver{}
+	controller := &fakeController{restartResult: ports.ControlResult{Outcome: ports.ControlRestarted, Generation: 2}}
+	repo := newFakeIncidentRepo()
+	supervisor := newSupervisor(t, observer, controller, repo)
+
+	observer.observations = []ports.Observation{
+		testObservation(ports.StateFailed, domain.HealthFailing, "exited"),
+	}
+	controller.restartResult = ports.ControlResult{Outcome: ports.ControlLimitExhausted}
+	controller.stopOutcome = ports.ControlStopped
+	for poll := 0; poll < 3; poll++ {
+		if err := supervisor.Poll(context.Background()); err != nil {
+			t.Fatalf("poll %d: %v", poll, err)
+		}
+	}
+	if len(controller.restarts) != 1 {
+		t.Fatalf("restarts %d, want exactly 1 (the original episode); the budget incident must never re-enter the spent budget", len(controller.restarts))
+	}
+	budget := findIncident(t, repo, domain.ViolationRestartLimit)
+	if budget.RestartOutcome != domain.OutcomeStopped {
+		t.Fatalf("budget incident outcome %v, want settled stopped by the source stop", budget.RestartOutcome)
+	}
+	if len(controller.stops) != 1 {
+		t.Fatalf("stops %d, want exactly 1 (single stop authority)", len(controller.stops))
+	}
+}

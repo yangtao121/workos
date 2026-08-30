@@ -169,6 +169,22 @@ func (r *Repository) recordOperation(ctx context.Context, queries workloaddb.Que
 
 // Transition applies the guarded state transitions. Terminal rows never move.
 func (r *Repository) Transition(ctx context.Context, workloadID string, from, to domain.State, facts ports.WorkloadFacts, now time.Time) error {
+	if facts.VerifiedAt != nil && from == to {
+		// Verification stamping is bookkeeping on an unchanged state: the
+		// dedicated guarded UPDATE keeps every other column (container
+		// facts included) untouched.
+		rows, err := r.queries.StampWorkloadVerified(ctx, workloaddb.StampWorkloadVerifiedParams{
+			VerifiedAt: facts.VerifiedAt,
+			ID:         workloadID,
+		})
+		if err != nil {
+			return storeError("stamp workload verified", err)
+		}
+		if rows == 0 {
+			return domain.ErrNotFound
+		}
+		return nil
+	}
 	switch {
 	case to == domain.StateRunning:
 		rows, err := r.queries.SetWorkloadRunning(ctx, workloaddb.SetWorkloadRunningParams{
@@ -232,7 +248,6 @@ func (r *Repository) ClaimLease(ctx context.Context, workloadID, owner string, u
 	rows, err := r.queries.ClaimWorkloadLease(ctx, workloaddb.ClaimWorkloadLeaseParams{
 		LeaseOwner:     textParam(owner),
 		LeaseExpiresAt: &until,
-		UpdatedAt:      now,
 		ID:             workloadID,
 		Now:            &now,
 	})

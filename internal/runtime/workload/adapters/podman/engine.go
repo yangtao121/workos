@@ -164,16 +164,33 @@ func (e *Engine) Probe(ctx context.Context) (ports.Capability, error) {
 	}, nil
 }
 
+// ensureInternalNetwork guarantees the WorkOS network exists AND is internal
+// (no external egress route). A same-named network that is not internal is a
+// hostile or misconfigured host state: the capability verdict refuses
+// containers instead of launching untrusted apps onto a routable network.
 func (e *Engine) ensureInternalNetwork(ctx context.Context) error {
 	output, err := e.run(ctx, e.executable, []string{"network", "ls", "--format", "{{.Name}}", "--filter", "name=" + networkName}, fastTimeout)
 	if err != nil {
 		return err
 	}
 	if strings.Contains(string(output), networkName) {
-		return nil
+		return e.verifyNetworkInternal(ctx)
 	}
-	_, err = e.run(ctx, e.executable, []string{"network", "create", "--internal", networkName}, fastTimeout)
-	return err
+	if _, err := e.run(ctx, e.executable, []string{"network", "create", "--internal", networkName}, fastTimeout); err != nil {
+		return err
+	}
+	return e.verifyNetworkInternal(ctx)
+}
+
+func (e *Engine) verifyNetworkInternal(ctx context.Context) error {
+	output, err := e.run(ctx, e.executable, []string{"network", "inspect", "--format", "{{.Internal}}", networkName}, fastTimeout)
+	if err != nil {
+		return err
+	}
+	if strings.TrimSpace(string(output)) != "true" {
+		return fmt.Errorf("network %s exists but is not internal", networkName)
+	}
+	return nil
 }
 
 func (e *Engine) ImageExists(ctx context.Context, image string) (bool, error) {

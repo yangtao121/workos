@@ -49,6 +49,7 @@ func newTestConfig() Config {
 		ReconcileInterval: 15 * time.Second, IdleTTL: 30 * time.Second,
 		OperationTimeout: 10 * time.Second, CoreGrace: time.Minute,
 		LeaseTTL: 5 * time.Second, InstanceName: "runtime-test",
+		VerifyDeviceID: "0198d7ea-2110-7c42-b659-c5e4d73bc338",
 	}
 }
 
@@ -227,6 +228,12 @@ func (e *fakeEngine) exit(name string) {
 	}
 }
 
+func (e *fakeEngine) containerCount() int {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	return len(e.containers)
+}
+
 func (e *fakeEngine) containerExists(name string) bool {
 	e.mu.Lock()
 	defer e.mu.Unlock()
@@ -398,6 +405,13 @@ func (r *fakeWorkloadRepo) Transition(_ context.Context, workloadID string, from
 		}
 	} else if from.Terminal() {
 		return domain.ErrNotFound
+	}
+	// Verified stamping is a bookkeeping self-transition: it touches only
+	// the stamp, mirroring the real StampWorkloadVerified UPDATE.
+	if facts.VerifiedAt != nil && from == to {
+		workload.LastVerifiedAt = facts.VerifiedAt
+		r.workloads[workloadID] = workload
+		return nil
 	}
 	workload.State = to
 	workload.Generation = facts.Generation

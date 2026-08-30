@@ -123,6 +123,7 @@ func run(logger *slog.Logger) error {
 			CoreGrace:         cfg.Runtime.CoreGrace,
 			LeaseTTL:          cfg.Runtime.LeaseTTL,
 			InstanceName:      cfg.Runtime.InstanceName,
+			VerifyDeviceID:    cfg.Runtime.DeviceID,
 		}, logger)
 	if err != nil {
 		return err

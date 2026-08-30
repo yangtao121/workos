@@ -15,25 +15,30 @@ import (
 const acknowledgeIncident = `-- name: AcknowledgeIncident :execrows
 UPDATE workos_reliability.incidents SET
     acknowledged_at = $1,
+    acknowledge_key = $2,
     revision = revision + 1,
-    updated_at = $2
-WHERE id = $3
-  AND owner_user_id = $4
+    updated_at = $3
+WHERE id = $4
+  AND owner_user_id = $5
   AND acknowledged_at IS NULL
 `
 
 type AcknowledgeIncidentParams struct {
-	AcknowledgedAt *time.Time `json:"acknowledged_at"`
-	UpdatedAt      time.Time  `json:"updated_at"`
-	ID             string     `json:"id"`
-	OwnerUserID    string     `json:"owner_user_id"`
+	AcknowledgedAt *time.Time  `json:"acknowledged_at"`
+	AcknowledgeKey pgtype.Text `json:"acknowledge_key"`
+	UpdatedAt      time.Time   `json:"updated_at"`
+	ID             string      `json:"id"`
+	OwnerUserID    string      `json:"owner_user_id"`
 }
 
 // The owner acknowledgement is a separate fact from mitigation and never
-// claims the fault is repaired; repeat acknowledges are no-ops.
+// claims the fault is repaired; the idempotency key is persisted so the same
+// key replays the same state and the (owner, key) uniqueness is enforced by
+// the partial unique index from 017. Repeat acknowledges are no-ops.
 func (q *Queries) AcknowledgeIncident(ctx context.Context, arg AcknowledgeIncidentParams) (int64, error) {
 	result, err := q.db.Exec(ctx, acknowledgeIncident,
 		arg.AcknowledgedAt,
+		arg.AcknowledgeKey,
 		arg.UpdatedAt,
 		arg.ID,
 		arg.OwnerUserID,
@@ -47,15 +52,39 @@ func (q *Queries) AcknowledgeIncident(ctx context.Context, arg AcknowledgeIncide
 const getIncident = `-- name: GetIncident :one
 SELECT id, owner_user_id, project_id, app_instance_id, app_id, workload_id,
        workload_generation, violation, severity, summary, occurrence_digest,
-       evidence_digest, state, restart_outcome, revision,
+       evidence_digest, state, restart_outcome, revision, acknowledge_key,
        acknowledged_at, mitigated_at, resolved_at, created_at, updated_at
 FROM workos_reliability.incidents
 WHERE id = $1
 `
 
-func (q *Queries) GetIncident(ctx context.Context, id string) (WorkosReliabilityIncident, error) {
+type GetIncidentRow struct {
+	ID                 string      `json:"id"`
+	OwnerUserID        string      `json:"owner_user_id"`
+	ProjectID          string      `json:"project_id"`
+	AppInstanceID      string      `json:"app_instance_id"`
+	AppID              string      `json:"app_id"`
+	WorkloadID         string      `json:"workload_id"`
+	WorkloadGeneration int64       `json:"workload_generation"`
+	Violation          string      `json:"violation"`
+	Severity           string      `json:"severity"`
+	Summary            string      `json:"summary"`
+	OccurrenceDigest   string      `json:"occurrence_digest"`
+	EvidenceDigest     string      `json:"evidence_digest"`
+	State              string      `json:"state"`
+	RestartOutcome     string      `json:"restart_outcome"`
+	Revision           int64       `json:"revision"`
+	AcknowledgeKey     pgtype.Text `json:"acknowledge_key"`
+	AcknowledgedAt     *time.Time  `json:"acknowledged_at"`
+	MitigatedAt        *time.Time  `json:"mitigated_at"`
+	ResolvedAt         *time.Time  `json:"resolved_at"`
+	CreatedAt          time.Time   `json:"created_at"`
+	UpdatedAt          time.Time   `json:"updated_at"`
+}
+
+func (q *Queries) GetIncident(ctx context.Context, id string) (GetIncidentRow, error) {
 	row := q.db.QueryRow(ctx, getIncident, id)
-	var i WorkosReliabilityIncident
+	var i GetIncidentRow
 	err := row.Scan(
 		&i.ID,
 		&i.OwnerUserID,
@@ -72,6 +101,7 @@ func (q *Queries) GetIncident(ctx context.Context, id string) (WorkosReliability
 		&i.State,
 		&i.RestartOutcome,
 		&i.Revision,
+		&i.AcknowledgeKey,
 		&i.AcknowledgedAt,
 		&i.MitigatedAt,
 		&i.ResolvedAt,
@@ -107,6 +137,68 @@ func (q *Queries) GetIncidentAction(ctx context.Context, arg GetIncidentActionPa
 	return i, err
 }
 
+const getIncidentByOccurrence = `-- name: GetIncidentByOccurrence :one
+SELECT id, owner_user_id, project_id, app_instance_id, app_id, workload_id,
+       workload_generation, violation, severity, summary, occurrence_digest,
+       evidence_digest, state, restart_outcome, revision, acknowledge_key,
+       acknowledged_at, mitigated_at, resolved_at, created_at, updated_at
+FROM workos_reliability.incidents
+WHERE occurrence_digest = $1
+`
+
+type GetIncidentByOccurrenceRow struct {
+	ID                 string      `json:"id"`
+	OwnerUserID        string      `json:"owner_user_id"`
+	ProjectID          string      `json:"project_id"`
+	AppInstanceID      string      `json:"app_instance_id"`
+	AppID              string      `json:"app_id"`
+	WorkloadID         string      `json:"workload_id"`
+	WorkloadGeneration int64       `json:"workload_generation"`
+	Violation          string      `json:"violation"`
+	Severity           string      `json:"severity"`
+	Summary            string      `json:"summary"`
+	OccurrenceDigest   string      `json:"occurrence_digest"`
+	EvidenceDigest     string      `json:"evidence_digest"`
+	State              string      `json:"state"`
+	RestartOutcome     string      `json:"restart_outcome"`
+	Revision           int64       `json:"revision"`
+	AcknowledgeKey     pgtype.Text `json:"acknowledge_key"`
+	AcknowledgedAt     *time.Time  `json:"acknowledged_at"`
+	MitigatedAt        *time.Time  `json:"mitigated_at"`
+	ResolvedAt         *time.Time  `json:"resolved_at"`
+	CreatedAt          time.Time   `json:"created_at"`
+	UpdatedAt          time.Time   `json:"updated_at"`
+}
+
+func (q *Queries) GetIncidentByOccurrence(ctx context.Context, occurrenceDigest string) (GetIncidentByOccurrenceRow, error) {
+	row := q.db.QueryRow(ctx, getIncidentByOccurrence, occurrenceDigest)
+	var i GetIncidentByOccurrenceRow
+	err := row.Scan(
+		&i.ID,
+		&i.OwnerUserID,
+		&i.ProjectID,
+		&i.AppInstanceID,
+		&i.AppID,
+		&i.WorkloadID,
+		&i.WorkloadGeneration,
+		&i.Violation,
+		&i.Severity,
+		&i.Summary,
+		&i.OccurrenceDigest,
+		&i.EvidenceDigest,
+		&i.State,
+		&i.RestartOutcome,
+		&i.Revision,
+		&i.AcknowledgeKey,
+		&i.AcknowledgedAt,
+		&i.MitigatedAt,
+		&i.ResolvedAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const getSupervisorCheckpoint = `-- name: GetSupervisorCheckpoint :one
 SELECT id, last_poll_at, updated_at
 FROM workos_reliability.supervisor_checkpoints
@@ -118,6 +210,28 @@ func (q *Queries) GetSupervisorCheckpoint(ctx context.Context) (WorkosReliabilit
 	var i WorkosReliabilitySupervisorCheckpoint
 	err := row.Scan(&i.ID, &i.LastPollAt, &i.UpdatedAt)
 	return i, err
+}
+
+const incidentAcknowledgeKeyExists = `-- name: IncidentAcknowledgeKeyExists :one
+SELECT EXISTS (
+    SELECT 1 FROM workos_reliability.incidents
+    WHERE owner_user_id = $1
+      AND acknowledge_key = $2
+      AND id <> $3
+) AS exists_on_other
+`
+
+type IncidentAcknowledgeKeyExistsParams struct {
+	OwnerUserID    string      `json:"owner_user_id"`
+	AcknowledgeKey pgtype.Text `json:"acknowledge_key"`
+	ID             string      `json:"id"`
+}
+
+func (q *Queries) IncidentAcknowledgeKeyExists(ctx context.Context, arg IncidentAcknowledgeKeyExistsParams) (bool, error) {
+	row := q.db.QueryRow(ctx, incidentAcknowledgeKeyExists, arg.OwnerUserID, arg.AcknowledgeKey, arg.ID)
+	var exists_on_other bool
+	err := row.Scan(&exists_on_other)
+	return exists_on_other, err
 }
 
 const insertIncident = `-- name: InsertIncident :execrows
@@ -189,7 +303,7 @@ func (q *Queries) InsertIncident(ctx context.Context, arg InsertIncidentParams) 
 const listIncidentsPage = `-- name: ListIncidentsPage :many
 SELECT i.id, i.owner_user_id, i.project_id, i.app_instance_id, i.app_id, i.workload_id,
        i.workload_generation, i.violation, i.severity, i.summary, i.occurrence_digest,
-       i.evidence_digest, i.state, i.restart_outcome, i.revision,
+       i.evidence_digest, i.state, i.restart_outcome, i.revision, i.acknowledge_key,
        i.acknowledged_at, i.mitigated_at, i.resolved_at, i.created_at, i.updated_at
 FROM workos_reliability.incidents i
 WHERE i.owner_user_id = $1
@@ -212,9 +326,33 @@ type ListIncidentsPageParams struct {
 	RowLimit    int32  `json:"row_limit"`
 }
 
+type ListIncidentsPageRow struct {
+	ID                 string      `json:"id"`
+	OwnerUserID        string      `json:"owner_user_id"`
+	ProjectID          string      `json:"project_id"`
+	AppInstanceID      string      `json:"app_instance_id"`
+	AppID              string      `json:"app_id"`
+	WorkloadID         string      `json:"workload_id"`
+	WorkloadGeneration int64       `json:"workload_generation"`
+	Violation          string      `json:"violation"`
+	Severity           string      `json:"severity"`
+	Summary            string      `json:"summary"`
+	OccurrenceDigest   string      `json:"occurrence_digest"`
+	EvidenceDigest     string      `json:"evidence_digest"`
+	State              string      `json:"state"`
+	RestartOutcome     string      `json:"restart_outcome"`
+	Revision           int64       `json:"revision"`
+	AcknowledgeKey     pgtype.Text `json:"acknowledge_key"`
+	AcknowledgedAt     *time.Time  `json:"acknowledged_at"`
+	MitigatedAt        *time.Time  `json:"mitigated_at"`
+	ResolvedAt         *time.Time  `json:"resolved_at"`
+	CreatedAt          time.Time   `json:"created_at"`
+	UpdatedAt          time.Time   `json:"updated_at"`
+}
+
 // Owner-scoped, project-optional, keyed pagination on (created_at, id). The
 // caller probes limit+1 rows so a full final page never phantom-pages.
-func (q *Queries) ListIncidentsPage(ctx context.Context, arg ListIncidentsPageParams) ([]WorkosReliabilityIncident, error) {
+func (q *Queries) ListIncidentsPage(ctx context.Context, arg ListIncidentsPageParams) ([]ListIncidentsPageRow, error) {
 	rows, err := q.db.Query(ctx, listIncidentsPage,
 		arg.OwnerUserID,
 		arg.ProjectID,
@@ -225,9 +363,9 @@ func (q *Queries) ListIncidentsPage(ctx context.Context, arg ListIncidentsPagePa
 		return nil, err
 	}
 	defer rows.Close()
-	var items []WorkosReliabilityIncident
+	var items []ListIncidentsPageRow
 	for rows.Next() {
-		var i WorkosReliabilityIncident
+		var i ListIncidentsPageRow
 		if err := rows.Scan(
 			&i.ID,
 			&i.OwnerUserID,
@@ -244,6 +382,7 @@ func (q *Queries) ListIncidentsPage(ctx context.Context, arg ListIncidentsPagePa
 			&i.State,
 			&i.RestartOutcome,
 			&i.Revision,
+			&i.AcknowledgeKey,
 			&i.AcknowledgedAt,
 			&i.MitigatedAt,
 			&i.ResolvedAt,
@@ -263,7 +402,7 @@ func (q *Queries) ListIncidentsPage(ctx context.Context, arg ListIncidentsPagePa
 const listOpenIncidentsForWorkload = `-- name: ListOpenIncidentsForWorkload :many
 SELECT id, owner_user_id, project_id, app_instance_id, app_id, workload_id,
        workload_generation, violation, severity, summary, occurrence_digest,
-       evidence_digest, state, restart_outcome, revision,
+       evidence_digest, state, restart_outcome, revision, acknowledge_key,
        acknowledged_at, mitigated_at, resolved_at, created_at, updated_at
 FROM workos_reliability.incidents
 WHERE workload_id = $1
@@ -277,15 +416,39 @@ type ListOpenIncidentsForWorkloadParams struct {
 	WorkloadGeneration int64  `json:"workload_generation"`
 }
 
-func (q *Queries) ListOpenIncidentsForWorkload(ctx context.Context, arg ListOpenIncidentsForWorkloadParams) ([]WorkosReliabilityIncident, error) {
+type ListOpenIncidentsForWorkloadRow struct {
+	ID                 string      `json:"id"`
+	OwnerUserID        string      `json:"owner_user_id"`
+	ProjectID          string      `json:"project_id"`
+	AppInstanceID      string      `json:"app_instance_id"`
+	AppID              string      `json:"app_id"`
+	WorkloadID         string      `json:"workload_id"`
+	WorkloadGeneration int64       `json:"workload_generation"`
+	Violation          string      `json:"violation"`
+	Severity           string      `json:"severity"`
+	Summary            string      `json:"summary"`
+	OccurrenceDigest   string      `json:"occurrence_digest"`
+	EvidenceDigest     string      `json:"evidence_digest"`
+	State              string      `json:"state"`
+	RestartOutcome     string      `json:"restart_outcome"`
+	Revision           int64       `json:"revision"`
+	AcknowledgeKey     pgtype.Text `json:"acknowledge_key"`
+	AcknowledgedAt     *time.Time  `json:"acknowledged_at"`
+	MitigatedAt        *time.Time  `json:"mitigated_at"`
+	ResolvedAt         *time.Time  `json:"resolved_at"`
+	CreatedAt          time.Time   `json:"created_at"`
+	UpdatedAt          time.Time   `json:"updated_at"`
+}
+
+func (q *Queries) ListOpenIncidentsForWorkload(ctx context.Context, arg ListOpenIncidentsForWorkloadParams) ([]ListOpenIncidentsForWorkloadRow, error) {
 	rows, err := q.db.Query(ctx, listOpenIncidentsForWorkload, arg.WorkloadID, arg.WorkloadGeneration)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []WorkosReliabilityIncident
+	var items []ListOpenIncidentsForWorkloadRow
 	for rows.Next() {
-		var i WorkosReliabilityIncident
+		var i ListOpenIncidentsForWorkloadRow
 		if err := rows.Scan(
 			&i.ID,
 			&i.OwnerUserID,
@@ -302,6 +465,7 @@ func (q *Queries) ListOpenIncidentsForWorkload(ctx context.Context, arg ListOpen
 			&i.State,
 			&i.RestartOutcome,
 			&i.Revision,
+			&i.AcknowledgeKey,
 			&i.AcknowledgedAt,
 			&i.MitigatedAt,
 			&i.ResolvedAt,

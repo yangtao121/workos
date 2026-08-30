@@ -107,6 +107,9 @@ type IncidentRepository interface {
 	CreateIncident(ctx context.Context, incident domain.Incident) (created bool, err error)
 	// GetIncident returns one incident by ID.
 	GetIncident(ctx context.Context, incidentID string) (domain.Incident, error)
+	// GetIncidentByOccurrence returns the incident carrying the exact
+	// occurrence digest, if any.
+	GetIncidentByOccurrence(ctx context.Context, occurrenceDigest string) (domain.Incident, error)
 	// ListIncidents returns one owner-scoped, bounded page. The token is the
 	// last row's (created_at, id) pair; limit is the fetch size.
 	ListIncidents(ctx context.Context, filter IncidentFilter, limit int) ([]domain.Incident, error)
@@ -115,8 +118,10 @@ type IncidentRepository interface {
 	UpdateOutcome(ctx context.Context, incidentID string, state domain.State, outcome domain.RestartOutcome, now time.Time) error
 	// MarkResolved resolves a mitigated incident after the stable streak.
 	MarkResolved(ctx context.Context, incidentID string, now time.Time) error
-	// Acknowledge stamps the owner acknowledgement exactly once.
-	Acknowledge(ctx context.Context, incidentID, ownerUserID string, now time.Time) error
+	// Acknowledge stamps the owner acknowledgement exactly once, persisting
+	// the durable idempotency key. A key already used on a different
+	// incident of the same owner is a stable conflict.
+	Acknowledge(ctx context.Context, incidentID, ownerUserID, acknowledgeKey string, now time.Time) error
 	// ListOpenForWorkload returns the open/mitigated incidents of one
 	// workload generation for decision bookkeeping.
 	ListOpenForWorkload(ctx context.Context, workloadID string, generation int64) ([]domain.Incident, error)

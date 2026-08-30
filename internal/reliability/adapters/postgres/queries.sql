@@ -20,7 +20,7 @@ ON CONFLICT (occurrence_digest) DO NOTHING;
 -- name: GetIncident :one
 SELECT id, owner_user_id, project_id, app_instance_id, app_id, workload_id,
        workload_generation, violation, severity, summary, occurrence_digest,
-       evidence_digest, state, restart_outcome, revision,
+       evidence_digest, state, restart_outcome, revision, acknowledge_key,
        acknowledged_at, mitigated_at, resolved_at, created_at, updated_at
 FROM workos_reliability.incidents
 WHERE id = sqlc.arg(id);
@@ -30,7 +30,7 @@ WHERE id = sqlc.arg(id);
 -- caller probes limit+1 rows so a full final page never phantom-pages.
 SELECT i.id, i.owner_user_id, i.project_id, i.app_instance_id, i.app_id, i.workload_id,
        i.workload_generation, i.violation, i.severity, i.summary, i.occurrence_digest,
-       i.evidence_digest, i.state, i.restart_outcome, i.revision,
+       i.evidence_digest, i.state, i.restart_outcome, i.revision, i.acknowledge_key,
        i.acknowledged_at, i.mitigated_at, i.resolved_at, i.created_at, i.updated_at
 FROM workos_reliability.incidents i
 WHERE i.owner_user_id = sqlc.arg(owner_user_id)
@@ -64,19 +64,30 @@ WHERE id = sqlc.arg(id) AND state IN ('open', 'mitigated');
 
 -- name: AcknowledgeIncident :execrows
 -- The owner acknowledgement is a separate fact from mitigation and never
--- claims the fault is repaired; repeat acknowledges are no-ops.
+-- claims the fault is repaired; the idempotency key is persisted so the same
+-- key replays the same state and the (owner, key) uniqueness is enforced by
+-- the partial unique index from 017. Repeat acknowledges are no-ops.
 UPDATE workos_reliability.incidents SET
     acknowledged_at = sqlc.arg(acknowledged_at),
+    acknowledge_key = sqlc.arg(acknowledge_key),
     revision = revision + 1,
     updated_at = sqlc.arg(updated_at)
 WHERE id = sqlc.arg(id)
   AND owner_user_id = sqlc.arg(owner_user_id)
   AND acknowledged_at IS NULL;
 
+-- name: IncidentAcknowledgeKeyExists :one
+SELECT EXISTS (
+    SELECT 1 FROM workos_reliability.incidents
+    WHERE owner_user_id = sqlc.arg(owner_user_id)
+      AND acknowledge_key = sqlc.arg(acknowledge_key)
+      AND id <> sqlc.arg(id)
+) AS exists_on_other;
+
 -- name: ListOpenIncidentsForWorkload :many
 SELECT id, owner_user_id, project_id, app_instance_id, app_id, workload_id,
        workload_generation, violation, severity, summary, occurrence_digest,
-       evidence_digest, state, restart_outcome, revision,
+       evidence_digest, state, restart_outcome, revision, acknowledge_key,
        acknowledged_at, mitigated_at, resolved_at, created_at, updated_at
 FROM workos_reliability.incidents
 WHERE workload_id = sqlc.arg(workload_id)
@@ -144,3 +155,11 @@ VALUES ('supervisor', sqlc.arg(last_poll_at), sqlc.arg(updated_at))
 ON CONFLICT (id) DO UPDATE
 SET last_poll_at = sqlc.arg(last_poll_at),
     updated_at = sqlc.arg(updated_at);
+
+-- name: GetIncidentByOccurrence :one
+SELECT id, owner_user_id, project_id, app_instance_id, app_id, workload_id,
+       workload_generation, violation, severity, summary, occurrence_digest,
+       evidence_digest, state, restart_outcome, revision, acknowledge_key,
+       acknowledged_at, mitigated_at, resolved_at, created_at, updated_at
+FROM workos_reliability.incidents
+WHERE occurrence_digest = sqlc.arg(occurrence_digest);

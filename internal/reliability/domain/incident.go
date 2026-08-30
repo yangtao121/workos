@@ -127,10 +127,13 @@ type Incident struct {
 	RestartOutcome     RestartOutcome
 	Revision           int64
 	AcknowledgedAt     *time.Time
-	MitigatedAt        *time.Time
-	ResolvedAt         *time.Time
-	CreatedAt          time.Time
-	UpdatedAt          time.Time
+	// AcknowledgeKey is the durable idempotency key of the acknowledge
+	// write. It is an internal replay fact and is never projected publicly.
+	AcknowledgeKey string
+	MitigatedAt    *time.Time
+	ResolvedAt     *time.Time
+	CreatedAt      time.Time
+	UpdatedAt      time.Time
 }
 
 // OccurrenceDigest derives the occurrence identity: the same (workload,

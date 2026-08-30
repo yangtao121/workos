@@ -35,6 +35,10 @@ type Config struct {
 	LeaseTTL time.Duration
 	// InstanceName identifies this runtime instance in leases.
 	InstanceName string
+	// VerifyDeviceID is the runtime's own service device identity, paired
+	// with each workload's owner for the private Core re-validation calls
+	// the reconcile loop makes.
+	VerifyDeviceID string
 }
 
 func (c Config) validate() error {
@@ -55,6 +59,9 @@ func (c Config) validate() error {
 	}
 	if c.InstanceName == "" || len(c.InstanceName) > 128 {
 		return errors.New("workload instance name is required")
+	}
+	if !domain.ValidUUIDv7(c.VerifyDeviceID) {
+		return errors.New("workload verify device identity must be a canonical UUIDv7")
 	}
 	return nil
 }
@@ -332,14 +339,14 @@ func (m *Manager) driveLaunch(ctx context.Context, workload domain.Workload, ope
 		return m.failLaunch(ctx, workload, operation, m.classifyEngine(err))
 	}
 	if !facts.Running {
-		// The container started and immediately exited: an honest failure of
-		// the launch, classified from the bounded engine facts.
-		err := m.failLaunch(ctx, workload, operation, domain.ErrFailed)
-		if err == nil {
-			err = domain.ErrFailed
+		// The container started and immediately exited: an honest, bounded
+		// failure of the launch. failLaunch converges the engine object and
+		// the row (non-retryable), classified from the exit facts.
+		cause := domain.ErrFailed
+		if facts.OOMKilled {
+			cause = fmt.Errorf("%w: %s", domain.ErrFailed, domain.ExitOOM)
 		}
-		_ = m.recordExit(ctx, workload, facts)
-		return err
+		return m.failLaunch(ctx, workload, operation, cause)
 	}
 	// Verify the published endpoint is loopback-only before it is ever
 	// persisted or served.
@@ -387,6 +394,15 @@ func (m *Manager) driveLaunch(ctx context.Context, workload domain.Workload, ope
 	if err := m.repository.RecordOperation(ctx, operation); err != nil {
 		return fmt.Errorf("finalize workload operation: %w", err)
 	}
+	// The launch succeeded against Core's freshest facts (the surface path
+	// resolved moments ago): anchor the Core-grace clock here so a later
+	// Core outage burns a bounded window from a real verification point.
+	verifiedAt := now
+	_ = m.repository.Transition(ctx, workload.ID, domain.StateRunning, domain.StateRunning, ports.WorkloadFacts{
+		Generation: workload.Generation, RestartCount: workload.RestartCount,
+		HealthVerdict: domain.HealthOK, LastExit: domain.ExitNone,
+		VerifiedAt: &verifiedAt,
+	}, now)
 	return nil
 }
 
@@ -472,20 +488,6 @@ func (m *Manager) failLaunch(ctx context.Context, workload domain.Workload, oper
 	return cause
 }
 
-// recordExit persists the bounded exit classification of an exited container.
-func (m *Manager) recordExit(ctx context.Context, workload domain.Workload, facts ports.ContainerFacts) error {
-	category := domain.ExitExited
-	if facts.OOMKilled {
-		category = domain.ExitOOM
-	}
-	now := m.now()
-	return m.repository.Transition(ctx, workload.ID, domain.StateStarting, domain.StateFailed, ports.WorkloadFacts{
-		Generation: workload.Generation, RestartCount: workload.RestartCount,
-		HealthVerdict: domain.HealthFailing, LastExit: category,
-		StoppedAt: &now, ClearEngine: true,
-	}, now)
-}
-
 type failure struct {
 	kind      domain.ErrorKind
 	retryable bool
@@ -505,6 +507,12 @@ func classify(err error) failure {
 		return failure{kind: domain.ErrorConflict, retryable: false}
 	case errors.Is(err, domain.ErrInvalid):
 		return failure{kind: domain.ErrorInvalid, retryable: false}
+	case errors.Is(err, domain.ErrCorrupt), errors.Is(err, domain.ErrFailed):
+		// Deterministic failures must converge: the engine object is
+		// removed and the row lands in failed. Treating them as retryable
+		// would leak a live (or drifted) container outside the state
+		// machine's control.
+		return failure{kind: domain.ErrorFailed, retryable: false}
 	default:
 		return failure{kind: domain.ErrorFailed, retryable: true}
 	}

@@ -241,6 +241,15 @@ func (s *Supervisor) decide(ctx context.Context, observation ports.Observation, 
 		if incident.RestartOutcome != domain.OutcomePending {
 			continue
 		}
+		// A restart-budget incident never decides on its own: the source
+		// episode's terminate action key is the single stop authority for
+		// the generation (one workload, one stop), and settleBudgetIncident
+		// closes this incident when that verifiable stop lands. Re-entering
+		// the spent budget here would be the crash loop this bound exists to
+		// end.
+		if incident.Violation == domain.ViolationRestartLimit {
+			continue
+		}
 		stored, err := s.repository.LookupAction(ctx, incident.ID, "restart")
 		if err != nil {
 			return err
@@ -261,13 +270,26 @@ func (s *Supervisor) decide(ctx context.Context, observation ports.Observation, 
 				return err
 			}
 		case ports.ControlLimitExhausted:
-			// The restart budget is spent: report it once — the budget
-			// incident's own decision deterministically stops the workload —
-			// and close the original episode as stopped.
+			// The restart budget is spent: report the budget incident once,
+			// then stop under THIS incident's terminate action key. The
+			// episode closes as stopped only when the stop actually
+			// succeeded; an unavailable stop stays pending and re-drives on
+			// the next poll (the crash window between reporting and stopping
+			// replays the same keys).
 			if err := s.reportLimitExhausted(ctx, incident, now); err != nil {
 				return err
 			}
+			stop, err := s.stopWorkload(ctx, incident, now)
+			if err != nil {
+				return err
+			}
+			if stop.Outcome != ports.ControlStopped {
+				continue
+			}
 			if err := s.repository.UpdateOutcome(ctx, incident.ID, domain.StateMitigated, domain.OutcomeStopped, now); err != nil {
+				return err
+			}
+			if err := s.settleBudgetIncident(ctx, incident, now); err != nil {
 				return err
 			}
 		case ports.ControlStopped:
@@ -286,6 +308,23 @@ func (s *Supervisor) decide(ctx context.Context, observation ports.Observation, 
 		}
 	}
 	return nil
+}
+
+// settleBudgetIncident closes the restart-budget incident once its stop has
+// verifiably succeeded; it stays pending for the stop decision otherwise.
+func (s *Supervisor) settleBudgetIncident(ctx context.Context, source domain.Incident, now time.Time) error {
+	budget, err := s.repository.GetIncidentByOccurrence(ctx, domain.OccurrenceDigest(
+		source.WorkloadID, source.WorkloadGeneration, domain.ViolationRestartLimit, 1))
+	if err != nil {
+		if errors.Is(err, domain.ErrNotFound) {
+			return nil
+		}
+		return err
+	}
+	if budget.State != domain.StateOpen || budget.RestartOutcome != domain.OutcomePending {
+		return nil
+	}
+	return s.repository.UpdateOutcome(ctx, budget.ID, domain.StateMitigated, domain.OutcomeStopped, now)
 }
 
 // reportLimitExhausted creates the restart-budget incident (one per
@@ -317,29 +356,33 @@ func (s *Supervisor) reportIncidentForWorkload(ctx context.Context, source domai
 	if err != nil {
 		return err
 	}
-	if !created {
-		return nil
-	}
-	// The budget incident's own decision is a stop, not a restart.
-	if err := s.stopWorkload(ctx, incident, now); err != nil {
-		return err
-	}
-	return s.repository.UpdateOutcome(ctx, incident.ID, domain.StateMitigated, domain.OutcomeStopped, now)
+	// The stop decision runs under the caller's terminate action key in
+	// decide(): creating the incident and executing the stop are two
+	// idempotent steps, so a crash between them replays both instead of
+	// reporting a stopped workload that was never stopped.
+	_ = created
+	return nil
 }
 
-func (s *Supervisor) stopWorkload(ctx context.Context, incident domain.Incident, now time.Time) error {
+// stopWorkload executes (or replays) the incident's terminate action and
+// returns the sanitized outcome. It never interprets the outcome: the caller
+// decides what a stopped/unavailable verdict means for the episode.
+func (s *Supervisor) stopWorkload(ctx context.Context, incident domain.Incident, now time.Time) (ports.ControlResult, error) {
 	stored, err := s.repository.LookupAction(ctx, incident.ID, "terminate")
 	if err != nil {
-		return err
+		return ports.ControlResult{}, err
 	}
 	if stored.IncidentID != "" && stored.Outcome != ports.ControlUnavailable && stored.Outcome != ports.ControlFailed {
-		return nil
+		return ports.ControlResult{Outcome: stored.Outcome, Generation: stored.ResultGeneration}, nil
 	}
 	result, err := s.controller.Stop(ctx, incident.WorkloadID, "reliability:stop:"+incident.ID, "restart_limit")
 	if err != nil {
-		return err
+		return ports.ControlResult{}, err
 	}
-	return s.repository.RecordAction(ctx, incident.ID, "terminate", result, now)
+	if err := s.repository.RecordAction(ctx, incident.ID, "terminate", result, now); err != nil {
+		return ports.ControlResult{}, err
+	}
+	return result, nil
 }
 
 func (s *Supervisor) resolveGenerationIncidents(ctx context.Context, observation ports.Observation, now time.Time) error {

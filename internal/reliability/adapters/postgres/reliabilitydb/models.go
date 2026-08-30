@@ -10,29 +10,6 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-type WorkosReliabilityIncident struct {
-	ID                 string     `json:"id"`
-	OwnerUserID        string     `json:"owner_user_id"`
-	ProjectID          string     `json:"project_id"`
-	AppInstanceID      string     `json:"app_instance_id"`
-	AppID              string     `json:"app_id"`
-	WorkloadID         string     `json:"workload_id"`
-	WorkloadGeneration int64      `json:"workload_generation"`
-	Violation          string     `json:"violation"`
-	Severity           string     `json:"severity"`
-	Summary            string     `json:"summary"`
-	OccurrenceDigest   string     `json:"occurrence_digest"`
-	EvidenceDigest     string     `json:"evidence_digest"`
-	State              string     `json:"state"`
-	RestartOutcome     string     `json:"restart_outcome"`
-	Revision           int64      `json:"revision"`
-	AcknowledgedAt     *time.Time `json:"acknowledged_at"`
-	MitigatedAt        *time.Time `json:"mitigated_at"`
-	ResolvedAt         *time.Time `json:"resolved_at"`
-	CreatedAt          time.Time  `json:"created_at"`
-	UpdatedAt          time.Time  `json:"updated_at"`
-}
-
 type WorkosReliabilityIncidentAction struct {
 	IncidentID       string      `json:"incident_id"`
 	Action           string      `json:"action"`

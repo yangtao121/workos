@@ -4,6 +4,7 @@ package integration_test
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -11,6 +12,8 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/yangtao121/workos/internal/platform/migrations"
+	reliabilitypostgres "github.com/yangtao121/workos/internal/reliability/adapters/postgres"
+	reliabilitydomain "github.com/yangtao121/workos/internal/reliability/domain"
 )
 
 // TestSupervisedWorkloadMigrationsFromEmptyDatabase proves 015/016 apply
@@ -130,3 +133,67 @@ func TestSupervisedWorkloadMigrationsFromEmptyDatabase(t *testing.T) {
 }
 
 var _ = migrations.Run
+
+// TestIncidentAcknowledgeKeyPersistence proves the acknowledge idempotency
+// key is a persisted, uniqueness-enforced fact: same key replays the same
+// acknowledged state, and a key reused on a different incident of the same
+// owner is a stable conflict.
+func TestIncidentAcknowledgeKeyPersistence(t *testing.T) {
+	t.Parallel()
+	dsn := scratchDatabase(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	if err := migrations.Run(ctx, dsn); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+	pool, err := pgxpool.New(ctx, dsn)
+	if err != nil {
+		t.Fatalf("connect: %v", err)
+	}
+	defer pool.Close()
+	repository, err := reliabilitypostgres.New(pool)
+	if err != nil {
+		t.Fatalf("repository: %v", err)
+	}
+	ownerID := "0198d7ea-2110-7c42-b659-c5e4d73bc341"
+	now := time.Now().UTC()
+
+	newIncident := func(id string) reliabilitydomain.Incident {
+		return reliabilitydomain.Incident{
+			ID: id, OwnerUserID: ownerID, ProjectID: "0198d7ea-2110-7c42-b659-c5e4d73bc342",
+			AppInstanceID: "0198d7ea-2110-7c42-b659-c5e4d73bc343", AppID: "container-app",
+			WorkloadID: "0198d7ea-2110-7c42-b659-c5e4d73bc361", WorkloadGeneration: 1,
+			Violation: reliabilitydomain.ViolationUnexpectedExit, Summary: "The app workload exited unexpectedly and was not restarted by the engine.",
+			OccurrenceDigest: "sha256:" + strings.Repeat(id[len(id)-1:], 64),
+			EvidenceDigest:   "sha256:" + strings.Repeat("e", 64),
+			State:            reliabilitydomain.StateOpen, RestartOutcome: reliabilitydomain.OutcomePending,
+			Revision: 1, CreatedAt: now, UpdatedAt: now,
+		}
+	}
+	first := "0198d7ea-2110-7c42-b659-c5e4d73bc371"
+	second := "0198d7ea-2110-7c42-b659-c5e4d73bc372"
+	for _, id := range []string{first, second} {
+		if created, err := repository.CreateIncident(ctx, newIncident(id)); err != nil || !created {
+			t.Fatalf("create %s: created=%v err=%v", id, created, err)
+		}
+	}
+	if err := repository.Acknowledge(ctx, first, ownerID, "ack-key-a", now); err != nil {
+		t.Fatalf("acknowledge first: %v", err)
+	}
+	// Same key, same incident: exact replay.
+	if err := repository.Acknowledge(ctx, first, ownerID, "ack-key-a", now); err != nil {
+		t.Fatalf("same-key replay: %v", err)
+	}
+	// Same key, different incident of the same owner: stable conflict.
+	if err := repository.Acknowledge(ctx, second, ownerID, "ack-key-a", now); !errors.Is(err, reliabilitydomain.ErrIdempotencyConflict) {
+		t.Fatalf("key reuse verdict %v, want conflict", err)
+	}
+	// The second incident acknowledges under its own key.
+	if err := repository.Acknowledge(ctx, second, ownerID, "ack-key-b", now); err != nil {
+		t.Fatalf("acknowledge second: %v", err)
+	}
+	stored, err := repository.GetIncident(ctx, first)
+	if err != nil || stored.AcknowledgedAt == nil || stored.AcknowledgeKey != "ack-key-a" {
+		t.Fatalf("first ack facts stored=%+v err=%v", stored, err)
+	}
+}

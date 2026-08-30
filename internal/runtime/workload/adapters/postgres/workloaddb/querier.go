@@ -9,6 +9,9 @@ import (
 )
 
 type Querier interface {
+	// Bookkeeping only: claiming the reconcile lease deliberately does NOT
+	// touch updated_at, which anchors the idle TTL — a merely observed workload
+	// is not an actively used one.
 	ClaimWorkloadLease(ctx context.Context, arg ClaimWorkloadLeaseParams) (int64, error)
 	GetActiveWorkloadByInstance(ctx context.Context, arg GetActiveWorkloadByInstanceParams) (WorkosRuntimeWorkload, error)
 	GetWorkload(ctx context.Context, id string) (WorkosRuntimeWorkload, error)
@@ -28,6 +31,8 @@ type Querier interface {
 	// Generic guarded transition for stopping/failed/stopped landings; the
 	// caller supplies the bounded fact bundle explicitly.
 	SetWorkloadState(ctx context.Context, arg SetWorkloadStateParams) (int64, error)
+	// Bookkeeping only: the verification stamp anchors the Core-grace clock and
+	// deliberately does NOT touch updated_at, which anchors the idle TTL.
 	StampWorkloadVerified(ctx context.Context, arg StampWorkloadVerifiedParams) (int64, error)
 	// Records or finalizes one operation verdict; the request_digest never
 	// changes after the first reserve.

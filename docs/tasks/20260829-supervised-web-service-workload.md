@@ -88,6 +88,34 @@ blocker 失败（不计 PASS）；任务保持 active，`container-runner`/Relia
 - 提交内容检查：无凭据/token/真实用户内容；无 ELF、镜像归档、Playwright trace/视频、
   临时数据库或 root 文件；`git diff --check` 干净。
 
+### 审查修复（2026-08-30，第一轮评审 8 项全部落地）
+
+1. **P0 cgroup 路径**：`absoluteSubtree` 把 /proc 的相对路径join 到统一挂载点
+   （`/sys/fs/cgroup`），probe/resolve/read 全链路绝对化；`ErrCorrupt`/`ErrFailed` 改为
+   非重试分类，corrupt 启动失败现在确定性地移除容器并落 failed（含测试断言容器计数为 0）。
+2. **P0 网络**：`ensureInternalNetwork` 对已存在网络 inspect `{{.Internal}}`，非 internal 的
+   同名网络直接拒绝能力（不静默重建）；probe 测试覆盖 refuse 路径与 create/verify 路径。
+3. **P0 reconcile 身份**：reconcile 的 Core 重验注入 owner+runtime 服务 device identity
+   （Config.VerifyDeviceID，启动校验）；postgres `Transition` 支持 verified 自转换
+   （专用 guarded UPDATE，不触碰其他列）；启动成功即锚定 `last_verified_at`，nil 回退
+   created_at，Core grace fail-safe 现在真实可达。
+4. **P0 stop 语义**：stopWorkload 返回 sanitized outcome；仅 ControlStopped 才把 incident
+   落 stopped——unavailable/failed 保持 open/pending，下一轮以同一 action key 重驱
+   （crash window：创建 Incident 与执行 stop 分离、各自幂等）；预算 Incident 不再自持
+   stop 权（单一 stop 权威 = 原 episode 的 terminate key），由 settle 关闭；新增
+   unavailable→re-drive→stopped 的两轮 poll 测试。
+5. **P1 lease/verified 不刷 updated_at**：两个 bookkeeping UPDATE 不再触碰 idle TTL 锚点。
+6. **P1 幂等**：acknowledge key 持久化（migration `017`：incidents.acknowledge_key +
+   (owner,key) 部分唯一索引；写前预检 + 23505 分类为冲突）；restart/terminate 的已完成
+   非 retryable verdict 按 recorded error 精确 replay（limit-exhausted 重放拒绝而非伪造
+   成功，含 manager 测试）。
+7. **P1 Location**：`Location` 加入无条件剥除列表，只有通过严格 path grammar 的重写才重新
+   附上 session 前缀内的地址（proxy round-trip 测试覆盖 external/protocol-relative/encoded
+   丢弃 + 相对路径重写 + cookie 剥除 + 固定 CSP）。
+8. **P1 门禁本体**：`make test-podman-fixture` 改为容器内编译测试二进制与 fixture payload、
+   在宿主执行（podman/user session/cgroup 都在宿主）；fixture 构建目录修正为只含
+   Containerfile + 定名 payload；无 podman 宿主仍 loudly fail。
+
 ### 未决风险与下一步
 
 1. 真实 rootless 证据链（fixture image 构建→digest pin→E2E→截图→status 升级）需要在具备

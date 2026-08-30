@@ -45,14 +45,19 @@ func cgroupV2MountPoint() (string, error) {
 	return unified, nil
 }
 
-// SelfSubtree returns this process's delegated cgroup v2 subtree: the single
-// `0::/path` entry of /proc/self/cgroup. Every workload cgroup path must live
-// under this subtree.
+// SelfSubtree returns this process's delegated cgroup v2 subtree as an
+// absolute path under the unified mount point: the single `0::/path` entry
+// of /proc/self/cgroup joined onto the cgroup2 mount. Every workload cgroup
+// path must live under this subtree.
 func SelfSubtree() (string, error) {
-	return procSubtree("/proc/self/cgroup")
+	return absoluteSubtree("/sys/fs/cgroup", "/proc/self/cgroup")
 }
 
-func procSubtree(procPath string) (string, error) {
+// absoluteSubtree reads one /proc/<pid>/cgroup file and joins the unified
+// `0::/path` entry onto mountPoint. The kernel reports the path relative to
+// the hierarchy root; every consumer (validation, reads) requires the
+// absolute location, so the join happens here — exactly once.
+func absoluteSubtree(mountPoint, procPath string) (string, error) {
 	content, err := os.ReadFile(procPath)
 	if err != nil {
 		return "", err
@@ -62,20 +67,25 @@ func procSubtree(procPath string) (string, error) {
 		if !found || hydrated != "0" {
 			continue
 		}
-		if path == "" {
-			return "/", nil
+		if path == "" || path == "/" {
+			return strings.TrimSuffix(mountPoint, "/"), nil
 		}
-		return strings.TrimSuffix(path, "/"), nil
+		return filepath.Join(mountPoint, path), nil
 	}
 	return "", errors.New("process has no cgroup v2 entry")
 }
 
-// CgroupPathForPID resolves the host cgroup v2 path of one process.
+// CgroupPathForPID resolves the absolute host cgroup v2 path of one process.
 func (r *CgroupReader) CgroupPathForPID(pid int) (string, error) {
 	if pid <= 0 {
 		return "", errors.New("invalid pid")
 	}
-	return procSubtree(fmt.Sprintf("/proc/%d/cgroup", pid))
+	return absoluteSubtree(r.mountPoint, fmt.Sprintf("/proc/%d/cgroup", pid))
+}
+
+// SelfSubtree returns this reader's mount-absolute delegated subtree.
+func (r *CgroupReader) SelfSubtree() (string, error) {
+	return absoluteSubtree(r.mountPoint, "/proc/self/cgroup")
 }
 
 func (r *CgroupReader) read(path, file string) (string, error) {
@@ -267,6 +277,3 @@ func (r *UnavailableCgroupReader) ReadEffective(context.Context, string) (ports.
 func (r *UnavailableCgroupReader) ReadCounters(context.Context, string) (ports.CgroupCounters, error) {
 	return ports.CgroupCounters{}, errors.New("cgroup v2 is not available")
 }
-
-// SelfSubtree returns this process's delegated cgroup v2 subtree.
-func (r *CgroupReader) SelfSubtree() (string, error) { return SelfSubtree() }

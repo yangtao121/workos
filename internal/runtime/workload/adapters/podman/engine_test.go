@@ -174,6 +174,9 @@ func TestCreateContainerRejectsMalformedSpecs(t *testing.T) {
 	}
 }
 
+// rootlessProbeInfo is a capable `podman info` document for the probe tests.
+var rootlessProbeInfo = []byte(`{"host":{"cgroupVersion":"v2","security":{"rootless":true}},"version":{"Version":"5.0.0"}}`)
+
 // TestProbeVerifiesRootlessAndCgroupV2 pins the capability verdicts: rootful
 // engines, cgroup v1 hosts, and unreadable output are all honestly false.
 func TestProbeVerifiesRootlessAndCgroupV2(t *testing.T) {
@@ -181,6 +184,7 @@ func TestProbeVerifiesRootlessAndCgroupV2(t *testing.T) {
 	rootfulInfo := []byte(`{"host":{"cgroupVersion":"v2","security":{"rootless":false}},"version":{"Version":"5.0.0"}}`)
 	cgroupV1Info := []byte(`{"host":{"cgroupVersion":"v1","security":{"rootless":true}},"version":{"Version":"5.0.0"}}`)
 
+	networkArgs := []string{"network", "ls"}
 	cases := []struct {
 		name       string
 		output     []byte
@@ -197,13 +201,15 @@ func TestProbeVerifiesRootlessAndCgroupV2(t *testing.T) {
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {
 			var calls []capturedCall
-			engine := newCapturingEngine(&calls, func([]string) ([]byte, error) {
+			engine := newCapturingEngine(&calls, func(args []string) ([]byte, error) {
+				if sameArgs(args[1:], networkArgs) {
+					return []byte("workos-app-internal\n"), nil
+				}
+				if strings.Contains(strings.Join(args, " "), "network inspect") {
+					return []byte("true\n"), nil
+				}
 				return testCase.output, testCase.outputErr
 			})
-			// The network check would run after the info probe; make it
-			// succeed for the capable case by reusing the same output shape —
-			// the fake returns the info JSON for every call, so the network
-			// listing contains no name and the create runs; both succeed.
 			capability, err := engine.Probe(context.Background())
 			if err != nil {
 				t.Fatalf("Probe returned an error: %v", err)
@@ -216,6 +222,50 @@ func TestProbeVerifiesRootlessAndCgroupV2(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestProbeRefusesNonInternalNetwork pins the egress boundary: a same-named
+// network that is not internal is a hard capability refusal, and the adapter
+// never recreates it silently.
+func TestProbeRefusesNonInternalNetwork(t *testing.T) {
+	var calls []capturedCall
+	engine := newCapturingEngine(&calls, func(args []string) ([]byte, error) {
+		switch {
+		case strings.Contains(strings.Join(args, " "), "network ls"):
+			return []byte("workos-app-internal\n"), nil
+		case strings.Contains(strings.Join(args, " "), "network inspect"):
+			return []byte("false\n"), nil
+		default:
+			return rootlessProbeInfo, nil
+		}
+	})
+	capability, err := engine.Probe(context.Background())
+	if err != nil {
+		t.Fatalf("Probe: %v", err)
+	}
+	if capability.Available {
+		t.Fatalf("non-internal network accepted")
+	}
+	if !strings.Contains(capability.Reason, "workload network") {
+		t.Fatalf("reason %q does not name the network boundary", capability.Reason)
+	}
+	for _, call := range calls {
+		if strings.Contains(strings.Join(call.args, " "), "network create") {
+			t.Fatalf("adapter recreated the foreign network instead of refusing")
+		}
+	}
+}
+
+func sameArgs(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for index := range a {
+		if a[index] != b[index] {
+			return false
+		}
+	}
+	return true
 }
 
 // TestNewRequiresResolvableBinary pins that a missing podman is a

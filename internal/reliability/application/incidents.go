@@ -106,7 +106,7 @@ func (s *IncidentService) Acknowledge(ctx context.Context, ownerUserID, incident
 	if incident.OwnerUserID != ownerUserID {
 		return domain.Incident{}, domain.ErrNotFound
 	}
-	if err := s.repository.Acknowledge(ctx, incidentID, ownerUserID, s.now()); err != nil {
+	if err := s.repository.Acknowledge(ctx, incidentID, ownerUserID, idempotencyKey, s.now()); err != nil {
 		return domain.Incident{}, err
 	}
 	return s.repository.GetIncident(ctx, incidentID)

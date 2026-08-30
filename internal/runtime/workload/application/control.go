@@ -42,6 +42,14 @@ func (m *Manager) Restart(ctx context.Context, command ports.RestartCommand) (do
 			return domain.Workload{}, domain.ErrIdempotencyConflict
 		}
 		if stored.Completed() && !stored.Retryable() {
+			// Replay the recorded verdict verbatim: a limit-exhausted or
+			// otherwise refused decision stays refused on replay, and a
+			// completed success replays success. Returning success for a
+			// recorded refusal would let the supervisor believe a restart
+			// happened twice.
+			if err := replayWorkloadError(stored.ErrorKind); err != nil {
+				return domain.Workload{}, err
+			}
 			return workload, nil
 		}
 	} else {
@@ -205,5 +213,23 @@ func (m *Manager) removeContainer(ctx context.Context, containerID, containerNam
 			!errors.Is(err, ports.ErrContainerNotFound) && !errors.Is(err, ports.ErrEngineUnavailable) {
 			m.logger.Warn("workload container remove failed", "error", err)
 		}
+	}
+}
+
+// replayWorkloadError reconstructs the sanitized error of a recorded
+// terminal operation verdict so idempotent replays return exactly the first
+// decision, never a fabricated success.
+func replayWorkloadError(kind domain.ErrorKind) error {
+	switch kind {
+	case domain.ErrorLimitExhausted:
+		return domain.ErrRestartLimitExhausted
+	case domain.ErrorConflict:
+		return domain.ErrIdempotencyConflict
+	case domain.ErrorUnsupported:
+		return domain.ErrUnsupported
+	case domain.ErrorInvalid:
+		return domain.ErrInvalid
+	default:
+		return nil
 	}
 }

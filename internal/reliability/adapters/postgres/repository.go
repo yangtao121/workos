@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 
@@ -66,6 +67,17 @@ func (r *Repository) GetIncident(ctx context.Context, incidentID string) (domain
 	return incidentFromRow(row), nil
 }
 
+func (r *Repository) GetIncidentByOccurrence(ctx context.Context, occurrenceDigest string) (domain.Incident, error) {
+	row, err := r.queries.GetIncidentByOccurrence(ctx, occurrenceDigest)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return domain.Incident{}, domain.ErrNotFound
+		}
+		return domain.Incident{}, storeError("get incident by occurrence", err)
+	}
+	return incidentFromRow(row), nil
+}
+
 func (r *Repository) ListIncidents(ctx context.Context, filter ports.IncidentFilter, limit int) ([]domain.Incident, error) {
 	rows, err := r.queries.ListIncidentsPage(ctx, reliabilitydb.ListIncidentsPageParams{
 		OwnerUserID: filter.OwnerUserID, ProjectID: filter.ProjectID,
@@ -113,21 +125,47 @@ func (r *Repository) MarkResolved(ctx context.Context, incidentID string, now ti
 	return nil
 }
 
-func (r *Repository) Acknowledge(ctx context.Context, incidentID, ownerUserID string, now time.Time) error {
+// Acknowledge stamps the owner acknowledgement with its durable idempotency
+// key. Same key replays the same acknowledged state; a key already used on a
+// different incident of the same owner is a stable conflict (checked before
+// the write and enforced by the 017 partial unique index under concurrency).
+func (r *Repository) Acknowledge(ctx context.Context, incidentID, ownerUserID, acknowledgeKey string, now time.Time) error {
+	if conflict, err := r.queries.IncidentAcknowledgeKeyExists(ctx, reliabilitydb.IncidentAcknowledgeKeyExistsParams{
+		OwnerUserID: ownerUserID, AcknowledgeKey: textParam(acknowledgeKey), ID: incidentID,
+	}); err != nil {
+		return storeError("check acknowledge key", err)
+	} else if conflict {
+		return domain.ErrIdempotencyConflict
+	}
 	rows, err := r.queries.AcknowledgeIncident(ctx, reliabilitydb.AcknowledgeIncidentParams{
-		AcknowledgedAt: &now, UpdatedAt: now, ID: incidentID, OwnerUserID: ownerUserID,
+		AcknowledgedAt: &now, AcknowledgeKey: textParam(acknowledgeKey),
+		UpdatedAt: now, ID: incidentID, OwnerUserID: ownerUserID,
 	})
 	if err != nil {
+		if isUniqueViolation(err) {
+			return domain.ErrIdempotencyConflict
+		}
 		return storeError("acknowledge incident", err)
 	}
 	if rows == 0 {
 		// Already acknowledged (no-op success) or foreign/unknown. The
-		// caller re-reads to classify.
+		// re-read classifies without leaking which.
 		if _, getErr := r.GetIncident(ctx, incidentID); getErr != nil {
 			return getErr
 		}
 	}
 	return nil
+}
+
+// isUniqueViolation classifies the SQLSTATE unique-violation code for the
+// acknowledge-key conflict; the code is a classification input only and
+// never reaches an error message or log.
+func isUniqueViolation(err error) bool {
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) {
+		return pgErr.Code == "23505"
+	}
+	return false
 }
 
 func (r *Repository) ListOpenForWorkload(ctx context.Context, workloadID string, generation int64) ([]domain.Incident, error) {
@@ -256,24 +294,69 @@ func (r *Repository) SaveCheckpoint(ctx context.Context, at time.Time) error {
 	return nil
 }
 
-func incidentFromRow(row reliabilitydb.WorkosReliabilityIncident) domain.Incident {
+// incidentFromRow mirrors the incident columns of every sqlc row shape
+// under the exhaustive-switch discipline the surface module pinned: each
+// query that returns a full incident row MUST be listed, and
+// TestIncidentRowShapesCarryAcknowledgeKey pins the coverage — a missing
+// case would silently drop the acknowledge replay fact.
+func incidentFromRow(row any) domain.Incident {
+	incident := domain.Incident{}
+	switch value := row.(type) {
+	case reliabilitydb.GetIncidentRow:
+		incident = incidentFromColumns(value.ID, value.OwnerUserID, value.ProjectID,
+			value.AppInstanceID, value.AppID, value.WorkloadID, value.WorkloadGeneration,
+			value.Violation, value.Summary, value.OccurrenceDigest, value.EvidenceDigest,
+			value.State, value.RestartOutcome, value.Revision,
+			value.AcknowledgedAt, value.MitigatedAt, value.ResolvedAt, value.CreatedAt, value.UpdatedAt)
+		incident.AcknowledgeKey = value.AcknowledgeKey.String
+	case reliabilitydb.GetIncidentByOccurrenceRow:
+		incident = incidentFromColumns(value.ID, value.OwnerUserID, value.ProjectID,
+			value.AppInstanceID, value.AppID, value.WorkloadID, value.WorkloadGeneration,
+			value.Violation, value.Summary, value.OccurrenceDigest, value.EvidenceDigest,
+			value.State, value.RestartOutcome, value.Revision,
+			value.AcknowledgedAt, value.MitigatedAt, value.ResolvedAt, value.CreatedAt, value.UpdatedAt)
+		incident.AcknowledgeKey = value.AcknowledgeKey.String
+	case reliabilitydb.ListIncidentsPageRow:
+		incident = incidentFromColumns(value.ID, value.OwnerUserID, value.ProjectID,
+			value.AppInstanceID, value.AppID, value.WorkloadID, value.WorkloadGeneration,
+			value.Violation, value.Summary, value.OccurrenceDigest, value.EvidenceDigest,
+			value.State, value.RestartOutcome, value.Revision,
+			value.AcknowledgedAt, value.MitigatedAt, value.ResolvedAt, value.CreatedAt, value.UpdatedAt)
+		incident.AcknowledgeKey = value.AcknowledgeKey.String
+	case reliabilitydb.ListOpenIncidentsForWorkloadRow:
+		incident = incidentFromColumns(value.ID, value.OwnerUserID, value.ProjectID,
+			value.AppInstanceID, value.AppID, value.WorkloadID, value.WorkloadGeneration,
+			value.Violation, value.Summary, value.OccurrenceDigest, value.EvidenceDigest,
+			value.State, value.RestartOutcome, value.Revision,
+			value.AcknowledgedAt, value.MitigatedAt, value.ResolvedAt, value.CreatedAt, value.UpdatedAt)
+		incident.AcknowledgeKey = value.AcknowledgeKey.String
+	}
+	return incident
+}
+
+func incidentFromColumns(
+	id, ownerUserID, projectID, appInstanceID, appID, workloadID string,
+	workloadGeneration int64, violation, summary, occurrenceDigest, evidenceDigest,
+	state, restartOutcome string, revision int64,
+	acknowledgedAt, mitigatedAt, resolvedAt *time.Time, createdAt, updatedAt time.Time,
+) domain.Incident {
 	incident := domain.Incident{
-		ID: row.ID, OwnerUserID: row.OwnerUserID, ProjectID: row.ProjectID,
-		AppInstanceID: row.AppInstanceID, AppID: row.AppID,
-		WorkloadID: row.WorkloadID, WorkloadGeneration: row.WorkloadGeneration,
-		Violation: domain.Violation(row.Violation), Summary: row.Summary,
-		OccurrenceDigest: row.OccurrenceDigest, EvidenceDigest: row.EvidenceDigest,
-		State: domain.State(row.State), RestartOutcome: domain.RestartOutcome(row.RestartOutcome),
-		Revision: row.Revision, CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt,
+		ID: id, OwnerUserID: ownerUserID, ProjectID: projectID,
+		AppInstanceID: appInstanceID, AppID: appID,
+		WorkloadID: workloadID, WorkloadGeneration: workloadGeneration,
+		Violation: domain.Violation(violation), Summary: summary,
+		OccurrenceDigest: occurrenceDigest, EvidenceDigest: evidenceDigest,
+		State: domain.State(state), RestartOutcome: domain.RestartOutcome(restartOutcome),
+		Revision: revision, CreatedAt: createdAt, UpdatedAt: updatedAt,
 	}
-	if row.AcknowledgedAt != nil {
-		incident.AcknowledgedAt = row.AcknowledgedAt
+	if acknowledgedAt != nil {
+		incident.AcknowledgedAt = acknowledgedAt
 	}
-	if row.MitigatedAt != nil {
-		incident.MitigatedAt = row.MitigatedAt
+	if mitigatedAt != nil {
+		incident.MitigatedAt = mitigatedAt
 	}
-	if row.ResolvedAt != nil {
-		incident.ResolvedAt = row.ResolvedAt
+	if resolvedAt != nil {
+		incident.ResolvedAt = resolvedAt
 	}
 	return incident
 }
@@ -293,4 +376,9 @@ func storeError(operation string, err error) error {
 		return fmt.Errorf("%s: %w: %w", operation, domain.ErrUnavailable, err)
 	}
 	return fmt.Errorf("%s: %w", operation, err)
+}
+
+// textParam maps an empty string to SQL NULL and keeps real values intact.
+func textParam(value string) pgtype.Text {
+	return pgtype.Text{String: value, Valid: value != ""}
 }

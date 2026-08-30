@@ -66,6 +66,10 @@ var strippedResponseHeaders = []string{
 	"Referrer-Policy", "Cache-Control", "Strict-Transport-Security",
 	"Permissions-Policy", "Cross-Origin-Opener-Policy", "Cross-Origin-Embedder-Policy",
 	"Cross-Origin-Resource-Policy",
+	// Redirects never pass through the filter: the backend cannot navigate
+	// the surface anywhere. Only a rewrite that passes the strict path
+	// grammar re-attaches a Location inside the owning session prefix.
+	"Location",
 }
 
 // defaultProxyRoundTripper performs the filtered round trip against the

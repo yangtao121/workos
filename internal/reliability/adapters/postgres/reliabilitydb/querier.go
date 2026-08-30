@@ -10,11 +10,15 @@ import (
 
 type Querier interface {
 	// The owner acknowledgement is a separate fact from mitigation and never
-	// claims the fault is repaired; repeat acknowledges are no-ops.
+	// claims the fault is repaired; the idempotency key is persisted so the same
+	// key replays the same state and the (owner, key) uniqueness is enforced by
+	// the partial unique index from 017. Repeat acknowledges are no-ops.
 	AcknowledgeIncident(ctx context.Context, arg AcknowledgeIncidentParams) (int64, error)
-	GetIncident(ctx context.Context, id string) (WorkosReliabilityIncident, error)
+	GetIncident(ctx context.Context, id string) (GetIncidentRow, error)
 	GetIncidentAction(ctx context.Context, arg GetIncidentActionParams) (WorkosReliabilityIncidentAction, error)
+	GetIncidentByOccurrence(ctx context.Context, occurrenceDigest string) (GetIncidentByOccurrenceRow, error)
 	GetSupervisorCheckpoint(ctx context.Context) (WorkosReliabilitySupervisorCheckpoint, error)
+	IncidentAcknowledgeKeyExists(ctx context.Context, arg IncidentAcknowledgeKeyExistsParams) (bool, error)
 	// Reliability Incident persistence queries (reliability-host owned tables
 	// only; the runtime schema is never queried).
 	// The occurrence_digest unique key is the at-least-once arbiter: a replayed
@@ -22,8 +26,8 @@ type Querier interface {
 	InsertIncident(ctx context.Context, arg InsertIncidentParams) (int64, error)
 	// Owner-scoped, project-optional, keyed pagination on (created_at, id). The
 	// caller probes limit+1 rows so a full final page never phantom-pages.
-	ListIncidentsPage(ctx context.Context, arg ListIncidentsPageParams) ([]WorkosReliabilityIncident, error)
-	ListOpenIncidentsForWorkload(ctx context.Context, arg ListOpenIncidentsForWorkloadParams) ([]WorkosReliabilityIncident, error)
+	ListIncidentsPage(ctx context.Context, arg ListIncidentsPageParams) ([]ListIncidentsPageRow, error)
+	ListOpenIncidentsForWorkload(ctx context.Context, arg ListOpenIncidentsForWorkloadParams) ([]ListOpenIncidentsForWorkloadRow, error)
 	LoadSupervisorProgress(ctx context.Context, workloadID string) (WorkosReliabilitySupervisorWorkload, error)
 	MarkIncidentResolved(ctx context.Context, arg MarkIncidentResolvedParams) (int64, error)
 	UpdateIncidentOutcome(ctx context.Context, arg UpdateIncidentOutcomeParams) (int64, error)

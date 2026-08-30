@@ -16,27 +16,27 @@ import (
 const claimWorkloadLease = `-- name: ClaimWorkloadLease :execrows
 UPDATE workos_runtime.workloads SET
     lease_owner = $1,
-    lease_expires_at = $2,
-    updated_at = $3
-WHERE id = $4
+    lease_expires_at = $2
+WHERE id = $3
   AND (lease_owner = $1
        OR lease_expires_at IS NULL
-       OR lease_expires_at < $5)
+       OR lease_expires_at < $4)
 `
 
 type ClaimWorkloadLeaseParams struct {
 	LeaseOwner     pgtype.Text `json:"lease_owner"`
 	LeaseExpiresAt *time.Time  `json:"lease_expires_at"`
-	UpdatedAt      time.Time   `json:"updated_at"`
 	ID             string      `json:"id"`
 	Now            *time.Time  `json:"now"`
 }
 
+// Bookkeeping only: claiming the reconcile lease deliberately does NOT
+// touch updated_at, which anchors the idle TTL — a merely observed workload
+// is not an actively used one.
 func (q *Queries) ClaimWorkloadLease(ctx context.Context, arg ClaimWorkloadLeaseParams) (int64, error) {
 	result, err := q.db.Exec(ctx, claimWorkloadLease,
 		arg.LeaseOwner,
 		arg.LeaseExpiresAt,
-		arg.UpdatedAt,
 		arg.ID,
 		arg.Now,
 	)
@@ -524,19 +524,19 @@ func (q *Queries) SetWorkloadState(ctx context.Context, arg SetWorkloadStatePara
 
 const stampWorkloadVerified = `-- name: StampWorkloadVerified :execrows
 UPDATE workos_runtime.workloads SET
-    last_verified_at = $1,
-    updated_at = $2
-WHERE id = $3 AND state = 'running'
+    last_verified_at = $1
+WHERE id = $2 AND state = 'running'
 `
 
 type StampWorkloadVerifiedParams struct {
 	VerifiedAt *time.Time `json:"verified_at"`
-	UpdatedAt  time.Time  `json:"updated_at"`
 	ID         string     `json:"id"`
 }
 
+// Bookkeeping only: the verification stamp anchors the Core-grace clock and
+// deliberately does NOT touch updated_at, which anchors the idle TTL.
 func (q *Queries) StampWorkloadVerified(ctx context.Context, arg StampWorkloadVerifiedParams) (int64, error) {
-	result, err := q.db.Exec(ctx, stampWorkloadVerified, arg.VerifiedAt, arg.UpdatedAt, arg.ID)
+	result, err := q.db.Exec(ctx, stampWorkloadVerified, arg.VerifiedAt, arg.ID)
 	if err != nil {
 		return 0, err
 	}

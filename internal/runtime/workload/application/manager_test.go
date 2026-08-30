@@ -244,6 +244,11 @@ func TestRestartAdvancesGenerationAndLimit(t *testing.T) {
 	if !errors.Is(err, domain.ErrRestartLimitExhausted) {
 		t.Fatalf("third restart verdict %v, want limit exhausted", err)
 	}
+	// The recorded refusal replays verbatim: same key, same verdict — never
+	// a fabricated success.
+	if _, err := manager.Restart(ctx, ports.RestartCommand{WorkloadID: workload.ID, OperationKey: "action-3"}); !errors.Is(err, domain.ErrRestartLimitExhausted) {
+		t.Fatalf("limit-exhausted replay verdict %v, want the recorded refusal", err)
+	}
 }
 
 // TestRestartFromFailedWorkload pins the crash-loop repair path: a failed
@@ -450,6 +455,11 @@ func TestLaunchFailsClosedOnPolicyAndEndpointDrift(t *testing.T) {
 	engine.mu.Unlock()
 	if _, err := manager.Ensure(ctx, testEnsure("key-b")); err == nil {
 		t.Fatalf("non-loopback endpoint accepted")
+	}
+	// The corrupt convergence removed the drifted container: a failed
+	// verification never leaks a live engine object.
+	if engine.containerCount() != 0 {
+		t.Fatalf("drifted launch kept %d containers", engine.containerCount())
 	}
 }
 

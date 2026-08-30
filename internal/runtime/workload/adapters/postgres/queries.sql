@@ -148,16 +148,19 @@ WHERE id = sqlc.arg(id)
   AND state NOT IN ('stopped', 'failed');
 
 -- name: StampWorkloadVerified :execrows
+-- Bookkeeping only: the verification stamp anchors the Core-grace clock and
+-- deliberately does NOT touch updated_at, which anchors the idle TTL.
 UPDATE workos_runtime.workloads SET
-    last_verified_at = sqlc.arg(verified_at),
-    updated_at = sqlc.arg(updated_at)
+    last_verified_at = sqlc.arg(verified_at)
 WHERE id = sqlc.arg(id) AND state = 'running';
 
 -- name: ClaimWorkloadLease :execrows
+-- Bookkeeping only: claiming the reconcile lease deliberately does NOT
+-- touch updated_at, which anchors the idle TTL — a merely observed workload
+-- is not an actively used one.
 UPDATE workos_runtime.workloads SET
     lease_owner = sqlc.arg(lease_owner),
-    lease_expires_at = sqlc.arg(lease_expires_at),
-    updated_at = sqlc.arg(updated_at)
+    lease_expires_at = sqlc.arg(lease_expires_at)
 WHERE id = sqlc.arg(id)
   AND (lease_owner = sqlc.arg(lease_owner)
        OR lease_expires_at IS NULL
