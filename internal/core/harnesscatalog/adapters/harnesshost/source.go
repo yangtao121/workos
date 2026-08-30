@@ -64,8 +64,9 @@ func (s *Source) ListProviders(ctx context.Context) ([]domain.Provider, error) {
 				WorkspaceMount: capabilities.GetWorkspaceMount(), StructuredArtifacts: capabilities.GetStructuredArtifacts(),
 				UsageReporting:  capabilities.GetUsageReporting(),
 				HardTokenBudget: capabilities.GetHardTokenBudget(), HardRuntimeDeadline: capabilities.GetHardRuntimeDeadline(),
-				MaxOutputTokens:   capabilities.GetMaxOutputTokens(),
-				MaxRuntimeSeconds: capabilities.GetMaxRuntimeSeconds(),
+				MaxOutputTokens:        capabilities.GetMaxOutputTokens(),
+				MaxRuntimeSeconds:      capabilities.GetMaxRuntimeSeconds(),
+				SupportedArtifactTypes: capabilities.GetSupportedArtifactTypes(),
 			},
 		})
 	}

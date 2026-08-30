@@ -14,7 +14,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file workos/artifact/v1/artifact.proto.
  */
 export const file_workos_artifact_v1_artifact: GenFile = /*@__PURE__*/
-  fileDesc("CiF3b3Jrb3MvYXJ0aWZhY3QvdjEvYXJ0aWZhY3QucHJvdG8SEndvcmtvcy5hcnRpZmFjdC52MSLeAQoIQXJ0aWZhY3QSCgoCaWQYASABKAkSEgoKcHJvamVjdF9pZBgCIAEoCRIMCgR0eXBlGAMgASgJEg0KBXRpdGxlGAQgASgJEhIKCm1lZGlhX3R5cGUYBSABKAkSEwoLY29udGVudF9yZWYYBiABKAkSDgoGZGlnZXN0GAcgASgJEi4KCmNyZWF0ZWRfYXQYCCABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wEhgKEHRvdGFsX3NpemVfYnl0ZXMYCSABKAMSEgoKZmlsZV9jb3VudBgKIAEoBSIuCg1XZWJCdW5kbGVGaWxlEgwKBHBhdGgYASABKAkSDwoHY29udGVudBgCIAEoDCJYChBXZWJCdW5kbGVDb250ZW50EhIKCmVudHJ5cG9pbnQYASABKAkSMAoFZmlsZXMYAiADKAsyIS53b3Jrb3MuYXJ0aWZhY3QudjEuV2ViQnVuZGxlRmlsZSKaAQoVQ3JlYXRlQXJ0aWZhY3RSZXF1ZXN0EhcKD2lkZW1wb3RlbmN5X2tleRgBIAEoCRIuCghhcnRpZmFjdBgCIAEoCzIcLndvcmtvcy5hcnRpZmFjdC52MS5BcnRpZmFjdBI4Cgp3ZWJfYnVuZGxlGAMgASgLMiQud29ya29zLmFydGlmYWN0LnYxLldlYkJ1bmRsZUNvbnRlbnQiKQoSR2V0QXJ0aWZhY3RSZXF1ZXN0EhMKC2FydGlmYWN0X2lkGAEgASgJIlcKFExpc3RBcnRpZmFjdHNSZXF1ZXN0EhIKCnByb2plY3RfaWQYASABKAkSKwoEcGFnZRgCIAEoCzIdLndvcmtvcy5jb21tb24udjEuUGFnZVJlcXVlc3QidgoVTGlzdEFydGlmYWN0c1Jlc3BvbnNlEi8KCWFydGlmYWN0cxgBIAMoCzIcLndvcmtvcy5hcnRpZmFjdC52MS5BcnRpZmFjdBIsCgRwYWdlGAIgASgLMh4ud29ya29zLmNvbW1vbi52MS5QYWdlUmVzcG9uc2UiSAoWQ3JlYXRlQXJ0aWZhY3RSZXNwb25zZRIuCghhcnRpZmFjdBgBIAEoCzIcLndvcmtvcy5hcnRpZmFjdC52MS5BcnRpZmFjdCJFChNHZXRBcnRpZmFjdFJlc3BvbnNlEi4KCGFydGlmYWN0GAEgASgLMhwud29ya29zLmFydGlmYWN0LnYxLkFydGlmYWN0MsYCCg9BcnRpZmFjdFNlcnZpY2USaQoOQ3JlYXRlQXJ0aWZhY3QSKS53b3Jrb3MuYXJ0aWZhY3QudjEuQ3JlYXRlQXJ0aWZhY3RSZXF1ZXN0Gioud29ya29zLmFydGlmYWN0LnYxLkNyZWF0ZUFydGlmYWN0UmVzcG9uc2UiABJgCgtHZXRBcnRpZmFjdBImLndvcmtvcy5hcnRpZmFjdC52MS5HZXRBcnRpZmFjdFJlcXVlc3QaJy53b3Jrb3MuYXJ0aWZhY3QudjEuR2V0QXJ0aWZhY3RSZXNwb25zZSIAEmYKDUxpc3RBcnRpZmFjdHMSKC53b3Jrb3MuYXJ0aWZhY3QudjEuTGlzdEFydGlmYWN0c1JlcXVlc3QaKS53b3Jrb3MuYXJ0aWZhY3QudjEuTGlzdEFydGlmYWN0c1Jlc3BvbnNlIgBCQ1pBZ2l0aHViLmNvbS95YW5ndGFvMTIxL3dvcmtvcy9nZW4vZ28vd29ya29zL2FydGlmYWN0L3YxO2FydGlmYWN0djFiBnByb3RvMw", [file_google_protobuf_timestamp, file_workos_common_v1_common]);
+  fileDesc("CiF3b3Jrb3MvYXJ0aWZhY3QvdjEvYXJ0aWZhY3QucHJvdG8SEndvcmtvcy5hcnRpZmFjdC52MSL2AQoIQXJ0aWZhY3QSCgoCaWQYASABKAkSEgoKcHJvamVjdF9pZBgCIAEoCRIMCgR0eXBlGAMgASgJEg0KBXRpdGxlGAQgASgJEhIKCm1lZGlhX3R5cGUYBSABKAkSEwoLY29udGVudF9yZWYYBiABKAkSDgoGZGlnZXN0GAcgASgJEi4KCmNyZWF0ZWRfYXQYCCABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wEhgKEHRvdGFsX3NpemVfYnl0ZXMYCSABKAMSEgoKZmlsZV9jb3VudBgKIAEoBRIWCg5zb3VyY2VfdGFza19pZBgLIAEoCSIuCg1XZWJCdW5kbGVGaWxlEgwKBHBhdGgYASABKAkSDwoHY29udGVudBgCIAEoDCJYChBXZWJCdW5kbGVDb250ZW50EhIKCmVudHJ5cG9pbnQYASABKAkSMAoFZmlsZXMYAiADKAsyIS53b3Jrb3MuYXJ0aWZhY3QudjEuV2ViQnVuZGxlRmlsZSKaAQoVQ3JlYXRlQXJ0aWZhY3RSZXF1ZXN0EhcKD2lkZW1wb3RlbmN5X2tleRgBIAEoCRIuCghhcnRpZmFjdBgCIAEoCzIcLndvcmtvcy5hcnRpZmFjdC52MS5BcnRpZmFjdBI4Cgp3ZWJfYnVuZGxlGAMgASgLMiQud29ya29zLmFydGlmYWN0LnYxLldlYkJ1bmRsZUNvbnRlbnQiKQoSR2V0QXJ0aWZhY3RSZXF1ZXN0EhMKC2FydGlmYWN0X2lkGAEgASgJIlcKFExpc3RBcnRpZmFjdHNSZXF1ZXN0EhIKCnByb2plY3RfaWQYASABKAkSKwoEcGFnZRgCIAEoCzIdLndvcmtvcy5jb21tb24udjEuUGFnZVJlcXVlc3QidgoVTGlzdEFydGlmYWN0c1Jlc3BvbnNlEi8KCWFydGlmYWN0cxgBIAMoCzIcLndvcmtvcy5hcnRpZmFjdC52MS5BcnRpZmFjdBIsCgRwYWdlGAIgASgLMh4ud29ya29zLmNvbW1vbi52MS5QYWdlUmVzcG9uc2UiSAoWQ3JlYXRlQXJ0aWZhY3RSZXNwb25zZRIuCghhcnRpZmFjdBgBIAEoCzIcLndvcmtvcy5hcnRpZmFjdC52MS5BcnRpZmFjdCJFChNHZXRBcnRpZmFjdFJlc3BvbnNlEi4KCGFydGlmYWN0GAEgASgLMhwud29ya29zLmFydGlmYWN0LnYxLkFydGlmYWN0Ip4CChVSZXZpZXdBcnRpZmFjdENvbnRlbnQSRgoIbWFya2Rvd24YASABKAsyMi53b3Jrb3MuYXJ0aWZhY3QudjEuUmV2aWV3QXJ0aWZhY3RDb250ZW50Lk1hcmtkb3duSAASTQoMdW5pZmllZF9kaWZmGAIgASgLMjUud29ya29zLmFydGlmYWN0LnYxLlJldmlld0FydGlmYWN0Q29udGVudC5VbmlmaWVkRGlmZkgAGi8KCE1hcmtkb3duEhIKCm1lZGlhX3R5cGUYASABKAkSDwoHY29udGVudBgCIAEoDBoyCgtVbmlmaWVkRGlmZhISCgptZWRpYV90eXBlGAEgASgJEg8KB2NvbnRlbnQYAiABKAxCCQoHY29udGVudCIvChhHZXRSZXZpZXdBcnRpZmFjdFJlcXVlc3QSEwoLYXJ0aWZhY3RfaWQYASABKAkihwEKGUdldFJldmlld0FydGlmYWN0UmVzcG9uc2USLgoIYXJ0aWZhY3QYASABKAsyHC53b3Jrb3MuYXJ0aWZhY3QudjEuQXJ0aWZhY3QSOgoHY29udGVudBgCIAEoCzIpLndvcmtvcy5hcnRpZmFjdC52MS5SZXZpZXdBcnRpZmFjdENvbnRlbnQyugMKD0FydGlmYWN0U2VydmljZRJpCg5DcmVhdGVBcnRpZmFjdBIpLndvcmtvcy5hcnRpZmFjdC52MS5DcmVhdGVBcnRpZmFjdFJlcXVlc3QaKi53b3Jrb3MuYXJ0aWZhY3QudjEuQ3JlYXRlQXJ0aWZhY3RSZXNwb25zZSIAEmAKC0dldEFydGlmYWN0EiYud29ya29zLmFydGlmYWN0LnYxLkdldEFydGlmYWN0UmVxdWVzdBonLndvcmtvcy5hcnRpZmFjdC52MS5HZXRBcnRpZmFjdFJlc3BvbnNlIgASZgoNTGlzdEFydGlmYWN0cxIoLndvcmtvcy5hcnRpZmFjdC52MS5MaXN0QXJ0aWZhY3RzUmVxdWVzdBopLndvcmtvcy5hcnRpZmFjdC52MS5MaXN0QXJ0aWZhY3RzUmVzcG9uc2UiABJyChFHZXRSZXZpZXdBcnRpZmFjdBIsLndvcmtvcy5hcnRpZmFjdC52MS5HZXRSZXZpZXdBcnRpZmFjdFJlcXVlc3QaLS53b3Jrb3MuYXJ0aWZhY3QudjEuR2V0UmV2aWV3QXJ0aWZhY3RSZXNwb25zZSIAQkNaQWdpdGh1Yi5jb20veWFuZ3RhbzEyMS93b3Jrb3MvZ2VuL2dvL3dvcmtvcy9hcnRpZmFjdC92MTthcnRpZmFjdHYxYgZwcm90bzM", [file_google_protobuf_timestamp, file_workos_common_v1_common]);
 
 /**
  * @generated from message workos.artifact.v1.Artifact
@@ -69,6 +69,17 @@ export type Artifact = Message<"workos.artifact.v1.Artifact"> & {
    * @generated from field: int32 file_count = 10;
    */
   fileCount: number;
+
+  /**
+   * Review subtype provenance only: the Core-derived source task of a
+   * project review artifact (document.markdown.v1 / code.unified-diff.v1).
+   * Web bundle artifacts leave it and project_id empty. It is provenance
+   * metadata, never an authorization token: every read stays owner/project
+   * scoped and the source task UUID alone grants nothing.
+   *
+   * @generated from field: string source_task_id = 11;
+   */
+  sourceTaskId: string;
 };
 
 /**
@@ -259,6 +270,133 @@ export const GetArtifactResponseSchema: GenMessage<GetArtifactResponse> = /*@__P
   messageDesc(file_workos_artifact_v1_artifact, 8);
 
 /**
+ * ReviewArtifactContent carries one review subtype's exact canonical content.
+ * The media type is server-derived from the stored canonical type; a client
+ * can never choose or override it.
+ *
+ * @generated from message workos.artifact.v1.ReviewArtifactContent
+ */
+export type ReviewArtifactContent = Message<"workos.artifact.v1.ReviewArtifactContent"> & {
+  /**
+   * @generated from oneof workos.artifact.v1.ReviewArtifactContent.content
+   */
+  content: {
+    /**
+     * @generated from field: workos.artifact.v1.ReviewArtifactContent.Markdown markdown = 1;
+     */
+    value: ReviewArtifactContent_Markdown;
+    case: "markdown";
+  } | {
+    /**
+     * @generated from field: workos.artifact.v1.ReviewArtifactContent.UnifiedDiff unified_diff = 2;
+     */
+    value: ReviewArtifactContent_UnifiedDiff;
+    case: "unifiedDiff";
+  } | { case: undefined; value?: undefined };
+};
+
+/**
+ * Describes the message workos.artifact.v1.ReviewArtifactContent.
+ * Use `create(ReviewArtifactContentSchema)` to create a new message.
+ */
+export const ReviewArtifactContentSchema: GenMessage<ReviewArtifactContent> = /*@__PURE__*/
+  messageDesc(file_workos_artifact_v1_artifact, 9);
+
+/**
+ * MarkdownReviewContent is the exact canonical UTF-8 content of a
+ * document.markdown.v1 artifact.
+ *
+ * @generated from message workos.artifact.v1.ReviewArtifactContent.Markdown
+ */
+export type ReviewArtifactContent_Markdown = Message<"workos.artifact.v1.ReviewArtifactContent.Markdown"> & {
+  /**
+   * @generated from field: string media_type = 1;
+   */
+  mediaType: string;
+
+  /**
+   * @generated from field: bytes content = 2;
+   */
+  content: Uint8Array;
+};
+
+/**
+ * Describes the message workos.artifact.v1.ReviewArtifactContent.Markdown.
+ * Use `create(ReviewArtifactContent_MarkdownSchema)` to create a new message.
+ */
+export const ReviewArtifactContent_MarkdownSchema: GenMessage<ReviewArtifactContent_Markdown> = /*@__PURE__*/
+  messageDesc(file_workos_artifact_v1_artifact, 9, 0);
+
+/**
+ * UnifiedDiff is the exact canonical UTF-8 content of a
+ * code.unified-diff.v1 artifact.
+ *
+ * @generated from message workos.artifact.v1.ReviewArtifactContent.UnifiedDiff
+ */
+export type ReviewArtifactContent_UnifiedDiff = Message<"workos.artifact.v1.ReviewArtifactContent.UnifiedDiff"> & {
+  /**
+   * @generated from field: string media_type = 1;
+   */
+  mediaType: string;
+
+  /**
+   * @generated from field: bytes content = 2;
+   */
+  content: Uint8Array;
+};
+
+/**
+ * Describes the message workos.artifact.v1.ReviewArtifactContent.UnifiedDiff.
+ * Use `create(ReviewArtifactContent_UnifiedDiffSchema)` to create a new message.
+ */
+export const ReviewArtifactContent_UnifiedDiffSchema: GenMessage<ReviewArtifactContent_UnifiedDiff> = /*@__PURE__*/
+  messageDesc(file_workos_artifact_v1_artifact, 9, 1);
+
+/**
+ * @generated from message workos.artifact.v1.GetReviewArtifactRequest
+ */
+export type GetReviewArtifactRequest = Message<"workos.artifact.v1.GetReviewArtifactRequest"> & {
+  /**
+   * @generated from field: string artifact_id = 1;
+   */
+  artifactId: string;
+};
+
+/**
+ * Describes the message workos.artifact.v1.GetReviewArtifactRequest.
+ * Use `create(GetReviewArtifactRequestSchema)` to create a new message.
+ */
+export const GetReviewArtifactRequestSchema: GenMessage<GetReviewArtifactRequest> = /*@__PURE__*/
+  messageDesc(file_workos_artifact_v1_artifact, 10);
+
+/**
+ * @generated from message workos.artifact.v1.GetReviewArtifactResponse
+ */
+export type GetReviewArtifactResponse = Message<"workos.artifact.v1.GetReviewArtifactResponse"> & {
+  /**
+   * artifact is the authoritative sanitized metadata projection.
+   *
+   * @generated from field: workos.artifact.v1.Artifact artifact = 1;
+   */
+  artifact?: Artifact | undefined;
+
+  /**
+   * content is present only for review subtypes; web bundle artifacts are
+   * never reviewable and fail closed without disclosing bundle bytes.
+   *
+   * @generated from field: workos.artifact.v1.ReviewArtifactContent content = 2;
+   */
+  content?: ReviewArtifactContent | undefined;
+};
+
+/**
+ * Describes the message workos.artifact.v1.GetReviewArtifactResponse.
+ * Use `create(GetReviewArtifactResponseSchema)` to create a new message.
+ */
+export const GetReviewArtifactResponseSchema: GenMessage<GetReviewArtifactResponse> = /*@__PURE__*/
+  messageDesc(file_workos_artifact_v1_artifact, 11);
+
+/**
  * @generated from service workos.artifact.v1.ArtifactService
  */
 export const ArtifactService: GenService<{
@@ -285,6 +423,18 @@ export const ArtifactService: GenService<{
     methodKind: "unary";
     input: typeof ListArtifactsRequestSchema;
     output: typeof ListArtifactsResponseSchema;
+  },
+  /**
+   * GetReviewArtifact returns one review artifact's authoritative metadata
+   * and exact canonical content for the authenticated owner. It never serves
+   * web bundle bytes and never accepts client-chosen media types.
+   *
+   * @generated from rpc workos.artifact.v1.ArtifactService.GetReviewArtifact
+   */
+  getReviewArtifact: {
+    methodKind: "unary";
+    input: typeof GetReviewArtifactRequestSchema;
+    output: typeof GetReviewArtifactResponseSchema;
   },
 }> = /*@__PURE__*/
   serviceDesc(file_workos_artifact_v1_artifact, 0);

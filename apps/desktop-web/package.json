@@ -16,15 +16,16 @@
     "@connectrpc/connect": "2.1.2",
     "@workos/agent-center": "workspace:*",
     "@workos/agent-sdk": "workspace:*",
+    "@workos/app-host": "workspace:*",
+    "@workos/artifact-viewer": "workspace:*",
+    "@workos/device-auth": "workspace:*",
     "@workos/protocol": "workspace:*",
+    "@workos/surface-sdk": "workspace:*",
     "@workos/ui-kit": "workspace:*",
     "@workos/window-manager": "workspace:*",
+    "qrcode": "1.5.4",
     "react": "19.2.8",
-    "react-dom": "19.2.8",
-    "@workos/app-host": "workspace:*",
-    "@workos/surface-sdk": "workspace:*",
-    "@workos/device-auth": "workspace:*",
-    "qrcode": "1.5.4"
+    "react-dom": "19.2.8"
   },
   "devDependencies": {
     "@playwright/test": "1.62.1",

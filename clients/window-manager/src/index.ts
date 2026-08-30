@@ -8,8 +8,15 @@ export interface Rect {
 export type WindowMode = "normal" | "minimized" | "maximized" | "fullscreen";
 
 // The discriminated window kind: Agent Center windows render the task
-// composer; app-surface windows render one sandboxed installed-app surface.
-export type WindowKind = "agent-center" | "app-surface" | "system-monitor" | "device-center";
+// composer; app-surface windows render one sandboxed installed-app surface;
+// artifact-center/artifact-viewer windows render read-only project reviews.
+export type WindowKind =
+  | "agent-center"
+  | "app-surface"
+  | "system-monitor"
+  | "device-center"
+  | "artifact-center"
+  | "artifact-viewer";
 
 // AppSurfaceRef binds a window to one durable surface session. The URL is
 // the same-origin relative path returned by CreateSurface — never a private
@@ -20,12 +27,21 @@ export interface AppSurfaceRef {
   projectId: string;
 }
 
+// ArtifactRef binds one viewer window to exactly one artifact of one
+// project. Viewer windows key on the artifact id, so re-opening the same
+// artifact focuses the existing window instead of duplicating it.
+export interface ArtifactRef {
+  artifactId: string;
+  projectId: string;
+}
+
 export interface WorkOSWindow {
   id: string;
   appId: string;
   title: string;
   kind: WindowKind;
   surface?: AppSurfaceRef | undefined;
+  artifact?: ArtifactRef | undefined;
   rect: Rect;
   restoreRect: Rect;
   mode: WindowMode;

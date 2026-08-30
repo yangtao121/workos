@@ -11,6 +11,9 @@ import (
 )
 
 type Querier interface {
+	// AdvanceTaskPublicationSequence moves only the Core-minted publication
+	// event's sequence forward; the task state itself never changes here.
+	AdvanceTaskPublicationSequence(ctx context.Context, arg AdvanceTaskPublicationSequenceParams) error
 	AdvanceTaskState(ctx context.Context, arg AdvanceTaskStateParams) error
 	DecideAgentAppApproval(ctx context.Context, arg DecideAgentAppApprovalParams) (int64, error)
 	ExpirePendingApprovals(ctx context.Context, arg ExpirePendingApprovalsParams) ([]ExpirePendingApprovalsRow, error)
@@ -47,6 +50,7 @@ type Querier interface {
 	// first SetPolicy can never interleave between an approval-creation's policy
 	// read and its pending-approval insert.
 	LockAgentAppPolicyChain(ctx context.Context, arg LockAgentAppPolicyChainParams) error
+	LockTaskArtifactStream(ctx context.Context, arg LockTaskArtifactStreamParams) (LockTaskArtifactStreamRow, error)
 	LockTaskEventStream(ctx context.Context, arg LockTaskEventStreamParams) (LockTaskEventStreamRow, error)
 	MarkAgentAppUsageBreach(ctx context.Context, arg MarkAgentAppUsageBreachParams) error
 	MarkTaskCancelled(ctx context.Context, arg MarkTaskCancelledParams) error

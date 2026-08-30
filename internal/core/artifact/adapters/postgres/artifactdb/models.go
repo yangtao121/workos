@@ -8,6 +8,36 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+type WorkosCoreProjectReviewArtifact struct {
+	ID           string             `json:"id"`
+	OwnerUserID  string             `json:"owner_user_id"`
+	Type         string             `json:"type"`
+	Title        string             `json:"title"`
+	MediaType    string             `json:"media_type"`
+	Digest       string             `json:"digest"`
+	ProjectID    string             `json:"project_id"`
+	SourceTaskID string             `json:"source_task_id"`
+	OutputKey    string             `json:"output_key"`
+	ByteCount    int32              `json:"byte_count"`
+	LineCount    int32              `json:"line_count"`
+	Content      []byte             `json:"content"`
+	CreatedAt    pgtype.Timestamptz `json:"created_at"`
+}
+
+type WorkosCoreProjectReviewArtifactOutput struct {
+	TaskID          string             `json:"task_id"`
+	OutputKey       string             `json:"output_key"`
+	ArtifactType    string             `json:"artifact_type"`
+	RequestDigest   string             `json:"request_digest"`
+	OwnerUserID     string             `json:"owner_user_id"`
+	ProjectID       string             `json:"project_id"`
+	ArtifactID      string             `json:"artifact_id"`
+	EventID         string             `json:"event_id"`
+	EventSequence   int64              `json:"event_sequence"`
+	EventOccurredAt pgtype.Timestamptz `json:"event_occurred_at"`
+	CreatedAt       pgtype.Timestamptz `json:"created_at"`
+}
+
 type WorkosCoreWebBundleArtifact struct {
 	ID             string             `json:"id"`
 	OwnerUserID    string             `json:"owner_user_id"`

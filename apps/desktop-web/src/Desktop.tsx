@@ -21,6 +21,8 @@ import type {
 } from "@workos/protocol";
 import { Button } from "@workos/ui-kit";
 import { initialWindowState, windowReducer } from "@workos/window-manager";
+import { ArtifactCenter } from "./ArtifactCenter.js";
+import { ArtifactViewerWindow } from "./ArtifactViewerWindow.js";
 import { AppLibrary } from "./AppLibrary.js";
 import { ApprovalsView } from "./ApprovalsView.js";
 import { AppSurface, type SurfaceBridgeCredentials } from "./AppSurface.js";
@@ -223,6 +225,52 @@ export function Desktop({
     });
   }, []);
 
+  // Artifact Center is a normal, closable window listing the active
+  // project's review artifacts. The reducer dedupes on the id, so repeated
+  // dock clicks focus the existing window.
+  const openArtifactCenter = useCallback(() => {
+    if (!activeProjectId) return;
+    dispatch({
+      type: "open",
+      window: {
+        id: "artifact-center",
+        appId: "artifact-center",
+        title: "Artifact Center",
+        kind: "artifact-center",
+        rect: { x: 120, y: 120, width: 520, height: 480 },
+        mode: "normal",
+      },
+    });
+  }, [activeProjectId]);
+
+  // Opening one artifact opens (or focuses) exactly one viewer window keyed
+  // on the artifact id. The window fetches authoritative content itself; a
+  // foreign or vanished reference renders the fixed unavailable verdict.
+  const openArtifactViewer = useCallback((artifactId: string, projectId: string) => {
+    dispatch({
+      type: "open",
+      window: {
+        id: `artifact-viewer-${artifactId}`,
+        appId: "artifact-viewer",
+        title: "Artifact Review",
+        kind: "artifact-viewer",
+        artifact: { artifactId, projectId },
+        rect: { x: 320, y: 150, width: 640, height: 520 },
+        mode: "normal",
+      },
+    });
+  }, []);
+
+  // Timeline artifact events open the same authoritative viewer path; the
+  // project fact is the active project, and the server re-checks ownership
+  // on the read regardless.
+  const openArtifactById = useCallback(
+    (artifactId: string) => {
+      openArtifactViewer(artifactId, activeProjectId ?? "");
+    },
+    [activeProjectId, openArtifactViewer],
+  );
+
   useEffect(() => {
     // Unmount invalidates every in-flight binding operation so a pending
     // Promise that settles afterwards cannot touch any binding state.
@@ -253,6 +301,22 @@ export function Desktop({
   useEffect(() => {
     if (!activeProjectId) return;
     for (const item of windows.windows) {
+      if (
+        item.kind === "artifact-viewer" &&
+        item.artifact &&
+        item.artifact.projectId !== activeProjectId
+      ) {
+        // Review windows belong to the project whose artifact they show;
+        // switching projects never carries the previous project's content.
+        dispatch({ type: "close", id: item.id });
+        continue;
+      }
+      if (item.kind === "artifact-center") {
+        // The center remounts keyed on the active project anyway; close it
+        // so the previous project's list never lingers behind a new one.
+        dispatch({ type: "close", id: item.id });
+        continue;
+      }
       if (
         item.kind === "app-surface" &&
         item.surface &&
@@ -496,6 +560,9 @@ export function Desktop({
     const form = new FormData(formElement);
     const goal = formString(form, "goal");
     if (!goal || !activeProjectId) return;
+    const outputArtifactTypes: string[] = [];
+    if (form.get("artifact-markdown") === "on") outputArtifactTypes.push("document.markdown.v1");
+    if (form.get("artifact-diff") === "on") outputArtifactTypes.push("code.unified-diff.v1");
     setEvents([]);
     setTask(undefined);
     setError(undefined);
@@ -508,7 +575,7 @@ export function Desktop({
           goal,
           contextRefs: [],
           requestedCapabilities: [],
-          outputArtifactTypes: [],
+          outputArtifactTypes,
           parentTaskId: "",
           incidentId: "",
         },
@@ -676,6 +743,24 @@ export function Desktop({
               />
             ) : windowState.kind === "system-monitor" ? (
               <SystemMonitor projectId={activeProjectId} workosClients={workosClients} />
+            ) : windowState.kind === "artifact-center" ? (
+              activeProject ? (
+                <ArtifactCenter
+                  key={activeProject.id}
+                  projectId={activeProject.id}
+                  workosClients={workosClients}
+                  onOpenArtifact={(artifact) => {
+                    openArtifactViewer(artifact.id, artifact.projectId);
+                  }}
+                />
+              ) : (
+                <p className="empty-state">Create a project to review its artifacts.</p>
+              )
+            ) : windowState.kind === "artifact-viewer" && windowState.artifact ? (
+              <ArtifactViewerWindow
+                artifactId={windowState.artifact.artifactId}
+                workosClients={workosClients}
+              />
             ) : windowState.kind === "device-center" ? (
               deviceAuth ? (
                 <DeviceCenter deviceAuth={deviceAuth} />
@@ -725,6 +810,14 @@ export function Desktop({
                         placeholder="Ask the current project agent…"
                         disabled={!activeProjectId}
                       />
+                      <div className="artifact-request" aria-label="Requested artifact outputs">
+                        <label>
+                          <input type="checkbox" name="artifact-markdown" /> Markdown document
+                        </label>
+                        <label>
+                          <input type="checkbox" name="artifact-diff" /> Unified diff
+                        </label>
+                      </div>
                       <Button disabled={!activeProjectId} type="submit">
                         Run task
                       </Button>
@@ -737,7 +830,7 @@ export function Desktop({
                         <dd>{task.id}</dd>
                       </dl>
                     ) : null}
-                    <AgentTimeline events={events} />
+                    <AgentTimeline events={events} onOpenArtifact={openArtifactById} />
                   </>
                 ) : null}
               </div>
@@ -773,6 +866,15 @@ export function Desktop({
           onClick={openDeviceCenter}
         >
           🔑
+        </button>
+        <button
+          type="button"
+          aria-label="Open Artifact Center"
+          data-testid="open-artifact-center"
+          disabled={!activeProject}
+          onClick={openArtifactCenter}
+        >
+          ☰
         </button>
       </nav>
     </main>

@@ -314,6 +314,7 @@ function provider(
       subagents: false,
       workspaceMount: false,
       structuredArtifacts: false,
+      supportedArtifactTypes: [],
       usageReporting: false,
       hardTokenBudget: false,
       hardRuntimeDeadline: false,

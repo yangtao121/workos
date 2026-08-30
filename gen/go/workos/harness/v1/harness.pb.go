@@ -49,8 +49,14 @@ type HarnessCapabilities struct {
 	// verification). Zero means the matching hard capability is unsupported.
 	MaxOutputTokens   int64 `protobuf:"varint,14,opt,name=max_output_tokens,json=maxOutputTokens,proto3" json:"max_output_tokens,omitempty"`
 	MaxRuntimeSeconds int64 `protobuf:"varint,15,opt,name=max_runtime_seconds,json=maxRuntimeSeconds,proto3" json:"max_runtime_seconds,omitempty"`
-	unknownFields     protoimpl.UnknownFields
-	sizeCache         protoimpl.SizeCache
+	// The exact canonical artifact types this adapter demonstrably produces as
+	// bounded structured output (ADR-0008). structured_artifacts may only be
+	// true when this list is non-empty; Core refuses requested artifact types
+	// that are not on the resolved provider's exact list before queueing, and
+	// treats a bool/list drift as capability corruption — never as "all types".
+	SupportedArtifactTypes []string `protobuf:"bytes,16,rep,name=supported_artifact_types,json=supportedArtifactTypes,proto3" json:"supported_artifact_types,omitempty"`
+	unknownFields          protoimpl.UnknownFields
+	sizeCache              protoimpl.SizeCache
 }
 
 func (x *HarnessCapabilities) Reset() {
@@ -186,6 +192,13 @@ func (x *HarnessCapabilities) GetMaxRuntimeSeconds() int64 {
 		return x.MaxRuntimeSeconds
 	}
 	return 0
+}
+
+func (x *HarnessCapabilities) GetSupportedArtifactTypes() []string {
+	if x != nil {
+		return x.SupportedArtifactTypes
+	}
+	return nil
 }
 
 type HarnessProviderInfo struct {
@@ -564,7 +577,7 @@ var File_workos_harness_v1_harness_proto protoreflect.FileDescriptor
 
 const file_workos_harness_v1_harness_proto_rawDesc = "" +
 	"\n" +
-	"\x1fworkos/harness/v1/harness.proto\x12\x11workos.harness.v1\x1a\x1bworkos/agent/v1/agent.proto\x1a\x1dworkos/common/v1/common.proto\"\xe2\x04\n" +
+	"\x1fworkos/harness/v1/harness.proto\x12\x11workos.harness.v1\x1a\x1bworkos/agent/v1/agent.proto\x1a\x1dworkos/common/v1/common.proto\"\x9c\x05\n" +
 	"\x13HarnessCapabilities\x12\x1c\n" +
 	"\tstreaming\x18\x01 \x01(\bR\tstreaming\x12/\n" +
 	"\x13persistent_sessions\x18\x02 \x01(\bR\x12persistentSessions\x12\x16\n" +
@@ -581,7 +594,8 @@ const file_workos_harness_v1_harness_proto_rawDesc = "" +
 	"\x11hard_token_budget\x18\f \x01(\bR\x0fhardTokenBudget\x122\n" +
 	"\x15hard_runtime_deadline\x18\r \x01(\bR\x13hardRuntimeDeadline\x12*\n" +
 	"\x11max_output_tokens\x18\x0e \x01(\x03R\x0fmaxOutputTokens\x12.\n" +
-	"\x13max_runtime_seconds\x18\x0f \x01(\x03R\x11maxRuntimeSeconds\"\xa3\x02\n" +
+	"\x13max_runtime_seconds\x18\x0f \x01(\x03R\x11maxRuntimeSeconds\x128\n" +
+	"\x18supported_artifact_types\x18\x10 \x03(\tR\x16supportedArtifactTypes\"\xa3\x02\n" +
 	"\x13HarnessProviderInfo\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12!\n" +
 	"\fdisplay_name\x18\x02 \x01(\tR\vdisplayName\x12'\n" +

@@ -127,17 +127,24 @@ func insertArtifact(ctx context.Context, queries *artifactdb.Queries, artifact d
 }
 
 func (r *Repository) Get(ctx context.Context, ownerUserID, artifactID string) (domain.Artifact, error) {
-	stored, err := r.queries.GetArtifact(ctx, artifactdb.GetArtifactParams{OwnerUserID: ownerUserID, ID: artifactID})
+	stored, err := r.queries.GetArtifactMetadataUnion(ctx, artifactdb.GetArtifactMetadataUnionParams{
+		OwnerUserID: ownerUserID, ArtifactID: artifactID,
+	})
 	if err != nil {
 		return domain.Artifact{}, artifactError("query artifact", err)
 	}
-	return artifactFromDB(stored), nil
+	artifact := artifactFromUnion(stored)
+	if !domain.ValidStoredArtifact(artifact) {
+		return domain.Artifact{}, domain.ErrCorrupt
+	}
+	return artifact, nil
 }
 
 func (r *Repository) ListIDsPage(ctx context.Context, ownerUserID, cursor string, limit int) ([]string, string, error) {
 	// Probe one row beyond the effective limit so only a real extra record
-	// produces a next cursor.
-	ids, err := r.queries.ListArtifactIDPage(ctx, artifactdb.ListArtifactIDPageParams{
+	// produces a next cursor. The page spans both implemented subtypes in
+	// one ordered union.
+	ids, err := r.queries.ListArtifactIDPageUnion(ctx, artifactdb.ListArtifactIDPageUnionParams{
 		OwnerUserID: ownerUserID, Cursor: cursor, RowLimit: int32(limit + 1),
 	})
 	if err != nil {
@@ -154,14 +161,18 @@ func (r *Repository) VisitSummaries(ctx context.Context, ownerUserID string, ids
 	if len(ids) == 0 {
 		return nil
 	}
-	rows, err := r.queries.ListArtifactSummaries(ctx, artifactdb.ListArtifactSummariesParams{
+	rows, err := r.queries.ListArtifactSummariesUnion(ctx, artifactdb.ListArtifactSummariesUnionParams{
 		OwnerUserID: ownerUserID, Ids: ids,
 	})
 	if err != nil {
 		return artifactError("list artifact summaries", err)
 	}
 	for _, row := range rows {
-		if err := visit(artifactFromDB(row)); err != nil {
+		artifact := artifactFromSummariesUnion(row)
+		if !domain.ValidStoredArtifact(artifact) {
+			return domain.ErrCorrupt
+		}
+		if err := visit(artifact); err != nil {
 			return err
 		}
 	}

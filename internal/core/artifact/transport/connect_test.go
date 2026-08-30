@@ -17,6 +17,7 @@ import (
 	"github.com/yangtao121/workos/internal/core/artifact/application"
 	"github.com/yangtao121/workos/internal/core/artifact/domain"
 	"github.com/yangtao121/workos/internal/core/artifact/ports"
+	"github.com/yangtao121/workos/internal/platform/dbtx"
 	"github.com/yangtao121/workos/internal/platform/identity"
 )
 
@@ -301,4 +302,24 @@ func TestListArtifactsPages(t *testing.T) {
 	if len(next.Msg.GetArtifacts()) != 1 || next.Msg.GetPage().GetNextPageToken() != "" {
 		t.Fatalf("unexpected final page: %d items token %q", len(next.Msg.GetArtifacts()), next.Msg.GetPage().GetNextPageToken())
 	}
+}
+
+func (r *transportRepository) GetReviewContent(_ context.Context, ownerUserID, artifactID string) (domain.ReviewArtifact, domain.NormalizedReviewContent, error) {
+	return domain.ReviewArtifact{}, domain.NormalizedReviewContent{}, domain.ErrNotFound
+}
+
+func (r *transportRepository) ListProjectReviewIDsPage(_ context.Context, ownerUserID, projectID, cursor string, limit int) ([]string, string, error) {
+	return nil, "", nil
+}
+
+func (r *transportRepository) FindTaskOutput(_ context.Context, _ dbtx.Tx, _, _ string) (ports.TaskOutputRecord, bool, error) {
+	return ports.TaskOutputRecord{}, false, nil
+}
+
+func (r *transportRepository) InsertTaskOutput(_ context.Context, _ dbtx.Tx, _ ports.ReviewOutputCommand) (int64, error) {
+	return 1, nil
+}
+
+func (r *transportRepository) ReviewArtifactByID(_ context.Context, _ dbtx.Tx, _ string) (domain.ReviewArtifact, error) {
+	return domain.ReviewArtifact{}, domain.ErrNotFound
 }

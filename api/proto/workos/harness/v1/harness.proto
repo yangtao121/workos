@@ -32,6 +32,12 @@ message HarnessCapabilities {
   // verification). Zero means the matching hard capability is unsupported.
   int64 max_output_tokens = 14;
   int64 max_runtime_seconds = 15;
+  // The exact canonical artifact types this adapter demonstrably produces as
+  // bounded structured output (ADR-0008). structured_artifacts may only be
+  // true when this list is non-empty; Core refuses requested artifact types
+  // that are not on the resolved provider's exact list before queueing, and
+  // treats a bool/list drift as capability corruption — never as "all types".
+  repeated string supported_artifact_types = 16;
 }
 
 message HarnessProviderInfo {

@@ -35,8 +35,14 @@ type Artifact struct {
 	CreatedAt      *timestamppb.Timestamp `protobuf:"bytes,8,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
 	TotalSizeBytes int64                  `protobuf:"varint,9,opt,name=total_size_bytes,json=totalSizeBytes,proto3" json:"total_size_bytes,omitempty"`
 	FileCount      int32                  `protobuf:"varint,10,opt,name=file_count,json=fileCount,proto3" json:"file_count,omitempty"`
-	unknownFields  protoimpl.UnknownFields
-	sizeCache      protoimpl.SizeCache
+	// Review subtype provenance only: the Core-derived source task of a
+	// project review artifact (document.markdown.v1 / code.unified-diff.v1).
+	// Web bundle artifacts leave it and project_id empty. It is provenance
+	// metadata, never an authorization token: every read stays owner/project
+	// scoped and the source task UUID alone grants nothing.
+	SourceTaskId  string `protobuf:"bytes,11,opt,name=source_task_id,json=sourceTaskId,proto3" json:"source_task_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *Artifact) Reset() {
@@ -137,6 +143,13 @@ func (x *Artifact) GetFileCount() int32 {
 		return x.FileCount
 	}
 	return 0
+}
+
+func (x *Artifact) GetSourceTaskId() string {
+	if x != nil {
+		return x.SourceTaskId
+	}
+	return ""
 }
 
 // WebBundleFile is one regular file of a web bundle upload. The path is an
@@ -550,11 +563,303 @@ func (x *GetArtifactResponse) GetArtifact() *Artifact {
 	return nil
 }
 
+// ReviewArtifactContent carries one review subtype's exact canonical content.
+// The media type is server-derived from the stored canonical type; a client
+// can never choose or override it.
+type ReviewArtifactContent struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Types that are valid to be assigned to Content:
+	//
+	//	*ReviewArtifactContent_Markdown_
+	//	*ReviewArtifactContent_UnifiedDiff_
+	Content       isReviewArtifactContent_Content `protobuf_oneof:"content"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ReviewArtifactContent) Reset() {
+	*x = ReviewArtifactContent{}
+	mi := &file_workos_artifact_v1_artifact_proto_msgTypes[9]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ReviewArtifactContent) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ReviewArtifactContent) ProtoMessage() {}
+
+func (x *ReviewArtifactContent) ProtoReflect() protoreflect.Message {
+	mi := &file_workos_artifact_v1_artifact_proto_msgTypes[9]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ReviewArtifactContent.ProtoReflect.Descriptor instead.
+func (*ReviewArtifactContent) Descriptor() ([]byte, []int) {
+	return file_workos_artifact_v1_artifact_proto_rawDescGZIP(), []int{9}
+}
+
+func (x *ReviewArtifactContent) GetContent() isReviewArtifactContent_Content {
+	if x != nil {
+		return x.Content
+	}
+	return nil
+}
+
+func (x *ReviewArtifactContent) GetMarkdown() *ReviewArtifactContent_Markdown {
+	if x != nil {
+		if x, ok := x.Content.(*ReviewArtifactContent_Markdown_); ok {
+			return x.Markdown
+		}
+	}
+	return nil
+}
+
+func (x *ReviewArtifactContent) GetUnifiedDiff() *ReviewArtifactContent_UnifiedDiff {
+	if x != nil {
+		if x, ok := x.Content.(*ReviewArtifactContent_UnifiedDiff_); ok {
+			return x.UnifiedDiff
+		}
+	}
+	return nil
+}
+
+type isReviewArtifactContent_Content interface {
+	isReviewArtifactContent_Content()
+}
+
+type ReviewArtifactContent_Markdown_ struct {
+	Markdown *ReviewArtifactContent_Markdown `protobuf:"bytes,1,opt,name=markdown,proto3,oneof"`
+}
+
+type ReviewArtifactContent_UnifiedDiff_ struct {
+	UnifiedDiff *ReviewArtifactContent_UnifiedDiff `protobuf:"bytes,2,opt,name=unified_diff,json=unifiedDiff,proto3,oneof"`
+}
+
+func (*ReviewArtifactContent_Markdown_) isReviewArtifactContent_Content() {}
+
+func (*ReviewArtifactContent_UnifiedDiff_) isReviewArtifactContent_Content() {}
+
+type GetReviewArtifactRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	ArtifactId    string                 `protobuf:"bytes,1,opt,name=artifact_id,json=artifactId,proto3" json:"artifact_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetReviewArtifactRequest) Reset() {
+	*x = GetReviewArtifactRequest{}
+	mi := &file_workos_artifact_v1_artifact_proto_msgTypes[10]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetReviewArtifactRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetReviewArtifactRequest) ProtoMessage() {}
+
+func (x *GetReviewArtifactRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_workos_artifact_v1_artifact_proto_msgTypes[10]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetReviewArtifactRequest.ProtoReflect.Descriptor instead.
+func (*GetReviewArtifactRequest) Descriptor() ([]byte, []int) {
+	return file_workos_artifact_v1_artifact_proto_rawDescGZIP(), []int{10}
+}
+
+func (x *GetReviewArtifactRequest) GetArtifactId() string {
+	if x != nil {
+		return x.ArtifactId
+	}
+	return ""
+}
+
+type GetReviewArtifactResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// artifact is the authoritative sanitized metadata projection.
+	Artifact *Artifact `protobuf:"bytes,1,opt,name=artifact,proto3" json:"artifact,omitempty"`
+	// content is present only for review subtypes; web bundle artifacts are
+	// never reviewable and fail closed without disclosing bundle bytes.
+	Content       *ReviewArtifactContent `protobuf:"bytes,2,opt,name=content,proto3" json:"content,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetReviewArtifactResponse) Reset() {
+	*x = GetReviewArtifactResponse{}
+	mi := &file_workos_artifact_v1_artifact_proto_msgTypes[11]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetReviewArtifactResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetReviewArtifactResponse) ProtoMessage() {}
+
+func (x *GetReviewArtifactResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_workos_artifact_v1_artifact_proto_msgTypes[11]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetReviewArtifactResponse.ProtoReflect.Descriptor instead.
+func (*GetReviewArtifactResponse) Descriptor() ([]byte, []int) {
+	return file_workos_artifact_v1_artifact_proto_rawDescGZIP(), []int{11}
+}
+
+func (x *GetReviewArtifactResponse) GetArtifact() *Artifact {
+	if x != nil {
+		return x.Artifact
+	}
+	return nil
+}
+
+func (x *GetReviewArtifactResponse) GetContent() *ReviewArtifactContent {
+	if x != nil {
+		return x.Content
+	}
+	return nil
+}
+
+// MarkdownReviewContent is the exact canonical UTF-8 content of a
+// document.markdown.v1 artifact.
+type ReviewArtifactContent_Markdown struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	MediaType     string                 `protobuf:"bytes,1,opt,name=media_type,json=mediaType,proto3" json:"media_type,omitempty"`
+	Content       []byte                 `protobuf:"bytes,2,opt,name=content,proto3" json:"content,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ReviewArtifactContent_Markdown) Reset() {
+	*x = ReviewArtifactContent_Markdown{}
+	mi := &file_workos_artifact_v1_artifact_proto_msgTypes[12]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ReviewArtifactContent_Markdown) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ReviewArtifactContent_Markdown) ProtoMessage() {}
+
+func (x *ReviewArtifactContent_Markdown) ProtoReflect() protoreflect.Message {
+	mi := &file_workos_artifact_v1_artifact_proto_msgTypes[12]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ReviewArtifactContent_Markdown.ProtoReflect.Descriptor instead.
+func (*ReviewArtifactContent_Markdown) Descriptor() ([]byte, []int) {
+	return file_workos_artifact_v1_artifact_proto_rawDescGZIP(), []int{9, 0}
+}
+
+func (x *ReviewArtifactContent_Markdown) GetMediaType() string {
+	if x != nil {
+		return x.MediaType
+	}
+	return ""
+}
+
+func (x *ReviewArtifactContent_Markdown) GetContent() []byte {
+	if x != nil {
+		return x.Content
+	}
+	return nil
+}
+
+// UnifiedDiff is the exact canonical UTF-8 content of a
+// code.unified-diff.v1 artifact.
+type ReviewArtifactContent_UnifiedDiff struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	MediaType     string                 `protobuf:"bytes,1,opt,name=media_type,json=mediaType,proto3" json:"media_type,omitempty"`
+	Content       []byte                 `protobuf:"bytes,2,opt,name=content,proto3" json:"content,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ReviewArtifactContent_UnifiedDiff) Reset() {
+	*x = ReviewArtifactContent_UnifiedDiff{}
+	mi := &file_workos_artifact_v1_artifact_proto_msgTypes[13]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ReviewArtifactContent_UnifiedDiff) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ReviewArtifactContent_UnifiedDiff) ProtoMessage() {}
+
+func (x *ReviewArtifactContent_UnifiedDiff) ProtoReflect() protoreflect.Message {
+	mi := &file_workos_artifact_v1_artifact_proto_msgTypes[13]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ReviewArtifactContent_UnifiedDiff.ProtoReflect.Descriptor instead.
+func (*ReviewArtifactContent_UnifiedDiff) Descriptor() ([]byte, []int) {
+	return file_workos_artifact_v1_artifact_proto_rawDescGZIP(), []int{9, 1}
+}
+
+func (x *ReviewArtifactContent_UnifiedDiff) GetMediaType() string {
+	if x != nil {
+		return x.MediaType
+	}
+	return ""
+}
+
+func (x *ReviewArtifactContent_UnifiedDiff) GetContent() []byte {
+	if x != nil {
+		return x.Content
+	}
+	return nil
+}
+
 var File_workos_artifact_v1_artifact_proto protoreflect.FileDescriptor
 
 const file_workos_artifact_v1_artifact_proto_rawDesc = "" +
 	"\n" +
-	"!workos/artifact/v1/artifact.proto\x12\x12workos.artifact.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1dworkos/common/v1/common.proto\"\xbf\x02\n" +
+	"!workos/artifact/v1/artifact.proto\x12\x12workos.artifact.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1dworkos/common/v1/common.proto\"\xe5\x02\n" +
 	"\bArtifact\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x1d\n" +
 	"\n" +
@@ -571,7 +876,8 @@ const file_workos_artifact_v1_artifact_proto_rawDesc = "" +
 	"\x10total_size_bytes\x18\t \x01(\x03R\x0etotalSizeBytes\x12\x1d\n" +
 	"\n" +
 	"file_count\x18\n" +
-	" \x01(\x05R\tfileCount\"=\n" +
+	" \x01(\x05R\tfileCount\x12$\n" +
+	"\x0esource_task_id\x18\v \x01(\tR\fsourceTaskId\"=\n" +
 	"\rWebBundleFile\x12\x12\n" +
 	"\x04path\x18\x01 \x01(\tR\x04path\x12\x18\n" +
 	"\acontent\x18\x02 \x01(\fR\acontent\"k\n" +
@@ -598,11 +904,30 @@ const file_workos_artifact_v1_artifact_proto_rawDesc = "" +
 	"\x16CreateArtifactResponse\x128\n" +
 	"\bartifact\x18\x01 \x01(\v2\x1c.workos.artifact.v1.ArtifactR\bartifact\"O\n" +
 	"\x13GetArtifactResponse\x128\n" +
-	"\bartifact\x18\x01 \x01(\v2\x1c.workos.artifact.v1.ArtifactR\bartifact2\xc6\x02\n" +
+	"\bartifact\x18\x01 \x01(\v2\x1c.workos.artifact.v1.ArtifactR\bartifact\"\xdd\x02\n" +
+	"\x15ReviewArtifactContent\x12P\n" +
+	"\bmarkdown\x18\x01 \x01(\v22.workos.artifact.v1.ReviewArtifactContent.MarkdownH\x00R\bmarkdown\x12Z\n" +
+	"\funified_diff\x18\x02 \x01(\v25.workos.artifact.v1.ReviewArtifactContent.UnifiedDiffH\x00R\vunifiedDiff\x1aC\n" +
+	"\bMarkdown\x12\x1d\n" +
+	"\n" +
+	"media_type\x18\x01 \x01(\tR\tmediaType\x12\x18\n" +
+	"\acontent\x18\x02 \x01(\fR\acontent\x1aF\n" +
+	"\vUnifiedDiff\x12\x1d\n" +
+	"\n" +
+	"media_type\x18\x01 \x01(\tR\tmediaType\x12\x18\n" +
+	"\acontent\x18\x02 \x01(\fR\acontentB\t\n" +
+	"\acontent\";\n" +
+	"\x18GetReviewArtifactRequest\x12\x1f\n" +
+	"\vartifact_id\x18\x01 \x01(\tR\n" +
+	"artifactId\"\x9a\x01\n" +
+	"\x19GetReviewArtifactResponse\x128\n" +
+	"\bartifact\x18\x01 \x01(\v2\x1c.workos.artifact.v1.ArtifactR\bartifact\x12C\n" +
+	"\acontent\x18\x02 \x01(\v2).workos.artifact.v1.ReviewArtifactContentR\acontent2\xba\x03\n" +
 	"\x0fArtifactService\x12i\n" +
 	"\x0eCreateArtifact\x12).workos.artifact.v1.CreateArtifactRequest\x1a*.workos.artifact.v1.CreateArtifactResponse\"\x00\x12`\n" +
 	"\vGetArtifact\x12&.workos.artifact.v1.GetArtifactRequest\x1a'.workos.artifact.v1.GetArtifactResponse\"\x00\x12f\n" +
-	"\rListArtifacts\x12(.workos.artifact.v1.ListArtifactsRequest\x1a).workos.artifact.v1.ListArtifactsResponse\"\x00BCZAgithub.com/yangtao121/workos/gen/go/workos/artifact/v1;artifactv1b\x06proto3"
+	"\rListArtifacts\x12(.workos.artifact.v1.ListArtifactsRequest\x1a).workos.artifact.v1.ListArtifactsResponse\"\x00\x12r\n" +
+	"\x11GetReviewArtifact\x12,.workos.artifact.v1.GetReviewArtifactRequest\x1a-.workos.artifact.v1.GetReviewArtifactResponse\"\x00BCZAgithub.com/yangtao121/workos/gen/go/workos/artifact/v1;artifactv1b\x06proto3"
 
 var (
 	file_workos_artifact_v1_artifact_proto_rawDescOnce sync.Once
@@ -616,42 +941,53 @@ func file_workos_artifact_v1_artifact_proto_rawDescGZIP() []byte {
 	return file_workos_artifact_v1_artifact_proto_rawDescData
 }
 
-var file_workos_artifact_v1_artifact_proto_msgTypes = make([]protoimpl.MessageInfo, 9)
+var file_workos_artifact_v1_artifact_proto_msgTypes = make([]protoimpl.MessageInfo, 14)
 var file_workos_artifact_v1_artifact_proto_goTypes = []any{
-	(*Artifact)(nil),               // 0: workos.artifact.v1.Artifact
-	(*WebBundleFile)(nil),          // 1: workos.artifact.v1.WebBundleFile
-	(*WebBundleContent)(nil),       // 2: workos.artifact.v1.WebBundleContent
-	(*CreateArtifactRequest)(nil),  // 3: workos.artifact.v1.CreateArtifactRequest
-	(*GetArtifactRequest)(nil),     // 4: workos.artifact.v1.GetArtifactRequest
-	(*ListArtifactsRequest)(nil),   // 5: workos.artifact.v1.ListArtifactsRequest
-	(*ListArtifactsResponse)(nil),  // 6: workos.artifact.v1.ListArtifactsResponse
-	(*CreateArtifactResponse)(nil), // 7: workos.artifact.v1.CreateArtifactResponse
-	(*GetArtifactResponse)(nil),    // 8: workos.artifact.v1.GetArtifactResponse
-	(*timestamppb.Timestamp)(nil),  // 9: google.protobuf.Timestamp
-	(*v1.PageRequest)(nil),         // 10: workos.common.v1.PageRequest
-	(*v1.PageResponse)(nil),        // 11: workos.common.v1.PageResponse
+	(*Artifact)(nil),                          // 0: workos.artifact.v1.Artifact
+	(*WebBundleFile)(nil),                     // 1: workos.artifact.v1.WebBundleFile
+	(*WebBundleContent)(nil),                  // 2: workos.artifact.v1.WebBundleContent
+	(*CreateArtifactRequest)(nil),             // 3: workos.artifact.v1.CreateArtifactRequest
+	(*GetArtifactRequest)(nil),                // 4: workos.artifact.v1.GetArtifactRequest
+	(*ListArtifactsRequest)(nil),              // 5: workos.artifact.v1.ListArtifactsRequest
+	(*ListArtifactsResponse)(nil),             // 6: workos.artifact.v1.ListArtifactsResponse
+	(*CreateArtifactResponse)(nil),            // 7: workos.artifact.v1.CreateArtifactResponse
+	(*GetArtifactResponse)(nil),               // 8: workos.artifact.v1.GetArtifactResponse
+	(*ReviewArtifactContent)(nil),             // 9: workos.artifact.v1.ReviewArtifactContent
+	(*GetReviewArtifactRequest)(nil),          // 10: workos.artifact.v1.GetReviewArtifactRequest
+	(*GetReviewArtifactResponse)(nil),         // 11: workos.artifact.v1.GetReviewArtifactResponse
+	(*ReviewArtifactContent_Markdown)(nil),    // 12: workos.artifact.v1.ReviewArtifactContent.Markdown
+	(*ReviewArtifactContent_UnifiedDiff)(nil), // 13: workos.artifact.v1.ReviewArtifactContent.UnifiedDiff
+	(*timestamppb.Timestamp)(nil),             // 14: google.protobuf.Timestamp
+	(*v1.PageRequest)(nil),                    // 15: workos.common.v1.PageRequest
+	(*v1.PageResponse)(nil),                   // 16: workos.common.v1.PageResponse
 }
 var file_workos_artifact_v1_artifact_proto_depIdxs = []int32{
-	9,  // 0: workos.artifact.v1.Artifact.created_at:type_name -> google.protobuf.Timestamp
+	14, // 0: workos.artifact.v1.Artifact.created_at:type_name -> google.protobuf.Timestamp
 	1,  // 1: workos.artifact.v1.WebBundleContent.files:type_name -> workos.artifact.v1.WebBundleFile
 	0,  // 2: workos.artifact.v1.CreateArtifactRequest.artifact:type_name -> workos.artifact.v1.Artifact
 	2,  // 3: workos.artifact.v1.CreateArtifactRequest.web_bundle:type_name -> workos.artifact.v1.WebBundleContent
-	10, // 4: workos.artifact.v1.ListArtifactsRequest.page:type_name -> workos.common.v1.PageRequest
+	15, // 4: workos.artifact.v1.ListArtifactsRequest.page:type_name -> workos.common.v1.PageRequest
 	0,  // 5: workos.artifact.v1.ListArtifactsResponse.artifacts:type_name -> workos.artifact.v1.Artifact
-	11, // 6: workos.artifact.v1.ListArtifactsResponse.page:type_name -> workos.common.v1.PageResponse
+	16, // 6: workos.artifact.v1.ListArtifactsResponse.page:type_name -> workos.common.v1.PageResponse
 	0,  // 7: workos.artifact.v1.CreateArtifactResponse.artifact:type_name -> workos.artifact.v1.Artifact
 	0,  // 8: workos.artifact.v1.GetArtifactResponse.artifact:type_name -> workos.artifact.v1.Artifact
-	3,  // 9: workos.artifact.v1.ArtifactService.CreateArtifact:input_type -> workos.artifact.v1.CreateArtifactRequest
-	4,  // 10: workos.artifact.v1.ArtifactService.GetArtifact:input_type -> workos.artifact.v1.GetArtifactRequest
-	5,  // 11: workos.artifact.v1.ArtifactService.ListArtifacts:input_type -> workos.artifact.v1.ListArtifactsRequest
-	7,  // 12: workos.artifact.v1.ArtifactService.CreateArtifact:output_type -> workos.artifact.v1.CreateArtifactResponse
-	8,  // 13: workos.artifact.v1.ArtifactService.GetArtifact:output_type -> workos.artifact.v1.GetArtifactResponse
-	6,  // 14: workos.artifact.v1.ArtifactService.ListArtifacts:output_type -> workos.artifact.v1.ListArtifactsResponse
-	12, // [12:15] is the sub-list for method output_type
-	9,  // [9:12] is the sub-list for method input_type
-	9,  // [9:9] is the sub-list for extension type_name
-	9,  // [9:9] is the sub-list for extension extendee
-	0,  // [0:9] is the sub-list for field type_name
+	12, // 9: workos.artifact.v1.ReviewArtifactContent.markdown:type_name -> workos.artifact.v1.ReviewArtifactContent.Markdown
+	13, // 10: workos.artifact.v1.ReviewArtifactContent.unified_diff:type_name -> workos.artifact.v1.ReviewArtifactContent.UnifiedDiff
+	0,  // 11: workos.artifact.v1.GetReviewArtifactResponse.artifact:type_name -> workos.artifact.v1.Artifact
+	9,  // 12: workos.artifact.v1.GetReviewArtifactResponse.content:type_name -> workos.artifact.v1.ReviewArtifactContent
+	3,  // 13: workos.artifact.v1.ArtifactService.CreateArtifact:input_type -> workos.artifact.v1.CreateArtifactRequest
+	4,  // 14: workos.artifact.v1.ArtifactService.GetArtifact:input_type -> workos.artifact.v1.GetArtifactRequest
+	5,  // 15: workos.artifact.v1.ArtifactService.ListArtifacts:input_type -> workos.artifact.v1.ListArtifactsRequest
+	10, // 16: workos.artifact.v1.ArtifactService.GetReviewArtifact:input_type -> workos.artifact.v1.GetReviewArtifactRequest
+	7,  // 17: workos.artifact.v1.ArtifactService.CreateArtifact:output_type -> workos.artifact.v1.CreateArtifactResponse
+	8,  // 18: workos.artifact.v1.ArtifactService.GetArtifact:output_type -> workos.artifact.v1.GetArtifactResponse
+	6,  // 19: workos.artifact.v1.ArtifactService.ListArtifacts:output_type -> workos.artifact.v1.ListArtifactsResponse
+	11, // 20: workos.artifact.v1.ArtifactService.GetReviewArtifact:output_type -> workos.artifact.v1.GetReviewArtifactResponse
+	17, // [17:21] is the sub-list for method output_type
+	13, // [13:17] is the sub-list for method input_type
+	13, // [13:13] is the sub-list for extension type_name
+	13, // [13:13] is the sub-list for extension extendee
+	0,  // [0:13] is the sub-list for field type_name
 }
 
 func init() { file_workos_artifact_v1_artifact_proto_init() }
@@ -659,13 +995,17 @@ func file_workos_artifact_v1_artifact_proto_init() {
 	if File_workos_artifact_v1_artifact_proto != nil {
 		return
 	}
+	file_workos_artifact_v1_artifact_proto_msgTypes[9].OneofWrappers = []any{
+		(*ReviewArtifactContent_Markdown_)(nil),
+		(*ReviewArtifactContent_UnifiedDiff_)(nil),
+	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_workos_artifact_v1_artifact_proto_rawDesc), len(file_workos_artifact_v1_artifact_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   9,
+			NumMessages:   14,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

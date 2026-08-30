@@ -42,6 +42,9 @@ const (
 	// ArtifactServiceListArtifactsProcedure is the fully-qualified name of the ArtifactService's
 	// ListArtifacts RPC.
 	ArtifactServiceListArtifactsProcedure = "/workos.artifact.v1.ArtifactService/ListArtifacts"
+	// ArtifactServiceGetReviewArtifactProcedure is the fully-qualified name of the ArtifactService's
+	// GetReviewArtifact RPC.
+	ArtifactServiceGetReviewArtifactProcedure = "/workos.artifact.v1.ArtifactService/GetReviewArtifact"
 )
 
 // ArtifactServiceClient is a client for the workos.artifact.v1.ArtifactService service.
@@ -49,6 +52,10 @@ type ArtifactServiceClient interface {
 	CreateArtifact(context.Context, *connect.Request[v1.CreateArtifactRequest]) (*connect.Response[v1.CreateArtifactResponse], error)
 	GetArtifact(context.Context, *connect.Request[v1.GetArtifactRequest]) (*connect.Response[v1.GetArtifactResponse], error)
 	ListArtifacts(context.Context, *connect.Request[v1.ListArtifactsRequest]) (*connect.Response[v1.ListArtifactsResponse], error)
+	// GetReviewArtifact returns one review artifact's authoritative metadata
+	// and exact canonical content for the authenticated owner. It never serves
+	// web bundle bytes and never accepts client-chosen media types.
+	GetReviewArtifact(context.Context, *connect.Request[v1.GetReviewArtifactRequest]) (*connect.Response[v1.GetReviewArtifactResponse], error)
 }
 
 // NewArtifactServiceClient constructs a client for the workos.artifact.v1.ArtifactService service.
@@ -80,14 +87,21 @@ func NewArtifactServiceClient(httpClient connect.HTTPClient, baseURL string, opt
 			connect.WithSchema(artifactServiceMethods.ByName("ListArtifacts")),
 			connect.WithClientOptions(opts...),
 		),
+		getReviewArtifact: connect.NewClient[v1.GetReviewArtifactRequest, v1.GetReviewArtifactResponse](
+			httpClient,
+			baseURL+ArtifactServiceGetReviewArtifactProcedure,
+			connect.WithSchema(artifactServiceMethods.ByName("GetReviewArtifact")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
 // artifactServiceClient implements ArtifactServiceClient.
 type artifactServiceClient struct {
-	createArtifact *connect.Client[v1.CreateArtifactRequest, v1.CreateArtifactResponse]
-	getArtifact    *connect.Client[v1.GetArtifactRequest, v1.GetArtifactResponse]
-	listArtifacts  *connect.Client[v1.ListArtifactsRequest, v1.ListArtifactsResponse]
+	createArtifact    *connect.Client[v1.CreateArtifactRequest, v1.CreateArtifactResponse]
+	getArtifact       *connect.Client[v1.GetArtifactRequest, v1.GetArtifactResponse]
+	listArtifacts     *connect.Client[v1.ListArtifactsRequest, v1.ListArtifactsResponse]
+	getReviewArtifact *connect.Client[v1.GetReviewArtifactRequest, v1.GetReviewArtifactResponse]
 }
 
 // CreateArtifact calls workos.artifact.v1.ArtifactService.CreateArtifact.
@@ -105,11 +119,20 @@ func (c *artifactServiceClient) ListArtifacts(ctx context.Context, req *connect.
 	return c.listArtifacts.CallUnary(ctx, req)
 }
 
+// GetReviewArtifact calls workos.artifact.v1.ArtifactService.GetReviewArtifact.
+func (c *artifactServiceClient) GetReviewArtifact(ctx context.Context, req *connect.Request[v1.GetReviewArtifactRequest]) (*connect.Response[v1.GetReviewArtifactResponse], error) {
+	return c.getReviewArtifact.CallUnary(ctx, req)
+}
+
 // ArtifactServiceHandler is an implementation of the workos.artifact.v1.ArtifactService service.
 type ArtifactServiceHandler interface {
 	CreateArtifact(context.Context, *connect.Request[v1.CreateArtifactRequest]) (*connect.Response[v1.CreateArtifactResponse], error)
 	GetArtifact(context.Context, *connect.Request[v1.GetArtifactRequest]) (*connect.Response[v1.GetArtifactResponse], error)
 	ListArtifacts(context.Context, *connect.Request[v1.ListArtifactsRequest]) (*connect.Response[v1.ListArtifactsResponse], error)
+	// GetReviewArtifact returns one review artifact's authoritative metadata
+	// and exact canonical content for the authenticated owner. It never serves
+	// web bundle bytes and never accepts client-chosen media types.
+	GetReviewArtifact(context.Context, *connect.Request[v1.GetReviewArtifactRequest]) (*connect.Response[v1.GetReviewArtifactResponse], error)
 }
 
 // NewArtifactServiceHandler builds an HTTP handler from the service implementation. It returns the
@@ -137,6 +160,12 @@ func NewArtifactServiceHandler(svc ArtifactServiceHandler, opts ...connect.Handl
 		connect.WithSchema(artifactServiceMethods.ByName("ListArtifacts")),
 		connect.WithHandlerOptions(opts...),
 	)
+	artifactServiceGetReviewArtifactHandler := connect.NewUnaryHandler(
+		ArtifactServiceGetReviewArtifactProcedure,
+		svc.GetReviewArtifact,
+		connect.WithSchema(artifactServiceMethods.ByName("GetReviewArtifact")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/workos.artifact.v1.ArtifactService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case ArtifactServiceCreateArtifactProcedure:
@@ -145,6 +174,8 @@ func NewArtifactServiceHandler(svc ArtifactServiceHandler, opts ...connect.Handl
 			artifactServiceGetArtifactHandler.ServeHTTP(w, r)
 		case ArtifactServiceListArtifactsProcedure:
 			artifactServiceListArtifactsHandler.ServeHTTP(w, r)
+		case ArtifactServiceGetReviewArtifactProcedure:
+			artifactServiceGetReviewArtifactHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -164,4 +195,8 @@ func (UnimplementedArtifactServiceHandler) GetArtifact(context.Context, *connect
 
 func (UnimplementedArtifactServiceHandler) ListArtifacts(context.Context, *connect.Request[v1.ListArtifactsRequest]) (*connect.Response[v1.ListArtifactsResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("workos.artifact.v1.ArtifactService.ListArtifacts is not implemented"))
+}
+
+func (UnimplementedArtifactServiceHandler) GetReviewArtifact(context.Context, *connect.Request[v1.GetReviewArtifactRequest]) (*connect.Response[v1.GetReviewArtifactResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("workos.artifact.v1.ArtifactService.GetReviewArtifact is not implemented"))
 }

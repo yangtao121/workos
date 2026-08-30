@@ -113,6 +113,14 @@ JOIN workos_core.agent_tasks AS t ON t.id = o.aggregate_id
 WHERE o.lease_id = $1 AND o.locked_by = $2 AND o.processed_at IS NULL AND o.locked_until >= $3
 FOR UPDATE OF o, t;
 
+-- name: LockTaskArtifactStream :one
+SELECT t.id, t.owner_user_id, t.project_id, t.input, t.last_event_sequence, t.state,
+       t.provider_id, t.created_at
+FROM workos_events.outbox AS o
+JOIN workos_core.agent_tasks AS t ON t.id = o.aggregate_id
+WHERE o.lease_id = $1 AND o.locked_by = $2 AND o.processed_at IS NULL AND o.locked_until >= $3
+FOR UPDATE OF o, t;
+
 -- name: AdvanceTaskState :exec
 UPDATE workos_core.agent_tasks
 SET state = sqlc.arg(state),
@@ -124,6 +132,13 @@ WHERE id = sqlc.arg(task_id);
 INSERT INTO workos_events.events (
     id, stream_type, stream_id, sequence, event_type, payload, occurred_at
 ) VALUES ($1, 'agent-task', $2, $3, $4, $5, $6);
+
+-- AdvanceTaskPublicationSequence moves only the Core-minted publication
+-- event's sequence forward; the task state itself never changes here.
+-- name: AdvanceTaskPublicationSequence :exec
+UPDATE workos_core.agent_tasks
+SET last_event_sequence = sqlc.arg(sequence), updated_at = sqlc.arg(updated_at)
+WHERE id = sqlc.arg(task_id);
 
 -- name: FinishTaskLease :execrows
 UPDATE workos_events.outbox AS o

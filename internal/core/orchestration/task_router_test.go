@@ -405,3 +405,97 @@ type fixedPolicies struct {
 func (f *fixedPolicies) EffectivePolicy(context.Context, string, string, string) (agentdomain.Policy, error) {
 	return f.policy, nil
 }
+
+func TestTaskRouterRejectsUnsupportedArtifactTypesWithZeroSideEffects(t *testing.T) {
+	t.Parallel()
+	requested := []string{"document.markdown.v1", "code.unified-diff.v1"}
+	tests := []struct {
+		name        string
+		capability  *agentports.ProviderCapabilities
+		provider    string
+		projectID   string
+		wantCode    error
+		wantLookups int
+	}{
+		{
+			name:       "provider without structured artifacts",
+			capability: &agentports.ProviderCapabilities{HardTokenBudget: true, HardRuntimeDeadline: true, UsageReporting: true},
+			projectID:  "project-1", wantCode: agentdomain.ErrProviderCapabilityMissing, wantLookups: 1,
+		},
+		{
+			name:       "type outside the exact list",
+			capability: &agentports.ProviderCapabilities{StructuredArtifacts: true, SupportedArtifactTypes: []string{"document.markdown.v1"}},
+			projectID:  "project-1", wantCode: agentdomain.ErrProviderCapabilityMissing, wantLookups: 1,
+		},
+		{
+			name:       "empty exact list is a drift",
+			capability: &agentports.ProviderCapabilities{StructuredArtifacts: true},
+			projectID:  "project-1", wantCode: agentdomain.ErrProviderCapabilityMissing, wantLookups: 1,
+		},
+		{
+			name: "unknown provider", provider: "unknown",
+			projectID: "project-1", wantCode: agentdomain.ErrProviderCapabilityMissing, wantLookups: 1,
+		},
+		{
+			name:       "global scope cannot request review outputs",
+			capability: &agentports.ProviderCapabilities{StructuredArtifacts: true, SupportedArtifactTypes: requested},
+			wantCode:   agentdomain.ErrInvalid, wantLookups: 0,
+		},
+	}
+	for _, test := range tests {
+		test := test
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			agents := &fakeAgents{}
+			projects := &fakeProjects{}
+			providers := &fakeProviders{}
+			if test.capability != nil {
+				providers.capabilities = *test.capability
+			}
+			if test.provider != "" {
+				// The unknown provider sentinel is keyed on the provider id.
+				providers.capabilities = agentports.ProviderCapabilities{}
+			}
+			router, err := NewTaskRouter(agents, projects, &fakePolicies{}, providers, "fake")
+			if err != nil {
+				t.Fatal(err)
+			}
+			_, err = router.Submit(context.Background(), agentapp.SubmitInput{
+				OwnerUserID: "owner", IdempotencyKey: "key", ProjectID: test.projectID,
+				Payload:             []byte(`{"goal":"test"}`),
+				OutputArtifactTypes: requested,
+			})
+			if !errors.Is(err, test.wantCode) {
+				t.Fatalf("expected %v, got %v", test.wantCode, err)
+			}
+			if len(agents.submitted) != 0 {
+				t.Fatalf("rejected submit must have zero side effects: %#v", agents.submitted)
+			}
+			if providers.lookups != test.wantLookups {
+				t.Fatalf("capability lookups = %d, want %d", providers.lookups, test.wantLookups)
+			}
+		})
+	}
+
+	t.Run("supported provider submits with the exact list", func(t *testing.T) {
+		t.Parallel()
+		agents := &fakeAgents{}
+		providers := &fakeProviders{capabilities: agentports.ProviderCapabilities{
+			HardTokenBudget: true, HardRuntimeDeadline: true, UsageReporting: true,
+			StructuredArtifacts: true, SupportedArtifactTypes: requested,
+		}}
+		router, err := NewTaskRouter(agents, &fakeProjects{}, &fakePolicies{}, providers, "fake")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := router.Submit(context.Background(), agentapp.SubmitInput{
+			OwnerUserID: "owner", IdempotencyKey: "key", ProjectID: "project-1",
+			Payload: []byte(`{"goal":"test"}`), OutputArtifactTypes: requested,
+		}); err != nil {
+			t.Fatal(err)
+		}
+		if len(agents.submitted) != 1 {
+			t.Fatalf("expected exactly one submit: %#v", agents.submitted)
+		}
+	})
+}

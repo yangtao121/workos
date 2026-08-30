@@ -5,13 +5,18 @@
   "type": "module",
   "license": "Apache-2.0",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.tsx"
   },
   "scripts": {
     "check": "tsc --noEmit",
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
+    "@types/react": "19.2.14",
     "typescript": "5.9.2"
+  },
+  "dependencies": {
+    "@workos/protocol": "workspace:*",
+    "react": "19.2.8"
   }
 }

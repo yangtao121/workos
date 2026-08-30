@@ -23,9 +23,13 @@ func (h *Handler) ExecuteTask(ctx context.Context, req *connect.Request[harnessv
 	if req.Msg.GetTaskId() == "" || req.Msg.GetInput() == nil || req.Msg.GetProviderId() == "" {
 		return connect.NewError(connect.CodeInvalidArgument, errors.New("task, input, and provider are required"))
 	}
+	// The HarnessHostService streaming surface carries events only; it has
+	// no lease-bound artifact sink, so structured artifact output is not
+	// materializable through it (ADR-0008). The fake adapter refuses such
+	// requests on this path.
 	err := h.broker.Run(ctx, req.Msg.GetTaskId(), req.Msg.GetProviderId(), req.Msg.GetInput(), func(event *agentv1.AgentEvent) error {
 		return stream.Send(&harnessv1.ExecuteTaskResponse{Event: event})
-	})
+	}, nil)
 	if errors.Is(err, broker.ErrProviderUnavailable) {
 		return connect.NewError(connect.CodeFailedPrecondition, err)
 	}

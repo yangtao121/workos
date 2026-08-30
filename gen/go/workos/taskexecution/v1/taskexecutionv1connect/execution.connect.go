@@ -45,6 +45,9 @@ const (
 	// TaskExecutionServiceFinishTaskLeaseProcedure is the fully-qualified name of the
 	// TaskExecutionService's FinishTaskLease RPC.
 	TaskExecutionServiceFinishTaskLeaseProcedure = "/workos.taskexecution.v1.TaskExecutionService/FinishTaskLease"
+	// TaskExecutionServiceAppendTaskArtifactProcedure is the fully-qualified name of the
+	// TaskExecutionService's AppendTaskArtifact RPC.
+	TaskExecutionServiceAppendTaskArtifactProcedure = "/workos.taskexecution.v1.TaskExecutionService/AppendTaskArtifact"
 )
 
 // TaskExecutionServiceClient is a client for the workos.taskexecution.v1.TaskExecutionService
@@ -54,6 +57,14 @@ type TaskExecutionServiceClient interface {
 	RenewTaskLease(context.Context, *connect.Request[v1.RenewTaskLeaseRequest]) (*connect.Response[v1.RenewTaskLeaseResponse], error)
 	AppendTaskEvent(context.Context, *connect.Request[v1.AppendTaskEventRequest]) (*connect.Response[v1.AppendTaskEventResponse], error)
 	FinishTaskLease(context.Context, *connect.Request[v1.FinishTaskLeaseRequest]) (*connect.Response[v1.FinishTaskLeaseResponse], error)
+	// AppendTaskArtifact materializes one provider artifact output under the
+	// active task lease: Core derives owner/project/task provenance from the
+	// lease, validates and canonicalizes the bounded content, adjudicates the
+	// durable (task, output key) identity, persists the immutable artifact,
+	// and publishes exactly one Core-minted ArtifactCreated timeline event —
+	// all in one transaction. Generic AppendTaskEvent must never be used to
+	// smuggle a provider-built ArtifactCreated reference.
+	AppendTaskArtifact(context.Context, *connect.Request[v1.AppendTaskArtifactRequest]) (*connect.Response[v1.AppendTaskArtifactResponse], error)
 }
 
 // NewTaskExecutionServiceClient constructs a client for the
@@ -92,15 +103,22 @@ func NewTaskExecutionServiceClient(httpClient connect.HTTPClient, baseURL string
 			connect.WithSchema(taskExecutionServiceMethods.ByName("FinishTaskLease")),
 			connect.WithClientOptions(opts...),
 		),
+		appendTaskArtifact: connect.NewClient[v1.AppendTaskArtifactRequest, v1.AppendTaskArtifactResponse](
+			httpClient,
+			baseURL+TaskExecutionServiceAppendTaskArtifactProcedure,
+			connect.WithSchema(taskExecutionServiceMethods.ByName("AppendTaskArtifact")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
 // taskExecutionServiceClient implements TaskExecutionServiceClient.
 type taskExecutionServiceClient struct {
-	claimTask       *connect.Client[v1.ClaimTaskRequest, v1.ClaimTaskResponse]
-	renewTaskLease  *connect.Client[v1.RenewTaskLeaseRequest, v1.RenewTaskLeaseResponse]
-	appendTaskEvent *connect.Client[v1.AppendTaskEventRequest, v1.AppendTaskEventResponse]
-	finishTaskLease *connect.Client[v1.FinishTaskLeaseRequest, v1.FinishTaskLeaseResponse]
+	claimTask          *connect.Client[v1.ClaimTaskRequest, v1.ClaimTaskResponse]
+	renewTaskLease     *connect.Client[v1.RenewTaskLeaseRequest, v1.RenewTaskLeaseResponse]
+	appendTaskEvent    *connect.Client[v1.AppendTaskEventRequest, v1.AppendTaskEventResponse]
+	finishTaskLease    *connect.Client[v1.FinishTaskLeaseRequest, v1.FinishTaskLeaseResponse]
+	appendTaskArtifact *connect.Client[v1.AppendTaskArtifactRequest, v1.AppendTaskArtifactResponse]
 }
 
 // ClaimTask calls workos.taskexecution.v1.TaskExecutionService.ClaimTask.
@@ -123,6 +141,11 @@ func (c *taskExecutionServiceClient) FinishTaskLease(ctx context.Context, req *c
 	return c.finishTaskLease.CallUnary(ctx, req)
 }
 
+// AppendTaskArtifact calls workos.taskexecution.v1.TaskExecutionService.AppendTaskArtifact.
+func (c *taskExecutionServiceClient) AppendTaskArtifact(ctx context.Context, req *connect.Request[v1.AppendTaskArtifactRequest]) (*connect.Response[v1.AppendTaskArtifactResponse], error) {
+	return c.appendTaskArtifact.CallUnary(ctx, req)
+}
+
 // TaskExecutionServiceHandler is an implementation of the
 // workos.taskexecution.v1.TaskExecutionService service.
 type TaskExecutionServiceHandler interface {
@@ -130,6 +153,14 @@ type TaskExecutionServiceHandler interface {
 	RenewTaskLease(context.Context, *connect.Request[v1.RenewTaskLeaseRequest]) (*connect.Response[v1.RenewTaskLeaseResponse], error)
 	AppendTaskEvent(context.Context, *connect.Request[v1.AppendTaskEventRequest]) (*connect.Response[v1.AppendTaskEventResponse], error)
 	FinishTaskLease(context.Context, *connect.Request[v1.FinishTaskLeaseRequest]) (*connect.Response[v1.FinishTaskLeaseResponse], error)
+	// AppendTaskArtifact materializes one provider artifact output under the
+	// active task lease: Core derives owner/project/task provenance from the
+	// lease, validates and canonicalizes the bounded content, adjudicates the
+	// durable (task, output key) identity, persists the immutable artifact,
+	// and publishes exactly one Core-minted ArtifactCreated timeline event —
+	// all in one transaction. Generic AppendTaskEvent must never be used to
+	// smuggle a provider-built ArtifactCreated reference.
+	AppendTaskArtifact(context.Context, *connect.Request[v1.AppendTaskArtifactRequest]) (*connect.Response[v1.AppendTaskArtifactResponse], error)
 }
 
 // NewTaskExecutionServiceHandler builds an HTTP handler from the service implementation. It returns
@@ -163,6 +194,12 @@ func NewTaskExecutionServiceHandler(svc TaskExecutionServiceHandler, opts ...con
 		connect.WithSchema(taskExecutionServiceMethods.ByName("FinishTaskLease")),
 		connect.WithHandlerOptions(opts...),
 	)
+	taskExecutionServiceAppendTaskArtifactHandler := connect.NewUnaryHandler(
+		TaskExecutionServiceAppendTaskArtifactProcedure,
+		svc.AppendTaskArtifact,
+		connect.WithSchema(taskExecutionServiceMethods.ByName("AppendTaskArtifact")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/workos.taskexecution.v1.TaskExecutionService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case TaskExecutionServiceClaimTaskProcedure:
@@ -173,6 +210,8 @@ func NewTaskExecutionServiceHandler(svc TaskExecutionServiceHandler, opts ...con
 			taskExecutionServiceAppendTaskEventHandler.ServeHTTP(w, r)
 		case TaskExecutionServiceFinishTaskLeaseProcedure:
 			taskExecutionServiceFinishTaskLeaseHandler.ServeHTTP(w, r)
+		case TaskExecutionServiceAppendTaskArtifactProcedure:
+			taskExecutionServiceAppendTaskArtifactHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -196,4 +235,8 @@ func (UnimplementedTaskExecutionServiceHandler) AppendTaskEvent(context.Context,
 
 func (UnimplementedTaskExecutionServiceHandler) FinishTaskLease(context.Context, *connect.Request[v1.FinishTaskLeaseRequest]) (*connect.Response[v1.FinishTaskLeaseResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("workos.taskexecution.v1.TaskExecutionService.FinishTaskLease is not implemented"))
+}
+
+func (UnimplementedTaskExecutionServiceHandler) AppendTaskArtifact(context.Context, *connect.Request[v1.AppendTaskArtifactRequest]) (*connect.Response[v1.AppendTaskArtifactResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("workos.taskexecution.v1.TaskExecutionService.AppendTaskArtifact is not implemented"))
 }

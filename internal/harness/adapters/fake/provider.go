@@ -26,6 +26,53 @@ const maxOutputTokenCap = 1_000_000
 // maxRuntimeSecondsCap bounds the accepted AgentBudget.max_runtime_seconds.
 const maxRuntimeSecondsCap = 86_400
 
+// The fake adapter is the only provider in this slice that demonstrably
+// produces structured artifact output (ADR-0008): exactly one bounded,
+// deterministic document per requested canonical type, emitted before the
+// terminal event. DeepSeek and Generic CLI keep reporting unsupported.
+var supportedArtifactTypes = []string{"document.markdown.v1", "code.unified-diff.v1"}
+
+// Deterministic artifact facts: output key, title, and synthetic content are
+// fixed per canonical type so every run is reproducible and every fixture is
+// obviously synthetic. The goal text never leaks into artifact content.
+const (
+	documentOutputKey  = "document"
+	documentTitle      = "Fake Harness Review Document"
+	patchOutputKey     = "patch"
+	patchTitle         = "Fake Harness Proposed Patch"
+	maxArtifactOutputs = 2
+)
+
+var syntheticMarkdown = []byte(`# Fake Harness Review Document
+
+## Summary
+
+This document is deterministic synthetic output from the fake harness.
+It exists to exercise the review artifact pipeline end to end.
+
+## Checklist
+
+- bounded canonical content
+- no hidden magic strings
+- read-only review surface
+
+## Notes
+
+` + "```text\nreview fixtures stay synthetic\n```\n")
+
+var syntheticUnifiedDiff = []byte(`diff --git a/src/example.ts b/src/example.ts
+--- a/src/example.ts
++++ b/src/example.ts
+@@ -1,4 +1,5 @@
+ const greeting = "hello";
+-const target = "world";
++const target = "workos";
++// synthetic review change
+ export function greet(): string {
+   return greeting + ", " + target;
+ }
+`)
+
 type Provider struct{ ids ids.Generator }
 
 func New(generator ids.Generator) *Provider { return &Provider{ids: generator} }
@@ -45,13 +92,22 @@ func (p *Provider) Describe() *harnessv1.HarnessProviderInfo {
 			// Core can reject over-bound policies before queueing.
 			MaxOutputTokens:   maxOutputTokenCap,
 			MaxRuntimeSeconds: maxRuntimeSecondsCap,
+			// Structured artifact support is exact: the bool is true only
+			// because the adapter demonstrably produces the listed canonical
+			// types through the private materialization protocol (ADR-0008).
+			StructuredArtifacts:    true,
+			SupportedArtifactTypes: supportedArtifactTypes,
 		},
 	}
 }
 
-func (p *Provider) Run(ctx context.Context, taskID string, input *agentv1.AgentTaskInput, emit ports.Emit) error {
+func (p *Provider) Run(ctx context.Context, taskID string, input *agentv1.AgentTaskInput, emit ports.Emit, artifacts ports.ArtifactSink) error {
 	outputTokens, err := p.validateBudget(input.GetBudget())
 	if err != nil {
+		return err
+	}
+	requested := input.GetOutputArtifactTypes()
+	if err := validateArtifactRequests(requested); err != nil {
 		return err
 	}
 	runID := p.ids.New()
@@ -59,10 +115,6 @@ func (p *Provider) Run(ctx context.Context, taskID string, input *agentv1.AgentT
 		{Event: &agentv1.AgentEvent_RunStarted{RunStarted: &agentv1.RunStarted{RunId: runID, ProviderId: "fake"}}},
 		{Event: &agentv1.AgentEvent_AssistantDelta{AssistantDelta: &agentv1.AssistantDelta{Text: "Fake harness received: "}}},
 		{Event: &agentv1.AgentEvent_AssistantMessage{AssistantMessage: &agentv1.AssistantMessage{Text: strings.TrimSpace(input.GetGoal())}}},
-		{Event: &agentv1.AgentEvent_UsageRecorded{UsageRecorded: &agentv1.UsageRecorded{
-			InputTokens: int64(len([]rune(input.GetGoal()))), OutputTokens: outputTokens, Model: "fake/deterministic",
-		}}},
-		{Event: &agentv1.AgentEvent_RunCompleted{RunCompleted: &agentv1.RunCompleted{Summary: fmt.Sprintf("Task %s completed by fake harness", taskID)}}},
 	}
 	for _, event := range events {
 		select {
@@ -74,7 +126,87 @@ func (p *Provider) Run(ctx context.Context, taskID string, input *agentv1.AgentT
 			return err
 		}
 	}
+	// Exactly one deterministic artifact per requested canonical type, in
+	// request order, strictly before the terminal event. A failed
+	// materialization aborts the run: the artifact contract is not optional.
+	for _, artifactType := range requested {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+		}
+		key, title, content := deterministicArtifact(artifactType)
+		if err := artifacts(ports.ArtifactOutput{Key: key, Title: title, Type: artifactType, Content: content}); err != nil {
+			return err
+		}
+	}
+	final := []*agentv1.AgentEvent{
+		{Event: &agentv1.AgentEvent_UsageRecorded{UsageRecorded: &agentv1.UsageRecorded{
+			InputTokens: int64(len([]rune(input.GetGoal()))), OutputTokens: outputTokens, Model: "fake/deterministic",
+		}}},
+		{Event: &agentv1.AgentEvent_RunCompleted{RunCompleted: &agentv1.RunCompleted{Summary: fmt.Sprintf("Task %s completed by fake harness", taskID)}}},
+	}
+	for _, event := range final {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+		}
+		if err := emit(event); err != nil {
+			return err
+		}
+	}
 	return nil
+}
+
+// validateArtifactRequests enforces the adapter-side artifact contract: only
+// the canonical types this adapter demonstrably produces, no duplicates, and
+// never more than the bounded maximum. Core has already made the same checks
+// against the exact supported list before queueing; this guard keeps the
+// adapter honest against direct calls.
+func validateArtifactRequests(requested []string) error {
+	if len(requested) == 0 {
+		return nil
+	}
+	if len(requested) > maxArtifactOutputs {
+		return ports.NewRunError(ports.ErrorKindInvalidInput, "artifact type request exceeds the fake harness maximum", false, nil)
+	}
+	seen := make(map[string]bool, len(requested))
+	for _, artifactType := range requested {
+		if !supportedArtifactType(artifactType) {
+			return ports.NewRunError(ports.ErrorKindInvalidInput,
+				"requested artifact type is not produced by the fake harness", false, nil)
+		}
+		if seen[artifactType] {
+			return ports.NewRunError(ports.ErrorKindInvalidInput,
+				"requested artifact types must not repeat", false, nil)
+		}
+		seen[artifactType] = true
+	}
+	return nil
+}
+
+func supportedArtifactType(artifactType string) bool {
+	for _, supported := range supportedArtifactTypes {
+		if supported == artifactType {
+			return true
+		}
+	}
+	return false
+}
+
+// deterministicArtifact returns the fixed output facts for one canonical
+// type. Unknown types are unreachable: validateArtifactRequests rejects them
+// before any emission.
+func deterministicArtifact(artifactType string) (key, title string, content []byte) {
+	switch artifactType {
+	case "document.markdown.v1":
+		return documentOutputKey, documentTitle, syntheticMarkdown
+	case "code.unified-diff.v1":
+		return patchOutputKey, patchTitle, syntheticUnifiedDiff
+	default:
+		return "", "", nil
+	}
 }
 
 // validateBudget enforces the accepted budget contract: unset fields keep the

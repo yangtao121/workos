@@ -18,7 +18,7 @@ func (provider *blockingProvider) Describe() *harnessv1.HarnessProviderInfo {
 	return &harnessv1.HarnessProviderInfo{Id: "blocking", Health: commonv1.HealthState_HEALTH_STATE_HEALTHY}
 }
 
-func (provider *blockingProvider) Run(ctx context.Context, _ string, _ *agentv1.AgentTaskInput, _ ports.Emit) error {
+func (provider *blockingProvider) Run(ctx context.Context, _ string, _ *agentv1.AgentTaskInput, _ ports.Emit, _ ports.ArtifactSink) error {
 	close(provider.started)
 	<-ctx.Done()
 	return ctx.Err()
@@ -30,7 +30,7 @@ func TestCancelStopsOnlyTheAddressedRun(t *testing.T) {
 	value := New(provider)
 	result := make(chan error, 1)
 	go func() {
-		result <- value.Run(context.Background(), "task-1", "blocking", &agentv1.AgentTaskInput{}, func(*agentv1.AgentEvent) error { return nil })
+		result <- value.Run(context.Background(), "task-1", "blocking", &agentv1.AgentTaskInput{}, func(*agentv1.AgentEvent) error { return nil }, nil)
 	}()
 	select {
 	case <-provider.started:
@@ -47,7 +47,7 @@ func TestCancelStopsOnlyTheAddressedRun(t *testing.T) {
 
 func TestUnknownProviderIsExplicitlyUnavailable(t *testing.T) {
 	t.Parallel()
-	err := New().Run(context.Background(), "task-1", "missing", &agentv1.AgentTaskInput{}, func(*agentv1.AgentEvent) error { return nil })
+	err := New().Run(context.Background(), "task-1", "missing", &agentv1.AgentTaskInput{}, func(*agentv1.AgentEvent) error { return nil }, nil)
 	if !errors.Is(err, ErrProviderUnavailable) {
 		t.Fatalf("expected unavailable provider, got %v", err)
 	}

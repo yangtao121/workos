@@ -5,6 +5,8 @@ import (
 	"log/slog"
 	"os"
 
+	"connectrpc.com/connect"
+
 	"github.com/yangtao121/workos/gen/go/workos/agent/v1/agentv1connect"
 	commonv1 "github.com/yangtao121/workos/gen/go/workos/common/v1"
 	"github.com/yangtao121/workos/gen/go/workos/common/v1/commonv1connect"
@@ -93,7 +95,36 @@ func run(logger *slog.Logger) error {
 
 	agentRepository := agentpostgres.New(pool)
 	agentService := agentapp.New(agentRepository, generator)
-	executionPath, executionHandler := taskexecutionv1connect.NewTaskExecutionServiceHandler(agenttransport.NewExecution(agentService))
+	artifactRepository := artifactpostgres.New(pool)
+	artifactService, err := artifactapp.New(artifactRepository, generator)
+	if err != nil {
+		return err
+	}
+	// Project-scoped review reads verify the project through the neutral
+	// scope port; the Artifact module never imports Project adapters or SQL.
+	artifactProjectScope, err := orchestration.NewArtifactProjectScope(projectService)
+	if err != nil {
+		return err
+	}
+	if _, err := artifactService.WithProjectScope(artifactProjectScope); err != nil {
+		return err
+	}
+	// The lease-bound materialization coordinator composes the Agent and
+	// Artifact modules through their transaction-scoped ports: one shared
+	// transaction adjudicates the provider output, persists the immutable
+	// artifact, and publishes exactly one Core-minted timeline event. Only
+	// harness-host reaches this private RPC; it never enters the gateway
+	// allowlist.
+	artifactMaterializer, err := orchestration.NewTaskArtifactMaterializer(
+		pool, agentRepository, artifactRepository, artifactService, generator,
+	)
+	if err != nil {
+		return err
+	}
+	executionPath, executionHandler := taskexecutionv1connect.NewTaskExecutionServiceHandler(
+		agenttransport.NewExecution(agentService, artifactMaterializer),
+		connect.WithReadMaxBytes(agenttransport.MaxExecutionRequestBytes),
+	)
 	mux.Handle(executionPath, executionHandler)
 
 	manifestValidator, err := manifestvalidator.New()
@@ -101,10 +132,6 @@ func run(logger *slog.Logger) error {
 		return err
 	}
 	projectDirectory, err := orchestration.NewProjectDirectory(projectService)
-	if err != nil {
-		return err
-	}
-	artifactService, err := artifactapp.New(artifactpostgres.New(pool), generator)
 	if err != nil {
 		return err
 	}

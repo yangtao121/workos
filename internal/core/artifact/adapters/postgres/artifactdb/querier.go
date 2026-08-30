@@ -10,12 +10,36 @@ import (
 
 type Querier interface {
 	GetArtifact(ctx context.Context, arg GetArtifactParams) (WorkosCoreWebBundleArtifact, error)
+	// Metadata projection shared by both implemented subtypes. Exactly one branch
+	// matches a given (owner, id); the union keeps the read a single snapshot.
+	// Provenance columns are NULL on the side that does not carry them.
+	GetArtifactMetadataUnion(ctx context.Context, arg GetArtifactMetadataUnionParams) (GetArtifactMetadataUnionRow, error)
 	GetArtifactRequest(ctx context.Context, arg GetArtifactRequestParams) (WorkosCoreWebBundleArtifactRequest, error)
+	// One review artifact's authoritative metadata and exact content bytes from
+	// the same row snapshot.
+	GetReviewArtifactContent(ctx context.Context, arg GetReviewArtifactContentParams) (WorkosCoreProjectReviewArtifact, error)
+	// Adjudication mapping read for replay/conflict classification inside the
+	// materialization coordinator's transaction.
+	GetReviewArtifactOutput(ctx context.Context, arg GetReviewArtifactOutputParams) (WorkosCoreProjectReviewArtifactOutput, error)
+	// Replay read of one stored review artifact row (identity re-validated by
+	// the caller against the lease-derived owner/project/task).
+	GetReviewFact(ctx context.Context, artifactID string) (GetReviewFactRow, error)
 	InsertArtifact(ctx context.Context, arg InsertArtifactParams) error
 	InsertArtifactRequest(ctx context.Context, arg InsertArtifactRequestParams) (int64, error)
 	InsertBundleFile(ctx context.Context, arg InsertBundleFileParams) error
+	InsertReviewArtifact(ctx context.Context, arg InsertReviewArtifactParams) error
+	// The adjudication insert is the physical arbiter: ON CONFLICT DO NOTHING
+	// covers both the (task, output key) primary key and the (task, artifact
+	// type) unique index, so a racing loser observes zero rows and re-classifies
+	// with GetReviewArtifactOutput.
+	InsertReviewArtifactOutput(ctx context.Context, arg InsertReviewArtifactOutputParams) (int64, error)
 	ListArtifactIDPage(ctx context.Context, arg ListArtifactIDPageParams) ([]string, error)
+	// Ordered union page across both subtypes, probing one row beyond the limit.
+	ListArtifactIDPageUnion(ctx context.Context, arg ListArtifactIDPageUnionParams) ([]string, error)
 	ListArtifactSummaries(ctx context.Context, arg ListArtifactSummariesParams) ([]WorkosCoreWebBundleArtifact, error)
+	// Summary projection shared by both subtypes for exactly the given IDs.
+	ListArtifactSummariesUnion(ctx context.Context, arg ListArtifactSummariesUnionParams) ([]ListArtifactSummariesUnionRow, error)
+	ListProjectReviewArtifactIDPage(ctx context.Context, arg ListProjectReviewArtifactIDPageParams) ([]string, error)
 	ReadBundleAsset(ctx context.Context, arg ReadBundleAssetParams) (ReadBundleAssetRow, error)
 }
 

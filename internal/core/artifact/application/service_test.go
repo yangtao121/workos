@@ -10,6 +10,7 @@ import (
 
 	"github.com/yangtao121/workos/internal/core/artifact/domain"
 	"github.com/yangtao121/workos/internal/core/artifact/ports"
+	"github.com/yangtao121/workos/internal/platform/dbtx"
 	"github.com/yangtao121/workos/internal/platform/ids"
 )
 
@@ -347,3 +348,23 @@ func TestNewRejectsMissingDependencies(t *testing.T) {
 
 var _ ports.Repository = (*fakeRepository)(nil)
 var _ ids.Generator = (*staticGenerator)(nil)
+
+func (r *fakeRepository) GetReviewContent(_ context.Context, ownerUserID, artifactID string) (domain.ReviewArtifact, domain.NormalizedReviewContent, error) {
+	return domain.ReviewArtifact{}, domain.NormalizedReviewContent{}, domain.ErrNotFound
+}
+
+func (r *fakeRepository) ListProjectReviewIDsPage(_ context.Context, ownerUserID, projectID, cursor string, limit int) ([]string, string, error) {
+	return nil, "", nil
+}
+
+func (r *fakeRepository) FindTaskOutput(_ context.Context, _ dbtx.Tx, _, _ string) (ports.TaskOutputRecord, bool, error) {
+	return ports.TaskOutputRecord{}, false, nil
+}
+
+func (r *fakeRepository) InsertTaskOutput(_ context.Context, _ dbtx.Tx, _ ports.ReviewOutputCommand) (int64, error) {
+	return 1, nil
+}
+
+func (r *fakeRepository) ReviewArtifactByID(_ context.Context, _ dbtx.Tx, _ string) (domain.ReviewArtifact, error) {
+	return domain.ReviewArtifact{}, domain.ErrNotFound
+}
