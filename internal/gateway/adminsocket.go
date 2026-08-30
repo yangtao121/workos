@@ -21,12 +21,20 @@ type AdminSocket struct {
 }
 
 // ListenAdminSocket binds the configured path after re-verifying the local
-// filesystem facts: only an exact stale socket may be cleaned up, and the
-// socket file is created with at most 0600 permissions.
+// filesystem facts: an existing socket is only cleaned up once it is proven
+// stale — nothing answers on it. The socket file is created with at most
+// 0600 permissions.
 func ListenAdminSocket(path string, adminHandler http.Handler, logger *slog.Logger) (*AdminSocket, error) {
 	if stat, err := os.Lstat(path); err == nil {
 		if stat.Mode()&os.ModeSocket == 0 {
 			return nil, fmt.Errorf("admin socket path %s exists and is not a Unix socket", path)
+		}
+		// Probe before touching: a live listener proves another gateway
+		// instance owns the socket, which is a hard startup failure, not a
+		// cleanup case.
+		if conn, dialErr := net.DialTimeout("unix", path, time.Second); dialErr == nil {
+			_ = conn.Close()
+			return nil, fmt.Errorf("admin socket %s is served by another process", path)
 		}
 		// Only the exact configured stale socket is removed — never a
 		// broader cleanup.

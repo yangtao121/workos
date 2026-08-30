@@ -38,16 +38,23 @@ type Querier interface {
 	LockDeviceByID(ctx context.Context, id string) (WorkosGatewayDeviceCredential, error)
 	LockDeviceForSession(ctx context.Context, arg LockDeviceForSessionParams) (WorkosGatewayDeviceCredential, error)
 	LockOwnerTicketRotation(ctx context.Context, ownerUserID string) error
+	// Serializes concurrent RevokeDevice calls for one idempotency key, so a
+	// duplicate request waits for the first transaction instead of racing it
+	// and losing the replay path.
+	LockRevocationKey(ctx context.Context, revocationScope string) error
 	LockTicketForComplete(ctx context.Context, id string) (WorkosGatewayPairingTicket, error)
 	// Database transaction time, for the same monotonicity reason as ticket
 	// rotation: a session a concurrent transaction just committed must never
 	// outlive its own creation timestamp.
 	RevokeActiveSessions(ctx context.Context, arg RevokeActiveSessionsParams) (int64, error)
 	RevokeDeviceCredential(ctx context.Context, arg RevokeDeviceCredentialParams) (int64, error)
-	// The revocation timestamp is the database transaction time: rotations
-	// serialized by the owner lock must never stamp a revocation earlier than a
-	// ticket a previous lock holder already committed.
-	RevokePendingTickets(ctx context.Context, ownerUserID string) (int64, error)
+	// Rotation invalidates EVERY outstanding ticket of the owner: pending ones
+	// and already-claimed ones (a browser that locked a ticket but has not
+	// completed loses the race the moment the operator rotates). The revocation
+	// timestamp is the database transaction time: rotations serialized by the
+	// owner lock must never stamp a revocation earlier than a ticket a previous
+	// lock holder already committed.
+	RevokeOutstandingTickets(ctx context.Context, ownerUserID string) (int64, error)
 	RevokeSession(ctx context.Context, arg RevokeSessionParams) (int64, error)
 	TouchDeviceAuthenticated(ctx context.Context, arg TouchDeviceAuthenticatedParams) (int64, error)
 	TouchSessionLastSeen(ctx context.Context, arg TouchSessionLastSeenParams) (int64, error)

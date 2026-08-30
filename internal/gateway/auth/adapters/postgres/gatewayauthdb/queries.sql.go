@@ -695,6 +695,18 @@ func (q *Queries) LockOwnerTicketRotation(ctx context.Context, ownerUserID strin
 	return err
 }
 
+const lockRevocationKey = `-- name: LockRevocationKey :exec
+SELECT pg_advisory_xact_lock(2087990352, hashtext($1::text))
+`
+
+// Serializes concurrent RevokeDevice calls for one idempotency key, so a
+// duplicate request waits for the first transaction instead of racing it
+// and losing the replay path.
+func (q *Queries) LockRevocationKey(ctx context.Context, revocationScope string) error {
+	_, err := q.db.Exec(ctx, lockRevocationKey, revocationScope)
+	return err
+}
+
 const lockTicketForComplete = `-- name: LockTicketForComplete :one
 SELECT id, owner_user_id, secret_hash, public_origin, tls_fingerprint,
        state, device_id, public_key_hash, claimed_name, claimed_class,
@@ -778,17 +790,20 @@ func (q *Queries) RevokeDeviceCredential(ctx context.Context, arg RevokeDeviceCr
 	return result.RowsAffected(), nil
 }
 
-const revokePendingTickets = `-- name: RevokePendingTickets :execrows
+const revokeOutstandingTickets = `-- name: RevokeOutstandingTickets :execrows
 UPDATE workos_gateway.pairing_tickets
 SET state = 'revoked', revoked_at = now()
-WHERE owner_user_id = $1 AND state = 'pending'
+WHERE owner_user_id = $1 AND state IN ('pending', 'claimed')
 `
 
-// The revocation timestamp is the database transaction time: rotations
-// serialized by the owner lock must never stamp a revocation earlier than a
-// ticket a previous lock holder already committed.
-func (q *Queries) RevokePendingTickets(ctx context.Context, ownerUserID string) (int64, error) {
-	result, err := q.db.Exec(ctx, revokePendingTickets, ownerUserID)
+// Rotation invalidates EVERY outstanding ticket of the owner: pending ones
+// and already-claimed ones (a browser that locked a ticket but has not
+// completed loses the race the moment the operator rotates). The revocation
+// timestamp is the database transaction time: rotations serialized by the
+// owner lock must never stamp a revocation earlier than a ticket a previous
+// lock holder already committed.
+func (q *Queries) RevokeOutstandingTickets(ctx context.Context, ownerUserID string) (int64, error) {
+	result, err := q.db.Exec(ctx, revokeOutstandingTickets, ownerUserID)
 	if err != nil {
 		return 0, err
 	}

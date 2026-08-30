@@ -1,7 +1,9 @@
 // IndexedDB persistence for the browser profile device credential. The
 // CryptoKey is structured-cloneable; the private key stays non-extractable
 // through the round trip. Any storage failure surfaces as an error so the
-// pairing flow stops before claiming a ticket.
+// pairing flow stops before claiming a ticket. Writers only report success
+// after the transaction has committed (durability), never on request
+// success alone.
 
 const DATABASE_NAME = "workos-device-auth";
 const DATABASE_VERSION = 1;
@@ -42,6 +44,9 @@ function openDatabase(): Promise<IDBDatabase> {
   });
 }
 
+// withStore opens one transaction and resolves only after the transaction
+// has committed, so a save is durable before the pairing flow continues;
+// any request or transaction error rejects.
 async function withStore<T>(
   mode: IDBTransactionMode,
   run: (store: IDBObjectStore) => IDBRequest<T>,
@@ -50,9 +55,16 @@ async function withStore<T>(
   try {
     return await new Promise<T>((resolve, reject) => {
       const transaction = database.transaction(STORE_NAME, mode);
+      let requestResult: T;
+      transaction.oncomplete = () => {
+        resolve(requestResult);
+      };
+      transaction.onabort = () => {
+        reject(transaction.error ?? new Error("IndexedDB transaction aborted"));
+      };
       const request = run(transaction.objectStore(STORE_NAME));
       request.onsuccess = () => {
-        resolve(request.result);
+        requestResult = request.result;
       };
       request.onerror = () => {
         reject(request.error ?? new Error("IndexedDB request failed"));

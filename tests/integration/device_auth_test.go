@@ -10,6 +10,7 @@ import (
 	"crypto/sha256"
 	"crypto/x509"
 	"encoding/asn1"
+	"errors"
 	"math/big"
 	"sync"
 	"testing"
@@ -119,6 +120,26 @@ func repeatSeed(seed string, n int) string {
 		out += seed
 	}
 	return out[:n]
+}
+
+// retryUnavailable runs op with bounded backoff while the store reports
+// transient unavailability: the full suite's parallel scratch databases can
+// momentarily exhaust PostgreSQL connections, and these flows' goal is
+// concurrency adjudication, not outage behavior (which unit tests pin).
+// Non-outage results and errors return immediately (T values are valid only
+// when err is nil).
+func retryUnavailable[T any](t *testing.T, op func() (T, error)) (T, error) {
+	t.Helper()
+	for attempt := 0; ; attempt++ {
+		result, err := op()
+		if err == nil || !errors.Is(err, domain.ErrStoreUnavailable) {
+			return result, err
+		}
+		if attempt >= 5 {
+			t.Fatalf("store stayed unavailable after retries: %v", err)
+		}
+		time.Sleep(time.Duration(attempt+1) * 100 * time.Millisecond)
+	}
 }
 
 // integrationKey is a real P-256 signing stand-in for the browser profile.
@@ -339,7 +360,10 @@ func TestGatewayDeviceAuthConcurrency(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
-	// Concurrent rotations: exactly one pending ticket survives.
+	// Concurrent rotations: exactly one pending ticket survives. The full
+	// suite's parallel scratch databases can momentarily exhaust PostgreSQL
+	// connections, so transient Unavailable results retry with backoff —
+	// these flows pin concurrency adjudication, not outage behavior.
 	const rotations = 8
 	infos := make([]domain.PairingInfo, rotations)
 	var wg sync.WaitGroup
@@ -349,19 +373,19 @@ func TestGatewayDeviceAuthConcurrency(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			info, err := service.RotatePairingTicket(ctx, integrationOwnerID)
-			if err != nil {
-				t.Errorf("rotation %d failed: %v", i, err)
-				return
+			info, err := retryUnavailable(t, func() (domain.PairingInfo, error) {
+				return service.RotatePairingTicket(ctx, integrationOwnerID)
+			})
+			if err == nil {
+				mu.Lock()
+				infos[i] = info
+				mu.Unlock()
 			}
-			mu.Lock()
-			infos[i] = info
-			mu.Unlock()
 		}()
 	}
 	wg.Wait()
-	var pending int
 	conn := scratchConn(t, dsn)
+	var pending int
 	if err := conn.QueryRow(ctx, `SELECT count(*) FROM workos_gateway.pairing_tickets WHERE owner_user_id = $1 AND state = 'pending'`,
 		integrationOwnerID).Scan(&pending); err != nil {
 		t.Fatal(err)
@@ -370,35 +394,137 @@ func TestGatewayDeviceAuthConcurrency(t *testing.T) {
 		t.Fatalf("expected exactly one pending ticket after concurrent rotation, found %d", pending)
 	}
 
-	// Concurrent claims on the surviving ticket: exactly one winner.
+	// Identify the surviving pending ticket side-effect-free: the goroutine
+	// outputs carry each ticket's id, and exactly one row stayed pending.
+	var pendingID string
+	if err := conn.QueryRow(ctx, `SELECT id FROM workos_gateway.pairing_tickets
+		WHERE owner_user_id = $1 AND state = 'pending'`, integrationOwnerID).Scan(&pendingID); err != nil {
+		t.Fatalf("read surviving pending ticket: %v", err)
+	}
+	key := newIntegrationKey(t)
 	var survivor domain.PairingInfo
 	for _, info := range infos {
-		if info.TicketID != "" {
+		if info.TicketID == pendingID {
 			survivor = info
 			break
 		}
 	}
-	key := newIntegrationKey(t)
+	if survivor.TicketID == "" {
+		t.Fatal("pending ticket not present in rotation outputs")
+	}
+
+	// Concurrent claims on the surviving ticket: exactly one winner; every
+	// loser fails closed on the guarded pending→claimed transition.
 	var claims int
 	var claimMu sync.Mutex
+	var winner application.BeginPairingResult
 	for i := 0; i < 4; i++ {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			result, err := service.BeginPairing(ctx, application.BeginPairingInput{
-				PairingSecret: survivor.Secret, PublicKeySPKI: key.spki, DeviceName: "Racer", DeviceClass: "desktop",
+			result, err := retryUnavailable(t, func() (application.BeginPairingResult, error) {
+				return service.BeginPairing(ctx, application.BeginPairingInput{
+					PairingSecret: survivor.Secret, PublicKeySPKI: key.spki, DeviceName: "Racer", DeviceClass: "desktop",
+				})
 			})
 			if err == nil {
 				claimMu.Lock()
 				claims++
+				winner = result
 				claimMu.Unlock()
-				_ = result
 			}
 		}()
 	}
 	wg.Wait()
 	if claims != 1 {
 		t.Fatalf("expected exactly one successful claim, found %d", claims)
+	}
+
+	// Concurrent completions of the one claimed pairing: the challenge is
+	// consumed once and the ticket completes once, so exactly one device and
+	// one active session may be minted; every loser fails closed.
+	facts := domain.ProofFacts{
+		PublicOrigin: "https://workos.example", Purpose: domain.PurposePairing,
+		ChallengeID: winner.Challenge.ID, Nonce: winner.Challenge.Nonce,
+		DeviceID: winner.DeviceID, PublicKeyHash: key.hash,
+		TicketID: survivor.TicketID, TLSFingerprint: "sha256:" + repeatSeed("bb", 64),
+	}
+	signature := key.sign(t, facts)
+	const completions = 6
+	var completed int
+	var completeMu sync.Mutex
+	for i := 0; i < completions; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			_, err := retryUnavailable(t, func() (application.PairingCompletion, error) {
+				return service.CompletePairing(ctx, application.CompletePairingInput{
+					DeviceID: winner.DeviceID, ChallengeID: winner.Challenge.ID,
+					PublicKeySPKI: key.spki, Signature: signature,
+				})
+			})
+			if err == nil {
+				completeMu.Lock()
+				completed++
+				completeMu.Unlock()
+			}
+		}()
+	}
+	wg.Wait()
+	if completed != 1 {
+		t.Fatalf("expected exactly one successful completion, found %d", completed)
+	}
+	var devices, sessions int
+	if err := conn.QueryRow(ctx, `SELECT count(*) FROM workos_gateway.device_credentials WHERE id = $1`,
+		winner.DeviceID).Scan(&devices); err != nil || devices != 1 {
+		t.Fatalf("expected exactly one device row: %v %d", err, devices)
+	}
+	if err := conn.QueryRow(ctx, `SELECT count(*) FROM workos_gateway.device_sessions WHERE device_id = $1 AND revoked_at IS NULL`,
+		winner.DeviceID).Scan(&sessions); err != nil || sessions != 1 {
+		t.Fatalf("expected exactly one active session: %v %d", err, sessions)
+	}
+}
+
+func TestGatewayDeviceAuthRotationKillsClaimedTickets(t *testing.T) {
+	t.Parallel()
+	dsn := scratchDatabase(t)
+	if err := migrations.Run(context.Background(), dsn); err != nil {
+		t.Fatalf("migrate scratch database: %v", err)
+	}
+	service := newIntegrationService(t, dsn, "sha256:"+repeatSeed("dd", 64))
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+
+	info, err := service.RotatePairingTicket(ctx, integrationOwnerID)
+	if err != nil {
+		t.Fatalf("rotate: %v", err)
+	}
+	key := newIntegrationKey(t)
+	begin, err := service.BeginPairing(ctx, application.BeginPairingInput{
+		PairingSecret: info.Secret, PublicKeySPKI: key.spki, DeviceName: "Claimer", DeviceClass: "desktop",
+	})
+	if err != nil {
+		t.Fatalf("claim: %v", err)
+	}
+
+	// Operator rotates while the ticket is claimed.
+	if _, err := service.RotatePairingTicket(ctx, integrationOwnerID); err != nil {
+		t.Fatalf("second rotate: %v", err)
+	}
+
+	// The claimed QR can no longer complete: the proof references a ticket
+	// snapshot that is now revoked.
+	facts := domain.ProofFacts{
+		PublicOrigin: "https://workos.example", Purpose: domain.PurposePairing,
+		ChallengeID: begin.Challenge.ID, Nonce: begin.Challenge.Nonce,
+		DeviceID: begin.DeviceID, PublicKeyHash: key.hash,
+		TicketID: info.TicketID, TLSFingerprint: "sha256:" + repeatSeed("dd", 64),
+	}
+	if _, err := service.CompletePairing(ctx, application.CompletePairingInput{
+		DeviceID: begin.DeviceID, ChallengeID: begin.Challenge.ID,
+		PublicKeySPKI: key.spki, Signature: key.sign(t, facts),
+	}); err == nil {
+		t.Fatal("claimed ticket survived rotation")
 	}
 }
 

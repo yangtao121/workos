@@ -93,7 +93,7 @@ func (s *Store) RotatePairingTicket(ctx context.Context, ticket domain.PairingTi
 		if err := q.LockOwnerTicketRotation(ctx, ticket.OwnerID); err != nil {
 			return err
 		}
-		if _, err := q.RevokePendingTickets(ctx, ticket.OwnerID); err != nil {
+		if _, err := q.RevokeOutstandingTickets(ctx, ticket.OwnerID); err != nil {
 			return err
 		}
 		return q.InsertPairingTicket(ctx, gatewayauthdb.InsertPairingTicketParams{
@@ -406,6 +406,13 @@ func (s *Store) RevokeDevice(ctx context.Context, op ports.RevokeDeviceOp) (doma
 	var device domain.Device
 	replayed := false
 	err := s.tx(ctx, func(q *gatewayauthdb.Queries) error {
+		// Serialize duplicates of one idempotency key: the second request
+		// waits here for the first transaction to commit and then replays
+		// its persisted snapshot instead of racing it (a racing duplicate
+		// would see neither request row nor a revocable device).
+		if err := q.LockRevocationKey(ctx, op.OwnerID+"|"+op.IdempotencyKey); err != nil {
+			return err
+		}
 		existing, err := q.GetRevocationRequest(ctx, gatewayauthdb.GetRevocationRequestParams{
 			OwnerUserID: op.OwnerID, IdempotencyKey: op.IdempotencyKey,
 		})

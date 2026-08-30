@@ -341,6 +341,52 @@ func TestProductionGateBehavior(t *testing.T) {
 	if coreHeaders.Get(identity.BridgeTokenHeader) != "" {
 		t.Fatal("bridge token leaked to a core route")
 	}
+	// The reverse proxy itself may assert the immediate peer as
+	// X-Forwarded-For; client-supplied forwarding material must be gone.
+	if forwarded := coreHeaders.Get("X-Forwarded-For"); forwarded != "" && forwarded != "192.0.2.1" {
+		t.Fatalf("client X-Forwarded-For reached the upstream: %q", forwarded)
+	}
+}
+
+// TestProxyStripsClientForwardingHeaders pins that client-supplied
+// Forwarded/X-Forwarded-* headers never reach an upstream, on both gates.
+func TestProxyStripsClientForwardingHeaders(t *testing.T) {
+	t.Parallel()
+	var seen http.Header
+	core := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		seen = r.Header.Clone()
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer core.Close()
+
+	for name, cfg := range map[string]config.Config{
+		"dev": {
+			Services: config.URLs{Core: core.URL, Runtime: "http://127.0.0.1:1"},
+			Auth:     config.Auth{DevBypass: true, OwnerID: testOwnerID, DeviceID: testDeviceID},
+		},
+	} {
+		handler, err := New(cfg, newTestLogger(), nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		request := httptest.NewRequest(http.MethodPost, "http://gateway.test/workos.project.v1.ProjectService/ListProjects", nil)
+		request.Header.Set("Forwarded", `for=198.51.100.7;host=evil.example`)
+		request.Header.Set("X-Forwarded-For", "198.51.100.7")
+		request.Header.Set("X-Forwarded-Proto", "https")
+		request.Header.Set("X-Forwarded-Host", "evil.example")
+		response := httptest.NewRecorder()
+		handler.ServeHTTP(response, request)
+		if response.Code != http.StatusNoContent {
+			t.Fatalf("%s gate: status %d", name, response.Code)
+		}
+		if seen.Get("Forwarded") != "" || seen.Get("X-Forwarded-Proto") != "" ||
+			seen.Get("X-Forwarded-Host") != "" {
+			t.Fatalf("%s gate forwarded client forwarding headers: %v", name, seen)
+		}
+		if xff := seen.Get("X-Forwarded-For"); xff != "" && xff != "192.0.2.1" {
+			t.Fatalf("%s gate forwarded client X-Forwarded-For %q", name, xff)
+		}
+	}
 }
 
 // TestProductionNewFailsWithoutAuthStack pins the composition-root guard:

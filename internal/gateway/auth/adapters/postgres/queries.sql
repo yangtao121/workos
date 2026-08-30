@@ -10,13 +10,22 @@ SELECT 1;
 -- name: LockOwnerTicketRotation :exec
 SELECT pg_advisory_xact_lock(2087990351, hashtext(sqlc.arg(owner_user_id)::text));
 
--- name: RevokePendingTickets :execrows
--- The revocation timestamp is the database transaction time: rotations
--- serialized by the owner lock must never stamp a revocation earlier than a
--- ticket a previous lock holder already committed.
+-- name: RevokeOutstandingTickets :execrows
+-- Rotation invalidates EVERY outstanding ticket of the owner: pending ones
+-- and already-claimed ones (a browser that locked a ticket but has not
+-- completed loses the race the moment the operator rotates). The revocation
+-- timestamp is the database transaction time: rotations serialized by the
+-- owner lock must never stamp a revocation earlier than a ticket a previous
+-- lock holder already committed.
 UPDATE workos_gateway.pairing_tickets
 SET state = 'revoked', revoked_at = now()
-WHERE owner_user_id = sqlc.arg(owner_user_id) AND state = 'pending';
+WHERE owner_user_id = sqlc.arg(owner_user_id) AND state IN ('pending', 'claimed');
+
+-- name: LockRevocationKey :exec
+-- Serializes concurrent RevokeDevice calls for one idempotency key, so a
+-- duplicate request waits for the first transaction instead of racing it
+-- and losing the replay path.
+SELECT pg_advisory_xact_lock(2087990352, hashtext(sqlc.arg(revocation_scope)::text));
 
 -- name: InsertPairingTicket :exec
 INSERT INTO workos_gateway.pairing_tickets (

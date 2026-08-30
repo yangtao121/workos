@@ -187,6 +187,9 @@ func (s *Service) BeginPairing(ctx context.Context, input BeginPairingInput) (Be
 	now := s.clock.Now()
 	ticket, err := s.repo.LoadTicketBySecretHash(ctx, domain.HashPairingSecret(rawSecret), now)
 	if err != nil {
+		if errors.Is(err, domain.ErrStoreUnavailable) {
+			return BeginPairingResult{}, err
+		}
 		return BeginPairingResult{}, domain.ErrAuthenticationFailed
 	}
 	if ticket.Attempts >= MaxAttempts {
@@ -284,7 +287,7 @@ func (s *Service) CompletePairing(ctx context.Context, input CompletePairingInpu
 	now := s.clock.Now()
 	challenge, err := s.repo.LoadChallenge(ctx, input.ChallengeID)
 	if err != nil {
-		return PairingCompletion{}, domain.ErrAuthenticationFailed
+		return PairingCompletion{}, outageOr(err, domain.ErrAuthenticationFailed)
 	}
 	if challenge.Purpose != domain.ChallengePairing || challenge.DeviceID != input.DeviceID ||
 		challenge.TicketID == "" || challenge.PublicKeyHash != keyHash {
@@ -295,10 +298,16 @@ func (s *Service) CompletePairing(ctx context.Context, input CompletePairingInpu
 	}
 	ticket, err := s.repo.LoadTicket(ctx, challenge.TicketID, s.cfg.OwnerID)
 	if err != nil {
-		return PairingCompletion{}, s.failChallenge(ctx, input.ChallengeID)
+		return PairingCompletion{}, outageOrAuthFail(ctx, s.repo, err, input.ChallengeID)
 	}
 	if ticket.State != domain.TicketClaimed || ticket.DeviceID != input.DeviceID ||
 		ticket.PublicKeyHash != keyHash || !ticket.Recoverable(now) {
+		return PairingCompletion{}, s.failChallenge(ctx, input.ChallengeID)
+	}
+	// A challenge issued before a certificate or origin change can never
+	// complete: the ticket snapshot must still match what this process is
+	// serving right now (the same check BeginPairing applies).
+	if ticket.PublicOrigin != s.cfg.PublicOrigin || ticket.TLSFingerprint != s.cfg.TLSFingerprint {
 		return PairingCompletion{}, s.failChallenge(ctx, input.ChallengeID)
 	}
 	facts := domain.ProofFacts{
@@ -355,6 +364,9 @@ func (s *Service) BeginDeviceSession(ctx context.Context, deviceID string) (Chal
 	}
 	device, err := s.repo.LoadActiveDevice(ctx, deviceID)
 	if err != nil {
+		if errors.Is(err, domain.ErrStoreUnavailable) {
+			return ChallengeView{}, err
+		}
 		if !errors.Is(err, domain.ErrAuthenticationFailed) && !errors.Is(err, domain.ErrDeviceNotFound) {
 			return ChallengeView{}, err
 		}
@@ -377,6 +389,26 @@ func (s *Service) BeginDeviceSession(ctx context.Context, deviceID string) (Chal
 		return ChallengeView{ID: decoy.ID, Nonce: nonce, ExpiresAt: decoy.ExpiresAt}, nil
 	}
 	return s.newChallenge(ctx, domain.ChallengeSession, device.ID, "", device.PublicKeyHash)
+}
+
+// outageOr keeps store outages on the Unavailable path: a transient
+// infrastructure failure must never surface as an authentication failure
+// that would loop a client into re-pairing.
+func outageOr(err, fallback error) error {
+	if errors.Is(err, domain.ErrStoreUnavailable) {
+		return err
+	}
+	return fallback
+}
+
+// outageOrAuthFail burns the challenge attempt before mapping non-outage
+// lookup misses to the sanitized authentication failure.
+func outageOrAuthFail(ctx context.Context, repo ports.Repository, err error, challengeID string) error {
+	if errors.Is(err, domain.ErrStoreUnavailable) {
+		return err
+	}
+	_ = repo.FailChallengeAttempt(ctx, challengeID)
+	return domain.ErrAuthenticationFailed
 }
 
 // decoyKeyHash renders a deterministic-looking filler digest for decoy
@@ -402,7 +434,7 @@ func (s *Service) CompleteDeviceSession(ctx context.Context, input CompleteSessi
 	now := s.clock.Now()
 	challenge, err := s.repo.LoadChallenge(ctx, input.ChallengeID)
 	if err != nil {
-		return PairingCompletion{}, domain.ErrAuthenticationFailed
+		return PairingCompletion{}, outageOr(err, domain.ErrAuthenticationFailed)
 	}
 	if challenge.Purpose != domain.ChallengeSession {
 		return PairingCompletion{}, s.failChallenge(ctx, input.ChallengeID)
@@ -412,6 +444,9 @@ func (s *Service) CompleteDeviceSession(ctx context.Context, input CompleteSessi
 	}
 	device, err := s.repo.LoadActiveDevice(ctx, input.DeviceID)
 	if err != nil {
+		if errors.Is(err, domain.ErrStoreUnavailable) {
+			return PairingCompletion{}, err
+		}
 		_ = s.repo.ConsumeChallenge(ctx, input.ChallengeID, "", domain.ChallengeFailed, now)
 		return PairingCompletion{}, domain.ErrAuthenticationFailed
 	}

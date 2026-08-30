@@ -325,15 +325,28 @@ export class DeviceAuthClient {
 }
 
 // isWellFormedIdentity tolerates records written by older builds or partial
-// writes: anything malformed is regenerated and overwritten before any
-// ticket is claimed.
+// writes, and re-verifies the loaded private key's contract before anything
+// relies on it: non-extractable ECDSA over P-256 with sign-only usage,
+// matching exportable verify material. Anything malformed is regenerated
+// and overwritten before any ticket is claimed.
 function isWellFormedIdentity(identity: StoredDeviceIdentity | undefined): boolean {
+  if (
+    identity === undefined ||
+    !(identity.privateKey instanceof CryptoKey) ||
+    !(identity.publicKeySpki instanceof Uint8Array) ||
+    identity.publicKeySpki.length === 0 ||
+    typeof identity.publicKeyHash !== "string"
+  ) {
+    return false;
+  }
+  const key = identity.privateKey;
+  const algorithm = key.algorithm as EcKeyAlgorithm;
   return (
-    identity !== undefined &&
-    identity.privateKey instanceof CryptoKey &&
-    identity.publicKeySpki instanceof Uint8Array &&
-    identity.publicKeySpki.length > 0 &&
-    typeof identity.publicKeyHash === "string"
+    !key.extractable &&
+    algorithm.name === "ECDSA" &&
+    algorithm.namedCurve === "P-256" &&
+    key.usages.length === 1 &&
+    key.usages[0] === "sign"
   );
 }
 

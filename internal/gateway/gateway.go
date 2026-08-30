@@ -167,9 +167,17 @@ func newUpstreamProxy(target string, cfg config.Config, logger *slog.Logger, nam
 		// Identity never comes from the inbound request. The gate resolved
 		// it from the validated session (or from configuration under the
 		// loopback development bypass) and stored it in the context; a
-		// missing identity can never be proxied.
+		// missing identity can never be proxied. Proxy-supplied forwarding
+		// chains are equally client-controlled and never travel upstream:
+		// the Gateway is the TLS terminator and the origin of truth.
 		request.Header.Del(identity.UserHeader)
 		request.Header.Del(identity.DeviceHeader)
+		request.Header.Del("Forwarded")
+		for name := range request.Header {
+			if len(name) >= 12 && strings.EqualFold(name[:12], "X-Forwarded-") {
+				request.Header.Del(name)
+			}
+		}
 		if id, err := identity.FromContext(request.Context()); err == nil {
 			request.Header.Set(identity.UserHeader, id.UserID)
 			request.Header.Set(identity.DeviceHeader, id.DeviceID)

@@ -168,7 +168,19 @@ func run(logger *slog.Logger) error {
 		}()
 		logger.Info("gateway admin socket listening")
 	}
-	return httpserver.RunWithTLSConfig("workos-gateway", cfg.HTTP.Address, root, logger, tlsConfig, cfg.Telemetry.OTLPEndpoint)
+	// The public listener and the admin socket share one lifecycle: if the
+	// admin socket fails at runtime, the whole gateway stops instead of
+	// serving a public edge whose operator pairing path is broken.
+	serverErr := make(chan error, 1)
+	go func() {
+		serverErr <- httpserver.RunWithTLSConfig("workos-gateway", cfg.HTTP.Address, root, logger, tlsConfig, cfg.Telemetry.OTLPEndpoint)
+	}()
+	select {
+	case err := <-serverErr:
+		return err
+	case <-ctx.Done():
+		return nil
+	}
 }
 
 func authTTL(value, fallback time.Duration) time.Duration {

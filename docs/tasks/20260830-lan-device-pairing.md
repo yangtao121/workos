@@ -144,6 +144,48 @@ git status                                       # 干净（仅本任务文件�
 - 撤销时间戳用数据库事务时间（`RevokePendingTickets`/`RevokeActiveSessions` 用 `now()`），
   规避锁等待导致的时钟倒挂——这是集成测试抓出的真实 bug。
 
+### 审查修复（第一轮，2026-08-30）
+
+第一轮审查指出 8 项阻塞问题，全部修复并补测试后全量门禁重跑：
+
+1. **P0 rotation 只撤销 pending**：`RevokeOutstandingTickets` 现撤销 `pending` 与
+   `claimed`（操作者 rotation 即刻杀死所有已展示/已领取的 QR）。新增集成测试
+   `TestGatewayDeviceAuthRotationKillsClaimedTickets` 钉住"claimed 后 rotation → 完成
+   必须失败"；内存 repo 同步语义。
+2. **P0 CompletePairing 未重核当前快照**：完成前现在比对 ticket snapshot 与进程当前
+   `PublicOrigin`/`TLSFingerprint`（与 BeginPairing 同一检查）；证书/origin 变更后旧
+   challenge 一律 fail closed。单测
+   `TestCompletePairingRejectsRotatedSnapshot` 钉住。
+3. **P1 outage 被降级为 401/404**：application 所有 lookup（ticket/challenge/device/
+   session）现在透传 `ErrStoreUnavailable`（→ 503），包括 BeginDeviceSession 的 decoy
+   分支；单测 `TestStoreOutageStaysUnavailable` 钉住。
+4. **P1 代理未剥 Forwarded 系**：Director 删除 `Forwarded` 与全部 `X-Forwarded-*`；
+   新增 `TestProxyStripsClientForwardingHeaders`（dev gate）并在生产 gate 测试中断言
+   客户端 forwarding 值不达上游（httputil 自身断言的直连 peer XFF 除外）。
+5. **P1 IndexedDB 只等 request success + 载入 key 未重验**：`withStore` 现在等待
+   `transaction.oncomplete`（提交后才算成功）；`isWellFormedIdentity` 重新校验载入
+   私钥 `extractable=false`、ECDSA/P-256、usage 恰为 `sign`，不合格记录先重生成再
+   claim。
+6. **P1 并发 RevokeDevice 竞态**：revoke 事务先取
+   `pg_advisory_xact_lock(owner|key)`，同 key 重复请求等待首笔提交后走 replay
+   快照路径，不再出现 NotFound。
+7. **P1 admin socket 清理/生命周期**：绑定前对现存 socket 先拨号探测——仍应答即
+   判定另一进程持有，启动失败；无应答（stale）才删除。单测
+   `TestListenAdminSocketRejectsLiveSocket` 钉住"live 不动、stale 回收"。admin
+   socket 运行期失败现在会停止整个 Gateway（`ctx` 贯穿 server 与 admin 监听）。
+8. **必需门禁真实性与测试缺陷**：`TestGatewayDeviceAuthConcurrency` 重写——并发
+   rotation 后从 DB 读取幸存 pending ticket（原实现误取首个 rotation 返回值，即已
+   被 revoke 的 ticket），随后真实并发 4 路 claim（恰 1 胜）与 6 路 CompletePairing
+   （恰 1 胜、恰 1 device、恰 1 active session）；并发套件下瞬时连接耗尽以有界
+   backoff 重试 `Unavailable`（隔离运行 5/5 通过）。配套修复集成期间的
+   `app_registry` padding 断言竞态归因记录（预存的验收卷敏感测试，非本任务引入；
+   本轮全量重跑通过）。
+
+重跑结果（真实）：`make check` PASS、`make test-integration` PASS（0 失败）、
+`make test-e2e` PASS、`make test-deepseek-fixture` PASS、`make test-lan-pairing`
+PASS（四阶段）。`docs/status.json` 的 Gateway `working` 状态在上述真实证据之上
+维持。未 merge、未 push。
+
 ### 未决风险与下一步
 
 1. 验收卷的 019 元数据修复已记录于上；后续如再出现 "checksum changed"，应先比对卷内 schema
