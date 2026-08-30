@@ -16,7 +16,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file workos/taskexecution/v1/execution.proto.
  */
 export const file_workos_taskexecution_v1_execution: GenFile = /*@__PURE__*/
-  fileDesc("Cid3b3Jrb3MvdGFza2V4ZWN1dGlvbi92MS9leGVjdXRpb24ucHJvdG8SF3dvcmtvcy50YXNrZXhlY3V0aW9uLnYxIqwBCglUYXNrTGVhc2USEAoIbGVhc2VfaWQYASABKAkSEQoJd29ya2VyX2lkGAIgASgJEigKBHRhc2sYAyABKAsyGi53b3Jrb3MuYWdlbnQudjEuQWdlbnRUYXNrEi4KCmV4cGlyZXNfYXQYBCABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wEiAKGHJlcXVpcmVzX3Rhc2tfY3JlZGVudGlhbBgFIAEoCCJYChBDbGFpbVRhc2tSZXF1ZXN0EhEKCXdvcmtlcl9pZBgBIAEoCRIxCg5sZWFzZV9kdXJhdGlvbhgCIAEoCzIZLmdvb2dsZS5wcm90b2J1Zi5EdXJhdGlvbiJVChFDbGFpbVRhc2tSZXNwb25zZRI2CgVsZWFzZRgBIAEoCzIiLndvcmtvcy50YXNrZXhlY3V0aW9uLnYxLlRhc2tMZWFzZUgAiAEBQggKBl9sZWFzZSJvChVSZW5ld1Rhc2tMZWFzZVJlcXVlc3QSEAoIbGVhc2VfaWQYASABKAkSEQoJd29ya2VyX2lkGAIgASgJEjEKDmxlYXNlX2R1cmF0aW9uGAMgASgLMhkuZ29vZ2xlLnByb3RvYnVmLkR1cmF0aW9uImgKFlJlbmV3VGFza0xlYXNlUmVzcG9uc2USLgoKZXhwaXJlc19hdBgBIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXASHgoWY2FuY2VsbGF0aW9uX3JlcXVlc3RlZBgCIAEoCCJpChZBcHBlbmRUYXNrRXZlbnRSZXF1ZXN0EhAKCGxlYXNlX2lkGAEgASgJEhEKCXdvcmtlcl9pZBgCIAEoCRIqCgVldmVudBgDIAEoCzIbLndvcmtvcy5hZ2VudC52MS5BZ2VudEV2ZW50IkwKF0FwcGVuZFRhc2tFdmVudFJlc3BvbnNlEjEKDHN0b3JlZF9ldmVudBgBIAEoCzIbLndvcmtvcy5hZ2VudC52MS5BZ2VudEV2ZW50Ij0KFkZpbmlzaFRhc2tMZWFzZVJlcXVlc3QSEAoIbGVhc2VfaWQYASABKAkSEQoJd29ya2VyX2lkGAIgASgJIhkKF0ZpbmlzaFRhc2tMZWFzZVJlc3BvbnNlIioKF01hcmtkb3duQXJ0aWZhY3RDb250ZW50Eg8KB2NvbnRlbnQYASABKAwiLQoaVW5pZmllZERpZmZBcnRpZmFjdENvbnRlbnQSDwoHY29udGVudBgBIAEoDCLVAQoSVGFza0FydGlmYWN0T3V0cHV0EhIKCm91dHB1dF9rZXkYASABKAkSDQoFdGl0bGUYAiABKAkSRAoIbWFya2Rvd24YAyABKAsyMC53b3Jrb3MudGFza2V4ZWN1dGlvbi52MS5NYXJrZG93bkFydGlmYWN0Q29udGVudEgAEksKDHVuaWZpZWRfZGlmZhgEIAEoCzIzLndvcmtvcy50YXNrZXhlY3V0aW9uLnYxLlVuaWZpZWREaWZmQXJ0aWZhY3RDb250ZW50SABCCQoHY29udGVudCJ/ChlBcHBlbmRUYXNrQXJ0aWZhY3RSZXF1ZXN0EhAKCGxlYXNlX2lkGAEgASgJEhEKCXdvcmtlcl9pZBgCIAEoCRI9CghhcnRpZmFjdBgDIAEoCzIrLndvcmtvcy50YXNrZXhlY3V0aW9uLnYxLlRhc2tBcnRpZmFjdE91dHB1dCJ4ChpBcHBlbmRUYXNrQXJ0aWZhY3RSZXNwb25zZRIuCghhcnRpZmFjdBgBIAEoCzIcLndvcmtvcy5hcnRpZmFjdC52MS5BcnRpZmFjdBIqCgVldmVudBgCIAEoCzIbLndvcmtvcy5hZ2VudC52MS5BZ2VudEV2ZW50Ip8BChtSZXNvbHZlZFRhc2tDb250ZXh0RG9jdW1lbnQSEAoIcmVmX3R5cGUYASABKAkSFQoNYXJ0aWZhY3RfdHlwZRgCIAEoCRITCgthcnRpZmFjdF9pZBgDIAEoCRIOCgZkaWdlc3QYBCABKAkSDQoFdGl0bGUYBSABKAkSEgoKbWVkaWFfdHlwZRgGIAEoCRIPCgdjb250ZW50GAcgASgMIkAKGVJlc29sdmVUYXNrQ29udGV4dFJlcXVlc3QSEAoIbGVhc2VfaWQYASABKAkSEQoJd29ya2VyX2lkGAIgASgJImUKGlJlc29sdmVUYXNrQ29udGV4dFJlc3BvbnNlEkcKCWRvY3VtZW50cxgBIAMoCzI0Lndvcmtvcy50YXNrZXhlY3V0aW9uLnYxLlJlc29sdmVkVGFza0NvbnRleHREb2N1bWVudDLjBQoUVGFza0V4ZWN1dGlvblNlcnZpY2USZAoJQ2xhaW1UYXNrEikud29ya29zLnRhc2tleGVjdXRpb24udjEuQ2xhaW1UYXNrUmVxdWVzdBoqLndvcmtvcy50YXNrZXhlY3V0aW9uLnYxLkNsYWltVGFza1Jlc3BvbnNlIgAScwoOUmVuZXdUYXNrTGVhc2USLi53b3Jrb3MudGFza2V4ZWN1dGlvbi52MS5SZW5ld1Rhc2tMZWFzZVJlcXVlc3QaLy53b3Jrb3MudGFza2V4ZWN1dGlvbi52MS5SZW5ld1Rhc2tMZWFzZVJlc3BvbnNlIgASdgoPQXBwZW5kVGFza0V2ZW50Ei8ud29ya29zLnRhc2tleGVjdXRpb24udjEuQXBwZW5kVGFza0V2ZW50UmVxdWVzdBowLndvcmtvcy50YXNrZXhlY3V0aW9uLnYxLkFwcGVuZFRhc2tFdmVudFJlc3BvbnNlIgASdgoPRmluaXNoVGFza0xlYXNlEi8ud29ya29zLnRhc2tleGVjdXRpb24udjEuRmluaXNoVGFza0xlYXNlUmVxdWVzdBowLndvcmtvcy50YXNrZXhlY3V0aW9uLnYxLkZpbmlzaFRhc2tMZWFzZVJlc3BvbnNlIgASfwoSQXBwZW5kVGFza0FydGlmYWN0EjIud29ya29zLnRhc2tleGVjdXRpb24udjEuQXBwZW5kVGFza0FydGlmYWN0UmVxdWVzdBozLndvcmtvcy50YXNrZXhlY3V0aW9uLnYxLkFwcGVuZFRhc2tBcnRpZmFjdFJlc3BvbnNlIgASfwoSUmVzb2x2ZVRhc2tDb250ZXh0EjIud29ya29zLnRhc2tleGVjdXRpb24udjEuUmVzb2x2ZVRhc2tDb250ZXh0UmVxdWVzdBozLndvcmtvcy50YXNrZXhlY3V0aW9uLnYxLlJlc29sdmVUYXNrQ29udGV4dFJlc3BvbnNlIgBCTVpLZ2l0aHViLmNvbS95YW5ndGFvMTIxL3dvcmtvcy9nZW4vZ28vd29ya29zL3Rhc2tleGVjdXRpb24vdjE7dGFza2V4ZWN1dGlvbnYxYgZwcm90bzM", [file_google_protobuf_duration, file_google_protobuf_timestamp, file_workos_agent_v1_agent, file_workos_artifact_v1_artifact]);
+  fileDesc("Cid3b3Jrb3MvdGFza2V4ZWN1dGlvbi92MS9leGVjdXRpb24ucHJvdG8SF3dvcmtvcy50YXNrZXhlY3V0aW9uLnYxIqwBCglUYXNrTGVhc2USEAoIbGVhc2VfaWQYASABKAkSEQoJd29ya2VyX2lkGAIgASgJEigKBHRhc2sYAyABKAsyGi53b3Jrb3MuYWdlbnQudjEuQWdlbnRUYXNrEi4KCmV4cGlyZXNfYXQYBCABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wEiAKGHJlcXVpcmVzX3Rhc2tfY3JlZGVudGlhbBgFIAEoCCJYChBDbGFpbVRhc2tSZXF1ZXN0EhEKCXdvcmtlcl9pZBgBIAEoCRIxCg5sZWFzZV9kdXJhdGlvbhgCIAEoCzIZLmdvb2dsZS5wcm90b2J1Zi5EdXJhdGlvbiJVChFDbGFpbVRhc2tSZXNwb25zZRI2CgVsZWFzZRgBIAEoCzIiLndvcmtvcy50YXNrZXhlY3V0aW9uLnYxLlRhc2tMZWFzZUgAiAEBQggKBl9sZWFzZSJvChVSZW5ld1Rhc2tMZWFzZVJlcXVlc3QSEAoIbGVhc2VfaWQYASABKAkSEQoJd29ya2VyX2lkGAIgASgJEjEKDmxlYXNlX2R1cmF0aW9uGAMgASgLMhkuZ29vZ2xlLnByb3RvYnVmLkR1cmF0aW9uImgKFlJlbmV3VGFza0xlYXNlUmVzcG9uc2USLgoKZXhwaXJlc19hdBgBIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXASHgoWY2FuY2VsbGF0aW9uX3JlcXVlc3RlZBgCIAEoCCJpChZBcHBlbmRUYXNrRXZlbnRSZXF1ZXN0EhAKCGxlYXNlX2lkGAEgASgJEhEKCXdvcmtlcl9pZBgCIAEoCRIqCgVldmVudBgDIAEoCzIbLndvcmtvcy5hZ2VudC52MS5BZ2VudEV2ZW50IkwKF0FwcGVuZFRhc2tFdmVudFJlc3BvbnNlEjEKDHN0b3JlZF9ldmVudBgBIAEoCzIbLndvcmtvcy5hZ2VudC52MS5BZ2VudEV2ZW50Ij0KFkZpbmlzaFRhc2tMZWFzZVJlcXVlc3QSEAoIbGVhc2VfaWQYASABKAkSEQoJd29ya2VyX2lkGAIgASgJIhkKF0ZpbmlzaFRhc2tMZWFzZVJlc3BvbnNlIioKF01hcmtkb3duQXJ0aWZhY3RDb250ZW50Eg8KB2NvbnRlbnQYASABKAwiLQoaVW5pZmllZERpZmZBcnRpZmFjdENvbnRlbnQSDwoHY29udGVudBgBIAEoDCLVAQoSVGFza0FydGlmYWN0T3V0cHV0EhIKCm91dHB1dF9rZXkYASABKAkSDQoFdGl0bGUYAiABKAkSRAoIbWFya2Rvd24YAyABKAsyMC53b3Jrb3MudGFza2V4ZWN1dGlvbi52MS5NYXJrZG93bkFydGlmYWN0Q29udGVudEgAEksKDHVuaWZpZWRfZGlmZhgEIAEoCzIzLndvcmtvcy50YXNrZXhlY3V0aW9uLnYxLlVuaWZpZWREaWZmQXJ0aWZhY3RDb250ZW50SABCCQoHY29udGVudCJ/ChlBcHBlbmRUYXNrQXJ0aWZhY3RSZXF1ZXN0EhAKCGxlYXNlX2lkGAEgASgJEhEKCXdvcmtlcl9pZBgCIAEoCRI9CghhcnRpZmFjdBgDIAEoCzIrLndvcmtvcy50YXNrZXhlY3V0aW9uLnYxLlRhc2tBcnRpZmFjdE91dHB1dCKFAQoeQXBwZW5kVGFza0FydGlmYWN0QmF0Y2hSZXF1ZXN0EhAKCGxlYXNlX2lkGAEgASgJEhEKCXdvcmtlcl9pZBgCIAEoCRI+CglhcnRpZmFjdHMYAyADKAsyKy53b3Jrb3MudGFza2V4ZWN1dGlvbi52MS5UYXNrQXJ0aWZhY3RPdXRwdXQifwofQXBwZW5kVGFza0FydGlmYWN0QmF0Y2hSZXNwb25zZRIvCglhcnRpZmFjdHMYASADKAsyHC53b3Jrb3MuYXJ0aWZhY3QudjEuQXJ0aWZhY3QSKwoGZXZlbnRzGAIgAygLMhsud29ya29zLmFnZW50LnYxLkFnZW50RXZlbnQieAoaQXBwZW5kVGFza0FydGlmYWN0UmVzcG9uc2USLgoIYXJ0aWZhY3QYASABKAsyHC53b3Jrb3MuYXJ0aWZhY3QudjEuQXJ0aWZhY3QSKgoFZXZlbnQYAiABKAsyGy53b3Jrb3MuYWdlbnQudjEuQWdlbnRFdmVudCKfAQobUmVzb2x2ZWRUYXNrQ29udGV4dERvY3VtZW50EhAKCHJlZl90eXBlGAEgASgJEhUKDWFydGlmYWN0X3R5cGUYAiABKAkSEwoLYXJ0aWZhY3RfaWQYAyABKAkSDgoGZGlnZXN0GAQgASgJEg0KBXRpdGxlGAUgASgJEhIKCm1lZGlhX3R5cGUYBiABKAkSDwoHY29udGVudBgHIAEoDCJAChlSZXNvbHZlVGFza0NvbnRleHRSZXF1ZXN0EhAKCGxlYXNlX2lkGAEgASgJEhEKCXdvcmtlcl9pZBgCIAEoCSJlChpSZXNvbHZlVGFza0NvbnRleHRSZXNwb25zZRJHCglkb2N1bWVudHMYASADKAsyNC53b3Jrb3MudGFza2V4ZWN1dGlvbi52MS5SZXNvbHZlZFRhc2tDb250ZXh0RG9jdW1lbnQy9AYKFFRhc2tFeGVjdXRpb25TZXJ2aWNlEmQKCUNsYWltVGFzaxIpLndvcmtvcy50YXNrZXhlY3V0aW9uLnYxLkNsYWltVGFza1JlcXVlc3QaKi53b3Jrb3MudGFza2V4ZWN1dGlvbi52MS5DbGFpbVRhc2tSZXNwb25zZSIAEnMKDlJlbmV3VGFza0xlYXNlEi4ud29ya29zLnRhc2tleGVjdXRpb24udjEuUmVuZXdUYXNrTGVhc2VSZXF1ZXN0Gi8ud29ya29zLnRhc2tleGVjdXRpb24udjEuUmVuZXdUYXNrTGVhc2VSZXNwb25zZSIAEnYKD0FwcGVuZFRhc2tFdmVudBIvLndvcmtvcy50YXNrZXhlY3V0aW9uLnYxLkFwcGVuZFRhc2tFdmVudFJlcXVlc3QaMC53b3Jrb3MudGFza2V4ZWN1dGlvbi52MS5BcHBlbmRUYXNrRXZlbnRSZXNwb25zZSIAEnYKD0ZpbmlzaFRhc2tMZWFzZRIvLndvcmtvcy50YXNrZXhlY3V0aW9uLnYxLkZpbmlzaFRhc2tMZWFzZVJlcXVlc3QaMC53b3Jrb3MudGFza2V4ZWN1dGlvbi52MS5GaW5pc2hUYXNrTGVhc2VSZXNwb25zZSIAEn8KEkFwcGVuZFRhc2tBcnRpZmFjdBIyLndvcmtvcy50YXNrZXhlY3V0aW9uLnYxLkFwcGVuZFRhc2tBcnRpZmFjdFJlcXVlc3QaMy53b3Jrb3MudGFza2V4ZWN1dGlvbi52MS5BcHBlbmRUYXNrQXJ0aWZhY3RSZXNwb25zZSIAEn8KElJlc29sdmVUYXNrQ29udGV4dBIyLndvcmtvcy50YXNrZXhlY3V0aW9uLnYxLlJlc29sdmVUYXNrQ29udGV4dFJlcXVlc3QaMy53b3Jrb3MudGFza2V4ZWN1dGlvbi52MS5SZXNvbHZlVGFza0NvbnRleHRSZXNwb25zZSIAEo4BChdBcHBlbmRUYXNrQXJ0aWZhY3RCYXRjaBI3Lndvcmtvcy50YXNrZXhlY3V0aW9uLnYxLkFwcGVuZFRhc2tBcnRpZmFjdEJhdGNoUmVxdWVzdBo4Lndvcmtvcy50YXNrZXhlY3V0aW9uLnYxLkFwcGVuZFRhc2tBcnRpZmFjdEJhdGNoUmVzcG9uc2UiAEJNWktnaXRodWIuY29tL3lhbmd0YW8xMjEvd29ya29zL2dlbi9nby93b3Jrb3MvdGFza2V4ZWN1dGlvbi92MTt0YXNrZXhlY3V0aW9udjFiBnByb3RvMw", [file_google_protobuf_duration, file_google_protobuf_timestamp, file_workos_agent_v1_agent, file_workos_artifact_v1_artifact]);
 
 /**
  * @generated from message workos.taskexecution.v1.TaskLease
@@ -346,6 +346,67 @@ export const AppendTaskArtifactRequestSchema: GenMessage<AppendTaskArtifactReque
   messageDesc(file_workos_taskexecution_v1_execution, 12);
 
 /**
+ * AppendTaskArtifactBatchRequest materializes up to two provider artifact
+ * outputs in one Core transaction (ADR-0011): either every output commits
+ * with its Core-minted artifact and timeline event, or nothing does. Each
+ * element carries only output key, title, and typed content — every identity
+ * fact is derived from the active task lease. Request order decides event
+ * sequence.
+ *
+ * @generated from message workos.taskexecution.v1.AppendTaskArtifactBatchRequest
+ */
+export type AppendTaskArtifactBatchRequest = Message<"workos.taskexecution.v1.AppendTaskArtifactBatchRequest"> & {
+  /**
+   * @generated from field: string lease_id = 1;
+   */
+  leaseId: string;
+
+  /**
+   * @generated from field: string worker_id = 2;
+   */
+  workerId: string;
+
+  /**
+   * @generated from field: repeated workos.taskexecution.v1.TaskArtifactOutput artifacts = 3;
+   */
+  artifacts: TaskArtifactOutput[];
+};
+
+/**
+ * Describes the message workos.taskexecution.v1.AppendTaskArtifactBatchRequest.
+ * Use `create(AppendTaskArtifactBatchRequestSchema)` to create a new message.
+ */
+export const AppendTaskArtifactBatchRequestSchema: GenMessage<AppendTaskArtifactBatchRequest> = /*@__PURE__*/
+  messageDesc(file_workos_taskexecution_v1_execution, 13);
+
+/**
+ * @generated from message workos.taskexecution.v1.AppendTaskArtifactBatchResponse
+ */
+export type AppendTaskArtifactBatchResponse = Message<"workos.taskexecution.v1.AppendTaskArtifactBatchResponse"> & {
+  /**
+   * Core-minted immutable metadata projections in request order; a full
+   * replay returns the first ones.
+   *
+   * @generated from field: repeated workos.artifact.v1.Artifact artifacts = 1;
+   */
+  artifacts: Artifact[];
+
+  /**
+   * Core-minted, durably published ArtifactCreated events in request order.
+   *
+   * @generated from field: repeated workos.agent.v1.AgentEvent events = 2;
+   */
+  events: AgentEvent[];
+};
+
+/**
+ * Describes the message workos.taskexecution.v1.AppendTaskArtifactBatchResponse.
+ * Use `create(AppendTaskArtifactBatchResponseSchema)` to create a new message.
+ */
+export const AppendTaskArtifactBatchResponseSchema: GenMessage<AppendTaskArtifactBatchResponse> = /*@__PURE__*/
+  messageDesc(file_workos_taskexecution_v1_execution, 14);
+
+/**
  * @generated from message workos.taskexecution.v1.AppendTaskArtifactResponse
  */
 export type AppendTaskArtifactResponse = Message<"workos.taskexecution.v1.AppendTaskArtifactResponse"> & {
@@ -372,7 +433,7 @@ export type AppendTaskArtifactResponse = Message<"workos.taskexecution.v1.Append
  * Use `create(AppendTaskArtifactResponseSchema)` to create a new message.
  */
 export const AppendTaskArtifactResponseSchema: GenMessage<AppendTaskArtifactResponse> = /*@__PURE__*/
-  messageDesc(file_workos_taskexecution_v1_execution, 13);
+  messageDesc(file_workos_taskexecution_v1_execution, 15);
 
 /**
  * ResolvedTaskContextDocument is one canonical bounded context document the
@@ -424,7 +485,7 @@ export type ResolvedTaskContextDocument = Message<"workos.taskexecution.v1.Resol
  * Use `create(ResolvedTaskContextDocumentSchema)` to create a new message.
  */
 export const ResolvedTaskContextDocumentSchema: GenMessage<ResolvedTaskContextDocument> = /*@__PURE__*/
-  messageDesc(file_workos_taskexecution_v1_execution, 14);
+  messageDesc(file_workos_taskexecution_v1_execution, 16);
 
 /**
  * ResolveTaskContext derives the task's canonical context documents from the
@@ -452,7 +513,7 @@ export type ResolveTaskContextRequest = Message<"workos.taskexecution.v1.Resolve
  * Use `create(ResolveTaskContextRequestSchema)` to create a new message.
  */
 export const ResolveTaskContextRequestSchema: GenMessage<ResolveTaskContextRequest> = /*@__PURE__*/
-  messageDesc(file_workos_taskexecution_v1_execution, 15);
+  messageDesc(file_workos_taskexecution_v1_execution, 17);
 
 /**
  * @generated from message workos.taskexecution.v1.ResolveTaskContextResponse
@@ -469,7 +530,7 @@ export type ResolveTaskContextResponse = Message<"workos.taskexecution.v1.Resolv
  * Use `create(ResolveTaskContextResponseSchema)` to create a new message.
  */
 export const ResolveTaskContextResponseSchema: GenMessage<ResolveTaskContextResponse> = /*@__PURE__*/
-  messageDesc(file_workos_taskexecution_v1_execution, 16);
+  messageDesc(file_workos_taskexecution_v1_execution, 18);
 
 /**
  * @generated from service workos.taskexecution.v1.TaskExecutionService
@@ -536,6 +597,19 @@ export const TaskExecutionService: GenService<{
     methodKind: "unary";
     input: typeof ResolveTaskContextRequestSchema;
     output: typeof ResolveTaskContextResponseSchema;
+  },
+  /**
+   * AppendTaskArtifactBatch atomically materializes up to two outputs whose
+   * publication must stand or fall together (multi-output structured runs).
+   * Request order decides event sequence; any conflict, corruption, or
+   * validation failure leaves the task stream with zero new artifacts.
+   *
+   * @generated from rpc workos.taskexecution.v1.TaskExecutionService.AppendTaskArtifactBatch
+   */
+  appendTaskArtifactBatch: {
+    methodKind: "unary";
+    input: typeof AppendTaskArtifactBatchRequestSchema;
+    output: typeof AppendTaskArtifactBatchResponseSchema;
   },
 }> = /*@__PURE__*/
   serviceDesc(file_workos_taskexecution_v1_execution, 0);

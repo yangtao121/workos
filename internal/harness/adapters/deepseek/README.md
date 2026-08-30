@@ -29,9 +29,18 @@ does not cross the WorkOS provider, Core, Proto, or database boundary.
 - An empty role and the exact role `general` have the same fixed, no-tools
   persona. All other roles are rejected; role text is never promoted into a
   system instruction.
-- `context_refs`, requested capabilities, structured artifacts, cost budgets,
-  tools, MCP, approvals, sessions, workspace access, and subagents are rejected
-  or disabled rather than silently ignored.
+- `context_refs` are consumed as bounded untrusted context through the
+  versioned task envelope (ADR-0010); requested capabilities, cost budgets,
+  tools, MCP, approvals, sessions, workspace access, and subagents are
+  rejected or disabled rather than silently ignored.
+- Structured review output (ADR-0011): when the task requests
+  `document.markdown.v1` / `code.unified-diff.v1`, the run must answer with
+  exactly one strict JSON document; the adapter parses it with duplicate-key
+  and trailing-content rejection, bounds the summary and every candidate
+  against the canonical review grammar, derives the output keys and titles
+  itself, and publishes both outputs atomically through the private batch
+  protocol. Raw JSON never enters the timeline; malformed, partial,
+  oversize, or unsupported output fails the run closed.
 - `max_tokens` defaults to 8192 and accepts at most 384000. The effective local
   runtime limit is the smaller of the configured timeout and
   `max_runtime_seconds`, capped at ten minutes.

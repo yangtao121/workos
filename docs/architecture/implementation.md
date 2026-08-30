@@ -847,6 +847,38 @@ harness worker：provider 启动前一次 ResolveTaskContext(lease_id, worker_id
     digest/ID 不进 DOM data attribute/URL/storage。门禁 `make test-artifact-context`（Go 进程内
     PostgreSQL 协议测试 + 真实跨进程 Chromium 链路）与确定性 before/after/current 视觉证据。
 
+## DeepSeek Structured Markdown / Diff Review（ADR-0011，2026-08-30）
+
+仅当 task 的 `output_artifact_types` 非空时启用 versioned structured mode：DeepSeek adapter 把
+goal/context/output contract 编码为 versioned canonical JSON task envelope（context 在
+`untrusted_contexts` 数组；contract 在 `output_contract`），模型回答必须是恰好一个 JSON
+document（`workos.deepseek.review-output.v1` + bounded summary + artifacts key set 恰好等于
+请求集合）。
+
+```text
+structured run：RunStarted → deltas 只聚合不发布 → shutdown
+  → strict parser（单 JSON 值、拒绝 unknown/duplicate key、trailing/prose/fence、
+     summary ≤64KiB、每 output ≤512KiB/20k 行/16KiB 行、UTF-8/C0-C1 规则）
+  → adapter 固定 output key/title（document/patch）→ 原子 batch sink
+  → validated bounded summary 成为唯一 AssistantMessage → Usage → RunCompleted
+```
+
+- 原子 batch：私有协议 additive `AppendTaskArtifactBatch`（≤2 outputs；保留单项 RPC）。Core
+  在单事务内锁定 stream、逐项 replay/prepare/insert/publish（连续 event sequence、request
+  order 定序）；任何 conflict/corruption/校验失败整批回滚——零 artifact、零 mapping、零 event。
+  all-absent → 原子插入；all-present exact → 精确 replay（同一 artifact/event）；worker 仅在
+  batch 成功后标记 requested types emitted。
+- malformed/partial/oversize/unsupported/revoked 输出全部 fail closed：RunFailed（非重试
+  protocol failure、不回显 response）、无 artifact_created、无 RunCompleted。
+- capability 翻转以证据为前提：DeepSeek 现声明 `structured_artifacts=true` +
+  exact `document.markdown.v1`/`code.unified-diff.v1`（strict goldens、batch 原子性、本地
+  fixture 全链路测试先行）。同一 run 同时受 ADR-0009 credential lease、ADR-0010 context、
+  token/runtime budget 约束；任一失效 cancel/kill child 并停止 publication。
+- 门禁 `make test-deepseek-structured-review`（PostgreSQL + Core mTLS + harness-host +
+  workosctl admin socket + 本地 fixture + Gateway + Chromium；structured 成功链路 +
+  malformed fail-closed 链路）；`TestArtifactBatchAtomicity` 对真实 PostgreSQL 证明
+  all-or-none/exact replay/conflict。
+
 ## 状态与失败
 
 - liveness 表示进程事件循环存活，readiness 表示必需依赖可用。

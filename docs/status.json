@@ -48,7 +48,7 @@
       "name": "DeepSeek Harness Adapter",
       "process": "harness-host",
       "status": "working",
-      "evidence": "official runtime + keyless streaming fixture integration and browser E2E; since ADR-0009 the adapter holds no long-lived key: every run requires a task-bound credential lease from the Core Credential Vault (requires_task_credential_lease), the legacy DEEPSEEK_API_KEY env path is retired with a sanitized migration issue, and the lease secret reaches only that task's allowlisted child env"
+      "evidence": "official runtime + keyless streaming fixture integration and browser E2E; since ADR-0009 the adapter holds no long-lived key: every run requires a task-bound credential lease from the Core Credential Vault (requires_task_credential_lease), the legacy DEEPSEEK_API_KEY env path is retired with a sanitized migration issue, and the lease secret reaches only that task's allowlisted child env; structured review (ADR-0011) with structured_artifacts=true and exact markdown/diff outputs: strict single-JSON parser (duplicate keys, trailing content, unknown fields, bounds, control rejection), adapter-derived keys/titles, raw stream suppressed from the timeline, atomic two-output batch materialization on real PostgreSQL, and malformed-output fail-closed (make test-deepseek-structured-review over PostgreSQL + Core mTLS + harness-host + workosctl admin socket + local fixture + Chromium)"
     },
     {
       "name": "Desktop Shell",

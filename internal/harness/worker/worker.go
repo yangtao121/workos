@@ -226,9 +226,35 @@ func (w *Worker) process(parent context.Context, lease *taskv1.TaskLease) {
 			emittedTypes[output.Type] = true
 			return nil
 		}
+		// Atomic batch sink (ADR-0011): a provider publishing outputs whose
+		// completion must stand or fall together calls this once; each
+		// successful batch marks every requested type it delivered.
+		batch := func(outputs []ports.ArtifactOutput) error {
+			if len(outputs) == 0 || len(outputs) > 2 {
+				return ports.NewRunError(ports.ErrorKindProtocol, "artifact batch size is not supported", false, nil)
+			}
+			request := &taskv1.AppendTaskArtifactBatchRequest{
+				LeaseId: lease.GetLeaseId(), WorkerId: w.id,
+			}
+			for _, output := range outputs {
+				if emittedTypes[output.Type] {
+					return ports.NewRunError(ports.ErrorKindProtocol, "provider emitted the same artifact type more than once", false, nil)
+				}
+				request.Artifacts = append(request.Artifacts, artifactOutputProto(output))
+			}
+			response, batchErr := w.client.AppendTaskArtifactBatch(runCtx, connect.NewRequest(request))
+			if batchErr != nil {
+				return batchErr
+			}
+			_ = response
+			for _, output := range outputs {
+				emittedTypes[output.Type] = true
+			}
+			return nil
+		}
 		err := w.broker.Run(runCtx, ports.Execution{
 			TaskID: task.GetId(), Input: task.GetInput(), Credential: credentialLease, Artifacts: artifacts,
-			Context: contextDocuments,
+			ArtifactsBatch: batch, Context: contextDocuments,
 			Emit: func(event *agentv1.AgentEvent) error {
 				// A completion that would leave requested artifact outputs
 				// missing fails closed here — before the terminal event lands —

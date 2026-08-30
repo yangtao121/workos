@@ -105,10 +105,9 @@ func (m *TaskArtifactMaterializer) MaterializeTaskArtifact(ctx context.Context, 
 		return nil, nil, artifactdomain.ErrCorrupt
 	}
 
-	// 2. Scope and request verification: project review artifacts exist only
-	// for project-scoped tasks, and only for types the task actually
-	// requested. All failures here are client-input verdicts that consume
-	// nothing.
+	// Steps 2–6 run through the shared per-item path; the sequence base is
+	// the stream's current last event. Project review artifacts exist only
+	// for project-scoped tasks.
 	if stream.ProjectID == "" {
 		return nil, nil, artifactdomain.ErrInvalid
 	}
@@ -116,11 +115,103 @@ func (m *TaskArtifactMaterializer) MaterializeTaskArtifact(ctx context.Context, 
 	if err != nil {
 		return nil, nil, err
 	}
+	nextSeq := stream.LastEventSequence
+	artifact, event, err := m.materializeItem(ctx, tx, stream, requested, &nextSeq, outputKey, rawTitle, artifactType, content, now)
+	if err != nil {
+		return nil, nil, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return nil, nil, fmt.Errorf("commit artifact materialization: %w", err)
+	}
+	return artifact, event, nil
+}
+
+// MaterializeTaskArtifactBatch atomically materializes up to two provider
+// outputs whose publication must stand or fall together (ADR-0011). One
+// transaction locks the stream, then walks the outputs in request order:
+// each is replayed exactly or prepared/inserted/published with consecutive
+// Core-minted event sequences. Any conflict, corruption, or validation
+// failure aborts the whole transaction — the task stream gains nothing.
+func (m *TaskArtifactMaterializer) MaterializeTaskArtifactBatch(ctx context.Context, leaseID, workerID string, outputs []BatchOutput) ([]*artifactv1.Artifact, []*agentv1.AgentEvent, error) {
+	if len(outputs) == 0 || len(outputs) > 2 {
+		return nil, nil, artifactdomain.ErrInvalid
+	}
+	seenKeys := make(map[string]struct{}, len(outputs))
+	seenTypes := make(map[string]struct{}, len(outputs))
+	for _, output := range outputs {
+		if _, dupKey := seenKeys[output.Key]; dupKey {
+			return nil, nil, artifactdomain.ErrInvalid
+		}
+		if _, dupType := seenTypes[output.Type]; dupType {
+			return nil, nil, artifactdomain.ErrInvalid
+		}
+		seenKeys[output.Key] = struct{}{}
+		seenTypes[output.Type] = struct{}{}
+	}
+	now := artifactdomain.CanonicalUTCTime(m.now())
+	tx, err := m.pool.Begin(ctx)
+	if err != nil {
+		return nil, nil, fmt.Errorf("begin artifact batch materialization: %w", err)
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck
+	stream, err := m.streams.LockTaskArtifactStream(ctx, tx, leaseID, workerID, now)
+	if err != nil {
+		return nil, nil, err
+	}
+	if !validTaskArtifactStream(stream) {
+		return nil, nil, artifactdomain.ErrCorrupt
+	}
+	if stream.ProjectID == "" {
+		return nil, nil, artifactdomain.ErrInvalid
+	}
+	requested, err := requestedArtifactTypes(stream.Input, stream.ProjectID)
+	if err != nil {
+		return nil, nil, err
+	}
+	nextSeq := stream.LastEventSequence
+	artifacts := make([]*artifactv1.Artifact, 0, len(outputs))
+	events := make([]*agentv1.AgentEvent, 0, len(outputs))
+	for _, output := range outputs {
+		artifact, event, err := m.materializeItem(ctx, tx, stream, requested, &nextSeq,
+			output.Key, output.Title, output.Type, output.Content, now)
+		if err != nil {
+			// The shared transaction rolls back: zero new writes for the batch.
+			return nil, nil, err
+		}
+		artifacts = append(artifacts, artifact)
+		events = append(events, event)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return nil, nil, fmt.Errorf("commit artifact batch materialization: %w", err)
+	}
+	return artifacts, events, nil
+}
+
+// BatchOutput is one element of an atomic batch: key, title, typed content.
+type BatchOutput struct {
+	Key     string
+	Title   string
+	Type    string
+	Content []byte
+}
+
+// materializeItem materializes exactly one output inside the caller's
+// transaction, minting its publication event at nextSeq+1 and advancing the
+// sequence cursor. Replay verifies the stored canonical digest exactly.
+func (m *TaskArtifactMaterializer) materializeItem(
+	ctx context.Context, tx dbtx.Tx, stream agentports.TaskStreamFacts,
+	requested map[string]bool, nextSeq *int64,
+	outputKey, rawTitle, artifactType string, content []byte,
+	now time.Time,
+) (*artifactv1.Artifact, *agentv1.AgentEvent, error) {
+	// Scope and request verification: project review artifacts exist only
+	// for project-scoped tasks, and only for types the task actually
+	// requested.
 	if !requested[artifactType] {
 		return nil, nil, artifactdomain.ErrInvalid
 	}
 
-	// 3. Replay/conflict adjudication on the durable mapping. The replayed
+	// Replay/conflict adjudication on the durable mapping. The replayed
 	// raw request must reproduce the stored canonical digest exactly; any
 	// other input — including input too malformed to digest — is the stable
 	// conflict verdict and consumes nothing.
@@ -139,8 +230,8 @@ func (m *TaskArtifactMaterializer) MaterializeTaskArtifact(ctx context.Context, 
 		return m.replay(ctx, tx, stream, existing)
 	}
 
-	// 4. Canonical preparation: normalize, bound, digest, and mint the
-	// artifact identity. Validation failures consume nothing.
+	// Canonical preparation: normalize, bound, digest, and mint the artifact
+	// identity. Validation failures consume nothing.
 	command, err := m.preparer.PrepareReviewOutput(
 		stream.OwnerUserID, stream.ProjectID, stream.TaskID, outputKey, rawTitle, artifactType, content,
 	)
@@ -148,14 +239,14 @@ func (m *TaskArtifactMaterializer) MaterializeTaskArtifact(ctx context.Context, 
 		return nil, nil, err
 	}
 	publication := artifactdomain.PublicationRecord{
-		EventID: m.ids.New(), EventSeq: stream.LastEventSequence + 1, OccurredAt: now,
+		EventID: m.ids.New(), EventSeq: *nextSeq + 1, OccurredAt: now,
 	}
 	if !artifactdomain.ValidStoredPublicationRecord(publication) {
 		return nil, nil, artifactdomain.ErrCorrupt
 	}
 	command.Publication = publication
 
-	// 5. Atomic insert: artifact row + adjudication mapping. Zero rows means
+	// Atomic insert: artifact row + adjudication mapping. Zero rows means
 	// a concurrent winner consumed the (task, output key) identity or the
 	// (task, type) slot under the same serialized stream; re-classify.
 	rows, err := m.artifacts.InsertTaskOutput(ctx, tx, command)
@@ -179,7 +270,7 @@ func (m *TaskArtifactMaterializer) MaterializeTaskArtifact(ctx context.Context, 
 		return nil, nil, artifactdomain.ErrCorrupt
 	}
 
-	// 6. Core-minted publication: exactly one artifact_created event per
+	// Core-minted publication: exactly one artifact_created event per
 	// artifact, in the same transaction as the artifact row.
 	event, err := agentapp.NewArtifactPublicationEvent(
 		publication.EventID, stream.TaskID, publication.EventSeq, publication.OccurredAt,
@@ -188,12 +279,14 @@ func (m *TaskArtifactMaterializer) MaterializeTaskArtifact(ctx context.Context, 
 	if err != nil {
 		return nil, nil, err
 	}
+	// The publication validator checks the event against the caller's view
+	// of the stream: sync the local copy to this item's base so a batch's
+	// second item validates against the first item's sequence.
+	stream.LastEventSequence = *nextSeq
 	if err := m.streams.AppendPublicationEvent(ctx, tx, stream, event); err != nil {
 		return nil, nil, err
 	}
-	if err := tx.Commit(ctx); err != nil {
-		return nil, nil, fmt.Errorf("commit artifact materialization: %w", err)
-	}
+	*nextSeq = publication.EventSeq
 	return reviewArtifactProto(command.Artifact), publicationProto(stream, publication, command.Artifact), nil
 }
 

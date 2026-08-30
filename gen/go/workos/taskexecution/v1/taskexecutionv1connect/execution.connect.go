@@ -51,6 +51,9 @@ const (
 	// TaskExecutionServiceResolveTaskContextProcedure is the fully-qualified name of the
 	// TaskExecutionService's ResolveTaskContext RPC.
 	TaskExecutionServiceResolveTaskContextProcedure = "/workos.taskexecution.v1.TaskExecutionService/ResolveTaskContext"
+	// TaskExecutionServiceAppendTaskArtifactBatchProcedure is the fully-qualified name of the
+	// TaskExecutionService's AppendTaskArtifactBatch RPC.
+	TaskExecutionServiceAppendTaskArtifactBatchProcedure = "/workos.taskexecution.v1.TaskExecutionService/AppendTaskArtifactBatch"
 )
 
 // TaskExecutionServiceClient is a client for the workos.taskexecution.v1.TaskExecutionService
@@ -74,6 +77,11 @@ type TaskExecutionServiceClient interface {
 	// lease replays return byte-identical documents, and a lost, terminal, or
 	// foreign lease fails closed.
 	ResolveTaskContext(context.Context, *connect.Request[v1.ResolveTaskContextRequest]) (*connect.Response[v1.ResolveTaskContextResponse], error)
+	// AppendTaskArtifactBatch atomically materializes up to two outputs whose
+	// publication must stand or fall together (multi-output structured runs).
+	// Request order decides event sequence; any conflict, corruption, or
+	// validation failure leaves the task stream with zero new artifacts.
+	AppendTaskArtifactBatch(context.Context, *connect.Request[v1.AppendTaskArtifactBatchRequest]) (*connect.Response[v1.AppendTaskArtifactBatchResponse], error)
 }
 
 // NewTaskExecutionServiceClient constructs a client for the
@@ -124,17 +132,24 @@ func NewTaskExecutionServiceClient(httpClient connect.HTTPClient, baseURL string
 			connect.WithSchema(taskExecutionServiceMethods.ByName("ResolveTaskContext")),
 			connect.WithClientOptions(opts...),
 		),
+		appendTaskArtifactBatch: connect.NewClient[v1.AppendTaskArtifactBatchRequest, v1.AppendTaskArtifactBatchResponse](
+			httpClient,
+			baseURL+TaskExecutionServiceAppendTaskArtifactBatchProcedure,
+			connect.WithSchema(taskExecutionServiceMethods.ByName("AppendTaskArtifactBatch")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
 // taskExecutionServiceClient implements TaskExecutionServiceClient.
 type taskExecutionServiceClient struct {
-	claimTask          *connect.Client[v1.ClaimTaskRequest, v1.ClaimTaskResponse]
-	renewTaskLease     *connect.Client[v1.RenewTaskLeaseRequest, v1.RenewTaskLeaseResponse]
-	appendTaskEvent    *connect.Client[v1.AppendTaskEventRequest, v1.AppendTaskEventResponse]
-	finishTaskLease    *connect.Client[v1.FinishTaskLeaseRequest, v1.FinishTaskLeaseResponse]
-	appendTaskArtifact *connect.Client[v1.AppendTaskArtifactRequest, v1.AppendTaskArtifactResponse]
-	resolveTaskContext *connect.Client[v1.ResolveTaskContextRequest, v1.ResolveTaskContextResponse]
+	claimTask               *connect.Client[v1.ClaimTaskRequest, v1.ClaimTaskResponse]
+	renewTaskLease          *connect.Client[v1.RenewTaskLeaseRequest, v1.RenewTaskLeaseResponse]
+	appendTaskEvent         *connect.Client[v1.AppendTaskEventRequest, v1.AppendTaskEventResponse]
+	finishTaskLease         *connect.Client[v1.FinishTaskLeaseRequest, v1.FinishTaskLeaseResponse]
+	appendTaskArtifact      *connect.Client[v1.AppendTaskArtifactRequest, v1.AppendTaskArtifactResponse]
+	resolveTaskContext      *connect.Client[v1.ResolveTaskContextRequest, v1.ResolveTaskContextResponse]
+	appendTaskArtifactBatch *connect.Client[v1.AppendTaskArtifactBatchRequest, v1.AppendTaskArtifactBatchResponse]
 }
 
 // ClaimTask calls workos.taskexecution.v1.TaskExecutionService.ClaimTask.
@@ -167,6 +182,12 @@ func (c *taskExecutionServiceClient) ResolveTaskContext(ctx context.Context, req
 	return c.resolveTaskContext.CallUnary(ctx, req)
 }
 
+// AppendTaskArtifactBatch calls
+// workos.taskexecution.v1.TaskExecutionService.AppendTaskArtifactBatch.
+func (c *taskExecutionServiceClient) AppendTaskArtifactBatch(ctx context.Context, req *connect.Request[v1.AppendTaskArtifactBatchRequest]) (*connect.Response[v1.AppendTaskArtifactBatchResponse], error) {
+	return c.appendTaskArtifactBatch.CallUnary(ctx, req)
+}
+
 // TaskExecutionServiceHandler is an implementation of the
 // workos.taskexecution.v1.TaskExecutionService service.
 type TaskExecutionServiceHandler interface {
@@ -188,6 +209,11 @@ type TaskExecutionServiceHandler interface {
 	// lease replays return byte-identical documents, and a lost, terminal, or
 	// foreign lease fails closed.
 	ResolveTaskContext(context.Context, *connect.Request[v1.ResolveTaskContextRequest]) (*connect.Response[v1.ResolveTaskContextResponse], error)
+	// AppendTaskArtifactBatch atomically materializes up to two outputs whose
+	// publication must stand or fall together (multi-output structured runs).
+	// Request order decides event sequence; any conflict, corruption, or
+	// validation failure leaves the task stream with zero new artifacts.
+	AppendTaskArtifactBatch(context.Context, *connect.Request[v1.AppendTaskArtifactBatchRequest]) (*connect.Response[v1.AppendTaskArtifactBatchResponse], error)
 }
 
 // NewTaskExecutionServiceHandler builds an HTTP handler from the service implementation. It returns
@@ -233,6 +259,12 @@ func NewTaskExecutionServiceHandler(svc TaskExecutionServiceHandler, opts ...con
 		connect.WithSchema(taskExecutionServiceMethods.ByName("ResolveTaskContext")),
 		connect.WithHandlerOptions(opts...),
 	)
+	taskExecutionServiceAppendTaskArtifactBatchHandler := connect.NewUnaryHandler(
+		TaskExecutionServiceAppendTaskArtifactBatchProcedure,
+		svc.AppendTaskArtifactBatch,
+		connect.WithSchema(taskExecutionServiceMethods.ByName("AppendTaskArtifactBatch")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/workos.taskexecution.v1.TaskExecutionService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case TaskExecutionServiceClaimTaskProcedure:
@@ -247,6 +279,8 @@ func NewTaskExecutionServiceHandler(svc TaskExecutionServiceHandler, opts ...con
 			taskExecutionServiceAppendTaskArtifactHandler.ServeHTTP(w, r)
 		case TaskExecutionServiceResolveTaskContextProcedure:
 			taskExecutionServiceResolveTaskContextHandler.ServeHTTP(w, r)
+		case TaskExecutionServiceAppendTaskArtifactBatchProcedure:
+			taskExecutionServiceAppendTaskArtifactBatchHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -278,4 +312,8 @@ func (UnimplementedTaskExecutionServiceHandler) AppendTaskArtifact(context.Conte
 
 func (UnimplementedTaskExecutionServiceHandler) ResolveTaskContext(context.Context, *connect.Request[v1.ResolveTaskContextRequest]) (*connect.Response[v1.ResolveTaskContextResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("workos.taskexecution.v1.TaskExecutionService.ResolveTaskContext is not implemented"))
+}
+
+func (UnimplementedTaskExecutionServiceHandler) AppendTaskArtifactBatch(context.Context, *connect.Request[v1.AppendTaskArtifactBatchRequest]) (*connect.Response[v1.AppendTaskArtifactBatchResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("workos.taskexecution.v1.TaskExecutionService.AppendTaskArtifactBatch is not implemented"))
 }

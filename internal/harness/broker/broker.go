@@ -76,6 +76,11 @@ func (b *Broker) Run(ctx context.Context, execution ports.Execution, providerID 
 			return ports.NewRunError(ports.ErrorKindProtocol, "artifact materialization is not available on this execution path", false, nil)
 		}
 	}
+	if execution.ArtifactsBatch == nil {
+		execution.ArtifactsBatch = func([]ports.ArtifactOutput) error {
+			return ports.NewRunError(ports.ErrorKindProtocol, "artifact batch materialization is not available on this execution path", false, nil)
+		}
+	}
 	return provider.Run(runCtx, execution)
 }
 

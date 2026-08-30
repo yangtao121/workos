@@ -31,11 +31,18 @@ func TestConfigAndDescribe(t *testing.T) {
 			t.Fatalf("unavailable provider reported unexpected health: %#v", description)
 		}
 		caps := description.GetCapabilities()
-		if !caps.GetStreaming() || !caps.GetUsageReporting() || caps.GetPersistentSessions() || caps.GetResume() || caps.GetSteerDuringRun() || caps.GetApprovals() || caps.GetToolRegistration() || caps.GetMcp() || caps.GetSubagents() || caps.GetWorkspaceMount() || caps.GetStructuredArtifacts() {
+		if !caps.GetStreaming() || !caps.GetUsageReporting() || caps.GetPersistentSessions() || caps.GetResume() || caps.GetSteerDuringRun() || caps.GetApprovals() || caps.GetToolRegistration() || caps.GetMcp() || caps.GetSubagents() || caps.GetWorkspaceMount() {
 			t.Fatalf("provider overclaimed capabilities: %#v", caps)
 		}
 		if !caps.GetHardTokenBudget() || !caps.GetHardRuntimeDeadline() {
 			t.Fatalf("provider underclaimed the proven budget contract: %#v", caps)
+		}
+		// The structured context/output contract is claimed only with its
+		// exact proven lists (ADR-0010/0011).
+		if caps.GetRequiresTaskCredentialLease() != true || len(caps.GetSupportedContextRefTypes()) != 1 ||
+			caps.GetSupportedContextRefTypes()[0] != "artifact.review.v1" || !caps.GetStructuredArtifacts() ||
+			len(caps.GetSupportedArtifactTypes()) != 2 {
+			t.Fatalf("provider context/output contract drifted: %#v", caps)
 		}
 	})
 

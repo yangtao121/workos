@@ -76,13 +76,19 @@ type ContextDocument struct {
 // parameters. TaskID and Input are derived facts from the claimed task;
 // Credential is nil for providers (and tasks) that need no credential, and
 // Context is empty for tasks without pinned context.
+// ArtifactBatchSink atomically materializes a group of provider outputs
+// whose publication must stand or fall together (ADR-0011). All-or-nothing:
+// a partial batch is never observable.
+type ArtifactBatchSink func([]ArtifactOutput) error
+
 type Execution struct {
-	TaskID     string
-	Input      *agentv1.AgentTaskInput
-	Emit       Emit
-	Artifacts  ArtifactSink
-	Credential *CredentialLease
-	Context    []ContextDocument
+	TaskID         string
+	Input          *agentv1.AgentTaskInput
+	Emit           Emit
+	Artifacts      ArtifactSink
+	ArtifactsBatch ArtifactBatchSink
+	Credential     *CredentialLease
+	Context        []ContextDocument
 }
 
 type Provider interface {

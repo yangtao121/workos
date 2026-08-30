@@ -9,7 +9,9 @@ import (
 	"os"
 	"time"
 
+	agentv1 "github.com/yangtao121/workos/gen/go/workos/agent/v1"
 	"github.com/yangtao121/workos/gen/go/workos/agent/v1/agentv1connect"
+	artifactv1 "github.com/yangtao121/workos/gen/go/workos/artifact/v1"
 	commonv1 "github.com/yangtao121/workos/gen/go/workos/common/v1"
 	"github.com/yangtao121/workos/gen/go/workos/common/v1/commonv1connect"
 	"github.com/yangtao121/workos/gen/go/workos/harness/v1/harnessv1connect"
@@ -187,7 +189,11 @@ func run(logger *slog.Logger) error {
 		return err
 	}
 	executionMux := httpserver.NewMux("workos-core-execution", ready)
-	executionPath, executionHandler := agenttransport.NewExecutionConnectHandler(agentService, artifactMaterializer, taskContextResolver)
+	// The composition layer adapts the orchestrator's batch method to the
+	// transport's narrow interface (transport-local output type), keeping
+	// both modules free of each other's imports.
+	batchMaterializer := batchMaterializerAdapter{m: artifactMaterializer}
+	executionPath, executionHandler := agenttransport.NewExecutionConnectHandler(agentService, batchMaterializer, taskContextResolver)
 	executionMux.Handle(executionPath, executionHandler)
 	leasePath, leaseHandler := credentialtransport.NewLeaseConnectHandler(credentialIssuer)
 	executionMux.Handle(leasePath, leaseHandler)
@@ -378,4 +384,22 @@ func credentialCipherOrNil(service *credentialapp.Service) credentialports.Ciphe
 		return nil
 	}
 	return service.Cipher()
+}
+
+// batchMaterializerAdapter converts the transport-local batch output type to
+// the orchestration coordinator's input (see ADR-0011).
+type batchMaterializerAdapter struct {
+	m *orchestration.TaskArtifactMaterializer
+}
+
+func (a batchMaterializerAdapter) MaterializeTaskArtifact(ctx context.Context, leaseID, workerID, outputKey, title, artifactType string, content []byte) (*artifactv1.Artifact, *agentv1.AgentEvent, error) {
+	return a.m.MaterializeTaskArtifact(ctx, leaseID, workerID, outputKey, title, artifactType, content)
+}
+
+func (a batchMaterializerAdapter) MaterializeTaskArtifactBatch(ctx context.Context, leaseID, workerID string, outputs []agenttransport.BatchOutput) ([]*artifactv1.Artifact, []*agentv1.AgentEvent, error) {
+	batch := make([]orchestration.BatchOutput, 0, len(outputs))
+	for _, output := range outputs {
+		batch = append(batch, orchestration.BatchOutput{Key: output.Key, Title: output.Title, Type: output.Type, Content: output.Content})
+	}
+	return a.m.MaterializeTaskArtifactBatch(ctx, leaseID, workerID, batch)
 }

@@ -95,6 +95,26 @@ message AppendTaskArtifactRequest {
   TaskArtifactOutput artifact = 3;
 }
 
+// AppendTaskArtifactBatchRequest materializes up to two provider artifact
+// outputs in one Core transaction (ADR-0011): either every output commits
+// with its Core-minted artifact and timeline event, or nothing does. Each
+// element carries only output key, title, and typed content — every identity
+// fact is derived from the active task lease. Request order decides event
+// sequence.
+message AppendTaskArtifactBatchRequest {
+  string lease_id = 1;
+  string worker_id = 2;
+  repeated TaskArtifactOutput artifacts = 3;
+}
+
+message AppendTaskArtifactBatchResponse {
+  // Core-minted immutable metadata projections in request order; a full
+  // replay returns the first ones.
+  repeated workos.artifact.v1.Artifact artifacts = 1;
+  // Core-minted, durably published ArtifactCreated events in request order.
+  repeated workos.agent.v1.AgentEvent events = 2;
+}
+
 message AppendTaskArtifactResponse {
   // artifact is the Core-minted immutable metadata projection of the
   // persisted artifact; a replayed materialization returns the first one.
@@ -152,4 +172,9 @@ service TaskExecutionService {
   // lease replays return byte-identical documents, and a lost, terminal, or
   // foreign lease fails closed.
   rpc ResolveTaskContext(ResolveTaskContextRequest) returns (ResolveTaskContextResponse) {}
+  // AppendTaskArtifactBatch atomically materializes up to two outputs whose
+  // publication must stand or fall together (multi-output structured runs).
+  // Request order decides event sequence; any conflict, corruption, or
+  // validation failure leaves the task stream with zero new artifacts.
+  rpc AppendTaskArtifactBatch(AppendTaskArtifactBatchRequest) returns (AppendTaskArtifactBatchResponse) {}
 }

@@ -33,8 +33,21 @@ const MaxExecutionRequestBytes = 768 * 1024
 // materialization service. The handler defines the narrow contract it needs;
 // the composition layer implements it by coordinating the Agent and Artifact
 // modules inside one transaction.
+// BatchOutput is one element of an atomic batch: output key, title, typed
+// content. The transport defines the narrow contract it needs; the
+// composition layer adapts the orchestration coordinator.
+type BatchOutput struct {
+	Key     string
+	Title   string
+	Type    string
+	Content []byte
+}
+
 type TaskArtifactMaterializer interface {
 	MaterializeTaskArtifact(ctx context.Context, leaseID, workerID, outputKey, title, artifactType string, content []byte) (*artifactv1.Artifact, *agentv1.AgentEvent, error)
+	// MaterializeTaskArtifactBatch atomically materializes up to two
+	// outputs in one transaction (ADR-0011).
+	MaterializeTaskArtifactBatch(ctx context.Context, leaseID, workerID string, outputs []BatchOutput) ([]*artifactv1.Artifact, []*agentv1.AgentEvent, error)
 }
 
 // TaskContextResolver is the orchestration-provided lease-bound context
@@ -170,6 +183,46 @@ func (h *ExecutionHandler) AppendTaskArtifact(ctx context.Context, req *connect.
 		return nil, mapError(err)
 	}
 	return connect.NewResponse(&taskv1.AppendTaskArtifactResponse{Artifact: artifact, Event: event}), nil
+}
+
+// AppendTaskArtifactBatch atomically materializes up to two provider
+// outputs under the active lease. The request carries only keys, titles,
+// and typed content — identity facts derive from the lease (ADR-0011).
+func (h *ExecutionHandler) AppendTaskArtifactBatch(ctx context.Context, req *connect.Request[taskv1.AppendTaskArtifactBatchRequest]) (*connect.Response[taskv1.AppendTaskArtifactBatchResponse], error) {
+	if len(req.Msg.GetArtifacts()) == 0 || len(req.Msg.GetArtifacts()) > 2 {
+		return nil, connect.NewError(connect.CodeInvalidArgument, domain.ErrInvalid)
+	}
+	if h.materialize == nil {
+		return nil, connect.NewError(connect.CodeInternal, errors.New("task artifact materialization is not configured"))
+	}
+	outputs := make([]BatchOutput, 0, len(req.Msg.GetArtifacts()))
+	for _, output := range req.Msg.GetArtifacts() {
+		if output.Content == nil {
+			return nil, connect.NewError(connect.CodeInvalidArgument, domain.ErrInvalid)
+		}
+		var artifactType string
+		var content []byte
+		switch value := output.Content.(type) {
+		case *taskv1.TaskArtifactOutput_Markdown:
+			artifactType = "document.markdown.v1"
+			content = value.Markdown.GetContent()
+		case *taskv1.TaskArtifactOutput_UnifiedDiff:
+			artifactType = "code.unified-diff.v1"
+			content = value.UnifiedDiff.GetContent()
+		default:
+			return nil, connect.NewError(connect.CodeInvalidArgument, domain.ErrInvalid)
+		}
+		outputs = append(outputs, BatchOutput{
+			Key: output.GetOutputKey(), Title: output.GetTitle(), Type: artifactType, Content: content,
+		})
+	}
+	artifacts, events, err := h.materialize.MaterializeTaskArtifactBatch(
+		ctx, req.Msg.GetLeaseId(), req.Msg.GetWorkerId(), outputs,
+	)
+	if err != nil {
+		return nil, mapError(err)
+	}
+	return connect.NewResponse(&taskv1.AppendTaskArtifactBatchResponse{Artifacts: artifacts, Events: events}), nil
 }
 
 // ResolveTaskContext materializes the task's immutable context refs under

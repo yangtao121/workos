@@ -32,18 +32,21 @@ type streamState struct {
 	sessionID        string
 	messageID        string
 	pendingSplicedID string
-	spliced          bool
-	sawActive        bool
-	idle             bool
-	turnEnded        bool
-	turnReason       turnEndReason
-	failure          llmFailure
-	usages           map[string]tokenUsage
-	answer           bytes.Buffer
-	emit             ports.Emit
+	// structured suppresses raw text-delta emission: the model's answer is
+	// the strict JSON review document, never timeline content (ADR-0011).
+	structured bool
+	spliced    bool
+	sawActive  bool
+	idle       bool
+	turnEnded  bool
+	turnReason turnEndReason
+	failure    llmFailure
+	usages     map[string]tokenUsage
+	answer     bytes.Buffer
+	emit       ports.Emit
 }
 
-func (p *Provider) execute(parent context.Context, taskID, runID string, input preparedInput, lease *ports.CredentialLease, emit ports.Emit) error {
+func (p *Provider) execute(parent context.Context, taskID, runID string, input preparedInput, lease *ports.CredentialLease, batchSink ports.ArtifactBatchSink, emit ports.Emit) error {
 	ctx, cancel := context.WithTimeout(parent, input.timeout)
 	defer cancel()
 
@@ -102,7 +105,7 @@ func (p *Provider) execute(parent context.Context, taskID, runID string, input p
 		return err
 	}
 
-	state := &streamState{runID: runID, sessionID: runID, emit: emit, usages: make(map[string]tokenUsage)}
+	state := &streamState{runID: runID, sessionID: runID, emit: emit, usages: make(map[string]tokenUsage), structured: input.structured}
 	// The single user content block: the versioned task envelope when the
 	// task carries pinned context, otherwise the plain goal. Context bytes
 	// are always untrusted payload inside the envelope (ADR-0010).
@@ -162,7 +165,32 @@ func (p *Provider) execute(parent context.Context, taskID, runID string, input p
 	}
 	waited = true
 
-	if state.answer.Len() != 0 {
+	if input.structured {
+		// Strict structured publication (ADR-0011): parse and validate the
+		// single JSON review document, atomically materialize every
+		// requested output, and only then surface the validated bounded
+		// summary and terminal event. Raw JSON never reaches the timeline.
+		if batchSink == nil {
+			return protocolError("structured review output has no materialization path", nil)
+		}
+		summary, artifacts, parseErr := parseStructuredOutput(state.answer.String(), input.requestedOutputs)
+		if parseErr != nil {
+			return parseErr
+		}
+		outputs := make([]ports.ArtifactOutput, 0, len(artifacts))
+		for _, artifact := range artifacts {
+			key, title := structuredKeyTitle(artifact.artifactType)
+			outputs = append(outputs, ports.ArtifactOutput{
+				Key: key, Title: title, Type: artifact.artifactType, Content: []byte(artifact.content),
+			})
+		}
+		if batchErr := batchSink(outputs); batchErr != nil {
+			return batchErr
+		}
+		if err := emit(&agentv1.AgentEvent{Event: &agentv1.AgentEvent_AssistantMessage{AssistantMessage: &agentv1.AssistantMessage{Text: summary}}}); err != nil {
+			return err
+		}
+	} else if state.answer.Len() != 0 {
 		if err := emit(&agentv1.AgentEvent{Event: &agentv1.AgentEvent_AssistantMessage{AssistantMessage: &agentv1.AssistantMessage{Text: state.answer.String()}}}); err != nil {
 			return err
 		}
@@ -348,8 +376,10 @@ func (s *streamState) handleSessionEvent(eventType string, raw json.RawMessage) 
 			if s.answer.Len()+len(data.Chunk.Text) > maximumAnswerBytes {
 				return protocolError("DeepSeek Harness response exceeded the answer limit", nil)
 			}
-			if err := s.emit(&agentv1.AgentEvent{Event: &agentv1.AgentEvent_AssistantDelta{AssistantDelta: &agentv1.AssistantDelta{Text: data.Chunk.Text}}}); err != nil {
-				return err
+			if !s.structured {
+				if err := s.emit(&agentv1.AgentEvent{Event: &agentv1.AgentEvent_AssistantDelta{AssistantDelta: &agentv1.AssistantDelta{Text: data.Chunk.Text}}}); err != nil {
+					return err
+				}
 			}
 			_, _ = s.answer.WriteString(data.Chunk.Text)
 		case "usage":

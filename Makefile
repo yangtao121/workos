@@ -22,7 +22,7 @@ NODE_RUN := docker run --rm $(USER_FLAGS) -e COREPACK_NPM_REGISTRY=$(NPM_REGISTR
 BUF_RUN := docker run --rm $(USER_FLAGS) $(MOUNT) $(BUF_IMAGE)
 SQLC_RUN := docker run --rm $(USER_FLAGS) -v $(CURDIR):/src -w /src $(SQLC_IMAGE)
 
-.PHONY: bootstrap generate docs check check-native proto-check go-check web-check test test-integration test-artifact-context test-deepseek-fixture test-credential-vault e2e-image test-e2e test-podman-fixture test-lan-pairing capture-lan-pairing-visual build web-build scaffold-module dev down logs clean
+.PHONY: bootstrap generate docs check check-native proto-check go-check web-check test test-integration test-artifact-context test-deepseek-fixture test-deepseek-structured-review test-credential-vault e2e-image test-e2e test-podman-fixture test-lan-pairing capture-lan-pairing-visual build web-build scaffold-module dev down logs clean
 
 bootstrap:
 	@docker version >/dev/null
@@ -153,6 +153,32 @@ test-artifact-context: e2e-image
 		-v $(CURDIR):$(WORKDIR) \
 		-w $(WORKDIR)/apps/desktop-web \
 		$(E2E_IMAGE) pnpm exec playwright test artifact-context.spec.ts
+
+# The DeepSeek structured review gate (ADR-0011): real PostgreSQL + Core
+# private mTLS listener + harness-host + workosctl admin socket + local
+# DeepSeek fixture + Gateway + Chromium. Exercises the full chain: DeepSeek
+# bound with a server-derived credential ref, structured run requesting both
+# canonical outputs, strict JSON parsing, atomic batch materialization, the
+# inert viewers, reload durability, and the malformed-output fail-closed path.
+test-deepseek-structured-review: e2e-image
+	@set -eu; \
+		cleanup() { docker compose --profile deepseek-fixture stop deepseek-api-fixture >/dev/null 2>&1 || true; }; \
+		trap cleanup EXIT INT TERM; \
+		WORKOS_UID="$$(id -u)" WORKOS_GID="$$(id -g)" \
+		WORKOS_DEEPSEEK_ENABLED=true \
+		WORKOS_DEEPSEEK_BASE_URL=http://127.0.0.1:18086 \
+		docker compose --profile deepseek-fixture up -d --build --force-recreate postgres bootstrap workos-core harness-host workos-gateway deepseek-api-fixture; \
+		if ! docker compose exec -T workos-core /usr/local/bin/workosctl credential list 2>/dev/null | awk '/^consumer: /{consumer=$$2} /^status: /{status=$$2} consumer=="deepseek" && status=="ACTIVE"{found=1} END{exit !found}'; then \
+			printf '%s' 'workos-fixture-only-not-a-real-key' | docker compose exec -T workos-core /bin/sh -c "/usr/local/bin/workosctl credential put --consumer deepseek --purpose provider-api-key.v1 --label 'structured fixture' --idempotency-key 'structured-fixture-$$(date +%s%N)'"; \
+		fi; \
+		docker run --rm --network host $(USER_FLAGS) \
+			-e PLAYWRIGHT_BROWSERS_PATH=/ms-playwright \
+			-e WORKOS_E2E_URL=http://127.0.0.1:8080 \
+			-e WORKOS_E2E_OUTPUT_DIR=/tmp/workos-playwright-results \
+			-e WORKOS_DEEPSEEK_STRUCTURED_E2E=true \
+			-v $(CURDIR):$(WORKDIR) \
+			-w $(WORKDIR)/apps/desktop-web \
+			$(E2E_IMAGE) pnpm exec playwright test deepseek-structured-review.spec.ts
 
 test-deepseek-fixture: e2e-image
 	@set -eu; \

@@ -32,9 +32,14 @@ type preparedInput struct {
 	// envelope is the versioned canonical task envelope handed to the
 	// runtime as the single user content block when the task carries pinned
 	// context. Empty means a context-free run keeps the plain goal text.
-	envelope  string
-	maxTokens int64
-	timeout   time.Duration
+	envelope string
+	// structured is true when the task requested artifact outputs: the run
+	// must produce exactly one strict JSON review document, and the raw
+	// stream never reaches the event timeline.
+	structured       bool
+	requestedOutputs []string
+	maxTokens        int64
+	timeout          time.Duration
 }
 
 func New(config Config, generator ids.Generator) *Provider {
@@ -79,6 +84,11 @@ func (p *Provider) Describe() *harnessv1.HarnessProviderInfo {
 			// adapter consumes review artifacts as bounded untrusted context
 			// through the versioned task envelope (ADR-0010).
 			SupportedContextRefTypes: supportedContextRefTypes,
+			// Proven only after the strict structured-output tests pass: the
+			// adapter publishes Core-validated markdown/diff review outputs
+			// through the atomic batch materialization protocol (ADR-0011).
+			StructuredArtifacts:    true,
+			SupportedArtifactTypes: supportedArtifactOutputTypes,
 		},
 	}
 }
@@ -115,7 +125,7 @@ func (p *Provider) Run(ctx context.Context, execution ports.Execution) error {
 		return err
 	}
 	runID := p.ids.New()
-	err = p.execute(ctx, taskID, runID, prepared, lease, emit)
+	err = p.execute(ctx, taskID, runID, prepared, lease, execution.ArtifactsBatch, emit)
 	if err == nil {
 		p.setHealth(commonv1.HealthState_HEALTH_STATE_HEALTHY, "")
 		return nil
@@ -144,6 +154,24 @@ func (p *Provider) setHealth(health commonv1.HealthState, reason string) {
 // supportedContextRefTypes is exact: the adapter demonstrably consumes
 // review artifacts as resolved bounded context (ADR-0010).
 var supportedContextRefTypes = []string{"artifact.review.v1"}
+
+// supportedArtifactOutputTypes is exact: the adapter demonstrably produces
+// the two canonical review outputs through the atomic batch protocol.
+var supportedArtifactOutputTypes = []string{"document.markdown.v1", "code.unified-diff.v1"}
+
+// structuredKeyTitle derives the adapter-owned output key and safe title for
+// one canonical review type. The model never chooses key or title
+// (ADR-0011).
+func structuredKeyTitle(artifactType string) (string, string) {
+	switch artifactType {
+	case "document.markdown.v1":
+		return "document", "DeepSeek Review Document"
+	case "code.unified-diff.v1":
+		return "patch", "DeepSeek Proposed Patch"
+	default:
+		return "", ""
+	}
+}
 
 const (
 	// taskEnvelopeVersion pins the canonical user-content envelope.
@@ -188,8 +216,22 @@ func prepareInput(input *agentv1.AgentTaskInput, contexts []ports.ContextDocumen
 	if len(input.GetRequestedCapabilities()) != 0 {
 		return preparedInput{}, invalidInput("DeepSeek Harness does not support requested capabilities")
 	}
-	if len(input.GetOutputArtifactTypes()) != 0 {
-		return preparedInput{}, invalidInput("DeepSeek Harness does not support structured artifacts")
+	requestedOutputs := input.GetOutputArtifactTypes()
+	structured := len(requestedOutputs) != 0
+	if structured {
+		if len(requestedOutputs) > 2 {
+			return preparedInput{}, invalidInput("DeepSeek Harness produces at most two review outputs")
+		}
+		seen := map[string]bool{}
+		for _, artifactType := range requestedOutputs {
+			if _, _, ok := reviewArtifactType(artifactType); !ok {
+				return preparedInput{}, invalidInput("DeepSeek Harness produces only canonical review artifacts")
+			}
+			if seen[artifactType] {
+				return preparedInput{}, invalidInput("requested artifact types must not repeat")
+			}
+			seen[artifactType] = true
+		}
 	}
 
 	maxTokens, timeout := DefaultMaxTokens, configuredTimeout
@@ -215,7 +257,7 @@ func prepareInput(input *agentv1.AgentTaskInput, contexts []ports.ContextDocumen
 	}
 	goal := input.GetGoal()
 	envelope := ""
-	if len(pinnedRefs) != 0 {
+	if structured || len(pinnedRefs) != 0 {
 		// The versioned canonical envelope (ADR-0010): the goal and every
 		// resolved document travel as one structured user content block with
 		// explicit untrusted_context semantics. Context bytes can never be
@@ -246,17 +288,34 @@ func prepareInput(input *agentv1.AgentTaskInput, contexts []ports.ContextDocumen
 				"bytesBase64":  base64.StdEncoding.EncodeToString(document.Content),
 			})
 		}
-		encoded, err := json.Marshal(map[string]any{
+		contract := map[string]any{
 			"version":            taskEnvelopeVersion,
 			"goal":               goal,
 			"untrusted_contexts": untrusted,
+		}
+		if structured {
+			contract["output_contract"] = outputContract(requestedOutputs)
+		}
+		encoded, err := json.Marshal(contract)
+		if err != nil {
+			return preparedInput{}, invalidInput("task envelope encoding failed")
+		}
+		envelope = string(encoded)
+	} else if structured {
+		encoded, err := json.Marshal(map[string]any{
+			"version":         taskEnvelopeVersion,
+			"goal":            goal,
+			"output_contract": outputContract(requestedOutputs),
 		})
 		if err != nil {
 			return preparedInput{}, invalidInput("task envelope encoding failed")
 		}
 		envelope = string(encoded)
 	}
-	return preparedInput{goal: goal, envelope: envelope, maxTokens: maxTokens, timeout: timeout}, nil
+	return preparedInput{
+		goal: goal, envelope: envelope, structured: structured,
+		requestedOutputs: requestedOutputs, maxTokens: maxTokens, timeout: timeout,
+	}, nil
 }
 
 func invalidInput(reason string) error {

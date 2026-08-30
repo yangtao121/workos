@@ -42,6 +42,10 @@ func (f *fakeMaterializer) MaterializeTaskArtifact(_ context.Context, leaseID, w
 		nil
 }
 
+func (f *fakeMaterializer) MaterializeTaskArtifactBatch(context.Context, string, string, []BatchOutput) ([]*artifactv1.Artifact, []*agentv1.AgentEvent, error) {
+	return nil, nil, errors.New("batch not configured")
+}
+
 func newExecutionServer(t *testing.T, materializer TaskArtifactMaterializer, options ...connect.ClientOption) taskexecutionv1connect.TaskExecutionServiceClient {
 	t.Helper()
 	_, handler := NewExecutionConnectHandler(nil, materializer, nil)
