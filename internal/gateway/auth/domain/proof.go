@@ -21,6 +21,10 @@ import (
 // JWS involved.
 const ProofDomainSeparator = "workos.device-proof/v1"
 
+// ProofVersion is carried explicitly on wire challenges. It advances only
+// with a new transcript contract; clients reject every unknown value.
+const ProofVersion uint32 = 1
+
 // ProofPurpose is the leading purpose byte of every transcript.
 type ProofPurpose byte
 

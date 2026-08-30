@@ -67,11 +67,23 @@ message BeginPairingRequest {
   workos.surface.v1.DeviceClass device_class = 4;
 }
 
+// DeviceProofPurpose is explicit on every challenge so a client never signs
+// a transcript under an inferred flow. UNSPECIFIED is always rejected.
+enum DeviceProofPurpose {
+  DEVICE_PROOF_PURPOSE_UNSPECIFIED = 0;
+  DEVICE_PROOF_PURPOSE_PAIRING = 1;
+  DEVICE_PROOF_PURPOSE_SESSION = 2;
+}
+
 message Challenge {
   string challenge_id = 1;
   // nonce is exactly 32 random bytes the proof transcript binds.
   bytes nonce = 2;
   google.protobuf.Timestamp expires_at = 3;
+  // proof_version pins the binary transcript contract. Version 1 is the
+  // only supported value; clients reject unknown values before signing.
+  uint32 proof_version = 4;
+  DeviceProofPurpose purpose = 5;
 }
 
 message BeginPairingResponse {

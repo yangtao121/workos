@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { Code, ConnectError } from "@connectrpc/connect";
 import type { DeviceAuthClient } from "@workos/device-auth";
 import { type DeviceInfo } from "@workos/device-auth";
 import { DeviceClass as DeviceClassEnum } from "@workos/protocol";
@@ -21,7 +22,7 @@ interface TicketView {
   pairingUrl: string;
   qrDataUrl: string;
   tlsFingerprint: string;
-  expiresAt: Date | null;
+  expiresAt: Date;
 }
 
 export function DeviceCenter({ deviceAuth }: DeviceCenterProps) {
@@ -33,6 +34,9 @@ export function DeviceCenter({ deviceAuth }: DeviceCenterProps) {
   const [actionError, setActionError] = useState<string>();
   const [confirmingRevoke, setConfirmingRevoke] = useState<string>();
   const [busy, setBusy] = useState(false);
+  const revokeAttempts = useRef(
+    new Map<string, { expectedRevision: bigint; idempotencyKey: string }>(),
+  );
 
   const refresh = useCallback(async () => {
     setLoadError(undefined);
@@ -50,25 +54,40 @@ export function DeviceCenter({ deviceAuth }: DeviceCenterProps) {
     void refresh();
   }, [refresh]);
 
-  // Closing the window (unmount) clears the displayed ticket immediately.
+  // A ticket is memory-only and disappears exactly at its server-provided
+  // expiry. Replacing it cancels the old timer; unmounting destroys both the
+  // timer and component state.
   useEffect(() => {
+    if (!ticket) return undefined;
+    const remaining = Math.max(0, ticket.expiresAt.getTime() - Date.now());
+    const timeout = window.setTimeout(() => {
+      setTicket((current) => (current === ticket ? undefined : current));
+    }, remaining);
     return () => {
-      setTicket(undefined);
+      window.clearTimeout(timeout);
     };
-  }, []);
+  }, [ticket]);
 
   const rotateTicket = useCallback(async () => {
     setTicketError(undefined);
     setTicket(undefined);
     try {
       const rotated = await deviceAuth.rotatePairingTicket();
+      const now = Date.now();
+      const expiresAt = rotated.expiresAt?.getTime() ?? Number.NaN;
+      if (!Number.isFinite(expiresAt) || expiresAt <= now || expiresAt > now + 15 * 60 * 1000) {
+        throw new Error("gateway returned an invalid pairing ticket expiry");
+      }
       const { default: QRCode } = await import("qrcode");
       const qrDataUrl = await QRCode.toDataURL(rotated.pairingUrl, { margin: 1, width: 220 });
+      if (expiresAt <= Date.now()) {
+        throw new Error("pairing ticket expired before its QR was ready");
+      }
       setTicket({
         pairingUrl: rotated.pairingUrl,
         qrDataUrl,
         tlsFingerprint: rotated.tlsFingerprint,
-        expiresAt: rotated.expiresAt ?? null,
+        expiresAt: new Date(expiresAt),
       });
       void refresh();
     } catch {
@@ -84,12 +103,21 @@ export function DeviceCenter({ deviceAuth }: DeviceCenterProps) {
       }
       setBusy(true);
       setActionError(undefined);
+      let attempt = revokeAttempts.current.get(device.deviceId);
+      if (attempt?.expectedRevision !== device.revision) {
+        attempt = {
+          expectedRevision: device.revision,
+          idempotencyKey: crypto.randomUUID(),
+        };
+        revokeAttempts.current.set(device.deviceId, attempt);
+      }
       try {
         await deviceAuth.revokeDevice({
           deviceId: device.deviceId,
-          idempotencyKey: crypto.randomUUID(),
-          expectedRevision: device.revision,
+          idempotencyKey: attempt.idempotencyKey,
+          expectedRevision: attempt.expectedRevision,
         });
+        revokeAttempts.current.delete(device.deviceId);
         setConfirmingRevoke(undefined);
         await refresh();
         if (device.isCurrent) {
@@ -99,7 +127,15 @@ export function DeviceCenter({ deviceAuth }: DeviceCenterProps) {
           await deviceAuth.forget();
           window.location.reload();
         }
-      } catch {
+      } catch (error) {
+        if (
+          error instanceof ConnectError &&
+          (error.code === Code.Aborted || error.code === Code.NotFound)
+        ) {
+          revokeAttempts.current.delete(device.deviceId);
+          setConfirmingRevoke(undefined);
+          await refresh();
+        }
         setActionError(
           device.isCurrent
             ? "This device could not be removed. Retry once the gateway is reachable."
@@ -192,9 +228,8 @@ export function DeviceCenter({ deviceAuth }: DeviceCenterProps) {
         <div className="pairing-ticket" data-testid="pairing-ticket">
           <img alt="Pairing QR code for another device" src={ticket.qrDataUrl} />
           <p className="auth-gate-hint">
-            Expires {ticket.expiresAt ? ticket.expiresAt.toLocaleTimeString() : "soon"}. The new
-            code replaces any earlier one. Confirm the fingerprint on the pairing device:{" "}
-            <code>{ticket.tlsFingerprint}</code>
+            Expires {ticket.expiresAt.toLocaleTimeString()}. The new code replaces any earlier one.
+            Confirm the fingerprint on the pairing device: <code>{ticket.tlsFingerprint}</code>
           </p>
           <Button
             type="button"

@@ -8,10 +8,16 @@
 import { Code, ConnectError } from "@connectrpc/connect";
 import { createClient, type Client, type Transport } from "@connectrpc/connect";
 import { createConnectTransport } from "@connectrpc/connect-web";
-import { DevicePairingService, DeviceService, type DeviceInfo } from "@workos/protocol";
+import {
+  DevicePairingService,
+  DeviceProofPurpose,
+  DeviceService,
+  type DeviceInfo,
+} from "@workos/protocol";
 
-import { encodeProofTranscript, type ProofFacts } from "./transcript.js";
-import { generateDeviceKeyPair, signTranscript } from "./keys.js";
+import { assertProofChallenge } from "./challenge.js";
+import { encodeProofTranscript, isCanonicalUUIDv7, type ProofFacts } from "./transcript.js";
+import { generateDeviceKeyPair, signTranscript, validateDeviceKeyMaterial } from "./keys.js";
 import {
   clearDeviceIdentity,
   loadDeviceIdentity,
@@ -25,7 +31,7 @@ export {
   isCanonicalUUIDv7,
   type ProofFacts,
 } from "./transcript.js";
-export { generateDeviceKeyPair, signTranscript } from "./keys.js";
+export { generateDeviceKeyPair, signTranscript, validateDeviceKeyMaterial } from "./keys.js";
 export { clearDeviceIdentity, loadDeviceIdentity, saveDeviceIdentity } from "./store.js";
 export type { DeviceInfo } from "@workos/protocol";
 
@@ -119,7 +125,7 @@ export class DeviceAuthClient {
     deviceClass: DeviceClass,
   ): Promise<StoredDeviceIdentity> {
     const existing = await loadDeviceIdentity();
-    if (existing !== undefined && isWellFormedIdentity(existing)) {
+    if (existing !== undefined && (await isWellFormedIdentity(existing))) {
       return existing;
     }
     const generated = await generateDeviceKeyPair();
@@ -131,7 +137,13 @@ export class DeviceAuthClient {
       deviceClass,
     };
     await saveDeviceIdentity(identity);
-    return identity;
+    // Read back the committed structured clone and prove the private/public
+    // binding before the first network call can claim a ticket.
+    const persisted = await loadDeviceIdentity();
+    if (persisted === undefined || !(await isWellFormedIdentity(persisted))) {
+      throw new Error("IndexedDB did not preserve the device credential");
+    }
+    return persisted;
   }
 
   private pairingFacts(
@@ -169,6 +181,10 @@ export class DeviceAuthClient {
     const challenge = begin.challenge;
     if (!deviceId || !challenge)
       throw new Error("gateway returned an incomplete pairing challenge");
+    assertProofChallenge(challenge, DeviceProofPurpose.PAIRING);
+    if (!isCanonicalUUIDv7(deviceId) || !isCanonicalUUIDv7(begin.ticketId)) {
+      throw new Error("gateway returned a malformed pairing binding");
+    }
     // Persist the pending binding before proving, so a lost completion
     // response can be recovered through the session proof.
     await saveDeviceIdentity({
@@ -222,12 +238,18 @@ export class DeviceAuthClient {
   // operations are never replayed automatically.
   async reauthenticate(): Promise<DeviceInfo> {
     const identity = await loadDeviceIdentity();
-    if (!identity?.privateKey || !identity.deviceId) {
+    if (
+      identity === undefined ||
+      !identity.deviceId ||
+      !isCanonicalUUIDv7(identity.deviceId) ||
+      !(await isWellFormedIdentity(identity))
+    ) {
       throw new Error("this browser has no device credential to prove");
     }
     const begin = await this.pairing.beginDeviceSession({ deviceId: identity.deviceId });
     const challenge = begin.challenge;
     if (!challenge) throw new Error("gateway returned an incomplete session challenge");
+    assertProofChallenge(challenge, DeviceProofPurpose.SESSION);
     const facts: ProofFacts = {
       publicOrigin: this.canonicalOrigin,
       purpose: "session",
@@ -327,26 +349,20 @@ export class DeviceAuthClient {
 // isWellFormedIdentity tolerates records written by older builds or partial
 // writes, and re-verifies the loaded private key's contract before anything
 // relies on it: non-extractable ECDSA over P-256 with sign-only usage,
-// matching exportable verify material. Anything malformed is regenerated
-// and overwritten before any ticket is claimed.
-function isWellFormedIdentity(identity: StoredDeviceIdentity | undefined): boolean {
+// matching exportable verify material. Pairing regenerates malformed state
+// before claiming a ticket; re-authentication rejects it before networking.
+async function isWellFormedIdentity(identity: StoredDeviceIdentity | undefined): Promise<boolean> {
   if (
     identity === undefined ||
-    !(identity.privateKey instanceof CryptoKey) ||
     !(identity.publicKeySpki instanceof Uint8Array) ||
-    identity.publicKeySpki.length === 0 ||
     typeof identity.publicKeyHash !== "string"
   ) {
     return false;
   }
-  const key = identity.privateKey;
-  const algorithm = key.algorithm as EcKeyAlgorithm;
-  return (
-    !key.extractable &&
-    algorithm.name === "ECDSA" &&
-    algorithm.namedCurve === "P-256" &&
-    key.usages.length === 1 &&
-    key.usages[0] === "sign"
+  return validateDeviceKeyMaterial(
+    identity.privateKey,
+    identity.publicKeySpki,
+    identity.publicKeyHash,
   );
 }
 

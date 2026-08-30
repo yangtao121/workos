@@ -331,6 +331,23 @@ func TestValidateGatewayAdminSocketRejectsUnsafePaths(t *testing.T) {
 	if err := cfg.ValidateGateway(); err == nil {
 		t.Fatal("admin socket over a directory accepted")
 	}
+	worldWritable := filepath.Join(root, "world-writable")
+	if err := os.Mkdir(worldWritable, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(worldWritable, 0o777); err != nil {
+		t.Fatal(err)
+	}
+	cfg = base()
+	cfg.Auth.AdminSocketPath = filepath.Join(worldWritable, "gateway-admin.sock")
+	if err := cfg.ValidateGateway(); err == nil {
+		t.Fatal("admin socket under a group/world-writable parent accepted")
+	}
+	cfg = base()
+	cfg.Auth.AdminSocketPath = filepath.Join(os.TempDir(), "workos-gateway-admin.sock")
+	if err := cfg.ValidateGateway(); err == nil {
+		t.Fatal("admin socket directly under the shared temporary directory accepted")
+	}
 	if err := os.Mkdir(filepath.Join(root, "run"), 0o700); err != nil {
 		t.Fatal(err)
 	}

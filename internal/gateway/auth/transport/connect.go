@@ -122,9 +122,11 @@ func (h *PairingHandler) BeginPairing(ctx context.Context, req *connect.Request[
 	response := connect.NewResponse(&authv1.BeginPairingResponse{
 		DeviceId: result.DeviceID,
 		Challenge: &authv1.Challenge{
-			ChallengeId: result.Challenge.ID,
-			Nonce:       result.Challenge.Nonce,
-			ExpiresAt:   timestamp(result.Challenge.ExpiresAt),
+			ChallengeId:  result.Challenge.ID,
+			Nonce:        result.Challenge.Nonce,
+			ExpiresAt:    timestamp(result.Challenge.ExpiresAt),
+			ProofVersion: domain.ProofVersion,
+			Purpose:      authv1.DeviceProofPurpose_DEVICE_PROOF_PURPOSE_PAIRING,
 		},
 		TicketId: result.TicketID,
 	})
@@ -164,9 +166,11 @@ func (h *PairingHandler) BeginDeviceSession(ctx context.Context, req *connect.Re
 	}
 	response := connect.NewResponse(&authv1.BeginDeviceSessionResponse{
 		Challenge: &authv1.Challenge{
-			ChallengeId: challenge.ID,
-			Nonce:       challenge.Nonce,
-			ExpiresAt:   timestamp(challenge.ExpiresAt),
+			ChallengeId:  challenge.ID,
+			Nonce:        challenge.Nonce,
+			ExpiresAt:    timestamp(challenge.ExpiresAt),
+			ProofVersion: domain.ProofVersion,
+			Purpose:      authv1.DeviceProofPurpose_DEVICE_PROOF_PURPOSE_SESSION,
 		},
 	})
 	noStore(response.Header())
@@ -371,6 +375,8 @@ func verdict(err error) error {
 		return err
 	}
 	switch {
+	case errors.Is(err, domain.ErrAuthCorrupt):
+		return connect.NewError(connect.CodeInternal, errors.New("device authentication failed"))
 	case errors.Is(err, domain.ErrInvalidRequest):
 		return connect.NewError(connect.CodeInvalidArgument, errors.New("invalid device authentication request"))
 	case errors.Is(err, domain.ErrAuthenticationFailed):
@@ -383,8 +389,6 @@ func verdict(err error) error {
 		return connect.NewError(connect.CodeResourceExhausted, errors.New("too many attempts, retry later"))
 	case errors.Is(err, domain.ErrStoreUnavailable):
 		return connect.NewError(connect.CodeUnavailable, errors.New("gateway auth unavailable"))
-	case errors.Is(err, domain.ErrAuthCorrupt):
-		return connect.NewError(connect.CodeInternal, errors.New("device authentication failed"))
 	default:
 		return connect.NewError(connect.CodeInternal, errors.New("device authentication failed"))
 	}

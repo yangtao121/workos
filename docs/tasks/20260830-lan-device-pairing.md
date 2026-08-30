@@ -1,6 +1,6 @@
 # Task: LAN 设备配对与持久 Gateway 会话纵向切片
 
-- 状态：active（完成门禁全部通过；尚未 merge——按 Prompt 要求留在 feature 分支）
+- 状态：done（两轮安全审查修复与全量门禁通过；用户后续明确授权合并到本地 `main`）
 - Owner/Agent：implementation agent (2026-08-30)
 - 进程/模块：workos-gateway（新增 internal/gateway/auth + admin socket + TLS 生产模式）、
   workosctl（device pair）、desktop-web（Auth Gate / Device Center / clients/device-auth）、
@@ -21,20 +21,22 @@
   pending ticket、每 device 一个 active key/session）、owner-scoped 撤销幂等快照。`001`–`019`
   逐字节不变。
 - `internal/gateway/auth`：domain（ticket/challenge/session 状态机、canonical P-256 SPKI 解析、
-  raw `r||s` ECDSA 验证、版本化 proof transcript）/ ports / application（flow 编排、有界
-  RemoteAddr rate limiter）/ adapters/postgres（sqlc `gatewayauthdb`，全部事务型 guarded
+  raw `r||s` ECDSA 验证、版本化 proof transcript）/ ports / application（flow 编排）/
+  adapters/postgres（sqlc `gatewayauthdb`，全部事务型 guarded
   UPDATE）/ transport（Connect handlers、`__Host-` Cookie、净化错误矩阵、no-store）。
 - Gateway 生产模式：每请求 Cookie→session→identity 解析（无进程内缓存）、动态 owner/device
   header 注入、Cookie/伪造 header/bridge token 剥离、Host 精确匹配、unsafe 方法 exact Origin +
   Fetch-Metadata 校验、auth 端点 16 KiB body 预算、admin socket 4 KiB、`/pair` 静态 shell
   `Referrer-Policy: no-referrer`；TLS min 1.3 由启动配置注入；readiness 含 auth store ping。
-- admin Unix socket：path/parent/symlink 启动校验、stale socket 精确清理、mode 0600；TCP 侧
+- admin Unix socket：path/parent ownership/permission/symlink 启动校验、仅 `ECONNREFUSED` + inode
+  不变时精确清理 stale socket、mode 0600、与 public listener 共生命周期且异常非零退出；TCP 侧
   确定性 404（有测试）。
 - `workosctl device pair`：Connect over Unix socket，输出 expiry/origin/fingerprint/URL/终端
   QR；CLI 不开数据库、错误不含 ticket。
 - Desktop：`AuthGate` 状态机（checking-session/paired-session-proof/unpaired/pairing/
   authenticated/unavailable）、fragment 严格解析即擦除、WebCrypto non-extractable key +
-  IndexedDB、`Device Center` 普通窗口（设备列表/会话到期/Pair another device QR/revoke/logout）；
+  IndexedDB 回读与 private/SPKI 实际签验自检、显式 challenge version/purpose 拒绝降级；`Device Center`
+  普通窗口（设备列表/会话到期/自动清除过期 Pair another device QR/retry-stable revoke/logout）；
   mid-operation 401 提示显式重试，不自动重放业务 mutation。
 - `make test-lan-pairing`：临时 TLS leaf + admin socket ticket + 真实 Chromium 四阶段门禁。
 
@@ -62,7 +64,8 @@ session_ttl` + 环境变量 `WORKOS_AUTH_*`、`WORKOS_HTTP_TLS_CERT_FILE/KEY_FIL
       complete 单赢家、session 轮换、decoy challenge、撤销幂等/冲突/立即 fail closed、分页无
       phantom token、rate limiter 有界。
 - [x] Gateway HTTP 单测：缺/坏 cookie 401+清 cookie、Host 不匹配 403、cross-site Origin/Fetch-
-      Metadata 403、store 故障 503、有效会话动态 identity 注入且 Cookie/bridge token 不上行、
+      Metadata（含 unsafe exact-Origin + cross-site）403、store 故障 503/corruption 500、per-remote +
+      global 匿名预算、有效会话动态 identity 注入且 Cookie/bridge token 不上行、
       生产无 auth stack 拒绝启动、admin service TCP 404、pairing 端点匿名可达。
 - [x] PostgreSQL 集成（tests/integration/device_auth_test.go）：020 从空库应用 + 二次 no-op +
       约束拒绝坏数据、并发 rotation 恰一个 pending、并发 claim 恰一个赢家、全生命周期（rotate→
@@ -77,7 +80,8 @@ session_ttl` + 环境变量 `WORKOS_AUTH_*`、`WORKOS_HTTP_TLS_CERT_FILE/KEY_FIL
       Cookie 后 IndexedDB proof 重新认证 → Device Center 撤销当前设备后回到 unpaired；临时证书/
       profile 目录 exit 时删除）。
 - [x] UI 视觉证据：`docs/ui/desktop-web/changes/20260830-lan-device-pairing/{before,after}/`
-      与 `current/`（1440×900 固定 fixture；截图中的 ticket/fingerprint 均为不可用 fixture 值）。
+      与 `current/`（1440×900；Auth Gate 使用不可用 fragment fixture，Device Center 使用拦截的固定
+      Connect fixture，不依赖 live ticket、持久卷历史或 wall clock）。
 - [x] 文档同步：ADR-0007、`docs/architecture/implementation.md`、`deploy/README.md`、
       `deploy/systemd/workos-gateway.env.example`、`docs/status.json`（经生成器）。
 
@@ -104,18 +108,20 @@ make bootstrap                                   # PASS
 make generate（两次）                             # PASS，第二次无生成差异
 make check                                       # PASS（proto lint/format、sqlc vet、
                                                  #  go vet+test、architecture、eslint、
-                                                 #  prettier、vitest 75 passed、vite build、
+                                                 #  prettier、device-auth 7 tests、
+                                                 #  desktop-web 78 tests、vite build、
                                                  #  status render --check）
 buf breaking api/proto --against '.git#branch=main'   # PASS（exit 0，纯 additive）
 go test -race ./internal/gateway/... ./internal/platform/identity/...  # PASS
 go test ./cmd/...                                # PASS（workosctl）
-go test -tags=integration -run TestGatewayDeviceAuth ./tests/integration  # PASS（4 项）
+go test -tags=integration -run TestGatewayDeviceAuth ./tests/integration  # PASS（5 项）
+go test -tags=integration -count=20 -run '^TestGatewayDeviceAuthConcurrency$' ./tests/integration  # PASS
 make test-integration                            # PASS
 make test-e2e                                    # PASS（6 passed）
 make test-deepseek-fixture                       # PASS
 make test-lan-pairing                            # PASS（pair/persist/reauth/revoke 四阶段）
+make capture-lan-pairing-visual                  # PASS（2 deterministic visual tests）
 git diff --check                                 # PASS
-git status                                       # 干净（仅本任务文件）
 ```
 
 调试过程中发现并修复的真实缺陷（均有测试或门禁覆盖）：
@@ -185,6 +191,49 @@ git status                                       # 干净（仅本任务文件�
 `make test-e2e` PASS、`make test-deepseek-fixture` PASS、`make test-lan-pairing`
 PASS（四阶段）。`docs/status.json` 的 Gateway `working` 状态在上述真实证据之上
 维持。未 merge、未 push。
+
+### 审查修复（第二轮，2026-08-30）
+
+用户要求继续审核并直接修复全部发现项；本轮完成以下 hardening，并为每项增加定向证据：
+
+1. **unsafe Origin 提前返回绕过 Fetch Metadata**：exact Origin 通过后仍检查
+   `Sec-Fetch-Site`；新增 unsafe POST + `cross-site` 403 测试。
+2. **stored corruption 被伪装为 400/401/404**：transport 让 `ErrAuthCorrupt` 优先于嵌套
+   parser verdict；application 的 ticket/challenge/device/session lookup 与 Gateway cookie gate
+   保留 corruption→Internal；PostgreSQL row mapper 在出口重验 UUIDv7、状态/结果、时间、name/class、
+   digest、canonical SPKI/key hash，revocation JSON 拒绝未知字段和非 canonical snapshot；幂等快照补齐
+   created/last-authenticated 时间并复核 device/revision/request-time binding，重试逐字段返回首次公开投影。
+   新增 adapter、domain、application、transport、PostgreSQL replay 与 HTTP 测试。
+3. **admin socket 安全与生命周期**：runtime parent 必须由 euid 所有且 group/other 不可写；existing
+   socket 只有 connect=`ECONNREFUSED` 且 inode 未变化才删除，timeout/EACCES/替换竞态保留；关闭时
+   也只删除自己记录的路径节点，并以真实 replacement socket 测试钉住。admin runtime failure 通过
+   caller context 优雅关闭 public listener 并
+   返回非零，匹配 systemd `Restart=on-failure`。新增错误分类、路径权限和 context shutdown 测试。
+4. **浏览器持久 key 只验 shape**：IndexedDB 回读后重新 import canonical SPKI、重算 SHA-256，并用
+   固定消息实际 sign/verify 证明 non-extractable private key 与 public key 属于同一 pair；pairing 在
+   首次网络 claim 前完成 durable round-trip，自检失败则停止；reauth 在发请求前同样拒绝损坏记录。
+   新增 key mismatch/hash/SPKI 与 storage-failure-no-network 测试；真实 Chromium reauth 继续覆盖
+   IndexedDB 跨重启 round-trip。
+5. **地址轮换绕过匿名预算**：production auth stack 同时要求 bounded RemoteAddr limiter 与独立
+   process-global limiter；malformed RemoteAddr 进入共享 bucket，不再绕过。新增 per-IP/global/
+   malformed-address 与 nil wiring 测试。
+6. **public challenge 缺显式版本/用途**：先 additive 修改 Proto，`Challenge` 新增
+   `proof_version=4` 与 `purpose=5` enum；Gateway 对 pairing/session 明确填值，client 在签名前拒绝
+   zero/unknown version 与 purpose mismatch；重新 `make generate` 并通过 buf breaking。
+7. **QR expiry 与撤销 lost response**：Device Center 按 server expiry 定时清除内存 QR，并拒绝缺失、
+   非有限、已过期或超过 15 分钟上限的响应，QR 生成结束时再次检查 expiry；同 device revision 重试
+   复用一个 idempotency key，revision 变化才开新逻辑请求。新增组件测试。
+8. **视觉证据依赖 live ticket/持久卷历史**：新增 `make capture-lan-pairing-visual`；Device Center 在
+   导航前拦截固定 Connect fixture，固定 Chromium viewport/locale/timezone，隐藏无关动态业务背景；
+   重新生成并目检 after/current 三张截图，均不含 live credential 或真实数据。
+9. **并发验收错误地把合法恢复当成单赢家**：连续 20 次真实 PostgreSQL 门禁发现，同 key/metadata
+   请求按设计可恢复 claimed ticket，因此旧 fixture 的成功数依调度变化。竞争者现使用四个不同 P-256
+   key，并把实际胜者 key 贯穿 completion；修正后 `-count=20` 全通过，同时保留 lost-response 恢复语义。
+10. **LAN reauth 瞬态 UI 断言竞态**：清 Cookie 后 proof 可在 Playwright 观察 Auth Gate 前完成；门禁改为
+    先直接断言 session Cookie 已清空，再以 authenticated shell + 真实 Core 写证明 IndexedDB key 建立了
+    新 session，不再依赖中间 render 的时序；四阶段门禁重跑通过。
+
+本节下方“未决风险”只保留明确非目标；上述问题均已实现、测试并进入最终门禁，不再是 open risk。
 
 ### 未决风险与下一步
 

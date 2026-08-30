@@ -92,6 +92,9 @@ func (m *memoryRepo) LoadTicketBySecretHash(ctx context.Context, secretHash stri
 func (m *memoryRepo) LoadTicket(ctx context.Context, id, ownerID string) (domain.PairingTicket, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	if err := m.check(); err != nil {
+		return domain.PairingTicket{}, err
+	}
 	ticket, ok := m.tickets[id]
 	if !ok || ticket.OwnerID != ownerID {
 		return domain.PairingTicket{}, domain.ErrAuthenticationFailed
@@ -144,6 +147,9 @@ func (m *memoryRepo) CreateChallenge(ctx context.Context, challenge domain.Chall
 func (m *memoryRepo) LoadChallenge(ctx context.Context, id string) (domain.Challenge, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	if err := m.check(); err != nil {
+		return domain.Challenge{}, err
+	}
 	challenge, ok := m.challenges[id]
 	if !ok {
 		return domain.Challenge{}, domain.ErrAuthenticationFailed
@@ -184,6 +190,9 @@ func (m *memoryRepo) FailChallengeAttempt(ctx context.Context, id string) error 
 func (m *memoryRepo) LoadActiveDevice(ctx context.Context, id string) (domain.Device, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	if err := m.check(); err != nil {
+		return domain.Device{}, err
+	}
 	device, ok := m.devices[id]
 	if !ok || device.RevokedAt != nil {
 		return domain.Device{}, domain.ErrDeviceNotFound
@@ -276,7 +285,7 @@ func (m *memoryRepo) ResolveSession(ctx context.Context, tokenHash string) (doma
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.outage != nil {
-		return domain.DeviceSession{}, domain.Device{}, domain.ErrStoreUnavailable
+		return domain.DeviceSession{}, domain.Device{}, m.outage
 	}
 	session, ok := m.sessions[tokenHash]
 	if !ok {
@@ -295,6 +304,9 @@ func (m *memoryRepo) TouchSessionLastSeen(ctx context.Context, sessionID string,
 func (m *memoryRepo) ListDevices(ctx context.Context, ownerID, cursorUUID string, limit int) ([]domain.Device, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	if err := m.check(); err != nil {
+		return nil, err
+	}
 	var collected []domain.Device
 	for _, device := range m.devices {
 		if device.OwnerID == ownerID && device.ID < cursorUUID {
@@ -370,7 +382,7 @@ func newTestService(t *testing.T, repo *memoryRepo) *Service {
 		TicketTTL:      5 * time.Minute,
 		ChallengeTTL:   2 * time.Minute,
 		SessionTTL:     24 * time.Hour,
-	}, clock, &testEntropy{}, &testIDs{repo: repo}, NewRateLimiter(1000, time.Minute, 4096, clock))
+	}, clock, &testEntropy{}, &testIDs{repo: repo})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -425,7 +437,7 @@ func TestConfigBounds(t *testing.T) {
 		TLSFingerprint: "sha256:" + repeat("0a", 32), TicketTTL: 5 * time.Minute,
 		ChallengeTTL: 2 * time.Minute, SessionTTL: 24 * time.Hour,
 	}
-	if _, err := New(newMemoryRepo(), base, &testClock{}, &testEntropy{}, &testIDs{repo: newMemoryRepo()}, nil); err != nil {
+	if _, err := New(newMemoryRepo(), base, &testClock{}, &testEntropy{}, &testIDs{repo: newMemoryRepo()}); err != nil {
 		t.Fatalf("valid config rejected: %v", err)
 	}
 	for name, mutate := range map[string]func(*Config){
@@ -438,7 +450,7 @@ func TestConfigBounds(t *testing.T) {
 	} {
 		cfg := base
 		mutate(&cfg)
-		if _, err := New(newMemoryRepo(), cfg, &testClock{}, &testEntropy{}, &testIDs{repo: newMemoryRepo()}, nil); err == nil {
+		if _, err := New(newMemoryRepo(), cfg, &testClock{}, &testEntropy{}, &testIDs{repo: newMemoryRepo()}); err == nil {
 			t.Errorf("invalid config accepted: %s", name)
 		}
 	}
@@ -611,7 +623,7 @@ func TestCompletePairingRejectsRotatedSnapshot(t *testing.T) {
 		OwnerID: "0198d7ea-2110-7c42-b659-c5e4d73bc337", PublicOrigin: "https://workos.example",
 		TLSFingerprint: "sha256:" + repeat("bb", 32), TicketTTL: 5 * time.Minute,
 		ChallengeTTL: 2 * time.Minute, SessionTTL: 24 * time.Hour,
-	}, &testClock{}, &testEntropy{}, &testIDs{repo: repo}, nil)
+	}, &testClock{}, &testEntropy{}, &testIDs{repo: repo})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -801,6 +813,49 @@ func TestStoreOutageStaysUnavailable(t *testing.T) {
 	}
 	if _, err := service.ResolveSession(ctx, strings.Repeat("A", 43)); !errors.Is(err, domain.ErrStoreUnavailable) {
 		t.Fatalf("resolve during outage: %v", err)
+	}
+}
+
+// TestStoredCorruptionStaysInternal pins that durable fact corruption is
+// never collapsed into a client grammar, missing-device, or authentication
+// verdict. In particular, malformed stored SPKI must not look like a bad
+// public key submitted by the caller.
+func TestStoredCorruptionStaysInternal(t *testing.T) {
+	repo := newMemoryRepo()
+	service := newTestService(t, repo)
+	key := newTestKey(t)
+	device, token := pairedDevice(t, service, key)
+	ctx := context.Background()
+	identity := domain.SessionIdentity{
+		OwnerID: "0198d7ea-2110-7c42-b659-c5e4d73bc337", DeviceID: device.ID,
+	}
+
+	repo.outage = domain.ErrAuthCorrupt
+	if _, err := service.BeginDeviceSession(ctx, device.ID); !errors.Is(err, domain.ErrAuthCorrupt) {
+		t.Fatalf("begin session masked corruption: %v", err)
+	}
+	if _, err := service.ResolveSession(ctx, token); !errors.Is(err, domain.ErrAuthCorrupt) {
+		t.Fatalf("resolve session masked corruption: %v", err)
+	}
+	if _, _, err := service.CurrentDevice(ctx, identity, time.Now()); !errors.Is(err, domain.ErrAuthCorrupt) {
+		t.Fatalf("current device masked corruption: %v", err)
+	}
+
+	repo.outage = nil
+	challenge, err := service.BeginDeviceSession(ctx, device.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	repo.mu.Lock()
+	corrupt := repo.devices[device.ID]
+	corrupt.PublicKeySPKI = []byte{1, 2, 3}
+	repo.devices[device.ID] = corrupt
+	repo.mu.Unlock()
+	_, err = service.CompleteDeviceSession(ctx, CompleteSessionInput{
+		DeviceID: device.ID, ChallengeID: challenge.ID, Signature: make([]byte, domain.RawSignatureBytes),
+	})
+	if !errors.Is(err, domain.ErrAuthCorrupt) || errors.Is(err, domain.ErrInvalidRequest) {
+		t.Fatalf("stored SPKI verdict = %v", err)
 	}
 }
 

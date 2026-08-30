@@ -23,6 +23,57 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
+// DeviceProofPurpose is explicit on every challenge so a client never signs
+// a transcript under an inferred flow. UNSPECIFIED is always rejected.
+type DeviceProofPurpose int32
+
+const (
+	DeviceProofPurpose_DEVICE_PROOF_PURPOSE_UNSPECIFIED DeviceProofPurpose = 0
+	DeviceProofPurpose_DEVICE_PROOF_PURPOSE_PAIRING     DeviceProofPurpose = 1
+	DeviceProofPurpose_DEVICE_PROOF_PURPOSE_SESSION     DeviceProofPurpose = 2
+)
+
+// Enum value maps for DeviceProofPurpose.
+var (
+	DeviceProofPurpose_name = map[int32]string{
+		0: "DEVICE_PROOF_PURPOSE_UNSPECIFIED",
+		1: "DEVICE_PROOF_PURPOSE_PAIRING",
+		2: "DEVICE_PROOF_PURPOSE_SESSION",
+	}
+	DeviceProofPurpose_value = map[string]int32{
+		"DEVICE_PROOF_PURPOSE_UNSPECIFIED": 0,
+		"DEVICE_PROOF_PURPOSE_PAIRING":     1,
+		"DEVICE_PROOF_PURPOSE_SESSION":     2,
+	}
+)
+
+func (x DeviceProofPurpose) Enum() *DeviceProofPurpose {
+	p := new(DeviceProofPurpose)
+	*p = x
+	return p
+}
+
+func (x DeviceProofPurpose) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (DeviceProofPurpose) Descriptor() protoreflect.EnumDescriptor {
+	return file_workos_auth_v1_device_auth_proto_enumTypes[0].Descriptor()
+}
+
+func (DeviceProofPurpose) Type() protoreflect.EnumType {
+	return &file_workos_auth_v1_device_auth_proto_enumTypes[0]
+}
+
+func (x DeviceProofPurpose) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use DeviceProofPurpose.Descriptor instead.
+func (DeviceProofPurpose) EnumDescriptor() ([]byte, []int) {
+	return file_workos_auth_v1_device_auth_proto_rawDescGZIP(), []int{0}
+}
+
 // PairingTicket describes one short-lived, single-purpose pairing
 // invitation after RotatePairingTicket. The response carries the URL the
 // operator turns into a QR code; the ticket secret is embedded only in the
@@ -373,8 +424,12 @@ type Challenge struct {
 	state       protoimpl.MessageState `protogen:"open.v1"`
 	ChallengeId string                 `protobuf:"bytes,1,opt,name=challenge_id,json=challengeId,proto3" json:"challenge_id,omitempty"`
 	// nonce is exactly 32 random bytes the proof transcript binds.
-	Nonce         []byte                 `protobuf:"bytes,2,opt,name=nonce,proto3" json:"nonce,omitempty"`
-	ExpiresAt     *timestamppb.Timestamp `protobuf:"bytes,3,opt,name=expires_at,json=expiresAt,proto3" json:"expires_at,omitempty"`
+	Nonce     []byte                 `protobuf:"bytes,2,opt,name=nonce,proto3" json:"nonce,omitempty"`
+	ExpiresAt *timestamppb.Timestamp `protobuf:"bytes,3,opt,name=expires_at,json=expiresAt,proto3" json:"expires_at,omitempty"`
+	// proof_version pins the binary transcript contract. Version 1 is the
+	// only supported value; clients reject unknown values before signing.
+	ProofVersion  uint32             `protobuf:"varint,4,opt,name=proof_version,json=proofVersion,proto3" json:"proof_version,omitempty"`
+	Purpose       DeviceProofPurpose `protobuf:"varint,5,opt,name=purpose,proto3,enum=workos.auth.v1.DeviceProofPurpose" json:"purpose,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -428,6 +483,20 @@ func (x *Challenge) GetExpiresAt() *timestamppb.Timestamp {
 		return x.ExpiresAt
 	}
 	return nil
+}
+
+func (x *Challenge) GetProofVersion() uint32 {
+	if x != nil {
+		return x.ProofVersion
+	}
+	return 0
+}
+
+func (x *Challenge) GetPurpose() DeviceProofPurpose {
+	if x != nil {
+		return x.Purpose
+	}
+	return DeviceProofPurpose_DEVICE_PROOF_PURPOSE_UNSPECIFIED
 }
 
 type BeginPairingResponse struct {
@@ -1333,12 +1402,14 @@ const file_workos_auth_v1_device_auth_proto_rawDesc = "" +
 	"\x0fpublic_key_spki\x18\x02 \x01(\fR\rpublicKeySpki\x12\x1f\n" +
 	"\vdevice_name\x18\x03 \x01(\tR\n" +
 	"deviceName\x12A\n" +
-	"\fdevice_class\x18\x04 \x01(\x0e2\x1e.workos.surface.v1.DeviceClassR\vdeviceClass\"\x7f\n" +
+	"\fdevice_class\x18\x04 \x01(\x0e2\x1e.workos.surface.v1.DeviceClassR\vdeviceClass\"\xe2\x01\n" +
 	"\tChallenge\x12!\n" +
 	"\fchallenge_id\x18\x01 \x01(\tR\vchallengeId\x12\x14\n" +
 	"\x05nonce\x18\x02 \x01(\fR\x05nonce\x129\n" +
 	"\n" +
-	"expires_at\x18\x03 \x01(\v2\x1a.google.protobuf.TimestampR\texpiresAt\"\x89\x01\n" +
+	"expires_at\x18\x03 \x01(\v2\x1a.google.protobuf.TimestampR\texpiresAt\x12#\n" +
+	"\rproof_version\x18\x04 \x01(\rR\fproofVersion\x12<\n" +
+	"\apurpose\x18\x05 \x01(\x0e2\".workos.auth.v1.DeviceProofPurposeR\apurpose\"\x89\x01\n" +
 	"\x14BeginPairingResponse\x12\x1b\n" +
 	"\tdevice_id\x18\x01 \x01(\tR\bdeviceId\x127\n" +
 	"\tchallenge\x18\x02 \x01(\v2\x19.workos.auth.v1.ChallengeR\tchallenge\x12\x1b\n" +
@@ -1385,7 +1456,11 @@ const file_workos_auth_v1_device_auth_proto_rawDesc = "" +
 	"\x12session_revoked_at\x18\x01 \x01(\v2\x1a.google.protobuf.TimestampR\x10sessionRevokedAt\"2\n" +
 	"0DeviceAuthAdminServiceRotatePairingTicketRequest\"j\n" +
 	"1DeviceAuthAdminServiceRotatePairingTicketResponse\x125\n" +
-	"\x06ticket\x18\x01 \x01(\v2\x1d.workos.auth.v1.PairingTicketR\x06ticket2\xb8\x03\n" +
+	"\x06ticket\x18\x01 \x01(\v2\x1d.workos.auth.v1.PairingTicketR\x06ticket*~\n" +
+	"\x12DeviceProofPurpose\x12$\n" +
+	" DEVICE_PROOF_PURPOSE_UNSPECIFIED\x10\x00\x12 \n" +
+	"\x1cDEVICE_PROOF_PURPOSE_PAIRING\x10\x01\x12 \n" +
+	"\x1cDEVICE_PROOF_PURPOSE_SESSION\x10\x022\xb8\x03\n" +
 	"\x14DevicePairingService\x12Y\n" +
 	"\fBeginPairing\x12#.workos.auth.v1.BeginPairingRequest\x1a$.workos.auth.v1.BeginPairingResponse\x12b\n" +
 	"\x0fCompletePairing\x12&.workos.auth.v1.CompletePairingRequest\x1a'.workos.auth.v1.CompletePairingResponse\x12k\n" +
@@ -1412,80 +1487,83 @@ func file_workos_auth_v1_device_auth_proto_rawDescGZIP() []byte {
 	return file_workos_auth_v1_device_auth_proto_rawDescData
 }
 
+var file_workos_auth_v1_device_auth_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
 var file_workos_auth_v1_device_auth_proto_msgTypes = make([]protoimpl.MessageInfo, 23)
 var file_workos_auth_v1_device_auth_proto_goTypes = []any{
-	(*PairingTicket)(nil),                                     // 0: workos.auth.v1.PairingTicket
-	(*DeviceInfo)(nil),                                        // 1: workos.auth.v1.DeviceInfo
-	(*RotatePairingTicketRequest)(nil),                        // 2: workos.auth.v1.RotatePairingTicketRequest
-	(*RotatePairingTicketResponse)(nil),                       // 3: workos.auth.v1.RotatePairingTicketResponse
-	(*BeginPairingRequest)(nil),                               // 4: workos.auth.v1.BeginPairingRequest
-	(*Challenge)(nil),                                         // 5: workos.auth.v1.Challenge
-	(*BeginPairingResponse)(nil),                              // 6: workos.auth.v1.BeginPairingResponse
-	(*CompletePairingRequest)(nil),                            // 7: workos.auth.v1.CompletePairingRequest
-	(*CompletePairingResponse)(nil),                           // 8: workos.auth.v1.CompletePairingResponse
-	(*BeginDeviceSessionRequest)(nil),                         // 9: workos.auth.v1.BeginDeviceSessionRequest
-	(*BeginDeviceSessionResponse)(nil),                        // 10: workos.auth.v1.BeginDeviceSessionResponse
-	(*CompleteDeviceSessionRequest)(nil),                      // 11: workos.auth.v1.CompleteDeviceSessionRequest
-	(*CompleteDeviceSessionResponse)(nil),                     // 12: workos.auth.v1.CompleteDeviceSessionResponse
-	(*GetCurrentDeviceRequest)(nil),                           // 13: workos.auth.v1.GetCurrentDeviceRequest
-	(*GetCurrentDeviceResponse)(nil),                          // 14: workos.auth.v1.GetCurrentDeviceResponse
-	(*ListDevicesRequest)(nil),                                // 15: workos.auth.v1.ListDevicesRequest
-	(*ListDevicesResponse)(nil),                               // 16: workos.auth.v1.ListDevicesResponse
-	(*RevokeDeviceRequest)(nil),                               // 17: workos.auth.v1.RevokeDeviceRequest
-	(*RevokeDeviceResponse)(nil),                              // 18: workos.auth.v1.RevokeDeviceResponse
-	(*LogoutRequest)(nil),                                     // 19: workos.auth.v1.LogoutRequest
-	(*LogoutResponse)(nil),                                    // 20: workos.auth.v1.LogoutResponse
-	(*DeviceAuthAdminServiceRotatePairingTicketRequest)(nil),  // 21: workos.auth.v1.DeviceAuthAdminServiceRotatePairingTicketRequest
-	(*DeviceAuthAdminServiceRotatePairingTicketResponse)(nil), // 22: workos.auth.v1.DeviceAuthAdminServiceRotatePairingTicketResponse
-	(*timestamppb.Timestamp)(nil),                             // 23: google.protobuf.Timestamp
-	(v1.DeviceClass)(0),                                       // 24: workos.surface.v1.DeviceClass
+	(DeviceProofPurpose)(0),                                   // 0: workos.auth.v1.DeviceProofPurpose
+	(*PairingTicket)(nil),                                     // 1: workos.auth.v1.PairingTicket
+	(*DeviceInfo)(nil),                                        // 2: workos.auth.v1.DeviceInfo
+	(*RotatePairingTicketRequest)(nil),                        // 3: workos.auth.v1.RotatePairingTicketRequest
+	(*RotatePairingTicketResponse)(nil),                       // 4: workos.auth.v1.RotatePairingTicketResponse
+	(*BeginPairingRequest)(nil),                               // 5: workos.auth.v1.BeginPairingRequest
+	(*Challenge)(nil),                                         // 6: workos.auth.v1.Challenge
+	(*BeginPairingResponse)(nil),                              // 7: workos.auth.v1.BeginPairingResponse
+	(*CompletePairingRequest)(nil),                            // 8: workos.auth.v1.CompletePairingRequest
+	(*CompletePairingResponse)(nil),                           // 9: workos.auth.v1.CompletePairingResponse
+	(*BeginDeviceSessionRequest)(nil),                         // 10: workos.auth.v1.BeginDeviceSessionRequest
+	(*BeginDeviceSessionResponse)(nil),                        // 11: workos.auth.v1.BeginDeviceSessionResponse
+	(*CompleteDeviceSessionRequest)(nil),                      // 12: workos.auth.v1.CompleteDeviceSessionRequest
+	(*CompleteDeviceSessionResponse)(nil),                     // 13: workos.auth.v1.CompleteDeviceSessionResponse
+	(*GetCurrentDeviceRequest)(nil),                           // 14: workos.auth.v1.GetCurrentDeviceRequest
+	(*GetCurrentDeviceResponse)(nil),                          // 15: workos.auth.v1.GetCurrentDeviceResponse
+	(*ListDevicesRequest)(nil),                                // 16: workos.auth.v1.ListDevicesRequest
+	(*ListDevicesResponse)(nil),                               // 17: workos.auth.v1.ListDevicesResponse
+	(*RevokeDeviceRequest)(nil),                               // 18: workos.auth.v1.RevokeDeviceRequest
+	(*RevokeDeviceResponse)(nil),                              // 19: workos.auth.v1.RevokeDeviceResponse
+	(*LogoutRequest)(nil),                                     // 20: workos.auth.v1.LogoutRequest
+	(*LogoutResponse)(nil),                                    // 21: workos.auth.v1.LogoutResponse
+	(*DeviceAuthAdminServiceRotatePairingTicketRequest)(nil),  // 22: workos.auth.v1.DeviceAuthAdminServiceRotatePairingTicketRequest
+	(*DeviceAuthAdminServiceRotatePairingTicketResponse)(nil), // 23: workos.auth.v1.DeviceAuthAdminServiceRotatePairingTicketResponse
+	(*timestamppb.Timestamp)(nil),                             // 24: google.protobuf.Timestamp
+	(v1.DeviceClass)(0),                                       // 25: workos.surface.v1.DeviceClass
 }
 var file_workos_auth_v1_device_auth_proto_depIdxs = []int32{
-	23, // 0: workos.auth.v1.PairingTicket.expires_at:type_name -> google.protobuf.Timestamp
-	24, // 1: workos.auth.v1.DeviceInfo.device_class:type_name -> workos.surface.v1.DeviceClass
-	23, // 2: workos.auth.v1.DeviceInfo.created_at:type_name -> google.protobuf.Timestamp
-	23, // 3: workos.auth.v1.DeviceInfo.last_authenticated_at:type_name -> google.protobuf.Timestamp
-	23, // 4: workos.auth.v1.DeviceInfo.revoked_at:type_name -> google.protobuf.Timestamp
-	0,  // 5: workos.auth.v1.RotatePairingTicketResponse.ticket:type_name -> workos.auth.v1.PairingTicket
-	24, // 6: workos.auth.v1.BeginPairingRequest.device_class:type_name -> workos.surface.v1.DeviceClass
-	23, // 7: workos.auth.v1.Challenge.expires_at:type_name -> google.protobuf.Timestamp
-	5,  // 8: workos.auth.v1.BeginPairingResponse.challenge:type_name -> workos.auth.v1.Challenge
-	1,  // 9: workos.auth.v1.CompletePairingResponse.device:type_name -> workos.auth.v1.DeviceInfo
-	23, // 10: workos.auth.v1.CompletePairingResponse.session_expires_at:type_name -> google.protobuf.Timestamp
-	5,  // 11: workos.auth.v1.BeginDeviceSessionResponse.challenge:type_name -> workos.auth.v1.Challenge
-	1,  // 12: workos.auth.v1.CompleteDeviceSessionResponse.device:type_name -> workos.auth.v1.DeviceInfo
-	23, // 13: workos.auth.v1.CompleteDeviceSessionResponse.session_expires_at:type_name -> google.protobuf.Timestamp
-	1,  // 14: workos.auth.v1.GetCurrentDeviceResponse.device:type_name -> workos.auth.v1.DeviceInfo
-	23, // 15: workos.auth.v1.GetCurrentDeviceResponse.session_expires_at:type_name -> google.protobuf.Timestamp
-	1,  // 16: workos.auth.v1.ListDevicesResponse.devices:type_name -> workos.auth.v1.DeviceInfo
-	1,  // 17: workos.auth.v1.RevokeDeviceResponse.device:type_name -> workos.auth.v1.DeviceInfo
-	23, // 18: workos.auth.v1.LogoutResponse.session_revoked_at:type_name -> google.protobuf.Timestamp
-	0,  // 19: workos.auth.v1.DeviceAuthAdminServiceRotatePairingTicketResponse.ticket:type_name -> workos.auth.v1.PairingTicket
-	4,  // 20: workos.auth.v1.DevicePairingService.BeginPairing:input_type -> workos.auth.v1.BeginPairingRequest
-	7,  // 21: workos.auth.v1.DevicePairingService.CompletePairing:input_type -> workos.auth.v1.CompletePairingRequest
-	9,  // 22: workos.auth.v1.DevicePairingService.BeginDeviceSession:input_type -> workos.auth.v1.BeginDeviceSessionRequest
-	11, // 23: workos.auth.v1.DevicePairingService.CompleteDeviceSession:input_type -> workos.auth.v1.CompleteDeviceSessionRequest
-	13, // 24: workos.auth.v1.DeviceService.GetCurrentDevice:input_type -> workos.auth.v1.GetCurrentDeviceRequest
-	15, // 25: workos.auth.v1.DeviceService.ListDevices:input_type -> workos.auth.v1.ListDevicesRequest
-	2,  // 26: workos.auth.v1.DeviceService.RotatePairingTicket:input_type -> workos.auth.v1.RotatePairingTicketRequest
-	17, // 27: workos.auth.v1.DeviceService.RevokeDevice:input_type -> workos.auth.v1.RevokeDeviceRequest
-	19, // 28: workos.auth.v1.DeviceService.Logout:input_type -> workos.auth.v1.LogoutRequest
-	21, // 29: workos.auth.v1.DeviceAuthAdminService.RotatePairingTicket:input_type -> workos.auth.v1.DeviceAuthAdminServiceRotatePairingTicketRequest
-	6,  // 30: workos.auth.v1.DevicePairingService.BeginPairing:output_type -> workos.auth.v1.BeginPairingResponse
-	8,  // 31: workos.auth.v1.DevicePairingService.CompletePairing:output_type -> workos.auth.v1.CompletePairingResponse
-	10, // 32: workos.auth.v1.DevicePairingService.BeginDeviceSession:output_type -> workos.auth.v1.BeginDeviceSessionResponse
-	12, // 33: workos.auth.v1.DevicePairingService.CompleteDeviceSession:output_type -> workos.auth.v1.CompleteDeviceSessionResponse
-	14, // 34: workos.auth.v1.DeviceService.GetCurrentDevice:output_type -> workos.auth.v1.GetCurrentDeviceResponse
-	16, // 35: workos.auth.v1.DeviceService.ListDevices:output_type -> workos.auth.v1.ListDevicesResponse
-	3,  // 36: workos.auth.v1.DeviceService.RotatePairingTicket:output_type -> workos.auth.v1.RotatePairingTicketResponse
-	18, // 37: workos.auth.v1.DeviceService.RevokeDevice:output_type -> workos.auth.v1.RevokeDeviceResponse
-	20, // 38: workos.auth.v1.DeviceService.Logout:output_type -> workos.auth.v1.LogoutResponse
-	22, // 39: workos.auth.v1.DeviceAuthAdminService.RotatePairingTicket:output_type -> workos.auth.v1.DeviceAuthAdminServiceRotatePairingTicketResponse
-	30, // [30:40] is the sub-list for method output_type
-	20, // [20:30] is the sub-list for method input_type
-	20, // [20:20] is the sub-list for extension type_name
-	20, // [20:20] is the sub-list for extension extendee
-	0,  // [0:20] is the sub-list for field type_name
+	24, // 0: workos.auth.v1.PairingTicket.expires_at:type_name -> google.protobuf.Timestamp
+	25, // 1: workos.auth.v1.DeviceInfo.device_class:type_name -> workos.surface.v1.DeviceClass
+	24, // 2: workos.auth.v1.DeviceInfo.created_at:type_name -> google.protobuf.Timestamp
+	24, // 3: workos.auth.v1.DeviceInfo.last_authenticated_at:type_name -> google.protobuf.Timestamp
+	24, // 4: workos.auth.v1.DeviceInfo.revoked_at:type_name -> google.protobuf.Timestamp
+	1,  // 5: workos.auth.v1.RotatePairingTicketResponse.ticket:type_name -> workos.auth.v1.PairingTicket
+	25, // 6: workos.auth.v1.BeginPairingRequest.device_class:type_name -> workos.surface.v1.DeviceClass
+	24, // 7: workos.auth.v1.Challenge.expires_at:type_name -> google.protobuf.Timestamp
+	0,  // 8: workos.auth.v1.Challenge.purpose:type_name -> workos.auth.v1.DeviceProofPurpose
+	6,  // 9: workos.auth.v1.BeginPairingResponse.challenge:type_name -> workos.auth.v1.Challenge
+	2,  // 10: workos.auth.v1.CompletePairingResponse.device:type_name -> workos.auth.v1.DeviceInfo
+	24, // 11: workos.auth.v1.CompletePairingResponse.session_expires_at:type_name -> google.protobuf.Timestamp
+	6,  // 12: workos.auth.v1.BeginDeviceSessionResponse.challenge:type_name -> workos.auth.v1.Challenge
+	2,  // 13: workos.auth.v1.CompleteDeviceSessionResponse.device:type_name -> workos.auth.v1.DeviceInfo
+	24, // 14: workos.auth.v1.CompleteDeviceSessionResponse.session_expires_at:type_name -> google.protobuf.Timestamp
+	2,  // 15: workos.auth.v1.GetCurrentDeviceResponse.device:type_name -> workos.auth.v1.DeviceInfo
+	24, // 16: workos.auth.v1.GetCurrentDeviceResponse.session_expires_at:type_name -> google.protobuf.Timestamp
+	2,  // 17: workos.auth.v1.ListDevicesResponse.devices:type_name -> workos.auth.v1.DeviceInfo
+	2,  // 18: workos.auth.v1.RevokeDeviceResponse.device:type_name -> workos.auth.v1.DeviceInfo
+	24, // 19: workos.auth.v1.LogoutResponse.session_revoked_at:type_name -> google.protobuf.Timestamp
+	1,  // 20: workos.auth.v1.DeviceAuthAdminServiceRotatePairingTicketResponse.ticket:type_name -> workos.auth.v1.PairingTicket
+	5,  // 21: workos.auth.v1.DevicePairingService.BeginPairing:input_type -> workos.auth.v1.BeginPairingRequest
+	8,  // 22: workos.auth.v1.DevicePairingService.CompletePairing:input_type -> workos.auth.v1.CompletePairingRequest
+	10, // 23: workos.auth.v1.DevicePairingService.BeginDeviceSession:input_type -> workos.auth.v1.BeginDeviceSessionRequest
+	12, // 24: workos.auth.v1.DevicePairingService.CompleteDeviceSession:input_type -> workos.auth.v1.CompleteDeviceSessionRequest
+	14, // 25: workos.auth.v1.DeviceService.GetCurrentDevice:input_type -> workos.auth.v1.GetCurrentDeviceRequest
+	16, // 26: workos.auth.v1.DeviceService.ListDevices:input_type -> workos.auth.v1.ListDevicesRequest
+	3,  // 27: workos.auth.v1.DeviceService.RotatePairingTicket:input_type -> workos.auth.v1.RotatePairingTicketRequest
+	18, // 28: workos.auth.v1.DeviceService.RevokeDevice:input_type -> workos.auth.v1.RevokeDeviceRequest
+	20, // 29: workos.auth.v1.DeviceService.Logout:input_type -> workos.auth.v1.LogoutRequest
+	22, // 30: workos.auth.v1.DeviceAuthAdminService.RotatePairingTicket:input_type -> workos.auth.v1.DeviceAuthAdminServiceRotatePairingTicketRequest
+	7,  // 31: workos.auth.v1.DevicePairingService.BeginPairing:output_type -> workos.auth.v1.BeginPairingResponse
+	9,  // 32: workos.auth.v1.DevicePairingService.CompletePairing:output_type -> workos.auth.v1.CompletePairingResponse
+	11, // 33: workos.auth.v1.DevicePairingService.BeginDeviceSession:output_type -> workos.auth.v1.BeginDeviceSessionResponse
+	13, // 34: workos.auth.v1.DevicePairingService.CompleteDeviceSession:output_type -> workos.auth.v1.CompleteDeviceSessionResponse
+	15, // 35: workos.auth.v1.DeviceService.GetCurrentDevice:output_type -> workos.auth.v1.GetCurrentDeviceResponse
+	17, // 36: workos.auth.v1.DeviceService.ListDevices:output_type -> workos.auth.v1.ListDevicesResponse
+	4,  // 37: workos.auth.v1.DeviceService.RotatePairingTicket:output_type -> workos.auth.v1.RotatePairingTicketResponse
+	19, // 38: workos.auth.v1.DeviceService.RevokeDevice:output_type -> workos.auth.v1.RevokeDeviceResponse
+	21, // 39: workos.auth.v1.DeviceService.Logout:output_type -> workos.auth.v1.LogoutResponse
+	23, // 40: workos.auth.v1.DeviceAuthAdminService.RotatePairingTicket:output_type -> workos.auth.v1.DeviceAuthAdminServiceRotatePairingTicketResponse
+	31, // [31:41] is the sub-list for method output_type
+	21, // [21:31] is the sub-list for method input_type
+	21, // [21:21] is the sub-list for extension type_name
+	21, // [21:21] is the sub-list for extension extendee
+	0,  // [0:21] is the sub-list for field type_name
 }
 
 func init() { file_workos_auth_v1_device_auth_proto_init() }
@@ -1498,13 +1576,14 @@ func file_workos_auth_v1_device_auth_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_workos_auth_v1_device_auth_proto_rawDesc), len(file_workos_auth_v1_device_auth_proto_rawDesc)),
-			NumEnums:      0,
+			NumEnums:      1,
 			NumMessages:   23,
 			NumExtensions: 0,
 			NumServices:   3,
 		},
 		GoTypes:           file_workos_auth_v1_device_auth_proto_goTypes,
 		DependencyIndexes: file_workos_auth_v1_device_auth_proto_depIdxs,
+		EnumInfos:         file_workos_auth_v1_device_auth_proto_enumTypes,
 		MessageInfos:      file_workos_auth_v1_device_auth_proto_msgTypes,
 	}.Build()
 	File_workos_auth_v1_device_auth_proto = out.File

@@ -6,15 +6,18 @@
 package domain
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"regexp"
 	"strings"
 	"time"
 	"unicode"
+	"unicode/utf8"
 )
 
 // Sanitized verdict errors. Transport maps them with errors.Is onto the
@@ -97,6 +100,9 @@ func (d Device) RevokedAtIfSet() time.Time {
 // bounded device-name grammar: 1..80 Unicode code points, valid UTF-8, no
 // C0/C1 control characters (which includes DEL).
 func ValidateDeviceName(raw string) (string, error) {
+	if !utf8.ValidString(raw) {
+		return "", fmt.Errorf("%w: device name is not valid UTF-8", ErrInvalidRequest)
+	}
 	name := strings.TrimFunc(raw, unicode.IsSpace)
 	if name == "" {
 		return "", fmt.Errorf("%w: device name is empty", ErrInvalidRequest)
@@ -145,25 +151,48 @@ func HashSessionToken(raw []byte) string { return domainHash(deviceSessionHashTa
 // RevocationSnapshot is the immutable first-result snapshot persisted with
 // every revocation idempotency key. result_version pins its shape.
 type RevocationSnapshot struct {
-	ResultVersion string `json:"result_version"`
-	DeviceID      string `json:"device_id"`
-	Name          string `json:"name"`
-	Class         string `json:"device_class"`
-	Revision      int64  `json:"revision"`
-	RevokedAt     string `json:"revoked_at"`
+	ResultVersion       string `json:"result_version"`
+	DeviceID            string `json:"device_id"`
+	Name                string `json:"name"`
+	Class               string `json:"device_class"`
+	Revision            int64  `json:"revision"`
+	CreatedAt           string `json:"created_at"`
+	LastAuthenticatedAt string `json:"last_authenticated_at"`
+	RevokedAt           string `json:"revoked_at"`
 }
 
 // ParseRevocationSnapshot decodes a stored snapshot; corruption is an
 // internal failure, never silently repaired.
 func ParseRevocationSnapshot(raw json.RawMessage) (RevocationSnapshot, error) {
 	var snapshot RevocationSnapshot
-	if err := json.Unmarshal(raw, &snapshot); err != nil {
+	decoder := json.NewDecoder(bytes.NewReader(raw))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&snapshot); err != nil {
 		return RevocationSnapshot{}, fmt.Errorf("%w: revocation snapshot: %w", ErrAuthCorrupt, err)
 	}
-	if snapshot.ResultVersion != "v1" || !ValidUUID(snapshot.DeviceID) {
+	if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
+		return RevocationSnapshot{}, fmt.Errorf("%w: revocation snapshot trailing data", ErrAuthCorrupt)
+	}
+	name, nameErr := ValidateDeviceName(snapshot.Name)
+	class, classErr := ParseDeviceClass(snapshot.Class)
+	createdAt, createdErr := parseSnapshotTime(snapshot.CreatedAt)
+	lastAuthenticatedAt, lastAuthenticatedErr := parseSnapshotTime(snapshot.LastAuthenticatedAt)
+	revokedAt, revokedErr := parseSnapshotTime(snapshot.RevokedAt)
+	if snapshot.ResultVersion != "v1" || !ValidUUIDv7(snapshot.DeviceID) ||
+		nameErr != nil || name != snapshot.Name || classErr != nil || string(class) != snapshot.Class ||
+		snapshot.Revision < 2 || createdErr != nil || lastAuthenticatedErr != nil || revokedErr != nil ||
+		lastAuthenticatedAt.Before(createdAt) || revokedAt.Before(lastAuthenticatedAt) {
 		return RevocationSnapshot{}, fmt.Errorf("%w: revocation snapshot shape", ErrAuthCorrupt)
 	}
 	return snapshot, nil
+}
+
+func parseSnapshotTime(raw string) (time.Time, error) {
+	parsed, err := time.Parse(time.RFC3339Nano, raw)
+	if err != nil || parsed.IsZero() || parsed.UTC().Format(time.RFC3339Nano) != raw {
+		return time.Time{}, errors.New("invalid canonical UTC timestamp")
+	}
+	return parsed, nil
 }
 
 // IsVerdict reports whether err already carries one of the sanitized

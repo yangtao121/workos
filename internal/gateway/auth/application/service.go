@@ -2,7 +2,7 @@
 // flows: pairing ticket rotation, pairing proof, session proof, session
 // resolution, and device management. All concurrency is adjudicated by the
 // repository's PostgreSQL transactions; this layer owns grammar validation,
-// verdict mapping, and the bounded process-local rate limiter.
+// and verdict mapping. Edge rate limiting is owned by the Gateway handler.
 package application
 
 import (
@@ -82,14 +82,13 @@ type Service struct {
 	clock   ports.Clock
 	entropy Entropy
 	ids     IDGenerator
-	limiter *RateLimiter
 }
 
-func New(repo ports.Repository, cfg Config, clock ports.Clock, entropy Entropy, generator IDGenerator, limiter *RateLimiter) (*Service, error) {
+func New(repo ports.Repository, cfg Config, clock ports.Clock, entropy Entropy, generator IDGenerator) (*Service, error) {
 	if err := cfg.validate(); err != nil {
 		return nil, err
 	}
-	return &Service{repo: repo, cfg: cfg, clock: clock, entropy: entropy, ids: generator, limiter: limiter}, nil
+	return &Service{repo: repo, cfg: cfg, clock: clock, entropy: entropy, ids: generator}, nil
 }
 
 // Ready exposes store health for the production readiness probe.
@@ -187,7 +186,7 @@ func (s *Service) BeginPairing(ctx context.Context, input BeginPairingInput) (Be
 	now := s.clock.Now()
 	ticket, err := s.repo.LoadTicketBySecretHash(ctx, domain.HashPairingSecret(rawSecret), now)
 	if err != nil {
-		if errors.Is(err, domain.ErrStoreUnavailable) {
+		if errors.Is(err, domain.ErrStoreUnavailable) || errors.Is(err, domain.ErrAuthCorrupt) {
 			return BeginPairingResult{}, err
 		}
 		return BeginPairingResult{}, domain.ErrAuthenticationFailed
@@ -206,6 +205,9 @@ func (s *Service) BeginPairing(ctx context.Context, input BeginPairingInput) (Be
 		deviceID = s.ids.New()
 		claimed, claimErr := s.repo.ClaimPairingTicket(ctx, ticket.ID, ticket.OwnerID, deviceID, keyHash, name, string(class), now)
 		if claimErr != nil {
+			if errors.Is(claimErr, domain.ErrStoreUnavailable) || errors.Is(claimErr, domain.ErrAuthCorrupt) {
+				return BeginPairingResult{}, claimErr
+			}
 			return BeginPairingResult{}, s.failTicket(ctx, ticket.ID)
 		}
 		ticket = claimed
@@ -395,7 +397,7 @@ func (s *Service) BeginDeviceSession(ctx context.Context, deviceID string) (Chal
 // infrastructure failure must never surface as an authentication failure
 // that would loop a client into re-pairing.
 func outageOr(err, fallback error) error {
-	if errors.Is(err, domain.ErrStoreUnavailable) {
+	if errors.Is(err, domain.ErrStoreUnavailable) || errors.Is(err, domain.ErrAuthCorrupt) {
 		return err
 	}
 	return fallback
@@ -404,7 +406,7 @@ func outageOr(err, fallback error) error {
 // outageOrAuthFail burns the challenge attempt before mapping non-outage
 // lookup misses to the sanitized authentication failure.
 func outageOrAuthFail(ctx context.Context, repo ports.Repository, err error, challengeID string) error {
-	if errors.Is(err, domain.ErrStoreUnavailable) {
+	if errors.Is(err, domain.ErrStoreUnavailable) || errors.Is(err, domain.ErrAuthCorrupt) {
 		return err
 	}
 	_ = repo.FailChallengeAttempt(ctx, challengeID)
@@ -444,7 +446,7 @@ func (s *Service) CompleteDeviceSession(ctx context.Context, input CompleteSessi
 	}
 	device, err := s.repo.LoadActiveDevice(ctx, input.DeviceID)
 	if err != nil {
-		if errors.Is(err, domain.ErrStoreUnavailable) {
+		if errors.Is(err, domain.ErrStoreUnavailable) || errors.Is(err, domain.ErrAuthCorrupt) {
 			return PairingCompletion{}, err
 		}
 		_ = s.repo.ConsumeChallenge(ctx, input.ChallengeID, "", domain.ChallengeFailed, now)
@@ -504,7 +506,7 @@ func (s *Service) CompleteDeviceSession(ctx context.Context, input CompleteSessi
 func parseSPKIPublicKey(spki []byte) (*ecdsa.PublicKey, error) {
 	key, _, err := domain.ParseP256SPKI(spki)
 	if err != nil {
-		return nil, fmt.Errorf("%w: stored public key: %w", domain.ErrAuthCorrupt, err)
+		return nil, fmt.Errorf("%w: stored public key", domain.ErrAuthCorrupt)
 	}
 	return key, nil
 }
@@ -522,7 +524,7 @@ func (s *Service) ResolveSession(ctx context.Context, rawToken string) (domain.S
 	if err != nil {
 		// A transient store outage must surface as Unavailable, never as an
 		// authentication failure that would loop the client into a re-pair.
-		if errors.Is(err, domain.ErrStoreUnavailable) {
+		if errors.Is(err, domain.ErrStoreUnavailable) || errors.Is(err, domain.ErrAuthCorrupt) {
 			return domain.SessionIdentity{}, err
 		}
 		return domain.SessionIdentity{}, domain.ErrAuthenticationFailed
@@ -543,6 +545,9 @@ func (s *Service) ResolveSession(ctx context.Context, rawToken string) (domain.S
 func (s *Service) CurrentDevice(ctx context.Context, identity domain.SessionIdentity, sessionExpires time.Time) (domain.Device, time.Time, error) {
 	device, err := s.repo.LoadActiveDevice(ctx, identity.DeviceID)
 	if err != nil {
+		if errors.Is(err, domain.ErrStoreUnavailable) || errors.Is(err, domain.ErrAuthCorrupt) {
+			return domain.Device{}, time.Time{}, err
+		}
 		return domain.Device{}, time.Time{}, domain.ErrDeviceNotFound
 	}
 	if device.OwnerID != identity.OwnerID {

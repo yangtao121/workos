@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/url"
 	"time"
 
 	"github.com/google/uuid"
@@ -116,7 +117,7 @@ func (s *Store) LoadTicketBySecretHash(ctx context.Context, secretHash string, n
 	if err != nil {
 		return domain.PairingTicket{}, noRows(s.wrap(err), domain.ErrAuthenticationFailed)
 	}
-	return ticketFromRow(row), nil
+	return ticketFromRow(row)
 }
 
 func (s *Store) LoadTicket(ctx context.Context, id, ownerID string) (domain.PairingTicket, error) {
@@ -124,7 +125,7 @@ func (s *Store) LoadTicket(ctx context.Context, id, ownerID string) (domain.Pair
 	if err != nil {
 		return domain.PairingTicket{}, noRows(s.wrap(err), domain.ErrAuthenticationFailed)
 	}
-	return ticketFromRow(row), nil
+	return ticketFromRow(row)
 }
 
 func (s *Store) ClaimPairingTicket(ctx context.Context, ticketID, ownerID, deviceID, publicKeyHash, deviceName, deviceClass string, now time.Time) (domain.PairingTicket, error) {
@@ -140,7 +141,7 @@ func (s *Store) ClaimPairingTicket(ctx context.Context, ticketID, ownerID, devic
 	if err != nil {
 		return domain.PairingTicket{}, noRows(s.wrap(err), domain.ErrAuthenticationFailed)
 	}
-	return ticketFromRow(row), nil
+	return ticketFromRow(row)
 }
 
 func (s *Store) FailTicketAttempt(ctx context.Context, ticketID string) error {
@@ -166,7 +167,7 @@ func (s *Store) LoadChallenge(ctx context.Context, id string) (domain.Challenge,
 	if err != nil {
 		return domain.Challenge{}, noRows(s.wrap(err), domain.ErrAuthenticationFailed)
 	}
-	return challengeFromRow(row), nil
+	return challengeFromRow(row)
 }
 
 func (s *Store) ConsumeChallenge(ctx context.Context, id, deviceID string, result domain.ChallengeResult, now time.Time) error {
@@ -195,7 +196,7 @@ func (s *Store) LoadActiveDevice(ctx context.Context, id string) (domain.Device,
 	if err != nil {
 		return domain.Device{}, noRows(s.wrap(err), domain.ErrDeviceNotFound)
 	}
-	return deviceFromRow(row), nil
+	return deviceFromRow(row)
 }
 
 func (s *Store) CompletePairing(ctx context.Context, op ports.CompletePairingOp) (domain.Device, domain.DeviceSession, error) {
@@ -206,7 +207,10 @@ func (s *Store) CompletePairing(ctx context.Context, op ports.CompletePairingOp)
 		if err != nil {
 			return errAuthentication(err)
 		}
-		ticket := ticketFromRow(ticketRow)
+		ticket, err := ticketFromRow(ticketRow)
+		if err != nil {
+			return err
+		}
 		if ticket.DeviceID != op.DeviceID || ticket.PublicKeyHash != op.PublicKeyHash ||
 			ticket.OwnerID != op.OwnerID || !ticket.Recoverable(op.Now) {
 			return domain.ErrAuthenticationFailed
@@ -215,7 +219,10 @@ func (s *Store) CompletePairing(ctx context.Context, op ports.CompletePairingOp)
 		if err != nil {
 			return errAuthentication(err)
 		}
-		challenge := challengeFromRow(challengeRow)
+		challenge, err := challengeFromRow(challengeRow)
+		if err != nil {
+			return err
+		}
 		if err := validatePairingChallenge(challenge, op); err != nil {
 			return err
 		}
@@ -292,12 +299,18 @@ func (s *Store) CompleteSession(ctx context.Context, op ports.CompleteSessionOp)
 		if err != nil {
 			return errAuthentication(err)
 		}
-		device = deviceFromRow(deviceRow)
+		device, err = deviceFromRow(deviceRow)
+		if err != nil {
+			return err
+		}
 		challengeRow, err := q.LockChallenge(ctx, op.ChallengeID)
 		if err != nil {
 			return errAuthentication(err)
 		}
-		challenge := challengeFromRow(challengeRow)
+		challenge, err := challengeFromRow(challengeRow)
+		if err != nil {
+			return err
+		}
 		if challenge.Purpose != domain.ChallengeSession || challenge.DeviceID != op.DeviceID ||
 			challenge.PublicKeyHash != device.PublicKeyHash || !challenge.Usable(op.Now) {
 			return domain.ErrAuthenticationFailed
@@ -370,14 +383,21 @@ func (s *Store) ResolveSession(ctx context.Context, tokenHash string) (domain.De
 	if err != nil {
 		return domain.DeviceSession{}, domain.Device{}, noRows(s.wrap(err), domain.ErrAuthenticationFailed)
 	}
-	session := sessionFromRow(sessionRow)
+	session, err := sessionFromRow(sessionRow)
+	if err != nil {
+		return domain.DeviceSession{}, domain.Device{}, err
+	}
 	deviceRow, err := s.queries().GetDevice(ctx, gatewayauthdb.GetDeviceParams{
 		ID: session.DeviceID, OwnerUserID: session.OwnerID,
 	})
 	if err != nil {
 		return domain.DeviceSession{}, domain.Device{}, noRows(s.wrap(err), domain.ErrAuthenticationFailed)
 	}
-	return session, deviceFromRow(deviceRow), nil
+	device, err := deviceFromRow(deviceRow)
+	if err != nil {
+		return domain.DeviceSession{}, domain.Device{}, err
+	}
+	return session, device, nil
 }
 
 func (s *Store) TouchSessionLastSeen(ctx context.Context, sessionID string, now, threshold time.Time) {
@@ -397,7 +417,11 @@ func (s *Store) ListDevices(ctx context.Context, ownerID, cursorUUID string, lim
 	}
 	devices := make([]domain.Device, 0, len(rows))
 	for _, row := range rows {
-		devices = append(devices, deviceFromRow(row))
+		device, parseErr := deviceFromRow(row)
+		if parseErr != nil {
+			return nil, parseErr
+		}
+		devices = append(devices, device)
 	}
 	return devices, nil
 }
@@ -418,6 +442,12 @@ func (s *Store) RevokeDevice(ctx context.Context, op ports.RevokeDeviceOp) (doma
 		})
 		switch {
 		case err == nil:
+			if existing.ResultVersion != "v1" || existing.OwnerUserID != op.OwnerID ||
+				existing.IdempotencyKey != op.IdempotencyKey || !domain.ValidUUIDv7(existing.OwnerUserID) ||
+				!domain.ValidUUID(existing.IdempotencyKey) || !domain.ValidDigest(existing.RequestDigest) ||
+				existing.CreatedAt.IsZero() {
+				return corruptStored("revocation request")
+			}
 			snapshot, parseErr := domain.ParseRevocationSnapshot(existing.Result)
 			if parseErr != nil {
 				return parseErr
@@ -425,14 +455,17 @@ func (s *Store) RevokeDevice(ctx context.Context, op ports.RevokeDeviceOp) (doma
 			if existing.RequestDigest != op.RequestDigest {
 				return domain.ErrConflict
 			}
-			revokedAt, parseErr := time.Parse(time.RFC3339Nano, snapshot.RevokedAt)
-			if parseErr != nil {
-				return fmt.Errorf("%w: revocation snapshot timestamp: %w", domain.ErrAuthCorrupt, parseErr)
+			createdAt, _ := time.Parse(time.RFC3339Nano, snapshot.CreatedAt)
+			lastAuthenticatedAt, _ := time.Parse(time.RFC3339Nano, snapshot.LastAuthenticatedAt)
+			revokedAt, _ := time.Parse(time.RFC3339Nano, snapshot.RevokedAt)
+			if snapshot.DeviceID != op.DeviceID || snapshot.Revision != op.ExpectedRevision+1 ||
+				!existing.CreatedAt.Equal(revokedAt.Truncate(time.Microsecond)) {
+				return corruptStored("revocation request binding")
 			}
 			device = domain.Device{
 				ID: snapshot.DeviceID, OwnerID: op.OwnerID, Name: snapshot.Name,
 				Class: domain.DeviceClass(snapshot.Class), Revision: snapshot.Revision,
-				RevokedAt: &revokedAt,
+				CreatedAt: createdAt, LastAuthenticatedAt: lastAuthenticatedAt, RevokedAt: &revokedAt,
 			}
 			replayed = true
 			return nil
@@ -443,7 +476,10 @@ func (s *Store) RevokeDevice(ctx context.Context, op ports.RevokeDeviceOp) (doma
 		if err != nil {
 			return errDeviceNotFound(err)
 		}
-		current := deviceFromRow(deviceRow)
+		current, err := deviceFromRow(deviceRow)
+		if err != nil {
+			return err
+		}
 		if current.OwnerID != op.OwnerID {
 			return domain.ErrDeviceNotFound
 		}
@@ -470,7 +506,9 @@ func (s *Store) RevokeDevice(ctx context.Context, op ports.RevokeDeviceOp) (doma
 		snapshot := domain.RevocationSnapshot{
 			ResultVersion: "v1", DeviceID: current.ID, Name: current.Name,
 			Class: string(current.Class), Revision: current.Revision,
-			RevokedAt: op.Now.Format(time.RFC3339Nano),
+			CreatedAt:           current.CreatedAt.UTC().Format(time.RFC3339Nano),
+			LastAuthenticatedAt: current.LastAuthenticatedAt.UTC().Format(time.RFC3339Nano),
+			RevokedAt:           op.Now.UTC().Format(time.RFC3339Nano),
 		}
 		encoded, marshalErr := marshalSnapshot(snapshot)
 		if marshalErr != nil {
@@ -523,8 +561,12 @@ func marshalSnapshot(snapshot domain.RevocationSnapshot) (json.RawMessage, error
 	return encoded, nil
 }
 
-func ticketFromRow(row gatewayauthdb.WorkosGatewayPairingTicket) domain.PairingTicket {
-	return domain.PairingTicket{
+func corruptStored(kind string) error {
+	return fmt.Errorf("%w: stored %s invariant", domain.ErrAuthCorrupt, kind)
+}
+
+func ticketFromRow(row gatewayauthdb.WorkosGatewayPairingTicket) (domain.PairingTicket, error) {
+	ticket := domain.PairingTicket{
 		ID: row.ID, OwnerID: row.OwnerUserID, SecretHash: row.SecretHash,
 		PublicOrigin: row.PublicOrigin, TLSFingerprint: row.TlsFingerprint,
 		State:         domain.TicketState(row.State),
@@ -535,13 +577,42 @@ func ticketFromRow(row gatewayauthdb.WorkosGatewayPairingTicket) domain.PairingT
 		Attempts:      int(row.Attempts),
 		ExpiresAt:     row.ExpiresAt,
 		CreatedAt:     row.CreatedAt,
+		ClaimedAt:     row.ClaimedAt,
 		CompletedAt:   row.CompletedAt,
 		RevokedAt:     row.RevokedAt,
 	}
+	if !domain.ValidUUIDv7(ticket.ID) || !domain.ValidUUIDv7(ticket.OwnerID) ||
+		!domain.ValidDigest(ticket.SecretHash) || !validStoredOrigin(ticket.PublicOrigin) ||
+		!domain.ValidDigest(ticket.TLSFingerprint) || ticket.Attempts < 0 || ticket.Attempts > 10 ||
+		ticket.CreatedAt.IsZero() || !ticket.ExpiresAt.After(ticket.CreatedAt) {
+		return domain.PairingTicket{}, corruptStored("pairing ticket")
+	}
+	claimFields := ticket.DeviceID != "" || ticket.PublicKeyHash != "" || ticket.ClaimedName != "" ||
+		ticket.ClaimedClass != "" || ticket.ClaimedAt != nil
+	allClaimFields := domain.ValidUUIDv7(ticket.DeviceID) && domain.ValidDigest(ticket.PublicKeyHash) &&
+		validStoredName(ticket.ClaimedName) && validStoredClass(ticket.ClaimedClass) &&
+		ticket.ClaimedAt != nil && !ticket.ClaimedAt.Before(ticket.CreatedAt) && ticket.ClaimedAt.Before(ticket.ExpiresAt)
+	validState := false
+	switch ticket.State {
+	case domain.TicketPending:
+		validState = !claimFields && ticket.CompletedAt == nil && ticket.RevokedAt == nil
+	case domain.TicketClaimed:
+		validState = allClaimFields && ticket.CompletedAt == nil && ticket.RevokedAt == nil
+	case domain.TicketCompleted:
+		validState = allClaimFields && ticket.CompletedAt != nil && ticket.RevokedAt == nil &&
+			!ticket.CompletedAt.Before(*ticket.ClaimedAt) && ticket.CompletedAt.Before(ticket.ExpiresAt)
+	case domain.TicketRevoked:
+		validState = ticket.CompletedAt == nil && ticket.RevokedAt != nil &&
+			!ticket.RevokedAt.Before(ticket.CreatedAt) && (!claimFields || allClaimFields)
+	}
+	if !validState {
+		return domain.PairingTicket{}, corruptStored("pairing ticket state")
+	}
+	return ticket, nil
 }
 
-func challengeFromRow(row gatewayauthdb.WorkosGatewayDeviceAuthChallenge) domain.Challenge {
-	return domain.Challenge{
+func challengeFromRow(row gatewayauthdb.WorkosGatewayDeviceAuthChallenge) (domain.Challenge, error) {
+	challenge := domain.Challenge{
 		ID: row.ID, Purpose: domain.ChallengePurpose(row.Purpose),
 		DeviceID: uuidString(row.DeviceID), TicketID: uuidString(row.TicketID),
 		PublicKeyHash: row.PublicKeyHash, Nonce: row.Nonce,
@@ -549,10 +620,49 @@ func challengeFromRow(row gatewayauthdb.WorkosGatewayDeviceAuthChallenge) domain
 		ConsumedAt: row.ConsumedAt, ConsumedByDev: uuidString(row.ConsumedByDevice),
 		Result: domain.ChallengeResult(textString(row.Result)),
 	}
+	if !domain.ValidUUIDv7(challenge.ID) || !domain.ValidDigest(challenge.PublicKeyHash) ||
+		len(challenge.Nonce) != domain.SecretBytes || challenge.Attempts < 0 || challenge.Attempts > 10 ||
+		challenge.CreatedAt.IsZero() || !challenge.ExpiresAt.After(challenge.CreatedAt) {
+		return domain.Challenge{}, corruptStored("challenge")
+	}
+	switch challenge.Purpose {
+	case domain.ChallengePairing:
+		if !domain.ValidUUIDv7(challenge.DeviceID) || !domain.ValidUUIDv7(challenge.TicketID) {
+			return domain.Challenge{}, corruptStored("pairing challenge binding")
+		}
+	case domain.ChallengeSession:
+		if challenge.TicketID != "" || (challenge.DeviceID != "" && !domain.ValidUUIDv7(challenge.DeviceID)) {
+			return domain.Challenge{}, corruptStored("session challenge binding")
+		}
+	default:
+		return domain.Challenge{}, corruptStored("challenge purpose")
+	}
+	if challenge.ConsumedAt == nil {
+		if challenge.Result != "" || challenge.ConsumedByDev != "" {
+			return domain.Challenge{}, corruptStored("challenge result")
+		}
+		return challenge, nil
+	}
+	if challenge.ConsumedAt.Before(challenge.CreatedAt) || challenge.ConsumedAt.After(challenge.ExpiresAt) {
+		return domain.Challenge{}, corruptStored("challenge consumption timestamp")
+	}
+	switch challenge.Result {
+	case domain.ChallengeVerified:
+		if !domain.ValidUUIDv7(challenge.ConsumedByDev) || challenge.ConsumedByDev != challenge.DeviceID {
+			return domain.Challenge{}, corruptStored("verified challenge result")
+		}
+	case domain.ChallengeFailed:
+		if challenge.ConsumedByDev != "" {
+			return domain.Challenge{}, corruptStored("failed challenge result")
+		}
+	default:
+		return domain.Challenge{}, corruptStored("challenge result")
+	}
+	return challenge, nil
 }
 
-func deviceFromRow(row gatewayauthdb.WorkosGatewayDeviceCredential) domain.Device {
-	return domain.Device{
+func deviceFromRow(row gatewayauthdb.WorkosGatewayDeviceCredential) (domain.Device, error) {
+	device := domain.Device{
 		ID: row.ID, OwnerID: row.OwnerUserID, Name: row.Name,
 		Class:               domain.DeviceClass(row.DeviceClass),
 		PublicKeySPKI:       row.PublicKeySpki,
@@ -562,14 +672,47 @@ func deviceFromRow(row gatewayauthdb.WorkosGatewayDeviceCredential) domain.Devic
 		LastAuthenticatedAt: row.LastAuthenticatedAt,
 		RevokedAt:           row.RevokedAt,
 	}
+	_, keyHash, keyErr := domain.ParseP256SPKI(device.PublicKeySPKI)
+	if !domain.ValidUUIDv7(device.ID) || !domain.ValidUUIDv7(device.OwnerID) ||
+		!validStoredName(device.Name) || !validStoredClass(string(device.Class)) || keyErr != nil ||
+		!domain.ValidDigest(device.PublicKeyHash) || keyHash != device.PublicKeyHash || device.Revision < 1 ||
+		device.CreatedAt.IsZero() || device.LastAuthenticatedAt.Before(device.CreatedAt) ||
+		(device.RevokedAt != nil && device.RevokedAt.Before(device.LastAuthenticatedAt)) {
+		return domain.Device{}, corruptStored("device credential")
+	}
+	return device, nil
 }
 
-func sessionFromRow(row gatewayauthdb.WorkosGatewayDeviceSession) domain.DeviceSession {
-	return domain.DeviceSession{
+func sessionFromRow(row gatewayauthdb.WorkosGatewayDeviceSession) (domain.DeviceSession, error) {
+	session := domain.DeviceSession{
 		ID: row.ID, OwnerID: row.OwnerUserID, DeviceID: row.DeviceID,
 		TokenHash: row.TokenHash, CreatedAt: row.CreatedAt, ExpiresAt: row.ExpiresAt,
 		LastSeenAt: row.LastSeenAt, RevokedAt: row.RevokedAt,
 	}
+	if !domain.ValidUUIDv7(session.ID) || !domain.ValidUUIDv7(session.OwnerID) ||
+		!domain.ValidUUIDv7(session.DeviceID) || !domain.ValidDigest(session.TokenHash) ||
+		session.CreatedAt.IsZero() || !session.ExpiresAt.After(session.CreatedAt) ||
+		(session.LastSeenAt != nil && session.LastSeenAt.Before(session.CreatedAt)) ||
+		(session.RevokedAt != nil && session.RevokedAt.Before(session.CreatedAt)) {
+		return domain.DeviceSession{}, corruptStored("device session")
+	}
+	return session, nil
+}
+
+func validStoredName(value string) bool {
+	name, err := domain.ValidateDeviceName(value)
+	return err == nil && name == value
+}
+
+func validStoredClass(value string) bool {
+	class, err := domain.ParseDeviceClass(value)
+	return err == nil && string(class) == value
+}
+
+func validStoredOrigin(value string) bool {
+	origin, err := url.Parse(value)
+	return err == nil && origin.Scheme == "https" && origin.Host != "" && origin.User == nil &&
+		origin.Path == "" && origin.RawQuery == "" && origin.Fragment == "" && origin.Opaque == ""
 }
 
 func uuidString(value pgtype.UUID) string {

@@ -29,8 +29,12 @@ token、未来移动 Shell 与远程 transport 的共同前置边界（ADR-0002 
 
 - `workosctl device pair` 经 Gateway 进程拥有的 admin Unix domain socket 调用
   `DeviceAuthAdminService.RotatePairingTicket`；socket path 启动时验证（绝对、cleaned、无
-  symlink、parent 为真实目录、已有文件必须是 stale socket 才可精确清理），文件 mode ≤ 0600。
+  symlink、parent 为当前进程用户所有且 group/other 不可写）。已有 socket 只有在 connect 明确返回
+  `ECONNREFUSED` 且复核 inode 未变化时才可精确清理；timeout/EACCES/竞态替换一律保留并启动失败，
+  文件 mode ≤ 0600；关闭时也只删除启动后记录的同一 socket 节点，路径已被替换则保留新端点。
 - admin service 只注册在 socket mux 上；同一 RPC 的 TCP 请求确定性 404，并有测试钉住。
+- admin 与 public listener 共用进程生命周期；admin 运行期退出会先 cancel 并优雅关闭 public listener，
+  随后进程返回非零，让 systemd `Restart=on-failure` 恢复完整 Gateway。
 - CLI 不 import Gateway postgres adapter、不写 `workos_gateway` SQL。
 - `RotatePairingTicket` 是显式 rotation：每次成功调用在 owner 级 advisory lock 内 revoke 旧
   outstanding ticket 后插入新 ticket，旧 QR 全部失效；响应丢失时操作者重新执行命令，raw ticket
@@ -42,6 +46,8 @@ token、未来移动 Shell 与远程 transport 的共同前置边界（ADR-0002 
   fragment 是因为 fragment 不会被浏览器发往服务器（不进 access log / proxy log / upstream），
   也不进入 referrer。Pairing UI 严格校验 grammar 后立即 `history.replaceState` 清除地址；
   ticket 只留在本次内存流程。
+- Device Center 的 QR 同样只在组件内存；缺失、非有限、已过期或超过 15 分钟上限的 expiry 拒绝展示，
+  替换、窗口关闭、QR 生成期间过期或 server-provided expiry 到达时立即清除。
 - `fp` 是 Gateway 实际服务的 leaf certificate DER 的 SHA-256（启动时从 TLS keypair 计算，不信
   配置另填值）。ticket snapshot 固定 origin+fingerprint；证书或 origin 变更使 outstanding
   ticket 立即失效（BeginPairing/CompletePairing 都比对 snapshot 与当前事实）。浏览器 UI 显示
@@ -50,15 +56,17 @@ token、未来移动 Shell 与远程 transport 的共同前置边界（ADR-0002 
 
 ### 4. P-256 raw WebCrypto proof + opaque Cookie
 
-- 浏览器生成两把 `ECDSA P-256` key：exportable pair 只出 SPKI（usage verify），non-extractable
-  private key（usage sign，`extractable=false`）结构化存入 IndexedDB。IndexedDB 写失败必须停在
-  claim 之前；不允许 localStorage/sessionStorage fallback、不允许导出 PKCS#8/JWK。
+- 浏览器生成一对 `ECDSA P-256` key：同一 key pair 的 public member 可导出 SPKI（usage verify），
+  private member（usage sign，`extractable=false`）结构化存入 IndexedDB。每次从 IndexedDB 载入后，
+  client 都重新计算 SPKI digest 并以实际 sign/verify 自检证明 private/public 属于同一对；写入或回读
+  失败必须停在 claim 之前。禁止 localStorage/sessionStorage fallback、导出 PKCS#8/JWK。
 - 签名是版本化 canonical transcript 上的 64-byte raw `r||s`（WebCrypto 原生输出），domain
   separator `workos.device-proof/v1`、purpose byte、uint32-BE-length-prefixed 字段
   （origin、purpose、challenge、nonce、device、key digest；pairing 另加 ticket、fingerprint）。
   Go/TypeScript 共用同一测试向量（SHA-256 pinned）。服务端把 r/s 各 32 bytes 解析为正整数后
-  `ecdsa.Verify`；DER、长度、zero、out-of-range、noncanonical SPKI、unknown version 一律
-  fail closed，无算法协商。
+  `ecdsa.Verify`；public `Challenge` 同时携带明确的 `proof_version=1` 与 pairing/session purpose，
+  client 在签名前核对；DER、长度、zero、out-of-range、noncanonical SPKI、unknown version/purpose
+  一律 fail closed，无算法协商。
 - 会话 Cookie 固定 `__Host-workos_session`：`Secure`、`HttpOnly`、`SameSite=Strict`、`Path=/`、
   无 Domain、绝对 Max-Age/Expires 等于存储的 UTC expiry。数据库只存 domain-separated
   `sha256(raw)`；raw token 只出现在一次 `Set-Cookie`；清除用完全相同属性 + 过期值。本切片的
@@ -74,6 +82,10 @@ token、未来移动 Shell 与远程 transport 的共同前置边界（ADR-0002 
 - store 故障是 sanitized `503`/`Unavailable`，不是 `401`——绝不把暂时故障伪装成"请重新配对"，
   也绝不回退到 configured identity 或 stale cache。Desktop 的 unavailable 文案与 unpaired
   文案严格区分，瞬时故障不诱导用户删除本地 key。
+- 匿名 pairing/session RPC 同时消耗不信任 `X-Forwarded-For` 的 RemoteAddr bucket 与全进程 global
+  bucket；地址轮换不能绕过总预算，malformed RemoteAddr 进入共享 fail-closed bucket。
+- PostgreSQL adapter 在事实离开持久层前重验 UUIDv7、状态/结果一致性、时间、name/class、digest 与
+  canonical SPKI/key hash；损坏统一为 sanitized `Internal`，不能降级为 400/401 或静默修复。
 
 ### 6. Lost-response 恢复与并发裁决
 
@@ -84,8 +96,12 @@ token、未来移动 Shell 与远程 transport 的共同前置边界（ADR-0002 
   claim/consume/revoke 唯一赢家；partial unique index 保证每 owner 一个 pending ticket、每
   device 一个 active credential key、每 device 一个 active session；撤销的 `revoked_at` 用
   数据库事务时间，杜绝锁等待导致的时钟倒挂。
-- RevokeDevice 是 owner-scoped idempotency：同 key + 同 digest 精确重放第一结果快照，同 key
-  不同请求稳定 `Aborted`；device revoke + 全部 active session revoke + result snapshot 同事务。
+- RevokeDevice 是 owner-scoped idempotency：同 key + 同 digest 精确重放完整第一公开响应投影
+  （含 created/last-authenticated/revoked 时间），并复核 snapshot 的 device/revision/request time
+  binding；同 key 不同请求稳定 `Aborted`；device revoke + 全部 active session revoke + result
+  snapshot 同事务。
+  Desktop 对同一 device revision 的未知结果重试复用同一 idempotency key，只有 revision 改变才创建
+  新逻辑请求。
   撤销 current device 后 UI 清 Cookie 并删除本地 key 回到 unpaired；撤销其他设备立即使其下一
   请求 fail closed（Runtime Surface 行不跨进程删除，由 Gateway gate 不可达 + 既有 TTL 收敛）。
 

@@ -2,7 +2,7 @@ import { chromium, expect, test } from "@playwright/test";
 
 // Visual capture for the LAN device pairing slice
 // (docs/tasks/20260830-lan-device-pairing.md). Runs explicitly:
-//   WORKOS_CAPTURE_DIR=... WORKOS_E2E_TLS_URL=... WORKOS_E2E_PAIRING_URL=... \
+//   WORKOS_CAPTURE_DIR=... WORKOS_E2E_TLS_URL=... \
 //     pnpm exec playwright test lan-pairing-visual.spec.ts
 //
 // The pairing screenshot encodes an INVALID deterministic fixture ticket
@@ -12,7 +12,6 @@ import { chromium, expect, test } from "@playwright/test";
 
 const tlsURL = process.env.WORKOS_E2E_TLS_URL ?? "https://localhost:8443";
 const captureDir = process.env.WORKOS_CAPTURE_DIR ?? "";
-const pairURL = process.env.WORKOS_E2E_PAIRING_URL ?? "";
 // Grammar-valid but useless fixture ticket material.
 const fixtureFragment = `#v=1&t=${"A".repeat(43)}&fp=sha256:${"0".repeat(64)}`;
 
@@ -46,27 +45,73 @@ test("captures unpaired and pairing states", async () => {
   await browser.close();
 });
 
-test("captures the paired device center", async ({ browser }) => {
-  test.setTimeout(120_000);
-  test.skip(!pairURL, "needs a live operator ticket");
-  const context = await browser.newContext({ ignoreHTTPSErrors: true, viewport });
+test("captures the paired device center from deterministic Connect fixtures", async ({
+  browser,
+}) => {
+  test.setTimeout(90_000);
+  const context = await browser.newContext({
+    ignoreHTTPSErrors: true,
+    viewport,
+    deviceScaleFactor: 1,
+    locale: "en-US",
+    timezoneId: "UTC",
+  });
   const page = await context.newPage();
 
-  // Reuse a live session if this profile already paired; otherwise pair via
-  // the operator ticket. (A profile key can only ever pair once — the
-  // gateway rejects duplicate credentials for the same key.)
+  // Device auth is intercepted before navigation. No cookie, profile key,
+  // live pairing ticket, persistent database row, or wall-clock timestamp
+  // participates in this visual state.
+  await page.route("**/workos.auth.v1.DeviceService/*", async (route) => {
+    const rpc = new URL(route.request().url()).pathname.split("/").at(-1);
+    const currentDevice = {
+      deviceId: "0198d7ea-2110-7c42-b659-c5e4d73bc301",
+      name: "Fixture Desktop",
+      deviceClass: "DEVICE_CLASS_DESKTOP",
+      revision: "3",
+      createdAt: "2026-08-01T10:00:00Z",
+      lastAuthenticatedAt: "2026-08-30T12:00:00Z",
+      isCurrent: true,
+    };
+    const otherDevice = {
+      deviceId: "0198d7ea-2110-7c42-b659-c5e4d73bc302",
+      name: "Fixture Phone",
+      deviceClass: "DEVICE_CLASS_PHONE",
+      revision: "2",
+      createdAt: "2026-08-02T10:00:00Z",
+      lastAuthenticatedAt: "2026-08-29T12:00:00Z",
+      isCurrent: false,
+    };
+    const body =
+      rpc === "ListDevices"
+        ? { devices: [currentDevice, otherDevice], nextPageToken: "" }
+        : { device: currentDevice, sessionExpiresAt: "2026-08-31T12:00:00Z" };
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      headers: { "Connect-Protocol-Version": "1" },
+      body: JSON.stringify(body),
+    });
+  });
+
   await page.goto(`${tlsURL}/`);
-  await page.waitForTimeout(3_000);
-  if (!(await page.locator(".desktop-shell").count())) {
-    await page.goto(pairURL);
-    await page.getByLabel("Device name").fill("E2E LAN Device");
-    await page.getByTestId("pairing-panel").getByRole("button", { name: "Pair device" }).click();
-  }
   await expect(page.locator(".desktop-shell")).toBeVisible({ timeout: 30_000 });
   await page.getByTestId("open-device-center").click();
   const center = page.getByTestId("device-center");
   await expect(center).toBeVisible();
-  await expect(center).toContainText("this device");
+  await expect(center).toContainText("Fixture Desktop");
+  await expect(center).toContainText("Fixture Phone");
+  await expect(center).toContainText("Session expires 8/31/2026, 12:00:00 PM");
+  // Hide all unrelated dynamic business data while keeping the real Desktop
+  // window manager, Device Center component, typography, and layout.
+  await page.addStyleTag({
+    content: `
+      .mission-control, .dock, .error-toast,
+      .system-bar .project-switcher, .system-bar .agent-status { visibility: hidden !important; }
+      .workos-window:not(:has(.device-center)) { display: none !important; }
+      .workos-window:has(.device-center) > header > span { visibility: hidden !important; }
+    `,
+  });
+  await page.evaluate(async () => document.fonts.ready);
   await page.screenshot({ path: `${captureDir}/device-center--paired-devices--1440x900.png` });
   await context.close();
 });

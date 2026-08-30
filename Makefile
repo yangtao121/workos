@@ -12,6 +12,7 @@ GOPROXY ?= https://goproxy.cn,direct
 NPM_REGISTRY ?= https://registry.npmmirror.com
 PLAYWRIGHT_DOWNLOAD_HOST ?= https://npmmirror.com/mirrors/playwright
 PYPI_MIRROR ?= https://mirrors.aliyun.com/pypi
+LAN_PAIRING_CAPTURE_DIR ?= $(CURDIR)/docs/ui/desktop-web/changes/20260830-lan-device-pairing/after
 USER_FLAGS := --user $(shell id -u):$(shell id -g) -e HOME=/tmp
 MOUNT := -v $(CURDIR):$(WORKDIR) -w $(WORKDIR)
 GO_RUN := docker run --rm $(USER_FLAGS) -e GOPATH=/tmp/workos-go -e GOMODCACHE=/go/pkg/mod -e GOPROXY=$(GOPROXY) $(MOUNT) -v workos-go-cache:/go/pkg/mod $(GO_IMAGE)
@@ -20,7 +21,7 @@ NODE_RUN := docker run --rm $(USER_FLAGS) -e COREPACK_NPM_REGISTRY=$(NPM_REGISTR
 BUF_RUN := docker run --rm $(USER_FLAGS) $(MOUNT) $(BUF_IMAGE)
 SQLC_RUN := docker run --rm $(USER_FLAGS) -v $(CURDIR):/src -w /src $(SQLC_IMAGE)
 
-.PHONY: bootstrap generate docs check check-native proto-check go-check web-check test test-integration test-deepseek-fixture e2e-image test-e2e test-podman-fixture test-lan-pairing build web-build scaffold-module dev down logs clean
+.PHONY: bootstrap generate docs check check-native proto-check go-check web-check test test-integration test-deepseek-fixture e2e-image test-e2e test-podman-fixture test-lan-pairing capture-lan-pairing-visual build web-build scaffold-module dev down logs clean
 
 bootstrap:
 	@docker version >/dev/null
@@ -146,6 +147,33 @@ test-e2e: e2e-image
 		-v $(CURDIR):$(WORKDIR) \
 		-w $(WORKDIR)/apps/desktop-web \
 		$(E2E_IMAGE) pnpm test:e2e
+
+# Regenerates the task's deterministic 1440x900 Auth Gate and Device Center
+# evidence. Device Center uses browser-intercepted Connect fixtures; no live
+# ticket, credential, provider, or persistent database row appears in it.
+capture-lan-pairing-visual: e2e-image
+	@set -eu; \
+	certdir="$$(mktemp -d)"; \
+	cleanup() { docker compose --profile lan-pairing stop workos-gateway-tls >/dev/null 2>&1 || true; rm -rf "$$certdir"; }; \
+	trap cleanup EXIT HUP INT TERM; \
+	docker run --rm $(USER_FLAGS) -e HOME=/tmp -e GOPATH=/tmp/workos-go \
+		-e GOMODCACHE=/go/pkg/mod -e GOPROXY=$(GOPROXY) \
+		-v $(CURDIR):$(WORKDIR) -w $(WORKDIR) -v workos-go-cache:/go/pkg/mod \
+		-v "$$certdir":/certs \
+		$(GO_IMAGE) go run ./tests/lanpairing/gencert -out /certs; \
+	export WORKOS_TLS_CERT="$$certdir/leaf.crt" WORKOS_TLS_KEY="$$certdir/leaf.key"; \
+	docker compose --profile lan-pairing up -d --build postgres bootstrap workos-core harness-host runtime-host workos-gateway-tls; \
+	mkdir -p "$(LAN_PAIRING_CAPTURE_DIR)"; \
+	docker run --rm --network host $(USER_FLAGS) \
+		-e PLAYWRIGHT_BROWSERS_PATH=/ms-playwright \
+		-e WORKOS_E2E_TLS_URL=https://localhost:8443 \
+		-e WORKOS_CAPTURE_DIR=/captures \
+		-v "$(LAN_PAIRING_CAPTURE_DIR)":/captures \
+		-v $(CURDIR):$(WORKDIR) \
+		-w $(WORKDIR)/apps/desktop-web \
+		$(E2E_IMAGE) pnpm exec playwright test lan-pairing-visual.spec.ts; \
+	cp "$(LAN_PAIRING_CAPTURE_DIR)"/*.png docs/ui/desktop-web/current/; \
+	echo "capture-lan-pairing-visual: PASS"
 
 # The production-auth acceptance gate (ADR-0007): a real TLS gateway
 # (temporarily generated leaf + SAN localhost), real PostgreSQL, the real

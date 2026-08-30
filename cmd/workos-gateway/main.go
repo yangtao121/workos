@@ -83,7 +83,6 @@ func run(logger *slog.Logger) error {
 				SessionTTL:     authTTL(cfg.Auth.SessionTTL, 24*time.Hour),
 			},
 			randsource.Clock{}, randsource.Entropy{}, ids.UUIDv7{},
-			application.NewRateLimiter(60, time.Minute, 4096, randsource.Clock{}),
 		)
 		if err != nil {
 			return err
@@ -100,7 +99,12 @@ func run(logger *slog.Logger) error {
 			Service: authApp,
 			Pairing: pairingConnect,
 			Device:  deviceConnect,
-			Limiter: application.NewRateLimiter(60, time.Minute, 4096, randsource.Clock{}),
+			RemoteLimiter: application.NewRateLimiter(
+				gateway.AuthRemoteRateLimit, gateway.AuthRateWindow, gateway.AuthRateMaxKeys, randsource.Clock{},
+			),
+			GlobalLimiter: application.NewRateLimiter(
+				gateway.AuthGlobalRateLimit, gateway.AuthRateWindow, 1, randsource.Clock{},
+			),
 		}
 	}
 
@@ -144,27 +148,18 @@ func run(logger *slog.Logger) error {
 
 	// The private admin socket exists only in production pairing mode: it
 	// is owned by this process alone and never registered on the TCP mux.
+	var adminErr chan error
 	if adminHandler != nil {
 		adminSocket, err := gateway.ListenAdminSocket(cfg.Auth.AdminSocketPath, adminHandler, logger)
 		if err != nil {
 			return err
 		}
-		adminErr := make(chan error, 1)
+		adminErr = make(chan error, 1)
 		go func() { adminErr <- adminSocket.Serve() }()
 		defer func() {
 			shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer cancel()
 			_ = adminSocket.Close(shutdownCtx)
-		}()
-		go func() {
-			select {
-			case err := <-adminErr:
-				if err != nil {
-					logger.Error("admin socket failed", "error", err)
-					stop()
-				}
-			case <-ctx.Done():
-			}
 		}()
 		logger.Info("gateway admin socket listening")
 	}
@@ -173,13 +168,24 @@ func run(logger *slog.Logger) error {
 	// serving a public edge whose operator pairing path is broken.
 	serverErr := make(chan error, 1)
 	go func() {
-		serverErr <- httpserver.RunWithTLSConfig("workos-gateway", cfg.HTTP.Address, root, logger, tlsConfig, cfg.Telemetry.OTLPEndpoint)
+		serverErr <- httpserver.RunWithTLSConfigContext(ctx, "workos-gateway", cfg.HTTP.Address, root, logger, tlsConfig, cfg.Telemetry.OTLPEndpoint)
 	}()
 	select {
 	case err := <-serverErr:
+		stop()
 		return err
-	case <-ctx.Done():
-		return nil
+	case err := <-adminErr:
+		if err == nil {
+			err = errors.New("admin socket stopped unexpectedly")
+		}
+		// Cancel the public listener and wait for its bounded graceful
+		// shutdown before returning a non-nil error. systemd's
+		// Restart=on-failure can now restore the complete gateway.
+		stop()
+		if shutdownErr := <-serverErr; shutdownErr != nil {
+			return fmt.Errorf("admin socket failed: %v (public shutdown: %w)", err, shutdownErr)
+		}
+		return fmt.Errorf("admin socket failed: %w", err)
 	}
 }
 

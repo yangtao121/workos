@@ -74,7 +74,7 @@ func newTestAuthStack(t *testing.T, store ports.Repository) *AuthStack {
 		TicketTTL:      5 * time.Minute,
 		ChallengeTTL:   2 * time.Minute,
 		SessionTTL:     testSessionExpires,
-	}, clock, deterministicEntropy{}, &counterIDs{}, application.NewRateLimiter(1000, time.Minute, 4096, clock))
+	}, clock, deterministicEntropy{}, &counterIDs{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -82,10 +82,11 @@ func newTestAuthStack(t *testing.T, store ports.Repository) *AuthStack {
 	_, pairingConnect := authv1connect.NewDevicePairingServiceHandler(authtransport.NewPairingHandler(app, now))
 	_, deviceConnect := authv1connect.NewDeviceServiceHandler(authtransport.NewDeviceHandler(app, now))
 	return &AuthStack{
-		Service: app,
-		Pairing: pairingConnect,
-		Device:  deviceConnect,
-		Limiter: application.NewRateLimiter(1000, time.Minute, 4096, clock),
+		Service:       app,
+		Pairing:       pairingConnect,
+		Device:        deviceConnect,
+		RemoteLimiter: application.NewRateLimiter(1000, time.Minute, 4096, clock),
+		GlobalLimiter: application.NewRateLimiter(1000, time.Minute, 1, clock),
 	}
 }
 
@@ -96,10 +97,11 @@ var testSessionToken = base64.RawURLEncoding.EncodeToString(make([]byte, domain.
 // gateStore is the minimal repository surface the session gate needs for
 // these tests; unimplemented methods panic loudly if a test reaches them.
 type gateStore struct {
-	outage   bool
-	session  domain.DeviceSession
-	device   domain.Device
-	resolved int
+	outage     bool
+	resolveErr error
+	session    domain.DeviceSession
+	device     domain.Device
+	resolved   int
 }
 
 func (g *gateStore) Ready(ctx context.Context) error {
@@ -111,6 +113,9 @@ func (g *gateStore) Ready(ctx context.Context) error {
 
 func (g *gateStore) ResolveSession(ctx context.Context, tokenHash string) (domain.DeviceSession, domain.Device, error) {
 	g.resolved++
+	if g.resolveErr != nil {
+		return domain.DeviceSession{}, domain.Device{}, g.resolveErr
+	}
 	if g.outage {
 		return domain.DeviceSession{}, domain.Device{}, domain.ErrStoreUnavailable
 	}
@@ -271,6 +276,17 @@ func TestProductionGateBehavior(t *testing.T) {
 		t.Fatalf("cross-site origin: status=%d coreCalled=%d", response.Code, coreCalled)
 	}
 
+	// Exact Origin does not override contradictory Fetch Metadata on an
+	// unsafe request.
+	response = request(http.MethodPost, "/workos.project.v1.ProjectService/ListProjects", func(r *http.Request) {
+		r.AddCookie(&http.Cookie{Name: authtransport.SessionCookieName, Value: testSessionToken})
+		r.Header.Set("Origin", testOrigin)
+		r.Header.Set("Sec-Fetch-Site", "cross-site")
+	})
+	if response.Code != http.StatusForbidden || coreCalled != 0 {
+		t.Fatalf("cross-site unsafe fetch metadata: status=%d coreCalled=%d", response.Code, coreCalled)
+	}
+
 	// Cross-site Fetch Metadata is rejected on safe methods too.
 	response = request(http.MethodGet, "/surfaces/0198d7ea-2110-7c42-b659-c5e4d73bc341/", func(r *http.Request) {
 		r.AddCookie(&http.Cookie{Name: authtransport.SessionCookieName, Value: testSessionToken})
@@ -292,6 +308,20 @@ func TestProductionGateBehavior(t *testing.T) {
 		t.Fatalf("unsanitized outage body %q", body)
 	}
 	store.outage = false
+
+	// Corrupt durable auth state is a fixed 500 and does not clear a valid
+	// cookie as though the caller had failed authentication.
+	store.resolveErr = domain.ErrAuthCorrupt
+	response = request(http.MethodPost, "/workos.project.v1.ProjectService/ListProjects", func(r *http.Request) {
+		r.AddCookie(&http.Cookie{Name: authtransport.SessionCookieName, Value: testSessionToken})
+	})
+	if response.Code != http.StatusInternalServerError || coreCalled != 0 {
+		t.Fatalf("store corruption: status=%d coreCalled=%d", response.Code, coreCalled)
+	}
+	if len(response.Result().Cookies()) != 0 {
+		t.Fatal("store corruption cleared the caller's session cookie")
+	}
+	store.resolveErr = nil
 
 	// Revoked device session: fixed 401.
 	revokedStore := newGateStore(false)
@@ -393,11 +423,22 @@ func TestProxyStripsClientForwardingHeaders(t *testing.T) {
 // bypass off without the device auth stack cannot start.
 func TestProductionNewFailsWithoutAuthStack(t *testing.T) {
 	t.Parallel()
-	if _, err := New(config.Config{
+	cfg := config.Config{
 		Services: config.URLs{Core: "http://127.0.0.1:1", Runtime: "http://127.0.0.1:1"},
 		Auth:     config.Auth{OwnerID: testOwnerID, PublicOrigin: testOrigin},
-	}, newTestLogger(), nil); err == nil {
+	}
+	if _, err := New(cfg, newTestLogger(), nil); err == nil {
 		t.Fatal("production handler accepted a nil auth stack")
+	}
+	for name, mutate := range map[string]func(*AuthStack){
+		"remote limiter": func(stack *AuthStack) { stack.RemoteLimiter = nil },
+		"global limiter": func(stack *AuthStack) { stack.GlobalLimiter = nil },
+	} {
+		stack := newTestAuthStack(t, newGateStore(true))
+		mutate(stack)
+		if _, err := New(cfg, newTestLogger(), stack); err == nil {
+			t.Errorf("production handler accepted a nil %s", name)
+		}
 	}
 }
 
@@ -451,5 +492,59 @@ func TestProductionPairingEndpointsAreAnonymous(t *testing.T) {
 	// the endpoint is reachable anonymously.
 	if recorder.Code != http.StatusBadRequest {
 		t.Fatalf("anonymous pairing endpoint returned %d", recorder.Code)
+	}
+}
+
+// TestProductionPairingRateLimits pins both anonymous budgets: repeated
+// traffic from one address and address-rotating traffic are independently
+// bounded, and a malformed RemoteAddr never bypasses accounting.
+func TestProductionPairingRateLimits(t *testing.T) {
+	t.Parallel()
+	newHandler := func(remoteLimit, globalLimit int) *Handler {
+		clock := &fixedClock{current: time.Date(2026, 8, 30, 12, 0, 0, 0, time.UTC)}
+		stack := newTestAuthStack(t, newGateStore(true))
+		stack.RemoteLimiter = application.NewRateLimiter(remoteLimit, time.Minute, 16, clock)
+		stack.GlobalLimiter = application.NewRateLimiter(globalLimit, time.Minute, 1, clock)
+		handler, err := New(config.Config{
+			HTTP:     config.HTTP{StaticDir: t.TempDir()},
+			Services: config.URLs{Core: "http://127.0.0.1:1", Runtime: "http://127.0.0.1:1"},
+			Auth:     config.Auth{OwnerID: testOwnerID, PublicOrigin: testOrigin},
+		}, newTestLogger(), stack)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return handler
+	}
+	request := func(handler *Handler, remoteAddr string) int {
+		req := httptest.NewRequest(http.MethodPost, testOrigin+"/workos.auth.v1.DevicePairingService/BeginPairing", strings.NewReader("{}"))
+		req.Host = "workos.example"
+		req.RemoteAddr = remoteAddr
+		req.Header.Set("Origin", testOrigin)
+		req.Header.Set("Content-Type", "application/json")
+		recorder := httptest.NewRecorder()
+		handler.ServeHTTP(recorder, req)
+		return recorder.Code
+	}
+
+	remoteBound := newHandler(1, 100)
+	if got := request(remoteBound, "192.0.2.10:1000"); got == http.StatusTooManyRequests {
+		t.Fatalf("first per-remote request unexpectedly limited: %d", got)
+	}
+	if got := request(remoteBound, "192.0.2.10:2000"); got != http.StatusTooManyRequests {
+		t.Fatalf("per-remote limit returned %d", got)
+	}
+
+	globalBound := newHandler(100, 1)
+	if got := request(globalBound, "192.0.2.11:1000"); got == http.StatusTooManyRequests {
+		t.Fatalf("first global request unexpectedly limited: %d", got)
+	}
+	if got := request(globalBound, "192.0.2.12:1000"); got != http.StatusTooManyRequests {
+		t.Fatalf("global limit returned %d", got)
+	}
+
+	malformedBound := newHandler(1, 100)
+	_ = request(malformedBound, "not-a-socket-address")
+	if got := request(malformedBound, "also-not-an-address"); got != http.StatusTooManyRequests {
+		t.Fatalf("malformed RemoteAddr bypassed shared bucket: %d", got)
 	}
 }

@@ -31,13 +31,14 @@ const (
 	adminMaxBodyBytes = 4 * 1024
 )
 
-// RateLimiterBounds: per-remote-IP fixed-window budget for the anonymous
-// auth endpoints, and the hard map capacity so attacker-chosen addresses
-// cannot grow memory without bound.
+// RateLimiterBounds: per-remote-IP and process-global fixed-window budgets
+// for the anonymous auth endpoints. The hard remote map capacity prevents
+// attacker-chosen addresses from growing memory without bound.
 const (
-	authRateLimit   = 60
-	authRateWindow  = time.Minute
-	authRateMaxKeys = 4096
+	AuthRemoteRateLimit = 60
+	AuthGlobalRateLimit = 600
+	AuthRateWindow      = time.Minute
+	AuthRateMaxKeys     = 4096
 )
 
 // AuthStack carries the production device-auth wiring. It is nil in the
@@ -48,8 +49,11 @@ type AuthStack struct {
 	// services, built by the composition root from the same service.
 	Pairing http.Handler
 	Device  http.Handler
-	// Limiter bounds the anonymous auth endpoints per remote address.
-	Limiter *application.RateLimiter
+	// RemoteLimiter and GlobalLimiter jointly bound the anonymous auth
+	// endpoints. Both are mandatory in production so address rotation can
+	// never bypass the process-wide budget.
+	RemoteLimiter *application.RateLimiter
+	GlobalLimiter *application.RateLimiter
 }
 
 // Handler routes the public edge: allowlisted public Connect services and the
@@ -131,7 +135,8 @@ func New(cfg config.Config, logger *slog.Logger, auth *AuthStack) (*Handler, err
 	if !cfg.Auth.DevBypass {
 		// Production mode requires the auth stack: the constructor fails
 		// instead of serving a gate that cannot resolve sessions.
-		if auth == nil || auth.Service == nil || auth.Pairing == nil || auth.Device == nil {
+		if auth == nil || auth.Service == nil || auth.Pairing == nil || auth.Device == nil ||
+			auth.RemoteLimiter == nil || auth.GlobalLimiter == nil {
 			return nil, errors.New("production auth requires the device auth stack")
 		}
 		origin, err := url.Parse(cfg.Auth.PublicOrigin)
@@ -321,13 +326,25 @@ func (h *Handler) servePairing(w http.ResponseWriter, r *http.Request) {
 		r.Body = http.MaxBytesReader(w, r.Body, authMaxBodyBytes)
 	}
 	// RemoteAddr only: X-Forwarded-For is untrusted and never consulted.
-	if ip, _, err := net.SplitHostPort(r.RemoteAddr); err == nil {
-		if !h.auth.Limiter.Allow(ip) {
-			http.Error(w, "too many attempts, retry later", http.StatusTooManyRequests)
-			return
-		}
+	// Malformed or absent addresses share a fail-closed bucket rather than
+	// bypassing the limiter. Every request consumes both budgets.
+	remoteAllowed := h.auth.RemoteLimiter.Allow(remoteRateKey(r.RemoteAddr))
+	globalAllowed := h.auth.GlobalLimiter.Allow("anonymous-auth")
+	if !remoteAllowed || !globalAllowed {
+		http.Error(w, "too many attempts, retry later", http.StatusTooManyRequests)
+		return
 	}
 	h.serveLocalConnect(w, r, h.auth.Pairing)
+}
+
+func remoteRateKey(remoteAddr string) string {
+	if host, _, err := net.SplitHostPort(remoteAddr); err == nil && host != "" {
+		return host
+	}
+	if ip := net.ParseIP(strings.TrimSpace(remoteAddr)); ip != nil {
+		return ip.String()
+	}
+	return "unknown"
 }
 
 // requireSession resolves the __Host- session cookie to the trusted
@@ -342,13 +359,18 @@ func (h *Handler) requireSession(w http.ResponseWriter, r *http.Request) (contex
 	}
 	session, resolveErr := h.auth.Service.ResolveSession(r.Context(), cookie.Value)
 	if resolveErr != nil {
-		if errors.Is(resolveErr, domain.ErrStoreUnavailable) {
+		switch {
+		case errors.Is(resolveErr, domain.ErrStoreUnavailable):
 			http.Error(w, "gateway auth unavailable", http.StatusServiceUnavailable)
 			return nil, false
+		case errors.Is(resolveErr, domain.ErrAuthenticationFailed):
+			authtransport.ClearSessionCookie(w)
+			http.Error(w, "device session required", http.StatusUnauthorized)
+			return nil, false
+		default:
+			http.Error(w, "device authentication failed", http.StatusInternalServerError)
+			return nil, false
 		}
-		authtransport.ClearSessionCookie(w)
-		http.Error(w, "device session required", http.StatusUnauthorized)
-		return nil, false
 	}
 	ctx := identity.WithContext(r.Context(), identity.Identity{UserID: session.OwnerID, DeviceID: session.DeviceID})
 	ctx = authtransport.WithSessionContext(ctx, authtransport.SessionContext{Identity: session, SessionExpiry: session.ExpiresAt})
@@ -365,7 +387,6 @@ func (h *Handler) enforceOriginPolicy(w http.ResponseWriter, r *http.Request) bo
 			http.Error(w, "request origin rejected", http.StatusForbidden)
 			return false
 		}
-		return true
 	}
 	switch site := r.Header.Get("Sec-Fetch-Site"); site {
 	case "", "same-origin", "none":

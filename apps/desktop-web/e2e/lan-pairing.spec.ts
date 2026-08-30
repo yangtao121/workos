@@ -113,14 +113,16 @@ test("lan-pairing phase runs", async () => {
       // Clear cookies: only the IndexedDB profile key can re-establish a
       // session, and the shell must come back without replaying anything.
       await context.clearCookies();
+      expect(
+        (await context.cookies(tlsURL)).some(
+          (cookie: { name: string }) => cookie.name === "__Host-workos_session",
+        ),
+      ).toBe(false);
       await page.goto(tlsURL);
-      await expect(page.getByTestId("auth-gate")).toHaveAttribute(
-        "data-state",
-        /checking-session|paired-session-proof|unpaired/,
-        {
-          timeout: 5_000,
-        },
-      );
+      // The proof can finish before Playwright observes the transient Auth
+      // Gate. Cookie absence above plus the authenticated shell and real
+      // write below prove the persisted IndexedDB key established a fresh
+      // session without relying on timing of an intermediate render.
       await expect(page.locator(".desktop-shell")).toBeVisible({ timeout: 30_000 });
       // The proof re-authenticated without replaying anything; prove the
       // fresh session with a real business write.

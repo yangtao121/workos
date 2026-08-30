@@ -210,7 +210,7 @@ func newIntegrationService(t *testing.T, dsn string, fingerprint string) *applic
 	t.Cleanup(pool.Close)
 	service, err := application.New(
 		postgres.New(pool), integrationAuthConfig(fingerprint),
-		randsource.Clock{}, randsource.Entropy{}, integrationIDs{}, application.NewRateLimiter(1000, time.Minute, 4096, randsource.Clock{}),
+		randsource.Clock{}, randsource.Entropy{}, integrationIDs{},
 	)
 	if err != nil {
 		t.Fatalf("build application service: %v", err)
@@ -303,8 +303,16 @@ func TestGatewayDeviceAuthRepositoryFlow(t *testing.T) {
 	if revoked.RevokedAt == nil || revoked.Revision != 2 {
 		t.Fatalf("revoked facts: %+v", revoked)
 	}
-	if _, _, err := service.RevokeDevice(ctx, identity, op); err != nil {
+	replayedDevice, wasReplay, err := service.RevokeDevice(ctx, identity, op)
+	if err != nil || !wasReplay {
 		t.Fatalf("idempotent replay failed: %v", err)
+	}
+	if replayedDevice.ID != revoked.ID || replayedDevice.Name != revoked.Name ||
+		replayedDevice.Class != revoked.Class || replayedDevice.Revision != revoked.Revision ||
+		!replayedDevice.CreatedAt.Equal(revoked.CreatedAt) ||
+		!replayedDevice.LastAuthenticatedAt.Equal(revoked.LastAuthenticatedAt) ||
+		replayedDevice.RevokedAt == nil || !replayedDevice.RevokedAt.Equal(*revoked.RevokedAt) {
+		t.Fatalf("replayed public device facts differ: first=%+v replay=%+v", revoked, replayedDevice)
 	}
 	if _, err := service.ResolveSession(ctx, rotated.SessionToken); err == nil {
 		t.Fatal("revoked session still resolves")
@@ -401,7 +409,6 @@ func TestGatewayDeviceAuthConcurrency(t *testing.T) {
 		WHERE owner_user_id = $1 AND state = 'pending'`, integrationOwnerID).Scan(&pendingID); err != nil {
 		t.Fatalf("read surviving pending ticket: %v", err)
 	}
-	key := newIntegrationKey(t)
 	var survivor domain.PairingInfo
 	for _, info := range infos {
 		if info.TicketID == pendingID {
@@ -413,30 +420,39 @@ func TestGatewayDeviceAuthConcurrency(t *testing.T) {
 		t.Fatal("pending ticket not present in rotation outputs")
 	}
 
-	// Concurrent claims on the surviving ticket: exactly one winner; every
-	// loser fails closed on the guarded pending→claimed transition.
+	// Concurrent claims by distinct browser keys on the surviving ticket:
+	// exactly one winner; every loser fails closed on the guarded
+	// pending→claimed transition. Identical key+metadata is intentionally a
+	// recoverable retry and therefore is not a valid one-winner fixture.
+	claimKeys := make([]*integrationKey, 4)
+	for i := range claimKeys {
+		claimKeys[i] = newIntegrationKey(t)
+	}
 	var claims int
 	var claimMu sync.Mutex
 	var winner application.BeginPairingResult
-	for i := 0; i < 4; i++ {
+	var winnerKey *integrationKey
+	for _, contenderKey := range claimKeys {
+		contenderKey := contenderKey
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
 			result, err := retryUnavailable(t, func() (application.BeginPairingResult, error) {
 				return service.BeginPairing(ctx, application.BeginPairingInput{
-					PairingSecret: survivor.Secret, PublicKeySPKI: key.spki, DeviceName: "Racer", DeviceClass: "desktop",
+					PairingSecret: survivor.Secret, PublicKeySPKI: contenderKey.spki, DeviceName: "Racer", DeviceClass: "desktop",
 				})
 			})
 			if err == nil {
 				claimMu.Lock()
 				claims++
 				winner = result
+				winnerKey = contenderKey
 				claimMu.Unlock()
 			}
 		}()
 	}
 	wg.Wait()
-	if claims != 1 {
+	if claims != 1 || winnerKey == nil {
 		t.Fatalf("expected exactly one successful claim, found %d", claims)
 	}
 
@@ -446,10 +462,10 @@ func TestGatewayDeviceAuthConcurrency(t *testing.T) {
 	facts := domain.ProofFacts{
 		PublicOrigin: "https://workos.example", Purpose: domain.PurposePairing,
 		ChallengeID: winner.Challenge.ID, Nonce: winner.Challenge.Nonce,
-		DeviceID: winner.DeviceID, PublicKeyHash: key.hash,
+		DeviceID: winner.DeviceID, PublicKeyHash: winnerKey.hash,
 		TicketID: survivor.TicketID, TLSFingerprint: "sha256:" + repeatSeed("bb", 64),
 	}
-	signature := key.sign(t, facts)
+	signature := winnerKey.sign(t, facts)
 	const completions = 6
 	var completed int
 	var completeMu sync.Mutex
@@ -460,7 +476,7 @@ func TestGatewayDeviceAuthConcurrency(t *testing.T) {
 			_, err := retryUnavailable(t, func() (application.PairingCompletion, error) {
 				return service.CompletePairing(ctx, application.CompletePairingInput{
 					DeviceID: winner.DeviceID, ChallengeID: winner.Challenge.ID,
-					PublicKeySPKI: key.spki, Signature: signature,
+					PublicKeySPKI: winnerKey.spki, Signature: signature,
 				})
 			})
 			if err == nil {

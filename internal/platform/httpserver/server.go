@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -52,7 +53,14 @@ func Run(service, address string, handler http.Handler, logger *slog.Logger, tls
 // a nil configuration serves plain HTTP. The platform default minimum is
 // TLS 1.2; callers that require TLS 1.3 pass it in their configuration.
 func RunWithTLSConfig(service, address string, handler http.Handler, logger *slog.Logger, tlsConfig *tls.Config, telemetryEndpoint string) error {
-	shutdownTelemetry, err := telemetry.Setup(context.Background(), service, telemetryEndpoint)
+	return RunWithTLSConfigContext(context.Background(), service, address, handler, logger, tlsConfig, telemetryEndpoint)
+}
+
+// RunWithTLSConfigContext is RunWithTLSConfig with a caller-owned lifecycle.
+// Canceling parent gracefully shuts down the listener, which lets a process
+// composition root stop all of its private and public listeners together.
+func RunWithTLSConfigContext(parent context.Context, service, address string, handler http.Handler, logger *slog.Logger, tlsConfig *tls.Config, telemetryEndpoint string) error {
+	shutdownTelemetry, err := telemetry.Setup(parent, service, telemetryEndpoint)
 	if err != nil {
 		return err
 	}
@@ -69,19 +77,21 @@ func RunWithTLSConfig(service, address string, handler http.Handler, logger *slo
 		ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 30 * time.Second,
 		WriteTimeout: 0, IdleTimeout: 90 * time.Second,
 	}
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	ctx, stop := signal.NotifyContext(parent, os.Interrupt, syscall.SIGTERM)
 	defer stop()
+	listener, err := net.Listen("tcp", address)
+	if err != nil {
+		return err
+	}
 
 	errCh := make(chan error, 1)
 	go func() {
-		logger.Info("service listening", "address", address)
-		var err error
+		logger.Info("service listening", "address", listener.Addr().String())
 		if tlsConfig != nil {
-			err = server.ListenAndServeTLS("", "")
-		} else {
-			err = server.ListenAndServe()
+			errCh <- server.ServeTLS(listener, "", "")
+			return
 		}
-		errCh <- err
+		errCh <- server.Serve(listener)
 	}()
 
 	select {
@@ -93,6 +103,14 @@ func RunWithTLSConfig(service, address string, handler http.Handler, logger *slo
 	case <-ctx.Done():
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 		defer cancel()
-		return server.Shutdown(shutdownCtx)
+		if err := server.Shutdown(shutdownCtx); err != nil {
+			_ = server.Close()
+			return err
+		}
+		err := <-errCh
+		if errors.Is(err, http.ErrServerClosed) {
+			return nil
+		}
+		return err
 	}
 }

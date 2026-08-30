@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/google/uuid"
@@ -390,7 +391,7 @@ func (c Config) validateGatewayProduction() error {
 	if !strings.HasPrefix(lower, "postgres://") && !strings.HasPrefix(lower, "postgresql://") {
 		return errors.New("production auth requires a postgres database URL")
 	}
-	if err := validateAdminSocketPath(c.Auth.AdminSocketPath); err != nil {
+	if err := ValidateAdminSocketPath(c.Auth.AdminSocketPath); err != nil {
 		return err
 	}
 	if c.Auth.TicketTTL != 0 && (c.Auth.TicketTTL < authTicketMinTTL || c.Auth.TicketTTL > authTicketMaxTTL) {
@@ -405,11 +406,12 @@ func (c Config) validateGatewayProduction() error {
 	return nil
 }
 
-// validateAdminSocketPath accepts only a plain, absolute path inside a real
-// (non-symlink) parent directory: the socket itself must either not exist
-// or be a stale Unix socket. Symlinks, regular files, directories, and
-// relative paths fail startup instead of being cleaned up.
-func validateAdminSocketPath(path string) error {
+// ValidateAdminSocketPath accepts only a plain, absolute path inside a real,
+// process-owned directory that group/other users cannot write. The socket
+// itself must either not exist or be an owner-matched stale Unix socket.
+// Symlinks, uncontrolled runtime directories, regular files, directories,
+// and relative paths fail startup instead of being cleaned up.
+func ValidateAdminSocketPath(path string) error {
 	if path == "" {
 		return errors.New("production auth requires the admin Unix socket path")
 	}
@@ -427,6 +429,13 @@ func validateAdminSocketPath(path string) error {
 	if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
 		return errors.New("admin socket parent must be a real directory, not a symlink")
 	}
+	stat, ok := info.Sys().(*syscall.Stat_t)
+	if !ok || stat.Uid != uint32(os.Geteuid()) {
+		return errors.New("admin socket parent must be owned by the gateway process user")
+	}
+	if info.Mode().Perm()&0o022 != 0 {
+		return errors.New("admin socket parent must not be writable by group or others")
+	}
 	resolved, err := filepath.EvalSymlinks(parent)
 	if err != nil || filepath.Clean(resolved) != parent {
 		return errors.New("admin socket parent must not contain symlinks")
@@ -435,6 +444,12 @@ func validateAdminSocketPath(path string) error {
 		if stat.Mode()&os.ModeSocket == 0 {
 			return errors.New("admin socket path exists and is not a Unix socket")
 		}
+		owner, ok := stat.Sys().(*syscall.Stat_t)
+		if !ok || owner.Uid != uint32(os.Geteuid()) {
+			return errors.New("existing admin socket must be owned by the gateway process user")
+		}
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("admin socket path is unavailable: %w", err)
 	}
 	return nil
 }
