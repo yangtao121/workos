@@ -47,19 +47,6 @@ func TestDevelopmentProxyReplacesSpoofedIdentity(t *testing.T) {
 	}
 }
 
-func TestPublicAPIRejectsMissingDeviceSession(t *testing.T) {
-	t.Parallel()
-	var coreCalled atomic.Bool
-	core := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { coreCalled.Store(true) }))
-	defer core.Close()
-	handler := newTestHandler(t, config.Config{Services: config.URLs{Core: core.URL}})
-	response := httptest.NewRecorder()
-	handler.ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/workos.agent.v1.AgentTaskService/GetTask", nil))
-	if response.Code != http.StatusUnauthorized || coreCalled.Load() {
-		t.Fatalf("expected fail-closed request, status=%d coreCalled=%v", response.Code, coreCalled.Load())
-	}
-}
-
 func TestPrivateConnectServicesAreNotForwarded(t *testing.T) {
 	t.Parallel()
 	var coreCalled, runtimeCalled atomic.Bool
@@ -131,24 +118,6 @@ func TestSurfaceRoutesReachRuntimeWithTrustedIdentity(t *testing.T) {
 	}
 }
 
-func TestSurfaceRoutesRequireDeviceSession(t *testing.T) {
-	t.Parallel()
-	var runtimeCalled atomic.Bool
-	runtime := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { runtimeCalled.Store(true) }))
-	defer runtime.Close()
-	handler := newTestHandler(t, config.Config{Services: config.URLs{Runtime: runtime.URL}})
-	for _, path := range []string{
-		"/workos.surface.v1.SurfaceService/CreateSurface",
-		"/surfaces/0198d7ea-2110-7c42-b659-c5e4d73bc337/",
-	} {
-		response := httptest.NewRecorder()
-		handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, path, nil))
-		if response.Code != http.StatusUnauthorized || runtimeCalled.Load() {
-			t.Fatalf("surface path %s did not fail closed: status=%d runtimeCalled=%v", path, response.Code, runtimeCalled.Load())
-		}
-	}
-}
-
 func TestRuntimeUpstreamFailureIsSanitized(t *testing.T) {
 	t.Parallel()
 	handler := newTestHandler(t, config.Config{
@@ -174,6 +143,7 @@ func TestSPAFallbackUsesHTMLContentType(t *testing.T) {
 	handler := newTestHandler(t, config.Config{
 		HTTP:     config.HTTP{StaticDir: directory},
 		Services: config.URLs{Core: "http://127.0.0.1:1"},
+		Auth:     config.Auth{DevBypass: true, OwnerID: "owner-1", DeviceID: "device-1"},
 	})
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/projects/active.js", nil))
@@ -192,7 +162,7 @@ func newTestHandler(t *testing.T, cfg config.Config) *Handler {
 	if cfg.Services.Runtime == "" {
 		cfg.Services.Runtime = "http://127.0.0.1:1"
 	}
-	handler, err := New(cfg, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	handler, err := New(cfg, slog.New(slog.NewTextHandler(io.Discard, nil)), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -212,7 +182,7 @@ func TestNewRejectsUnusableUpstreamTargets(t *testing.T) {
 			Services: config.URLs{Core: "http://127.0.0.1:8081", Runtime: target},
 			Auth:     config.Auth{DevBypass: true, OwnerID: "owner-1", DeviceID: "device-1"},
 		}
-		if _, err := New(cfg, slog.New(slog.NewTextHandler(io.Discard, nil))); err == nil {
+		if _, err := New(cfg, slog.New(slog.NewTextHandler(io.Discard, nil)), nil); err == nil {
 			t.Errorf("runtime URL %q (%s) accepted by the proxy constructor", target, name)
 		}
 	}
@@ -222,7 +192,7 @@ func TestNewRejectsUnusableUpstreamTargets(t *testing.T) {
 		Services: config.URLs{Core: core.URL, Runtime: "not-a-target"},
 		Auth:     config.Auth{DevBypass: true, OwnerID: "owner-1", DeviceID: "device-1"},
 	}
-	if _, err := New(cfg, slog.New(slog.NewTextHandler(io.Discard, nil))); err == nil {
+	if _, err := New(cfg, slog.New(slog.NewTextHandler(io.Discard, nil)), nil); err == nil {
 		t.Fatal("invalid runtime URL accepted alongside a valid core URL")
 	}
 }

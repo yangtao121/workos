@@ -20,7 +20,7 @@ NODE_RUN := docker run --rm $(USER_FLAGS) -e COREPACK_NPM_REGISTRY=$(NPM_REGISTR
 BUF_RUN := docker run --rm $(USER_FLAGS) $(MOUNT) $(BUF_IMAGE)
 SQLC_RUN := docker run --rm $(USER_FLAGS) -v $(CURDIR):/src -w /src $(SQLC_IMAGE)
 
-.PHONY: bootstrap generate docs check check-native proto-check go-check web-check test test-integration test-deepseek-fixture e2e-image test-e2e test-podman-fixture build web-build scaffold-module dev down logs clean
+.PHONY: bootstrap generate docs check check-native proto-check go-check web-check test test-integration test-deepseek-fixture e2e-image test-e2e test-podman-fixture test-lan-pairing build web-build scaffold-module dev down logs clean
 
 bootstrap:
 	@docker version >/dev/null
@@ -146,6 +146,84 @@ test-e2e: e2e-image
 		-v $(CURDIR):$(WORKDIR) \
 		-w $(WORKDIR)/apps/desktop-web \
 		$(E2E_IMAGE) pnpm test:e2e
+
+# The production-auth acceptance gate (ADR-0007): a real TLS gateway
+# (temporarily generated leaf + SAN localhost), real PostgreSQL, the real
+# admin Unix socket via workosctl, and a real Chromium profile that pairs,
+# keeps its session across a gateway restart, re-proves from IndexedDB, and
+# fails closed after revocation. All fixture material lives in temp
+# directories removed on exit; nothing is committed.
+test-lan-pairing: e2e-image
+	@set -eu; \
+	certdir="$$(mktemp -d)"; \
+	profiledir="$$(mktemp -d)"; \
+	stamp="$$(date +%s)"; \
+	cleanup() { docker compose --profile lan-pairing stop workos-gateway-tls >/dev/null 2>&1 || true; rm -rf "$$certdir" "$$profiledir"; }; \
+	trap cleanup EXIT HUP INT TERM; \
+	echo "== generating temporary TLS fixture =="; \
+	docker run --rm $(USER_FLAGS) -e HOME=/tmp -e GOPATH=/tmp/workos-go \
+		-e GOMODCACHE=/go/pkg/mod -e GOPROXY=$(GOPROXY) \
+		-v $(CURDIR):$(WORKDIR) -w $(WORKDIR) -v workos-go-cache:/go/pkg/mod \
+		-v "$$certdir":/certs \
+		$(GO_IMAGE) go run ./tests/lanpairing/gencert -out /certs; \
+	test -f "$$certdir/leaf.crt" -a -f "$$certdir/leaf.key"; \
+	export WORKOS_TLS_CERT="$$certdir/leaf.crt" WORKOS_TLS_KEY="$$certdir/leaf.key"; \
+	echo "== starting the production-auth gateway =="; \
+	docker compose --profile lan-pairing up -d --build postgres bootstrap workos-core harness-host runtime-host workos-gateway-tls; \
+	echo "== rotating an operator pairing ticket over the admin socket =="; \
+	pair_url="$$(docker compose exec -T workos-gateway-tls /usr/local/bin/workosctl device pair | grep '^https://')"; \
+	test -n "$$pair_url"; \
+	echo "== phase: pair =="; \
+	docker run --rm --network host $(USER_FLAGS) \
+		-e PLAYWRIGHT_BROWSERS_PATH=/ms-playwright \
+		-e WORKOS_E2E_TLS_URL=https://localhost:8443 \
+		-e WORKOS_LAN_PHASE=pair \
+		-e WORKOS_LAN_PROFILE=/lan-profile \
+		-e WORKOS_LAN_DEVICE_NAME='E2E LAN Device' \
+		-e WORKOS_LAN_PROJECT="E2E LAN $$stamp" \
+		-e WORKOS_E2E_PAIRING_URL="$$pair_url" \
+		-v "$$profiledir":/lan-profile \
+		-v $(CURDIR):$(WORKDIR) \
+		-w $(WORKDIR)/apps/desktop-web \
+		$(E2E_IMAGE) pnpm exec playwright test lan-pairing.spec.ts; \
+	echo "== phase: gateway restart persistence =="; \
+	docker compose restart workos-gateway-tls >/dev/null; \
+	docker run --rm --network host $(USER_FLAGS) \
+		-e PLAYWRIGHT_BROWSERS_PATH=/ms-playwright \
+		-e WORKOS_E2E_TLS_URL=https://localhost:8443 \
+		-e WORKOS_LAN_PHASE=persist \
+		-e WORKOS_LAN_PROFILE=/lan-profile \
+		-e WORKOS_LAN_DEVICE_NAME='E2E LAN Device' \
+		-e WORKOS_LAN_PROJECT="E2E LAN $$stamp" \
+		-v "$$profiledir":/lan-profile \
+		-v $(CURDIR):$(WORKDIR) \
+		-w $(WORKDIR)/apps/desktop-web \
+		$(E2E_IMAGE) pnpm exec playwright test lan-pairing.spec.ts; \
+	echo "== phase: session proof re-authentication =="; \
+	docker run --rm --network host $(USER_FLAGS) \
+		-e PLAYWRIGHT_BROWSERS_PATH=/ms-playwright \
+		-e WORKOS_E2E_TLS_URL=https://localhost:8443 \
+		-e WORKOS_LAN_PHASE=reauth \
+		-e WORKOS_LAN_PROFILE=/lan-profile \
+		-e WORKOS_LAN_DEVICE_NAME='E2E LAN Device' \
+		-e WORKOS_LAN_PROJECT="E2E LAN $$stamp" \
+		-v "$$profiledir":/lan-profile \
+		-v $(CURDIR):$(WORKDIR) \
+		-w $(WORKDIR)/apps/desktop-web \
+		$(E2E_IMAGE) pnpm exec playwright test lan-pairing.spec.ts; \
+	echo "== phase: revocation fails closed =="; \
+	docker run --rm --network host $(USER_FLAGS) \
+		-e PLAYWRIGHT_BROWSERS_PATH=/ms-playwright \
+		-e WORKOS_E2E_TLS_URL=https://localhost:8443 \
+		-e WORKOS_LAN_PHASE=revoke \
+		-e WORKOS_LAN_PROFILE=/lan-profile \
+		-e WORKOS_LAN_DEVICE_NAME='E2E LAN Device' \
+		-e WORKOS_LAN_PROJECT="E2E LAN $$stamp" \
+		-v "$$profiledir":/lan-profile \
+		-v $(CURDIR):$(WORKDIR) \
+		-w $(WORKDIR)/apps/desktop-web \
+		$(E2E_IMAGE) pnpm exec playwright test lan-pairing.spec.ts; \
+	echo "test-lan-pairing: PASS (temp TLS + admin ticket + browser pairing + cookie + restart + re-auth + revoke)"
 
 build:
 	docker build \

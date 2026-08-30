@@ -2,6 +2,7 @@ package httpserver
 
 import (
 	"context"
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -36,6 +37,21 @@ func NewMux(service string, ready func(context.Context) error) *http.ServeMux {
 }
 
 func Run(service, address string, handler http.Handler, logger *slog.Logger, tlsCert, tlsKey, telemetryEndpoint string) error {
+	var tlsConfig *tls.Config
+	if tlsCert != "" && tlsKey != "" {
+		certificate, err := tls.LoadX509KeyPair(tlsCert, tlsKey)
+		if err != nil {
+			return fmt.Errorf("load TLS key pair: %w", err)
+		}
+		tlsConfig = &tls.Config{Certificates: []tls.Certificate{certificate}}
+	}
+	return RunWithTLSConfig(service, address, handler, logger, tlsConfig, telemetryEndpoint)
+}
+
+// RunWithTLSConfig serves the handler with an explicit TLS configuration;
+// a nil configuration serves plain HTTP. The platform default minimum is
+// TLS 1.2; callers that require TLS 1.3 pass it in their configuration.
+func RunWithTLSConfig(service, address string, handler http.Handler, logger *slog.Logger, tlsConfig *tls.Config, telemetryEndpoint string) error {
 	shutdownTelemetry, err := telemetry.Setup(context.Background(), service, telemetryEndpoint)
 	if err != nil {
 		return err
@@ -49,6 +65,7 @@ func Run(service, address string, handler http.Handler, logger *slog.Logger, tls
 	}()
 	server := &http.Server{
 		Addr: address, Handler: telemetry.Handler(service, handler),
+		TLSConfig:         tlsConfig,
 		ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 30 * time.Second,
 		WriteTimeout: 0, IdleTimeout: 90 * time.Second,
 	}
@@ -59,8 +76,8 @@ func Run(service, address string, handler http.Handler, logger *slog.Logger, tls
 	go func() {
 		logger.Info("service listening", "address", address)
 		var err error
-		if tlsCert != "" && tlsKey != "" {
-			err = server.ListenAndServeTLS(tlsCert, tlsKey)
+		if tlsConfig != nil {
+			err = server.ListenAndServeTLS("", "")
 		} else {
 			err = server.ListenAndServe()
 		}

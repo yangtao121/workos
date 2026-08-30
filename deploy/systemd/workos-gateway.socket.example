@@ -1,0 +1,14 @@
+# Optional drop-in for production pairing mode (ADR-0007): give the gateway
+# process a private runtime directory for its admin Unix socket.
+#
+# Install as /etc/systemd/system/workos-gateway.service.d/runtime-directory.conf
+# (mode 0644), then: systemctl daemon-reload && systemctl restart workos-gateway
+#
+# [Service]
+# RuntimeDirectory=workos
+# RuntimeDirectoryMode=0750
+# ReadWritePaths=/run/workos
+#
+# The socket path must then match WORKOS_AUTH_ADMIN_SOCKET=/run/workos/gateway-admin.sock.
+# The gateway verifies the parent directory (no symlinks), removes only an
+# exact stale socket, and chmods the socket to 0600 at startup.

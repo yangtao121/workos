@@ -11,6 +11,7 @@ import {
 } from "react";
 import { AgentTimeline } from "@workos/agent-center";
 import { createWorkOSClients, type WorkOSClients } from "@workos/agent-sdk";
+import type { DeviceAuthClient } from "@workos/device-auth";
 import type {
   AgentEvent,
   AgentTask,
@@ -23,6 +24,7 @@ import { initialWindowState, windowReducer } from "@workos/window-manager";
 import { AppLibrary } from "./AppLibrary.js";
 import { ApprovalsView } from "./ApprovalsView.js";
 import { AppSurface, type SurfaceBridgeCredentials } from "./AppSurface.js";
+import { DeviceCenter } from "./DeviceCenter.js";
 import { HarnessSettings, type CatalogState } from "./HarnessSettings.js";
 import { SystemMonitor } from "./SystemMonitor.js";
 import { UsageView } from "./UsageView.js";
@@ -53,7 +55,13 @@ function readStoredActiveProjectId(): string | undefined {
   }
 }
 
-export function Desktop({ workosClients = clients }: { workosClients?: WorkOSClients } = {}) {
+export function Desktop({
+  workosClients = clients,
+  deviceAuth,
+}: {
+  workosClients?: WorkOSClients;
+  deviceAuth?: DeviceAuthClient;
+} = {}) {
   const [projects, setProjects] = useState<Project[]>([]);
   const [activeProjectId, setActiveProjectId] = useState<string | undefined>(
     readStoredActiveProjectId,
@@ -194,6 +202,22 @@ export function Desktop({ workosClients = clients }: { workosClients?: WorkOSCli
         title: "System Monitor",
         kind: "system-monitor",
         rect: { x: 120, y: 80, width: 560, height: 420 },
+        mode: "normal",
+      },
+    });
+  }, []);
+
+  // Device Center is a normal window: closing it never affects the device
+  // session, and the pairing ticket it shows lives only while it is open.
+  const openDeviceCenter = useCallback(() => {
+    dispatch({
+      type: "open",
+      window: {
+        id: "device-center",
+        appId: "device-center",
+        title: "Device Center",
+        kind: "device-center",
+        rect: { x: 700, y: 90, width: 560, height: 480 },
         mode: "normal",
       },
     });
@@ -652,6 +676,14 @@ export function Desktop({ workosClients = clients }: { workosClients?: WorkOSCli
               />
             ) : windowState.kind === "system-monitor" ? (
               <SystemMonitor projectId={activeProjectId} workosClients={workosClients} />
+            ) : windowState.kind === "device-center" ? (
+              deviceAuth ? (
+                <DeviceCenter deviceAuth={deviceAuth} />
+              ) : (
+                <p className="empty-state">
+                  Device management is not available in this deployment.
+                </p>
+              )
             ) : (
               <div className="agent-center-body">
                 <div className="agent-views" role="tablist" aria-label="Agent Center views">
@@ -734,6 +766,14 @@ export function Desktop({ workosClients = clients }: { workosClients?: WorkOSCli
         >
           ⏻
         </button>
+        <button
+          type="button"
+          aria-label="Open Device Center"
+          data-testid="open-device-center"
+          onClick={openDeviceCenter}
+        >
+          🔑
+        </button>
       </nav>
     </main>
   );
@@ -768,6 +808,14 @@ function bindingErrorMessage(reason: unknown): string {
 }
 
 function asMessage(reason: unknown): string {
+  if (reason instanceof ConnectError) {
+    if (reason.code === Code.Unauthenticated) {
+      // A mid-operation session end never replays business mutations: the
+      // user re-authenticates and retries explicitly.
+      return "Your device session has ended. Sign in again, then retry.";
+    }
+    return reason.message;
+  }
   return reason instanceof Error ? reason.message : "Unknown WorkOS error";
 }
 

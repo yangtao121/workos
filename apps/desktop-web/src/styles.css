@@ -817,3 +817,124 @@ button {
   gap: 0.5rem;
   justify-content: flex-end;
 }
+
+/* Auth Gate: the bounded pre-desktop screens. */
+.auth-gate {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  gap: 12px;
+  padding: 32px;
+  text-align: center;
+}
+
+.auth-gate h1 {
+  font-size: 28px;
+  letter-spacing: 0.12em;
+}
+
+.auth-gate p {
+  max-width: 460px;
+  color: var(--fg-muted, #cbd0dc);
+}
+
+.auth-gate-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: flex-start;
+  margin: 8px 0;
+}
+
+.auth-gate-field input {
+  min-width: 280px;
+}
+
+.auth-gate-hint {
+  font-size: 12px;
+  opacity: 0.8;
+}
+
+.auth-gate-hint code {
+  display: block;
+  word-break: break-all;
+  font-size: 11px;
+}
+
+.auth-gate-error {
+  color: #ff9c9c;
+}
+
+.auth-gate-actions {
+  display: flex;
+  gap: 10px;
+}
+
+/* Device Center window. */
+.device-center {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px;
+  overflow: auto;
+  height: 100%;
+  box-sizing: border-box;
+}
+
+.device-center-summary {
+  margin: 0;
+  font-size: 12px;
+  opacity: 0.8;
+}
+
+.device-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.device-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  padding: 8px 10px;
+}
+
+.device-facts {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.device-facts small {
+  opacity: 0.75;
+}
+
+.device-actions {
+  display: flex;
+  gap: 10px;
+}
+
+.pairing-ticket {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: flex-start;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 8px;
+  padding: 10px;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.pairing-ticket img {
+  image-rendering: pixelated;
+  border-radius: 4px;
+}

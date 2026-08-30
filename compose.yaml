@@ -131,6 +131,34 @@ services:
       WORKOS_STATIC_DIR: /srv/workos/desktop
       WORKOS_DEV_AUTH_BYPASS: "true"
 
+  # Deterministic TLS pairing fixture (make test-lan-pairing; ADR-0007). The
+  # certificate/key are freshly generated per run into a host temp directory
+  # and never committed. This service is the production-auth acceptance
+  # environment; the default gateway above remains loopback HTTP + dev
+  # bypass.
+  workos-gateway-tls:
+    <<: *workos-service
+    profiles: [lan-pairing]
+    command: ["/usr/local/bin/workos-gateway"]
+    environment:
+      <<: *workos-environment
+      WORKOS_HTTP_ADDRESS: 127.0.0.1:8443
+      WORKOS_CORE_URL: http://127.0.0.1:8081
+      WORKOS_RUNTIME_URL: http://127.0.0.1:8083
+      WORKOS_STATIC_DIR: /srv/workos/desktop
+      WORKOS_DEV_AUTH_BYPASS: "false"
+      WORKOS_HTTP_TLS_CERT_FILE: /run/workos/tls/leaf.crt
+      WORKOS_HTTP_TLS_KEY_FILE: /run/workos/tls/leaf.key
+      WORKOS_AUTH_PUBLIC_ORIGIN: ${WORKOS_LAN_ORIGIN:-https://localhost:8443}
+      WORKOS_AUTH_ADMIN_SOCKET: /run/workos/gateway-admin.sock
+    volumes:
+      # make test-lan-pairing sets WORKOS_TLS_CERT/WORKOS_TLS_KEY to fresh
+      # temp-dir fixtures. The defaults only exist so ordinary compose
+      # commands interpolate; without the variables the gateway fails closed
+      # at startup (it requires a loadable leaf certificate).
+      - ${WORKOS_TLS_CERT:-/workos-tls-not-configured/leaf.crt}:/run/workos/tls/leaf.crt:ro
+      - ${WORKOS_TLS_KEY:-/workos-tls-not-configured/leaf.key}:/run/workos/tls/leaf.key:ro
+
 volumes:
   workos-postgres:
   workos-go-cache:

@@ -5,8 +5,8 @@
     {
       "name": "Access Gateway",
       "process": "workos-gateway",
-      "status": "scaffolded",
-      "evidence": "core+runtime upstreams, surface routing, identity injection; device auth scaffolded"
+      "status": "working",
+      "evidence": "core+runtime+reliability upstreams, surface routing, dynamic session-derived identity injection; production device auth on a direct configured HTTPS origin: real TLS gateway + PostgreSQL + admin Unix socket ticket + real Chromium pairing (non-extractable WebCrypto P-256 proof), __Host- HttpOnly cookie, per-request session gate with dynamic owner/device injection, gateway-restart session persistence, IndexedDB session-proof re-authentication, and revocation fail-closed (make test-lan-pairing; before/after visual records). Not covered: mDNS discovery, native certificate pinning/trust-store bypass-free ACME, mobile-native credential storage, public-internet exposure"
     },
     {
       "name": "Project",
@@ -48,7 +48,7 @@
       "name": "Desktop Shell",
       "process": "desktop-web",
       "status": "working",
-      "evidence": "foundation + DeepSeek fixture Catalog/binding E2E + App Library install/remove + explicit permission consent E2E + Manage permissions dialog for full grant replacement (revoke/re-grant browser E2E reopens on the new epoch; before/after visual records) + sandboxed Web Bundle window with opaque-origin MessageChannel App Bridge (browser E2E runs a real project task) + unmount best-effort close + library row and project revision adopt the Set response even when the post-save re-read fails (fault-injected before/after visual record) + App Library Agent policy editor (system default/explicit display, full-replacement mode+limits save with optimistic revision, sanitized conflict/quota copy) + Agent Center Approvals/Usage views (owner approve/reject with duplicate-click guard and project-switch-safe decision feedback, reserved vs reported usage with unavailable cost; browser E2E drives require-approval → waiting → approve → same task terminal → usage, and the deterministic quota-exhausted verdict; before/after visual records)"
+      "evidence": "foundation + DeepSeek fixture Catalog/binding E2E + App Library install/remove + explicit permission consent E2E + Manage permissions dialog for full grant replacement (revoke/re-grant browser E2E reopens on the new epoch; before/after visual records) + sandboxed Web Bundle window with opaque-origin MessageChannel App Bridge (browser E2E runs a real project task) + unmount best-effort close + library row and project revision adopt the Set response even when the post-save re-read fails (fault-injected before/after visual record) + App Library Agent policy editor (system default/explicit display, full-replacement mode+limits save with optimistic revision, sanitized conflict/quota copy) + Agent Center Approvals/Usage views (owner approve/reject with duplicate-click guard and project-switch-safe decision feedback, reserved vs reported usage with unavailable cost; browser E2E drives require-approval → waiting → approve → same task terminal → usage, and the deterministic quota-exhausted verdict; before/after visual records) + Auth Gate state machine (unpaired/pairing/session-proof/unavailable) with fragment scrub and WebCrypto/IndexedDB profile key + Device Center window (paired-device list, session expiry, pair-another-device QR, revoke/logout) browser-tested through the TLS pairing gate (visual records)"
     },
     {
       "name": "App Registry",
