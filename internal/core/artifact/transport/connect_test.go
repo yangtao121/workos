@@ -377,3 +377,6 @@ func (r *transportRepository) InsertTaskOutput(_ context.Context, _ dbtx.Tx, _ p
 func (r *transportRepository) ReviewArtifactByID(_ context.Context, _ dbtx.Tx, _ string) (domain.ReviewArtifact, error) {
 	return domain.ReviewArtifact{}, domain.ErrNotFound
 }
+func (r *transportRepository) ReviewArtifactContentByID(context.Context, dbtx.Tx, string) (domain.ReviewArtifact, domain.NormalizedReviewContent, error) {
+	return domain.ReviewArtifact{}, domain.NormalizedReviewContent{}, domain.ErrNotFound
+}

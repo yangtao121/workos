@@ -57,16 +57,32 @@ func (l *CredentialLease) ValidFor(consumerID, purpose string, now time.Time) bo
 	return now.Before(l.ExpiresAt)
 }
 
+// ContextDocument is one canonical bounded context document the worker
+// resolved from Core under the active task lease (ADR-0010). It exists for
+// this execution only: no cross-task cache, no local files, no provider
+// callback path.
+type ContextDocument struct {
+	RefType      string
+	ArtifactType string
+	ArtifactID   string
+	Digest       string
+	Title        string
+	MediaType    string
+	Content      []byte
+}
+
 // Execution is the neutral provider execution input: one struct, so the
 // provider contract grows by fields rather than unstructured positional
 // parameters. TaskID and Input are derived facts from the claimed task;
-// Credential is nil for providers (and tasks) that need no credential.
+// Credential is nil for providers (and tasks) that need no credential, and
+// Context is empty for tasks without pinned context.
 type Execution struct {
 	TaskID     string
 	Input      *agentv1.AgentTaskInput
 	Emit       Emit
 	Artifacts  ArtifactSink
 	Credential *CredentialLease
+	Context    []ContextDocument
 }
 
 type Provider interface {

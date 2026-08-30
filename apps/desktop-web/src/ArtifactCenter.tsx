@@ -16,6 +16,7 @@ export interface ArtifactReference {
   projectId: string;
   title: string;
   type: string;
+  digest?: string | undefined;
   createdAt?: { seconds: bigint; nanos: number } | undefined;
 }
 
@@ -23,6 +24,8 @@ interface ArtifactCenterProps {
   projectId: string;
   workosClients: WorkOSClients;
   onOpenArtifact: (artifact: ArtifactReference) => void;
+  onUseAsContext: (artifact: ArtifactReference) => void;
+  selectedContextIds?: ReadonlySet<string> | undefined;
 }
 
 const PAGE_SIZE = 20;
@@ -53,7 +56,13 @@ interface ArtifactListState {
   error?: string | undefined;
 }
 
-export function ArtifactCenter({ projectId, workosClients, onOpenArtifact }: ArtifactCenterProps) {
+export function ArtifactCenter({
+  projectId,
+  workosClients,
+  onOpenArtifact,
+  onUseAsContext,
+  selectedContextIds,
+}: ArtifactCenterProps) {
   const [state, setState] = useState<ArtifactListState>({
     items: [],
     nextPageToken: "",
@@ -168,6 +177,22 @@ export function ArtifactCenter({ projectId, workosClients, onOpenArtifact }: Art
                   : "just now"}
               </small>
             </button>
+            {typeof artifact.digest === "string" && artifact.digest !== "" ? (
+              selectedContextIds?.has(artifact.id) ? (
+                <p className="context-selected-note" data-testid="context-selected">
+                  Pinned as Agent context.
+                </p>
+              ) : (
+                <Button
+                  data-testid="use-as-context"
+                  onClick={() => {
+                    onUseAsContext(artifact);
+                  }}
+                >
+                  Use as Agent context
+                </Button>
+              )
+            ) : null}
           </li>
         ))}
       </ul>

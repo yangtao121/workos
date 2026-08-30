@@ -67,6 +67,7 @@ func (s *Source) ListProviders(ctx context.Context) ([]domain.Provider, error) {
 				MaxOutputTokens:             capabilities.GetMaxOutputTokens(),
 				MaxRuntimeSeconds:           capabilities.GetMaxRuntimeSeconds(),
 				SupportedArtifactTypes:      capabilities.GetSupportedArtifactTypes(),
+				SupportedContextRefTypes:    capabilities.GetSupportedContextRefTypes(),
 				RequiresTaskCredentialLease: capabilities.GetRequiresTaskCredentialLease(),
 			},
 		})

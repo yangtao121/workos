@@ -22,7 +22,7 @@ NODE_RUN := docker run --rm $(USER_FLAGS) -e COREPACK_NPM_REGISTRY=$(NPM_REGISTR
 BUF_RUN := docker run --rm $(USER_FLAGS) $(MOUNT) $(BUF_IMAGE)
 SQLC_RUN := docker run --rm $(USER_FLAGS) -v $(CURDIR):/src -w /src $(SQLC_IMAGE)
 
-.PHONY: bootstrap generate docs check check-native proto-check go-check web-check test test-integration test-deepseek-fixture test-credential-vault e2e-image test-e2e test-podman-fixture test-lan-pairing capture-lan-pairing-visual build web-build scaffold-module dev down logs clean
+.PHONY: bootstrap generate docs check check-native proto-check go-check web-check test test-integration test-artifact-context test-deepseek-fixture test-credential-vault e2e-image test-e2e test-podman-fixture test-lan-pairing capture-lan-pairing-visual build web-build scaffold-module dev down logs clean
 
 bootstrap:
 	@docker version >/dev/null
@@ -137,6 +137,22 @@ test-credential-vault:
 		docker compose exec -T workos-core /bin/sh -c "/usr/local/bin/workosctl credential revoke --credential '$$cred_id' --expected-revision $$cred_rev --idempotency-key 'vault-fixture-revoke-$$(date +%s%N)'" >/dev/null; \
 		$(GO_HOST_RUN_BASE) -e WORKOS_TEST_VAULT_PHASE=revoked $(GO_IMAGE) go test -tags=integration -count=1 -run '^TestCredentialVaultStackPhase$$' -v ./tests/integration; \
 		echo "test-credential-vault: PASS"
+
+# The review-artifact-as-Agent-context gate (ADR-0010): real PostgreSQL +
+# Core + harness-host + Gateway + Chromium through Task Router context
+# verification, private lease-bound ResolveTaskContext, and the provider's
+# deterministic context receipt — plus the digest-mismatch / foreign /
+# unsupported fail-closed paths in the Go layer.
+test-artifact-context: e2e-image
+	docker compose up -d --build postgres bootstrap workos-core harness-host runtime-host workos-gateway
+	$(GO_HOST_RUN) go test -tags=integration -count=1 -run 'TestResolveTaskContext' -v ./tests/integration
+	docker run --rm --network host $(USER_FLAGS) \
+		-e PLAYWRIGHT_BROWSERS_PATH=/ms-playwright \
+		-e WORKOS_E2E_URL=http://127.0.0.1:8080 \
+		-e WORKOS_E2E_OUTPUT_DIR=/tmp/workos-playwright-results \
+		-v $(CURDIR):$(WORKDIR) \
+		-w $(WORKDIR)/apps/desktop-web \
+		$(E2E_IMAGE) pnpm exec playwright test artifact-context.spec.ts
 
 test-deepseek-fixture: e2e-image
 	@set -eu; \

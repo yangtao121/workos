@@ -45,6 +45,13 @@ message HarnessCapabilities {
   // onto every fresh task before queueing. Providers that report true are
   // projected unavailable to owners without a matching active credential.
   bool requires_task_credential_lease = 17;
+  // The exact canonical context reference types this adapter demonstrably
+  // consumes as bounded resolved context (ADR-0010). Every listed type must
+  // be a known canonical type; unknown values, duplicates, or a list paired
+  // with an adapter that cannot resolve context are capability corruption.
+  // Core refuses fresh tasks whose context refs fall outside the resolved
+  // provider's exact list before queueing.
+  repeated string supported_context_ref_types = 18;
 }
 
 message HarnessProviderInfo {

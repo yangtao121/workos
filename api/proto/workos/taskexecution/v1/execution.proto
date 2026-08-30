@@ -105,6 +105,34 @@ message AppendTaskArtifactResponse {
   workos.agent.v1.AgentEvent event = 2;
 }
 
+// ResolvedTaskContextDocument is one canonical bounded context document the
+// worker may hand to the provider for this task only. Every identity fact is
+// Core-derived from the active task lease: no storage path, content_ref,
+// owner, project, or database state ever appears here.
+message ResolvedTaskContextDocument {
+  string ref_type = 1;
+  string artifact_type = 2;
+  string artifact_id = 3;
+  string digest = 4;
+  string title = 5;
+  string media_type = 6;
+  bytes content = 7;
+}
+
+// ResolveTaskContext derives the task's canonical context documents from the
+// active task lease alone: the request carries only the lease and worker
+// identifiers, and Core revalidates every immutable ref (owner, project,
+// subtype, digest) inside one transaction before returning bytes in request
+// order. The wire aggregate is bounded before decode.
+message ResolveTaskContextRequest {
+  string lease_id = 1;
+  string worker_id = 2;
+}
+
+message ResolveTaskContextResponse {
+  repeated ResolvedTaskContextDocument documents = 1;
+}
+
 service TaskExecutionService {
   rpc ClaimTask(ClaimTaskRequest) returns (ClaimTaskResponse) {}
   rpc RenewTaskLease(RenewTaskLeaseRequest) returns (RenewTaskLeaseResponse) {}
@@ -118,4 +146,10 @@ service TaskExecutionService {
   // all in one transaction. Generic AppendTaskEvent must never be used to
   // smuggle a provider-built ArtifactCreated reference.
   rpc AppendTaskArtifact(AppendTaskArtifactRequest) returns (AppendTaskArtifactResponse) {}
+  // ResolveTaskContext materializes the task's immutable context refs into
+  // canonical bounded documents for this single execution. It must be called
+  // at most once per provider start, before any provider side effect; same
+  // lease replays return byte-identical documents, and a lost, terminal, or
+  // foreign lease fails closed.
+  rpc ResolveTaskContext(ResolveTaskContextRequest) returns (ResolveTaskContextResponse) {}
 }

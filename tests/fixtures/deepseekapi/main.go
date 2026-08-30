@@ -114,6 +114,21 @@ func validate(request *http.Request, key string) (string, error) {
 	if !ok {
 		return "", errors.New("unexpected user goal")
 	}
+	// The adapter may wrap the goal in the versioned task envelope when the
+	// task carries pinned context (ADR-0010). The envelope is unwrapped and
+	// its inner goal must still match the allowlist; context entries are
+	// validated for shape and bound but never logged or echoed.
+	if envelope := decodeEnvelope(text); envelope != nil {
+		if envelope.Version != "workos.deepseek.task-envelope.v1" {
+			return "", errors.New("unexpected envelope version")
+		}
+		text = envelope.Goal
+		for _, context := range envelope.UntrustedContexts {
+			if context.RefType != "artifact.review.v1" || context.Digest == "" || len(context.BytesBase64) > 700*1024 {
+				return "", errors.New("unexpected context entry")
+			}
+		}
+	}
 	switch text {
 	case "prove the DeepSeek project binding fixture", "persist this completed run across service restart",
 		"fixture rate limit", "fixture server unavailable", "fixture malformed SSE", "fixture early EOF", "fixture unexpected content type":
@@ -121,6 +136,30 @@ func validate(request *http.Request, key string) (string, error) {
 	default:
 		return "", errors.New("unexpected user goal")
 	}
+}
+
+// taskEnvelope mirrors only the facts the fixture validates.
+type taskEnvelope struct {
+	Version           string `json:"version"`
+	Goal              string `json:"goal"`
+	UntrustedContexts []struct {
+		RefType      string `json:"refType"`
+		ArtifactType string `json:"artifactType"`
+		Digest       string `json:"digest"`
+		BytesBase64  string `json:"bytesBase64"`
+	} `json:"untrusted_contexts"`
+}
+
+func decodeEnvelope(text string) *taskEnvelope {
+	trimmed := strings.TrimSpace(text)
+	if !strings.HasPrefix(trimmed, "{") {
+		return nil
+	}
+	var envelope taskEnvelope
+	if err := json.Unmarshal([]byte(trimmed), &envelope); err != nil || envelope.Version == "" {
+		return nil
+	}
+	return &envelope
 }
 
 func writeAPIError(response http.ResponseWriter, status int) {

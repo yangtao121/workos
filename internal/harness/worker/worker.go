@@ -137,6 +137,28 @@ func (w *Worker) process(parent context.Context, lease *taskv1.TaskLease) {
 		}
 		defer w.releaseCredentialLease(lease, credentialLease)
 	}
+	// Pinned context documents are resolved exactly once, from the active
+	// task lease, before any provider starts (ADR-0010). A resolution
+	// failure is a unique terminal failure: no child process and no provider
+	// side effect exists at this point.
+	var contextDocuments []ports.ContextDocument
+	if len(task.GetInput().GetContextRefs()) > 0 {
+		response, err := w.client.ResolveTaskContext(runCtx, connect.NewRequest(&taskv1.ResolveTaskContextRequest{
+			LeaseId: lease.GetLeaseId(), WorkerId: w.id,
+		}))
+		if err != nil {
+			w.failWithoutProvider(parent, lease, "task context is not available")
+			return
+		}
+		for _, document := range response.Msg.GetDocuments() {
+			contextDocuments = append(contextDocuments, ports.ContextDocument{
+				RefType: document.GetRefType(), ArtifactType: document.GetArtifactType(),
+				ArtifactID: document.GetArtifactId(), Digest: document.GetDigest(),
+				Title: document.GetTitle(), MediaType: document.GetMediaType(),
+				Content: document.GetContent(),
+			})
+		}
+	}
 	// The server-derived runtime deadline is enforced here, independently of
 	// the adapter: even a provider that ignores context cancellation is
 	// cancelled with the run, and the fallback below emits exactly one
@@ -206,6 +228,7 @@ func (w *Worker) process(parent context.Context, lease *taskv1.TaskLease) {
 		}
 		err := w.broker.Run(runCtx, ports.Execution{
 			TaskID: task.GetId(), Input: task.GetInput(), Credential: credentialLease, Artifacts: artifacts,
+			Context: contextDocuments,
 			Emit: func(event *agentv1.AgentEvent) error {
 				// A completion that would leave requested artifact outputs
 				// missing fails closed here — before the terminal event lands —

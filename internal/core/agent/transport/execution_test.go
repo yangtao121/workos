@@ -44,7 +44,7 @@ func (f *fakeMaterializer) MaterializeTaskArtifact(_ context.Context, leaseID, w
 
 func newExecutionServer(t *testing.T, materializer TaskArtifactMaterializer, options ...connect.ClientOption) taskexecutionv1connect.TaskExecutionServiceClient {
 	t.Helper()
-	_, handler := NewExecutionConnectHandler(nil, materializer)
+	_, handler := NewExecutionConnectHandler(nil, materializer, nil)
 	server := httptest.NewServer(handler)
 	t.Cleanup(server.Close)
 	return taskexecutionv1connect.NewTaskExecutionServiceClient(server.Client(), server.URL, options...)

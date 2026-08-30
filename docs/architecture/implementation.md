@@ -812,6 +812,41 @@ active harness worker → Core 私有 mTLS listener（TLS 1.3，URI SAN 精确�
   workosctl admin socket + 本地 DeepSeek fixture；missing/granted/revoked 三阶段）。
   `023`/`024` 为新 forward-only migration，001–022 逐字节不变。
 
+## Review Artifact 作为 Agent Context（ADR-0010，2026-08-30）
+
+`AgentTaskInput.context_refs` 的第一种 canonical 语义：`artifact.review.v1` + canonical
+UUIDv7 + `sha256:` 64-hex exact digest。每 task ≤4、保持请求顺序、拒绝 duplicate 三元组与同
+ID 不同 digest；resolved 聚合 ≤ 1 MiB（encode 前强制）。global task 与 App Bridge（canonical
+payload 无 refs）不接受 context。
+
+```text
+Desktop（可信主界面）"Use as Agent context" → chip（title+类型，无 digest/ID）
+  → SubmitTask：transport 校验 grammar/集合（InvalidArgument，零副作用）
+  → Task Router：provider supported_context_ref_types exact 覆盖（否则 FailedPrecondition）
+     + 中立 ArtifactContextVerifier：同 owner/project + review subtype + stored/recomputed
+       digest == ref.revision（unknown/foreign/mismatch 统一 NotFound，无存在性 oracle）
+  → task payload 只存三元 ref（顺序进入既有 payload digest/replay 事实）
+harness worker：provider 启动前一次 ResolveTaskContext(lease_id, worker_id)
+  → Core 单事务：Agent authority 锁 active lease 读 input → 重新校验 refs
+     → Artifact tx-scoped read → owner/project/type/exact digest 重验 → 聚合 ≤1MiB → commit
+  → canonical bounded documents 按请求顺序交给该次 provider execution
+```
+
+- 幂等 replay 返回第一次 task 的 refs，不按新 capability/artifact 重新裁决；digest pin 使
+  submission↔execution 无内容漂移，execution 重验只捕获 stored 事实漂移（fail closed）。
+- `HarnessCapabilities.supported_context_ref_types`（additive exact list）：词表外值/重复 =
+  capability corruption → provider 投影 unavailable；Fake 与 DeepSeek 声明
+  `artifact.review.v1`（经 materialized-context 测试证据），Generic CLI 保持空并对非空
+  resolved context fail closed。
+- DeepSeek 把 goal/context 编码为 versioned canonical JSON task envelope
+  （`workos.deepseek.task-envelope.v1`）作为唯一 user content block，artifact bytes 位于
+  `untrusted_contexts` 数组；Fake 以 deterministic receipt 证明 exact count/order/digest
+  （不回显 content bytes 进 event）；resolved content 不进 task row/outbox/event/日志。
+- Desktop：Artifact Center/Viewer 行内 "Use as Agent context" → composer 可移除 chip（title
+  - 类型），duplicate 幂等、≥4 固定提示、成功提交后消费；Project 切换 abort + 清空 chips；
+    digest/ID 不进 DOM data attribute/URL/storage。门禁 `make test-artifact-context`（Go 进程内
+    PostgreSQL 协议测试 + 真实跨进程 Chromium 链路）与确定性 before/after/current 视觉证据。
+
 ## 状态与失败
 
 - liveness 表示进程事件循环存活，readiness 表示必需依赖可用。

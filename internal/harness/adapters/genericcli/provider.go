@@ -61,6 +61,10 @@ func (p *Provider) Run(ctx context.Context, execution ports.Execution) error {
 	if execution.Credential != nil {
 		return ports.NewRunError(ports.ErrorKindInvalidInput, "generic CLI harness does not accept credential leases", false, nil)
 	}
+	// Resolved context is equally out of contract for the generic CLI.
+	if len(execution.Context) != 0 {
+		return ports.NewRunError(ports.ErrorKindInvalidInput, "generic CLI harness does not accept resolved context", false, nil)
+	}
 	ctx, cancel := context.WithTimeout(ctx, p.config.Timeout)
 	defer cancel()
 	command := exec.CommandContext(ctx, p.config.Executable, p.config.Args...)

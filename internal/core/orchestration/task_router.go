@@ -39,6 +39,14 @@ type Projects interface {
 	Get(context.Context, string, string) (projectdomain.Project, error)
 }
 
+// ArtifactContextVerifier is the submission-time pre-enqueue check that every
+// context ref points at an immutable artifact of this owner and project at
+// the exact pinned digest (ADR-0010). Failures are domain-grade and keep the
+// submission side-effect free.
+type ArtifactContextVerifier interface {
+	VerifyTaskContext(ctx context.Context, ownerUserID, projectID string, refs []agentports.ContextRef) error
+}
+
 // CredentialSnapshots resolves the owner's active vault credential for one
 // consumer so a fresh credential-bearing task is admitted with an exact,
 // durable snapshot (ADR-0009).
@@ -52,15 +60,16 @@ type TaskRouter struct {
 	policies        AgentAppPolicies
 	providers       AgentProviderCapabilities
 	credentials     CredentialSnapshots
+	contexts        ArtifactContextVerifier
 	defaultProvider string
 }
 
-func NewTaskRouter(agents AgentTasks, projects Projects, policies AgentAppPolicies, providers AgentProviderCapabilities, credentials CredentialSnapshots, defaultProvider string) (*TaskRouter, error) {
+func NewTaskRouter(agents AgentTasks, projects Projects, policies AgentAppPolicies, providers AgentProviderCapabilities, credentials CredentialSnapshots, contexts ArtifactContextVerifier, defaultProvider string) (*TaskRouter, error) {
 	defaultProvider = strings.TrimSpace(defaultProvider)
-	if agents == nil || projects == nil || policies == nil || providers == nil || credentials == nil || defaultProvider == "" {
-		return nil, errors.New("task router requires agent, project, policy, provider, credential, and default provider dependencies")
+	if agents == nil || projects == nil || policies == nil || providers == nil || credentials == nil || contexts == nil || defaultProvider == "" {
+		return nil, errors.New("task router requires agent, project, policy, provider, credential, context, and default provider dependencies")
 	}
-	return &TaskRouter{agents: agents, projects: projects, policies: policies, providers: providers, credentials: credentials, defaultProvider: defaultProvider}, nil
+	return &TaskRouter{agents: agents, projects: projects, policies: policies, providers: providers, credentials: credentials, contexts: contexts, defaultProvider: defaultProvider}, nil
 }
 
 // resolveCredentialSnapshot derives the durable credential snapshot for one
@@ -128,6 +137,34 @@ func (r *TaskRouter) Submit(ctx context.Context, input agentapp.SubmitInput) (ag
 		}
 	}
 
+	// Context ref capability and existence verification happen before any
+	// task row, outbox entry, or lease exists (ADR-0010): a provider that
+	// does not demonstrably consume every requested context type, or a ref
+	// that does not pin an existing immutable artifact of this owner and
+	// project at the exact digest, fails closed with zero side effects and
+	// never falls back. Global tasks never accept project artifact context.
+	if len(input.ContextRefs) > 0 {
+		if input.ProjectID == "" {
+			return agentdomain.Task{}, agentdomain.ErrInvalid
+		}
+		requestedTypes := make([]string, 0, len(input.ContextRefs))
+		for _, ref := range input.ContextRefs {
+			requestedTypes = append(requestedTypes, ref.Type)
+		}
+		contextCapabilities, ctxCapErr := r.providers.Capabilities(ctx, providerID)
+		if errors.Is(ctxCapErr, agentdomain.ErrNotFound) {
+			return agentdomain.Task{}, agentdomain.ErrProviderCapabilityMissing
+		}
+		if ctxCapErr != nil {
+			return agentdomain.Task{}, fmt.Errorf("resolve provider context capabilities: %w", ctxCapErr)
+		}
+		if !contextCapabilities.SupportsContextRefTypes(requestedTypes) {
+			return agentdomain.Task{}, agentdomain.ErrProviderCapabilityMissing
+		}
+		if err := r.contexts.VerifyTaskContext(ctx, input.OwnerUserID, input.ProjectID, input.ContextRefs); err != nil {
+			return agentdomain.Task{}, err
+		}
+	}
 	input.ProviderID = providerID
 	capabilities, capErr := r.providers.Capabilities(ctx, providerID)
 	if errors.Is(capErr, agentdomain.ErrNotFound) {

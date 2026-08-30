@@ -105,6 +105,10 @@ func artifactKind(output *taskv1.TaskArtifactOutput) string {
 	}
 }
 
+func (c *fakeCore) ResolveTaskContext(context.Context, *connect.Request[taskv1.ResolveTaskContextRequest]) (*connect.Response[taskv1.ResolveTaskContextResponse], error) {
+	return nil, connect.NewError(connect.CodeFailedPrecondition, errors.New("no context configured"))
+}
+
 func (c *fakeCore) FinishTaskLease(context.Context, *connect.Request[taskv1.FinishTaskLeaseRequest]) (*connect.Response[taskv1.FinishTaskLeaseResponse], error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()

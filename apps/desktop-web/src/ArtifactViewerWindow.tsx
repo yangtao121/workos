@@ -8,6 +8,7 @@ import { useEffect, useRef, useState } from "react";
 import type { WorkOSClients } from "@workos/agent-sdk";
 import type { Artifact } from "@workos/protocol";
 import { ArtifactViewer } from "@workos/artifact-viewer";
+import { Button } from "@workos/ui-kit";
 
 interface ViewerState {
   loading: boolean;
@@ -42,10 +43,14 @@ export function ArtifactViewerWindow({
   artifactId,
   projectId,
   workosClients,
+  onUseAsContext,
+  contextPinned,
 }: {
   artifactId: string;
   projectId: string;
   workosClients: WorkOSClients;
+  onUseAsContext?: ((artifact: Artifact) => void) | undefined;
+  contextPinned?: boolean | undefined;
 }) {
   const [state, setState] = useState<ViewerState>(LOADING);
   const generationRef = useRef(0);
@@ -104,6 +109,21 @@ export function ArtifactViewerWindow({
 
   return (
     <div className="artifact-viewer-body">
+      {onUseAsContext && state.artifact && !contextPinned ? (
+        <Button
+          data-testid="use-as-context"
+          onClick={() => {
+            onUseAsContext(state.artifact as Artifact);
+          }}
+        >
+          Use as Agent context
+        </Button>
+      ) : null}
+      {contextPinned ? (
+        <p className="context-selected-note" data-testid="context-selected">
+          Pinned as Agent context.
+        </p>
+      ) : null}
       <ArtifactViewer
         artifact={state.artifact}
         content={state.content}

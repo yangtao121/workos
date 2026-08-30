@@ -42,6 +42,12 @@ type Capabilities struct {
 	// demonstrably produces (ADR-0008). Any bool/list drift is capability
 	// corruption, never "all types": the catalog surfaces it as unavailable.
 	SupportedArtifactTypes []string
+	// SupportedContextRefTypes names the exact canonical context ref types
+	// the adapter demonstrably consumes as resolved bounded context
+	// (ADR-0010). Values outside the canonical vocabulary, duplicates, or a
+	// non-empty list on an adapter without the matching runtime behavior are
+	// capability corruption: the catalog surfaces them as unavailable.
+	SupportedContextRefTypes []string
 	// RequiresTaskCredentialLease is true when the adapter can only run with
 	// a task-bound credential lease from the Core Credential Vault
 	// (ADR-0009). The owner-aware catalog projection reports such providers

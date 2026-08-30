@@ -103,9 +103,16 @@ func (p *Provider) execute(parent context.Context, taskID, runID string, input p
 	}
 
 	state := &streamState{runID: runID, sessionID: runID, emit: emit, usages: make(map[string]tokenUsage)}
+	// The single user content block: the versioned task envelope when the
+	// task carries pinned context, otherwise the plain goal. Context bytes
+	// are always untrusted payload inside the envelope (ADR-0010).
+	userText := input.goal
+	if input.envelope != "" {
+		userText = input.envelope
+	}
 	if err := writeRequest(ctx, stdin, 2, "session/prompt", map[string]any{
 		"sessionId":     runID,
-		"contentBlocks": []map[string]string{{"type": "text", "text": input.goal}},
+		"contentBlocks": []map[string]string{{"type": "text", "text": userText}},
 	}); err != nil {
 		return processError(ctx, err)
 	}

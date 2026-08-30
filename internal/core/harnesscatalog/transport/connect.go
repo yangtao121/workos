@@ -45,6 +45,7 @@ func (h *Handler) GetHarnessCatalog(ctx context.Context, _ *connect.Request[harn
 				MaxOutputTokens:             provider.Capabilities.MaxOutputTokens,
 				MaxRuntimeSeconds:           provider.Capabilities.MaxRuntimeSeconds,
 				SupportedArtifactTypes:      provider.Capabilities.SupportedArtifactTypes,
+				SupportedContextRefTypes:    provider.Capabilities.SupportedContextRefTypes,
 				RequiresTaskCredentialLease: provider.Capabilities.RequiresTaskCredentialLease,
 			},
 		})

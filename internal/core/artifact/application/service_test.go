@@ -463,3 +463,6 @@ func (r *fakeRepository) InsertTaskOutput(_ context.Context, _ dbtx.Tx, _ ports.
 func (r *fakeRepository) ReviewArtifactByID(_ context.Context, _ dbtx.Tx, _ string) (domain.ReviewArtifact, error) {
 	return domain.ReviewArtifact{}, domain.ErrNotFound
 }
+func (r *fakeRepository) ReviewArtifactContentByID(_ context.Context, _ dbtx.Tx, _ string) (domain.ReviewArtifact, domain.NormalizedReviewContent, error) {
+	return domain.ReviewArtifact{}, domain.NormalizedReviewContent{}, domain.ErrNotFound
+}

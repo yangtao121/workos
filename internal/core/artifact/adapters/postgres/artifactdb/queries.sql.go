@@ -174,6 +174,34 @@ func (q *Queries) GetReviewArtifactContent(ctx context.Context, arg GetReviewArt
 	return i, err
 }
 
+const getReviewArtifactContentByID = `-- name: GetReviewArtifactContentByID :one
+SELECT id, owner_user_id, type, title, media_type, digest, project_id, source_task_id,
+       output_key, byte_count, line_count, content, created_at
+FROM workos_core.project_review_artifacts
+WHERE id = $1
+`
+
+func (q *Queries) GetReviewArtifactContentByID(ctx context.Context, artifactID string) (WorkosCoreProjectReviewArtifact, error) {
+	row := q.db.QueryRow(ctx, getReviewArtifactContentByID, artifactID)
+	var i WorkosCoreProjectReviewArtifact
+	err := row.Scan(
+		&i.ID,
+		&i.OwnerUserID,
+		&i.Type,
+		&i.Title,
+		&i.MediaType,
+		&i.Digest,
+		&i.ProjectID,
+		&i.SourceTaskID,
+		&i.OutputKey,
+		&i.ByteCount,
+		&i.LineCount,
+		&i.Content,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
 const getReviewArtifactOutput = `-- name: GetReviewArtifactOutput :one
 SELECT task_id, output_key, artifact_type, request_digest, owner_user_id, project_id,
        artifact_id, event_id, event_sequence, event_occurred_at, created_at

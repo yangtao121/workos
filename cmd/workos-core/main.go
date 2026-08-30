@@ -177,8 +177,17 @@ func run(logger *slog.Logger) error {
 	if err != nil {
 		return err
 	}
+	// The lease-bound context resolver composes the Agent task-lease
+	// authority with the Artifact module's transaction-scoped read: identity,
+	// project binding, subtype, and the exact pinned digest are revalidated
+	// from the claimed lease inside one transaction before any byte leaves
+	// Core (ADR-0010).
+	taskContextResolver, err := orchestration.NewTaskContextResolver(pool, agentRepository, artifactRepository, generator)
+	if err != nil {
+		return err
+	}
 	executionMux := httpserver.NewMux("workos-core-execution", ready)
-	executionPath, executionHandler := agenttransport.NewExecutionConnectHandler(agentService, artifactMaterializer)
+	executionPath, executionHandler := agenttransport.NewExecutionConnectHandler(agentService, artifactMaterializer, taskContextResolver)
 	executionMux.Handle(executionPath, executionHandler)
 	leasePath, leaseHandler := credentialtransport.NewLeaseConnectHandler(credentialIssuer)
 	executionMux.Handle(leasePath, leaseHandler)
@@ -237,7 +246,11 @@ func run(logger *slog.Logger) error {
 	if err != nil {
 		return err
 	}
-	taskRouter, err := orchestration.NewTaskRouter(agentService, projectService, policyService, providerCapabilitiesAdapter, orchestration.NewCredentialSnapshots(credentialService), cfg.Agent.DefaultProvider)
+	artifactContextVerifier, err := orchestration.NewArtifactContextVerifier(artifactService)
+	if err != nil {
+		return err
+	}
+	taskRouter, err := orchestration.NewTaskRouter(agentService, projectService, policyService, providerCapabilitiesAdapter, orchestration.NewCredentialSnapshots(credentialService), artifactContextVerifier, cfg.Agent.DefaultProvider)
 	if err != nil {
 		return err
 	}

@@ -18,6 +18,7 @@ type Querier interface {
 	// One review artifact's authoritative metadata and exact content bytes from
 	// the same row snapshot.
 	GetReviewArtifactContent(ctx context.Context, arg GetReviewArtifactContentParams) (WorkosCoreProjectReviewArtifact, error)
+	GetReviewArtifactContentByID(ctx context.Context, artifactID string) (WorkosCoreProjectReviewArtifact, error)
 	// Adjudication mapping read for replay/conflict classification inside the
 	// materialization coordinator's transaction.
 	GetReviewArtifactOutput(ctx context.Context, arg GetReviewArtifactOutputParams) (WorkosCoreProjectReviewArtifactOutput, error)

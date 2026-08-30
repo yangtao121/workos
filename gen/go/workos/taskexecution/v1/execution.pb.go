@@ -822,6 +822,203 @@ func (x *AppendTaskArtifactResponse) GetEvent() *v1.AgentEvent {
 	return nil
 }
 
+// ResolvedTaskContextDocument is one canonical bounded context document the
+// worker may hand to the provider for this task only. Every identity fact is
+// Core-derived from the active task lease: no storage path, content_ref,
+// owner, project, or database state ever appears here.
+type ResolvedTaskContextDocument struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	RefType       string                 `protobuf:"bytes,1,opt,name=ref_type,json=refType,proto3" json:"ref_type,omitempty"`
+	ArtifactType  string                 `protobuf:"bytes,2,opt,name=artifact_type,json=artifactType,proto3" json:"artifact_type,omitempty"`
+	ArtifactId    string                 `protobuf:"bytes,3,opt,name=artifact_id,json=artifactId,proto3" json:"artifact_id,omitempty"`
+	Digest        string                 `protobuf:"bytes,4,opt,name=digest,proto3" json:"digest,omitempty"`
+	Title         string                 `protobuf:"bytes,5,opt,name=title,proto3" json:"title,omitempty"`
+	MediaType     string                 `protobuf:"bytes,6,opt,name=media_type,json=mediaType,proto3" json:"media_type,omitempty"`
+	Content       []byte                 `protobuf:"bytes,7,opt,name=content,proto3" json:"content,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ResolvedTaskContextDocument) Reset() {
+	*x = ResolvedTaskContextDocument{}
+	mi := &file_workos_taskexecution_v1_execution_proto_msgTypes[14]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ResolvedTaskContextDocument) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ResolvedTaskContextDocument) ProtoMessage() {}
+
+func (x *ResolvedTaskContextDocument) ProtoReflect() protoreflect.Message {
+	mi := &file_workos_taskexecution_v1_execution_proto_msgTypes[14]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ResolvedTaskContextDocument.ProtoReflect.Descriptor instead.
+func (*ResolvedTaskContextDocument) Descriptor() ([]byte, []int) {
+	return file_workos_taskexecution_v1_execution_proto_rawDescGZIP(), []int{14}
+}
+
+func (x *ResolvedTaskContextDocument) GetRefType() string {
+	if x != nil {
+		return x.RefType
+	}
+	return ""
+}
+
+func (x *ResolvedTaskContextDocument) GetArtifactType() string {
+	if x != nil {
+		return x.ArtifactType
+	}
+	return ""
+}
+
+func (x *ResolvedTaskContextDocument) GetArtifactId() string {
+	if x != nil {
+		return x.ArtifactId
+	}
+	return ""
+}
+
+func (x *ResolvedTaskContextDocument) GetDigest() string {
+	if x != nil {
+		return x.Digest
+	}
+	return ""
+}
+
+func (x *ResolvedTaskContextDocument) GetTitle() string {
+	if x != nil {
+		return x.Title
+	}
+	return ""
+}
+
+func (x *ResolvedTaskContextDocument) GetMediaType() string {
+	if x != nil {
+		return x.MediaType
+	}
+	return ""
+}
+
+func (x *ResolvedTaskContextDocument) GetContent() []byte {
+	if x != nil {
+		return x.Content
+	}
+	return nil
+}
+
+// ResolveTaskContext derives the task's canonical context documents from the
+// active task lease alone: the request carries only the lease and worker
+// identifiers, and Core revalidates every immutable ref (owner, project,
+// subtype, digest) inside one transaction before returning bytes in request
+// order. The wire aggregate is bounded before decode.
+type ResolveTaskContextRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	LeaseId       string                 `protobuf:"bytes,1,opt,name=lease_id,json=leaseId,proto3" json:"lease_id,omitempty"`
+	WorkerId      string                 `protobuf:"bytes,2,opt,name=worker_id,json=workerId,proto3" json:"worker_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ResolveTaskContextRequest) Reset() {
+	*x = ResolveTaskContextRequest{}
+	mi := &file_workos_taskexecution_v1_execution_proto_msgTypes[15]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ResolveTaskContextRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ResolveTaskContextRequest) ProtoMessage() {}
+
+func (x *ResolveTaskContextRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_workos_taskexecution_v1_execution_proto_msgTypes[15]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ResolveTaskContextRequest.ProtoReflect.Descriptor instead.
+func (*ResolveTaskContextRequest) Descriptor() ([]byte, []int) {
+	return file_workos_taskexecution_v1_execution_proto_rawDescGZIP(), []int{15}
+}
+
+func (x *ResolveTaskContextRequest) GetLeaseId() string {
+	if x != nil {
+		return x.LeaseId
+	}
+	return ""
+}
+
+func (x *ResolveTaskContextRequest) GetWorkerId() string {
+	if x != nil {
+		return x.WorkerId
+	}
+	return ""
+}
+
+type ResolveTaskContextResponse struct {
+	state         protoimpl.MessageState         `protogen:"open.v1"`
+	Documents     []*ResolvedTaskContextDocument `protobuf:"bytes,1,rep,name=documents,proto3" json:"documents,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ResolveTaskContextResponse) Reset() {
+	*x = ResolveTaskContextResponse{}
+	mi := &file_workos_taskexecution_v1_execution_proto_msgTypes[16]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ResolveTaskContextResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ResolveTaskContextResponse) ProtoMessage() {}
+
+func (x *ResolveTaskContextResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_workos_taskexecution_v1_execution_proto_msgTypes[16]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ResolveTaskContextResponse.ProtoReflect.Descriptor instead.
+func (*ResolveTaskContextResponse) Descriptor() ([]byte, []int) {
+	return file_workos_taskexecution_v1_execution_proto_rawDescGZIP(), []int{16}
+}
+
+func (x *ResolveTaskContextResponse) GetDocuments() []*ResolvedTaskContextDocument {
+	if x != nil {
+		return x.Documents
+	}
+	return nil
+}
+
 var File_workos_taskexecution_v1_execution_proto protoreflect.FileDescriptor
 
 const file_workos_taskexecution_v1_execution_proto_rawDesc = "" +
@@ -875,13 +1072,29 @@ const file_workos_taskexecution_v1_execution_proto_rawDesc = "" +
 	"\bartifact\x18\x03 \x01(\v2+.workos.taskexecution.v1.TaskArtifactOutputR\bartifact\"\x89\x01\n" +
 	"\x1aAppendTaskArtifactResponse\x128\n" +
 	"\bartifact\x18\x01 \x01(\v2\x1c.workos.artifact.v1.ArtifactR\bartifact\x121\n" +
-	"\x05event\x18\x02 \x01(\v2\x1b.workos.agent.v1.AgentEventR\x05event2\xe2\x04\n" +
+	"\x05event\x18\x02 \x01(\v2\x1b.workos.agent.v1.AgentEventR\x05event\"\xe5\x01\n" +
+	"\x1bResolvedTaskContextDocument\x12\x19\n" +
+	"\bref_type\x18\x01 \x01(\tR\arefType\x12#\n" +
+	"\rartifact_type\x18\x02 \x01(\tR\fartifactType\x12\x1f\n" +
+	"\vartifact_id\x18\x03 \x01(\tR\n" +
+	"artifactId\x12\x16\n" +
+	"\x06digest\x18\x04 \x01(\tR\x06digest\x12\x14\n" +
+	"\x05title\x18\x05 \x01(\tR\x05title\x12\x1d\n" +
+	"\n" +
+	"media_type\x18\x06 \x01(\tR\tmediaType\x12\x18\n" +
+	"\acontent\x18\a \x01(\fR\acontent\"S\n" +
+	"\x19ResolveTaskContextRequest\x12\x19\n" +
+	"\blease_id\x18\x01 \x01(\tR\aleaseId\x12\x1b\n" +
+	"\tworker_id\x18\x02 \x01(\tR\bworkerId\"p\n" +
+	"\x1aResolveTaskContextResponse\x12R\n" +
+	"\tdocuments\x18\x01 \x03(\v24.workos.taskexecution.v1.ResolvedTaskContextDocumentR\tdocuments2\xe3\x05\n" +
 	"\x14TaskExecutionService\x12d\n" +
 	"\tClaimTask\x12).workos.taskexecution.v1.ClaimTaskRequest\x1a*.workos.taskexecution.v1.ClaimTaskResponse\"\x00\x12s\n" +
 	"\x0eRenewTaskLease\x12..workos.taskexecution.v1.RenewTaskLeaseRequest\x1a/.workos.taskexecution.v1.RenewTaskLeaseResponse\"\x00\x12v\n" +
 	"\x0fAppendTaskEvent\x12/.workos.taskexecution.v1.AppendTaskEventRequest\x1a0.workos.taskexecution.v1.AppendTaskEventResponse\"\x00\x12v\n" +
 	"\x0fFinishTaskLease\x12/.workos.taskexecution.v1.FinishTaskLeaseRequest\x1a0.workos.taskexecution.v1.FinishTaskLeaseResponse\"\x00\x12\x7f\n" +
-	"\x12AppendTaskArtifact\x122.workos.taskexecution.v1.AppendTaskArtifactRequest\x1a3.workos.taskexecution.v1.AppendTaskArtifactResponse\"\x00BMZKgithub.com/yangtao121/workos/gen/go/workos/taskexecution/v1;taskexecutionv1b\x06proto3"
+	"\x12AppendTaskArtifact\x122.workos.taskexecution.v1.AppendTaskArtifactRequest\x1a3.workos.taskexecution.v1.AppendTaskArtifactResponse\"\x00\x12\x7f\n" +
+	"\x12ResolveTaskContext\x122.workos.taskexecution.v1.ResolveTaskContextRequest\x1a3.workos.taskexecution.v1.ResolveTaskContextResponse\"\x00BMZKgithub.com/yangtao121/workos/gen/go/workos/taskexecution/v1;taskexecutionv1b\x06proto3"
 
 var (
 	file_workos_taskexecution_v1_execution_proto_rawDescOnce sync.Once
@@ -895,57 +1108,63 @@ func file_workos_taskexecution_v1_execution_proto_rawDescGZIP() []byte {
 	return file_workos_taskexecution_v1_execution_proto_rawDescData
 }
 
-var file_workos_taskexecution_v1_execution_proto_msgTypes = make([]protoimpl.MessageInfo, 14)
+var file_workos_taskexecution_v1_execution_proto_msgTypes = make([]protoimpl.MessageInfo, 17)
 var file_workos_taskexecution_v1_execution_proto_goTypes = []any{
-	(*TaskLease)(nil),                  // 0: workos.taskexecution.v1.TaskLease
-	(*ClaimTaskRequest)(nil),           // 1: workos.taskexecution.v1.ClaimTaskRequest
-	(*ClaimTaskResponse)(nil),          // 2: workos.taskexecution.v1.ClaimTaskResponse
-	(*RenewTaskLeaseRequest)(nil),      // 3: workos.taskexecution.v1.RenewTaskLeaseRequest
-	(*RenewTaskLeaseResponse)(nil),     // 4: workos.taskexecution.v1.RenewTaskLeaseResponse
-	(*AppendTaskEventRequest)(nil),     // 5: workos.taskexecution.v1.AppendTaskEventRequest
-	(*AppendTaskEventResponse)(nil),    // 6: workos.taskexecution.v1.AppendTaskEventResponse
-	(*FinishTaskLeaseRequest)(nil),     // 7: workos.taskexecution.v1.FinishTaskLeaseRequest
-	(*FinishTaskLeaseResponse)(nil),    // 8: workos.taskexecution.v1.FinishTaskLeaseResponse
-	(*MarkdownArtifactContent)(nil),    // 9: workos.taskexecution.v1.MarkdownArtifactContent
-	(*UnifiedDiffArtifactContent)(nil), // 10: workos.taskexecution.v1.UnifiedDiffArtifactContent
-	(*TaskArtifactOutput)(nil),         // 11: workos.taskexecution.v1.TaskArtifactOutput
-	(*AppendTaskArtifactRequest)(nil),  // 12: workos.taskexecution.v1.AppendTaskArtifactRequest
-	(*AppendTaskArtifactResponse)(nil), // 13: workos.taskexecution.v1.AppendTaskArtifactResponse
-	(*v1.AgentTask)(nil),               // 14: workos.agent.v1.AgentTask
-	(*timestamppb.Timestamp)(nil),      // 15: google.protobuf.Timestamp
-	(*durationpb.Duration)(nil),        // 16: google.protobuf.Duration
-	(*v1.AgentEvent)(nil),              // 17: workos.agent.v1.AgentEvent
-	(*v11.Artifact)(nil),               // 18: workos.artifact.v1.Artifact
+	(*TaskLease)(nil),                   // 0: workos.taskexecution.v1.TaskLease
+	(*ClaimTaskRequest)(nil),            // 1: workos.taskexecution.v1.ClaimTaskRequest
+	(*ClaimTaskResponse)(nil),           // 2: workos.taskexecution.v1.ClaimTaskResponse
+	(*RenewTaskLeaseRequest)(nil),       // 3: workos.taskexecution.v1.RenewTaskLeaseRequest
+	(*RenewTaskLeaseResponse)(nil),      // 4: workos.taskexecution.v1.RenewTaskLeaseResponse
+	(*AppendTaskEventRequest)(nil),      // 5: workos.taskexecution.v1.AppendTaskEventRequest
+	(*AppendTaskEventResponse)(nil),     // 6: workos.taskexecution.v1.AppendTaskEventResponse
+	(*FinishTaskLeaseRequest)(nil),      // 7: workos.taskexecution.v1.FinishTaskLeaseRequest
+	(*FinishTaskLeaseResponse)(nil),     // 8: workos.taskexecution.v1.FinishTaskLeaseResponse
+	(*MarkdownArtifactContent)(nil),     // 9: workos.taskexecution.v1.MarkdownArtifactContent
+	(*UnifiedDiffArtifactContent)(nil),  // 10: workos.taskexecution.v1.UnifiedDiffArtifactContent
+	(*TaskArtifactOutput)(nil),          // 11: workos.taskexecution.v1.TaskArtifactOutput
+	(*AppendTaskArtifactRequest)(nil),   // 12: workos.taskexecution.v1.AppendTaskArtifactRequest
+	(*AppendTaskArtifactResponse)(nil),  // 13: workos.taskexecution.v1.AppendTaskArtifactResponse
+	(*ResolvedTaskContextDocument)(nil), // 14: workos.taskexecution.v1.ResolvedTaskContextDocument
+	(*ResolveTaskContextRequest)(nil),   // 15: workos.taskexecution.v1.ResolveTaskContextRequest
+	(*ResolveTaskContextResponse)(nil),  // 16: workos.taskexecution.v1.ResolveTaskContextResponse
+	(*v1.AgentTask)(nil),                // 17: workos.agent.v1.AgentTask
+	(*timestamppb.Timestamp)(nil),       // 18: google.protobuf.Timestamp
+	(*durationpb.Duration)(nil),         // 19: google.protobuf.Duration
+	(*v1.AgentEvent)(nil),               // 20: workos.agent.v1.AgentEvent
+	(*v11.Artifact)(nil),                // 21: workos.artifact.v1.Artifact
 }
 var file_workos_taskexecution_v1_execution_proto_depIdxs = []int32{
-	14, // 0: workos.taskexecution.v1.TaskLease.task:type_name -> workos.agent.v1.AgentTask
-	15, // 1: workos.taskexecution.v1.TaskLease.expires_at:type_name -> google.protobuf.Timestamp
-	16, // 2: workos.taskexecution.v1.ClaimTaskRequest.lease_duration:type_name -> google.protobuf.Duration
+	17, // 0: workos.taskexecution.v1.TaskLease.task:type_name -> workos.agent.v1.AgentTask
+	18, // 1: workos.taskexecution.v1.TaskLease.expires_at:type_name -> google.protobuf.Timestamp
+	19, // 2: workos.taskexecution.v1.ClaimTaskRequest.lease_duration:type_name -> google.protobuf.Duration
 	0,  // 3: workos.taskexecution.v1.ClaimTaskResponse.lease:type_name -> workos.taskexecution.v1.TaskLease
-	16, // 4: workos.taskexecution.v1.RenewTaskLeaseRequest.lease_duration:type_name -> google.protobuf.Duration
-	15, // 5: workos.taskexecution.v1.RenewTaskLeaseResponse.expires_at:type_name -> google.protobuf.Timestamp
-	17, // 6: workos.taskexecution.v1.AppendTaskEventRequest.event:type_name -> workos.agent.v1.AgentEvent
-	17, // 7: workos.taskexecution.v1.AppendTaskEventResponse.stored_event:type_name -> workos.agent.v1.AgentEvent
+	19, // 4: workos.taskexecution.v1.RenewTaskLeaseRequest.lease_duration:type_name -> google.protobuf.Duration
+	18, // 5: workos.taskexecution.v1.RenewTaskLeaseResponse.expires_at:type_name -> google.protobuf.Timestamp
+	20, // 6: workos.taskexecution.v1.AppendTaskEventRequest.event:type_name -> workos.agent.v1.AgentEvent
+	20, // 7: workos.taskexecution.v1.AppendTaskEventResponse.stored_event:type_name -> workos.agent.v1.AgentEvent
 	9,  // 8: workos.taskexecution.v1.TaskArtifactOutput.markdown:type_name -> workos.taskexecution.v1.MarkdownArtifactContent
 	10, // 9: workos.taskexecution.v1.TaskArtifactOutput.unified_diff:type_name -> workos.taskexecution.v1.UnifiedDiffArtifactContent
 	11, // 10: workos.taskexecution.v1.AppendTaskArtifactRequest.artifact:type_name -> workos.taskexecution.v1.TaskArtifactOutput
-	18, // 11: workos.taskexecution.v1.AppendTaskArtifactResponse.artifact:type_name -> workos.artifact.v1.Artifact
-	17, // 12: workos.taskexecution.v1.AppendTaskArtifactResponse.event:type_name -> workos.agent.v1.AgentEvent
-	1,  // 13: workos.taskexecution.v1.TaskExecutionService.ClaimTask:input_type -> workos.taskexecution.v1.ClaimTaskRequest
-	3,  // 14: workos.taskexecution.v1.TaskExecutionService.RenewTaskLease:input_type -> workos.taskexecution.v1.RenewTaskLeaseRequest
-	5,  // 15: workos.taskexecution.v1.TaskExecutionService.AppendTaskEvent:input_type -> workos.taskexecution.v1.AppendTaskEventRequest
-	7,  // 16: workos.taskexecution.v1.TaskExecutionService.FinishTaskLease:input_type -> workos.taskexecution.v1.FinishTaskLeaseRequest
-	12, // 17: workos.taskexecution.v1.TaskExecutionService.AppendTaskArtifact:input_type -> workos.taskexecution.v1.AppendTaskArtifactRequest
-	2,  // 18: workos.taskexecution.v1.TaskExecutionService.ClaimTask:output_type -> workos.taskexecution.v1.ClaimTaskResponse
-	4,  // 19: workos.taskexecution.v1.TaskExecutionService.RenewTaskLease:output_type -> workos.taskexecution.v1.RenewTaskLeaseResponse
-	6,  // 20: workos.taskexecution.v1.TaskExecutionService.AppendTaskEvent:output_type -> workos.taskexecution.v1.AppendTaskEventResponse
-	8,  // 21: workos.taskexecution.v1.TaskExecutionService.FinishTaskLease:output_type -> workos.taskexecution.v1.FinishTaskLeaseResponse
-	13, // 22: workos.taskexecution.v1.TaskExecutionService.AppendTaskArtifact:output_type -> workos.taskexecution.v1.AppendTaskArtifactResponse
-	18, // [18:23] is the sub-list for method output_type
-	13, // [13:18] is the sub-list for method input_type
-	13, // [13:13] is the sub-list for extension type_name
-	13, // [13:13] is the sub-list for extension extendee
-	0,  // [0:13] is the sub-list for field type_name
+	21, // 11: workos.taskexecution.v1.AppendTaskArtifactResponse.artifact:type_name -> workos.artifact.v1.Artifact
+	20, // 12: workos.taskexecution.v1.AppendTaskArtifactResponse.event:type_name -> workos.agent.v1.AgentEvent
+	14, // 13: workos.taskexecution.v1.ResolveTaskContextResponse.documents:type_name -> workos.taskexecution.v1.ResolvedTaskContextDocument
+	1,  // 14: workos.taskexecution.v1.TaskExecutionService.ClaimTask:input_type -> workos.taskexecution.v1.ClaimTaskRequest
+	3,  // 15: workos.taskexecution.v1.TaskExecutionService.RenewTaskLease:input_type -> workos.taskexecution.v1.RenewTaskLeaseRequest
+	5,  // 16: workos.taskexecution.v1.TaskExecutionService.AppendTaskEvent:input_type -> workos.taskexecution.v1.AppendTaskEventRequest
+	7,  // 17: workos.taskexecution.v1.TaskExecutionService.FinishTaskLease:input_type -> workos.taskexecution.v1.FinishTaskLeaseRequest
+	12, // 18: workos.taskexecution.v1.TaskExecutionService.AppendTaskArtifact:input_type -> workos.taskexecution.v1.AppendTaskArtifactRequest
+	15, // 19: workos.taskexecution.v1.TaskExecutionService.ResolveTaskContext:input_type -> workos.taskexecution.v1.ResolveTaskContextRequest
+	2,  // 20: workos.taskexecution.v1.TaskExecutionService.ClaimTask:output_type -> workos.taskexecution.v1.ClaimTaskResponse
+	4,  // 21: workos.taskexecution.v1.TaskExecutionService.RenewTaskLease:output_type -> workos.taskexecution.v1.RenewTaskLeaseResponse
+	6,  // 22: workos.taskexecution.v1.TaskExecutionService.AppendTaskEvent:output_type -> workos.taskexecution.v1.AppendTaskEventResponse
+	8,  // 23: workos.taskexecution.v1.TaskExecutionService.FinishTaskLease:output_type -> workos.taskexecution.v1.FinishTaskLeaseResponse
+	13, // 24: workos.taskexecution.v1.TaskExecutionService.AppendTaskArtifact:output_type -> workos.taskexecution.v1.AppendTaskArtifactResponse
+	16, // 25: workos.taskexecution.v1.TaskExecutionService.ResolveTaskContext:output_type -> workos.taskexecution.v1.ResolveTaskContextResponse
+	20, // [20:26] is the sub-list for method output_type
+	14, // [14:20] is the sub-list for method input_type
+	14, // [14:14] is the sub-list for extension type_name
+	14, // [14:14] is the sub-list for extension extendee
+	0,  // [0:14] is the sub-list for field type_name
 }
 
 func init() { file_workos_taskexecution_v1_execution_proto_init() }
@@ -964,7 +1183,7 @@ func file_workos_taskexecution_v1_execution_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_workos_taskexecution_v1_execution_proto_rawDesc), len(file_workos_taskexecution_v1_execution_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   14,
+			NumMessages:   17,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

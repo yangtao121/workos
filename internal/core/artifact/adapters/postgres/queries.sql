@@ -116,6 +116,12 @@ SELECT id, owner_user_id, type, title, media_type, digest, project_id, source_ta
 FROM workos_core.project_review_artifacts
 WHERE owner_user_id = sqlc.arg(owner_user_id) AND id = sqlc.arg(artifact_id);
 
+-- name: GetReviewArtifactContentByID :one
+SELECT id, owner_user_id, type, title, media_type, digest, project_id, source_task_id,
+       output_key, byte_count, line_count, content, created_at
+FROM workos_core.project_review_artifacts
+WHERE id = sqlc.arg(artifact_id);
+
 -- name: ListProjectReviewArtifactIDPage :many
 SELECT id
 FROM workos_core.project_review_artifacts

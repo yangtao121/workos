@@ -81,6 +81,7 @@ func (a *providerCapabilities) Capabilities(ctx context.Context, providerID stri
 			MaxRuntimeSeconds:           provider.Capabilities.MaxRuntimeSeconds,
 			StructuredArtifacts:         provider.Capabilities.StructuredArtifacts,
 			SupportedArtifactTypes:      provider.Capabilities.SupportedArtifactTypes,
+			SupportedContextRefTypes:    provider.Capabilities.SupportedContextRefTypes,
 			RequiresTaskCredentialLease: provider.Capabilities.RequiresTaskCredentialLease,
 		}, nil
 	}

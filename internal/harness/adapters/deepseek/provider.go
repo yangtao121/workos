@@ -2,11 +2,14 @@ package deepseek
 
 import (
 	"context"
+	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	agentv1 "github.com/yangtao121/workos/gen/go/workos/agent/v1"
 	commonv1 "github.com/yangtao121/workos/gen/go/workos/common/v1"
@@ -25,7 +28,11 @@ type Provider struct {
 }
 
 type preparedInput struct {
-	goal      string
+	goal string
+	// envelope is the versioned canonical task envelope handed to the
+	// runtime as the single user content block when the task carries pinned
+	// context. Empty means a context-free run keeps the plain goal text.
+	envelope  string
 	maxTokens int64
 	timeout   time.Duration
 }
@@ -68,6 +75,10 @@ func (p *Provider) Describe() *harnessv1.HarnessProviderInfo {
 			// short-lived, task-bound credential lease from the Core
 			// Credential Vault (ADR-0009).
 			RequiresTaskCredentialLease: true,
+			// Proven only after the materialized-context tests pass: the
+			// adapter consumes review artifacts as bounded untrusted context
+			// through the versioned task envelope (ADR-0010).
+			SupportedContextRefTypes: supportedContextRefTypes,
 		},
 	}
 }
@@ -81,6 +92,7 @@ func (p *Provider) Describe() *harnessv1.HarnessProviderInfo {
 func (p *Provider) Run(ctx context.Context, execution ports.Execution) error {
 	taskID, input, emit := execution.TaskID, execution.Input, execution.Emit
 	_ = execution.Artifacts
+
 	if err := validateConfig(p.config); err != nil {
 		p.setHealth(commonv1.HealthState_HEALTH_STATE_UNAVAILABLE, err.Error())
 		return ports.NewRunError(ports.ErrorKindConfiguration, err.Error(), false, nil)
@@ -98,7 +110,7 @@ func (p *Provider) Run(ctx context.Context, execution ports.Execution) error {
 			lease.Secret[index] = 0
 		}
 	}()
-	prepared, err := prepareInput(input, p.config.Timeout)
+	prepared, err := prepareInput(input, execution.Context, p.config.Timeout)
 	if err != nil {
 		return err
 	}
@@ -129,7 +141,33 @@ func (p *Provider) setHealth(health commonv1.HealthState, reason string) {
 	p.mu.Unlock()
 }
 
-func prepareInput(input *agentv1.AgentTaskInput, configuredTimeout time.Duration) (preparedInput, error) {
+// supportedContextRefTypes is exact: the adapter demonstrably consumes
+// review artifacts as resolved bounded context (ADR-0010).
+var supportedContextRefTypes = []string{"artifact.review.v1"}
+
+const (
+	// taskEnvelopeVersion pins the canonical user-content envelope.
+	taskEnvelopeVersion = "workos.deepseek.task-envelope.v1"
+	// maximumContextDocuments matches the canonical per-task ref bound.
+	maximumContextDocuments = 4
+	// maximumContextDocumentBytes is the per-document content bound.
+	maximumContextDocumentBytes = 512 * 1024
+)
+
+// reviewArtifactType validates the artifact type of one resolved context
+// document against the canonical review vocabulary.
+func reviewArtifactType(value string) (string, string, bool) {
+	switch value {
+	case "document.markdown.v1":
+		return value, "text/markdown; charset=utf-8", true
+	case "code.unified-diff.v1":
+		return value, "text/x-diff; charset=utf-8", true
+	default:
+		return "", "", false
+	}
+}
+
+func prepareInput(input *agentv1.AgentTaskInput, contexts []ports.ContextDocument, configuredTimeout time.Duration) (preparedInput, error) {
 	if input == nil {
 		return preparedInput{}, invalidInput("DeepSeek task input is required")
 	}
@@ -143,8 +181,9 @@ func prepareInput(input *agentv1.AgentTaskInput, configuredTimeout time.Duration
 	if role != "" && role != "general" {
 		return preparedInput{}, invalidInput("DeepSeek Harness supports only the general role")
 	}
-	if len(input.GetContextRefs()) != 0 {
-		return preparedInput{}, invalidInput("DeepSeek Harness does not support context references")
+	pinnedRefs := input.GetContextRefs()
+	if len(pinnedRefs) > maximumContextDocuments {
+		return preparedInput{}, invalidInput("DeepSeek Harness context exceeds the supported size")
 	}
 	if len(input.GetRequestedCapabilities()) != 0 {
 		return preparedInput{}, invalidInput("DeepSeek Harness does not support requested capabilities")
@@ -174,7 +213,50 @@ func prepareInput(input *agentv1.AgentTaskInput, configuredTimeout time.Duration
 			}
 		}
 	}
-	return preparedInput{goal: input.GetGoal(), maxTokens: maxTokens, timeout: timeout}, nil
+	goal := input.GetGoal()
+	envelope := ""
+	if len(pinnedRefs) != 0 {
+		// The versioned canonical envelope (ADR-0010): the goal and every
+		// resolved document travel as one structured user content block with
+		// explicit untrusted_context semantics. Context bytes can never be
+		// promoted to a trusted prompt by delimiter collision, and the
+		// adapter validates count, order, digests, UTF-8, and bounds before
+		// any child process starts.
+		if len(contexts) != len(pinnedRefs) {
+			return preparedInput{}, invalidInput("resolved context count does not match the pinned references")
+		}
+		untrusted := make([]map[string]string, 0, len(contexts))
+		for index, document := range contexts {
+			ref := pinnedRefs[index]
+			if document.RefType != ref.GetType() || document.ArtifactID != ref.GetId() || document.Digest != ref.GetRevision() {
+				return preparedInput{}, invalidInput("resolved context does not match the pinned reference")
+			}
+			if _, _, ok := reviewArtifactType(document.ArtifactType); !ok {
+				return preparedInput{}, invalidInput("resolved context type is not a supported review artifact")
+			}
+			if len(document.Content) == 0 || len(document.Content) > maximumContextDocumentBytes || !utf8.Valid(document.Content) {
+				return preparedInput{}, invalidInput("resolved context content is invalid")
+			}
+			untrusted = append(untrusted, map[string]string{
+				"artifactType": document.ArtifactType,
+				"digest":       document.Digest,
+				"mediaType":    document.MediaType,
+				"refType":      document.RefType,
+				"title":        document.Title,
+				"bytesBase64":  base64.StdEncoding.EncodeToString(document.Content),
+			})
+		}
+		encoded, err := json.Marshal(map[string]any{
+			"version":            taskEnvelopeVersion,
+			"goal":               goal,
+			"untrusted_contexts": untrusted,
+		})
+		if err != nil {
+			return preparedInput{}, invalidInput("task envelope encoding failed")
+		}
+		envelope = string(encoded)
+	}
+	return preparedInput{goal: goal, envelope: envelope, maxTokens: maxTokens, timeout: timeout}, nil
 }
 
 func invalidInput(reason string) error {

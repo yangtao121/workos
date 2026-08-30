@@ -48,6 +48,9 @@ const (
 	// TaskExecutionServiceAppendTaskArtifactProcedure is the fully-qualified name of the
 	// TaskExecutionService's AppendTaskArtifact RPC.
 	TaskExecutionServiceAppendTaskArtifactProcedure = "/workos.taskexecution.v1.TaskExecutionService/AppendTaskArtifact"
+	// TaskExecutionServiceResolveTaskContextProcedure is the fully-qualified name of the
+	// TaskExecutionService's ResolveTaskContext RPC.
+	TaskExecutionServiceResolveTaskContextProcedure = "/workos.taskexecution.v1.TaskExecutionService/ResolveTaskContext"
 )
 
 // TaskExecutionServiceClient is a client for the workos.taskexecution.v1.TaskExecutionService
@@ -65,6 +68,12 @@ type TaskExecutionServiceClient interface {
 	// all in one transaction. Generic AppendTaskEvent must never be used to
 	// smuggle a provider-built ArtifactCreated reference.
 	AppendTaskArtifact(context.Context, *connect.Request[v1.AppendTaskArtifactRequest]) (*connect.Response[v1.AppendTaskArtifactResponse], error)
+	// ResolveTaskContext materializes the task's immutable context refs into
+	// canonical bounded documents for this single execution. It must be called
+	// at most once per provider start, before any provider side effect; same
+	// lease replays return byte-identical documents, and a lost, terminal, or
+	// foreign lease fails closed.
+	ResolveTaskContext(context.Context, *connect.Request[v1.ResolveTaskContextRequest]) (*connect.Response[v1.ResolveTaskContextResponse], error)
 }
 
 // NewTaskExecutionServiceClient constructs a client for the
@@ -109,6 +118,12 @@ func NewTaskExecutionServiceClient(httpClient connect.HTTPClient, baseURL string
 			connect.WithSchema(taskExecutionServiceMethods.ByName("AppendTaskArtifact")),
 			connect.WithClientOptions(opts...),
 		),
+		resolveTaskContext: connect.NewClient[v1.ResolveTaskContextRequest, v1.ResolveTaskContextResponse](
+			httpClient,
+			baseURL+TaskExecutionServiceResolveTaskContextProcedure,
+			connect.WithSchema(taskExecutionServiceMethods.ByName("ResolveTaskContext")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -119,6 +134,7 @@ type taskExecutionServiceClient struct {
 	appendTaskEvent    *connect.Client[v1.AppendTaskEventRequest, v1.AppendTaskEventResponse]
 	finishTaskLease    *connect.Client[v1.FinishTaskLeaseRequest, v1.FinishTaskLeaseResponse]
 	appendTaskArtifact *connect.Client[v1.AppendTaskArtifactRequest, v1.AppendTaskArtifactResponse]
+	resolveTaskContext *connect.Client[v1.ResolveTaskContextRequest, v1.ResolveTaskContextResponse]
 }
 
 // ClaimTask calls workos.taskexecution.v1.TaskExecutionService.ClaimTask.
@@ -146,6 +162,11 @@ func (c *taskExecutionServiceClient) AppendTaskArtifact(ctx context.Context, req
 	return c.appendTaskArtifact.CallUnary(ctx, req)
 }
 
+// ResolveTaskContext calls workos.taskexecution.v1.TaskExecutionService.ResolveTaskContext.
+func (c *taskExecutionServiceClient) ResolveTaskContext(ctx context.Context, req *connect.Request[v1.ResolveTaskContextRequest]) (*connect.Response[v1.ResolveTaskContextResponse], error) {
+	return c.resolveTaskContext.CallUnary(ctx, req)
+}
+
 // TaskExecutionServiceHandler is an implementation of the
 // workos.taskexecution.v1.TaskExecutionService service.
 type TaskExecutionServiceHandler interface {
@@ -161,6 +182,12 @@ type TaskExecutionServiceHandler interface {
 	// all in one transaction. Generic AppendTaskEvent must never be used to
 	// smuggle a provider-built ArtifactCreated reference.
 	AppendTaskArtifact(context.Context, *connect.Request[v1.AppendTaskArtifactRequest]) (*connect.Response[v1.AppendTaskArtifactResponse], error)
+	// ResolveTaskContext materializes the task's immutable context refs into
+	// canonical bounded documents for this single execution. It must be called
+	// at most once per provider start, before any provider side effect; same
+	// lease replays return byte-identical documents, and a lost, terminal, or
+	// foreign lease fails closed.
+	ResolveTaskContext(context.Context, *connect.Request[v1.ResolveTaskContextRequest]) (*connect.Response[v1.ResolveTaskContextResponse], error)
 }
 
 // NewTaskExecutionServiceHandler builds an HTTP handler from the service implementation. It returns
@@ -200,6 +227,12 @@ func NewTaskExecutionServiceHandler(svc TaskExecutionServiceHandler, opts ...con
 		connect.WithSchema(taskExecutionServiceMethods.ByName("AppendTaskArtifact")),
 		connect.WithHandlerOptions(opts...),
 	)
+	taskExecutionServiceResolveTaskContextHandler := connect.NewUnaryHandler(
+		TaskExecutionServiceResolveTaskContextProcedure,
+		svc.ResolveTaskContext,
+		connect.WithSchema(taskExecutionServiceMethods.ByName("ResolveTaskContext")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/workos.taskexecution.v1.TaskExecutionService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case TaskExecutionServiceClaimTaskProcedure:
@@ -212,6 +245,8 @@ func NewTaskExecutionServiceHandler(svc TaskExecutionServiceHandler, opts ...con
 			taskExecutionServiceFinishTaskLeaseHandler.ServeHTTP(w, r)
 		case TaskExecutionServiceAppendTaskArtifactProcedure:
 			taskExecutionServiceAppendTaskArtifactHandler.ServeHTTP(w, r)
+		case TaskExecutionServiceResolveTaskContextProcedure:
+			taskExecutionServiceResolveTaskContextHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -239,4 +274,8 @@ func (UnimplementedTaskExecutionServiceHandler) FinishTaskLease(context.Context,
 
 func (UnimplementedTaskExecutionServiceHandler) AppendTaskArtifact(context.Context, *connect.Request[v1.AppendTaskArtifactRequest]) (*connect.Response[v1.AppendTaskArtifactResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("workos.taskexecution.v1.TaskExecutionService.AppendTaskArtifact is not implemented"))
+}
+
+func (UnimplementedTaskExecutionServiceHandler) ResolveTaskContext(context.Context, *connect.Request[v1.ResolveTaskContextRequest]) (*connect.Response[v1.ResolveTaskContextResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("workos.taskexecution.v1.TaskExecutionService.ResolveTaskContext is not implemented"))
 }

@@ -105,6 +105,11 @@ func (s *Service) Get(ctx context.Context) (domain.Catalog, error) {
 			// types" or silently drop the list (ADR-0008).
 			return domain.Catalog{}, domain.ErrUnavailable
 		}
+		if !validContextRefCapability(provider.Capabilities.SupportedContextRefTypes) {
+			// Unknown or duplicated context ref types are capability
+			// corruption, never "all types" (ADR-0010).
+			return domain.Catalog{}, domain.ErrUnavailable
+		}
 		provider.DisplayName = boundedText(provider.DisplayName, maximumDisplayNameRunes)
 		if provider.DisplayName == "" {
 			provider.DisplayName = provider.ID
@@ -159,6 +164,31 @@ func validArtifactCapability(enabled bool, types []string) bool {
 			return false
 		}
 		seen[artifactType] = struct{}{}
+	}
+	return true
+}
+
+// validContextRefCapability enforces the exact context ref type contract:
+// empty (unsupported) or a bounded list of known canonical types without
+// duplicates. Values outside the canonical vocabulary fail closed.
+func validContextRefCapability(types []string) bool {
+	if len(types) == 0 {
+		return true
+	}
+	if len(types) > maxSupportedArtifactTypes {
+		return false
+	}
+	seen := make(map[string]struct{}, len(types))
+	for _, contextType := range types {
+		switch contextType {
+		case "artifact.review.v1":
+		default:
+			return false
+		}
+		if _, duplicate := seen[contextType]; duplicate {
+			return false
+		}
+		seen[contextType] = struct{}{}
 	}
 	return true
 }

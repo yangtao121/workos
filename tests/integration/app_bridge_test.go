@@ -748,7 +748,7 @@ func (f *staticInstallations) ResolveActiveInstallation(
 // hits the Agent store before any other dependency.
 func newRouterForOutage(agentRepository *agentpostgres.Repository) *orchestration.TaskRouter {
 	agents := agentapp.New(agentRepository, ids.UUIDv7{})
-	router, err := orchestration.NewTaskRouter(agents, projectOutageProjects(), outagePolicies{}, outageProviders{}, outageCredentials{}, "fake")
+	router, err := orchestration.NewTaskRouter(agents, projectOutageProjects(), outagePolicies{}, outageProviders{}, outageCredentials{}, outageContextVerifier{}, "fake")
 	if err != nil {
 		panic(err)
 	}
@@ -927,7 +927,7 @@ EXECUTE FUNCTION workos_events.raise_outbox_outage()`); err != nil {
 	}
 	agentRepository := agentpostgres.New(pool)
 	agents := agentapp.New(agentRepository, ids.UUIDv7{})
-	router, err := orchestration.NewTaskRouter(agents, projectapp.New(projectpostgres.New(pool), ids.UUIDv7{}), outagePolicies{}, outageProviders{}, outageCredentials{}, "fake")
+	router, err := orchestration.NewTaskRouter(agents, projectapp.New(projectpostgres.New(pool), ids.UUIDv7{}), outagePolicies{}, outageProviders{}, outageCredentials{}, outageContextVerifier{}, "fake")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1316,4 +1316,12 @@ type outageCredentials struct{}
 
 func (outageCredentials) ActiveSnapshot(context.Context, string, string) (agentports.CredentialSnapshotRef, error) {
 	return agentports.CredentialSnapshotRef{}, agentdomain.ErrNotFound
+}
+
+// outageContextVerifier rejects every context ref: these scenarios never
+// admit context-bearing tasks.
+type outageContextVerifier struct{}
+
+func (outageContextVerifier) VerifyTaskContext(context.Context, string, string, []agentports.ContextRef) error {
+	return agentdomain.ErrNotFound
 }

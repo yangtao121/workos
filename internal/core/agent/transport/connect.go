@@ -64,13 +64,28 @@ func (h *Handler) SubmitTask(ctx context.Context, req *connect.Request[agentv1.S
 		// request project artifact outputs in this slice (ADR-0008).
 		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("global tasks cannot request project artifact outputs"))
 	}
+	// Context refs: grammar and set discipline are validated here before any
+	// provider resolution or existence read (ADR-0010). Existence, ownership,
+	// project binding, and digest are verified by the router through the
+	// neutral Artifact port; global tasks never accept project artifact
+	// context.
+	contextRefs := make([]ports.ContextRef, 0, len(input.GetContextRefs()))
+	for _, ref := range input.GetContextRefs() {
+		contextRefs = append(contextRefs, ports.ContextRef{Type: ref.GetType(), ID: ref.GetId(), Revision: ref.GetRevision()})
+	}
+	if err := domain.ValidateContextRefs(toDomainContextRefs(contextRefs)); err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, err)
+	}
+	if global && len(contextRefs) > 0 {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("global tasks cannot reference project artifact context"))
+	}
 	payload, err := protojson.Marshal(input)
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, domain.ErrInvalid)
 	}
 	task, err := h.submitter.Submit(ctx, application.SubmitInput{
 		OwnerUserID: id.UserID, IdempotencyKey: req.Msg.GetIdempotencyKey(), ProjectID: projectID,
-		Payload: payload, OutputArtifactTypes: outputTypes,
+		Payload: payload, OutputArtifactTypes: outputTypes, ContextRefs: contextRefs,
 	})
 	if err != nil {
 		return nil, mapError(err)
@@ -186,6 +201,14 @@ func (h *Handler) WatchTaskEvents(ctx context.Context, req *connect.Request[agen
 		case <-ticker.C:
 		}
 	}
+}
+
+func toDomainContextRefs(refs []ports.ContextRef) []domain.ContextRef {
+	out := make([]domain.ContextRef, 0, len(refs))
+	for _, ref := range refs {
+		out = append(out, domain.ContextRef{Type: ref.Type, ID: ref.ID, Revision: ref.Revision})
+	}
+	return out
 }
 
 func taskToProto(task domain.Task) *agentv1.AgentTask {

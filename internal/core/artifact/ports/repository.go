@@ -111,4 +111,10 @@ type Repository interface {
 	// coordinator's transaction; the caller validates the lease-derived
 	// owner/project/task binding.
 	ReviewArtifactByID(ctx context.Context, tx dbtx.Tx, artifactID string) (domain.ReviewArtifact, error)
+	// ReviewArtifactContentByID reads one review artifact's metadata and
+	// exact canonical content bytes inside the coordinator's transaction,
+	// revalidating the stored fact and recomputing the digest from the
+	// stored bytes. The caller validates the lease-derived owner/project
+	// binding and the pinned digest (ADR-0010).
+	ReviewArtifactContentByID(ctx context.Context, tx dbtx.Tx, artifactID string) (domain.ReviewArtifact, domain.NormalizedReviewContent, error)
 }

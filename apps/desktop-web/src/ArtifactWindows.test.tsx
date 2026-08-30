@@ -218,6 +218,7 @@ describe("Artifact Center", () => {
         projectId="project-a"
         workosClients={clientFixture({ listArtifacts: lateForProjectA })}
         onOpenArtifact={() => {}}
+        onUseAsContext={() => {}}
       />,
     );
     // Switching projects remounts the center with a new key; the in-flight
@@ -232,6 +233,7 @@ describe("Artifact Center", () => {
           ),
         })}
         onOpenArtifact={() => {}}
+        onUseAsContext={() => {}}
       />,
     );
     await waitFor(() => {
@@ -251,6 +253,7 @@ describe("Artifact Center", () => {
           ),
         })}
         onOpenArtifact={() => {}}
+        onUseAsContext={() => {}}
       />,
     );
     expect(await screen.findByText("Artifact list could not be loaded.")).toBeTruthy();
@@ -336,6 +339,70 @@ describe("Timeline artifact events", () => {
       />,
     );
     expect(await screen.findByText("Artifact unavailable.")).toBeTruthy();
+  });
+
+  it("pins a context chip and submits the exact id+digest ref", async () => {
+    const artifact = reviewArtifact("artifact-1");
+    const submitted = {
+      $typeName: "workos.agent.v1.AgentTask",
+      id: "task-ctx",
+      ownerUserId: "local-user",
+      state: AgentTaskState.COMPLETED,
+      providerId: "fake",
+    };
+    async function* emptyStream() {}
+    const submitTask = vi.fn(() => Promise.resolve({ task: submitted }));
+    const workosClients = clientFixture({
+      listArtifacts: vi.fn(() =>
+        Promise.resolve({ artifacts: [artifact], page: { nextPageToken: "" } }),
+      ),
+    });
+    workosClients.agentTasks = {
+      submitTask,
+      watchTaskEvents: vi.fn(() => emptyStream()),
+      getTask: vi.fn(() => Promise.resolve({ task: submitted })),
+    } as never;
+    render(<Desktop workosClients={workosClients} />);
+
+    await userEvent.click(await screen.findByRole("button", { name: /Artifact/ }));
+    await userEvent.click(await screen.findByRole("button", { name: "Use as Agent context" }));
+    expect(screen.getByTestId("context-chip")).toBeTruthy();
+    await userEvent.type(screen.getByRole("textbox", { name: "Agent goal" }), "review this");
+    await userEvent.click(screen.getByRole("button", { name: "Run task" }));
+    await waitFor(() => {
+      expect(submitTask).toHaveBeenCalled();
+    });
+    const calls = submitTask.mock.calls as unknown as Array<
+      [{ input: { contextRefs: Array<{ type: string; id: string; revision: string }> } }]
+    >;
+    const request = calls[0]?.[0];
+    expect(request).toBeTruthy();
+    const refs = request?.input.contextRefs ?? [];
+    expect(refs).toHaveLength(1);
+    const ref = refs[0] as { type: string; id: string; revision: string };
+    expect(ref.type).toBe("artifact.review.v1");
+    expect(ref.id).toBe("artifact-1");
+    expect(ref.revision).toBe(`sha256:${"a".repeat(64)}`);
+    // The chips are consumed after a successful submit.
+    await waitFor(() => {
+      expect(screen.queryByTestId("context-chip")).toBeNull();
+    });
+  });
+
+  it("caps pinned context at four with an accessible hint", async () => {
+    const artifacts = [1, 2, 3, 4, 5].map((index) => reviewArtifact(`artifact-${String(index)}`));
+    const workosClients = clientFixture({
+      listArtifacts: vi.fn(() => Promise.resolve({ artifacts, page: { nextPageToken: "" } })),
+    });
+    render(<Desktop workosClients={workosClients} />);
+
+    await userEvent.click(await screen.findByRole("button", { name: /Artifact/ }));
+    const pins = await screen.findAllByRole("button", { name: "Use as Agent context" });
+    for (const pin of pins) {
+      await userEvent.click(pin);
+    }
+    expect(screen.getAllByTestId("context-chip")).toHaveLength(4);
+    expect(screen.getByTestId("context-hint").textContent).toContain("At most 4");
   });
 
   it("does not paint a late task event after the active Project switches", async () => {

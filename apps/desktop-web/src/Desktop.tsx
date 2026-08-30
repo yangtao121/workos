@@ -43,6 +43,17 @@ const ACTIVE_PROJECT_STORAGE_KEY = "workos.activeProjectId";
 // permanent side panel (docs/structure.md 11.5).
 type AgentView = "tasks" | "approvals" | "usage";
 
+// One pinned Agent context chip. The digest is kept in memory for the exact
+// submit request; the chip label itself shows only the title and type.
+interface ContextChip {
+  id: string;
+  digest: string;
+  title: string;
+  artifactType: string;
+}
+
+const MAX_CONTEXT_CHIPS = 4;
+
 const AGENT_VIEWS: Array<[AgentView, string]> = [
   ["tasks", "Tasks"],
   ["approvals", "Approvals"],
@@ -89,6 +100,11 @@ export function Desktop({
   });
   const [windows, dispatch] = useReducer(windowReducer, initialWindowState);
   const [agentView, setAgentView] = useState<AgentView>("tasks");
+  // Pinned Agent context chips (ADR-0010): title + artifact type only. The
+  // digest and id travel in the submit request — never into a DOM data
+  // attribute, URL, storage, or the iframe bridge.
+  const [contextChips, setContextChips] = useState<ContextChip[]>([]);
+  const [contextHint, setContextHint] = useState<string>();
   // Live app-surface sessions, mirrored from the window state so the unmount
   // cleanup never reads a stale closure of `windows`. Best-effort closes are
   // idempotent server-side, so a rare duplicate call is harmless; the ref is
@@ -117,6 +133,12 @@ export function Desktop({
       ? selectionFromProject(activeProject)
       : { kind: "global" };
 
+  // A project switch invalidates the pinned context set: stale chips from
+  // another project can never ride into a new project's composer.
+  useEffect(() => {
+    setContextChips([]);
+    setContextHint(undefined);
+  }, [activeProjectId]);
   useEffect(() => {
     if (!activeProjectId) return;
     try {
@@ -571,6 +593,33 @@ export function Desktop({
     }
   }
 
+  // useAsContext pins one artifact of the active project as Agent context.
+  // Duplicate selection is idempotent; the set is capped at four with a
+  // fixed, accessible hint; a project switch clears the whole set.
+  function useAsContext(artifact: {
+    id: string;
+    digest?: string | undefined;
+    title: string;
+    type: string;
+  }) {
+    setContextHint(undefined);
+    if (!artifact.digest) return;
+    if (contextChips.some((chip) => chip.id === artifact.id)) return;
+    if (contextChips.length >= MAX_CONTEXT_CHIPS) {
+      setContextHint("At most 4 artifacts can be pinned as Agent context.");
+      return;
+    }
+    setContextChips((current) => [
+      ...current,
+      {
+        id: artifact.id,
+        digest: artifact.digest as string,
+        title: artifact.title,
+        artifactType: artifact.type,
+      },
+    ]);
+  }
+
   async function submitTask(event: SyntheticEvent<HTMLFormElement>) {
     event.preventDefault();
     const formElement = event.currentTarget;
@@ -598,7 +647,11 @@ export function Desktop({
             targetScope: { scope: { case: "projectId", value: taskProjectId } },
             role: "general",
             goal,
-            contextRefs: [],
+            contextRefs: contextChips.map((chip) => ({
+              type: "artifact.review.v1",
+              id: chip.id,
+              revision: chip.digest,
+            })),
             requestedCapabilities: [],
             outputArtifactTypes,
             parentTaskId: "",
@@ -610,6 +663,10 @@ export function Desktop({
       if (!isLive() || !response.task) return;
       setTask(response.task);
       formElement.reset();
+      // Submitted chips are consumed: the request carried their exact
+      // id+digest pairs.
+      setContextChips([]);
+      setContextHint(undefined);
       for await (const item of workosClients.agentTasks.watchTaskEvents(
         {
           taskId: response.task.id,
@@ -788,6 +845,8 @@ export function Desktop({
                   key={activeProject.id}
                   projectId={activeProject.id}
                   workosClients={workosClients}
+                  selectedContextIds={new Set(contextChips.map((chip) => chip.id))}
+                  onUseAsContext={useAsContext}
                   onOpenArtifact={(artifact) => {
                     openArtifactViewer(artifact.id, artifact.projectId);
                   }}
@@ -800,6 +859,17 @@ export function Desktop({
                 artifactId={windowState.artifact.artifactId}
                 projectId={windowState.artifact.projectId}
                 workosClients={workosClients}
+                contextPinned={contextChips.some(
+                  (chip) => chip.id === windowState.artifact?.artifactId,
+                )}
+                onUseAsContext={(artifact) => {
+                  useAsContext({
+                    id: artifact.id,
+                    digest: artifact.digest,
+                    title: artifact.title,
+                    type: artifact.type,
+                  });
+                }}
               />
             ) : windowState.kind === "device-center" ? (
               deviceAuth ? (
@@ -850,6 +920,37 @@ export function Desktop({
                         placeholder="Ask the current project agent…"
                         disabled={!activeProjectId}
                       />
+                      {contextChips.length > 0 ? (
+                        <ul className="context-chips" aria-label="Pinned Agent context">
+                          {contextChips.map((chip) => (
+                            <li key={chip.id} className="context-chip" data-testid="context-chip">
+                              <span>{chip.title}</span>
+                              <span className="context-chip-type">
+                                {chip.artifactType === "document.markdown.v1"
+                                  ? "Markdown"
+                                  : "Unified diff"}
+                              </span>
+                              <button
+                                type="button"
+                                aria-label={`Remove ${chip.title} from Agent context`}
+                                onClick={() => {
+                                  setContextChips((current) =>
+                                    current.filter((entry) => entry.id !== chip.id),
+                                  );
+                                  setContextHint(undefined);
+                                }}
+                              >
+                                ✕
+                              </button>
+                            </li>
+                          ))}
+                        </ul>
+                      ) : null}
+                      {contextHint ? (
+                        <p role="status" className="context-hint" data-testid="context-hint">
+                          {contextHint}
+                        </p>
+                      ) : null}
                       <div className="artifact-request" aria-label="Requested artifact outputs">
                         <label>
                           <input type="checkbox" name="artifact-markdown" /> Markdown document

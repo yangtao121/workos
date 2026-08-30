@@ -321,6 +321,7 @@ function provider(
       maxOutputTokens: 0n,
       maxRuntimeSeconds: 0n,
       requiresTaskCredentialLease: false,
+      supportedContextRefTypes: [],
       ...enabled,
     },
   };

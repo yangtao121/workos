@@ -17,6 +17,7 @@ import (
 	"github.com/yangtao121/workos/gen/go/workos/taskexecution/v1/taskexecutionv1connect"
 	"github.com/yangtao121/workos/internal/core/agent/application"
 	"github.com/yangtao121/workos/internal/core/agent/domain"
+	"github.com/yangtao121/workos/internal/core/orchestration"
 )
 
 // MaxExecutionRequestBytes bounds every private TaskExecutionService request
@@ -36,22 +37,31 @@ type TaskArtifactMaterializer interface {
 	MaterializeTaskArtifact(ctx context.Context, leaseID, workerID, outputKey, title, artifactType string, content []byte) (*artifactv1.Artifact, *agentv1.AgentEvent, error)
 }
 
+// TaskContextResolver is the orchestration-provided lease-bound context
+// materialization contract (ADR-0010). The handler defines the narrow
+// contract it needs; the composition layer implements it by coordinating the
+// Agent and Artifact modules inside one transaction.
+type TaskContextResolver interface {
+	Resolve(ctx context.Context, taskLeaseID, workerID string) ([]orchestration.ResolvedDocument, error)
+}
+
 type ExecutionHandler struct {
 	service     *application.Service
 	materialize TaskArtifactMaterializer
+	contexts    TaskContextResolver
 }
 
-func NewExecution(service *application.Service, materializer TaskArtifactMaterializer) *ExecutionHandler {
-	return &ExecutionHandler{service: service, materialize: materializer}
+func NewExecution(service *application.Service, materializer TaskArtifactMaterializer, contexts TaskContextResolver) *ExecutionHandler {
+	return &ExecutionHandler{service: service, materialize: materializer, contexts: contexts}
 }
 
 // NewExecutionConnectHandler is the single construction path for the private
 // TaskExecution service. Its decompressed request budget is enforced by
 // Connect before protobuf/JSON decoding and therefore before a materializer
 // can observe an oversized or compressed-bomb payload.
-func NewExecutionConnectHandler(service *application.Service, materializer TaskArtifactMaterializer) (string, http.Handler) {
+func NewExecutionConnectHandler(service *application.Service, materializer TaskArtifactMaterializer, contexts TaskContextResolver) (string, http.Handler) {
 	return taskexecutionv1connect.NewTaskExecutionServiceHandler(
-		NewExecution(service, materializer),
+		NewExecution(service, materializer, contexts),
 		connect.WithReadMaxBytes(MaxExecutionRequestBytes),
 	)
 }
@@ -160,6 +170,35 @@ func (h *ExecutionHandler) AppendTaskArtifact(ctx context.Context, req *connect.
 		return nil, mapError(err)
 	}
 	return connect.NewResponse(&taskv1.AppendTaskArtifactResponse{Artifact: artifact, Event: event}), nil
+}
+
+// ResolveTaskContext materializes the task's immutable context refs under
+// the active lease. The request carries only the lease and worker
+// identifiers — every identity fact is derived server-side (ADR-0010).
+func (h *ExecutionHandler) ResolveTaskContext(ctx context.Context, req *connect.Request[taskv1.ResolveTaskContextRequest]) (*connect.Response[taskv1.ResolveTaskContextResponse], error) {
+	if req.Msg.GetLeaseId() == "" || req.Msg.GetWorkerId() == "" {
+		return nil, connect.NewError(connect.CodeInvalidArgument, domain.ErrInvalid)
+	}
+	if h.contexts == nil {
+		return nil, connect.NewError(connect.CodeInternal, errors.New("task context resolution is not configured"))
+	}
+	documents, err := h.contexts.Resolve(ctx, req.Msg.GetLeaseId(), req.Msg.GetWorkerId())
+	if err != nil {
+		return nil, mapError(err)
+	}
+	response := &taskv1.ResolveTaskContextResponse{}
+	for _, document := range documents {
+		response.Documents = append(response.Documents, &taskv1.ResolvedTaskContextDocument{
+			RefType:      document.RefType,
+			ArtifactType: document.ArtifactType,
+			ArtifactId:   document.ArtifactID,
+			Digest:       document.Digest,
+			Title:        document.Title,
+			MediaType:    document.MediaType,
+			Content:      document.Content,
+		})
+	}
+	return connect.NewResponse(response), nil
 }
 
 func classifyEvent(event *agentv1.AgentEvent) (string, domain.State, string, string) {

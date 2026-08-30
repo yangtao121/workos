@@ -97,6 +97,10 @@ func (p *Provider) Describe() *harnessv1.HarnessProviderInfo {
 			// types through the private materialization protocol (ADR-0008).
 			StructuredArtifacts:    true,
 			SupportedArtifactTypes: supportedArtifactTypes,
+			// Proven by the materialized-context gate: the fake adapter
+			// consumes review artifacts as resolved bounded context and
+			// receipts them deterministically (ADR-0010).
+			SupportedContextRefTypes: []string{"artifact.review.v1"},
 		},
 	}
 }
@@ -111,12 +115,22 @@ func (p *Provider) Run(ctx context.Context, execution ports.Execution) error {
 	if err := validateArtifactRequests(requested); err != nil {
 		return err
 	}
+	// Context proof (ADR-0010): the deterministic receipt proves the exact
+	// count, order, and digests of the resolved documents without echoing
+	// their content bytes into the event stream.
+	contextProof, err := contextReceipt(input.GetContextRefs(), execution.Context)
+	if err != nil {
+		return err
+	}
 	runID := p.ids.New()
 	events := []*agentv1.AgentEvent{
 		{Event: &agentv1.AgentEvent_RunStarted{RunStarted: &agentv1.RunStarted{RunId: runID, ProviderId: "fake"}}},
 		{Event: &agentv1.AgentEvent_AssistantDelta{AssistantDelta: &agentv1.AssistantDelta{Text: "Fake harness received: "}}},
-		{Event: &agentv1.AgentEvent_AssistantMessage{AssistantMessage: &agentv1.AssistantMessage{Text: strings.TrimSpace(input.GetGoal())}}},
 	}
+	if contextProof != "" {
+		events = append(events, &agentv1.AgentEvent{Event: &agentv1.AgentEvent_AssistantDelta{AssistantDelta: &agentv1.AssistantDelta{Text: contextProof}}})
+	}
+	events = append(events, &agentv1.AgentEvent{Event: &agentv1.AgentEvent_AssistantMessage{AssistantMessage: &agentv1.AssistantMessage{Text: strings.TrimSpace(input.GetGoal())}}})
 	for _, event := range events {
 		select {
 		case <-ctx.Done():
@@ -158,6 +172,31 @@ func (p *Provider) Run(ctx context.Context, execution ports.Execution) error {
 		}
 	}
 	return nil
+}
+
+// contextReceipt verifies the resolved documents against the task's pinned
+// refs and returns a deterministic bounded proof of count/order/digest.
+func contextReceipt(refs []*agentv1.ContextRef, documents []ports.ContextDocument) (string, error) {
+	if len(refs) == 0 {
+		if len(documents) != 0 {
+			return "", ports.NewRunError(ports.ErrorKindProtocol, "context documents without pinned refs", false, nil)
+		}
+		return "", nil
+	}
+	if len(documents) != len(refs) {
+		return "", ports.NewRunError(ports.ErrorKindProtocol, "resolved context count does not match the pinned refs", false, nil)
+	}
+	var proof strings.Builder
+	proof.WriteString("resolved context: ")
+	for index, document := range documents {
+		ref := refs[index]
+		if document.RefType != ref.GetType() || document.ArtifactID != ref.GetId() || document.Digest != ref.GetRevision() ||
+			len(document.Content) == 0 || len(document.Content) > 512*1024 {
+			return "", ports.NewRunError(ports.ErrorKindProtocol, "resolved context does not match the pinned ref", false, nil)
+		}
+		proof.WriteString(fmt.Sprintf("[%s %s %s] ", document.ArtifactType, document.RefType, document.Digest))
+	}
+	return strings.TrimSpace(proof.String()), nil
 }
 
 // validateArtifactRequests enforces the adapter-side artifact contract: only

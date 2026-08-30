@@ -90,6 +90,50 @@ type ProviderCapabilities struct {
 	// owner has an active credential; the exact snapshot is resolved and
 	// persisted before any queue, outbox, reservation, or waiting approval.
 	RequiresTaskCredentialLease bool
+	// SupportedContextRefTypes is the exact canonical context reference type
+	// list the provider demonstrably consumes as resolved context (ADR-0010).
+	// Core refuses fresh tasks whose context refs fall outside the resolved
+	// provider's exact list before queueing; unknown list values are catalog
+	// corruption, never "all types".
+	SupportedContextRefTypes []string
+}
+
+// SupportsContextRefTypes reports whether the provider demonstrably consumes
+// every requested canonical context ref type. Empty requests need nothing.
+func (c ProviderCapabilities) SupportsContextRefTypes(requested []string) bool {
+	if len(requested) == 0 {
+		return true
+	}
+	if len(c.SupportedContextRefTypes) == 0 {
+		return false
+	}
+	supported := make(map[string]struct{}, len(c.SupportedContextRefTypes))
+	for _, contextType := range c.SupportedContextRefTypes {
+		supported[contextType] = struct{}{}
+	}
+	for _, contextType := range requested {
+		if _, ok := supported[contextType]; !ok {
+			return false
+		}
+	}
+	return true
+}
+
+// ContextRef is the neutral immutable context reference a fresh task
+// carries. It mirrors the canonical wire triple.
+type ContextRef struct {
+	Type     string
+	ID       string
+	Revision string
+}
+
+// ArtifactContextVerifier is the submission-time pre-enqueue check that
+// every context ref points at an existing immutable artifact of this owner
+// and project with exactly the pinned digest (ADR-0010). Unknown, foreign,
+// wrong-project, or digest-mismatched facts fail closed without leaking
+// which one; implementations return domain-grade errors only.
+type ArtifactContextVerifier interface {
+	VerifyTaskContext(ctx context.Context, ownerUserID, projectID string, refs []ContextRef) error
 }
 
 // CredentialSnapshotRef is the opaque credential identity resolved for a

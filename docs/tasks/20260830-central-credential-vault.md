@@ -48,7 +48,7 @@
 ## 执行记录
 
 - 基线（批次开始，本地 main `aa560bb`）：工作树干净（仅新增本批次 prompt 文件）；`make
-  bootstrap`、`make check` 全绿。
+bootstrap`、`make check` 全绿。
 - 门禁（全部真实执行，记录于仓库日志与本次执行）：
   - `make check`：PASS（gofmt/go vet/go test、buf format/lint/vet、TS 架构/eslint/prettier、
     desktop build、README 状态一致性）。
@@ -61,7 +61,7 @@
   - `make test-lan-pairing`：PASS（production-auth TLS + pairing 全流程）。
   - `make test-e2e`：PASS（7 passed / 6 skipped——skipped 为既有 opt-in 用例）。
   - `go test -race ./internal/core/credential/... ./internal/core/agent/... ./internal/core/artifact/...
-    ./internal/core/orchestration/... ./internal/core/harnesscatalog/... ./internal/harness/...`：全绿。
+./internal/core/orchestration/... ./internal/core/harnesscatalog/... ./internal/harness/...`：全绿。
   - `buf lint`：通过；`buf breaking api/proto --against ".git#branch=main,ref=aa560bb"`：无破坏。
   - secret 扫描：staged diff 无 PEM/bearer/provider key/raw context；`tmp/` 下临时证书与
     master key 未入库（.gitignore 覆盖）。

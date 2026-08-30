@@ -72,11 +72,11 @@ func TestConfigAndDescribe(t *testing.T) {
 
 func TestInputPolicyAndBudgets(t *testing.T) {
 	base := &agentv1.AgentTaskInput{Goal: "hello"}
-	if prepared, err := prepareInput(base, DefaultTimeout); err != nil || prepared.maxTokens != DefaultMaxTokens || prepared.timeout != DefaultTimeout {
+	if prepared, err := prepareInput(base, nil, DefaultTimeout); err != nil || prepared.maxTokens != DefaultMaxTokens || prepared.timeout != DefaultTimeout {
 		t.Fatalf("unexpected defaults: %#v, %v", prepared, err)
 	}
 	custom := &agentv1.AgentTaskInput{Goal: "hello", Role: "general", Budget: &agentv1.AgentBudget{MaxTokens: 1234, MaxRuntimeSeconds: 7}}
-	if prepared, err := prepareInput(custom, DefaultTimeout); err != nil || prepared.maxTokens != 1234 || prepared.timeout != 7*time.Second {
+	if prepared, err := prepareInput(custom, nil, DefaultTimeout); err != nil || prepared.maxTokens != 1234 || prepared.timeout != 7*time.Second {
 		t.Fatalf("unexpected budget mapping: %#v, %v", prepared, err)
 	}
 
@@ -93,7 +93,7 @@ func TestInputPolicyAndBudgets(t *testing.T) {
 	}
 	for name, input := range tests {
 		t.Run(name, func(t *testing.T) {
-			_, err := prepareInput(input, DefaultTimeout)
+			_, err := prepareInput(input, nil, DefaultTimeout)
 			var runErr *ports.RunError
 			if !errors.As(err, &runErr) || runErr.Kind != ports.ErrorKindInvalidInput || runErr.Retryable {
 				t.Fatalf("expected permanent invalid-input error, got %v", err)

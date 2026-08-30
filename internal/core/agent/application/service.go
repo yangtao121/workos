@@ -30,6 +30,13 @@ type SubmitInput struct {
 	// (ADR-0009). The client can never submit one; nil means the provider
 	// needs no credential.
 	Credential *domain.CredentialSnapshot
+	// ContextRefs are the grammar-checked immutable context references the
+	// transport extracted from the wire input. The task router verifies the
+	// resolved provider's exact context support and each ref's existence,
+	// ownership, project binding, and digest before any task row exists
+	// (ADR-0010); the payload itself stays the wire input and keeps only the
+	// triples, in request order.
+	ContextRefs []ports.ContextRef
 }
 
 // AppSubmitInput is one bridge-submitted project task. The caller (the

@@ -23,6 +23,30 @@ import (
 // exact canonical content bytes from the same row snapshot. The stored row is
 // revalidated on every read and the content digest is recomputed from the
 // stored bytes: immutable rows cannot drift, so any drift is ErrCorrupt.
+// ReviewArtifactContentByID implements the transaction-scoped port: one
+// stored review artifact's metadata and canonical content from one row
+// snapshot inside the coordinator's transaction, revalidated and
+// digest-recomputed exactly like the owner-scoped read.
+func (r *Repository) ReviewArtifactContentByID(ctx context.Context, tx dbtx.Tx, artifactID string) (domain.ReviewArtifact, domain.NormalizedReviewContent, error) {
+	stored, err := r.queries.WithTx(tx).GetReviewArtifactContentByID(ctx, artifactID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return domain.ReviewArtifact{}, domain.NormalizedReviewContent{}, domain.ErrNotFound
+	}
+	if err != nil {
+		return domain.ReviewArtifact{}, domain.NormalizedReviewContent{}, artifactError("query review artifact content by id", err)
+	}
+	artifact := reviewFactFromModel(stored)
+	if !domain.ValidStoredReviewFact(artifact) {
+		return domain.ReviewArtifact{}, domain.NormalizedReviewContent{}, domain.ErrCorrupt
+	}
+	normalized, err := domain.NormalizeReviewContent(artifact.Type, stored.Content)
+	if err != nil || !bytes.Equal(normalized.Content, stored.Content) || normalized.Digest != artifact.Digest ||
+		normalized.ByteCount != artifact.ByteCount || normalized.LineCount != artifact.LineCount {
+		return domain.ReviewArtifact{}, domain.NormalizedReviewContent{}, domain.ErrCorrupt
+	}
+	return artifact, normalized, nil
+}
+
 func (r *Repository) GetReviewContent(ctx context.Context, ownerUserID, artifactID string) (domain.ReviewArtifact, domain.NormalizedReviewContent, error) {
 	stored, err := r.queries.GetReviewArtifactContent(ctx, artifactdb.GetReviewArtifactContentParams{
 		OwnerUserID: ownerUserID, ArtifactID: artifactID,
