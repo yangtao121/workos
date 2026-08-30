@@ -1,13 +1,14 @@
 # Task: Project Agent Markdown / Diff Artifact Review 纵向切片
 
-- 状态：done（实现后合并就绪审核已补强持久化/回放/UI 边界；全量门禁重新通过）
+- 状态：done（实现后合并就绪审核已补强持久化/回放/UI 边界；全量门禁重新通过；已合并到本地
+  `main`，未 push）
 - Owner/Agent：feat/project-artifact-review 实现智能体
 - 进程/模块：workos-core（Artifact、Agent、orchestration、harnesscatalog）、harness-host
   （Fake adapter、worker、broker）、workos-gateway（回归）、desktop-web（Agent Center、
   Artifact Center、Artifact Viewer）
 - 依赖：LAN 设备配对与持久 Gateway 会话（已合入 main）；不依赖 Reliability/Podman 证据。
-- 提交：实现提交 `46dbe9c`；审核修复见分支 `feat/project-artifact-review` 的
-  `fix: harden project artifact review invariants`。用户后续明确授权审核通过后合并本地 `main`；不 push。
+- 提交：实现 `46dbe9c`；审核修复 `5ea3468`；本地 `main` merge `4cafce6`。用户后续明确授权
+  审核通过后合并；未 push。
 
 ## 目标与范围
 
