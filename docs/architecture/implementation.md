@@ -7,7 +7,7 @@
 
 | 进程             | 当前所有权                                                                                                            | 不拥有                            |
 | ---------------- | --------------------------------------------------------------------------------------------------------------------- | --------------------------------- |
-| workos-gateway   | TLS、identity、capability、公开 API、静态 Shell                                                                       | Project/Harness 状态              |
+| workos-gateway   | TLS、identity/device auth、capability、公开 API、静态 Shell                                                           | Project/Harness 状态              |
 | workos-core      | Project、Task Router、Event Backbone、Harness Catalog facade、binding orchestration、App Registry、Artifact contracts | Provider 进程、credential、cgroup |
 | harness-host     | Broker、Provider Adapter、run execution                                                                               | Project 数据、公开 API            |
 | runtime-host     | Workload、runner、Surface                                                                                             | Incident 决策、业务数据           |
@@ -290,6 +290,60 @@ Desktop: sandboxed iframe（仅 allow-scripts）内渲染
   与逐请求 Core revalidation 兜底，unload RPC 不保证必达）；窗口关闭调用 `CloseSurface`。
   `bridge_token` 最初保持空；bridge 注入由后续的 Project-scoped App Agent Bridge 切片引入
   （见下节），iframe 隔离属性不变。App window 与 Agent Center window 并存渲染。
+
+## Gateway 设备配对与会话（ADR-0007）
+
+生产设备身份属于 Gateway（migration `020`，`workos_gateway` schema，owner: workos-gateway）：
+`device_credentials`（server-minted UUIDv7、canonical P-256 SPKI + SHA-256 digest、revision、
+revocation）、`pairing_tickets`（domain-separated secret hash、public origin + TLS leaf
+fingerprint snapshot、bounded attempts、每 owner 至多一个 pending）、`device_auth_challenges`
+（32-byte nonce、显式 proof version/purpose、单次消费、bounded attempts）、`device_sessions`
+（token hash、absolute expiry、
+每 device 至多一个 active session）、`device_revocation_requests`（owner-scoped idempotency +
+完整公开 Device 投影的不可变首次结果快照）。Gateway 不查询 Core/Runtime/Reliability 表；
+`workos_core.devices`（migration
+`001`）保持 foundation 开发脚手架原状，永不被 backfill 为生产凭据。
+
+配对与会话链路固定为：
+
+```text
+operator workosctl device pair → Gateway admin Unix socket（0600，仅此一服务，TCP 确定性 404）
+  → RotatePairingTicket：owner 锁内 revoke 旧 outstanding（pending/claimed）+ 插入新 ticket
+  → QR URL：https://<origin>/pair#v=1&t=<43-char base64url>&fp=sha256:<leaf DER digest>
+  → 浏览器：WebCrypto 生成 non-extractable P-256 private key（IndexedDB only），回读后做 key-pair 自检
+  → BeginPairing（claim pending ticket，绑定 key digest/name/class，返回 version 1 + pairing purpose）
+  → CompletePairing：版本化 proof transcript（domain separator + purpose byte +
+    uint32-BE-length 字段：origin/purpose/challenge/nonce/device/key digest/ticket/fingerprint）
+    上 64-byte raw r||s ECDSA-P-256/SHA-256 签名，单事务创建 credential + session
+  → __Host-workos_session（HttpOnly/Secure/SameSite=Strict/Path=/，库内仅存 sha256）
+  → 每个受保护请求：Cookie hash → active session + active credential + owner（无进程内缓存）
+  → Director 剥除客户端 identity/Cookie/bridge token 后注入 session 派生的 owner/device
+```
+
+安全边界（ transport 用 `errors.Is` 映射固定错误矩阵，不读数据库文本）：Host 精确匹配
+configured public origin；unsafe 方法要求 exact `Origin` 且拒绝 cross-site Fetch-Metadata
+（SameSite=Strict 只是纵深防御）；auth 端点解码前 16 KiB、admin socket 4 KiB；auth 端点同时叠加
+不信任 `X-Forwarded-For` 的 bounded RemoteAddr limiter（map 有容量与淘汰上限）和 process-global
+limiter（地址轮换不能绕过），对象级 attempt 预算持久化于 DB；store 故障是净化 503（绝不伪装
+401，也不回退 configured identity），而 stored UUID/state/result/timestamp/canonical SPKI/hash 损坏在
+adapter 出口 fail closed 为净化 500；
+unknown/revoked/wrong-proof 响应外形一致，不产生 device 存在性 oracle（unknown 设备的 session
+challenge 是持久化 decoy）；撤销用 owner-scoped idempotency + expected revision，同 key 不同
+请求稳定 `Aborted`；revoke + 全部 session + 快照同事务，重放严格保留 id/name/class/revision/
+created/last-authenticated/revoked 时间并复核 request binding；撤销的 `revoked_at` 用数据库事务时间。
+ticket snapshot 在证书/origin 变更后立即失效；已配对设备的 session proof 不钉死旧 fingerprint。
+`last_seen_at` 由有界门槛 guarded UPDATE 维护，不参与授权、不延长 absolute expiry。测试向量
+Go/TS 共用同一 SHA-256（`internal/gateway/auth/domain/proof.go` 与
+`clients/device-auth/src/transcript.ts`）；wire challenge 明确携带 version 1 + purpose，浏览器在签名前
+核对，并在每次 IndexedDB 载入后用 digest + 实际 sign/verify 证明 non-extractable private key 与 SPKI
+属于同一 key pair。admin socket 只位于当前用户所有、group/other 不可写的 runtime directory；仅
+`ECONNREFUSED` 且 inode 未变可回收，运行期失败使整个 Gateway 非零退出。验收门禁
+`make test-lan-pairing`：临时 TLS leaf +
+admin socket ticket + 真实 Chromium（pair → HttpOnly Cookie → Core 动态身份业务写 →
+`/surfaces/` 同一 gate 匿名 401 → gateway restart 会话存活 → 清 Cookie 后 IndexedDB proof
+重认证 → 撤销后 fail closed），临时证书/profile 目录 exit 清理。App/Surface/Bridge 的隔离
+（opaque origin iframe、CSP `connect-src 'none'`、bridge token 边界）不变；App 无权访问
+DeviceService、Cookie 或 IndexedDB 凭据。
 
 ## Project-scoped App Agent Bridge
 

@@ -22,7 +22,9 @@
     "react": "19.2.8",
     "react-dom": "19.2.8",
     "@workos/app-host": "workspace:*",
-    "@workos/surface-sdk": "workspace:*"
+    "@workos/surface-sdk": "workspace:*",
+    "@workos/device-auth": "workspace:*",
+    "qrcode": "1.5.4"
   },
   "devDependencies": {
     "@playwright/test": "1.62.1",
@@ -36,6 +38,7 @@
     "jsdom": "26.1.0",
     "typescript": "5.9.2",
     "vite": "8.2.2",
-    "vitest": "4.1.11"
+    "vitest": "4.1.11",
+    "@types/qrcode": "1.5.5"
   }
 }

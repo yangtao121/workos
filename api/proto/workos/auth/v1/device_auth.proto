@@ -1,0 +1,210 @@
+syntax = "proto3";
+
+package workos.auth.v1;
+
+import "google/protobuf/timestamp.proto";
+import "workos/surface/v1/surface.proto";
+
+option go_package = "github.com/yangtao121/workos/gen/go/workos/auth/v1;authv1";
+
+// Gateway-owned device authentication contracts. All device credentials,
+// pairing state, and sessions are facts of the Access Gateway process; no
+// other process may query or enforce them. The raw pairing secret and the
+// raw session token never appear in any message: the secret travels only in
+// the pairing URL fragment displayed by the operator, and the session token
+// travels only in the __Host- session cookie Set-Cookie header.
+
+// PairingTicket describes one short-lived, single-purpose pairing
+// invitation after RotatePairingTicket. The response carries the URL the
+// operator turns into a QR code; the ticket secret is embedded only in the
+// URL fragment, never in query or path. tls_fingerprint is the SHA-256 of
+// the DER leaf certificate this Gateway actually serves
+// ("sha256:<64 lowercase hex>"), so the pairing device can confirm the
+// server before presenting the secret.
+message PairingTicket {
+  string ticket_id = 1;
+  string pairing_url = 2;
+  string public_origin = 3;
+  string tls_fingerprint = 4;
+  google.protobuf.Timestamp expires_at = 5;
+}
+
+// DeviceInfo is the sanitized public view of one paired device credential.
+// It deliberately omits the public key, its thumbprint, session IDs/hashes,
+// ticket facts, network facts, and the owner ID.
+message DeviceInfo {
+  string device_id = 1;
+  string name = 2;
+  workos.surface.v1.DeviceClass device_class = 3;
+  int64 revision = 4;
+  google.protobuf.Timestamp created_at = 5;
+  google.protobuf.Timestamp last_authenticated_at = 6;
+  google.protobuf.Timestamp revoked_at = 7;
+  // is_current marks the device the authenticated session belongs to; it is
+  // derived from the session on the server, never from the request.
+  bool is_current = 8;
+}
+
+// RotatePairingTicket mints a new pairing invitation and invalidates every
+// previously outstanding ticket of the owner. It is an explicit rotation:
+// callers repeat the call when a response is lost instead of expecting a
+// replay of the raw secret.
+message RotatePairingTicketRequest {}
+message RotatePairingTicketResponse {
+  PairingTicket ticket = 1;
+}
+
+message BeginPairingRequest {
+  // pairing_secret is the raw base64url ticket secret read from the pairing
+  // URL fragment. The gateway only ever matches its hash.
+  string pairing_secret = 1;
+  // public_key_spki is the canonical P-256 SubjectPublicKeyInfo DER of the
+  // browser profile key that will prove possession (max 256 bytes).
+  bytes public_key_spki = 2;
+  // device_name is 1..80 Unicode code points after trimming; control
+  // characters are rejected.
+  string device_name = 3;
+  workos.surface.v1.DeviceClass device_class = 4;
+}
+
+// DeviceProofPurpose is explicit on every challenge so a client never signs
+// a transcript under an inferred flow. UNSPECIFIED is always rejected.
+enum DeviceProofPurpose {
+  DEVICE_PROOF_PURPOSE_UNSPECIFIED = 0;
+  DEVICE_PROOF_PURPOSE_PAIRING = 1;
+  DEVICE_PROOF_PURPOSE_SESSION = 2;
+}
+
+message Challenge {
+  string challenge_id = 1;
+  // nonce is exactly 32 random bytes the proof transcript binds.
+  bytes nonce = 2;
+  google.protobuf.Timestamp expires_at = 3;
+  // proof_version pins the binary transcript contract. Version 1 is the
+  // only supported value; clients reject unknown values before signing.
+  uint32 proof_version = 4;
+  DeviceProofPurpose purpose = 5;
+}
+
+message BeginPairingResponse {
+  // device_id is the server-minted UUIDv7 of the pending device credential.
+  // The credential only becomes durable when CompletePairing succeeds.
+  string device_id = 1;
+  Challenge challenge = 2;
+  // ticket_id echoes the ticket the challenge is bound to, so the client
+  // can sign the exact transcript the server verifies — the pairing
+  // transcript binds the ticket id and the pinned TLS fingerprint.
+  string ticket_id = 3;
+}
+
+message CompletePairingRequest {
+  string device_id = 1;
+  string challenge_id = 2;
+  // signature is the fixed-width 64-byte raw r||s ECDSA P-256 signature
+  // with SHA-256 over the versioned pairing proof transcript. DER encodings
+  // are rejected.
+  bytes signature = 3;
+  // public_key_spki is the same canonical P-256 SPKI DER submitted with
+  // BeginPairing; the server re-verifies its digest against the pending
+  // binding before verifying the signature.
+  bytes public_key_spki = 4;
+}
+
+message CompletePairingResponse {
+  DeviceInfo device = 1;
+  // session_expires_at mirrors the absolute expiry of the session created
+  // with this response. The session token itself is only delivered in the
+  // __Host- session cookie of this response.
+  google.protobuf.Timestamp session_expires_at = 2;
+}
+
+message BeginDeviceSessionRequest {
+  string device_id = 1;
+}
+
+message BeginDeviceSessionResponse {
+  Challenge challenge = 1;
+}
+
+message CompleteDeviceSessionRequest {
+  string device_id = 1;
+  string challenge_id = 2;
+  bytes signature = 3;
+}
+
+message CompleteDeviceSessionResponse {
+  DeviceInfo device = 1;
+  google.protobuf.Timestamp session_expires_at = 2;
+}
+
+message GetCurrentDeviceRequest {}
+message GetCurrentDeviceResponse {
+  DeviceInfo device = 1;
+  google.protobuf.Timestamp session_expires_at = 2;
+}
+
+message ListDevicesRequest {
+  int32 page_size = 1;
+  // page_token is the canonical lowercase UUIDv7 cursor from the previous
+  // response; an empty value starts from the newest device.
+  string page_token = 2;
+}
+message ListDevicesResponse {
+  repeated DeviceInfo devices = 1;
+  string next_page_token = 2;
+}
+
+message RevokeDeviceRequest {
+  string device_id = 1;
+  // idempotency_key scopes the revocation to one logical request; the same
+  // owner-scoped key replays the exact first result snapshot.
+  string idempotency_key = 2;
+  // expected_revision rejects stale UI state with Aborted instead of
+  // silently revoking a differently-revised credential.
+  int64 expected_revision = 3;
+}
+message RevokeDeviceResponse {
+  DeviceInfo device = 1;
+  // replayed reports that this response is the persisted snapshot of an
+  // earlier identical request rather than a fresh revocation.
+  bool replayed = 2;
+}
+
+message LogoutRequest {}
+message LogoutResponse {
+  google.protobuf.Timestamp session_revoked_at = 1;
+}
+
+// DevicePairingService is the public, unauthenticated-but-TLS-only edge for
+// pairing a new browser profile and proving an existing device credential
+// to obtain a session cookie. It is served by the Gateway itself and never
+// proxied to Core/Runtime/Reliability.
+service DevicePairingService {
+  rpc BeginPairing(BeginPairingRequest) returns (BeginPairingResponse);
+  rpc CompletePairing(CompletePairingRequest) returns (CompletePairingResponse);
+  rpc BeginDeviceSession(BeginDeviceSessionRequest) returns (BeginDeviceSessionResponse);
+  rpc CompleteDeviceSession(CompleteDeviceSessionRequest) returns (CompleteDeviceSessionResponse);
+}
+
+// DeviceService is the public, session-authenticated device management edge
+// of the Gateway. Owner scope always derives from the validated session;
+// no request field can widen it.
+service DeviceService {
+  rpc GetCurrentDevice(GetCurrentDeviceRequest) returns (GetCurrentDeviceResponse);
+  rpc ListDevices(ListDevicesRequest) returns (ListDevicesResponse);
+  rpc RotatePairingTicket(RotatePairingTicketRequest) returns (RotatePairingTicketResponse);
+  rpc RevokeDevice(RevokeDeviceRequest) returns (RevokeDeviceResponse);
+  rpc Logout(LogoutRequest) returns (LogoutResponse);
+}
+
+// DeviceAuthAdminService is the private operator bootstrap edge. It is only
+// ever registered on the Gateway-owned admin Unix domain socket — never on
+// the public TCP listener, never in the reverse-proxy allowlist.
+message DeviceAuthAdminServiceRotatePairingTicketRequest {}
+message DeviceAuthAdminServiceRotatePairingTicketResponse {
+  PairingTicket ticket = 1;
+}
+
+service DeviceAuthAdminService {
+  rpc RotatePairingTicket(DeviceAuthAdminServiceRotatePairingTicketRequest) returns (DeviceAuthAdminServiceRotatePairingTicketResponse);
+}

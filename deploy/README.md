@@ -1,6 +1,8 @@
 # Deployment boundary
 
-The foundation is intentionally safe only on a single Linux host. Device enrollment and a production session authenticator are not implemented yet, so do not expose the Gateway to a LAN or the public Internet. Development identity bypass is rejected automatically on non-loopback addresses.
+The foundation is intentionally safe only on a single Linux host. With `WORKOS_DEV_AUTH_BYPASS=true` (loopback only, fixed configured identity, no cookies) it must never leave the machine; bypass on a non-loopback bind is rejected at startup.
+
+Production device authentication (ADR-0007) lets a trusted LAN client pair over an operator-shown QR and sign proofs with a browser profile key. It has real boundaries: the operator provides a trusted TLS certificate (no ACME, no automatic issuance), the browser still relies on its platform trust store (the pairing fingerprint is a human check, not native pinning), and mDNS discovery, mobile-native key storage, and public-internet exposure remain out of scope.
 
 ## Containers
 
@@ -51,6 +53,18 @@ docker compose -f compose.yaml -f deploy/compose.observability.yaml up -d
 ```
 
 The included collector logs spans through its debug exporter. Replace that exporter in a deployment-specific file; services only need `OTEL_EXPORTER_OTLP_ENDPOINT`.
+
+## Production LAN pairing (ADR-0007)
+
+With the development bypass off, the Gateway requires its own TLS 1.3 termination, a canonical `https://` public origin, a canonical UUIDv7 owner, a reachable PostgreSQL, and a Gateway-owned admin Unix socket. `WORKOS_DEVICE_ID` is not used in this mode; device identities are minted by the Gateway.
+
+1. Obtain an operator-managed certificate for the public origin (the repository ships no CA and no ACME client). Install the leaf key pair, e.g. `/etc/workos/tls/leaf.crt` + `leaf.key`, readable only by the service user.
+2. Configure `deploy/systemd/workos-gateway.env.example` in production mode: `WORKOS_DEV_AUTH_BYPASS=false`, `WORKOS_HTTP_ADDRESS=:443`, `WORKOS_HTTP_TLS_CERT_FILE`/`WORKOS_HTTP_TLS_KEY_FILE`, `WORKOS_AUTH_PUBLIC_ORIGIN=https://workos.example`, `WORKOS_AUTH_ADMIN_SOCKET=/run/workos/gateway-admin.sock`.
+3. Give the gateway process the runtime directory via the reviewed drop-in in `deploy/systemd/workos-gateway.socket.example` (`RuntimeDirectory=workos`), then restart the unit. The gateway requires that directory to be owned by its process user and not group/other-writable; it removes an existing socket only after `ECONNREFUSED` plus an unchanged-inode recheck, and chmods the new socket to `0600`. Timeout, permission denial, or a replacement race fails startup without deleting the endpoint. A runtime admin-listener failure shuts down the public listener and exits nonzero so `Restart=on-failure` can restore the whole gateway.
+4. Pair the first device as the operator: `sudo -u workos workosctl device pair` prints the one-time pairing URL (ticket secret only in the URL fragment), the public origin, the SHA-256 of the served leaf certificate, and a terminal QR. Every rotation invalidates all previously displayed QR codes; losing the response just means running the command again.
+5. The user opens the URL on the LAN device, confirms the certificate fingerprint, names the device, and the browser proves possession of a non-extractable WebCrypto P-256 key. IndexedDB is read back and the private/SPKI binding is self-verified before the ticket claim. The Gateway sets the `__Host-workos_session` cookie (HttpOnly/Secure/SameSite=Strict) and every public request resolves it before any upstream call.
+
+Device management lives in the Desktop Device Center (list/revoke/logout, "Pair another device" QR). The QR is cleared on replacement, window close, or its server expiry; retries of one revocation revision reuse the same idempotency key. Revocation takes effect on the revoked device's next request. Losing the browser profile (IndexedDB key) requires pairing again; there is no account recovery.
 
 ## systemd skeleton
 

@@ -1,0 +1,27 @@
+{
+  "name": "@workos/device-auth",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "license": "Apache-2.0",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "check": "tsc --noEmit && vitest run src",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run src"
+  },
+  "dependencies": {
+    "@connectrpc/connect": "2.1.2",
+    "@workos/protocol": "workspace:*",
+    "@connectrpc/connect-web": "2.1.2",
+    "@bufbuild/protobuf": "2.14.0",
+    "qrcode": "1.5.4"
+  },
+  "devDependencies": {
+    "typescript": "5.9.2",
+    "vitest": "4.1.11",
+    "@types/qrcode": "1.5.5"
+  }
+}

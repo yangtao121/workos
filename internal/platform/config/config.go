@@ -7,10 +7,13 @@ import (
 	"net"
 	"net/url"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
+	"github.com/google/uuid"
 	"gopkg.in/yaml.v3"
 )
 
@@ -82,7 +85,20 @@ type URLs struct {
 type Auth struct {
 	DevBypass bool   `yaml:"dev_bypass"`
 	OwnerID   string `yaml:"owner_id"`
-	DeviceID  string `yaml:"device_id"`
+	// DeviceID is the development-mode fixed device identity only.
+	// Production device identities are minted by the Gateway device auth
+	// service; this value is never used when DevBypass is false.
+	DeviceID string `yaml:"device_id"`
+	// PublicOrigin is the canonical https origin users and devices trust
+	// (production mode): scheme https, no userinfo, no path/query/fragment.
+	PublicOrigin string `yaml:"public_origin"`
+	// AdminSocketPath is the Gateway-owned admin Unix socket used by
+	// workosctl device pair. Production requires it; dev compose leaves it
+	// empty (dev bypass needs no operator pairing).
+	AdminSocketPath string        `yaml:"admin_socket_path"`
+	TicketTTL       time.Duration `yaml:"pairing_ticket_ttl"`
+	ChallengeTTL    time.Duration `yaml:"proof_challenge_ttl"`
+	SessionTTL      time.Duration `yaml:"session_ttl"`
 }
 
 type Agent struct {
@@ -189,12 +205,32 @@ func Load() (Config, error) {
 	setString(&cfg.DatabaseURL, "WORKOS_DATABASE_URL")
 	setString(&cfg.HTTP.Address, "WORKOS_HTTP_ADDRESS")
 	setString(&cfg.HTTP.StaticDir, "WORKOS_STATIC_DIR")
+	setString(&cfg.HTTP.TLSCertFile, "WORKOS_HTTP_TLS_CERT_FILE")
+	setString(&cfg.HTTP.TLSKeyFile, "WORKOS_HTTP_TLS_KEY_FILE")
 	setString(&cfg.Services.Core, "WORKOS_CORE_URL")
 	setString(&cfg.Services.Harness, "WORKOS_HARNESS_URL")
 	setString(&cfg.Services.Runtime, "WORKOS_RUNTIME_URL")
 	setString(&cfg.Harness.CoreURL, "WORKOS_CORE_URL")
 	setString(&cfg.Auth.OwnerID, "WORKOS_OWNER_ID")
 	setString(&cfg.Auth.DeviceID, "WORKOS_DEVICE_ID")
+	setString(&cfg.Auth.PublicOrigin, "WORKOS_AUTH_PUBLIC_ORIGIN")
+	setString(&cfg.Auth.AdminSocketPath, "WORKOS_AUTH_ADMIN_SOCKET")
+	for _, bound := range []struct {
+		key string
+		dst *time.Duration
+	}{
+		{"WORKOS_AUTH_PAIRING_TICKET_TTL", &cfg.Auth.TicketTTL},
+		{"WORKOS_AUTH_PROOF_CHALLENGE_TTL", &cfg.Auth.ChallengeTTL},
+		{"WORKOS_AUTH_SESSION_TTL", &cfg.Auth.SessionTTL},
+	} {
+		if raw, ok := os.LookupEnv(bound.key); ok {
+			value, err := time.ParseDuration(raw)
+			if err != nil || value <= 0 {
+				return Config{}, fmt.Errorf("%s must be a positive duration", bound.key)
+			}
+			*bound.dst = value
+		}
+	}
 	setString(&cfg.Agent.DefaultProvider, "WORKOS_AGENT_DEFAULT_PROVIDER")
 	setString(&cfg.Agent.ProjectBinding.InstancePolicy, "WORKOS_PROJECT_HARNESS_INSTANCE_POLICY")
 	setString(&cfg.Agent.ProjectBinding.ProfileID, "WORKOS_PROJECT_HARNESS_PROFILE_ID")
@@ -298,14 +334,18 @@ func (c Config) ValidateGateway() error {
 	if err != nil {
 		return fmt.Errorf("invalid HTTP address: %w", err)
 	}
-	if c.Auth.DevBypass && !isLoopback(host) {
-		return errors.New("development auth bypass requires a loopback bind address")
+	if c.Auth.DevBypass {
+		if !isLoopback(host) {
+			return errors.New("development auth bypass requires a loopback bind address")
+		}
+		if c.Auth.OwnerID == "" || c.Auth.DeviceID == "" {
+			return errors.New("owner and device identity are required")
+		}
+	} else if err := c.validateGatewayProduction(); err != nil {
+		return err
 	}
 	if !isLoopback(host) && (c.HTTP.TLSCertFile == "" || c.HTTP.TLSKeyFile == "") {
 		return errors.New("non-loopback gateway requires TLS certificate and key")
-	}
-	if c.Auth.OwnerID == "" || c.Auth.DeviceID == "" {
-		return errors.New("owner and device identity are required")
 	}
 	if !validUpstreamURL(c.Services.Core) {
 		return errors.New("invalid core URL: must be an absolute http(s) URL with a host")
@@ -317,6 +357,111 @@ func (c Config) ValidateGateway() error {
 		return errors.New("invalid reliability URL: must be an absolute http(s) URL with a host")
 	}
 	return nil
+}
+
+// Device auth TTL bounds (ADR-0007). Kept as local grammar constants so the
+// shared platform config never imports a process-internal package.
+const (
+	authTicketMinTTL    = time.Minute
+	authTicketMaxTTL    = 15 * time.Minute
+	authChallengeMinTTL = 30 * time.Second
+	authChallengeMaxTTL = 5 * time.Minute
+	authSessionMinTTL   = 5 * time.Minute
+	authSessionMaxTTL   = 30 * 24 * time.Hour
+)
+
+// validateGatewayProduction enforces the production device-auth deployment
+// grammar: the Gateway terminates its own TLS on a canonical public origin,
+// has a canonical UUIDv7 owner, a reachable PostgreSQL URL, and a secure
+// admin Unix socket path.
+func (c Config) validateGatewayProduction() error {
+	if c.HTTP.TLSCertFile == "" || c.HTTP.TLSKeyFile == "" {
+		return errors.New("production auth requires the gateway to terminate TLS (certificate and key)")
+	}
+	origin, err := url.Parse(c.Auth.PublicOrigin)
+	if err != nil || origin.Scheme != "https" || origin.Host == "" ||
+		origin.User != nil || origin.Path != "" || origin.RawQuery != "" || origin.Fragment != "" ||
+		origin.Opaque != "" {
+		return errors.New("public origin must be a canonical https origin without userinfo, path, query, or fragment")
+	}
+	if !canonicalUUIDv7(c.Auth.OwnerID) {
+		return errors.New("owner id must be a canonical lowercase UUIDv7 in production")
+	}
+	lower := strings.ToLower(c.DatabaseURL)
+	if !strings.HasPrefix(lower, "postgres://") && !strings.HasPrefix(lower, "postgresql://") {
+		return errors.New("production auth requires a postgres database URL")
+	}
+	if err := ValidateAdminSocketPath(c.Auth.AdminSocketPath); err != nil {
+		return err
+	}
+	if c.Auth.TicketTTL != 0 && (c.Auth.TicketTTL < authTicketMinTTL || c.Auth.TicketTTL > authTicketMaxTTL) {
+		return errors.New("pairing ticket TTL must be between 1m and 15m")
+	}
+	if c.Auth.ChallengeTTL != 0 && (c.Auth.ChallengeTTL < authChallengeMinTTL || c.Auth.ChallengeTTL > authChallengeMaxTTL) {
+		return errors.New("proof challenge TTL must be between 30s and 5m")
+	}
+	if c.Auth.SessionTTL != 0 && (c.Auth.SessionTTL < authSessionMinTTL || c.Auth.SessionTTL > authSessionMaxTTL) {
+		return errors.New("device session TTL must be between 5m and 30d")
+	}
+	return nil
+}
+
+// ValidateAdminSocketPath accepts only a plain, absolute path inside a real,
+// process-owned directory that group/other users cannot write. The socket
+// itself must either not exist or be an owner-matched stale Unix socket.
+// Symlinks, uncontrolled runtime directories, regular files, directories,
+// and relative paths fail startup instead of being cleaned up.
+func ValidateAdminSocketPath(path string) error {
+	if path == "" {
+		return errors.New("production auth requires the admin Unix socket path")
+	}
+	if !filepath.IsAbs(path) || filepath.Clean(path) != path {
+		return errors.New("admin socket path must be an absolute, cleaned path")
+	}
+	parent := filepath.Dir(path)
+	if !filepath.IsAbs(parent) || filepath.Clean(parent) != parent {
+		return errors.New("admin socket parent must be an absolute, cleaned directory")
+	}
+	info, err := os.Lstat(parent)
+	if err != nil {
+		return fmt.Errorf("admin socket parent is unavailable: %w", err)
+	}
+	if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
+		return errors.New("admin socket parent must be a real directory, not a symlink")
+	}
+	stat, ok := info.Sys().(*syscall.Stat_t)
+	if !ok || stat.Uid != uint32(os.Geteuid()) {
+		return errors.New("admin socket parent must be owned by the gateway process user")
+	}
+	if info.Mode().Perm()&0o022 != 0 {
+		return errors.New("admin socket parent must not be writable by group or others")
+	}
+	resolved, err := filepath.EvalSymlinks(parent)
+	if err != nil || filepath.Clean(resolved) != parent {
+		return errors.New("admin socket parent must not contain symlinks")
+	}
+	if stat, err := os.Lstat(path); err == nil {
+		if stat.Mode()&os.ModeSocket == 0 {
+			return errors.New("admin socket path exists and is not a Unix socket")
+		}
+		owner, ok := stat.Sys().(*syscall.Stat_t)
+		if !ok || owner.Uid != uint32(os.Geteuid()) {
+			return errors.New("existing admin socket must be owned by the gateway process user")
+		}
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("admin socket path is unavailable: %w", err)
+	}
+	return nil
+}
+
+// canonicalUUIDv7 reports whether value is the canonical lowercase UUIDv7
+// form.
+func canonicalUUIDv7(value string) bool {
+	parsed, err := uuid.Parse(value)
+	if err != nil {
+		return false
+	}
+	return parsed.String() == value && parsed.Version() == 7
 }
 
 // ValidateRuntimeHost checks Runtime-owned routing and surface session

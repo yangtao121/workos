@@ -2,6 +2,7 @@ package config
 
 import (
 	"os"
+	"path/filepath"
 	"testing"
 	"time"
 )
@@ -173,6 +174,7 @@ func TestValidateRuntimeHost(t *testing.T) {
 func TestValidateGatewayRequiresRuntimeURL(t *testing.T) {
 	cfg := defaults()
 	cfg.HTTP.Address = "127.0.0.1:8080"
+	cfg.Auth.DevBypass = true
 	cfg.Services.Core = "http://127.0.0.1:8081"
 	cfg.Services.Runtime = "::not-a-url::"
 	if err := cfg.ValidateGateway(); err == nil {
@@ -200,11 +202,13 @@ func TestValidateGatewayRejectsUnusableUpstreams(t *testing.T) {
 	}
 	for _, target := range invalid {
 		cfg := defaults()
+		cfg.Auth.DevBypass = true
 		cfg.Services.Runtime = target
 		if err := cfg.ValidateGateway(); err == nil {
 			t.Errorf("invalid runtime URL %q accepted", target)
 		}
 		cfg = defaults()
+		cfg.Auth.DevBypass = true
 		cfg.Services.Core = target
 		if err := cfg.ValidateGateway(); err == nil {
 			t.Errorf("invalid core URL %q accepted", target)
@@ -212,13 +216,145 @@ func TestValidateGatewayRejectsUnusableUpstreams(t *testing.T) {
 	}
 	for _, target := range []string{"http://127.0.0.1:8083", "https://runtime.internal:8443"} {
 		cfg := defaults()
+		cfg.Auth.DevBypass = true
 		cfg.Services.Runtime = target
 		if err := cfg.ValidateGateway(); err != nil {
 			t.Errorf("valid runtime URL %q rejected: %v", target, err)
 		}
 	}
-	if err := defaults().ValidateGateway(); err != nil {
-		t.Fatalf("safe defaults rejected: %v", err)
+	cfg := defaults()
+	cfg.Auth.DevBypass = true
+	if err := cfg.ValidateGateway(); err != nil {
+		t.Fatalf("safe dev-bypass defaults rejected: %v", err)
+	}
+}
+
+// TestValidateGatewayProductionRequiresFullAuthDeployment pins the fail-
+// closed production grammar: without the development bypass the Gateway
+// must terminate TLS, publish a canonical https origin, own a canonical
+// UUIDv7 owner, a postgres URL, and a secure admin socket path — no matter
+// whether the bind address is loopback.
+func TestValidateGatewayProductionRequiresFullAuthDeployment(t *testing.T) {
+	t.Parallel()
+	socketRoot := t.TempDir()
+	if err := os.Mkdir(filepath.Join(socketRoot, "run"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	base := func() Config {
+		cfg := defaults()
+		cfg.HTTP.Address = "127.0.0.1:8443"
+		cfg.HTTP.TLSCertFile = "/tmp/gateway.crt"
+		cfg.HTTP.TLSKeyFile = "/tmp/gateway.key"
+		cfg.Auth.PublicOrigin = "https://workos.example"
+		cfg.Auth.AdminSocketPath = filepath.Join(socketRoot, "run", "gateway-admin.sock")
+		return cfg
+	}
+	// The default owner is a canonical UUIDv7; the production base passes.
+	cfg := base()
+	if err := cfg.ValidateGateway(); err != nil {
+		t.Fatalf("valid production config rejected: %v", err)
+	}
+	for name, mutate := range map[string]func(Config) Config{
+		"missing TLS certificate": func(c Config) Config { c.HTTP.TLSCertFile = ""; return c },
+		"missing TLS key":         func(c Config) Config { c.HTTP.TLSKeyFile = ""; return c },
+		"empty origin":            func(c Config) Config { c.Auth.PublicOrigin = ""; return c },
+		"http origin":             func(c Config) Config { c.Auth.PublicOrigin = "http://workos.example"; return c },
+		"origin with path":        func(c Config) Config { c.Auth.PublicOrigin = "https://workos.example/app/"; return c },
+		"origin with query":       func(c Config) Config { c.Auth.PublicOrigin = "https://workos.example/?x=1"; return c },
+		"origin with fragment":    func(c Config) Config { c.Auth.PublicOrigin = "https://workos.example/#frag"; return c },
+		"origin with userinfo":    func(c Config) Config { c.Auth.PublicOrigin = "https://user@workos.example"; return c },
+		"owner not uuid":          func(c Config) Config { c.Auth.OwnerID = "owner-1"; return c },
+		"owner not v7":            func(c Config) Config { c.Auth.OwnerID = "0198d7ea-2110-6c42-b659-c5e4d73bc337"; return c },
+		"owner not canonical":     func(c Config) Config { c.Auth.OwnerID = "0198D7EA-2110-7C42-B659-C5E4D73BC337"; return c },
+		"database not postgres":   func(c Config) Config { c.DatabaseURL = "mysql://db"; return c },
+		"admin socket relative":   func(c Config) Config { c.Auth.AdminSocketPath = "run/workos.sock"; return c },
+		"admin socket dirty":      func(c Config) Config { c.Auth.AdminSocketPath = "/run/workos/../workos/gateway-admin.sock"; return c },
+		"oversized ticket ttl":    func(c Config) Config { c.Auth.TicketTTL = 16 * time.Minute; return c },
+		"undersized ticket ttl":   func(c Config) Config { c.Auth.TicketTTL = 30 * time.Second; return c },
+		"oversized challenge ttl": func(c Config) Config { c.Auth.ChallengeTTL = 6 * time.Minute; return c },
+		"oversized session ttl":   func(c Config) Config { c.Auth.SessionTTL = 31 * 24 * time.Hour; return c },
+	} {
+		if err := mutate(base()).ValidateGateway(); err == nil {
+			t.Errorf("invalid production config accepted: %s", name)
+		}
+	}
+	// The dev bypass stays loopback-only even alongside production values.
+	cfg = base()
+	cfg.Auth.DevBypass = true
+	cfg.HTTP.Address = "0.0.0.0:8080"
+	if err := cfg.ValidateGateway(); err == nil {
+		t.Fatal("dev bypass accepted a non-loopback bind")
+	}
+}
+
+// TestValidateGatewayAdminSocketRejectsUnsafePaths pins the socket path
+// grammar against the real filesystem: missing parents, symlinked parents,
+// regular files, and directories all fail startup.
+func TestValidateGatewayAdminSocketRejectsUnsafePaths(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	base := func() Config {
+		cfg := defaults()
+		cfg.HTTP.TLSCertFile = "/tmp/gateway.crt"
+		cfg.HTTP.TLSKeyFile = "/tmp/gateway.key"
+		cfg.Auth.PublicOrigin = "https://workos.example"
+		return cfg
+	}
+	cfg := base()
+	cfg.Auth.AdminSocketPath = filepath.Join(root, "missing", "gateway-admin.sock")
+	if err := cfg.ValidateGateway(); err == nil {
+		t.Fatal("admin socket under a missing parent accepted")
+	}
+	if err := os.Symlink(root, filepath.Join(root, "link")); err != nil {
+		t.Fatal(err)
+	}
+	cfg = base()
+	cfg.Auth.AdminSocketPath = filepath.Join(root, "link", "gateway-admin.sock")
+	if err := cfg.ValidateGateway(); err == nil {
+		t.Fatal("admin socket through a symlinked parent accepted")
+	}
+	regular := filepath.Join(root, "regular.txt")
+	if err := os.WriteFile(regular, []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg = base()
+	cfg.Auth.AdminSocketPath = regular
+	if err := cfg.ValidateGateway(); err == nil {
+		t.Fatal("admin socket over a regular file accepted")
+	}
+	directory := filepath.Join(root, "dir")
+	if err := os.Mkdir(directory, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	cfg = base()
+	cfg.Auth.AdminSocketPath = directory
+	if err := cfg.ValidateGateway(); err == nil {
+		t.Fatal("admin socket over a directory accepted")
+	}
+	worldWritable := filepath.Join(root, "world-writable")
+	if err := os.Mkdir(worldWritable, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(worldWritable, 0o777); err != nil {
+		t.Fatal(err)
+	}
+	cfg = base()
+	cfg.Auth.AdminSocketPath = filepath.Join(worldWritable, "gateway-admin.sock")
+	if err := cfg.ValidateGateway(); err == nil {
+		t.Fatal("admin socket under a group/world-writable parent accepted")
+	}
+	cfg = base()
+	cfg.Auth.AdminSocketPath = filepath.Join(os.TempDir(), "workos-gateway-admin.sock")
+	if err := cfg.ValidateGateway(); err == nil {
+		t.Fatal("admin socket directly under the shared temporary directory accepted")
+	}
+	if err := os.Mkdir(filepath.Join(root, "run"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	cfg = base()
+	cfg.Auth.AdminSocketPath = filepath.Join(root, "run", "gateway-admin.sock")
+	if err := cfg.ValidateGateway(); err != nil {
+		t.Fatalf("fresh socket path in a real directory rejected: %v", err)
 	}
 }
 
