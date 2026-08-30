@@ -48,6 +48,7 @@ type WorkosRuntimeWorkload struct {
 	UpdatedAt                time.Time       `json:"updated_at"`
 	StartedAt                *time.Time      `json:"started_at"`
 	StoppedAt                *time.Time      `json:"stopped_at"`
+	IdleSince                *time.Time      `json:"idle_since"`
 }
 
 type WorkosRuntimeWorkloadOperation struct {

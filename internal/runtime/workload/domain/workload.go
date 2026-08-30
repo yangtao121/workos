@@ -13,6 +13,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 )
 
 var (
@@ -86,6 +87,10 @@ const (
 	ErrorLimitExhausted ErrorKind = "limit_exhausted"
 	ErrorUnavailable    ErrorKind = "unavailable"
 	ErrorFailed         ErrorKind = "failed"
+	// ErrorPermanent is a deterministic internal failure. It consumes the
+	// operation key and replays ErrFailed; unlike ErrorFailed it is never
+	// re-driven by reconciliation.
+	ErrorPermanent ErrorKind = "permanent"
 )
 
 // HealthVerdict is the bounded health grammar carried in observations.
@@ -113,17 +118,21 @@ const PolicyVersion = "v1"
 // is clamped to min(request, max); a request can never obtain more host
 // resources than these constants allow.
 const (
-	MaxCPUHardCores     = 4.0
-	MaxMemoryHighMB     = int64(1024)
-	MaxMemoryMaxMB      = int64(2048)
-	MaxPidsMax          = int64(512)
-	MaxStartupSeconds   = int64(120)
-	MaxRestartLimit     = int64(8)
-	MinMemoryHighMB     = int64(16)
-	MinMemoryMaxMB      = int64(32)
-	MinPidsMax          = int64(8)
-	MinStartupSeconds   = int64(1)
-	cgroupCPUPeriodUSec = int64(100000)
+	MinCPUHardCores   = 0.1
+	MaxCPUHardCores   = 4.0
+	MaxMemoryHighMB   = int64(1024)
+	MaxMemoryMaxMB    = int64(2048)
+	MaxPidsMax        = int64(512)
+	MaxStartupSeconds = int64(120)
+	MaxRestartLimit   = int64(8)
+	MinMemoryHighMB   = int64(16)
+	MinMemoryMaxMB    = int64(32)
+	MinPidsMax        = int64(8)
+	MinStartupSeconds = int64(1)
+	// CPUPeriodUSec is the fixed cpu.max period used to derive and verify the
+	// effective CPU quota. Both values must be read back from cgroup v2: a
+	// matching quota under a different period is a different hard limit.
+	CPUPeriodUSec       = int64(100000)
 	maxCommandItems     = 16
 	maxCommandArgRunes  = 4096
 	maxWorkloadKeyRunes = 128
@@ -147,7 +156,7 @@ type RequestedPolicy struct {
 // because it never trusts another process's validation (fail closed on
 // garbage instead of clamping unknown shapes).
 func (r RequestedPolicy) Valid() bool {
-	if r.CPUHardCores <= 0 || r.CPUHardCores > MaxCPUHardCores ||
+	if r.CPUHardCores < MinCPUHardCores || r.CPUHardCores > MaxCPUHardCores ||
 		math.IsNaN(r.CPUHardCores) || math.IsInf(r.CPUHardCores, 0) {
 		return false
 	}
@@ -197,7 +206,7 @@ type EffectivePolicy struct {
 // cgroup period; memory values are megabyte-granular by construction.
 func EffectiveFromRequested(request RequestedPolicy) EffectivePolicy {
 	cores := math.Min(request.CPUHardCores, MaxCPUHardCores)
-	quota := int64(math.Round(cores * float64(cgroupCPUPeriodUSec)))
+	quota := int64(math.Round(cores * float64(CPUPeriodUSec)))
 	if quota < 1 {
 		quota = 1
 	}
@@ -251,6 +260,7 @@ type Workload struct {
 	LastExit       string
 	BaselineOOM    uint64
 	BaselinePids   uint64
+	IdleSince      *time.Time
 	LastVerifiedAt *time.Time
 	LeaseOwner     string
 	LeaseExpiresAt *time.Time
@@ -358,6 +368,9 @@ func validUUIDv7(value string) bool {
 // ValidOperationKey enforces the durable operation key grammar: valid UTF-8,
 // no control characters, bounded length.
 func ValidOperationKey(value string) bool {
+	if !utf8.ValidString(value) {
+		return false
+	}
 	count := 0
 	for _, r := range value {
 		if r < 0x20 || r == 0x7f || (r >= 0x80 && r <= 0x9f) {
@@ -377,7 +390,7 @@ func ValidCommand(command []string) bool {
 		return false
 	}
 	for _, argument := range command {
-		if argument == "" || len(argument) > maxCommandArgRunes {
+		if argument == "" || !utf8.ValidString(argument) || utf8.RuneCountInString(argument) > maxCommandArgRunes {
 			return false
 		}
 		for _, r := range argument {
@@ -394,8 +407,13 @@ func ValidCommand(command []string) bool {
 // Anything else — host names, other IPs, paths, schemes — is corrupt.
 func ValidLoopbackEndpoint(value string) bool {
 	host, port, ok := strings.Cut(value, ":")
-	if !ok || host != "127.0.0.1" {
+	if !ok || host != "127.0.0.1" || port == "" || port[0] == '0' {
 		return false
+	}
+	for index := range port {
+		if port[index] < '0' || port[index] > '9' {
+			return false
+		}
 	}
 	number, err := strconv.Atoi(port)
 	if err != nil || number < 1 || number > 65535 {
@@ -457,7 +475,7 @@ func ValidImage(value string) bool {
 	if strings.Contains(reference, "@") {
 		return false
 	}
-	host, path, _ := strings.Cut(reference, "/")
+	host, path, hasPath := strings.Cut(reference, "/")
 	if host == "" || strings.Contains(path, ":") {
 		return false
 	}
@@ -471,14 +489,38 @@ func ValidImage(value string) bool {
 			return false
 		}
 	}
-	if !hasPort {
-		return true
+	if hasPort {
+		if len(port) == 0 || len(port) > 5 {
+			return false
+		}
+		for index := 0; index < len(port); index++ {
+			if port[index] < '0' || port[index] > '9' {
+				return false
+			}
+		}
+		number, err := strconv.ParseUint(port, 10, 16)
+		if err != nil || number == 0 {
+			return false
+		}
 	}
-	if len(port) == 0 || len(port) > 5 {
+	if hasPath {
+		for _, component := range strings.Split(path, "/") {
+			if !validImagePathComponent(component) {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+func validImagePathComponent(component string) bool {
+	if component == "" || component == "." || component == ".." {
 		return false
 	}
-	for index := 0; index < len(port); index++ {
-		if port[index] < '0' || port[index] > '9' {
+	for index := range component {
+		character := component[index]
+		if (character < 'a' || character > 'z') && (character < '0' || character > '9') &&
+			character != '.' && character != '-' && character != '_' {
 			return false
 		}
 	}
@@ -489,7 +531,7 @@ func ValidImage(value string) bool {
 // accepts from the Core resolution. Anything outside it — including command
 // shapes the engine could misread — is invalid input, never executed.
 func ValidDescriptor(appID, appVersion, manifestDigest, image string, command []string, port int64, requested RequestedPolicy) bool {
-	if !validAppID(appID) || len(appVersion) == 0 || len(appVersion) > 32 ||
+	if !validAppID(appID) || !validAppVersion(appVersion) ||
 		len(manifestDigest) != len("sha256:")+64 ||
 		manifestDigest[:len("sha256:")] != "sha256:" {
 		return false
@@ -503,6 +545,59 @@ func ValidDescriptor(appID, appVersion, manifestDigest, image string, command []
 		return false
 	}
 	return ValidImage(image) && ValidCommand(command) && requested.Valid()
+}
+
+// validAppVersion mirrors the registry's canonical SemVer subset without
+// importing another module's domain package. Empty identifiers, numeric
+// leading zeroes, build metadata, and overflow all fail closed.
+func validAppVersion(value string) bool {
+	if value == "" {
+		return false
+	}
+	release, prerelease, hasPrerelease := strings.Cut(value, "-")
+	parts := strings.Split(release, ".")
+	if len(parts) != 3 {
+		return false
+	}
+	for _, part := range parts {
+		if !validVersionNumber(part) {
+			return false
+		}
+	}
+	if !hasPrerelease {
+		return true
+	}
+	if prerelease == "" {
+		return false
+	}
+	for _, identifier := range strings.Split(prerelease, ".") {
+		if identifier == "" {
+			return false
+		}
+		numeric := true
+		for index := range identifier {
+			character := identifier[index]
+			if character < '0' || character > '9' {
+				numeric = false
+			}
+			if (character < '0' || character > '9') && (character < 'a' || character > 'z') &&
+				(character < 'A' || character > 'Z') && character != '-' {
+				return false
+			}
+		}
+		if numeric && !validVersionNumber(identifier) {
+			return false
+		}
+	}
+	return true
+}
+
+func validVersionNumber(value string) bool {
+	if value == "" || len(value) > 1 && value[0] == '0' {
+		return false
+	}
+	_, err := strconv.ParseUint(value, 10, 64)
+	return err == nil
 }
 
 func validAppID(value string) bool {

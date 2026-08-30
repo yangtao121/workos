@@ -216,7 +216,7 @@ type SupervisedWorkloadServiceClient interface {
 	// RestartWorkload deterministically recreates the workload's container with
 	// the exact pinned image/argv/policy and a new generation. The runtime
 	// enforces the persisted restart limit and returns a sanitized
-	// FailedPrecondition once it is exhausted; the decision to stop afterwards
+	// ResourceExhausted once it is exhausted; the decision to stop afterwards
 	// belongs to the caller.
 	RestartWorkload(context.Context, *connect.Request[v1.RestartWorkloadRequest]) (*connect.Response[v1.RestartWorkloadResponse], error)
 	// StopWorkload deterministically stops and removes the workload's container
@@ -288,7 +288,7 @@ type SupervisedWorkloadServiceHandler interface {
 	// RestartWorkload deterministically recreates the workload's container with
 	// the exact pinned image/argv/policy and a new generation. The runtime
 	// enforces the persisted restart limit and returns a sanitized
-	// FailedPrecondition once it is exhausted; the decision to stop afterwards
+	// ResourceExhausted once it is exhausted; the decision to stop afterwards
 	// belongs to the caller.
 	RestartWorkload(context.Context, *connect.Request[v1.RestartWorkloadRequest]) (*connect.Response[v1.RestartWorkloadResponse], error)
 	// StopWorkload deterministically stops and removes the workload's container

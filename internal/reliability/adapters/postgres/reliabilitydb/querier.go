@@ -27,10 +27,18 @@ type Querier interface {
 	// Owner-scoped, project-optional, keyed pagination on (created_at, id). The
 	// caller probes limit+1 rows so a full final page never phantom-pages.
 	ListIncidentsPage(ctx context.Context, arg ListIncidentsPageParams) ([]ListIncidentsPageRow, error)
+	// A healthy replacement generation resolves repaired incidents from the
+	// generation that caused the restart, as well as any earlier generation.
+	ListMitigatedIncidentsForWorkload(ctx context.Context, arg ListMitigatedIncidentsForWorkloadParams) ([]ListMitigatedIncidentsForWorkloadRow, error)
 	ListOpenIncidentsForWorkload(ctx context.Context, arg ListOpenIncidentsForWorkloadParams) ([]ListOpenIncidentsForWorkloadRow, error)
+	// Crash recovery is deliberately not owner-scoped: this is a private
+	// supervisor queue over reliability-owned rows, not an owner-facing list.
+	ListPendingActionIncidents(ctx context.Context, rowLimit int32) ([]ListPendingActionIncidentsRow, error)
 	LoadSupervisorProgress(ctx context.Context, workloadID string) (WorkosReliabilitySupervisorWorkload, error)
 	MarkIncidentResolved(ctx context.Context, arg MarkIncidentResolvedParams) (int64, error)
 	UpdateIncidentOutcome(ctx context.Context, arg UpdateIncidentOutcomeParams) (int64, error)
+	// Only unavailable is retryable. A late/concurrent retry must never erase a
+	// terminal action verdict already made authoritative by the runtime key.
 	UpsertIncidentAction(ctx context.Context, arg UpsertIncidentActionParams) error
 	UpsertSupervisorCheckpoint(ctx context.Context, arg UpsertSupervisorCheckpointParams) error
 	UpsertSupervisorProgress(ctx context.Context, arg UpsertSupervisorProgressParams) error

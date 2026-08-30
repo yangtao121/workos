@@ -467,7 +467,10 @@ func (s *Service) proxyTargetForSession(ctx context.Context, session domain.Surf
 	if err != nil {
 		return ports.ProxyTarget{}, mapResolverError(err)
 	}
-	if resolved.ManifestDigest != session.Descriptor.ManifestDigest {
+	if resolved.Kind != ports.LaunchKindWebServiceContainer ||
+		resolved.AppID != session.Descriptor.AppID ||
+		resolved.Version != session.Descriptor.Version ||
+		resolved.ManifestDigest != session.Descriptor.ManifestDigest {
 		return ports.ProxyTarget{}, domain.ErrNotFound
 	}
 	if s.workloads == nil {

@@ -30,9 +30,8 @@ type ClaimWorkloadLeaseParams struct {
 	Now            *time.Time  `json:"now"`
 }
 
-// Bookkeeping only: claiming the reconcile lease deliberately does NOT
-// touch updated_at, which anchors the idle TTL — a merely observed workload
-// is not an actively used one.
+// Bookkeeping only: claiming the reconcile lease deliberately does NOT touch
+// lifecycle timestamps or idle_since — observation is not active use.
 func (q *Queries) ClaimWorkloadLease(ctx context.Context, arg ClaimWorkloadLeaseParams) (int64, error) {
 	result, err := q.db.Exec(ctx, claimWorkloadLease,
 		arg.LeaseOwner,
@@ -40,6 +39,27 @@ func (q *Queries) ClaimWorkloadLease(ctx context.Context, arg ClaimWorkloadLease
 		arg.ID,
 		arg.Now,
 	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const clearWorkloadIdle = `-- name: ClearWorkloadIdle :execrows
+UPDATE workos_runtime.workloads SET idle_since = NULL
+WHERE id = $1 AND state = 'running'
+  AND generation = $2
+  AND idle_since IS NOT NULL
+`
+
+type ClearWorkloadIdleParams struct {
+	ID         string `json:"id"`
+	Generation int64  `json:"generation"`
+}
+
+// The same generation guard applies when active use clears the clock.
+func (q *Queries) ClearWorkloadIdle(ctx context.Context, arg ClearWorkloadIdleParams) (int64, error) {
+	result, err := q.db.Exec(ctx, clearWorkloadIdle, arg.ID, arg.Generation)
 	if err != nil {
 		return 0, err
 	}
@@ -55,7 +75,7 @@ SELECT id, owner_user_id, project_id, app_instance_id, app_id, app_version,
        cgroup_path, health_verdict, last_exit_category,
        baseline_memory_events_oom, baseline_pids_events_peak,
        last_verified_at, lease_owner, lease_expires_at,
-       created_at, updated_at, started_at, stopped_at
+       created_at, updated_at, started_at, stopped_at, idle_since
 FROM workos_runtime.workloads
 WHERE owner_user_id = $1
   AND app_instance_id = $2
@@ -109,6 +129,44 @@ func (q *Queries) GetActiveWorkloadByInstance(ctx context.Context, arg GetActive
 		&i.UpdatedAt,
 		&i.StartedAt,
 		&i.StoppedAt,
+		&i.IdleSince,
+	)
+	return i, err
+}
+
+const getPendingWorkloadOperation = `-- name: GetPendingWorkloadOperation :one
+SELECT workload_id, operation_key, operation, request_digest,
+       result_state, result_generation, error_kind, created_at, updated_at
+FROM workos_runtime.workload_operations
+WHERE workload_id = $1
+  AND result_generation = $2
+  AND result_state IS NULL
+  AND (error_kind IS NULL OR error_kind IN ('unavailable', 'failed'))
+ORDER BY updated_at DESC, operation_key
+LIMIT 1
+`
+
+type GetPendingWorkloadOperationParams struct {
+	WorkloadID string      `json:"workload_id"`
+	Generation pgtype.Int8 `json:"generation"`
+}
+
+// Recovers the original command that owns a starting generation. The target
+// generation is persisted before engine side effects, so reconcile never
+// invents a second action key and a replay cannot advance twice.
+func (q *Queries) GetPendingWorkloadOperation(ctx context.Context, arg GetPendingWorkloadOperationParams) (WorkosRuntimeWorkloadOperation, error) {
+	row := q.db.QueryRow(ctx, getPendingWorkloadOperation, arg.WorkloadID, arg.Generation)
+	var i WorkosRuntimeWorkloadOperation
+	err := row.Scan(
+		&i.WorkloadID,
+		&i.OperationKey,
+		&i.Operation,
+		&i.RequestDigest,
+		&i.ResultState,
+		&i.ResultGeneration,
+		&i.ErrorKind,
+		&i.CreatedAt,
+		&i.UpdatedAt,
 	)
 	return i, err
 }
@@ -122,7 +180,7 @@ SELECT id, owner_user_id, project_id, app_instance_id, app_id, app_version,
        cgroup_path, health_verdict, last_exit_category,
        baseline_memory_events_oom, baseline_pids_events_peak,
        last_verified_at, lease_owner, lease_expires_at,
-       created_at, updated_at, started_at, stopped_at
+       created_at, updated_at, started_at, stopped_at, idle_since
 FROM workos_runtime.workloads
 WHERE id = $1
 `
@@ -167,6 +225,7 @@ func (q *Queries) GetWorkload(ctx context.Context, id string) (WorkosRuntimeWork
 		&i.UpdatedAt,
 		&i.StartedAt,
 		&i.StoppedAt,
+		&i.IdleSince,
 	)
 	return i, err
 }
@@ -284,19 +343,22 @@ func (q *Queries) InsertWorkload(ctx context.Context, arg InsertWorkloadParams) 
 
 const insertWorkloadOperation = `-- name: InsertWorkloadOperation :execrows
 INSERT INTO workos_runtime.workload_operations (
-    workload_id, operation_key, operation, request_digest, created_at, updated_at
+    workload_id, operation_key, operation, request_digest, result_generation,
+    created_at, updated_at
 ) VALUES ($1, $2, $3,
-          $4, $5, $6)
+          $4, $5,
+          $6, $7)
 ON CONFLICT (workload_id, operation_key) DO NOTHING
 `
 
 type InsertWorkloadOperationParams struct {
-	WorkloadID    string    `json:"workload_id"`
-	OperationKey  string    `json:"operation_key"`
-	Operation     string    `json:"operation"`
-	RequestDigest string    `json:"request_digest"`
-	CreatedAt     time.Time `json:"created_at"`
-	UpdatedAt     time.Time `json:"updated_at"`
+	WorkloadID       string      `json:"workload_id"`
+	OperationKey     string      `json:"operation_key"`
+	Operation        string      `json:"operation"`
+	RequestDigest    string      `json:"request_digest"`
+	ResultGeneration pgtype.Int8 `json:"result_generation"`
+	CreatedAt        time.Time   `json:"created_at"`
+	UpdatedAt        time.Time   `json:"updated_at"`
 }
 
 // The primary key is the same-key race arbiter: a concurrent reserve of the
@@ -307,6 +369,7 @@ func (q *Queries) InsertWorkloadOperation(ctx context.Context, arg InsertWorkloa
 		arg.OperationKey,
 		arg.Operation,
 		arg.RequestDigest,
+		arg.ResultGeneration,
 		arg.CreatedAt,
 		arg.UpdatedAt,
 	)
@@ -325,7 +388,7 @@ SELECT id, owner_user_id, project_id, app_instance_id, app_id, app_version,
        cgroup_path, health_verdict, last_exit_category,
        baseline_memory_events_oom, baseline_pids_events_peak,
        last_verified_at, lease_owner, lease_expires_at,
-       created_at, updated_at, started_at, stopped_at
+       created_at, updated_at, started_at, stopped_at, idle_since
 FROM workos_runtime.workloads
 ORDER BY created_at, id
 LIMIT $1
@@ -377,6 +440,7 @@ func (q *Queries) ListWorkloads(ctx context.Context, rowLimit int32) ([]WorkosRu
 			&i.UpdatedAt,
 			&i.StartedAt,
 			&i.StoppedAt,
+			&i.IdleSince,
 		); err != nil {
 			return nil, err
 		}
@@ -388,33 +452,71 @@ func (q *Queries) ListWorkloads(ctx context.Context, rowLimit int32) ([]WorkosRu
 	return items, nil
 }
 
+const markWorkloadIdle = `-- name: MarkWorkloadIdle :one
+UPDATE workos_runtime.workloads SET
+    idle_since = COALESCE(idle_since, $1)
+WHERE id = $2 AND state = 'running'
+  AND generation = $3
+RETURNING idle_since
+`
+
+type MarkWorkloadIdleParams struct {
+	IdleSince  *time.Time `json:"idle_since"`
+	ID         string     `json:"id"`
+	Generation int64      `json:"generation"`
+}
+
+// Idle bookkeeping belongs to the exact running generation observed by the
+// caller; an old reconcile pass may not start the next generation's clock.
+func (q *Queries) MarkWorkloadIdle(ctx context.Context, arg MarkWorkloadIdleParams) (*time.Time, error) {
+	row := q.db.QueryRow(ctx, markWorkloadIdle, arg.IdleSince, arg.ID, arg.Generation)
+	var idle_since *time.Time
+	err := row.Scan(&idle_since)
+	return idle_since, err
+}
+
 const restartWorkloadFrom = `-- name: RestartWorkloadFrom :execrows
 UPDATE workos_runtime.workloads SET
     state = 'starting',
-    generation = generation + 1,
-    restart_count = restart_count + 1,
+    generation = $1,
+    restart_count = $2,
     container_id = NULL,
     endpoint = NULL,
     cgroup_path = NULL,
     health_verdict = 'unknown',
     last_exit_category = 'none',
+    baseline_memory_events_oom = 0,
+    baseline_pids_events_peak = 0,
+    idle_since = NULL,
+    last_verified_at = NULL,
+    started_at = NULL,
     stopped_at = NULL,
-    updated_at = $1
-WHERE id = $2
-  AND state = $3
+    updated_at = $3
+WHERE id = $4
+  AND state = $5
   AND state IN ('running', 'failed')
+  AND generation + 1 = $1
+  AND restart_count + 1 = $2
 `
 
 type RestartWorkloadFromParams struct {
-	UpdatedAt time.Time `json:"updated_at"`
-	ID        string    `json:"id"`
-	FromState string    `json:"from_state"`
+	Generation   int64     `json:"generation"`
+	RestartCount int32     `json:"restart_count"`
+	UpdatedAt    time.Time `json:"updated_at"`
+	ID           string    `json:"id"`
+	FromState    string    `json:"from_state"`
 }
 
 // The guarded restart transition: re-open a running or failed workload under
 // generation+1, clear the engine facts, and restart the count.
 func (q *Queries) RestartWorkloadFrom(ctx context.Context, arg RestartWorkloadFromParams) (int64, error) {
-	result, err := q.db.Exec(ctx, restartWorkloadFrom, arg.UpdatedAt, arg.ID, arg.FromState)
+	result, err := q.db.Exec(ctx, restartWorkloadFrom,
+		arg.Generation,
+		arg.RestartCount,
+		arg.UpdatedAt,
+		arg.ID,
+		arg.FromState,
+	)
 	if err != nil {
 		return 0, err
 	}
@@ -431,6 +533,7 @@ UPDATE workos_runtime.workloads SET
     last_exit_category = $5,
     baseline_memory_events_oom = $6,
     baseline_pids_events_peak = $7,
+    idle_since = NULL,
     started_at = $8,
     stopped_at = NULL,
     updated_at = $9
@@ -481,10 +584,12 @@ UPDATE workos_runtime.workloads SET
     cgroup_path = $4,
     health_verdict = $5,
     last_exit_category = $6,
+    idle_since = NULL,
     stopped_at = $7,
     updated_at = $8
 WHERE id = $9
   AND state = $10
+  AND generation = $11
   AND state NOT IN ('stopped', 'failed')
 `
 
@@ -499,10 +604,13 @@ type SetWorkloadStateParams struct {
 	UpdatedAt        time.Time   `json:"updated_at"`
 	ID               string      `json:"id"`
 	FromState        string      `json:"from_state"`
+	Generation       int64       `json:"generation"`
 }
 
 // Generic guarded transition for stopping/failed/stopped landings; the
-// caller supplies the bounded fact bundle explicitly.
+// caller supplies the bounded fact bundle explicitly. The generation guard
+// prevents a stale reconcile observation from mutating a replacement that
+// has already reached the same lifecycle state.
 func (q *Queries) SetWorkloadState(ctx context.Context, arg SetWorkloadStateParams) (int64, error) {
 	result, err := q.db.Exec(ctx, setWorkloadState,
 		arg.ToState,
@@ -515,6 +623,7 @@ func (q *Queries) SetWorkloadState(ctx context.Context, arg SetWorkloadStatePara
 		arg.UpdatedAt,
 		arg.ID,
 		arg.FromState,
+		arg.Generation,
 	)
 	if err != nil {
 		return 0, err
@@ -526,24 +635,26 @@ const stampWorkloadVerified = `-- name: StampWorkloadVerified :execrows
 UPDATE workos_runtime.workloads SET
     last_verified_at = $1
 WHERE id = $2 AND state = 'running'
+  AND generation = $3
 `
 
 type StampWorkloadVerifiedParams struct {
 	VerifiedAt *time.Time `json:"verified_at"`
 	ID         string     `json:"id"`
+	Generation int64      `json:"generation"`
 }
 
 // Bookkeeping only: the verification stamp anchors the Core-grace clock and
-// deliberately does NOT touch updated_at, which anchors the idle TTL.
+// deliberately does NOT touch lifecycle timestamps or idle_since.
 func (q *Queries) StampWorkloadVerified(ctx context.Context, arg StampWorkloadVerifiedParams) (int64, error) {
-	result, err := q.db.Exec(ctx, stampWorkloadVerified, arg.VerifiedAt, arg.ID)
+	result, err := q.db.Exec(ctx, stampWorkloadVerified, arg.VerifiedAt, arg.ID, arg.Generation)
 	if err != nil {
 		return 0, err
 	}
 	return result.RowsAffected(), nil
 }
 
-const upsertWorkloadOperation = `-- name: UpsertWorkloadOperation :exec
+const upsertWorkloadOperation = `-- name: UpsertWorkloadOperation :execrows
 INSERT INTO workos_runtime.workload_operations (
     workload_id, operation_key, operation, request_digest,
     result_state, result_generation, error_kind, created_at, updated_at
@@ -557,6 +668,11 @@ SET result_state = $5,
     result_generation = $6,
     error_kind = $7,
     updated_at = $9
+WHERE workos_runtime.workload_operations.result_state IS NULL
+  AND workos_runtime.workload_operations.operation = $3
+  AND workos_runtime.workload_operations.request_digest = $4
+  AND (workos_runtime.workload_operations.error_kind IS NULL
+       OR workos_runtime.workload_operations.error_kind IN ('unavailable', 'failed'))
 `
 
 type UpsertWorkloadOperationParams struct {
@@ -572,9 +688,10 @@ type UpsertWorkloadOperationParams struct {
 }
 
 // Records or finalizes one operation verdict; the request_digest never
-// changes after the first reserve.
-func (q *Queries) UpsertWorkloadOperation(ctx context.Context, arg UpsertWorkloadOperationParams) error {
-	_, err := q.db.Exec(ctx, upsertWorkloadOperation,
+// changes after the first reserve. Terminal verdicts are immutable: only an
+// open/retryable row may converge to a later result.
+func (q *Queries) UpsertWorkloadOperation(ctx context.Context, arg UpsertWorkloadOperationParams) (int64, error) {
+	result, err := q.db.Exec(ctx, upsertWorkloadOperation,
 		arg.WorkloadID,
 		arg.OperationKey,
 		arg.Operation,
@@ -585,5 +702,8 @@ func (q *Queries) UpsertWorkloadOperation(ctx context.Context, arg UpsertWorkloa
 		arg.CreatedAt,
 		arg.UpdatedAt,
 	)
-	return err
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }

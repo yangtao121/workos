@@ -103,12 +103,17 @@ func run(logger *slog.Logger) error {
 	var cgroupReader workloadports.CgroupReader
 	podmanEngine, engineErr := workloadpodman.New(cfg.Runtime.PodmanBin)
 	if engineErr == nil {
-		engine = podmanEngine
 		reader, readerErr := workloadpodman.NewCgroupReader()
-		if readerErr != nil {
-			return readerErr
+		if readerErr == nil {
+			engine = podmanEngine
+			cgroupReader = reader
+		} else {
+			// Podman without a readable cgroup v2 hierarchy is an unavailable
+			// combined runner capability, not a reason to take down runtime-host's
+			// DB-backed Surface and Workload fact services.
+			engine = workloadpodman.NewUnavailableEngine("cgroup v2 is not available")
+			cgroupReader = workloadpodman.NewUnavailableCgroupReader()
 		}
-		cgroupReader = reader
 	} else {
 		engine = workloadpodman.NewUnavailableEngine("podman executable is not available")
 		cgroupReader = workloadpodman.NewUnavailableCgroupReader()

@@ -56,10 +56,13 @@ func TestAllMigrationChecksumsArePinned(t *testing.T) {
 		"012_surface_grant_revision.sql":                 surfaceGrant012,
 		"013_project_create_requests.sql":                "18de5d8271d669cbc7ca1aa0440927f792a1b555dc96208507369d8942691210",
 		"014_agent_app_policy_quota.sql":                 "dd92c010d10192c432cb17d2b75222fae608c7bfbde79d240917c4eb7aa65f4a",
-		// 015/016 are this slice's pristine additions (ADR-0006); everything
-		// above them must stay byte-identical.
-		"015_runtime_workloads.sql":     "5920e2ed23dd3b68cd79cc92d6244f0e275a288373887f90b4df19519f996775",
-		"016_reliability_incidents.sql": "468f0d888b31bb0fff6a5c6c84129bb6063ee9bfad6338834621204236280f9c",
+		// 015–019 are immutable supervised-workload history. Behavioral
+		// corrections ship only as new forward migrations.
+		"015_runtime_workloads.sql":                "5920e2ed23dd3b68cd79cc92d6244f0e275a288373887f90b4df19519f996775",
+		"016_reliability_incidents.sql":            "468f0d888b31bb0fff6a5c6c84129bb6063ee9bfad6338834621204236280f9c",
+		"017_incident_acknowledge_keys.sql":        "df5d24aab6ea0dff99c665b5f5c0fe9acb086a9e1db3e63b86e7eb68e03544d0",
+		"018_runtime_workload_convergence.sql":     "b685e4a5a35285b67a0f1011fccc6de7a34d22e4ba3bd024f959215b9ccd7331",
+		"019_reliability_incident_convergence.sql": "08d030c19f233a8a47b793c82aabbb1667b9f460f40e283e926e162fa6ca3709",
 	}
 	for name, want := range pinned {
 		if got := migrationFileChecksum(t, name); got != want {

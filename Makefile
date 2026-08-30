@@ -132,9 +132,10 @@ test-podman-fixture:
 		echo "Install rootless podman (with unprivileged user namespaces and cgroup v2) and re-run."; \
 		exit 1; \
 	}
-	$(GO_RUN) sh -c 'go test -c -o tmp/podmanfixture.test -tags podmanfixture ./tests/podmanfixture && CGO_ENABLED=0 go build -o tmp/workos-web-fixture ./tests/podmanfixture/fixture'
-	WORKOS_PODMAN_FIXTURE_BINARY="$$(pwd)/tmp/workos-web-fixture" tmp/podmanfixture.test -test.v
-	@rm -f tmp/podmanfixture.test tmp/workos-web-fixture
+	@set -eu; \
+		trap 'rm -f tmp/podmanfixture.test tmp/workos-web-fixture' EXIT HUP INT TERM; \
+		$(GO_RUN) sh -c 'go test -c -o tmp/podmanfixture.test -tags podmanfixture ./tests/podmanfixture && CGO_ENABLED=0 go build -o tmp/workos-web-fixture ./tests/podmanfixture/fixture'; \
+		WORKOS_PODMAN_FIXTURE_BINARY="$$(pwd)/tmp/workos-web-fixture" tmp/podmanfixture.test -test.v
 
 test-e2e: e2e-image
 	docker compose up -d --build postgres bootstrap workos-core harness-host runtime-host workos-gateway

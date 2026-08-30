@@ -770,16 +770,24 @@ type WorkloadObservation struct {
 	ExitCategory string `protobuf:"bytes,10,opt,name=exit_category,json=exitCategory,proto3" json:"exit_category,omitempty"`
 	RestartCount int32  `protobuf:"varint,11,opt,name=restart_count,json=restartCount,proto3" json:"restart_count,omitempty"`
 	// Bounded numeric counters read from the real cgroup at observation time.
-	// 0 means "not available"; deltas are computed by the consumer.
+	// Zero is a valid observed counter. Missing or malformed counter evidence
+	// fails the observation RPC; it is never represented as fabricated zeroes.
 	CpuUsageUsec       uint64 `protobuf:"varint,12,opt,name=cpu_usage_usec,json=cpuUsageUsec,proto3" json:"cpu_usage_usec,omitempty"`
 	MemoryCurrentBytes uint64 `protobuf:"varint,13,opt,name=memory_current_bytes,json=memoryCurrentBytes,proto3" json:"memory_current_bytes,omitempty"`
 	MemoryPeakBytes    uint64 `protobuf:"varint,14,opt,name=memory_peak_bytes,json=memoryPeakBytes,proto3" json:"memory_peak_bytes,omitempty"`
 	MemoryEventsOom    uint64 `protobuf:"varint,15,opt,name=memory_events_oom,json=memoryEventsOom,proto3" json:"memory_events_oom,omitempty"`
 	PidsCurrent        uint64 `protobuf:"varint,16,opt,name=pids_current,json=pidsCurrent,proto3" json:"pids_current,omitempty"`
-	PidsEventsPeak     uint64 `protobuf:"varint,17,opt,name=pids_events_peak,json=pidsEventsPeak,proto3" json:"pids_events_peak,omitempty"`
+	// Deprecated: pids.events has no "peak" event. Kept for wire
+	// compatibility; new producers leave it zero and consumers use field 20.
+	//
+	// Deprecated: Marked as deprecated in workos/workload/v1/workload.proto.
+	PidsEventsPeak uint64 `protobuf:"varint,17,opt,name=pids_events_peak,json=pidsEventsPeak,proto3" json:"pids_events_peak,omitempty"`
 	// True when the workload has no open surface session referencing it.
-	Idle          bool   `protobuf:"varint,18,opt,name=idle,proto3" json:"idle,omitempty"`
-	ObservedAt    string `protobuf:"bytes,19,opt,name=observed_at,json=observedAt,proto3" json:"observed_at,omitempty"` // RFC 3339 UTC
+	Idle       bool   `protobuf:"varint,18,opt,name=idle,proto3" json:"idle,omitempty"`
+	ObservedAt string `protobuf:"bytes,19,opt,name=observed_at,json=observedAt,proto3" json:"observed_at,omitempty"` // RFC 3339 UTC
+	// Cumulative pids.events `max` counter. A generation-local increase means
+	// the enforced pids.max limit rejected at least one task creation.
+	PidsEventsMax uint64 `protobuf:"varint,20,opt,name=pids_events_max,json=pidsEventsMax,proto3" json:"pids_events_max,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -926,6 +934,7 @@ func (x *WorkloadObservation) GetPidsCurrent() uint64 {
 	return 0
 }
 
+// Deprecated: Marked as deprecated in workos/workload/v1/workload.proto.
 func (x *WorkloadObservation) GetPidsEventsPeak() uint64 {
 	if x != nil {
 		return x.PidsEventsPeak
@@ -945,6 +954,13 @@ func (x *WorkloadObservation) GetObservedAt() string {
 		return x.ObservedAt
 	}
 	return ""
+}
+
+func (x *WorkloadObservation) GetPidsEventsMax() uint64 {
+	if x != nil {
+		return x.PidsEventsMax
+	}
+	return 0
 }
 
 type ListObservationsRequest struct {
@@ -1269,7 +1285,7 @@ const file_workos_workload_v1_workload_proto_rawDesc = "" +
 	"\x15StartWorkloadResponse\x12@\n" +
 	"\bworkload\x18\x01 \x01(\v2$.workos.workload.v1.WorkloadIdentityR\bworkload\"X\n" +
 	"\x14StopWorkloadResponse\x12@\n" +
-	"\bworkload\x18\x01 \x01(\v2$.workos.workload.v1.WorkloadIdentityR\bworkload\"\xe7\x05\n" +
+	"\bworkload\x18\x01 \x01(\v2$.workos.workload.v1.WorkloadIdentityR\bworkload\"\x93\x06\n" +
 	"\x13WorkloadObservation\x12\x1f\n" +
 	"\vworkload_id\x18\x01 \x01(\tR\n" +
 	"workloadId\x12\x1e\n" +
@@ -1291,11 +1307,12 @@ const file_workos_workload_v1_workload_proto_rawDesc = "" +
 	"\x14memory_current_bytes\x18\r \x01(\x04R\x12memoryCurrentBytes\x12*\n" +
 	"\x11memory_peak_bytes\x18\x0e \x01(\x04R\x0fmemoryPeakBytes\x12*\n" +
 	"\x11memory_events_oom\x18\x0f \x01(\x04R\x0fmemoryEventsOom\x12!\n" +
-	"\fpids_current\x18\x10 \x01(\x04R\vpidsCurrent\x12(\n" +
-	"\x10pids_events_peak\x18\x11 \x01(\x04R\x0epidsEventsPeak\x12\x12\n" +
+	"\fpids_current\x18\x10 \x01(\x04R\vpidsCurrent\x12,\n" +
+	"\x10pids_events_peak\x18\x11 \x01(\x04B\x02\x18\x01R\x0epidsEventsPeak\x12\x12\n" +
 	"\x04idle\x18\x12 \x01(\bR\x04idle\x12\x1f\n" +
 	"\vobserved_at\x18\x13 \x01(\tR\n" +
-	"observedAt\"\x19\n" +
+	"observedAt\x12&\n" +
+	"\x0fpids_events_max\x18\x14 \x01(\x04R\rpidsEventsMax\"\x19\n" +
 	"\x17ListObservationsRequest\"g\n" +
 	"\x18ListObservationsResponse\x12K\n" +
 	"\fobservations\x18\x01 \x03(\v2'.workos.workload.v1.WorkloadObservationR\fobservations\"X\n" +

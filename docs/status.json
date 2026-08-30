@@ -1,6 +1,6 @@
 {
   "$schema": "./status.schema.json",
-  "updated": "2026-08-29",
+  "updated": "2026-08-30",
   "modules": [
     {
       "name": "Access Gateway",
@@ -72,13 +72,13 @@
       "name": "Runtime / Surface",
       "process": "runtime-host",
       "status": "working",
-      "evidence": "Web Bundle surfaces only (working): durable idempotent device-bound sessions + per-request Core revalidation + token-validated minimal App Bridge (agent.task.run / agent.event.watch only, 256-bit token, sha256 at rest, rotation + restart persistence) + sessions persist the installation grant revision and Core re-compares it every run/watch round; supervised web-service container slice implemented on main-adjacent branch behind ADR-0006 (strict container manifest profile, Core ResolveSurfaceLaunch oneof, runtime Workload Manager 015 with durable idempotent ensure/restart/terminate + crash-window reconciliation, rootless Podman adapter with capability probe + cgroup v2 read-back, read-only loopback web-service proxy with fixed CSP; fake-engine unit tests + argv-adapter tests pass) but NOT working: no real rootless Podman evidence on any acceptance host yet; container/native runners unavailable until make test-podman-fixture passes on a real host"
+      "evidence": "Web Bundle surfaces only (working): durable idempotent device-bound sessions + per-request Core revalidation + token-validated minimal App Bridge (agent.task.run / agent.event.watch only, 256-bit token, sha256 at rest, rotation + restart persistence) + sessions persist the installation grant revision and Core re-compares it every run/watch round; supervised web-service container slice remains scaffolded behind ADR-0006: Workload Manager migrations 015/018 persist target-generation and idle_since convergence facts; state transitions and terminal operation verdicts commit atomically, terminal verdicts are immutable, restart generations are adjacent, and exact-owned shutdown converges profile drift while identity mismatches remain untouched; Podman adoption verifies full identity, exact JSON exec-form argv, one declared loopback publish, actual empty effective/bounding capability sets, and the remaining immutable security profile; pids.events max is observed through an additive protocol field, and the read-only proxy revalidates exact Core kind/app/version/digest plus workload generation, rejects encoded or over-budget responses before committing a backend status, and validates the final loopback target; fake-engine/adapter/PostgreSQL tests pass, but there is still no real rootless Podman or cross-process browser evidence on an acceptance host, so container/native runners remain unavailable"
     },
     {
       "name": "Reliability",
       "process": "reliability-host",
       "status": "scaffolded",
-      "evidence": "health + supervision loop implemented (observation -> occurrence-deduped incidents -> bounded idempotent restart/stop via private SupervisedWorkloadService, migration 016 incidents/actions/checkpoints/progress, owner-scoped public IncidentService via optional gateway upstream, fake-driven decision tests) but NOT working: no real observation->incident->restart evidence yet; enforcement upgrade blocked on real rootless Podman evidence (make test-podman-fixture); repair-orchestrator/deployment unavailable"
+      "evidence": "health + supervision loop implemented but capability remains unavailable: migrations 016/017/019, occurrence-deduped incidents, owner/project-scoped public IncidentService including cursor boundaries, bounded monotonic action ledger (only unavailable retries; failed/unsupported/limit outcomes are terminal), generation-independent pending-action crash recovery, strict mitigated->resolved lifecycle, old-generation recovery resolution, and distinct unsupported vs restart-limit control outcomes have fake-driven and PostgreSQL evidence; there is still no real observation->incident->restart/stop cross-process evidence, so supervisor and incident-manager report false; repair-orchestrator/deployment remain unavailable"
     },
     {
       "name": "Indexer",

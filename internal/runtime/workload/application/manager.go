@@ -10,6 +10,8 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
+	"sync"
 	"time"
 
 	"github.com/yangtao121/workos/internal/platform/ids"
@@ -81,7 +83,8 @@ type Manager struct {
 	now        func() time.Time
 	logger     *slog.Logger
 
-	capability ports.Capability
+	capabilityOnce sync.Once
+	capability     ports.Capability
 }
 
 func New(
@@ -116,23 +119,21 @@ func New(
 // honest refusal: container surfaces report failed precondition and the
 // system health reports the runner unavailable.
 func (m *Manager) ProbeRunner(ctx context.Context) (ports.Capability, error) {
-	capability, err := m.engine.Probe(ctx)
-	if err != nil {
-		return ports.Capability{Available: false,
-			Reason: "container engine probe failed"}, nil
-	}
-	m.capability = capability
-	return capability, nil
+	m.capabilityOnce.Do(func() {
+		capability, err := m.engine.Probe(ctx)
+		if err != nil {
+			m.capability = ports.Capability{Available: false, Reason: "container engine probe failed"}
+			return
+		}
+		m.capability = capability
+	})
+	return m.capability, nil
 }
 
 // RunnerStatus returns the cached capability (probing if not yet done).
 func (m *Manager) RunnerStatus(ctx context.Context) ports.Capability {
-	if m.capability.Reason == "" && !m.capability.Available {
-		if capability, err := m.ProbeRunner(ctx); err == nil {
-			return capability
-		}
-	}
-	return m.capability
+	capability, _ := m.ProbeRunner(ctx)
+	return capability
 }
 
 // Ensure returns the active workload of the installed instance, launching the
@@ -151,9 +152,6 @@ func (m *Manager) Ensure(ctx context.Context, command ports.EnsureCommand) (doma
 	existing, err := m.repository.GetActiveByInstance(ctx, command.OwnerUserID, command.AppInstanceID)
 	switch {
 	case err == nil:
-		if existing.ManifestDigest != command.ManifestDigest {
-			return domain.Workload{}, domain.ErrIdempotencyConflict
-		}
 		return m.ensureExisting(ctx, existing, command)
 	case errors.Is(err, domain.ErrNotFound):
 		// fall through to reserve
@@ -166,26 +164,23 @@ func (m *Manager) Ensure(ctx context.Context, command ports.EnsureCommand) (doma
 		return domain.Workload{}, err
 	}
 	now := m.now()
+	workloadID := m.ids.New()
 	workload := domain.Workload{
-		ID: m.ids.New(), OwnerUserID: command.OwnerUserID, ProjectID: command.ProjectID,
+		ID: workloadID, OwnerUserID: command.OwnerUserID, ProjectID: command.ProjectID,
 		AppInstanceID: command.AppInstanceID, AppID: command.AppID, AppVersion: command.AppVersion,
 		ManifestDigest: command.ManifestDigest, Image: command.Image, Command: append([]string(nil), command.Command...),
 		Port: command.Port, Requested: command.Requested,
 		Effective:  domain.EffectiveFromRequested(command.Requested),
 		Generation: 1, State: domain.StateStarting, RestartCount: 0,
-		ContainerName: domain.ContainerName(m.ids.New()),
+		ContainerName: domain.ContainerName(workloadID),
 		HealthVerdict: domain.HealthUnknown, LastExit: domain.ExitNone,
 		CreatedAt: now, UpdatedAt: now,
 	}
-	// The container name must be a pure function of the workload ID, fixed
-	// before the reserve transaction so crash recovery converges on the same
-	// engine object.
-	workload.ContainerName = domain.ContainerName(workload.ID)
 	digest := domain.OperationDigest(domain.OperationEnsure, workload.ID, workload.Image, workload.Command, workload.Port, workload.Requested)
 	operation := domain.WorkloadOperation{
 		WorkloadID: workload.ID, OperationKey: command.OperationKey,
 		Operation: domain.OperationEnsure, RequestDigest: digest,
-		CreatedAt: now, UpdatedAt: now,
+		ResultGeneration: workload.Generation, CreatedAt: now, UpdatedAt: now,
 	}
 	reserved, err := m.repository.ReserveEnsure(ctx, workload, operation)
 	if err != nil {
@@ -204,9 +199,6 @@ func (m *Manager) Ensure(ctx context.Context, command ports.EnsureCommand) (doma
 			}
 			return domain.Workload{}, fmt.Errorf("ensure workload: %w", err)
 		}
-		if existing.ManifestDigest != command.ManifestDigest {
-			return domain.Workload{}, domain.ErrIdempotencyConflict
-		}
 		return m.ensureExisting(ctx, existing, command)
 	}
 	if err := m.driveLaunch(ctx, workload, operation); err != nil {
@@ -214,6 +206,9 @@ func (m *Manager) Ensure(ctx context.Context, command ports.EnsureCommand) (doma
 	}
 	stored, err := m.repository.Get(ctx, workload.ID)
 	if err != nil {
+		if errors.Is(err, ports.ErrStoreUnavailable) {
+			return domain.Workload{}, domain.ErrUnavailable
+		}
 		return domain.Workload{}, fmt.Errorf("ensure workload: %w", err)
 	}
 	if stored.State != domain.StateRunning {
@@ -230,30 +225,39 @@ func (m *Manager) validEnsure(command ports.EnsureCommand) bool {
 }
 
 func (m *Manager) ensureExisting(ctx context.Context, existing domain.Workload, command ports.EnsureCommand) (domain.Workload, error) {
-	digest := domain.OperationDigest(domain.OperationEnsure, existing.ID, existing.Image, existing.Command, existing.Port, existing.Requested)
+	if !sameEnsureDescriptor(existing, command) {
+		return domain.Workload{}, domain.ErrIdempotencyConflict
+	}
+	digest := domain.OperationDigest(domain.OperationEnsure, existing.ID, command.Image, command.Command, command.Port, command.Requested)
+	operation := domain.WorkloadOperation{
+		WorkloadID: existing.ID, OperationKey: command.OperationKey,
+		Operation: domain.OperationEnsure, RequestDigest: digest,
+		ResultGeneration: existing.Generation,
+	}
 	stored, err := m.repository.LookupOperation(ctx, existing.ID, command.OperationKey)
 	if err != nil {
+		if errors.Is(err, ports.ErrStoreUnavailable) {
+			return domain.Workload{}, domain.ErrUnavailable
+		}
 		return domain.Workload{}, fmt.Errorf("ensure workload: %w", err)
 	}
 	if stored.OperationKey != "" {
+		operation.ResultGeneration = stored.ResultGeneration
 		if stored.RequestDigest != digest {
 			return domain.Workload{}, domain.ErrIdempotencyConflict
 		}
 		if stored.Completed() && !stored.Retryable() {
-			if existing.State != domain.StateRunning {
-				// A terminal verdict replayed against a non-running workload:
-				// the workload is gone (stopped/failed) and only a fresh key
-				// may start it again. The recorded verdict still replays.
-				return existing, nil
+			if err := replayWorkloadError(stored.ErrorKind); err != nil {
+				return domain.Workload{}, err
 			}
 			return existing, nil
 		}
 	} else {
 		now := m.now()
-		if err := m.repository.RecordOperation(ctx, domain.WorkloadOperation{
+		if err := m.persistOperation(ctx, domain.WorkloadOperation{
 			WorkloadID: existing.ID, OperationKey: command.OperationKey,
 			Operation: domain.OperationEnsure, RequestDigest: digest,
-			CreatedAt: now, UpdatedAt: now,
+			ResultGeneration: existing.Generation, CreatedAt: now, UpdatedAt: now,
 		}); err != nil {
 			return domain.Workload{}, fmt.Errorf("ensure workload: %w", err)
 		}
@@ -262,23 +266,60 @@ func (m *Manager) ensureExisting(ctx context.Context, existing domain.Workload, 
 		// The workload is live with the exact pinned descriptor: the ensure
 		// attaches to it. No engine sequence runs, so a replay of an open
 		// surface never disturbs the running container.
+		operation.ResultState = domain.StateRunning
+		operation.ResultGeneration = existing.Generation
+		operation.UpdatedAt = m.now()
+		if err := m.persistOperation(ctx, operation); err != nil {
+			return domain.Workload{}, fmt.Errorf("finalize ensure workload: %w", err)
+		}
 		return existing, nil
 	}
-	operation := domain.WorkloadOperation{
-		WorkloadID: existing.ID, OperationKey: command.OperationKey,
-		Operation: domain.OperationEnsure, RequestDigest: digest,
+	if existing.State != domain.StateStarting {
+		// An active slot can briefly be stopping. It must never be started again
+		// by an overlapping Open: wait for shutdown to free the slot, then a
+		// later ensure may reserve a fresh workload identity.
+		now := m.now()
+		operation.ErrorKind = domain.ErrorUnsupported
+		operation.ResultGeneration = existing.Generation
+		operation.UpdatedAt = now
+		if operation.CreatedAt.IsZero() {
+			operation.CreatedAt = now
+		}
+		if err := m.persistOperation(context.WithoutCancel(ctx), operation); err != nil {
+			return domain.Workload{}, fmt.Errorf("finalize ensure workload: %w", err)
+		}
+		return domain.Workload{}, domain.ErrUnsupported
 	}
 	if err := m.driveLaunch(ctx, existing, operation); err != nil {
 		return domain.Workload{}, err
 	}
 	storedWorkload, err := m.repository.Get(ctx, existing.ID)
 	if err != nil {
+		if errors.Is(err, ports.ErrStoreUnavailable) {
+			return domain.Workload{}, domain.ErrUnavailable
+		}
 		return domain.Workload{}, fmt.Errorf("ensure workload: %w", err)
 	}
 	if storedWorkload.State != domain.StateRunning {
 		return domain.Workload{}, domain.ErrCorrupt
 	}
 	return storedWorkload, nil
+}
+
+func sameEnsureDescriptor(existing domain.Workload, command ports.EnsureCommand) bool {
+	if existing.OwnerUserID != command.OwnerUserID || existing.ProjectID != command.ProjectID ||
+		existing.AppInstanceID != command.AppInstanceID || existing.AppID != command.AppID ||
+		existing.AppVersion != command.AppVersion || existing.ManifestDigest != command.ManifestDigest ||
+		existing.Image != command.Image || existing.Port != command.Port || existing.Requested != command.Requested ||
+		len(existing.Command) != len(command.Command) {
+		return false
+	}
+	for index := range existing.Command {
+		if existing.Command[index] != command.Command[index] {
+			return false
+		}
+	}
+	return true
 }
 
 // verifyImage refuses any launch whose exact digest-pinned image is not
@@ -306,37 +347,61 @@ func (m *Manager) verifyImage(ctx context.Context, image string) error {
 func (m *Manager) driveLaunch(ctx context.Context, workload domain.Workload, operation domain.WorkloadOperation) error {
 	ctx, cancel := context.WithTimeout(ctx, m.config.OperationTimeout)
 	defer cancel()
+	createdContainerID := ""
 
 	if err := m.verifyImage(ctx, workload.Image); err != nil {
-		return m.failLaunch(ctx, workload, operation, err)
+		return m.failLaunch(ctx, workload, operation, createdContainerID, err)
 	}
 	// Converge the container object first: adopt a surviving container from a
 	// crashed attempt, or create a fresh one under the deterministic name.
 	facts, err := m.engine.InspectContainer(ctx, workload.ContainerName)
 	switch {
 	case err == nil:
-		if facts.Labels["workos.workload.id"] != workload.ID {
-			// The name is derived from the workload ID; a mismatch can only
-			// be stored-fact corruption. Never adopt, never remove.
-			return m.failLaunch(ctx, workload, operation, domain.ErrCorrupt)
+		if !matchesWorkloadIdentity(workload, facts) {
+			// The name is derived from the workload ID, but an object without
+			// the exact immutable labels is foreign. Never adopt or remove it.
+			return m.failLaunch(ctx, workload, operation, createdContainerID, domain.ErrCorrupt)
+		}
+		if !matchesWorkloadContainer(workload, facts) {
+			// The identity labels prove this is our object. Immutable/security
+			// drift therefore has one safe convergence: remove this exact ID,
+			// then close the starting generation as a permanent failure.
+			return m.failLaunch(ctx, workload, operation, facts.ID, domain.ErrCorrupt)
 		}
 	case errors.Is(err, ports.ErrContainerNotFound):
 		spec := ports.ContainerSpec{
 			Name: workload.ContainerName, Image: workload.Image, Command: workload.Command,
 			Port: workload.Port, Labels: domain.EngineLabels(workload), Policy: workload.Effective,
 		}
-		if _, err := m.engine.CreateContainer(ctx, spec); err != nil {
-			return m.failLaunch(ctx, workload, operation, m.classifyEngine(err))
+		createdContainerID, err = m.engine.CreateContainer(ctx, spec)
+		if err != nil {
+			return m.failLaunch(ctx, workload, operation, createdContainerID, m.classifyEngine(err))
+		}
+		if strings.TrimSpace(createdContainerID) == "" {
+			return m.failLaunch(ctx, workload, operation, createdContainerID, domain.ErrUnavailable)
 		}
 	default:
-		return m.failLaunch(ctx, workload, operation, m.classifyEngine(err))
+		return m.failLaunch(ctx, workload, operation, createdContainerID, m.classifyEngine(err))
 	}
 	if err := m.engine.StartContainer(ctx, workload.ContainerName); err != nil && !errors.Is(err, ports.ErrContainerNotFound) {
-		return m.failLaunch(ctx, workload, operation, m.classifyEngine(err))
+		return m.failLaunch(ctx, workload, operation, createdContainerID, m.classifyEngine(err))
 	}
 	facts, err = m.engine.InspectContainer(ctx, workload.ContainerName)
 	if err != nil {
-		return m.failLaunch(ctx, workload, operation, m.classifyEngine(err))
+		return m.failLaunch(ctx, workload, operation, createdContainerID, m.classifyEngine(err))
+	}
+	if !matchesWorkloadIdentity(workload, facts) {
+		// A just-created ID remains safe to remove even if the subsequent
+		// name lookup was replaced or returned inconsistent labels. An adopted
+		// foreign object is never touched.
+		return m.failLaunch(ctx, workload, operation, createdContainerID, domain.ErrCorrupt)
+	}
+	if !matchesWorkloadContainer(workload, facts) {
+		cleanupID := createdContainerID
+		if cleanupID == "" {
+			cleanupID = facts.ID
+		}
+		return m.failLaunch(ctx, workload, operation, cleanupID, domain.ErrCorrupt)
 	}
 	if !facts.Running {
 		// The container started and immediately exited: an honest, bounded
@@ -346,12 +411,12 @@ func (m *Manager) driveLaunch(ctx context.Context, workload domain.Workload, ope
 		if facts.OOMKilled {
 			cause = fmt.Errorf("%w: %s", domain.ErrFailed, domain.ExitOOM)
 		}
-		return m.failLaunch(ctx, workload, operation, cause)
+		return m.failLaunch(ctx, workload, operation, createdContainerID, cause)
 	}
 	// Verify the published endpoint is loopback-only before it is ever
 	// persisted or served.
 	if facts.HostIP != "127.0.0.1" || facts.HostPort < 1 || facts.HostPort > 65535 {
-		return m.failLaunch(ctx, workload, operation, domain.ErrCorrupt)
+		return m.failLaunch(ctx, workload, operation, createdContainerID, domain.ErrCorrupt)
 	}
 	endpoint := fmt.Sprintf("127.0.0.1:%d", facts.HostPort)
 	// Resolve and validate the real cgroup path against this process's
@@ -359,40 +424,46 @@ func (m *Manager) driveLaunch(ctx context.Context, workload domain.Workload, ope
 	// that failed to apply stops the launch; it is never warned-and-continued.
 	cgroupPath, err := m.resolveCgroup(ctx, facts.PID)
 	if err != nil {
-		return m.failLaunch(ctx, workload, operation, err)
+		return m.failLaunch(ctx, workload, operation, createdContainerID, err)
 	}
 	effective, err := m.cgroup.ReadEffective(ctx, cgroupPath)
 	if err != nil {
-		return m.failLaunch(ctx, workload, operation, domain.ErrCorrupt)
+		return m.failLaunch(ctx, workload, operation, createdContainerID, domain.ErrCorrupt)
 	}
-	if effective.CPUMaxUSec != workload.Effective.CPUQuotaUSec ||
-		effective.MemoryHigh != workload.Effective.MemoryHighBytes ||
-		effective.MemoryMax != workload.Effective.MemoryMaxBytes ||
-		effective.PIDsMax != workload.Effective.PidsMax {
-		return m.failLaunch(ctx, workload, operation, domain.ErrCorrupt)
+	if !matchesEffectivePolicy(workload, effective) {
+		return m.failLaunch(ctx, workload, operation, createdContainerID, domain.ErrCorrupt)
 	}
 	// Startup health gate: no session is returned before the bounded probe
 	// succeeds.
 	if err := m.awaitStartupHealth(ctx, endpoint, workload.Effective.HealthPath, workload.Effective.StartupTimeout); err != nil {
-		return m.failLaunch(ctx, workload, operation, err)
+		return m.failLaunch(ctx, workload, operation, createdContainerID, err)
 	}
-	counters, _ := m.cgroup.ReadCounters(ctx, cgroupPath)
+	counters, err := m.cgroup.ReadCounters(ctx, cgroupPath)
+	if err != nil {
+		return m.failLaunch(ctx, workload, operation, createdContainerID, domain.ErrCorrupt)
+	}
 	now := m.now()
 	startedAt := now
-	if err := m.repository.Transition(ctx, workload.ID, domain.StateStarting, domain.StateRunning, ports.WorkloadFacts{
-		ContainerID: facts.ID, Endpoint: endpoint, CgroupPath: cgroupPath,
-		Generation: workload.Generation, RestartCount: workload.RestartCount,
-		HealthVerdict: domain.HealthOK, LastExit: domain.ExitNone,
-		BaselineOOM: counters.MemoryOOMs, BaselinePids: counters.PIDsPeak,
-		StartedAt: &startedAt,
-	}, now); err != nil {
-		return m.failLaunch(ctx, workload, operation, err)
-	}
 	operation.ResultState = domain.StateRunning
 	operation.ResultGeneration = workload.Generation
 	operation.UpdatedAt = now
-	if err := m.repository.RecordOperation(ctx, operation); err != nil {
-		return fmt.Errorf("finalize workload operation: %w", err)
+	if err := m.repository.TransitionOperation(ctx, workload.ID, domain.StateStarting, domain.StateRunning, ports.WorkloadFacts{
+		ContainerID: facts.ID, Endpoint: endpoint, CgroupPath: cgroupPath,
+		Generation: workload.Generation, RestartCount: workload.RestartCount,
+		HealthVerdict: domain.HealthOK, LastExit: domain.ExitNone,
+		BaselineOOM: counters.MemoryOOMs, BaselinePids: counters.PIDsLimitEvents,
+		StartedAt: &startedAt,
+	}, operation, now); err != nil {
+		// A transaction commit error has an ambiguous outcome: the state and
+		// operation verdict may both have committed even though the client did
+		// not receive the acknowledgement. Never turn that ambiguity into an
+		// engine cleanup or overwrite a possibly committed success with a
+		// transient failure. The same operation key is safe to replay and will
+		// resolve the durable postcondition.
+		if errors.Is(err, ports.ErrStoreUnavailable) {
+			return domain.ErrUnavailable
+		}
+		return fmt.Errorf("finalize workload launch: %w", err)
 	}
 	// The launch succeeded against Core's freshest facts (the surface path
 	// resolved moments ago): anchor the Core-grace clock here so a later
@@ -404,6 +475,14 @@ func (m *Manager) driveLaunch(ctx context.Context, workload domain.Workload, ope
 		VerifiedAt: &verifiedAt,
 	}, now)
 	return nil
+}
+
+func matchesEffectivePolicy(workload domain.Workload, effective ports.EffectiveFacts) bool {
+	return effective.CPUMaxUSec == workload.Effective.CPUQuotaUSec &&
+		effective.CPUPeriodUSec == domain.CPUPeriodUSec &&
+		effective.MemoryHigh == workload.Effective.MemoryHighBytes &&
+		effective.MemoryMax == workload.Effective.MemoryMaxBytes &&
+		effective.PIDsMax == workload.Effective.PidsMax
 }
 
 // resolveCgroup derives the workload's host cgroup v2 path from the engine
@@ -462,28 +541,56 @@ func ctxSleep(ctx context.Context, d time.Duration) error {
 // best-effort and the row lands in failed with cleared engine facts. Retryable
 // engine/store outages keep the starting row and a retryable op instead —
 // reconciliation re-drives them; they never consume the key.
-func (m *Manager) failLaunch(ctx context.Context, workload domain.Workload, operation domain.WorkloadOperation, cause error) error {
+func (m *Manager) failLaunch(ctx context.Context, workload domain.Workload, operation domain.WorkloadOperation, createdContainerID string, cause error) error {
 	classified := classify(cause)
 	now := m.now()
+	// A caller may have prepared a success verdict immediately before a
+	// failing persistence attempt. Failure records must never retain that
+	// result_state alongside an error_kind.
+	operation.ResultState = ""
+	if classified.retryable {
+		operation.ErrorKind = classified.kind
+		operation.ResultGeneration = workload.Generation
+		operation.UpdatedAt = now
+		_ = m.repository.RecordOperation(ctx, operation)
+		return cause
+	}
+	// Deterministic failure: first converge the exact owned engine object.
+	// An engine outage leaves the row starting and records only a retryable
+	// verdict; claiming a terminal failure while its container may still be
+	// live would place it outside the state machine.
+	cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
+	defer cancel()
+	var cleanupErr error
+	if createdContainerID != "" {
+		// A successful create returned this exact immutable engine identity in
+		// the current attempt. It is safe to remove even when read-back proves
+		// the engine ignored part of the requested security profile.
+		cleanupErr = m.removeInspectedContainer(cleanupCtx, ports.ContainerFacts{ID: createdContainerID})
+	} else {
+		cleanupErr = m.removeWorkloadContainer(cleanupCtx, workload)
+	}
+	if cleanupErr != nil && !errors.Is(cleanupErr, domain.ErrCorrupt) {
+		operation.ErrorKind = domain.ErrorUnavailable
+		operation.ResultGeneration = workload.Generation
+		operation.UpdatedAt = now
+		_ = m.repository.RecordOperation(context.WithoutCancel(ctx), operation)
+		return domain.ErrUnavailable
+	}
+	stoppedAt := now
 	operation.ErrorKind = classified.kind
 	operation.ResultGeneration = workload.Generation
 	operation.UpdatedAt = now
-	_ = m.repository.RecordOperation(ctx, operation)
-	if classified.retryable {
-		return cause
-	}
-	// Deterministic failure: converge the engine object and the row.
-	cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
-	defer cancel()
-	_ = m.engine.StopContainer(cleanupCtx, workload.ContainerName, 10*time.Second)
-	_ = m.engine.RemoveContainer(cleanupCtx, workload.ContainerName)
-	stoppedAt := now
-	if err := m.repository.Transition(context.WithoutCancel(ctx), workload.ID, domain.StateStarting, domain.StateFailed, ports.WorkloadFacts{
+	if err := m.repository.TransitionOperation(context.WithoutCancel(ctx), workload.ID, domain.StateStarting, domain.StateFailed, ports.WorkloadFacts{
 		Generation: workload.Generation, RestartCount: workload.RestartCount,
 		HealthVerdict: domain.HealthFailing, LastExit: domain.ExitUnknown,
 		StoppedAt: &stoppedAt, ClearEngine: true,
-	}, now); err != nil {
+	}, operation, now); err != nil {
 		m.logger.Warn("workload fail-launch convergence incomplete", "error", err)
+		if errors.Is(err, ports.ErrStoreUnavailable) {
+			return domain.ErrUnavailable
+		}
+		return cause
 	}
 	return cause
 }
@@ -512,7 +619,7 @@ func classify(err error) failure {
 		// removed and the row lands in failed. Treating them as retryable
 		// would leak a live (or drifted) container outside the state
 		// machine's control.
-		return failure{kind: domain.ErrorFailed, retryable: false}
+		return failure{kind: domain.ErrorPermanent, retryable: false}
 	default:
 		return failure{kind: domain.ErrorFailed, retryable: true}
 	}

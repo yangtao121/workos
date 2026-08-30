@@ -13,6 +13,8 @@ import (
 	"errors"
 	"fmt"
 	"os/exec"
+	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -57,17 +59,23 @@ func runCommand(ctx context.Context, executable string, args []string, timeout t
 	defer cancel()
 	command := exec.CommandContext(execCtx, executable, args...)
 	var stdout, stderr bytes.Buffer
-	command.Stdout = newBoundedWriter(&stdout, maxOutputBytes)
-	command.Stderr = newBoundedWriter(&stderr, maxOutputBytes)
-	if err := command.Run(); err != nil {
+	stdoutWriter := newBoundedWriter(&stdout, maxOutputBytes)
+	stderrWriter := newBoundedWriter(&stderr, maxOutputBytes)
+	command.Stdout = stdoutWriter
+	command.Stderr = stderrWriter
+	runErr := command.Run()
+	if stdoutWriter.overflow || stderrWriter.overflow {
+		return nil, fmt.Errorf("%w: engine output exceeded the bounded limit", ports.ErrEngineUnavailable)
+	}
+	if runErr != nil {
 		if execCtx.Err() != nil {
 			return nil, fmt.Errorf("%w: engine call timed out", ports.ErrEngineUnavailable)
 		}
 		exitErr := &exec.ExitError{}
-		if errors.As(err, &exitErr) {
+		if errors.As(runErr, &exitErr) {
 			return nil, fmt.Errorf("engine exited with code %d", exitErr.ExitCode())
 		}
-		return nil, fmt.Errorf("%w: %s", ports.ErrEngineUnavailable, engineFailure(err))
+		return nil, fmt.Errorf("%w: %s", ports.ErrEngineUnavailable, engineFailure(runErr))
 	}
 	// stderr is deliberately bounded and discarded: raw engine error text
 	// never crosses the adapter boundary into logs, errors, or responses.
@@ -86,8 +94,9 @@ func engineFailure(err error) string {
 }
 
 type boundedWriter struct {
-	buffer *bytes.Buffer
-	remain int
+	buffer   *bytes.Buffer
+	remain   int
+	overflow bool
 }
 
 func newBoundedWriter(buffer *bytes.Buffer, limit int) *boundedWriter {
@@ -96,12 +105,13 @@ func newBoundedWriter(buffer *bytes.Buffer, limit int) *boundedWriter {
 
 func (w *boundedWriter) Write(payload []byte) (int, error) {
 	if w.remain <= 0 {
-		// Silently drop beyond the cap; the caller judges by output validity.
+		w.overflow = true
 		return len(payload), nil
 	}
 	if len(payload) > w.remain {
 		w.buffer.Write(payload[:w.remain])
 		w.remain = 0
+		w.overflow = true
 		return len(payload), nil
 	}
 	w.buffer.Write(payload)
@@ -173,8 +183,10 @@ func (e *Engine) ensureInternalNetwork(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	if strings.Contains(string(output), networkName) {
-		return e.verifyNetworkInternal(ctx)
+	for _, name := range strings.Split(string(output), "\n") {
+		if strings.TrimSpace(name) == networkName {
+			return e.verifyNetworkInternal(ctx)
+		}
 	}
 	if _, err := e.run(ctx, e.executable, []string{"network", "create", "--internal", networkName}, fastTimeout); err != nil {
 		return err
@@ -201,7 +213,7 @@ func (e *Engine) ImageExists(ctx context.Context, image string) (bool, error) {
 	if err == nil {
 		return true, nil
 	}
-	if strings.Contains(err.Error(), "exited with code 1") {
+	if exitedWithCode(err, 1) {
 		return false, nil
 	}
 	return false, err
@@ -213,17 +225,35 @@ func (e *Engine) ImageExists(ctx context.Context, image string) (bool, error) {
 // one random loopback-only published port, exact resource limits, and
 // --restart=no (restart authority belongs to the supervisor, not the engine).
 func (e *Engine) CreateContainer(ctx context.Context, spec ports.ContainerSpec) (string, error) {
-	if spec.Name == "" || !domain.ValidImage(spec.Image) || !domain.ValidCommand(spec.Command) {
+	if spec.Name == "" || !domain.ValidImage(spec.Image) || !domain.ValidCommand(spec.Command) ||
+		spec.Port < 1 || spec.Port > 65535 {
 		return "", domain.ErrInvalid
 	}
-	if spec.Policy.CPUQuotaUSec <= 0 || spec.Policy.MemoryHighBytes <= 0 ||
-		spec.Policy.MemoryMaxBytes < spec.Policy.MemoryHighBytes || spec.Policy.PidsMax <= 0 {
+	if spec.Policy.CPUQuotaUSec < int64(domain.MinCPUHardCores*float64(domain.CPUPeriodUSec)) ||
+		spec.Policy.MemoryHighBytes < domain.MinMemoryHighMB*1024*1024 ||
+		spec.Policy.MemoryMaxBytes < spec.Policy.MemoryHighBytes || spec.Policy.PidsMax <= 0 ||
+		spec.Policy.MemoryMaxBytes < domain.MinMemoryMaxMB*1024*1024 || spec.Policy.PidsMax < domain.MinPidsMax ||
+		spec.Policy.CPUQuotaUSec > int64(domain.MaxCPUHardCores*float64(domain.CPUPeriodUSec)) ||
+		spec.Policy.MemoryHighBytes > domain.MaxMemoryHighMB*1024*1024 ||
+		spec.Policy.MemoryMaxBytes > domain.MaxMemoryMaxMB*1024*1024 ||
+		spec.Policy.PidsMax > domain.MaxPidsMax {
+		return "", domain.ErrInvalid
+	}
+	entrypoint, err := json.Marshal(spec.Command)
+	if err != nil {
 		return "", domain.ErrInvalid
 	}
 	args := []string{
 		"create", "--name", spec.Name,
 		"--pull=never",
 		"--restart=no",
+		"--image-volume=ignore",
+		"--http-proxy=false",
+		"--privileged=false",
+		// Override both image ENTRYPOINT and its default CMD with one JSON exec
+		// form. The resulting process argv is exactly the canonical command Core
+		// resolved from the pinned manifest, including the one-element case.
+		"--entrypoint", string(entrypoint),
 		"--network", networkName,
 		"--publish", fmt.Sprintf("127.0.0.1::%d", spec.Port),
 		"--read-only",
@@ -234,28 +264,90 @@ func (e *Engine) CreateContainer(ctx context.Context, spec ports.ContainerSpec) 
 		"--pids-limit", fmt.Sprintf("%d", spec.Policy.PidsMax),
 		"--memory", fmt.Sprintf("%d", spec.Policy.MemoryMaxBytes),
 		"--memory-reservation", fmt.Sprintf("%d", spec.Policy.MemoryHighBytes),
-		"--cpu-period", fmt.Sprintf("%d", 100000),
+		"--cpu-period", fmt.Sprintf("%d", domain.CPUPeriodUSec),
 		"--cpu-quota", fmt.Sprintf("%d", spec.Policy.CPUQuotaUSec),
 	}
-	for key, value := range spec.Labels {
+	labelKeys := make([]string, 0, len(spec.Labels))
+	for key := range spec.Labels {
+		labelKeys = append(labelKeys, key)
+	}
+	sort.Strings(labelKeys)
+	for _, key := range labelKeys {
+		value := spec.Labels[key]
 		args = append(args, "--label", key+"="+value)
 	}
 	args = append(args, "--")
 	args = append(args, spec.Image)
-	args = append(args, spec.Command...)
 	output, err := e.run(ctx, e.executable, args, startTimeout)
 	if err != nil {
-		if strings.Contains(err.Error(), "exited with code 125") {
-			return "", ports.ErrContainerAlreadyExists
+		// Exit 125 means a Podman-side error, not necessarily a name
+		// collision. Only the dedicated existence command can prove that the
+		// deterministic name was actually created by this or another attempt.
+		if exitedWithCode(err, 125) {
+			exists, existsErr := e.containerExists(ctx, spec.Name)
+			if existsErr == nil && exists {
+				return "", ports.ErrContainerAlreadyExists
+			}
 		}
 		return "", err
 	}
-	return strings.TrimSpace(string(output)), nil
+	containerID := strings.TrimSpace(string(output))
+	if !validContainerID(containerID) {
+		// Creation may have committed even when stdout is malformed. Surface an
+		// unavailable verdict so reconciliation inspects the deterministic name;
+		// never use an unbounded or ambiguous string as an engine identity.
+		return "", fmt.Errorf("%w: engine returned an invalid container identity", ports.ErrEngineUnavailable)
+	}
+	return containerID, nil
+}
+
+func validContainerID(value string) bool {
+	if len(value) != 64 {
+		return false
+	}
+	for _, character := range value {
+		if (character < '0' || character > '9') && (character < 'a' || character > 'f') {
+			return false
+		}
+	}
+	return true
+}
+
+func (e *Engine) containerExists(ctx context.Context, nameOrID string) (bool, error) {
+	_, err := e.run(ctx, e.executable, []string{"container", "exists", nameOrID}, fastTimeout)
+	switch {
+	case err == nil:
+		return true, nil
+	case exitedWithCode(err, 1):
+		return false, nil
+	default:
+		// In particular, exit 125 means local storage could not be
+		// inspected. It must remain unavailable, never collapse to absence.
+		return false, err
+	}
+}
+
+func (e *Engine) classifyContainerFailure(ctx context.Context, nameOrID string, operationErr error) error {
+	if !exitedWithCode(operationErr, 125) {
+		return operationErr
+	}
+	exists, err := e.containerExists(ctx, nameOrID)
+	if err != nil {
+		return err
+	}
+	if !exists {
+		return ports.ErrContainerNotFound
+	}
+	return operationErr
+}
+
+func exitedWithCode(err error, code int) bool {
+	return err != nil && err.Error() == fmt.Sprintf("engine exited with code %d", code)
 }
 
 func (e *Engine) StartContainer(ctx context.Context, nameOrID string) error {
 	_, err := e.run(ctx, e.executable, []string{"start", nameOrID}, startTimeout)
-	return err
+	return e.classifyContainerFailure(ctx, nameOrID, err)
 }
 
 func (e *Engine) StopContainer(ctx context.Context, nameOrID string, timeout time.Duration) error {
@@ -264,20 +356,23 @@ func (e *Engine) StopContainer(ctx context.Context, nameOrID string, timeout tim
 		grace = 1
 	}
 	_, err := e.run(ctx, e.executable, []string{"stop", "-t", fmt.Sprintf("%d", grace), nameOrID}, timeout+startTimeout/2)
-	return err
+	return e.classifyContainerFailure(ctx, nameOrID, err)
 }
 
 func (e *Engine) RemoveContainer(ctx context.Context, nameOrID string) error {
 	_, err := e.run(ctx, e.executable, []string{"rm", "-f", nameOrID}, fastTimeout)
-	return err
+	return e.classifyContainerFailure(ctx, nameOrID, err)
 }
 
 // containerDocument is the bounded subset of container inspect output the
 // adapter consumes.
 type containerDocument struct {
-	ID    string `json:"Id"`
-	Name  string `json:"Name"`
-	State struct {
+	ID            string          `json:"Id"`
+	Name          string          `json:"Name"`
+	ImageName     string          `json:"ImageName"`
+	EffectiveCaps json.RawMessage `json:"EffectiveCaps"`
+	BoundingCaps  json.RawMessage `json:"BoundingCaps"`
+	State         struct {
 		Running   bool `json:"Running"`
 		ExitCode  int  `json:"ExitCode"`
 		PID       int  `json:"Pid"`
@@ -288,36 +383,100 @@ type containerDocument struct {
 			HostIP   string `json:"HostIp"`
 			HostPort string `json:"HostPort"`
 		} `json:"Ports"`
+		Networks map[string]json.RawMessage `json:"Networks"`
 	} `json:"NetworkSettings"`
+	Mounts []struct {
+		Type        string `json:"Type"`
+		Destination string `json:"Destination"`
+	} `json:"Mounts"`
 	Config struct {
-		Labels map[string]string `json:"Labels"`
+		Labels     map[string]string `json:"Labels"`
+		Entrypoint []string          `json:"Entrypoint"`
+		Cmd        []string          `json:"Cmd"`
 	} `json:"Config"`
+	HostConfig struct {
+		ReadonlyRootfs bool              `json:"ReadonlyRootfs"`
+		Privileged     bool              `json:"Privileged"`
+		AutoRemove     bool              `json:"AutoRemove"`
+		CapAdd         []string          `json:"CapAdd"`
+		SecurityOpt    []string          `json:"SecurityOpt"`
+		NetworkMode    string            `json:"NetworkMode"`
+		Binds          []string          `json:"Binds"`
+		Devices        []json.RawMessage `json:"Devices"`
+		Tmpfs          map[string]string `json:"Tmpfs"`
+		RestartPolicy  struct {
+			Name string `json:"Name"`
+		} `json:"RestartPolicy"`
+	} `json:"HostConfig"`
 }
 
 func (e *Engine) InspectContainer(ctx context.Context, nameOrID string) (ports.ContainerFacts, error) {
 	output, err := e.run(ctx, e.executable, []string{"container", "inspect", "--type", "container", nameOrID}, fastTimeout)
 	if err != nil {
-		if strings.Contains(err.Error(), "exited with code 125") || strings.Contains(err.Error(), "no such") {
-			return ports.ContainerFacts{}, ports.ErrContainerNotFound
-		}
-		return ports.ContainerFacts{}, err
+		return ports.ContainerFacts{}, e.classifyContainerFailure(ctx, nameOrID, err)
 	}
 	var documents []containerDocument
 	if err := json.Unmarshal(output, &documents); err != nil || len(documents) != 1 {
 		return ports.ContainerFacts{}, fmt.Errorf("engine inspect returned unreadable output")
 	}
 	document := documents[0]
+	if !validContainerID(document.ID) {
+		return ports.ContainerFacts{}, fmt.Errorf("engine inspect returned an invalid container identity")
+	}
+	effectiveCapabilities, err := capabilityCount(document.EffectiveCaps)
+	if err != nil {
+		return ports.ContainerFacts{}, fmt.Errorf("engine inspect returned unreadable effective capabilities")
+	}
+	boundingCapabilities, err := capabilityCount(document.BoundingCaps)
+	if err != nil {
+		return ports.ContainerFacts{}, fmt.Errorf("engine inspect returned unreadable bounding capabilities")
+	}
+	actualCommand := append([]string(nil), document.Config.Entrypoint...)
+	actualCommand = append(actualCommand, document.Config.Cmd...)
 	facts := ports.ContainerFacts{
 		ID: document.ID, Name: document.Name,
 		Running: document.State.Running, ExitCode: document.State.ExitCode,
 		PID: document.State.PID, OOMKilled: document.State.OOMKilled,
 		Labels: document.Config.Labels,
+		Image:  document.ImageName, Command: actualCommand,
+		ReadOnly: document.HostConfig.ReadonlyRootfs, Privileged: document.HostConfig.Privileged,
+		AutoRemove:            document.HostConfig.AutoRemove,
+		CapabilitiesAdded:     len(document.HostConfig.CapAdd),
+		EffectiveCapabilities: effectiveCapabilities,
+		BoundingCapabilities:  boundingCapabilities,
+		NetworkMode:           document.HostConfig.NetworkMode, RestartPolicy: document.HostConfig.RestartPolicy.Name,
+		BindMounts: len(document.HostConfig.Binds), Devices: len(document.HostConfig.Devices),
+		Tmpfs: document.HostConfig.Tmpfs,
 	}
-	for _, bindings := range document.NetworkSettings.Ports {
+	for _, option := range document.HostConfig.SecurityOpt {
+		if option == "no-new-privileges" || option == "no-new-privileges=true" {
+			facts.NoNewPrivileges = true
+			continue
+		}
+		facts.UnexpectedSecurityOpts++
+	}
+	for _, mount := range document.Mounts {
+		// Podman versions may or may not repeat the explicit /tmp tmpfs in
+		// the top-level mount inventory. Every other mount (including an
+		// anonymous volume inherited from the image) is forbidden.
+		if mount.Type != "tmpfs" || mount.Destination != "/tmp" {
+			facts.UnexpectedMounts++
+		}
+	}
+	facts.ConnectedNetworks = len(document.NetworkSettings.Networks)
+	_, facts.InternalNetwork = document.NetworkSettings.Networks[networkName]
+	for containerPort, bindings := range document.NetworkSettings.Ports {
+		parsedContainerPort, parsedContainerErr := parseContainerPort(containerPort)
 		for _, binding := range bindings {
+			facts.PublishedPorts++
+			if facts.PublishedPorts > 1 {
+				continue
+			}
+			if parsedContainerErr == nil {
+				facts.ContainerPort = int32(parsedContainerPort)
+			}
 			facts.HostIP = binding.HostIP
-			var parsed int
-			if _, err := fmt.Sscanf(binding.HostPort, "%d", &parsed); err == nil {
+			if parsed, err := parseDecimalPort(binding.HostPort); err == nil {
 				facts.HostPort = int32(parsed)
 			}
 		}
@@ -325,29 +484,62 @@ func (e *Engine) InspectContainer(ctx context.Context, nameOrID string) (ports.C
 	return facts, nil
 }
 
+func capabilityCount(raw json.RawMessage) (int, error) {
+	if len(raw) == 0 || bytes.Equal(bytes.TrimSpace(raw), []byte("null")) {
+		return 0, errors.New("capability evidence is missing")
+	}
+	var capabilities []string
+	if err := json.Unmarshal(raw, &capabilities); err != nil || capabilities == nil {
+		return 0, errors.New("capability evidence is malformed")
+	}
+	return len(capabilities), nil
+}
+
+func parseContainerPort(value string) (int, error) {
+	port, found := strings.CutSuffix(value, "/tcp")
+	if !found {
+		return 0, errors.New("container port is malformed")
+	}
+	return parseDecimalPort(port)
+}
+
+func parseDecimalPort(value string) (int, error) {
+	if value == "" || value[0] == '0' {
+		return 0, errors.New("port is malformed")
+	}
+	for index := range value {
+		if value[index] < '0' || value[index] > '9' {
+			return 0, errors.New("port is malformed")
+		}
+	}
+	port, err := strconv.Atoi(value)
+	if err != nil || port < 1 || port > 65535 {
+		return 0, errors.New("port is malformed")
+	}
+	return port, nil
+}
+
 func (e *Engine) ListManagedContainers(ctx context.Context) ([]ports.ContainerFacts, error) {
 	output, err := e.run(ctx, e.executable,
-		[]string{"ps", "-a", "--filter", "label=" + managedLabel + "=workos", "--format", "json"}, fastTimeout)
+		[]string{"ps", "-a", "--filter", "label=" + managedLabel + "=workos", "--format", "{{.ID}}"}, fastTimeout)
 	if err != nil {
 		return nil, err
 	}
-	var documents []struct {
-		ID    string   `json:"Id"`
-		Names []string `json:"Names"`
-		State string   `json:"State"`
-	}
-	if err := json.Unmarshal(output, &documents); err != nil {
-		return nil, fmt.Errorf("engine ps returned unreadable output")
-	}
-	facts := make([]ports.ContainerFacts, 0, len(documents))
-	for _, document := range documents {
-		name := ""
-		if len(document.Names) > 0 {
-			name = document.Names[0]
+	lines := strings.Split(strings.TrimSpace(string(output)), "\n")
+	facts := make([]ports.ContainerFacts, 0, len(lines))
+	for _, line := range lines {
+		id := strings.TrimSpace(line)
+		if id == "" {
+			continue
 		}
-		facts = append(facts, ports.ContainerFacts{
-			ID: document.ID, Name: name, Running: document.State == "running",
-		})
+		inspected, inspectErr := e.InspectContainer(ctx, id)
+		if errors.Is(inspectErr, ports.ErrContainerNotFound) {
+			continue
+		}
+		if inspectErr != nil {
+			return nil, inspectErr
+		}
+		facts = append(facts, inspected)
 	}
 	return facts, nil
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strconv"
 	"time"
 
 	"github.com/yangtao121/workos/internal/platform/identity"
@@ -16,17 +17,22 @@ const maxObservations = 1000
 
 // LookupRunning returns the workload only when it is running with the exact
 // expected generation; any drift, terminal state, or miss fails closed with
-// ErrNotFound. This is the web-service session's launch-target verdict.
+// ErrNotFound. Store uncertainty remains ErrUnavailable so callers never
+// misreport an outage as an absent workload. This is the web-service
+// session's launch-target verdict.
 func (m *Manager) LookupRunning(ctx context.Context, workloadID string, generation int64) (domain.Workload, error) {
 	if !domain.ValidWorkloadID(workloadID) || generation < 1 {
 		return domain.Workload{}, domain.ErrNotFound
 	}
 	workload, err := m.repository.Get(ctx, workloadID)
 	if err != nil {
-		return domain.Workload{}, domain.ErrNotFound
+		if errors.Is(err, domain.ErrNotFound) || errors.Is(err, domain.ErrInvalid) {
+			return domain.Workload{}, domain.ErrNotFound
+		}
+		return domain.Workload{}, domain.ErrUnavailable
 	}
 	if workload.State != domain.StateRunning || workload.Generation != generation ||
-		workload.Endpoint == "" {
+		!domain.ValidLoopbackEndpoint(workload.Endpoint) || workload.CgroupPath == "" {
 		return domain.Workload{}, domain.ErrNotFound
 	}
 	return workload, nil
@@ -58,16 +64,22 @@ func (m *Manager) Observe(ctx context.Context) ([]ports.Observation, error) {
 			ObservedAt: now,
 		}
 		observation.Idle = m.isIdleInternal(ctx, workload)
-		if workload.State == domain.StateRunning && workload.CgroupPath != "" {
-			counters, err := m.cgroup.ReadCounters(ctx, workload.CgroupPath)
-			if err == nil {
-				observation.CPUUsageUSec = counters.CPUUsageUSec
-				observation.MemoryCurrent = counters.MemoryCurrent
-				observation.MemoryPeak = counters.MemoryPeak
-				observation.MemoryOOMs = counters.MemoryOOMs
-				observation.PIDsCurrent = counters.PIDsCurrent
-				observation.PIDsPeak = counters.PIDsPeak
+		if workload.State == domain.StateRunning {
+			if workload.CgroupPath == "" || !domain.ValidLoopbackEndpoint(workload.Endpoint) {
+				return nil, domain.ErrUnavailable
 			}
+			counters, err := m.cgroup.ReadCounters(ctx, workload.CgroupPath)
+			if err != nil {
+				// Missing or malformed kernel counters are unavailable evidence,
+				// never a fabricated all-zero observation.
+				return nil, domain.ErrUnavailable
+			}
+			observation.CPUUsageUSec = counters.CPUUsageUSec
+			observation.MemoryCurrent = counters.MemoryCurrent
+			observation.MemoryPeak = counters.MemoryPeak
+			observation.MemoryOOMs = counters.MemoryOOMs
+			observation.PIDsCurrent = counters.PIDsCurrent
+			observation.PIDsLimitEvents = counters.PIDsLimitEvents
 			probeCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
 			result, probeErr := m.prober.Probe(probeCtx, workload.Endpoint, workload.Effective.HealthPath, time.Second)
 			cancel()
@@ -80,6 +92,8 @@ func (m *Manager) Observe(ctx context.Context) ([]ports.Observation, error) {
 			// baseline is a bounded, numeric fact.
 			if counters.MemoryOOMs > workload.BaselineOOM {
 				observation.ExitCategory = domain.ExitOOM
+			} else if counters.PIDsLimitEvents > workload.BaselinePids {
+				observation.ExitCategory = domain.ExitPIDs
 			}
 		}
 		observations = append(observations, observation)
@@ -131,7 +145,12 @@ func (m *Manager) Reconcile(ctx context.Context) error {
 		case domain.StateStopping:
 			m.reconcileStopping(ctx, workload)
 		default:
-			// Terminal rows keep no engine object; nothing to drive.
+			// Also converge legacy/crash-window engine objects left behind a
+			// terminal row. Identity verification ensures a foreign object is
+			// never touched.
+			if err := m.removeOwnedWorkloadContainer(ctx, workload); err != nil && !errors.Is(err, domain.ErrCorrupt) {
+				m.logger.Info("workload terminal cleanup pending", "error", err)
+			}
 		}
 	}
 	m.removeOrphans(ctx, known)
@@ -147,10 +166,37 @@ func (m *Manager) claimLease(ctx context.Context, workloadID string, now time.Ti
 }
 
 func (m *Manager) reconcileStarting(ctx context.Context, workload domain.Workload) {
-	operation := domain.WorkloadOperation{
-		WorkloadID: workload.ID, OperationKey: "reconcile:" + fmt.Sprintf("%d", workload.Generation),
-		Operation: domain.OperationEnsure, RequestDigest: domain.OperationDigest(
-			domain.OperationEnsure, workload.ID, workload.Image, workload.Command, workload.Port, workload.Requested),
+	if workload.State == domain.StatePending {
+		now := m.now()
+		if err := m.repository.Transition(ctx, workload.ID, domain.StatePending, domain.StateStarting, ports.WorkloadFacts{
+			Generation: workload.Generation, RestartCount: workload.RestartCount,
+			HealthVerdict: domain.HealthUnknown, LastExit: domain.ExitNone,
+		}, now); err != nil {
+			m.logger.Info("workload reconcile pending transition", "error", err)
+			return
+		}
+		workload.State = domain.StateStarting
+		workload.UpdatedAt = now
+	}
+	stored, err := m.repository.PendingOperation(ctx, workload.ID, workload.Generation)
+	if err != nil {
+		m.logger.Info("workload reconcile operation lookup pending", "error", err)
+		return
+	}
+	operation := domain.WorkloadOperation{}
+	if stored.OperationKey != "" {
+		operation = domain.WorkloadOperation{
+			WorkloadID: stored.WorkloadID, OperationKey: stored.OperationKey,
+			Operation: stored.Operation, RequestDigest: stored.RequestDigest,
+			ResultGeneration: stored.ResultGeneration,
+		}
+	} else {
+		operation = domain.WorkloadOperation{
+			WorkloadID: workload.ID, OperationKey: "reconcile:" + fmt.Sprintf("%d", workload.Generation),
+			Operation: domain.OperationEnsure, RequestDigest: domain.OperationDigest(
+				domain.OperationEnsure, workload.ID, workload.Image, workload.Command, workload.Port, workload.Requested),
+			ResultGeneration: workload.Generation,
+		}
 	}
 	if err := m.driveLaunch(ctx, workload, operation); err != nil {
 		m.logger.Info("workload reconcile launch re-drive", "error", err)
@@ -171,9 +217,14 @@ func (m *Manager) reconcileRunning(ctx context.Context, workload domain.Workload
 		m.logger.Info("workload reconcile inspect unavailable", "error", err)
 		return
 	}
-	if facts.Labels["workos.workload.id"] != workload.ID {
-		// Never touch a foreign container; the drift is corrupt.
+	if !matchesWorkloadIdentity(workload, facts) {
+		// Never touch a foreign container. The durable row fails closed and the
+		// mismatched object remains outside WorkOS cleanup authority.
 		m.failRunning(ctx, workload, domain.ExitUnknown)
+		return
+	}
+	if !matchesWorkloadContainer(workload, facts) {
+		m.failOwnedRunning(ctx, workload, facts, domain.ExitUnknown)
 		return
 	}
 	if !facts.Running {
@@ -181,8 +232,22 @@ func (m *Manager) reconcileRunning(ctx context.Context, workload domain.Workload
 		if facts.OOMKilled {
 			category = domain.ExitOOM
 		}
-		m.removeContainer(ctx, facts.ID, workload.ContainerName)
+		if err := m.removeWorkloadContainer(ctx, workload); err != nil {
+			m.logger.Info("workload exited-container cleanup pending", "error", err)
+			return
+		}
 		m.failRunning(ctx, workload, category)
+		return
+	}
+	expectedEndpoint := "127.0.0.1:" + strconv.Itoa(int(facts.HostPort))
+	cgroupPath, cgroupErr := m.resolveCgroup(probeCtx, facts.PID)
+	if cgroupErr != nil || expectedEndpoint != workload.Endpoint || cgroupPath != workload.CgroupPath {
+		m.failOwnedRunning(ctx, workload, facts, domain.ExitUnknown)
+		return
+	}
+	effective, effectiveErr := m.cgroup.ReadEffective(probeCtx, cgroupPath)
+	if effectiveErr != nil || !matchesEffectivePolicy(workload, effective) {
+		m.failOwnedRunning(ctx, workload, facts, domain.ExitUnknown)
 		return
 	}
 	// Core re-validation under the workload owner's trusted identity (the
@@ -210,7 +275,7 @@ func (m *Manager) reconcileRunning(ctx context.Context, workload domain.Workload
 			HealthVerdict: workload.HealthVerdict, LastExit: workload.LastExit,
 			VerifiedAt: &verifiedAt,
 		}, now)
-	case verifyErr != nil || verdict == ports.LaunchUnknown:
+	default:
 		// The grace is measured from the last successful verification (the
 		// launch itself anchors it); a pre-stamp legacy row falls back to its
 		// creation time so a nil stamp can never dodge the fail-safe.
@@ -224,14 +289,37 @@ func (m *Manager) reconcileRunning(ctx context.Context, workload domain.Workload
 			})
 		}
 	}
-	// Idle TTL: a running workload with no open surface session for longer
-	// than the bounded TTL is deterministically stopped. The next Open
-	// ensures a fresh launch under a fresh key.
-	if m.isIdleInternal(ctx, workload) && now.Sub(workload.UpdatedAt) > m.config.IdleTTL {
+	// Idle TTL is anchored to the durable beginning of the current no-surface
+	// interval, never a lifecycle/update timestamp. A newly idle long-lived
+	// workload therefore gets a full TTL.
+	hasSurface, surfaceErr := m.surfaces.HasActiveSurface(ctx, workload.OwnerUserID, workload.AppInstanceID)
+	if surfaceErr != nil {
+		return
+	}
+	if hasSurface {
+		_, _ = m.repository.SetIdle(ctx, workload.ID, workload.Generation, false, now)
+		return
+	}
+	idleSince, idleErr := m.repository.SetIdle(ctx, workload.ID, workload.Generation, true, now)
+	if idleErr == nil && idleSince != nil && now.Sub(*idleSince) > m.config.IdleTTL {
 		_ = m.Terminate(ctx, ports.TerminateCommand{
 			WorkloadID: workload.ID, OperationKey: "reconcile:idle", Reason: "idle",
 		})
 	}
+}
+
+// failOwnedRunning removes an exact persisted container identity before
+// closing the row. Unlike an identity mismatch, immutable/security/cgroup
+// drift is still an object this workload unquestionably owns, so leaving it
+// live would escape the state machine.
+func (m *Manager) failOwnedRunning(ctx context.Context, workload domain.Workload, facts ports.ContainerFacts, category string) {
+	cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
+	defer cancel()
+	if err := m.removeInspectedContainer(cleanupCtx, facts); err != nil {
+		m.logger.Info("workload drift cleanup pending", "error", err)
+		return
+	}
+	m.failRunning(ctx, workload, category)
 }
 
 func (m *Manager) failRunning(ctx context.Context, workload domain.Workload, category string) {
@@ -246,7 +334,10 @@ func (m *Manager) failRunning(ctx context.Context, workload domain.Workload, cat
 }
 
 func (m *Manager) reconcileStopping(ctx context.Context, workload domain.Workload) {
-	m.removeContainer(ctx, workload.ContainerID, workload.ContainerName)
+	if err := m.removeOwnedWorkloadContainer(ctx, workload); err != nil {
+		m.logger.Info("workload reconcile stop cleanup pending", "error", err)
+		return
+	}
 	stoppedAt := m.now()
 	if err := m.repository.Transition(ctx, workload.ID, domain.StateStopping, domain.StateStopped, ports.WorkloadFacts{
 		Generation: workload.Generation, RestartCount: workload.RestartCount,
@@ -270,12 +361,28 @@ func (m *Manager) removeOrphans(ctx context.Context, known map[string]struct{}) 
 	}
 	for _, facts := range managed {
 		id := facts.Labels["workos.workload.id"]
+		if !domain.ValidWorkloadID(id) {
+			continue
+		}
 		if _, ok := known[id]; ok {
 			continue
 		}
 		if _, err := m.repository.Get(sweepCtx, id); errors.Is(err, domain.ErrNotFound) {
-			m.logger.Info("workload orphan removal", "error", nil)
-			m.removeContainer(sweepCtx, facts.ID, facts.Name)
+			generation, parseErr := strconv.ParseInt(facts.Labels["workos.workload.generation"], 10, 64)
+			if parseErr != nil || generation < 1 {
+				continue
+			}
+			orphan := domain.Workload{
+				ID: id, OwnerUserID: facts.Labels["workos.owner"],
+				AppInstanceID: facts.Labels["workos.workload.instance"],
+				Generation:    generation, ContainerID: facts.ID, ContainerName: facts.Name,
+			}
+			if !domain.ValidUUIDv7(orphan.OwnerUserID) || !domain.ValidUUIDv7(orphan.AppInstanceID) ||
+				!matchesWorkloadIdentity(orphan, facts) {
+				continue
+			}
+			m.logger.Info("workload orphan removal")
+			_ = m.removeInspectedContainer(sweepCtx, facts)
 		}
 	}
 }

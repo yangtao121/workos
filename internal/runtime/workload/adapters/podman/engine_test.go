@@ -1,6 +1,7 @@
 package podman
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"strings"
@@ -16,6 +17,8 @@ type capturedCall struct {
 	args    []string
 	timeout time.Duration
 }
+
+var testContainerID = strings.Repeat("a", 64)
 
 // newCapturingEngine returns an adapter whose exec layer is a capture
 // function: no podman binary runs, and every argv assertion is exact.
@@ -57,14 +60,14 @@ func testSpec() ports.ContainerSpec {
 func TestCreateContainerArgvIsExactAndShellFree(t *testing.T) {
 	var calls []capturedCall
 	engine := newCapturingEngine(&calls, func(args []string) ([]byte, error) {
-		return []byte("ctr-id-1"), nil
+		return []byte(testContainerID), nil
 	})
 	spec := testSpec()
 	id, err := engine.CreateContainer(context.Background(), spec)
 	if err != nil {
 		t.Fatalf("CreateContainer: %v", err)
 	}
-	if id != "ctr-id-1" {
+	if id != testContainerID {
 		t.Fatalf("container id %q", id)
 	}
 	if len(calls) != 1 {
@@ -84,7 +87,9 @@ func TestCreateContainerArgvIsExactAndShellFree(t *testing.T) {
 	}
 	for _, required := range []string{
 		"--pull=never", "--restart=no", "--read-only", "--cap-drop=all",
+		"--image-volume=ignore", "--http-proxy=false", "--privileged=false",
 		"--security-opt", "no-new-privileges",
+		"--entrypoint\x1f[\"/workos-fixture\",\"serve\"]",
 	} {
 		if !strings.Contains(joined, required) {
 			t.Fatalf("argv missing %q: %s", required, joined)
@@ -99,14 +104,44 @@ func TestCreateContainerArgvIsExactAndShellFree(t *testing.T) {
 	if !strings.Contains(joined, "--pids-limit\x1f32") || !strings.Contains(joined, "--memory\x1f"+itoa(96*1024*1024)) {
 		t.Fatalf("argv missing resource limits: %s", joined)
 	}
-	// The image reference and argv must be the trailing, unflagged arguments:
-	// a manifest value can never be mistaken for an engine option.
-	last := args[len(args)-3:]
-	if last[0] != spec.Image || last[1] != spec.Command[0] || last[2] != spec.Command[1] {
-		t.Fatalf("image/argv are not trailing operands: %v", last)
+	// The complete executable argv is an explicit JSON entrypoint override.
+	// Nothing follows the image, so an image-defined entrypoint or CMD cannot
+	// alter the canonical argv.
+	if args[len(args)-1] != spec.Image || args[len(args)-2] != "--" {
+		t.Fatalf("image is not the sole trailing operand: %v", args[len(args)-2:])
 	}
 	if calls[0].timeout <= 0 {
 		t.Fatalf("engine call had no deadline")
+	}
+}
+
+func TestCreateContainerOneElementCommandOverridesImageDefaults(t *testing.T) {
+	var calls []capturedCall
+	engine := newCapturingEngine(&calls, func([]string) ([]byte, error) {
+		return []byte(testContainerID), nil
+	})
+	spec := testSpec()
+	spec.Command = []string{"/workos-fixture"}
+	if _, err := engine.CreateContainer(context.Background(), spec); err != nil {
+		t.Fatalf("CreateContainer: %v", err)
+	}
+	if len(calls) != 1 {
+		t.Fatalf("calls %d, want 1", len(calls))
+	}
+	joined := strings.Join(calls[0].args, "\x1f")
+	if !strings.Contains(joined, "--entrypoint\x1f[\"/workos-fixture\"]") ||
+		!strings.HasSuffix(joined, "--\x1f"+spec.Image) {
+		t.Fatalf("single-element argv did not replace image defaults: %s", joined)
+	}
+}
+
+func TestCreateContainerRejectsMalformedEngineIdentity(t *testing.T) {
+	var calls []capturedCall
+	engine := newCapturingEngine(&calls, func([]string) ([]byte, error) {
+		return []byte("not-a-container-id"), nil
+	})
+	if _, err := engine.CreateContainer(context.Background(), testSpec()); !errors.Is(err, ports.ErrEngineUnavailable) {
+		t.Fatalf("malformed identity verdict %v, want unavailable", err)
 	}
 }
 
@@ -126,7 +161,9 @@ func itoa(value int) string {
 // tag-bearing image, unbounded argv, or a zero policy never reach exec.
 func TestCreateContainerRejectsMalformedSpecs(t *testing.T) {
 	var calls []capturedCall
-	engine := newCapturingEngine(&calls, nil)
+	engine := newCapturingEngine(&calls, func([]string) ([]byte, error) {
+		return []byte(testContainerID), nil
+	})
 	base := testSpec()
 
 	malformed := []func(ports.ContainerSpec) ports.ContainerSpec{
@@ -146,6 +183,22 @@ func TestCreateContainerRejectsMalformedSpecs(t *testing.T) {
 			spec.Policy.PidsMax = 0
 			return spec
 		},
+		func(spec ports.ContainerSpec) ports.ContainerSpec {
+			spec.Policy.PidsMax = domain.MinPidsMax - 1
+			return spec
+		},
+		func(spec ports.ContainerSpec) ports.ContainerSpec {
+			spec.Policy.CPUQuotaUSec = int64(domain.MinCPUHardCores*float64(domain.CPUPeriodUSec)) - 1
+			return spec
+		},
+		func(spec ports.ContainerSpec) ports.ContainerSpec {
+			spec.Port = 65536
+			return spec
+		},
+		func(spec ports.ContainerSpec) ports.ContainerSpec {
+			spec.Policy.MemoryMaxBytes = (domain.MaxMemoryMaxMB + 1) * 1024 * 1024
+			return spec
+		},
 	}
 	for index, mutate := range malformed {
 		if _, err := engine.CreateContainer(context.Background(), mutate(base)); err == nil {
@@ -156,9 +209,9 @@ func TestCreateContainerRejectsMalformedSpecs(t *testing.T) {
 		t.Fatalf("malformed specs reached exec: %v", calls)
 	}
 
-	// Leading-dash argv is inert by construction: the image and command are
-	// trailing operands behind the `--` end-of-options marker, so a manifest
-	// value can never be parsed as an engine option.
+	// Leading-dash argv is encoded as a JSON exec-form entrypoint value; the
+	// image remains the sole operand behind `--`. No manifest element can be
+	// parsed as an engine option.
 	if _, err := engine.CreateContainer(context.Background(), func(spec ports.ContainerSpec) ports.ContainerSpec {
 		spec.Command = []string{"-o", "ProxyCommand=evil"}
 		return spec
@@ -168,9 +221,10 @@ func TestCreateContainerRejectsMalformedSpecs(t *testing.T) {
 	if len(calls) != 1 {
 		t.Fatalf("dash argv call count %d, want 1", len(calls))
 	}
-	joined := strings.Join(calls[0].args, "")
-	if !strings.Contains(joined, "--"+base.Image+"-o") {
-		t.Fatalf("dash argv is not safely behind the -- marker: %s", joined)
+	joined := strings.Join(calls[0].args, "\x1f")
+	if !strings.Contains(joined, "--entrypoint\x1f[\"-o\",\"ProxyCommand=evil\"]") ||
+		!strings.HasSuffix(joined, "--\x1f"+base.Image) {
+		t.Fatalf("dash argv is not safely separated from engine options: %s", joined)
 	}
 }
 
@@ -256,6 +310,36 @@ func TestProbeRefusesNonInternalNetwork(t *testing.T) {
 	}
 }
 
+func TestProbeDoesNotMistakeNetworkNamePrefixForExactNetwork(t *testing.T) {
+	var calls []capturedCall
+	engine := newCapturingEngine(&calls, func(args []string) ([]byte, error) {
+		joined := strings.Join(args, " ")
+		switch {
+		case strings.Contains(joined, "network ls"):
+			return []byte(networkName + "-foreign\n"), nil
+		case strings.Contains(joined, "network create"):
+			return []byte(networkName), nil
+		case strings.Contains(joined, "network inspect"):
+			return []byte("true\n"), nil
+		default:
+			return rootlessProbeInfo, nil
+		}
+	})
+	capability, err := engine.Probe(context.Background())
+	if err != nil || !capability.Available {
+		t.Fatalf("capability=%+v err=%v", capability, err)
+	}
+	created := false
+	for _, call := range calls {
+		if strings.Contains(strings.Join(call.args, " "), "network create") {
+			created = true
+		}
+	}
+	if !created {
+		t.Fatal("prefix-matching foreign network suppressed exact network creation")
+	}
+}
+
 func sameArgs(a, b []string) bool {
 	if len(a) != len(b) {
 		return false
@@ -273,5 +357,197 @@ func sameArgs(a, b []string) bool {
 func TestNewRequiresResolvableBinary(t *testing.T) {
 	if _, err := New("workos-definitely-not-a-binary"); err == nil {
 		t.Fatalf("missing binary accepted")
+	}
+}
+
+func TestInspectAndManagedListCarryAdoptionSecurityFacts(t *testing.T) {
+	var calls []capturedCall
+	spec := testSpec()
+	inspectJSON := `[{"Id":"` + testContainerID + `","Name":"` + spec.Name + `","ImageName":"` + spec.Image + `",` +
+		`"State":{"Running":true,"ExitCode":0,"Pid":4242,"OOMKilled":false},"EffectiveCaps":[],"BoundingCaps":[],"Mounts":[],` +
+		`"Config":{"Labels":{"workos.managed":"workos","workos.workload.id":"wl"},"Entrypoint":["/workos-fixture","serve"],"Cmd":null},` +
+		`"HostConfig":{"ReadonlyRootfs":true,"Privileged":false,"CapAdd":[],"CapDrop":["ALL"],"SecurityOpt":["no-new-privileges"],` +
+		`"NetworkMode":"workos-app-internal","Binds":[],"Devices":[],"Tmpfs":{"/tmp":"rw,noexec,nodev,nosuid"},` +
+		`"RestartPolicy":{"Name":"no"}},` +
+		`"NetworkSettings":{"Ports":{"8080/tcp":[{"HostIp":"127.0.0.1","HostPort":"41001"}]},` +
+		`"Networks":{"workos-app-internal":{}}}}]`
+	engine := newCapturingEngine(&calls, func(args []string) ([]byte, error) {
+		if len(args) > 0 && args[0] == "ps" {
+			return []byte("ctr-1\n"), nil
+		}
+		return []byte(inspectJSON), nil
+	})
+	facts, err := engine.InspectContainer(context.Background(), spec.Name)
+	if err != nil {
+		t.Fatalf("InspectContainer: %v", err)
+	}
+	if facts.Image != spec.Image || !facts.ReadOnly || facts.EffectiveCapabilities != 0 || facts.BoundingCapabilities != 0 || !facts.NoNewPrivileges ||
+		facts.NetworkMode != networkName || facts.RestartPolicy != "no" || len(facts.Command) != 2 ||
+		facts.ContainerPort != int32(spec.Port) || facts.PublishedPorts != 1 ||
+		facts.ConnectedNetworks != 1 || !facts.InternalNetwork || facts.UnexpectedSecurityOpts != 0 || facts.AutoRemove {
+		t.Fatalf("inspect adoption facts incomplete: %+v", facts)
+	}
+	managed, err := engine.ListManagedContainers(context.Background())
+	if err != nil || len(managed) != 1 || managed[0].Labels[managedLabel] != "workos" {
+		t.Fatalf("managed facts=%+v err=%v", managed, err)
+	}
+	if managed[0].Image != spec.Image {
+		t.Fatalf("managed list did not inspect the exact container: %+v", managed[0])
+	}
+}
+
+func TestInspectPreservesUnexpectedSecurityAndNetworkFacts(t *testing.T) {
+	var calls []capturedCall
+	inspectJSON := `[{"Id":"` + testContainerID + `","Name":"ctr","ImageName":"image","State":{},` +
+		`"EffectiveCaps":["CAP_NET_RAW"],"BoundingCaps":["CAP_CHOWN"],"Mounts":[],` +
+		`"Config":{},"HostConfig":{"SecurityOpt":["no-new-privileges","seccomp=unconfined"],"AutoRemove":true},` +
+		`"NetworkSettings":{"Ports":{"08080/tcp":[{"HostIp":"127.0.0.1","HostPort":"41001x"}]},` +
+		`"Networks":{"workos-app-internal":{},"external":{}}}}]`
+	engine := newCapturingEngine(&calls, func([]string) ([]byte, error) { return []byte(inspectJSON), nil })
+	facts, err := engine.InspectContainer(context.Background(), "ctr")
+	if err != nil {
+		t.Fatalf("InspectContainer: %v", err)
+	}
+	if !facts.NoNewPrivileges || facts.UnexpectedSecurityOpts != 1 || !facts.AutoRemove ||
+		facts.EffectiveCapabilities != 1 || facts.BoundingCapabilities != 1 ||
+		facts.ConnectedNetworks != 2 || !facts.InternalNetwork {
+		t.Fatalf("security/network drift was hidden: %+v", facts)
+	}
+	if facts.ContainerPort != 0 || facts.HostPort != 0 || facts.PublishedPorts != 1 {
+		t.Fatalf("non-canonical port text was partially accepted: %+v", facts)
+	}
+}
+
+func TestInspectReportsUnexpectedImageVolume(t *testing.T) {
+	var calls []capturedCall
+	inspectJSON := `[{"Id":"` + testContainerID + `","Name":"ctr","ImageName":"image",` +
+		`"State":{},"EffectiveCaps":[],"BoundingCaps":[],"Config":{},"HostConfig":{},"NetworkSettings":{"Ports":{}},` +
+		`"Mounts":[{"Type":"tmpfs","Destination":"/tmp"},{"Type":"volume","Destination":"/data"}]}]`
+	engine := newCapturingEngine(&calls, func([]string) ([]byte, error) {
+		return []byte(inspectJSON), nil
+	})
+	facts, err := engine.InspectContainer(context.Background(), "ctr")
+	if err != nil {
+		t.Fatalf("InspectContainer: %v", err)
+	}
+	if facts.UnexpectedMounts != 1 {
+		t.Fatalf("unexpected mounts %d, want 1", facts.UnexpectedMounts)
+	}
+}
+
+func TestInspectRejectsMissingActualCapabilityEvidence(t *testing.T) {
+	var calls []capturedCall
+	inspectJSON := `[{"Id":"` + testContainerID + `","Name":"ctr","ImageName":"image",` +
+		`"State":{},"Config":{},"HostConfig":{},"NetworkSettings":{"Ports":{}},"Mounts":[]}]`
+	engine := newCapturingEngine(&calls, func([]string) ([]byte, error) {
+		return []byte(inspectJSON), nil
+	})
+	if _, err := engine.InspectContainer(context.Background(), "ctr"); err == nil {
+		t.Fatal("inspect accepted missing actual capability evidence")
+	}
+}
+
+func TestStopAndRemoveMapDisappearedContainer(t *testing.T) {
+	var calls []capturedCall
+	engine := newCapturingEngine(&calls, func(args []string) ([]byte, error) {
+		if len(args) >= 2 && args[0] == "container" && args[1] == "exists" {
+			return nil, errors.New("engine exited with code 1")
+		}
+		return nil, errors.New("engine exited with code 125")
+	})
+	if err := engine.StopContainer(context.Background(), "ctr", time.Second); !errors.Is(err, ports.ErrContainerNotFound) {
+		t.Fatalf("stop verdict %v, want not found", err)
+	}
+	if err := engine.RemoveContainer(context.Background(), "ctr"); !errors.Is(err, ports.ErrContainerNotFound) {
+		t.Fatalf("remove verdict %v, want not found", err)
+	}
+	if _, err := engine.InspectContainer(context.Background(), "ctr"); !errors.Is(err, ports.ErrContainerNotFound) {
+		t.Fatalf("inspect verdict %v, want not found", err)
+	}
+}
+
+func TestContainerStorageFailureNeverMapsToAbsent(t *testing.T) {
+	var calls []capturedCall
+	engine := newCapturingEngine(&calls, func([]string) ([]byte, error) {
+		return nil, errors.New("engine exited with code 125")
+	})
+	for name, invoke := range map[string]func() error{
+		"start":  func() error { return engine.StartContainer(context.Background(), "ctr") },
+		"stop":   func() error { return engine.StopContainer(context.Background(), "ctr", time.Second) },
+		"remove": func() error { return engine.RemoveContainer(context.Background(), "ctr") },
+		"inspect": func() error {
+			_, err := engine.InspectContainer(context.Background(), "ctr")
+			return err
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			err := invoke()
+			if err == nil || errors.Is(err, ports.ErrContainerNotFound) {
+				t.Fatalf("storage failure collapsed to absence: %v", err)
+			}
+		})
+	}
+}
+
+func TestImageExistsDistinguishesAbsentFromEngineFailure(t *testing.T) {
+	spec := testSpec()
+	for _, testCase := range []struct {
+		name      string
+		exitCode  string
+		wantFound bool
+		wantError bool
+	}{
+		{name: "absent", exitCode: "1", wantFound: false, wantError: false},
+		{name: "storage failure", exitCode: "125", wantFound: false, wantError: true},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			var calls []capturedCall
+			engine := newCapturingEngine(&calls, func([]string) ([]byte, error) {
+				return nil, errors.New("engine exited with code " + testCase.exitCode)
+			})
+			found, err := engine.ImageExists(context.Background(), spec.Image)
+			if found != testCase.wantFound || (err != nil) != testCase.wantError {
+				t.Fatalf("found=%v err=%v", found, err)
+			}
+		})
+	}
+}
+
+func TestCreateExit125RequiresProvenNameCollision(t *testing.T) {
+	for _, testCase := range []struct {
+		name       string
+		existsErr  error
+		wantExists bool
+	}{
+		{name: "name exists", wantExists: true},
+		{name: "storage unavailable", existsErr: errors.New("engine exited with code 125")},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			var calls []capturedCall
+			engine := newCapturingEngine(&calls, func(args []string) ([]byte, error) {
+				if len(args) >= 2 && args[0] == "container" && args[1] == "exists" {
+					return nil, testCase.existsErr
+				}
+				return nil, errors.New("engine exited with code 125")
+			})
+			_, err := engine.CreateContainer(context.Background(), testSpec())
+			if errors.Is(err, ports.ErrContainerAlreadyExists) != testCase.wantExists {
+				t.Fatalf("create verdict %v, want collision=%v", err, testCase.wantExists)
+			}
+		})
+	}
+}
+
+func TestBoundedWriterMarksTruncationAsFailureEvidence(t *testing.T) {
+	var buffer bytes.Buffer
+	writer := newBoundedWriter(&buffer, 3)
+	if count, err := writer.Write([]byte("ab")); err != nil || count != 2 {
+		t.Fatalf("first write count=%d err=%v", count, err)
+	}
+	if count, err := writer.Write([]byte("cd")); err != nil || count != 2 {
+		t.Fatalf("overflow write count=%d err=%v", count, err)
+	}
+	if buffer.String() != "abc" || !writer.overflow {
+		t.Fatalf("bounded writer buffer=%q overflow=%v", buffer.String(), writer.overflow)
 	}
 }

@@ -313,6 +313,8 @@ WHERE i.owner_user_id = $1
     OR (i.created_at, i.id) > (
       SELECT p.created_at, p.id FROM workos_reliability.incidents p
       WHERE p.id = $3::uuid
+        AND p.owner_user_id = $1
+        AND ($2::text = '' OR p.project_id = $2::uuid)
     )
   )
 ORDER BY i.created_at, i.id
@@ -366,6 +368,91 @@ func (q *Queries) ListIncidentsPage(ctx context.Context, arg ListIncidentsPagePa
 	var items []ListIncidentsPageRow
 	for rows.Next() {
 		var i ListIncidentsPageRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.OwnerUserID,
+			&i.ProjectID,
+			&i.AppInstanceID,
+			&i.AppID,
+			&i.WorkloadID,
+			&i.WorkloadGeneration,
+			&i.Violation,
+			&i.Severity,
+			&i.Summary,
+			&i.OccurrenceDigest,
+			&i.EvidenceDigest,
+			&i.State,
+			&i.RestartOutcome,
+			&i.Revision,
+			&i.AcknowledgeKey,
+			&i.AcknowledgedAt,
+			&i.MitigatedAt,
+			&i.ResolvedAt,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listMitigatedIncidentsForWorkload = `-- name: ListMitigatedIncidentsForWorkload :many
+SELECT id, owner_user_id, project_id, app_instance_id, app_id, workload_id,
+       workload_generation, violation, severity, summary, occurrence_digest,
+       evidence_digest, state, restart_outcome, revision, acknowledge_key,
+       acknowledged_at, mitigated_at, resolved_at, created_at, updated_at
+FROM workos_reliability.incidents
+WHERE workload_id = $1
+  AND workload_generation <= $2
+  AND state = 'mitigated'
+ORDER BY created_at, id
+`
+
+type ListMitigatedIncidentsForWorkloadParams struct {
+	WorkloadID        string `json:"workload_id"`
+	ThroughGeneration int64  `json:"through_generation"`
+}
+
+type ListMitigatedIncidentsForWorkloadRow struct {
+	ID                 string      `json:"id"`
+	OwnerUserID        string      `json:"owner_user_id"`
+	ProjectID          string      `json:"project_id"`
+	AppInstanceID      string      `json:"app_instance_id"`
+	AppID              string      `json:"app_id"`
+	WorkloadID         string      `json:"workload_id"`
+	WorkloadGeneration int64       `json:"workload_generation"`
+	Violation          string      `json:"violation"`
+	Severity           string      `json:"severity"`
+	Summary            string      `json:"summary"`
+	OccurrenceDigest   string      `json:"occurrence_digest"`
+	EvidenceDigest     string      `json:"evidence_digest"`
+	State              string      `json:"state"`
+	RestartOutcome     string      `json:"restart_outcome"`
+	Revision           int64       `json:"revision"`
+	AcknowledgeKey     pgtype.Text `json:"acknowledge_key"`
+	AcknowledgedAt     *time.Time  `json:"acknowledged_at"`
+	MitigatedAt        *time.Time  `json:"mitigated_at"`
+	ResolvedAt         *time.Time  `json:"resolved_at"`
+	CreatedAt          time.Time   `json:"created_at"`
+	UpdatedAt          time.Time   `json:"updated_at"`
+}
+
+// A healthy replacement generation resolves repaired incidents from the
+// generation that caused the restart, as well as any earlier generation.
+func (q *Queries) ListMitigatedIncidentsForWorkload(ctx context.Context, arg ListMitigatedIncidentsForWorkloadParams) ([]ListMitigatedIncidentsForWorkloadRow, error) {
+	rows, err := q.db.Query(ctx, listMitigatedIncidentsForWorkload, arg.WorkloadID, arg.ThroughGeneration)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListMitigatedIncidentsForWorkloadRow
+	for rows.Next() {
+		var i ListMitigatedIncidentsForWorkloadRow
 		if err := rows.Scan(
 			&i.ID,
 			&i.OwnerUserID,
@@ -482,6 +569,85 @@ func (q *Queries) ListOpenIncidentsForWorkload(ctx context.Context, arg ListOpen
 	return items, nil
 }
 
+const listPendingActionIncidents = `-- name: ListPendingActionIncidents :many
+SELECT id, owner_user_id, project_id, app_instance_id, app_id, workload_id,
+       workload_generation, violation, severity, summary, occurrence_digest,
+       evidence_digest, state, restart_outcome, revision, acknowledge_key,
+       acknowledged_at, mitigated_at, resolved_at, created_at, updated_at
+FROM workos_reliability.incidents
+WHERE state = 'open' AND restart_outcome = 'pending'
+ORDER BY (violation = 'restart_limit_exhausted') DESC, created_at, id
+LIMIT $1
+`
+
+type ListPendingActionIncidentsRow struct {
+	ID                 string      `json:"id"`
+	OwnerUserID        string      `json:"owner_user_id"`
+	ProjectID          string      `json:"project_id"`
+	AppInstanceID      string      `json:"app_instance_id"`
+	AppID              string      `json:"app_id"`
+	WorkloadID         string      `json:"workload_id"`
+	WorkloadGeneration int64       `json:"workload_generation"`
+	Violation          string      `json:"violation"`
+	Severity           string      `json:"severity"`
+	Summary            string      `json:"summary"`
+	OccurrenceDigest   string      `json:"occurrence_digest"`
+	EvidenceDigest     string      `json:"evidence_digest"`
+	State              string      `json:"state"`
+	RestartOutcome     string      `json:"restart_outcome"`
+	Revision           int64       `json:"revision"`
+	AcknowledgeKey     pgtype.Text `json:"acknowledge_key"`
+	AcknowledgedAt     *time.Time  `json:"acknowledged_at"`
+	MitigatedAt        *time.Time  `json:"mitigated_at"`
+	ResolvedAt         *time.Time  `json:"resolved_at"`
+	CreatedAt          time.Time   `json:"created_at"`
+	UpdatedAt          time.Time   `json:"updated_at"`
+}
+
+// Crash recovery is deliberately not owner-scoped: this is a private
+// supervisor queue over reliability-owned rows, not an owner-facing list.
+func (q *Queries) ListPendingActionIncidents(ctx context.Context, rowLimit int32) ([]ListPendingActionIncidentsRow, error) {
+	rows, err := q.db.Query(ctx, listPendingActionIncidents, rowLimit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListPendingActionIncidentsRow
+	for rows.Next() {
+		var i ListPendingActionIncidentsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.OwnerUserID,
+			&i.ProjectID,
+			&i.AppInstanceID,
+			&i.AppID,
+			&i.WorkloadID,
+			&i.WorkloadGeneration,
+			&i.Violation,
+			&i.Severity,
+			&i.Summary,
+			&i.OccurrenceDigest,
+			&i.EvidenceDigest,
+			&i.State,
+			&i.RestartOutcome,
+			&i.Revision,
+			&i.AcknowledgeKey,
+			&i.AcknowledgedAt,
+			&i.MitigatedAt,
+			&i.ResolvedAt,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const loadSupervisorProgress = `-- name: LoadSupervisorProgress :one
 SELECT workload_id, generation, last_state, last_health, last_exit,
        last_restart_count, stable_polls, exit_occurrence, health_occurrence,
@@ -517,7 +683,7 @@ UPDATE workos_reliability.incidents SET
     resolved_at = $1,
     revision = revision + 1,
     updated_at = $2
-WHERE id = $3 AND state IN ('open', 'mitigated')
+WHERE id = $3 AND state = 'mitigated'
 `
 
 type MarkIncidentResolvedParams struct {
@@ -541,7 +707,7 @@ UPDATE workos_reliability.incidents SET
     mitigated_at = $3,
     revision = revision + 1,
     updated_at = $4
-WHERE id = $5 AND state = 'open'
+WHERE id = $5 AND state = 'open' AND restart_outcome = 'pending'
 `
 
 type UpdateIncidentOutcomeParams struct {
@@ -578,6 +744,7 @@ ON CONFLICT (incident_id, action) DO UPDATE
 SET outcome = $4,
     result_generation = $5,
     updated_at = $7
+WHERE workos_reliability.incident_actions.outcome = 'unavailable'
 `
 
 type UpsertIncidentActionParams struct {
@@ -590,6 +757,8 @@ type UpsertIncidentActionParams struct {
 	UpdatedAt        time.Time   `json:"updated_at"`
 }
 
+// Only unavailable is retryable. A late/concurrent retry must never erase a
+// terminal action verdict already made authoritative by the runtime key.
 func (q *Queries) UpsertIncidentAction(ctx context.Context, arg UpsertIncidentActionParams) error {
 	_, err := q.db.Exec(ctx, upsertIncidentAction,
 		arg.IncidentID,

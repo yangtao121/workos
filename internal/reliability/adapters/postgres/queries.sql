@@ -40,6 +40,8 @@ WHERE i.owner_user_id = sqlc.arg(owner_user_id)
     OR (i.created_at, i.id) > (
       SELECT p.created_at, p.id FROM workos_reliability.incidents p
       WHERE p.id = sqlc.arg(page_token)::uuid
+        AND p.owner_user_id = sqlc.arg(owner_user_id)
+        AND (sqlc.arg(project_id)::text = '' OR p.project_id = sqlc.arg(project_id)::uuid)
     )
   )
 ORDER BY i.created_at, i.id
@@ -52,7 +54,7 @@ UPDATE workos_reliability.incidents SET
     mitigated_at = sqlc.arg(mitigated_at),
     revision = revision + 1,
     updated_at = sqlc.arg(updated_at)
-WHERE id = sqlc.arg(id) AND state = 'open';
+WHERE id = sqlc.arg(id) AND state = 'open' AND restart_outcome = 'pending';
 
 -- name: MarkIncidentResolved :execrows
 UPDATE workos_reliability.incidents SET
@@ -60,7 +62,7 @@ UPDATE workos_reliability.incidents SET
     resolved_at = sqlc.arg(resolved_at),
     revision = revision + 1,
     updated_at = sqlc.arg(updated_at)
-WHERE id = sqlc.arg(id) AND state IN ('open', 'mitigated');
+WHERE id = sqlc.arg(id) AND state = 'mitigated';
 
 -- name: AcknowledgeIncident :execrows
 -- The owner acknowledgement is a separate fact from mitigation and never
@@ -106,7 +108,10 @@ INSERT INTO workos_reliability.incident_actions (
 ON CONFLICT (incident_id, action) DO UPDATE
 SET outcome = sqlc.arg(outcome),
     result_generation = sqlc.arg(result_generation),
-    updated_at = sqlc.arg(updated_at);
+    updated_at = sqlc.arg(updated_at)
+-- Only unavailable is retryable. A late/concurrent retry must never erase a
+-- terminal action verdict already made authoritative by the runtime key.
+WHERE workos_reliability.incident_actions.outcome = 'unavailable';
 
 -- name: GetIncidentAction :one
 SELECT incident_id, action, action_key, outcome, result_generation, created_at, updated_at
@@ -163,3 +168,28 @@ SELECT id, owner_user_id, project_id, app_instance_id, app_id, workload_id,
        acknowledged_at, mitigated_at, resolved_at, created_at, updated_at
 FROM workos_reliability.incidents
 WHERE occurrence_digest = sqlc.arg(occurrence_digest);
+
+-- name: ListPendingActionIncidents :many
+-- Crash recovery is deliberately not owner-scoped: this is a private
+-- supervisor queue over reliability-owned rows, not an owner-facing list.
+SELECT id, owner_user_id, project_id, app_instance_id, app_id, workload_id,
+       workload_generation, violation, severity, summary, occurrence_digest,
+       evidence_digest, state, restart_outcome, revision, acknowledge_key,
+       acknowledged_at, mitigated_at, resolved_at, created_at, updated_at
+FROM workos_reliability.incidents
+WHERE state = 'open' AND restart_outcome = 'pending'
+ORDER BY (violation = 'restart_limit_exhausted') DESC, created_at, id
+LIMIT sqlc.arg(row_limit);
+
+-- name: ListMitigatedIncidentsForWorkload :many
+-- A healthy replacement generation resolves repaired incidents from the
+-- generation that caused the restart, as well as any earlier generation.
+SELECT id, owner_user_id, project_id, app_instance_id, app_id, workload_id,
+       workload_generation, violation, severity, summary, occurrence_digest,
+       evidence_digest, state, restart_outcome, revision, acknowledge_key,
+       acknowledged_at, mitigated_at, resolved_at, created_at, updated_at
+FROM workos_reliability.incidents
+WHERE workload_id = sqlc.arg(workload_id)
+  AND workload_generation <= sqlc.arg(through_generation)
+  AND state = 'mitigated'
+ORDER BY created_at, id;

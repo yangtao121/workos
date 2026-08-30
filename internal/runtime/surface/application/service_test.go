@@ -176,6 +176,37 @@ type fakeResolver struct {
 	calls      atomic.Int64
 }
 
+type fakeWorkloads struct {
+	ensureHandle  ports.WorkloadHandle
+	lookupHandle  ports.WorkloadHandle
+	ensureErr     error
+	lookupErr     error
+	ensureCalls   int
+	lookupCalls   int
+	lastEnsure    ports.SurfaceWorkloadQuery
+	lastLookupID  string
+	lastLookupGen int64
+}
+
+func (f *fakeWorkloads) EnsureSurfaceWorkload(_ context.Context, query ports.SurfaceWorkloadQuery) (ports.WorkloadHandle, error) {
+	f.ensureCalls++
+	f.lastEnsure = query
+	if f.ensureErr != nil {
+		return ports.WorkloadHandle{}, f.ensureErr
+	}
+	return f.ensureHandle, nil
+}
+
+func (f *fakeWorkloads) LookupSurfaceWorkload(_ context.Context, workloadID string, generation int64) (ports.WorkloadHandle, error) {
+	f.lookupCalls++
+	f.lastLookupID = workloadID
+	f.lastLookupGen = generation
+	if f.lookupErr != nil {
+		return ports.WorkloadHandle{}, f.lookupErr
+	}
+	return f.lookupHandle, nil
+}
+
 func (f *fakeResolver) ResolveWebBundle(context.Context, ports.ResolveQuery) (ports.LaunchDescriptor, error) {
 	f.calls.Add(1)
 	if f.resolveErr != nil {
@@ -229,6 +260,14 @@ func newTestService(repository ports.SessionRepository, resolver ports.LaunchRes
 	return service
 }
 
+func newTestServiceWithWorkloads(repository ports.SessionRepository, resolver ports.LaunchResolver, workloads ports.WorkloadRuntime) *Service {
+	service, err := NewWithWorkloads(repository, resolver, workloads, &staticGenerator{}, 15*time.Minute)
+	if err != nil {
+		panic(err)
+	}
+	return service
+}
+
 func validCommand(key string) CreateCommand {
 	return CreateCommand{
 		OwnerUserID: testOwner, DeviceID: testDevice, IdempotencyKey: key,
@@ -250,6 +289,20 @@ func launchDescriptor() ports.LaunchDescriptor {
 		// the zero value — so persistence tests prove the resolver's value
 		// flows through, not a constant.
 		GrantRevision: 4,
+	}
+}
+
+func containerResolution() ports.ResolvedLaunch {
+	return ports.ResolvedLaunch{
+		Kind:  ports.LaunchKindWebServiceContainer,
+		AppID: "notes-app", Version: "1.0.0",
+		ManifestDigest: "sha256:" + strings.Repeat("a", 64),
+		GrantRevision:  4,
+		Image:          "localhost/workos-fixture@sha256:" + strings.Repeat("b", 64),
+		Command:        []string{"/workos-fixture", "serve"}, Port: 8080,
+		Resources: ports.ContainerPolicy{CPUHardCores: 1, MemoryHighMB: 64, MemoryMaxMB: 96, PidsMax: 32},
+		Health:    ports.HealthPolicy{HTTPPath: "/health", StartupSeconds: 10, RestartLimit: 2},
+		Route:     "/",
 	}
 }
 
@@ -276,6 +329,95 @@ func TestCreatePersistsOwnerDeviceBoundSession(t *testing.T) {
 	}
 	if session.ClosedAt != nil {
 		t.Fatal("fresh session is closed")
+	}
+}
+
+func TestCreateAndServeWebServiceUsesExactWorkloadGeneration(t *testing.T) {
+	t.Parallel()
+	repository := newFakeRepository()
+	resolved := containerResolution()
+	resolver := &fakeResolver{resolved: resolved}
+	workloads := &fakeWorkloads{
+		ensureHandle: ports.WorkloadHandle{
+			ID: "0198d7ea-2110-7c42-b659-c5e4d73bc390", Generation: 3,
+			Endpoint: "127.0.0.1:41000",
+		},
+		lookupHandle: ports.WorkloadHandle{
+			ID: "0198d7ea-2110-7c42-b659-c5e4d73bc390", Generation: 3,
+			Endpoint: "127.0.0.1:41000",
+		},
+	}
+	service := newTestServiceWithWorkloads(repository, resolver, workloads)
+	command := validCommand("web-service-key")
+	command.PreferredRenderer = domain.RendererWebService
+
+	created, err := service.Create(context.Background(), command)
+	if err != nil {
+		t.Fatalf("create web service: %v", err)
+	}
+	if created.Session.Renderer != domain.RendererWebService ||
+		created.Session.WorkloadID != workloads.ensureHandle.ID ||
+		created.Session.WorkloadGeneration != workloads.ensureHandle.Generation {
+		t.Fatalf("web-service session lost workload identity: %+v", created.Session)
+	}
+	if workloads.ensureCalls != 1 || workloads.lastEnsure.OperationKey != "surface-create:web-service-key" ||
+		workloads.lastEnsure.ManifestDigest != resolved.ManifestDigest ||
+		len(workloads.lastEnsure.Command) != len(resolved.Command) {
+		t.Fatalf("workload ensure did not receive the exact resolved descriptor: %+v", workloads.lastEnsure)
+	}
+
+	content, err := service.ServeSurface(context.Background(), testOwner, testDevice, created.Session.ID, "assets/app.js")
+	if err != nil {
+		t.Fatalf("serve web service: %v", err)
+	}
+	if content.Kind != ports.ContentProxy || content.Proxy.Endpoint != "127.0.0.1:41000" ||
+		content.Proxy.BackendPath != "/assets/app.js" || content.Proxy.SessionID != created.Session.ID {
+		t.Fatalf("unexpected proxy target: %+v", content)
+	}
+	if workloads.lookupCalls != 1 || workloads.lastLookupID != workloads.ensureHandle.ID ||
+		workloads.lastLookupGen != workloads.ensureHandle.Generation {
+		t.Fatalf("proxy lookup did not bind the persisted workload generation: id=%s generation=%d",
+			workloads.lastLookupID, workloads.lastLookupGen)
+	}
+}
+
+func TestWebServiceProxyFailsClosedOnCoreDescriptorDrift(t *testing.T) {
+	t.Parallel()
+	base := containerResolution()
+	mutations := map[string]func(*ports.ResolvedLaunch){
+		"renderer": func(value *ports.ResolvedLaunch) { value.Kind = ports.LaunchKindWebBundle },
+		"app":      func(value *ports.ResolvedLaunch) { value.AppID = "other-app" },
+		"version":  func(value *ports.ResolvedLaunch) { value.Version = "1.0.1" },
+		"digest":   func(value *ports.ResolvedLaunch) { value.ManifestDigest = "sha256:" + strings.Repeat("c", 64) },
+	}
+	for name, mutate := range mutations {
+		name, mutate := name, mutate
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			repository := newFakeRepository()
+			resolver := &fakeResolver{resolved: base}
+			workloads := &fakeWorkloads{
+				ensureHandle: ports.WorkloadHandle{ID: "0198d7ea-2110-7c42-b659-c5e4d73bc390", Generation: 1, Endpoint: "127.0.0.1:41000"},
+				lookupHandle: ports.WorkloadHandle{ID: "0198d7ea-2110-7c42-b659-c5e4d73bc390", Generation: 1, Endpoint: "127.0.0.1:41000"},
+			}
+			service := newTestServiceWithWorkloads(repository, resolver, workloads)
+			command := validCommand("proxy-drift-" + name)
+			command.PreferredRenderer = domain.RendererWebService
+			created, err := service.Create(context.Background(), command)
+			if err != nil {
+				t.Fatalf("seed web-service session: %v", err)
+			}
+			drifted := base
+			mutate(&drifted)
+			resolver.resolved = drifted
+			_, err = service.ServeSurface(context.Background(), testOwner, testDevice, created.Session.ID, "")
+			if !errors.Is(err, domain.ErrNotFound) {
+				t.Fatalf("descriptor drift verdict %v, want not found", err)
+			}
+			if workloads.lookupCalls != 0 {
+				t.Fatalf("descriptor drift reached workload lookup %d times", workloads.lookupCalls)
+			}
+		})
 	}
 }
 

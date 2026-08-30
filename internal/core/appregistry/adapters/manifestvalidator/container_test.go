@@ -111,6 +111,8 @@ func TestContainerProfileRejections(t *testing.T) {
 		"short digest":                 containerProfile("sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef", "sha256:0123"),
 		"uppercase digest":             containerProfile("sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef", "sha256:0123456789ABCDEF0123456789abcdef0123456789abcdef0123456789abcdef"),
 		"credential-shaped registry":   containerProfile("image: localhost/", "image: user:secret@localhost/workos-fixture@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"),
+		"repository traversal segment": containerProfile("image: localhost/", "image: localhost/team/../workos-fixture@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"),
+		"invalid registry port":        containerProfile("image: localhost/", "image: localhost:99999/workos-fixture@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"),
 		"empty argv":                   containerProfile(`command: ["/workos-fixture", "serve"]`, `command: []`),
 		"command string instead argv":  containerProfile(`command: ["/workos-fixture", "serve"]`, `command: "/workos-fixture serve"`),
 		"container port missing":       containerProfile("  port: 8080\n", ""),

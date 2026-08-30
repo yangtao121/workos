@@ -12,7 +12,6 @@ package podmanfixture
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
 	"net"
@@ -30,10 +29,7 @@ import (
 	"github.com/yangtao121/workos/internal/runtime/workload/ports"
 )
 
-const (
-	fixtureReference = "localhost/workos-web-fixture:fixture"
-	fixturePort      = 8080
-)
+const fixturePort = 8080
 
 var digestPattern = regexp.MustCompile(`^sha256:[0-9a-f]{64}$`)
 
@@ -60,7 +56,13 @@ func bounded(output []byte) string {
 
 func objectList(t *testing.T, kind string) []string {
 	t.Helper()
-	output := podmanExec(t, 30*time.Second, kind, "ls", "--format", "{{.ID}}")
+	format := "{{.ID}}"
+	if kind == "network" {
+		// The one permitted fixture delta is the named WorkOS internal
+		// network, so network snapshots use names rather than opaque IDs.
+		format = "{{.Name}}"
+	}
+	output := podmanExec(t, 30*time.Second, kind, "ls", "--format", format)
 	var items []string
 	for _, line := range strings.Split(strings.TrimSpace(output), "\n") {
 		if line != "" {
@@ -82,10 +84,6 @@ func assertUserObjectsUntouched(t *testing.T, before, after map[string][]string,
 			if !seen[item] {
 				t.Errorf("user %s object %s disappeared during the fixture run", kind, item)
 			}
-		}
-		created := map[string]bool{}
-		for _, item := range afterItems {
-			created[item] = true
 		}
 		for _, item := range afterItems {
 			wasBefore := false
@@ -113,6 +111,7 @@ func TestMain(m *testing.M) {
 }
 
 func TestRootlessFixtureImageLifecycle(t *testing.T) {
+	fixtureReference := fmt.Sprintf("localhost/workos-web-fixture:fixture-%d", time.Now().UnixNano())
 	// ---- capability preflight: probe must verify rootless + cgroup v2 ----
 	engine, err := podman.New("podman")
 	if err != nil {
@@ -133,6 +132,16 @@ func TestRootlessFixtureImageLifecycle(t *testing.T) {
 		"volume":    objectList(t, "volume"),
 		"network":   objectList(t, "network"),
 	}
+	// Register exact cleanup before the image build, the first fixture-owned
+	// side effect. Every early failure after this point removes only the
+	// unique tag and exact container IDs created by this run.
+	var createdContainers []string
+	t.Cleanup(func() {
+		for _, id := range createdContainers {
+			_ = exec.Command("podman", "rm", "-f", id).Run()
+		}
+		_ = exec.Command("podman", "rmi", fixtureReference).Run()
+	})
 
 	// ---- fixture image build (test-prep phase; the runtime never builds) ----
 	// The payload binary arrives prebuilt (the Makefile compiles it in the
@@ -166,7 +175,11 @@ func TestRootlessFixtureImageLifecycle(t *testing.T) {
 	if err := os.WriteFile(staged, payload, 0o755); err != nil {
 		t.Fatalf("stage fixture binary: %v", err)
 	}
-	containerfile := "FROM scratch\nCOPY workos-web-fixture /workos-web-fixture\nENTRYPOINT [\"/workos-web-fixture\"]\n"
+	// Deliberately hostile image defaults prove that the production adapter's
+	// JSON entrypoint override produces only the canonical manifest argv.
+	containerfile := "FROM scratch\nCOPY workos-web-fixture /workos-web-fixture\n" +
+		"ENTRYPOINT [\"/image-entrypoint-must-be-overridden\"]\n" +
+		"CMD [\"image-cmd-must-be-overridden\"]\n"
 	if err := os.WriteFile(filepath.Join(buildDir, "Containerfile"), []byte(containerfile), 0o644); err != nil {
 		t.Fatalf("write Containerfile: %v", err)
 	}
@@ -180,17 +193,6 @@ func TestRootlessFixtureImageLifecycle(t *testing.T) {
 	if !domain.ValidImage(pinned) {
 		t.Fatalf("pinned reference %q failed the runtime grammar", pinned)
 	}
-
-	// ---- exact-identity cleanup, registered before any side effect ----
-	var createdContainers []string
-	t.Cleanup(func() {
-		for _, id := range createdContainers {
-			_ = exec.Command("podman", "rm", "-f", id).Run()
-		}
-		// Remove exactly the fixture image we built (by exact reference), so
-		// the post-run image list matches the user's pre-run list.
-		_ = exec.Command("podman", "rmi", fixtureReference).Run()
-	})
 
 	// ---- launch through the production adapter ----
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
@@ -217,8 +219,18 @@ func TestRootlessFixtureImageLifecycle(t *testing.T) {
 	if err != nil {
 		t.Fatalf("InspectContainer: %v", err)
 	}
-	if !facts.Running || facts.HostIP != "127.0.0.1" || facts.HostPort < 1 {
+	if !facts.Running || facts.HostIP != "127.0.0.1" || facts.HostPort < 1 ||
+		facts.ContainerPort != fixturePort || facts.PublishedPorts != 1 {
 		t.Fatalf("publish boundary violated: running=%v host=%s:%d", facts.Running, facts.HostIP, facts.HostPort)
+	}
+	if facts.Image != pinned || len(facts.Command) != 1 || facts.Command[0] != "/workos-web-fixture" ||
+		!facts.ReadOnly || facts.Privileged || facts.CapabilitiesAdded != 0 ||
+		facts.EffectiveCapabilities != 0 || facts.BoundingCapabilities != 0 || !facts.NoNewPrivileges ||
+		facts.UnexpectedSecurityOpts != 0 || facts.AutoRemove || facts.NetworkMode != "workos-app-internal" ||
+		facts.ConnectedNetworks != 1 || !facts.InternalNetwork || facts.RestartPolicy != "no" ||
+		facts.BindMounts != 0 || facts.UnexpectedMounts != 0 || facts.Devices != 0 || len(facts.Tmpfs) != 1 ||
+		!exactTmpfsOptions(facts.Tmpfs["/tmp"]) {
+		t.Fatalf("production inspect did not prove the immutable security profile: %+v", facts)
 	}
 
 	// ---- security posture inspect: rootfs, capabilities, network, user ----
@@ -291,7 +303,8 @@ func TestRootlessFixtureImageLifecycle(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read effective: %v", err)
 	}
-	if effective.CPUMaxUSec != policy.CPUQuotaUSec || effective.MemoryHigh != policy.MemoryHighBytes ||
+	if effective.CPUMaxUSec != policy.CPUQuotaUSec || effective.CPUPeriodUSec != domain.CPUPeriodUSec ||
+		effective.MemoryHigh != policy.MemoryHighBytes ||
 		effective.MemoryMax != policy.MemoryMaxBytes || effective.PIDsMax != policy.PidsMax {
 		t.Fatalf("enforced policy drifted: got %+v want %+v", effective, policy)
 	}
@@ -299,8 +312,8 @@ func TestRootlessFixtureImageLifecycle(t *testing.T) {
 	// ---- controlled OOM: confined to the fixture cgroup ----
 	processOOMBaseline := readOOM(t, "/proc/self/cgroup", subtree)
 	hogPolicy := policy
-	hogPolicy.MemoryMaxBytes = 8 * 1024 * 1024
-	hogPolicy.MemoryHighBytes = 4 * 1024 * 1024
+	hogPolicy.MemoryMaxBytes = 32 * 1024 * 1024
+	hogPolicy.MemoryHighBytes = 16 * 1024 * 1024
 	hogSpec := spec
 	hogSpec.Name = spec.Name + "-hog"
 	hogSpec.Command = []string{"/workos-web-fixture", "hog"}
@@ -313,22 +326,30 @@ func TestRootlessFixtureImageLifecycle(t *testing.T) {
 	if err := engine.StartContainer(ctx, hogSpec.Name); err != nil {
 		t.Fatalf("StartContainer hog: %v", err)
 	}
+	hogFacts, err := engine.InspectContainer(ctx, hogSpec.Name)
+	if err != nil || hogFacts.PID <= 0 {
+		t.Fatalf("inspect running hog: facts=%+v err=%v", hogFacts, err)
+	}
+	hogCgroup, err := reader.CgroupPathForPID(hogFacts.PID)
+	if err != nil {
+		t.Fatalf("hog cgroup path: %v", err)
+	}
 	oomObserved := false
 	hogDeadline := time.Now().Add(60 * time.Second)
 	for time.Now().Before(hogDeadline) {
-		hogFacts, err := engine.InspectContainer(ctx, hogSpec.Name)
+		hogFacts, err = engine.InspectContainer(ctx, hogSpec.Name)
 		if err == nil && hogFacts.OOMKilled {
 			oomObserved = true
-			break
+		}
+		if counters, readErr := reader.ReadCounters(ctx, hogCgroup); readErr == nil && counters.MemoryOOMs > 0 {
+			oomObserved = true
 		}
 		if err == nil && !hogFacts.Running {
-			// Exited without the OOM flag: accept, but prove the cgroup event
-			// below.
 			break
 		}
 		time.Sleep(500 * time.Millisecond)
 	}
-	hogFacts, err := engine.InspectContainer(ctx, hogSpec.Name)
+	hogFacts, err = engine.InspectContainer(ctx, hogSpec.Name)
 	if err != nil {
 		t.Fatalf("inspect hog: %v", err)
 	}
@@ -336,13 +357,46 @@ func TestRootlessFixtureImageLifecycle(t *testing.T) {
 		t.Fatalf("hog survived its memory limit")
 	}
 	if !oomObserved {
-		// The cgroup may already be reaped; the engine OOM flag plus the
-		// confinement probe below are the honest verdict.
-		t.Logf("hog exited without an engine OOM flag (exit=%d); checking cgroup events", hogFacts.ExitCode)
+		t.Fatalf("hog exited without an engine OOM verdict or memory.events oom increment (exit=%d)", hogFacts.ExitCode)
 	}
 	// Confinement: the host process cgroup recorded no OOM kills.
 	if processOOMBaseline != readOOM(t, "/proc/self/cgroup", subtree) {
 		t.Fatalf("OOM escaped the fixture cgroup: host cgroup recorded kills")
+	}
+
+	// ---- controlled pids.max event: rejected inside the fixture cgroup ----
+	pidsSpec := spec
+	pidsSpec.Name = spec.Name + "-pids"
+	pidsSpec.Command = []string{"/workos-web-fixture", "pids"}
+	pidsSpec.Policy.PidsMax = 16
+	pidsID, err := engine.CreateContainer(ctx, pidsSpec)
+	if err != nil {
+		t.Fatalf("CreateContainer pids: %v", err)
+	}
+	createdContainers = append(createdContainers, pidsID)
+	if err := engine.StartContainer(ctx, pidsSpec.Name); err != nil {
+		t.Fatalf("StartContainer pids: %v", err)
+	}
+	pidsFacts, err := engine.InspectContainer(ctx, pidsSpec.Name)
+	if err != nil {
+		t.Fatalf("inspect pids fixture: %v", err)
+	}
+	pidsCgroup, err := reader.CgroupPathForPID(pidsFacts.PID)
+	if err != nil {
+		t.Fatalf("pids cgroup path: %v", err)
+	}
+	pidsObserved := false
+	pidsDeadline := time.Now().Add(30 * time.Second)
+	for time.Now().Before(pidsDeadline) {
+		counters, readErr := reader.ReadCounters(ctx, pidsCgroup)
+		if readErr == nil && counters.PIDsLimitEvents > 0 {
+			pidsObserved = true
+			break
+		}
+		time.Sleep(250 * time.Millisecond)
+	}
+	if !pidsObserved {
+		t.Fatal("pids.max rejection did not increment pids.events max")
 	}
 
 	// ---- exact cleanup ----
@@ -352,6 +406,13 @@ func TestRootlessFixtureImageLifecycle(t *testing.T) {
 	if err := engine.RemoveContainer(ctx, hogID); err != nil {
 		t.Fatalf("remove hog container: %v", err)
 	}
+	if err := engine.RemoveContainer(ctx, pidsID); err != nil {
+		t.Fatalf("remove pids container: %v", err)
+	}
+	// The after snapshot is part of the assertion, so cleanup must happen
+	// before it rather than only in t.Cleanup. The unique tag prevents the
+	// fixture from replacing or removing a user's pre-existing image tag.
+	podmanExec(t, 30*time.Second, "rmi", fixtureReference)
 
 	// ---- user object snapshots (after) must match (before) ----
 	after := map[string][]string{
@@ -403,14 +464,37 @@ func readOOM(t *testing.T, procPath, subtree string) uint64 {
 	return 0
 }
 
+func exactTmpfsOptions(options string) bool {
+	required := map[string]bool{
+		"rw": false, "size=33554432": false, "noexec": false, "nodev": false, "nosuid": false,
+	}
+	parts := strings.Split(options, ",")
+	if len(parts) != len(required) {
+		return false
+	}
+	for _, option := range parts {
+		if _, ok := required[option]; !ok || required[option] {
+			return false
+		}
+		required[option] = true
+	}
+	return true
+}
+
 // sourceDir locates the fixture package on disk for the go build.
 func sourceDir() string {
 	wd, err := os.Getwd()
 	if err != nil {
 		return "."
 	}
-	return filepath.Join(wd, "..", "..")
+	for _, candidate := range []string{
+		wd,
+		filepath.Join(wd, "tests", "podmanfixture"),
+		filepath.Join(wd, "..", "..", "tests", "podmanfixture"),
+	} {
+		if _, err := os.Stat(filepath.Join(candidate, "fixture", "main.go")); err == nil {
+			return candidate
+		}
+	}
+	return wd
 }
-
-var _ = json.Marshal
-var _ = net.ParseIP

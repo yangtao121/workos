@@ -89,10 +89,18 @@ func (r *CgroupReader) SelfSubtree() (string, error) {
 }
 
 func (r *CgroupReader) read(path, file string) (string, error) {
-	if !strings.HasPrefix(path, r.mountPoint) {
+	mountPoint := filepath.Clean(r.mountPoint)
+	cleanPath := filepath.Clean(path)
+	relative, err := filepath.Rel(mountPoint, cleanPath)
+	if err != nil || cleanPath != path || relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
 		return "", errors.New("cgroup path escapes the mount point")
 	}
-	content, err := os.ReadFile(filepath.Join(path, file))
+	handle, err := os.Open(filepath.Join(cleanPath, file))
+	if err != nil {
+		return "", err
+	}
+	defer func() { _ = handle.Close() }()
+	content, err := io.ReadAll(io.LimitReader(handle, maxReadBytes+1))
 	if err != nil {
 		return "", err
 	}
@@ -109,33 +117,47 @@ func (r *CgroupReader) read(path, file string) (string, error) {
 // policy.
 func (r *CgroupReader) ReadEffective(ctx context.Context, path string) (ports.EffectiveFacts, error) {
 	facts := ports.EffectiveFacts{}
+	if err := ctx.Err(); err != nil {
+		return facts, err
+	}
 	cpuMax, err := r.read(path, "cpu.max")
 	if err != nil {
 		return facts, err
 	}
-	quota, _, found := strings.Cut(cpuMax, " ")
-	if !found {
+	cpuFields := strings.Fields(cpuMax)
+	if len(cpuFields) != 2 {
 		return facts, errors.New("cpu.max is malformed")
 	}
-	if quota == "max" {
+	if cpuFields[0] == "max" {
 		facts.CPUMaxUSec = 0
 	} else {
-		number, err := strconv.ParseInt(quota, 10, 64)
-		if err != nil {
+		number, err := strconv.ParseInt(cpuFields[0], 10, 64)
+		if err != nil || number <= 0 {
 			return facts, errors.New("cpu.max quota is malformed")
 		}
 		facts.CPUMaxUSec = number
 	}
+	period, err := strconv.ParseInt(cpuFields[1], 10, 64)
+	if err != nil || period <= 0 {
+		return facts, errors.New("cpu.max period is malformed")
+	}
+	facts.CPUPeriodUSec = period
 	high, err := r.read(path, "memory.high")
 	if err != nil {
 		return facts, err
 	}
-	facts.MemoryHigh = parseBytesOrZero(high)
+	facts.MemoryHigh, err = parseLimit(high)
+	if err != nil {
+		return facts, errors.New("memory.high is malformed")
+	}
 	maximum, err := r.read(path, "memory.max")
 	if err != nil {
 		return facts, err
 	}
-	facts.MemoryMax = parseBytesOrZero(maximum)
+	facts.MemoryMax, err = parseLimit(maximum)
+	if err != nil {
+		return facts, errors.New("memory.max is malformed")
+	}
 	pids, err := r.read(path, "pids.max")
 	if err != nil {
 		return facts, err
@@ -144,7 +166,7 @@ func (r *CgroupReader) ReadEffective(ctx context.Context, path string) (ports.Ef
 		facts.PIDsMax = 0
 	} else {
 		number, err := strconv.ParseInt(pids, 10, 64)
-		if err != nil {
+		if err != nil || number <= 0 {
 			return facts, errors.New("pids.max is malformed")
 		}
 		facts.PIDsMax = number
@@ -152,62 +174,105 @@ func (r *CgroupReader) ReadEffective(ctx context.Context, path string) (ports.Ef
 	return facts, nil
 }
 
-func max64(a, b int64) int64 {
-	if a > b {
-		return a
-	}
-	return b
-}
-
-func parseBytesOrZero(value string) int64 {
+func parseLimit(value string) (int64, error) {
 	if value == "max" {
-		return 0
+		return 0, nil
 	}
 	number, err := strconv.ParseInt(value, 10, 64)
-	if err != nil {
-		return 0
+	if err != nil || number <= 0 {
+		return 0, errors.New("cgroup limit is malformed")
 	}
-	return number
+	return number, nil
 }
 
 // ReadCounters reads the bounded numeric counters: cpu.stat usage_usec,
-// memory.current/peak, memory.events oom, pids.current/peak.
+// memory.current/peak, memory.events oom, pids.current, and pids.events max.
 func (r *CgroupReader) ReadCounters(ctx context.Context, path string) (ports.CgroupCounters, error) {
 	counters := ports.CgroupCounters{}
-	if usage, err := r.read(path, "cpu.stat"); err == nil {
-		counters.CPUUsageUSec = counterValue(usage, "usage_usec")
+	if err := ctx.Err(); err != nil {
+		return counters, err
 	}
-	if current, err := r.read(path, "memory.current"); err == nil {
-		counters.MemoryCurrent = uint64(max64(parseBytesOrZero(current), 0))
+	usage, err := r.read(path, "cpu.stat")
+	if err != nil {
+		return counters, err
 	}
-	if peak, err := r.read(path, "memory.peak"); err == nil {
-		counters.MemoryPeak = uint64(max64(parseBytesOrZero(peak), 0))
+	if counters.CPUUsageUSec, err = requiredCounterValue(usage, "usage_usec"); err != nil {
+		return counters, err
 	}
-	if events, err := r.read(path, "memory.events"); err == nil {
-		counters.MemoryOOMs = counterValue(events, "oom_kill") + counterValue(events, "oom")
+	current, err := r.read(path, "memory.current")
+	if err != nil {
+		return counters, err
 	}
-	if current, err := r.read(path, "pids.current"); err == nil {
-		counters.PIDsCurrent = uint64(max64(parseBytesOrZero(current), 0))
+	if counters.MemoryCurrent, err = parseCounter(current); err != nil {
+		return counters, errors.New("memory.current is malformed")
 	}
-	if events, err := r.read(path, "pids.events"); err == nil {
-		counters.PIDsPeak = counterValue(events, "peak")
+	peak, err := r.read(path, "memory.peak")
+	if err != nil {
+		return counters, err
+	}
+	if counters.MemoryPeak, err = parseCounter(peak); err != nil {
+		return counters, errors.New("memory.peak is malformed")
+	}
+	events, err := r.read(path, "memory.events")
+	if err != nil {
+		return counters, err
+	}
+	oom, err := requiredCounterValue(events, "oom")
+	if err != nil {
+		return counters, err
+	}
+	oomKill, err := requiredCounterValue(events, "oom_kill")
+	if err != nil || ^uint64(0)-oom < oomKill {
+		return counters, errors.New("memory.events is malformed")
+	}
+	counters.MemoryOOMs = oom + oomKill
+	pidsCurrent, err := r.read(path, "pids.current")
+	if err != nil {
+		return counters, err
+	}
+	if counters.PIDsCurrent, err = parseCounter(pidsCurrent); err != nil {
+		return counters, errors.New("pids.current is malformed")
+	}
+	pidsEvents, err := r.read(path, "pids.events")
+	if err != nil {
+		return counters, err
+	}
+	if counters.PIDsLimitEvents, err = requiredCounterValue(pidsEvents, "max"); err != nil {
+		return counters, err
 	}
 	return counters, nil
 }
 
-func counterValue(content, key string) uint64 {
+func parseCounter(value string) (uint64, error) {
+	number, err := strconv.ParseUint(value, 10, 64)
+	if err != nil {
+		return 0, errors.New("cgroup counter is malformed")
+	}
+	return number, nil
+}
+
+func requiredCounterValue(content, key string) (uint64, error) {
+	found := false
+	var result uint64
 	for _, line := range strings.Split(content, "\n") {
-		name, value, found := strings.Cut(strings.TrimSpace(line), " ")
-		if !found || name != key {
+		fields := strings.Fields(line)
+		if len(fields) != 2 || fields[0] != key {
 			continue
 		}
-		number, err := strconv.ParseUint(strings.TrimSpace(value), 10, 64)
-		if err != nil {
-			return 0
+		if found {
+			return 0, errors.New("cgroup counter is duplicated")
 		}
-		return number
+		number, err := parseCounter(fields[1])
+		if err != nil {
+			return 0, err
+		}
+		found = true
+		result = number
 	}
-	return 0
+	if !found {
+		return 0, errors.New("required cgroup counter is missing")
+	}
+	return result, nil
 }
 
 // Prober probes the workload's HTTP health endpoint. It follows no redirects

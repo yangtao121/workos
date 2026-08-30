@@ -29,24 +29,26 @@ const (
 // Observation is the neutral, bounded observation fact the supervisor
 // consumes. It carries identity, verdicts, and counters only.
 type Observation struct {
-	WorkloadID     string
-	OwnerUserID    string
-	ProjectID      string
-	AppInstanceID  string
-	AppID          string
-	ManifestDigest string
-	Generation     int64
-	State          WorkloadState
-	RestartCount   int64
-	HealthVerdict  string // unknown | ok | failing
-	ExitCategory   string // none | exited | oom | pids | unknown
-	Idle           bool
-	MemoryOOMs     uint64
-	PIDsPeak       uint64
-	ObservedAt     time.Time
+	WorkloadID      string
+	OwnerUserID     string
+	ProjectID       string
+	AppInstanceID   string
+	AppID           string
+	ManifestDigest  string
+	Generation      int64
+	State           WorkloadState
+	RestartCount    int64
+	HealthVerdict   string // unknown | ok | failing
+	ExitCategory    string // none | exited | oom | pids | unknown
+	Idle            bool
+	MemoryOOMs      uint64
+	PIDsLimitEvents uint64
+	ObservedAt      time.Time
 }
 
 // ControlOutcome is the sanitized control verdict replayed from the runtime.
+// Only unavailable is retryable; failed is a terminal, owner-visible refusal
+// so an internal deterministic failure cannot create an infinite action loop.
 type ControlOutcome string
 
 const (
@@ -125,6 +127,10 @@ type IncidentRepository interface {
 	// ListOpenForWorkload returns the open/mitigated incidents of one
 	// workload generation for decision bookkeeping.
 	ListOpenForWorkload(ctx context.Context, workloadID string, generation int64) ([]domain.Incident, error)
+	// ListMitigatedForWorkload returns repaired incidents through the current
+	// generation so a healthy replacement can resolve the generation that
+	// triggered its restart.
+	ListMitigatedForWorkload(ctx context.Context, workloadID string, throughGeneration int64) ([]domain.Incident, error)
 
 	// RecordAction stores or updates the action ledger row.
 	RecordAction(ctx context.Context, incidentID, action string, result ControlResult, now time.Time) error

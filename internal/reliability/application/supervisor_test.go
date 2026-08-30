@@ -55,13 +55,16 @@ func (c *fakeController) Stop(_ context.Context, workloadID, actionKey, _ string
 }
 
 type fakeIncidentRepo struct {
-	mu            sync.Mutex
-	incidents     map[string]domain.Incident
-	digests       map[string]string // occurrence digest → incident id
-	actions       map[string]ports.StoredAction
-	progress      map[string]ports.WorkloadProgress
-	checkpoint    time.Time
-	hasCheckpoint bool
+	mu                      sync.Mutex
+	incidents               map[string]domain.Incident
+	digests                 map[string]string // occurrence digest → incident id
+	actions                 map[string]ports.StoredAction
+	progress                map[string]ports.WorkloadProgress
+	checkpoint              time.Time
+	hasCheckpoint           bool
+	failActionOnce          string
+	authoritativeActionOnce string
+	authoritativeResult     ports.ControlResult
 }
 
 func newFakeIncidentRepo() *fakeIncidentRepo {
@@ -114,7 +117,7 @@ func (r *fakeIncidentRepo) UpdateOutcome(_ context.Context, incidentID string, s
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	incident, ok := r.incidents[incidentID]
-	if !ok {
+	if !ok || incident.State != domain.StateOpen || incident.RestartOutcome != domain.OutcomePending {
 		return domain.ErrNotFound
 	}
 	incident.State = state
@@ -133,7 +136,7 @@ func (r *fakeIncidentRepo) MarkResolved(_ context.Context, incidentID string, no
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	incident, ok := r.incidents[incidentID]
-	if !ok {
+	if !ok || incident.State != domain.StateMitigated {
 		return domain.ErrNotFound
 	}
 	incident.State = domain.StateResolved
@@ -175,18 +178,44 @@ func (r *fakeIncidentRepo) ListOpenForWorkload(_ context.Context, workloadID str
 	return result, nil
 }
 
+func (r *fakeIncidentRepo) ListMitigatedForWorkload(_ context.Context, workloadID string, throughGeneration int64) ([]domain.Incident, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	var result []domain.Incident
+	for _, incident := range r.incidents {
+		if incident.WorkloadID == workloadID && incident.WorkloadGeneration <= throughGeneration &&
+			incident.State == domain.StateMitigated {
+			result = append(result, incident)
+		}
+	}
+	return result, nil
+}
+
 func (r *fakeIncidentRepo) RecordAction(_ context.Context, incidentID, action string, result ports.ControlResult, now time.Time) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	if r.failActionOnce == action {
+		r.failActionOnce = ""
+		return errUnavailable
+	}
 	key := ledgerKey(incidentID, action)
+	if r.authoritativeActionOnce == action {
+		r.authoritativeActionOnce = ""
+		r.actions[key] = ports.StoredAction{
+			IncidentID: incidentID, Action: action, Outcome: r.authoritativeResult.Outcome,
+			ResultGeneration: r.authoritativeResult.Generation,
+		}
+	}
 	existing, ok := r.actions[key]
 	if !ok {
 		existing = ports.StoredAction{IncidentID: incidentID, Action: action}
 	}
 	outcome := result.Outcome
-	if existing.Outcome != "" && outcome == ports.ControlUnavailable {
-		// A replayed unavailable verdict never erases a recorded one.
+	if existing.Outcome != "" && existing.Outcome != ports.ControlUnavailable {
+		// Terminal runtime verdicts are immutable; only an unavailable
+		// attempt may be replaced by a replay result.
 		outcome = existing.Outcome
+		result.Generation = existing.ResultGeneration
 	}
 	r.actions[key] = ports.StoredAction{
 		IncidentID: incidentID, Action: action, Outcome: outcome,
@@ -206,8 +235,25 @@ func (r *fakeIncidentRepo) LookupAction(_ context.Context, incidentID, action st
 	return stored, nil
 }
 
-func (r *fakeIncidentRepo) ListPendingActionIncidents(context.Context, int) ([]domain.Incident, error) {
-	return nil, nil
+func (r *fakeIncidentRepo) ListPendingActionIncidents(_ context.Context, limit int) ([]domain.Incident, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	result := make([]domain.Incident, 0, limit)
+	// Budget incidents first mirrors the recovery-safe production ordering:
+	// their stop result can then settle any source episode in the same sweep.
+	for _, budgetOnly := range []bool{true, false} {
+		for _, incident := range r.incidents {
+			isBudget := incident.Violation == domain.ViolationRestartLimit
+			if isBudget != budgetOnly || incident.State != domain.StateOpen || incident.RestartOutcome != domain.OutcomePending {
+				continue
+			}
+			result = append(result, incident)
+			if len(result) >= limit {
+				return result, nil
+			}
+		}
+	}
+	return result, nil
 }
 
 func (r *fakeIncidentRepo) LoadProgress(_ context.Context, workloadID string) (ports.WorkloadProgress, error) {
@@ -312,7 +358,9 @@ func TestPollReportsOneIncidentPerEpisodeAndRestartsOnce(t *testing.T) {
 
 	// Recovery: healthy running observations ride the stable streak, then the
 	// incident resolves.
-	observer.observations = []ports.Observation{testObservation(ports.StateRunning, domain.HealthOK, domain.ExitNone)}
+	recovered := testObservation(ports.StateRunning, domain.HealthOK, domain.ExitNone)
+	recovered.Generation = 2
+	observer.observations = []ports.Observation{recovered}
 	for poll := 0; poll < 3; poll++ {
 		if err := supervisor.Poll(ctx); err != nil {
 			t.Fatalf("recovery poll %d: %v", poll, err)
@@ -453,11 +501,22 @@ func TestPollStopUnavailableStaysPendingAndRedrives(t *testing.T) {
 	if incident.State != domain.StateOpen || incident.RestartOutcome != domain.OutcomePending {
 		t.Fatalf("incident must stay open/pending after an unavailable stop: %+v", incident)
 	}
-	// Second poll with the stop now succeeding: the same action key re-drives
+	if len(controller.stops) != 1 {
+		t.Fatalf("first poll issued %d stops, want one", len(controller.stops))
+	}
+	// A full recovery poll may see both the source and budget incidents, but
+	// their shared stop key is attempted only once in that poll.
+	if err := supervisor.Poll(context.Background()); err != nil {
+		t.Fatalf("poll 2 unavailable: %v", err)
+	}
+	if len(controller.stops) != 2 {
+		t.Fatalf("unavailable recovery issued %d stops, want one attempt per poll", len(controller.stops))
+	}
+	// Third poll with the stop now succeeding: the same action key re-drives
 	// and the episode closes as genuinely stopped.
 	controller.stopOutcome = ports.ControlStopped
 	if err := supervisor.Poll(context.Background()); err != nil {
-		t.Fatalf("poll 2: %v", err)
+		t.Fatalf("poll 3: %v", err)
 	}
 	incident = findIncident(t, repo, domain.ViolationUnexpectedExit)
 	if incident.RestartOutcome != domain.OutcomeStopped {
@@ -469,8 +528,75 @@ func TestPollStopUnavailableStaysPendingAndRedrives(t *testing.T) {
 	}
 	// Exactly one physical stop hit the controller: the retry replayed the
 	// recorded unavailable action instead of re-issuing a stop.
-	if len(controller.stops) != 2 {
-		t.Fatalf("stops %d, want 2 (one unavailable attempt + one success)", len(controller.stops))
+	if len(controller.stops) != 3 {
+		t.Fatalf("stops %d, want one attempt in each of three polls", len(controller.stops))
+	}
+}
+
+func TestPollPermanentRestartFailureDoesNotRedrive(t *testing.T) {
+	observer := &fakeObserver{observations: []ports.Observation{
+		testObservation(ports.StateFailed, domain.HealthFailing, "exited"),
+	}}
+	controller := &fakeController{restartResult: ports.ControlResult{Outcome: ports.ControlFailed}}
+	repo := newFakeIncidentRepo()
+	supervisor := newSupervisor(t, observer, controller, repo)
+
+	for poll := 0; poll < 2; poll++ {
+		if err := supervisor.Poll(context.Background()); err != nil {
+			t.Fatalf("poll %d: %v", poll, err)
+		}
+	}
+	incident := findIncident(t, repo, domain.ViolationUnexpectedExit)
+	if incident.State != domain.StateOpen || incident.RestartOutcome != domain.OutcomeFailed {
+		t.Fatalf("permanent restart verdict did not close the pending decision: %+v", incident)
+	}
+	if len(controller.restarts) != 1 {
+		t.Fatalf("permanent restart failure was re-driven %d times", len(controller.restarts))
+	}
+}
+
+func TestPollUsesAuthoritativeActionLedgerAfterConcurrentTerminalWrite(t *testing.T) {
+	observer := &fakeObserver{observations: []ports.Observation{
+		testObservation(ports.StateFailed, domain.HealthFailing, "exited"),
+	}}
+	controller := &fakeController{restartResult: ports.ControlResult{Outcome: ports.ControlUnavailable}}
+	repo := newFakeIncidentRepo()
+	repo.authoritativeActionOnce = "restart"
+	repo.authoritativeResult = ports.ControlResult{Outcome: ports.ControlRestarted, Generation: 2}
+	supervisor := newSupervisor(t, observer, controller, repo)
+
+	if err := supervisor.Poll(context.Background()); err != nil {
+		t.Fatalf("poll: %v", err)
+	}
+	incident := findIncident(t, repo, domain.ViolationUnexpectedExit)
+	if incident.State != domain.StateMitigated || incident.RestartOutcome != domain.OutcomeRestarted {
+		t.Fatalf("caller result overrode authoritative ledger: %+v", incident)
+	}
+}
+
+func TestPollPermanentStopFailureDoesNotRedrive(t *testing.T) {
+	observer := &fakeObserver{observations: []ports.Observation{
+		testObservation(ports.StateFailed, domain.HealthFailing, "exited"),
+	}}
+	controller := &fakeController{
+		restartResult: ports.ControlResult{Outcome: ports.ControlLimitExhausted},
+		stopOutcome:   ports.ControlFailed,
+	}
+	repo := newFakeIncidentRepo()
+	supervisor := newSupervisor(t, observer, controller, repo)
+
+	for poll := 0; poll < 2; poll++ {
+		if err := supervisor.Poll(context.Background()); err != nil {
+			t.Fatalf("poll %d: %v", poll, err)
+		}
+	}
+	source := findIncident(t, repo, domain.ViolationUnexpectedExit)
+	budget := findIncident(t, repo, domain.ViolationRestartLimit)
+	if source.RestartOutcome != domain.OutcomeFailed || budget.RestartOutcome != domain.OutcomeFailed {
+		t.Fatalf("terminal stop failure left a pending decision: source=%+v budget=%+v", source, budget)
+	}
+	if len(controller.restarts) != 1 || len(controller.stops) != 1 {
+		t.Fatalf("terminal control calls repeated: restarts=%d stops=%d", len(controller.restarts), len(controller.stops))
 	}
 }
 
@@ -502,5 +628,71 @@ func TestPollBudgetIncidentNeverRestarts(t *testing.T) {
 	}
 	if len(controller.stops) != 1 {
 		t.Fatalf("stops %d, want exactly 1 (single stop authority)", len(controller.stops))
+	}
+}
+
+func TestPollRedrivesRestartAfterRuntimeSucceededBeforeActionCommit(t *testing.T) {
+	observer := &fakeObserver{}
+	controller := &fakeController{restartResult: ports.ControlResult{Outcome: ports.ControlRestarted, Generation: 2}}
+	repo := newFakeIncidentRepo()
+	repo.failActionOnce = "restart"
+	supervisor := newSupervisor(t, observer, controller, repo)
+	observer.observations = []ports.Observation{testObservation(ports.StateFailed, domain.HealthFailing, "exited")}
+	if err := supervisor.Poll(context.Background()); err != nil {
+		t.Fatalf("first poll: %v", err)
+	}
+	incident := findIncident(t, repo, domain.ViolationUnexpectedExit)
+	if incident.State != domain.StateOpen || incident.RestartOutcome != domain.OutcomePending {
+		t.Fatalf("crash-window incident %+v, want open/pending", incident)
+	}
+	recovered := testObservation(ports.StateRunning, domain.HealthOK, domain.ExitNone)
+	recovered.Generation = 2
+	observer.observations = []ports.Observation{recovered}
+	if err := supervisor.Poll(context.Background()); err != nil {
+		t.Fatalf("recovery poll: %v", err)
+	}
+	incident = findIncident(t, repo, domain.ViolationUnexpectedExit)
+	if incident.State != domain.StateMitigated || incident.RestartOutcome != domain.OutcomeRestarted {
+		t.Fatalf("recovered incident %+v", incident)
+	}
+	if len(controller.restarts) != 2 || controller.restarts[0] != controller.restarts[1] {
+		t.Fatalf("restart replay keys %v, want two identical calls", controller.restarts)
+	}
+	// The healthy replacement resolves the repaired old-generation incident.
+	for poll := 0; poll < 2; poll++ {
+		if err := supervisor.Poll(context.Background()); err != nil {
+			t.Fatalf("stable poll %d: %v", poll, err)
+		}
+	}
+	incident = findIncident(t, repo, domain.ViolationUnexpectedExit)
+	if incident.State != domain.StateResolved {
+		t.Fatalf("old-generation incident state %v, want resolved", incident.State)
+	}
+}
+
+func TestPollRedrivesStopAfterRuntimeSucceededBeforeActionCommit(t *testing.T) {
+	observer := &fakeObserver{}
+	controller := &fakeController{
+		restartResult: ports.ControlResult{Outcome: ports.ControlLimitExhausted},
+		stopOutcome:   ports.ControlStopped,
+	}
+	repo := newFakeIncidentRepo()
+	repo.failActionOnce = "terminate"
+	supervisor := newSupervisor(t, observer, controller, repo)
+	observer.observations = []ports.Observation{testObservation(ports.StateFailed, domain.HealthFailing, "exited")}
+	if err := supervisor.Poll(context.Background()); err != nil {
+		t.Fatalf("first poll: %v", err)
+	}
+	observer.observations = []ports.Observation{testObservation(ports.StateStopped, domain.HealthFailing, "exited")}
+	if err := supervisor.Poll(context.Background()); err != nil {
+		t.Fatalf("recovery poll: %v", err)
+	}
+	source := findIncident(t, repo, domain.ViolationUnexpectedExit)
+	budget := findIncident(t, repo, domain.ViolationRestartLimit)
+	if source.RestartOutcome != domain.OutcomeStopped || budget.RestartOutcome != domain.OutcomeStopped {
+		t.Fatalf("source=%+v budget=%+v", source, budget)
+	}
+	if len(controller.stops) != 2 || controller.stops[0] != controller.stops[1] {
+		t.Fatalf("stop replay keys %v, want two identical calls", controller.stops)
 	}
 }

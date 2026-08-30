@@ -419,11 +419,12 @@ func validContainerHost(host string) bool {
 			return false
 		}
 	}
-	return true
+	number, err := strconv.ParseUint(port, 10, 16)
+	return err == nil && number > 0
 }
 
 func validContainerPathComponent(component string) bool {
-	if component == "" {
+	if component == "" || component == "." || component == ".." {
 		return false
 	}
 	for index := 0; index < len(component); index++ {
@@ -445,7 +446,7 @@ func ValidContainerCommand(command []string) bool {
 		return false
 	}
 	for _, argument := range command {
-		if argument == "" || len(argument) > MaxCommandArgRunes {
+		if argument == "" || utf8.RuneCountInString(argument) > MaxCommandArgRunes {
 			return false
 		}
 		if !utf8.ValidString(argument) {

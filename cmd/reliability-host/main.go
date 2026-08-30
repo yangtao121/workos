@@ -100,8 +100,8 @@ func run(logger *slog.Logger) error {
 	}()
 
 	systemPath, systemHandler := commonv1connect.NewSystemServiceHandler(systemhandler.New("reliability-host", commonv1.HealthState_HEALTH_STATE_DEGRADED,
-		&commonv1.FeatureCapability{Id: "supervisor", Available: true, Reason: "observation, incident, and bounded restart/stop loop"},
-		&commonv1.FeatureCapability{Id: "incident-manager", Available: true, Reason: "owner-scoped incident list and acknowledge"},
+		&commonv1.FeatureCapability{Id: "supervisor", Available: false, Reason: "implemented but awaiting real observation-to-action E2E evidence"},
+		&commonv1.FeatureCapability{Id: "incident-manager", Available: false, Reason: "implemented but awaiting real incident lifecycle E2E evidence"},
 		&commonv1.FeatureCapability{Id: "repair-orchestrator", Available: false, Reason: "contract only"},
 		&commonv1.FeatureCapability{Id: "deployment-controller", Available: false, Reason: "contract only"},
 	))

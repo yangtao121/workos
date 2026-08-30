@@ -150,8 +150,12 @@ func (r *Repository) Acknowledge(ctx context.Context, incidentID, ownerUserID, a
 	if rows == 0 {
 		// Already acknowledged (no-op success) or foreign/unknown. The
 		// re-read classifies without leaking which.
-		if _, getErr := r.GetIncident(ctx, incidentID); getErr != nil {
+		incident, getErr := r.GetIncident(ctx, incidentID)
+		if getErr != nil {
 			return getErr
+		}
+		if incident.OwnerUserID != ownerUserID {
+			return domain.ErrNotFound
 		}
 	}
 	return nil
@@ -174,6 +178,20 @@ func (r *Repository) ListOpenForWorkload(ctx context.Context, workloadID string,
 	})
 	if err != nil {
 		return nil, storeError("list open incidents", err)
+	}
+	incidents := make([]domain.Incident, 0, len(rows))
+	for _, row := range rows {
+		incidents = append(incidents, incidentFromRow(row))
+	}
+	return incidents, nil
+}
+
+func (r *Repository) ListMitigatedForWorkload(ctx context.Context, workloadID string, throughGeneration int64) ([]domain.Incident, error) {
+	rows, err := r.queries.ListMitigatedIncidentsForWorkload(ctx, reliabilitydb.ListMitigatedIncidentsForWorkloadParams{
+		WorkloadID: workloadID, ThroughGeneration: throughGeneration,
+	})
+	if err != nil {
+		return nil, storeError("list mitigated incidents", err)
 	}
 	incidents := make([]domain.Incident, 0, len(rows))
 	for _, row := range rows {
@@ -220,18 +238,13 @@ func (r *Repository) LookupAction(ctx context.Context, incidentID, action string
 
 // ListPendingActionIncidents returns open incidents for decision re-driving.
 func (r *Repository) ListPendingActionIncidents(ctx context.Context, limit int) ([]domain.Incident, error) {
-	rows, err := r.queries.ListIncidentsPage(ctx, reliabilitydb.ListIncidentsPageParams{
-		OwnerUserID: "%", ProjectID: "", PageToken: "", RowLimit: int32(limit),
-	})
+	rows, err := r.queries.ListPendingActionIncidents(ctx, int32(limit))
 	if err != nil {
 		return nil, storeError("list pending action incidents", err)
 	}
 	incidents := make([]domain.Incident, 0, len(rows))
 	for _, row := range rows {
-		incident := incidentFromRow(row)
-		if incident.State == domain.StateOpen && incident.RestartOutcome == domain.OutcomePending {
-			incidents = append(incidents, incident)
-		}
+		incidents = append(incidents, incidentFromRow(row))
 	}
 	return incidents, nil
 }
@@ -330,6 +343,20 @@ func incidentFromRow(row any) domain.Incident {
 			value.State, value.RestartOutcome, value.Revision,
 			value.AcknowledgedAt, value.MitigatedAt, value.ResolvedAt, value.CreatedAt, value.UpdatedAt)
 		incident.AcknowledgeKey = value.AcknowledgeKey.String
+	case reliabilitydb.ListPendingActionIncidentsRow:
+		incident = incidentFromColumns(value.ID, value.OwnerUserID, value.ProjectID,
+			value.AppInstanceID, value.AppID, value.WorkloadID, value.WorkloadGeneration,
+			value.Violation, value.Summary, value.OccurrenceDigest, value.EvidenceDigest,
+			value.State, value.RestartOutcome, value.Revision,
+			value.AcknowledgedAt, value.MitigatedAt, value.ResolvedAt, value.CreatedAt, value.UpdatedAt)
+		incident.AcknowledgeKey = value.AcknowledgeKey.String
+	case reliabilitydb.ListMitigatedIncidentsForWorkloadRow:
+		incident = incidentFromColumns(value.ID, value.OwnerUserID, value.ProjectID,
+			value.AppInstanceID, value.AppID, value.WorkloadID, value.WorkloadGeneration,
+			value.Violation, value.Summary, value.OccurrenceDigest, value.EvidenceDigest,
+			value.State, value.RestartOutcome, value.Revision,
+			value.AcknowledgedAt, value.MitigatedAt, value.ResolvedAt, value.CreatedAt, value.UpdatedAt)
+		incident.AcknowledgeKey = value.AcknowledgeKey.String
 	}
 	return incident
 }
@@ -365,6 +392,9 @@ func incidentFromColumns(
 // function of the incident and the action, so a crash between the control
 // call and its persistence replays the exact same key.
 func actionKey(incidentID, action string) string {
+	if action == "terminate" {
+		action = "stop"
+	}
 	return "reliability:" + action + ":" + incidentID
 }
 

@@ -59,7 +59,8 @@ func newTestManager(t *testing.T, engine *fakeEngine, repo *fakeWorkloadRepo) *M
 	verifier := &fakeVerifier{verdict: ports.LaunchInstalled}
 	surfaces := &fakeSurfaces{has: true}
 	reader := &fakeCgroup{effective: ports.EffectiveFacts{
-		CPUMaxUSec: 100000, MemoryHigh: 64 * 1024 * 1024, MemoryMax: 96 * 1024 * 1024, PIDsMax: 32,
+		CPUMaxUSec: 100000, CPUPeriodUSec: domain.CPUPeriodUSec,
+		MemoryHigh: 64 * 1024 * 1024, MemoryMax: 96 * 1024 * 1024, PIDsMax: 32,
 	}}
 	manager, err := New(repo, engine, reader, prober, verifier, surfaces, ids.UUIDv7{}, newTestConfig(), testLogger())
 	if err != nil {
@@ -79,6 +80,7 @@ type fakeEngine struct {
 
 	capability ports.Capability
 	imageExist bool
+	probeCalls int
 
 	createCalls int
 	startCalls  int
@@ -89,22 +91,31 @@ type fakeEngine struct {
 	createErr  error
 	startErr   error
 	inspectErr error
+	stopErr    error
+	removeErr  error
 
 	hostIPOverride string
+	// createProfileDrift simulates an engine accepting CreateContainer while
+	// silently widening the published-port profile. The manager must catch
+	// this in the post-start inspect before it persists running.
+	createProfileDrift bool
 
 	nextID int
 }
 
 type fakeContainer struct {
-	id       string
-	name     string
-	running  bool
-	exit     int
-	oom      bool
-	pid      int
-	labels   map[string]string
-	hostIP   string
-	hostPort int32
+	id             string
+	name           string
+	running        bool
+	exit           int
+	oom            bool
+	pid            int
+	labels         map[string]string
+	hostIP         string
+	hostPort       int32
+	containerPort  int32
+	publishedPorts int
+	spec           ports.ContainerSpec
 }
 
 func newFakeEngine() *fakeEngine {
@@ -116,6 +127,9 @@ func newFakeEngine() *fakeEngine {
 }
 
 func (e *fakeEngine) Probe(context.Context) (ports.Capability, error) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.probeCalls++
 	return e.capability, nil
 }
 
@@ -140,6 +154,10 @@ func (e *fakeEngine) CreateContainer(_ context.Context, spec ports.ContainerSpec
 	container := &fakeContainer{
 		id: fmt.Sprintf("ctr-%d", e.nextID), name: spec.Name, running: false,
 		pid: 42000 + e.nextID, labels: spec.Labels, hostIP: "127.0.0.1", hostPort: 41000 + int32(e.nextID),
+		containerPort: int32(spec.Port), publishedPorts: 1, spec: spec,
+	}
+	if e.createProfileDrift {
+		container.publishedPorts = 2
 	}
 	e.containers[spec.Name] = container
 	return container.id, nil
@@ -165,6 +183,9 @@ func (e *fakeEngine) StopContainer(_ context.Context, nameOrID string, _ time.Du
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	e.stopCalls++
+	if e.stopErr != nil {
+		return e.stopErr
+	}
 	for _, container := range e.containers {
 		if container.name == nameOrID || container.id == nameOrID {
 			container.running = false
@@ -178,6 +199,9 @@ func (e *fakeEngine) RemoveContainer(_ context.Context, nameOrID string) error {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	e.removeCalls++
+	if e.removeErr != nil {
+		return e.removeErr
+	}
 	for name, container := range e.containers {
 		if container.name == nameOrID || container.id == nameOrID {
 			delete(e.containers, name)
@@ -203,6 +227,11 @@ func (e *fakeEngine) InspectContainer(_ context.Context, nameOrID string) (ports
 				ID: container.id, Name: container.name, Running: container.running,
 				ExitCode: container.exit, PID: container.pid, OOMKilled: container.oom,
 				Labels: container.labels, HostIP: hostIP, HostPort: container.hostPort,
+				ContainerPort: container.containerPort, PublishedPorts: container.publishedPorts,
+				Image: container.spec.Image, Command: append([]string(nil), container.spec.Command...),
+				ReadOnly: true, NoNewPrivileges: true, NetworkMode: "workos-app-internal",
+				ConnectedNetworks: 1, InternalNetwork: true,
+				RestartPolicy: "no", Tmpfs: map[string]string{"/tmp": "rw,size=33554432,noexec,nodev,nosuid"},
 			}, nil
 		}
 	}
@@ -214,7 +243,14 @@ func (e *fakeEngine) ListManagedContainers(context.Context) ([]ports.ContainerFa
 	defer e.mu.Unlock()
 	facts := make([]ports.ContainerFacts, 0, len(e.containers))
 	for _, container := range e.containers {
-		facts = append(facts, ports.ContainerFacts{ID: container.id, Name: container.name, Running: container.running, Labels: container.labels})
+		facts = append(facts, ports.ContainerFacts{
+			ID: container.id, Name: container.name, Running: container.running, Labels: container.labels,
+			ContainerPort: container.containerPort, PublishedPorts: container.publishedPorts,
+			Image: container.spec.Image, Command: append([]string(nil), container.spec.Command...),
+			ReadOnly: true, NoNewPrivileges: true, NetworkMode: "workos-app-internal",
+			ConnectedNetworks: 1, InternalNetwork: true,
+			RestartPolicy: "no", Tmpfs: map[string]string{"/tmp": "rw,size=33554432,noexec,nodev,nosuid"},
+		})
 	}
 	return facts, nil
 }
@@ -242,9 +278,10 @@ func (e *fakeEngine) containerExists(name string) bool {
 }
 
 type fakeCgroup struct {
-	effective ports.EffectiveFacts
-	counters  ports.CgroupCounters
-	paths     map[int]string
+	effective  ports.EffectiveFacts
+	counters   ports.CgroupCounters
+	counterErr error
+	paths      map[int]string
 }
 
 func (r *fakeCgroup) SelfSubtree() (string, error) { return "/user.slice/user-1000.slice", nil }
@@ -261,7 +298,7 @@ func (r *fakeCgroup) ReadEffective(context.Context, string) (ports.EffectiveFact
 }
 
 func (r *fakeCgroup) ReadCounters(context.Context, string) (ports.CgroupCounters, error) {
-	return r.counters, nil
+	return r.counters, r.counterErr
 }
 
 type fakeProber struct {
@@ -299,9 +336,11 @@ func (s *fakeSurfaces) HasActiveSurface(context.Context, string, string) (bool, 
 // fakeWorkloadRepo is the in-memory repository; it mirrors the partial
 // active-slot uniqueness so concurrency and recovery paths stay honest.
 type fakeWorkloadRepo struct {
-	mu         sync.Mutex
-	workloads  map[string]domain.Workload
-	operations map[string]domain.WorkloadOperation
+	mu                         sync.Mutex
+	workloads                  map[string]domain.Workload
+	operations                 map[string]domain.WorkloadOperation
+	failCompletedOperationOnce bool
+	getErr                     error
 }
 
 func newFakeRepo() *fakeWorkloadRepo {
@@ -313,6 +352,9 @@ func opKey(workloadID, key string) string { return workloadID + "|" + key }
 func (r *fakeWorkloadRepo) Get(_ context.Context, workloadID string) (domain.Workload, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	if r.getErr != nil {
+		return domain.Workload{}, r.getErr
+	}
 	workload, ok := r.workloads[workloadID]
 	if !ok {
 		return domain.Workload{}, domain.ErrNotFound
@@ -375,11 +417,42 @@ func (r *fakeWorkloadRepo) LookupOperation(_ context.Context, workloadID, key st
 	}, nil
 }
 
+func (r *fakeWorkloadRepo) PendingOperation(_ context.Context, workloadID string, generation int64) (ports.StoredOperation, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for _, stored := range r.operations {
+		if stored.WorkloadID == workloadID && stored.ResultGeneration == generation &&
+			stored.ResultState == "" && (stored.ErrorKind == "" || stored.Retryable()) {
+			return ports.StoredOperation{
+				WorkloadID: stored.WorkloadID, OperationKey: stored.OperationKey,
+				Operation: stored.Operation, RequestDigest: stored.RequestDigest,
+				ResultState: stored.ResultState, ResultGeneration: stored.ResultGeneration,
+				ErrorKind: stored.ErrorKind,
+			}, nil
+		}
+	}
+	return ports.StoredOperation{}, nil
+}
+
 func (r *fakeWorkloadRepo) RecordOperation(_ context.Context, op domain.WorkloadOperation) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	if r.failCompletedOperationOnce && op.ResultState != "" {
+		r.failCompletedOperationOnce = false
+		return ports.ErrStoreUnavailable
+	}
 	existing, ok := r.operations[opKey(op.WorkloadID, op.OperationKey)]
 	if ok {
+		if existing.Operation != op.Operation || existing.RequestDigest != op.RequestDigest {
+			return domain.ErrIdempotencyConflict
+		}
+		if existing.Completed() && !existing.Retryable() {
+			if existing.ResultState == op.ResultState && existing.ResultGeneration == op.ResultGeneration &&
+				existing.ErrorKind == op.ErrorKind {
+				return nil
+			}
+			return domain.ErrIdempotencyConflict
+		}
 		if existing.CreatedAt.IsZero() {
 			op.CreatedAt = existing.CreatedAt
 		} else {
@@ -400,15 +473,27 @@ func (r *fakeWorkloadRepo) Transition(_ context.Context, workloadID string, from
 	// Guard exactly like the real SQL: the restart transition may re-open a
 	// failed workload, every other transition refuses out of terminal rows.
 	if to == domain.StateStarting {
-		if from != domain.StateRunning && from != domain.StateFailed {
-			return domain.ErrNotFound
+		if from == domain.StatePending {
+			if facts.Generation != workload.Generation || facts.RestartCount != workload.RestartCount {
+				return domain.ErrNotFound
+			}
+		} else {
+			if from != domain.StateRunning && from != domain.StateFailed {
+				return domain.ErrNotFound
+			}
+			if facts.Generation != workload.Generation+1 || facts.RestartCount != workload.RestartCount+1 {
+				return domain.ErrNotFound
+			}
 		}
-	} else if from.Terminal() {
+	} else if from.Terminal() || facts.Generation != workload.Generation {
 		return domain.ErrNotFound
 	}
 	// Verified stamping is a bookkeeping self-transition: it touches only
 	// the stamp, mirroring the real StampWorkloadVerified UPDATE.
 	if facts.VerifiedAt != nil && from == to {
+		if facts.Generation != workload.Generation {
+			return domain.ErrNotFound
+		}
 		workload.LastVerifiedAt = facts.VerifiedAt
 		r.workloads[workloadID] = workload
 		return nil
@@ -419,9 +504,16 @@ func (r *fakeWorkloadRepo) Transition(_ context.Context, workloadID string, from
 	workload.HealthVerdict = facts.HealthVerdict
 	workload.LastExit = facts.LastExit
 	workload.UpdatedAt = now
+	workload.IdleSince = nil
 	if facts.ClearEngine {
 		workload.ContainerID, workload.Endpoint, workload.CgroupPath = "", "", ""
 		workload.StoppedAt = facts.StoppedAt
+		if to == domain.StateStarting {
+			workload.StartedAt = nil
+			workload.LastVerifiedAt = nil
+			workload.BaselineOOM = 0
+			workload.BaselinePids = 0
+		}
 	} else {
 		workload.ContainerID = facts.ContainerID
 		workload.Endpoint = facts.Endpoint
@@ -435,6 +527,58 @@ func (r *fakeWorkloadRepo) Transition(_ context.Context, workloadID string, from
 	return nil
 }
 
+func (r *fakeWorkloadRepo) TransitionOperation(ctx context.Context, workloadID string, from, to domain.State, facts ports.WorkloadFacts, op domain.WorkloadOperation, now time.Time) error {
+	r.mu.Lock()
+	if r.failCompletedOperationOnce && (op.ResultState != "" || op.ErrorKind != "") {
+		r.failCompletedOperationOnce = false
+		r.mu.Unlock()
+		return ports.ErrStoreUnavailable
+	}
+	beforeWorkload, hadWorkload := r.workloads[workloadID]
+	beforeOperation, hadOperation := r.operations[opKey(op.WorkloadID, op.OperationKey)]
+	r.mu.Unlock()
+	if err := r.Transition(ctx, workloadID, from, to, facts, now); err != nil {
+		return err
+	}
+	if err := r.RecordOperation(ctx, op); err != nil {
+		r.mu.Lock()
+		if hadWorkload {
+			r.workloads[workloadID] = beforeWorkload
+		} else {
+			delete(r.workloads, workloadID)
+		}
+		if hadOperation {
+			r.operations[opKey(op.WorkloadID, op.OperationKey)] = beforeOperation
+		} else {
+			delete(r.operations, opKey(op.WorkloadID, op.OperationKey))
+		}
+		r.mu.Unlock()
+		return err
+	}
+	return nil
+}
+
 func (r *fakeWorkloadRepo) ClaimLease(context.Context, string, string, time.Time) (bool, error) {
 	return true, nil
+}
+
+func (r *fakeWorkloadRepo) SetIdle(_ context.Context, workloadID string, generation int64, idle bool, now time.Time) (*time.Time, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	workload, ok := r.workloads[workloadID]
+	if !ok || workload.State != domain.StateRunning || workload.Generation != generation {
+		return nil, domain.ErrNotFound
+	}
+	if !idle {
+		workload.IdleSince = nil
+		r.workloads[workloadID] = workload
+		return nil, nil
+	}
+	if workload.IdleSince == nil {
+		stamp := now
+		workload.IdleSince = &stamp
+		r.workloads[workloadID] = workload
+	}
+	stamp := *workload.IdleSince
+	return &stamp, nil
 }

@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 
@@ -48,22 +49,28 @@ func (r *Repository) ReserveEnsure(ctx context.Context, workload domain.Workload
 		if dbtransient.IsTransient(err) {
 			return false, storeError("reserve workload", err)
 		}
-		// A unique-slot conflict lands here as a non-transient failure.
-		return false, nil
+		if isUniqueViolation(err) {
+			// The workload ID or active owner+instance slot was won by a
+			// concurrent reserve; the application re-reads authoritative facts.
+			return false, nil
+		}
+		// CHECK/FK/programming failures are invariant errors, not conflicts.
+		return false, storeError("reserve workload", err)
 	}
 	rows, err := queries.InsertWorkloadOperation(ctx, workloaddb.InsertWorkloadOperationParams{
-		WorkloadID:    op.WorkloadID,
-		OperationKey:  op.OperationKey,
-		Operation:     string(op.Operation),
-		RequestDigest: op.RequestDigest,
-		CreatedAt:     op.CreatedAt,
-		UpdatedAt:     op.UpdatedAt,
+		WorkloadID:       op.WorkloadID,
+		OperationKey:     op.OperationKey,
+		Operation:        string(op.Operation),
+		RequestDigest:    op.RequestDigest,
+		ResultGeneration: int8Param(op.ResultGeneration, op.ResultGeneration > 0),
+		CreatedAt:        op.CreatedAt,
+		UpdatedAt:        op.UpdatedAt,
 	})
 	if err != nil {
 		if dbtransient.IsTransient(err) {
 			return false, storeError("reserve workload operation", err)
 		}
-		return false, nil
+		return false, storeError("reserve workload operation", err)
 	}
 	if rows == 0 {
 		// Same key reserved earlier: not a fresh reserve.
@@ -73,6 +80,11 @@ func (r *Repository) ReserveEnsure(ctx context.Context, workload domain.Workload
 		return false, storeError("commit workload reserve", err)
 	}
 	return true, nil
+}
+
+func isUniqueViolation(err error) bool {
+	var pgErr *pgconn.PgError
+	return errors.As(err, &pgErr) && pgErr.Code == "23505"
 }
 
 func (r *Repository) Get(ctx context.Context, workloadID string) (domain.Workload, error) {
@@ -142,6 +154,32 @@ func (r *Repository) LookupOperation(ctx context.Context, workloadID, operationK
 	return stored, nil
 }
 
+func (r *Repository) PendingOperation(ctx context.Context, workloadID string, generation int64) (ports.StoredOperation, error) {
+	row, err := r.queries.GetPendingWorkloadOperation(ctx, workloaddb.GetPendingWorkloadOperationParams{
+		WorkloadID: workloadID, Generation: int8Param(generation, generation > 0),
+	})
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return ports.StoredOperation{}, nil
+		}
+		return ports.StoredOperation{}, storeError("get pending workload operation", err)
+	}
+	stored := ports.StoredOperation{
+		WorkloadID: row.WorkloadID, OperationKey: row.OperationKey,
+		Operation: domain.Operation(row.Operation), RequestDigest: row.RequestDigest,
+	}
+	if row.ResultState.Valid {
+		stored.ResultState = domain.State(row.ResultState.String)
+	}
+	if row.ResultGeneration.Valid {
+		stored.ResultGeneration = row.ResultGeneration.Int64
+	}
+	if row.ErrorKind.Valid {
+		stored.ErrorKind = domain.ErrorKind(row.ErrorKind.String)
+	}
+	return stored, nil
+}
+
 func (r *Repository) RecordOperation(ctx context.Context, op domain.WorkloadOperation) error {
 	return r.recordOperation(ctx, r.queries, op)
 }
@@ -150,7 +188,7 @@ func (r *Repository) recordOperation(ctx context.Context, queries workloaddb.Que
 	if op.CreatedAt.IsZero() {
 		op.CreatedAt = op.UpdatedAt
 	}
-	err := queries.UpsertWorkloadOperation(ctx, workloaddb.UpsertWorkloadOperationParams{
+	rows, err := queries.UpsertWorkloadOperation(ctx, workloaddb.UpsertWorkloadOperationParams{
 		WorkloadID:       op.WorkloadID,
 		OperationKey:     op.OperationKey,
 		Operation:        string(op.Operation),
@@ -164,17 +202,48 @@ func (r *Repository) recordOperation(ctx context.Context, queries workloaddb.Que
 	if err != nil {
 		return storeError("record workload operation", err)
 	}
+	if rows == 0 {
+		stored, lookupErr := queries.GetWorkloadOperation(ctx, workloaddb.GetWorkloadOperationParams{
+			WorkloadID: op.WorkloadID, OperationKey: op.OperationKey,
+		})
+		if lookupErr != nil {
+			return storeError("read immutable workload operation", lookupErr)
+		}
+		resultState := ""
+		if stored.ResultState.Valid {
+			resultState = stored.ResultState.String
+		}
+		resultGeneration := int64(0)
+		if stored.ResultGeneration.Valid {
+			resultGeneration = stored.ResultGeneration.Int64
+		}
+		errorKind := ""
+		if stored.ErrorKind.Valid {
+			errorKind = stored.ErrorKind.String
+		}
+		if stored.Operation == string(op.Operation) && stored.RequestDigest == op.RequestDigest &&
+			resultState == string(op.ResultState) && resultGeneration == op.ResultGeneration &&
+			errorKind == string(op.ErrorKind) {
+			return nil
+		}
+		return domain.ErrIdempotencyConflict
+	}
 	return nil
 }
 
 // Transition applies the guarded state transitions. Terminal rows never move.
 func (r *Repository) Transition(ctx context.Context, workloadID string, from, to domain.State, facts ports.WorkloadFacts, now time.Time) error {
+	return r.transition(ctx, r.queries, workloadID, from, to, facts, now)
+}
+
+func (r *Repository) transition(ctx context.Context, queries workloaddb.Querier, workloadID string, from, to domain.State, facts ports.WorkloadFacts, now time.Time) error {
 	if facts.VerifiedAt != nil && from == to {
 		// Verification stamping is bookkeeping on an unchanged state: the
 		// dedicated guarded UPDATE keeps every other column (container
 		// facts included) untouched.
-		rows, err := r.queries.StampWorkloadVerified(ctx, workloaddb.StampWorkloadVerifiedParams{
+		rows, err := queries.StampWorkloadVerified(ctx, workloaddb.StampWorkloadVerifiedParams{
 			VerifiedAt: facts.VerifiedAt,
+			Generation: facts.Generation,
 			ID:         workloadID,
 		})
 		if err != nil {
@@ -187,7 +256,7 @@ func (r *Repository) Transition(ctx context.Context, workloadID string, from, to
 	}
 	switch {
 	case to == domain.StateRunning:
-		rows, err := r.queries.SetWorkloadRunning(ctx, workloaddb.SetWorkloadRunningParams{
+		rows, err := queries.SetWorkloadRunning(ctx, workloaddb.SetWorkloadRunningParams{
 			ContainerID:             textParam(facts.ContainerID),
 			Endpoint:                textParam(facts.Endpoint),
 			CgroupPath:              textParam(facts.CgroupPath),
@@ -207,11 +276,13 @@ func (r *Repository) Transition(ctx context.Context, workloadID string, from, to
 			return domain.ErrNotFound
 		}
 		return nil
-	case to == domain.StateStarting:
-		rows, err := r.queries.RestartWorkloadFrom(ctx, workloaddb.RestartWorkloadFromParams{
-			FromState: string(from),
-			UpdatedAt: now,
-			ID:        workloadID,
+	case to == domain.StateStarting && from != domain.StatePending:
+		rows, err := queries.RestartWorkloadFrom(ctx, workloaddb.RestartWorkloadFromParams{
+			FromState:    string(from),
+			Generation:   facts.Generation,
+			RestartCount: int32(facts.RestartCount),
+			UpdatedAt:    now,
+			ID:           workloadID,
 		})
 		if err != nil {
 			return storeError("transition workload starting", err)
@@ -221,7 +292,7 @@ func (r *Repository) Transition(ctx context.Context, workloadID string, from, to
 		}
 		return nil
 	default:
-		rows, err := r.queries.SetWorkloadState(ctx, workloaddb.SetWorkloadStateParams{
+		rows, err := queries.SetWorkloadState(ctx, workloaddb.SetWorkloadStateParams{
 			ToState:          string(to),
 			ContainerID:      textParam(facts.ContainerID),
 			Endpoint:         textParam(facts.Endpoint),
@@ -232,6 +303,7 @@ func (r *Repository) Transition(ctx context.Context, workloadID string, from, to
 			UpdatedAt:        now,
 			ID:               workloadID,
 			FromState:        string(from),
+			Generation:       facts.Generation,
 		})
 		if err != nil {
 			return storeError("transition workload state", err)
@@ -241,6 +313,25 @@ func (r *Repository) Transition(ctx context.Context, workloadID string, from, to
 		}
 		return nil
 	}
+}
+
+func (r *Repository) TransitionOperation(ctx context.Context, workloadID string, from, to domain.State, facts ports.WorkloadFacts, op domain.WorkloadOperation, now time.Time) error {
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return storeError("begin workload transition operation", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	queries := workloaddb.New(tx)
+	if err := r.transition(ctx, queries, workloadID, from, to, facts, now); err != nil {
+		return err
+	}
+	if err := r.recordOperation(ctx, queries, op); err != nil {
+		return err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return storeError("commit workload transition operation", err)
+	}
+	return nil
 }
 
 func (r *Repository) ClaimLease(ctx context.Context, workloadID, owner string, until time.Time) (bool, error) {
@@ -255,6 +346,41 @@ func (r *Repository) ClaimLease(ctx context.Context, workloadID, owner string, u
 		return false, storeError("claim workload lease", err)
 	}
 	return rows > 0, nil
+}
+
+func (r *Repository) SetIdle(ctx context.Context, workloadID string, generation int64, idle bool, now time.Time) (*time.Time, error) {
+	if idle {
+		stamp := now
+		idleSince, err := r.queries.MarkWorkloadIdle(ctx, workloaddb.MarkWorkloadIdleParams{
+			IdleSince: &stamp, ID: workloadID, Generation: generation,
+		})
+		if err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				return nil, domain.ErrNotFound
+			}
+			return nil, storeError("mark workload idle", err)
+		}
+		return idleSince, nil
+	}
+	rows, err := r.queries.ClearWorkloadIdle(ctx, workloaddb.ClearWorkloadIdleParams{
+		ID: workloadID, Generation: generation,
+	})
+	if err != nil {
+		return nil, storeError("clear workload idle", err)
+	}
+	if rows == 0 {
+		// Clearing an already-clear value is converged only if this exact
+		// running generation still exists. Re-read so a stale reconciler cannot
+		// silently claim success against a newer generation.
+		workload, getErr := r.Get(ctx, workloadID)
+		if getErr != nil {
+			return nil, getErr
+		}
+		if workload.State != domain.StateRunning || workload.Generation != generation {
+			return nil, domain.ErrNotFound
+		}
+	}
+	return nil, nil
 }
 
 func workloadFromRow(row workloaddb.WorkosRuntimeWorkload) domain.Workload {
@@ -286,6 +412,9 @@ func workloadFromRow(row workloaddb.WorkosRuntimeWorkload) domain.Workload {
 		BaselinePids:  uint64(row.BaselinePidsEventsPeak),
 		CreatedAt:     row.CreatedAt,
 		UpdatedAt:     row.UpdatedAt,
+	}
+	if row.IdleSince != nil {
+		workload.IdleSince = row.IdleSince
 	}
 	if row.ContainerID.Valid {
 		workload.ContainerID = row.ContainerID.String

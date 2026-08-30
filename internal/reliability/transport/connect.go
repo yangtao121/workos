@@ -222,6 +222,12 @@ func (c *RuntimeClient) ListObservations(ctx context.Context) ([]ports.Observati
 		if observedAt.IsZero() {
 			observedAt = time.Now().UTC()
 		}
+		pidsLimitEvents := item.GetPidsEventsMax()
+		if pidsLimitEvents == 0 {
+			// Rolling-upgrade compatibility with runtime versions that emitted
+			// the same pids.events `max` value under the legacy field name.
+			pidsLimitEvents = item.GetPidsEventsPeak()
+		}
 		observations = append(observations, ports.Observation{
 			WorkloadID: item.GetWorkloadId(), OwnerUserID: item.GetOwnerUserId(),
 			ProjectID: item.GetProjectId(), AppInstanceID: item.GetAppInstanceId(),
@@ -230,7 +236,7 @@ func (c *RuntimeClient) ListObservations(ctx context.Context) ([]ports.Observati
 			RestartCount:  int64(item.GetRestartCount()),
 			HealthVerdict: item.GetHealthVerdict(), ExitCategory: item.GetExitCategory(),
 			Idle: item.GetIdle(), MemoryOOMs: item.GetMemoryEventsOom(),
-			PIDsPeak: item.GetPidsEventsPeak(), ObservedAt: observedAt,
+			PIDsLimitEvents: pidsLimitEvents, ObservedAt: observedAt,
 		})
 	}
 	return observations, nil
@@ -260,8 +266,10 @@ func (c *RuntimeClient) Stop(ctx context.Context, workloadID, actionKey, reason 
 // outcomes. Every failure is a decision input, never raw engine detail.
 func controlError(err error) (ports.ControlResult, error) {
 	switch connect.CodeOf(err) {
-	case connect.CodeFailedPrecondition:
+	case connect.CodeResourceExhausted:
 		return ports.ControlResult{Outcome: ports.ControlLimitExhausted}, nil
+	case connect.CodeFailedPrecondition:
+		return ports.ControlResult{Outcome: ports.ControlUnsupported}, nil
 	case connect.CodeNotFound:
 		return ports.ControlResult{Outcome: ports.ControlUnsupported}, nil
 	case connect.CodeAborted:

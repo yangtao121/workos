@@ -46,28 +46,53 @@ type ContainerFacts struct {
 	// HostIP/HostPort carry the published loopback endpoint when present.
 	HostIP   string
 	HostPort int32
+	// Exactly one loopback publish for the declared container port is part of
+	// the immutable adoption profile; additional bindings are a hard drift.
+	ContainerPort  int32
+	PublishedPorts int
 	// OOMKilled reports the engine's own OOM verdict for the last exit.
 	OOMKilled bool
+	// Immutable launch/security facts are inspected before crash recovery
+	// adopts an existing container. They are never trusted from labels alone.
+	Image                  string
+	Command                []string
+	ReadOnly               bool
+	Privileged             bool
+	CapabilitiesAdded      int
+	EffectiveCapabilities  int
+	BoundingCapabilities   int
+	NoNewPrivileges        bool
+	UnexpectedSecurityOpts int
+	AutoRemove             bool
+	NetworkMode            string
+	ConnectedNetworks      int
+	InternalNetwork        bool
+	RestartPolicy          string
+	BindMounts             int
+	UnexpectedMounts       int
+	Devices                int
+	Tmpfs                  map[string]string
 }
 
 // CgroupCounters is one bounded numeric read of the workload's cgroup.
 type CgroupCounters struct {
-	CPUUsageUSec  uint64
-	MemoryCurrent uint64
-	MemoryPeak    uint64
-	MemoryOOMs    uint64
-	PIDsCurrent   uint64
-	PIDsPeak      uint64
+	CPUUsageUSec    uint64
+	MemoryCurrent   uint64
+	MemoryPeak      uint64
+	MemoryOOMs      uint64
+	PIDsCurrent     uint64
+	PIDsLimitEvents uint64
 }
 
 // EffectiveFacts is the enforced-policy read-back: the values as the kernel
 // actually applied them. Startup verification compares them with the
 // effective policy and refuses to report running on any drift.
 type EffectiveFacts struct {
-	CPUMaxUSec int64 // quota portion of cpu.max (period fixed by policy)
-	MemoryHigh int64
-	MemoryMax  int64
-	PIDsMax    int64
+	CPUMaxUSec    int64 // quota portion of cpu.max
+	CPUPeriodUSec int64 // period portion of cpu.max
+	MemoryHigh    int64
+	MemoryMax     int64
+	PIDsMax       int64
 }
 
 var (
@@ -200,26 +225,26 @@ type TerminateCommand struct {
 // carries no host endpoint, no cgroup path, no container ID, and no content:
 // exactly what the reliability policy engine may see.
 type Observation struct {
-	WorkloadID     string
-	OwnerUserID    string
-	ProjectID      string
-	AppInstanceID  string
-	AppID          string
-	ManifestDigest string
-	Generation     int64
-	State          domain.State
-	RestartCount   int64
-	HealthVerdict  string
-	ExitCategory   string
-	OOMKilled      bool
-	Idle           bool
-	CPUUsageUSec   uint64
-	MemoryCurrent  uint64
-	MemoryPeak     uint64
-	MemoryOOMs     uint64
-	PIDsCurrent    uint64
-	PIDsPeak       uint64
-	ObservedAt     time.Time
+	WorkloadID      string
+	OwnerUserID     string
+	ProjectID       string
+	AppInstanceID   string
+	AppID           string
+	ManifestDigest  string
+	Generation      int64
+	State           domain.State
+	RestartCount    int64
+	HealthVerdict   string
+	ExitCategory    string
+	OOMKilled       bool
+	Idle            bool
+	CPUUsageUSec    uint64
+	MemoryCurrent   uint64
+	MemoryPeak      uint64
+	MemoryOOMs      uint64
+	PIDsCurrent     uint64
+	PIDsLimitEvents uint64
+	ObservedAt      time.Time
 }
 
 // StoredOperation is the persisted command record used for idempotency
@@ -252,13 +277,22 @@ type WorkloadRepository interface {
 	ReserveEnsure(ctx context.Context, workload domain.Workload, op domain.WorkloadOperation) (reserved bool, err error)
 	// LookupOperation returns the stored operation record, if any.
 	LookupOperation(ctx context.Context, workloadID, operationKey string) (StoredOperation, error)
+	// PendingOperation returns the original command that owns a starting
+	// generation, allowing reconciliation to finalize that exact key.
+	PendingOperation(ctx context.Context, workloadID string, generation int64) (StoredOperation, error)
 	// RecordOperation persists or updates an operation's final verdict.
 	RecordOperation(ctx context.Context, op domain.WorkloadOperation) error
 	// Transition applies a guarded state transition with fact updates; the
 	// implementation must refuse to move a row out of a terminal state.
 	Transition(ctx context.Context, workloadID string, from, to domain.State, facts WorkloadFacts, now time.Time) error
+	// TransitionOperation atomically applies a lifecycle transition and the
+	// operation's terminal verdict. Neither fact may commit without the other.
+	TransitionOperation(ctx context.Context, workloadID string, from, to domain.State, facts WorkloadFacts, op domain.WorkloadOperation, now time.Time) error
 	// ClaimLease extends (or acquires) the reconcile lease of one workload.
 	ClaimLease(ctx context.Context, workloadID, owner string, until time.Time) (bool, error)
+	// SetIdle updates only the durable no-surface interval. Setting idle=true
+	// preserves an existing timestamp; idle=false clears it.
+	SetIdle(ctx context.Context, workloadID string, generation int64, idle bool, now time.Time) (*time.Time, error)
 }
 
 // WorkloadFacts is the mutable fact bundle of one transition.

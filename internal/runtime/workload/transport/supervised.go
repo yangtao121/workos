@@ -66,7 +66,7 @@ func (h *supervisedHandler) ListObservations(ctx context.Context, _ *connect.Req
 			MemoryPeakBytes:    observation.MemoryPeak,
 			MemoryEventsOom:    observation.MemoryOOMs,
 			PidsCurrent:        observation.PIDsCurrent,
-			PidsEventsPeak:     observation.PIDsPeak,
+			PidsEventsMax:      observation.PIDsLimitEvents,
 			Idle:               observation.Idle,
 			ObservedAt:         observation.ObservedAt.UTC().Format(time.RFC3339Nano),
 		})
@@ -115,7 +115,7 @@ func mapError(err error) error {
 	case errors.Is(err, domain.ErrImageMissing):
 		return connect.NewError(connect.CodeFailedPrecondition, errors.New("pinned image is not available locally"))
 	case errors.Is(err, domain.ErrRestartLimitExhausted):
-		return connect.NewError(connect.CodeFailedPrecondition, errors.New("workload restart limit is exhausted"))
+		return connect.NewError(connect.CodeResourceExhausted, errors.New("workload restart limit is exhausted"))
 	case errors.Is(err, domain.ErrUnavailable):
 		return connect.NewError(connect.CodeUnavailable, errors.New("workload manager is temporarily unavailable"))
 	case errors.Is(err, domain.ErrCorrupt):
