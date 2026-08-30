@@ -56,6 +56,57 @@ type LaunchDescriptor struct {
 	GrantRevision      int64
 }
 
+// LaunchKind distinguishes the supported launch profiles of one installed
+// instance; the server selects it from the exact pinned descriptor.
+type LaunchKind string
+
+const (
+	// LaunchKindWebBundle marks the immutable web bundle profile.
+	LaunchKindWebBundle LaunchKind = "web-bundle"
+	// LaunchKindWebServiceContainer marks the supervised digest-pinned
+	// container profile (ADR-0006).
+	LaunchKindWebServiceContainer LaunchKind = "web-service-container"
+)
+
+// ContainerPolicy is the App's requested resource policy as Core resolved it.
+// The runtime adjudicates it against server-owned maxima before any engine
+// side effect; these values never size a container directly.
+type ContainerPolicy struct {
+	CPUHardCores float64
+	MemoryHighMB int64
+	MemoryMaxMB  int64
+	PidsMax      int64
+}
+
+// HealthPolicy is the App's requested health policy as Core resolved it.
+type HealthPolicy struct {
+	HTTPPath       string
+	StartupSeconds int64
+	RestartLimit   int64
+}
+
+// ResolvedLaunch is the generic Core-resolved launch fact. Exactly one
+// profile side is populated.
+type ResolvedLaunch struct {
+	Kind               LaunchKind
+	AppID              string
+	Version            string
+	ManifestDigest     string
+	GrantedPermissions []string
+	GrantRevision      int64
+	// Web bundle profile.
+	ArtifactID     string
+	ArtifactDigest string
+	Entrypoint     string
+	// Container profile.
+	Image     string
+	Command   []string
+	Port      int64
+	Resources ContainerPolicy
+	Health    HealthPolicy
+	Route     string
+}
+
 // ResolveQuery identifies one installed instance for launch resolution.
 type ResolveQuery struct {
 	ProjectID     string
@@ -83,6 +134,10 @@ type Asset struct {
 type LaunchResolver interface {
 	ResolveWebBundle(ctx context.Context, query ResolveQuery) (LaunchDescriptor, error)
 	ReadWebBundleAsset(ctx context.Context, query AssetQuery) (Asset, error)
+	// ResolveSurfaceLaunch is the renderer-neutral resolution. The runtime
+	// selects the supported renderer from the resolved kind; explicit client
+	// renderers must match it exactly.
+	ResolveSurfaceLaunch(ctx context.Context, query ResolveQuery) (ResolvedLaunch, error)
 }
 
 // CreateSessionCommand is one fully validated create command. The
@@ -138,6 +193,9 @@ type SessionRepository interface {
 	// persisted fact backing exactly this credential even when further
 	// rotations follow. Anything else is NotFound and nothing changes.
 	RotateBridgeToken(ctx context.Context, command RotateBridgeTokenCommand) (domain.SurfaceSession, error)
+	// HasActiveSurface answers whether any open, unexpired session still
+	// references the installed instance (the Workload Manager's idle source).
+	HasActiveSurface(ctx context.Context, ownerUserID, appInstanceID string, now time.Time) (bool, error)
 	// GetActiveSessionByBridgeToken resolves the open, unexpired session
 	// currently carrying the token digest, owner-scoped.
 	GetActiveSessionByBridgeToken(ctx context.Context, ownerUserID, tokenHash string, now time.Time) (domain.SurfaceSession, error)
@@ -206,4 +264,84 @@ type AppAgentClient interface {
 	// reaches its terminal state or the context is canceled. Canceling only
 	// ends the stream; the durable Agent task itself continues.
 	WatchAgentTaskEvents(ctx context.Context, query AppAgentWatchQuery, onEvent func(*agentv1.AgentEvent) error) error
+}
+
+// SurfaceWorkloadQuery is the fully validated container launch input the
+// surface hands the runtime's Workload Manager. The operation key is derived
+// server-side from the create key so the ensure is idempotent with the same
+// lifecycle.
+type SurfaceWorkloadQuery struct {
+	OwnerUserID    string
+	ProjectID      string
+	AppInstanceID  string
+	AppID          string
+	AppVersion     string
+	ManifestDigest string
+	Image          string
+	Command        []string
+	Port           int64
+	Resources      ContainerPolicy
+	Health         HealthPolicy
+	OperationKey   string
+}
+
+// WorkloadHandle is the verified launch target of a web-service session: the
+// durable workload identity, its exact generation, and the loopback endpoint
+// the server verified at start. The endpoint is a host fact; it is consumed
+// by the proxy boundary only and is never projected into any public response.
+type WorkloadHandle struct {
+	ID         string
+	Generation int64
+	Endpoint   string
+}
+
+// WorkloadRuntime is the narrow Workload Manager surface the broker needs.
+// Composition roots adapt the concrete manager; tests use deterministic
+// fakes.
+type WorkloadRuntime interface {
+	// EnsureSurfaceWorkload returns a running, startup-healthy workload for
+	// the exact pinned descriptor, launching one when none is live.
+	EnsureSurfaceWorkload(ctx context.Context, query SurfaceWorkloadQuery) (WorkloadHandle, error)
+	// LookupSurfaceWorkload returns the workload's endpoint only when it is
+	// running with the exact expected generation; any drift or terminal
+	// state fails closed.
+	LookupSurfaceWorkload(ctx context.Context, workloadID string, generation int64) (WorkloadHandle, error)
+}
+
+// ProxyTarget is the resolved backend of one proxy request: a server-owned,
+// loopback-verified endpoint plus the normalized backend path and the owning
+// session prefix for verified redirect rewrites.
+type ProxyTarget struct {
+	SessionID   string
+	Endpoint    string
+	BackendPath string
+}
+
+// Workload verdict sentinels at the surface boundary. The WorkloadRuntime
+// adapter maps the manager's domain verdicts onto these; the application maps
+// them onto surface domain errors. They carry no engine detail.
+var (
+	ErrWorkloadUnsupported       = errors.New("workload launch is not supported")
+	ErrWorkloadImageMissing      = errors.New("pinned image is not available locally")
+	ErrWorkloadRunnerUnavailable = errors.New("verified rootless container capability is unavailable")
+	ErrWorkloadUnavailable       = errors.New("workload manager is temporarily unavailable")
+	ErrWorkloadConflict          = errors.New("workload operation key was used for a different command")
+)
+
+// SurfaceContentKind distinguishes the two read-only serving paths of one
+// session: the immutable web-bundle asset read and the revalidated
+// web-service proxy round trip.
+type SurfaceContentKind string
+
+const (
+	ContentAsset SurfaceContentKind = "asset"
+	ContentProxy SurfaceContentKind = "proxy"
+)
+
+// SurfaceContent is the serving verdict for one surface request: exactly one
+// side is populated.
+type SurfaceContent struct {
+	Kind  SurfaceContentKind
+	Asset Asset
+	Proxy ProxyTarget
 }

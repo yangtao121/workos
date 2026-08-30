@@ -10,7 +10,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file workos/workload/v1/workload.proto.
  */
 export const file_workos_workload_v1_workload: GenFile = /*@__PURE__*/
-  fileDesc("CiF3b3Jrb3Mvd29ya2xvYWQvdjEvd29ya2xvYWQucHJvdG8SEndvcmtvcy53b3JrbG9hZC52MSKbAgoQV29ya2xvYWRJZGVudGl0eRITCgt3b3JrbG9hZF9pZBgBIAEoCRIuCgRraW5kGAIgASgOMiAud29ya29zLndvcmtsb2FkLnYxLldvcmtsb2FkS2luZBISCgpwcm9qZWN0X2lkGAMgASgJEg4KBmFwcF9pZBgEIAEoCRIbChNoYXJuZXNzX2luc3RhbmNlX2lkGAUgASgJEg8KB3ZlcnNpb24YBiABKAkSEgoKcnVudGltZV9pZBgHIAEoCRITCgtjZ3JvdXBfcGF0aBgIIAEoCRIVCg1vd25lcl91c2VyX2lkGAkgASgJEjAKBXN0YXRlGAogASgOMiEud29ya29zLndvcmtsb2FkLnYxLldvcmtsb2FkU3RhdGUiFAoSSW5zcGVjdE5vZGVSZXF1ZXN0In8KEE5vZGVDYXBhYmlsaXRpZXMSEQoJY2dyb3VwX3YyGAEgASgIEhcKD3Jvb3RsZXNzX3BvZG1hbhgCIAEoCBIYChBjb250YWluZXJfcnVubmVyGAMgASgIEhUKDW5hdGl2ZV9ydW5uZXIYBCABKAgSDgoGcmVhc29uGAUgASgJIikKEkdldFdvcmtsb2FkUmVxdWVzdBITCgt3b3JrbG9hZF9pZBgBIAEoCSJOChRTdGFydFdvcmtsb2FkUmVxdWVzdBI2Cgh3b3JrbG9hZBgBIAEoCzIkLndvcmtvcy53b3JrbG9hZC52MS5Xb3JrbG9hZElkZW50aXR5IjoKE1N0b3BXb3JrbG9hZFJlcXVlc3QSEwoLd29ya2xvYWRfaWQYASABKAkSDgoGcmVhc29uGAIgASgJIlEKE0luc3BlY3ROb2RlUmVzcG9uc2USOgoMY2FwYWJpbGl0aWVzGAEgASgLMiQud29ya29zLndvcmtsb2FkLnYxLk5vZGVDYXBhYmlsaXRpZXMiTQoTR2V0V29ya2xvYWRSZXNwb25zZRI2Cgh3b3JrbG9hZBgBIAEoCzIkLndvcmtvcy53b3JrbG9hZC52MS5Xb3JrbG9hZElkZW50aXR5Ik8KFVN0YXJ0V29ya2xvYWRSZXNwb25zZRI2Cgh3b3JrbG9hZBgBIAEoCzIkLndvcmtvcy53b3JrbG9hZC52MS5Xb3JrbG9hZElkZW50aXR5Ik4KFFN0b3BXb3JrbG9hZFJlc3BvbnNlEjYKCHdvcmtsb2FkGAEgASgLMiQud29ya29zLndvcmtsb2FkLnYxLldvcmtsb2FkSWRlbnRpdHkq5wEKDFdvcmtsb2FkS2luZBIdChlXT1JLTE9BRF9LSU5EX1VOU1BFQ0lGSUVEEAASFQoRV09SS0xPQURfS0lORF9BUFAQARIkCiBXT1JLTE9BRF9LSU5EX0JBQ0tHUk9VTkRfU0VSVklDRRACEhkKFVdPUktMT0FEX0tJTkRfSEFSTkVTUxADEhwKGFdPUktMT0FEX0tJTkRfQUdFTlRfVEFTSxAEEiAKHFdPUktMT0FEX0tJTkRfUkVNT1RFX0JST1dTRVIQBRIgChxXT1JLTE9BRF9LSU5EX05BVElWRV9TVVJGQUNFEAYqngEKDVdvcmtsb2FkU3RhdGUSHgoaV09SS0xPQURfU1RBVEVfVU5TUEVDSUZJRUQQABIaChZXT1JLTE9BRF9TVEFURV9QRU5ESU5HEAESGgoWV09SS0xPQURfU1RBVEVfUlVOTklORxACEhoKFldPUktMT0FEX1NUQVRFX1NUT1BQRUQQAxIZChVXT1JLTE9BRF9TVEFURV9GQUlMRUQQBDKiAwoPV29ya2xvYWRTZXJ2aWNlEmAKC0luc3BlY3ROb2RlEiYud29ya29zLndvcmtsb2FkLnYxLkluc3BlY3ROb2RlUmVxdWVzdBonLndvcmtvcy53b3JrbG9hZC52MS5JbnNwZWN0Tm9kZVJlc3BvbnNlIgASYAoLR2V0V29ya2xvYWQSJi53b3Jrb3Mud29ya2xvYWQudjEuR2V0V29ya2xvYWRSZXF1ZXN0Gicud29ya29zLndvcmtsb2FkLnYxLkdldFdvcmtsb2FkUmVzcG9uc2UiABJmCg1TdGFydFdvcmtsb2FkEigud29ya29zLndvcmtsb2FkLnYxLlN0YXJ0V29ya2xvYWRSZXF1ZXN0Gikud29ya29zLndvcmtsb2FkLnYxLlN0YXJ0V29ya2xvYWRSZXNwb25zZSIAEmMKDFN0b3BXb3JrbG9hZBInLndvcmtvcy53b3JrbG9hZC52MS5TdG9wV29ya2xvYWRSZXF1ZXN0Gigud29ya29zLndvcmtsb2FkLnYxLlN0b3BXb3JrbG9hZFJlc3BvbnNlIgBCQ1pBZ2l0aHViLmNvbS95YW5ndGFvMTIxL3dvcmtvcy9nZW4vZ28vd29ya29zL3dvcmtsb2FkL3YxO3dvcmtsb2FkdjFiBnByb3RvMw");
+  fileDesc("CiF3b3Jrb3Mvd29ya2xvYWQvdjEvd29ya2xvYWQucHJvdG8SEndvcmtvcy53b3JrbG9hZC52MSKbAgoQV29ya2xvYWRJZGVudGl0eRITCgt3b3JrbG9hZF9pZBgBIAEoCRIuCgRraW5kGAIgASgOMiAud29ya29zLndvcmtsb2FkLnYxLldvcmtsb2FkS2luZBISCgpwcm9qZWN0X2lkGAMgASgJEg4KBmFwcF9pZBgEIAEoCRIbChNoYXJuZXNzX2luc3RhbmNlX2lkGAUgASgJEg8KB3ZlcnNpb24YBiABKAkSEgoKcnVudGltZV9pZBgHIAEoCRITCgtjZ3JvdXBfcGF0aBgIIAEoCRIVCg1vd25lcl91c2VyX2lkGAkgASgJEjAKBXN0YXRlGAogASgOMiEud29ya29zLndvcmtsb2FkLnYxLldvcmtsb2FkU3RhdGUiFAoSSW5zcGVjdE5vZGVSZXF1ZXN0In8KEE5vZGVDYXBhYmlsaXRpZXMSEQoJY2dyb3VwX3YyGAEgASgIEhcKD3Jvb3RsZXNzX3BvZG1hbhgCIAEoCBIYChBjb250YWluZXJfcnVubmVyGAMgASgIEhUKDW5hdGl2ZV9ydW5uZXIYBCABKAgSDgoGcmVhc29uGAUgASgJIikKEkdldFdvcmtsb2FkUmVxdWVzdBITCgt3b3JrbG9hZF9pZBgBIAEoCSJOChRTdGFydFdvcmtsb2FkUmVxdWVzdBI2Cgh3b3JrbG9hZBgBIAEoCzIkLndvcmtvcy53b3JrbG9hZC52MS5Xb3JrbG9hZElkZW50aXR5IjoKE1N0b3BXb3JrbG9hZFJlcXVlc3QSEwoLd29ya2xvYWRfaWQYASABKAkSDgoGcmVhc29uGAIgASgJIlEKE0luc3BlY3ROb2RlUmVzcG9uc2USOgoMY2FwYWJpbGl0aWVzGAEgASgLMiQud29ya29zLndvcmtsb2FkLnYxLk5vZGVDYXBhYmlsaXRpZXMiTQoTR2V0V29ya2xvYWRSZXNwb25zZRI2Cgh3b3JrbG9hZBgBIAEoCzIkLndvcmtvcy53b3JrbG9hZC52MS5Xb3JrbG9hZElkZW50aXR5Ik8KFVN0YXJ0V29ya2xvYWRSZXNwb25zZRI2Cgh3b3JrbG9hZBgBIAEoCzIkLndvcmtvcy53b3JrbG9hZC52MS5Xb3JrbG9hZElkZW50aXR5Ik4KFFN0b3BXb3JrbG9hZFJlc3BvbnNlEjYKCHdvcmtsb2FkGAEgASgLMiQud29ya29zLndvcmtsb2FkLnYxLldvcmtsb2FkSWRlbnRpdHkiiQQKE1dvcmtsb2FkT2JzZXJ2YXRpb24SEwoLd29ya2xvYWRfaWQYASABKAkSEgoKZ2VuZXJhdGlvbhgCIAEoAxI6CgVzdGF0ZRgDIAEoDjIrLndvcmtvcy53b3JrbG9hZC52MS5TdXBlcnZpc2VkV29ya2xvYWRTdGF0ZRIVCg1vd25lcl91c2VyX2lkGAQgASgJEhIKCnByb2plY3RfaWQYBSABKAkSFwoPYXBwX2luc3RhbmNlX2lkGAYgASgJEg4KBmFwcF9pZBgHIAEoCRIXCg9tYW5pZmVzdF9kaWdlc3QYCCABKAkSFgoOaGVhbHRoX3ZlcmRpY3QYCSABKAkSFQoNZXhpdF9jYXRlZ29yeRgKIAEoCRIVCg1yZXN0YXJ0X2NvdW50GAsgASgFEhYKDmNwdV91c2FnZV91c2VjGAwgASgEEhwKFG1lbW9yeV9jdXJyZW50X2J5dGVzGA0gASgEEhkKEW1lbW9yeV9wZWFrX2J5dGVzGA4gASgEEhkKEW1lbW9yeV9ldmVudHNfb29tGA8gASgEEhQKDHBpZHNfY3VycmVudBgQIAEoBBIcChBwaWRzX2V2ZW50c19wZWFrGBEgASgEQgIYARIMCgRpZGxlGBIgASgIEhMKC29ic2VydmVkX2F0GBMgASgJEhcKD3BpZHNfZXZlbnRzX21heBgUIAEoBCIZChdMaXN0T2JzZXJ2YXRpb25zUmVxdWVzdCJZChhMaXN0T2JzZXJ2YXRpb25zUmVzcG9uc2USPQoMb2JzZXJ2YXRpb25zGAEgAygLMicud29ya29zLndvcmtsb2FkLnYxLldvcmtsb2FkT2JzZXJ2YXRpb24iQQoWUmVzdGFydFdvcmtsb2FkUmVxdWVzdBITCgt3b3JrbG9hZF9pZBgBIAEoCRISCgphY3Rpb25fa2V5GAIgASgJIi0KF1Jlc3RhcnRXb3JrbG9hZFJlc3BvbnNlEhIKCmdlbmVyYXRpb24YASABKAMiUwoYVGVybWluYXRlV29ya2xvYWRSZXF1ZXN0EhMKC3dvcmtsb2FkX2lkGAEgASgJEhIKCmFjdGlvbl9rZXkYAiABKAkSDgoGcmVhc29uGAMgASgJIhsKGVRlcm1pbmF0ZVdvcmtsb2FkUmVzcG9uc2Uq5wEKDFdvcmtsb2FkS2luZBIdChlXT1JLTE9BRF9LSU5EX1VOU1BFQ0lGSUVEEAASFQoRV09SS0xPQURfS0lORF9BUFAQARIkCiBXT1JLTE9BRF9LSU5EX0JBQ0tHUk9VTkRfU0VSVklDRRACEhkKFVdPUktMT0FEX0tJTkRfSEFSTkVTUxADEhwKGFdPUktMT0FEX0tJTkRfQUdFTlRfVEFTSxAEEiAKHFdPUktMT0FEX0tJTkRfUkVNT1RFX0JST1dTRVIQBRIgChxXT1JLTE9BRF9LSU5EX05BVElWRV9TVVJGQUNFEAYqngEKDVdvcmtsb2FkU3RhdGUSHgoaV09SS0xPQURfU1RBVEVfVU5TUEVDSUZJRUQQABIaChZXT1JLTE9BRF9TVEFURV9QRU5ESU5HEAESGgoWV09SS0xPQURfU1RBVEVfUlVOTklORxACEhoKFldPUktMT0FEX1NUQVRFX1NUT1BQRUQQAxIZChVXT1JLTE9BRF9TVEFURV9GQUlMRUQQBCqvAgoXU3VwZXJ2aXNlZFdvcmtsb2FkU3RhdGUSKQolU1VQRVJWSVNFRF9XT1JLTE9BRF9TVEFURV9VTlNQRUNJRklFRBAAEiUKIVNVUEVSVklTRURfV09SS0xPQURfU1RBVEVfUEVORElORxABEiYKIlNVUEVSVklTRURfV09SS0xPQURfU1RBVEVfU1RBUlRJTkcQAhIlCiFTVVBFUlZJU0VEX1dPUktMT0FEX1NUQVRFX1JVTk5JTkcQAxImCiJTVVBFUlZJU0VEX1dPUktMT0FEX1NUQVRFX1NUT1BQSU5HEAQSJQohU1VQRVJWSVNFRF9XT1JLTE9BRF9TVEFURV9TVE9QUEVEEAUSJAogU1VQRVJWSVNFRF9XT1JLTE9BRF9TVEFURV9GQUlMRUQQBjKiAwoPV29ya2xvYWRTZXJ2aWNlEmAKC0luc3BlY3ROb2RlEiYud29ya29zLndvcmtsb2FkLnYxLkluc3BlY3ROb2RlUmVxdWVzdBonLndvcmtvcy53b3JrbG9hZC52MS5JbnNwZWN0Tm9kZVJlc3BvbnNlIgASYAoLR2V0V29ya2xvYWQSJi53b3Jrb3Mud29ya2xvYWQudjEuR2V0V29ya2xvYWRSZXF1ZXN0Gicud29ya29zLndvcmtsb2FkLnYxLkdldFdvcmtsb2FkUmVzcG9uc2UiABJmCg1TdGFydFdvcmtsb2FkEigud29ya29zLndvcmtsb2FkLnYxLlN0YXJ0V29ya2xvYWRSZXF1ZXN0Gikud29ya29zLndvcmtsb2FkLnYxLlN0YXJ0V29ya2xvYWRSZXNwb25zZSIAEmMKDFN0b3BXb3JrbG9hZBInLndvcmtvcy53b3JrbG9hZC52MS5TdG9wV29ya2xvYWRSZXF1ZXN0Gigud29ya29zLndvcmtsb2FkLnYxLlN0b3BXb3JrbG9hZFJlc3BvbnNlIgAy7gIKGVN1cGVydmlzZWRXb3JrbG9hZFNlcnZpY2USbwoQTGlzdE9ic2VydmF0aW9ucxIrLndvcmtvcy53b3JrbG9hZC52MS5MaXN0T2JzZXJ2YXRpb25zUmVxdWVzdBosLndvcmtvcy53b3JrbG9hZC52MS5MaXN0T2JzZXJ2YXRpb25zUmVzcG9uc2UiABJsCg9SZXN0YXJ0V29ya2xvYWQSKi53b3Jrb3Mud29ya2xvYWQudjEuUmVzdGFydFdvcmtsb2FkUmVxdWVzdBorLndvcmtvcy53b3JrbG9hZC52MS5SZXN0YXJ0V29ya2xvYWRSZXNwb25zZSIAEnIKEVRlcm1pbmF0ZVdvcmtsb2FkEiwud29ya29zLndvcmtsb2FkLnYxLlRlcm1pbmF0ZVdvcmtsb2FkUmVxdWVzdBotLndvcmtvcy53b3JrbG9hZC52MS5UZXJtaW5hdGVXb3JrbG9hZFJlc3BvbnNlIgBCQ1pBZ2l0aHViLmNvbS95YW5ndGFvMTIxL3dvcmtvcy9nZW4vZ28vd29ya29zL3dvcmtsb2FkL3YxO3dvcmtsb2FkdjFiBnByb3RvMw");
 
 /**
  * @generated from message workos.workload.v1.WorkloadIdentity
@@ -249,6 +249,262 @@ export const StopWorkloadResponseSchema: GenMessage<StopWorkloadResponse> = /*@_
   messageDesc(file_workos_workload_v1_workload, 9);
 
 /**
+ * WorkloadObservation is one neutral, bounded read of a supervised workload.
+ * It carries stable identity plus numeric facts only: no cgroup path, no
+ * loopback endpoint, no container ID, no raw process error, no log or HTTP
+ * content. It is an input to the reliability policy engine, never an Incident
+ * verdict.
+ *
+ * @generated from message workos.workload.v1.WorkloadObservation
+ */
+export type WorkloadObservation = Message<"workos.workload.v1.WorkloadObservation"> & {
+  /**
+   * @generated from field: string workload_id = 1;
+   */
+  workloadId: string;
+
+  /**
+   * @generated from field: int64 generation = 2;
+   */
+  generation: bigint;
+
+  /**
+   * @generated from field: workos.workload.v1.SupervisedWorkloadState state = 3;
+   */
+  state: SupervisedWorkloadState;
+
+  /**
+   * @generated from field: string owner_user_id = 4;
+   */
+  ownerUserId: string;
+
+  /**
+   * @generated from field: string project_id = 5;
+   */
+  projectId: string;
+
+  /**
+   * @generated from field: string app_instance_id = 6;
+   */
+  appInstanceId: string;
+
+  /**
+   * @generated from field: string app_id = 7;
+   */
+  appId: string;
+
+  /**
+   * @generated from field: string manifest_digest = 8;
+   */
+  manifestDigest: string;
+
+  /**
+   * HealthVerdict values (fixed grammar, mirrored from the domain):
+   * "unknown" | "ok" | "failing".
+   *
+   * @generated from field: string health_verdict = 9;
+   */
+  healthVerdict: string;
+
+  /**
+   * ExitCategory values (fixed grammar): "none" | "exited" | "oom" |
+   * "pids" | "unknown".
+   *
+   * @generated from field: string exit_category = 10;
+   */
+  exitCategory: string;
+
+  /**
+   * @generated from field: int32 restart_count = 11;
+   */
+  restartCount: number;
+
+  /**
+   * Bounded numeric counters read from the real cgroup at observation time.
+   * Zero is a valid observed counter. Missing or malformed counter evidence
+   * fails the observation RPC; it is never represented as fabricated zeroes.
+   *
+   * @generated from field: uint64 cpu_usage_usec = 12;
+   */
+  cpuUsageUsec: bigint;
+
+  /**
+   * @generated from field: uint64 memory_current_bytes = 13;
+   */
+  memoryCurrentBytes: bigint;
+
+  /**
+   * @generated from field: uint64 memory_peak_bytes = 14;
+   */
+  memoryPeakBytes: bigint;
+
+  /**
+   * @generated from field: uint64 memory_events_oom = 15;
+   */
+  memoryEventsOom: bigint;
+
+  /**
+   * @generated from field: uint64 pids_current = 16;
+   */
+  pidsCurrent: bigint;
+
+  /**
+   * Deprecated: pids.events has no "peak" event. Kept for wire
+   * compatibility; new producers leave it zero and consumers use field 20.
+   *
+   * @generated from field: uint64 pids_events_peak = 17 [deprecated = true];
+   * @deprecated
+   */
+  pidsEventsPeak: bigint;
+
+  /**
+   * True when the workload has no open surface session referencing it.
+   *
+   * @generated from field: bool idle = 18;
+   */
+  idle: boolean;
+
+  /**
+   * RFC 3339 UTC
+   *
+   * @generated from field: string observed_at = 19;
+   */
+  observedAt: string;
+
+  /**
+   * Cumulative pids.events `max` counter. A generation-local increase means
+   * the enforced pids.max limit rejected at least one task creation.
+   *
+   * @generated from field: uint64 pids_events_max = 20;
+   */
+  pidsEventsMax: bigint;
+};
+
+/**
+ * Describes the message workos.workload.v1.WorkloadObservation.
+ * Use `create(WorkloadObservationSchema)` to create a new message.
+ */
+export const WorkloadObservationSchema: GenMessage<WorkloadObservation> = /*@__PURE__*/
+  messageDesc(file_workos_workload_v1_workload, 10);
+
+/**
+ * @generated from message workos.workload.v1.ListObservationsRequest
+ */
+export type ListObservationsRequest = Message<"workos.workload.v1.ListObservationsRequest"> & {
+};
+
+/**
+ * Describes the message workos.workload.v1.ListObservationsRequest.
+ * Use `create(ListObservationsRequestSchema)` to create a new message.
+ */
+export const ListObservationsRequestSchema: GenMessage<ListObservationsRequest> = /*@__PURE__*/
+  messageDesc(file_workos_workload_v1_workload, 11);
+
+/**
+ * @generated from message workos.workload.v1.ListObservationsResponse
+ */
+export type ListObservationsResponse = Message<"workos.workload.v1.ListObservationsResponse"> & {
+  /**
+   * @generated from field: repeated workos.workload.v1.WorkloadObservation observations = 1;
+   */
+  observations: WorkloadObservation[];
+};
+
+/**
+ * Describes the message workos.workload.v1.ListObservationsResponse.
+ * Use `create(ListObservationsResponseSchema)` to create a new message.
+ */
+export const ListObservationsResponseSchema: GenMessage<ListObservationsResponse> = /*@__PURE__*/
+  messageDesc(file_workos_workload_v1_workload, 12);
+
+/**
+ * @generated from message workos.workload.v1.RestartWorkloadRequest
+ */
+export type RestartWorkloadRequest = Message<"workos.workload.v1.RestartWorkloadRequest"> & {
+  /**
+   * @generated from field: string workload_id = 1;
+   */
+  workloadId: string;
+
+  /**
+   * action_key is the caller's durable idempotency key for exactly this
+   * restart decision. Same key replays the same result across caller and
+   * runtime restarts; a reused key with a different decision identity is a
+   * stable conflict.
+   *
+   * @generated from field: string action_key = 2;
+   */
+  actionKey: string;
+};
+
+/**
+ * Describes the message workos.workload.v1.RestartWorkloadRequest.
+ * Use `create(RestartWorkloadRequestSchema)` to create a new message.
+ */
+export const RestartWorkloadRequestSchema: GenMessage<RestartWorkloadRequest> = /*@__PURE__*/
+  messageDesc(file_workos_workload_v1_workload, 13);
+
+/**
+ * @generated from message workos.workload.v1.RestartWorkloadResponse
+ */
+export type RestartWorkloadResponse = Message<"workos.workload.v1.RestartWorkloadResponse"> & {
+  /**
+   * @generated from field: int64 generation = 1;
+   */
+  generation: bigint;
+};
+
+/**
+ * Describes the message workos.workload.v1.RestartWorkloadResponse.
+ * Use `create(RestartWorkloadResponseSchema)` to create a new message.
+ */
+export const RestartWorkloadResponseSchema: GenMessage<RestartWorkloadResponse> = /*@__PURE__*/
+  messageDesc(file_workos_workload_v1_workload, 14);
+
+/**
+ * @generated from message workos.workload.v1.TerminateWorkloadRequest
+ */
+export type TerminateWorkloadRequest = Message<"workos.workload.v1.TerminateWorkloadRequest"> & {
+  /**
+   * @generated from field: string workload_id = 1;
+   */
+  workloadId: string;
+
+  /**
+   * @generated from field: string action_key = 2;
+   */
+  actionKey: string;
+
+  /**
+   * StopReason values (fixed grammar): "policy" | "restart_limit" |
+   * "uninstalled" | "idle" | "fail_safe".
+   *
+   * @generated from field: string reason = 3;
+   */
+  reason: string;
+};
+
+/**
+ * Describes the message workos.workload.v1.TerminateWorkloadRequest.
+ * Use `create(TerminateWorkloadRequestSchema)` to create a new message.
+ */
+export const TerminateWorkloadRequestSchema: GenMessage<TerminateWorkloadRequest> = /*@__PURE__*/
+  messageDesc(file_workos_workload_v1_workload, 15);
+
+/**
+ * @generated from message workos.workload.v1.TerminateWorkloadResponse
+ */
+export type TerminateWorkloadResponse = Message<"workos.workload.v1.TerminateWorkloadResponse"> & {
+};
+
+/**
+ * Describes the message workos.workload.v1.TerminateWorkloadResponse.
+ * Use `create(TerminateWorkloadResponseSchema)` to create a new message.
+ */
+export const TerminateWorkloadResponseSchema: GenMessage<TerminateWorkloadResponse> = /*@__PURE__*/
+  messageDesc(file_workos_workload_v1_workload, 16);
+
+/**
  * @generated from enum workos.workload.v1.WorkloadKind
  */
 export enum WorkloadKind {
@@ -331,6 +587,58 @@ export const WorkloadStateSchema: GenEnum<WorkloadState> = /*@__PURE__*/
   enumDesc(file_workos_workload_v1_workload, 1);
 
 /**
+ * SupervisedWorkloadState is the durable lifecycle state machine of one
+ * supervised workload. pending/starting cover the reserved DB facts before the
+ * engine side effect is confirmed; running is the verified steady state;
+ * stopping/stopped are the ordered shutdown facts; failed marks a startup or
+ * runtime failure that no automatic actor is currently retrying.
+ *
+ * @generated from enum workos.workload.v1.SupervisedWorkloadState
+ */
+export enum SupervisedWorkloadState {
+  /**
+   * @generated from enum value: SUPERVISED_WORKLOAD_STATE_UNSPECIFIED = 0;
+   */
+  UNSPECIFIED = 0,
+
+  /**
+   * @generated from enum value: SUPERVISED_WORKLOAD_STATE_PENDING = 1;
+   */
+  PENDING = 1,
+
+  /**
+   * @generated from enum value: SUPERVISED_WORKLOAD_STATE_STARTING = 2;
+   */
+  STARTING = 2,
+
+  /**
+   * @generated from enum value: SUPERVISED_WORKLOAD_STATE_RUNNING = 3;
+   */
+  RUNNING = 3,
+
+  /**
+   * @generated from enum value: SUPERVISED_WORKLOAD_STATE_STOPPING = 4;
+   */
+  STOPPING = 4,
+
+  /**
+   * @generated from enum value: SUPERVISED_WORKLOAD_STATE_STOPPED = 5;
+   */
+  STOPPED = 5,
+
+  /**
+   * @generated from enum value: SUPERVISED_WORKLOAD_STATE_FAILED = 6;
+   */
+  FAILED = 6,
+}
+
+/**
+ * Describes the enum workos.workload.v1.SupervisedWorkloadState.
+ */
+export const SupervisedWorkloadStateSchema: GenEnum<SupervisedWorkloadState> = /*@__PURE__*/
+  enumDesc(file_workos_workload_v1_workload, 2);
+
+/**
  * @generated from service workos.workload.v1.WorkloadService
  */
 export const WorkloadService: GenService<{
@@ -368,4 +676,47 @@ export const WorkloadService: GenService<{
   },
 }> = /*@__PURE__*/
   serviceDesc(file_workos_workload_v1_workload, 0);
+
+/**
+ * @generated from service workos.workload.v1.SupervisedWorkloadService
+ */
+export const SupervisedWorkloadService: GenService<{
+  /**
+   * ListObservations returns the neutral observation snapshot of every
+   * supervised workload known to this runtime host.
+   *
+   * @generated from rpc workos.workload.v1.SupervisedWorkloadService.ListObservations
+   */
+  listObservations: {
+    methodKind: "unary";
+    input: typeof ListObservationsRequestSchema;
+    output: typeof ListObservationsResponseSchema;
+  },
+  /**
+   * RestartWorkload deterministically recreates the workload's container with
+   * the exact pinned image/argv/policy and a new generation. The runtime
+   * enforces the persisted restart limit and returns a sanitized
+   * ResourceExhausted once it is exhausted; the decision to stop afterwards
+   * belongs to the caller.
+   *
+   * @generated from rpc workos.workload.v1.SupervisedWorkloadService.RestartWorkload
+   */
+  restartWorkload: {
+    methodKind: "unary";
+    input: typeof RestartWorkloadRequestSchema;
+    output: typeof RestartWorkloadResponseSchema;
+  },
+  /**
+   * StopWorkload deterministically stops and removes the workload's container
+   * by its exact identity. Idempotent by action key.
+   *
+   * @generated from rpc workos.workload.v1.SupervisedWorkloadService.TerminateWorkload
+   */
+  terminateWorkload: {
+    methodKind: "unary";
+    input: typeof TerminateWorkloadRequestSchema;
+    output: typeof TerminateWorkloadResponseSchema;
+  },
+}> = /*@__PURE__*/
+  serviceDesc(file_workos_workload_v1_workload, 1);
 

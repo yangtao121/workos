@@ -160,6 +160,75 @@ func (s *Service) ResolveWebBundle(ctx context.Context, ownerUserID, appID, vers
 	return WebBundleResolution{ManifestDigest: digest, Ref: ref}, nil
 }
 
+// ContainerResolution is the exact launch fact of one immutable container
+// version: the manifest digest plus the descriptor parsed from the canonical
+// bytes (re-validated at parse time, so a corrupt stored manifest cannot
+// resolve).
+type ContainerResolution struct {
+	ManifestDigest string
+	Launch         domain.ContainerLaunch
+}
+
+// ResolveContainer resolves the exact immutable version's container launch
+// descriptor. A version whose manifest is not a healthy container profile is
+// ErrUnsupportedRuntime; a stored manifest that violates its own profile is
+// the same verdict (it is never silently defaulted), and the digest-equality
+// check against the installation happens in the orchestration resolver.
+func (s *Service) ResolveContainer(ctx context.Context, ownerUserID, appID, version string) (ContainerResolution, error) {
+	if ownerUserID == "" || !domain.ValidAppID(appID) {
+		return ContainerResolution{}, domain.ErrInvalid
+	}
+	if _, ok := domain.ParseVersion(version); !ok {
+		return ContainerResolution{}, domain.ErrInvalid
+	}
+	digest, canonical, err := s.repository.GetVersionManifest(ctx, ownerUserID, appID, version)
+	if err != nil {
+		return ContainerResolution{}, err
+	}
+	launch, ok := domain.ParseContainerLaunch(canonical)
+	if !ok {
+		return ContainerResolution{}, ErrUnsupportedRuntime
+	}
+	return ContainerResolution{ManifestDigest: digest, Launch: launch}, nil
+}
+
+// SurfaceResolution is the renderer-neutral launch fact of one immutable
+// version: the manifest digest plus whichever supported descriptor its
+// canonical manifest declares. Exactly one side is set for a supported
+// runtime; neither is set for an unsupported one (ErrUnsupportedRuntime).
+type SurfaceResolution struct {
+	ManifestDigest string
+	WebBundle      *domain.WebBundleRef
+	Container      *domain.ContainerLaunch
+}
+
+// ResolveSurfaceLaunch resolves the exact immutable version's renderer-neutral
+// launch facts. The canonical manifest is parsed once and its declared runtime
+// profile decides the descriptor; a stored manifest that satisfies no profile
+// is ErrUnsupportedRuntime rather than a silently defaulted launch.
+func (s *Service) ResolveSurfaceLaunch(ctx context.Context, ownerUserID, appID, version string) (SurfaceResolution, error) {
+	if ownerUserID == "" || !domain.ValidAppID(appID) {
+		return SurfaceResolution{}, domain.ErrInvalid
+	}
+	if _, ok := domain.ParseVersion(version); !ok {
+		return SurfaceResolution{}, domain.ErrInvalid
+	}
+	digest, canonical, err := s.repository.GetVersionManifest(ctx, ownerUserID, appID, version)
+	if err != nil {
+		return SurfaceResolution{}, err
+	}
+	resolution := SurfaceResolution{ManifestDigest: digest}
+	if ref, ok := domain.ParseWebBundleRef(canonical); ok {
+		resolution.WebBundle = &ref
+		return resolution, nil
+	}
+	if launch, ok := domain.ParseContainerLaunch(canonical); ok {
+		resolution.Container = &launch
+		return resolution, nil
+	}
+	return SurfaceResolution{}, ErrUnsupportedRuntime
+}
+
 // Get returns the current version for an empty version, or the exact
 // immutable version when one is requested. Both paths read the bounded
 // summary projection only.

@@ -25,9 +25,27 @@ import (
 
 // stubResolverService stands in for Core's private resolver.
 type stubResolverService struct {
-	response *surfacev1.ResolveWebBundleResponse
-	request  *surfacev1.ResolveWebBundleRequest
-	headers  http.Header
+	response      *surfacev1.ResolveWebBundleResponse
+	surfaceResult *surfacev1.ResolveSurfaceLaunchResponse
+	request       *surfacev1.ResolveWebBundleRequest
+	headers       http.Header
+}
+
+func (s *stubResolverService) ResolveSurfaceLaunch(_ context.Context, req *connect.Request[surfacev1.ResolveSurfaceLaunchRequest]) (*connect.Response[surfacev1.ResolveSurfaceLaunchResponse], error) {
+	if s.surfaceResult != nil {
+		return connect.NewResponse(s.surfaceResult), nil
+	}
+	return connect.NewResponse(&surfacev1.ResolveSurfaceLaunchResponse{
+		Launch: &surfacev1.ResolveSurfaceLaunchResponse_WebBundle{WebBundle: &surfacev1.WebBundleLaunchDescriptor{
+			AppId: s.response.GetLaunch().GetAppId(), Version: s.response.GetLaunch().GetVersion(),
+			ManifestDigest: s.response.GetLaunch().GetManifestDigest(),
+			ArtifactId:     s.response.GetLaunch().GetArtifactId(),
+			ArtifactDigest: s.response.GetLaunch().GetArtifactDigest(),
+			Entrypoint:     s.response.GetLaunch().GetEntrypoint(),
+		}},
+		GrantedPermissions: s.response.GetGrantedPermissions(),
+		GrantRevision:      s.response.GetGrantRevision(),
+	}), nil
 }
 
 func (s *stubResolverService) ResolveWebBundle(_ context.Context, req *connect.Request[surfacev1.ResolveWebBundleRequest]) (*connect.Response[surfacev1.ResolveWebBundleResponse], error) {

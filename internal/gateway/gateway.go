@@ -18,13 +18,16 @@ import (
 
 // Handler routes the public edge: allowlisted public Connect services and the
 // Desktop SPA to Core, the public SurfaceService and /surfaces/ assets to the
-// Runtime upstream. Every proxied path passes the same device-session gate
-// and receives trusted identity headers; spoofed inbound copies are dropped.
+// Runtime upstream, and — when configured — the public IncidentService to
+// the Reliability upstream. Every proxied path passes the same device-session
+// gate and receives trusted identity headers; spoofed inbound copies are
+// dropped.
 type Handler struct {
-	config  config.Config
-	proxy   *httputil.ReverseProxy
-	runtime *httputil.ReverseProxy
-	logger  *slog.Logger
+	config      config.Config
+	proxy       *httputil.ReverseProxy
+	runtime     *httputil.ReverseProxy
+	reliability *httputil.ReverseProxy
+	logger      *slog.Logger
 }
 
 var publicServicePrefixes = []string{
@@ -48,6 +51,12 @@ var runtimeServicePrefixes = []string{
 	"/workos.bridge.v1.AppBridgeService/",
 }
 
+// incidentServicePrefix is the only public service routed to the optional
+// Reliability upstream. It is added to the dispatch only when the upstream
+// is configured; the rest of the gateway (readiness included) never depends
+// on it, and the bridge credential stays stripped on the route.
+const incidentServicePrefix = "/workos.incident.v1.IncidentService/"
+
 // surfaceAssetPrefix is the public, same-origin surface asset route.
 const surfaceAssetPrefix = "/surfaces/"
 
@@ -60,7 +69,17 @@ func New(cfg config.Config, logger *slog.Logger) (*Handler, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Handler{config: cfg, proxy: core, runtime: runtime, logger: logger}, nil
+	// The Reliability upstream is optional: an unconfigured URL simply keeps
+	// the incident routes 404, and nothing else — readiness included —
+	// depends on it.
+	var reliability *httputil.ReverseProxy
+	if strings.TrimSpace(cfg.Services.Reliability) != "" {
+		reliability, err = newUpstreamProxy(cfg.Services.Reliability, cfg, logger, "reliability")
+		if err != nil {
+			return nil, err
+		}
+	}
+	return &Handler{config: cfg, proxy: core, runtime: runtime, reliability: reliability, logger: logger}, nil
 }
 
 // newUpstreamProxy builds one reverse proxy whose director always drops
@@ -118,6 +137,14 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	if runtimeConnectPath(r.URL.Path) || strings.HasPrefix(r.URL.Path, surfaceAssetPrefix) {
 		h.gate(w, r, h.runtime)
+		return
+	}
+	if strings.HasPrefix(r.URL.Path, incidentServicePrefix) {
+		if h.reliability == nil {
+			http.NotFound(w, r)
+			return
+		}
+		h.gate(w, r, h.reliability)
 		return
 	}
 	if strings.HasPrefix(r.URL.Path, "/workos.") {

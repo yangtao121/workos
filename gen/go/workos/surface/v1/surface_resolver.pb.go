@@ -354,6 +354,407 @@ func (x *ReadWebBundleAssetResponse) GetEtag() string {
 	return ""
 }
 
+// ContainerResourcePolicy is the App's REQUESTED resource policy, projected
+// verbatim from the canonical manifest. It is not an authorization: the
+// runtime adjudicates it against server-owned maxima and persists the
+// effective policy; these values never size the container directly.
+type ContainerResourcePolicy struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	CpuHardCores  float64                `protobuf:"fixed64,1,opt,name=cpu_hard_cores,json=cpuHardCores,proto3" json:"cpu_hard_cores,omitempty"`
+	MemoryHighMb  int32                  `protobuf:"varint,2,opt,name=memory_high_mb,json=memoryHighMb,proto3" json:"memory_high_mb,omitempty"`
+	MemoryMaxMb   int32                  `protobuf:"varint,3,opt,name=memory_max_mb,json=memoryMaxMb,proto3" json:"memory_max_mb,omitempty"`
+	PidsMax       int32                  `protobuf:"varint,4,opt,name=pids_max,json=pidsMax,proto3" json:"pids_max,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ContainerResourcePolicy) Reset() {
+	*x = ContainerResourcePolicy{}
+	mi := &file_workos_surface_v1_surface_resolver_proto_msgTypes[5]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ContainerResourcePolicy) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ContainerResourcePolicy) ProtoMessage() {}
+
+func (x *ContainerResourcePolicy) ProtoReflect() protoreflect.Message {
+	mi := &file_workos_surface_v1_surface_resolver_proto_msgTypes[5]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ContainerResourcePolicy.ProtoReflect.Descriptor instead.
+func (*ContainerResourcePolicy) Descriptor() ([]byte, []int) {
+	return file_workos_surface_v1_surface_resolver_proto_rawDescGZIP(), []int{5}
+}
+
+func (x *ContainerResourcePolicy) GetCpuHardCores() float64 {
+	if x != nil {
+		return x.CpuHardCores
+	}
+	return 0
+}
+
+func (x *ContainerResourcePolicy) GetMemoryHighMb() int32 {
+	if x != nil {
+		return x.MemoryHighMb
+	}
+	return 0
+}
+
+func (x *ContainerResourcePolicy) GetMemoryMaxMb() int32 {
+	if x != nil {
+		return x.MemoryMaxMb
+	}
+	return 0
+}
+
+func (x *ContainerResourcePolicy) GetPidsMax() int32 {
+	if x != nil {
+		return x.PidsMax
+	}
+	return 0
+}
+
+// ContainerHealthPolicy is the App's REQUESTED health policy, projected
+// verbatim from the canonical manifest.
+type ContainerHealthPolicy struct {
+	state          protoimpl.MessageState `protogen:"open.v1"`
+	HttpPath       string                 `protobuf:"bytes,1,opt,name=http_path,json=httpPath,proto3" json:"http_path,omitempty"`
+	StartupSeconds int32                  `protobuf:"varint,2,opt,name=startup_seconds,json=startupSeconds,proto3" json:"startup_seconds,omitempty"`
+	RestartLimit   int32                  `protobuf:"varint,3,opt,name=restart_limit,json=restartLimit,proto3" json:"restart_limit,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
+}
+
+func (x *ContainerHealthPolicy) Reset() {
+	*x = ContainerHealthPolicy{}
+	mi := &file_workos_surface_v1_surface_resolver_proto_msgTypes[6]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ContainerHealthPolicy) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ContainerHealthPolicy) ProtoMessage() {}
+
+func (x *ContainerHealthPolicy) ProtoReflect() protoreflect.Message {
+	mi := &file_workos_surface_v1_surface_resolver_proto_msgTypes[6]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ContainerHealthPolicy.ProtoReflect.Descriptor instead.
+func (*ContainerHealthPolicy) Descriptor() ([]byte, []int) {
+	return file_workos_surface_v1_surface_resolver_proto_rawDescGZIP(), []int{6}
+}
+
+func (x *ContainerHealthPolicy) GetHttpPath() string {
+	if x != nil {
+		return x.HttpPath
+	}
+	return ""
+}
+
+func (x *ContainerHealthPolicy) GetStartupSeconds() int32 {
+	if x != nil {
+		return x.StartupSeconds
+	}
+	return 0
+}
+
+func (x *ContainerHealthPolicy) GetRestartLimit() int32 {
+	if x != nil {
+		return x.RestartLimit
+	}
+	return 0
+}
+
+// ContainerLaunchDescriptor is the neutral, immutable launch fact for one
+// installed container instance: the pinned registry identity, the exact
+// digest-pinned OCI image reference, the bounded argv, the container port,
+// and the requested (never effective) resource/health policy. It never
+// carries engine flags, host endpoints, container IDs, credentials, or
+// effective policy.
+type ContainerLaunchDescriptor struct {
+	state          protoimpl.MessageState   `protogen:"open.v1"`
+	AppId          string                   `protobuf:"bytes,1,opt,name=app_id,json=appId,proto3" json:"app_id,omitempty"`
+	Version        string                   `protobuf:"bytes,2,opt,name=version,proto3" json:"version,omitempty"`
+	ManifestDigest string                   `protobuf:"bytes,3,opt,name=manifest_digest,json=manifestDigest,proto3" json:"manifest_digest,omitempty"`
+	Image          string                   `protobuf:"bytes,4,opt,name=image,proto3" json:"image,omitempty"`
+	Command        []string                 `protobuf:"bytes,5,rep,name=command,proto3" json:"command,omitempty"`
+	Port           int32                    `protobuf:"varint,6,opt,name=port,proto3" json:"port,omitempty"`
+	Resources      *ContainerResourcePolicy `protobuf:"bytes,7,opt,name=resources,proto3" json:"resources,omitempty"`
+	Health         *ContainerHealthPolicy   `protobuf:"bytes,8,opt,name=health,proto3" json:"health,omitempty"`
+	SurfaceRoute   string                   `protobuf:"bytes,9,opt,name=surface_route,json=surfaceRoute,proto3" json:"surface_route,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
+}
+
+func (x *ContainerLaunchDescriptor) Reset() {
+	*x = ContainerLaunchDescriptor{}
+	mi := &file_workos_surface_v1_surface_resolver_proto_msgTypes[7]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ContainerLaunchDescriptor) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ContainerLaunchDescriptor) ProtoMessage() {}
+
+func (x *ContainerLaunchDescriptor) ProtoReflect() protoreflect.Message {
+	mi := &file_workos_surface_v1_surface_resolver_proto_msgTypes[7]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ContainerLaunchDescriptor.ProtoReflect.Descriptor instead.
+func (*ContainerLaunchDescriptor) Descriptor() ([]byte, []int) {
+	return file_workos_surface_v1_surface_resolver_proto_rawDescGZIP(), []int{7}
+}
+
+func (x *ContainerLaunchDescriptor) GetAppId() string {
+	if x != nil {
+		return x.AppId
+	}
+	return ""
+}
+
+func (x *ContainerLaunchDescriptor) GetVersion() string {
+	if x != nil {
+		return x.Version
+	}
+	return ""
+}
+
+func (x *ContainerLaunchDescriptor) GetManifestDigest() string {
+	if x != nil {
+		return x.ManifestDigest
+	}
+	return ""
+}
+
+func (x *ContainerLaunchDescriptor) GetImage() string {
+	if x != nil {
+		return x.Image
+	}
+	return ""
+}
+
+func (x *ContainerLaunchDescriptor) GetCommand() []string {
+	if x != nil {
+		return x.Command
+	}
+	return nil
+}
+
+func (x *ContainerLaunchDescriptor) GetPort() int32 {
+	if x != nil {
+		return x.Port
+	}
+	return 0
+}
+
+func (x *ContainerLaunchDescriptor) GetResources() *ContainerResourcePolicy {
+	if x != nil {
+		return x.Resources
+	}
+	return nil
+}
+
+func (x *ContainerLaunchDescriptor) GetHealth() *ContainerHealthPolicy {
+	if x != nil {
+		return x.Health
+	}
+	return nil
+}
+
+func (x *ContainerLaunchDescriptor) GetSurfaceRoute() string {
+	if x != nil {
+		return x.SurfaceRoute
+	}
+	return ""
+}
+
+type ResolveSurfaceLaunchRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	ProjectId     string                 `protobuf:"bytes,1,opt,name=project_id,json=projectId,proto3" json:"project_id,omitempty"`
+	AppInstanceId string                 `protobuf:"bytes,2,opt,name=app_instance_id,json=appInstanceId,proto3" json:"app_instance_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ResolveSurfaceLaunchRequest) Reset() {
+	*x = ResolveSurfaceLaunchRequest{}
+	mi := &file_workos_surface_v1_surface_resolver_proto_msgTypes[8]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ResolveSurfaceLaunchRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ResolveSurfaceLaunchRequest) ProtoMessage() {}
+
+func (x *ResolveSurfaceLaunchRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_workos_surface_v1_surface_resolver_proto_msgTypes[8]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ResolveSurfaceLaunchRequest.ProtoReflect.Descriptor instead.
+func (*ResolveSurfaceLaunchRequest) Descriptor() ([]byte, []int) {
+	return file_workos_surface_v1_surface_resolver_proto_rawDescGZIP(), []int{8}
+}
+
+func (x *ResolveSurfaceLaunchRequest) GetProjectId() string {
+	if x != nil {
+		return x.ProjectId
+	}
+	return ""
+}
+
+func (x *ResolveSurfaceLaunchRequest) GetAppInstanceId() string {
+	if x != nil {
+		return x.AppInstanceId
+	}
+	return ""
+}
+
+type ResolveSurfaceLaunchResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Types that are valid to be assigned to Launch:
+	//
+	//	*ResolveSurfaceLaunchResponse_WebBundle
+	//	*ResolveSurfaceLaunchResponse_WebServiceContainer
+	Launch isResolveSurfaceLaunchResponse_Launch `protobuf_oneof:"launch"`
+	// The active installation's grant set and epoch, re-read from the same
+	// authoritative Core facts as the launch descriptor (same semantics as
+	// ResolveWebBundleResponse fields 2 and 3).
+	GrantedPermissions []string `protobuf:"bytes,3,rep,name=granted_permissions,json=grantedPermissions,proto3" json:"granted_permissions,omitempty"`
+	GrantRevision      int64    `protobuf:"varint,4,opt,name=grant_revision,json=grantRevision,proto3" json:"grant_revision,omitempty"`
+	unknownFields      protoimpl.UnknownFields
+	sizeCache          protoimpl.SizeCache
+}
+
+func (x *ResolveSurfaceLaunchResponse) Reset() {
+	*x = ResolveSurfaceLaunchResponse{}
+	mi := &file_workos_surface_v1_surface_resolver_proto_msgTypes[9]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ResolveSurfaceLaunchResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ResolveSurfaceLaunchResponse) ProtoMessage() {}
+
+func (x *ResolveSurfaceLaunchResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_workos_surface_v1_surface_resolver_proto_msgTypes[9]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ResolveSurfaceLaunchResponse.ProtoReflect.Descriptor instead.
+func (*ResolveSurfaceLaunchResponse) Descriptor() ([]byte, []int) {
+	return file_workos_surface_v1_surface_resolver_proto_rawDescGZIP(), []int{9}
+}
+
+func (x *ResolveSurfaceLaunchResponse) GetLaunch() isResolveSurfaceLaunchResponse_Launch {
+	if x != nil {
+		return x.Launch
+	}
+	return nil
+}
+
+func (x *ResolveSurfaceLaunchResponse) GetWebBundle() *WebBundleLaunchDescriptor {
+	if x != nil {
+		if x, ok := x.Launch.(*ResolveSurfaceLaunchResponse_WebBundle); ok {
+			return x.WebBundle
+		}
+	}
+	return nil
+}
+
+func (x *ResolveSurfaceLaunchResponse) GetWebServiceContainer() *ContainerLaunchDescriptor {
+	if x != nil {
+		if x, ok := x.Launch.(*ResolveSurfaceLaunchResponse_WebServiceContainer); ok {
+			return x.WebServiceContainer
+		}
+	}
+	return nil
+}
+
+func (x *ResolveSurfaceLaunchResponse) GetGrantedPermissions() []string {
+	if x != nil {
+		return x.GrantedPermissions
+	}
+	return nil
+}
+
+func (x *ResolveSurfaceLaunchResponse) GetGrantRevision() int64 {
+	if x != nil {
+		return x.GrantRevision
+	}
+	return 0
+}
+
+type isResolveSurfaceLaunchResponse_Launch interface {
+	isResolveSurfaceLaunchResponse_Launch()
+}
+
+type ResolveSurfaceLaunchResponse_WebBundle struct {
+	WebBundle *WebBundleLaunchDescriptor `protobuf:"bytes,1,opt,name=web_bundle,json=webBundle,proto3,oneof"`
+}
+
+type ResolveSurfaceLaunchResponse_WebServiceContainer struct {
+	WebServiceContainer *ContainerLaunchDescriptor `protobuf:"bytes,2,opt,name=web_service_container,json=webServiceContainer,proto3,oneof"`
+}
+
+func (*ResolveSurfaceLaunchResponse_WebBundle) isResolveSurfaceLaunchResponse_Launch() {}
+
+func (*ResolveSurfaceLaunchResponse_WebServiceContainer) isResolveSurfaceLaunchResponse_Launch() {}
+
 var File_workos_surface_v1_surface_resolver_proto protoreflect.FileDescriptor
 
 const file_workos_surface_v1_surface_resolver_proto_rawDesc = "" +
@@ -387,10 +788,41 @@ const file_workos_surface_v1_surface_resolver_proto_rawDesc = "" +
 	"\acontent\x18\x01 \x01(\fR\acontent\x12\x1d\n" +
 	"\n" +
 	"media_type\x18\x02 \x01(\tR\tmediaType\x12\x12\n" +
-	"\x04etag\x18\x03 \x01(\tR\x04etag2\x82\x02\n" +
+	"\x04etag\x18\x03 \x01(\tR\x04etag\"\xa4\x01\n" +
+	"\x17ContainerResourcePolicy\x12$\n" +
+	"\x0ecpu_hard_cores\x18\x01 \x01(\x01R\fcpuHardCores\x12$\n" +
+	"\x0ememory_high_mb\x18\x02 \x01(\x05R\fmemoryHighMb\x12\"\n" +
+	"\rmemory_max_mb\x18\x03 \x01(\x05R\vmemoryMaxMb\x12\x19\n" +
+	"\bpids_max\x18\x04 \x01(\x05R\apidsMax\"\x82\x01\n" +
+	"\x15ContainerHealthPolicy\x12\x1b\n" +
+	"\thttp_path\x18\x01 \x01(\tR\bhttpPath\x12'\n" +
+	"\x0fstartup_seconds\x18\x02 \x01(\x05R\x0estartupSeconds\x12#\n" +
+	"\rrestart_limit\x18\x03 \x01(\x05R\frestartLimit\"\xea\x02\n" +
+	"\x19ContainerLaunchDescriptor\x12\x15\n" +
+	"\x06app_id\x18\x01 \x01(\tR\x05appId\x12\x18\n" +
+	"\aversion\x18\x02 \x01(\tR\aversion\x12'\n" +
+	"\x0fmanifest_digest\x18\x03 \x01(\tR\x0emanifestDigest\x12\x14\n" +
+	"\x05image\x18\x04 \x01(\tR\x05image\x12\x18\n" +
+	"\acommand\x18\x05 \x03(\tR\acommand\x12\x12\n" +
+	"\x04port\x18\x06 \x01(\x05R\x04port\x12H\n" +
+	"\tresources\x18\a \x01(\v2*.workos.surface.v1.ContainerResourcePolicyR\tresources\x12@\n" +
+	"\x06health\x18\b \x01(\v2(.workos.surface.v1.ContainerHealthPolicyR\x06health\x12#\n" +
+	"\rsurface_route\x18\t \x01(\tR\fsurfaceRoute\"d\n" +
+	"\x1bResolveSurfaceLaunchRequest\x12\x1d\n" +
+	"\n" +
+	"project_id\x18\x01 \x01(\tR\tprojectId\x12&\n" +
+	"\x0fapp_instance_id\x18\x02 \x01(\tR\rappInstanceId\"\xb3\x02\n" +
+	"\x1cResolveSurfaceLaunchResponse\x12M\n" +
+	"\n" +
+	"web_bundle\x18\x01 \x01(\v2,.workos.surface.v1.WebBundleLaunchDescriptorH\x00R\twebBundle\x12b\n" +
+	"\x15web_service_container\x18\x02 \x01(\v2,.workos.surface.v1.ContainerLaunchDescriptorH\x00R\x13webServiceContainer\x12/\n" +
+	"\x13granted_permissions\x18\x03 \x03(\tR\x12grantedPermissions\x12%\n" +
+	"\x0egrant_revision\x18\x04 \x01(\x03R\rgrantRevisionB\b\n" +
+	"\x06launch2\xfd\x02\n" +
 	"\x1cSurfaceLaunchResolverService\x12m\n" +
 	"\x10ResolveWebBundle\x12*.workos.surface.v1.ResolveWebBundleRequest\x1a+.workos.surface.v1.ResolveWebBundleResponse\"\x00\x12s\n" +
-	"\x12ReadWebBundleAsset\x12,.workos.surface.v1.ReadWebBundleAssetRequest\x1a-.workos.surface.v1.ReadWebBundleAssetResponse\"\x00BAZ?github.com/yangtao121/workos/gen/go/workos/surface/v1;surfacev1b\x06proto3"
+	"\x12ReadWebBundleAsset\x12,.workos.surface.v1.ReadWebBundleAssetRequest\x1a-.workos.surface.v1.ReadWebBundleAssetResponse\"\x00\x12y\n" +
+	"\x14ResolveSurfaceLaunch\x12..workos.surface.v1.ResolveSurfaceLaunchRequest\x1a/.workos.surface.v1.ResolveSurfaceLaunchResponse\"\x00BAZ?github.com/yangtao121/workos/gen/go/workos/surface/v1;surfacev1b\x06proto3"
 
 var (
 	file_workos_surface_v1_surface_resolver_proto_rawDescOnce sync.Once
@@ -404,25 +836,36 @@ func file_workos_surface_v1_surface_resolver_proto_rawDescGZIP() []byte {
 	return file_workos_surface_v1_surface_resolver_proto_rawDescData
 }
 
-var file_workos_surface_v1_surface_resolver_proto_msgTypes = make([]protoimpl.MessageInfo, 5)
+var file_workos_surface_v1_surface_resolver_proto_msgTypes = make([]protoimpl.MessageInfo, 10)
 var file_workos_surface_v1_surface_resolver_proto_goTypes = []any{
-	(*WebBundleLaunchDescriptor)(nil),  // 0: workos.surface.v1.WebBundleLaunchDescriptor
-	(*ResolveWebBundleRequest)(nil),    // 1: workos.surface.v1.ResolveWebBundleRequest
-	(*ResolveWebBundleResponse)(nil),   // 2: workos.surface.v1.ResolveWebBundleResponse
-	(*ReadWebBundleAssetRequest)(nil),  // 3: workos.surface.v1.ReadWebBundleAssetRequest
-	(*ReadWebBundleAssetResponse)(nil), // 4: workos.surface.v1.ReadWebBundleAssetResponse
+	(*WebBundleLaunchDescriptor)(nil),    // 0: workos.surface.v1.WebBundleLaunchDescriptor
+	(*ResolveWebBundleRequest)(nil),      // 1: workos.surface.v1.ResolveWebBundleRequest
+	(*ResolveWebBundleResponse)(nil),     // 2: workos.surface.v1.ResolveWebBundleResponse
+	(*ReadWebBundleAssetRequest)(nil),    // 3: workos.surface.v1.ReadWebBundleAssetRequest
+	(*ReadWebBundleAssetResponse)(nil),   // 4: workos.surface.v1.ReadWebBundleAssetResponse
+	(*ContainerResourcePolicy)(nil),      // 5: workos.surface.v1.ContainerResourcePolicy
+	(*ContainerHealthPolicy)(nil),        // 6: workos.surface.v1.ContainerHealthPolicy
+	(*ContainerLaunchDescriptor)(nil),    // 7: workos.surface.v1.ContainerLaunchDescriptor
+	(*ResolveSurfaceLaunchRequest)(nil),  // 8: workos.surface.v1.ResolveSurfaceLaunchRequest
+	(*ResolveSurfaceLaunchResponse)(nil), // 9: workos.surface.v1.ResolveSurfaceLaunchResponse
 }
 var file_workos_surface_v1_surface_resolver_proto_depIdxs = []int32{
 	0, // 0: workos.surface.v1.ResolveWebBundleResponse.launch:type_name -> workos.surface.v1.WebBundleLaunchDescriptor
-	1, // 1: workos.surface.v1.SurfaceLaunchResolverService.ResolveWebBundle:input_type -> workos.surface.v1.ResolveWebBundleRequest
-	3, // 2: workos.surface.v1.SurfaceLaunchResolverService.ReadWebBundleAsset:input_type -> workos.surface.v1.ReadWebBundleAssetRequest
-	2, // 3: workos.surface.v1.SurfaceLaunchResolverService.ResolveWebBundle:output_type -> workos.surface.v1.ResolveWebBundleResponse
-	4, // 4: workos.surface.v1.SurfaceLaunchResolverService.ReadWebBundleAsset:output_type -> workos.surface.v1.ReadWebBundleAssetResponse
-	3, // [3:5] is the sub-list for method output_type
-	1, // [1:3] is the sub-list for method input_type
-	1, // [1:1] is the sub-list for extension type_name
-	1, // [1:1] is the sub-list for extension extendee
-	0, // [0:1] is the sub-list for field type_name
+	5, // 1: workos.surface.v1.ContainerLaunchDescriptor.resources:type_name -> workos.surface.v1.ContainerResourcePolicy
+	6, // 2: workos.surface.v1.ContainerLaunchDescriptor.health:type_name -> workos.surface.v1.ContainerHealthPolicy
+	0, // 3: workos.surface.v1.ResolveSurfaceLaunchResponse.web_bundle:type_name -> workos.surface.v1.WebBundleLaunchDescriptor
+	7, // 4: workos.surface.v1.ResolveSurfaceLaunchResponse.web_service_container:type_name -> workos.surface.v1.ContainerLaunchDescriptor
+	1, // 5: workos.surface.v1.SurfaceLaunchResolverService.ResolveWebBundle:input_type -> workos.surface.v1.ResolveWebBundleRequest
+	3, // 6: workos.surface.v1.SurfaceLaunchResolverService.ReadWebBundleAsset:input_type -> workos.surface.v1.ReadWebBundleAssetRequest
+	8, // 7: workos.surface.v1.SurfaceLaunchResolverService.ResolveSurfaceLaunch:input_type -> workos.surface.v1.ResolveSurfaceLaunchRequest
+	2, // 8: workos.surface.v1.SurfaceLaunchResolverService.ResolveWebBundle:output_type -> workos.surface.v1.ResolveWebBundleResponse
+	4, // 9: workos.surface.v1.SurfaceLaunchResolverService.ReadWebBundleAsset:output_type -> workos.surface.v1.ReadWebBundleAssetResponse
+	9, // 10: workos.surface.v1.SurfaceLaunchResolverService.ResolveSurfaceLaunch:output_type -> workos.surface.v1.ResolveSurfaceLaunchResponse
+	8, // [8:11] is the sub-list for method output_type
+	5, // [5:8] is the sub-list for method input_type
+	5, // [5:5] is the sub-list for extension type_name
+	5, // [5:5] is the sub-list for extension extendee
+	0, // [0:5] is the sub-list for field type_name
 }
 
 func init() { file_workos_surface_v1_surface_resolver_proto_init() }
@@ -430,13 +873,17 @@ func file_workos_surface_v1_surface_resolver_proto_init() {
 	if File_workos_surface_v1_surface_resolver_proto != nil {
 		return
 	}
+	file_workos_surface_v1_surface_resolver_proto_msgTypes[9].OneofWrappers = []any{
+		(*ResolveSurfaceLaunchResponse_WebBundle)(nil),
+		(*ResolveSurfaceLaunchResponse_WebServiceContainer)(nil),
+	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_workos_surface_v1_surface_resolver_proto_rawDesc), len(file_workos_surface_v1_surface_resolver_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   5,
+			NumMessages:   10,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

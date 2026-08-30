@@ -217,7 +217,6 @@ func TestCreateSurfaceFailsClosedOnUnsupportedRenderers(t *testing.T) {
 	client, repository, resolver := newSurfaceServer(t)
 	ctx := context.Background()
 	unimplemented := []surfacev1.SurfaceRenderer{
-		surfacev1.SurfaceRenderer_SURFACE_RENDERER_WEB_SERVICE,
 		surfacev1.SurfaceRenderer_SURFACE_RENDERER_DECLARATIVE,
 		surfacev1.SurfaceRenderer_SURFACE_RENDERER_REMOTE_NATIVE,
 		surfacev1.SurfaceRenderer(99), // unknown enum value on the wire
@@ -233,6 +232,13 @@ func TestCreateSurfaceFailsClosedOnUnsupportedRenderers(t *testing.T) {
 	}
 	if resolver.calls != 0 {
 		t.Fatal("rejected renderers reached the Core resolver")
+	}
+	// The web-service renderer is implemented at transport: an explicit
+	// request against a web-bundle app fails closed as FailedPrecondition
+	// after resolution, and the key is still not consumed.
+	_, err := client.CreateSurface(ctx, createRequest("renderer-key", surfacev1.SurfaceRenderer_SURFACE_RENDERER_WEB_SERVICE, 2, connectDevice))
+	if connect.CodeOf(err) != connect.CodeFailedPrecondition {
+		t.Fatalf("explicit web-service against web-bundle app verdict %v, want FailedPrecondition", err)
 	}
 	if len(repository.requests) != 0 {
 		t.Fatal("rejected renderers consumed the idempotency key")
@@ -403,4 +409,21 @@ func TestCreateSurfaceRejectsCorruptResolverRevision(t *testing.T) {
 			t.Fatalf("revision %d persisted state", revision)
 		}
 	}
+}
+
+func (r *handlerRepository) HasActiveSurface(context.Context, string, string, time.Time) (bool, error) {
+	return false, nil
+}
+
+func (f *handlerResolver) ResolveSurfaceLaunch(_ context.Context, _ ports.ResolveQuery) (ports.ResolvedLaunch, error) {
+	f.calls++
+	return ports.ResolvedLaunch{
+		Kind:  ports.LaunchKindWebBundle,
+		AppID: f.descriptor.AppID, Version: f.descriptor.Version,
+		ManifestDigest: f.descriptor.ManifestDigest,
+		ArtifactID:     f.descriptor.ArtifactID, ArtifactDigest: f.descriptor.ArtifactDigest,
+		Entrypoint:         f.descriptor.Entrypoint,
+		GrantRevision:      f.descriptor.GrantRevision,
+		GrantedPermissions: f.descriptor.GrantedPermissions,
+	}, nil
 }

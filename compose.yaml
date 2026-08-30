@@ -110,6 +110,8 @@ services:
     environment:
       <<: *workos-environment
       WORKOS_HTTP_ADDRESS: 127.0.0.1:8084
+      WORKOS_RUNTIME_URL: http://127.0.0.1:8083
+      WORKOS_RELIABILITY_POLL_INTERVAL: ${WORKOS_RELIABILITY_POLL_INTERVAL:-5s}
 
   indexer:
     <<: *workos-service

@@ -87,12 +87,26 @@ func (h *Handler) CloseSurface(ctx context.Context, req *connect.Request[surface
 func SessionToProto(session domain.SurfaceSession, bridgeToken string) *surfacev1.SurfaceSession {
 	return &surfacev1.SurfaceSession{
 		Id: session.ID, AppInstanceId: session.AppInstanceID, ProjectId: session.ProjectID,
-		Renderer:           surfacev1.SurfaceRenderer_SURFACE_RENDERER_WEB_BUNDLE,
+		Renderer:           rendererProto(session.Renderer),
 		Url:                session.Path,
 		BridgeToken:        bridgeToken,
 		BridgeCapabilities: session.BridgeCapabilities,
 		CreatedAt:          timestamppb.New(session.CreatedAt),
 		ExpiresAt:          timestamppb.New(session.ExpiresAt),
+	}
+}
+
+// rendererProto maps the persisted renderer fact onto the enum. The host
+// never projects any other value: an unknown stored renderer is impossible by
+// the database CHECK and stays UNSPECIFIED rather than being invented here.
+func rendererProto(renderer string) surfacev1.SurfaceRenderer {
+	switch renderer {
+	case domain.RendererWebBundle:
+		return surfacev1.SurfaceRenderer_SURFACE_RENDERER_WEB_BUNDLE
+	case domain.RendererWebService:
+		return surfacev1.SurfaceRenderer_SURFACE_RENDERER_WEB_SERVICE
+	default:
+		return surfacev1.SurfaceRenderer_SURFACE_RENDERER_UNSPECIFIED
 	}
 }
 
@@ -112,16 +126,19 @@ func deviceClassFromProto(class surfacev1.DeviceClass) string {
 }
 
 // preferredRendererFromProto maps the declared enum to the canonical renderer
-// grammar: only UNSPECIFIED (empty; the application defaults to the
-// implemented renderer) and WEB_BUNDLE enter the resolver. Every declared
-// but unimplemented renderer and any unknown numeric value is rejected, so a
-// client can never silently start a web bundle by naming another renderer.
+// grammar: UNSPECIFIED (empty; the server selects the renderer from the exact
+// pinned descriptor), WEB_BUNDLE, and WEB_SERVICE enter the resolver. Every
+// declared but unimplemented renderer and any unknown numeric value is
+// rejected, so a client can never silently start a surface by naming another
+// renderer.
 func preferredRendererFromProto(renderer surfacev1.SurfaceRenderer) (string, error) {
 	switch renderer {
 	case surfacev1.SurfaceRenderer_SURFACE_RENDERER_UNSPECIFIED:
 		return "", nil
 	case surfacev1.SurfaceRenderer_SURFACE_RENDERER_WEB_BUNDLE:
 		return domain.RendererWebBundle, nil
+	case surfacev1.SurfaceRenderer_SURFACE_RENDERER_WEB_SERVICE:
+		return domain.RendererWebService, nil
 	default:
 		return "", errors.New("preferred renderer is not supported")
 	}
@@ -145,7 +162,7 @@ func mapError(err error) error {
 		// verdict is fixed and content-free.
 		return connect.NewError(connect.CodeFailedPrecondition, errors.New("surface grants changed; create a new surface with a new idempotency key"))
 	case errors.Is(err, domain.ErrUnsupported):
-		return connect.NewError(connect.CodeFailedPrecondition, errors.New("installed app version has no supported web bundle"))
+		return connect.NewError(connect.CodeFailedPrecondition, errors.New("installed app version has no supported surface renderer"))
 	case errors.Is(err, ports.ErrResolverCorrupt):
 		// A resolution that violates a stored-fact invariant (e.g. a grant
 		// epoch below 1) is corruption, never a client verdict.

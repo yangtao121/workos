@@ -641,7 +641,7 @@ describe("App Library open", () => {
     expect(request.appInstanceId).toBe("installation-1");
     expect(request.projectId).toBe("project-1");
     expect(request.deviceClass).toBe(DeviceClass.DESKTOP);
-    expect(request.preferredRenderer).toBe(SurfaceRenderer.WEB_BUNDLE);
+    expect(request.preferredRenderer).toBe(SurfaceRenderer.UNSPECIFIED);
     expect(request.viewport.width).toBeGreaterThan(0);
   });
 
@@ -666,9 +666,9 @@ describe("App Library open", () => {
     await user.click(screen.getByRole("button", { name: "Open" }));
     await user.click(screen.getByRole("button", { name: "Opening…" }));
     expect(clients.surfaces.createSurface).toHaveBeenCalledTimes(1);
-    void pending.reject(new ConnectError("no supported web bundle", Code.FailedPrecondition));
+    void pending.reject(new ConnectError("no supported surface renderer", Code.FailedPrecondition));
     const alert = await screen.findByRole("alert");
-    expect(alert.textContent).toContain("no supported web bundle");
+    expect(alert.textContent).toContain("no supported surface renderer");
     expect(screen.getByRole("button", { name: "Open" })).toBeTruthy();
   });
 

@@ -10,6 +10,7 @@ import {
   AppRegistryService,
   ArtifactService,
   HarnessCatalogService,
+  IncidentService,
   ProjectHarnessBindingService,
   ProjectService,
   SurfaceService,
@@ -28,6 +29,7 @@ export interface WorkOSClients {
   artifacts: Client<typeof ArtifactService>;
   surfaces: Client<typeof SurfaceService>;
   appBridge: Client<typeof AppBridgeService>;
+  incidents: Client<typeof IncidentService>;
 }
 
 export function createWorkOSClients(baseUrl: string, transport?: Transport): WorkOSClients {
@@ -45,5 +47,6 @@ export function createWorkOSClients(baseUrl: string, transport?: Transport): Wor
     artifacts: createClient(ArtifactService, activeTransport),
     surfaces: createClient(SurfaceService, activeTransport),
     appBridge: createClient(AppBridgeService, activeTransport),
+    incidents: createClient(IncidentService, activeTransport),
   };
 }

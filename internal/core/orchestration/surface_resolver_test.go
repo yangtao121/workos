@@ -49,8 +49,10 @@ func (f *fakeInstallations) ResolveActiveInstallation(context.Context, string, s
 }
 
 type fakeRegistry struct {
-	resolution appregistryapp.WebBundleResolution
-	err        error
+	resolution    appregistryapp.WebBundleResolution
+	surfaceResult appregistryapp.SurfaceResolution
+	surfaceErr    error
+	err           error
 }
 
 func (f *fakeRegistry) ResolveWebBundle(context.Context, string, string, string) (appregistryapp.WebBundleResolution, error) {
@@ -60,13 +62,22 @@ func (f *fakeRegistry) ResolveWebBundle(context.Context, string, string, string)
 	return f.resolution, nil
 }
 
+func (f *fakeRegistry) ResolveSurfaceLaunch(context.Context, string, string, string) (appregistryapp.SurfaceResolution, error) {
+	if f.surfaceErr != nil {
+		return appregistryapp.SurfaceResolution{}, f.surfaceErr
+	}
+	return f.surfaceResult, nil
+}
+
 type fakeArtifacts struct {
 	summary artifactapp.BundleSummary
 	asset   artifactdomain.BundleFile
 	err     error
+	calls   int
 }
 
 func (f *fakeArtifacts) VerifyWebBundle(context.Context, string, string, string) (artifactapp.BundleSummary, error) {
+	f.calls++
 	if f.err != nil {
 		return artifactapp.BundleSummary{}, f.err
 	}
@@ -244,5 +255,58 @@ func TestNewSurfaceLaunchResolverRequiresAllSources(t *testing.T) {
 	}
 	if _, err := NewSurfaceLaunchResolver(&fakeInstallations{}, &fakeRegistry{}, nil); err == nil {
 		t.Fatal("missing artifacts accepted")
+	}
+}
+
+// TestResolveSurfaceLaunchContainerPath pins the generic resolution: a
+// container manifest resolves to the neutral container descriptor with the
+// grant facts riding along; digest drift and unsupported runtimes keep their
+// sanitized verdicts.
+func TestResolveSurfaceLaunchContainerPath(t *testing.T) {
+	installations := &fakeInstallations{installation: activeInstallation("container-app", "1.0.0", manifestDigest)}
+	registry := &fakeRegistry{surfaceResult: appregistryapp.SurfaceResolution{
+		ManifestDigest: manifestDigest,
+		Container: &appregistrydomain.ContainerLaunch{
+			Image:   "localhost/workos-fixture@sha256:" + manifestHex,
+			Command: []string{"/workos-fixture", "serve"}, Port: 8080,
+			Resources: appregistrydomain.ContainerResourcePolicy{CPUHardCores: 1, MemoryHighMB: 64, MemoryMaxMB: 96, PidsMax: 32},
+			Health:    appregistrydomain.ContainerHealthPolicy{HTTPPath: "/health", StartupSeconds: 10, RestartLimit: 2},
+		},
+	}}
+	resolver := newResolver(installations, registry, &fakeArtifacts{})
+
+	launch, err := resolver.ResolveSurfaceLaunch(context.Background(), resolveOwner, resolveProject, resolveInstance)
+	if err != nil {
+		t.Fatalf("ResolveSurfaceLaunch: %v", err)
+	}
+	if launch.Kind != LaunchKindWebServiceContainer || launch.Container == nil || launch.WebBundle != nil {
+		t.Fatalf("launch kind %+v, want container descriptor", launch.Kind)
+	}
+	if launch.Container.Image != "localhost/workos-fixture@sha256:"+manifestHex || launch.Container.Port != 8080 ||
+		launch.Container.Route != "/" {
+		t.Fatalf("container descriptor incomplete: %+v", launch.Container)
+	}
+	if launch.GrantRevision != 1 || len(launch.GrantedPermissions) != 0 {
+		t.Fatalf("grant facts missing: %+v", launch)
+	}
+
+	// Digest drift between the installation pin and the registry version is
+	// internal corruption, never a launch.
+	registry.surfaceResult.ManifestDigest = "sha256:" + strings.Repeat("f", 64)
+	_, err = resolver.ResolveSurfaceLaunch(context.Background(), resolveOwner, resolveProject, resolveInstance)
+	if !IsLaunchCorrupt(err) {
+		t.Fatalf("drift verdict %v, want corrupt", err)
+	}
+
+	// An unsupported runtime is FailedPrecondition, decided without any
+	// artifact call.
+	registry.surfaceErr = appregistryapp.ErrUnsupportedRuntime
+	registry.surfaceResult = appregistryapp.SurfaceResolution{}
+	before := resolver.artifacts.(*fakeArtifacts).calls
+	if _, err := resolver.ResolveSurfaceLaunch(context.Background(), resolveOwner, resolveProject, resolveInstance); !errors.Is(err, ErrLaunchUnsupported) {
+		t.Fatalf("unsupported runtime verdict %v", err)
+	}
+	if resolver.artifacts.(*fakeArtifacts).calls != before {
+		t.Fatalf("unsupported runtime touched the artifact service")
 	}
 }

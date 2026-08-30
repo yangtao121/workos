@@ -1295,3 +1295,17 @@ func sessionIDOf(ids map[string]struct{}) string {
 	}
 	return ""
 }
+
+func (r *staticResolver) ResolveSurfaceLaunch(_ context.Context, _ surfaceports.ResolveQuery) (surfaceports.ResolvedLaunch, error) {
+	return surfaceports.ResolvedLaunch{
+		Kind:               surfaceports.LaunchKindWebBundle,
+		AppID:              r.descriptor.AppID,
+		Version:            r.descriptor.Version,
+		ManifestDigest:     r.descriptor.ManifestDigest,
+		ArtifactID:         r.descriptor.ArtifactID,
+		ArtifactDigest:     r.descriptor.ArtifactDigest,
+		Entrypoint:         r.descriptor.Entrypoint,
+		GrantRevision:      r.descriptor.GrantRevision,
+		GrantedPermissions: r.descriptor.GrantedPermissions,
+	}, nil
+}

@@ -52,7 +52,68 @@ message ReadWebBundleAssetResponse {
   string etag = 3;
 }
 
+// ContainerResourcePolicy is the App's REQUESTED resource policy, projected
+// verbatim from the canonical manifest. It is not an authorization: the
+// runtime adjudicates it against server-owned maxima and persists the
+// effective policy; these values never size the container directly.
+message ContainerResourcePolicy {
+  double cpu_hard_cores = 1;
+  int32 memory_high_mb = 2;
+  int32 memory_max_mb = 3;
+  int32 pids_max = 4;
+}
+
+// ContainerHealthPolicy is the App's REQUESTED health policy, projected
+// verbatim from the canonical manifest.
+message ContainerHealthPolicy {
+  string http_path = 1;
+  int32 startup_seconds = 2;
+  int32 restart_limit = 3;
+}
+
+// ContainerLaunchDescriptor is the neutral, immutable launch fact for one
+// installed container instance: the pinned registry identity, the exact
+// digest-pinned OCI image reference, the bounded argv, the container port,
+// and the requested (never effective) resource/health policy. It never
+// carries engine flags, host endpoints, container IDs, credentials, or
+// effective policy.
+message ContainerLaunchDescriptor {
+  string app_id = 1;
+  string version = 2;
+  string manifest_digest = 3;
+  string image = 4;
+  repeated string command = 5;
+  int32 port = 6;
+  ContainerResourcePolicy resources = 7;
+  ContainerHealthPolicy health = 8;
+  string surface_route = 9;
+}
+
+message ResolveSurfaceLaunchRequest {
+  string project_id = 1;
+  string app_instance_id = 2;
+}
+
+message ResolveSurfaceLaunchResponse {
+  oneof launch {
+    WebBundleLaunchDescriptor web_bundle = 1;
+    ContainerLaunchDescriptor web_service_container = 2;
+  }
+  // The active installation's grant set and epoch, re-read from the same
+  // authoritative Core facts as the launch descriptor (same semantics as
+  // ResolveWebBundleResponse fields 2 and 3).
+  repeated string granted_permissions = 3;
+  int64 grant_revision = 4;
+}
+
 service SurfaceLaunchResolverService {
   rpc ResolveWebBundle(ResolveWebBundleRequest) returns (ResolveWebBundleResponse) {}
   rpc ReadWebBundleAsset(ReadWebBundleAssetRequest) returns (ReadWebBundleAssetResponse) {}
+  // ResolveSurfaceLaunch is the generic renderer-neutral resolution: it
+  // returns the exact installed descriptor under a oneof so the runtime can
+  // select the supported renderer. Unknown/foreign/archived/uninstalled
+  // installations are NotFound; a stored canonical manifest that violates its
+  // own profile is sanitized Internal; a healthy but unsupported runtime is
+  // FailedPrecondition.
+  rpc ResolveSurfaceLaunch(ResolveSurfaceLaunchRequest) returns (ResolveSurfaceLaunchResponse) {}
 }

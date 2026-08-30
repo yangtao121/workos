@@ -95,7 +95,7 @@ func TestSessionPathAndGrammar(t *testing.T) {
 			t.Errorf("device class %q validity mismatch", class)
 		}
 	}
-	for renderer, valid := range map[string]bool{"": true, "web-bundle": true, "web-service": false, "declarative": false, "remote-native": false} {
+	for renderer, valid := range map[string]bool{"": true, "web-bundle": true, "web-service": true, "declarative": false, "remote-native": false} {
 		if ValidPreferredRenderer(renderer) != valid {
 			t.Errorf("renderer %q validity mismatch", renderer)
 		}

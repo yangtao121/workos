@@ -130,6 +130,119 @@ func (IncidentState) EnumDescriptor() ([]byte, []int) {
 	return file_workos_incident_v1_incident_proto_rawDescGZIP(), []int{1}
 }
 
+type IncidentViolation int32
+
+const (
+	IncidentViolation_INCIDENT_VIOLATION_UNSPECIFIED             IncidentViolation = 0
+	IncidentViolation_INCIDENT_VIOLATION_UNEXPECTED_EXIT         IncidentViolation = 1
+	IncidentViolation_INCIDENT_VIOLATION_HEALTH_FAILURE          IncidentViolation = 2
+	IncidentViolation_INCIDENT_VIOLATION_OOM                     IncidentViolation = 3
+	IncidentViolation_INCIDENT_VIOLATION_PIDS_LIMIT              IncidentViolation = 4
+	IncidentViolation_INCIDENT_VIOLATION_RESTART_LIMIT_EXHAUSTED IncidentViolation = 5
+)
+
+// Enum value maps for IncidentViolation.
+var (
+	IncidentViolation_name = map[int32]string{
+		0: "INCIDENT_VIOLATION_UNSPECIFIED",
+		1: "INCIDENT_VIOLATION_UNEXPECTED_EXIT",
+		2: "INCIDENT_VIOLATION_HEALTH_FAILURE",
+		3: "INCIDENT_VIOLATION_OOM",
+		4: "INCIDENT_VIOLATION_PIDS_LIMIT",
+		5: "INCIDENT_VIOLATION_RESTART_LIMIT_EXHAUSTED",
+	}
+	IncidentViolation_value = map[string]int32{
+		"INCIDENT_VIOLATION_UNSPECIFIED":             0,
+		"INCIDENT_VIOLATION_UNEXPECTED_EXIT":         1,
+		"INCIDENT_VIOLATION_HEALTH_FAILURE":          2,
+		"INCIDENT_VIOLATION_OOM":                     3,
+		"INCIDENT_VIOLATION_PIDS_LIMIT":              4,
+		"INCIDENT_VIOLATION_RESTART_LIMIT_EXHAUSTED": 5,
+	}
+)
+
+func (x IncidentViolation) Enum() *IncidentViolation {
+	p := new(IncidentViolation)
+	*p = x
+	return p
+}
+
+func (x IncidentViolation) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (IncidentViolation) Descriptor() protoreflect.EnumDescriptor {
+	return file_workos_incident_v1_incident_proto_enumTypes[2].Descriptor()
+}
+
+func (IncidentViolation) Type() protoreflect.EnumType {
+	return &file_workos_incident_v1_incident_proto_enumTypes[2]
+}
+
+func (x IncidentViolation) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use IncidentViolation.Descriptor instead.
+func (IncidentViolation) EnumDescriptor() ([]byte, []int) {
+	return file_workos_incident_v1_incident_proto_rawDescGZIP(), []int{2}
+}
+
+type IncidentRestartOutcome int32
+
+const (
+	IncidentRestartOutcome_INCIDENT_RESTART_OUTCOME_UNSPECIFIED IncidentRestartOutcome = 0
+	IncidentRestartOutcome_INCIDENT_RESTART_OUTCOME_PENDING     IncidentRestartOutcome = 1
+	IncidentRestartOutcome_INCIDENT_RESTART_OUTCOME_RESTARTED   IncidentRestartOutcome = 2
+	IncidentRestartOutcome_INCIDENT_RESTART_OUTCOME_STOPPED     IncidentRestartOutcome = 3
+	IncidentRestartOutcome_INCIDENT_RESTART_OUTCOME_FAILED      IncidentRestartOutcome = 4
+)
+
+// Enum value maps for IncidentRestartOutcome.
+var (
+	IncidentRestartOutcome_name = map[int32]string{
+		0: "INCIDENT_RESTART_OUTCOME_UNSPECIFIED",
+		1: "INCIDENT_RESTART_OUTCOME_PENDING",
+		2: "INCIDENT_RESTART_OUTCOME_RESTARTED",
+		3: "INCIDENT_RESTART_OUTCOME_STOPPED",
+		4: "INCIDENT_RESTART_OUTCOME_FAILED",
+	}
+	IncidentRestartOutcome_value = map[string]int32{
+		"INCIDENT_RESTART_OUTCOME_UNSPECIFIED": 0,
+		"INCIDENT_RESTART_OUTCOME_PENDING":     1,
+		"INCIDENT_RESTART_OUTCOME_RESTARTED":   2,
+		"INCIDENT_RESTART_OUTCOME_STOPPED":     3,
+		"INCIDENT_RESTART_OUTCOME_FAILED":      4,
+	}
+)
+
+func (x IncidentRestartOutcome) Enum() *IncidentRestartOutcome {
+	p := new(IncidentRestartOutcome)
+	*p = x
+	return p
+}
+
+func (x IncidentRestartOutcome) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (IncidentRestartOutcome) Descriptor() protoreflect.EnumDescriptor {
+	return file_workos_incident_v1_incident_proto_enumTypes[3].Descriptor()
+}
+
+func (IncidentRestartOutcome) Type() protoreflect.EnumType {
+	return &file_workos_incident_v1_incident_proto_enumTypes[3]
+}
+
+func (x IncidentRestartOutcome) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use IncidentRestartOutcome.Descriptor instead.
+func (IncidentRestartOutcome) EnumDescriptor() ([]byte, []int) {
+	return file_workos_incident_v1_incident_proto_rawDescGZIP(), []int{3}
+}
+
 type EvidenceRef struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Type          string                 `protobuf:"bytes,1,opt,name=type,proto3" json:"type,omitempty"`
@@ -191,19 +304,34 @@ func (x *EvidenceRef) GetDigest() string {
 }
 
 type Incident struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
-	WorkloadId    string                 `protobuf:"bytes,2,opt,name=workload_id,json=workloadId,proto3" json:"workload_id,omitempty"`
-	ProjectId     string                 `protobuf:"bytes,3,opt,name=project_id,json=projectId,proto3" json:"project_id,omitempty"`
-	Severity      IncidentSeverity       `protobuf:"varint,4,opt,name=severity,proto3,enum=workos.incident.v1.IncidentSeverity" json:"severity,omitempty"`
-	State         IncidentState          `protobuf:"varint,5,opt,name=state,proto3,enum=workos.incident.v1.IncidentState" json:"state,omitempty"`
-	PolicyId      string                 `protobuf:"bytes,6,opt,name=policy_id,json=policyId,proto3" json:"policy_id,omitempty"`
-	Summary       string                 `protobuf:"bytes,7,opt,name=summary,proto3" json:"summary,omitempty"`
-	Evidence      []*EvidenceRef         `protobuf:"bytes,8,rep,name=evidence,proto3" json:"evidence,omitempty"`
-	CreatedAt     *timestamppb.Timestamp `protobuf:"bytes,9,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
-	UpdatedAt     *timestamppb.Timestamp `protobuf:"bytes,10,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state      protoimpl.MessageState `protogen:"open.v1"`
+	Id         string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	WorkloadId string                 `protobuf:"bytes,2,opt,name=workload_id,json=workloadId,proto3" json:"workload_id,omitempty"`
+	ProjectId  string                 `protobuf:"bytes,3,opt,name=project_id,json=projectId,proto3" json:"project_id,omitempty"`
+	Severity   IncidentSeverity       `protobuf:"varint,4,opt,name=severity,proto3,enum=workos.incident.v1.IncidentSeverity" json:"severity,omitempty"`
+	State      IncidentState          `protobuf:"varint,5,opt,name=state,proto3,enum=workos.incident.v1.IncidentState" json:"state,omitempty"`
+	PolicyId   string                 `protobuf:"bytes,6,opt,name=policy_id,json=policyId,proto3" json:"policy_id,omitempty"`
+	// summary is a fixed short phrase mapped from the violation enum; raw
+	// engine output, HTTP bodies, logs, and user content never enter it.
+	Summary   string                 `protobuf:"bytes,7,opt,name=summary,proto3" json:"summary,omitempty"`
+	Evidence  []*EvidenceRef         `protobuf:"bytes,8,rep,name=evidence,proto3" json:"evidence,omitempty"`
+	CreatedAt *timestamppb.Timestamp `protobuf:"bytes,9,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	UpdatedAt *timestamppb.Timestamp `protobuf:"bytes,10,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
+	// Owner scope and durable supervision facts (additive, ADR-0006).
+	OwnerUserId        string            `protobuf:"bytes,11,opt,name=owner_user_id,json=ownerUserId,proto3" json:"owner_user_id,omitempty"`
+	AppInstanceId      string            `protobuf:"bytes,12,opt,name=app_instance_id,json=appInstanceId,proto3" json:"app_instance_id,omitempty"`
+	AppId              string            `protobuf:"bytes,13,opt,name=app_id,json=appId,proto3" json:"app_id,omitempty"`
+	Violation          IncidentViolation `protobuf:"varint,14,opt,name=violation,proto3,enum=workos.incident.v1.IncidentViolation" json:"violation,omitempty"`
+	WorkloadGeneration int64             `protobuf:"varint,15,opt,name=workload_generation,json=workloadGeneration,proto3" json:"workload_generation,omitempty"`
+	// Monotonic revision of this incident row; every persisted state change
+	// increments it. Clients use it as an etag on acknowledge.
+	Revision       int64                  `protobuf:"varint,16,opt,name=revision,proto3" json:"revision,omitempty"`
+	AcknowledgedAt *timestamppb.Timestamp `protobuf:"bytes,17,opt,name=acknowledged_at,json=acknowledgedAt,proto3" json:"acknowledged_at,omitempty"`
+	MitigatedAt    *timestamppb.Timestamp `protobuf:"bytes,18,opt,name=mitigated_at,json=mitigatedAt,proto3" json:"mitigated_at,omitempty"`
+	ResolvedAt     *timestamppb.Timestamp `protobuf:"bytes,19,opt,name=resolved_at,json=resolvedAt,proto3" json:"resolved_at,omitempty"`
+	RestartOutcome IncidentRestartOutcome `protobuf:"varint,20,opt,name=restart_outcome,json=restartOutcome,proto3,enum=workos.incident.v1.IncidentRestartOutcome" json:"restart_outcome,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
 }
 
 func (x *Incident) Reset() {
@@ -304,6 +432,76 @@ func (x *Incident) GetUpdatedAt() *timestamppb.Timestamp {
 		return x.UpdatedAt
 	}
 	return nil
+}
+
+func (x *Incident) GetOwnerUserId() string {
+	if x != nil {
+		return x.OwnerUserId
+	}
+	return ""
+}
+
+func (x *Incident) GetAppInstanceId() string {
+	if x != nil {
+		return x.AppInstanceId
+	}
+	return ""
+}
+
+func (x *Incident) GetAppId() string {
+	if x != nil {
+		return x.AppId
+	}
+	return ""
+}
+
+func (x *Incident) GetViolation() IncidentViolation {
+	if x != nil {
+		return x.Violation
+	}
+	return IncidentViolation_INCIDENT_VIOLATION_UNSPECIFIED
+}
+
+func (x *Incident) GetWorkloadGeneration() int64 {
+	if x != nil {
+		return x.WorkloadGeneration
+	}
+	return 0
+}
+
+func (x *Incident) GetRevision() int64 {
+	if x != nil {
+		return x.Revision
+	}
+	return 0
+}
+
+func (x *Incident) GetAcknowledgedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.AcknowledgedAt
+	}
+	return nil
+}
+
+func (x *Incident) GetMitigatedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.MitigatedAt
+	}
+	return nil
+}
+
+func (x *Incident) GetResolvedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.ResolvedAt
+	}
+	return nil
+}
+
+func (x *Incident) GetRestartOutcome() IncidentRestartOutcome {
+	if x != nil {
+		return x.RestartOutcome
+	}
+	return IncidentRestartOutcome_INCIDENT_RESTART_OUTCOME_UNSPECIFIED
 }
 
 type GetIncidentRequest struct {
@@ -455,10 +653,14 @@ func (x *ListIncidentsResponse) GetPage() *v1.PageResponse {
 }
 
 type AcknowledgeIncidentRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	IncidentId    string                 `protobuf:"bytes,1,opt,name=incident_id,json=incidentId,proto3" json:"incident_id,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state      protoimpl.MessageState `protogen:"open.v1"`
+	IncidentId string                 `protobuf:"bytes,1,opt,name=incident_id,json=incidentId,proto3" json:"incident_id,omitempty"`
+	// Durable idempotency key for this external write. Same key replays the
+	// first decision; acknowledge marks the incident reviewed by its owner and
+	// never claims the fault is repaired.
+	IdempotencyKey string `protobuf:"bytes,2,opt,name=idempotency_key,json=idempotencyKey,proto3" json:"idempotency_key,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
 }
 
 func (x *AcknowledgeIncidentRequest) Reset() {
@@ -494,6 +696,13 @@ func (*AcknowledgeIncidentRequest) Descriptor() ([]byte, []int) {
 func (x *AcknowledgeIncidentRequest) GetIncidentId() string {
 	if x != nil {
 		return x.IncidentId
+	}
+	return ""
+}
+
+func (x *AcknowledgeIncidentRequest) GetIdempotencyKey() string {
+	if x != nil {
+		return x.IdempotencyKey
 	}
 	return ""
 }
@@ -594,7 +803,7 @@ const file_workos_incident_v1_incident_proto_rawDesc = "" +
 	"\vEvidenceRef\x12\x12\n" +
 	"\x04type\x18\x01 \x01(\tR\x04type\x12\x10\n" +
 	"\x03ref\x18\x02 \x01(\tR\x03ref\x12\x16\n" +
-	"\x06digest\x18\x03 \x01(\tR\x06digest\"\xbf\x03\n" +
+	"\x06digest\x18\x03 \x01(\tR\x06digest\"\xca\a\n" +
 	"\bIncident\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x1f\n" +
 	"\vworkload_id\x18\x02 \x01(\tR\n" +
@@ -610,7 +819,18 @@ const file_workos_incident_v1_incident_proto_rawDesc = "" +
 	"created_at\x18\t \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x129\n" +
 	"\n" +
 	"updated_at\x18\n" +
-	" \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\"5\n" +
+	" \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\x12\"\n" +
+	"\rowner_user_id\x18\v \x01(\tR\vownerUserId\x12&\n" +
+	"\x0fapp_instance_id\x18\f \x01(\tR\rappInstanceId\x12\x15\n" +
+	"\x06app_id\x18\r \x01(\tR\x05appId\x12C\n" +
+	"\tviolation\x18\x0e \x01(\x0e2%.workos.incident.v1.IncidentViolationR\tviolation\x12/\n" +
+	"\x13workload_generation\x18\x0f \x01(\x03R\x12workloadGeneration\x12\x1a\n" +
+	"\brevision\x18\x10 \x01(\x03R\brevision\x12C\n" +
+	"\x0facknowledged_at\x18\x11 \x01(\v2\x1a.google.protobuf.TimestampR\x0eacknowledgedAt\x12=\n" +
+	"\fmitigated_at\x18\x12 \x01(\v2\x1a.google.protobuf.TimestampR\vmitigatedAt\x12;\n" +
+	"\vresolved_at\x18\x13 \x01(\v2\x1a.google.protobuf.TimestampR\n" +
+	"resolvedAt\x12S\n" +
+	"\x0frestart_outcome\x18\x14 \x01(\x0e2*.workos.incident.v1.IncidentRestartOutcomeR\x0erestartOutcome\"5\n" +
 	"\x12GetIncidentRequest\x12\x1f\n" +
 	"\vincident_id\x18\x01 \x01(\tR\n" +
 	"incidentId\"h\n" +
@@ -620,10 +840,11 @@ const file_workos_incident_v1_incident_proto_rawDesc = "" +
 	"\x04page\x18\x02 \x01(\v2\x1d.workos.common.v1.PageRequestR\x04page\"\x87\x01\n" +
 	"\x15ListIncidentsResponse\x12:\n" +
 	"\tincidents\x18\x01 \x03(\v2\x1c.workos.incident.v1.IncidentR\tincidents\x122\n" +
-	"\x04page\x18\x02 \x01(\v2\x1e.workos.common.v1.PageResponseR\x04page\"=\n" +
+	"\x04page\x18\x02 \x01(\v2\x1e.workos.common.v1.PageResponseR\x04page\"f\n" +
 	"\x1aAcknowledgeIncidentRequest\x12\x1f\n" +
 	"\vincident_id\x18\x01 \x01(\tR\n" +
-	"incidentId\"O\n" +
+	"incidentId\x12'\n" +
+	"\x0fidempotency_key\x18\x02 \x01(\tR\x0eidempotencyKey\"O\n" +
 	"\x13GetIncidentResponse\x128\n" +
 	"\bincident\x18\x01 \x01(\v2\x1c.workos.incident.v1.IncidentR\bincident\"W\n" +
 	"\x1bAcknowledgeIncidentResponse\x128\n" +
@@ -638,7 +859,20 @@ const file_workos_incident_v1_incident_proto_rawDesc = "" +
 	"\x13INCIDENT_STATE_OPEN\x10\x01\x12\x1c\n" +
 	"\x18INCIDENT_STATE_MITIGATED\x10\x02\x12\x1c\n" +
 	"\x18INCIDENT_STATE_REPAIRING\x10\x03\x12\x1b\n" +
-	"\x17INCIDENT_STATE_RESOLVED\x10\x042\xd5\x02\n" +
+	"\x17INCIDENT_STATE_RESOLVED\x10\x04*\xf5\x01\n" +
+	"\x11IncidentViolation\x12\"\n" +
+	"\x1eINCIDENT_VIOLATION_UNSPECIFIED\x10\x00\x12&\n" +
+	"\"INCIDENT_VIOLATION_UNEXPECTED_EXIT\x10\x01\x12%\n" +
+	"!INCIDENT_VIOLATION_HEALTH_FAILURE\x10\x02\x12\x1a\n" +
+	"\x16INCIDENT_VIOLATION_OOM\x10\x03\x12!\n" +
+	"\x1dINCIDENT_VIOLATION_PIDS_LIMIT\x10\x04\x12.\n" +
+	"*INCIDENT_VIOLATION_RESTART_LIMIT_EXHAUSTED\x10\x05*\xdb\x01\n" +
+	"\x16IncidentRestartOutcome\x12(\n" +
+	"$INCIDENT_RESTART_OUTCOME_UNSPECIFIED\x10\x00\x12$\n" +
+	" INCIDENT_RESTART_OUTCOME_PENDING\x10\x01\x12&\n" +
+	"\"INCIDENT_RESTART_OUTCOME_RESTARTED\x10\x02\x12$\n" +
+	" INCIDENT_RESTART_OUTCOME_STOPPED\x10\x03\x12#\n" +
+	"\x1fINCIDENT_RESTART_OUTCOME_FAILED\x10\x042\xd5\x02\n" +
 	"\x0fIncidentService\x12`\n" +
 	"\vGetIncident\x12&.workos.incident.v1.GetIncidentRequest\x1a'.workos.incident.v1.GetIncidentResponse\"\x00\x12f\n" +
 	"\rListIncidents\x12(.workos.incident.v1.ListIncidentsRequest\x1a).workos.incident.v1.ListIncidentsResponse\"\x00\x12x\n" +
@@ -656,45 +890,52 @@ func file_workos_incident_v1_incident_proto_rawDescGZIP() []byte {
 	return file_workos_incident_v1_incident_proto_rawDescData
 }
 
-var file_workos_incident_v1_incident_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
+var file_workos_incident_v1_incident_proto_enumTypes = make([]protoimpl.EnumInfo, 4)
 var file_workos_incident_v1_incident_proto_msgTypes = make([]protoimpl.MessageInfo, 8)
 var file_workos_incident_v1_incident_proto_goTypes = []any{
 	(IncidentSeverity)(0),               // 0: workos.incident.v1.IncidentSeverity
 	(IncidentState)(0),                  // 1: workos.incident.v1.IncidentState
-	(*EvidenceRef)(nil),                 // 2: workos.incident.v1.EvidenceRef
-	(*Incident)(nil),                    // 3: workos.incident.v1.Incident
-	(*GetIncidentRequest)(nil),          // 4: workos.incident.v1.GetIncidentRequest
-	(*ListIncidentsRequest)(nil),        // 5: workos.incident.v1.ListIncidentsRequest
-	(*ListIncidentsResponse)(nil),       // 6: workos.incident.v1.ListIncidentsResponse
-	(*AcknowledgeIncidentRequest)(nil),  // 7: workos.incident.v1.AcknowledgeIncidentRequest
-	(*GetIncidentResponse)(nil),         // 8: workos.incident.v1.GetIncidentResponse
-	(*AcknowledgeIncidentResponse)(nil), // 9: workos.incident.v1.AcknowledgeIncidentResponse
-	(*timestamppb.Timestamp)(nil),       // 10: google.protobuf.Timestamp
-	(*v1.PageRequest)(nil),              // 11: workos.common.v1.PageRequest
-	(*v1.PageResponse)(nil),             // 12: workos.common.v1.PageResponse
+	(IncidentViolation)(0),              // 2: workos.incident.v1.IncidentViolation
+	(IncidentRestartOutcome)(0),         // 3: workos.incident.v1.IncidentRestartOutcome
+	(*EvidenceRef)(nil),                 // 4: workos.incident.v1.EvidenceRef
+	(*Incident)(nil),                    // 5: workos.incident.v1.Incident
+	(*GetIncidentRequest)(nil),          // 6: workos.incident.v1.GetIncidentRequest
+	(*ListIncidentsRequest)(nil),        // 7: workos.incident.v1.ListIncidentsRequest
+	(*ListIncidentsResponse)(nil),       // 8: workos.incident.v1.ListIncidentsResponse
+	(*AcknowledgeIncidentRequest)(nil),  // 9: workos.incident.v1.AcknowledgeIncidentRequest
+	(*GetIncidentResponse)(nil),         // 10: workos.incident.v1.GetIncidentResponse
+	(*AcknowledgeIncidentResponse)(nil), // 11: workos.incident.v1.AcknowledgeIncidentResponse
+	(*timestamppb.Timestamp)(nil),       // 12: google.protobuf.Timestamp
+	(*v1.PageRequest)(nil),              // 13: workos.common.v1.PageRequest
+	(*v1.PageResponse)(nil),             // 14: workos.common.v1.PageResponse
 }
 var file_workos_incident_v1_incident_proto_depIdxs = []int32{
 	0,  // 0: workos.incident.v1.Incident.severity:type_name -> workos.incident.v1.IncidentSeverity
 	1,  // 1: workos.incident.v1.Incident.state:type_name -> workos.incident.v1.IncidentState
-	2,  // 2: workos.incident.v1.Incident.evidence:type_name -> workos.incident.v1.EvidenceRef
-	10, // 3: workos.incident.v1.Incident.created_at:type_name -> google.protobuf.Timestamp
-	10, // 4: workos.incident.v1.Incident.updated_at:type_name -> google.protobuf.Timestamp
-	11, // 5: workos.incident.v1.ListIncidentsRequest.page:type_name -> workos.common.v1.PageRequest
-	3,  // 6: workos.incident.v1.ListIncidentsResponse.incidents:type_name -> workos.incident.v1.Incident
-	12, // 7: workos.incident.v1.ListIncidentsResponse.page:type_name -> workos.common.v1.PageResponse
-	3,  // 8: workos.incident.v1.GetIncidentResponse.incident:type_name -> workos.incident.v1.Incident
-	3,  // 9: workos.incident.v1.AcknowledgeIncidentResponse.incident:type_name -> workos.incident.v1.Incident
-	4,  // 10: workos.incident.v1.IncidentService.GetIncident:input_type -> workos.incident.v1.GetIncidentRequest
-	5,  // 11: workos.incident.v1.IncidentService.ListIncidents:input_type -> workos.incident.v1.ListIncidentsRequest
-	7,  // 12: workos.incident.v1.IncidentService.AcknowledgeIncident:input_type -> workos.incident.v1.AcknowledgeIncidentRequest
-	8,  // 13: workos.incident.v1.IncidentService.GetIncident:output_type -> workos.incident.v1.GetIncidentResponse
-	6,  // 14: workos.incident.v1.IncidentService.ListIncidents:output_type -> workos.incident.v1.ListIncidentsResponse
-	9,  // 15: workos.incident.v1.IncidentService.AcknowledgeIncident:output_type -> workos.incident.v1.AcknowledgeIncidentResponse
-	13, // [13:16] is the sub-list for method output_type
-	10, // [10:13] is the sub-list for method input_type
-	10, // [10:10] is the sub-list for extension type_name
-	10, // [10:10] is the sub-list for extension extendee
-	0,  // [0:10] is the sub-list for field type_name
+	4,  // 2: workos.incident.v1.Incident.evidence:type_name -> workos.incident.v1.EvidenceRef
+	12, // 3: workos.incident.v1.Incident.created_at:type_name -> google.protobuf.Timestamp
+	12, // 4: workos.incident.v1.Incident.updated_at:type_name -> google.protobuf.Timestamp
+	2,  // 5: workos.incident.v1.Incident.violation:type_name -> workos.incident.v1.IncidentViolation
+	12, // 6: workos.incident.v1.Incident.acknowledged_at:type_name -> google.protobuf.Timestamp
+	12, // 7: workos.incident.v1.Incident.mitigated_at:type_name -> google.protobuf.Timestamp
+	12, // 8: workos.incident.v1.Incident.resolved_at:type_name -> google.protobuf.Timestamp
+	3,  // 9: workos.incident.v1.Incident.restart_outcome:type_name -> workos.incident.v1.IncidentRestartOutcome
+	13, // 10: workos.incident.v1.ListIncidentsRequest.page:type_name -> workos.common.v1.PageRequest
+	5,  // 11: workos.incident.v1.ListIncidentsResponse.incidents:type_name -> workos.incident.v1.Incident
+	14, // 12: workos.incident.v1.ListIncidentsResponse.page:type_name -> workos.common.v1.PageResponse
+	5,  // 13: workos.incident.v1.GetIncidentResponse.incident:type_name -> workos.incident.v1.Incident
+	5,  // 14: workos.incident.v1.AcknowledgeIncidentResponse.incident:type_name -> workos.incident.v1.Incident
+	6,  // 15: workos.incident.v1.IncidentService.GetIncident:input_type -> workos.incident.v1.GetIncidentRequest
+	7,  // 16: workos.incident.v1.IncidentService.ListIncidents:input_type -> workos.incident.v1.ListIncidentsRequest
+	9,  // 17: workos.incident.v1.IncidentService.AcknowledgeIncident:input_type -> workos.incident.v1.AcknowledgeIncidentRequest
+	10, // 18: workos.incident.v1.IncidentService.GetIncident:output_type -> workos.incident.v1.GetIncidentResponse
+	8,  // 19: workos.incident.v1.IncidentService.ListIncidents:output_type -> workos.incident.v1.ListIncidentsResponse
+	11, // 20: workos.incident.v1.IncidentService.AcknowledgeIncident:output_type -> workos.incident.v1.AcknowledgeIncidentResponse
+	18, // [18:21] is the sub-list for method output_type
+	15, // [15:18] is the sub-list for method input_type
+	15, // [15:15] is the sub-list for extension type_name
+	15, // [15:15] is the sub-list for extension extendee
+	0,  // [0:15] is the sub-list for field type_name
 }
 
 func init() { file_workos_incident_v1_incident_proto_init() }
@@ -707,7 +948,7 @@ func file_workos_incident_v1_incident_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_workos_incident_v1_incident_proto_rawDesc), len(file_workos_incident_v1_incident_proto_rawDesc)),
-			NumEnums:      2,
+			NumEnums:      4,
 			NumMessages:   8,
 			NumExtensions: 0,
 			NumServices:   1,

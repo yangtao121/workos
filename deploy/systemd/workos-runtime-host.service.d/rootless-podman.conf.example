@@ -1,0 +1,31 @@
+# Reviewed, runtime-host-only drop-in for the supervised rootless Podman
+# workload runner (ADR-0006). Install as
+# /etc/systemd/system/workos-runtime-host.service.d/rootless-podman.conf and
+# review against the host before enabling. NO other WorkOS unit may include
+# this file: the template's hardening stays in force for every other
+# process.
+#
+# Preconditions on the host (kernel/host policy, not unit settings):
+#   * cgroup v2 unified hierarchy with the memory/cpu/pids controllers
+#     available (`stat -fc %T /sys/fs/cgroup` -> cgroup2fs);
+#   * unprivileged user namespaces permitted for the service user;
+#   * rootless podman installed for the service user (no rootful daemon,
+#     no docker socket, no privileged podman-in-docker).
+
+[Service]
+# Rootless podman stores per-user image/container state under
+# XDG_DATA_HOME/XDG_RUNTIME_DIR. The unit template blocks $HOME
+# (ProtectHome=yes), so redirect both onto StateDirectory/RuntimeDirectory
+# owned by the service user. No host path outside these directories is
+# writable by the container workload.
+StateDirectory=workos-runtime
+RuntimeDirectory=workos-runtime
+RuntimeDirectoryPreserve=yes
+Environment=XDG_DATA_HOME=/var/lib/workos-runtime
+Environment=XDG_RUNTIME_DIR=/run/workos-runtime
+Environment=XDG_CONFIG_HOME=/etc/workos
+# Reading the delegated cgroup subtree (the runtime verifies cpu.max /
+# memory.high / memory.max / pids.max after start) keeps the cgroup
+# namespace readable; the template's ProtectControlGroups=yes already
+# mounts it read-only, which is exactly the required access. Nothing here
+# grants control-group control beyond the host's delegation.

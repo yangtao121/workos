@@ -14,7 +14,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file workos/incident/v1/incident.proto.
  */
 export const file_workos_incident_v1_incident: GenFile = /*@__PURE__*/
-  fileDesc("CiF3b3Jrb3MvaW5jaWRlbnQvdjEvaW5jaWRlbnQucHJvdG8SEndvcmtvcy5pbmNpZGVudC52MSI4CgtFdmlkZW5jZVJlZhIMCgR0eXBlGAEgASgJEgsKA3JlZhgCIAEoCRIOCgZkaWdlc3QYAyABKAki4AIKCEluY2lkZW50EgoKAmlkGAEgASgJEhMKC3dvcmtsb2FkX2lkGAIgASgJEhIKCnByb2plY3RfaWQYAyABKAkSNgoIc2V2ZXJpdHkYBCABKA4yJC53b3Jrb3MuaW5jaWRlbnQudjEuSW5jaWRlbnRTZXZlcml0eRIwCgVzdGF0ZRgFIAEoDjIhLndvcmtvcy5pbmNpZGVudC52MS5JbmNpZGVudFN0YXRlEhEKCXBvbGljeV9pZBgGIAEoCRIPCgdzdW1tYXJ5GAcgASgJEjEKCGV2aWRlbmNlGAggAygLMh8ud29ya29zLmluY2lkZW50LnYxLkV2aWRlbmNlUmVmEi4KCmNyZWF0ZWRfYXQYCSABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wEi4KCnVwZGF0ZWRfYXQYCiABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wIikKEkdldEluY2lkZW50UmVxdWVzdBITCgtpbmNpZGVudF9pZBgBIAEoCSJXChRMaXN0SW5jaWRlbnRzUmVxdWVzdBISCgpwcm9qZWN0X2lkGAEgASgJEisKBHBhZ2UYAiABKAsyHS53b3Jrb3MuY29tbW9uLnYxLlBhZ2VSZXF1ZXN0InYKFUxpc3RJbmNpZGVudHNSZXNwb25zZRIvCglpbmNpZGVudHMYASADKAsyHC53b3Jrb3MuaW5jaWRlbnQudjEuSW5jaWRlbnQSLAoEcGFnZRgCIAEoCzIeLndvcmtvcy5jb21tb24udjEuUGFnZVJlc3BvbnNlIjEKGkFja25vd2xlZGdlSW5jaWRlbnRSZXF1ZXN0EhMKC2luY2lkZW50X2lkGAEgASgJIkUKE0dldEluY2lkZW50UmVzcG9uc2USLgoIaW5jaWRlbnQYASABKAsyHC53b3Jrb3MuaW5jaWRlbnQudjEuSW5jaWRlbnQiTQobQWNrbm93bGVkZ2VJbmNpZGVudFJlc3BvbnNlEi4KCGluY2lkZW50GAEgASgLMhwud29ya29zLmluY2lkZW50LnYxLkluY2lkZW50KpABChBJbmNpZGVudFNldmVyaXR5EiEKHUlOQ0lERU5UX1NFVkVSSVRZX1VOU1BFQ0lGSUVEEAASGgoWSU5DSURFTlRfU0VWRVJJVFlfSU5GTxABEh0KGUlOQ0lERU5UX1NFVkVSSVRZX1dBUk5JTkcQAhIeChpJTkNJREVOVF9TRVZFUklUWV9DUklUSUNBTBADKqEBCg1JbmNpZGVudFN0YXRlEh4KGklOQ0lERU5UX1NUQVRFX1VOU1BFQ0lGSUVEEAASFwoTSU5DSURFTlRfU1RBVEVfT1BFThABEhwKGElOQ0lERU5UX1NUQVRFX01JVElHQVRFRBACEhwKGElOQ0lERU5UX1NUQVRFX1JFUEFJUklORxADEhsKF0lOQ0lERU5UX1NUQVRFX1JFU09MVkVEEAQy1QIKD0luY2lkZW50U2VydmljZRJgCgtHZXRJbmNpZGVudBImLndvcmtvcy5pbmNpZGVudC52MS5HZXRJbmNpZGVudFJlcXVlc3QaJy53b3Jrb3MuaW5jaWRlbnQudjEuR2V0SW5jaWRlbnRSZXNwb25zZSIAEmYKDUxpc3RJbmNpZGVudHMSKC53b3Jrb3MuaW5jaWRlbnQudjEuTGlzdEluY2lkZW50c1JlcXVlc3QaKS53b3Jrb3MuaW5jaWRlbnQudjEuTGlzdEluY2lkZW50c1Jlc3BvbnNlIgASeAoTQWNrbm93bGVkZ2VJbmNpZGVudBIuLndvcmtvcy5pbmNpZGVudC52MS5BY2tub3dsZWRnZUluY2lkZW50UmVxdWVzdBovLndvcmtvcy5pbmNpZGVudC52MS5BY2tub3dsZWRnZUluY2lkZW50UmVzcG9uc2UiAEJDWkFnaXRodWIuY29tL3lhbmd0YW8xMjEvd29ya29zL2dlbi9nby93b3Jrb3MvaW5jaWRlbnQvdjE7aW5jaWRlbnR2MWIGcHJvdG8z", [file_google_protobuf_timestamp, file_workos_common_v1_common]);
+  fileDesc("CiF3b3Jrb3MvaW5jaWRlbnQvdjEvaW5jaWRlbnQucHJvdG8SEndvcmtvcy5pbmNpZGVudC52MSI4CgtFdmlkZW5jZVJlZhIMCgR0eXBlGAEgASgJEgsKA3JlZhgCIAEoCRIOCgZkaWdlc3QYAyABKAki5gUKCEluY2lkZW50EgoKAmlkGAEgASgJEhMKC3dvcmtsb2FkX2lkGAIgASgJEhIKCnByb2plY3RfaWQYAyABKAkSNgoIc2V2ZXJpdHkYBCABKA4yJC53b3Jrb3MuaW5jaWRlbnQudjEuSW5jaWRlbnRTZXZlcml0eRIwCgVzdGF0ZRgFIAEoDjIhLndvcmtvcy5pbmNpZGVudC52MS5JbmNpZGVudFN0YXRlEhEKCXBvbGljeV9pZBgGIAEoCRIPCgdzdW1tYXJ5GAcgASgJEjEKCGV2aWRlbmNlGAggAygLMh8ud29ya29zLmluY2lkZW50LnYxLkV2aWRlbmNlUmVmEi4KCmNyZWF0ZWRfYXQYCSABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wEi4KCnVwZGF0ZWRfYXQYCiABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wEhUKDW93bmVyX3VzZXJfaWQYCyABKAkSFwoPYXBwX2luc3RhbmNlX2lkGAwgASgJEg4KBmFwcF9pZBgNIAEoCRI4Cgl2aW9sYXRpb24YDiABKA4yJS53b3Jrb3MuaW5jaWRlbnQudjEuSW5jaWRlbnRWaW9sYXRpb24SGwoTd29ya2xvYWRfZ2VuZXJhdGlvbhgPIAEoAxIQCghyZXZpc2lvbhgQIAEoAxIzCg9hY2tub3dsZWRnZWRfYXQYESABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wEjAKDG1pdGlnYXRlZF9hdBgSIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXASLwoLcmVzb2x2ZWRfYXQYEyABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wEkMKD3Jlc3RhcnRfb3V0Y29tZRgUIAEoDjIqLndvcmtvcy5pbmNpZGVudC52MS5JbmNpZGVudFJlc3RhcnRPdXRjb21lIikKEkdldEluY2lkZW50UmVxdWVzdBITCgtpbmNpZGVudF9pZBgBIAEoCSJXChRMaXN0SW5jaWRlbnRzUmVxdWVzdBISCgpwcm9qZWN0X2lkGAEgASgJEisKBHBhZ2UYAiABKAsyHS53b3Jrb3MuY29tbW9uLnYxLlBhZ2VSZXF1ZXN0InYKFUxpc3RJbmNpZGVudHNSZXNwb25zZRIvCglpbmNpZGVudHMYASADKAsyHC53b3Jrb3MuaW5jaWRlbnQudjEuSW5jaWRlbnQSLAoEcGFnZRgCIAEoCzIeLndvcmtvcy5jb21tb24udjEuUGFnZVJlc3BvbnNlIkoKGkFja25vd2xlZGdlSW5jaWRlbnRSZXF1ZXN0EhMKC2luY2lkZW50X2lkGAEgASgJEhcKD2lkZW1wb3RlbmN5X2tleRgCIAEoCSJFChNHZXRJbmNpZGVudFJlc3BvbnNlEi4KCGluY2lkZW50GAEgASgLMhwud29ya29zLmluY2lkZW50LnYxLkluY2lkZW50Ik0KG0Fja25vd2xlZGdlSW5jaWRlbnRSZXNwb25zZRIuCghpbmNpZGVudBgBIAEoCzIcLndvcmtvcy5pbmNpZGVudC52MS5JbmNpZGVudCqQAQoQSW5jaWRlbnRTZXZlcml0eRIhCh1JTkNJREVOVF9TRVZFUklUWV9VTlNQRUNJRklFRBAAEhoKFklOQ0lERU5UX1NFVkVSSVRZX0lORk8QARIdChlJTkNJREVOVF9TRVZFUklUWV9XQVJOSU5HEAISHgoaSU5DSURFTlRfU0VWRVJJVFlfQ1JJVElDQUwQAyqhAQoNSW5jaWRlbnRTdGF0ZRIeChpJTkNJREVOVF9TVEFURV9VTlNQRUNJRklFRBAAEhcKE0lOQ0lERU5UX1NUQVRFX09QRU4QARIcChhJTkNJREVOVF9TVEFURV9NSVRJR0FURUQQAhIcChhJTkNJREVOVF9TVEFURV9SRVBBSVJJTkcQAxIbChdJTkNJREVOVF9TVEFURV9SRVNPTFZFRBAEKvUBChFJbmNpZGVudFZpb2xhdGlvbhIiCh5JTkNJREVOVF9WSU9MQVRJT05fVU5TUEVDSUZJRUQQABImCiJJTkNJREVOVF9WSU9MQVRJT05fVU5FWFBFQ1RFRF9FWElUEAESJQohSU5DSURFTlRfVklPTEFUSU9OX0hFQUxUSF9GQUlMVVJFEAISGgoWSU5DSURFTlRfVklPTEFUSU9OX09PTRADEiEKHUlOQ0lERU5UX1ZJT0xBVElPTl9QSURTX0xJTUlUEAQSLgoqSU5DSURFTlRfVklPTEFUSU9OX1JFU1RBUlRfTElNSVRfRVhIQVVTVEVEEAUq2wEKFkluY2lkZW50UmVzdGFydE91dGNvbWUSKAokSU5DSURFTlRfUkVTVEFSVF9PVVRDT01FX1VOU1BFQ0lGSUVEEAASJAogSU5DSURFTlRfUkVTVEFSVF9PVVRDT01FX1BFTkRJTkcQARImCiJJTkNJREVOVF9SRVNUQVJUX09VVENPTUVfUkVTVEFSVEVEEAISJAogSU5DSURFTlRfUkVTVEFSVF9PVVRDT01FX1NUT1BQRUQQAxIjCh9JTkNJREVOVF9SRVNUQVJUX09VVENPTUVfRkFJTEVEEAQy1QIKD0luY2lkZW50U2VydmljZRJgCgtHZXRJbmNpZGVudBImLndvcmtvcy5pbmNpZGVudC52MS5HZXRJbmNpZGVudFJlcXVlc3QaJy53b3Jrb3MuaW5jaWRlbnQudjEuR2V0SW5jaWRlbnRSZXNwb25zZSIAEmYKDUxpc3RJbmNpZGVudHMSKC53b3Jrb3MuaW5jaWRlbnQudjEuTGlzdEluY2lkZW50c1JlcXVlc3QaKS53b3Jrb3MuaW5jaWRlbnQudjEuTGlzdEluY2lkZW50c1Jlc3BvbnNlIgASeAoTQWNrbm93bGVkZ2VJbmNpZGVudBIuLndvcmtvcy5pbmNpZGVudC52MS5BY2tub3dsZWRnZUluY2lkZW50UmVxdWVzdBovLndvcmtvcy5pbmNpZGVudC52MS5BY2tub3dsZWRnZUluY2lkZW50UmVzcG9uc2UiAEJDWkFnaXRodWIuY29tL3lhbmd0YW8xMjEvd29ya29zL2dlbi9nby93b3Jrb3MvaW5jaWRlbnQvdjE7aW5jaWRlbnR2MWIGcHJvdG8z", [file_google_protobuf_timestamp, file_workos_common_v1_common]);
 
 /**
  * @generated from message workos.incident.v1.EvidenceRef
@@ -78,6 +78,9 @@ export type Incident = Message<"workos.incident.v1.Incident"> & {
   policyId: string;
 
   /**
+   * summary is a fixed short phrase mapped from the violation enum; raw
+   * engine output, HTTP bodies, logs, and user content never enter it.
+   *
    * @generated from field: string summary = 7;
    */
   summary: string;
@@ -96,6 +99,61 @@ export type Incident = Message<"workos.incident.v1.Incident"> & {
    * @generated from field: google.protobuf.Timestamp updated_at = 10;
    */
   updatedAt?: Timestamp | undefined;
+
+  /**
+   * Owner scope and durable supervision facts (additive, ADR-0006).
+   *
+   * @generated from field: string owner_user_id = 11;
+   */
+  ownerUserId: string;
+
+  /**
+   * @generated from field: string app_instance_id = 12;
+   */
+  appInstanceId: string;
+
+  /**
+   * @generated from field: string app_id = 13;
+   */
+  appId: string;
+
+  /**
+   * @generated from field: workos.incident.v1.IncidentViolation violation = 14;
+   */
+  violation: IncidentViolation;
+
+  /**
+   * @generated from field: int64 workload_generation = 15;
+   */
+  workloadGeneration: bigint;
+
+  /**
+   * Monotonic revision of this incident row; every persisted state change
+   * increments it. Clients use it as an etag on acknowledge.
+   *
+   * @generated from field: int64 revision = 16;
+   */
+  revision: bigint;
+
+  /**
+   * @generated from field: google.protobuf.Timestamp acknowledged_at = 17;
+   */
+  acknowledgedAt?: Timestamp | undefined;
+
+  /**
+   * @generated from field: google.protobuf.Timestamp mitigated_at = 18;
+   */
+  mitigatedAt?: Timestamp | undefined;
+
+  /**
+   * @generated from field: google.protobuf.Timestamp resolved_at = 19;
+   */
+  resolvedAt?: Timestamp | undefined;
+
+  /**
+   * @generated from field: workos.incident.v1.IncidentRestartOutcome restart_outcome = 20;
+   */
+  restartOutcome: IncidentRestartOutcome;
 };
 
 /**
@@ -174,6 +232,15 @@ export type AcknowledgeIncidentRequest = Message<"workos.incident.v1.Acknowledge
    * @generated from field: string incident_id = 1;
    */
   incidentId: string;
+
+  /**
+   * Durable idempotency key for this external write. Same key replays the
+   * first decision; acknowledge marks the incident reviewed by its owner and
+   * never claims the fault is repaired.
+   *
+   * @generated from field: string idempotency_key = 2;
+   */
+  idempotencyKey: string;
 };
 
 /**
@@ -283,6 +350,83 @@ export enum IncidentState {
  */
 export const IncidentStateSchema: GenEnum<IncidentState> = /*@__PURE__*/
   enumDesc(file_workos_incident_v1_incident, 1);
+
+/**
+ * @generated from enum workos.incident.v1.IncidentViolation
+ */
+export enum IncidentViolation {
+  /**
+   * @generated from enum value: INCIDENT_VIOLATION_UNSPECIFIED = 0;
+   */
+  UNSPECIFIED = 0,
+
+  /**
+   * @generated from enum value: INCIDENT_VIOLATION_UNEXPECTED_EXIT = 1;
+   */
+  UNEXPECTED_EXIT = 1,
+
+  /**
+   * @generated from enum value: INCIDENT_VIOLATION_HEALTH_FAILURE = 2;
+   */
+  HEALTH_FAILURE = 2,
+
+  /**
+   * @generated from enum value: INCIDENT_VIOLATION_OOM = 3;
+   */
+  OOM = 3,
+
+  /**
+   * @generated from enum value: INCIDENT_VIOLATION_PIDS_LIMIT = 4;
+   */
+  PIDS_LIMIT = 4,
+
+  /**
+   * @generated from enum value: INCIDENT_VIOLATION_RESTART_LIMIT_EXHAUSTED = 5;
+   */
+  RESTART_LIMIT_EXHAUSTED = 5,
+}
+
+/**
+ * Describes the enum workos.incident.v1.IncidentViolation.
+ */
+export const IncidentViolationSchema: GenEnum<IncidentViolation> = /*@__PURE__*/
+  enumDesc(file_workos_incident_v1_incident, 2);
+
+/**
+ * @generated from enum workos.incident.v1.IncidentRestartOutcome
+ */
+export enum IncidentRestartOutcome {
+  /**
+   * @generated from enum value: INCIDENT_RESTART_OUTCOME_UNSPECIFIED = 0;
+   */
+  UNSPECIFIED = 0,
+
+  /**
+   * @generated from enum value: INCIDENT_RESTART_OUTCOME_PENDING = 1;
+   */
+  PENDING = 1,
+
+  /**
+   * @generated from enum value: INCIDENT_RESTART_OUTCOME_RESTARTED = 2;
+   */
+  RESTARTED = 2,
+
+  /**
+   * @generated from enum value: INCIDENT_RESTART_OUTCOME_STOPPED = 3;
+   */
+  STOPPED = 3,
+
+  /**
+   * @generated from enum value: INCIDENT_RESTART_OUTCOME_FAILED = 4;
+   */
+  FAILED = 4,
+}
+
+/**
+ * Describes the enum workos.incident.v1.IncidentRestartOutcome.
+ */
+export const IncidentRestartOutcomeSchema: GenEnum<IncidentRestartOutcome> = /*@__PURE__*/
+  enumDesc(file_workos_incident_v1_incident, 3);
 
 /**
  * @generated from service workos.incident.v1.IncidentService

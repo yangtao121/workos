@@ -8,6 +8,8 @@ import (
 	"math"
 	"sort"
 	"strconv"
+	"strings"
+	"unicode/utf8"
 )
 
 // Scope is the manifest deployment scope. `system` exists in the canonical
@@ -62,6 +64,7 @@ type Manifest struct {
 	Permissions   []string
 	RuntimeType   string
 	WebBundle     *WebBundleRef
+	Container     *ContainerLaunch
 	CanonicalJSON []byte
 	Digest        string
 }
@@ -231,4 +234,267 @@ func appendCanonical(buffer []byte, value any, depth int) ([]byte, error) {
 	default:
 		return nil, fmt.Errorf("value of type %T is not JSON-compatible", value)
 	}
+}
+
+// RuntimeTypeContainer marks manifests whose surface is served from a
+// digest-pinned OCI image by the runtime host's supervised rootless engine.
+// The container profile is strict: see ParseContainerLaunch and the validator's
+// container policy (ADR-0006).
+const RuntimeTypeContainer = "container"
+
+// ContainerResourcePolicy is the App's requested resource policy. Every value
+// is a request, never an authorization: the runtime adjudicates it against
+// server-owned maxima (ADR-0006 §2) and persists the effective policy.
+type ContainerResourcePolicy struct {
+	CPUHardCores float64
+	MemoryHighMB int64
+	MemoryMaxMB  int64
+	PidsMax      int64
+}
+
+// ContainerHealthPolicy is the App's requested health policy.
+type ContainerHealthPolicy struct {
+	HTTPPath       string
+	StartupSeconds int64
+	RestartLimit   int64
+}
+
+// ContainerLaunch is the launch descriptor a container manifest pins: the
+// exact digest-pinned image reference, the bounded argv, the container port,
+// and the requested resource/health policies. The digest is part of the
+// canonical manifest bytes, so the manifest digest covers every field here.
+type ContainerLaunch struct {
+	Image     string
+	Command   []string
+	Port      int64
+	Resources ContainerResourcePolicy
+	Health    ContainerHealthPolicy
+}
+
+// ParseContainerLaunch extracts the container launch descriptor from canonical
+// manifest bytes. It is the trusted internal read used when resolving
+// installed instances; it re-validates every grammar so a stored manifest that
+// violates its own profile is reported as corrupt (ok=false) instead of being
+// launched. Unsupported runtime types are also ok=false.
+func ParseContainerLaunch(canonical []byte) (ContainerLaunch, bool) {
+	var document struct {
+		Runtime struct {
+			Type    string   `json:"type"`
+			Image   string   `json:"image"`
+			Command []string `json:"command"`
+			Port    int64    `json:"port"`
+		} `json:"runtime"`
+		Resources struct {
+			CPUHardCores float64 `json:"cpuHard"`
+			MemoryHighMB int64   `json:"memoryHighMb"`
+			MemoryMaxMB  int64   `json:"memoryMaxMb"`
+			PidsMax      int64   `json:"pidsMax"`
+		} `json:"resources"`
+		Health struct {
+			HTTPPath       string `json:"httpPath"`
+			StartupSeconds int64  `json:"startupSeconds"`
+			RestartLimit   int64  `json:"restartLimit"`
+		} `json:"health"`
+	}
+	if err := json.Unmarshal(canonical, &document); err != nil {
+		return ContainerLaunch{}, false
+	}
+	if document.Runtime.Type != RuntimeTypeContainer {
+		return ContainerLaunch{}, false
+	}
+	if !ValidContainerImage(document.Runtime.Image) {
+		return ContainerLaunch{}, false
+	}
+	if !ValidContainerCommand(document.Runtime.Command) {
+		return ContainerLaunch{}, false
+	}
+	if document.Runtime.Port < 1 || document.Runtime.Port > 65535 {
+		return ContainerLaunch{}, false
+	}
+	resources := ContainerResourcePolicy{
+		CPUHardCores: document.Resources.CPUHardCores,
+		MemoryHighMB: document.Resources.MemoryHighMB,
+		MemoryMaxMB:  document.Resources.MemoryMaxMB,
+		PidsMax:      document.Resources.PidsMax,
+	}
+	health := ContainerHealthPolicy{
+		HTTPPath:       document.Health.HTTPPath,
+		StartupSeconds: document.Health.StartupSeconds,
+		RestartLimit:   document.Health.RestartLimit,
+	}
+	if !ValidContainerResourcePolicy(resources) || !ValidContainerHealthPolicy(health) {
+		return ContainerLaunch{}, false
+	}
+	return ContainerLaunch{
+		Image:     document.Runtime.Image,
+		Command:   document.Runtime.Command,
+		Port:      document.Runtime.Port,
+		Resources: resources,
+		Health:    health,
+	}, true
+}
+
+// Container policy bounds. These mirror the validator's cross-field rules and
+// are re-checked at parse time so a stored canonical manifest that violates
+// its own profile can never resolve (ADR-0006 §2). cpuHardCores is decimal;
+// every other quantity is an integer in its manifest field.
+const (
+	MinCPUHardCores    = 0.1
+	MaxCPUHardCores    = 4.0
+	MinMemoryHighMB    = 16
+	MaxMemoryHighMB    = 1024
+	MinMemoryMaxMB     = 32
+	MaxMemoryMaxMB     = 2048
+	MinPidsMax         = 8
+	MaxPidsMax         = 512
+	MinStartupSeconds  = 1
+	MaxStartupSeconds  = 120
+	MinRestartLimit    = 0
+	MaxRestartLimit    = 8
+	MaxCommandItems    = 16
+	MaxCommandArgRunes = 4096
+)
+
+// ValidContainerImage enforces the exact immutable reference grammar:
+// one "@sha256:" separator, a 64-character lowercase hex digest, a lowercase
+// registry/repository name with an optional numeric registry port, and never
+// a tag, credentials, or control characters. Tags are rejected outright: a
+// mutable tag may never masquerade as an immutable pin.
+func ValidContainerImage(value string) bool {
+	reference, digest, ok := strings.Cut(value, "@sha256:")
+	if !ok || reference == "" || len(digest) != 64 {
+		return false
+	}
+	for _, c := range []byte(digest) {
+		if (c < '0' || c > '9') && (c < 'a' || c > 'f') {
+			return false
+		}
+	}
+	if strings.Contains(reference, "@") {
+		// A second '@' can only be credential material (user:pass@host) or a
+		// second pin; both are rejected.
+		return false
+	}
+	host, path, hasPath := strings.Cut(reference, "/")
+	if host == "" {
+		return false
+	}
+	// The registry host may carry exactly one numeric port; the repository
+	// path may not carry colons (which would be a tag in OCI grammar).
+	if strings.Contains(path, ":") || strings.Contains(host, "@") {
+		return false
+	}
+	if !validContainerHost(host) {
+		return false
+	}
+	if hasPath {
+		for _, component := range strings.Split(path, "/") {
+			if !validContainerPathComponent(component) {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+func validContainerHost(host string) bool {
+	hostOnly, port, hasPort := strings.Cut(host, ":")
+	if hostOnly == "" {
+		return false
+	}
+	for index := 0; index < len(hostOnly); index++ {
+		c := hostOnly[index]
+		if (c < 'a' || c > 'z') && (c < '0' || c > '9') && c != '.' && c != '-' && (c != '_' || index == 0) {
+			return false
+		}
+	}
+	if !hasPort {
+		return true
+	}
+	if len(port) == 0 || len(port) > 5 {
+		return false
+	}
+	for index := 0; index < len(port); index++ {
+		if port[index] < '0' || port[index] > '9' {
+			return false
+		}
+	}
+	number, err := strconv.ParseUint(port, 10, 16)
+	return err == nil && number > 0
+}
+
+func validContainerPathComponent(component string) bool {
+	if component == "" || component == "." || component == ".." {
+		return false
+	}
+	for index := 0; index < len(component); index++ {
+		c := component[index]
+		if (c < 'a' || c > 'z') && (c < '0' || c > '9') && c != '.' && c != '-' && c != '_' {
+			return false
+		}
+	}
+	return true
+}
+
+// ValidContainerCommand enforces the bounded argv grammar: at least one and
+// at most MaxCommandItems arguments, each non-empty, bounded, valid UTF-8 and
+// control-character free. The engine is always invoked via argv, so shell
+// metacharacters are inert; a manifest "command string" cannot pass the
+// schema's array type in the first place.
+func ValidContainerCommand(command []string) bool {
+	if len(command) == 0 || len(command) > MaxCommandItems {
+		return false
+	}
+	for _, argument := range command {
+		if argument == "" || utf8.RuneCountInString(argument) > MaxCommandArgRunes {
+			return false
+		}
+		if !utf8.ValidString(argument) {
+			return false
+		}
+		for _, r := range argument {
+			if r < 0x20 || r == 0x7f || (r >= 0x80 && r <= 0x9f) {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+// ValidContainerResourcePolicy enforces the manifest-side policy shape: every
+// hard limit is finite and within the canonical bounds, and memory high never
+// exceeds memory max.
+func ValidContainerResourcePolicy(policy ContainerResourcePolicy) bool {
+	if policy.CPUHardCores < MinCPUHardCores || policy.CPUHardCores > MaxCPUHardCores ||
+		math.IsNaN(policy.CPUHardCores) || math.IsInf(policy.CPUHardCores, 0) {
+		return false
+	}
+	if policy.MemoryHighMB < MinMemoryHighMB || policy.MemoryHighMB > MaxMemoryHighMB {
+		return false
+	}
+	if policy.MemoryMaxMB < MinMemoryMaxMB || policy.MemoryMaxMB > MaxMemoryMaxMB {
+		return false
+	}
+	if policy.MemoryHighMB > policy.MemoryMaxMB {
+		return false
+	}
+	return policy.PidsMax >= MinPidsMax && policy.PidsMax <= MaxPidsMax
+}
+
+// ValidContainerHealthPolicy enforces the manifest-side health shape.
+func ValidContainerHealthPolicy(policy ContainerHealthPolicy) bool {
+	if len(policy.HTTPPath) == 0 || len(policy.HTTPPath) > 120 || policy.HTTPPath[0] != '/' {
+		return false
+	}
+	for index := 0; index < len(policy.HTTPPath); index++ {
+		c := policy.HTTPPath[index]
+		if (c < 'a' || c > 'z') && (c < 'A' || c > 'Z') && (c < '0' || c > '9') &&
+			c != '/' && c != '.' && c != '_' && c != '-' {
+			return false
+		}
+	}
+	if policy.StartupSeconds < MinStartupSeconds || policy.StartupSeconds > MaxStartupSeconds {
+		return false
+	}
+	return policy.RestartLimit >= MinRestartLimit && policy.RestartLimit <= MaxRestartLimit
 }

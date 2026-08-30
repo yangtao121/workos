@@ -20,7 +20,7 @@ NODE_RUN := docker run --rm $(USER_FLAGS) -e COREPACK_NPM_REGISTRY=$(NPM_REGISTR
 BUF_RUN := docker run --rm $(USER_FLAGS) $(MOUNT) $(BUF_IMAGE)
 SQLC_RUN := docker run --rm $(USER_FLAGS) -v $(CURDIR):/src -w /src $(SQLC_IMAGE)
 
-.PHONY: bootstrap generate docs check check-native proto-check go-check web-check test test-integration test-deepseek-fixture e2e-image test-e2e build web-build scaffold-module dev down logs clean
+.PHONY: bootstrap generate docs check check-native proto-check go-check web-check test test-integration test-deepseek-fixture e2e-image test-e2e test-podman-fixture build web-build scaffold-module dev down logs clean
 
 bootstrap:
 	@docker version >/dev/null
@@ -120,6 +120,22 @@ e2e-image:
 		--build-arg PLAYWRIGHT_VERSION=$(PLAYWRIGHT_VERSION) \
 		-t $(E2E_IMAGE) \
 		-f deploy/e2e/Dockerfile deploy/e2e
+
+# The opt-in REAL rootless Podman + cgroup v2 gate (ADR-0006). The test
+# binary and the fixture payload are compiled in the pinned toolchain
+# container, then EXECUTED ON THE HOST — podman, the user session, and the
+# delegated cgroup subtree live on the host, not inside a Go image. It fails
+# loudly — never silently passes — on hosts without podman.
+test-podman-fixture:
+	@command -v podman >/dev/null 2>&1 || { \
+		echo "test-podman-fixture: BLOCKED — podman is not available on this host."; \
+		echo "Install rootless podman (with unprivileged user namespaces and cgroup v2) and re-run."; \
+		exit 1; \
+	}
+	@set -eu; \
+		trap 'rm -f tmp/podmanfixture.test tmp/workos-web-fixture' EXIT HUP INT TERM; \
+		$(GO_RUN) sh -c 'go test -c -o tmp/podmanfixture.test -tags podmanfixture ./tests/podmanfixture && CGO_ENABLED=0 go build -o tmp/workos-web-fixture ./tests/podmanfixture/fixture'; \
+		WORKOS_PODMAN_FIXTURE_BINARY="$$(pwd)/tmp/workos-web-fixture" tmp/podmanfixture.test -test.v
 
 test-e2e: e2e-image
 	docker compose up -d --build postgres bootstrap workos-core harness-host runtime-host workos-gateway

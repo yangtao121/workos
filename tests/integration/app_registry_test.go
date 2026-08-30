@@ -29,18 +29,23 @@ version: %s
 scope: %s
 runtime:
   type: container
-  command: ["./serve"]
+  image: localhost/workos-integration-fixture@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+  command: ["/workos-integration-fixture", "serve"]
   port: 8080
 surfaces:
   - id: main
-    renderer: web-bundle
-    route: /app
+    renderer: web-service
+    route: /
 permissions: [artifact.read, agent.task.run]
 resources:
-  limits:
-    memory: 256
+  cpuHard: 1
+  memoryHighMb: 64
+  memoryMaxMb: 96
+  pidsMax: 32
 health:
-  interval: 30
+  httpPath: /health
+  startupSeconds: 10
+  restartLimit: 2
 maintainer:
   name: Integration
 `
@@ -584,31 +589,58 @@ func TestAppRegistryVerticalSlice(t *testing.T) {
 		// An exactly-full final page must not fabricate a token: walk with a
 		// page size that divides the total count exactly. The total is the
 		// walked size plus the padding needed to reach a multiple of the
-		// clamped page size.
-		total := len(seenAll)
-		if remainder := total % 100; remainder != 0 {
-			for index := 0; index < 100-remainder; index++ {
-				registerFixture(fmt.Sprintf("pad-%d-%03d", stamp, index), fmt.Sprintf("pad-%d-%03d", stamp, index))
-			}
-		}
-		token, fullPages := "", 0
-		var lastLen int
-		for {
-			page, err := apps.ListApps(ctx, connect.NewRequest(&appv1.ListAppsRequest{
-				Page: &commonv1.PageRequest{PageSize: 100, PageToken: token},
-			}))
-			if err != nil {
-				t.Fatalf("exact walk page %d: %v", fullPages, err)
-			}
-			lastLen = len(page.Msg.GetApps())
-			fullPages++
-			if page.Msg.GetPage().GetNextPageToken() == "" {
-				if lastLen != 100 {
-					t.Fatalf("padding must make the final page exactly full, got %d apps", lastLen)
+		// clamped page size. Sibling tests register fixtures on the shared
+		// acceptance volume concurrently, so one bounded re-pad + re-walk
+		// converges when a concurrent registration landed in between; the
+		// assertion itself never loosens.
+		for attempt := 0; attempt < 2; attempt++ {
+			walked := len(seenAll)
+			padStart := attempt * 100
+			if remainder := walked % 100; remainder != 0 {
+				for index := 0; index < 100-remainder; index++ {
+					registerFixture(fmt.Sprintf("pad-%d-%03d", stamp, padStart+index), fmt.Sprintf("pad-%d-%03d", stamp, padStart+index))
 				}
+			}
+			token, fullPages, lastLen := "", 0, 0
+			for {
+				page, err := apps.ListApps(ctx, connect.NewRequest(&appv1.ListAppsRequest{
+					Page: &commonv1.PageRequest{PageSize: 100, PageToken: token},
+				}))
+				if err != nil {
+					t.Fatalf("exact walk page %d: %v", fullPages, err)
+				}
+				lastLen = len(page.Msg.GetApps())
+				fullPages++
+				if page.Msg.GetPage().GetNextPageToken() == "" {
+					break
+				}
+				token = page.Msg.GetPage().GetNextPageToken()
+			}
+			if lastLen == 100 {
 				break
 			}
-			token = page.Msg.GetPage().GetNextPageToken()
+			if attempt == 1 {
+				t.Fatalf("padding must make the final page exactly full, got %d apps", lastLen)
+			}
+			// A concurrent registration moved the total: re-derive it from a
+			// fresh full walk, then re-pad once.
+			token = ""
+			seenAll = map[string]bool{}
+			for {
+				page, err := apps.ListApps(ctx, connect.NewRequest(&appv1.ListAppsRequest{
+					Page: &commonv1.PageRequest{PageSize: 100, PageToken: token},
+				}))
+				if err != nil {
+					t.Fatalf("recount walk page: %v", err)
+				}
+				for _, app := range page.Msg.GetApps() {
+					seenAll[app.GetId()] = true
+				}
+				if page.Msg.GetPage().GetNextPageToken() == "" {
+					break
+				}
+				token = page.Msg.GetPage().GetNextPageToken()
+			}
 		}
 
 		// Request-boundary rules: malformed cursors and identifiers are
@@ -722,16 +754,16 @@ func TestAppRegistryVerticalSlice(t *testing.T) {
 	})
 
 	t.Run("TrustBoundaryFailsClosed", func(t *testing.T) {
-		// The secret key is injected inside the existing resources block of a
-		// structurally valid manifest, so only the secret policy can reject.
+		// The secret key is injected inside the free-form maintainer block of
+		// a structurally valid manifest, so only the secret policy can reject.
 		secretManifest := strings.Replace(string(manifestFor(fmt.Sprintf("secret-%d", stamp), "Secret", "1.0.0", "user")),
-			"resources:\n  limits:\n    memory: 256",
-			"resources:\n  limits:\n    memory: 256\n  api_key: synthetic-not-a-real-value", 1)
+			"maintainer:\n  name: Integration",
+			"maintainer:\n  name: Integration\n  api_key: synthetic-not-a-real-value", 1)
 		// A synthetic prefixed-token-shaped string used as a mapping key hits
 		// the same credential-material policy from the key side.
 		credentialKeyManifest := strings.Replace(string(manifestFor(fmt.Sprintf("credkey-%d", stamp), "Credkey", "1.0.0", "user")),
-			"resources:\n  limits:\n    memory: 256",
-			"resources:\n  limits:\n    memory: 256\n  \"sk-zzzz0123456789abcdef\": 1", 1)
+			"maintainer:\n  name: Integration",
+			"maintainer:\n  name: Integration\n  \"sk-zzzz0123456789abcdef\": 1", 1)
 		deniedApps := []string{
 			fmt.Sprintf("secret-%d", stamp),
 			fmt.Sprintf("system-%d", stamp),

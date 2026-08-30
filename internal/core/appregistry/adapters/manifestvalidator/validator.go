@@ -356,6 +356,8 @@ func (v *Validator) policy(tree map[string]any, add func(path, message string)) 
 				add("/runtime/type", "runtime type 'trusted' requires a trusted installation path and cannot be self-registered")
 			case domain.RuntimeTypeWebBundle:
 				webBundlePolicy(runtime, tree, add)
+			case domain.RuntimeTypeContainer:
+				containerPolicy(runtime, tree, add)
 			}
 		}
 	}
@@ -411,6 +413,181 @@ func webBundlePolicy(runtime map[string]any, tree map[string]any, add func(path,
 	if renderer, _ := surface["renderer"].(string); renderer != "web-bundle" {
 		add("/surfaces/0/renderer", "runtime type 'web-bundle' only supports the 'web-bundle' renderer")
 	}
+}
+
+// containerPolicy enforces the cross-field rules of the strict container
+// launch profile (ADR-0006): the exact digest-pinned image reference and
+// bounded argv are required, web-bundle artifact fields are rejected, exactly
+// one web-service surface with the fixed root route may be declared, and the
+// requested resource/health policies must carry the canonical keys, integer
+// or decimal grammar, and limits. Requests are clamped later by the runtime's
+// server-owned maxima; the manifest side only fixes the vocabulary and shape
+// so an App cannot declare unbounded or unknown policy fields.
+func containerPolicy(runtime map[string]any, tree map[string]any, add func(path, message string)) {
+	image, hasImage := runtime["image"].(string)
+	if !hasImage || !domain.ValidContainerImage(image) {
+		add("/runtime/image", "runtime type 'container' requires an exact image reference pinned by a lowercase sha256 digest with no tag")
+	}
+	command, hasCommand := runtime["command"].([]any)
+	if !hasCommand {
+		add("/runtime/command", "runtime type 'container' requires a non-empty argv array")
+	} else {
+		arguments := make([]string, 0, len(command))
+		text := true
+		for _, item := range command {
+			argument, ok := item.(string)
+			if !ok {
+				text = false
+				break
+			}
+			arguments = append(arguments, argument)
+		}
+		if !text || !domain.ValidContainerCommand(arguments) {
+			add("/runtime/command", "runtime type 'container' requires a bounded non-empty argv array of control-free strings")
+		}
+	}
+	port, hasPort := runtime["port"]
+	if !hasPort {
+		add("/runtime/port", "runtime type 'container' requires a container port")
+	} else if _, ok := port.(int64); !ok {
+		add("/runtime/port", "runtime port must be an integer between 1 and 65535")
+	}
+	for _, field := range []string{"artifactId", "artifactDigest"} {
+		if _, present := runtime[field]; present {
+			add("/runtime/"+field, "runtime type 'container' does not allow web bundle artifact fields")
+		}
+	}
+	containerResourcePolicy(runtimeResources(tree), add)
+	containerHealthPolicy(treeHealth(tree), add)
+	containerSurfacePolicy(tree, add)
+}
+
+func runtimeResources(tree map[string]any) map[string]any {
+	resources, _ := tree["resources"].(map[string]any)
+	return resources
+}
+
+func treeHealth(tree map[string]any) map[string]any {
+	health, _ := tree["health"].(map[string]any)
+	return health
+}
+
+func containerResourcePolicy(resources map[string]any, add func(path, message string)) {
+	cpuValue, hasCPU := resources["cpuHard"]
+	highValue, hasHigh := resources["memoryHighMb"]
+	maxValue, hasMax := resources["memoryMaxMb"]
+	pidsValue, hasPids := resources["pidsMax"]
+	for _, key := range []string{"cpuSoft", "memoryExpectedMb", "cpuExpected", "gpu"} {
+		if _, present := resources[key]; present {
+			add("/resources/"+key, "resources must use the canonical container policy fields")
+		}
+	}
+	cpu, cpuOK := policyFloat(cpuValue)
+	if !hasCPU || !cpuOK || cpu < domain.MinCPUHardCores || cpu > domain.MaxCPUHardCores {
+		add("/resources/cpuHard", "resources require a finite cpuHard within the canonical bounds")
+	}
+	high, highOK := policyInteger(highValue)
+	maximum, maxOK := policyInteger(maxValue)
+	if !hasHigh || !highOK || high < domain.MinMemoryHighMB || high > domain.MaxMemoryHighMB {
+		add("/resources/memoryHighMb", "resources require an integer memoryHighMb within the canonical bounds")
+	}
+	if !hasMax || !maxOK || maximum < domain.MinMemoryMaxMB || maximum > domain.MaxMemoryMaxMB {
+		add("/resources/memoryMaxMb", "resources require an integer memoryMaxMb within the canonical bounds")
+	}
+	if highOK && maxOK && high > maximum {
+		add("/resources/memoryHighMb", "memoryHighMb must not exceed memoryMaxMb")
+	}
+	pids, pidsOK := policyInteger(pidsValue)
+	if !hasPids || !pidsOK || pids < domain.MinPidsMax || pids > domain.MaxPidsMax {
+		add("/resources/pidsMax", "resources require an integer pidsMax within the canonical bounds")
+	}
+	if err := extraKeys(resources, map[string]bool{"cpuHard": true, "memoryHighMb": true, "memoryMaxMb": true, "pidsMax": true}); err != "" {
+		add("/resources", err)
+	}
+}
+
+func containerHealthPolicy(health map[string]any, add func(path, message string)) {
+	pathValue, hasPath := health["httpPath"]
+	startupValue, hasStartup := health["startupSeconds"]
+	limitValue, hasLimit := health["restartLimit"]
+	httpPath, pathOK := pathValue.(string)
+	if !hasPath || !pathOK ||
+		len(httpPath) == 0 || len(httpPath) > 120 || httpPath[0] != '/' {
+		add("/health/httpPath", "health requires a bounded absolute httpPath")
+	} else {
+		for index := 0; index < len(httpPath); index++ {
+			c := httpPath[index]
+			if (c < 'a' || c > 'z') && (c < 'A' || c > 'Z') && (c < '0' || c > '9') &&
+				c != '/' && c != '.' && c != '_' && c != '-' {
+				add("/health/httpPath", "health httpPath must use plain unreserved path characters")
+				break
+			}
+		}
+	}
+	startup, startupOK := policyInteger(startupValue)
+	if !hasStartup || !startupOK || startup < domain.MinStartupSeconds || startup > domain.MaxStartupSeconds {
+		add("/health/startupSeconds", "health requires an integer startupSeconds within the canonical bounds")
+	}
+	limit, limitOK := policyInteger(limitValue)
+	if !hasLimit || !limitOK || limit < domain.MinRestartLimit || limit > domain.MaxRestartLimit {
+		add("/health/restartLimit", "health requires an integer restartLimit within the canonical bounds")
+	}
+	if err := extraKeys(health, map[string]bool{"httpPath": true, "startupSeconds": true, "restartLimit": true}); err != "" {
+		add("/health", err)
+	}
+}
+
+func containerSurfacePolicy(tree map[string]any, add func(path, message string)) {
+	surfaces, ok := tree["surfaces"].([]any)
+	if !ok || len(surfaces) != 1 {
+		add("/surfaces", "runtime type 'container' requires exactly one surface")
+		return
+	}
+	surface, ok := surfaces[0].(map[string]any)
+	if !ok {
+		add("/surfaces/0", "runtime type 'container' requires exactly one surface")
+		return
+	}
+	if renderer, _ := surface["renderer"].(string); renderer != "web-service" {
+		add("/surfaces/0/renderer", "runtime type 'container' only supports the 'web-service' renderer")
+	}
+	if route, _ := surface["route"].(string); route != "/" {
+		add("/surfaces/0/route", "runtime type 'container' fixes the web-service surface route to '/'")
+	}
+}
+
+// extraKeys returns a fixed message naming the policy object (never values)
+// when unknown keys are present; the runner can never silently ignore them.
+func extraKeys(object map[string]any, allowed map[string]bool) string {
+	for key := range object {
+		if !allowed[key] {
+			return "unknown policy fields are not allowed"
+		}
+	}
+	return ""
+}
+
+// policyFloat accepts int64 or float64 trees (YAML decimals and integers both
+// express a decimal limit) and reports the finite value.
+func policyFloat(value any) (float64, bool) {
+	switch typed := value.(type) {
+	case int64:
+		return float64(typed), true
+	case float64:
+		if math.IsNaN(typed) || math.IsInf(typed, 0) {
+			return 0, false
+		}
+		return typed, true
+	default:
+		return 0, false
+	}
+}
+
+// policyInteger accepts only true integers: the canonical expression of every
+// integral policy quantity. A YAML float (64.0) is rejected outright.
+func policyInteger(value any) (int64, bool) {
+	number, ok := value.(int64)
+	return number, ok
 }
 
 func scanSecrets(value any, path string, add func(path, message string)) {
@@ -509,9 +686,14 @@ func manifestFromTree(tree map[string]any, canonical []byte) domain.Manifest {
 		if runtimeType, ok := runtime["type"].(string); ok {
 			manifest.RuntimeType = runtimeType
 		}
-		if runtimeType, _ := runtime["type"].(string); runtimeType == domain.RuntimeTypeWebBundle {
+		switch runtimeType, _ := runtime["type"].(string); runtimeType {
+		case domain.RuntimeTypeWebBundle:
 			if ref, ok := domain.ParseWebBundleRef(canonical); ok {
 				manifest.WebBundle = &ref
+			}
+		case domain.RuntimeTypeContainer:
+			if launch, ok := domain.ParseContainerLaunch(canonical); ok {
+				manifest.Container = &launch
 			}
 		}
 	}

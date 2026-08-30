@@ -44,6 +44,9 @@ const (
 	// SurfaceLaunchResolverServiceReadWebBundleAssetProcedure is the fully-qualified name of the
 	// SurfaceLaunchResolverService's ReadWebBundleAsset RPC.
 	SurfaceLaunchResolverServiceReadWebBundleAssetProcedure = "/workos.surface.v1.SurfaceLaunchResolverService/ReadWebBundleAsset"
+	// SurfaceLaunchResolverServiceResolveSurfaceLaunchProcedure is the fully-qualified name of the
+	// SurfaceLaunchResolverService's ResolveSurfaceLaunch RPC.
+	SurfaceLaunchResolverServiceResolveSurfaceLaunchProcedure = "/workos.surface.v1.SurfaceLaunchResolverService/ResolveSurfaceLaunch"
 )
 
 // SurfaceLaunchResolverServiceClient is a client for the
@@ -51,6 +54,13 @@ const (
 type SurfaceLaunchResolverServiceClient interface {
 	ResolveWebBundle(context.Context, *connect.Request[v1.ResolveWebBundleRequest]) (*connect.Response[v1.ResolveWebBundleResponse], error)
 	ReadWebBundleAsset(context.Context, *connect.Request[v1.ReadWebBundleAssetRequest]) (*connect.Response[v1.ReadWebBundleAssetResponse], error)
+	// ResolveSurfaceLaunch is the generic renderer-neutral resolution: it
+	// returns the exact installed descriptor under a oneof so the runtime can
+	// select the supported renderer. Unknown/foreign/archived/uninstalled
+	// installations are NotFound; a stored canonical manifest that violates its
+	// own profile is sanitized Internal; a healthy but unsupported runtime is
+	// FailedPrecondition.
+	ResolveSurfaceLaunch(context.Context, *connect.Request[v1.ResolveSurfaceLaunchRequest]) (*connect.Response[v1.ResolveSurfaceLaunchResponse], error)
 }
 
 // NewSurfaceLaunchResolverServiceClient constructs a client for the
@@ -77,13 +87,20 @@ func NewSurfaceLaunchResolverServiceClient(httpClient connect.HTTPClient, baseUR
 			connect.WithSchema(surfaceLaunchResolverServiceMethods.ByName("ReadWebBundleAsset")),
 			connect.WithClientOptions(opts...),
 		),
+		resolveSurfaceLaunch: connect.NewClient[v1.ResolveSurfaceLaunchRequest, v1.ResolveSurfaceLaunchResponse](
+			httpClient,
+			baseURL+SurfaceLaunchResolverServiceResolveSurfaceLaunchProcedure,
+			connect.WithSchema(surfaceLaunchResolverServiceMethods.ByName("ResolveSurfaceLaunch")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
 // surfaceLaunchResolverServiceClient implements SurfaceLaunchResolverServiceClient.
 type surfaceLaunchResolverServiceClient struct {
-	resolveWebBundle   *connect.Client[v1.ResolveWebBundleRequest, v1.ResolveWebBundleResponse]
-	readWebBundleAsset *connect.Client[v1.ReadWebBundleAssetRequest, v1.ReadWebBundleAssetResponse]
+	resolveWebBundle     *connect.Client[v1.ResolveWebBundleRequest, v1.ResolveWebBundleResponse]
+	readWebBundleAsset   *connect.Client[v1.ReadWebBundleAssetRequest, v1.ReadWebBundleAssetResponse]
+	resolveSurfaceLaunch *connect.Client[v1.ResolveSurfaceLaunchRequest, v1.ResolveSurfaceLaunchResponse]
 }
 
 // ResolveWebBundle calls workos.surface.v1.SurfaceLaunchResolverService.ResolveWebBundle.
@@ -96,11 +113,23 @@ func (c *surfaceLaunchResolverServiceClient) ReadWebBundleAsset(ctx context.Cont
 	return c.readWebBundleAsset.CallUnary(ctx, req)
 }
 
+// ResolveSurfaceLaunch calls workos.surface.v1.SurfaceLaunchResolverService.ResolveSurfaceLaunch.
+func (c *surfaceLaunchResolverServiceClient) ResolveSurfaceLaunch(ctx context.Context, req *connect.Request[v1.ResolveSurfaceLaunchRequest]) (*connect.Response[v1.ResolveSurfaceLaunchResponse], error) {
+	return c.resolveSurfaceLaunch.CallUnary(ctx, req)
+}
+
 // SurfaceLaunchResolverServiceHandler is an implementation of the
 // workos.surface.v1.SurfaceLaunchResolverService service.
 type SurfaceLaunchResolverServiceHandler interface {
 	ResolveWebBundle(context.Context, *connect.Request[v1.ResolveWebBundleRequest]) (*connect.Response[v1.ResolveWebBundleResponse], error)
 	ReadWebBundleAsset(context.Context, *connect.Request[v1.ReadWebBundleAssetRequest]) (*connect.Response[v1.ReadWebBundleAssetResponse], error)
+	// ResolveSurfaceLaunch is the generic renderer-neutral resolution: it
+	// returns the exact installed descriptor under a oneof so the runtime can
+	// select the supported renderer. Unknown/foreign/archived/uninstalled
+	// installations are NotFound; a stored canonical manifest that violates its
+	// own profile is sanitized Internal; a healthy but unsupported runtime is
+	// FailedPrecondition.
+	ResolveSurfaceLaunch(context.Context, *connect.Request[v1.ResolveSurfaceLaunchRequest]) (*connect.Response[v1.ResolveSurfaceLaunchResponse], error)
 }
 
 // NewSurfaceLaunchResolverServiceHandler builds an HTTP handler from the service implementation. It
@@ -122,12 +151,20 @@ func NewSurfaceLaunchResolverServiceHandler(svc SurfaceLaunchResolverServiceHand
 		connect.WithSchema(surfaceLaunchResolverServiceMethods.ByName("ReadWebBundleAsset")),
 		connect.WithHandlerOptions(opts...),
 	)
+	surfaceLaunchResolverServiceResolveSurfaceLaunchHandler := connect.NewUnaryHandler(
+		SurfaceLaunchResolverServiceResolveSurfaceLaunchProcedure,
+		svc.ResolveSurfaceLaunch,
+		connect.WithSchema(surfaceLaunchResolverServiceMethods.ByName("ResolveSurfaceLaunch")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/workos.surface.v1.SurfaceLaunchResolverService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case SurfaceLaunchResolverServiceResolveWebBundleProcedure:
 			surfaceLaunchResolverServiceResolveWebBundleHandler.ServeHTTP(w, r)
 		case SurfaceLaunchResolverServiceReadWebBundleAssetProcedure:
 			surfaceLaunchResolverServiceReadWebBundleAssetHandler.ServeHTTP(w, r)
+		case SurfaceLaunchResolverServiceResolveSurfaceLaunchProcedure:
+			surfaceLaunchResolverServiceResolveSurfaceLaunchHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -143,4 +180,8 @@ func (UnimplementedSurfaceLaunchResolverServiceHandler) ResolveWebBundle(context
 
 func (UnimplementedSurfaceLaunchResolverServiceHandler) ReadWebBundleAsset(context.Context, *connect.Request[v1.ReadWebBundleAssetRequest]) (*connect.Response[v1.ReadWebBundleAssetResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("workos.surface.v1.SurfaceLaunchResolverService.ReadWebBundleAsset is not implemented"))
+}
+
+func (UnimplementedSurfaceLaunchResolverServiceHandler) ResolveSurfaceLaunch(context.Context, *connect.Request[v1.ResolveSurfaceLaunchRequest]) (*connect.Response[v1.ResolveSurfaceLaunchResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("workos.surface.v1.SurfaceLaunchResolverService.ResolveSurfaceLaunch is not implemented"))
 }
