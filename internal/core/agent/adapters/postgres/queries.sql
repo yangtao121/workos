@@ -70,6 +70,18 @@ WHERE stream_type = 'agent-task' AND stream_id = $1 AND sequence > $2
 ORDER BY sequence
 LIMIT $3;
 
+-- Replay verification for one Core-minted artifact publication. The
+-- coordinator supplies the exact immutable identity; this query never
+-- searches across task streams or treats an Artifact mapping as authority
+-- for Agent-owned event data.
+-- name: GetTaskPublicationEvent :one
+SELECT id, stream_id, sequence, event_type, payload, occurred_at
+FROM workos_events.events
+WHERE stream_type = 'agent-task'
+  AND id = sqlc.arg(event_id)::uuid
+  AND stream_id = sqlc.arg(task_id)::uuid
+  AND sequence = sqlc.arg(event_sequence);
+
 -- name: SelectTaskClaim :one
 SELECT o.aggregate_id
 FROM workos_events.outbox AS o
@@ -113,6 +125,14 @@ JOIN workos_core.agent_tasks AS t ON t.id = o.aggregate_id
 WHERE o.lease_id = $1 AND o.locked_by = $2 AND o.processed_at IS NULL AND o.locked_until >= $3
 FOR UPDATE OF o, t;
 
+-- name: LockTaskArtifactStream :one
+SELECT t.id, t.owner_user_id, t.project_id, t.input, t.last_event_sequence, t.state,
+       t.provider_id, t.created_at
+FROM workos_events.outbox AS o
+JOIN workos_core.agent_tasks AS t ON t.id = o.aggregate_id
+WHERE o.lease_id = $1 AND o.locked_by = $2 AND o.processed_at IS NULL AND o.locked_until >= $3
+FOR UPDATE OF o, t;
+
 -- name: AdvanceTaskState :exec
 UPDATE workos_core.agent_tasks
 SET state = sqlc.arg(state),
@@ -124,6 +144,13 @@ WHERE id = sqlc.arg(task_id);
 INSERT INTO workos_events.events (
     id, stream_type, stream_id, sequence, event_type, payload, occurred_at
 ) VALUES ($1, 'agent-task', $2, $3, $4, $5, $6);
+
+-- AdvanceTaskPublicationSequence moves only the Core-minted publication
+-- event's sequence forward; the task state itself never changes here.
+-- name: AdvanceTaskPublicationSequence :exec
+UPDATE workos_core.agent_tasks
+SET last_event_sequence = sqlc.arg(sequence), updated_at = sqlc.arg(updated_at)
+WHERE id = sqlc.arg(task_id);
 
 -- name: FinishTaskLease :execrows
 UPDATE workos_events.outbox AS o

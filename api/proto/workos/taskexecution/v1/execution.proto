@@ -5,6 +5,7 @@ package workos.taskexecution.v1;
 import "google/protobuf/duration.proto";
 import "google/protobuf/timestamp.proto";
 import "workos/agent/v1/agent.proto";
+import "workos/artifact/v1/artifact.proto";
 
 option go_package = "github.com/yangtao121/workos/gen/go/workos/taskexecution/v1;taskexecutionv1";
 
@@ -52,9 +53,62 @@ message FinishTaskLeaseRequest {
 
 message FinishTaskLeaseResponse {}
 
+// MarkdownArtifactContent is one provider-produced bounded canonical markdown
+// document. Content is untrusted provider output: Core normalizes (CRLF to
+// LF), bounds, and digests it; the provider never sends metadata beyond the
+// key, title, and typed content.
+message MarkdownArtifactContent {
+  bytes content = 1;
+}
+
+// UnifiedDiffArtifactContent is one provider-produced bounded canonical
+// unified diff. Paths, hunk headers, and line contents are untrusted inert
+// text; Core never applies patches.
+message UnifiedDiffArtifactContent {
+  bytes content = 1;
+}
+
+// TaskArtifactOutput is one private lease-bound artifact output. It carries
+// no owner, project, task, artifact ID, digest, creation time, event
+// sequence, or database state: Core derives every identity fact from the
+// active task lease alone.
+message TaskArtifactOutput {
+  // Stable within one task; adjudicates provider retries and lost responses.
+  string output_key = 1;
+  string title = 2;
+  oneof content {
+    MarkdownArtifactContent markdown = 3;
+    UnifiedDiffArtifactContent unified_diff = 4;
+  }
+}
+
+message AppendTaskArtifactRequest {
+  string lease_id = 1;
+  string worker_id = 2;
+  TaskArtifactOutput artifact = 3;
+}
+
+message AppendTaskArtifactResponse {
+  // artifact is the Core-minted immutable metadata projection of the
+  // persisted artifact; a replayed materialization returns the first one.
+  workos.artifact.v1.Artifact artifact = 1;
+  // event is the Core-minted, durably published ArtifactCreated timeline
+  // event; a replayed materialization returns the first published event and
+  // never publishes a second one.
+  workos.agent.v1.AgentEvent event = 2;
+}
+
 service TaskExecutionService {
   rpc ClaimTask(ClaimTaskRequest) returns (ClaimTaskResponse) {}
   rpc RenewTaskLease(RenewTaskLeaseRequest) returns (RenewTaskLeaseResponse) {}
   rpc AppendTaskEvent(AppendTaskEventRequest) returns (AppendTaskEventResponse) {}
   rpc FinishTaskLease(FinishTaskLeaseRequest) returns (FinishTaskLeaseResponse) {}
+  // AppendTaskArtifact materializes one provider artifact output under the
+  // active task lease: Core derives owner/project/task provenance from the
+  // lease, validates and canonicalizes the bounded content, adjudicates the
+  // durable (task, output key) identity, persists the immutable artifact,
+  // and publishes exactly one Core-minted ArtifactCreated timeline event —
+  // all in one transaction. Generic AppendTaskEvent must never be used to
+  // smuggle a provider-built ArtifactCreated reference.
+  rpc AppendTaskArtifact(AppendTaskArtifactRequest) returns (AppendTaskArtifactResponse) {}
 }

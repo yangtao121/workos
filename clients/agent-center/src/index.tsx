@@ -35,18 +35,47 @@ export function describeAgentEvent(event: AgentEvent): string {
   }
 }
 
-export function AgentTimeline({ events }: { events: AgentEvent[] }) {
+export function AgentTimeline({
+  events,
+  onOpenArtifact,
+}: {
+  events: AgentEvent[];
+  // When provided, Core-minted artifact events become accessible buttons.
+  // The handler re-fetches authoritative content through ArtifactService —
+  // the event reference itself is provenance, never the content source.
+  onOpenArtifact?: (artifactId: string) => void;
+}) {
   if (events.length === 0) {
     return <p className="empty-state">No task events yet.</p>;
   }
   return (
     <ol className="agent-timeline" aria-label="Agent task events">
-      {events.map((event) => (
-        <li key={event.id || event.sequence.toString()} data-event={event.event.case}>
-          <span>{event.sequence.toString().padStart(2, "0")}</span>
-          <p>{describeAgentEvent(event)}</p>
-        </li>
-      ))}
+      {events.map((event) => {
+        // Narrow once outside the click closure: the artifact id travels as
+        // provenance only, and the handler re-fetches authoritative content.
+        const artifactId =
+          event.event.case === "artifactCreated" ? event.event.value.artifactId : undefined;
+        const handler = artifactId !== "" && artifactId !== undefined ? onOpenArtifact : undefined;
+        return (
+          <li key={event.id || event.sequence.toString()} data-event={event.event.case}>
+            <span>{event.sequence.toString().padStart(2, "0")}</span>
+            {handler && artifactId !== undefined && artifactId !== "" ? (
+              <button
+                className="timeline-artifact"
+                type="button"
+                onClick={() => {
+                  handler(artifactId);
+                }}
+              >
+                {describeAgentEvent(event)}
+                <small>Open review</small>
+              </button>
+            ) : (
+              <p>{describeAgentEvent(event)}</p>
+            )}
+          </li>
+        );
+      })}
     </ol>
   );
 }

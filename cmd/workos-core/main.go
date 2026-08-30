@@ -10,7 +10,6 @@ import (
 	"github.com/yangtao121/workos/gen/go/workos/common/v1/commonv1connect"
 	"github.com/yangtao121/workos/gen/go/workos/harness/v1/harnessv1connect"
 	projectconnect "github.com/yangtao121/workos/gen/go/workos/project/v1/projectv1connect"
-	"github.com/yangtao121/workos/gen/go/workos/taskexecution/v1/taskexecutionv1connect"
 	agentpostgres "github.com/yangtao121/workos/internal/core/agent/adapters/postgres"
 	agentapp "github.com/yangtao121/workos/internal/core/agent/application"
 	agenttransport "github.com/yangtao121/workos/internal/core/agent/transport"
@@ -93,7 +92,33 @@ func run(logger *slog.Logger) error {
 
 	agentRepository := agentpostgres.New(pool)
 	agentService := agentapp.New(agentRepository, generator)
-	executionPath, executionHandler := taskexecutionv1connect.NewTaskExecutionServiceHandler(agenttransport.NewExecution(agentService))
+	artifactRepository := artifactpostgres.New(pool)
+	artifactService, err := artifactapp.New(artifactRepository, generator)
+	if err != nil {
+		return err
+	}
+	// Project-scoped review reads verify the project through the neutral
+	// scope port; the Artifact module never imports Project adapters or SQL.
+	artifactProjectScope, err := orchestration.NewArtifactProjectScope(projectService)
+	if err != nil {
+		return err
+	}
+	if _, err := artifactService.WithProjectScope(artifactProjectScope); err != nil {
+		return err
+	}
+	// The lease-bound materialization coordinator composes the Agent and
+	// Artifact modules through their transaction-scoped ports: one shared
+	// transaction adjudicates the provider output, persists the immutable
+	// artifact, and publishes exactly one Core-minted timeline event. Only
+	// harness-host reaches this private RPC; it never enters the gateway
+	// allowlist.
+	artifactMaterializer, err := orchestration.NewTaskArtifactMaterializer(
+		pool, agentRepository, artifactRepository, artifactService, generator,
+	)
+	if err != nil {
+		return err
+	}
+	executionPath, executionHandler := agenttransport.NewExecutionConnectHandler(agentService, artifactMaterializer)
 	mux.Handle(executionPath, executionHandler)
 
 	manifestValidator, err := manifestvalidator.New()
@@ -101,10 +126,6 @@ func run(logger *slog.Logger) error {
 		return err
 	}
 	projectDirectory, err := orchestration.NewProjectDirectory(projectService)
-	if err != nil {
-		return err
-	}
-	artifactService, err := artifactapp.New(artifactpostgres.New(pool), generator)
 	if err != nil {
 		return err
 	}

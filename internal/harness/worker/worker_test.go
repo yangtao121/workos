@@ -13,6 +13,7 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	agentv1 "github.com/yangtao121/workos/gen/go/workos/agent/v1"
+	artifactv1 "github.com/yangtao121/workos/gen/go/workos/artifact/v1"
 	commonv1 "github.com/yangtao121/workos/gen/go/workos/common/v1"
 	harnessv1 "github.com/yangtao121/workos/gen/go/workos/harness/v1"
 	taskv1 "github.com/yangtao121/workos/gen/go/workos/taskexecution/v1"
@@ -68,6 +69,39 @@ func (c *fakeCore) AppendTaskEvent(_ context.Context, req *connect.Request[taskv
 	return connect.NewResponse(&taskv1.AppendTaskEventResponse{StoredEvent: req.Msg.GetEvent()}), nil
 }
 
+func (c *fakeCore) AppendTaskArtifact(_ context.Context, req *connect.Request[taskv1.AppendTaskArtifactRequest]) (*connect.Response[taskv1.AppendTaskArtifactResponse], error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if remaining := c.appendFailures["artifact"]; remaining > 0 {
+		c.appendFailures["artifact"] = remaining - 1
+		return nil, connect.NewError(connect.CodeUnavailable, errors.New("artifact append temporarily failed"))
+	}
+	output := req.Msg.GetArtifact()
+	artifactID := "0198d7ea-0000-7000-8000-00000000abcd"
+	c.appended = append(c.appended, &agentv1.AgentEvent{
+		Id: artifactID, TaskId: req.Msg.GetLeaseId(), Sequence: int64(len(c.appended) + 1),
+		Event: &agentv1.AgentEvent_ArtifactCreated{ArtifactCreated: &agentv1.ArtifactCreated{
+			ArtifactId: artifactID, ArtifactType: artifactKind(output),
+		}},
+	})
+	return connect.NewResponse(&taskv1.AppendTaskArtifactResponse{
+		Artifact: &artifactv1.Artifact{Id: artifactID, Type: artifactKind(output)},
+		Event:    c.appended[len(c.appended)-1],
+	}), nil
+}
+
+// artifactKind names the output's oneof arm for test assertions.
+func artifactKind(output *taskv1.TaskArtifactOutput) string {
+	switch output.GetContent().(type) {
+	case *taskv1.TaskArtifactOutput_Markdown:
+		return "document.markdown.v1"
+	case *taskv1.TaskArtifactOutput_UnifiedDiff:
+		return "code.unified-diff.v1"
+	default:
+		return "unknown"
+	}
+}
+
 func (c *fakeCore) FinishTaskLease(context.Context, *connect.Request[taskv1.FinishTaskLeaseRequest]) (*connect.Response[taskv1.FinishTaskLeaseResponse], error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -109,7 +143,7 @@ func (blockingHarnessProvider) Describe() *harnessv1.HarnessProviderInfo {
 	return &harnessv1.HarnessProviderInfo{Id: "blocking", Health: commonv1.HealthState_HEALTH_STATE_HEALTHY}
 }
 
-func (blockingHarnessProvider) Run(ctx context.Context, _ string, _ *agentv1.AgentTaskInput, _ ports.Emit) error {
+func (blockingHarnessProvider) Run(ctx context.Context, _ string, _ *agentv1.AgentTaskInput, _ ports.Emit, _ ports.ArtifactSink) error {
 	<-ctx.Done()
 	return ctx.Err()
 }
@@ -127,7 +161,7 @@ func (completingProvider) Describe() *harnessv1.HarnessProviderInfo {
 	return &harnessv1.HarnessProviderInfo{Id: "completing", Health: commonv1.HealthState_HEALTH_STATE_HEALTHY}
 }
 
-func (completingProvider) Run(ctx context.Context, taskID string, input *agentv1.AgentTaskInput, emit ports.Emit) error {
+func (completingProvider) Run(ctx context.Context, taskID string, input *agentv1.AgentTaskInput, emit ports.Emit, _ ports.ArtifactSink) error {
 	if err := emit(&agentv1.AgentEvent{Event: &agentv1.AgentEvent_AssistantMessage{AssistantMessage: &agentv1.AssistantMessage{Text: "working"}}}); err != nil {
 		return err
 	}
@@ -142,7 +176,7 @@ func (stubbornHarnessProvider) Describe() *harnessv1.HarnessProviderInfo {
 	return &harnessv1.HarnessProviderInfo{Id: "stubborn", Health: commonv1.HealthState_HEALTH_STATE_HEALTHY}
 }
 
-func (stubbornHarnessProvider) Run(context.Context, string, *agentv1.AgentTaskInput, ports.Emit) error {
+func (stubbornHarnessProvider) Run(context.Context, string, *agentv1.AgentTaskInput, ports.Emit, ports.ArtifactSink) error {
 	<-neverClosed
 	return nil
 }
@@ -345,6 +379,119 @@ func TestWorkerHonoursOwnerCancellationWithoutSyntheticTerminal(t *testing.T) {
 		select {
 		case <-deadline:
 			t.Fatal("worker never stopped after owner cancellation")
+		case <-time.After(20 * time.Millisecond):
+		}
+	}
+}
+
+// artifactSkippingProvider completes without materializing the artifact
+// outputs its task requested — the run must fail closed at the terminal.
+type artifactSkippingProvider struct{}
+
+func (artifactSkippingProvider) Describe() *harnessv1.HarnessProviderInfo {
+	return &harnessv1.HarnessProviderInfo{Id: "skipping", Health: commonv1.HealthState_HEALTH_STATE_HEALTHY}
+}
+
+func (artifactSkippingProvider) Run(ctx context.Context, _ string, _ *agentv1.AgentTaskInput, emit ports.Emit, _ ports.ArtifactSink) error {
+	return emit(&agentv1.AgentEvent{Event: &agentv1.AgentEvent_RunCompleted{RunCompleted: &agentv1.RunCompleted{Summary: "done"}}})
+}
+
+// artifactEmittingProvider materializes the requested output, then completes.
+type artifactEmittingProvider struct{}
+
+func (artifactEmittingProvider) Describe() *harnessv1.HarnessProviderInfo {
+	return &harnessv1.HarnessProviderInfo{Id: "emitting", Health: commonv1.HealthState_HEALTH_STATE_HEALTHY}
+}
+
+func (artifactEmittingProvider) Run(ctx context.Context, _ string, _ *agentv1.AgentTaskInput, emit ports.Emit, artifacts ports.ArtifactSink) error {
+	if err := artifacts(ports.ArtifactOutput{Key: "document", Title: "Title", Type: "document.markdown.v1", Content: []byte("# hi\n")}); err != nil {
+		return err
+	}
+	return emit(&agentv1.AgentEvent{Event: &agentv1.AgentEvent_RunCompleted{RunCompleted: &agentv1.RunCompleted{Summary: "done"}}})
+}
+
+func TestWorkerMaterializesRequestedArtifactsBeforeTerminal(t *testing.T) {
+	t.Parallel()
+	core := &fakeCore{
+		lease: &taskv1.TaskLease{
+			LeaseId: "018f0000-0000-7000-8000-000000000005", WorkerId: "worker-test",
+			Task: &agentv1.AgentTask{
+				Id: "task-5", ProviderId: "emitting",
+				Input: &agentv1.AgentTaskInput{Goal: "g", OutputArtifactTypes: []string{"document.markdown.v1"}},
+			},
+			ExpiresAt: timestamppb.New(time.Now().Add(30 * time.Second)),
+		},
+	}
+	server := newWorkerTestServer(t, core)
+	worker := New("worker-test", server.URL, 20*time.Millisecond, broker.New(artifactEmittingProvider{}), slog.Default())
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go worker.Run(ctx)
+	deadline := time.After(5 * time.Second)
+	for {
+		core.mu.Lock()
+		completed, artifact := false, false
+		finished := core.finished
+		for _, event := range core.appended {
+			if event.GetRunCompleted() != nil {
+				completed = true
+			}
+			if event.GetArtifactCreated() != nil {
+				artifact = true
+			}
+		}
+		core.mu.Unlock()
+		if completed && artifact && finished == 1 {
+			return
+		}
+		select {
+		case <-deadline:
+			t.Fatalf("worker never completed the artifact run: completed=%v artifact=%v finished=%d", completed, artifact, finished)
+		case <-time.After(20 * time.Millisecond):
+		}
+	}
+}
+
+func TestWorkerFailsRunsThatSkipRequestedArtifacts(t *testing.T) {
+	t.Parallel()
+	core := &fakeCore{
+		lease: &taskv1.TaskLease{
+			LeaseId: "018f0000-0000-7000-8000-000000000006", WorkerId: "worker-test",
+			Task: &agentv1.AgentTask{
+				Id: "task-6", ProviderId: "skipping",
+				Input: &agentv1.AgentTaskInput{Goal: "g", OutputArtifactTypes: []string{"document.markdown.v1"}},
+			},
+			ExpiresAt: timestamppb.New(time.Now().Add(30 * time.Second)),
+		},
+	}
+	server := newWorkerTestServer(t, core)
+	worker := New("worker-test", server.URL, 20*time.Millisecond, broker.New(artifactSkippingProvider{}), slog.Default())
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go worker.Run(ctx)
+	deadline := time.After(5 * time.Second)
+	for {
+		core.mu.Lock()
+		var failed *agentv1.AgentEvent
+		finished := core.finished
+		for _, event := range core.appended {
+			if event.GetRunFailed() != nil {
+				failed = event
+			}
+			if event.GetRunCompleted() != nil {
+				failed = nil
+			}
+		}
+		core.mu.Unlock()
+		if failed != nil && finished == 1 {
+			if failed.GetRunFailed().GetReason() != "provider completed without materializing every requested artifact output" {
+				t.Fatalf("unexpected failure reason: %q", failed.GetRunFailed().GetReason())
+			}
+			return
+		}
+		select {
+		case <-deadline:
+			t.Fatalf("worker never failed the artifact-skipping run: failed=%v finished=%d", failed, finished)
 		case <-time.After(20 * time.Millisecond):
 		}
 	}

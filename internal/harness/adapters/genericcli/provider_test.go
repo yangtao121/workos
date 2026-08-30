@@ -19,7 +19,7 @@ func TestProviderAcceptsCanonicalNDJSON(t *testing.T) {
 	err := provider.Run(context.Background(), "task-1", &agentv1.AgentTaskInput{Goal: "hello"}, func(event *agentv1.AgentEvent) error {
 		events = append(events, event)
 		return nil
-	})
+	}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -39,7 +39,7 @@ func TestProviderRejectsMalformedAndIncompleteStreams(t *testing.T) {
 	} {
 		t.Run(test.mode, func(t *testing.T) {
 			provider := helperProvider(t, test.mode, time.Second*time.Duration(helperTimeoutScale))
-			err := provider.Run(context.Background(), "task-1", &agentv1.AgentTaskInput{Goal: "hello"}, func(*agentv1.AgentEvent) error { return nil })
+			err := provider.Run(context.Background(), "task-1", &agentv1.AgentTaskInput{Goal: "hello"}, func(*agentv1.AgentEvent) error { return nil }, nil)
 			if err == nil || !strings.Contains(err.Error(), test.want) {
 				t.Fatalf("expected %q error, got %v", test.want, err)
 			}
@@ -49,7 +49,7 @@ func TestProviderRejectsMalformedAndIncompleteStreams(t *testing.T) {
 
 func TestProviderEnforcesTimeout(t *testing.T) {
 	provider := helperProvider(t, "timeout", 25*time.Millisecond)
-	err := provider.Run(context.Background(), "task-1", &agentv1.AgentTaskInput{}, func(*agentv1.AgentEvent) error { return nil })
+	err := provider.Run(context.Background(), "task-1", &agentv1.AgentTaskInput{}, func(*agentv1.AgentEvent) error { return nil }, nil)
 	if err == nil || !strings.Contains(err.Error(), "context deadline exceeded") {
 		t.Fatalf("expected deadline error, got %v", err)
 	}

@@ -37,6 +37,11 @@ type Capabilities struct {
 	// them before any queue or reservation.
 	MaxOutputTokens   int64
 	MaxRuntimeSeconds int64
+	// StructuredArtifacts may only be true when SupportedArtifactTypes is
+	// non-empty and names the exact canonical artifact types the adapter
+	// demonstrably produces (ADR-0008). Any bool/list drift is capability
+	// corruption, never "all types": the catalog surfaces it as unavailable.
+	SupportedArtifactTypes []string
 }
 
 type Provider struct {

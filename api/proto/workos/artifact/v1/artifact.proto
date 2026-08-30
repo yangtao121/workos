@@ -18,6 +18,12 @@ message Artifact {
   google.protobuf.Timestamp created_at = 8;
   int64 total_size_bytes = 9;
   int32 file_count = 10;
+  // Review subtype provenance only: the Core-derived source task of a
+  // project review artifact (document.markdown.v1 / code.unified-diff.v1).
+  // Web bundle artifacts leave it and project_id empty. It is provenance
+  // metadata, never an authorization token: every read stays owner/project
+  // scoped and the source task UUID alone grants nothing.
+  string source_task_id = 11;
 }
 
 // WebBundleFile is one regular file of a web bundle upload. The path is an
@@ -69,8 +75,48 @@ message GetArtifactResponse {
   Artifact artifact = 1;
 }
 
+// ReviewArtifactContent carries one review subtype's exact canonical content.
+// The media type is server-derived from the stored canonical type; a client
+// can never choose or override it.
+message ReviewArtifactContent {
+  // MarkdownReviewContent is the exact canonical UTF-8 content of a
+  // document.markdown.v1 artifact.
+  message Markdown {
+    string media_type = 1;
+    bytes content = 2;
+  }
+
+  // UnifiedDiff is the exact canonical UTF-8 content of a
+  // code.unified-diff.v1 artifact.
+  message UnifiedDiff {
+    string media_type = 1;
+    bytes content = 2;
+  }
+
+  oneof content {
+    Markdown markdown = 1;
+    UnifiedDiff unified_diff = 2;
+  }
+}
+
+message GetReviewArtifactRequest {
+  string artifact_id = 1;
+}
+
+message GetReviewArtifactResponse {
+  // artifact is the authoritative sanitized metadata projection.
+  Artifact artifact = 1;
+  // content is present only for review subtypes; web bundle artifacts are
+  // never reviewable and fail closed without disclosing bundle bytes.
+  ReviewArtifactContent content = 2;
+}
+
 service ArtifactService {
   rpc CreateArtifact(CreateArtifactRequest) returns (CreateArtifactResponse) {}
   rpc GetArtifact(GetArtifactRequest) returns (GetArtifactResponse) {}
   rpc ListArtifacts(ListArtifactsRequest) returns (ListArtifactsResponse) {}
+  // GetReviewArtifact returns one review artifact's authoritative metadata
+  // and exact canonical content for the authenticated owner. It never serves
+  // web bundle bytes and never accepts client-chosen media types.
+  rpc GetReviewArtifact(GetReviewArtifactRequest) returns (GetReviewArtifactResponse) {}
 }

@@ -15,6 +15,8 @@ import (
 	"github.com/yangtao121/workos/internal/core/agent/application"
 	"github.com/yangtao121/workos/internal/core/agent/domain"
 	"github.com/yangtao121/workos/internal/core/agent/ports"
+	artifactdomain "github.com/yangtao121/workos/internal/core/artifact/domain"
+	artifactports "github.com/yangtao121/workos/internal/core/artifact/ports"
 	"github.com/yangtao121/workos/internal/platform/identity"
 )
 
@@ -41,6 +43,7 @@ func (h *Handler) SubmitTask(ctx context.Context, req *connect.Request[agentv1.S
 		return nil, connect.NewError(connect.CodeInvalidArgument, domain.ErrInvalid)
 	}
 	projectID := ""
+	global := false
 	switch scope := input.TargetScope.Scope.(type) {
 	case *agentv1.TargetScope_ProjectId:
 		projectID = scope.ProjectId
@@ -48,20 +51,55 @@ func (h *Handler) SubmitTask(ctx context.Context, req *connect.Request[agentv1.S
 		if !scope.Global {
 			return nil, connect.NewError(connect.CodeInvalidArgument, domain.ErrInvalid)
 		}
+		global = true
 	default:
 		return nil, connect.NewError(connect.CodeInvalidArgument, domain.ErrInvalid)
+	}
+	outputTypes := input.GetOutputArtifactTypes()
+	if err := validateOutputArtifactTypes(outputTypes); err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, err)
+	}
+	if global && len(outputTypes) > 0 {
+		// Review artifacts are project-scoped facts; a global task cannot
+		// request project artifact outputs in this slice (ADR-0008).
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("global tasks cannot request project artifact outputs"))
 	}
 	payload, err := protojson.Marshal(input)
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, domain.ErrInvalid)
 	}
 	task, err := h.submitter.Submit(ctx, application.SubmitInput{
-		OwnerUserID: id.UserID, IdempotencyKey: req.Msg.GetIdempotencyKey(), ProjectID: projectID, Payload: payload,
+		OwnerUserID: id.UserID, IdempotencyKey: req.Msg.GetIdempotencyKey(), ProjectID: projectID,
+		Payload: payload, OutputArtifactTypes: outputTypes,
 	})
 	if err != nil {
 		return nil, mapError(err)
 	}
 	return connect.NewResponse(&agentv1.SubmitTaskResponse{Task: taskToProto(task)}), nil
+}
+
+// maxOutputArtifactTypes bounds one task's requested review outputs, matching
+// the materialization contract (ADR-0008).
+const maxOutputArtifactTypes = 2
+
+// validateOutputArtifactTypes enforces the request grammar before any
+// provider resolution or task creation: canonical types only, no duplicates,
+// at most two, request order preserved by construction.
+func validateOutputArtifactTypes(types []string) error {
+	if len(types) > maxOutputArtifactTypes {
+		return errors.New("at most two output artifact types may be requested")
+	}
+	seen := make(map[string]struct{}, len(types))
+	for _, artifactType := range types {
+		if !artifactdomain.IsReviewType(artifactType) {
+			return errors.New("output artifact types must be canonical review artifact types")
+		}
+		if _, duplicate := seen[artifactType]; duplicate {
+			return errors.New("output artifact types must not repeat")
+		}
+		seen[artifactType] = struct{}{}
+	}
+	return nil
 }
 
 func (h *Handler) GetTask(ctx context.Context, req *connect.Request[agentv1.GetTaskRequest]) (*connect.Response[agentv1.GetTaskResponse], error) {
@@ -200,6 +238,16 @@ func mapError(err error) error {
 		return connect.NewError(connect.CodeFailedPrecondition, err)
 	case errors.Is(err, domain.ErrQuotaExhausted), errors.Is(err, domain.ErrQuotaBreached):
 		return connect.NewError(connect.CodeResourceExhausted, err)
+	// Review materialization verdicts (ADR-0008): a different canonical
+	// output for an already-consumed (task, output key) is a stable,
+	// non-retryable conflict; stored artifact corruption is a sanitized
+	// Internal. Neither ever carries artifact content or storage detail.
+	case errors.Is(err, artifactdomain.ErrOutputConflict):
+		return connect.NewError(connect.CodeFailedPrecondition, errors.New("artifact output conflicts with an already-materialized output"))
+	case errors.Is(err, artifactdomain.ErrCorrupt):
+		return connect.NewError(connect.CodeInternal, errors.New("agent task operation failed"))
+	case errors.Is(err, artifactports.ErrStoreUnavailable):
+		return connect.NewError(connect.CodeUnavailable, errors.New("artifact store is temporarily unavailable"))
 	case errors.Is(err, ports.ErrStoreUnavailable):
 		return connect.NewError(connect.CodeUnavailable, errors.New("agent store is temporarily unavailable"))
 	default:

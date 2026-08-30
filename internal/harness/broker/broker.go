@@ -40,7 +40,7 @@ func (b *Broker) Describe() []*harnessv1.HarnessProviderInfo {
 	return result
 }
 
-func (b *Broker) Run(ctx context.Context, taskID, providerID string, input *agentv1.AgentTaskInput, emit ports.Emit) error {
+func (b *Broker) Run(ctx context.Context, taskID, providerID string, input *agentv1.AgentTaskInput, emit ports.Emit, artifacts ports.ArtifactSink) error {
 	b.mu.RLock()
 	provider, ok := b.providers[providerID]
 	b.mu.RUnlock()
@@ -69,7 +69,15 @@ func (b *Broker) Run(ctx context.Context, taskID, providerID string, input *agen
 		delete(b.runs, taskID)
 		b.mu.Unlock()
 	}()
-	return provider.Run(runCtx, taskID, input, emit)
+	if artifacts == nil {
+		// Execution surfaces without a lease-bound sink (the private
+		// HarnessHostService stream) can never materialize artifacts: a
+		// provider that tries fails closed instead of panicking.
+		artifacts = func(ports.ArtifactOutput) error {
+			return ports.NewRunError(ports.ErrorKindProtocol, "artifact materialization is not available on this execution path", false, nil)
+		}
+	}
+	return provider.Run(runCtx, taskID, input, emit, artifacts)
 }
 
 func (b *Broker) Cancel(taskID string) bool {

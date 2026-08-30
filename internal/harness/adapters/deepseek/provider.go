@@ -68,7 +68,10 @@ func (p *Provider) Describe() *harnessv1.HarnessProviderInfo {
 	}
 }
 
-func (p *Provider) Run(ctx context.Context, taskID string, input *agentv1.AgentTaskInput, emit ports.Emit) error {
+// Run keeps structured artifact support honestly unsupported: the sink is
+// ignored and prepareInput refuses any requested artifact type (ADR-0008).
+func (p *Provider) Run(ctx context.Context, taskID string, input *agentv1.AgentTaskInput, emit ports.Emit, artifacts ports.ArtifactSink) error {
+	_ = artifacts
 	if err := validateConfig(p.config); err != nil {
 		p.setHealth(commonv1.HealthState_HEALTH_STATE_UNAVAILABLE, err.Error())
 		return ports.NewRunError(ports.ErrorKindConfiguration, err.Error(), false, nil)

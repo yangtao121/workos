@@ -111,7 +111,7 @@ func TestProviderMapsOfficialRuntimeStreamInOrder(t *testing.T) {
 	}, func(event *agentv1.AgentEvent) error {
 		events = append(events, event)
 		return nil
-	})
+	}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -156,7 +156,7 @@ func TestProviderStopsImmediatelyWhenEmitFails(t *testing.T) {
 			return want
 		}
 		return nil
-	})
+	}, nil)
 	if !errors.Is(err, want) || time.Since(started) > time.Second {
 		t.Fatalf("emit failure was not returned promptly: %v", err)
 	}
@@ -168,7 +168,7 @@ func TestProviderCancellationAndDeadlineStopRuntime(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		result := make(chan error, 1)
 		go func() {
-			result <- provider.Run(ctx, "task-1", &agentv1.AgentTaskInput{Goal: "hello"}, func(*agentv1.AgentEvent) error { return nil })
+			result <- provider.Run(ctx, "task-1", &agentv1.AgentTaskInput{Goal: "hello"}, func(*agentv1.AgentEvent) error { return nil }, nil)
 		}()
 		time.Sleep(50 * time.Millisecond)
 		cancel()
@@ -187,7 +187,7 @@ func TestProviderCancellationAndDeadlineStopRuntime(t *testing.T) {
 		config.Timeout = time.Second
 		provider := New(config, fixedID("run-1"))
 		started := time.Now()
-		err := provider.Run(context.Background(), "task-1", &agentv1.AgentTaskInput{Goal: "hello"}, func(*agentv1.AgentEvent) error { return nil })
+		err := provider.Run(context.Background(), "task-1", &agentv1.AgentTaskInput{Goal: "hello"}, func(*agentv1.AgentEvent) error { return nil }, nil)
 		var runErr *ports.RunError
 		if !errors.As(err, &runErr) || runErr.Kind != ports.ErrorKindTimeout || !runErr.Retryable || time.Since(started) > 2*time.Second {
 			t.Fatalf("unexpected deadline result: %v", err)
@@ -202,7 +202,7 @@ func TestProviderRejectsUnsafeRuntimeOutput(t *testing.T) {
 	for _, mode := range []string{"malformed", "unknown-event", "unexpected-content", "early-eof", "oversized"} {
 		t.Run(mode, func(t *testing.T) {
 			provider := New(validConfig(t, mode), fixedID("run-1"))
-			err := provider.Run(context.Background(), "task-1", &agentv1.AgentTaskInput{Goal: "hello"}, func(*agentv1.AgentEvent) error { return nil })
+			err := provider.Run(context.Background(), "task-1", &agentv1.AgentTaskInput{Goal: "hello"}, func(*agentv1.AgentEvent) error { return nil }, nil)
 			if err == nil {
 				t.Fatal("expected runtime output to be rejected")
 			}
@@ -238,7 +238,7 @@ func TestProviderClassifiesFailuresAndHealth(t *testing.T) {
 	}
 
 	provider := New(validConfig(t, "auth-error"), fixedID("run-1"))
-	err := provider.Run(context.Background(), "task-1", &agentv1.AgentTaskInput{Goal: "hello"}, func(*agentv1.AgentEvent) error { return nil })
+	err := provider.Run(context.Background(), "task-1", &agentv1.AgentTaskInput{Goal: "hello"}, func(*agentv1.AgentEvent) error { return nil }, nil)
 	if reason, retryable := ports.FailureDetails(err); retryable || reason != "DeepSeek authentication failed" {
 		t.Fatalf("unexpected public failure: %q retryable=%v", reason, retryable)
 	}

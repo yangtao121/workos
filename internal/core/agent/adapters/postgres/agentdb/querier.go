@@ -11,6 +11,9 @@ import (
 )
 
 type Querier interface {
+	// AdvanceTaskPublicationSequence moves only the Core-minted publication
+	// event's sequence forward; the task state itself never changes here.
+	AdvanceTaskPublicationSequence(ctx context.Context, arg AdvanceTaskPublicationSequenceParams) error
 	AdvanceTaskState(ctx context.Context, arg AdvanceTaskStateParams) error
 	DecideAgentAppApproval(ctx context.Context, arg DecideAgentAppApprovalParams) (int64, error)
 	ExpirePendingApprovals(ctx context.Context, arg ExpirePendingApprovalsParams) ([]ExpirePendingApprovalsRow, error)
@@ -31,6 +34,11 @@ type Querier interface {
 	GetAgentTaskByIdempotency(ctx context.Context, arg GetAgentTaskByIdempotencyParams) (WorkosCoreAgentTask, error)
 	GetAgentTaskForUpdate(ctx context.Context, arg GetAgentTaskForUpdateParams) (WorkosCoreAgentTask, error)
 	GetAgentTaskUnscoped(ctx context.Context, id string) (WorkosCoreAgentTask, error)
+	// Replay verification for one Core-minted artifact publication. The
+	// coordinator supplies the exact immutable identity; this query never
+	// searches across task streams or treats an Artifact mapping as authority
+	// for Agent-owned event data.
+	GetTaskPublicationEvent(ctx context.Context, arg GetTaskPublicationEventParams) (GetTaskPublicationEventRow, error)
 	InsertAgentAppApproval(ctx context.Context, arg InsertAgentAppApprovalParams) (int64, error)
 	InsertAgentAppPolicyRequest(ctx context.Context, arg InsertAgentAppPolicyRequestParams) (int64, error)
 	InsertAgentAppTaskRequest(ctx context.Context, arg InsertAgentAppTaskRequestParams) (int64, error)
@@ -47,6 +55,7 @@ type Querier interface {
 	// first SetPolicy can never interleave between an approval-creation's policy
 	// read and its pending-approval insert.
 	LockAgentAppPolicyChain(ctx context.Context, arg LockAgentAppPolicyChainParams) error
+	LockTaskArtifactStream(ctx context.Context, arg LockTaskArtifactStreamParams) (LockTaskArtifactStreamRow, error)
 	LockTaskEventStream(ctx context.Context, arg LockTaskEventStreamParams) (LockTaskEventStreamRow, error)
 	MarkAgentAppUsageBreach(ctx context.Context, arg MarkAgentAppUsageBreachParams) error
 	MarkTaskCancelled(ctx context.Context, arg MarkTaskCancelledParams) error

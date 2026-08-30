@@ -3,6 +3,7 @@ package transport
 import (
 	"context"
 	"errors"
+	"net/http"
 	"time"
 
 	"connectrpc.com/connect"
@@ -11,15 +12,48 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	agentv1 "github.com/yangtao121/workos/gen/go/workos/agent/v1"
+	artifactv1 "github.com/yangtao121/workos/gen/go/workos/artifact/v1"
 	taskv1 "github.com/yangtao121/workos/gen/go/workos/taskexecution/v1"
+	"github.com/yangtao121/workos/gen/go/workos/taskexecution/v1/taskexecutionv1connect"
 	"github.com/yangtao121/workos/internal/core/agent/application"
 	"github.com/yangtao121/workos/internal/core/agent/domain"
 )
 
-type ExecutionHandler struct{ service *application.Service }
+// MaxExecutionRequestBytes bounds every private TaskExecutionService request
+// before the Connect stack decodes it. The legal artifact payload is at most
+// 512 KiB of canonical content; protojson inflates bytes 4/3 through base64
+// to ~683 KiB before keys and punctuation, so 768 KiB covers the legal
+// maximum with headroom while capping gzip-bomb and oversize decode work.
+// The library default is unlimited. The composition root applies this
+// constant when constructing the handler.
+const MaxExecutionRequestBytes = 768 * 1024
 
-func NewExecution(service *application.Service) *ExecutionHandler {
-	return &ExecutionHandler{service: service}
+// TaskArtifactMaterializer is the orchestration-provided lease-bound
+// materialization service. The handler defines the narrow contract it needs;
+// the composition layer implements it by coordinating the Agent and Artifact
+// modules inside one transaction.
+type TaskArtifactMaterializer interface {
+	MaterializeTaskArtifact(ctx context.Context, leaseID, workerID, outputKey, title, artifactType string, content []byte) (*artifactv1.Artifact, *agentv1.AgentEvent, error)
+}
+
+type ExecutionHandler struct {
+	service     *application.Service
+	materialize TaskArtifactMaterializer
+}
+
+func NewExecution(service *application.Service, materializer TaskArtifactMaterializer) *ExecutionHandler {
+	return &ExecutionHandler{service: service, materialize: materializer}
+}
+
+// NewExecutionConnectHandler is the single construction path for the private
+// TaskExecution service. Its decompressed request budget is enforced by
+// Connect before protobuf/JSON decoding and therefore before a materializer
+// can observe an oversized or compressed-bomb payload.
+func NewExecutionConnectHandler(service *application.Service, materializer TaskArtifactMaterializer) (string, http.Handler) {
+	return taskexecutionv1connect.NewTaskExecutionServiceHandler(
+		NewExecution(service, materializer),
+		connect.WithReadMaxBytes(MaxExecutionRequestBytes),
+	)
 }
 
 func (h *ExecutionHandler) ClaimTask(ctx context.Context, req *connect.Request[taskv1.ClaimTaskRequest]) (*connect.Response[taskv1.ClaimTaskResponse], error) {
@@ -47,6 +81,13 @@ func (h *ExecutionHandler) AppendTaskEvent(ctx context.Context, req *connect.Req
 	event := req.Msg.GetEvent()
 	if event == nil || event.Event == nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, domain.ErrInvalid)
+	}
+	// Fail closed: ArtifactCreated events are Core-minted facts published by
+	// AppendTaskArtifact from the verified artifact projection. A
+	// provider-built reference could name a foreign or nonexistent artifact
+	// without ever proving ownership, type, or existence.
+	if event.GetArtifactCreated() != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("artifact_created events are Core-minted via AppendTaskArtifact"))
 	}
 	event.Id, event.TaskId, event.Sequence, event.OccurredAt = "", "", 0, nil
 	eventType, state, providerID, runID := classifyEvent(event)
@@ -81,6 +122,38 @@ func (h *ExecutionHandler) FinishTaskLease(ctx context.Context, req *connect.Req
 		return nil, mapError(err)
 	}
 	return connect.NewResponse(&taskv1.FinishTaskLeaseResponse{}), nil
+}
+
+// AppendTaskArtifact materializes one provider artifact output under the
+// active task lease. The request carries only the output key, title, and
+// typed content — every identity fact is derived server-side from the lease.
+func (h *ExecutionHandler) AppendTaskArtifact(ctx context.Context, req *connect.Request[taskv1.AppendTaskArtifactRequest]) (*connect.Response[taskv1.AppendTaskArtifactResponse], error) {
+	output := req.Msg.GetArtifact()
+	if output == nil || output.Content == nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, domain.ErrInvalid)
+	}
+	var artifactType string
+	var content []byte
+	switch value := output.Content.(type) {
+	case *taskv1.TaskArtifactOutput_Markdown:
+		artifactType = "document.markdown.v1"
+		content = value.Markdown.GetContent()
+	case *taskv1.TaskArtifactOutput_UnifiedDiff:
+		artifactType = "code.unified-diff.v1"
+		content = value.UnifiedDiff.GetContent()
+	default:
+		return nil, connect.NewError(connect.CodeInvalidArgument, domain.ErrInvalid)
+	}
+	if h.materialize == nil {
+		return nil, connect.NewError(connect.CodeInternal, errors.New("task artifact materialization is not configured"))
+	}
+	artifact, event, err := h.materialize.MaterializeTaskArtifact(
+		ctx, req.Msg.GetLeaseId(), req.Msg.GetWorkerId(), output.GetOutputKey(), output.GetTitle(), artifactType, content,
+	)
+	if err != nil {
+		return nil, mapError(err)
+	}
+	return connect.NewResponse(&taskv1.AppendTaskArtifactResponse{Artifact: artifact, Event: event}), nil
 }
 
 func classifyEvent(event *agentv1.AgentEvent) (string, domain.State, string, string) {

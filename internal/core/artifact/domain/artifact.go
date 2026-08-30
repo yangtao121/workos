@@ -52,8 +52,11 @@ const (
 	MaxBundlePathBytes  = 240
 )
 
-// Artifact is the immutable owner-scoped bundle metadata fact. ContentRef is
-// an opaque server-generated reference that never exposes a filesystem path.
+// Artifact is the immutable owner-scoped metadata fact shared by both
+// implemented subtypes. ContentRef is an opaque server-generated reference
+// that never exposes a filesystem path; review artifacts carry no external
+// content reference and bind ProjectID/SourceTaskID instead, while web
+// bundles leave both empty.
 type Artifact struct {
 	ID             string
 	OwnerUserID    string
@@ -66,6 +69,8 @@ type Artifact struct {
 	FileCount      int
 	TotalSizeBytes int64
 	CreatedAt      time.Time
+	ProjectID      string
+	SourceTaskID   string
 }
 
 // BundleFile is one normalized bundle file: a safe relative POSIX path, the
@@ -350,7 +355,7 @@ func ValidArtifactTitle(value string) bool {
 	}
 	count := 0
 	for _, r := range value {
-		if r < 0x20 || r == 0x7f {
+		if r < 0x20 || r == 0x7f || (r >= 0x80 && r <= 0x9f) {
 			return false
 		}
 		count++

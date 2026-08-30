@@ -8,13 +8,15 @@ import type { Duration, Timestamp } from "@bufbuild/protobuf/wkt";
 import { file_google_protobuf_duration, file_google_protobuf_timestamp } from "@bufbuild/protobuf/wkt";
 import type { AgentEvent, AgentTask } from "../../agent/v1/agent_pb.js";
 import { file_workos_agent_v1_agent } from "../../agent/v1/agent_pb.js";
+import type { Artifact } from "../../artifact/v1/artifact_pb.js";
+import { file_workos_artifact_v1_artifact } from "../../artifact/v1/artifact_pb.js";
 import type { Message } from "@bufbuild/protobuf";
 
 /**
  * Describes the file workos/taskexecution/v1/execution.proto.
  */
 export const file_workos_taskexecution_v1_execution: GenFile = /*@__PURE__*/
-  fileDesc("Cid3b3Jrb3MvdGFza2V4ZWN1dGlvbi92MS9leGVjdXRpb24ucHJvdG8SF3dvcmtvcy50YXNrZXhlY3V0aW9uLnYxIooBCglUYXNrTGVhc2USEAoIbGVhc2VfaWQYASABKAkSEQoJd29ya2VyX2lkGAIgASgJEigKBHRhc2sYAyABKAsyGi53b3Jrb3MuYWdlbnQudjEuQWdlbnRUYXNrEi4KCmV4cGlyZXNfYXQYBCABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wIlgKEENsYWltVGFza1JlcXVlc3QSEQoJd29ya2VyX2lkGAEgASgJEjEKDmxlYXNlX2R1cmF0aW9uGAIgASgLMhkuZ29vZ2xlLnByb3RvYnVmLkR1cmF0aW9uIlUKEUNsYWltVGFza1Jlc3BvbnNlEjYKBWxlYXNlGAEgASgLMiIud29ya29zLnRhc2tleGVjdXRpb24udjEuVGFza0xlYXNlSACIAQFCCAoGX2xlYXNlIm8KFVJlbmV3VGFza0xlYXNlUmVxdWVzdBIQCghsZWFzZV9pZBgBIAEoCRIRCgl3b3JrZXJfaWQYAiABKAkSMQoObGVhc2VfZHVyYXRpb24YAyABKAsyGS5nb29nbGUucHJvdG9idWYuRHVyYXRpb24iaAoWUmVuZXdUYXNrTGVhc2VSZXNwb25zZRIuCgpleHBpcmVzX2F0GAEgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcBIeChZjYW5jZWxsYXRpb25fcmVxdWVzdGVkGAIgASgIImkKFkFwcGVuZFRhc2tFdmVudFJlcXVlc3QSEAoIbGVhc2VfaWQYASABKAkSEQoJd29ya2VyX2lkGAIgASgJEioKBWV2ZW50GAMgASgLMhsud29ya29zLmFnZW50LnYxLkFnZW50RXZlbnQiTAoXQXBwZW5kVGFza0V2ZW50UmVzcG9uc2USMQoMc3RvcmVkX2V2ZW50GAEgASgLMhsud29ya29zLmFnZW50LnYxLkFnZW50RXZlbnQiPQoWRmluaXNoVGFza0xlYXNlUmVxdWVzdBIQCghsZWFzZV9pZBgBIAEoCRIRCgl3b3JrZXJfaWQYAiABKAkiGQoXRmluaXNoVGFza0xlYXNlUmVzcG9uc2Uy4QMKFFRhc2tFeGVjdXRpb25TZXJ2aWNlEmQKCUNsYWltVGFzaxIpLndvcmtvcy50YXNrZXhlY3V0aW9uLnYxLkNsYWltVGFza1JlcXVlc3QaKi53b3Jrb3MudGFza2V4ZWN1dGlvbi52MS5DbGFpbVRhc2tSZXNwb25zZSIAEnMKDlJlbmV3VGFza0xlYXNlEi4ud29ya29zLnRhc2tleGVjdXRpb24udjEuUmVuZXdUYXNrTGVhc2VSZXF1ZXN0Gi8ud29ya29zLnRhc2tleGVjdXRpb24udjEuUmVuZXdUYXNrTGVhc2VSZXNwb25zZSIAEnYKD0FwcGVuZFRhc2tFdmVudBIvLndvcmtvcy50YXNrZXhlY3V0aW9uLnYxLkFwcGVuZFRhc2tFdmVudFJlcXVlc3QaMC53b3Jrb3MudGFza2V4ZWN1dGlvbi52MS5BcHBlbmRUYXNrRXZlbnRSZXNwb25zZSIAEnYKD0ZpbmlzaFRhc2tMZWFzZRIvLndvcmtvcy50YXNrZXhlY3V0aW9uLnYxLkZpbmlzaFRhc2tMZWFzZVJlcXVlc3QaMC53b3Jrb3MudGFza2V4ZWN1dGlvbi52MS5GaW5pc2hUYXNrTGVhc2VSZXNwb25zZSIAQk1aS2dpdGh1Yi5jb20veWFuZ3RhbzEyMS93b3Jrb3MvZ2VuL2dvL3dvcmtvcy90YXNrZXhlY3V0aW9uL3YxO3Rhc2tleGVjdXRpb252MWIGcHJvdG8z", [file_google_protobuf_duration, file_google_protobuf_timestamp, file_workos_agent_v1_agent]);
+  fileDesc("Cid3b3Jrb3MvdGFza2V4ZWN1dGlvbi92MS9leGVjdXRpb24ucHJvdG8SF3dvcmtvcy50YXNrZXhlY3V0aW9uLnYxIooBCglUYXNrTGVhc2USEAoIbGVhc2VfaWQYASABKAkSEQoJd29ya2VyX2lkGAIgASgJEigKBHRhc2sYAyABKAsyGi53b3Jrb3MuYWdlbnQudjEuQWdlbnRUYXNrEi4KCmV4cGlyZXNfYXQYBCABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wIlgKEENsYWltVGFza1JlcXVlc3QSEQoJd29ya2VyX2lkGAEgASgJEjEKDmxlYXNlX2R1cmF0aW9uGAIgASgLMhkuZ29vZ2xlLnByb3RvYnVmLkR1cmF0aW9uIlUKEUNsYWltVGFza1Jlc3BvbnNlEjYKBWxlYXNlGAEgASgLMiIud29ya29zLnRhc2tleGVjdXRpb24udjEuVGFza0xlYXNlSACIAQFCCAoGX2xlYXNlIm8KFVJlbmV3VGFza0xlYXNlUmVxdWVzdBIQCghsZWFzZV9pZBgBIAEoCRIRCgl3b3JrZXJfaWQYAiABKAkSMQoObGVhc2VfZHVyYXRpb24YAyABKAsyGS5nb29nbGUucHJvdG9idWYuRHVyYXRpb24iaAoWUmVuZXdUYXNrTGVhc2VSZXNwb25zZRIuCgpleHBpcmVzX2F0GAEgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcBIeChZjYW5jZWxsYXRpb25fcmVxdWVzdGVkGAIgASgIImkKFkFwcGVuZFRhc2tFdmVudFJlcXVlc3QSEAoIbGVhc2VfaWQYASABKAkSEQoJd29ya2VyX2lkGAIgASgJEioKBWV2ZW50GAMgASgLMhsud29ya29zLmFnZW50LnYxLkFnZW50RXZlbnQiTAoXQXBwZW5kVGFza0V2ZW50UmVzcG9uc2USMQoMc3RvcmVkX2V2ZW50GAEgASgLMhsud29ya29zLmFnZW50LnYxLkFnZW50RXZlbnQiPQoWRmluaXNoVGFza0xlYXNlUmVxdWVzdBIQCghsZWFzZV9pZBgBIAEoCRIRCgl3b3JrZXJfaWQYAiABKAkiGQoXRmluaXNoVGFza0xlYXNlUmVzcG9uc2UiKgoXTWFya2Rvd25BcnRpZmFjdENvbnRlbnQSDwoHY29udGVudBgBIAEoDCItChpVbmlmaWVkRGlmZkFydGlmYWN0Q29udGVudBIPCgdjb250ZW50GAEgASgMItUBChJUYXNrQXJ0aWZhY3RPdXRwdXQSEgoKb3V0cHV0X2tleRgBIAEoCRINCgV0aXRsZRgCIAEoCRJECghtYXJrZG93bhgDIAEoCzIwLndvcmtvcy50YXNrZXhlY3V0aW9uLnYxLk1hcmtkb3duQXJ0aWZhY3RDb250ZW50SAASSwoMdW5pZmllZF9kaWZmGAQgASgLMjMud29ya29zLnRhc2tleGVjdXRpb24udjEuVW5pZmllZERpZmZBcnRpZmFjdENvbnRlbnRIAEIJCgdjb250ZW50In8KGUFwcGVuZFRhc2tBcnRpZmFjdFJlcXVlc3QSEAoIbGVhc2VfaWQYASABKAkSEQoJd29ya2VyX2lkGAIgASgJEj0KCGFydGlmYWN0GAMgASgLMisud29ya29zLnRhc2tleGVjdXRpb24udjEuVGFza0FydGlmYWN0T3V0cHV0IngKGkFwcGVuZFRhc2tBcnRpZmFjdFJlc3BvbnNlEi4KCGFydGlmYWN0GAEgASgLMhwud29ya29zLmFydGlmYWN0LnYxLkFydGlmYWN0EioKBWV2ZW50GAIgASgLMhsud29ya29zLmFnZW50LnYxLkFnZW50RXZlbnQy4gQKFFRhc2tFeGVjdXRpb25TZXJ2aWNlEmQKCUNsYWltVGFzaxIpLndvcmtvcy50YXNrZXhlY3V0aW9uLnYxLkNsYWltVGFza1JlcXVlc3QaKi53b3Jrb3MudGFza2V4ZWN1dGlvbi52MS5DbGFpbVRhc2tSZXNwb25zZSIAEnMKDlJlbmV3VGFza0xlYXNlEi4ud29ya29zLnRhc2tleGVjdXRpb24udjEuUmVuZXdUYXNrTGVhc2VSZXF1ZXN0Gi8ud29ya29zLnRhc2tleGVjdXRpb24udjEuUmVuZXdUYXNrTGVhc2VSZXNwb25zZSIAEnYKD0FwcGVuZFRhc2tFdmVudBIvLndvcmtvcy50YXNrZXhlY3V0aW9uLnYxLkFwcGVuZFRhc2tFdmVudFJlcXVlc3QaMC53b3Jrb3MudGFza2V4ZWN1dGlvbi52MS5BcHBlbmRUYXNrRXZlbnRSZXNwb25zZSIAEnYKD0ZpbmlzaFRhc2tMZWFzZRIvLndvcmtvcy50YXNrZXhlY3V0aW9uLnYxLkZpbmlzaFRhc2tMZWFzZVJlcXVlc3QaMC53b3Jrb3MudGFza2V4ZWN1dGlvbi52MS5GaW5pc2hUYXNrTGVhc2VSZXNwb25zZSIAEn8KEkFwcGVuZFRhc2tBcnRpZmFjdBIyLndvcmtvcy50YXNrZXhlY3V0aW9uLnYxLkFwcGVuZFRhc2tBcnRpZmFjdFJlcXVlc3QaMy53b3Jrb3MudGFza2V4ZWN1dGlvbi52MS5BcHBlbmRUYXNrQXJ0aWZhY3RSZXNwb25zZSIAQk1aS2dpdGh1Yi5jb20veWFuZ3RhbzEyMS93b3Jrb3MvZ2VuL2dvL3dvcmtvcy90YXNrZXhlY3V0aW9uL3YxO3Rhc2tleGVjdXRpb252MWIGcHJvdG8z", [file_google_protobuf_duration, file_google_protobuf_timestamp, file_workos_agent_v1_agent, file_workos_artifact_v1_artifact]);
 
 /**
  * @generated from message workos.taskexecution.v1.TaskLease
@@ -216,6 +218,151 @@ export const FinishTaskLeaseResponseSchema: GenMessage<FinishTaskLeaseResponse> 
   messageDesc(file_workos_taskexecution_v1_execution, 8);
 
 /**
+ * MarkdownArtifactContent is one provider-produced bounded canonical markdown
+ * document. Content is untrusted provider output: Core normalizes (CRLF to
+ * LF), bounds, and digests it; the provider never sends metadata beyond the
+ * key, title, and typed content.
+ *
+ * @generated from message workos.taskexecution.v1.MarkdownArtifactContent
+ */
+export type MarkdownArtifactContent = Message<"workos.taskexecution.v1.MarkdownArtifactContent"> & {
+  /**
+   * @generated from field: bytes content = 1;
+   */
+  content: Uint8Array;
+};
+
+/**
+ * Describes the message workos.taskexecution.v1.MarkdownArtifactContent.
+ * Use `create(MarkdownArtifactContentSchema)` to create a new message.
+ */
+export const MarkdownArtifactContentSchema: GenMessage<MarkdownArtifactContent> = /*@__PURE__*/
+  messageDesc(file_workos_taskexecution_v1_execution, 9);
+
+/**
+ * UnifiedDiffArtifactContent is one provider-produced bounded canonical
+ * unified diff. Paths, hunk headers, and line contents are untrusted inert
+ * text; Core never applies patches.
+ *
+ * @generated from message workos.taskexecution.v1.UnifiedDiffArtifactContent
+ */
+export type UnifiedDiffArtifactContent = Message<"workos.taskexecution.v1.UnifiedDiffArtifactContent"> & {
+  /**
+   * @generated from field: bytes content = 1;
+   */
+  content: Uint8Array;
+};
+
+/**
+ * Describes the message workos.taskexecution.v1.UnifiedDiffArtifactContent.
+ * Use `create(UnifiedDiffArtifactContentSchema)` to create a new message.
+ */
+export const UnifiedDiffArtifactContentSchema: GenMessage<UnifiedDiffArtifactContent> = /*@__PURE__*/
+  messageDesc(file_workos_taskexecution_v1_execution, 10);
+
+/**
+ * TaskArtifactOutput is one private lease-bound artifact output. It carries
+ * no owner, project, task, artifact ID, digest, creation time, event
+ * sequence, or database state: Core derives every identity fact from the
+ * active task lease alone.
+ *
+ * @generated from message workos.taskexecution.v1.TaskArtifactOutput
+ */
+export type TaskArtifactOutput = Message<"workos.taskexecution.v1.TaskArtifactOutput"> & {
+  /**
+   * Stable within one task; adjudicates provider retries and lost responses.
+   *
+   * @generated from field: string output_key = 1;
+   */
+  outputKey: string;
+
+  /**
+   * @generated from field: string title = 2;
+   */
+  title: string;
+
+  /**
+   * @generated from oneof workos.taskexecution.v1.TaskArtifactOutput.content
+   */
+  content: {
+    /**
+     * @generated from field: workos.taskexecution.v1.MarkdownArtifactContent markdown = 3;
+     */
+    value: MarkdownArtifactContent;
+    case: "markdown";
+  } | {
+    /**
+     * @generated from field: workos.taskexecution.v1.UnifiedDiffArtifactContent unified_diff = 4;
+     */
+    value: UnifiedDiffArtifactContent;
+    case: "unifiedDiff";
+  } | { case: undefined; value?: undefined };
+};
+
+/**
+ * Describes the message workos.taskexecution.v1.TaskArtifactOutput.
+ * Use `create(TaskArtifactOutputSchema)` to create a new message.
+ */
+export const TaskArtifactOutputSchema: GenMessage<TaskArtifactOutput> = /*@__PURE__*/
+  messageDesc(file_workos_taskexecution_v1_execution, 11);
+
+/**
+ * @generated from message workos.taskexecution.v1.AppendTaskArtifactRequest
+ */
+export type AppendTaskArtifactRequest = Message<"workos.taskexecution.v1.AppendTaskArtifactRequest"> & {
+  /**
+   * @generated from field: string lease_id = 1;
+   */
+  leaseId: string;
+
+  /**
+   * @generated from field: string worker_id = 2;
+   */
+  workerId: string;
+
+  /**
+   * @generated from field: workos.taskexecution.v1.TaskArtifactOutput artifact = 3;
+   */
+  artifact?: TaskArtifactOutput | undefined;
+};
+
+/**
+ * Describes the message workos.taskexecution.v1.AppendTaskArtifactRequest.
+ * Use `create(AppendTaskArtifactRequestSchema)` to create a new message.
+ */
+export const AppendTaskArtifactRequestSchema: GenMessage<AppendTaskArtifactRequest> = /*@__PURE__*/
+  messageDesc(file_workos_taskexecution_v1_execution, 12);
+
+/**
+ * @generated from message workos.taskexecution.v1.AppendTaskArtifactResponse
+ */
+export type AppendTaskArtifactResponse = Message<"workos.taskexecution.v1.AppendTaskArtifactResponse"> & {
+  /**
+   * artifact is the Core-minted immutable metadata projection of the
+   * persisted artifact; a replayed materialization returns the first one.
+   *
+   * @generated from field: workos.artifact.v1.Artifact artifact = 1;
+   */
+  artifact?: Artifact | undefined;
+
+  /**
+   * event is the Core-minted, durably published ArtifactCreated timeline
+   * event; a replayed materialization returns the first published event and
+   * never publishes a second one.
+   *
+   * @generated from field: workos.agent.v1.AgentEvent event = 2;
+   */
+  event?: AgentEvent | undefined;
+};
+
+/**
+ * Describes the message workos.taskexecution.v1.AppendTaskArtifactResponse.
+ * Use `create(AppendTaskArtifactResponseSchema)` to create a new message.
+ */
+export const AppendTaskArtifactResponseSchema: GenMessage<AppendTaskArtifactResponse> = /*@__PURE__*/
+  messageDesc(file_workos_taskexecution_v1_execution, 13);
+
+/**
  * @generated from service workos.taskexecution.v1.TaskExecutionService
  */
 export const TaskExecutionService: GenService<{
@@ -250,6 +397,22 @@ export const TaskExecutionService: GenService<{
     methodKind: "unary";
     input: typeof FinishTaskLeaseRequestSchema;
     output: typeof FinishTaskLeaseResponseSchema;
+  },
+  /**
+   * AppendTaskArtifact materializes one provider artifact output under the
+   * active task lease: Core derives owner/project/task provenance from the
+   * lease, validates and canonicalizes the bounded content, adjudicates the
+   * durable (task, output key) identity, persists the immutable artifact,
+   * and publishes exactly one Core-minted ArtifactCreated timeline event —
+   * all in one transaction. Generic AppendTaskEvent must never be used to
+   * smuggle a provider-built ArtifactCreated reference.
+   *
+   * @generated from rpc workos.taskexecution.v1.TaskExecutionService.AppendTaskArtifact
+   */
+  appendTaskArtifact: {
+    methodKind: "unary";
+    input: typeof AppendTaskArtifactRequestSchema;
+    output: typeof AppendTaskArtifactResponseSchema;
   },
 }> = /*@__PURE__*/
   serviceDesc(file_workos_taskexecution_v1_execution, 0);

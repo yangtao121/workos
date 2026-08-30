@@ -68,16 +68,21 @@ type InstallationSource interface {
 	ResolveActiveInstallation(ctx context.Context, ownerUserID, projectID, installationID string) (InstallationFacts, error)
 }
 
-// ProviderCapabilities is the budget-contract subset of the harness catalog
-// a fresh App run must verify before enqueueing. The maxima are the enforced
-// per-run budget bounds the provider declared; zero means the corresponding
-// hard capability is unsupported.
+// ProviderCapabilities is the budget-contract and artifact-capability subset
+// of the harness catalog a fresh run is verified against before enqueueing.
+// The maxima are the enforced per-run budget bounds the provider declared;
+// zero means the corresponding hard capability is unsupported.
 type ProviderCapabilities struct {
 	HardTokenBudget     bool
 	HardRuntimeDeadline bool
 	UsageReporting      bool
 	MaxOutputTokens     int64
 	MaxRuntimeSeconds   int64
+	// StructuredArtifacts is only true when SupportedArtifactTypes is
+	// non-empty and exact (ADR-0008). Core refuses requested artifact types
+	// outside the resolved provider's exact list before queueing.
+	StructuredArtifacts    bool
+	SupportedArtifactTypes []string
 }
 
 // Complete reports whether the provider explicitly supports the full budget
@@ -94,6 +99,30 @@ func (c ProviderCapabilities) Supports(maxOutputTokens, maxRuntimeSeconds int64)
 	return c.Complete() &&
 		c.MaxOutputTokens > 0 && c.MaxOutputTokens >= maxOutputTokens &&
 		c.MaxRuntimeSeconds > 0 && c.MaxRuntimeSeconds >= maxRuntimeSeconds
+}
+
+// SupportsArtifactTypes reports whether the provider demonstrably produces
+// every requested canonical artifact type. Any request requires the bool
+// capability, a non-empty exact list, and membership for each requested
+// type; a bool/list drift therefore fails closed instead of silently
+// widening the provider's contract (ADR-0008).
+func (c ProviderCapabilities) SupportsArtifactTypes(requested []string) bool {
+	if len(requested) == 0 {
+		return true
+	}
+	if !c.StructuredArtifacts || len(c.SupportedArtifactTypes) == 0 {
+		return false
+	}
+	supported := make(map[string]struct{}, len(c.SupportedArtifactTypes))
+	for _, artifactType := range c.SupportedArtifactTypes {
+		supported[artifactType] = struct{}{}
+	}
+	for _, artifactType := range requested {
+		if _, ok := supported[artifactType]; !ok {
+			return false
+		}
+	}
+	return true
 }
 
 // ProviderCatalog resolves provider budget capabilities. Unknown providers

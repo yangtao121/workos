@@ -79,6 +79,29 @@ func (r *TaskRouter) Submit(ctx context.Context, input agentapp.SubmitInput) (ag
 		}
 	}
 
+	// Exact artifact-capability verification happens before any task row,
+	// outbox entry, or lease exists (ADR-0008): a provider that does not
+	// demonstrably produce every requested artifact type fails closed with
+	// zero side effects and never falls back to another provider. The
+	// replay path above stays snapshot-exact and never re-adjudicates.
+	if len(input.OutputArtifactTypes) > 0 {
+		if input.ProjectID == "" {
+			// Project review artifacts are project-scoped facts; global
+			// tasks cannot request them in this slice.
+			return agentdomain.Task{}, agentdomain.ErrInvalid
+		}
+		capabilities, capErr := r.providers.Capabilities(ctx, providerID)
+		if errors.Is(capErr, agentdomain.ErrNotFound) {
+			return agentdomain.Task{}, agentdomain.ErrProviderCapabilityMissing
+		}
+		if capErr != nil {
+			return agentdomain.Task{}, fmt.Errorf("resolve provider artifact capabilities: %w", capErr)
+		}
+		if !capabilities.SupportsArtifactTypes(input.OutputArtifactTypes) {
+			return agentdomain.Task{}, agentdomain.ErrProviderCapabilityMissing
+		}
+	}
+
 	input.ProviderID = providerID
 	return r.agents.Submit(ctx, input)
 }

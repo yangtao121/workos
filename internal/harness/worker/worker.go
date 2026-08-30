@@ -126,7 +126,36 @@ func (w *Worker) process(parent context.Context, lease *taskv1.TaskLease) {
 		// after the append succeeded, never before, so a lost terminal write
 		// still gets the deterministic fallback below.
 		sawTerminal := false
+		// requestedTypes drives the artifact output contract: a provider run
+		// may not complete until every requested artifact type was
+		// materialized exactly once through the private lease-bound RPC.
+		requestedTypes := task.GetInput().GetOutputArtifactTypes()
+		emittedTypes := make(map[string]bool, len(requestedTypes))
+		artifacts := func(output ports.ArtifactOutput) error {
+			if emittedTypes[output.Type] {
+				return ports.NewRunError(ports.ErrorKindProtocol, "provider emitted the same artifact type more than once", false, nil)
+			}
+			response, appendErr := w.client.AppendTaskArtifact(runCtx, connect.NewRequest(&taskv1.AppendTaskArtifactRequest{
+				LeaseId: lease.GetLeaseId(), WorkerId: w.id,
+				Artifact: artifactOutputProto(output),
+			}))
+			if appendErr != nil {
+				return appendErr
+			}
+			// The Core-minted artifact reference never flows back to the
+			// provider; the durable timeline event is authoritative.
+			_ = response
+			emittedTypes[output.Type] = true
+			return nil
+		}
 		err := w.broker.Run(runCtx, task.GetId(), task.GetProviderId(), task.GetInput(), func(event *agentv1.AgentEvent) error {
+			// A completion that would leave requested artifact outputs
+			// missing fails closed here — before the terminal event lands —
+			// so the task deterministically ends with the failure below
+			// instead of pretending the artifact contract was fulfilled.
+			if _, completed := event.Event.(*agentv1.AgentEvent_RunCompleted); completed && missingArtifactTypes(requestedTypes, emittedTypes) {
+				return ports.NewRunError(ports.ErrorKindProtocol, "provider completed without materializing every requested artifact output", false, nil)
+			}
 			_, appendErr := w.client.AppendTaskEvent(runCtx, connect.NewRequest(&taskv1.AppendTaskEventRequest{
 				LeaseId: lease.GetLeaseId(), WorkerId: w.id, Event: event,
 			}))
@@ -134,7 +163,7 @@ func (w *Worker) process(parent context.Context, lease *taskv1.TaskLease) {
 				sawTerminal = true
 			}
 			return appendErr
-		})
+		}, artifacts)
 		terminal <- sawTerminal
 		result <- err
 	}()
@@ -214,4 +243,29 @@ func isTerminal(event *agentv1.AgentEvent) bool {
 	default:
 		return false
 	}
+}
+
+// missingArtifactTypes reports whether any requested artifact output type has
+// not been materialized yet.
+func missingArtifactTypes(requested []string, emitted map[string]bool) bool {
+	for _, requestedType := range requested {
+		if !emitted[requestedType] {
+			return true
+		}
+	}
+	return false
+}
+
+// artifactOutputProto maps the neutral canonical output to the private wire
+// request. Unknown types never reach the sink: the provider contract only
+// allows the canonical types Core validates.
+func artifactOutputProto(output ports.ArtifactOutput) *taskv1.TaskArtifactOutput {
+	result := &taskv1.TaskArtifactOutput{OutputKey: output.Key, Title: output.Title}
+	switch output.Type {
+	case "document.markdown.v1":
+		result.Content = &taskv1.TaskArtifactOutput_Markdown{Markdown: &taskv1.MarkdownArtifactContent{Content: output.Content}}
+	case "code.unified-diff.v1":
+		result.Content = &taskv1.TaskArtifactOutput_UnifiedDiff{UnifiedDiff: &taskv1.UnifiedDiffArtifactContent{Content: output.Content}}
+	}
+	return result
 }

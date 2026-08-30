@@ -228,6 +228,74 @@ Desktop: sandboxed iframe（仅 allow-scripts）内渲染
   持久幂等（同 canonical request replay、不同 `Aborted`、失败不消费 key），metadata/files/
   idempotency 单事务；public Get/List 永不返回文件 bytes。数据由 `006_web_bundle_artifacts.sql`
   持有，无跨模块 FK。
+
+#### Project review artifacts（ADR-0008，migrations `021` / `022`）
+
+`internal/core/artifact` 的第二个 immutable subtype 组：canonical `document.markdown.v1` 与
+`code.unified-diff.v1`，由 Project Agent 在 active task lease 下经私有
+`TaskExecutionService.AppendTaskArtifact` materialize。request 只含 lease/worker、`output_key`
+（`^[a-z][a-z0-9._-]{0,63}$`）、title（trim 后 1–200 code points）与 typed content；owner、
+project、task、artifact ID、digest、时间、事件 sequence 全部由 Core 在单事务内派生或 mint：
+
+```text
+harness-host worker（provider 经中立 ports.ArtifactSink 输出）
+  → 私有 AppendTaskArtifact → orchestration.TaskArtifactMaterializer（单一共享事务）
+     1. Agent port：按 lease 锁定 task stream（lease 失效/terminal fail closed）
+     2. 校验 project scope（global task 拒绝）与 requested output type
+     3. Artifact port：读 (task, output_key) 映射 → replay / 稳定冲突
+     4. domain 准备：CRLF→LF、NUL/C0/C1 拒绝（允许 LF/TAB）、≤512 KiB/≤20k 行/
+        单行 ≤16 KiB UTF-8、不 trim 不补尾换行、versioned digest、server-mint UUIDv7/时间
+     5. Artifact port：artifact 行 + 裁决映射（(task,key) PK + (task,type) 唯一索引，
+        ON CONFLICT DO NOTHING 物理仲裁；0 行 → 事务内重读分类）
+     6. Agent port：Core-minted artifact_created 事件（sequence=last+1，仅推进序号）
+  → WatchTaskEvents 只返回 Core-minted 引用；public GetReviewArtifact/ListArtifacts
+    按 owner/project 读取 typed canonical content（Web Bundle 明确 not-reviewable）
+```
+
+- request digest（`workos.review-artifact-output.v1`）覆盖 project/task/output key/归一化
+  title/content digest；same digest replay 首个 artifact 与首个 publication（映射行记录
+  `event_id/sequence/occurred_at` 三个 Core-minted 引用，事件本身仍归 Agent stream 所有）；
+  different digest 稳定冲突 → run fail closed；失败校验不消费 key。并发由 task 行
+  FOR UPDATE 串行化 + 唯一索引兜底：无重复 artifact、无重复事件、无 orphan row。
+- 已执行的 `021` 保持逐字节不变；forward-only `022` 在 Artifact 自有 artifact/mapping 表之间增加
+  `(artifact, owner, project, task, output key, type)` composite FK、content byte-count 相等与 finite
+  timestamp CHECK，不建立到 Project/Agent/event 表的跨模块 FK。Artifact 与 publication time 统一为
+  UTC 微秒精度，使首次响应与 PostgreSQL restart replay 精确一致。
+- generic `AppendTaskEvent` 对 `ArtifactCreated` 一律 `InvalidArgument`：timeline 引用只能由
+  materializer 从已验证 artifact projection 构造，Provider 不能伪造 foreign ID/type。
+- replay 还通过 Agent port 逐字段验证 mapping 指向的 durable Agent-owned event；缺失或 payload/
+  identity/time 漂移均 fail closed 为 stored corruption，mapping 本身不替代 event authority。
+- `HarnessCapabilities.supported_artifact_types`（additive，exact list）与
+  `structured_artifacts` bool 必须一致：catalog 视漂移为 capability corruption（read 返回
+  unavailable）；Task Router 在入队前按 resolved provider 的 exact list 校验请求
+  （≤2、无重复、global scope 拒绝），unsupported → FailedPrecondition、零副作用、不 fallback。
+  Fake adapter 声明两类并产出 deterministic bounded 输出（每请求 type 恰一个、terminal 前）；
+  DeepSeek/Generic CLI 保持 false/empty 并拒绝非空请求。worker 在完成事件前校验全部请求
+  type 已 materialize，缺失 → run 确定性失败。
+- 公开错误矩阵固定：unknown/foreign/wrong-project → 统一 NotFound；stored corruption（每次
+  读重验 grammar 并重算 digest）→ sanitized Internal；transient → Unavailable；Web Bundle
+  的 review 读 → Unimplemented（bundle bytes 仍永不公开）。project list 经中立
+  `ArtifactProjectScope` port 校验同 owner（归档 Project 保持可读）；owner-wide list 跨两个
+  subtype 表 ordered union；分页 limit+1、满页无 phantom token。
+- metadata Get/List 与 typed read 都在各自 authoritative SQL snapshot 中读取并重验 review content、
+  digest/count/canonical bytes；公开 metadata 仍不泄露 content。任何已命中的 review row 都经中立
+  Project port 重验 owner/project binding，持久事实漂移为 sanitized Internal。
+- transport 在构造层分别限制 Create upload（4 MiB）、public get/list/review read（32 KiB）与 private
+  AppendTaskArtifact（768 KiB），对 protobuf/JSON/gzip 在业务调用前 enforce，合法 512 KiB 内容有
+  wire headroom。
+- Desktop：dock ☰ "Open Artifact Center" 普通窗口（分页、loading/empty/unavailable/retry、
+  key/remount 于 active Project、generation guard 隔离迟到响应）；timeline 的 artifact 事件
+  为可点击按钮，点击仍走 ArtifactService；"Artifact Review" 只读窗口用受限 allowlist 渲染
+  Markdown（heading/paragraph/emphasis/list/blockquote/inline+fenced code）与 unified diff
+  （file/hunk header、增删行、context/meta 只做转义文本与样式分类），无 HTML parser、无
+  `dangerouslySetInnerHTML`、无 image/active link/网络/存储路径，无 apply/edit/download。
+  Viewer fatal-decode UTF-8，并重验 expected Project、artifact ID、type/oneof、canonical media type、
+  byte count 和 512 KiB display bound；Project 切换会 abort 并 generation-invalidate 旧 task stream，
+  迟到 timeline event 不能进入新 Project。
+  真实链路门禁 `make test-artifact-review`（PostgreSQL + Core + harness-host + Gateway +
+  Chromium）；`021_project_review_artifacts.sql` 与 `022_project_review_artifact_integrity.sql`
+  checksum 已钉住，001–021 历史 migration 零修改。
+
 - Manifest v1 additive launch descriptor：`runtime.type` 增加 `web-bundle`，`runtime.artifactId`
   （UUIDv7）/`runtime.artifactDigest`（sha256）由 Schema pattern + Go cross-field policy 双重校验
   （缺一拒绝、image/command/port 禁止、仅允许单一 web-bundle surface）；canonical digest 覆盖

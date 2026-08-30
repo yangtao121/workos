@@ -12,6 +12,25 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const advanceTaskPublicationSequence = `-- name: AdvanceTaskPublicationSequence :exec
+UPDATE workos_core.agent_tasks
+SET last_event_sequence = $1, updated_at = $2
+WHERE id = $3
+`
+
+type AdvanceTaskPublicationSequenceParams struct {
+	Sequence  int64              `json:"sequence"`
+	UpdatedAt pgtype.Timestamptz `json:"updated_at"`
+	TaskID    string             `json:"task_id"`
+}
+
+// AdvanceTaskPublicationSequence moves only the Core-minted publication
+// event's sequence forward; the task state itself never changes here.
+func (q *Queries) AdvanceTaskPublicationSequence(ctx context.Context, arg AdvanceTaskPublicationSequenceParams) error {
+	_, err := q.db.Exec(ctx, advanceTaskPublicationSequence, arg.Sequence, arg.UpdatedAt, arg.TaskID)
+	return err
+}
+
 const advanceTaskState = `-- name: AdvanceTaskState :exec
 UPDATE workos_core.agent_tasks
 SET state = $1,
@@ -618,6 +637,48 @@ func (q *Queries) GetAgentTaskUnscoped(ctx context.Context, id string) (WorkosCo
 	return i, err
 }
 
+const getTaskPublicationEvent = `-- name: GetTaskPublicationEvent :one
+SELECT id, stream_id, sequence, event_type, payload, occurred_at
+FROM workos_events.events
+WHERE stream_type = 'agent-task'
+  AND id = $1::uuid
+  AND stream_id = $2::uuid
+  AND sequence = $3
+`
+
+type GetTaskPublicationEventParams struct {
+	EventID       string `json:"event_id"`
+	TaskID        string `json:"task_id"`
+	EventSequence int64  `json:"event_sequence"`
+}
+
+type GetTaskPublicationEventRow struct {
+	ID         string             `json:"id"`
+	StreamID   string             `json:"stream_id"`
+	Sequence   int64              `json:"sequence"`
+	EventType  string             `json:"event_type"`
+	Payload    json.RawMessage    `json:"payload"`
+	OccurredAt pgtype.Timestamptz `json:"occurred_at"`
+}
+
+// Replay verification for one Core-minted artifact publication. The
+// coordinator supplies the exact immutable identity; this query never
+// searches across task streams or treats an Artifact mapping as authority
+// for Agent-owned event data.
+func (q *Queries) GetTaskPublicationEvent(ctx context.Context, arg GetTaskPublicationEventParams) (GetTaskPublicationEventRow, error) {
+	row := q.db.QueryRow(ctx, getTaskPublicationEvent, arg.EventID, arg.TaskID, arg.EventSequence)
+	var i GetTaskPublicationEventRow
+	err := row.Scan(
+		&i.ID,
+		&i.StreamID,
+		&i.Sequence,
+		&i.EventType,
+		&i.Payload,
+		&i.OccurredAt,
+	)
+	return i, err
+}
+
 const insertAgentAppApproval = `-- name: InsertAgentAppApproval :execrows
 INSERT INTO workos_core.agent_app_approvals (
     owner_user_id, id, app_instance_id, project_id, task_id, app_id, goal_excerpt, provider_id,
@@ -1048,6 +1109,48 @@ type LockAgentAppPolicyChainParams struct {
 func (q *Queries) LockAgentAppPolicyChain(ctx context.Context, arg LockAgentAppPolicyChainParams) error {
 	_, err := q.db.Exec(ctx, lockAgentAppPolicyChain, arg.LockNamespace, arg.LockKey)
 	return err
+}
+
+const lockTaskArtifactStream = `-- name: LockTaskArtifactStream :one
+SELECT t.id, t.owner_user_id, t.project_id, t.input, t.last_event_sequence, t.state,
+       t.provider_id, t.created_at
+FROM workos_events.outbox AS o
+JOIN workos_core.agent_tasks AS t ON t.id = o.aggregate_id
+WHERE o.lease_id = $1 AND o.locked_by = $2 AND o.processed_at IS NULL AND o.locked_until >= $3
+FOR UPDATE OF o, t
+`
+
+type LockTaskArtifactStreamParams struct {
+	LeaseID     pgtype.UUID        `json:"lease_id"`
+	LockedBy    pgtype.Text        `json:"locked_by"`
+	LockedUntil pgtype.Timestamptz `json:"locked_until"`
+}
+
+type LockTaskArtifactStreamRow struct {
+	ID                string             `json:"id"`
+	OwnerUserID       string             `json:"owner_user_id"`
+	ProjectID         pgtype.UUID        `json:"project_id"`
+	Input             json.RawMessage    `json:"input"`
+	LastEventSequence int64              `json:"last_event_sequence"`
+	State             string             `json:"state"`
+	ProviderID        string             `json:"provider_id"`
+	CreatedAt         pgtype.Timestamptz `json:"created_at"`
+}
+
+func (q *Queries) LockTaskArtifactStream(ctx context.Context, arg LockTaskArtifactStreamParams) (LockTaskArtifactStreamRow, error) {
+	row := q.db.QueryRow(ctx, lockTaskArtifactStream, arg.LeaseID, arg.LockedBy, arg.LockedUntil)
+	var i LockTaskArtifactStreamRow
+	err := row.Scan(
+		&i.ID,
+		&i.OwnerUserID,
+		&i.ProjectID,
+		&i.Input,
+		&i.LastEventSequence,
+		&i.State,
+		&i.ProviderID,
+		&i.CreatedAt,
+	)
+	return i, err
 }
 
 const lockTaskEventStream = `-- name: LockTaskEventStream :one

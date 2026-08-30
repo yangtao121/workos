@@ -503,6 +503,8 @@ function clientFixture({
   submitTask = vi.fn(),
   watchTaskEvents = vi.fn(() => eventStream([])),
   getTask = vi.fn(),
+  listArtifacts = vi.fn(() => Promise.resolve({ artifacts: [], page: { nextPageToken: "" } })),
+  getReviewArtifact = vi.fn(() => Promise.reject(new ConnectError("none", Code.NotFound))),
 }: {
   projects: Project[];
   createProject?: ReturnType<typeof vi.fn>;
@@ -511,6 +513,8 @@ function clientFixture({
   submitTask?: ReturnType<typeof vi.fn>;
   watchTaskEvents?: ReturnType<typeof vi.fn>;
   getTask?: ReturnType<typeof vi.fn>;
+  listArtifacts?: ReturnType<typeof vi.fn>;
+  getReviewArtifact?: ReturnType<typeof vi.fn>;
 }): WorkOSClients {
   return {
     projects: {
@@ -533,7 +537,12 @@ function clientFixture({
       uninstallApp: vi.fn(),
       setAppGrants: vi.fn(),
     },
-    artifacts: { createArtifact: vi.fn(), getArtifact: vi.fn(), listArtifacts: vi.fn() },
+    artifacts: {
+      createArtifact: vi.fn(),
+      getArtifact: vi.fn(),
+      listArtifacts,
+      getReviewArtifact,
+    },
     surfaces: { createSurface: vi.fn(), closeSurface: vi.fn() },
   } as unknown as WorkOSClients;
 }
@@ -651,6 +660,7 @@ function provider(id: string, displayName: string): HarnessProviderInfo {
       subagents: false,
       workspaceMount: false,
       structuredArtifacts: false,
+      supportedArtifactTypes: [],
       usageReporting: true,
       hardTokenBudget: false,
       hardRuntimeDeadline: false,

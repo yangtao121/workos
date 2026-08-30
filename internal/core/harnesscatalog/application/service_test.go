@@ -3,6 +3,7 @@ package application
 import (
 	"context"
 	"errors"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -24,6 +25,7 @@ func TestCatalogNormalizesFieldsCapabilitiesAndOrder(t *testing.T) {
 		Streaming: true, PersistentSessions: true, Resume: true, SteerDuringRun: true,
 		Approvals: true, ToolRegistration: true, MCP: true, Subagents: true,
 		WorkspaceMount: true, StructuredArtifacts: true, UsageReporting: true,
+		SupportedArtifactTypes: []string{"document.markdown.v1", "code.unified-diff.v1"},
 	}
 	service, err := New(sourceFake{providers: []domain.Provider{
 		{ID: "zeta", DisplayName: "", AdapterVersion: "", Health: domain.Health("")},
@@ -41,7 +43,7 @@ func TestCatalogNormalizesFieldsCapabilitiesAndOrder(t *testing.T) {
 		t.Fatalf("unexpected catalog order/default: %#v", catalog)
 	}
 	alpha := catalog.Providers[0]
-	if alpha.DisplayName != "Alpha Harness" || alpha.AdapterVersion != "1.2.3" || alpha.UnavailableReason != "Provider is temporarily degraded" || alpha.Capabilities != all {
+	if alpha.DisplayName != "Alpha Harness" || alpha.AdapterVersion != "1.2.3" || alpha.UnavailableReason != "Provider is temporarily degraded" || !capabilitiesEqual(alpha.Capabilities, all) {
 		t.Fatalf("provider fields were not mapped: %#v", alpha)
 	}
 	if got := catalog.Providers[1].UnavailableReason; got != "" {
@@ -102,4 +104,10 @@ func TestCatalogPreservesCancellationAndDeadline(t *testing.T) {
 			t.Fatalf("expected %v, got %v", want, err)
 		}
 	}
+}
+
+// capabilitiesEqual compares capability facts; the supported artifact type
+// list is a slice, so struct equality cannot be used directly.
+func capabilitiesEqual(a, b domain.Capabilities) bool {
+	return reflect.DeepEqual(a, b)
 }

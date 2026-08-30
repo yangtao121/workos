@@ -48,7 +48,13 @@ func (p *Provider) Describe() *harnessv1.HarnessProviderInfo {
 	}
 }
 
-func (p *Provider) Run(ctx context.Context, taskID string, input *agentv1.AgentTaskInput, emit ports.Emit) error {
+// Run keeps structured artifact support honestly unsupported (ADR-0008): the
+// sink is ignored and requested artifact types are refused outright.
+func (p *Provider) Run(ctx context.Context, taskID string, input *agentv1.AgentTaskInput, emit ports.Emit, artifacts ports.ArtifactSink) error {
+	_ = artifacts
+	if len(input.GetOutputArtifactTypes()) != 0 {
+		return ports.NewRunError(ports.ErrorKindInvalidInput, "generic CLI harness does not support structured artifacts", false, nil)
+	}
 	ctx, cancel := context.WithTimeout(ctx, p.config.Timeout)
 	defer cancel()
 	command := exec.CommandContext(ctx, p.config.Executable, p.config.Args...)

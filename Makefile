@@ -148,6 +148,21 @@ test-e2e: e2e-image
 		-w $(WORKDIR)/apps/desktop-web \
 		$(E2E_IMAGE) pnpm test:e2e
 
+# The review-artifact vertical gate (ADR-0008): real PostgreSQL + Core +
+# harness-host (Fake provider structured output) + Gateway + Chromium, all
+# the way through Task Router → private lease-bound AppendTaskArtifact →
+# Artifact PostgreSQL facts → public ArtifactService reads → the read-only
+# viewer. Not a route-mocked test.
+test-artifact-review: e2e-image
+	docker compose up -d --build postgres bootstrap workos-core harness-host runtime-host workos-gateway
+	docker run --rm --network host $(USER_FLAGS) \
+		-e PLAYWRIGHT_BROWSERS_PATH=/ms-playwright \
+		-e WORKOS_E2E_URL=http://127.0.0.1:8080 \
+		-e WORKOS_E2E_OUTPUT_DIR=/tmp/workos-playwright-results \
+		-v $(CURDIR):$(WORKDIR) \
+		-w $(WORKDIR)/apps/desktop-web \
+		$(E2E_IMAGE) pnpm exec playwright test artifact-review.spec.ts
+
 # Regenerates the task's deterministic 1440x900 Auth Gate and Device Center
 # evidence. Device Center uses browser-intercepted Connect fixtures; no live
 # ticket, credential, provider, or persistent database row appears in it.

@@ -91,7 +91,9 @@ describe("windowReducer", () => {
       },
     };
     let state = windowReducer(initialWindowState, open);
+    const firstZ = state.windows[0]?.zIndex;
     state = windowReducer(state, open);
     expect(state.windows).toHaveLength(1);
+    expect(state.windows[0]?.zIndex).toBeGreaterThan(firstZ ?? 0);
   });
 });

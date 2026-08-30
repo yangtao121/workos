@@ -18,11 +18,14 @@ const (
 	maxPageSize     = 100
 )
 
-// Service executes the web bundle artifact use cases: bounded create with
-// durable idempotency, owner-scoped metadata reads, and single-file reads
-// for the installed-instance resolver.
+// Service executes the artifact use cases for both implemented subtypes:
+// bounded web bundle create with durable idempotency, owner-scoped metadata
+// reads, single-file reads for the installed-instance resolver, and the
+// review subtype's lease-derived materialization preparation, typed content
+// reads, and project-scoped listing.
 type Service struct {
 	repository ports.Repository
+	projects   ports.ProjectScope
 	ids        ids.Generator
 	now        func() time.Time
 }
@@ -32,6 +35,18 @@ func New(repository ports.Repository, generator ids.Generator) (*Service, error)
 		return nil, errors.New("artifact service requires repository and id generator")
 	}
 	return &Service{repository: repository, ids: generator, now: func() time.Time { return time.Now().UTC() }}, nil
+}
+
+// WithProjectScope attaches the neutral project liveness port that every
+// project-scoped review read requires. The production composition root must
+// always wire it; without it review reads fail closed rather than treating an
+// Artifact row as authority for Project ownership.
+func (s *Service) WithProjectScope(scope ports.ProjectScope) (*Service, error) {
+	if scope == nil {
+		return nil, errors.New("artifact service requires a project scope port")
+	}
+	s.projects = scope
+	return s, nil
 }
 
 // CreateWebBundle validates, normalizes, and persists one immutable owner-
@@ -68,18 +83,26 @@ func (s *Service) Get(ctx context.Context, ownerUserID, artifactID string) (doma
 	if ownerUserID == "" || !domain.ValidArtifactUUID(artifactID) {
 		return domain.Artifact{}, domain.ErrInvalid
 	}
-	return s.repository.Get(ctx, ownerUserID, artifactID)
+	artifact, err := s.repository.Get(ctx, ownerUserID, artifactID)
+	if err != nil {
+		return domain.Artifact{}, err
+	}
+	if domain.IsReviewType(artifact.Type) {
+		if err := s.validateStoredProjectBinding(ctx, ownerUserID, artifact.ProjectID); err != nil {
+			return domain.Artifact{}, err
+		}
+	}
+	return artifact, nil
 }
 
-// List returns the owner's artifacts ordered by ID, one page at a time. The
-// page size is normalized exactly once here; only owner-scoped listing is
-// implemented, so a project filter is rejected.
+// List returns one page of the owner's artifacts ordered by ID. An empty
+// project filter lists across both implemented subtypes; a project filter
+// lists that project's review artifacts after the neutral project scope port
+// proves the project exists and belongs to this owner. The page size is
+// normalized exactly once here.
 func (s *Service) List(ctx context.Context, ownerUserID, projectID, cursor string, pageSize int) (ports.PageResult, error) {
 	if ownerUserID == "" {
 		return ports.PageResult{}, domain.ErrInvalid
-	}
-	if projectID != "" {
-		return ports.PageResult{}, domain.ErrUnsupported
 	}
 	switch {
 	case pageSize < 0:
@@ -92,18 +115,173 @@ func (s *Service) List(ctx context.Context, ownerUserID, projectID, cursor strin
 	if cursor != "" && !domain.ValidArtifactUUID(cursor) {
 		return ports.PageResult{}, domain.ErrInvalid
 	}
-	idsPage, nextCursor, err := s.repository.ListIDsPage(ctx, ownerUserID, cursor, pageSize)
+	var idsPage []string
+	var nextCursor string
+	var err error
+	if projectID == "" {
+		idsPage, nextCursor, err = s.repository.ListIDsPage(ctx, ownerUserID, cursor, pageSize)
+	} else {
+		if !domain.ValidArtifactUUID(projectID) {
+			return ports.PageResult{}, domain.ErrInvalid
+		}
+		if s.projects == nil {
+			// Composition must wire the project scope port for project
+			// listing; without it the answer is fail-closed unsupported.
+			return ports.PageResult{}, domain.ErrUnsupported
+		}
+		if scopeErr := s.projects.ValidateReadableProject(ctx, ownerUserID, projectID); scopeErr != nil {
+			return ports.PageResult{}, scopeErr
+		}
+		idsPage, nextCursor, err = s.repository.ListProjectReviewIDsPage(ctx, ownerUserID, projectID, cursor, pageSize)
+	}
 	if err != nil {
 		return ports.PageResult{}, err
 	}
 	items := make([]domain.Artifact, 0, len(idsPage))
+	expected := make(map[string]bool, len(idsPage))
+	for _, id := range idsPage {
+		if expected[id] || !domain.ValidArtifactUUID(id) {
+			return ports.PageResult{}, domain.ErrCorrupt
+		}
+		expected[id] = true
+	}
+	lastID := ""
 	if err := s.repository.VisitSummaries(ctx, ownerUserID, idsPage, func(artifact domain.Artifact) error {
+		if !expected[artifact.ID] || (lastID != "" && artifact.ID <= lastID) {
+			return domain.ErrCorrupt
+		}
+		if projectID != "" && (!domain.IsReviewType(artifact.Type) || artifact.ProjectID != projectID) {
+			return domain.ErrCorrupt
+		}
+		if projectID == "" && domain.IsReviewType(artifact.Type) {
+			if err := s.validateStoredProjectBinding(ctx, ownerUserID, artifact.ProjectID); err != nil {
+				return err
+			}
+		}
+		delete(expected, artifact.ID)
+		lastID = artifact.ID
 		items = append(items, artifact)
 		return nil
 	}); err != nil {
 		return ports.PageResult{}, err
 	}
+	if len(expected) != 0 {
+		return ports.PageResult{}, domain.ErrCorrupt
+	}
 	return ports.PageResult{Items: items, NextToken: nextCursor}, nil
+}
+
+// ReviewOutputRequestDigestFor computes the canonical materialization request
+// digest for untrusted raw input without minting or persisting anything. It
+// is the exact digest PrepareReviewOutput stores; false means the input
+// violates the output grammar and can never match a stored mapping.
+func ReviewOutputRequestDigestFor(projectID, taskID, outputKey, rawTitle, artifactType string, rawContent []byte) (string, bool) {
+	if !domain.ValidArtifactUUID(projectID) || !domain.ValidArtifactUUID(taskID) ||
+		!domain.ValidReviewOutputKey(outputKey) {
+		return "", false
+	}
+	canonicalType, _, ok := domain.ReviewType(artifactType)
+	if !ok {
+		return "", false
+	}
+	title, ok := domain.NormalizeReviewTitle(rawTitle)
+	if !ok {
+		return "", false
+	}
+	normalized, err := domain.NormalizeReviewContent(canonicalType, rawContent)
+	if err != nil {
+		return "", false
+	}
+	return domain.ReviewOutputRequestDigest(projectID, taskID, outputKey, title, normalized.Digest), true
+}
+
+// GetReview returns one owner-scoped review artifact's authoritative metadata
+// and exact canonical content. The repository serves both from the same row
+// snapshot and revalidates the stored fact, so metadata/content mismatch is
+// impossible by construction and drift surfaces as sanitized Internal. A web
+// bundle ID is not a review artifact: it resolves to the fixed unsupported
+// verdict and never to bundle bytes or a NotFound that could double as an
+// existence probe.
+func (s *Service) GetReview(ctx context.Context, ownerUserID, artifactID string) (domain.ReviewArtifact, domain.NormalizedReviewContent, error) {
+	if ownerUserID == "" || !domain.ValidArtifactUUID(artifactID) {
+		return domain.ReviewArtifact{}, domain.NormalizedReviewContent{}, domain.ErrInvalid
+	}
+	fact, content, err := s.repository.GetReviewContent(ctx, ownerUserID, artifactID)
+	if errors.Is(err, domain.ErrNotFound) {
+		metadata, getErr := s.Get(ctx, ownerUserID, artifactID)
+		if getErr != nil {
+			return domain.ReviewArtifact{}, domain.NormalizedReviewContent{}, err
+		}
+		if domain.IsReviewType(metadata.Type) {
+			return domain.ReviewArtifact{}, domain.NormalizedReviewContent{}, domain.ErrCorrupt
+		}
+		return domain.ReviewArtifact{}, domain.NormalizedReviewContent{}, domain.ErrUnsupported
+	}
+	if err != nil {
+		return domain.ReviewArtifact{}, domain.NormalizedReviewContent{}, err
+	}
+	if scopeErr := s.validateStoredProjectBinding(ctx, ownerUserID, fact.ProjectID); scopeErr != nil {
+		return domain.ReviewArtifact{}, domain.NormalizedReviewContent{}, scopeErr
+	}
+	return fact, content, err
+}
+
+func (s *Service) validateStoredProjectBinding(ctx context.Context, ownerUserID, projectID string) error {
+	if s.projects == nil {
+		return domain.ErrCorrupt
+	}
+	if err := s.projects.ValidateReadableProject(ctx, ownerUserID, projectID); err != nil {
+		if errors.Is(err, domain.ErrNotFound) {
+			// The owner-scoped immutable Artifact row was already found. A
+			// missing/foreign Project is therefore provenance drift, not a
+			// caller-visible existence verdict.
+			return domain.ErrCorrupt
+		}
+		return err
+	}
+	return nil
+}
+
+// PrepareReviewOutput validates one untrusted provider artifact output and
+// builds the exact canonical command the materialization coordinator persists
+// inside its transaction: the server-minted artifact identity, the normalized
+// content bytes, and the request digest that adjudicates replay versus
+// conflict for the (task, output key) identity. This is pure preparation —
+// nothing is consumed or persisted, so validation failures never consume the
+// output key.
+func (s *Service) PrepareReviewOutput(ownerUserID, projectID, taskID, outputKey, rawTitle, artifactType string, rawContent []byte) (ports.ReviewOutputCommand, error) {
+	if !domain.ValidArtifactUUID(ownerUserID) || !domain.ValidArtifactUUID(projectID) || !domain.ValidArtifactUUID(taskID) ||
+		!domain.ValidReviewOutputKey(outputKey) {
+		return ports.ReviewOutputCommand{}, domain.ErrInvalid
+	}
+	canonicalType, mediaType, ok := domain.ReviewType(artifactType)
+	if !ok {
+		return ports.ReviewOutputCommand{}, domain.ErrInvalid
+	}
+	title, ok := domain.NormalizeReviewTitle(rawTitle)
+	if !ok {
+		return ports.ReviewOutputCommand{}, domain.ErrInvalid
+	}
+	normalized, err := domain.NormalizeReviewContent(canonicalType, rawContent)
+	if err != nil {
+		return ports.ReviewOutputCommand{}, err
+	}
+	artifactID := s.ids.New()
+	createdAt := domain.CanonicalUTCTime(s.now())
+	if !domain.ValidArtifactUUID(artifactID) || !domain.ValidStoredUTCTime(createdAt) {
+		return ports.ReviewOutputCommand{}, domain.ErrCorrupt
+	}
+	fact := domain.ReviewArtifact{
+		ID: artifactID, OwnerUserID: ownerUserID, ProjectID: projectID,
+		SourceTask: taskID, OutputKey: outputKey, Type: canonicalType, Title: title,
+		MediaType: mediaType, Digest: normalized.Digest, ByteCount: normalized.ByteCount,
+		LineCount: normalized.LineCount, CreatedAt: createdAt,
+	}
+	return ports.ReviewOutputCommand{
+		Artifact:      fact,
+		Content:       normalized.Content,
+		RequestDigest: domain.ReviewOutputRequestDigest(projectID, taskID, outputKey, title, normalized.Digest),
+	}, nil
 }
 
 // BundleSummary is the neutral verification result for cross-module callers:

@@ -50,6 +50,12 @@ func (s *Service) Get(ctx context.Context) (domain.Catalog, error) {
 			return domain.Catalog{}, domain.ErrUnavailable
 		}
 		seen[provider.ID] = struct{}{}
+		if !validArtifactCapability(provider.Capabilities.StructuredArtifacts, provider.Capabilities.SupportedArtifactTypes) {
+			// Bool/list drift is adapter capability corruption: Core must
+			// fail closed on the whole catalog read, never assume "all
+			// types" or silently drop the list (ADR-0008).
+			return domain.Catalog{}, domain.ErrUnavailable
+		}
 		provider.DisplayName = boundedText(provider.DisplayName, maximumDisplayNameRunes)
 		if provider.DisplayName == "" {
 			provider.DisplayName = provider.ID
@@ -73,6 +79,37 @@ func validProviderID(value string) bool {
 		if unicode.IsControl(character) {
 			return false
 		}
+	}
+	return true
+}
+
+// maxSupportedArtifactTypes bounds the declared supported-artifact list.
+const maxSupportedArtifactTypes = 16
+
+// validArtifactCapability enforces the exact structured-artifact capability
+// contract: enabled means a non-empty, bounded list of bounded type strings
+// without duplicates; disabled means an empty list.
+func validArtifactCapability(enabled bool, types []string) bool {
+	if !enabled {
+		return len(types) == 0
+	}
+	if len(types) == 0 || len(types) > maxSupportedArtifactTypes {
+		return false
+	}
+	seen := make(map[string]struct{}, len(types))
+	for _, artifactType := range types {
+		if artifactType == "" || len(artifactType) > 128 || !utf8.ValidString(artifactType) {
+			return false
+		}
+		for _, character := range artifactType {
+			if unicode.IsControl(character) {
+				return false
+			}
+		}
+		if _, duplicate := seen[artifactType]; duplicate {
+			return false
+		}
+		seen[artifactType] = struct{}{}
 	}
 	return true
 }

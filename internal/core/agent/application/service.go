@@ -20,6 +20,11 @@ type SubmitInput struct {
 	ProjectID      string
 	ProviderID     string
 	Payload        json.RawMessage
+	// OutputArtifactTypes is the caller's requested canonical review output
+	// set, already grammar-checked by the transport. The task router
+	// verifies the resolved provider's exact supported list before any task
+	// row exists; the payload itself stays the wire input.
+	OutputArtifactTypes []string
 }
 
 // AppSubmitInput is one bridge-submitted project task. The caller (the
@@ -305,4 +310,27 @@ func (s *Service) AppendEvent(ctx context.Context, leaseID, workerID, eventType 
 
 func (s *Service) Finish(ctx context.Context, leaseID, workerID string) error {
 	return s.repository.FinishLease(ctx, leaseID, workerID, s.now())
+}
+
+// NewArtifactPublicationEvent mints the canonical Core-owned artifact_created
+// timeline event for one already-persisted review artifact. The caller
+// supplies the server-minted event identity, stream sequence, and time; the
+// payload is built exclusively from Core-validated facts — never from
+// provider input — and the artifact content never enters the event.
+func NewArtifactPublicationEvent(eventID, taskID string, sequence int64, occurredAt time.Time, artifactID, artifactType string) (domain.Event, error) {
+	if eventID == "" || taskID == "" || sequence <= 0 || artifactID == "" || artifactType == "" {
+		return domain.Event{}, domain.ErrInvalid
+	}
+	payload, err := protojson.Marshal(&agentv1.AgentEvent{
+		Event: &agentv1.AgentEvent_ArtifactCreated{ArtifactCreated: &agentv1.ArtifactCreated{
+			ArtifactId: artifactID, ArtifactType: artifactType,
+		}},
+	})
+	if err != nil {
+		return domain.Event{}, fmt.Errorf("encode artifact publication payload: %w", err)
+	}
+	return domain.Event{
+		ID: eventID, TaskID: taskID, Sequence: sequence, EventType: "artifact_created",
+		Payload: payload, OccurredAt: occurredAt,
+	}, nil
 }

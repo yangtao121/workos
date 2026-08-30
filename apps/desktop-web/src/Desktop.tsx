@@ -21,6 +21,8 @@ import type {
 } from "@workos/protocol";
 import { Button } from "@workos/ui-kit";
 import { initialWindowState, windowReducer } from "@workos/window-manager";
+import { ArtifactCenter } from "./ArtifactCenter.js";
+import { ArtifactViewerWindow } from "./ArtifactViewerWindow.js";
 import { AppLibrary } from "./AppLibrary.js";
 import { ApprovalsView } from "./ApprovalsView.js";
 import { AppSurface, type SurfaceBridgeCredentials } from "./AppSurface.js";
@@ -79,6 +81,8 @@ export function Desktop({
   const [bindingEditor, setBindingEditor] = useState<BindingEditor>();
   const [editorProjectId, setEditorProjectId] = useState<string | undefined>(activeProjectId);
   const activeProjectIdRef = useRef<string | undefined>(activeProjectId);
+  const taskGenerationRef = useRef(0);
+  const taskAbortRef = useRef<AbortController | undefined>(undefined);
   const bindingOperationsRef = useRef<{ generation: number; tokens: Record<string, number> }>({
     generation: 0,
     tokens: {},
@@ -120,6 +124,21 @@ export function Desktop({
     } catch {
       // Selection persistence is best-effort; the in-memory selection stays.
     }
+  }, [activeProjectId]);
+
+  // Task/timeline state belongs to exactly one Project. A switch invalidates
+  // every outstanding submit/stream continuation before clearing the old
+  // snapshot, so a late Project-A event cannot paint into Project B.
+  useEffect(() => {
+    taskAbortRef.current?.abort();
+    taskAbortRef.current = undefined;
+    taskGenerationRef.current += 1;
+    setEvents([]);
+    setTask(undefined);
+    setError(undefined);
+    return () => {
+      taskAbortRef.current?.abort();
+    };
   }, [activeProjectId]);
 
   const refreshProjects = useCallback(async () => {
@@ -223,6 +242,52 @@ export function Desktop({
     });
   }, []);
 
+  // Artifact Center is a normal, closable window listing the active
+  // project's review artifacts. The reducer dedupes on the id, so repeated
+  // dock clicks focus the existing window.
+  const openArtifactCenter = useCallback(() => {
+    if (!activeProjectId) return;
+    dispatch({
+      type: "open",
+      window: {
+        id: "artifact-center",
+        appId: "artifact-center",
+        title: "Artifact Center",
+        kind: "artifact-center",
+        rect: { x: 120, y: 120, width: 520, height: 480 },
+        mode: "normal",
+      },
+    });
+  }, [activeProjectId]);
+
+  // Opening one artifact opens (or focuses) exactly one viewer window keyed
+  // on the artifact id. The window fetches authoritative content itself; a
+  // foreign or vanished reference renders the fixed unavailable verdict.
+  const openArtifactViewer = useCallback((artifactId: string, projectId: string) => {
+    dispatch({
+      type: "open",
+      window: {
+        id: `artifact-viewer-${artifactId}`,
+        appId: "artifact-viewer",
+        title: "Artifact Review",
+        kind: "artifact-viewer",
+        artifact: { artifactId, projectId },
+        rect: { x: 320, y: 150, width: 640, height: 520 },
+        mode: "normal",
+      },
+    });
+  }, []);
+
+  // Timeline artifact events open the same authoritative viewer path; the
+  // project fact is the active project, and the server re-checks ownership
+  // on the read regardless.
+  const openArtifactById = useCallback(
+    (artifactId: string) => {
+      openArtifactViewer(artifactId, activeProjectId ?? "");
+    },
+    [activeProjectId, openArtifactViewer],
+  );
+
   useEffect(() => {
     // Unmount invalidates every in-flight binding operation so a pending
     // Promise that settles afterwards cannot touch any binding state.
@@ -253,6 +318,22 @@ export function Desktop({
   useEffect(() => {
     if (!activeProjectId) return;
     for (const item of windows.windows) {
+      if (
+        item.kind === "artifact-viewer" &&
+        item.artifact &&
+        item.artifact.projectId !== activeProjectId
+      ) {
+        // Review windows belong to the project whose artifact they show;
+        // switching projects never carries the previous project's content.
+        dispatch({ type: "close", id: item.id });
+        continue;
+      }
+      if (item.kind === "artifact-center") {
+        // The center remounts keyed on the active project anyway; close it
+        // so the previous project's list never lingers behind a new one.
+        dispatch({ type: "close", id: item.id });
+        continue;
+      }
       if (
         item.kind === "app-surface" &&
         item.surface &&
@@ -495,38 +576,63 @@ export function Desktop({
     const formElement = event.currentTarget;
     const form = new FormData(formElement);
     const goal = formString(form, "goal");
-    if (!goal || !activeProjectId) return;
+    const taskProjectId = activeProjectId;
+    if (!goal || !taskProjectId) return;
+    taskAbortRef.current?.abort();
+    const abortController = new AbortController();
+    taskAbortRef.current = abortController;
+    const generation = ++taskGenerationRef.current;
+    const isLive = () =>
+      taskGenerationRef.current === generation && activeProjectIdRef.current === taskProjectId;
+    const outputArtifactTypes: string[] = [];
+    if (form.get("artifact-markdown") === "on") outputArtifactTypes.push("document.markdown.v1");
+    if (form.get("artifact-diff") === "on") outputArtifactTypes.push("code.unified-diff.v1");
     setEvents([]);
     setTask(undefined);
     setError(undefined);
     try {
-      const response = await workosClients.agentTasks.submitTask({
-        idempotencyKey: crypto.randomUUID(),
-        input: {
-          targetScope: { scope: { case: "projectId", value: activeProjectId } },
-          role: "general",
-          goal,
-          contextRefs: [],
-          requestedCapabilities: [],
-          outputArtifactTypes: [],
-          parentTaskId: "",
-          incidentId: "",
+      const response = await workosClients.agentTasks.submitTask(
+        {
+          idempotencyKey: crypto.randomUUID(),
+          input: {
+            targetScope: { scope: { case: "projectId", value: taskProjectId } },
+            role: "general",
+            goal,
+            contextRefs: [],
+            requestedCapabilities: [],
+            outputArtifactTypes,
+            parentTaskId: "",
+            incidentId: "",
+          },
         },
-      });
-      if (!response.task) return;
+        { signal: abortController.signal },
+      );
+      if (!isLive() || !response.task) return;
       setTask(response.task);
       formElement.reset();
-      for await (const item of workosClients.agentTasks.watchTaskEvents({
-        taskId: response.task.id,
-        afterSequence: 0n,
-      })) {
+      for await (const item of workosClients.agentTasks.watchTaskEvents(
+        {
+          taskId: response.task.id,
+          afterSequence: 0n,
+        },
+        { signal: abortController.signal },
+      )) {
+        if (!isLive()) break;
         const received = item.event;
         if (received) setEvents((current) => [...current, received]);
       }
-      const latest = await workosClients.agentTasks.getTask({ taskId: response.task.id });
-      if (latest.task) setTask(latest.task);
+      if (!isLive()) return;
+      const latest = await workosClients.agentTasks.getTask(
+        { taskId: response.task.id },
+        { signal: abortController.signal },
+      );
+      if (isLive() && latest.task) setTask(latest.task);
     } catch (reason) {
-      setError(asMessage(reason));
+      if (isLive()) setError(asMessage(reason));
+    } finally {
+      if (taskAbortRef.current === abortController) {
+        taskAbortRef.current = undefined;
+      }
     }
   }
 
@@ -676,6 +782,25 @@ export function Desktop({
               />
             ) : windowState.kind === "system-monitor" ? (
               <SystemMonitor projectId={activeProjectId} workosClients={workosClients} />
+            ) : windowState.kind === "artifact-center" ? (
+              activeProject ? (
+                <ArtifactCenter
+                  key={activeProject.id}
+                  projectId={activeProject.id}
+                  workosClients={workosClients}
+                  onOpenArtifact={(artifact) => {
+                    openArtifactViewer(artifact.id, artifact.projectId);
+                  }}
+                />
+              ) : (
+                <p className="empty-state">Create a project to review its artifacts.</p>
+              )
+            ) : windowState.kind === "artifact-viewer" && windowState.artifact ? (
+              <ArtifactViewerWindow
+                artifactId={windowState.artifact.artifactId}
+                projectId={windowState.artifact.projectId}
+                workosClients={workosClients}
+              />
             ) : windowState.kind === "device-center" ? (
               deviceAuth ? (
                 <DeviceCenter deviceAuth={deviceAuth} />
@@ -725,6 +850,14 @@ export function Desktop({
                         placeholder="Ask the current project agent…"
                         disabled={!activeProjectId}
                       />
+                      <div className="artifact-request" aria-label="Requested artifact outputs">
+                        <label>
+                          <input type="checkbox" name="artifact-markdown" /> Markdown document
+                        </label>
+                        <label>
+                          <input type="checkbox" name="artifact-diff" /> Unified diff
+                        </label>
+                      </div>
                       <Button disabled={!activeProjectId} type="submit">
                         Run task
                       </Button>
@@ -737,7 +870,7 @@ export function Desktop({
                         <dd>{task.id}</dd>
                       </dl>
                     ) : null}
-                    <AgentTimeline events={events} />
+                    <AgentTimeline events={events} onOpenArtifact={openArtifactById} />
                   </>
                 ) : null}
               </div>
@@ -773,6 +906,15 @@ export function Desktop({
           onClick={openDeviceCenter}
         >
           🔑
+        </button>
+        <button
+          type="button"
+          aria-label="Open Artifact Center"
+          data-testid="open-artifact-center"
+          disabled={!activeProject}
+          onClick={openArtifactCenter}
+        >
+          ☰
         </button>
       </nav>
     </main>

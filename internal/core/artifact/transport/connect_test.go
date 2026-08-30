@@ -17,6 +17,7 @@ import (
 	"github.com/yangtao121/workos/internal/core/artifact/application"
 	"github.com/yangtao121/workos/internal/core/artifact/domain"
 	"github.com/yangtao121/workos/internal/core/artifact/ports"
+	"github.com/yangtao121/workos/internal/platform/dbtx"
 	"github.com/yangtao121/workos/internal/platform/identity"
 )
 
@@ -26,7 +27,14 @@ import (
 
 func newHTTPServer(t *testing.T) (*httptest.Server, artifactv1connect.ArtifactServiceClient) {
 	t.Helper()
-	service, err := application.New(newTransportRepository(), &transportGenerator{})
+	server, client, _ := newHTTPServerWithRepository(t)
+	return server, client
+}
+
+func newHTTPServerWithRepository(t *testing.T) (*httptest.Server, artifactv1connect.ArtifactServiceClient, *transportRepository) {
+	t.Helper()
+	repository := newTransportRepository()
+	service, err := application.New(repository, &transportGenerator{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -35,7 +43,7 @@ func newHTTPServer(t *testing.T) (*httptest.Server, artifactv1connect.ArtifactSe
 	mux.Handle(path, identity.Middleware(handler))
 	server := httptest.NewServer(mux)
 	t.Cleanup(server.Close)
-	return server, artifactv1connect.NewArtifactServiceClient(server.Client(), server.URL)
+	return server, artifactv1connect.NewArtifactServiceClient(server.Client(), server.URL), repository
 }
 
 const transportOwner = "0198d7ea-2110-7c42-b659-c5e4d73bc337"
@@ -88,6 +96,51 @@ func TestCreateArtifactRoundTrip(t *testing.T) {
 	}))
 	if err != nil || replay.Msg.GetArtifact().GetId() != artifact.GetId() {
 		t.Fatalf("replay failed: %v", err)
+	}
+}
+
+func TestArtifactConnectUsesSeparateCreateAndReadBudgets(t *testing.T) {
+	t.Parallel()
+	server, client, repository := newHTTPServerWithRepository(t)
+
+	// A legal upload larger than the read-only budget must still reach the
+	// Create handler's explicit 4 MiB budget.
+	_, err := client.CreateArtifact(context.Background(), identityRequest(&artifactv1.CreateArtifactRequest{
+		IdempotencyKey: "large-create-route",
+		Artifact:       &artifactv1.Artifact{Title: "Large routed bundle"},
+		WebBundle: &artifactv1.WebBundleContent{
+			Entrypoint: "index.html",
+			Files: []*artifactv1.WebBundleFile{{
+				Path: "index.html", Content: []byte("<pre>" + strings.Repeat("x", MaxReadRequestBytes) + "</pre>"),
+			}},
+		},
+	}))
+	if err != nil {
+		t.Fatalf("legal Create request above read budget was rejected: %v", err)
+	}
+
+	for name, options := range map[string][]connect.ClientOption{
+		"protobuf":      nil,
+		"protobuf gzip": {connect.WithSendGzip()},
+		"json":          {connect.WithProtoJSON()},
+		"json gzip":     {connect.WithProtoJSON(), connect.WithSendGzip()},
+	} {
+		t.Run(name, func(t *testing.T) {
+			readClient := artifactv1connect.NewArtifactServiceClient(server.Client(), server.URL, options...)
+			oversizedID := strings.Repeat("a", MaxReadRequestBytes+1024)
+			_, err := readClient.GetArtifact(context.Background(), identityRequest(&artifactv1.GetArtifactRequest{
+				ArtifactId: oversizedID,
+			}))
+			if connect.CodeOf(err) != connect.CodeResourceExhausted {
+				t.Fatalf("oversized read must fail before decode, got %v", err)
+			}
+			if strings.Contains(err.Error(), oversizedID[:128]) {
+				t.Fatalf("oversized request bytes leaked in error: %v", err)
+			}
+		})
+	}
+	if repository.getCalls != 0 {
+		t.Fatalf("read business code ran for oversized requests: %d", repository.getCalls)
 	}
 }
 
@@ -188,6 +241,7 @@ func TestArtifactRequiresIdentity(t *testing.T) {
 type transportRepository struct {
 	artifacts map[string]*artifactv1.Artifact // key: owner/idempotency
 	next      int
+	getCalls  int
 }
 
 func newTransportRepository() *transportRepository {
@@ -218,6 +272,7 @@ func (r *transportRepository) Create(_ context.Context, command ports.CreateComm
 }
 
 func (r *transportRepository) Get(_ context.Context, ownerUserID, artifactID string) (domain.Artifact, error) {
+	r.getCalls++
 	return domain.Artifact{}, domain.ErrNotFound
 }
 
@@ -301,4 +356,24 @@ func TestListArtifactsPages(t *testing.T) {
 	if len(next.Msg.GetArtifacts()) != 1 || next.Msg.GetPage().GetNextPageToken() != "" {
 		t.Fatalf("unexpected final page: %d items token %q", len(next.Msg.GetArtifacts()), next.Msg.GetPage().GetNextPageToken())
 	}
+}
+
+func (r *transportRepository) GetReviewContent(_ context.Context, ownerUserID, artifactID string) (domain.ReviewArtifact, domain.NormalizedReviewContent, error) {
+	return domain.ReviewArtifact{}, domain.NormalizedReviewContent{}, domain.ErrNotFound
+}
+
+func (r *transportRepository) ListProjectReviewIDsPage(_ context.Context, ownerUserID, projectID, cursor string, limit int) ([]string, string, error) {
+	return nil, "", nil
+}
+
+func (r *transportRepository) FindTaskOutput(_ context.Context, _ dbtx.Tx, _, _ string) (ports.TaskOutputRecord, bool, error) {
+	return ports.TaskOutputRecord{}, false, nil
+}
+
+func (r *transportRepository) InsertTaskOutput(_ context.Context, _ dbtx.Tx, _ ports.ReviewOutputCommand) (int64, error) {
+	return 1, nil
+}
+
+func (r *transportRepository) ReviewArtifactByID(_ context.Context, _ dbtx.Tx, _ string) (domain.ReviewArtifact, error) {
+	return domain.ReviewArtifact{}, domain.ErrNotFound
 }
