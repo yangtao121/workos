@@ -66,7 +66,7 @@
   - secret 扫描：staged diff 无 PEM/bearer/provider key/raw context；`tmp/` 下临时证书与
     master key 未入库（.gitignore 覆盖）。
 - UI：本阶段不涉及可见 UI（新 capability 未渲染，像素不变；无需 before/after/current）。
-- commit：`（本文件提交后回填最终 hash）`，分支 `feat/central-credential-vault`。
+- commit：`87a0621`，分支 `feat/central-credential-vault`。
 
 ## 交接
 
