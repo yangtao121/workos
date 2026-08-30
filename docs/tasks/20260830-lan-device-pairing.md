@@ -1,6 +1,6 @@
 # Task: LAN 设备配对与持久 Gateway 会话纵向切片
 
-- 状态：done（两轮安全审查修复与全量门禁通过；用户后续明确授权合并到本地 `main`）
+- 状态：done（两轮安全审查修复与全量门禁通过；已合并到本地 `main`，未 push）
 - Owner/Agent：implementation agent (2026-08-30)
 - 进程/模块：workos-gateway（新增 internal/gateway/auth + admin socket + TLS 生产模式）、
   workosctl（device pair）、desktop-web（Auth Gate / Device Center / clients/device-auth）、
@@ -190,7 +190,7 @@ git diff --check                                 # PASS
 重跑结果（真实）：`make check` PASS、`make test-integration` PASS（0 失败）、
 `make test-e2e` PASS、`make test-deepseek-fixture` PASS、`make test-lan-pairing`
 PASS（四阶段）。`docs/status.json` 的 Gateway `working` 状态在上述真实证据之上
-维持。未 merge、未 push。
+维持。该轮结束时尚未 merge、未 push；最终本地 merge 记录为 `10ab93f`。
 
 ### 审查修复（第二轮，2026-08-30）
 
