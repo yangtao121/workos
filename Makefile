@@ -265,7 +265,7 @@ test-podman-fixture:
 # Reliability-backed System Monitor through the phone/tablet shells and
 # re-asserts the expanded desktop.
 test-adaptive-shell: e2e-image
-	docker compose up -d --build postgres bootstrap workos-core harness-host runtime-host workos-gateway
+	docker compose up -d --build postgres bootstrap workos-core harness-host runtime-host reliability-host workos-gateway
 	docker run --rm --network host $(USER_FLAGS) \
 		-e PLAYWRIGHT_BROWSERS_PATH=/ms-playwright \
 		-e WORKOS_E2E_URL=http://127.0.0.1:8080 \
@@ -289,7 +289,7 @@ test-app-version-rollback: e2e-image
 		$(E2E_IMAGE) pnpm exec playwright test app-version-rollback.spec.ts
 
 test-e2e: e2e-image
-	docker compose up -d --build postgres bootstrap workos-core harness-host runtime-host workos-gateway
+	docker compose up -d --build postgres bootstrap workos-core harness-host runtime-host reliability-host workos-gateway
 	docker run --rm --network host $(USER_FLAGS) \
 		-e PLAYWRIGHT_BROWSERS_PATH=/ms-playwright \
 		-e WORKOS_E2E_URL=http://127.0.0.1:8080 \

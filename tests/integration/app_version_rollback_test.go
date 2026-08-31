@@ -20,8 +20,11 @@ import (
 // exact first-response replay, deterministic no-op, grant-compatibility fail
 // closed, bounded history, and revision serialization. No direct database
 // writes impersonate the user chain.
+// Serial by design: this test registers new immutable registry versions as
+// fixtures, and the parallel paging walk of the acceptance volume derives
+// its padding from the live app count — a concurrent registration burst
+// would race its exact-final-page arithmetic.
 func TestAppVersionTransitionAndRollback(t *testing.T) {
-	t.Parallel()
 	ctx, cancel := context.WithTimeout(context.Background(), 240*time.Second)
 	defer cancel()
 	apps := appRegistryClients(t)

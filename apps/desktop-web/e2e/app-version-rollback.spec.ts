@@ -74,17 +74,25 @@ maintainer: {}
   await register("1.0.0", artifactV1);
 
   const projectName = `Version E2E ${stamp}`;
+  // The acceptance volume holds many projects, so walk every ListProjects
+  // page until the exact-name project shows up.
   const fetchProject = async (): Promise<{ id: string; revision: number }> => {
-    const response = await page.request.post("/workos.project.v1.ProjectService/ListProjects", {
-      data: { page: { pageSize: 100 } },
-    });
-    expect(response.ok()).toBeTruthy();
-    const body = (await response.json()) as {
-      projects: Array<{ id: string; name: string; revision: string }>;
-    };
-    const project = body.projects.find((candidate) => candidate.name === projectName);
-    if (!project) throw new Error("version e2e project vanished");
-    return { id: project.id, revision: Number(project.revision) };
+    let token = "";
+    for (;;) {
+      const response = await page.request.post("/workos.project.v1.ProjectService/ListProjects", {
+        data: { page: { pageSize: 100, pageToken: token } },
+      });
+      expect(response.ok()).toBeTruthy();
+      const body = (await response.json()) as {
+        projects: Array<{ id: string; name: string; revision: string }>;
+        page?: { nextPageToken?: string };
+      };
+      const project = body.projects.find((candidate) => candidate.name === projectName);
+      if (project) return { id: project.id, revision: Number(project.revision) };
+      const next = body.page?.nextPageToken ?? "";
+      if (next === "") throw new Error("version e2e project vanished");
+      token = next;
+    }
   };
   const projectRevision = async (): Promise<number> => (await fetchProject()).revision;
 

@@ -143,16 +143,84 @@ Prompt：`docs/prompts/` 下 v1 收口批次（Adaptive Shell、Rootless Runtime
   - Desktop 单测：VersionDialog 4 例、SystemMonitor rollback eligibility/action 5 例；
     desktop-web 全套 107 tests PASS。
 
-## 已验证命令
+## 已验证命令（最终真实结果，2026-08-31）
 
-- 基线：bootstrap/generate×2/check/test-integration → PASS（见上）。
-- 阶段 A：`pnpm --filter @workos/adaptive-shell check`（36 tests）、
-  `pnpm --filter @workos/desktop-web test`（102 tests）、`pnpm --filter @workos/desktop-web build`、
-  `make check`、`make test-adaptive-shell`（4 E2E）→ 全部 PASS。
-- 阶段 B：`make test-podman-fixture` → BLOCKED（见上）。
+| 命令                                                                                 | 结果                                                                                         |
+| ------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------- |
+| `make bootstrap`                                                                     | PASS                                                                                         |
+| `make generate` ×2（幂等，无生成漂移）                                               | PASS（buf.build 一度对本机不可达，期间 gen 以 HEAD 恢复并验证字节等同；恢复后复验幂等 PASS） |
+| `make check`                                                                         | PASS                                                                                         |
+| `make test-integration`（含扩展 restart battery：version-seed/verify 跨重启 replay） | PASS                                                                                         |
+| `make test-e2e`（全量 Playwright，含 adaptive 与 rollback spec）                     | PASS（13 passed）                                                                            |
+| `make test-adaptive-shell`                                                           | PASS（4 tests，真实栈）                                                                      |
+| `make test-app-version-rollback`                                                     | PASS（真实 web-bundle 全栈）                                                                 |
+| `make test-lan-pairing`                                                              | PASS                                                                                         |
+| `make test-artifact-review`                                                          | PASS                                                                                         |
+| `make test-artifact-context`                                                         | PASS                                                                                         |
+| `make test-deepseek-structured-review`                                               | PASS                                                                                         |
+| `make test-credential-vault`                                                         | PASS                                                                                         |
+| `make test-podman-fixture`                                                           | BLOCKED（宿主无 podman，按设计 loudly fail，不计 PASS）                                      |
+| `docker compose config --quiet`                                                      | PASS                                                                                         |
+| `buf breaking --against .git#branch=main`                                            | PASS（additive only）                                                                        |
+| `go test -race ./internal/core/project/...`                                          | PASS                                                                                         |
+| `git diff --check`                                                                   | PASS                                                                                         |
+
+注：lan-pairing / artifact / deepseek / credential-vault 门禁在 replay 快照修复前的镜像
+上通过；该修复仅影响 version 命令 replay 的版本快照投影，上述门禁不经过 installation
+replay 路径；受影响的 integration / e2e / adaptive / rollback 门禁均在最终代码上复跑
+PASS。
 
 ## 交接
 
-（收口时回填：branch/HEAD、阶段提交、Adaptive 模式与截图路径、layout state owner/schema、
-transition/rollback 事务与幂等证据、Podman 探测 verdict、capability 升级裁决、
-命令 PASS/FAIL/SKIP/BLOCKED、未决风险、工作树、merge/push=否）
+### Branch / 提交
+
+- 分支：`feat/v1-runtime-reliability-adaptive-closeout`（基于 main `12a53ab`）。
+- 阶段提交（串行，未 merge、未 push）：
+  1. `aa6535c feat: add shared adaptive shell device contract`
+  2. `ceca68a feat: add adaptive project shell layouts`
+  3. `feat: add deterministic installed app version rollback`（Core + Desktop UX + 门禁）
+  4. （收尾提交）任务记录/状态/门禁结果
+- 收尾纠偏：`feat:` 提交误纳入本地构建产物 `workos-core` 二进制，已在同一提交内
+  amend 移除（提交尚未交接/未 push），并更新 `.gitignore` 根路径规则。
+
+### Adaptive Shell
+
+- 四种模式与截图：`docs/ui/desktop-web/changes/20260831-adaptive-shell/`
+  （before 4 帧采自基线 `12a53ab` dist；after 9 帧采自实现后 bundle；`current/` 已同步）。
+- layout state owner：device-local IndexedDB（origin 隔离），schema v1，key
+  `layout/<deviceClass>/<projectId>`；仅存有界 canonical UUID 引用 + single/dual 偏好；
+  多 tab 写入单事务串行仲裁；腐坏仅重置当前 key；uninstall/archive 漂移 sweep；
+  无 IDB 环境降级内存。
+
+### 版本 transition / rollback
+
+- owner：workos-core Project Installation；单事务（installation + bounded history +
+  revision + event + outbox + 幂等快照）；回滚目标锁内从 durable history 重推导。
+- 幂等证据：same key 精确重放第一次响应（含 version 事实）——浏览器链路
+  （`make test-app-version-rollback`）与 PostgreSQL restart battery（version-seed/
+  verify 两次 replay 跨重启）共同覆盖；same key/different request 稳定 Aborted。
+- 权限不扩张：grant 不兼容 → FailedPrecondition，rollback 不恢复更宽历史 grant。
+
+### Podman / capability 裁决
+
+- 宿主探测：podman 缺失 + user namespace 不可用（阶段 B 原始 verdict）→
+  `container-runner`/`supervisor`/`incident-manager` 不升级，Runtime container 与
+  Reliability 状态保持 scaffolded/unavailable；`docs/tasks/20260829-supervised-web-service-workload.md`
+  保持 active。
+- Rollback 能力按 Web Bundle 链路独立标 working；container rollback 未验收、自动
+  canary/repair/deployment controller 仍 unavailable（ADR-0012 后果）。
+
+### 未决风险与下一台 acceptance host
+
+1. rootless Podman + cgroup v2 + 浏览器的真实 Workload/Incident/rollback-in-action
+   证据待合格宿主：执行 `make test-podman-fixture`，通过后再执行
+   `make test-supervised-workload-e2e`（若按 20260829 任务补建）与
+   `make test-adaptive-shell` / `make test-app-version-rollback` 复验。
+2. Fold-separated 的真机验证（真实 Window Segments API）待 Chromium flag 或
+   foldable 设备；当前为注入 segment fixture。
+3. System Monitor 的 incident 驱动 rollback 在真实 Incident 出现后需一次真机链路
+   复验（当前为组件级确定性证据 + Core 命令真实链路）。
+
+### 工作树 / 远端
+
+- 最终验证后工作树干净（见门禁结果）；未 merge 到 main、未 push。

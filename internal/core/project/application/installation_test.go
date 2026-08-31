@@ -305,6 +305,9 @@ func TestInstallReplaysConsumedKeyBeforeResolvingCurrent(t *testing.T) {
 	stored := ports.StoredInstallationRequest{
 		Command: "install", RequestDigest: domain.InstallationRequestDigest("install", testProject, "board-app", "", "", 4),
 		InstallationID: testInstall, ProjectRevision: 5,
+		// Migration 025 backfilled every mapping with the pinned identity its
+		// first response carried; the replay projection includes it.
+		ResultVersion: "1.0.0", ResultManifestDigest: digestOf('e'),
 	}
 	repo := &fakeRepository{
 		requests: map[string]ports.StoredInstallationRequest{"install-once": stored},
@@ -336,6 +339,9 @@ func TestInstallConsumedKeyDifferentRequestConflicts(t *testing.T) {
 	stored := ports.StoredInstallationRequest{
 		Command: "install", RequestDigest: domain.InstallationRequestDigest("install", testProject, "board-app", "", "", 4),
 		InstallationID: testInstall, ProjectRevision: 5,
+		// Migration 025 backfilled every mapping with the pinned identity its
+		// first response carried; the replay projection includes it.
+		ResultVersion: "1.0.0", ResultManifestDigest: digestOf('e'),
 	}
 	repo := &fakeRepository{requests: map[string]ports.StoredInstallationRequest{"install-once": stored}, byID: map[string]domain.Installation{testInstall: {ID: testInstall}}}
 	service := newInstallationService(t, repo, &fakeCatalog{})

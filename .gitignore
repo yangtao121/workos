@@ -27,9 +27,11 @@ test-results/
 /.pnpm-store/
 /.tools/
 
-# Accidental local build output (go build ./tests/restart writes ./restart);
-# the exact root path only — tests/restart/ source stays tracked.
+# Accidental local build output (go build ./tests/restart writes ./restart,
+# go build ./cmd/workos-core writes ./workos-core); the exact root paths only —
+# tests/restart/ source stays tracked.
 /restart
+/workos-core
 /devauth
 /deepseekapi
 

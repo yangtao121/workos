@@ -491,5 +491,10 @@ func (s *InstallationService) replayIfConsumed(ctx context.Context, ownerUserID,
 	installation.UninstalledAt = stored.ResultUninstalledAt
 	installation.GrantedPermissions = stored.ResultGrantedPermissions
 	installation.GrantRevision = stored.ResultGrantRevision
+	// The pinned identity the first response carried is part of the snapshot:
+	// a replay of a version command must return the version facts of its
+	// first response, not whatever the installation pins now.
+	installation.Version = stored.ResultVersion
+	installation.ManifestDigest = stored.ResultManifestDigest
 	return ports.InstallationResult{Installation: installation, ProjectRevision: stored.ProjectRevision}, true, nil
 }
