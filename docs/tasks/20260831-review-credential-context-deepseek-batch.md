@@ -1,6 +1,6 @@
 # Task: Credential / Context / DeepSeek 批次实现复核与修复
 
-- 状态：active
+- 状态：done
 - Owner/Agent：WorkOS 复核智能体
 - 进程/模块：workos-core、harness-host、desktop-web、部署与批次文档
 - 依赖：ADR-0009、ADR-0010、ADR-0011；阶段 A/B/C 已实现提交
@@ -52,4 +52,5 @@ forward-only migration，不接触真实 Provider，不使用真实凭据。
 
 ## 交接
 
-- 待修复提交创建后，补记 commit hash 并关闭本任务。
+- 修复提交：`94ebec4`（`fix: harden credential and artifact review batch`）。
+- 本记录关闭提交：本任务记录所在的后续 `docs:` 提交。
