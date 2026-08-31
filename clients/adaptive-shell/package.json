@@ -1,5 +1,5 @@
 {
-  "name": "@workos/mobile-shell",
+  "name": "@workos/adaptive-shell",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -13,9 +13,12 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@workos/adaptive-shell": "workspace:*"
+    "@workos/protocol": "workspace:*",
+    "@workos/window-manager": "workspace:*",
+    "react": "19.2.8"
   },
   "devDependencies": {
+    "@types/react": "19.2.14",
     "typescript": "5.9.2",
     "vitest": "4.1.11"
   }
