@@ -923,7 +923,11 @@ export function Desktop({
         appBridge={workosClients.appBridge}
       />
     ) : windowState.kind === "system-monitor" ? (
-      <SystemMonitor projectId={activeProjectId} workosClients={workosClients} />
+      <SystemMonitor
+        expectedProjectRevision={activeProject?.revision}
+        projectId={activeProjectId}
+        workosClients={workosClients}
+      />
     ) : windowState.kind === "artifact-center" ? (
       activeProject ? (
         <ArtifactCenter
@@ -1095,6 +1099,7 @@ export function Desktop({
               onSurfaceOpened={surfaceOpened}
               onInstallationRemoved={installationRemoved}
               onInstallationGrantsChanged={closeInstallationWindows}
+              onInstallationVersionChanged={closeInstallationWindows}
             />
           ) : null
         }
@@ -1205,6 +1210,7 @@ export function Desktop({
               onSurfaceOpened={surfaceOpened}
               onInstallationRemoved={installationRemoved}
               onInstallationGrantsChanged={closeInstallationWindows}
+              onInstallationVersionChanged={closeInstallationWindows}
             />
           ) : null}
           {settingsOpen && activeProject ? (

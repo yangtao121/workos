@@ -21,15 +21,21 @@ type Querier interface {
 	InsertCreateRequest(ctx context.Context, arg InsertCreateRequestParams) (int64, error)
 	InsertInstallation(ctx context.Context, arg InsertInstallationParams) error
 	InsertInstallationRequest(ctx context.Context, arg InsertInstallationRequestParams) (int64, error)
+	InsertInstallationVersion(ctx context.Context, arg InsertInstallationVersionParams) error
 	InsertProject(ctx context.Context, arg InsertProjectParams) (int64, error)
 	InsertProjectEvent(ctx context.Context, arg InsertProjectEventParams) error
 	InsertProjectOutbox(ctx context.Context, arg InsertProjectOutboxParams) error
 	ListActiveInstallations(ctx context.Context, arg ListActiveInstallationsParams) ([]ListActiveInstallationsRow, error)
+	ListInstallationVersionsAsc(ctx context.Context, installationID string) ([]WorkosCoreProjectAppInstallationVersion, error)
+	ListInstallationVersionsPage(ctx context.Context, arg ListInstallationVersionsPageParams) ([]WorkosCoreProjectAppInstallationVersion, error)
 	ListProjects(ctx context.Context, arg ListProjectsParams) ([]WorkosCoreProject, error)
 	LockProjectForInstallation(ctx context.Context, arg LockProjectForInstallationParams) (LockProjectForInstallationRow, error)
+	NextInstallationVersionSequence(ctx context.Context, installationID string) (int32, error)
 	ResolveActiveInstallation(ctx context.Context, arg ResolveActiveInstallationParams) (ResolveActiveInstallationRow, error)
 	SetInstallationGrants(ctx context.Context, arg SetInstallationGrantsParams) (SetInstallationGrantsRow, error)
 	TombstoneInstallation(ctx context.Context, arg TombstoneInstallationParams) (int64, error)
+	TrimInstallationVersions(ctx context.Context, arg TrimInstallationVersionsParams) error
+	UpdateInstallationVersion(ctx context.Context, arg UpdateInstallationVersionParams) (int64, error)
 	UpdateProject(ctx context.Context, arg UpdateProjectParams) (WorkosCoreProject, error)
 }
 

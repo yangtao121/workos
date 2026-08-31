@@ -44,8 +44,9 @@ func (r *Repository) LookupInstallationRequest(ctx context.Context, ownerUserID,
 }
 
 // storedInstallationRequest projects the persisted request row; the result
-// snapshot columns are NOT NULL with history backfilled, so the grant and
-// epoch snapshot are always the first response's authoritative facts.
+// snapshot columns are NOT NULL with history backfilled, so the grant, epoch,
+// and pinned version identity are always the first response's authoritative
+// facts.
 func storedInstallationRequest(stored projectdb.GetInstallationRequestRow) ports.StoredInstallationRequest {
 	return ports.StoredInstallationRequest{
 		Command: stored.Command, RequestDigest: stored.RequestDigest,
@@ -53,6 +54,8 @@ func storedInstallationRequest(stored projectdb.GetInstallationRequestRow) ports
 		ResultUninstalledAt:      timePtr(stored.ResultUninstalledAt),
 		ResultGrantedPermissions: stored.ResultGrantedPermissions,
 		ResultGrantRevision:      stored.ResultGrantRevision,
+		ResultVersion:            stored.ResultVersion,
+		ResultManifestDigest:     stored.ResultManifestDigest,
 	}
 }
 
@@ -119,7 +122,9 @@ func (r *Repository) Install(ctx context.Context, command ports.InstallCommand) 
 				Command: "install", RequestDigest: command.RequestDigest, InstallationID: existing.ID,
 				ProjectRevision:          command.ExpectedRevision,
 				ResultGrantedPermissions: nonNilGranted(existing.GrantedPermissions),
-				ResultGrantRevision:      existing.GrantRevision, CreatedAt: timestamp(command.Now),
+				ResultGrantRevision:      existing.GrantRevision,
+				ResultVersion:            existing.Version, ResultManifestDigest: existing.ManifestDigest,
+				CreatedAt: timestamp(command.Now),
 			}, ports.InstallationResult{Installation: existing, ProjectRevision: command.ExpectedRevision})
 		}
 		return ports.InstallationResult{}, domain.ErrAlreadyInstalled
@@ -143,6 +148,17 @@ func (r *Repository) Install(ctx context.Context, command ports.InstallCommand) 
 	}); err != nil {
 		return ports.InstallationResult{}, storeError("insert installation", err)
 	}
+	// The install origin is the first snapshot of the bounded version
+	// history (ADR-0012): every installation is born with a rollbackable
+	// past recorded in the same transaction that creates it.
+	if err := queries.InsertInstallationVersion(ctx, projectdb.InsertInstallationVersionParams{
+		InstallationID: installation.ID, OwnerUserID: installation.OwnerUserID,
+		Sequence: installOriginSequence, Version: installation.Version,
+		ManifestDigest: installation.ManifestDigest, Source: domain.VersionSourceInstall,
+		OccurredAt: timestamp(command.Now),
+	}); err != nil {
+		return ports.InstallationResult{}, storeError("insert install origin snapshot", err)
+	}
 	projection, err := applyProjection(ctx, queries, command.OwnerUserID, command.ProjectID, command.ExpectedRevision, command.Now)
 	if err != nil {
 		return ports.InstallationResult{}, err
@@ -155,7 +171,9 @@ func (r *Repository) Install(ctx context.Context, command ports.InstallCommand) 
 		Command: "install", RequestDigest: command.RequestDigest, InstallationID: installation.ID,
 		ProjectRevision:          projection.Revision,
 		ResultGrantedPermissions: nonNilGranted(installation.GrantedPermissions),
-		ResultGrantRevision:      installTimeGrantRevision, CreatedAt: timestamp(command.Now),
+		ResultGrantRevision:      installTimeGrantRevision,
+		ResultVersion:            installation.Version, ResultManifestDigest: installation.ManifestDigest,
+		CreatedAt: timestamp(command.Now),
 	}, ports.InstallationResult{Installation: installation, ProjectRevision: projection.Revision})
 }
 
@@ -165,6 +183,10 @@ func (r *Repository) Install(ctx context.Context, command ports.InstallCommand) 
 // installation must read GrantRevision from the locked row instead, so a
 // replay of an old key never confuses a later SetAppGrants epoch with 1.
 const installTimeGrantRevision = 1
+
+// installOriginSequence is the history sequence of a fresh installation's
+// install snapshot: every installation starts its bounded history at 1.
+const installOriginSequence = int64(1)
 
 // Uninstall tombstones one active installation in a single transaction with
 // the same revision/projection/event/outbox/idempotency guarantees.
@@ -220,7 +242,8 @@ func (r *Repository) Uninstall(ctx context.Context, command ports.UninstallComma
 		// transaction, read from the locked installation row — not a constant,
 		// so a later replay returns the facts the first response carried.
 		ResultGrantRevision: installation.GrantRevision,
-		CreatedAt:           timestamp(command.Now),
+		ResultVersion:       installation.Version, ResultManifestDigest: installation.ManifestDigest,
+		CreatedAt: timestamp(command.Now),
 	}, ports.InstallationResult{Installation: installation, ProjectRevision: projection.Revision})
 }
 
@@ -293,7 +316,9 @@ func (r *Repository) SetAppGrants(ctx context.Context, command ports.SetAppGrant
 			Command: "set-grants", RequestDigest: command.RequestDigest, InstallationID: installation.ID,
 			ProjectRevision:          command.ExpectedRevision,
 			ResultGrantedPermissions: nonNilGranted(installation.GrantedPermissions),
-			ResultGrantRevision:      installation.GrantRevision, CreatedAt: timestamp(command.Now),
+			ResultGrantRevision:      installation.GrantRevision,
+			ResultVersion:            installation.Version, ResultManifestDigest: installation.ManifestDigest,
+			CreatedAt: timestamp(command.Now),
 		}, ports.InstallationResult{Installation: installation, ProjectRevision: command.ExpectedRevision})
 	}
 
@@ -323,7 +348,9 @@ func (r *Repository) SetAppGrants(ctx context.Context, command ports.SetAppGrant
 		Command: "set-grants", RequestDigest: command.RequestDigest, InstallationID: installation.ID,
 		ProjectRevision:          projection.Revision,
 		ResultGrantedPermissions: nonNilGranted(installation.GrantedPermissions),
-		ResultGrantRevision:      installation.GrantRevision, CreatedAt: timestamp(command.Now),
+		ResultGrantRevision:      installation.GrantRevision,
+		ResultVersion:            installation.Version, ResultManifestDigest: installation.ManifestDigest,
+		CreatedAt: timestamp(command.Now),
 	}, ports.InstallationResult{Installation: installation, ProjectRevision: projection.Revision})
 }
 
@@ -548,12 +575,15 @@ func (r *Repository) commitInstallationRequest(
 
 // applyRequestSnapshot overlays the persisted first-response snapshot onto
 // the current installation row so a replay returns the facts the first
-// command returned — tombstone, grant set, and grant epoch — even after a
-// later SetAppGrants or uninstall mutated the row.
+// command returned — tombstone, grant set, grant epoch, and the pinned
+// version identity — even after a later SetAppGrants, uninstall, or version
+// transition mutated the row.
 func applyRequestSnapshot(installation domain.Installation, stored ports.StoredInstallationRequest) domain.Installation {
 	installation.UninstalledAt = stored.ResultUninstalledAt
 	installation.GrantedPermissions = stored.ResultGrantedPermissions
 	installation.GrantRevision = stored.ResultGrantRevision
+	installation.Version = stored.ResultVersion
+	installation.ManifestDigest = stored.ResultManifestDigest
 	return installation
 }
 
@@ -641,4 +671,227 @@ func equalGrants(stored, requested []string) bool {
 		}
 	}
 	return true
+}
+
+// errHistoryCorrupt marks stored version-history rows that violate the
+// canonical invariants or the owner binding. Corruption is sanitized
+// Internal, never a silent repair.
+var errHistoryCorrupt = errors.New("stored installation version history is inconsistent")
+
+// versionUpdatedEvent is the versioned event type of a real version change
+// (ADR-0012); a same-version transition no-op emits nothing.
+const versionUpdatedEvent = "project.app.version.updated.v1"
+
+// Transition pins the command's exact target registry version onto the active
+// installation in a single transaction (ADR-0012). Under the owner-scoped
+// project lock it re-arbitrates the idempotency key and expected revision,
+// re-reads the active installation, re-checks grant compatibility against the
+// target's requested permissions (a concurrent SetAppGrants may have moved
+// the grants while this command waited for the lock), and — for rollback —
+// re-derives the target from the durable history so a candidate selected
+// before the lock can never pin an unverified version. A transition to the
+// current (version, digest) is a deterministic no-op that still consumes the
+// key; a real change appends the history snapshot (trimmed to the bounded
+// limit), bumps the Project revision by exactly one, and commits the
+// installation update, project event, outbox, and idempotency result
+// atomically.
+func (r *Repository) Transition(ctx context.Context, command ports.TransitionCommand) (ports.InstallationResult, error) {
+	if command.Source != domain.VersionSourceTransition && command.Source != domain.VersionSourceRollback {
+		return ports.InstallationResult{}, domain.ErrInvalid
+	}
+	if !domain.ValidInstallationVersion(command.Target.Version) ||
+		!domain.ValidInstallationManifestDigest(command.Target.ManifestDigest) {
+		return ports.InstallationResult{}, domain.ErrInvalid
+	}
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return ports.InstallationResult{}, storeError("begin transition app version", err)
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck
+	queries := r.queries.WithTx(tx)
+
+	if result, handled, err := classifyUnderLock(ctx, queries, command.OwnerUserID, command.IdempotencyKey, command.ProjectID, command.ExpectedRevision, command.RequestDigest); handled {
+		return result, err
+	}
+
+	value, err := queries.GetInstallationById(ctx, projectdb.GetInstallationByIdParams{
+		OwnerUserID: command.OwnerUserID, ID: command.InstallationID,
+	})
+	installation, err := installationFromDB(value, err)
+	if err != nil {
+		return ports.InstallationResult{}, err
+	}
+	if installation.ProjectID != command.ProjectID || installation.UninstalledAt != nil {
+		return ports.InstallationResult{}, domain.ErrNotFound
+	}
+	// Re-check grant compatibility under the lock: the application validated
+	// against the pre-lock grants, and a concurrent SetAppGrants that
+	// committed while this command waited must not be silently overridden by
+	// a version change.
+	if err := domain.GrantsCompatibleWithTarget(installation.GrantedPermissions, command.Target.Permissions); err != nil {
+		return ports.InstallationResult{}, err
+	}
+
+	if command.Source == domain.VersionSourceRollback {
+		history, err := installationHistory(ctx, queries, command.OwnerUserID, command.InstallationID)
+		if err != nil {
+			return ports.InstallationResult{}, err
+		}
+		if err := domain.ValidateVersionHistory(history); err != nil {
+			return ports.InstallationResult{}, err
+		}
+		candidate, err := deriveRollbackCandidate(history, installation)
+		if err != nil {
+			return ports.InstallationResult{}, err
+		}
+		if candidate.Version != command.Target.Version || candidate.ManifestDigest != command.Target.ManifestDigest {
+			// The installation or its history moved between the
+			// application's read and this lock: a stable conflict the
+			// client resolves by re-reading, never a pinned mismatch.
+			return ports.InstallationResult{}, domain.ErrConflict
+		}
+	}
+
+	// Deterministic no-op: the transition target equals the current pinned
+	// identity. The key is still consumed with a snapshot of the current
+	// facts; neither revision, the event, the outbox, the history, nor
+	// updated_at move. A rollback can never take this path — its target
+	// differs from the current identity by derivation.
+	if installation.Version == command.Target.Version && installation.ManifestDigest == command.Target.ManifestDigest {
+		return r.commitInstallationRequest(ctx, tx, queries, projectdb.InsertInstallationRequestParams{
+			OwnerUserID: command.OwnerUserID, IdempotencyKey: command.IdempotencyKey,
+			Command: command.Source, RequestDigest: command.RequestDigest, InstallationID: installation.ID,
+			ProjectRevision:          command.ExpectedRevision,
+			ResultGrantedPermissions: nonNilGranted(installation.GrantedPermissions),
+			ResultGrantRevision:      installation.GrantRevision,
+			ResultVersion:            installation.Version, ResultManifestDigest: installation.ManifestDigest,
+			CreatedAt: timestamp(command.Now),
+		}, ports.InstallationResult{Installation: installation, ProjectRevision: command.ExpectedRevision})
+	}
+
+	sequence, err := queries.NextInstallationVersionSequence(ctx, command.InstallationID)
+	if err != nil {
+		return ports.InstallationResult{}, storeError("next version sequence", err)
+	}
+	if err := queries.InsertInstallationVersion(ctx, projectdb.InsertInstallationVersionParams{
+		InstallationID: command.InstallationID, OwnerUserID: command.OwnerUserID,
+		Sequence: int64(sequence), Version: command.Target.Version,
+		ManifestDigest: command.Target.ManifestDigest, Source: command.Source,
+		OccurredAt: timestamp(command.Now),
+	}); err != nil {
+		return ports.InstallationResult{}, storeError("insert version snapshot", err)
+	}
+	rows, err := queries.UpdateInstallationVersion(ctx, projectdb.UpdateInstallationVersionParams{
+		OwnerUserID: command.OwnerUserID, ProjectID: command.ProjectID,
+		ID: command.InstallationID, Version: command.Target.Version,
+		ManifestDigest: command.Target.ManifestDigest,
+	})
+	if errors.Is(err, pgx.ErrNoRows) || rows == 0 {
+		// The guarded WHERE still excludes tombstoned rows; under the lock
+		// this is unreachable except for drift, so fail closed as a miss.
+		return ports.InstallationResult{}, domain.ErrNotFound
+	}
+	if err != nil {
+		return ports.InstallationResult{}, storeError("update installation version", err)
+	}
+	fromVersion := installation.Version
+	installation.Version = command.Target.Version
+	installation.ManifestDigest = command.Target.ManifestDigest
+	projection, err := applyProjection(ctx, queries, command.OwnerUserID, command.ProjectID, command.ExpectedRevision, command.Now)
+	if err != nil {
+		return ports.InstallationResult{}, err
+	}
+	if err := appendVersionUpdatedEvent(ctx, queries, installation, fromVersion, command.Source, projection.Revision, command.Now); err != nil {
+		return ports.InstallationResult{}, err
+	}
+	if err := queries.TrimInstallationVersions(ctx, projectdb.TrimInstallationVersionsParams{
+		InstallationID: command.InstallationID, Sequence: domain.VersionHistoryLimit,
+	}); err != nil {
+		return ports.InstallationResult{}, storeError("trim version history", err)
+	}
+	return r.commitInstallationRequest(ctx, tx, queries, projectdb.InsertInstallationRequestParams{
+		OwnerUserID: command.OwnerUserID, IdempotencyKey: command.IdempotencyKey,
+		Command: command.Source, RequestDigest: command.RequestDigest, InstallationID: installation.ID,
+		ProjectRevision:          projection.Revision,
+		ResultGrantedPermissions: nonNilGranted(installation.GrantedPermissions),
+		ResultGrantRevision:      installation.GrantRevision,
+		ResultVersion:            installation.Version, ResultManifestDigest: installation.ManifestDigest,
+		CreatedAt: timestamp(command.Now),
+	}, ports.InstallationResult{Installation: installation, ProjectRevision: projection.Revision})
+}
+
+// deriveRollbackCandidate selects the most recent history snapshot whose
+// (version, digest) differs from the installation's current pinned identity.
+func deriveRollbackCandidate(history []domain.VersionSnapshot, installation domain.Installation) (domain.VersionSnapshot, error) {
+	for index := len(history) - 1; index >= 0; index-- {
+		snapshot := history[index]
+		if snapshot.Version != installation.Version || snapshot.ManifestDigest != installation.ManifestDigest {
+			return snapshot, nil
+		}
+	}
+	return domain.VersionSnapshot{}, domain.ErrNoPreviousVersion
+}
+
+// ListAllVersions returns the installation's full version history oldest
+// first. Every row's owner binding is re-verified; an installation without
+// any history row is stored corruption (migration 025 seeds every existing
+// installation and every install appends its origin snapshot atomically).
+func (r *Repository) ListAllVersions(ctx context.Context, ownerUserID, installationID string) ([]domain.VersionSnapshot, error) {
+	rows, err := r.queries.ListInstallationVersionsAsc(ctx, installationID)
+	if err != nil {
+		return nil, storeError("list installation versions", err)
+	}
+	if len(rows) == 0 {
+		return nil, errHistoryCorrupt
+	}
+	snapshots := make([]domain.VersionSnapshot, 0, len(rows))
+	for _, row := range rows {
+		if row.OwnerUserID != ownerUserID {
+			return nil, errHistoryCorrupt
+		}
+		snapshots = append(snapshots, domain.VersionSnapshot{
+			Version: row.Version, ManifestDigest: row.ManifestDigest,
+			Source: row.Source, Sequence: row.Sequence, OccurredAt: row.OccurredAt.Time,
+		})
+	}
+	return snapshots, nil
+}
+
+// appendVersionUpdatedEvent appends the project.app.version.updated.v1 event
+// and outbox row with sequence equal to the new Project revision. The
+// payload carries only stable identifiers and the version facts — no
+// manifest content, credentials, or user content.
+func appendVersionUpdatedEvent(ctx context.Context, queries *projectdb.Queries, installation domain.Installation, fromVersion, source string, revision int64, occurredAt time.Time) error {
+	payload, err := json.Marshal(map[string]any{
+		"projectId": installation.ProjectID, "revision": revision, "installationId": installation.ID,
+		"appId": installation.AppID, "fromVersion": fromVersion, "toVersion": installation.Version,
+		"manifestDigest": installation.ManifestDigest, "source": source,
+	})
+	if err != nil {
+		return fmt.Errorf("encode version event: %w", err)
+	}
+	return appendProjectEventOutbox(ctx, queries, installation.ProjectID, versionUpdatedEvent, revision, payload, occurredAt)
+}
+
+// installationHistory reads and owner-verifies the history rows inside the
+// caller's transaction.
+func installationHistory(ctx context.Context, queries *projectdb.Queries, ownerUserID, installationID string) ([]domain.VersionSnapshot, error) {
+	rows, err := queries.ListInstallationVersionsAsc(ctx, installationID)
+	if err != nil {
+		return nil, storeError("list installation versions", err)
+	}
+	if len(rows) == 0 {
+		return nil, errHistoryCorrupt
+	}
+	snapshots := make([]domain.VersionSnapshot, 0, len(rows))
+	for _, row := range rows {
+		if row.OwnerUserID != ownerUserID {
+			return nil, errHistoryCorrupt
+		}
+		snapshots = append(snapshots, domain.VersionSnapshot{
+			Version: row.Version, ManifestDigest: row.ManifestDigest,
+			Source: row.Source, Sequence: row.Sequence, OccurredAt: row.OccurredAt.Time,
+		})
+	}
+	return snapshots, nil
 }

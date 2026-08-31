@@ -45,6 +45,15 @@ const (
 	// AppInstallationServiceSetAppGrantsProcedure is the fully-qualified name of the
 	// AppInstallationService's SetAppGrants RPC.
 	AppInstallationServiceSetAppGrantsProcedure = "/workos.app.v1.AppInstallationService/SetAppGrants"
+	// AppInstallationServiceTransitionAppVersionProcedure is the fully-qualified name of the
+	// AppInstallationService's TransitionAppVersion RPC.
+	AppInstallationServiceTransitionAppVersionProcedure = "/workos.app.v1.AppInstallationService/TransitionAppVersion"
+	// AppInstallationServiceRollbackAppVersionProcedure is the fully-qualified name of the
+	// AppInstallationService's RollbackAppVersion RPC.
+	AppInstallationServiceRollbackAppVersionProcedure = "/workos.app.v1.AppInstallationService/RollbackAppVersion"
+	// AppInstallationServiceListAppVersionHistoryProcedure is the fully-qualified name of the
+	// AppInstallationService's ListAppVersionHistory RPC.
+	AppInstallationServiceListAppVersionHistoryProcedure = "/workos.app.v1.AppInstallationService/ListAppVersionHistory"
 )
 
 // AppInstallationServiceClient is a client for the workos.app.v1.AppInstallationService service.
@@ -61,6 +70,24 @@ type AppInstallationServiceClient interface {
 	// single transaction. The command is serialized against every other
 	// project mutation by expected_project_revision.
 	SetAppGrants(context.Context, *connect.Request[v1.SetAppGrantsRequest]) (*connect.Response[v1.SetAppGrantsResponse], error)
+	// TransitionAppVersion pins one explicit, immutable registry version of
+	// the same app onto the active installation (ADR-0012). The owner names
+	// the version; Core re-resolves its exact manifest digest from the
+	// registry and never accepts client-supplied digests. The current grant
+	// set must remain a subset of the target version's requested permissions
+	// or the command fails closed with FailedPrecondition (permissions need
+	// review) — permissions are never expanded, not even by an upgrade.
+	TransitionAppVersion(context.Context, *connect.Request[v1.TransitionAppVersionRequest]) (*connect.Response[v1.TransitionAppVersionResponse], error)
+	// RollbackAppVersion restores the most recent previous pinned snapshot
+	// that differs from the current (version, digest), chosen by Core from
+	// the installation's durable, bounded version history — the client never
+	// names a rollback target. With no previous snapshot the command fails
+	// closed with FailedPrecondition and zero side effects.
+	RollbackAppVersion(context.Context, *connect.Request[v1.RollbackAppVersionRequest]) (*connect.Response[v1.RollbackAppVersionResponse], error)
+	// ListAppVersionHistory reads one installation's bounded, append-only
+	// version history (install origin plus every transition/rollback), oldest
+	// first.
+	ListAppVersionHistory(context.Context, *connect.Request[v1.ListAppVersionHistoryRequest]) (*connect.Response[v1.ListAppVersionHistoryResponse], error)
 }
 
 // NewAppInstallationServiceClient constructs a client for the workos.app.v1.AppInstallationService
@@ -98,15 +125,36 @@ func NewAppInstallationServiceClient(httpClient connect.HTTPClient, baseURL stri
 			connect.WithSchema(appInstallationServiceMethods.ByName("SetAppGrants")),
 			connect.WithClientOptions(opts...),
 		),
+		transitionAppVersion: connect.NewClient[v1.TransitionAppVersionRequest, v1.TransitionAppVersionResponse](
+			httpClient,
+			baseURL+AppInstallationServiceTransitionAppVersionProcedure,
+			connect.WithSchema(appInstallationServiceMethods.ByName("TransitionAppVersion")),
+			connect.WithClientOptions(opts...),
+		),
+		rollbackAppVersion: connect.NewClient[v1.RollbackAppVersionRequest, v1.RollbackAppVersionResponse](
+			httpClient,
+			baseURL+AppInstallationServiceRollbackAppVersionProcedure,
+			connect.WithSchema(appInstallationServiceMethods.ByName("RollbackAppVersion")),
+			connect.WithClientOptions(opts...),
+		),
+		listAppVersionHistory: connect.NewClient[v1.ListAppVersionHistoryRequest, v1.ListAppVersionHistoryResponse](
+			httpClient,
+			baseURL+AppInstallationServiceListAppVersionHistoryProcedure,
+			connect.WithSchema(appInstallationServiceMethods.ByName("ListAppVersionHistory")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
 // appInstallationServiceClient implements AppInstallationServiceClient.
 type appInstallationServiceClient struct {
-	installApp        *connect.Client[v1.InstallAppRequest, v1.InstallAppResponse]
-	uninstallApp      *connect.Client[v1.UninstallAppRequest, v1.UninstallAppResponse]
-	listInstalledApps *connect.Client[v1.ListInstalledAppsRequest, v1.ListInstalledAppsResponse]
-	setAppGrants      *connect.Client[v1.SetAppGrantsRequest, v1.SetAppGrantsResponse]
+	installApp            *connect.Client[v1.InstallAppRequest, v1.InstallAppResponse]
+	uninstallApp          *connect.Client[v1.UninstallAppRequest, v1.UninstallAppResponse]
+	listInstalledApps     *connect.Client[v1.ListInstalledAppsRequest, v1.ListInstalledAppsResponse]
+	setAppGrants          *connect.Client[v1.SetAppGrantsRequest, v1.SetAppGrantsResponse]
+	transitionAppVersion  *connect.Client[v1.TransitionAppVersionRequest, v1.TransitionAppVersionResponse]
+	rollbackAppVersion    *connect.Client[v1.RollbackAppVersionRequest, v1.RollbackAppVersionResponse]
+	listAppVersionHistory *connect.Client[v1.ListAppVersionHistoryRequest, v1.ListAppVersionHistoryResponse]
 }
 
 // InstallApp calls workos.app.v1.AppInstallationService.InstallApp.
@@ -129,6 +177,21 @@ func (c *appInstallationServiceClient) SetAppGrants(ctx context.Context, req *co
 	return c.setAppGrants.CallUnary(ctx, req)
 }
 
+// TransitionAppVersion calls workos.app.v1.AppInstallationService.TransitionAppVersion.
+func (c *appInstallationServiceClient) TransitionAppVersion(ctx context.Context, req *connect.Request[v1.TransitionAppVersionRequest]) (*connect.Response[v1.TransitionAppVersionResponse], error) {
+	return c.transitionAppVersion.CallUnary(ctx, req)
+}
+
+// RollbackAppVersion calls workos.app.v1.AppInstallationService.RollbackAppVersion.
+func (c *appInstallationServiceClient) RollbackAppVersion(ctx context.Context, req *connect.Request[v1.RollbackAppVersionRequest]) (*connect.Response[v1.RollbackAppVersionResponse], error) {
+	return c.rollbackAppVersion.CallUnary(ctx, req)
+}
+
+// ListAppVersionHistory calls workos.app.v1.AppInstallationService.ListAppVersionHistory.
+func (c *appInstallationServiceClient) ListAppVersionHistory(ctx context.Context, req *connect.Request[v1.ListAppVersionHistoryRequest]) (*connect.Response[v1.ListAppVersionHistoryResponse], error) {
+	return c.listAppVersionHistory.CallUnary(ctx, req)
+}
+
 // AppInstallationServiceHandler is an implementation of the workos.app.v1.AppInstallationService
 // service.
 type AppInstallationServiceHandler interface {
@@ -144,6 +207,24 @@ type AppInstallationServiceHandler interface {
 	// single transaction. The command is serialized against every other
 	// project mutation by expected_project_revision.
 	SetAppGrants(context.Context, *connect.Request[v1.SetAppGrantsRequest]) (*connect.Response[v1.SetAppGrantsResponse], error)
+	// TransitionAppVersion pins one explicit, immutable registry version of
+	// the same app onto the active installation (ADR-0012). The owner names
+	// the version; Core re-resolves its exact manifest digest from the
+	// registry and never accepts client-supplied digests. The current grant
+	// set must remain a subset of the target version's requested permissions
+	// or the command fails closed with FailedPrecondition (permissions need
+	// review) — permissions are never expanded, not even by an upgrade.
+	TransitionAppVersion(context.Context, *connect.Request[v1.TransitionAppVersionRequest]) (*connect.Response[v1.TransitionAppVersionResponse], error)
+	// RollbackAppVersion restores the most recent previous pinned snapshot
+	// that differs from the current (version, digest), chosen by Core from
+	// the installation's durable, bounded version history — the client never
+	// names a rollback target. With no previous snapshot the command fails
+	// closed with FailedPrecondition and zero side effects.
+	RollbackAppVersion(context.Context, *connect.Request[v1.RollbackAppVersionRequest]) (*connect.Response[v1.RollbackAppVersionResponse], error)
+	// ListAppVersionHistory reads one installation's bounded, append-only
+	// version history (install origin plus every transition/rollback), oldest
+	// first.
+	ListAppVersionHistory(context.Context, *connect.Request[v1.ListAppVersionHistoryRequest]) (*connect.Response[v1.ListAppVersionHistoryResponse], error)
 }
 
 // NewAppInstallationServiceHandler builds an HTTP handler from the service implementation. It
@@ -177,6 +258,24 @@ func NewAppInstallationServiceHandler(svc AppInstallationServiceHandler, opts ..
 		connect.WithSchema(appInstallationServiceMethods.ByName("SetAppGrants")),
 		connect.WithHandlerOptions(opts...),
 	)
+	appInstallationServiceTransitionAppVersionHandler := connect.NewUnaryHandler(
+		AppInstallationServiceTransitionAppVersionProcedure,
+		svc.TransitionAppVersion,
+		connect.WithSchema(appInstallationServiceMethods.ByName("TransitionAppVersion")),
+		connect.WithHandlerOptions(opts...),
+	)
+	appInstallationServiceRollbackAppVersionHandler := connect.NewUnaryHandler(
+		AppInstallationServiceRollbackAppVersionProcedure,
+		svc.RollbackAppVersion,
+		connect.WithSchema(appInstallationServiceMethods.ByName("RollbackAppVersion")),
+		connect.WithHandlerOptions(opts...),
+	)
+	appInstallationServiceListAppVersionHistoryHandler := connect.NewUnaryHandler(
+		AppInstallationServiceListAppVersionHistoryProcedure,
+		svc.ListAppVersionHistory,
+		connect.WithSchema(appInstallationServiceMethods.ByName("ListAppVersionHistory")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/workos.app.v1.AppInstallationService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case AppInstallationServiceInstallAppProcedure:
@@ -187,6 +286,12 @@ func NewAppInstallationServiceHandler(svc AppInstallationServiceHandler, opts ..
 			appInstallationServiceListInstalledAppsHandler.ServeHTTP(w, r)
 		case AppInstallationServiceSetAppGrantsProcedure:
 			appInstallationServiceSetAppGrantsHandler.ServeHTTP(w, r)
+		case AppInstallationServiceTransitionAppVersionProcedure:
+			appInstallationServiceTransitionAppVersionHandler.ServeHTTP(w, r)
+		case AppInstallationServiceRollbackAppVersionProcedure:
+			appInstallationServiceRollbackAppVersionHandler.ServeHTTP(w, r)
+		case AppInstallationServiceListAppVersionHistoryProcedure:
+			appInstallationServiceListAppVersionHistoryHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -210,4 +315,16 @@ func (UnimplementedAppInstallationServiceHandler) ListInstalledApps(context.Cont
 
 func (UnimplementedAppInstallationServiceHandler) SetAppGrants(context.Context, *connect.Request[v1.SetAppGrantsRequest]) (*connect.Response[v1.SetAppGrantsResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("workos.app.v1.AppInstallationService.SetAppGrants is not implemented"))
+}
+
+func (UnimplementedAppInstallationServiceHandler) TransitionAppVersion(context.Context, *connect.Request[v1.TransitionAppVersionRequest]) (*connect.Response[v1.TransitionAppVersionResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("workos.app.v1.AppInstallationService.TransitionAppVersion is not implemented"))
+}
+
+func (UnimplementedAppInstallationServiceHandler) RollbackAppVersion(context.Context, *connect.Request[v1.RollbackAppVersionRequest]) (*connect.Response[v1.RollbackAppVersionResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("workos.app.v1.AppInstallationService.RollbackAppVersion is not implemented"))
+}
+
+func (UnimplementedAppInstallationServiceHandler) ListAppVersionHistory(context.Context, *connect.Request[v1.ListAppVersionHistoryRequest]) (*connect.Response[v1.ListAppVersionHistoryResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("workos.app.v1.AppInstallationService.ListAppVersionHistory is not implemented"))
 }

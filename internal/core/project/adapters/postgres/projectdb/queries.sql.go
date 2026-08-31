@@ -219,7 +219,7 @@ func (q *Queries) GetInstallationById(ctx context.Context, arg GetInstallationBy
 const getInstallationRequest = `-- name: GetInstallationRequest :one
 SELECT owner_user_id, idempotency_key, command, request_digest, installation_id,
        project_revision, result_uninstalled_at, result_granted_permissions,
-       result_grant_revision, created_at
+       result_grant_revision, result_version, result_manifest_digest, created_at
 FROM workos_core.project_app_installation_requests
 WHERE owner_user_id = $1 AND idempotency_key = $2
 `
@@ -239,6 +239,8 @@ type GetInstallationRequestRow struct {
 	ResultUninstalledAt      pgtype.Timestamptz `json:"result_uninstalled_at"`
 	ResultGrantedPermissions []string           `json:"result_granted_permissions"`
 	ResultGrantRevision      int64              `json:"result_grant_revision"`
+	ResultVersion            string             `json:"result_version"`
+	ResultManifestDigest     string             `json:"result_manifest_digest"`
 	CreatedAt                pgtype.Timestamptz `json:"created_at"`
 }
 
@@ -255,6 +257,8 @@ func (q *Queries) GetInstallationRequest(ctx context.Context, arg GetInstallatio
 		&i.ResultUninstalledAt,
 		&i.ResultGrantedPermissions,
 		&i.ResultGrantRevision,
+		&i.ResultVersion,
+		&i.ResultManifestDigest,
 		&i.CreatedAt,
 	)
 	return i, err
@@ -396,8 +400,8 @@ const insertInstallationRequest = `-- name: InsertInstallationRequest :execrows
 INSERT INTO workos_core.project_app_installation_requests (
     owner_user_id, idempotency_key, command, request_digest, installation_id,
     project_revision, result_uninstalled_at, result_granted_permissions,
-    result_grant_revision, created_at
-) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+    result_grant_revision, result_version, result_manifest_digest, created_at
+) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
 ON CONFLICT (owner_user_id, idempotency_key) DO NOTHING
 `
 
@@ -411,6 +415,8 @@ type InsertInstallationRequestParams struct {
 	ResultUninstalledAt      pgtype.Timestamptz `json:"result_uninstalled_at"`
 	ResultGrantedPermissions []string           `json:"result_granted_permissions"`
 	ResultGrantRevision      int64              `json:"result_grant_revision"`
+	ResultVersion            string             `json:"result_version"`
+	ResultManifestDigest     string             `json:"result_manifest_digest"`
 	CreatedAt                pgtype.Timestamptz `json:"created_at"`
 }
 
@@ -425,12 +431,43 @@ func (q *Queries) InsertInstallationRequest(ctx context.Context, arg InsertInsta
 		arg.ResultUninstalledAt,
 		arg.ResultGrantedPermissions,
 		arg.ResultGrantRevision,
+		arg.ResultVersion,
+		arg.ResultManifestDigest,
 		arg.CreatedAt,
 	)
 	if err != nil {
 		return 0, err
 	}
 	return result.RowsAffected(), nil
+}
+
+const insertInstallationVersion = `-- name: InsertInstallationVersion :exec
+INSERT INTO workos_core.project_app_installation_versions (
+    installation_id, owner_user_id, sequence, version, manifest_digest, source, occurred_at
+) VALUES ($1, $2, $3, $4, $5, $6, $7)
+`
+
+type InsertInstallationVersionParams struct {
+	InstallationID string             `json:"installation_id"`
+	OwnerUserID    string             `json:"owner_user_id"`
+	Sequence       int64              `json:"sequence"`
+	Version        string             `json:"version"`
+	ManifestDigest string             `json:"manifest_digest"`
+	Source         string             `json:"source"`
+	OccurredAt     pgtype.Timestamptz `json:"occurred_at"`
+}
+
+func (q *Queries) InsertInstallationVersion(ctx context.Context, arg InsertInstallationVersionParams) error {
+	_, err := q.db.Exec(ctx, insertInstallationVersion,
+		arg.InstallationID,
+		arg.OwnerUserID,
+		arg.Sequence,
+		arg.Version,
+		arg.ManifestDigest,
+		arg.Source,
+		arg.OccurredAt,
+	)
+	return err
 }
 
 const insertProject = `-- name: InsertProject :execrows
@@ -603,6 +640,83 @@ func (q *Queries) ListActiveInstallations(ctx context.Context, arg ListActiveIns
 	return items, nil
 }
 
+const listInstallationVersionsAsc = `-- name: ListInstallationVersionsAsc :many
+SELECT installation_id, owner_user_id, sequence, version, manifest_digest, source, occurred_at
+FROM workos_core.project_app_installation_versions
+WHERE installation_id = $1
+ORDER BY sequence ASC
+`
+
+func (q *Queries) ListInstallationVersionsAsc(ctx context.Context, installationID string) ([]WorkosCoreProjectAppInstallationVersion, error) {
+	rows, err := q.db.Query(ctx, listInstallationVersionsAsc, installationID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []WorkosCoreProjectAppInstallationVersion
+	for rows.Next() {
+		var i WorkosCoreProjectAppInstallationVersion
+		if err := rows.Scan(
+			&i.InstallationID,
+			&i.OwnerUserID,
+			&i.Sequence,
+			&i.Version,
+			&i.ManifestDigest,
+			&i.Source,
+			&i.OccurredAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listInstallationVersionsPage = `-- name: ListInstallationVersionsPage :many
+SELECT installation_id, owner_user_id, sequence, version, manifest_digest, source, occurred_at
+FROM workos_core.project_app_installation_versions
+WHERE installation_id = $1 AND sequence > $2
+ORDER BY sequence ASC
+LIMIT $3
+`
+
+type ListInstallationVersionsPageParams struct {
+	InstallationID string `json:"installation_id"`
+	Sequence       int64  `json:"sequence"`
+	Limit          int32  `json:"limit"`
+}
+
+func (q *Queries) ListInstallationVersionsPage(ctx context.Context, arg ListInstallationVersionsPageParams) ([]WorkosCoreProjectAppInstallationVersion, error) {
+	rows, err := q.db.Query(ctx, listInstallationVersionsPage, arg.InstallationID, arg.Sequence, arg.Limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []WorkosCoreProjectAppInstallationVersion
+	for rows.Next() {
+		var i WorkosCoreProjectAppInstallationVersion
+		if err := rows.Scan(
+			&i.InstallationID,
+			&i.OwnerUserID,
+			&i.Sequence,
+			&i.Version,
+			&i.ManifestDigest,
+			&i.Source,
+			&i.OccurredAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listProjects = `-- name: ListProjects :many
 SELECT id, owner_user_id, idempotency_key, name, icon, workspace_refs, harness_binding,
        installed_app_ids, default_agent_role, knowledge_collection_id, artifact_collection_id,
@@ -692,6 +806,19 @@ func (q *Queries) LockProjectForInstallation(ctx context.Context, arg LockProjec
 		&i.ArchivedAt,
 	)
 	return i, err
+}
+
+const nextInstallationVersionSequence = `-- name: NextInstallationVersionSequence :one
+SELECT COALESCE(max(sequence), 0) + 1 AS next_sequence
+FROM workos_core.project_app_installation_versions
+WHERE installation_id = $1
+`
+
+func (q *Queries) NextInstallationVersionSequence(ctx context.Context, installationID string) (int32, error) {
+	row := q.db.QueryRow(ctx, nextInstallationVersionSequence, installationID)
+	var next_sequence int32
+	err := row.Scan(&next_sequence)
+	return next_sequence, err
 }
 
 const resolveActiveInstallation = `-- name: ResolveActiveInstallation :one
@@ -818,6 +945,54 @@ func (q *Queries) TombstoneInstallation(ctx context.Context, arg TombstoneInstal
 		arg.OwnerUserID,
 		arg.ProjectID,
 		arg.ID,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const trimInstallationVersions = `-- name: TrimInstallationVersions :exec
+DELETE FROM workos_core.project_app_installation_versions AS target
+WHERE target.installation_id = $1
+  AND target.sequence <= (
+    SELECT max(inner_versions.sequence) - $2
+    FROM workos_core.project_app_installation_versions AS inner_versions
+    WHERE inner_versions.installation_id = $1
+  )
+`
+
+type TrimInstallationVersionsParams struct {
+	InstallationID string `json:"installation_id"`
+	Sequence       int64  `json:"sequence"`
+}
+
+func (q *Queries) TrimInstallationVersions(ctx context.Context, arg TrimInstallationVersionsParams) error {
+	_, err := q.db.Exec(ctx, trimInstallationVersions, arg.InstallationID, arg.Sequence)
+	return err
+}
+
+const updateInstallationVersion = `-- name: UpdateInstallationVersion :execrows
+UPDATE workos_core.project_app_installations
+SET version = $4, manifest_digest = $5
+WHERE owner_user_id = $1 AND project_id = $2 AND id = $3 AND uninstalled_at IS NULL
+`
+
+type UpdateInstallationVersionParams struct {
+	OwnerUserID    string `json:"owner_user_id"`
+	ProjectID      string `json:"project_id"`
+	ID             string `json:"id"`
+	Version        string `json:"version"`
+	ManifestDigest string `json:"manifest_digest"`
+}
+
+func (q *Queries) UpdateInstallationVersion(ctx context.Context, arg UpdateInstallationVersionParams) (int64, error) {
+	result, err := q.db.Exec(ctx, updateInstallationVersion,
+		arg.OwnerUserID,
+		arg.ProjectID,
+		arg.ID,
+		arg.Version,
+		arg.ManifestDigest,
 	)
 	if err != nil {
 		return 0, err

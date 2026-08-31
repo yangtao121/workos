@@ -478,6 +478,60 @@ requested permission（manifest，永远只是请求）
   Desktop 的 ref（不进可序列化 window state/DOM）；Project 切换/关窗/卸载/iframe reload
   关闭旧 port 并使迟到 response inert，Agent task 本身 durable。
 
+## App Version Transition 与 Owner 触发的 Rollback（ADR-0012，2026-08-31）
+
+App Registry 的 immutable SemVer 版本之上，Project Installation 增加 owner 明确触发的
+版本切换与"上一 pinned 版本"回滚。additive RPC 挂在现有 public
+`AppInstallationService`（Gateway allowlist 自动覆盖，identity 注入）：
+
+```text
+Desktop Versions 对话框 / System Monitor eligible Incident
+  → Gateway public AppInstallationService.TransitionAppVersion / RollbackAppVersion
+Core: identity → 幂等 key 裁决（共用 installation request 命名空间）
+  → 中立 AppCatalog 解析 exact 目标 version → pinned identity/scope 重验
+  → 当前 grants ⊆ 目标 requested（否则 FailedPrecondition "permissions need review"）
+  → 单事务：installation version/digest + history 追加（含裁剪）
+      + Project revision(+1) + project.app.version.updated.v1 + outbox + 首响应快照
+```
+
+- `TransitionAppVersion` 请求只有 key/project/installation/expected revision/目标
+  version；digest 由 Core 从 Registry 重解析，客户端不能提交 digest/image/container。
+  同 version 同 digest 是确定性 no-op（消费 key、不动 revision/历史）。
+- `RollbackAppVersion` 无目标字段：Core 在锁内从 durable history 重新推导"最近一个与
+  当前 (version, digest) 不同的快照"并经 Catalog 重验逐字一致；无 previous snapshot →
+  FailedPrecondition 零副作用。Application 层先推导一次用于验证 + 锁内重推导比对，
+  漂移为稳定 `Aborted`。
+- 幂等沿用 `project_app_installation_requests`；migration `025` 增加
+  `result_version`/`result_manifest_digest` 快照列（从 owner-bound installation
+  fail-closed 回填 + NOT NULL），same key/same request 精确重放第一次响应（含版本
+  事实），different request 稳定 `Aborted`，失败不消费 key。
+- 版本历史：`workos_core.project_app_installation_versions`（append-only，owner：
+  workos-core Project Installation），`(installation_id, sequence)` 主键、复合 FK
+  CASCADE 绑定同 owner installation，source ∈ install/transition/rollback；每个
+  installation 有界保留最近 20 条（同事务裁剪）。每次读取重验 grammar/digest/source/
+  严格递增序列，损坏为净化 Internal。安装事务写入 install origin 快照。
+- 权限绝不扩大：目标 requested 集合不完全覆盖当前 grants（锁内重验）→
+  `FailedPrecondition`，要求显式 `SetAppGrants` 重新确认；rollback 同样不恢复更宽的
+  历史 grant。
+- 事件 `project.app.version.updated.v1` payload 只含稳定 ID/fromVersion/toVersion/
+  manifestDigest/source；Surface 失效依赖既有的每请求 Core revalidation（pinned
+  digest 漂移立即 404），Desktop 对确认的版本变更 best-effort 关闭该 installation 窗口。
+- Reliability 不读取/复制该历史；System Monitor 的 rollback 入口由 Desktop 组合
+  public Incident 读 + public `ListAppVersionHistory`（eligibility 预览，服务端命令
+  仍全量裁决）；Reliability 不可达只降级 incident 列表。
+- Desktop：App Library 已安装行新增 `Versions` 对话框（历史、Switch version 显式
+  consent、Roll back to <prev> 预览）；System Monitor 对绑定同 Project/app instance、
+  非 resolved 且历史存在 previous snapshot 的 incident 显示可执行 rollback，固定文案
+  区分 completed / no previous / permissions need review / conflict / Core 不可达，
+  且明确"Core 切换成功 ≠ App 已健康"。门禁 `make test-app-version-rollback`
+  （PostgreSQL + Core + Gateway + Chromium：两个 immutable web-bundle 版本注册、
+  App Library consent 安装、UI transition、旧 Surface 失效、新 Surface 可开、UI
+  rollback、API exact replay、stale revision Aborted、unknown version NotFound、
+  重开 Surface 呈现回滚后内容），集成套件覆盖 grant 扩张 fail closed、有界历史、
+  分页与 restart battery（transition/rollback 事实与两次 exact replay 跨进程重启
+  成立）。container 链路的同命令语义待 rootless acceptance host 复验；自动
+  canary/repair/deployment controller 仍 unavailable。
+
 ## Mutable Project App Grants
 
 ADR-0003 让用户在不卸载 App 的前提下显式替换一个 installation 的 grant 集合（局部替代

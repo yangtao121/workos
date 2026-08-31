@@ -75,6 +75,14 @@ func (r *stubInstallationRepository) SetAppGrants(_ context.Context, _ ports.Set
 	return r.setResult, r.setErr
 }
 
+func (r *stubInstallationRepository) Transition(_ context.Context, _ ports.TransitionCommand) (ports.InstallationResult, error) {
+	return r.result, r.err
+}
+
+func (r *stubInstallationRepository) ListAllVersions(context.Context, string, string) ([]domain.VersionSnapshot, error) {
+	return nil, nil
+}
+
 func (r *stubInstallationRepository) ListActive(_ context.Context, ownerUserID, projectID, cursor string, limit int) ([]domain.Installation, error) {
 	if r.listFn != nil {
 		return r.listFn(ownerUserID, projectID, cursor, limit)

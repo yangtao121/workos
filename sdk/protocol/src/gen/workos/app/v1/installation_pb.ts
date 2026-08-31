@@ -14,7 +14,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file workos/app/v1/installation.proto.
  */
 export const file_workos_app_v1_installation: GenFile = /*@__PURE__*/
-  fileDesc("CiB3b3Jrb3MvYXBwL3YxL2luc3RhbGxhdGlvbi5wcm90bxINd29ya29zLmFwcC52MSKeAgoPQXBwSW5zdGFsbGF0aW9uEgoKAmlkGAEgASgJEhIKCnByb2plY3RfaWQYAiABKAkSDgoGYXBwX2lkGAMgASgJEg8KB3ZlcnNpb24YBCABKAkSFwoPbWFuaWZlc3RfZGlnZXN0GAUgASgJEjAKDGluc3RhbGxlZF9hdBgGIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXASNwoOdW5pbnN0YWxsZWRfYXQYByABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wSACIAQESGwoTZ3JhbnRlZF9wZXJtaXNzaW9ucxgIIAMoCRIWCg5ncmFudF9yZXZpc2lvbhgJIAEoA0IRCg9fdW5pbnN0YWxsZWRfYXQioQEKEUluc3RhbGxBcHBSZXF1ZXN0EhcKD2lkZW1wb3RlbmN5X2tleRgBIAEoCRISCgpwcm9qZWN0X2lkGAIgASgJEg4KBmFwcF9pZBgDIAEoCRIPCgd2ZXJzaW9uGAQgASgJEiEKGWV4cGVjdGVkX3Byb2plY3RfcmV2aXNpb24YBSABKAMSGwoTZ3JhbnRlZF9wZXJtaXNzaW9ucxgGIAMoCSJkChJJbnN0YWxsQXBwUmVzcG9uc2USNAoMaW5zdGFsbGF0aW9uGAEgASgLMh4ud29ya29zLmFwcC52MS5BcHBJbnN0YWxsYXRpb24SGAoQcHJvamVjdF9yZXZpc2lvbhgCIAEoAyJ+ChNVbmluc3RhbGxBcHBSZXF1ZXN0EhcKD2lkZW1wb3RlbmN5X2tleRgBIAEoCRISCgpwcm9qZWN0X2lkGAIgASgJEhcKD2luc3RhbGxhdGlvbl9pZBgDIAEoCRIhChlleHBlY3RlZF9wcm9qZWN0X3JldmlzaW9uGAQgASgDImYKFFVuaW5zdGFsbEFwcFJlc3BvbnNlEjQKDGluc3RhbGxhdGlvbhgBIAEoCzIeLndvcmtvcy5hcHAudjEuQXBwSW5zdGFsbGF0aW9uEhgKEHByb2plY3RfcmV2aXNpb24YAiABKAMiWwoYTGlzdEluc3RhbGxlZEFwcHNSZXF1ZXN0EhIKCnByb2plY3RfaWQYASABKAkSKwoEcGFnZRgCIAEoCzIdLndvcmtvcy5jb21tb24udjEuUGFnZVJlcXVlc3QigAEKGUxpc3RJbnN0YWxsZWRBcHBzUmVzcG9uc2USNQoNaW5zdGFsbGF0aW9ucxgBIAMoCzIeLndvcmtvcy5hcHAudjEuQXBwSW5zdGFsbGF0aW9uEiwKBHBhZ2UYAiABKAsyHi53b3Jrb3MuY29tbW9uLnYxLlBhZ2VSZXNwb25zZSKbAQoTU2V0QXBwR3JhbnRzUmVxdWVzdBIXCg9pZGVtcG90ZW5jeV9rZXkYASABKAkSEgoKcHJvamVjdF9pZBgCIAEoCRIXCg9pbnN0YWxsYXRpb25faWQYAyABKAkSIQoZZXhwZWN0ZWRfcHJvamVjdF9yZXZpc2lvbhgEIAEoAxIbChNncmFudGVkX3Blcm1pc3Npb25zGAUgAygJImYKFFNldEFwcEdyYW50c1Jlc3BvbnNlEjQKDGluc3RhbGxhdGlvbhgBIAEoCzIeLndvcmtvcy5hcHAudjEuQXBwSW5zdGFsbGF0aW9uEhgKEHByb2plY3RfcmV2aXNpb24YAiABKAMyjQMKFkFwcEluc3RhbGxhdGlvblNlcnZpY2USUwoKSW5zdGFsbEFwcBIgLndvcmtvcy5hcHAudjEuSW5zdGFsbEFwcFJlcXVlc3QaIS53b3Jrb3MuYXBwLnYxLkluc3RhbGxBcHBSZXNwb25zZSIAElkKDFVuaW5zdGFsbEFwcBIiLndvcmtvcy5hcHAudjEuVW5pbnN0YWxsQXBwUmVxdWVzdBojLndvcmtvcy5hcHAudjEuVW5pbnN0YWxsQXBwUmVzcG9uc2UiABJoChFMaXN0SW5zdGFsbGVkQXBwcxInLndvcmtvcy5hcHAudjEuTGlzdEluc3RhbGxlZEFwcHNSZXF1ZXN0Gigud29ya29zLmFwcC52MS5MaXN0SW5zdGFsbGVkQXBwc1Jlc3BvbnNlIgASWQoMU2V0QXBwR3JhbnRzEiIud29ya29zLmFwcC52MS5TZXRBcHBHcmFudHNSZXF1ZXN0GiMud29ya29zLmFwcC52MS5TZXRBcHBHcmFudHNSZXNwb25zZSIAQjlaN2dpdGh1Yi5jb20veWFuZ3RhbzEyMS93b3Jrb3MvZ2VuL2dvL3dvcmtvcy9hcHAvdjE7YXBwdjFiBnByb3RvMw", [file_google_protobuf_timestamp, file_workos_common_v1_common]);
+  fileDesc("CiB3b3Jrb3MvYXBwL3YxL2luc3RhbGxhdGlvbi5wcm90bxINd29ya29zLmFwcC52MSKeAgoPQXBwSW5zdGFsbGF0aW9uEgoKAmlkGAEgASgJEhIKCnByb2plY3RfaWQYAiABKAkSDgoGYXBwX2lkGAMgASgJEg8KB3ZlcnNpb24YBCABKAkSFwoPbWFuaWZlc3RfZGlnZXN0GAUgASgJEjAKDGluc3RhbGxlZF9hdBgGIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXASNwoOdW5pbnN0YWxsZWRfYXQYByABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wSACIAQESGwoTZ3JhbnRlZF9wZXJtaXNzaW9ucxgIIAMoCRIWCg5ncmFudF9yZXZpc2lvbhgJIAEoA0IRCg9fdW5pbnN0YWxsZWRfYXQioQEKEUluc3RhbGxBcHBSZXF1ZXN0EhcKD2lkZW1wb3RlbmN5X2tleRgBIAEoCRISCgpwcm9qZWN0X2lkGAIgASgJEg4KBmFwcF9pZBgDIAEoCRIPCgd2ZXJzaW9uGAQgASgJEiEKGWV4cGVjdGVkX3Byb2plY3RfcmV2aXNpb24YBSABKAMSGwoTZ3JhbnRlZF9wZXJtaXNzaW9ucxgGIAMoCSJkChJJbnN0YWxsQXBwUmVzcG9uc2USNAoMaW5zdGFsbGF0aW9uGAEgASgLMh4ud29ya29zLmFwcC52MS5BcHBJbnN0YWxsYXRpb24SGAoQcHJvamVjdF9yZXZpc2lvbhgCIAEoAyJ+ChNVbmluc3RhbGxBcHBSZXF1ZXN0EhcKD2lkZW1wb3RlbmN5X2tleRgBIAEoCRISCgpwcm9qZWN0X2lkGAIgASgJEhcKD2luc3RhbGxhdGlvbl9pZBgDIAEoCRIhChlleHBlY3RlZF9wcm9qZWN0X3JldmlzaW9uGAQgASgDImYKFFVuaW5zdGFsbEFwcFJlc3BvbnNlEjQKDGluc3RhbGxhdGlvbhgBIAEoCzIeLndvcmtvcy5hcHAudjEuQXBwSW5zdGFsbGF0aW9uEhgKEHByb2plY3RfcmV2aXNpb24YAiABKAMiWwoYTGlzdEluc3RhbGxlZEFwcHNSZXF1ZXN0EhIKCnByb2plY3RfaWQYASABKAkSKwoEcGFnZRgCIAEoCzIdLndvcmtvcy5jb21tb24udjEuUGFnZVJlcXVlc3QigAEKGUxpc3RJbnN0YWxsZWRBcHBzUmVzcG9uc2USNQoNaW5zdGFsbGF0aW9ucxgBIAMoCzIeLndvcmtvcy5hcHAudjEuQXBwSW5zdGFsbGF0aW9uEiwKBHBhZ2UYAiABKAsyHi53b3Jrb3MuY29tbW9uLnYxLlBhZ2VSZXNwb25zZSKbAQoTU2V0QXBwR3JhbnRzUmVxdWVzdBIXCg9pZGVtcG90ZW5jeV9rZXkYASABKAkSEgoKcHJvamVjdF9pZBgCIAEoCRIXCg9pbnN0YWxsYXRpb25faWQYAyABKAkSIQoZZXhwZWN0ZWRfcHJvamVjdF9yZXZpc2lvbhgEIAEoAxIbChNncmFudGVkX3Blcm1pc3Npb25zGAUgAygJImYKFFNldEFwcEdyYW50c1Jlc3BvbnNlEjQKDGluc3RhbGxhdGlvbhgBIAEoCzIeLndvcmtvcy5hcHAudjEuQXBwSW5zdGFsbGF0aW9uEhgKEHByb2plY3RfcmV2aXNpb24YAiABKAMilwEKG1RyYW5zaXRpb25BcHBWZXJzaW9uUmVxdWVzdBIXCg9pZGVtcG90ZW5jeV9rZXkYASABKAkSEgoKcHJvamVjdF9pZBgCIAEoCRIXCg9pbnN0YWxsYXRpb25faWQYAyABKAkSIQoZZXhwZWN0ZWRfcHJvamVjdF9yZXZpc2lvbhgEIAEoAxIPCgd2ZXJzaW9uGAUgASgJIm4KHFRyYW5zaXRpb25BcHBWZXJzaW9uUmVzcG9uc2USNAoMaW5zdGFsbGF0aW9uGAEgASgLMh4ud29ya29zLmFwcC52MS5BcHBJbnN0YWxsYXRpb24SGAoQcHJvamVjdF9yZXZpc2lvbhgCIAEoAyKEAQoZUm9sbGJhY2tBcHBWZXJzaW9uUmVxdWVzdBIXCg9pZGVtcG90ZW5jeV9rZXkYASABKAkSEgoKcHJvamVjdF9pZBgCIAEoCRIXCg9pbnN0YWxsYXRpb25faWQYAyABKAkSIQoZZXhwZWN0ZWRfcHJvamVjdF9yZXZpc2lvbhgEIAEoAyKMAQoaUm9sbGJhY2tBcHBWZXJzaW9uUmVzcG9uc2USNAoMaW5zdGFsbGF0aW9uGAEgASgLMh4ud29ya29zLmFwcC52MS5BcHBJbnN0YWxsYXRpb24SGAoQcHJvamVjdF9yZXZpc2lvbhgCIAEoAxIeChZyb2xsZWRfYmFja190b192ZXJzaW9uGAMgASgJIp0BCh5BcHBJbnN0YWxsYXRpb25WZXJzaW9uU25hcHNob3QSDwoHdmVyc2lvbhgBIAEoCRIXCg9tYW5pZmVzdF9kaWdlc3QYAiABKAkSDgoGc291cmNlGAMgASgJEhAKCHNlcXVlbmNlGAQgASgDEi8KC29jY3VycmVkX2F0GAUgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcCJ4ChxMaXN0QXBwVmVyc2lvbkhpc3RvcnlSZXF1ZXN0EhIKCnByb2plY3RfaWQYASABKAkSFwoPaW5zdGFsbGF0aW9uX2lkGAIgASgJEisKBHBhZ2UYAyABKAsyHS53b3Jrb3MuY29tbW9uLnYxLlBhZ2VSZXF1ZXN0Io8BCh1MaXN0QXBwVmVyc2lvbkhpc3RvcnlSZXNwb25zZRJACglzbmFwc2hvdHMYASADKAsyLS53b3Jrb3MuYXBwLnYxLkFwcEluc3RhbGxhdGlvblZlcnNpb25TbmFwc2hvdBIsCgRwYWdlGAIgASgLMh4ud29ya29zLmNvbW1vbi52MS5QYWdlUmVzcG9uc2Uy4wUKFkFwcEluc3RhbGxhdGlvblNlcnZpY2USUwoKSW5zdGFsbEFwcBIgLndvcmtvcy5hcHAudjEuSW5zdGFsbEFwcFJlcXVlc3QaIS53b3Jrb3MuYXBwLnYxLkluc3RhbGxBcHBSZXNwb25zZSIAElkKDFVuaW5zdGFsbEFwcBIiLndvcmtvcy5hcHAudjEuVW5pbnN0YWxsQXBwUmVxdWVzdBojLndvcmtvcy5hcHAudjEuVW5pbnN0YWxsQXBwUmVzcG9uc2UiABJoChFMaXN0SW5zdGFsbGVkQXBwcxInLndvcmtvcy5hcHAudjEuTGlzdEluc3RhbGxlZEFwcHNSZXF1ZXN0Gigud29ya29zLmFwcC52MS5MaXN0SW5zdGFsbGVkQXBwc1Jlc3BvbnNlIgASWQoMU2V0QXBwR3JhbnRzEiIud29ya29zLmFwcC52MS5TZXRBcHBHcmFudHNSZXF1ZXN0GiMud29ya29zLmFwcC52MS5TZXRBcHBHcmFudHNSZXNwb25zZSIAEnEKFFRyYW5zaXRpb25BcHBWZXJzaW9uEioud29ya29zLmFwcC52MS5UcmFuc2l0aW9uQXBwVmVyc2lvblJlcXVlc3QaKy53b3Jrb3MuYXBwLnYxLlRyYW5zaXRpb25BcHBWZXJzaW9uUmVzcG9uc2UiABJrChJSb2xsYmFja0FwcFZlcnNpb24SKC53b3Jrb3MuYXBwLnYxLlJvbGxiYWNrQXBwVmVyc2lvblJlcXVlc3QaKS53b3Jrb3MuYXBwLnYxLlJvbGxiYWNrQXBwVmVyc2lvblJlc3BvbnNlIgASdAoVTGlzdEFwcFZlcnNpb25IaXN0b3J5Eisud29ya29zLmFwcC52MS5MaXN0QXBwVmVyc2lvbkhpc3RvcnlSZXF1ZXN0Giwud29ya29zLmFwcC52MS5MaXN0QXBwVmVyc2lvbkhpc3RvcnlSZXNwb25zZSIAQjlaN2dpdGh1Yi5jb20veWFuZ3RhbzEyMS93b3Jrb3MvZ2VuL2dvL3dvcmtvcy9hcHAvdjE7YXBwdjFiBnByb3RvMw", [file_google_protobuf_timestamp, file_workos_common_v1_common]);
 
 /**
  * AppInstallation is the durable instance identity of one registered app
@@ -336,6 +336,221 @@ export const SetAppGrantsResponseSchema: GenMessage<SetAppGrantsResponse> = /*@_
   messageDesc(file_workos_app_v1_installation, 8);
 
 /**
+ * TransitionAppVersionRequest pins one explicit immutable registry version
+ * onto the active installation. The target must be a registered version of
+ * the same app for the same owner.
+ *
+ * @generated from message workos.app.v1.TransitionAppVersionRequest
+ */
+export type TransitionAppVersionRequest = Message<"workos.app.v1.TransitionAppVersionRequest"> & {
+  /**
+   * @generated from field: string idempotency_key = 1;
+   */
+  idempotencyKey: string;
+
+  /**
+   * @generated from field: string project_id = 2;
+   */
+  projectId: string;
+
+  /**
+   * @generated from field: string installation_id = 3;
+   */
+  installationId: string;
+
+  /**
+   * @generated from field: int64 expected_project_revision = 4;
+   */
+  expectedProjectRevision: bigint;
+
+  /**
+   * @generated from field: string version = 5;
+   */
+  version: string;
+};
+
+/**
+ * Describes the message workos.app.v1.TransitionAppVersionRequest.
+ * Use `create(TransitionAppVersionRequestSchema)` to create a new message.
+ */
+export const TransitionAppVersionRequestSchema: GenMessage<TransitionAppVersionRequest> = /*@__PURE__*/
+  messageDesc(file_workos_app_v1_installation, 9);
+
+/**
+ * @generated from message workos.app.v1.TransitionAppVersionResponse
+ */
+export type TransitionAppVersionResponse = Message<"workos.app.v1.TransitionAppVersionResponse"> & {
+  /**
+   * @generated from field: workos.app.v1.AppInstallation installation = 1;
+   */
+  installation?: AppInstallation | undefined;
+
+  /**
+   * @generated from field: int64 project_revision = 2;
+   */
+  projectRevision: bigint;
+};
+
+/**
+ * Describes the message workos.app.v1.TransitionAppVersionResponse.
+ * Use `create(TransitionAppVersionResponseSchema)` to create a new message.
+ */
+export const TransitionAppVersionResponseSchema: GenMessage<TransitionAppVersionResponse> = /*@__PURE__*/
+  messageDesc(file_workos_app_v1_installation, 10);
+
+/**
+ * @generated from message workos.app.v1.RollbackAppVersionRequest
+ */
+export type RollbackAppVersionRequest = Message<"workos.app.v1.RollbackAppVersionRequest"> & {
+  /**
+   * @generated from field: string idempotency_key = 1;
+   */
+  idempotencyKey: string;
+
+  /**
+   * @generated from field: string project_id = 2;
+   */
+  projectId: string;
+
+  /**
+   * @generated from field: string installation_id = 3;
+   */
+  installationId: string;
+
+  /**
+   * @generated from field: int64 expected_project_revision = 4;
+   */
+  expectedProjectRevision: bigint;
+};
+
+/**
+ * Describes the message workos.app.v1.RollbackAppVersionRequest.
+ * Use `create(RollbackAppVersionRequestSchema)` to create a new message.
+ */
+export const RollbackAppVersionRequestSchema: GenMessage<RollbackAppVersionRequest> = /*@__PURE__*/
+  messageDesc(file_workos_app_v1_installation, 11);
+
+/**
+ * @generated from message workos.app.v1.RollbackAppVersionResponse
+ */
+export type RollbackAppVersionResponse = Message<"workos.app.v1.RollbackAppVersionResponse"> & {
+  /**
+   * @generated from field: workos.app.v1.AppInstallation installation = 1;
+   */
+  installation?: AppInstallation | undefined;
+
+  /**
+   * @generated from field: int64 project_revision = 2;
+   */
+  projectRevision: bigint;
+
+  /**
+   * The exact previous pinned version Core selected and restored.
+   *
+   * @generated from field: string rolled_back_to_version = 3;
+   */
+  rolledBackToVersion: string;
+};
+
+/**
+ * Describes the message workos.app.v1.RollbackAppVersionResponse.
+ * Use `create(RollbackAppVersionResponseSchema)` to create a new message.
+ */
+export const RollbackAppVersionResponseSchema: GenMessage<RollbackAppVersionResponse> = /*@__PURE__*/
+  messageDesc(file_workos_app_v1_installation, 12);
+
+/**
+ * AppInstallationVersionSnapshot is one immutable entry of an installation's
+ * version history: the pinned identity facts as of that change.
+ *
+ * @generated from message workos.app.v1.AppInstallationVersionSnapshot
+ */
+export type AppInstallationVersionSnapshot = Message<"workos.app.v1.AppInstallationVersionSnapshot"> & {
+  /**
+   * @generated from field: string version = 1;
+   */
+  version: string;
+
+  /**
+   * @generated from field: string manifest_digest = 2;
+   */
+  manifestDigest: string;
+
+  /**
+   * install | transition | rollback
+   *
+   * @generated from field: string source = 3;
+   */
+  source: string;
+
+  /**
+   * @generated from field: int64 sequence = 4;
+   */
+  sequence: bigint;
+
+  /**
+   * @generated from field: google.protobuf.Timestamp occurred_at = 5;
+   */
+  occurredAt?: Timestamp | undefined;
+};
+
+/**
+ * Describes the message workos.app.v1.AppInstallationVersionSnapshot.
+ * Use `create(AppInstallationVersionSnapshotSchema)` to create a new message.
+ */
+export const AppInstallationVersionSnapshotSchema: GenMessage<AppInstallationVersionSnapshot> = /*@__PURE__*/
+  messageDesc(file_workos_app_v1_installation, 13);
+
+/**
+ * @generated from message workos.app.v1.ListAppVersionHistoryRequest
+ */
+export type ListAppVersionHistoryRequest = Message<"workos.app.v1.ListAppVersionHistoryRequest"> & {
+  /**
+   * @generated from field: string project_id = 1;
+   */
+  projectId: string;
+
+  /**
+   * @generated from field: string installation_id = 2;
+   */
+  installationId: string;
+
+  /**
+   * @generated from field: workos.common.v1.PageRequest page = 3;
+   */
+  page?: PageRequest | undefined;
+};
+
+/**
+ * Describes the message workos.app.v1.ListAppVersionHistoryRequest.
+ * Use `create(ListAppVersionHistoryRequestSchema)` to create a new message.
+ */
+export const ListAppVersionHistoryRequestSchema: GenMessage<ListAppVersionHistoryRequest> = /*@__PURE__*/
+  messageDesc(file_workos_app_v1_installation, 14);
+
+/**
+ * @generated from message workos.app.v1.ListAppVersionHistoryResponse
+ */
+export type ListAppVersionHistoryResponse = Message<"workos.app.v1.ListAppVersionHistoryResponse"> & {
+  /**
+   * @generated from field: repeated workos.app.v1.AppInstallationVersionSnapshot snapshots = 1;
+   */
+  snapshots: AppInstallationVersionSnapshot[];
+
+  /**
+   * @generated from field: workos.common.v1.PageResponse page = 2;
+   */
+  page?: PageResponse | undefined;
+};
+
+/**
+ * Describes the message workos.app.v1.ListAppVersionHistoryResponse.
+ * Use `create(ListAppVersionHistoryResponseSchema)` to create a new message.
+ */
+export const ListAppVersionHistoryResponseSchema: GenMessage<ListAppVersionHistoryResponse> = /*@__PURE__*/
+  messageDesc(file_workos_app_v1_installation, 15);
+
+/**
  * @generated from service workos.app.v1.AppInstallationService
  */
 export const AppInstallationService: GenService<{
@@ -379,6 +594,48 @@ export const AppInstallationService: GenService<{
     methodKind: "unary";
     input: typeof SetAppGrantsRequestSchema;
     output: typeof SetAppGrantsResponseSchema;
+  },
+  /**
+   * TransitionAppVersion pins one explicit, immutable registry version of
+   * the same app onto the active installation (ADR-0012). The owner names
+   * the version; Core re-resolves its exact manifest digest from the
+   * registry and never accepts client-supplied digests. The current grant
+   * set must remain a subset of the target version's requested permissions
+   * or the command fails closed with FailedPrecondition (permissions need
+   * review) — permissions are never expanded, not even by an upgrade.
+   *
+   * @generated from rpc workos.app.v1.AppInstallationService.TransitionAppVersion
+   */
+  transitionAppVersion: {
+    methodKind: "unary";
+    input: typeof TransitionAppVersionRequestSchema;
+    output: typeof TransitionAppVersionResponseSchema;
+  },
+  /**
+   * RollbackAppVersion restores the most recent previous pinned snapshot
+   * that differs from the current (version, digest), chosen by Core from
+   * the installation's durable, bounded version history — the client never
+   * names a rollback target. With no previous snapshot the command fails
+   * closed with FailedPrecondition and zero side effects.
+   *
+   * @generated from rpc workos.app.v1.AppInstallationService.RollbackAppVersion
+   */
+  rollbackAppVersion: {
+    methodKind: "unary";
+    input: typeof RollbackAppVersionRequestSchema;
+    output: typeof RollbackAppVersionResponseSchema;
+  },
+  /**
+   * ListAppVersionHistory reads one installation's bounded, append-only
+   * version history (install origin plus every transition/rollback), oldest
+   * first.
+   *
+   * @generated from rpc workos.app.v1.AppInstallationService.ListAppVersionHistory
+   */
+  listAppVersionHistory: {
+    methodKind: "unary";
+    input: typeof ListAppVersionHistoryRequestSchema;
+    output: typeof ListAppVersionHistoryResponseSchema;
   },
 }> = /*@__PURE__*/
   serviceDesc(file_workos_app_v1_installation, 0);

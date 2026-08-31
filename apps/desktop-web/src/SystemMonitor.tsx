@@ -12,16 +12,22 @@ import {
 
 // System Monitor is the minimal, non-permanent reliability window: it lists
 // the current project's incidents with their severity, state, violation,
-// restart outcome, and acknowledgement fact, and offers one owner-scoped
-// acknowledge action. It never shows host endpoints, container or cgroup
-// IDs, raw logs, or engine output — the service contract is summarized facts
-// only (ADR-0006). When the reliability upstream is unreachable the window
-// degrades to a fixed notice and nothing else on the desktop is affected.
+// restart outcome, and acknowledgement fact, and offers two owner-scoped
+// actions — acknowledge, and (ADR-0012) rolling an app installation back to
+// its previous pinned version when the installation's durable history has
+// one. It never shows host endpoints, container or cgroup IDs, raw logs, or
+// engine output — the service contract is summarized facts only (ADR-0006).
+// When the reliability upstream is unreachable the window degrades to a
+// fixed notice and nothing else on the desktop is affected.
 export function SystemMonitor({
   projectId,
+  expectedProjectRevision,
   workosClients,
 }: {
   projectId: string | undefined;
+  // The active project's server revision, used as the rollback command's
+  // optimistic-concurrency etag. A conflict reloads authoritative state.
+  expectedProjectRevision: bigint | undefined;
   workosClients: WorkOSClients;
 }) {
   const [incidents, setIncidents] = useState<Incident[]>([]);
@@ -31,6 +37,12 @@ export function SystemMonitor({
   const [acknowledging, setAcknowledging] = useState<string | undefined>(undefined);
   const [acknowledged, setAcknowledged] = useState<ReadonlySet<string>>(new Set());
   const [notice, setNotice] = useState<string | undefined>(undefined);
+  // Per-installation rollback facts: the previewed previous version while a
+  // command is not running, and a bounded feedback per incident row.
+  const [rollbackTargets, setRollbackTargets] = useState<Record<string, string | undefined>>({});
+  const [rollbackUnavailable, setRollbackUnavailable] = useState<ReadonlySet<string>>(new Set());
+  const [rollbackBusy, setRollbackBusy] = useState<string | undefined>(undefined);
+  const [rollbackNotice, setRollbackNotice] = useState<string | undefined>(undefined);
   const generationRef = useRef(0);
 
   const load = useCallback(() => {
@@ -61,6 +73,50 @@ export function SystemMonitor({
     load();
   }, [load]);
 
+  // Resolve rollback eligibility lazily for every actionable incident bound
+  // to an app instance of this project. Eligibility is a preview only: the
+  // rollback command re-derives its target from the durable history and
+  // fails closed when there is none.
+  useEffect(() => {
+    if (state !== "ready" || !projectId) return;
+    const generation = generationRef.current;
+    const isLive = () => generation === generationRef.current;
+    const candidates = incidents.filter(
+      (incident) =>
+        Boolean(incident.appInstanceId) &&
+        incident.state !== IncidentState.RESOLVED &&
+        !rollbackUnavailable.has(incident.appInstanceId) &&
+        rollbackTargets[incident.appInstanceId] === undefined,
+    );
+    for (const incident of candidates) {
+      const instanceId = incident.appInstanceId;
+      void workosClients.appInstallations
+        .listAppVersionHistory({
+          projectId,
+          installationId: instanceId,
+          page: { pageSize: 20 },
+        })
+        .then((response) => {
+          if (!isLive()) return;
+          const snapshots = response.snapshots;
+          const current = snapshots[snapshots.length - 1]?.version;
+          const previous = findPrevious(snapshots, current);
+          setRollbackTargets((record) => ({ ...record, [instanceId]: previous }));
+        })
+        .catch(() => {
+          if (!isLive()) return;
+          setRollbackUnavailable((current) => new Set(current).add(instanceId));
+        });
+    }
+  }, [
+    incidents,
+    projectId,
+    rollbackTargets,
+    rollbackUnavailable,
+    state,
+    workosClients.appInstallations,
+  ]);
+
   function acknowledge(incidentId: string) {
     if (acknowledging) return;
     setAcknowledging(incidentId);
@@ -90,6 +146,33 @@ export function SystemMonitor({
       });
   }
 
+  function rollbackToPrevious(incident: Incident) {
+    if (rollbackBusy || !projectId || expectedProjectRevision === undefined) return;
+    setRollbackBusy(incident.id);
+    setRollbackNotice(undefined);
+    const generation = generationRef.current;
+    void workosClients.appInstallations
+      .rollbackAppVersion({
+        idempotencyKey: crypto.randomUUID(),
+        projectId,
+        installationId: incident.appInstanceId,
+        expectedProjectRevision: expectedProjectRevision,
+      })
+      .then((response) => {
+        if (generation !== generationRef.current) return;
+        setRollbackNotice(
+          `Core restored ${response.rolledBackToVersion} for this app. It takes effect the next time the app runs — Core completing the switch is not the same as the app reporting healthy.`,
+        );
+      })
+      .catch((reason: unknown) => {
+        if (generation !== generationRef.current) return;
+        setRollbackNotice(rollbackErrorMessage(reason));
+      })
+      .finally(() => {
+        if (generation === generationRef.current) setRollbackBusy(undefined);
+      });
+  }
+
   if (state === "empty-project") {
     return <p className="empty-state">Create a project to monitor its workloads.</p>;
   }
@@ -116,38 +199,96 @@ export function SystemMonitor({
           {notice}
         </p>
       ) : null}
+      {rollbackNotice ? (
+        <p className="library-feedback" role="status">
+          {rollbackNotice}
+        </p>
+      ) : null}
       {incidents.length === 0 ? (
         <p className="empty-state">No incidents recorded for this project.</p>
       ) : (
         <ul className="incident-list" aria-label="Project incidents">
-          {incidents.map((incident) => (
-            <li className="incident-row" key={incident.id}>
-              <div className="incident-facts">
-                <strong>{incident.summary}</strong>
-                <span>
-                  {severityLabel(incident.severity)} · {stateLabel(incident.state)} ·{" "}
-                  {violationLabel(incident.violation)} · {outcomeLabel(incident.restartOutcome)}
+          {incidents.map((incident) => {
+            const previous = rollbackTargets[incident.appInstanceId];
+            const rollbackEligible =
+              incident.appInstanceId !== "" &&
+              incident.state !== IncidentState.RESOLVED &&
+              previous !== undefined;
+            return (
+              <li className="incident-row" key={incident.id}>
+                <div className="incident-facts">
+                  <strong>{incident.summary}</strong>
+                  <span>
+                    {severityLabel(incident.severity)} · {stateLabel(incident.state)} ·{" "}
+                    {violationLabel(incident.violation)} · {outcomeLabel(incident.restartOutcome)}
+                  </span>
+                </div>
+                <span className="incident-actions">
+                  {rollbackEligible ? (
+                    <Button
+                      disabled={rollbackBusy !== undefined || expectedProjectRevision === undefined}
+                      onClick={() => {
+                        rollbackToPrevious(incident);
+                      }}
+                      type="button"
+                    >
+                      {rollbackBusy === incident.id ? "Working…" : `Roll back to ${previous}`}
+                    </Button>
+                  ) : null}
+                  {incident.acknowledgedAt || acknowledged.has(incident.id) ? (
+                    <span className="incident-acknowledged">Acknowledged</span>
+                  ) : (
+                    <Button
+                      disabled={acknowledging !== undefined}
+                      onClick={() => {
+                        acknowledge(incident.id);
+                      }}
+                      type="button"
+                    >
+                      {acknowledging === incident.id ? "Saving…" : "Acknowledge"}
+                    </Button>
+                  )}
                 </span>
-              </div>
-              {incident.acknowledgedAt || acknowledged.has(incident.id) ? (
-                <span className="incident-acknowledged">Acknowledged</span>
-              ) : (
-                <Button
-                  disabled={acknowledging !== undefined}
-                  onClick={() => {
-                    acknowledge(incident.id);
-                  }}
-                  type="button"
-                >
-                  {acknowledging === incident.id ? "Saving…" : "Acknowledge"}
-                </Button>
-              )}
-            </li>
-          ))}
+              </li>
+            );
+          })}
         </ul>
       )}
     </div>
   );
+}
+
+// findPrevious previews the rollback target: the newest snapshot whose
+// version differs from the installation's current (last) version. The
+// rollback command re-derives this from the durable history server-side.
+function findPrevious(
+  snapshots: Array<{ version: string }>,
+  current: string | undefined,
+): string | undefined {
+  if (current === undefined) return undefined;
+  for (let index = snapshots.length - 1; index >= 0; index -= 1) {
+    const snapshot = snapshots[index];
+    if (snapshot && snapshot.version !== current) return snapshot.version;
+  }
+  return undefined;
+}
+
+function rollbackErrorMessage(reason: unknown): string {
+  if (!(reason instanceof ConnectError)) return "The rollback could not be started.";
+  switch (reason.code) {
+    case Code.FailedPrecondition:
+      if (reason.message.includes("permissions")) {
+        return "Permissions need review: the previous version does not cover the current grants. Confirm them in the App Library first.";
+      }
+      return "There is no previous version to roll back to.";
+    case Code.Aborted:
+      return "The project changed elsewhere. Reopen System Monitor and retry.";
+    case Code.Unavailable:
+    case Code.DeadlineExceeded:
+      return "Core is temporarily unreachable. The rollback was not started.";
+    default:
+      return "The rollback could not be started.";
+  }
 }
 
 function severityLabel(severity: IncidentSeverity): string {

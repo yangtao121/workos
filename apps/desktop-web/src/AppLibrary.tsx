@@ -12,6 +12,7 @@ import { Button } from "@workos/ui-kit";
 import type { WorkOSClients } from "@workos/agent-sdk";
 import { PermissionDialog, type PermissionFacts } from "./PermissionDialog.js";
 import { PolicyDialog, policySummaryLabel } from "./PolicyDialog.js";
+import { VersionDialog } from "./VersionDialog.js";
 
 export type LibraryState = "loading" | "ready" | "error";
 
@@ -30,6 +31,10 @@ interface AppLibraryProps {
   // Fired once a SetAppGrants save was server-confirmed: the Desktop tears
   // down every still-open window/session of exactly that installation.
   onInstallationGrantsChanged?: (installationId: string) => void;
+  // Fired once a version transition/rollback was server-confirmed (ADR-0012):
+  // the Desktop tears down the installation's windows so the next Open
+  // resolves the newly pinned descriptor.
+  onInstallationVersionChanged?: (installationId: string) => void;
 }
 
 interface LibraryFeedback {
@@ -62,6 +67,7 @@ export function AppLibrary({
   onSurfaceOpened,
   onInstallationRemoved,
   onInstallationGrantsChanged,
+  onInstallationVersionChanged,
 }: AppLibraryProps) {
   const [state, setState] = useState<LibraryState>("loading");
   const [error, setError] = useState<string>();
@@ -81,6 +87,9 @@ export function AppLibrary({
   // The Agent policy dialog edits one installation's execution policy
   // (ADR-0005); the per-installation summaries render on the installed rows.
   const [policyManaging, setPolicyManaging] = useState<AppInstallation>();
+  // The version dialog shows one installation's durable history and runs the
+  // owner-triggered transition/rollback commands (ADR-0012).
+  const [versionsOf, setVersionsOf] = useState<AppInstallation>();
   const [policySummaries, setPolicySummaries] = useState<Record<string, string>>({});
   // Generation guards every in-flight promise: switching projects or
   // unmounting invalidates late responses so they cannot pollute state.
@@ -449,6 +458,16 @@ export function AppLibrary({
                     <Button
                       disabled={busy || openingAppIds[app.id] === true}
                       onClick={() => {
+                        setFeedback(undefined);
+                        setVersionsOf(installation);
+                      }}
+                      type="button"
+                    >
+                      Versions
+                    </Button>
+                    <Button
+                      disabled={busy || openingAppIds[app.id] === true}
+                      onClick={() => {
                         remove(installation);
                       }}
                       type="button"
@@ -487,15 +506,27 @@ export function AppLibrary({
                     guess one. Removing stays available. */}
                 <small>Manage permissions unavailable</small>
               </span>
-              <Button
-                disabled={busyAppIds[installation.appId] ?? false}
-                onClick={() => {
-                  remove(installation);
-                }}
-                type="button"
-              >
-                Remove
-              </Button>
+              <span className="app-row-actions">
+                <Button
+                  disabled={busyAppIds[installation.appId] ?? false}
+                  onClick={() => {
+                    setFeedback(undefined);
+                    setVersionsOf(installation);
+                  }}
+                  type="button"
+                >
+                  Versions
+                </Button>
+                <Button
+                  disabled={busyAppIds[installation.appId] ?? false}
+                  onClick={() => {
+                    remove(installation);
+                  }}
+                  type="button"
+                >
+                  Remove
+                </Button>
+              </span>
             </li>
           ))}
         </ul>
@@ -585,6 +616,24 @@ export function AppLibrary({
               [installationId]: policySummaryLabel(policy),
             }));
           }}
+          workosClients={workosClients}
+        />
+      ) : null}
+
+      {versionsOf ? (
+        <VersionDialog
+          installation={versionsOf}
+          key={versionsOf.id}
+          onCancel={() => {
+            setVersionsOf(undefined);
+          }}
+          onFactsRefreshed={(refreshedProject, refreshedInstallations) => {
+            applyFacts({ project: refreshedProject, installations: refreshedInstallations });
+          }}
+          onVersionChanged={(installationId) => {
+            onInstallationVersionChanged?.(installationId);
+          }}
+          project={project}
           workosClients={workosClients}
         />
       ) : null}

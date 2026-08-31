@@ -27,6 +27,10 @@ type fakeRepository struct {
 	resolveErr error
 	// setLog records every SetAppGrants command that reached the repository.
 	setLog []ports.SetAppGrantsCommand
+	// transitionLog records every version command; versions backs
+	// ListAllVersions.
+	transitionLog []ports.TransitionCommand
+	versions      []domain.VersionSnapshot
 	// setFn, when set, replaces the simulated transaction so failure paths
 	// can be injected.
 	setFn func(command ports.SetAppGrantsCommand) (ports.InstallationResult, error)
@@ -134,6 +138,23 @@ func equalCanonicalGrants(stored, target []string) bool {
 		}
 	}
 	return true
+}
+
+func (f *fakeRepository) Transition(_ context.Context, command ports.TransitionCommand) (ports.InstallationResult, error) {
+	f.transitionLog = append(f.transitionLog, command)
+	installation, ok := f.byID[command.InstallationID]
+	if !ok {
+		return ports.InstallationResult{}, domain.ErrNotFound
+	}
+	updated := installation
+	updated.Version = command.Target.Version
+	updated.ManifestDigest = command.Target.ManifestDigest
+	f.byID[command.InstallationID] = updated
+	return ports.InstallationResult{Installation: updated, ProjectRevision: command.ExpectedRevision + 1}, nil
+}
+
+func (f *fakeRepository) ListAllVersions(_ context.Context, _, _ string) ([]domain.VersionSnapshot, error) {
+	return f.versions, nil
 }
 
 func (f *fakeRepository) ListActive(_ context.Context, _, _, _ string, limit int) ([]domain.Installation, error) {

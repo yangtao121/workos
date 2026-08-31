@@ -66,7 +66,7 @@ INSERT INTO workos_events.outbox (
 -- name: GetInstallationRequest :one
 SELECT owner_user_id, idempotency_key, command, request_digest, installation_id,
        project_revision, result_uninstalled_at, result_granted_permissions,
-       result_grant_revision, created_at
+       result_grant_revision, result_version, result_manifest_digest, created_at
 FROM workos_core.project_app_installation_requests
 WHERE owner_user_id = $1 AND idempotency_key = $2;
 
@@ -74,8 +74,8 @@ WHERE owner_user_id = $1 AND idempotency_key = $2;
 INSERT INTO workos_core.project_app_installation_requests (
     owner_user_id, idempotency_key, command, request_digest, installation_id,
     project_revision, result_uninstalled_at, result_granted_permissions,
-    result_grant_revision, created_at
-) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+    result_grant_revision, result_version, result_manifest_digest, created_at
+) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
 ON CONFLICT (owner_user_id, idempotency_key) DO NOTHING;
 
 -- name: LockProjectForInstallation :one
@@ -163,3 +163,40 @@ WHERE owner_user_id = sqlc.arg(owner_user_id)
   AND uninstalled_at IS NULL
 ORDER BY app_id
 LIMIT sqlc.arg(row_limit);
+
+-- name: UpdateInstallationVersion :execrows
+UPDATE workos_core.project_app_installations
+SET version = $4, manifest_digest = $5
+WHERE owner_user_id = $1 AND project_id = $2 AND id = $3 AND uninstalled_at IS NULL;
+
+-- name: InsertInstallationVersion :exec
+INSERT INTO workos_core.project_app_installation_versions (
+    installation_id, owner_user_id, sequence, version, manifest_digest, source, occurred_at
+) VALUES ($1, $2, $3, $4, $5, $6, $7);
+
+-- name: NextInstallationVersionSequence :one
+SELECT COALESCE(max(sequence), 0) + 1 AS next_sequence
+FROM workos_core.project_app_installation_versions
+WHERE installation_id = $1;
+
+-- name: TrimInstallationVersions :exec
+DELETE FROM workos_core.project_app_installation_versions AS target
+WHERE target.installation_id = $1
+  AND target.sequence <= (
+    SELECT max(inner_versions.sequence) - $2
+    FROM workos_core.project_app_installation_versions AS inner_versions
+    WHERE inner_versions.installation_id = $1
+  );
+
+-- name: ListInstallationVersionsAsc :many
+SELECT installation_id, owner_user_id, sequence, version, manifest_digest, source, occurred_at
+FROM workos_core.project_app_installation_versions
+WHERE installation_id = $1
+ORDER BY sequence ASC;
+
+-- name: ListInstallationVersionsPage :many
+SELECT installation_id, owner_user_id, sequence, version, manifest_digest, source, occurred_at
+FROM workos_core.project_app_installation_versions
+WHERE installation_id = $1 AND sequence > $2
+ORDER BY sequence ASC
+LIMIT $3;

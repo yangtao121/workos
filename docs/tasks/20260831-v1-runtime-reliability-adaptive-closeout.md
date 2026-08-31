@@ -89,6 +89,60 @@ Prompt：`docs/prompts/` 下 v1 收口批次（Adaptive Shell、Rootless Runtime
 状态不升级；`docs/tasks/20260829-supervised-web-service-workload.md` 保持 active。
 阶段 C 按 C2（软件侧）执行，阶段 D 经 Web Bundle 全栈交付。
 
+## 阶段 C（2026-08-31，C2 软件侧路径）
+
+- 宿主无 rootless Podman（阶段 B verdict），无真实 observation → Incident → action
+  跨进程链路可执行。`supervisor` / `incident-manager` capability 保持 false，
+  `docs/status.json` Reliability 保持 scaffolded，不伪造升级。
+- 软件侧交付：为阶段 D 的 owner rollback 提供 eligibility/read model——新增 public
+  `ListAppVersionHistory`（owner/project/active-installation scope、有界分页、每次读
+  重验）与 rollback 命令本身；System Monitor 的入口由 Desktop 组合 public Incident 读
+  与该 public 读推导，Reliability 不读取/复制 Core 事实，二者解耦既有边界不变。
+  既有 Reliability domain/application/PostgreSQL 测试（incident 幂等、action ledger、
+  terminal outcome、重启收敛）在 `make check` / `make test-integration` 全量回归通过，
+  未重复堆叠同质测试。
+- 任务记录明确：本批次的 Incident→rollback 联动是**软件实现证据**（组件级确定性
+  fixture 测试 + Core 命令真实链路）；**真实能力证据**（真实 Incident 驱动的
+  System Monitor rollback）仍需 rootless acceptance host，属 20260829 任务的未决项。
+
+## 阶段 D（2026-08-31，已完成）
+
+- ADR：`docs/decisions/0012-owner-triggered-app-version-rollback.md`。
+- Proto：`AppInstallationService` additive `TransitionAppVersion` /
+  `RollbackAppVersion` / `ListAppVersionHistory`（无字段复用、无删除；`make generate`
+  幂等；buf lint/breaking 通过）。
+- migration `025_app_installation_version_history.sql`（owner：workos-core Project
+  Installation）：append-only 有界版本历史（每 installation 最近 20 条、CASCADE 绑定
+  同 owner installation）+ request mapping 的 `result_version`/`result_manifest_digest`
+  NOT NULL 快照列（owner-bound fail-closed 回填）+ command CHECK 扩展
+  transition/rollback。001–024 逐字节不变（checksum pin 通过）。
+  注：025 在本分支内曾以 RESTRICT 版本在本机持久卷试运行，按 CASCADE 修正后重建了
+  本机 compose 卷（仅分支开发卷，001–024 未动）。
+- Core：domain（transition/rollback digest、grant 兼容 fail closed、history 校验）、
+  ports、application（Transition/Rollback/ListVersionHistory；回滚目标锁内外双推导）、
+  postgres（单事务：installation + history + 裁剪 + revision + event + outbox + 幂等
+  快照；install 写入 origin 快照）、transport（3 RPC + 固定错误矩阵：
+  no-previous/permissions-review → FailedPrecondition、conflict/幂等 → Aborted、
+  unknown → NotFound）。
+- Desktop：App Library `Versions` 对话框（历史 + 显式 Switch consent + Roll back
+  预览）；System Monitor 对 eligible incident（同 Project/app instance、非 resolved、
+  历史存在 previous）显示 `Roll back to <v>`，文案区分 completed / no previous /
+  permissions review / conflict / Core 不可达，并声明"Core 切换成功 ≠ App 健康"；
+  版本变更确认后 best-effort 关闭该 installation 的窗口。
+- 验证：
+  - `make test-app-version-rollback`：PASS（真实 web-bundle 全栈：注册 v1/v2 →
+    consent 安装 v1 → v1 Surface → UI transition → 旧 Surface 失效 → v2 Surface →
+    UI rollback → Surface 失效 → API known-key rollback + exact replay → stale
+    revision Aborted → unknown version NotFound → 回滚后 v2 Surface 重开）。
+  - Go 集成 `TestAppVersionTransitionAndRollback`：PASS（no-previous fail closed、
+    transition/history/replay/no-op、grant 扩张 fail closed 零副作用、bounded
+    history 裁剪、分页、stale/foreign/unknown）。
+  - restart battery 扩展 `tests/restart version-seed/version-verify`：transition/
+    rollback 事实与两次 exact replay 跨 workos-core 重启成立（`make test-integration`
+    全量回填见阶段 E）。
+  - Desktop 单测：VersionDialog 4 例、SystemMonitor rollback eligibility/action 5 例；
+    desktop-web 全套 107 tests PASS。
+
 ## 已验证命令
 
 - 基线：bootstrap/generate×2/check/test-integration → PASS（见上）。
