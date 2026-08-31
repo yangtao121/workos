@@ -626,8 +626,9 @@ func (x *ListCredentialsResponse) GetCredentials() []*CredentialMetadata {
 // lease ID and worker ID alone. Clients can never select owner, project,
 // provider, credential reference, or revision: Core resolves the exact
 // credential snapshot from the active task lease inside one controlled
-// transaction. The decrypted secret material appears exactly once, in this
-// response; renewals never return it again.
+// transaction. Decrypted secret material appears only in Acquire responses;
+// response-loss replay may re-deliver it to the same worker while the same
+// task lease remains active. Renewals never return it.
 type AcquireTaskCredentialRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	TaskLeaseId   string                 `protobuf:"bytes,1,opt,name=task_lease_id,json=taskLeaseId,proto3" json:"task_lease_id,omitempty"`

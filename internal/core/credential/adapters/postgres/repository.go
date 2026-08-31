@@ -110,14 +110,18 @@ func (r *Repository) Rotate(ctx context.Context, ciph ports.Cipher, command port
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck -- explicit commit or classified failure
 	queries := r.queries.WithTx(tx)
-	if _, err := queries.InsertCredentialRequest(ctx, credentialdb.InsertCredentialRequestParams{
+	arbitrated, err := queries.InsertCredentialRequest(ctx, credentialdb.InsertCredentialRequestParams{
 		OwnerUserID:    command.OwnerUserID,
 		IdempotencyKey: command.IdempotencyKey,
 		RequestDigest:  command.RequestDigest,
 		Result:         inFlightResult(),
 		CreatedAt:      timestamp(command.Now),
-	}); err != nil {
+	})
+	if err != nil {
 		return domain.Credential{}, storeError("arbitrate credential rotate", err)
+	}
+	if arbitrated == 0 {
+		return domain.Credential{}, ports.ErrKeyConsumed
 	}
 	row, err := queries.LockProviderCredential(ctx, command.CredentialID)
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -176,14 +180,18 @@ func (r *Repository) Revoke(ctx context.Context, command ports.RevokeCommand) (d
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck -- explicit commit or classified failure
 	queries := r.queries.WithTx(tx)
-	if _, err := queries.InsertCredentialRequest(ctx, credentialdb.InsertCredentialRequestParams{
+	arbitrated, err := queries.InsertCredentialRequest(ctx, credentialdb.InsertCredentialRequestParams{
 		OwnerUserID:    command.OwnerUserID,
 		IdempotencyKey: command.IdempotencyKey,
 		RequestDigest:  command.RequestDigest,
 		Result:         inFlightResult(),
 		CreatedAt:      timestamp(command.Now),
-	}); err != nil {
+	})
+	if err != nil {
 		return domain.Credential{}, storeError("arbitrate credential revoke", err)
+	}
+	if arbitrated == 0 {
+		return domain.Credential{}, ports.ErrKeyConsumed
 	}
 	row, err := queries.LockProviderCredential(ctx, command.CredentialID)
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -341,6 +349,9 @@ func (r *Repository) TaskCredentialLease(ctx context.Context, tx dbtx.Tx, taskLe
 
 // InsertTaskCredentialLease implements ports.Repository.
 func (r *Repository) InsertTaskCredentialLease(ctx context.Context, tx dbtx.Tx, lease ports.TaskCredentialLease) (ports.TaskCredentialLease, bool, error) {
+	if !validTaskCredentialLease(lease, true) {
+		return ports.TaskCredentialLease{}, false, domain.ErrCorrupt
+	}
 	inserted, err := r.queries.WithTx(tx).InsertTaskCredentialLease(ctx, credentialdb.InsertTaskCredentialLeaseParams{
 		ID: lease.ID, TaskLeaseID: lease.TaskLeaseID, TaskID: lease.TaskID, WorkerID: lease.WorkerID,
 		OwnerUserID: lease.OwnerUserID, ConsumerID: lease.ConsumerID, Purpose: lease.Purpose,
@@ -426,7 +437,11 @@ func (r *Repository) ReleaseTaskCredentialLease(ctx context.Context, credentialL
 		if readErr != nil {
 			return storeError("read released task credential lease", readErr)
 		}
-		if row.TaskLeaseID != taskLeaseID || row.WorkerID != workerID {
+		lease, convertErr := leaseToPorts(row)
+		if convertErr != nil {
+			return convertErr
+		}
+		if lease.TaskLeaseID != taskLeaseID || lease.WorkerID != workerID {
 			return domain.ErrLeaseLost
 		}
 	}
@@ -463,11 +478,15 @@ func isJSONNull(value []byte) bool {
 
 func rowToCredential(value any) (domain.Credential, error) {
 	credentialFrom := func(id, ownerUserID, consumerID, purpose, label string, revision int64, status string, createdAt, updatedAt time.Time) (domain.Credential, error) {
-		return domain.Credential{
+		credential := domain.Credential{
 			ID: id, OwnerUserID: ownerUserID, ConsumerID: consumerID,
 			Purpose: purpose, Label: label, Revision: revision, Status: status,
 			CreatedAt: createdAt, UpdatedAt: updatedAt,
-		}, nil
+		}
+		if !domain.ValidCredential(credential) {
+			return domain.Credential{}, domain.ErrCorrupt
+		}
+		return credential, nil
 	}
 	switch value := value.(type) {
 	case credentialdb.WorkosCoreProviderCredential:
@@ -491,13 +510,16 @@ func leaseToPorts(row any) (ports.TaskCredentialLease, error) {
 	switch value := row.(type) {
 	case credentialdb.GetTaskCredentialLeaseRow:
 		return taskCredentialLease(value.ID, value.TaskLeaseID, value.TaskID, value.WorkerID, value.OwnerUserID,
-			value.ConsumerID, value.Purpose, value.CredentialID, value.CredentialRevision, value.Status, value.ExpiresAt), nil
+			value.ConsumerID, value.Purpose, value.CredentialID, value.CredentialRevision, value.Status, value.ExpiresAt)
+	case credentialdb.GetTaskCredentialLeaseByLeaseIDRow:
+		return taskCredentialLease(value.ID, value.TaskLeaseID, value.TaskID, value.WorkerID, value.OwnerUserID,
+			value.ConsumerID, value.Purpose, value.CredentialID, value.CredentialRevision, value.Status, value.ExpiresAt)
 	case credentialdb.LockActiveTaskCredentialLeaseRow:
 		return taskCredentialLease(value.ID, value.TaskLeaseID, value.TaskID, value.WorkerID, value.OwnerUserID,
-			value.ConsumerID, value.Purpose, value.CredentialID, value.CredentialRevision, value.Status, value.ExpiresAt), nil
+			value.ConsumerID, value.Purpose, value.CredentialID, value.CredentialRevision, value.Status, value.ExpiresAt)
 	case credentialdb.RenewTaskCredentialLeaseRow:
 		return taskCredentialLease(value.ID, value.TaskLeaseID, value.TaskID, value.WorkerID, value.OwnerUserID,
-			value.ConsumerID, value.Purpose, value.CredentialID, value.CredentialRevision, value.Status, value.ExpiresAt), nil
+			value.ConsumerID, value.Purpose, value.CredentialID, value.CredentialRevision, value.Status, value.ExpiresAt)
 	default:
 		return ports.TaskCredentialLease{}, domain.ErrCorrupt
 	}
@@ -505,13 +527,35 @@ func leaseToPorts(row any) (ports.TaskCredentialLease, error) {
 
 func taskCredentialLease(id, taskLeaseID, taskID, workerID, ownerUserID, consumerID, purpose, credentialID string,
 	credentialRevision int64, status string, expiresAt time.Time,
-) ports.TaskCredentialLease {
-	return ports.TaskCredentialLease{
+) (ports.TaskCredentialLease, error) {
+	lease := ports.TaskCredentialLease{
 		ID: id, TaskLeaseID: taskLeaseID, TaskID: taskID, WorkerID: workerID,
 		OwnerUserID: ownerUserID, ConsumerID: consumerID, Purpose: purpose,
 		CredentialID: credentialID, CredentialRevision: credentialRevision,
 		Status: status, ExpiresAt: expiresAt,
 	}
+	if !validTaskCredentialLease(lease, false) {
+		return ports.TaskCredentialLease{}, domain.ErrCorrupt
+	}
+	return lease, nil
+}
+
+func validTaskCredentialLease(lease ports.TaskCredentialLease, requireCreatedAt bool) bool {
+	if !domain.ValidCredentialID(lease.ID) || !domain.ValidCredentialID(lease.TaskLeaseID) ||
+		!domain.ValidCredentialID(lease.TaskID) || !domain.ValidWorkerID(lease.WorkerID) ||
+		!domain.ValidCredentialID(lease.OwnerUserID) || !domain.ValidConsumerID(lease.ConsumerID) ||
+		!domain.ValidPurpose(lease.Purpose) || !domain.ValidCredentialID(lease.CredentialID) ||
+		!domain.ValidRevision(lease.CredentialRevision) || !domain.ValidStoredUTCTime(lease.ExpiresAt) {
+		return false
+	}
+	if lease.Status != domain.LeaseStatusActive && lease.Status != domain.LeaseStatusReleased &&
+		lease.Status != domain.LeaseStatusExpired {
+		return false
+	}
+	if !requireCreatedAt {
+		return true
+	}
+	return domain.ValidStoredUTCTime(lease.CreatedAt) && lease.ExpiresAt.After(lease.CreatedAt)
 }
 
 func timestamp(value time.Time) time.Time { return value }

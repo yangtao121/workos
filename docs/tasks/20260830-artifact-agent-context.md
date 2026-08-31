@@ -1,6 +1,6 @@
 # Task: Review Artifact 作为 Agent Context（阶段 B）
 
-- 状态：active
+- 状态：done
 - Owner/Agent：WorkOS 实现智能体
 - 进程/模块：workos-core（Agent transport/router、Artifact、orchestration resolver）、
   harness-host（worker + Fake/DeepSeek/Generic adapters）、desktop-web（Use as Agent context）
@@ -56,6 +56,9 @@ context（ADR-0010）。
   - `buf lint` 通过；`buf breaking api/proto --against .git#branch=main,ref=aa560bb` 无破坏。
 - UI 证据：`docs/ui/desktop-web/changes/20260830-artifact-agent-context/{before,after,notes.md}`，
   `after/` 两张已同步 `current/`（1440x900 dsf1，synthetic fixtures，无 digest/ID 入图）。
+- 2026-08-31 复核修复：原两张 after 截图内容相同，context chip 被 Artifact Center 覆盖且
+  chip 样式缺失；现已补齐 chip/type/remove 的确定性样式，关闭 covering window 后重采，
+  before/after 文件名逐张对应，并隐藏与本视觉契约无关的随机 task UUID/历史 Project 列表。
 - commit：`ad3747a`（`feat: resolve review artifacts as agent context`）。
 
 ## 交接

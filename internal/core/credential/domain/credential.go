@@ -6,6 +6,7 @@ package domain
 
 import (
 	"errors"
+	"strings"
 	"time"
 	"unicode"
 	"unicode/utf8"
@@ -40,6 +41,10 @@ var (
 const (
 	StatusActive  = "active"
 	StatusRevoked = "revoked"
+
+	LeaseStatusActive   = "active"
+	LeaseStatusReleased = "released"
+	LeaseStatusExpired  = "expired"
 )
 
 // PurposeProviderAPIKeyV1 is the only canonical purpose in this version.
@@ -149,6 +154,19 @@ func ValidIdempotencyKey(value string) bool {
 	return true
 }
 
+// ValidWorkerID enforces the stored execution-worker identifier grammar.
+func ValidWorkerID(value string) bool {
+	if value == "" || len(value) > 128 || value != strings.TrimSpace(value) || !utf8.ValidString(value) {
+		return false
+	}
+	for _, character := range value {
+		if unicode.IsControl(character) {
+			return false
+		}
+	}
+	return true
+}
+
 // ValidCredentialID reports whether value is a canonical lowercase UUIDv7.
 func ValidCredentialID(value string) bool {
 	return validUUIDv7(value)
@@ -157,6 +175,39 @@ func ValidCredentialID(value string) bool {
 // ValidRevision reports whether revision is a positive revision counter.
 func ValidRevision(revision int64) bool {
 	return revision >= 1
+}
+
+// ValidCredential validates a metadata fact read from durable storage or an
+// idempotency snapshot. Invalid stored facts fail closed as ErrCorrupt at the
+// adapter/application boundary instead of becoming an external projection.
+func ValidCredential(credential Credential) bool {
+	if !ValidCredentialID(credential.ID) || !ValidCredentialID(credential.OwnerUserID) ||
+		!ValidConsumerID(credential.ConsumerID) || !ValidPurpose(credential.Purpose) ||
+		!ValidLabel(credential.Label) || !ValidRevision(credential.Revision) {
+		return false
+	}
+	if credential.Status != StatusActive && credential.Status != StatusRevoked {
+		return false
+	}
+	return ValidStoredUTCTime(credential.CreatedAt) && ValidStoredUTCTime(credential.UpdatedAt) &&
+		!credential.UpdatedAt.Before(credential.CreatedAt)
+}
+
+// ValidStoredUTCTime accepts only finite UTC timestamps at PostgreSQL's
+// microsecond precision. Canonicalizing before writes keeps first responses,
+// durable rows, and idempotency replays byte-for-byte consistent.
+func ValidStoredUTCTime(value time.Time) bool {
+	if value.IsZero() {
+		return false
+	}
+	year, offset := value.Year(), 0
+	_, offset = value.Zone()
+	return offset == 0 && year >= 1 && year <= 9999 && value.Equal(CanonicalUTCTime(value))
+}
+
+// CanonicalUTCTime matches PostgreSQL timestamptz's microsecond precision.
+func CanonicalUTCTime(value time.Time) time.Time {
+	return value.UTC().Truncate(time.Microsecond)
 }
 
 func validUUIDv7(value string) bool {

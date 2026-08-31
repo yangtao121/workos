@@ -366,6 +366,67 @@ button {
   padding: 12px;
   outline: none;
 }
+.context-chips {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.context-chip {
+  display: inline-flex;
+  min-width: 0;
+  max-width: min(100%, 360px);
+  align-items: center;
+  gap: 7px;
+  border: 1px solid rgba(126, 178, 242, 0.42);
+  border-radius: 999px;
+  background: rgba(56, 106, 165, 0.2);
+  padding: 5px 7px 5px 11px;
+  color: #eaf3ff;
+  font-size: 12px;
+}
+.context-chip > span:first-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.context-chip-type {
+  flex: 0 0 auto;
+  border-radius: 999px;
+  background: rgba(126, 178, 242, 0.17);
+  padding: 2px 6px;
+  color: #bfdcff;
+  font-size: 10px;
+  letter-spacing: 0.02em;
+}
+.context-chip button {
+  display: inline-grid;
+  width: 22px;
+  height: 22px;
+  flex: 0 0 22px;
+  place-items: center;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: #c7d7e9;
+  cursor: pointer;
+  font: inherit;
+  line-height: 1;
+}
+.context-chip button:hover {
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+}
+.context-hint {
+  grid-column: 1 / -1;
+  margin: 0;
+  color: #f0c978;
+  font-size: 12px;
+}
 .workos-button {
   border: 1px solid rgba(126, 178, 242, 0.55);
   border-radius: 10px;
@@ -995,6 +1056,17 @@ button {
   margin: 0;
   padding: 0;
   list-style: none;
+}
+
+.artifact-list > li {
+  display: grid;
+  gap: 6px;
+}
+
+.context-selected-note {
+  margin: 0;
+  color: #a9c9ee;
+  font-size: 12px;
 }
 
 .artifact-row {

@@ -8,7 +8,7 @@ Production device authentication (ADR-0007) lets a trusted LAN client pair over 
 
 `compose.yaml` runs PostgreSQL and all six stable processes on loopback. It is the reproducible development and acceptance environment, not a production topology.
 
-Core reaches the private harness-host address through `WORKOS_HARNESS_URL` only for provider description. The Gateway exposes Core's separate read-only Catalog facade and Project binding command; it does not forward the private Harness execution/cancellation service. Provider credentials belong only to harness-host and must not be injected into Core, Gateway, or Desktop.
+Core reaches the ordinary harness-host address through `WORKOS_HARNESS_URL` only for provider description. The Gateway exposes Core's separate read-only Catalog facade and Project binding command; it does not forward the private Harness execution service. Long-lived Provider credentials belong only to the Core Credential Vault; harness-host receives one short-lived task-bound lease in memory, while Gateway, Desktop, and the other resident processes receive neither the credential nor vault key material.
 
 The non-secret Project binding preset is configured on Core with:
 
@@ -68,10 +68,11 @@ Device management lives in the Desktop Device Center (list/revoke/logout, "Pair 
 
 ## systemd skeleton
 
-The units in `deploy/systemd` assume binaries under `/usr/local/libexec/workos`, the Desktop bundle under `/usr/share/workos/desktop`, a dedicated `workos` user, and PostgreSQL managed separately.
+The units in `deploy/systemd` assume binaries under `/usr/local/libexec/workos`, the Desktop bundle under `/usr/share/workos/desktop`, PostgreSQL managed separately, a default `workos` user for non-secret processes, and distinct `workos-core` / `workos-harness` service accounts for the two credential-bearing processes.
 
 1. Install `workos.env.example` as `/etc/workos/workos.env` with mode `0600` and replace the database credential.
 2. Install each process environment example without the `.example` suffix.
-3. Install the units, run `systemctl daemon-reload`, and enable `workos.target`.
+3. Create locked `workos-core` and `workos-harness` system users/groups. Provision `/etc/workos/credentials/{execution-ca.crt,execution-core.crt,execution-core.key,execution-harness.crt,execution-harness.key,vault-master.key}` as root-owned, non-symlink files. Private keys and the 32-raw-byte vault key must be mode `0600`. Install the two checked-in `workos@{workos-core,harness-host}.service.d/credentials.conf` drop-ins at the matching unit paths. systemd then copies only Core's server identity plus vault key into the Core unit credential directory and only Harness's client identity into the Harness unit directory. The Core drop-in also owns `/run/workos-core` so its mode-0600 admin socket is not reachable by Harness; never expose a shared credential or runtime directory to the common service account.
+4. Install the units, run `systemctl daemon-reload`, and enable `workos.target`.
 
 The Runtime unit is hardened for its current read-only capability probe. Enabling the supervised rootless Podman workload runner (ADR-0006) requires the reviewed, runtime-host-only drop-in in `deploy/systemd/workos-runtime-host.service.d/rootless-podman.conf.example`: it redirects podman's per-user state onto StateDirectory/RuntimeDirectory owned by the service user and grants nothing to any other WorkOS process. The host itself must provide cgroup v2 with the memory/cpu/pids controllers, permitted unprivileged user namespaces, and a rootless podman installation; the runtime verifies all of this at startup with a bounded `podman info` probe and honestly reports `container-runner` unavailable — it never falls back to Docker, a rootful daemon, or a bare process.

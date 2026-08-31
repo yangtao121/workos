@@ -3,6 +3,7 @@ package domain
 import (
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestValidConsumerID(t *testing.T) {
@@ -14,6 +15,30 @@ func TestValidConsumerID(t *testing.T) {
 	for _, invalid := range []string{"", "DeepSeek", "with space", "ünicode", string(make([]byte, 129))} {
 		if ValidConsumerID(invalid) {
 			t.Fatalf("consumer %q accepted", invalid)
+		}
+	}
+}
+
+func TestValidCredentialStoredMetadata(t *testing.T) {
+	now := CanonicalUTCTime(time.Now())
+	valid := Credential{
+		ID: "0198d7ea-2110-7c42-b659-c5e4d73bc337", OwnerUserID: "0198d7ea-2110-7c42-b659-c5e4d73bc338",
+		ConsumerID: "deepseek", Purpose: PurposeProviderAPIKeyV1, Label: "production",
+		Revision: 1, Status: StatusActive, CreatedAt: now, UpdatedAt: now,
+	}
+	if !ValidCredential(valid) {
+		t.Fatal("honest stored credential rejected")
+	}
+	for name, mutate := range map[string]func(*Credential){
+		"foreign-shaped owner": func(c *Credential) { c.OwnerUserID = "not-an-owner" },
+		"unknown status":       func(c *Credential) { c.Status = "pending" },
+		"noncanonical time":    func(c *Credential) { c.UpdatedAt = c.UpdatedAt.Add(time.Nanosecond) },
+		"time reversal":        func(c *Credential) { c.UpdatedAt = c.CreatedAt.Add(-time.Microsecond) },
+	} {
+		candidate := valid
+		mutate(&candidate)
+		if ValidCredential(candidate) {
+			t.Fatalf("%s was accepted", name)
 		}
 	}
 }
@@ -58,6 +83,19 @@ func TestValidLabelAndIdempotencyKey(t *testing.T) {
 	}
 	if ValidIdempotencyKey("") || ValidIdempotencyKey(strings.Repeat("a", 129)) {
 		t.Fatal("unbounded keys accepted")
+	}
+}
+
+func TestValidWorkerID(t *testing.T) {
+	for _, valid := range []string{"harness-host-local", "worker.1", "worker_二"} {
+		if !ValidWorkerID(valid) {
+			t.Fatalf("worker %q rejected", valid)
+		}
+	}
+	for _, invalid := range []string{"", " leading", "trailing ", "line\nbreak", strings.Repeat("w", 129)} {
+		if ValidWorkerID(invalid) {
+			t.Fatalf("worker %q accepted", invalid)
+		}
 	}
 }
 

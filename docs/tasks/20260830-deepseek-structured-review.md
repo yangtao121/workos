@@ -1,6 +1,6 @@
 # Task: DeepSeek Structured Markdown / Diff Review（阶段 C）
 
-- 状态：active
+- 状态：done
 - Owner/Agent：WorkOS 实现智能体
 - 进程/模块：harness-host（DeepSeek adapter structured mode + batch sink）、workos-core
   （AppendTaskArtifactBatch materialization）、本地 DeepSeek API fixture、desktop-web（既有

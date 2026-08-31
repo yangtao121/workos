@@ -16,6 +16,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"syscall"
@@ -55,11 +56,16 @@ func Load(keyFile string) (*Cipher, error) {
 	if keyFile == "" || !filepath.IsAbs(keyFile) || filepath.Clean(keyFile) != keyFile {
 		return nil, errors.New("credential master key file must be an absolute, cleaned path")
 	}
-	info, err := os.Lstat(keyFile)
+	file, err := os.OpenFile(keyFile, os.O_RDONLY|syscall.O_NOFOLLOW|syscall.O_CLOEXEC, 0)
 	if err != nil {
 		return nil, fmt.Errorf("credential master key file is unavailable: %w", err)
 	}
-	if info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() {
+	defer file.Close() //nolint:errcheck -- read-only handle
+	info, err := file.Stat()
+	if err != nil {
+		return nil, fmt.Errorf("inspect credential master key file: %w", err)
+	}
+	if !info.Mode().IsRegular() {
 		return nil, errors.New("credential master key file must be a regular file, not a symlink")
 	}
 	if info.Mode().Perm()&0o077 != 0 {
@@ -68,13 +74,18 @@ func Load(keyFile string) (*Cipher, error) {
 	if stat, ok := info.Sys().(*syscall.Stat_t); ok && stat.Uid != uint32(os.Geteuid()) {
 		return nil, errors.New("credential master key file must be owned by the core process user")
 	}
-	master, err := readExact(keyFile, 32)
+	if info.Size() != 32 {
+		return nil, errors.New("credential master key file must contain exactly 32 raw bytes")
+	}
+	master, err := readExact(file, 32)
 	if err != nil {
 		return nil, err
 	}
 	digestKey := deriveKey(master, digestKeyInfo)
-	block, err := aes.NewCipher(master)
+	aeadKey := deriveKey(master, aeadKeyInfo)
 	overwrite(master)
+	block, err := aes.NewCipher(aeadKey)
+	overwrite(aeadKey)
 	if err != nil {
 		overwrite(digestKey)
 		return nil, errors.New("credential master key is invalid")
@@ -148,19 +159,19 @@ func aadBytes(aad ports.SealAAD) []byte {
 		sealFormatVersion, aad.OwnerUserID, aad.CredentialID, aad.ConsumerID, aad.Purpose, aad.Revision))
 }
 
-func readExact(path string, size int64) ([]byte, error) {
-	file, err := os.Open(path)
-	if err != nil {
-		return nil, fmt.Errorf("read credential master key: %w", err)
-	}
-	defer file.Close() //nolint:errcheck -- read-only handle
-	master := make([]byte, size+1)
-	read, err := file.Read(master)
+func readExact(file *os.File, size int64) ([]byte, error) {
+	master := make([]byte, size)
+	read, err := io.ReadFull(file, master)
 	if err != nil || int64(read) != size {
 		overwrite(master)
 		return nil, errors.New("credential master key file must contain exactly 32 raw bytes")
 	}
-	return master[:size], nil
+	var extra [1]byte
+	if read, err := file.Read(extra[:]); read != 0 || !errors.Is(err, io.EOF) {
+		overwrite(master)
+		return nil, errors.New("credential master key file must contain exactly 32 raw bytes")
+	}
+	return master, nil
 }
 
 func overwrite(buffer []byte) {

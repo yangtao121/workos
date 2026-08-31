@@ -155,12 +155,30 @@ func TestVaultPutRotateRevokeLifecycle(t *testing.T) {
 	}
 
 	// Rotation keeps the logical ID, bumps the revision, single winner.
+	rotateKey := ids.UUIDv7{}.New()
 	rotated, err := f.vault.Rotate(ctx, credentialports.RotateCommand{
 		OwnerUserID: f.owner, CredentialID: credential.ID, ExpectedRevision: 1,
-		Secret: []byte(vaultSecretMarker + "-rotated"), IdempotencyKey: ids.UUIDv7{}.New(),
+		Secret: []byte(vaultSecretMarker + "-rotated"), IdempotencyKey: rotateKey,
 	})
 	if err != nil || rotated.ID != credential.ID || rotated.Revision != 2 {
 		t.Fatalf("rotate verdict: %#v err=%v", rotated, err)
+	}
+	rotateReplay, err := f.vault.Rotate(ctx, credentialports.RotateCommand{
+		OwnerUserID: f.owner, CredentialID: credential.ID, ExpectedRevision: 1,
+		Secret: []byte(vaultSecretMarker + "-rotated"), IdempotencyKey: rotateKey,
+	})
+	if err != nil || rotateReplay.ID != rotated.ID || rotateReplay.Revision != rotated.Revision {
+		t.Fatalf("rotate replay diverged: %#v vs %#v err=%v", rotateReplay, rotated, err)
+	}
+	if _, err := f.vault.Rotate(ctx, credentialports.RotateCommand{
+		OwnerUserID: f.owner, CredentialID: credential.ID, ExpectedRevision: 2,
+		Secret: []byte("different-rotation"), IdempotencyKey: rotateKey,
+	}); !errors.Is(err, credentialdomain.ErrIdempotencyConflict) {
+		t.Fatalf("consumed rotate key mutated a second revision: %v", err)
+	}
+	current, err := f.vault.ActiveCredential(ctx, f.owner, "deepseek", credentialdomain.PurposeProviderAPIKeyV1)
+	if err != nil || current.Revision != 2 {
+		t.Fatalf("rotate idempotency conflict changed durable revision: %#v err=%v", current, err)
 	}
 	if _, err := f.vault.Rotate(ctx, credentialports.RotateCommand{
 		OwnerUserID: f.owner, CredentialID: credential.ID, ExpectedRevision: 1,
@@ -170,11 +188,18 @@ func TestVaultPutRotateRevokeLifecycle(t *testing.T) {
 	}
 
 	// Revocation is irreversible and bumps the revision once more.
+	revokeKey := ids.UUIDv7{}.New()
 	revoked, err := f.vault.Revoke(ctx, credentialports.RevokeCommand{
-		OwnerUserID: f.owner, CredentialID: credential.ID, ExpectedRevision: 2, IdempotencyKey: ids.UUIDv7{}.New(),
+		OwnerUserID: f.owner, CredentialID: credential.ID, ExpectedRevision: 2, IdempotencyKey: revokeKey,
 	})
 	if err != nil || revoked.Status != credentialdomain.StatusRevoked || revoked.Revision != 3 {
 		t.Fatalf("revoke verdict: %#v err=%v", revoked, err)
+	}
+	revokeReplay, err := f.vault.Revoke(ctx, credentialports.RevokeCommand{
+		OwnerUserID: f.owner, CredentialID: credential.ID, ExpectedRevision: 2, IdempotencyKey: revokeKey,
+	})
+	if err != nil || revokeReplay.Status != revoked.Status || revokeReplay.Revision != revoked.Revision {
+		t.Fatalf("revoke replay diverged: %#v vs %#v err=%v", revokeReplay, revoked, err)
 	}
 	if _, err := f.vault.ActiveCredential(ctx, f.owner, "deepseek", credentialdomain.PurposeProviderAPIKeyV1); !errors.Is(err, credentialdomain.ErrNotFound) {
 		t.Fatalf("revoked credential still resolves active: %v", err)
@@ -269,6 +294,16 @@ func TestVaultSealedMaterialFailsClosed(t *testing.T) {
 	if bytes.Equal(n1, n2) || bytes.Equal(c1, c2) {
 		t.Fatal("re-sealing the same secret produced identical nonce or ciphertext")
 	}
+
+	// Database constraints are defense in depth, not the trust boundary: a
+	// UUID-shaped row with the wrong UUID version is stored corruption and
+	// must never escape through the metadata projection.
+	if _, err := f.pool.Exec(ctx, `UPDATE workos_core.provider_credentials SET id = '550e8400-e29b-41d4-a716-446655440000' WHERE id = $1`, first.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.vault.List(ctx, f.owner); !errors.Is(err, credentialdomain.ErrCorrupt) {
+		t.Fatalf("corrupt stored credential metadata escaped: %v", err)
+	}
 }
 
 func newVaultFixtureWithKey(t *testing.T, keyFile string) *vaultFixture {
@@ -322,6 +357,17 @@ func TestCredentialLeaseStateMachine(t *testing.T) {
 	replay, err := f.issuer.Acquire(ctx, leaseID, worker)
 	if err != nil || replay.LeaseID != grant.LeaseID || replay.CredentialRevision != grant.CredentialRevision || string(replay.Secret) != vaultSecretMarker {
 		t.Fatalf("replay verdict: %#v err=%v", replay, err)
+	}
+	// A corrupted durable lease must not be replayed from only its worker and
+	// credential columns; every task/owner/provider fact is re-bound.
+	if _, err := f.pool.Exec(ctx, `UPDATE workos_core.task_credential_leases SET task_id = $1 WHERE id = $2`, ids.UUIDv7{}.New(), grant.LeaseID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.issuer.Acquire(ctx, leaseID, worker); !errors.Is(err, credentialdomain.ErrLeaseLost) {
+		t.Fatalf("corrupt task lease metadata replayed: %v", err)
+	}
+	if _, err := f.pool.Exec(ctx, `UPDATE workos_core.task_credential_leases SET task_id = $1 WHERE id = $2`, f.taskIDForLease(t, leaseID), grant.LeaseID); err != nil {
+		t.Fatal(err)
 	}
 	// Foreign worker is refused.
 	if _, err := f.issuer.Acquire(ctx, leaseID, "someone-else"); !errors.Is(err, credentialdomain.ErrLeaseLost) {
@@ -424,6 +470,15 @@ func (f *vaultFixture) projectID(t *testing.T) string {
 	}
 	f.project = id
 	return id
+}
+
+func (f *vaultFixture) taskIDForLease(t *testing.T, leaseID string) string {
+	t.Helper()
+	var taskID string
+	if err := f.pool.QueryRow(context.Background(), `SELECT aggregate_id FROM workos_events.outbox WHERE lease_id = $1`, leaseID).Scan(&taskID); err != nil {
+		t.Fatal(err)
+	}
+	return taskID
 }
 
 var _ = strings.TrimSpace

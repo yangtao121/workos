@@ -1,6 +1,6 @@
 # Task: Central Credential Vault 与 task-bound credential lease（阶段 A）
 
-- 状态：active
+- 状态：done
 - Owner/Agent：WorkOS 实现智能体
 - 进程/模块：workos-core（Credential Vault + 双私有 listener）、harness-host（lease 客户端 +
   DeepSeek lease-only）、workosctl（credential 命令）
@@ -70,8 +70,9 @@ bootstrap`、`make check` 全绿。
 
 ## 交接
 
-- 已验证命令如上；stack 依赖 dev 一次性 `workos-dev-fixture`（DEV-only）在共享 runtime volume
-  内生成执行通道身份与 dev master key；生产必须改用 systemd credential/file provisioning，
+- 已验证命令如上；2026-08-31 复核修复后，dev 一次性 `workos-dev-fixture`（DEV-only）分别
+  生成 Core execution、Harness execution、Core vault 三个隔离 volume，并由 stack 断言反向
+  不可见；生产使用独立 service account + systemd per-unit credential directory。
   `workos-dev-fixture` 不得在生产运行。
 - 未决风险（诚实记录）：master key 在线轮换/多 key ring/跨主机 HA 未做；多 owner catalog
   overlay 未做（admin 为单 owner）；Go 无形式化 zeroization，secret 以暴露窗口最小化而非保证

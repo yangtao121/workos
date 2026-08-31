@@ -37,7 +37,8 @@ secret。本 ADR 固定第一版 Credential Vault 与 private harness execution 
 - master key：Core 从绝对路径、regular、非 symlink、owner-only（无 group/world 权限位）、恰好
   32 raw bytes 的文件读取；拒绝 env value / YAML / CLI argv 来源。文件由部署设施（生产 systemd
   credential / dev fixture one-shot）供给。
-- AEAD：AES-256-GCM（标准库实现），每次 create/rotate 使用 CSPRNG 12-byte nonce；AAD 至少覆盖
+- AEAD：master key 以固定 domain-separation label 分别派生 AES-256-GCM key 与 admin request
+  digest key；每次 create/rotate 使用 CSPRNG 12-byte nonce；AAD 至少覆盖
   format version、owner、credential ID、consumer、purpose、revision，因此 row/revision 换位
   一律认证失败。authentication failure 是 stored corruption：sanitized Internal，绝不 fallback
   明文，绝不自动"修复"。
@@ -61,7 +62,7 @@ active harness worker over mutually authenticated private mTLS channel
   → AcquireTaskCredential(task_lease_id, worker_id 仅此两项)
   → Core 在一个受控事务内从 active task lease 派生 task/provider/owner/snapshot
   → 精确验证 vault 中该 credential 仍 active 且 revision 精确匹配
-  → 一次 bounded in-memory lease response（secret 只出现这一次）
+  → bounded in-memory Acquire response（同一 active lease/worker 的 response-loss replay 可重发）
   → 精确 provider adapter → 该 task 的 allowlisted child env
 ```
 
@@ -87,8 +88,11 @@ Credential 表；以 localhost/内网为由在未认证明文 HTTP 上返回 sec
   本 ADR 的前提：这个通道现在要承载 raw secret，必须先有真实的服务身份。
 - 这不是完整 service mesh 或 Workload Identity：它只证明 Core↔harness execution 的进程身份。
   其余进程间通道维持现状，由后续 ADR 处理。
-- 开发/CI：dev-fixture one-shot 在共享 runtime volume 内生成 ephemeral CA/leaf + dev master key
-  （UID 匹配容器用户），全程无手工粘贴；生产由 systemd credential/file provisioning 提供。
+- 开发/CI：dev-fixture one-shot 生成 ephemeral CA/leaf + dev master key，但输出到三个隔离 volume：
+  Core 只挂 server leaf + CA + vault key，Harness 只挂 client leaf + CA，其余常驻进程均不挂；
+  Core 与 Harness 的反向不可见性进入 stack 门禁。生产用独立 `workos-core` / `workos-harness`
+  service account 与 systemd per-unit credential directory 提供同等隔离；Core admin socket 位于
+  Core-only runtime directory。全程无手工粘贴，CA private key 不落到任何常驻进程。
 
 ### 5. Task credential snapshot 与 short lease 状态机
 

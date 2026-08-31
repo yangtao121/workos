@@ -806,8 +806,9 @@ active harness worker → Core 私有 mTLS listener（TLS 1.3，URI SAN 精确�
   迁移指引 configuration issue；provider 声明 `requires_task_credential_lease=true`，仅在
   consumer/purpose 匹配且未过期的 neutral lease 下启动 child，child env 只含该 task 的
   lease secret，不跨 task 缓存。dev/CI 的执行通道身份与 dev master key 由一次性
-  workos-dev-fixture 在共享 runtime volume 内生成（UID 匹配容器用户）；生产经 systemd
-  credential/file provisioning，workos-dev-fixture 永不是生产工具。
+  workos-dev-fixture 分别写入 Core execution、Harness execution、Core vault 三个隔离 volume；
+  任何 resident process 都只挂最小材料。生产由独立 Core/Harness service account + systemd
+  per-unit credential directory 提供，workos-dev-fixture 永不是生产工具。
 - 门禁：`make test-credential-vault`（真实 PostgreSQL + Core mTLS listener + harness-host +
   workosctl admin socket + 本地 DeepSeek fixture；missing/granted/revoked 三阶段）。
   `023`/`024` 为新 forward-only migration，001–022 逐字节不变。

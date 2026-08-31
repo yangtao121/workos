@@ -13,6 +13,7 @@ NPM_REGISTRY ?= https://registry.npmmirror.com
 PLAYWRIGHT_DOWNLOAD_HOST ?= https://npmmirror.com/mirrors/playwright
 PYPI_MIRROR ?= https://mirrors.aliyun.com/pypi
 LAN_PAIRING_CAPTURE_DIR ?= $(CURDIR)/docs/ui/desktop-web/changes/20260830-lan-device-pairing/after
+ARTIFACT_CONTEXT_CAPTURE_DIR := $(WORKDIR)/docs/ui/desktop-web/changes/20260830-artifact-agent-context/after
 USER_FLAGS := --user $(shell id -u):$(shell id -g) -e HOME=/tmp
 MOUNT := -v $(CURDIR):$(WORKDIR) -w $(WORKDIR)
 GO_RUN := docker run --rm $(USER_FLAGS) -e GOPATH=/tmp/workos-go -e GOMODCACHE=/go/pkg/mod -e GOPROXY=$(GOPROXY) $(MOUNT) -v workos-go-cache:/go/pkg/mod $(GO_IMAGE)
@@ -22,7 +23,7 @@ NODE_RUN := docker run --rm $(USER_FLAGS) -e COREPACK_NPM_REGISTRY=$(NPM_REGISTR
 BUF_RUN := docker run --rm $(USER_FLAGS) $(MOUNT) $(BUF_IMAGE)
 SQLC_RUN := docker run --rm $(USER_FLAGS) -v $(CURDIR):/src -w /src $(SQLC_IMAGE)
 
-.PHONY: bootstrap generate docs check check-native proto-check go-check web-check test test-integration test-artifact-context test-deepseek-fixture test-deepseek-structured-review test-credential-vault e2e-image test-e2e test-podman-fixture test-lan-pairing capture-lan-pairing-visual build web-build scaffold-module dev down logs clean
+.PHONY: bootstrap generate docs check check-native proto-check go-check web-check test test-integration test-artifact-context test-deepseek-fixture test-deepseek-structured-review test-credential-vault e2e-image test-e2e test-podman-fixture test-lan-pairing capture-artifact-context-visual capture-lan-pairing-visual build web-build scaffold-module dev down logs clean
 
 bootstrap:
 	@docker version >/dev/null
@@ -114,14 +115,17 @@ test-credential-vault:
 		WORKOS_DEEPSEEK_ENABLED=true \
 		WORKOS_DEEPSEEK_BASE_URL=http://127.0.0.1:18086 \
 		docker compose --profile deepseek-fixture up -d --build --force-recreate postgres bootstrap workos-core harness-host workos-gateway deepseek-api-fixture; \
-		docker compose exec -T workos-core /bin/sh -c 'test -f /run/workos/execution/ca.crt && test -f /run/workos/execution/core.crt && test -f /run/workos/execution/harness.crt'; \
+		docker compose exec -T workos-core /bin/sh -c 'test -f /run/workos/execution/ca.crt && test -f /run/workos/execution/core.key && test -f /run/workos/vault/vault-master.key && test ! -e /run/workos/execution/harness.key'; \
+		docker compose exec -T harness-host /bin/sh -c 'test -f /run/workos/execution/ca.crt && test -f /run/workos/execution/harness.key && test ! -e /run/workos/execution/core.key && test ! -e /run/workos/vault/vault-master.key'; \
 		cred_id="$$(active_deepseek_id)"; \
 		if [ -z "$$cred_id" ]; then \
 			$(GO_HOST_RUN_BASE) -e WORKOS_TEST_VAULT_PHASE=missing $(GO_IMAGE) go test -tags=integration -count=1 -run '^TestCredentialVaultStackPhase$$' -v ./tests/integration; \
 			printf '%s' 'workos-fixture-only-not-a-real-key' | docker compose exec -T workos-core /bin/sh -c "/usr/local/bin/workosctl credential put --consumer deepseek --purpose provider-api-key.v1 --label 'vault fixture' --idempotency-key 'vault-fixture-$$(date +%s%N)'"; \
 			cred_id="$$(active_deepseek_id)"; \
 		else \
-			echo "an active deepseek credential already exists; phase 1 skipped"; \
+			echo "an active deepseek credential already exists; phase 1 skipped and fixture material is resealed"; \
+			cred_rev="$$(docker compose exec -T workos-core /usr/local/bin/workosctl credential list 2>/dev/null | awk '/^id: /{id=$$2} /^consumer: /{consumer=$$2} /^revision: /{revision=$$2} /^status: /{status=$$2} consumer=="deepseek" && status=="ACTIVE"{print revision; exit}')"; \
+			printf '%s' 'workos-fixture-only-not-a-real-key' | docker compose exec -T workos-core /bin/sh -c "/usr/local/bin/workosctl credential rotate --credential '$$cred_id' --expected-revision '$$cred_rev' --label 'vault fixture' --idempotency-key 'vault-fixture-reseal-$$(date +%s%N)'" >/dev/null; \
 		fi; \
 		cred_rev="$$(docker compose exec -T workos-core /usr/local/bin/workosctl credential list 2>/dev/null | awk '/^id: /{id=$$2} /^consumer: /{consumer=$$2} /^revision: /{revision=$$2} /^status: /{status=$$2} consumer=="deepseek" && status=="ACTIVE"{print revision; exit}')"; \
 		test -n "$$cred_id" && test -n "$$cred_rev"; \
@@ -154,6 +158,19 @@ test-artifact-context: e2e-image
 		-w $(WORKDIR)/apps/desktop-web \
 		$(E2E_IMAGE) pnpm exec playwright test artifact-context.spec.ts
 
+capture-artifact-context-visual: e2e-image
+	docker compose up -d --build postgres bootstrap workos-core harness-host workos-gateway
+	docker run --rm --network host $(USER_FLAGS) \
+		-e PLAYWRIGHT_BROWSERS_PATH=/ms-playwright \
+		-e WORKOS_E2E_URL=http://127.0.0.1:8080 \
+		-e WORKOS_E2E_OUTPUT_DIR=/tmp/workos-playwright-results \
+		-e WORKOS_CAPTURE_DIR=$(ARTIFACT_CONTEXT_CAPTURE_DIR) \
+		-v $(CURDIR):$(WORKDIR) \
+		-w $(WORKDIR)/apps/desktop-web \
+		$(E2E_IMAGE) pnpm exec playwright test artifact-context-visual.spec.ts
+	cp docs/ui/desktop-web/changes/20260830-artifact-agent-context/after/artifact-center--use-as-context--1440x900.png docs/ui/desktop-web/current/artifact-center--use-as-context--1440x900.png
+	cp docs/ui/desktop-web/changes/20260830-artifact-agent-context/after/agent-center--context-chip--1440x900.png docs/ui/desktop-web/current/agent-center--context-chip--1440x900.png
+
 # The DeepSeek structured review gate (ADR-0011): real PostgreSQL + Core
 # private mTLS listener + harness-host + workosctl admin socket + local
 # DeepSeek fixture + Gateway + Chromium. Exercises the full chain: DeepSeek
@@ -168,8 +185,12 @@ test-deepseek-structured-review: e2e-image
 		WORKOS_DEEPSEEK_ENABLED=true \
 		WORKOS_DEEPSEEK_BASE_URL=http://127.0.0.1:18086 \
 		docker compose --profile deepseek-fixture up -d --build --force-recreate postgres bootstrap workos-core harness-host workos-gateway deepseek-api-fixture; \
-		if ! docker compose exec -T workos-core /usr/local/bin/workosctl credential list 2>/dev/null | awk '/^consumer: /{consumer=$$2} /^status: /{status=$$2} consumer=="deepseek" && status=="ACTIVE"{found=1} END{exit !found}'; then \
+		cred_id="$$(docker compose exec -T workos-core /usr/local/bin/workosctl credential list 2>/dev/null | awk '/^id: /{id=$$2} /^consumer: /{consumer=$$2} /^status: /{status=$$2} consumer=="deepseek" && status=="ACTIVE"{print id; exit}')"; \
+		if [ -z "$$cred_id" ]; then \
 			printf '%s' 'workos-fixture-only-not-a-real-key' | docker compose exec -T workos-core /bin/sh -c "/usr/local/bin/workosctl credential put --consumer deepseek --purpose provider-api-key.v1 --label 'structured fixture' --idempotency-key 'structured-fixture-$$(date +%s%N)'"; \
+		else \
+			cred_rev="$$(docker compose exec -T workos-core /usr/local/bin/workosctl credential list 2>/dev/null | awk '/^consumer: /{consumer=$$2} /^revision: /{revision=$$2} /^status: /{status=$$2} consumer=="deepseek" && status=="ACTIVE"{print revision; exit}')"; \
+			printf '%s' 'workos-fixture-only-not-a-real-key' | docker compose exec -T workos-core /bin/sh -c "/usr/local/bin/workosctl credential rotate --credential '$$cred_id' --expected-revision '$$cred_rev' --label 'structured fixture' --idempotency-key 'structured-fixture-reseal-$$(date +%s%N)'" >/dev/null; \
 		fi; \
 		docker run --rm --network host $(USER_FLAGS) \
 			-e PLAYWRIGHT_BROWSERS_PATH=/ms-playwright \
@@ -188,8 +209,12 @@ test-deepseek-fixture: e2e-image
 		WORKOS_DEEPSEEK_ENABLED=true \
 		WORKOS_DEEPSEEK_BASE_URL=http://127.0.0.1:18086 \
 		docker compose --profile deepseek-fixture up -d --build --force-recreate postgres bootstrap workos-core harness-host workos-gateway deepseek-api-fixture; \
-		if ! docker compose exec -T workos-core /usr/local/bin/workosctl credential list 2>/dev/null | awk '/^consumer: /{consumer=$$2} /^status: /{status=$$2} consumer=="deepseek" && status=="ACTIVE"{found=1} END{exit !found}'; then \
+		cred_id="$$(docker compose exec -T workos-core /usr/local/bin/workosctl credential list 2>/dev/null | awk '/^id: /{id=$$2} /^consumer: /{consumer=$$2} /^status: /{status=$$2} consumer=="deepseek" && status=="ACTIVE"{print id; exit}')"; \
+		if [ -z "$$cred_id" ]; then \
 			printf '%s' 'workos-fixture-only-not-a-real-key' | docker compose exec -T workos-core /bin/sh -c "/usr/local/bin/workosctl credential put --consumer deepseek --purpose provider-api-key.v1 --label 'deepseek fixture' --idempotency-key 'deepseek-fixture-$$(date +%s%N)'"; \
+		else \
+			cred_rev="$$(docker compose exec -T workos-core /usr/local/bin/workosctl credential list 2>/dev/null | awk '/^consumer: /{consumer=$$2} /^revision: /{revision=$$2} /^status: /{status=$$2} consumer=="deepseek" && status=="ACTIVE"{print revision; exit}')"; \
+			printf '%s' 'workos-fixture-only-not-a-real-key' | docker compose exec -T workos-core /bin/sh -c "/usr/local/bin/workosctl credential rotate --credential '$$cred_id' --expected-revision '$$cred_rev' --label 'deepseek fixture' --idempotency-key 'deepseek-fixture-reseal-$$(date +%s%N)'" >/dev/null; \
 		fi; \
 		$(GO_HOST_RUN) go test -tags='integration deepseekfixture' -count=1 -run '^TestDeepSeekProjectBindingFixtureVerticalSlice$$' -v ./tests/integration; \
 		task_id="$$( $(GO_HOST_RUN) sh -c 'WORKOS_TEST_PROVIDER=deepseek go run ./tests/restart seed' )"; \

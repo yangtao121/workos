@@ -30,6 +30,12 @@ test-results/
 # Accidental local build output (go build ./tests/restart writes ./restart);
 # the exact root path only — tests/restart/ source stays tracked.
 /restart
+/devauth
+/deepseekapi
+
+# A host-absolute capture path passed into a container can otherwise mirror
+# the host's /home/... tree under the repository working directory.
+/home/
 
 # Nested pnpm stores created by containerized installs
 .pnpm-store/

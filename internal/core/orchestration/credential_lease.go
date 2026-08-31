@@ -74,7 +74,7 @@ func (i *CredentialLeaseIssuer) Acquire(ctx context.Context, taskLeaseID, worker
 	if i.cipher == nil {
 		return credentialports.LeaseGrant{}, credentialdomain.ErrUnavailable
 	}
-	now := time.Now().UTC()
+	now := credentialdomain.CanonicalUTCTime(time.Now())
 	tx, err := i.pool.Begin(ctx)
 	if err != nil {
 		return credentialports.LeaseGrant{}, storeFailure("begin credential acquire", err)
@@ -103,20 +103,21 @@ func (i *CredentialLeaseIssuer) Acquire(ctx context.Context, taskLeaseID, worker
 	if err != nil {
 		return credentialports.LeaseGrant{}, err
 	}
-	secret, err := i.cipher.Open(sealed, credentialports.SealAAD{
-		OwnerUserID: facts.OwnerUserID, CredentialID: credential.ID,
-		ConsumerID: credential.ConsumerID, Purpose: i.purpose, Revision: credential.Revision,
-	})
-	if err != nil {
-		return credentialports.LeaseGrant{}, err
-	}
 	if found {
-		if existing.WorkerID != workerID || existing.CredentialID != facts.CredentialID ||
-			existing.CredentialRevision != facts.CredentialRevision || existing.Status != "active" ||
-			existing.ExpiresAt.Before(now) {
+		if existing.TaskLeaseID != taskLeaseID || existing.TaskID != facts.TaskID ||
+			existing.WorkerID != workerID || existing.OwnerUserID != facts.OwnerUserID ||
+			existing.ConsumerID != facts.ProviderID || existing.Purpose != i.purpose ||
+			existing.CredentialID != facts.CredentialID || existing.CredentialRevision != facts.CredentialRevision ||
+			existing.Status != credentialdomain.LeaseStatusActive || !existing.ExpiresAt.After(now) ||
+			existing.ExpiresAt.After(facts.TaskLeaseExpiresAt) {
 			return credentialports.LeaseGrant{}, credentialdomain.ErrLeaseLost
 		}
+		secret, err := i.openCredential(sealed, facts, credential)
+		if err != nil {
+			return credentialports.LeaseGrant{}, err
+		}
 		if err := tx.Commit(ctx); err != nil {
+			overwrite(secret)
 			return credentialports.LeaseGrant{}, storeFailure("commit credential acquire replay", err)
 		}
 		return credentialports.LeaseGrant{
@@ -126,21 +127,28 @@ func (i *CredentialLeaseIssuer) Acquire(ctx context.Context, taskLeaseID, worker
 		}, nil
 	}
 	leaseID := i.ids.New()
+	secret, err := i.openCredential(sealed, facts, credential)
+	if err != nil {
+		return credentialports.LeaseGrant{}, err
+	}
 	_, fresh, err := i.vault.InsertTaskCredentialLease(ctx, tx, credentialports.TaskCredentialLease{
 		ID: leaseID, TaskLeaseID: taskLeaseID, TaskID: facts.TaskID, WorkerID: workerID,
 		OwnerUserID: facts.OwnerUserID, ConsumerID: facts.ProviderID, Purpose: i.purpose,
 		CredentialID: facts.CredentialID, CredentialRevision: facts.CredentialRevision,
-		Status: "active", ExpiresAt: facts.TaskLeaseExpiresAt, CreatedAt: now,
+		Status: credentialdomain.LeaseStatusActive, ExpiresAt: facts.TaskLeaseExpiresAt, CreatedAt: now,
 	})
 	if err != nil {
+		overwrite(secret)
 		return credentialports.LeaseGrant{}, err
 	}
 	if !fresh {
 		// The unique index lost a race but no usable winner row is visible:
 		// the physical facts diverged from the protocol. Fail closed.
+		overwrite(secret)
 		return credentialports.LeaseGrant{}, credentialdomain.ErrLeaseLost
 	}
 	if err := tx.Commit(ctx); err != nil {
+		overwrite(secret)
 		return credentialports.LeaseGrant{}, storeFailure("commit credential acquire", err)
 	}
 	return credentialports.LeaseGrant{
@@ -158,7 +166,7 @@ func (i *CredentialLeaseIssuer) Renew(ctx context.Context, credentialLeaseID, ta
 	if i.cipher == nil {
 		return credentialports.LeaseVerdict{}, credentialdomain.ErrUnavailable
 	}
-	now := time.Now().UTC()
+	now := credentialdomain.CanonicalUTCTime(time.Now())
 	tx, err := i.pool.Begin(ctx)
 	if err != nil {
 		return credentialports.LeaseVerdict{}, storeFailure("begin credential renew", err)
@@ -217,4 +225,17 @@ func storeFailure(stage string, err error) error {
 		return fmt.Errorf("%s: %w: %w", stage, credentialdomain.ErrUnavailable, err)
 	}
 	return fmt.Errorf("%s: %w", stage, err)
+}
+
+func (i *CredentialLeaseIssuer) openCredential(sealed credentialdomain.SealedMaterial, facts agentports.TaskCredentialFacts, credential credentialdomain.Credential) ([]byte, error) {
+	return i.cipher.Open(sealed, credentialports.SealAAD{
+		OwnerUserID: facts.OwnerUserID, CredentialID: credential.ID,
+		ConsumerID: credential.ConsumerID, Purpose: i.purpose, Revision: credential.Revision,
+	})
+}
+
+func overwrite(buffer []byte) {
+	for index := range buffer {
+		buffer[index] = 0
+	}
 }

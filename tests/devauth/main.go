@@ -1,22 +1,23 @@
-// devauth generates the deterministic development fixture material for the
-// Core private mTLS harness execution channel and the Credential Vault
-// master key (ADR-0009): one private CA plus two leaf identities — Core
-// (urn:workos:core) and harness-host (urn:workos:harness-host) — and a
-// 32-byte master key file. It is DEV/CI tooling only: production provisions
-// certificates and the master key through systemd credentials or an
-// equivalent file facility, and never runs this command. Files already
-// present are left untouched so the stack can restart against the same
-// facts; existing files with wrong contents or permissions fail instead of
-// being silently overwritten.
+// devauth generates deterministic-shape development fixture material for the
+// Core private mTLS harness execution channel and the Credential Vault master
+// key (ADR-0009). Core, harness-host, and vault outputs go to three distinct
+// roots so Compose can mount each resident process's minimum material only.
+// It is DEV/CI tooling only: production provisions certificates and the
+// master key through systemd credentials or an equivalent file facility and
+// never runs this command. A complete existing fixture is preserved across
+// restarts; a partial fixture fails instead of mixing identities from two CAs.
 package main
 
 import (
+	"bytes"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
+	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/pem"
+	"errors"
 	"flag"
 	"fmt"
 	"math/big"
@@ -30,19 +31,52 @@ import (
 const fixtureValidity = 30 * 24 * time.Hour
 
 func main() {
-	root := flag.String("root", "", "output root directory (required)")
+	coreDir := flag.String("core-dir", "", "Core execution identity directory (required)")
+	harnessDir := flag.String("harness-dir", "", "harness-host execution identity directory (required)")
+	vaultDir := flag.String("vault-dir", "", "Core vault key directory (required)")
 	flag.Parse()
-	if *root == "" {
-		fmt.Fprintln(os.Stderr, "devauth: -root is required")
+	if !validOutputDir(*coreDir) || !validOutputDir(*harnessDir) || !validOutputDir(*vaultDir) ||
+		*coreDir == *harnessDir || *coreDir == *vaultDir || *harnessDir == *vaultDir {
+		fmt.Fprintln(os.Stderr, "devauth: three distinct absolute cleaned output directories are required")
 		os.Exit(2)
 	}
-	dir := filepath.Join(*root, "execution")
-	if err := os.MkdirAll(dir, 0o700); err != nil {
+	for _, dir := range []string{*coreDir, *harnessDir, *vaultDir} {
+		if err := os.MkdirAll(dir, 0o700); err != nil {
+			fatal(err)
+		}
+	}
+	tlsPaths := []string{
+		filepath.Join(*coreDir, "ca.crt"), filepath.Join(*coreDir, "core.crt"), filepath.Join(*coreDir, "core.key"),
+		filepath.Join(*harnessDir, "ca.crt"), filepath.Join(*harnessDir, "harness.crt"), filepath.Join(*harnessDir, "harness.key"),
+	}
+	present := 0
+	for _, path := range tlsPaths {
+		if pathExists(path) {
+			present++
+		}
+	}
+	if present != 0 && present != len(tlsPaths) {
+		fatal(fmt.Errorf("private execution fixture is partial (%d/%d files)", present, len(tlsPaths)))
+	}
+	if present == len(tlsPaths) {
+		if err := validateExistingTLS(*coreDir, *harnessDir); err != nil {
+			fatal(err)
+		}
+	} else {
+		if err := generateTLS(*coreDir, *harnessDir); err != nil {
+			fatal(err)
+		}
+	}
+	if err := ensureMasterKey(filepath.Join(*vaultDir, "vault-master.key")); err != nil {
 		fatal(err)
 	}
+	fmt.Println("dev fixture material ready")
+}
+
+func generateTLS(coreDir, harnessDir string) error {
 	caKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
-		fatal(err)
+		return err
 	}
 	caTemplate := &x509.Certificate{
 		SerialNumber:          big.NewInt(1),
@@ -55,103 +89,112 @@ func main() {
 	}
 	caDER, err := x509.CreateCertificate(rand.Reader, caTemplate, caTemplate, &caKey.PublicKey, caKey)
 	if err != nil {
-		fatal(err)
+		return err
 	}
 	caCert, err := x509.ParseCertificate(caDER)
 	if err != nil {
-		fatal(err)
+		return err
 	}
 	coreKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
-		fatal(err)
+		return err
 	}
-	coreLeaf, err := leaf(caTemplate, caCert, caKey, coreKey, "workos dev core leaf", "urn:workos:core")
+	coreLeaf, err := leaf(caTemplate, caCert, caKey, coreKey, "workos dev core leaf", "urn:workos:core", x509.ExtKeyUsageServerAuth)
 	if err != nil {
-		fatal(err)
+		return err
 	}
 	harnessKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
-		fatal(err)
+		return err
 	}
-	harnessLeaf, err := leaf(caTemplate, caCert, caKey, harnessKey, "workos dev harness leaf", "urn:workos:harness-host")
+	harnessLeaf, err := leaf(caTemplate, caCert, caKey, harnessKey, "workos dev harness leaf", "urn:workos:harness-host", x509.ExtKeyUsageClientAuth)
 	if err != nil {
-		fatal(err)
+		return err
 	}
 	materials := []struct {
-		name    string
-		kind    string
-		der     []byte
-		key     *ecdsa.PrivateKey
-		mode    os.FileMode
-		present func() bool
+		path string
+		kind string
+		der  []byte
+		key  *ecdsa.PrivateKey
+		mode os.FileMode
 	}{
-		{"ca.crt", "CERTIFICATE", caDER, nil, 0o644, func() bool { return exists(filepath.Join(dir, "ca.crt")) }},
-		{"core.crt", "CERTIFICATE", coreLeaf, nil, 0o644, func() bool { return exists(filepath.Join(dir, "core.crt")) }},
-		{"core.key", "EC PRIVATE KEY", nil, coreKey, 0o600, func() bool { return exists(filepath.Join(dir, "core.key")) }},
-		{"harness.crt", "CERTIFICATE", harnessLeaf, nil, 0o644, func() bool { return exists(filepath.Join(dir, "harness.crt")) }},
-		{"harness.key", "EC PRIVATE KEY", nil, harnessKey, 0o600, func() bool { return exists(filepath.Join(dir, "harness.key")) }},
+		{filepath.Join(coreDir, "ca.crt"), "CERTIFICATE", caDER, nil, 0o644},
+		{filepath.Join(coreDir, "core.crt"), "CERTIFICATE", coreLeaf, nil, 0o644},
+		{filepath.Join(coreDir, "core.key"), "EC PRIVATE KEY", nil, coreKey, 0o600},
+		{filepath.Join(harnessDir, "ca.crt"), "CERTIFICATE", caDER, nil, 0o644},
+		{filepath.Join(harnessDir, "harness.crt"), "CERTIFICATE", harnessLeaf, nil, 0o644},
+		{filepath.Join(harnessDir, "harness.key"), "EC PRIVATE KEY", nil, harnessKey, 0o600},
 	}
 	for _, material := range materials {
-		path := filepath.Join(dir, material.name)
-		if material.present() {
-			continue
-		}
-		file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, material.mode)
+		file, err := os.OpenFile(material.path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, material.mode)
 		if err != nil {
-			fatal(err)
+			return err
 		}
-		defer file.Close() //nolint:errcheck
 		var block []byte
 		if material.key != nil {
 			encoded, err := x509.MarshalECPrivateKey(material.key)
 			if err != nil {
-				fatal(err)
+				file.Close() //nolint:errcheck
+				return err
 			}
 			block = pem.EncodeToMemory(&pem.Block{Type: material.kind, Bytes: encoded})
 		} else {
 			block = pem.EncodeToMemory(&pem.Block{Type: material.kind, Bytes: material.der})
 		}
 		if _, err := file.Write(block); err != nil {
-			fatal(err)
+			file.Close() //nolint:errcheck
+			return err
 		}
 		if err := file.Chmod(material.mode); err != nil {
-			fatal(err)
+			file.Close() //nolint:errcheck
+			return err
+		}
+		if err := file.Close(); err != nil {
+			return err
 		}
 	}
-	master := filepath.Join(*root, "vault-master.key")
-	if !exists(master) {
+	return nil
+}
+
+func ensureMasterKey(master string) error {
+	if !pathExists(master) {
 		key := make([]byte, 32)
+		defer overwrite(key)
 		if _, err := rand.Read(key); err != nil {
-			fatal(err)
+			return err
 		}
 		file, err := os.OpenFile(master, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
 		if err != nil {
-			fatal(err)
+			return err
 		}
 		if _, err := file.Write(key); err != nil {
 			file.Close() //nolint:errcheck
-			fatal(err)
+			return err
 		}
 		if err := file.Close(); err != nil {
-			fatal(err)
+			return err
 		}
 		if err := os.Chmod(master, 0o600); err != nil {
-			fatal(err)
+			return err
 		}
 	}
-	fmt.Println("dev fixture material ready")
+	info, err := os.Lstat(master)
+	if err != nil || !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 || info.Mode().Perm()&0o077 != 0 || info.Size() != 32 {
+		return errors.New("existing vault master key must be a 0600 regular non-symlink file of exactly 32 bytes")
+	}
+	return nil
 }
 
-// leaf builds one server+client leaf: the exact URI SAN is the process
+// leaf builds one role-specific leaf: the exact URI SAN is the process
 // identity; loopback DNS/IP SANs let ordinary https dials resolve in dev.
-func leaf(parentTemplate *x509.Certificate, parent *x509.Certificate, parentKey *ecdsa.PrivateKey, key *ecdsa.PrivateKey, commonName, uri string) ([]byte, error) {
+func leaf(parentTemplate *x509.Certificate, parent *x509.Certificate, parentKey *ecdsa.PrivateKey, key *ecdsa.PrivateKey, commonName, uri string, usage x509.ExtKeyUsage) ([]byte, error) {
 	template := &x509.Certificate{
 		SerialNumber: big.NewInt(time.Now().UnixNano()),
 		Subject:      pkix.Name{CommonName: commonName},
 		NotBefore:    time.Now().Add(-time.Hour),
 		NotAfter:     time.Now().Add(fixtureValidity),
 		KeyUsage:     x509.KeyUsageDigitalSignature,
-		ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth, x509.ExtKeyUsageClientAuth},
+		ExtKeyUsage:  []x509.ExtKeyUsage{usage},
 		URIs:         mustParseURI(uri),
 		DNSNames:     []string{"localhost"},
 		IPAddresses:  []net.IP{net.ParseIP("127.0.0.1")},
@@ -167,12 +210,58 @@ func mustParseURI(raw string) []*url.URL {
 	return []*url.URL{parsed}
 }
 
-func exists(path string) bool {
+func pathExists(path string) bool {
 	_, err := os.Lstat(path)
 	return err == nil
+}
+
+func validOutputDir(path string) bool {
+	return path != "" && filepath.IsAbs(path) && filepath.Clean(path) == path
+}
+
+func validateExistingTLS(coreDir, harnessDir string) error {
+	coreCA, err := os.ReadFile(filepath.Join(coreDir, "ca.crt"))
+	if err != nil {
+		return err
+	}
+	harnessCA, err := os.ReadFile(filepath.Join(harnessDir, "ca.crt"))
+	if err != nil {
+		return err
+	}
+	if !bytes.Equal(coreCA, harnessCA) {
+		return errors.New("Core and harness fixture trust anchors differ")
+	}
+	for _, material := range []struct {
+		dir, name, identity string
+	}{
+		{coreDir, "core", "urn:workos:core"},
+		{harnessDir, "harness", "urn:workos:harness-host"},
+	} {
+		certPath := filepath.Join(material.dir, material.name+".crt")
+		keyPath := filepath.Join(material.dir, material.name+".key")
+		keyInfo, err := os.Lstat(keyPath)
+		if err != nil || !keyInfo.Mode().IsRegular() || keyInfo.Mode()&os.ModeSymlink != 0 || keyInfo.Mode().Perm()&0o077 != 0 {
+			return fmt.Errorf("%s fixture private key has unsafe metadata", material.name)
+		}
+		pair, err := tls.LoadX509KeyPair(certPath, keyPath)
+		if err != nil || len(pair.Certificate) == 0 {
+			return fmt.Errorf("%s fixture key pair is invalid", material.name)
+		}
+		leaf, err := x509.ParseCertificate(pair.Certificate[0])
+		if err != nil || len(leaf.URIs) != 1 || leaf.URIs[0].String() != material.identity {
+			return fmt.Errorf("%s fixture URI identity is invalid", material.name)
+		}
+	}
+	return nil
 }
 
 func fatal(err error) {
 	fmt.Fprintln(os.Stderr, "devauth:", err)
 	os.Exit(1)
+}
+
+func overwrite(buffer []byte) {
+	for index := range buffer {
+		buffer[index] = 0
+	}
 }

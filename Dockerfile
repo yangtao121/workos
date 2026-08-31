@@ -81,7 +81,9 @@ COPY --from=build /out/ /usr/local/bin/
 # The gateway-owned admin Unix socket lives here in production pairing mode
 # (systemd provides RuntimeDirectory on hosts; the image ships the mount
 # point for containerized runs).
-RUN install -d -m 0755 -o 10001 -g 10001 /run/workos /run/workos/tls /run/workos/execution
+RUN install -d -m 0755 -o 10001 -g 10001 \
+    /run/workos /run/workos/tls /run/workos/execution \
+    /run/workos/core-execution /run/workos/harness-execution /run/workos/vault
 USER 10001:10001
 WORKDIR /tmp
 EXPOSE 8080 8081 8082 8083 8084 8085 8086

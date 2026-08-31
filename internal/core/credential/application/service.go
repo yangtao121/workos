@@ -58,10 +58,12 @@ func (s *Service) Put(ctx context.Context, command ports.PutCommand) (domain.Cre
 	case !domain.ValidIdempotencyKey(command.IdempotencyKey):
 		return domain.Credential{}, domain.ErrInvalid
 	}
-	command.Now = s.now()
+	command.Now = domain.CanonicalUTCTime(s.now())
 	canonical, digest := s.canonicalRequest("put", map[string]string{
 		"consumer": command.ConsumerID, "purpose": command.Purpose, "label": command.Label,
 	}, command.Secret)
+	defer overwrite(command.Secret)
+	defer overwrite(canonical)
 	command.RequestDigest = digest
 	return s.mutate(ctx, command.IdempotencyKey, command.OwnerUserID, canonical, func() (domain.Credential, error) {
 		return s.repository.Put(ctx, s.cipher, command)
@@ -87,11 +89,13 @@ func (s *Service) Rotate(ctx context.Context, command ports.RotateCommand) (doma
 	case !domain.ValidIdempotencyKey(command.IdempotencyKey):
 		return domain.Credential{}, domain.ErrInvalid
 	}
-	command.Now = s.now()
+	command.Now = domain.CanonicalUTCTime(s.now())
 	canonical, digest := s.canonicalRequest("rotate", map[string]string{
 		"credential": command.CredentialID, "label": command.Label,
 		"expected_revision": fmt.Sprintf("%d", command.ExpectedRevision),
 	}, command.Secret)
+	defer overwrite(command.Secret)
+	defer overwrite(canonical)
 	command.RequestDigest = digest
 	return s.mutate(ctx, command.IdempotencyKey, command.OwnerUserID, canonical, func() (domain.Credential, error) {
 		return s.repository.Rotate(ctx, s.cipher, command)
@@ -111,11 +115,12 @@ func (s *Service) Revoke(ctx context.Context, command ports.RevokeCommand) (doma
 	case !domain.ValidIdempotencyKey(command.IdempotencyKey):
 		return domain.Credential{}, domain.ErrInvalid
 	}
-	command.Now = s.now()
+	command.Now = domain.CanonicalUTCTime(s.now())
 	canonical, digest := s.canonicalRequest("revoke", map[string]string{
 		"credential":        command.CredentialID,
 		"expected_revision": fmt.Sprintf("%d", command.ExpectedRevision),
 	}, nil)
+	defer overwrite(canonical)
 	command.RequestDigest = digest
 	return s.mutate(ctx, command.IdempotencyKey, command.OwnerUserID, canonical, func() (domain.Credential, error) {
 		return s.repository.Revoke(ctx, command)
@@ -205,7 +210,7 @@ func (s *Service) mutate(ctx context.Context, idempotencyKey, ownerUserID string
 		if !s.cipher.VerifyDigest(canonical, record.RequestDigest) {
 			return domain.Credential{}, domain.ErrIdempotencyConflict
 		}
-		return replayCredential(record)
+		return replayCredential(record, ownerUserID)
 	case errors.Is(err, ports.ErrActiveExists):
 		return domain.Credential{}, domain.ErrAlreadyExists
 	default:
@@ -214,9 +219,10 @@ func (s *Service) mutate(ctx context.Context, idempotencyKey, ownerUserID string
 }
 
 // replayCredential decodes the versioned first-response snapshot.
-func replayCredential(record ports.RequestRecord) (domain.Credential, error) {
+func replayCredential(record ports.RequestRecord, ownerUserID string) (domain.Credential, error) {
 	var credential domain.Credential
-	if err := json.Unmarshal(record.Result, &credential); err != nil || credential.ID == "" {
+	if err := json.Unmarshal(record.Result, &credential); err != nil ||
+		!domain.ValidCredential(credential) || credential.OwnerUserID != ownerUserID {
 		return domain.Credential{}, domain.ErrCorrupt
 	}
 	return credential, nil
@@ -240,4 +246,10 @@ func (s *Service) canonicalRequest(command string, fields map[string]string, sec
 	payload = append(payload, 0x1f)
 	payload = append(payload, secret...)
 	return payload, s.cipher.RequestDigest(payload)
+}
+
+func overwrite(buffer []byte) {
+	for index := range buffer {
+		buffer[index] = 0
+	}
 }

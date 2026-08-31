@@ -10,8 +10,9 @@ Core 内的 Credential Vault 是长期 provider credential 的唯一 durable aut
   replay/conflict 协议、快照重验（`AsSnapshotVerifier`）、过期 lease sweep。
 - `ports`：`Repository`（admin 写 + tx-scoped lease 存储）、`Cipher`（seal/open/keyed
   digest）、grant/verdict 投影。
-- `adapters/cipher`：AES-256-GCM + master key 文件加载（绝对路径、非 symlink、owner-only、
-  恰好 32 raw bytes）+ HMAC-SHA256 派生。认证失败 = `domain.ErrCorrupt`。
+- `adapters/cipher`：无 symlink 跟随地单次打开 master key 文件（绝对路径、owner-only、恰好
+  32 raw bytes），以 domain-separated 子密钥分别运行 AES-256-GCM 与 HMAC-SHA256。认证失败 =
+  `domain.ErrCorrupt`。
 - `adapters/postgres`：`023` 迁移的三个表；admin 写以 request mapping 主键做物理仲裁
   （loser 锁内重读，same digest replay / different digest `Aborted`，失败不消费 key）。
 - `transport`：`CredentialAdminService`（仅 admin Unix socket，0600，16 KiB pre-decode

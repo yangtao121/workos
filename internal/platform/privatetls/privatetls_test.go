@@ -59,12 +59,19 @@ func newPKI(t *testing.T) *testPKI {
 }
 
 func (p *testPKI) writeLeaf(t *testing.T, name, uri string, mode os.FileMode) Identity {
+	return p.writeLeafURIs(t, name, []string{uri}, mode)
+}
+
+func (p *testPKI) writeLeafURIs(t *testing.T, name string, uris []string, mode os.FileMode) Identity {
 	t.Helper()
 	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
 		t.Fatal(err)
 	}
-	parsedURI := mustURL(t, uri)
+	parsedURIs := make([]*url.URL, 0, len(uris))
+	for _, uri := range uris {
+		parsedURIs = append(parsedURIs, mustURL(t, uri))
+	}
 	template := &x509.Certificate{
 		SerialNumber: big.NewInt(time.Now().UnixNano()),
 		Subject:      pkix.Name{CommonName: "privatetls test leaf"},
@@ -72,7 +79,7 @@ func (p *testPKI) writeLeaf(t *testing.T, name, uri string, mode os.FileMode) Id
 		NotAfter:     time.Now().Add(time.Hour),
 		KeyUsage:     x509.KeyUsageDigitalSignature,
 		ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth, x509.ExtKeyUsageClientAuth},
-		URIs:         []*url.URL{parsedURI},
+		URIs:         parsedURIs,
 		DNSNames:     []string{"localhost"},
 		IPAddresses:  []net.IP{net.ParseIP("127.0.0.1")},
 	}
@@ -182,10 +189,28 @@ func TestWrongClientSANIsRejected(t *testing.T) {
 		PeerIdentity: IdentityCore,
 	})
 	if err != nil {
-		t.Fatal(err)
+		// Preferred fail-closed point: reject the wrong local identity before
+		// the harness begins dialing.
+		return
 	}
 	if err := roundTrip(t, address, clientConfig); err == nil {
 		t.Fatal("a client with the wrong URI SAN completed a request")
+	}
+}
+
+func TestAmbiguousClientSANIsRejected(t *testing.T) {
+	pki := newPKI(t)
+	serverLeaf := pki.writeLeaf(t, "core", IdentityCore, 0o600)
+	ambiguousClient := pki.writeLeafURIs(t, "ambiguous", []string{IdentityHarnessHost, IdentityCore}, 0o600)
+	address := startServer(t, serverLeaf, IdentityHarnessHost)
+	clientConfig, err := ClientConfig(Identity{
+		CAFile: ambiguousClient.CAFile, CertFile: ambiguousClient.CertFile, KeyFile: ambiguousClient.KeyFile,
+		PeerIdentity: IdentityCore,
+	})
+	if err == nil {
+		if roundErr := roundTrip(t, address, clientConfig); roundErr == nil {
+			t.Fatal("a client with ambiguous URI SAN identities completed a request")
+		}
 	}
 }
 
@@ -218,6 +243,13 @@ func TestMaterialGrammarIsEnforced(t *testing.T) {
 	}
 	if _, err := ServerConfig(Identity{CAFile: pki.caPEM, CertFile: pki.caPEM, KeyFile: pki.caPEM, PeerIdentity: IdentityHarnessHost}); err == nil {
 		t.Fatal("certificate-less identity accepted")
+	}
+	symlink := filepath.Join(t.TempDir(), "linked.key")
+	if err := os.Symlink(worldReadableKey.KeyFile, symlink); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ServerConfig(Identity{CAFile: worldReadableKey.CAFile, CertFile: worldReadableKey.CertFile, KeyFile: symlink, PeerIdentity: IdentityHarnessHost}); err == nil {
+		t.Fatal("symlinked private key accepted")
 	}
 	_ = errors.New
 }

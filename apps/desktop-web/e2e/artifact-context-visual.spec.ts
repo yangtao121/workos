@@ -5,15 +5,23 @@
 import { expect, test } from "@playwright/test";
 
 const captureDir = process.env.WORKOS_CAPTURE_DIR ?? "/captures";
-const stamp = Date.now().toString();
+const projectName = "Context Visual Fixture";
 
 test("captures the agent context surfaces", async ({ page }) => {
   test.skip(!process.env.WORKOS_CAPTURE_DIR, "visual capture runs explicitly");
   test.setTimeout(180_000);
   await page.goto("/");
-  await page.getByLabel("Project name").fill(`Context Visual ${stamp}`);
+  await page.getByLabel("Project name").fill(projectName);
   await page.getByRole("button", { name: "Create space" }).click();
-  await expect(page.locator(".project-card.active")).toContainText("Context Visual");
+  await expect(page.locator(".project-card.active")).toContainText(projectName);
+  // Hide unrelated persistent project cards and the server-minted task ID:
+  // neither is part of this visual contract, and both would make recaptures
+  // depend on prior local database state. Apply this only after project
+  // creation because the create form also lives inside .project-grid.
+  await page.addStyleTag({
+    content:
+      ".project-grid { visibility: hidden; } .task-snapshot dd:last-child { visibility: hidden; }",
+  });
 
   await page.getByLabel("Agent goal").fill("produce the synthetic review documents");
   await page.getByRole("checkbox", { name: "Markdown document" }).check();
@@ -30,7 +38,10 @@ test("captures the agent context surfaces", async ({ page }) => {
   ).toBeVisible();
   await page.screenshot({ path: `${captureDir}/artifact-center--use-as-context--1440x900.png` });
 
-  // Agent Center composer with the pinned chip.
+  // Agent Center composer with the pinned chip. The Artifact Center must be
+  // closed first; otherwise both evidence files capture the same covering
+  // window and the chip is not actually reviewable.
+  await page.getByRole("button", { name: "Close Artifact Center" }).click();
   const chip = page.getByTestId("context-chip");
   await expect(chip).toHaveCount(1);
   await page.screenshot({ path: `${captureDir}/agent-center--context-chip--1440x900.png` });

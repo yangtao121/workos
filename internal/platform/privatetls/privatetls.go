@@ -13,8 +13,10 @@ import (
 	"crypto/x509"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
+	"syscall"
 )
 
 // Well-known WorkOS process identities carried in certificate URI SANs.
@@ -37,7 +39,7 @@ type Identity struct {
 // TLS 1.3 only, client certificates required and verified against the
 // configured CA, and the client leaf's URI SAN must equal PeerIdentity.
 func ServerConfig(identity Identity) (*tls.Config, error) {
-	certificate, rootPool, err := loadIdentity(identity)
+	certificate, rootPool, err := loadIdentity(identity, IdentityCore)
 	if err != nil {
 		return nil, err
 	}
@@ -57,7 +59,7 @@ func ServerConfig(identity Identity) (*tls.Config, error) {
 // server certificate must chain to the configured CA and present the exact
 // server URI SAN.
 func ClientConfig(identity Identity) (*tls.Config, error) {
-	certificate, rootPool, err := loadIdentity(identity)
+	certificate, rootPool, err := loadIdentity(identity, IdentityHarnessHost)
 	if err != nil {
 		return nil, err
 	}
@@ -72,27 +74,38 @@ func ClientConfig(identity Identity) (*tls.Config, error) {
 	}, nil
 }
 
-func loadIdentity(identity Identity) (tls.Certificate, *x509.CertPool, error) {
+func loadIdentity(identity Identity, selfIdentity string) (tls.Certificate, *x509.CertPool, error) {
 	if identity.PeerIdentity == "" {
 		return tls.Certificate{}, nil, errors.New("private TLS identity requires the exact peer URI SAN")
 	}
-	if err := validateMaterialPath(identity.CAFile, false); err != nil {
+	caPEM, err := readMaterial(identity.CAFile, false)
+	if err != nil {
 		return tls.Certificate{}, nil, fmt.Errorf("CA file: %w", err)
 	}
-	if err := validateMaterialPath(identity.CertFile, false); err != nil {
+	certPEM, err := readMaterial(identity.CertFile, false)
+	if err != nil {
 		return tls.Certificate{}, nil, fmt.Errorf("certificate file: %w", err)
 	}
-	if err := validateMaterialPath(identity.KeyFile, true); err != nil {
+	keyPEM, err := readMaterial(identity.KeyFile, true)
+	if err != nil {
 		return tls.Certificate{}, nil, fmt.Errorf("private key file: %w", err)
 	}
-	certificate, err := tls.LoadX509KeyPair(identity.CertFile, identity.KeyFile)
+	defer overwrite(keyPEM)
+	certificate, err := tls.X509KeyPair(certPEM, keyPEM)
 	if err != nil {
 		return tls.Certificate{}, nil, fmt.Errorf("load private TLS identity: %w", err)
 	}
-	caPEM, err := os.ReadFile(identity.CAFile)
-	if err != nil {
-		return tls.Certificate{}, nil, fmt.Errorf("read CA file: %w", err)
+	if len(certificate.Certificate) == 0 {
+		return tls.Certificate{}, nil, errors.New("private TLS identity contains no leaf certificate")
 	}
+	leaf, err := x509.ParseCertificate(certificate.Certificate[0])
+	if err != nil {
+		return tls.Certificate{}, nil, errors.New("private TLS leaf certificate is invalid")
+	}
+	if err := verifyExactURIIdentity(leaf, selfIdentity); err != nil {
+		return tls.Certificate{}, nil, fmt.Errorf("private TLS local identity: %w", err)
+	}
+	certificate.Leaf = leaf
 	pool := x509.NewCertPool()
 	if !pool.AppendCertsFromPEM(caPEM) {
 		return tls.Certificate{}, nil, errors.New("CA file contains no usable certificate")
@@ -100,25 +113,45 @@ func loadIdentity(identity Identity) (tls.Certificate, *x509.CertPool, error) {
 	return certificate, pool, nil
 }
 
-// validateMaterialPath enforces the deployment grammar: absolute cleaned
-// path, regular non-symlink file readable by this process, and for private
-// keys no group/world permission bits. Ownership is proven by the successful
-// open under this process's credentials.
-func validateMaterialPath(path string, privateKey bool) error {
+// readMaterial opens one deployment file without following symlinks, then
+// validates the opened descriptor before reading a bounded payload. This
+// avoids the Lstat/open race that would otherwise let a path change between
+// validation and use.
+func readMaterial(path string, privateKey bool) ([]byte, error) {
 	if path == "" || !filepath.IsAbs(path) || filepath.Clean(path) != path {
-		return errors.New("path must be absolute and cleaned")
+		return nil, errors.New("path must be absolute and cleaned")
 	}
-	info, err := os.Lstat(path)
+	file, err := os.OpenFile(path, os.O_RDONLY|syscall.O_NOFOLLOW|syscall.O_CLOEXEC, 0)
 	if err != nil {
-		return fmt.Errorf("material is unavailable: %w", err)
+		return nil, fmt.Errorf("material is unavailable: %w", err)
 	}
-	if info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() {
-		return errors.New("path must be a regular file, not a symlink")
+	defer file.Close() //nolint:errcheck -- read-only handle
+	info, err := file.Stat()
+	if err != nil {
+		return nil, fmt.Errorf("inspect material: %w", err)
+	}
+	if !info.Mode().IsRegular() {
+		return nil, errors.New("path must be a regular file, not a symlink")
 	}
 	if privateKey && info.Mode().Perm()&0o077 != 0 {
-		return errors.New("private key must not be group or world accessible")
+		return nil, errors.New("private key must not be group or world accessible")
 	}
-	return nil
+	if privateKey {
+		stat, ok := info.Sys().(*syscall.Stat_t)
+		if !ok || stat.Uid != uint32(os.Geteuid()) {
+			return nil, errors.New("private key must be owned by this process user")
+		}
+	}
+	const maximumMaterialBytes = 1 << 20
+	material, err := io.ReadAll(io.LimitReader(file, maximumMaterialBytes+1))
+	if err != nil {
+		return nil, fmt.Errorf("read material: %w", err)
+	}
+	if len(material) == 0 || len(material) > maximumMaterialBytes {
+		overwrite(material)
+		return nil, errors.New("material size is invalid")
+	}
+	return material, nil
 }
 
 // verifyPeerIdentity re-checks the leaf of every chain the TLS stack already
@@ -129,11 +162,23 @@ func verifyPeerIdentity(verifiedChains [][]*x509.Certificate, peer string) error
 		if len(chain) == 0 {
 			continue
 		}
-		for _, uri := range chain[0].URIs {
-			if uri != nil && uri.Scheme == identityURISchemeApp && uri.String() == peer {
-				return nil
-			}
+		if err := verifyExactURIIdentity(chain[0], peer); err == nil {
+			return nil
 		}
 	}
 	return fmt.Errorf("peer identity is not %q", peer)
+}
+
+func verifyExactURIIdentity(certificate *x509.Certificate, expected string) error {
+	if certificate == nil || len(certificate.URIs) != 1 || certificate.URIs[0] == nil ||
+		certificate.URIs[0].Scheme != identityURISchemeApp || certificate.URIs[0].String() != expected {
+		return fmt.Errorf("identity is not exactly %q", expected)
+	}
+	return nil
+}
+
+func overwrite(buffer []byte) {
+	for index := range buffer {
+		buffer[index] = 0
+	}
 }
