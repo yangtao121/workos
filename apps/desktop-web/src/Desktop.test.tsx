@@ -22,11 +22,22 @@ import { Desktop } from "./Desktop.js";
 // React 19 act() requires this flag in jsdom to flush deferred promise updates.
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
+// Pin the desktop viewport explicitly: these tests exercise the expanded
+// free-window shell, and the adaptive breakpoints must not depend on the
+// jsdom default width.
+function pinExpandedViewport() {
+  Object.defineProperty(window, "innerWidth", { value: 1440, configurable: true });
+  Object.defineProperty(window, "innerHeight", { value: 900, configurable: true });
+  Object.defineProperty(window, "devicePixelRatio", { value: 1, configurable: true });
+}
+pinExpandedViewport();
+
 afterEach(() => {
   cleanup();
   // The desktop persists the active project in sessionStorage across
   // reloads; tests must not inherit a previous test's selection.
   window.sessionStorage.clear();
+  pinExpandedViewport();
 });
 
 describe("Desktop harness workflow", () => {

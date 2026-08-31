@@ -1,7 +1,7 @@
 import { Code, ConnectError } from "@connectrpc/connect";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
-  DeviceClass,
+  type DeviceClass,
   SurfaceRenderer,
   type AppInstallation,
   type Project,
@@ -17,6 +17,9 @@ export type LibraryState = "loading" | "ready" | "error";
 
 interface AppLibraryProps {
   project: Project;
+  // The canonical proto device class of the current device, derived by the
+  // shared adaptive-shell contract (never guessed from a user agent).
+  deviceClass: DeviceClass;
   workosClients: Pick<
     WorkOSClients,
     "appRegistry" | "appInstallations" | "projects" | "surfaces" | "appPolicies"
@@ -53,6 +56,7 @@ function sortedCapabilities(values: string[]): string[] {
 // revision) and the installation list.
 export function AppLibrary({
   project,
+  deviceClass,
   workosClients,
   onProjectRefreshed,
   onSurfaceOpened,
@@ -305,10 +309,11 @@ export function AppLibrary({
     [onInstallationRemoved, project.id, runMutation, workosClients],
   );
 
-  // Open launches one installed instance as a surface. The idempotency key is
-  // fresh per click, the identity comes only from the gateway session, and
-  // stale responses after a project switch or unmount are inert — a late
-  // session is closed best-effort because nothing renders it anymore.
+  // Open launches one installed instance as a surface through the shared
+  // open helper: the idempotency key is fresh per click, the identity comes
+  // only from the gateway session, and stale responses after a project
+  // switch or unmount are inert — a late session is closed best-effort
+  // because nothing renders it anymore.
   const open = useCallback(
     (installation: AppInstallation) => {
       if (openingAppIds[installation.appId]) return;
@@ -316,45 +321,27 @@ export function AppLibrary({
       setFeedback(undefined);
       const generation = generationRef.current;
       const isLive = () => generation === generationRef.current;
-      void workosClients.surfaces
-        .createSurface({
-          idempotencyKey: crypto.randomUUID(),
-          appInstanceId: installation.id,
-          projectId: project.id,
-          deviceClass: DeviceClass.DESKTOP,
-          viewport: {
-            width: window.innerWidth,
-            height: window.innerHeight,
-            pixelRatio: window.devicePixelRatio,
-          },
-          // The server selects the renderer from the exact installed
-          // descriptor: web bundles open as before, supervised container
-          // apps start their workload first (bounded copy below).
-          preferredRenderer: SurfaceRenderer.UNSPECIFIED,
-        })
-        .then((response) => {
-          const session = response.session;
-          if (!session) throw new Error("missing surface session");
-          if (!isLive()) {
-            void workosClients.surfaces
-              .closeSurface({ surfaceSessionId: session.id })
-              .catch(() => undefined);
-            return;
-          }
+      void openInstallationSurface(
+        workosClients,
+        project.id,
+        installation.id,
+        deviceClass,
+        () => isLive(),
+        (session) => {
           onSurfaceOpened(session);
-        })
-        .catch((reason: unknown) => {
+        },
+        (reason: unknown) => {
           if (isLive()) {
             setFeedback({ text: openErrorMessage(reason), isError: true });
           }
-        })
-        .finally(() => {
-          if (isLive()) {
-            setOpeningAppIds((current) => ({ ...current, [installation.appId]: false }));
-          }
-        });
+        },
+      ).finally(() => {
+        if (isLive()) {
+          setOpeningAppIds((current) => ({ ...current, [installation.appId]: false }));
+        }
+      });
     },
-    [onSurfaceOpened, openingAppIds, project.id, workosClients],
+    [deviceClass, onSurfaceOpened, openingAppIds, project.id, workosClients],
   );
 
   const installationByApp = new Map(installations.map((item) => [item.appId, item]));
@@ -621,6 +608,50 @@ export function AppLibrary({
       ) : null}
     </section>
   );
+}
+
+// openInstallationSurface is the single CreateSurface flow for opening an
+// installed instance: the identity comes only from the gateway session, the
+// device class is the caller's derived proto fact, and a session that
+// returns after its caller lost interest is closed best-effort instead of
+// rendering into a stale view.
+export async function openInstallationSurface(
+  workosClients: Pick<WorkOSClients, "surfaces">,
+  projectId: string,
+  installationId: string,
+  deviceClass: DeviceClass,
+  isLive: () => boolean,
+  onOpened: (session: SurfaceSession) => void,
+  onError: (reason: unknown) => void,
+): Promise<void> {
+  try {
+    const response = await workosClients.surfaces.createSurface({
+      idempotencyKey: crypto.randomUUID(),
+      appInstanceId: installationId,
+      projectId,
+      deviceClass,
+      viewport: {
+        width: window.innerWidth,
+        height: window.innerHeight,
+        pixelRatio: window.devicePixelRatio,
+      },
+      // The server selects the renderer from the exact installed
+      // descriptor: web bundles open as before, supervised container apps
+      // start their workload first.
+      preferredRenderer: SurfaceRenderer.UNSPECIFIED,
+    });
+    const session = response.session;
+    if (!session) throw new Error("missing surface session");
+    if (!isLive()) {
+      void workosClients.surfaces
+        .closeSurface({ surfaceSessionId: session.id })
+        .catch(() => undefined);
+      return;
+    }
+    onOpened(session);
+  } catch (reason: unknown) {
+    onError(reason);
+  }
 }
 
 function grantedSummary(granted: readonly string[] | undefined): string {

@@ -465,5 +465,13 @@ func (h *Handler) serveStatic(w http.ResponseWriter, r *http.Request) {
 	if contentType := mime.TypeByExtension(filepath.Ext(path)); contentType != "" {
 		w.Header().Set("Content-Type", contentType)
 	}
+	// Static caching boundary: Vite content-hashed assets are immutable and
+	// cacheable forever; the HTML shell, manifest, and icons stay no-store so
+	// a deploy (and its new asset hashes) lands on the next load.
+	if strings.HasPrefix(path, "assets/") {
+		w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+	} else {
+		w.Header().Set("Cache-Control", "no-store")
+	}
 	_, _ = w.Write(data)
 }

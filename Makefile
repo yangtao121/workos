@@ -23,7 +23,7 @@ NODE_RUN := docker run --rm $(USER_FLAGS) -e COREPACK_NPM_REGISTRY=$(NPM_REGISTR
 BUF_RUN := docker run --rm $(USER_FLAGS) $(MOUNT) $(BUF_IMAGE)
 SQLC_RUN := docker run --rm $(USER_FLAGS) -v $(CURDIR):/src -w /src $(SQLC_IMAGE)
 
-.PHONY: bootstrap generate docs check check-native proto-check go-check web-check test test-integration test-artifact-context test-deepseek-fixture test-deepseek-structured-review test-credential-vault e2e-image test-e2e test-podman-fixture test-lan-pairing capture-artifact-context-visual capture-lan-pairing-visual build web-build scaffold-module dev down logs clean
+.PHONY: bootstrap generate docs check check-native proto-check go-check web-check test test-integration test-artifact-context test-deepseek-fixture test-deepseek-structured-review test-credential-vault e2e-image test-e2e test-adaptive-shell test-podman-fixture test-lan-pairing capture-artifact-context-visual capture-lan-pairing-visual build web-build scaffold-module dev down logs clean
 
 bootstrap:
 	@docker version >/dev/null
@@ -253,6 +253,23 @@ test-podman-fixture:
 		trap 'rm -f tmp/podmanfixture.test tmp/workos-web-fixture' EXIT HUP INT TERM; \
 		$(GO_RUN) sh -c 'go test -c -o tmp/podmanfixture.test -tags podmanfixture ./tests/podmanfixture && CGO_ENABLED=0 go build -o tmp/workos-web-fixture ./tests/podmanfixture/fixture'; \
 		WORKOS_PODMAN_FIXTURE_BINARY="$$(pwd)/tmp/workos-web-fixture" tmp/podmanfixture.test -test.v
+
+# The adaptive shell gate (docs/tasks/20260831-v1-runtime-reliability-adaptive-closeout.md):
+# real PostgreSQL + Core + harness-host + runtime-host + Gateway + Chromium
+# at the three canonical viewports (390x844 compact, 820x1180 medium,
+# 1440x900 expanded) plus an injected fold-segment fixture. Drives project,
+# App Registry/Installation, the fake-harness Agent chain, and the
+# Reliability-backed System Monitor through the phone/tablet shells and
+# re-asserts the expanded desktop.
+test-adaptive-shell: e2e-image
+	docker compose up -d --build postgres bootstrap workos-core harness-host runtime-host workos-gateway
+	docker run --rm --network host $(USER_FLAGS) \
+		-e PLAYWRIGHT_BROWSERS_PATH=/ms-playwright \
+		-e WORKOS_E2E_URL=http://127.0.0.1:8080 \
+		-e WORKOS_E2E_OUTPUT_DIR=/tmp/workos-playwright-results \
+		-v $(CURDIR):$(WORKDIR) \
+		-w $(WORKDIR)/apps/desktop-web \
+		$(E2E_IMAGE) pnpm exec playwright test adaptive-shell.spec.ts
 
 test-e2e: e2e-image
 	docker compose up -d --build postgres bootstrap workos-core harness-host runtime-host workos-gateway

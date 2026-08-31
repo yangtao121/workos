@@ -237,6 +237,7 @@ describe("App Library", () => {
     render(
       <AppLibrary
         project={project("project-1", 2n)}
+        deviceClass={DeviceClass.DESKTOP}
         workosClients={clients}
         onProjectRefreshed={() => undefined}
         onSurfaceOpened={() => undefined}
@@ -257,6 +258,7 @@ describe("App Library", () => {
     render(
       <AppLibrary
         project={project("project-1", 1n)}
+        deviceClass={DeviceClass.DESKTOP}
         workosClients={clientsFixture({})}
         onProjectRefreshed={() => undefined}
         onSurfaceOpened={() => undefined}
@@ -282,6 +284,7 @@ describe("App Library", () => {
     render(
       <AppLibrary
         project={project("project-1", 1n)}
+        deviceClass={DeviceClass.DESKTOP}
         workosClients={clients}
         onProjectRefreshed={() => undefined}
         onSurfaceOpened={() => undefined}
@@ -328,6 +331,7 @@ describe("App Library", () => {
     render(
       <AppLibrary
         project={project("project-1", 2n)}
+        deviceClass={DeviceClass.DESKTOP}
         workosClients={clients}
         onProjectRefreshed={onProjectRefreshed}
         onSurfaceOpened={() => undefined}
@@ -375,6 +379,7 @@ describe("App Library", () => {
     render(
       <AppLibrary
         project={project("project-1", 2n)}
+        deviceClass={DeviceClass.DESKTOP}
         workosClients={clients}
         onProjectRefreshed={() => undefined}
         onSurfaceOpened={() => undefined}
@@ -433,6 +438,7 @@ describe("App Library", () => {
     render(
       <AppLibrary
         project={project("project-1", 2n)}
+        deviceClass={DeviceClass.DESKTOP}
         workosClients={clients}
         onProjectRefreshed={() => undefined}
         onSurfaceOpened={() => undefined}
@@ -469,6 +475,7 @@ describe("App Library", () => {
     render(
       <AppLibrary
         project={project("project-1", 2n)}
+        deviceClass={DeviceClass.DESKTOP}
         workosClients={clients}
         onProjectRefreshed={onProjectRefreshed}
         onSurfaceOpened={() => undefined}
@@ -504,6 +511,7 @@ describe("App Library", () => {
     render(
       <AppLibrary
         project={project("project-1", 2n)}
+        deviceClass={DeviceClass.DESKTOP}
         workosClients={clients}
         onProjectRefreshed={() => undefined}
         onSurfaceOpened={() => undefined}
@@ -537,6 +545,7 @@ describe("App Library", () => {
       const view = render(
         <AppLibrary
           project={project("project-1", 2n)}
+          deviceClass={DeviceClass.DESKTOP}
           workosClients={clients}
           onProjectRefreshed={() => undefined}
           onSurfaceOpened={() => undefined}
@@ -569,6 +578,7 @@ describe("App Library", () => {
       const first = render(
         <AppLibrary
           project={project("project-1", 2n)}
+          deviceClass={DeviceClass.DESKTOP}
           workosClients={firstClients}
           onProjectRefreshed={() => undefined}
           onSurfaceOpened={() => undefined}
@@ -581,6 +591,7 @@ describe("App Library", () => {
       const second = render(
         <AppLibrary
           project={project("project-2", 5n)}
+          deviceClass={DeviceClass.DESKTOP}
           workosClients={clientsFixture({ apps: [app("notes-app", "1.0.0")] })}
           onProjectRefreshed={() => undefined}
           onSurfaceOpened={() => undefined}
@@ -614,6 +625,7 @@ describe("App Library open", () => {
     render(
       <AppLibrary
         project={project("project-1", 2n)}
+        deviceClass={DeviceClass.DESKTOP}
         workosClients={clients}
         onProjectRefreshed={() => undefined}
         onSurfaceOpened={onSurfaceOpened}
@@ -656,6 +668,7 @@ describe("App Library open", () => {
     render(
       <AppLibrary
         project={project("project-1", 2n)}
+        deviceClass={DeviceClass.DESKTOP}
         workosClients={clients}
         onProjectRefreshed={() => undefined}
         onSurfaceOpened={() => undefined}
@@ -685,6 +698,7 @@ describe("App Library open", () => {
     const view = render(
       <AppLibrary
         project={project("project-1", 2n)}
+        deviceClass={DeviceClass.DESKTOP}
         workosClients={clients}
         onProjectRefreshed={() => undefined}
         onSurfaceOpened={() => undefined}
@@ -734,6 +748,7 @@ describe("App Library permissions", () => {
     render(
       <AppLibrary
         project={project("project-1", 2n)}
+        deviceClass={DeviceClass.DESKTOP}
         workosClients={clients}
         onProjectRefreshed={() => undefined}
         onSurfaceOpened={() => undefined}
@@ -791,6 +806,7 @@ describe("App Library permissions", () => {
     render(
       <AppLibrary
         project={project("project-1", 2n)}
+        deviceClass={DeviceClass.DESKTOP}
         workosClients={clients}
         onProjectRefreshed={onProjectRefreshed}
         onSurfaceOpened={() => undefined}
@@ -840,6 +856,7 @@ describe("App Library permissions", () => {
     render(
       <AppLibrary
         project={project("project-1", 2n)}
+        deviceClass={DeviceClass.DESKTOP}
         workosClients={clients}
         onProjectRefreshed={() => undefined}
         onSurfaceOpened={() => undefined}
@@ -865,6 +882,7 @@ describe("App Library permissions", () => {
     render(
       <AppLibrary
         project={project("project-1", 2n)}
+        deviceClass={DeviceClass.DESKTOP}
         workosClients={clientsFixture({ apps: [app("board-app", "1.0.0", ["artifact.read"])] })}
         onProjectRefreshed={() => undefined}
         onSurfaceOpened={() => undefined}
@@ -936,6 +954,7 @@ describe("App Library permissions", () => {
     render(
       <AppLibrary
         project={project("project-1", 2n)}
+        deviceClass={DeviceClass.DESKTOP}
         workosClients={clients}
         onProjectRefreshed={onProjectRefreshed}
         onSurfaceOpened={() => undefined}
@@ -1034,6 +1053,7 @@ describe("App Library permissions", () => {
     render(
       <AppLibrary
         project={project("project-1", 2n)}
+        deviceClass={DeviceClass.DESKTOP}
         workosClients={clients}
         onProjectRefreshed={onProjectRefreshed}
         onSurfaceOpened={() => undefined}
