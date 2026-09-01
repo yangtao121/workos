@@ -155,6 +155,9 @@ services:
     environment:
       <<: *workos-environment
       WORKOS_HTTP_ADDRESS: 127.0.0.1:8085
+      WORKOS_INDEX_ADMIN_SOCKET: /run/workos/index-admin/admin.sock
+    tmpfs:
+      - /run/workos/index-admin:uid=1000,gid=1000,mode=0700
 
   workos-gateway:
     <<: *workos-service

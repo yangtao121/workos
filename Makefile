@@ -94,7 +94,11 @@ test-integration:
 		set -- $$policy_ref; \
 		$(GO_HOST_RUN) go run ./tests/restart policy-verify "$$1" "$$2" "$$3" "$$4" "$$5" "$$6" "$$7" "$$8"; \
 		set -- $$version_ref; \
-		$(GO_HOST_RUN) go run ./tests/restart version-verify "$$1" "$$2" "$$3" "$$4" "$$5" "$$6"
+		$(GO_HOST_RUN) go run ./tests/restart version-verify "$$1" "$$2" "$$3" "$$4" "$$5" "$$6"; \
+		index_ref="$$( $(GO_HOST_RUN) go run ./tests/restart index-seed )"; \
+		set -- $$index_ref; \
+		docker compose restart workos-core harness-host runtime-host indexer >/dev/null; \
+		$(GO_HOST_RUN) go run ./tests/restart index-verify "$$1" "$$2" "$$3"
 
 # The Credential Vault acceptance gate (ADR-0009): real PostgreSQL, the Core
 # private mTLS execution listener, harness-host, the workosctl credential
@@ -160,6 +164,21 @@ test-artifact-context: e2e-image
 		-v $(CURDIR):$(WORKDIR) \
 		-w $(WORKDIR)/apps/desktop-web \
 		$(E2E_IMAGE) pnpm exec playwright test artifact-context.spec.ts
+
+# Regenerates the project knowledge-search deterministic evidence: expanded
+# results, pinned Agent context chip, granted app surface, and compact
+# results. Uses fixed fixture data only.
+capture-knowledge-visual: e2e-image
+	docker compose up -d --build postgres bootstrap workos-core harness-host runtime-host workos-gateway indexer
+	mkdir -p docs/ui/desktop-web/changes/20260901-project-knowledge-search/after
+	docker run --rm --network host $(USER_FLAGS) \
+		-e PLAYWRIGHT_BROWSERS_PATH=/ms-playwright \
+		-e WORKOS_E2E_URL=http://127.0.0.1:8080 \
+		-e WORKOS_E2E_OUTPUT_DIR=/tmp/workos-playwright-results \
+		-e WORKOS_CAPTURE_DIR=$(WORKDIR)/docs/ui/desktop-web/changes/20260901-project-knowledge-search/after \
+		-v $(CURDIR):$(WORKDIR) \
+		-w $(WORKDIR)/apps/desktop-web \
+		$(E2E_IMAGE) pnpm exec playwright test knowledge-visual.spec.ts
 
 capture-artifact-context-visual: e2e-image
 	docker compose up -d --build postgres bootstrap workos-core harness-host workos-gateway

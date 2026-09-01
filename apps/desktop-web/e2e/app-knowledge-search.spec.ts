@@ -203,7 +203,8 @@ test("granted app searches project knowledge and fails closed on revoke", async 
     );
     if (listed.ok()) {
       const body = (await listed.json()) as { artifacts: { id: string }[] };
-      if ((body.artifacts ?? []).length > 0) artifactId = body.artifacts[0].id;
+      const first = body.artifacts?.[0];
+      if (first) artifactId = first.id;
     }
     if (artifactId === "") await page.waitForTimeout(500);
   }
