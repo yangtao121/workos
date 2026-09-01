@@ -53,7 +53,30 @@ message WatchAgentTaskEventsResponse {
   AgentEvent event = 1;
 }
 
+// Per-call knowledge authorization for granted app surfaces. Runtime-host
+// derives owner/device from the gateway identity it injected and
+// project/app-instance/grant-revision from the validated surface session;
+// public bridge bodies can never submit them. Core re-resolves the active
+// installation and returns the allow binding only when the installation is
+// active, the project matches and is unarchived, and the session's exact
+// grant revision still equals the installation's current `knowledge.read`
+// epoch. Any deny/not-found/revision drift is one sanitized failure — the
+// response never reveals which internal record failed or why.
+message AuthorizeAppKnowledgeRequest {
+  string project_id = 1;
+  string app_instance_id = 2;
+  int64 installation_grant_revision = 3;
+}
+
+message AuthorizeAppKnowledgeResponse {
+  // The canonical trusted binding runtime-host must use for the scoped
+  // indexer call; it always equals the session-derived scope on success.
+  string owner_user_id = 1;
+  string project_id = 2;
+}
+
 service AppAgentService {
   rpc RunAgentTask(RunAgentTaskRequest) returns (RunAgentTaskResponse) {}
   rpc WatchAgentTaskEvents(WatchAgentTaskEventsRequest) returns (stream WatchAgentTaskEventsResponse) {}
+  rpc AuthorizeAppKnowledge(AuthorizeAppKnowledgeRequest) returns (AuthorizeAppKnowledgeResponse) {}
 }

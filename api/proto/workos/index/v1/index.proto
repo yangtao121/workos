@@ -2,43 +2,123 @@ syntax = "proto3";
 
 package workos.index.v1;
 
+import "workos/agent/v1/agent.proto";
 import "workos/common/v1/common.proto";
 
 option go_package = "github.com/yangtao121/workos/gen/go/workos/index/v1;indexv1";
 
+// Typed canonical source reference for an indexed review artifact. It is the
+// same `artifact.review.v1` context ref semantics defined by ADR-0010: the
+// exact artifact UUIDv7 plus its exact sha256 digest. Search hits reuse this
+// type so pinning a hit as Agent context never needs a second ref grammar.
+message ArtifactSourceRef {
+  string artifact_id = 1;
+  string digest = 2;
+}
+
 message IndexContextRequest {
   string project_id = 1;
+  // Deprecated legacy free-form refs. They have no documented grammar and are
+  // never parsed: any non-empty value fails closed with InvalidArgument.
+  // Use the typed `sources` field instead.
   repeated string context_refs = 2;
+  // Typed repair/reindex targets. Only `artifact.review.v1` refs are
+  // accepted, at most 32 per request, and every ref must carry the exact
+  // digest. Core re-resolves and re-verifies each source from authoritative
+  // facts; client-submitted titles/content/digests are never trusted.
+  repeated ArtifactSourceRef sources = 3;
+  // Durable idempotency key (1..128 runes). Same key + same canonical
+  // request replays the first job response exactly; same key with a
+  // different request fails with Aborted; failed validation never consumes
+  // the key.
+  string idempotency_key = 4;
+}
+
+enum IndexJobState {
+  INDEX_JOB_STATE_UNSPECIFIED = 0;
+  INDEX_JOB_STATE_PENDING = 1;
+  INDEX_JOB_STATE_RUNNING = 2;
+  INDEX_JOB_STATE_COMPLETED = 3;
+  INDEX_JOB_STATE_FAILED = 4;
 }
 
 message IndexJob {
   string id = 1;
   string project_id = 2;
+  // Legacy free-form state string, retained for compatibility. New callers
+  // must use `job_state`; unknown legacy strings are never interpreted.
   string state = 3;
+  // Strict job state. Any value outside this enum fails closed.
+  IndexJobState job_state = 4;
+  int32 total_sources = 5;
+  int32 completed_sources = 6;
+  int32 failed_sources = 7;
+  // Bounded sanitized failure category; never carries query, content, or
+  // storage error text.
+  string failure_category = 8;
+  string created_at = 9;
+  string updated_at = 10;
 }
 
 message SearchRequest {
   string project_id = 1;
+  // Bounded lexical query: 1..256 code points after whitespace
+  // canonicalization; control characters are rejected.
   string query = 2;
   workos.common.v1.PageRequest page = 3;
 }
 
 message SearchHit {
+  // Canonical string projection of `source_ref`:
+  // "artifact.review.v1:<artifact_id>:<digest>". Retained for compatibility;
+  // new callers must use the typed `source_ref`.
   string context_ref = 1;
+  // Bounded plain-text excerpt. Never HTML; render as inert text only.
   string excerpt = 2;
+  // Finite, deterministic lexical score. NaN/Inf never occurs; any stored
+  // score outside the fixed range fails closed server-side.
   double score = 3;
+  // Typed canonical ref for pinning this hit as an Agent context.
+  workos.agent.v1.ContextRef source_ref = 4;
+  string artifact_id = 5;
+  // Immutable review subtype: document.markdown.v1 or code.unified-diff.v1.
+  string artifact_type = 6;
+  string digest = 7;
+  string title = 8;
+  // Authoritative source creation time (UTC, RFC 3339 with microseconds).
+  string created_at = 9;
+}
+
+// Bounded freshness projection. `caught_up` is a real fact derived from the
+// durable consumer watermark; it is never a fixed READY.
+message IndexFreshness {
+  bool caught_up = 1;
+  // High-watermark of consumed publications (UTC RFC 3339 microseconds).
+  string indexed_through = 2;
+  string last_indexed_at = 3;
+  int64 pending_publications = 4;
 }
 
 message SearchResponse {
   repeated SearchHit hits = 1;
   workos.common.v1.PageResponse page = 2;
+  IndexFreshness freshness = 3;
 }
 
 message IndexContextResponse {
   IndexJob job = 1;
 }
 
+// Public owner-facing index service. Routed by the gateway only for these
+// two owner-scoped RPCs; the private publication source service and the
+// local admin service in this package are never on the gateway allowlist.
 service IndexService {
+  // Owner-triggered, idempotent repair/reindex job for exact review
+  // artifacts in the current project. This is a repair path for the same
+  // source authority, never a second ingestion entry point for arbitrary
+  // text.
   rpc IndexContext(IndexContextRequest) returns (IndexContextResponse) {}
+  // Bounded deterministic lexical search over the owner's active project
+  // review-artifact projection.
   rpc Search(SearchRequest) returns (SearchResponse) {}
 }

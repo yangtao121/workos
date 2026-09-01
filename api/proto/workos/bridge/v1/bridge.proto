@@ -7,6 +7,7 @@ syntax = "proto3";
 package workos.bridge.v1;
 
 import "workos/agent/v1/agent.proto";
+import "workos/index/v1/index.proto";
 
 option go_package = "github.com/yangtao121/workos/gen/go/workos/bridge/v1;bridgev1";
 
@@ -35,7 +36,42 @@ message WatchAgentTaskEventsResponse {
   workos.agent.v1.AgentEvent event = 1;
 }
 
+// App-side bounded knowledge search. The body deliberately carries ONLY
+// search parameters: there is no owner/project/source/backend field and
+// there never will be. The scope (owner + project) is derived by
+// runtime-host from the validated bridge token's surface session; the app
+// can never widen, override, or select it. Runtime re-verifies the session,
+// the app instance, and the exact current `knowledge.read` grant revision
+// with Core on every call before the indexer is ever touched.
+message SearchKnowledgeRequest {
+  // Bounded lexical query: 1..256 code points after whitespace
+  // canonicalization; control characters are rejected before any read.
+  string query = 1;
+  // 0 selects the default (20); otherwise 1..50.
+  int32 page_size = 2;
+  // Opaque, versioned continuation token from a previous response for the
+  // same project + query. Cross-project/cross-query replay fails closed.
+  string page_token = 3;
+}
+
+message SearchKnowledgeResponse {
+  // The exact canonical index hits: typed artifact.review.v1 ref, digest,
+  // title, bounded plain-text excerpt, finite score. Reusing the canonical
+  // message (not a hand-written projection) is deliberate: there is exactly
+  // one hit grammar for owner UI and granted apps. Internal fields (owner
+  // ids, page metadata, freshness internals) are not part of this response.
+  repeated workos.index.v1.SearchHit hits = 1;
+  // Empty when there are no more hits; a full final page never produces a
+  // phantom token.
+  string next_page_token = 2;
+}
+
 service AppBridgeService {
   rpc RunAgentTask(RunAgentTaskRequest) returns (RunAgentTaskResponse) {}
   rpc WatchAgentTaskEvents(WatchAgentTaskEventsRequest) returns (stream WatchAgentTaskEventsResponse) {}
+  // Read-only knowledge search, negotiated only when the manifest requests
+  // `knowledge.read`, the installation actually holds that grant, and the
+  // runtime has a real indexer adapter configured. It is never implied by
+  // `agent.task.run`.
+  rpc SearchKnowledge(SearchKnowledgeRequest) returns (SearchKnowledgeResponse) {}
 }

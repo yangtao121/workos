@@ -45,12 +45,16 @@ const (
 	// AppAgentServiceWatchAgentTaskEventsProcedure is the fully-qualified name of the AppAgentService's
 	// WatchAgentTaskEvents RPC.
 	AppAgentServiceWatchAgentTaskEventsProcedure = "/workos.agent.v1.AppAgentService/WatchAgentTaskEvents"
+	// AppAgentServiceAuthorizeAppKnowledgeProcedure is the fully-qualified name of the
+	// AppAgentService's AuthorizeAppKnowledge RPC.
+	AppAgentServiceAuthorizeAppKnowledgeProcedure = "/workos.agent.v1.AppAgentService/AuthorizeAppKnowledge"
 )
 
 // AppAgentServiceClient is a client for the workos.agent.v1.AppAgentService service.
 type AppAgentServiceClient interface {
 	RunAgentTask(context.Context, *connect.Request[v1.RunAgentTaskRequest]) (*connect.Response[v1.RunAgentTaskResponse], error)
 	WatchAgentTaskEvents(context.Context, *connect.Request[v1.WatchAgentTaskEventsRequest]) (*connect.ServerStreamForClient[v1.WatchAgentTaskEventsResponse], error)
+	AuthorizeAppKnowledge(context.Context, *connect.Request[v1.AuthorizeAppKnowledgeRequest]) (*connect.Response[v1.AuthorizeAppKnowledgeResponse], error)
 }
 
 // NewAppAgentServiceClient constructs a client for the workos.agent.v1.AppAgentService service. By
@@ -76,13 +80,20 @@ func NewAppAgentServiceClient(httpClient connect.HTTPClient, baseURL string, opt
 			connect.WithSchema(appAgentServiceMethods.ByName("WatchAgentTaskEvents")),
 			connect.WithClientOptions(opts...),
 		),
+		authorizeAppKnowledge: connect.NewClient[v1.AuthorizeAppKnowledgeRequest, v1.AuthorizeAppKnowledgeResponse](
+			httpClient,
+			baseURL+AppAgentServiceAuthorizeAppKnowledgeProcedure,
+			connect.WithSchema(appAgentServiceMethods.ByName("AuthorizeAppKnowledge")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
 // appAgentServiceClient implements AppAgentServiceClient.
 type appAgentServiceClient struct {
-	runAgentTask         *connect.Client[v1.RunAgentTaskRequest, v1.RunAgentTaskResponse]
-	watchAgentTaskEvents *connect.Client[v1.WatchAgentTaskEventsRequest, v1.WatchAgentTaskEventsResponse]
+	runAgentTask          *connect.Client[v1.RunAgentTaskRequest, v1.RunAgentTaskResponse]
+	watchAgentTaskEvents  *connect.Client[v1.WatchAgentTaskEventsRequest, v1.WatchAgentTaskEventsResponse]
+	authorizeAppKnowledge *connect.Client[v1.AuthorizeAppKnowledgeRequest, v1.AuthorizeAppKnowledgeResponse]
 }
 
 // RunAgentTask calls workos.agent.v1.AppAgentService.RunAgentTask.
@@ -95,10 +106,16 @@ func (c *appAgentServiceClient) WatchAgentTaskEvents(ctx context.Context, req *c
 	return c.watchAgentTaskEvents.CallServerStream(ctx, req)
 }
 
+// AuthorizeAppKnowledge calls workos.agent.v1.AppAgentService.AuthorizeAppKnowledge.
+func (c *appAgentServiceClient) AuthorizeAppKnowledge(ctx context.Context, req *connect.Request[v1.AuthorizeAppKnowledgeRequest]) (*connect.Response[v1.AuthorizeAppKnowledgeResponse], error) {
+	return c.authorizeAppKnowledge.CallUnary(ctx, req)
+}
+
 // AppAgentServiceHandler is an implementation of the workos.agent.v1.AppAgentService service.
 type AppAgentServiceHandler interface {
 	RunAgentTask(context.Context, *connect.Request[v1.RunAgentTaskRequest]) (*connect.Response[v1.RunAgentTaskResponse], error)
 	WatchAgentTaskEvents(context.Context, *connect.Request[v1.WatchAgentTaskEventsRequest], *connect.ServerStream[v1.WatchAgentTaskEventsResponse]) error
+	AuthorizeAppKnowledge(context.Context, *connect.Request[v1.AuthorizeAppKnowledgeRequest]) (*connect.Response[v1.AuthorizeAppKnowledgeResponse], error)
 }
 
 // NewAppAgentServiceHandler builds an HTTP handler from the service implementation. It returns the
@@ -120,12 +137,20 @@ func NewAppAgentServiceHandler(svc AppAgentServiceHandler, opts ...connect.Handl
 		connect.WithSchema(appAgentServiceMethods.ByName("WatchAgentTaskEvents")),
 		connect.WithHandlerOptions(opts...),
 	)
+	appAgentServiceAuthorizeAppKnowledgeHandler := connect.NewUnaryHandler(
+		AppAgentServiceAuthorizeAppKnowledgeProcedure,
+		svc.AuthorizeAppKnowledge,
+		connect.WithSchema(appAgentServiceMethods.ByName("AuthorizeAppKnowledge")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/workos.agent.v1.AppAgentService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case AppAgentServiceRunAgentTaskProcedure:
 			appAgentServiceRunAgentTaskHandler.ServeHTTP(w, r)
 		case AppAgentServiceWatchAgentTaskEventsProcedure:
 			appAgentServiceWatchAgentTaskEventsHandler.ServeHTTP(w, r)
+		case AppAgentServiceAuthorizeAppKnowledgeProcedure:
+			appAgentServiceAuthorizeAppKnowledgeHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -141,4 +166,8 @@ func (UnimplementedAppAgentServiceHandler) RunAgentTask(context.Context, *connec
 
 func (UnimplementedAppAgentServiceHandler) WatchAgentTaskEvents(context.Context, *connect.Request[v1.WatchAgentTaskEventsRequest], *connect.ServerStream[v1.WatchAgentTaskEventsResponse]) error {
 	return connect.NewError(connect.CodeUnimplemented, errors.New("workos.agent.v1.AppAgentService.WatchAgentTaskEvents is not implemented"))
+}
+
+func (UnimplementedAppAgentServiceHandler) AuthorizeAppKnowledge(context.Context, *connect.Request[v1.AuthorizeAppKnowledgeRequest]) (*connect.Response[v1.AuthorizeAppKnowledgeResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("workos.agent.v1.AppAgentService.AuthorizeAppKnowledge is not implemented"))
 }

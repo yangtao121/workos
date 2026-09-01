@@ -1,0 +1,202 @@
+// Private Core-owned index publication source. Never routed by the gateway
+// and never reachable by browsers or apps: only the indexer's internal
+// identity reaches these RPCs over the internal network. Responses carry the
+// canonical bounded source snapshot (including review content) exactly once
+// per resolve; nothing here ever enters public responses, logs, or events.
+syntax = "proto3";
+
+package workos.index.v1;
+
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/yangtao121/workos/gen/go/workos/index/v1;indexv1";
+
+enum IndexPublicationOperation {
+  INDEX_PUBLICATION_OPERATION_UNSPECIFIED = 0;
+  // A review artifact became searchable-source: one publication per
+  // immutable artifact/digest, appended in the same Core transaction as the
+  // artifact itself.
+  INDEX_PUBLICATION_OPERATION_REVIEW_ARTIFACT_UPSERT = 1;
+  // A project was archived: tombstones every document of the owner+project.
+  INDEX_PUBLICATION_OPERATION_PROJECT_TOMBSTONE = 2;
+}
+
+message ClaimIndexPublicationsRequest {
+  // Bounded worker identity (1..128 ASCII [-a-z0-9._]); it is persisted as
+  // the lease owner and is never supplied by browsers or apps.
+  string worker_id = 1;
+  // 1..16.
+  int32 max_batch = 2;
+  // Lease duration in seconds, clamped to 5..300.
+  int32 lease_seconds = 3;
+}
+
+// A claimed publication fact. Content is deliberately absent: resolve it
+// separately so a crashed worker never holds unbounded content.
+message IndexPublication {
+  string publication_id = 1;
+  IndexPublicationOperation operation = 2;
+  string owner_user_id = 3;
+  string project_id = 4;
+  string source_type = 5;
+  // Review artifact id; empty for project tombstones.
+  string source_id = 6;
+  string artifact_type = 7;
+  // Exact digest; empty for project tombstones.
+  string digest = 8;
+  google.protobuf.Timestamp occurred_at = 9;
+  // Opaque lease token proving this worker's claim; required for resolve
+  // and complete. Never logged, never returned to public callers.
+  string lease_token = 10;
+}
+
+message ClaimIndexPublicationsResponse {
+  repeated IndexPublication publications = 1;
+}
+
+message ResolveIndexPublicationRequest {
+  string worker_id = 1;
+  string publication_id = 2;
+  string lease_token = 3;
+}
+
+// Canonical bounded source snapshot re-verified from Core authority at
+// resolve time. `verdict` decides the only permitted local effects; content
+// is present only for RESOLVED upserts.
+message ResolveIndexPublicationResponse {
+  enum Verdict {
+    VERDICT_UNSPECIFIED = 0;
+    // Implemented review subtype, all invariants hold, project active.
+    VERDICT_RESOLVED = 1;
+    // The project was archived (possibly concurrently with the upsert);
+    // lifecycle authority says the source must not become searchable.
+    VERDICT_TOMBSTONED = 2;
+    // The publication's source ref no longer resolves to the exact claimed
+    // identity/digest: stored drift. Terminal, requires operator attention.
+    VERDICT_CORRUPT = 3;
+  }
+  message ReviewArtifactSource {
+    string owner_user_id = 1;
+    string project_id = 2;
+    string artifact_id = 3;
+    string source_task_id = 4;
+    string artifact_type = 5;
+    string digest = 6;
+    string title = 7;
+    // Canonical bounded review content (<= 512 KiB), verified byte-exact
+    // against the stored digest.
+    bytes content = 8;
+    google.protobuf.Timestamp created_at = 9;
+  }
+  Verdict verdict = 1;
+  ReviewArtifactSource source = 2;
+}
+
+enum IndexPublicationOutcome {
+  INDEX_PUBLICATION_OUTCOME_UNSPECIFIED = 0;
+  // Document/tombstone + receipt + cursor committed locally.
+  INDEX_PUBLICATION_OUTCOME_COMPLETED = 1;
+  // Applied as a tombstone (archive lifecycle authority).
+  INDEX_PUBLICATION_OUTCOME_TOMBSTONED = 2;
+  // Permanently unsupported source; observable degraded outcome.
+  INDEX_PUBLICATION_OUTCOME_UNSUPPORTED = 3;
+  // Source failed re-verification; never overwritten silently.
+  INDEX_PUBLICATION_OUTCOME_CORRUPT = 4;
+}
+
+message IndexPublicationResult {
+  string publication_id = 1;
+  string lease_token = 2;
+  IndexPublicationOutcome outcome = 3;
+}
+
+message CompleteIndexPublicationsRequest {
+  string worker_id = 1;
+  repeated IndexPublicationResult results = 2;
+}
+
+message IndexPublicationAck {
+  string publication_id = 1;
+  // True when this worker's lease was still valid and the outcome was
+  // recorded; false means the lease was stale/expired and the publication
+  // must be safely replayed (local receipt makes that a no-op).
+  bool acked = 2;
+}
+
+message CompleteIndexPublicationsResponse {
+  repeated IndexPublicationAck results = 1;
+}
+
+message ReconcileIndexSourcesRequest {
+  // 1..200.
+  int32 page_size = 1;
+  // Opaque continuation cursor; malformed tokens fail closed.
+  string page_token = 2;
+}
+
+// One authoritative active-project review artifact summary. Content is
+// fetched separately via ResolveIndexSourceContent so pages stay bounded.
+message ReconcileIndexSource {
+  string owner_user_id = 1;
+  string project_id = 2;
+  string artifact_id = 3;
+  string artifact_type = 4;
+  string digest = 5;
+  google.protobuf.Timestamp created_at = 6;
+}
+
+message ReconcileIndexSourcesResponse {
+  repeated ReconcileIndexSource sources = 1;
+  // Empty string means the snapshot page iteration is complete.
+  string next_page_token = 2;
+  // Snapshot boundary: the ordering key of the last row of the last page
+  // (UTC microseconds + artifact id). Rebuild catch-up consumes live
+  // publications strictly after this boundary.
+  string snapshot_watermark = 3;
+}
+
+message ReconcileArchivedProjectsRequest {
+  // 1..200.
+  int32 page_size = 1;
+  string page_token = 2;
+}
+
+message ReconcileArchivedProject {
+  string owner_user_id = 1;
+  string project_id = 2;
+  google.protobuf.Timestamp archived_at = 3;
+}
+
+message ReconcileArchivedProjectsResponse {
+  repeated ReconcileArchivedProject projects = 1;
+  string next_page_token = 2;
+}
+
+message ResolveIndexSourceContentRequest {
+  string owner_user_id = 1;
+  string project_id = 2;
+  string artifact_id = 3;
+  // The digest the caller currently holds; a stored digest mismatch fails
+  // closed instead of returning replaced bytes.
+  string expected_digest = 4;
+}
+
+message ResolveIndexSourceContentResponse {
+  string artifact_type = 1;
+  string digest = 2;
+  string title = 3;
+  bytes content = 4;
+  google.protobuf.Timestamp created_at = 5;
+}
+
+// Core-side authority for the index feed: durable publication claim/lease,
+// exact source resolution, bounded reconciliation pages. Internal network
+// only; never on the gateway allowlist; no generic artifact-bytes API.
+service IndexPublicationSourceService {
+  rpc ClaimIndexPublications(ClaimIndexPublicationsRequest) returns (ClaimIndexPublicationsResponse) {}
+  rpc ResolveIndexPublication(ResolveIndexPublicationRequest) returns (ResolveIndexPublicationResponse) {}
+  rpc CompleteIndexPublications(CompleteIndexPublicationsRequest) returns (CompleteIndexPublicationsResponse) {}
+  rpc ReconcileIndexSources(ReconcileIndexSourcesRequest) returns (ReconcileIndexSourcesResponse) {}
+  rpc ReconcileArchivedProjects(ReconcileArchivedProjectsRequest) returns (ReconcileArchivedProjectsResponse) {}
+  rpc ResolveIndexSourceContent(ResolveIndexSourceContentRequest) returns (ResolveIndexSourceContentResponse) {}
+}

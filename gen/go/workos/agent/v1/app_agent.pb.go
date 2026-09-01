@@ -306,6 +306,129 @@ func (x *WatchAgentTaskEventsResponse) GetEvent() *AgentEvent {
 	return nil
 }
 
+// Per-call knowledge authorization for granted app surfaces. Runtime-host
+// derives owner/device from the gateway identity it injected and
+// project/app-instance/grant-revision from the validated surface session;
+// public bridge bodies can never submit them. Core re-resolves the active
+// installation and returns the allow binding only when the installation is
+// active, the project matches and is unarchived, and the session's exact
+// grant revision still equals the installation's current `knowledge.read`
+// epoch. Any deny/not-found/revision drift is one sanitized failure — the
+// response never reveals which internal record failed or why.
+type AuthorizeAppKnowledgeRequest struct {
+	state                     protoimpl.MessageState `protogen:"open.v1"`
+	ProjectId                 string                 `protobuf:"bytes,1,opt,name=project_id,json=projectId,proto3" json:"project_id,omitempty"`
+	AppInstanceId             string                 `protobuf:"bytes,2,opt,name=app_instance_id,json=appInstanceId,proto3" json:"app_instance_id,omitempty"`
+	InstallationGrantRevision int64                  `protobuf:"varint,3,opt,name=installation_grant_revision,json=installationGrantRevision,proto3" json:"installation_grant_revision,omitempty"`
+	unknownFields             protoimpl.UnknownFields
+	sizeCache                 protoimpl.SizeCache
+}
+
+func (x *AuthorizeAppKnowledgeRequest) Reset() {
+	*x = AuthorizeAppKnowledgeRequest{}
+	mi := &file_workos_agent_v1_app_agent_proto_msgTypes[4]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *AuthorizeAppKnowledgeRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AuthorizeAppKnowledgeRequest) ProtoMessage() {}
+
+func (x *AuthorizeAppKnowledgeRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_workos_agent_v1_app_agent_proto_msgTypes[4]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AuthorizeAppKnowledgeRequest.ProtoReflect.Descriptor instead.
+func (*AuthorizeAppKnowledgeRequest) Descriptor() ([]byte, []int) {
+	return file_workos_agent_v1_app_agent_proto_rawDescGZIP(), []int{4}
+}
+
+func (x *AuthorizeAppKnowledgeRequest) GetProjectId() string {
+	if x != nil {
+		return x.ProjectId
+	}
+	return ""
+}
+
+func (x *AuthorizeAppKnowledgeRequest) GetAppInstanceId() string {
+	if x != nil {
+		return x.AppInstanceId
+	}
+	return ""
+}
+
+func (x *AuthorizeAppKnowledgeRequest) GetInstallationGrantRevision() int64 {
+	if x != nil {
+		return x.InstallationGrantRevision
+	}
+	return 0
+}
+
+type AuthorizeAppKnowledgeResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The canonical trusted binding runtime-host must use for the scoped
+	// indexer call; it always equals the session-derived scope on success.
+	OwnerUserId   string `protobuf:"bytes,1,opt,name=owner_user_id,json=ownerUserId,proto3" json:"owner_user_id,omitempty"`
+	ProjectId     string `protobuf:"bytes,2,opt,name=project_id,json=projectId,proto3" json:"project_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *AuthorizeAppKnowledgeResponse) Reset() {
+	*x = AuthorizeAppKnowledgeResponse{}
+	mi := &file_workos_agent_v1_app_agent_proto_msgTypes[5]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *AuthorizeAppKnowledgeResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AuthorizeAppKnowledgeResponse) ProtoMessage() {}
+
+func (x *AuthorizeAppKnowledgeResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_workos_agent_v1_app_agent_proto_msgTypes[5]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AuthorizeAppKnowledgeResponse.ProtoReflect.Descriptor instead.
+func (*AuthorizeAppKnowledgeResponse) Descriptor() ([]byte, []int) {
+	return file_workos_agent_v1_app_agent_proto_rawDescGZIP(), []int{5}
+}
+
+func (x *AuthorizeAppKnowledgeResponse) GetOwnerUserId() string {
+	if x != nil {
+		return x.OwnerUserId
+	}
+	return ""
+}
+
+func (x *AuthorizeAppKnowledgeResponse) GetProjectId() string {
+	if x != nil {
+		return x.ProjectId
+	}
+	return ""
+}
+
 var File_workos_agent_v1_app_agent_proto protoreflect.FileDescriptor
 
 const file_workos_agent_v1_app_agent_proto_rawDesc = "" +
@@ -331,10 +454,20 @@ const file_workos_agent_v1_app_agent_proto_rawDesc = "" +
 	"\x0eafter_sequence\x18\x04 \x01(\x03R\rafterSequence\x12>\n" +
 	"\x1binstallation_grant_revision\x18\x05 \x01(\x03R\x19installationGrantRevision\"Q\n" +
 	"\x1cWatchAgentTaskEventsResponse\x121\n" +
-	"\x05event\x18\x01 \x01(\v2\x1b.workos.agent.v1.AgentEventR\x05event2\xe9\x01\n" +
+	"\x05event\x18\x01 \x01(\v2\x1b.workos.agent.v1.AgentEventR\x05event\"\xa5\x01\n" +
+	"\x1cAuthorizeAppKnowledgeRequest\x12\x1d\n" +
+	"\n" +
+	"project_id\x18\x01 \x01(\tR\tprojectId\x12&\n" +
+	"\x0fapp_instance_id\x18\x02 \x01(\tR\rappInstanceId\x12>\n" +
+	"\x1binstallation_grant_revision\x18\x03 \x01(\x03R\x19installationGrantRevision\"b\n" +
+	"\x1dAuthorizeAppKnowledgeResponse\x12\"\n" +
+	"\rowner_user_id\x18\x01 \x01(\tR\vownerUserId\x12\x1d\n" +
+	"\n" +
+	"project_id\x18\x02 \x01(\tR\tprojectId2\xe3\x02\n" +
 	"\x0fAppAgentService\x12]\n" +
 	"\fRunAgentTask\x12$.workos.agent.v1.RunAgentTaskRequest\x1a%.workos.agent.v1.RunAgentTaskResponse\"\x00\x12w\n" +
-	"\x14WatchAgentTaskEvents\x12,.workos.agent.v1.WatchAgentTaskEventsRequest\x1a-.workos.agent.v1.WatchAgentTaskEventsResponse\"\x000\x01B=Z;github.com/yangtao121/workos/gen/go/workos/agent/v1;agentv1b\x06proto3"
+	"\x14WatchAgentTaskEvents\x12,.workos.agent.v1.WatchAgentTaskEventsRequest\x1a-.workos.agent.v1.WatchAgentTaskEventsResponse\"\x000\x01\x12x\n" +
+	"\x15AuthorizeAppKnowledge\x12-.workos.agent.v1.AuthorizeAppKnowledgeRequest\x1a..workos.agent.v1.AuthorizeAppKnowledgeResponse\"\x00B=Z;github.com/yangtao121/workos/gen/go/workos/agent/v1;agentv1b\x06proto3"
 
 var (
 	file_workos_agent_v1_app_agent_proto_rawDescOnce sync.Once
@@ -348,24 +481,28 @@ func file_workos_agent_v1_app_agent_proto_rawDescGZIP() []byte {
 	return file_workos_agent_v1_app_agent_proto_rawDescData
 }
 
-var file_workos_agent_v1_app_agent_proto_msgTypes = make([]protoimpl.MessageInfo, 4)
+var file_workos_agent_v1_app_agent_proto_msgTypes = make([]protoimpl.MessageInfo, 6)
 var file_workos_agent_v1_app_agent_proto_goTypes = []any{
-	(*RunAgentTaskRequest)(nil),          // 0: workos.agent.v1.RunAgentTaskRequest
-	(*RunAgentTaskResponse)(nil),         // 1: workos.agent.v1.RunAgentTaskResponse
-	(*WatchAgentTaskEventsRequest)(nil),  // 2: workos.agent.v1.WatchAgentTaskEventsRequest
-	(*WatchAgentTaskEventsResponse)(nil), // 3: workos.agent.v1.WatchAgentTaskEventsResponse
-	(AgentTaskState)(0),                  // 4: workos.agent.v1.AgentTaskState
-	(*AgentEvent)(nil),                   // 5: workos.agent.v1.AgentEvent
+	(*RunAgentTaskRequest)(nil),           // 0: workos.agent.v1.RunAgentTaskRequest
+	(*RunAgentTaskResponse)(nil),          // 1: workos.agent.v1.RunAgentTaskResponse
+	(*WatchAgentTaskEventsRequest)(nil),   // 2: workos.agent.v1.WatchAgentTaskEventsRequest
+	(*WatchAgentTaskEventsResponse)(nil),  // 3: workos.agent.v1.WatchAgentTaskEventsResponse
+	(*AuthorizeAppKnowledgeRequest)(nil),  // 4: workos.agent.v1.AuthorizeAppKnowledgeRequest
+	(*AuthorizeAppKnowledgeResponse)(nil), // 5: workos.agent.v1.AuthorizeAppKnowledgeResponse
+	(AgentTaskState)(0),                   // 6: workos.agent.v1.AgentTaskState
+	(*AgentEvent)(nil),                    // 7: workos.agent.v1.AgentEvent
 }
 var file_workos_agent_v1_app_agent_proto_depIdxs = []int32{
-	4, // 0: workos.agent.v1.RunAgentTaskResponse.state:type_name -> workos.agent.v1.AgentTaskState
-	5, // 1: workos.agent.v1.WatchAgentTaskEventsResponse.event:type_name -> workos.agent.v1.AgentEvent
+	6, // 0: workos.agent.v1.RunAgentTaskResponse.state:type_name -> workos.agent.v1.AgentTaskState
+	7, // 1: workos.agent.v1.WatchAgentTaskEventsResponse.event:type_name -> workos.agent.v1.AgentEvent
 	0, // 2: workos.agent.v1.AppAgentService.RunAgentTask:input_type -> workos.agent.v1.RunAgentTaskRequest
 	2, // 3: workos.agent.v1.AppAgentService.WatchAgentTaskEvents:input_type -> workos.agent.v1.WatchAgentTaskEventsRequest
-	1, // 4: workos.agent.v1.AppAgentService.RunAgentTask:output_type -> workos.agent.v1.RunAgentTaskResponse
-	3, // 5: workos.agent.v1.AppAgentService.WatchAgentTaskEvents:output_type -> workos.agent.v1.WatchAgentTaskEventsResponse
-	4, // [4:6] is the sub-list for method output_type
-	2, // [2:4] is the sub-list for method input_type
+	4, // 4: workos.agent.v1.AppAgentService.AuthorizeAppKnowledge:input_type -> workos.agent.v1.AuthorizeAppKnowledgeRequest
+	1, // 5: workos.agent.v1.AppAgentService.RunAgentTask:output_type -> workos.agent.v1.RunAgentTaskResponse
+	3, // 6: workos.agent.v1.AppAgentService.WatchAgentTaskEvents:output_type -> workos.agent.v1.WatchAgentTaskEventsResponse
+	5, // 7: workos.agent.v1.AppAgentService.AuthorizeAppKnowledge:output_type -> workos.agent.v1.AuthorizeAppKnowledgeResponse
+	5, // [5:8] is the sub-list for method output_type
+	2, // [2:5] is the sub-list for method input_type
 	2, // [2:2] is the sub-list for extension type_name
 	2, // [2:2] is the sub-list for extension extendee
 	0, // [0:2] is the sub-list for field type_name
@@ -383,7 +520,7 @@ func file_workos_agent_v1_app_agent_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_workos_agent_v1_app_agent_proto_rawDesc), len(file_workos_agent_v1_app_agent_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   4,
+			NumMessages:   6,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

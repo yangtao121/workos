@@ -13,6 +13,7 @@ package bridgev1
 
 import (
 	v1 "github.com/yangtao121/workos/gen/go/workos/agent/v1"
+	v11 "github.com/yangtao121/workos/gen/go/workos/index/v1"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	reflect "reflect"
@@ -247,11 +248,142 @@ func (x *WatchAgentTaskEventsResponse) GetEvent() *v1.AgentEvent {
 	return nil
 }
 
+// App-side bounded knowledge search. The body deliberately carries ONLY
+// search parameters: there is no owner/project/source/backend field and
+// there never will be. The scope (owner + project) is derived by
+// runtime-host from the validated bridge token's surface session; the app
+// can never widen, override, or select it. Runtime re-verifies the session,
+// the app instance, and the exact current `knowledge.read` grant revision
+// with Core on every call before the indexer is ever touched.
+type SearchKnowledgeRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Bounded lexical query: 1..256 code points after whitespace
+	// canonicalization; control characters are rejected before any read.
+	Query string `protobuf:"bytes,1,opt,name=query,proto3" json:"query,omitempty"`
+	// 0 selects the default (20); otherwise 1..50.
+	PageSize int32 `protobuf:"varint,2,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`
+	// Opaque, versioned continuation token from a previous response for the
+	// same project + query. Cross-project/cross-query replay fails closed.
+	PageToken     string `protobuf:"bytes,3,opt,name=page_token,json=pageToken,proto3" json:"page_token,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SearchKnowledgeRequest) Reset() {
+	*x = SearchKnowledgeRequest{}
+	mi := &file_workos_bridge_v1_bridge_proto_msgTypes[4]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SearchKnowledgeRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SearchKnowledgeRequest) ProtoMessage() {}
+
+func (x *SearchKnowledgeRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_workos_bridge_v1_bridge_proto_msgTypes[4]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SearchKnowledgeRequest.ProtoReflect.Descriptor instead.
+func (*SearchKnowledgeRequest) Descriptor() ([]byte, []int) {
+	return file_workos_bridge_v1_bridge_proto_rawDescGZIP(), []int{4}
+}
+
+func (x *SearchKnowledgeRequest) GetQuery() string {
+	if x != nil {
+		return x.Query
+	}
+	return ""
+}
+
+func (x *SearchKnowledgeRequest) GetPageSize() int32 {
+	if x != nil {
+		return x.PageSize
+	}
+	return 0
+}
+
+func (x *SearchKnowledgeRequest) GetPageToken() string {
+	if x != nil {
+		return x.PageToken
+	}
+	return ""
+}
+
+type SearchKnowledgeResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The exact canonical index hits: typed artifact.review.v1 ref, digest,
+	// title, bounded plain-text excerpt, finite score. Reusing the canonical
+	// message (not a hand-written projection) is deliberate: there is exactly
+	// one hit grammar for owner UI and granted apps. Internal fields (owner
+	// ids, page metadata, freshness internals) are not part of this response.
+	Hits []*v11.SearchHit `protobuf:"bytes,1,rep,name=hits,proto3" json:"hits,omitempty"`
+	// Empty when there are no more hits; a full final page never produces a
+	// phantom token.
+	NextPageToken string `protobuf:"bytes,2,opt,name=next_page_token,json=nextPageToken,proto3" json:"next_page_token,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SearchKnowledgeResponse) Reset() {
+	*x = SearchKnowledgeResponse{}
+	mi := &file_workos_bridge_v1_bridge_proto_msgTypes[5]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SearchKnowledgeResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SearchKnowledgeResponse) ProtoMessage() {}
+
+func (x *SearchKnowledgeResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_workos_bridge_v1_bridge_proto_msgTypes[5]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SearchKnowledgeResponse.ProtoReflect.Descriptor instead.
+func (*SearchKnowledgeResponse) Descriptor() ([]byte, []int) {
+	return file_workos_bridge_v1_bridge_proto_rawDescGZIP(), []int{5}
+}
+
+func (x *SearchKnowledgeResponse) GetHits() []*v11.SearchHit {
+	if x != nil {
+		return x.Hits
+	}
+	return nil
+}
+
+func (x *SearchKnowledgeResponse) GetNextPageToken() string {
+	if x != nil {
+		return x.NextPageToken
+	}
+	return ""
+}
+
 var File_workos_bridge_v1_bridge_proto protoreflect.FileDescriptor
 
 const file_workos_bridge_v1_bridge_proto_rawDesc = "" +
 	"\n" +
-	"\x1dworkos/bridge/v1/bridge.proto\x12\x10workos.bridge.v1\x1a\x1bworkos/agent/v1/agent.proto\"f\n" +
+	"\x1dworkos/bridge/v1/bridge.proto\x12\x10workos.bridge.v1\x1a\x1bworkos/agent/v1/agent.proto\x1a\x1bworkos/index/v1/index.proto\"f\n" +
 	"\x13RunAgentTaskRequest\x12'\n" +
 	"\x0fidempotency_key\x18\x01 \x01(\tR\x0eidempotencyKey\x12\x12\n" +
 	"\x04role\x18\x02 \x01(\tR\x04role\x12\x12\n" +
@@ -264,10 +396,19 @@ const file_workos_bridge_v1_bridge_proto_rawDesc = "" +
 	"\atask_id\x18\x01 \x01(\tR\x06taskId\x12%\n" +
 	"\x0eafter_sequence\x18\x02 \x01(\x03R\rafterSequence\"Q\n" +
 	"\x1cWatchAgentTaskEventsResponse\x121\n" +
-	"\x05event\x18\x01 \x01(\v2\x1b.workos.agent.v1.AgentEventR\x05event2\xee\x01\n" +
+	"\x05event\x18\x01 \x01(\v2\x1b.workos.agent.v1.AgentEventR\x05event\"j\n" +
+	"\x16SearchKnowledgeRequest\x12\x14\n" +
+	"\x05query\x18\x01 \x01(\tR\x05query\x12\x1b\n" +
+	"\tpage_size\x18\x02 \x01(\x05R\bpageSize\x12\x1d\n" +
+	"\n" +
+	"page_token\x18\x03 \x01(\tR\tpageToken\"q\n" +
+	"\x17SearchKnowledgeResponse\x12.\n" +
+	"\x04hits\x18\x01 \x03(\v2\x1a.workos.index.v1.SearchHitR\x04hits\x12&\n" +
+	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken2\xd8\x02\n" +
 	"\x10AppBridgeService\x12_\n" +
 	"\fRunAgentTask\x12%.workos.bridge.v1.RunAgentTaskRequest\x1a&.workos.bridge.v1.RunAgentTaskResponse\"\x00\x12y\n" +
-	"\x14WatchAgentTaskEvents\x12-.workos.bridge.v1.WatchAgentTaskEventsRequest\x1a..workos.bridge.v1.WatchAgentTaskEventsResponse\"\x000\x01B?Z=github.com/yangtao121/workos/gen/go/workos/bridge/v1;bridgev1b\x06proto3"
+	"\x14WatchAgentTaskEvents\x12-.workos.bridge.v1.WatchAgentTaskEventsRequest\x1a..workos.bridge.v1.WatchAgentTaskEventsResponse\"\x000\x01\x12h\n" +
+	"\x0fSearchKnowledge\x12(.workos.bridge.v1.SearchKnowledgeRequest\x1a).workos.bridge.v1.SearchKnowledgeResponse\"\x00B?Z=github.com/yangtao121/workos/gen/go/workos/bridge/v1;bridgev1b\x06proto3"
 
 var (
 	file_workos_bridge_v1_bridge_proto_rawDescOnce sync.Once
@@ -281,27 +422,33 @@ func file_workos_bridge_v1_bridge_proto_rawDescGZIP() []byte {
 	return file_workos_bridge_v1_bridge_proto_rawDescData
 }
 
-var file_workos_bridge_v1_bridge_proto_msgTypes = make([]protoimpl.MessageInfo, 4)
+var file_workos_bridge_v1_bridge_proto_msgTypes = make([]protoimpl.MessageInfo, 6)
 var file_workos_bridge_v1_bridge_proto_goTypes = []any{
 	(*RunAgentTaskRequest)(nil),          // 0: workos.bridge.v1.RunAgentTaskRequest
 	(*RunAgentTaskResponse)(nil),         // 1: workos.bridge.v1.RunAgentTaskResponse
 	(*WatchAgentTaskEventsRequest)(nil),  // 2: workos.bridge.v1.WatchAgentTaskEventsRequest
 	(*WatchAgentTaskEventsResponse)(nil), // 3: workos.bridge.v1.WatchAgentTaskEventsResponse
-	(v1.AgentTaskState)(0),               // 4: workos.agent.v1.AgentTaskState
-	(*v1.AgentEvent)(nil),                // 5: workos.agent.v1.AgentEvent
+	(*SearchKnowledgeRequest)(nil),       // 4: workos.bridge.v1.SearchKnowledgeRequest
+	(*SearchKnowledgeResponse)(nil),      // 5: workos.bridge.v1.SearchKnowledgeResponse
+	(v1.AgentTaskState)(0),               // 6: workos.agent.v1.AgentTaskState
+	(*v1.AgentEvent)(nil),                // 7: workos.agent.v1.AgentEvent
+	(*v11.SearchHit)(nil),                // 8: workos.index.v1.SearchHit
 }
 var file_workos_bridge_v1_bridge_proto_depIdxs = []int32{
-	4, // 0: workos.bridge.v1.RunAgentTaskResponse.state:type_name -> workos.agent.v1.AgentTaskState
-	5, // 1: workos.bridge.v1.WatchAgentTaskEventsResponse.event:type_name -> workos.agent.v1.AgentEvent
-	0, // 2: workos.bridge.v1.AppBridgeService.RunAgentTask:input_type -> workos.bridge.v1.RunAgentTaskRequest
-	2, // 3: workos.bridge.v1.AppBridgeService.WatchAgentTaskEvents:input_type -> workos.bridge.v1.WatchAgentTaskEventsRequest
-	1, // 4: workos.bridge.v1.AppBridgeService.RunAgentTask:output_type -> workos.bridge.v1.RunAgentTaskResponse
-	3, // 5: workos.bridge.v1.AppBridgeService.WatchAgentTaskEvents:output_type -> workos.bridge.v1.WatchAgentTaskEventsResponse
-	4, // [4:6] is the sub-list for method output_type
-	2, // [2:4] is the sub-list for method input_type
-	2, // [2:2] is the sub-list for extension type_name
-	2, // [2:2] is the sub-list for extension extendee
-	0, // [0:2] is the sub-list for field type_name
+	6, // 0: workos.bridge.v1.RunAgentTaskResponse.state:type_name -> workos.agent.v1.AgentTaskState
+	7, // 1: workos.bridge.v1.WatchAgentTaskEventsResponse.event:type_name -> workos.agent.v1.AgentEvent
+	8, // 2: workos.bridge.v1.SearchKnowledgeResponse.hits:type_name -> workos.index.v1.SearchHit
+	0, // 3: workos.bridge.v1.AppBridgeService.RunAgentTask:input_type -> workos.bridge.v1.RunAgentTaskRequest
+	2, // 4: workos.bridge.v1.AppBridgeService.WatchAgentTaskEvents:input_type -> workos.bridge.v1.WatchAgentTaskEventsRequest
+	4, // 5: workos.bridge.v1.AppBridgeService.SearchKnowledge:input_type -> workos.bridge.v1.SearchKnowledgeRequest
+	1, // 6: workos.bridge.v1.AppBridgeService.RunAgentTask:output_type -> workos.bridge.v1.RunAgentTaskResponse
+	3, // 7: workos.bridge.v1.AppBridgeService.WatchAgentTaskEvents:output_type -> workos.bridge.v1.WatchAgentTaskEventsResponse
+	5, // 8: workos.bridge.v1.AppBridgeService.SearchKnowledge:output_type -> workos.bridge.v1.SearchKnowledgeResponse
+	6, // [6:9] is the sub-list for method output_type
+	3, // [3:6] is the sub-list for method input_type
+	3, // [3:3] is the sub-list for extension type_name
+	3, // [3:3] is the sub-list for extension extendee
+	0, // [0:3] is the sub-list for field type_name
 }
 
 func init() { file_workos_bridge_v1_bridge_proto_init() }
@@ -315,7 +462,7 @@ func file_workos_bridge_v1_bridge_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_workos_bridge_v1_bridge_proto_rawDesc), len(file_workos_bridge_v1_bridge_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   4,
+			NumMessages:   6,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

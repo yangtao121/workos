@@ -11,13 +11,15 @@ import type { GenFile, GenMessage, GenService } from "@bufbuild/protobuf/codegen
 import { fileDesc, messageDesc, serviceDesc } from "@bufbuild/protobuf/codegenv2";
 import type { AgentEvent, AgentTaskState } from "../../agent/v1/agent_pb.js";
 import { file_workos_agent_v1_agent } from "../../agent/v1/agent_pb.js";
+import type { SearchHit } from "../../index/v1/index_pb.js";
+import { file_workos_index_v1_index } from "../../index/v1/index_pb.js";
 import type { Message } from "@bufbuild/protobuf";
 
 /**
  * Describes the file workos/bridge/v1/bridge.proto.
  */
 export const file_workos_bridge_v1_bridge: GenFile = /*@__PURE__*/
-  fileDesc("Ch13b3Jrb3MvYnJpZGdlL3YxL2JyaWRnZS5wcm90bxIQd29ya29zLmJyaWRnZS52MSJKChNSdW5BZ2VudFRhc2tSZXF1ZXN0EhcKD2lkZW1wb3RlbmN5X2tleRgBIAEoCRIMCgRyb2xlGAIgASgJEgwKBGdvYWwYAyABKAkidAoUUnVuQWdlbnRUYXNrUmVzcG9uc2USDwoHdGFza19pZBgBIAEoCRIuCgVzdGF0ZRgCIAEoDjIfLndvcmtvcy5hZ2VudC52MS5BZ2VudFRhc2tTdGF0ZRIbChNsYXN0X2V2ZW50X3NlcXVlbmNlGAMgASgDIkYKG1dhdGNoQWdlbnRUYXNrRXZlbnRzUmVxdWVzdBIPCgd0YXNrX2lkGAEgASgJEhYKDmFmdGVyX3NlcXVlbmNlGAIgASgDIkoKHFdhdGNoQWdlbnRUYXNrRXZlbnRzUmVzcG9uc2USKgoFZXZlbnQYASABKAsyGy53b3Jrb3MuYWdlbnQudjEuQWdlbnRFdmVudDLuAQoQQXBwQnJpZGdlU2VydmljZRJfCgxSdW5BZ2VudFRhc2sSJS53b3Jrb3MuYnJpZGdlLnYxLlJ1bkFnZW50VGFza1JlcXVlc3QaJi53b3Jrb3MuYnJpZGdlLnYxLlJ1bkFnZW50VGFza1Jlc3BvbnNlIgASeQoUV2F0Y2hBZ2VudFRhc2tFdmVudHMSLS53b3Jrb3MuYnJpZGdlLnYxLldhdGNoQWdlbnRUYXNrRXZlbnRzUmVxdWVzdBouLndvcmtvcy5icmlkZ2UudjEuV2F0Y2hBZ2VudFRhc2tFdmVudHNSZXNwb25zZSIAMAFCP1o9Z2l0aHViLmNvbS95YW5ndGFvMTIxL3dvcmtvcy9nZW4vZ28vd29ya29zL2JyaWRnZS92MTticmlkZ2V2MWIGcHJvdG8z", [file_workos_agent_v1_agent]);
+  fileDesc("Ch13b3Jrb3MvYnJpZGdlL3YxL2JyaWRnZS5wcm90bxIQd29ya29zLmJyaWRnZS52MSJKChNSdW5BZ2VudFRhc2tSZXF1ZXN0EhcKD2lkZW1wb3RlbmN5X2tleRgBIAEoCRIMCgRyb2xlGAIgASgJEgwKBGdvYWwYAyABKAkidAoUUnVuQWdlbnRUYXNrUmVzcG9uc2USDwoHdGFza19pZBgBIAEoCRIuCgVzdGF0ZRgCIAEoDjIfLndvcmtvcy5hZ2VudC52MS5BZ2VudFRhc2tTdGF0ZRIbChNsYXN0X2V2ZW50X3NlcXVlbmNlGAMgASgDIkYKG1dhdGNoQWdlbnRUYXNrRXZlbnRzUmVxdWVzdBIPCgd0YXNrX2lkGAEgASgJEhYKDmFmdGVyX3NlcXVlbmNlGAIgASgDIkoKHFdhdGNoQWdlbnRUYXNrRXZlbnRzUmVzcG9uc2USKgoFZXZlbnQYASABKAsyGy53b3Jrb3MuYWdlbnQudjEuQWdlbnRFdmVudCJOChZTZWFyY2hLbm93bGVkZ2VSZXF1ZXN0Eg0KBXF1ZXJ5GAEgASgJEhEKCXBhZ2Vfc2l6ZRgCIAEoBRISCgpwYWdlX3Rva2VuGAMgASgJIlwKF1NlYXJjaEtub3dsZWRnZVJlc3BvbnNlEigKBGhpdHMYASADKAsyGi53b3Jrb3MuaW5kZXgudjEuU2VhcmNoSGl0EhcKD25leHRfcGFnZV90b2tlbhgCIAEoCTLYAgoQQXBwQnJpZGdlU2VydmljZRJfCgxSdW5BZ2VudFRhc2sSJS53b3Jrb3MuYnJpZGdlLnYxLlJ1bkFnZW50VGFza1JlcXVlc3QaJi53b3Jrb3MuYnJpZGdlLnYxLlJ1bkFnZW50VGFza1Jlc3BvbnNlIgASeQoUV2F0Y2hBZ2VudFRhc2tFdmVudHMSLS53b3Jrb3MuYnJpZGdlLnYxLldhdGNoQWdlbnRUYXNrRXZlbnRzUmVxdWVzdBouLndvcmtvcy5icmlkZ2UudjEuV2F0Y2hBZ2VudFRhc2tFdmVudHNSZXNwb25zZSIAMAESaAoPU2VhcmNoS25vd2xlZGdlEigud29ya29zLmJyaWRnZS52MS5TZWFyY2hLbm93bGVkZ2VSZXF1ZXN0Gikud29ya29zLmJyaWRnZS52MS5TZWFyY2hLbm93bGVkZ2VSZXNwb25zZSIAQj9aPWdpdGh1Yi5jb20veWFuZ3RhbzEyMS93b3Jrb3MvZ2VuL2dvL3dvcmtvcy9icmlkZ2UvdjE7YnJpZGdldjFiBnByb3RvMw", [file_workos_agent_v1_agent, file_workos_index_v1_index]);
 
 /**
  * @generated from message workos.bridge.v1.RunAgentTaskRequest
@@ -121,6 +123,80 @@ export const WatchAgentTaskEventsResponseSchema: GenMessage<WatchAgentTaskEvents
   messageDesc(file_workos_bridge_v1_bridge, 3);
 
 /**
+ * App-side bounded knowledge search. The body deliberately carries ONLY
+ * search parameters: there is no owner/project/source/backend field and
+ * there never will be. The scope (owner + project) is derived by
+ * runtime-host from the validated bridge token's surface session; the app
+ * can never widen, override, or select it. Runtime re-verifies the session,
+ * the app instance, and the exact current `knowledge.read` grant revision
+ * with Core on every call before the indexer is ever touched.
+ *
+ * @generated from message workos.bridge.v1.SearchKnowledgeRequest
+ */
+export type SearchKnowledgeRequest = Message<"workos.bridge.v1.SearchKnowledgeRequest"> & {
+  /**
+   * Bounded lexical query: 1..256 code points after whitespace
+   * canonicalization; control characters are rejected before any read.
+   *
+   * @generated from field: string query = 1;
+   */
+  query: string;
+
+  /**
+   * 0 selects the default (20); otherwise 1..50.
+   *
+   * @generated from field: int32 page_size = 2;
+   */
+  pageSize: number;
+
+  /**
+   * Opaque, versioned continuation token from a previous response for the
+   * same project + query. Cross-project/cross-query replay fails closed.
+   *
+   * @generated from field: string page_token = 3;
+   */
+  pageToken: string;
+};
+
+/**
+ * Describes the message workos.bridge.v1.SearchKnowledgeRequest.
+ * Use `create(SearchKnowledgeRequestSchema)` to create a new message.
+ */
+export const SearchKnowledgeRequestSchema: GenMessage<SearchKnowledgeRequest> = /*@__PURE__*/
+  messageDesc(file_workos_bridge_v1_bridge, 4);
+
+/**
+ * @generated from message workos.bridge.v1.SearchKnowledgeResponse
+ */
+export type SearchKnowledgeResponse = Message<"workos.bridge.v1.SearchKnowledgeResponse"> & {
+  /**
+   * The exact canonical index hits: typed artifact.review.v1 ref, digest,
+   * title, bounded plain-text excerpt, finite score. Reusing the canonical
+   * message (not a hand-written projection) is deliberate: there is exactly
+   * one hit grammar for owner UI and granted apps. Internal fields (owner
+   * ids, page metadata, freshness internals) are not part of this response.
+   *
+   * @generated from field: repeated workos.index.v1.SearchHit hits = 1;
+   */
+  hits: SearchHit[];
+
+  /**
+   * Empty when there are no more hits; a full final page never produces a
+   * phantom token.
+   *
+   * @generated from field: string next_page_token = 2;
+   */
+  nextPageToken: string;
+};
+
+/**
+ * Describes the message workos.bridge.v1.SearchKnowledgeResponse.
+ * Use `create(SearchKnowledgeResponseSchema)` to create a new message.
+ */
+export const SearchKnowledgeResponseSchema: GenMessage<SearchKnowledgeResponse> = /*@__PURE__*/
+  messageDesc(file_workos_bridge_v1_bridge, 5);
+
+/**
  * @generated from service workos.bridge.v1.AppBridgeService
  */
 export const AppBridgeService: GenService<{
@@ -139,6 +215,19 @@ export const AppBridgeService: GenService<{
     methodKind: "server_streaming";
     input: typeof WatchAgentTaskEventsRequestSchema;
     output: typeof WatchAgentTaskEventsResponseSchema;
+  },
+  /**
+   * Read-only knowledge search, negotiated only when the manifest requests
+   * `knowledge.read`, the installation actually holds that grant, and the
+   * runtime has a real indexer adapter configured. It is never implied by
+   * `agent.task.run`.
+   *
+   * @generated from rpc workos.bridge.v1.AppBridgeService.SearchKnowledge
+   */
+  searchKnowledge: {
+    methodKind: "unary";
+    input: typeof SearchKnowledgeRequestSchema;
+    output: typeof SearchKnowledgeResponseSchema;
   },
 }> = /*@__PURE__*/
   serviceDesc(file_workos_bridge_v1_bridge, 0);

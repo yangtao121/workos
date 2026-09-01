@@ -18,7 +18,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file workos/agent/v1/app_agent.proto.
  */
 export const file_workos_agent_v1_app_agent: GenFile = /*@__PURE__*/
-  fileDesc("Ch93b3Jrb3MvYWdlbnQvdjEvYXBwX2FnZW50LnByb3RvEg93b3Jrb3MuYWdlbnQudjEiowEKE1J1bkFnZW50VGFza1JlcXVlc3QSEgoKcHJvamVjdF9pZBgBIAEoCRIXCg9hcHBfaW5zdGFuY2VfaWQYAiABKAkSHgoWY2xpZW50X2lkZW1wb3RlbmN5X2tleRgDIAEoCRIMCgRyb2xlGAQgASgJEgwKBGdvYWwYBSABKAkSIwobaW5zdGFsbGF0aW9uX2dyYW50X3JldmlzaW9uGAYgASgDInQKFFJ1bkFnZW50VGFza1Jlc3BvbnNlEg8KB3Rhc2tfaWQYASABKAkSLgoFc3RhdGUYAiABKA4yHy53b3Jrb3MuYWdlbnQudjEuQWdlbnRUYXNrU3RhdGUSGwoTbGFzdF9ldmVudF9zZXF1ZW5jZRgDIAEoAyKYAQobV2F0Y2hBZ2VudFRhc2tFdmVudHNSZXF1ZXN0EhIKCnByb2plY3RfaWQYASABKAkSFwoPYXBwX2luc3RhbmNlX2lkGAIgASgJEg8KB3Rhc2tfaWQYAyABKAkSFgoOYWZ0ZXJfc2VxdWVuY2UYBCABKAMSIwobaW5zdGFsbGF0aW9uX2dyYW50X3JldmlzaW9uGAUgASgDIkoKHFdhdGNoQWdlbnRUYXNrRXZlbnRzUmVzcG9uc2USKgoFZXZlbnQYASABKAsyGy53b3Jrb3MuYWdlbnQudjEuQWdlbnRFdmVudDLpAQoPQXBwQWdlbnRTZXJ2aWNlEl0KDFJ1bkFnZW50VGFzaxIkLndvcmtvcy5hZ2VudC52MS5SdW5BZ2VudFRhc2tSZXF1ZXN0GiUud29ya29zLmFnZW50LnYxLlJ1bkFnZW50VGFza1Jlc3BvbnNlIgASdwoUV2F0Y2hBZ2VudFRhc2tFdmVudHMSLC53b3Jrb3MuYWdlbnQudjEuV2F0Y2hBZ2VudFRhc2tFdmVudHNSZXF1ZXN0Gi0ud29ya29zLmFnZW50LnYxLldhdGNoQWdlbnRUYXNrRXZlbnRzUmVzcG9uc2UiADABQj1aO2dpdGh1Yi5jb20veWFuZ3RhbzEyMS93b3Jrb3MvZ2VuL2dvL3dvcmtvcy9hZ2VudC92MTthZ2VudHYxYgZwcm90bzM", [file_workos_agent_v1_agent]);
+  fileDesc("Ch93b3Jrb3MvYWdlbnQvdjEvYXBwX2FnZW50LnByb3RvEg93b3Jrb3MuYWdlbnQudjEiowEKE1J1bkFnZW50VGFza1JlcXVlc3QSEgoKcHJvamVjdF9pZBgBIAEoCRIXCg9hcHBfaW5zdGFuY2VfaWQYAiABKAkSHgoWY2xpZW50X2lkZW1wb3RlbmN5X2tleRgDIAEoCRIMCgRyb2xlGAQgASgJEgwKBGdvYWwYBSABKAkSIwobaW5zdGFsbGF0aW9uX2dyYW50X3JldmlzaW9uGAYgASgDInQKFFJ1bkFnZW50VGFza1Jlc3BvbnNlEg8KB3Rhc2tfaWQYASABKAkSLgoFc3RhdGUYAiABKA4yHy53b3Jrb3MuYWdlbnQudjEuQWdlbnRUYXNrU3RhdGUSGwoTbGFzdF9ldmVudF9zZXF1ZW5jZRgDIAEoAyKYAQobV2F0Y2hBZ2VudFRhc2tFdmVudHNSZXF1ZXN0EhIKCnByb2plY3RfaWQYASABKAkSFwoPYXBwX2luc3RhbmNlX2lkGAIgASgJEg8KB3Rhc2tfaWQYAyABKAkSFgoOYWZ0ZXJfc2VxdWVuY2UYBCABKAMSIwobaW5zdGFsbGF0aW9uX2dyYW50X3JldmlzaW9uGAUgASgDIkoKHFdhdGNoQWdlbnRUYXNrRXZlbnRzUmVzcG9uc2USKgoFZXZlbnQYASABKAsyGy53b3Jrb3MuYWdlbnQudjEuQWdlbnRFdmVudCJwChxBdXRob3JpemVBcHBLbm93bGVkZ2VSZXF1ZXN0EhIKCnByb2plY3RfaWQYASABKAkSFwoPYXBwX2luc3RhbmNlX2lkGAIgASgJEiMKG2luc3RhbGxhdGlvbl9ncmFudF9yZXZpc2lvbhgDIAEoAyJKCh1BdXRob3JpemVBcHBLbm93bGVkZ2VSZXNwb25zZRIVCg1vd25lcl91c2VyX2lkGAEgASgJEhIKCnByb2plY3RfaWQYAiABKAky4wIKD0FwcEFnZW50U2VydmljZRJdCgxSdW5BZ2VudFRhc2sSJC53b3Jrb3MuYWdlbnQudjEuUnVuQWdlbnRUYXNrUmVxdWVzdBolLndvcmtvcy5hZ2VudC52MS5SdW5BZ2VudFRhc2tSZXNwb25zZSIAEncKFFdhdGNoQWdlbnRUYXNrRXZlbnRzEiwud29ya29zLmFnZW50LnYxLldhdGNoQWdlbnRUYXNrRXZlbnRzUmVxdWVzdBotLndvcmtvcy5hZ2VudC52MS5XYXRjaEFnZW50VGFza0V2ZW50c1Jlc3BvbnNlIgAwARJ4ChVBdXRob3JpemVBcHBLbm93bGVkZ2USLS53b3Jrb3MuYWdlbnQudjEuQXV0aG9yaXplQXBwS25vd2xlZGdlUmVxdWVzdBouLndvcmtvcy5hZ2VudC52MS5BdXRob3JpemVBcHBLbm93bGVkZ2VSZXNwb25zZSIAQj1aO2dpdGh1Yi5jb20veWFuZ3RhbzEyMS93b3Jrb3MvZ2VuL2dvL3dvcmtvcy9hZ2VudC92MTthZ2VudHYxYgZwcm90bzM", [file_workos_agent_v1_agent]);
 
 /**
  * @generated from message workos.agent.v1.RunAgentTaskRequest
@@ -163,6 +163,68 @@ export const WatchAgentTaskEventsResponseSchema: GenMessage<WatchAgentTaskEvents
   messageDesc(file_workos_agent_v1_app_agent, 3);
 
 /**
+ * Per-call knowledge authorization for granted app surfaces. Runtime-host
+ * derives owner/device from the gateway identity it injected and
+ * project/app-instance/grant-revision from the validated surface session;
+ * public bridge bodies can never submit them. Core re-resolves the active
+ * installation and returns the allow binding only when the installation is
+ * active, the project matches and is unarchived, and the session's exact
+ * grant revision still equals the installation's current `knowledge.read`
+ * epoch. Any deny/not-found/revision drift is one sanitized failure — the
+ * response never reveals which internal record failed or why.
+ *
+ * @generated from message workos.agent.v1.AuthorizeAppKnowledgeRequest
+ */
+export type AuthorizeAppKnowledgeRequest = Message<"workos.agent.v1.AuthorizeAppKnowledgeRequest"> & {
+  /**
+   * @generated from field: string project_id = 1;
+   */
+  projectId: string;
+
+  /**
+   * @generated from field: string app_instance_id = 2;
+   */
+  appInstanceId: string;
+
+  /**
+   * @generated from field: int64 installation_grant_revision = 3;
+   */
+  installationGrantRevision: bigint;
+};
+
+/**
+ * Describes the message workos.agent.v1.AuthorizeAppKnowledgeRequest.
+ * Use `create(AuthorizeAppKnowledgeRequestSchema)` to create a new message.
+ */
+export const AuthorizeAppKnowledgeRequestSchema: GenMessage<AuthorizeAppKnowledgeRequest> = /*@__PURE__*/
+  messageDesc(file_workos_agent_v1_app_agent, 4);
+
+/**
+ * @generated from message workos.agent.v1.AuthorizeAppKnowledgeResponse
+ */
+export type AuthorizeAppKnowledgeResponse = Message<"workos.agent.v1.AuthorizeAppKnowledgeResponse"> & {
+  /**
+   * The canonical trusted binding runtime-host must use for the scoped
+   * indexer call; it always equals the session-derived scope on success.
+   *
+   * @generated from field: string owner_user_id = 1;
+   */
+  ownerUserId: string;
+
+  /**
+   * @generated from field: string project_id = 2;
+   */
+  projectId: string;
+};
+
+/**
+ * Describes the message workos.agent.v1.AuthorizeAppKnowledgeResponse.
+ * Use `create(AuthorizeAppKnowledgeResponseSchema)` to create a new message.
+ */
+export const AuthorizeAppKnowledgeResponseSchema: GenMessage<AuthorizeAppKnowledgeResponse> = /*@__PURE__*/
+  messageDesc(file_workos_agent_v1_app_agent, 5);
+
+/**
  * @generated from service workos.agent.v1.AppAgentService
  */
 export const AppAgentService: GenService<{
@@ -181,6 +243,14 @@ export const AppAgentService: GenService<{
     methodKind: "server_streaming";
     input: typeof WatchAgentTaskEventsRequestSchema;
     output: typeof WatchAgentTaskEventsResponseSchema;
+  },
+  /**
+   * @generated from rpc workos.agent.v1.AppAgentService.AuthorizeAppKnowledge
+   */
+  authorizeAppKnowledge: {
+    methodKind: "unary";
+    input: typeof AuthorizeAppKnowledgeRequestSchema;
+    output: typeof AuthorizeAppKnowledgeResponseSchema;
   },
 }> = /*@__PURE__*/
   serviceDesc(file_workos_agent_v1_app_agent, 0);
