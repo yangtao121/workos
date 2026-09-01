@@ -141,6 +141,75 @@ func (h *InstallationHandler) SetAppGrants(ctx context.Context, req *connect.Req
 	}), nil
 }
 
+// TransitionAppVersion pins one explicit immutable registry version onto the
+// active installation (ADR-0012). The owner comes only from the identity
+// context; the target digest is re-resolved server-side and the client can
+// never submit one.
+func (h *InstallationHandler) TransitionAppVersion(ctx context.Context, req *connect.Request[appv1.TransitionAppVersionRequest]) (*connect.Response[appv1.TransitionAppVersionResponse], error) {
+	id, err := identity.FromContext(ctx)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeUnauthenticated, err)
+	}
+	result, err := h.service.Transition(ctx, application.TransitionInput{
+		OwnerUserID: id.UserID, IdempotencyKey: req.Msg.GetIdempotencyKey(),
+		ProjectID: req.Msg.GetProjectId(), InstallationID: req.Msg.GetInstallationId(),
+		ExpectedRevision: req.Msg.GetExpectedProjectRevision(), Version: req.Msg.GetVersion(),
+	})
+	if err != nil {
+		return nil, mapInstallationError(err)
+	}
+	return connect.NewResponse(&appv1.TransitionAppVersionResponse{
+		Installation: InstallationToProto(result.Installation), ProjectRevision: result.ProjectRevision,
+	}), nil
+}
+
+// RollbackAppVersion restores the most recent previous pinned snapshot that
+// differs from the current identity (ADR-0012). The target is derived
+// server-side from the durable history; the request carries none.
+func (h *InstallationHandler) RollbackAppVersion(ctx context.Context, req *connect.Request[appv1.RollbackAppVersionRequest]) (*connect.Response[appv1.RollbackAppVersionResponse], error) {
+	id, err := identity.FromContext(ctx)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeUnauthenticated, err)
+	}
+	result, err := h.service.Rollback(ctx, application.RollbackInput{
+		OwnerUserID: id.UserID, IdempotencyKey: req.Msg.GetIdempotencyKey(),
+		ProjectID: req.Msg.GetProjectId(), InstallationID: req.Msg.GetInstallationId(),
+		ExpectedRevision: req.Msg.GetExpectedProjectRevision(),
+	})
+	if err != nil {
+		return nil, mapInstallationError(err)
+	}
+	return connect.NewResponse(&appv1.RollbackAppVersionResponse{
+		Installation: InstallationToProto(result.Installation), ProjectRevision: result.ProjectRevision,
+		RolledBackToVersion: result.Installation.Version,
+	}), nil
+}
+
+// ListAppVersionHistory reads one installation's bounded version history,
+// oldest first, with application-owned limit+1 pagination.
+func (h *InstallationHandler) ListAppVersionHistory(ctx context.Context, req *connect.Request[appv1.ListAppVersionHistoryRequest]) (*connect.Response[appv1.ListAppVersionHistoryResponse], error) {
+	id, err := identity.FromContext(ctx)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeUnauthenticated, err)
+	}
+	pageSize, pageToken := 0, ""
+	if req.Msg.GetPage() != nil {
+		pageSize, pageToken = int(req.Msg.GetPage().GetPageSize()), req.Msg.GetPage().GetPageToken()
+	}
+	page, err := h.service.ListVersionHistory(ctx, id.UserID, req.Msg.GetProjectId(), req.Msg.GetInstallationId(), pageToken, pageSize)
+	if err != nil {
+		return nil, mapInstallationError(err)
+	}
+	snapshots := make([]*appv1.AppInstallationVersionSnapshot, 0, len(page.Items))
+	for _, snapshot := range page.Items {
+		snapshots = append(snapshots, VersionSnapshotToProto(snapshot))
+	}
+	return connect.NewResponse(&appv1.ListAppVersionHistoryResponse{
+		Snapshots: snapshots,
+		Page:      &commonv1.PageResponse{NextPageToken: page.NextToken},
+	}), nil
+}
+
 // mapInstallationError converts installation failures to Connect codes with
 // sanitized messages: no SQL, constraint names, catalog internals, grant
 // contents, or owner details. Stored-fact corruption and pinned-identity
@@ -159,6 +228,10 @@ func mapInstallationError(err error) error {
 		return connect.NewError(connect.CodeInvalidArgument, errors.New("granted permissions are malformed"))
 	case errors.Is(err, domain.ErrGrantNotRequested):
 		return connect.NewError(connect.CodePermissionDenied, errors.New("granted permission was not requested by the app"))
+	case errors.Is(err, domain.ErrGrantNotCompatible):
+		return connect.NewError(connect.CodeFailedPrecondition, errors.New("current permissions are not compatible with the target version; review permissions first"))
+	case errors.Is(err, domain.ErrNoPreviousVersion):
+		return connect.NewError(connect.CodeFailedPrecondition, errors.New("no previous version to roll back to"))
 	case errors.Is(err, domain.ErrIdempotencyConflict):
 		return connect.NewError(connect.CodeAborted, errors.New("idempotency key was already used for a different request"))
 	case errors.Is(err, domain.ErrConflict):
@@ -184,4 +257,15 @@ func InstallationToProto(installation domain.Installation) *appv1.AppInstallatio
 		result.UninstalledAt = timestamppb.New(*installation.UninstalledAt)
 	}
 	return result
+}
+
+// VersionSnapshotToProto maps one history snapshot to the public projection.
+func VersionSnapshotToProto(snapshot domain.VersionSnapshot) *appv1.AppInstallationVersionSnapshot {
+	return &appv1.AppInstallationVersionSnapshot{
+		Version:        snapshot.Version,
+		ManifestDigest: snapshot.ManifestDigest,
+		Source:         snapshot.Source,
+		Sequence:       snapshot.Sequence,
+		OccurredAt:     timestamppb.New(snapshot.OccurredAt),
+	}
 }

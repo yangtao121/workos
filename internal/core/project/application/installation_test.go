@@ -18,6 +18,8 @@ const (
 	otherProject = "01999999-9999-7999-8999-999999999994"
 )
 
+var installationTestTime = time.Date(2026, 8, 31, 12, 0, 0, 123000000, time.UTC)
+
 type fakeRepository struct {
 	requests   map[string]ports.StoredInstallationRequest
 	byID       map[string]domain.Installation
@@ -27,6 +29,10 @@ type fakeRepository struct {
 	resolveErr error
 	// setLog records every SetAppGrants command that reached the repository.
 	setLog []ports.SetAppGrantsCommand
+	// transitionLog records every version command; versions backs
+	// ListAllVersions.
+	transitionLog []ports.TransitionCommand
+	versions      []domain.VersionSnapshot
 	// setFn, when set, replaces the simulated transaction so failure paths
 	// can be injected.
 	setFn func(command ports.SetAppGrantsCommand) (ports.InstallationResult, error)
@@ -103,6 +109,8 @@ func (f *fakeRepository) SetAppGrants(_ context.Context, command ports.SetAppGra
 			ProjectRevision:          command.ExpectedRevision,
 			ResultGrantedPermissions: installation.GrantedPermissions,
 			ResultGrantRevision:      installation.GrantRevision,
+			ResultVersion:            installation.Version,
+			ResultManifestDigest:     installation.ManifestDigest,
 		}
 		return ports.InstallationResult{Installation: installation, ProjectRevision: command.ExpectedRevision}, nil
 	}
@@ -118,6 +126,8 @@ func (f *fakeRepository) SetAppGrants(_ context.Context, command ports.SetAppGra
 		ProjectRevision:          newRevision,
 		ResultGrantedPermissions: installation.GrantedPermissions,
 		ResultGrantRevision:      installation.GrantRevision,
+		ResultVersion:            installation.Version,
+		ResultManifestDigest:     installation.ManifestDigest,
 	}
 	return ports.InstallationResult{Installation: installation, ProjectRevision: newRevision}, nil
 }
@@ -134,6 +144,23 @@ func equalCanonicalGrants(stored, target []string) bool {
 		}
 	}
 	return true
+}
+
+func (f *fakeRepository) Transition(_ context.Context, command ports.TransitionCommand) (ports.InstallationResult, error) {
+	f.transitionLog = append(f.transitionLog, command)
+	installation, ok := f.byID[command.InstallationID]
+	if !ok {
+		return ports.InstallationResult{}, domain.ErrNotFound
+	}
+	updated := installation
+	updated.Version = command.Target.Version
+	updated.ManifestDigest = command.Target.ManifestDigest
+	f.byID[command.InstallationID] = updated
+	return ports.InstallationResult{Installation: updated, ProjectRevision: command.ExpectedRevision + 1}, nil
+}
+
+func (f *fakeRepository) ListAllVersions(_ context.Context, _, _ string) ([]domain.VersionSnapshot, error) {
+	return f.versions, nil
 }
 
 func (f *fakeRepository) ListActive(_ context.Context, _, _, _ string, limit int) ([]domain.Installation, error) {
@@ -253,6 +280,21 @@ func TestInstallExplicitVersionPassesExactVersionToCatalog(t *testing.T) {
 	}
 }
 
+func TestInstallExplicitVersionRejectsCatalogIdentityDrift(t *testing.T) {
+	t.Parallel()
+	repo := &fakeRepository{requests: map[string]ports.StoredInstallationRequest{}, byID: map[string]domain.Installation{}}
+	catalog := &fakeCatalog{resolved: map[string]domain.PinnedApp{"board-app@1.9.0": pinned("2.0.0", digestOf('c'), "user")}}
+	service := newInstallationService(t, repo, catalog)
+	input := installInput("install-drifted")
+	input.Version = "1.9.0"
+	if _, err := service.Install(context.Background(), input); !errors.Is(err, errCatalogCorrupt) {
+		t.Fatalf("catalog must return the exact requested version, got %v", err)
+	}
+	if len(repo.installLog) != 0 {
+		t.Fatal("a drifted catalog identity must not reach the repository")
+	}
+}
+
 func TestInstallCatalogDenialIsNotFound(t *testing.T) {
 	t.Parallel()
 	repo := &fakeRepository{requests: map[string]ports.StoredInstallationRequest{}, byID: map[string]domain.Installation{}}
@@ -284,6 +326,9 @@ func TestInstallReplaysConsumedKeyBeforeResolvingCurrent(t *testing.T) {
 	stored := ports.StoredInstallationRequest{
 		Command: "install", RequestDigest: domain.InstallationRequestDigest("install", testProject, "board-app", "", "", 4),
 		InstallationID: testInstall, ProjectRevision: 5,
+		// Migration 025 backfilled every mapping with the pinned identity its
+		// first response carried; the replay projection includes it.
+		ResultGrantRevision: 1, ResultVersion: "1.0.0", ResultManifestDigest: digestOf('e'),
 	}
 	repo := &fakeRepository{
 		requests: map[string]ports.StoredInstallationRequest{"install-once": stored},
@@ -292,8 +337,8 @@ func TestInstallReplaysConsumedKeyBeforeResolvingCurrent(t *testing.T) {
 			Version: "1.0.0", ManifestDigest: digestOf('e'),
 			// A later uninstall tombstoned the row; the replay must still
 			// present the first response's active projection.
-			InstalledAt:   time.Now().UTC(),
-			UninstalledAt: ptr(time.Now().UTC().Add(time.Minute)),
+			InstalledAt:   installationTestTime,
+			UninstalledAt: ptr(installationTestTime.Add(time.Minute)),
 		}},
 	}
 	catalog := &fakeCatalog{resolved: map[string]domain.PinnedApp{"board-app@": pinned("9.9.9", digestOf('f'), "user")}}
@@ -315,6 +360,9 @@ func TestInstallConsumedKeyDifferentRequestConflicts(t *testing.T) {
 	stored := ports.StoredInstallationRequest{
 		Command: "install", RequestDigest: domain.InstallationRequestDigest("install", testProject, "board-app", "", "", 4),
 		InstallationID: testInstall, ProjectRevision: 5,
+		// Migration 025 backfilled every mapping with the pinned identity its
+		// first response carried; the replay projection includes it.
+		ResultVersion: "1.0.0", ResultManifestDigest: digestOf('e'),
 	}
 	repo := &fakeRepository{requests: map[string]ports.StoredInstallationRequest{"install-once": stored}, byID: map[string]domain.Installation{testInstall: {ID: testInstall}}}
 	service := newInstallationService(t, repo, &fakeCatalog{})
@@ -327,17 +375,18 @@ func TestInstallConsumedKeyDifferentRequestConflicts(t *testing.T) {
 
 func TestUninstallReplayAndValidation(t *testing.T) {
 	t.Parallel()
-	tombstone := time.Now().UTC()
+	tombstone := installationTestTime.Add(time.Minute)
 	stored := ports.StoredInstallationRequest{
 		Command:        "uninstall",
 		RequestDigest:  domain.InstallationRequestDigest("uninstall", testProject, "", "", testInstall, 4),
 		InstallationID: testInstall, ProjectRevision: 5, ResultUninstalledAt: &tombstone,
+		ResultGrantRevision: 1, ResultVersion: "1.0.0", ResultManifestDigest: digestOf('f'),
 	}
 	repo := &fakeRepository{
 		requests: map[string]ports.StoredInstallationRequest{"uninstall-once": stored},
 		byID: map[string]domain.Installation{testInstall: {
 			ID: testInstall, OwnerUserID: testOwner, ProjectID: testProject, AppID: "board-app",
-			Version: "1.0.0", ManifestDigest: digestOf('g'), InstalledAt: tombstone.Add(-time.Hour),
+			Version: "1.0.0", ManifestDigest: digestOf('f'), InstalledAt: tombstone.Add(-time.Hour),
 			UninstalledAt: &tombstone,
 		}},
 	}
@@ -362,6 +411,31 @@ func TestUninstallReplayAndValidation(t *testing.T) {
 		if _, err := service.Uninstall(context.Background(), input); !errors.Is(err, domain.ErrInvalid) {
 			t.Errorf("malformed uninstall must be invalid, got %v", err)
 		}
+	}
+}
+
+func TestReplayFailsClosedWhenSnapshotCorruptsInstallation(t *testing.T) {
+	t.Parallel()
+	stored := ports.StoredInstallationRequest{
+		Command: "uninstall", RequestDigest: domain.InstallationRequestDigest("uninstall", testProject, "", "", testInstall, 4),
+		InstallationID: testInstall, ProjectRevision: 5,
+		ResultUninstalledAt: ptr(installationTestTime.Add(-time.Minute)),
+		ResultGrantRevision: 1, ResultVersion: "1.0.0", ResultManifestDigest: digestOf('a'),
+	}
+	repo := &fakeRepository{
+		requests: map[string]ports.StoredInstallationRequest{"corrupt-replay": stored},
+		byID: map[string]domain.Installation{testInstall: {
+			ID: testInstall, OwnerUserID: testOwner, ProjectID: testProject, AppID: "board-app",
+			Version: "1.0.0", ManifestDigest: digestOf('a'), GrantRevision: 1,
+			InstalledAt: installationTestTime,
+		}},
+	}
+	service := newInstallationService(t, repo, &fakeCatalog{})
+	if _, err := service.Uninstall(context.Background(), UninstallInput{
+		OwnerUserID: testOwner, IdempotencyKey: "corrupt-replay", ProjectID: testProject,
+		InstallationID: testInstall, ExpectedRevision: 4,
+	}); !errors.Is(err, domain.ErrInstallationCorrupt) {
+		t.Fatalf("a corrupt first-response overlay must fail closed, got %v", err)
 	}
 }
 

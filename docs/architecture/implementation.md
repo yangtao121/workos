@@ -359,6 +359,36 @@ harness-host worker（provider 经中立 ports.ArtifactSink 输出）
   `bridge_token` 最初保持空；bridge 注入由后续的 Project-scoped App Agent Bridge 切片引入
   （见下节），iframe 隔离属性不变。App window 与 Agent Center window 并存渲染。
 
+## Adaptive Desktop / Mobile Shell（2026-08-31）
+
+`@workos/adaptive-shell` 是 Desktop 与 `apps/mobile-shell` 共享的唯一设备布局契约：直接复用
+Proto `DeviceClass`，纯 `resolveDeviceLayout` 从 viewport/orientation/DPR 与可选 window
+segments 推导 Compact / Medium / Expanded / Fold-separated；DOM/Window Segments API 只存在于
+React adapter。边界 599/600、1023/1024、异常 DPR、segment 反序/重叠/变化、横向或纵向 hinge
+均由纯测试覆盖；没有 segment 时按宽度安全退化，不做 UA/品牌猜测。Fold-separated 按两个真实
+segment 的宽高比例排布行或列，零宽 gap 也保持为零，hinge 无点击目标。
+
+Desktop 继续持有唯一 Project/window/App/Agent/Artifact 状态：Compact 是单主内容 + 底部导航 +
+Project sheet，Medium 是单主内容 + 用户打开的 Agent slide-over + 显式 Dock，Expanded 仍用原
+window-manager 自由窗口，Fold-separated 只投影两个 pane。Project 切换仍使旧 Surface、Artifact、
+context 与迟到响应 inert；uninstall、grant revision 或 pinned version 改变时统一关闭该
+installation 的 Surface 并清理所有 device-class 引用。Project sweep 只在完整分页读取成功后执行，
+初始空列表/服务不可达不被当作权威删除；确认 logout/current-device revoke 后清空该 browser
+profile 的 shell 引用。
+
+布局状态 owner 是 origin-scoped、versioned IndexedDB，key = `(device_class, project_id)`，只含
+canonical UUIDv7 UI 引用、有界 recent/dock 列表、system-window allowlist、single/dual preference、
+canonical UTC `updated_at` 与 revision。所有 mutation 在同一 readwrite transaction 上读取最新
+record 后重放并在 commit 后才返回；读取遇到损坏只删除当前 key，sweep/prune 后重新 sanitize。
+IndexedDB 打不开时使用同一个 session memory store（不是每次操作返回空状态），memory adapter
+同样串行写入并 clone 数组，调用方无法绕过 revision 修改持久值。PWA 只声明 manifest/icon/
+viewport-fit；HTML/manifest no-store、内容哈希 assets immutable，不缓存 API 响应。
+
+门禁 `make test-adaptive-shell` 在真实 Gateway/Core/harness/runtime/reliability + Chromium 上覆盖
+390×844、820×1180、1440×900 与注入双 segment；`@workos/adaptive-shell` 40 个测试和
+desktop-web 110 个测试覆盖 store/layout/hook 与共享 UI 回归。真实 foldable hardware、Capacitor
+iPad/Android wrapper、push/native secure storage 仍不在当前证据内。
+
 ## Gateway 设备配对与会话（ADR-0007）
 
 生产设备身份属于 Gateway（migration `020`，`workos_gateway` schema，owner: workos-gateway）：
@@ -477,6 +507,71 @@ requested permission（manifest，永远只是请求）
   bridge pending/ready/failed/unavailable 状态，failed 可重试握手；bridge token 只存于
   Desktop 的 ref（不进可序列化 window state/DOM）；Project 切换/关窗/卸载/iframe reload
   关闭旧 port 并使迟到 response inert，Agent task 本身 durable。
+
+## App Version Transition 与 Owner 触发的 Rollback（ADR-0012，2026-08-31）
+
+App Registry 的 immutable SemVer 版本之上，Project Installation 增加 owner 明确触发的
+版本切换与"上一 pinned 版本"回滚。additive RPC 挂在现有 public
+`AppInstallationService`（Gateway allowlist 自动覆盖，identity 注入）：
+
+```text
+Desktop Versions 对话框 / System Monitor eligible Incident
+  → Gateway public AppInstallationService.TransitionAppVersion / RollbackAppVersion
+Core: identity → 幂等 key 裁决（共用 installation request 命名空间）
+  → 中立 AppCatalog 解析 exact 目标 version → pinned identity/scope 重验
+  → 当前 grants ⊆ 目标 requested（否则 FailedPrecondition "permissions need review"）
+  → 单事务：installation version/digest + history 追加（含裁剪）
+      + Project revision(+1) + project.app.version.updated.v1 + outbox + 首响应快照
+```
+
+- `TransitionAppVersion` 请求只有 key/project/installation/expected revision/目标
+  version；digest 由 Core 从 Registry 重解析，客户端不能提交 digest/image/container。
+  同 version 同 digest 是确定性 no-op（消费 key、不动 revision/历史）。
+- `RollbackAppVersion` 无目标字段：Core 在锁内从 durable history 重新推导"最近一个与
+  当前 (version, digest) 不同的快照"并经 Catalog 重验逐字一致；无 previous snapshot →
+  FailedPrecondition 零副作用。Application 层先推导一次用于验证 + 锁内重推导比对，
+  漂移为稳定 `Aborted`。
+- 幂等沿用 `project_app_installation_requests`；migration `025` 增加
+  `result_version`/`result_manifest_digest` 快照列（从 owner-bound installation
+  fail-closed 回填 + NOT NULL），same key/same request 精确重放第一次响应（含版本
+  事实），different request 稳定 `Aborted`，失败不消费 key。
+- 版本历史：`workos_core.project_app_installation_versions`（append-only，owner：
+  workos-core Project Installation），`(installation_id, sequence)` 主键、复合 FK
+  CASCADE 绑定同 owner installation，source ∈ install/transition/rollback；每个
+  installation 有界保留最近 20 条（条目不可更新，同事务删除最旧条目）。每次读取重验
+  version/digest/source、canonical UUIDv7、UTC 微秒时间、严格递增序列，并要求最新保留
+  snapshot 与 installation 当前 pinned identity 一致；损坏为净化 Internal。安装事务写入
+  install origin 快照。
+- 所有 installation 数据库投影与幂等首响应行在 adapter 出口重验 canonical UUIDv7、
+  version/digest、canonical sorted grants、正 grant/revision、UTC 微秒时间及 tombstone
+  顺序；首响应 snapshot 覆盖到 installation 后在 application 边界再次整体重验，跨行
+  组合损坏也不能作为重放结果泄漏。application 写入时间先规范为 PostgreSQL 微秒精度，
+  首次响应与跨重启重放的时间事实逐字一致。
+- 权限绝不扩大：目标 requested 集合不完全覆盖当前 grants（锁内重验）→
+  `FailedPrecondition`，要求显式 `SetAppGrants` 重新确认；rollback 同样不恢复更宽的
+  历史 grant。
+- 事件 `project.app.version.updated.v1` payload 只含稳定 ID/fromVersion/toVersion/
+  manifestDigest/source；Surface 失效依赖既有的每请求 Core revalidation（pinned
+  digest 漂移立即 404），Desktop 对确认的版本变更 best-effort 关闭该 installation 窗口。
+- Reliability 不读取/复制该历史；System Monitor 的 rollback 入口由 Desktop 组合
+  public Incident 读 + public `ListAppVersionHistory`（eligibility 预览，服务端命令
+  仍全量裁决）；Reliability 不可达只降级 incident 列表。
+- Desktop：App Library 已安装行新增 `Versions` 对话框（历史、Switch version 显式
+  consent、Roll back to <prev> 预览）；System Monitor 对绑定同 Project/app instance、
+  非 resolved 且历史存在 previous snapshot 的 incident 显示可执行 rollback，固定文案
+  区分 completed / no previous / permissions need review / conflict / Core 不可达，
+  且明确"Core 切换成功 ≠ App 已健康"。命令成功后先采用 Core 首响应中的 installation +
+  Project revision 并立即关闭/清理旧 Surface 引用，再 best-effort 刷新列表，因此刷新失败或
+  慢响应不会让 UI 留在旧 revision；无 previous history 是一次有缓存的权威 verdict，不会
+  render-loop 重复读取。门禁 `make test-app-version-rollback`
+  （PostgreSQL + Core + Gateway + Chromium：两个 immutable web-bundle 版本注册、
+  App Library consent 安装、UI transition、旧 Surface 失效、新 Surface 可开、UI
+  rollback（System Monitor 的 Incident read 使用确定性 browser fixture，history/命令/
+  revision/Surface 链路仍真实）、API exact replay、stale revision Aborted、unknown version NotFound、
+  重开 Surface 呈现回滚后内容），集成套件覆盖 grant 扩张 fail closed、有界历史、
+  分页与 restart battery（transition/rollback 事实与两次 exact replay 跨进程重启
+  成立）。container 链路的同命令语义待 rootless acceptance host 复验；自动
+  canary/repair/deployment controller 仍 unavailable。
 
 ## Mutable Project App Grants
 

@@ -113,4 +113,74 @@ service AppInstallationService {
   // single transaction. The command is serialized against every other
   // project mutation by expected_project_revision.
   rpc SetAppGrants(SetAppGrantsRequest) returns (SetAppGrantsResponse) {}
+  // TransitionAppVersion pins one explicit, immutable registry version of
+  // the same app onto the active installation (ADR-0012). The owner names
+  // the version; Core re-resolves its exact manifest digest from the
+  // registry and never accepts client-supplied digests. The current grant
+  // set must remain a subset of the target version's requested permissions
+  // or the command fails closed with FailedPrecondition (permissions need
+  // review) — permissions are never expanded, not even by an upgrade.
+  rpc TransitionAppVersion(TransitionAppVersionRequest) returns (TransitionAppVersionResponse) {}
+  // RollbackAppVersion restores the most recent previous pinned snapshot
+  // that differs from the current (version, digest), chosen by Core from
+  // the installation's durable, bounded version history — the client never
+  // names a rollback target. With no previous snapshot the command fails
+  // closed with FailedPrecondition and zero side effects.
+  rpc RollbackAppVersion(RollbackAppVersionRequest) returns (RollbackAppVersionResponse) {}
+  // ListAppVersionHistory reads one installation's bounded, append-only
+  // version history (install origin plus every transition/rollback), oldest
+  // first.
+  rpc ListAppVersionHistory(ListAppVersionHistoryRequest) returns (ListAppVersionHistoryResponse) {}
+}
+
+// TransitionAppVersionRequest pins one explicit immutable registry version
+// onto the active installation. The target must be a registered version of
+// the same app for the same owner.
+message TransitionAppVersionRequest {
+  string idempotency_key = 1;
+  string project_id = 2;
+  string installation_id = 3;
+  int64 expected_project_revision = 4;
+  string version = 5;
+}
+
+message TransitionAppVersionResponse {
+  AppInstallation installation = 1;
+  int64 project_revision = 2;
+}
+
+message RollbackAppVersionRequest {
+  string idempotency_key = 1;
+  string project_id = 2;
+  string installation_id = 3;
+  int64 expected_project_revision = 4;
+}
+
+message RollbackAppVersionResponse {
+  AppInstallation installation = 1;
+  int64 project_revision = 2;
+  // The exact previous pinned version Core selected and restored.
+  string rolled_back_to_version = 3;
+}
+
+// AppInstallationVersionSnapshot is one immutable entry of an installation's
+// version history: the pinned identity facts as of that change.
+message AppInstallationVersionSnapshot {
+  string version = 1;
+  string manifest_digest = 2;
+  // install | transition | rollback
+  string source = 3;
+  int64 sequence = 4;
+  google.protobuf.Timestamp occurred_at = 5;
+}
+
+message ListAppVersionHistoryRequest {
+  string project_id = 1;
+  string installation_id = 2;
+  workos.common.v1.PageRequest page = 3;
+}
+
+message ListAppVersionHistoryResponse {
+  repeated AppInstallationVersionSnapshot snapshots = 1;
+  workos.common.v1.PageResponse page = 2;
 }

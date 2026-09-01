@@ -3,6 +3,7 @@ package application
 import (
 	"context"
 	"errors"
+	"strconv"
 	"time"
 
 	"github.com/yangtao121/workos/internal/core/project/domain"
@@ -132,7 +133,8 @@ func (s *InstallationService) Install(ctx context.Context, input InstallInput) (
 		return ports.InstallationResult{}, err
 	}
 	if pinned.AppID != input.AppID || !domain.ValidInstallationVersion(pinned.Version) ||
-		!domain.ValidInstallationManifestDigest(pinned.ManifestDigest) {
+		!domain.ValidInstallationManifestDigest(pinned.ManifestDigest) ||
+		(input.Version != "" && pinned.Version != input.Version) || !validRequestedPermissions(pinned.Permissions) {
 		return ports.InstallationResult{}, errCatalogCorrupt
 	}
 	if !domain.InstallableScope(pinned.Scope) {
@@ -147,7 +149,7 @@ func (s *InstallationService) Install(ctx context.Context, input InstallInput) (
 		ProjectID: input.ProjectID, AppID: input.AppID, Pinned: pinned,
 		GrantedPermissions: grant,
 		ExpectedRevision:   input.ExpectedRevision, RequestDigest: digest,
-		NewInstallationID: s.ids.New(), Now: s.now(),
+		NewInstallationID: s.ids.New(), Now: domain.CanonicalInstallationTime(s.now()),
 	})
 }
 
@@ -166,7 +168,7 @@ func (s *InstallationService) Uninstall(ctx context.Context, input UninstallInpu
 	return s.repository.Uninstall(ctx, ports.UninstallCommand{
 		OwnerUserID: input.OwnerUserID, IdempotencyKey: input.IdempotencyKey,
 		ProjectID: input.ProjectID, InstallationID: input.InstallationID,
-		ExpectedRevision: input.ExpectedRevision, RequestDigest: digest, Now: s.now(),
+		ExpectedRevision: input.ExpectedRevision, RequestDigest: digest, Now: domain.CanonicalInstallationTime(s.now()),
 	})
 }
 
@@ -207,7 +209,8 @@ func (s *InstallationService) SetAppGrants(ctx context.Context, input SetAppGran
 		return ports.InstallationResult{}, err
 	}
 	if pinned.AppID != installation.AppID || !domain.ValidInstallationVersion(pinned.Version) ||
-		!domain.ValidInstallationManifestDigest(pinned.ManifestDigest) {
+		!domain.ValidInstallationManifestDigest(pinned.ManifestDigest) ||
+		!validRequestedPermissions(pinned.Permissions) {
 		return ports.InstallationResult{}, errCatalogCorrupt
 	}
 	if pinned.Version != installation.Version || pinned.ManifestDigest != installation.ManifestDigest {
@@ -224,8 +227,217 @@ func (s *InstallationService) SetAppGrants(ctx context.Context, input SetAppGran
 		OwnerUserID: input.OwnerUserID, IdempotencyKey: input.IdempotencyKey,
 		ProjectID: input.ProjectID, InstallationID: input.InstallationID,
 		Pinned: pinned, GrantedPermissions: grant,
-		ExpectedRevision: input.ExpectedRevision, RequestDigest: digest, Now: s.now(),
+		ExpectedRevision: input.ExpectedRevision, RequestDigest: digest, Now: domain.CanonicalInstallationTime(s.now()),
 	})
+}
+
+// TransitionInput is one validated-boundary explicit version transition
+// command (ADR-0012).
+type TransitionInput struct {
+	OwnerUserID      string
+	IdempotencyKey   string
+	ProjectID        string
+	InstallationID   string
+	ExpectedRevision int64
+	Version          string
+}
+
+// RollbackInput is one validated-boundary previous-pinned-version rollback
+// command (ADR-0012). The request carries no target: Core derives it from
+// the installation's durable history.
+type RollbackInput struct {
+	OwnerUserID      string
+	IdempotencyKey   string
+	ProjectID        string
+	InstallationID   string
+	ExpectedRevision int64
+}
+
+// VersionHistoryPage is one page of an installation's version history,
+// oldest first, with the next cursor as an opaque decimal sequence string.
+type VersionHistoryPage struct {
+	Items     []domain.VersionSnapshot
+	NextToken string
+}
+
+const versionHistoryMaxPageSize = 20
+
+// Transition pins one explicit immutable registry version onto the active
+// installation. The adjudication order is fixed: validate, digest the
+// canonical client request, replay a consumed key before any resolution,
+// read the owner-scoped active installation, resolve the exact target
+// version through the neutral catalog port, verify the pinned identity,
+// scope, and grant compatibility (the current grant set must remain a
+// subset of the target's requested permissions — permissions are never
+// expanded), then hand the command to the repository, which re-arbitrates
+// everything under the project lock in one transaction.
+func (s *InstallationService) Transition(ctx context.Context, input TransitionInput) (ports.InstallationResult, error) {
+	if input.OwnerUserID == "" || !domain.ValidInstallationIdempotencyKey(input.IdempotencyKey) ||
+		!domain.ValidInstallationUUID(input.ProjectID) || !domain.ValidInstallationUUID(input.InstallationID) ||
+		input.ExpectedRevision <= 0 || !domain.ValidInstallationVersion(input.Version) {
+		return ports.InstallationResult{}, domain.ErrInvalid
+	}
+	digest := domain.TransitionRequestDigest(input.ProjectID, input.InstallationID, input.ExpectedRevision, input.Version)
+	if result, found, err := s.replayIfConsumed(ctx, input.OwnerUserID, input.IdempotencyKey, digest); found || err != nil {
+		return result, err
+	}
+	installation, err := s.repository.ResolveActiveInstallation(ctx, input.OwnerUserID, input.ProjectID, input.InstallationID)
+	if err != nil {
+		return ports.InstallationResult{}, err
+	}
+	target, err := s.resolveCompatibleTarget(ctx, input.OwnerUserID, installation, input.Version)
+	if err != nil {
+		return ports.InstallationResult{}, err
+	}
+	return s.repository.Transition(ctx, ports.TransitionCommand{
+		OwnerUserID: input.OwnerUserID, IdempotencyKey: input.IdempotencyKey,
+		ProjectID: input.ProjectID, InstallationID: input.InstallationID,
+		Target: target, Source: domain.VersionSourceTransition,
+		ExpectedRevision: input.ExpectedRevision, RequestDigest: digest, Now: domain.CanonicalInstallationTime(s.now()),
+	})
+}
+
+// Rollback restores the most recent previous pinned snapshot that differs
+// from the current (version, digest). The target is derived twice from the
+// durable history — once here for registry verification and grant
+// compatibility, and once again inside the repository transaction under the
+// project lock — so a concurrent version change between the two reads can
+// never pin an unverified target: the loser is a stable conflict, never a
+// silent mismatch.
+func (s *InstallationService) Rollback(ctx context.Context, input RollbackInput) (ports.InstallationResult, error) {
+	if input.OwnerUserID == "" || !domain.ValidInstallationIdempotencyKey(input.IdempotencyKey) ||
+		!domain.ValidInstallationUUID(input.ProjectID) || !domain.ValidInstallationUUID(input.InstallationID) ||
+		input.ExpectedRevision <= 0 {
+		return ports.InstallationResult{}, domain.ErrInvalid
+	}
+	digest := domain.RollbackRequestDigest(input.ProjectID, input.InstallationID, input.ExpectedRevision)
+	if result, found, err := s.replayIfConsumed(ctx, input.OwnerUserID, input.IdempotencyKey, digest); found || err != nil {
+		return result, err
+	}
+	installation, err := s.repository.ResolveActiveInstallation(ctx, input.OwnerUserID, input.ProjectID, input.InstallationID)
+	if err != nil {
+		return ports.InstallationResult{}, err
+	}
+	history, err := s.repository.ListAllVersions(ctx, input.OwnerUserID, input.InstallationID)
+	if err != nil {
+		return ports.InstallationResult{}, err
+	}
+	if err := domain.ValidateVersionHistoryForInstallation(history, installation); err != nil {
+		return ports.InstallationResult{}, err
+	}
+	candidate, err := deriveRollbackTarget(history, installation)
+	if err != nil {
+		return ports.InstallationResult{}, err
+	}
+	target, err := s.resolveCompatibleTarget(ctx, input.OwnerUserID, installation, candidate.Version)
+	if err != nil {
+		return ports.InstallationResult{}, err
+	}
+	// The registry version must be byte-identical to the durable history
+	// snapshot: registry versions are immutable, so any drift is corruption.
+	if target.Version != candidate.Version || target.ManifestDigest != candidate.ManifestDigest {
+		return ports.InstallationResult{}, errPinnedIdentityDrift
+	}
+	return s.repository.Transition(ctx, ports.TransitionCommand{
+		OwnerUserID: input.OwnerUserID, IdempotencyKey: input.IdempotencyKey,
+		ProjectID: input.ProjectID, InstallationID: input.InstallationID,
+		Target: target, Source: domain.VersionSourceRollback,
+		ExpectedRevision: input.ExpectedRevision, RequestDigest: digest, Now: domain.CanonicalInstallationTime(s.now()),
+	})
+}
+
+// ListVersionHistory returns one page of the installation's version history,
+// oldest first. The read is owner/project/active-installation scoped and the
+// stored snapshots are re-validated on every read; corruption is a sanitized
+// Internal, never a silently trimmed page.
+func (s *InstallationService) ListVersionHistory(ctx context.Context, ownerUserID, projectID, installationID, cursor string, pageSize int) (VersionHistoryPage, error) {
+	if ownerUserID == "" || !domain.ValidInstallationUUID(projectID) || !domain.ValidInstallationUUID(installationID) {
+		return VersionHistoryPage{}, domain.ErrInvalid
+	}
+	var after int64
+	if cursor != "" {
+		value, err := strconv.ParseInt(cursor, 10, 64)
+		if err != nil || value < 0 {
+			return VersionHistoryPage{}, domain.ErrInvalid
+		}
+		after = value
+	}
+	switch {
+	case pageSize < 0:
+		return VersionHistoryPage{}, domain.ErrInvalid
+	case pageSize == 0:
+		pageSize = installationDefaultPageSize
+	case pageSize > versionHistoryMaxPageSize:
+		pageSize = versionHistoryMaxPageSize
+	}
+	// The active-installation resolution carries the owner/project/archive
+	// scoping: history of a tombstoned or foreign installation is NotFound,
+	// exactly like every other installation read.
+	installation, err := s.repository.ResolveActiveInstallation(ctx, ownerUserID, projectID, installationID)
+	if err != nil {
+		return VersionHistoryPage{}, err
+	}
+	items, err := s.repository.ListAllVersions(ctx, ownerUserID, installationID)
+	if err != nil {
+		return VersionHistoryPage{}, err
+	}
+	if err := domain.ValidateVersionHistoryForInstallation(items, installation); err != nil {
+		return VersionHistoryPage{}, err
+	}
+	filtered := make([]domain.VersionSnapshot, 0, len(items))
+	for _, snapshot := range items {
+		if snapshot.Sequence > after {
+			filtered = append(filtered, snapshot)
+		}
+	}
+	if len(filtered) <= pageSize {
+		return VersionHistoryPage{Items: filtered, NextToken: ""}, nil
+	}
+	page := filtered[:pageSize]
+	return VersionHistoryPage{
+		Items:     page,
+		NextToken: strconv.FormatInt(page[len(page)-1].Sequence, 10),
+	}, nil
+}
+
+// resolveCompatibleTarget resolves one exact registry version for the
+// installation's app and verifies the identity, scope, and grant
+// compatibility invariants shared by transition and rollback.
+func (s *InstallationService) resolveCompatibleTarget(ctx context.Context, ownerUserID string, installation domain.Installation, version string) (domain.PinnedApp, error) {
+	pinned, err := s.catalog.Resolve(ctx, ownerUserID, installation.AppID, version)
+	if err != nil {
+		return domain.PinnedApp{}, err
+	}
+	if pinned.AppID != installation.AppID || pinned.Version != version ||
+		!domain.ValidInstallationVersion(pinned.Version) ||
+		!domain.ValidInstallationManifestDigest(pinned.ManifestDigest) ||
+		!validRequestedPermissions(pinned.Permissions) {
+		return domain.PinnedApp{}, errCatalogCorrupt
+	}
+	if !domain.InstallableScope(pinned.Scope) {
+		return domain.PinnedApp{}, errAppScopeViolated
+	}
+	if err := domain.GrantsCompatibleWithTarget(installation.GrantedPermissions, pinned.Permissions); err != nil {
+		return domain.PinnedApp{}, err
+	}
+	return pinned, nil
+}
+
+func validRequestedPermissions(permissions []string) bool {
+	_, err := domain.CanonicalGrantShape(permissions)
+	return err == nil
+}
+
+// deriveRollbackTarget selects the most recent history snapshot whose
+// (version, digest) differs from the installation's current pinned identity.
+func deriveRollbackTarget(history []domain.VersionSnapshot, installation domain.Installation) (domain.VersionSnapshot, error) {
+	for index := len(history) - 1; index >= 0; index-- {
+		snapshot := history[index]
+		if snapshot.Version != installation.Version || snapshot.ManifestDigest != installation.ManifestDigest {
+			return snapshot, nil
+		}
+	}
+	return domain.VersionSnapshot{}, domain.ErrNoPreviousVersion
 }
 
 // ResolveActiveInstallation is the authority read for installed-instance
@@ -289,5 +501,13 @@ func (s *InstallationService) replayIfConsumed(ctx context.Context, ownerUserID,
 	installation.UninstalledAt = stored.ResultUninstalledAt
 	installation.GrantedPermissions = stored.ResultGrantedPermissions
 	installation.GrantRevision = stored.ResultGrantRevision
+	// The pinned identity the first response carried is part of the snapshot:
+	// a replay of a version command must return the version facts of its
+	// first response, not whatever the installation pins now.
+	installation.Version = stored.ResultVersion
+	installation.ManifestDigest = stored.ResultManifestDigest
+	if err := domain.ValidateStoredInstallation(installation); err != nil {
+		return ports.InstallationResult{}, true, err
+	}
 	return ports.InstallationResult{Installation: installation, ProjectRevision: stored.ProjectRevision}, true, nil
 }

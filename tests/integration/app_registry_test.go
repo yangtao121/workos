@@ -593,7 +593,10 @@ func TestAppRegistryVerticalSlice(t *testing.T) {
 		// acceptance volume concurrently, so one bounded re-pad + re-walk
 		// converges when a concurrent registration landed in between; the
 		// assertion itself never loosens.
-		for attempt := 0; attempt < 2; attempt++ {
+		// The acceptance volume walk is long, and sibling parallel tests
+		// register fixtures concurrently; re-derive and re-pad a few times
+		// before giving up. The exact-final-page assertion never loosens.
+		for attempt := 0; attempt < 3; attempt++ {
 			walked := len(seenAll)
 			padStart := attempt * 100
 			if remainder := walked % 100; remainder != 0 {
@@ -619,7 +622,7 @@ func TestAppRegistryVerticalSlice(t *testing.T) {
 			if lastLen == 100 {
 				break
 			}
-			if attempt == 1 {
+			if attempt == 2 {
 				t.Fatalf("padding must make the final page exactly full, got %d apps", lastLen)
 			}
 			// A concurrent registration moved the total: re-derive it from a

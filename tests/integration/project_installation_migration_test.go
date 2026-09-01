@@ -259,8 +259,8 @@ func TestProjectInstallationRequestMappingOwnerBinding(t *testing.T) {
 	insertRequest := func(owner, installation, key, digestHex string) error {
 		_, err := conn.Exec(ctx, `INSERT INTO workos_core.project_app_installation_requests (
 			owner_user_id, idempotency_key, command, request_digest, installation_id, project_revision,
-			result_granted_permissions, result_grant_revision, created_at
-		) VALUES ($1, $2, 'install', $3, $4, 2, ARRAY['agent.task.run'], 1, now())`,
+			result_granted_permissions, result_grant_revision, created_at, result_version, result_manifest_digest
+		) VALUES ($1, $2, 'install', $3, $4, 2, ARRAY['agent.task.run'], 1, now(), '1.0.0', $3)`,
 			owner, key, "sha256:"+repeat(digestHex, 64), installation)
 		return err
 	}

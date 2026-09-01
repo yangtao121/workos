@@ -17,8 +17,9 @@ type InstallationResult struct {
 
 // StoredInstallationRequest is the persisted result of one consumed
 // installation command key. The result snapshot columns pin the response's
-// tombstone field, grant set, and grant epoch so replays return the first
-// result even after a later SetAppGrants or uninstall changed the row.
+// tombstone field, grant set, grant epoch, and — since ADR-0012 — the exact
+// pinned version identity, so replays return the first result even after a
+// later SetAppGrants, uninstall, or version transition changed the row.
 type StoredInstallationRequest struct {
 	Command             string
 	RequestDigest       string
@@ -30,6 +31,13 @@ type StoredInstallationRequest struct {
 	// history backfilled, so both are always authoritative.
 	ResultGrantedPermissions []string
 	ResultGrantRevision      int64
+	// ResultVersion and ResultManifestDigest snapshot the pinned identity the
+	// first response carried (NOT NULL since migration 025's fail-closed
+	// backfill; identity was immutable before that migration, so the backfill
+	// is exact for every pre-025 row).
+	ResultVersion        string
+	ResultManifestDigest string
+	CreatedAt            time.Time
 }
 
 // InstallCommand is one fully validated install command. The application has
@@ -89,6 +97,32 @@ type SetAppGrantsCommand struct {
 	Now                time.Time
 }
 
+// TransitionCommand is one fully validated version command (ADR-0012): the
+// explicit transition and the server-derived rollback share this path. The
+// application has already resolved the exact target registry version through
+// the neutral catalog port, verified grant compatibility, and computed the
+// canonical request digest; the repository re-arbitrates idempotency and the
+// expected revision under the project lock, re-derives the rollback target
+// from the durable history inside the transaction, and commits the
+// installation update, history append (with trim), project revision, event,
+// outbox, and idempotency result atomically.
+type TransitionCommand struct {
+	OwnerUserID    string
+	IdempotencyKey string
+	ProjectID      string
+	InstallationID string
+	// Target is the exact registry version being pinned (transition: the
+	// client-named version; rollback: the candidate Core derived from the
+	// history outside the transaction). For rollback the repository
+	// re-derives the target from the history under the lock and fails with
+	// ErrConflict if the candidate no longer matches.
+	Target           domain.PinnedApp
+	Source           string // domain.VersionSourceTransition | domain.VersionSourceRollback
+	ExpectedRevision int64
+	RequestDigest    string
+	Now              time.Time
+}
+
 // InstallationRepository owns the installation facts. Concurrent commands are
 // arbitrated by the database: the project row lock serializes mutations
 // against every other Project revision writer, and the request-mapping
@@ -114,6 +148,20 @@ type InstallationRepository interface {
 	// atomically. Stored-grant or revision invariant corruption is a sanitized
 	// Internal, never a silent repair.
 	SetAppGrants(ctx context.Context, command SetAppGrantsCommand) (InstallationResult, error)
+	// Transition pins the command's exact target registry version onto the
+	// active installation in one transaction (ADR-0012). A target equal to
+	// the current (version, digest) is a deterministic no-op that still
+	// consumes the key; a real change appends the history snapshot (trimmed
+	// to the bounded limit), bumps the Project revision by exactly one, and
+	// commits the installation update, project event, outbox, and idempotency
+	// result atomically. For rollback the repository re-derives the target
+	// from the durable history under the lock and rejects a stale candidate
+	// with ErrConflict.
+	Transition(ctx context.Context, command TransitionCommand) (InstallationResult, error)
+	// ListAllVersions returns the installation's full version history oldest
+	// first. It is the authority read for rollback candidate selection and
+	// the public history projection.
+	ListAllVersions(ctx context.Context, ownerUserID, installationID string) ([]domain.VersionSnapshot, error)
 	// ListActive returns at most limit active installations ordered by app ID
 	// after the cursor; a missing, foreign, or archived project is NotFound.
 	ListActive(ctx context.Context, ownerUserID, projectID, cursor string, limit int) ([]domain.Installation, error)

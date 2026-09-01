@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"testing"
-	"time"
 
 	"github.com/yangtao121/workos/internal/core/project/domain"
 	"github.com/yangtao121/workos/internal/core/project/ports"
@@ -24,7 +23,7 @@ func setGrantsFixture() (*fakeRepository, *fakeCatalog) {
 				AppID: "board-app", Version: "1.2.0", ManifestDigest: digestOf('a'),
 				GrantedPermissions: []string{"agent.task.run"},
 				GrantRevision:      1,
-				InstalledAt:        time.Now().UTC(),
+				InstalledAt:        installationTestTime,
 			},
 		},
 		projectRevision: 4,
@@ -174,6 +173,7 @@ func TestSetAppGrantsReplaysConsumedKeyBeforeCatalog(t *testing.T) {
 	repo.requests["set-once"] = ports.StoredInstallationRequest{
 		Command: "set-grants", RequestDigest: first, InstallationID: testInstall,
 		ProjectRevision: 5, ResultGrantedPermissions: []string{"artifact.read"}, ResultGrantRevision: 2,
+		ResultVersion: "1.2.0", ResultManifestDigest: digestOf('a'),
 	}
 	current := repo.byID[testInstall]
 	current.GrantedPermissions = []string{"agent.event.watch"}
@@ -346,6 +346,7 @@ func TestInstallReplayAfterGrantMutationReturnsFirstResponseSnapshot(t *testing.
 		InstallationID:           testInstall,
 		ProjectRevision:          5,
 		ResultGrantedPermissions: []string{"agent.task.run"}, ResultGrantRevision: 1,
+		ResultVersion: "1.2.0", ResultManifestDigest: digestOf('a'),
 	}
 	service := newInstallationService(t, repo, catalog)
 	input := installInput("install-1")

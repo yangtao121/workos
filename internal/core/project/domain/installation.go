@@ -32,6 +32,17 @@ var (
 	// manifest version's requested permissions. Requesting a capability is
 	// never granting it; the verdict is a sanitized PermissionDenied.
 	ErrGrantNotRequested = errors.New("granted permission was not requested by the app")
+	// ErrGrantNotCompatible marks a version transition whose target
+	// requested-permission set does not cover the installation's current
+	// grant set (ADR-0012). Permissions are never expanded — not even by an
+	// upgrade — and never re-widened by a rollback; the owner must re-run
+	// the explicit grant consent first. Sanitized FailedPrecondition.
+	ErrGrantNotCompatible = errors.New("current permissions are not compatible with the target version")
+	// ErrNoPreviousVersion marks a rollback against an installation whose
+	// durable history holds no pinned snapshot different from the current
+	// (version, digest). Sanitized FailedPrecondition with zero side
+	// effects.
+	ErrNoPreviousVersion = errors.New("no previous version to roll back to")
 )
 
 // Installation is one durable app instance installed in a project. The ID is
@@ -150,6 +161,16 @@ func ValidInstallationVersion(value string) bool {
 		if !alphanumeric {
 			return false
 		}
+		numeric := true
+		for index := 0; index < len(identifier); index++ {
+			if identifier[index] < '0' || identifier[index] > '9' {
+				numeric = false
+				break
+			}
+		}
+		if numeric && len(identifier) > 1 && identifier[0] == '0' {
+			return false
+		}
 	}
 	return true
 }
@@ -187,6 +208,15 @@ func ValidInstallationUUID(value string) bool {
 		}
 	}
 	return true
+}
+
+// ValidStoredInstallationUUID accepts only the canonical UUIDv7 spelling
+// used for server-minted resource and owner identities. Request boundaries
+// retain the older generic UUID guard for compatibility; durable facts are
+// stricter and fail closed on a wrong version, variant, or case.
+func ValidStoredInstallationUUID(value string) bool {
+	return ValidInstallationUUID(value) && value == strings.ToLower(value) &&
+		value[14] == '7' && strings.ContainsRune("89ab", rune(value[19]))
 }
 
 // ValidInstallationIdempotencyKey enforces the command key grammar at the
@@ -293,6 +323,175 @@ func SetGrantsRequestDigest(projectID, installationID string, expectedRevision i
 	body, _ := json.Marshal(canonical)
 	sum := sha256.Sum256(body)
 	return "sha256:" + hex.EncodeToString(sum[:])
+}
+
+// VersionHistoryLimit bounds the append-only version history of one
+// installation (ADR-0012). The application trims snapshots beyond the most
+// recent limit inside the command transaction, so rollback depth is a
+// documented, finite policy instead of unbounded growth.
+const VersionHistoryLimit = 20
+
+// Version history snapshot sources. `install` is the origin every
+// installation seeds at creation; `transition` and `rollback` mark the two
+// owner-triggered commands.
+const (
+	VersionSourceInstall    = "install"
+	VersionSourceTransition = "transition"
+	VersionSourceRollback   = "rollback"
+)
+
+// TransitionRequestDigest digests the canonical client request of the
+// explicit version transition (ADR-0012): the command version marker,
+// project, installation, expected Project revision, and the requested target
+// version. Server-resolved facts (the registry's manifest digest for that
+// version, the current version) never enter it.
+func TransitionRequestDigest(projectID, installationID string, expectedRevision int64, version string) string {
+	canonical := struct {
+		Command          string `json:"command"`
+		ExpectedRevision int64  `json:"expected_project_revision"`
+		InstallationID   string `json:"installation_id"`
+		ProjectID        string `json:"project_id"`
+		Version          string `json:"version"`
+	}{
+		Command: "transition/v1", ExpectedRevision: expectedRevision,
+		InstallationID: installationID, ProjectID: projectID, Version: version,
+	}
+	body, _ := json.Marshal(canonical)
+	sum := sha256.Sum256(body)
+	return "sha256:" + hex.EncodeToString(sum[:])
+}
+
+// RollbackRequestDigest digests the canonical client request of the
+// previous-pinned-version rollback (ADR-0012). The request carries no target:
+// Core derives it from the durable history, so the digest covers only the
+// command version marker, project, installation, and expected revision.
+func RollbackRequestDigest(projectID, installationID string, expectedRevision int64) string {
+	canonical := struct {
+		Command          string `json:"command"`
+		ExpectedRevision int64  `json:"expected_project_revision"`
+		InstallationID   string `json:"installation_id"`
+		ProjectID        string `json:"project_id"`
+	}{
+		Command: "rollback/v1", ExpectedRevision: expectedRevision,
+		InstallationID: installationID, ProjectID: projectID,
+	}
+	body, _ := json.Marshal(canonical)
+	sum := sha256.Sum256(body)
+	return "sha256:" + hex.EncodeToString(sum[:])
+}
+
+// VersionSnapshot is one immutable entry of an installation's version
+// history: the pinned identity facts as of that change.
+type VersionSnapshot struct {
+	Version        string
+	ManifestDigest string
+	Source         string
+	Sequence       int64
+	OccurredAt     time.Time
+}
+
+// GrantsCompatibleWithTarget reports whether the installation's current
+// canonical grant set is a subset of the target version's requested
+// permissions (ADR-0012). A transition or rollback whose target does not
+// cover the current grants would silently change authority, so it is a
+// distinct fail-closed verdict: the owner reviews permissions explicitly
+// (SetAppGrants) before moving versions. The grant set itself is never
+// modified by a version change.
+func GrantsCompatibleWithTarget(granted, requested []string) error {
+	if _, err := CanonicalInstallationGrant(granted, requested); err != nil {
+		return ErrGrantNotCompatible
+	}
+	return nil
+}
+
+// ErrHistoryCorrupt marks stored version-history snapshots that violate the
+// canonical invariants. Callers surface it as sanitized Internal corruption,
+// never as a silent repair.
+var ErrHistoryCorrupt = errors.New("stored installation version history is inconsistent")
+
+// ErrInstallationCorrupt marks a stored installation projection that fails
+// its canonical identity, grant, revision, or timestamp invariants.
+var ErrInstallationCorrupt = errors.New("stored installation is inconsistent")
+
+// CanonicalInstallationTime matches PostgreSQL timestamptz precision so a
+// first response and its later replay expose the exact same instant.
+func CanonicalInstallationTime(value time.Time) time.Time {
+	return value.UTC().Truncate(time.Microsecond)
+}
+
+// ValidStoredInstallationTime accepts only finite, protobuf-representable
+// UTC instants at PostgreSQL's microsecond precision.
+func ValidStoredInstallationTime(value time.Time) bool {
+	if value.IsZero() {
+		return false
+	}
+	_, offset := value.Zone()
+	year := value.UTC().Year()
+	return offset == 0 && year >= 1 && year <= 9999 && value.Equal(CanonicalInstallationTime(value))
+}
+
+// ValidateStoredInstallation revalidates every Project-owned installation
+// row before it crosses the repository port. Database constraints are
+// defense in depth; they do not replace read-time corruption handling.
+func ValidateStoredInstallation(installation Installation) error {
+	if !ValidStoredInstallationUUID(installation.ID) ||
+		!ValidStoredInstallationUUID(installation.OwnerUserID) ||
+		!ValidStoredInstallationUUID(installation.ProjectID) ||
+		!ValidInstallationAppID(installation.AppID) ||
+		!ValidInstallationVersion(installation.Version) ||
+		!ValidInstallationManifestDigest(installation.ManifestDigest) ||
+		installation.GrantRevision < 1 ||
+		!ValidStoredInstallationTime(installation.InstalledAt) {
+		return ErrInstallationCorrupt
+	}
+	previous := ""
+	for _, capability := range installation.GrantedPermissions {
+		if !ValidCapabilityID(capability) || (previous != "" && capability <= previous) {
+			return ErrInstallationCorrupt
+		}
+		previous = capability
+	}
+	if installation.UninstalledAt != nil &&
+		(!ValidStoredInstallationTime(*installation.UninstalledAt) || installation.UninstalledAt.Before(installation.InstalledAt)) {
+		return ErrInstallationCorrupt
+	}
+	return nil
+}
+
+// ValidateVersionHistory re-validates stored snapshots on every read:
+// grammar-valid version, canonical digest shape, known source, positive
+// strictly-increasing sequences, and canonical UTC timestamps. Drift is
+// corruption, never a repair hint.
+func ValidateVersionHistory(history []VersionSnapshot) error {
+	previous := int64(0)
+	for _, snapshot := range history {
+		if !ValidInstallationVersion(snapshot.Version) ||
+			!ValidInstallationManifestDigest(snapshot.ManifestDigest) ||
+			(snapshot.Source != VersionSourceInstall &&
+				snapshot.Source != VersionSourceTransition &&
+				snapshot.Source != VersionSourceRollback) ||
+			snapshot.Sequence <= previous ||
+			!ValidStoredInstallationTime(snapshot.OccurredAt) {
+			return ErrHistoryCorrupt
+		}
+		previous = snapshot.Sequence
+	}
+	return nil
+}
+
+// ValidateVersionHistoryForInstallation additionally binds the newest
+// retained snapshot to the installation's current pinned identity. Retention
+// may remove the install origin, but it may never leave a history tail that
+// disagrees with the active row.
+func ValidateVersionHistoryForInstallation(history []VersionSnapshot, installation Installation) error {
+	if err := ValidateVersionHistory(history); err != nil || len(history) == 0 {
+		return ErrHistoryCorrupt
+	}
+	current := history[len(history)-1]
+	if current.Version != installation.Version || current.ManifestDigest != installation.ManifestDigest {
+		return ErrHistoryCorrupt
+	}
+	return nil
 }
 
 // CanonicalGrantShape validates the request-boundary grammar of a

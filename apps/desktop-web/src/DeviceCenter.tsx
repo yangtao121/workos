@@ -16,6 +16,9 @@ import { Button } from "@workos/ui-kit";
 
 export interface DeviceCenterProps {
   deviceAuth: DeviceAuthClient;
+  // Confirmed logout/current-device revoke changes the browser-profile
+  // owner. Callers clear owner-local shell references before reloading.
+  onSessionEnded?: () => Promise<void> | void;
 }
 
 interface TicketView {
@@ -25,7 +28,7 @@ interface TicketView {
   expiresAt: Date;
 }
 
-export function DeviceCenter({ deviceAuth }: DeviceCenterProps) {
+export function DeviceCenter({ deviceAuth, onSessionEnded }: DeviceCenterProps) {
   const [devices, setDevices] = useState<DeviceInfo[]>([]);
   const [sessionExpiresAt, setSessionExpiresAt] = useState<Date>();
   const [loadError, setLoadError] = useState<string>();
@@ -34,6 +37,16 @@ export function DeviceCenter({ deviceAuth }: DeviceCenterProps) {
   const [actionError, setActionError] = useState<string>();
   const [confirmingRevoke, setConfirmingRevoke] = useState<string>();
   const [busy, setBusy] = useState(false);
+
+  const clearEndedSessionState = useCallback(async () => {
+    try {
+      await onSessionEnded?.();
+    } catch {
+      // The server already ended the session. Local UI cleanup is
+      // best-effort and must never turn a confirmed logout/revoke into a
+      // misleading failure or prevent the auth gate from reloading.
+    }
+  }, [onSessionEnded]);
   const revokeAttempts = useRef(
     new Map<string, { expectedRevision: bigint; idempotencyKey: string }>(),
   );
@@ -125,6 +138,7 @@ export function DeviceCenter({ deviceAuth }: DeviceCenterProps) {
           // cleared the cookie, and the local profile key is dropped so the
           // shell returns to the unpaired screen.
           await deviceAuth.forget();
+          await clearEndedSessionState();
           window.location.reload();
         }
       } catch (error) {
@@ -145,7 +159,7 @@ export function DeviceCenter({ deviceAuth }: DeviceCenterProps) {
         setBusy(false);
       }
     },
-    [busy, confirmingRevoke, deviceAuth, refresh],
+    [busy, clearEndedSessionState, confirmingRevoke, deviceAuth, refresh],
   );
 
   const logout = useCallback(async () => {
@@ -153,13 +167,14 @@ export function DeviceCenter({ deviceAuth }: DeviceCenterProps) {
     setActionError(undefined);
     try {
       await deviceAuth.logout();
+      await clearEndedSessionState();
       window.location.reload();
     } catch {
       setActionError("Signing out failed. Retry once the gateway is reachable.");
     } finally {
       setBusy(false);
     }
-  }, [deviceAuth]);
+  }, [clearEndedSessionState, deviceAuth]);
 
   return (
     <div className="device-center" data-testid="device-center">

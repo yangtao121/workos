@@ -37,7 +37,7 @@ func main() {
 }
 
 // usage documents every acceptance-helper subcommand.
-const usage = "usage: restart seed | restart verify TASK_ID | restart app-seed | restart app-verify APP_ID_A APP_ID_B | restart install-seed | restart install-verify PROJECT_ID INSTALLATION_ID KEY APP_ID SEED_REVISION | restart surface-seed | restart surface-verify SESSION_URL SESSION_ID PROJECT_ID INSTALLATION_ID KEY | restart bridge-seed | restart bridge-verify TOKEN TASK_ID KEY | restart policy-seed | restart policy-verify TOKEN PROJECT_ID INSTALLATION_ID SURFACE_KEY SET_KEY RUN_KEY TASK_ID | restart grants-seed | restart grants-verify TOKEN PROJECT_ID INSTALLATION_ID SURFACE_KEY SET_KEY SET_PROJECT_REVISION"
+const usage = "usage: restart seed | restart verify TASK_ID | restart app-seed | restart app-verify APP_ID_A APP_ID_B | restart install-seed | restart install-verify PROJECT_ID INSTALLATION_ID KEY APP_ID SEED_REVISION | restart surface-seed | restart surface-verify SESSION_URL SESSION_ID PROJECT_ID INSTALLATION_ID KEY | restart bridge-seed | restart bridge-verify TOKEN TASK_ID KEY | restart policy-seed | restart policy-verify TOKEN PROJECT_ID INSTALLATION_ID SURFACE_KEY SET_KEY RUN_KEY TASK_ID | restart grants-seed | restart grants-verify TOKEN PROJECT_ID INSTALLATION_ID SURFACE_KEY SET_KEY SET_PROJECT_REVISION | restart version-seed | restart version-verify PROJECT_ID INSTALLATION_ID TRANSITION_KEY ROLLBACK_KEY TRANSITION_REVISION ROLLBACK_REVISION"
 
 func run() error {
 	if len(os.Args) < 2 {
@@ -94,6 +94,21 @@ func run() error {
 		return policyVerify(ctx, client, baseURL, os.Args[2], os.Args[3], os.Args[4], os.Args[5], os.Args[6], os.Args[7], os.Args[8], os.Args[9])
 	case "grants-seed":
 		return grantsSeed(ctx, client, baseURL)
+	case "version-seed":
+		return versionSeed(ctx, client, baseURL)
+	case "version-verify":
+		if len(os.Args) != 8 {
+			return errors.New("version-verify requires PROJECT_ID INSTALLATION_ID TRANSITION_KEY ROLLBACK_KEY TRANSITION_REVISION ROLLBACK_REVISION")
+		}
+		transitionRevision, err := strconv.ParseInt(os.Args[6], 10, 64)
+		if err != nil || transitionRevision <= 1 {
+			return errors.New("version-verify requires a positive transition revision")
+		}
+		rollbackRevision, err := strconv.ParseInt(os.Args[7], 10, 64)
+		if err != nil || rollbackRevision <= transitionRevision {
+			return errors.New("version-verify requires a rollback revision after the transition revision")
+		}
+		return versionVerify(ctx, client, baseURL, os.Args[2], os.Args[3], os.Args[4], os.Args[5], transitionRevision, rollbackRevision)
 	case "grants-verify":
 		if len(os.Args) != 8 {
 			return errors.New("grants-verify requires TOKEN PROJECT_ID INSTALLATION_ID SURFACE_KEY SET_KEY SET_PROJECT_REVISION")

@@ -10,6 +10,15 @@ import {
   type SyntheticEvent,
 } from "react";
 import { AgentTimeline } from "@workos/agent-center";
+import {
+  DOCK_APP_INSTANCE_LIMIT,
+  RECENT_APP_INSTANCE_LIMIT,
+  createLayoutStore,
+  protoFromDeviceClass,
+  pushRecentId,
+  useDeviceLayout,
+  type DeviceLayoutState,
+} from "@workos/adaptive-shell";
 import { createWorkOSClients, type WorkOSClients } from "@workos/agent-sdk";
 import type { DeviceAuthClient } from "@workos/device-auth";
 import type {
@@ -20,10 +29,11 @@ import type {
   SurfaceSession,
 } from "@workos/protocol";
 import { Button } from "@workos/ui-kit";
-import { initialWindowState, windowReducer } from "@workos/window-manager";
+import { initialWindowState, windowReducer, type WorkOSWindow } from "@workos/window-manager";
+import { AdaptiveShell, type SystemWindowId } from "./AdaptiveShell.js";
 import { ArtifactCenter } from "./ArtifactCenter.js";
 import { ArtifactViewerWindow } from "./ArtifactViewerWindow.js";
-import { AppLibrary } from "./AppLibrary.js";
+import { AppLibrary, openInstallationSurface } from "./AppLibrary.js";
 import { ApprovalsView } from "./ApprovalsView.js";
 import { AppSurface, type SurfaceBridgeCredentials } from "./AppSurface.js";
 import { DeviceCenter } from "./DeviceCenter.js";
@@ -33,6 +43,11 @@ import { UsageView } from "./UsageView.js";
 import { selectionFromProject, taskStatus, type HarnessSelection } from "./model.js";
 
 const clients = createWorkOSClients(window.location.origin);
+
+// One device-local layout store per app instance: origin-scoped IndexedDB
+// with an in-memory fallback. It only ever holds bounded UI references
+// (canonical IDs and preferences), never tokens, credentials, or content.
+const layoutStore = createLayoutStore();
 
 // The last active project survives a page reload so returning to the desktop
 // restores the context the user was working in. Storage failures (private
@@ -76,6 +91,10 @@ export function Desktop({
   deviceAuth?: DeviceAuthClient;
 } = {}) {
   const [projects, setProjects] = useState<Project[]>([]);
+  // True only after a complete successful page walk. Layout sweeps must not
+  // treat the initial empty array or an unavailable Project service as
+  // authoritative server truth.
+  const [projectsAuthoritative, setProjectsAuthoritative] = useState(false);
   const [activeProjectId, setActiveProjectId] = useState<string | undefined>(
     readStoredActiveProjectId,
   );
@@ -118,6 +137,34 @@ export function Desktop({
   const bridgeCredentialsRef = useRef<Map<string, SurfaceBridgeCredentials>>(new Map());
   const activeProject = projects.find((project) => project.id === activeProjectId);
   activeProjectIdRef.current = activeProjectId;
+
+  // The adaptive device layout: derived by the shared contract from the
+  // live viewport (plus fold segments when the host exposes them). The
+  // expanded desktop keeps its exact free-window behavior; every other mode
+  // renders the adaptive shell.
+  const deviceLayout = useDeviceLayout();
+  const adaptive = deviceLayout.mode !== "expanded";
+  const [deviceLayoutState, setDeviceLayoutState] = useState<DeviceLayoutState>();
+  const layoutGenerationRef = useRef(0);
+
+  // recordLayout persists one bounded mutation to the current project +
+  // device-class record. Expanded never writes: desktop geometry must not
+  // overwrite phone/tablet state.
+  const recordLayout = useCallback(
+    (mutate: (state: DeviceLayoutState) => DeviceLayoutState) => {
+      const projectId = activeProjectIdRef.current;
+      if (!projectId || !adaptive) return;
+      const generation = layoutGenerationRef.current;
+      void layoutStore
+        .update(deviceLayout.deviceClass, projectId, new Date().toISOString(), mutate)
+        .then((state) => {
+          if (generation !== layoutGenerationRef.current) return;
+          setDeviceLayoutState(state);
+        })
+        .catch(() => undefined);
+    },
+    [adaptive, deviceLayout.deviceClass],
+  );
 
   // Switching Projects discards the previous editor synchronously during the
   // render that changes the active Project, so an unsaved draft or stale
@@ -164,13 +211,19 @@ export function Desktop({
   }, [activeProjectId]);
 
   const refreshProjects = useCallback(async () => {
-    const response = await workosClients.projects.listProjects({
-      page: { pageSize: 100, pageToken: "" },
-    });
-    const listed = response.projects;
-    // The persisted selection may sit beyond the first project page; fetch
-    // it directly so a reload keeps the user's project active instead of
-    // silently switching to the oldest listed one.
+    const listed: Project[] = [];
+    let token = "";
+    for (;;) {
+      const response = await workosClients.projects.listProjects({
+        page: { pageSize: 100, pageToken: token },
+      });
+      listed.push(...response.projects);
+      token = response.page?.nextPageToken ?? "";
+      if (token === "") break;
+    }
+    // A persisted selection should be in the complete walk. Keep the direct
+    // read as a conservative compatibility fallback if an older server
+    // returns an incomplete page contract.
     const stored = activeProjectIdRef.current;
     if (stored && !listed.some((project) => project.id === stored)) {
       try {
@@ -184,6 +237,7 @@ export function Desktop({
       }
     }
     setProjects(listed);
+    setProjectsAuthoritative(true);
     setActiveProjectId((current) =>
       current && listed.some((project) => project.id === current) ? current : listed[0]?.id,
     );
@@ -246,7 +300,8 @@ export function Desktop({
         mode: "normal",
       },
     });
-  }, []);
+    recordLayout((state) => ({ ...state, activeSystemWindow: "system-monitor" }));
+  }, [recordLayout]);
 
   // Device Center is a normal window: closing it never affects the device
   // session, and the pairing ticket it shows lives only while it is open.
@@ -262,7 +317,8 @@ export function Desktop({
         mode: "normal",
       },
     });
-  }, []);
+    recordLayout((state) => ({ ...state, activeSystemWindow: "device-center" }));
+  }, [recordLayout]);
 
   // Artifact Center is a normal, closable window listing the active
   // project's review artifacts. The reducer dedupes on the id, so repeated
@@ -280,25 +336,30 @@ export function Desktop({
         mode: "normal",
       },
     });
-  }, [activeProjectId]);
+    recordLayout((state) => ({ ...state, activeSystemWindow: "artifact-center" }));
+  }, [activeProjectId, recordLayout]);
 
   // Opening one artifact opens (or focuses) exactly one viewer window keyed
   // on the artifact id. The window fetches authoritative content itself; a
   // foreign or vanished reference renders the fixed unavailable verdict.
-  const openArtifactViewer = useCallback((artifactId: string, projectId: string) => {
-    dispatch({
-      type: "open",
-      window: {
-        id: `artifact-viewer-${artifactId}`,
-        appId: "artifact-viewer",
-        title: "Artifact Review",
-        kind: "artifact-viewer",
-        artifact: { artifactId, projectId },
-        rect: { x: 320, y: 150, width: 640, height: 520 },
-        mode: "normal",
-      },
-    });
-  }, []);
+  const openArtifactViewer = useCallback(
+    (artifactId: string, projectId: string) => {
+      dispatch({
+        type: "open",
+        window: {
+          id: `artifact-viewer-${artifactId}`,
+          appId: "artifact-viewer",
+          title: "Artifact Review",
+          kind: "artifact-viewer",
+          artifact: { artifactId, projectId },
+          rect: { x: 320, y: 150, width: 640, height: 520 },
+          mode: "normal",
+        },
+      });
+      recordLayout((state) => ({ ...state, activeArtifactId: artifactId }));
+    },
+    [recordLayout],
+  );
 
   // Timeline artifact events open the same authoritative viewer path; the
   // project fact is the active project, and the server re-checks ownership
@@ -375,6 +436,36 @@ export function Desktop({
     // through closeWindow, and re-running for window changes would loop.
   }, [activeProjectId]);
 
+  // Device-local layout state (docs/structure.md 12.6): one record per
+  // project + device class, loaded generation-guarded so a project switch
+  // or a device-class change makes late loads inert.
+  useEffect(() => {
+    if (!adaptive || !activeProjectId) {
+      setDeviceLayoutState(undefined);
+      return;
+    }
+    const generation = ++layoutGenerationRef.current;
+    let cancelled = false;
+    void layoutStore
+      .load(deviceLayout.deviceClass, activeProjectId, new Date().toISOString())
+      .then((state) => {
+        if (cancelled || generation !== layoutGenerationRef.current) return;
+        setDeviceLayoutState(state);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [adaptive, activeProjectId, deviceLayout.deviceClass]);
+
+  // The record only ever holds references that still exist: this sweep
+  // drops records for archived or foreign projects whenever the
+  // authoritative project list changes (covers archive and logout drift).
+  useEffect(() => {
+    if (!adaptive || !projectsAuthoritative) return;
+    void layoutStore.sweep(new Set(projects.map((project) => project.id))).catch(() => undefined);
+  }, [adaptive, projects, projectsAuthoritative]);
+
   async function createProject(event: SyntheticEvent<HTMLFormElement>) {
     event.preventDefault();
     const formElement = event.currentTarget;
@@ -415,6 +506,8 @@ export function Desktop({
 
   // A newly created surface opens one App window. Windows key on the surface
   // session, so a repeated open of the same session can never duplicate it.
+  // The device-local layout record learns the active instance and the
+  // recency lists (bounded canonical IDs only).
   function surfaceOpened(session: SurfaceSession) {
     openSurfaceSessionsRef.current = openSurfaceSessionsRef.current.concat({
       surfaceSessionId: session.id,
@@ -425,6 +518,20 @@ export function Desktop({
         capabilities: [...session.bridgeCapabilities],
       });
     }
+    recordLayout((state) => ({
+      ...state,
+      activeAppInstanceId: session.appInstanceId,
+      recentAppInstanceIds: pushRecentId(
+        state.recentAppInstanceIds,
+        session.appInstanceId,
+        RECENT_APP_INSTANCE_LIMIT,
+      ),
+      dockAppInstanceIds: pushRecentId(
+        state.dockAppInstanceIds,
+        session.appInstanceId,
+        DOCK_APP_INSTANCE_LIMIT,
+      ),
+    }));
     dispatch({
       type: "open",
       window: {
@@ -447,7 +554,9 @@ export function Desktop({
   }
 
   // Closing a window closes its server session best-effort; Core's active-
-  // installation revalidation remains the final authority either way.
+  // installation revalidation remains the final authority either way. The
+  // device-local record drops the closed window's active reference so a
+  // stale id cannot linger after the fact.
   function closeWindow(windowId: string) {
     const target = windows.windows.find((item) => item.id === windowId);
     if (target?.kind === "app-surface" && target.surface) {
@@ -458,6 +567,34 @@ export function Desktop({
       void workosClients.surfaces
         .closeSurface({ surfaceSessionId: target.surface.surfaceSessionId })
         .catch(() => undefined);
+    }
+    if (adaptive && target) {
+      if (target.kind === "app-surface") {
+        recordLayout((state) => ({
+          ...state,
+          activeAppInstanceId:
+            state.activeAppInstanceId === target.appId ? undefined : state.activeAppInstanceId,
+        }));
+      } else if (target.kind === "artifact-viewer" && target.artifact) {
+        recordLayout((state) => ({
+          ...state,
+          activeArtifactId:
+            state.activeArtifactId === target.artifact?.artifactId
+              ? undefined
+              : state.activeArtifactId,
+        }));
+      } else if (
+        target.kind === "system-monitor" ||
+        target.kind === "device-center" ||
+        target.kind === "artifact-center" ||
+        target.kind === "agent-center"
+      ) {
+        recordLayout((state) => ({
+          ...state,
+          activeSystemWindow:
+            state.activeSystemWindow === target.id ? undefined : state.activeSystemWindow,
+        }));
+      }
     }
     dispatch({ type: "close", id: windowId });
   }
@@ -490,11 +627,27 @@ export function Desktop({
     window.addEventListener("mouseup", onUp);
   }
 
-  // Uninstalling an app closes its windows so a removed instance leaves no
-  // orphan surfaces behind.
-  function installationRemoved(installationId: string) {
+  // A server-confirmed install security-fact change (uninstall, grants, or
+  // pinned version) closes its windows so no stale Surface stays visible,
+  // and every device-class layout record of this browser profile drops its
+  // references to that now-invalid instance.
+  function invalidateInstallationReferences(installationId: string) {
     closeInstallationWindows(installationId);
+    const projectId = activeProjectIdRef.current;
+    const deviceClass = deviceLayout.deviceClass;
+    void layoutStore
+      .pruneAppInstance(installationId)
+      .then(() => {
+        if (!projectId || !adaptive) return;
+        return layoutStore.load(deviceClass, projectId, new Date().toISOString()).then((state) => {
+          if (projectId !== activeProjectIdRef.current) return;
+          setDeviceLayoutState(state);
+        });
+      })
+      .catch(() => undefined);
   }
+
+  const installationRemoved = invalidateInstallationReferences;
 
   // A server-confirmed grant change invalidates every still-open surface of
   // exactly that installation (the backend already denies their bridge calls
@@ -505,6 +658,86 @@ export function Desktop({
       if (item.kind === "app-surface" && item.appId === installationId) {
         closeWindow(item.id);
       }
+    }
+  }
+
+  // --- Adaptive shell callbacks (compact/medium/fold-separated). The shell
+  // renders one main pane; these keep the same window/dispatch semantics as
+  // the expanded desktop, so no behavior is duplicated per mode.
+
+  const openAdaptiveSystemWindow = useCallback(
+    (id: SystemWindowId) => {
+      if (id === "system-monitor") openSystemMonitor();
+      else if (id === "device-center") openDeviceCenter();
+      else if (id === "artifact-center") openArtifactCenter();
+      const existing = windows.windows.some((item) => item.id === id);
+      if (existing) dispatch({ type: "focus", id });
+      recordLayout((state) => ({ ...state, activeSystemWindow: id }));
+    },
+    [openArtifactCenter, openDeviceCenter, openSystemMonitor, recordLayout, windows.windows],
+  );
+
+  const focusAdaptiveWindow = useCallback(
+    (windowId: string) => {
+      dispatch({ type: "focus", id: windowId });
+      const target = windows.windows.find((item) => item.id === windowId);
+      if (!target) return;
+      if (target.kind === "app-surface") {
+        recordLayout((state) => ({
+          ...state,
+          activeAppInstanceId: target.appId,
+          recentAppInstanceIds: pushRecentId(
+            state.recentAppInstanceIds,
+            target.appId,
+            RECENT_APP_INSTANCE_LIMIT,
+          ),
+        }));
+      } else if (target.kind === "artifact-viewer" && target.artifact) {
+        recordLayout((state) => ({ ...state, activeArtifactId: target.artifact?.artifactId }));
+      } else {
+        recordLayout((state) => ({ ...state, activeSystemWindow: target.id }));
+      }
+    },
+    [recordLayout, windows.windows],
+  );
+
+  const openAdaptiveAppInstance = useCallback(
+    (appInstanceId: string) => {
+      const projectId = activeProjectIdRef.current;
+      if (!projectId) return;
+      void openInstallationSurface(
+        workosClients,
+        projectId,
+        appInstanceId,
+        protoFromDeviceClass(deviceLayout.deviceClass),
+        () => activeProjectIdRef.current === projectId,
+        surfaceOpened,
+        () => undefined,
+      );
+    },
+    [deviceLayout.deviceClass, workosClients],
+  );
+
+  async function createProjectNamed(name: string) {
+    setError(undefined);
+    try {
+      const response = await workosClients.projects.createProject({
+        idempotencyKey: crypto.randomUUID(),
+        name,
+        icon: "◈",
+        workspaceRefs: [],
+      });
+      const created = response.project;
+      if (created) {
+        setProjects((current) =>
+          current.some((candidate) => candidate.id === created.id)
+            ? current
+            : current.concat(created),
+        );
+        setActiveProjectId(created.id);
+      }
+    } catch (reason) {
+      setError(asMessage(reason));
     }
   }
 
@@ -693,10 +926,231 @@ export function Desktop({
     }
   }
 
+  // renderWindowBody renders one window's body. Both the expanded free-window
+  // shell and the adaptive panes render exactly these bodies, so behavior
+  // never forks per mode.
+  function renderWindowBody(windowState: WorkOSWindow) {
+    return windowState.kind === "app-surface" && windowState.surface ? (
+      <AppSurface
+        surface={windowState.surface}
+        bridge={bridgeCredentialsRef.current.get(windowState.surface.surfaceSessionId)}
+        appBridge={workosClients.appBridge}
+      />
+    ) : windowState.kind === "system-monitor" ? (
+      <SystemMonitor
+        expectedProjectRevision={activeProject?.revision}
+        onInstallationVersionChanged={invalidateInstallationReferences}
+        onProjectRevisionChanged={(revision) => {
+          if (activeProject) replaceProject({ ...activeProject, revision });
+        }}
+        projectId={activeProjectId}
+        workosClients={workosClients}
+      />
+    ) : windowState.kind === "artifact-center" ? (
+      activeProject ? (
+        <ArtifactCenter
+          key={activeProject.id}
+          projectId={activeProject.id}
+          workosClients={workosClients}
+          selectedContextIds={new Set(contextChips.map((chip) => chip.id))}
+          onUseAsContext={useAsContext}
+          onOpenArtifact={(artifact) => {
+            openArtifactViewer(artifact.id, artifact.projectId);
+          }}
+        />
+      ) : (
+        <p className="empty-state">Create a project to review its artifacts.</p>
+      )
+    ) : windowState.kind === "artifact-viewer" && windowState.artifact ? (
+      <ArtifactViewerWindow
+        artifactId={windowState.artifact.artifactId}
+        projectId={windowState.artifact.projectId}
+        workosClients={workosClients}
+        contextPinned={contextChips.some((chip) => chip.id === windowState.artifact?.artifactId)}
+        onUseAsContext={(artifact) => {
+          useAsContext({
+            id: artifact.id,
+            digest: artifact.digest,
+            title: artifact.title,
+            type: artifact.type,
+          });
+        }}
+      />
+    ) : windowState.kind === "device-center" ? (
+      deviceAuth ? (
+        <DeviceCenter deviceAuth={deviceAuth} onSessionEnded={() => layoutStore.clearAll()} />
+      ) : (
+        <p className="empty-state">Device management is not available in this deployment.</p>
+      )
+    ) : (
+      <div className="agent-center-body">
+        <div className="agent-views" role="tablist" aria-label="Agent Center views">
+          {AGENT_VIEWS.map(([view, label]) => (
+            <button
+              aria-selected={agentView === view}
+              className={agentView === view ? "agent-view-tab active" : "agent-view-tab"}
+              key={view}
+              onClick={() => {
+                setAgentView(view);
+              }}
+              role="tab"
+              type="button"
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+        {agentView === "approvals" ? (
+          activeProjectId ? (
+            <ApprovalsView projectId={activeProjectId} workosClients={workosClients} />
+          ) : (
+            <p className="empty-state">Create a project to manage approvals.</p>
+          )
+        ) : null}
+        {agentView === "usage" ? (
+          activeProjectId ? (
+            <UsageView projectId={activeProjectId} workosClients={workosClients} />
+          ) : (
+            <p className="empty-state">Create a project to see agent usage.</p>
+          )
+        ) : null}
+        {agentView === "tasks" ? (
+          <>
+            <form className="task-composer" onSubmit={(event) => void submitTask(event)}>
+              <textarea
+                aria-label="Agent goal"
+                name="goal"
+                placeholder="Ask the current project agent…"
+                disabled={!activeProjectId}
+              />
+              {contextChips.length > 0 ? (
+                <ul className="context-chips" aria-label="Pinned Agent context">
+                  {contextChips.map((chip) => (
+                    <li key={chip.id} className="context-chip" data-testid="context-chip">
+                      <span>{chip.title}</span>
+                      <span className="context-chip-type">
+                        {chip.artifactType === "document.markdown.v1" ? "Markdown" : "Unified diff"}
+                      </span>
+                      <button
+                        type="button"
+                        aria-label={`Remove ${chip.title} from Agent context`}
+                        onClick={() => {
+                          setContextChips((current) =>
+                            current.filter((entry) => entry.id !== chip.id),
+                          );
+                          setContextHint(undefined);
+                        }}
+                      >
+                        ✕
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
+              {contextHint ? (
+                <p role="status" className="context-hint" data-testid="context-hint">
+                  {contextHint}
+                </p>
+              ) : null}
+              <div className="artifact-request" aria-label="Requested artifact outputs">
+                <label>
+                  <input type="checkbox" name="artifact-markdown" /> Markdown document
+                </label>
+                <label>
+                  <input type="checkbox" name="artifact-diff" /> Unified diff
+                </label>
+              </div>
+              <Button disabled={!activeProjectId} type="submit">
+                Run task
+              </Button>
+            </form>
+            {task ? (
+              <dl className="task-snapshot" aria-label="Task provider snapshot">
+                <dt>Provider snapshot</dt>
+                <dd>{task.providerId || "unknown"}</dd>
+                <dt>Task</dt>
+                <dd>{task.id}</dd>
+              </dl>
+            ) : null}
+            <AgentTimeline events={events} onOpenArtifact={openArtifactById} />
+          </>
+        ) : null}
+      </div>
+    );
+  }
+
   const status = useMemo(() => {
     if (task) return taskStatus(task.state);
     return loading ? "connecting" : "idle";
   }, [loading, task]);
+
+  // The adaptive shell (compact / medium / fold-separated) renders the same
+  // state through a mode-specific chrome. The expanded branch below keeps
+  // the exact free-window desktop, so desktop behavior cannot regress.
+  if (adaptive) {
+    return (
+      <AdaptiveShell
+        layout={deviceLayout}
+        windows={windows}
+        status={status}
+        activeProject={activeProject}
+        projects={projects}
+        layoutState={deviceLayoutState}
+        onSwitchProject={setActiveProjectId}
+        onCreateProject={(name) => void createProjectNamed(name)}
+        onOpenSystemWindow={openAdaptiveSystemWindow}
+        onFocusWindow={focusAdaptiveWindow}
+        onCloseWindow={closeWindow}
+        onLayoutPreference={(preference) => {
+          recordLayout((state) => ({ ...state, layoutPreference: preference }));
+        }}
+        onOpenAppInstance={openAdaptiveAppInstance}
+        renderWindowBody={renderWindowBody}
+        renderAppLibrary={() =>
+          activeProject ? (
+            <AppLibrary
+              key={activeProject.id}
+              project={activeProject}
+              deviceClass={protoFromDeviceClass(deviceLayout.deviceClass)}
+              workosClients={workosClients}
+              onProjectRefreshed={replaceProject}
+              onSurfaceOpened={surfaceOpened}
+              onInstallationRemoved={installationRemoved}
+              onInstallationGrantsChanged={invalidateInstallationReferences}
+              onInstallationVersionChanged={invalidateInstallationReferences}
+            />
+          ) : null
+        }
+        renderProjectSettings={() =>
+          activeProject ? (
+            <HarnessSettings
+              catalog={catalog}
+              catalogError={catalogError}
+              catalogState={catalogState}
+              draft={bindingDraft}
+              feedback={activeEditor?.feedback?.text}
+              feedbackIsError={activeEditor?.feedback?.isError}
+              project={activeProject}
+              saving={bindingSaving[activeProject.id] ?? false}
+              onRetry={() => void refreshCatalog()}
+              onSave={() => {
+                void saveHarnessBinding(activeProject.id, bindingDraft);
+              }}
+              onSelectionChange={(selection) => {
+                setBindingEditor({ projectId: activeProject.id, draft: selection });
+              }}
+            />
+          ) : null
+        }
+      >
+        {error ? (
+          <p className="error-toast" role="alert">
+            {error}
+          </p>
+        ) : null}
+      </AdaptiveShell>
+    );
+  }
 
   return (
     <main className="desktop-shell">
@@ -768,11 +1222,13 @@ export function Desktop({
             <AppLibrary
               key={activeProject.id}
               project={activeProject}
+              deviceClass={protoFromDeviceClass(deviceLayout.deviceClass)}
               workosClients={workosClients}
               onProjectRefreshed={replaceProject}
               onSurfaceOpened={surfaceOpened}
               onInstallationRemoved={installationRemoved}
-              onInstallationGrantsChanged={closeInstallationWindows}
+              onInstallationGrantsChanged={invalidateInstallationReferences}
+              onInstallationVersionChanged={invalidateInstallationReferences}
             />
           ) : null}
           {settingsOpen && activeProject ? (
@@ -831,151 +1287,7 @@ export function Desktop({
               <strong>{windowState.title}</strong>
               <span>{activeProject?.name ?? "No project"}</span>
             </header>
-            {windowState.kind === "app-surface" && windowState.surface ? (
-              <AppSurface
-                surface={windowState.surface}
-                bridge={bridgeCredentialsRef.current.get(windowState.surface.surfaceSessionId)}
-                appBridge={workosClients.appBridge}
-              />
-            ) : windowState.kind === "system-monitor" ? (
-              <SystemMonitor projectId={activeProjectId} workosClients={workosClients} />
-            ) : windowState.kind === "artifact-center" ? (
-              activeProject ? (
-                <ArtifactCenter
-                  key={activeProject.id}
-                  projectId={activeProject.id}
-                  workosClients={workosClients}
-                  selectedContextIds={new Set(contextChips.map((chip) => chip.id))}
-                  onUseAsContext={useAsContext}
-                  onOpenArtifact={(artifact) => {
-                    openArtifactViewer(artifact.id, artifact.projectId);
-                  }}
-                />
-              ) : (
-                <p className="empty-state">Create a project to review its artifacts.</p>
-              )
-            ) : windowState.kind === "artifact-viewer" && windowState.artifact ? (
-              <ArtifactViewerWindow
-                artifactId={windowState.artifact.artifactId}
-                projectId={windowState.artifact.projectId}
-                workosClients={workosClients}
-                contextPinned={contextChips.some(
-                  (chip) => chip.id === windowState.artifact?.artifactId,
-                )}
-                onUseAsContext={(artifact) => {
-                  useAsContext({
-                    id: artifact.id,
-                    digest: artifact.digest,
-                    title: artifact.title,
-                    type: artifact.type,
-                  });
-                }}
-              />
-            ) : windowState.kind === "device-center" ? (
-              deviceAuth ? (
-                <DeviceCenter deviceAuth={deviceAuth} />
-              ) : (
-                <p className="empty-state">
-                  Device management is not available in this deployment.
-                </p>
-              )
-            ) : (
-              <div className="agent-center-body">
-                <div className="agent-views" role="tablist" aria-label="Agent Center views">
-                  {AGENT_VIEWS.map(([view, label]) => (
-                    <button
-                      aria-selected={agentView === view}
-                      className={agentView === view ? "agent-view-tab active" : "agent-view-tab"}
-                      key={view}
-                      onClick={() => {
-                        setAgentView(view);
-                      }}
-                      role="tab"
-                      type="button"
-                    >
-                      {label}
-                    </button>
-                  ))}
-                </div>
-                {agentView === "approvals" ? (
-                  activeProjectId ? (
-                    <ApprovalsView projectId={activeProjectId} workosClients={workosClients} />
-                  ) : (
-                    <p className="empty-state">Create a project to manage approvals.</p>
-                  )
-                ) : null}
-                {agentView === "usage" ? (
-                  activeProjectId ? (
-                    <UsageView projectId={activeProjectId} workosClients={workosClients} />
-                  ) : (
-                    <p className="empty-state">Create a project to see agent usage.</p>
-                  )
-                ) : null}
-                {agentView === "tasks" ? (
-                  <>
-                    <form className="task-composer" onSubmit={(event) => void submitTask(event)}>
-                      <textarea
-                        aria-label="Agent goal"
-                        name="goal"
-                        placeholder="Ask the current project agent…"
-                        disabled={!activeProjectId}
-                      />
-                      {contextChips.length > 0 ? (
-                        <ul className="context-chips" aria-label="Pinned Agent context">
-                          {contextChips.map((chip) => (
-                            <li key={chip.id} className="context-chip" data-testid="context-chip">
-                              <span>{chip.title}</span>
-                              <span className="context-chip-type">
-                                {chip.artifactType === "document.markdown.v1"
-                                  ? "Markdown"
-                                  : "Unified diff"}
-                              </span>
-                              <button
-                                type="button"
-                                aria-label={`Remove ${chip.title} from Agent context`}
-                                onClick={() => {
-                                  setContextChips((current) =>
-                                    current.filter((entry) => entry.id !== chip.id),
-                                  );
-                                  setContextHint(undefined);
-                                }}
-                              >
-                                ✕
-                              </button>
-                            </li>
-                          ))}
-                        </ul>
-                      ) : null}
-                      {contextHint ? (
-                        <p role="status" className="context-hint" data-testid="context-hint">
-                          {contextHint}
-                        </p>
-                      ) : null}
-                      <div className="artifact-request" aria-label="Requested artifact outputs">
-                        <label>
-                          <input type="checkbox" name="artifact-markdown" /> Markdown document
-                        </label>
-                        <label>
-                          <input type="checkbox" name="artifact-diff" /> Unified diff
-                        </label>
-                      </div>
-                      <Button disabled={!activeProjectId} type="submit">
-                        Run task
-                      </Button>
-                    </form>
-                    {task ? (
-                      <dl className="task-snapshot" aria-label="Task provider snapshot">
-                        <dt>Provider snapshot</dt>
-                        <dd>{task.providerId || "unknown"}</dd>
-                        <dt>Task</dt>
-                        <dd>{task.id}</dd>
-                      </dl>
-                    ) : null}
-                    <AgentTimeline events={events} onOpenArtifact={openArtifactById} />
-                  </>
-                ) : null}
-              </div>
-            )}
+            {renderWindowBody(windowState)}
           </section>
         ))}
 

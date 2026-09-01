@@ -651,6 +651,457 @@ func (x *SetAppGrantsResponse) GetProjectRevision() int64 {
 	return 0
 }
 
+// TransitionAppVersionRequest pins one explicit immutable registry version
+// onto the active installation. The target must be a registered version of
+// the same app for the same owner.
+type TransitionAppVersionRequest struct {
+	state                   protoimpl.MessageState `protogen:"open.v1"`
+	IdempotencyKey          string                 `protobuf:"bytes,1,opt,name=idempotency_key,json=idempotencyKey,proto3" json:"idempotency_key,omitempty"`
+	ProjectId               string                 `protobuf:"bytes,2,opt,name=project_id,json=projectId,proto3" json:"project_id,omitempty"`
+	InstallationId          string                 `protobuf:"bytes,3,opt,name=installation_id,json=installationId,proto3" json:"installation_id,omitempty"`
+	ExpectedProjectRevision int64                  `protobuf:"varint,4,opt,name=expected_project_revision,json=expectedProjectRevision,proto3" json:"expected_project_revision,omitempty"`
+	Version                 string                 `protobuf:"bytes,5,opt,name=version,proto3" json:"version,omitempty"`
+	unknownFields           protoimpl.UnknownFields
+	sizeCache               protoimpl.SizeCache
+}
+
+func (x *TransitionAppVersionRequest) Reset() {
+	*x = TransitionAppVersionRequest{}
+	mi := &file_workos_app_v1_installation_proto_msgTypes[9]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *TransitionAppVersionRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*TransitionAppVersionRequest) ProtoMessage() {}
+
+func (x *TransitionAppVersionRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_workos_app_v1_installation_proto_msgTypes[9]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use TransitionAppVersionRequest.ProtoReflect.Descriptor instead.
+func (*TransitionAppVersionRequest) Descriptor() ([]byte, []int) {
+	return file_workos_app_v1_installation_proto_rawDescGZIP(), []int{9}
+}
+
+func (x *TransitionAppVersionRequest) GetIdempotencyKey() string {
+	if x != nil {
+		return x.IdempotencyKey
+	}
+	return ""
+}
+
+func (x *TransitionAppVersionRequest) GetProjectId() string {
+	if x != nil {
+		return x.ProjectId
+	}
+	return ""
+}
+
+func (x *TransitionAppVersionRequest) GetInstallationId() string {
+	if x != nil {
+		return x.InstallationId
+	}
+	return ""
+}
+
+func (x *TransitionAppVersionRequest) GetExpectedProjectRevision() int64 {
+	if x != nil {
+		return x.ExpectedProjectRevision
+	}
+	return 0
+}
+
+func (x *TransitionAppVersionRequest) GetVersion() string {
+	if x != nil {
+		return x.Version
+	}
+	return ""
+}
+
+type TransitionAppVersionResponse struct {
+	state           protoimpl.MessageState `protogen:"open.v1"`
+	Installation    *AppInstallation       `protobuf:"bytes,1,opt,name=installation,proto3" json:"installation,omitempty"`
+	ProjectRevision int64                  `protobuf:"varint,2,opt,name=project_revision,json=projectRevision,proto3" json:"project_revision,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
+}
+
+func (x *TransitionAppVersionResponse) Reset() {
+	*x = TransitionAppVersionResponse{}
+	mi := &file_workos_app_v1_installation_proto_msgTypes[10]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *TransitionAppVersionResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*TransitionAppVersionResponse) ProtoMessage() {}
+
+func (x *TransitionAppVersionResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_workos_app_v1_installation_proto_msgTypes[10]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use TransitionAppVersionResponse.ProtoReflect.Descriptor instead.
+func (*TransitionAppVersionResponse) Descriptor() ([]byte, []int) {
+	return file_workos_app_v1_installation_proto_rawDescGZIP(), []int{10}
+}
+
+func (x *TransitionAppVersionResponse) GetInstallation() *AppInstallation {
+	if x != nil {
+		return x.Installation
+	}
+	return nil
+}
+
+func (x *TransitionAppVersionResponse) GetProjectRevision() int64 {
+	if x != nil {
+		return x.ProjectRevision
+	}
+	return 0
+}
+
+type RollbackAppVersionRequest struct {
+	state                   protoimpl.MessageState `protogen:"open.v1"`
+	IdempotencyKey          string                 `protobuf:"bytes,1,opt,name=idempotency_key,json=idempotencyKey,proto3" json:"idempotency_key,omitempty"`
+	ProjectId               string                 `protobuf:"bytes,2,opt,name=project_id,json=projectId,proto3" json:"project_id,omitempty"`
+	InstallationId          string                 `protobuf:"bytes,3,opt,name=installation_id,json=installationId,proto3" json:"installation_id,omitempty"`
+	ExpectedProjectRevision int64                  `protobuf:"varint,4,opt,name=expected_project_revision,json=expectedProjectRevision,proto3" json:"expected_project_revision,omitempty"`
+	unknownFields           protoimpl.UnknownFields
+	sizeCache               protoimpl.SizeCache
+}
+
+func (x *RollbackAppVersionRequest) Reset() {
+	*x = RollbackAppVersionRequest{}
+	mi := &file_workos_app_v1_installation_proto_msgTypes[11]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RollbackAppVersionRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RollbackAppVersionRequest) ProtoMessage() {}
+
+func (x *RollbackAppVersionRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_workos_app_v1_installation_proto_msgTypes[11]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RollbackAppVersionRequest.ProtoReflect.Descriptor instead.
+func (*RollbackAppVersionRequest) Descriptor() ([]byte, []int) {
+	return file_workos_app_v1_installation_proto_rawDescGZIP(), []int{11}
+}
+
+func (x *RollbackAppVersionRequest) GetIdempotencyKey() string {
+	if x != nil {
+		return x.IdempotencyKey
+	}
+	return ""
+}
+
+func (x *RollbackAppVersionRequest) GetProjectId() string {
+	if x != nil {
+		return x.ProjectId
+	}
+	return ""
+}
+
+func (x *RollbackAppVersionRequest) GetInstallationId() string {
+	if x != nil {
+		return x.InstallationId
+	}
+	return ""
+}
+
+func (x *RollbackAppVersionRequest) GetExpectedProjectRevision() int64 {
+	if x != nil {
+		return x.ExpectedProjectRevision
+	}
+	return 0
+}
+
+type RollbackAppVersionResponse struct {
+	state           protoimpl.MessageState `protogen:"open.v1"`
+	Installation    *AppInstallation       `protobuf:"bytes,1,opt,name=installation,proto3" json:"installation,omitempty"`
+	ProjectRevision int64                  `protobuf:"varint,2,opt,name=project_revision,json=projectRevision,proto3" json:"project_revision,omitempty"`
+	// The exact previous pinned version Core selected and restored.
+	RolledBackToVersion string `protobuf:"bytes,3,opt,name=rolled_back_to_version,json=rolledBackToVersion,proto3" json:"rolled_back_to_version,omitempty"`
+	unknownFields       protoimpl.UnknownFields
+	sizeCache           protoimpl.SizeCache
+}
+
+func (x *RollbackAppVersionResponse) Reset() {
+	*x = RollbackAppVersionResponse{}
+	mi := &file_workos_app_v1_installation_proto_msgTypes[12]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RollbackAppVersionResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RollbackAppVersionResponse) ProtoMessage() {}
+
+func (x *RollbackAppVersionResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_workos_app_v1_installation_proto_msgTypes[12]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RollbackAppVersionResponse.ProtoReflect.Descriptor instead.
+func (*RollbackAppVersionResponse) Descriptor() ([]byte, []int) {
+	return file_workos_app_v1_installation_proto_rawDescGZIP(), []int{12}
+}
+
+func (x *RollbackAppVersionResponse) GetInstallation() *AppInstallation {
+	if x != nil {
+		return x.Installation
+	}
+	return nil
+}
+
+func (x *RollbackAppVersionResponse) GetProjectRevision() int64 {
+	if x != nil {
+		return x.ProjectRevision
+	}
+	return 0
+}
+
+func (x *RollbackAppVersionResponse) GetRolledBackToVersion() string {
+	if x != nil {
+		return x.RolledBackToVersion
+	}
+	return ""
+}
+
+// AppInstallationVersionSnapshot is one immutable entry of an installation's
+// version history: the pinned identity facts as of that change.
+type AppInstallationVersionSnapshot struct {
+	state          protoimpl.MessageState `protogen:"open.v1"`
+	Version        string                 `protobuf:"bytes,1,opt,name=version,proto3" json:"version,omitempty"`
+	ManifestDigest string                 `protobuf:"bytes,2,opt,name=manifest_digest,json=manifestDigest,proto3" json:"manifest_digest,omitempty"`
+	// install | transition | rollback
+	Source        string                 `protobuf:"bytes,3,opt,name=source,proto3" json:"source,omitempty"`
+	Sequence      int64                  `protobuf:"varint,4,opt,name=sequence,proto3" json:"sequence,omitempty"`
+	OccurredAt    *timestamppb.Timestamp `protobuf:"bytes,5,opt,name=occurred_at,json=occurredAt,proto3" json:"occurred_at,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *AppInstallationVersionSnapshot) Reset() {
+	*x = AppInstallationVersionSnapshot{}
+	mi := &file_workos_app_v1_installation_proto_msgTypes[13]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *AppInstallationVersionSnapshot) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AppInstallationVersionSnapshot) ProtoMessage() {}
+
+func (x *AppInstallationVersionSnapshot) ProtoReflect() protoreflect.Message {
+	mi := &file_workos_app_v1_installation_proto_msgTypes[13]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AppInstallationVersionSnapshot.ProtoReflect.Descriptor instead.
+func (*AppInstallationVersionSnapshot) Descriptor() ([]byte, []int) {
+	return file_workos_app_v1_installation_proto_rawDescGZIP(), []int{13}
+}
+
+func (x *AppInstallationVersionSnapshot) GetVersion() string {
+	if x != nil {
+		return x.Version
+	}
+	return ""
+}
+
+func (x *AppInstallationVersionSnapshot) GetManifestDigest() string {
+	if x != nil {
+		return x.ManifestDigest
+	}
+	return ""
+}
+
+func (x *AppInstallationVersionSnapshot) GetSource() string {
+	if x != nil {
+		return x.Source
+	}
+	return ""
+}
+
+func (x *AppInstallationVersionSnapshot) GetSequence() int64 {
+	if x != nil {
+		return x.Sequence
+	}
+	return 0
+}
+
+func (x *AppInstallationVersionSnapshot) GetOccurredAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.OccurredAt
+	}
+	return nil
+}
+
+type ListAppVersionHistoryRequest struct {
+	state          protoimpl.MessageState `protogen:"open.v1"`
+	ProjectId      string                 `protobuf:"bytes,1,opt,name=project_id,json=projectId,proto3" json:"project_id,omitempty"`
+	InstallationId string                 `protobuf:"bytes,2,opt,name=installation_id,json=installationId,proto3" json:"installation_id,omitempty"`
+	Page           *v1.PageRequest        `protobuf:"bytes,3,opt,name=page,proto3" json:"page,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
+}
+
+func (x *ListAppVersionHistoryRequest) Reset() {
+	*x = ListAppVersionHistoryRequest{}
+	mi := &file_workos_app_v1_installation_proto_msgTypes[14]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListAppVersionHistoryRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListAppVersionHistoryRequest) ProtoMessage() {}
+
+func (x *ListAppVersionHistoryRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_workos_app_v1_installation_proto_msgTypes[14]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListAppVersionHistoryRequest.ProtoReflect.Descriptor instead.
+func (*ListAppVersionHistoryRequest) Descriptor() ([]byte, []int) {
+	return file_workos_app_v1_installation_proto_rawDescGZIP(), []int{14}
+}
+
+func (x *ListAppVersionHistoryRequest) GetProjectId() string {
+	if x != nil {
+		return x.ProjectId
+	}
+	return ""
+}
+
+func (x *ListAppVersionHistoryRequest) GetInstallationId() string {
+	if x != nil {
+		return x.InstallationId
+	}
+	return ""
+}
+
+func (x *ListAppVersionHistoryRequest) GetPage() *v1.PageRequest {
+	if x != nil {
+		return x.Page
+	}
+	return nil
+}
+
+type ListAppVersionHistoryResponse struct {
+	state         protoimpl.MessageState            `protogen:"open.v1"`
+	Snapshots     []*AppInstallationVersionSnapshot `protobuf:"bytes,1,rep,name=snapshots,proto3" json:"snapshots,omitempty"`
+	Page          *v1.PageResponse                  `protobuf:"bytes,2,opt,name=page,proto3" json:"page,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListAppVersionHistoryResponse) Reset() {
+	*x = ListAppVersionHistoryResponse{}
+	mi := &file_workos_app_v1_installation_proto_msgTypes[15]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListAppVersionHistoryResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListAppVersionHistoryResponse) ProtoMessage() {}
+
+func (x *ListAppVersionHistoryResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_workos_app_v1_installation_proto_msgTypes[15]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListAppVersionHistoryResponse.ProtoReflect.Descriptor instead.
+func (*ListAppVersionHistoryResponse) Descriptor() ([]byte, []int) {
+	return file_workos_app_v1_installation_proto_rawDescGZIP(), []int{15}
+}
+
+func (x *ListAppVersionHistoryResponse) GetSnapshots() []*AppInstallationVersionSnapshot {
+	if x != nil {
+		return x.Snapshots
+	}
+	return nil
+}
+
+func (x *ListAppVersionHistoryResponse) GetPage() *v1.PageResponse {
+	if x != nil {
+		return x.Page
+	}
+	return nil
+}
+
 var File_workos_app_v1_installation_proto protoreflect.FileDescriptor
 
 const file_workos_app_v1_installation_proto_rawDesc = "" +
@@ -704,13 +1155,51 @@ const file_workos_app_v1_installation_proto_rawDesc = "" +
 	"\x13granted_permissions\x18\x05 \x03(\tR\x12grantedPermissions\"\x85\x01\n" +
 	"\x14SetAppGrantsResponse\x12B\n" +
 	"\finstallation\x18\x01 \x01(\v2\x1e.workos.app.v1.AppInstallationR\finstallation\x12)\n" +
-	"\x10project_revision\x18\x02 \x01(\x03R\x0fprojectRevision2\x8d\x03\n" +
+	"\x10project_revision\x18\x02 \x01(\x03R\x0fprojectRevision\"\xe4\x01\n" +
+	"\x1bTransitionAppVersionRequest\x12'\n" +
+	"\x0fidempotency_key\x18\x01 \x01(\tR\x0eidempotencyKey\x12\x1d\n" +
+	"\n" +
+	"project_id\x18\x02 \x01(\tR\tprojectId\x12'\n" +
+	"\x0finstallation_id\x18\x03 \x01(\tR\x0einstallationId\x12:\n" +
+	"\x19expected_project_revision\x18\x04 \x01(\x03R\x17expectedProjectRevision\x12\x18\n" +
+	"\aversion\x18\x05 \x01(\tR\aversion\"\x8d\x01\n" +
+	"\x1cTransitionAppVersionResponse\x12B\n" +
+	"\finstallation\x18\x01 \x01(\v2\x1e.workos.app.v1.AppInstallationR\finstallation\x12)\n" +
+	"\x10project_revision\x18\x02 \x01(\x03R\x0fprojectRevision\"\xc8\x01\n" +
+	"\x19RollbackAppVersionRequest\x12'\n" +
+	"\x0fidempotency_key\x18\x01 \x01(\tR\x0eidempotencyKey\x12\x1d\n" +
+	"\n" +
+	"project_id\x18\x02 \x01(\tR\tprojectId\x12'\n" +
+	"\x0finstallation_id\x18\x03 \x01(\tR\x0einstallationId\x12:\n" +
+	"\x19expected_project_revision\x18\x04 \x01(\x03R\x17expectedProjectRevision\"\xc0\x01\n" +
+	"\x1aRollbackAppVersionResponse\x12B\n" +
+	"\finstallation\x18\x01 \x01(\v2\x1e.workos.app.v1.AppInstallationR\finstallation\x12)\n" +
+	"\x10project_revision\x18\x02 \x01(\x03R\x0fprojectRevision\x123\n" +
+	"\x16rolled_back_to_version\x18\x03 \x01(\tR\x13rolledBackToVersion\"\xd4\x01\n" +
+	"\x1eAppInstallationVersionSnapshot\x12\x18\n" +
+	"\aversion\x18\x01 \x01(\tR\aversion\x12'\n" +
+	"\x0fmanifest_digest\x18\x02 \x01(\tR\x0emanifestDigest\x12\x16\n" +
+	"\x06source\x18\x03 \x01(\tR\x06source\x12\x1a\n" +
+	"\bsequence\x18\x04 \x01(\x03R\bsequence\x12;\n" +
+	"\voccurred_at\x18\x05 \x01(\v2\x1a.google.protobuf.TimestampR\n" +
+	"occurredAt\"\x99\x01\n" +
+	"\x1cListAppVersionHistoryRequest\x12\x1d\n" +
+	"\n" +
+	"project_id\x18\x01 \x01(\tR\tprojectId\x12'\n" +
+	"\x0finstallation_id\x18\x02 \x01(\tR\x0einstallationId\x121\n" +
+	"\x04page\x18\x03 \x01(\v2\x1d.workos.common.v1.PageRequestR\x04page\"\xa0\x01\n" +
+	"\x1dListAppVersionHistoryResponse\x12K\n" +
+	"\tsnapshots\x18\x01 \x03(\v2-.workos.app.v1.AppInstallationVersionSnapshotR\tsnapshots\x122\n" +
+	"\x04page\x18\x02 \x01(\v2\x1e.workos.common.v1.PageResponseR\x04page2\xe3\x05\n" +
 	"\x16AppInstallationService\x12S\n" +
 	"\n" +
 	"InstallApp\x12 .workos.app.v1.InstallAppRequest\x1a!.workos.app.v1.InstallAppResponse\"\x00\x12Y\n" +
 	"\fUninstallApp\x12\".workos.app.v1.UninstallAppRequest\x1a#.workos.app.v1.UninstallAppResponse\"\x00\x12h\n" +
 	"\x11ListInstalledApps\x12'.workos.app.v1.ListInstalledAppsRequest\x1a(.workos.app.v1.ListInstalledAppsResponse\"\x00\x12Y\n" +
-	"\fSetAppGrants\x12\".workos.app.v1.SetAppGrantsRequest\x1a#.workos.app.v1.SetAppGrantsResponse\"\x00B9Z7github.com/yangtao121/workos/gen/go/workos/app/v1;appv1b\x06proto3"
+	"\fSetAppGrants\x12\".workos.app.v1.SetAppGrantsRequest\x1a#.workos.app.v1.SetAppGrantsResponse\"\x00\x12q\n" +
+	"\x14TransitionAppVersion\x12*.workos.app.v1.TransitionAppVersionRequest\x1a+.workos.app.v1.TransitionAppVersionResponse\"\x00\x12k\n" +
+	"\x12RollbackAppVersion\x12(.workos.app.v1.RollbackAppVersionRequest\x1a).workos.app.v1.RollbackAppVersionResponse\"\x00\x12t\n" +
+	"\x15ListAppVersionHistory\x12+.workos.app.v1.ListAppVersionHistoryRequest\x1a,.workos.app.v1.ListAppVersionHistoryResponse\"\x00B9Z7github.com/yangtao121/workos/gen/go/workos/app/v1;appv1b\x06proto3"
 
 var (
 	file_workos_app_v1_installation_proto_rawDescOnce sync.Once
@@ -724,43 +1213,62 @@ func file_workos_app_v1_installation_proto_rawDescGZIP() []byte {
 	return file_workos_app_v1_installation_proto_rawDescData
 }
 
-var file_workos_app_v1_installation_proto_msgTypes = make([]protoimpl.MessageInfo, 9)
+var file_workos_app_v1_installation_proto_msgTypes = make([]protoimpl.MessageInfo, 16)
 var file_workos_app_v1_installation_proto_goTypes = []any{
-	(*AppInstallation)(nil),           // 0: workos.app.v1.AppInstallation
-	(*InstallAppRequest)(nil),         // 1: workos.app.v1.InstallAppRequest
-	(*InstallAppResponse)(nil),        // 2: workos.app.v1.InstallAppResponse
-	(*UninstallAppRequest)(nil),       // 3: workos.app.v1.UninstallAppRequest
-	(*UninstallAppResponse)(nil),      // 4: workos.app.v1.UninstallAppResponse
-	(*ListInstalledAppsRequest)(nil),  // 5: workos.app.v1.ListInstalledAppsRequest
-	(*ListInstalledAppsResponse)(nil), // 6: workos.app.v1.ListInstalledAppsResponse
-	(*SetAppGrantsRequest)(nil),       // 7: workos.app.v1.SetAppGrantsRequest
-	(*SetAppGrantsResponse)(nil),      // 8: workos.app.v1.SetAppGrantsResponse
-	(*timestamppb.Timestamp)(nil),     // 9: google.protobuf.Timestamp
-	(*v1.PageRequest)(nil),            // 10: workos.common.v1.PageRequest
-	(*v1.PageResponse)(nil),           // 11: workos.common.v1.PageResponse
+	(*AppInstallation)(nil),                // 0: workos.app.v1.AppInstallation
+	(*InstallAppRequest)(nil),              // 1: workos.app.v1.InstallAppRequest
+	(*InstallAppResponse)(nil),             // 2: workos.app.v1.InstallAppResponse
+	(*UninstallAppRequest)(nil),            // 3: workos.app.v1.UninstallAppRequest
+	(*UninstallAppResponse)(nil),           // 4: workos.app.v1.UninstallAppResponse
+	(*ListInstalledAppsRequest)(nil),       // 5: workos.app.v1.ListInstalledAppsRequest
+	(*ListInstalledAppsResponse)(nil),      // 6: workos.app.v1.ListInstalledAppsResponse
+	(*SetAppGrantsRequest)(nil),            // 7: workos.app.v1.SetAppGrantsRequest
+	(*SetAppGrantsResponse)(nil),           // 8: workos.app.v1.SetAppGrantsResponse
+	(*TransitionAppVersionRequest)(nil),    // 9: workos.app.v1.TransitionAppVersionRequest
+	(*TransitionAppVersionResponse)(nil),   // 10: workos.app.v1.TransitionAppVersionResponse
+	(*RollbackAppVersionRequest)(nil),      // 11: workos.app.v1.RollbackAppVersionRequest
+	(*RollbackAppVersionResponse)(nil),     // 12: workos.app.v1.RollbackAppVersionResponse
+	(*AppInstallationVersionSnapshot)(nil), // 13: workos.app.v1.AppInstallationVersionSnapshot
+	(*ListAppVersionHistoryRequest)(nil),   // 14: workos.app.v1.ListAppVersionHistoryRequest
+	(*ListAppVersionHistoryResponse)(nil),  // 15: workos.app.v1.ListAppVersionHistoryResponse
+	(*timestamppb.Timestamp)(nil),          // 16: google.protobuf.Timestamp
+	(*v1.PageRequest)(nil),                 // 17: workos.common.v1.PageRequest
+	(*v1.PageResponse)(nil),                // 18: workos.common.v1.PageResponse
 }
 var file_workos_app_v1_installation_proto_depIdxs = []int32{
-	9,  // 0: workos.app.v1.AppInstallation.installed_at:type_name -> google.protobuf.Timestamp
-	9,  // 1: workos.app.v1.AppInstallation.uninstalled_at:type_name -> google.protobuf.Timestamp
+	16, // 0: workos.app.v1.AppInstallation.installed_at:type_name -> google.protobuf.Timestamp
+	16, // 1: workos.app.v1.AppInstallation.uninstalled_at:type_name -> google.protobuf.Timestamp
 	0,  // 2: workos.app.v1.InstallAppResponse.installation:type_name -> workos.app.v1.AppInstallation
 	0,  // 3: workos.app.v1.UninstallAppResponse.installation:type_name -> workos.app.v1.AppInstallation
-	10, // 4: workos.app.v1.ListInstalledAppsRequest.page:type_name -> workos.common.v1.PageRequest
+	17, // 4: workos.app.v1.ListInstalledAppsRequest.page:type_name -> workos.common.v1.PageRequest
 	0,  // 5: workos.app.v1.ListInstalledAppsResponse.installations:type_name -> workos.app.v1.AppInstallation
-	11, // 6: workos.app.v1.ListInstalledAppsResponse.page:type_name -> workos.common.v1.PageResponse
+	18, // 6: workos.app.v1.ListInstalledAppsResponse.page:type_name -> workos.common.v1.PageResponse
 	0,  // 7: workos.app.v1.SetAppGrantsResponse.installation:type_name -> workos.app.v1.AppInstallation
-	1,  // 8: workos.app.v1.AppInstallationService.InstallApp:input_type -> workos.app.v1.InstallAppRequest
-	3,  // 9: workos.app.v1.AppInstallationService.UninstallApp:input_type -> workos.app.v1.UninstallAppRequest
-	5,  // 10: workos.app.v1.AppInstallationService.ListInstalledApps:input_type -> workos.app.v1.ListInstalledAppsRequest
-	7,  // 11: workos.app.v1.AppInstallationService.SetAppGrants:input_type -> workos.app.v1.SetAppGrantsRequest
-	2,  // 12: workos.app.v1.AppInstallationService.InstallApp:output_type -> workos.app.v1.InstallAppResponse
-	4,  // 13: workos.app.v1.AppInstallationService.UninstallApp:output_type -> workos.app.v1.UninstallAppResponse
-	6,  // 14: workos.app.v1.AppInstallationService.ListInstalledApps:output_type -> workos.app.v1.ListInstalledAppsResponse
-	8,  // 15: workos.app.v1.AppInstallationService.SetAppGrants:output_type -> workos.app.v1.SetAppGrantsResponse
-	12, // [12:16] is the sub-list for method output_type
-	8,  // [8:12] is the sub-list for method input_type
-	8,  // [8:8] is the sub-list for extension type_name
-	8,  // [8:8] is the sub-list for extension extendee
-	0,  // [0:8] is the sub-list for field type_name
+	0,  // 8: workos.app.v1.TransitionAppVersionResponse.installation:type_name -> workos.app.v1.AppInstallation
+	0,  // 9: workos.app.v1.RollbackAppVersionResponse.installation:type_name -> workos.app.v1.AppInstallation
+	16, // 10: workos.app.v1.AppInstallationVersionSnapshot.occurred_at:type_name -> google.protobuf.Timestamp
+	17, // 11: workos.app.v1.ListAppVersionHistoryRequest.page:type_name -> workos.common.v1.PageRequest
+	13, // 12: workos.app.v1.ListAppVersionHistoryResponse.snapshots:type_name -> workos.app.v1.AppInstallationVersionSnapshot
+	18, // 13: workos.app.v1.ListAppVersionHistoryResponse.page:type_name -> workos.common.v1.PageResponse
+	1,  // 14: workos.app.v1.AppInstallationService.InstallApp:input_type -> workos.app.v1.InstallAppRequest
+	3,  // 15: workos.app.v1.AppInstallationService.UninstallApp:input_type -> workos.app.v1.UninstallAppRequest
+	5,  // 16: workos.app.v1.AppInstallationService.ListInstalledApps:input_type -> workos.app.v1.ListInstalledAppsRequest
+	7,  // 17: workos.app.v1.AppInstallationService.SetAppGrants:input_type -> workos.app.v1.SetAppGrantsRequest
+	9,  // 18: workos.app.v1.AppInstallationService.TransitionAppVersion:input_type -> workos.app.v1.TransitionAppVersionRequest
+	11, // 19: workos.app.v1.AppInstallationService.RollbackAppVersion:input_type -> workos.app.v1.RollbackAppVersionRequest
+	14, // 20: workos.app.v1.AppInstallationService.ListAppVersionHistory:input_type -> workos.app.v1.ListAppVersionHistoryRequest
+	2,  // 21: workos.app.v1.AppInstallationService.InstallApp:output_type -> workos.app.v1.InstallAppResponse
+	4,  // 22: workos.app.v1.AppInstallationService.UninstallApp:output_type -> workos.app.v1.UninstallAppResponse
+	6,  // 23: workos.app.v1.AppInstallationService.ListInstalledApps:output_type -> workos.app.v1.ListInstalledAppsResponse
+	8,  // 24: workos.app.v1.AppInstallationService.SetAppGrants:output_type -> workos.app.v1.SetAppGrantsResponse
+	10, // 25: workos.app.v1.AppInstallationService.TransitionAppVersion:output_type -> workos.app.v1.TransitionAppVersionResponse
+	12, // 26: workos.app.v1.AppInstallationService.RollbackAppVersion:output_type -> workos.app.v1.RollbackAppVersionResponse
+	15, // 27: workos.app.v1.AppInstallationService.ListAppVersionHistory:output_type -> workos.app.v1.ListAppVersionHistoryResponse
+	21, // [21:28] is the sub-list for method output_type
+	14, // [14:21] is the sub-list for method input_type
+	14, // [14:14] is the sub-list for extension type_name
+	14, // [14:14] is the sub-list for extension extendee
+	0,  // [0:14] is the sub-list for field type_name
 }
 
 func init() { file_workos_app_v1_installation_proto_init() }
@@ -775,7 +1283,7 @@ func file_workos_app_v1_installation_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_workos_app_v1_installation_proto_rawDesc), len(file_workos_app_v1_installation_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   9,
+			NumMessages:   16,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

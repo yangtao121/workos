@@ -210,8 +210,10 @@ func TestMutableProjectAppGrantsMigrationsFromPristineDatabase(t *testing.T) {
 	insertMutableGrantsInstallation(t, ctx, conn, installation, owner, project, []string{"agent.event.watch", "agent.task.run"}, false)
 	execOnConn(t, ctx, conn, `INSERT INTO workos_core.project_app_installation_requests (
 		owner_user_id, idempotency_key, command, request_digest, installation_id,
-		project_revision, result_granted_permissions, result_grant_revision, created_at
-	) VALUES ($1, 'set-grants-accepted', 'set-grants', $2, $3, 2, ARRAY['agent.task.run'], 2, now())`,
+		project_revision, result_granted_permissions, result_grant_revision, created_at,
+		result_version, result_manifest_digest
+	) VALUES ($1, 'set-grants-accepted', 'set-grants', $2, $3, 2, ARRAY['agent.task.run'], 2, now(),
+		'1.0.0', 'sha256:' || repeat('a', 64))`,
 		owner, "sha256:"+repeat("a", 64), installation)
 	execConnRejected(t, ctx, conn, "unknown command",
 		`INSERT INTO workos_core.project_app_installation_requests (

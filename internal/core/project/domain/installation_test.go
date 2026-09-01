@@ -2,7 +2,10 @@ package domain
 
 import (
 	"encoding/json"
+	"errors"
+	"strings"
 	"testing"
+	"time"
 )
 
 func TestValidInstallationAppID(t *testing.T) {
@@ -38,7 +41,7 @@ func TestValidInstallationVersion(t *testing.T) {
 			t.Errorf("expected %q to be a valid version", value)
 		}
 	}
-	invalid := []string{"", "1.0", "1.0.0.0", "01.2.3", "1.0.0-", "1.0.0-.rc1", "1.0.0-rc..1", "v1.0.0", "1.0.0+", "1.0.0-rc_1"}
+	invalid := []string{"", "1.0", "1.0.0.0", "01.2.3", "1.0.0-", "1.0.0-.rc1", "1.0.0-rc..1", "1.0.0-01", "v1.0.0", "1.0.0+", "1.0.0-rc_1"}
 	for _, value := range invalid {
 		if ValidInstallationVersion(value) {
 			t.Errorf("expected %q to be an invalid version", value)
@@ -75,6 +78,37 @@ func TestValidInstallationUUID(t *testing.T) {
 		if ValidInstallationUUID(value) {
 			t.Errorf("expected %q to be an invalid UUID", value)
 		}
+	}
+}
+
+func TestValidateStoredInstallationAndHistory(t *testing.T) {
+	t.Parallel()
+	now := time.Date(2026, 8, 31, 10, 0, 0, 0, time.UTC)
+	installation := Installation{
+		ID: "01999999-9999-7999-8999-999999999993", OwnerUserID: "01999999-9999-7999-8999-999999999991",
+		ProjectID: "01999999-9999-7999-8999-999999999992", AppID: "board-app",
+		Version: "1.1.0", ManifestDigest: "sha256:" + repeatHex(64),
+		GrantedPermissions: []string{"agent.task.run"}, GrantRevision: 2, InstalledAt: now,
+	}
+	if err := ValidateStoredInstallation(installation); err != nil {
+		t.Fatalf("valid stored installation rejected: %v", err)
+	}
+	history := []VersionSnapshot{
+		{Version: "1.0.0", ManifestDigest: "sha256:" + strings.Repeat("b", 64), Source: VersionSourceInstall, Sequence: 1, OccurredAt: now},
+		{Version: installation.Version, ManifestDigest: installation.ManifestDigest, Source: VersionSourceTransition, Sequence: 2, OccurredAt: now.Add(time.Second)},
+	}
+	if err := ValidateVersionHistoryForInstallation(history, installation); err != nil {
+		t.Fatalf("valid bound history rejected: %v", err)
+	}
+	drifted := append([]VersionSnapshot(nil), history...)
+	drifted[len(drifted)-1].Version = "2.0.0"
+	if err := ValidateVersionHistoryForInstallation(drifted, installation); !errors.Is(err, ErrHistoryCorrupt) {
+		t.Fatalf("tail drift must fail closed, got %v", err)
+	}
+	badTime := history
+	badTime[0].OccurredAt = now.Add(time.Nanosecond)
+	if err := ValidateVersionHistory(badTime); !errors.Is(err, ErrHistoryCorrupt) {
+		t.Fatalf("noncanonical time must fail closed, got %v", err)
 	}
 }
 
