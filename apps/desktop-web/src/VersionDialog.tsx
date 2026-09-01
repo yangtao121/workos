@@ -4,6 +4,10 @@ import type { AppInstallation, AppInstallationVersionSnapshot, Project } from "@
 import { Button } from "@workos/ui-kit";
 import type { WorkOSClients } from "@workos/agent-sdk";
 
+type VersionCommandResult =
+  | Awaited<ReturnType<WorkOSClients["appInstallations"]["transitionAppVersion"]>>
+  | Awaited<ReturnType<WorkOSClients["appInstallations"]["rollbackAppVersion"]>>;
+
 // VersionDialog is the owner's explicit version surface for one installed
 // app (ADR-0012): it lists the installation's durable version history and
 // offers exactly two owner-triggered commands — pinning one explicit
@@ -18,6 +22,7 @@ export function VersionDialog({
   installation,
   workosClients,
   onFactsRefreshed,
+  onInstallationSaved,
   onVersionChanged,
   onCancel,
 }: {
@@ -25,6 +30,9 @@ export function VersionDialog({
   installation: AppInstallation;
   workosClients: Pick<WorkOSClients, "appInstallations" | "projects">;
   onFactsRefreshed: (project: Project, installations: AppInstallation[]) => void;
+  // Applies the command's authoritative first response immediately. A
+  // follow-up list failure must not leave the parent on a stale revision.
+  onInstallationSaved: (installation: AppInstallation, projectRevision: bigint) => void;
   onVersionChanged: (installationId: string) => void;
   onCancel: () => void;
 }) {
@@ -33,10 +41,20 @@ export function VersionDialog({
   const [target, setTarget] = useState("");
   const [busy, setBusy] = useState(false);
   const [feedback, setFeedback] = useState<{ text: string; isError: boolean }>();
-  const generationRef = useRef(0);
+  const lifecycleGenerationRef = useRef(0);
+  const historyGenerationRef = useRef(0);
 
   useEffect(() => {
-    const generation = ++generationRef.current;
+    return () => {
+      lifecycleGenerationRef.current += 1;
+      historyGenerationRef.current += 1;
+    };
+  }, []);
+
+  useEffect(() => {
+    const generation = ++historyGenerationRef.current;
+    setHistory(undefined);
+    setHistoryUnavailable(false);
     void workosClients.appInstallations
       .listAppVersionHistory({
         projectId: project.id,
@@ -44,17 +62,17 @@ export function VersionDialog({
         page: { pageSize: 20 },
       })
       .then((response) => {
-        if (generation !== generationRef.current) return;
+        if (generation !== historyGenerationRef.current) return;
         setHistory(response.snapshots);
       })
       .catch(() => {
-        if (generation !== generationRef.current) return;
+        if (generation !== historyGenerationRef.current) return;
         setHistoryUnavailable(true);
       });
     return () => {
-      generationRef.current += 1;
+      historyGenerationRef.current += 1;
     };
-  }, [installation.id, project.id, workosClients.appInstallations]);
+  }, [installation.id, installation.version, project.id, workosClients.appInstallations]);
 
   const refreshFacts = useCallback(async () => {
     const [projectResponse, active] = await Promise.all([
@@ -68,16 +86,21 @@ export function VersionDialog({
   }, [installation.id, onFactsRefreshed, project.id, workosClients]);
 
   const runCommand = useCallback(
-    (command: (revision: bigint) => Promise<void>, successText: string) => {
+    (command: (revision: bigint) => Promise<VersionCommandResult>, successText: string) => {
       if (busy) return;
       setBusy(true);
       setFeedback(undefined);
-      const generation = generationRef.current;
-      const isLive = () => generation === generationRef.current;
+      const generation = lifecycleGenerationRef.current;
+      const isLive = () => generation === lifecycleGenerationRef.current;
       void (async () => {
         try {
-          await command(project.revision);
+          const result = await command(project.revision);
           if (!isLive()) return;
+          if (!result.installation) throw new Error("missing installation in version response");
+          // The mutation is already committed. Adopt its exact response and
+          // invalidate old surfaces before the best-effort list refresh.
+          onInstallationSaved(result.installation, result.projectRevision);
+          onVersionChanged(installation.id);
           try {
             const active = await refreshFacts();
             if (!isLive()) return;
@@ -86,14 +109,12 @@ export function VersionDialog({
               text: updated ? `${successText} The app now pins ${updated.version}.` : successText,
               isError: false,
             });
-            onVersionChanged(installation.id);
           } catch {
             if (isLive()) {
               setFeedback({
                 text: `${successText} The library could not be refreshed.`,
                 isError: false,
               });
-              onVersionChanged(installation.id);
             }
           }
         } catch (reason) {
@@ -116,6 +137,7 @@ export function VersionDialog({
       busy,
       installation.id,
       onFactsRefreshed,
+      onInstallationSaved,
       onVersionChanged,
       project.id,
       project.revision,
@@ -128,15 +150,13 @@ export function VersionDialog({
     if (!trimmed) return;
     runCommand(
       (revision) =>
-        workosClients.appInstallations
-          .transitionAppVersion({
-            idempotencyKey: crypto.randomUUID(),
-            projectId: project.id,
-            installationId: installation.id,
-            expectedProjectRevision: revision,
-            version: trimmed,
-          })
-          .then(() => undefined),
+        workosClients.appInstallations.transitionAppVersion({
+          idempotencyKey: crypto.randomUUID(),
+          projectId: project.id,
+          installationId: installation.id,
+          expectedProjectRevision: revision,
+          version: trimmed,
+        }),
       `Switched to ${trimmed}.`,
     );
   };
@@ -146,14 +166,12 @@ export function VersionDialog({
     if (!previous) return;
     runCommand(
       (revision) =>
-        workosClients.appInstallations
-          .rollbackAppVersion({
-            idempotencyKey: crypto.randomUUID(),
-            projectId: project.id,
-            installationId: installation.id,
-            expectedProjectRevision: revision,
-          })
-          .then(() => undefined),
+        workosClients.appInstallations.rollbackAppVersion({
+          idempotencyKey: crypto.randomUUID(),
+          projectId: project.id,
+          installationId: installation.id,
+          expectedProjectRevision: revision,
+        }),
       `Rolled back to ${previous}.`,
     );
   };
@@ -168,7 +186,8 @@ export function VersionDialog({
         role="dialog"
       >
         <h3 id="version-dialog-title">
-          Versions · {installation.appId} · pinned {installation.version}
+          Versions · <span className="version-dialog-app-id">{installation.appId}</span> · pinned{" "}
+          {installation.version}
         </h3>
         <p id="version-dialog-description">
           Switching versions keeps this installation and its permissions. A target whose permissions

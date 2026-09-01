@@ -191,6 +191,7 @@ export function AppLibrary({
   const installationSaved = useCallback(
     (saved: AppInstallation, savedRevision: bigint) => {
       setInstallations((current) => current.map((item) => (item.id === saved.id ? saved : item)));
+      setVersionsOf((current) => (current?.id === saved.id ? saved : current));
       onProjectRefreshed({ ...project, revision: savedRevision });
     },
     [onProjectRefreshed, project],
@@ -406,7 +407,7 @@ export function AppLibrary({
                 <span>
                   <strong>{app.name || app.id}</strong>
                   <small>
-                    {app.id} · registry {app.version}
+                    <span className="app-row-id">{app.id}</span> · registry {app.version}
                   </small>
                   {installation ? (
                     <>
@@ -629,7 +630,11 @@ export function AppLibrary({
           }}
           onFactsRefreshed={(refreshedProject, refreshedInstallations) => {
             applyFacts({ project: refreshedProject, installations: refreshedInstallations });
+            setVersionsOf((current) =>
+              current ? refreshedInstallations.find((item) => item.id === current.id) : undefined,
+            );
           }}
+          onInstallationSaved={installationSaved}
           onVersionChanged={(installationId) => {
             onInstallationVersionChanged?.(installationId);
           }}

@@ -81,6 +81,13 @@ describe("sanitizeLayoutState", () => {
     expect(
       sanitizeLayoutState({ ...base(), updatedAt: "never" }, PROJECT_A, "phone"),
     ).toBeUndefined();
+    expect(
+      sanitizeLayoutState(
+        { ...base(), updatedAt: "2026-08-31T18:00:00.000+08:00" },
+        PROJECT_A,
+        "phone",
+      ),
+    ).toBeUndefined();
     expect(sanitizeLayoutState({ ...base(), revision: -1 }, PROJECT_A, "phone")).toBeUndefined();
     expect(
       sanitizeLayoutState({ ...base(), extraField: "x" } as never, PROJECT_A, "phone"),
@@ -98,6 +105,9 @@ describe("sanitizeLayoutState", () => {
     ).toBeUndefined();
     expect(
       sanitizeLayoutState({ ...base(), recentAppInstanceIds: ["bogus"] }, PROJECT_A, "phone"),
+    ).toBeUndefined();
+    expect(
+      sanitizeLayoutState({ ...base(), recentAppInstanceIds: [APP_A, APP_A] }, PROJECT_A, "phone"),
     ).toBeUndefined();
   });
 

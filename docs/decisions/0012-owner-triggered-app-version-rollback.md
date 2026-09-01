@@ -24,13 +24,16 @@ version rollback**，不是模型自动修复，不宣称候选版本经过 cana
   表——rollback eligibility 由客户端（可信 Desktop）组合两个 public 读（Incident
   list + Installation version history）推导，服务端命令本身无条件信任 history。
 - 新表 `workos_core.project_app_installation_versions`（migration `025`，owner：
-  workos-core Project Installation）是 append-only、有界的版本历史：
+  workos-core Project Installation）保存“条目写入后不可变、只允许按保留策略删除最旧条目”的
+  有界版本历史：
   `(installation_id, sequence)` 主键、复合 FK 绑定同 owner 的 installation、
   `source ∈ ('install','transition','rollback')`、每行快照 version + manifest digest +
   UTC 时间。写入只发生在 install/transition/rollback 的同一事务里；超过每 installation
   20 条时裁剪最旧快照（bounded，裁剪策略明确，不依赖日志/事件反推）。
-- 读路径（public `ListAppVersionHistory`）每次读都重验 grammar/digest 形状/UUID/
-  排序；损坏 fail closed（净化 Internal），绝不静默修复。
+- 读路径（public `ListAppVersionHistory`）每次读都重验 version/digest/source、canonical
+  UUIDv7、UTC 微秒时间、严格 sequence 顺序，并要求最新保留快照与 installation 当前
+  pinned identity 完全一致；installation 与 idempotency 首响应投影同样在 adapter 出口及
+  snapshot 叠加后重验。损坏 fail closed（净化 Internal），绝不静默修复。
 
 ### 2. 协议：additive RPC，现有 public `AppInstallationService` 承载
 

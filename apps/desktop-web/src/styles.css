@@ -652,6 +652,80 @@ button {
   justify-content: flex-end;
 }
 
+/* Installed-app version history and explicit transition/rollback consent. */
+.version-dialog {
+  max-width: 620px;
+}
+
+.version-history {
+  display: grid;
+  gap: 6px;
+  max-height: 210px;
+  margin: 12px 0;
+  padding: 0;
+  overflow-y: auto;
+  list-style: none;
+}
+
+.version-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 8px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.035);
+  font-size: 12px;
+}
+
+.version-row.current {
+  border-color: rgba(94, 173, 133, 0.5);
+  background: rgba(94, 173, 133, 0.1);
+}
+
+.version-row span {
+  color: #9fb0c9;
+}
+
+.version-dialog .app-consent-actions {
+  display: grid;
+  grid-template-columns: minmax(150px, 1fr) auto auto auto;
+  align-items: stretch;
+  margin-top: 14px;
+}
+
+.version-dialog input {
+  min-width: 0;
+  min-height: 40px;
+  padding: 8px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 8px;
+  outline: none;
+  background: rgba(5, 10, 18, 0.58);
+  color: #e7edf7;
+}
+
+.version-dialog input:focus-visible {
+  border-color: #6ea6ea;
+  box-shadow: 0 0 0 2px rgba(110, 166, 234, 0.25);
+}
+
+.version-dialog .workos-button {
+  min-height: 40px;
+  white-space: nowrap;
+}
+
+@media (max-width: 620px) {
+  .version-dialog .app-consent-actions {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .version-dialog input {
+    grid-column: 1 / -1;
+  }
+}
+
 .app-row-granted {
   color: #8fd6a5;
 }
@@ -982,6 +1056,64 @@ button {
 .device-actions {
   display: flex;
   gap: 10px;
+}
+
+/* System Monitor keeps reliability facts and owner actions readable in the
+   same bounded window body on desktop, tablet, and phone shells. */
+.system-monitor-body {
+  height: 100%;
+  padding: 14px;
+  overflow: auto;
+}
+
+.system-monitor-body > .library-feedback {
+  margin: 0 0 12px;
+  line-height: 1.45;
+}
+
+.incident-list {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.incident-row {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.035);
+}
+
+.incident-facts {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+
+.incident-facts strong {
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.incident-facts > span {
+  color: #9fb0c9;
+  font-size: 12px;
+}
+
+.incident-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.incident-acknowledged {
+  color: #9fc3ae;
+  font-size: 12px;
 }
 
 .pairing-ticket {

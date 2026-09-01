@@ -42,7 +42,13 @@ async function createProjectViaSheet(page: Page, name: string) {
   await dialog.waitFor({ timeout: libraryTimeout });
   await dialog.getByLabel("Project name").fill(name);
   await dialog.getByRole("button", { name: "Create space" }).click();
-  // Creating selects the new project; close the sheet to continue.
+  // The adaptive form deliberately does not block the sheet while Core owns
+  // the create. Wait for the authoritative response to select the new space
+  // before closing; otherwise a fast click can start work in the prior
+  // project and the late selection correctly discards its terminal response.
+  await expect(dialog.locator(".project-card.active")).toContainText(name, {
+    timeout: libraryTimeout,
+  });
   await dialog.getByRole("button", { name: "Close" }).click();
 }
 

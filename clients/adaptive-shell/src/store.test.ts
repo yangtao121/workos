@@ -38,7 +38,22 @@ describe("memory layout store", () => {
     // The last commit's mutation is present; the earlier one was rebased
     // onto a state that no longer carried it — observable via revision.
     expect(final.revision).toBe(2);
+    expect(final.activeSystemWindow).toBe("system-monitor");
     expect(final.recentAppInstanceIds).toContain(APP_A);
+  });
+
+  it("does not expose mutable references that bypass revision adjudication", async () => {
+    const store = createMemoryLayoutStore();
+    const written = await store.update("phone", PROJECT, NOW, (state) => ({
+      ...state,
+      recentAppInstanceIds: [APP_A],
+    }));
+    written.recentAppInstanceIds.length = 0;
+    const loaded = await store.load("phone", PROJECT, NOW);
+    expect(loaded.revision).toBe(1);
+    expect(loaded.recentAppInstanceIds).toEqual([APP_A]);
+    loaded.recentAppInstanceIds.length = 0;
+    expect((await store.load("phone", PROJECT, NOW)).recentAppInstanceIds).toEqual([APP_A]);
   });
 
   it("removeProject and clearAll sweep exactly their scope", async () => {
@@ -62,5 +77,27 @@ describe("createLayoutStore", () => {
     }));
     expect(next.layoutPreference).toBe("dual");
     expect(next.revision).toBe(1);
+  });
+
+  it("keeps session state when IndexedDB opening fails", async () => {
+    const failingFactory = {
+      open: () => {
+        throw new Error("storage disabled");
+      },
+    } as unknown as IDBFactory;
+    const store = createLayoutStore(failingFactory);
+    await store.update("tablet", PROJECT, NOW, (state) => ({
+      ...state,
+      activeSystemWindow: "system-monitor",
+    }));
+    const second = await store.update("tablet", PROJECT, NOW, (state) => ({
+      ...state,
+      recentAppInstanceIds: [APP_A],
+    }));
+    expect(second.revision).toBe(2);
+    expect(second.activeSystemWindow).toBe("system-monitor");
+    expect((await store.load("tablet", PROJECT, NOW)).recentAppInstanceIds).toEqual([APP_A]);
+    await store.clearAll();
+    expect((await store.load("tablet", PROJECT, NOW)).revision).toBe(0);
   });
 });

@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
 import {
   activeWindow,
   orderedWindows,
@@ -171,7 +171,20 @@ export function AdaptiveShell({
     );
   };
 
-  const hingeGap = layout.hinge && layout.hinge.gap > 0 ? layout.hinge.gap : 24;
+  const hingeGap = layout.hinge?.gap ?? 24;
+  const firstSegment = layout.segments[0];
+  const secondSegment = layout.segments[1];
+  const foldGridStyle: CSSProperties | undefined = fold
+    ? layout.hinge?.horizontal
+      ? {
+          gridTemplateColumns: "minmax(0, 1fr)",
+          gridTemplateRows: `${String(firstSegment?.height ?? 1)}fr ${String(hingeGap)}px ${String(secondSegment?.height ?? 1)}fr`,
+        }
+      : {
+          gridTemplateColumns: `${String(firstSegment?.width ?? 1)}fr ${String(hingeGap)}px ${String(secondSegment?.width ?? 1)}fr`,
+          gridTemplateRows: "minmax(0, 1fr)",
+        }
+    : undefined;
 
   return (
     <main className="adaptive-shell" data-mode={layout.mode}>
@@ -309,7 +322,8 @@ export function AdaptiveShell({
         ) : fold && dualPane ? (
           <div
             className="fold-panes"
-            style={{ gridTemplateColumns: `1fr ${String(hingeGap)}px 1fr` }}
+            data-hinge-orientation={layout.hinge?.horizontal ? "horizontal" : "vertical"}
+            style={foldGridStyle}
           >
             {paneFor(main, "fold-pane-main")}
             <div className="fold-hinge" aria-hidden="true" />

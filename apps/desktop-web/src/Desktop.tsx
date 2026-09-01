@@ -91,6 +91,10 @@ export function Desktop({
   deviceAuth?: DeviceAuthClient;
 } = {}) {
   const [projects, setProjects] = useState<Project[]>([]);
+  // True only after a complete successful page walk. Layout sweeps must not
+  // treat the initial empty array or an unavailable Project service as
+  // authoritative server truth.
+  const [projectsAuthoritative, setProjectsAuthoritative] = useState(false);
   const [activeProjectId, setActiveProjectId] = useState<string | undefined>(
     readStoredActiveProjectId,
   );
@@ -207,13 +211,19 @@ export function Desktop({
   }, [activeProjectId]);
 
   const refreshProjects = useCallback(async () => {
-    const response = await workosClients.projects.listProjects({
-      page: { pageSize: 100, pageToken: "" },
-    });
-    const listed = response.projects;
-    // The persisted selection may sit beyond the first project page; fetch
-    // it directly so a reload keeps the user's project active instead of
-    // silently switching to the oldest listed one.
+    const listed: Project[] = [];
+    let token = "";
+    for (;;) {
+      const response = await workosClients.projects.listProjects({
+        page: { pageSize: 100, pageToken: token },
+      });
+      listed.push(...response.projects);
+      token = response.page?.nextPageToken ?? "";
+      if (token === "") break;
+    }
+    // A persisted selection should be in the complete walk. Keep the direct
+    // read as a conservative compatibility fallback if an older server
+    // returns an incomplete page contract.
     const stored = activeProjectIdRef.current;
     if (stored && !listed.some((project) => project.id === stored)) {
       try {
@@ -227,6 +237,7 @@ export function Desktop({
       }
     }
     setProjects(listed);
+    setProjectsAuthoritative(true);
     setActiveProjectId((current) =>
       current && listed.some((project) => project.id === current) ? current : listed[0]?.id,
     );
@@ -451,9 +462,9 @@ export function Desktop({
   // drops records for archived or foreign projects whenever the
   // authoritative project list changes (covers archive and logout drift).
   useEffect(() => {
-    if (!adaptive || projects.length === 0) return;
+    if (!adaptive || !projectsAuthoritative) return;
     void layoutStore.sweep(new Set(projects.map((project) => project.id))).catch(() => undefined);
-  }, [adaptive, projects]);
+  }, [adaptive, projects, projectsAuthoritative]);
 
   async function createProject(event: SyntheticEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -616,10 +627,11 @@ export function Desktop({
     window.addEventListener("mouseup", onUp);
   }
 
-  // Uninstalling an app closes its windows so a removed instance leaves no
-  // orphan surfaces behind, and every device-class layout record of this
-  // browser profile drops its references to the vanished instance.
-  function installationRemoved(installationId: string) {
+  // A server-confirmed install security-fact change (uninstall, grants, or
+  // pinned version) closes its windows so no stale Surface stays visible,
+  // and every device-class layout record of this browser profile drops its
+  // references to that now-invalid instance.
+  function invalidateInstallationReferences(installationId: string) {
     closeInstallationWindows(installationId);
     const projectId = activeProjectIdRef.current;
     const deviceClass = deviceLayout.deviceClass;
@@ -634,6 +646,8 @@ export function Desktop({
       })
       .catch(() => undefined);
   }
+
+  const installationRemoved = invalidateInstallationReferences;
 
   // A server-confirmed grant change invalidates every still-open surface of
   // exactly that installation (the backend already denies their bridge calls
@@ -925,6 +939,10 @@ export function Desktop({
     ) : windowState.kind === "system-monitor" ? (
       <SystemMonitor
         expectedProjectRevision={activeProject?.revision}
+        onInstallationVersionChanged={invalidateInstallationReferences}
+        onProjectRevisionChanged={(revision) => {
+          if (activeProject) replaceProject({ ...activeProject, revision });
+        }}
         projectId={activeProjectId}
         workosClients={workosClients}
       />
@@ -960,7 +978,7 @@ export function Desktop({
       />
     ) : windowState.kind === "device-center" ? (
       deviceAuth ? (
-        <DeviceCenter deviceAuth={deviceAuth} />
+        <DeviceCenter deviceAuth={deviceAuth} onSessionEnded={() => layoutStore.clearAll()} />
       ) : (
         <p className="empty-state">Device management is not available in this deployment.</p>
       )
@@ -1098,8 +1116,8 @@ export function Desktop({
               onProjectRefreshed={replaceProject}
               onSurfaceOpened={surfaceOpened}
               onInstallationRemoved={installationRemoved}
-              onInstallationGrantsChanged={closeInstallationWindows}
-              onInstallationVersionChanged={closeInstallationWindows}
+              onInstallationGrantsChanged={invalidateInstallationReferences}
+              onInstallationVersionChanged={invalidateInstallationReferences}
             />
           ) : null
         }
@@ -1209,8 +1227,8 @@ export function Desktop({
               onProjectRefreshed={replaceProject}
               onSurfaceOpened={surfaceOpened}
               onInstallationRemoved={installationRemoved}
-              onInstallationGrantsChanged={closeInstallationWindows}
-              onInstallationVersionChanged={closeInstallationWindows}
+              onInstallationGrantsChanged={invalidateInstallationReferences}
+              onInstallationVersionChanged={invalidateInstallationReferences}
             />
           ) : null}
           {settingsOpen && activeProject ? (

@@ -82,15 +82,26 @@ export function emptyLayoutState(
 }
 
 function validTimestamp(value: unknown): value is string {
-  return typeof value === "string" && !Number.isNaN(Date.parse(value));
+  if (typeof value !== "string") return false;
+  const parsed = new Date(value);
+  try {
+    // Layout writes originate from Date#toISOString. Requiring the exact
+    // canonical millisecond UTC spelling prevents offsets and permissive
+    // Date.parse inputs from becoming durable facts.
+    return parsed.toISOString() === value;
+  } catch {
+    return false;
+  }
 }
 
 function validIdList(value: unknown, limit: number): value is string[] {
-  return (
-    Array.isArray(value) &&
-    value.length <= limit &&
-    value.every((entry) => isValidCanonicalUuid(entry))
-  );
+  if (!Array.isArray(value) || value.length > limit) return false;
+  const seen = new Set<string>();
+  for (const entry of value) {
+    if (!isValidCanonicalUuid(entry) || seen.has(entry)) return false;
+    seen.add(entry);
+  }
+  return true;
 }
 
 function dedupeBounded(ids: string[], limit: number): string[] {
@@ -115,6 +126,7 @@ export function sanitizeLayoutState(
   projectId: string,
   deviceClass: UiDeviceClass,
 ): DeviceLayoutState | undefined {
+  if (!isValidCanonicalUuid(projectId)) return undefined;
   if (typeof raw !== "object" || raw === null) return undefined;
   const record = raw as Record<string, unknown>;
   const knownFields: ReadonlySet<string> = new Set([

@@ -133,7 +133,8 @@ func (s *InstallationService) Install(ctx context.Context, input InstallInput) (
 		return ports.InstallationResult{}, err
 	}
 	if pinned.AppID != input.AppID || !domain.ValidInstallationVersion(pinned.Version) ||
-		!domain.ValidInstallationManifestDigest(pinned.ManifestDigest) {
+		!domain.ValidInstallationManifestDigest(pinned.ManifestDigest) ||
+		(input.Version != "" && pinned.Version != input.Version) || !validRequestedPermissions(pinned.Permissions) {
 		return ports.InstallationResult{}, errCatalogCorrupt
 	}
 	if !domain.InstallableScope(pinned.Scope) {
@@ -148,7 +149,7 @@ func (s *InstallationService) Install(ctx context.Context, input InstallInput) (
 		ProjectID: input.ProjectID, AppID: input.AppID, Pinned: pinned,
 		GrantedPermissions: grant,
 		ExpectedRevision:   input.ExpectedRevision, RequestDigest: digest,
-		NewInstallationID: s.ids.New(), Now: s.now(),
+		NewInstallationID: s.ids.New(), Now: domain.CanonicalInstallationTime(s.now()),
 	})
 }
 
@@ -167,7 +168,7 @@ func (s *InstallationService) Uninstall(ctx context.Context, input UninstallInpu
 	return s.repository.Uninstall(ctx, ports.UninstallCommand{
 		OwnerUserID: input.OwnerUserID, IdempotencyKey: input.IdempotencyKey,
 		ProjectID: input.ProjectID, InstallationID: input.InstallationID,
-		ExpectedRevision: input.ExpectedRevision, RequestDigest: digest, Now: s.now(),
+		ExpectedRevision: input.ExpectedRevision, RequestDigest: digest, Now: domain.CanonicalInstallationTime(s.now()),
 	})
 }
 
@@ -208,7 +209,8 @@ func (s *InstallationService) SetAppGrants(ctx context.Context, input SetAppGran
 		return ports.InstallationResult{}, err
 	}
 	if pinned.AppID != installation.AppID || !domain.ValidInstallationVersion(pinned.Version) ||
-		!domain.ValidInstallationManifestDigest(pinned.ManifestDigest) {
+		!domain.ValidInstallationManifestDigest(pinned.ManifestDigest) ||
+		!validRequestedPermissions(pinned.Permissions) {
 		return ports.InstallationResult{}, errCatalogCorrupt
 	}
 	if pinned.Version != installation.Version || pinned.ManifestDigest != installation.ManifestDigest {
@@ -225,7 +227,7 @@ func (s *InstallationService) SetAppGrants(ctx context.Context, input SetAppGran
 		OwnerUserID: input.OwnerUserID, IdempotencyKey: input.IdempotencyKey,
 		ProjectID: input.ProjectID, InstallationID: input.InstallationID,
 		Pinned: pinned, GrantedPermissions: grant,
-		ExpectedRevision: input.ExpectedRevision, RequestDigest: digest, Now: s.now(),
+		ExpectedRevision: input.ExpectedRevision, RequestDigest: digest, Now: domain.CanonicalInstallationTime(s.now()),
 	})
 }
 
@@ -291,7 +293,7 @@ func (s *InstallationService) Transition(ctx context.Context, input TransitionIn
 		OwnerUserID: input.OwnerUserID, IdempotencyKey: input.IdempotencyKey,
 		ProjectID: input.ProjectID, InstallationID: input.InstallationID,
 		Target: target, Source: domain.VersionSourceTransition,
-		ExpectedRevision: input.ExpectedRevision, RequestDigest: digest, Now: s.now(),
+		ExpectedRevision: input.ExpectedRevision, RequestDigest: digest, Now: domain.CanonicalInstallationTime(s.now()),
 	})
 }
 
@@ -320,7 +322,7 @@ func (s *InstallationService) Rollback(ctx context.Context, input RollbackInput)
 	if err != nil {
 		return ports.InstallationResult{}, err
 	}
-	if err := domain.ValidateVersionHistory(history); err != nil {
+	if err := domain.ValidateVersionHistoryForInstallation(history, installation); err != nil {
 		return ports.InstallationResult{}, err
 	}
 	candidate, err := deriveRollbackTarget(history, installation)
@@ -340,7 +342,7 @@ func (s *InstallationService) Rollback(ctx context.Context, input RollbackInput)
 		OwnerUserID: input.OwnerUserID, IdempotencyKey: input.IdempotencyKey,
 		ProjectID: input.ProjectID, InstallationID: input.InstallationID,
 		Target: target, Source: domain.VersionSourceRollback,
-		ExpectedRevision: input.ExpectedRevision, RequestDigest: digest, Now: s.now(),
+		ExpectedRevision: input.ExpectedRevision, RequestDigest: digest, Now: domain.CanonicalInstallationTime(s.now()),
 	})
 }
 
@@ -371,14 +373,15 @@ func (s *InstallationService) ListVersionHistory(ctx context.Context, ownerUserI
 	// The active-installation resolution carries the owner/project/archive
 	// scoping: history of a tombstoned or foreign installation is NotFound,
 	// exactly like every other installation read.
-	if _, err := s.repository.ResolveActiveInstallation(ctx, ownerUserID, projectID, installationID); err != nil {
+	installation, err := s.repository.ResolveActiveInstallation(ctx, ownerUserID, projectID, installationID)
+	if err != nil {
 		return VersionHistoryPage{}, err
 	}
 	items, err := s.repository.ListAllVersions(ctx, ownerUserID, installationID)
 	if err != nil {
 		return VersionHistoryPage{}, err
 	}
-	if err := domain.ValidateVersionHistory(items); err != nil {
+	if err := domain.ValidateVersionHistoryForInstallation(items, installation); err != nil {
 		return VersionHistoryPage{}, err
 	}
 	filtered := make([]domain.VersionSnapshot, 0, len(items))
@@ -405,8 +408,10 @@ func (s *InstallationService) resolveCompatibleTarget(ctx context.Context, owner
 	if err != nil {
 		return domain.PinnedApp{}, err
 	}
-	if pinned.AppID != installation.AppID || !domain.ValidInstallationVersion(pinned.Version) ||
-		!domain.ValidInstallationManifestDigest(pinned.ManifestDigest) {
+	if pinned.AppID != installation.AppID || pinned.Version != version ||
+		!domain.ValidInstallationVersion(pinned.Version) ||
+		!domain.ValidInstallationManifestDigest(pinned.ManifestDigest) ||
+		!validRequestedPermissions(pinned.Permissions) {
 		return domain.PinnedApp{}, errCatalogCorrupt
 	}
 	if !domain.InstallableScope(pinned.Scope) {
@@ -416,6 +421,11 @@ func (s *InstallationService) resolveCompatibleTarget(ctx context.Context, owner
 		return domain.PinnedApp{}, err
 	}
 	return pinned, nil
+}
+
+func validRequestedPermissions(permissions []string) bool {
+	_, err := domain.CanonicalGrantShape(permissions)
+	return err == nil
 }
 
 // deriveRollbackTarget selects the most recent history snapshot whose
@@ -496,5 +506,8 @@ func (s *InstallationService) replayIfConsumed(ctx context.Context, ownerUserID,
 	// first response, not whatever the installation pins now.
 	installation.Version = stored.ResultVersion
 	installation.ManifestDigest = stored.ResultManifestDigest
+	if err := domain.ValidateStoredInstallation(installation); err != nil {
+		return ports.InstallationResult{}, true, err
+	}
 	return ports.InstallationResult{Installation: installation, ProjectRevision: stored.ProjectRevision}, true, nil
 }

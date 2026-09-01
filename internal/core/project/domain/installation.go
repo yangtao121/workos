@@ -161,6 +161,16 @@ func ValidInstallationVersion(value string) bool {
 		if !alphanumeric {
 			return false
 		}
+		numeric := true
+		for index := 0; index < len(identifier); index++ {
+			if identifier[index] < '0' || identifier[index] > '9' {
+				numeric = false
+				break
+			}
+		}
+		if numeric && len(identifier) > 1 && identifier[0] == '0' {
+			return false
+		}
 	}
 	return true
 }
@@ -198,6 +208,15 @@ func ValidInstallationUUID(value string) bool {
 		}
 	}
 	return true
+}
+
+// ValidStoredInstallationUUID accepts only the canonical UUIDv7 spelling
+// used for server-minted resource and owner identities. Request boundaries
+// retain the older generic UUID guard for compatibility; durable facts are
+// stricter and fail closed on a wrong version, variant, or case.
+func ValidStoredInstallationUUID(value string) bool {
+	return ValidInstallationUUID(value) && value == strings.ToLower(value) &&
+		value[14] == '7' && strings.ContainsRune("89ab", rune(value[19]))
 }
 
 // ValidInstallationIdempotencyKey enforces the command key grammar at the
@@ -390,9 +409,59 @@ func GrantsCompatibleWithTarget(granted, requested []string) error {
 // never as a silent repair.
 var ErrHistoryCorrupt = errors.New("stored installation version history is inconsistent")
 
+// ErrInstallationCorrupt marks a stored installation projection that fails
+// its canonical identity, grant, revision, or timestamp invariants.
+var ErrInstallationCorrupt = errors.New("stored installation is inconsistent")
+
+// CanonicalInstallationTime matches PostgreSQL timestamptz precision so a
+// first response and its later replay expose the exact same instant.
+func CanonicalInstallationTime(value time.Time) time.Time {
+	return value.UTC().Truncate(time.Microsecond)
+}
+
+// ValidStoredInstallationTime accepts only finite, protobuf-representable
+// UTC instants at PostgreSQL's microsecond precision.
+func ValidStoredInstallationTime(value time.Time) bool {
+	if value.IsZero() {
+		return false
+	}
+	_, offset := value.Zone()
+	year := value.UTC().Year()
+	return offset == 0 && year >= 1 && year <= 9999 && value.Equal(CanonicalInstallationTime(value))
+}
+
+// ValidateStoredInstallation revalidates every Project-owned installation
+// row before it crosses the repository port. Database constraints are
+// defense in depth; they do not replace read-time corruption handling.
+func ValidateStoredInstallation(installation Installation) error {
+	if !ValidStoredInstallationUUID(installation.ID) ||
+		!ValidStoredInstallationUUID(installation.OwnerUserID) ||
+		!ValidStoredInstallationUUID(installation.ProjectID) ||
+		!ValidInstallationAppID(installation.AppID) ||
+		!ValidInstallationVersion(installation.Version) ||
+		!ValidInstallationManifestDigest(installation.ManifestDigest) ||
+		installation.GrantRevision < 1 ||
+		!ValidStoredInstallationTime(installation.InstalledAt) {
+		return ErrInstallationCorrupt
+	}
+	previous := ""
+	for _, capability := range installation.GrantedPermissions {
+		if !ValidCapabilityID(capability) || (previous != "" && capability <= previous) {
+			return ErrInstallationCorrupt
+		}
+		previous = capability
+	}
+	if installation.UninstalledAt != nil &&
+		(!ValidStoredInstallationTime(*installation.UninstalledAt) || installation.UninstalledAt.Before(installation.InstalledAt)) {
+		return ErrInstallationCorrupt
+	}
+	return nil
+}
+
 // ValidateVersionHistory re-validates stored snapshots on every read:
 // grammar-valid version, canonical digest shape, known source, positive
-// strictly-increasing sequences. Drift is corruption, never a repair hint.
+// strictly-increasing sequences, and canonical UTC timestamps. Drift is
+// corruption, never a repair hint.
 func ValidateVersionHistory(history []VersionSnapshot) error {
 	previous := int64(0)
 	for _, snapshot := range history {
@@ -401,10 +470,26 @@ func ValidateVersionHistory(history []VersionSnapshot) error {
 			(snapshot.Source != VersionSourceInstall &&
 				snapshot.Source != VersionSourceTransition &&
 				snapshot.Source != VersionSourceRollback) ||
-			snapshot.Sequence <= previous {
+			snapshot.Sequence <= previous ||
+			!ValidStoredInstallationTime(snapshot.OccurredAt) {
 			return ErrHistoryCorrupt
 		}
 		previous = snapshot.Sequence
+	}
+	return nil
+}
+
+// ValidateVersionHistoryForInstallation additionally binds the newest
+// retained snapshot to the installation's current pinned identity. Retention
+// may remove the install origin, but it may never leave a history tail that
+// disagrees with the active row.
+func ValidateVersionHistoryForInstallation(history []VersionSnapshot, installation Installation) error {
+	if err := ValidateVersionHistory(history); err != nil || len(history) == 0 {
+		return ErrHistoryCorrupt
+	}
+	current := history[len(history)-1]
+	if current.Version != installation.Version || current.ManifestDigest != installation.ManifestDigest {
+		return ErrHistoryCorrupt
 	}
 	return nil
 }

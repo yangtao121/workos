@@ -197,8 +197,20 @@ maintainer: {}
   const finalUrl = (await finalFrame.getAttribute("src")) as string;
   await page.getByRole("button", { name: "Close App", exact: true }).click();
   await expect(finalFrame).toHaveCount(0);
-  const closedResponse = await page.request.get(finalUrl);
-  expect(closedResponse.status()).toBe(404);
+  // DOM removal is immediate while the idempotent Runtime close is
+  // asynchronous. Observe the authoritative asset verdict instead of racing
+  // the request with React's local window update.
+  await expect
+    .poll(
+      async () => {
+        const response = await page.request.get(finalUrl);
+        const status = response.status();
+        await response.dispose();
+        return status;
+      },
+      { timeout: libraryTimeout },
+    )
+    .toBe(404);
 
   // 8. Uninstall the app; the earlier session URL keeps failing closed.
   await activeRow.getByRole("button", { name: "Remove" }).click();

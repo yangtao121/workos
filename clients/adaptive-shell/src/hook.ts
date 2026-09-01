@@ -84,7 +84,7 @@ export function useDeviceLayout(): DeviceLayout {
   return layout;
 }
 
-function layoutsEqual(left: DeviceLayout, right: DeviceLayout): boolean {
+export function layoutsEqual(left: DeviceLayout, right: DeviceLayout): boolean {
   return (
     left.mode === right.mode &&
     left.deviceClass === right.deviceClass &&
@@ -93,6 +93,16 @@ function layoutsEqual(left: DeviceLayout, right: DeviceLayout): boolean {
     left.dualPane === right.dualPane &&
     left.hinge?.horizontal === right.hinge?.horizontal &&
     left.hinge?.gap === right.hinge?.gap &&
-    left.segments.length === right.segments.length
+    left.segments.length === right.segments.length &&
+    left.segments.every((segment, index) => {
+      const other = right.segments[index];
+      return (
+        other !== undefined &&
+        segment.x === other.x &&
+        segment.y === other.y &&
+        segment.width === other.width &&
+        segment.height === other.height
+      );
+    })
   );
 }

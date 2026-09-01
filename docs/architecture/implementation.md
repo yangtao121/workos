@@ -359,6 +359,36 @@ harness-host worker（provider 经中立 ports.ArtifactSink 输出）
   `bridge_token` 最初保持空；bridge 注入由后续的 Project-scoped App Agent Bridge 切片引入
   （见下节），iframe 隔离属性不变。App window 与 Agent Center window 并存渲染。
 
+## Adaptive Desktop / Mobile Shell（2026-08-31）
+
+`@workos/adaptive-shell` 是 Desktop 与 `apps/mobile-shell` 共享的唯一设备布局契约：直接复用
+Proto `DeviceClass`，纯 `resolveDeviceLayout` 从 viewport/orientation/DPR 与可选 window
+segments 推导 Compact / Medium / Expanded / Fold-separated；DOM/Window Segments API 只存在于
+React adapter。边界 599/600、1023/1024、异常 DPR、segment 反序/重叠/变化、横向或纵向 hinge
+均由纯测试覆盖；没有 segment 时按宽度安全退化，不做 UA/品牌猜测。Fold-separated 按两个真实
+segment 的宽高比例排布行或列，零宽 gap 也保持为零，hinge 无点击目标。
+
+Desktop 继续持有唯一 Project/window/App/Agent/Artifact 状态：Compact 是单主内容 + 底部导航 +
+Project sheet，Medium 是单主内容 + 用户打开的 Agent slide-over + 显式 Dock，Expanded 仍用原
+window-manager 自由窗口，Fold-separated 只投影两个 pane。Project 切换仍使旧 Surface、Artifact、
+context 与迟到响应 inert；uninstall、grant revision 或 pinned version 改变时统一关闭该
+installation 的 Surface 并清理所有 device-class 引用。Project sweep 只在完整分页读取成功后执行，
+初始空列表/服务不可达不被当作权威删除；确认 logout/current-device revoke 后清空该 browser
+profile 的 shell 引用。
+
+布局状态 owner 是 origin-scoped、versioned IndexedDB，key = `(device_class, project_id)`，只含
+canonical UUIDv7 UI 引用、有界 recent/dock 列表、system-window allowlist、single/dual preference、
+canonical UTC `updated_at` 与 revision。所有 mutation 在同一 readwrite transaction 上读取最新
+record 后重放并在 commit 后才返回；读取遇到损坏只删除当前 key，sweep/prune 后重新 sanitize。
+IndexedDB 打不开时使用同一个 session memory store（不是每次操作返回空状态），memory adapter
+同样串行写入并 clone 数组，调用方无法绕过 revision 修改持久值。PWA 只声明 manifest/icon/
+viewport-fit；HTML/manifest no-store、内容哈希 assets immutable，不缓存 API 响应。
+
+门禁 `make test-adaptive-shell` 在真实 Gateway/Core/harness/runtime/reliability + Chromium 上覆盖
+390×844、820×1180、1440×900 与注入双 segment；`@workos/adaptive-shell` 40 个测试和
+desktop-web 110 个测试覆盖 store/layout/hook 与共享 UI 回归。真实 foldable hardware、Capacitor
+iPad/Android wrapper、push/native secure storage 仍不在当前证据内。
+
 ## Gateway 设备配对与会话（ADR-0007）
 
 生产设备身份属于 Gateway（migration `020`，`workos_gateway` schema，owner: workos-gateway）：
@@ -508,8 +538,15 @@ Core: identity → 幂等 key 裁决（共用 installation request 命名空间�
 - 版本历史：`workos_core.project_app_installation_versions`（append-only，owner：
   workos-core Project Installation），`(installation_id, sequence)` 主键、复合 FK
   CASCADE 绑定同 owner installation，source ∈ install/transition/rollback；每个
-  installation 有界保留最近 20 条（同事务裁剪）。每次读取重验 grammar/digest/source/
-  严格递增序列，损坏为净化 Internal。安装事务写入 install origin 快照。
+  installation 有界保留最近 20 条（条目不可更新，同事务删除最旧条目）。每次读取重验
+  version/digest/source、canonical UUIDv7、UTC 微秒时间、严格递增序列，并要求最新保留
+  snapshot 与 installation 当前 pinned identity 一致；损坏为净化 Internal。安装事务写入
+  install origin 快照。
+- 所有 installation 数据库投影与幂等首响应行在 adapter 出口重验 canonical UUIDv7、
+  version/digest、canonical sorted grants、正 grant/revision、UTC 微秒时间及 tombstone
+  顺序；首响应 snapshot 覆盖到 installation 后在 application 边界再次整体重验，跨行
+  组合损坏也不能作为重放结果泄漏。application 写入时间先规范为 PostgreSQL 微秒精度，
+  首次响应与跨重启重放的时间事实逐字一致。
 - 权限绝不扩大：目标 requested 集合不完全覆盖当前 grants（锁内重验）→
   `FailedPrecondition`，要求显式 `SetAppGrants` 重新确认；rollback 同样不恢复更宽的
   历史 grant。
@@ -523,10 +560,14 @@ Core: identity → 幂等 key 裁决（共用 installation request 命名空间�
   consent、Roll back to <prev> 预览）；System Monitor 对绑定同 Project/app instance、
   非 resolved 且历史存在 previous snapshot 的 incident 显示可执行 rollback，固定文案
   区分 completed / no previous / permissions need review / conflict / Core 不可达，
-  且明确"Core 切换成功 ≠ App 已健康"。门禁 `make test-app-version-rollback`
+  且明确"Core 切换成功 ≠ App 已健康"。命令成功后先采用 Core 首响应中的 installation +
+  Project revision 并立即关闭/清理旧 Surface 引用，再 best-effort 刷新列表，因此刷新失败或
+  慢响应不会让 UI 留在旧 revision；无 previous history 是一次有缓存的权威 verdict，不会
+  render-loop 重复读取。门禁 `make test-app-version-rollback`
   （PostgreSQL + Core + Gateway + Chromium：两个 immutable web-bundle 版本注册、
   App Library consent 安装、UI transition、旧 Surface 失效、新 Surface 可开、UI
-  rollback、API exact replay、stale revision Aborted、unknown version NotFound、
+  rollback（System Monitor 的 Incident read 使用确定性 browser fixture，history/命令/
+  revision/Surface 链路仍真实）、API exact replay、stale revision Aborted、unknown version NotFound、
   重开 Surface 呈现回滚后内容），集成套件覆盖 grant 扩张 fail closed、有界历史、
   分页与 restart battery（transition/rollback 事实与两次 exact replay 跨进程重启
   成立）。container 链路的同命令语义待 rootless acceptance host 复验；自动

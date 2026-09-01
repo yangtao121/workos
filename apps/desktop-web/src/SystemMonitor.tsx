@@ -23,12 +23,16 @@ export function SystemMonitor({
   projectId,
   expectedProjectRevision,
   workosClients,
+  onProjectRevisionChanged,
+  onInstallationVersionChanged,
 }: {
   projectId: string | undefined;
   // The active project's server revision, used as the rollback command's
   // optimistic-concurrency etag. A conflict reloads authoritative state.
   expectedProjectRevision: bigint | undefined;
   workosClients: WorkOSClients;
+  onProjectRevisionChanged?: (revision: bigint) => void;
+  onInstallationVersionChanged?: (installationId: string) => void;
 }) {
   const [incidents, setIncidents] = useState<Incident[]>([]);
   const [state, setState] = useState<"loading" | "ready" | "unavailable" | "empty-project">(
@@ -39,19 +43,33 @@ export function SystemMonitor({
   const [notice, setNotice] = useState<string | undefined>(undefined);
   // Per-installation rollback facts: the previewed previous version while a
   // command is not running, and a bounded feedback per incident row.
-  const [rollbackTargets, setRollbackTargets] = useState<Record<string, string | undefined>>({});
+  // undefined means not loaded; null is the authoritative "no previous
+  // version" verdict. Keeping those states distinct prevents an empty
+  // history from triggering an unbounded request/render loop.
+  const [rollbackTargets, setRollbackTargets] = useState<Record<string, string | null>>({});
   const [rollbackUnavailable, setRollbackUnavailable] = useState<ReadonlySet<string>>(new Set());
   const [rollbackBusy, setRollbackBusy] = useState<string | undefined>(undefined);
   const [rollbackNotice, setRollbackNotice] = useState<string | undefined>(undefined);
+  const rollbackLoadingRef = useRef(new Set<string>());
   const generationRef = useRef(0);
 
   const load = useCallback(() => {
     const generation = ++generationRef.current;
     const isLive = () => generation === generationRef.current;
     if (!projectId) {
-      if (isLive()) setState("empty-project");
+      if (isLive()) {
+        setIncidents([]);
+        setRollbackTargets({});
+        setRollbackUnavailable(new Set());
+        rollbackLoadingRef.current.clear();
+        setState("empty-project");
+      }
       return;
     }
+    setIncidents([]);
+    setRollbackTargets({});
+    setRollbackUnavailable(new Set());
+    rollbackLoadingRef.current.clear();
     setState("loading");
     void workosClients.incidents
       .listIncidents({ projectId, page: { pageSize: 20 } })
@@ -81,15 +99,20 @@ export function SystemMonitor({
     if (state !== "ready" || !projectId) return;
     const generation = generationRef.current;
     const isLive = () => generation === generationRef.current;
-    const candidates = incidents.filter(
-      (incident) =>
-        Boolean(incident.appInstanceId) &&
-        incident.state !== IncidentState.RESOLVED &&
-        !rollbackUnavailable.has(incident.appInstanceId) &&
-        rollbackTargets[incident.appInstanceId] === undefined,
+    const candidates = new Set(
+      incidents
+        .filter(
+          (incident) =>
+            Boolean(incident.appInstanceId) &&
+            incident.state !== IncidentState.RESOLVED &&
+            !rollbackUnavailable.has(incident.appInstanceId) &&
+            !rollbackLoadingRef.current.has(incident.appInstanceId) &&
+            rollbackTargets[incident.appInstanceId] === undefined,
+        )
+        .map((incident) => incident.appInstanceId),
     );
-    for (const incident of candidates) {
-      const instanceId = incident.appInstanceId;
+    for (const instanceId of candidates) {
+      rollbackLoadingRef.current.add(instanceId);
       void workosClients.appInstallations
         .listAppVersionHistory({
           projectId,
@@ -101,10 +124,12 @@ export function SystemMonitor({
           const snapshots = response.snapshots;
           const current = snapshots[snapshots.length - 1]?.version;
           const previous = findPrevious(snapshots, current);
-          setRollbackTargets((record) => ({ ...record, [instanceId]: previous }));
+          rollbackLoadingRef.current.delete(instanceId);
+          setRollbackTargets((record) => ({ ...record, [instanceId]: previous ?? null }));
         })
         .catch(() => {
           if (!isLive()) return;
+          rollbackLoadingRef.current.delete(instanceId);
           setRollbackUnavailable((current) => new Set(current).add(instanceId));
         });
     }
@@ -160,12 +185,28 @@ export function SystemMonitor({
       })
       .then((response) => {
         if (generation !== generationRef.current) return;
+        onProjectRevisionChanged?.(response.projectRevision);
+        onInstallationVersionChanged?.(incident.appInstanceId);
+        setRollbackTargets((current) => withoutRollbackTarget(current, incident.appInstanceId));
         setRollbackNotice(
           `Core restored ${response.rolledBackToVersion} for this app. It takes effect the next time the app runs — Core completing the switch is not the same as the app reporting healthy.`,
         );
       })
-      .catch((reason: unknown) => {
+      .catch(async (reason: unknown) => {
         if (generation !== generationRef.current) return;
+        if (reason instanceof ConnectError && reason.code === Code.Aborted) {
+          try {
+            const response = await workosClients.projects.getProject({ projectId });
+            if (generation === generationRef.current && response.project) {
+              onProjectRevisionChanged?.(response.project.revision);
+            }
+          } catch {
+            // The conflict verdict is still authoritative. A failed refresh
+            // never retries the mutation or hides the conflict.
+          }
+          if (generation !== generationRef.current) return;
+          setRollbackTargets((current) => withoutRollbackTarget(current, incident.appInstanceId));
+        }
         setRollbackNotice(rollbackErrorMessage(reason));
       })
       .finally(() => {
@@ -213,7 +254,7 @@ export function SystemMonitor({
             const rollbackEligible =
               incident.appInstanceId !== "" &&
               incident.state !== IncidentState.RESOLVED &&
-              previous !== undefined;
+              typeof previous === "string";
             return (
               <li className="incident-row" key={incident.id}>
                 <div className="incident-facts">
@@ -258,6 +299,13 @@ export function SystemMonitor({
   );
 }
 
+function withoutRollbackTarget(
+  targets: Readonly<Record<string, string | null>>,
+  appInstanceId: string,
+): Record<string, string | null> {
+  return Object.fromEntries(Object.entries(targets).filter(([key]) => key !== appInstanceId));
+}
+
 // findPrevious previews the rollback target: the newest snapshot whose
 // version differs from the installation's current (last) version. The
 // rollback command re-derives this from the durable history server-side.
@@ -282,7 +330,7 @@ function rollbackErrorMessage(reason: unknown): string {
       }
       return "There is no previous version to roll back to.";
     case Code.Aborted:
-      return "The project changed elsewhere. Reopen System Monitor and retry.";
+      return "The project changed elsewhere. The latest revision was loaded — retry.";
     case Code.Unavailable:
     case Code.DeadlineExceeded:
       return "Core is temporarily unreachable. The rollback was not started.";

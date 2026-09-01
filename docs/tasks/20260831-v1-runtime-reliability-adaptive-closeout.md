@@ -26,11 +26,11 @@ Prompt：`docs/prompts/` 下 v1 收口批次（Adaptive Shell、Rootless Runtime
 
 - [x] 阶段 A 代码 + Vitest + Chromium 三 viewport + fold fixture E2E + before/after/current 截图
 - [x] 阶段 B 宿主探测原始 verdict 记录；`make test-podman-fixture` 真实结论（BLOCKED）
-- [ ] 阶段 C capability 裁决与证据一致（真实链路 或 保持 false + 软件测试）
-- [ ] 阶段 D ADR-0012 + additive Proto + migration 025 + Core 命令 + UX + rollback E2E
-- [ ] `make generate` 幂等、`make check`、`make test-integration`、`make test-e2e`、
+- [x] 阶段 C capability 裁决与证据一致（保持 false + 软件测试；真实链路仍被宿主阻塞）
+- [x] 阶段 D ADR-0012 + additive Proto + migration 025 + Core 命令 + UX + rollback E2E
+- [x] `make generate` 幂等、`make check`、`make test-integration`、`make test-e2e`、
       `make test-adaptive-shell`、`make test-app-version-rollback`、既有专项门禁
-- [ ] 文档与 status 同步；工作树干净；按阶段聚焦提交
+- [x] 文档与 status 同步；工作树干净；按阶段聚焦提交
 
 ## 基线（执行时真实结果，2026-08-31）
 
@@ -46,7 +46,7 @@ Prompt：`docs/prompts/` 下 v1 收口批次（Adaptive Shell、Rootless Runtime
   mobile-shell 复用共享契约）+ 本提交（desktop 集成 + PWA + 门禁 + 视觉证据）。
 - 布局契约：`@workos/adaptive-shell`（纯函数 `resolveDeviceLayout`/`classifyDevice`，
   Proto `DeviceClass` 唯一映射，无 UA sniff；DOM API 全部隔离在 `hook.ts` 适配器）。
-  Vitest 36 例覆盖 599/600、1023/1024、portrait/landscape、0/NaN/负/∞ DPR、fold gap、
+  Vitest 40 例覆盖 599/600、1023/1024、portrait/landscape、0/NaN/负/∞ DPR、fold gap、
   segment 变化、resize storm、storage 腐坏/迁移/隔离/并发 CAS。
 - Desktop 四模式：Expanded 保持既有自由窗口不回退；Compact 单 pane + 底部导航 +
   Project sheet + 全屏 App Library；Medium 单 pane + Agent slide-over（Escape 关闭）+
@@ -112,7 +112,7 @@ Prompt：`docs/prompts/` 下 v1 收口批次（Adaptive Shell、Rootless Runtime
   `RollbackAppVersion` / `ListAppVersionHistory`（无字段复用、无删除；`make generate`
   幂等；buf lint/breaking 通过）。
 - migration `025_app_installation_version_history.sql`（owner：workos-core Project
-  Installation）：append-only 有界版本历史（每 installation 最近 20 条、CASCADE 绑定
+  Installation）：immutable-entry 有界版本历史（每 installation 最近 20 条、CASCADE 绑定
   同 owner installation）+ request mapping 的 `result_version`/`result_manifest_digest`
   NOT NULL 快照列（owner-bound fail-closed 回填）+ command CHECK 扩展
   transition/rollback。001–024 逐字节不变（checksum pin 通过）。
@@ -140,10 +140,39 @@ Prompt：`docs/prompts/` 下 v1 收口批次（Adaptive Shell、Rootless Runtime
   - restart battery 扩展 `tests/restart version-seed/version-verify`：transition/
     rollback 事实与两次 exact replay 跨 workos-core 重启成立（`make test-integration`
     全量回填见阶段 E）。
-  - Desktop 单测：VersionDialog 4 例、SystemMonitor rollback eligibility/action 5 例；
-    desktop-web 全套 107 tests PASS。
+  - Desktop 单测：VersionDialog 4 例、SystemMonitor rollback eligibility/action 7 例；
+    desktop-web 全套 110 tests PASS。
 
-## 已验证命令（最终真实结果，2026-08-31）
+## 2026-09-01 独立审核与修复
+
+按原 prompt、架构边界、Proto、测试和视觉证据重新审核后，发现原实现虽能通过既有门禁，
+但仍有若干会破坏持久性、并发性或权威 revision 的缺陷；本轮保持 migration 025 与既有
+Proto 不变，直接在同一任务分支修复：
+
+- Adaptive store：IndexedDB 打开失败时的 fallback 原先每次操作都会新建空 store；内存
+  store 也未串行化并发更新且会泄漏数组引用。现改为 session 内持久 fallback、串行
+  update、提交后再 resolve、深拷贝与 canonical key/record 校验；损坏 current key 在同一
+  readwrite 事务删除。新增并发、引用隔离、fallback 持久和 hook geometry 变化测试。
+- Fold layout：规范化颠倒的 segment 顺序，horizontal hinge 使用上下行与真实比例，保留
+  zero gap；补充横向 fold 和反序输入回归。
+- Desktop 生命周期：只有完成全部 Project 分页后才做权威 sweep；uninstall、grant、
+  version 和已确认 session end 都清理对应 layout/window 引用。Device Center 已确认退出
+  后的本地清理错误不再伪报“logout failed”。
+- Version/System Monitor：命令先采用权威响应再 best-effort refresh；分离生命周期与
+  history generation；`no previous` 是可缓存的权威空结果，避免重复请求；rollback 成功
+  与 conflict reload 都把新 Project revision 回写父组件并关闭旧 Surface。
+- Core read/replay：新增 stored installation、history 和 request projection 的 canonical
+  UUIDv7、UTC microsecond、SemVer、digest、grant、revision、时间顺序及 history tail
+  一致性校验；idempotent replay 在覆盖 first-response snapshot 后再次整体验证，防止跨行
+  腐坏被拼成表面合法响应。显式 catalog version identity drift 现 fail closed。
+- E2E/视觉：版本链路仍走真实 Registry/Core/Gateway/Runtime/Web Bundle，仅在浏览器边界
+  注入 public Incident list（因本宿主无 rootless observation 链路）；System Monitor 的
+  eligible/completed 状态有独立截图。稳定化并发 E2E 的 Project fixture 选择与 Surface
+  关闭断言，不使用 sleep。审核还发现原 after/current 文件名标称 1440x900、实际仅
+  1280x720；现由 spec 固定 viewport 后重采三帧，并从阶段 D 前精确 commit `ceca68a`
+  只读导出重采 System Monitor before，before/after/current 均已核验为真实 1440x900。
+
+## 已验证命令（原交付 + 2026-09-01 审核复验）
 
 | 命令                                                                                 | 结果                                                                                         |
 | ------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------- |
@@ -151,7 +180,7 @@ Prompt：`docs/prompts/` 下 v1 收口批次（Adaptive Shell、Rootless Runtime
 | `make generate` ×2（幂等，无生成漂移）                                               | PASS（buf.build 一度对本机不可达，期间 gen 以 HEAD 恢复并验证字节等同；恢复后复验幂等 PASS） |
 | `make check`                                                                         | PASS                                                                                         |
 | `make test-integration`（含扩展 restart battery：version-seed/verify 跨重启 replay） | PASS                                                                                         |
-| `make test-e2e`（全量 Playwright，含 adaptive 与 rollback spec）                     | PASS（13 passed）                                                                            |
+| `make test-e2e`（全量 Playwright，含 adaptive 与 rollback spec）                     | PASS（14 passed，11 skipped）                                                                |
 | `make test-adaptive-shell`                                                           | PASS（4 tests，真实栈）                                                                      |
 | `make test-app-version-rollback`                                                     | PASS（真实 web-bundle 全栈）                                                                 |
 | `make test-lan-pairing`                                                              | PASS                                                                                         |
@@ -161,14 +190,17 @@ Prompt：`docs/prompts/` 下 v1 收口批次（Adaptive Shell、Rootless Runtime
 | `make test-credential-vault`                                                         | PASS                                                                                         |
 | `make test-podman-fixture`                                                           | BLOCKED（宿主无 podman，按设计 loudly fail，不计 PASS）                                      |
 | `docker compose config --quiet`                                                      | PASS                                                                                         |
-| `buf breaking --against .git#branch=main`                                            | PASS（additive only）                                                                        |
-| `go test -race ./internal/core/project/...`                                          | PASS                                                                                         |
+| 固定 `buf:1.55.1` 容器：`buf breaking --against .git#branch=main`                    | PASS（additive only）                                                                        |
+| 固定 `golang:1.26.7` 容器：`go test -race ./internal/core/project/...`               | PASS                                                                                         |
 | `git diff --check`                                                                   | PASS                                                                                         |
 
 注：lan-pairing / artifact / deepseek / credential-vault 门禁在 replay 快照修复前的镜像
 上通过；该修复仅影响 version 命令 replay 的版本快照投影，上述门禁不经过 installation
-replay 路径；受影响的 integration / e2e / adaptive / rollback 门禁均在最终代码上复跑
-PASS。
+replay 路径。2026-09-01 审核后，`make generate` ×2、`make check`、`make test-integration`
+（含 restart battery）、`make test-e2e`、`make test-adaptive-shell`、
+`make test-app-version-rollback`、Project race、buf breaking、Compose config 与
+`git diff --check` 均在最终代码上复跑 PASS；`make test-podman-fixture` 仍按设计以
+“podman is not available on this host”明确 BLOCKED。
 
 ## 交接
 
@@ -178,8 +210,9 @@ PASS。
 - 阶段提交（串行，未 merge、未 push）：
   1. `aa6535c feat: add shared adaptive shell device contract`
   2. `ceca68a feat: add adaptive project shell layouts`
-  3. `feat: add deterministic installed app version rollback`（Core + Desktop UX + 门禁）
-  4. （收尾提交）任务记录/状态/门禁结果
+  3. `810bc08 feat: add deterministic installed app version rollback`（Core + Desktop UX + 门禁）
+  4. `65dcd59 docs: record v1 closeout evidence and remaining blockers`
+  5. （本轮审核提交）持久性/并发/revision/校验修复 + 测试 + 视觉与文档同步
 - 收尾纠偏：`feat:` 提交误纳入本地构建产物 `workos-core` 二进制，已在同一提交内
   amend 移除（提交尚未交接/未 push），并更新 `.gitignore` 根路径规则。
 
@@ -190,7 +223,7 @@ PASS。
 - layout state owner：device-local IndexedDB（origin 隔离），schema v1，key
   `layout/<deviceClass>/<projectId>`；仅存有界 canonical UUID 引用 + single/dual 偏好；
   多 tab 写入单事务串行仲裁；腐坏仅重置当前 key；uninstall/archive 漂移 sweep；
-  无 IDB 环境降级内存。
+  无 IDB 环境降级为 session 内持久且串行化的内存 store。
 
 ### 版本 transition / rollback
 

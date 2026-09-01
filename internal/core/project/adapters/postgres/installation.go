@@ -40,7 +40,11 @@ func (r *Repository) LookupInstallationRequest(ctx context.Context, ownerUserID,
 	if err != nil {
 		return ports.StoredInstallationRequest{}, false, storeError("query installation request", err)
 	}
-	return storedInstallationRequest(stored), true, nil
+	result := storedInstallationRequest(stored)
+	if err := validateStoredInstallationRequest(result); err != nil {
+		return ports.StoredInstallationRequest{}, false, err
+	}
+	return result, true, nil
 }
 
 // storedInstallationRequest projects the persisted request row; the result
@@ -56,6 +60,7 @@ func storedInstallationRequest(stored projectdb.GetInstallationRequestRow) ports
 		ResultGrantRevision:      stored.ResultGrantRevision,
 		ResultVersion:            stored.ResultVersion,
 		ResultManifestDigest:     stored.ResultManifestDigest,
+		CreatedAt:                stored.CreatedAt.Time,
 	}
 }
 
@@ -432,7 +437,10 @@ func classifyUnderLock(
 		if err != nil {
 			return ports.InstallationResult{}, true, err
 		}
-		installation = applyRequestSnapshot(installation, storedInstallationRequest(stored))
+		installation, err = applyRequestSnapshot(installation, storedInstallationRequest(stored))
+		if err != nil {
+			return ports.InstallationResult{}, true, err
+		}
 		return ports.InstallationResult{Installation: installation, ProjectRevision: stored.ProjectRevision}, true, nil
 	}
 	if !errors.Is(err, pgx.ErrNoRows) {
@@ -569,7 +577,10 @@ func (r *Repository) commitInstallationRequest(
 	if err != nil {
 		return ports.InstallationResult{}, err
 	}
-	installation = applyRequestSnapshot(installation, storedInstallationRequest(consumed))
+	installation, err = applyRequestSnapshot(installation, storedInstallationRequest(consumed))
+	if err != nil {
+		return ports.InstallationResult{}, err
+	}
 	return ports.InstallationResult{Installation: installation, ProjectRevision: consumed.ProjectRevision}, nil
 }
 
@@ -578,13 +589,46 @@ func (r *Repository) commitInstallationRequest(
 // command returned — tombstone, grant set, grant epoch, and the pinned
 // version identity — even after a later SetAppGrants, uninstall, or version
 // transition mutated the row.
-func applyRequestSnapshot(installation domain.Installation, stored ports.StoredInstallationRequest) domain.Installation {
+func applyRequestSnapshot(installation domain.Installation, stored ports.StoredInstallationRequest) (domain.Installation, error) {
+	if err := validateStoredInstallationRequest(stored); err != nil {
+		return domain.Installation{}, err
+	}
 	installation.UninstalledAt = stored.ResultUninstalledAt
 	installation.GrantedPermissions = stored.ResultGrantedPermissions
 	installation.GrantRevision = stored.ResultGrantRevision
 	installation.Version = stored.ResultVersion
 	installation.ManifestDigest = stored.ResultManifestDigest
-	return installation
+	if err := domain.ValidateStoredInstallation(installation); err != nil {
+		return domain.Installation{}, err
+	}
+	return installation, nil
+}
+
+func validateStoredInstallationRequest(stored ports.StoredInstallationRequest) error {
+	switch stored.Command {
+	case "install", "uninstall", "set-grants", domain.VersionSourceTransition, domain.VersionSourceRollback:
+	default:
+		return domain.ErrInstallationCorrupt
+	}
+	if !domain.ValidInstallationManifestDigest(stored.RequestDigest) ||
+		!domain.ValidStoredInstallationUUID(stored.InstallationID) ||
+		stored.ProjectRevision < 1 || stored.ResultGrantRevision < 1 ||
+		!domain.ValidInstallationVersion(stored.ResultVersion) ||
+		!domain.ValidInstallationManifestDigest(stored.ResultManifestDigest) ||
+		!domain.ValidStoredInstallationTime(stored.CreatedAt) {
+		return domain.ErrInstallationCorrupt
+	}
+	previous := ""
+	for _, capability := range stored.ResultGrantedPermissions {
+		if !domain.ValidCapabilityID(capability) || (previous != "" && capability <= previous) {
+			return domain.ErrInstallationCorrupt
+		}
+		previous = capability
+	}
+	if stored.ResultUninstalledAt != nil && !domain.ValidStoredInstallationTime(*stored.ResultUninstalledAt) {
+		return domain.ErrInstallationCorrupt
+	}
+	return nil
 }
 
 func installationFromDB(value projectdb.GetInstallationByIdRow, err error) (domain.Installation, error) {
@@ -596,7 +640,7 @@ func installationFromDB(value projectdb.GetInstallationByIdRow, err error) (doma
 	}
 	return installationFromColumns(
 		value.ID, value.OwnerUserID, value.ProjectID, value.AppID, value.Version, value.ManifestDigest,
-		value.GrantedPermissions, value.GrantRevision, value.InstalledAt, value.UninstalledAt), nil
+		value.GrantedPermissions, value.GrantRevision, value.InstalledAt, value.UninstalledAt)
 }
 
 func installationFromActiveByApp(value projectdb.GetActiveInstallationByAppRow, err error) (domain.Installation, error) {
@@ -608,7 +652,7 @@ func installationFromActiveByApp(value projectdb.GetActiveInstallationByAppRow, 
 	}
 	return installationFromColumns(
 		value.ID, value.OwnerUserID, value.ProjectID, value.AppID, value.Version, value.ManifestDigest,
-		value.GrantedPermissions, value.GrantRevision, value.InstalledAt, value.UninstalledAt), nil
+		value.GrantedPermissions, value.GrantRevision, value.InstalledAt, value.UninstalledAt)
 }
 
 func installationFromResolver(value projectdb.ResolveActiveInstallationRow, err error) (domain.Installation, error) {
@@ -620,7 +664,7 @@ func installationFromResolver(value projectdb.ResolveActiveInstallationRow, err 
 	}
 	return installationFromColumns(
 		value.ID, value.OwnerUserID, value.ProjectID, value.AppID, value.Version, value.ManifestDigest,
-		value.GrantedPermissions, value.GrantRevision, value.InstalledAt, value.UninstalledAt), nil
+		value.GrantedPermissions, value.GrantRevision, value.InstalledAt, value.UninstalledAt)
 }
 
 func installationsFromList(values []projectdb.ListActiveInstallationsRow, err error) ([]domain.Installation, error) {
@@ -629,9 +673,13 @@ func installationsFromList(values []projectdb.ListActiveInstallationsRow, err er
 	}
 	installations := make([]domain.Installation, 0, len(values))
 	for _, value := range values {
-		installations = append(installations, installationFromColumns(
+		installation, err := installationFromColumns(
 			value.ID, value.OwnerUserID, value.ProjectID, value.AppID, value.Version, value.ManifestDigest,
-			value.GrantedPermissions, value.GrantRevision, value.InstalledAt, value.UninstalledAt))
+			value.GrantedPermissions, value.GrantRevision, value.InstalledAt, value.UninstalledAt)
+		if err != nil {
+			return nil, err
+		}
+		installations = append(installations, installation)
 	}
 	return installations, nil
 }
@@ -639,7 +687,7 @@ func installationsFromList(values []projectdb.ListActiveInstallationsRow, err er
 func installationFromColumns(
 	id, ownerUserID, projectID, appID, version, manifestDigest string, grantedPermissions []string, grantRevision int64,
 	installedAt, uninstalledAt pgtype.Timestamptz,
-) domain.Installation {
+) (domain.Installation, error) {
 	installation := domain.Installation{
 		ID: id, OwnerUserID: ownerUserID, ProjectID: projectID,
 		AppID: appID, Version: version, ManifestDigest: manifestDigest,
@@ -648,7 +696,10 @@ func installationFromColumns(
 		InstalledAt:        installedAt.Time,
 	}
 	installation.UninstalledAt = timePtr(uninstalledAt)
-	return installation
+	if err := domain.ValidateStoredInstallation(installation); err != nil {
+		return domain.Installation{}, err
+	}
+	return installation, nil
 }
 
 // nonNilGranted maps a nil slice to the empty grant so the NOT NULL array
@@ -737,7 +788,7 @@ func (r *Repository) Transition(ctx context.Context, command ports.TransitionCom
 		if err != nil {
 			return ports.InstallationResult{}, err
 		}
-		if err := domain.ValidateVersionHistory(history); err != nil {
+		if err := domain.ValidateVersionHistoryForInstallation(history, installation); err != nil {
 			return ports.InstallationResult{}, err
 		}
 		candidate, err := deriveRollbackCandidate(history, installation)
@@ -846,7 +897,9 @@ func (r *Repository) ListAllVersions(ctx context.Context, ownerUserID, installat
 	}
 	snapshots := make([]domain.VersionSnapshot, 0, len(rows))
 	for _, row := range rows {
-		if row.OwnerUserID != ownerUserID {
+		if row.OwnerUserID != ownerUserID ||
+			!domain.ValidStoredInstallationUUID(row.InstallationID) ||
+			!domain.ValidStoredInstallationUUID(row.OwnerUserID) {
 			return nil, errHistoryCorrupt
 		}
 		snapshots = append(snapshots, domain.VersionSnapshot{
@@ -885,7 +938,9 @@ func installationHistory(ctx context.Context, queries *projectdb.Queries, ownerU
 	}
 	snapshots := make([]domain.VersionSnapshot, 0, len(rows))
 	for _, row := range rows {
-		if row.OwnerUserID != ownerUserID {
+		if row.OwnerUserID != ownerUserID ||
+			!domain.ValidStoredInstallationUUID(row.InstallationID) ||
+			!domain.ValidStoredInstallationUUID(row.OwnerUserID) {
 			return nil, errHistoryCorrupt
 		}
 		snapshots = append(snapshots, domain.VersionSnapshot{

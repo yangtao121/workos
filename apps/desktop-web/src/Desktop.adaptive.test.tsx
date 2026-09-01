@@ -11,6 +11,9 @@ import { Desktop } from "./Desktop.js";
 // React 19 act() requires this flag in jsdom to flush deferred promise updates.
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
+const PROJECT_A = "01990000-0000-7000-8000-000000000001";
+const PROJECT_B = "01990000-0000-7000-8000-000000000002";
+
 // jsdom has no IndexedDB, so the desktop's layout store degrades to the
 // in-memory adapter — deterministic for these tests.
 function pinViewport(width: number, height: number) {
@@ -19,14 +22,17 @@ function pinViewport(width: number, height: number) {
   Object.defineProperty(window, "devicePixelRatio", { value: 1, configurable: true });
 }
 
-function injectFoldSegments(sideBySide: boolean) {
-  if (!sideBySide) {
+function injectFoldSegments(posture: "side-by-side" | "stacked" | undefined) {
+  if (!posture) {
     Reflect.deleteProperty(window, "getWindowSegments");
     return;
   }
   Object.defineProperty(window, "getWindowSegments", {
     configurable: true,
-    value: () => [domRect(0, 0, 632, 800), domRect(648, 0, 632, 800)],
+    value: () =>
+      posture === "side-by-side"
+        ? [domRect(0, 0, 632, 800), domRect(648, 0, 632, 800)]
+        : [domRect(0, 0, 800, 620), domRect(0, 628, 800, 652)],
   });
 }
 
@@ -142,13 +148,13 @@ function clientsFixture(projects: Project[]): WorkOSClients {
 afterEach(() => {
   cleanup();
   window.sessionStorage.clear();
-  injectFoldSegments(false);
+  injectFoldSegments(undefined);
 });
 
 describe("Desktop adaptive shell", () => {
   it("renders the compact phone shell with bottom navigation and single pane", async () => {
     pinViewport(390, 844);
-    render(<Desktop workosClients={clientsFixture([project("project-1", "Compact P", 1n)])} />);
+    render(<Desktop workosClients={clientsFixture([project(PROJECT_A, "Compact P", 1n)])} />);
     expect(await screen.findByRole("navigation", { name: "WorkOS navigation" })).toBeTruthy();
     // Home view shows the project and the quick destinations.
     expect(screen.getAllByText("Compact P").length).toBeGreaterThan(0);
@@ -162,7 +168,7 @@ describe("Desktop adaptive shell", () => {
   it("navigates to the Agent Center and back home from the bottom nav", async () => {
     pinViewport(390, 844);
     const user = userEvent.setup();
-    render(<Desktop workosClients={clientsFixture([project("project-1", "Compact P", 1n)])} />);
+    render(<Desktop workosClients={clientsFixture([project(PROJECT_A, "Compact P", 1n)])} />);
     await user.click(await screen.findByTestId("nav-agent"));
     // The single main pane now shows the Agent Center composer.
     expect(await screen.findByLabelText("Agent goal")).toBeTruthy();
@@ -173,7 +179,7 @@ describe("Desktop adaptive shell", () => {
   it("opens the App Library overlay from the bottom nav", async () => {
     pinViewport(390, 844);
     const user = userEvent.setup();
-    render(<Desktop workosClients={clientsFixture([project("project-1", "Compact P", 1n)])} />);
+    render(<Desktop workosClients={clientsFixture([project(PROJECT_A, "Compact P", 1n)])} />);
     await user.click(await screen.findByTestId("nav-apps"));
     expect(await screen.findByText("No apps have been registered yet.")).toBeTruthy();
     await user.click(screen.getByRole("button", { name: "Close" }));
@@ -186,8 +192,8 @@ describe("Desktop adaptive shell", () => {
     render(
       <Desktop
         workosClients={clientsFixture([
-          project("project-1", "Compact P", 1n),
-          project("project-2", "Other P", 1n),
+          project(PROJECT_A, "Compact P", 1n),
+          project(PROJECT_B, "Other P", 1n),
         ])}
       />,
     );
@@ -202,7 +208,7 @@ describe("Desktop adaptive shell", () => {
   it("renders the medium shell with an Agent slide-over and a hidden dock", async () => {
     pinViewport(820, 1180);
     const user = userEvent.setup();
-    render(<Desktop workosClients={clientsFixture([project("project-1", "Medium P", 1n)])} />);
+    render(<Desktop workosClients={clientsFixture([project(PROJECT_A, "Medium P", 1n)])} />);
     expect(await screen.findByTestId("open-agent-slideover")).toBeTruthy();
     expect(screen.queryByTestId("adaptive-bottom-nav")).toBeNull();
     // The slide-over opens with the Agent Center body and Escape closes it.
@@ -224,8 +230,8 @@ describe("Desktop adaptive shell", () => {
   it("uses two fold panes only when segments exist, with a persisted single-pane preference", async () => {
     pinViewport(1280, 800);
     const user = userEvent.setup();
-    injectFoldSegments(true);
-    render(<Desktop workosClients={clientsFixture([project("project-1", "Fold P", 1n)])} />);
+    injectFoldSegments("side-by-side");
+    render(<Desktop workosClients={clientsFixture([project(PROJECT_B, "Fold P", 1n)])} />);
     // Two segments: the dual-pane default applies.
     expect(await screen.findByTestId("fold-pane-main")).toBeTruthy();
     expect(screen.getByTestId("fold-pane-secondary")).toBeTruthy();
@@ -236,9 +242,20 @@ describe("Desktop adaptive shell", () => {
     expect(screen.queryByTestId("fold-pane-secondary")).toBeNull();
   });
 
+  it("stacks fold panes around a horizontal hinge using segment proportions", async () => {
+    pinViewport(800, 1280);
+    injectFoldSegments("stacked");
+    render(<Desktop workosClients={clientsFixture([project(PROJECT_A, "Fold P", 1n)])} />);
+    const panes = await screen.findByTestId("fold-pane-main");
+    const grid = panes.parentElement;
+    expect(grid?.getAttribute("data-hinge-orientation")).toBe("horizontal");
+    expect(grid?.style.gridTemplateRows).toBe("620fr 8px 652fr");
+    expect(grid?.style.gridTemplateColumns).toBe("minmax(0, 1fr)");
+  });
+
   it("falls back to the medium layout when a foldable reports no segments", async () => {
     pinViewport(900, 800);
-    render(<Desktop workosClients={clientsFixture([project("project-1", "Fold P", 1n)])} />);
+    render(<Desktop workosClients={clientsFixture([project(PROJECT_A, "Fold P", 1n)])} />);
     // No segment API: 900px wide foldable hardware degrades to medium.
     expect(await screen.findByTestId("open-agent-slideover")).toBeTruthy();
     expect(screen.queryByTestId("fold-pane-main")).toBeNull();
@@ -246,7 +263,7 @@ describe("Desktop adaptive shell", () => {
 
   it("keeps the expanded desktop unchanged at desktop widths", async () => {
     pinViewport(1440, 900);
-    render(<Desktop workosClients={clientsFixture([project("project-1", "Wide P", 1n)])} />);
+    render(<Desktop workosClients={clientsFixture([project(PROJECT_A, "Wide P", 1n)])} />);
     expect(await screen.findByText("PROJECT SPACES")).toBeTruthy();
     expect(screen.queryByTestId("adaptive-bottom-nav")).toBeNull();
     expect(screen.getByRole("button", { name: "Open System Monitor" })).toBeTruthy();
@@ -254,7 +271,7 @@ describe("Desktop adaptive shell", () => {
 
   it("responds to a viewport resize between expanded and compact", async () => {
     pinViewport(1440, 900);
-    render(<Desktop workosClients={clientsFixture([project("project-1", "Resize P", 1n)])} />);
+    render(<Desktop workosClients={clientsFixture([project(PROJECT_A, "Resize P", 1n)])} />);
     expect(await screen.findByText("PROJECT SPACES")).toBeTruthy();
     await act(async () => {
       pinViewport(390, 844);

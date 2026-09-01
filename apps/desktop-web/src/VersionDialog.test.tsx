@@ -61,10 +61,14 @@ function clientsFixture(overrides: {
     Promise.resolve({ snapshots: overrides.history ?? [] }),
   );
   const transitionAppVersion = vi.fn(() =>
-    overrides.transitionFn ? overrides.transitionFn() : Promise.resolve({}),
+    overrides.transitionFn
+      ? overrides.transitionFn()
+      : Promise.resolve({ installation: installation("1.2.0"), projectRevision: 6n }),
   );
   const rollbackAppVersion = vi.fn(() =>
-    overrides.rollbackFn ? overrides.rollbackFn() : Promise.resolve({}),
+    overrides.rollbackFn
+      ? overrides.rollbackFn()
+      : Promise.resolve({ installation: installation("1.0.0"), projectRevision: 6n }),
   );
   const listInstalledApps = vi.fn(() =>
     Promise.resolve({ installations: [], page: { nextPageToken: "" } }),
@@ -82,16 +86,20 @@ function clientsFixture(overrides: {
 }
 
 function renderDialog(clients: WorkOSClients, version = "1.1.0") {
-  return render(
+  const onInstallationSaved = vi.fn();
+  const onVersionChanged = vi.fn();
+  const view = render(
     <VersionDialog
       installation={installation(version)}
       onCancel={() => undefined}
       onFactsRefreshed={() => undefined}
-      onVersionChanged={() => undefined}
+      onInstallationSaved={onInstallationSaved}
+      onVersionChanged={onVersionChanged}
       project={project(5n)}
       workosClients={clients}
     />,
   );
+  return { view, onInstallationSaved, onVersionChanged };
 }
 
 afterEach(cleanup);
@@ -127,7 +135,7 @@ describe("VersionDialog", () => {
         { version: "1.1.0", sequence: "2", source: "transition" },
       ],
     });
-    renderDialog(clients);
+    const rendered = renderDialog(clients);
     await screen.findByText(/pinned 1\.1\.0/);
     await user.type(screen.getByLabelText("Target version"), "1.2.0");
     await user.click(screen.getByRole("button", { name: "Switch version" }));
@@ -143,6 +151,8 @@ describe("VersionDialog", () => {
     await waitFor(() => {
       expect(screen.getByText(/Switched to 1\.2\.0/)).toBeTruthy();
     });
+    expect(rendered.onInstallationSaved).toHaveBeenCalledWith(installation("1.2.0"), 6n);
+    expect(rendered.onVersionChanged).toHaveBeenCalledWith(INSTALLATION_ID);
   });
 
   it("maps an incompatible target to the permissions-need-review copy", async () => {

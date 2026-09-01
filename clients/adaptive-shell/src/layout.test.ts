@@ -70,6 +70,15 @@ describe("resolveDeviceLayout", () => {
     expect(stacked.orientation).toBe("portrait");
   });
 
+  it("canonicalizes reversed segment order", () => {
+    expect(normalizeSegments([...sideBySide].reverse())).toEqual(normalizeSegments(sideBySide));
+    const stacked = [
+      { x: 0, y: 0, width: 800, height: 620 },
+      { x: 0, y: 628, width: 800, height: 652 },
+    ];
+    expect(normalizeSegments([...stacked].reverse())).toEqual(normalizeSegments(stacked));
+  });
+
   it("degrades a foldable without segments to medium or expanded", () => {
     expect(
       resolveDeviceLayout({ viewportWidth: 1280, viewportHeight: 800, segments: [] }).mode,

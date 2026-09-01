@@ -37,6 +37,7 @@ type StoredInstallationRequest struct {
 	// is exact for every pre-025 row).
 	ResultVersion        string
 	ResultManifestDigest string
+	CreatedAt            time.Time
 }
 
 // InstallCommand is one fully validated install command. The application has

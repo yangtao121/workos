@@ -63,30 +63,34 @@ export function normalizeSegments(
       return undefined;
     }
   }
-  const separated = (axis: "x" | "y"): FoldHinge | undefined => {
-    const lower = first[axis] + (axis === "x" ? first.width : first.height);
-    const upperStart = second[axis];
-    const gap = upperStart - lower;
-    if (gap < 0) return undefined; // overlap along this axis
-    return { horizontal: axis === "y", gap };
+  const overlaps = (axis: "x" | "y", left: FoldSegment, right: FoldSegment): boolean => {
+    const leftSize = axis === "x" ? left.width : left.height;
+    const rightSize = axis === "x" ? right.width : right.height;
+    return left[axis] < right[axis] + rightSize && right[axis] < left[axis] + leftSize;
   };
-  // Side-by-side: the first segment ends before the second starts on x, and
-  // both overlap on y. Stacked mirrors that on y.
-  const vertical = separated("x");
-  if (
-    vertical !== undefined &&
-    first.y < second.y + second.height &&
-    second.y < first.y + first.height
-  ) {
-    return { segments: [first, second], hinge: vertical };
+  // Browsers do not promise a useful segment ordering. Canonicalize the
+  // pair by its separation axis before deriving the gap, so the same posture
+  // cannot disappear merely because the host returned right-before-left or
+  // bottom-before-top.
+  if (overlaps("y", first, second) && !overlaps("x", first, second)) {
+    const ordered = first.x <= second.x ? [first, second] : [second, first];
+    const left = ordered[0];
+    const right = ordered[1];
+    if (!left || !right) return undefined;
+    return {
+      segments: ordered,
+      hinge: { horizontal: false, gap: right.x - (left.x + left.width) },
+    };
   }
-  const stacked = separated("y");
-  if (
-    stacked !== undefined &&
-    first.x < second.x + second.width &&
-    second.x < first.x + first.width
-  ) {
-    return { segments: [first, second], hinge: stacked };
+  if (overlaps("x", first, second) && !overlaps("y", first, second)) {
+    const ordered = first.y <= second.y ? [first, second] : [second, first];
+    const top = ordered[0];
+    const bottom = ordered[1];
+    if (!top || !bottom) return undefined;
+    return {
+      segments: ordered,
+      hinge: { horizontal: true, gap: bottom.y - (top.y + top.height) },
+    };
   }
   return undefined;
 }

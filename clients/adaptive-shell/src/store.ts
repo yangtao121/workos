@@ -52,6 +52,7 @@ export function createLayoutStore(idbFactory?: IDBFactory): LayoutStore {
 // working with session-only layout memory rather than breaking.
 class IndexedDbLayoutStore implements LayoutStore {
   #database: Promise<IDBDatabase | undefined>;
+  #fallback = createMemoryLayoutStore();
 
   constructor(factory: IDBFactory) {
     this.#database = new Promise((resolve) => {
@@ -101,23 +102,37 @@ class IndexedDbLayoutStore implements LayoutStore {
     now: string,
   ): Promise<DeviceLayoutState> {
     const opened = await this.#database;
-    if (!opened) return emptyLayoutState(projectId, deviceClass, now);
+    if (!opened) return this.#fallback.load(deviceClass, projectId, now);
     const key = layoutKey(deviceClass, projectId);
-    return new Promise<DeviceLayoutState>((resolve) => {
+    return new Promise<DeviceLayoutState>((resolve, reject) => {
       let transaction: IDBTransaction;
       try {
-        transaction = opened.transaction(STORE_NAME, "readonly");
+        // A corrupt record is deleted in this same key-scoped transaction.
+        // Returning a fresh state while leaving hostile bytes behind would
+        // only rediscover the corruption on every load.
+        transaction = opened.transaction(STORE_NAME, "readwrite");
       } catch {
-        resolve(emptyLayoutState(projectId, deviceClass, now));
+        void this.#fallback.load(deviceClass, projectId, now).then(resolve, reject);
         return;
       }
-      const request = transaction.objectStore(STORE_NAME).get(key);
+      const store = transaction.objectStore(STORE_NAME);
+      const request = store.get(key);
+      let result = emptyLayoutState(projectId, deviceClass, now);
       request.onsuccess = () => {
-        resolve(migrateLayoutState(request.result, projectId, deviceClass, now));
+        const raw: unknown = request.result;
+        result = migrateLayoutState(raw, projectId, deviceClass, now);
+        if (raw !== undefined && sanitizeLayoutState(raw, projectId, deviceClass) === undefined) {
+          store.delete(key);
+        }
       };
-      request.onerror = () => {
-        // A failed read resets exactly this key, never the whole store.
-        resolve(emptyLayoutState(projectId, deviceClass, now));
+      transaction.oncomplete = () => {
+        resolve(cloneLayoutState(result));
+      };
+      transaction.onabort = () => {
+        reject(transaction.error ?? new Error("layout store load aborted"));
+      };
+      transaction.onerror = () => {
+        reject(transaction.error ?? new Error("layout store load failed"));
       };
     });
   }
@@ -130,13 +145,7 @@ class IndexedDbLayoutStore implements LayoutStore {
   ): Promise<DeviceLayoutState> {
     const opened = await this.#database;
     if (!opened) {
-      // No durable storage: honor the mutation against the empty record so
-      // callers keep a consistent in-memory state for this session.
-      return {
-        ...mutate(emptyLayoutState(projectId, deviceClass, now)),
-        updatedAt: now,
-        revision: 1,
-      };
+      return this.#fallback.update(deviceClass, projectId, now, mutate);
     }
     const key = layoutKey(deviceClass, projectId);
     return new Promise<DeviceLayoutState>((resolve, reject) => {
@@ -149,56 +158,52 @@ class IndexedDbLayoutStore implements LayoutStore {
       }
       const store = transaction.objectStore(STORE_NAME);
       const getRequest = store.get(key);
-      let committed = false;
+      let record: DeviceLayoutState | undefined;
       getRequest.onsuccess = () => {
         try {
           // The mutator runs inside the same transaction, based on the
           // committed record: overlapping readwrite transactions on this
           // store serialize, so this is the multi-tab adjudication point.
           const current = migrateLayoutState(getRequest.result, projectId, deviceClass, now);
-          const mutated = mutate(current);
-          const record: DeviceLayoutState = {
-            ...mutated,
-            schemaVersion: LAYOUT_SCHEMA_VERSION,
-            projectId,
-            deviceClass,
-            updatedAt: now,
-            revision: current.revision + 1,
-          };
+          record = canonicalMutation(current, projectId, deviceClass, now, mutate);
           store.put(record, key);
-          committed = true;
-          transaction.oncomplete = () => {
-            resolve(record);
-          };
         } catch (error) {
           transaction.abort();
           reject(error instanceof Error ? error : new Error("layout store mutation failed"));
         }
       };
-      getRequest.onerror = () => {
-        reject(getRequest.error ?? new Error("layout store read failed"));
+      transaction.oncomplete = () => {
+        if (record === undefined) {
+          reject(new Error("layout store transaction completed without a mutation"));
+          return;
+        }
+        resolve(cloneLayoutState(record));
       };
       transaction.onabort = () => {
-        if (!committed) {
-          reject(transaction.error ?? new Error("layout store transaction aborted"));
-        }
+        reject(transaction.error ?? new Error("layout store transaction aborted"));
+      };
+      transaction.onerror = () => {
+        reject(transaction.error ?? new Error("layout store transaction failed"));
       };
     });
   }
 
   async removeProject(projectId: string): Promise<void> {
+    if (!(await this.#database)) return this.#fallback.removeProject(projectId);
     await this.#transformAll((key, record) =>
       key.endsWith(`/${projectId}`) || record.projectId === projectId ? undefined : record,
     );
   }
 
   async sweep(validProjectIds: ReadonlySet<string>): Promise<void> {
+    if (!(await this.#database)) return this.#fallback.sweep(validProjectIds);
     await this.#transformAll((_key, record) =>
       validProjectIds.has(record.projectId) ? record : undefined,
     );
   }
 
   async pruneAppInstance(appInstanceId: string): Promise<void> {
+    if (!(await this.#database)) return this.#fallback.pruneAppInstance(appInstanceId);
     await this.#transformAll((_key, record) => withoutAppInstance(record, appInstanceId));
   }
 
@@ -210,7 +215,11 @@ class IndexedDbLayoutStore implements LayoutStore {
     visitor: (key: string, record: DeviceLayoutState) => DeviceLayoutState | undefined,
   ): Promise<void> {
     const opened = await this.#database;
-    if (!opened) return;
+    if (!opened) {
+      // The callers only use the four fixed visitors below, so dispatch the
+      // operation to the session fallback before entering this helper.
+      return;
+    }
     await new Promise<void>((resolve, reject) => {
       let transaction: IDBTransaction;
       try {
@@ -237,14 +246,20 @@ class IndexedDbLayoutStore implements LayoutStore {
                 projectId,
                 isUiDeviceClass(deviceClass) ? deviceClass : "desktop",
               ) ?? undefined;
-            if (!sanitized) {
+            if (
+              !sanitized ||
+              !isUiDeviceClass(deviceClass) ||
+              key !== layoutKey(deviceClass, projectId)
+            ) {
               cursor.delete();
             } else {
               const next = visitor(key, sanitized);
               if (next === undefined) {
                 cursor.delete();
               } else if (next !== sanitized) {
-                cursor.update(next);
+                const canonical = sanitizeLayoutState(next, projectId, deviceClass);
+                if (!canonical) cursor.delete();
+                else cursor.update(canonical);
               }
             }
           }
@@ -259,12 +274,18 @@ class IndexedDbLayoutStore implements LayoutStore {
       transaction.oncomplete = () => {
         resolve();
       };
+      transaction.onabort = () => {
+        reject(transaction.error ?? new Error("layout store sweep aborted"));
+      };
+      transaction.onerror = () => {
+        reject(transaction.error ?? new Error("layout store sweep failed"));
+      };
     });
   }
 
   async clearAll(): Promise<void> {
     const opened = await this.#database;
-    if (!opened) return;
+    if (!opened) return this.#fallback.clearAll();
     const transaction = opened.transaction(STORE_NAME, "readwrite");
     transaction.objectStore(STORE_NAME).clear();
     await this.#awaitTransaction(transaction, undefined);
@@ -309,25 +330,19 @@ export function createMemoryLayoutStore(): LayoutStore {
   return {
     load(deviceClass, projectId, now) {
       return Promise.resolve(
-        records.get(layoutKey(deviceClass, projectId)) ??
-          emptyLayoutState(projectId, deviceClass, now),
+        cloneLayoutState(
+          records.get(layoutKey(deviceClass, projectId)) ??
+            emptyLayoutState(projectId, deviceClass, now),
+        ),
       );
     },
     update(deviceClass, projectId, now, mutate) {
       return serialized(() => {
         const key = layoutKey(deviceClass, projectId);
         const current = records.get(key) ?? emptyLayoutState(projectId, deviceClass, now);
-        const mutated = mutate(current);
-        const next: DeviceLayoutState = {
-          ...mutated,
-          schemaVersion: LAYOUT_SCHEMA_VERSION,
-          projectId,
-          deviceClass,
-          updatedAt: now,
-          revision: current.revision + 1,
-        };
+        const next = canonicalMutation(current, projectId, deviceClass, now, mutate);
         records.set(key, next);
-        return next;
+        return cloneLayoutState(next);
       });
     },
     removeProject(projectId) {
@@ -359,4 +374,33 @@ export function createMemoryLayoutStore(): LayoutStore {
       });
     },
   };
+}
+
+function cloneLayoutState(state: DeviceLayoutState): DeviceLayoutState {
+  return {
+    ...state,
+    recentAppInstanceIds: [...state.recentAppInstanceIds],
+    dockAppInstanceIds: [...state.dockAppInstanceIds],
+  };
+}
+
+function canonicalMutation(
+  current: DeviceLayoutState,
+  projectId: string,
+  deviceClass: UiDeviceClass,
+  now: string,
+  mutate: (state: DeviceLayoutState) => DeviceLayoutState,
+): DeviceLayoutState {
+  const mutated = mutate(cloneLayoutState(current));
+  const candidate: DeviceLayoutState = {
+    ...mutated,
+    schemaVersion: LAYOUT_SCHEMA_VERSION,
+    projectId,
+    deviceClass,
+    updatedAt: now,
+    revision: current.revision + 1,
+  };
+  const canonical = sanitizeLayoutState(candidate, projectId, deviceClass);
+  if (!canonical) throw new Error("layout store mutation produced an invalid record");
+  return cloneLayoutState(canonical);
 }

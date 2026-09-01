@@ -35,6 +35,9 @@ interface IncidentClients {
     listAppVersionHistory: ReturnType<typeof vi.fn>;
     rollbackAppVersion: ReturnType<typeof vi.fn>;
   };
+  projects: {
+    getProject: ReturnType<typeof vi.fn>;
+  };
 }
 
 function clientsWith(
@@ -50,11 +53,15 @@ function clientsWith(
     () => historyResult ?? Promise.resolve({ snapshots: [] }),
   );
   const rollbackAppVersion: IncidentClients["appInstallations"]["rollbackAppVersion"] = vi.fn(() =>
-    Promise.resolve({ rolledBackToVersion: "1.0.0" }),
+    Promise.resolve({ rolledBackToVersion: "1.0.0", projectRevision: 6n }),
+  );
+  const getProject: IncidentClients["projects"]["getProject"] = vi.fn(() =>
+    Promise.resolve({ project: { revision: 7n } }),
   );
   return {
     incidents: { listIncidents, acknowledgeIncident },
     appInstallations: { listAppVersionHistory, rollbackAppVersion },
+    projects: { getProject },
   } as unknown as WorkOSClients & IncidentClients;
 }
 
@@ -135,8 +142,16 @@ describe("System Monitor", () => {
         ],
       }),
     );
+    const onProjectRevisionChanged = vi.fn();
+    const onInstallationVersionChanged = vi.fn();
     render(
-      <SystemMonitor expectedProjectRevision={5n} projectId="project-1" workosClients={clients} />,
+      <SystemMonitor
+        expectedProjectRevision={5n}
+        onInstallationVersionChanged={onInstallationVersionChanged}
+        onProjectRevisionChanged={onProjectRevisionChanged}
+        projectId="project-1"
+        workosClients={clients}
+      />,
     );
     // The open incident bound to an instance with history gets the action.
     await waitFor(() => {
@@ -154,6 +169,67 @@ describe("System Monitor", () => {
       | undefined;
     expect(request?.installationId).toBe("01990000-0000-7000-8000-0000000000a1");
     expect(request?.expectedProjectRevision).toBe(5n);
+    expect(onProjectRevisionChanged).toHaveBeenCalledWith(6n);
+    expect(onInstallationVersionChanged).toHaveBeenCalledWith(
+      "01990000-0000-7000-8000-0000000000a1",
+    );
+  });
+
+  it("loads a no-previous verdict once instead of polling forever", async () => {
+    const clients = clientsWith(
+      Promise.resolve({
+        incidents: [
+          incident({ appInstanceId: "01990000-0000-7000-8000-0000000000a1" }),
+          incident({
+            id: "01990000-0000-7000-8000-0000000000a2",
+            appInstanceId: "01990000-0000-7000-8000-0000000000a1",
+          }),
+        ],
+      }),
+      undefined,
+      Promise.resolve({ snapshots: [{ version: "1.0.0", sequence: "1" }] }),
+    );
+    render(
+      <SystemMonitor expectedProjectRevision={5n} projectId="project-1" workosClients={clients} />,
+    );
+    await waitFor(() => {
+      expect(clients.appInstallations.listAppVersionHistory).toHaveBeenCalledTimes(1);
+    });
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    expect(clients.appInstallations.listAppVersionHistory).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole("button", { name: /Roll back/ })).toBeNull();
+  });
+
+  it("reloads the authoritative project revision after a rollback conflict", async () => {
+    const user = userEvent.setup();
+    const clients = clientsWith(
+      Promise.resolve({
+        incidents: [incident({ appInstanceId: "01990000-0000-7000-8000-0000000000a1" })],
+      }),
+      undefined,
+      Promise.resolve({
+        snapshots: [
+          { version: "1.0.0", sequence: "1" },
+          { version: "1.1.0", sequence: "2" },
+        ],
+      }),
+    );
+    clients.appInstallations.rollbackAppVersion.mockRejectedValueOnce(
+      new ConnectError("revision conflict", Code.Aborted),
+    );
+    const onProjectRevisionChanged = vi.fn();
+    render(
+      <SystemMonitor
+        expectedProjectRevision={5n}
+        onProjectRevisionChanged={onProjectRevisionChanged}
+        projectId="project-1"
+        workosClients={clients}
+      />,
+    );
+    await user.click(await screen.findByRole("button", { name: "Roll back to 1.0.0" }));
+    expect(await screen.findByText(/latest revision was loaded/)).toBeTruthy();
+    expect(clients.projects.getProject).toHaveBeenCalledWith({ projectId: "project-1" });
+    expect(onProjectRevisionChanged).toHaveBeenCalledWith(7n);
   });
 
   it("shows the empty-project state without touching the API", async () => {

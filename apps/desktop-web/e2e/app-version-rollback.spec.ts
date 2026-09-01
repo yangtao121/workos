@@ -13,6 +13,8 @@ import { expect, test, type Page } from "@playwright/test";
 const libraryTimeout = 30_000;
 const captureDir = process.env.WORKOS_CAPTURE_DIR;
 
+test.use({ viewport: { width: 1440, height: 900 } });
+
 const bundlePage = (marker: string) =>
   `<!doctype html><title>Version E2E</title><div id="root">${marker}</div>`;
 
@@ -36,8 +38,10 @@ test("transitions and rolls back an installed app across surface generations", a
   test.setTimeout(240_000);
   const stamp = String(Date.now());
   const appId = `e2e-version-${stamp}`;
-  const markerV1 = `version-e2e-v1-${stamp}`;
-  const markerV2 = `version-e2e-v2-${stamp}`;
+  // Bundle content is stable for deterministic visual evidence. Uniqueness
+  // remains in the server-side app/artifact/idempotency identities only.
+  const markerV1 = "version-e2e-v1";
+  const markerV2 = "version-e2e-v2";
 
   const artifactV1 = await createBundle(page, `e2e-version-artifact-v1-${stamp}`, markerV1);
   const artifactV2 = await createBundle(page, `e2e-version-artifact-v2-${stamp}`, markerV2);
@@ -45,7 +49,7 @@ test("transitions and rolls back an installed app across surface generations", a
   const register = async (version: string, artifact: { id: string; digest: string }) => {
     const manifest = `apiVersion: workos.app/v1
 id: ${appId}
-name: Version E2E ${stamp}
+name: Version E2E Fixture
 version: ${version}
 scope: user
 runtime:
@@ -73,7 +77,8 @@ maintainer: {}
   // current version, so the oldest pin must be the current at install time.
   await register("1.0.0", artifactV1);
 
-  const projectName = `Version E2E ${stamp}`;
+  const visualProjectName = "Version E2E Fixture";
+  const projectName = `${visualProjectName} ${stamp}`;
   // The acceptance volume holds many projects, so walk every ListProjects
   // page until the exact-name project shows up.
   const fetchProject = async (): Promise<{ id: string; revision: number }> => {
@@ -87,7 +92,9 @@ maintainer: {}
         projects: Array<{ id: string; name: string; revision: string }>;
         page?: { nextPageToken?: string };
       };
-      const project = body.projects.find((candidate) => candidate.name === projectName);
+      const project = body.projects
+        .filter((candidate) => candidate.name === projectName)
+        .sort((left, right) => right.id.localeCompare(left.id))[0];
       if (project) return { id: project.id, revision: Number(project.revision) };
       const next = body.page?.nextPageToken ?? "";
       if (next === "") throw new Error("version e2e project vanished");
@@ -98,9 +105,9 @@ maintainer: {}
 
   // Install v1 through the real consent flow.
   await page.goto("/");
-  await page.getByLabel("Project name").fill(`Version E2E ${stamp}`);
+  await page.getByLabel("Project name").fill(projectName);
   await page.getByRole("button", { name: "Create space" }).click();
-  await expect(page.locator(".project-card.active")).toContainText(`Version E2E ${stamp}`);
+  await expect(page.locator(".project-card.active")).toContainText(projectName);
   await page.getByRole("button", { name: "App Library" }).click();
   const library = page.locator(".app-library");
   await expect(
@@ -137,6 +144,7 @@ maintainer: {}
   await dialog.getByRole("button", { name: "Switch version" }).click();
   await expect(dialog.getByText(/Switched to 1\.1\.0/)).toBeVisible({ timeout: libraryTimeout });
   if (captureDir) {
+    await installCaptureRedaction(page);
     await page.screenshot({ path: `${captureDir}/app-library--version-switched--1440x900.png` });
   }
   await dialog.getByRole("button", { name: "Close" }).click();
@@ -152,37 +160,75 @@ maintainer: {}
     timeout: libraryTimeout,
   });
 
-  // Owner-visible rollback through the dialog: the previous pinned snapshot
-  // is restored server-side and the open v2 surface is torn down.
-  await row.getByRole("button", { name: "Versions" }).click();
-  const rollbackDialog = page.getByRole("dialog");
-  await expect(rollbackDialog.getByRole("button", { name: "Roll back to 1.0.0" })).toBeVisible({
-    timeout: libraryTimeout,
-  });
-  await rollbackDialog.getByRole("button", { name: "Roll back to 1.0.0" }).click();
-  await expect(rollbackDialog.getByText(/Rolled back to 1\.0\.0/)).toBeVisible({
+  // On a host without rootless Podman the reliability observation chain is
+  // unavailable, so inject only the public Incident read at the browser
+  // boundary. The System Monitor itself, history eligibility query, rollback
+  // command, Project revision update, and Surface invalidation all remain on
+  // the real Gateway/Core/Runtime chain.
+  const project = await fetchProject();
+  const installedId = await installationId(page, project.id, appId);
+  await page.route("**/workos.incident.v1.IncidentService/ListIncidents", (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        incidents: [
+          {
+            id: "01990000-0000-7000-8000-0000000000c1",
+            workloadId: "01990000-0000-7000-8000-0000000000c2",
+            projectId: project.id,
+            severity: "INCIDENT_SEVERITY_CRITICAL",
+            state: "INCIDENT_STATE_OPEN",
+            summary: "The app workload exited unexpectedly.",
+            evidence: [{ type: "observation", digest: `sha256:${"c".repeat(64)}` }],
+            createdAt: "2026-08-31T10:00:00Z",
+            updatedAt: "2026-08-31T10:00:01Z",
+            appInstanceId: installedId,
+            appId,
+            violation: "INCIDENT_VIOLATION_UNEXPECTED_EXIT",
+            workloadGeneration: "1",
+            revision: "1",
+            restartOutcome: "INCIDENT_RESTART_OUTCOME_RESTARTED",
+          },
+        ],
+        page: { nextPageToken: "" },
+      }),
+    }),
+  );
+  await page.getByRole("button", { name: "Close App Library" }).click();
+  await page.getByRole("button", { name: "Open System Monitor" }).click();
+  const monitor = page.locator(".system-monitor-body");
+  const rollbackButton = monitor.getByRole("button", { name: "Roll back to 1.0.0" });
+  await expect(rollbackButton).toBeVisible({ timeout: libraryTimeout });
+  if (captureDir) {
+    await page.screenshot({
+      path: `${captureDir}/system-monitor--rollback-eligible--1440x900.png`,
+    });
+  }
+  await rollbackButton.click();
+  await expect(monitor.getByText(/Core restored 1\.0\.0/)).toBeVisible({
     timeout: libraryTimeout,
   });
   if (captureDir) {
-    await page.screenshot({ path: `${captureDir}/app-library--rollback-complete--1440x900.png` });
+    await page.screenshot({
+      path: `${captureDir}/system-monitor--rollback-complete--1440x900.png`,
+    });
   }
-  await rollbackDialog.getByRole("button", { name: "Close" }).click();
 
-  // The stale v2 surface window was closed by the confirmed rollback.
+  // The stale v2 surface window was closed by the confirmed System Monitor
+  // rollback, while Core also invalidated its server-side session facts.
   await expect(page.locator("iframe")).toHaveCount(0, { timeout: libraryTimeout });
 
   // Server-side rollback through the browser session with a known key, then
   // an exact replay of the same canonical request.
   const revision = await projectRevision();
   const rollbackKey = `e2e-version-rollback-${stamp}`;
-  const project = await fetchProject();
   const rollbackOnce = await page.request.post(
     "/workos.app.v1.AppInstallationService/RollbackAppVersion",
     {
       data: {
         idempotencyKey: rollbackKey,
         projectId: project.id,
-        installationId: await installationId(page, project.id, appId),
+        installationId: installedId,
         expectedProjectRevision: revision,
       },
     },
@@ -203,7 +249,7 @@ maintainer: {}
       data: {
         idempotencyKey: rollbackKey,
         projectId: project.id,
-        installationId: await installationId(page, project.id, appId),
+        installationId: installedId,
         expectedProjectRevision: revision,
       },
     },
@@ -275,4 +321,30 @@ async function installationId(page: Page, projectId: string, appId: string): Pro
     );
   }
   return installation.id;
+}
+
+async function installCaptureRedaction(page: Page): Promise<void> {
+  await page.addStyleTag({
+    content: `
+      .app-row-id, .version-dialog-app-id { font-size: 0 !important; }
+      .app-row-id::after, .version-dialog-app-id::after {
+        content: "e2e-version-fixture";
+        font-size: 11px;
+      }
+      /* The acceptance database is intentionally persistent. Hide unrelated
+         fixture Projects during capture so their run-specific names and
+         revisions cannot make this task's visual evidence nondeterministic. */
+      .project-grid > .project-card:not(.active) {
+        visibility: hidden !important;
+      }
+      .project-switcher, .project-card.active strong, .workos-window > header > span {
+        font-size: 0 !important;
+      }
+      .project-switcher::after, .project-card.active strong::after,
+      .workos-window > header > span::after {
+        content: "Version E2E Fixture";
+        font-size: 14px;
+      }
+    `,
+  });
 }
