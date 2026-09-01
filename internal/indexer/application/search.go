@@ -18,9 +18,12 @@ type SearchService struct {
 	freshness  *IngestionService
 }
 
+// NewSearchService composes the search use case. freshness may be nil in
+// freshness-free contexts (tests, embedded rebuild validation); the served
+// freshness projection is then the zero value instead of a fabricated READY.
 func NewSearchService(projection ports.ProjectionRepository, freshness *IngestionService) (*SearchService, error) {
-	if projection == nil || freshness == nil {
-		return nil, errServiceWiring("search service requires projection and freshness dependencies")
+	if projection == nil {
+		return nil, errServiceWiring("search service requires the projection")
 	}
 	return &SearchService{projection: projection, freshness: freshness}, nil
 }
@@ -83,9 +86,19 @@ func (s *SearchService) Search(ctx context.Context, input SearchInput) (SearchRe
 	if err != nil {
 		return SearchResult{}, err
 	}
+	if s.freshness == nil {
+		return SearchResult{Page: page}, nil
+	}
 	fresh, err := s.freshness.Freshness(ctx)
 	if err != nil {
 		return SearchResult{}, err
 	}
 	return SearchResult{Page: page, Freshness: fresh}, nil
+}
+
+// NewSearchServiceForTest builds a freshness-free search service for tests
+// and embedded validation contexts; production wires NewSearchService with a
+// real ingestion service.
+func NewSearchServiceForTest(projection ports.ProjectionRepository) *SearchService {
+	return &SearchService{projection: projection}
 }

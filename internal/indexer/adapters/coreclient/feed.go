@@ -147,6 +147,21 @@ func (f *FeedClient) CountPending(ctx context.Context) (int64, error) {
 	return response.Msg.GetPending(), nil
 }
 
+// ResolveSnapshotSource resolves digest-pinned content for the rebuild
+// snapshot. Unresolvable sources (archived project) are reported as
+// resolvable=false with a nil error — the snapshot records a tombstone;
+// corrupt/drifted sources are errors that fail the pass.
+func (f *FeedClient) ResolveSnapshotSource(ctx context.Context, ownerUserID, projectID, artifactID, expectedDigest string) (title, taskID string, content []byte, resolvable bool, err error) {
+	source, err := f.ResolveSourceContent(ctx, ownerUserID, projectID, artifactID, expectedDigest)
+	if err != nil {
+		if errors.Is(err, ports.ErrNotFound) {
+			return "", "", nil, false, nil
+		}
+		return "", "", nil, false, err
+	}
+	return source.Title, source.SourceTaskID, source.Content, true, nil
+}
+
 func (f *FeedClient) ReconcileSources(ctx context.Context, pageSize int, cursor string) ([]ports.ReconcileSource, string, string, error) {
 	req := connect.NewRequest(&indexv1.ReconcileIndexSourcesRequest{PageSize: int32(pageSize), PageToken: cursor})
 	f.identityHeaders(ctx, req)

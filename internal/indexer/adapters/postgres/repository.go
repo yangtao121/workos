@@ -268,11 +268,14 @@ func (r *Repository) Search(ctx context.Context, query domain.SearchQuery) (doma
 		cursorCreated = canonical(query.Decoded.LastSourceCreated)
 		cursorSource = query.Decoded.LastSourceID
 	}
+	if strings.TrimSpace(domain.LexicalQueryText(query.CanonicalQuery)) == "" {
+		return domain.SearchPage{GenerationID: generation}, nil
+	}
 	rows, err := r.queries.SearchProjectDocuments(ctx, indexerdb.SearchProjectDocumentsParams{
 		GenerationID:    generation,
 		OwnerUserID:     query.OwnerUserID,
 		ProjectID:       query.ProjectID,
-		QueryText:       query.CanonicalQuery,
+		QueryText:       domain.LexicalQueryText(query.CanonicalQuery),
 		SnapshotThrough: snapshot,
 		CursorScore:     cursorScore,
 		CursorCreatedAt: cursorCreated,

@@ -17,7 +17,7 @@ import (
 	"github.com/yangtao121/workos/internal/indexer/adapters/coreclient"
 	indexerpostgres "github.com/yangtao121/workos/internal/indexer/adapters/postgres"
 	indexerapp "github.com/yangtao121/workos/internal/indexer/application"
-	"github.com/yangtao121/workos/internal/indexer/transport"
+	indexertransport "github.com/yangtao121/workos/internal/indexer/transport"
 	"github.com/yangtao121/workos/internal/platform/config"
 	"github.com/yangtao121/workos/internal/platform/database"
 	"github.com/yangtao121/workos/internal/platform/httpserver"
@@ -121,10 +121,44 @@ func run(logger *slog.Logger) error {
 		}
 	}()
 
+	// The rebuild driver composes the feed (Core authority pages, drain
+	// barrier, digest-pinned content) with the projection's active pointer.
+	rebuildDriver := indexerapp.NewRebuildDriver(&rebuildFeed{FeedClient: feed, proj: projection}, generator)
+	rebuildStore, err := indexerpostgres.NewRebuildStore(pool, generator)
+	if err != nil {
+		return err
+	}
+	executor, err := indexerapp.NewRebuildExecutor(rebuildStore, rebuildDriver, 100)
+	if err != nil {
+		return err
+	}
+	admin, err := indexerapp.NewAdminService(executor, ingestion, projection)
+	if err != nil {
+		return err
+	}
+	// The rebuild loop advances the durable state machine; passes are bounded
+	// and a crash resumes from the stored phase and cursor.
+	go func() {
+		ticker := time.NewTicker(500 * time.Millisecond)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				passCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+				if _, err := executor.RunPass(passCtx); err != nil && passCtx.Err() == nil {
+					logger.Warn("rebuild pass failed", "error", err)
+				}
+				cancel()
+			}
+		}
+	}()
+
 	ready := func(ctx context.Context) error { return pool.Ping(ctx) }
 	mux := httpserver.NewMux("indexer", ready)
 	service := compositeIndexService{search: search, repair: repair}
-	indexPath, indexHandler := transport.NewConnectHandler(service)
+	indexPath, indexHandler := indexertransport.NewConnectHandler(service)
 	mux.Handle(indexPath, identity.Middleware(indexHandler))
 	systemPath, systemHandler := commonv1connect.NewSystemServiceHandler(systemhandler.New("indexer",
 		commonv1.HealthState_HEALTH_STATE_HEALTHY,
@@ -138,6 +172,26 @@ func run(logger *slog.Logger) error {
 			Reason: "semantic RAG, embeddings, and pgvector are not implemented; lexical search only"},
 	))
 	mux.Handle(systemPath, systemHandler)
+
+	// The local admin socket (ADR-0013 §8): owner-verified Unix socket only,
+	// never the gateway or any TCP listener. A failure stops the process.
+	var adminErr chan error
+	var adminSock *indexertransport.AdminSocket
+	if cfg.Indexer.AdminSocketPath != "" {
+		_, adminHandler := indexertransport.NewAdminConnectHandler(adminServiceSurface{admin})
+		adminSock, err = indexertransport.ListenAdminSocket(cfg.Indexer.AdminSocketPath, adminHandler, logger)
+		if err != nil {
+			return err
+		}
+		adminErr = make(chan error, 1)
+		go func() { adminErr <- adminSock.Serve() }()
+		defer func() {
+			shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			_ = adminSock.Close(shutdownCtx)
+		}()
+		logger.Info("indexer admin socket listening")
+	}
 
 	serverErr := make(chan error, 1)
 	go func() {
@@ -155,7 +209,45 @@ func run(logger *slog.Logger) error {
 			return err
 		}
 		return err
+	case err := <-adminErr:
+		if err == nil {
+			err = errors.New("indexer admin socket stopped unexpectedly")
+		}
+		return err
 	}
+}
+
+// adminServiceSurface adapts the AdminService to the transport interface.
+type adminServiceSurface struct {
+	admin *indexerapp.AdminService
+}
+
+func (a adminServiceSurface) Status(ctx context.Context) (indexerapp.IndexStatus, error) {
+	return a.admin.Status(ctx)
+}
+
+func (a adminServiceSurface) StartRebuild(ctx context.Context, request indexerapp.RebuildRequest) (indexerapp.RebuildJobView, bool, error) {
+	return a.admin.StartRebuild(ctx, request)
+}
+
+func (a adminServiceSurface) GetRebuildJob(ctx context.Context, jobID string) (indexerapp.RebuildJobView, error) {
+	return a.admin.GetRebuildJob(ctx, jobID)
+}
+
+func (a adminServiceSurface) CancelRebuildJob(ctx context.Context, jobID string) (bool, error) {
+	return a.admin.CancelRebuildJob(ctx, jobID)
+}
+
+// rebuildFeed composes the Core feed with the projection's active pointer
+// for the rebuild driver: the feed methods delegate; only the active
+// generation pointer comes from the projection.
+type rebuildFeed struct {
+	*coreclient.FeedClient
+	proj *indexerpostgres.Repository
+}
+
+func (r *rebuildFeed) ActiveGenerationID(ctx context.Context) (string, error) {
+	return r.proj.ActiveGenerationID(ctx)
 }
 
 // compositeIndexService binds the search and repair use cases onto the one

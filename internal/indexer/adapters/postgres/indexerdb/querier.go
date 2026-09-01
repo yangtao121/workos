@@ -15,24 +15,40 @@ type Querier interface {
 	// tables; Core schemas are reached exclusively through the private RPC
 	// client. Search reads only the active generation.
 	ActiveGenerationID(ctx context.Context) (string, error)
+	ApplyResolvedSourceToGeneration(ctx context.Context, arg ApplyResolvedSourceToGenerationParams) (int64, error)
+	CancelRebuildJob(ctx context.Context, arg CancelRebuildJobParams) (int64, error)
+	// Promote is a single-row compare-and-swap: the winner held the previous
+	// active generation at commit time, so a stale or failed worker can never
+	// overwrite a later successful promotion.
+	CasPromoteGeneration(ctx context.Context, arg CasPromoteGenerationParams) (int64, error)
 	ClaimRunnableIndexJob(ctx context.Context, updatedAt time.Time) (WorkosIndexIndexJob, error)
+	CountGenerationDocs(ctx context.Context, generationID string) (CountGenerationDocsRow, error)
 	CountGenerationDocuments(ctx context.Context, generationID string) (int64, error)
 	CountIndexJobSources(ctx context.Context, jobID string) (CountIndexJobSourcesRow, error)
 	GetBuildingGenerationForScope(ctx context.Context, arg GetBuildingGenerationForScopeParams) (string, error)
 	GetConsumerCursor(ctx context.Context, workerID string) (WorkosIndexConsumerState, error)
 	GetDocumentStatus(ctx context.Context, arg GetDocumentStatusParams) (GetDocumentStatusRow, error)
+	GetGeneration(ctx context.Context, id string) (WorkosIndexProjectionGeneration, error)
 	GetIndexJob(ctx context.Context, arg GetIndexJobParams) (WorkosIndexIndexJob, error)
 	// Repair/reindex jobs (IndexContext). The request mapping is the durable
 	// idempotency authority; job + sources + first-response snapshot commit in
 	// one transaction.
 	GetIndexJobRequest(ctx context.Context, arg GetIndexJobRequestParams) (WorkosIndexIndexJobRequest, error)
 	GetIndexJobSources(ctx context.Context, jobID string) ([]WorkosIndexIndexJobSource, error)
+	GetLiveRebuildJobs(ctx context.Context) ([]WorkosIndexRebuildJob, error)
 	GetProjectTombstone(ctx context.Context, arg GetProjectTombstoneParams) (WorkosIndexProjectTombstone, error)
+	GetRebuildJob(ctx context.Context, id string) (WorkosIndexRebuildJob, error)
+	GetRebuildJobRequest(ctx context.Context, idempotencyKey string) (WorkosIndexRebuildJobRequest, error)
 	GetReceipt(ctx context.Context, arg GetReceiptParams) (WorkosIndexPublicationReceipt, error)
 	InsertGeneration(ctx context.Context, arg InsertGenerationParams) error
+	// Shadow-generation rebuild facts (ADR-0013 §9). Generations and rebuild
+	// jobs are durable: a restart resumes from the stored phase and cursor.
+	InsertGenerationFull(ctx context.Context, arg InsertGenerationFullParams) error
 	InsertIndexJob(ctx context.Context, arg InsertIndexJobParams) (string, error)
 	InsertIndexJobRequest(ctx context.Context, arg InsertIndexJobRequestParams) error
 	InsertIndexJobSource(ctx context.Context, arg InsertIndexJobSourceParams) error
+	InsertRebuildJob(ctx context.Context, arg InsertRebuildJobParams) error
+	InsertRebuildJobRequest(ctx context.Context, arg InsertRebuildJobRequestParams) error
 	ListIndexJobSources(ctx context.Context, jobID string) ([]WorkosIndexIndexJobSource, error)
 	MarkIndexJobFailed(ctx context.Context, arg MarkIndexJobFailedParams) error
 	PromoteGeneration(ctx context.Context, arg PromoteGenerationParams) (int64, error)
@@ -44,13 +60,19 @@ type Querier interface {
 	// documents indexed after the chain started, so late arrivals never join an
 	// open page chain.
 	SearchProjectDocuments(ctx context.Context, arg SearchProjectDocumentsParams) ([]SearchProjectDocumentsRow, error)
+	TombstoneGenerationDocuments(ctx context.Context, arg TombstoneGenerationDocumentsParams) (int64, error)
 	TombstoneProjectDocuments(ctx context.Context, arg TombstoneProjectDocumentsParams) (int64, error)
+	UpdateGenerationStatus(ctx context.Context, arg UpdateGenerationStatusParams) error
 	UpdateIndexJobSource(ctx context.Context, arg UpdateIndexJobSourceParams) error
 	UpdateIndexJobState(ctx context.Context, arg UpdateIndexJobStateParams) error
+	UpdateRebuildJob(ctx context.Context, arg UpdateRebuildJobParams) error
 	UpsertConsumerCursor(ctx context.Context, arg UpsertConsumerCursorParams) error
 	UpsertProjectTombstone(ctx context.Context, arg UpsertProjectTombstoneParams) error
 	UpsertReceipt(ctx context.Context, arg UpsertReceiptParams) error
+	UpsertReceiptForGeneration(ctx context.Context, arg UpsertReceiptForGenerationParams) error
 	UpsertSearchDocument(ctx context.Context, arg UpsertSearchDocumentParams) (int64, error)
+	WalkGenerationDocuments(ctx context.Context, arg WalkGenerationDocumentsParams) ([]WalkGenerationDocumentsRow, error)
+	WalkGenerationDocumentsAfter(ctx context.Context, arg WalkGenerationDocumentsAfterParams) ([]WalkGenerationDocumentsAfterRow, error)
 	WritableGenerationIDs(ctx context.Context, arg WritableGenerationIDsParams) ([]string, error)
 }
 

@@ -64,3 +64,41 @@ func ClampSearchPageSize(requested int32) int {
 	}
 	return int(requested)
 }
+
+// LexicalQueryText renders the deterministic tsquery input for a canonical
+// query: every term is reduced to its lowercase alphanumeric chunks joined
+// by single spaces, so the SQL side can AND plain lexemes with no websearch
+// operators, locale behaviour, or injection surface. Chunks shorter than one
+// alphanumeric rune disappear; a query with none left produces an empty
+// string, which matches nothing by construction.
+func LexicalQueryText(canonicalQuery string) string {
+	fields := strings.Fields(canonicalQuery)
+	parts := make([]string, 0, len(fields))
+	for _, field := range fields {
+		var b strings.Builder
+		for _, r := range field {
+			switch {
+			case r >= 'a' && r <= 'z':
+				b.WriteRune(r)
+			case r >= 'A' && r <= 'Z':
+				b.WriteRune(r + ('a' - 'A'))
+			case r >= '0' && r <= '9':
+				b.WriteRune(r)
+			default:
+				// Non-alphanumerics split the term: they never reach the
+				// tsquery parser as operators or compound tokens.
+				if b.Len() > 0 {
+					parts = append(parts, b.String())
+					b.Reset()
+				}
+			}
+		}
+		if b.Len() > 0 {
+			parts = append(parts, b.String())
+		}
+	}
+	if len(parts) == 0 {
+		return ""
+	}
+	return strings.Join(parts, " ")
+}

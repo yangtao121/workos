@@ -30,6 +30,7 @@ type Config struct {
 	Harness     Harness     `yaml:"harness"`
 	Surface     Surface     `yaml:"surface"`
 	Runtime     Runtime     `yaml:"runtime"`
+	Indexer     Indexer     `yaml:"indexer"`
 	Reliability Reliability `yaml:"reliability"`
 	Telemetry   Telemetry   `yaml:"telemetry"`
 }
@@ -47,6 +48,12 @@ type Reliability struct {
 // verified rootless engine executable. The manager refuses to start on
 // out-of-bounds values, and the capability verdict always comes from the
 // engine probe — never from the presence of the binary.
+// Indexer holds the indexer-only settings. The admin socket stays empty
+// unless the operator configures it; no admin surface exists without it.
+type Indexer struct {
+	AdminSocketPath string `yaml:"admin_socket_path"`
+}
+
 type Runtime struct {
 	PodmanBin string `yaml:"podman_bin"`
 	// IndexerURL configures the runtime's scoped knowledge search upstream.
@@ -316,6 +323,7 @@ func Load() (Config, error) {
 	}
 	setString(&cfg.Runtime.PodmanBin, "WORKOS_RUNTIME_PODMAN_BIN")
 	setString(&cfg.Runtime.IndexerURL, "WORKOS_RUNTIME_INDEXER_URL")
+	setString(&cfg.Indexer.AdminSocketPath, "WORKOS_INDEX_ADMIN_SOCKET")
 	setString(&cfg.Runtime.InstanceName, "WORKOS_RUNTIME_INSTANCE_NAME")
 	setString(&cfg.Runtime.DeviceID, "WORKOS_RUNTIME_DEVICE_ID")
 	for _, override := range []struct {

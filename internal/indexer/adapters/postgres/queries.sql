@@ -223,3 +223,142 @@ FROM workos_index.documents
 WHERE projection_generation = (SELECT generation_id FROM workos_index.active_generation)
   AND owner_user_id = sqlc.arg(owner_user_id) AND project_id = sqlc.arg(project_id)
   AND source_id = sqlc.arg(source_id);
+
+-- Shadow-generation rebuild facts (ADR-0013 §9). Generations and rebuild
+-- jobs are durable: a restart resumes from the stored phase and cursor.
+
+-- name: InsertGenerationFull :exec
+INSERT INTO workos_index.projection_generations (
+    id, scope, owner_user_id, project_id, status, snapshot_boundary, created_at
+) VALUES (
+    sqlc.arg(id), sqlc.arg(scope), sqlc.arg(owner_user_id), sqlc.arg(project_id),
+    sqlc.arg(status), sqlc.arg(snapshot_boundary), sqlc.arg(created_at)
+);
+
+-- name: UpdateGenerationStatus :exec
+UPDATE workos_index.projection_generations
+SET status = sqlc.arg(status), promoted_at = sqlc.arg(promoted_at), retired_at = sqlc.arg(retired_at)
+WHERE id = sqlc.arg(id);
+
+-- name: GetGeneration :one
+SELECT id, scope, owner_user_id, project_id, status, snapshot_boundary,
+       document_count, tombstone_count, created_at, promoted_at, retired_at
+FROM workos_index.projection_generations WHERE id = sqlc.arg(id);
+
+-- name: CountGenerationDocs :one
+SELECT
+    count(*) FILTER (WHERE tombstoned_at IS NULL) AS documents,
+    count(*) FILTER (WHERE tombstoned_at IS NOT NULL) AS tombstoned
+FROM workos_index.documents WHERE projection_generation = sqlc.arg(generation_id);
+
+-- Promote is a single-row compare-and-swap: the winner held the previous
+-- active generation at commit time, so a stale or failed worker can never
+-- overwrite a later successful promotion.
+-- name: CasPromoteGeneration :execrows
+UPDATE workos_index.active_generation
+SET generation_id = sqlc.arg(target)
+WHERE generation_id = sqlc.arg(expect_current);
+
+-- name: InsertRebuildJob :exec
+INSERT INTO workos_index.rebuild_jobs (
+    id, scope, owner_user_id, project_id, idempotency_digest, state,
+    target_generation, created_at, updated_at
+) VALUES (
+    sqlc.arg(id), sqlc.arg(scope), sqlc.arg(owner_user_id), sqlc.arg(project_id),
+    sqlc.arg(idempotency_digest), 'requested', sqlc.arg(target_generation),
+    sqlc.arg(created_at), sqlc.arg(updated_at)
+);
+
+-- name: InsertRebuildJobRequest :exec
+INSERT INTO workos_index.rebuild_job_requests (idempotency_key, request_digest, job_id, created_at)
+VALUES (sqlc.arg(idempotency_key), sqlc.arg(request_digest), sqlc.arg(job_id), sqlc.arg(created_at));
+
+-- name: GetRebuildJobRequest :one
+SELECT idempotency_key, request_digest, job_id, created_at
+FROM workos_index.rebuild_job_requests WHERE idempotency_key = sqlc.arg(idempotency_key);
+
+-- name: GetRebuildJob :one
+SELECT id, scope, owner_user_id, project_id, idempotency_digest, state,
+       target_generation, phase_cursor, snapshot_boundary, source_count,
+       applied_count, tombstone_count, failure_category, created_at,
+       updated_at, terminal_at
+FROM workos_index.rebuild_jobs WHERE id = sqlc.arg(id);
+
+-- name: GetLiveRebuildJobs :many
+SELECT id, scope, owner_user_id, project_id, idempotency_digest, state,
+       target_generation, phase_cursor, snapshot_boundary, source_count,
+       applied_count, tombstone_count, failure_category, created_at,
+       updated_at, terminal_at
+FROM workos_index.rebuild_jobs
+WHERE state IN ('requested', 'snapshotting', 'catching_up', 'validating', 'promoting')
+ORDER BY created_at, id;
+
+-- name: UpdateRebuildJob :exec
+UPDATE workos_index.rebuild_jobs
+SET state = sqlc.arg(state), phase_cursor = sqlc.arg(phase_cursor),
+    snapshot_boundary = sqlc.arg(snapshot_boundary), source_count = sqlc.arg(source_count),
+    applied_count = sqlc.arg(applied_count), tombstone_count = sqlc.arg(tombstone_count),
+    failure_category = sqlc.arg(failure_category), updated_at = sqlc.arg(updated_at),
+    terminal_at = sqlc.arg(terminal_at)
+WHERE id = sqlc.arg(id);
+
+-- name: CancelRebuildJob :execrows
+UPDATE workos_index.rebuild_jobs
+SET state = 'canceled', failure_category = sqlc.arg(failure_category),
+    updated_at = sqlc.arg(updated_at), terminal_at = sqlc.arg(updated_at)
+WHERE id = sqlc.arg(id)
+  AND state IN ('requested', 'snapshotting', 'catching_up', 'validating');
+
+-- name: ApplyResolvedSourceToGeneration :execrows
+INSERT INTO workos_index.documents (
+    projection_generation, owner_user_id, project_id, source_type, source_id,
+    source_digest, artifact_type, title, content, source_created_at,
+    last_publication_id, source_operation, indexed_at, updated_at
+) VALUES (
+    sqlc.arg(projection_generation), sqlc.arg(owner_user_id), sqlc.arg(project_id),
+    'artifact.review.v1', sqlc.arg(source_id), sqlc.arg(source_digest),
+    sqlc.arg(artifact_type), sqlc.arg(title), sqlc.arg(content),
+    sqlc.arg(source_created_at), sqlc.arg(last_publication_id),
+    'review-artifact.upsert', sqlc.arg(indexed_at), sqlc.arg(updated_at)
+)
+ON CONFLICT (projection_generation, owner_user_id, project_id, source_id) DO UPDATE
+SET source_digest = EXCLUDED.source_digest,
+    artifact_type = EXCLUDED.artifact_type,
+    title = EXCLUDED.title,
+    content = EXCLUDED.content,
+    source_created_at = EXCLUDED.source_created_at,
+    last_publication_id = EXCLUDED.last_publication_id,
+    indexed_at = EXCLUDED.indexed_at,
+    tombstoned_at = NULL,
+    updated_at = EXCLUDED.updated_at;
+
+-- name: TombstoneGenerationDocuments :execrows
+UPDATE workos_index.documents
+SET tombstoned_at = sqlc.arg(tombstoned_at), updated_at = sqlc.arg(updated_at)
+WHERE projection_generation = sqlc.arg(projection_generation)
+  AND owner_user_id = sqlc.arg(owner_user_id) AND project_id = sqlc.arg(project_id)
+  AND tombstoned_at IS NULL;
+
+-- name: UpsertReceiptForGeneration :exec
+INSERT INTO workos_index.publication_receipts (
+    publication_id, projection_generation, request_digest, outcome, source_digest, processed_at
+) VALUES (
+    sqlc.arg(publication_id), sqlc.arg(projection_generation), sqlc.arg(request_digest),
+    sqlc.arg(outcome), sqlc.arg(source_digest), sqlc.arg(processed_at)
+)
+ON CONFLICT (publication_id, projection_generation) DO NOTHING;
+
+-- name: WalkGenerationDocuments :many
+SELECT source_id, source_digest, artifact_type, tombstoned_at
+FROM workos_index.documents
+WHERE projection_generation = sqlc.arg(generation_id)
+ORDER BY source_created_at, source_id
+LIMIT sqlc.arg(page_limit);
+
+-- name: WalkGenerationDocumentsAfter :many
+SELECT source_id, source_digest, artifact_type, tombstoned_at
+FROM workos_index.documents
+WHERE projection_generation = sqlc.arg(generation_id)
+  AND (source_created_at, source_id) > (sqlc.arg(cursor_created_at)::timestamptz, sqlc.arg(cursor_source_id)::uuid)
+ORDER BY source_created_at, source_id
+LIMIT sqlc.arg(page_limit);

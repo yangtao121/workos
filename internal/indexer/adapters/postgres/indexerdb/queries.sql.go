@@ -41,6 +41,110 @@ func (q *Queries) ActiveGenerationID(ctx context.Context) (string, error) {
 	return generation_id, err
 }
 
+const applyResolvedSourceToGeneration = `-- name: ApplyResolvedSourceToGeneration :execrows
+INSERT INTO workos_index.documents (
+    projection_generation, owner_user_id, project_id, source_type, source_id,
+    source_digest, artifact_type, title, content, source_created_at,
+    last_publication_id, source_operation, indexed_at, updated_at
+) VALUES (
+    $1, $2, $3,
+    'artifact.review.v1', $4, $5,
+    $6, $7, $8,
+    $9, $10,
+    'review-artifact.upsert', $11, $12
+)
+ON CONFLICT (projection_generation, owner_user_id, project_id, source_id) DO UPDATE
+SET source_digest = EXCLUDED.source_digest,
+    artifact_type = EXCLUDED.artifact_type,
+    title = EXCLUDED.title,
+    content = EXCLUDED.content,
+    source_created_at = EXCLUDED.source_created_at,
+    last_publication_id = EXCLUDED.last_publication_id,
+    indexed_at = EXCLUDED.indexed_at,
+    tombstoned_at = NULL,
+    updated_at = EXCLUDED.updated_at
+`
+
+type ApplyResolvedSourceToGenerationParams struct {
+	ProjectionGeneration string
+	OwnerUserID          string
+	ProjectID            string
+	SourceID             string
+	SourceDigest         string
+	ArtifactType         string
+	Title                string
+	Content              string
+	SourceCreatedAt      time.Time
+	LastPublicationID    string
+	IndexedAt            time.Time
+	UpdatedAt            time.Time
+}
+
+func (q *Queries) ApplyResolvedSourceToGeneration(ctx context.Context, arg ApplyResolvedSourceToGenerationParams) (int64, error) {
+	result, err := q.db.Exec(ctx, applyResolvedSourceToGeneration,
+		arg.ProjectionGeneration,
+		arg.OwnerUserID,
+		arg.ProjectID,
+		arg.SourceID,
+		arg.SourceDigest,
+		arg.ArtifactType,
+		arg.Title,
+		arg.Content,
+		arg.SourceCreatedAt,
+		arg.LastPublicationID,
+		arg.IndexedAt,
+		arg.UpdatedAt,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const cancelRebuildJob = `-- name: CancelRebuildJob :execrows
+UPDATE workos_index.rebuild_jobs
+SET state = 'canceled', failure_category = $1,
+    updated_at = $2, terminal_at = $2
+WHERE id = $3
+  AND state IN ('requested', 'snapshotting', 'catching_up', 'validating')
+`
+
+type CancelRebuildJobParams struct {
+	FailureCategory pgtype.Text
+	UpdatedAt       time.Time
+	ID              string
+}
+
+func (q *Queries) CancelRebuildJob(ctx context.Context, arg CancelRebuildJobParams) (int64, error) {
+	result, err := q.db.Exec(ctx, cancelRebuildJob, arg.FailureCategory, arg.UpdatedAt, arg.ID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const casPromoteGeneration = `-- name: CasPromoteGeneration :execrows
+UPDATE workos_index.active_generation
+SET generation_id = $1
+WHERE generation_id = $2
+`
+
+type CasPromoteGenerationParams struct {
+	Target        string
+	ExpectCurrent string
+}
+
+// Promote is a single-row compare-and-swap: the winner held the previous
+// active generation at commit time, so a stale or failed worker can never
+// overwrite a later successful promotion.
+func (q *Queries) CasPromoteGeneration(ctx context.Context, arg CasPromoteGenerationParams) (int64, error) {
+	result, err := q.db.Exec(ctx, casPromoteGeneration, arg.Target, arg.ExpectCurrent)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const claimRunnableIndexJob = `-- name: ClaimRunnableIndexJob :one
 UPDATE workos_index.index_jobs SET state = 'running', updated_at = $1
 WHERE id IN (
@@ -65,6 +169,25 @@ func (q *Queries) ClaimRunnableIndexJob(ctx context.Context, updatedAt time.Time
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
+	return i, err
+}
+
+const countGenerationDocs = `-- name: CountGenerationDocs :one
+SELECT
+    count(*) FILTER (WHERE tombstoned_at IS NULL) AS documents,
+    count(*) FILTER (WHERE tombstoned_at IS NOT NULL) AS tombstoned
+FROM workos_index.documents WHERE projection_generation = $1
+`
+
+type CountGenerationDocsRow struct {
+	Documents  int64
+	Tombstoned int64
+}
+
+func (q *Queries) CountGenerationDocs(ctx context.Context, generationID string) (CountGenerationDocsRow, error) {
+	row := q.db.QueryRow(ctx, countGenerationDocs, generationID)
+	var i CountGenerationDocsRow
+	err := row.Scan(&i.Documents, &i.Tombstoned)
 	return i, err
 }
 
@@ -167,6 +290,31 @@ func (q *Queries) GetDocumentStatus(ctx context.Context, arg GetDocumentStatusPa
 	return i, err
 }
 
+const getGeneration = `-- name: GetGeneration :one
+SELECT id, scope, owner_user_id, project_id, status, snapshot_boundary,
+       document_count, tombstone_count, created_at, promoted_at, retired_at
+FROM workos_index.projection_generations WHERE id = $1
+`
+
+func (q *Queries) GetGeneration(ctx context.Context, id string) (WorkosIndexProjectionGeneration, error) {
+	row := q.db.QueryRow(ctx, getGeneration, id)
+	var i WorkosIndexProjectionGeneration
+	err := row.Scan(
+		&i.ID,
+		&i.Scope,
+		&i.OwnerUserID,
+		&i.ProjectID,
+		&i.Status,
+		&i.SnapshotBoundary,
+		&i.DocumentCount,
+		&i.TombstoneCount,
+		&i.CreatedAt,
+		&i.PromotedAt,
+		&i.RetiredAt,
+	)
+	return i, err
+}
+
 const getIndexJob = `-- name: GetIndexJob :one
 SELECT id, owner_user_id, project_id, state, failure_category, created_at, updated_at
 FROM workos_index.index_jobs
@@ -255,6 +403,53 @@ func (q *Queries) GetIndexJobSources(ctx context.Context, jobID string) ([]Worko
 	return items, nil
 }
 
+const getLiveRebuildJobs = `-- name: GetLiveRebuildJobs :many
+SELECT id, scope, owner_user_id, project_id, idempotency_digest, state,
+       target_generation, phase_cursor, snapshot_boundary, source_count,
+       applied_count, tombstone_count, failure_category, created_at,
+       updated_at, terminal_at
+FROM workos_index.rebuild_jobs
+WHERE state IN ('requested', 'snapshotting', 'catching_up', 'validating', 'promoting')
+ORDER BY created_at, id
+`
+
+func (q *Queries) GetLiveRebuildJobs(ctx context.Context) ([]WorkosIndexRebuildJob, error) {
+	rows, err := q.db.Query(ctx, getLiveRebuildJobs)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []WorkosIndexRebuildJob
+	for rows.Next() {
+		var i WorkosIndexRebuildJob
+		if err := rows.Scan(
+			&i.ID,
+			&i.Scope,
+			&i.OwnerUserID,
+			&i.ProjectID,
+			&i.IdempotencyDigest,
+			&i.State,
+			&i.TargetGeneration,
+			&i.PhaseCursor,
+			&i.SnapshotBoundary,
+			&i.SourceCount,
+			&i.AppliedCount,
+			&i.TombstoneCount,
+			&i.FailureCategory,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.TerminalAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getProjectTombstone = `-- name: GetProjectTombstone :one
 SELECT owner_user_id, project_id, last_publication_id, archived_at
 FROM workos_index.project_tombstones
@@ -274,6 +469,55 @@ func (q *Queries) GetProjectTombstone(ctx context.Context, arg GetProjectTombsto
 		&i.ProjectID,
 		&i.LastPublicationID,
 		&i.ArchivedAt,
+	)
+	return i, err
+}
+
+const getRebuildJob = `-- name: GetRebuildJob :one
+SELECT id, scope, owner_user_id, project_id, idempotency_digest, state,
+       target_generation, phase_cursor, snapshot_boundary, source_count,
+       applied_count, tombstone_count, failure_category, created_at,
+       updated_at, terminal_at
+FROM workos_index.rebuild_jobs WHERE id = $1
+`
+
+func (q *Queries) GetRebuildJob(ctx context.Context, id string) (WorkosIndexRebuildJob, error) {
+	row := q.db.QueryRow(ctx, getRebuildJob, id)
+	var i WorkosIndexRebuildJob
+	err := row.Scan(
+		&i.ID,
+		&i.Scope,
+		&i.OwnerUserID,
+		&i.ProjectID,
+		&i.IdempotencyDigest,
+		&i.State,
+		&i.TargetGeneration,
+		&i.PhaseCursor,
+		&i.SnapshotBoundary,
+		&i.SourceCount,
+		&i.AppliedCount,
+		&i.TombstoneCount,
+		&i.FailureCategory,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.TerminalAt,
+	)
+	return i, err
+}
+
+const getRebuildJobRequest = `-- name: GetRebuildJobRequest :one
+SELECT idempotency_key, request_digest, job_id, created_at
+FROM workos_index.rebuild_job_requests WHERE idempotency_key = $1
+`
+
+func (q *Queries) GetRebuildJobRequest(ctx context.Context, idempotencyKey string) (WorkosIndexRebuildJobRequest, error) {
+	row := q.db.QueryRow(ctx, getRebuildJobRequest, idempotencyKey)
+	var i WorkosIndexRebuildJobRequest
+	err := row.Scan(
+		&i.IdempotencyKey,
+		&i.RequestDigest,
+		&i.JobID,
+		&i.CreatedAt,
 	)
 	return i, err
 }
@@ -324,6 +568,41 @@ func (q *Queries) InsertGeneration(ctx context.Context, arg InsertGenerationPara
 		arg.OwnerUserID,
 		arg.ProjectID,
 		arg.Status,
+		arg.CreatedAt,
+	)
+	return err
+}
+
+const insertGenerationFull = `-- name: InsertGenerationFull :exec
+
+INSERT INTO workos_index.projection_generations (
+    id, scope, owner_user_id, project_id, status, snapshot_boundary, created_at
+) VALUES (
+    $1, $2, $3, $4,
+    $5, $6, $7
+)
+`
+
+type InsertGenerationFullParams struct {
+	ID               string
+	Scope            string
+	OwnerUserID      pgtype.UUID
+	ProjectID        pgtype.UUID
+	Status           string
+	SnapshotBoundary string
+	CreatedAt        time.Time
+}
+
+// Shadow-generation rebuild facts (ADR-0013 §9). Generations and rebuild
+// jobs are durable: a restart resumes from the stored phase and cursor.
+func (q *Queries) InsertGenerationFull(ctx context.Context, arg InsertGenerationFullParams) error {
+	_, err := q.db.Exec(ctx, insertGenerationFull,
+		arg.ID,
+		arg.Scope,
+		arg.OwnerUserID,
+		arg.ProjectID,
+		arg.Status,
+		arg.SnapshotBoundary,
 		arg.CreatedAt,
 	)
 	return err
@@ -398,6 +677,64 @@ func (q *Queries) InsertIndexJobSource(ctx context.Context, arg InsertIndexJobSo
 		arg.ArtifactID,
 		arg.ExpectedDigest,
 		arg.UpdatedAt,
+	)
+	return err
+}
+
+const insertRebuildJob = `-- name: InsertRebuildJob :exec
+INSERT INTO workos_index.rebuild_jobs (
+    id, scope, owner_user_id, project_id, idempotency_digest, state,
+    target_generation, created_at, updated_at
+) VALUES (
+    $1, $2, $3, $4,
+    $5, 'requested', $6,
+    $7, $8
+)
+`
+
+type InsertRebuildJobParams struct {
+	ID                string
+	Scope             string
+	OwnerUserID       pgtype.UUID
+	ProjectID         pgtype.UUID
+	IdempotencyDigest string
+	TargetGeneration  string
+	CreatedAt         time.Time
+	UpdatedAt         time.Time
+}
+
+func (q *Queries) InsertRebuildJob(ctx context.Context, arg InsertRebuildJobParams) error {
+	_, err := q.db.Exec(ctx, insertRebuildJob,
+		arg.ID,
+		arg.Scope,
+		arg.OwnerUserID,
+		arg.ProjectID,
+		arg.IdempotencyDigest,
+		arg.TargetGeneration,
+		arg.CreatedAt,
+		arg.UpdatedAt,
+	)
+	return err
+}
+
+const insertRebuildJobRequest = `-- name: InsertRebuildJobRequest :exec
+INSERT INTO workos_index.rebuild_job_requests (idempotency_key, request_digest, job_id, created_at)
+VALUES ($1, $2, $3, $4)
+`
+
+type InsertRebuildJobRequestParams struct {
+	IdempotencyKey string
+	RequestDigest  string
+	JobID          string
+	CreatedAt      time.Time
+}
+
+func (q *Queries) InsertRebuildJobRequest(ctx context.Context, arg InsertRebuildJobRequestParams) error {
+	_, err := q.db.Exec(ctx, insertRebuildJobRequest,
+		arg.IdempotencyKey,
+		arg.RequestDigest,
+		arg.JobID,
+		arg.CreatedAt,
 	)
 	return err
 }
@@ -581,6 +918,36 @@ func (q *Queries) SearchProjectDocuments(ctx context.Context, arg SearchProjectD
 	return items, nil
 }
 
+const tombstoneGenerationDocuments = `-- name: TombstoneGenerationDocuments :execrows
+UPDATE workos_index.documents
+SET tombstoned_at = $1, updated_at = $2
+WHERE projection_generation = $3
+  AND owner_user_id = $4 AND project_id = $5
+  AND tombstoned_at IS NULL
+`
+
+type TombstoneGenerationDocumentsParams struct {
+	TombstonedAt         *time.Time
+	UpdatedAt            time.Time
+	ProjectionGeneration string
+	OwnerUserID          string
+	ProjectID            string
+}
+
+func (q *Queries) TombstoneGenerationDocuments(ctx context.Context, arg TombstoneGenerationDocumentsParams) (int64, error) {
+	result, err := q.db.Exec(ctx, tombstoneGenerationDocuments,
+		arg.TombstonedAt,
+		arg.UpdatedAt,
+		arg.ProjectionGeneration,
+		arg.OwnerUserID,
+		arg.ProjectID,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const tombstoneProjectDocuments = `-- name: TombstoneProjectDocuments :execrows
 UPDATE workos_index.documents
 SET tombstoned_at = $1, updated_at = $2
@@ -609,6 +976,29 @@ func (q *Queries) TombstoneProjectDocuments(ctx context.Context, arg TombstonePr
 		return 0, err
 	}
 	return result.RowsAffected(), nil
+}
+
+const updateGenerationStatus = `-- name: UpdateGenerationStatus :exec
+UPDATE workos_index.projection_generations
+SET status = $1, promoted_at = $2, retired_at = $3
+WHERE id = $4
+`
+
+type UpdateGenerationStatusParams struct {
+	Status     string
+	PromotedAt *time.Time
+	RetiredAt  *time.Time
+	ID         string
+}
+
+func (q *Queries) UpdateGenerationStatus(ctx context.Context, arg UpdateGenerationStatusParams) error {
+	_, err := q.db.Exec(ctx, updateGenerationStatus,
+		arg.Status,
+		arg.PromotedAt,
+		arg.RetiredAt,
+		arg.ID,
+	)
+	return err
 }
 
 const updateIndexJobSource = `-- name: UpdateIndexJobSource :exec
@@ -648,6 +1038,45 @@ type UpdateIndexJobStateParams struct {
 
 func (q *Queries) UpdateIndexJobState(ctx context.Context, arg UpdateIndexJobStateParams) error {
 	_, err := q.db.Exec(ctx, updateIndexJobState, arg.State, arg.UpdatedAt, arg.ID)
+	return err
+}
+
+const updateRebuildJob = `-- name: UpdateRebuildJob :exec
+UPDATE workos_index.rebuild_jobs
+SET state = $1, phase_cursor = $2,
+    snapshot_boundary = $3, source_count = $4,
+    applied_count = $5, tombstone_count = $6,
+    failure_category = $7, updated_at = $8,
+    terminal_at = $9
+WHERE id = $10
+`
+
+type UpdateRebuildJobParams struct {
+	State            string
+	PhaseCursor      string
+	SnapshotBoundary string
+	SourceCount      int64
+	AppliedCount     int64
+	TombstoneCount   int64
+	FailureCategory  pgtype.Text
+	UpdatedAt        time.Time
+	TerminalAt       *time.Time
+	ID               string
+}
+
+func (q *Queries) UpdateRebuildJob(ctx context.Context, arg UpdateRebuildJobParams) error {
+	_, err := q.db.Exec(ctx, updateRebuildJob,
+		arg.State,
+		arg.PhaseCursor,
+		arg.SnapshotBoundary,
+		arg.SourceCount,
+		arg.AppliedCount,
+		arg.TombstoneCount,
+		arg.FailureCategory,
+		arg.UpdatedAt,
+		arg.TerminalAt,
+		arg.ID,
+	)
 	return err
 }
 
@@ -735,6 +1164,37 @@ func (q *Queries) UpsertReceipt(ctx context.Context, arg UpsertReceiptParams) er
 	return err
 }
 
+const upsertReceiptForGeneration = `-- name: UpsertReceiptForGeneration :exec
+INSERT INTO workos_index.publication_receipts (
+    publication_id, projection_generation, request_digest, outcome, source_digest, processed_at
+) VALUES (
+    $1, $2, $3,
+    $4, $5, $6
+)
+ON CONFLICT (publication_id, projection_generation) DO NOTHING
+`
+
+type UpsertReceiptForGenerationParams struct {
+	PublicationID        string
+	ProjectionGeneration string
+	RequestDigest        string
+	Outcome              string
+	SourceDigest         pgtype.Text
+	ProcessedAt          time.Time
+}
+
+func (q *Queries) UpsertReceiptForGeneration(ctx context.Context, arg UpsertReceiptForGenerationParams) error {
+	_, err := q.db.Exec(ctx, upsertReceiptForGeneration,
+		arg.PublicationID,
+		arg.ProjectionGeneration,
+		arg.RequestDigest,
+		arg.Outcome,
+		arg.SourceDigest,
+		arg.ProcessedAt,
+	)
+	return err
+}
+
 const upsertSearchDocument = `-- name: UpsertSearchDocument :execrows
 INSERT INTO workos_index.documents (
     projection_generation, owner_user_id, project_id, source_type, source_id,
@@ -795,6 +1255,104 @@ func (q *Queries) UpsertSearchDocument(ctx context.Context, arg UpsertSearchDocu
 		return 0, err
 	}
 	return result.RowsAffected(), nil
+}
+
+const walkGenerationDocuments = `-- name: WalkGenerationDocuments :many
+SELECT source_id, source_digest, artifact_type, tombstoned_at
+FROM workos_index.documents
+WHERE projection_generation = $1
+ORDER BY source_created_at, source_id
+LIMIT $2
+`
+
+type WalkGenerationDocumentsParams struct {
+	GenerationID string
+	PageLimit    int32
+}
+
+type WalkGenerationDocumentsRow struct {
+	SourceID     string
+	SourceDigest string
+	ArtifactType string
+	TombstonedAt *time.Time
+}
+
+func (q *Queries) WalkGenerationDocuments(ctx context.Context, arg WalkGenerationDocumentsParams) ([]WalkGenerationDocumentsRow, error) {
+	rows, err := q.db.Query(ctx, walkGenerationDocuments, arg.GenerationID, arg.PageLimit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []WalkGenerationDocumentsRow
+	for rows.Next() {
+		var i WalkGenerationDocumentsRow
+		if err := rows.Scan(
+			&i.SourceID,
+			&i.SourceDigest,
+			&i.ArtifactType,
+			&i.TombstonedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const walkGenerationDocumentsAfter = `-- name: WalkGenerationDocumentsAfter :many
+SELECT source_id, source_digest, artifact_type, tombstoned_at
+FROM workos_index.documents
+WHERE projection_generation = $1
+  AND (source_created_at, source_id) > ($2::timestamptz, $3::uuid)
+ORDER BY source_created_at, source_id
+LIMIT $4
+`
+
+type WalkGenerationDocumentsAfterParams struct {
+	GenerationID    string
+	CursorCreatedAt time.Time
+	CursorSourceID  string
+	PageLimit       int32
+}
+
+type WalkGenerationDocumentsAfterRow struct {
+	SourceID     string
+	SourceDigest string
+	ArtifactType string
+	TombstonedAt *time.Time
+}
+
+func (q *Queries) WalkGenerationDocumentsAfter(ctx context.Context, arg WalkGenerationDocumentsAfterParams) ([]WalkGenerationDocumentsAfterRow, error) {
+	rows, err := q.db.Query(ctx, walkGenerationDocumentsAfter,
+		arg.GenerationID,
+		arg.CursorCreatedAt,
+		arg.CursorSourceID,
+		arg.PageLimit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []WalkGenerationDocumentsAfterRow
+	for rows.Next() {
+		var i WalkGenerationDocumentsAfterRow
+		if err := rows.Scan(
+			&i.SourceID,
+			&i.SourceDigest,
+			&i.ArtifactType,
+			&i.TombstonedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const writableGenerationIDs = `-- name: WritableGenerationIDs :many

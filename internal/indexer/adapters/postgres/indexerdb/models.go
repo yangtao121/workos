@@ -52,6 +52,20 @@ type WorkosIndexProjectTombstone struct {
 	ArchivedAt        time.Time
 }
 
+type WorkosIndexProjectionGeneration struct {
+	ID               string
+	Scope            string
+	OwnerUserID      pgtype.UUID
+	ProjectID        pgtype.UUID
+	Status           string
+	SnapshotBoundary string
+	DocumentCount    int64
+	TombstoneCount   int64
+	CreatedAt        time.Time
+	PromotedAt       *time.Time
+	RetiredAt        *time.Time
+}
+
 // owner: indexer; exactly-once local effect per (publication, generation)
 type WorkosIndexPublicationReceipt struct {
 	PublicationID        string
@@ -60,4 +74,30 @@ type WorkosIndexPublicationReceipt struct {
 	Outcome              string
 	SourceDigest         pgtype.Text
 	ProcessedAt          time.Time
+}
+
+type WorkosIndexRebuildJob struct {
+	ID                string
+	Scope             string
+	OwnerUserID       pgtype.UUID
+	ProjectID         pgtype.UUID
+	IdempotencyDigest string
+	State             string
+	TargetGeneration  string
+	PhaseCursor       string
+	SnapshotBoundary  string
+	SourceCount       int64
+	AppliedCount      int64
+	TombstoneCount    int64
+	FailureCategory   pgtype.Text
+	CreatedAt         time.Time
+	UpdatedAt         time.Time
+	TerminalAt        *time.Time
+}
+
+type WorkosIndexRebuildJobRequest struct {
+	IdempotencyKey string
+	RequestDigest  string
+	JobID          string
+	CreatedAt      time.Time
 }
