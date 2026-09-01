@@ -319,6 +319,13 @@ test-project-knowledge-search: e2e-image
 		-e WORKOS_E2E_URL=http://127.0.0.1:8080 \
 		-e WORKOS_E2E_OUTPUT_DIR=/tmp/workos-playwright-results \
 		-v $(CURDIR):$(WORKDIR) \
+		i=0; while ! curl -sf http://127.0.0.1:8080/healthz >/dev/null 2>&1; do i=$$((i+1)); [ $$i -gt 60 ] && break; sleep 1; done; \
+	i=0; while ! curl -sf http://127.0.0.1:8085/readyz >/dev/null 2>&1; do i=$$((i+1)); [ $$i -gt 60 ] && break; sleep 1; done; \
+	docker run --rm --network host $(USER_FLAGS) \
+		-e PLAYWRIGHT_BROWSERS_PATH=/ms-playwright \
+		-e WORKOS_E2E_URL=http://127.0.0.1:8080 \
+		-e WORKOS_E2E_OUTPUT_DIR=/tmp/workos-playwright-results \
+		-v $(CURDIR):$(WORKDIR) \
 		-w $(WORKDIR)/apps/desktop-web \
 		$(E2E_IMAGE) pnpm exec playwright test knowledge-search.spec.ts
 
@@ -327,6 +334,8 @@ test-project-knowledge-search: e2e-image
 # negotiated method, the scoped results, isolation, and revoke fail-closed.
 test-app-knowledge-search: e2e-image
 	docker compose up -d --build postgres bootstrap workos-core harness-host runtime-host workos-gateway indexer
+		i=0; while ! curl -sf http://127.0.0.1:8080/healthz >/dev/null 2>&1; do i=$$((i+1)); [ $$i -gt 60 ] && break; sleep 1; done; \
+	i=0; while ! curl -sf http://127.0.0.1:8085/readyz >/dev/null 2>&1; do i=$$((i+1)); [ $$i -gt 60 ] && break; sleep 1; done; \
 	docker run --rm --network host $(USER_FLAGS) \
 		-e PLAYWRIGHT_BROWSERS_PATH=/ms-playwright \
 		-e WORKOS_E2E_URL=http://127.0.0.1:8080 \

@@ -201,8 +201,10 @@ test("granted app searches project knowledge and fails closed on revoke", async 
       data: { projectId, page: { pageSize: 10 } },
     });
     if (listed.ok()) {
-      const body = (await listed.json()) as { artifacts: { id: string }[] };
-      const first = body.artifacts[0];
+      const body = (await listed.json()) as { artifacts?: { id: string }[] };
+      // Proto3 JSON omits empty repeated fields: only an array with entries
+      // can produce an id.
+      const first = Array.isArray(body.artifacts) ? body.artifacts[0] : undefined;
       if (first) artifactId = first.id;
     }
     if (artifactId === "") await page.waitForTimeout(500);
