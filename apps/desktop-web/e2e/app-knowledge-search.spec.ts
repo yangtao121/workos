@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 
 // The app knowledge-search acceptance gate (ADR-0013): a deterministic web
 // bundle whose manifest requests `knowledge.read` is installed with an
@@ -7,7 +7,7 @@ import { expect, test } from "@playwright/test";
 // iframe → app-host → Gateway → runtime-host → Core re-authorization →
 // indexer projection. The same gate proves fail-closed behavior: without the
 // grant the method is never negotiated, and after a revocation the stale
-// session's calls are denied without touching the indexer.
+// session's calls are denied before the indexer is touched.
 const libraryTimeout = 30_000;
 
 test.setTimeout(240_000);
@@ -69,7 +69,7 @@ async function search(query) {
       var none = document.createElement('li'); none.id = 'no-hits'; none.textContent = 'no-hits';
       out.appendChild(none); return;
     }
-    hitList.forEach(function (hit, index) {
+    hitList.forEach(function (hit) {
       var li = document.createElement('li');
       li.setAttribute('data-artifact-id', hit.artifactId);
       li.setAttribute('data-digest', hit.digest);
@@ -88,7 +88,7 @@ async function search(query) {
 }
 `;
 
-async function createBundle(page, stamp: string, marker: string) {
+async function createBundle(page: Page, stamp: string, marker: string) {
   const html = `<!doctype html><title>Knowledge E2E ${marker}</title><div id="root">static</div><script src="app.js"></script>`;
   const artifactResponse = await page.request.post(
     "/workos.artifact.v1.ArtifactService/CreateArtifact",
@@ -112,7 +112,13 @@ async function createBundle(page, stamp: string, marker: string) {
   };
 }
 
-async function registerApp(page, stamp: string, appId: string, artifact: { id: string; digest: string }, permissions: string) {
+async function registerApp(
+  page: Page,
+  stamp: string,
+  appId: string,
+  artifact: { id: string; digest: string },
+  permissions: string,
+) {
   const manifest = `apiVersion: workos.app/v1
 id: ${appId}
 name: Knowledge E2E App
@@ -144,22 +150,68 @@ maintainer: {}
   expect(registerResponse.ok()).toBeTruthy();
 }
 
-test("granted app searches project knowledge, isolated, and fails closed on revoke", async ({ page }) => {
+test("granted app searches project knowledge and fails closed on revoke", async ({ page }) => {
   const stamp = String(Date.now());
   const appId = `e2e-app-knowledge-${stamp}`;
   const phrase = "deterministic synthetic output";
 
   // Project + review artifact through the real fake-harness chain via the
-  // desktop UI (same flow as the artifact-review gate).
+  // public RPCs (the owner UI journey has its own dedicated gate). The
+  // desktop's active project is pinned via sessionStorage BEFORE the first
+  // navigation so the install lands in exactly this project.
+  const createResponse = await page.request.post(
+    "/workos.project.v1.ProjectService/CreateProject",
+    {
+      data: {
+        idempotencyKey: `e2e-knowledge-project-${stamp}`,
+        name: `Knowledge E2E ${stamp}`,
+      },
+    },
+  );
+  expect(createResponse.ok()).toBeTruthy();
+  const created = (await createResponse.json()) as {
+    project: { id: string; revision: string };
+  };
+  const projectId = created.project.id;
+  await page.request.post(
+    "/workos.project.v1.ProjectHarnessBindingService/SetProjectHarnessBinding",
+    {
+      data: {
+        projectId,
+        expectedRevision: created.project.revision,
+        selection: { providerId: "fake" },
+      },
+    },
+  );
+  await page.request.post("/workos.agent.v1.AgentTaskService/SubmitTask", {
+    data: {
+      idempotencyKey: `e2e-knowledge-task-${stamp}`,
+      input: {
+        targetScope: { projectId },
+        role: "general",
+        goal: "produce the knowledge fixture review",
+        outputArtifactTypes: ["document.markdown.v1"],
+      },
+    },
+  });
+  // Poll the authoritative Core list until the fake document materializes.
+  let artifactId = "";
+  for (let attempt = 0; attempt < 60 && artifactId === ""; attempt++) {
+    const listed = await page.request.post(
+      "/workos.artifact.v1.ArtifactService/ListArtifacts",
+      { data: { projectId, page: { pageSize: 10 } } },
+    );
+    if (listed.ok()) {
+      const body = (await listed.json()) as { artifacts: { id: string }[] };
+      if ((body.artifacts ?? []).length > 0) artifactId = body.artifacts[0].id;
+    }
+    if (artifactId === "") await page.waitForTimeout(500);
+  }
+  expect(artifactId).not.toBe("");
+  await page.addInitScript((id: string) => {
+    window.sessionStorage.setItem("workos.activeProjectId", id);
+  }, projectId);
   await page.goto("/");
-  await page.getByLabel("Project name").fill(`Knowledge E2E ${stamp}`);
-  await page.getByRole("button", { name: "Create space" }).click();
-  await expect(page.locator(".project-card.active")).toContainText("Knowledge E2E");
-  await page.getByLabel("Agent goal").fill("produce the knowledge fixture review");
-  await page.getByLabel("Markdown document").check();
-  await page.getByRole("button", { name: "Run task" }).click();
-  const artifactRow = page.getByTestId("artifact-row").first();
-  await expect(artifactRow).toBeVisible({ timeout: 120_000 });
 
   // Bundle + registration requesting knowledge.read.
   const artifact = await createBundle(page, stamp, "granted");
@@ -194,36 +246,66 @@ test("granted app searches project knowledge, isolated, and fails closed on revo
   ).toHaveText("methods:knowledge.search");
 
   // Search the project knowledge: the hit must carry the exact artifact
-  // identity the owner-side Center shows, rendered as inert text.
+  // identity the owner-side projection holds, rendered as inert text.
   const frameQuery = page.frameLocator(".app-surface-frame").locator("#query");
-  await frameQuery.fill(phrase);
-  await page.frameLocator(".app-surface-frame").locator("#search").click();
   const firstHit = page
     .frameLocator(".app-surface-frame")
     .locator("#results li")
     .first();
-  await expect(firstHit).toBeVisible({ timeout: 60_000 });
+  // Bounded polling: the durable ingestion may lag the artifact by a moment,
+  // so re-issue the search until the hit surfaces (never a fixed sleep).
+  const searchButton = page.frameLocator(".app-surface-frame").locator("#search");
+  for (let attempt = 0; attempt < 40; attempt++) {
+    await frameQuery.fill(phrase);
+    await searchButton.click();
+    if ((await firstHit.count()) > 0 && (await firstHit.getAttribute("data-artifact-id")) !== null) {
+      break;
+    }
+    await page.waitForTimeout(500);
+  }
+  await expect(firstHit).toBeVisible({ timeout: 30_000 });
   await expect(firstHit).toContainText("Fake Harness Review Document");
-  const digest = await firstHit.getAttribute("data-digest");
-  expect(digest).toMatch(/^sha256:[0-9a-f]{64}$/);
+  expect(await firstHit.getAttribute("data-artifact-id")).toBe(artifactId);
+  expect(await firstHit.getAttribute("data-digest")).toMatch(/^sha256:[0-9a-f]{64}$/);
 
-  // Revoke the grant: the stale surface session's very next call is denied
-  // at the Core grant-revision comparison, before the indexer is touched.
-  await page.getByRole("button", { name: "App Library" }).click();
-  await row.getByRole("button", { name: "Manage permissions" }).click();
-  const manage = page.getByRole("dialog");
-  await expect(manage).toBeVisible();
-  await manage.getByRole("checkbox", { name: "knowledge.read" }).uncheck();
-  await manage.getByRole("button", { name: /Save/ }).click();
-  await expect(page.getByRole("dialog")).toHaveCount(0);
+  // Revoke the grant while the surface stays open: the stale session's very
+  // next call is denied at the Core grant-revision comparison, before the
+  // indexer is ever touched (the revoke action itself uses the public RPC
+  // directly; the desktop Manage-permissions flow has its own gate).
+  const listResponse = await page.request.post(
+    "/workos.app.v1.AppInstallationService/ListInstalledApps",
+    { data: { projectId, pageSize: 50 } },
+  );
+  expect(listResponse.ok()).toBeTruthy();
+  const installations = (await listResponse.json()) as {
+    installations: { id: string; appId: string }[];
+  };
+  const mine = installations.installations.find((entry) => entry.appId === appId);
+  expect(mine).toBeTruthy();
+  const projectNow = await page.request.post("/workos.project.v1.ProjectService/GetProject", {
+    data: { projectId },
+  });
+  const revision = ((await projectNow.json()) as { project: { revision: string } }).project
+    .revision;
+  const revokeResponse = await page.request.post(
+    "/workos.app.v1.AppInstallationService/SetAppGrants",
+    {
+      data: {
+        idempotencyKey: `e2e-knowledge-revoke-${stamp}`,
+        projectId,
+        installationId: mine!.id,
+        expectedProjectRevision: revision,
+        grantedPermissions: [],
+      },
+    },
+  );
+  expect(revokeResponse.ok()).toBeTruthy();
 
-  await row.getByRole("button", { name: "Open", exact: true }).click();
-  await expect(frameRoot()).toHaveText("bridge-ready", { timeout: libraryTimeout });
   await frameQuery.fill(phrase);
-  await page.frameLocator(".app-surface-frame").locator("#search").click();
+  await searchButton.click();
   await expect(
     page.frameLocator(".app-surface-frame").locator("#search-error"),
-  ).toHaveText("search-error:permission_denied", { timeout: 60_000 });
+  ).toHaveText("search-error:permission_denied", { timeout: 30_000 });
 });
 
 test("an app without knowledge.read never negotiates knowledge.search", async ({ page }) => {
@@ -259,5 +341,5 @@ test("an app without knowledge.read never negotiates knowledge.search", async ({
   // The agent grant set must not implicitly carry knowledge.search.
   await expect(
     page.frameLocator(".app-surface-frame").locator("#methods"),
-  ).toHaveText("methods:agent.stream,agent.run");
+  ).toHaveText("methods:agent.run,agent.stream");
 });

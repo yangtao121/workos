@@ -98,9 +98,11 @@ export interface AppBridgeHost {
 const capabilityMethods: Record<string, BridgeMethod> = {
   "agent.task.run": "agent.run",
   "agent.event.watch": "agent.stream",
-  // knowledge.read (the grant) negotiates the read-only knowledge.search
-  // method — the capability string itself is never a method name (ADR-0013).
-  "knowledge.read": "knowledge.search",
+  // The session's effective list carries the METHOD name for knowledge
+  // search: the runtime already negotiated it from a real `knowledge.read`
+  // grant plus its configured indexer, so the grant name never crosses the
+  // host boundary (ADR-0013).
+  "knowledge.search": "knowledge.search",
 };
 
 // Request-boundary grammar enforced on the untrusted inbound stream. These

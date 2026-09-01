@@ -196,6 +196,7 @@ func run(logger *slog.Logger) error {
 		if err != nil {
 			return err
 		}
+		surfaceService = surfaceService.WithKnowledgeConfigured()
 	}
 	bridgeService, err := surfaceapp.NewBridgeService(sessionStore, appAgentClient, knowledgePipeline)
 	if err != nil {
