@@ -11,6 +11,7 @@ import {
   ArtifactService,
   HarnessCatalogService,
   IncidentService,
+  IndexService,
   ProjectHarnessBindingService,
   ProjectService,
   SurfaceService,
@@ -30,6 +31,7 @@ export interface WorkOSClients {
   surfaces: Client<typeof SurfaceService>;
   appBridge: Client<typeof AppBridgeService>;
   incidents: Client<typeof IncidentService>;
+  index: Client<typeof IndexService>;
 }
 
 export function createWorkOSClients(baseUrl: string, transport?: Transport): WorkOSClients {
@@ -48,5 +50,6 @@ export function createWorkOSClients(baseUrl: string, transport?: Transport): Wor
     surfaces: createClient(SurfaceService, activeTransport),
     appBridge: createClient(AppBridgeService, activeTransport),
     incidents: createClient(IncidentService, activeTransport),
+    index: createClient(IndexService, activeTransport),
   };
 }

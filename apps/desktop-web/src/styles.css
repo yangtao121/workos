@@ -1641,3 +1641,73 @@ button {
   max-width: min(480px, 90vw);
   z-index: 80;
 }
+
+/* Knowledge Center (ADR-0013): bounded lexical search over the active
+   project's review artifacts. Excerpts render as inert text only. */
+.knowledge-center-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 12px;
+  height: 100%;
+  overflow: auto;
+  box-sizing: border-box;
+}
+
+.knowledge-search-form {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.knowledge-search-form input {
+  flex: 1;
+  padding: 6px 10px;
+  border: 1px solid #6b7280;
+  border-radius: 6px;
+  font: inherit;
+}
+
+.knowledge-results {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.knowledge-hit {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 100%;
+  text-align: left;
+  background: #f4f5f7;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  padding: 10px;
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+}
+
+.knowledge-hit:hover {
+  border-color: #6b7280;
+}
+
+.knowledge-excerpt {
+  margin: 0;
+  color: #374151;
+  font-size: 0.9em;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.knowledge-freshness {
+  margin: 0;
+  color: #92400e;
+  background: #fef3c7;
+  border-radius: 6px;
+  padding: 6px 10px;
+}

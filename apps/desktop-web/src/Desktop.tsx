@@ -38,6 +38,7 @@ import { ApprovalsView } from "./ApprovalsView.js";
 import { AppSurface, type SurfaceBridgeCredentials } from "./AppSurface.js";
 import { DeviceCenter } from "./DeviceCenter.js";
 import { HarnessSettings, type CatalogState } from "./HarnessSettings.js";
+import { KnowledgeCenter, type KnowledgeHit } from "./KnowledgeCenter.js";
 import { SystemMonitor } from "./SystemMonitor.js";
 import { UsageView } from "./UsageView.js";
 import { selectionFromProject, taskStatus, type HarnessSelection } from "./model.js";
@@ -339,6 +340,25 @@ export function Desktop({
     recordLayout((state) => ({ ...state, activeSystemWindow: "artifact-center" }));
   }, [activeProjectId, recordLayout]);
 
+  // Knowledge Center is a normal, closable window over the active project's
+  // lexical projection. Like the Artifact Center it remounts per project and
+  // never injects Agent context by itself.
+  const openKnowledgeCenter = useCallback(() => {
+    if (!activeProjectId) return;
+    dispatch({
+      type: "open",
+      window: {
+        id: "knowledge-center",
+        appId: "knowledge-center",
+        title: "Knowledge Center",
+        kind: "knowledge-center",
+        rect: { x: 140, y: 140, width: 560, height: 500 },
+        mode: "normal",
+      },
+    });
+    recordLayout((state) => ({ ...state, activeSystemWindow: "knowledge-center" }));
+  }, [activeProjectId, recordLayout]);
+
   // Opening one artifact opens (or focuses) exactly one viewer window keyed
   // on the artifact id. The window fetches authoritative content itself; a
   // foreign or vanished reference renders the fixed unavailable verdict.
@@ -411,9 +431,10 @@ export function Desktop({
         dispatch({ type: "close", id: item.id });
         continue;
       }
-      if (item.kind === "artifact-center") {
-        // The center remounts keyed on the active project anyway; close it
-        // so the previous project's list never lingers behind a new one.
+      if (item.kind === "artifact-center" || item.kind === "knowledge-center") {
+        // The centers remount keyed on the active project anyway; close them
+        // so the previous project's list/results never linger behind a new
+        // one.
         dispatch({ type: "close", id: item.id });
         continue;
       }
@@ -670,11 +691,12 @@ export function Desktop({
       if (id === "system-monitor") openSystemMonitor();
       else if (id === "device-center") openDeviceCenter();
       else if (id === "artifact-center") openArtifactCenter();
+      else if (id === "knowledge-center") openKnowledgeCenter();
       const existing = windows.windows.some((item) => item.id === id);
       if (existing) dispatch({ type: "focus", id });
       recordLayout((state) => ({ ...state, activeSystemWindow: id }));
     },
-    [openArtifactCenter, openDeviceCenter, openSystemMonitor, recordLayout, windows.windows],
+    [openArtifactCenter, openDeviceCenter, openKnowledgeCenter, openSystemMonitor, recordLayout, windows.windows],
   );
 
   const focusAdaptiveWindow = useCallback(
@@ -960,6 +982,28 @@ export function Desktop({
         />
       ) : (
         <p className="empty-state">Create a project to review its artifacts.</p>
+      )
+    ) : windowState.kind === "knowledge-center" ? (
+      activeProject ? (
+        <KnowledgeCenter
+          key={activeProject.id}
+          projectId={activeProject.id}
+          workosClients={workosClients}
+          selectedContextIds={new Set(contextChips.map((chip) => chip.id))}
+          onUseAsContext={(hit: KnowledgeHit) => {
+            useAsContext({
+              id: hit.artifactId,
+              digest: hit.digest,
+              title: hit.title,
+              type: hit.artifactType,
+            });
+          }}
+          onOpenArtifact={(artifactId) => {
+            openArtifactViewer(artifactId, activeProject.id);
+          }}
+        />
+      ) : (
+        <p className="empty-state">Create a project to search its knowledge.</p>
       )
     ) : windowState.kind === "artifact-viewer" && windowState.artifact ? (
       <ArtifactViewerWindow
@@ -1328,6 +1372,15 @@ export function Desktop({
           onClick={openArtifactCenter}
         >
           ☰
+        </button>
+        <button
+          type="button"
+          aria-label="Open Knowledge Center"
+          data-testid="open-knowledge-center"
+          disabled={!activeProject}
+          onClick={openKnowledgeCenter}
+        >
+          ✦
         </button>
       </nav>
     </main>
