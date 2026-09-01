@@ -23,7 +23,7 @@ NODE_RUN := docker run --rm $(USER_FLAGS) -e COREPACK_NPM_REGISTRY=$(NPM_REGISTR
 BUF_RUN := docker run --rm $(USER_FLAGS) $(MOUNT) $(BUF_IMAGE)
 SQLC_RUN := docker run --rm $(USER_FLAGS) -v $(CURDIR):/src -w /src $(SQLC_IMAGE)
 
-.PHONY: bootstrap generate docs check check-native proto-check go-check web-check test test-integration test-artifact-context test-deepseek-fixture test-deepseek-structured-review test-credential-vault e2e-image test-e2e test-adaptive-shell test-app-version-rollback test-podman-fixture test-lan-pairing capture-artifact-context-visual capture-lan-pairing-visual build web-build scaffold-module dev down logs clean
+.PHONY: bootstrap generate docs check check-native proto-check go-check web-check test test-integration test-artifact-context test-deepseek-fixture test-deepseek-structured-review test-credential-vault e2e-image test-e2e test-adaptive-shell test-app-version-rollback test-podman-fixture test-lan-pairing test-project-knowledge-search test-app-knowledge-search test-project-knowledge-rebuild capture-artifact-context-visual capture-lan-pairing-visual build web-build scaffold-module dev down logs clean
 
 bootstrap:
 	@docker version >/dev/null
@@ -287,6 +287,41 @@ test-app-version-rollback: e2e-image
 		-v $(CURDIR):$(WORKDIR) \
 		-w $(WORKDIR)/apps/desktop-web \
 		$(E2E_IMAGE) pnpm exec playwright test app-version-rollback.spec.ts
+
+# The project knowledge-search gate (ADR-0013): real PostgreSQL + Core +
+# harness-host + indexer + Gateway + Chromium through publication, durable
+# ingestion, owner lexical search, Agent-context pinning, isolation, and
+# restart convergence. Not a route-mocked test.
+test-project-knowledge-search: e2e-image
+	docker compose up -d --build postgres bootstrap workos-core harness-host runtime-host workos-gateway indexer
+	$(GO_HOST_RUN) go test -tags=integration -count=1 -run 'TestProjectKnowledgeSearchStack|TestProjectKnowledgeRebuildStack' -v ./tests/integration
+	docker run --rm --network host $(USER_FLAGS) \
+		-e PLAYWRIGHT_BROWSERS_PATH=/ms-playwright \
+		-e WORKOS_E2E_URL=http://127.0.0.1:8080 \
+		-e WORKOS_E2E_OUTPUT_DIR=/tmp/workos-playwright-results \
+		-v $(CURDIR):$(WORKDIR) \
+		-w $(WORKDIR)/apps/desktop-web \
+		$(E2E_IMAGE) pnpm exec playwright test knowledge-search.spec.ts
+
+# The granted-app knowledge-read gate (ADR-0013): real Core/Runtime/Indexer/
+# Gateway/PostgreSQL/Chromium with an opaque-origin web bundle. Proves the
+# negotiated method, the scoped results, isolation, and revoke fail-closed.
+test-app-knowledge-search: e2e-image
+	docker compose up -d --build postgres bootstrap workos-core harness-host runtime-host workos-gateway indexer
+	docker run --rm --network host $(USER_FLAGS) \
+		-e PLAYWRIGHT_BROWSERS_PATH=/ms-playwright \
+		-e WORKOS_E2E_URL=http://127.0.0.1:8080 \
+		-e WORKOS_E2E_OUTPUT_DIR=/tmp/workos-playwright-results \
+		-v $(CURDIR):$(WORKDIR) \
+		-w $(WORKDIR)/apps/desktop-web \
+		$(E2E_IMAGE) pnpm exec playwright test app-knowledge-search.spec.ts
+
+# The disaster-recovery rebuild gate (ADR-0013): Core-authoritative shadow
+# generation rebuild with live traffic, crash resume at every phase, and the
+# destroy-and-restore golden equivalence in a temporary indexer-owned schema.
+test-project-knowledge-rebuild: e2e-image
+	docker compose up -d --build postgres bootstrap workos-core harness-host runtime-host workos-gateway indexer
+	$(GO_HOST_RUN) go test -tags=integration -count=1 -run 'TestProjectKnowledgeRebuild' -v ./tests/integration
 
 test-e2e: e2e-image
 	docker compose up -d --build postgres bootstrap workos-core harness-host runtime-host reliability-host workos-gateway
