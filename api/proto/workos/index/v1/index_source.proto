@@ -68,8 +68,9 @@ message ResolveIndexPublicationResponse {
     VERDICT_UNSPECIFIED = 0;
     // Implemented review subtype, all invariants hold, project active.
     VERDICT_RESOLVED = 1;
-    // The project was archived (possibly concurrently with the upsert);
-    // lifecycle authority says the source must not become searchable.
+    // Either a project tombstone publication (apply the tombstone) or an
+    // upsert whose project was archived concurrently: the authoritative
+    // lifecycle says the source must not become searchable.
     VERDICT_TOMBSTONED = 2;
     // The publication's source ref no longer resolves to the exact claimed
     // identity/digest: stored drift. Terminal, requires operator attention.
@@ -90,6 +91,10 @@ message ResolveIndexPublicationResponse {
   }
   Verdict verdict = 1;
   ReviewArtifactSource source = 2;
+  // Echo of the claimed publication facts (id, operation, owner, project)
+  // so the consumer can apply tombstones and classify outcomes without a
+  // second round trip.
+  IndexPublication publication = 3;
 }
 
 enum IndexPublicationOutcome {

@@ -90,6 +90,14 @@ func (h *BridgeHandler) WatchAgentTaskEvents(ctx context.Context, req *connect.R
 	return nil
 }
 
+// SearchKnowledge is the honest pre-implementation verdict (ADR-0013): the
+// protocol surface exists, but no working executor is wired yet, so every
+// call receives an explicit Unimplemented. `knowledge.read` grants never
+// enter a session's effective capabilities while this is the case.
+func (h *BridgeHandler) SearchKnowledge(ctx context.Context, req *connect.Request[bridgev1.SearchKnowledgeRequest]) (*connect.Response[bridgev1.SearchKnowledgeResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("bridge method is not implemented"))
+}
+
 func validBridgeRunInput(idempotencyKey, role, goal string) bool {
 	return len(idempotencyKey) >= 1 && len([]rune(idempotencyKey)) <= MaxBridgeIdempotencyKeyRunes &&
 		len([]rune(role)) <= MaxBridgeRoleRunes &&

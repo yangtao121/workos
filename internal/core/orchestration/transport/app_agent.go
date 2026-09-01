@@ -28,6 +28,9 @@ import (
 type AppAgentRunner interface {
 	RunAgentTask(ctx context.Context, ownerUserID, projectID, appInstanceID string, installationGrantRevision int64, clientKey, role, goal string) (agentdomain.Task, error)
 	WatchAgentTaskEvents(ctx context.Context, ownerUserID, projectID, appInstanceID string, installationGrantRevision int64, taskID string, after int64, limit int) (agentdomain.Task, []agentdomain.Event, error)
+	// AuthorizeAppKnowledge re-verifies the per-call knowledge authorization
+	// and returns the trusted owner/project binding (ADR-0013).
+	AuthorizeAppKnowledge(ctx context.Context, ownerUserID, projectID, appInstanceID string, installationGrantRevision int64) (string, string, error)
 }
 
 // AppAgentHandler exposes the private Core App Agent service. It is never on
@@ -110,6 +113,23 @@ func (h *AppAgentHandler) WatchAgentTaskEvents(ctx context.Context, req *connect
 		case <-ticker.C:
 		}
 	}
+}
+
+func (h *AppAgentHandler) AuthorizeAppKnowledge(ctx context.Context, req *connect.Request[agentv1.AuthorizeAppKnowledgeRequest]) (*connect.Response[agentv1.AuthorizeAppKnowledgeResponse], error) {
+	id, err := identity.FromContext(ctx)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeUnauthenticated, err)
+	}
+	ownerUserID, projectID, err := h.service.AuthorizeAppKnowledge(
+		ctx, id.UserID, req.Msg.GetProjectId(), req.Msg.GetAppInstanceId(),
+		req.Msg.GetInstallationGrantRevision(),
+	)
+	if err != nil {
+		return nil, mapAppAgentError(err)
+	}
+	return connect.NewResponse(&agentv1.AuthorizeAppKnowledgeResponse{
+		OwnerUserId: ownerUserID, ProjectId: projectID,
+	}), nil
 }
 
 // appAgentStateToProto maps the Agent task state to the canonical enum.

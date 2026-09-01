@@ -93,3 +93,7 @@ func TestProjectDirectoryMapsProjectOutcomes(t *testing.T) {
 type staticIDGenerator struct{}
 
 func (staticIDGenerator) New() string { return "01999999-9999-7999-8999-999999999999" }
+
+func (r *projectRepoFake) ReconcileArchivedProjectsPage(context.Context, string, int) ([]projectports.ArchivedProjectRef, string, error) {
+	return nil, "", errors.New("not used in this test")
+}

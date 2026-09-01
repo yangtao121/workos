@@ -34,6 +34,9 @@ import (
 	cataloghost "github.com/yangtao121/workos/internal/core/harnesscatalog/adapters/harnesshost"
 	catalogapp "github.com/yangtao121/workos/internal/core/harnesscatalog/application"
 	catalogtransport "github.com/yangtao121/workos/internal/core/harnesscatalog/transport"
+	indexfeedpostgres "github.com/yangtao121/workos/internal/core/indexfeed/adapters/postgres"
+	indexfeedapp "github.com/yangtao121/workos/internal/core/indexfeed/application"
+	indexfeedtransport "github.com/yangtao121/workos/internal/core/indexfeed/transport"
 	"github.com/yangtao121/workos/internal/core/orchestration"
 	orchestrationtransport "github.com/yangtao121/workos/internal/core/orchestration/transport"
 	projectpostgres "github.com/yangtao121/workos/internal/core/project/adapters/postgres"
@@ -76,7 +79,16 @@ func run(logger *slog.Logger) error {
 	mux := httpserver.NewMux("workos-core", ready)
 
 	generator := ids.UUIDv7{}
-	projectService := projectapp.New(projectpostgres.New(pool), generator)
+	// Index publication feed (ADR-0013): the Core-side durable authority the
+	// indexer consumes. The tx-scoped sink joins the artifact materialization
+	// and project archive transactions, so a publication commits exactly when
+	// its source fact commits.
+	feedRepository := indexfeedpostgres.New(pool)
+	projectRepository, err := projectpostgres.NewWithFeed(pool, feedRepository)
+	if err != nil {
+		return err
+	}
+	projectService := projectapp.New(projectRepository, generator)
 	projectPath, projectHandler := projecttransport.NewProjectConnectHandler(projectService)
 	mux.Handle(projectPath, identity.Middleware(projectHandler))
 
@@ -148,7 +160,7 @@ func run(logger *slog.Logger) error {
 	// harness-host reaches this private RPC; it never enters the gateway
 	// allowlist.
 	artifactMaterializer, err := orchestration.NewTaskArtifactMaterializer(
-		pool, agentRepository, artifactRepository, artifactService, generator,
+		pool, agentRepository, artifactRepository, artifactService, feedRepository, generator,
 	)
 	if err != nil {
 		return err
@@ -289,6 +301,21 @@ func run(logger *slog.Logger) error {
 	}
 	appAgentPath, appAgentHandler := orchestrationtransport.NewAppAgentConnectHandler(appAgentService)
 	mux.Handle(appAgentPath, identity.Middleware(appAgentHandler))
+
+	// The private index publication source service composes the feed claim
+	// store with the neutral source authority (Artifact + Project modules).
+	// Only the indexer reaches it on the internal network; it never enters
+	// the gateway allowlist (ADR-0013).
+	indexSourceAuthority, err := orchestration.NewIndexSourceAuthority(artifactService, projectService, projectpostgres.New(pool))
+	if err != nil {
+		return err
+	}
+	indexFeedService, err := indexfeedapp.NewService(feedRepository, indexSourceAuthority, pool)
+	if err != nil {
+		return err
+	}
+	indexFeedPath, indexFeedHandler := indexfeedtransport.NewConnectHandler(indexFeedService)
+	mux.Handle(indexFeedPath, identity.Middleware(indexFeedHandler))
 
 	artifactPath, artifactHandler := artifacttransport.NewConnectHandler(artifactService)
 	mux.Handle(artifactPath, identity.Middleware(artifactHandler))

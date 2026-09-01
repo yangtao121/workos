@@ -173,3 +173,15 @@ SELECT id, owner_user_id, type, title, media_type, digest, project_id, source_ta
        output_key, byte_count, line_count, content, created_at
 FROM workos_core.project_review_artifacts
 WHERE id = sqlc.arg(artifact_id)::uuid;
+
+-- Index-feed reconciliation page (ADR-0013): a stable (created_at, id)
+-- ordered walk over this module's immutable review artifacts. Identity
+-- facts only — content is resolved separately through the typed review
+-- read. The cursor is decoded and validated by the domain before it
+-- reaches this query; the zero boundary opens the first page.
+-- name: ReconcileReviewArtifactSources :many
+SELECT id, owner_user_id, project_id, type, digest, created_at
+FROM workos_core.project_review_artifacts
+WHERE (created_at, id) > (sqlc.arg(cursor_created_at)::timestamptz, sqlc.arg(cursor_id)::uuid)
+ORDER BY created_at, id
+LIMIT sqlc.arg(page_limit);

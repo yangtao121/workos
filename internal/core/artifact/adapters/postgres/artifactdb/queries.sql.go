@@ -738,3 +738,58 @@ func (q *Queries) ReadBundleAsset(ctx context.Context, arg ReadBundleAssetParams
 	)
 	return i, err
 }
+
+const reconcileReviewArtifactSources = `-- name: ReconcileReviewArtifactSources :many
+SELECT id, owner_user_id, project_id, type, digest, created_at
+FROM workos_core.project_review_artifacts
+WHERE (created_at, id) > ($1::timestamptz, $2::uuid)
+ORDER BY created_at, id
+LIMIT $3
+`
+
+type ReconcileReviewArtifactSourcesParams struct {
+	CursorCreatedAt pgtype.Timestamptz `json:"cursor_created_at"`
+	CursorID        string             `json:"cursor_id"`
+	PageLimit       int32              `json:"page_limit"`
+}
+
+type ReconcileReviewArtifactSourcesRow struct {
+	ID          string             `json:"id"`
+	OwnerUserID string             `json:"owner_user_id"`
+	ProjectID   string             `json:"project_id"`
+	Type        string             `json:"type"`
+	Digest      string             `json:"digest"`
+	CreatedAt   pgtype.Timestamptz `json:"created_at"`
+}
+
+// Index-feed reconciliation page (ADR-0013): a stable (created_at, id)
+// ordered walk over this module's immutable review artifacts. Identity
+// facts only — content is resolved separately through the typed review
+// read. The cursor is decoded and validated by the domain before it
+// reaches this query; the zero boundary opens the first page.
+func (q *Queries) ReconcileReviewArtifactSources(ctx context.Context, arg ReconcileReviewArtifactSourcesParams) ([]ReconcileReviewArtifactSourcesRow, error) {
+	rows, err := q.db.Query(ctx, reconcileReviewArtifactSources, arg.CursorCreatedAt, arg.CursorID, arg.PageLimit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ReconcileReviewArtifactSourcesRow
+	for rows.Next() {
+		var i ReconcileReviewArtifactSourcesRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.OwnerUserID,
+			&i.ProjectID,
+			&i.Type,
+			&i.Digest,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}

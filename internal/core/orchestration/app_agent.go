@@ -17,6 +17,11 @@ import (
 const (
 	AppBridgeCapabilityAgentTaskRun    = "agent.task.run"
 	AppBridgeCapabilityAgentEventWatch = "agent.event.watch"
+	// AppBridgeCapabilityKnowledgeSearch is the read-only knowledge search
+	// capability. It is negotiated only when the manifest requests
+	// `knowledge.read`, the installation actually holds that grant, and the
+	// exact current grant revision matches the session snapshot (ADR-0013).
+	AppBridgeCapabilityKnowledgeRead = "knowledge.read"
 )
 
 // ErrAppNotGranted marks a validated session asking for a capability the
@@ -112,6 +117,20 @@ func (s *AppAgentService) WatchAgentTaskEvents(ctx context.Context, ownerUserID,
 		return agentdomain.Task{}, nil, err
 	}
 	return task, events, nil
+}
+
+// AuthorizeAppKnowledge re-verifies, per call, that the app instance is an
+// active installation of this owner under this non-archived project whose
+// exact current grant revision matches the session snapshot and whose grant
+// carries `knowledge.read`. On success it returns the canonical trusted
+// binding the runtime must use for the scoped indexer call; every failure
+// is one indistinguishable sanitized verdict with no existence oracle and
+// no current-revision leak.
+func (s *AppAgentService) AuthorizeAppKnowledge(ctx context.Context, ownerUserID, projectID, appInstanceID string, installationGrantRevision int64) (string, string, error) {
+	if _, err := s.authorize(ctx, ownerUserID, projectID, appInstanceID, installationGrantRevision, AppBridgeCapabilityKnowledgeRead); err != nil {
+		return "", "", err
+	}
+	return ownerUserID, projectID, nil
 }
 
 // authorize walks the authoritative chain shared by both bridge methods:

@@ -42,6 +42,12 @@ type Querier interface {
 	ListArtifactSummariesUnion(ctx context.Context, arg ListArtifactSummariesUnionParams) ([]ListArtifactSummariesUnionRow, error)
 	ListProjectReviewArtifactIDPage(ctx context.Context, arg ListProjectReviewArtifactIDPageParams) ([]string, error)
 	ReadBundleAsset(ctx context.Context, arg ReadBundleAssetParams) (ReadBundleAssetRow, error)
+	// Index-feed reconciliation page (ADR-0013): a stable (created_at, id)
+	// ordered walk over this module's immutable review artifacts. Identity
+	// facts only — content is resolved separately through the typed review
+	// read. The cursor is decoded and validated by the domain before it
+	// reaches this query; the zero boundary opens the first page.
+	ReconcileReviewArtifactSources(ctx context.Context, arg ReconcileReviewArtifactSourcesParams) ([]ReconcileReviewArtifactSourcesRow, error)
 }
 
 var _ Querier = (*Queries)(nil)

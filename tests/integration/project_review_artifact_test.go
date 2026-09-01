@@ -20,6 +20,7 @@ import (
 
 	agentpostgres "github.com/yangtao121/workos/internal/core/agent/adapters/postgres"
 	agentdomain "github.com/yangtao121/workos/internal/core/agent/domain"
+	indexfeedpostgres "github.com/yangtao121/workos/internal/core/indexfeed/adapters/postgres"
 	"github.com/yangtao121/workos/internal/core/orchestration"
 	projectpostgres "github.com/yangtao121/workos/internal/core/project/adapters/postgres"
 	projectapp "github.com/yangtao121/workos/internal/core/project/application"
@@ -104,7 +105,7 @@ func newReviewFixture(t *testing.T) *reviewFixture {
 	if err != nil {
 		t.Fatal(err)
 	}
-	materializer, err := orchestration.NewTaskArtifactMaterializer(pool, agentRepo, artifactRepo, preparer, ids.UUIDv7{})
+	materializer, err := orchestration.NewTaskArtifactMaterializer(pool, agentRepo, artifactRepo, preparer, indexfeedpostgres.New(pool), ids.UUIDv7{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -484,7 +485,7 @@ func TestReviewArtifactListPagingAndRestart(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	restarted, err := orchestration.NewTaskArtifactMaterializer(restartedPool, restartedAgent, restartedArtifacts, restartedPreparer, ids.UUIDv7{})
+	restarted, err := orchestration.NewTaskArtifactMaterializer(restartedPool, restartedAgent, restartedArtifacts, restartedPreparer, indexfeedpostgres.New(restartedPool), ids.UUIDv7{})
 	if err != nil {
 		t.Fatal(err)
 	}

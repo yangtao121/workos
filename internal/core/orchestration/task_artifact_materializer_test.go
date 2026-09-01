@@ -19,6 +19,7 @@ import (
 	artifactapp "github.com/yangtao121/workos/internal/core/artifact/application"
 	artifactdomain "github.com/yangtao121/workos/internal/core/artifact/domain"
 	artifactports "github.com/yangtao121/workos/internal/core/artifact/ports"
+	indexfeeddomain "github.com/yangtao121/workos/internal/core/indexfeed/domain"
 
 	"github.com/yangtao121/workos/internal/platform/dbtx"
 	"github.com/yangtao121/workos/internal/platform/ids"
@@ -187,7 +188,23 @@ type noopTx struct{ pgx.Tx }
 func (noopTx) Commit(context.Context) error   { return nil }
 func (noopTx) Rollback(context.Context) error { return nil }
 
-func newMaterializer(t *testing.T) (*TaskArtifactMaterializer, *fakeStreams, *fakeReviewOutputs) {
+// fakeFeedSink records the index publications the coordinator appends so
+// tests can assert exactly one publication per fresh materialization and
+// none for replays (ADR-0013).
+type fakeFeedSink struct {
+	publications []indexfeeddomain.Publication
+}
+
+func (f *fakeFeedSink) AppendReviewArtifactUpsert(_ context.Context, _ dbtx.Tx, publication indexfeeddomain.Publication) error {
+	f.publications = append(f.publications, publication)
+	return nil
+}
+
+func (f *fakeFeedSink) AppendProjectTombstone(_ context.Context, _ dbtx.Tx, _ indexfeeddomain.Publication) error {
+	return errors.New("tombstones never originate from artifact materialization")
+}
+
+func newMaterializerWithSink(t *testing.T) (*TaskArtifactMaterializer, *fakeStreams, *fakeReviewOutputs, *fakeFeedSink) {
 	t.Helper()
 	streams := &fakeStreams{lastSequence: 2}
 	outputs := newFakeReviewOutputs()
@@ -195,10 +212,16 @@ func newMaterializer(t *testing.T) (*TaskArtifactMaterializer, *fakeStreams, *fa
 	if err != nil {
 		t.Fatal(err)
 	}
-	materializer, err := NewTaskArtifactMaterializer(fakeTxSource{}, streams, outputs, preparer, ids.UUIDv7{})
+	sink := &fakeFeedSink{}
+	materializer, err := NewTaskArtifactMaterializer(fakeTxSource{}, streams, outputs, preparer, sink, ids.UUIDv7{})
 	if err != nil {
 		t.Fatal(err)
 	}
+	return materializer, streams, outputs, sink
+}
+
+func newMaterializer(t *testing.T) (*TaskArtifactMaterializer, *fakeStreams, *fakeReviewOutputs) {
+	materializer, streams, outputs, _ := newMaterializerWithSink(t)
 	return materializer, streams, outputs
 }
 

@@ -146,8 +146,9 @@ const (
 	ResolveIndexPublicationResponse_VERDICT_UNSPECIFIED ResolveIndexPublicationResponse_Verdict = 0
 	// Implemented review subtype, all invariants hold, project active.
 	ResolveIndexPublicationResponse_VERDICT_RESOLVED ResolveIndexPublicationResponse_Verdict = 1
-	// The project was archived (possibly concurrently with the upsert);
-	// lifecycle authority says the source must not become searchable.
+	// Either a project tombstone publication (apply the tombstone) or an
+	// upsert whose project was archived concurrently: the authoritative
+	// lifecycle says the source must not become searchable.
 	ResolveIndexPublicationResponse_VERDICT_TOMBSTONED ResolveIndexPublicationResponse_Verdict = 2
 	// The publication's source ref no longer resolves to the exact claimed
 	// identity/digest: stored drift. Terminal, requires operator attention.
@@ -491,9 +492,13 @@ func (x *ResolveIndexPublicationRequest) GetLeaseToken() string {
 // resolve time. `verdict` decides the only permitted local effects; content
 // is present only for RESOLVED upserts.
 type ResolveIndexPublicationResponse struct {
-	state         protoimpl.MessageState                                `protogen:"open.v1"`
-	Verdict       ResolveIndexPublicationResponse_Verdict               `protobuf:"varint,1,opt,name=verdict,proto3,enum=workos.index.v1.ResolveIndexPublicationResponse_Verdict" json:"verdict,omitempty"`
-	Source        *ResolveIndexPublicationResponse_ReviewArtifactSource `protobuf:"bytes,2,opt,name=source,proto3" json:"source,omitempty"`
+	state   protoimpl.MessageState                                `protogen:"open.v1"`
+	Verdict ResolveIndexPublicationResponse_Verdict               `protobuf:"varint,1,opt,name=verdict,proto3,enum=workos.index.v1.ResolveIndexPublicationResponse_Verdict" json:"verdict,omitempty"`
+	Source  *ResolveIndexPublicationResponse_ReviewArtifactSource `protobuf:"bytes,2,opt,name=source,proto3" json:"source,omitempty"`
+	// Echo of the claimed publication facts (id, operation, owner, project)
+	// so the consumer can apply tombstones and classify outcomes without a
+	// second round trip.
+	Publication   *IndexPublication `protobuf:"bytes,3,opt,name=publication,proto3" json:"publication,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -538,6 +543,13 @@ func (x *ResolveIndexPublicationResponse) GetVerdict() ResolveIndexPublicationRe
 func (x *ResolveIndexPublicationResponse) GetSource() *ResolveIndexPublicationResponse_ReviewArtifactSource {
 	if x != nil {
 		return x.Source
+	}
+	return nil
+}
+
+func (x *ResolveIndexPublicationResponse) GetPublication() *IndexPublication {
+	if x != nil {
+		return x.Publication
 	}
 	return nil
 }
@@ -1409,10 +1421,11 @@ const file_workos_index_v1_index_source_proto_rawDesc = "" +
 	"\tworker_id\x18\x01 \x01(\tR\bworkerId\x12%\n" +
 	"\x0epublication_id\x18\x02 \x01(\tR\rpublicationId\x12\x1f\n" +
 	"\vlease_token\x18\x03 \x01(\tR\n" +
-	"leaseToken\"\x86\x05\n" +
+	"leaseToken\"\xcb\x05\n" +
 	"\x1fResolveIndexPublicationResponse\x12R\n" +
 	"\averdict\x18\x01 \x01(\x0e28.workos.index.v1.ResolveIndexPublicationResponse.VerdictR\averdict\x12]\n" +
-	"\x06source\x18\x02 \x01(\v2E.workos.index.v1.ResolveIndexPublicationResponse.ReviewArtifactSourceR\x06source\x1a\xc8\x02\n" +
+	"\x06source\x18\x02 \x01(\v2E.workos.index.v1.ResolveIndexPublicationResponse.ReviewArtifactSourceR\x06source\x12C\n" +
+	"\vpublication\x18\x03 \x01(\v2!.workos.index.v1.IndexPublicationR\vpublication\x1a\xc8\x02\n" +
 	"\x14ReviewArtifactSource\x12\"\n" +
 	"\rowner_user_id\x18\x01 \x01(\tR\vownerUserId\x12\x1d\n" +
 	"\n" +
@@ -1551,32 +1564,33 @@ var file_workos_index_v1_index_source_proto_depIdxs = []int32{
 	4,  // 2: workos.index.v1.ClaimIndexPublicationsResponse.publications:type_name -> workos.index.v1.IndexPublication
 	2,  // 3: workos.index.v1.ResolveIndexPublicationResponse.verdict:type_name -> workos.index.v1.ResolveIndexPublicationResponse.Verdict
 	20, // 4: workos.index.v1.ResolveIndexPublicationResponse.source:type_name -> workos.index.v1.ResolveIndexPublicationResponse.ReviewArtifactSource
-	1,  // 5: workos.index.v1.IndexPublicationResult.outcome:type_name -> workos.index.v1.IndexPublicationOutcome
-	8,  // 6: workos.index.v1.CompleteIndexPublicationsRequest.results:type_name -> workos.index.v1.IndexPublicationResult
-	10, // 7: workos.index.v1.CompleteIndexPublicationsResponse.results:type_name -> workos.index.v1.IndexPublicationAck
-	21, // 8: workos.index.v1.ReconcileIndexSource.created_at:type_name -> google.protobuf.Timestamp
-	13, // 9: workos.index.v1.ReconcileIndexSourcesResponse.sources:type_name -> workos.index.v1.ReconcileIndexSource
-	21, // 10: workos.index.v1.ReconcileArchivedProject.archived_at:type_name -> google.protobuf.Timestamp
-	16, // 11: workos.index.v1.ReconcileArchivedProjectsResponse.projects:type_name -> workos.index.v1.ReconcileArchivedProject
-	21, // 12: workos.index.v1.ResolveIndexSourceContentResponse.created_at:type_name -> google.protobuf.Timestamp
-	21, // 13: workos.index.v1.ResolveIndexPublicationResponse.ReviewArtifactSource.created_at:type_name -> google.protobuf.Timestamp
-	3,  // 14: workos.index.v1.IndexPublicationSourceService.ClaimIndexPublications:input_type -> workos.index.v1.ClaimIndexPublicationsRequest
-	6,  // 15: workos.index.v1.IndexPublicationSourceService.ResolveIndexPublication:input_type -> workos.index.v1.ResolveIndexPublicationRequest
-	9,  // 16: workos.index.v1.IndexPublicationSourceService.CompleteIndexPublications:input_type -> workos.index.v1.CompleteIndexPublicationsRequest
-	12, // 17: workos.index.v1.IndexPublicationSourceService.ReconcileIndexSources:input_type -> workos.index.v1.ReconcileIndexSourcesRequest
-	15, // 18: workos.index.v1.IndexPublicationSourceService.ReconcileArchivedProjects:input_type -> workos.index.v1.ReconcileArchivedProjectsRequest
-	18, // 19: workos.index.v1.IndexPublicationSourceService.ResolveIndexSourceContent:input_type -> workos.index.v1.ResolveIndexSourceContentRequest
-	5,  // 20: workos.index.v1.IndexPublicationSourceService.ClaimIndexPublications:output_type -> workos.index.v1.ClaimIndexPublicationsResponse
-	7,  // 21: workos.index.v1.IndexPublicationSourceService.ResolveIndexPublication:output_type -> workos.index.v1.ResolveIndexPublicationResponse
-	11, // 22: workos.index.v1.IndexPublicationSourceService.CompleteIndexPublications:output_type -> workos.index.v1.CompleteIndexPublicationsResponse
-	14, // 23: workos.index.v1.IndexPublicationSourceService.ReconcileIndexSources:output_type -> workos.index.v1.ReconcileIndexSourcesResponse
-	17, // 24: workos.index.v1.IndexPublicationSourceService.ReconcileArchivedProjects:output_type -> workos.index.v1.ReconcileArchivedProjectsResponse
-	19, // 25: workos.index.v1.IndexPublicationSourceService.ResolveIndexSourceContent:output_type -> workos.index.v1.ResolveIndexSourceContentResponse
-	20, // [20:26] is the sub-list for method output_type
-	14, // [14:20] is the sub-list for method input_type
-	14, // [14:14] is the sub-list for extension type_name
-	14, // [14:14] is the sub-list for extension extendee
-	0,  // [0:14] is the sub-list for field type_name
+	4,  // 5: workos.index.v1.ResolveIndexPublicationResponse.publication:type_name -> workos.index.v1.IndexPublication
+	1,  // 6: workos.index.v1.IndexPublicationResult.outcome:type_name -> workos.index.v1.IndexPublicationOutcome
+	8,  // 7: workos.index.v1.CompleteIndexPublicationsRequest.results:type_name -> workos.index.v1.IndexPublicationResult
+	10, // 8: workos.index.v1.CompleteIndexPublicationsResponse.results:type_name -> workos.index.v1.IndexPublicationAck
+	21, // 9: workos.index.v1.ReconcileIndexSource.created_at:type_name -> google.protobuf.Timestamp
+	13, // 10: workos.index.v1.ReconcileIndexSourcesResponse.sources:type_name -> workos.index.v1.ReconcileIndexSource
+	21, // 11: workos.index.v1.ReconcileArchivedProject.archived_at:type_name -> google.protobuf.Timestamp
+	16, // 12: workos.index.v1.ReconcileArchivedProjectsResponse.projects:type_name -> workos.index.v1.ReconcileArchivedProject
+	21, // 13: workos.index.v1.ResolveIndexSourceContentResponse.created_at:type_name -> google.protobuf.Timestamp
+	21, // 14: workos.index.v1.ResolveIndexPublicationResponse.ReviewArtifactSource.created_at:type_name -> google.protobuf.Timestamp
+	3,  // 15: workos.index.v1.IndexPublicationSourceService.ClaimIndexPublications:input_type -> workos.index.v1.ClaimIndexPublicationsRequest
+	6,  // 16: workos.index.v1.IndexPublicationSourceService.ResolveIndexPublication:input_type -> workos.index.v1.ResolveIndexPublicationRequest
+	9,  // 17: workos.index.v1.IndexPublicationSourceService.CompleteIndexPublications:input_type -> workos.index.v1.CompleteIndexPublicationsRequest
+	12, // 18: workos.index.v1.IndexPublicationSourceService.ReconcileIndexSources:input_type -> workos.index.v1.ReconcileIndexSourcesRequest
+	15, // 19: workos.index.v1.IndexPublicationSourceService.ReconcileArchivedProjects:input_type -> workos.index.v1.ReconcileArchivedProjectsRequest
+	18, // 20: workos.index.v1.IndexPublicationSourceService.ResolveIndexSourceContent:input_type -> workos.index.v1.ResolveIndexSourceContentRequest
+	5,  // 21: workos.index.v1.IndexPublicationSourceService.ClaimIndexPublications:output_type -> workos.index.v1.ClaimIndexPublicationsResponse
+	7,  // 22: workos.index.v1.IndexPublicationSourceService.ResolveIndexPublication:output_type -> workos.index.v1.ResolveIndexPublicationResponse
+	11, // 23: workos.index.v1.IndexPublicationSourceService.CompleteIndexPublications:output_type -> workos.index.v1.CompleteIndexPublicationsResponse
+	14, // 24: workos.index.v1.IndexPublicationSourceService.ReconcileIndexSources:output_type -> workos.index.v1.ReconcileIndexSourcesResponse
+	17, // 25: workos.index.v1.IndexPublicationSourceService.ReconcileArchivedProjects:output_type -> workos.index.v1.ReconcileArchivedProjectsResponse
+	19, // 26: workos.index.v1.IndexPublicationSourceService.ResolveIndexSourceContent:output_type -> workos.index.v1.ResolveIndexSourceContentResponse
+	21, // [21:27] is the sub-list for method output_type
+	15, // [15:21] is the sub-list for method input_type
+	15, // [15:15] is the sub-list for extension type_name
+	15, // [15:15] is the sub-list for extension extendee
+	0,  // [0:15] is the sub-list for field type_name
 }
 
 func init() { file_workos_index_v1_index_source_proto_init() }

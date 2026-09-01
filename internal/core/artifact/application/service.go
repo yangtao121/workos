@@ -353,3 +353,31 @@ func IsReferenceCorrupt(err error) bool {
 // SanitizeMessage is the fixed, content-free message used for internal
 // failures. It never includes SQL, paths, or bundle bytes.
 const SanitizeMessage = "artifact operation failed"
+
+// ReconcileSourcePage is one explicit reconciliation page for the index
+// feed: identity facts only, plus the continuation cursor decided by the
+// repository probe.
+type ReconcileSourcePage struct {
+	Sources   []domain.ReconcileSource
+	NextToken string
+}
+
+// ReconcileReviewSources pages the module's immutable review artifacts in
+// stable (created_at, id) order for the index-feed reconciliation walk
+// (ADR-0013). It is an internal read: no project scope validation is needed
+// because review artifacts are immutable history and every returned fact is
+// already owner/project-stamped.
+func (s *Service) ReconcileReviewSources(ctx context.Context, cursor string, pageSize int) (ReconcileSourcePage, error) {
+	limit := pageSize
+	if limit <= 0 {
+		limit = 100
+	}
+	if limit > 200 {
+		return ReconcileSourcePage{}, domain.ErrReconcileCursor
+	}
+	sources, next, err := s.repository.ReconcileReviewSourcesPage(ctx, cursor, limit)
+	if err != nil {
+		return ReconcileSourcePage{}, err
+	}
+	return ReconcileSourcePage{Sources: sources, NextToken: next}, nil
+}

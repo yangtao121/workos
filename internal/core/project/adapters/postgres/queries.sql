@@ -200,3 +200,13 @@ FROM workos_core.project_app_installation_versions
 WHERE installation_id = $1 AND sequence > $2
 ORDER BY sequence ASC
 LIMIT $3;
+
+-- Index-feed reconciliation page (ADR-0013): archived project scopes in
+-- stable (archived_at, id) order. Only this module's own table is read.
+-- name: ReconcileArchivedProjects :many
+SELECT id, owner_user_id, archived_at
+FROM workos_core.projects
+WHERE archived_at IS NOT NULL
+  AND (archived_at, id) > (sqlc.arg(cursor_archived_at)::timestamptz, sqlc.arg(cursor_id)::uuid)
+ORDER BY archived_at, id
+LIMIT sqlc.arg(page_limit);

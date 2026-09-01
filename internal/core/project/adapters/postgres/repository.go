@@ -11,22 +11,41 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	indexfeeddomain "github.com/yangtao121/workos/internal/core/indexfeed/domain"
+	indexfeedports "github.com/yangtao121/workos/internal/core/indexfeed/ports"
 	"github.com/yangtao121/workos/internal/core/project/adapters/postgres/projectdb"
 	"github.com/yangtao121/workos/internal/core/project/domain"
 	"github.com/yangtao121/workos/internal/core/project/ports"
+	"github.com/yangtao121/workos/internal/platform/ids"
 )
 
 // Repository implements the base Project aggregate port plus the shared
 // installation command port. Every storage failure is classified by the
 // shared storeError in store.go; create idempotency semantics are decided by
 // the database inside one transaction (ADR-0004).
+//
+// NewRepository (New) constructs the repository without the index-feed
+// publication sink; it exists for focused module tests. The composition root
+// must construct with NewWithFeed so every archive also publishes its
+// durable tombstone (ADR-0013).
 type Repository struct {
 	pool    *pgxpool.Pool
 	queries *projectdb.Queries
+	ids     ids.Generator
+	feed    indexfeedports.TxSink
 }
 
 func New(pool *pgxpool.Pool) *Repository {
-	return &Repository{pool: pool, queries: projectdb.New(pool)}
+	return &Repository{pool: pool, queries: projectdb.New(pool), ids: ids.UUIDv7{}}
+}
+
+// NewWithFeed attaches the durable index publication sink (ADR-0013): the
+// tombstone publication joins the archive transaction and cannot be skipped.
+func NewWithFeed(pool *pgxpool.Pool, feed indexfeedports.TxSink) (*Repository, error) {
+	if pool == nil || feed == nil {
+		return nil, errors.New("project repository with feed requires pool and index publication sink")
+	}
+	return &Repository{pool: pool, queries: projectdb.New(pool), ids: ids.UUIDv7{}, feed: feed}, nil
 }
 
 // LookupCreateRequest returns the stored adjudication of a consumed create
@@ -196,13 +215,15 @@ func (r *Repository) ArchiveProject(ctx context.Context, ownerID, projectID stri
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck
 	queries := r.queries.WithTx(tx)
+	archivedAt := timestamp(time.Now().UTC())
 	value, err := queries.ArchiveProject(ctx, projectdb.ArchiveProjectParams{
-		ArchivedAt: timestamp(time.Now().UTC()), ID: projectID, OwnerUserID: ownerID, ExpectedRevision: expectedRevision,
+		ArchivedAt: archivedAt, ID: projectID, OwnerUserID: ownerID, ExpectedRevision: expectedRevision,
 	})
 	archived, err := projectFromDB(value, err)
 	if errors.Is(err, domain.ErrNotFound) {
 		// Same as UpdateProject: the application read the project first, so
-		// a guarded miss is a lost revision race.
+		// a guarded miss is a lost revision race. No tombstone can exist for
+		// a lost race: the winner already published it.
 		return domain.Project{}, domain.ErrConflict
 	}
 	if err != nil {
@@ -210,6 +231,22 @@ func (r *Repository) ArchiveProject(ctx context.Context, ownerID, projectID stri
 	}
 	if err := appendProjectEvent(ctx, queries, archived, "project.archived.v1"); err != nil {
 		return domain.Project{}, err
+	}
+	// Durable index tombstone publication (ADR-0013): same transaction as
+	// the archive revision, project event, and outbox row. One archive
+	// transition maps to exactly one tombstone publication; the unique
+	// arbitration makes any duplicate a corruption verdict.
+	if r.feed != nil {
+		if err := r.feed.AppendProjectTombstone(ctx, tx, indexfeeddomain.Publication{
+			ID:          r.ids.New(),
+			Operation:   indexfeeddomain.OperationProjectTombstone,
+			OwnerUserID: archived.OwnerUserID,
+			ProjectID:   archived.ID,
+			SourceType:  indexfeeddomain.SourceType,
+			OccurredAt:  archived.ArchivedAt.UTC(),
+		}); err != nil {
+			return domain.Project{}, err
+		}
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return domain.Project{}, storeError("commit archive project", err)

@@ -231,3 +231,17 @@ func (s *Service) Archive(ctx context.Context, ownerID, projectID string, expect
 	}
 	return s.repository.ArchiveProject(ctx, ownerID, projectID, expectedRevision)
 }
+
+// ReconcileArchivedProjectsPage pages archived project scopes in stable
+// (archived_at, id) order for the index-feed tombstone convergence
+// (ADR-0013). Internal read over this module's own table only.
+func (s *Service) ReconcileArchivedProjects(ctx context.Context, cursor string, pageSize int) ([]ports.ArchivedProjectRef, string, error) {
+	limit := pageSize
+	if limit <= 0 {
+		limit = 100
+	}
+	if limit > 200 {
+		return nil, "", domain.ErrInvalid
+	}
+	return s.repository.ReconcileArchivedProjectsPage(ctx, cursor, limit)
+}
