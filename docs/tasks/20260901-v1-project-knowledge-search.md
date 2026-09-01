@@ -1,6 +1,6 @@
 # Task: v1 Project Knowledge Search——持久索引、授权 App 与可恢复重建闭环
 
-- 状态：in-progress
+- 状态：done（本批次窄切片；semantic RAG 与泛化 archive 继续 unavailable）
 - Owner/Agent：overnight implementation agent（单一写入智能体）
 - 进程/模块：workos-core（index publication + private source）、indexer（projection/search/worker/admin）、
   workos-gateway（可选 Indexer upstream）、runtime-host（App Bridge `knowledge.search`）、desktop-web（Knowledge Center）
@@ -88,4 +88,75 @@ G. 门禁 + restart + 文档/状态（`test: prove knowledge indexing across res
 
 ## 交接
 
-（收尾时填写：命令结果、提交列表、风险、未决项）
+### 提交列表（branch `feat/v1-project-knowledge-search`，merge-base `0f89def`）
+
+```text
+851afa5 docs: define project knowledge indexing boundary
+caecf78 feat: publish durable review artifact index feed
+f1ff536 feat: add idempotent project knowledge indexer and bounded search
+d785414 test: prove the knowledge search stack end to end
+908f980 feat: add Knowledge Center context workflow
+0e5ebaf feat: expose scoped knowledge search to granted apps
+d76b760 fix: negotiate knowledge.search from a configured indexer and prove it end to end
+aa90e54 docs: record project knowledge search evidence
+4f64c04 feat: add resumable index projection rebuild
+（后续 lint/gateway-table/gitignore 修复提交见 git log）
+```
+
+### 协议/migration owner
+
+- `026_core_index_publications.sql`：owner workos-core Index Feed（publication/lease/claim 事实，无正文）。
+- `027_index_projection.sql`：owner indexer（`workos_index` schema：documents（generation 作用域）、
+  publication_receipts、consumer_state、index_job\*、projection_generations/active_generation、
+  rebuild_jobs、project_tombstones）。001–025 逐字节未动，checksum pin 测试沿用既有链。
+
+### Core publication / private source 边界
+
+- materializer 与 archive 事务经 tx-scoped sink 追加 publication；失败回滚零残留（集成测试证明）。
+- `IndexPublicationSourceService`（claim/resolve/complete/reconcile/CountPending）挂 Core HTTP mux，
+  不在 Gateway allowlist → TCP 404；resolve 在 claim 事务内权威复验 owner/project/digest/正文与
+  project 活性（archived → tombstoned verdict）。
+
+### indexer 侧
+
+- lease/receipt/cursor 同事务；complete-after-commit；same-publication same-digest replay no-op；
+  digest 漂移 = corruption 拒写。集成测试覆盖：同事务回滚、双 claimant、lease 过期、stale complete、
+  archive race、存储损坏 terminal verdict、reconciliation 分页。
+- Search：query 规范（1–256 cp、C0/C1、词法预处理仅字母数字 token）、versioned checksum page token
+  （绑定 owner/project/query digest/ranking v1/generation/snapshot）、simple tsquery + title×2 权重、
+  tie-break `(score DESC, created_at DESC, source_id)`、limit+1 无 phantom token、纯函数 excerpt。
+
+### 门禁结果（收尾日实测）
+
+| 命令                                                        | 结果 |
+| ----------------------------------------------------------- | ---- |
+| make bootstrap / generate ×2（零 tracked diff）             | PASS |
+| make check（proto/go/web + status render --check）          | PASS |
+| make test-integration（含 index restart battery）           | PASS |
+| make test-e2e（19 spec）                                    | PASS |
+| make test-project-knowledge-search                          | PASS |
+| make test-app-knowledge-search                              | PASS |
+| make test-project-knowledge-rebuild                         | PASS |
+| make test-artifact-review / test-artifact-context           | PASS |
+| go test -race（indexer / runtime surface / core indexfeed） | PASS |
+| buf lint / buf breaking vs base `0f89def`                   | PASS |
+| docker compose config --quiet；git diff --check             | PASS |
+| after/current 截图 hash 相等；before/after 不同             | PASS |
+
+### 视觉证据
+
+`docs/ui/desktop-web/changes/20260901-project-knowledge-search/{before,after,notes.md}`；
+after/current 对应文件 hash 相等。expanded（results、chip）+ compact（results + Use as context）
+
+- granted App surface。
+
+### 未决风险
+
+- semantic RAG/embedding/pgvector、泛化 archive、workspace 文件源：未实现，capability 保持 false。
+- 多 owner 部署：系统当前单 owner（users_single_owner_idx），rebuild fixture 以"无产出的 owner id"
+  验证搜索隔离；真实多 owner 需要未来身份体系演进。
+- rebuild catch-up barrier 以 Core drained feed 为准（at-least-once 语义下的最终一致）；
+  极端高频写入下 promote 可能需要多次 catch-up pass。
+- 修复提交 `d76b760` 曾误入一个根目录 `runtime-host` ELF（`go build` 副产物），已在后续提交
+  从索引删除并加入 .gitignore；历史对象中仍有残留（未做历史重写）。
+- 工作树干净；未 merge 到 main、未 push（等待用户审查）。
