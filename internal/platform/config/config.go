@@ -48,7 +48,10 @@ type Reliability struct {
 // out-of-bounds values, and the capability verdict always comes from the
 // engine probe — never from the presence of the binary.
 type Runtime struct {
-	PodmanBin         string        `yaml:"podman_bin"`
+	PodmanBin string `yaml:"podman_bin"`
+	// IndexerURL configures the runtime's scoped knowledge search upstream.
+	// Empty means not configured: knowledge.search is never negotiated.
+	IndexerURL        string        `yaml:"indexer_url"`
 	IdleTTL           time.Duration `yaml:"idle_ttl"`
 	ReconcileInterval time.Duration `yaml:"reconcile_interval"`
 	OperationTimeout  time.Duration `yaml:"operation_timeout"`
@@ -312,6 +315,7 @@ func Load() (Config, error) {
 		cfg.Agent.CatalogTimeout = value
 	}
 	setString(&cfg.Runtime.PodmanBin, "WORKOS_RUNTIME_PODMAN_BIN")
+	setString(&cfg.Runtime.IndexerURL, "WORKOS_RUNTIME_INDEXER_URL")
 	setString(&cfg.Runtime.InstanceName, "WORKOS_RUNTIME_INSTANCE_NAME")
 	setString(&cfg.Runtime.DeviceID, "WORKOS_RUNTIME_DEVICE_ID")
 	for _, override := range []struct {

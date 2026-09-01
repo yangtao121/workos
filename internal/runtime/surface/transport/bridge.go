@@ -14,6 +14,7 @@ import (
 	agentv1 "github.com/yangtao121/workos/gen/go/workos/agent/v1"
 	bridgev1 "github.com/yangtao121/workos/gen/go/workos/bridge/v1"
 	bridgev1connect "github.com/yangtao121/workos/gen/go/workos/bridge/v1/bridgev1connect"
+	indexv1 "github.com/yangtao121/workos/gen/go/workos/index/v1"
 	"github.com/yangtao121/workos/internal/platform/identity"
 	"github.com/yangtao121/workos/internal/runtime/surface/domain"
 	"github.com/yangtao121/workos/internal/runtime/surface/ports"
@@ -31,6 +32,7 @@ const (
 type BridgeService interface {
 	RunAgentTask(ctx context.Context, ownerUserID, deviceID, token, idempotencyKey, role, goal string) (ports.AppTaskSubmission, error)
 	StreamAgentEvents(ctx context.Context, ownerUserID, deviceID, token, taskID string, after int64, onEvent func(*agentv1.AgentEvent) error) error
+	SearchKnowledge(ctx context.Context, ownerUserID, deviceID, token, query string, pageSize int32, pageToken string) (ports.KnowledgeSearchPage, error)
 }
 
 type BridgeHandler struct {
@@ -90,12 +92,42 @@ func (h *BridgeHandler) WatchAgentTaskEvents(ctx context.Context, req *connect.R
 	return nil
 }
 
-// SearchKnowledge is the honest pre-implementation verdict (ADR-0013): the
-// protocol surface exists, but no working executor is wired yet, so every
-// call receives an explicit Unimplemented. `knowledge.read` grants never
-// enter a session's effective capabilities while this is the case.
+// SearchKnowledge executes the read-only knowledge bridge method. The body
+// carries only bounded search parameters — owner, device, project, app
+// instance, and scope are derived server-side from the identity, the
+// validated bridge token, and the stored session (ADR-0013).
 func (h *BridgeHandler) SearchKnowledge(ctx context.Context, req *connect.Request[bridgev1.SearchKnowledgeRequest]) (*connect.Response[bridgev1.SearchKnowledgeResponse], error) {
-	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("bridge method is not implemented"))
+	id, err := identity.FromContext(ctx)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeUnauthenticated, err)
+	}
+	token := req.Header().Get(identity.BridgeTokenHeader)
+	query := req.Msg.GetQuery()
+	if len([]rune(query)) == 0 || len([]rune(query)) > 256 || req.Msg.GetPageSize() < 0 || req.Msg.GetPageSize() > 50 {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("bridge request is invalid"))
+	}
+	page, err := h.service.SearchKnowledge(ctx, id.UserID, id.DeviceID, token, query, req.Msg.GetPageSize(), req.Msg.GetPageToken())
+	if err != nil {
+		return nil, mapBridgeError(err)
+	}
+	hits := make([]*indexv1.SearchHit, 0, len(page.Hits))
+	for _, hit := range page.Hits {
+		hits = append(hits, &indexv1.SearchHit{
+			ContextRef:   "artifact.review.v1:" + hit.ArtifactID + ":" + hit.Digest,
+			Excerpt:      hit.Excerpt,
+			Score:        hit.Score,
+			SourceRef:    &agentv1.ContextRef{Type: "artifact.review.v1", Id: hit.ArtifactID, Revision: hit.Digest},
+			ArtifactId:   hit.ArtifactID,
+			ArtifactType: hit.ArtifactType,
+			Digest:       hit.Digest,
+			Title:        hit.Title,
+			CreatedAt:    hit.CreatedAt,
+		})
+	}
+	return connect.NewResponse(&bridgev1.SearchKnowledgeResponse{
+		Hits:          hits,
+		NextPageToken: page.NextPageToken,
+	}), nil
 }
 
 func validBridgeRunInput(idempotencyKey, role, goal string) bool {
@@ -136,6 +168,10 @@ func mapBridgeError(err error) error {
 		return connect.NewError(connect.CodeResourceExhausted, errors.New("app task allowance is exhausted"))
 	case errors.Is(err, ports.ErrAppAgentDenied):
 		return connect.NewError(connect.CodePermissionDenied, errors.New("bridge capability is not granted"))
+	case errors.Is(err, ports.ErrKnowledgeMalformed):
+		return connect.NewError(connect.CodeInternal, errors.New("bridge operation failed"))
+	case errors.Is(err, ports.ErrKnowledgeUnavailable):
+		return connect.NewError(connect.CodeUnavailable, errors.New("bridge is temporarily unavailable"))
 	case errors.Is(err, domain.ErrUnavailable), errors.Is(err, ports.ErrStoreUnavailable), errors.Is(err, ports.ErrAppAgentUnavailable):
 		return connect.NewError(connect.CodeUnavailable, errors.New("bridge is temporarily unavailable"))
 	default:

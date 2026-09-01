@@ -27,6 +27,8 @@ import {
   type BridgeRequest,
   type BridgeRunPayload,
   type BridgeStreamPayload,
+  type BridgeKnowledgeSearchPayload,
+  type BridgeKnowledgeSearchResult,
 } from "@workos/surface-sdk";
 import type { AgentEvent } from "@workos/protocol";
 
@@ -53,6 +55,12 @@ export interface AppBridgeRunResult {
  */
 export interface AppBridgeTransport {
   runAgentTask(input: BridgeRunPayload): Promise<AppBridgeRunResult>;
+  /**
+   * Executes one bounded read-only knowledge search for this surface's
+   * project. The scope is derived server-side; the payload carries only the
+   * query and paging facts.
+   */
+  searchKnowledge(input: BridgeKnowledgeSearchPayload): Promise<BridgeKnowledgeSearchResult>;
   /**
    * Watches persisted task events until the task is terminal or abort is
    * triggered. Ending the stream never cancels the durable task.
@@ -90,6 +98,9 @@ export interface AppBridgeHost {
 const capabilityMethods: Record<string, BridgeMethod> = {
   "agent.task.run": "agent.run",
   "agent.event.watch": "agent.stream",
+  // knowledge.read (the grant) negotiates the read-only knowledge.search
+  // method — the capability string itself is never a method name (ADR-0013).
+  "knowledge.read": "knowledge.search",
 };
 
 // Request-boundary grammar enforced on the untrusted inbound stream. These
@@ -177,6 +188,40 @@ function validStreamPayload(payload: unknown): payload is BridgeStreamPayload {
     cursorPattern.test(afterSequence) &&
     BigInt(afterSequence) <= MAX_INT64_SEQUENCE
   );
+}
+
+// knowledge.search bounds mirror the server contract exactly: 1..256 code
+// points (enforced server-side) with a local pre-decode byte bound, an
+// optional bounded page size, and an optional opaque token.
+const MAX_KNOWLEDGE_QUERY_BYTES = 4 * 1024;
+const MAX_KNOWLEDGE_PAGE_TOKEN_CHARS = 512;
+
+function validKnowledgeSearchPayload(payload: unknown): payload is BridgeKnowledgeSearchPayload {
+  if (!isPlainObject(payload)) return false;
+  const withAll = hasExactKeys(payload, ["query", "pageSize", "pageToken"]);
+  const withoutToken = hasExactKeys(payload, ["pageSize", "query"]);
+  const minimal = hasExactKeys(payload, ["query"]);
+  if (!withAll && !withoutToken && !minimal) return false;
+  const { query, pageSize, pageToken } = payload as Record<string, unknown>;
+  if (typeof query !== "string" || query.length === 0) return false;
+  if (new TextEncoder().encode(query).byteLength > MAX_KNOWLEDGE_QUERY_BYTES) return false;
+  if (pageSize !== undefined) {
+    if (
+      typeof pageSize !== "number" ||
+      !Number.isInteger(pageSize) ||
+      pageSize < 0 ||
+      pageSize > 50
+    ) {
+      return false;
+    }
+  }
+  if (
+    withAll &&
+    (typeof pageToken !== "string" || pageToken.length > MAX_KNOWLEDGE_PAGE_TOKEN_CHARS)
+  ) {
+    return false;
+  }
+  return true;
 }
 
 /**
@@ -380,6 +425,9 @@ export function openAppBridgeHost(options: AppBridgeHostOptions): AppBridgeHost 
     if (request.method === "agent.run") {
       return validRunPayload(request.payload) ? null : "invalid_argument";
     }
+    if (request.method === "knowledge.search") {
+      return validKnowledgeSearchPayload(request.payload) ? null : "invalid_argument";
+    }
     return validStreamPayload(request.payload) ? null : "invalid_argument";
   };
 
@@ -406,6 +454,39 @@ export function openAppBridgeHost(options: AppBridgeHostOptions): AppBridgeHost 
       pending.set(request.requestId, entry);
       void options.transport
         .runAgentTask(payload)
+        .then((result) => {
+          if (!pending.has(request.requestId)) return; // timed out or closed: inert
+          clearPending(request.requestId);
+          if (closed || !handshaked) return;
+          postBridgeMessage(channel.port1, {
+            version: APP_BRIDGE_VERSION,
+            type: "response",
+            requestId: request.requestId,
+            payload: result,
+          });
+        })
+        .catch((reason: unknown) => {
+          if (!pending.has(request.requestId)) return;
+          clearPending(request.requestId);
+          const code: BridgeErrorCode =
+            reason instanceof BridgeProtocolError ? reason.code : "internal";
+          respondError(request.requestId, code);
+        });
+      return;
+    }
+
+    if (request.method === "knowledge.search") {
+      const payload = request.payload as BridgeKnowledgeSearchPayload;
+      const entry = {
+        timer: window.setTimeout(() => {
+          if (pending.delete(request.requestId)) {
+            respondError(request.requestId, "timeout");
+          }
+        }, timeoutMs),
+      };
+      pending.set(request.requestId, entry);
+      void options.transport
+        .searchKnowledge(payload)
         .then((result) => {
           if (!pending.has(request.requestId)) return; // timed out or closed: inert
           clearPending(request.requestId);

@@ -30,10 +30,22 @@ type Service struct {
 	ids        ids.Generator
 	ttl        time.Duration
 	now        func() time.Time
+	// knowledgeConfigured reports whether the runtime holds a configured
+	// indexer adapter. Only then can `knowledge.read` grants negotiate the
+	// read-only knowledge.search bridge method (ADR-0013).
+	knowledgeConfigured bool
 }
 
 func New(repository ports.SessionRepository, resolver ports.LaunchResolver, generator ids.Generator, sessionTTL time.Duration) (*Service, error) {
 	return NewWithWorkloads(repository, resolver, nil, generator, sessionTTL)
+}
+
+// WithKnowledgeConfigured marks the runtime's knowledge.search executor as
+// configured. Without it the method is never negotiated, no matter which
+// grants the installation holds.
+func (s *Service) WithKnowledgeConfigured() *Service {
+	s.knowledgeConfigured = true
+	return s
 }
 
 // NewWithWorkloads wires the broker with the runtime's Workload Manager.
@@ -154,7 +166,7 @@ func (s *Service) Create(ctx context.Context, command CreateCommand) (CreatedSur
 			AppID: resolved.AppID, Version: resolved.Version,
 			ManifestDigest: resolved.ManifestDigest,
 		},
-		BridgeCapabilities: domain.EffectiveBridgeCapabilities(resolved.GrantedPermissions),
+		BridgeCapabilities: domain.EffectiveBridgeCapabilities(resolved.GrantedPermissions, s.knowledgeConfigured),
 		// The pinned authorization epoch is exactly what Core resolved —
 		// never a constant and never a client input (ADR-0003 §7).
 		InstallationGrantRevision: resolved.GrantRevision,

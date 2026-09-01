@@ -26,9 +26,9 @@ interface KnowledgeHit {
   score: number;
 }
 
-function validateHit(hit: NonNullable<
-  Awaited<ReturnType<WorkOSClients["index"]["search"]>>["hits"]
->[number]): KnowledgeHit | null {
+function validateHit(
+  hit: NonNullable<Awaited<ReturnType<WorkOSClients["index"]["search"]>>["hits"]>[number],
+): KnowledgeHit | null {
   const artifactId = hit.artifactId;
   const digest = hit.digest;
   if (!UUID_V7.test(artifactId) || !SHA256.test(digest)) return null;
@@ -40,7 +40,11 @@ function validateHit(hit: NonNullable<
   if ([...excerpt].length > MAX_EXCERPT_CODE_POINTS) return null;
   // The typed ref and the legacy projection must agree — a drifting pair is
   // corruption, not a display problem.
-  if (hit.sourceRef?.type !== "artifact.review.v1" || hit.sourceRef.id !== artifactId || hit.sourceRef.revision !== digest) {
+  if (
+    hit.sourceRef?.type !== "artifact.review.v1" ||
+    hit.sourceRef.id !== artifactId ||
+    hit.sourceRef.revision !== digest
+  ) {
     return null;
   }
   return {
@@ -179,7 +183,11 @@ export function KnowledgeCenter({
             setQuery(event.target.value);
           }}
         />
-        <Button data-testid="knowledge-search-submit" type="submit" disabled={status === "searching"}>
+        <Button
+          data-testid="knowledge-search-submit"
+          type="submit"
+          disabled={status === "searching"}
+        >
           {status === "searching" ? "Searching…" : "Search"}
         </Button>
         <Button
@@ -235,7 +243,9 @@ export function KnowledgeCenter({
                   }}
                 >
                   <strong>{hit.title}</strong>
-                  <span>{hit.artifactType === "document.markdown.v1" ? "Markdown" : "Unified diff"}</span>
+                  <span>
+                    {hit.artifactType === "document.markdown.v1" ? "Markdown" : "Unified diff"}
+                  </span>
                   <p className="knowledge-excerpt">{hit.excerpt}</p>
                 </button>
                 {selectedContextIds?.has(hit.artifactId) ? (

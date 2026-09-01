@@ -696,7 +696,14 @@ export function Desktop({
       if (existing) dispatch({ type: "focus", id });
       recordLayout((state) => ({ ...state, activeSystemWindow: id }));
     },
-    [openArtifactCenter, openDeviceCenter, openKnowledgeCenter, openSystemMonitor, recordLayout, windows.windows],
+    [
+      openArtifactCenter,
+      openDeviceCenter,
+      openKnowledgeCenter,
+      openSystemMonitor,
+      recordLayout,
+      windows.windows,
+    ],
   );
 
   const focusAdaptiveWindow = useCallback(

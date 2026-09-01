@@ -87,6 +87,32 @@ func (a *AppAgent) WatchAgentTaskEvents(ctx context.Context, query ports.AppAgen
 	return nil
 }
 
+// AuthorizeAppKnowledge re-verifies the per-call knowledge authorization with
+// Core and returns the trusted binding. The runtime's own identity headers
+// are overwritten on every call; the scope facts come from the validated
+// session, never from public input.
+func (a *AppAgent) AuthorizeAppKnowledge(ctx context.Context, query ports.AppKnowledgeAuthQuery) (ports.AppKnowledgeBinding, error) {
+	identityValue, err := identity.FromContext(ctx)
+	if err != nil {
+		return ports.AppKnowledgeBinding{}, err
+	}
+	request := connect.NewRequest(&agentv1.AuthorizeAppKnowledgeRequest{
+		ProjectId:                 query.ProjectID,
+		AppInstanceId:             query.AppInstanceID,
+		InstallationGrantRevision: query.InstallationGrantRevision,
+	})
+	request.Header().Set(identity.UserHeader, identityValue.UserID)
+	request.Header().Set(identity.DeviceHeader, identityValue.DeviceID)
+	response, err := a.client.AuthorizeAppKnowledge(ctx, request)
+	if err != nil {
+		return ports.AppKnowledgeBinding{}, mapAppAgentError(err)
+	}
+	return ports.AppKnowledgeBinding{
+		OwnerUserID: response.Msg.GetOwnerUserId(),
+		ProjectID:   response.Msg.GetProjectId(),
+	}, nil
+}
+
 // mapAppAgentError converts Connect codes to the port sentinels. Denial
 // codes collapse into one sanitized sentinel so no Core authorization detail
 // survives the boundary; unknown codes stay opaque internal failures.

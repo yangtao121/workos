@@ -137,6 +137,7 @@ services:
       <<: *workos-environment
       WORKOS_HTTP_ADDRESS: 127.0.0.1:8083
       WORKOS_CORE_URL: http://127.0.0.1:8081
+      WORKOS_RUNTIME_INDEXER_URL: http://127.0.0.1:8085
       WORKOS_SURFACE_SESSION_TTL: ${WORKOS_SURFACE_SESSION_TTL:-15m}
 
   reliability-host:

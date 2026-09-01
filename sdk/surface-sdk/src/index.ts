@@ -14,7 +14,7 @@ export const MAX_INFLIGHT_REQUESTS = 32;
 export const REQUEST_TIMEOUT_MS = 15_000;
 
 /** The only bridge methods that exist; anything else fails closed. */
-export const BRIDGE_METHODS = ["agent.run", "agent.stream"] as const;
+export const BRIDGE_METHODS = ["agent.run", "agent.stream", "knowledge.search"] as const;
 export type BridgeMethod = (typeof BRIDGE_METHODS)[number];
 
 export interface BridgeHello {
@@ -53,19 +53,48 @@ export interface BridgeStreamPayload {
   afterSequence: string;
 }
 
+/**
+ * knowledge.search payload: ONLY bounded search parameters. Owner, project,
+ * app instance, and scope are derived server-side from the validated surface
+ * session — the payload grammar has no field that could carry them.
+ */
+export interface BridgeKnowledgeSearchPayload {
+  query: string;
+  /** 0 selects the server default (20); otherwise 1..50. */
+  pageSize?: number | undefined;
+  /** Opaque continuation token from a previous response. */
+  pageToken?: string | undefined;
+}
+
+/** One canonical knowledge hit, projected from workos.index.v1.SearchHit. */
+export interface BridgeKnowledgeHit {
+  artifactId: string;
+  digest: string;
+  artifactType: string;
+  title: string;
+  /** Bounded plain text; render as inert text only. */
+  excerpt: string;
+  score: number;
+}
+
+export interface BridgeKnowledgeSearchResult {
+  hits: BridgeKnowledgeHit[];
+  nextPageToken: string;
+}
+
 export interface BridgeRequest {
   version: typeof APP_BRIDGE_VERSION;
   type: "request";
   requestId: string;
   method: BridgeMethod;
-  payload: BridgeRunPayload | BridgeStreamPayload;
+  payload: BridgeRunPayload | BridgeStreamPayload | BridgeKnowledgeSearchPayload;
 }
 
 export interface BridgeResponse {
   version: typeof APP_BRIDGE_VERSION;
   type: "response";
   requestId: string;
-  payload: BridgeRunResult | { done: true };
+  payload: BridgeRunResult | BridgeKnowledgeSearchResult | { done: true };
 }
 
 /** One streamed canonical event for an accepted agent.stream request. */

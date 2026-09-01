@@ -76,21 +76,40 @@ var implementedBridgeCapabilities = []string{
 const (
 	BridgeCapabilityAgentTaskRun    = "agent.task.run"
 	BridgeCapabilityAgentEventWatch = "agent.event.watch"
+	// BridgeCapabilityKnowledgeSearch is the read-only knowledge search
+	// bridge method. It maps to the `knowledge.read` grant — the capability
+	// string itself is never a grant name — and it is negotiated only when
+	// the runtime actually holds a configured indexer adapter (ADR-0013).
+	BridgeCapabilityKnowledgeSearch = "knowledge.search"
+	// BridgeGrantKnowledgeRead is the manifest/grant vocabulary entry that
+	// can negotiate the knowledge.search method.
+	BridgeGrantKnowledgeRead = "knowledge.read"
 )
 
 // EffectiveBridgeCapabilities intersects the installation grant snapshot with
 // the implemented bridge methods. The result is canonically sorted (the
 // implemented list is sorted), duplicate-free, and shares its backing array
 // with nothing: callers may hand it to persistent storage.
-func EffectiveBridgeCapabilities(granted []string) []string {
+//
+// knowledge.search is special in two ways (ADR-0013): it never appears in a
+// session's capabilities unless the runtime actually holds a configured
+// indexer adapter, and it is negotiated from the `knowledge.read` grant —
+// the grant name and the method name are deliberately distinct so a
+// capability string can never double as an authorization.
+func EffectiveBridgeCapabilities(granted []string, indexerConfigured bool) []string {
 	grantedSet := make(map[string]struct{}, len(granted))
 	for _, capability := range granted {
 		grantedSet[capability] = struct{}{}
 	}
-	effective := make([]string, 0, len(implementedBridgeCapabilities))
+	effective := make([]string, 0, len(implementedBridgeCapabilities)+1)
 	for _, capability := range implementedBridgeCapabilities {
 		if _, ok := grantedSet[capability]; ok {
 			effective = append(effective, capability)
+		}
+	}
+	if indexerConfigured {
+		if _, ok := grantedSet[BridgeGrantKnowledgeRead]; ok {
+			effective = append(effective, BridgeCapabilityKnowledgeSearch)
 		}
 	}
 	sort.Strings(effective)
