@@ -55,3 +55,6 @@ WHERE id = sqlc.arg(id)
   AND outcome IS NULL
   AND claim_locked_until IS NOT NULL
   AND claim_locked_until > sqlc.arg(now);
+
+-- name: CountPendingIndexPublications :one
+SELECT count(*) FROM workos_core.index_publications WHERE outcome IS NULL;

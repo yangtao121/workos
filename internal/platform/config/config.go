@@ -239,6 +239,7 @@ func Load() (Config, error) {
 	setString(&cfg.Services.Core, "WORKOS_CORE_URL")
 	setString(&cfg.Services.Harness, "WORKOS_HARNESS_URL")
 	setString(&cfg.Services.Runtime, "WORKOS_RUNTIME_URL")
+	setString(&cfg.Services.Indexer, "WORKOS_INDEXER_URL")
 	setString(&cfg.Harness.CoreURL, "WORKOS_CORE_URL")
 	setString(&cfg.Auth.OwnerID, "WORKOS_OWNER_ID")
 	setString(&cfg.Auth.DeviceID, "WORKOS_DEVICE_ID")
@@ -401,6 +402,9 @@ func (c Config) ValidateGateway() error {
 	}
 	if strings.TrimSpace(c.Services.Reliability) != "" && !validUpstreamURL(c.Services.Reliability) {
 		return errors.New("invalid reliability URL: must be an absolute http(s) URL with a host")
+	}
+	if strings.TrimSpace(c.Services.Indexer) != "" && !validUpstreamURL(c.Services.Indexer) {
+		return errors.New("invalid indexer URL: must be an absolute http(s) URL with a host")
 	}
 	return nil
 }

@@ -292,3 +292,8 @@ func (s *Service) ResolveSourceContent(ctx context.Context, ownerUserID, project
 // zero time + empty id. Empty transport cursors are canonicalized here so
 // the authority's decoder only ever sees well-formed tokens.
 const firstPageReconcileCursor = "v1:0:"
+
+// CountPending reports publications still awaiting a terminal outcome.
+func (s *Service) CountPending(ctx context.Context) (int64, error) {
+	return s.store.CountPending(ctx)
+}

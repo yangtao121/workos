@@ -206,3 +206,13 @@ func mustUUIDBytes(value string) [16]byte {
 	}
 	return [16]byte(parsed)
 }
+
+// CountPending reports publications still awaiting a terminal outcome. It is
+// the bounded lag fact the indexer's freshness projection exposes.
+func (r *Repository) CountPending(ctx context.Context) (int64, error) {
+	count, err := r.queries.CountPendingIndexPublications(ctx)
+	if err != nil {
+		return 0, storeError("count pending index publications", err)
+	}
+	return count, nil
+}

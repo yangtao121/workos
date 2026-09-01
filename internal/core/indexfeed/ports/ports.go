@@ -62,6 +62,8 @@ type PublicationStore interface {
 	// caller's transaction and returns the ids that were actually acked by
 	// this worker (stale claims are absent).
 	Complete(ctx context.Context, tx dbtx.Tx, workerID string, results []CompleteResult, now time.Time) (map[string]bool, error)
+	// CountPending reports publications still awaiting a terminal outcome.
+	CountPending(ctx context.Context) (int64, error)
 }
 
 // CompleteResult is one outcome the consumer recorded locally.

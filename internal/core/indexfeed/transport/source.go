@@ -234,3 +234,11 @@ func (h *Handler) ResolveIndexSourceContent(ctx context.Context, req *connect.Re
 		CreatedAt:    timestamppb.New(source.CreatedAt),
 	}), nil
 }
+
+func (h *Handler) CountPendingPublications(ctx context.Context, _ *connect.Request[indexv1.CountPendingPublicationsRequest]) (*connect.Response[indexv1.CountPendingPublicationsResponse], error) {
+	pending, err := h.service.CountPending(ctx)
+	if err != nil {
+		return nil, mapError(err)
+	}
+	return connect.NewResponse(&indexv1.CountPendingPublicationsResponse{Pending: pending}), nil
+}

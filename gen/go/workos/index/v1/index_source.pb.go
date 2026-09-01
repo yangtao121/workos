@@ -1280,6 +1280,90 @@ func (x *ResolveIndexSourceContentResponse) GetCreatedAt() *timestamppb.Timestam
 	return nil
 }
 
+// Core-side authority for the index feed: durable publication claim/lease,
+// exact source resolution, bounded reconciliation pages. Internal network
+// only; never on the gateway allowlist; no generic artifact-bytes API.
+type CountPendingPublicationsRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CountPendingPublicationsRequest) Reset() {
+	*x = CountPendingPublicationsRequest{}
+	mi := &file_workos_index_v1_index_source_proto_msgTypes[17]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CountPendingPublicationsRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CountPendingPublicationsRequest) ProtoMessage() {}
+
+func (x *CountPendingPublicationsRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_workos_index_v1_index_source_proto_msgTypes[17]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CountPendingPublicationsRequest.ProtoReflect.Descriptor instead.
+func (*CountPendingPublicationsRequest) Descriptor() ([]byte, []int) {
+	return file_workos_index_v1_index_source_proto_rawDescGZIP(), []int{17}
+}
+
+type CountPendingPublicationsResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Publications still awaiting a terminal outcome.
+	Pending       int64 `protobuf:"varint,1,opt,name=pending,proto3" json:"pending,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CountPendingPublicationsResponse) Reset() {
+	*x = CountPendingPublicationsResponse{}
+	mi := &file_workos_index_v1_index_source_proto_msgTypes[18]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CountPendingPublicationsResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CountPendingPublicationsResponse) ProtoMessage() {}
+
+func (x *CountPendingPublicationsResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_workos_index_v1_index_source_proto_msgTypes[18]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CountPendingPublicationsResponse.ProtoReflect.Descriptor instead.
+func (*CountPendingPublicationsResponse) Descriptor() ([]byte, []int) {
+	return file_workos_index_v1_index_source_proto_rawDescGZIP(), []int{18}
+}
+
+func (x *CountPendingPublicationsResponse) GetPending() int64 {
+	if x != nil {
+		return x.Pending
+	}
+	return 0
+}
+
 type ResolveIndexPublicationResponse_ReviewArtifactSource struct {
 	state        protoimpl.MessageState `protogen:"open.v1"`
 	OwnerUserId  string                 `protobuf:"bytes,1,opt,name=owner_user_id,json=ownerUserId,proto3" json:"owner_user_id,omitempty"`
@@ -1299,7 +1383,7 @@ type ResolveIndexPublicationResponse_ReviewArtifactSource struct {
 
 func (x *ResolveIndexPublicationResponse_ReviewArtifactSource) Reset() {
 	*x = ResolveIndexPublicationResponse_ReviewArtifactSource{}
-	mi := &file_workos_index_v1_index_source_proto_msgTypes[17]
+	mi := &file_workos_index_v1_index_source_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1311,7 +1395,7 @@ func (x *ResolveIndexPublicationResponse_ReviewArtifactSource) String() string {
 func (*ResolveIndexPublicationResponse_ReviewArtifactSource) ProtoMessage() {}
 
 func (x *ResolveIndexPublicationResponse_ReviewArtifactSource) ProtoReflect() protoreflect.Message {
-	mi := &file_workos_index_v1_index_source_proto_msgTypes[17]
+	mi := &file_workos_index_v1_index_source_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1501,7 +1585,10 @@ const file_workos_index_v1_index_source_proto_rawDesc = "" +
 	"\x05title\x18\x03 \x01(\tR\x05title\x12\x18\n" +
 	"\acontent\x18\x04 \x01(\fR\acontent\x129\n" +
 	"\n" +
-	"created_at\x18\x05 \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt*\xb3\x01\n" +
+	"created_at\x18\x05 \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\"!\n" +
+	"\x1fCountPendingPublicationsRequest\"<\n" +
+	" CountPendingPublicationsResponse\x12\x18\n" +
+	"\apending\x18\x01 \x01(\x03R\apending*\xb3\x01\n" +
 	"\x19IndexPublicationOperation\x12+\n" +
 	"'INDEX_PUBLICATION_OPERATION_UNSPECIFIED\x10\x00\x126\n" +
 	"2INDEX_PUBLICATION_OPERATION_REVIEW_ARTIFACT_UPSERT\x10\x01\x121\n" +
@@ -1511,14 +1598,15 @@ const file_workos_index_v1_index_source_proto_rawDesc = "" +
 	"#INDEX_PUBLICATION_OUTCOME_COMPLETED\x10\x01\x12(\n" +
 	"$INDEX_PUBLICATION_OUTCOME_TOMBSTONED\x10\x02\x12)\n" +
 	"%INDEX_PUBLICATION_OUTCOME_UNSUPPORTED\x10\x03\x12%\n" +
-	"!INDEX_PUBLICATION_OUTCOME_CORRUPT\x10\x042\xab\x06\n" +
+	"!INDEX_PUBLICATION_OUTCOME_CORRUPT\x10\x042\xaf\a\n" +
 	"\x1dIndexPublicationSourceService\x12{\n" +
 	"\x16ClaimIndexPublications\x12..workos.index.v1.ClaimIndexPublicationsRequest\x1a/.workos.index.v1.ClaimIndexPublicationsResponse\"\x00\x12~\n" +
 	"\x17ResolveIndexPublication\x12/.workos.index.v1.ResolveIndexPublicationRequest\x1a0.workos.index.v1.ResolveIndexPublicationResponse\"\x00\x12\x84\x01\n" +
 	"\x19CompleteIndexPublications\x121.workos.index.v1.CompleteIndexPublicationsRequest\x1a2.workos.index.v1.CompleteIndexPublicationsResponse\"\x00\x12x\n" +
 	"\x15ReconcileIndexSources\x12-.workos.index.v1.ReconcileIndexSourcesRequest\x1a..workos.index.v1.ReconcileIndexSourcesResponse\"\x00\x12\x84\x01\n" +
 	"\x19ReconcileArchivedProjects\x121.workos.index.v1.ReconcileArchivedProjectsRequest\x1a2.workos.index.v1.ReconcileArchivedProjectsResponse\"\x00\x12\x84\x01\n" +
-	"\x19ResolveIndexSourceContent\x121.workos.index.v1.ResolveIndexSourceContentRequest\x1a2.workos.index.v1.ResolveIndexSourceContentResponse\"\x00B=Z;github.com/yangtao121/workos/gen/go/workos/index/v1;indexv1b\x06proto3"
+	"\x19ResolveIndexSourceContent\x121.workos.index.v1.ResolveIndexSourceContentRequest\x1a2.workos.index.v1.ResolveIndexSourceContentResponse\"\x00\x12\x81\x01\n" +
+	"\x18CountPendingPublications\x120.workos.index.v1.CountPendingPublicationsRequest\x1a1.workos.index.v1.CountPendingPublicationsResponse\"\x00B=Z;github.com/yangtao121/workos/gen/go/workos/index/v1;indexv1b\x06proto3"
 
 var (
 	file_workos_index_v1_index_source_proto_rawDescOnce sync.Once
@@ -1533,7 +1621,7 @@ func file_workos_index_v1_index_source_proto_rawDescGZIP() []byte {
 }
 
 var file_workos_index_v1_index_source_proto_enumTypes = make([]protoimpl.EnumInfo, 3)
-var file_workos_index_v1_index_source_proto_msgTypes = make([]protoimpl.MessageInfo, 18)
+var file_workos_index_v1_index_source_proto_msgTypes = make([]protoimpl.MessageInfo, 20)
 var file_workos_index_v1_index_source_proto_goTypes = []any{
 	(IndexPublicationOperation)(0),                               // 0: workos.index.v1.IndexPublicationOperation
 	(IndexPublicationOutcome)(0),                                 // 1: workos.index.v1.IndexPublicationOutcome
@@ -1555,39 +1643,43 @@ var file_workos_index_v1_index_source_proto_goTypes = []any{
 	(*ReconcileArchivedProjectsResponse)(nil),                    // 17: workos.index.v1.ReconcileArchivedProjectsResponse
 	(*ResolveIndexSourceContentRequest)(nil),                     // 18: workos.index.v1.ResolveIndexSourceContentRequest
 	(*ResolveIndexSourceContentResponse)(nil),                    // 19: workos.index.v1.ResolveIndexSourceContentResponse
-	(*ResolveIndexPublicationResponse_ReviewArtifactSource)(nil), // 20: workos.index.v1.ResolveIndexPublicationResponse.ReviewArtifactSource
-	(*timestamppb.Timestamp)(nil),                                // 21: google.protobuf.Timestamp
+	(*CountPendingPublicationsRequest)(nil),                      // 20: workos.index.v1.CountPendingPublicationsRequest
+	(*CountPendingPublicationsResponse)(nil),                     // 21: workos.index.v1.CountPendingPublicationsResponse
+	(*ResolveIndexPublicationResponse_ReviewArtifactSource)(nil), // 22: workos.index.v1.ResolveIndexPublicationResponse.ReviewArtifactSource
+	(*timestamppb.Timestamp)(nil),                                // 23: google.protobuf.Timestamp
 }
 var file_workos_index_v1_index_source_proto_depIdxs = []int32{
 	0,  // 0: workos.index.v1.IndexPublication.operation:type_name -> workos.index.v1.IndexPublicationOperation
-	21, // 1: workos.index.v1.IndexPublication.occurred_at:type_name -> google.protobuf.Timestamp
+	23, // 1: workos.index.v1.IndexPublication.occurred_at:type_name -> google.protobuf.Timestamp
 	4,  // 2: workos.index.v1.ClaimIndexPublicationsResponse.publications:type_name -> workos.index.v1.IndexPublication
 	2,  // 3: workos.index.v1.ResolveIndexPublicationResponse.verdict:type_name -> workos.index.v1.ResolveIndexPublicationResponse.Verdict
-	20, // 4: workos.index.v1.ResolveIndexPublicationResponse.source:type_name -> workos.index.v1.ResolveIndexPublicationResponse.ReviewArtifactSource
+	22, // 4: workos.index.v1.ResolveIndexPublicationResponse.source:type_name -> workos.index.v1.ResolveIndexPublicationResponse.ReviewArtifactSource
 	4,  // 5: workos.index.v1.ResolveIndexPublicationResponse.publication:type_name -> workos.index.v1.IndexPublication
 	1,  // 6: workos.index.v1.IndexPublicationResult.outcome:type_name -> workos.index.v1.IndexPublicationOutcome
 	8,  // 7: workos.index.v1.CompleteIndexPublicationsRequest.results:type_name -> workos.index.v1.IndexPublicationResult
 	10, // 8: workos.index.v1.CompleteIndexPublicationsResponse.results:type_name -> workos.index.v1.IndexPublicationAck
-	21, // 9: workos.index.v1.ReconcileIndexSource.created_at:type_name -> google.protobuf.Timestamp
+	23, // 9: workos.index.v1.ReconcileIndexSource.created_at:type_name -> google.protobuf.Timestamp
 	13, // 10: workos.index.v1.ReconcileIndexSourcesResponse.sources:type_name -> workos.index.v1.ReconcileIndexSource
-	21, // 11: workos.index.v1.ReconcileArchivedProject.archived_at:type_name -> google.protobuf.Timestamp
+	23, // 11: workos.index.v1.ReconcileArchivedProject.archived_at:type_name -> google.protobuf.Timestamp
 	16, // 12: workos.index.v1.ReconcileArchivedProjectsResponse.projects:type_name -> workos.index.v1.ReconcileArchivedProject
-	21, // 13: workos.index.v1.ResolveIndexSourceContentResponse.created_at:type_name -> google.protobuf.Timestamp
-	21, // 14: workos.index.v1.ResolveIndexPublicationResponse.ReviewArtifactSource.created_at:type_name -> google.protobuf.Timestamp
+	23, // 13: workos.index.v1.ResolveIndexSourceContentResponse.created_at:type_name -> google.protobuf.Timestamp
+	23, // 14: workos.index.v1.ResolveIndexPublicationResponse.ReviewArtifactSource.created_at:type_name -> google.protobuf.Timestamp
 	3,  // 15: workos.index.v1.IndexPublicationSourceService.ClaimIndexPublications:input_type -> workos.index.v1.ClaimIndexPublicationsRequest
 	6,  // 16: workos.index.v1.IndexPublicationSourceService.ResolveIndexPublication:input_type -> workos.index.v1.ResolveIndexPublicationRequest
 	9,  // 17: workos.index.v1.IndexPublicationSourceService.CompleteIndexPublications:input_type -> workos.index.v1.CompleteIndexPublicationsRequest
 	12, // 18: workos.index.v1.IndexPublicationSourceService.ReconcileIndexSources:input_type -> workos.index.v1.ReconcileIndexSourcesRequest
 	15, // 19: workos.index.v1.IndexPublicationSourceService.ReconcileArchivedProjects:input_type -> workos.index.v1.ReconcileArchivedProjectsRequest
 	18, // 20: workos.index.v1.IndexPublicationSourceService.ResolveIndexSourceContent:input_type -> workos.index.v1.ResolveIndexSourceContentRequest
-	5,  // 21: workos.index.v1.IndexPublicationSourceService.ClaimIndexPublications:output_type -> workos.index.v1.ClaimIndexPublicationsResponse
-	7,  // 22: workos.index.v1.IndexPublicationSourceService.ResolveIndexPublication:output_type -> workos.index.v1.ResolveIndexPublicationResponse
-	11, // 23: workos.index.v1.IndexPublicationSourceService.CompleteIndexPublications:output_type -> workos.index.v1.CompleteIndexPublicationsResponse
-	14, // 24: workos.index.v1.IndexPublicationSourceService.ReconcileIndexSources:output_type -> workos.index.v1.ReconcileIndexSourcesResponse
-	17, // 25: workos.index.v1.IndexPublicationSourceService.ReconcileArchivedProjects:output_type -> workos.index.v1.ReconcileArchivedProjectsResponse
-	19, // 26: workos.index.v1.IndexPublicationSourceService.ResolveIndexSourceContent:output_type -> workos.index.v1.ResolveIndexSourceContentResponse
-	21, // [21:27] is the sub-list for method output_type
-	15, // [15:21] is the sub-list for method input_type
+	20, // 21: workos.index.v1.IndexPublicationSourceService.CountPendingPublications:input_type -> workos.index.v1.CountPendingPublicationsRequest
+	5,  // 22: workos.index.v1.IndexPublicationSourceService.ClaimIndexPublications:output_type -> workos.index.v1.ClaimIndexPublicationsResponse
+	7,  // 23: workos.index.v1.IndexPublicationSourceService.ResolveIndexPublication:output_type -> workos.index.v1.ResolveIndexPublicationResponse
+	11, // 24: workos.index.v1.IndexPublicationSourceService.CompleteIndexPublications:output_type -> workos.index.v1.CompleteIndexPublicationsResponse
+	14, // 25: workos.index.v1.IndexPublicationSourceService.ReconcileIndexSources:output_type -> workos.index.v1.ReconcileIndexSourcesResponse
+	17, // 26: workos.index.v1.IndexPublicationSourceService.ReconcileArchivedProjects:output_type -> workos.index.v1.ReconcileArchivedProjectsResponse
+	19, // 27: workos.index.v1.IndexPublicationSourceService.ResolveIndexSourceContent:output_type -> workos.index.v1.ResolveIndexSourceContentResponse
+	21, // 28: workos.index.v1.IndexPublicationSourceService.CountPendingPublications:output_type -> workos.index.v1.CountPendingPublicationsResponse
+	22, // [22:29] is the sub-list for method output_type
+	15, // [15:22] is the sub-list for method input_type
 	15, // [15:15] is the sub-list for extension type_name
 	15, // [15:15] is the sub-list for extension extendee
 	0,  // [0:15] is the sub-list for field type_name
@@ -1604,7 +1696,7 @@ func file_workos_index_v1_index_source_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_workos_index_v1_index_source_proto_rawDesc), len(file_workos_index_v1_index_source_proto_rawDesc)),
 			NumEnums:      3,
-			NumMessages:   18,
+			NumMessages:   20,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

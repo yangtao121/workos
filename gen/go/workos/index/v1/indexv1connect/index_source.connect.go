@@ -58,6 +58,9 @@ const (
 	// IndexPublicationSourceServiceResolveIndexSourceContentProcedure is the fully-qualified name of
 	// the IndexPublicationSourceService's ResolveIndexSourceContent RPC.
 	IndexPublicationSourceServiceResolveIndexSourceContentProcedure = "/workos.index.v1.IndexPublicationSourceService/ResolveIndexSourceContent"
+	// IndexPublicationSourceServiceCountPendingPublicationsProcedure is the fully-qualified name of the
+	// IndexPublicationSourceService's CountPendingPublications RPC.
+	IndexPublicationSourceServiceCountPendingPublicationsProcedure = "/workos.index.v1.IndexPublicationSourceService/CountPendingPublications"
 )
 
 // IndexPublicationSourceServiceClient is a client for the
@@ -69,6 +72,7 @@ type IndexPublicationSourceServiceClient interface {
 	ReconcileIndexSources(context.Context, *connect.Request[v1.ReconcileIndexSourcesRequest]) (*connect.Response[v1.ReconcileIndexSourcesResponse], error)
 	ReconcileArchivedProjects(context.Context, *connect.Request[v1.ReconcileArchivedProjectsRequest]) (*connect.Response[v1.ReconcileArchivedProjectsResponse], error)
 	ResolveIndexSourceContent(context.Context, *connect.Request[v1.ResolveIndexSourceContentRequest]) (*connect.Response[v1.ResolveIndexSourceContentResponse], error)
+	CountPendingPublications(context.Context, *connect.Request[v1.CountPendingPublicationsRequest]) (*connect.Response[v1.CountPendingPublicationsResponse], error)
 }
 
 // NewIndexPublicationSourceServiceClient constructs a client for the
@@ -119,6 +123,12 @@ func NewIndexPublicationSourceServiceClient(httpClient connect.HTTPClient, baseU
 			connect.WithSchema(indexPublicationSourceServiceMethods.ByName("ResolveIndexSourceContent")),
 			connect.WithClientOptions(opts...),
 		),
+		countPendingPublications: connect.NewClient[v1.CountPendingPublicationsRequest, v1.CountPendingPublicationsResponse](
+			httpClient,
+			baseURL+IndexPublicationSourceServiceCountPendingPublicationsProcedure,
+			connect.WithSchema(indexPublicationSourceServiceMethods.ByName("CountPendingPublications")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -130,6 +140,7 @@ type indexPublicationSourceServiceClient struct {
 	reconcileIndexSources     *connect.Client[v1.ReconcileIndexSourcesRequest, v1.ReconcileIndexSourcesResponse]
 	reconcileArchivedProjects *connect.Client[v1.ReconcileArchivedProjectsRequest, v1.ReconcileArchivedProjectsResponse]
 	resolveIndexSourceContent *connect.Client[v1.ResolveIndexSourceContentRequest, v1.ResolveIndexSourceContentResponse]
+	countPendingPublications  *connect.Client[v1.CountPendingPublicationsRequest, v1.CountPendingPublicationsResponse]
 }
 
 // ClaimIndexPublications calls
@@ -167,6 +178,12 @@ func (c *indexPublicationSourceServiceClient) ResolveIndexSourceContent(ctx cont
 	return c.resolveIndexSourceContent.CallUnary(ctx, req)
 }
 
+// CountPendingPublications calls
+// workos.index.v1.IndexPublicationSourceService.CountPendingPublications.
+func (c *indexPublicationSourceServiceClient) CountPendingPublications(ctx context.Context, req *connect.Request[v1.CountPendingPublicationsRequest]) (*connect.Response[v1.CountPendingPublicationsResponse], error) {
+	return c.countPendingPublications.CallUnary(ctx, req)
+}
+
 // IndexPublicationSourceServiceHandler is an implementation of the
 // workos.index.v1.IndexPublicationSourceService service.
 type IndexPublicationSourceServiceHandler interface {
@@ -176,6 +193,7 @@ type IndexPublicationSourceServiceHandler interface {
 	ReconcileIndexSources(context.Context, *connect.Request[v1.ReconcileIndexSourcesRequest]) (*connect.Response[v1.ReconcileIndexSourcesResponse], error)
 	ReconcileArchivedProjects(context.Context, *connect.Request[v1.ReconcileArchivedProjectsRequest]) (*connect.Response[v1.ReconcileArchivedProjectsResponse], error)
 	ResolveIndexSourceContent(context.Context, *connect.Request[v1.ResolveIndexSourceContentRequest]) (*connect.Response[v1.ResolveIndexSourceContentResponse], error)
+	CountPendingPublications(context.Context, *connect.Request[v1.CountPendingPublicationsRequest]) (*connect.Response[v1.CountPendingPublicationsResponse], error)
 }
 
 // NewIndexPublicationSourceServiceHandler builds an HTTP handler from the service implementation.
@@ -221,6 +239,12 @@ func NewIndexPublicationSourceServiceHandler(svc IndexPublicationSourceServiceHa
 		connect.WithSchema(indexPublicationSourceServiceMethods.ByName("ResolveIndexSourceContent")),
 		connect.WithHandlerOptions(opts...),
 	)
+	indexPublicationSourceServiceCountPendingPublicationsHandler := connect.NewUnaryHandler(
+		IndexPublicationSourceServiceCountPendingPublicationsProcedure,
+		svc.CountPendingPublications,
+		connect.WithSchema(indexPublicationSourceServiceMethods.ByName("CountPendingPublications")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/workos.index.v1.IndexPublicationSourceService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case IndexPublicationSourceServiceClaimIndexPublicationsProcedure:
@@ -235,6 +259,8 @@ func NewIndexPublicationSourceServiceHandler(svc IndexPublicationSourceServiceHa
 			indexPublicationSourceServiceReconcileArchivedProjectsHandler.ServeHTTP(w, r)
 		case IndexPublicationSourceServiceResolveIndexSourceContentProcedure:
 			indexPublicationSourceServiceResolveIndexSourceContentHandler.ServeHTTP(w, r)
+		case IndexPublicationSourceServiceCountPendingPublicationsProcedure:
+			indexPublicationSourceServiceCountPendingPublicationsHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -266,4 +292,8 @@ func (UnimplementedIndexPublicationSourceServiceHandler) ReconcileArchivedProjec
 
 func (UnimplementedIndexPublicationSourceServiceHandler) ResolveIndexSourceContent(context.Context, *connect.Request[v1.ResolveIndexSourceContentRequest]) (*connect.Response[v1.ResolveIndexSourceContentResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("workos.index.v1.IndexPublicationSourceService.ResolveIndexSourceContent is not implemented"))
+}
+
+func (UnimplementedIndexPublicationSourceServiceHandler) CountPendingPublications(context.Context, *connect.Request[v1.CountPendingPublicationsRequest]) (*connect.Response[v1.CountPendingPublicationsResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("workos.index.v1.IndexPublicationSourceService.CountPendingPublications is not implemented"))
 }

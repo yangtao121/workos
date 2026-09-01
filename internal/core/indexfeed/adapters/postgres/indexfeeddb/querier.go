@@ -15,6 +15,7 @@ type Querier interface {
 	AppendIndexPublication(ctx context.Context, arg AppendIndexPublicationParams) (int64, error)
 	ClaimPendingIndexPublications(ctx context.Context, arg ClaimPendingIndexPublicationsParams) ([]ClaimPendingIndexPublicationsRow, error)
 	CompleteIndexPublication(ctx context.Context, arg CompleteIndexPublicationParams) (int64, error)
+	CountPendingIndexPublications(ctx context.Context) (int64, error)
 	LockIndexPublicationForResolve(ctx context.Context, arg LockIndexPublicationForResolveParams) (LockIndexPublicationForResolveRow, error)
 }
 

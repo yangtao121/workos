@@ -197,6 +197,13 @@ message ResolveIndexSourceContentResponse {
 // Core-side authority for the index feed: durable publication claim/lease,
 // exact source resolution, bounded reconciliation pages. Internal network
 // only; never on the gateway allowlist; no generic artifact-bytes API.
+message CountPendingPublicationsRequest {}
+
+message CountPendingPublicationsResponse {
+  // Publications still awaiting a terminal outcome.
+  int64 pending = 1;
+}
+
 service IndexPublicationSourceService {
   rpc ClaimIndexPublications(ClaimIndexPublicationsRequest) returns (ClaimIndexPublicationsResponse) {}
   rpc ResolveIndexPublication(ResolveIndexPublicationRequest) returns (ResolveIndexPublicationResponse) {}
@@ -204,4 +211,5 @@ service IndexPublicationSourceService {
   rpc ReconcileIndexSources(ReconcileIndexSourcesRequest) returns (ReconcileIndexSourcesResponse) {}
   rpc ReconcileArchivedProjects(ReconcileArchivedProjectsRequest) returns (ReconcileArchivedProjectsResponse) {}
   rpc ResolveIndexSourceContent(ResolveIndexSourceContentRequest) returns (ResolveIndexSourceContentResponse) {}
+  rpc CountPendingPublications(CountPendingPublicationsRequest) returns (CountPendingPublicationsResponse) {}
 }

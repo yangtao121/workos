@@ -70,6 +70,7 @@ type Handler struct {
 	proxy       *httputil.ReverseProxy
 	runtime     *httputil.ReverseProxy
 	reliability *httputil.ReverseProxy
+	indexer     *httputil.ReverseProxy
 	logger      *slog.Logger
 	auth        *AuthStack
 	// originHost is the exact Host value requests must carry in production.
@@ -100,6 +101,13 @@ var runtimeServicePrefixes = []string{
 	"/workos.bridge.v1.AppBridgeService/",
 }
 
+// indexerServicePrefix is the only public service routed to the optional
+// Indexer upstream: exactly the two owner-facing IndexService RPCs. The
+// private publication source service, the local admin service, and every
+// other workos.index.v1 service stay unreachable — the prefix match ends at
+// the exact service path, never the package namespace.
+const indexerServicePrefix = "/workos.index.v1.IndexService/"
+
 // incidentServicePrefix is the only public service routed to the optional
 // Reliability upstream. It is added to the dispatch only when the upstream
 // is configured; the rest of the gateway (readiness included) never depends
@@ -128,8 +136,18 @@ func New(cfg config.Config, logger *slog.Logger, auth *AuthStack) (*Handler, err
 			return nil, err
 		}
 	}
+	// The Indexer upstream is optional like Reliability: an unconfigured URL
+	// keeps the knowledge routes 404 while every other surface — readiness
+	// included — is unaffected.
+	var indexer *httputil.ReverseProxy
+	if strings.TrimSpace(cfg.Services.Indexer) != "" {
+		indexer, err = newUpstreamProxy(cfg.Services.Indexer, cfg, logger, "indexer")
+		if err != nil {
+			return nil, err
+		}
+	}
 	handler := &Handler{
-		config: cfg, proxy: core, runtime: runtime, reliability: reliability,
+		config: cfg, proxy: core, runtime: runtime, reliability: reliability, indexer: indexer,
 		logger: logger, auth: auth,
 	}
 	if !cfg.Auth.DevBypass {
@@ -239,6 +257,14 @@ func (h *Handler) serveDev(w http.ResponseWriter, r *http.Request) {
 		h.gate(w, r, h.reliability)
 		return
 	}
+	if strings.HasPrefix(r.URL.Path, indexerServicePrefix) {
+		if h.indexer == nil {
+			http.NotFound(w, r)
+			return
+		}
+		h.gate(w, r, h.indexer)
+		return
+	}
 	if strings.HasPrefix(r.URL.Path, "/workos.") {
 		http.NotFound(w, r)
 		return
@@ -307,6 +333,17 @@ func (h *Handler) serveProduction(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		h.reliability.ServeHTTP(w, r.WithContext(identity))
+		return
+	case strings.HasPrefix(path, indexerServicePrefix):
+		if h.indexer == nil {
+			http.NotFound(w, r)
+			return
+		}
+		identity, ok := h.requireSession(w, r)
+		if !ok {
+			return
+		}
+		h.indexer.ServeHTTP(w, r.WithContext(identity))
 		return
 	case strings.HasPrefix(path, "/workos."):
 		// Private services — including the admin service — are never

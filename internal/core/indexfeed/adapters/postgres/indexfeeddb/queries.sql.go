@@ -173,6 +173,17 @@ func (q *Queries) CompleteIndexPublication(ctx context.Context, arg CompleteInde
 	return result.RowsAffected(), nil
 }
 
+const countPendingIndexPublications = `-- name: CountPendingIndexPublications :one
+SELECT count(*) FROM workos_core.index_publications WHERE outcome IS NULL
+`
+
+func (q *Queries) CountPendingIndexPublications(ctx context.Context) (int64, error) {
+	row := q.db.QueryRow(ctx, countPendingIndexPublications)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const lockIndexPublicationForResolve = `-- name: LockIndexPublicationForResolve :one
 SELECT id, operation, owner_user_id, project_id, source_type, source_id,
        artifact_type, digest, occurred_at
