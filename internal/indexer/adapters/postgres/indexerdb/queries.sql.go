@@ -510,7 +510,7 @@ WHERE score > 0
        OR (score = $1::double precision
            AND (source_created_at < $2::timestamptz
                 OR (source_created_at = $2::timestamptz
-                    AND source_id < $3::text))))
+                    AND source_id < $3::uuid))))
 ORDER BY score DESC, source_created_at DESC, source_id
 LIMIT $4
 `

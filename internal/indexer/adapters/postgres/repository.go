@@ -252,9 +252,11 @@ func (r *Repository) Search(ctx context.Context, query domain.SearchQuery) (doma
 		return domain.SearchPage{}, err
 	}
 	snapshot := canonical(time.Now().UTC())
+	// First-page sentinels: everything ranks below 1e9 and sorts after the
+	// nil uuid, so the cursor predicate includes the whole page.
 	cursorScore := 1e9
 	var cursorCreated time.Time
-	var cursorSource string
+	cursorSource := uuid.Nil.String()
 	if query.Decoded != nil {
 		if query.Decoded.GenerationID != generation {
 			// The generation moved (rebuild promoted): the old chain must not

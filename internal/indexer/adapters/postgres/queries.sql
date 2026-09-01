@@ -144,7 +144,7 @@ WHERE score > 0
        OR (score = sqlc.arg(cursor_score)::double precision
            AND (source_created_at < sqlc.arg(cursor_created_at)::timestamptz
                 OR (source_created_at = sqlc.arg(cursor_created_at)::timestamptz
-                    AND source_id < sqlc.arg(cursor_source_id)::text))))
+                    AND source_id < sqlc.arg(cursor_source_id)::uuid))))
 ORDER BY score DESC, source_created_at DESC, source_id
 LIMIT sqlc.arg(row_limit);
 
