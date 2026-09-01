@@ -1,6 +1,7 @@
 package gateway
 
 import (
+	"strings"
 	"io"
 	"log/slog"
 	"net/http"
@@ -311,5 +312,93 @@ func TestPrivateAppAgentServiceIsNotForwarded(t *testing.T) {
 	}
 	if coreCalled.Load() || runtimeCalled.Load() {
 		t.Fatal("gateway forwarded the private Core AppAgent service")
+	}
+}
+
+// The indexer upstream is optional and exact: only the two owner-facing
+// IndexService RPCs route there when configured; the private publication
+// source service and the local admin service stay deterministic 404s over
+// TCP, an unconfigured URL keeps the knowledge routes 404, an unreachable
+// upstream degrades to the sanitized 503, and spoofed identity headers are
+// replaced by the trusted dev identity (ADR-0013 §8).
+func TestIndexerRoutesAreOptionalExactAndSanitized(t *testing.T) {
+	t.Parallel()
+	var seenPath string
+	var seenOwner string
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		seenPath = r.URL.Path
+		seenOwner = r.Header.Get(identity.UserHeader)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer upstream.Close()
+
+	handler := newTestHandler(t, config.Config{
+		Services: config.URLs{Indexer: upstream.URL},
+		Auth:     config.Auth{DevBypass: true, OwnerID: "owner-1", DeviceID: "device-1"},
+	})
+
+	// The two owner-facing RPCs route to the indexer upstream.
+	for _, path := range []string{
+		"/workos.index.v1.IndexService/Search",
+		"/workos.index.v1.IndexService/IndexContext",
+	} {
+		request := httptest.NewRequest(http.MethodPost, path, strings.NewReader("{}"))
+		request.Header.Set("Content-Type", "application/json")
+		request.Header.Set(identity.UserHeader, "attacker")
+		response := httptest.NewRecorder()
+		handler.ServeHTTP(response, request)
+		if response.Code != http.StatusOK {
+			t.Fatalf("%s routed to indexer returned %d", path, response.Code)
+		}
+	}
+	if seenOwner != "owner-1" {
+		t.Fatalf("spoofed owner reached the indexer: %q", seenOwner)
+	}
+	if !strings.HasPrefix(seenPath, "/workos.index.v1.IndexService/") {
+		t.Fatalf("unexpected upstream path %q", seenPath)
+	}
+
+	// Private services in the same package namespace never route.
+	for _, path := range []string{
+		"/workos.index.v1.IndexPublicationSourceService/ClaimIndexPublications",
+		"/workos.index.v1.IndexAdminService/StartIndexRebuild",
+	} {
+		request := httptest.NewRequest(http.MethodPost, path, strings.NewReader("{}"))
+		response := httptest.NewRecorder()
+		handler.ServeHTTP(response, request)
+		if response.Code != http.StatusNotFound {
+			t.Fatalf("%s returned %d, want 404", path, response.Code)
+		}
+	}
+
+	// Unconfigured URL: knowledge routes 404, everything else unaffected.
+	unconfigured := newTestHandler(t, config.Config{
+		Auth: config.Auth{DevBypass: true, OwnerID: "owner-1", DeviceID: "device-1"},
+	})
+	request := httptest.NewRequest(http.MethodPost, "/workos.index.v1.IndexService/Search", strings.NewReader("{}"))
+	response := httptest.NewRecorder()
+	unconfigured.ServeHTTP(response, request)
+	if response.Code != http.StatusNotFound {
+		t.Fatalf("unconfigured indexer search returned %d, want 404", response.Code)
+	}
+	projectRequest := httptest.NewRequest(http.MethodPost, "/workos.project.v1.ProjectService/ListProjects", strings.NewReader("{}"))
+	projectResponse := httptest.NewRecorder()
+	unconfigured.ServeHTTP(projectResponse, projectRequest)
+	if projectResponse.Code == http.StatusNotFound {
+		t.Fatalf("unconfigured indexer broke core routing: %d", projectResponse.Code)
+	}
+
+	// Unreachable upstream: sanitized 503.
+	broken := newTestHandler(t, config.Config{
+		Services: config.URLs{Indexer: "http://127.0.0.1:1"},
+		Auth:     config.Auth{DevBypass: true, OwnerID: "owner-1", DeviceID: "device-1"},
+	})
+	brokenResponse := httptest.NewRecorder()
+	broken.ServeHTTP(brokenResponse, httptest.NewRequest(http.MethodPost, "/workos.index.v1.IndexService/Search", strings.NewReader("{}")))
+	if brokenResponse.Code != http.StatusServiceUnavailable {
+		t.Fatalf("unreachable indexer returned %d, want 503", brokenResponse.Code)
+	}
+	if body := brokenResponse.Body.String(); body != "workos indexer unavailable\n" {
+		t.Fatalf("unsanitized indexer failure body %q", body)
 	}
 }
