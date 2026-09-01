@@ -37,7 +37,7 @@ function validateHit(
   const title = hit.title;
   if (title.length === 0 || title.length > 200) return null;
   const excerpt = hit.excerpt;
-  if ([...excerpt].length > MAX_EXCERPT_CODE_POINTS) return null;
+  if (Array.from(excerpt).length > MAX_EXCERPT_CODE_POINTS) return null;
   // The typed ref and the legacy projection must agree — a drifting pair is
   // corruption, not a display problem.
   if (

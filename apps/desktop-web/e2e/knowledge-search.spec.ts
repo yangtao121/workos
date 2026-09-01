@@ -42,7 +42,9 @@ test("owner searches knowledge, pins a hit as Agent context, and re-runs a task"
   }
   await expect(firstResult).toBeVisible({ timeout: 30_000 });
   await expect(firstResult).toContainText("Fake Harness Review Document");
-  await expect(firstResult.locator(".knowledge-excerpt")).toContainText("deterministic synthetic output");
+  await expect(firstResult.locator(".knowledge-excerpt")).toContainText(
+    "deterministic synthetic output",
+  );
   // Excerpts are inert text: no HTML injection surface anywhere.
   const knowledgeHtml = await page.locator(".knowledge-results").innerHTML();
   expect(knowledgeHtml).not.toContain("<script");
@@ -92,20 +94,15 @@ test("an empty query never reaches the server and results stay per project", asy
   await page.getByTestId("knowledge-search-input").fill("   ");
   await page.getByTestId("knowledge-search-submit").click();
   // The idle hint stays: no RPC was issued and no fake state appeared.
-  await expect(page.locator(".knowledge-center-body")).toContainText(
-    "Search the review documents",
-  );
+  await expect(page.locator(".knowledge-center-body")).toContainText("Search the review documents");
 
   // A fresh project cannot see another project's knowledge even for the
   // same phrase.
-  const createResponse = await request.post(
-    "/workos.project.v1.ProjectService/CreateProject",
-    {
-      data: {
-        idempotencyKey: `e2e-knowledge-empty-project-${stamp}`,
-        name: `Knowledge Empty 2 ${stamp}`,
-      },
+  const createResponse = await request.post("/workos.project.v1.ProjectService/CreateProject", {
+    data: {
+      idempotencyKey: `e2e-knowledge-empty-project-${stamp}`,
+      name: `Knowledge Empty 2 ${stamp}`,
     },
-  );
+  });
   expect(createResponse.ok()).toBeTruthy();
 });

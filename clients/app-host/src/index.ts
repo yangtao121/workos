@@ -204,7 +204,7 @@ function validKnowledgeSearchPayload(payload: unknown): payload is BridgeKnowled
   const withoutToken = hasExactKeys(payload, ["pageSize", "query"]);
   const minimal = hasExactKeys(payload, ["query"]);
   if (!withAll && !withoutToken && !minimal) return false;
-  const { query, pageSize, pageToken } = payload as Record<string, unknown>;
+  const { query, pageSize, pageToken } = payload;
   if (typeof query !== "string" || query.length === 0) return false;
   if (new TextEncoder().encode(query).byteLength > MAX_KNOWLEDGE_QUERY_BYTES) return false;
   if (pageSize !== undefined) {

@@ -191,9 +191,10 @@ test("captures knowledge center and app surface evidence", async ({ page }) => {
   await row.getByRole("button", { name: "Open", exact: true }).click();
   const frame = page.locator(".app-surface-frame");
   await expect(frame).toBeVisible({ timeout: libraryTimeout });
-  await expect(
-    page.frameLocator(".app-surface-frame").locator("#root"),
-  ).toHaveText("bridge-ready", { timeout: libraryTimeout });
+  await expect(page.frameLocator(".app-surface-frame").locator("#root")).toHaveText(
+    "bridge-ready",
+    { timeout: libraryTimeout },
+  );
   const frameQuery = page.frameLocator(".app-surface-frame").locator("#query");
   for (let attempt = 0; attempt < 40; attempt++) {
     await frameQuery.fill(phrase);
@@ -201,10 +202,9 @@ test("captures knowledge center and app surface evidence", async ({ page }) => {
     if ((await page.frameLocator(".app-surface-frame").locator("#results li").count()) > 0) break;
     await page.waitForTimeout(500);
   }
-  await expect(
-    page.frameLocator(".app-surface-frame").locator("#results li").first(),
-  ).toBeVisible({ timeout: 30_000 });
+  await expect(page.frameLocator(".app-surface-frame").locator("#results li").first()).toBeVisible({
+    timeout: 30_000,
+  });
   await capture(page, "app-knowledge-search--results--1440x900.png");
   await page.getByRole("button", { name: "Close App", exact: true }).click();
-
 });

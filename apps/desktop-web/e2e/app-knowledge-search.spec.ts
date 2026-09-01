@@ -197,13 +197,12 @@ test("granted app searches project knowledge and fails closed on revoke", async 
   // Poll the authoritative Core list until the fake document materializes.
   let artifactId = "";
   for (let attempt = 0; attempt < 60 && artifactId === ""; attempt++) {
-    const listed = await page.request.post(
-      "/workos.artifact.v1.ArtifactService/ListArtifacts",
-      { data: { projectId, page: { pageSize: 10 } } },
-    );
+    const listed = await page.request.post("/workos.artifact.v1.ArtifactService/ListArtifacts", {
+      data: { projectId, page: { pageSize: 10 } },
+    });
     if (listed.ok()) {
       const body = (await listed.json()) as { artifacts: { id: string }[] };
-      const first = body.artifacts?.[0];
+      const first = body.artifacts[0];
       if (first) artifactId = first.id;
     }
     if (artifactId === "") await page.waitForTimeout(500);
@@ -242,24 +241,24 @@ test("granted app searches project knowledge and fails closed on revoke", async 
   expect(await frame.getAttribute("sandbox")).not.toContain("allow-same-origin");
   const frameRoot = () => page.frameLocator(".app-surface-frame").locator("#root");
   await expect(frameRoot()).toHaveText("bridge-ready", { timeout: libraryTimeout });
-  await expect(
-    page.frameLocator(".app-surface-frame").locator("#methods"),
-  ).toHaveText("methods:knowledge.search");
+  await expect(page.frameLocator(".app-surface-frame").locator("#methods")).toHaveText(
+    "methods:knowledge.search",
+  );
 
   // Search the project knowledge: the hit must carry the exact artifact
   // identity the owner-side projection holds, rendered as inert text.
   const frameQuery = page.frameLocator(".app-surface-frame").locator("#query");
-  const firstHit = page
-    .frameLocator(".app-surface-frame")
-    .locator("#results li")
-    .first();
+  const firstHit = page.frameLocator(".app-surface-frame").locator("#results li").first();
   // Bounded polling: the durable ingestion may lag the artifact by a moment,
   // so re-issue the search until the hit surfaces (never a fixed sleep).
   const searchButton = page.frameLocator(".app-surface-frame").locator("#search");
   for (let attempt = 0; attempt < 40; attempt++) {
     await frameQuery.fill(phrase);
     await searchButton.click();
-    if ((await firstHit.count()) > 0 && (await firstHit.getAttribute("data-artifact-id")) !== null) {
+    if (
+      (await firstHit.count()) > 0 &&
+      (await firstHit.getAttribute("data-artifact-id")) !== null
+    ) {
       break;
     }
     await page.waitForTimeout(500);
@@ -294,7 +293,7 @@ test("granted app searches project knowledge and fails closed on revoke", async 
       data: {
         idempotencyKey: `e2e-knowledge-revoke-${stamp}`,
         projectId,
-        installationId: mine!.id,
+        installationId: mine === undefined ? "" : mine.id,
         expectedProjectRevision: revision,
         grantedPermissions: [],
       },
@@ -304,9 +303,10 @@ test("granted app searches project knowledge and fails closed on revoke", async 
 
   await frameQuery.fill(phrase);
   await searchButton.click();
-  await expect(
-    page.frameLocator(".app-surface-frame").locator("#search-error"),
-  ).toHaveText("search-error:permission_denied", { timeout: 30_000 });
+  await expect(page.frameLocator(".app-surface-frame").locator("#search-error")).toHaveText(
+    "search-error:permission_denied",
+    { timeout: 30_000 },
+  );
 });
 
 test("an app without knowledge.read never negotiates knowledge.search", async ({ page }) => {
@@ -340,7 +340,7 @@ test("an app without knowledge.read never negotiates knowledge.search", async ({
   const frameRoot = () => page.frameLocator(".app-surface-frame").locator("#root");
   await expect(frameRoot()).toHaveText("bridge-ready", { timeout: libraryTimeout });
   // The agent grant set must not implicitly carry knowledge.search.
-  await expect(
-    page.frameLocator(".app-surface-frame").locator("#methods"),
-  ).toHaveText("methods:agent.run,agent.stream");
+  await expect(page.frameLocator(".app-surface-frame").locator("#methods")).toHaveText(
+    "methods:agent.run,agent.stream",
+  );
 });
