@@ -1,6 +1,7 @@
 # Task: v1 Local-first Notification——持久通知、实时补收、跨设备已读与授权 App 闭环
 
-- 状态：active
+- 状态：done（三门禁 + 全量回归通过；APNs/FCM 后台推送、Service Worker push、通知搜索、
+  用户偏好如实 unavailable；Reliability supervisor 判定不变）
 - Owner/Agent：overnight implementation agent（唯一写入者，单 branch/worktree）
 - 进程/模块：workos-core（Notification 模块 + tx-scoped producers + private Reliability/App ingest）、
   reliability-host（notification publication outbox + source service）、workos-gateway（public
@@ -123,22 +124,66 @@ Podman 状态升级。
 - `make check`：PASS（exit 0）。
 - `make test-integration`：PASS（exit 0）。`make test-e2e`：PASS（19 passed / 12 skipped）。
 
-## 验收
+## 验收（完成记录）
 
-- [ ] ADR 覆盖全部裁决；Proto additive；migration owner 注释；`make generate` 幂等
-- [ ] Core notification 模块分层 + 真实 PostgreSQL 集成测试（并发/replay/foreign/corruption/
-      transient/last-page/read monotonicity/retention reset）
-- [ ] 三类 system producer 与 source 同事务；rollback 无 orphan notification
-- [ ] Reliability publication claim/complete at-least-once；两端 restart 不重复
-- [ ] Gateway allowlist + identity stripping + stream TTL/revalidate + 并发预算
-- [ ] 双 Chromium context read 收敛、断线补收、Core/Gateway restart
-- [ ] Notification Center 三布局 + typed action + 视觉证据（before/after/current + notes）
-- [ ] App notifications.create：grant/deny/revoke/uninstall/regrant/restart/quota/hostile payload
-- [ ] `make test-notification-center` / `make test-incident-notifications` / `make test-app-notifications`
-- [ ] `make check`、`make test-integration`、`make test-e2e`、`make test-adaptive-shell`、
-      `make test-lan-pairing` 通过；restart battery notification seed/verify
-- [ ] `docs/status.json`、`docs/architecture/implementation.md`、README 生成区块同步
+- [x] ADR-0014 覆盖全部裁决；Proto additive（`workos.notification.v1` 公共 + 私有 ingest +
+      私有 incident source）；migration `029`（Core Notification）/`030`（reliability-host
+      publication）owner 注释；`make generate` 幂等（最终验证复跑）
+- [x] Core notification 模块分层（domain/ports/application/adapters/transport）+ 真实 PostgreSQL
+      集成测试：exactly-once projection + 并发收敛、digest drift fail closed、read 幂等/
+      conflict/单调、分页满页无 phantom、sweep gap、并发序列唯一递增
+      （`tests/integration/notification_test.go`）
+- [x] 三类 system producer 与 source 同事务：terminal/approval/artifact 通知失败回滚 source
+      （`TestTaskTerminalNotificationAtomicity`、
+      `TestArtifactNotificationProjectsExactlyOnceAndFailsAtomically`）；orchestration 单测
+      断言 replay 不重复投影
+- [x] Reliability publication claim/complete at-least-once：lease 互斥、complete 丢失 replay
+      receipt no-op、digest drift fail closed 且可收敛
+      （`TestIncidentPublicationClaimApplyComplete`、`TestIncidentPublicationDigestDriftFailsClosed`）
+- [x] Gateway：精确 allowlist（私有 ingest/source 404）+ identity 剥除注入 + watch 流 30s
+      周期 session 重验 + Core 侧有界 lifetime/heartbeat/per-owner 并发预算 + RESET_REQUIRED
+- [x] 双 Chromium context 实时到达、跨设备 read 收敛、断线补收、Gateway/Core 重启持久
+      （`notification-center.spec.ts` 两阶段）
+- [x] Notification Center 三布局（expanded bell+badge / medium Dock / compact 底部导航）+
+      typed action + before/after/current + notes（`docs/ui/desktop-web/changes/
+20260902-local-first-notifications/`）
+- [x] App notifications.create：grant 协商/deny、same-key replay 精确、different-key 新事实、
+      revoke 后 stale port `permission_denied` 零副作用、burst/day 配额原子、restart 后配额与
+      幂等保持（`TestAppNotificationIngest*` + `app-notifications.spec.ts`）
+- [x] 三专项门禁 PASS：`make test-notification-center`、`make test-incident-notifications`、
+      `make test-app-notifications`
+- [x] `make check`、`make test-integration`（含 notifications seed/verify restart battery）、
+      `make test-e2e`、`make test-adaptive-shell`、`make test-lan-pairing` 通过（见命令结果汇总）
+- [x] `docs/status.json`（新增 Notification working slice + Gateway/Desktop/Runtime/Reliability
+      evidence 增量）、`docs/architecture/implementation.md`、README 生成区块同步
+
+## 命令结果汇总（最终验证，feature branch HEAD 执行）
+
+- `git diff --check`：干净。
+- `make generate` 两次：第二次无 diff（`git diff --exit-code -- gen sdk/protocol/src/gen` 通过）。
+- `make check`：PASS。
+- `make test-integration`：PASS（含 restart battery notifications seed/verify）。
+- `make test-e2e`：PASS（全部既有 spec + 新增三个通知 spec）。
+- `make test-notification-center`：PASS（Go 集成 + 跨进程 incident gate + 双 context E2E +
+  重启验证阶段）。
+- `make test-incident-notifications`：PASS（明确注释:只证明软件链路,不证明 rootless supervisor）。
+- `make test-app-notifications`：PASS（Go ingest 门禁 + opaque Web Bundle E2E）。
+- `make test-adaptive-shell` / `make test-lan-pairing`：PASS。
+- `buf lint` + 相对 main 的 `buf breaking`：PASS（纯 additive）。
+- 视觉 PNG：7 张 after/current 全部尺寸核对（1440×900 / 820×1180 / 390×844）+ 人工检查。
 
 ## 交接
 
-（实现过程中持续更新：已验证命令、未决风险、下一步）
+- Branch:`feat/v1-local-first-notifications`,基线 `4e6e0b8`,唯一 branch/worktree/写入者。
+  提交序列:docs boundary → durable service → atomic producers → reliability bridge →
+  resumable stream → adaptive center → quota-bound app notifications → (本收口提交)。
+  未 merge、未 push。
+- Proto/migration owner:`workos.notification.v1` 三文件(Core Notification);
+  `029` owner workos-core Notification;`030` owner reliability-host。
+- 未决风险与下一步:
+  - 后台推送(APNs/FCM/Web Push/Service Worker)未实现,状态如实 unavailable;未来需要
+    独立 ADR 与 relay 信任根。
+  - 通知标题/正文模板为英文常量;i18n/用户偏好/免打扰未做(范围外)。
+  - `make test-podman-fixture` blocker 未触碰,Reliability supervisor 判定不变。
+  - watch 流 2 分钟有界 lifetime + 30s Gateway 重验是保守上限,可在真实设备规模下调优。
+  - app 通知配额(10/分钟、200/日)为固定保守值,后续可配置化。

@@ -975,6 +975,53 @@ structured run：RunStarted → deltas 只聚合不发布 → shutdown
   malformed fail-closed 链路）；`TestArtifactBatchAtomicity` 对真实 PostgreSQL 证明
   all-or-none/exact replay/conflict。
 
+## Local-first Notification(ADR-0014,2026-09-02)
+
+`workos-core` Notification 模块(`internal/core/notification`)是 notification fact、owner-wide
+monotonic change stream、monotonic read state、App quota/idempotency receipt 的唯一 durable
+authority(migration `029`,owner:workos-core Notification)。事实边界:
+
+```text
+Agent approval / task terminal / review Artifact(Core 事务内 tx-scoped sink)
+  或 Reliability Incident(migration 030 publication → private claim/complete → Core consumer)
+  或 granted App(bridge notifications.create → Core private ingest)
+  → 单事务:source receipt + notification + CREATED change
+  → Gateway 公开 NotificationService(list/get/read/summary/watch)
+  → Desktop 内存 projection(可丢弃、可重建),双设备 read 收敛
+```
+
+- 事务边界:approval required、首次 task terminal、review artifact created 三类系统 producer
+  通过 neutral tx-scoped sink 加入 source 事务,notification 失败则 source 整体回滚(hard
+  requirement,零 orphan notification);receipt `(source_process, source_id)` 物理唯一仲裁
+  replay/并发/response loss,same source/different digest 是净化 Internal。Reliability 侧
+  migration `030`(owner:reliability-host)在 incident 事务内追加 publication,Core consumer
+  经 lease + `FOR UPDATE SKIP LOCKED` claim、本地 receipt 后 complete;complete 丢失/lease
+  过期/双 consumer/两端重启都安全 replay;Reliability 不可达只降级 incident freshness。
+- 变更流:per-owner 计数器分配严格递增 change sequence(`created`/`read`),read 也进入流;
+  watch cursor 是最后已应用 sequence,服务端有界 stream lifetime + heartbeat(control 不推进
+  cursor),sweep 水位 `swept_through` 之下的 cursor 回 `RESET_REQUIRED`;Gateway 对 watch 流
+  做 30s 周期 session 重验,revoked session 的已授权流在有界时间内终止。
+- 读语义:unread→read 单调,read-command 幂等 mapping + 版本化首响应快照(ADR-0004 模式),
+  批量 ≤100 单事务全有或全无;foreign/missing 同一净化 NotFound;bounded sweep 只清理过期
+  已读事实并推进水位,绝不删除近期 unread。
+- App `notifications.create`:Registry capability vocabulary additive 增加(安装/Manage
+  permissions 显式 consent;grant 名与 bridge method 名相同并集中映射);runtime 每次调用重验
+  bridge token/surface session/owner/Project/installation/exact grant epoch 后调用 Core 私有
+  ingest;replay-first(同 key 同请求跨重启精确 replay,异请求稳定 Aborted,失败不消费 key);
+  burst(10/分钟)+ UTC daily(200)配额由 PostgreSQL 单事务原子裁决,系统通知不占 App 配额;
+  revoke/epoch 变化/surface close 后旧 port 即刻 fail closed 且零副作用。
+- 客户端:Desktop 持有可丢弃内存 projection(snapshot/watermark → after-watermark 流,按
+  sequence/revision 幂等,RESET_REQUIRED 全量重建,有界 backoff);Adaptive Notification
+  Center(expanded 铃铛+badge / compact 底部导航 / medium Dock / fold 纯投影),typed action
+  打开前经公开服务重验目标,missing/archived 固定 stale 文案;浏览器 Notification API 为可选
+  增强(默认关闭 preview,denied/unavailable 不影响 durable Center)。
+- 门禁:`make test-notification-center`(真实栈双 Chromium context 实时/收敛/typed action/
+  重启持久)、`make test-incident-notifications`(真实跨进程软件链路;明确不证明 rootless
+  supervisor)、`make test-app-notifications`(opaque Web Bundle grant/replay/revoke/quota);
+  restart battery 增加 `notifications-seed`/`notifications-verify`。视觉证据
+  `docs/ui/desktop-web/changes/20260902-local-first-notifications/`。明确未实现:APNs/FCM/
+  Web Push/后台 Service Worker delivery、通知正文搜索、用户偏好/免打扰。
+
 ## 状态与失败
 
 - liveness 表示进程事件循环存活，readiness 表示必需依赖可用。
