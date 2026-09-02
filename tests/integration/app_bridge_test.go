@@ -28,6 +28,7 @@ import (
 	agentapp "github.com/yangtao121/workos/internal/core/agent/application"
 	agentdomain "github.com/yangtao121/workos/internal/core/agent/domain"
 	agentports "github.com/yangtao121/workos/internal/core/agent/ports"
+	notificationpostgres "github.com/yangtao121/workos/internal/core/notification/adapters/postgres"
 	"github.com/yangtao121/workos/internal/core/orchestration"
 	orchestrationtransport "github.com/yangtao121/workos/internal/core/orchestration/transport"
 	projectpostgres "github.com/yangtao121/workos/internal/core/project/adapters/postgres"
@@ -410,7 +411,14 @@ func TestAppTaskRepositoryConcurrency(t *testing.T) {
 		}
 		return count
 	}
-	left, right := agentpostgres.New(leftPool), agentpostgres.New(rightPool)
+	left, err := agentpostgres.NewWithNotificationSink(leftPool, notificationpostgres.New(leftPool))
+	if err != nil {
+		t.Fatalf("wire left agent repository: %v", err)
+	}
+	right, err := agentpostgres.NewWithNotificationSink(rightPool, notificationpostgres.New(rightPool))
+	if err != nil {
+		t.Fatalf("wire right agent repository: %v", err)
+	}
 	leftService, rightService := agentapp.New(left, newSeqIDs(300)), agentapp.New(right, newSeqIDs(600))
 	owner, project, appInstance := newUUIDForTest(81), newUUIDForTest(82), newUUIDForTest(83)
 	// agent_tasks references users; seed the owner the way the acceptance
@@ -831,7 +839,10 @@ func TestAgentStoreOutageIsUnavailableNotInternal(t *testing.T) {
 		}
 		return installation
 	}()}
-	agentRepository := agentpostgres.New(outagePool)
+	agentRepository, err := agentpostgres.NewWithNotificationSink(outagePool, notificationpostgres.New(outagePool))
+	if err != nil {
+		t.Fatal(err)
+	}
 	appAgent, err := orchestration.NewAppAgentService(installations, newRouterForOutage(agentRepository))
 	if err != nil {
 		t.Fatal(err)
@@ -925,7 +936,10 @@ EXECUTE FUNCTION workos_events.raise_outbox_outage()`); err != nil {
 	); err != nil {
 		t.Fatalf("seed project row: %v", err)
 	}
-	agentRepository := agentpostgres.New(pool)
+	agentRepository, err := agentpostgres.NewWithNotificationSink(pool, notificationpostgres.New(pool))
+	if err != nil {
+		t.Fatal(err)
+	}
 	agents := agentapp.New(agentRepository, ids.UUIDv7{})
 	router, err := orchestration.NewTaskRouter(agents, projectapp.New(projectpostgres.New(pool), ids.UUIDv7{}), outagePolicies{}, outageProviders{}, outageCredentials{}, outageContextVerifier{}, "fake")
 	if err != nil {

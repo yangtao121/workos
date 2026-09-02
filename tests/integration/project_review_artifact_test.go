@@ -21,6 +21,7 @@ import (
 	agentpostgres "github.com/yangtao121/workos/internal/core/agent/adapters/postgres"
 	agentdomain "github.com/yangtao121/workos/internal/core/agent/domain"
 	indexfeedpostgres "github.com/yangtao121/workos/internal/core/indexfeed/adapters/postgres"
+	notificationpostgres "github.com/yangtao121/workos/internal/core/notification/adapters/postgres"
 	"github.com/yangtao121/workos/internal/core/orchestration"
 	projectpostgres "github.com/yangtao121/workos/internal/core/project/adapters/postgres"
 	projectapp "github.com/yangtao121/workos/internal/core/project/application"
@@ -81,7 +82,10 @@ func newReviewFixture(t *testing.T) *reviewFixture {
 	) VALUES ($1, $2, $3, 'Review Fixture Project', $4, $5, now(), now())`,
 		f.project, f.owner, "review-seed-"+f.project, newUUIDForTest(914), newUUIDForTest(915))
 
-	agentRepo := agentpostgres.New(pool)
+	agentRepo, err := agentpostgres.NewWithNotificationSink(pool, notificationpostgres.New(pool))
+	if err != nil {
+		t.Fatal(err)
+	}
 	artifactRepo := artifactpostgres.New(pool)
 	f.agentRepo, f.artifactRepo = agentRepo, artifactRepo
 	payload := fmt.Sprintf(
@@ -105,7 +109,7 @@ func newReviewFixture(t *testing.T) *reviewFixture {
 	if err != nil {
 		t.Fatal(err)
 	}
-	materializer, err := orchestration.NewTaskArtifactMaterializer(pool, agentRepo, artifactRepo, preparer, indexfeedpostgres.New(pool), ids.UUIDv7{})
+	materializer, err := orchestration.NewTaskArtifactMaterializer(pool, agentRepo, artifactRepo, preparer, indexfeedpostgres.New(pool), notificationpostgres.New(pool), ids.UUIDv7{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -479,13 +483,16 @@ func TestReviewArtifactListPagingAndRestart(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer restartedPool.Close()
-	restartedAgent := agentpostgres.New(restartedPool)
+	restartedAgent, err := agentpostgres.NewWithNotificationSink(restartedPool, notificationpostgres.New(restartedPool))
+	if err != nil {
+		t.Fatal(err)
+	}
 	restartedArtifacts := artifactpostgres.New(restartedPool)
 	restartedPreparer, err := artifactapp.New(restartedArtifacts, ids.UUIDv7{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	restarted, err := orchestration.NewTaskArtifactMaterializer(restartedPool, restartedAgent, restartedArtifacts, restartedPreparer, indexfeedpostgres.New(restartedPool), ids.UUIDv7{})
+	restarted, err := orchestration.NewTaskArtifactMaterializer(restartedPool, restartedAgent, restartedArtifacts, restartedPreparer, indexfeedpostgres.New(restartedPool), notificationpostgres.New(restartedPool), ids.UUIDv7{})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -14,6 +14,7 @@ import (
 	"github.com/yangtao121/workos/internal/core/agent/adapters/postgres/agentdb"
 	"github.com/yangtao121/workos/internal/core/agent/domain"
 	"github.com/yangtao121/workos/internal/core/agent/ports"
+	notificationdomain "github.com/yangtao121/workos/internal/core/notification/domain"
 )
 
 // agentAppPolicyLockNamespace pins the advisory-lock namespace every policy-
@@ -583,6 +584,18 @@ func (r *Repository) DecideApproval(ctx context.Context, command ports.DecideApp
 		}
 		if err := advanceTaskWithSystemEvent(ctx, queries, &task, domain.StateCancelled, "run_cancelled", cancelPayload, command.Now); err != nil {
 			return domain.Approval{}, err
+		}
+		// Owner notification for the rejected (now terminal) task, a hard
+		// requirement of this decision transaction (ADR-0014).
+		if r.notifications == nil {
+			return domain.Approval{}, errors.New("notification sink is not wired")
+		}
+		if _, err := r.notifications.AppendSystemNotification(ctx, tx, notificationdomain.SystemFact{
+			Kind: notificationdomain.KindAgentTaskTerminal, OwnerUserID: task.OwnerUserID,
+			ProjectID: task.ProjectID, Category: string(domain.StateCancelled),
+			TargetID: task.ID, SourceID: task.ID,
+		}, command.Now); err != nil {
+			return domain.Approval{}, fmt.Errorf("append rejection notification: %w", err)
 		}
 	}
 	state := "approved"

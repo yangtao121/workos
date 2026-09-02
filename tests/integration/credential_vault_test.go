@@ -22,6 +22,7 @@ import (
 	credentialapp "github.com/yangtao121/workos/internal/core/credential/application"
 	credentialdomain "github.com/yangtao121/workos/internal/core/credential/domain"
 	credentialports "github.com/yangtao121/workos/internal/core/credential/ports"
+	notificationpostgres "github.com/yangtao121/workos/internal/core/notification/adapters/postgres"
 	"github.com/yangtao121/workos/internal/core/orchestration"
 	"github.com/yangtao121/workos/internal/platform/ids"
 	"github.com/yangtao121/workos/internal/platform/migrations"
@@ -67,7 +68,10 @@ func newVaultFixture(t *testing.T) *vaultFixture {
 	if err != nil {
 		t.Fatalf("build vault: %v", err)
 	}
-	agents := agentpostgres.New(pool)
+	agents, err := agentpostgres.NewWithNotificationSink(pool, notificationpostgres.New(pool))
+	if err != nil {
+		t.Fatalf("wire agent repository: %v", err)
+	}
 	issuer, err := orchestration.NewCredentialLeaseIssuer(pool, agents, repo, ciph, ids.UUIDv7{})
 	if err != nil {
 		t.Fatalf("build issuer: %v", err)

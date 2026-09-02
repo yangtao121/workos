@@ -33,6 +33,7 @@ import (
 	artifactdomain "github.com/yangtao121/workos/internal/core/artifact/domain"
 	artifactports "github.com/yangtao121/workos/internal/core/artifact/ports"
 	indexfeeddomain "github.com/yangtao121/workos/internal/core/indexfeed/domain"
+	notificationdomain "github.com/yangtao121/workos/internal/core/notification/domain"
 	"github.com/yangtao121/workos/internal/platform/dbtx"
 	"github.com/yangtao121/workos/internal/platform/ids"
 )
@@ -65,30 +66,40 @@ type IndexPublicationSink interface {
 	AppendReviewArtifactUpsert(ctx context.Context, tx dbtx.Tx, publication indexfeeddomain.Publication) error
 }
 
+// NotificationSink is the notification module's transaction-scoped append
+// port (ADR-0014). The owner's review-artifact notification joins this same
+// transaction as a hard requirement: any failure rolls the materialization
+// back, so a committed artifact is never silent.
+type NotificationSink interface {
+	AppendSystemNotification(ctx context.Context, tx dbtx.Tx, fact notificationdomain.SystemFact, occurredAt time.Time) (notificationdomain.Notification, error)
+}
+
 // TaskArtifactMaterializer coordinates one provider artifact output into one
 // immutable artifact fact plus exactly one Core-minted timeline event plus
-// exactly one durable index publication.
+// exactly one durable index publication plus exactly one owner notification.
 type TaskArtifactMaterializer struct {
-	pool      TaskTxSource
-	streams   TaskStreamStore
-	artifacts ReviewOutputStore
-	preparer  *artifactapp.Service
-	feedSink  IndexPublicationSink
-	ids       ids.Generator
-	now       func() time.Time
+	pool          TaskTxSource
+	streams       TaskStreamStore
+	artifacts     ReviewOutputStore
+	preparer      *artifactapp.Service
+	feedSink      IndexPublicationSink
+	notifications NotificationSink
+	ids           ids.Generator
+	now           func() time.Time
 }
 
 func NewTaskArtifactMaterializer(
 	pool TaskTxSource, streams TaskStreamStore, artifacts ReviewOutputStore,
-	preparer *artifactapp.Service, feedSink IndexPublicationSink, generator ids.Generator,
+	preparer *artifactapp.Service, feedSink IndexPublicationSink,
+	notifications NotificationSink, generator ids.Generator,
 ) (*TaskArtifactMaterializer, error) {
-	if pool == nil || streams == nil || artifacts == nil || preparer == nil || feedSink == nil || generator == nil {
-		return nil, errors.New("task artifact materializer requires pool, stream store, review output store, artifact preparer, index publication sink, and id generator")
+	if pool == nil || streams == nil || artifacts == nil || preparer == nil || feedSink == nil || notifications == nil || generator == nil {
+		return nil, errors.New("task artifact materializer requires pool, stream store, review output store, artifact preparer, index publication sink, notification sink, and id generator")
 	}
 	return &TaskArtifactMaterializer{
 		pool: pool, streams: streams, artifacts: artifacts, preparer: preparer,
-		feedSink: feedSink,
-		ids:      generator, now: func() time.Time { return time.Now().UTC() },
+		feedSink: feedSink, notifications: notifications,
+		ids: generator, now: func() time.Time { return time.Now().UTC() },
 	}, nil
 }
 
@@ -316,6 +327,16 @@ func (m *TaskArtifactMaterializer) materializeItem(
 		OccurredAt:   now,
 	}); err != nil {
 		return nil, nil, err
+	}
+	// Owner notification (ADR-0014): a hard requirement of this same
+	// transaction. Replays returned long before this point and never
+	// notify twice.
+	if _, err := m.notifications.AppendSystemNotification(ctx, tx, notificationdomain.SystemFact{
+		Kind: notificationdomain.KindArtifactReviewCreated, OwnerUserID: stream.OwnerUserID,
+		ProjectID: stream.ProjectID, Category: command.Artifact.Type,
+		TargetID: command.Artifact.ID, SourceID: command.Artifact.ID,
+	}, now); err != nil {
+		return nil, nil, fmt.Errorf("append review artifact notification: %w", err)
 	}
 	return reviewArtifactProto(command.Artifact), publicationProto(stream, publication, command.Artifact), nil
 }

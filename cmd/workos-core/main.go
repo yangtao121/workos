@@ -87,6 +87,11 @@ func run(logger *slog.Logger) error {
 	// and project archive transactions, so a publication commits exactly when
 	// its source fact commits.
 	feedRepository := indexfeedpostgres.New(pool)
+	// The durable notification authority (ADR-0014): owner-scoped facts, the
+	// monotonic change stream, and read state. Constructed before every
+	// producer so the tx-scoped sink is a hard requirement of their source
+	// transactions.
+	notificationRepository := notificationpostgres.New(pool)
 	projectRepository, err := projectpostgres.NewWithFeed(pool, feedRepository)
 	if err != nil {
 		return err
@@ -140,7 +145,10 @@ func run(logger *slog.Logger) error {
 	bindingPath, bindingHandler := projectconnect.NewProjectHarnessBindingServiceHandler(orchestrationtransport.New(binder))
 	mux.Handle(bindingPath, identity.Middleware(bindingHandler))
 
-	agentRepository := agentpostgres.New(pool)
+	agentRepository, err := agentpostgres.NewWithNotificationSink(pool, notificationRepository)
+	if err != nil {
+		return err
+	}
 	agentService := agentapp.New(agentRepository, generator)
 	artifactRepository := artifactpostgres.New(pool)
 	artifactService, err := artifactapp.New(artifactRepository, generator)
@@ -163,7 +171,7 @@ func run(logger *slog.Logger) error {
 	// harness-host reaches this private RPC; it never enters the gateway
 	// allowlist.
 	artifactMaterializer, err := orchestration.NewTaskArtifactMaterializer(
-		pool, agentRepository, artifactRepository, artifactService, feedRepository, generator,
+		pool, agentRepository, artifactRepository, artifactService, feedRepository, notificationRepository, generator,
 	)
 	if err != nil {
 		return err
@@ -320,12 +328,8 @@ func run(logger *slog.Logger) error {
 	indexFeedPath, indexFeedHandler := indexfeedtransport.NewConnectHandler(indexFeedService)
 	mux.Handle(indexFeedPath, identity.Middleware(indexFeedHandler))
 
-	// The durable notification authority (ADR-0014): owner-scoped facts, the
-	// monotonic change stream, and read state. System producers join source
-	// transactions through the tx-scoped sink; runtime-host reaches the
-	// private ingest service; the gateway allowlist covers only the public
-	// NotificationService.
-	notificationRepository := notificationpostgres.New(pool)
+	// The public notification surface is registered here; its store and
+	// producer sink were constructed above (ADR-0014).
 	notificationService, err := notificationapp.New(notificationRepository, pool, generator)
 	if err != nil {
 		return err

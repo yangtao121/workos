@@ -12,6 +12,8 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	agentpostgres "github.com/yangtao121/workos/internal/core/agent/adapters/postgres"
+	agentdomain "github.com/yangtao121/workos/internal/core/agent/domain"
 	notificationpostgres "github.com/yangtao121/workos/internal/core/notification/adapters/postgres"
 	notificationapp "github.com/yangtao121/workos/internal/core/notification/application"
 	notificationdomain "github.com/yangtao121/workos/internal/core/notification/domain"
@@ -414,5 +416,116 @@ func TestNotificationConcurrencySequences(t *testing.T) {
 		}
 		seen[change.ChangeSequence] = true
 		last = change.ChangeSequence
+	}
+}
+
+// mustAgentRepo wires the agent repository with its real notification sink
+// for tests that construct the full stack inline.
+func mustAgentRepo(t *testing.T, pool *pgxpool.Pool) *agentpostgres.Repository {
+	t.Helper()
+	repo, err := agentpostgres.NewWithNotificationSink(pool, notificationpostgres.New(pool))
+	if err != nil {
+		t.Fatalf("wire agent repository: %v", err)
+	}
+	return repo
+}
+
+// TestTaskTerminalNotificationAtomicity proves the ADR-0014 hard
+// requirement for the Agent task-terminal producer over real PostgreSQL:
+// the first terminal event projects exactly one owner notification in the
+// same transaction, and a notification failure rolls the terminal
+// transition back — the task stays non-terminal with zero events.
+func TestTaskTerminalNotificationAtomicity(t *testing.T) {
+	fixturePool := func(t *testing.T) (*pgxpool.Pool, string) {
+		t.Helper()
+		dsn := scratchDatabase(t)
+		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+		defer cancel()
+		if err := migrations.Run(ctx, dsn); err != nil {
+			t.Fatalf("migrate: %v", err)
+		}
+		pool, err := pgxpool.New(ctx, dsn)
+		if err != nil {
+			t.Fatalf("open pool: %v", err)
+		}
+		t.Cleanup(pool.Close)
+		if _, err := pool.Exec(ctx, `DROP INDEX IF EXISTS workos_core.users_single_owner_idx`); err != nil {
+			t.Fatal(err)
+		}
+		owner := ids.UUIDv7{}.New()
+		if _, err := pool.Exec(ctx,
+			`INSERT INTO workos_core.users (id, kind, display_name, created_at) VALUES ($1, 'owner', 'Terminal Owner', now())`, owner); err != nil {
+			t.Fatal(err)
+		}
+		return pool, owner
+	}
+	seedTask := func(t *testing.T, pool *pgxpool.Pool, owner, idempotency string) string {
+		t.Helper()
+		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		defer cancel()
+		repo := agentpostgres.New(pool)
+		task := agentdomain.Task{
+			ID: ids.UUIDv7{}.New(), OwnerUserID: owner, State: agentdomain.StateQueued,
+			Input:      []byte(`{"goal":"terminal notification fixture"}`),
+			ProviderID: "fake", CreatedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC(),
+		}
+		if _, err := repo.Create(ctx, task, idempotency); err != nil {
+			t.Fatalf("create task: %v", err)
+		}
+		return task.ID
+	}
+	countNotifications := func(t *testing.T, pool *pgxpool.Pool, owner string) int {
+		t.Helper()
+		return countScratchRows(t, pool, `SELECT count(*) FROM workos_core.notifications WHERE owner_user_id = $1`, owner)
+	}
+
+	pool, owner := fixturePool(t)
+	ctx := context.Background()
+
+	// Healthy path: terminal event and the notification commit together.
+	repo, err := agentpostgres.NewWithNotificationSink(pool, notificationpostgres.New(pool))
+	if err != nil {
+		t.Fatal(err)
+	}
+	seedTask(t, pool, owner, "terminal-healthy")
+	leaseID := ids.UUIDv7{}.New()
+	lease, err := repo.Claim(ctx, "worker-terminal", 30*time.Second, leaseID, time.Now().UTC())
+	if err != nil || lease == nil {
+		t.Fatalf("claim: %v %v", lease, err)
+	}
+	completed := agentdomain.Event{ID: ids.UUIDv7{}.New(), EventType: "run_completed", Payload: []byte(`{"runCompleted":{"summary":"ok"}}`), OccurredAt: time.Now().UTC()}
+	if _, err := repo.AppendEvent(ctx, leaseID, "worker-terminal", completed, agentdomain.StateCompleted, "fake", "run-1", nil, time.Now().UTC()); err != nil {
+		t.Fatalf("append terminal event: %v", err)
+	}
+	if got := countNotifications(t, pool, owner); got != 1 {
+		t.Fatalf("expected exactly one terminal notification, got %d", got)
+	}
+	if got := countScratchRows(t, pool, `SELECT count(*) FROM workos_core.notification_changes WHERE owner_user_id = $1 AND change_type = 'created'`, owner); got != 1 {
+		t.Fatalf("expected exactly one CREATED change, got %d", got)
+	}
+
+	// Failing sink: the terminal transition must roll back entirely.
+	failingPool, failingOwner := fixturePool(t)
+	brokenRepo, err := agentpostgres.NewWithNotificationSink(failingPool, failingNotificationSink{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	failingTask := seedTask(t, failingPool, failingOwner, "terminal-failing")
+	failingLease := ids.UUIDv7{}.New()
+	lease2, err := brokenRepo.Claim(ctx, "worker-terminal", 30*time.Second, failingLease, time.Now().UTC())
+	if err != nil || lease2 == nil {
+		t.Fatalf("failing-sink claim: %v %v", lease2, err)
+	}
+	if _, err := brokenRepo.AppendEvent(ctx, failingLease, "worker-terminal", completed, agentdomain.StateCompleted, "fake", "run-2", nil, time.Now().UTC()); err == nil {
+		t.Fatal("terminal append with failing notification sink must fail")
+	}
+	if got := countNotifications(t, failingPool, failingOwner); got != 0 {
+		t.Fatalf("no notification may survive a rolled-back source: %d", got)
+	}
+	if got := countScratchRows(t, failingPool, `SELECT count(*) FROM workos_events.events WHERE stream_id = $1`, failingTask); got != 0 {
+		t.Fatalf("terminal event must roll back with its source: %d", got)
+	}
+	if got := countScratchRows(t, failingPool, `SELECT count(*) FROM workos_core.agent_tasks WHERE id = $1 AND state = 'completed'`, failingTask); got != 0 {
+		t.Fatalf("task must not stay terminal after rollback: %d", got)
 	}
 }

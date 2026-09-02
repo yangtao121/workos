@@ -20,6 +20,8 @@ import (
 	indexfeedpostgres "github.com/yangtao121/workos/internal/core/indexfeed/adapters/postgres"
 	indexfeedapp "github.com/yangtao121/workos/internal/core/indexfeed/application"
 	indexfeeddomain "github.com/yangtao121/workos/internal/core/indexfeed/domain"
+	notificationpostgres "github.com/yangtao121/workos/internal/core/notification/adapters/postgres"
+	notificationdomain "github.com/yangtao121/workos/internal/core/notification/domain"
 	"github.com/yangtao121/workos/internal/core/orchestration"
 	projectpostgres "github.com/yangtao121/workos/internal/core/project/adapters/postgres"
 	projectapp "github.com/yangtao121/workos/internal/core/project/application"
@@ -77,13 +79,16 @@ func newFeedFixture(t *testing.T) *feedFixture {
 		t.Fatal(err)
 	}
 	f.projectService = projectapp.New(projectRepo, ids.UUIDv7{})
-	agentRepo := agentpostgres.New(pool)
+	agentRepo, err := agentpostgres.NewWithNotificationSink(pool, notificationpostgres.New(pool))
+	if err != nil {
+		t.Fatal(err)
+	}
 	f.artifactRepo = artifactpostgres.New(pool)
 	preparer, err := artifactapp.New(f.artifactRepo, ids.UUIDv7{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	f.materializer, err = orchestration.NewTaskArtifactMaterializer(pool, agentRepo, f.artifactRepo, preparer, feedRepo, ids.UUIDv7{})
+	f.materializer, err = orchestration.NewTaskArtifactMaterializer(pool, agentRepo, f.artifactRepo, preparer, feedRepo, notificationpostgres.New(pool), ids.UUIDv7{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -193,12 +198,15 @@ func TestIndexFeedPublicationFailureRollsBackSource(t *testing.T) {
 
 	// A publication sink failure must roll the whole materialization back:
 	// zero artifact, zero output mapping, zero event, zero publication.
-	agentRepo := agentpostgres.New(f.pool)
+	agentRepo, err := agentpostgres.NewWithNotificationSink(f.pool, notificationpostgres.New(f.pool))
+	if err != nil {
+		t.Fatal(err)
+	}
 	preparer, err := artifactapp.New(f.artifactRepo, ids.UUIDv7{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	broken, err := orchestration.NewTaskArtifactMaterializer(f.pool, agentRepo, f.artifactRepo, preparer, failSink{}, ids.UUIDv7{})
+	broken, err := orchestration.NewTaskArtifactMaterializer(f.pool, agentRepo, f.artifactRepo, preparer, failSink{}, notificationpostgres.New(f.pool), ids.UUIDv7{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -216,6 +224,72 @@ func TestIndexFeedPublicationFailureRollsBackSource(t *testing.T) {
 	if got := countScratchRows(t, f.pool, `SELECT count(*) FROM workos_events.events WHERE stream_id = $1 AND event_type = 'artifact_created'`, f.task); got != 0 {
 		t.Fatalf("timeline events survived publication failure: %d", got)
 	}
+}
+
+// TestArtifactNotificationProjectsExactlyOnceAndFailsAtomically proves the
+// ADR-0014 hard requirement over real PostgreSQL: one fresh materialization
+// projects exactly one owner notification, a replay projects none, and a
+// notification failure rolls the source back with zero orphan facts.
+func TestArtifactNotificationProjectsExactlyOnceAndFailsAtomically(t *testing.T) {
+	t.Parallel()
+	f := newFeedFixture(t)
+	ctx := context.Background()
+
+	count := func() int {
+		return countScratchRows(t, f.pool, `SELECT count(*) FROM workos_core.notifications WHERE target_kind = 'artifact'`)
+	}
+	digest := f.materialize(t, "Notified", "# Notified\n")
+	if got := count(); got != 1 {
+		t.Fatalf("expected exactly one artifact notification, got %d", got)
+	}
+	// Replay (identical canonical request after response loss): still one.
+	artifact, _, err := f.materializer.MaterializeTaskArtifact(ctx, f.leaseID, f.worker,
+		"document", "Notified", "document.markdown.v1", []byte("# Notified\n"))
+	if err != nil {
+		t.Fatalf("replay materialize: %v", err)
+	}
+	if artifact.Digest != digest {
+		t.Fatalf("replay digest drifted: %s vs %s", artifact.Digest, digest)
+	}
+	if got := count(); got != 1 {
+		t.Fatalf("replay projected a second notification: %d", got)
+	}
+
+	// A notification sink failure rolls the whole materialization back.
+	agentRepo, err := agentpostgres.NewWithNotificationSink(f.pool, failingNotificationSink{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	preparer, err := artifactapp.New(f.artifactRepo, ids.UUIDv7{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	broken, err := orchestration.NewTaskArtifactMaterializer(f.pool, agentRepo, f.artifactRepo, preparer,
+		indexfeedpostgres.New(f.pool), failingNotificationSink{}, ids.UUIDv7{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := broken.MaterializeTaskArtifact(ctx, f.leaseID, f.worker,
+		"document", "Doomed", "document.markdown.v1", []byte("# Doomed\n")); err == nil {
+		t.Fatal("materialization with failing notification sink must fail")
+	}
+	if got := countScratchRows(t, f.pool, `SELECT count(*) FROM workos_core.project_review_artifacts WHERE source_task_id = $1 AND title = 'Doomed'`, f.task); got != 0 {
+		t.Fatalf("artifact rows survived notification failure: %d", got)
+	}
+	if got := countScratchRows(t, f.pool, `SELECT count(*) FROM workos_events.events WHERE stream_id = $1 AND event_type = 'artifact_created'`, f.task); got != 1 {
+		t.Fatalf("the healthy materialization's event must survive exactly once: %d", got)
+	}
+	if got := count(); got != 1 {
+		t.Fatalf("notification facts must stay exactly-once: %d", got)
+	}
+}
+
+// failingNotificationSink injects a notification store outage inside the
+// materializer's transaction.
+type failingNotificationSink struct{}
+
+func (failingNotificationSink) AppendSystemNotification(context.Context, dbtx.Tx, notificationdomain.SystemFact, time.Time) (notificationdomain.Notification, error) {
+	return notificationdomain.Notification{}, errors.New("injected notification failure")
 }
 
 // firstReconcileCursor is the decoded "first page" cursor the feed

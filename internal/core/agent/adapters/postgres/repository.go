@@ -15,7 +15,10 @@ import (
 	"github.com/yangtao121/workos/internal/core/agent/adapters/postgres/agentdb"
 	"github.com/yangtao121/workos/internal/core/agent/domain"
 	"github.com/yangtao121/workos/internal/core/agent/ports"
+	notificationdomain "github.com/yangtao121/workos/internal/core/notification/domain"
+	notificationports "github.com/yangtao121/workos/internal/core/notification/ports"
 	"github.com/yangtao121/workos/internal/platform/dbtransient"
+	"github.com/yangtao121/workos/internal/platform/dbtx"
 )
 
 // storeError wraps a storage failure at the port boundary. Transient
@@ -37,10 +40,58 @@ func storeError(operation string, err error) error {
 type Repository struct {
 	pool    *pgxpool.Pool
 	queries *agentdb.Queries
+	// notifications is the tx-scoped notification projection sink
+	// (ADR-0014). It is wired by the composition root; every notification-
+	// bearing producer path fails closed without it, never skips silently.
+	notifications notificationports.TxSink
 }
 
 func New(pool *pgxpool.Pool) *Repository {
 	return &Repository{pool: pool, queries: agentdb.New(pool)}
+}
+
+// NewWithNotificationSink wires the composition-root sink: terminal and
+// approval notifications are a hard requirement of their source
+// transactions, so a nil sink is a construction failure.
+func NewWithNotificationSink(pool *pgxpool.Pool, notifications notificationports.TxSink) (*Repository, error) {
+	if notifications == nil {
+		return nil, errors.New("agent repository requires the notification sink")
+	}
+	return &Repository{pool: pool, queries: agentdb.New(pool), notifications: notifications}, nil
+}
+
+// appendNotificationTx projects one notification inside the caller's source
+// transaction; the returned error must roll the source mutation back
+// (ADR-0014 hard requirement).
+func (r *Repository) appendNotificationTx(ctx context.Context, tx dbtx.Tx, fact notificationdomain.SystemFact, occurredAt time.Time) error {
+	if r.notifications == nil {
+		return errors.New("notification sink is not wired")
+	}
+	if _, err := r.notifications.AppendSystemNotification(ctx, tx, fact, occurredAt); err != nil {
+		return fmt.Errorf("append notification: %w", err)
+	}
+	return nil
+}
+
+// taskTerminalNotificationFact prepares the finite task-terminal fact for a
+// task that first reached a terminal state in this transaction.
+func taskTerminalNotificationFact(ownerUserID, projectID, taskID, category string) (notificationdomain.SystemFact, error) {
+	if !notificationdomain.ValidUUID(taskID) {
+		return notificationdomain.SystemFact{}, domain.ErrInvalid
+	}
+	return notificationdomain.SystemFact{
+		Kind: notificationdomain.KindAgentTaskTerminal, OwnerUserID: ownerUserID,
+		ProjectID: projectID, Category: category,
+		TargetID: taskID, SourceID: taskID,
+	}, nil
+}
+
+// streamProjectIDString projects the lock row's nullable project binding.
+func streamProjectIDString(projectID pgtype.UUID) string {
+	if !projectID.Valid {
+		return ""
+	}
+	return projectID.String()
 }
 
 func (r *Repository) Create(ctx context.Context, task domain.Task, idempotencyKey string) (domain.Task, error) {
@@ -336,6 +387,16 @@ func (r *Repository) CreateForAppApproval(ctx context.Context, task domain.Task,
 	if err := advanceTaskWithSystemEvent(ctx, queries, &task, task.State, "approval_required", approvalRequiredPayload(approval), task.CreatedAt); err != nil {
 		return domain.Task{}, domain.Approval{}, err
 	}
+	// Owner notification for the pending approval (ADR-0014): the fact is a
+	// hard requirement of this source transaction — a notification failure
+	// rolls the whole waiting task back.
+	if err := r.appendNotificationTx(ctx, tx, notificationdomain.SystemFact{
+		Kind: notificationdomain.KindAgentApprovalRequired, OwnerUserID: task.OwnerUserID,
+		ProjectID: task.ProjectID, TargetID: approval.ID,
+		SourceID: approval.ID,
+	}, task.CreatedAt); err != nil {
+		return domain.Task{}, domain.Approval{}, err
+	}
 	if err := insertTaskCredentialSnapshot(ctx, queries, task); err != nil {
 		return domain.Task{}, domain.Approval{}, err
 	}
@@ -544,6 +605,15 @@ func (r *Repository) Cancel(ctx context.Context, ownerID, taskID, reason string,
 	}); err != nil {
 		return domain.Task{}, nil, fmt.Errorf("finish cancelled task request: %w", err)
 	}
+	// Owner notification for the owner-driven terminal transition
+	// (ADR-0014): a hard requirement of this source transaction.
+	terminalFact, factErr := taskTerminalNotificationFact(ownerID, task.ProjectID, task.ID, string(domain.StateCancelled))
+	if factErr != nil {
+		return domain.Task{}, nil, factErr
+	}
+	if err := r.appendNotificationTx(ctx, tx, terminalFact, now); err != nil {
+		return domain.Task{}, nil, err
+	}
 	if err := tx.Commit(ctx); err != nil {
 		return domain.Task{}, nil, fmt.Errorf("commit cancellation: %w", err)
 	}
@@ -678,7 +748,20 @@ func (r *Repository) AppendEvent(ctx context.Context, leaseID, workerID string, 
 		return domain.Event{}, err
 	}
 	if usage != nil {
-		if err := r.projectUsage(ctx, queries, stream, *usage, now); err != nil {
+		if err := r.projectUsage(ctx, queries, tx, stream, *usage, now); err != nil {
+			return domain.Event{}, err
+		}
+	}
+	// Owner notification for the first terminal transition (ADR-0014): a
+	// hard requirement of this source transaction. Late provider events and
+	// terminal replays are refused above by the terminal state, so this
+	// projects at most once per task.
+	if state.Terminal() {
+		fact, factErr := taskTerminalNotificationFact(stream.OwnerUserID, streamProjectIDString(stream.ProjectID), stream.ID, string(state))
+		if factErr != nil {
+			return domain.Event{}, factErr
+		}
+		if err := r.appendNotificationTx(ctx, tx, fact, now); err != nil {
 			return domain.Event{}, err
 		}
 	}
@@ -695,7 +778,7 @@ func (r *Repository) AppendEvent(ctx context.Context, leaseID, workerID string, 
 // reserved budget the bucket records an auditable breach and the task is
 // deterministically flagged for cancellation — the worker's next lease
 // renewal observes the flag and stops the run (ADR-0005 §6).
-func (r *Repository) projectUsage(ctx context.Context, queries *agentdb.Queries, stream agentdb.LockTaskEventStreamRow, usage domain.UsageReport, now time.Time) error {
+func (r *Repository) projectUsage(ctx context.Context, queries *agentdb.Queries, tx dbtx.Tx, stream agentdb.LockTaskEventStreamRow, usage domain.UsageReport, now time.Time) error {
 	appInstanceID, err := queries.GetAgentAppTaskOwnerTask(ctx, agentdb.GetAgentAppTaskOwnerTaskParams{
 		OwnerUserID: stream.OwnerUserID, TaskID: stream.ID,
 	})
@@ -765,6 +848,16 @@ func (r *Repository) projectUsage(ctx context.Context, queries *agentdb.Queries,
 			ProcessedAt: timestamp(now), AggregateID: stream.ID,
 		}); err != nil {
 			return fmt.Errorf("finish breached task request: %w", err)
+		}
+		// Owner notification for the breach cancellation, a hard requirement
+		// of this same transaction (ADR-0014); the receipt arbitrates against
+		// any racing provider terminal event.
+		breachFact, factErr := taskTerminalNotificationFact(stream.OwnerUserID, streamProjectIDString(stream.ProjectID), stream.ID, string(domain.StateCancelled))
+		if factErr != nil {
+			return factErr
+		}
+		if err := r.appendNotificationTx(ctx, tx, breachFact, now); err != nil {
+			return err
 		}
 	}
 	return nil

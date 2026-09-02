@@ -19,7 +19,6 @@ import (
 	agentv1connect "github.com/yangtao121/workos/gen/go/workos/agent/v1/agentv1connect"
 	bridgev1 "github.com/yangtao121/workos/gen/go/workos/bridge/v1"
 	surfacev1 "github.com/yangtao121/workos/gen/go/workos/surface/v1"
-	agentpostgres "github.com/yangtao121/workos/internal/core/agent/adapters/postgres"
 	agentapp "github.com/yangtao121/workos/internal/core/agent/application"
 	"github.com/yangtao121/workos/internal/core/orchestration"
 	orchestrationtransport "github.com/yangtao121/workos/internal/core/orchestration/transport"
@@ -301,7 +300,7 @@ func TestGrantEpochWatchStreamTerminates(t *testing.T) {
 	// harness worker polls this scratch database, so submitted tasks stay
 	// queued (non-terminal) indefinitely.
 	router, err := orchestration.NewTaskRouter(
-		agentapp.New(agentpostgres.New(pool), ids.UUIDv7{}), projectapp.New(projectpostgres.New(pool), ids.UUIDv7{}),
+		agentapp.New(mustAgentRepo(t, pool), ids.UUIDv7{}), projectapp.New(projectpostgres.New(pool), ids.UUIDv7{}),
 		staticDefaultPolicies{}, staticFullCapabilities{}, outageCredentials{}, outageContextVerifier{}, "fake",
 	)
 	if err != nil {

@@ -1263,8 +1263,8 @@ func (q *Queries) LockTaskCredentialLeaseFacts(ctx context.Context, arg LockTask
 }
 
 const lockTaskEventStream = `-- name: LockTaskEventStream :one
-SELECT t.id, t.owner_user_id, t.last_event_sequence, t.state, t.provider_id, t.created_at,
-       t.budget_max_output_tokens
+SELECT t.id, t.owner_user_id, t.project_id, t.last_event_sequence, t.state, t.provider_id,
+       t.created_at, t.budget_max_output_tokens
 FROM workos_events.outbox AS o
 JOIN workos_core.agent_tasks AS t ON t.id = o.aggregate_id
 WHERE o.lease_id = $1 AND o.locked_by = $2 AND o.processed_at IS NULL AND o.locked_until >= $3
@@ -1280,6 +1280,7 @@ type LockTaskEventStreamParams struct {
 type LockTaskEventStreamRow struct {
 	ID                    string             `json:"id"`
 	OwnerUserID           string             `json:"owner_user_id"`
+	ProjectID             pgtype.UUID        `json:"project_id"`
 	LastEventSequence     int64              `json:"last_event_sequence"`
 	State                 string             `json:"state"`
 	ProviderID            string             `json:"provider_id"`
@@ -1293,6 +1294,7 @@ func (q *Queries) LockTaskEventStream(ctx context.Context, arg LockTaskEventStre
 	err := row.Scan(
 		&i.ID,
 		&i.OwnerUserID,
+		&i.ProjectID,
 		&i.LastEventSequence,
 		&i.State,
 		&i.ProviderID,

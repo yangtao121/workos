@@ -17,6 +17,7 @@ import (
 	agentapp "github.com/yangtao121/workos/internal/core/agent/application"
 	agentdomain "github.com/yangtao121/workos/internal/core/agent/domain"
 	agentports "github.com/yangtao121/workos/internal/core/agent/ports"
+	notificationpostgres "github.com/yangtao121/workos/internal/core/notification/adapters/postgres"
 
 	"github.com/yangtao121/workos/internal/platform/ids"
 	"github.com/yangtao121/workos/internal/platform/migrations"
@@ -152,8 +153,15 @@ func newPolicyHarness(t *testing.T, ctx context.Context) *policyHarness {
 	); err != nil {
 		t.Fatalf("seed project: %v", err)
 	}
-	h.left = agentpostgres.New(pool)
-	h.right = agentpostgres.New(rightPool)
+	left, err := agentpostgres.NewWithNotificationSink(pool, notificationpostgres.New(pool))
+	if err != nil {
+		t.Fatalf("wire left agent repository: %v", err)
+	}
+	right, err := agentpostgres.NewWithNotificationSink(rightPool, notificationpostgres.New(rightPool))
+	if err != nil {
+		t.Fatalf("wire right agent repository: %v", err)
+	}
+	h.left, h.right = left, right
 	h.leftService = agentapp.New(h.left, ids.UUIDv7{})
 	return h
 }

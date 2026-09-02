@@ -118,8 +118,8 @@ WHERE o.lease_id = sqlc.arg(lease_id) AND o.locked_by = sqlc.arg(worker_id)
 RETURNING t.cancellation_requested;
 
 -- name: LockTaskEventStream :one
-SELECT t.id, t.owner_user_id, t.last_event_sequence, t.state, t.provider_id, t.created_at,
-       t.budget_max_output_tokens
+SELECT t.id, t.owner_user_id, t.project_id, t.last_event_sequence, t.state, t.provider_id,
+       t.created_at, t.budget_max_output_tokens
 FROM workos_events.outbox AS o
 JOIN workos_core.agent_tasks AS t ON t.id = o.aggregate_id
 WHERE o.lease_id = $1 AND o.locked_by = $2 AND o.processed_at IS NULL AND o.locked_until >= $3

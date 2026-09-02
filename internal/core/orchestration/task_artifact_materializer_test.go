@@ -20,6 +20,7 @@ import (
 	artifactdomain "github.com/yangtao121/workos/internal/core/artifact/domain"
 	artifactports "github.com/yangtao121/workos/internal/core/artifact/ports"
 	indexfeeddomain "github.com/yangtao121/workos/internal/core/indexfeed/domain"
+	notificationdomain "github.com/yangtao121/workos/internal/core/notification/domain"
 
 	"github.com/yangtao121/workos/internal/platform/dbtx"
 	"github.com/yangtao121/workos/internal/platform/ids"
@@ -200,11 +201,23 @@ func (f *fakeFeedSink) AppendReviewArtifactUpsert(_ context.Context, _ dbtx.Tx, 
 	return nil
 }
 
+// recordingNotificationSink captures the owner notifications projected with
+// the artifact, so tests can assert exactly one per fresh materialization
+// and none for replays (ADR-0014).
+type recordingNotificationSink struct {
+	facts []notificationdomain.SystemFact
+}
+
+func (r *recordingNotificationSink) AppendSystemNotification(_ context.Context, _ dbtx.Tx, fact notificationdomain.SystemFact, _ time.Time) (notificationdomain.Notification, error) {
+	r.facts = append(r.facts, fact)
+	return notificationdomain.Notification{ID: "notification-" + fact.SourceID}, nil
+}
+
 func (f *fakeFeedSink) AppendProjectTombstone(_ context.Context, _ dbtx.Tx, _ indexfeeddomain.Publication) error {
 	return errors.New("tombstones never originate from artifact materialization")
 }
 
-func newMaterializerWithSink(t *testing.T) (*TaskArtifactMaterializer, *fakeStreams, *fakeReviewOutputs, *fakeFeedSink) {
+func newMaterializerWithSink(t *testing.T) (*TaskArtifactMaterializer, *fakeStreams, *fakeReviewOutputs, *fakeFeedSink, *recordingNotificationSink) {
 	t.Helper()
 	streams := &fakeStreams{lastSequence: 2}
 	outputs := newFakeReviewOutputs()
@@ -213,15 +226,16 @@ func newMaterializerWithSink(t *testing.T) (*TaskArtifactMaterializer, *fakeStre
 		t.Fatal(err)
 	}
 	sink := &fakeFeedSink{}
-	materializer, err := NewTaskArtifactMaterializer(fakeTxSource{}, streams, outputs, preparer, sink, ids.UUIDv7{})
+	notifications := &recordingNotificationSink{}
+	materializer, err := NewTaskArtifactMaterializer(fakeTxSource{}, streams, outputs, preparer, sink, notifications, ids.UUIDv7{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	return materializer, streams, outputs, sink
+	return materializer, streams, outputs, sink, notifications
 }
 
 func newMaterializer(t *testing.T) (*TaskArtifactMaterializer, *fakeStreams, *fakeReviewOutputs) {
-	materializer, streams, outputs, _ := newMaterializerWithSink(t)
+	materializer, streams, outputs, _, _ := newMaterializerWithSink(t)
 	return materializer, streams, outputs
 }
 
@@ -268,6 +282,62 @@ func TestMaterializerReplaysAfterResponseLoss(t *testing.T) {
 	}
 	if secondEvent.GetSequence() != 3 {
 		t.Fatalf("replay must return the first published event, got sequence %d", secondEvent.GetSequence())
+	}
+}
+
+// TestMaterializerProjectsExactlyOneNotification proves the owner
+// notification is bound to the exact artifact fact and that replays never
+// append a second one (ADR-0014).
+func TestMaterializerProjectsExactlyOneNotification(t *testing.T) {
+	m, streams, _, _, notifications := newMaterializerWithSink(t)
+	artifact, _, err := materializeMarkdown(m, []byte("# Hello\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(notifications.facts) != 1 {
+		t.Fatalf("expected exactly one notification, got %d", len(notifications.facts))
+	}
+	fact := notifications.facts[0]
+	if fact.Kind != notificationdomain.KindArtifactReviewCreated || fact.TargetID != artifact.GetId() ||
+		fact.Category != "document.markdown.v1" || fact.ProjectID != project1 || fact.OwnerUserID != ownerID {
+		t.Fatalf("notification fact drifted: %#v", fact)
+	}
+	streams.lastSequence = 99
+	if _, _, err := materializeMarkdown(m, []byte("# Hello\n")); err != nil {
+		t.Fatalf("replay: %v", err)
+	}
+	if len(notifications.facts) != 1 {
+		t.Fatalf("replay appended a second notification: %d", len(notifications.facts))
+	}
+}
+
+// failingNotificationSink simulates a store outage inside the notification
+// projection.
+type failingNotificationSink struct{}
+
+func (failingNotificationSink) AppendSystemNotification(context.Context, dbtx.Tx, notificationdomain.SystemFact, time.Time) (notificationdomain.Notification, error) {
+	return notificationdomain.Notification{}, errors.New("notification store unavailable")
+}
+
+// TestMaterializerNotificationFailureRollsBackSource proves the hard
+// requirement: a notification failure rolls the whole materialization back —
+// zero artifact, zero mapping, zero event, zero publication.
+func TestMaterializerNotificationFailureRollsBackSource(t *testing.T) {
+	streams := &fakeStreams{lastSequence: 2}
+	outputs := newFakeReviewOutputs()
+	preparer, err := artifactapp.New(artifactpostgres.New(nil), ids.UUIDv7{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	m, err := NewTaskArtifactMaterializer(fakeTxSource{}, streams, outputs, preparer, &fakeFeedSink{}, failingNotificationSink{}, ids.UUIDv7{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := materializeMarkdown(m, []byte("# Hello\n")); err == nil {
+		t.Fatal("materialization must fail when the notification fails")
+	}
+	if len(outputs.outputs) != 0 || len(streams.events) != 0 {
+		t.Fatalf("source facts must roll back: %d outputs, %d events", len(outputs.outputs), len(streams.events))
 	}
 }
 
