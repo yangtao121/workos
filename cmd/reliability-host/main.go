@@ -62,6 +62,17 @@ func run(logger *slog.Logger) error {
 	incidentPath, incidentHandler := transport.NewIncidentConnectHandler(incidentService)
 	mux.Handle(incidentPath, identity.Middleware(incidentHandler))
 
+	// The private incident notification publication source (ADR-0014): the
+	// Core notification consumer claims completed-at-least-once publications
+	// here. It never enters the gateway allowlist, so browsers and apps
+	// deterministically cannot reach it.
+	publicationService, err := application.NewPublicationService(repository)
+	if err != nil {
+		return err
+	}
+	publicationPath, publicationHandler := transport.NewPublicationSourceHandler(publicationService)
+	mux.Handle(publicationPath, identity.Middleware(publicationHandler))
+
 	// The runtime client observes and controls supervised workloads over the
 	// private, versioned contract. It is a hard dependency of the loop but
 	// never of the public incident RPCs: the UI degrades, the process lives.

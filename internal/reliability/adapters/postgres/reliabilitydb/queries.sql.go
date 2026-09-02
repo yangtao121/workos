@@ -49,6 +49,129 @@ func (q *Queries) AcknowledgeIncident(ctx context.Context, arg AcknowledgeIncide
 	return result.RowsAffected(), nil
 }
 
+const claimPendingIncidentPublications = `-- name: ClaimPendingIncidentPublications :many
+UPDATE workos_reliability.notification_publications AS pub
+SET claim_locked_by = $1,
+    claim_token = $2,
+    claim_locked_until = $3,
+    claim_attempts = pub.claim_attempts + 1
+WHERE pub.id IN (
+    SELECT pending.id FROM workos_reliability.notification_publications AS pending
+    WHERE pending.outcome IS NULL
+      AND (pending.claim_locked_until IS NULL OR pending.claim_locked_until < $4)
+    ORDER BY pending.occurred_at, pending.id
+    FOR UPDATE SKIP LOCKED
+    LIMIT $5
+)
+RETURNING pub.id, pub.incident_id, pub.owner_user_id, pub.project_id, pub.severity,
+          pub.action_outcome, pub.digest, pub.occurred_at, pub.claim_locked_until
+`
+
+type ClaimPendingIncidentPublicationsParams struct {
+	WorkerID   pgtype.Text `json:"worker_id"`
+	ClaimToken pgtype.Text `json:"claim_token"`
+	LeaseUntil *time.Time  `json:"lease_until"`
+	Now        *time.Time  `json:"now"`
+	MaxBatch   int32       `json:"max_batch"`
+}
+
+type ClaimPendingIncidentPublicationsRow struct {
+	ID               string     `json:"id"`
+	IncidentID       string     `json:"incident_id"`
+	OwnerUserID      string     `json:"owner_user_id"`
+	ProjectID        string     `json:"project_id"`
+	Severity         string     `json:"severity"`
+	ActionOutcome    string     `json:"action_outcome"`
+	Digest           string     `json:"digest"`
+	OccurredAt       time.Time  `json:"occurred_at"`
+	ClaimLockedUntil *time.Time `json:"claim_locked_until"`
+}
+
+func (q *Queries) ClaimPendingIncidentPublications(ctx context.Context, arg ClaimPendingIncidentPublicationsParams) ([]ClaimPendingIncidentPublicationsRow, error) {
+	rows, err := q.db.Query(ctx, claimPendingIncidentPublications,
+		arg.WorkerID,
+		arg.ClaimToken,
+		arg.LeaseUntil,
+		arg.Now,
+		arg.MaxBatch,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ClaimPendingIncidentPublicationsRow
+	for rows.Next() {
+		var i ClaimPendingIncidentPublicationsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.IncidentID,
+			&i.OwnerUserID,
+			&i.ProjectID,
+			&i.Severity,
+			&i.ActionOutcome,
+			&i.Digest,
+			&i.OccurredAt,
+			&i.ClaimLockedUntil,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const completeIncidentPublications = `-- name: CompleteIncidentPublications :execrows
+UPDATE workos_reliability.notification_publications
+SET outcome = 'completed',
+    completed_at = $1,
+    completed_by = $2,
+    claim_locked_by = NULL,
+    claim_token = NULL,
+    claim_locked_until = NULL
+WHERE id = ANY ($3::uuid[])
+  AND claim_locked_by = $2
+  AND claim_token = $4
+  AND outcome IS NULL
+  AND claim_locked_until IS NOT NULL
+  AND claim_locked_until > $1
+`
+
+type CompleteIncidentPublicationsParams struct {
+	Now        *time.Time  `json:"now"`
+	WorkerID   pgtype.Text `json:"worker_id"`
+	Ids        []string    `json:"ids"`
+	ClaimToken pgtype.Text `json:"claim_token"`
+}
+
+// One batch is one claim: every claimed publication shares the claim's
+// lease token, so completion proves worker + live lease for the whole batch.
+func (q *Queries) CompleteIncidentPublications(ctx context.Context, arg CompleteIncidentPublicationsParams) (int64, error) {
+	result, err := q.db.Exec(ctx, completeIncidentPublications,
+		arg.Now,
+		arg.WorkerID,
+		arg.Ids,
+		arg.ClaimToken,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const countPendingIncidentPublications = `-- name: CountPendingIncidentPublications :one
+SELECT count(*) FROM workos_reliability.notification_publications WHERE outcome IS NULL
+`
+
+func (q *Queries) CountPendingIncidentPublications(ctx context.Context) (int64, error) {
+	row := q.db.QueryRow(ctx, countPendingIncidentPublications)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const getIncident = `-- name: GetIncident :one
 SELECT id, owner_user_id, project_id, app_instance_id, app_id, workload_id,
        workload_generation, violation, severity, summary, occurrence_digest,
@@ -293,6 +416,51 @@ func (q *Queries) InsertIncident(ctx context.Context, arg InsertIncidentParams) 
 		arg.Revision,
 		arg.CreatedAt,
 		arg.UpdatedAt,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const insertIncidentNotificationPublication = `-- name: InsertIncidentNotificationPublication :execrows
+
+INSERT INTO workos_reliability.notification_publications (
+    id, incident_id, owner_user_id, project_id, severity, action_outcome,
+    digest, occurred_at, created_at
+) VALUES (
+    $1, $2, $3, $4,
+    $5, $6, $7,
+    $8, $9
+)
+`
+
+type InsertIncidentNotificationPublicationParams struct {
+	ID            string    `json:"id"`
+	IncidentID    string    `json:"incident_id"`
+	OwnerUserID   string    `json:"owner_user_id"`
+	ProjectID     string    `json:"project_id"`
+	Severity      string    `json:"severity"`
+	ActionOutcome string    `json:"action_outcome"`
+	Digest        string    `json:"digest"`
+	OccurredAt    time.Time `json:"occurred_at"`
+	CreatedAt     time.Time `json:"created_at"`
+}
+
+// Notification publication facts (ADR-0014). These statements touch only
+// workos_reliability.notification_publications; Core consumes them over the
+// private source service and never issues this SQL.
+func (q *Queries) InsertIncidentNotificationPublication(ctx context.Context, arg InsertIncidentNotificationPublicationParams) (int64, error) {
+	result, err := q.db.Exec(ctx, insertIncidentNotificationPublication,
+		arg.ID,
+		arg.IncidentID,
+		arg.OwnerUserID,
+		arg.ProjectID,
+		arg.Severity,
+		arg.ActionOutcome,
+		arg.Digest,
+		arg.OccurredAt,
+		arg.CreatedAt,
 	)
 	if err != nil {
 		return 0, err

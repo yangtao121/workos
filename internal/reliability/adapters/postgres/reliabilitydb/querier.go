@@ -14,6 +14,11 @@ type Querier interface {
 	// key replays the same state and the (owner, key) uniqueness is enforced by
 	// the partial unique index from 017. Repeat acknowledges are no-ops.
 	AcknowledgeIncident(ctx context.Context, arg AcknowledgeIncidentParams) (int64, error)
+	ClaimPendingIncidentPublications(ctx context.Context, arg ClaimPendingIncidentPublicationsParams) ([]ClaimPendingIncidentPublicationsRow, error)
+	// One batch is one claim: every claimed publication shares the claim's
+	// lease token, so completion proves worker + live lease for the whole batch.
+	CompleteIncidentPublications(ctx context.Context, arg CompleteIncidentPublicationsParams) (int64, error)
+	CountPendingIncidentPublications(ctx context.Context) (int64, error)
 	GetIncident(ctx context.Context, id string) (GetIncidentRow, error)
 	GetIncidentAction(ctx context.Context, arg GetIncidentActionParams) (WorkosReliabilityIncidentAction, error)
 	GetIncidentByOccurrence(ctx context.Context, occurrenceDigest string) (GetIncidentByOccurrenceRow, error)
@@ -24,6 +29,10 @@ type Querier interface {
 	// The occurrence_digest unique key is the at-least-once arbiter: a replayed
 	// episode inserts nothing and the caller reads the stored row instead.
 	InsertIncident(ctx context.Context, arg InsertIncidentParams) (int64, error)
+	// Notification publication facts (ADR-0014). These statements touch only
+	// workos_reliability.notification_publications; Core consumes them over the
+	// private source service and never issues this SQL.
+	InsertIncidentNotificationPublication(ctx context.Context, arg InsertIncidentNotificationPublicationParams) (int64, error)
 	// Owner-scoped, project-optional, keyed pagination on (created_at, id). The
 	// caller probes limit+1 rows so a full final page never phantom-pages.
 	ListIncidentsPage(ctx context.Context, arg ListIncidentsPageParams) ([]ListIncidentsPageRow, error)

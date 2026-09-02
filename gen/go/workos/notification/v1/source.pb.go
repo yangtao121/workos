@@ -313,9 +313,9 @@ type CompleteIncidentPublicationsRequest struct {
 	state          protoimpl.MessageState `protogen:"open.v1"`
 	WorkerId       string                 `protobuf:"bytes,1,opt,name=worker_id,json=workerId,proto3" json:"worker_id,omitempty"`
 	PublicationIds []string               `protobuf:"bytes,2,rep,name=publication_ids,json=publicationIds,proto3" json:"publication_ids,omitempty"`
-	// The lease tokens proving each live claim, positionally paired with
-	// publication_ids.
-	LeaseTokens   []string `protobuf:"bytes,3,rep,name=lease_tokens,json=leaseTokens,proto3" json:"lease_tokens,omitempty"`
+	// The claim's lease token proving this worker's live claim; a batch is
+	// exactly one claim, so one token covers the whole batch.
+	LeaseToken    string `protobuf:"bytes,3,opt,name=lease_token,json=leaseToken,proto3" json:"lease_token,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -364,11 +364,11 @@ func (x *CompleteIncidentPublicationsRequest) GetPublicationIds() []string {
 	return nil
 }
 
-func (x *CompleteIncidentPublicationsRequest) GetLeaseTokens() []string {
+func (x *CompleteIncidentPublicationsRequest) GetLeaseToken() string {
 	if x != nil {
-		return x.LeaseTokens
+		return x.LeaseToken
 	}
-	return nil
+	return ""
 }
 
 type CompleteIncidentPublicationsResponse struct {
@@ -442,11 +442,12 @@ const file_workos_notification_v1_source_proto_rawDesc = "" +
 	"\fpublications\x18\x01 \x03(\v27.workos.notification.v1.IncidentNotificationPublicationR\fpublications\"[\n" +
 	"\x1cCompletedIncidentPublication\x12%\n" +
 	"\x0epublication_id\x18\x01 \x01(\tR\rpublicationId\x12\x14\n" +
-	"\x05acked\x18\x02 \x01(\bR\x05acked\"\x8e\x01\n" +
+	"\x05acked\x18\x02 \x01(\bR\x05acked\"\x8c\x01\n" +
 	"#CompleteIncidentPublicationsRequest\x12\x1b\n" +
 	"\tworker_id\x18\x01 \x01(\tR\bworkerId\x12'\n" +
-	"\x0fpublication_ids\x18\x02 \x03(\tR\x0epublicationIds\x12!\n" +
-	"\flease_tokens\x18\x03 \x03(\tR\vleaseTokens\"v\n" +
+	"\x0fpublication_ids\x18\x02 \x03(\tR\x0epublicationIds\x12\x1f\n" +
+	"\vlease_token\x18\x03 \x01(\tR\n" +
+	"leaseToken\"v\n" +
 	"$CompleteIncidentPublicationsResponse\x12N\n" +
 	"\aresults\x18\x01 \x03(\v24.workos.notification.v1.CompletedIncidentPublicationR\aresults2\xe1\x02\n" +
 	",IncidentNotificationPublicationSourceService\x12\x92\x01\n" +

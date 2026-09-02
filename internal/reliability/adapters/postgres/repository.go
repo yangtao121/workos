@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -34,10 +35,19 @@ func New(pool *pgxpool.Pool) (*Repository, error) {
 	return &Repository{pool: pool, queries: reliabilitydb.New(pool)}, nil
 }
 
-// CreateIncident inserts the incident; an existing occurrence digest keeps
-// the stored episode authoritative and reports created=false.
+// CreateIncident inserts the incident and — in the same transaction — the
+// durable notification publication that the Core notification authority
+// consumes (ADR-0014). An existing occurrence digest keeps the stored
+// episode authoritative and reports created=false; the publication exists
+// exactly once per incident, physically arbitrated by a unique index.
 func (r *Repository) CreateIncident(ctx context.Context, incident domain.Incident) (bool, error) {
-	rows, err := r.queries.InsertIncident(ctx, reliabilitydb.InsertIncidentParams{
+	tx, err := r.pool.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		return false, storeError("begin create incident", err)
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck
+	queries := r.queries.WithTx(tx)
+	rows, err := queries.InsertIncident(ctx, reliabilitydb.InsertIncidentParams{
 		ID: incident.ID, OwnerUserID: incident.OwnerUserID, ProjectID: incident.ProjectID,
 		AppInstanceID: incident.AppInstanceID, AppID: incident.AppID,
 		WorkloadID: incident.WorkloadID, WorkloadGeneration: incident.WorkloadGeneration,
@@ -49,6 +59,35 @@ func (r *Repository) CreateIncident(ctx context.Context, incident domain.Inciden
 	})
 	if err != nil {
 		return false, storeError("create incident", err)
+	}
+	if rows > 0 {
+		publicationID, err := uuid.NewV7()
+		if err != nil {
+			return false, storeError("mint notification publication id", err)
+		}
+		severity := string(incident.Violation.Severity())
+		// Map the internal severity vocabulary onto the finite publication
+		// categories; an unknown severity is stored corruption, never a
+		// silent rewrite.
+		switch severity {
+		case "info", "warning", "critical":
+		default:
+			return false, fmt.Errorf("unknown incident severity %q: %w", severity, domain.ErrPublicationInvalid)
+		}
+		if _, err := queries.InsertIncidentNotificationPublication(ctx, reliabilitydb.InsertIncidentNotificationPublicationParams{
+			ID: publicationID.String(), IncidentID: incident.ID,
+			OwnerUserID: incident.OwnerUserID, ProjectID: incident.ProjectID,
+			Severity:      severity,
+			ActionOutcome: string(incident.RestartOutcome),
+			Digest: domain.IncidentNotificationDigest(
+				incident.ID, severity, string(incident.RestartOutcome), incident.CreatedAt),
+			OccurredAt: incident.CreatedAt, CreatedAt: incident.CreatedAt,
+		}); err != nil {
+			return false, storeError("insert notification publication", err)
+		}
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return false, storeError("commit create incident", err)
 	}
 	return rows > 0, nil
 }
@@ -411,4 +450,59 @@ func storeError(operation string, err error) error {
 // textParam maps an empty string to SQL NULL and keeps real values intact.
 func textParam(value string) pgtype.Text {
 	return pgtype.Text{String: value, Valid: value != ""}
+}
+
+// --- Incident notification publication claim source (ADR-0014) ----------
+
+// ClaimPendingIncidentPublications leases up to maxBatch pending
+// publications to the worker until leaseUntil (FOR UPDATE SKIP LOCKED, so
+// two consumers can never hold the same live lease).
+func (r *Repository) ClaimPendingIncidentPublications(ctx context.Context, workerID, claimToken string, leaseUntil, now time.Time, maxBatch int) ([]domain.IncidentNotificationPublication, error) {
+	rows, err := r.queries.ClaimPendingIncidentPublications(ctx, reliabilitydb.ClaimPendingIncidentPublicationsParams{
+		WorkerID: pgtype.Text{String: workerID, Valid: true}, ClaimToken: pgtype.Text{String: claimToken, Valid: true},
+		LeaseUntil: &leaseUntil,
+		Now:        &now,
+		MaxBatch:   int32(maxBatch),
+	})
+	if err != nil {
+		return nil, storeError("claim incident notification publications", err)
+	}
+	publications := make([]domain.IncidentNotificationPublication, 0, len(rows))
+	for _, row := range rows {
+		publication := domain.IncidentNotificationPublication{
+			ID: row.ID, IncidentID: row.IncidentID, OwnerUserID: row.OwnerUserID,
+			ProjectID: row.ProjectID, Severity: row.Severity, ActionOutcome: row.ActionOutcome,
+			Digest: row.Digest, OccurredAt: row.OccurredAt,
+		}
+		if err := domain.ValidStoredPublication(publication); err != nil {
+			return nil, err
+		}
+		publications = append(publications, publication)
+	}
+	return publications, nil
+}
+
+// CompleteIncidentPublications records terminal outcomes for the given live
+// claim inside the caller's transaction and returns the ids actually acked
+// by this worker (stale claims are absent). The consumer's local receipt
+// turns any replay into a no-op.
+func (r *Repository) CompleteIncidentPublications(ctx context.Context, workerID, claimToken string, ids []string, now time.Time) (int64, error) {
+	rows, err := r.queries.CompleteIncidentPublications(ctx, reliabilitydb.CompleteIncidentPublicationsParams{
+		WorkerID: pgtype.Text{String: workerID, Valid: true}, ClaimToken: pgtype.Text{String: claimToken, Valid: true},
+		Ids: ids,
+		Now: &now,
+	})
+	if err != nil {
+		return 0, storeError("complete incident notification publications", err)
+	}
+	return rows, nil
+}
+
+// CountPendingIncidentPublications reports publications still pending.
+func (r *Repository) CountPendingIncidentPublications(ctx context.Context) (int64, error) {
+	count, err := r.queries.CountPendingIncidentPublications(ctx)
+	if err != nil {
+		return 0, storeError("count pending incident notification publications", err)
+	}
+	return count, nil
 }

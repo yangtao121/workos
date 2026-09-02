@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	agentv1 "github.com/yangtao121/workos/gen/go/workos/agent/v1"
@@ -15,6 +16,7 @@ import (
 	commonv1 "github.com/yangtao121/workos/gen/go/workos/common/v1"
 	"github.com/yangtao121/workos/gen/go/workos/common/v1/commonv1connect"
 	"github.com/yangtao121/workos/gen/go/workos/harness/v1/harnessv1connect"
+	notificationv1connect "github.com/yangtao121/workos/gen/go/workos/notification/v1/notificationv1connect"
 	projectconnect "github.com/yangtao121/workos/gen/go/workos/project/v1/projectv1connect"
 	agentpostgres "github.com/yangtao121/workos/internal/core/agent/adapters/postgres"
 	agentapp "github.com/yangtao121/workos/internal/core/agent/application"
@@ -38,6 +40,7 @@ import (
 	indexfeedapp "github.com/yangtao121/workos/internal/core/indexfeed/application"
 	indexfeedtransport "github.com/yangtao121/workos/internal/core/indexfeed/transport"
 	notificationpostgres "github.com/yangtao121/workos/internal/core/notification/adapters/postgres"
+	reliabilityclient "github.com/yangtao121/workos/internal/core/notification/adapters/reliabilityclient"
 	notificationapp "github.com/yangtao121/workos/internal/core/notification/application"
 	notificationtransport "github.com/yangtao121/workos/internal/core/notification/transport"
 	"github.com/yangtao121/workos/internal/core/orchestration"
@@ -336,6 +339,28 @@ func run(logger *slog.Logger) error {
 	}
 	notificationPath, notificationHandler := notificationtransport.NewConnectHandler(notificationService)
 	mux.Handle(notificationPath, identity.Middleware(notificationHandler))
+
+	// The optional incident notification consumer (ADR-0014): when the
+	// reliability upstream is configured, Core claims durable publications
+	// at-least-once and projects them into the owner stream. When it is not,
+	// only incident-source freshness is degraded; every other notification
+	// path stays fully available. Private reliability RPCs never enter the
+	// gateway allowlist.
+	incidentConsumerActive := false
+	if strings.TrimSpace(cfg.Services.Reliability) != "" {
+		publicationClient := notificationv1connect.NewIncidentNotificationPublicationSourceServiceClient(
+			telemetry.HTTPClient(), cfg.Services.Reliability)
+		incidentConsumer, err := notificationapp.NewIncidentConsumer(
+			reliabilityclient.New(publicationClient), notificationRepository, pool, "workos-core-notification-consumer")
+		if err != nil {
+			return err
+		}
+		incidentConsumerActive = true
+		go incidentConsumer.Run(ctx, logger)
+	}
+	// The summary's freshness probe reports only incident-source freshness;
+	// an unconfigured consumer degrades exactly that bit.
+	notificationtransport.SetIncidentSourceReady(func() bool { return incidentConsumerActive })
 	// Bounded housekeeping: old read facts are swept and the owner sweep
 	// watermark advances, so stream-gap detection stays authoritative.
 	// Correctness never relies on this loop; every failure is observable.

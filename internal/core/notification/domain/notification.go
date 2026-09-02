@@ -379,3 +379,65 @@ func storedCategoryFor(n Notification) string {
 	}
 	return ""
 }
+
+// Incident publication projection (ADR-0014). The fact arrives from the
+// reliability-host private source service; every field is revalidated here
+// and the source digest is the reliability publication's own versioned
+// digest, so a same-source/different-digest replay is contract violation.
+
+// IncidentPublicationFact is the neutral incident publication input.
+type IncidentPublicationFact struct {
+	OwnerUserID   string
+	ProjectID     string
+	IncidentID    string
+	Severity      string // info | warning | critical
+	ActionOutcome string // pending | restarted | stopped | failed
+	Digest        string
+	SourceID      string
+}
+
+// ValidWorkerIdentity checks the bounded internal consumer identity grammar
+// (1..128 ASCII [-a-z0-9._]); it is persisted as the claim lease owner and
+// is never accepted from browsers or apps.
+func ValidWorkerIdentity(workerID string) bool {
+	if len(workerID) == 0 || len(workerID) > 128 {
+		return false
+	}
+	for _, r := range workerID {
+		switch {
+		case r >= 'a' && r <= 'z':
+		case r >= '0' && r <= '9':
+		case r == '-' || r == '.' || r == '_':
+		default:
+			return false
+		}
+	}
+	return true
+}
+
+// PrepareIncidentPublication validates the publication fact and derives the
+// stored notification. The severity category drives the finite template;
+// the outcome snapshot is audit-only and never changes the projection.
+func PrepareIncidentPublication(fact IncidentPublicationFact, occurredAt time.Time) (Notification, error) {
+	if !ValidUUID(fact.OwnerUserID) || !ValidUUID(fact.ProjectID) || !ValidUUID(fact.IncidentID) {
+		return Notification{}, ErrInvalid
+	}
+	if fact.SourceID == "" || len(fact.Digest) != 71 || fact.Digest[:7] != "sha256:" {
+		return Notification{}, ErrInvalid
+	}
+	severity, title, body, targetKind, err := SystemTemplate(KindReliabilityIncidentOpen, fact.Severity)
+	if err != nil {
+		return Notification{}, ErrInvalid
+	}
+	id, err := uuid.NewV7()
+	if err != nil {
+		return Notification{}, fmt.Errorf("%w: mint incident notification id", ErrInvalid)
+	}
+	return Notification{
+		ID: id.String(), OwnerUserID: fact.OwnerUserID, ProjectID: fact.ProjectID,
+		Kind: KindReliabilityIncidentOpen, Severity: severity, Origin: OriginSystem,
+		Title: title, Body: body, TargetKind: targetKind, TargetID: fact.IncidentID,
+		SourceProcess: SourceProcessReliability, SourceID: SourceKindIncidentPrefix + fact.SourceID,
+		SourceDigest: fact.Digest, CreatedAt: CanonicalUTCTime(occurredAt),
+	}, nil
+}

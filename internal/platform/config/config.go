@@ -250,6 +250,7 @@ func Load() (Config, error) {
 	setString(&cfg.Services.Core, "WORKOS_CORE_URL")
 	setString(&cfg.Services.Harness, "WORKOS_HARNESS_URL")
 	setString(&cfg.Services.Runtime, "WORKOS_RUNTIME_URL")
+	setString(&cfg.Services.Reliability, "WORKOS_RELIABILITY_URL")
 	setString(&cfg.Services.Indexer, "WORKOS_INDEXER_URL")
 	setString(&cfg.Harness.CoreURL, "WORKOS_CORE_URL")
 	setString(&cfg.Auth.OwnerID, "WORKOS_OWNER_ID")

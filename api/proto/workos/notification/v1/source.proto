@@ -58,9 +58,9 @@ message CompletedIncidentPublication {
 message CompleteIncidentPublicationsRequest {
   string worker_id = 1;
   repeated string publication_ids = 2;
-  // The lease tokens proving each live claim, positionally paired with
-  // publication_ids.
-  repeated string lease_tokens = 3;
+  // The claim's lease token proving this worker's live claim; a batch is
+  // exactly one claim, so one token covers the whole batch.
+  string lease_token = 3;
 }
 
 message CompleteIncidentPublicationsResponse {

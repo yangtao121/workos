@@ -193,3 +193,54 @@ WHERE workload_id = sqlc.arg(workload_id)
   AND workload_generation <= sqlc.arg(through_generation)
   AND state = 'mitigated'
 ORDER BY created_at, id;
+
+-- Notification publication facts (ADR-0014). These statements touch only
+-- workos_reliability.notification_publications; Core consumes them over the
+-- private source service and never issues this SQL.
+
+-- name: InsertIncidentNotificationPublication :execrows
+INSERT INTO workos_reliability.notification_publications (
+    id, incident_id, owner_user_id, project_id, severity, action_outcome,
+    digest, occurred_at, created_at
+) VALUES (
+    sqlc.arg(id), sqlc.arg(incident_id), sqlc.arg(owner_user_id), sqlc.arg(project_id),
+    sqlc.arg(severity), sqlc.arg(action_outcome), sqlc.arg(digest),
+    sqlc.arg(occurred_at), sqlc.arg(created_at)
+);
+
+-- name: ClaimPendingIncidentPublications :many
+UPDATE workos_reliability.notification_publications AS pub
+SET claim_locked_by = sqlc.arg(worker_id),
+    claim_token = sqlc.arg(claim_token),
+    claim_locked_until = sqlc.arg(lease_until),
+    claim_attempts = pub.claim_attempts + 1
+WHERE pub.id IN (
+    SELECT pending.id FROM workos_reliability.notification_publications AS pending
+    WHERE pending.outcome IS NULL
+      AND (pending.claim_locked_until IS NULL OR pending.claim_locked_until < sqlc.arg(now))
+    ORDER BY pending.occurred_at, pending.id
+    FOR UPDATE SKIP LOCKED
+    LIMIT sqlc.arg(max_batch)
+)
+RETURNING pub.id, pub.incident_id, pub.owner_user_id, pub.project_id, pub.severity,
+          pub.action_outcome, pub.digest, pub.occurred_at, pub.claim_locked_until;
+
+-- One batch is one claim: every claimed publication shares the claim's
+-- lease token, so completion proves worker + live lease for the whole batch.
+-- name: CompleteIncidentPublications :execrows
+UPDATE workos_reliability.notification_publications
+SET outcome = 'completed',
+    completed_at = sqlc.arg(now),
+    completed_by = sqlc.arg(worker_id),
+    claim_locked_by = NULL,
+    claim_token = NULL,
+    claim_locked_until = NULL
+WHERE id = ANY (sqlc.arg(ids)::uuid[])
+  AND claim_locked_by = sqlc.arg(worker_id)
+  AND claim_token = sqlc.arg(claim_token)
+  AND outcome IS NULL
+  AND claim_locked_until IS NOT NULL
+  AND claim_locked_until > sqlc.arg(now);
+
+-- name: CountPendingIncidentPublications :one
+SELECT count(*) FROM workos_reliability.notification_publications WHERE outcome IS NULL;
