@@ -11,6 +11,7 @@ import {
   type BridgeMethod,
 } from "@workos/surface-sdk";
 import { openAppBridgeHost, type AppBridgeRunResult, type AppBridgeTransport } from "./index.js";
+import type { BridgeKnowledgeSearchResult } from "@workos/surface-sdk";
 
 // The host uses window timers; the node environment provides none.
 beforeEach(() => {
@@ -97,8 +98,16 @@ function setupImplementation(options: {
   const watchAgentTaskEvents = vi.fn<AppBridgeTransport["watchAgentTaskEvents"]>(() =>
     Promise.resolve(),
   );
+  const searchKnowledge = vi.fn<
+    (input: {
+      query: string;
+      pageSize?: number | undefined;
+      pageToken?: string | undefined;
+    }) => Promise<BridgeKnowledgeSearchResult>
+  >(() => Promise.resolve({ hits: [], nextPageToken: "" }));
   const transport: AppBridgeTransport = {
     runAgentTask,
+    searchKnowledge,
     watchAgentTaskEvents,
     ...options.transport,
   };
@@ -243,6 +252,7 @@ describe("App Bridge host dispatch", () => {
   it("maps a transport failure to a stable error code without internals", async () => {
     const { port, received } = await handshakenHost({
       transport: {
+        searchKnowledge: () => Promise.reject(new Error("not used in this test")),
         runAgentTask: () => Promise.reject(new Error("postgres DSN postgres://secret@10.0.0.1")),
       },
     });
@@ -364,6 +374,7 @@ describe("App Bridge host dispatch", () => {
   it("fails all pending requests when the host closes", async () => {
     const { host, port } = await handshakenHost({
       transport: {
+        searchKnowledge: () => new Promise<BridgeKnowledgeSearchResult>(() => undefined),
         runAgentTask: () => new Promise<AppBridgeRunResult>(() => undefined),
       },
     });
@@ -560,6 +571,7 @@ describe("App Bridge host untrusted-port boundary", () => {
     const typedRun = vi.fn(() => Promise.reject(new BridgeProtocolError("permission_denied")));
     const typedWatch = vi.fn(() => Promise.reject(new BridgeProtocolError("not_found")));
     const runTransport: Partial<AppBridgeTransport> = {
+      searchKnowledge: () => Promise.reject(new Error("not used in this test")),
       runAgentTask: typedRun,
       watchAgentTaskEvents: typedWatch,
     };

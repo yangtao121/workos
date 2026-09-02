@@ -73,12 +73,12 @@ func TestEffectiveBridgeCapabilitiesIntersection(t *testing.T) {
 	t.Parallel()
 	effective := EffectiveBridgeCapabilities([]string{
 		"agent.task.run", "artifact.read", "agent.event.watch", "project.read",
-	})
+	}, false)
 	if len(effective) != 2 || effective[0] != "agent.event.watch" || effective[1] != "agent.task.run" {
 		t.Fatalf("unexpected effective list: %v", effective)
 	}
 	// Unimplemented-but-granted capabilities never become effective.
-	if effective := EffectiveBridgeCapabilities([]string{"artifact.write", "knowledge.read"}); len(effective) != 0 {
+	if effective := EffectiveBridgeCapabilities([]string{"artifact.write", "knowledge.read"}, false); len(effective) != 0 {
 		t.Fatalf("unimplemented capabilities leaked: %v", effective)
 	}
 	if !BridgeCapabilityGranted(effective, "agent.task.run") {
@@ -96,4 +96,20 @@ func lowerHex64(t *testing.T, value string) string {
 	t.Helper()
 	sum := sha256.Sum256([]byte(value))
 	return hex.EncodeToString(sum[:])
+}
+
+// TestEffectiveBridgeCapabilitiesKnowledgeSearch pins the ADR-0013 rules:
+// knowledge.search is negotiated only from a real `knowledge.read` grant AND
+// a configured indexer adapter, and the grant name itself never appears.
+func TestEffectiveBridgeCapabilitiesKnowledgeSearch(t *testing.T) {
+	granted := []string{"knowledge.read"}
+	if effective := EffectiveBridgeCapabilities(granted, false); len(effective) != 0 {
+		t.Fatalf("knowledge.read without indexer negotiated %v", effective)
+	}
+	if effective := EffectiveBridgeCapabilities(granted, true); len(effective) != 1 || effective[0] != "knowledge.search" {
+		t.Fatalf("knowledge.read with indexer = %v, want [knowledge.search]", effective)
+	}
+	if effective := EffectiveBridgeCapabilities([]string{"agent.task.run"}, true); len(effective) != 1 || effective[0] != "agent.task.run" {
+		t.Fatalf("agent grant must not negotiate knowledge.search: %v", effective)
+	}
 }

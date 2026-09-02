@@ -2,8 +2,10 @@
 // @generated from file workos/index/v1/index.proto (package workos.index.v1, syntax proto3)
 /* eslint-disable */
 
-import type { GenFile, GenMessage, GenService } from "@bufbuild/protobuf/codegenv2";
-import { fileDesc, messageDesc, serviceDesc } from "@bufbuild/protobuf/codegenv2";
+import type { GenEnum, GenFile, GenMessage, GenService } from "@bufbuild/protobuf/codegenv2";
+import { enumDesc, fileDesc, messageDesc, serviceDesc } from "@bufbuild/protobuf/codegenv2";
+import type { ContextRef } from "../../agent/v1/agent_pb.js";
+import { file_workos_agent_v1_agent } from "../../agent/v1/agent_pb.js";
 import type { PageRequest, PageResponse } from "../../common/v1/common_pb.js";
 import { file_workos_common_v1_common } from "../../common/v1/common_pb.js";
 import type { Message } from "@bufbuild/protobuf";
@@ -12,7 +14,34 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file workos/index/v1/index.proto.
  */
 export const file_workos_index_v1_index: GenFile = /*@__PURE__*/
-  fileDesc("Cht3b3Jrb3MvaW5kZXgvdjEvaW5kZXgucHJvdG8SD3dvcmtvcy5pbmRleC52MSI/ChNJbmRleENvbnRleHRSZXF1ZXN0EhIKCnByb2plY3RfaWQYASABKAkSFAoMY29udGV4dF9yZWZzGAIgAygJIjkKCEluZGV4Sm9iEgoKAmlkGAEgASgJEhIKCnByb2plY3RfaWQYAiABKAkSDQoFc3RhdGUYAyABKAkiXwoNU2VhcmNoUmVxdWVzdBISCgpwcm9qZWN0X2lkGAEgASgJEg0KBXF1ZXJ5GAIgASgJEisKBHBhZ2UYAyABKAsyHS53b3Jrb3MuY29tbW9uLnYxLlBhZ2VSZXF1ZXN0IkAKCVNlYXJjaEhpdBITCgtjb250ZXh0X3JlZhgBIAEoCRIPCgdleGNlcnB0GAIgASgJEg0KBXNjb3JlGAMgASgBImgKDlNlYXJjaFJlc3BvbnNlEigKBGhpdHMYASADKAsyGi53b3Jrb3MuaW5kZXgudjEuU2VhcmNoSGl0EiwKBHBhZ2UYAiABKAsyHi53b3Jrb3MuY29tbW9uLnYxLlBhZ2VSZXNwb25zZSI+ChRJbmRleENvbnRleHRSZXNwb25zZRImCgNqb2IYASABKAsyGS53b3Jrb3MuaW5kZXgudjEuSW5kZXhKb2IyugEKDEluZGV4U2VydmljZRJdCgxJbmRleENvbnRleHQSJC53b3Jrb3MuaW5kZXgudjEuSW5kZXhDb250ZXh0UmVxdWVzdBolLndvcmtvcy5pbmRleC52MS5JbmRleENvbnRleHRSZXNwb25zZSIAEksKBlNlYXJjaBIeLndvcmtvcy5pbmRleC52MS5TZWFyY2hSZXF1ZXN0Gh8ud29ya29zLmluZGV4LnYxLlNlYXJjaFJlc3BvbnNlIgBCPVo7Z2l0aHViLmNvbS95YW5ndGFvMTIxL3dvcmtvcy9nZW4vZ28vd29ya29zL2luZGV4L3YxO2luZGV4djFiBnByb3RvMw", [file_workos_common_v1_common]);
+  fileDesc("Cht3b3Jrb3MvaW5kZXgvdjEvaW5kZXgucHJvdG8SD3dvcmtvcy5pbmRleC52MSI4ChFBcnRpZmFjdFNvdXJjZVJlZhITCgthcnRpZmFjdF9pZBgBIAEoCRIOCgZkaWdlc3QYAiABKAkijQEKE0luZGV4Q29udGV4dFJlcXVlc3QSEgoKcHJvamVjdF9pZBgBIAEoCRIUCgxjb250ZXh0X3JlZnMYAiADKAkSMwoHc291cmNlcxgDIAMoCzIiLndvcmtvcy5pbmRleC52MS5BcnRpZmFjdFNvdXJjZVJlZhIXCg9pZGVtcG90ZW5jeV9rZXkYBCABKAki+AEKCEluZGV4Sm9iEgoKAmlkGAEgASgJEhIKCnByb2plY3RfaWQYAiABKAkSDQoFc3RhdGUYAyABKAkSMQoJam9iX3N0YXRlGAQgASgOMh4ud29ya29zLmluZGV4LnYxLkluZGV4Sm9iU3RhdGUSFQoNdG90YWxfc291cmNlcxgFIAEoBRIZChFjb21wbGV0ZWRfc291cmNlcxgGIAEoBRIWCg5mYWlsZWRfc291cmNlcxgHIAEoBRIYChBmYWlsdXJlX2NhdGVnb3J5GAggASgJEhIKCmNyZWF0ZWRfYXQYCSABKAkSEgoKdXBkYXRlZF9hdBgKIAEoCSJfCg1TZWFyY2hSZXF1ZXN0EhIKCnByb2plY3RfaWQYASABKAkSDQoFcXVlcnkYAiABKAkSKwoEcGFnZRgDIAEoCzIdLndvcmtvcy5jb21tb24udjEuUGFnZVJlcXVlc3Qi0AEKCVNlYXJjaEhpdBITCgtjb250ZXh0X3JlZhgBIAEoCRIPCgdleGNlcnB0GAIgASgJEg0KBXNjb3JlGAMgASgBEi8KCnNvdXJjZV9yZWYYBCABKAsyGy53b3Jrb3MuYWdlbnQudjEuQ29udGV4dFJlZhITCgthcnRpZmFjdF9pZBgFIAEoCRIVCg1hcnRpZmFjdF90eXBlGAYgASgJEg4KBmRpZ2VzdBgHIAEoCRINCgV0aXRsZRgIIAEoCRISCgpjcmVhdGVkX2F0GAkgASgJInMKDkluZGV4RnJlc2huZXNzEhEKCWNhdWdodF91cBgBIAEoCBIXCg9pbmRleGVkX3Rocm91Z2gYAiABKAkSFwoPbGFzdF9pbmRleGVkX2F0GAMgASgJEhwKFHBlbmRpbmdfcHVibGljYXRpb25zGAQgASgDIpwBCg5TZWFyY2hSZXNwb25zZRIoCgRoaXRzGAEgAygLMhoud29ya29zLmluZGV4LnYxLlNlYXJjaEhpdBIsCgRwYWdlGAIgASgLMh4ud29ya29zLmNvbW1vbi52MS5QYWdlUmVzcG9uc2USMgoJZnJlc2huZXNzGAMgASgLMh8ud29ya29zLmluZGV4LnYxLkluZGV4RnJlc2huZXNzIj4KFEluZGV4Q29udGV4dFJlc3BvbnNlEiYKA2pvYhgBIAEoCzIZLndvcmtvcy5pbmRleC52MS5JbmRleEpvYiqlAQoNSW5kZXhKb2JTdGF0ZRIfChtJTkRFWF9KT0JfU1RBVEVfVU5TUEVDSUZJRUQQABIbChdJTkRFWF9KT0JfU1RBVEVfUEVORElORxABEhsKF0lOREVYX0pPQl9TVEFURV9SVU5OSU5HEAISHQoZSU5ERVhfSk9CX1NUQVRFX0NPTVBMRVRFRBADEhoKFklOREVYX0pPQl9TVEFURV9GQUlMRUQQBDK6AQoMSW5kZXhTZXJ2aWNlEl0KDEluZGV4Q29udGV4dBIkLndvcmtvcy5pbmRleC52MS5JbmRleENvbnRleHRSZXF1ZXN0GiUud29ya29zLmluZGV4LnYxLkluZGV4Q29udGV4dFJlc3BvbnNlIgASSwoGU2VhcmNoEh4ud29ya29zLmluZGV4LnYxLlNlYXJjaFJlcXVlc3QaHy53b3Jrb3MuaW5kZXgudjEuU2VhcmNoUmVzcG9uc2UiAEI9WjtnaXRodWIuY29tL3lhbmd0YW8xMjEvd29ya29zL2dlbi9nby93b3Jrb3MvaW5kZXgvdjE7aW5kZXh2MWIGcHJvdG8z", [file_workos_agent_v1_agent, file_workos_common_v1_common]);
+
+/**
+ * Typed canonical source reference for an indexed review artifact. It is the
+ * same `artifact.review.v1` context ref semantics defined by ADR-0010: the
+ * exact artifact UUIDv7 plus its exact sha256 digest. Search hits reuse this
+ * type so pinning a hit as Agent context never needs a second ref grammar.
+ *
+ * @generated from message workos.index.v1.ArtifactSourceRef
+ */
+export type ArtifactSourceRef = Message<"workos.index.v1.ArtifactSourceRef"> & {
+  /**
+   * @generated from field: string artifact_id = 1;
+   */
+  artifactId: string;
+
+  /**
+   * @generated from field: string digest = 2;
+   */
+  digest: string;
+};
+
+/**
+ * Describes the message workos.index.v1.ArtifactSourceRef.
+ * Use `create(ArtifactSourceRefSchema)` to create a new message.
+ */
+export const ArtifactSourceRefSchema: GenMessage<ArtifactSourceRef> = /*@__PURE__*/
+  messageDesc(file_workos_index_v1_index, 0);
 
 /**
  * @generated from message workos.index.v1.IndexContextRequest
@@ -24,9 +53,33 @@ export type IndexContextRequest = Message<"workos.index.v1.IndexContextRequest">
   projectId: string;
 
   /**
+   * Deprecated legacy free-form refs. They have no documented grammar and are
+   * never parsed: any non-empty value fails closed with InvalidArgument.
+   * Use the typed `sources` field instead.
+   *
    * @generated from field: repeated string context_refs = 2;
    */
   contextRefs: string[];
+
+  /**
+   * Typed repair/reindex targets. Only `artifact.review.v1` refs are
+   * accepted, at most 32 per request, and every ref must carry the exact
+   * digest. Core re-resolves and re-verifies each source from authoritative
+   * facts; client-submitted titles/content/digests are never trusted.
+   *
+   * @generated from field: repeated workos.index.v1.ArtifactSourceRef sources = 3;
+   */
+  sources: ArtifactSourceRef[];
+
+  /**
+   * Durable idempotency key (1..128 runes). Same key + same canonical
+   * request replays the first job response exactly; same key with a
+   * different request fails with Aborted; failed validation never consumes
+   * the key.
+   *
+   * @generated from field: string idempotency_key = 4;
+   */
+  idempotencyKey: string;
 };
 
 /**
@@ -34,7 +87,7 @@ export type IndexContextRequest = Message<"workos.index.v1.IndexContextRequest">
  * Use `create(IndexContextRequestSchema)` to create a new message.
  */
 export const IndexContextRequestSchema: GenMessage<IndexContextRequest> = /*@__PURE__*/
-  messageDesc(file_workos_index_v1_index, 0);
+  messageDesc(file_workos_index_v1_index, 1);
 
 /**
  * @generated from message workos.index.v1.IndexJob
@@ -51,9 +104,52 @@ export type IndexJob = Message<"workos.index.v1.IndexJob"> & {
   projectId: string;
 
   /**
+   * Legacy free-form state string, retained for compatibility. New callers
+   * must use `job_state`; unknown legacy strings are never interpreted.
+   *
    * @generated from field: string state = 3;
    */
   state: string;
+
+  /**
+   * Strict job state. Any value outside this enum fails closed.
+   *
+   * @generated from field: workos.index.v1.IndexJobState job_state = 4;
+   */
+  jobState: IndexJobState;
+
+  /**
+   * @generated from field: int32 total_sources = 5;
+   */
+  totalSources: number;
+
+  /**
+   * @generated from field: int32 completed_sources = 6;
+   */
+  completedSources: number;
+
+  /**
+   * @generated from field: int32 failed_sources = 7;
+   */
+  failedSources: number;
+
+  /**
+   * Bounded sanitized failure category; never carries query, content, or
+   * storage error text.
+   *
+   * @generated from field: string failure_category = 8;
+   */
+  failureCategory: string;
+
+  /**
+   * @generated from field: string created_at = 9;
+   */
+  createdAt: string;
+
+  /**
+   * @generated from field: string updated_at = 10;
+   */
+  updatedAt: string;
 };
 
 /**
@@ -61,7 +157,7 @@ export type IndexJob = Message<"workos.index.v1.IndexJob"> & {
  * Use `create(IndexJobSchema)` to create a new message.
  */
 export const IndexJobSchema: GenMessage<IndexJob> = /*@__PURE__*/
-  messageDesc(file_workos_index_v1_index, 1);
+  messageDesc(file_workos_index_v1_index, 2);
 
 /**
  * @generated from message workos.index.v1.SearchRequest
@@ -73,6 +169,9 @@ export type SearchRequest = Message<"workos.index.v1.SearchRequest"> & {
   projectId: string;
 
   /**
+   * Bounded lexical query: 1..256 code points after whitespace
+   * canonicalization; control characters are rejected.
+   *
    * @generated from field: string query = 2;
    */
   query: string;
@@ -88,26 +187,71 @@ export type SearchRequest = Message<"workos.index.v1.SearchRequest"> & {
  * Use `create(SearchRequestSchema)` to create a new message.
  */
 export const SearchRequestSchema: GenMessage<SearchRequest> = /*@__PURE__*/
-  messageDesc(file_workos_index_v1_index, 2);
+  messageDesc(file_workos_index_v1_index, 3);
 
 /**
  * @generated from message workos.index.v1.SearchHit
  */
 export type SearchHit = Message<"workos.index.v1.SearchHit"> & {
   /**
+   * Canonical string projection of `source_ref`:
+   * "artifact.review.v1:<artifact_id>:<digest>". Retained for compatibility;
+   * new callers must use the typed `source_ref`.
+   *
    * @generated from field: string context_ref = 1;
    */
   contextRef: string;
 
   /**
+   * Bounded plain-text excerpt. Never HTML; render as inert text only.
+   *
    * @generated from field: string excerpt = 2;
    */
   excerpt: string;
 
   /**
+   * Finite, deterministic lexical score. NaN/Inf never occurs; any stored
+   * score outside the fixed range fails closed server-side.
+   *
    * @generated from field: double score = 3;
    */
   score: number;
+
+  /**
+   * Typed canonical ref for pinning this hit as an Agent context.
+   *
+   * @generated from field: workos.agent.v1.ContextRef source_ref = 4;
+   */
+  sourceRef?: ContextRef | undefined;
+
+  /**
+   * @generated from field: string artifact_id = 5;
+   */
+  artifactId: string;
+
+  /**
+   * Immutable review subtype: document.markdown.v1 or code.unified-diff.v1.
+   *
+   * @generated from field: string artifact_type = 6;
+   */
+  artifactType: string;
+
+  /**
+   * @generated from field: string digest = 7;
+   */
+  digest: string;
+
+  /**
+   * @generated from field: string title = 8;
+   */
+  title: string;
+
+  /**
+   * Authoritative source creation time (UTC, RFC 3339 with microseconds).
+   *
+   * @generated from field: string created_at = 9;
+   */
+  createdAt: string;
 };
 
 /**
@@ -115,7 +259,44 @@ export type SearchHit = Message<"workos.index.v1.SearchHit"> & {
  * Use `create(SearchHitSchema)` to create a new message.
  */
 export const SearchHitSchema: GenMessage<SearchHit> = /*@__PURE__*/
-  messageDesc(file_workos_index_v1_index, 3);
+  messageDesc(file_workos_index_v1_index, 4);
+
+/**
+ * Bounded freshness projection. `caught_up` is a real fact derived from the
+ * durable consumer watermark; it is never a fixed READY.
+ *
+ * @generated from message workos.index.v1.IndexFreshness
+ */
+export type IndexFreshness = Message<"workos.index.v1.IndexFreshness"> & {
+  /**
+   * @generated from field: bool caught_up = 1;
+   */
+  caughtUp: boolean;
+
+  /**
+   * High-watermark of consumed publications (UTC RFC 3339 microseconds).
+   *
+   * @generated from field: string indexed_through = 2;
+   */
+  indexedThrough: string;
+
+  /**
+   * @generated from field: string last_indexed_at = 3;
+   */
+  lastIndexedAt: string;
+
+  /**
+   * @generated from field: int64 pending_publications = 4;
+   */
+  pendingPublications: bigint;
+};
+
+/**
+ * Describes the message workos.index.v1.IndexFreshness.
+ * Use `create(IndexFreshnessSchema)` to create a new message.
+ */
+export const IndexFreshnessSchema: GenMessage<IndexFreshness> = /*@__PURE__*/
+  messageDesc(file_workos_index_v1_index, 5);
 
 /**
  * @generated from message workos.index.v1.SearchResponse
@@ -130,6 +311,11 @@ export type SearchResponse = Message<"workos.index.v1.SearchResponse"> & {
    * @generated from field: workos.common.v1.PageResponse page = 2;
    */
   page?: PageResponse | undefined;
+
+  /**
+   * @generated from field: workos.index.v1.IndexFreshness freshness = 3;
+   */
+  freshness?: IndexFreshness | undefined;
 };
 
 /**
@@ -137,7 +323,7 @@ export type SearchResponse = Message<"workos.index.v1.SearchResponse"> & {
  * Use `create(SearchResponseSchema)` to create a new message.
  */
 export const SearchResponseSchema: GenMessage<SearchResponse> = /*@__PURE__*/
-  messageDesc(file_workos_index_v1_index, 4);
+  messageDesc(file_workos_index_v1_index, 6);
 
 /**
  * @generated from message workos.index.v1.IndexContextResponse
@@ -154,13 +340,58 @@ export type IndexContextResponse = Message<"workos.index.v1.IndexContextResponse
  * Use `create(IndexContextResponseSchema)` to create a new message.
  */
 export const IndexContextResponseSchema: GenMessage<IndexContextResponse> = /*@__PURE__*/
-  messageDesc(file_workos_index_v1_index, 5);
+  messageDesc(file_workos_index_v1_index, 7);
 
 /**
+ * @generated from enum workos.index.v1.IndexJobState
+ */
+export enum IndexJobState {
+  /**
+   * @generated from enum value: INDEX_JOB_STATE_UNSPECIFIED = 0;
+   */
+  UNSPECIFIED = 0,
+
+  /**
+   * @generated from enum value: INDEX_JOB_STATE_PENDING = 1;
+   */
+  PENDING = 1,
+
+  /**
+   * @generated from enum value: INDEX_JOB_STATE_RUNNING = 2;
+   */
+  RUNNING = 2,
+
+  /**
+   * @generated from enum value: INDEX_JOB_STATE_COMPLETED = 3;
+   */
+  COMPLETED = 3,
+
+  /**
+   * @generated from enum value: INDEX_JOB_STATE_FAILED = 4;
+   */
+  FAILED = 4,
+}
+
+/**
+ * Describes the enum workos.index.v1.IndexJobState.
+ */
+export const IndexJobStateSchema: GenEnum<IndexJobState> = /*@__PURE__*/
+  enumDesc(file_workos_index_v1_index, 0);
+
+/**
+ * Public owner-facing index service. Routed by the gateway only for these
+ * two owner-scoped RPCs; the private publication source service and the
+ * local admin service in this package are never on the gateway allowlist.
+ *
  * @generated from service workos.index.v1.IndexService
  */
 export const IndexService: GenService<{
   /**
+   * Owner-triggered, idempotent repair/reindex job for exact review
+   * artifacts in the current project. This is a repair path for the same
+   * source authority, never a second ingestion entry point for arbitrary
+   * text.
+   *
    * @generated from rpc workos.index.v1.IndexService.IndexContext
    */
   indexContext: {
@@ -169,6 +400,9 @@ export const IndexService: GenService<{
     output: typeof IndexContextResponseSchema;
   },
   /**
+   * Bounded deterministic lexical search over the owner's active project
+   * review-artifact projection.
+   *
    * @generated from rpc workos.index.v1.IndexService.Search
    */
   search: {

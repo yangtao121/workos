@@ -22,7 +22,8 @@ export type SystemWindowId =
   | "agent-center"
   | "system-monitor"
   | "device-center"
-  | "artifact-center";
+  | "artifact-center"
+  | "knowledge-center";
 
 export interface AdaptiveShellProps {
   layout: DeviceLayout;
@@ -280,6 +281,15 @@ export function AdaptiveShell({
               <Button
                 disabled={!activeProject}
                 onClick={() => {
+                  openSystemWindow("knowledge-center");
+                }}
+                type="button"
+              >
+                Knowledge Center
+              </Button>
+              <Button
+                disabled={!activeProject}
+                onClick={() => {
                   setAppsOpen(true);
                 }}
                 type="button"
@@ -371,6 +381,15 @@ export function AdaptiveShell({
             type="button"
           >
             Device Center
+          </Button>
+          <Button
+            disabled={!activeProject}
+            onClick={() => {
+              openSystemWindow("knowledge-center");
+            }}
+            type="button"
+          >
+            Knowledge Center
           </Button>
         </nav>
       ) : null}

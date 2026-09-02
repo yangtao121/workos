@@ -22,6 +22,7 @@ import (
 	"github.com/yangtao121/workos/internal/platform/systemhandler"
 	"github.com/yangtao121/workos/internal/platform/telemetry"
 	surfacecoreclient "github.com/yangtao121/workos/internal/runtime/surface/adapters/coreclient"
+	indexerclient "github.com/yangtao121/workos/internal/runtime/surface/adapters/indexerclient"
 	surfacepostgres "github.com/yangtao121/workos/internal/runtime/surface/adapters/postgres"
 	surfaceapp "github.com/yangtao121/workos/internal/runtime/surface/application"
 	surfacetransport "github.com/yangtao121/workos/internal/runtime/surface/transport"
@@ -181,7 +182,23 @@ func run(logger *slog.Logger) error {
 	// stored session facts, gates each method on the effective capability
 	// list, and forwards to the private Core App Agent service — which
 	// re-validates the active installation and its grant again.
-	bridgeService, err := surfaceapp.NewBridgeService(sessionStore, appAgentClient)
+	// Knowledge search pipeline (ADR-0013): configured only when the runtime
+	// holds an indexer upstream. Without it knowledge.search is never
+	// negotiated into new sessions and the runtime serves every other app
+	// normally.
+	var knowledgePipeline *surfaceapp.KnowledgeSearchPipeline
+	if strings.TrimSpace(cfg.Runtime.IndexerURL) != "" {
+		knowledgeIndexer, err := indexerclient.NewKnowledgeSearch(cfg.Runtime.IndexerURL, cfg.Runtime.DeviceID)
+		if err != nil {
+			return err
+		}
+		knowledgePipeline, err = surfaceapp.NewKnowledgeSearchPipeline(appAgentClient, knowledgeIndexer)
+		if err != nil {
+			return err
+		}
+		surfaceService = surfaceService.WithKnowledgeConfigured()
+	}
+	bridgeService, err := surfaceapp.NewBridgeService(sessionStore, appAgentClient, knowledgePipeline)
 	if err != nil {
 		return err
 	}
@@ -204,7 +221,8 @@ func run(logger *slog.Logger) error {
 		workloadCapability(capability, "container-runner"),
 		&commonv1.FeatureCapability{Id: "native-runner", Available: false, Reason: "not implemented"},
 		&commonv1.FeatureCapability{Id: "surface-broker", Available: true, Reason: "web bundle and supervised web service surfaces"},
-		&commonv1.FeatureCapability{Id: "app-bridge", Available: true, Reason: "agent.task.run and agent.event.watch only"},
+		&commonv1.FeatureCapability{Id: "app-bridge", Available: true, Reason: "agent.task.run, agent.event.watch, and knowledge.search for real knowledge.read grants when the indexer is configured"},
+		&commonv1.FeatureCapability{Id: "app-knowledge-search", Available: knowledgePipeline != nil, Reason: "scoped read-only project knowledge search over the indexer"},
 	))
 	mux.Handle(systemPath, systemHandler)
 	return httpserver.Run("runtime-host", cfg.HTTP.Address, root, logger, "", "", cfg.Telemetry.OTLPEndpoint)

@@ -989,3 +989,74 @@ structured run：RunStarted → deltas 只聚合不发布 → shutdown
 - Buf 负责 Proto lint/生成与 CI breaking check；README 状态表只从 `docs/status.json` 生成。
 - 所有入站和内部 HTTP/Connect 调用支持 W3C trace propagation；只有配置 OTLP endpoint 时才启动
   exporter，因此本地运行没有隐含可观测性依赖。
+
+## Project Knowledge Search 与可恢复重建（ADR-0013，2026-09-01）
+
+`indexer` 的第一条真实产品链路：Project review Artifact 的 durable lexical 索引、
+owner 有界检索、granted App 只读访问与 Core 权威的 shadow-generation 重建。
+事实边界：
+
+```text
+review Artifact insert + output mapping + artifact_created 事件
+  + index publication（workos_core.index_publications，不含正文）
+  = 一个 Core 事务（tx-scoped sink，orchestration materializer 注入）
+
+Project archive revision + project event/outbox
+  + project tombstone publication = 一个 Core 事务
+
+indexer worker：Core claim（lease + FOR UPDATE SKIP LOCKED）
+  → private resolve（权威复验 + 有界正文单次交付）
+  → 本地单事务：document/tombstone + receipts + consumer cursor
+  → 才向 Core complete；响应丢失 = receipt no-op replay
+```
+
+- 模块所有权：publication source facts 归 workos-core Index Feed
+  （`internal/core/indexfeed`，migration `026`）；search projection、receipts、
+  consumer cursor、repair jobs、generations/rebuild jobs 归 indexer
+  （`internal/indexer`，migrations `027`/`028`，`workos_index` schema；`028` 固定单一
+  active/building/live rebuild 与 byte-size content 约束）。两 schema 零
+  FK、零跨模块 SQL；reconciliation 的权威分页经 orchestration 的
+  `IndexSourceAuthority`（Artifact/Project application 组合），Project 的
+  tx-scoped liveness 检查由 Project adapter 暴露。
+- 检索：`workos_index.documents` 以 generation 作用域存储，`simple` 配置
+  tsvector 生成列 + 纯函数 excerpt；ranking 固定版本（title×2 + body，tie-break
+  `(score DESC, source_created_at DESC, source_id ASC)`）；page token 由 Indexer-only
+  稳定密钥做 HMAC-SHA256 签名，绑定 owner/project/query digest/ranking
+  version/generation/snapshot，
+  跨 scope 重放或篡改一律 InvalidArgument。查询规范：1–256 code points、C0/C1
+  拒绝、词法预处理只保留字母数字 token（websearch 操作符不进入 tsquery）。
+- 入口与信任边界：owner browser 走 Gateway public `IndexService`（allowlist
+  精确前缀 `/workos.index.v1.IndexService/`，`WORKOS_INDEXER_URL` 可选且
+  fail-fast 校验，未配置时 Knowledge 路由 404 而其余功能不受影响）；granted
+  opaque App 走 Runtime `AppBridgeService.SearchKnowledge`——body 只有有界
+  query/page 参数，scope 由 surface session 派生，每次调用经 Core 私有
+  `AuthorizeAppKnowledge`（installation、Project、exact grant revision 重验）
+  后才以 session 派生 binding 调用 indexer，响应二次边界校验；`knowledge.read`
+  grant 且 Runtime 配置了 `WORKOS_RUNTIME_INDEXER_URL` 时才协商出
+  `knowledge.search` method（grant 名与 method 名刻意分离）；operator 走
+  indexer 本机 Unix admin socket（独立服务账户、0600、拒 symlink/world-writable parent、
+  确定性清理、status/job 不投影 raw owner/project）+ `workosctl index status/rebuild/job`，
+  永不经 Gateway/TCP。
+- 修复与重建：`IndexContext` 是 owner 触发的幂等 repair/reindex job（typed
+  `artifact.review.v1` refs ≤32 + durable idempotency，same key/same request
+  精确 replay，different request Aborted，失败不消费 key；job/sources/
+  first-response 同事务，进程重启恢复 pending/running）。全量重建是 durable
+  `rebuild_jobs` + `projection_generations` 状态机
+  （requested→snapshotting→catching_up→validating→promoting→completed，
+  canceled/failed 单调终态）：snapshot 从 Core 权威分页写入 target generation
+  （稳定 snapshot receipt + 每页 checkpoint 可重放），catch-up 以 Core 确认的 drain 为
+  barrier，validation 对照权威 digest 集合；active pointer 为全局单例，所以 project/all
+  请求都构造完整 Core-authoritative generation，数据库只允许一个 live rebuild。request
+  generation/job/idempotency mapping 与 promote 的旧/新 status + pointer + completed job
+  分别单事务提交（旧 page token 按代失效），成功后有界幂等清理旧 generation payload；
+  生产路径无 DROP/TRUNCATE，销毁投影仅存在于专项测试的
+  临时 Indexer-owned 数据库。
+- 能力裁决：`project-review-index`/`project-knowledge-search`/
+  `project-knowledge-rebuild` available（有专项门禁证据）；Runtime 的
+  `app-knowledge-search` 仅在配置 indexer upstream 时 available；泛化
+  `archive` 与 `rag`/embedding 继续 false（固定原因文案）。
+- 门禁：`make test-project-knowledge-search`（全栈 owner 旅程 + Chromium）、
+  `make test-app-knowledge-search`（granted App + revoke fail-closed）、
+  `make test-project-knowledge-rebuild`（golden 等价 + 崩溃恢复 + 幂等 +
+  销毁/恢复）；restart battery 增加 index-seed/index-verify（Core+indexer
+  重启后索引/cursor/幂等一致）。

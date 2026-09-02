@@ -44,12 +44,20 @@ const (
 	// AppBridgeServiceWatchAgentTaskEventsProcedure is the fully-qualified name of the
 	// AppBridgeService's WatchAgentTaskEvents RPC.
 	AppBridgeServiceWatchAgentTaskEventsProcedure = "/workos.bridge.v1.AppBridgeService/WatchAgentTaskEvents"
+	// AppBridgeServiceSearchKnowledgeProcedure is the fully-qualified name of the AppBridgeService's
+	// SearchKnowledge RPC.
+	AppBridgeServiceSearchKnowledgeProcedure = "/workos.bridge.v1.AppBridgeService/SearchKnowledge"
 )
 
 // AppBridgeServiceClient is a client for the workos.bridge.v1.AppBridgeService service.
 type AppBridgeServiceClient interface {
 	RunAgentTask(context.Context, *connect.Request[v1.RunAgentTaskRequest]) (*connect.Response[v1.RunAgentTaskResponse], error)
 	WatchAgentTaskEvents(context.Context, *connect.Request[v1.WatchAgentTaskEventsRequest]) (*connect.ServerStreamForClient[v1.WatchAgentTaskEventsResponse], error)
+	// Read-only knowledge search, negotiated only when the manifest requests
+	// `knowledge.read`, the installation actually holds that grant, and the
+	// runtime has a real indexer adapter configured. It is never implied by
+	// `agent.task.run`.
+	SearchKnowledge(context.Context, *connect.Request[v1.SearchKnowledgeRequest]) (*connect.Response[v1.SearchKnowledgeResponse], error)
 }
 
 // NewAppBridgeServiceClient constructs a client for the workos.bridge.v1.AppBridgeService service.
@@ -75,6 +83,12 @@ func NewAppBridgeServiceClient(httpClient connect.HTTPClient, baseURL string, op
 			connect.WithSchema(appBridgeServiceMethods.ByName("WatchAgentTaskEvents")),
 			connect.WithClientOptions(opts...),
 		),
+		searchKnowledge: connect.NewClient[v1.SearchKnowledgeRequest, v1.SearchKnowledgeResponse](
+			httpClient,
+			baseURL+AppBridgeServiceSearchKnowledgeProcedure,
+			connect.WithSchema(appBridgeServiceMethods.ByName("SearchKnowledge")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -82,6 +96,7 @@ func NewAppBridgeServiceClient(httpClient connect.HTTPClient, baseURL string, op
 type appBridgeServiceClient struct {
 	runAgentTask         *connect.Client[v1.RunAgentTaskRequest, v1.RunAgentTaskResponse]
 	watchAgentTaskEvents *connect.Client[v1.WatchAgentTaskEventsRequest, v1.WatchAgentTaskEventsResponse]
+	searchKnowledge      *connect.Client[v1.SearchKnowledgeRequest, v1.SearchKnowledgeResponse]
 }
 
 // RunAgentTask calls workos.bridge.v1.AppBridgeService.RunAgentTask.
@@ -94,10 +109,20 @@ func (c *appBridgeServiceClient) WatchAgentTaskEvents(ctx context.Context, req *
 	return c.watchAgentTaskEvents.CallServerStream(ctx, req)
 }
 
+// SearchKnowledge calls workos.bridge.v1.AppBridgeService.SearchKnowledge.
+func (c *appBridgeServiceClient) SearchKnowledge(ctx context.Context, req *connect.Request[v1.SearchKnowledgeRequest]) (*connect.Response[v1.SearchKnowledgeResponse], error) {
+	return c.searchKnowledge.CallUnary(ctx, req)
+}
+
 // AppBridgeServiceHandler is an implementation of the workos.bridge.v1.AppBridgeService service.
 type AppBridgeServiceHandler interface {
 	RunAgentTask(context.Context, *connect.Request[v1.RunAgentTaskRequest]) (*connect.Response[v1.RunAgentTaskResponse], error)
 	WatchAgentTaskEvents(context.Context, *connect.Request[v1.WatchAgentTaskEventsRequest], *connect.ServerStream[v1.WatchAgentTaskEventsResponse]) error
+	// Read-only knowledge search, negotiated only when the manifest requests
+	// `knowledge.read`, the installation actually holds that grant, and the
+	// runtime has a real indexer adapter configured. It is never implied by
+	// `agent.task.run`.
+	SearchKnowledge(context.Context, *connect.Request[v1.SearchKnowledgeRequest]) (*connect.Response[v1.SearchKnowledgeResponse], error)
 }
 
 // NewAppBridgeServiceHandler builds an HTTP handler from the service implementation. It returns the
@@ -119,12 +144,20 @@ func NewAppBridgeServiceHandler(svc AppBridgeServiceHandler, opts ...connect.Han
 		connect.WithSchema(appBridgeServiceMethods.ByName("WatchAgentTaskEvents")),
 		connect.WithHandlerOptions(opts...),
 	)
+	appBridgeServiceSearchKnowledgeHandler := connect.NewUnaryHandler(
+		AppBridgeServiceSearchKnowledgeProcedure,
+		svc.SearchKnowledge,
+		connect.WithSchema(appBridgeServiceMethods.ByName("SearchKnowledge")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/workos.bridge.v1.AppBridgeService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case AppBridgeServiceRunAgentTaskProcedure:
 			appBridgeServiceRunAgentTaskHandler.ServeHTTP(w, r)
 		case AppBridgeServiceWatchAgentTaskEventsProcedure:
 			appBridgeServiceWatchAgentTaskEventsHandler.ServeHTTP(w, r)
+		case AppBridgeServiceSearchKnowledgeProcedure:
+			appBridgeServiceSearchKnowledgeHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -140,4 +173,8 @@ func (UnimplementedAppBridgeServiceHandler) RunAgentTask(context.Context, *conne
 
 func (UnimplementedAppBridgeServiceHandler) WatchAgentTaskEvents(context.Context, *connect.Request[v1.WatchAgentTaskEventsRequest], *connect.ServerStream[v1.WatchAgentTaskEventsResponse]) error {
 	return connect.NewError(connect.CodeUnimplemented, errors.New("workos.bridge.v1.AppBridgeService.WatchAgentTaskEvents is not implemented"))
+}
+
+func (UnimplementedAppBridgeServiceHandler) SearchKnowledge(context.Context, *connect.Request[v1.SearchKnowledgeRequest]) (*connect.Response[v1.SearchKnowledgeResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("workos.bridge.v1.AppBridgeService.SearchKnowledge is not implemented"))
 }

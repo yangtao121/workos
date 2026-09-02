@@ -379,3 +379,7 @@ func TestArchiveDistinguishesMissingFromStale(t *testing.T) {
 		}
 	})
 }
+
+func (r *stubRepository) ReconcileArchivedProjectsPage(context.Context, string, int) ([]ports.ArchivedProjectRef, string, error) {
+	return nil, "", errors.New("not used in this test")
+}

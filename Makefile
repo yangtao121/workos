@@ -23,7 +23,7 @@ NODE_RUN := docker run --rm $(USER_FLAGS) -e COREPACK_NPM_REGISTRY=$(NPM_REGISTR
 BUF_RUN := docker run --rm $(USER_FLAGS) $(MOUNT) $(BUF_IMAGE)
 SQLC_RUN := docker run --rm $(USER_FLAGS) -v $(CURDIR):/src -w /src $(SQLC_IMAGE)
 
-.PHONY: bootstrap generate docs check check-native proto-check go-check web-check test test-integration test-artifact-context test-deepseek-fixture test-deepseek-structured-review test-credential-vault e2e-image test-e2e test-adaptive-shell test-app-version-rollback test-podman-fixture test-lan-pairing capture-artifact-context-visual capture-lan-pairing-visual build web-build scaffold-module dev down logs clean
+.PHONY: bootstrap generate docs check check-native proto-check go-check web-check test test-integration test-artifact-context test-deepseek-fixture test-deepseek-structured-review test-credential-vault e2e-image test-e2e test-adaptive-shell test-app-version-rollback test-podman-fixture test-lan-pairing test-project-knowledge-search test-app-knowledge-search test-project-knowledge-rebuild capture-artifact-context-visual capture-lan-pairing-visual build web-build scaffold-module dev down logs clean
 
 bootstrap:
 	@docker version >/dev/null
@@ -94,7 +94,11 @@ test-integration:
 		set -- $$policy_ref; \
 		$(GO_HOST_RUN) go run ./tests/restart policy-verify "$$1" "$$2" "$$3" "$$4" "$$5" "$$6" "$$7" "$$8"; \
 		set -- $$version_ref; \
-		$(GO_HOST_RUN) go run ./tests/restart version-verify "$$1" "$$2" "$$3" "$$4" "$$5" "$$6"
+		$(GO_HOST_RUN) go run ./tests/restart version-verify "$$1" "$$2" "$$3" "$$4" "$$5" "$$6"; \
+		index_ref="$$( $(GO_HOST_RUN) go run ./tests/restart index-seed )"; \
+		set -- $$index_ref; \
+		docker compose restart workos-core harness-host runtime-host indexer >/dev/null; \
+		$(GO_HOST_RUN) go run ./tests/restart index-verify "$$1" "$$2" "$$3"
 
 # The Credential Vault acceptance gate (ADR-0009): real PostgreSQL, the Core
 # private mTLS execution listener, harness-host, the workosctl credential
@@ -160,6 +164,25 @@ test-artifact-context: e2e-image
 		-v $(CURDIR):$(WORKDIR) \
 		-w $(WORKDIR)/apps/desktop-web \
 		$(E2E_IMAGE) pnpm exec playwright test artifact-context.spec.ts
+
+# Regenerates the project knowledge-search deterministic evidence: expanded
+# results, pinned Agent context chip, granted app surface, and compact
+# results. Uses fixed fixture data only.
+capture-knowledge-visual: e2e-image
+	docker compose up -d --build postgres bootstrap workos-core harness-host runtime-host workos-gateway indexer
+	mkdir -p docs/ui/desktop-web/changes/20260901-project-knowledge-search/after
+	docker run --rm --network host $(USER_FLAGS) \
+		-e PLAYWRIGHT_BROWSERS_PATH=/ms-playwright \
+		-e WORKOS_E2E_URL=http://127.0.0.1:8080 \
+		-e WORKOS_E2E_OUTPUT_DIR=/tmp/workos-playwright-results \
+		-e WORKOS_CAPTURE_DIR=$(WORKDIR)/docs/ui/desktop-web/changes/20260901-project-knowledge-search/after \
+		-v $(CURDIR):$(WORKDIR) \
+		-w $(WORKDIR)/apps/desktop-web \
+		$(E2E_IMAGE) pnpm exec playwright test knowledge-visual.spec.ts
+	cp docs/ui/desktop-web/changes/20260901-project-knowledge-search/after/knowledge-center--results--1440x900.png docs/ui/desktop-web/current/knowledge-center--results--1440x900.png
+	cp docs/ui/desktop-web/changes/20260901-project-knowledge-search/after/knowledge-center--results--390x844.png docs/ui/desktop-web/current/knowledge-center--results--390x844.png
+	cp docs/ui/desktop-web/changes/20260901-project-knowledge-search/after/agent-center--context-chip--1440x900.png docs/ui/desktop-web/current/agent-center--context-chip--1440x900.png
+	cp docs/ui/desktop-web/changes/20260901-project-knowledge-search/after/app-knowledge-search--results--1440x900.png docs/ui/desktop-web/current/app-knowledge-search--results--1440x900.png
 
 capture-artifact-context-visual: e2e-image
 	docker compose up -d --build postgres bootstrap workos-core harness-host workos-gateway
@@ -287,6 +310,86 @@ test-app-version-rollback: e2e-image
 		-v $(CURDIR):$(WORKDIR) \
 		-w $(WORKDIR)/apps/desktop-web \
 		$(E2E_IMAGE) pnpm exec playwright test app-version-rollback.spec.ts
+
+# The project knowledge-search gate (ADR-0013): real PostgreSQL + Core +
+# harness-host + indexer + Gateway + Chromium through publication, durable
+# ingestion, owner lexical search, Agent-context pinning, isolation, and
+# restart convergence. Not a route-mocked test.
+test-project-knowledge-search: e2e-image
+	docker compose up -d --build postgres bootstrap workos-core harness-host runtime-host workos-gateway indexer
+	$(GO_HOST_RUN) go test -tags=integration -count=1 -run 'TestProjectKnowledgeSearchStack' -v ./tests/integration
+	@set -eu; \
+	i=0; until curl -sf http://127.0.0.1:8080/healthz >/dev/null 2>&1; do i=$$((i+1)); [ $$i -le 60 ] || { echo 'gateway readiness timed out' >&2; exit 1; }; sleep 1; done; \
+	i=0; until curl -sf http://127.0.0.1:8085/readyz >/dev/null 2>&1; do i=$$((i+1)); [ $$i -le 60 ] || { echo 'indexer readiness timed out' >&2; exit 1; }; sleep 1; done
+	docker run --rm --network host $(USER_FLAGS) \
+		-e PLAYWRIGHT_BROWSERS_PATH=/ms-playwright \
+		-e WORKOS_E2E_URL=http://127.0.0.1:8080 \
+		-e WORKOS_E2E_OUTPUT_DIR=/tmp/workos-playwright-results \
+		-v $(CURDIR):$(WORKDIR) \
+		-w $(WORKDIR)/apps/desktop-web \
+		$(E2E_IMAGE) pnpm exec playwright test '(^|/)knowledge-search\.spec\.ts$$'
+	@set -eu; \
+		cleanup() { docker compose start indexer >/dev/null 2>&1 || true; }; \
+		trap cleanup EXIT INT TERM; \
+		docker compose stop indexer >/dev/null; \
+		docker run --rm --network host $(USER_FLAGS) \
+			-e PLAYWRIGHT_BROWSERS_PATH=/ms-playwright \
+			-e WORKOS_E2E_URL=http://127.0.0.1:8080 \
+			-e WORKOS_E2E_OUTPUT_DIR=/tmp/workos-playwright-results \
+			-e WORKOS_KNOWLEDGE_OUTAGE_E2E=true \
+			-v $(CURDIR):$(WORKDIR) \
+			-w $(WORKDIR)/apps/desktop-web \
+			$(E2E_IMAGE) pnpm exec playwright test knowledge-unavailable.spec.ts; \
+		docker compose start indexer >/dev/null; \
+		i=0; until curl -sf http://127.0.0.1:8085/readyz >/dev/null 2>&1; do i=$$((i+1)); [ $$i -le 60 ] || { echo 'indexer recovery timed out' >&2; exit 1; }; sleep 1; done; \
+		trap - EXIT INT TERM
+	$(GO_HOST_RUN) go test -tags=integration -count=1 -run 'TestProjectKnowledgeSearchStack' -v ./tests/integration
+
+# The granted-app knowledge-read gate (ADR-0013): real Core/Runtime/Indexer/
+# Gateway/PostgreSQL/Chromium with an opaque-origin web bundle. Proves the
+# negotiated method, the scoped results, isolation, and revoke fail-closed.
+test-app-knowledge-search: e2e-image
+	docker compose up -d --build postgres bootstrap workos-core harness-host runtime-host workos-gateway indexer
+	@set -eu; \
+	i=0; until curl -sf http://127.0.0.1:8080/healthz >/dev/null 2>&1; do i=$$((i+1)); [ $$i -le 60 ] || { echo 'gateway readiness timed out' >&2; exit 1; }; sleep 1; done; \
+	i=0; until curl -sf http://127.0.0.1:8085/readyz >/dev/null 2>&1; do i=$$((i+1)); [ $$i -le 60 ] || { echo 'indexer readiness timed out' >&2; exit 1; }; sleep 1; done
+	docker run --rm --network host $(USER_FLAGS) \
+		-e PLAYWRIGHT_BROWSERS_PATH=/ms-playwright \
+		-e WORKOS_E2E_URL=http://127.0.0.1:8080 \
+		-e WORKOS_E2E_OUTPUT_DIR=/tmp/workos-playwright-results \
+		-v $(CURDIR):$(WORKDIR) \
+		-w $(WORKDIR)/apps/desktop-web \
+		$(E2E_IMAGE) pnpm exec playwright test '(^|/)app-knowledge-search\.spec\.ts$$'
+
+# The disaster-recovery rebuild gate (ADR-0013): Core-authoritative shadow
+# generation rebuild with live traffic, crash resume at every phase, and the
+# destroy-and-restore golden equivalence in a temporary indexer-owned schema.
+test-project-knowledge-rebuild: e2e-image
+	docker compose up -d --build postgres bootstrap workos-core harness-host runtime-host workos-gateway indexer
+	@set -eu; \
+	i=0; until curl -sf http://127.0.0.1:8080/healthz >/dev/null 2>&1; do i=$$((i+1)); [ $$i -le 60 ] || { echo 'gateway readiness timed out' >&2; exit 1; }; sleep 1; done; \
+	i=0; until curl -sf http://127.0.0.1:8085/readyz >/dev/null 2>&1; do i=$$((i+1)); [ $$i -le 60 ] || { echo 'indexer readiness timed out' >&2; exit 1; }; sleep 1; done
+	$(GO_HOST_RUN) go test -tags=integration -count=1 -run 'TestProjectKnowledgeSearchStack' -v ./tests/integration
+	$(GO_HOST_RUN) go test -tags=integration -count=1 -run 'TestProjectKnowledgeRebuild' -v ./tests/integration
+	@set -eu; \
+	status="$$(docker compose exec -T indexer /usr/local/bin/workosctl index status --json)"; \
+	active="$$(printf '%s' "$$status" | sed -n 's/.*"generation_id":"\([^"]*\)".*/\1/p')"; \
+	test -n "$$active"; \
+	key="project-knowledge-rebuild-gate-$$active"; \
+	started="$$(docker compose exec -T indexer /usr/local/bin/workosctl index rebuild --all --idempotency-key "$$key")"; \
+	job="$$(printf '%s\n' "$$started" | sed -n 's/^job: //p')"; \
+	test -n "$$job"; \
+	replayed="$$(docker compose exec -T indexer /usr/local/bin/workosctl index rebuild --all --idempotency-key "$$key")"; \
+	replay_job="$$(printf '%s\n' "$$replayed" | sed -n 's/^job: //p')"; \
+	test "$$job" = "$$replay_job"; \
+	docker compose restart indexer >/dev/null; \
+	i=0; while :; do \
+		view="$$(docker compose exec -T indexer /usr/local/bin/workosctl index job get --job "$$job" --json 2>/dev/null || true)"; \
+		case "$$view" in *'"state":"completed"'*) break ;; *'"state":"failed"'*|*'"state":"canceled"'*) printf '%s\n' "$$view" >&2; exit 1 ;; esac; \
+		i=$$((i+1)); [ $$i -le 90 ] || { echo 'real indexer rebuild timed out' >&2; exit 1; }; sleep 1; \
+	done; \
+	case "$$view" in *owner_user_id*|*project_id*) echo 'admin job output leaked raw scope identifiers' >&2; exit 1 ;; esac; \
+	printf 'real Core-authoritative rebuild completed after indexer restart: %s\n' "$$job"
 
 test-e2e: e2e-image
 	docker compose up -d --build postgres bootstrap workos-core harness-host runtime-host reliability-host workos-gateway

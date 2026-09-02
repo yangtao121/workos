@@ -8,7 +8,9 @@ package application
 import (
 	"context"
 	"errors"
+	"strings"
 	"time"
+	"unicode/utf8"
 
 	agentv1 "github.com/yangtao121/workos/gen/go/workos/agent/v1"
 	"github.com/yangtao121/workos/internal/runtime/surface/domain"
@@ -21,16 +23,36 @@ import (
 type BridgeService struct {
 	repository ports.SessionRepository
 	appAgent   ports.AppAgentClient
-	now        func() time.Time
+	// knowledge is the scoped search pipeline (Core re-authorization +
+	// indexer call). It is nil when the runtime has no configured indexer
+	// adapter: then knowledge.search is never negotiated and every call
+	// fails closed without touching Core or the indexer.
+	knowledge *KnowledgeSearchPipeline
+	now       func() time.Time
+}
+
+// KnowledgeSearchPipeline composes the Core knowledge authorizer with the
+// scoped indexer client.
+type KnowledgeSearchPipeline struct {
+	authorizer ports.AppAgentClient
+	indexer    ports.KnowledgeSearchClient
+}
+
+func NewKnowledgeSearchPipeline(authorizer ports.AppAgentClient, indexer ports.KnowledgeSearchClient) (*KnowledgeSearchPipeline, error) {
+	if authorizer == nil || indexer == nil {
+		return nil, errors.New("knowledge pipeline requires the app agent authorizer and the indexer client")
+	}
+	return &KnowledgeSearchPipeline{authorizer: authorizer, indexer: indexer}, nil
 }
 
 // NewBridgeService composes the bridge use cases on the same session facts
-// and the private Core App Agent client.
-func NewBridgeService(repository ports.SessionRepository, appAgent ports.AppAgentClient) (*BridgeService, error) {
+// and the private Core App Agent client. knowledge may be nil when the
+// runtime has no indexer adapter configured.
+func NewBridgeService(repository ports.SessionRepository, appAgent ports.AppAgentClient, knowledge *KnowledgeSearchPipeline) (*BridgeService, error) {
 	if repository == nil || appAgent == nil {
 		return nil, errors.New("bridge service requires the session repository and the core app agent client")
 	}
-	return &BridgeService{repository: repository, appAgent: appAgent, now: func() time.Time { return time.Now().UTC() }}, nil
+	return &BridgeService{repository: repository, appAgent: appAgent, knowledge: knowledge, now: func() time.Time { return time.Now().UTC() }}, nil
 }
 
 // RunAgentTask validates the presented bridge token and submits one
@@ -104,4 +126,101 @@ func (s *BridgeService) authorize(ctx context.Context, ownerUserID, deviceID, to
 		return domain.SurfaceSession{}, domain.ErrPermissionDenied
 	}
 	return session, nil
+}
+
+// Knowledge search bounds mirror the indexer contract; the bridge body can
+// only carry bounded query/page facts.
+const (
+	maxKnowledgeQueryCodePoints = 256
+	defaultKnowledgePageSize    = 20
+	maxKnowledgePageSize        = 50
+	maxKnowledgePageTokenBytes  = 4096
+	maxKnowledgeQueryTerms      = 32
+)
+
+// SearchKnowledge executes the read-only knowledge bridge method. The fixed
+// order (ADR-0013 §E1): token/session/capability gate — knowledge.search can
+// only ever be negotiated for a real `knowledge.read` grant — then Core
+// re-verification of the installation, project, and the exact current grant
+// revision, then the scoped indexer call with the session-derived binding,
+// then response projection. Every failure before the indexer call means the
+// indexer is provably never touched.
+func (s *BridgeService) SearchKnowledge(ctx context.Context, ownerUserID, deviceID, token, query string, pageSize int32, pageToken string) (ports.KnowledgeSearchPage, error) {
+	if s.knowledge == nil {
+		// No configured executor: the method must never have been negotiated,
+		// so a call is a sanitized denial without touching Core or indexer.
+		return ports.KnowledgeSearchPage{}, domain.ErrPermissionDenied
+	}
+	if !validKnowledgeQuery(query) || !validKnowledgePageToken(pageToken) || pageSize < 0 || pageSize > maxKnowledgePageSize {
+		return ports.KnowledgeSearchPage{}, domain.ErrInvalid
+	}
+	size := pageSize
+	if size == 0 {
+		size = defaultKnowledgePageSize
+	}
+	session, err := s.authorize(ctx, ownerUserID, deviceID, token, domain.BridgeCapabilityKnowledgeSearch)
+	if err != nil {
+		return ports.KnowledgeSearchPage{}, err
+	}
+	// Core re-verifies the active installation, the non-archived project, and
+	// the session's exact grant revision. Deny/not-found/revision drift is
+	// one indistinguishable sanitized denial; a Core outage is Unavailable
+	// and never silently degrades into an allow.
+	binding, err := s.knowledge.authorizer.AuthorizeAppKnowledge(ctx, ports.AppKnowledgeAuthQuery{
+		ProjectID:                 session.ProjectID,
+		AppInstanceID:             session.AppInstanceID,
+		InstallationGrantRevision: session.InstallationGrantRevision,
+	})
+	if err != nil {
+		switch {
+		case errors.Is(err, ports.ErrAppAgentDenied):
+			return ports.KnowledgeSearchPage{}, domain.ErrPermissionDenied
+		case errors.Is(err, ports.ErrAppAgentUnavailable), errors.Is(err, ports.ErrStoreUnavailable):
+			return ports.KnowledgeSearchPage{}, domain.ErrUnavailable
+		default:
+			return ports.KnowledgeSearchPage{}, err
+		}
+	}
+	if binding.OwnerUserID != session.OwnerUserID || binding.ProjectID != session.ProjectID {
+		// The authoritative binding disagrees with the session-derived scope:
+		// fail closed rather than calling the indexer with anything else.
+		return ports.KnowledgeSearchPage{}, domain.ErrPermissionDenied
+	}
+	return s.knowledge.indexer.Search(ctx, ports.KnowledgeSearchQuery{
+		OwnerUserID: binding.OwnerUserID,
+		ProjectID:   binding.ProjectID,
+		Query:       query,
+		PageSize:    size,
+		PageToken:   pageToken,
+	})
+}
+
+func validKnowledgeQuery(query string) bool {
+	if !utf8.ValidString(query) || len([]rune(strings.TrimSpace(query))) == 0 ||
+		len([]rune(query)) > maxKnowledgeQueryCodePoints || len(strings.Fields(query)) > maxKnowledgeQueryTerms {
+		return false
+	}
+	for _, char := range query {
+		if (char >= 0 && char <= 0x1f) || (char >= 0x7f && char <= 0x9f) {
+			return false
+		}
+	}
+	return true
+}
+
+func validKnowledgePageToken(token string) bool {
+	if len(token) > maxKnowledgePageTokenBytes {
+		return false
+	}
+	for _, char := range token {
+		switch {
+		case char >= 'a' && char <= 'z':
+		case char >= 'A' && char <= 'Z':
+		case char >= '0' && char <= '9':
+		case char == '-' || char == '_':
+		default:
+			return false
+		}
+	}
+	return true
 }

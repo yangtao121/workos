@@ -137,6 +137,7 @@ services:
       <<: *workos-environment
       WORKOS_HTTP_ADDRESS: 127.0.0.1:8083
       WORKOS_CORE_URL: http://127.0.0.1:8081
+      WORKOS_RUNTIME_INDEXER_URL: http://127.0.0.1:8085
       WORKOS_SURFACE_SESSION_TTL: ${WORKOS_SURFACE_SESSION_TTL:-15m}
 
   reliability-host:
@@ -154,6 +155,12 @@ services:
     environment:
       <<: *workos-environment
       WORKOS_HTTP_ADDRESS: 127.0.0.1:8085
+      WORKOS_INDEX_ADMIN_SOCKET: /run/workos/index-admin/admin.sock
+      # Development-only stable signing key. Production supplies its own
+      # indexer-local secret through WORKOS_INDEX_PAGE_TOKEN_KEY.
+      WORKOS_INDEX_PAGE_TOKEN_KEY: workos-compose-index-page-token-key-v1
+    tmpfs:
+      - /run/workos/index-admin:uid=10001,gid=10001,mode=0700
 
   workos-gateway:
     <<: *workos-service

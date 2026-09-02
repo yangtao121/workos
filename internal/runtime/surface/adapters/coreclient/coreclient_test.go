@@ -213,3 +213,7 @@ func TestAppAgentPrivateDenialIsSanitized(t *testing.T) {
 		}
 	}
 }
+
+func (s *stubAppAgentService) AuthorizeAppKnowledge(context.Context, *connect.Request[agentv1.AuthorizeAppKnowledgeRequest]) (*connect.Response[agentv1.AuthorizeAppKnowledgeResponse], error) {
+	return nil, errors.New("not used in this test")
+}

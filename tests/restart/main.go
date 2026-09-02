@@ -37,7 +37,7 @@ func main() {
 }
 
 // usage documents every acceptance-helper subcommand.
-const usage = "usage: restart seed | restart verify TASK_ID | restart app-seed | restart app-verify APP_ID_A APP_ID_B | restart install-seed | restart install-verify PROJECT_ID INSTALLATION_ID KEY APP_ID SEED_REVISION | restart surface-seed | restart surface-verify SESSION_URL SESSION_ID PROJECT_ID INSTALLATION_ID KEY | restart bridge-seed | restart bridge-verify TOKEN TASK_ID KEY | restart policy-seed | restart policy-verify TOKEN PROJECT_ID INSTALLATION_ID SURFACE_KEY SET_KEY RUN_KEY TASK_ID | restart grants-seed | restart grants-verify TOKEN PROJECT_ID INSTALLATION_ID SURFACE_KEY SET_KEY SET_PROJECT_REVISION | restart version-seed | restart version-verify PROJECT_ID INSTALLATION_ID TRANSITION_KEY ROLLBACK_KEY TRANSITION_REVISION ROLLBACK_REVISION"
+const usage = "usage: restart seed | restart verify TASK_ID | restart app-seed | restart app-verify APP_ID_A APP_ID_B | restart install-seed | restart install-verify PROJECT_ID INSTALLATION_ID KEY APP_ID SEED_REVISION | restart surface-seed | restart surface-verify SESSION_URL SESSION_ID PROJECT_ID INSTALLATION_ID KEY | restart bridge-seed | restart bridge-verify TOKEN TASK_ID KEY | restart policy-seed | restart policy-verify TOKEN PROJECT_ID INSTALLATION_ID SURFACE_KEY SET_KEY RUN_KEY TASK_ID | restart grants-seed | restart grants-verify TOKEN PROJECT_ID INSTALLATION_ID SURFACE_KEY SET_KEY SET_PROJECT_REVISION | restart version-seed | restart version-verify PROJECT_ID INSTALLATION_ID TRANSITION_KEY ROLLBACK_KEY TRANSITION_REVISION ROLLBACK_REVISION | restart index-seed | restart index-verify PROJECT_ID ARTIFACT_ID DIGEST"
 
 func run() error {
 	if len(os.Args) < 2 {
@@ -85,6 +85,13 @@ func run() error {
 			return errors.New("bridge-verify requires TOKEN TASK_ID KEY")
 		}
 		return bridgeVerify(ctx, client, baseURL, os.Args[2], os.Args[3], os.Args[4])
+	case "index-seed":
+		return indexSeed(ctx, client, baseURL)
+	case "index-verify":
+		if len(os.Args) < 5 {
+			return errors.New("usage: restart index-verify PROJECT_ID ARTIFACT_ID DIGEST")
+		}
+		return indexVerify(ctx, client, baseURL, os.Args[2], os.Args[3], os.Args[4])
 	case "policy-seed":
 		return policySeed(ctx, client, baseURL)
 	case "policy-verify":

@@ -56,6 +56,31 @@ function buildTransport(
         throw asBridgeProtocolError(reason);
       }
     },
+    async searchKnowledge(input) {
+      try {
+        const response = await appBridge.searchKnowledge(
+          {
+            query: input.query,
+            pageSize: input.pageSize ?? 0,
+            pageToken: input.pageToken ?? "",
+          },
+          { headers },
+        );
+        return {
+          hits: response.hits.map((hit) => ({
+            artifactId: hit.artifactId,
+            digest: hit.digest,
+            artifactType: hit.artifactType,
+            title: hit.title,
+            excerpt: hit.excerpt,
+            score: hit.score,
+          })),
+          nextPageToken: response.nextPageToken,
+        };
+      } catch (reason: unknown) {
+        throw asBridgeProtocolError(reason);
+      }
+    },
     watchAgentTaskEvents(input, onEvent, signal) {
       return new Promise((resolve, reject) => {
         void (async () => {

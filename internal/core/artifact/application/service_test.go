@@ -466,3 +466,7 @@ func (r *fakeRepository) ReviewArtifactByID(_ context.Context, _ dbtx.Tx, _ stri
 func (r *fakeRepository) ReviewArtifactContentByID(_ context.Context, _ dbtx.Tx, _ string) (domain.ReviewArtifact, domain.NormalizedReviewContent, error) {
 	return domain.ReviewArtifact{}, domain.NormalizedReviewContent{}, domain.ErrNotFound
 }
+
+func (r *fakeRepository) ReconcileReviewSourcesPage(context.Context, string, int) ([]domain.ReconcileSource, string, error) {
+	return nil, "", errors.New("not used in this test")
+}

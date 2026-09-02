@@ -260,10 +260,69 @@ var (
 // generated event type — the runtime never defines a second DTO.
 type AppAgentClient interface {
 	RunAgentTask(ctx context.Context, query AppAgentRunQuery) (AppTaskSubmission, error)
+	// AuthorizeAppKnowledge re-verifies, per call, the active installation,
+	// the project binding, and the exact current grant revision for the
+	// read-only knowledge.search method. It returns the trusted owner/project
+	// binding; every denial is one sanitized verdict (ADR-0013).
+	AuthorizeAppKnowledge(ctx context.Context, query AppKnowledgeAuthQuery) (AppKnowledgeBinding, error)
 	// WatchAgentTaskEvents streams persisted events from Core until the task
 	// reaches its terminal state or the context is canceled. Canceling only
 	// ends the stream; the durable Agent task itself continues.
 	WatchAgentTaskEvents(ctx context.Context, query AppAgentWatchQuery, onEvent func(*agentv1.AgentEvent) error) error
+}
+
+var (
+	// ErrKnowledgeUnavailable marks a temporarily unreachable indexer.
+	ErrKnowledgeUnavailable = errors.New("knowledge index is temporarily unavailable")
+	// ErrKnowledgeMalformed marks a malformed indexer response.
+	ErrKnowledgeMalformed = errors.New("knowledge index response is malformed")
+)
+
+// AppKnowledgeAuthQuery carries the session-derived facts Core re-verifies.
+type AppKnowledgeAuthQuery struct {
+	ProjectID                 string
+	AppInstanceID             string
+	InstallationGrantRevision int64
+}
+
+// AppKnowledgeBinding is the authoritative allow binding returned by Core.
+type AppKnowledgeBinding struct {
+	OwnerUserID string
+	ProjectID   string
+}
+
+// KnowledgeHit is one sanitized search hit the indexer returned.
+type KnowledgeHit struct {
+	ArtifactID   string
+	Digest       string
+	ArtifactType string
+	Title        string
+	Excerpt      string
+	Score        float64
+	CreatedAt    string
+}
+
+// KnowledgeSearchPage is one bounded page of hits plus continuation.
+type KnowledgeSearchPage struct {
+	Hits          []KnowledgeHit
+	NextPageToken string
+	CaughtUp      bool
+}
+
+// KnowledgeSearchQuery is the fully derived, scoped search call.
+type KnowledgeSearchQuery struct {
+	OwnerUserID string
+	ProjectID   string
+	Query       string
+	PageSize    int32
+	PageToken   string
+}
+
+// KnowledgeSearchClient is the scoped indexer adapter. The runtime derives
+// owner/project exclusively from the validated surface session; the app can
+// never influence the scope.
+type KnowledgeSearchClient interface {
+	Search(ctx context.Context, query KnowledgeSearchQuery) (KnowledgeSearchPage, error)
 }
 
 // SurfaceWorkloadQuery is the fully validated container launch input the

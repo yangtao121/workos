@@ -7,6 +7,7 @@
 package indexv1
 
 import (
+	v11 "github.com/yangtao121/workos/gen/go/workos/agent/v1"
 	v1 "github.com/yangtao121/workos/gen/go/workos/common/v1"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
@@ -22,17 +23,141 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
-type IndexContextRequest struct {
+type IndexJobState int32
+
+const (
+	IndexJobState_INDEX_JOB_STATE_UNSPECIFIED IndexJobState = 0
+	IndexJobState_INDEX_JOB_STATE_PENDING     IndexJobState = 1
+	IndexJobState_INDEX_JOB_STATE_RUNNING     IndexJobState = 2
+	IndexJobState_INDEX_JOB_STATE_COMPLETED   IndexJobState = 3
+	IndexJobState_INDEX_JOB_STATE_FAILED      IndexJobState = 4
+)
+
+// Enum value maps for IndexJobState.
+var (
+	IndexJobState_name = map[int32]string{
+		0: "INDEX_JOB_STATE_UNSPECIFIED",
+		1: "INDEX_JOB_STATE_PENDING",
+		2: "INDEX_JOB_STATE_RUNNING",
+		3: "INDEX_JOB_STATE_COMPLETED",
+		4: "INDEX_JOB_STATE_FAILED",
+	}
+	IndexJobState_value = map[string]int32{
+		"INDEX_JOB_STATE_UNSPECIFIED": 0,
+		"INDEX_JOB_STATE_PENDING":     1,
+		"INDEX_JOB_STATE_RUNNING":     2,
+		"INDEX_JOB_STATE_COMPLETED":   3,
+		"INDEX_JOB_STATE_FAILED":      4,
+	}
+)
+
+func (x IndexJobState) Enum() *IndexJobState {
+	p := new(IndexJobState)
+	*p = x
+	return p
+}
+
+func (x IndexJobState) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (IndexJobState) Descriptor() protoreflect.EnumDescriptor {
+	return file_workos_index_v1_index_proto_enumTypes[0].Descriptor()
+}
+
+func (IndexJobState) Type() protoreflect.EnumType {
+	return &file_workos_index_v1_index_proto_enumTypes[0]
+}
+
+func (x IndexJobState) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use IndexJobState.Descriptor instead.
+func (IndexJobState) EnumDescriptor() ([]byte, []int) {
+	return file_workos_index_v1_index_proto_rawDescGZIP(), []int{0}
+}
+
+// Typed canonical source reference for an indexed review artifact. It is the
+// same `artifact.review.v1` context ref semantics defined by ADR-0010: the
+// exact artifact UUIDv7 plus its exact sha256 digest. Search hits reuse this
+// type so pinning a hit as Agent context never needs a second ref grammar.
+type ArtifactSourceRef struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	ProjectId     string                 `protobuf:"bytes,1,opt,name=project_id,json=projectId,proto3" json:"project_id,omitempty"`
-	ContextRefs   []string               `protobuf:"bytes,2,rep,name=context_refs,json=contextRefs,proto3" json:"context_refs,omitempty"`
+	ArtifactId    string                 `protobuf:"bytes,1,opt,name=artifact_id,json=artifactId,proto3" json:"artifact_id,omitempty"`
+	Digest        string                 `protobuf:"bytes,2,opt,name=digest,proto3" json:"digest,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
+func (x *ArtifactSourceRef) Reset() {
+	*x = ArtifactSourceRef{}
+	mi := &file_workos_index_v1_index_proto_msgTypes[0]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ArtifactSourceRef) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ArtifactSourceRef) ProtoMessage() {}
+
+func (x *ArtifactSourceRef) ProtoReflect() protoreflect.Message {
+	mi := &file_workos_index_v1_index_proto_msgTypes[0]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ArtifactSourceRef.ProtoReflect.Descriptor instead.
+func (*ArtifactSourceRef) Descriptor() ([]byte, []int) {
+	return file_workos_index_v1_index_proto_rawDescGZIP(), []int{0}
+}
+
+func (x *ArtifactSourceRef) GetArtifactId() string {
+	if x != nil {
+		return x.ArtifactId
+	}
+	return ""
+}
+
+func (x *ArtifactSourceRef) GetDigest() string {
+	if x != nil {
+		return x.Digest
+	}
+	return ""
+}
+
+type IndexContextRequest struct {
+	state     protoimpl.MessageState `protogen:"open.v1"`
+	ProjectId string                 `protobuf:"bytes,1,opt,name=project_id,json=projectId,proto3" json:"project_id,omitempty"`
+	// Deprecated legacy free-form refs. They have no documented grammar and are
+	// never parsed: any non-empty value fails closed with InvalidArgument.
+	// Use the typed `sources` field instead.
+	ContextRefs []string `protobuf:"bytes,2,rep,name=context_refs,json=contextRefs,proto3" json:"context_refs,omitempty"`
+	// Typed repair/reindex targets. Only `artifact.review.v1` refs are
+	// accepted, at most 32 per request, and every ref must carry the exact
+	// digest. Core re-resolves and re-verifies each source from authoritative
+	// facts; client-submitted titles/content/digests are never trusted.
+	Sources []*ArtifactSourceRef `protobuf:"bytes,3,rep,name=sources,proto3" json:"sources,omitempty"`
+	// Durable idempotency key (1..128 runes). Same key + same canonical
+	// request replays the first job response exactly; same key with a
+	// different request fails with Aborted; failed validation never consumes
+	// the key.
+	IdempotencyKey string `protobuf:"bytes,4,opt,name=idempotency_key,json=idempotencyKey,proto3" json:"idempotency_key,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
+}
+
 func (x *IndexContextRequest) Reset() {
 	*x = IndexContextRequest{}
-	mi := &file_workos_index_v1_index_proto_msgTypes[0]
+	mi := &file_workos_index_v1_index_proto_msgTypes[1]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -44,7 +169,7 @@ func (x *IndexContextRequest) String() string {
 func (*IndexContextRequest) ProtoMessage() {}
 
 func (x *IndexContextRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_workos_index_v1_index_proto_msgTypes[0]
+	mi := &file_workos_index_v1_index_proto_msgTypes[1]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -57,7 +182,7 @@ func (x *IndexContextRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use IndexContextRequest.ProtoReflect.Descriptor instead.
 func (*IndexContextRequest) Descriptor() ([]byte, []int) {
-	return file_workos_index_v1_index_proto_rawDescGZIP(), []int{0}
+	return file_workos_index_v1_index_proto_rawDescGZIP(), []int{1}
 }
 
 func (x *IndexContextRequest) GetProjectId() string {
@@ -74,18 +199,44 @@ func (x *IndexContextRequest) GetContextRefs() []string {
 	return nil
 }
 
+func (x *IndexContextRequest) GetSources() []*ArtifactSourceRef {
+	if x != nil {
+		return x.Sources
+	}
+	return nil
+}
+
+func (x *IndexContextRequest) GetIdempotencyKey() string {
+	if x != nil {
+		return x.IdempotencyKey
+	}
+	return ""
+}
+
 type IndexJob struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
-	ProjectId     string                 `protobuf:"bytes,2,opt,name=project_id,json=projectId,proto3" json:"project_id,omitempty"`
-	State         string                 `protobuf:"bytes,3,opt,name=state,proto3" json:"state,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state     protoimpl.MessageState `protogen:"open.v1"`
+	Id        string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	ProjectId string                 `protobuf:"bytes,2,opt,name=project_id,json=projectId,proto3" json:"project_id,omitempty"`
+	// Legacy free-form state string, retained for compatibility. New callers
+	// must use `job_state`; unknown legacy strings are never interpreted.
+	State string `protobuf:"bytes,3,opt,name=state,proto3" json:"state,omitempty"`
+	// Strict job state. Any value outside this enum fails closed.
+	JobState         IndexJobState `protobuf:"varint,4,opt,name=job_state,json=jobState,proto3,enum=workos.index.v1.IndexJobState" json:"job_state,omitempty"`
+	TotalSources     int32         `protobuf:"varint,5,opt,name=total_sources,json=totalSources,proto3" json:"total_sources,omitempty"`
+	CompletedSources int32         `protobuf:"varint,6,opt,name=completed_sources,json=completedSources,proto3" json:"completed_sources,omitempty"`
+	FailedSources    int32         `protobuf:"varint,7,opt,name=failed_sources,json=failedSources,proto3" json:"failed_sources,omitempty"`
+	// Bounded sanitized failure category; never carries query, content, or
+	// storage error text.
+	FailureCategory string `protobuf:"bytes,8,opt,name=failure_category,json=failureCategory,proto3" json:"failure_category,omitempty"`
+	CreatedAt       string `protobuf:"bytes,9,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	UpdatedAt       string `protobuf:"bytes,10,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
 }
 
 func (x *IndexJob) Reset() {
 	*x = IndexJob{}
-	mi := &file_workos_index_v1_index_proto_msgTypes[1]
+	mi := &file_workos_index_v1_index_proto_msgTypes[2]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -97,7 +248,7 @@ func (x *IndexJob) String() string {
 func (*IndexJob) ProtoMessage() {}
 
 func (x *IndexJob) ProtoReflect() protoreflect.Message {
-	mi := &file_workos_index_v1_index_proto_msgTypes[1]
+	mi := &file_workos_index_v1_index_proto_msgTypes[2]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -110,7 +261,7 @@ func (x *IndexJob) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use IndexJob.ProtoReflect.Descriptor instead.
 func (*IndexJob) Descriptor() ([]byte, []int) {
-	return file_workos_index_v1_index_proto_rawDescGZIP(), []int{1}
+	return file_workos_index_v1_index_proto_rawDescGZIP(), []int{2}
 }
 
 func (x *IndexJob) GetId() string {
@@ -134,18 +285,69 @@ func (x *IndexJob) GetState() string {
 	return ""
 }
 
+func (x *IndexJob) GetJobState() IndexJobState {
+	if x != nil {
+		return x.JobState
+	}
+	return IndexJobState_INDEX_JOB_STATE_UNSPECIFIED
+}
+
+func (x *IndexJob) GetTotalSources() int32 {
+	if x != nil {
+		return x.TotalSources
+	}
+	return 0
+}
+
+func (x *IndexJob) GetCompletedSources() int32 {
+	if x != nil {
+		return x.CompletedSources
+	}
+	return 0
+}
+
+func (x *IndexJob) GetFailedSources() int32 {
+	if x != nil {
+		return x.FailedSources
+	}
+	return 0
+}
+
+func (x *IndexJob) GetFailureCategory() string {
+	if x != nil {
+		return x.FailureCategory
+	}
+	return ""
+}
+
+func (x *IndexJob) GetCreatedAt() string {
+	if x != nil {
+		return x.CreatedAt
+	}
+	return ""
+}
+
+func (x *IndexJob) GetUpdatedAt() string {
+	if x != nil {
+		return x.UpdatedAt
+	}
+	return ""
+}
+
 type SearchRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	ProjectId     string                 `protobuf:"bytes,1,opt,name=project_id,json=projectId,proto3" json:"project_id,omitempty"`
-	Query         string                 `protobuf:"bytes,2,opt,name=query,proto3" json:"query,omitempty"`
-	Page          *v1.PageRequest        `protobuf:"bytes,3,opt,name=page,proto3" json:"page,omitempty"`
+	state     protoimpl.MessageState `protogen:"open.v1"`
+	ProjectId string                 `protobuf:"bytes,1,opt,name=project_id,json=projectId,proto3" json:"project_id,omitempty"`
+	// Bounded lexical query: 1..256 code points after whitespace
+	// canonicalization; control characters are rejected.
+	Query         string          `protobuf:"bytes,2,opt,name=query,proto3" json:"query,omitempty"`
+	Page          *v1.PageRequest `protobuf:"bytes,3,opt,name=page,proto3" json:"page,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *SearchRequest) Reset() {
 	*x = SearchRequest{}
-	mi := &file_workos_index_v1_index_proto_msgTypes[2]
+	mi := &file_workos_index_v1_index_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -157,7 +359,7 @@ func (x *SearchRequest) String() string {
 func (*SearchRequest) ProtoMessage() {}
 
 func (x *SearchRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_workos_index_v1_index_proto_msgTypes[2]
+	mi := &file_workos_index_v1_index_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -170,7 +372,7 @@ func (x *SearchRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SearchRequest.ProtoReflect.Descriptor instead.
 func (*SearchRequest) Descriptor() ([]byte, []int) {
-	return file_workos_index_v1_index_proto_rawDescGZIP(), []int{2}
+	return file_workos_index_v1_index_proto_rawDescGZIP(), []int{3}
 }
 
 func (x *SearchRequest) GetProjectId() string {
@@ -195,17 +397,32 @@ func (x *SearchRequest) GetPage() *v1.PageRequest {
 }
 
 type SearchHit struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	ContextRef    string                 `protobuf:"bytes,1,opt,name=context_ref,json=contextRef,proto3" json:"context_ref,omitempty"`
-	Excerpt       string                 `protobuf:"bytes,2,opt,name=excerpt,proto3" json:"excerpt,omitempty"`
-	Score         float64                `protobuf:"fixed64,3,opt,name=score,proto3" json:"score,omitempty"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Canonical string projection of `source_ref`:
+	// "artifact.review.v1:<artifact_id>:<digest>". Retained for compatibility;
+	// new callers must use the typed `source_ref`.
+	ContextRef string `protobuf:"bytes,1,opt,name=context_ref,json=contextRef,proto3" json:"context_ref,omitempty"`
+	// Bounded plain-text excerpt. Never HTML; render as inert text only.
+	Excerpt string `protobuf:"bytes,2,opt,name=excerpt,proto3" json:"excerpt,omitempty"`
+	// Finite, deterministic lexical score. NaN/Inf never occurs; any stored
+	// score outside the fixed range fails closed server-side.
+	Score float64 `protobuf:"fixed64,3,opt,name=score,proto3" json:"score,omitempty"`
+	// Typed canonical ref for pinning this hit as an Agent context.
+	SourceRef  *v11.ContextRef `protobuf:"bytes,4,opt,name=source_ref,json=sourceRef,proto3" json:"source_ref,omitempty"`
+	ArtifactId string          `protobuf:"bytes,5,opt,name=artifact_id,json=artifactId,proto3" json:"artifact_id,omitempty"`
+	// Immutable review subtype: document.markdown.v1 or code.unified-diff.v1.
+	ArtifactType string `protobuf:"bytes,6,opt,name=artifact_type,json=artifactType,proto3" json:"artifact_type,omitempty"`
+	Digest       string `protobuf:"bytes,7,opt,name=digest,proto3" json:"digest,omitempty"`
+	Title        string `protobuf:"bytes,8,opt,name=title,proto3" json:"title,omitempty"`
+	// Authoritative source creation time (UTC, RFC 3339 with microseconds).
+	CreatedAt     string `protobuf:"bytes,9,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *SearchHit) Reset() {
 	*x = SearchHit{}
-	mi := &file_workos_index_v1_index_proto_msgTypes[3]
+	mi := &file_workos_index_v1_index_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -217,7 +434,7 @@ func (x *SearchHit) String() string {
 func (*SearchHit) ProtoMessage() {}
 
 func (x *SearchHit) ProtoReflect() protoreflect.Message {
-	mi := &file_workos_index_v1_index_proto_msgTypes[3]
+	mi := &file_workos_index_v1_index_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -230,7 +447,7 @@ func (x *SearchHit) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SearchHit.ProtoReflect.Descriptor instead.
 func (*SearchHit) Descriptor() ([]byte, []int) {
-	return file_workos_index_v1_index_proto_rawDescGZIP(), []int{3}
+	return file_workos_index_v1_index_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *SearchHit) GetContextRef() string {
@@ -254,17 +471,131 @@ func (x *SearchHit) GetScore() float64 {
 	return 0
 }
 
+func (x *SearchHit) GetSourceRef() *v11.ContextRef {
+	if x != nil {
+		return x.SourceRef
+	}
+	return nil
+}
+
+func (x *SearchHit) GetArtifactId() string {
+	if x != nil {
+		return x.ArtifactId
+	}
+	return ""
+}
+
+func (x *SearchHit) GetArtifactType() string {
+	if x != nil {
+		return x.ArtifactType
+	}
+	return ""
+}
+
+func (x *SearchHit) GetDigest() string {
+	if x != nil {
+		return x.Digest
+	}
+	return ""
+}
+
+func (x *SearchHit) GetTitle() string {
+	if x != nil {
+		return x.Title
+	}
+	return ""
+}
+
+func (x *SearchHit) GetCreatedAt() string {
+	if x != nil {
+		return x.CreatedAt
+	}
+	return ""
+}
+
+// Bounded freshness projection. `caught_up` is a real fact derived from the
+// durable consumer watermark; it is never a fixed READY.
+type IndexFreshness struct {
+	state    protoimpl.MessageState `protogen:"open.v1"`
+	CaughtUp bool                   `protobuf:"varint,1,opt,name=caught_up,json=caughtUp,proto3" json:"caught_up,omitempty"`
+	// High-watermark of consumed publications (UTC RFC 3339 microseconds).
+	IndexedThrough      string `protobuf:"bytes,2,opt,name=indexed_through,json=indexedThrough,proto3" json:"indexed_through,omitempty"`
+	LastIndexedAt       string `protobuf:"bytes,3,opt,name=last_indexed_at,json=lastIndexedAt,proto3" json:"last_indexed_at,omitempty"`
+	PendingPublications int64  `protobuf:"varint,4,opt,name=pending_publications,json=pendingPublications,proto3" json:"pending_publications,omitempty"`
+	unknownFields       protoimpl.UnknownFields
+	sizeCache           protoimpl.SizeCache
+}
+
+func (x *IndexFreshness) Reset() {
+	*x = IndexFreshness{}
+	mi := &file_workos_index_v1_index_proto_msgTypes[5]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *IndexFreshness) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*IndexFreshness) ProtoMessage() {}
+
+func (x *IndexFreshness) ProtoReflect() protoreflect.Message {
+	mi := &file_workos_index_v1_index_proto_msgTypes[5]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use IndexFreshness.ProtoReflect.Descriptor instead.
+func (*IndexFreshness) Descriptor() ([]byte, []int) {
+	return file_workos_index_v1_index_proto_rawDescGZIP(), []int{5}
+}
+
+func (x *IndexFreshness) GetCaughtUp() bool {
+	if x != nil {
+		return x.CaughtUp
+	}
+	return false
+}
+
+func (x *IndexFreshness) GetIndexedThrough() string {
+	if x != nil {
+		return x.IndexedThrough
+	}
+	return ""
+}
+
+func (x *IndexFreshness) GetLastIndexedAt() string {
+	if x != nil {
+		return x.LastIndexedAt
+	}
+	return ""
+}
+
+func (x *IndexFreshness) GetPendingPublications() int64 {
+	if x != nil {
+		return x.PendingPublications
+	}
+	return 0
+}
+
 type SearchResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Hits          []*SearchHit           `protobuf:"bytes,1,rep,name=hits,proto3" json:"hits,omitempty"`
 	Page          *v1.PageResponse       `protobuf:"bytes,2,opt,name=page,proto3" json:"page,omitempty"`
+	Freshness     *IndexFreshness        `protobuf:"bytes,3,opt,name=freshness,proto3" json:"freshness,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *SearchResponse) Reset() {
 	*x = SearchResponse{}
-	mi := &file_workos_index_v1_index_proto_msgTypes[4]
+	mi := &file_workos_index_v1_index_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -276,7 +607,7 @@ func (x *SearchResponse) String() string {
 func (*SearchResponse) ProtoMessage() {}
 
 func (x *SearchResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_workos_index_v1_index_proto_msgTypes[4]
+	mi := &file_workos_index_v1_index_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -289,7 +620,7 @@ func (x *SearchResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SearchResponse.ProtoReflect.Descriptor instead.
 func (*SearchResponse) Descriptor() ([]byte, []int) {
-	return file_workos_index_v1_index_proto_rawDescGZIP(), []int{4}
+	return file_workos_index_v1_index_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *SearchResponse) GetHits() []*SearchHit {
@@ -306,6 +637,13 @@ func (x *SearchResponse) GetPage() *v1.PageResponse {
 	return nil
 }
 
+func (x *SearchResponse) GetFreshness() *IndexFreshness {
+	if x != nil {
+		return x.Freshness
+	}
+	return nil
+}
+
 type IndexContextResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Job           *IndexJob              `protobuf:"bytes,1,opt,name=job,proto3" json:"job,omitempty"`
@@ -315,7 +653,7 @@ type IndexContextResponse struct {
 
 func (x *IndexContextResponse) Reset() {
 	*x = IndexContextResponse{}
-	mi := &file_workos_index_v1_index_proto_msgTypes[5]
+	mi := &file_workos_index_v1_index_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -327,7 +665,7 @@ func (x *IndexContextResponse) String() string {
 func (*IndexContextResponse) ProtoMessage() {}
 
 func (x *IndexContextResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_workos_index_v1_index_proto_msgTypes[5]
+	mi := &file_workos_index_v1_index_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -340,7 +678,7 @@ func (x *IndexContextResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use IndexContextResponse.ProtoReflect.Descriptor instead.
 func (*IndexContextResponse) Descriptor() ([]byte, []int) {
-	return file_workos_index_v1_index_proto_rawDescGZIP(), []int{5}
+	return file_workos_index_v1_index_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *IndexContextResponse) GetJob() *IndexJob {
@@ -354,31 +692,68 @@ var File_workos_index_v1_index_proto protoreflect.FileDescriptor
 
 const file_workos_index_v1_index_proto_rawDesc = "" +
 	"\n" +
-	"\x1bworkos/index/v1/index.proto\x12\x0fworkos.index.v1\x1a\x1dworkos/common/v1/common.proto\"W\n" +
+	"\x1bworkos/index/v1/index.proto\x12\x0fworkos.index.v1\x1a\x1bworkos/agent/v1/agent.proto\x1a\x1dworkos/common/v1/common.proto\"L\n" +
+	"\x11ArtifactSourceRef\x12\x1f\n" +
+	"\vartifact_id\x18\x01 \x01(\tR\n" +
+	"artifactId\x12\x16\n" +
+	"\x06digest\x18\x02 \x01(\tR\x06digest\"\xbe\x01\n" +
 	"\x13IndexContextRequest\x12\x1d\n" +
 	"\n" +
 	"project_id\x18\x01 \x01(\tR\tprojectId\x12!\n" +
-	"\fcontext_refs\x18\x02 \x03(\tR\vcontextRefs\"O\n" +
+	"\fcontext_refs\x18\x02 \x03(\tR\vcontextRefs\x12<\n" +
+	"\asources\x18\x03 \x03(\v2\".workos.index.v1.ArtifactSourceRefR\asources\x12'\n" +
+	"\x0fidempotency_key\x18\x04 \x01(\tR\x0eidempotencyKey\"\xee\x02\n" +
 	"\bIndexJob\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x1d\n" +
 	"\n" +
 	"project_id\x18\x02 \x01(\tR\tprojectId\x12\x14\n" +
-	"\x05state\x18\x03 \x01(\tR\x05state\"w\n" +
+	"\x05state\x18\x03 \x01(\tR\x05state\x12;\n" +
+	"\tjob_state\x18\x04 \x01(\x0e2\x1e.workos.index.v1.IndexJobStateR\bjobState\x12#\n" +
+	"\rtotal_sources\x18\x05 \x01(\x05R\ftotalSources\x12+\n" +
+	"\x11completed_sources\x18\x06 \x01(\x05R\x10completedSources\x12%\n" +
+	"\x0efailed_sources\x18\a \x01(\x05R\rfailedSources\x12)\n" +
+	"\x10failure_category\x18\b \x01(\tR\x0ffailureCategory\x12\x1d\n" +
+	"\n" +
+	"created_at\x18\t \x01(\tR\tcreatedAt\x12\x1d\n" +
+	"\n" +
+	"updated_at\x18\n" +
+	" \x01(\tR\tupdatedAt\"w\n" +
 	"\rSearchRequest\x12\x1d\n" +
 	"\n" +
 	"project_id\x18\x01 \x01(\tR\tprojectId\x12\x14\n" +
 	"\x05query\x18\x02 \x01(\tR\x05query\x121\n" +
-	"\x04page\x18\x03 \x01(\v2\x1d.workos.common.v1.PageRequestR\x04page\"\\\n" +
+	"\x04page\x18\x03 \x01(\v2\x1d.workos.common.v1.PageRequestR\x04page\"\xab\x02\n" +
 	"\tSearchHit\x12\x1f\n" +
 	"\vcontext_ref\x18\x01 \x01(\tR\n" +
 	"contextRef\x12\x18\n" +
 	"\aexcerpt\x18\x02 \x01(\tR\aexcerpt\x12\x14\n" +
-	"\x05score\x18\x03 \x01(\x01R\x05score\"t\n" +
+	"\x05score\x18\x03 \x01(\x01R\x05score\x12:\n" +
+	"\n" +
+	"source_ref\x18\x04 \x01(\v2\x1b.workos.agent.v1.ContextRefR\tsourceRef\x12\x1f\n" +
+	"\vartifact_id\x18\x05 \x01(\tR\n" +
+	"artifactId\x12#\n" +
+	"\rartifact_type\x18\x06 \x01(\tR\fartifactType\x12\x16\n" +
+	"\x06digest\x18\a \x01(\tR\x06digest\x12\x14\n" +
+	"\x05title\x18\b \x01(\tR\x05title\x12\x1d\n" +
+	"\n" +
+	"created_at\x18\t \x01(\tR\tcreatedAt\"\xb1\x01\n" +
+	"\x0eIndexFreshness\x12\x1b\n" +
+	"\tcaught_up\x18\x01 \x01(\bR\bcaughtUp\x12'\n" +
+	"\x0findexed_through\x18\x02 \x01(\tR\x0eindexedThrough\x12&\n" +
+	"\x0flast_indexed_at\x18\x03 \x01(\tR\rlastIndexedAt\x121\n" +
+	"\x14pending_publications\x18\x04 \x01(\x03R\x13pendingPublications\"\xb3\x01\n" +
 	"\x0eSearchResponse\x12.\n" +
 	"\x04hits\x18\x01 \x03(\v2\x1a.workos.index.v1.SearchHitR\x04hits\x122\n" +
-	"\x04page\x18\x02 \x01(\v2\x1e.workos.common.v1.PageResponseR\x04page\"C\n" +
+	"\x04page\x18\x02 \x01(\v2\x1e.workos.common.v1.PageResponseR\x04page\x12=\n" +
+	"\tfreshness\x18\x03 \x01(\v2\x1f.workos.index.v1.IndexFreshnessR\tfreshness\"C\n" +
 	"\x14IndexContextResponse\x12+\n" +
-	"\x03job\x18\x01 \x01(\v2\x19.workos.index.v1.IndexJobR\x03job2\xba\x01\n" +
+	"\x03job\x18\x01 \x01(\v2\x19.workos.index.v1.IndexJobR\x03job*\xa5\x01\n" +
+	"\rIndexJobState\x12\x1f\n" +
+	"\x1bINDEX_JOB_STATE_UNSPECIFIED\x10\x00\x12\x1b\n" +
+	"\x17INDEX_JOB_STATE_PENDING\x10\x01\x12\x1b\n" +
+	"\x17INDEX_JOB_STATE_RUNNING\x10\x02\x12\x1d\n" +
+	"\x19INDEX_JOB_STATE_COMPLETED\x10\x03\x12\x1a\n" +
+	"\x16INDEX_JOB_STATE_FAILED\x10\x042\xba\x01\n" +
 	"\fIndexService\x12]\n" +
 	"\fIndexContext\x12$.workos.index.v1.IndexContextRequest\x1a%.workos.index.v1.IndexContextResponse\"\x00\x12K\n" +
 	"\x06Search\x12\x1e.workos.index.v1.SearchRequest\x1a\x1f.workos.index.v1.SearchResponse\"\x00B=Z;github.com/yangtao121/workos/gen/go/workos/index/v1;indexv1b\x06proto3"
@@ -395,31 +770,40 @@ func file_workos_index_v1_index_proto_rawDescGZIP() []byte {
 	return file_workos_index_v1_index_proto_rawDescData
 }
 
-var file_workos_index_v1_index_proto_msgTypes = make([]protoimpl.MessageInfo, 6)
+var file_workos_index_v1_index_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
+var file_workos_index_v1_index_proto_msgTypes = make([]protoimpl.MessageInfo, 8)
 var file_workos_index_v1_index_proto_goTypes = []any{
-	(*IndexContextRequest)(nil),  // 0: workos.index.v1.IndexContextRequest
-	(*IndexJob)(nil),             // 1: workos.index.v1.IndexJob
-	(*SearchRequest)(nil),        // 2: workos.index.v1.SearchRequest
-	(*SearchHit)(nil),            // 3: workos.index.v1.SearchHit
-	(*SearchResponse)(nil),       // 4: workos.index.v1.SearchResponse
-	(*IndexContextResponse)(nil), // 5: workos.index.v1.IndexContextResponse
-	(*v1.PageRequest)(nil),       // 6: workos.common.v1.PageRequest
-	(*v1.PageResponse)(nil),      // 7: workos.common.v1.PageResponse
+	(IndexJobState)(0),           // 0: workos.index.v1.IndexJobState
+	(*ArtifactSourceRef)(nil),    // 1: workos.index.v1.ArtifactSourceRef
+	(*IndexContextRequest)(nil),  // 2: workos.index.v1.IndexContextRequest
+	(*IndexJob)(nil),             // 3: workos.index.v1.IndexJob
+	(*SearchRequest)(nil),        // 4: workos.index.v1.SearchRequest
+	(*SearchHit)(nil),            // 5: workos.index.v1.SearchHit
+	(*IndexFreshness)(nil),       // 6: workos.index.v1.IndexFreshness
+	(*SearchResponse)(nil),       // 7: workos.index.v1.SearchResponse
+	(*IndexContextResponse)(nil), // 8: workos.index.v1.IndexContextResponse
+	(*v1.PageRequest)(nil),       // 9: workos.common.v1.PageRequest
+	(*v11.ContextRef)(nil),       // 10: workos.agent.v1.ContextRef
+	(*v1.PageResponse)(nil),      // 11: workos.common.v1.PageResponse
 }
 var file_workos_index_v1_index_proto_depIdxs = []int32{
-	6, // 0: workos.index.v1.SearchRequest.page:type_name -> workos.common.v1.PageRequest
-	3, // 1: workos.index.v1.SearchResponse.hits:type_name -> workos.index.v1.SearchHit
-	7, // 2: workos.index.v1.SearchResponse.page:type_name -> workos.common.v1.PageResponse
-	1, // 3: workos.index.v1.IndexContextResponse.job:type_name -> workos.index.v1.IndexJob
-	0, // 4: workos.index.v1.IndexService.IndexContext:input_type -> workos.index.v1.IndexContextRequest
-	2, // 5: workos.index.v1.IndexService.Search:input_type -> workos.index.v1.SearchRequest
-	5, // 6: workos.index.v1.IndexService.IndexContext:output_type -> workos.index.v1.IndexContextResponse
-	4, // 7: workos.index.v1.IndexService.Search:output_type -> workos.index.v1.SearchResponse
-	6, // [6:8] is the sub-list for method output_type
-	4, // [4:6] is the sub-list for method input_type
-	4, // [4:4] is the sub-list for extension type_name
-	4, // [4:4] is the sub-list for extension extendee
-	0, // [0:4] is the sub-list for field type_name
+	1,  // 0: workos.index.v1.IndexContextRequest.sources:type_name -> workos.index.v1.ArtifactSourceRef
+	0,  // 1: workos.index.v1.IndexJob.job_state:type_name -> workos.index.v1.IndexJobState
+	9,  // 2: workos.index.v1.SearchRequest.page:type_name -> workos.common.v1.PageRequest
+	10, // 3: workos.index.v1.SearchHit.source_ref:type_name -> workos.agent.v1.ContextRef
+	5,  // 4: workos.index.v1.SearchResponse.hits:type_name -> workos.index.v1.SearchHit
+	11, // 5: workos.index.v1.SearchResponse.page:type_name -> workos.common.v1.PageResponse
+	6,  // 6: workos.index.v1.SearchResponse.freshness:type_name -> workos.index.v1.IndexFreshness
+	3,  // 7: workos.index.v1.IndexContextResponse.job:type_name -> workos.index.v1.IndexJob
+	2,  // 8: workos.index.v1.IndexService.IndexContext:input_type -> workos.index.v1.IndexContextRequest
+	4,  // 9: workos.index.v1.IndexService.Search:input_type -> workos.index.v1.SearchRequest
+	8,  // 10: workos.index.v1.IndexService.IndexContext:output_type -> workos.index.v1.IndexContextResponse
+	7,  // 11: workos.index.v1.IndexService.Search:output_type -> workos.index.v1.SearchResponse
+	10, // [10:12] is the sub-list for method output_type
+	8,  // [8:10] is the sub-list for method input_type
+	8,  // [8:8] is the sub-list for extension type_name
+	8,  // [8:8] is the sub-list for extension extendee
+	0,  // [0:8] is the sub-list for field type_name
 }
 
 func init() { file_workos_index_v1_index_proto_init() }
@@ -432,13 +816,14 @@ func file_workos_index_v1_index_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_workos_index_v1_index_proto_rawDesc), len(file_workos_index_v1_index_proto_rawDesc)),
-			NumEnums:      0,
-			NumMessages:   6,
+			NumEnums:      1,
+			NumMessages:   8,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
 		GoTypes:           file_workos_index_v1_index_proto_goTypes,
 		DependencyIndexes: file_workos_index_v1_index_proto_depIdxs,
+		EnumInfos:         file_workos_index_v1_index_proto_enumTypes,
 		MessageInfos:      file_workos_index_v1_index_proto_msgTypes,
 	}.Build()
 	File_workos_index_v1_index_proto = out.File

@@ -217,3 +217,7 @@ func TestAppAgentHandlerSanitizedMessages(t *testing.T) {
 		t.Fatalf("internal detail leaked: %v", err)
 	}
 }
+
+func (s *fakeAppAgentService) AuthorizeAppKnowledge(context.Context, string, string, string, int64) (string, string, error) {
+	return "", "", errors.New("not used in this test")
+}

@@ -117,4 +117,10 @@ type Repository interface {
 	// stored bytes. The caller validates the lease-derived owner/project
 	// binding and the pinned digest (ADR-0010).
 	ReviewArtifactContentByID(ctx context.Context, tx dbtx.Tx, artifactID string) (domain.ReviewArtifact, domain.NormalizedReviewContent, error)
+
+	// ReconcileReviewSourcesPage pages every review artifact in stable
+	// (created_at, id) order for the index-feed reconciliation walk
+	// (ADR-0013). Identity facts only; an empty cursor opens the first page
+	// and a malformed one is an invalid-input failure.
+	ReconcileReviewSourcesPage(ctx context.Context, cursor string, limit int) ([]domain.ReconcileSource, string, error)
 }

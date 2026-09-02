@@ -2,6 +2,7 @@ package application
 
 import (
 	"context"
+	"encoding/base64"
 	"errors"
 	"strings"
 	"sync"
@@ -98,11 +99,14 @@ func (r *bridgeRepository) GetActiveSessionByBridgeToken(_ context.Context, owne
 }
 
 type bridgeAppAgent struct {
-	runResult    ports.AppTaskSubmission
-	runErr       error
-	watchErr     error
-	queries      []ports.AppAgentRunQuery
-	watchQueries []ports.AppAgentWatchQuery
+	runResult      ports.AppTaskSubmission
+	runErr         error
+	watchErr       error
+	queries        []ports.AppAgentRunQuery
+	watchQueries   []ports.AppAgentWatchQuery
+	authorizeOwner string
+	authorizeDeny  bool
+	authorizeCalls int
 }
 
 func (a *bridgeAppAgent) RunAgentTask(_ context.Context, query ports.AppAgentRunQuery) (ports.AppTaskSubmission, error) {
@@ -122,7 +126,7 @@ func newBridgeTest(t *testing.T) (*BridgeService, *bridgeRepository, *bridgeAppA
 	t.Helper()
 	repository := &bridgeRepository{sessions: map[string]domain.SurfaceSession{}}
 	appAgent := &bridgeAppAgent{runResult: ports.AppTaskSubmission{TaskID: "task-1", State: "queued"}}
-	service, err := NewBridgeService(repository, appAgent)
+	service, err := NewBridgeService(repository, appAgent, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -221,7 +225,7 @@ func TestBridgeCredentialChainFailsClosed(t *testing.T) {
 func TestBridgeCapabilityGate(t *testing.T) {
 	repository := &bridgeRepository{sessions: map[string]domain.SurfaceSession{}}
 	appAgent := &bridgeAppAgent{runResult: ports.AppTaskSubmission{TaskID: "task-1"}}
-	service, err := NewBridgeService(repository, appAgent)
+	service, err := NewBridgeService(repository, appAgent, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -263,10 +267,10 @@ func TestBridgeCoreDenialAndOutagePassThrough(t *testing.T) {
 }
 
 func TestNewBridgeServiceRequiresDependencies(t *testing.T) {
-	if _, err := NewBridgeService(nil, &bridgeAppAgent{}); err == nil {
+	if _, err := NewBridgeService(nil, &bridgeAppAgent{}, nil); err == nil {
 		t.Fatal("nil repository accepted")
 	}
-	if _, err := NewBridgeService(&bridgeRepository{sessions: map[string]domain.SurfaceSession{}}, nil); err == nil {
+	if _, err := NewBridgeService(&bridgeRepository{sessions: map[string]domain.SurfaceSession{}}, nil, nil); err == nil {
 		t.Fatal("nil app agent accepted")
 	}
 }
@@ -281,4 +285,177 @@ func TestBridgeTokenNeverAppearsInErrors(t *testing.T) {
 
 func (r *bridgeRepository) HasActiveSurface(context.Context, string, string, time.Time) (bool, error) {
 	return false, nil
+}
+
+func (a *bridgeAppAgent) AuthorizeAppKnowledge(_ context.Context, query ports.AppKnowledgeAuthQuery) (ports.AppKnowledgeBinding, error) {
+	a.authorizeCalls++
+	if a.authorizeDeny {
+		return ports.AppKnowledgeBinding{}, ports.ErrAppAgentDenied
+	}
+	return ports.AppKnowledgeBinding{OwnerUserID: a.authorizeOwner, ProjectID: query.ProjectID}, nil
+}
+
+// TestBridgeKnowledgeSearchOrder proves the ADR-0013 fixed order: the local
+// capability gate runs first (nil pipeline or missing capability never touch
+// Core), then Core re-authorization, and only a successful binding reaches
+// the indexer. Denials provably leave the indexer call count at zero.
+func TestBridgeKnowledgeSearchOrder(t *testing.T) {
+	validToken := base64.RawURLEncoding.EncodeToString(make([]byte, 32)) // valid grammar
+	hash := domain.HashBridgeToken(validToken)
+	baseSession := func(capabilities ...string) domain.SurfaceSession {
+		return domain.SurfaceSession{
+			ID: "01999999-9999-7999-8999-0000000000a1", OwnerUserID: "01999999-9999-7999-8999-0000000000b1",
+			DeviceID: "01999999-9999-7999-8999-0000000000c1", ProjectID: "01999999-9999-7999-8999-0000000000d1",
+			AppInstanceID: "01999999-9999-7999-8999-0000000000e1", InstallationGrantRevision: 2,
+			BridgeTokenHash: hash, BridgeCapabilities: capabilities,
+			ExpiresAt: time.Now().Add(time.Hour),
+		}
+	}
+	query := ports.KnowledgeSearchQuery{Query: "unique"}
+	_ = query
+
+	t.Run("nil pipeline denies without touching Core", func(t *testing.T) {
+		repo := &bridgeRepository{sessions: map[string]domain.SurfaceSession{}}
+		appAgent := &bridgeAppAgent{}
+		service, err := NewBridgeService(repo, appAgent, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		repo.put(baseSession("knowledge.search"))
+		if _, err := service.SearchKnowledge(context.Background(), "01999999-9999-7999-8999-0000000000b1",
+			"01999999-9999-7999-8999-0000000000c1", validToken, "query", 0, ""); !errors.Is(err, domain.ErrPermissionDenied) {
+			t.Fatalf("nil pipeline = %v, want PermissionDenied", err)
+		}
+		if appAgent.authorizeCalls != 0 {
+			t.Fatalf("nil pipeline called Core %d times", appAgent.authorizeCalls)
+		}
+	})
+
+	t.Run("Core denial reaches the indexer zero times", func(t *testing.T) {
+		repo := &bridgeRepository{sessions: map[string]domain.SurfaceSession{}}
+		appAgent := &bridgeAppAgent{authorizeDeny: true}
+		indexer := &recordingKnowledgeSearch{}
+		service, err := NewBridgeService(repo, appAgent, mustPipeline(t, appAgent, indexer))
+		if err != nil {
+			t.Fatal(err)
+		}
+		repo.put(baseSession("knowledge.search"))
+		if _, err := service.SearchKnowledge(context.Background(), "01999999-9999-7999-8999-0000000000b1",
+			"01999999-9999-7999-8999-0000000000c1", validToken, "query", 0, ""); !errors.Is(err, domain.ErrPermissionDenied) {
+			t.Fatalf("Core denial = %v, want PermissionDenied", err)
+		}
+		if indexer.calls != 0 {
+			t.Fatalf("denied call reached the indexer %d times", indexer.calls)
+		}
+	})
+
+	t.Run("capability gate precedes Core", func(t *testing.T) {
+		repo := &bridgeRepository{sessions: map[string]domain.SurfaceSession{}}
+		appAgent := &bridgeAppAgent{authorizeOwner: "01999999-9999-7999-8999-0000000000b1"}
+		indexer := &recordingKnowledgeSearch{page: ports.KnowledgeSearchPage{NextPageToken: ""}}
+		service, err := NewBridgeService(repo, appAgent, mustPipeline(t, appAgent, indexer))
+		if err != nil {
+			t.Fatal(err)
+		}
+		repo.put(baseSession("agent.task.run"))
+		if _, err := service.SearchKnowledge(context.Background(), "01999999-9999-7999-8999-0000000000b1",
+			"01999999-9999-7999-8999-0000000000c1", validToken, "query", 0, ""); !errors.Is(err, domain.ErrPermissionDenied) {
+			t.Fatalf("missing capability = %v, want PermissionDenied", err)
+		}
+		if appAgent.authorizeCalls != 0 || indexer.calls != 0 {
+			t.Fatalf("capability gate leaked: core=%d indexer=%d", appAgent.authorizeCalls, indexer.calls)
+		}
+	})
+
+	t.Run("malformed search input precedes Core and indexer", func(t *testing.T) {
+		repo := &bridgeRepository{sessions: map[string]domain.SurfaceSession{}}
+		appAgent := &bridgeAppAgent{}
+		indexer := &recordingKnowledgeSearch{}
+		service, err := NewBridgeService(repo, appAgent, mustPipeline(t, appAgent, indexer))
+		if err != nil {
+			t.Fatal(err)
+		}
+		repo.put(baseSession("knowledge.search"))
+		for _, input := range []struct{ query, token string }{
+			{query: "query\nwith-control"},
+			{query: "   "},
+			{query: "query", token: "not+base64url"},
+			{query: "query", token: strings.Repeat("a", maxKnowledgePageTokenBytes+1)},
+		} {
+			if _, err := service.SearchKnowledge(context.Background(), "01999999-9999-7999-8999-0000000000b1",
+				"01999999-9999-7999-8999-0000000000c1", validToken, input.query, 0, input.token); !errors.Is(err, domain.ErrInvalid) {
+				t.Fatalf("malformed input error = %v", err)
+			}
+		}
+		if appAgent.authorizeCalls != 0 || indexer.calls != 0 {
+			t.Fatalf("malformed input leaked: core=%d indexer=%d", appAgent.authorizeCalls, indexer.calls)
+		}
+	})
+
+	t.Run("binding mismatch fails closed", func(t *testing.T) {
+		repo := &bridgeRepository{sessions: map[string]domain.SurfaceSession{}}
+		appAgent := &bridgeAppAgent{authorizeOwner: "someone-else"}
+		indexer := &recordingKnowledgeSearch{}
+		service, err := NewBridgeService(repo, appAgent, mustPipeline(t, appAgent, indexer))
+		if err != nil {
+			t.Fatal(err)
+		}
+		repo.put(baseSession("knowledge.search"))
+		if _, err := service.SearchKnowledge(context.Background(), "01999999-9999-7999-8999-0000000000b1",
+			"01999999-9999-7999-8999-0000000000c1", validToken, "query", 0, ""); !errors.Is(err, domain.ErrPermissionDenied) {
+			t.Fatalf("binding mismatch = %v, want PermissionDenied", err)
+		}
+		if indexer.calls != 0 {
+			t.Fatalf("mismatched binding reached the indexer %d times", indexer.calls)
+		}
+	})
+
+	t.Run("happy path calls the indexer once with the derived scope", func(t *testing.T) {
+		repo := &bridgeRepository{sessions: map[string]domain.SurfaceSession{}}
+		appAgent := &bridgeAppAgent{authorizeOwner: "01999999-9999-7999-8999-0000000000b1"}
+		indexer := &recordingKnowledgeSearch{page: ports.KnowledgeSearchPage{
+			Hits: []ports.KnowledgeHit{{
+				ArtifactID: "01999999-9999-7999-8999-0000000000f1", Digest: "sha256:" + strings.Repeat("ab", 32),
+				ArtifactType: "document.markdown.v1", Title: "Doc", Excerpt: "unique", Score: 1,
+			}},
+		}}
+		service, err := NewBridgeService(repo, appAgent, mustPipeline(t, appAgent, indexer))
+		if err != nil {
+			t.Fatal(err)
+		}
+		repo.put(baseSession("knowledge.search"))
+		page, err := service.SearchKnowledge(context.Background(), "01999999-9999-7999-8999-0000000000b1",
+			"01999999-9999-7999-8999-0000000000c1", validToken, "query", 0, "")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if indexer.calls != 1 || indexer.queries[0].OwnerUserID != "01999999-9999-7999-8999-0000000000b1" ||
+			indexer.queries[0].ProjectID != "01999999-9999-7999-8999-0000000000d1" || indexer.queries[0].PageSize != 20 {
+			t.Fatalf("indexer calls %d queries %+v", indexer.calls, indexer.queries)
+		}
+		if len(page.Hits) != 1 || page.Hits[0].ArtifactID != "01999999-9999-7999-8999-0000000000f1" {
+			t.Fatalf("projected hits: %+v", page.Hits)
+		}
+	})
+}
+
+func mustPipeline(t *testing.T, authorizer ports.AppAgentClient, indexer ports.KnowledgeSearchClient) *KnowledgeSearchPipeline {
+	t.Helper()
+	pipeline, err := NewKnowledgeSearchPipeline(authorizer, indexer)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return pipeline
+}
+
+type recordingKnowledgeSearch struct {
+	calls   int
+	queries []ports.KnowledgeSearchQuery
+	page    ports.KnowledgeSearchPage
+}
+
+func (r *recordingKnowledgeSearch) Search(_ context.Context, query ports.KnowledgeSearchQuery) (ports.KnowledgeSearchPage, error) {
+	r.calls++
+	r.queries = append(r.queries, query)
+	return r.page, nil
 }

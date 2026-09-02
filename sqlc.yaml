@@ -178,3 +178,43 @@ sql:
             go_type:
               type: "time.Time"
               pointer: true
+  - engine: postgresql
+    schema: internal/platform/migrations/files
+    queries: internal/core/indexfeed/adapters/postgres/queries.sql
+    gen:
+      go:
+        package: indexfeeddb
+        out: internal/core/indexfeed/adapters/postgres/indexfeeddb
+        sql_package: pgx/v5
+        emit_interface: true
+        omit_unused_structs: true
+        overrides:
+          - db_type: uuid
+            go_type: string
+          - db_type: timestamptz
+            go_type: time.Time
+          - db_type: timestamptz
+            nullable: true
+            go_type:
+              type: "time.Time"
+              pointer: true
+  - engine: postgresql
+    schema: internal/platform/migrations/files
+    queries: internal/indexer/adapters/postgres/queries.sql
+    gen:
+      go:
+        package: indexerdb
+        out: internal/indexer/adapters/postgres/indexerdb
+        sql_package: pgx/v5
+        emit_interface: true
+        omit_unused_structs: true
+        overrides:
+          - db_type: uuid
+            go_type: string
+          - db_type: timestamptz
+            go_type: time.Time
+          - db_type: timestamptz
+            nullable: true
+            go_type:
+              type: "time.Time"
+              pointer: true

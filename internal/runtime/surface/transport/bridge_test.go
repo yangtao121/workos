@@ -229,3 +229,7 @@ func assertBridgeCode(t *testing.T, err error, code string) bool {
 func validTaskID() string {
 	return "0198d7ea-2110-7c42-b659-c5e4d73bc371"
 }
+
+func (s *fakeBridgeService) SearchKnowledge(context.Context, string, string, string, string, int32, string) (ports.KnowledgeSearchPage, error) {
+	return ports.KnowledgeSearchPage{}, errors.New("not used in this test")
+}

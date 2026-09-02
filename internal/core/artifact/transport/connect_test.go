@@ -2,6 +2,7 @@ package transport
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -379,4 +380,8 @@ func (r *transportRepository) ReviewArtifactByID(_ context.Context, _ dbtx.Tx, _
 }
 func (r *transportRepository) ReviewArtifactContentByID(context.Context, dbtx.Tx, string) (domain.ReviewArtifact, domain.NormalizedReviewContent, error) {
 	return domain.ReviewArtifact{}, domain.NormalizedReviewContent{}, domain.ErrNotFound
+}
+
+func (r *transportRepository) ReconcileReviewSourcesPage(context.Context, string, int) ([]domain.ReconcileSource, string, error) {
+	return nil, "", errors.New("not used in this test")
 }

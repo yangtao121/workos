@@ -42,7 +42,13 @@ const (
 
 // IndexServiceClient is a client for the workos.index.v1.IndexService service.
 type IndexServiceClient interface {
+	// Owner-triggered, idempotent repair/reindex job for exact review
+	// artifacts in the current project. This is a repair path for the same
+	// source authority, never a second ingestion entry point for arbitrary
+	// text.
 	IndexContext(context.Context, *connect.Request[v1.IndexContextRequest]) (*connect.Response[v1.IndexContextResponse], error)
+	// Bounded deterministic lexical search over the owner's active project
+	// review-artifact projection.
 	Search(context.Context, *connect.Request[v1.SearchRequest]) (*connect.Response[v1.SearchResponse], error)
 }
 
@@ -90,7 +96,13 @@ func (c *indexServiceClient) Search(ctx context.Context, req *connect.Request[v1
 
 // IndexServiceHandler is an implementation of the workos.index.v1.IndexService service.
 type IndexServiceHandler interface {
+	// Owner-triggered, idempotent repair/reindex job for exact review
+	// artifacts in the current project. This is a repair path for the same
+	// source authority, never a second ingestion entry point for arbitrary
+	// text.
 	IndexContext(context.Context, *connect.Request[v1.IndexContextRequest]) (*connect.Response[v1.IndexContextResponse], error)
+	// Bounded deterministic lexical search over the owner's active project
+	// review-artifact projection.
 	Search(context.Context, *connect.Request[v1.SearchRequest]) (*connect.Response[v1.SearchResponse], error)
 }
 

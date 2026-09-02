@@ -32,6 +32,7 @@ import (
 	artifactapp "github.com/yangtao121/workos/internal/core/artifact/application"
 	artifactdomain "github.com/yangtao121/workos/internal/core/artifact/domain"
 	artifactports "github.com/yangtao121/workos/internal/core/artifact/ports"
+	indexfeeddomain "github.com/yangtao121/workos/internal/core/indexfeed/domain"
 	"github.com/yangtao121/workos/internal/platform/dbtx"
 	"github.com/yangtao121/workos/internal/platform/ids"
 )
@@ -56,27 +57,38 @@ type ReviewOutputStore interface {
 	ReviewArtifactByID(ctx context.Context, tx dbtx.Tx, artifactID string) (artifactdomain.ReviewArtifact, error)
 }
 
+// IndexPublicationSink is the index feed's transaction-scoped append port
+// (ADR-0013). The publication joins this same transaction: it commits
+// exactly when the artifact commits, and any failure rolls the whole
+// materialization back.
+type IndexPublicationSink interface {
+	AppendReviewArtifactUpsert(ctx context.Context, tx dbtx.Tx, publication indexfeeddomain.Publication) error
+}
+
 // TaskArtifactMaterializer coordinates one provider artifact output into one
-// immutable artifact fact plus exactly one Core-minted timeline event.
+// immutable artifact fact plus exactly one Core-minted timeline event plus
+// exactly one durable index publication.
 type TaskArtifactMaterializer struct {
 	pool      TaskTxSource
 	streams   TaskStreamStore
 	artifacts ReviewOutputStore
 	preparer  *artifactapp.Service
+	feedSink  IndexPublicationSink
 	ids       ids.Generator
 	now       func() time.Time
 }
 
 func NewTaskArtifactMaterializer(
 	pool TaskTxSource, streams TaskStreamStore, artifacts ReviewOutputStore,
-	preparer *artifactapp.Service, generator ids.Generator,
+	preparer *artifactapp.Service, feedSink IndexPublicationSink, generator ids.Generator,
 ) (*TaskArtifactMaterializer, error) {
-	if pool == nil || streams == nil || artifacts == nil || preparer == nil || generator == nil {
-		return nil, errors.New("task artifact materializer requires pool, stream store, review output store, artifact preparer, and id generator")
+	if pool == nil || streams == nil || artifacts == nil || preparer == nil || feedSink == nil || generator == nil {
+		return nil, errors.New("task artifact materializer requires pool, stream store, review output store, artifact preparer, index publication sink, and id generator")
 	}
 	return &TaskArtifactMaterializer{
 		pool: pool, streams: streams, artifacts: artifacts, preparer: preparer,
-		ids: generator, now: func() time.Time { return time.Now().UTC() },
+		feedSink: feedSink,
+		ids:      generator, now: func() time.Time { return time.Now().UTC() },
 	}, nil
 }
 
@@ -287,6 +299,24 @@ func (m *TaskArtifactMaterializer) materializeItem(
 		return nil, nil, err
 	}
 	*nextSeq = publication.EventSeq
+	// Durable index publication (ADR-0013): same transaction as the artifact
+	// row and the timeline event. One immutable artifact maps to exactly one
+	// upsert publication; the unique arbitration makes any duplicate a
+	// corruption verdict rather than a business event. Replays return before
+	// this point and never publish twice.
+	if err := m.feedSink.AppendReviewArtifactUpsert(ctx, tx, indexfeeddomain.Publication{
+		ID:           m.ids.New(),
+		Operation:    indexfeeddomain.OperationReviewArtifactUpsert,
+		OwnerUserID:  stream.OwnerUserID,
+		ProjectID:    stream.ProjectID,
+		SourceType:   indexfeeddomain.SourceType,
+		SourceID:     command.Artifact.ID,
+		ArtifactType: command.Artifact.Type,
+		Digest:       command.Artifact.Digest,
+		OccurredAt:   now,
+	}); err != nil {
+		return nil, nil, err
+	}
 	return reviewArtifactProto(command.Artifact), publicationProto(stream, publication, command.Artifact), nil
 }
 

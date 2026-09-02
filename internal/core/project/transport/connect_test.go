@@ -410,3 +410,7 @@ func TestArchiveProjectMapsMissingToNotFound(t *testing.T) {
 		t.Fatalf("missing project must be NotFound, got %v", err)
 	}
 }
+
+func (r *stubProjectRepository) ReconcileArchivedProjectsPage(context.Context, string, int) ([]ports.ArchivedProjectRef, string, error) {
+	return nil, "", errors.New("not used in this test")
+}

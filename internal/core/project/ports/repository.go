@@ -57,4 +57,17 @@ type Repository interface {
 	ListProjects(ctx context.Context, ownerUserID, cursor string, limit int, includeArchived bool) ([]domain.Project, error)
 	UpdateProject(ctx context.Context, project domain.Project, expectedRevision int64) (domain.Project, error)
 	ArchiveProject(ctx context.Context, ownerUserID, projectID string, expectedRevision int64) (domain.Project, error)
+	// ReconcileArchivedProjectsPage pages archived project scopes in stable
+	// (archived_at, id) order for the index-feed tombstone convergence
+	// (ADR-0013). An empty cursor opens the first page; a malformed cursor
+	// is an invalid-input failure.
+	ReconcileArchivedProjectsPage(ctx context.Context, cursor string, limit int) ([]ArchivedProjectRef, string, error)
+}
+
+// ArchivedProjectRef is one archived project scope fact (feed
+// reconciliation): stable identity plus the authoritative archive time.
+type ArchivedProjectRef struct {
+	OwnerUserID string
+	ProjectID   string
+	ArchivedAt  time.Time
 }

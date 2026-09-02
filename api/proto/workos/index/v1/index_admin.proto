@@ -1,0 +1,107 @@
+// Local-only index administration contract for the indexer's Unix admin
+// socket: never routed by the gateway or any TCP listener, only the local
+// operator (workosctl) reaches it. Responses carry safe operational facts
+// (generations, phases, bounded counts, watermarks, sanitized failure
+// categories) — never queries, titles, excerpts, content, or tokens.
+syntax = "proto3";
+
+package workos.index.v1;
+
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/yangtao121/workos/gen/go/workos/index/v1;indexv1";
+
+message IndexAdminGeneration {
+  string generation_id = 1;
+  // "project" or "all".
+  string scope = 2;
+  string owner_user_id = 3;
+  string project_id = 4;
+  // building | active | retired | failed | canceled. Unknown values fail
+  // closed at the CLI.
+  string status = 5;
+  int64 document_count = 6;
+  int64 tombstone_count = 7;
+  // UTC RFC 3339 microseconds.
+  string created_at = 8;
+  string promoted_at = 9;
+}
+
+message IndexAdminRebuildJob {
+  string job_id = 1;
+  string scope = 2;
+  string owner_user_id = 3;
+  string project_id = 4;
+  // requested | snapshotting | catching_up | validating | promoting |
+  // completed | canceled | failed. Unknown values fail closed at the CLI.
+  string state = 5;
+  // Durable resume cursor for the current phase (safe operational fact).
+  string phase_cursor = 6;
+  string snapshot_boundary = 7;
+  int64 source_count = 8;
+  int64 applied_count = 9;
+  int64 tombstone_count = 10;
+  string failure_category = 11;
+  google.protobuf.Timestamp created_at = 12;
+  google.protobuf.Timestamp updated_at = 13;
+  string target_generation_id = 14;
+}
+
+message GetIndexAdminStatusRequest {}
+
+message GetIndexAdminStatusResponse {
+  // The generation all searches currently read.
+  IndexAdminGeneration active_generation = 1;
+  bool catching_up = 2;
+  int64 pending_publications = 3;
+  // High-watermark of consumed publications (UTC RFC 3339 microseconds).
+  string indexed_through = 4;
+  string last_indexed_at = 5;
+  // Present when a rebuild job is requested/running.
+  IndexAdminRebuildJob active_rebuild = 6;
+}
+
+message StartIndexRebuildRequest {
+  message AllScope {}
+  message ProjectScope {
+    string owner_user_id = 1;
+    string project_id = 2;
+  }
+  oneof scope {
+    // Explicit full rebuild of every active scope from Core authority.
+    // Never an implicit wipe of the database.
+    AllScope all = 1;
+    ProjectScope project = 2;
+  }
+  // Durable idempotency key (1..128 runes). Same key + same canonical scope
+  // replays the same job; same key + different scope conflicts; validation
+  // and permission failures never consume the key.
+  string idempotency_key = 3;
+}
+
+message StartIndexRebuildResponse {
+  IndexAdminRebuildJob job = 1;
+}
+
+message GetIndexRebuildJobRequest {
+  string job_id = 1;
+}
+
+message GetIndexRebuildJobResponse {
+  IndexAdminRebuildJob job = 1;
+}
+
+message CancelIndexRebuildJobRequest {
+  string job_id = 1;
+}
+
+message CancelIndexRebuildJobResponse {
+  IndexAdminRebuildJob job = 1;
+}
+
+service IndexAdminService {
+  rpc GetIndexAdminStatus(GetIndexAdminStatusRequest) returns (GetIndexAdminStatusResponse) {}
+  rpc StartIndexRebuild(StartIndexRebuildRequest) returns (StartIndexRebuildResponse) {}
+  rpc GetIndexRebuildJob(GetIndexRebuildJobRequest) returns (GetIndexRebuildJobResponse) {}
+  rpc CancelIndexRebuildJob(CancelIndexRebuildJobRequest) returns (CancelIndexRebuildJobResponse) {}
+}

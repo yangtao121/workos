@@ -31,6 +31,9 @@ type Querier interface {
 	ListProjects(ctx context.Context, arg ListProjectsParams) ([]WorkosCoreProject, error)
 	LockProjectForInstallation(ctx context.Context, arg LockProjectForInstallationParams) (LockProjectForInstallationRow, error)
 	NextInstallationVersionSequence(ctx context.Context, installationID string) (int32, error)
+	// Index-feed reconciliation page (ADR-0013): archived project scopes in
+	// stable (archived_at, id) order. Only this module's own table is read.
+	ReconcileArchivedProjects(ctx context.Context, arg ReconcileArchivedProjectsParams) ([]ReconcileArchivedProjectsRow, error)
 	ResolveActiveInstallation(ctx context.Context, arg ResolveActiveInstallationParams) (ResolveActiveInstallationRow, error)
 	SetInstallationGrants(ctx context.Context, arg SetInstallationGrantsParams) (SetInstallationGrantsRow, error)
 	TombstoneInstallation(ctx context.Context, arg TombstoneInstallationParams) (int64, error)

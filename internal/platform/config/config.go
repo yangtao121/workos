@@ -30,6 +30,7 @@ type Config struct {
 	Harness     Harness     `yaml:"harness"`
 	Surface     Surface     `yaml:"surface"`
 	Runtime     Runtime     `yaml:"runtime"`
+	Indexer     Indexer     `yaml:"indexer"`
 	Reliability Reliability `yaml:"reliability"`
 	Telemetry   Telemetry   `yaml:"telemetry"`
 }
@@ -47,8 +48,18 @@ type Reliability struct {
 // verified rootless engine executable. The manager refuses to start on
 // out-of-bounds values, and the capability verdict always comes from the
 // engine probe — never from the presence of the binary.
+// Indexer holds the indexer-only settings. The admin socket stays empty
+// unless the operator configures it; no admin surface exists without it.
+type Indexer struct {
+	AdminSocketPath string `yaml:"admin_socket_path"`
+	PageTokenKey    string `yaml:"page_token_key"`
+}
+
 type Runtime struct {
-	PodmanBin         string        `yaml:"podman_bin"`
+	PodmanBin string `yaml:"podman_bin"`
+	// IndexerURL configures the runtime's scoped knowledge search upstream.
+	// Empty means not configured: knowledge.search is never negotiated.
+	IndexerURL        string        `yaml:"indexer_url"`
 	IdleTTL           time.Duration `yaml:"idle_ttl"`
 	ReconcileInterval time.Duration `yaml:"reconcile_interval"`
 	OperationTimeout  time.Duration `yaml:"operation_timeout"`
@@ -239,6 +250,7 @@ func Load() (Config, error) {
 	setString(&cfg.Services.Core, "WORKOS_CORE_URL")
 	setString(&cfg.Services.Harness, "WORKOS_HARNESS_URL")
 	setString(&cfg.Services.Runtime, "WORKOS_RUNTIME_URL")
+	setString(&cfg.Services.Indexer, "WORKOS_INDEXER_URL")
 	setString(&cfg.Harness.CoreURL, "WORKOS_CORE_URL")
 	setString(&cfg.Auth.OwnerID, "WORKOS_OWNER_ID")
 	setString(&cfg.Auth.DeviceID, "WORKOS_DEVICE_ID")
@@ -311,6 +323,9 @@ func Load() (Config, error) {
 		cfg.Agent.CatalogTimeout = value
 	}
 	setString(&cfg.Runtime.PodmanBin, "WORKOS_RUNTIME_PODMAN_BIN")
+	setString(&cfg.Runtime.IndexerURL, "WORKOS_RUNTIME_INDEXER_URL")
+	setString(&cfg.Indexer.AdminSocketPath, "WORKOS_INDEX_ADMIN_SOCKET")
+	setString(&cfg.Indexer.PageTokenKey, "WORKOS_INDEX_PAGE_TOKEN_KEY")
 	setString(&cfg.Runtime.InstanceName, "WORKOS_RUNTIME_INSTANCE_NAME")
 	setString(&cfg.Runtime.DeviceID, "WORKOS_RUNTIME_DEVICE_ID")
 	for _, override := range []struct {
@@ -401,6 +416,9 @@ func (c Config) ValidateGateway() error {
 	}
 	if strings.TrimSpace(c.Services.Reliability) != "" && !validUpstreamURL(c.Services.Reliability) {
 		return errors.New("invalid reliability URL: must be an absolute http(s) URL with a host")
+	}
+	if strings.TrimSpace(c.Services.Indexer) != "" && !validUpstreamURL(c.Services.Indexer) {
+		return errors.New("invalid indexer URL: must be an absolute http(s) URL with a host")
 	}
 	return nil
 }

@@ -89,8 +89,8 @@
     {
       "name": "Indexer",
       "process": "indexer",
-      "status": "scaffolded",
-      "evidence": "health; indexing unavailable"
+      "status": "working",
+      "evidence": "project review-artifact durable lexical index/search (ADR-0013, migrations 026-028): Core appends content-free publications in the same transaction as immutable review artifacts and project archive tombstones; its private source service supplies leased at-least-once claims and bounded authoritative reconciliation. Indexer owns generation-scoped documents, receipts, cursor, repair/rebuild jobs and project tombstones; document+receipt+cursor commit before Core completion, and any durable tombstone permanently wins over late upserts. Owner search through Gateway uses Unicode-aware bounded lexical input, deterministic score/ordering/excerpts, and Indexer-keyed HMAC page tokens bound to owner/project/query/ranking/generation/snapshot; make test-project-knowledge-search proves the real Core/Indexer/Gateway/Chromium context journey, exact signed-snapshot pagination, archive convergence, deliberate Indexer outage and recovery. A granted opaque App reaches the same scoped projection only after exact current grant-revision authorization; denial has zero Indexer calls and make test-app-knowledge-search proves grant/revoke behavior. The local mode-0600 admin socket and workosctl drive a durable shadow rebuild: request facts and promotion facts commit atomically, only one global live rebuild is database-allowed, live effects mirror to active+building generations, every phase survives a fresh executor, response-loss promotion replays safely, and retired payload cleanup is bounded; make test-project-knowledge-rebuild combines a real Core/Indexer/admin restart journey with >200-row PostgreSQL golden, concurrent live upsert/archive, idempotency/conflict/cancel, and temporary Indexer-schema destroy/restore evidence. Knowledge Center and granted-App UI have deterministic before/after/current records. Not covered: generic archive/object store, semantic RAG/embeddings/pgvector, workspace/file sources, or multi-owner deployments."
     },
     {
       "name": "Mobile Shell",

@@ -13,6 +13,8 @@ import {
   postBridgeMessage,
   type BridgeMethod,
   type BridgeRunPayload,
+  type BridgeKnowledgeSearchPayload,
+  type BridgeKnowledgeSearchResult,
   type BridgeRunResult,
   type BridgeStreamPayload,
 } from "@workos/surface-sdk";
@@ -55,6 +57,36 @@ export interface WorkOSAppBridge {
      */
     stream(taskId: string, afterSequence?: string): AsyncIterable<AgentEvent>;
   };
+  knowledge: {
+    /**
+     * One bounded, read-only lexical search over THIS app's project knowledge
+     * (requires knowledge.read). The payload can never carry owner, project,
+     * or source scope: the runtime derives both from the validated surface
+     * session and re-verifies the exact grant revision with Core on every
+     * call (ADR-0013). Excerpts are bounded plain text — render inert.
+     */
+    search(input: AppKnowledgeSearchInput): Promise<AppKnowledgeSearchResult>;
+  };
+}
+
+export interface AppKnowledgeSearchInput {
+  query: string;
+  pageSize?: number | undefined;
+  pageToken?: string | undefined;
+}
+
+export interface AppKnowledgeHit {
+  artifactId: string;
+  digest: string;
+  artifactType: string;
+  title: string;
+  excerpt: string;
+  score: number;
+}
+
+export interface AppKnowledgeSearchResult {
+  hits: AppKnowledgeHit[];
+  nextPageToken: string;
 }
 
 export interface ConnectAppBridgeOptions {
@@ -126,7 +158,7 @@ export function connectWorkOSAppBridge(
 }
 
 type Pending = {
-  resolve: (value: BridgeRunResult | { done: true }) => void;
+  resolve: (value: BridgeRunResult | BridgeKnowledgeSearchResult | { done: true }) => void;
   reject: (error: BridgeProtocolError) => void;
   onEvent?: ((event: AgentEvent) => void) | undefined;
   canceled?: boolean | undefined;
@@ -169,10 +201,10 @@ function createBridge(
 
   const call = (
     method: BridgeMethod,
-    payload: BridgeRunPayload | BridgeStreamPayload,
+    payload: BridgeRunPayload | BridgeStreamPayload | BridgeKnowledgeSearchPayload,
     onEvent?: (event: AgentEvent) => void,
     onRegistered?: (requestId: string) => void,
-  ): Promise<BridgeRunResult | { done: true }> => {
+  ): Promise<BridgeRunResult | BridgeKnowledgeSearchResult | { done: true }> => {
     return new Promise((resolve, reject) => {
       if (!methods.includes(method)) {
         reject(new BridgeProtocolError("permission_denied"));
@@ -219,7 +251,7 @@ function createBridge(
           goal: input.goal,
         };
         const result = await call("agent.run", payload);
-        if ("done" in result) {
+        if ("done" in result || !("taskId" in result)) {
           throw new BridgeProtocolError("internal");
         }
         return result;
@@ -309,6 +341,20 @@ function createBridge(
             };
           },
         };
+      },
+    },
+    knowledge: {
+      async search(input: AppKnowledgeSearchInput): Promise<AppKnowledgeSearchResult> {
+        const payload: BridgeKnowledgeSearchPayload = {
+          query: input.query,
+          pageSize: input.pageSize,
+          pageToken: input.pageToken,
+        };
+        const result = await call("knowledge.search", payload);
+        if ("done" in result || !("hits" in result)) {
+          throw new BridgeProtocolError("internal");
+        }
+        return result;
       },
     },
   };

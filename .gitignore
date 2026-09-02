@@ -41,3 +41,13 @@ test-results/
 
 # Nested pnpm stores created by containerized installs
 .pnpm-store/
+
+# Stray Go build outputs (go build ./cmd/x writes into the working directory)
+/runtime-host
+/workos-core
+/harness-host
+/indexer
+/workos-gateway
+/reliability-host
+/workosctl
+/workos-dev-fixture

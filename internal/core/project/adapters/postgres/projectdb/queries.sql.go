@@ -821,6 +821,49 @@ func (q *Queries) NextInstallationVersionSequence(ctx context.Context, installat
 	return next_sequence, err
 }
 
+const reconcileArchivedProjects = `-- name: ReconcileArchivedProjects :many
+SELECT id, owner_user_id, archived_at
+FROM workos_core.projects
+WHERE archived_at IS NOT NULL
+  AND (archived_at, id) > ($1::timestamptz, $2::uuid)
+ORDER BY archived_at, id
+LIMIT $3
+`
+
+type ReconcileArchivedProjectsParams struct {
+	CursorArchivedAt pgtype.Timestamptz `json:"cursor_archived_at"`
+	CursorID         string             `json:"cursor_id"`
+	PageLimit        int32              `json:"page_limit"`
+}
+
+type ReconcileArchivedProjectsRow struct {
+	ID          string             `json:"id"`
+	OwnerUserID string             `json:"owner_user_id"`
+	ArchivedAt  pgtype.Timestamptz `json:"archived_at"`
+}
+
+// Index-feed reconciliation page (ADR-0013): archived project scopes in
+// stable (archived_at, id) order. Only this module's own table is read.
+func (q *Queries) ReconcileArchivedProjects(ctx context.Context, arg ReconcileArchivedProjectsParams) ([]ReconcileArchivedProjectsRow, error) {
+	rows, err := q.db.Query(ctx, reconcileArchivedProjects, arg.CursorArchivedAt, arg.CursorID, arg.PageLimit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ReconcileArchivedProjectsRow
+	for rows.Next() {
+		var i ReconcileArchivedProjectsRow
+		if err := rows.Scan(&i.ID, &i.OwnerUserID, &i.ArchivedAt); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const resolveActiveInstallation = `-- name: ResolveActiveInstallation :one
 SELECT i.id, i.owner_user_id, i.project_id, i.app_id, i.version, i.manifest_digest, i.granted_permissions, i.grant_revision, i.installed_at, i.uninstalled_at
 FROM workos_core.project_app_installations i
