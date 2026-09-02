@@ -1,0 +1,73 @@
+// Private reliability-host-owned incident notification publication source.
+// Never routed by the gateway: only the Core notification consumer reaches
+// these RPCs over the internal network. Publications carry identity,
+// scope, severity, and a versioned digest — never raw observations,
+// telemetry, logs, or content. Consumption is at-least-once: claims are
+// leased, Core records its durable receipt before completing, and lost
+// completions replay as no-ops against that receipt (ADR-0014).
+syntax = "proto3";
+
+package workos.notification.v1;
+
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/yangtao121/workos/gen/go/workos/notification/v1;notificationv1";
+
+message ClaimIncidentPublicationsRequest {
+  // Bounded internal worker identity (1..128 ASCII [-a-z0-9._]); persisted
+  // as the lease owner, never browser-supplied.
+  string worker_id = 1;
+  // 1..16.
+  int32 max_batch = 2;
+  // Lease duration in seconds, clamped to 5..300.
+  int32 lease_seconds = 3;
+}
+
+// One durable incident publication. `digest` is the versioned canonical
+// digest of the finite publication fields; Core treats same id + different
+// digest as stored corruption, never as an update.
+message IncidentNotificationPublication {
+  string publication_id = 1;
+  string owner_user_id = 2;
+  string project_id = 3;
+  string incident_id = 4;
+  // Finite severity category (info/warning/critical).
+  string severity = 5;
+  // Finite action outcome category at publication time
+  // (pending/restarted/stopped/failed).
+  string action_outcome = 6;
+  // Reliability transaction time of the incident fact (UTC).
+  google.protobuf.Timestamp occurred_at = 7;
+  string digest = 8;
+  // Opaque server-minted lease token proving the live claim; required for
+  // complete. Never logged, never returned to public callers.
+  string lease_token = 9;
+}
+
+message ClaimIncidentPublicationsResponse {
+  repeated IncidentNotificationPublication publications = 1;
+}
+
+message CompletedIncidentPublication {
+  string publication_id = 1;
+  // True when this worker's claim was still live; a stale claim stays
+  // false and the Core receipt makes the inevitable replay a no-op.
+  bool acked = 2;
+}
+
+message CompleteIncidentPublicationsRequest {
+  string worker_id = 1;
+  repeated string publication_ids = 2;
+  // The lease tokens proving each live claim, positionally paired with
+  // publication_ids.
+  repeated string lease_tokens = 3;
+}
+
+message CompleteIncidentPublicationsResponse {
+  repeated CompletedIncidentPublication results = 1;
+}
+
+service IncidentNotificationPublicationSourceService {
+  rpc ClaimIncidentPublications(ClaimIncidentPublicationsRequest) returns (ClaimIncidentPublicationsResponse) {}
+  rpc CompleteIncidentPublications(CompleteIncidentPublicationsRequest) returns (CompleteIncidentPublicationsResponse) {}
+}

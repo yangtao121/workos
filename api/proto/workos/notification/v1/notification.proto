@@ -1,0 +1,224 @@
+// Owner-scoped durable notifications (ADR-0014). Core is the single durable
+// authority for notification facts, the monotonic owner change stream, and
+// read state. The gateway routes only NotificationService; the private
+// ingest and incident-source services in this package are never allowlisted.
+// Titles and bodies are server-derived inert plain text from finite
+// templates — task goals, provider output, artifact content, incident raw
+// telemetry, credentials, and workspace URIs never enter this contract.
+syntax = "proto3";
+
+package workos.notification.v1;
+
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/yangtao121/workos/gen/go/workos/notification/v1;notificationv1";
+
+enum NotificationKind {
+  NOTIFICATION_KIND_UNSPECIFIED = 0;
+  // A project agent task is waiting for the owner's approval; produced in
+  // the same Core transaction as the pending approval.
+  NOTIFICATION_KIND_AGENT_APPROVAL_REQUIRED = 1;
+  // A project agent task first reached a terminal state; produced in the
+  // same Core transaction as the terminal transition, exactly once.
+  NOTIFICATION_KIND_AGENT_TASK_TERMINAL = 2;
+  // A project review artifact was materialized; produced in the same Core
+  // transaction as the artifact. Web bundle artifacts never produce it.
+  NOTIFICATION_KIND_ARTIFACT_REVIEW_CREATED = 3;
+  // A reliability incident was opened; projected at-least-once from the
+  // reliability-host durable publication over the private source RPC.
+  NOTIFICATION_KIND_RELIABILITY_INCIDENT_OPENED = 4;
+  // A granted app instance created a quota-bound informational message.
+  NOTIFICATION_KIND_APP_INSTANCE_MESSAGE = 5;
+}
+
+enum NotificationSeverity {
+  NOTIFICATION_SEVERITY_UNSPECIFIED = 0;
+  NOTIFICATION_SEVERITY_NORMAL = 1;
+  NOTIFICATION_SEVERITY_CRITICAL = 2;
+}
+
+enum NotificationOrigin {
+  NOTIFICATION_ORIGIN_UNSPECIFIED = 0;
+  NOTIFICATION_ORIGIN_SYSTEM = 1;
+  NOTIFICATION_ORIGIN_APP = 2;
+}
+
+enum NotificationTargetKind {
+  NOTIFICATION_TARGET_KIND_UNSPECIFIED = 0;
+  NOTIFICATION_TARGET_KIND_APPROVAL = 1;
+  NOTIFICATION_TARGET_KIND_TASK = 2;
+  NOTIFICATION_TARGET_KIND_ARTIFACT = 3;
+  NOTIFICATION_TARGET_KIND_INCIDENT = 4;
+  NOTIFICATION_TARGET_KIND_APP = 5;
+}
+
+// The finite typed action target. A client may only reopen the authoritative
+// surface through the existing public services; there is deliberately no
+// URL, route, or method field anywhere in this contract.
+message NotificationTarget {
+  NotificationTargetKind kind = 1;
+  // Canonical UUIDv7 of the approval / task / artifact / incident /
+  // installation the action resolves to.
+  string target_id = 2;
+  // App identity for app-origin notifications (registry app id).
+  string app_id = 3;
+}
+
+message Notification {
+  string id = 1;
+  // Optional project scope. Global agent tasks have no project; the project
+  // filter on List is always re-verified against the owner.
+  string project_id = 2;
+  NotificationKind kind = 3;
+  NotificationSeverity severity = 4;
+  NotificationOrigin origin = 5;
+  // Server-derived bounded inert plain text.
+  string title = 6;
+  string body = 7;
+  NotificationTarget target = 8;
+  google.protobuf.Timestamp created_at = 9;
+  // NULL until the owner read it; read is monotonic (never un-read).
+  optional google.protobuf.Timestamp read_at = 10;
+  // Change sequence of the latest applied change for this notification;
+  // clients apply events idempotently by (notification id, revision).
+  int64 revision = 11;
+}
+
+enum NotificationChangeType {
+  NOTIFICATION_CHANGE_TYPE_UNSPECIFIED = 0;
+  NOTIFICATION_CHANGE_TYPE_CREATED = 1;
+  NOTIFICATION_CHANGE_TYPE_READ = 2;
+}
+
+message NotificationEvent {
+  // Owner-wide strictly increasing change sequence. The watch cursor is the
+  // last applied sequence, never a notification id or array offset.
+  int64 change_sequence = 1;
+  NotificationChangeType type = 2;
+  string notification_id = 3;
+  int64 revision = 4;
+  // CREATED carries the full fact; READ carries the read fact minimally.
+  Notification notification = 5;
+  // Owner-wide unread count after this change, so paired devices converge
+  // their badges without extra round trips.
+  int64 unread_count = 6;
+}
+
+// Control messages never advance the durable cursor.
+message WatchHeartbeat {
+  // Owner-wide high watermark at heartbeat time.
+  int64 server_watermark = 1;
+}
+
+// The requested cursor precedes the retained change window (bounded sweep).
+// The client must drop its local projection and rebuild from an
+// authoritative full List; the server never silently skips swept changes.
+message WatchResetRequired {
+  // Fresh snapshot watermark to re-watch after (typically the List
+  // watermark observed during the resync).
+  int64 snapshot_watermark = 1;
+}
+
+message WatchNotificationEventsRequest {
+  // Last applied owner change sequence; 0 starts from the retained history.
+  int64 after_sequence = 1;
+}
+
+message WatchNotificationEventsResponse {
+  oneof payload {
+    NotificationEvent event = 1;
+    WatchHeartbeat heartbeat = 2;
+    WatchResetRequired reset_required = 3;
+  }
+}
+
+message ListNotificationsRequest {
+  // Owner-scoped optional project filter; foreign or unknown projects use
+  // the same sanitized empty semantics as any other missing scope.
+  string project_id = 1;
+  bool unread_only = 2;
+  optional NotificationKind kind = 3;
+  // Page size is normalized once in the application boundary (default 50,
+  // max 100).
+  int32 page_size = 4;
+  // Opaque continuation token from a previous page; keyset-based, never a
+  // bare offset.
+  string page_token = 5;
+}
+
+message ListNotificationsResponse {
+  repeated Notification notifications = 1;
+  // Empty when this was the last page; a exactly-full final page produces
+  // no phantom token.
+  string next_page_token = 2;
+  // Owner-wide unread count for the snapshot.
+  int64 unread_count = 3;
+  // High watermark of this snapshot: open the watch stream from here after
+  // listing to avoid losing events in the list/watch window.
+  int64 watermark = 4;
+}
+
+message GetNotificationRequest {
+  string notification_id = 1;
+}
+
+message GetNotificationResponse {
+  Notification notification = 1;
+}
+
+// Owner-wide summary for badges; cheap and authoritative.
+message GetNotificationSummaryRequest {}
+
+message GetNotificationSummaryResponse {
+  int64 unread_count = 1;
+  // Highest change sequence currently retained for the owner.
+  int64 watermark = 2;
+  // Freshness of the incident notification source: true while the Core
+  // consumer can reach the reliability publication feed. When false only
+  // incident-source freshness is degraded; every other notification and
+  // this summary stay available.
+  bool incident_source_ready = 3;
+}
+
+message MarkNotificationReadRequest {
+  string notification_id = 1;
+  // Durable idempotency key (1..128 chars, no control characters). Same
+  // key/same request replays the first response exactly; same key/different
+  // request is a stable Aborted; failures never consume the key.
+  string idempotency_key = 2;
+}
+
+message MarkNotificationReadResponse {
+  Notification notification = 1;
+  int64 unread_count = 2;
+  // Change sequence of the applied or replayed READ change.
+  int64 change_sequence = 3;
+}
+
+message MarkNotificationsReadRequest {
+  // Bounded set (1..100 canonical UUIDv7 ids). Foreign or missing ids fail
+  // the whole command; there is never a partial mutation.
+  repeated string notification_ids = 1;
+  string idempotency_key = 2;
+}
+
+message MarkNotificationsReadResponse {
+  int64 unread_count = 3;
+  int64 change_sequence = 4;
+}
+
+// Owner-scoped durable notification surface. Every request's owner comes
+// exclusively from the gateway-injected trusted identity; no public request
+// carries an owner field, and foreign/missing facts share one sanitized
+// NotFound so no existence oracle exists.
+service NotificationService {
+  rpc ListNotifications(ListNotificationsRequest) returns (ListNotificationsResponse) {}
+  rpc GetNotification(GetNotificationRequest) returns (GetNotificationResponse) {}
+  rpc MarkNotificationRead(MarkNotificationReadRequest) returns (MarkNotificationReadResponse) {}
+  rpc MarkNotificationsRead(MarkNotificationsReadRequest) returns (MarkNotificationsReadResponse) {}
+  rpc GetNotificationSummary(GetNotificationSummaryRequest) returns (GetNotificationSummaryResponse) {}
+  // Resumable owner-wide server stream. Streams have a bounded server-side
+  // lifetime with heartbeat control frames; clients reconnect from their
+  // last applied change sequence. Control frames never advance the cursor.
+  rpc WatchNotificationEvents(WatchNotificationEventsRequest) returns (stream WatchNotificationEventsResponse) {}
+}

@@ -1,0 +1,49 @@
+// Private Core-owned app notification ingest. Never routed by the gateway
+// and never reachable by browsers or apps: only runtime-host reaches these
+// RPCs, after it has validated the bridge token, surface session, and the
+// exact current grant revision. Core re-verifies the active installation
+// through a neutral port and adjudicates idempotency and quota atomically
+// in one PostgreSQL transaction (ADR-0014).
+syntax = "proto3";
+
+package workos.notification.v1;
+
+import "workos/notification/v1/notification.proto";
+
+option go_package = "github.com/yangtao121/workos/gen/go/workos/notification/v1;notificationv1";
+
+message CreateAppNotificationRequest {
+  // Derived by runtime-host from the validated surface session; Core
+  // re-verifies owner from the trusted identity headers and the
+  // installation binding from authoritative facts. Apps cannot express any
+  // of these fields.
+  string project_id = 1;
+  string app_instance_id = 2;
+  // The installation grant revision snapshotted into the surface session.
+  // Core requires exact equality with the current epoch before anything
+  // else happens; a stale epoch is a sanitized failure with zero side
+  // effects.
+  int64 installation_grant_revision = 3;
+  // App-scoped durable idempotency key (1..128 chars, no control chars).
+  string idempotency_key = 4;
+  // Bounded inert plain text (title 1..120 code points, body 0..500 code
+  // points; valid UTF-8, no NUL/C0/C1, bounded lines and bytes).
+  string title = 5;
+  string body = 6;
+}
+
+message CreateAppNotificationResponse {
+  // The projected owner notification (kind app.instance.message, origin
+  // app, severity normal, target app).
+  Notification notification = 1;
+  int64 change_sequence = 2;
+  int64 unread_count = 3;
+}
+
+// Private service consumed by runtime-host only. Replays are exact across
+// requests, processes, and restarts; conflicts are stable Aborted; quota
+// exhaustion is a stable ResourceExhausted; revoked/stale grants fail
+// closed with zero Core side effects.
+service AppNotificationIngestService {
+  rpc CreateAppNotification(CreateAppNotificationRequest) returns (CreateAppNotificationResponse) {}
+}

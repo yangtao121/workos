@@ -218,3 +218,23 @@ sql:
             go_type:
               type: "time.Time"
               pointer: true
+  - engine: postgresql
+    schema: internal/platform/migrations/files
+    queries: internal/core/notification/adapters/postgres/queries.sql
+    gen:
+      go:
+        package: notificationdb
+        out: internal/core/notification/adapters/postgres/notificationdb
+        sql_package: pgx/v5
+        emit_interface: true
+        omit_unused_structs: true
+        overrides:
+          - db_type: uuid
+            go_type: string
+          - db_type: timestamptz
+            go_type: time.Time
+          - db_type: timestamptz
+            nullable: true
+            go_type:
+              type: "time.Time"
+              pointer: true

@@ -90,6 +90,7 @@ var publicServicePrefixes = []string{
 	"/workos.artifact.v1.ArtifactService/",
 	"/workos.common.v1.SystemService/",
 	"/workos.harness.v1.HarnessCatalogService/",
+	"/workos.notification.v1.NotificationService/",
 	"/workos.project.v1.ProjectHarnessBindingService/",
 	"/workos.project.v1.ProjectService/",
 }

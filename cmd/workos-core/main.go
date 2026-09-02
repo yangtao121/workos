@@ -37,6 +37,9 @@ import (
 	indexfeedpostgres "github.com/yangtao121/workos/internal/core/indexfeed/adapters/postgres"
 	indexfeedapp "github.com/yangtao121/workos/internal/core/indexfeed/application"
 	indexfeedtransport "github.com/yangtao121/workos/internal/core/indexfeed/transport"
+	notificationpostgres "github.com/yangtao121/workos/internal/core/notification/adapters/postgres"
+	notificationapp "github.com/yangtao121/workos/internal/core/notification/application"
+	notificationtransport "github.com/yangtao121/workos/internal/core/notification/transport"
 	"github.com/yangtao121/workos/internal/core/orchestration"
 	orchestrationtransport "github.com/yangtao121/workos/internal/core/orchestration/transport"
 	projectpostgres "github.com/yangtao121/workos/internal/core/project/adapters/postgres"
@@ -316,6 +319,36 @@ func run(logger *slog.Logger) error {
 	}
 	indexFeedPath, indexFeedHandler := indexfeedtransport.NewConnectHandler(indexFeedService)
 	mux.Handle(indexFeedPath, identity.Middleware(indexFeedHandler))
+
+	// The durable notification authority (ADR-0014): owner-scoped facts, the
+	// monotonic change stream, and read state. System producers join source
+	// transactions through the tx-scoped sink; runtime-host reaches the
+	// private ingest service; the gateway allowlist covers only the public
+	// NotificationService.
+	notificationRepository := notificationpostgres.New(pool)
+	notificationService, err := notificationapp.New(notificationRepository, pool, generator)
+	if err != nil {
+		return err
+	}
+	notificationPath, notificationHandler := notificationtransport.NewConnectHandler(notificationService)
+	mux.Handle(notificationPath, identity.Middleware(notificationHandler))
+	// Bounded housekeeping: old read facts are swept and the owner sweep
+	// watermark advances, so stream-gap detection stays authoritative.
+	// Correctness never relies on this loop; every failure is observable.
+	go func() {
+		ticker := time.NewTicker(5 * time.Minute)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				if _, err := notificationService.Sweep(ctx); err != nil {
+					logger.Warn("notification sweep failed", "error", err)
+				}
+			}
+		}
+	}()
 
 	artifactPath, artifactHandler := artifacttransport.NewConnectHandler(artifactService)
 	mux.Handle(artifactPath, identity.Middleware(artifactHandler))
