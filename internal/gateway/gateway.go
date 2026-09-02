@@ -118,6 +118,18 @@ const incidentServicePrefix = "/workos.incident.v1.IncidentService/"
 // surfaceAssetPrefix is the public, same-origin surface asset route.
 const surfaceAssetPrefix = "/surfaces/"
 
+// notificationWatchPath is the resumable notification server stream. It is
+// the one route whose authorization the gateway re-validates mid-flight:
+// a stream authorized at handshake must terminate in bounded time after
+// its session is revoked (ADR-0014).
+const notificationWatchPath = "/workos.notification.v1.NotificationService/WatchNotificationEvents"
+
+// streamRevalidateInterval bounds how long a revoked session can keep an
+// authorized notification stream; the Core handler's own bounded stream
+// lifetime is the second bound. Store outages never cancel streams — only
+// a definitive authentication failure does.
+const streamRevalidateInterval = 30 * time.Second
+
 func New(cfg config.Config, logger *slog.Logger, auth *AuthStack) (*Handler, error) {
 	core, err := newUpstreamProxy(cfg.Services.Core, cfg, logger, "core")
 	if err != nil {
@@ -308,6 +320,10 @@ func (h *Handler) serveProduction(w http.ResponseWriter, r *http.Request) {
 		if !ok {
 			return
 		}
+		if path == notificationWatchPath {
+			h.serveStreamWithRevalidation(w, r, identity)
+			return
+		}
 		h.proxy.ServeHTTP(w, r.WithContext(identity))
 		return
 	case runtimeConnectPath(path):
@@ -442,6 +458,40 @@ func isUnsafeMethod(method string) bool {
 	default:
 		return false
 	}
+}
+
+// serveStreamWithRevalidation proxies the notification watch stream with a
+// periodic session re-check: on a definitive authentication failure (session
+// revoked, expired, or replaced) the request context is cancelled, which
+// aborts the proxied stream in bounded time. A store outage keeps the
+// stream alive — the Core handler's bounded lifetime and the next
+// reconnect through this gate are the remaining bounds.
+func (h *Handler) serveStreamWithRevalidation(w http.ResponseWriter, r *http.Request, identity context.Context) {
+	cookie, err := r.Cookie(authtransport.SessionCookieName)
+	if err != nil || cookie.Value == "" {
+		http.Error(w, "device session required", http.StatusUnauthorized)
+		return
+	}
+	streamCtx, cancel := context.WithCancel(identity)
+	defer cancel()
+	go func() {
+		ticker := time.NewTicker(streamRevalidateInterval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-streamCtx.Done():
+				return
+			case <-ticker.C:
+				if _, err := h.auth.Service.ResolveSession(context.Background(), cookie.Value); err != nil {
+					if errors.Is(err, domain.ErrAuthenticationFailed) {
+						cancel()
+						return
+					}
+				}
+			}
+		}
+	}()
+	h.proxy.ServeHTTP(w, r.WithContext(streamCtx))
 }
 
 // serveLocalConnect mounts one Gateway-local Connect handler with the live

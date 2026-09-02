@@ -8,6 +8,7 @@ export * from "./gen/workos/common/v1/common_pb.js";
 export * from "./gen/workos/harness/v1/harness_pb.js";
 export * from "./gen/workos/harness/v1/catalog_pb.js";
 export * from "./gen/workos/incident/v1/incident_pb.js";
+export * from "./gen/workos/notification/v1/notification_pb.js";
 export * from "./gen/workos/index/v1/index_pb.js";
 export * from "./gen/workos/project/v1/project_pb.js";
 export * from "./gen/workos/project/v1/harness_binding_pb.js";
