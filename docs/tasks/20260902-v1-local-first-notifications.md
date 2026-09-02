@@ -41,13 +41,13 @@ Podman 状态升级。
 
 ### Notification kind / target / source（finite）
 
-| kind                         | origin | target    | source process | 原子性            |
-| ---------------------------- | ------ | --------- | -------------- | ----------------- |
-| `agent.approval.required`    | system | approval  | workos-core Agent | source tx hard requirement |
-| `agent.task.terminal`        | system | task      | workos-core Agent | source tx hard requirement（首次 terminal） |
-| `artifact.review.created`    | system | artifact  | workos-core Artifact materializer | source tx hard requirement |
-| `reliability.incident.opened`| system | incident  | reliability-host publication | at-least-once durable（outage=degraded freshness） |
-| `app.instance.message`       | app    | app       | runtime-host→Core private ingest | grant+quota+idempotency 单事务 |
+| kind                          | origin | target   | source process                    | 原子性                                             |
+| ----------------------------- | ------ | -------- | --------------------------------- | -------------------------------------------------- |
+| `agent.approval.required`     | system | approval | workos-core Agent                 | source tx hard requirement                         |
+| `agent.task.terminal`         | system | task     | workos-core Agent                 | source tx hard requirement（首次 terminal）        |
+| `artifact.review.created`     | system | artifact | workos-core Artifact materializer | source tx hard requirement                         |
+| `reliability.incident.opened` | system | incident | reliability-host publication      | at-least-once durable（outage=degraded freshness） |
+| `app.instance.message`        | app    | app      | runtime-host→Core private ingest  | grant+quota+idempotency 单事务                     |
 
 ### RPC 面
 
@@ -86,33 +86,33 @@ Podman 状态升级。
 
 ## 失败矩阵（实现与测试对照）
 
-| 场景 | 结果 |
-| ---------------------------------------- | ---------------------------------------- |
-| 未认证/被 revoke device | `Unauthenticated`；长流有界终止（Gateway revalidate + stream TTL） |
-| malformed UUID/enum/filter/cursor | 存在性读取前 `InvalidArgument` |
-| foreign/missing notification/target | 净化 `NotFound`，无存在性 oracle |
-| same idempotency key / different request | `Aborted`，first response 与配额不变 |
-| DB 临时不可用 | `Unavailable`，无部分 source/read/quota commit |
-| stored invariant/digest 损坏 | 净化 `Internal`，不静默修复 |
-| old cursor 已被 sweep | `RESET_REQUIRED` + authoritative resync |
-| duplicate/out-of-order stream change | 客户端按 sequence/revision 幂等 |
-| Reliability source 不可达 | incident freshness degraded；其他 source 可用 |
-| publication complete response 丢失 | source 重放，Core receipt no-op，仅一条通知 |
-| App missing/revoked grant/old epoch | fail closed；Core 零副作用 |
-| App quota exhausted | `ResourceExhausted`；不消费 key |
-| notification target 随后失效 | 固定 stale UI，可标 read |
-| browser Notification denied/unavailable | durable center 正常 |
+| 场景                                     | 结果                                                               |
+| ---------------------------------------- | ------------------------------------------------------------------ |
+| 未认证/被 revoke device                  | `Unauthenticated`；长流有界终止（Gateway revalidate + stream TTL） |
+| malformed UUID/enum/filter/cursor        | 存在性读取前 `InvalidArgument`                                     |
+| foreign/missing notification/target      | 净化 `NotFound`，无存在性 oracle                                   |
+| same idempotency key / different request | `Aborted`，first response 与配额不变                               |
+| DB 临时不可用                            | `Unavailable`，无部分 source/read/quota commit                     |
+| stored invariant/digest 损坏             | 净化 `Internal`，不静默修复                                        |
+| old cursor 已被 sweep                    | `RESET_REQUIRED` + authoritative resync                            |
+| duplicate/out-of-order stream change     | 客户端按 sequence/revision 幂等                                    |
+| Reliability source 不可达                | incident freshness degraded；其他 source 可用                      |
+| publication complete response 丢失       | source 重放，Core receipt no-op，仅一条通知                        |
+| App missing/revoked grant/old epoch      | fail closed；Core 零副作用                                         |
+| App quota exhausted                      | `ResourceExhausted`；不消费 key                                    |
+| notification target 随后失效             | 固定 stale UI，可标 read                                           |
+| browser Notification denied/unavailable  | durable center 正常                                                |
 
 ## 阶段计划与提交序列
 
 0. 基线 + ADR + 任务记录（`docs: define local-first notification boundary`）
-A. Proto + Core notification domain/storage/public service（`feat: add durable notification service`）
-B. Core atomic producers（`feat: publish agent and artifact notifications atomically`）
-C. Reliability publication（`feat: bridge reliability incident notifications durably`）
-D. Gateway stream + client projection（`feat: add resumable paired-device notification stream`）
-E. Adaptive Notification Center（`feat: add adaptive notification center`）
-F. App notifications.create（`feat: allow quota-bound app notifications`）
-G. restart/fault/E2E/文档（`test: prove notification replay and restart convergence`、
+   A. Proto + Core notification domain/storage/public service（`feat: add durable notification service`）
+   B. Core atomic producers（`feat: publish agent and artifact notifications atomically`）
+   C. Reliability publication（`feat: bridge reliability incident notifications durably`）
+   D. Gateway stream + client projection（`feat: add resumable paired-device notification stream`）
+   E. Adaptive Notification Center（`feat: add adaptive notification center`）
+   F. App notifications.create（`feat: allow quota-bound app notifications`）
+   G. restart/fault/E2E/文档（`test: prove notification replay and restart convergence`、
    `docs: record local-first notification evidence`）
 
 ## 基线记录

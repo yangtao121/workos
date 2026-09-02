@@ -75,13 +75,13 @@ app origin 必须携带 installation、system origin 必须无 installation。
 
 v1 只允许五个 kind，target 只能是有限 typed oneof：
 
-| kind                         | origin | target_kind | 生产者与原子性                                 |
-| ---------------------------- | ------ | ----------- | ---------------------------------------------- |
-| `agent.approval.required`    | system | approval    | Agent `CreateForAppApproval` 同事务（hard requirement） |
-| `agent.task.terminal`        | system | task        | Agent 首次 terminal 转换同事务（hard requirement）；迟到 provider event、terminal replay、fallback repair 不重复 |
-| `artifact.review.created`    | system | artifact    | Artifact materializer 同事务（hard requirement）；Web Bundle Artifact 不产生 |
-| `reliability.incident.opened`| system | incident    | Reliability publication 经 at-least-once 投影（best-effort durable：source outage 只降级 freshness） |
-| `app.instance.message`       | app    | app         | App `notifications.create`（grant/quota/idempotency 约束） |
+| kind                          | origin | target_kind | 生产者与原子性                                                                                                   |
+| ----------------------------- | ------ | ----------- | ---------------------------------------------------------------------------------------------------------------- |
+| `agent.approval.required`     | system | approval    | Agent `CreateForAppApproval` 同事务（hard requirement）                                                          |
+| `agent.task.terminal`         | system | task        | Agent 首次 terminal 转换同事务（hard requirement）；迟到 provider event、terminal replay、fallback repair 不重复 |
+| `artifact.review.created`     | system | artifact    | Artifact materializer 同事务（hard requirement）；Web Bundle Artifact 不产生                                     |
+| `reliability.incident.opened` | system | incident    | Reliability publication 经 at-least-once 投影（best-effort durable：source outage 只降级 freshness）             |
+| `app.instance.message`        | app    | app         | App `notifications.create`（grant/quota/idempotency 约束）                                                       |
 
 - title/body 由服务端按有限 kind/template 派生（任务 goal、Agent raw output、Artifact 正文、
   Incident raw telemetry、workspace URI、credential 一律不进入持久化正文或日志）。

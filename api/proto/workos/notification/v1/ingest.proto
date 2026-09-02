@@ -1,9 +1,8 @@
-// Private Core-owned app notification ingest. Never routed by the gateway
-// and never reachable by browsers or apps: only runtime-host reaches these
-// RPCs, after it has validated the bridge token, surface session, and the
-// exact current grant revision. Core re-verifies the active installation
-// through a neutral port and adjudicates idempotency and quota atomically
-// in one PostgreSQL transaction (ADR-0014).
+// Private Core-owned app notification ingest (ADR-0014). Only runtime-host
+// reaches these RPCs after validating the bridge token, surface session, and
+// exact current grant revision; Core re-verifies the installation and
+// adjudicates idempotency and quota atomically in one PostgreSQL
+// transaction. Never routed by the gateway.
 syntax = "proto3";
 
 package workos.notification.v1;

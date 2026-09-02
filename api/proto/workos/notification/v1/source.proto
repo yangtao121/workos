@@ -1,10 +1,8 @@
-// Private reliability-host-owned incident notification publication source.
-// Never routed by the gateway: only the Core notification consumer reaches
-// these RPCs over the internal network. Publications carry identity,
-// scope, severity, and a versioned digest — never raw observations,
-// telemetry, logs, or content. Consumption is at-least-once: claims are
-// leased, Core records its durable receipt before completing, and lost
-// completions replay as no-ops against that receipt (ADR-0014).
+// Private reliability-host-owned incident notification publication source
+// (ADR-0014). Only the Core consumer reaches these RPCs; never routed by
+// the gateway. Consumption is at-least-once: claims are leased, Core
+// records its durable receipt before completing, and lost completions
+// replay as no-ops against that receipt. Publications carry no content.
 syntax = "proto3";
 
 package workos.notification.v1;

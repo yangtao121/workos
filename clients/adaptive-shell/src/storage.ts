@@ -42,6 +42,7 @@ export const SYSTEM_WINDOW_IDS: readonly string[] = [
   "system-monitor",
   "device-center",
   "artifact-center",
+  "notification-center",
 ];
 
 // Canonical UUIDv7: lowercase hyphenated 8-4-4-4-12 hex, version nibble 7,

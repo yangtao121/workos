@@ -23,7 +23,8 @@ export type SystemWindowId =
   | "system-monitor"
   | "device-center"
   | "artifact-center"
-  | "knowledge-center";
+  | "knowledge-center"
+  | "notification-center";
 
 export interface AdaptiveShellProps {
   layout: DeviceLayout;
@@ -35,6 +36,9 @@ export interface AdaptiveShellProps {
   // the Desktop). Undefined until the store answers; the shell then uses
   // the documented defaults (dual pane on fold).
   layoutState: DeviceLayoutState | undefined;
+  // Owner-wide unread badge from the resumable notification projection; the
+  // shell only renders a bounded count, never the facts themselves.
+  unreadNotifications: number;
   onSwitchProject: (projectId: string) => void;
   onCreateProject: (name: string) => void;
   onOpenSystemWindow: (id: SystemWindowId) => void;
@@ -62,6 +66,7 @@ export function AdaptiveShell({
   activeProject,
   projects,
   layoutState,
+  unreadNotifications,
   onSwitchProject,
   onCreateProject,
   onOpenSystemWindow,
@@ -206,6 +211,26 @@ export function AdaptiveShell({
           <span className="agent-status">
             <i /> Agent · {status}
           </span>
+          <button
+            aria-label={
+              unreadNotifications > 0
+                ? `Notifications, ${String(unreadNotifications)} unread`
+                : "Notifications"
+            }
+            className="notification-bell"
+            data-testid="open-notifications"
+            onClick={() => {
+              onOpenSystemWindow("notification-center");
+            }}
+            type="button"
+          >
+            ◔
+            {unreadNotifications > 0 ? (
+              <span className="notification-badge">
+                {unreadNotifications > 99 ? "99+" : String(unreadNotifications)}
+              </span>
+            ) : null}
+          </button>
           {medium ? (
             <button
               aria-expanded={slideOverOpen}
@@ -295,6 +320,14 @@ export function AdaptiveShell({
                 type="button"
               >
                 App Library
+              </Button>
+              <Button
+                onClick={() => {
+                  openSystemWindow("notification-center");
+                }}
+                type="button"
+              >
+                Notifications
               </Button>
             </div>
             {layoutState && layoutState.recentAppInstanceIds.length > 0 ? (
@@ -391,6 +424,15 @@ export function AdaptiveShell({
           >
             Knowledge Center
           </Button>
+          <Button
+            onClick={() => {
+              openSystemWindow("notification-center");
+              setDockRevealed(false);
+            }}
+            type="button"
+          >
+            Notifications
+          </Button>
         </nav>
       ) : null}
 
@@ -451,6 +493,21 @@ export function AdaptiveShell({
             type="button"
           >
             ⏻
+          </button>
+          <button
+            aria-label={
+              unreadNotifications > 0
+                ? `Notifications, ${String(unreadNotifications)} unread`
+                : "Notifications"
+            }
+            className="adaptive-nav-item"
+            data-testid="nav-notifications"
+            onClick={() => {
+              openSystemWindow("notification-center");
+            }}
+            type="button"
+          >
+            ◔
           </button>
         </nav>
       )}

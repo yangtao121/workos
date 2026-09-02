@@ -19,7 +19,13 @@ import {
   useDeviceLayout,
   type DeviceLayoutState,
 } from "@workos/adaptive-shell";
-import { createWorkOSClients, type WorkOSClients } from "@workos/agent-sdk";
+import {
+  createNotificationProjection,
+  createWorkOSClients,
+  type NotificationProjectionSnapshot,
+  type NotificationView,
+  type WorkOSClients,
+} from "@workos/agent-sdk";
 import type { DeviceAuthClient } from "@workos/device-auth";
 import type {
   AgentEvent,
@@ -39,6 +45,7 @@ import { AppSurface, type SurfaceBridgeCredentials } from "./AppSurface.js";
 import { DeviceCenter } from "./DeviceCenter.js";
 import { HarnessSettings, type CatalogState } from "./HarnessSettings.js";
 import { KnowledgeCenter, type KnowledgeHit } from "./KnowledgeCenter.js";
+import { NotificationCenter } from "./NotificationCenter.js";
 import { SystemMonitor } from "./SystemMonitor.js";
 import { UsageView } from "./UsageView.js";
 import { selectionFromProject, taskStatus, type HarnessSelection } from "./model.js";
@@ -120,6 +127,31 @@ export function Desktop({
   });
   const [windows, dispatch] = useReducer(windowReducer, initialWindowState);
   const [agentView, setAgentView] = useState<AgentView>("tasks");
+  // The owner notification projection (ADR-0014): an in-memory, discardable
+  // projection reconciled from Core authority. The cursor and facts stay
+  // here — never in URLs, DOM attributes, or storage.
+  const [notificationSnapshot, setNotificationSnapshot] = useState<NotificationProjectionSnapshot>({
+    state: "idle",
+    notifications: [],
+    unreadCount: 0,
+    incidentSourceReady: true,
+  });
+  const notificationProjection = useMemo(() => {
+    // Partial clients (tests, degraded hosts) simply get no live
+    // projection; the durable facts stay server-side either way.
+    const maybeNotifications = workosClients as Partial<WorkOSClients>;
+    return maybeNotifications.notifications
+      ? createNotificationProjection(maybeNotifications.notifications)
+      : null;
+  }, [workosClients]);
+  useEffect(() => {
+    if (!notificationProjection) return;
+    const unsubscribe = notificationProjection.subscribe(setNotificationSnapshot);
+    return () => {
+      unsubscribe();
+      notificationProjection.stop();
+    };
+  }, [notificationProjection]);
   // Pinned Agent context chips (ADR-0010): title + artifact type only. The
   // digest and id travel in the submit request — never into a DOM data
   // attribute, URL, storage, or the iframe bridge.
@@ -358,6 +390,24 @@ export function Desktop({
     });
     recordLayout((state) => ({ ...state, activeSystemWindow: "knowledge-center" }));
   }, [activeProjectId, recordLayout]);
+
+  // Notification Center is a normal window over the owner-wide projection;
+  // it is not project-scoped, so switching projects never closes or resets
+  // it and its open state is device-local like the other system windows.
+  const openNotificationCenter = useCallback(() => {
+    dispatch({
+      type: "open",
+      window: {
+        id: "notification-center",
+        appId: "notification-center",
+        title: "Notifications",
+        kind: "notification-center",
+        rect: { x: 160, y: 110, width: 560, height: 500 },
+        mode: "normal",
+      },
+    });
+    recordLayout((state) => ({ ...state, activeSystemWindow: "notification-center" }));
+  }, [recordLayout]);
 
   // Opening one artifact opens (or focuses) exactly one viewer window keyed
   // on the artifact id. The window fetches authoritative content itself; a
@@ -692,6 +742,7 @@ export function Desktop({
       else if (id === "device-center") openDeviceCenter();
       else if (id === "artifact-center") openArtifactCenter();
       else if (id === "knowledge-center") openKnowledgeCenter();
+      else if (id === "notification-center") openNotificationCenter();
       const existing = windows.windows.some((item) => item.id === id);
       if (existing) dispatch({ type: "focus", id });
       recordLayout((state) => ({ ...state, activeSystemWindow: id }));
@@ -700,6 +751,7 @@ export function Desktop({
       openArtifactCenter,
       openDeviceCenter,
       openKnowledgeCenter,
+      openNotificationCenter,
       openSystemMonitor,
       recordLayout,
       windows.windows,
@@ -955,6 +1007,81 @@ export function Desktop({
     }
   }
 
+  // Typed notification actions (ADR-0014) re-read their authoritative
+  // target through the existing public services before opening the matching
+  // window. A missing or no-longer-readable target is the fixed stale
+  // verdict — never an arbitrary fallback. The read itself commits nothing;
+  // the owner decides explicitly via Mark read.
+  const openNotificationTarget = useCallback(
+    async (notification: NotificationView): Promise<"opened" | "stale"> => {
+      try {
+        if (notification.targetKind === "approval") {
+          await workosClients.approvals.getApproval({ approvalId: notification.targetId });
+          setAgentView("approvals");
+          dispatch({
+            type: "open",
+            window: {
+              id: "agent-center",
+              appId: "agent-center",
+              title: "Agent Center",
+              kind: "agent-center",
+              rect: { x: 386, y: 28, width: 620, height: 560 },
+              mode: "normal",
+            },
+          });
+          return "opened";
+        }
+        if (notification.targetKind === "task") {
+          await workosClients.agentTasks.getTask({ taskId: notification.targetId });
+          setAgentView("tasks");
+          dispatch({
+            type: "open",
+            window: {
+              id: "agent-center",
+              appId: "agent-center",
+              title: "Agent Center",
+              kind: "agent-center",
+              rect: { x: 386, y: 28, width: 620, height: 560 },
+              mode: "normal",
+            },
+          });
+          return "opened";
+        }
+        if (notification.targetKind === "artifact") {
+          const artifact = await workosClients.artifacts.getArtifact({
+            artifactId: notification.targetId,
+          });
+          if (!artifact.artifact) return "stale";
+          openArtifactViewer(artifact.artifact.id, artifact.artifact.projectId);
+          return "opened";
+        }
+        if (notification.targetKind === "incident") {
+          await workosClients.incidents.getIncident({ incidentId: notification.targetId });
+          openSystemMonitor();
+          return "opened";
+        }
+        if (notification.targetKind === "app") {
+          if (!notification.projectId) return "stale";
+          const installed = await workosClients.appInstallations.listInstalledApps({
+            projectId: notification.projectId,
+            page: { pageSize: 100, pageToken: "" },
+          });
+          const live = installed.installations.some(
+            (candidate) =>
+              candidate.id === notification.targetId && candidate.uninstalledAt === undefined,
+          );
+          if (!live) return "stale";
+          setLibraryOpen(true);
+          return "opened";
+        }
+        return "stale";
+      } catch {
+        return "stale";
+      }
+    },
+    [openArtifactViewer, openSystemMonitor, workosClients],
+  );
+
   // renderWindowBody renders one window's body. Both the expanded free-window
   // shell and the adaptive panes render exactly these bodies, so behavior
   // never forks per mode.
@@ -990,6 +1117,17 @@ export function Desktop({
       ) : (
         <p className="empty-state">Create a project to review its artifacts.</p>
       )
+    ) : windowState.kind === "notification-center" ? (
+      <NotificationCenter
+        snapshot={notificationSnapshot}
+        activeProjectId={activeProjectId}
+        onMarkRead={(id) => notificationProjection?.markRead(id) ?? Promise.resolve()}
+        onMarkVisibleRead={(ids) =>
+          notificationProjection?.markVisibleRead(ids) ?? Promise.resolve()
+        }
+        onOpenTarget={openNotificationTarget}
+        onRefresh={() => notificationProjection?.refresh() ?? Promise.resolve()}
+      />
     ) : windowState.kind === "knowledge-center" ? (
       activeProject ? (
         <KnowledgeCenter
@@ -1147,6 +1285,7 @@ export function Desktop({
         activeProject={activeProject}
         projects={projects}
         layoutState={deviceLayoutState}
+        unreadNotifications={notificationSnapshot.unreadCount}
         onSwitchProject={setActiveProjectId}
         onCreateProject={(name) => void createProjectNamed(name)}
         onOpenSystemWindow={openAdaptiveSystemWindow}
@@ -1213,6 +1352,26 @@ export function Desktop({
         <span className="agent-status">
           <i /> Project Agent · {status}
         </span>
+        <button
+          aria-label={
+            notificationSnapshot.unreadCount > 0
+              ? `Notifications, ${String(notificationSnapshot.unreadCount)} unread`
+              : "Notifications"
+          }
+          className="notification-bell"
+          data-testid="open-notifications"
+          onClick={openNotificationCenter}
+          type="button"
+        >
+          ◔
+          {notificationSnapshot.unreadCount > 0 ? (
+            <span className="notification-badge">
+              {notificationSnapshot.unreadCount > 99
+                ? "99+"
+                : String(notificationSnapshot.unreadCount)}
+            </span>
+          ) : null}
+        </button>
       </header>
 
       <section className="desktop-canvas">

@@ -17,7 +17,8 @@ export type WindowKind =
   | "device-center"
   | "artifact-center"
   | "artifact-viewer"
-  | "knowledge-center";
+  | "knowledge-center"
+  | "notification-center";
 
 // AppSurfaceRef binds a window to one durable surface session. The URL is
 // the same-origin relative path returned by CreateSurface — never a private

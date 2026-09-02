@@ -56,3 +56,4 @@ export function createWorkOSClients(baseUrl: string, transport?: Transport): Wor
     notifications: createClient(NotificationService, activeTransport),
   };
 }
+export * from "./notifications.js";

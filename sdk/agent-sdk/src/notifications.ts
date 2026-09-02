@@ -8,7 +8,10 @@
 import type { Client } from "@connectrpc/connect";
 import {
   NotificationChangeType,
+  NotificationOrigin,
+  NotificationSeverity,
   type Notification as WireNotification,
+  type NotificationEvent,
   type NotificationService,
 } from "@workos/protocol";
 
@@ -57,16 +60,7 @@ export interface NotificationProjection {
   stop(): void;
 }
 
-type NotificationEventLike = {
-  changeSequence: bigint;
-  type: NotificationChangeType;
-  notificationId: string;
-  revision: bigint;
-  notification?: WireNotification | undefined;
-  unreadCount: bigint;
-};
-
-function notificationKindName(kind: number | string): string {
+function notificationKindName(kind: number): string {
   // The generated enum keeps the proto names; project to the canonical
   // stored strings for rendering.
   const names: Record<number, string> = {
@@ -77,8 +71,7 @@ function notificationKindName(kind: number | string): string {
     4: "reliability.incident.opened",
     5: "app.instance.message",
   };
-  if (typeof kind === "number") return names[kind] ?? "unspecified";
-  return kind;
+  return names[kind] ?? "unspecified";
 }
 
 function targetKindName(kind: number): string {
@@ -93,6 +86,18 @@ function targetKindName(kind: number): string {
   return names[kind] ?? "unspecified";
 }
 
+function viewsInOrder(
+  order: readonly string[],
+  byId: ReadonlyMap<string, NotificationView>,
+): NotificationView[] {
+  const views: NotificationView[] = [];
+  for (const id of order) {
+    const view = byId.get(id);
+    if (view) views.push(view);
+  }
+  return views;
+}
+
 export function createNotificationProjection(
   notifications: Client<typeof NotificationService>,
 ): NotificationProjection {
@@ -103,12 +108,16 @@ export function createNotificationProjection(
   let incidentSourceReady = false;
   let state: NotificationStreamState = "idle";
   let stopped = false;
+  // Read through a function: the loops below call it each iteration, so the
+  // type checker never narrows a live flag that stop() flips from another
+  // call stack.
+  const isStopped = (): boolean => stopped;
   const listeners = new Set<(snapshot: NotificationProjectionSnapshot) => void>();
 
   function publish() {
     const snapshot: NotificationProjectionSnapshot = {
       state,
-      notifications: order.map((id) => byId.get(id)!).filter(Boolean),
+      notifications: viewsInOrder(order, byId),
       unreadCount,
       incidentSourceReady,
     };
@@ -117,32 +126,35 @@ export function createNotificationProjection(
 
   function applyView(
     notification: WireNotification,
-    overrides?: { readAt?: Date | null; revision?: bigint }
+    overrides?: { readAt?: Date | null; revision?: bigint },
   ) {
     byId.set(notification.id, {
       id: notification.id,
       projectId: notification.projectId,
       kind: notificationKindName(notification.kind),
-      severity: notification.severity === 2 ? "critical" : "normal",
-      origin: notification.origin === 2 ? "app" : "system",
+      severity: notification.severity === NotificationSeverity.CRITICAL ? "critical" : "normal",
+      origin: notification.origin === NotificationOrigin.APP ? "app" : "system",
       title: notification.title,
       body: notification.body,
       targetKind: notification.target ? targetKindName(notification.target.kind) : "unspecified",
       targetId: notification.target?.targetId ?? "",
       appId: notification.target?.appId ?? "",
       createdAt: timestampToDate(notification.createdAt) ?? new Date(0),
-      readAt: overrides?.readAt ?? timestampToDate(notification.readAt),
+      readAt:
+        overrides && "readAt" in overrides
+          ? overrides.readAt
+          : timestampToDate(notification.readAt),
       revision: overrides?.revision ?? notification.revision,
     });
   }
 
-  function applyEvent(event: NotificationEventLike): boolean {
+  function applyEvent(event: NotificationEvent): boolean {
     // The cursor is the durable change sequence: only strictly newer
     // events apply; duplicates and stale revisions are inert.
     if (event.changeSequence <= cursor) return false;
     const existing = byId.get(event.notificationId);
     if (event.type === NotificationChangeType.READ) {
-      if (existing && !existing.readAt) {
+      if (existing && existing.readAt === null) {
         existing.readAt = timestampToDate(event.notification?.readAt);
         existing.revision = event.revision;
       }
@@ -151,13 +163,13 @@ export function createNotificationProjection(
       return true;
     }
     if (event.notification) {
-      const wasRead = existing?.readAt != null;
       // A local read fact is monotonic: a duplicated CREATED replay can
       // never resurrect unread state.
-      applyView(event.notification, {
-        ...(wasRead ? { readAt: existing!.readAt } : {}),
-        revision: event.revision,
-      });
+      if (existing && existing.readAt !== null) {
+        applyView(event.notification, { readAt: existing.readAt, revision: event.revision });
+      } else {
+        applyView(event.notification, { revision: event.revision });
+      }
       order = [event.notificationId, ...order.filter((id) => id !== event.notificationId)];
       unreadCount = Number(event.unreadCount);
       cursor = event.changeSequence;
@@ -184,7 +196,7 @@ export function createNotificationProjection(
         pageToken,
       });
       for (const notification of page.notifications) applyView(notification);
-      order = [...order, ...page.notifications.map((n: { id: string }) => n.id)];
+      order = [...order, ...page.notifications.map((n) => n.id)];
       cursor = page.watermark;
       unreadCount = Number(page.unreadCount);
       if (!page.nextPageToken) break;
@@ -196,14 +208,15 @@ export function createNotificationProjection(
 
   async function watchLoop() {
     let backoff = RECONNECT_MIN_MS;
-    while (!stopped) {
+    while (!isStopped()) {
       try {
         for await (const response of notifications.watchNotificationEvents({
           afterSequence: cursor,
         })) {
           backoff = RECONNECT_MIN_MS;
-          if (stopped) return;
+          if (isStopped()) return;
           const payload = response.payload;
+          // Control frames never advance the durable cursor.
           if (payload.case === "heartbeat") continue;
           if (payload.case === "resetRequired") {
             state = "resync";
@@ -218,42 +231,40 @@ export function createNotificationProjection(
         }
         // Bounded stream lifetime: the server ended the stream; reconnect
         // from the last applied cursor.
-        if (stopped) return;
+        if (isStopped()) return;
         state = "reconnecting";
         publish();
         await sleep(backoff);
         backoff = Math.min(backoff * 2, RECONNECT_MAX_MS);
-      } catch (error) {
-        if (stopped) return;
+      } catch {
+        if (isStopped()) return;
         state = "unavailable";
         publish();
         await sleep(backoff);
         backoff = Math.min(backoff * 2, RECONNECT_MAX_MS);
-        void error;
         // Recover: rebuild from authority before reopening the stream.
         try {
           await resync();
-          continue;
         } catch {
-          continue;
+          // stay unavailable and retry on the next loop
         }
       }
     }
   }
 
   async function run() {
-    for (;;) {
-      if (stopped) return;
+    while (!isStopped()) {
       try {
         await resync();
-        break;
+        await watchLoop();
+        return;
       } catch {
+        if (isStopped()) return;
         state = "unavailable";
         publish();
         await sleep(RECONNECT_MAX_MS);
       }
     }
-    void watchLoop();
   }
 
   let started = false;
@@ -270,11 +281,13 @@ export function createNotificationProjection(
       listeners.add(listener);
       listener({
         state,
-        notifications: order.map((id) => byId.get(id)!).filter(Boolean),
+        notifications: viewsInOrder(order, byId),
         unreadCount,
         incidentSourceReady,
       });
-      return () => listeners.delete(listener);
+      return () => {
+        listeners.delete(listener);
+      };
     },
     async refresh() {
       await resync();
@@ -306,7 +319,7 @@ function sleep(ms: number): Promise<void> {
 }
 
 // timestampToDate converts a protobuf Timestamp (seconds: bigint) without
-// importing @bufbufbuf helper surface into the projection.
+// importing the protobuf helper surface into the projection.
 function timestampToDate(timestamp: { seconds: bigint } | undefined | null): Date | null {
   if (!timestamp) return null;
   return new Date(Number(timestamp.seconds) * 1000);
