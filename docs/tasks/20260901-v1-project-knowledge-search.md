@@ -1,7 +1,7 @@
 # Task: v1 Project Knowledge Search——持久索引、授权 App 与可恢复重建闭环
 
-- 状态：done（本批次窄切片；semantic RAG 与泛化 archive 继续 unavailable）
-- Owner/Agent：overnight implementation agent（单一写入智能体）
+- 状态：done（2026-09-02 correctness/security audit + 全量验收；semantic RAG 与泛化 archive 继续 unavailable）
+- Owner/Agent：overnight implementation agent；review/fix：Codex（同一 branch/worktree，未并行写入）
 - 进程/模块：workos-core（index publication + private source）、indexer（projection/search/worker/admin）、
   workos-gateway（可选 Indexer upstream）、runtime-host（App Bridge `knowledge.search`）、desktop-web（Knowledge Center）
 - 依赖：Artifact review subtypes（ADR-0008）、artifact.review.v1 Agent context（ADR-0010）、
@@ -46,6 +46,8 @@ owner-triggered 幂等 repair/reindex job（IndexContext）；三个专项门禁
   - `026_core_index_publications.sql`（owner：workos-core Index Feed）：publication/lease/claim 事实 + backfill。
   - `027_index_projection.sql`（owner：indexer）：`workos_index` schema documents/receipts/consumer
     state/jobs/generations。
+  - `028_index_projection_invariants.sql`（owner：indexer）：single active/building/live rebuild、
+    global live-delta mirroring、content byte bound 与严格 scope shape。
 - Capability：`project-review-index` / `project-knowledge-search` / `project-knowledge-rebuild` 按真实证据
   available；`archive`/`rag`/`embedding` 保持 false（固定原因）。
 
@@ -69,22 +71,22 @@ G. 门禁 + restart + 文档/状态（`test: prove knowledge indexing across res
 
 ## 验收
 
-- [ ] ADR（下一空闲编号）覆盖 10 项裁决
-- [ ] Core 同事务 publication（artifact materialization + project archive）+ 回滚/幂等测试
-- [ ] Core private source/reconcile/claim/complete（lease、crash window、corruption、transient 分离）
-- [ ] indexer 模块边界 domain→application→ports←adapters；migration 026/027 owner 注释
-- [ ] at-least-once worker：receipt/cursor 同事务、complete-after-commit、replay 安全
-- [ ] Search RPC：query 规范、versioned page token、finite score、snapshot pagination、净化错误矩阵
-- [ ] IndexContext repair job：typed refs、idempotency、≤32、失败不消费 key
-- [ ] Gateway：可选 Indexer upstream、精确 allowlist、private/admin 404、spoof 清洗、wire budget
-- [ ] Knowledge Center：Expanded/Compact/Medium 可达、generation guard、inert excerpt、Use as context
-- [ ] App Bridge `knowledge.search`：manifest+grant+revision 重验、revoke fail closed、Indexer 零误调用
-- [ ] admin Unix socket + workosctl index status/rebuild/job + shadow generation rebuild 状态机
-- [ ] `make test-project-knowledge-search` / `make test-app-knowledge-search` /
+- [x] ADR（下一空闲编号）覆盖 10 项裁决
+- [x] Core 同事务 publication（artifact materialization + project archive）+ 回滚/幂等测试
+- [x] Core private source/reconcile/claim/complete（lease、crash window、corruption、transient 分离）
+- [x] indexer 模块边界 domain→application→ports←adapters；migration 026/027/028 owner 注释
+- [x] at-least-once worker：receipt/cursor 同事务、complete-after-commit、replay 安全
+- [x] Search RPC：query 规范、versioned HMAC page token、finite score、snapshot pagination、净化错误矩阵
+- [x] IndexContext repair job：typed refs、idempotency、≤32、失败不消费 key
+- [x] Gateway：可选 Indexer upstream、精确 allowlist、private/admin 404、spoof 清洗、wire budget
+- [x] Knowledge Center：Expanded/Compact/Medium 可达、generation guard、inert excerpt、Use as context
+- [x] App Bridge `knowledge.search`：manifest+grant+revision 重验、revoke fail closed、Indexer 零误调用
+- [x] admin Unix socket + workosctl index status/rebuild/job + shadow generation rebuild 状态机
+- [x] `make test-project-knowledge-search` / `make test-app-knowledge-search` /
       `make test-project-knowledge-rebuild` 三个专项门禁 PASS
-- [ ] restart battery 扩展：索引/cursor/幂等/重建跨重启收敛
-- [ ] UI before/after/current + notes.md（1440×900 + 390×844，含 granted App surface）
-- [ ] docs/status.json + implementation.md + README（make generate）同步
+- [x] restart battery 扩展：索引/cursor/幂等/重建跨重启收敛
+- [x] UI before/after/current + notes.md（1440×900 + 390×844，含 granted App surface）
+- [x] docs/status.json + implementation.md + README（make generate）同步
 
 ## 交接
 
@@ -97,18 +99,25 @@ f1ff536 feat: add idempotent project knowledge indexer and bounded search
 d785414 test: prove the knowledge search stack end to end
 908f980 feat: add Knowledge Center context workflow
 0e5ebaf feat: expose scoped knowledge search to granted apps
+624ad0e test: add app knowledge-search acceptance gate
 d76b760 fix: negotiate knowledge.search from a configured indexer and prove it end to end
-aa90e54 docs: record project knowledge search evidence
 4f64c04 feat: add resumable index projection rebuild
-（后续 lint/gateway-table/gitignore 修复提交见 git log）
+aa90e54 docs: record project knowledge search evidence
+144c383 fix: satisfy lint and formatting for knowledge specs
+ebdcd94 test: pin optional exact indexer gateway routing
+de12374 chore: ignore stray go build binaries at the repository root
+e2673ee docs: finalize knowledge search task handover record
+f1d1e35 style: gofmt gateway test
+741ded5 fix: harden project knowledge search and rebuild
 ```
 
 ### 协议/migration owner
 
 - `026_core_index_publications.sql`：owner workos-core Index Feed（publication/lease/claim 事实，无正文）。
-- `027_index_projection.sql`：owner indexer（`workos_index` schema：documents（generation 作用域）、
+- `027_index_projection.sql` + `028_index_projection_invariants.sql`：owner indexer（`workos_index` schema：documents（generation 作用域）、
   publication_receipts、consumer_state、index_job\*、projection_generations/active_generation、
-  rebuild_jobs、project_tombstones）。001–025 逐字节未动，checksum pin 测试沿用既有链。
+  rebuild_jobs、project_tombstones，以及 single active/building/live rebuild 等数据库不变量）。
+  001–025 逐字节未动，checksum pin 测试沿用既有链。
 
 ### Core publication / private source 边界
 
@@ -122,26 +131,28 @@ aa90e54 docs: record project knowledge search evidence
 - lease/receipt/cursor 同事务；complete-after-commit；same-publication same-digest replay no-op；
   digest 漂移 = corruption 拒写。集成测试覆盖：同事务回滚、双 claimant、lease 过期、stale complete、
   archive race、存储损坏 terminal verdict、reconciliation 分页。
-- Search：query 规范（1–256 cp、C0/C1、词法预处理仅字母数字 token）、versioned checksum page token
-  （绑定 owner/project/query digest/ranking v1/generation/snapshot）、simple tsquery + title×2 权重、
+- Search：query 规范（1–256 cp、C0/C1、Unicode 字母数字词法预处理）、由 Indexer-only 稳定密钥
+  HMAC-SHA256 签名的 versioned page token（绑定 owner/project/query digest/ranking
+  v1/generation/snapshot）、simple tsquery + title×2 权重、
   tie-break `(score DESC, created_at DESC, source_id)`、limit+1 无 phantom token、纯函数 excerpt。
 
 ### 门禁结果（收尾日实测）
 
-| 命令                                                        | 结果 |
-| ----------------------------------------------------------- | ---- |
-| make bootstrap / generate ×2（零 tracked diff）             | PASS |
-| make check（proto/go/web + status render --check）          | PASS |
-| make test-integration（含 index restart battery）           | PASS |
-| make test-e2e（19 spec）                                    | PASS |
-| make test-project-knowledge-search                          | PASS |
-| make test-app-knowledge-search                              | PASS |
-| make test-project-knowledge-rebuild                         | PASS |
-| make test-artifact-review / test-artifact-context           | PASS |
-| go test -race（indexer / runtime surface / core indexfeed） | PASS |
-| buf lint / buf breaking vs base `0f89def`                   | PASS |
-| docker compose config --quiet；git diff --check             | PASS |
-| after/current 截图 hash 相等；before/after 不同             | PASS |
+| 命令                                                                 | 结果 |
+| -------------------------------------------------------------------- | ---- |
+| make bootstrap / generate ×2（第二次零生成漂移）                     | PASS |
+| make check（proto/go/web + status render --check）                   | PASS |
+| make test-integration（含 index restart battery）                    | PASS |
+| make test-e2e（19 pass；专用 visual/fixture spec 按条件 skip）       | PASS |
+| make test-project-knowledge-search（含分页/archive/outage/recovery） | PASS |
+| make test-app-knowledge-search                                       | PASS |
+| make test-project-knowledge-rebuild                                  | PASS |
+| make test-artifact-review / test-artifact-context                    | PASS |
+| make test-deepseek-structured-review                                 | PASS |
+| go test -race（indexer / runtime surface / core indexfeed）          | PASS |
+| buf lint / buf breaking vs base `0f89def`                            | PASS |
+| docker compose config --quiet；git diff --check                      | PASS |
+| after/current 截图 hash 相等；before/after 不同且尺寸匹配文件名      | PASS |
 
 ### 视觉证据
 
@@ -159,4 +170,11 @@ after/current 对应文件 hash 相等。expanded（results、chip）+ compact�
   极端高频写入下 promote 可能需要多次 catch-up pass。
 - 修复提交 `d76b760` 曾误入一个根目录 `runtime-host` ELF（`go build` 副产物），已在后续提交
   从索引删除并加入 .gitignore；历史对象中仍有残留（未做历史重写）。
-- 工作树干净；未 merge 到 main、未 push（等待用户审查）。
+- 2026-09-02 审核发现并修复：两条 Make 门禁的 shell 假阳性、重建 request/promotion/cancel/fail
+  非原子、promotion response-loss 会把 target retire、project rebuild 后其他 Project 丢 live delta、
+  snapshot crash 重复 receipt、>200 文档 validation 游标不前进、分页 tie-break 方向错误、archive
+  可被较晚时间戳 upsert 复活、36 字符伪 UUID panic、Unicode/query/page-size/stored-row 校验缺口、
+  可伪造 page checksum、Runtime malformed response 边界不足、admin raw scope 泄漏与误标 Core owner、
+  tracked `sdk/app-sdk/src/index.ts.bak`、Knowledge Center query-change late response/legacy ref 校验缺口，
+  以及视觉截图未真正露出 context chip、before 尺寸错误、随机持久 fixture 入镜。
+- 2026-09-02 审核全量门禁通过，准许合并本分支；本次操作不 push。

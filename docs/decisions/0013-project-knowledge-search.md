@@ -30,7 +30,7 @@ output、聊天全文一律不进入索引；private publication 与 private sou
 - `workos-core` 继续拥有 Project、review Artifact 原始内容、Agent task/event，以及新增的
   **index publication source facts**（migration `026`，owner：workos-core Index Feed，
   `internal/core/indexfeed` 模块）。
-- `indexer` 只拥有 `workos_index` schema（migration `027`）：可重建的 search projection、
+- `indexer` 只拥有 `workos_index` schema（migrations `027`/`028`）：可重建的 search projection、
   consumption receipt/cursor、index job、projection generation 与 rebuild job。
 - 两个 schema 之间零 FK、零跨模块 SQL；跨进程只走 versioned private RPC 与 durable
   publication。Indexer 损坏/清空都可以从 Core authority 完整重建，因此它永远不是授权或
@@ -68,8 +68,9 @@ output、聊天全文一律不进入索引；private publication 与 private sou
   数有界；空/超长/畸形在任何业务读取前 `InvalidArgument`。
 - `score` 由固定版本常量的 ranking（title 命中权重 + ts_rank + 确定性 tie-break
   `(source_created_at, source_id)`）计算，finite、非 NaN/Inf、同 snapshot 同 query 同数据顺序稳定。
-- page token 是 versioned HMAC-free 结构化 token（版本 + owner/project + canonical query
-  digest + ranking version + snapshot watermark + 最后排序键），跨 query/project 重放或篡改
+- page token 是由 Indexer-only 稳定密钥 HMAC-SHA256 签名的 versioned 结构化 token
+  （版本 + owner/project + canonical query digest + ranking version + generation + snapshot
+  watermark + 最后排序键），跨 query/project 重放、错误密钥或篡改
   稳定 `InvalidArgument`；恰好满的最后一页不产生 phantom token。翻页过程中新入库 document
   不插入旧 page chain（snapshot/high-watermark 边界）。
 - excerpt 由纯函数生成（match window、换行/控制字符处理、Unicode 边界、固定长度上限），
@@ -87,8 +88,8 @@ task 关联。旧 `context_ref` string 字段保留：非空时必须等于 type
 ### 7. 生命周期：tombstone 仲裁，embedding 独立演进
 
 - Project archive tombstone 在 Indexer 单事务内使该 owner+project 全部 document 退出
-  检索（保留物理行以便审计/重建对比），并持久阻止迟到的旧 upsert 复活它们
-  （tombstone 序单调，`archived_at` 晚于 upsert 的 source version 时 upsert 不生效）。
+  检索（保留物理行以便审计/重建对比）。一旦 durable project tombstone 存在，任何迟到、
+  重放或时间戳异常的 upsert 都只能记录 tombstoned receipt，永远不能复活该 Project。
 - 未来 semantic embedding：schema 预留 per-generation `searchable representation` 的
   演进位（列 + ranking version），但 v1 不建向量列、不接外部 API。升级路径是新的
   generation + 新 ranking version + 全量重建，不原地改语义。
@@ -106,9 +107,9 @@ task 关联。旧 `context_ref` string 字段保留：非空时必须等于 type
   authorization（app instance、Project、`knowledge.read` grant、**exact current grant
   revision**）后以内部受信身份调用 Indexer，再投影 sanitized hit。App 拿不到 Indexer
   URL、device cookie、publication lease 或全文。
-- **operator**：Indexer 本机 Unix admin socket（复用 Gateway/Core credential admin socket
-  的安全模式：canonical absolute path、owner-only parent/socket、拒 symlink/world-writable、
-  0600），`workosctl index status/rebuild/job`；永不进 Gateway/TCP。
+- **operator**：Indexer 本机 Unix admin socket（canonical absolute path、Indexer 独立服务
+  账户、owner-only parent/socket、拒 symlink/world-writable、0600），`workosctl index
+status/rebuild/job`；状态与 job 投影不返回 raw owner/project；永不进 Gateway/TCP。
 
 ### 9. 重建：shadow generation 状态机
 
@@ -119,18 +120,25 @@ requested → snapshotting → catching_up → validating → promoting → comp
                                   ↘ canceled / failed（单调终态）
 ```
 
+- request 创建：generation + job + idempotency mapping 在一个 PostgreSQL transaction 提交；
+  same key replay 先由数据库裁决，失败不消费 key，也不留下 orphan generation/job。
 - snapshot：从 Core authoritative reconciliation 分页读取 active review Artifact 全集
   （owner/project/source ordering、固定 boundary），逐 batch 单事务写入 target generation
-  的 document/receipt/cursor/counts；checkpoint 可重放，重启不从零开始。
+  的 document/receipt/cursor/counts；immutable artifact UUID 作为稳定 snapshot receipt identity，
+  page checkpoint 丢失时精确 no-op replay，重启不从零开始。
 - catch-up：消费 snapshot boundary 之后的 live publication delta，直到 Core-confirmed
   barrier；期间 live upsert/archive 同写 active 与 target（每 publication 在每个 generation
   至多一份 receipt/effect，tombstone 优先级高于旧 upsert）。
 - validate：比较 source count、exact digest、tombstone 与 watermark；任何 mismatch/
   corruption 终止目标 generation，保留当前 active generation 可搜。
-- promote：数据库单事务 CAS 更新 active generation pointer；此前查询全部走旧 generation，
+- promote：一个数据库 transaction 同时锁定 job + active pointer，更新旧/新 generation 状态、
+  active pointer 与 completed job；response loss replay 读取 committed completed fact，不会二次
+  retire target。此前查询全部走旧 generation，
   此后新查询走新 generation；旧 versioned page token 按 ADR 固定**失效**（snapshot 已变，
   InvalidArgument），不混页。成功后异步、有界、幂等清理旧 generation；清理失败只告警。
-- 并发 rebuild 按 scope 串行或明确拒绝；worker/rebuild 双实例由 generation 级 receipt
+- active pointer 是全局单例，因此 migration `028` 在数据库层拒绝第二个 live/building rebuild；
+  project scope 是 operator intent/audit scope，但 target 仍从 Core 构造完整全局 generation，避免
+  promote 后其他 Project 停止接收 live delta。worker/rebuild 双实例由 generation 级 receipt
   唯一约束 + durable phase 收敛。正常生产路径无 `DROP/TRUNCATE`；灾难恢复销毁 projection
   只发生在专项测试的临时 schema。
 
@@ -152,4 +160,3 @@ requested → snapshotting → catching_up → validating → promoting → comp
 - Indexer 状态最高升到 working，evidence 明确限定为 review Artifact durable lexical
   search；RAG/泛化 archive 的证据与状态不动。
 - 已知代价：lexical 检索不解决语义匹配；reconciliation 分页在 Artifact 数量大时是 O(n)
-  轮询（有界 batch + watermark）；两代 generation 并存期间有双份存储（有界、可清理）。

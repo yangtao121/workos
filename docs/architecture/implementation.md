@@ -1013,14 +1013,16 @@ indexer worker：Core claim（lease + FOR UPDATE SKIP LOCKED）
 - 模块所有权：publication source facts 归 workos-core Index Feed
   （`internal/core/indexfeed`，migration `026`）；search projection、receipts、
   consumer cursor、repair jobs、generations/rebuild jobs 归 indexer
-  （`internal/indexer`，migration `027`，`workos_index` schema）。两 schema 零
+  （`internal/indexer`，migrations `027`/`028`，`workos_index` schema；`028` 固定单一
+  active/building/live rebuild 与 byte-size content 约束）。两 schema 零
   FK、零跨模块 SQL；reconciliation 的权威分页经 orchestration 的
   `IndexSourceAuthority`（Artifact/Project application 组合），Project 的
   tx-scoped liveness 检查由 Project adapter 暴露。
 - 检索：`workos_index.documents` 以 generation 作用域存储，`simple` 配置
   tsvector 生成列 + 纯函数 excerpt；ranking 固定版本（title×2 + body，tie-break
-  `(score, source_created_at DESC, source_id)`）；page token 为版本化校验和
-  token，绑定 owner/project/query digest/ranking version/generation/snapshot，
+  `(score DESC, source_created_at DESC, source_id ASC)`）；page token 由 Indexer-only
+  稳定密钥做 HMAC-SHA256 签名，绑定 owner/project/query digest/ranking
+  version/generation/snapshot，
   跨 scope 重放或篡改一律 InvalidArgument。查询规范：1–256 code points、C0/C1
   拒绝、词法预处理只保留字母数字 token（websearch 操作符不进入 tsquery）。
 - 入口与信任边界：owner browser 走 Gateway public `IndexService`（allowlist
@@ -1032,8 +1034,9 @@ indexer worker：Core claim（lease + FOR UPDATE SKIP LOCKED）
   后才以 session 派生 binding 调用 indexer，响应二次边界校验；`knowledge.read`
   grant 且 Runtime 配置了 `WORKOS_RUNTIME_INDEXER_URL` 时才协商出
   `knowledge.search` method（grant 名与 method 名刻意分离）；operator 走
-  indexer 本机 Unix admin socket（0600、拒 symlink/world-writable parent、
-  确定性清理）+ `workosctl index status/rebuild/job`，永不经 Gateway/TCP。
+  indexer 本机 Unix admin socket（独立服务账户、0600、拒 symlink/world-writable parent、
+  确定性清理、status/job 不投影 raw owner/project）+ `workosctl index status/rebuild/job`，
+  永不经 Gateway/TCP。
 - 修复与重建：`IndexContext` 是 owner 触发的幂等 repair/reindex job（typed
   `artifact.review.v1` refs ≤32 + durable idempotency，same key/same request
   精确 replay，different request Aborted，失败不消费 key；job/sources/
@@ -1041,9 +1044,12 @@ indexer worker：Core claim（lease + FOR UPDATE SKIP LOCKED）
   `rebuild_jobs` + `projection_generations` 状态机
   （requested→snapshotting→catching_up→validating→promoting→completed，
   canceled/failed 单调终态）：snapshot 从 Core 权威分页写入 target generation
-  （checkpoint 可重放），catch-up 以 Core 确认的 drain 为 barrier，validation
-  对照权威 digest 集合，promote 是单行 CAS（旧 page token 按代失效），成功后
-  有界清理旧 generation；生产路径无 DROP/TRUNCATE，销毁投影仅存在于专项测试的
+  （稳定 snapshot receipt + 每页 checkpoint 可重放），catch-up 以 Core 确认的 drain 为
+  barrier，validation 对照权威 digest 集合；active pointer 为全局单例，所以 project/all
+  请求都构造完整 Core-authoritative generation，数据库只允许一个 live rebuild。request
+  generation/job/idempotency mapping 与 promote 的旧/新 status + pointer + completed job
+  分别单事务提交（旧 page token 按代失效），成功后有界幂等清理旧 generation payload；
+  生产路径无 DROP/TRUNCATE，销毁投影仅存在于专项测试的
   临时 Indexer-owned 数据库。
 - 能力裁决：`project-review-index`/`project-knowledge-search`/
   `project-knowledge-rebuild` available（有专项门禁证据）；Runtime 的

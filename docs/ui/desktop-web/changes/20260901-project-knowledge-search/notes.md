@@ -18,14 +18,14 @@
 
 ## before/ 说明
 
-本批次为 Knowledge Center 首次建立视觉记录。before/ 取自实现前（base commit
-`d785414` 时期）已存在的 `current/` 证据：
+本批次为 Knowledge Center 首次建立视觉记录。before/ 取自实现前 base commit
+`0f89def` 已存在的 `current/` 证据：
 
 | before 文件                                 | 复制自                                                                                               |
 | ------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
 | knowledge-center--results--1440x900.png     | current/artifact-center--project-list--1440x900.png（桌面上尚无 Knowledge Center 入口/窗口）         |
 | knowledge-center--results--390x844.png      | current/compact--home--390x844.png（compact 首页无 Knowledge Center 入口）                           |
-| agent-center--context-chip--1440x900.png    | current/agent-center--context-chip--1440x900.png（chip 流程本身为既有能力，base 时期已存在）         |
+| agent-center--context-chip--1440x900.png    | current/expanded--desktop--1440x900.png（同一 Agent Center deterministic fixture，base 时无 pin）    |
 | app-knowledge-search--results--1440x900.png | current/app-surface--bridge-result--1440x900.png（App surface 仅有 agent 能力，无 knowledge.search） |
 
 before/after 均来自真实不同状态：before 中无 Knowledge Center 入口/结果/app
