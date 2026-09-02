@@ -163,7 +163,7 @@ func (r *Repository) storedByIDTx(ctx context.Context, queries *notificationdb.Q
 	}
 	fact := notificationFromRow(row.ID, row.OwnerUserID, row.ProjectID, row.Kind, row.Severity,
 		row.Origin, row.Title, row.Body, row.TargetKind, row.TargetID, row.AppID,
-		row.SourceProcess, row.SourceID, row.SourceDigest,
+		row.AppInstallationID, row.SourceProcess, row.SourceID, row.SourceDigest,
 		row.CreatedAt, row.ReadAt, row.ReadChangeSequence)
 	if err := domain.ValidStoredNotification(fact); err != nil {
 		return domain.Notification{}, err
@@ -183,7 +183,7 @@ func (r *Repository) OwnerNotification(ctx context.Context, ownerUserID, notific
 	}
 	fact := notificationFromRow(row.ID, row.OwnerUserID, row.ProjectID, row.Kind, row.Severity,
 		row.Origin, row.Title, row.Body, row.TargetKind, row.TargetID, row.AppID,
-		row.SourceProcess, row.SourceID, row.SourceDigest,
+		row.AppInstallationID, row.SourceProcess, row.SourceID, row.SourceDigest,
 		row.CreatedAt, row.ReadAt, row.ReadChangeSequence)
 	if err := domain.ValidStoredNotification(fact); err != nil {
 		return domain.Notification{}, err
@@ -212,7 +212,7 @@ func (r *Repository) ListPage(ctx context.Context, ownerUserID string, filter po
 	for _, row := range rows {
 		fact := notificationFromRow(row.ID, row.OwnerUserID, row.ProjectID, row.Kind, row.Severity,
 			row.Origin, row.Title, row.Body, row.TargetKind, row.TargetID, row.AppID,
-			row.SourceProcess, row.SourceID, row.SourceDigest,
+			row.AppInstallationID, row.SourceProcess, row.SourceID, row.SourceDigest,
 			row.CreatedAt, row.ReadAt, row.ReadChangeSequence)
 		if err := domain.ValidStoredNotification(fact); err != nil {
 			return ports.Page{}, err
@@ -258,7 +258,7 @@ func (r *Repository) LockForRead(ctx context.Context, tx dbtx.Tx, ownerUserID st
 	for _, row := range rows {
 		fact := notificationFromRow(row.ID, row.OwnerUserID, row.ProjectID, row.Kind, row.Severity,
 			row.Origin, row.Title, row.Body, row.TargetKind, row.TargetID, row.AppID,
-			row.SourceProcess, row.SourceID, row.SourceDigest,
+			row.AppInstallationID, row.SourceProcess, row.SourceID, row.SourceDigest,
 			row.CreatedAt, row.ReadAt, row.ReadChangeSequence)
 		if err := domain.ValidStoredNotification(fact); err != nil {
 			return nil, err
@@ -357,7 +357,7 @@ func (r *Repository) ChangesAfter(ctx context.Context, ownerUserID string, after
 	for _, row := range rows {
 		fact := notificationFromRow(row.NotificationID, ownerUserID, row.ProjectID, row.Kind, row.Severity,
 			row.Origin, row.Title, row.Body, row.TargetKind, row.TargetID, row.AppID,
-			row.SourceProcess, row.SourceID, row.SourceDigest,
+			row.AppInstallationID, row.SourceProcess, row.SourceID, row.SourceDigest,
 			row.CreatedAt, row.ReadAt, row.ReadChangeSequence)
 		if err := domain.ValidStoredNotification(fact); err != nil {
 			return nil, err
@@ -438,13 +438,14 @@ func (r *Repository) SweepRead(ctx context.Context, cutoff time.Time, maxBatch i
 // --- row/type helpers -------------------------------------------------
 
 func notificationFromRow(id, ownerUserID string, projectID pgtype.UUID, kind, severity, origin,
-	title, body, targetKind string, targetID string, appID pgtype.Text,
+	title, body, targetKind string, targetID string, appID pgtype.Text, appInstallationID pgtype.UUID,
 	sourceProcess, sourceID, sourceDigest string,
 	createdAt time.Time, readAt *time.Time, readChangeSequence int64) domain.Notification {
 	fact := domain.Notification{
 		ID: id, OwnerUserID: ownerUserID, Kind: kind, Severity: severity, Origin: origin,
 		Title: title, Body: body, TargetKind: targetKind, TargetID: targetID,
-		AppID: appID.String, SourceProcess: sourceProcess, SourceID: sourceID,
+		AppID: appID.String, AppInstallationID: uuidString(appInstallationID),
+		SourceProcess: sourceProcess, SourceID: sourceID,
 		SourceDigest: sourceDigest, CreatedAt: createdAt, ReadChangeSequence: readChangeSequence,
 	}
 	if projectID.Valid {

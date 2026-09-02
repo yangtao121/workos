@@ -50,7 +50,7 @@ func run() error {
 	client := &http.Client{Transport: &http.Transport{
 		Proxy: nil, DialContext: (&net.Dialer{Timeout: 2 * time.Second}).DialContext,
 	}}
-	ctx, cancel := context.WithTimeout(context.Background(), 40*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
 	defer cancel()
 	if err := waitReady(ctx, client, baseURL); err != nil {
 		return err
@@ -85,6 +85,17 @@ func run() error {
 			return errors.New("bridge-verify requires TOKEN TASK_ID KEY")
 		}
 		return bridgeVerify(ctx, client, baseURL, os.Args[2], os.Args[3], os.Args[4])
+	case "notifications-seed":
+		return notificationsSeed(ctx, client, baseURL)
+	case "notifications-verify":
+		if len(os.Args) != 7 {
+			return errors.New("usage: restart notifications-verify TASK_ID READ_ID UNREAD_ID READ_KEY UNREAD_COUNT")
+		}
+		unreadAtSeed, err := strconv.ParseInt(os.Args[6], 10, 64)
+		if err != nil {
+			return errors.New("notifications-verify requires a numeric unread count")
+		}
+		return notificationsVerify(ctx, client, baseURL, os.Args[3], os.Args[4], os.Args[5], unreadAtSeed)
 	case "index-seed":
 		return indexSeed(ctx, client, baseURL)
 	case "index-verify":

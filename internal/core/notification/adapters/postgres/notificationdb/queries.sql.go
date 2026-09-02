@@ -116,8 +116,9 @@ func (q *Queries) DeleteOldSourceReceipts(ctx context.Context, cutoff time.Time)
 const getChangesAfter = `-- name: GetChangesAfter :many
 SELECT c.change_sequence, c.notification_id, c.change_type, c.revision,
        n.project_id, n.kind, n.severity, n.origin, n.title, n.body,
-       n.target_kind, n.target_id, n.app_id, n.source_process, n.source_id,
-       n.source_digest, n.created_at, n.read_at, n.read_change_sequence
+       n.target_kind, n.target_id, n.app_id, n.app_installation_id,
+       n.source_process, n.source_id, n.source_digest, n.created_at, n.read_at,
+       n.read_change_sequence
 FROM workos_core.notification_changes AS c
 JOIN workos_core.notifications AS n
   ON n.id = c.notification_id AND n.owner_user_id = c.owner_user_id
@@ -147,6 +148,7 @@ type GetChangesAfterRow struct {
 	TargetKind         string
 	TargetID           string
 	AppID              pgtype.Text
+	AppInstallationID  pgtype.UUID
 	SourceProcess      string
 	SourceID           string
 	SourceDigest       string
@@ -178,6 +180,7 @@ func (q *Queries) GetChangesAfter(ctx context.Context, arg GetChangesAfterParams
 			&i.TargetKind,
 			&i.TargetID,
 			&i.AppID,
+			&i.AppInstallationID,
 			&i.SourceProcess,
 			&i.SourceID,
 			&i.SourceDigest,
@@ -256,35 +259,15 @@ func (q *Queries) GetNotificationAppRequest(ctx context.Context, arg GetNotifica
 
 const getNotificationByID = `-- name: GetNotificationByID :one
 SELECT id, owner_user_id, project_id, kind, severity, origin, title, body,
-       target_kind, target_id, app_id, source_process, source_id, source_digest,
-       created_at, read_at, read_change_sequence
+       target_kind, target_id, app_id, app_installation_id, source_process,
+       source_id, source_digest, created_at, read_at, read_change_sequence
 FROM workos_core.notifications
 WHERE id = $1
 `
 
-type GetNotificationByIDRow struct {
-	ID                 string
-	OwnerUserID        string
-	ProjectID          pgtype.UUID
-	Kind               string
-	Severity           string
-	Origin             string
-	Title              string
-	Body               string
-	TargetKind         string
-	TargetID           string
-	AppID              pgtype.Text
-	SourceProcess      string
-	SourceID           string
-	SourceDigest       string
-	CreatedAt          time.Time
-	ReadAt             *time.Time
-	ReadChangeSequence int64
-}
-
-func (q *Queries) GetNotificationByID(ctx context.Context, id string) (GetNotificationByIDRow, error) {
+func (q *Queries) GetNotificationByID(ctx context.Context, id string) (WorkosCoreNotification, error) {
 	row := q.db.QueryRow(ctx, getNotificationByID, id)
-	var i GetNotificationByIDRow
+	var i WorkosCoreNotification
 	err := row.Scan(
 		&i.ID,
 		&i.OwnerUserID,
@@ -297,6 +280,7 @@ func (q *Queries) GetNotificationByID(ctx context.Context, id string) (GetNotifi
 		&i.TargetKind,
 		&i.TargetID,
 		&i.AppID,
+		&i.AppInstallationID,
 		&i.SourceProcess,
 		&i.SourceID,
 		&i.SourceDigest,
@@ -380,8 +364,8 @@ func (q *Queries) GetOwnerLastSequence(ctx context.Context, ownerUserID string) 
 
 const getOwnerNotification = `-- name: GetOwnerNotification :one
 SELECT id, owner_user_id, project_id, kind, severity, origin, title, body,
-       target_kind, target_id, app_id, source_process, source_id, source_digest,
-       created_at, read_at, read_change_sequence
+       target_kind, target_id, app_id, app_installation_id, source_process,
+       source_id, source_digest, created_at, read_at, read_change_sequence
 FROM workos_core.notifications
 WHERE id = $1 AND owner_user_id = $2
 `
@@ -391,29 +375,9 @@ type GetOwnerNotificationParams struct {
 	OwnerUserID string
 }
 
-type GetOwnerNotificationRow struct {
-	ID                 string
-	OwnerUserID        string
-	ProjectID          pgtype.UUID
-	Kind               string
-	Severity           string
-	Origin             string
-	Title              string
-	Body               string
-	TargetKind         string
-	TargetID           string
-	AppID              pgtype.Text
-	SourceProcess      string
-	SourceID           string
-	SourceDigest       string
-	CreatedAt          time.Time
-	ReadAt             *time.Time
-	ReadChangeSequence int64
-}
-
-func (q *Queries) GetOwnerNotification(ctx context.Context, arg GetOwnerNotificationParams) (GetOwnerNotificationRow, error) {
+func (q *Queries) GetOwnerNotification(ctx context.Context, arg GetOwnerNotificationParams) (WorkosCoreNotification, error) {
 	row := q.db.QueryRow(ctx, getOwnerNotification, arg.ID, arg.OwnerUserID)
-	var i GetOwnerNotificationRow
+	var i WorkosCoreNotification
 	err := row.Scan(
 		&i.ID,
 		&i.OwnerUserID,
@@ -426,6 +390,7 @@ func (q *Queries) GetOwnerNotification(ctx context.Context, arg GetOwnerNotifica
 		&i.TargetKind,
 		&i.TargetID,
 		&i.AppID,
+		&i.AppInstallationID,
 		&i.SourceProcess,
 		&i.SourceID,
 		&i.SourceDigest,
@@ -669,8 +634,8 @@ func (q *Queries) InsertNotificationSourceReceipt(ctx context.Context, arg Inser
 
 const listNotificationsPage = `-- name: ListNotificationsPage :many
 SELECT id, owner_user_id, project_id, kind, severity, origin, title, body,
-       target_kind, target_id, app_id, source_process, source_id, source_digest,
-       created_at, read_at, read_change_sequence
+       target_kind, target_id, app_id, app_installation_id, source_process,
+       source_id, source_digest, created_at, read_at, read_change_sequence
 FROM workos_core.notifications
 WHERE owner_user_id = $1
   AND ($2 ::uuid IS NULL OR project_id = $2 ::uuid)
@@ -692,27 +657,7 @@ type ListNotificationsPageParams struct {
 	RowLimit      int32
 }
 
-type ListNotificationsPageRow struct {
-	ID                 string
-	OwnerUserID        string
-	ProjectID          pgtype.UUID
-	Kind               string
-	Severity           string
-	Origin             string
-	Title              string
-	Body               string
-	TargetKind         string
-	TargetID           string
-	AppID              pgtype.Text
-	SourceProcess      string
-	SourceID           string
-	SourceDigest       string
-	CreatedAt          time.Time
-	ReadAt             *time.Time
-	ReadChangeSequence int64
-}
-
-func (q *Queries) ListNotificationsPage(ctx context.Context, arg ListNotificationsPageParams) ([]ListNotificationsPageRow, error) {
+func (q *Queries) ListNotificationsPage(ctx context.Context, arg ListNotificationsPageParams) ([]WorkosCoreNotification, error) {
 	rows, err := q.db.Query(ctx, listNotificationsPage,
 		arg.OwnerUserID,
 		arg.ProjectID,
@@ -726,9 +671,9 @@ func (q *Queries) ListNotificationsPage(ctx context.Context, arg ListNotificatio
 		return nil, err
 	}
 	defer rows.Close()
-	var items []ListNotificationsPageRow
+	var items []WorkosCoreNotification
 	for rows.Next() {
-		var i ListNotificationsPageRow
+		var i WorkosCoreNotification
 		if err := rows.Scan(
 			&i.ID,
 			&i.OwnerUserID,
@@ -741,6 +686,7 @@ func (q *Queries) ListNotificationsPage(ctx context.Context, arg ListNotificatio
 			&i.TargetKind,
 			&i.TargetID,
 			&i.AppID,
+			&i.AppInstallationID,
 			&i.SourceProcess,
 			&i.SourceID,
 			&i.SourceDigest,
@@ -760,8 +706,8 @@ func (q *Queries) ListNotificationsPage(ctx context.Context, arg ListNotificatio
 
 const lockOwnerNotifications = `-- name: LockOwnerNotifications :many
 SELECT id, owner_user_id, project_id, kind, severity, origin, title, body,
-       target_kind, target_id, app_id, source_process, source_id, source_digest,
-       created_at, read_at, read_change_sequence
+       target_kind, target_id, app_id, app_installation_id, source_process,
+       source_id, source_digest, created_at, read_at, read_change_sequence
 FROM workos_core.notifications
 WHERE owner_user_id = $1 AND id = ANY ($2::uuid[])
 ORDER BY created_at DESC, id DESC
@@ -773,35 +719,15 @@ type LockOwnerNotificationsParams struct {
 	Ids         []string
 }
 
-type LockOwnerNotificationsRow struct {
-	ID                 string
-	OwnerUserID        string
-	ProjectID          pgtype.UUID
-	Kind               string
-	Severity           string
-	Origin             string
-	Title              string
-	Body               string
-	TargetKind         string
-	TargetID           string
-	AppID              pgtype.Text
-	SourceProcess      string
-	SourceID           string
-	SourceDigest       string
-	CreatedAt          time.Time
-	ReadAt             *time.Time
-	ReadChangeSequence int64
-}
-
-func (q *Queries) LockOwnerNotifications(ctx context.Context, arg LockOwnerNotificationsParams) ([]LockOwnerNotificationsRow, error) {
+func (q *Queries) LockOwnerNotifications(ctx context.Context, arg LockOwnerNotificationsParams) ([]WorkosCoreNotification, error) {
 	rows, err := q.db.Query(ctx, lockOwnerNotifications, arg.OwnerUserID, arg.Ids)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []LockOwnerNotificationsRow
+	var items []WorkosCoreNotification
 	for rows.Next() {
-		var i LockOwnerNotificationsRow
+		var i WorkosCoreNotification
 		if err := rows.Scan(
 			&i.ID,
 			&i.OwnerUserID,
@@ -814,6 +740,7 @@ func (q *Queries) LockOwnerNotifications(ctx context.Context, arg LockOwnerNotif
 			&i.TargetKind,
 			&i.TargetID,
 			&i.AppID,
+			&i.AppInstallationID,
 			&i.SourceProcess,
 			&i.SourceID,
 			&i.SourceDigest,

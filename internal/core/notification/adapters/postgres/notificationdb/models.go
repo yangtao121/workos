@@ -3,3 +3,31 @@
 //   sqlc v1.30.0
 
 package notificationdb
+
+import (
+	"time"
+
+	"github.com/jackc/pgx/v5/pgtype"
+)
+
+// owner: workos-core Notification; durable owner-scoped notification facts
+type WorkosCoreNotification struct {
+	ID                 string
+	OwnerUserID        string
+	ProjectID          pgtype.UUID
+	Kind               string
+	Severity           string
+	Origin             string
+	Title              string
+	Body               string
+	TargetKind         string
+	TargetID           string
+	AppID              pgtype.Text
+	AppInstallationID  pgtype.UUID
+	SourceProcess      string
+	SourceID           string
+	SourceDigest       string
+	CreatedAt          time.Time
+	ReadAt             *time.Time
+	ReadChangeSequence int64
+}

@@ -210,12 +210,23 @@ func (h *Handler) WatchNotificationEvents(ctx context.Context, req *connect.Requ
 		if err != nil {
 			return mapError(err)
 		}
+		// The owner-wide unread count as of this batch's tail: single-change
+		// batches are exact, and multi-change batches converge on the final
+		// event, which is what badges key on.
+		var batchUnread int64
+		if len(changes) > 0 {
+			summary, summaryErr := h.service.Summary(ctx, owner)
+			if summaryErr != nil {
+				return mapError(summaryErr)
+			}
+			batchUnread = summary.UnreadCount
+		}
 		for _, change := range changes {
 			if change.ChangeSequence <= cursor {
 				continue
 			}
 			if err := stream.Send(&notificationv1.WatchNotificationEventsResponse{
-				Payload: &notificationv1.WatchNotificationEventsResponse_Event{Event: changeProto(change)},
+				Payload: &notificationv1.WatchNotificationEventsResponse_Event{Event: changeProto(change, batchUnread)},
 			}); err != nil {
 				return mapError(err)
 			}
@@ -378,13 +389,14 @@ func notificationProto(fact domain.Notification) *notificationv1.Notification {
 	return wire
 }
 
-func changeProto(change domain.Change) *notificationv1.NotificationEvent {
+func changeProto(change domain.Change, unreadCount int64) *notificationv1.NotificationEvent {
 	return &notificationv1.NotificationEvent{
 		ChangeSequence: change.ChangeSequence,
 		Type:           changeTypeEnum(change.ChangeType),
 		NotificationId: change.NotificationID,
 		Revision:       change.Revision,
 		Notification:   notificationProto(change.Notification),
+		UnreadCount:    unreadCount,
 	}
 }
 

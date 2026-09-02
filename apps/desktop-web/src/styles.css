@@ -1750,11 +1750,16 @@ button {
 }
 
 .notification-center {
+  color: #1a1f2e;
   display: flex;
   flex-direction: column;
   gap: 10px;
   height: 100%;
   overflow: hidden;
+}
+
+.notification-center .workos-button {
+  color: #f5f7fb;
 }
 
 .notification-toolbar {
@@ -1765,9 +1770,10 @@ button {
 }
 
 .notification-filter {
-  background: none;
+  background: #f7f8fa;
   border: 1px solid #cfd4dc;
   border-radius: 999px;
+  color: #1a1f2e;
   cursor: pointer;
   font: inherit;
   font-size: 12px;
@@ -1845,6 +1851,7 @@ button {
 }
 
 .notification-title {
+  color: #10142a;
   font-weight: 600;
   margin: 0 0 2px;
 }

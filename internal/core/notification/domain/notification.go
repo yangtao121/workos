@@ -337,7 +337,7 @@ func ValidStoredNotification(n Notification) error {
 	}
 	appOrigin := n.Origin == OriginApp
 	if appOrigin != (n.AppInstallationID != "") || appOrigin != (n.AppID != "") {
-		return ErrCorrupt
+		return fmt.Errorf("step app fields: %w", ErrCorrupt)
 	}
 	if appOrigin && (!ValidUUID(n.AppInstallationID) || n.ProjectID == "") {
 		return fmt.Errorf("step app binding: %w", ErrCorrupt)
@@ -352,8 +352,11 @@ func ValidStoredNotification(n Notification) error {
 		return fmt.Errorf("step app target: %w", ErrCorrupt)
 	}
 	if !n.ReadAt.IsZero() {
-		if n.ReadChangeSequence <= 0 || n.ReadAt.Before(n.CreatedAt) {
-			return ErrCorrupt
+		if n.ReadChangeSequence <= 0 {
+			return fmt.Errorf("step read seq: %w", ErrCorrupt)
+		}
+		if n.ReadAt.Before(n.CreatedAt) {
+			return fmt.Errorf("step read time: %w", ErrCorrupt)
 		}
 	} else if n.ReadChangeSequence != 0 {
 		return fmt.Errorf("step read coherence: %w (seq %d)", ErrCorrupt, n.ReadChangeSequence)

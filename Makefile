@@ -23,7 +23,7 @@ NODE_RUN := docker run --rm $(USER_FLAGS) -e COREPACK_NPM_REGISTRY=$(NPM_REGISTR
 BUF_RUN := docker run --rm $(USER_FLAGS) $(MOUNT) $(BUF_IMAGE)
 SQLC_RUN := docker run --rm $(USER_FLAGS) -v $(CURDIR):/src -w /src $(SQLC_IMAGE)
 
-.PHONY: bootstrap generate docs check check-native proto-check go-check web-check test test-integration test-artifact-context test-deepseek-fixture test-deepseek-structured-review test-credential-vault e2e-image test-e2e test-adaptive-shell test-app-version-rollback test-podman-fixture test-lan-pairing test-project-knowledge-search test-app-knowledge-search test-project-knowledge-rebuild capture-artifact-context-visual capture-lan-pairing-visual build web-build scaffold-module dev down logs clean
+.PHONY: bootstrap generate docs check check-native proto-check go-check web-check test test-integration test-artifact-context test-deepseek-fixture test-deepseek-structured-review test-credential-vault e2e-image test-e2e test-adaptive-shell test-app-version-rollback test-podman-fixture test-lan-pairing test-project-knowledge-search test-app-knowledge-search test-project-knowledge-rebuild test-notification-center test-incident-notifications test-app-notifications capture-notification-visual capture-artifact-context-visual capture-lan-pairing-visual build web-build scaffold-module dev down logs clean
 
 bootstrap:
 	@docker version >/dev/null
@@ -97,8 +97,78 @@ test-integration:
 		$(GO_HOST_RUN) go run ./tests/restart version-verify "$$1" "$$2" "$$3" "$$4" "$$5" "$$6"; \
 		index_ref="$$( $(GO_HOST_RUN) go run ./tests/restart index-seed )"; \
 		set -- $$index_ref; \
+		notification_ref="$$( $(GO_HOST_RUN) go run ./tests/restart notifications-seed )"; \
 		docker compose restart workos-core harness-host runtime-host indexer >/dev/null; \
-		$(GO_HOST_RUN) go run ./tests/restart index-verify "$$1" "$$2" "$$3"
+		$(GO_HOST_RUN) go run ./tests/restart index-verify "$$1" "$$2" "$$3"; \
+		set -- $$notification_ref; \
+		docker compose restart workos-core workos-gateway >/dev/null; \
+		$(GO_HOST_RUN) go run ./tests/restart notifications-verify "$$1" "$$2" "$$3" "$$4" "$$5"
+
+
+# The local-first notification gates (ADR-0014): real PostgreSQL + Core +
+# harness-host + reliability-host + Gateway + Chromium. The notification
+# center gate proves live delivery, paired-device read convergence, typed
+# actions, and durability across a Gateway/Core restart. The incident gate
+# proves the software-side cross-process chain (runtime observation ->
+# reliability publication -> Core projection); it does not prove rootless
+# supervisor acceptance. The app gate proves the granted-app
+# notifications.create chain end to end. All three run in unique namespaces
+# and never delete shared volumes.
+test-notification-center: e2e-image
+	docker compose up -d --build postgres bootstrap workos-core harness-host runtime-host reliability-host workos-gateway
+	$(GO_HOST_RUN) go test -tags=integration -count=1 -run 'TestNotification' -v ./tests/integration
+	docker compose restart workos-core workos-gateway >/dev/null
+	$(GO_HOST_RUN) go test -tags=integration -count=1 -run 'TestIncidentNotificationCrossProcess' -v ./tests/integration
+	docker run --rm --network host $(USER_FLAGS) \
+		-e PLAYWRIGHT_BROWSERS_PATH=/ms-playwright \
+		-e WORKOS_E2E_URL=http://127.0.0.1:8080 \
+		-e WORKOS_E2E_OUTPUT_DIR=/tmp/workos-playwright-results \
+		-e WORKOS_E2E_NOTIFICATIONS_VERIFY=1 \
+		-e WORKOS_E2E_NOTIFICATIONS_SEED_UNREAD=2 \
+		-v $(CURDIR):$(WORKDIR) \
+		-w $(WORKDIR)/apps/desktop-web \
+		$(E2E_IMAGE) pnpm exec playwright test '(^|/)notification-center\.spec\.ts$$'
+	@echo "test-notification-center: PASS"
+
+NOTIFICATION_CAPTURE_DIR := $(WORKDIR)/docs/ui/desktop-web/changes/20260902-local-first-notifications/after
+
+capture-notification-visual: e2e-image
+	docker compose up -d --build postgres bootstrap workos-core harness-host runtime-host workos-gateway
+	mkdir -p docs/ui/desktop-web/changes/20260902-local-first-notifications/after
+	docker run --rm --network host $(USER_FLAGS) \
+		-e PLAYWRIGHT_BROWSERS_PATH=/ms-playwright \
+		-e WORKOS_E2E_URL=http://127.0.0.1:8080 \
+		-e WORKOS_E2E_OUTPUT_DIR=/tmp/workos-playwright-results \
+		-e WORKOS_CAPTURE_DIR=$(NOTIFICATION_CAPTURE_DIR) \
+		-v $(CURDIR):$(WORKDIR) \
+		-w $(WORKDIR)/apps/desktop-web \
+		$(E2E_IMAGE) pnpm exec playwright test '(^|/)notification-visual\.spec\.ts$$'
+	cp docs/ui/desktop-web/changes/20260902-local-first-notifications/after/notification-center--bell-badge--1440x900.png docs/ui/desktop-web/current/notification-center--bell-badge--1440x900.png
+	cp docs/ui/desktop-web/changes/20260902-local-first-notifications/after/notification-center--unread-list--1440x900.png docs/ui/desktop-web/current/notification-center--unread-list--1440x900.png
+	cp docs/ui/desktop-web/changes/20260902-local-first-notifications/after/notification-center--typed-action--1440x900.png docs/ui/desktop-web/current/notification-center--typed-action--1440x900.png
+	cp docs/ui/desktop-web/changes/20260902-local-first-notifications/after/notification-center--bell-badge--820x1180.png docs/ui/desktop-web/current/notification-center--bell-badge--820x1180.png
+	cp docs/ui/desktop-web/changes/20260902-local-first-notifications/after/notification-center--unread-list--820x1180.png docs/ui/desktop-web/current/notification-center--unread-list--820x1180.png
+	cp docs/ui/desktop-web/changes/20260902-local-first-notifications/after/notification-center--bell-badge--390x844.png docs/ui/desktop-web/current/notification-center--bell-badge--390x844.png
+	cp docs/ui/desktop-web/changes/20260902-local-first-notifications/after/notification-center--app-origin--390x844.png docs/ui/desktop-web/current/notification-center--app-origin--390x844.png
+
+test-incident-notifications: e2e-image
+	docker compose up -d --build postgres bootstrap workos-core harness-host runtime-host reliability-host workos-gateway
+	$(GO_HOST_RUN) go test -tags=integration -count=1 -run 'TestIncidentPublication|TestIncidentNotificationCrossProcess' -v ./tests/integration
+	@echo "test-incident-notifications: PASS (software chain; rootless supervisor acceptance remains a separate gate)"
+
+test-app-notifications: e2e-image
+	docker compose up -d --build postgres bootstrap workos-core harness-host runtime-host workos-gateway
+	$(GO_HOST_RUN) go test -tags=integration -count=1 -run 'TestAppNotificationIngest' -v ./tests/integration
+	docker run --rm --network host $(USER_FLAGS) \
+		-e PLAYWRIGHT_BROWSERS_PATH=/ms-playwright \
+		-e WORKOS_E2E_URL=http://127.0.0.1:8080 \
+		-e WORKOS_E2E_OUTPUT_DIR=/tmp/workos-playwright-results \
+		-v $(CURDIR):$(WORKDIR) \
+		-w $(WORKDIR)/apps/desktop-web \
+		$(E2E_IMAGE) pnpm exec playwright test '(^|/)app-notifications\.spec\.ts$$'
+	@echo "test-app-notifications: PASS"
+
+.PHONY: test-notification-center test-incident-notifications test-app-notifications
 
 # The Credential Vault acceptance gate (ADR-0009): real PostgreSQL, the Core
 # private mTLS execution listener, harness-host, the workosctl credential

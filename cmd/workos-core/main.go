@@ -95,6 +95,10 @@ func run(logger *slog.Logger) error {
 	// producer so the tx-scoped sink is a hard requirement of their source
 	// transactions.
 	notificationRepository := notificationpostgres.New(pool)
+	notificationService, err := notificationapp.New(notificationRepository, pool, generator)
+	if err != nil {
+		return err
+	}
 	projectRepository, err := projectpostgres.NewWithFeed(pool, feedRepository)
 	if err != nil {
 		return err
@@ -313,8 +317,20 @@ func run(logger *slog.Logger) error {
 	if err != nil {
 		return err
 	}
+	notificationAuthorizer, err := orchestration.NewAppNotificationAuthorizer(appAgentService)
+	if err != nil {
+		return err
+	}
+	if err := notificationService.WithAppAuthorizer(notificationAuthorizer); err != nil {
+		return err
+	}
 	appAgentPath, appAgentHandler := orchestrationtransport.NewAppAgentConnectHandler(appAgentService)
 	mux.Handle(appAgentPath, identity.Middleware(appAgentHandler))
+	// The private app notification ingest surface (ADR-0014): only
+	// runtime-host reaches it after validating the bridge token and surface
+	// session; the gateway allowlist never routes this service.
+	ingestPath, ingestHandler := notificationtransport.NewIngestConnectHandler(notificationService)
+	mux.Handle(ingestPath, identity.Middleware(ingestHandler))
 
 	// The private index publication source service composes the feed claim
 	// store with the neutral source authority (Artifact + Project modules).
@@ -331,12 +347,8 @@ func run(logger *slog.Logger) error {
 	indexFeedPath, indexFeedHandler := indexfeedtransport.NewConnectHandler(indexFeedService)
 	mux.Handle(indexFeedPath, identity.Middleware(indexFeedHandler))
 
-	// The public notification surface is registered here; its store and
-	// producer sink were constructed above (ADR-0014).
-	notificationService, err := notificationapp.New(notificationRepository, pool, generator)
-	if err != nil {
-		return err
-	}
+	// The public notification surface is registered here; its store,
+	// producer sink, and app authorizer were constructed above (ADR-0014).
 	notificationPath, notificationHandler := notificationtransport.NewConnectHandler(notificationService)
 	mux.Handle(notificationPath, identity.Middleware(notificationHandler))
 

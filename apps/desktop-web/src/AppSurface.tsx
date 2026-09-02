@@ -1,6 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Client } from "@connectrpc/connect";
-import type { AppBridgeService } from "@workos/protocol";
+import {
+  NotificationOrigin,
+  NotificationSeverity,
+  NotificationTargetKind,
+  type AppBridgeService,
+} from "@workos/protocol";
 import { BridgeProtocolError } from "@workos/surface-sdk";
 import { openAppBridgeHost, type AppBridgeHost, type AppBridgeTransport } from "@workos/app-host";
 import { asBridgeProtocolError } from "./bridgeErrors.js";
@@ -114,11 +119,13 @@ function buildTransport(
             id: notification.id,
             projectId: notification.projectId,
             kind: notificationKindName(notification.kind),
-            severity: notification.severity === 2 ? "critical" : "normal",
-            origin: notification.origin === 2 ? "app" : "system",
+            severity:
+              notification.severity === NotificationSeverity.CRITICAL ? "critical" : "normal",
+            origin: notification.origin === NotificationOrigin.APP ? "app" : "system",
             title: notification.title,
             body: notification.body,
-            targetKind: notification.target.kind === 5 ? "app" : "unspecified",
+            targetKind:
+              notification.target.kind === NotificationTargetKind.APP ? "app" : "unspecified",
             targetId: notification.target.targetId,
             appId: notification.target.appId,
           },

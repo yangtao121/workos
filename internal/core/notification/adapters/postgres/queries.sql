@@ -48,22 +48,22 @@ WHERE source_process = sqlc.arg(source_process) AND source_id = sqlc.arg(source_
 
 -- name: GetNotificationByID :one
 SELECT id, owner_user_id, project_id, kind, severity, origin, title, body,
-       target_kind, target_id, app_id, source_process, source_id, source_digest,
-       created_at, read_at, read_change_sequence
+       target_kind, target_id, app_id, app_installation_id, source_process,
+       source_id, source_digest, created_at, read_at, read_change_sequence
 FROM workos_core.notifications
 WHERE id = sqlc.arg(id);
 
 -- name: GetOwnerNotification :one
 SELECT id, owner_user_id, project_id, kind, severity, origin, title, body,
-       target_kind, target_id, app_id, source_process, source_id, source_digest,
-       created_at, read_at, read_change_sequence
+       target_kind, target_id, app_id, app_installation_id, source_process,
+       source_id, source_digest, created_at, read_at, read_change_sequence
 FROM workos_core.notifications
 WHERE id = sqlc.arg(id) AND owner_user_id = sqlc.arg(owner_user_id);
 
 -- name: LockOwnerNotifications :many
 SELECT id, owner_user_id, project_id, kind, severity, origin, title, body,
-       target_kind, target_id, app_id, source_process, source_id, source_digest,
-       created_at, read_at, read_change_sequence
+       target_kind, target_id, app_id, app_installation_id, source_process,
+       source_id, source_digest, created_at, read_at, read_change_sequence
 FROM workos_core.notifications
 WHERE owner_user_id = sqlc.arg(owner_user_id) AND id = ANY (sqlc.arg(ids)::uuid[])
 ORDER BY created_at DESC, id DESC
@@ -89,8 +89,8 @@ WHERE owner_user_id = sqlc.arg(owner_user_id);
 
 -- name: ListNotificationsPage :many
 SELECT id, owner_user_id, project_id, kind, severity, origin, title, body,
-       target_kind, target_id, app_id, source_process, source_id, source_digest,
-       created_at, read_at, read_change_sequence
+       target_kind, target_id, app_id, app_installation_id, source_process,
+       source_id, source_digest, created_at, read_at, read_change_sequence
 FROM workos_core.notifications
 WHERE owner_user_id = sqlc.arg(owner_user_id)
   AND (sqlc.narg('project_id') ::uuid IS NULL OR project_id = sqlc.narg('project_id') ::uuid)
@@ -104,8 +104,9 @@ LIMIT sqlc.arg(row_limit);
 -- name: GetChangesAfter :many
 SELECT c.change_sequence, c.notification_id, c.change_type, c.revision,
        n.project_id, n.kind, n.severity, n.origin, n.title, n.body,
-       n.target_kind, n.target_id, n.app_id, n.source_process, n.source_id,
-       n.source_digest, n.created_at, n.read_at, n.read_change_sequence
+       n.target_kind, n.target_id, n.app_id, n.app_installation_id,
+       n.source_process, n.source_id, n.source_digest, n.created_at, n.read_at,
+       n.read_change_sequence
 FROM workos_core.notification_changes AS c
 JOIN workos_core.notifications AS n
   ON n.id = c.notification_id AND n.owner_user_id = c.owner_user_id
