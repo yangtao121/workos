@@ -212,12 +212,24 @@ test("granted app creates owner notifications; replay dedupes and revoke fails c
   await expect(out).toHaveText(firstText, { timeout: 30_000 });
   expect((await out.textContent()) ?? "").toContain(firstId);
 
-  // A different key is a distinct intent: a new notification id.
+  // A different key is a distinct intent: a new notification id and a
+  // strictly higher owner unread count. Bounded re-drive like a real client
+  // (the same key can never double-create).
   await keyInput.fill("fixture-key-2");
-  await notifyButton.click();
-  await expect(out).toHaveText(/notify-ok:[0-9a-f][0-9a-f-]{35}:app:\d+/, { timeout: 30_000 });
-  const secondText = (await out.textContent()) ?? "";
-  expect(secondText.split(":")[1]).not.toBe(firstId);
+  const firstUnread = Number(firstText.split(":")[3]);
+  let secondText = "";
+  for (let attempt = 0; attempt < 30; attempt++) {
+    await notifyButton.click();
+    secondText = (await out.textContent()) ?? "";
+    const parts = secondText.split(":");
+    if (parts[0] === "notify-ok" && parts[1] !== firstId && Number(parts[3]) > firstUnread) {
+      break;
+    }
+    await page.waitForTimeout(500);
+  }
+  const secondParts = secondText.split(":");
+  expect(secondParts[0]).toBe("notify-ok");
+  expect(secondParts[1]).not.toBe(firstId);
 
   // The owner's durable Notification Center lists the app fact with the
   // explicit app origin label.

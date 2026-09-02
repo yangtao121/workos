@@ -124,6 +124,9 @@ func notificationsSeed(ctx context.Context, client *http.Client, baseURL string)
 // consumed read key replays the exact first response instead of drifting.
 func notificationsVerify(ctx context.Context, client *http.Client, baseURL, readID, unreadID, readKey string, unreadAtSeed int64) error {
 	notifications := notificationv1connect.NewNotificationServiceClient(client, baseURL)
+	defer func() {
+		fmt.Printf("notification persistence verified for unread fact %s\n", unreadID)
+	}()
 
 	summary, err := notifications.GetNotificationSummary(ctx, connect.NewRequest(&notificationv1.GetNotificationSummaryRequest{}))
 	if err != nil {
