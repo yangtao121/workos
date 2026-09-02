@@ -1,0 +1,7 @@
+[Service]
+# The admin socket must not share a uid or runtime directory with Gateway,
+# Runtime, Harness, Reliability, or Core.
+User=workos-indexer
+Group=workos-indexer
+RuntimeDirectory=workos-indexer
+RuntimeDirectoryMode=0700

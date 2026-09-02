@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/yangtao121/workos/internal/indexer/domain"
 	"github.com/yangtao121/workos/internal/indexer/ports"
 )
 
@@ -45,36 +46,33 @@ func (e *RebuildExecutor) Start(ctx context.Context, request RebuildRequest) (Re
 		return RebuildJobView{}, false, err
 	}
 	digest := request.RequestDigest()
-	return e.store.AdjudicateRebuildRequest(ctx, request.IdempotencyKey, digest,
-		func(ctx context.Context) (RebuildJobView, error) {
-			generation := e.driver.ids.New()
-			jobID := e.driver.ids.New()
-			now := e.now().UTC()
-			scope := request.Scope
-			if err := e.store.CreateGeneration(ctx, generation, scope, request.OwnerUserID, request.ProjectID, now); err != nil {
-				return RebuildJobView{}, err
-			}
-			job := RebuildJobView{
-				ID: jobID, Scope: scope,
-				OwnerUserID: request.OwnerUserID, ProjectID: request.ProjectID,
-				State: "requested", TargetGeneration: generation,
-				CreatedAt: now, UpdatedAt: now,
-			}
-			if err := e.store.CreateRebuildJob(ctx, job, digest); err != nil {
-				return RebuildJobView{}, err
-			}
-			return job, nil
-		})
+	now := e.now().UTC()
+	job := RebuildJobView{
+		ID: e.driver.ids.New(), Scope: request.Scope,
+		OwnerUserID: request.OwnerUserID, ProjectID: request.ProjectID,
+		State: "requested", TargetGeneration: e.driver.ids.New(),
+		CreatedAt: now, UpdatedAt: now,
+	}
+	if err := ValidateStoredRebuildJob(job); err != nil {
+		return RebuildJobView{}, false, err
+	}
+	return e.store.AdjudicateRebuildRequest(ctx, request.IdempotencyKey, digest, job)
 }
 
 // GetJob reads one job view through the durable store.
 func (e *RebuildExecutor) GetJob(ctx context.Context, jobID string) (RebuildJobView, error) {
+	if !domain.ValidUUID(jobID) {
+		return RebuildJobView{}, ErrInvalidRebuild
+	}
 	return e.store.GetRebuildJob(ctx, jobID)
 }
 
 // Cancel requests cancellation at the next safe checkpoint. Promoting jobs
 // are never canceled: the promotion either lands or the CAS refuses it.
 func (e *RebuildExecutor) Cancel(ctx context.Context, jobID string) (bool, error) {
+	if !domain.ValidUUID(jobID) {
+		return false, ErrInvalidRebuild
+	}
 	return e.store.CancelRebuildJob(ctx, jobID, e.now().UTC())
 }
 
@@ -92,6 +90,9 @@ func (e *RebuildExecutor) RunPass(ctx context.Context) (int, error) {
 		if err := e.advance(ctx, job); err != nil {
 			return len(jobs), err
 		}
+	}
+	if _, err := e.store.CleanupRetiredGeneration(ctx); err != nil {
+		return len(jobs), err
 	}
 	return len(jobs), nil
 }
@@ -128,6 +129,9 @@ func (e *RebuildExecutor) snapshotStep(ctx context.Context, job RebuildJobView) 
 			return err
 		}
 		for _, source := range sources {
+			if !validSnapshotSource(source) {
+				return domain.ErrCorrupt
+			}
 			resolved, resolveErr := e.driver.feed.ResolveSourceContent(
 				ctx, source.OwnerUserID, source.ProjectID, source.ArtifactID, source.Digest)
 			if resolveErr != nil {
@@ -144,11 +148,23 @@ func (e *RebuildExecutor) snapshotStep(ctx context.Context, job RebuildJobView) 
 				ArtifactID: source.ArtifactID, ArtifactType: source.ArtifactType,
 				Digest: source.Digest, CreatedAt: source.CreatedAt,
 			}, Content: resolved.Content, Title: resolved.Title, TaskID: resolved.SourceTaskID, Tombbed: tombstone}
-			if err := e.store.ApplySnapshotSource(ctx, snapshotEffect(apply, e.driver.ids.New()), job.TargetGeneration, snapshotDigest(apply), e.now().UTC()); err != nil {
+			// The immutable artifact UUID is the stable snapshot receipt ID.
+			// A crash before the page checkpoint therefore replays the exact
+			// same (publication,generation,digest) fact without duplicate receipts.
+			publicationID := source.ArtifactID
+			now := e.now().UTC()
+			effect := snapshotEffect(apply, publicationID)
+			if !validSnapshotEffect(effect, now) {
+				return domain.ErrCorrupt
+			}
+			if err := e.store.ApplySnapshotSource(ctx, effect, job.TargetGeneration, snapshotDigest(apply), now); err != nil {
 				return err
 			}
 			job.AppliedCount++
 			job.SourceCount++
+			if tombstone {
+				job.TombstoneCount++
+			}
 		}
 		if next == "" {
 			// Snapshot complete: the boundary is the authoritative watermark
@@ -160,10 +176,13 @@ func (e *RebuildExecutor) snapshotStep(ctx context.Context, job RebuildJobView) 
 			return e.store.SaveRebuildJob(ctx, job)
 		}
 		cursor = next
+		job.PhaseCursor = cursor
+		job.UpdatedAt = e.now().UTC()
+		if err := e.store.SaveRebuildJob(ctx, job); err != nil {
+			return err
+		}
 	}
-	job.PhaseCursor = cursor
-	job.UpdatedAt = e.now().UTC()
-	return e.store.SaveRebuildJob(ctx, job)
+	return nil
 }
 
 // catchUpStep waits for a Core-confirmed barrier: the live worker mirrors
@@ -189,7 +208,7 @@ func (e *RebuildExecutor) catchUpStep(ctx context.Context, job RebuildJobView) e
 func (e *RebuildExecutor) validateStep(ctx context.Context, job RebuildJobView) error {
 	authoritative := make(map[string]string, job.SourceCount)
 	cursor := ""
-	for page := 0; page < maxSnapshotPagesPerPass; page++ {
+	for {
 		sources, next, _, err := e.driver.feed.ReconcileSources(ctx, e.batchSize, firstPageOr(cursor))
 		if err != nil {
 			return err
@@ -199,6 +218,9 @@ func (e *RebuildExecutor) validateStep(ctx context.Context, job RebuildJobView) 
 		}
 		if next == "" {
 			break
+		}
+		if next == cursor {
+			return domain.ErrCorrupt
 		}
 		cursor = next
 	}
@@ -222,34 +244,19 @@ func (e *RebuildExecutor) promoteStep(ctx context.Context, job RebuildJobView) e
 	if err != nil {
 		return err
 	}
-	promoted, err := e.store.PromoteCAS(ctx, job.TargetGeneration, current, e.now().UTC())
+	now := e.now().UTC()
+	promoted, err := e.store.CompletePromotion(ctx, job.ID, job.TargetGeneration, current, now)
 	if err != nil {
 		return err
 	}
-	now := e.now().UTC()
 	if promoted {
-		if err := e.store.MarkGeneration(ctx, job.TargetGeneration, "active", now); err != nil {
-			return err
-		}
-		if err := e.store.MarkGeneration(ctx, current, "retired", now); err != nil {
-			return err
-		}
-		job.State = "completed"
-		job.UpdatedAt, job.TerminalAt = now, now
-		return e.store.SaveRebuildJob(ctx, job)
+		return nil
 	}
 	return e.failGeneration(ctx, job, "promotion-lost-race")
 }
 
 func (e *RebuildExecutor) failGeneration(ctx context.Context, job RebuildJobView, category string) error {
-	now := e.now().UTC()
-	job.State = "failed"
-	job.FailureCategory = category
-	job.UpdatedAt, job.TerminalAt = now, now
-	if err := e.store.MarkGeneration(ctx, job.TargetGeneration, "failed", now); err != nil {
-		return err
-	}
-	return e.store.SaveRebuildJob(ctx, job)
+	return e.store.FailRebuildJob(ctx, job, category, e.now().UTC())
 }
 
 func firstPageOr(cursor string) string {
@@ -275,6 +282,28 @@ func snapshotEffect(apply SnapshotApply, publicationID string) SnapshotEffect {
 		Title: apply.Title, Content: apply.Content, TaskID: apply.TaskID,
 		Tombstone: apply.Tombbed, PublicationID: publicationID,
 	}
+}
+
+func validSnapshotSource(source ports.ReconcileSource) bool {
+	if !domain.ValidUUID(source.OwnerUserID) || !domain.ValidUUID(source.ProjectID) ||
+		!domain.ValidUUID(source.ArtifactID) || !domain.ValidDigest(source.Digest) || source.CreatedAt.IsZero() {
+		return false
+	}
+	return source.ArtifactType == "document.markdown.v1" || source.ArtifactType == "code.unified-diff.v1"
+}
+
+func validSnapshotEffect(effect SnapshotEffect, indexedAt time.Time) bool {
+	if effect.Tombstone {
+		return domain.ValidUUID(effect.PublicationID)
+	}
+	document := domain.Document{
+		OwnerUserID: effect.OwnerUserID, ProjectID: effect.ProjectID,
+		SourceID: effect.ArtifactID, SourceDigest: effect.Digest,
+		ArtifactType: effect.ArtifactType, Title: effect.Title,
+		Content: string(effect.Content), SourceCreatedAt: effect.CreatedAt,
+		LastPublication: effect.PublicationID, IndexedAt: indexedAt,
+	}
+	return domain.ValidStoredDocument(document) == nil
 }
 
 // SnapshotEffect is the generation-scoped effect the store persists.

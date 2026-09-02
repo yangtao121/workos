@@ -8,7 +8,9 @@ package application
 import (
 	"context"
 	"errors"
+	"strings"
 	"time"
+	"unicode/utf8"
 
 	agentv1 "github.com/yangtao121/workos/gen/go/workos/agent/v1"
 	"github.com/yangtao121/workos/internal/runtime/surface/domain"
@@ -132,6 +134,8 @@ const (
 	maxKnowledgeQueryCodePoints = 256
 	defaultKnowledgePageSize    = 20
 	maxKnowledgePageSize        = 50
+	maxKnowledgePageTokenBytes  = 4096
+	maxKnowledgeQueryTerms      = 32
 )
 
 // SearchKnowledge executes the read-only knowledge bridge method. The fixed
@@ -147,8 +151,7 @@ func (s *BridgeService) SearchKnowledge(ctx context.Context, ownerUserID, device
 		// so a call is a sanitized denial without touching Core or indexer.
 		return ports.KnowledgeSearchPage{}, domain.ErrPermissionDenied
 	}
-	if len([]rune(query)) == 0 || len([]rune(query)) > maxKnowledgeQueryCodePoints ||
-		pageSize < 0 || pageSize > maxKnowledgePageSize {
+	if !validKnowledgeQuery(query) || !validKnowledgePageToken(pageToken) || pageSize < 0 || pageSize > maxKnowledgePageSize {
 		return ports.KnowledgeSearchPage{}, domain.ErrInvalid
 	}
 	size := pageSize
@@ -190,4 +193,34 @@ func (s *BridgeService) SearchKnowledge(ctx context.Context, ownerUserID, device
 		PageSize:    size,
 		PageToken:   pageToken,
 	})
+}
+
+func validKnowledgeQuery(query string) bool {
+	if !utf8.ValidString(query) || len([]rune(strings.TrimSpace(query))) == 0 ||
+		len([]rune(query)) > maxKnowledgeQueryCodePoints || len(strings.Fields(query)) > maxKnowledgeQueryTerms {
+		return false
+	}
+	for _, char := range query {
+		if (char >= 0 && char <= 0x1f) || (char >= 0x7f && char <= 0x9f) {
+			return false
+		}
+	}
+	return true
+}
+
+func validKnowledgePageToken(token string) bool {
+	if len(token) > maxKnowledgePageTokenBytes {
+		return false
+	}
+	for _, char := range token {
+		switch {
+		case char >= 'a' && char <= 'z':
+		case char >= 'A' && char <= 'Z':
+		case char >= '0' && char <= '9':
+		case char == '-' || char == '_':
+		default:
+			return false
+		}
+	}
+	return true
 }

@@ -8,6 +8,7 @@ package domain
 import (
 	"errors"
 	"strings"
+	"unicode"
 	"unicode/utf8"
 )
 
@@ -31,9 +32,6 @@ func CanonicalQuery(raw string) (string, error) {
 	}
 	for _, r := range raw {
 		if (r >= 0x00 && r <= 0x1F) || (r >= 0x7F && r <= 0x9F) {
-			if r == '\t' || r == '\n' || r == '\r' || r == ' ' {
-				continue
-			}
 			return "", ErrInvalidQuery
 		}
 	}
@@ -42,6 +40,9 @@ func CanonicalQuery(raw string) (string, error) {
 		return "", ErrInvalidQuery
 	}
 	if terms := strings.Fields(collapsed); len(terms) > MaxQueryTerms {
+		return "", ErrInvalidQuery
+	}
+	if lexicalTerms := strings.Fields(LexicalQueryText(collapsed)); len(lexicalTerms) > MaxQueryTerms {
 		return "", ErrInvalidQuery
 	}
 	return collapsed, nil
@@ -56,7 +57,7 @@ const (
 
 // ClampSearchPageSize normalizes one requested page size exactly once.
 func ClampSearchPageSize(requested int32) int {
-	if requested <= 0 {
+	if requested == 0 {
 		return DefaultSearchPageSize
 	}
 	if int(requested) > MaxSearchPageSize {
@@ -78,12 +79,8 @@ func LexicalQueryText(canonicalQuery string) string {
 		var b strings.Builder
 		for _, r := range field {
 			switch {
-			case r >= 'a' && r <= 'z':
-				b.WriteRune(r)
-			case r >= 'A' && r <= 'Z':
-				b.WriteRune(r + ('a' - 'A'))
-			case r >= '0' && r <= '9':
-				b.WriteRune(r)
+			case unicode.IsLetter(r) || unicode.IsDigit(r):
+				b.WriteRune(unicode.ToLower(r))
 			default:
 				// Non-alphanumerics split the term: they never reach the
 				// tsquery parser as operators or compound tokens.

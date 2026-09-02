@@ -16,6 +16,7 @@ import (
 
 	indexerpostgres "github.com/yangtao121/workos/internal/indexer/adapters/postgres"
 	indexerapp "github.com/yangtao121/workos/internal/indexer/application"
+	indexerdomain "github.com/yangtao121/workos/internal/indexer/domain"
 	indexerports "github.com/yangtao121/workos/internal/indexer/ports"
 	"github.com/yangtao121/workos/internal/platform/ids"
 	"github.com/yangtao121/workos/internal/platform/migrations"
@@ -88,17 +89,35 @@ func newRebuildFixture(t *testing.T) *rebuildFixture {
 		{"01999999-9999-7999-8999-000000000951", "01999999-9999-7999-8999-000000000943", "Beta Patch", "# Beta Patch\nrebuild-unique-beta-phrase\n"},
 		{"01999999-9999-7999-8999-000000000952", "01999999-9999-7999-8999-000000000944", "Gamma Document", "# Gamma\nrebuild-unique-gamma-phrase\n"},
 		{"01999999-9999-7999-8999-000000000953", "01999999-9999-7999-8999-000000000945", "Archived Document", "# Archived\nrebuild-unique-archived-phrase\n"},
+		{"01999999-9999-7999-8999-000000000954", "01999999-9999-7999-8999-000000000942", "Pagination Tie", "pagination-tie fixture\n"},
+		{"01999999-9999-7999-8999-000000000955", "01999999-9999-7999-8999-000000000942", "Pagination Tie", "pagination-tie fixture\n"},
 	} {
 		execScratch(t, pool, `INSERT INTO workos_core.project_review_artifacts (
 			id, owner_user_id, type, title, media_type, digest, project_id, source_task_id,
 			output_key, byte_count, line_count, content, created_at
 		) VALUES (
 			$1, $2, 'document.markdown.v1', $3, 'text/markdown; charset=utf-8', $4, $5, $6,
-			'document', $7, $8, $9, now()
+			'document', $7, $8, $9, $10
 		)`,
 			seed.id, f.owner, seed.title, reviewDigest(seed.body), seed.project,
 			"01999999-9999-7999-8999-000000000960",
-			len(seed.body), strings.Count(seed.body, "\n"), seed.body)
+			len(seed.body), strings.Count(seed.body, "\n"), seed.body,
+			time.Date(2026, 9, 1, 0, 0, 0, 0, time.UTC))
+	}
+	// More than the rebuild validation walk's 200-row database page proves
+	// its durable (created_at, source_id) cursor advances to the next page.
+	for index := 0; index < 205; index++ {
+		artifactID := fmt.Sprintf("01999999-9999-7999-8999-%012d", 1000+index)
+		body := fmt.Sprintf("bulk validation fixture %03d\n", index)
+		execScratch(t, pool, `INSERT INTO workos_core.project_review_artifacts (
+			id, owner_user_id, type, title, media_type, digest, project_id, source_task_id,
+			output_key, byte_count, line_count, content, created_at
+		) VALUES ($1, $2, 'document.markdown.v1', $3, 'text/markdown; charset=utf-8', $4,
+			$5, $6, 'document', $7, $8, $9, $10)`,
+			artifactID, f.owner, fmt.Sprintf("Bulk %03d", index), reviewDigest(body),
+			"01999999-9999-7999-8999-000000000943", "01999999-9999-7999-8999-000000000960",
+			len(body), strings.Count(body, "\n"), body,
+			time.Date(2026, 9, 1, 0, 0, 1, 0, time.UTC))
 	}
 	return f
 }
@@ -179,23 +198,24 @@ func encodeTestCursor(at time.Time, id string) string {
 
 func (f *fakeRebuildFeed) CountPending(ctx context.Context) (int64, error) { return 0, nil }
 
-func (f *fakeRebuildFeed) ResolveSnapshotSource(ctx context.Context, ownerUserID, projectID, artifactID, digest string) (string, string, string, []byte, bool, error) {
+func (f *fakeRebuildFeed) ResolveSnapshotSource(ctx context.Context, ownerUserID, projectID, artifactID, digest string) (string, string, string, []byte, time.Time, bool, error) {
 	var title, storedDigest, taskID, artifactType string
 	var content []byte
+	var createdAt time.Time
 	var archived bool
 	err := f.pool.QueryRow(ctx, `
-		SELECT a.title, a.source_task_id::text, a.content, a.digest, a.type, p.archived_at IS NOT NULL
+		SELECT a.title, a.source_task_id::text, a.content, a.digest, a.type, a.created_at, p.archived_at IS NOT NULL
 		FROM workos_core.project_review_artifacts a
 		JOIN workos_core.projects p ON p.id = a.project_id
 		WHERE a.owner_user_id = $1::uuid AND a.project_id = $2::uuid AND a.id = $3::uuid`,
-		ownerUserID, projectID, artifactID).Scan(&title, &taskID, &content, &storedDigest, &artifactType, &archived)
+		ownerUserID, projectID, artifactID).Scan(&title, &taskID, &content, &storedDigest, &artifactType, &createdAt, &archived)
 	if err != nil {
-		return "", "", "", nil, false, fmt.Errorf("resolve snapshot source: %w", err)
+		return "", "", "", nil, time.Time{}, false, fmt.Errorf("resolve snapshot source: %w", err)
 	}
 	if archived || storedDigest != digest {
-		return "", "", "", nil, false, nil
+		return "", "", "", nil, time.Time{}, false, nil
 	}
-	return title, taskID, artifactType, content, true, nil
+	return title, taskID, artifactType, content, createdAt, true, nil
 }
 
 func (f *fakeRebuildFeed) ActiveGenerationID(ctx context.Context) (string, error) {
@@ -266,7 +286,7 @@ func (a *portsCoreFeedAdapter) ReconcileArchivedProjects(context.Context, int, s
 }
 
 func (a *portsCoreFeedAdapter) ResolveSourceContent(ctx context.Context, ownerUserID, projectID, artifactID, expectedDigest string) (indexerports.ResolvedSource, error) {
-	title, _, artifactType, content, resolvable, err := a.fake.ResolveSnapshotSource(ctx, ownerUserID, projectID, artifactID, expectedDigest)
+	title, taskID, artifactType, content, createdAt, resolvable, err := a.fake.ResolveSnapshotSource(ctx, ownerUserID, projectID, artifactID, expectedDigest)
 	if err != nil {
 		return indexerports.ResolvedSource{}, err
 	}
@@ -276,8 +296,8 @@ func (a *portsCoreFeedAdapter) ResolveSourceContent(ctx context.Context, ownerUs
 	return indexerports.ResolvedSource{
 		Verdict: "resolved", Operation: "review-artifact.upsert",
 		OwnerUserID: ownerUserID, ProjectID: projectID,
-		ArtifactID: artifactID, ArtifactType: artifactType, Digest: expectedDigest,
-		Title: title, Content: content,
+		ArtifactID: artifactID, SourceTaskID: taskID, ArtifactType: artifactType, Digest: expectedDigest,
+		Title: title, Content: content, CreatedAt: createdAt,
 	}, nil
 }
 
@@ -343,6 +363,28 @@ func driveToCompletion(t *testing.T, ctx context.Context, executor *indexerapp.R
 	return indexerapp.RebuildJobView{}
 }
 
+func (f *rebuildFixture) driveToCompletionWithRestartEveryPass(t *testing.T, ctx context.Context, jobID string) indexerapp.RebuildJobView {
+	t.Helper()
+	for attempt := 0; attempt < 200; attempt++ {
+		executor, _ := f.buildExecutor(t)
+		if _, err := executor.RunPass(ctx); err != nil && ctx.Err() == nil {
+			t.Fatalf("rebuild pass after restart: %v", err)
+		}
+		job, err := executor.GetJob(ctx, jobID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		switch job.State {
+		case "completed":
+			return job
+		case "failed", "canceled":
+			t.Fatalf("restarted job ended %s: %s", job.State, job.FailureCategory)
+		}
+	}
+	t.Fatal("restarted rebuild never completed")
+	return indexerapp.RebuildJobView{}
+}
+
 func TestProjectKnowledgeRebuildGoldenCrashResumeAndDestroyRestore(t *testing.T) {
 	t.Parallel()
 	f := newRebuildFixture(t)
@@ -364,6 +406,33 @@ func TestProjectKnowledgeRebuildGoldenCrashResumeAndDestroyRestore(t *testing.T)
 	ownerA := f.owner
 	ownerB := f.foreignOwner
 
+	// Equal score + equal created_at paginates by source_id ASC without a
+	// skip, duplicate, or phantom token. This exercises the signed token
+	// round-trip through application and PostgreSQL.
+	var paginationIDs []string
+	pageToken := ""
+	for {
+		page, err := search.Search(ctx, indexerapp.SearchInput{
+			OwnerUserID: ownerA, ProjectID: "01999999-9999-7999-8999-000000000942",
+			RawQuery: "pagination tie", PageSize: 1, PageToken: pageToken,
+		})
+		if err != nil {
+			t.Fatalf("pagination search: %v", err)
+		}
+		if len(page.Page.Hits) != 1 {
+			t.Fatalf("pagination page hits = %d", len(page.Page.Hits))
+		}
+		paginationIDs = append(paginationIDs, page.Page.Hits[0].ArtifactID)
+		pageToken = page.Page.NextPageToken
+		if pageToken == "" {
+			break
+		}
+	}
+	wantPagination := []string{"01999999-9999-7999-8999-000000000954", "01999999-9999-7999-8999-000000000955"}
+	if strings.Join(paginationIDs, ",") != strings.Join(wantPagination, ",") {
+		t.Fatalf("pagination ids = %v, want %v", paginationIDs, wantPagination)
+	}
+
 	// The pre-rebuild golden: only active projects, only their owners.
 	goldenAlpha := f.captureGolden(t, search, "01999999-9999-7999-8999-000000000942", ownerA, "rebuild-unique-alpha")
 	goldenGamma := f.captureGolden(t, search, "01999999-9999-7999-8999-000000000944", ownerA, "rebuild-unique-gamma")
@@ -380,31 +449,97 @@ func TestProjectKnowledgeRebuildGoldenCrashResumeAndDestroyRestore(t *testing.T)
 	}
 
 	executor, _ := f.buildExecutor(t)
+	oldActive, err := f.proj.ActiveGenerationID(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
 	job, _, err := executor.Start(ctx, indexerapp.RebuildRequest{
 		Scope: "all", IdempotencyKey: "rebuild-golden-key",
 	})
 	if err != nil {
 		t.Fatalf("start rebuild: %v", err)
 	}
+	if _, _, err := executor.Start(ctx, indexerapp.RebuildRequest{
+		Scope: "project", OwnerUserID: ownerA,
+		ProjectID: "01999999-9999-7999-8999-000000000942", IdempotencyKey: "rebuild-concurrent-key",
+	}); err != indexerapp.ErrRebuildLiveScope {
+		t.Fatalf("concurrent rebuild error = %v, want live-scope conflict", err)
+	}
+	var generations, jobs, requests int
+	if err := f.pool.QueryRow(ctx, `SELECT
+		(SELECT count(*) FROM workos_index.projection_generations),
+		(SELECT count(*) FROM workos_index.rebuild_jobs),
+		(SELECT count(*) FROM workos_index.rebuild_job_requests)`).Scan(&generations, &jobs, &requests); err != nil {
+		t.Fatal(err)
+	}
+	if generations != 2 || jobs != 1 || requests != 1 {
+		t.Fatalf("conflicting start left orphan facts: generations=%d jobs=%d requests=%d", generations, jobs, requests)
+	}
 
-	// Crash windows: advance one pass with one executor instance, then let a
-	// FRESH instance (restart) resume from the durable phase. At most one
-	// promotion may ever land.
+	// Crash windows: advance requested and snapshot with separate executor
+	// instances. Every remaining pass below also uses a fresh instance, so
+	// all durable phases cross a process-restart boundary.
 	if _, err := executor.RunPass(ctx); err != nil {
 		t.Fatal(err)
 	}
 	restarted, _ := f.buildExecutor(t)
-	done := driveToCompletion(t, ctx, restarted, job.ID)
+	if _, err := restarted.RunPass(ctx); err != nil {
+		t.Fatal(err)
+	}
+
+	// A live Artifact added after the snapshot is mirrored into active and
+	// building generations by reconciliation. Archiving Beta after snapshot
+	// tombstones both generations; validation must not resurrect it or reject
+	// its safe retained tombstone rows.
+	liveBody := "concurrentdelta sentinel phrase\n"
+	execScratch(t, f.pool, `INSERT INTO workos_core.project_review_artifacts (
+		id, owner_user_id, type, title, media_type, digest, project_id, source_task_id,
+		output_key, byte_count, line_count, content, created_at
+	) VALUES ($1, $2, 'document.markdown.v1', 'Live Delta', 'text/markdown; charset=utf-8', $3,
+		$4, $5, 'live-delta', $6, $7, $8, $9)`,
+		"01999999-9999-7999-8999-000000000956", ownerA, reviewDigest(liveBody),
+		"01999999-9999-7999-8999-000000000944", "01999999-9999-7999-8999-000000000960",
+		len(liveBody), strings.Count(liveBody, "\n"), liveBody, time.Now().UTC())
+	if err := indexerapp.Reconcile(ctx, reconcileAdapter, f.proj, reconcileIDs, 100); err != nil {
+		t.Fatalf("live rebuild reconciliation: %v", err)
+	}
+	archivedAt := time.Now().UTC()
+	execScratch(t, f.pool, `UPDATE workos_core.projects SET archived_at = $2, updated_at = $2 WHERE id = $1::uuid`,
+		"01999999-9999-7999-8999-000000000943", archivedAt)
+	if err := f.proj.ApplyResolvedSource(ctx, indexerports.ResolvedSource{
+		Verdict: "tombstoned", Operation: "project.tombstone", OwnerUserID: ownerA,
+		ProjectID:     "01999999-9999-7999-8999-000000000943",
+		PublicationID: "01999999-9999-7999-8999-000000000957", OccurredAt: archivedAt,
+	}, indexerdomain.OutcomeTombstoned, "sha256:"+strings.Repeat("c", 64), archivedAt); err != nil {
+		t.Fatalf("live rebuild tombstone: %v", err)
+	}
+	done := f.driveToCompletionWithRestartEveryPass(t, ctx, job.ID)
 	if done.State != "completed" {
 		t.Fatalf("job state %s", done.State)
 	}
+	if done.SourceCount != 210 || done.AppliedCount != 210 {
+		t.Fatalf("rebuild counts source=%d applied=%d, want 210", done.SourceCount, done.AppliedCount)
+	}
+	promotionStore := mustRebuildStore(t, f.pool, f.ids)
+	if replayed, err := promotionStore.CompletePromotion(ctx, done.ID, done.TargetGeneration, oldActive, time.Now().UTC()); err != nil || !replayed {
+		t.Fatalf("committed promotion response-loss replay: replayed=%v err=%v", replayed, err)
+	}
 	// Exactly one active generation must exist.
 	var activeCount int
-	if err := f.pool.QueryRow(ctx, `SELECT count(*) FROM workos_index.active_generation`).Scan(&activeCount); err != nil {
+	if err := f.pool.QueryRow(ctx, `SELECT count(*) FROM workos_index.projection_generations WHERE status = 'active'`).Scan(&activeCount); err != nil {
 		t.Fatal(err)
 	}
 	if activeCount != 1 {
 		t.Fatalf("active generation rows = %d, want 1", activeCount)
+	}
+	var retiredPayload int
+	if err := f.pool.QueryRow(ctx, `SELECT
+		(SELECT count(*) FROM workos_index.documents WHERE projection_generation = $1::uuid) +
+		(SELECT count(*) FROM workos_index.publication_receipts WHERE projection_generation = $1::uuid)`, oldActive).Scan(&retiredPayload); err != nil {
+		t.Fatal(err)
+	}
+	if retiredPayload != 0 {
+		t.Fatalf("retired generation retained %d rebuildable rows", retiredPayload)
 	}
 
 	// The post-rebuild golden must equal the pre-rebuild golden: promotion is
@@ -414,6 +549,14 @@ func TestProjectKnowledgeRebuildGoldenCrashResumeAndDestroyRestore(t *testing.T)
 	if strings.Join(afterAlpha.Hits, "|") != strings.Join(goldenAlpha.Hits, "|") ||
 		strings.Join(afterGamma.Hits, "|") != strings.Join(goldenGamma.Hits, "|") {
 		t.Fatalf("golden drifted: %+v vs %+v; %+v vs %+v", afterAlpha, goldenAlpha, afterGamma, goldenGamma)
+	}
+	liveDelta := f.captureGolden(t, search, "01999999-9999-7999-8999-000000000944", ownerA, "concurrentdelta sentinel")
+	if len(liveDelta.Hits) != 1 || !strings.HasPrefix(liveDelta.Hits[0], "01999999-9999-7999-8999-000000000956:") {
+		t.Fatalf("live delta did not converge: %+v", liveDelta)
+	}
+	archivedBeta := f.captureGolden(t, search, "01999999-9999-7999-8999-000000000943", ownerA, "rebuild-unique-beta")
+	if len(archivedBeta.Hits) != 0 {
+		t.Fatalf("archived project resurrected after rebuild: %+v", archivedBeta)
 	}
 
 	// Idempotency: same key + same scope replays the same job; same key +
@@ -459,6 +602,13 @@ func TestProjectKnowledgeRebuildGoldenCrashResumeAndDestroyRestore(t *testing.T)
 	if final.State != "canceled" {
 		t.Fatalf("cancel job state = %s, want canceled", final.State)
 	}
+	var canceledGenerationState string
+	if err := f.pool.QueryRow(ctx, `SELECT status FROM workos_index.projection_generations WHERE id = $1::uuid`, final.TargetGeneration).Scan(&canceledGenerationState); err != nil {
+		t.Fatal(err)
+	}
+	if canceledGenerationState != "canceled" {
+		t.Fatalf("canceled generation state = %s", canceledGenerationState)
+	}
 
 	// Disaster recovery: destroy the entire indexer-owned projection in this
 	// temporary database, re-run the migration, and rebuild --all from Core
@@ -471,7 +621,7 @@ func TestProjectKnowledgeRebuildGoldenCrashResumeAndDestroyRestore(t *testing.T)
 	if _, err := f.pool.Exec(ctx, `DROP SCHEMA workos_index CASCADE`); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := f.pool.Exec(ctx, `DELETE FROM workos_meta.schema_migrations WHERE name = '027_index_projection.sql'`); err != nil {
+	if _, err := f.pool.Exec(ctx, `DELETE FROM workos_meta.schema_migrations WHERE name IN ('027_index_projection.sql', '028_index_projection_invariants.sql')`); err != nil {
 		t.Fatal(err)
 	}
 	if err := migrations.Run(ctx, f.dsn); err != nil {

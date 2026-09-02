@@ -8,8 +8,7 @@ SELECT generation_id FROM workos_index.active_generation;
 -- name: WritableGenerationIDs :many
 SELECT id FROM workos_index.projection_generations
 WHERE status IN ('building', 'active')
-  AND (scope = 'all' OR (scope = 'project' AND owner_user_id = sqlc.arg(owner_user_id)::uuid
-       AND project_id = sqlc.arg(project_id)::uuid));
+ORDER BY status = 'active' DESC, created_at, id;
 
 -- name: InsertGeneration :exec
 INSERT INTO workos_index.projection_generations (id, scope, owner_user_id, project_id, status, created_at)
@@ -127,6 +126,7 @@ WITH q AS (
 ),
 scored AS (
     SELECT d.source_id, d.source_digest, d.artifact_type, d.title, d.source_created_at, d.content,
+           d.last_publication_id, d.indexed_at,
            ((CASE WHEN d.title_tsv @@ q.tsq THEN ts_rank(d.title_tsv, q.tsq) ELSE 0.0::double precision END) * 2.0
            + (CASE WHEN d.body_tsv @@ q.tsq THEN ts_rank(d.body_tsv, q.tsq) ELSE 0.0::double precision END))::double precision AS score
     FROM workos_index.documents d, q
@@ -137,14 +137,15 @@ scored AS (
       AND d.indexed_at <= sqlc.arg(snapshot_through)
       AND (d.title_tsv @@ q.tsq OR d.body_tsv @@ q.tsq)
 )
-SELECT source_id, source_digest, artifact_type, title, source_created_at, content, score
+SELECT source_id, source_digest, artifact_type, title, source_created_at, content,
+       last_publication_id, indexed_at, score
 FROM scored
 WHERE score > 0
   AND (score < sqlc.arg(cursor_score)::double precision
        OR (score = sqlc.arg(cursor_score)::double precision
            AND (source_created_at < sqlc.arg(cursor_created_at)::timestamptz
                 OR (source_created_at = sqlc.arg(cursor_created_at)::timestamptz
-                    AND source_id < sqlc.arg(cursor_source_id)::uuid))))
+                    AND source_id > sqlc.arg(cursor_source_id)::uuid))))
 ORDER BY score DESC, source_created_at DESC, source_id
 LIMIT sqlc.arg(row_limit);
 
@@ -349,14 +350,14 @@ INSERT INTO workos_index.publication_receipts (
 ON CONFLICT (publication_id, projection_generation) DO NOTHING;
 
 -- name: WalkGenerationDocuments :many
-SELECT source_id, source_digest, artifact_type, tombstoned_at
+SELECT source_id, source_digest, artifact_type, source_created_at, tombstoned_at
 FROM workos_index.documents
 WHERE projection_generation = sqlc.arg(generation_id)
 ORDER BY source_created_at, source_id
 LIMIT sqlc.arg(page_limit);
 
 -- name: WalkGenerationDocumentsAfter :many
-SELECT source_id, source_digest, artifact_type, tombstoned_at
+SELECT source_id, source_digest, artifact_type, source_created_at, tombstoned_at
 FROM workos_index.documents
 WHERE projection_generation = sqlc.arg(generation_id)
   AND (source_created_at, source_id) > (sqlc.arg(cursor_created_at)::timestamptz, sqlc.arg(cursor_source_id)::uuid)

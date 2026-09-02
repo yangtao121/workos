@@ -4,7 +4,7 @@
 // inert text only, and never injects anything into an Agent task by itself —
 // pinning a hit goes through the Desktop's existing canonical context chips.
 import { Code, ConnectError } from "@connectrpc/connect";
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { WorkOSClients } from "@workos/agent-sdk";
 import { Button } from "@workos/ui-kit";
 
@@ -16,6 +16,25 @@ const UUID_V7 = /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f
 const SHA256 = /^sha256:[0-9a-f]{64}$/;
 const REVIEW_TYPES = new Set(["document.markdown.v1", "code.unified-diff.v1"]);
 const MAX_EXCERPT_CODE_POINTS = 200;
+const PAGE_TOKEN = /^[A-Za-z0-9_-]{1,4096}$/;
+
+function isSafePlainText(value: string, maxCodePoints: number, allowEmpty: boolean): boolean {
+  let codePoints = 0;
+  for (let index = 0; index < value.length; index += 1) {
+    const code = value.charCodeAt(index);
+    if (code <= 0x1f || (code >= 0x7f && code <= 0x9f)) return false;
+    if (code >= 0xd800 && code <= 0xdbff) {
+      const next = value.charCodeAt(index + 1);
+      if (!(next >= 0xdc00 && next <= 0xdfff)) return false;
+      index += 1;
+    } else if (code >= 0xdc00 && code <= 0xdfff) {
+      return false;
+    }
+    codePoints += 1;
+    if (codePoints > maxCodePoints) return false;
+  }
+  return allowEmpty || codePoints > 0;
+}
 
 interface KnowledgeHit {
   artifactId: string;
@@ -35,15 +54,16 @@ function validateHit(
   if (!REVIEW_TYPES.has(hit.artifactType)) return null;
   if (!Number.isFinite(hit.score) || hit.score < 0 || hit.score > 3) return null;
   const title = hit.title;
-  if (title.length === 0 || title.length > 200) return null;
+  if (!isSafePlainText(title, 200, false)) return null;
   const excerpt = hit.excerpt;
-  if (Array.from(excerpt).length > MAX_EXCERPT_CODE_POINTS) return null;
+  if (!isSafePlainText(excerpt, MAX_EXCERPT_CODE_POINTS, false)) return null;
   // The typed ref and the legacy projection must agree — a drifting pair is
   // corruption, not a display problem.
   if (
     hit.sourceRef?.type !== "artifact.review.v1" ||
     hit.sourceRef.id !== artifactId ||
-    hit.sourceRef.revision !== digest
+    hit.sourceRef.revision !== digest ||
+    hit.contextRef !== `artifact.review.v1:${artifactId}:${digest}`
   ) {
     return null;
   }
@@ -105,6 +125,13 @@ export function KnowledgeCenter({
   const projectIdRef = useRef(projectId);
   projectIdRef.current = projectId;
 
+  useEffect(
+    () => () => {
+      generationRef.current += 1;
+    },
+    [],
+  );
+
   const isLive = (generation: number) =>
     generationRef.current === generation && projectIdRef.current === projectId;
 
@@ -144,8 +171,12 @@ export function KnowledgeCenter({
           }
           validated.push(safe);
         }
+        const responseToken = response.page?.nextPageToken ?? "";
+        if (responseToken !== "" && !PAGE_TOKEN.test(responseToken)) {
+          throw new Error("knowledge page token failed response validation");
+        }
         setHits((current) => (cursor === "" ? validated : [...current, ...validated]));
-        setNextPageToken(response.page?.nextPageToken ?? "");
+        setNextPageToken(responseToken);
         setCatchingUp(!(response.freshness?.caughtUp ?? true));
         setStatus(validated.length === 0 && cursor === "" ? "empty" : "results");
       } catch (reason) {
@@ -180,7 +211,15 @@ export function KnowledgeCenter({
           placeholder="Search this project's reviews"
           value={query}
           onChange={(event) => {
+            generationRef.current += 1;
             setQuery(event.target.value);
+            setHits([]);
+            setNextPageToken("");
+            setError("");
+            setNotice("");
+            setLoadingMore(false);
+            setCatchingUp(false);
+            setStatus("idle");
           }}
         />
         <Button

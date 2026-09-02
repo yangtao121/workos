@@ -73,7 +73,7 @@ type Querier interface {
 	UpsertSearchDocument(ctx context.Context, arg UpsertSearchDocumentParams) (int64, error)
 	WalkGenerationDocuments(ctx context.Context, arg WalkGenerationDocumentsParams) ([]WalkGenerationDocumentsRow, error)
 	WalkGenerationDocumentsAfter(ctx context.Context, arg WalkGenerationDocumentsAfterParams) ([]WalkGenerationDocumentsAfterRow, error)
-	WritableGenerationIDs(ctx context.Context, arg WritableGenerationIDsParams) ([]string, error)
+	WritableGenerationIDs(ctx context.Context) ([]string, error)
 }
 
 var _ Querier = (*Queries)(nil)

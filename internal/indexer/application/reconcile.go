@@ -93,6 +93,11 @@ func reconcileSource(ctx context.Context, feed ports.CoreFeedClient, projection 
 	}
 	resolved.PublicationID = generator.New()
 	resolved.OccurredAt = timeNow()
+	resolved.Operation = "review-artifact.upsert"
+	resolved.Verdict = "resolved"
+	if err := validateResolvedForApply(resolved); err != nil {
+		return err
+	}
 	return projection.ApplyResolvedSource(ctx, resolved, "applied", reconcileApplyDigest(resolved), timeNow())
 }
 

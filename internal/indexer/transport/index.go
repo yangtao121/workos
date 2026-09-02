@@ -9,6 +9,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"time"
 
 	"connectrpc.com/connect"
 
@@ -87,12 +88,19 @@ func (h *Handler) Search(ctx context.Context, req *connect.Request[indexv1.Searc
 		Page: &commonv1.PageResponse{NextPageToken: result.Page.NextPageToken},
 		Freshness: &indexv1.IndexFreshness{
 			CaughtUp:            result.Freshness.CaughtUp,
-			IndexedThrough:      result.Freshness.IndexedThrough.UTC().Format("2006-01-02T15:04:05.000000Z07:00"),
-			LastIndexedAt:       result.Freshness.LastIndexedAt.UTC().Format("2006-01-02T15:04:05.000000Z07:00"),
+			IndexedThrough:      formatSearchTime(result.Freshness.IndexedThrough),
+			LastIndexedAt:       formatSearchTime(result.Freshness.LastIndexedAt),
 			PendingPublications: result.Freshness.PendingPublications,
 		},
 	}
 	return connect.NewResponse(response), nil
+}
+
+func formatSearchTime(value time.Time) string {
+	if value.IsZero() {
+		return ""
+	}
+	return value.UTC().Format("2006-01-02T15:04:05.000000Z07:00")
 }
 
 func (h *Handler) IndexContext(ctx context.Context, req *connect.Request[indexv1.IndexContextRequest]) (*connect.Response[indexv1.IndexContextResponse], error) {

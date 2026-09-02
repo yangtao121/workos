@@ -52,6 +52,7 @@ type Reliability struct {
 // unless the operator configures it; no admin surface exists without it.
 type Indexer struct {
 	AdminSocketPath string `yaml:"admin_socket_path"`
+	PageTokenKey    string `yaml:"page_token_key"`
 }
 
 type Runtime struct {
@@ -324,6 +325,7 @@ func Load() (Config, error) {
 	setString(&cfg.Runtime.PodmanBin, "WORKOS_RUNTIME_PODMAN_BIN")
 	setString(&cfg.Runtime.IndexerURL, "WORKOS_RUNTIME_INDEXER_URL")
 	setString(&cfg.Indexer.AdminSocketPath, "WORKOS_INDEX_ADMIN_SOCKET")
+	setString(&cfg.Indexer.PageTokenKey, "WORKOS_INDEX_PAGE_TOKEN_KEY")
 	setString(&cfg.Runtime.InstanceName, "WORKOS_RUNTIME_INSTANCE_NAME")
 	setString(&cfg.Runtime.DeviceID, "WORKOS_RUNTIME_DEVICE_ID")
 	for _, override := range []struct {

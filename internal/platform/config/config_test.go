@@ -45,6 +45,19 @@ func TestCatalogAndBindingDefaultsAreSafeAndSecretFree(t *testing.T) {
 	}
 }
 
+func TestLoadIndexerPageTokenKey(t *testing.T) {
+	t.Setenv("WORKOS_CONFIG_FILE", "")
+	_ = os.Unsetenv("WORKOS_CONFIG_FILE")
+	t.Setenv("WORKOS_INDEX_PAGE_TOKEN_KEY", "test-indexer-page-token-signing-key")
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Indexer.PageTokenKey != "test-indexer-page-token-signing-key" {
+		t.Fatal("indexer page-token key environment override was not loaded")
+	}
+}
+
 func TestLoadCatalogAndBindingEnvironment(t *testing.T) {
 	t.Setenv("WORKOS_CONFIG_FILE", "")
 	_ = os.Unsetenv("WORKOS_CONFIG_FILE")

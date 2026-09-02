@@ -67,6 +67,15 @@ async function capture(page: Page, name: string) {
   await page.screenshot({ path: `${captureDir}/${name}`, fullPage: false });
 }
 
+async function stabilizeEvidenceFrame(page: Page) {
+  await page.addStyleTag({
+    content: `
+      .mission-control .project-card:not(.active):not(.new-project) { display: none !important; }
+      .task-snapshot dd:last-of-type { visibility: hidden !important; }
+    `,
+  });
+}
+
 async function registerKnowledgeApp(page: Page, stamp: string, appId: string) {
   const html = `<!doctype html><title>Knowledge App</title><div id="root">static</div><script src="app.js"></script>`;
   const artifactResponse = await page.request.post(
@@ -127,6 +136,7 @@ test("captures knowledge center and app surface evidence", async ({ page }) => {
 
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto("/");
+  await stabilizeEvidenceFrame(page);
   await page.getByLabel("Project name").fill("Knowledge Lab");
   await page.getByRole("button", { name: "Create space" }).click();
   await expect(page.locator(".project-card.active")).toContainText("Knowledge Lab");
@@ -170,8 +180,9 @@ test("captures knowledge center and app surface evidence", async ({ page }) => {
   // Expanded: hit pinned as Agent context chip.
   await page.setViewportSize({ width: 1440, height: 900 });
   await expect(page.getByTestId("context-chip")).toHaveCount(1);
-  await capture(page, "agent-center--context-chip--1440x900.png");
   await page.getByRole("button", { name: "Close Knowledge Center" }).click();
+  await expect(page.getByTestId("context-chip")).toBeVisible();
+  await capture(page, "agent-center--context-chip--1440x900.png");
 
   // Expanded: granted opaque web-bundle app with knowledge results.
   await registerKnowledgeApp(page, stamp, appId);
@@ -205,6 +216,7 @@ test("captures knowledge center and app surface evidence", async ({ page }) => {
   await expect(page.frameLocator(".app-surface-frame").locator("#results li").first()).toBeVisible({
     timeout: 30_000,
   });
+  await page.getByRole("button", { name: "Close App Library" }).click();
   await capture(page, "app-knowledge-search--results--1440x900.png");
   await page.getByRole("button", { name: "Close App", exact: true }).click();
 });

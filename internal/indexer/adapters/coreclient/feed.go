@@ -92,6 +92,7 @@ func (f *FeedClient) Resolve(ctx context.Context, workerID, publicationID, lease
 		Operation:     operationString(msg.GetPublication().GetOperation()),
 		OwnerUserID:   msg.GetPublication().GetOwnerUserId(),
 		ProjectID:     msg.GetPublication().GetProjectId(),
+		OccurredAt:    msg.GetPublication().GetOccurredAt().AsTime(),
 	}
 	switch msg.GetVerdict() {
 	case indexv1.ResolveIndexPublicationResponse_VERDICT_RESOLVED:
@@ -104,7 +105,6 @@ func (f *FeedClient) Resolve(ctx context.Context, workerID, publicationID, lease
 		resolved.Title = source.GetTitle()
 		resolved.Content = source.GetContent()
 		resolved.CreatedAt = source.GetCreatedAt().AsTime()
-		resolved.OccurredAt = msg.GetPublication().GetOccurredAt().AsTime()
 	case indexv1.ResolveIndexPublicationResponse_VERDICT_TOMBSTONED:
 		resolved.Verdict = "tombstoned"
 	case indexv1.ResolveIndexPublicationResponse_VERDICT_CORRUPT:
@@ -214,6 +214,7 @@ func (f *FeedClient) ResolveSourceContent(ctx context.Context, ownerUserID, proj
 	msg := response.Msg
 	return ports.ResolvedSource{
 		Verdict:      "resolved",
+		Operation:    "review-artifact.upsert",
 		OwnerUserID:  ownerUserID,
 		ProjectID:    projectID,
 		ArtifactID:   artifactID,

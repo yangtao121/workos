@@ -7,6 +7,8 @@ package application
 import (
 	"context"
 	"time"
+
+	"github.com/yangtao121/workos/internal/indexer/domain"
 )
 
 // AdminService serves the local IndexAdminService contract.
@@ -19,6 +21,7 @@ type AdminService struct {
 // ActiveGenerationReader reports the generation every search reads.
 type ActiveGenerationReader interface {
 	ActiveGenerationID(ctx context.Context) (string, error)
+	ActiveGenerationStatus(ctx context.Context) (domain.GenerationStatus, error)
 }
 
 func NewAdminService(rebuild *RebuildExecutor, fresh *IngestionService, proj ActiveGenerationReader) (*AdminService, error) {
@@ -30,7 +33,7 @@ func NewAdminService(rebuild *RebuildExecutor, fresh *IngestionService, proj Act
 
 // IndexStatus is the bounded status projection.
 type IndexStatus struct {
-	ActiveGeneration string
+	ActiveGeneration domain.GenerationStatus
 	ActiveRebuild    *RebuildJobView
 	CatchingUp       bool
 	Pending          int64
@@ -40,7 +43,7 @@ type IndexStatus struct {
 
 // Status composes freshness facts with any live rebuild.
 func (s *AdminService) Status(ctx context.Context) (IndexStatus, error) {
-	generation, err := s.proj.ActiveGenerationID(ctx)
+	generation, err := s.proj.ActiveGenerationStatus(ctx)
 	if err != nil {
 		return IndexStatus{}, err
 	}
@@ -73,7 +76,7 @@ func (s *AdminService) StartRebuild(ctx context.Context, request RebuildRequest)
 
 // GetRebuildJob reads one job view.
 func (s *AdminService) GetRebuildJob(ctx context.Context, jobID string) (RebuildJobView, error) {
-	return s.rebuild.store.GetRebuildJob(ctx, jobID)
+	return s.rebuild.GetJob(ctx, jobID)
 }
 
 // CancelRebuildJob requests cancellation at the next safe checkpoint.

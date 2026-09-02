@@ -830,6 +830,7 @@ WITH q AS (
 ),
 scored AS (
     SELECT d.source_id, d.source_digest, d.artifact_type, d.title, d.source_created_at, d.content,
+           d.last_publication_id, d.indexed_at,
            ((CASE WHEN d.title_tsv @@ q.tsq THEN ts_rank(d.title_tsv, q.tsq) ELSE 0.0::double precision END) * 2.0
            + (CASE WHEN d.body_tsv @@ q.tsq THEN ts_rank(d.body_tsv, q.tsq) ELSE 0.0::double precision END))::double precision AS score
     FROM workos_index.documents d, q
@@ -840,14 +841,15 @@ scored AS (
       AND d.indexed_at <= $9
       AND (d.title_tsv @@ q.tsq OR d.body_tsv @@ q.tsq)
 )
-SELECT source_id, source_digest, artifact_type, title, source_created_at, content, score
+SELECT source_id, source_digest, artifact_type, title, source_created_at, content,
+       last_publication_id, indexed_at, score
 FROM scored
 WHERE score > 0
   AND (score < $1::double precision
        OR (score = $1::double precision
            AND (source_created_at < $2::timestamptz
                 OR (source_created_at = $2::timestamptz
-                    AND source_id < $3::uuid))))
+                    AND source_id > $3::uuid))))
 ORDER BY score DESC, source_created_at DESC, source_id
 LIMIT $4
 `
@@ -865,13 +867,15 @@ type SearchProjectDocumentsParams struct {
 }
 
 type SearchProjectDocumentsRow struct {
-	SourceID        string
-	SourceDigest    string
-	ArtifactType    string
-	Title           string
-	SourceCreatedAt time.Time
-	Content         string
-	Score           float64
+	SourceID          string
+	SourceDigest      string
+	ArtifactType      string
+	Title             string
+	SourceCreatedAt   time.Time
+	Content           string
+	LastPublicationID string
+	IndexedAt         time.Time
+	Score             float64
 }
 
 // Deterministic lexical page (ADR-0013 §5): rank over the built-in 'simple'
@@ -906,6 +910,8 @@ func (q *Queries) SearchProjectDocuments(ctx context.Context, arg SearchProjectD
 			&i.Title,
 			&i.SourceCreatedAt,
 			&i.Content,
+			&i.LastPublicationID,
+			&i.IndexedAt,
 			&i.Score,
 		); err != nil {
 			return nil, err
@@ -1258,7 +1264,7 @@ func (q *Queries) UpsertSearchDocument(ctx context.Context, arg UpsertSearchDocu
 }
 
 const walkGenerationDocuments = `-- name: WalkGenerationDocuments :many
-SELECT source_id, source_digest, artifact_type, tombstoned_at
+SELECT source_id, source_digest, artifact_type, source_created_at, tombstoned_at
 FROM workos_index.documents
 WHERE projection_generation = $1
 ORDER BY source_created_at, source_id
@@ -1271,10 +1277,11 @@ type WalkGenerationDocumentsParams struct {
 }
 
 type WalkGenerationDocumentsRow struct {
-	SourceID     string
-	SourceDigest string
-	ArtifactType string
-	TombstonedAt *time.Time
+	SourceID        string
+	SourceDigest    string
+	ArtifactType    string
+	SourceCreatedAt time.Time
+	TombstonedAt    *time.Time
 }
 
 func (q *Queries) WalkGenerationDocuments(ctx context.Context, arg WalkGenerationDocumentsParams) ([]WalkGenerationDocumentsRow, error) {
@@ -1290,6 +1297,7 @@ func (q *Queries) WalkGenerationDocuments(ctx context.Context, arg WalkGeneratio
 			&i.SourceID,
 			&i.SourceDigest,
 			&i.ArtifactType,
+			&i.SourceCreatedAt,
 			&i.TombstonedAt,
 		); err != nil {
 			return nil, err
@@ -1303,7 +1311,7 @@ func (q *Queries) WalkGenerationDocuments(ctx context.Context, arg WalkGeneratio
 }
 
 const walkGenerationDocumentsAfter = `-- name: WalkGenerationDocumentsAfter :many
-SELECT source_id, source_digest, artifact_type, tombstoned_at
+SELECT source_id, source_digest, artifact_type, source_created_at, tombstoned_at
 FROM workos_index.documents
 WHERE projection_generation = $1
   AND (source_created_at, source_id) > ($2::timestamptz, $3::uuid)
@@ -1319,10 +1327,11 @@ type WalkGenerationDocumentsAfterParams struct {
 }
 
 type WalkGenerationDocumentsAfterRow struct {
-	SourceID     string
-	SourceDigest string
-	ArtifactType string
-	TombstonedAt *time.Time
+	SourceID        string
+	SourceDigest    string
+	ArtifactType    string
+	SourceCreatedAt time.Time
+	TombstonedAt    *time.Time
 }
 
 func (q *Queries) WalkGenerationDocumentsAfter(ctx context.Context, arg WalkGenerationDocumentsAfterParams) ([]WalkGenerationDocumentsAfterRow, error) {
@@ -1343,6 +1352,7 @@ func (q *Queries) WalkGenerationDocumentsAfter(ctx context.Context, arg WalkGene
 			&i.SourceID,
 			&i.SourceDigest,
 			&i.ArtifactType,
+			&i.SourceCreatedAt,
 			&i.TombstonedAt,
 		); err != nil {
 			return nil, err
@@ -1358,17 +1368,11 @@ func (q *Queries) WalkGenerationDocumentsAfter(ctx context.Context, arg WalkGene
 const writableGenerationIDs = `-- name: WritableGenerationIDs :many
 SELECT id FROM workos_index.projection_generations
 WHERE status IN ('building', 'active')
-  AND (scope = 'all' OR (scope = 'project' AND owner_user_id = $1::uuid
-       AND project_id = $2::uuid))
+ORDER BY status = 'active' DESC, created_at, id
 `
 
-type WritableGenerationIDsParams struct {
-	OwnerUserID string
-	ProjectID   string
-}
-
-func (q *Queries) WritableGenerationIDs(ctx context.Context, arg WritableGenerationIDsParams) ([]string, error) {
-	rows, err := q.db.Query(ctx, writableGenerationIDs, arg.OwnerUserID, arg.ProjectID)
+func (q *Queries) WritableGenerationIDs(ctx context.Context) ([]string, error) {
+	rows, err := q.db.Query(ctx, writableGenerationIDs)
 	if err != nil {
 		return nil, err
 	}

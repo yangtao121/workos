@@ -16,16 +16,17 @@ import (
 type SearchService struct {
 	projection ports.ProjectionRepository
 	freshness  *IngestionService
+	tokens     domain.PageTokenCodec
 }
 
 // NewSearchService composes the search use case. freshness may be nil in
 // freshness-free contexts (tests, embedded rebuild validation); the served
 // freshness projection is then the zero value instead of a fabricated READY.
-func NewSearchService(projection ports.ProjectionRepository, freshness *IngestionService) (*SearchService, error) {
-	if projection == nil {
-		return nil, errServiceWiring("search service requires the projection")
+func NewSearchService(projection ports.ProjectionRepository, freshness *IngestionService, tokens domain.PageTokenCodec) (*SearchService, error) {
+	if projection == nil || !tokens.Valid() {
+		return nil, errServiceWiring("search service requires the projection and page-token signer")
 	}
-	return &SearchService{projection: projection, freshness: freshness}, nil
+	return &SearchService{projection: projection, freshness: freshness, tokens: tokens}, nil
 }
 
 type serviceWiringError string
@@ -57,6 +58,9 @@ func (s *SearchService) Search(ctx context.Context, input SearchInput) (SearchRe
 	if !domain.ValidUUID(input.OwnerUserID) || !domain.ValidUUID(input.ProjectID) {
 		return SearchResult{}, domain.ErrInvalid
 	}
+	if input.PageSize < 0 {
+		return SearchResult{}, domain.ErrInvalid
+	}
 	canonicalQuery, err := domain.CanonicalQuery(input.RawQuery)
 	if err != nil {
 		return SearchResult{}, err
@@ -69,7 +73,7 @@ func (s *SearchService) Search(ctx context.Context, input SearchInput) (SearchRe
 		PageSize:       domain.ClampSearchPageSize(input.PageSize),
 	}
 	if input.PageToken != "" {
-		token, err := domain.DecodePageToken(input.PageToken)
+		token, err := s.tokens.Decode(input.PageToken)
 		if err != nil {
 			return SearchResult{}, err
 		}
@@ -86,6 +90,13 @@ func (s *SearchService) Search(ctx context.Context, input SearchInput) (SearchRe
 	if err != nil {
 		return SearchResult{}, err
 	}
+	if page.Continuation != nil {
+		page.NextPageToken, err = s.tokens.Encode(*page.Continuation)
+		if err != nil {
+			return SearchResult{}, err
+		}
+		page.Continuation = nil
+	}
 	if s.freshness == nil {
 		return SearchResult{Page: page}, nil
 	}
@@ -100,5 +111,9 @@ func (s *SearchService) Search(ctx context.Context, input SearchInput) (SearchRe
 // and embedded validation contexts; production wires NewSearchService with a
 // real ingestion service.
 func NewSearchServiceForTest(projection ports.ProjectionRepository) *SearchService {
-	return &SearchService{projection: projection}
+	codec, err := domain.NewPageTokenCodec([]byte("workos-indexer-test-page-token-key-v1"))
+	if err != nil {
+		panic(err)
+	}
+	return &SearchService{projection: projection, tokens: codec}
 }

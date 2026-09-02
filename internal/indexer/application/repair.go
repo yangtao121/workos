@@ -178,6 +178,7 @@ func (s *RepairService) ExecuteOne(ctx context.Context) (bool, error) {
 		}
 		applySource := ports.ResolvedSource{
 			Verdict:       "resolved",
+			Operation:     "review-artifact.upsert",
 			OwnerUserID:   resolved.OwnerUserID,
 			ProjectID:     resolved.ProjectID,
 			ArtifactID:    resolved.ArtifactID,
@@ -189,6 +190,11 @@ func (s *RepairService) ExecuteOne(ctx context.Context) (bool, error) {
 			CreatedAt:     resolved.CreatedAt,
 			PublicationID: s.ids.New(),
 			OccurredAt:    domain.CanonicalUTCTime(s.now()),
+		}
+		if err := validateResolvedForApply(applySource); err != nil {
+			failed++
+			_ = s.store.RecordSourceOutcome(ctx, job.ID, source.ArtifactID, "failed", "source-corrupt", domain.CanonicalUTCTime(s.now()))
+			continue
 		}
 		if err := s.proj.ApplyResolvedSource(ctx, applySource, domain.OutcomeApplied, jobRequestDigest(job.ID, source), domain.CanonicalUTCTime(s.now())); err != nil {
 			failed++

@@ -17,8 +17,8 @@ import (
 // to every request before any handler observes it.
 const MaxAdminSocketBodyBytes = 16 * 1024
 
-// AdminSocket is the Core-owned indexer admin edge: one Unix domain
-// socket serving ONLY the IndexAdminService, never on the Core TCP
+// AdminSocket is the Indexer-owned admin edge: one Unix domain socket
+// serving ONLY the IndexAdminService, never on the Indexer TCP
 // listener, never proxied by the Gateway, and never reachable by
 // harness-host. The lifecycle semantics mirror the Gateway's operator admin
 // socket: an existing socket is removed only after it is proven stale, and
@@ -46,7 +46,7 @@ func ListenAdminSocket(path string, adminHandler http.Handler, logger *slog.Logg
 		if conn, dialErr := net.DialTimeout("unix", path, time.Second); dialErr == nil {
 			_ = conn.Close()
 			return nil, fmt.Errorf("indexer admin socket %s is served by another process", path)
-		} else if !errors.Is(dialErr, syscall.ECONNREFUSED) {
+		} else if !provesStaleIndexerAdminSocket(dialErr) {
 			// A timeout, permission denial, or any other ambiguous result
 			// does not prove staleness and must preserve the endpoint.
 			return nil, fmt.Errorf("indexer admin socket %s could not be proven stale: %w", path, dialErr)
@@ -135,12 +135,16 @@ func validateSocketParent(path string) error {
 		return errors.New("indexer admin socket parent must be a real directory, not a symlink")
 	}
 	if stat, ok := info.Sys().(*syscall.Stat_t); !ok || stat.Uid != uint32(os.Geteuid()) {
-		return errors.New("indexer admin socket parent must be owned by the core process user")
+		return errors.New("indexer admin socket parent must be owned by the indexer process user")
 	}
 	if info.Mode().Perm()&0o022 != 0 {
 		return errors.New("indexer admin socket parent must not be writable by group or others")
 	}
 	return nil
+}
+
+func provesStaleIndexerAdminSocket(err error) bool {
+	return errors.Is(err, syscall.ECONNREFUSED)
 }
 
 func closeOwnedSocket(listener net.Listener, path string, bound os.FileInfo) {
@@ -152,7 +156,7 @@ func closeOwnedSocket(listener net.Listener, path string, bound os.FileInfo) {
 }
 
 // Serve runs the admin listener until Close. A runtime failure terminates
-// the whole Core: an operator edge that dies silently is worse than no edge.
+// the whole Indexer: an operator edge that dies silently is worse than no edge.
 func (a *AdminSocket) Serve() error {
 	err := a.server.Serve(a.listener)
 	if errors.Is(err, http.ErrServerClosed) {

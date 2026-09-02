@@ -66,12 +66,52 @@ func (r *Repository) ActiveGenerationID(ctx context.Context) (string, error) {
 	return id, nil
 }
 
+// ActiveGenerationStatus returns safe, revalidated operational facts for
+// the single generation all searches currently read.
+func (r *Repository) ActiveGenerationStatus(ctx context.Context) (domain.GenerationStatus, error) {
+	id, err := r.ActiveGenerationID(ctx)
+	if err != nil {
+		return domain.GenerationStatus{}, err
+	}
+	row, err := r.queries.GetGeneration(ctx, id)
+	if err != nil {
+		return domain.GenerationStatus{}, storeError("read active generation status", err)
+	}
+	counts, err := r.queries.CountGenerationDocs(ctx, id)
+	if err != nil {
+		return domain.GenerationStatus{}, storeError("count active generation status", err)
+	}
+	status := domain.GenerationStatus{
+		ID: id, Scope: row.Scope, Status: row.Status,
+		DocumentCount: counts.Documents, TombstoneCount: counts.Tombstoned,
+		CreatedAt: row.CreatedAt, PromotedAt: timeOrZero(row.PromotedAt),
+	}
+	if status.Status != "active" {
+		return domain.GenerationStatus{}, domain.ErrCorrupt
+	}
+	if status.Status == "active" && status.PromotedAt.IsZero() {
+		status.PromotedAt = status.CreatedAt
+	}
+	if err := domain.ValidGenerationStatus(status); err != nil {
+		return domain.GenerationStatus{}, err
+	}
+	return status, nil
+}
+
+func timeOrZero(value *time.Time) time.Time {
+	if value == nil {
+		return time.Time{}
+	}
+	return *value
+}
+
 // WritableGenerationIDs returns the active generation plus every building
 // generation that mirrors live effects for the given scope.
 func (r *Repository) WritableGenerationIDs(ctx context.Context, ownerUserID, projectID string) ([]string, error) {
-	rows, err := r.queries.WritableGenerationIDs(ctx, indexerdb.WritableGenerationIDsParams{
-		OwnerUserID: ownerUserID, ProjectID: projectID,
-	})
+	if !domain.ValidUUID(ownerUserID) || !domain.ValidUUID(projectID) {
+		return nil, domain.ErrInvalid
+	}
+	rows, err := r.queries.WritableGenerationIDs(ctx)
 	if err != nil {
 		return nil, storeError("read writable generations", err)
 	}
@@ -86,26 +126,44 @@ func (r *Repository) WritableGenerationIDs(ctx context.Context, ownerUserID, pro
 }
 
 func (r *Repository) EnsureBootstrapGeneration(ctx context.Context, now time.Time) (string, error) {
-	id, err := r.ActiveGenerationID(ctx)
-	if err == nil {
-		return id, nil
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return "", storeError("begin bootstrap generation", err)
 	}
-	if !errors.Is(err, domain.ErrNotFound) {
-		return "", err
+	defer tx.Rollback(ctx) //nolint:errcheck
+	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(1776987973)`); err != nil {
+		return "", storeError("lock bootstrap generation", err)
+	}
+	var existing string
+	err = tx.QueryRow(ctx, `SELECT generation_id::text FROM workos_index.active_generation`).Scan(&existing)
+	if err == nil {
+		if !domain.ValidUUID(existing) {
+			return "", domain.ErrCorrupt
+		}
+		if err := tx.Commit(ctx); err != nil {
+			return "", storeError("commit bootstrap replay", err)
+		}
+		return existing, nil
+	}
+	if !errors.Is(err, pgx.ErrNoRows) {
+		return "", storeError("read bootstrap generation", err)
 	}
 	generation := r.ids.New()
-	if err := r.queries.InsertGeneration(ctx, indexerdb.InsertGenerationParams{
+	queries := r.queries.WithTx(tx)
+	if err := queries.InsertGeneration(ctx, indexerdb.InsertGenerationParams{
 		ID: generation, Scope: "all", Status: "active", CreatedAt: canonical(now),
 	}); err != nil {
 		return "", storeError("insert bootstrap generation", err)
 	}
-	rows, err := r.queries.ActivateGenerationIfEmpty(ctx, generation)
+	rows, err := queries.ActivateGenerationIfEmpty(ctx, generation)
 	if err != nil {
 		return "", storeError("activate bootstrap generation", err)
 	}
-	if rows == 0 {
-		// A concurrent boot won the activation: read its generation.
-		return r.ActiveGenerationID(ctx)
+	if rows != 1 {
+		return "", domain.ErrCorrupt
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return "", storeError("commit bootstrap generation", err)
 	}
 	return generation, nil
 }
@@ -117,6 +175,35 @@ func (r *Repository) EnsureBootstrapGeneration(ctx context.Context, now time.Tim
 // replays as a no-op, and the same publication with a drifted digest is
 // corruption instead of an overwrite.
 func (r *Repository) ApplyResolvedSource(ctx context.Context, source ports.ResolvedSource, outcome, requestDigest string, now time.Time) error {
+	publicationUUID, err := uuid.Parse(source.PublicationID)
+	if err != nil || publicationUUID.Version() != 7 || !domain.ValidUUID(source.PublicationID) ||
+		!domain.ValidUUID(source.OwnerUserID) || !domain.ValidUUID(source.ProjectID) ||
+		!domain.ValidDigest(requestDigest) || source.OccurredAt.IsZero() {
+		return domain.ErrInvalid
+	}
+	switch outcome {
+	case domain.OutcomeApplied:
+		document := domain.Document{
+			OwnerUserID: source.OwnerUserID, ProjectID: source.ProjectID,
+			SourceID: source.ArtifactID, SourceDigest: source.Digest,
+			ArtifactType: source.ArtifactType, Title: source.Title,
+			Content: string(source.Content), SourceCreatedAt: source.CreatedAt,
+			LastPublication: source.PublicationID, IndexedAt: now,
+		}
+		if source.Operation != "review-artifact.upsert" || domain.ValidStoredDocument(document) != nil {
+			return domain.ErrInvalid
+		}
+	case domain.OutcomeTombstoned:
+		if source.Operation != tombstoneOperation && source.Operation != "review-artifact.upsert" {
+			return domain.ErrInvalid
+		}
+	case domain.OutcomeUnsupported, domain.OutcomeCorrupt:
+		if source.Operation != "review-artifact.upsert" {
+			return domain.ErrInvalid
+		}
+	default:
+		return domain.ErrInvalid
+	}
 	tx, err := r.pool.Begin(ctx)
 	if err != nil {
 		return storeError("begin apply resolved source", err)
@@ -124,11 +211,12 @@ func (r *Repository) ApplyResolvedSource(ctx context.Context, source ports.Resol
 	defer tx.Rollback(ctx) //nolint:errcheck
 	queries := r.queries.WithTx(tx)
 
-	writable, err := queries.WritableGenerationIDs(ctx, indexerdb.WritableGenerationIDsParams{
-		OwnerUserID: source.OwnerUserID, ProjectID: source.ProjectID,
-	})
+	writable, err := queries.WritableGenerationIDs(ctx)
 	if err != nil {
 		return storeError("read writable generations", err)
+	}
+	if len(writable) == 0 {
+		return domain.ErrCorrupt
 	}
 
 	// Tombstone arbitration: once a project tombstone is recorded, a late or
@@ -143,7 +231,7 @@ func (r *Repository) ApplyResolvedSource(ctx context.Context, source ports.Resol
 		}
 		tombstoned = true
 	} else {
-		row, rowErr := queries.GetProjectTombstone(ctx, indexerdb.GetProjectTombstoneParams{
+		_, rowErr := queries.GetProjectTombstone(ctx, indexerdb.GetProjectTombstoneParams{
 			OwnerUserID: source.OwnerUserID, ProjectID: source.ProjectID,
 		})
 		switch {
@@ -151,10 +239,9 @@ func (r *Repository) ApplyResolvedSource(ctx context.Context, source ports.Resol
 		case rowErr != nil:
 			return storeError("read project tombstone", rowErr)
 		default:
-			// Tombstone wins over every earlier upsert.
-			if !row.ArchivedAt.Before(canonical(source.OccurredAt)) {
-				tombstoned = true
-			}
+			// Project archival is terminal. Once its durable tombstone exists,
+			// no replayed or out-of-order upsert may resurrect the scope.
+			tombstoned = true
 		}
 	}
 
@@ -227,7 +314,7 @@ func (r *Repository) ApplyResolvedSource(ctx context.Context, source ports.Resol
 	}
 	if err := queries.UpsertConsumerCursor(ctx, indexerdb.UpsertConsumerCursorParams{
 		WorkerID:            cursorWorkerID,
-		CursorPublicationID: pgtype.UUID{Bytes: mustUUIDBytes(source.PublicationID), Valid: true},
+		CursorPublicationID: pgtype.UUID{Bytes: publicationUUID, Valid: true},
 		CursorOccurredAt:    timePtr(canonical(source.OccurredAt)),
 		UpdatedAt:           canonical(now),
 	}); err != nil {
@@ -294,7 +381,14 @@ func (r *Repository) Search(ctx context.Context, query domain.SearchQuery) (doma
 		if domain.ValidStoredScore(float64(row.Score)) != nil {
 			return domain.SearchPage{}, domain.ErrCorrupt
 		}
-		if !domain.ValidDigest(row.SourceDigest) || !domain.ValidUUID(row.SourceID) {
+		document := domain.Document{
+			OwnerUserID: query.OwnerUserID, ProjectID: query.ProjectID,
+			SourceID: row.SourceID, SourceDigest: row.SourceDigest,
+			ArtifactType: row.ArtifactType, Title: row.Title, Content: row.Content,
+			SourceCreatedAt: row.SourceCreatedAt, LastPublication: row.LastPublicationID,
+			IndexedAt: row.IndexedAt,
+		}
+		if domain.ValidStoredDocument(document) != nil {
 			return domain.SearchPage{}, domain.ErrCorrupt
 		}
 		page.Hits = append(page.Hits, domain.SearchHit{
@@ -310,16 +404,12 @@ func (r *Repository) Search(ctx context.Context, query domain.SearchQuery) (doma
 	}
 	if more {
 		last := rows[len(rows)-1]
-		token, err := domain.EncodePageToken(domain.PageToken{
+		page.Continuation = &domain.PageToken{
 			OwnerUserID: query.OwnerUserID, ProjectID: query.ProjectID,
 			QueryDigest: query.QueryDigest, RankingVersion: domain.RankingVersion,
 			GenerationID: generation, SnapshotThrough: snapshot,
 			LastScore: float64(last.Score), LastSourceCreated: last.SourceCreatedAt, LastSourceID: last.SourceID,
-		})
-		if err != nil {
-			return domain.SearchPage{}, err
 		}
-		page.NextPageToken = token
 	}
 	return page, nil
 }
@@ -328,6 +418,9 @@ func (r *Repository) Search(ctx context.Context, query domain.SearchQuery) (doma
 // consumed publication watermark (cursor), the newest indexed document, and
 // the Core-side pending count.
 func (r *Repository) Freshness(ctx context.Context, pending int64) (domain.Freshness, error) {
+	if pending < 0 {
+		return domain.Freshness{}, domain.ErrCorrupt
+	}
 	lastIndexed, err := r.queries.SearchFreshness(ctx)
 	if err != nil {
 		return domain.Freshness{}, storeError("read freshness", err)
@@ -354,16 +447,11 @@ func queryTerms(canonical string) []string {
 
 func timePtr(value time.Time) *time.Time { return &value }
 
-func mustUUIDBytes(value string) [16]byte {
-	parsed, err := uuid.Parse(value)
-	if err != nil {
-		panic("indexer adapter received a non-UUID id: " + err.Error())
-	}
-	return [16]byte(parsed)
-}
-
 // DocumentStatus reports the active-generation state of one source.
 func (r *Repository) DocumentStatus(ctx context.Context, ownerUserID, projectID, sourceID string) (ports.DocumentStatus, error) {
+	if !domain.ValidUUID(ownerUserID) || !domain.ValidUUID(projectID) || !domain.ValidUUID(sourceID) {
+		return ports.DocumentStatus{}, domain.ErrInvalid
+	}
 	row, err := r.queries.GetDocumentStatus(ctx, indexerdb.GetDocumentStatusParams{
 		OwnerUserID: ownerUserID, ProjectID: projectID, SourceID: sourceID,
 	})
@@ -372,6 +460,9 @@ func (r *Repository) DocumentStatus(ctx context.Context, ownerUserID, projectID,
 	}
 	if err != nil {
 		return ports.DocumentStatus{}, storeError("read document status", err)
+	}
+	if !domain.ValidDigest(row.SourceDigest) {
+		return ports.DocumentStatus{}, domain.ErrCorrupt
 	}
 	return ports.DocumentStatus{Known: true, Digest: row.SourceDigest, Tombstoned: row.TombstonedAt != nil}, nil
 }

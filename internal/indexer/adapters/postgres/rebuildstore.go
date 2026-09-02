@@ -10,6 +10,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 
@@ -24,6 +25,16 @@ var (
 	errCorruptProjection = domain.ErrCorrupt
 )
 
+func isUniqueViolation(err error) bool {
+	var pgErr *pgconn.PgError
+	return errors.As(err, &pgErr) && pgErr.Code == "23505"
+}
+
+func isConstraint(err error, name string) bool {
+	var pgErr *pgconn.PgError
+	return errors.As(err, &pgErr) && pgErr.ConstraintName == name
+}
+
 type RebuildStore struct {
 	pool    *pgxpool.Pool
 	queries *indexerdb.Queries
@@ -37,33 +48,82 @@ func NewRebuildStore(pool *pgxpool.Pool, generator ids.Generator) (*RebuildStore
 	return &RebuildStore{pool: pool, queries: indexerdb.New(pool), ids: generator}, nil
 }
 
-// AdjudicateRebuildRequest decides the idempotency key in the database and
-// creates the job + generation through the caller's create function when the
-// key is fresh.
-func (s *RebuildStore) AdjudicateRebuildRequest(ctx context.Context, key, digest string, create func(ctx context.Context) (indexerapp.RebuildJobView, error)) (indexerapp.RebuildJobView, bool, error) {
-	stored, err := s.queries.GetRebuildJobRequest(ctx, key)
+// AdjudicateRebuildRequest serializes one idempotency key and commits the
+// generation, job, and request mapping together. There is no state in which
+// a failed first response consumes the key or leaves an orphan generation.
+func (s *RebuildStore) AdjudicateRebuildRequest(ctx context.Context, key, digest string, job indexerapp.RebuildJobView) (indexerapp.RebuildJobView, bool, error) {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return indexerapp.RebuildJobView{}, false, storeError("begin rebuild request", err)
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck
+	queries := s.queries.WithTx(tx)
+	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1, 1776987972))`, key); err != nil {
+		return indexerapp.RebuildJobView{}, false, storeError("lock rebuild request", err)
+	}
+	stored, err := queries.GetRebuildJobRequest(ctx, key)
 	switch {
 	case errors.Is(err, pgx.ErrNoRows):
 	case err != nil:
 		return indexerapp.RebuildJobView{}, false, storeError("read rebuild request", err)
 	default:
-		job, err := s.GetRebuildJob(ctx, stored.JobID)
+		row, err := queries.GetRebuildJob(ctx, stored.JobID)
 		if err != nil {
-			return indexerapp.RebuildJobView{}, false, err
+			return indexerapp.RebuildJobView{}, false, storeError("read rebuild job", err)
 		}
 		if stored.RequestDigest != digest {
 			return indexerapp.RebuildJobView{}, false, indexerapp.ErrRebuildConflict
 		}
-		return job, false, nil
+		replayed := rebuildJobFromRow(row)
+		if err := indexerapp.ValidateStoredRebuildJob(replayed); err != nil {
+			return indexerapp.RebuildJobView{}, false, err
+		}
+		if err := tx.Commit(ctx); err != nil {
+			return indexerapp.RebuildJobView{}, false, storeError("commit rebuild replay", err)
+		}
+		return replayed, false, nil
 	}
-	job, err := create(ctx)
-	if err != nil {
-		return indexerapp.RebuildJobView{}, false, err
+	var ownerID, projectID pgtype.UUID
+	if job.OwnerUserID != "" {
+		parsed, err := uuid.Parse(job.OwnerUserID)
+		if err != nil {
+			return indexerapp.RebuildJobView{}, false, domain.ErrInvalid
+		}
+		ownerID = pgtype.UUID{Bytes: parsed, Valid: true}
 	}
-	if err := s.queries.InsertRebuildJobRequest(ctx, indexerdb.InsertRebuildJobRequestParams{
+	if job.ProjectID != "" {
+		parsed, err := uuid.Parse(job.ProjectID)
+		if err != nil {
+			return indexerapp.RebuildJobView{}, false, domain.ErrInvalid
+		}
+		projectID = pgtype.UUID{Bytes: parsed, Valid: true}
+	}
+	if err := queries.InsertGenerationFull(ctx, indexerdb.InsertGenerationFullParams{
+		ID: job.TargetGeneration, Scope: job.Scope, OwnerUserID: ownerID,
+		ProjectID: projectID, Status: "building", CreatedAt: job.CreatedAt,
+	}); err != nil {
+		if isConstraint(err, "rebuild_jobs_single_live_unique") || isConstraint(err, "projection_generations_single_building_unique") {
+			return indexerapp.RebuildJobView{}, false, indexerapp.ErrRebuildLiveScope
+		}
+		return indexerapp.RebuildJobView{}, false, storeError("insert rebuild generation", err)
+	}
+	if err := queries.InsertRebuildJob(ctx, indexerdb.InsertRebuildJobParams{
+		ID: job.ID, Scope: job.Scope, OwnerUserID: ownerID, ProjectID: projectID,
+		IdempotencyDigest: digest, TargetGeneration: job.TargetGeneration,
+		CreatedAt: job.CreatedAt, UpdatedAt: job.UpdatedAt,
+	}); err != nil {
+		if isUniqueViolation(err) {
+			return indexerapp.RebuildJobView{}, false, indexerapp.ErrRebuildLiveScope
+		}
+		return indexerapp.RebuildJobView{}, false, storeError("insert rebuild job", err)
+	}
+	if err := queries.InsertRebuildJobRequest(ctx, indexerdb.InsertRebuildJobRequestParams{
 		IdempotencyKey: key, RequestDigest: digest, JobID: job.ID, CreatedAt: job.CreatedAt,
 	}); err != nil {
 		return indexerapp.RebuildJobView{}, false, storeError("insert rebuild request", err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return indexerapp.RebuildJobView{}, false, storeError("commit rebuild request", err)
 	}
 	return job, true, nil
 }
@@ -76,7 +136,11 @@ func (s *RebuildStore) GetRebuildJob(ctx context.Context, jobID string) (indexer
 	if err != nil {
 		return indexerapp.RebuildJobView{}, storeError("read rebuild job", err)
 	}
-	return rebuildJobFromRow(row), nil
+	job := rebuildJobFromRow(row)
+	if err := indexerapp.ValidateStoredRebuildJob(job); err != nil {
+		return indexerapp.RebuildJobView{}, err
+	}
+	return job, nil
 }
 
 func (s *RebuildStore) LiveRebuildJobs(ctx context.Context) ([]indexerapp.RebuildJobView, error) {
@@ -86,7 +150,11 @@ func (s *RebuildStore) LiveRebuildJobs(ctx context.Context) ([]indexerapp.Rebuil
 	}
 	jobs := make([]indexerapp.RebuildJobView, 0, len(rows))
 	for _, row := range rows {
-		jobs = append(jobs, rebuildJobFromRow(row))
+		job := rebuildJobFromRow(row)
+		if err := indexerapp.ValidateStoredRebuildJob(job); err != nil {
+			return nil, err
+		}
+		jobs = append(jobs, job)
 	}
 	return jobs, nil
 }
@@ -107,45 +175,38 @@ func (s *RebuildStore) SaveRebuildJob(ctx context.Context, job indexerapp.Rebuil
 }
 
 func (s *RebuildStore) CancelRebuildJob(ctx context.Context, jobID string, now time.Time) (bool, error) {
-	rows, err := s.queries.CancelRebuildJob(ctx, indexerdb.CancelRebuildJobParams{
-		ID:              jobID,
-		FailureCategory: pgtype.Text{String: "operator-canceled", Valid: true},
-		UpdatedAt:       now,
-	})
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return false, storeError("begin rebuild cancel", err)
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck
+	var target string
+	err = tx.QueryRow(ctx, `
+		UPDATE workos_index.rebuild_jobs
+		SET state = 'canceled', failure_category = 'operator-canceled',
+		    updated_at = $2, terminal_at = $2
+		WHERE id = $1 AND state IN ('requested','snapshotting','catching_up','validating')
+		RETURNING target_generation::text`, jobID, now).Scan(&target)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return false, nil
+	}
 	if err != nil {
 		return false, storeError("cancel rebuild job", err)
 	}
-	return rows == 1, nil
-}
-
-func (s *RebuildStore) CreateGeneration(ctx context.Context, id, scope, ownerUserID, projectID string, now time.Time) error {
-	var ownerText, projectText pgtype.UUID
-	if ownerUserID != "" {
-		ownerText = pgtype.UUID{Bytes: mustUUIDBytesValue(ownerUserID), Valid: true}
+	command, err := tx.Exec(ctx, `
+		UPDATE workos_index.projection_generations
+		SET status = 'canceled', retired_at = $2
+		WHERE id = $1::uuid AND status = 'building'`, target, now)
+	if err != nil {
+		return false, storeError("cancel rebuild generation", err)
 	}
-	if projectID != "" {
-		projectText = pgtype.UUID{Bytes: mustUUIDBytesValue(projectID), Valid: true}
+	if command.RowsAffected() != 1 {
+		return false, errCorruptProjection
 	}
-	return storeError("insert rebuild generation", s.queries.InsertGenerationFull(ctx, indexerdb.InsertGenerationFullParams{
-		ID: id, Scope: scope, OwnerUserID: ownerText, ProjectID: projectText,
-		Status: "building", CreatedAt: now,
-	}))
-}
-
-// CreateRebuildJob persists the requested job row.
-func (s *RebuildStore) CreateRebuildJob(ctx context.Context, job indexerapp.RebuildJobView, requestDigest string) error {
-	var ownerText, projectText pgtype.UUID
-	if job.OwnerUserID != "" {
-		ownerText = pgtype.UUID{Bytes: mustUUIDBytesValue(job.OwnerUserID), Valid: true}
+	if err := tx.Commit(ctx); err != nil {
+		return false, storeError("commit rebuild cancel", err)
 	}
-	if job.ProjectID != "" {
-		projectText = pgtype.UUID{Bytes: mustUUIDBytesValue(job.ProjectID), Valid: true}
-	}
-	return storeError("insert rebuild job", s.queries.InsertRebuildJob(ctx, indexerdb.InsertRebuildJobParams{
-		ID: job.ID, Scope: job.Scope, OwnerUserID: ownerText, ProjectID: projectText,
-		IdempotencyDigest: requestDigest, TargetGeneration: job.TargetGeneration,
-		CreatedAt: job.CreatedAt, UpdatedAt: job.UpdatedAt,
-	}))
+	return true, nil
 }
 
 func (s *RebuildStore) ApplySnapshotSource(ctx context.Context, effect indexerapp.SnapshotEffect, generation, requestDigest string, now time.Time) error {
@@ -155,6 +216,19 @@ func (s *RebuildStore) ApplySnapshotSource(ctx context.Context, effect indexerap
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck
 	queries := s.queries.WithTx(tx)
+	receipt, err := queries.GetReceipt(ctx, indexerdb.GetReceiptParams{
+		PublicationID: effect.PublicationID, ProjectionGeneration: generation,
+	})
+	switch {
+	case errors.Is(err, pgx.ErrNoRows):
+	case err != nil:
+		return storeError("read snapshot receipt", err)
+	default:
+		if receipt.RequestDigest != requestDigest {
+			return errCorruptProjection
+		}
+		return tx.Commit(ctx)
+	}
 	if !effect.Tombstone {
 		rows, err := queries.ApplyResolvedSourceToGeneration(ctx, indexerdb.ApplyResolvedSourceToGenerationParams{
 			ProjectionGeneration: generation,
@@ -231,13 +305,17 @@ func (s *RebuildStore) ValidateGeneration(ctx context.Context, generation string
 			break
 		}
 		for _, row := range rows {
+			cursor = row.SourceCreatedAt
+			cursorID = row.SourceID
 			if row.TombstonedAt != nil {
-				return false, nil
+				if _, stillActive := authoritative[row.SourceID]; stillActive {
+					return false, nil
+				}
+				continue
 			}
 			if digest, known := authoritative[row.SourceID]; !known || digest != row.SourceDigest {
 				return false, nil
 			}
-			cursorID = row.SourceID
 			seen++
 		}
 		if len(rows) < 200 {
@@ -247,27 +325,125 @@ func (s *RebuildStore) ValidateGeneration(ctx context.Context, generation string
 	return seen == len(authoritative), nil
 }
 
-func (s *RebuildStore) PromoteCAS(ctx context.Context, target, expectCurrent string, now time.Time) (bool, error) {
-	rows, err := s.queries.CasPromoteGeneration(ctx, indexerdb.CasPromoteGenerationParams{
-		Target: target, ExpectCurrent: expectCurrent,
-	})
+func (s *RebuildStore) CompletePromotion(ctx context.Context, jobID, target, expectCurrent string, now time.Time) (bool, error) {
+	tx, err := s.pool.Begin(ctx)
 	if err != nil {
-		return false, storeError("promote generation", err)
+		return false, storeError("begin generation promotion", err)
 	}
-	return rows == 1, nil
+	defer tx.Rollback(ctx) //nolint:errcheck
+	var state, storedTarget string
+	if err := tx.QueryRow(ctx, `SELECT state, target_generation::text FROM workos_index.rebuild_jobs WHERE id = $1 FOR UPDATE`, jobID).Scan(&state, &storedTarget); err != nil {
+		return false, storeError("lock rebuild job for promotion", err)
+	}
+	if storedTarget != target {
+		return false, errCorruptProjection
+	}
+	var current string
+	if err := tx.QueryRow(ctx, `SELECT generation_id::text FROM workos_index.active_generation FOR UPDATE`).Scan(&current); err != nil {
+		return false, storeError("lock active generation", err)
+	}
+	if state == "completed" {
+		if current != target {
+			return false, errCorruptProjection
+		}
+		if err := tx.Commit(ctx); err != nil {
+			return false, storeError("commit promotion replay", err)
+		}
+		return true, nil
+	}
+	if state != "promoting" {
+		return false, errCorruptProjection
+	}
+	if current != expectCurrent {
+		return false, nil
+	}
+	if current != target {
+		if _, err := tx.Exec(ctx, `UPDATE workos_index.projection_generations SET status = 'retired', retired_at = $2 WHERE id = $1::uuid AND status = 'active'`, current, now); err != nil {
+			return false, storeError("retire active generation", err)
+		}
+	}
+	command, err := tx.Exec(ctx, `UPDATE workos_index.projection_generations SET status = 'active', promoted_at = $2, retired_at = NULL WHERE id = $1::uuid AND status IN ('building','active')`, target, now)
+	if err != nil {
+		return false, storeError("activate target generation", err)
+	}
+	if command.RowsAffected() != 1 {
+		return false, errCorruptProjection
+	}
+	if _, err := tx.Exec(ctx, `UPDATE workos_index.active_generation SET generation_id = $1::uuid`, target); err != nil {
+		return false, storeError("swap active generation", err)
+	}
+	command, err = tx.Exec(ctx, `UPDATE workos_index.rebuild_jobs SET state = 'completed', updated_at = $2, terminal_at = $2 WHERE id = $1 AND state = 'promoting'`, jobID, now)
+	if err != nil {
+		return false, storeError("complete rebuild job", err)
+	}
+	if command.RowsAffected() != 1 {
+		return false, errCorruptProjection
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return false, storeError("commit generation promotion", err)
+	}
+	return true, nil
 }
 
-func (s *RebuildStore) MarkGeneration(ctx context.Context, id, status string, now time.Time) error {
-	var promoted, retired *time.Time
-	switch status {
-	case "active":
-		promoted = &now
-	case "retired", "failed", "canceled":
-		retired = &now
+func (s *RebuildStore) FailRebuildJob(ctx context.Context, job indexerapp.RebuildJobView, category string, now time.Time) error {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return storeError("begin rebuild failure", err)
 	}
-	return storeError("mark generation", s.queries.UpdateGenerationStatus(ctx, indexerdb.UpdateGenerationStatusParams{
-		ID: id, Status: status, PromotedAt: promoted, RetiredAt: retired,
-	}))
+	defer tx.Rollback(ctx) //nolint:errcheck
+	command, err := tx.Exec(ctx, `UPDATE workos_index.projection_generations SET status = 'failed', retired_at = $2 WHERE id = $1::uuid AND status = 'building'`, job.TargetGeneration, now)
+	if err != nil {
+		return storeError("fail rebuild generation", err)
+	}
+	if command.RowsAffected() != 1 {
+		return errCorruptProjection
+	}
+	command, err = tx.Exec(ctx, `
+		UPDATE workos_index.rebuild_jobs SET state = 'failed', failure_category = $2,
+		updated_at = $3, terminal_at = $3
+		WHERE id = $1 AND state IN ('requested','snapshotting','catching_up','validating','promoting')`, job.ID, category, now)
+	if err != nil {
+		return storeError("fail rebuild job", err)
+	}
+	if command.RowsAffected() != 1 {
+		return errCorruptProjection
+	}
+	return tx.Commit(ctx)
+}
+
+func (s *RebuildStore) CleanupRetiredGeneration(ctx context.Context) (bool, error) {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return false, storeError("begin retired generation cleanup", err)
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck
+	var generation string
+	err = tx.QueryRow(ctx, `
+		SELECT g.id::text
+		FROM workos_index.projection_generations g
+		WHERE g.status = 'retired' AND (
+			EXISTS (SELECT 1 FROM workos_index.documents d WHERE d.projection_generation = g.id)
+			OR EXISTS (SELECT 1 FROM workos_index.publication_receipts r WHERE r.projection_generation = g.id)
+		)
+		ORDER BY g.retired_at, g.id
+		FOR UPDATE OF g SKIP LOCKED
+		LIMIT 1`).Scan(&generation)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return false, nil
+	}
+	if err != nil {
+		return false, storeError("select retired generation cleanup", err)
+	}
+	if _, err := tx.Exec(ctx, `DELETE FROM workos_index.publication_receipts WHERE projection_generation = $1::uuid`, generation); err != nil {
+		return false, storeError("delete retired generation receipts", err)
+	}
+	if _, err := tx.Exec(ctx, `DELETE FROM workos_index.documents WHERE projection_generation = $1::uuid`, generation); err != nil {
+		return false, storeError("delete retired generation documents", err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return false, storeError("commit retired generation cleanup", err)
+	}
+	return true, nil
 }
 
 func rebuildJobFromRow(row indexerdb.WorkosIndexRebuildJob) indexerapp.RebuildJobView {
@@ -301,12 +477,4 @@ func terminalTime(value *time.Time) time.Time {
 		return time.Time{}
 	}
 	return *value
-}
-
-func mustUUIDBytesValue(value string) [16]byte {
-	parsed, err := uuid.Parse(value)
-	if err != nil {
-		panic("indexer rebuild store received a non-UUID id: " + err.Error())
-	}
-	return [16]byte(parsed)
 }

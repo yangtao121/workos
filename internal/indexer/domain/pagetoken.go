@@ -2,19 +2,22 @@
 // chain to one owner+project, one canonical query digest, one ranking
 // version, one projection generation, one snapshot watermark, and the last
 // ordered row. Any cross-query/project/snapshot replay or tampering is a
-// stable invalid-input verdict — the checksum makes silent mutation
-// detectable, and every binding is re-verified against the live request
-// before any read.
+// stable invalid-input verdict — the HMAC signature makes mutation
+// detectable without exposing a signing oracle, and every binding is
+// re-verified against the live request before any read.
 package domain
 
 import (
+	"bytes"
+	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"math"
 	"strconv"
-	"strings"
 	"time"
 )
 
@@ -28,6 +31,21 @@ const PageTokenVersion = 1
 
 var ErrInvalidPageToken = errors.New("search page token is invalid")
 
+// PageTokenCodec signs opaque pagination state with an indexer-only key.
+// The key must be stable across restarts and never leaves the indexer.
+type PageTokenCodec struct {
+	key []byte
+}
+
+func NewPageTokenCodec(key []byte) (PageTokenCodec, error) {
+	if len(key) < 32 || len(key) > 1024 {
+		return PageTokenCodec{}, errors.New("search page token key must be between 32 and 1024 bytes")
+	}
+	return PageTokenCodec{key: append([]byte(nil), key...)}, nil
+}
+
+func (c PageTokenCodec) Valid() bool { return len(c.key) >= 32 && len(c.key) <= 1024 }
+
 // PageToken is the decoded pagination state.
 type PageToken struct {
 	Version           int       `json:"v"`
@@ -40,7 +58,7 @@ type PageToken struct {
 	LastScore         float64   `json:"score"`
 	LastSourceCreated time.Time `json:"created"`
 	LastSourceID      string    `json:"src"`
-	Checksum          string    `json:"sum"`
+	Signature         string    `json:"sig"`
 }
 
 // QueryDigest derives the canonical per-query pagination binding.
@@ -55,16 +73,20 @@ func QueryDigest(ownerUserID, projectID, canonicalQuery string) string {
 	return fmt.Sprintf("sha256:%x", h.Sum(nil))
 }
 
-// EncodePageToken renders the token as opaque URL-safe text.
-func EncodePageToken(token PageToken) (string, error) {
+// Encode renders the token as signed opaque URL-safe text.
+func (c PageTokenCodec) Encode(token PageToken) (string, error) {
+	if len(c.key) == 0 {
+		return "", ErrInvalidPageToken
+	}
 	token.Version = PageTokenVersion
-	token.Checksum = ""
+	token.Signature = ""
 	payload, err := json.Marshal(token)
 	if err != nil {
 		return "", err
 	}
-	sum := sha256.Sum256(payload)
-	token.Checksum = fmt.Sprintf("%x", sum[:8])
+	mac := hmac.New(sha256.New, c.key)
+	_, _ = mac.Write(payload)
+	token.Signature = fmt.Sprintf("%x", mac.Sum(nil))
 	payload, err = json.Marshal(token)
 	if err != nil {
 		return "", err
@@ -72,25 +94,38 @@ func EncodePageToken(token PageToken) (string, error) {
 	return base64.RawURLEncoding.EncodeToString(payload), nil
 }
 
-// DecodePageToken parses and checksum-verifies one token. Any structural,
-// encoding, or checksum failure is the same invalid verdict.
-func DecodePageToken(raw string) (PageToken, error) {
+// Decode parses and authenticates one token. Any structural, encoding, or
+// signature failure is the same invalid verdict.
+func (c PageTokenCodec) Decode(raw string) (PageToken, error) {
 	var token PageToken
+	if len(c.key) == 0 || len(raw) == 0 || len(raw) > 4096 {
+		return token, ErrInvalidPageToken
+	}
 	payload, err := base64.RawURLEncoding.DecodeString(raw)
 	if err != nil {
 		return token, ErrInvalidPageToken
 	}
-	if err := json.Unmarshal(payload, &token); err != nil {
+	decoder := json.NewDecoder(bytes.NewReader(payload))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&token); err != nil {
 		return token, ErrInvalidPageToken
 	}
-	stored := token.Checksum
-	token.Checksum = ""
+	if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
+		return token, ErrInvalidPageToken
+	}
+	stored := token.Signature
+	token.Signature = ""
 	reference, err := json.Marshal(token)
 	if err != nil {
 		return token, ErrInvalidPageToken
 	}
-	sum := sha256.Sum256(reference)
-	if stored != fmt.Sprintf("%x", sum[:8]) {
+	provided, err := decodeHexSHA256(stored)
+	if err != nil {
+		return PageToken{}, ErrInvalidPageToken
+	}
+	mac := hmac.New(sha256.New, c.key)
+	_, _ = mac.Write(reference)
+	if !hmac.Equal(provided, mac.Sum(nil)) {
 		return PageToken{}, ErrInvalidPageToken
 	}
 	if token.Version != PageTokenVersion || token.RankingVersion != RankingVersion {
@@ -99,20 +134,56 @@ func DecodePageToken(raw string) (PageToken, error) {
 	if !ValidUUID(token.OwnerUserID) || !ValidUUID(token.ProjectID) || !ValidUUID(token.GenerationID) || !ValidUUID(token.LastSourceID) {
 		return PageToken{}, ErrInvalidPageToken
 	}
-	if !strings.HasPrefix(token.QueryDigest, "sha256:") {
+	if !ValidDigest(token.QueryDigest) {
 		return PageToken{}, ErrInvalidPageToken
 	}
-	if token.LastScore < 0 || IsDisallowedScore(token.LastScore) {
+	if token.LastScore < 0 || token.LastScore > ScoreBoundUpper || IsDisallowedScore(token.LastScore) {
+		return PageToken{}, ErrInvalidPageToken
+	}
+	_, snapshotOffset := token.SnapshotThrough.Zone()
+	_, createdOffset := token.LastSourceCreated.Zone()
+	if token.SnapshotThrough.IsZero() || token.LastSourceCreated.IsZero() ||
+		snapshotOffset != 0 || createdOffset != 0 {
 		return PageToken{}, ErrInvalidPageToken
 	}
 	return token, nil
+}
+
+func decodeHexSHA256(value string) ([]byte, error) {
+	if len(value) != sha256.Size*2 {
+		return nil, ErrInvalidPageToken
+	}
+	decoded := make([]byte, sha256.Size)
+	for index := range decoded {
+		high, ok := hexNibble(value[index*2])
+		if !ok {
+			return nil, ErrInvalidPageToken
+		}
+		low, ok := hexNibble(value[index*2+1])
+		if !ok {
+			return nil, ErrInvalidPageToken
+		}
+		decoded[index] = high<<4 | low
+	}
+	return decoded, nil
+}
+
+func hexNibble(value byte) (byte, bool) {
+	switch {
+	case value >= '0' && value <= '9':
+		return value - '0', true
+	case value >= 'a' && value <= 'f':
+		return value - 'a' + 10, true
+	default:
+		return 0, false
+	}
 }
 
 // IsDisallowedScore reports whether a score value may never enter a token or
 // a response: NaN and infinities are formatted without a clean parse, so the
 // explicit checks live with the formatter.
 func IsDisallowedScore(score float64) bool {
-	return score != score || score > 1e9
+	return math.IsNaN(score) || math.IsInf(score, 0)
 }
 
 // FormatScore renders one score with round-trip-exact precision so a token's

@@ -156,6 +156,9 @@ services:
       <<: *workos-environment
       WORKOS_HTTP_ADDRESS: 127.0.0.1:8085
       WORKOS_INDEX_ADMIN_SOCKET: /run/workos/index-admin/admin.sock
+      # Development-only stable signing key. Production supplies its own
+      # indexer-local secret through WORKOS_INDEX_PAGE_TOKEN_KEY.
+      WORKOS_INDEX_PAGE_TOKEN_KEY: workos-compose-index-page-token-key-v1
     tmpfs:
       - /run/workos/index-admin:uid=10001,gid=10001,mode=0700
 

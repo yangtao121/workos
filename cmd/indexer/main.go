@@ -17,6 +17,7 @@ import (
 	"github.com/yangtao121/workos/internal/indexer/adapters/coreclient"
 	indexerpostgres "github.com/yangtao121/workos/internal/indexer/adapters/postgres"
 	indexerapp "github.com/yangtao121/workos/internal/indexer/application"
+	indexerdomain "github.com/yangtao121/workos/internal/indexer/domain"
 	indexertransport "github.com/yangtao121/workos/internal/indexer/transport"
 	"github.com/yangtao121/workos/internal/platform/config"
 	"github.com/yangtao121/workos/internal/platform/database"
@@ -82,7 +83,11 @@ func run(logger *slog.Logger) error {
 	if err != nil {
 		return err
 	}
-	search, err := indexerapp.NewSearchService(projection, ingestion)
+	pageTokens, err := indexerdomain.NewPageTokenCodec([]byte(cfg.Indexer.PageTokenKey))
+	if err != nil {
+		return err
+	}
+	search, err := indexerapp.NewSearchService(projection, ingestion, pageTokens)
 	if err != nil {
 		return err
 	}
@@ -166,6 +171,8 @@ func run(logger *slog.Logger) error {
 			Reason: "durable review-artifact lexical projection (evidence limited to review artifacts)"},
 		&commonv1.FeatureCapability{Id: "project-knowledge-search", Available: true,
 			Reason: "bounded deterministic lexical search over review artifacts"},
+		&commonv1.FeatureCapability{Id: "project-knowledge-rebuild", Available: true,
+			Reason: "local-admin Core-authoritative shadow-generation rebuild"},
 		&commonv1.FeatureCapability{Id: "archive", Available: false,
 			Reason: "generic archive and object storage are not implemented"},
 		&commonv1.FeatureCapability{Id: "rag", Available: false,

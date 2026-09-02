@@ -48,6 +48,9 @@ type PublicationOutcome struct {
 // lease was stale and the publication must be re-claimed (the receipt turns
 // the inevitable replay into a no-op).
 func (s *IngestionService) IngestOne(ctx context.Context, claimed ports.ClaimedPublication) (PublicationOutcome, error) {
+	if !domain.ValidUUID(claimed.PublicationID) || claimed.LeaseToken == "" {
+		return PublicationOutcome{}, ErrInvalidIngestion
+	}
 	resolved, err := s.feed.Resolve(ctx, s.workerID, claimed.PublicationID, claimed.LeaseToken)
 	if err != nil {
 		switch {
@@ -95,10 +98,16 @@ func (s *IngestionService) IngestOne(ctx context.Context, claimed ports.ClaimedP
 // only applied for resolved upserts; every other verdict is a bounded,
 // observable effect without content.
 func (s *IngestionService) classify(resolved ports.ResolvedSource) (string, error) {
+	if !domain.ValidUUID(resolved.PublicationID) || !domain.ValidUUID(resolved.OwnerUserID) ||
+		!domain.ValidUUID(resolved.ProjectID) || resolved.OccurredAt.IsZero() {
+		return "", domain.ErrCorrupt
+	}
+	if resolved.Operation != "review-artifact.upsert" && resolved.Operation != "project.tombstone" {
+		return "", domain.ErrCorrupt
+	}
 	switch resolved.Verdict {
 	case "resolved":
-		if resolved.Content == nil || len(resolved.Content) == 0 || resolved.ArtifactID == "" ||
-			!domain.ValidDigest(resolved.Digest) {
+		if validateResolvedForApply(resolved) != nil {
 			return "", domain.ErrCorrupt
 		}
 		return domain.OutcomeApplied, nil
@@ -111,6 +120,20 @@ func (s *IngestionService) classify(resolved ports.ResolvedSource) (string, erro
 	default:
 		return "", domain.ErrCorrupt
 	}
+}
+
+func validateResolvedForApply(resolved ports.ResolvedSource) error {
+	if resolved.Verdict != "resolved" || resolved.Operation != "review-artifact.upsert" {
+		return domain.ErrCorrupt
+	}
+	document := domain.Document{
+		OwnerUserID: resolved.OwnerUserID, ProjectID: resolved.ProjectID,
+		SourceID: resolved.ArtifactID, SourceDigest: resolved.Digest,
+		ArtifactType: resolved.ArtifactType, Title: resolved.Title,
+		Content: string(resolved.Content), SourceCreatedAt: resolved.CreatedAt,
+		LastPublication: resolved.PublicationID, IndexedAt: resolved.OccurredAt,
+	}
+	return domain.ValidStoredDocument(document)
 }
 
 func coreOutcome(local string) string {

@@ -58,12 +58,17 @@ func (h *AdminHandler) GetIndexAdminStatus(ctx context.Context, _ *connect.Reque
 	if status.ActiveRebuild != nil {
 		response.ActiveRebuild = rebuildJobProto(*status.ActiveRebuild)
 	}
-	if status.ActiveGeneration != "" {
+	if status.ActiveGeneration.ID != "" {
 		// Generation facts are read from the projection view; the status
 		// carries the pointer identity plus the live rebuild summary.
 		response.ActiveGeneration = &indexv1.IndexAdminGeneration{
-			GenerationId: status.ActiveGeneration,
-			Status:       "active",
+			GenerationId:   status.ActiveGeneration.ID,
+			Scope:          status.ActiveGeneration.Scope,
+			Status:         status.ActiveGeneration.Status,
+			DocumentCount:  status.ActiveGeneration.DocumentCount,
+			TombstoneCount: status.ActiveGeneration.TombstoneCount,
+			CreatedAt:      formatMicros(status.ActiveGeneration.CreatedAt),
+			PromotedAt:     formatMicros(status.ActiveGeneration.PromotedAt),
 		}
 	}
 	return connect.NewResponse(response), nil
@@ -122,7 +127,6 @@ func rebuildJobProto(job indexerapp.RebuildJobView) *indexv1.IndexAdminRebuildJo
 	updated := job.UpdatedAt
 	return &indexv1.IndexAdminRebuildJob{
 		JobId: job.ID, Scope: job.Scope,
-		OwnerUserId: job.OwnerUserID, ProjectId: job.ProjectID,
 		State: job.State, PhaseCursor: job.PhaseCursor,
 		SnapshotBoundary: job.SnapshotBoundary,
 		SourceCount:      job.SourceCount, AppliedCount: job.AppliedCount, TombstoneCount: job.TombstoneCount,

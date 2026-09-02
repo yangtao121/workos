@@ -367,6 +367,31 @@ func TestBridgeKnowledgeSearchOrder(t *testing.T) {
 		}
 	})
 
+	t.Run("malformed search input precedes Core and indexer", func(t *testing.T) {
+		repo := &bridgeRepository{sessions: map[string]domain.SurfaceSession{}}
+		appAgent := &bridgeAppAgent{}
+		indexer := &recordingKnowledgeSearch{}
+		service, err := NewBridgeService(repo, appAgent, mustPipeline(t, appAgent, indexer))
+		if err != nil {
+			t.Fatal(err)
+		}
+		repo.put(baseSession("knowledge.search"))
+		for _, input := range []struct{ query, token string }{
+			{query: "query\nwith-control"},
+			{query: "   "},
+			{query: "query", token: "not+base64url"},
+			{query: "query", token: strings.Repeat("a", maxKnowledgePageTokenBytes+1)},
+		} {
+			if _, err := service.SearchKnowledge(context.Background(), "01999999-9999-7999-8999-0000000000b1",
+				"01999999-9999-7999-8999-0000000000c1", validToken, input.query, 0, input.token); !errors.Is(err, domain.ErrInvalid) {
+				t.Fatalf("malformed input error = %v", err)
+			}
+		}
+		if appAgent.authorizeCalls != 0 || indexer.calls != 0 {
+			t.Fatalf("malformed input leaked: core=%d indexer=%d", appAgent.authorizeCalls, indexer.calls)
+		}
+	})
+
 	t.Run("binding mismatch fails closed", func(t *testing.T) {
 		repo := &bridgeRepository{sessions: map[string]domain.SurfaceSession{}}
 		appAgent := &bridgeAppAgent{authorizeOwner: "someone-else"}

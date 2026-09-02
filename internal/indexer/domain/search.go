@@ -35,6 +35,7 @@ type SearchHit struct {
 type SearchPage struct {
 	Hits            []SearchHit
 	NextPageToken   string
+	Continuation    *PageToken
 	GenerationID    string
 	SnapshotThrough time.Time
 }

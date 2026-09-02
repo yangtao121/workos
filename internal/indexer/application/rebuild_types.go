@@ -11,7 +11,9 @@ import (
 	"errors"
 	"fmt"
 	"time"
+	"unicode/utf8"
 
+	"github.com/yangtao121/workos/internal/indexer/domain"
 	"github.com/yangtao121/workos/internal/indexer/ports"
 )
 
@@ -51,28 +53,69 @@ type RebuildJobView struct {
 	TerminalAt       time.Time
 }
 
+// ValidateStoredRebuildJob revalidates the durable operational projection on
+// every read. Database CHECK constraints are defense in depth, not a reason
+// to trust a corrupted or manually restored row.
+func ValidateStoredRebuildJob(job RebuildJobView) error {
+	if !domain.ValidUUID(job.ID) || !domain.ValidUUID(job.TargetGeneration) ||
+		job.SourceCount < 0 || job.AppliedCount < 0 || job.TombstoneCount < 0 ||
+		job.AppliedCount < job.SourceCount || job.TombstoneCount > job.AppliedCount ||
+		job.CreatedAt.IsZero() || job.UpdatedAt.IsZero() || len(job.PhaseCursor) > 4096 || len(job.SnapshotBoundary) > 4096 {
+		return domain.ErrCorrupt
+	}
+	switch job.Scope {
+	case RebuildScopeAll:
+		if job.OwnerUserID != "" || job.ProjectID != "" {
+			return domain.ErrCorrupt
+		}
+	case "project":
+		if !domain.ValidUUID(job.OwnerUserID) || !domain.ValidUUID(job.ProjectID) {
+			return domain.ErrCorrupt
+		}
+	default:
+		return domain.ErrCorrupt
+	}
+	terminal := false
+	switch job.State {
+	case "requested", "snapshotting", "catching_up", "validating", "promoting":
+	case "completed", "canceled", "failed":
+		terminal = true
+	default:
+		return domain.ErrCorrupt
+	}
+	if terminal != !job.TerminalAt.IsZero() {
+		return domain.ErrCorrupt
+	}
+	if job.UpdatedAt.Before(job.CreatedAt) || (!job.TerminalAt.IsZero() && job.TerminalAt.Before(job.CreatedAt)) {
+		return domain.ErrCorrupt
+	}
+	return nil
+}
+
 // RebuildStore is the durable rebuild fact owner.
 type RebuildStore interface {
-	AdjudicateRebuildRequest(ctx context.Context, key, digest string, create func(ctx context.Context) (RebuildJobView, error)) (RebuildJobView, bool, error)
+	// AdjudicateRebuildRequest atomically creates generation + job + durable
+	// request mapping, or replays the existing job for the same key/digest.
+	AdjudicateRebuildRequest(ctx context.Context, key, digest string, job RebuildJobView) (RebuildJobView, bool, error)
 	GetRebuildJob(ctx context.Context, jobID string) (RebuildJobView, error)
 	LiveRebuildJobs(ctx context.Context) ([]RebuildJobView, error)
 	SaveRebuildJob(ctx context.Context, job RebuildJobView) error
 	CancelRebuildJob(ctx context.Context, jobID string, now time.Time) (bool, error)
-	// CreateGeneration persists one building generation.
-	CreateGeneration(ctx context.Context, id, scope, ownerUserID, projectID string, now time.Time) error
-	// CreateRebuildJob persists the requested job row with its request digest.
-	CreateRebuildJob(ctx context.Context, job RebuildJobView, requestDigest string) error
 	// ApplySnapshotSource projects one authoritative source into exactly the
 	// target generation (never the active one) and records the receipt there.
 	ApplySnapshotSource(ctx context.Context, effect SnapshotEffect, generation, requestDigest string, now time.Time) error
 	// ValidateGeneration compares the target generation's document set
 	// (digests, tombstones) against the authoritative map in the database.
 	ValidateGeneration(ctx context.Context, generation string, authoritative map[string]string) (bool, error)
-	// PromoteCAS swaps the active generation pointer; returns false when the
-	// expected current pointer moved (someone else promoted).
-	PromoteCAS(ctx context.Context, target, expectCurrent string, now time.Time) (bool, error)
-	// MarkGeneration assigns a terminal status to a generation.
-	MarkGeneration(ctx context.Context, id, status string, now time.Time) error
+	// CompletePromotion atomically changes both generation statuses, swaps the
+	// active pointer, and completes the job. A committed response loss replays
+	// as completed instead of applying the transition twice.
+	CompletePromotion(ctx context.Context, jobID, target, expectCurrent string, now time.Time) (bool, error)
+	// FailRebuildJob atomically fails the target generation and job.
+	FailRebuildJob(ctx context.Context, job RebuildJobView, category string, now time.Time) error
+	// CleanupRetiredGeneration removes one retired generation's rebuildable
+	// documents and receipts while retaining its bounded generation/job audit.
+	CleanupRetiredGeneration(ctx context.Context) (bool, error)
 }
 
 // SnapshotSource is one authoritative fact the snapshot phase applies.
@@ -156,18 +199,19 @@ func (r RebuildRequest) Validate() error {
 			return ErrInvalidRebuild
 		}
 	case "project":
-		if !validUUIDString(r.OwnerUserID) || !validUUIDString(r.ProjectID) {
+		if !domain.ValidUUID(r.OwnerUserID) || !domain.ValidUUID(r.ProjectID) {
 			return ErrInvalidRebuild
 		}
 	default:
 		return ErrInvalidRebuild
 	}
-	if len(r.IdempotencyKey) == 0 || len(r.IdempotencyKey) > 128 {
+	if len(r.IdempotencyKey) == 0 || len(r.IdempotencyKey) > 128 || !utf8.ValidString(r.IdempotencyKey) {
 		return ErrInvalidRebuild
 	}
+	for _, char := range r.IdempotencyKey {
+		if (char >= 0 && char <= 0x1f) || (char >= 0x7f && char <= 0x9f) {
+			return ErrInvalidRebuild
+		}
+	}
 	return nil
-}
-
-func validUUIDString(value string) bool {
-	return len(value) == 36
 }

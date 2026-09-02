@@ -6,8 +6,9 @@ package domain
 
 import (
 	"errors"
-	"fmt"
+	"math"
 	"time"
+	"unicode/utf8"
 
 	"github.com/google/uuid"
 )
@@ -82,10 +83,10 @@ func ValidStoredDocument(document Document) error {
 	default:
 		return ErrCorrupt
 	}
-	if len(document.Title) < 1 || len([]rune(document.Title)) > 200 {
+	if !validBoundedTitle(document.Title, 1, 200) {
 		return ErrCorrupt
 	}
-	if len(document.Content) == 0 || len(document.Content) > 512*1024 {
+	if !utf8.ValidString(document.Content) || len(document.Content) == 0 || len(document.Content) > 512*1024 || hasControl(document.Content) {
 		return ErrCorrupt
 	}
 	if document.SourceCreatedAt.IsZero() || document.IndexedAt.IsZero() {
@@ -97,10 +98,40 @@ func ValidStoredDocument(document Document) error {
 // ValidStoredScore pins the response score grammar: finite, non-negative,
 // inside the documented fixed range.
 func ValidStoredScore(score float64) error {
-	if score != score || score > ScoreBoundUpper || score < 0 || fmt.Sprintf("%g", score) == "+Inf" {
+	if math.IsNaN(score) || math.IsInf(score, 0) || score > ScoreBoundUpper || score < 0 {
 		return ErrCorrupt
 	}
 	return nil
+}
+
+func validBoundedTitle(value string, minimum, maximum int) bool {
+	if !utf8.ValidString(value) {
+		return false
+	}
+	count := utf8.RuneCountInString(value)
+	if count < minimum || count > maximum {
+		return false
+	}
+	for _, char := range value {
+		if (char >= 0 && char <= 0x1f) || (char >= 0x7f && char <= 0x9f) {
+			return false
+		}
+	}
+	return true
+}
+
+func hasControl(value string) bool {
+	for _, char := range value {
+		if (char >= 0 && char <= 0x1f) || (char >= 0x7f && char <= 0x9f) {
+			// Content may contain the normal line-oriented whitespace used by
+			// Markdown and unified diffs; all other controls are corruption.
+			if char == '\n' || char == '\r' || char == '\t' {
+				continue
+			}
+			return true
+		}
+	}
+	return false
 }
 
 // Consumption verdicts recorded per (publication, generation).
