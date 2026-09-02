@@ -18,6 +18,50 @@ import (
 // ErrStoreUnavailable marks a temporarily unreachable notification store.
 var ErrStoreUnavailable = errors.New("notification store is temporarily unavailable")
 
+// ErrNoAppQuotaBucket marks an installation without a quota bucket yet.
+var ErrNoAppQuotaBucket = errors.New("app quota bucket does not exist")
+
+// ErrAppNotificationDenied is the single sanitized denial verdict for a
+// missing installation, a stale grant epoch, or a missing
+// notifications.create grant. The neutral authorizer maps every module
+// verdict onto it so the caller can never distinguish why.
+var ErrAppNotificationDenied = errors.New("app notification is not authorized")
+
+// AppInstallationFacts is the authoritative app identity derived by the
+// neutral installation authorizer.
+type AppInstallationFacts struct {
+	AppID string
+}
+
+// AppRequestRecord is one consumed app create idempotency key with its
+// versioned first-response snapshot.
+type AppRequestRecord struct {
+	OwnerUserID    string
+	AppInstanceID  string
+	IdempotencyKey string
+	RequestDigest  string
+	ResultVersion  int32
+	Result         []byte
+	CreatedAt      time.Time
+}
+
+// AppQuotaBucket is one installation's atomic quota state.
+type AppQuotaBucket struct {
+	UtcDate          time.Time
+	DailyCount       int
+	BurstWindowStart time.Time
+	BurstCount       int
+}
+
+// AppQuotaUpdate is one guarded reservation write.
+type AppQuotaUpdate struct {
+	UtcDate          time.Time
+	DailyCount       int
+	BurstWindowStart time.Time
+	BurstCount       int
+	UpdatedAt        time.Time
+}
+
 // ErrSourceDigestDrift marks a receipt whose stored digest differs from the
 // replayed source digest: same source, different fact — stored corruption or
 // contract violation, never an update.
@@ -67,6 +111,22 @@ type NotificationStore interface {
 	ChangesAfter(ctx context.Context, ownerUserID string, after int64, limit int) ([]domain.Change, error)
 	// StreamGap reports the authoritative sweep watermark for the owner.
 	StreamGap(ctx context.Context, ownerUserID string) (int64, error)
+	// LastOwnerSequenceTx reports the owner counter's current sequence inside
+	// the caller's transaction (the just-allocated created sequence).
+	LastOwnerSequenceTx(ctx context.Context, tx dbtx.Tx, ownerUserID string) (int64, error)
+	// GetAppRequest returns a consumed app create key.
+	GetAppRequest(ctx context.Context, ownerUserID, appInstanceID, idempotencyKey string) (AppRequestRecord, bool, error)
+	// SaveAppRequest consumes an app create key inside the caller's
+	// transaction.
+	SaveAppRequest(ctx context.Context, tx dbtx.Tx, record AppRequestRecord) error
+	// LockAppQuota locks the installation's bucket row for reservation.
+	LockAppQuota(ctx context.Context, tx dbtx.Tx, ownerUserID, appInstanceID string) (AppQuotaBucket, error)
+	// InsertAppQuota creates the installation's bucket row inside the
+	// caller's transaction.
+	InsertAppQuota(ctx context.Context, tx dbtx.Tx, ownerUserID, appInstanceID string, now time.Time) (AppQuotaBucket, error)
+	// UpdateAppQuota writes the reserved bucket state inside the caller's
+	// transaction.
+	UpdateAppQuota(ctx context.Context, tx dbtx.Tx, ownerUserID, appInstanceID string, update AppQuotaUpdate) error
 	// SweepRead retires one bounded batch of old read facts and advances
 	// the per-owner sweep watermark. It never touches unread facts.
 	SweepRead(ctx context.Context, cutoff time.Time, maxBatch int) (int, error)

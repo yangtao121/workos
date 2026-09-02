@@ -13,6 +13,7 @@ import (
 	"unicode/utf8"
 
 	agentv1 "github.com/yangtao121/workos/gen/go/workos/agent/v1"
+	notificationv1 "github.com/yangtao121/workos/gen/go/workos/notification/v1"
 	"github.com/yangtao121/workos/internal/runtime/surface/domain"
 	"github.com/yangtao121/workos/internal/runtime/surface/ports"
 )
@@ -193,6 +194,93 @@ func (s *BridgeService) SearchKnowledge(ctx context.Context, ownerUserID, device
 		PageSize:    size,
 		PageToken:   pageToken,
 	})
+}
+
+// App notification bounds mirror the Core ingest contract (ADR-0014). The
+// runtime validates them too so hostile envelopes fail before any Core
+// call, never as a duplicate authority.
+const (
+	maxNotificationTitleCodePoints = 120
+	maxNotificationTitleBytes      = 512
+	maxNotificationBodyCodePoints  = 500
+	maxNotificationBodyBytes       = 2048
+	maxNotificationBodyLines       = 16
+	maxNotificationKeyBytes        = 128
+)
+
+// CreateNotification executes the notifications.create bridge method. The
+// fixed order: bounded input validation, then the token/session/capability
+// gate (only a real notifications.create grant can negotiate the method),
+// then the Core-private ingest with session-derived scope facts. The body
+// never carries owner, project, device, origin, severity, or target.
+func (s *BridgeService) CreateNotification(ctx context.Context, ownerUserID, deviceID, token, idempotencyKey, title, body string) (*notificationv1.CreateAppNotificationResponse, error) {
+	if s.appAgent == nil {
+		return nil, domain.ErrPermissionDenied
+	}
+	if len(idempotencyKey) == 0 || len(idempotencyKey) > maxNotificationKeyBytes ||
+		!utf8.ValidString(idempotencyKey) || strings.ContainsFunc(idempotencyKey, isControlRune) {
+		return nil, domain.ErrInvalid
+	}
+	if !validNotificationText(title, true) || !validNotificationText(body, false) {
+		return nil, domain.ErrInvalid
+	}
+	session, err := s.authorize(ctx, ownerUserID, deviceID, token, domain.BridgeCapabilityNotificationsCreate)
+	if err != nil {
+		return nil, err
+	}
+	response, err := s.appAgent.CreateAppNotification(ctx, ports.AppNotificationCreateQuery{
+		ProjectID:                 session.ProjectID,
+		AppInstanceID:             session.AppInstanceID,
+		InstallationGrantRevision: session.InstallationGrantRevision,
+		IdempotencyKey:            idempotencyKey,
+		Title:                     title,
+		Body:                      body,
+	})
+	if err != nil {
+		switch {
+		case errors.Is(err, ports.ErrAppAgentDenied):
+			return nil, domain.ErrPermissionDenied
+		case errors.Is(err, ports.ErrAppAgentExhausted):
+			// Quota exhaustion keeps its own verdict so apps can distinguish
+			// a full daily allowance from a permission problem.
+			return nil, ports.ErrAppAgentExhausted
+		case errors.Is(err, ports.ErrAppAgentConflict):
+			return nil, ports.ErrAppAgentConflict
+		case errors.Is(err, ports.ErrAppAgentUnavailable), errors.Is(err, ports.ErrStoreUnavailable):
+			return nil, domain.ErrUnavailable
+		}
+		return nil, err
+	}
+	return response, nil
+}
+
+func isControlRune(r rune) bool { return (r >= 0 && r <= 0x1f) || (r >= 0x7f && r <= 0x9f) }
+
+// validNotificationText bounds one app text field: valid UTF-8, no control
+// characters except LF in bodies, code point, byte, and line bounds.
+func validNotificationText(value string, isTitle bool) bool {
+	if !utf8.ValidString(value) {
+		return false
+	}
+	if isTitle {
+		if utf8.RuneCountInString(strings.TrimSpace(value)) == 0 {
+			return false
+		}
+		if utf8.RuneCountInString(value) > maxNotificationTitleCodePoints || len(value) > maxNotificationTitleBytes {
+			return false
+		}
+		if strings.ContainsFunc(value, isControlRune) {
+			return false
+		}
+		return true
+	}
+	if utf8.RuneCountInString(value) > maxNotificationBodyCodePoints || len(value) > maxNotificationBodyBytes {
+		return false
+	}
+	if strings.ContainsFunc(value, func(r rune) bool { return isControlRune(r) && r != 0x0a }) {
+		return false
+	}
+	return strings.Count(value, "\n") <= maxNotificationBodyLines
 }
 
 func validKnowledgeQuery(query string) bool {

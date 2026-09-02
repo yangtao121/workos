@@ -14,6 +14,7 @@ package bridgev1
 import (
 	v1 "github.com/yangtao121/workos/gen/go/workos/agent/v1"
 	v11 "github.com/yangtao121/workos/gen/go/workos/index/v1"
+	v12 "github.com/yangtao121/workos/gen/go/workos/notification/v1"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	reflect "reflect"
@@ -379,11 +380,134 @@ func (x *SearchKnowledgeResponse) GetNextPageToken() string {
 	return ""
 }
 
+// CreateNotification is negotiated only by the notifications.create grant
+// (the grant name and the bridge method name are identical by design). The
+// body carries bounded app input only: there is no owner, project, device,
+// origin, severity, or target field and there never will be — scope is
+// derived from the validated surface session and Core-authoritative
+// installation facts (ADR-0014).
+type CreateNotificationRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// App-scoped durable idempotency key (1..128 chars, no control chars).
+	IdempotencyKey string `protobuf:"bytes,1,opt,name=idempotency_key,json=idempotencyKey,proto3" json:"idempotency_key,omitempty"`
+	// Bounded inert plain text (title 1..120 code points, body 0..500 code
+	// points; valid UTF-8, no NUL/C0/C1, bounded lines and bytes).
+	Title         string `protobuf:"bytes,2,opt,name=title,proto3" json:"title,omitempty"`
+	Body          string `protobuf:"bytes,3,opt,name=body,proto3" json:"body,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CreateNotificationRequest) Reset() {
+	*x = CreateNotificationRequest{}
+	mi := &file_workos_bridge_v1_bridge_proto_msgTypes[6]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CreateNotificationRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CreateNotificationRequest) ProtoMessage() {}
+
+func (x *CreateNotificationRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_workos_bridge_v1_bridge_proto_msgTypes[6]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CreateNotificationRequest.ProtoReflect.Descriptor instead.
+func (*CreateNotificationRequest) Descriptor() ([]byte, []int) {
+	return file_workos_bridge_v1_bridge_proto_rawDescGZIP(), []int{6}
+}
+
+func (x *CreateNotificationRequest) GetIdempotencyKey() string {
+	if x != nil {
+		return x.IdempotencyKey
+	}
+	return ""
+}
+
+func (x *CreateNotificationRequest) GetTitle() string {
+	if x != nil {
+		return x.Title
+	}
+	return ""
+}
+
+func (x *CreateNotificationRequest) GetBody() string {
+	if x != nil {
+		return x.Body
+	}
+	return ""
+}
+
+type CreateNotificationResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The projected owner notification (kind app.instance.message, origin
+	// app, severity normal, target app).
+	Notification  *v12.Notification `protobuf:"bytes,1,opt,name=notification,proto3" json:"notification,omitempty"`
+	UnreadCount   int64             `protobuf:"varint,2,opt,name=unread_count,json=unreadCount,proto3" json:"unread_count,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CreateNotificationResponse) Reset() {
+	*x = CreateNotificationResponse{}
+	mi := &file_workos_bridge_v1_bridge_proto_msgTypes[7]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CreateNotificationResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CreateNotificationResponse) ProtoMessage() {}
+
+func (x *CreateNotificationResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_workos_bridge_v1_bridge_proto_msgTypes[7]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CreateNotificationResponse.ProtoReflect.Descriptor instead.
+func (*CreateNotificationResponse) Descriptor() ([]byte, []int) {
+	return file_workos_bridge_v1_bridge_proto_rawDescGZIP(), []int{7}
+}
+
+func (x *CreateNotificationResponse) GetNotification() *v12.Notification {
+	if x != nil {
+		return x.Notification
+	}
+	return nil
+}
+
+func (x *CreateNotificationResponse) GetUnreadCount() int64 {
+	if x != nil {
+		return x.UnreadCount
+	}
+	return 0
+}
+
 var File_workos_bridge_v1_bridge_proto protoreflect.FileDescriptor
 
 const file_workos_bridge_v1_bridge_proto_rawDesc = "" +
 	"\n" +
-	"\x1dworkos/bridge/v1/bridge.proto\x12\x10workos.bridge.v1\x1a\x1bworkos/agent/v1/agent.proto\x1a\x1bworkos/index/v1/index.proto\"f\n" +
+	"\x1dworkos/bridge/v1/bridge.proto\x12\x10workos.bridge.v1\x1a\x1bworkos/agent/v1/agent.proto\x1a\x1bworkos/index/v1/index.proto\x1a)workos/notification/v1/notification.proto\"f\n" +
 	"\x13RunAgentTaskRequest\x12'\n" +
 	"\x0fidempotency_key\x18\x01 \x01(\tR\x0eidempotencyKey\x12\x12\n" +
 	"\x04role\x18\x02 \x01(\tR\x04role\x12\x12\n" +
@@ -404,11 +528,19 @@ const file_workos_bridge_v1_bridge_proto_rawDesc = "" +
 	"page_token\x18\x03 \x01(\tR\tpageToken\"q\n" +
 	"\x17SearchKnowledgeResponse\x12.\n" +
 	"\x04hits\x18\x01 \x03(\v2\x1a.workos.index.v1.SearchHitR\x04hits\x12&\n" +
-	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken2\xd8\x02\n" +
+	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"n\n" +
+	"\x19CreateNotificationRequest\x12'\n" +
+	"\x0fidempotency_key\x18\x01 \x01(\tR\x0eidempotencyKey\x12\x14\n" +
+	"\x05title\x18\x02 \x01(\tR\x05title\x12\x12\n" +
+	"\x04body\x18\x03 \x01(\tR\x04body\"\x89\x01\n" +
+	"\x1aCreateNotificationResponse\x12H\n" +
+	"\fnotification\x18\x01 \x01(\v2$.workos.notification.v1.NotificationR\fnotification\x12!\n" +
+	"\funread_count\x18\x02 \x01(\x03R\vunreadCount2\xcb\x03\n" +
 	"\x10AppBridgeService\x12_\n" +
 	"\fRunAgentTask\x12%.workos.bridge.v1.RunAgentTaskRequest\x1a&.workos.bridge.v1.RunAgentTaskResponse\"\x00\x12y\n" +
 	"\x14WatchAgentTaskEvents\x12-.workos.bridge.v1.WatchAgentTaskEventsRequest\x1a..workos.bridge.v1.WatchAgentTaskEventsResponse\"\x000\x01\x12h\n" +
-	"\x0fSearchKnowledge\x12(.workos.bridge.v1.SearchKnowledgeRequest\x1a).workos.bridge.v1.SearchKnowledgeResponse\"\x00B?Z=github.com/yangtao121/workos/gen/go/workos/bridge/v1;bridgev1b\x06proto3"
+	"\x0fSearchKnowledge\x12(.workos.bridge.v1.SearchKnowledgeRequest\x1a).workos.bridge.v1.SearchKnowledgeResponse\"\x00\x12q\n" +
+	"\x12CreateNotification\x12+.workos.bridge.v1.CreateNotificationRequest\x1a,.workos.bridge.v1.CreateNotificationResponse\"\x00B?Z=github.com/yangtao121/workos/gen/go/workos/bridge/v1;bridgev1b\x06proto3"
 
 var (
 	file_workos_bridge_v1_bridge_proto_rawDescOnce sync.Once
@@ -422,7 +554,7 @@ func file_workos_bridge_v1_bridge_proto_rawDescGZIP() []byte {
 	return file_workos_bridge_v1_bridge_proto_rawDescData
 }
 
-var file_workos_bridge_v1_bridge_proto_msgTypes = make([]protoimpl.MessageInfo, 6)
+var file_workos_bridge_v1_bridge_proto_msgTypes = make([]protoimpl.MessageInfo, 8)
 var file_workos_bridge_v1_bridge_proto_goTypes = []any{
 	(*RunAgentTaskRequest)(nil),          // 0: workos.bridge.v1.RunAgentTaskRequest
 	(*RunAgentTaskResponse)(nil),         // 1: workos.bridge.v1.RunAgentTaskResponse
@@ -430,25 +562,31 @@ var file_workos_bridge_v1_bridge_proto_goTypes = []any{
 	(*WatchAgentTaskEventsResponse)(nil), // 3: workos.bridge.v1.WatchAgentTaskEventsResponse
 	(*SearchKnowledgeRequest)(nil),       // 4: workos.bridge.v1.SearchKnowledgeRequest
 	(*SearchKnowledgeResponse)(nil),      // 5: workos.bridge.v1.SearchKnowledgeResponse
-	(v1.AgentTaskState)(0),               // 6: workos.agent.v1.AgentTaskState
-	(*v1.AgentEvent)(nil),                // 7: workos.agent.v1.AgentEvent
-	(*v11.SearchHit)(nil),                // 8: workos.index.v1.SearchHit
+	(*CreateNotificationRequest)(nil),    // 6: workos.bridge.v1.CreateNotificationRequest
+	(*CreateNotificationResponse)(nil),   // 7: workos.bridge.v1.CreateNotificationResponse
+	(v1.AgentTaskState)(0),               // 8: workos.agent.v1.AgentTaskState
+	(*v1.AgentEvent)(nil),                // 9: workos.agent.v1.AgentEvent
+	(*v11.SearchHit)(nil),                // 10: workos.index.v1.SearchHit
+	(*v12.Notification)(nil),             // 11: workos.notification.v1.Notification
 }
 var file_workos_bridge_v1_bridge_proto_depIdxs = []int32{
-	6, // 0: workos.bridge.v1.RunAgentTaskResponse.state:type_name -> workos.agent.v1.AgentTaskState
-	7, // 1: workos.bridge.v1.WatchAgentTaskEventsResponse.event:type_name -> workos.agent.v1.AgentEvent
-	8, // 2: workos.bridge.v1.SearchKnowledgeResponse.hits:type_name -> workos.index.v1.SearchHit
-	0, // 3: workos.bridge.v1.AppBridgeService.RunAgentTask:input_type -> workos.bridge.v1.RunAgentTaskRequest
-	2, // 4: workos.bridge.v1.AppBridgeService.WatchAgentTaskEvents:input_type -> workos.bridge.v1.WatchAgentTaskEventsRequest
-	4, // 5: workos.bridge.v1.AppBridgeService.SearchKnowledge:input_type -> workos.bridge.v1.SearchKnowledgeRequest
-	1, // 6: workos.bridge.v1.AppBridgeService.RunAgentTask:output_type -> workos.bridge.v1.RunAgentTaskResponse
-	3, // 7: workos.bridge.v1.AppBridgeService.WatchAgentTaskEvents:output_type -> workos.bridge.v1.WatchAgentTaskEventsResponse
-	5, // 8: workos.bridge.v1.AppBridgeService.SearchKnowledge:output_type -> workos.bridge.v1.SearchKnowledgeResponse
-	6, // [6:9] is the sub-list for method output_type
-	3, // [3:6] is the sub-list for method input_type
-	3, // [3:3] is the sub-list for extension type_name
-	3, // [3:3] is the sub-list for extension extendee
-	0, // [0:3] is the sub-list for field type_name
+	8,  // 0: workos.bridge.v1.RunAgentTaskResponse.state:type_name -> workos.agent.v1.AgentTaskState
+	9,  // 1: workos.bridge.v1.WatchAgentTaskEventsResponse.event:type_name -> workos.agent.v1.AgentEvent
+	10, // 2: workos.bridge.v1.SearchKnowledgeResponse.hits:type_name -> workos.index.v1.SearchHit
+	11, // 3: workos.bridge.v1.CreateNotificationResponse.notification:type_name -> workos.notification.v1.Notification
+	0,  // 4: workos.bridge.v1.AppBridgeService.RunAgentTask:input_type -> workos.bridge.v1.RunAgentTaskRequest
+	2,  // 5: workos.bridge.v1.AppBridgeService.WatchAgentTaskEvents:input_type -> workos.bridge.v1.WatchAgentTaskEventsRequest
+	4,  // 6: workos.bridge.v1.AppBridgeService.SearchKnowledge:input_type -> workos.bridge.v1.SearchKnowledgeRequest
+	6,  // 7: workos.bridge.v1.AppBridgeService.CreateNotification:input_type -> workos.bridge.v1.CreateNotificationRequest
+	1,  // 8: workos.bridge.v1.AppBridgeService.RunAgentTask:output_type -> workos.bridge.v1.RunAgentTaskResponse
+	3,  // 9: workos.bridge.v1.AppBridgeService.WatchAgentTaskEvents:output_type -> workos.bridge.v1.WatchAgentTaskEventsResponse
+	5,  // 10: workos.bridge.v1.AppBridgeService.SearchKnowledge:output_type -> workos.bridge.v1.SearchKnowledgeResponse
+	7,  // 11: workos.bridge.v1.AppBridgeService.CreateNotification:output_type -> workos.bridge.v1.CreateNotificationResponse
+	8,  // [8:12] is the sub-list for method output_type
+	4,  // [4:8] is the sub-list for method input_type
+	4,  // [4:4] is the sub-list for extension type_name
+	4,  // [4:4] is the sub-list for extension extendee
+	0,  // [0:4] is the sub-list for field type_name
 }
 
 func init() { file_workos_bridge_v1_bridge_proto_init() }
@@ -462,7 +600,7 @@ func file_workos_bridge_v1_bridge_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_workos_bridge_v1_bridge_proto_rawDesc), len(file_workos_bridge_v1_bridge_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   6,
+			NumMessages:   8,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

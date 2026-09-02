@@ -27,12 +27,13 @@ const (
 // public manifests may request. Unknown capability IDs fail closed. A listed
 // permission is only a request; the Registry never mints grants or tokens.
 var knownPermissions = map[string]struct{}{
-	"agent.task.run":    {},
-	"agent.event.watch": {},
-	"artifact.read":     {},
-	"artifact.write":    {},
-	"knowledge.read":    {},
-	"project.read":      {},
+	"agent.task.run":       {},
+	"agent.event.watch":    {},
+	"artifact.read":        {},
+	"artifact.write":       {},
+	"knowledge.read":       {},
+	"notifications.create": {},
+	"project.read":         {},
 }
 
 // KnownPermission reports whether the capability ID belongs to the vocabulary.

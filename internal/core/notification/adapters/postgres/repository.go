@@ -487,3 +487,92 @@ func pgTimestampParam(value time.Time) *time.Time {
 	}
 	return &value
 }
+
+// --- app request idempotency + quota (ADR-0014) -------------------------
+
+func (r *Repository) LastOwnerSequenceTx(ctx context.Context, tx dbtx.Tx, ownerUserID string) (int64, error) {
+	sequence, err := r.queries.WithTx(tx).GetOwnerLastSequence(ctx, ownerUserID)
+	if err != nil {
+		return 0, storeError("query owner sequence", err)
+	}
+	return sequence, nil
+}
+
+func (r *Repository) GetAppRequest(ctx context.Context, ownerUserID, appInstanceID, idempotencyKey string) (ports.AppRequestRecord, bool, error) {
+	row, err := r.queries.GetNotificationAppRequest(ctx, notificationdb.GetNotificationAppRequestParams{
+		OwnerUserID: ownerUserID, AppInstallationID: appInstanceID, IdempotencyKey: idempotencyKey,
+	})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return ports.AppRequestRecord{}, false, nil
+	}
+	if err != nil {
+		return ports.AppRequestRecord{}, false, storeError("query notification app request", err)
+	}
+	return ports.AppRequestRecord{
+		RequestDigest: row.RequestDigest, ResultVersion: row.ResultVersion, Result: row.Result,
+	}, true, nil
+}
+
+func (r *Repository) SaveAppRequest(ctx context.Context, tx dbtx.Tx, record ports.AppRequestRecord) error {
+	rows, err := r.queries.WithTx(tx).InsertNotificationAppRequest(ctx, notificationdb.InsertNotificationAppRequestParams{
+		OwnerUserID: record.OwnerUserID, AppInstallationID: record.AppInstanceID,
+		IdempotencyKey: record.IdempotencyKey, RequestDigest: record.RequestDigest,
+		Result: record.Result, CreatedAt: record.CreatedAt,
+	})
+	if err != nil {
+		return storeError("save notification app request", err)
+	}
+	if rows == 0 {
+		return storeError("save notification app request", errors.New("no rows inserted"))
+	}
+	return nil
+}
+
+func (r *Repository) LockAppQuota(ctx context.Context, tx dbtx.Tx, ownerUserID, appInstanceID string) (ports.AppQuotaBucket, error) {
+	row, err := r.queries.WithTx(tx).GetNotificationAppQuotaForUpdate(ctx, notificationdb.GetNotificationAppQuotaForUpdateParams{
+		OwnerUserID: ownerUserID, AppInstallationID: appInstanceID,
+	})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return ports.AppQuotaBucket{}, ports.ErrNoAppQuotaBucket
+	}
+	if err != nil {
+		return ports.AppQuotaBucket{}, storeError("lock app quota bucket", err)
+	}
+	return ports.AppQuotaBucket{
+		UtcDate: row.UtcDate.Time, DailyCount: int(row.DailyCount),
+		BurstWindowStart: row.BurstWindowStart, BurstCount: int(row.BurstCount),
+	}, nil
+}
+
+func (r *Repository) InsertAppQuota(ctx context.Context, tx dbtx.Tx, ownerUserID, appInstanceID string, now time.Time) (ports.AppQuotaBucket, error) {
+	rows, err := r.queries.WithTx(tx).InsertNotificationAppQuota(ctx, notificationdb.InsertNotificationAppQuotaParams{
+		OwnerUserID: ownerUserID, AppInstallationID: appInstanceID,
+		UtcDate:          pgtype.Date{Time: now.Truncate(24 * time.Hour), Valid: true},
+		BurstWindowStart: now, UpdatedAt: now,
+	})
+	if err != nil {
+		return ports.AppQuotaBucket{}, storeError("insert app quota bucket", err)
+	}
+	if rows == 0 {
+		return ports.AppQuotaBucket{}, storeError("insert app quota bucket", errors.New("no rows inserted"))
+	}
+	return ports.AppQuotaBucket{UtcDate: now.Truncate(24 * time.Hour), BurstWindowStart: now}, nil
+}
+
+func (r *Repository) UpdateAppQuota(ctx context.Context, tx dbtx.Tx, ownerUserID, appInstanceID string, update ports.AppQuotaUpdate) error {
+	rows, err := r.queries.WithTx(tx).UpdateNotificationAppQuota(ctx, notificationdb.UpdateNotificationAppQuotaParams{
+		OwnerUserID: ownerUserID, AppInstallationID: appInstanceID,
+		UtcDate:          pgtype.Date{Time: update.UtcDate, Valid: true},
+		DailyCount:       int32(update.DailyCount),
+		BurstWindowStart: update.BurstWindowStart,
+		BurstCount:       int32(update.BurstCount),
+		UpdatedAt:        update.UpdatedAt,
+	})
+	if err != nil {
+		return storeError("update app quota bucket", err)
+	}
+	if rows == 0 {
+		return domain.ErrCorrupt
+	}
+	return nil
+}

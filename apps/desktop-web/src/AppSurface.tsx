@@ -27,6 +27,20 @@ interface AppSurfaceProps {
   appBridge: Client<typeof AppBridgeService>;
 }
 
+// notificationKindName projects the wire enum onto the canonical stored
+// kind strings for the iframe projection.
+function notificationKindName(kind: number): string {
+  const names: Record<number, string> = {
+    0: "unspecified",
+    1: "agent.approval.required",
+    2: "agent.task.terminal",
+    3: "artifact.review.created",
+    4: "reliability.incident.opened",
+    5: "app.instance.message",
+  };
+  return names[kind] ?? "unspecified";
+}
+
 // buildTransport projects the canonical AppBridgeService calls into the
 // transport the trusted host uses. The token travels only as dedicated RPC
 // metadata on the public bridge routes; the host itself never holds it.
@@ -76,6 +90,39 @@ function buildTransport(
             score: hit.score,
           })),
           nextPageToken: response.nextPageToken,
+        };
+      } catch (reason: unknown) {
+        throw asBridgeProtocolError(reason);
+      }
+    },
+    async createNotification(input) {
+      try {
+        const response = await appBridge.createNotification(
+          {
+            idempotencyKey: input.idempotencyKey,
+            title: input.title,
+            body: input.body ?? "",
+          },
+          { headers },
+        );
+        const notification = response.notification;
+        if (!notification || !notification.target) {
+          throw new BridgeProtocolError("internal");
+        }
+        return {
+          notification: {
+            id: notification.id,
+            projectId: notification.projectId,
+            kind: notificationKindName(notification.kind),
+            severity: notification.severity === 2 ? "critical" : "normal",
+            origin: notification.origin === 2 ? "app" : "system",
+            title: notification.title,
+            body: notification.body,
+            targetKind: notification.target.kind === 5 ? "app" : "unspecified",
+            targetId: notification.target.targetId,
+            appId: notification.target.appId,
+          },
+          unreadCount: Number(response.unreadCount),
         };
       } catch (reason: unknown) {
         throw asBridgeProtocolError(reason);

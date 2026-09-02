@@ -46,12 +46,16 @@ type TxSource interface {
 	Begin(ctx context.Context) (dbtx.Tx, error)
 }
 
-// Service composes the store with the id generator.
+// Service composes the store with the id generator. The app authorizer is
+// the neutral installation port behind the app notification ingest; it is
+// optional so the public surface can start without it, and every ingest
+// call fails closed until it is wired.
 type Service struct {
-	store ports.NotificationStore
-	pool  TxSource
-	ids   ids.Generator
-	now   func() time.Time
+	store         ports.NotificationStore
+	pool          TxSource
+	ids           ids.Generator
+	appAuthorizer AppInstallationAuthorizer
+	now           func() time.Time
 }
 
 func New(store ports.NotificationStore, pool TxSource, generator ids.Generator) (*Service, error) {
@@ -59,6 +63,16 @@ func New(store ports.NotificationStore, pool TxSource, generator ids.Generator) 
 		return nil, errors.New("notification service requires store, tx source, and generator")
 	}
 	return &Service{store: store, pool: pool, ids: generator, now: func() time.Time { return time.Now().UTC() }}, nil
+}
+
+// WithAppAuthorizer wires the neutral installation authorizer. The
+// composition root must wire it before exposing the app ingest surface.
+func (s *Service) WithAppAuthorizer(authorizer AppInstallationAuthorizer) error {
+	if authorizer == nil {
+		return errors.New("notification service requires an app authorizer")
+	}
+	s.appAuthorizer = authorizer
+	return nil
 }
 
 // List reads one owner-scoped newest-first page plus the snapshot facts.

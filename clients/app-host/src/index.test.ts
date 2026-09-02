@@ -108,6 +108,7 @@ function setupImplementation(options: {
   const transport: AppBridgeTransport = {
     runAgentTask,
     searchKnowledge,
+    createNotification: () => Promise.reject(new Error("not used in this test")),
     watchAgentTaskEvents,
     ...options.transport,
   };
@@ -253,6 +254,7 @@ describe("App Bridge host dispatch", () => {
     const { port, received } = await handshakenHost({
       transport: {
         searchKnowledge: () => Promise.reject(new Error("not used in this test")),
+        createNotification: () => Promise.reject(new Error("not used in this test")),
         runAgentTask: () => Promise.reject(new Error("postgres DSN postgres://secret@10.0.0.1")),
       },
     });
@@ -375,6 +377,7 @@ describe("App Bridge host dispatch", () => {
     const { host, port } = await handshakenHost({
       transport: {
         searchKnowledge: () => new Promise<BridgeKnowledgeSearchResult>(() => undefined),
+        createNotification: () => Promise.reject(new Error("not used in this test")),
         runAgentTask: () => new Promise<AppBridgeRunResult>(() => undefined),
       },
     });
@@ -572,6 +575,7 @@ describe("App Bridge host untrusted-port boundary", () => {
     const typedWatch = vi.fn(() => Promise.reject(new BridgeProtocolError("not_found")));
     const runTransport: Partial<AppBridgeTransport> = {
       searchKnowledge: () => Promise.reject(new Error("not used in this test")),
+      createNotification: () => Promise.reject(new Error("not used in this test")),
       runAgentTask: typedRun,
       watchAgentTaskEvents: typedWatch,
     };

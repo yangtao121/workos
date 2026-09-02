@@ -29,6 +29,8 @@ import {
   type BridgeStreamPayload,
   type BridgeKnowledgeSearchPayload,
   type BridgeKnowledgeSearchResult,
+  type BridgeNotificationCreatePayload,
+  type BridgeNotificationCreateResult,
 } from "@workos/surface-sdk";
 import type { AgentEvent } from "@workos/protocol";
 
@@ -61,6 +63,13 @@ export interface AppBridgeTransport {
    * query and paging facts.
    */
   searchKnowledge(input: BridgeKnowledgeSearchPayload): Promise<BridgeKnowledgeSearchResult>;
+  /**
+   * Creates one quota-bound owner notification for this app instance. The
+   * payload carries only the app-scoped idempotency key and bounded text.
+   */
+  createNotification(
+    input: BridgeNotificationCreatePayload,
+  ): Promise<BridgeNotificationCreateResult>;
   /**
    * Watches persisted task events until the task is terminal or abort is
    * triggered. Ending the stream never cancels the durable task.
@@ -103,6 +112,9 @@ const capabilityMethods: Record<string, BridgeMethod> = {
   // grant plus its configured indexer, so the grant name never crosses the
   // host boundary (ADR-0013).
   "knowledge.search": "knowledge.search",
+  // ADR-0014: the grant name and the method name are identical, so the
+  // effective capability list carries the method name directly.
+  "notifications.create": "notifications.create",
 };
 
 // Request-boundary grammar enforced on the untrusted inbound stream. These
@@ -195,6 +207,39 @@ function validStreamPayload(payload: unknown): payload is BridgeStreamPayload {
 // knowledge.search bounds mirror the server contract exactly: 1..256 code
 // points (enforced server-side) with a local pre-decode byte bound, an
 // optional bounded page size, and an optional opaque token.
+// notifications.create bounds mirror the server contract exactly: one
+// app-scoped idempotency key plus bounded inert display text. There is no
+// scope, origin, severity, or target field to validate — by grammar.
+const MAX_NOTIFICATION_TITLE_BYTES = 512;
+const MAX_NOTIFICATION_BODY_BYTES = 2048;
+
+function validNotificationCreatePayload(
+  payload: unknown,
+): payload is BridgeNotificationCreatePayload {
+  if (!isPlainObject(payload)) return false;
+  const withBody = hasExactKeys(payload, ["idempotencyKey", "title", "body"]);
+  const minimal = hasExactKeys(payload, ["idempotencyKey", "title"]);
+  if (!withBody && !minimal) return false;
+  const { idempotencyKey, title, body } = payload;
+  if (
+    typeof idempotencyKey !== "string" ||
+    idempotencyKey.length === 0 ||
+    idempotencyKey.length > MAX_IDEMPOTENCY_KEY_CHARS
+  )
+    return false;
+  if (
+    typeof title !== "string" ||
+    title.length === 0 ||
+    title.length > MAX_NOTIFICATION_TITLE_BYTES
+  ) {
+    return false;
+  }
+  if (withBody) {
+    if (typeof body !== "string" || body.length > MAX_NOTIFICATION_BODY_BYTES) return false;
+  }
+  return true;
+}
+
 const MAX_KNOWLEDGE_QUERY_BYTES = 4 * 1024;
 const MAX_KNOWLEDGE_PAGE_TOKEN_CHARS = 512;
 
@@ -430,6 +475,9 @@ export function openAppBridgeHost(options: AppBridgeHostOptions): AppBridgeHost 
     if (request.method === "knowledge.search") {
       return validKnowledgeSearchPayload(request.payload) ? null : "invalid_argument";
     }
+    if (request.method === "notifications.create") {
+      return validNotificationCreatePayload(request.payload) ? null : "invalid_argument";
+    }
     return validStreamPayload(request.payload) ? null : "invalid_argument";
   };
 
@@ -489,6 +537,39 @@ export function openAppBridgeHost(options: AppBridgeHostOptions): AppBridgeHost 
       pending.set(request.requestId, entry);
       void options.transport
         .searchKnowledge(payload)
+        .then((result) => {
+          if (!pending.has(request.requestId)) return; // timed out or closed: inert
+          clearPending(request.requestId);
+          if (closed || !handshaked) return;
+          postBridgeMessage(channel.port1, {
+            version: APP_BRIDGE_VERSION,
+            type: "response",
+            requestId: request.requestId,
+            payload: result,
+          });
+        })
+        .catch((reason: unknown) => {
+          if (!pending.has(request.requestId)) return;
+          clearPending(request.requestId);
+          const code: BridgeErrorCode =
+            reason instanceof BridgeProtocolError ? reason.code : "internal";
+          respondError(request.requestId, code);
+        });
+      return;
+    }
+
+    if (request.method === "notifications.create") {
+      const payload = request.payload as BridgeNotificationCreatePayload;
+      const entry = {
+        timer: window.setTimeout(() => {
+          if (pending.delete(request.requestId)) {
+            respondError(request.requestId, "timeout");
+          }
+        }, timeoutMs),
+      };
+      pending.set(request.requestId, entry);
+      void options.transport
+        .createNotification(payload)
         .then((result) => {
           if (!pending.has(request.requestId)) return; // timed out or closed: inert
           clearPending(request.requestId);

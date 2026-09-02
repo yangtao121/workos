@@ -68,6 +68,10 @@ func BridgeTokenMatches(storedDigest, presentedDigest string) bool {
 var implementedBridgeCapabilities = []string{
 	"agent.event.watch",
 	"agent.task.run",
+	// notifications.create (ADR-0014): the grant name and the negotiated
+	// bridge method name are deliberately identical, so no alias mapping
+	// exists for it anywhere in the stack.
+	"notifications.create",
 }
 
 // The canonical capability IDs this bridge can execute, mirrored from the
@@ -76,6 +80,9 @@ var implementedBridgeCapabilities = []string{
 const (
 	BridgeCapabilityAgentTaskRun    = "agent.task.run"
 	BridgeCapabilityAgentEventWatch = "agent.event.watch"
+	// BridgeCapabilityNotificationsCreate guards the app notification
+	// ingest (ADR-0014); the grant name and the method name are identical.
+	BridgeCapabilityNotificationsCreate = "notifications.create"
 	// BridgeCapabilityKnowledgeSearch is the read-only knowledge search
 	// bridge method. It maps to the `knowledge.read` grant — the capability
 	// string itself is never a grant name — and it is negotiated only when

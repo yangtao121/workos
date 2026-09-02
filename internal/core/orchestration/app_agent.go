@@ -22,6 +22,10 @@ const (
 	// `knowledge.read`, the installation actually holds that grant, and the
 	// exact current grant revision matches the session snapshot (ADR-0013).
 	AppBridgeCapabilityKnowledgeRead = "knowledge.read"
+	// AppBridgeCapabilityNotificationsCreate guards the app notification
+	// ingest (ADR-0014). The grant name and the negotiated bridge method
+	// name are deliberately identical: `notifications.create`.
+	AppBridgeCapabilityNotificationsCreate = "notifications.create"
 )
 
 // ErrAppNotGranted marks a validated session asking for a capability the
@@ -131,6 +135,18 @@ func (s *AppAgentService) AuthorizeAppKnowledge(ctx context.Context, ownerUserID
 		return "", "", err
 	}
 	return ownerUserID, projectID, nil
+}
+
+// AuthorizeAppNotificationForIngest re-verifies, per call, the active
+// installation, project scope, exact current grant epoch, and the
+// notifications.create grant, returning the authoritative app identity the
+// ingest projection derives its origin binding from (ADR-0014).
+func (s *AppAgentService) AuthorizeAppNotificationForIngest(ctx context.Context, ownerUserID, projectID, appInstanceID string, installationGrantRevision int64) (string, string, string, error) {
+	installation, err := s.authorize(ctx, ownerUserID, projectID, appInstanceID, installationGrantRevision, AppBridgeCapabilityNotificationsCreate)
+	if err != nil {
+		return "", "", "", err
+	}
+	return ownerUserID, projectID, installation.AppID, nil
 }
 
 // authorize walks the authoritative chain shared by both bridge methods:

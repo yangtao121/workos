@@ -15,6 +15,7 @@ import (
 	bridgev1 "github.com/yangtao121/workos/gen/go/workos/bridge/v1"
 	bridgev1connect "github.com/yangtao121/workos/gen/go/workos/bridge/v1/bridgev1connect"
 	indexv1 "github.com/yangtao121/workos/gen/go/workos/index/v1"
+	notificationv1 "github.com/yangtao121/workos/gen/go/workos/notification/v1"
 	"github.com/yangtao121/workos/internal/platform/identity"
 	"github.com/yangtao121/workos/internal/runtime/surface/domain"
 	"github.com/yangtao121/workos/internal/runtime/surface/ports"
@@ -33,6 +34,7 @@ type BridgeService interface {
 	RunAgentTask(ctx context.Context, ownerUserID, deviceID, token, idempotencyKey, role, goal string) (ports.AppTaskSubmission, error)
 	StreamAgentEvents(ctx context.Context, ownerUserID, deviceID, token, taskID string, after int64, onEvent func(*agentv1.AgentEvent) error) error
 	SearchKnowledge(ctx context.Context, ownerUserID, deviceID, token, query string, pageSize int32, pageToken string) (ports.KnowledgeSearchPage, error)
+	CreateNotification(ctx context.Context, ownerUserID, deviceID, token, idempotencyKey, title, body string) (*notificationv1.CreateAppNotificationResponse, error)
 }
 
 type BridgeHandler struct {
@@ -152,6 +154,29 @@ func bridgeStateToProto(state string) agentv1.AgentTaskState {
 // fixed short messages: no token fragments, no Core internals, no goal or
 // event content, no foreign-resource existence detail. Credential failures
 // are always Unauthenticated; capability denials are PermissionDenied.
+// CreateNotification serves the notifications.create bridge method. The
+// response carries the projected notification and owner unread count so the
+// app can confirm delivery without any other notification API.
+func (h *BridgeHandler) CreateNotification(ctx context.Context, req *connect.Request[bridgev1.CreateNotificationRequest]) (*connect.Response[bridgev1.CreateNotificationResponse], error) {
+	id, err := identity.FromContext(ctx)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeUnauthenticated, err)
+	}
+	token := req.Header().Get(identity.BridgeTokenHeader)
+	if req.Msg.GetIdempotencyKey() == "" {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("bridge request is invalid"))
+	}
+	response, err := h.service.CreateNotification(ctx, id.UserID, id.DeviceID, token,
+		req.Msg.GetIdempotencyKey(), req.Msg.GetTitle(), req.Msg.GetBody())
+	if err != nil {
+		return nil, mapBridgeError(err)
+	}
+	return connect.NewResponse(&bridgev1.CreateNotificationResponse{
+		Notification: response.GetNotification(),
+		UnreadCount:  response.GetUnreadCount(),
+	}), nil
+}
+
 func mapBridgeError(err error) error {
 	switch {
 	case errors.Is(err, domain.ErrInvalid):

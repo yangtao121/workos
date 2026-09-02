@@ -9,6 +9,7 @@ import (
 	"time"
 
 	agentv1 "github.com/yangtao121/workos/gen/go/workos/agent/v1"
+	notificationv1 "github.com/yangtao121/workos/gen/go/workos/notification/v1"
 
 	"github.com/yangtao121/workos/internal/runtime/surface/domain"
 )
@@ -269,6 +270,21 @@ type AppAgentClient interface {
 	// reaches its terminal state or the context is canceled. Canceling only
 	// ends the stream; the durable Agent task itself continues.
 	WatchAgentTaskEvents(ctx context.Context, query AppAgentWatchQuery, onEvent func(*agentv1.AgentEvent) error) error
+	// CreateAppNotification drives the Core-private app notification ingest
+	// (ADR-0014): scope comes from the validated session, Core re-verifies
+	// the installation/grant epoch and adjudicates idempotency and quota.
+	CreateAppNotification(ctx context.Context, query AppNotificationCreateQuery) (*notificationv1.CreateAppNotificationResponse, error)
+}
+
+// AppNotificationCreateQuery is one bounded app create command. Scope
+// fields are session-derived by the bridge service, never public input.
+type AppNotificationCreateQuery struct {
+	ProjectID                 string
+	AppInstanceID             string
+	InstallationGrantRevision int64
+	IdempotencyKey            string
+	Title                     string
+	Body                      string
 }
 
 var (

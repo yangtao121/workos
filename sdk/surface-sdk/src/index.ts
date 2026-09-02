@@ -14,7 +14,12 @@ export const MAX_INFLIGHT_REQUESTS = 32;
 export const REQUEST_TIMEOUT_MS = 15_000;
 
 /** The only bridge methods that exist; anything else fails closed. */
-export const BRIDGE_METHODS = ["agent.run", "agent.stream", "knowledge.search"] as const;
+export const BRIDGE_METHODS = [
+  "agent.run",
+  "agent.stream",
+  "knowledge.search",
+  "notifications.create",
+] as const;
 export type BridgeMethod = (typeof BRIDGE_METHODS)[number];
 
 export interface BridgeHello {
@@ -53,17 +58,42 @@ export interface BridgeStreamPayload {
   afterSequence: string;
 }
 
-/**
- * knowledge.search payload: ONLY bounded search parameters. Owner, project,
- * app instance, and scope are derived server-side from the validated surface
- * session — the payload grammar has no field that could carry them.
- */
 export interface BridgeKnowledgeSearchPayload {
   query: string;
   /** 0 selects the server default (20); otherwise 1..50. */
   pageSize?: number | undefined;
   /** Opaque continuation token from a previous response. */
   pageToken?: string | undefined;
+}
+
+/**
+ * notifications.create payload: ONLY bounded display text and the
+ * app-scoped idempotency key. Owner, project, app instance, origin,
+ * severity, and target are derived or re-verified server-side from the
+ * validated surface session — the payload grammar has no field that could
+ * carry them (ADR-0014).
+ */
+export interface BridgeNotificationCreatePayload {
+  idempotencyKey: string;
+  title: string;
+  body?: string | undefined;
+}
+
+/** The projected owner notification fact (inert plain text only). */
+export interface BridgeNotificationCreateResult {
+  notification: {
+    id: string;
+    projectId: string;
+    kind: string;
+    severity: string;
+    origin: string;
+    title: string;
+    body: string;
+    targetKind: string;
+    targetId: string;
+    appId: string;
+  };
+  unreadCount: number;
 }
 
 /** One canonical knowledge hit, projected from workos.index.v1.SearchHit. */
@@ -87,14 +117,22 @@ export interface BridgeRequest {
   type: "request";
   requestId: string;
   method: BridgeMethod;
-  payload: BridgeRunPayload | BridgeStreamPayload | BridgeKnowledgeSearchPayload;
+  payload:
+    | BridgeRunPayload
+    | BridgeStreamPayload
+    | BridgeKnowledgeSearchPayload
+    | BridgeNotificationCreatePayload;
 }
 
 export interface BridgeResponse {
   version: typeof APP_BRIDGE_VERSION;
   type: "response";
   requestId: string;
-  payload: BridgeRunResult | BridgeKnowledgeSearchResult | { done: true };
+  payload:
+    | BridgeRunResult
+    | BridgeKnowledgeSearchResult
+    | BridgeNotificationCreateResult
+    | { done: true };
 }
 
 /** One streamed canonical event for an accepted agent.stream request. */

@@ -14,6 +14,7 @@ import (
 	agentv1 "github.com/yangtao121/workos/gen/go/workos/agent/v1"
 	bridgev1 "github.com/yangtao121/workos/gen/go/workos/bridge/v1"
 	bridgev1connect "github.com/yangtao121/workos/gen/go/workos/bridge/v1/bridgev1connect"
+	notificationv1 "github.com/yangtao121/workos/gen/go/workos/notification/v1"
 	"github.com/yangtao121/workos/internal/platform/identity"
 	"github.com/yangtao121/workos/internal/runtime/surface/domain"
 	"github.com/yangtao121/workos/internal/runtime/surface/ports"
@@ -232,4 +233,8 @@ func validTaskID() string {
 
 func (s *fakeBridgeService) SearchKnowledge(context.Context, string, string, string, string, int32, string) (ports.KnowledgeSearchPage, error) {
 	return ports.KnowledgeSearchPage{}, errors.New("not used in this test")
+}
+
+func (f *fakeBridgeService) CreateNotification(ctx context.Context, ownerUserID, deviceID, token, idempotencyKey, title, body string) (*notificationv1.CreateAppNotificationResponse, error) {
+	return &notificationv1.CreateAppNotificationResponse{}, nil
 }

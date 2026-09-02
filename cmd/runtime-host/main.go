@@ -11,6 +11,7 @@ import (
 	agentv1connect "github.com/yangtao121/workos/gen/go/workos/agent/v1/agentv1connect"
 	commonv1 "github.com/yangtao121/workos/gen/go/workos/common/v1"
 	"github.com/yangtao121/workos/gen/go/workos/common/v1/commonv1connect"
+	notificationv1connect "github.com/yangtao121/workos/gen/go/workos/notification/v1/notificationv1connect"
 	surfacev1connect "github.com/yangtao121/workos/gen/go/workos/surface/v1/surfacev1connect"
 	"github.com/yangtao121/workos/gen/go/workos/workload/v1/workloadv1connect"
 	"github.com/yangtao121/workos/internal/platform/config"
@@ -84,7 +85,11 @@ func run(logger *slog.Logger) error {
 		return err
 	}
 	privateCoreAppAgent := agentv1connect.NewAppAgentServiceClient(telemetry.HTTPClient(), cfg.Services.Core)
-	appAgentClient, err := surfacecoreclient.NewAppAgent(privateCoreAppAgent)
+	// The private app notification ingest surface (ADR-0014): the runtime
+	// forwards only bounded app text plus session-derived scope facts; Core
+	// re-verifies installation, grant epoch, idempotency, and quota.
+	privateNotificationIngest := notificationv1connect.NewAppNotificationIngestServiceClient(telemetry.HTTPClient(), cfg.Services.Core)
+	appAgentClient, err := surfacecoreclient.NewAppAgent(privateCoreAppAgent, privateNotificationIngest)
 	if err != nil {
 		return err
 	}

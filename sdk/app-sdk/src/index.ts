@@ -15,6 +15,8 @@ import {
   type BridgeRunPayload,
   type BridgeKnowledgeSearchPayload,
   type BridgeKnowledgeSearchResult,
+  type BridgeNotificationCreatePayload,
+  type BridgeNotificationCreateResult,
   type BridgeRunResult,
   type BridgeStreamPayload,
 } from "@workos/surface-sdk";
@@ -32,6 +34,7 @@ export type Capability =
   | "artifact.read"
   | "artifact.write"
   | "knowledge.read"
+  | "notifications.create"
   | "project.read";
 
 export interface AppAgentRunInput {
@@ -67,6 +70,17 @@ export interface WorkOSAppBridge {
      */
     search(input: AppKnowledgeSearchInput): Promise<AppKnowledgeSearchResult>;
   };
+  notifications: {
+    /**
+     * Creates one quota-bound owner notification for THIS app instance
+     * (requires notifications.create). The payload carries only the
+     * app-scoped idempotency key and bounded inert text; the project scope,
+     * origin label, and typed target are derived server-side. Same
+     * key/same request replays exactly; a different request with the same
+     * key is a stable conflict; an exhausted allowance stays retryable.
+     */
+    create(input: AppNotificationCreateInput): Promise<AppNotificationCreateResult>;
+  };
 }
 
 export interface AppKnowledgeSearchInput {
@@ -87,6 +101,28 @@ export interface AppKnowledgeHit {
 export interface AppKnowledgeSearchResult {
   hits: AppKnowledgeHit[];
   nextPageToken: string;
+}
+
+export interface AppNotificationCreateInput {
+  idempotencyKey: string;
+  title: string;
+  body?: string | undefined;
+}
+
+export interface AppNotificationCreateResult {
+  notification: {
+    id: string;
+    projectId: string;
+    kind: string;
+    severity: string;
+    origin: string;
+    title: string;
+    body: string;
+    targetKind: string;
+    targetId: string;
+    appId: string;
+  };
+  unreadCount: number;
 }
 
 export interface ConnectAppBridgeOptions {
@@ -158,7 +194,13 @@ export function connectWorkOSAppBridge(
 }
 
 type Pending = {
-  resolve: (value: BridgeRunResult | BridgeKnowledgeSearchResult | { done: true }) => void;
+  resolve: (
+    value:
+      | BridgeRunResult
+      | BridgeKnowledgeSearchResult
+      | BridgeNotificationCreateResult
+      | { done: true },
+  ) => void;
   reject: (error: BridgeProtocolError) => void;
   onEvent?: ((event: AgentEvent) => void) | undefined;
   canceled?: boolean | undefined;
@@ -201,10 +243,16 @@ function createBridge(
 
   const call = (
     method: BridgeMethod,
-    payload: BridgeRunPayload | BridgeStreamPayload | BridgeKnowledgeSearchPayload,
+    payload:
+      | BridgeRunPayload
+      | BridgeStreamPayload
+      | BridgeKnowledgeSearchPayload
+      | BridgeNotificationCreatePayload,
     onEvent?: (event: AgentEvent) => void,
     onRegistered?: (requestId: string) => void,
-  ): Promise<BridgeRunResult | BridgeKnowledgeSearchResult | { done: true }> => {
+  ): Promise<
+    BridgeRunResult | BridgeKnowledgeSearchResult | BridgeNotificationCreateResult | { done: true }
+  > => {
     return new Promise((resolve, reject) => {
       if (!methods.includes(method)) {
         reject(new BridgeProtocolError("permission_denied"));
@@ -352,6 +400,20 @@ function createBridge(
         };
         const result = await call("knowledge.search", payload);
         if ("done" in result || !("hits" in result)) {
+          throw new BridgeProtocolError("internal");
+        }
+        return result;
+      },
+    },
+    notifications: {
+      async create(input: AppNotificationCreateInput): Promise<AppNotificationCreateResult> {
+        const payload: BridgeNotificationCreatePayload = {
+          idempotencyKey: input.idempotencyKey,
+          title: input.title,
+          body: input.body,
+        };
+        const result = await call("notifications.create", payload);
+        if ("done" in result || !("notification" in result)) {
           throw new BridgeProtocolError("internal");
         }
         return result;

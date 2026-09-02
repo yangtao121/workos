@@ -199,3 +199,7 @@ GROUP BY owner_user_id;
 -- name: DeleteOldSourceReceipts :execrows
 DELETE FROM workos_core.notification_source_receipts
 WHERE recorded_at < sqlc.arg(cutoff);
+
+-- name: GetOwnerLastSequence :one
+SELECT last_sequence FROM workos_core.notification_owner_sequences
+WHERE owner_user_id = sqlc.arg(owner_user_id);

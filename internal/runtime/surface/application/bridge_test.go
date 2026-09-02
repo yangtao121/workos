@@ -10,6 +10,7 @@ import (
 	"time"
 
 	agentv1 "github.com/yangtao121/workos/gen/go/workos/agent/v1"
+	notificationv1 "github.com/yangtao121/workos/gen/go/workos/notification/v1"
 	"github.com/yangtao121/workos/internal/runtime/surface/domain"
 	"github.com/yangtao121/workos/internal/runtime/surface/ports"
 )
@@ -107,6 +108,8 @@ type bridgeAppAgent struct {
 	authorizeOwner string
 	authorizeDeny  bool
 	authorizeCalls int
+	notifications  []*notificationv1.CreateAppNotificationResponse
+	createErr      error
 }
 
 func (a *bridgeAppAgent) RunAgentTask(_ context.Context, query ports.AppAgentRunQuery) (ports.AppTaskSubmission, error) {
@@ -458,4 +461,11 @@ func (r *recordingKnowledgeSearch) Search(_ context.Context, query ports.Knowled
 	r.calls++
 	r.queries = append(r.queries, query)
 	return r.page, nil
+}
+
+func (a *bridgeAppAgent) CreateAppNotification(_ context.Context, query ports.AppNotificationCreateQuery) (*notificationv1.CreateAppNotificationResponse, error) {
+	if a.createErr != nil {
+		return nil, a.createErr
+	}
+	return &notificationv1.CreateAppNotificationResponse{}, nil
 }

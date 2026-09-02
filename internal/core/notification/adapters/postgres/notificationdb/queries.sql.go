@@ -366,6 +366,18 @@ func (q *Queries) GetOwnerChangeWatermark(ctx context.Context, ownerUserID strin
 	return watermark, err
 }
 
+const getOwnerLastSequence = `-- name: GetOwnerLastSequence :one
+SELECT last_sequence FROM workos_core.notification_owner_sequences
+WHERE owner_user_id = $1
+`
+
+func (q *Queries) GetOwnerLastSequence(ctx context.Context, ownerUserID string) (int64, error) {
+	row := q.db.QueryRow(ctx, getOwnerLastSequence, ownerUserID)
+	var last_sequence int64
+	err := row.Scan(&last_sequence)
+	return last_sequence, err
+}
+
 const getOwnerNotification = `-- name: GetOwnerNotification :one
 SELECT id, owner_user_id, project_id, kind, severity, origin, title, body,
        target_kind, target_id, app_id, source_process, source_id, source_digest,

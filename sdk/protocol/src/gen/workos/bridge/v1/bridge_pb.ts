@@ -13,13 +13,15 @@ import type { AgentEvent, AgentTaskState } from "../../agent/v1/agent_pb.js";
 import { file_workos_agent_v1_agent } from "../../agent/v1/agent_pb.js";
 import type { SearchHit } from "../../index/v1/index_pb.js";
 import { file_workos_index_v1_index } from "../../index/v1/index_pb.js";
+import type { Notification } from "../../notification/v1/notification_pb.js";
+import { file_workos_notification_v1_notification } from "../../notification/v1/notification_pb.js";
 import type { Message } from "@bufbuild/protobuf";
 
 /**
  * Describes the file workos/bridge/v1/bridge.proto.
  */
 export const file_workos_bridge_v1_bridge: GenFile = /*@__PURE__*/
-  fileDesc("Ch13b3Jrb3MvYnJpZGdlL3YxL2JyaWRnZS5wcm90bxIQd29ya29zLmJyaWRnZS52MSJKChNSdW5BZ2VudFRhc2tSZXF1ZXN0EhcKD2lkZW1wb3RlbmN5X2tleRgBIAEoCRIMCgRyb2xlGAIgASgJEgwKBGdvYWwYAyABKAkidAoUUnVuQWdlbnRUYXNrUmVzcG9uc2USDwoHdGFza19pZBgBIAEoCRIuCgVzdGF0ZRgCIAEoDjIfLndvcmtvcy5hZ2VudC52MS5BZ2VudFRhc2tTdGF0ZRIbChNsYXN0X2V2ZW50X3NlcXVlbmNlGAMgASgDIkYKG1dhdGNoQWdlbnRUYXNrRXZlbnRzUmVxdWVzdBIPCgd0YXNrX2lkGAEgASgJEhYKDmFmdGVyX3NlcXVlbmNlGAIgASgDIkoKHFdhdGNoQWdlbnRUYXNrRXZlbnRzUmVzcG9uc2USKgoFZXZlbnQYASABKAsyGy53b3Jrb3MuYWdlbnQudjEuQWdlbnRFdmVudCJOChZTZWFyY2hLbm93bGVkZ2VSZXF1ZXN0Eg0KBXF1ZXJ5GAEgASgJEhEKCXBhZ2Vfc2l6ZRgCIAEoBRISCgpwYWdlX3Rva2VuGAMgASgJIlwKF1NlYXJjaEtub3dsZWRnZVJlc3BvbnNlEigKBGhpdHMYASADKAsyGi53b3Jrb3MuaW5kZXgudjEuU2VhcmNoSGl0EhcKD25leHRfcGFnZV90b2tlbhgCIAEoCTLYAgoQQXBwQnJpZGdlU2VydmljZRJfCgxSdW5BZ2VudFRhc2sSJS53b3Jrb3MuYnJpZGdlLnYxLlJ1bkFnZW50VGFza1JlcXVlc3QaJi53b3Jrb3MuYnJpZGdlLnYxLlJ1bkFnZW50VGFza1Jlc3BvbnNlIgASeQoUV2F0Y2hBZ2VudFRhc2tFdmVudHMSLS53b3Jrb3MuYnJpZGdlLnYxLldhdGNoQWdlbnRUYXNrRXZlbnRzUmVxdWVzdBouLndvcmtvcy5icmlkZ2UudjEuV2F0Y2hBZ2VudFRhc2tFdmVudHNSZXNwb25zZSIAMAESaAoPU2VhcmNoS25vd2xlZGdlEigud29ya29zLmJyaWRnZS52MS5TZWFyY2hLbm93bGVkZ2VSZXF1ZXN0Gikud29ya29zLmJyaWRnZS52MS5TZWFyY2hLbm93bGVkZ2VSZXNwb25zZSIAQj9aPWdpdGh1Yi5jb20veWFuZ3RhbzEyMS93b3Jrb3MvZ2VuL2dvL3dvcmtvcy9icmlkZ2UvdjE7YnJpZGdldjFiBnByb3RvMw", [file_workos_agent_v1_agent, file_workos_index_v1_index]);
+  fileDesc("Ch13b3Jrb3MvYnJpZGdlL3YxL2JyaWRnZS5wcm90bxIQd29ya29zLmJyaWRnZS52MSJKChNSdW5BZ2VudFRhc2tSZXF1ZXN0EhcKD2lkZW1wb3RlbmN5X2tleRgBIAEoCRIMCgRyb2xlGAIgASgJEgwKBGdvYWwYAyABKAkidAoUUnVuQWdlbnRUYXNrUmVzcG9uc2USDwoHdGFza19pZBgBIAEoCRIuCgVzdGF0ZRgCIAEoDjIfLndvcmtvcy5hZ2VudC52MS5BZ2VudFRhc2tTdGF0ZRIbChNsYXN0X2V2ZW50X3NlcXVlbmNlGAMgASgDIkYKG1dhdGNoQWdlbnRUYXNrRXZlbnRzUmVxdWVzdBIPCgd0YXNrX2lkGAEgASgJEhYKDmFmdGVyX3NlcXVlbmNlGAIgASgDIkoKHFdhdGNoQWdlbnRUYXNrRXZlbnRzUmVzcG9uc2USKgoFZXZlbnQYASABKAsyGy53b3Jrb3MuYWdlbnQudjEuQWdlbnRFdmVudCJOChZTZWFyY2hLbm93bGVkZ2VSZXF1ZXN0Eg0KBXF1ZXJ5GAEgASgJEhEKCXBhZ2Vfc2l6ZRgCIAEoBRISCgpwYWdlX3Rva2VuGAMgASgJIlwKF1NlYXJjaEtub3dsZWRnZVJlc3BvbnNlEigKBGhpdHMYASADKAsyGi53b3Jrb3MuaW5kZXgudjEuU2VhcmNoSGl0EhcKD25leHRfcGFnZV90b2tlbhgCIAEoCSJRChlDcmVhdGVOb3RpZmljYXRpb25SZXF1ZXN0EhcKD2lkZW1wb3RlbmN5X2tleRgBIAEoCRINCgV0aXRsZRgCIAEoCRIMCgRib2R5GAMgASgJIm4KGkNyZWF0ZU5vdGlmaWNhdGlvblJlc3BvbnNlEjoKDG5vdGlmaWNhdGlvbhgBIAEoCzIkLndvcmtvcy5ub3RpZmljYXRpb24udjEuTm90aWZpY2F0aW9uEhQKDHVucmVhZF9jb3VudBgCIAEoAzLLAwoQQXBwQnJpZGdlU2VydmljZRJfCgxSdW5BZ2VudFRhc2sSJS53b3Jrb3MuYnJpZGdlLnYxLlJ1bkFnZW50VGFza1JlcXVlc3QaJi53b3Jrb3MuYnJpZGdlLnYxLlJ1bkFnZW50VGFza1Jlc3BvbnNlIgASeQoUV2F0Y2hBZ2VudFRhc2tFdmVudHMSLS53b3Jrb3MuYnJpZGdlLnYxLldhdGNoQWdlbnRUYXNrRXZlbnRzUmVxdWVzdBouLndvcmtvcy5icmlkZ2UudjEuV2F0Y2hBZ2VudFRhc2tFdmVudHNSZXNwb25zZSIAMAESaAoPU2VhcmNoS25vd2xlZGdlEigud29ya29zLmJyaWRnZS52MS5TZWFyY2hLbm93bGVkZ2VSZXF1ZXN0Gikud29ya29zLmJyaWRnZS52MS5TZWFyY2hLbm93bGVkZ2VSZXNwb25zZSIAEnEKEkNyZWF0ZU5vdGlmaWNhdGlvbhIrLndvcmtvcy5icmlkZ2UudjEuQ3JlYXRlTm90aWZpY2F0aW9uUmVxdWVzdBosLndvcmtvcy5icmlkZ2UudjEuQ3JlYXRlTm90aWZpY2F0aW9uUmVzcG9uc2UiAEI/Wj1naXRodWIuY29tL3lhbmd0YW8xMjEvd29ya29zL2dlbi9nby93b3Jrb3MvYnJpZGdlL3YxO2JyaWRnZXYxYgZwcm90bzM", [file_workos_agent_v1_agent, file_workos_index_v1_index, file_workos_notification_v1_notification]);
 
 /**
  * @generated from message workos.bridge.v1.RunAgentTaskRequest
@@ -197,6 +199,70 @@ export const SearchKnowledgeResponseSchema: GenMessage<SearchKnowledgeResponse> 
   messageDesc(file_workos_bridge_v1_bridge, 5);
 
 /**
+ * CreateNotification is negotiated only by the notifications.create grant
+ * (the grant name and the bridge method name are identical by design). The
+ * body carries bounded app input only: there is no owner, project, device,
+ * origin, severity, or target field and there never will be — scope is
+ * derived from the validated surface session and Core-authoritative
+ * installation facts (ADR-0014).
+ *
+ * @generated from message workos.bridge.v1.CreateNotificationRequest
+ */
+export type CreateNotificationRequest = Message<"workos.bridge.v1.CreateNotificationRequest"> & {
+  /**
+   * App-scoped durable idempotency key (1..128 chars, no control chars).
+   *
+   * @generated from field: string idempotency_key = 1;
+   */
+  idempotencyKey: string;
+
+  /**
+   * Bounded inert plain text (title 1..120 code points, body 0..500 code
+   * points; valid UTF-8, no NUL/C0/C1, bounded lines and bytes).
+   *
+   * @generated from field: string title = 2;
+   */
+  title: string;
+
+  /**
+   * @generated from field: string body = 3;
+   */
+  body: string;
+};
+
+/**
+ * Describes the message workos.bridge.v1.CreateNotificationRequest.
+ * Use `create(CreateNotificationRequestSchema)` to create a new message.
+ */
+export const CreateNotificationRequestSchema: GenMessage<CreateNotificationRequest> = /*@__PURE__*/
+  messageDesc(file_workos_bridge_v1_bridge, 6);
+
+/**
+ * @generated from message workos.bridge.v1.CreateNotificationResponse
+ */
+export type CreateNotificationResponse = Message<"workos.bridge.v1.CreateNotificationResponse"> & {
+  /**
+   * The projected owner notification (kind app.instance.message, origin
+   * app, severity normal, target app).
+   *
+   * @generated from field: workos.notification.v1.Notification notification = 1;
+   */
+  notification?: Notification | undefined;
+
+  /**
+   * @generated from field: int64 unread_count = 2;
+   */
+  unreadCount: bigint;
+};
+
+/**
+ * Describes the message workos.bridge.v1.CreateNotificationResponse.
+ * Use `create(CreateNotificationResponseSchema)` to create a new message.
+ */
+export const CreateNotificationResponseSchema: GenMessage<CreateNotificationResponse> = /*@__PURE__*/
+  messageDesc(file_workos_bridge_v1_bridge, 7);
+
+/**
  * @generated from service workos.bridge.v1.AppBridgeService
  */
 export const AppBridgeService: GenService<{
@@ -228,6 +294,17 @@ export const AppBridgeService: GenService<{
     methodKind: "unary";
     input: typeof SearchKnowledgeRequestSchema;
     output: typeof SearchKnowledgeResponseSchema;
+  },
+  /**
+   * Negotiated only by the notifications.create grant; see
+   * CreateNotificationRequest for the bounded body contract.
+   *
+   * @generated from rpc workos.bridge.v1.AppBridgeService.CreateNotification
+   */
+  createNotification: {
+    methodKind: "unary";
+    input: typeof CreateNotificationRequestSchema;
+    output: typeof CreateNotificationResponseSchema;
   },
 }> = /*@__PURE__*/
   serviceDesc(file_workos_bridge_v1_bridge, 0);

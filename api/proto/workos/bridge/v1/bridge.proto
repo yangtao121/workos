@@ -8,6 +8,7 @@ package workos.bridge.v1;
 
 import "workos/agent/v1/agent.proto";
 import "workos/index/v1/index.proto";
+import "workos/notification/v1/notification.proto";
 
 option go_package = "github.com/yangtao121/workos/gen/go/workos/bridge/v1;bridgev1";
 
@@ -74,4 +75,29 @@ service AppBridgeService {
   // runtime has a real indexer adapter configured. It is never implied by
   // `agent.task.run`.
   rpc SearchKnowledge(SearchKnowledgeRequest) returns (SearchKnowledgeResponse) {}
+  // Negotiated only by the notifications.create grant; see
+  // CreateNotificationRequest for the bounded body contract.
+  rpc CreateNotification(CreateNotificationRequest) returns (CreateNotificationResponse) {}
+}
+
+// CreateNotification is negotiated only by the notifications.create grant
+// (the grant name and the bridge method name are identical by design). The
+// body carries bounded app input only: there is no owner, project, device,
+// origin, severity, or target field and there never will be — scope is
+// derived from the validated surface session and Core-authoritative
+// installation facts (ADR-0014).
+message CreateNotificationRequest {
+  // App-scoped durable idempotency key (1..128 chars, no control chars).
+  string idempotency_key = 1;
+  // Bounded inert plain text (title 1..120 code points, body 0..500 code
+  // points; valid UTF-8, no NUL/C0/C1, bounded lines and bytes).
+  string title = 2;
+  string body = 3;
+}
+
+message CreateNotificationResponse {
+  // The projected owner notification (kind app.instance.message, origin
+  // app, severity normal, target app).
+  workos.notification.v1.Notification notification = 1;
+  int64 unread_count = 2;
 }

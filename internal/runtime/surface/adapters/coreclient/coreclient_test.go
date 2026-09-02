@@ -17,6 +17,7 @@ import (
 
 	agentv1 "github.com/yangtao121/workos/gen/go/workos/agent/v1"
 	agentv1connect "github.com/yangtao121/workos/gen/go/workos/agent/v1/agentv1connect"
+	notificationv1connect "github.com/yangtao121/workos/gen/go/workos/notification/v1/notificationv1connect"
 	surfacev1 "github.com/yangtao121/workos/gen/go/workos/surface/v1"
 	surfacev1connect "github.com/yangtao121/workos/gen/go/workos/surface/v1/surfacev1connect"
 	"github.com/yangtao121/workos/internal/platform/identity"
@@ -109,7 +110,8 @@ func newAppAgentClient(t *testing.T, stub *stubAppAgentService) *AppAgent {
 	mux.Handle(path, identity.Middleware(handler))
 	server := httptest.NewServer(mux)
 	t.Cleanup(server.Close)
-	adapter, err := NewAppAgent(agentv1connect.NewAppAgentServiceClient(server.Client(), server.URL))
+	notificationIngest := notificationv1connect.NewAppNotificationIngestServiceClient(server.Client(), server.URL)
+	adapter, err := NewAppAgent(agentv1connect.NewAppAgentServiceClient(server.Client(), server.URL), notificationIngest)
 	if err != nil {
 		t.Fatal(err)
 	}

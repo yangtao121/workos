@@ -28,6 +28,7 @@ type Querier interface {
 	GetNotificationReadRequest(ctx context.Context, arg GetNotificationReadRequestParams) (GetNotificationReadRequestRow, error)
 	GetNotificationSourceReceipt(ctx context.Context, arg GetNotificationSourceReceiptParams) (GetNotificationSourceReceiptRow, error)
 	GetOwnerChangeWatermark(ctx context.Context, ownerUserID string) (int64, error)
+	GetOwnerLastSequence(ctx context.Context, ownerUserID string) (int64, error)
 	GetOwnerNotification(ctx context.Context, arg GetOwnerNotificationParams) (GetOwnerNotificationRow, error)
 	GetOwnerSweptThrough(ctx context.Context, ownerUserID string) (int64, error)
 	InsertNotification(ctx context.Context, arg InsertNotificationParams) (int64, error)

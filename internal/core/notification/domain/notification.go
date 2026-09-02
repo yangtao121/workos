@@ -342,6 +342,15 @@ func ValidStoredNotification(n Notification) error {
 	if appOrigin && (!ValidUUID(n.AppInstallationID) || n.ProjectID == "") {
 		return fmt.Errorf("step app binding: %w", ErrCorrupt)
 	}
+	// The app kind and the app origin are one fact: a system-origin
+	// app.instance.message row is as inconsistent as an app-origin system
+	// kind.
+	if (n.Kind == KindAppInstanceMessage) != appOrigin {
+		return fmt.Errorf("step kind/origin coherence: %w", ErrCorrupt)
+	}
+	if appOrigin && n.TargetKind != TargetApp {
+		return fmt.Errorf("step app target: %w", ErrCorrupt)
+	}
 	if !n.ReadAt.IsZero() {
 		if n.ReadChangeSequence <= 0 || n.ReadAt.Before(n.CreatedAt) {
 			return ErrCorrupt
@@ -350,8 +359,12 @@ func ValidStoredNotification(n Notification) error {
 		return fmt.Errorf("step read coherence: %w (seq %d)", ErrCorrupt, n.ReadChangeSequence)
 	}
 	// The stored kind/target pair must still match the finite vocabulary.
-	if _, _, _, targetKind, err := SystemTemplate(n.Kind, storedCategoryFor(n)); err != nil || targetKind != n.TargetKind {
-		return fmt.Errorf("step template: %w", ErrCorrupt)
+	// App-instance facts derive their text from the app, not a template, so
+	// their shape is enforced by the app-origin checks above instead.
+	if n.Kind != KindAppInstanceMessage {
+		if _, _, _, targetKind, err := SystemTemplate(n.Kind, storedCategoryFor(n)); err != nil || targetKind != n.TargetKind {
+			return fmt.Errorf("step template: %w", ErrCorrupt)
+		}
 	}
 	return nil
 }
@@ -440,4 +453,73 @@ func PrepareIncidentPublication(fact IncidentPublicationFact, occurredAt time.Ti
 		SourceProcess: SourceProcessReliability, SourceID: SourceKindIncidentPrefix + fact.SourceID,
 		SourceDigest: fact.Digest, CreatedAt: CanonicalUTCTime(occurredAt),
 	}, nil
+}
+
+// AppNotificationFact is the neutral app create input after the neutral
+// authorizer verified the installation. The app identity is authoritative
+// Core fact, never client input.
+type AppNotificationFact struct {
+	OwnerUserID   string
+	ProjectID     string
+	AppInstanceID string
+	AppID         string
+	// IdempotencyKey is part of the source identity: two distinct keys are
+	// two distinct app intents, even with identical text.
+	IdempotencyKey string
+	Title          string
+	Body           string
+}
+
+// PrepareAppNotification derives the stored app-origin fact: kind
+// app.instance.message, severity normal, project-scoped, target app bound
+// to the installation. The source identity is the request mapping so two
+// app keys can never alias one source fact.
+func PrepareAppNotification(fact AppNotificationFact, occurredAt time.Time) (Notification, error) {
+	if !ValidUUID(fact.OwnerUserID) || !ValidUUID(fact.ProjectID) || !ValidUUID(fact.AppInstanceID) {
+		return Notification{}, ErrInvalid
+	}
+	if !validAppID(fact.AppID) || !ValidIdempotencyKey(fact.IdempotencyKey) || !validStoredText(fact.Title, fact.Body) {
+		return Notification{}, ErrInvalid
+	}
+	id, err := uuid.NewV7()
+	if err != nil {
+		return Notification{}, fmt.Errorf("%w: mint app notification id", ErrInvalid)
+	}
+	return Notification{
+		ID: id.String(), OwnerUserID: fact.OwnerUserID, ProjectID: fact.ProjectID,
+		Kind: KindAppInstanceMessage, Severity: SeverityNormal, Origin: OriginApp,
+		Title: fact.Title, Body: fact.Body, TargetKind: TargetApp,
+		TargetID: fact.AppInstanceID, AppID: fact.AppID,
+		AppInstallationID: fact.AppInstanceID,
+		SourceProcess:     SourceProcessCore,
+		SourceID:          SourceKindAppRequestPrefix + fact.AppInstanceID + ":" + fact.IdempotencyKey,
+		// The source digest re-derives from the normalized stored text, so
+		// stored drift breaks replay loudly instead of silently aliasing.
+		SourceDigest: appNotificationSourceDigest(fact.AppInstanceID, fact.Title, fact.Body),
+		CreatedAt:    CanonicalUTCTime(occurredAt),
+	}, nil
+}
+
+// appNotificationSourceDigest re-derives the app request digest from the
+// normalized stored text, so stored drift breaks replay loudly.
+func appNotificationSourceDigest(appInstanceID, title, body string) string {
+	canonical := fmt.Sprintf("workos.app-notification-source.v1|%s|%s|%s", appInstanceID, title, body)
+	sum := sha256.Sum256([]byte(canonical))
+	return "sha256:" + hex.EncodeToString(sum[:])
+}
+
+func validAppID(appID string) bool {
+	if len(appID) < 3 || len(appID) > 63 {
+		return false
+	}
+	for _, r := range appID {
+		switch {
+		case r >= 'a' && r <= 'z':
+		case r >= '0' && r <= '9':
+		case r == '-':
+		default:
+			return false
+		}
+	}
+	return true
 }

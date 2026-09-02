@@ -47,6 +47,9 @@ const (
 	// AppBridgeServiceSearchKnowledgeProcedure is the fully-qualified name of the AppBridgeService's
 	// SearchKnowledge RPC.
 	AppBridgeServiceSearchKnowledgeProcedure = "/workos.bridge.v1.AppBridgeService/SearchKnowledge"
+	// AppBridgeServiceCreateNotificationProcedure is the fully-qualified name of the AppBridgeService's
+	// CreateNotification RPC.
+	AppBridgeServiceCreateNotificationProcedure = "/workos.bridge.v1.AppBridgeService/CreateNotification"
 )
 
 // AppBridgeServiceClient is a client for the workos.bridge.v1.AppBridgeService service.
@@ -58,6 +61,9 @@ type AppBridgeServiceClient interface {
 	// runtime has a real indexer adapter configured. It is never implied by
 	// `agent.task.run`.
 	SearchKnowledge(context.Context, *connect.Request[v1.SearchKnowledgeRequest]) (*connect.Response[v1.SearchKnowledgeResponse], error)
+	// Negotiated only by the notifications.create grant; see
+	// CreateNotificationRequest for the bounded body contract.
+	CreateNotification(context.Context, *connect.Request[v1.CreateNotificationRequest]) (*connect.Response[v1.CreateNotificationResponse], error)
 }
 
 // NewAppBridgeServiceClient constructs a client for the workos.bridge.v1.AppBridgeService service.
@@ -89,6 +95,12 @@ func NewAppBridgeServiceClient(httpClient connect.HTTPClient, baseURL string, op
 			connect.WithSchema(appBridgeServiceMethods.ByName("SearchKnowledge")),
 			connect.WithClientOptions(opts...),
 		),
+		createNotification: connect.NewClient[v1.CreateNotificationRequest, v1.CreateNotificationResponse](
+			httpClient,
+			baseURL+AppBridgeServiceCreateNotificationProcedure,
+			connect.WithSchema(appBridgeServiceMethods.ByName("CreateNotification")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -97,6 +109,7 @@ type appBridgeServiceClient struct {
 	runAgentTask         *connect.Client[v1.RunAgentTaskRequest, v1.RunAgentTaskResponse]
 	watchAgentTaskEvents *connect.Client[v1.WatchAgentTaskEventsRequest, v1.WatchAgentTaskEventsResponse]
 	searchKnowledge      *connect.Client[v1.SearchKnowledgeRequest, v1.SearchKnowledgeResponse]
+	createNotification   *connect.Client[v1.CreateNotificationRequest, v1.CreateNotificationResponse]
 }
 
 // RunAgentTask calls workos.bridge.v1.AppBridgeService.RunAgentTask.
@@ -114,6 +127,11 @@ func (c *appBridgeServiceClient) SearchKnowledge(ctx context.Context, req *conne
 	return c.searchKnowledge.CallUnary(ctx, req)
 }
 
+// CreateNotification calls workos.bridge.v1.AppBridgeService.CreateNotification.
+func (c *appBridgeServiceClient) CreateNotification(ctx context.Context, req *connect.Request[v1.CreateNotificationRequest]) (*connect.Response[v1.CreateNotificationResponse], error) {
+	return c.createNotification.CallUnary(ctx, req)
+}
+
 // AppBridgeServiceHandler is an implementation of the workos.bridge.v1.AppBridgeService service.
 type AppBridgeServiceHandler interface {
 	RunAgentTask(context.Context, *connect.Request[v1.RunAgentTaskRequest]) (*connect.Response[v1.RunAgentTaskResponse], error)
@@ -123,6 +141,9 @@ type AppBridgeServiceHandler interface {
 	// runtime has a real indexer adapter configured. It is never implied by
 	// `agent.task.run`.
 	SearchKnowledge(context.Context, *connect.Request[v1.SearchKnowledgeRequest]) (*connect.Response[v1.SearchKnowledgeResponse], error)
+	// Negotiated only by the notifications.create grant; see
+	// CreateNotificationRequest for the bounded body contract.
+	CreateNotification(context.Context, *connect.Request[v1.CreateNotificationRequest]) (*connect.Response[v1.CreateNotificationResponse], error)
 }
 
 // NewAppBridgeServiceHandler builds an HTTP handler from the service implementation. It returns the
@@ -150,6 +171,12 @@ func NewAppBridgeServiceHandler(svc AppBridgeServiceHandler, opts ...connect.Han
 		connect.WithSchema(appBridgeServiceMethods.ByName("SearchKnowledge")),
 		connect.WithHandlerOptions(opts...),
 	)
+	appBridgeServiceCreateNotificationHandler := connect.NewUnaryHandler(
+		AppBridgeServiceCreateNotificationProcedure,
+		svc.CreateNotification,
+		connect.WithSchema(appBridgeServiceMethods.ByName("CreateNotification")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/workos.bridge.v1.AppBridgeService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case AppBridgeServiceRunAgentTaskProcedure:
@@ -158,6 +185,8 @@ func NewAppBridgeServiceHandler(svc AppBridgeServiceHandler, opts ...connect.Han
 			appBridgeServiceWatchAgentTaskEventsHandler.ServeHTTP(w, r)
 		case AppBridgeServiceSearchKnowledgeProcedure:
 			appBridgeServiceSearchKnowledgeHandler.ServeHTTP(w, r)
+		case AppBridgeServiceCreateNotificationProcedure:
+			appBridgeServiceCreateNotificationHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -177,4 +206,8 @@ func (UnimplementedAppBridgeServiceHandler) WatchAgentTaskEvents(context.Context
 
 func (UnimplementedAppBridgeServiceHandler) SearchKnowledge(context.Context, *connect.Request[v1.SearchKnowledgeRequest]) (*connect.Response[v1.SearchKnowledgeResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("workos.bridge.v1.AppBridgeService.SearchKnowledge is not implemented"))
+}
+
+func (UnimplementedAppBridgeServiceHandler) CreateNotification(context.Context, *connect.Request[v1.CreateNotificationRequest]) (*connect.Response[v1.CreateNotificationResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("workos.bridge.v1.AppBridgeService.CreateNotification is not implemented"))
 }

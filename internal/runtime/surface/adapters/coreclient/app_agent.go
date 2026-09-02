@@ -12,6 +12,8 @@ import (
 
 	agentv1 "github.com/yangtao121/workos/gen/go/workos/agent/v1"
 	agentv1connect "github.com/yangtao121/workos/gen/go/workos/agent/v1/agentv1connect"
+	notificationv1 "github.com/yangtao121/workos/gen/go/workos/notification/v1"
+	notificationv1connect "github.com/yangtao121/workos/gen/go/workos/notification/v1/notificationv1connect"
 	"github.com/yangtao121/workos/internal/platform/identity"
 	"github.com/yangtao121/workos/internal/runtime/surface/ports"
 )
@@ -21,13 +23,15 @@ import (
 // a spoofed upstream value can never survive.
 type AppAgent struct {
 	client agentv1connect.AppAgentServiceClient
+	// ingest is the Core-private app notification ingest client (ADR-0014).
+	ingest notificationv1connect.AppNotificationIngestServiceClient
 }
 
-func NewAppAgent(client agentv1connect.AppAgentServiceClient) (*AppAgent, error) {
-	if client == nil {
-		return nil, errors.New("app agent client requires the Core app agent client")
+func NewAppAgent(client agentv1connect.AppAgentServiceClient, ingest notificationv1connect.AppNotificationIngestServiceClient) (*AppAgent, error) {
+	if client == nil || ingest == nil {
+		return nil, errors.New("app agent client requires the Core app agent and notification ingest clients")
 	}
-	return &AppAgent{client: client}, nil
+	return &AppAgent{client: client, ingest: ingest}, nil
 }
 
 func (a *AppAgent) RunAgentTask(ctx context.Context, query ports.AppAgentRunQuery) (ports.AppTaskSubmission, error) {
@@ -137,4 +141,30 @@ func mapAppAgentError(err error) error {
 	default:
 		return fmt.Errorf("core app agent call failed: %w", err)
 	}
+}
+
+// CreateAppNotification drives the Core-private ingest service with the
+// session-derived scope. The runtime identity headers are overwritten on
+// every call; Core re-verifies owner from the trusted identity and the
+// installation from its own facts.
+func (a *AppAgent) CreateAppNotification(ctx context.Context, query ports.AppNotificationCreateQuery) (*notificationv1.CreateAppNotificationResponse, error) {
+	identityValue, err := identity.FromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	request := connect.NewRequest(&notificationv1.CreateAppNotificationRequest{
+		ProjectId:                 query.ProjectID,
+		AppInstanceId:             query.AppInstanceID,
+		InstallationGrantRevision: query.InstallationGrantRevision,
+		IdempotencyKey:            query.IdempotencyKey,
+		Title:                     query.Title,
+		Body:                      query.Body,
+	})
+	request.Header().Set(identity.UserHeader, identityValue.UserID)
+	request.Header().Set(identity.DeviceHeader, identityValue.DeviceID)
+	response, err := a.ingest.CreateAppNotification(ctx, request)
+	if err != nil {
+		return nil, mapAppAgentError(err)
+	}
+	return response.Msg, nil
 }
