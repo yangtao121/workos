@@ -1030,6 +1030,61 @@ Agent approval / task terminal / review Artifact(Core 事务内 tx-scoped sink)
   `docs/ui/desktop-web/changes/20260902-local-first-notifications/`。明确未实现:APNs/FCM/
   Web Push/后台 Service Worker delivery、通知正文搜索、用户偏好/免打扰。
 
+## Provider 扩展与 Credential Vault 轮换/揭示（ADR-0015，2026-09-03）
+
+harness 侧新增两个本地 Provider 适配器，Vault 扩展为有限凭据种类 + 在线轮换 + 受审计揭示。
+
+### Codex / MCP Adapter
+
+- `internal/harness/adapters/codex`：versioned 本地 Codex App Server stdio JSON-RPC
+  （`workos.codex.app-server/v1`）。initialize 协议版本握手 → task/new（采纳子进程
+  runId）→ 有界事件流（started→delta\*→message→usage→completed）→ canonical 事件映射。
+  能力声明如实：streaming/usage/hard token budget/hard runtime deadline = true（fixture
+  测试证明），structured artifacts/context = 无。凭据：每次 run 需要
+  `codex-auth.v1` task-bound lease，secret 只经 allowlisted 子进程 env。测试 fixture
+  `cmd/codex-app-server-fixture` 的行为模式（crash/silent/out-of-order/over-budget/slow）
+  只用于证明失败矩阵，不进入生产配置。
+- `internal/harness/adapters/mcp`：versioned 本地 MCP stdio server（initialize /
+  tools/list / tools/call，`workos.mcp-server/v1`）。能力如实声明为降级子集：无
+  streaming/usage/hard budget/structured artifacts/context/credential lease。有界输出
+  （1 MiB 行预算）、有界时间、确定性终态；无 task tool / 恶意输出 / 挂起 / 崩溃均
+  fail closed。fixture：`cmd/mcp-server-fixture`。
+- 两个 adapter 的 Provider 类型不进入 Core：Core 只消费 `HarnessProviderInfo`。
+  `HarnessCapabilities.required_credential_purpose`（additive proto 字段）声明 adapter
+  消费的精确凭据种类；lease-requiring provider 空声明 = capability corruption →
+  provider 不可选。
+
+### Credential kinds / purpose 贯通
+
+- 有限种类词汇表（domain 校验 + migration CHECK 双重钉住）：`provider-api-key.v1`、
+  `codex-auth.v1`（API-key 形态；真实 OAuth 属停止条件）、`github-token.v1`（可见
+  ASCII 20..255）、`cloud-credential.v1`（≤8192 bytes 一层 JSON object、≤32 个 string
+  字段）。种类校验按 kind 边界语法在 put/rotate 执行。
+- Catalog owner-aware overlay、Task Router snapshot、binding、approval re-verification
+  全部按 provider 声明的 purpose 裁决（不再硬编码 provider-api-key.v1）。
+- `agent_task_credentials.purpose`（migration 033，owner：workos-core Agent）把种类
+  钉进 admission 快照；lease 派生按快照 purpose 打开凭据，不重查 live 描述。
+
+### master-key 在线轮换与受审计揭示
+
+- `workosctl credential rotate-master-key --new-key-file <abs>` → Core admin socket：
+  32 raw bytes 只经 socket 进入进程内 cipher boundary。轮换 = 单事务：锁全部行 →
+  逐条用当前 epoch key 验证打开（任何 active 行失败整体回滚，绝不半加密）→ 新 epoch
+  key 重封 → singleton `credential_vault_state.current_epoch` 前进 → 审计行。revoked
+  行冻结不轮换（无存活路径会再解密它们）。派生 key 混入 epoch（epoch 1 保持与
+  ADR-0009 派生字节一致，旧数据无需重封）。响应丢失后同 key 重试 = 确定性 no-op
+  （fingerprint 相等还必须 `VerifyCurrentKey` 证明能解密每一行，防止外部轮换后的
+  假 no-op）。Core 启动按 DB singleton epoch 加载 key 文件（`LoadAtEpoch`）。
+- `workosctl credential reveal`：admin socket 同事务先写审计行再返回 secret；revoked
+  拒绝；secret 只出现在该响应，进程日志零 secret。审计事实
+  `credential_admin_audit`（owner：workos-core Credential Vault）append-only：每次
+  put/rotate/revoke/reveal/rotate-master-key 一行，绝不存 secret material；refused
+  vault-wide rotation 也留审计。
+- 门禁：`make test-credential-vault-expansion`（真实 PostgreSQL + admin socket 全链路
+  轮换/换钥/重启收敛 + scratch DB 协议套件）、`make test-codex-harness`（fixture →
+  Core mTLS → harness-host → 浏览器 + 重启持久）、`make test-mcp-harness`（stdio
+  fixture → provider 链路 + 重启持久）。
+
 ## 状态与失败
 
 - liveness 表示进程事件循环存活，readiness 表示必需依赖可用。

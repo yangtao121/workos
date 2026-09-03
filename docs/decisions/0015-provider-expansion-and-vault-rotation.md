@@ -45,11 +45,11 @@ Provider；Credential Vault 只支持 `provider-api-key.v1` 单一 purpose，没
 purpose 即凭据种类（finite enum，不存自由字符串类型），owner 维度沿用每行
 `owner_user_id` 严格隔离（两 owner 同 consumer/purpose 互不可见、互不影响）：
 
-| purpose（种类） | secret 语法（boundary 校验） | 首个 consumer |
-| --------------- | ---------------------------- | ------------- |
-| `provider-api-key.v1` | 1..8192 bytes，拒 NUL/CR/LF（不变） | deepseek |
-| `codex-auth.v1` | 同上字节规则（API-key 形态） | codex |
-| `github-token.v1` | 可见 ASCII token，20..255 bytes，无空白/控制字符 | github |
+| purpose（种类）       | secret 语法（boundary 校验）                                                                   | 首个 consumer           |
+| --------------------- | ---------------------------------------------------------------------------------------------- | ----------------------- |
+| `provider-api-key.v1` | 1..8192 bytes，拒 NUL/CR/LF（不变）                                                            | deepseek                |
+| `codex-auth.v1`       | 同上字节规则（API-key 形态）                                                                   | codex                   |
+| `github-token.v1`     | 可见 ASCII token，20..255 bytes，无空白/控制字符                                               | github                  |
 | `cloud-credential.v1` | ≤8192 bytes 的有效 UTF-8 JSON object，仅一层 string 字段（≤32 个键、每值 ≤4096 bytes、无 NUL） | 任意 canonical consumer |
 
 - lease 契约不变：`(owner, consumer, purpose)` 至多一个 active；adapter 声明要求的

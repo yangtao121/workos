@@ -23,7 +23,7 @@ NODE_RUN := docker run --rm $(USER_FLAGS) -e COREPACK_NPM_REGISTRY=$(NPM_REGISTR
 BUF_RUN := docker run --rm $(USER_FLAGS) $(MOUNT) $(BUF_IMAGE)
 SQLC_RUN := docker run --rm $(USER_FLAGS) -v $(CURDIR):/src -w /src $(SQLC_IMAGE)
 
-.PHONY: bootstrap generate docs check check-native proto-check go-check web-check test test-integration test-artifact-context test-deepseek-fixture test-deepseek-structured-review test-credential-vault e2e-image test-e2e test-adaptive-shell test-app-version-rollback test-podman-fixture test-lan-pairing test-project-knowledge-search test-app-knowledge-search test-project-knowledge-rebuild test-notification-center test-incident-notifications test-app-notifications capture-notification-visual capture-artifact-context-visual capture-lan-pairing-visual build web-build scaffold-module dev down logs clean
+.PHONY: bootstrap generate docs check check-native proto-check go-check web-check test test-integration test-credential-vault-expansion test-codex-harness test-mcp-harness test-artifact-context test-deepseek-fixture test-deepseek-structured-review test-credential-vault e2e-image test-e2e test-adaptive-shell test-app-version-rollback test-podman-fixture test-lan-pairing test-project-knowledge-search test-app-knowledge-search test-project-knowledge-rebuild test-notification-center test-incident-notifications test-app-notifications capture-notification-visual capture-artifact-context-visual capture-lan-pairing-visual capture-provider-catalog build web-build scaffold-module dev down logs clean
 
 bootstrap:
 	@docker version >/dev/null
@@ -227,6 +227,77 @@ test-credential-vault:
 		$(GO_HOST_RUN_BASE) -e WORKOS_TEST_VAULT_PHASE=revoked $(GO_IMAGE) go test -tags=integration -count=1 -run '^TestCredentialVaultStackPhase$$' -v ./tests/integration; \
 		echo "test-credential-vault: PASS"
 
+# The Credential Vault expansion gate (ADR-0015): finite credential kinds
+# (codex/github/cloud), the audited admin-socket reveal, and the online
+# master-key rotation. Real PostgreSQL + Core + workosctl admin socket +
+# the in-process protocol suite on scratch databases. The rotation uses a
+# persistent successor key inside the vault volume and then swaps the
+# configured master key file to it, so the shared dev volume keeps working
+# for every later gate.
+CLOUD_KIND_FIXTURE_SECRET = {"access_key_id":"AKIAWORKOSFIXTURE","secret_access_key":"fixture-only-material"}
+
+test-credential-vault-expansion:
+	@set -eu; \
+		echo "== phase 1: new credential kinds over the admin socket =="; \
+		docker compose up -d --build postgres bootstrap workos-core; \
+		kind_cred_id() { \
+			docker compose exec -T workos-core /usr/local/bin/workosctl credential list 2>/dev/null | \
+			awk -v c="$$1" -v p="$$2" '/^id: /{id=$$2} /^consumer: /{cons=$$2} /^purpose: /{pur=$$2} /^status: /{if (cons==c && pur==p && $$2=="ACTIVE") print id}' | head -1; \
+		}; \
+		github_cred="$$(kind_cred_id github github-token.v1)"; \
+		if [ -z "$$github_cred" ]; then \
+			github_cred="$$( docker compose exec -T workos-core /bin/sh -c "printf '%s' 'github_pat_workosfixture000000000000000000' | /usr/local/bin/workosctl credential put --consumer github --purpose github-token.v1 --label 'kind fixture' --idempotency-key 'kind-github-$$(date +%s%N)'" | sed -n 's/^id: //p' | head -1 )"; \
+		fi; \
+		cloud_cred="$$(kind_cred_id aws-deploy cloud-credential.v1)"; \
+		if [ -z "$$cloud_cred" ]; then \
+			cloud_cred="$$( docker compose exec -T workos-core /bin/sh -c "printf '%s' '{\"access_key_id\":\"AKIAWORKOSFIXTURE\",\"secret_access_key\":\"fixture-only-material\"}' | /usr/local/bin/workosctl credential put --consumer aws-deploy --purpose cloud-credential.v1 --label 'cloud fixture' --idempotency-key 'kind-cloud-$$(date +%s%N)'" | sed -n 's/^id: //p' | head -1 )"; \
+		fi; \
+		test -n "$$github_cred" && test -n "$$cloud_cred"; \
+		echo "== phase 2: kind grammar fails closed with zero side effects =="; \
+		if docker compose exec -T workos-core /bin/sh -c "printf '%s' 'short' | /usr/local/bin/workosctl credential put --consumer github --purpose github-token.v1 --idempotency-key 'kind-invalid-$$(date +%s%N)'" >/dev/null 2>&1; then \
+			echo "invalid github token was accepted"; exit 1; \
+		fi; \
+		if docker compose exec -T workos-core /bin/sh -c "printf '%s' 'not json' | /usr/local/bin/workosctl credential put --consumer aws-deploy --purpose cloud-credential.v1 --idempotency-key 'kind-invalid2-$$(date +%s%N)'" >/dev/null 2>&1; then \
+			echo "invalid cloud credential was accepted"; exit 1; \
+		fi; \
+		echo "== phase 3: audited reveal =="; \
+		revealed="$$(docker compose exec -T workos-core /usr/local/bin/workosctl credential reveal --credential "$$cloud_cred" | tail -1)"; \
+		test "$$revealed" = '$(CLOUD_KIND_FIXTURE_SECRET)'; \
+		echo "== phase 4: online master-key rotation + restart convergence =="; \
+		mkdir -p tmp; \
+		core_container="$$(docker compose ps -q workos-core)"; \
+		docker exec "$$core_container" /bin/sh -c 'dd if=/dev/urandom of=/tmp/k2.key bs=32 count=1 status=none && chmod 600 /tmp/k2.key'; \
+		docker cp "$$core_container:/tmp/k2.key" tmp/k2-rotation.key; \
+		docker compose exec -T workos-core /usr/local/bin/workosctl credential rotate-master-key --new-key-file /tmp/k2.key; \
+		docker exec "$$core_container" rm -f /tmp/k2.key; \
+		echo "== phase 4b: successor-key process retires the rotation key =="; \
+		docker run -d --rm --network host --user 0:0 --name workos-rotation-fixture \
+			-e WORKOS_DATABASE_URL="postgres://workos:workos@127.0.0.1:5432/workos?sslmode=disable" \
+			-e WORKOS_OWNER_ID=0198d7ea-2110-7c42-b659-c5e4d73bc337 \
+			-e WORKOS_DEVICE_ID=0198d7ea-2110-7c42-b659-c5e4d73bc338 \
+			-e WORKOS_HTTP_ADDRESS=127.0.0.1:18081 \
+			-e WORKOS_CORE_EXECUTION_ADDRESS=127.0.0.1:18086 \
+			-e WORKOS_CORE_EXECUTION_CA_FILE=/run/workos/execution/ca.crt \
+			-e WORKOS_CORE_EXECUTION_CERT_FILE=/run/workos/execution/core.crt \
+			-e WORKOS_CORE_EXECUTION_KEY_FILE=/run/workos/execution/core.key \
+			-v workos_workos-credential-vault:/run/workos/vault:ro \
+			-v workos_workos-core-execution:/run/workos/execution:ro \
+			workos:dev sh -c 'sleep 300' >/dev/null; \
+		docker cp tmp/k2-rotation.key workos-rotation-fixture:/run/k2.key; \
+		docker exec -u 0 workos-rotation-fixture chown 10001:10001 /run/k2.key; \
+		docker exec -u 10001 workos-rotation-fixture sh -c 'mkdir -p /tmp/rotadmin && chmod 700 /tmp/rotadmin && WORKOS_CREDENTIAL_MASTER_KEY_FILE=/run/k2.key WORKOS_CREDENTIAL_ADMIN_SOCKET=/tmp/rotadmin/admin.sock WORKOS_HTTP_ADDRESS=127.0.0.1:18081 WORKOS_CORE_EXECUTION_ADDRESS=127.0.0.1:18086 WORKOS_CORE_EXECUTION_CA_FILE=/run/workos/execution/ca.crt WORKOS_CORE_EXECUTION_CERT_FILE=/run/workos/execution/core.crt WORKOS_CORE_EXECUTION_KEY_FILE=/run/workos/execution/core.key WORKOS_DATABASE_URL="postgres://workos:workos@127.0.0.1:5432/workos?sslmode=disable" WORKOS_OWNER_ID=0198d7ea-2110-7c42-b659-c5e4d73bc337 WORKOS_DEVICE_ID=0198d7ea-2110-7c42-b659-c5e4d73bc338 /usr/local/bin/workos-core >/tmp/rotation-core.log 2>&1 & sleep 4; WORKOS_CREDENTIAL_ADMIN_SOCKET=/tmp/rotadmin/admin.sock /usr/local/bin/workosctl credential rotate-master-key --new-key-file /run/workos/vault/vault-master.key'; \
+		docker stop workos-rotation-fixture >/dev/null; \
+		rm -f tmp/k2-rotation.key; \
+		docker compose restart workos-core >/dev/null; \
+		sleep 3; \
+		revealed="$$(docker compose exec -T workos-core /usr/local/bin/workosctl credential reveal --credential "$$cloud_cred" | tail -1)"; \
+		test "$$revealed" = '$(CLOUD_KIND_FIXTURE_SECRET)'; \
+		noop="$$(docker compose exec -T workos-core /usr/local/bin/workosctl credential rotate-master-key --new-key-file /run/workos/vault/vault-master.key)"; \
+		echo "$$noop" | grep -q "already current"; \
+		echo "== phase 5: in-process rotation protocol on scratch databases =="; \
+		$(GO_HOST_RUN) go test -tags=integration -count=1 -run 'TestVaultCredentialKindsLifecycle|TestVaultRevealAuditsAndFailsClosed|TestVaultMasterKeyRotationConverges|TestVaultRotationIsAllOrNothing|TestVaultKindsAreOwnerScoped' -v ./tests/integration; \
+		echo "test-credential-vault-expansion: PASS"
+
 # The review-artifact-as-Agent-context gate (ADR-0010): real PostgreSQL +
 # Core + harness-host + Gateway + Chromium through Task Router context
 # verification, private lease-bound ResolveTaskContext, and the provider's
@@ -332,6 +403,78 @@ test-deepseek-fixture: e2e-image
 			-v $(CURDIR):$(WORKDIR) \
 			-w $(WORKDIR)/apps/desktop-web \
 			$(E2E_IMAGE) pnpm exec playwright test deepseek-fixture.spec.ts
+
+# The Codex harness gate (ADR-0015): the versioned app-server fixture runs
+# as a real child of harness-host over the Core mTLS execution channel with a
+# codex-auth.v1 task-bound credential lease. Proves catalog honesty, the
+# streaming canonical event mapping, bounded usage, task durability across a
+# Core+harness restart, and the browser binding/run journey.
+test-codex-harness: e2e-image
+	@set -eu; \
+		WORKOS_UID="$$(id -u)" WORKOS_GID="$$(id -g)" \
+		WORKOS_CODEX_ENABLED=true \
+		docker compose up -d --build --force-recreate postgres bootstrap workos-core harness-host workos-gateway; \
+		cred_id="$$(docker compose exec -T workos-core /usr/local/bin/workosctl credential list 2>/dev/null | awk '/^id: /{id=$$2} /^consumer: /{cons=$$2} /^purpose: /{pur=$$2} /^status: /{if (cons=="codex" && pur=="codex-auth.v1" && $$2=="ACTIVE") {print id; exit}}')"; \
+		if [ -z "$$cred_id" ]; then \
+			cred_id="$$( docker compose exec -T workos-core /bin/sh -c "printf '%s' 'codex-fixture-key-not-a-real-credential' | /usr/local/bin/workosctl credential put --consumer codex --purpose codex-auth.v1 --label 'codex fixture' --idempotency-key 'codex-fixture-$$(date +%s%N)'" | sed -n 's/^id: //p' | head -1 )"; \
+		fi; \
+		test -n "$$cred_id"; \
+		$(GO_HOST_RUN) go test -tags='integration codexfixture' -count=1 -run '^TestCodexProjectBindingFixtureVerticalSlice$$' -v ./tests/integration; \
+		task_id="$$( $(GO_HOST_RUN) sh -c 'WORKOS_TEST_PROVIDER=codex go run ./tests/restart seed' )"; \
+		docker compose restart workos-core harness-host >/dev/null; \
+		$(GO_HOST_RUN) sh -c 'WORKOS_TEST_PROVIDER=codex go run ./tests/restart verify "$$1"' _ "$$task_id"; \
+		docker run --rm --network host $(USER_FLAGS) \
+			-e PLAYWRIGHT_BROWSERS_PATH=/ms-playwright \
+			-e WORKOS_E2E_URL=http://127.0.0.1:8080 \
+			-e WORKOS_E2E_OUTPUT_DIR=/tmp/workos-playwright-results \
+			-e WORKOS_CODEX_FIXTURE_E2E=true \
+			-v $(CURDIR):$(WORKDIR) \
+			-w $(WORKDIR)/apps/desktop-web \
+			$(E2E_IMAGE) pnpm exec playwright test codex-fixture.spec.ts; \
+		echo "test-codex-harness: PASS"
+
+# The MCP harness gate (ADR-0015): the versioned stdio fixture runs as a
+# real child of harness-host. Proves the honest degraded capability subset,
+# credential-free binding, the deterministic blocking tool-call run, and
+# durable completion across a Core+harness restart.
+test-mcp-harness: e2e-image
+	@set -eu; \
+		WORKOS_MCP_ENABLED=true \
+		docker compose up -d --build --force-recreate postgres bootstrap workos-core harness-host workos-gateway; \
+		$(GO_HOST_RUN) go test -tags='integration mcpfixture' -count=1 -run '^TestMCPProjectBindingFixtureVerticalSlice$$' -v ./tests/integration; \
+		task_id="$$( $(GO_HOST_RUN) sh -c 'WORKOS_TEST_PROVIDER=mcp go run ./tests/restart seed' )"; \
+		docker compose restart workos-core harness-host >/dev/null; \
+		$(GO_HOST_RUN) sh -c 'WORKOS_TEST_PROVIDER=mcp go run ./tests/restart verify "$$1"' _ "$$task_id"; \
+		echo "test-mcp-harness: PASS"
+
+PROVIDER_CATALOG_CAPTURE_DIR := $(WORKDIR)/docs/ui/desktop-web/changes/20260903-remaining-capability-sweep/after
+
+capture-provider-catalog: e2e-image
+	@set -eu; \
+		mkdir -p docs/ui/desktop-web/changes/20260903-remaining-capability-sweep/before docs/ui/desktop-web/changes/20260903-remaining-capability-sweep/after; \
+		echo "== before frame: baseline provider set (adapters disabled) =="; \
+		WORKOS_UID="$$(id -u)" WORKOS_GID="$$(id -g)" \
+		docker compose up -d --build --force-recreate postgres bootstrap workos-core harness-host workos-gateway; \
+		docker run --rm --network host $(USER_FLAGS) \
+			-e PLAYWRIGHT_BROWSERS_PATH=/ms-playwright -e WORKOS_E2E_URL=http://127.0.0.1:8080 \
+			-e WORKOS_E2E_OUTPUT_DIR=/tmp/workos-playwright-results \
+			-e WORKOS_CODEX_FIXTURE_E2E=true -e WORKOS_PROVIDERS_EXPANDED=false \
+			-e WORKOS_CAPTURE_DIR=$(WORKDIR)/docs/ui/desktop-web/changes/20260903-remaining-capability-sweep/before \
+			-v $(CURDIR):$(WORKDIR) -w $(WORKDIR)/apps/desktop-web \
+			$(E2E_IMAGE) pnpm exec playwright test provider-catalog-visual.spec.ts; \
+		echo "== after frame: expanded provider set =="; \
+		WORKOS_UID="$$(id -u)" WORKOS_GID="$$(id -g)" WORKOS_CODEX_ENABLED=true WORKOS_MCP_ENABLED=true \
+		docker compose up -d --build --force-recreate harness-host >/dev/null; \
+		sleep 3; \
+		docker run --rm --network host $(USER_FLAGS) \
+			-e PLAYWRIGHT_BROWSERS_PATH=/ms-playwright -e WORKOS_E2E_URL=http://127.0.0.1:8080 \
+			-e WORKOS_E2E_OUTPUT_DIR=/tmp/workos-playwright-results \
+			-e WORKOS_CODEX_FIXTURE_E2E=true -e WORKOS_PROVIDERS_EXPANDED=true \
+			-e WORKOS_CAPTURE_DIR=$(PROVIDER_CATALOG_CAPTURE_DIR) \
+			-v $(CURDIR):$(WORKDIR) -w $(WORKDIR)/apps/desktop-web \
+			$(E2E_IMAGE) pnpm exec playwright test provider-catalog-visual.spec.ts; \
+		cp docs/ui/desktop-web/changes/20260903-remaining-capability-sweep/after/harness-settings--provider-catalog-expanded--1440x900.png docs/ui/desktop-web/current/harness-settings--provider-catalog--1440x900.png; \
+		echo "capture-provider-catalog: PASS"
 
 e2e-image:
 	docker build \
