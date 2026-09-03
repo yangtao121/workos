@@ -117,14 +117,14 @@ docs/tasks/20260903-v1-remaining-capability-sweep.md
 后置；任一阶段触发环境阻塞切换协议时按顺序后移。下列时间按有经验的实现智能体估算，只用于确保
 任务量和依赖顺序充足，不是到点停工条件：
 
-| Workstream | 主要内容 | 建议投入 | 宿主/外部依赖 |
-| ---------- | -------- | -------: | ------------- |
-| W1 | Codex/MCP Adapter、Vault 扩展 | 12–18 小时 | 无（全部本地 fixture） |
-| W2 | rootless 验收、真实监督、遥测、Repair、Deployment | 16–24 小时 | rootless Podman（阻塞可切换） |
-| W3 | Bridge 全能力、Declarative、远程 Surface 栈 | 14–20 小时 | WebRTC 可本地回环验证 |
-| W4 | 语义 RAG、workspace 源、通用 archive | 10–16 小时 | 无 |
-| W6 | Palette、Mission Control、系统应用、snap | 10–16 小时 | 无（Browser/Terminal 依赖 W3） |
-| W5 | Push Relay/Web Push、Capacitor、mDNS/Transport | 12–18 小时 | APNs/FCM 账号、Xcode/Android SDK（阻塞可切换） |
+| Workstream | 主要内容                                          |   建议投入 | 宿主/外部依赖                                  |
+| ---------- | ------------------------------------------------- | ---------: | ---------------------------------------------- |
+| W1         | Codex/MCP Adapter、Vault 扩展                     | 12–18 小时 | 无（全部本地 fixture）                         |
+| W2         | rootless 验收、真实监督、遥测、Repair、Deployment | 16–24 小时 | rootless Podman（阻塞可切换）                  |
+| W3         | Bridge 全能力、Declarative、远程 Surface 栈       | 14–20 小时 | WebRTC 可本地回环验证                          |
+| W4         | 语义 RAG、workspace 源、通用 archive              | 10–16 小时 | 无                                             |
+| W6         | Palette、Mission Control、系统应用、snap          | 10–16 小时 | 无（Browser/Terminal 依赖 W3）                 |
+| W5         | Push Relay/Web Push、Capacitor、mDNS/Transport    | 12–18 小时 | APNs/FCM 账号、Xcode/Android SDK（阻塞可切换） |
 
 执行规则：
 
@@ -313,14 +313,14 @@ Credential Vault
 
 ### 关键失败矩阵（W1 至少覆盖）
 
-| 场景 | 必须结果 |
-| ---- | -------- |
-| Codex fixture 崩溃/响应丢失/事件乱序 | 任务终态确定，无重复 usage，lease 释放 |
-| Adapter 声明的能力与 fixture 实际不符 | 测试失败；能力声明与探测一致 |
-| 凭据种类非法/过期/被吊销 | run 前 fail closed，无任务入队副作用 |
-| master-key 轮换中途崩溃 | 重启后收敛，所有凭据仍可解密或明确失败，不半加密 |
-| 揭示未鉴权/非本机 | 拒绝并审计；无secret进日志 |
-| MCP server 无响应/超时/恶意输出 | 有界超时、净化事件、任务终态确定 |
+| 场景                                  | 必须结果                                         |
+| ------------------------------------- | ------------------------------------------------ |
+| Codex fixture 崩溃/响应丢失/事件乱序  | 任务终态确定，无重复 usage，lease 释放           |
+| Adapter 声明的能力与 fixture 实际不符 | 测试失败；能力声明与探测一致                     |
+| 凭据种类非法/过期/被吊销              | run 前 fail closed，无任务入队副作用             |
+| master-key 轮换中途崩溃               | 重启后收敛，所有凭据仍可解密或明确失败，不半加密 |
+| 揭示未鉴权/非本机                     | 拒绝并审计；无secret进日志                       |
+| MCP server 无响应/超时/恶意输出       | 有界超时、净化事件、任务终态确定                 |
 
 ## W2：真实 Runtime 与自愈链
 
@@ -373,15 +373,15 @@ Incident → Repair Orchestrator → Task Envelope（incidentId）→ Project/Re
 
 ### 关键失败矩阵（W2 至少覆盖）
 
-| 场景 | 必须结果 |
-| ---- | -------- |
-| 宿主无 rootless Podman | blocker 记录 + 状态诚实 unavailable + 软件链用 fake 证明 |
-| 容器 OOM/busy loop/崩溃循环 | cgroup 限制生效、Incident 唯一、restart 上限后停止 |
-| watchd 重启 | 观察不重置裁决、pending action 幂等重放 |
-| 遥测含 secret/用户内容 | 采集前剥离，测试断言日志字段白名单 |
-| Project Harness 不可用时发生 Incident | 路由 Recovery；两级都失败则通知用户等待处理 |
-| canary 失败 | 自动回滚上一 pinned 版本，版本历史一致 |
-| 修复任务超预算/断路 | 终态确定，不无限重试同一候选版本 |
+| 场景                                  | 必须结果                                                 |
+| ------------------------------------- | -------------------------------------------------------- |
+| 宿主无 rootless Podman                | blocker 记录 + 状态诚实 unavailable + 软件链用 fake 证明 |
+| 容器 OOM/busy loop/崩溃循环           | cgroup 限制生效、Incident 唯一、restart 上限后停止       |
+| watchd 重启                           | 观察不重置裁决、pending action 幂等重放                  |
+| 遥测含 secret/用户内容                | 采集前剥离，测试断言日志字段白名单                       |
+| Project Harness 不可用时发生 Incident | 路由 Recovery；两级都失败则通知用户等待处理              |
+| canary 失败                           | 自动回滚上一 pinned 版本，版本历史一致                   |
+| 修复任务超预算/断路                   | 终态确定，不无限重试同一候选版本                         |
 
 ## W3：Surface 与 App Bridge 补全
 
@@ -440,15 +440,15 @@ Declarative Surface
 
 ### 关键失败矩阵（W3 至少覆盖）
 
-| 场景 | 必须结果 |
-| ---- | -------- |
-| App 调用未授权/被撤销的 bridge 能力 | fail closed，零 Core/shell 副作用 |
-| FileRef 越出 project workspace / 穿越符号链接 | 拒绝，净化错误 |
-| 超大文件读写/超深 declarative 嵌套/未知组件 | 有界拒绝或安全降级 |
-| 浏览器 worker OOM/崩溃 | workload 限制生效、会话终态确定、可重启 |
-| WebRTC 输入通道恶意洪泛 | 有界速率、会话可被 owner 终止 |
-| 剪贴板/文件选择器未声明能力 | 不协商、不转发 |
-| surface 会话过期后旧端口调用 | 立即失败，不复活旧窗口 |
+| 场景                                          | 必须结果                                |
+| --------------------------------------------- | --------------------------------------- |
+| App 调用未授权/被撤销的 bridge 能力           | fail closed，零 Core/shell 副作用       |
+| FileRef 越出 project workspace / 穿越符号链接 | 拒绝，净化错误                          |
+| 超大文件读写/超深 declarative 嵌套/未知组件   | 有界拒绝或安全降级                      |
+| 浏览器 worker OOM/崩溃                        | workload 限制生效、会话终态确定、可重启 |
+| WebRTC 输入通道恶意洪泛                       | 有界速率、会话可被 owner 终止           |
+| 剪贴板/文件选择器未声明能力                   | 不协商、不转发                          |
+| surface 会话过期后旧端口调用                  | 立即失败，不复活旧窗口                  |
 
 ## W4：语义知识与工作区源
 
@@ -483,13 +483,13 @@ Indexer 拥有 embedding 管道（pgvector）
 
 ### 关键失败矩阵（W4 至少覆盖）
 
-| 场景 | 必须结果 |
-| ---- | -------- |
+| 场景                           | 必须结果                                    |
+| ------------------------------ | ------------------------------------------- |
 | 挂载目录越权/消失/符号链接逃逸 | 停止摄取、tombstone 或显式 degraded，不静默 |
-| 超大/二进制/敏感文件 | 过滤规则生效，跳过有记录 |
-| 索引重建与实时摄取并发 | generation 隔离，最终一致 |
-| 语义与词法结果冲突 | 融合排序确定，测试固定，无随机漂移 |
-| 未授权 App 语义检索 | 沿用 grant-revision 授权，拒绝零副作用 |
+| 超大/二进制/敏感文件           | 过滤规则生效，跳过有记录                    |
+| 索引重建与实时摄取并发         | generation 隔离，最终一致                   |
+| 语义与词法结果冲突             | 融合排序确定，测试固定，无随机漂移          |
+| 未授权 App 语义检索            | 沿用 grant-revision 授权，拒绝零副作用      |
 
 ## W5：后台推送、移动原生封装与局域网发现
 
@@ -532,15 +532,15 @@ Push Relay 模式（structure 13.4）
 
 ### 关键失败矩阵（W5 至少覆盖）
 
-| 场景 | 必须结果 |
-| ---- | -------- |
-| Relay payload 含正文/项目名/代码 | 测试断言白名单，违规即失败 |
-| 设备 token 过期/被撤销 | 订阅清理幂等，不再投递 |
-| 免打扰时段内的事件 | 不发后台唤醒；durable 事实不受影响 |
-| Web Push 权限拒绝/Service Worker 不可用 | 前台与补收链路不受影响 |
-| mDNS 冒名服务/指纹不符 | 配对拒绝，净化错误，无降级提示 |
-| 原生安全存储不可用 | 回退方案 + 状态如实，不静默用明文 |
-| 通知搜索越 owner/超时 | 有界、净化、无存在性 oracle |
+| 场景                                    | 必须结果                           |
+| --------------------------------------- | ---------------------------------- |
+| Relay payload 含正文/项目名/代码        | 测试断言白名单，违规即失败         |
+| 设备 token 过期/被撤销                  | 订阅清理幂等，不再投递             |
+| 免打扰时段内的事件                      | 不发后台唤醒；durable 事实不受影响 |
+| Web Push 权限拒绝/Service Worker 不可用 | 前台与补收链路不受影响             |
+| mDNS 冒名服务/指纹不符                  | 配对拒绝，净化错误，无降级提示     |
+| 原生安全存储不可用                      | 回退方案 + 状态如实，不静默用明文  |
+| 通知搜索越 owner/超时                   | 有界、净化、无存在性 oracle        |
 
 ## W6：桌面系统应用与入口
 
@@ -579,13 +579,13 @@ Experiments：定位为 App Library 的 project app 模板（manifest 示例）�
 
 ### 关键失败矩阵（W6 至少覆盖）
 
-| 场景 | 必须结果 |
-| ---- | -------- |
-| Palette 动作目标已失效 | 重验后固定 stale 文案，不 fallback 任意 URL |
-| 外部网页尝试 top navigation/弹窗 | 被窗口拦截规则接住，不打开浏览器标签页 |
-| Files 越权路径/超大目录 | 有界拒绝，净化错误 |
-| Project 快速切换 | 迟到响应隔离，窗口状态不串台 |
-| compact 布局新增入口 | 不遮 Agent composer/safe area，可达性达标 |
+| 场景                             | 必须结果                                    |
+| -------------------------------- | ------------------------------------------- |
+| Palette 动作目标已失效           | 重验后固定 stale 文案，不 fallback 任意 URL |
+| 外部网页尝试 top navigation/弹窗 | 被窗口拦截规则接住，不打开浏览器标签页      |
+| Files 越权路径/超大目录          | 有界拒绝，净化错误                          |
+| Project 快速切换                 | 迟到响应隔离，窗口状态不串台                |
+| compact 布局新增入口             | 不遮 Agent composer/safe area，可达性达标   |
 
 ## 专项门禁总表与全局失败矩阵
 
@@ -613,14 +613,14 @@ make test-desktop-system-apps          W6：系统应用 + Palette + Mission Con
 
 全局失败矩阵（各 workstream 矩阵之外，跨链路至少覆盖）：
 
-| 场景 | 必须结果 |
-| ---- | -------- |
-| 任一门禁在环境缺失宿主上运行 | blocker 记录 + 其余断言仍执行，不整批 FAIL 也不伪造 PASS |
-| Core/Reliability/Runtime/Indexer 任一重启 | 所有新增 durable 状态收敛，无重复副作用 |
-| 并发同类外部写（idempotency key 竞争） | 恰一次裁决，`Aborted` 语义稳定 |
-| 存储不变量损坏 | 净化 `Internal`，不静默修复/覆盖 |
-| 依赖进程不可达 | `Unavailable` + 有界降级，恢复后追平 |
-| 任何新公开 RPC | pre-decode wire budget（含 gzip）、身份注入、固定错误矩阵、private 路由 404 |
+| 场景                                      | 必须结果                                                                    |
+| ----------------------------------------- | --------------------------------------------------------------------------- |
+| 任一门禁在环境缺失宿主上运行              | blocker 记录 + 其余断言仍执行，不整批 FAIL 也不伪造 PASS                    |
+| Core/Reliability/Runtime/Indexer 任一重启 | 所有新增 durable 状态收敛，无重复副作用                                     |
+| 并发同类外部写（idempotency key 竞争）    | 恰一次裁决，`Aborted` 语义稳定                                              |
+| 存储不变量损坏                            | 净化 `Internal`，不静默修复/覆盖                                            |
+| 依赖进程不可达                            | `Unavailable` + 有界降级，恢复后追平                                        |
+| 任何新公开 RPC                            | pre-decode wire budget（含 gzip）、身份注入、固定错误矩阵、private 路由 404 |
 
 ## 明确不在范围内
 
