@@ -58,7 +58,9 @@ func Setup(ctx context.Context, service, endpoint string) (func(context.Context)
 		sdktrace.WithBatcher(exporter),
 		sdktrace.WithResource(resources),
 	)
+	provider.RegisterSpanProcessor(NewExportCounter())
 	otel.SetTracerProvider(provider)
+	currentProvider = provider
 	return provider.Shutdown, nil
 }
 
@@ -125,6 +127,20 @@ const (
 // how many attributes the exporter wrapper removed before export.
 const DroppedAttributesKey = "workos.telemetry.attributes_dropped"
 
+// ExportCounter observes completed export batches so capability discovery
+// and tests can prove spans really flow (ADR-0016 §4).
+var ExportCounter atomic.Uint64
+
+// NewExportCounter constructs the batch observer.
+func NewExportCounter() sdktrace.SpanProcessor { return exportCounter{} }
+
+type exportCounter struct{}
+
+func (exportCounter) OnStart(context.Context, sdktrace.ReadWriteSpan) {}
+func (exportCounter) OnEnd(sdktrace.ReadOnlySpan)                     {}
+func (exportCounter) Shutdown(context.Context) error                  { return nil }
+func (exportCounter) ForceFlush(context.Context) error                { return nil }
+
 // trimSpanAttributes enforces the attribute budget: at most
 // MaxSpanAttributes entries, string values truncated to
 // MaxAttributeValueBytes. It returns the kept set and how many attributes
@@ -163,6 +179,7 @@ type trimmedSpan struct {
 func (s *trimmedSpan) Attributes() []attribute.KeyValue { return s.attributes }
 
 func (e *boundsExporter) ExportSpans(ctx context.Context, spans []sdktrace.ReadOnlySpan) error {
+	println("DEBUG bounds exporter invoked with", len(spans), "spans")
 	trimmed := make([]sdktrace.ReadOnlySpan, 0, len(spans))
 	for _, span := range spans {
 		kept, dropped := trimSpanAttributes(span.Attributes())
