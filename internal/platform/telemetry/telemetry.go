@@ -7,6 +7,7 @@ import (
 
 	"context"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"strings"
@@ -27,7 +28,10 @@ import (
 // through it explicitly: otelhttp captures the provider at construction
 // time, so the instrumentation in Handler must see the same provider Setup
 // configured, never an import-order-dependent global.
-var currentProvider oteltrace.TracerProvider
+var (
+	currentProvider oteltrace.TracerProvider
+	otelLogger      = slog.Default().With("component", "telemetry")
+)
 
 // Setup installs an OTLP/HTTP trace provider. With an empty endpoint it keeps
 // the default no-op provider and returns a no-op shutdown function.
@@ -35,6 +39,11 @@ func Setup(ctx context.Context, service, endpoint string) (func(context.Context)
 	otel.SetTextMapPropagator(propagation.NewCompositeTextMapPropagator(
 		propagation.TraceContext{}, propagation.Baggage{},
 	))
+	// Export/retry failures are otherwise silent: route them through the
+	// standard logger so OTLP delivery problems are diagnosable (ADR-0016).
+	otel.SetErrorHandler(otel.ErrorHandlerFunc(func(err error) {
+		otelLogger.Error("telemetry export failed", "error", err)
+	}))
 	if endpoint == "" {
 		return func(context.Context) error { return nil }, nil
 	}
