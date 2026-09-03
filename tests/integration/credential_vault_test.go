@@ -445,7 +445,7 @@ func (f *vaultFixture) claimTask(t *testing.T, credential credentialdomain.Crede
 		ID: ids.UUIDv7{}.New(), OwnerUserID: f.owner, ProjectID: project,
 		Input: []byte(payload), State: agentdomain.StateQueued, ProviderID: "deepseek",
 		CreatedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC(),
-		Credential: &agentdomain.CredentialSnapshot{CredentialID: credential.ID, Revision: credential.Revision},
+		Credential: &agentdomain.CredentialSnapshot{CredentialID: credential.ID, Revision: credential.Revision, Purpose: credential.Purpose},
 	}, ids.UUIDv7{}.New())
 	if err != nil {
 		t.Fatalf("seed task: %v", err)

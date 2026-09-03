@@ -140,8 +140,8 @@ func (e *Engine) CreateContainer(ctx context.Context, spec workloadports.Contain
 	c := &container{
 		id: id, name: spec.Name, image: spec.Image, command: append([]string(nil), spec.Command...),
 		port: spec.Port, labels: copyLabels(spec.Labels), pid: 0,
-		hostPort:   int32(41000 + (e.nextID % 1000)),
-		policy:     effectiveFromSpec(spec),
+		hostPort: int32(41000 + (e.nextID % 1000)),
+		policy:   effectiveFromSpec(spec),
 	}
 	e.containers[spec.Name] = c
 	e.containers[id] = c
