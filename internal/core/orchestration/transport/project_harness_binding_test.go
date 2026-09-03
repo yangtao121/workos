@@ -121,6 +121,6 @@ func TestPublicBindingCommandHasNoPolicyOrCredentialInput(t *testing.T) {
 // stubBindingCredentials satisfies the binder's credential port.
 type stubBindingCredentials struct{}
 
-func (stubBindingCredentials) ActiveSnapshot(context.Context, string, string) (agentports.CredentialSnapshotRef, error) {
+func (stubBindingCredentials) ActiveSnapshot(context.Context, string, string, string) (agentports.CredentialSnapshotRef, error) {
 	return agentports.CredentialSnapshotRef{}, agentdomain.ErrNotFound
 }

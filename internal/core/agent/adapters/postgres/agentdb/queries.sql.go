@@ -564,19 +564,29 @@ func (q *Queries) GetAgentTaskByIdempotency(ctx context.Context, arg GetAgentTas
 }
 
 const getAgentTaskCredential = `-- name: GetAgentTaskCredential :one
-SELECT task_id, provider_id, credential_id, credential_revision, created_at
+SELECT task_id, provider_id, credential_id, credential_revision, purpose, created_at
 FROM workos_core.agent_task_credentials
 WHERE task_id = $1
 `
 
-func (q *Queries) GetAgentTaskCredential(ctx context.Context, taskID string) (WorkosCoreAgentTaskCredential, error) {
+type GetAgentTaskCredentialRow struct {
+	TaskID             string             `json:"task_id"`
+	ProviderID         string             `json:"provider_id"`
+	CredentialID       string             `json:"credential_id"`
+	CredentialRevision int64              `json:"credential_revision"`
+	Purpose            string             `json:"purpose"`
+	CreatedAt          pgtype.Timestamptz `json:"created_at"`
+}
+
+func (q *Queries) GetAgentTaskCredential(ctx context.Context, taskID string) (GetAgentTaskCredentialRow, error) {
 	row := q.db.QueryRow(ctx, getAgentTaskCredential, taskID)
-	var i WorkosCoreAgentTaskCredential
+	var i GetAgentTaskCredentialRow
 	err := row.Scan(
 		&i.TaskID,
 		&i.ProviderID,
 		&i.CredentialID,
 		&i.CredentialRevision,
+		&i.Purpose,
 		&i.CreatedAt,
 	)
 	return i, err
@@ -878,8 +888,8 @@ func (q *Queries) InsertAgentTask(ctx context.Context, arg InsertAgentTaskParams
 
 const insertAgentTaskCredential = `-- name: InsertAgentTaskCredential :exec
 INSERT INTO workos_core.agent_task_credentials (
-    task_id, provider_id, credential_id, credential_revision, created_at
-) VALUES ($1, $2, $3, $4, $5)
+    task_id, provider_id, credential_id, credential_revision, purpose, created_at
+) VALUES ($1, $2, $3, $4, $5, $6)
 `
 
 type InsertAgentTaskCredentialParams struct {
@@ -887,6 +897,7 @@ type InsertAgentTaskCredentialParams struct {
 	ProviderID         string             `json:"provider_id"`
 	CredentialID       string             `json:"credential_id"`
 	CredentialRevision int64              `json:"credential_revision"`
+	Purpose            string             `json:"purpose"`
 	CreatedAt          pgtype.Timestamptz `json:"created_at"`
 }
 
@@ -899,6 +910,7 @@ func (q *Queries) InsertAgentTaskCredential(ctx context.Context, arg InsertAgent
 		arg.ProviderID,
 		arg.CredentialID,
 		arg.CredentialRevision,
+		arg.Purpose,
 		arg.CreatedAt,
 	)
 	return err
@@ -1221,7 +1233,7 @@ func (q *Queries) LockTaskArtifactStream(ctx context.Context, arg LockTaskArtifa
 
 const lockTaskCredentialLeaseFacts = `-- name: LockTaskCredentialLeaseFacts :one
 SELECT t.id, t.owner_user_id, t.provider_id, o.locked_until,
-       c.credential_id, c.credential_revision
+       c.credential_id, c.credential_revision, c.purpose
 FROM workos_events.outbox AS o
 JOIN workos_core.agent_tasks AS t ON t.id = o.aggregate_id
 LEFT JOIN workos_core.agent_task_credentials AS c ON c.task_id = t.id
@@ -1242,6 +1254,7 @@ type LockTaskCredentialLeaseFactsRow struct {
 	LockedUntil        pgtype.Timestamptz `json:"locked_until"`
 	CredentialID       pgtype.UUID        `json:"credential_id"`
 	CredentialRevision pgtype.Int8        `json:"credential_revision"`
+	Purpose            pgtype.Text        `json:"purpose"`
 }
 
 // Credential-lease derivation inside the coordinator's transaction: the
@@ -1258,6 +1271,7 @@ func (q *Queries) LockTaskCredentialLeaseFacts(ctx context.Context, arg LockTask
 		&i.LockedUntil,
 		&i.CredentialID,
 		&i.CredentialRevision,
+		&i.Purpose,
 	)
 	return i, err
 }

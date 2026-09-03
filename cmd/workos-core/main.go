@@ -124,11 +124,20 @@ func run(logger *slog.Logger) error {
 	// non-credential functions start normally.
 	var credentialService *credentialapp.Service
 	if cfg.Credential.MasterKeyFile != "" {
-		ciph, err := credentialcipher.Load(cfg.Credential.MasterKeyFile)
+		// The cipher derives at the durable vault epoch (ADR-0015): after an
+		// online master-key rotation the singleton state row decides which
+		// epoch this process must derive from, and a missing state row is
+		// startup corruption rather than a silent epoch-1 fallback.
+		credentialRepository := credentialpostgres.New(pool)
+		epoch, err := credentialRepository.VaultEpoch(ctx)
+		if err != nil {
+			return fmt.Errorf("resolve credential vault epoch: %w", err)
+		}
+		ciph, err := credentialcipher.LoadAtEpoch(cfg.Credential.MasterKeyFile, epoch)
 		if err != nil {
 			return err
 		}
-		credentialService, err = credentialapp.New(credentialpostgres.New(pool), ciph)
+		credentialService, err = credentialapp.New(credentialRepository, ciph)
 		if err != nil {
 			return err
 		}

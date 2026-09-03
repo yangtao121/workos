@@ -27,6 +27,12 @@ type AdminService interface {
 	Rotate(ctx context.Context, command ports.RotateCommand) (domain.Credential, error)
 	Revoke(ctx context.Context, command ports.RevokeCommand) (domain.Credential, error)
 	List(ctx context.Context, ownerUserID string) ([]domain.Credential, error)
+	// Reveal decrypts one active credential exactly once; the audit row is
+	// committed before the secret is returned (ADR-0015).
+	Reveal(ctx context.Context, command ports.RevealCommand) (domain.Credential, []byte, error)
+	// RotateMasterKey re-seals the vault under the successor epoch in one
+	// transaction (ADR-0015).
+	RotateMasterKey(ctx context.Context, command ports.RotateMasterKeyCommand) (ports.RotateMasterKeyResult, error)
 }
 
 // AdminHandler serves CredentialAdminService. Secrets arrive only inside
@@ -103,6 +109,44 @@ func (h *AdminHandler) ListCredentials(ctx context.Context, req *connect.Request
 	return connect.NewResponse(response), nil
 }
 
+// RevealCredential returns the decrypted secret exactly once on the admin
+// socket. The secret is never logged anywhere in this process; the audit
+// row already committed inside the service call before this response is
+// written (ADR-0015).
+func (h *AdminHandler) RevealCredential(ctx context.Context, req *connect.Request[credentialv1.RevealCredentialRequest]) (*connect.Response[credentialv1.RevealCredentialResponse], error) {
+	msg := req.Msg
+	credential, secret, err := h.service.Reveal(ctx, ports.RevealCommand{
+		OwnerUserID:      h.ownerID,
+		CredentialID:     msg.GetCredentialId(),
+		ExpectedRevision: msg.GetExpectedRevision(),
+	})
+	if err != nil {
+		return nil, mapError(err)
+	}
+	return connect.NewResponse(&credentialv1.RevealCredentialResponse{
+		Credential: metadataProto(credential), Secret: secret,
+	}), nil
+}
+
+// RotateMasterKey re-seals every credential under the successor epoch. The
+// raw 32-byte key arrived on this socket and is consumed inside the cipher
+// boundary; responses carry epoch facts only.
+func (h *AdminHandler) RotateMasterKey(ctx context.Context, req *connect.Request[credentialv1.RotateMasterKeyRequest]) (*connect.Response[credentialv1.RotateMasterKeyResponse], error) {
+	result, err := h.service.RotateMasterKey(ctx, ports.RotateMasterKeyCommand{
+		NewMasterKey: append([]byte(nil), req.Msg.GetNewMasterKey()...),
+		Now:          time.Now(),
+	})
+	if err != nil {
+		return nil, mapError(err)
+	}
+	return connect.NewResponse(&credentialv1.RotateMasterKeyResponse{
+		FromEpoch:    result.FromEpoch,
+		ToEpoch:      result.ToEpoch,
+		RotatedCount: result.RotatedCount,
+		Noop:         result.Noop,
+	}), nil
+}
+
 // NewAdminConnectHandler is the single construction path for the admin
 // service; the composition root applies the pre-decode body budget.
 func NewAdminConnectHandler(service AdminService, ownerID string) (string, http.Handler) {
@@ -148,6 +192,8 @@ func mapError(err error) error {
 		return connect.NewError(connect.CodeFailedPrecondition, domain.ErrAlreadyExists)
 	case errors.Is(err, domain.ErrLeaseLost):
 		return connect.NewError(connect.CodeFailedPrecondition, domain.ErrLeaseLost)
+	case errors.Is(err, domain.ErrRevoked):
+		return connect.NewError(connect.CodeFailedPrecondition, domain.ErrRevoked)
 	case errors.Is(err, ports.ErrStoreUnavailable), errors.Is(err, domain.ErrUnavailable):
 		return connect.NewError(connect.CodeUnavailable, domain.ErrUnavailable)
 	default:

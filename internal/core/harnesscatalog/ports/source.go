@@ -16,5 +16,7 @@ type Source interface {
 // Unknown credentials answer (false, nil) — the projection never
 // distinguishes "no credential" from storage facts.
 type CredentialAvailability interface {
-	Available(ctx context.Context, ownerUserID, consumerID string) (bool, error)
+	// Available reports whether the owner holds an active credential for the
+	// consumer under the exact purpose the provider declares (ADR-0015).
+	Available(ctx context.Context, ownerUserID, consumerID, purpose string) (bool, error)
 }

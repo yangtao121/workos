@@ -9,6 +9,8 @@ import (
 	"context"
 	"encoding/json"
 	"time"
+
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 const expireStaleTaskCredentialLeases = `-- name: ExpireStaleTaskCredentialLeases :execrows
@@ -246,6 +248,57 @@ func (q *Queries) GetTaskCredentialLeaseByLeaseID(ctx context.Context, id string
 	return i, err
 }
 
+const getVaultState = `-- name: GetVaultState :one
+
+SELECT singleton, current_epoch, updated_at
+FROM workos_core.credential_vault_state
+WHERE singleton
+`
+
+// ADR-0015 expansion: master-key epoch state, online rotation, audited
+// reveal, and the append-only admin audit trail.
+func (q *Queries) GetVaultState(ctx context.Context) (WorkosCoreCredentialVaultState, error) {
+	row := q.db.QueryRow(ctx, getVaultState)
+	var i WorkosCoreCredentialVaultState
+	err := row.Scan(&i.Singleton, &i.CurrentEpoch, &i.UpdatedAt)
+	return i, err
+}
+
+const insertCredentialAudit = `-- name: InsertCredentialAudit :exec
+INSERT INTO workos_core.credential_admin_audit (
+    id, occurred_at, action, owner_user_id, credential_id, consumer_id, purpose, revision, key_epoch, result
+) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+`
+
+type InsertCredentialAuditParams struct {
+	ID           string      `json:"id"`
+	OccurredAt   time.Time   `json:"occurred_at"`
+	Action       string      `json:"action"`
+	OwnerUserID  pgtype.UUID `json:"owner_user_id"`
+	CredentialID pgtype.UUID `json:"credential_id"`
+	ConsumerID   pgtype.Text `json:"consumer_id"`
+	Purpose      pgtype.Text `json:"purpose"`
+	Revision     pgtype.Int8 `json:"revision"`
+	KeyEpoch     pgtype.Int8 `json:"key_epoch"`
+	Result       string      `json:"result"`
+}
+
+func (q *Queries) InsertCredentialAudit(ctx context.Context, arg InsertCredentialAuditParams) error {
+	_, err := q.db.Exec(ctx, insertCredentialAudit,
+		arg.ID,
+		arg.OccurredAt,
+		arg.Action,
+		arg.OwnerUserID,
+		arg.CredentialID,
+		arg.ConsumerID,
+		arg.Purpose,
+		arg.Revision,
+		arg.KeyEpoch,
+		arg.Result,
+	)
+	return err
+}
+
 const insertCredentialRequest = `-- name: InsertCredentialRequest :execrows
 INSERT INTO workos_core.credential_admin_requests (
     owner_user_id, idempotency_key, request_digest, result_version, result, created_at
@@ -278,8 +331,8 @@ func (q *Queries) InsertCredentialRequest(ctx context.Context, arg InsertCredent
 const insertProviderCredential = `-- name: InsertProviderCredential :execrows
 
 INSERT INTO workos_core.provider_credentials (
-    id, owner_user_id, consumer_id, purpose, label, revision, status, nonce, ciphertext, created_at, updated_at
-) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+    id, owner_user_id, consumer_id, purpose, label, revision, status, nonce, ciphertext, key_epoch, created_at, updated_at
+) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
 ON CONFLICT DO NOTHING
 `
 
@@ -293,6 +346,7 @@ type InsertProviderCredentialParams struct {
 	Status      string    `json:"status"`
 	Nonce       []byte    `json:"nonce"`
 	Ciphertext  []byte    `json:"ciphertext"`
+	KeyEpoch    int64     `json:"key_epoch"`
 	CreatedAt   time.Time `json:"created_at"`
 	UpdatedAt   time.Time `json:"updated_at"`
 }
@@ -312,6 +366,7 @@ func (q *Queries) InsertProviderCredential(ctx context.Context, arg InsertProvid
 		arg.Status,
 		arg.Nonce,
 		arg.Ciphertext,
+		arg.KeyEpoch,
 		arg.CreatedAt,
 		arg.UpdatedAt,
 	)
@@ -466,16 +521,145 @@ func (q *Queries) LockActiveTaskCredentialLease(ctx context.Context, arg LockAct
 	return i, err
 }
 
-const lockProviderCredential = `-- name: LockProviderCredential :one
-SELECT id, owner_user_id, consumer_id, purpose, label, revision, status, nonce, ciphertext, created_at, updated_at
+const lockAllCredentialRows = `-- name: LockAllCredentialRows :many
+SELECT id, owner_user_id, consumer_id, purpose, label, revision, status, nonce, ciphertext, key_epoch, created_at, updated_at
 FROM workos_core.provider_credentials
-WHERE id = $1
+ORDER BY id
 FOR UPDATE
 `
 
-func (q *Queries) LockProviderCredential(ctx context.Context, id string) (WorkosCoreProviderCredential, error) {
-	row := q.db.QueryRow(ctx, lockProviderCredential, id)
-	var i WorkosCoreProviderCredential
+type LockAllCredentialRowsRow struct {
+	ID          string    `json:"id"`
+	OwnerUserID string    `json:"owner_user_id"`
+	ConsumerID  string    `json:"consumer_id"`
+	Purpose     string    `json:"purpose"`
+	Label       string    `json:"label"`
+	Revision    int64     `json:"revision"`
+	Status      string    `json:"status"`
+	Nonce       []byte    `json:"nonce"`
+	Ciphertext  []byte    `json:"ciphertext"`
+	KeyEpoch    int64     `json:"key_epoch"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
+}
+
+func (q *Queries) LockAllCredentialRows(ctx context.Context) ([]LockAllCredentialRowsRow, error) {
+	rows, err := q.db.Query(ctx, lockAllCredentialRows)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []LockAllCredentialRowsRow
+	for rows.Next() {
+		var i LockAllCredentialRowsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.OwnerUserID,
+			&i.ConsumerID,
+			&i.Purpose,
+			&i.Label,
+			&i.Revision,
+			&i.Status,
+			&i.Nonce,
+			&i.Ciphertext,
+			&i.KeyEpoch,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const lockAllProviderCredentials = `-- name: LockAllProviderCredentials :many
+SELECT id, owner_user_id, consumer_id, purpose, label, revision, status, nonce, ciphertext, key_epoch, created_at, updated_at
+FROM workos_core.provider_credentials
+FOR UPDATE
+`
+
+type LockAllProviderCredentialsRow struct {
+	ID          string    `json:"id"`
+	OwnerUserID string    `json:"owner_user_id"`
+	ConsumerID  string    `json:"consumer_id"`
+	Purpose     string    `json:"purpose"`
+	Label       string    `json:"label"`
+	Revision    int64     `json:"revision"`
+	Status      string    `json:"status"`
+	Nonce       []byte    `json:"nonce"`
+	Ciphertext  []byte    `json:"ciphertext"`
+	KeyEpoch    int64     `json:"key_epoch"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
+}
+
+func (q *Queries) LockAllProviderCredentials(ctx context.Context) ([]LockAllProviderCredentialsRow, error) {
+	rows, err := q.db.Query(ctx, lockAllProviderCredentials)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []LockAllProviderCredentialsRow
+	for rows.Next() {
+		var i LockAllProviderCredentialsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.OwnerUserID,
+			&i.ConsumerID,
+			&i.Purpose,
+			&i.Label,
+			&i.Revision,
+			&i.Status,
+			&i.Nonce,
+			&i.Ciphertext,
+			&i.KeyEpoch,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const lockOwnerCredential = `-- name: LockOwnerCredential :one
+SELECT id, owner_user_id, consumer_id, purpose, label, revision, status, nonce, ciphertext, key_epoch, created_at, updated_at
+FROM workos_core.provider_credentials
+WHERE id = $1 AND owner_user_id = $2
+FOR UPDATE
+`
+
+type LockOwnerCredentialParams struct {
+	ID          string `json:"id"`
+	OwnerUserID string `json:"owner_user_id"`
+}
+
+type LockOwnerCredentialRow struct {
+	ID          string    `json:"id"`
+	OwnerUserID string    `json:"owner_user_id"`
+	ConsumerID  string    `json:"consumer_id"`
+	Purpose     string    `json:"purpose"`
+	Label       string    `json:"label"`
+	Revision    int64     `json:"revision"`
+	Status      string    `json:"status"`
+	Nonce       []byte    `json:"nonce"`
+	Ciphertext  []byte    `json:"ciphertext"`
+	KeyEpoch    int64     `json:"key_epoch"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
+}
+
+func (q *Queries) LockOwnerCredential(ctx context.Context, arg LockOwnerCredentialParams) (LockOwnerCredentialRow, error) {
+	row := q.db.QueryRow(ctx, lockOwnerCredential, arg.ID, arg.OwnerUserID)
+	var i LockOwnerCredentialRow
 	err := row.Scan(
 		&i.ID,
 		&i.OwnerUserID,
@@ -486,6 +670,49 @@ func (q *Queries) LockProviderCredential(ctx context.Context, id string) (Workos
 		&i.Status,
 		&i.Nonce,
 		&i.Ciphertext,
+		&i.KeyEpoch,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const lockProviderCredential = `-- name: LockProviderCredential :one
+SELECT id, owner_user_id, consumer_id, purpose, label, revision, status, nonce, ciphertext, key_epoch, created_at, updated_at
+FROM workos_core.provider_credentials
+WHERE id = $1
+FOR UPDATE
+`
+
+type LockProviderCredentialRow struct {
+	ID          string    `json:"id"`
+	OwnerUserID string    `json:"owner_user_id"`
+	ConsumerID  string    `json:"consumer_id"`
+	Purpose     string    `json:"purpose"`
+	Label       string    `json:"label"`
+	Revision    int64     `json:"revision"`
+	Status      string    `json:"status"`
+	Nonce       []byte    `json:"nonce"`
+	Ciphertext  []byte    `json:"ciphertext"`
+	KeyEpoch    int64     `json:"key_epoch"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
+}
+
+func (q *Queries) LockProviderCredential(ctx context.Context, id string) (LockProviderCredentialRow, error) {
+	row := q.db.QueryRow(ctx, lockProviderCredential, id)
+	var i LockProviderCredentialRow
+	err := row.Scan(
+		&i.ID,
+		&i.OwnerUserID,
+		&i.ConsumerID,
+		&i.Purpose,
+		&i.Label,
+		&i.Revision,
+		&i.Status,
+		&i.Nonce,
+		&i.Ciphertext,
+		&i.KeyEpoch,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
@@ -493,7 +720,7 @@ func (q *Queries) LockProviderCredential(ctx context.Context, id string) (Workos
 }
 
 const lockSealedCredentialForTask = `-- name: LockSealedCredentialForTask :one
-SELECT id, owner_user_id, consumer_id, purpose, label, revision, status, nonce, ciphertext, created_at, updated_at
+SELECT id, owner_user_id, consumer_id, purpose, label, revision, status, nonce, ciphertext, key_epoch, created_at, updated_at
 FROM workos_core.provider_credentials
 WHERE id = $1 AND owner_user_id = $2
 FOR UPDATE
@@ -504,12 +731,27 @@ type LockSealedCredentialForTaskParams struct {
 	OwnerUserID string `json:"owner_user_id"`
 }
 
+type LockSealedCredentialForTaskRow struct {
+	ID          string    `json:"id"`
+	OwnerUserID string    `json:"owner_user_id"`
+	ConsumerID  string    `json:"consumer_id"`
+	Purpose     string    `json:"purpose"`
+	Label       string    `json:"label"`
+	Revision    int64     `json:"revision"`
+	Status      string    `json:"status"`
+	Nonce       []byte    `json:"nonce"`
+	Ciphertext  []byte    `json:"ciphertext"`
+	KeyEpoch    int64     `json:"key_epoch"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
+}
+
 // Sealed read for lease issuance inside the coordinator transaction: the
 // exact credential identity must still be active at the exact snapshot
 // revision, or the lease fails closed.
-func (q *Queries) LockSealedCredentialForTask(ctx context.Context, arg LockSealedCredentialForTaskParams) (WorkosCoreProviderCredential, error) {
+func (q *Queries) LockSealedCredentialForTask(ctx context.Context, arg LockSealedCredentialForTaskParams) (LockSealedCredentialForTaskRow, error) {
 	row := q.db.QueryRow(ctx, lockSealedCredentialForTask, arg.ID, arg.OwnerUserID)
-	var i WorkosCoreProviderCredential
+	var i LockSealedCredentialForTaskRow
 	err := row.Scan(
 		&i.ID,
 		&i.OwnerUserID,
@@ -520,6 +762,7 @@ func (q *Queries) LockSealedCredentialForTask(ctx context.Context, arg LockSeale
 		&i.Status,
 		&i.Nonce,
 		&i.Ciphertext,
+		&i.KeyEpoch,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
@@ -628,10 +871,30 @@ func (q *Queries) RevokeProviderCredential(ctx context.Context, arg RevokeProvid
 	return result.RowsAffected(), nil
 }
 
+const rotateVaultState = `-- name: RotateVaultState :execrows
+UPDATE workos_core.credential_vault_state
+SET current_epoch = $1, updated_at = $2
+WHERE singleton AND current_epoch = $3
+`
+
+type RotateVaultStateParams struct {
+	CurrentEpoch   int64     `json:"current_epoch"`
+	UpdatedAt      time.Time `json:"updated_at"`
+	CurrentEpoch_2 int64     `json:"current_epoch_2"`
+}
+
+func (q *Queries) RotateVaultState(ctx context.Context, arg RotateVaultStateParams) (int64, error) {
+	result, err := q.db.Exec(ctx, rotateVaultState, arg.CurrentEpoch, arg.UpdatedAt, arg.CurrentEpoch_2)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const updateCredentialMaterial = `-- name: UpdateCredentialMaterial :execrows
 UPDATE workos_core.provider_credentials
-SET label = $1, revision = $2, nonce = $3, ciphertext = $4, updated_at = $5
-WHERE id = $6
+SET label = $1, revision = $2, nonce = $3, ciphertext = $4, key_epoch = $5, updated_at = $6
+WHERE id = $7
 `
 
 type UpdateCredentialMaterialParams struct {
@@ -639,6 +902,7 @@ type UpdateCredentialMaterialParams struct {
 	Revision   int64     `json:"revision"`
 	Nonce      []byte    `json:"nonce"`
 	Ciphertext []byte    `json:"ciphertext"`
+	KeyEpoch   int64     `json:"key_epoch"`
 	UpdatedAt  time.Time `json:"updated_at"`
 	ID         string    `json:"id"`
 }
@@ -649,6 +913,35 @@ func (q *Queries) UpdateCredentialMaterial(ctx context.Context, arg UpdateCreden
 		arg.Revision,
 		arg.Nonce,
 		arg.Ciphertext,
+		arg.KeyEpoch,
+		arg.UpdatedAt,
+		arg.ID,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const updateCredentialSeal = `-- name: UpdateCredentialSeal :execrows
+UPDATE workos_core.provider_credentials
+SET nonce = $1, ciphertext = $2, key_epoch = $3, updated_at = $4
+WHERE id = $5
+`
+
+type UpdateCredentialSealParams struct {
+	Nonce      []byte    `json:"nonce"`
+	Ciphertext []byte    `json:"ciphertext"`
+	KeyEpoch   int64     `json:"key_epoch"`
+	UpdatedAt  time.Time `json:"updated_at"`
+	ID         string    `json:"id"`
+}
+
+func (q *Queries) UpdateCredentialSeal(ctx context.Context, arg UpdateCredentialSealParams) (int64, error) {
+	result, err := q.db.Exec(ctx, updateCredentialSeal,
+		arg.Nonce,
+		arg.Ciphertext,
+		arg.KeyEpoch,
 		arg.UpdatedAt,
 		arg.ID,
 	)

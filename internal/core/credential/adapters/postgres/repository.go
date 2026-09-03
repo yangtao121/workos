@@ -16,6 +16,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/yangtao121/workos/internal/core/credential/adapters/postgres/credentialdb"
@@ -75,6 +76,7 @@ func (r *Repository) Put(ctx context.Context, ciph ports.Cipher, command ports.P
 		Status:      domain.StatusActive,
 		Nonce:       sealed.Nonce,
 		Ciphertext:  sealed.Ciphertext,
+		KeyEpoch:    ciph.Epoch(),
 		CreatedAt:   timestamp(command.Now),
 		UpdatedAt:   timestamp(command.Now),
 	})
@@ -92,6 +94,13 @@ func (r *Repository) Put(ctx context.Context, ciph ports.Cipher, command ports.P
 		ID: credentialID, OwnerUserID: command.OwnerUserID, ConsumerID: command.ConsumerID,
 		Purpose: command.Purpose, Label: command.Label, Revision: 1, Status: domain.StatusActive,
 		CreatedAt: command.Now, UpdatedAt: command.Now,
+	}
+	if err := queries.InsertCredentialAudit(ctx, auditParams(ports.AuditEntry{
+		Action: "put", OwnerUserID: command.OwnerUserID, CredentialID: credentialID,
+		ConsumerID: command.ConsumerID, Purpose: command.Purpose, Revision: 1,
+		KeyEpoch: ciph.Epoch(), Result: "applied", OccurredAt: command.Now,
+	})); err != nil {
+		return domain.Credential{}, storeError("audit credential put", err)
 	}
 	if err := finalizeRequest(ctx, queries, command.OwnerUserID, command.IdempotencyKey, credential); err != nil {
 		return domain.Credential{}, err
@@ -136,6 +145,16 @@ func (r *Repository) Rotate(ctx context.Context, ciph ports.Cipher, command port
 	if row.Status != domain.StatusActive || row.Revision != command.ExpectedRevision {
 		return domain.Credential{}, domain.ErrConflict
 	}
+	if row.KeyEpoch != ciph.Epoch() {
+		// A row sealed under a non-current epoch cannot be re-sealed by this
+		// cipher: the vault state and the process key diverged. Fail closed.
+		return domain.Credential{}, domain.ErrCorrupt
+	}
+	if !domain.ValidSecret(row.Purpose, command.Secret) {
+		// The kind-specific grammar is decided by the stored purpose, which
+		// only becomes visible once the row is locked (ADR-0015).
+		return domain.Credential{}, domain.ErrInvalid
+	}
 	revision := row.Revision + 1
 	sealed, err := ciph.Seal(append([]byte(nil), command.Secret...), ports.SealAAD{
 		OwnerUserID: row.OwnerUserID, CredentialID: row.ID,
@@ -149,6 +168,7 @@ func (r *Repository) Rotate(ctx context.Context, ciph ports.Cipher, command port
 		Revision:   revision,
 		Nonce:      sealed.Nonce,
 		Ciphertext: sealed.Ciphertext,
+		KeyEpoch:   ciph.Epoch(),
 		UpdatedAt:  timestamp(command.Now),
 		ID:         row.ID,
 	})
@@ -163,6 +183,13 @@ func (r *Repository) Rotate(ctx context.Context, ciph ports.Cipher, command port
 		return domain.Credential{}, err
 	}
 	credential.Label, credential.Revision, credential.UpdatedAt = command.Label, revision, command.Now
+	if err := queries.InsertCredentialAudit(ctx, auditParams(ports.AuditEntry{
+		Action: "rotate", OwnerUserID: command.OwnerUserID, CredentialID: row.ID,
+		ConsumerID: row.ConsumerID, Purpose: row.Purpose, Revision: revision,
+		KeyEpoch: ciph.Epoch(), Result: "applied", OccurredAt: command.Now,
+	})); err != nil {
+		return domain.Credential{}, storeError("audit credential rotate", err)
+	}
 	if err := finalizeRequest(ctx, queries, command.OwnerUserID, command.IdempotencyKey, credential); err != nil {
 		return domain.Credential{}, err
 	}
@@ -224,6 +251,13 @@ func (r *Repository) Revoke(ctx context.Context, command ports.RevokeCommand) (d
 		return domain.Credential{}, err
 	}
 	credential.Status, credential.Revision, credential.UpdatedAt = domain.StatusRevoked, revision, command.Now
+	if err := queries.InsertCredentialAudit(ctx, auditParams(ports.AuditEntry{
+		Action: "revoke", OwnerUserID: command.OwnerUserID, CredentialID: row.ID,
+		ConsumerID: row.ConsumerID, Purpose: row.Purpose, Revision: revision,
+		KeyEpoch: row.KeyEpoch, Result: "applied", OccurredAt: command.Now,
+	})); err != nil {
+		return domain.Credential{}, storeError("audit credential revoke", err)
+	}
 	if err := finalizeRequest(ctx, queries, command.OwnerUserID, command.IdempotencyKey, credential); err != nil {
 		return domain.Credential{}, err
 	}
@@ -310,7 +344,7 @@ func (r *Repository) CredentialByID(ctx context.Context, ownerUserID, credential
 // SealedCredentialForTask implements ports.Repository: the exact credential
 // identity must still be active at the exact snapshot revision, or the lease
 // derivation fails closed.
-func (r *Repository) SealedCredentialForTask(ctx context.Context, tx dbtx.Tx, ownerUserID, credentialID, consumerID, purpose string, revision int64) (domain.Credential, domain.SealedMaterial, error) {
+func (r *Repository) SealedCredentialForTask(ctx context.Context, tx dbtx.Tx, ownerUserID, credentialID, consumerID, purpose string, revision, keyEpoch int64) (domain.Credential, domain.SealedMaterial, error) {
 	row, err := r.queries.WithTx(tx).LockSealedCredentialForTask(ctx, credentialdb.LockSealedCredentialForTaskParams{
 		ID: credentialID, OwnerUserID: ownerUserID,
 	})
@@ -323,6 +357,9 @@ func (r *Repository) SealedCredentialForTask(ctx context.Context, tx dbtx.Tx, ow
 	if row.OwnerUserID != ownerUserID || row.ConsumerID != consumerID || row.Purpose != purpose ||
 		row.Status != domain.StatusActive || row.Revision != revision {
 		return domain.Credential{}, domain.SealedMaterial{}, domain.ErrLeaseLost
+	}
+	if row.KeyEpoch != keyEpoch {
+		return domain.Credential{}, domain.SealedMaterial{}, domain.ErrCorrupt
 	}
 	credential, err := rowToCredential(row)
 	if err != nil {
@@ -457,6 +494,262 @@ func (r *Repository) ExpireStaleTaskCredentialLeases(ctx context.Context, now ti
 	return expired, nil
 }
 
+// VaultEpoch implements ports.Repository: the singleton authoritative
+// master-key epoch. A missing state row is stored corruption, never a
+// silent fallback to epoch 1.
+func (r *Repository) VaultEpoch(ctx context.Context) (int64, error) {
+	state, err := r.queries.GetVaultState(ctx)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return 0, domain.ErrCorrupt
+	}
+	if err != nil {
+		return 0, storeError("read credential vault state", err)
+	}
+	if !state.Singleton || state.CurrentEpoch < 1 {
+		return 0, domain.ErrCorrupt
+	}
+	return state.CurrentEpoch, nil
+}
+
+// Reveal implements ports.Repository: one bounded decryption of an active
+// credential with the reveal audit row committed in the same transaction
+// before the secret leaves the adapter (ADR-0015).
+func (r *Repository) Reveal(ctx context.Context, ciph ports.Cipher, command ports.RevealCommand) (domain.Credential, []byte, error) {
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return domain.Credential{}, nil, storeError("begin credential reveal", err)
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck -- explicit commit or classified failure
+	queries := r.queries.WithTx(tx)
+	row, err := queries.LockOwnerCredential(ctx, credentialdb.LockOwnerCredentialParams{
+		ID: command.CredentialID, OwnerUserID: command.OwnerUserID,
+	})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return domain.Credential{}, nil, domain.ErrNotFound
+	}
+	if err != nil {
+		return domain.Credential{}, nil, storeError("lock credential for reveal", err)
+	}
+	if row.Status != domain.StatusActive {
+		return domain.Credential{}, nil, domain.ErrRevoked
+	}
+	if command.ExpectedRevision != 0 && row.Revision != command.ExpectedRevision {
+		return domain.Credential{}, nil, domain.ErrConflict
+	}
+	if row.KeyEpoch != ciph.Epoch() {
+		return domain.Credential{}, nil, domain.ErrCorrupt
+	}
+	secret, err := ciph.Open(domain.SealedMaterial{Nonce: row.Nonce, Ciphertext: row.Ciphertext}, ports.SealAAD{
+		OwnerUserID: row.OwnerUserID, CredentialID: row.ID,
+		ConsumerID: row.ConsumerID, Purpose: row.Purpose, Revision: row.Revision,
+	})
+	if err != nil {
+		return domain.Credential{}, nil, err
+	}
+	credential, err := rowToCredential(row)
+	if err != nil {
+		overwrite(secret)
+		return domain.Credential{}, nil, err
+	}
+	if err := queries.InsertCredentialAudit(ctx, auditParams(ports.AuditEntry{
+		Action: "reveal", OwnerUserID: command.OwnerUserID, CredentialID: row.ID,
+		ConsumerID: row.ConsumerID, Purpose: row.Purpose, Revision: row.Revision,
+		KeyEpoch: row.KeyEpoch, Result: "revealed", OccurredAt: command.Now,
+	})); err != nil {
+		overwrite(secret)
+		return domain.Credential{}, nil, storeError("audit credential reveal", err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		overwrite(secret)
+		return domain.Credential{}, nil, storeError("commit credential reveal", err)
+	}
+	return credential, secret, nil
+}
+
+// RotateMasterKey implements ports.Repository: one transaction re-seals
+// every credential under the successor epoch and advances the singleton
+// state. Any open/update failure aborts the whole transaction — the vault is
+// never half-encrypted — and the caller retries against the unchanged old
+// epoch (ADR-0015).
+func (r *Repository) RotateMasterKey(ctx context.Context, current, next ports.Cipher, command ports.RotateMasterKeyCommand) (ports.RotateMasterKeyResult, error) {
+	result := ports.RotateMasterKeyResult{FromEpoch: current.Epoch(), ToEpoch: next.Epoch()}
+	if current.Epoch() == next.Epoch() {
+		return result, domain.ErrInvalid
+	}
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return result, storeError("begin master-key rotation", err)
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck -- explicit commit or classified failure
+	queries := r.queries.WithTx(tx)
+	state, err := queries.GetVaultState(ctx)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return result, domain.ErrCorrupt
+	}
+	if err != nil {
+		return result, storeError("read vault state for rotation", err)
+	}
+	if state.CurrentEpoch != current.Epoch() {
+		// Another rotation won the race. Nothing was written; the caller
+		// reloads against the moved epoch and re-adjudicates.
+		return result, domain.ErrConflict
+	}
+	rows, err := queries.LockAllProviderCredentials(ctx)
+	if err != nil {
+		return result, storeError("lock credentials for rotation", err)
+	}
+	for _, row := range rows {
+		// Revoked rows are frozen at their sealing epoch (ADR-0015): no live
+		// path ever opens them again, so rotation leaves them untouched
+		// instead of letting one lost legacy key block every future rotation.
+		if row.Status != domain.StatusActive {
+			continue
+		}
+		if row.KeyEpoch != current.Epoch() {
+			return result, domain.ErrCorrupt
+		}
+		aad := ports.SealAAD{
+			OwnerUserID: row.OwnerUserID, CredentialID: row.ID,
+			ConsumerID: row.ConsumerID, Purpose: row.Purpose, Revision: row.Revision,
+		}
+		plaintext, err := current.Open(domain.SealedMaterial{Nonce: row.Nonce, Ciphertext: row.Ciphertext}, aad)
+		if err != nil {
+			// Authentication failure: the whole rotation aborts so no
+			// credential is left under a mixed epoch state.
+			return result, err
+		}
+		sealed, err := next.Seal(plaintext, aad)
+		if err != nil {
+			return result, storeError("re-seal credential for rotation", err)
+		}
+		moved, err := queries.UpdateCredentialSeal(ctx, credentialdb.UpdateCredentialSealParams{
+			Nonce: sealed.Nonce, Ciphertext: sealed.Ciphertext,
+			KeyEpoch: next.Epoch(), UpdatedAt: timestamp(command.Now), ID: row.ID,
+		})
+		if err != nil {
+			return result, storeError("update credential seal for rotation", err)
+		}
+		if moved == 0 {
+			return result, domain.ErrCorrupt
+		}
+		result.RotatedCount++
+	}
+	advanced, err := queries.RotateVaultState(ctx, credentialdb.RotateVaultStateParams{
+		CurrentEpoch: next.Epoch(), UpdatedAt: timestamp(command.Now), CurrentEpoch_2: current.Epoch(),
+	})
+	if err != nil {
+		return result, storeError("advance vault epoch", err)
+	}
+	if advanced == 0 {
+		return result, domain.ErrConflict
+	}
+	if err := queries.InsertCredentialAudit(ctx, auditParams(ports.AuditEntry{
+		Action: "rotate-master-key", KeyEpoch: next.Epoch(),
+		Result: fmt.Sprintf("applied %d", result.RotatedCount), OccurredAt: command.Now,
+	})); err != nil {
+		return result, storeError("audit master-key rotation", err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return result, storeError("commit master-key rotation", err)
+	}
+	return result, nil
+}
+
+// RecordAudit implements ports.Repository: one audit fact in its own
+// transaction for refused vault-wide attempts. A failure fails the caller —
+// audit is never silently dropped.
+func (r *Repository) RecordAudit(ctx context.Context, entry ports.AuditEntry) error {
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return storeError("begin audit record", err)
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck -- explicit commit or classified failure
+	if err := r.queries.WithTx(tx).InsertCredentialAudit(ctx, auditParams(entry)); err != nil {
+		return storeError("record credential audit", err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return storeError("commit audit record", err)
+	}
+	return nil
+}
+
+// VerifyCurrentKey implements ports.Repository: it proves the candidate
+// cipher opens every stored credential without writing anything (ADR-0015).
+func (r *Repository) VerifyCurrentKey(ctx context.Context, ciph ports.Cipher) error {
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return storeError("begin key verification", err)
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck -- read-only verification
+	rows, err := r.queries.WithTx(tx).LockAllCredentialRows(ctx)
+	if err != nil {
+		return storeError("lock credentials for verification", err)
+	}
+	for _, row := range rows {
+		if row.Status != domain.StatusActive {
+			continue
+		}
+		if row.KeyEpoch != ciph.Epoch() {
+			return domain.ErrCorrupt
+		}
+		if _, err := ciph.Open(domain.SealedMaterial{Nonce: row.Nonce, Ciphertext: row.Ciphertext}, ports.SealAAD{
+			OwnerUserID: row.OwnerUserID, CredentialID: row.ID,
+			ConsumerID: row.ConsumerID, Purpose: row.Purpose, Revision: row.Revision,
+		}); err != nil {
+			return err
+		}
+	}
+	return tx.Commit(ctx)
+}
+
+// auditParams fills the generated audit insert parameters, minting the row
+// identity here so callers stay fact-only. Empty optional facts persist as
+// SQL NULL; the audit schema never stores secret material.
+func auditParams(entry ports.AuditEntry) credentialdb.InsertCredentialAuditParams {
+	return credentialdb.InsertCredentialAuditParams{
+		ID:           uuid.Must(uuid.NewV7()).String(),
+		OccurredAt:   timestamp(entry.OccurredAt),
+		Action:       entry.Action,
+		OwnerUserID:  nullableUUID(entry.OwnerUserID),
+		CredentialID: nullableUUID(entry.CredentialID),
+		ConsumerID:   nullableText(entry.ConsumerID),
+		Purpose:      nullableText(entry.Purpose),
+		Revision:     nullableInt(entry.Revision),
+		KeyEpoch:     nullableInt(entry.KeyEpoch),
+		Result:       entry.Result,
+	}
+}
+
+func nullableUUID(value string) pgtype.UUID {
+	parsed, err := uuid.Parse(value)
+	if value == "" || err != nil {
+		return pgtype.UUID{Valid: false}
+	}
+	return pgtype.UUID{Bytes: parsed, Valid: true}
+}
+
+func nullableText(value string) pgtype.Text {
+	if value == "" {
+		return pgtype.Text{Valid: false}
+	}
+	return pgtype.Text{String: value, Valid: true}
+}
+
+func nullableInt(value int64) pgtype.Int8 {
+	if value == 0 {
+		return pgtype.Int8{Valid: false}
+	}
+	return pgtype.Int8{Int64: value, Valid: true}
+}
+
+// overwrite is best-effort buffer hygiene for decrypted bytes that never
+// leave the adapter on a failure path.
+func overwrite(buffer []byte) {
+	for index := range buffer {
+		buffer[index] = 0
+	}
+}
+
 func finalizeRequest(ctx context.Context, queries *credentialdb.Queries, ownerUserID, idempotencyKey string, credential domain.Credential) error {
 	snapshot, err := json.Marshal(credential)
 	if err != nil {
@@ -489,7 +782,16 @@ func rowToCredential(value any) (domain.Credential, error) {
 		return credential, nil
 	}
 	switch value := value.(type) {
-	case credentialdb.WorkosCoreProviderCredential:
+	case credentialdb.LockProviderCredentialRow:
+		return credentialFrom(value.ID, value.OwnerUserID, value.ConsumerID, value.Purpose,
+			value.Label, value.Revision, value.Status, value.CreatedAt, value.UpdatedAt)
+	case credentialdb.LockSealedCredentialForTaskRow:
+		return credentialFrom(value.ID, value.OwnerUserID, value.ConsumerID, value.Purpose,
+			value.Label, value.Revision, value.Status, value.CreatedAt, value.UpdatedAt)
+	case credentialdb.LockAllProviderCredentialsRow:
+		return credentialFrom(value.ID, value.OwnerUserID, value.ConsumerID, value.Purpose,
+			value.Label, value.Revision, value.Status, value.CreatedAt, value.UpdatedAt)
+	case credentialdb.LockOwnerCredentialRow:
 		return credentialFrom(value.ID, value.OwnerUserID, value.ConsumerID, value.Purpose,
 			value.Label, value.Revision, value.Status, value.CreatedAt, value.UpdatedAt)
 	case credentialdb.GetActiveCredentialRow:

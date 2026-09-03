@@ -8,16 +8,8 @@ import (
 	"time"
 )
 
-type WorkosCoreProviderCredential struct {
-	ID          string    `json:"id"`
-	OwnerUserID string    `json:"owner_user_id"`
-	ConsumerID  string    `json:"consumer_id"`
-	Purpose     string    `json:"purpose"`
-	Label       string    `json:"label"`
-	Revision    int64     `json:"revision"`
-	Status      string    `json:"status"`
-	Nonce       []byte    `json:"nonce"`
-	Ciphertext  []byte    `json:"ciphertext"`
-	CreatedAt   time.Time `json:"created_at"`
-	UpdatedAt   time.Time `json:"updated_at"`
+type WorkosCoreCredentialVaultState struct {
+	Singleton    bool      `json:"singleton"`
+	CurrentEpoch int64     `json:"current_epoch"`
+	UpdatedAt    time.Time `json:"updated_at"`
 }

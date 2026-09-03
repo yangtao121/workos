@@ -90,6 +90,10 @@ type ProviderCapabilities struct {
 	// owner has an active credential; the exact snapshot is resolved and
 	// persisted before any queue, outbox, reservation, or waiting approval.
 	RequiresTaskCredentialLease bool
+	// RequiredCredentialPurpose is the exact canonical credential kind the
+	// provider consumes (ADR-0015). A lease-requiring projection with an
+	// empty purpose is capability corruption and fails closed.
+	RequiredCredentialPurpose string
 	// SupportedContextRefTypes is the exact canonical context reference type
 	// list the provider demonstrably consumes as resolved context (ADR-0010).
 	// Core refuses fresh tasks whose context refs fall outside the resolved
@@ -141,19 +145,22 @@ type ArtifactContextVerifier interface {
 type CredentialSnapshotRef struct {
 	CredentialID string
 	Revision     int64
+	Purpose      string
 }
 
 // CredentialSnapshots resolves the owner's active credential for one
-// consumer. Unknown/revoked facts surface as domain.ErrNotFound.
+// consumer under the exact canonical purpose the provider declares
+// (ADR-0015). Unknown/revoked facts surface as domain.ErrNotFound.
 type CredentialSnapshots interface {
-	ActiveSnapshot(ctx context.Context, ownerUserID, consumerID string) (CredentialSnapshotRef, error)
+	ActiveSnapshot(ctx context.Context, ownerUserID, consumerID, purpose string) (CredentialSnapshotRef, error)
 }
 
 // CredentialSnapshotVerifier re-proves that one task's durable snapshot
-// still points at the active credential revision. A revoke or rotate fails
-// closed as domain.ErrLeaseLost; unknown credentials are indistinguishable.
+// still points at the active credential revision under the exact purpose
+// the resolved provider declares. A revoke or rotate fails closed as
+// domain.ErrLeaseLost; unknown credentials are indistinguishable.
 type CredentialSnapshotVerifier interface {
-	VerifySnapshot(ctx context.Context, ownerUserID, consumerID, credentialID string, revision int64) error
+	VerifySnapshot(ctx context.Context, ownerUserID, consumerID, credentialID string, revision int64, purpose string) error
 }
 
 // Complete reports whether the provider explicitly supports the full budget

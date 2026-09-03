@@ -69,6 +69,7 @@ func (s *Source) ListProviders(ctx context.Context) ([]domain.Provider, error) {
 				SupportedArtifactTypes:      capabilities.GetSupportedArtifactTypes(),
 				SupportedContextRefTypes:    capabilities.GetSupportedContextRefTypes(),
 				RequiresTaskCredentialLease: capabilities.GetRequiresTaskCredentialLease(),
+				RequiredCredentialPurpose:   capabilities.GetRequiredCredentialPurpose(),
 			},
 		})
 	}

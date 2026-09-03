@@ -32,9 +32,11 @@ const sealFormatVersion = "workos.credential-seal.v1"
 // digestFormatVersion prefixes the keyed idempotency digest.
 const digestFormatVersion = "workos.credential-request.v1"
 
-// derivation domain-separation labels. Both are stable constants: rotating
-// the master key re-derives both keys (online master-key rotation is an
-// explicit non-goal recorded in ADR-0009).
+// derivation domain-separation labels. Both are stable constants; the
+// master-key epoch (ADR-0015) is appended for epochs above 1 so successive
+// rotation keys derive independent AEAD/digest keys. Epoch 1 keeps the
+// exact pre-rotation derivation, so material stored before the rotation
+// feature needs no re-sealing.
 var (
 	aeadKeyInfo    = []byte("workos-credential-vault.v1:aead-key")
 	digestKeyInfo  = []byte("workos-credential-vault.v1:request-digest-key")
@@ -43,16 +45,42 @@ var (
 
 // Cipher is the vault's only crypto adapter.
 type Cipher struct {
-	aead      cipher.AEAD
-	digestKey []byte
+	epoch    int64
+	aead     cipher.AEAD
+	digest   []byte
+	aeadInfo []byte
 }
 
-// Load reads the master key from keyFile and derives the AEAD and digest
-// keys. The file must be an absolute, cleaned, regular non-symlink file
-// owned by this process's effective user, readable only by its owner (no
-// group/world permission bits at all), and contain exactly 32 raw bytes —
-// never hex, never base64, never multiple concatenated keys.
+// Load reads the master key from keyFile and derives the epoch-1 AEAD and
+// digest keys. The file must be an absolute, cleaned, regular non-symlink
+// file owned by this process's effective user, readable only by its owner
+// (no group/world permission bits at all), and contain exactly 32 raw
+// bytes — never hex, never base64, never multiple concatenated keys.
 func Load(keyFile string) (*Cipher, error) {
+	master, err := loadMasterFile(keyFile)
+	if err != nil {
+		return nil, err
+	}
+	defer overwrite(master)
+	return newCipher(master, 1)
+}
+
+// LoadAtEpoch loads the master key file and derives its keys at an explicit
+// vault epoch read from the durable state row (ADR-0015). A process that
+// starts against a vault whose epoch its key file cannot serve keeps working
+// but every open fails closed as corruption — the honest ADR-0009 verdict.
+func LoadAtEpoch(keyFile string, epoch int64) (*Cipher, error) {
+	master, err := loadMasterFile(keyFile)
+	if err != nil {
+		return nil, err
+	}
+	defer overwrite(master)
+	return newCipher(master, epoch)
+}
+
+// loadMasterFile enforces the physical key-file grammar shared by the
+// original master key and every rotation key (ADR-0015).
+func loadMasterFile(keyFile string) ([]byte, error) {
 	if keyFile == "" || !filepath.IsAbs(keyFile) || filepath.Clean(keyFile) != keyFile {
 		return nil, errors.New("credential master key file must be an absolute, cleaned path")
 	}
@@ -77,25 +105,67 @@ func Load(keyFile string) (*Cipher, error) {
 	if info.Size() != 32 {
 		return nil, errors.New("credential master key file must contain exactly 32 raw bytes")
 	}
-	master, err := readExact(file, 32)
-	if err != nil {
-		return nil, err
+	return readExact(file, 32)
+}
+
+// newCipher derives the epoch-mixed AEAD and digest keys from raw master
+// bytes and best-effort overwrites them.
+func newCipher(master []byte, epoch int64) (*Cipher, error) {
+	if epoch < 1 {
+		return nil, errors.New("credential master key epoch must be positive")
 	}
-	digestKey := deriveKey(master, digestKeyInfo)
-	aeadKey := deriveKey(master, aeadKeyInfo)
-	overwrite(master)
+	suffix := []byte{}
+	if epoch > 1 {
+		suffix = []byte(fmt.Sprintf(":%d", epoch))
+	}
+	aeadInfo := append(append([]byte{}, aeadKeyInfo...), suffix...)
+	digestInfo := append(append([]byte{}, digestKeyInfo...), suffix...)
+	digestKey := deriveKey(master, digestInfo)
+	aeadKey := deriveKey(master, aeadInfo)
 	block, err := aes.NewCipher(aeadKey)
-	overwrite(aeadKey)
 	if err != nil {
 		overwrite(digestKey)
+		overwrite(aeadKey)
 		return nil, errors.New("credential master key is invalid")
 	}
 	aead, err := cipher.NewGCM(block)
 	if err != nil {
 		overwrite(digestKey)
+		overwrite(aeadKey)
 		return nil, errors.New("credential AEAD is unavailable")
 	}
-	return &Cipher{aead: aead, digestKey: digestKey}, nil
+	overwrite(aeadKey)
+	return &Cipher{
+		epoch:  epoch,
+		aead:   aead,
+		digest: digestKey,
+	}, nil
+}
+
+// Epoch implements ports.Cipher.
+func (c *Cipher) Epoch() int64 { return c.epoch }
+
+// KeyFingerprint implements ports.Cipher: a non-invertible SHA-256 over the
+// epoch-derived digest key. Two ciphers with equal fingerprints share the
+// same master material at the same epoch without exposing either key.
+func (c *Cipher) KeyFingerprint() string {
+	sum := sha256.Sum256(c.digest)
+	return hex.EncodeToString(sum[:])
+}
+
+// WithEpoch implements ports.Cipher: derives the rotation successor from raw
+// master bytes at an explicit epoch. The input bytes are overwritten
+// best-effort before returning.
+func (c *Cipher) WithEpoch(masterKey []byte, epoch int64) (ports.Cipher, error) {
+	if len(masterKey) != 32 {
+		return nil, errors.New("credential master key must be exactly 32 raw bytes")
+	}
+	derived, err := newCipher(masterKey, epoch)
+	overwrite(masterKey)
+	if err != nil {
+		return nil, err
+	}
+	return derived, nil
 }
 
 // deriveKey is a compact HMAC-SHA256 extract-and-expand under a fixed salt.
@@ -142,7 +212,7 @@ func (c *Cipher) Open(material domain.SealedMaterial, aad ports.SealAAD) ([]byte
 
 // RequestDigest implements ports.Cipher.
 func (c *Cipher) RequestDigest(canonical []byte) string {
-	mac := hmac.New(sha256.New, c.digestKey)
+	mac := hmac.New(sha256.New, c.digest)
 	mac.Write(canonical)
 	return digestFormatVersion + ":" + hex.EncodeToString(mac.Sum(nil))
 }

@@ -47,6 +47,12 @@ const (
 	// CredentialAdminServiceListCredentialsProcedure is the fully-qualified name of the
 	// CredentialAdminService's ListCredentials RPC.
 	CredentialAdminServiceListCredentialsProcedure = "/workos.credential.v1.CredentialAdminService/ListCredentials"
+	// CredentialAdminServiceRevealCredentialProcedure is the fully-qualified name of the
+	// CredentialAdminService's RevealCredential RPC.
+	CredentialAdminServiceRevealCredentialProcedure = "/workos.credential.v1.CredentialAdminService/RevealCredential"
+	// CredentialAdminServiceRotateMasterKeyProcedure is the fully-qualified name of the
+	// CredentialAdminService's RotateMasterKey RPC.
+	CredentialAdminServiceRotateMasterKeyProcedure = "/workos.credential.v1.CredentialAdminService/RotateMasterKey"
 	// CredentialLeaseServiceAcquireTaskCredentialProcedure is the fully-qualified name of the
 	// CredentialLeaseService's AcquireTaskCredential RPC.
 	CredentialLeaseServiceAcquireTaskCredentialProcedure = "/workos.credential.v1.CredentialLeaseService/AcquireTaskCredential"
@@ -65,6 +71,15 @@ type CredentialAdminServiceClient interface {
 	RotateCredential(context.Context, *connect.Request[v1.RotateCredentialRequest]) (*connect.Response[v1.RotateCredentialResponse], error)
 	RevokeCredential(context.Context, *connect.Request[v1.RevokeCredentialRequest]) (*connect.Response[v1.RevokeCredentialResponse], error)
 	ListCredentials(context.Context, *connect.Request[v1.ListCredentialsRequest]) (*connect.Response[v1.ListCredentialsResponse], error)
+	// RevealCredential decrypts one active credential exactly once for the
+	// local operator (ADR-0015). The reveal audit row commits in the same
+	// transaction before the secret is returned; revoked credentials fail
+	// closed. The secret travels only on this socket and is never logged.
+	RevealCredential(context.Context, *connect.Request[v1.RevealCredentialRequest]) (*connect.Response[v1.RevealCredentialResponse], error)
+	// RotateMasterKey re-seals every credential under the successor
+	// master-key epoch in one atomic transaction (ADR-0015). Retrying with
+	// the already-current key is a deterministic no-op success.
+	RotateMasterKey(context.Context, *connect.Request[v1.RotateMasterKeyRequest]) (*connect.Response[v1.RotateMasterKeyResponse], error)
 }
 
 // NewCredentialAdminServiceClient constructs a client for the
@@ -103,6 +118,18 @@ func NewCredentialAdminServiceClient(httpClient connect.HTTPClient, baseURL stri
 			connect.WithSchema(credentialAdminServiceMethods.ByName("ListCredentials")),
 			connect.WithClientOptions(opts...),
 		),
+		revealCredential: connect.NewClient[v1.RevealCredentialRequest, v1.RevealCredentialResponse](
+			httpClient,
+			baseURL+CredentialAdminServiceRevealCredentialProcedure,
+			connect.WithSchema(credentialAdminServiceMethods.ByName("RevealCredential")),
+			connect.WithClientOptions(opts...),
+		),
+		rotateMasterKey: connect.NewClient[v1.RotateMasterKeyRequest, v1.RotateMasterKeyResponse](
+			httpClient,
+			baseURL+CredentialAdminServiceRotateMasterKeyProcedure,
+			connect.WithSchema(credentialAdminServiceMethods.ByName("RotateMasterKey")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -112,6 +139,8 @@ type credentialAdminServiceClient struct {
 	rotateCredential *connect.Client[v1.RotateCredentialRequest, v1.RotateCredentialResponse]
 	revokeCredential *connect.Client[v1.RevokeCredentialRequest, v1.RevokeCredentialResponse]
 	listCredentials  *connect.Client[v1.ListCredentialsRequest, v1.ListCredentialsResponse]
+	revealCredential *connect.Client[v1.RevealCredentialRequest, v1.RevealCredentialResponse]
+	rotateMasterKey  *connect.Client[v1.RotateMasterKeyRequest, v1.RotateMasterKeyResponse]
 }
 
 // PutCredential calls workos.credential.v1.CredentialAdminService.PutCredential.
@@ -134,6 +163,16 @@ func (c *credentialAdminServiceClient) ListCredentials(ctx context.Context, req 
 	return c.listCredentials.CallUnary(ctx, req)
 }
 
+// RevealCredential calls workos.credential.v1.CredentialAdminService.RevealCredential.
+func (c *credentialAdminServiceClient) RevealCredential(ctx context.Context, req *connect.Request[v1.RevealCredentialRequest]) (*connect.Response[v1.RevealCredentialResponse], error) {
+	return c.revealCredential.CallUnary(ctx, req)
+}
+
+// RotateMasterKey calls workos.credential.v1.CredentialAdminService.RotateMasterKey.
+func (c *credentialAdminServiceClient) RotateMasterKey(ctx context.Context, req *connect.Request[v1.RotateMasterKeyRequest]) (*connect.Response[v1.RotateMasterKeyResponse], error) {
+	return c.rotateMasterKey.CallUnary(ctx, req)
+}
+
 // CredentialAdminServiceHandler is an implementation of the
 // workos.credential.v1.CredentialAdminService service.
 type CredentialAdminServiceHandler interface {
@@ -141,6 +180,15 @@ type CredentialAdminServiceHandler interface {
 	RotateCredential(context.Context, *connect.Request[v1.RotateCredentialRequest]) (*connect.Response[v1.RotateCredentialResponse], error)
 	RevokeCredential(context.Context, *connect.Request[v1.RevokeCredentialRequest]) (*connect.Response[v1.RevokeCredentialResponse], error)
 	ListCredentials(context.Context, *connect.Request[v1.ListCredentialsRequest]) (*connect.Response[v1.ListCredentialsResponse], error)
+	// RevealCredential decrypts one active credential exactly once for the
+	// local operator (ADR-0015). The reveal audit row commits in the same
+	// transaction before the secret is returned; revoked credentials fail
+	// closed. The secret travels only on this socket and is never logged.
+	RevealCredential(context.Context, *connect.Request[v1.RevealCredentialRequest]) (*connect.Response[v1.RevealCredentialResponse], error)
+	// RotateMasterKey re-seals every credential under the successor
+	// master-key epoch in one atomic transaction (ADR-0015). Retrying with
+	// the already-current key is a deterministic no-op success.
+	RotateMasterKey(context.Context, *connect.Request[v1.RotateMasterKeyRequest]) (*connect.Response[v1.RotateMasterKeyResponse], error)
 }
 
 // NewCredentialAdminServiceHandler builds an HTTP handler from the service implementation. It
@@ -174,6 +222,18 @@ func NewCredentialAdminServiceHandler(svc CredentialAdminServiceHandler, opts ..
 		connect.WithSchema(credentialAdminServiceMethods.ByName("ListCredentials")),
 		connect.WithHandlerOptions(opts...),
 	)
+	credentialAdminServiceRevealCredentialHandler := connect.NewUnaryHandler(
+		CredentialAdminServiceRevealCredentialProcedure,
+		svc.RevealCredential,
+		connect.WithSchema(credentialAdminServiceMethods.ByName("RevealCredential")),
+		connect.WithHandlerOptions(opts...),
+	)
+	credentialAdminServiceRotateMasterKeyHandler := connect.NewUnaryHandler(
+		CredentialAdminServiceRotateMasterKeyProcedure,
+		svc.RotateMasterKey,
+		connect.WithSchema(credentialAdminServiceMethods.ByName("RotateMasterKey")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/workos.credential.v1.CredentialAdminService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case CredentialAdminServicePutCredentialProcedure:
@@ -184,6 +244,10 @@ func NewCredentialAdminServiceHandler(svc CredentialAdminServiceHandler, opts ..
 			credentialAdminServiceRevokeCredentialHandler.ServeHTTP(w, r)
 		case CredentialAdminServiceListCredentialsProcedure:
 			credentialAdminServiceListCredentialsHandler.ServeHTTP(w, r)
+		case CredentialAdminServiceRevealCredentialProcedure:
+			credentialAdminServiceRevealCredentialHandler.ServeHTTP(w, r)
+		case CredentialAdminServiceRotateMasterKeyProcedure:
+			credentialAdminServiceRotateMasterKeyHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -207,6 +271,14 @@ func (UnimplementedCredentialAdminServiceHandler) RevokeCredential(context.Conte
 
 func (UnimplementedCredentialAdminServiceHandler) ListCredentials(context.Context, *connect.Request[v1.ListCredentialsRequest]) (*connect.Response[v1.ListCredentialsResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("workos.credential.v1.CredentialAdminService.ListCredentials is not implemented"))
+}
+
+func (UnimplementedCredentialAdminServiceHandler) RevealCredential(context.Context, *connect.Request[v1.RevealCredentialRequest]) (*connect.Response[v1.RevealCredentialResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("workos.credential.v1.CredentialAdminService.RevealCredential is not implemented"))
+}
+
+func (UnimplementedCredentialAdminServiceHandler) RotateMasterKey(context.Context, *connect.Request[v1.RotateMasterKeyRequest]) (*connect.Response[v1.RotateMasterKeyResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("workos.credential.v1.CredentialAdminService.RotateMasterKey is not implemented"))
 }
 
 // CredentialLeaseServiceClient is a client for the workos.credential.v1.CredentialLeaseService

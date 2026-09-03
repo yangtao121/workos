@@ -14,14 +14,14 @@ type credentialOverlayFake struct {
 	consumers []string
 }
 
-func (f *credentialOverlayFake) Available(_ context.Context, _, consumerID string) (bool, error) {
+func (f *credentialOverlayFake) Available(_ context.Context, _, consumerID, purpose string) (bool, error) {
 	f.consumers = append(f.consumers, consumerID)
 	return f.available, f.err
 }
 
 func credentialSource(deepseekHealthy domain.Health) sourceFake {
 	return sourceFake{providers: []domain.Provider{
-		{ID: "deepseek", Health: deepseekHealthy, Capabilities: domain.Capabilities{RequiresTaskCredentialLease: true}},
+		{ID: "deepseek", Health: deepseekHealthy, Capabilities: domain.Capabilities{RequiresTaskCredentialLease: true, RequiredCredentialPurpose: "provider-api-key.v1"}},
 		{ID: "fake", Health: domain.HealthHealthy},
 	}}
 }

@@ -54,6 +54,10 @@ type Capabilities struct {
 	// unavailable to owners without a matching active credential, with a
 	// fixed reason that never discloses credential existence or state.
 	RequiresTaskCredentialLease bool
+	// RequiredCredentialPurpose is the exact canonical credential kind the
+	// adapter consumes from the Credential Vault (ADR-0015). Non-empty is
+	// mandatory whenever RequiresTaskCredentialLease is true.
+	RequiredCredentialPurpose string
 }
 
 type Provider struct {

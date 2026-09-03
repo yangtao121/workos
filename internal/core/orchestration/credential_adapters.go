@@ -26,11 +26,16 @@ func NewCredentialAvailability(service *credentialapp.Service) catalogports.Cred
 	return vaultAvailability{service: service}
 }
 
-func (a vaultAvailability) Available(ctx context.Context, ownerUserID, consumerID string) (bool, error) {
+func (a vaultAvailability) Available(ctx context.Context, ownerUserID, consumerID, purpose string) (bool, error) {
 	if a.service == nil {
 		return false, nil
 	}
-	_, err := a.service.ActiveCredential(ctx, ownerUserID, consumerID, credentialdomain.PurposeProviderAPIKeyV1)
+	if !credentialdomain.ValidPurpose(purpose) {
+		// A lease-requiring provider without a declared finite kind is
+		// capability corruption: never selectable (ADR-0015).
+		return false, nil
+	}
+	_, err := a.service.ActiveCredential(ctx, ownerUserID, consumerID, purpose)
 	if errors.Is(err, credentialdomain.ErrNotFound) {
 		return false, nil
 	}
@@ -50,18 +55,18 @@ func NewCredentialSnapshots(service *credentialapp.Service) agentports.Credentia
 	return vaultSnapshots{service: service}
 }
 
-func (s vaultSnapshots) ActiveSnapshot(ctx context.Context, ownerUserID, consumerID string) (agentports.CredentialSnapshotRef, error) {
-	if s.service == nil {
+func (s vaultSnapshots) ActiveSnapshot(ctx context.Context, ownerUserID, consumerID, purpose string) (agentports.CredentialSnapshotRef, error) {
+	if s.service == nil || !credentialdomain.ValidPurpose(purpose) {
 		return agentports.CredentialSnapshotRef{}, agentdomain.ErrNotFound
 	}
-	credential, err := s.service.ActiveCredential(ctx, ownerUserID, consumerID, credentialdomain.PurposeProviderAPIKeyV1)
+	credential, err := s.service.ActiveCredential(ctx, ownerUserID, consumerID, purpose)
 	if errors.Is(err, credentialdomain.ErrNotFound) {
 		return agentports.CredentialSnapshotRef{}, agentdomain.ErrNotFound
 	}
 	if err != nil {
 		return agentports.CredentialSnapshotRef{}, err
 	}
-	return agentports.CredentialSnapshotRef{CredentialID: credential.ID, Revision: credential.Revision}, nil
+	return agentports.CredentialSnapshotRef{CredentialID: credential.ID, Revision: credential.Revision, Purpose: purpose}, nil
 }
 
 // vaultVerifier adapts the vault to approval-time snapshot re-verification.
@@ -74,8 +79,11 @@ func NewCredentialSnapshotVerifier(service *credentialapp.Service) agentports.Cr
 	return vaultVerifier{service: service}
 }
 
-func (v vaultVerifier) VerifySnapshot(ctx context.Context, ownerUserID, consumerID, credentialID string, revision int64) error {
+func (v vaultVerifier) VerifySnapshot(ctx context.Context, ownerUserID, consumerID, credentialID string, revision int64, purpose string) error {
 	if v.service == nil {
+		return agentdomain.ErrLeaseLost
+	}
+	if !credentialdomain.ValidPurpose(purpose) {
 		return agentdomain.ErrLeaseLost
 	}
 	if err := v.service.AsSnapshotVerifier().VerifySnapshot(ctx, ownerUserID, consumerID, credentialID, revision); err != nil {

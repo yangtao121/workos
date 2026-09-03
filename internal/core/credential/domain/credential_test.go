@@ -48,18 +48,67 @@ func TestValidSecret(t *testing.T) {
 	for index := range maximum {
 		maximum[index] = 'x'
 	}
-	if !ValidSecret([]byte("k")) || !ValidSecret(maximum) {
+	if !ValidSecret(PurposeProviderAPIKeyV1, []byte("k")) || !ValidSecret(PurposeProviderAPIKeyV1, maximum) {
 		t.Fatal("bounded secrets rejected")
 	}
 	oversize := make([]byte, MaxSecretBytes+1)
 	for index := range oversize {
 		oversize[index] = 'x'
 	}
-	if ValidSecret(nil) || ValidSecret(oversize) {
+	if ValidSecret(PurposeProviderAPIKeyV1, nil) || ValidSecret(PurposeProviderAPIKeyV1, oversize) {
 		t.Fatal("unbounded secrets accepted")
 	}
-	if ValidSecret([]byte("with\nnewline")) || ValidSecret([]byte("with\rcarriage")) || ValidSecret([]byte("with\x00nul")) {
+	if ValidSecret(PurposeProviderAPIKeyV1, []byte("with\nnewline")) ||
+		ValidSecret(PurposeProviderAPIKeyV1, []byte("with\rcarriage")) ||
+		ValidSecret(PurposeProviderAPIKeyV1, []byte("with\x00nul")) {
 		t.Fatal("control-bearing secret accepted")
+	}
+	if !ValidSecretBytes([]byte("k")) {
+		t.Fatal("shared byte rules rejected honest material")
+	}
+}
+
+func TestValidSecretKinds(t *testing.T) {
+	codex := []byte("codex-fixture-key-not-a-real-credential")
+	if !ValidSecret(PurposeCodexAuthV1, codex) {
+		t.Fatal("codex API-key-form material rejected")
+	}
+	github := []byte("github_pat_fixture_not_a_real_token_0123456789")
+	if !ValidSecret(PurposeGitHubTokenV1, github) {
+		t.Fatal("bounded visible-ASCII GitHub token rejected")
+	}
+	if ValidSecret(PurposeGitHubTokenV1, []byte("short")) {
+		t.Fatal("undersized GitHub token accepted")
+	}
+	if ValidSecret(PurposeGitHubTokenV1, []byte("has space inside the token value")) {
+		t.Fatal("whitespace-bearing GitHub token accepted")
+	}
+	if ValidSecret(PurposeGitHubTokenV1, []byte("nul\x00 inside")) {
+		t.Fatal("NUL-bearing GitHub token accepted")
+	}
+	cloud := []byte(`{"access_key_id":"AKIAFIXTURE","secret_access_key":"fixture-only","region":"us-east-1"}`)
+	if !ValidSecret(PurposeCloudCredential, cloud) {
+		t.Fatal("flat cloud credential object rejected")
+	}
+	if ValidSecret(PurposeCloudCredential, []byte(`{}`)) {
+		t.Fatal("empty cloud object accepted")
+	}
+	if ValidSecret(PurposeCloudCredential, []byte(`{"nested":{"deep":true}}`)) {
+		t.Fatal("nested cloud value accepted")
+	}
+	if ValidSecret(PurposeCloudCredential, []byte(`{"count":3}`)) {
+		t.Fatal("non-string cloud value accepted")
+	}
+	if ValidSecret(PurposeCloudCredential, []byte("not json")) {
+		t.Fatal("non-JSON cloud credential accepted")
+	}
+	// Kind grammar never weakens the shared byte rules.
+	if ValidSecret(PurposeCodexAuthV1, []byte("with\x00nul")) {
+		t.Fatal("NUL-bearing codex secret accepted")
+	}
+	// Unknown purposes stay invalid end to end.
+	if ValidPurpose("cloud-credential.v2") || ValidSecret("unknown-kind", []byte("k")) {
+		t.Fatal("unknown credential kind accepted")
 	}
 }
 

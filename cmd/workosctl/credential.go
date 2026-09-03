@@ -9,6 +9,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -71,6 +72,37 @@ func trimSecretNewline(secret []byte) []byte {
 	return secret
 }
 
+// readMasterKeyFile enforces the same physical grammar as the Core cipher:
+// an absolute, cleaned, regular non-symlink, owner-only file with exactly 32
+// raw bytes (ADR-0009/0015). The bytes travel only over the local admin
+// socket and are zeroed in this process after the RPC returns.
+func readMasterKeyFile(path string) ([]byte, error) {
+	if !filepath.IsAbs(path) || filepath.Clean(path) != path {
+		return nil, errors.New("master key file must be an absolute, cleaned path")
+	}
+	info, err := os.Lstat(path)
+	if err != nil {
+		return nil, errors.New("master key file is unavailable")
+	}
+	if info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() {
+		return nil, errors.New("master key file must be a regular file, not a symlink")
+	}
+	if info.Mode().Perm()&0o077 != 0 {
+		return nil, errors.New("master key file must be readable only by its owner (chmod 600)")
+	}
+	key, err := os.ReadFile(path)
+	if err != nil {
+		return nil, errors.New("read master key file failed")
+	}
+	if len(key) != 32 {
+		for index := range key {
+			key[index] = 0
+		}
+		return nil, errors.New("master key file must contain exactly 32 raw bytes")
+	}
+	return key, nil
+}
+
 func credentialAdminClient(cfg config.Config) (credentialv1connect.CredentialAdminServiceClient, error) {
 	socket := cfg.Credential.AdminSocketPath
 	if socket == "" {
@@ -115,6 +147,7 @@ type credentialFlags struct {
 	expectedRevision int64
 	idempotencyKey   string
 	secretFile       string
+	newKeyFile       string
 }
 
 func parseCredentialFlags(args []string, withSecret, withCredential bool) (*credentialFlags, error) {
@@ -128,6 +161,7 @@ func parseCredentialFlags(args []string, withSecret, withCredential bool) (*cred
 	set.Int64Var(&flags.expectedRevision, "expected-revision", 0, "expected current revision (positive)")
 	set.StringVar(&flags.idempotencyKey, "idempotency-key", "", "idempotency key (a UUIDv7 is generated and printed when omitted)")
 	set.StringVar(&flags.secretFile, "secret-file", "", "owner-only secret file path, or '-' for stdin")
+	set.StringVar(&flags.newKeyFile, "new-key-file", "", "owner-only file with exactly 32 raw master-key bytes")
 	if err := set.Parse(args); err != nil {
 		return nil, errors.New("invalid credential flags")
 	}
@@ -147,7 +181,7 @@ func parseCredentialFlags(args []string, withSecret, withCredential bool) (*cred
 
 func runCredential(ctx context.Context, cfg config.Config, args []string) error {
 	if len(args) == 0 {
-		return errors.New("usage: workosctl credential put|rotate|revoke|list")
+		return errors.New("usage: workosctl credential put|rotate|revoke|list|reveal|rotate-master-key")
 	}
 	admin, err := credentialAdminClient(cfg)
 	if err != nil {
@@ -221,6 +255,62 @@ func runCredential(ctx context.Context, cfg config.Config, args []string) error 
 		}
 		printCredential(response.Msg.GetCredential())
 		return nil
+	case "reveal":
+		flags, err := parseCredentialFlags(args[1:], false, false)
+		if err != nil {
+			return err
+		}
+		if flags.credentialID == "" {
+			return errors.New("--credential is required")
+		}
+		// ExpectedRevision stays optional here: zero accepts the current
+		// revision, a positive value pins it.
+		response, err := admin.RevealCredential(ctx, connect.NewRequest(&credentialv1.RevealCredentialRequest{
+			CredentialId: flags.credentialID, ExpectedRevision: flags.expectedRevision,
+		}))
+		if err != nil {
+			return fmt.Errorf("reveal credential: %w", err)
+		}
+		printCredential(response.Msg.GetCredential())
+		// The secret goes only to stdout (or an operator-chosen file via
+		// shell redirection). This process never logs it, and no other
+		// surface can ever mint the same response.
+		if _, err := os.Stdout.Write(response.Msg.GetSecret()); err != nil {
+			return fmt.Errorf("write revealed secret: %w", err)
+		}
+		if len(response.Msg.GetSecret()) == 0 || response.Msg.GetSecret()[len(response.Msg.GetSecret())-1] != '\n' {
+			fmt.Println()
+		}
+		return nil
+	case "rotate-master-key":
+		flags, err := parseCredentialFlags(args[1:], false, false)
+		if err != nil {
+			return err
+		}
+		if flags.newKeyFile == "" {
+			return errors.New("--new-key-file is required (owner-only file with exactly 32 raw bytes)")
+		}
+		key, err := readMasterKeyFile(flags.newKeyFile)
+		if err != nil {
+			return err
+		}
+		response, err := admin.RotateMasterKey(ctx, connect.NewRequest(&credentialv1.RotateMasterKeyRequest{
+			NewMasterKey: key,
+		}))
+		if err != nil {
+			return fmt.Errorf("rotate master key: %w", err)
+		}
+		for index := range key {
+			key[index] = 0
+		}
+		if response.Msg.GetNoop() {
+			fmt.Printf("master key already current at epoch %d; nothing re-sealed\n", response.Msg.GetToEpoch())
+			return nil
+		}
+		fmt.Printf("master key rotated: epoch %d -> %d, re-sealed %d credential(s)\n",
+			response.Msg.GetFromEpoch(), response.Msg.GetToEpoch(), response.Msg.GetRotatedCount())
+		fmt.Println("retire the previous master key file in the deployment now")
+		return nil
 	case "list":
 		response, err := admin.ListCredentials(ctx, connect.NewRequest(&credentialv1.ListCredentialsRequest{}))
 		if err != nil {
@@ -239,6 +329,6 @@ func runCredential(ctx context.Context, cfg config.Config, args []string) error 
 		}
 		return nil
 	default:
-		return errors.New("usage: workosctl credential put|rotate|revoke|list")
+		return errors.New("usage: workosctl credential put|rotate|revoke|list|reveal|rotate-master-key")
 	}
 }

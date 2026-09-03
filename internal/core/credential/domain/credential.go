@@ -5,6 +5,7 @@
 package domain
 
 import (
+	"encoding/json"
 	"errors"
 	"strings"
 	"time"
@@ -35,6 +36,9 @@ var (
 	// ErrLeaseLost marks an acquire/renew against a lost, expired, released,
 	// or foreign task or credential lease.
 	ErrLeaseLost = errors.New("task credential lease is not active")
+	// ErrRevoked marks a reveal attempted against a revoked credential.
+	// Revoked material never decrypts for any surface (ADR-0015).
+	ErrRevoked = errors.New("credential is revoked")
 )
 
 // Credential status facts.
@@ -47,8 +51,21 @@ const (
 	LeaseStatusExpired  = "expired"
 )
 
-// PurposeProviderAPIKeyV1 is the only canonical purpose in this version.
-const PurposeProviderAPIKeyV1 = "provider-api-key.v1"
+// Canonical credential kinds (purposes). The vocabulary is finite: a new
+// kind requires a domain grammar here, an audit-visible purpose, and a
+// migration CHECK update (ADR-0015). Provider-specific protocol details stay
+// in the owning harness adapters; the vault only knows these bounded kinds.
+const (
+	PurposeProviderAPIKeyV1 = "provider-api-key.v1"
+	PurposeCodexAuthV1      = "codex-auth.v1"
+	PurposeGitHubTokenV1    = "github-token.v1"
+	PurposeCloudCredential  = "cloud-credential.v1"
+)
+
+// cloudCredentialMaxKeys bounds the flat JSON object grammar of the generic
+// cloud credential kind. Values are strings only: structured nesting would
+// smuggle unbounded material past the secret bounds.
+const cloudCredentialMaxKeys = 32
 
 // Secret material bounds. Secrets are bytes: never trimmed, never normalized,
 // never logged. NUL, CR, and LF are rejected at the boundary because no
@@ -102,7 +119,12 @@ func ValidConsumerID(value string) bool {
 
 // ValidPurpose accepts only explicitly supported canonical purposes.
 func ValidPurpose(value string) bool {
-	return value == PurposeProviderAPIKeyV1
+	switch value {
+	case PurposeProviderAPIKeyV1, PurposeCodexAuthV1, PurposeGitHubTokenV1, PurposeCloudCredential:
+		return true
+	default:
+		return false
+	}
 }
 
 // ValidLabel enforces the optional bounded human label: valid UTF-8, at most
@@ -127,13 +149,72 @@ func ValidLabel(value string) bool {
 	return true
 }
 
-// ValidSecret enforces the boundary grammar for raw credential material.
-func ValidSecret(secret []byte) bool {
+// ValidSecretBytes enforces the shared boundary grammar for every kind:
+// bounded material without NUL, CR, or LF.
+func ValidSecretBytes(secret []byte) bool {
 	if len(secret) < MinSecretBytes || len(secret) > MaxSecretBytes {
 		return false
 	}
 	for _, b := range secret {
 		if b == 0 || b == '\r' || b == '\n' {
+			return false
+		}
+	}
+	return true
+}
+
+// ValidSecret enforces the per-kind boundary grammar for raw credential
+// material (ADR-0015). The shared byte rules come first for every kind; the
+// kind-specific shapes then decide acceptance. GitHub tokens must be visible
+// ASCII without whitespace; cloud credentials must be a flat JSON object of
+// string values; every other kind only needs the bounded byte rules.
+func ValidSecret(purpose string, secret []byte) bool {
+	if !ValidPurpose(purpose) || !ValidSecretBytes(secret) {
+		return false
+	}
+	switch purpose {
+	case PurposeGitHubTokenV1:
+		if len(secret) < 20 || len(secret) > 255 {
+			return false
+		}
+		for _, b := range secret {
+			if b <= 0x20 || b >= 0x7f {
+				return false
+			}
+		}
+		return true
+	case PurposeCloudCredential:
+		return validCloudCredentialObject(secret)
+	default:
+		return true
+	}
+}
+
+// validCloudCredentialObject accepts exactly one flat JSON object of at most
+// cloudCredentialMaxKeys string-valued fields within the shared byte bounds.
+// Invalid UTF-8, nested values, non-string values, and oversized values fail
+// closed: the vault validates the declared kind, it does not parse provider
+// protocols.
+func validCloudCredentialObject(secret []byte) bool {
+	if !utf8.Valid(secret) {
+		return false
+	}
+	var object map[string]json.RawMessage
+	if err := json.Unmarshal(secret, &object); err != nil {
+		return false
+	}
+	if len(object) == 0 || len(object) > cloudCredentialMaxKeys {
+		return false
+	}
+	for key, raw := range object {
+		if key == "" || len(key) > 128 {
+			return false
+		}
+		var value string
+		if err := json.Unmarshal(raw, &value); err != nil {
+			return false
+		}
+		if len(value) == 0 || len(value) > 4096 || strings.ContainsRune(value, 0) {
 			return false
 		}
 	}

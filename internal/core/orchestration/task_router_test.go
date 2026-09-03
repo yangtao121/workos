@@ -504,7 +504,7 @@ func TestTaskRouterRejectsUnsupportedArtifactTypesWithZeroSideEffects(t *testing
 // fail-closed verdicts explicitly.
 type fakeCredentials struct{}
 
-func (fakeCredentials) ActiveSnapshot(context.Context, string, string) (agentports.CredentialSnapshotRef, error) {
+func (fakeCredentials) ActiveSnapshot(context.Context, string, string, string) (agentports.CredentialSnapshotRef, error) {
 	return agentports.CredentialSnapshotRef{}, agentdomain.ErrNotFound
 }
 

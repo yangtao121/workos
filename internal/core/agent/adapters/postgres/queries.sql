@@ -369,11 +369,11 @@ WHERE owner_user_id = $2 AND app_instance_id = $3 AND utc_date = $4;
 -- transaction as the task row. No secret material is stored here.
 -- name: InsertAgentTaskCredential :exec
 INSERT INTO workos_core.agent_task_credentials (
-    task_id, provider_id, credential_id, credential_revision, created_at
-) VALUES ($1, $2, $3, $4, $5);
+    task_id, provider_id, credential_id, credential_revision, purpose, created_at
+) VALUES ($1, $2, $3, $4, $5, $6);
 
 -- name: GetAgentTaskCredential :one
-SELECT task_id, provider_id, credential_id, credential_revision, created_at
+SELECT task_id, provider_id, credential_id, credential_revision, purpose, created_at
 FROM workos_core.agent_task_credentials
 WHERE task_id = $1;
 
@@ -383,7 +383,7 @@ WHERE task_id = $1;
 -- from caller input.
 -- name: LockTaskCredentialLeaseFacts :one
 SELECT t.id, t.owner_user_id, t.provider_id, o.locked_until,
-       c.credential_id, c.credential_revision
+       c.credential_id, c.credential_revision, c.purpose
 FROM workos_events.outbox AS o
 JOIN workos_core.agent_tasks AS t ON t.id = o.aggregate_id
 LEFT JOIN workos_core.agent_task_credentials AS c ON c.task_id = t.id

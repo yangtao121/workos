@@ -32,7 +32,7 @@ type Querier interface {
 	GetAgentAppTaskRequest(ctx context.Context, arg GetAgentAppTaskRequestParams) (GetAgentAppTaskRequestRow, error)
 	GetAgentTask(ctx context.Context, arg GetAgentTaskParams) (WorkosCoreAgentTask, error)
 	GetAgentTaskByIdempotency(ctx context.Context, arg GetAgentTaskByIdempotencyParams) (WorkosCoreAgentTask, error)
-	GetAgentTaskCredential(ctx context.Context, taskID string) (WorkosCoreAgentTaskCredential, error)
+	GetAgentTaskCredential(ctx context.Context, taskID string) (GetAgentTaskCredentialRow, error)
 	GetAgentTaskForUpdate(ctx context.Context, arg GetAgentTaskForUpdateParams) (WorkosCoreAgentTask, error)
 	GetAgentTaskUnscoped(ctx context.Context, id string) (WorkosCoreAgentTask, error)
 	GetTaskLeaseExpiry(ctx context.Context, arg GetTaskLeaseExpiryParams) (pgtype.Timestamptz, error)

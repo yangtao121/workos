@@ -189,7 +189,11 @@ func (s *ApprovalService) revalidate(ctx context.Context, approval domain.Approv
 		if task.Credential == nil || s.credentials == nil {
 			return domain.ErrProviderCredentialMissing
 		}
-		if err := s.credentials.VerifySnapshot(ctx, approval.OwnerUserID, approval.ProviderID, task.Credential.CredentialID, task.Credential.Revision); err != nil {
+		purpose := capabilities.RequiredCredentialPurpose
+		if purpose == "" {
+			return domain.ErrProviderCredentialMissing
+		}
+		if err := s.credentials.VerifySnapshot(ctx, approval.OwnerUserID, approval.ProviderID, task.Credential.CredentialID, task.Credential.Revision, purpose); err != nil {
 			if errors.Is(err, domain.ErrLeaseLost) {
 				return domain.ErrProviderCredentialMissing
 			}

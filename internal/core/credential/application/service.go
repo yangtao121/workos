@@ -53,7 +53,7 @@ func (s *Service) Put(ctx context.Context, command ports.PutCommand) (domain.Cre
 		return domain.Credential{}, domain.ErrInvalid
 	case !domain.ValidLabel(command.Label):
 		return domain.Credential{}, domain.ErrInvalid
-	case !domain.ValidSecret(command.Secret):
+	case !domain.ValidSecret(command.Purpose, command.Secret):
 		return domain.Credential{}, domain.ErrInvalid
 	case !domain.ValidIdempotencyKey(command.IdempotencyKey):
 		return domain.Credential{}, domain.ErrInvalid
@@ -82,7 +82,10 @@ func (s *Service) Rotate(ctx context.Context, command ports.RotateCommand) (doma
 		return domain.Credential{}, domain.ErrInvalid
 	case !domain.ValidLabel(command.Label):
 		return domain.Credential{}, domain.ErrInvalid
-	case !domain.ValidSecret(command.Secret):
+	case !domain.ValidSecretBytes(command.Secret):
+		// The stored purpose decides the kind-specific grammar; it is
+		// re-enforced inside the repository transaction after the row is
+		// locked (ADR-0015). The boundary enforces the shared byte rules.
 		return domain.Credential{}, domain.ErrInvalid
 	case !domain.ValidRevision(command.ExpectedRevision):
 		return domain.Credential{}, domain.ErrInvalid
@@ -135,6 +138,98 @@ func (s *Service) List(ctx context.Context, ownerUserID string) ([]domain.Creden
 		return nil, domain.ErrInvalid
 	}
 	return s.repository.List(ctx, ownerUserID)
+}
+
+// Reveal decrypts one active credential exactly once for the local operator
+// and commits the audit row before returning (ADR-0015). ExpectedRevision
+// zero accepts the current revision.
+func (s *Service) Reveal(ctx context.Context, command ports.RevealCommand) (domain.Credential, []byte, error) {
+	command.OwnerUserID = strings.TrimSpace(command.OwnerUserID)
+	command.CredentialID = strings.TrimSpace(command.CredentialID)
+	switch {
+	case command.OwnerUserID == "" || !domain.ValidCredentialID(command.CredentialID):
+		return domain.Credential{}, nil, domain.ErrInvalid
+	case command.ExpectedRevision < 0 || (!domain.ValidRevision(command.ExpectedRevision) && command.ExpectedRevision != 0):
+		return domain.Credential{}, nil, domain.ErrInvalid
+	}
+	command.Now = domain.CanonicalUTCTime(s.now())
+	return s.repository.Reveal(ctx, s.cipher, command)
+}
+
+// RotateMasterKey re-seals every credential under the successor epoch
+// (ADR-0015). The raw successor key arrives from the local admin socket,
+// must be exactly 32 bytes, and is consumed inside the cipher boundary.
+// Retrying with the already-current key is a deterministic no-op success,
+// which is what a lost response after a committed rotation converges to.
+func (s *Service) RotateMasterKey(ctx context.Context, command ports.RotateMasterKeyCommand) (ports.RotateMasterKeyResult, error) {
+	if len(command.NewMasterKey) != 32 {
+		return ports.RotateMasterKeyResult{}, domain.ErrInvalid
+	}
+	command.Now = domain.CanonicalUTCTime(s.now())
+	currentEpoch, err := s.repository.VaultEpoch(ctx)
+	if err != nil {
+		return ports.RotateMasterKeyResult{}, err
+	}
+	if s.cipher.Epoch() != currentEpoch {
+		// This process holds a stale epoch key (another instance already
+		// rotated). It cannot verify anything; fail closed and audit.
+		if recordErr := s.repository.RecordAudit(ctx, ports.AuditEntry{
+			Action: "rotate-master-key", KeyEpoch: currentEpoch,
+			Result: "refused stale process epoch", OccurredAt: command.Now,
+		}); recordErr != nil {
+			return ports.RotateMasterKeyResult{}, recordErr
+		}
+		return ports.RotateMasterKeyResult{}, domain.ErrConflict
+	}
+	// The candidate derivation consumes its copy of the key material; the
+	// original bytes stay intact for the successor derivation below.
+	candidate, err := s.cipher.WithEpoch(append([]byte(nil), command.NewMasterKey...), currentEpoch)
+	if err != nil {
+		return ports.RotateMasterKeyResult{}, domain.ErrInvalid
+	}
+	if candidate.KeyFingerprint() == s.cipher.KeyFingerprint() {
+		// Equal fingerprints prove equal material — but never that the
+		// material is the vault's live key (the epoch alone cannot, after a
+		// foreign rotation). Prove the candidate opens every stored row
+		// before answering the deterministic no-op.
+		if err := s.repository.VerifyCurrentKey(ctx, candidate); err != nil {
+			if recordErr := s.repository.RecordAudit(ctx, ports.AuditEntry{
+				Action: "rotate-master-key", KeyEpoch: currentEpoch,
+				Result: "refused key cannot decrypt", OccurredAt: command.Now,
+			}); recordErr != nil {
+				return ports.RotateMasterKeyResult{}, recordErr
+			}
+			return ports.RotateMasterKeyResult{}, domain.ErrConflict
+		}
+		// The rotation already committed. Audit the convergence and answer
+		// success without rewriting a single row.
+		if err := s.repository.RecordAudit(ctx, ports.AuditEntry{
+			Action: "rotate-master-key", KeyEpoch: currentEpoch,
+			Result: "no-op already current", OccurredAt: command.Now,
+		}); err != nil {
+			return ports.RotateMasterKeyResult{}, err
+		}
+		return ports.RotateMasterKeyResult{
+			FromEpoch: currentEpoch, ToEpoch: currentEpoch, Noop: true,
+		}, nil
+	}
+	next, err := s.cipher.WithEpoch(command.NewMasterKey, currentEpoch+1)
+	if err != nil {
+		return ports.RotateMasterKeyResult{}, domain.ErrInvalid
+	}
+	result, err := s.repository.RotateMasterKey(ctx, s.cipher, next, command)
+	if errors.Is(err, domain.ErrConflict) {
+		// The epoch moved underneath us (a concurrent rotation won). Refused
+		// vault-wide attempts are audited before failing the operator.
+		if recordErr := s.repository.RecordAudit(ctx, ports.AuditEntry{
+			Action: "rotate-master-key", KeyEpoch: currentEpoch + 1,
+			Result: "refused epoch moved", OccurredAt: command.Now,
+		}); recordErr != nil {
+			return ports.RotateMasterKeyResult{}, recordErr
+		}
+		return ports.RotateMasterKeyResult{}, err
+	}
+	return result, err
 }
 
 // ActiveCredential resolves the owner's current active credential for one

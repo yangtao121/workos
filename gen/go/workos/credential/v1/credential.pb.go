@@ -1001,6 +1001,228 @@ func (*ReleaseTaskCredentialLeaseResponse) Descriptor() ([]byte, []int) {
 	return file_workos_credential_v1_credential_proto_rawDescGZIP(), []int{14}
 }
 
+type RevealCredentialRequest struct {
+	state        protoimpl.MessageState `protogen:"open.v1"`
+	CredentialId string                 `protobuf:"bytes,1,opt,name=credential_id,json=credentialId,proto3" json:"credential_id,omitempty"`
+	// Zero accepts the current revision; any other value must match exactly.
+	ExpectedRevision int64 `protobuf:"varint,2,opt,name=expected_revision,json=expectedRevision,proto3" json:"expected_revision,omitempty"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
+}
+
+func (x *RevealCredentialRequest) Reset() {
+	*x = RevealCredentialRequest{}
+	mi := &file_workos_credential_v1_credential_proto_msgTypes[15]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RevealCredentialRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RevealCredentialRequest) ProtoMessage() {}
+
+func (x *RevealCredentialRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_workos_credential_v1_credential_proto_msgTypes[15]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RevealCredentialRequest.ProtoReflect.Descriptor instead.
+func (*RevealCredentialRequest) Descriptor() ([]byte, []int) {
+	return file_workos_credential_v1_credential_proto_rawDescGZIP(), []int{15}
+}
+
+func (x *RevealCredentialRequest) GetCredentialId() string {
+	if x != nil {
+		return x.CredentialId
+	}
+	return ""
+}
+
+func (x *RevealCredentialRequest) GetExpectedRevision() int64 {
+	if x != nil {
+		return x.ExpectedRevision
+	}
+	return 0
+}
+
+type RevealCredentialResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Credential    *CredentialMetadata    `protobuf:"bytes,1,opt,name=credential,proto3" json:"credential,omitempty"`
+	Secret        []byte                 `protobuf:"bytes,2,opt,name=secret,proto3" json:"secret,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RevealCredentialResponse) Reset() {
+	*x = RevealCredentialResponse{}
+	mi := &file_workos_credential_v1_credential_proto_msgTypes[16]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RevealCredentialResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RevealCredentialResponse) ProtoMessage() {}
+
+func (x *RevealCredentialResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_workos_credential_v1_credential_proto_msgTypes[16]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RevealCredentialResponse.ProtoReflect.Descriptor instead.
+func (*RevealCredentialResponse) Descriptor() ([]byte, []int) {
+	return file_workos_credential_v1_credential_proto_rawDescGZIP(), []int{16}
+}
+
+func (x *RevealCredentialResponse) GetCredential() *CredentialMetadata {
+	if x != nil {
+		return x.Credential
+	}
+	return nil
+}
+
+func (x *RevealCredentialResponse) GetSecret() []byte {
+	if x != nil {
+		return x.Secret
+	}
+	return nil
+}
+
+type RotateMasterKeyRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Exactly 32 raw master-key bytes read by the local workosctl from its
+	// --new-key-file argument. They travel only over this socket and are
+	// consumed inside the Core cipher boundary.
+	NewMasterKey  []byte `protobuf:"bytes,1,opt,name=new_master_key,json=newMasterKey,proto3" json:"new_master_key,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RotateMasterKeyRequest) Reset() {
+	*x = RotateMasterKeyRequest{}
+	mi := &file_workos_credential_v1_credential_proto_msgTypes[17]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RotateMasterKeyRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RotateMasterKeyRequest) ProtoMessage() {}
+
+func (x *RotateMasterKeyRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_workos_credential_v1_credential_proto_msgTypes[17]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RotateMasterKeyRequest.ProtoReflect.Descriptor instead.
+func (*RotateMasterKeyRequest) Descriptor() ([]byte, []int) {
+	return file_workos_credential_v1_credential_proto_rawDescGZIP(), []int{17}
+}
+
+func (x *RotateMasterKeyRequest) GetNewMasterKey() []byte {
+	if x != nil {
+		return x.NewMasterKey
+	}
+	return nil
+}
+
+type RotateMasterKeyResponse struct {
+	state        protoimpl.MessageState `protogen:"open.v1"`
+	FromEpoch    int64                  `protobuf:"varint,1,opt,name=from_epoch,json=fromEpoch,proto3" json:"from_epoch,omitempty"`
+	ToEpoch      int64                  `protobuf:"varint,2,opt,name=to_epoch,json=toEpoch,proto3" json:"to_epoch,omitempty"`
+	RotatedCount int64                  `protobuf:"varint,3,opt,name=rotated_count,json=rotatedCount,proto3" json:"rotated_count,omitempty"`
+	// True when the provided key material is already the current epoch key:
+	// a lost rotation response replays as this deterministic no-op.
+	Noop          bool `protobuf:"varint,4,opt,name=noop,proto3" json:"noop,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RotateMasterKeyResponse) Reset() {
+	*x = RotateMasterKeyResponse{}
+	mi := &file_workos_credential_v1_credential_proto_msgTypes[18]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RotateMasterKeyResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RotateMasterKeyResponse) ProtoMessage() {}
+
+func (x *RotateMasterKeyResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_workos_credential_v1_credential_proto_msgTypes[18]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RotateMasterKeyResponse.ProtoReflect.Descriptor instead.
+func (*RotateMasterKeyResponse) Descriptor() ([]byte, []int) {
+	return file_workos_credential_v1_credential_proto_rawDescGZIP(), []int{18}
+}
+
+func (x *RotateMasterKeyResponse) GetFromEpoch() int64 {
+	if x != nil {
+		return x.FromEpoch
+	}
+	return 0
+}
+
+func (x *RotateMasterKeyResponse) GetToEpoch() int64 {
+	if x != nil {
+		return x.ToEpoch
+	}
+	return 0
+}
+
+func (x *RotateMasterKeyResponse) GetRotatedCount() int64 {
+	if x != nil {
+		return x.RotatedCount
+	}
+	return 0
+}
+
+func (x *RotateMasterKeyResponse) GetNoop() bool {
+	if x != nil {
+		return x.Noop
+	}
+	return false
+}
+
 var File_workos_credential_v1_credential_proto protoreflect.FileDescriptor
 
 const file_workos_credential_v1_credential_proto_rawDesc = "" +
@@ -1077,16 +1299,34 @@ const file_workos_credential_v1_credential_proto_rawDesc = "" +
 	"\x13credential_lease_id\x18\x01 \x01(\tR\x11credentialLeaseId\x12\"\n" +
 	"\rtask_lease_id\x18\x02 \x01(\tR\vtaskLeaseId\x12\x1b\n" +
 	"\tworker_id\x18\x03 \x01(\tR\bworkerId\"$\n" +
-	"\"ReleaseTaskCredentialLeaseResponse*r\n" +
+	"\"ReleaseTaskCredentialLeaseResponse\"k\n" +
+	"\x17RevealCredentialRequest\x12#\n" +
+	"\rcredential_id\x18\x01 \x01(\tR\fcredentialId\x12+\n" +
+	"\x11expected_revision\x18\x02 \x01(\x03R\x10expectedRevision\"|\n" +
+	"\x18RevealCredentialResponse\x12H\n" +
+	"\n" +
+	"credential\x18\x01 \x01(\v2(.workos.credential.v1.CredentialMetadataR\n" +
+	"credential\x12\x16\n" +
+	"\x06secret\x18\x02 \x01(\fR\x06secret\">\n" +
+	"\x16RotateMasterKeyRequest\x12$\n" +
+	"\x0enew_master_key\x18\x01 \x01(\fR\fnewMasterKey\"\x8c\x01\n" +
+	"\x17RotateMasterKeyResponse\x12\x1d\n" +
+	"\n" +
+	"from_epoch\x18\x01 \x01(\x03R\tfromEpoch\x12\x19\n" +
+	"\bto_epoch\x18\x02 \x01(\x03R\atoEpoch\x12#\n" +
+	"\rrotated_count\x18\x03 \x01(\x03R\frotatedCount\x12\x12\n" +
+	"\x04noop\x18\x04 \x01(\bR\x04noop*r\n" +
 	"\x10CredentialStatus\x12!\n" +
 	"\x1dCREDENTIAL_STATUS_UNSPECIFIED\x10\x00\x12\x1c\n" +
 	"\x18CREDENTIAL_STATUS_ACTIVE\x10\x01\x12\x1d\n" +
-	"\x19CREDENTIAL_STATUS_REVOKED\x10\x022\xe0\x03\n" +
+	"\x19CREDENTIAL_STATUS_REVOKED\x10\x022\xc7\x05\n" +
 	"\x16CredentialAdminService\x12j\n" +
 	"\rPutCredential\x12*.workos.credential.v1.PutCredentialRequest\x1a+.workos.credential.v1.PutCredentialResponse\"\x00\x12s\n" +
 	"\x10RotateCredential\x12-.workos.credential.v1.RotateCredentialRequest\x1a..workos.credential.v1.RotateCredentialResponse\"\x00\x12s\n" +
 	"\x10RevokeCredential\x12-.workos.credential.v1.RevokeCredentialRequest\x1a..workos.credential.v1.RevokeCredentialResponse\"\x00\x12p\n" +
-	"\x0fListCredentials\x12,.workos.credential.v1.ListCredentialsRequest\x1a-.workos.credential.v1.ListCredentialsResponse\"\x002\xbf\x03\n" +
+	"\x0fListCredentials\x12,.workos.credential.v1.ListCredentialsRequest\x1a-.workos.credential.v1.ListCredentialsResponse\"\x00\x12s\n" +
+	"\x10RevealCredential\x12-.workos.credential.v1.RevealCredentialRequest\x1a..workos.credential.v1.RevealCredentialResponse\"\x00\x12p\n" +
+	"\x0fRotateMasterKey\x12,.workos.credential.v1.RotateMasterKeyRequest\x1a-.workos.credential.v1.RotateMasterKeyResponse\"\x002\xbf\x03\n" +
 	"\x16CredentialLeaseService\x12\x82\x01\n" +
 	"\x15AcquireTaskCredential\x122.workos.credential.v1.AcquireTaskCredentialRequest\x1a3.workos.credential.v1.AcquireTaskCredentialResponse\"\x00\x12\x8b\x01\n" +
 	"\x18RenewTaskCredentialLease\x125.workos.credential.v1.RenewTaskCredentialLeaseRequest\x1a6.workos.credential.v1.RenewTaskCredentialLeaseResponse\"\x00\x12\x91\x01\n" +
@@ -1105,7 +1345,7 @@ func file_workos_credential_v1_credential_proto_rawDescGZIP() []byte {
 }
 
 var file_workos_credential_v1_credential_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_workos_credential_v1_credential_proto_msgTypes = make([]protoimpl.MessageInfo, 15)
+var file_workos_credential_v1_credential_proto_msgTypes = make([]protoimpl.MessageInfo, 19)
 var file_workos_credential_v1_credential_proto_goTypes = []any{
 	(CredentialStatus)(0),                      // 0: workos.credential.v1.CredentialStatus
 	(*CredentialMetadata)(nil),                 // 1: workos.credential.v1.CredentialMetadata
@@ -1123,37 +1363,46 @@ var file_workos_credential_v1_credential_proto_goTypes = []any{
 	(*RenewTaskCredentialLeaseResponse)(nil),   // 13: workos.credential.v1.RenewTaskCredentialLeaseResponse
 	(*ReleaseTaskCredentialLeaseRequest)(nil),  // 14: workos.credential.v1.ReleaseTaskCredentialLeaseRequest
 	(*ReleaseTaskCredentialLeaseResponse)(nil), // 15: workos.credential.v1.ReleaseTaskCredentialLeaseResponse
-	(*timestamppb.Timestamp)(nil),              // 16: google.protobuf.Timestamp
+	(*RevealCredentialRequest)(nil),            // 16: workos.credential.v1.RevealCredentialRequest
+	(*RevealCredentialResponse)(nil),           // 17: workos.credential.v1.RevealCredentialResponse
+	(*RotateMasterKeyRequest)(nil),             // 18: workos.credential.v1.RotateMasterKeyRequest
+	(*RotateMasterKeyResponse)(nil),            // 19: workos.credential.v1.RotateMasterKeyResponse
+	(*timestamppb.Timestamp)(nil),              // 20: google.protobuf.Timestamp
 }
 var file_workos_credential_v1_credential_proto_depIdxs = []int32{
 	0,  // 0: workos.credential.v1.CredentialMetadata.status:type_name -> workos.credential.v1.CredentialStatus
-	16, // 1: workos.credential.v1.CredentialMetadata.created_at:type_name -> google.protobuf.Timestamp
-	16, // 2: workos.credential.v1.CredentialMetadata.updated_at:type_name -> google.protobuf.Timestamp
+	20, // 1: workos.credential.v1.CredentialMetadata.created_at:type_name -> google.protobuf.Timestamp
+	20, // 2: workos.credential.v1.CredentialMetadata.updated_at:type_name -> google.protobuf.Timestamp
 	1,  // 3: workos.credential.v1.PutCredentialResponse.credential:type_name -> workos.credential.v1.CredentialMetadata
 	1,  // 4: workos.credential.v1.RotateCredentialResponse.credential:type_name -> workos.credential.v1.CredentialMetadata
 	1,  // 5: workos.credential.v1.RevokeCredentialResponse.credential:type_name -> workos.credential.v1.CredentialMetadata
 	1,  // 6: workos.credential.v1.ListCredentialsResponse.credentials:type_name -> workos.credential.v1.CredentialMetadata
-	16, // 7: workos.credential.v1.AcquireTaskCredentialResponse.expires_at:type_name -> google.protobuf.Timestamp
-	16, // 8: workos.credential.v1.RenewTaskCredentialLeaseResponse.expires_at:type_name -> google.protobuf.Timestamp
-	2,  // 9: workos.credential.v1.CredentialAdminService.PutCredential:input_type -> workos.credential.v1.PutCredentialRequest
-	4,  // 10: workos.credential.v1.CredentialAdminService.RotateCredential:input_type -> workos.credential.v1.RotateCredentialRequest
-	6,  // 11: workos.credential.v1.CredentialAdminService.RevokeCredential:input_type -> workos.credential.v1.RevokeCredentialRequest
-	8,  // 12: workos.credential.v1.CredentialAdminService.ListCredentials:input_type -> workos.credential.v1.ListCredentialsRequest
-	10, // 13: workos.credential.v1.CredentialLeaseService.AcquireTaskCredential:input_type -> workos.credential.v1.AcquireTaskCredentialRequest
-	12, // 14: workos.credential.v1.CredentialLeaseService.RenewTaskCredentialLease:input_type -> workos.credential.v1.RenewTaskCredentialLeaseRequest
-	14, // 15: workos.credential.v1.CredentialLeaseService.ReleaseTaskCredentialLease:input_type -> workos.credential.v1.ReleaseTaskCredentialLeaseRequest
-	3,  // 16: workos.credential.v1.CredentialAdminService.PutCredential:output_type -> workos.credential.v1.PutCredentialResponse
-	5,  // 17: workos.credential.v1.CredentialAdminService.RotateCredential:output_type -> workos.credential.v1.RotateCredentialResponse
-	7,  // 18: workos.credential.v1.CredentialAdminService.RevokeCredential:output_type -> workos.credential.v1.RevokeCredentialResponse
-	9,  // 19: workos.credential.v1.CredentialAdminService.ListCredentials:output_type -> workos.credential.v1.ListCredentialsResponse
-	11, // 20: workos.credential.v1.CredentialLeaseService.AcquireTaskCredential:output_type -> workos.credential.v1.AcquireTaskCredentialResponse
-	13, // 21: workos.credential.v1.CredentialLeaseService.RenewTaskCredentialLease:output_type -> workos.credential.v1.RenewTaskCredentialLeaseResponse
-	15, // 22: workos.credential.v1.CredentialLeaseService.ReleaseTaskCredentialLease:output_type -> workos.credential.v1.ReleaseTaskCredentialLeaseResponse
-	16, // [16:23] is the sub-list for method output_type
-	9,  // [9:16] is the sub-list for method input_type
-	9,  // [9:9] is the sub-list for extension type_name
-	9,  // [9:9] is the sub-list for extension extendee
-	0,  // [0:9] is the sub-list for field type_name
+	20, // 7: workos.credential.v1.AcquireTaskCredentialResponse.expires_at:type_name -> google.protobuf.Timestamp
+	20, // 8: workos.credential.v1.RenewTaskCredentialLeaseResponse.expires_at:type_name -> google.protobuf.Timestamp
+	1,  // 9: workos.credential.v1.RevealCredentialResponse.credential:type_name -> workos.credential.v1.CredentialMetadata
+	2,  // 10: workos.credential.v1.CredentialAdminService.PutCredential:input_type -> workos.credential.v1.PutCredentialRequest
+	4,  // 11: workos.credential.v1.CredentialAdminService.RotateCredential:input_type -> workos.credential.v1.RotateCredentialRequest
+	6,  // 12: workos.credential.v1.CredentialAdminService.RevokeCredential:input_type -> workos.credential.v1.RevokeCredentialRequest
+	8,  // 13: workos.credential.v1.CredentialAdminService.ListCredentials:input_type -> workos.credential.v1.ListCredentialsRequest
+	16, // 14: workos.credential.v1.CredentialAdminService.RevealCredential:input_type -> workos.credential.v1.RevealCredentialRequest
+	18, // 15: workos.credential.v1.CredentialAdminService.RotateMasterKey:input_type -> workos.credential.v1.RotateMasterKeyRequest
+	10, // 16: workos.credential.v1.CredentialLeaseService.AcquireTaskCredential:input_type -> workos.credential.v1.AcquireTaskCredentialRequest
+	12, // 17: workos.credential.v1.CredentialLeaseService.RenewTaskCredentialLease:input_type -> workos.credential.v1.RenewTaskCredentialLeaseRequest
+	14, // 18: workos.credential.v1.CredentialLeaseService.ReleaseTaskCredentialLease:input_type -> workos.credential.v1.ReleaseTaskCredentialLeaseRequest
+	3,  // 19: workos.credential.v1.CredentialAdminService.PutCredential:output_type -> workos.credential.v1.PutCredentialResponse
+	5,  // 20: workos.credential.v1.CredentialAdminService.RotateCredential:output_type -> workos.credential.v1.RotateCredentialResponse
+	7,  // 21: workos.credential.v1.CredentialAdminService.RevokeCredential:output_type -> workos.credential.v1.RevokeCredentialResponse
+	9,  // 22: workos.credential.v1.CredentialAdminService.ListCredentials:output_type -> workos.credential.v1.ListCredentialsResponse
+	17, // 23: workos.credential.v1.CredentialAdminService.RevealCredential:output_type -> workos.credential.v1.RevealCredentialResponse
+	19, // 24: workos.credential.v1.CredentialAdminService.RotateMasterKey:output_type -> workos.credential.v1.RotateMasterKeyResponse
+	11, // 25: workos.credential.v1.CredentialLeaseService.AcquireTaskCredential:output_type -> workos.credential.v1.AcquireTaskCredentialResponse
+	13, // 26: workos.credential.v1.CredentialLeaseService.RenewTaskCredentialLease:output_type -> workos.credential.v1.RenewTaskCredentialLeaseResponse
+	15, // 27: workos.credential.v1.CredentialLeaseService.ReleaseTaskCredentialLease:output_type -> workos.credential.v1.ReleaseTaskCredentialLeaseResponse
+	19, // [19:28] is the sub-list for method output_type
+	10, // [10:19] is the sub-list for method input_type
+	10, // [10:10] is the sub-list for extension type_name
+	10, // [10:10] is the sub-list for extension extendee
+	0,  // [0:10] is the sub-list for field type_name
 }
 
 func init() { file_workos_credential_v1_credential_proto_init() }
@@ -1167,7 +1416,7 @@ func file_workos_credential_v1_credential_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_workos_credential_v1_credential_proto_rawDesc), len(file_workos_credential_v1_credential_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   15,
+			NumMessages:   19,
 			NumExtensions: 0,
 			NumServices:   2,
 		},

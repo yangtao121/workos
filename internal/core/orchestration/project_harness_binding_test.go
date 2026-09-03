@@ -169,6 +169,6 @@ func TestProjectHarnessBinderPropagatesCatalogFailureOnlyForBind(t *testing.T) {
 // credential resolves, so credential-requiring providers stay unbindable.
 type stubBindingCredentials struct{}
 
-func (stubBindingCredentials) ActiveSnapshot(context.Context, string, string) (agentports.CredentialSnapshotRef, error) {
+func (stubBindingCredentials) ActiveSnapshot(context.Context, string, string, string) (agentports.CredentialSnapshotRef, error) {
 	return agentports.CredentialSnapshotRef{}, agentdomain.ErrNotFound
 }

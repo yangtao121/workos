@@ -51,7 +51,7 @@ type ArtifactContextVerifier interface {
 // consumer so a fresh credential-bearing task is admitted with an exact,
 // durable snapshot (ADR-0009).
 type CredentialSnapshots interface {
-	ActiveSnapshot(ctx context.Context, ownerUserID, consumerID string) (agentports.CredentialSnapshotRef, error)
+	ActiveSnapshot(ctx context.Context, ownerUserID, consumerID, purpose string) (agentports.CredentialSnapshotRef, error)
 }
 
 type TaskRouter struct {
@@ -76,11 +76,16 @@ func NewTaskRouter(agents AgentTasks, projects Projects, policies AgentAppPolici
 // fresh task. A provider that requires a task credential lease is admitted
 // only with an exact active (ID, revision) pair; anything else fails closed
 // before any queue, outbox, reservation, or waiting approval exists.
-func (r *TaskRouter) resolveCredentialSnapshot(ctx context.Context, ownerUserID, providerID string, requires bool) (*agentports.CredentialSnapshotRef, error) {
-	if !requires {
+func (r *TaskRouter) resolveCredentialSnapshot(ctx context.Context, ownerUserID, providerID string, capabilities agentports.ProviderCapabilities) (*agentports.CredentialSnapshotRef, error) {
+	if !capabilities.RequiresTaskCredentialLease {
 		return nil, nil
 	}
-	snapshot, err := r.credentials.ActiveSnapshot(ctx, ownerUserID, providerID)
+	if capabilities.RequiredCredentialPurpose == "" {
+		// Capability corruption: a lease requirement without a declared
+		// kind never admits a task (ADR-0015).
+		return nil, agentdomain.ErrProviderCredentialMissing
+	}
+	snapshot, err := r.credentials.ActiveSnapshot(ctx, ownerUserID, providerID, capabilities.RequiredCredentialPurpose)
 	if errors.Is(err, agentdomain.ErrNotFound) {
 		return nil, agentdomain.ErrProviderCredentialMissing
 	}
@@ -173,12 +178,12 @@ func (r *TaskRouter) Submit(ctx context.Context, input agentapp.SubmitInput) (ag
 	if capErr != nil {
 		return agentdomain.Task{}, fmt.Errorf("resolve provider credential requirements: %w", capErr)
 	}
-	snapshot, err := r.resolveCredentialSnapshot(ctx, input.OwnerUserID, providerID, capabilities.RequiresTaskCredentialLease)
+	snapshot, err := r.resolveCredentialSnapshot(ctx, input.OwnerUserID, providerID, capabilities)
 	if err != nil {
 		return agentdomain.Task{}, err
 	}
 	if snapshot != nil {
-		input.Credential = &agentdomain.CredentialSnapshot{CredentialID: snapshot.CredentialID, Revision: snapshot.Revision}
+		input.Credential = &agentdomain.CredentialSnapshot{CredentialID: snapshot.CredentialID, Revision: snapshot.Revision, Purpose: snapshot.Purpose}
 	}
 	return r.agents.Submit(ctx, input)
 }
@@ -266,12 +271,12 @@ func (r *TaskRouter) adjudicateAppRun(ctx context.Context, input *agentapp.AppSu
 		return "", nil, agentdomain.ErrProviderCapabilityMissing
 	}
 	input.ProviderID = providerID
-	snapshot, err := r.resolveCredentialSnapshot(ctx, input.OwnerUserID, providerID, capabilities.RequiresTaskCredentialLease)
+	snapshot, err := r.resolveCredentialSnapshot(ctx, input.OwnerUserID, providerID, capabilities)
 	if err != nil {
 		return "", nil, err
 	}
 	if snapshot != nil {
-		input.Credential = &agentdomain.CredentialSnapshot{CredentialID: snapshot.CredentialID, Revision: snapshot.Revision}
+		input.Credential = &agentdomain.CredentialSnapshot{CredentialID: snapshot.CredentialID, Revision: snapshot.Revision, Purpose: snapshot.Purpose}
 	}
 	input.AppID = policy.AppID
 	input.Enforcement = agentapp.AppRunEnforcement{

@@ -23,7 +23,9 @@ type SealAAD struct {
 
 // Cipher is the authenticated-encryption boundary of the vault. The master
 // key never leaves the adapter; the application layer only sees sealed
-// material and derived (keyed) digests.
+// material and derived (keyed) digests. Key derivation is epoch-mixed
+// (ADR-0015): online master-key rotation moves every credential to the
+// successor epoch inside one transaction.
 type Cipher interface {
 	// Seal encrypts plaintext with a fresh CSPRNG nonce under the versioned
 	// format. Implementations make a best-effort attempt to overwrite
@@ -40,6 +42,16 @@ type Cipher interface {
 	// VerifyDigest reports in constant time whether canonical produces
 	// exactly the stored digest.
 	VerifyDigest(canonical []byte, stored string) bool
+	// Epoch is the master-key epoch this cipher derives from.
+	Epoch() int64
+	// KeyFingerprint is a stable non-invertible digest of the derived AEAD
+	// key. It proves two ciphers share the same master material without
+	// exposing the key.
+	KeyFingerprint() string
+	// WithEpoch derives a cipher for the successor rotation from exactly 32
+	// raw master-key bytes at the given epoch. The key material is consumed
+	// inside the adapter and never persisted or logged.
+	WithEpoch(masterKey []byte, epoch int64) (Cipher, error)
 }
 
 // PutCommand is one create request; Secret is plaintext material that never
@@ -79,6 +91,49 @@ type RevokeCommand struct {
 	IdempotencyKey   string
 	RequestDigest    string
 	Now              time.Time
+}
+
+// RevealCommand decrypts one active credential exactly once for the local
+// operator. ExpectedRevision zero accepts the current revision; any other
+// value must match exactly. The audit row commits in the same transaction
+// before the secret is returned (ADR-0015).
+type RevealCommand struct {
+	OwnerUserID      string
+	CredentialID     string
+	ExpectedRevision int64
+	Now              time.Time
+}
+
+// RotateMasterKeyCommand re-seals every credential under the successor
+// master-key epoch in one transaction. NewMasterKey is exactly 32 raw bytes
+// that arrived over the local admin Unix socket and never persists.
+type RotateMasterKeyCommand struct {
+	NewMasterKey []byte
+	Now          time.Time
+}
+
+// RotateMasterKeyResult reports one completed rotation. Noop is true when
+// the provided key material is already the current epoch key: retrying a
+// rotation whose response was lost converges deterministically.
+type RotateMasterKeyResult struct {
+	FromEpoch    int64
+	ToEpoch      int64
+	RotatedCount int64
+	Noop         bool
+}
+
+// AuditEntry is one append-only operator audit fact. It never carries secret
+// material; optional identity fields stay empty for vault-wide actions.
+type AuditEntry struct {
+	Action       string
+	OwnerUserID  string
+	CredentialID string
+	ConsumerID   string
+	Purpose      string
+	Revision     int64
+	KeyEpoch     int64
+	Result       string
+	OccurredAt   time.Time
 }
 
 // ErrStoreUnavailable marks a temporarily unreachable vault store. The
@@ -127,7 +182,9 @@ type Repository interface {
 	// SealedCredentialForTask reads the sealed material of one credential
 	// inside the caller's transaction, proving owner/consumer/purpose/
 	// status/revision still match the snapshot before any lease is minted.
-	SealedCredentialForTask(ctx context.Context, tx dbtx.Tx, ownerUserID, credentialID, consumerID, purpose string, revision int64) (domain.Credential, domain.SealedMaterial, error)
+	// keyEpoch must equal the stored row's master-key epoch; a mismatch is
+	// stored corruption (ADR-0015).
+	SealedCredentialForTask(ctx context.Context, tx dbtx.Tx, ownerUserID, credentialID, consumerID, purpose string, revision, keyEpoch int64) (domain.Credential, domain.SealedMaterial, error)
 	// TaskCredentialLease reads the durable lease row for one task lease
 	// inside the caller's transaction; found=false means none exists yet.
 	TaskCredentialLease(ctx context.Context, tx dbtx.Tx, taskLeaseID string) (TaskCredentialLease, bool, error)
@@ -152,6 +209,30 @@ type Repository interface {
 	// ExpireStaleTaskCredentialLeases marks active leases past expiry as
 	// expired; it returns the number of rows moved.
 	ExpireStaleTaskCredentialLeases(ctx context.Context, now time.Time) (int64, error)
+
+	// VaultEpoch reads the singleton authoritative master-key epoch.
+	// A missing or malformed state row is domain.ErrCorrupt.
+	VaultEpoch(ctx context.Context) (int64, error)
+	// Reveal decrypts one active credential and commits the reveal audit
+	// row in the same transaction (ADR-0015). Unknown/foreign credentials
+	// are domain.ErrNotFound; revoked fail closed; a stale expected
+	// revision is domain.ErrConflict.
+	Reveal(ctx context.Context, ciph Cipher, command RevealCommand) (domain.Credential, []byte, error)
+	// RotateMasterKey re-seals every credential row under the successor
+	// epoch cipher inside one transaction and advances the singleton vault
+	// state. A row that fails to open aborts the whole transaction — there
+	// is never a half-encrypted vault. A stale observed epoch is
+	// domain.ErrConflict without any write.
+	RotateMasterKey(ctx context.Context, current, next Cipher, command RotateMasterKeyCommand) (RotateMasterKeyResult, error)
+	// RecordAudit persists one audit fact in its own transaction for
+	// refused vault-wide attempts (e.g. a rotation against a moved epoch).
+	// A record failure fails the caller: audit is never silently dropped.
+	RecordAudit(ctx context.Context, entry AuditEntry) error
+	// VerifyCurrentKey proves the candidate cipher decrypts every stored
+	// credential. It backs the rotation no-op verdict: equal fingerprints
+	// only prove equal material, never that the material is the vault's
+	// live key. A vault with zero credentials is trivially verified.
+	VerifyCurrentKey(ctx context.Context, ciph Cipher) error
 }
 
 // TaskCredentialLease is the durable short lease fact. It never carries

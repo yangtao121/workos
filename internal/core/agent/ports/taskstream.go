@@ -35,6 +35,9 @@ type TaskCredentialFacts struct {
 	ProviderID         string
 	CredentialID       string
 	CredentialRevision int64
+	// Purpose is the exact canonical credential kind pinned at admission
+	// (ADR-0015); lease derivation opens exactly this kind.
+	Purpose            string
 	TaskLeaseExpiresAt time.Time
 }
 

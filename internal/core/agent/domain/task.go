@@ -64,12 +64,31 @@ type Task struct {
 	Credential *CredentialSnapshot
 }
 
+// credentialPurposes mirrors the Credential Vault's finite kind vocabulary
+// (ADR-0015). It is deliberately duplicated in this domain: agent domain
+// never imports another module's domain package, and drift fails closed at
+// the vault boundary anyway.
+var credentialPurposes = map[string]struct{}{
+	"provider-api-key.v1": {}, "codex-auth.v1": {}, "github-token.v1": {}, "cloud-credential.v1": {},
+}
+
+// ValidCredentialPurpose reports whether value is a canonical credential
+// kind the lease contract understands.
+func ValidCredentialPurpose(value string) bool {
+	_, ok := credentialPurposes[value]
+	return ok
+}
+
 // CredentialSnapshot is the opaque credential identity a fresh task was
 // admitted with. The ID is the vault's UUIDv7 reference; the revision pins
 // the exact secret generation.
 type CredentialSnapshot struct {
 	CredentialID string
 	Revision     int64
+	// Purpose pins the exact canonical credential kind (ADR-0015) this
+	// snapshot was admitted under, so lease derivation opens exactly the
+	// snapshotted kind instead of re-deriving from a live description.
+	Purpose string
 }
 
 type Event struct {

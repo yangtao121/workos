@@ -176,7 +176,8 @@ func insertTaskCredentialSnapshot(ctx context.Context, queries *agentdb.Queries,
 	}
 	if err := queries.InsertAgentTaskCredential(ctx, agentdb.InsertAgentTaskCredentialParams{
 		TaskID: task.ID, ProviderID: task.ProviderID, CredentialID: task.Credential.CredentialID,
-		CredentialRevision: task.Credential.Revision, CreatedAt: timestamp(task.CreatedAt),
+		CredentialRevision: task.Credential.Revision, Purpose: task.Credential.Purpose,
+		CreatedAt: timestamp(task.CreatedAt),
 	}); err != nil {
 		return storeError("insert task credential snapshot", err)
 	}
@@ -199,7 +200,10 @@ func (r *Repository) attachCredentialSnapshot(ctx context.Context, queries *agen
 		// stored-fact drift, not a replayable history.
 		return fmt.Errorf("task credential snapshot provider drift: %w", domain.ErrInvalid)
 	}
-	task.Credential = &domain.CredentialSnapshot{CredentialID: row.CredentialID, Revision: row.CredentialRevision}
+	if !domain.ValidCredentialPurpose(row.Purpose) {
+		return fmt.Errorf("task credential snapshot purpose drift: %w", domain.ErrInvalid)
+	}
+	task.Credential = &domain.CredentialSnapshot{CredentialID: row.CredentialID, Revision: row.CredentialRevision, Purpose: row.Purpose}
 	return nil
 }
 

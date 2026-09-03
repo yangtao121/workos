@@ -127,6 +127,10 @@ func (r *Repository) ResolveTaskCredential(ctx context.Context, tx dbtx.Tx, task
 		facts.Required = true
 		facts.CredentialID = uuid.UUID(row.CredentialID.Bytes).String()
 		facts.CredentialRevision = row.CredentialRevision.Int64
+		facts.Purpose = row.Purpose.String
+		if !row.Purpose.Valid || !agentdomain.ValidCredentialPurpose(facts.Purpose) {
+			return agentports.TaskCredentialFacts{}, fmt.Errorf("task credential snapshot purpose is corrupt: %w", agentdomain.ErrInvalid)
+		}
 	}
 	return facts, nil
 }

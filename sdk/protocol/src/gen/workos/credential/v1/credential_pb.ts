@@ -12,7 +12,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file workos/credential/v1/credential.proto.
  */
 export const file_workos_credential_v1_credential: GenFile = /*@__PURE__*/
-  fileDesc("CiV3b3Jrb3MvY3JlZGVudGlhbC92MS9jcmVkZW50aWFsLnByb3RvEhR3b3Jrb3MuY3JlZGVudGlhbC52MSKWAgoSQ3JlZGVudGlhbE1ldGFkYXRhEgoKAmlkGAEgASgJEhUKDW93bmVyX3VzZXJfaWQYAiABKAkSEwoLY29uc3VtZXJfaWQYAyABKAkSDwoHcHVycG9zZRgEIAEoCRINCgVsYWJlbBgFIAEoCRIQCghyZXZpc2lvbhgGIAEoAxI2CgZzdGF0dXMYByABKA4yJi53b3Jrb3MuY3JlZGVudGlhbC52MS5DcmVkZW50aWFsU3RhdHVzEi4KCmNyZWF0ZWRfYXQYCCABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wEi4KCnVwZGF0ZWRfYXQYCSABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wInQKFFB1dENyZWRlbnRpYWxSZXF1ZXN0EhMKC2NvbnN1bWVyX2lkGAEgASgJEg8KB3B1cnBvc2UYAiABKAkSDQoFbGFiZWwYAyABKAkSDgoGc2VjcmV0GAQgASgMEhcKD2lkZW1wb3RlbmN5X2tleRgFIAEoCSJVChVQdXRDcmVkZW50aWFsUmVzcG9uc2USPAoKY3JlZGVudGlhbBgBIAEoCzIoLndvcmtvcy5jcmVkZW50aWFsLnYxLkNyZWRlbnRpYWxNZXRhZGF0YSKDAQoXUm90YXRlQ3JlZGVudGlhbFJlcXVlc3QSFQoNY3JlZGVudGlhbF9pZBgBIAEoCRIOCgZzZWNyZXQYAiABKAwSDQoFbGFiZWwYAyABKAkSGQoRZXhwZWN0ZWRfcmV2aXNpb24YBCABKAMSFwoPaWRlbXBvdGVuY3lfa2V5GAUgASgJIlgKGFJvdGF0ZUNyZWRlbnRpYWxSZXNwb25zZRI8CgpjcmVkZW50aWFsGAEgASgLMigud29ya29zLmNyZWRlbnRpYWwudjEuQ3JlZGVudGlhbE1ldGFkYXRhImQKF1Jldm9rZUNyZWRlbnRpYWxSZXF1ZXN0EhUKDWNyZWRlbnRpYWxfaWQYASABKAkSGQoRZXhwZWN0ZWRfcmV2aXNpb24YAiABKAMSFwoPaWRlbXBvdGVuY3lfa2V5GAMgASgJIlgKGFJldm9rZUNyZWRlbnRpYWxSZXNwb25zZRI8CgpjcmVkZW50aWFsGAEgASgLMigud29ya29zLmNyZWRlbnRpYWwudjEuQ3JlZGVudGlhbE1ldGFkYXRhIhgKFkxpc3RDcmVkZW50aWFsc1JlcXVlc3QiWAoXTGlzdENyZWRlbnRpYWxzUmVzcG9uc2USPQoLY3JlZGVudGlhbHMYASADKAsyKC53b3Jrb3MuY3JlZGVudGlhbC52MS5DcmVkZW50aWFsTWV0YWRhdGEiSAocQWNxdWlyZVRhc2tDcmVkZW50aWFsUmVxdWVzdBIVCg10YXNrX2xlYXNlX2lkGAEgASgJEhEKCXdvcmtlcl9pZBgCIAEoCSLoAQodQWNxdWlyZVRhc2tDcmVkZW50aWFsUmVzcG9uc2USGwoTY3JlZGVudGlhbF9sZWFzZV9pZBgBIAEoCRIVCg10YXNrX2xlYXNlX2lkGAIgASgJEhMKC2NvbnN1bWVyX2lkGAMgASgJEg8KB3B1cnBvc2UYBCABKAkSGwoTY3JlZGVudGlhbF9yZXZpc2lvbhgFIAEoAxIuCgpleHBpcmVzX2F0GAYgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcBIOCgZzZWNyZXQYByABKAwSEAoIcmVxdWlyZWQYCCABKAgiaAofUmVuZXdUYXNrQ3JlZGVudGlhbExlYXNlUmVxdWVzdBIbChNjcmVkZW50aWFsX2xlYXNlX2lkGAEgASgJEhUKDXRhc2tfbGVhc2VfaWQYAiABKAkSEQoJd29ya2VyX2lkGAMgASgJImEKIFJlbmV3VGFza0NyZWRlbnRpYWxMZWFzZVJlc3BvbnNlEg0KBXZhbGlkGAEgASgIEi4KCmV4cGlyZXNfYXQYAiABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wImoKIVJlbGVhc2VUYXNrQ3JlZGVudGlhbExlYXNlUmVxdWVzdBIbChNjcmVkZW50aWFsX2xlYXNlX2lkGAEgASgJEhUKDXRhc2tfbGVhc2VfaWQYAiABKAkSEQoJd29ya2VyX2lkGAMgASgJIiQKIlJlbGVhc2VUYXNrQ3JlZGVudGlhbExlYXNlUmVzcG9uc2UqcgoQQ3JlZGVudGlhbFN0YXR1cxIhCh1DUkVERU5USUFMX1NUQVRVU19VTlNQRUNJRklFRBAAEhwKGENSRURFTlRJQUxfU1RBVFVTX0FDVElWRRABEh0KGUNSRURFTlRJQUxfU1RBVFVTX1JFVk9LRUQQAjLgAwoWQ3JlZGVudGlhbEFkbWluU2VydmljZRJqCg1QdXRDcmVkZW50aWFsEioud29ya29zLmNyZWRlbnRpYWwudjEuUHV0Q3JlZGVudGlhbFJlcXVlc3QaKy53b3Jrb3MuY3JlZGVudGlhbC52MS5QdXRDcmVkZW50aWFsUmVzcG9uc2UiABJzChBSb3RhdGVDcmVkZW50aWFsEi0ud29ya29zLmNyZWRlbnRpYWwudjEuUm90YXRlQ3JlZGVudGlhbFJlcXVlc3QaLi53b3Jrb3MuY3JlZGVudGlhbC52MS5Sb3RhdGVDcmVkZW50aWFsUmVzcG9uc2UiABJzChBSZXZva2VDcmVkZW50aWFsEi0ud29ya29zLmNyZWRlbnRpYWwudjEuUmV2b2tlQ3JlZGVudGlhbFJlcXVlc3QaLi53b3Jrb3MuY3JlZGVudGlhbC52MS5SZXZva2VDcmVkZW50aWFsUmVzcG9uc2UiABJwCg9MaXN0Q3JlZGVudGlhbHMSLC53b3Jrb3MuY3JlZGVudGlhbC52MS5MaXN0Q3JlZGVudGlhbHNSZXF1ZXN0Gi0ud29ya29zLmNyZWRlbnRpYWwudjEuTGlzdENyZWRlbnRpYWxzUmVzcG9uc2UiADK/AwoWQ3JlZGVudGlhbExlYXNlU2VydmljZRKCAQoVQWNxdWlyZVRhc2tDcmVkZW50aWFsEjIud29ya29zLmNyZWRlbnRpYWwudjEuQWNxdWlyZVRhc2tDcmVkZW50aWFsUmVxdWVzdBozLndvcmtvcy5jcmVkZW50aWFsLnYxLkFjcXVpcmVUYXNrQ3JlZGVudGlhbFJlc3BvbnNlIgASiwEKGFJlbmV3VGFza0NyZWRlbnRpYWxMZWFzZRI1Lndvcmtvcy5jcmVkZW50aWFsLnYxLlJlbmV3VGFza0NyZWRlbnRpYWxMZWFzZVJlcXVlc3QaNi53b3Jrb3MuY3JlZGVudGlhbC52MS5SZW5ld1Rhc2tDcmVkZW50aWFsTGVhc2VSZXNwb25zZSIAEpEBChpSZWxlYXNlVGFza0NyZWRlbnRpYWxMZWFzZRI3Lndvcmtvcy5jcmVkZW50aWFsLnYxLlJlbGVhc2VUYXNrQ3JlZGVudGlhbExlYXNlUmVxdWVzdBo4Lndvcmtvcy5jcmVkZW50aWFsLnYxLlJlbGVhc2VUYXNrQ3JlZGVudGlhbExlYXNlUmVzcG9uc2UiAEJHWkVnaXRodWIuY29tL3lhbmd0YW8xMjEvd29ya29zL2dlbi9nby93b3Jrb3MvY3JlZGVudGlhbC92MTtjcmVkZW50aWFsdjFiBnByb3RvMw", [file_google_protobuf_timestamp]);
+  fileDesc("CiV3b3Jrb3MvY3JlZGVudGlhbC92MS9jcmVkZW50aWFsLnByb3RvEhR3b3Jrb3MuY3JlZGVudGlhbC52MSKWAgoSQ3JlZGVudGlhbE1ldGFkYXRhEgoKAmlkGAEgASgJEhUKDW93bmVyX3VzZXJfaWQYAiABKAkSEwoLY29uc3VtZXJfaWQYAyABKAkSDwoHcHVycG9zZRgEIAEoCRINCgVsYWJlbBgFIAEoCRIQCghyZXZpc2lvbhgGIAEoAxI2CgZzdGF0dXMYByABKA4yJi53b3Jrb3MuY3JlZGVudGlhbC52MS5DcmVkZW50aWFsU3RhdHVzEi4KCmNyZWF0ZWRfYXQYCCABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wEi4KCnVwZGF0ZWRfYXQYCSABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wInQKFFB1dENyZWRlbnRpYWxSZXF1ZXN0EhMKC2NvbnN1bWVyX2lkGAEgASgJEg8KB3B1cnBvc2UYAiABKAkSDQoFbGFiZWwYAyABKAkSDgoGc2VjcmV0GAQgASgMEhcKD2lkZW1wb3RlbmN5X2tleRgFIAEoCSJVChVQdXRDcmVkZW50aWFsUmVzcG9uc2USPAoKY3JlZGVudGlhbBgBIAEoCzIoLndvcmtvcy5jcmVkZW50aWFsLnYxLkNyZWRlbnRpYWxNZXRhZGF0YSKDAQoXUm90YXRlQ3JlZGVudGlhbFJlcXVlc3QSFQoNY3JlZGVudGlhbF9pZBgBIAEoCRIOCgZzZWNyZXQYAiABKAwSDQoFbGFiZWwYAyABKAkSGQoRZXhwZWN0ZWRfcmV2aXNpb24YBCABKAMSFwoPaWRlbXBvdGVuY3lfa2V5GAUgASgJIlgKGFJvdGF0ZUNyZWRlbnRpYWxSZXNwb25zZRI8CgpjcmVkZW50aWFsGAEgASgLMigud29ya29zLmNyZWRlbnRpYWwudjEuQ3JlZGVudGlhbE1ldGFkYXRhImQKF1Jldm9rZUNyZWRlbnRpYWxSZXF1ZXN0EhUKDWNyZWRlbnRpYWxfaWQYASABKAkSGQoRZXhwZWN0ZWRfcmV2aXNpb24YAiABKAMSFwoPaWRlbXBvdGVuY3lfa2V5GAMgASgJIlgKGFJldm9rZUNyZWRlbnRpYWxSZXNwb25zZRI8CgpjcmVkZW50aWFsGAEgASgLMigud29ya29zLmNyZWRlbnRpYWwudjEuQ3JlZGVudGlhbE1ldGFkYXRhIhgKFkxpc3RDcmVkZW50aWFsc1JlcXVlc3QiWAoXTGlzdENyZWRlbnRpYWxzUmVzcG9uc2USPQoLY3JlZGVudGlhbHMYASADKAsyKC53b3Jrb3MuY3JlZGVudGlhbC52MS5DcmVkZW50aWFsTWV0YWRhdGEiSAocQWNxdWlyZVRhc2tDcmVkZW50aWFsUmVxdWVzdBIVCg10YXNrX2xlYXNlX2lkGAEgASgJEhEKCXdvcmtlcl9pZBgCIAEoCSLoAQodQWNxdWlyZVRhc2tDcmVkZW50aWFsUmVzcG9uc2USGwoTY3JlZGVudGlhbF9sZWFzZV9pZBgBIAEoCRIVCg10YXNrX2xlYXNlX2lkGAIgASgJEhMKC2NvbnN1bWVyX2lkGAMgASgJEg8KB3B1cnBvc2UYBCABKAkSGwoTY3JlZGVudGlhbF9yZXZpc2lvbhgFIAEoAxIuCgpleHBpcmVzX2F0GAYgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcBIOCgZzZWNyZXQYByABKAwSEAoIcmVxdWlyZWQYCCABKAgiaAofUmVuZXdUYXNrQ3JlZGVudGlhbExlYXNlUmVxdWVzdBIbChNjcmVkZW50aWFsX2xlYXNlX2lkGAEgASgJEhUKDXRhc2tfbGVhc2VfaWQYAiABKAkSEQoJd29ya2VyX2lkGAMgASgJImEKIFJlbmV3VGFza0NyZWRlbnRpYWxMZWFzZVJlc3BvbnNlEg0KBXZhbGlkGAEgASgIEi4KCmV4cGlyZXNfYXQYAiABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wImoKIVJlbGVhc2VUYXNrQ3JlZGVudGlhbExlYXNlUmVxdWVzdBIbChNjcmVkZW50aWFsX2xlYXNlX2lkGAEgASgJEhUKDXRhc2tfbGVhc2VfaWQYAiABKAkSEQoJd29ya2VyX2lkGAMgASgJIiQKIlJlbGVhc2VUYXNrQ3JlZGVudGlhbExlYXNlUmVzcG9uc2UiSwoXUmV2ZWFsQ3JlZGVudGlhbFJlcXVlc3QSFQoNY3JlZGVudGlhbF9pZBgBIAEoCRIZChFleHBlY3RlZF9yZXZpc2lvbhgCIAEoAyJoChhSZXZlYWxDcmVkZW50aWFsUmVzcG9uc2USPAoKY3JlZGVudGlhbBgBIAEoCzIoLndvcmtvcy5jcmVkZW50aWFsLnYxLkNyZWRlbnRpYWxNZXRhZGF0YRIOCgZzZWNyZXQYAiABKAwiMAoWUm90YXRlTWFzdGVyS2V5UmVxdWVzdBIWCg5uZXdfbWFzdGVyX2tleRgBIAEoDCJkChdSb3RhdGVNYXN0ZXJLZXlSZXNwb25zZRISCgpmcm9tX2Vwb2NoGAEgASgDEhAKCHRvX2Vwb2NoGAIgASgDEhUKDXJvdGF0ZWRfY291bnQYAyABKAMSDAoEbm9vcBgEIAEoCCpyChBDcmVkZW50aWFsU3RhdHVzEiEKHUNSRURFTlRJQUxfU1RBVFVTX1VOU1BFQ0lGSUVEEAASHAoYQ1JFREVOVElBTF9TVEFUVVNfQUNUSVZFEAESHQoZQ1JFREVOVElBTF9TVEFUVVNfUkVWT0tFRBACMscFChZDcmVkZW50aWFsQWRtaW5TZXJ2aWNlEmoKDVB1dENyZWRlbnRpYWwSKi53b3Jrb3MuY3JlZGVudGlhbC52MS5QdXRDcmVkZW50aWFsUmVxdWVzdBorLndvcmtvcy5jcmVkZW50aWFsLnYxLlB1dENyZWRlbnRpYWxSZXNwb25zZSIAEnMKEFJvdGF0ZUNyZWRlbnRpYWwSLS53b3Jrb3MuY3JlZGVudGlhbC52MS5Sb3RhdGVDcmVkZW50aWFsUmVxdWVzdBouLndvcmtvcy5jcmVkZW50aWFsLnYxLlJvdGF0ZUNyZWRlbnRpYWxSZXNwb25zZSIAEnMKEFJldm9rZUNyZWRlbnRpYWwSLS53b3Jrb3MuY3JlZGVudGlhbC52MS5SZXZva2VDcmVkZW50aWFsUmVxdWVzdBouLndvcmtvcy5jcmVkZW50aWFsLnYxLlJldm9rZUNyZWRlbnRpYWxSZXNwb25zZSIAEnAKD0xpc3RDcmVkZW50aWFscxIsLndvcmtvcy5jcmVkZW50aWFsLnYxLkxpc3RDcmVkZW50aWFsc1JlcXVlc3QaLS53b3Jrb3MuY3JlZGVudGlhbC52MS5MaXN0Q3JlZGVudGlhbHNSZXNwb25zZSIAEnMKEFJldmVhbENyZWRlbnRpYWwSLS53b3Jrb3MuY3JlZGVudGlhbC52MS5SZXZlYWxDcmVkZW50aWFsUmVxdWVzdBouLndvcmtvcy5jcmVkZW50aWFsLnYxLlJldmVhbENyZWRlbnRpYWxSZXNwb25zZSIAEnAKD1JvdGF0ZU1hc3RlcktleRIsLndvcmtvcy5jcmVkZW50aWFsLnYxLlJvdGF0ZU1hc3RlcktleVJlcXVlc3QaLS53b3Jrb3MuY3JlZGVudGlhbC52MS5Sb3RhdGVNYXN0ZXJLZXlSZXNwb25zZSIAMr8DChZDcmVkZW50aWFsTGVhc2VTZXJ2aWNlEoIBChVBY3F1aXJlVGFza0NyZWRlbnRpYWwSMi53b3Jrb3MuY3JlZGVudGlhbC52MS5BY3F1aXJlVGFza0NyZWRlbnRpYWxSZXF1ZXN0GjMud29ya29zLmNyZWRlbnRpYWwudjEuQWNxdWlyZVRhc2tDcmVkZW50aWFsUmVzcG9uc2UiABKLAQoYUmVuZXdUYXNrQ3JlZGVudGlhbExlYXNlEjUud29ya29zLmNyZWRlbnRpYWwudjEuUmVuZXdUYXNrQ3JlZGVudGlhbExlYXNlUmVxdWVzdBo2Lndvcmtvcy5jcmVkZW50aWFsLnYxLlJlbmV3VGFza0NyZWRlbnRpYWxMZWFzZVJlc3BvbnNlIgASkQEKGlJlbGVhc2VUYXNrQ3JlZGVudGlhbExlYXNlEjcud29ya29zLmNyZWRlbnRpYWwudjEuUmVsZWFzZVRhc2tDcmVkZW50aWFsTGVhc2VSZXF1ZXN0Gjgud29ya29zLmNyZWRlbnRpYWwudjEuUmVsZWFzZVRhc2tDcmVkZW50aWFsTGVhc2VSZXNwb25zZSIAQkdaRWdpdGh1Yi5jb20veWFuZ3RhbzEyMS93b3Jrb3MvZ2VuL2dvL3dvcmtvcy9jcmVkZW50aWFsL3YxO2NyZWRlbnRpYWx2MWIGcHJvdG8z", [file_google_protobuf_timestamp]);
 
 /**
  * CredentialMetadata is the only credential projection any surface outside
@@ -463,6 +463,108 @@ export const ReleaseTaskCredentialLeaseResponseSchema: GenMessage<ReleaseTaskCre
   messageDesc(file_workos_credential_v1_credential, 14);
 
 /**
+ * @generated from message workos.credential.v1.RevealCredentialRequest
+ */
+export type RevealCredentialRequest = Message<"workos.credential.v1.RevealCredentialRequest"> & {
+  /**
+   * @generated from field: string credential_id = 1;
+   */
+  credentialId: string;
+
+  /**
+   * Zero accepts the current revision; any other value must match exactly.
+   *
+   * @generated from field: int64 expected_revision = 2;
+   */
+  expectedRevision: bigint;
+};
+
+/**
+ * Describes the message workos.credential.v1.RevealCredentialRequest.
+ * Use `create(RevealCredentialRequestSchema)` to create a new message.
+ */
+export const RevealCredentialRequestSchema: GenMessage<RevealCredentialRequest> = /*@__PURE__*/
+  messageDesc(file_workos_credential_v1_credential, 15);
+
+/**
+ * @generated from message workos.credential.v1.RevealCredentialResponse
+ */
+export type RevealCredentialResponse = Message<"workos.credential.v1.RevealCredentialResponse"> & {
+  /**
+   * @generated from field: workos.credential.v1.CredentialMetadata credential = 1;
+   */
+  credential?: CredentialMetadata | undefined;
+
+  /**
+   * @generated from field: bytes secret = 2;
+   */
+  secret: Uint8Array;
+};
+
+/**
+ * Describes the message workos.credential.v1.RevealCredentialResponse.
+ * Use `create(RevealCredentialResponseSchema)` to create a new message.
+ */
+export const RevealCredentialResponseSchema: GenMessage<RevealCredentialResponse> = /*@__PURE__*/
+  messageDesc(file_workos_credential_v1_credential, 16);
+
+/**
+ * @generated from message workos.credential.v1.RotateMasterKeyRequest
+ */
+export type RotateMasterKeyRequest = Message<"workos.credential.v1.RotateMasterKeyRequest"> & {
+  /**
+   * Exactly 32 raw master-key bytes read by the local workosctl from its
+   * --new-key-file argument. They travel only over this socket and are
+   * consumed inside the Core cipher boundary.
+   *
+   * @generated from field: bytes new_master_key = 1;
+   */
+  newMasterKey: Uint8Array;
+};
+
+/**
+ * Describes the message workos.credential.v1.RotateMasterKeyRequest.
+ * Use `create(RotateMasterKeyRequestSchema)` to create a new message.
+ */
+export const RotateMasterKeyRequestSchema: GenMessage<RotateMasterKeyRequest> = /*@__PURE__*/
+  messageDesc(file_workos_credential_v1_credential, 17);
+
+/**
+ * @generated from message workos.credential.v1.RotateMasterKeyResponse
+ */
+export type RotateMasterKeyResponse = Message<"workos.credential.v1.RotateMasterKeyResponse"> & {
+  /**
+   * @generated from field: int64 from_epoch = 1;
+   */
+  fromEpoch: bigint;
+
+  /**
+   * @generated from field: int64 to_epoch = 2;
+   */
+  toEpoch: bigint;
+
+  /**
+   * @generated from field: int64 rotated_count = 3;
+   */
+  rotatedCount: bigint;
+
+  /**
+   * True when the provided key material is already the current epoch key:
+   * a lost rotation response replays as this deterministic no-op.
+   *
+   * @generated from field: bool noop = 4;
+   */
+  noop: boolean;
+};
+
+/**
+ * Describes the message workos.credential.v1.RotateMasterKeyResponse.
+ * Use `create(RotateMasterKeyResponseSchema)` to create a new message.
+ */
+export const RotateMasterKeyResponseSchema: GenMessage<RotateMasterKeyResponse> = /*@__PURE__*/
+  messageDesc(file_workos_credential_v1_credential, 18);
+
+/**
  * @generated from enum workos.credential.v1.CredentialStatus
  */
 export enum CredentialStatus {
@@ -529,6 +631,31 @@ export const CredentialAdminService: GenService<{
     methodKind: "unary";
     input: typeof ListCredentialsRequestSchema;
     output: typeof ListCredentialsResponseSchema;
+  },
+  /**
+   * RevealCredential decrypts one active credential exactly once for the
+   * local operator (ADR-0015). The reveal audit row commits in the same
+   * transaction before the secret is returned; revoked credentials fail
+   * closed. The secret travels only on this socket and is never logged.
+   *
+   * @generated from rpc workos.credential.v1.CredentialAdminService.RevealCredential
+   */
+  revealCredential: {
+    methodKind: "unary";
+    input: typeof RevealCredentialRequestSchema;
+    output: typeof RevealCredentialResponseSchema;
+  },
+  /**
+   * RotateMasterKey re-seals every credential under the successor
+   * master-key epoch in one atomic transaction (ADR-0015). Retrying with
+   * the already-current key is a deterministic no-op success.
+   *
+   * @generated from rpc workos.credential.v1.CredentialAdminService.RotateMasterKey
+   */
+  rotateMasterKey: {
+    methodKind: "unary";
+    input: typeof RotateMasterKeyRequestSchema;
+    output: typeof RotateMasterKeyResponseSchema;
   },
 }> = /*@__PURE__*/
   serviceDesc(file_workos_credential_v1_credential, 0);

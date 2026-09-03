@@ -46,7 +46,7 @@ type SetProjectHarnessBindingInput struct {
 // becomes the server-derived HarnessBinding.credential_ref (ADR-0009).
 // Clients can never submit one.
 type BindingCredentials interface {
-	ActiveSnapshot(ctx context.Context, ownerUserID, consumerID string) (agentports.CredentialSnapshotRef, error)
+	ActiveSnapshot(ctx context.Context, ownerUserID, consumerID, purpose string) (agentports.CredentialSnapshotRef, error)
 }
 
 type ProjectHarnessBinder struct {
@@ -110,7 +110,12 @@ func (b *ProjectHarnessBinder) Set(ctx context.Context, input SetProjectHarnessB
 	}
 	var credentialRef string
 	if selected.Capabilities.RequiresTaskCredentialLease {
-		snapshot, err := b.credentials.ActiveSnapshot(ctx, input.OwnerUserID, input.ProviderID)
+		if selected.Capabilities.RequiredCredentialPurpose == "" {
+			// Capability corruption: refuse to bind a lease-requiring
+			// provider that declares no canonical kind (ADR-0015).
+			return projectdomain.Project{}, ErrProviderNotSelectable
+		}
+		snapshot, err := b.credentials.ActiveSnapshot(ctx, input.OwnerUserID, input.ProviderID, selected.Capabilities.RequiredCredentialPurpose)
 		if errors.Is(err, agentdomain.ErrNotFound) {
 			// Same sanitized verdict as an unhealthy provider: the binder
 			// never reveals whether a foreign credential exists.

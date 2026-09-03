@@ -63,12 +63,20 @@ func (s *Service) GetForOwner(ctx context.Context, ownerUserID string) (domain.C
 		if !provider.Capabilities.RequiresTaskCredentialLease {
 			continue
 		}
+		// A lease-requiring provider must declare the exact canonical kind
+		// it consumes; an empty declaration is capability corruption and
+		// keeps the provider honestly unavailable (ADR-0015).
+		if provider.Capabilities.RequiredCredentialPurpose == "" {
+			provider.Health = domain.HealthUnavailable
+			provider.UnavailableReason = publicReason(domain.HealthUnavailable)
+			continue
+		}
 		if s.credentials == nil {
 			provider.Health = domain.HealthUnavailable
 			provider.UnavailableReason = publicReason(domain.HealthUnavailable)
 			continue
 		}
-		available, err := s.credentials.Available(ctx, ownerUserID, provider.ID)
+		available, err := s.credentials.Available(ctx, ownerUserID, provider.ID, provider.Capabilities.RequiredCredentialPurpose)
 		if err != nil {
 			return domain.Catalog{}, domain.ErrUnavailable
 		}

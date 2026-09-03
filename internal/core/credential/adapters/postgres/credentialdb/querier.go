@@ -18,6 +18,10 @@ type Querier interface {
 	GetCredentialRequest(ctx context.Context, arg GetCredentialRequestParams) (GetCredentialRequestRow, error)
 	GetTaskCredentialLease(ctx context.Context, taskLeaseID string) (GetTaskCredentialLeaseRow, error)
 	GetTaskCredentialLeaseByLeaseID(ctx context.Context, id string) (GetTaskCredentialLeaseByLeaseIDRow, error)
+	// ADR-0015 expansion: master-key epoch state, online rotation, audited
+	// reveal, and the append-only admin audit trail.
+	GetVaultState(ctx context.Context) (WorkosCoreCredentialVaultState, error)
+	InsertCredentialAudit(ctx context.Context, arg InsertCredentialAuditParams) error
 	InsertCredentialRequest(ctx context.Context, arg InsertCredentialRequestParams) (int64, error)
 	// Credential Vault owned queries (ADR-0009). Everything here touches only
 	// Credential-owned tables. Plaintext secrets never appear in any statement:
@@ -27,15 +31,20 @@ type Querier interface {
 	InsertTaskCredentialLease(ctx context.Context, arg InsertTaskCredentialLeaseParams) (int64, error)
 	ListOwnerCredentials(ctx context.Context, ownerUserID string) ([]ListOwnerCredentialsRow, error)
 	LockActiveTaskCredentialLease(ctx context.Context, arg LockActiveTaskCredentialLeaseParams) (LockActiveTaskCredentialLeaseRow, error)
-	LockProviderCredential(ctx context.Context, id string) (WorkosCoreProviderCredential, error)
+	LockAllCredentialRows(ctx context.Context) ([]LockAllCredentialRowsRow, error)
+	LockAllProviderCredentials(ctx context.Context) ([]LockAllProviderCredentialsRow, error)
+	LockOwnerCredential(ctx context.Context, arg LockOwnerCredentialParams) (LockOwnerCredentialRow, error)
+	LockProviderCredential(ctx context.Context, id string) (LockProviderCredentialRow, error)
 	// Sealed read for lease issuance inside the coordinator transaction: the
 	// exact credential identity must still be active at the exact snapshot
 	// revision, or the lease fails closed.
-	LockSealedCredentialForTask(ctx context.Context, arg LockSealedCredentialForTaskParams) (WorkosCoreProviderCredential, error)
+	LockSealedCredentialForTask(ctx context.Context, arg LockSealedCredentialForTaskParams) (LockSealedCredentialForTaskRow, error)
 	ReleaseTaskCredentialLease(ctx context.Context, arg ReleaseTaskCredentialLeaseParams) (int64, error)
 	RenewTaskCredentialLease(ctx context.Context, arg RenewTaskCredentialLeaseParams) (RenewTaskCredentialLeaseRow, error)
 	RevokeProviderCredential(ctx context.Context, arg RevokeProviderCredentialParams) (int64, error)
+	RotateVaultState(ctx context.Context, arg RotateVaultStateParams) (int64, error)
 	UpdateCredentialMaterial(ctx context.Context, arg UpdateCredentialMaterialParams) (int64, error)
+	UpdateCredentialSeal(ctx context.Context, arg UpdateCredentialSealParams) (int64, error)
 }
 
 var _ Querier = (*Queries)(nil)

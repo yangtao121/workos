@@ -42,12 +42,11 @@ type TaskCredentialAuthority interface {
 // CredentialLeaseIssuer implements the private CredentialLeaseService
 // coordination contract.
 type CredentialLeaseIssuer struct {
-	pool    *pgxpool.Pool
-	tasks   TaskCredentialAuthority
-	vault   credentialports.Repository
-	cipher  credentialports.Cipher
-	ids     ids.Generator
-	purpose string
+	pool   *pgxpool.Pool
+	tasks  TaskCredentialAuthority
+	vault  credentialports.Repository
+	cipher credentialports.Cipher
+	ids    ids.Generator
 }
 
 func NewCredentialLeaseIssuer(
@@ -62,7 +61,6 @@ func NewCredentialLeaseIssuer(
 	// fails closed instead of serving a lease without crypto.
 	return &CredentialLeaseIssuer{
 		pool: pool, tasks: tasks, vault: vault, cipher: ciph, ids: generator,
-		purpose: credentialdomain.PurposeProviderAPIKeyV1,
 	}, nil
 }
 
@@ -93,7 +91,7 @@ func (i *CredentialLeaseIssuer) Acquire(ctx context.Context, taskLeaseID, worker
 		return credentialports.LeaseGrant{TaskLeaseID: taskLeaseID, Required: false}, nil
 	}
 	credential, sealed, err := i.vault.SealedCredentialForTask(
-		ctx, tx, facts.OwnerUserID, facts.CredentialID, facts.ProviderID, i.purpose, facts.CredentialRevision,
+		ctx, tx, facts.OwnerUserID, facts.CredentialID, facts.ProviderID, facts.Purpose, facts.CredentialRevision, i.cipher.Epoch(),
 	)
 	if err != nil {
 		// A rotated or revoked snapshot fails closed with zero side effects.
@@ -106,7 +104,7 @@ func (i *CredentialLeaseIssuer) Acquire(ctx context.Context, taskLeaseID, worker
 	if found {
 		if existing.TaskLeaseID != taskLeaseID || existing.TaskID != facts.TaskID ||
 			existing.WorkerID != workerID || existing.OwnerUserID != facts.OwnerUserID ||
-			existing.ConsumerID != facts.ProviderID || existing.Purpose != i.purpose ||
+			existing.ConsumerID != facts.ProviderID || existing.Purpose != facts.Purpose ||
 			existing.CredentialID != facts.CredentialID || existing.CredentialRevision != facts.CredentialRevision ||
 			existing.Status != credentialdomain.LeaseStatusActive || !existing.ExpiresAt.After(now) ||
 			existing.ExpiresAt.After(facts.TaskLeaseExpiresAt) {
@@ -133,7 +131,7 @@ func (i *CredentialLeaseIssuer) Acquire(ctx context.Context, taskLeaseID, worker
 	}
 	_, fresh, err := i.vault.InsertTaskCredentialLease(ctx, tx, credentialports.TaskCredentialLease{
 		ID: leaseID, TaskLeaseID: taskLeaseID, TaskID: facts.TaskID, WorkerID: workerID,
-		OwnerUserID: facts.OwnerUserID, ConsumerID: facts.ProviderID, Purpose: i.purpose,
+		OwnerUserID: facts.OwnerUserID, ConsumerID: facts.ProviderID, Purpose: facts.Purpose,
 		CredentialID: facts.CredentialID, CredentialRevision: facts.CredentialRevision,
 		Status: credentialdomain.LeaseStatusActive, ExpiresAt: facts.TaskLeaseExpiresAt, CreatedAt: now,
 	})
@@ -153,7 +151,7 @@ func (i *CredentialLeaseIssuer) Acquire(ctx context.Context, taskLeaseID, worker
 	}
 	return credentialports.LeaseGrant{
 		LeaseID: leaseID, TaskLeaseID: taskLeaseID, ConsumerID: facts.ProviderID,
-		Purpose: i.purpose, CredentialRevision: facts.CredentialRevision,
+		Purpose: facts.Purpose, CredentialRevision: facts.CredentialRevision,
 		ExpiresAt: facts.TaskLeaseExpiresAt, Secret: secret, Required: true,
 	}, nil
 }
@@ -192,7 +190,7 @@ func (i *CredentialLeaseIssuer) Renew(ctx context.Context, credentialLeaseID, ta
 	// Re-prove the exact credential revision is still active. A revoke or
 	// rotate invalidates the lease without ever returning new material.
 	if _, _, err := i.vault.SealedCredentialForTask(
-		ctx, tx, lease.OwnerUserID, lease.CredentialID, lease.ConsumerID, i.purpose, lease.CredentialRevision,
+		ctx, tx, lease.OwnerUserID, lease.CredentialID, lease.ConsumerID, lease.Purpose, lease.CredentialRevision, i.cipher.Epoch(),
 	); err != nil {
 		if errors.Is(err, credentialdomain.ErrNotFound) || errors.Is(err, credentialdomain.ErrLeaseLost) {
 			return credentialports.LeaseVerdict{Valid: false}, nil
@@ -230,7 +228,7 @@ func storeFailure(stage string, err error) error {
 func (i *CredentialLeaseIssuer) openCredential(sealed credentialdomain.SealedMaterial, facts agentports.TaskCredentialFacts, credential credentialdomain.Credential) ([]byte, error) {
 	return i.cipher.Open(sealed, credentialports.SealAAD{
 		OwnerUserID: facts.OwnerUserID, CredentialID: credential.ID,
-		ConsumerID: credential.ConsumerID, Purpose: i.purpose, Revision: credential.Revision,
+		ConsumerID: credential.ConsumerID, Purpose: facts.Purpose, Revision: credential.Revision,
 	})
 }
 

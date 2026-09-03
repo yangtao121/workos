@@ -5,8 +5,8 @@
 
 -- name: InsertProviderCredential :execrows
 INSERT INTO workos_core.provider_credentials (
-    id, owner_user_id, consumer_id, purpose, label, revision, status, nonce, ciphertext, created_at, updated_at
-) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+    id, owner_user_id, consumer_id, purpose, label, revision, status, nonce, ciphertext, key_epoch, created_at, updated_at
+) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
 ON CONFLICT DO NOTHING;
 
 -- name: GetCredentialRequest :one
@@ -26,15 +26,15 @@ SET result = $1
 WHERE owner_user_id = $2 AND idempotency_key = $3;
 
 -- name: LockProviderCredential :one
-SELECT id, owner_user_id, consumer_id, purpose, label, revision, status, nonce, ciphertext, created_at, updated_at
+SELECT id, owner_user_id, consumer_id, purpose, label, revision, status, nonce, ciphertext, key_epoch, created_at, updated_at
 FROM workos_core.provider_credentials
 WHERE id = $1
 FOR UPDATE;
 
 -- name: UpdateCredentialMaterial :execrows
 UPDATE workos_core.provider_credentials
-SET label = $1, revision = $2, nonce = $3, ciphertext = $4, updated_at = $5
-WHERE id = $6;
+SET label = $1, revision = $2, nonce = $3, ciphertext = $4, key_epoch = $5, updated_at = $6
+WHERE id = $7;
 
 -- name: RevokeProviderCredential :execrows
 UPDATE workos_core.provider_credentials
@@ -61,7 +61,7 @@ WHERE id = $1 AND owner_user_id = $2;
 -- exact credential identity must still be active at the exact snapshot
 -- revision, or the lease fails closed.
 -- name: LockSealedCredentialForTask :one
-SELECT id, owner_user_id, consumer_id, purpose, label, revision, status, nonce, ciphertext, created_at, updated_at
+SELECT id, owner_user_id, consumer_id, purpose, label, revision, status, nonce, ciphertext, key_epoch, created_at, updated_at
 FROM workos_core.provider_credentials
 WHERE id = $1 AND owner_user_id = $2
 FOR UPDATE;
@@ -115,3 +115,43 @@ WHERE id = $2 AND task_lease_id = $3 AND worker_id = $4 AND status = 'active';
 UPDATE workos_core.task_credential_leases
 SET status = 'expired'
 WHERE status = 'active' AND expires_at < $1;
+
+-- ADR-0015 expansion: master-key epoch state, online rotation, audited
+-- reveal, and the append-only admin audit trail.
+
+-- name: GetVaultState :one
+SELECT singleton, current_epoch, updated_at
+FROM workos_core.credential_vault_state
+WHERE singleton;
+
+-- name: RotateVaultState :execrows
+UPDATE workos_core.credential_vault_state
+SET current_epoch = $1, updated_at = $2
+WHERE singleton AND current_epoch = $3;
+
+-- name: LockAllProviderCredentials :many
+SELECT id, owner_user_id, consumer_id, purpose, label, revision, status, nonce, ciphertext, key_epoch, created_at, updated_at
+FROM workos_core.provider_credentials
+FOR UPDATE;
+
+-- name: UpdateCredentialSeal :execrows
+UPDATE workos_core.provider_credentials
+SET nonce = $1, ciphertext = $2, key_epoch = $3, updated_at = $4
+WHERE id = $5;
+
+-- name: LockOwnerCredential :one
+SELECT id, owner_user_id, consumer_id, purpose, label, revision, status, nonce, ciphertext, key_epoch, created_at, updated_at
+FROM workos_core.provider_credentials
+WHERE id = $1 AND owner_user_id = $2
+FOR UPDATE;
+
+-- name: InsertCredentialAudit :exec
+INSERT INTO workos_core.credential_admin_audit (
+    id, occurred_at, action, owner_user_id, credential_id, consumer_id, purpose, revision, key_epoch, result
+) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10);
+
+-- name: LockAllCredentialRows :many
+SELECT id, owner_user_id, consumer_id, purpose, label, revision, status, nonce, ciphertext, key_epoch, created_at, updated_at
+FROM workos_core.provider_credentials
+ORDER BY id
+FOR UPDATE;
