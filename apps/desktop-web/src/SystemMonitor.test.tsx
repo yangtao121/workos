@@ -30,6 +30,7 @@ interface IncidentClients {
   incidents: {
     listIncidents: ReturnType<typeof vi.fn>;
     acknowledgeIncident: ReturnType<typeof vi.fn>;
+    getTelemetrySummary: ReturnType<typeof vi.fn>;
   };
   appInstallations: {
     listAppVersionHistory: ReturnType<typeof vi.fn>;
@@ -45,6 +46,14 @@ function clientsWith(
   ackResult?: Promise<Record<string, unknown>>,
   historyResult?: Promise<{ snapshots: Array<{ version: string; sequence: string }> }>,
 ): WorkOSClients & IncidentClients {
+  const getTelemetrySummary: IncidentClients["incidents"]["getTelemetrySummary"] = vi.fn(() =>
+    Promise.resolve({
+      services: [],
+      spansObserved: 0n,
+      attributesDropped: 0n,
+      generatedAt: undefined,
+    }),
+  );
   const listIncidents: IncidentClients["incidents"]["listIncidents"] = vi.fn(() => listResult);
   const acknowledgeIncident: IncidentClients["incidents"]["acknowledgeIncident"] = vi.fn(
     () => ackResult ?? Promise.resolve({}),
@@ -59,7 +68,7 @@ function clientsWith(
     Promise.resolve({ project: { revision: 7n } }),
   );
   return {
-    incidents: { listIncidents, acknowledgeIncident },
+    incidents: { listIncidents, acknowledgeIncident, getTelemetrySummary },
     appInstallations: { listAppVersionHistory, rollbackAppVersion },
     projects: { getProject },
   } as unknown as WorkOSClients & IncidentClients;

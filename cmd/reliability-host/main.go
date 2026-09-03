@@ -22,6 +22,7 @@ import (
 	"github.com/yangtao121/workos/internal/platform/systemhandler"
 	"github.com/yangtao121/workos/internal/platform/telemetry"
 	"github.com/yangtao121/workos/internal/reliability/adapters/postgres"
+	"github.com/yangtao121/workos/internal/reliability/adapters/telemetryfile"
 	"github.com/yangtao121/workos/internal/reliability/application"
 	"github.com/yangtao121/workos/internal/reliability/transport"
 )
@@ -59,7 +60,15 @@ func run(logger *slog.Logger) error {
 	if err != nil {
 		return err
 	}
-	incidentPath, incidentHandler := transport.NewIncidentConnectHandler(incidentService)
+	// The collector component (ADR-0016 §4): aggregates the OpenTelemetry
+	// collector's file export into the sanitized telemetry summary. Without
+	// a configured source the summary honestly reports empty.
+	var telemetryAggregator *application.TelemetryAggregator
+	if cfg.Telemetry.TelemetryFile != "" {
+		telemetryAggregator = application.NewTelemetryAggregator(
+			telemetryfile.New(cfg.Telemetry.TelemetryFile), 2*time.Second)
+	}
+	incidentPath, incidentHandler := transport.NewIncidentConnectHandlerWithTelemetry(incidentService, telemetryAggregator)
 	mux.Handle(incidentPath, identity.Middleware(incidentHandler))
 
 	// The private incident notification publication source (ADR-0014): the

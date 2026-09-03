@@ -14,7 +14,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file workos/incident/v1/incident.proto.
  */
 export const file_workos_incident_v1_incident: GenFile = /*@__PURE__*/
-  fileDesc("CiF3b3Jrb3MvaW5jaWRlbnQvdjEvaW5jaWRlbnQucHJvdG8SEndvcmtvcy5pbmNpZGVudC52MSI4CgtFdmlkZW5jZVJlZhIMCgR0eXBlGAEgASgJEgsKA3JlZhgCIAEoCRIOCgZkaWdlc3QYAyABKAki5gUKCEluY2lkZW50EgoKAmlkGAEgASgJEhMKC3dvcmtsb2FkX2lkGAIgASgJEhIKCnByb2plY3RfaWQYAyABKAkSNgoIc2V2ZXJpdHkYBCABKA4yJC53b3Jrb3MuaW5jaWRlbnQudjEuSW5jaWRlbnRTZXZlcml0eRIwCgVzdGF0ZRgFIAEoDjIhLndvcmtvcy5pbmNpZGVudC52MS5JbmNpZGVudFN0YXRlEhEKCXBvbGljeV9pZBgGIAEoCRIPCgdzdW1tYXJ5GAcgASgJEjEKCGV2aWRlbmNlGAggAygLMh8ud29ya29zLmluY2lkZW50LnYxLkV2aWRlbmNlUmVmEi4KCmNyZWF0ZWRfYXQYCSABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wEi4KCnVwZGF0ZWRfYXQYCiABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wEhUKDW93bmVyX3VzZXJfaWQYCyABKAkSFwoPYXBwX2luc3RhbmNlX2lkGAwgASgJEg4KBmFwcF9pZBgNIAEoCRI4Cgl2aW9sYXRpb24YDiABKA4yJS53b3Jrb3MuaW5jaWRlbnQudjEuSW5jaWRlbnRWaW9sYXRpb24SGwoTd29ya2xvYWRfZ2VuZXJhdGlvbhgPIAEoAxIQCghyZXZpc2lvbhgQIAEoAxIzCg9hY2tub3dsZWRnZWRfYXQYESABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wEjAKDG1pdGlnYXRlZF9hdBgSIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXASLwoLcmVzb2x2ZWRfYXQYEyABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wEkMKD3Jlc3RhcnRfb3V0Y29tZRgUIAEoDjIqLndvcmtvcy5pbmNpZGVudC52MS5JbmNpZGVudFJlc3RhcnRPdXRjb21lIikKEkdldEluY2lkZW50UmVxdWVzdBITCgtpbmNpZGVudF9pZBgBIAEoCSJXChRMaXN0SW5jaWRlbnRzUmVxdWVzdBISCgpwcm9qZWN0X2lkGAEgASgJEisKBHBhZ2UYAiABKAsyHS53b3Jrb3MuY29tbW9uLnYxLlBhZ2VSZXF1ZXN0InYKFUxpc3RJbmNpZGVudHNSZXNwb25zZRIvCglpbmNpZGVudHMYASADKAsyHC53b3Jrb3MuaW5jaWRlbnQudjEuSW5jaWRlbnQSLAoEcGFnZRgCIAEoCzIeLndvcmtvcy5jb21tb24udjEuUGFnZVJlc3BvbnNlIkoKGkFja25vd2xlZGdlSW5jaWRlbnRSZXF1ZXN0EhMKC2luY2lkZW50X2lkGAEgASgJEhcKD2lkZW1wb3RlbmN5X2tleRgCIAEoCSJFChNHZXRJbmNpZGVudFJlc3BvbnNlEi4KCGluY2lkZW50GAEgASgLMhwud29ya29zLmluY2lkZW50LnYxLkluY2lkZW50Ik0KG0Fja25vd2xlZGdlSW5jaWRlbnRSZXNwb25zZRIuCghpbmNpZGVudBgBIAEoCzIcLndvcmtvcy5pbmNpZGVudC52MS5JbmNpZGVudCqQAQoQSW5jaWRlbnRTZXZlcml0eRIhCh1JTkNJREVOVF9TRVZFUklUWV9VTlNQRUNJRklFRBAAEhoKFklOQ0lERU5UX1NFVkVSSVRZX0lORk8QARIdChlJTkNJREVOVF9TRVZFUklUWV9XQVJOSU5HEAISHgoaSU5DSURFTlRfU0VWRVJJVFlfQ1JJVElDQUwQAyqhAQoNSW5jaWRlbnRTdGF0ZRIeChpJTkNJREVOVF9TVEFURV9VTlNQRUNJRklFRBAAEhcKE0lOQ0lERU5UX1NUQVRFX09QRU4QARIcChhJTkNJREVOVF9TVEFURV9NSVRJR0FURUQQAhIcChhJTkNJREVOVF9TVEFURV9SRVBBSVJJTkcQAxIbChdJTkNJREVOVF9TVEFURV9SRVNPTFZFRBAEKvUBChFJbmNpZGVudFZpb2xhdGlvbhIiCh5JTkNJREVOVF9WSU9MQVRJT05fVU5TUEVDSUZJRUQQABImCiJJTkNJREVOVF9WSU9MQVRJT05fVU5FWFBFQ1RFRF9FWElUEAESJQohSU5DSURFTlRfVklPTEFUSU9OX0hFQUxUSF9GQUlMVVJFEAISGgoWSU5DSURFTlRfVklPTEFUSU9OX09PTRADEiEKHUlOQ0lERU5UX1ZJT0xBVElPTl9QSURTX0xJTUlUEAQSLgoqSU5DSURFTlRfVklPTEFUSU9OX1JFU1RBUlRfTElNSVRfRVhIQVVTVEVEEAUq2wEKFkluY2lkZW50UmVzdGFydE91dGNvbWUSKAokSU5DSURFTlRfUkVTVEFSVF9PVVRDT01FX1VOU1BFQ0lGSUVEEAASJAogSU5DSURFTlRfUkVTVEFSVF9PVVRDT01FX1BFTkRJTkcQARImCiJJTkNJREVOVF9SRVNUQVJUX09VVENPTUVfUkVTVEFSVEVEEAISJAogSU5DSURFTlRfUkVTVEFSVF9PVVRDT01FX1NUT1BQRUQQAxIjCh9JTkNJREVOVF9SRVNUQVJUX09VVENPTUVfRkFJTEVEEAQy1QIKD0luY2lkZW50U2VydmljZRJgCgtHZXRJbmNpZGVudBImLndvcmtvcy5pbmNpZGVudC52MS5HZXRJbmNpZGVudFJlcXVlc3QaJy53b3Jrb3MuaW5jaWRlbnQudjEuR2V0SW5jaWRlbnRSZXNwb25zZSIAEmYKDUxpc3RJbmNpZGVudHMSKC53b3Jrb3MuaW5jaWRlbnQudjEuTGlzdEluY2lkZW50c1JlcXVlc3QaKS53b3Jrb3MuaW5jaWRlbnQudjEuTGlzdEluY2lkZW50c1Jlc3BvbnNlIgASeAoTQWNrbm93bGVkZ2VJbmNpZGVudBIuLndvcmtvcy5pbmNpZGVudC52MS5BY2tub3dsZWRnZUluY2lkZW50UmVxdWVzdBovLndvcmtvcy5pbmNpZGVudC52MS5BY2tub3dsZWRnZUluY2lkZW50UmVzcG9uc2UiAEJDWkFnaXRodWIuY29tL3lhbmd0YW8xMjEvd29ya29zL2dlbi9nby93b3Jrb3MvaW5jaWRlbnQvdjE7aW5jaWRlbnR2MWIGcHJvdG8z", [file_google_protobuf_timestamp, file_workos_common_v1_common]);
+  fileDesc("CiF3b3Jrb3MvaW5jaWRlbnQvdjEvaW5jaWRlbnQucHJvdG8SEndvcmtvcy5pbmNpZGVudC52MSI4CgtFdmlkZW5jZVJlZhIMCgR0eXBlGAEgASgJEgsKA3JlZhgCIAEoCRIOCgZkaWdlc3QYAyABKAki5gUKCEluY2lkZW50EgoKAmlkGAEgASgJEhMKC3dvcmtsb2FkX2lkGAIgASgJEhIKCnByb2plY3RfaWQYAyABKAkSNgoIc2V2ZXJpdHkYBCABKA4yJC53b3Jrb3MuaW5jaWRlbnQudjEuSW5jaWRlbnRTZXZlcml0eRIwCgVzdGF0ZRgFIAEoDjIhLndvcmtvcy5pbmNpZGVudC52MS5JbmNpZGVudFN0YXRlEhEKCXBvbGljeV9pZBgGIAEoCRIPCgdzdW1tYXJ5GAcgASgJEjEKCGV2aWRlbmNlGAggAygLMh8ud29ya29zLmluY2lkZW50LnYxLkV2aWRlbmNlUmVmEi4KCmNyZWF0ZWRfYXQYCSABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wEi4KCnVwZGF0ZWRfYXQYCiABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wEhUKDW93bmVyX3VzZXJfaWQYCyABKAkSFwoPYXBwX2luc3RhbmNlX2lkGAwgASgJEg4KBmFwcF9pZBgNIAEoCRI4Cgl2aW9sYXRpb24YDiABKA4yJS53b3Jrb3MuaW5jaWRlbnQudjEuSW5jaWRlbnRWaW9sYXRpb24SGwoTd29ya2xvYWRfZ2VuZXJhdGlvbhgPIAEoAxIQCghyZXZpc2lvbhgQIAEoAxIzCg9hY2tub3dsZWRnZWRfYXQYESABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wEjAKDG1pdGlnYXRlZF9hdBgSIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXASLwoLcmVzb2x2ZWRfYXQYEyABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wEkMKD3Jlc3RhcnRfb3V0Y29tZRgUIAEoDjIqLndvcmtvcy5pbmNpZGVudC52MS5JbmNpZGVudFJlc3RhcnRPdXRjb21lIikKEkdldEluY2lkZW50UmVxdWVzdBITCgtpbmNpZGVudF9pZBgBIAEoCSJXChRMaXN0SW5jaWRlbnRzUmVxdWVzdBISCgpwcm9qZWN0X2lkGAEgASgJEisKBHBhZ2UYAiABKAsyHS53b3Jrb3MuY29tbW9uLnYxLlBhZ2VSZXF1ZXN0InYKFUxpc3RJbmNpZGVudHNSZXNwb25zZRIvCglpbmNpZGVudHMYASADKAsyHC53b3Jrb3MuaW5jaWRlbnQudjEuSW5jaWRlbnQSLAoEcGFnZRgCIAEoCzIeLndvcmtvcy5jb21tb24udjEuUGFnZVJlc3BvbnNlIkoKGkFja25vd2xlZGdlSW5jaWRlbnRSZXF1ZXN0EhMKC2luY2lkZW50X2lkGAEgASgJEhcKD2lkZW1wb3RlbmN5X2tleRgCIAEoCSJFChNHZXRJbmNpZGVudFJlc3BvbnNlEi4KCGluY2lkZW50GAEgASgLMhwud29ya29zLmluY2lkZW50LnYxLkluY2lkZW50Ik0KG0Fja25vd2xlZGdlSW5jaWRlbnRSZXNwb25zZRIuCghpbmNpZGVudBgBIAEoCzIcLndvcmtvcy5pbmNpZGVudC52MS5JbmNpZGVudCIcChpHZXRUZWxlbWV0cnlTdW1tYXJ5UmVxdWVzdCKfAQoVVGVsZW1ldHJ5U2VydmljZVN0YXRzEg8KB3NlcnZpY2UYASABKAkSEgoKc3Bhbl9jb3VudBgCIAEoBBITCgtlcnJvcl9jb3VudBgDIAEoBBIXCg9hdmdfZHVyYXRpb25fbXMYBCABKAESFwoPbWF4X2R1cmF0aW9uX21zGAUgASgBEhoKEmF0dHJpYnV0ZXNfZHJvcHBlZBgGIAEoBCLAAQobR2V0VGVsZW1ldHJ5U3VtbWFyeVJlc3BvbnNlEjsKCHNlcnZpY2VzGAEgAygLMikud29ya29zLmluY2lkZW50LnYxLlRlbGVtZXRyeVNlcnZpY2VTdGF0cxIWCg5zcGFuc19vYnNlcnZlZBgCIAEoBBIaChJhdHRyaWJ1dGVzX2Ryb3BwZWQYAyABKAQSMAoMZ2VuZXJhdGVkX2F0GAQgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcCqQAQoQSW5jaWRlbnRTZXZlcml0eRIhCh1JTkNJREVOVF9TRVZFUklUWV9VTlNQRUNJRklFRBAAEhoKFklOQ0lERU5UX1NFVkVSSVRZX0lORk8QARIdChlJTkNJREVOVF9TRVZFUklUWV9XQVJOSU5HEAISHgoaSU5DSURFTlRfU0VWRVJJVFlfQ1JJVElDQUwQAyqhAQoNSW5jaWRlbnRTdGF0ZRIeChpJTkNJREVOVF9TVEFURV9VTlNQRUNJRklFRBAAEhcKE0lOQ0lERU5UX1NUQVRFX09QRU4QARIcChhJTkNJREVOVF9TVEFURV9NSVRJR0FURUQQAhIcChhJTkNJREVOVF9TVEFURV9SRVBBSVJJTkcQAxIbChdJTkNJREVOVF9TVEFURV9SRVNPTFZFRBAEKvUBChFJbmNpZGVudFZpb2xhdGlvbhIiCh5JTkNJREVOVF9WSU9MQVRJT05fVU5TUEVDSUZJRUQQABImCiJJTkNJREVOVF9WSU9MQVRJT05fVU5FWFBFQ1RFRF9FWElUEAESJQohSU5DSURFTlRfVklPTEFUSU9OX0hFQUxUSF9GQUlMVVJFEAISGgoWSU5DSURFTlRfVklPTEFUSU9OX09PTRADEiEKHUlOQ0lERU5UX1ZJT0xBVElPTl9QSURTX0xJTUlUEAQSLgoqSU5DSURFTlRfVklPTEFUSU9OX1JFU1RBUlRfTElNSVRfRVhIQVVTVEVEEAUq2wEKFkluY2lkZW50UmVzdGFydE91dGNvbWUSKAokSU5DSURFTlRfUkVTVEFSVF9PVVRDT01FX1VOU1BFQ0lGSUVEEAASJAogSU5DSURFTlRfUkVTVEFSVF9PVVRDT01FX1BFTkRJTkcQARImCiJJTkNJREVOVF9SRVNUQVJUX09VVENPTUVfUkVTVEFSVEVEEAISJAogSU5DSURFTlRfUkVTVEFSVF9PVVRDT01FX1NUT1BQRUQQAxIjCh9JTkNJREVOVF9SRVNUQVJUX09VVENPTUVfRkFJTEVEEAQyzwMKD0luY2lkZW50U2VydmljZRJgCgtHZXRJbmNpZGVudBImLndvcmtvcy5pbmNpZGVudC52MS5HZXRJbmNpZGVudFJlcXVlc3QaJy53b3Jrb3MuaW5jaWRlbnQudjEuR2V0SW5jaWRlbnRSZXNwb25zZSIAEmYKDUxpc3RJbmNpZGVudHMSKC53b3Jrb3MuaW5jaWRlbnQudjEuTGlzdEluY2lkZW50c1JlcXVlc3QaKS53b3Jrb3MuaW5jaWRlbnQudjEuTGlzdEluY2lkZW50c1Jlc3BvbnNlIgASeAoTQWNrbm93bGVkZ2VJbmNpZGVudBIuLndvcmtvcy5pbmNpZGVudC52MS5BY2tub3dsZWRnZUluY2lkZW50UmVxdWVzdBovLndvcmtvcy5pbmNpZGVudC52MS5BY2tub3dsZWRnZUluY2lkZW50UmVzcG9uc2UiABJ4ChNHZXRUZWxlbWV0cnlTdW1tYXJ5Ei4ud29ya29zLmluY2lkZW50LnYxLkdldFRlbGVtZXRyeVN1bW1hcnlSZXF1ZXN0Gi8ud29ya29zLmluY2lkZW50LnYxLkdldFRlbGVtZXRyeVN1bW1hcnlSZXNwb25zZSIAQkNaQWdpdGh1Yi5jb20veWFuZ3RhbzEyMS93b3Jrb3MvZ2VuL2dvL3dvcmtvcy9pbmNpZGVudC92MTtpbmNpZGVudHYxYgZwcm90bzM", [file_google_protobuf_timestamp, file_workos_common_v1_common]);
 
 /**
  * @generated from message workos.incident.v1.EvidenceRef
@@ -285,6 +285,95 @@ export const AcknowledgeIncidentResponseSchema: GenMessage<AcknowledgeIncidentRe
   messageDesc(file_workos_incident_v1_incident, 7);
 
 /**
+ * @generated from message workos.incident.v1.GetTelemetrySummaryRequest
+ */
+export type GetTelemetrySummaryRequest = Message<"workos.incident.v1.GetTelemetrySummaryRequest"> & {
+};
+
+/**
+ * Describes the message workos.incident.v1.GetTelemetrySummaryRequest.
+ * Use `create(GetTelemetrySummaryRequestSchema)` to create a new message.
+ */
+export const GetTelemetrySummaryRequestSchema: GenMessage<GetTelemetrySummaryRequest> = /*@__PURE__*/
+  messageDesc(file_workos_incident_v1_incident, 8);
+
+/**
+ * @generated from message workos.incident.v1.TelemetryServiceStats
+ */
+export type TelemetryServiceStats = Message<"workos.incident.v1.TelemetryServiceStats"> & {
+  /**
+   * @generated from field: string service = 1;
+   */
+  service: string;
+
+  /**
+   * @generated from field: uint64 span_count = 2;
+   */
+  spanCount: bigint;
+
+  /**
+   * @generated from field: uint64 error_count = 3;
+   */
+  errorCount: bigint;
+
+  /**
+   * @generated from field: double avg_duration_ms = 4;
+   */
+  avgDurationMs: number;
+
+  /**
+   * @generated from field: double max_duration_ms = 5;
+   */
+  maxDurationMs: number;
+
+  /**
+   * @generated from field: uint64 attributes_dropped = 6;
+   */
+  attributesDropped: bigint;
+};
+
+/**
+ * Describes the message workos.incident.v1.TelemetryServiceStats.
+ * Use `create(TelemetryServiceStatsSchema)` to create a new message.
+ */
+export const TelemetryServiceStatsSchema: GenMessage<TelemetryServiceStats> = /*@__PURE__*/
+  messageDesc(file_workos_incident_v1_incident, 9);
+
+/**
+ * @generated from message workos.incident.v1.GetTelemetrySummaryResponse
+ */
+export type GetTelemetrySummaryResponse = Message<"workos.incident.v1.GetTelemetrySummaryResponse"> & {
+  /**
+   * @generated from field: repeated workos.incident.v1.TelemetryServiceStats services = 1;
+   */
+  services: TelemetryServiceStats[];
+
+  /**
+   * Bounded derivation facts, never raw telemetry content.
+   *
+   * @generated from field: uint64 spans_observed = 2;
+   */
+  spansObserved: bigint;
+
+  /**
+   * @generated from field: uint64 attributes_dropped = 3;
+   */
+  attributesDropped: bigint;
+
+  /**
+   * @generated from field: google.protobuf.Timestamp generated_at = 4;
+   */
+  generatedAt?: Timestamp | undefined;
+};
+
+/**
+ * Describes the message workos.incident.v1.GetTelemetrySummaryResponse.
+ * Use `create(GetTelemetrySummaryResponseSchema)` to create a new message.
+ */
+export const GetTelemetrySummaryResponseSchema: GenMessage<GetTelemetrySummaryResponse> = /*@__PURE__*/
+  messageDesc(file_workos_incident_v1_incident, 10);
+
+/**
  * @generated from enum workos.incident.v1.IncidentSeverity
  */
 export enum IncidentSeverity {
@@ -455,6 +544,20 @@ export const IncidentService: GenService<{
     methodKind: "unary";
     input: typeof AcknowledgeIncidentRequestSchema;
     output: typeof AcknowledgeIncidentResponseSchema;
+  },
+  /**
+   * GetTelemetrySummary returns the sanitized, aggregated real telemetry the
+   * reliability-host collector component derived from the OTel collector
+   * export (ADR-0016 section 4). Bounded numeric facts only: per-service span
+   * counts, error counts, and durations. Raw spans, log bodies, user content,
+   * goals, and credential material never reach this projection.
+   *
+   * @generated from rpc workos.incident.v1.IncidentService.GetTelemetrySummary
+   */
+  getTelemetrySummary: {
+    methodKind: "unary";
+    input: typeof GetTelemetrySummaryRequestSchema;
+    output: typeof GetTelemetrySummaryResponseSchema;
   },
 }> = /*@__PURE__*/
   serviceDesc(file_workos_incident_v1_incident, 0);

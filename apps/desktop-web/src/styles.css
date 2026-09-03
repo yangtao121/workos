@@ -1882,3 +1882,44 @@ button {
   flex-direction: column;
   gap: 6px;
 }
+
+/* ADR-0016: real telemetry aggregates inside System Monitor. */
+.telemetry-section {
+  margin: 0 0 16px;
+  padding: 12px;
+  border: 1px solid var(--workos-border, #d7d2e8);
+  border-radius: 8px;
+  background: var(--workos-panel, #faf9fd);
+}
+
+.telemetry-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.telemetry-head h2 {
+  margin: 0;
+  font-size: 15px;
+}
+
+.telemetry-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.telemetry-table th,
+.telemetry-table td {
+  padding: 4px 8px;
+  text-align: left;
+  border-bottom: 1px solid var(--workos-border, #e6e2f0);
+}
+
+.telemetry-table caption {
+  text-align: left;
+  padding: 4px 0;
+  caption-side: bottom;
+}

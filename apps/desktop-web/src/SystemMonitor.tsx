@@ -8,6 +8,7 @@ import {
   IncidentState,
   IncidentViolation,
   type Incident,
+  type TelemetryServiceStats,
 } from "@workos/protocol";
 
 // System Monitor is the minimal, non-permanent reliability window: it lists
@@ -235,6 +236,7 @@ export function SystemMonitor({
   }
   return (
     <div className="system-monitor-body">
+      <TelemetrySection workosClients={workosClients} />
       {notice ? (
         <p className="error-toast" role="alert">
           {notice}
@@ -395,4 +397,93 @@ function outcomeLabel(outcome: IncidentRestartOutcome): string {
     default:
       return "No action yet";
   }
+}
+
+// TelemetrySection (ADR-0016 §4): the real, sanitized telemetry aggregates
+// the reliability collector derives from the OpenTelemetry collector's
+// export — per-service span counts, error counts, and durations. Bounded
+// numeric facts only: no spans, attribute maps, log bodies, or user content
+// are reachable from this view.
+function TelemetrySection({ workosClients }: { workosClients: WorkOSClients }) {
+  const [state, setState] = useState<"hidden" | "loading" | "ready" | "unavailable">("loading");
+  const [services, setServices] = useState<TelemetryServiceStats[]>([]);
+  const [spansObserved, setSpansObserved] = useState(0);
+  const [attributesDropped, setAttributesDropped] = useState(0);
+  const attempt = useRef(0);
+
+  const load = useCallback(() => {
+    if (typeof workosClients.incidents.getTelemetrySummary !== "function") {
+      setState("unavailable");
+      return;
+    }
+    const current = ++attempt.current;
+    setState("loading");
+    void workosClients.incidents
+      .getTelemetrySummary({})
+      .then((response) => {
+        if (attempt.current !== current) return;
+        setServices(response.services);
+        setSpansObserved(Number(response.spansObserved));
+        setAttributesDropped(Number(response.attributesDropped));
+        setState("ready");
+      })
+      .catch(() => {
+        if (attempt.current !== current) return;
+        setState("unavailable");
+      });
+  }, [workosClients]);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  if (state === "unavailable") {
+    return null;
+  }
+  return (
+    <section className="telemetry-section" aria-label="Telemetry">
+      <div className="telemetry-head">
+        <h2>Telemetry</h2>
+        <Button onClick={load} type="button">
+          Refresh telemetry
+        </Button>
+      </div>
+      {state === "loading" ? (
+        <p className="empty-state">Loading telemetry…</p>
+      ) : services.length === 0 ? (
+        <p className="empty-state">No telemetry aggregates yet.</p>
+      ) : (
+        <table className="telemetry-table">
+          <caption className="empty-state">
+            {spansObserved} spans observed
+            {attributesDropped > 0
+              ? `, ${attributesDropped} attributes dropped by the in-process budget`
+              : ""}
+          </caption>
+          <thead>
+            <tr>
+              <th scope="col">Service</th>
+              <th scope="col">Spans</th>
+              <th scope="col">Errors</th>
+              <th scope="col">Avg ms</th>
+              <th scope="col">Max ms</th>
+              <th scope="col">Dropped attrs</th>
+            </tr>
+          </thead>
+          <tbody>
+            {services.map((service) => (
+              <tr key={service.service}>
+                <td>{service.service}</td>
+                <td>{Number(service.spanCount)}</td>
+                <td>{Number(service.errorCount)}</td>
+                <td>{service.avgDurationMs.toFixed(1)}</td>
+                <td>{service.maxDurationMs.toFixed(1)}</td>
+                <td>{Number(service.attributesDropped)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </section>
+  );
 }

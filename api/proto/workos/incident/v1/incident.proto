@@ -90,6 +90,31 @@ service IncidentService {
   rpc GetIncident(GetIncidentRequest) returns (GetIncidentResponse) {}
   rpc ListIncidents(ListIncidentsRequest) returns (ListIncidentsResponse) {}
   rpc AcknowledgeIncident(AcknowledgeIncidentRequest) returns (AcknowledgeIncidentResponse) {}
+  // GetTelemetrySummary returns the sanitized, aggregated real telemetry the
+  // reliability-host collector component derived from the OTel collector
+  // export (ADR-0016 section 4). Bounded numeric facts only: per-service span
+  // counts, error counts, and durations. Raw spans, log bodies, user content,
+  // goals, and credential material never reach this projection.
+  rpc GetTelemetrySummary(GetTelemetrySummaryRequest) returns (GetTelemetrySummaryResponse) {}
+}
+
+message GetTelemetrySummaryRequest {}
+
+message TelemetryServiceStats {
+  string service = 1;
+  uint64 span_count = 2;
+  uint64 error_count = 3;
+  double avg_duration_ms = 4;
+  double max_duration_ms = 5;
+  uint64 attributes_dropped = 6;
+}
+
+message GetTelemetrySummaryResponse {
+  repeated TelemetryServiceStats services = 1;
+  // Bounded derivation facts, never raw telemetry content.
+  uint64 spans_observed = 2;
+  uint64 attributes_dropped = 3;
+  google.protobuf.Timestamp generated_at = 4;
 }
 
 // ---------------------------------------------------------------------------

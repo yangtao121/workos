@@ -42,6 +42,9 @@ const (
 	// IncidentServiceAcknowledgeIncidentProcedure is the fully-qualified name of the IncidentService's
 	// AcknowledgeIncident RPC.
 	IncidentServiceAcknowledgeIncidentProcedure = "/workos.incident.v1.IncidentService/AcknowledgeIncident"
+	// IncidentServiceGetTelemetrySummaryProcedure is the fully-qualified name of the IncidentService's
+	// GetTelemetrySummary RPC.
+	IncidentServiceGetTelemetrySummaryProcedure = "/workos.incident.v1.IncidentService/GetTelemetrySummary"
 )
 
 // IncidentServiceClient is a client for the workos.incident.v1.IncidentService service.
@@ -49,6 +52,12 @@ type IncidentServiceClient interface {
 	GetIncident(context.Context, *connect.Request[v1.GetIncidentRequest]) (*connect.Response[v1.GetIncidentResponse], error)
 	ListIncidents(context.Context, *connect.Request[v1.ListIncidentsRequest]) (*connect.Response[v1.ListIncidentsResponse], error)
 	AcknowledgeIncident(context.Context, *connect.Request[v1.AcknowledgeIncidentRequest]) (*connect.Response[v1.AcknowledgeIncidentResponse], error)
+	// GetTelemetrySummary returns the sanitized, aggregated real telemetry the
+	// reliability-host collector component derived from the OTel collector
+	// export (ADR-0016 section 4). Bounded numeric facts only: per-service span
+	// counts, error counts, and durations. Raw spans, log bodies, user content,
+	// goals, and credential material never reach this projection.
+	GetTelemetrySummary(context.Context, *connect.Request[v1.GetTelemetrySummaryRequest]) (*connect.Response[v1.GetTelemetrySummaryResponse], error)
 }
 
 // NewIncidentServiceClient constructs a client for the workos.incident.v1.IncidentService service.
@@ -80,6 +89,12 @@ func NewIncidentServiceClient(httpClient connect.HTTPClient, baseURL string, opt
 			connect.WithSchema(incidentServiceMethods.ByName("AcknowledgeIncident")),
 			connect.WithClientOptions(opts...),
 		),
+		getTelemetrySummary: connect.NewClient[v1.GetTelemetrySummaryRequest, v1.GetTelemetrySummaryResponse](
+			httpClient,
+			baseURL+IncidentServiceGetTelemetrySummaryProcedure,
+			connect.WithSchema(incidentServiceMethods.ByName("GetTelemetrySummary")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -88,6 +103,7 @@ type incidentServiceClient struct {
 	getIncident         *connect.Client[v1.GetIncidentRequest, v1.GetIncidentResponse]
 	listIncidents       *connect.Client[v1.ListIncidentsRequest, v1.ListIncidentsResponse]
 	acknowledgeIncident *connect.Client[v1.AcknowledgeIncidentRequest, v1.AcknowledgeIncidentResponse]
+	getTelemetrySummary *connect.Client[v1.GetTelemetrySummaryRequest, v1.GetTelemetrySummaryResponse]
 }
 
 // GetIncident calls workos.incident.v1.IncidentService.GetIncident.
@@ -105,11 +121,22 @@ func (c *incidentServiceClient) AcknowledgeIncident(ctx context.Context, req *co
 	return c.acknowledgeIncident.CallUnary(ctx, req)
 }
 
+// GetTelemetrySummary calls workos.incident.v1.IncidentService.GetTelemetrySummary.
+func (c *incidentServiceClient) GetTelemetrySummary(ctx context.Context, req *connect.Request[v1.GetTelemetrySummaryRequest]) (*connect.Response[v1.GetTelemetrySummaryResponse], error) {
+	return c.getTelemetrySummary.CallUnary(ctx, req)
+}
+
 // IncidentServiceHandler is an implementation of the workos.incident.v1.IncidentService service.
 type IncidentServiceHandler interface {
 	GetIncident(context.Context, *connect.Request[v1.GetIncidentRequest]) (*connect.Response[v1.GetIncidentResponse], error)
 	ListIncidents(context.Context, *connect.Request[v1.ListIncidentsRequest]) (*connect.Response[v1.ListIncidentsResponse], error)
 	AcknowledgeIncident(context.Context, *connect.Request[v1.AcknowledgeIncidentRequest]) (*connect.Response[v1.AcknowledgeIncidentResponse], error)
+	// GetTelemetrySummary returns the sanitized, aggregated real telemetry the
+	// reliability-host collector component derived from the OTel collector
+	// export (ADR-0016 section 4). Bounded numeric facts only: per-service span
+	// counts, error counts, and durations. Raw spans, log bodies, user content,
+	// goals, and credential material never reach this projection.
+	GetTelemetrySummary(context.Context, *connect.Request[v1.GetTelemetrySummaryRequest]) (*connect.Response[v1.GetTelemetrySummaryResponse], error)
 }
 
 // NewIncidentServiceHandler builds an HTTP handler from the service implementation. It returns the
@@ -137,6 +164,12 @@ func NewIncidentServiceHandler(svc IncidentServiceHandler, opts ...connect.Handl
 		connect.WithSchema(incidentServiceMethods.ByName("AcknowledgeIncident")),
 		connect.WithHandlerOptions(opts...),
 	)
+	incidentServiceGetTelemetrySummaryHandler := connect.NewUnaryHandler(
+		IncidentServiceGetTelemetrySummaryProcedure,
+		svc.GetTelemetrySummary,
+		connect.WithSchema(incidentServiceMethods.ByName("GetTelemetrySummary")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/workos.incident.v1.IncidentService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case IncidentServiceGetIncidentProcedure:
@@ -145,6 +178,8 @@ func NewIncidentServiceHandler(svc IncidentServiceHandler, opts ...connect.Handl
 			incidentServiceListIncidentsHandler.ServeHTTP(w, r)
 		case IncidentServiceAcknowledgeIncidentProcedure:
 			incidentServiceAcknowledgeIncidentHandler.ServeHTTP(w, r)
+		case IncidentServiceGetTelemetrySummaryProcedure:
+			incidentServiceGetTelemetrySummaryHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -164,4 +199,8 @@ func (UnimplementedIncidentServiceHandler) ListIncidents(context.Context, *conne
 
 func (UnimplementedIncidentServiceHandler) AcknowledgeIncident(context.Context, *connect.Request[v1.AcknowledgeIncidentRequest]) (*connect.Response[v1.AcknowledgeIncidentResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("workos.incident.v1.IncidentService.AcknowledgeIncident is not implemented"))
+}
+
+func (UnimplementedIncidentServiceHandler) GetTelemetrySummary(context.Context, *connect.Request[v1.GetTelemetrySummaryRequest]) (*connect.Response[v1.GetTelemetrySummaryResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("workos.incident.v1.IncidentService.GetTelemetrySummary is not implemented"))
 }

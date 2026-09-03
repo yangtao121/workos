@@ -523,6 +523,19 @@ test-real-supervision: e2e-image
 		$(GO_HOST_RUN) go test -tags='integration realsupervision' -count=1 -run '^TestRealSupervisionChain$$' -v ./tests/integration; \
 		echo "test-real-supervision: PASS"
 
+# The telemetry gate (ADR-0016 §4): the six-process stack exporting OTLP to
+# the collector, whose file export feeds the reliability collector component.
+# Proves real traffic produces real sanitized aggregates (per-service spans,
+# errors, durations), that the in-process attribute budget bounds the export,
+# and that the summary projection stays a numeric whitelist - the submitted
+# goal marker never appears.
+test-telemetry: e2e-image
+	@set -eu; \
+		WORKOS_UID="$$(id -u)" WORKOS_GID="$$(id -g)" \
+		docker compose -f compose.yaml -f deploy/compose.observability.yaml up -d --build --force-recreate postgres bootstrap otel-collector workos-core harness-host runtime-host reliability-host indexer workos-gateway; \
+		$(GO_HOST_RUN) go test -tags='integration telemetryfixture' -count=1 -run '^TestTelemetryPipeline$$' -v ./tests/integration; \
+		echo "test-telemetry: PASS"
+
 e2e-image:
 	docker build \
 		--build-arg DEBIAN_MIRROR=$(DEBIAN_MIRROR) \

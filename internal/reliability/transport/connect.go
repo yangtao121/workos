@@ -28,12 +28,15 @@ import (
 
 // IncidentHandler exposes the public IncidentService.
 type IncidentHandler struct {
-	service *application.IncidentService
+	service   *application.IncidentService
+	telemetry *application.TelemetryAggregator
 }
 
-// NewIncidentConnectHandler wires the public transport.
-func NewIncidentConnectHandler(service *application.IncidentService) (string, http.Handler) {
-	return incidentv1connect.NewIncidentServiceHandler(&IncidentHandler{service: service})
+// NewIncidentConnectHandler wires the public transport. The telemetry
+// aggregator is optional: without a configured export source the telemetry
+// summary honestly reports empty (ADR-0016 §4).
+func NewIncidentConnectHandlerWithTelemetry(service *application.IncidentService, telemetry *application.TelemetryAggregator) (string, http.Handler) {
+	return incidentv1connect.NewIncidentServiceHandler(&IncidentHandler{service: service, telemetry: telemetry})
 }
 
 func (h *IncidentHandler) GetIncident(ctx context.Context, req *connect.Request[incidentv1.GetIncidentRequest]) (*connect.Response[incidentv1.GetIncidentResponse], error) {
@@ -298,4 +301,36 @@ func stateFromProto(state workloadv1.SupervisedWorkloadState) ports.WorkloadStat
 	default:
 		return ports.StateUnknown
 	}
+}
+
+// GetTelemetrySummary serves the sanitized per-service telemetry aggregates
+// (ADR-0016 §4). The projection is bounded numeric facts only: span counts,
+// error counts, and durations per service. No spans, attribute maps, log
+// bodies, goals, or user content are reachable through it.
+func (h *IncidentHandler) GetTelemetrySummary(ctx context.Context, req *connect.Request[incidentv1.GetTelemetrySummaryRequest]) (*connect.Response[incidentv1.GetTelemetrySummaryResponse], error) {
+	if _, err := identity.FromContext(ctx); err != nil {
+		return nil, connect.NewError(connect.CodeUnauthenticated, err)
+	}
+	if h.telemetry == nil {
+		return connect.NewResponse(&incidentv1.GetTelemetrySummaryResponse{
+			GeneratedAt: timestamppb.New(time.Now().UTC()),
+		}), nil
+	}
+	snapshot := h.telemetry.Summary(ctx)
+	response := &incidentv1.GetTelemetrySummaryResponse{
+		SpansObserved:     snapshot.SpansObserved,
+		AttributesDropped: snapshot.AttributesDropped,
+		GeneratedAt:       timestamppb.New(snapshot.GeneratedAt),
+	}
+	for _, stats := range snapshot.Services {
+		response.Services = append(response.Services, &incidentv1.TelemetryServiceStats{
+			Service:           stats.Service,
+			SpanCount:         stats.SpanCount,
+			ErrorCount:        stats.ErrorCount,
+			AvgDurationMs:     stats.AvgDurationMS,
+			MaxDurationMs:     stats.MaxDurationMS,
+			AttributesDropped: stats.AttributesDropped,
+		})
+	}
+	return connect.NewResponse(response), nil
 }

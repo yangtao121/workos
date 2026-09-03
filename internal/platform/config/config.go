@@ -85,6 +85,10 @@ type Surface struct {
 // keeps the SDK disabled, so local development has no hidden dependency.
 type Telemetry struct {
 	OTLPEndpoint string `yaml:"otlp_endpoint"`
+	// TelemetryFile is the reliability-host collector component's source:
+	// the OpenTelemetry collector's file export of already-trimmed spans
+	// (ADR-0016 §4). Empty means telemetry aggregation is unavailable.
+	TelemetryFile string `yaml:"telemetry_file"`
 }
 
 type HTTP struct {
@@ -340,6 +344,7 @@ func Load() (Config, error) {
 	setString(&cfg.Harness.DeepSeek.RuntimePath, "WORKOS_DEEPSEEK_RUNTIME_PATH")
 	setString(&cfg.Harness.DeepSeek.CordisConfigPath, "WORKOS_DEEPSEEK_CORDIS_CONFIG")
 	setString(&cfg.Telemetry.OTLPEndpoint, "OTEL_EXPORTER_OTLP_ENDPOINT")
+	setString(&cfg.Telemetry.TelemetryFile, "WORKOS_TELEMETRY_FILE")
 	if raw, ok := os.LookupEnv("WORKOS_DEEPSEEK_ENABLED"); ok {
 		value, err := strconv.ParseBool(raw)
 		if err != nil {

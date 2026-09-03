@@ -2,10 +2,14 @@ package telemetry
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
+
+	"go.opentelemetry.io/otel/attribute"
 )
 
 func TestSetupWithOTLPEndpoint(t *testing.T) {
@@ -54,5 +58,34 @@ func TestTelemetryFiltersProbeAndEmptyLeasePolling(t *testing.T) {
 	request := httptest.NewRequest(http.MethodPost, "/workos.agent.v1.AgentTaskService/SubmitTask", nil)
 	if !shouldTrace(request) {
 		t.Fatal("expected user-facing operation to be traced")
+	}
+}
+
+// ADR-0016 §4: the export budget is enforced before any span leaves the
+// process. The trim helper drops set overflow, truncates oversized string
+// values, and reports how many attributes were dropped outright.
+func TestTrimSpanAttributesEnforcesBudget(t *testing.T) {
+	attributes := make([]attribute.KeyValue, 0, MaxSpanAttributes+10)
+	for index := 0; index < MaxSpanAttributes+10; index++ {
+		attributes = append(attributes, attribute.Int(fmt.Sprintf("attr.%03d", index), index))
+	}
+	kept, dropped := trimSpanAttributes(attributes)
+	if len(kept) != MaxSpanAttributes || dropped != 10 {
+		t.Fatalf("set budget: kept=%d dropped=%d", len(kept), dropped)
+	}
+
+	oversize := []attribute.KeyValue{
+		attribute.String("workos.goal", strings.Repeat("secret-goal-", 100)),
+		attribute.String("rpc.method", "SubmitTask"),
+	}
+	kept, dropped = trimSpanAttributes(oversize)
+	if dropped != 0 || len(kept) != 2 {
+		t.Fatalf("unexpected drop: kept=%d dropped=%d", len(kept), dropped)
+	}
+	if got := kept[0].Value.AsString(); len(got) != MaxAttributeValueBytes {
+		t.Fatalf("oversize value not truncated: %d bytes", len(got))
+	}
+	if got := kept[1].Value.AsString(); got != "SubmitTask" {
+		t.Fatalf("bounded value was mutated: %q", got)
 	}
 }

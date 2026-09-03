@@ -2,14 +2,21 @@ receivers:
   otlp:
     protocols:
       http:
-        endpoint: 127.0.0.1:4318
+        endpoint: 0.0.0.0:4318
 
 exporters:
   debug:
     verbosity: basic
+  # ADR-0016 §4: the file export is the bounded feed the reliability-host
+  # collector component aggregates into the sanitized telemetry summary. It
+  # contains only trimmed spans: attribute sets and values were bounded
+  # in-process before export.
+  file/telemetry:
+    path: /var/lib/workos-telemetry/telemetry.jsonl
+    flush_interval: 1s
 
 service:
   pipelines:
     traces:
       receivers: [otlp]
-      exporters: [debug]
+      exporters: [debug, file/telemetry]

@@ -1,11 +1,17 @@
 services:
   otel-collector:
-    image: otel/opentelemetry-collector:0.135.0
+    image: otel/opentelemetry-collector-contrib:0.135.0
     network_mode: host
+    # The telemetry feed volume is root-owned; the collector writes as root
+    # and the file mode stays world-readable so the reliability-host reader
+    # (uid 10001) can consume it read-only.
+    user: "0:0"
     command: ["--config=/etc/otelcol/config.yaml"]
     volumes:
       - ./deploy/otel-collector.yaml:/etc/otelcol/config.yaml:ro
+      - workos-telemetry:/var/lib/workos-telemetry
     restart: unless-stopped
+
 
   workos-gateway:
     environment:
@@ -38,6 +44,9 @@ services:
   reliability-host:
     environment:
       OTEL_EXPORTER_OTLP_ENDPOINT: http://127.0.0.1:4318
+      WORKOS_TELEMETRY_FILE: /var/lib/workos-telemetry/telemetry.jsonl
+    volumes:
+      - workos-telemetry:/var/lib/workos-telemetry:ro
     depends_on:
       otel-collector:
         condition: service_started
@@ -48,3 +57,6 @@ services:
     depends_on:
       otel-collector:
         condition: service_started
+
+volumes:
+  workos-telemetry:

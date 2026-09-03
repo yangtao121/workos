@@ -795,6 +795,195 @@ func (x *AcknowledgeIncidentResponse) GetIncident() *Incident {
 	return nil
 }
 
+type GetTelemetrySummaryRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetTelemetrySummaryRequest) Reset() {
+	*x = GetTelemetrySummaryRequest{}
+	mi := &file_workos_incident_v1_incident_proto_msgTypes[8]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetTelemetrySummaryRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetTelemetrySummaryRequest) ProtoMessage() {}
+
+func (x *GetTelemetrySummaryRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_workos_incident_v1_incident_proto_msgTypes[8]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetTelemetrySummaryRequest.ProtoReflect.Descriptor instead.
+func (*GetTelemetrySummaryRequest) Descriptor() ([]byte, []int) {
+	return file_workos_incident_v1_incident_proto_rawDescGZIP(), []int{8}
+}
+
+type TelemetryServiceStats struct {
+	state             protoimpl.MessageState `protogen:"open.v1"`
+	Service           string                 `protobuf:"bytes,1,opt,name=service,proto3" json:"service,omitempty"`
+	SpanCount         uint64                 `protobuf:"varint,2,opt,name=span_count,json=spanCount,proto3" json:"span_count,omitempty"`
+	ErrorCount        uint64                 `protobuf:"varint,3,opt,name=error_count,json=errorCount,proto3" json:"error_count,omitempty"`
+	AvgDurationMs     float64                `protobuf:"fixed64,4,opt,name=avg_duration_ms,json=avgDurationMs,proto3" json:"avg_duration_ms,omitempty"`
+	MaxDurationMs     float64                `protobuf:"fixed64,5,opt,name=max_duration_ms,json=maxDurationMs,proto3" json:"max_duration_ms,omitempty"`
+	AttributesDropped uint64                 `protobuf:"varint,6,opt,name=attributes_dropped,json=attributesDropped,proto3" json:"attributes_dropped,omitempty"`
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
+}
+
+func (x *TelemetryServiceStats) Reset() {
+	*x = TelemetryServiceStats{}
+	mi := &file_workos_incident_v1_incident_proto_msgTypes[9]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *TelemetryServiceStats) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*TelemetryServiceStats) ProtoMessage() {}
+
+func (x *TelemetryServiceStats) ProtoReflect() protoreflect.Message {
+	mi := &file_workos_incident_v1_incident_proto_msgTypes[9]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use TelemetryServiceStats.ProtoReflect.Descriptor instead.
+func (*TelemetryServiceStats) Descriptor() ([]byte, []int) {
+	return file_workos_incident_v1_incident_proto_rawDescGZIP(), []int{9}
+}
+
+func (x *TelemetryServiceStats) GetService() string {
+	if x != nil {
+		return x.Service
+	}
+	return ""
+}
+
+func (x *TelemetryServiceStats) GetSpanCount() uint64 {
+	if x != nil {
+		return x.SpanCount
+	}
+	return 0
+}
+
+func (x *TelemetryServiceStats) GetErrorCount() uint64 {
+	if x != nil {
+		return x.ErrorCount
+	}
+	return 0
+}
+
+func (x *TelemetryServiceStats) GetAvgDurationMs() float64 {
+	if x != nil {
+		return x.AvgDurationMs
+	}
+	return 0
+}
+
+func (x *TelemetryServiceStats) GetMaxDurationMs() float64 {
+	if x != nil {
+		return x.MaxDurationMs
+	}
+	return 0
+}
+
+func (x *TelemetryServiceStats) GetAttributesDropped() uint64 {
+	if x != nil {
+		return x.AttributesDropped
+	}
+	return 0
+}
+
+type GetTelemetrySummaryResponse struct {
+	state    protoimpl.MessageState   `protogen:"open.v1"`
+	Services []*TelemetryServiceStats `protobuf:"bytes,1,rep,name=services,proto3" json:"services,omitempty"`
+	// Bounded derivation facts, never raw telemetry content.
+	SpansObserved     uint64                 `protobuf:"varint,2,opt,name=spans_observed,json=spansObserved,proto3" json:"spans_observed,omitempty"`
+	AttributesDropped uint64                 `protobuf:"varint,3,opt,name=attributes_dropped,json=attributesDropped,proto3" json:"attributes_dropped,omitempty"`
+	GeneratedAt       *timestamppb.Timestamp `protobuf:"bytes,4,opt,name=generated_at,json=generatedAt,proto3" json:"generated_at,omitempty"`
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
+}
+
+func (x *GetTelemetrySummaryResponse) Reset() {
+	*x = GetTelemetrySummaryResponse{}
+	mi := &file_workos_incident_v1_incident_proto_msgTypes[10]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetTelemetrySummaryResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetTelemetrySummaryResponse) ProtoMessage() {}
+
+func (x *GetTelemetrySummaryResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_workos_incident_v1_incident_proto_msgTypes[10]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetTelemetrySummaryResponse.ProtoReflect.Descriptor instead.
+func (*GetTelemetrySummaryResponse) Descriptor() ([]byte, []int) {
+	return file_workos_incident_v1_incident_proto_rawDescGZIP(), []int{10}
+}
+
+func (x *GetTelemetrySummaryResponse) GetServices() []*TelemetryServiceStats {
+	if x != nil {
+		return x.Services
+	}
+	return nil
+}
+
+func (x *GetTelemetrySummaryResponse) GetSpansObserved() uint64 {
+	if x != nil {
+		return x.SpansObserved
+	}
+	return 0
+}
+
+func (x *GetTelemetrySummaryResponse) GetAttributesDropped() uint64 {
+	if x != nil {
+		return x.AttributesDropped
+	}
+	return 0
+}
+
+func (x *GetTelemetrySummaryResponse) GetGeneratedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.GeneratedAt
+	}
+	return nil
+}
+
 var File_workos_incident_v1_incident_proto protoreflect.FileDescriptor
 
 const file_workos_incident_v1_incident_proto_rawDesc = "" +
@@ -848,7 +1037,22 @@ const file_workos_incident_v1_incident_proto_rawDesc = "" +
 	"\x13GetIncidentResponse\x128\n" +
 	"\bincident\x18\x01 \x01(\v2\x1c.workos.incident.v1.IncidentR\bincident\"W\n" +
 	"\x1bAcknowledgeIncidentResponse\x128\n" +
-	"\bincident\x18\x01 \x01(\v2\x1c.workos.incident.v1.IncidentR\bincident*\x90\x01\n" +
+	"\bincident\x18\x01 \x01(\v2\x1c.workos.incident.v1.IncidentR\bincident\"\x1c\n" +
+	"\x1aGetTelemetrySummaryRequest\"\xf0\x01\n" +
+	"\x15TelemetryServiceStats\x12\x18\n" +
+	"\aservice\x18\x01 \x01(\tR\aservice\x12\x1d\n" +
+	"\n" +
+	"span_count\x18\x02 \x01(\x04R\tspanCount\x12\x1f\n" +
+	"\verror_count\x18\x03 \x01(\x04R\n" +
+	"errorCount\x12&\n" +
+	"\x0favg_duration_ms\x18\x04 \x01(\x01R\ravgDurationMs\x12&\n" +
+	"\x0fmax_duration_ms\x18\x05 \x01(\x01R\rmaxDurationMs\x12-\n" +
+	"\x12attributes_dropped\x18\x06 \x01(\x04R\x11attributesDropped\"\xf9\x01\n" +
+	"\x1bGetTelemetrySummaryResponse\x12E\n" +
+	"\bservices\x18\x01 \x03(\v2).workos.incident.v1.TelemetryServiceStatsR\bservices\x12%\n" +
+	"\x0espans_observed\x18\x02 \x01(\x04R\rspansObserved\x12-\n" +
+	"\x12attributes_dropped\x18\x03 \x01(\x04R\x11attributesDropped\x12=\n" +
+	"\fgenerated_at\x18\x04 \x01(\v2\x1a.google.protobuf.TimestampR\vgeneratedAt*\x90\x01\n" +
 	"\x10IncidentSeverity\x12!\n" +
 	"\x1dINCIDENT_SEVERITY_UNSPECIFIED\x10\x00\x12\x1a\n" +
 	"\x16INCIDENT_SEVERITY_INFO\x10\x01\x12\x1d\n" +
@@ -872,11 +1076,12 @@ const file_workos_incident_v1_incident_proto_rawDesc = "" +
 	" INCIDENT_RESTART_OUTCOME_PENDING\x10\x01\x12&\n" +
 	"\"INCIDENT_RESTART_OUTCOME_RESTARTED\x10\x02\x12$\n" +
 	" INCIDENT_RESTART_OUTCOME_STOPPED\x10\x03\x12#\n" +
-	"\x1fINCIDENT_RESTART_OUTCOME_FAILED\x10\x042\xd5\x02\n" +
+	"\x1fINCIDENT_RESTART_OUTCOME_FAILED\x10\x042\xcf\x03\n" +
 	"\x0fIncidentService\x12`\n" +
 	"\vGetIncident\x12&.workos.incident.v1.GetIncidentRequest\x1a'.workos.incident.v1.GetIncidentResponse\"\x00\x12f\n" +
 	"\rListIncidents\x12(.workos.incident.v1.ListIncidentsRequest\x1a).workos.incident.v1.ListIncidentsResponse\"\x00\x12x\n" +
-	"\x13AcknowledgeIncident\x12..workos.incident.v1.AcknowledgeIncidentRequest\x1a/.workos.incident.v1.AcknowledgeIncidentResponse\"\x00BCZAgithub.com/yangtao121/workos/gen/go/workos/incident/v1;incidentv1b\x06proto3"
+	"\x13AcknowledgeIncident\x12..workos.incident.v1.AcknowledgeIncidentRequest\x1a/.workos.incident.v1.AcknowledgeIncidentResponse\"\x00\x12x\n" +
+	"\x13GetTelemetrySummary\x12..workos.incident.v1.GetTelemetrySummaryRequest\x1a/.workos.incident.v1.GetTelemetrySummaryResponse\"\x00BCZAgithub.com/yangtao121/workos/gen/go/workos/incident/v1;incidentv1b\x06proto3"
 
 var (
 	file_workos_incident_v1_incident_proto_rawDescOnce sync.Once
@@ -891,7 +1096,7 @@ func file_workos_incident_v1_incident_proto_rawDescGZIP() []byte {
 }
 
 var file_workos_incident_v1_incident_proto_enumTypes = make([]protoimpl.EnumInfo, 4)
-var file_workos_incident_v1_incident_proto_msgTypes = make([]protoimpl.MessageInfo, 8)
+var file_workos_incident_v1_incident_proto_msgTypes = make([]protoimpl.MessageInfo, 11)
 var file_workos_incident_v1_incident_proto_goTypes = []any{
 	(IncidentSeverity)(0),               // 0: workos.incident.v1.IncidentSeverity
 	(IncidentState)(0),                  // 1: workos.incident.v1.IncidentState
@@ -905,37 +1110,44 @@ var file_workos_incident_v1_incident_proto_goTypes = []any{
 	(*AcknowledgeIncidentRequest)(nil),  // 9: workos.incident.v1.AcknowledgeIncidentRequest
 	(*GetIncidentResponse)(nil),         // 10: workos.incident.v1.GetIncidentResponse
 	(*AcknowledgeIncidentResponse)(nil), // 11: workos.incident.v1.AcknowledgeIncidentResponse
-	(*timestamppb.Timestamp)(nil),       // 12: google.protobuf.Timestamp
-	(*v1.PageRequest)(nil),              // 13: workos.common.v1.PageRequest
-	(*v1.PageResponse)(nil),             // 14: workos.common.v1.PageResponse
+	(*GetTelemetrySummaryRequest)(nil),  // 12: workos.incident.v1.GetTelemetrySummaryRequest
+	(*TelemetryServiceStats)(nil),       // 13: workos.incident.v1.TelemetryServiceStats
+	(*GetTelemetrySummaryResponse)(nil), // 14: workos.incident.v1.GetTelemetrySummaryResponse
+	(*timestamppb.Timestamp)(nil),       // 15: google.protobuf.Timestamp
+	(*v1.PageRequest)(nil),              // 16: workos.common.v1.PageRequest
+	(*v1.PageResponse)(nil),             // 17: workos.common.v1.PageResponse
 }
 var file_workos_incident_v1_incident_proto_depIdxs = []int32{
 	0,  // 0: workos.incident.v1.Incident.severity:type_name -> workos.incident.v1.IncidentSeverity
 	1,  // 1: workos.incident.v1.Incident.state:type_name -> workos.incident.v1.IncidentState
 	4,  // 2: workos.incident.v1.Incident.evidence:type_name -> workos.incident.v1.EvidenceRef
-	12, // 3: workos.incident.v1.Incident.created_at:type_name -> google.protobuf.Timestamp
-	12, // 4: workos.incident.v1.Incident.updated_at:type_name -> google.protobuf.Timestamp
+	15, // 3: workos.incident.v1.Incident.created_at:type_name -> google.protobuf.Timestamp
+	15, // 4: workos.incident.v1.Incident.updated_at:type_name -> google.protobuf.Timestamp
 	2,  // 5: workos.incident.v1.Incident.violation:type_name -> workos.incident.v1.IncidentViolation
-	12, // 6: workos.incident.v1.Incident.acknowledged_at:type_name -> google.protobuf.Timestamp
-	12, // 7: workos.incident.v1.Incident.mitigated_at:type_name -> google.protobuf.Timestamp
-	12, // 8: workos.incident.v1.Incident.resolved_at:type_name -> google.protobuf.Timestamp
+	15, // 6: workos.incident.v1.Incident.acknowledged_at:type_name -> google.protobuf.Timestamp
+	15, // 7: workos.incident.v1.Incident.mitigated_at:type_name -> google.protobuf.Timestamp
+	15, // 8: workos.incident.v1.Incident.resolved_at:type_name -> google.protobuf.Timestamp
 	3,  // 9: workos.incident.v1.Incident.restart_outcome:type_name -> workos.incident.v1.IncidentRestartOutcome
-	13, // 10: workos.incident.v1.ListIncidentsRequest.page:type_name -> workos.common.v1.PageRequest
+	16, // 10: workos.incident.v1.ListIncidentsRequest.page:type_name -> workos.common.v1.PageRequest
 	5,  // 11: workos.incident.v1.ListIncidentsResponse.incidents:type_name -> workos.incident.v1.Incident
-	14, // 12: workos.incident.v1.ListIncidentsResponse.page:type_name -> workos.common.v1.PageResponse
+	17, // 12: workos.incident.v1.ListIncidentsResponse.page:type_name -> workos.common.v1.PageResponse
 	5,  // 13: workos.incident.v1.GetIncidentResponse.incident:type_name -> workos.incident.v1.Incident
 	5,  // 14: workos.incident.v1.AcknowledgeIncidentResponse.incident:type_name -> workos.incident.v1.Incident
-	6,  // 15: workos.incident.v1.IncidentService.GetIncident:input_type -> workos.incident.v1.GetIncidentRequest
-	7,  // 16: workos.incident.v1.IncidentService.ListIncidents:input_type -> workos.incident.v1.ListIncidentsRequest
-	9,  // 17: workos.incident.v1.IncidentService.AcknowledgeIncident:input_type -> workos.incident.v1.AcknowledgeIncidentRequest
-	10, // 18: workos.incident.v1.IncidentService.GetIncident:output_type -> workos.incident.v1.GetIncidentResponse
-	8,  // 19: workos.incident.v1.IncidentService.ListIncidents:output_type -> workos.incident.v1.ListIncidentsResponse
-	11, // 20: workos.incident.v1.IncidentService.AcknowledgeIncident:output_type -> workos.incident.v1.AcknowledgeIncidentResponse
-	18, // [18:21] is the sub-list for method output_type
-	15, // [15:18] is the sub-list for method input_type
-	15, // [15:15] is the sub-list for extension type_name
-	15, // [15:15] is the sub-list for extension extendee
-	0,  // [0:15] is the sub-list for field type_name
+	13, // 15: workos.incident.v1.GetTelemetrySummaryResponse.services:type_name -> workos.incident.v1.TelemetryServiceStats
+	15, // 16: workos.incident.v1.GetTelemetrySummaryResponse.generated_at:type_name -> google.protobuf.Timestamp
+	6,  // 17: workos.incident.v1.IncidentService.GetIncident:input_type -> workos.incident.v1.GetIncidentRequest
+	7,  // 18: workos.incident.v1.IncidentService.ListIncidents:input_type -> workos.incident.v1.ListIncidentsRequest
+	9,  // 19: workos.incident.v1.IncidentService.AcknowledgeIncident:input_type -> workos.incident.v1.AcknowledgeIncidentRequest
+	12, // 20: workos.incident.v1.IncidentService.GetTelemetrySummary:input_type -> workos.incident.v1.GetTelemetrySummaryRequest
+	10, // 21: workos.incident.v1.IncidentService.GetIncident:output_type -> workos.incident.v1.GetIncidentResponse
+	8,  // 22: workos.incident.v1.IncidentService.ListIncidents:output_type -> workos.incident.v1.ListIncidentsResponse
+	11, // 23: workos.incident.v1.IncidentService.AcknowledgeIncident:output_type -> workos.incident.v1.AcknowledgeIncidentResponse
+	14, // 24: workos.incident.v1.IncidentService.GetTelemetrySummary:output_type -> workos.incident.v1.GetTelemetrySummaryResponse
+	21, // [21:25] is the sub-list for method output_type
+	17, // [17:21] is the sub-list for method input_type
+	17, // [17:17] is the sub-list for extension type_name
+	17, // [17:17] is the sub-list for extension extendee
+	0,  // [0:17] is the sub-list for field type_name
 }
 
 func init() { file_workos_incident_v1_incident_proto_init() }
@@ -949,7 +1161,7 @@ func file_workos_incident_v1_incident_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_workos_incident_v1_incident_proto_rawDesc), len(file_workos_incident_v1_incident_proto_rawDesc)),
 			NumEnums:      4,
-			NumMessages:   8,
+			NumMessages:   11,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
