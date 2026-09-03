@@ -679,6 +679,7 @@ function provider(id: string, displayName: string): HarnessProviderInfo {
       maxRuntimeSeconds: 0n,
       requiresTaskCredentialLease: false,
       supportedContextRefTypes: [],
+      requiredCredentialPurpose: "",
     },
   };
 }

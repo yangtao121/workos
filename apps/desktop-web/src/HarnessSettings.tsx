@@ -218,7 +218,13 @@ function ProviderOption({
           {capabilityEntries(provider.capabilities).map((capability) => (
             <li key={capability.id}>
               <span>{capability.label}</span>
-              <b>{capability.available ? "available" : "unavailable"}</b>
+              <b>
+                {capability.detail !== undefined
+                  ? capability.detail
+                  : capability.available
+                    ? "available"
+                    : "unavailable"}
+              </b>
             </li>
           ))}
         </ul>

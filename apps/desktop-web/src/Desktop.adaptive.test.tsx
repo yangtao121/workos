@@ -97,6 +97,7 @@ function catalogFixture(): GetHarnessCatalogResponse {
           maxRuntimeSeconds: 0n,
           requiresTaskCredentialLease: false,
           supportedContextRefTypes: [],
+          requiredCredentialPurpose: "",
         },
       },
     ],

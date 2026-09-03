@@ -1328,7 +1328,7 @@ func (r *staticResolver) ResolveSurfaceLaunch(_ context.Context, _ surfaceports.
 // never admitted in these outage scenarios.
 type outageCredentials struct{}
 
-func (outageCredentials) ActiveSnapshot(context.Context, string, string) (agentports.CredentialSnapshotRef, error) {
+func (outageCredentials) ActiveSnapshot(context.Context, string, string, string) (agentports.CredentialSnapshotRef, error) {
 	return agentports.CredentialSnapshotRef{}, agentdomain.ErrNotFound
 }
 

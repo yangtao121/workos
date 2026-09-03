@@ -8,6 +8,7 @@ import {
 export type HarnessSelection = { kind: "global" } | { kind: "provider"; providerId: string };
 
 export type HarnessCapabilityID =
+  | "credentialKind"
   | "streaming"
   | "persistentSessions"
   | "resume"
@@ -26,6 +27,8 @@ export interface CapabilityEntry {
   id: HarnessCapabilityID;
   label: string;
   available: boolean;
+  // detail carries the exact credential kind for the credentialKind entry.
+  detail?: string;
 }
 
 export function taskStatus(state: AgentTaskState): string {
@@ -64,7 +67,7 @@ export function providerSelectable(health: HealthState): boolean {
 }
 
 export function capabilityEntries(capabilities?: HarnessCapabilities): CapabilityEntry[] {
-  const definitions: Array<[HarnessCapabilityID, string]> = [
+  const definitions: Array<[Exclude<HarnessCapabilityID, "credentialKind">, string]> = [
     ["streaming", "Streaming"],
     ["persistentSessions", "Persistent sessions"],
     ["resume", "Resume"],
@@ -79,9 +82,19 @@ export function capabilityEntries(capabilities?: HarnessCapabilities): Capabilit
     ["hardTokenBudget", "Hard token budget"],
     ["hardRuntimeDeadline", "Hard runtime deadline"],
   ];
-  return definitions.map(([id, label]) => ({
+  const entries: CapabilityEntry[] = definitions.map(([id, label]) => ({
     id,
     label,
     available: capabilities?.[id] === true,
   }));
+  const purpose = capabilities?.requiresTaskCredentialLease
+    ? (capabilities.requiredCredentialPurpose || "").trim()
+    : "";
+  entries.push({
+    id: "credentialKind",
+    label: "Lease purpose",
+    available: capabilities?.requiresTaskCredentialLease === true && purpose !== "",
+    detail: capabilities?.requiresTaskCredentialLease === true && purpose !== "" ? purpose : "none",
+  });
+  return entries;
 }

@@ -83,7 +83,10 @@ describe("HarnessSettings", () => {
     expect(fakeCapabilities.getByText("Approvals").nextElementSibling?.textContent).toBe(
       "unavailable",
     );
-    expect(fakeCapabilities.getAllByRole("listitem")).toHaveLength(13);
+    expect(fakeCapabilities.getAllByRole("listitem")).toHaveLength(14);
+    expect(fakeCapabilities.getByText("Lease purpose").nextElementSibling?.textContent).toBe(
+      "none",
+    );
   });
 
   it("keeps an unknown current binding visible and never renders credential data", async () => {
@@ -322,6 +325,7 @@ function provider(
       maxRuntimeSeconds: 0n,
       requiresTaskCredentialLease: false,
       supportedContextRefTypes: [],
+      requiredCredentialPurpose: "",
       ...enabled,
     },
   };

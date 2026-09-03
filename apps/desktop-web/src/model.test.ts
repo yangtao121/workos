@@ -44,7 +44,13 @@ describe("harness presentation", () => {
   });
 
   it("reports absent capabilities as unavailable", () => {
-    expect(capabilityEntries(undefined)).toHaveLength(13);
+    expect(capabilityEntries(undefined)).toHaveLength(14);
+    expect(capabilityEntries(undefined)[13]).toEqual({
+      id: "credentialKind",
+      label: "Lease purpose",
+      available: false,
+      detail: "none",
+    });
     expect(capabilityEntries(undefined).every((entry) => !entry.available)).toBe(true);
   });
 });
