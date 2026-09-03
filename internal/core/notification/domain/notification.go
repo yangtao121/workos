@@ -82,28 +82,40 @@ var (
 
 // Notification is one durable owner-scoped fact.
 type Notification struct {
-	ID                 string
-	OwnerUserID        string
-	ProjectID          string // optional; global agent tasks have none
-	Kind               string
-	Severity           string
-	Origin             string
-	Title              string
-	Body               string
-	TargetKind         string
-	TargetID           string
-	AppID              string // app origin only
-	AppInstallationID  string // app origin only
-	SourceProcess      string
-	SourceID           string
-	SourceDigest       string
-	CreatedAt          time.Time
-	ReadAt             time.Time // zero while unread
-	ReadChangeSequence int64     // 0 while unread
+	ID                string
+	OwnerUserID       string
+	ProjectID         string // optional; global agent tasks have none
+	Kind              string
+	Severity          string
+	Origin            string
+	Title             string
+	Body              string
+	TargetKind        string
+	TargetID          string
+	AppID             string // app origin only
+	AppInstallationID string // app origin only
+	SourceProcess     string
+	SourceID          string
+	SourceDigest      string
+	CreatedAt         time.Time
+	// CreatedChangeSequence is the immutable CREATED revision. A stored
+	// notification always has one; prepared producer input receives it only
+	// when the PostgreSQL adapter allocates the owner sequence in AppendTx.
+	CreatedChangeSequence int64
+	ReadAt                time.Time // zero while unread
+	ReadChangeSequence    int64     // 0 while unread
 }
 
 // Read reports whether the fact has been read by its owner.
 func (n Notification) Read() bool { return !n.ReadAt.IsZero() }
+
+// Revision is the latest durable change applied to this notification.
+func (n Notification) Revision() int64 {
+	if n.ReadChangeSequence > n.CreatedChangeSequence {
+		return n.ReadChangeSequence
+	}
+	return n.CreatedChangeSequence
+}
 
 // Change is one durable owner-wide change-stream entry.
 type Change struct {
@@ -190,7 +202,7 @@ func ValidIdempotencyKey(key string) bool {
 	if len(key) == 0 || len(key) > 128 || !utf8.ValidString(key) {
 		return false
 	}
-	return strings.IndexFunc(key, func(r rune) bool { return r < 0x20 || r == 0x7f }) < 0
+	return strings.IndexFunc(key, controlRune) < 0
 }
 
 // validStoredText revalidates derived or app-supplied text on every read:
@@ -212,13 +224,13 @@ func validStoredText(title, body string) bool {
 	if strings.ContainsFunc(body, func(r rune) bool { return controlRune(r) && r != '\n' }) {
 		return false
 	}
-	if strings.Count(body, "\n") > MaxAppBodyLines {
+	if body != "" && strings.Count(body, "\n")+1 > MaxAppBodyLines {
 		return false
 	}
 	return true
 }
 
-func controlRune(r rune) bool { return r < 0x20 || r == 0x7f }
+func controlRune(r rune) bool { return r < 0x20 || (r >= 0x7f && r <= 0x9f) }
 
 // SystemTemplate derives the server-owned title/body/target for a system
 // fact from the finite kind + category vocabulary. Unknown combinations are
@@ -265,6 +277,9 @@ func SystemTemplate(kind, category string) (severity, title, body, targetKind st
 // violation on replay, never as an update.
 func PrepareSystemFact(fact SystemFact, occurredAt time.Time) (Notification, error) {
 	if !ValidKind(fact.Kind) || !ValidUUID(fact.OwnerUserID) || !ValidUUID(fact.TargetID) || fact.SourceID == "" {
+		return Notification{}, ErrInvalid
+	}
+	if occurredAt.IsZero() {
 		return Notification{}, ErrInvalid
 	}
 	if fact.ProjectID != "" && !ValidUUID(fact.ProjectID) {
@@ -326,14 +341,18 @@ func ValidStoredNotification(n Notification) error {
 	if n.ProjectID != "" && !ValidUUID(n.ProjectID) {
 		return fmt.Errorf("step project: %w", ErrCorrupt)
 	}
-	if !ValidKind(n.Kind) || n.Origin == "" || n.Severity == "" || n.TargetKind == "" {
+	if !ValidKind(n.Kind) || (n.Origin != OriginSystem && n.Origin != OriginApp) ||
+		n.Severity == "" || n.TargetKind == "" {
 		return fmt.Errorf("step vocab: %w", ErrCorrupt)
 	}
-	if n.CreatedAt.IsZero() || n.SourceID == "" || len(n.SourceDigest) != 71 || !strings.HasPrefix(n.SourceDigest, "sha256:") {
+	if n.CreatedAt.IsZero() || n.CreatedChangeSequence <= 0 || n.SourceID == "" || !validSHA256(n.SourceDigest) {
 		return fmt.Errorf("step source facts: %w", ErrCorrupt)
 	}
 	if !validStoredText(n.Title, n.Body) {
 		return fmt.Errorf("step text: %w", ErrCorrupt)
+	}
+	if n.Severity != SeverityNormal && n.Severity != SeverityCritical {
+		return fmt.Errorf("step severity: %w", ErrCorrupt)
 	}
 	appOrigin := n.Origin == OriginApp
 	if appOrigin != (n.AppInstallationID != "") || appOrigin != (n.AppID != "") {
@@ -352,7 +371,7 @@ func ValidStoredNotification(n Notification) error {
 		return fmt.Errorf("step app target: %w", ErrCorrupt)
 	}
 	if !n.ReadAt.IsZero() {
-		if n.ReadChangeSequence <= 0 {
+		if n.ReadChangeSequence <= n.CreatedChangeSequence {
 			return fmt.Errorf("step read seq: %w", ErrCorrupt)
 		}
 		if n.ReadAt.Before(n.CreatedAt) {
@@ -365,35 +384,47 @@ func ValidStoredNotification(n Notification) error {
 	// App-instance facts derive their text from the app, not a template, so
 	// their shape is enforced by the app-origin checks above instead.
 	if n.Kind != KindAppInstanceMessage {
-		if _, _, _, targetKind, err := SystemTemplate(n.Kind, storedCategoryFor(n)); err != nil || targetKind != n.TargetKind {
+		if !validStoredSystemTemplate(n) {
 			return fmt.Errorf("step template: %w", ErrCorrupt)
 		}
+		expectedSource := SourceProcessCore
+		if n.Kind == KindReliabilityIncidentOpen {
+			expectedSource = SourceProcessReliability
+		}
+		if n.SourceProcess != expectedSource {
+			return fmt.Errorf("step system source: %w", ErrCorrupt)
+		}
+	} else if n.SourceProcess != SourceProcessCore {
+		return fmt.Errorf("step app source: %w", ErrCorrupt)
 	}
 	return nil
 }
 
-// storedCategoryFor recovers the finite category a stored fact was created
-// with, for shape revalidation only.
-func storedCategoryFor(n Notification) string {
+func validStoredSystemTemplate(n Notification) bool {
+	categories := []string{""}
 	switch n.Kind {
 	case KindAgentTaskTerminal:
-		switch n.Title {
-		case "Task completed":
-			return "completed"
-		case "Task failed":
-			return "failed"
-		case "Task cancelled":
-			return "cancelled"
-		}
+		categories = []string{"completed", "failed", "cancelled"}
 	case KindArtifactReviewCreated:
-		return "document.markdown.v1"
+		categories = []string{"document.markdown.v1", "code.unified-diff.v1"}
 	case KindReliabilityIncidentOpen:
-		if n.Severity == SeverityCritical {
-			return "critical"
-		}
-		return "warning"
+		categories = []string{"info", "warning", "critical"}
 	}
-	return ""
+	for _, category := range categories {
+		severity, title, body, target, err := SystemTemplate(n.Kind, category)
+		if err == nil && n.Severity == severity && n.Title == title && n.Body == body && n.TargetKind == target {
+			return true
+		}
+	}
+	return false
+}
+
+func validSHA256(value string) bool {
+	if len(value) != 71 || !strings.HasPrefix(value, "sha256:") {
+		return false
+	}
+	_, err := hex.DecodeString(value[7:])
+	return err == nil
 }
 
 // Incident publication projection (ADR-0014). The fact arrives from the
@@ -438,7 +469,12 @@ func PrepareIncidentPublication(fact IncidentPublicationFact, occurredAt time.Ti
 	if !ValidUUID(fact.OwnerUserID) || !ValidUUID(fact.ProjectID) || !ValidUUID(fact.IncidentID) {
 		return Notification{}, ErrInvalid
 	}
-	if fact.SourceID == "" || len(fact.Digest) != 71 || fact.Digest[:7] != "sha256:" {
+	if fact.SourceID == "" || !validSHA256(fact.Digest) || occurredAt.IsZero() {
+		return Notification{}, ErrInvalid
+	}
+	switch fact.ActionOutcome {
+	case "pending", "restarted", "stopped", "failed":
+	default:
 		return Notification{}, ErrInvalid
 	}
 	severity, title, body, targetKind, err := SystemTemplate(KindReliabilityIncidentOpen, fact.Severity)
@@ -481,7 +517,7 @@ func PrepareAppNotification(fact AppNotificationFact, occurredAt time.Time) (Not
 	if !ValidUUID(fact.OwnerUserID) || !ValidUUID(fact.ProjectID) || !ValidUUID(fact.AppInstanceID) {
 		return Notification{}, ErrInvalid
 	}
-	if !validAppID(fact.AppID) || !ValidIdempotencyKey(fact.IdempotencyKey) || !validStoredText(fact.Title, fact.Body) {
+	if occurredAt.IsZero() || !validAppID(fact.AppID) || !ValidIdempotencyKey(fact.IdempotencyKey) || !validStoredText(fact.Title, fact.Body) {
 		return Notification{}, ErrInvalid
 	}
 	id, err := uuid.NewV7()

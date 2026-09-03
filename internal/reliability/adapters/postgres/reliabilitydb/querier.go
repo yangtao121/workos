@@ -42,6 +42,9 @@ type Querier interface {
 	ListOpenIncidentsForWorkload(ctx context.Context, arg ListOpenIncidentsForWorkloadParams) ([]ListOpenIncidentsForWorkloadRow, error)
 	// Crash recovery is deliberately not owner-scoped: this is a private
 	// supervisor queue over reliability-owned rows, not an owner-facing list.
+	// Never-attempted work runs before retries. An unavailable retry updates the
+	// action timestamp and rotates behind its peers, so a bounded batch cannot
+	// permanently starve a newer incident during a long Runtime outage.
 	ListPendingActionIncidents(ctx context.Context, rowLimit int32) ([]ListPendingActionIncidentsRow, error)
 	LoadSupervisorProgress(ctx context.Context, workloadID string) (WorkosReliabilitySupervisorWorkload, error)
 	MarkIncidentResolved(ctx context.Context, arg MarkIncidentResolvedParams) (int64, error)

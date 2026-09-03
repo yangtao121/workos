@@ -167,10 +167,16 @@ func (s *Supervisor) observeOne(ctx context.Context, observation ports.Observati
 		if *budget <= 0 {
 			continue
 		}
-		if err := s.reportIncident(ctx, observation, item.violation, *item.occurrence, now); err != nil {
+		created, err := s.reportIncident(ctx, observation, item.violation, *item.occurrence, now)
+		if err != nil {
 			return err
 		}
-		*budget--
+		// MaxIncidentsPerPoll bounds new fan-out, not idempotent replays of
+		// already-open episodes. Charging replays would let the same oldest
+		// observations consume every poll forever and starve newer workloads.
+		if created {
+			*budget--
+		}
 	}
 
 	// Bounded decision for every open incident of this generation: the
@@ -207,7 +213,7 @@ func (s *Supervisor) observeOne(ctx context.Context, observation ports.Observati
 // reportIncident creates exactly one incident per occurrence digest; the
 // unique digest keeps at-least-once replays, duplicate polls, and supervisor
 // restarts from double-reporting one episode.
-func (s *Supervisor) reportIncident(ctx context.Context, observation ports.Observation, violation domain.Violation, occurrence int64, now time.Time) error {
+func (s *Supervisor) reportIncident(ctx context.Context, observation ports.Observation, violation domain.Violation, occurrence int64, now time.Time) (bool, error) {
 	incident := domain.Incident{
 		ID:                 s.ids.New(),
 		OwnerUserID:        observation.OwnerUserID,
@@ -229,12 +235,12 @@ func (s *Supervisor) reportIncident(ctx context.Context, observation ports.Obser
 	}
 	created, err := s.repository.CreateIncident(ctx, incident)
 	if err != nil {
-		return err
+		return false, err
 	}
 	if created {
 		s.logger.Info("incident reported", "violation", string(violation))
 	}
-	return nil
+	return created, nil
 }
 
 // decide runs the bounded action for the observation's open incidents. The

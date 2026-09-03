@@ -13,17 +13,20 @@ SET last_sequence = workos_core.notification_owner_sequences.last_sequence + 1,
     updated_at = EXCLUDED.updated_at
 RETURNING last_sequence;
 
+-- name: SerializeNotificationRequest :exec
+SELECT pg_advisory_xact_lock(hashtextextended(sqlc.arg(lock_key)::text, 0));
+
 -- name: InsertNotification :execrows
 INSERT INTO workos_core.notifications (
     id, owner_user_id, project_id, kind, severity, origin, title, body,
     target_kind, target_id, app_id, app_installation_id,
-    source_process, source_id, source_digest, created_at
+    source_process, source_id, source_digest, created_at, created_change_sequence
 ) VALUES (
     sqlc.arg(id), sqlc.arg(owner_user_id), sqlc.arg(project_id), sqlc.arg(kind),
     sqlc.arg(severity), sqlc.arg(origin), sqlc.arg(title), sqlc.arg(body),
     sqlc.arg(target_kind), sqlc.arg(target_id), sqlc.arg(app_id),
     sqlc.arg(app_installation_id), sqlc.arg(source_process), sqlc.arg(source_id),
-    sqlc.arg(source_digest), sqlc.arg(created_at)
+    sqlc.arg(source_digest), sqlc.arg(created_at), sqlc.arg(created_change_sequence)
 );
 
 -- name: InsertNotificationChange :execrows
@@ -49,21 +52,21 @@ WHERE source_process = sqlc.arg(source_process) AND source_id = sqlc.arg(source_
 -- name: GetNotificationByID :one
 SELECT id, owner_user_id, project_id, kind, severity, origin, title, body,
        target_kind, target_id, app_id, app_installation_id, source_process,
-       source_id, source_digest, created_at, read_at, read_change_sequence
+       source_id, source_digest, created_at, read_at, read_change_sequence, created_change_sequence
 FROM workos_core.notifications
 WHERE id = sqlc.arg(id);
 
 -- name: GetOwnerNotification :one
 SELECT id, owner_user_id, project_id, kind, severity, origin, title, body,
        target_kind, target_id, app_id, app_installation_id, source_process,
-       source_id, source_digest, created_at, read_at, read_change_sequence
+       source_id, source_digest, created_at, read_at, read_change_sequence, created_change_sequence
 FROM workos_core.notifications
 WHERE id = sqlc.arg(id) AND owner_user_id = sqlc.arg(owner_user_id);
 
 -- name: LockOwnerNotifications :many
 SELECT id, owner_user_id, project_id, kind, severity, origin, title, body,
        target_kind, target_id, app_id, app_installation_id, source_process,
-       source_id, source_digest, created_at, read_at, read_change_sequence
+       source_id, source_digest, created_at, read_at, read_change_sequence, created_change_sequence
 FROM workos_core.notifications
 WHERE owner_user_id = sqlc.arg(owner_user_id) AND id = ANY (sqlc.arg(ids)::uuid[])
 ORDER BY created_at DESC, id DESC
@@ -79,9 +82,11 @@ SELECT count(*) FROM workos_core.notifications
 WHERE owner_user_id = sqlc.arg(owner_user_id) AND read_at IS NULL;
 
 -- name: GetOwnerChangeWatermark :one
-SELECT COALESCE(max(change_sequence), 0)::bigint AS watermark
-FROM workos_core.notification_changes
-WHERE owner_user_id = sqlc.arg(owner_user_id);
+SELECT COALESCE((
+    SELECT last_sequence
+    FROM workos_core.notification_owner_sequences
+    WHERE owner_user_id = sqlc.arg(owner_user_id)
+), 0)::bigint AS watermark;
 
 -- name: GetOwnerSweptThrough :one
 SELECT swept_through FROM workos_core.notification_owner_sequences
@@ -90,7 +95,7 @@ WHERE owner_user_id = sqlc.arg(owner_user_id);
 -- name: ListNotificationsPage :many
 SELECT id, owner_user_id, project_id, kind, severity, origin, title, body,
        target_kind, target_id, app_id, app_installation_id, source_process,
-       source_id, source_digest, created_at, read_at, read_change_sequence
+       source_id, source_digest, created_at, read_at, read_change_sequence, created_change_sequence
 FROM workos_core.notifications
 WHERE owner_user_id = sqlc.arg(owner_user_id)
   AND (sqlc.narg('project_id') ::uuid IS NULL OR project_id = sqlc.narg('project_id') ::uuid)
@@ -105,7 +110,8 @@ LIMIT sqlc.arg(row_limit);
 SELECT c.change_sequence, c.notification_id, c.change_type, c.revision,
        n.project_id, n.kind, n.severity, n.origin, n.title, n.body,
        n.target_kind, n.target_id, n.app_id, n.app_installation_id,
-       n.source_process, n.source_id, n.source_digest, n.created_at, n.read_at,
+       n.source_process, n.source_id, n.source_digest, n.created_at,
+       n.created_change_sequence, n.read_at,
        n.read_change_sequence
 FROM workos_core.notification_changes AS c
 JOIN workos_core.notifications AS n
@@ -158,7 +164,8 @@ INSERT INTO workos_core.notification_app_quotas (
 ) VALUES (
     sqlc.arg(owner_user_id), sqlc.arg(app_installation_id), sqlc.arg(utc_date),
     0, sqlc.arg(burst_window_start), 0, sqlc.arg(updated_at)
-);
+)
+ON CONFLICT (owner_user_id, app_installation_id) DO NOTHING;
 
 -- name: UpdateNotificationAppQuota :execrows
 UPDATE workos_core.notification_app_quotas

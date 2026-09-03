@@ -979,7 +979,8 @@ structured run：RunStarted → deltas 只聚合不发布 → shutdown
 
 `workos-core` Notification 模块(`internal/core/notification`)是 notification fact、owner-wide
 monotonic change stream、monotonic read state、App quota/idempotency receipt 的唯一 durable
-authority(migration `029`,owner:workos-core Notification)。事实边界:
+authority(migration `029` + forward-only revision backfill/constraint `031`,owner:workos-core
+Notification)。事实边界:
 
 ```text
 Agent approval / task terminal / review Artifact(Core 事务内 tx-scoped sink)
@@ -998,6 +999,9 @@ Agent approval / task terminal / review Artifact(Core 事务内 tx-scoped sink)
   经 lease + `FOR UPDATE SKIP LOCKED` claim、本地 receipt 后 complete;complete 丢失/lease
   过期/双 consumer/两端重启都安全 replay;Reliability 不可达只降级 incident freshness。
 - 变更流:per-owner 计数器分配严格递增 change sequence(`created`/`read`),read 也进入流;
+  list page/unread/watermark 取自同一 repeatable-read snapshot,跨页 token 固定首屏 watermark,
+  watermark 取 owner counter 而不从可能已 sweep 的 retained changes 推算;snapshot revision 从
+  CREATED sequence 起即为正数。
   watch cursor 是最后已应用 sequence,服务端有界 stream lifetime + heartbeat(control 不推进
   cursor),sweep 水位 `swept_through` 之下的 cursor 回 `RESET_REQUIRED`;Gateway 对 watch 流
   做 30s 周期 session 重验,revoked session 的已授权流在有界时间内终止。
@@ -1007,17 +1011,21 @@ Agent approval / task terminal / review Artifact(Core 事务内 tx-scoped sink)
 - App `notifications.create`:Registry capability vocabulary additive 增加(安装/Manage
   permissions 显式 consent;grant 名与 bridge method 名相同并集中映射);runtime 每次调用重验
   bridge token/surface session/owner/Project/installation/exact grant epoch 后调用 Core 私有
-  ingest;replay-first(同 key 同请求跨重启精确 replay,异请求稳定 Aborted,失败不消费 key);
+  ingest;Core 写事务按 Project→installation 顺序持有 share locks 并在每次 replay 前重新授权
+  (同 key 同请求跨重启精确 replay,异请求稳定 Aborted,失败不消费 key);producer/read/App
+  check+insert 由 PostgreSQL transaction advisory lock 仲裁真正的首次并发;
   burst(10/分钟)+ UTC daily(200)配额由 PostgreSQL 单事务原子裁决,系统通知不占 App 配额;
   revoke/epoch 变化/surface close 后旧 port 即刻 fail closed 且零副作用。
-- 客户端:Desktop 持有可丢弃内存 projection(snapshot/watermark → after-watermark 流,按
-  sequence/revision 幂等,RESET_REQUIRED 全量重建,有界 backoff);Adaptive Notification
+- 客户端:Desktop 持有最多最近 100 条的可丢弃内存 projection(snapshot/watermark →
+  after-watermark 流,按 sequence/revision 单调幂等,RESET_REQUIRED 重建最新有界 page,有界
+  backoff,迟到的旧 snapshot 不回退 live cursor);Adaptive Notification
   Center(expanded 铃铛+badge / compact 底部导航 / medium Dock / fold 纯投影),typed action
   打开前经公开服务重验目标,missing/archived 固定 stale 文案;浏览器 Notification API 为可选
   增强(默认关闭 preview,denied/unavailable 不影响 durable Center)。
 - 门禁:`make test-notification-center`(真实栈双 Chromium context 实时/收敛/typed action/
   重启持久)、`make test-incident-notifications`(真实跨进程软件链路;明确不证明 rootless
-  supervisor)、`make test-app-notifications`(opaque Web Bundle grant/replay/revoke/quota);
+  supervisor)、`make test-app-notifications`(opaque Web Bundle grant/replay/revoke/quota)、
+  `make test-lan-pairing`(生产 TLS/session 下两个独立 persistent profile 真实配对后通知/read 收敛);
   restart battery 增加 `notifications-seed`/`notifications-verify`。视觉证据
   `docs/ui/desktop-web/changes/20260902-local-first-notifications/`。明确未实现:APNs/FCM/
   Web Push/后台 Service Worker delivery、通知正文搜索、用户偏好/免打扰。

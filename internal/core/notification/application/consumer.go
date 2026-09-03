@@ -12,6 +12,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"sync/atomic"
 	"time"
 
 	"github.com/yangtao121/workos/internal/core/notification/domain"
@@ -43,6 +44,7 @@ const (
 	IncidentConsumerBatch        = 16
 	IncidentConsumerLeaseSeconds = 60
 	IncidentConsumerPollInterval = 2 * time.Second
+	IncidentConsumerCycleTimeout = 10 * time.Second
 )
 
 // IncidentConsumer drives the at-least-once projection.
@@ -51,6 +53,7 @@ type IncidentConsumer struct {
 	store    ports.NotificationStore
 	pool     TxSource
 	workerID string
+	ready    atomic.Bool
 }
 
 func NewIncidentConsumer(source IncidentPublicationSource, store ports.NotificationStore, pool TxSource, workerID string) (*IncidentConsumer, error) {
@@ -67,7 +70,7 @@ func NewIncidentConsumer(source IncidentPublicationSource, store ports.Notificat
 // error and stay retryable; digest drift and stored corruption are
 // observable terminal failures for that publication only.
 func (c *IncidentConsumer) Poll(ctx context.Context) error {
-	claimed, err := c.source.ClaimIncidentPublications(ctx, c.workerID, IncidentConsumerBatch, IncidentConsumerLeaseSeconds)
+	claimed, err := c.ClaimBatch(ctx)
 	if err != nil {
 		return fmt.Errorf("claim incident publications: %w", err)
 	}
@@ -80,8 +83,19 @@ func (c *IncidentConsumer) Poll(ctx context.Context) error {
 // ClaimBatch exposes one claim round for drivers that separate the claim
 // from apply/complete.
 func (c *IncidentConsumer) ClaimBatch(ctx context.Context) ([]IncidentPublication, error) {
-	return c.source.ClaimIncidentPublications(ctx, c.workerID, IncidentConsumerBatch, IncidentConsumerLeaseSeconds)
+	claimed, err := c.source.ClaimIncidentPublications(ctx, c.workerID, IncidentConsumerBatch, IncidentConsumerLeaseSeconds)
+	if err != nil {
+		c.ready.Store(false)
+		return nil, err
+	}
+	c.ready.Store(true)
+	return claimed, nil
 }
+
+// Ready reports whether the most recent upstream claim/complete operation
+// succeeded. It starts false and drops immediately on source failure; local
+// projection failures do not misclassify the upstream's reachability.
+func (c *IncidentConsumer) Ready() bool { return c.ready.Load() }
 
 // ApplyClaims projects a batch of claimed publications inside their own Core
 // transactions. Drivers that must model a lost completion response call
@@ -102,9 +116,11 @@ func (c *IncidentConsumer) ApplyClaims(ctx context.Context, claimed []IncidentPu
 func (c *IncidentConsumer) CompleteClaims(ctx context.Context, claimed []IncidentPublication) error {
 	for _, publication := range claimed {
 		if err := c.source.CompleteIncidentPublications(ctx, c.workerID, publication.LeaseToken, []string{publication.PublicationID}); err != nil {
+			c.ready.Store(false)
 			return fmt.Errorf("complete incident publication: %w", err)
 		}
 	}
+	c.ready.Store(true)
 	return nil
 }
 
@@ -143,7 +159,10 @@ func (c *IncidentConsumer) Run(ctx context.Context, logger *slog.Logger) {
 	ticker := time.NewTicker(IncidentConsumerPollInterval)
 	defer ticker.Stop()
 	for {
-		if err := c.Poll(ctx); err != nil {
+		cycleCtx, cancel := context.WithTimeout(ctx, IncidentConsumerCycleTimeout)
+		err := c.Poll(cycleCtx)
+		cancel()
+		if err != nil {
 			if ctx.Err() != nil {
 				return
 			}

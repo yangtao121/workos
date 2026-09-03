@@ -1014,9 +1014,20 @@ export function Desktop({
   // the owner decides explicitly via Mark read.
   const openNotificationTarget = useCallback(
     async (notification: NotificationView): Promise<"opened" | "stale"> => {
+      const projectAtStart = activeProjectIdRef.current;
+      const assertCurrentGeneration = () => {
+        if (activeProjectIdRef.current !== projectAtStart) {
+          throw new Error("notification action invalidated by project switch");
+        }
+      };
       try {
         if (notification.targetKind === "approval") {
-          await workosClients.approvals.getApproval({ approvalId: notification.targetId });
+          const response = await workosClients.approvals.getApproval({
+            approvalId: notification.targetId,
+          });
+          if (!response.approval) return "stale";
+          assertCurrentGeneration();
+          setActiveProjectId(response.approval.projectId);
           setAgentView("approvals");
           dispatch({
             type: "open",
@@ -1032,7 +1043,13 @@ export function Desktop({
           return "opened";
         }
         if (notification.targetKind === "task") {
-          await workosClients.agentTasks.getTask({ taskId: notification.targetId });
+          const response = await workosClients.agentTasks.getTask({
+            taskId: notification.targetId,
+          });
+          if (!response.task) return "stale";
+          assertCurrentGeneration();
+          setEvents([]);
+          setTask(response.task);
           setAgentView("tasks");
           dispatch({
             type: "open",
@@ -1052,31 +1069,47 @@ export function Desktop({
             artifactId: notification.targetId,
           });
           if (!artifact.artifact) return "stale";
+          assertCurrentGeneration();
           openArtifactViewer(artifact.artifact.id, artifact.artifact.projectId);
           return "opened";
         }
         if (notification.targetKind === "incident") {
-          await workosClients.incidents.getIncident({ incidentId: notification.targetId });
+          const response = await workosClients.incidents.getIncident({
+            incidentId: notification.targetId,
+          });
+          if (!response.incident) return "stale";
+          assertCurrentGeneration();
+          setActiveProjectId(response.incident.projectId);
           openSystemMonitor();
           return "opened";
         }
         if (notification.targetKind === "app") {
           if (!notification.projectId) return "stale";
-          const installed = await workosClients.appInstallations.listInstalledApps({
-            projectId: notification.projectId,
-            page: { pageSize: 100, pageToken: "" },
-          });
-          const live = installed.installations.some(
-            (candidate) =>
-              candidate.id === notification.targetId && candidate.uninstalledAt === undefined,
-          );
+          let pageToken = "";
+          let live = false;
+          do {
+            const installed = await workosClients.appInstallations.listInstalledApps({
+              projectId: notification.projectId,
+              page: { pageSize: 100, pageToken },
+            });
+            assertCurrentGeneration();
+            live = installed.installations.some(
+              (candidate) =>
+                candidate.id === notification.targetId && candidate.uninstalledAt === undefined,
+            );
+            pageToken = installed.page?.nextPageToken ?? "";
+          } while (!live && pageToken !== "");
           if (!live) return "stale";
+          setActiveProjectId(notification.projectId);
           setLibraryOpen(true);
           return "opened";
         }
         return "stale";
-      } catch {
-        return "stale";
+      } catch (reason) {
+        if (reason instanceof ConnectError && reason.code === Code.NotFound) {
+          return "stale";
+        }
+        throw reason;
       }
     },
     [openArtifactViewer, openSystemMonitor, workosClients],

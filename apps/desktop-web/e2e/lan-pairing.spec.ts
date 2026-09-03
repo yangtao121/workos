@@ -10,6 +10,8 @@ import { expect, test, type BrowserContext, type Page } from "@playwright/test";
 //             browser profile still holds a valid session cookie
 //   reauth  — with cookies cleared, the IndexedDB profile key proves a new
 //             session (authentication only, no business replay)
+//   paired-notifications — pair a second independent browser profile, then
+//             prove notification arrival and monotonic read convergence
 //   revoke  — Device Center revokes the current device; the shell returns
 //             to the unpaired screen and the next request fails closed
 //
@@ -24,7 +26,9 @@ const tlsURL = process.env.WORKOS_E2E_TLS_URL ?? "https://localhost:8443";
 const phase = process.env.WORKOS_LAN_PHASE ?? "";
 const pairingURL = process.env.WORKOS_E2E_PAIRING_URL ?? "";
 const profileDir = process.env.WORKOS_LAN_PROFILE ?? "/lan-profile";
+const secondProfileDir = process.env.WORKOS_LAN_PROFILE_B ?? "/lan-profile-b";
 const deviceName = process.env.WORKOS_LAN_DEVICE_NAME ?? "E2E LAN Device";
+const secondDeviceName = process.env.WORKOS_LAN_DEVICE_NAME_B ?? "E2E LAN Device B";
 const projectName = process.env.WORKOS_LAN_PROJECT ?? "E2E LAN Project";
 
 test.skip(!phase, "lan-pairing phases run via make test-lan-pairing only");
@@ -39,8 +43,80 @@ async function openProfile(): Promise<{ context: BrowserContext; page: Page }> {
   return { context, page };
 }
 
+async function badgeCount(page: Page): Promise<number> {
+  const badge = page.getByTestId("open-notifications").locator(".notification-badge");
+  if ((await badge.count()) === 0) return 0;
+  const text = ((await badge.textContent()) ?? "0").trim();
+  return Number.parseInt(text === "99+" ? "99" : text, 10);
+}
+
+async function markEverythingRead(page: Page, stamp: string) {
+  for (;;) {
+    const listed = await page.request.post(
+      "/workos.notification.v1.NotificationService/ListNotifications",
+      { data: { unreadOnly: true, pageSize: 100 } },
+    );
+    expect(listed.ok()).toBeTruthy();
+    const body = (await listed.json()) as { notifications?: { id: string }[] };
+    const ids = (body.notifications ?? []).map((notification) => notification.id);
+    const firstID = ids[0];
+    if (!firstID) return;
+    const marked = await page.request.post(
+      "/workos.notification.v1.NotificationService/MarkNotificationsRead",
+      {
+        data: {
+          notificationIds: ids,
+          idempotencyKey: `paired-notification-baseline-${stamp}-${firstID}`,
+        },
+      },
+    );
+    expect(marked.ok()).toBeTruthy();
+  }
+}
+
+async function submitNotificationTask(page: Page, stamp: string): Promise<string> {
+  const created = await page.request.post("/workos.project.v1.ProjectService/CreateProject", {
+    data: {
+      idempotencyKey: `paired-notification-project-${stamp}`,
+      name: `Paired notification ${stamp}`,
+    },
+  });
+  expect(created.ok()).toBeTruthy();
+  const project = (await created.json()) as { project: { id: string; revision: string } };
+  const bound = await page.request.post(
+    "/workos.project.v1.ProjectHarnessBindingService/SetProjectHarnessBinding",
+    {
+      data: {
+        projectId: project.project.id,
+        expectedRevision: project.project.revision,
+        providerId: "fake",
+      },
+    },
+  );
+  if (!bound.ok()) {
+    throw new Error(`bind notification project: ${String(bound.status())} ${await bound.text()}`);
+  }
+  const submitted = await page.request.post("/workos.agent.v1.AgentTaskService/SubmitTask", {
+    data: {
+      idempotencyKey: `paired-notification-task-${stamp}`,
+      input: {
+        targetScope: { projectId: project.project.id },
+        role: "general",
+        goal: "produce paired-device notification evidence",
+        outputArtifactTypes: ["document.markdown.v1"],
+      },
+    },
+  });
+  if (!submitted.ok()) {
+    throw new Error(
+      `submit notification task: ${String(submitted.status())} ${await submitted.text()}`,
+    );
+  }
+  return project.project.id;
+}
+
 test("lan-pairing phase runs", async () => {
-  test.setTimeout(120_000);
+  test.setTimeout(phase === "paired-notifications" ? 240_000 : 120_000);
   const { context, page } = await openProfile();
   try {
     if (phase === "pair") {
@@ -133,6 +209,66 @@ test("lan-pairing phase runs", async () => {
         timeout: 15_000,
       });
       return;
+    }
+
+    if (phase === "paired-notifications") {
+      const { chromium } = await import("@playwright/test");
+      const secondContext = await chromium.launchPersistentContext(secondProfileDir, {
+        ignoreHTTPSErrors: true,
+        viewport: { width: 1440, height: 900 },
+      });
+      const deviceB = secondContext.pages()[0] ?? (await secondContext.newPage());
+      try {
+        expect(pairingURL).toContain("#v=1&t=");
+        await deviceB.goto(pairingURL);
+        await deviceB.getByLabel("Device name").fill(secondDeviceName);
+        await deviceB.getByRole("button", { name: "Pair device" }).click();
+        await expect(deviceB.locator(".desktop-shell")).toBeVisible({ timeout: 30_000 });
+
+        await page.goto(tlsURL);
+        await expect(page.locator(".desktop-shell")).toBeVisible({ timeout: 30_000 });
+        const stamp = String(Date.now());
+        await markEverythingRead(page, stamp);
+        const projectId = await submitNotificationTask(page, stamp);
+        for (const pairedPage of [page, deviceB]) {
+          await pairedPage.evaluate((id) => {
+            window.sessionStorage.setItem("workos.activeProjectId", id);
+          }, projectId);
+          await pairedPage.reload();
+          await expect(pairedPage.getByTestId("open-notifications")).toBeVisible({
+            timeout: 30_000,
+          });
+        }
+
+        for (const pairedPage of [page, deviceB]) {
+          let badge = 0;
+          for (let attempt = 0; attempt < 60 && badge < 2; attempt++) {
+            badge = await badgeCount(pairedPage);
+            if (badge < 2) await pairedPage.waitForTimeout(500);
+          }
+          expect(badge).toBeGreaterThanOrEqual(2);
+          await pairedPage.getByTestId("open-notifications").click();
+          const center = pairedPage.getByTestId("notification-center");
+          await center.getByTestId("notification-filter-project").click();
+          await expect(center.getByTestId("notification-item")).toHaveCount(2, {
+            timeout: 30_000,
+          });
+        }
+
+        const centerA = page.getByTestId("notification-center");
+        const centerB = deviceB.getByTestId("notification-center");
+        await centerB
+          .getByTestId("notification-item")
+          .first()
+          .getByRole("button", { name: "Mark read" })
+          .click();
+        await expect(centerA.locator(".notification-item.unread")).toHaveCount(1, {
+          timeout: 30_000,
+        });
+        return;
+      } finally {
+        await secondContext.close();
+      }
     }
 
     if (phase === "revoke") {

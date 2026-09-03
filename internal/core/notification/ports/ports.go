@@ -79,6 +79,10 @@ type TxSink interface {
 // NotificationStore is the durable authority over facts, the owner change
 // stream, and read state.
 type NotificationStore interface {
+	// SerializeRequestTx takes a transaction-scoped lock for one canonical
+	// command/source key. It closes the check-then-insert race without a
+	// process-local mutex; hash collisions only add harmless serialization.
+	SerializeRequestTx(ctx context.Context, tx dbtx.Tx, key string) error
 	// AppendTx projects one prepared notification inside the caller's
 	// transaction: notification row + CREATED change + source receipt, with
 	// the change sequence allocated from the owner counter. Replay-safe:
@@ -90,8 +94,8 @@ type NotificationStore interface {
 	// ListPage reads one keyset page (already limit+1 probed by the
 	// repository) plus the owner unread count and current watermark.
 	ListPage(ctx context.Context, ownerUserID string, filter Filter, cursor Cursor, limit int) (Page, error)
-	// Summary returns the owner unread count, retained watermark, and sweep
-	// watermark.
+	// Summary returns the owner unread count, monotonic owner-sequence
+	// watermark, and sweep boundary from one database snapshot.
 	Summary(ctx context.Context, ownerUserID string) (Summary, error)
 	// MarkReadTx applies the read projection for a locked set of facts
 	// inside the caller's transaction and appends the READ changes.
@@ -102,8 +106,9 @@ type NotificationStore interface {
 	// LockForRead locks the given owner-scoped facts for a read command.
 	// Missing facts are absent from the result.
 	LockForRead(ctx context.Context, tx dbtx.Tx, ownerUserID string, ids []string) ([]domain.Notification, error)
-	// GetReadRequest returns a consumed read-command key.
-	GetReadRequest(ctx context.Context, ownerUserID, idempotencyKey string) (ReadRequestRecord, bool, error)
+	// GetReadRequestTx returns a consumed read-command key inside the caller's
+	// transaction.
+	GetReadRequestTx(ctx context.Context, tx dbtx.Tx, ownerUserID, idempotencyKey string) (ReadRequestRecord, bool, error)
 	// SaveReadRequest consumes a read-command key inside the caller's
 	// transaction.
 	SaveReadRequest(ctx context.Context, tx dbtx.Tx, record ReadRequestRecord) error
@@ -114,8 +119,9 @@ type NotificationStore interface {
 	// LastOwnerSequenceTx reports the owner counter's current sequence inside
 	// the caller's transaction (the just-allocated created sequence).
 	LastOwnerSequenceTx(ctx context.Context, tx dbtx.Tx, ownerUserID string) (int64, error)
-	// GetAppRequest returns a consumed app create key.
-	GetAppRequest(ctx context.Context, ownerUserID, appInstanceID, idempotencyKey string) (AppRequestRecord, bool, error)
+	// GetAppRequestTx returns a consumed app create key inside the caller's
+	// transaction.
+	GetAppRequestTx(ctx context.Context, tx dbtx.Tx, ownerUserID, appInstanceID, idempotencyKey string) (AppRequestRecord, bool, error)
 	// SaveAppRequest consumes an app create key inside the caller's
 	// transaction.
 	SaveAppRequest(ctx context.Context, tx dbtx.Tx, record AppRequestRecord) error

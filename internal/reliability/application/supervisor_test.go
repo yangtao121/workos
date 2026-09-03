@@ -384,6 +384,36 @@ func TestPollReportsOneIncidentPerEpisodeAndRestartsOnce(t *testing.T) {
 	}
 }
 
+func TestPollBudgetDoesNotLetExistingEpisodeStarveNewWorkload(t *testing.T) {
+	repository := newFakeIncidentRepo()
+	observer := &fakeObserver{}
+	controller := &fakeController{restartResult: ports.ControlResult{Outcome: ports.ControlUnsupported}}
+	first := testObservation(ports.StateFailed, domain.HealthFailing, "exited")
+	second := first
+	second.WorkloadID = "0198d7ea-2110-7c42-b659-c5e4d73bc399"
+	observer.observations = []ports.Observation{first, second}
+	supervisor, err := NewSupervisor(observer, controller, repository, ids.UUIDv7{}, Config{
+		StablePollsToResolve: 3,
+		MaxIncidentsPerPoll:  1,
+	}, testLogger2())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := supervisor.Poll(context.Background()); err != nil {
+		t.Fatalf("first bounded poll: %v", err)
+	}
+	if got := len(repository.incidents); got != 1 {
+		t.Fatalf("first poll incidents = %d, want 1", got)
+	}
+	if err := supervisor.Poll(context.Background()); err != nil {
+		t.Fatalf("second bounded poll: %v", err)
+	}
+	if got := len(repository.incidents); got != 2 {
+		t.Fatalf("existing episode consumed the second poll budget: incidents = %d, want 2", got)
+	}
+}
+
 // TestPollCreatesSeparateIncidentsPerViolation pins the classification: an
 // OOM exit reports the OOM violation, and health failures report theirs.
 func TestPollCreatesSeparateIncidentsPerViolation(t *testing.T) {

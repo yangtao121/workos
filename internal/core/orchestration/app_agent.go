@@ -8,6 +8,7 @@ import (
 	agentdomain "github.com/yangtao121/workos/internal/core/agent/domain"
 	appregistrydomain "github.com/yangtao121/workos/internal/core/appregistry/domain"
 	projectdomain "github.com/yangtao121/workos/internal/core/project/domain"
+	"github.com/yangtao121/workos/internal/platform/dbtx"
 )
 
 // The bridge capabilities this slice actually implements. A grant only becomes
@@ -149,6 +150,29 @@ func (s *AppAgentService) AuthorizeAppNotificationForIngest(ctx context.Context,
 	return ownerUserID, projectID, installation.AppID, nil
 }
 
+// AuthorizeAppNotificationForIngestTx is the command-safe variant: the
+// installation authority takes a row share lock in the notification write
+// transaction so uninstall/grant mutation cannot race a successful verdict.
+func (s *AppAgentService) AuthorizeAppNotificationForIngestTx(ctx context.Context, tx dbtx.Tx, ownerUserID, projectID, appInstanceID string, installationGrantRevision int64) (string, string, string, error) {
+	if ownerUserID == "" {
+		return "", "", "", projectdomain.ErrInvalid
+	}
+	resolver, ok := s.installations.(interface {
+		ResolveActiveInstallationForNotificationTx(context.Context, dbtx.Tx, string, string, string) (projectdomain.Installation, error)
+	})
+	if !ok {
+		return "", "", "", errors.New("installation source does not support transaction-scoped notification authorization")
+	}
+	installation, err := resolver.ResolveActiveInstallationForNotificationTx(ctx, tx, ownerUserID, projectID, appInstanceID)
+	if err != nil {
+		return "", "", "", err
+	}
+	if err := authorizeInstallation(installation, installationGrantRevision, AppBridgeCapabilityNotificationsCreate); err != nil {
+		return "", "", "", err
+	}
+	return ownerUserID, projectID, installation.AppID, nil
+}
+
 // authorize walks the authoritative chain shared by both bridge methods:
 // canonical capability, active same-owner installation under a non-archived
 // project, the session-derived grant epoch, and the exact grant. Every
@@ -164,21 +188,28 @@ func (s *AppAgentService) authorize(ctx context.Context, ownerUserID, projectID,
 	if err != nil {
 		return projectdomain.Installation{}, err
 	}
+	if err := authorizeInstallation(installation, installationGrantRevision, capability); err != nil {
+		return projectdomain.Installation{}, err
+	}
+	return installation, nil
+}
+
+func authorizeInstallation(installation projectdomain.Installation, installationGrantRevision int64, capability string) error {
 	// A private request can only carry a revision derived from a validated
 	// session snapshot. Absent (<= 0) and mismatched revisions are the same
 	// indistinguishable stale verdict; the current revision never leaks.
 	if installationGrantRevision <= 0 || installation.GrantRevision != installationGrantRevision {
-		return projectdomain.Installation{}, ErrAppGrantStale
+		return ErrAppGrantStale
 	}
 	if err := validateStoredGrant(installation.GrantedPermissions); err != nil {
-		return projectdomain.Installation{}, err
+		return err
 	}
 	for _, granted := range installation.GrantedPermissions {
 		if granted == capability {
-			return installation, nil
+			return nil
 		}
 	}
-	return projectdomain.Installation{}, ErrAppNotGranted
+	return ErrAppNotGranted
 }
 
 // validateStoredGrant checks the entire stored grant snapshot before any

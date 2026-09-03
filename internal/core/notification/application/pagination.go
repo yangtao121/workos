@@ -24,15 +24,16 @@ type pageToken struct {
 	ID          string `json:"i"`
 	Owner       string `json:"o"`
 	Fingerprint string `json:"f"`
+	Watermark   int64  `json:"w"`
 }
 
-func encodePageToken(cursor ports.Cursor, owner string, filter ports.Filter) (string, error) {
-	if cursor.CreatedAt.IsZero() || cursor.ID == "" {
+func encodePageToken(cursor ports.Cursor, owner string, filter ports.Filter, watermark int64) (string, error) {
+	if cursor.CreatedAt.IsZero() || cursor.ID == "" || watermark < 0 {
 		return "", ErrInvalid
 	}
 	blob, err := json.Marshal(pageToken{
-		Version: 1, CreatedUs: cursor.CreatedAt.UnixMicro(), ID: cursor.ID,
-		Owner: owner, Fingerprint: filterFingerprint(filter),
+		Version: 2, CreatedUs: cursor.CreatedAt.UnixMicro(), ID: cursor.ID,
+		Owner: owner, Fingerprint: filterFingerprint(filter), Watermark: watermark,
 	})
 	if err != nil {
 		return "", fmt.Errorf("encode notification page token: %w", domain.ErrInvalid)
@@ -40,26 +41,26 @@ func encodePageToken(cursor ports.Cursor, owner string, filter ports.Filter) (st
 	return base64.RawURLEncoding.EncodeToString(blob), nil
 }
 
-func decodePageToken(token, owner string, filter ports.Filter) (ports.Cursor, error) {
+func decodePageToken(token, owner string, filter ports.Filter) (ports.Cursor, int64, error) {
 	if token == "" {
-		return ports.Cursor{}, nil
+		return ports.Cursor{}, 0, nil
 	}
 	blob, err := base64.RawURLEncoding.DecodeString(token)
 	if err != nil {
-		return ports.Cursor{}, ErrInvalid
+		return ports.Cursor{}, 0, ErrInvalid
 	}
 	var decoded pageToken
 	if err := json.Unmarshal(blob, &decoded); err != nil {
-		return ports.Cursor{}, ErrInvalid
+		return ports.Cursor{}, 0, ErrInvalid
 	}
-	if decoded.Version != 1 || decoded.Owner != owner || decoded.Fingerprint != filterFingerprint(filter) {
-		return ports.Cursor{}, ErrInvalid
+	if decoded.Version != 2 || decoded.Owner != owner || decoded.Fingerprint != filterFingerprint(filter) {
+		return ports.Cursor{}, 0, ErrInvalid
 	}
-	if !domain.ValidUUID(decoded.ID) || decoded.CreatedUs <= 0 {
-		return ports.Cursor{}, ErrInvalid
+	if !domain.ValidUUID(decoded.ID) || decoded.CreatedUs <= 0 || decoded.Watermark < 0 {
+		return ports.Cursor{}, 0, ErrInvalid
 	}
 	created := time.UnixMicro(decoded.CreatedUs).UTC()
-	return ports.Cursor{CreatedAt: domain.CanonicalUTCTime(created), ID: decoded.ID}, nil
+	return ports.Cursor{CreatedAt: domain.CanonicalUTCTime(created), ID: decoded.ID}, decoded.Watermark, nil
 }
 
 // filterFingerprint is the canonical fingerprint of the list filter; it

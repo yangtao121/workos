@@ -8,8 +8,9 @@
     ".": "./src/index.ts"
   },
   "scripts": {
-    "check": "tsc --noEmit",
-    "typecheck": "tsc --noEmit"
+    "check": "tsc --noEmit && vitest run src",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run src"
   },
   "dependencies": {
     "@connectrpc/connect": "2.1.2",
@@ -17,6 +18,7 @@
     "@workos/protocol": "workspace:*"
   },
   "devDependencies": {
-    "typescript": "5.9.2"
+    "typescript": "5.9.2",
+    "vitest": "4.1.11"
   }
 }

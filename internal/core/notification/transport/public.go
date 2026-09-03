@@ -44,7 +44,8 @@ const (
 
 // Handler serves the public NotificationService.
 type Handler struct {
-	service *application.Service
+	service             *application.Service
+	incidentSourceReady func() bool
 	// watchBudgets bounds concurrent streams per owner. It is an ephemeral
 	// connection budget, not a durable authority; entries exist only while
 	// streams are open.
@@ -52,15 +53,19 @@ type Handler struct {
 	watchBudgets map[string]int
 }
 
-func New(service *application.Service) *Handler {
-	return &Handler{service: service, watchBudgets: make(map[string]int)}
+func New(service *application.Service, incidentSourceReady ...func() bool) *Handler {
+	probe := func() bool { return false }
+	if len(incidentSourceReady) > 0 && incidentSourceReady[0] != nil {
+		probe = incidentSourceReady[0]
+	}
+	return &Handler{service: service, incidentSourceReady: probe, watchBudgets: make(map[string]int)}
 }
 
 // NewConnectHandler wires the public transport with the pre-decode wire
 // budget. Composition roots and tests must use this constructor.
-func NewConnectHandler(service *application.Service) (string, http.Handler) {
+func NewConnectHandler(service *application.Service, incidentSourceReady ...func() bool) (string, http.Handler) {
 	return notificationv1connect.NewNotificationServiceHandler(
-		New(service),
+		New(service, incidentSourceReady...),
 		connect.WithReadMaxBytes(MaxRequestBytes),
 	)
 }
@@ -196,7 +201,7 @@ func (h *Handler) WatchNotificationEvents(ctx context.Context, req *connect.Requ
 		if err != nil {
 			return mapError(err)
 		}
-		if cursor > 0 && cursor < swept {
+		if cursor < swept {
 			if err := stream.Send(&notificationv1.WatchNotificationEventsResponse{
 				Payload: &notificationv1.WatchNotificationEventsResponse_ResetRequired{
 					ResetRequired: &notificationv1.WatchResetRequired{SnapshotWatermark: swept},
@@ -285,19 +290,6 @@ func (h *Handler) acquireWatchBudget(owner string) (func(), error) {
 	}, nil
 }
 
-// incidentSourceReady is injected by the composition root; without the
-// optional reliability consumer the incident source is honestly not ready.
-var incidentSourceReadyFunc = func() bool { return false }
-
-func (h *Handler) incidentSourceReady() bool { return incidentSourceReadyFunc() }
-
-// SetIncidentSourceReady wires the incident-source freshness probe.
-func SetIncidentSourceReady(probe func() bool) {
-	if probe != nil {
-		incidentSourceReadyFunc = probe
-	}
-}
-
 func requireOwner(ctx context.Context) (string, error) {
 	id, err := identity.FromContext(ctx)
 	if err != nil {
@@ -375,7 +367,7 @@ func notificationProto(fact domain.Notification) *notificationv1.Notification {
 			AppId:    fact.AppID,
 		},
 		CreatedAt: timestamppb.New(fact.CreatedAt),
-		Revision:  fact.ReadChangeSequence,
+		Revision:  fact.Revision(),
 	}
 	if fact.ProjectID != "" {
 		wire.ProjectId = fact.ProjectID

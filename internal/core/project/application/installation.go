@@ -8,6 +8,7 @@ import (
 
 	"github.com/yangtao121/workos/internal/core/project/domain"
 	"github.com/yangtao121/workos/internal/core/project/ports"
+	"github.com/yangtao121/workos/internal/platform/dbtx"
 	"github.com/yangtao121/workos/internal/platform/ids"
 )
 
@@ -449,6 +450,22 @@ func (s *InstallationService) ResolveActiveInstallation(ctx context.Context, own
 		return domain.Installation{}, domain.ErrInvalid
 	}
 	return s.repository.ResolveActiveInstallation(ctx, ownerUserID, projectID, installationID)
+}
+
+// ResolveActiveInstallationForNotificationTx locks the active installation
+// against concurrent uninstall/grant writes for the lifetime of the caller's
+// notification transaction.
+func (s *InstallationService) ResolveActiveInstallationForNotificationTx(ctx context.Context, tx dbtx.Tx, ownerUserID, projectID, installationID string) (domain.Installation, error) {
+	if tx == nil || ownerUserID == "" || !domain.ValidInstallationUUID(projectID) || !domain.ValidInstallationUUID(installationID) {
+		return domain.Installation{}, domain.ErrInvalid
+	}
+	resolver, ok := s.repository.(interface {
+		ResolveActiveInstallationForNotificationTx(context.Context, dbtx.Tx, string, string, string) (domain.Installation, error)
+	})
+	if !ok {
+		return domain.Installation{}, errors.New("installation repository does not support transaction-scoped notification authorization")
+	}
+	return resolver.ResolveActiveInstallationForNotificationTx(ctx, tx, ownerUserID, projectID, installationID)
 }
 
 // ListInstalled returns one page of active installations ordered by app ID.

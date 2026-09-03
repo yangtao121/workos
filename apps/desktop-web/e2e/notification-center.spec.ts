@@ -3,8 +3,8 @@ import { expect, test, type Page } from "@playwright/test";
 // The notification center acceptance gate (ADR-0014): a real fake-harness
 // task run produces the agent.task.terminal and artifact.review.created
 // notifications through the Core source transactions; two independent
-// browser contexts (both the owner, as two paired devices would be) see the
-// same unread facts, a mark-read on one device converges on the other, and
+// dev-bypass browser contexts for the same owner see the same unread facts,
+// a mark-read on one context converges on the other, and
 // the durable facts survive a Gateway/Core restart (driven by the Makefile
 // gate around this spec with WORKOS_E2E_NOTIFICATIONS_VERIFY=1).
 test.setTimeout(240_000);
@@ -33,7 +33,7 @@ async function submitTerminalTask(page: Page, stamp: string) {
       data: {
         projectId,
         expectedRevision: created.project.revision,
-        selection: { providerId: "fake" },
+        providerId: "fake",
       },
     },
   );
@@ -187,19 +187,30 @@ test("terminal and artifact notifications arrive live and converge read state ac
   const projectItems = centerB.getByTestId("notification-item");
   await expect(projectItems).toHaveCount(2, { timeout: 30_000 });
   const firstItem = projectItems.first();
-  const beforeMark = await badgeCount(page);
   await firstItem.getByRole("button", { name: "Mark read" }).click();
-  // A's badge must drop by exactly one from the READ change alone (tracked
-  // as the minimum observed: a concurrent straggler fact could add +1, but
-  // never remove the -1 convergence).
-  let deviceABadge = await badgeCount(page);
-  let minBadge = deviceABadge;
-  for (let attempt = 0; attempt < 30 && minBadge > beforeMark - 1; attempt++) {
+  // Device A must converge to the authoritative owner-wide count even when
+  // other parallel specs add unrelated notifications. Its project-filtered
+  // projection then proves the READ fact itself crossed devices: exactly one
+  // of this run's two project facts remains unread.
+  let deviceABadge = -1;
+  let authoritativeUnread = -2;
+  for (let attempt = 0; attempt < 30; attempt++) {
+    const summary = await page.request.post(
+      "/workos.notification.v1.NotificationService/GetNotificationSummary",
+      { data: {} },
+    );
+    expect(summary.ok()).toBeTruthy();
+    authoritativeUnread = Number(((await summary.json()) as { unreadCount: string }).unreadCount);
     deviceABadge = await badgeCount(page);
-    if (deviceABadge < minBadge) minBadge = deviceABadge;
+    if (deviceABadge === authoritativeUnread) break;
     await page.waitForTimeout(500);
   }
-  expect(minBadge).toBe(beforeMark - 1);
+  expect(deviceABadge).toBe(authoritativeUnread);
+  await center.getByTestId("notification-filter-project").click();
+  await expect(center.getByTestId("notification-item")).toHaveCount(2, { timeout: 30_000 });
+  await expect(center.locator(".notification-item.unread")).toHaveCount(1, {
+    timeout: 30_000,
+  });
 
   // The marked fact lost its unread styling in place.
   await expect(centerB.locator(".notification-item.unread")).toHaveCount(1, {

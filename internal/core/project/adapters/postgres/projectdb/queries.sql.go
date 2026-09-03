@@ -808,6 +808,27 @@ func (q *Queries) LockProjectForInstallation(ctx context.Context, arg LockProjec
 	return i, err
 }
 
+const lockProjectForNotification = `-- name: LockProjectForNotification :one
+SELECT id
+FROM workos_core.projects
+WHERE owner_user_id = $1
+  AND id = $2
+  AND archived_at IS NULL
+FOR SHARE
+`
+
+type LockProjectForNotificationParams struct {
+	OwnerUserID string `json:"owner_user_id"`
+	ProjectID   string `json:"project_id"`
+}
+
+func (q *Queries) LockProjectForNotification(ctx context.Context, arg LockProjectForNotificationParams) (string, error) {
+	row := q.db.QueryRow(ctx, lockProjectForNotification, arg.OwnerUserID, arg.ProjectID)
+	var id string
+	err := row.Scan(&id)
+	return id, err
+}
+
 const nextInstallationVersionSequence = `-- name: NextInstallationVersionSequence :one
 SELECT COALESCE(max(sequence), 0) + 1 AS next_sequence
 FROM workos_core.project_app_installation_versions
@@ -897,6 +918,53 @@ type ResolveActiveInstallationRow struct {
 func (q *Queries) ResolveActiveInstallation(ctx context.Context, arg ResolveActiveInstallationParams) (ResolveActiveInstallationRow, error) {
 	row := q.db.QueryRow(ctx, resolveActiveInstallation, arg.OwnerUserID, arg.ProjectID, arg.ID)
 	var i ResolveActiveInstallationRow
+	err := row.Scan(
+		&i.ID,
+		&i.OwnerUserID,
+		&i.ProjectID,
+		&i.AppID,
+		&i.Version,
+		&i.ManifestDigest,
+		&i.GrantedPermissions,
+		&i.GrantRevision,
+		&i.InstalledAt,
+		&i.UninstalledAt,
+	)
+	return i, err
+}
+
+const resolveActiveInstallationForNotification = `-- name: ResolveActiveInstallationForNotification :one
+SELECT i.id, i.owner_user_id, i.project_id, i.app_id, i.version, i.manifest_digest, i.granted_permissions, i.grant_revision, i.installed_at, i.uninstalled_at
+FROM workos_core.project_app_installations i
+WHERE i.owner_user_id = $1
+  AND i.project_id = $2
+  AND i.id = $3
+  AND i.uninstalled_at IS NULL
+FOR SHARE
+`
+
+type ResolveActiveInstallationForNotificationParams struct {
+	OwnerUserID string `json:"owner_user_id"`
+	ProjectID   string `json:"project_id"`
+	ID          string `json:"id"`
+}
+
+type ResolveActiveInstallationForNotificationRow struct {
+	ID                 string             `json:"id"`
+	OwnerUserID        string             `json:"owner_user_id"`
+	ProjectID          string             `json:"project_id"`
+	AppID              string             `json:"app_id"`
+	Version            string             `json:"version"`
+	ManifestDigest     string             `json:"manifest_digest"`
+	GrantedPermissions []string           `json:"granted_permissions"`
+	GrantRevision      int64              `json:"grant_revision"`
+	InstalledAt        pgtype.Timestamptz `json:"installed_at"`
+	UninstalledAt      pgtype.Timestamptz `json:"uninstalled_at"`
+}
+
+func (q *Queries) ResolveActiveInstallationForNotification(ctx context.Context, arg ResolveActiveInstallationForNotificationParams) (ResolveActiveInstallationForNotificationRow, error) {
+	row := q.db.QueryRow(ctx, resolveActiveInstallationForNotification, arg.OwnerUserID, arg.ProjectID, arg.ID)
+	var i ResolveActiveInstallationForNotificationRow
 	err := row.Scan(
 		&i.ID,
 		&i.OwnerUserID,

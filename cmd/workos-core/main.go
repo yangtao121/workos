@@ -347,32 +347,31 @@ func run(logger *slog.Logger) error {
 	indexFeedPath, indexFeedHandler := indexfeedtransport.NewConnectHandler(indexFeedService)
 	mux.Handle(indexFeedPath, identity.Middleware(indexFeedHandler))
 
-	// The public notification surface is registered here; its store,
-	// producer sink, and app authorizer were constructed above (ADR-0014).
-	notificationPath, notificationHandler := notificationtransport.NewConnectHandler(notificationService)
-	mux.Handle(notificationPath, identity.Middleware(notificationHandler))
-
 	// The optional incident notification consumer (ADR-0014): when the
 	// reliability upstream is configured, Core claims durable publications
 	// at-least-once and projects them into the owner stream. When it is not,
 	// only incident-source freshness is degraded; every other notification
 	// path stays fully available. Private reliability RPCs never enter the
 	// gateway allowlist.
-	incidentConsumerActive := false
+	var incidentConsumer *notificationapp.IncidentConsumer
 	if strings.TrimSpace(cfg.Services.Reliability) != "" {
 		publicationClient := notificationv1connect.NewIncidentNotificationPublicationSourceServiceClient(
 			telemetry.HTTPClient(), cfg.Services.Reliability)
-		incidentConsumer, err := notificationapp.NewIncidentConsumer(
+		incidentConsumer, err = notificationapp.NewIncidentConsumer(
 			reliabilityclient.New(publicationClient), notificationRepository, pool, "workos-core-notification-consumer")
 		if err != nil {
 			return err
 		}
-		incidentConsumerActive = true
 		go incidentConsumer.Run(ctx, logger)
 	}
-	// The summary's freshness probe reports only incident-source freshness;
-	// an unconfigured consumer degrades exactly that bit.
-	notificationtransport.SetIncidentSourceReady(func() bool { return incidentConsumerActive })
+	// The public summary reports the live consumer's most recent upstream
+	// result. Configured-but-unreachable and unconfigured sources both fail
+	// honestly closed instead of claiming readiness from configuration alone.
+	notificationPath, notificationHandler := notificationtransport.NewConnectHandler(
+		notificationService,
+		func() bool { return incidentConsumer != nil && incidentConsumer.Ready() },
+	)
+	mux.Handle(notificationPath, identity.Middleware(notificationHandler))
 	// Bounded housekeeping: old read facts are swept and the owner sweep
 	// watermark advances, so stream-gap detection stays authoritative.
 	// Correctness never relies on this loop; every failure is observable.

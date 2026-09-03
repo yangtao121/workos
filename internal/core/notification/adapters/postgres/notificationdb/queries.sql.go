@@ -117,7 +117,8 @@ const getChangesAfter = `-- name: GetChangesAfter :many
 SELECT c.change_sequence, c.notification_id, c.change_type, c.revision,
        n.project_id, n.kind, n.severity, n.origin, n.title, n.body,
        n.target_kind, n.target_id, n.app_id, n.app_installation_id,
-       n.source_process, n.source_id, n.source_digest, n.created_at, n.read_at,
+       n.source_process, n.source_id, n.source_digest, n.created_at,
+       n.created_change_sequence, n.read_at,
        n.read_change_sequence
 FROM workos_core.notification_changes AS c
 JOIN workos_core.notifications AS n
@@ -135,26 +136,27 @@ type GetChangesAfterParams struct {
 }
 
 type GetChangesAfterRow struct {
-	ChangeSequence     int64
-	NotificationID     string
-	ChangeType         string
-	Revision           int64
-	ProjectID          pgtype.UUID
-	Kind               string
-	Severity           string
-	Origin             string
-	Title              string
-	Body               string
-	TargetKind         string
-	TargetID           string
-	AppID              pgtype.Text
-	AppInstallationID  pgtype.UUID
-	SourceProcess      string
-	SourceID           string
-	SourceDigest       string
-	CreatedAt          time.Time
-	ReadAt             *time.Time
-	ReadChangeSequence int64
+	ChangeSequence        int64
+	NotificationID        string
+	ChangeType            string
+	Revision              int64
+	ProjectID             pgtype.UUID
+	Kind                  string
+	Severity              string
+	Origin                string
+	Title                 string
+	Body                  string
+	TargetKind            string
+	TargetID              string
+	AppID                 pgtype.Text
+	AppInstallationID     pgtype.UUID
+	SourceProcess         string
+	SourceID              string
+	SourceDigest          string
+	CreatedAt             time.Time
+	CreatedChangeSequence int64
+	ReadAt                *time.Time
+	ReadChangeSequence    int64
 }
 
 func (q *Queries) GetChangesAfter(ctx context.Context, arg GetChangesAfterParams) ([]GetChangesAfterRow, error) {
@@ -185,6 +187,7 @@ func (q *Queries) GetChangesAfter(ctx context.Context, arg GetChangesAfterParams
 			&i.SourceID,
 			&i.SourceDigest,
 			&i.CreatedAt,
+			&i.CreatedChangeSequence,
 			&i.ReadAt,
 			&i.ReadChangeSequence,
 		); err != nil {
@@ -260,7 +263,7 @@ func (q *Queries) GetNotificationAppRequest(ctx context.Context, arg GetNotifica
 const getNotificationByID = `-- name: GetNotificationByID :one
 SELECT id, owner_user_id, project_id, kind, severity, origin, title, body,
        target_kind, target_id, app_id, app_installation_id, source_process,
-       source_id, source_digest, created_at, read_at, read_change_sequence
+       source_id, source_digest, created_at, read_at, read_change_sequence, created_change_sequence
 FROM workos_core.notifications
 WHERE id = $1
 `
@@ -287,6 +290,7 @@ func (q *Queries) GetNotificationByID(ctx context.Context, id string) (WorkosCor
 		&i.CreatedAt,
 		&i.ReadAt,
 		&i.ReadChangeSequence,
+		&i.CreatedChangeSequence,
 	)
 	return i, err
 }
@@ -338,9 +342,11 @@ func (q *Queries) GetNotificationSourceReceipt(ctx context.Context, arg GetNotif
 }
 
 const getOwnerChangeWatermark = `-- name: GetOwnerChangeWatermark :one
-SELECT COALESCE(max(change_sequence), 0)::bigint AS watermark
-FROM workos_core.notification_changes
-WHERE owner_user_id = $1
+SELECT COALESCE((
+    SELECT last_sequence
+    FROM workos_core.notification_owner_sequences
+    WHERE owner_user_id = $1
+), 0)::bigint AS watermark
 `
 
 func (q *Queries) GetOwnerChangeWatermark(ctx context.Context, ownerUserID string) (int64, error) {
@@ -365,7 +371,7 @@ func (q *Queries) GetOwnerLastSequence(ctx context.Context, ownerUserID string) 
 const getOwnerNotification = `-- name: GetOwnerNotification :one
 SELECT id, owner_user_id, project_id, kind, severity, origin, title, body,
        target_kind, target_id, app_id, app_installation_id, source_process,
-       source_id, source_digest, created_at, read_at, read_change_sequence
+       source_id, source_digest, created_at, read_at, read_change_sequence, created_change_sequence
 FROM workos_core.notifications
 WHERE id = $1 AND owner_user_id = $2
 `
@@ -397,6 +403,7 @@ func (q *Queries) GetOwnerNotification(ctx context.Context, arg GetOwnerNotifica
 		&i.CreatedAt,
 		&i.ReadAt,
 		&i.ReadChangeSequence,
+		&i.CreatedChangeSequence,
 	)
 	return i, err
 }
@@ -417,33 +424,34 @@ const insertNotification = `-- name: InsertNotification :execrows
 INSERT INTO workos_core.notifications (
     id, owner_user_id, project_id, kind, severity, origin, title, body,
     target_kind, target_id, app_id, app_installation_id,
-    source_process, source_id, source_digest, created_at
+    source_process, source_id, source_digest, created_at, created_change_sequence
 ) VALUES (
     $1, $2, $3, $4,
     $5, $6, $7, $8,
     $9, $10, $11,
     $12, $13, $14,
-    $15, $16
+    $15, $16, $17
 )
 `
 
 type InsertNotificationParams struct {
-	ID                string
-	OwnerUserID       string
-	ProjectID         pgtype.UUID
-	Kind              string
-	Severity          string
-	Origin            string
-	Title             string
-	Body              string
-	TargetKind        string
-	TargetID          string
-	AppID             pgtype.Text
-	AppInstallationID pgtype.UUID
-	SourceProcess     string
-	SourceID          string
-	SourceDigest      string
-	CreatedAt         time.Time
+	ID                    string
+	OwnerUserID           string
+	ProjectID             pgtype.UUID
+	Kind                  string
+	Severity              string
+	Origin                string
+	Title                 string
+	Body                  string
+	TargetKind            string
+	TargetID              string
+	AppID                 pgtype.Text
+	AppInstallationID     pgtype.UUID
+	SourceProcess         string
+	SourceID              string
+	SourceDigest          string
+	CreatedAt             time.Time
+	CreatedChangeSequence int64
 }
 
 func (q *Queries) InsertNotification(ctx context.Context, arg InsertNotificationParams) (int64, error) {
@@ -464,6 +472,7 @@ func (q *Queries) InsertNotification(ctx context.Context, arg InsertNotification
 		arg.SourceID,
 		arg.SourceDigest,
 		arg.CreatedAt,
+		arg.CreatedChangeSequence,
 	)
 	if err != nil {
 		return 0, err
@@ -479,6 +488,7 @@ INSERT INTO workos_core.notification_app_quotas (
     $1, $2, $3,
     0, $4, 0, $5
 )
+ON CONFLICT (owner_user_id, app_installation_id) DO NOTHING
 `
 
 type InsertNotificationAppQuotaParams struct {
@@ -635,7 +645,7 @@ func (q *Queries) InsertNotificationSourceReceipt(ctx context.Context, arg Inser
 const listNotificationsPage = `-- name: ListNotificationsPage :many
 SELECT id, owner_user_id, project_id, kind, severity, origin, title, body,
        target_kind, target_id, app_id, app_installation_id, source_process,
-       source_id, source_digest, created_at, read_at, read_change_sequence
+       source_id, source_digest, created_at, read_at, read_change_sequence, created_change_sequence
 FROM workos_core.notifications
 WHERE owner_user_id = $1
   AND ($2 ::uuid IS NULL OR project_id = $2 ::uuid)
@@ -693,6 +703,7 @@ func (q *Queries) ListNotificationsPage(ctx context.Context, arg ListNotificatio
 			&i.CreatedAt,
 			&i.ReadAt,
 			&i.ReadChangeSequence,
+			&i.CreatedChangeSequence,
 		); err != nil {
 			return nil, err
 		}
@@ -707,7 +718,7 @@ func (q *Queries) ListNotificationsPage(ctx context.Context, arg ListNotificatio
 const lockOwnerNotifications = `-- name: LockOwnerNotifications :many
 SELECT id, owner_user_id, project_id, kind, severity, origin, title, body,
        target_kind, target_id, app_id, app_installation_id, source_process,
-       source_id, source_digest, created_at, read_at, read_change_sequence
+       source_id, source_digest, created_at, read_at, read_change_sequence, created_change_sequence
 FROM workos_core.notifications
 WHERE owner_user_id = $1 AND id = ANY ($2::uuid[])
 ORDER BY created_at DESC, id DESC
@@ -747,6 +758,7 @@ func (q *Queries) LockOwnerNotifications(ctx context.Context, arg LockOwnerNotif
 			&i.CreatedAt,
 			&i.ReadAt,
 			&i.ReadChangeSequence,
+			&i.CreatedChangeSequence,
 		); err != nil {
 			return nil, err
 		}
@@ -853,6 +865,15 @@ func (q *Queries) SelectSweepableNotifications(ctx context.Context, arg SelectSw
 		return nil, err
 	}
 	return items, nil
+}
+
+const serializeNotificationRequest = `-- name: SerializeNotificationRequest :exec
+SELECT pg_advisory_xact_lock(hashtextextended($1::text, 0))
+`
+
+func (q *Queries) SerializeNotificationRequest(ctx context.Context, lockKey string) error {
+	_, err := q.db.Exec(ctx, serializeNotificationRequest, lockKey)
+	return err
 }
 
 const updateNotificationAppQuota = `-- name: UpdateNotificationAppQuota :execrows

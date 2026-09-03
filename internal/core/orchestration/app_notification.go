@@ -9,6 +9,7 @@ import (
 
 	notificationports "github.com/yangtao121/workos/internal/core/notification/ports"
 	projectdomain "github.com/yangtao121/workos/internal/core/project/domain"
+	"github.com/yangtao121/workos/internal/platform/dbtx"
 )
 
 // AppNotificationAuthorizer implements the notification module's
@@ -25,8 +26,8 @@ func NewAppNotificationAuthorizer(agent *AppAgentService) (*AppNotificationAutho
 	return &AppNotificationAuthorizer{agent: agent}, nil
 }
 
-func (a *AppNotificationAuthorizer) AuthorizeAppNotification(ctx context.Context, ownerUserID, projectID, appInstanceID string, installationGrantRevision int64) (notificationports.AppInstallationFacts, error) {
-	_, _, appID, err := a.agent.AuthorizeAppNotificationForIngest(ctx, ownerUserID, projectID, appInstanceID, installationGrantRevision)
+func (a *AppNotificationAuthorizer) AuthorizeAppNotificationTx(ctx context.Context, tx dbtx.Tx, ownerUserID, projectID, appInstanceID string, installationGrantRevision int64) (notificationports.AppInstallationFacts, error) {
+	_, _, appID, err := a.agent.AuthorizeAppNotificationForIngestTx(ctx, tx, ownerUserID, projectID, appInstanceID, installationGrantRevision)
 	if err != nil {
 		// Transient upstream failures stay retryable; every denial verdict
 		// collapses onto the one sanitized sentinel so the caller can never

@@ -1,8 +1,10 @@
 # Task: v1 Local-first Notification——持久通知、实时补收、跨设备已读与授权 App 闭环
 
-- 状态：done（三门禁 + 全量回归通过；APNs/FCM 后台推送、Service Worker push、通知搜索、
-  用户偏好如实 unavailable；Reliability supervisor 判定不变）
-- Owner/Agent：overnight implementation agent（唯一写入者，单 branch/worktree）
+- 状态：done（2026-09-03 主分支合并前审核已修复 snapshot/cursor、并发幂等、App
+  revoke replay、incident freshness、typed action 与门禁证据缺口；APNs/FCM 后台推送、Service
+  Worker push、通知搜索、用户偏好如实 unavailable；Reliability supervisor 判定不变）
+- Owner/Agent：overnight implementation agent（初始实现）+ merge-review agent（审核修复）；同一
+  feature branch/worktree 串行写入
 - 进程/模块：workos-core（Notification 模块 + tx-scoped producers + private Reliability/App ingest）、
   reliability-host（notification publication outbox + source service）、workos-gateway（public
   NotificationService allowlist + stream revalidate）、runtime-host（App Bridge `notifications.create`）、
@@ -11,8 +13,7 @@
   tx-scoped sink/claim-complete 模式（ADR-0013）、App grants/revision（ADR-0003）、surface
   session/token（ADR-0002）、Gateway identity（ADR-0007）、Adaptive Shell
 - Branch：`feat/v1-local-first-notifications`（自本地 `main` @ `4e6e0b8`）
-- 实现依据：`docs/prompts/20260902-local-first-notifications-prompt.md`（提示文件位于
-  `docs/prompts/20260902-next-agent-local-first-notifications.md`，提交后重命名为仓库事实路径）
+- 实现依据：`docs/prompts/20260902-next-agent-local-first-notifications.md`
 - ADR：`docs/decisions/0014-local-first-notifications.md`
 
 ## 目标与范围
@@ -70,6 +71,8 @@ Podman 状态升级。
   `notification_read_requests`、`notification_app_requests`、`notification_app_quotas`。
 - `030_reliability_notification_publications.sql`（owner：reliability-host）：
   `workos_reliability.notification_publications`。
+- `031_notification_snapshot_revisions.sql`（owner：workos-core Notification）：forward-only
+  回填/约束 CREATED revision，保证未读 snapshot 也有正的 durable revision。
 
 ### 事件序列与 read state
 
@@ -127,8 +130,8 @@ Podman 状态升级。
 ## 验收（完成记录）
 
 - [x] ADR-0014 覆盖全部裁决；Proto additive（`workos.notification.v1` 公共 + 私有 ingest +
-      私有 incident source）；migration `029`（Core Notification）/`030`（reliability-host
-      publication）owner 注释；`make generate` 幂等（最终验证复跑）
+      私有 incident source）；migration `029` / `031`（Core Notification）与 `030`
+      （reliability-host publication）owner 注释；`make generate` 幂等（最终验证复跑）
 - [x] Core notification 模块分层（domain/ports/application/adapters/transport）+ 真实 PostgreSQL
       集成测试：exactly-once projection + 并发收敛、digest drift fail closed、read 幂等/
       conflict/单调、分页满页无 phantom、sweep gap、并发序列唯一递增
@@ -142,14 +145,16 @@ Podman 状态升级。
       （`TestIncidentPublicationClaimApplyComplete`、`TestIncidentPublicationDigestDriftFailsClosed`）
 - [x] Gateway：精确 allowlist（私有 ingest/source 404）+ identity 剥除注入 + watch 流 30s
       周期 session 重验 + Core 侧有界 lifetime/heartbeat/per-owner 并发预算 + RESET_REQUIRED
-- [x] 双 Chromium context 实时到达、跨设备 read 收敛、断线补收、Gateway/Core 重启持久
-      （`notification-center.spec.ts` 两阶段）
+- [x] 双 dev-bypass Chromium context 实时到达、read 收敛、断线补收、Gateway/Core 重启持久
+      （`notification-center.spec.ts` 两阶段）；`make test-lan-pairing` 另用生产 TLS/session gate
+      配对两个独立 persistent profile，证明真实配对设备 notification/read 收敛
 - [x] Notification Center 三布局（expanded bell+badge / medium Dock / compact 底部导航）+
       typed action + before/after/current + notes（`docs/ui/desktop-web/changes/
 20260902-local-first-notifications/`）
-- [x] App notifications.create：grant 协商/deny、same-key replay 精确、different-key 新事实、
-      revoke 后 stale port `permission_denied` 零副作用、burst/day 配额原子、restart 后配额与
-      幂等保持（`TestAppNotificationIngest*` + `app-notifications.spec.ts`）
+- [x] App notifications.create：grant 协商/deny、每次 replay 前事务内重新授权、same-key replay
+      精确、different-key 新事实、revoke 后 stale port `permission_denied` 零副作用、并发
+      uninstall/create 有数据库顺序、burst/day 配额原子、restart 后配额与幂等保持
+      （`TestAppNotificationIngest*` + `app-notifications.spec.ts`）
 - [x] 三专项门禁 PASS：`make test-notification-center`、`make test-incident-notifications`、
       `make test-app-notifications`
 - [x] `make check`、`make test-integration`（含 notifications seed/verify restart battery）、
@@ -161,25 +166,56 @@ Podman 状态升级。
 
 - `git diff --check`：干净。
 - `make generate` 两次：第二次无 diff（`git diff --exit-code -- gen sdk/protocol/src/gen` 通过）。
-- `make check`：PASS。
-- `make test-integration`：PASS（含 restart battery notifications seed/verify）。
-- `make test-e2e`：PASS（全部既有 spec + 新增三个通知 spec）。
-- `make test-notification-center`：PASS（Go 集成 + 跨进程 incident gate + 双 context E2E +
-  重启验证阶段）。
+- `make check`：PASS（Go vet/unit、TypeScript architecture/ESLint/typecheck/Vitest、Agent SDK 2
+  个 projection 回归、Desktop 117 tests、production build、status render check）。
+- `make test-integration`：PASS（全量真实 PostgreSQL integration + restart battery；最终输出
+  `notification persistence verified`）。
+- `make test-e2e`：PASS（21 passed / 14 条按专用 fixture 条件跳过；通知并行共享 owner 的旧
+  badge 相对值断言先暴露误报，改为权威 summary + 当前 Project READ 收敛后复跑通过）。
+- `make test-notification-center`：PASS（approval-required 跨进程 producer、并发/snapshot/sweep
+  PostgreSQL 回归、跨进程 incident、双 context 实时/typed action/read，随后显式重启并验证
+  durable phase）。
 - `make test-incident-notifications`：PASS（明确注释:只证明软件链路,不证明 rootless supervisor）。
-- `make test-app-notifications`：PASS（Go ingest 门禁 + opaque Web Bundle E2E）。
+- `make test-app-notifications`：PASS（并发首次请求/quota、authorization-uninstall 串行化 Go
+  ingest 门禁 + opaque Web Bundle E2E）。
 - `make test-adaptive-shell` / `make test-lan-pairing`：PASS。
-- `buf lint` + 相对 main 的 `buf breaking`：PASS（纯 additive）。
+- `buf lint` + `buf breaking api/proto --against '.git#branch=main'`：PASS（纯 additive）。
+- `go test -race ./internal/core/notification/... ./internal/reliability/... ./internal/runtime/...
+./internal/core/project/... ./internal/core/orchestration/...`：PASS。
+- `docker compose config --quiet`：PASS。
 - 视觉 PNG：7 张 after/current 全部尺寸核对（1440×900 / 820×1180 / 390×844）+ 人工检查。
+
+## 2026-09-03 合并前审核结论
+
+初始实现的主链路存在真实 correctness/证据缺口，不能原样合并；本次已全部修复并加入回归：
+
+- list/unread/watermark 原为不同 autocommit snapshot，分页间新增又会把 watch cursor 推过未遍历事实；
+  现改为 repeatable-read snapshot + 首页 watermark token，watermark 来自不回退的 owner counter。
+- 未读 wire revision 原为 0，sweep 后 watermark 会倒退，cursor 0 也可能错过 reset；migration `031`
+  持久化 CREATED revision，并补齐 sweep/reset/单调 revision 回归。
+- producer/read/App 首次并发存在 check-then-insert unique race，quota 首桶也会竞争；现由 PostgreSQL
+  transaction lock 与 conflict-row lock 仲裁，真实并发集成测试覆盖。
+- App replay 原先先返回历史响应再检查当前 grant，卸载后仍可能复用；现每次 replay 前在同一写事务
+  内按 Project→installation 锁序重新授权，并证明并发 uninstall 等待已授权事务。
+- incident freshness 原由“配置了 URL”冒充 ready；现绑定 consumer 最近一次有界 upstream
+  claim/complete 结果，未配置/不可达均 fail closed。
+- Desktop projection 原会加载无界历史、迟到 snapshot/revision 可回退；现固定最近 100 条、排序/修订/
+  cursor 单调。typed action 仅把权威 NotFound 判 stale，临时失败可重试，分页查 App，并以 Project
+  generation 隔离迟到响应。
+- 原“双设备”证据只是两个 dev-bypass context，且通知专项门禁实际跳过实时 phase；现 LAN gate 配对
+  两个独立生产 TLS/session profile，通知门禁也明确执行实时 phase→重启→持久 phase。
+- 全量 integration gate 原未启动它自身会调用的 reliability-host/indexer，结果依赖工作区残留容器；且
+  `unavailable` action 固定占据最老 recovery batch 会让新 incident 永久饥饿。现明确构建并启动全部
+  六进程，并按“未尝试优先、重试时间轮转”保证有界公平，incident/index 验收不再借用陈旧外部状态。
 
 ## 交接
 
-- Branch:`feat/v1-local-first-notifications`,基线 `4e6e0b8`,唯一 branch/worktree/写入者。
+- Branch:`feat/v1-local-first-notifications`,基线 `4e6e0b8`,同一 branch/worktree 串行写入。
   提交序列:docs boundary → durable service → atomic producers → reliability bridge →
   resumable stream → adaptive center → quota-bound app notifications → (本收口提交)。
-  未 merge、未 push。
+  用户已明确授权审核通过后 fast-forward 合并本地 `main`；不 push、不删除 feature branch。
 - Proto/migration owner:`workos.notification.v1` 三文件(Core Notification);
-  `029` owner workos-core Notification;`030` owner reliability-host。
+  `029`/`031` owner workos-core Notification;`030` owner reliability-host。
 - 未决风险与下一步:
   - 后台推送(APNs/FCM/Web Push/Service Worker)未实现,状态如实 unavailable;未来需要
     独立 ADR 与 relay 信任根。

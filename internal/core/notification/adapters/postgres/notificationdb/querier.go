@@ -44,6 +44,7 @@ type Querier interface {
 	// Bounded sweep: only already-read notifications older than the cutoff are
 	// candidates. Recent unread facts are never swept.
 	SelectSweepableNotifications(ctx context.Context, arg SelectSweepableNotificationsParams) ([]SelectSweepableNotificationsRow, error)
+	SerializeNotificationRequest(ctx context.Context, lockKey string) error
 	UpdateNotificationAppQuota(ctx context.Context, arg UpdateNotificationAppQuotaParams) (int64, error)
 }
 

@@ -93,7 +93,7 @@ func (s *Service) List(ctx context.Context, ownerUserID string, filter ports.Fil
 	if size < 0 || size > MaxPageSize {
 		return ports.Page{}, "", ErrInvalid
 	}
-	cursor, err := decodePageToken(pageToken, ownerUserID, filter)
+	cursor, snapshotWatermark, err := decodePageToken(pageToken, ownerUserID, filter)
 	if err != nil {
 		return ports.Page{}, "", err
 	}
@@ -101,9 +101,18 @@ func (s *Service) List(ctx context.Context, ownerUserID string, filter ports.Fil
 	if err != nil {
 		return ports.Page{}, "", err
 	}
+	if pageToken != "" {
+		if snapshotWatermark > page.Watermark {
+			return ports.Page{}, "", domain.ErrCorrupt
+		}
+		// Every page in one traversal advertises the first page's snapshot
+		// boundary. A concurrent insert cannot advance the watch cursor past
+		// a fact that was outside the keyset traversal.
+		page.Watermark = snapshotWatermark
+	}
 	next := ""
 	if page.HasMore {
-		next, err = encodePageToken(page.NextCursor, ownerUserID, filter)
+		next, err = encodePageToken(page.NextCursor, ownerUserID, filter, page.Watermark)
 		if err != nil {
 			return ports.Page{}, "", err
 		}
@@ -170,7 +179,16 @@ func (s *Service) MarkRead(ctx context.Context, input MarkReadInput) (ReadResult
 	}
 	digest := readRequestDigest(ids)
 	now := domain.CanonicalUTCTime(s.now())
-	if record, ok, err := s.store.GetReadRequest(ctx, input.OwnerUserID, input.IdempotencyKey); err != nil {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return ReadResult{}, storeFailure("begin notification read", err)
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck
+	lockKey := sha256Sum("workos.notification-read-lock.v1\x00" + input.OwnerUserID + "\x00" + input.IdempotencyKey)
+	if err := s.store.SerializeRequestTx(ctx, tx, lockKey); err != nil {
+		return ReadResult{}, err
+	}
+	if record, ok, err := s.store.GetReadRequestTx(ctx, tx, input.OwnerUserID, input.IdempotencyKey); err != nil {
 		return ReadResult{}, err
 	} else if ok {
 		if record.RequestDigest != digest || record.ResultVersion != 1 {
@@ -185,11 +203,6 @@ func (s *Service) MarkRead(ctx context.Context, input MarkReadInput) (ReadResult
 		}
 		return first, nil
 	}
-	tx, err := s.pool.Begin(ctx)
-	if err != nil {
-		return ReadResult{}, storeFailure("begin notification read", err)
-	}
-	defer tx.Rollback(ctx) //nolint:errcheck
 	locked, err := s.store.LockForRead(ctx, tx, input.OwnerUserID, ids)
 	if err != nil {
 		return ReadResult{}, err

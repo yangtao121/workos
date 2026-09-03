@@ -30,4 +30,6 @@ type WorkosCoreNotification struct {
 	CreatedAt          time.Time
 	ReadAt             *time.Time
 	ReadChangeSequence int64
+	// owner: workos-core Notification; immutable CREATED revision for snapshots
+	CreatedChangeSequence int64
 }

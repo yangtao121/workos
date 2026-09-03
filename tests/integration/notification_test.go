@@ -98,8 +98,8 @@ func notificationFact(owner string, category string) notificationdomain.SystemFa
 
 // TestNotificationAppendReplayAndConvergence proves the exactly-once
 // projection: one source fact yields exactly one notification and one
-// CREATED change across sequential replays, concurrent double-writes, and
-// digest-drift detection.
+// CREATED change across sequential replays, a genuinely concurrent first
+// write, and digest-drift detection.
 func TestNotificationAppendReplayAndConvergence(t *testing.T) {
 	service, repository, pool, owner := notificationFixture(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
@@ -121,7 +121,9 @@ func TestNotificationAppendReplayAndConvergence(t *testing.T) {
 	if replay.ID != first.ID || !replay.CreatedAt.Equal(first.CreatedAt) {
 		t.Fatalf("replay drifted: %+v vs %+v", replay, first)
 	}
-	// Concurrent double-write converges on the same fact with one change.
+	// A genuinely concurrent first write converges on the same fact with one
+	// change. This exercises request arbitration before any receipt exists.
+	raceFact := notificationFact(owner, "failed")
 	var wg sync.WaitGroup
 	race := make([]notificationdomain.Notification, 8)
 	raceErrs := make([]error, 8)
@@ -129,7 +131,7 @@ func TestNotificationAppendReplayAndConvergence(t *testing.T) {
 		wg.Add(1)
 		go func(slot int) {
 			defer wg.Done()
-			projected, err := sinkAppend(t, pool, repository, fact)
+			projected, err := sinkAppend(t, pool, repository, raceFact)
 			race[slot], raceErrs[slot] = projected, err
 		}(i)
 	}
@@ -138,8 +140,8 @@ func TestNotificationAppendReplayAndConvergence(t *testing.T) {
 		if err != nil {
 			t.Fatalf("concurrent append %d: %v", i, err)
 		}
-		if race[i].ID != first.ID {
-			t.Fatalf("concurrent append %d produced %s, want %s", i, race[i].ID, first.ID)
+		if race[i].ID != race[0].ID {
+			t.Fatalf("concurrent append %d produced %s, want %s", i, race[i].ID, race[0].ID)
 		}
 	}
 	changes, err := service.Watch(ctx, owner, 0, 100)
@@ -148,7 +150,7 @@ func TestNotificationAppendReplayAndConvergence(t *testing.T) {
 	}
 	created := 0
 	for _, change := range changes {
-		if change.NotificationID == first.ID {
+		if change.NotificationID == race[0].ID {
 			created++
 			if change.ChangeType != notificationdomain.ChangeCreated {
 				t.Fatalf("unexpected change type %q", change.ChangeType)
@@ -189,11 +191,28 @@ func TestNotificationReadMonotonicIdempotency(t *testing.T) {
 		t.Fatalf("unexpected page: %d facts, unread %d", len(page.Notifications), page.UnreadCount)
 	}
 	batch := []string{page.Notifications[0].ID, page.Notifications[1].ID}
-	result, err := service.MarkRead(ctx, notificationapp.MarkReadInput{
+	input := notificationapp.MarkReadInput{
 		OwnerUserID: owner, NotificationIDs: batch, IdempotencyKey: "read-once",
-	})
-	if err != nil {
-		t.Fatalf("mark read: %v", err)
+	}
+	var wg sync.WaitGroup
+	results := make([]notificationapp.ReadResult, 8)
+	errs := make([]error, len(results))
+	for i := range results {
+		wg.Add(1)
+		go func(slot int) {
+			defer wg.Done()
+			results[slot], errs[slot] = service.MarkRead(ctx, input)
+		}(i)
+	}
+	wg.Wait()
+	result := results[0]
+	for i, err := range errs {
+		if err != nil {
+			t.Fatalf("concurrent mark read %d: %v", i, err)
+		}
+		if results[i].ChangeSequence != result.ChangeSequence || results[i].UnreadCount != result.UnreadCount {
+			t.Fatalf("concurrent mark read %d drifted: %+v vs %+v", i, results[i], result)
+		}
 	}
 	if result.UnreadCount != 0 || result.ChangeSequence == 0 {
 		t.Fatalf("unexpected read result: unread %d seq %d", result.UnreadCount, result.ChangeSequence)
@@ -274,6 +293,10 @@ func TestNotificationPaginationAndFiltering(t *testing.T) {
 	if len(lastPage.Notifications) != 3 || next == "" {
 		t.Fatalf("first page: %d facts next %q", len(lastPage.Notifications), next)
 	}
+	snapshotWatermark := lastPage.Watermark
+	if _, err := sinkAppend(t, pool, repository, notificationFact(owner, "failed")); err != nil {
+		t.Fatalf("append between pages: %v", err)
+	}
 	third, next3, err := service.List(ctx, owner, notificationports.Filter{}, 3, next)
 	if err != nil {
 		t.Fatalf("second page: %v", err)
@@ -281,12 +304,25 @@ func TestNotificationPaginationAndFiltering(t *testing.T) {
 	if len(third.Notifications) != 3 || next3 == "" {
 		t.Fatalf("second page: %d facts next %q", len(third.Notifications), next3)
 	}
+	if third.Watermark != snapshotWatermark {
+		t.Fatalf("second page advanced snapshot watermark: %d -> %d", snapshotWatermark, third.Watermark)
+	}
 	final, nextFinal, err := service.List(ctx, owner, notificationports.Filter{}, 3, next3)
 	if err != nil {
 		t.Fatalf("third page: %v", err)
 	}
 	if len(final.Notifications) != 1 || nextFinal != "" {
 		t.Fatalf("final page: %d facts next %q", len(final.Notifications), nextFinal)
+	}
+	if final.Watermark != snapshotWatermark {
+		t.Fatalf("final page advanced snapshot watermark: %d -> %d", snapshotWatermark, final.Watermark)
+	}
+	fresh, _, err := service.List(ctx, owner, notificationports.Filter{}, 3, "")
+	if err != nil {
+		t.Fatalf("fresh list: %v", err)
+	}
+	if fresh.Watermark <= snapshotWatermark {
+		t.Fatalf("fresh list did not observe concurrent append: %d <= %d", fresh.Watermark, snapshotWatermark)
 	}
 	// A token minted under one filter cannot page another filter.
 	if _, _, err := service.List(ctx, owner, notificationports.Filter{UnreadOnly: true}, 3, next); !errors.Is(err, notificationapp.ErrInvalid) {
@@ -359,9 +395,16 @@ func TestNotificationSweepGapReset(t *testing.T) {
 	if _, err := service.Get(ctx, owner, recentID); err != nil {
 		t.Fatalf("unread fact must survive the sweep: %v", err)
 	}
+	postSweep, _, err := service.List(ctx, owner, notificationports.Filter{}, 10, "")
+	if err != nil {
+		t.Fatalf("post-sweep list: %v", err)
+	}
 	gap, err := service.SweptThrough(ctx, owner)
 	if err != nil {
 		t.Fatalf("swept through: %v", err)
+	}
+	if postSweep.Watermark != gap {
+		t.Fatalf("post-sweep watermark %d, want owner sequence %d", postSweep.Watermark, gap)
 	}
 	changes, err := service.Watch(ctx, owner, 0, 100)
 	if err != nil {

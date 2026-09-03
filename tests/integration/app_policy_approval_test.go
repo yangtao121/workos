@@ -18,6 +18,8 @@ import (
 	appv1 "github.com/yangtao121/workos/gen/go/workos/app/v1"
 	bridgev1 "github.com/yangtao121/workos/gen/go/workos/bridge/v1"
 	bridgev1connect "github.com/yangtao121/workos/gen/go/workos/bridge/v1/bridgev1connect"
+	notificationv1 "github.com/yangtao121/workos/gen/go/workos/notification/v1"
+	notificationv1connect "github.com/yangtao121/workos/gen/go/workos/notification/v1/notificationv1connect"
 	projectv1 "github.com/yangtao121/workos/gen/go/workos/project/v1"
 	surfacev1 "github.com/yangtao121/workos/gen/go/workos/surface/v1"
 )
@@ -38,6 +40,12 @@ func usageClients(t *testing.T) agentv1connect.AgentAppUsageServiceClient {
 	t.Helper()
 	httpClient := &http.Client{Transport: &http.Transport{Proxy: nil, DialContext: (&net.Dialer{Timeout: 2 * time.Second}).DialContext}}
 	return agentv1connect.NewAgentAppUsageServiceClient(httpClient, gatewayBaseURL())
+}
+
+func notificationClients(t *testing.T) notificationv1connect.NotificationServiceClient {
+	t.Helper()
+	httpClient := &http.Client{Transport: &http.Transport{Proxy: nil, DialContext: (&net.Dialer{Timeout: 2 * time.Second}).DialContext}}
+	return notificationv1connect.NewNotificationServiceClient(httpClient, gatewayBaseURL())
 }
 
 // policyFixture registers one bridge-capable app, installs it with both
@@ -118,6 +126,57 @@ func requireApprovalPolicy(mode agentv1.AppAgentExecutionMode, tokens, runtime, 
 		MaxRuntimeSecondsPerTask:         runtime,
 		MaxTasksPerUtcDay:                tasks,
 		MaxReservedOutputTokensPerUtcDay: reserved,
+	}
+}
+
+// TestNotificationApprovalRequiredCrossProcess proves the approval producer
+// selected by the notification acceptance gate: a real opaque App Bridge run
+// under require-approval commits one waiting task, one pending approval, and
+// exactly one typed owner notification through Gateway/Core/PostgreSQL.
+func TestNotificationApprovalRequiredCrossProcess(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 180*time.Second)
+	defer cancel()
+	fixture := newPolicyFixture(t, ctx, "Notification Approval")
+	policies := policyClients(t)
+	approvals := approvalClients(t)
+	notifications := notificationClients(t)
+
+	spec := requireApprovalPolicy(agentv1.AppAgentExecutionMode_APP_AGENT_EXECUTION_MODE_REQUIRE_APPROVAL, 256, 60, 5, 1280)
+	if _, err := policies.SetAppPolicy(ctx, connect.NewRequest(&agentv1.SetAppPolicyRequest{
+		IdempotencyKey: fmt.Sprintf("notification-approval-policy-%d", fixture.stamp),
+		ProjectId:      fixture.projectID, InstallationId: fixture.installation,
+		Spec: spec, ExpectedPolicyRevision: 0,
+	})); err != nil {
+		t.Fatalf("set require-approval policy: %v", err)
+	}
+	run := fixture.run(t, ctx, bridgeClients(t),
+		fmt.Sprintf("notification-approval-run-%d", fixture.stamp), "request owner approval")
+	if run.GetState() != agentv1.AgentTaskState_AGENT_TASK_STATE_WAITING {
+		t.Fatalf("approval task state = %s, want waiting", run.GetState())
+	}
+	listedApprovals, err := approvals.ListApprovals(ctx, connect.NewRequest(&agentv1.ListApprovalsRequest{
+		ProjectId: fixture.projectID, State: agentv1.AppAgentApprovalState_APP_AGENT_APPROVAL_STATE_PENDING,
+	}))
+	if err != nil || len(listedApprovals.Msg.GetApprovals()) != 1 {
+		t.Fatalf("pending approval facts: %v %+v", err, listedApprovals.Msg.GetApprovals())
+	}
+	approvalID := listedApprovals.Msg.GetApprovals()[0].GetApprovalId()
+
+	page, err := notifications.ListNotifications(ctx, connect.NewRequest(&notificationv1.ListNotificationsRequest{
+		ProjectId: fixture.projectID, PageSize: 100,
+	}))
+	if err != nil {
+		t.Fatalf("list approval notifications: %v", err)
+	}
+	matches := 0
+	for _, fact := range page.Msg.GetNotifications() {
+		if fact.GetKind() == notificationv1.NotificationKind_NOTIFICATION_KIND_AGENT_APPROVAL_REQUIRED &&
+			fact.GetTarget().GetTargetId() == approvalID {
+			matches++
+		}
+	}
+	if matches != 1 {
+		t.Fatalf("approval notification matches = %d, want 1", matches)
 	}
 }
 

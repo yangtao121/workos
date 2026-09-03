@@ -111,7 +111,7 @@ test("captures notification center evidence at three viewports", async ({ page }
       data: {
         projectId,
         expectedRevision: created.project.revision,
-        selection: { providerId: "fake" },
+        providerId: "fake",
       },
     },
   );

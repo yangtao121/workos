@@ -69,7 +69,7 @@ check-native:
 test: go-check web-check
 
 test-integration:
-	docker compose up -d --build postgres bootstrap workos-core harness-host runtime-host workos-gateway
+	docker compose up -d --build postgres bootstrap workos-core harness-host runtime-host reliability-host indexer workos-gateway
 	$(GO_HOST_RUN) go test -tags=integration -count=1 -v ./tests/integration
 	@set -eu; task_id="$$( $(GO_HOST_RUN) go run ./tests/restart seed )"; \
 		app_ref="$$( $(GO_HOST_RUN) go run ./tests/restart app-seed )"; \
@@ -123,8 +123,16 @@ test-notification-center: e2e-image
 		-e PLAYWRIGHT_BROWSERS_PATH=/ms-playwright \
 		-e WORKOS_E2E_URL=http://127.0.0.1:8080 \
 		-e WORKOS_E2E_OUTPUT_DIR=/tmp/workos-playwright-results \
+		-v $(CURDIR):$(WORKDIR) \
+		-w $(WORKDIR)/apps/desktop-web \
+		$(E2E_IMAGE) pnpm exec playwright test '(^|/)notification-center\.spec\.ts$$'
+	docker compose restart workos-core workos-gateway >/dev/null
+	docker run --rm --network host $(USER_FLAGS) \
+		-e PLAYWRIGHT_BROWSERS_PATH=/ms-playwright \
+		-e WORKOS_E2E_URL=http://127.0.0.1:8080 \
+		-e WORKOS_E2E_OUTPUT_DIR=/tmp/workos-playwright-results \
 		-e WORKOS_E2E_NOTIFICATIONS_VERIFY=1 \
-		-e WORKOS_E2E_NOTIFICATIONS_SEED_UNREAD=2 \
+		-e WORKOS_E2E_NOTIFICATIONS_SEED_UNREAD=1 \
 		-v $(CURDIR):$(WORKDIR) \
 		-w $(WORKDIR)/apps/desktop-web \
 		$(E2E_IMAGE) pnpm exec playwright test '(^|/)notification-center\.spec\.ts$$'
@@ -523,8 +531,9 @@ test-lan-pairing: e2e-image
 	@set -eu; \
 	certdir="$$(mktemp -d)"; \
 	profiledir="$$(mktemp -d)"; \
+	profiledir_b="$$(mktemp -d)"; \
 	stamp="$$(date +%s)"; \
-	cleanup() { docker compose --profile lan-pairing stop workos-gateway-tls >/dev/null 2>&1 || true; rm -rf "$$certdir" "$$profiledir"; }; \
+	cleanup() { docker compose --profile lan-pairing stop workos-gateway-tls >/dev/null 2>&1 || true; rm -rf "$$certdir" "$$profiledir" "$$profiledir_b"; }; \
 	trap cleanup EXIT HUP INT TERM; \
 	echo "== generating temporary TLS fixture =="; \
 	docker run --rm $(USER_FLAGS) -e HOME=/tmp -e GOPATH=/tmp/workos-go \
@@ -577,6 +586,24 @@ test-lan-pairing: e2e-image
 		-v $(CURDIR):$(WORKDIR) \
 		-w $(WORKDIR)/apps/desktop-web \
 		$(E2E_IMAGE) pnpm exec playwright test lan-pairing.spec.ts; \
+	echo "== phase: two paired-device notification convergence =="; \
+	pair_url_b="$$(docker compose exec -T workos-gateway-tls /usr/local/bin/workosctl device pair | grep '^https://')"; \
+	test -n "$$pair_url_b"; \
+	docker run --rm --network host $(USER_FLAGS) \
+		-e PLAYWRIGHT_BROWSERS_PATH=/ms-playwright \
+		-e WORKOS_E2E_TLS_URL=https://localhost:8443 \
+		-e WORKOS_LAN_PHASE=paired-notifications \
+		-e WORKOS_LAN_PROFILE=/lan-profile \
+		-e WORKOS_LAN_PROFILE_B=/lan-profile-b \
+		-e WORKOS_LAN_DEVICE_NAME='E2E LAN Device' \
+		-e WORKOS_LAN_DEVICE_NAME_B='E2E LAN Device B' \
+		-e WORKOS_LAN_PROJECT="E2E LAN $$stamp" \
+		-e WORKOS_E2E_PAIRING_URL="$$pair_url_b" \
+		-v "$$profiledir":/lan-profile \
+		-v "$$profiledir_b":/lan-profile-b \
+		-v $(CURDIR):$(WORKDIR) \
+		-w $(WORKDIR)/apps/desktop-web \
+		$(E2E_IMAGE) pnpm exec playwright test lan-pairing.spec.ts; \
 	echo "== phase: revocation fails closed =="; \
 	docker run --rm --network host $(USER_FLAGS) \
 		-e PLAYWRIGHT_BROWSERS_PATH=/ms-playwright \
@@ -589,7 +616,7 @@ test-lan-pairing: e2e-image
 		-v $(CURDIR):$(WORKDIR) \
 		-w $(WORKDIR)/apps/desktop-web \
 		$(E2E_IMAGE) pnpm exec playwright test lan-pairing.spec.ts; \
-	echo "test-lan-pairing: PASS (temp TLS + admin ticket + browser pairing + cookie + restart + re-auth + revoke)"
+	echo "test-lan-pairing: PASS (temp TLS + admin ticket + two browser pairings + paired notification convergence + cookie + restart + re-auth + revoke)"
 
 build:
 	docker build \

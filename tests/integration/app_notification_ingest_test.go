@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -20,6 +21,7 @@ import (
 	projectpostgres "github.com/yangtao121/workos/internal/core/project/adapters/postgres"
 	projectapp "github.com/yangtao121/workos/internal/core/project/application"
 	projectdomain "github.com/yangtao121/workos/internal/core/project/domain"
+	"github.com/yangtao121/workos/internal/platform/dbtx"
 	"github.com/yangtao121/workos/internal/platform/ids"
 )
 
@@ -53,6 +55,30 @@ func (stubAppCatalog) Resolve(ctx context.Context, ownerUserID, appID, version s
 		Scope:          "project",
 		Permissions:    []string{"notifications.create", "knowledge.read"},
 	}, nil
+}
+
+// pausingAppNotificationAuthorizer exposes the instant after the real
+// transaction-scoped authorizer has acquired its project/installation share
+// locks. Tests can then prove a revocation write waits for the authorized
+// notification transaction instead of racing its verdict.
+type pausingAppNotificationAuthorizer struct {
+	inner   notificationapp.AppInstallationAuthorizer
+	locked  chan struct{}
+	release chan struct{}
+}
+
+func (p *pausingAppNotificationAuthorizer) AuthorizeAppNotificationTx(ctx context.Context, tx dbtx.Tx, ownerUserID, projectID, appInstanceID string, installationGrantRevision int64) (notificationports.AppInstallationFacts, error) {
+	facts, err := p.inner.AuthorizeAppNotificationTx(ctx, tx, ownerUserID, projectID, appInstanceID, installationGrantRevision)
+	if err != nil {
+		return notificationports.AppInstallationFacts{}, err
+	}
+	close(p.locked)
+	select {
+	case <-ctx.Done():
+		return notificationports.AppInstallationFacts{}, ctx.Err()
+	case <-p.release:
+		return facts, nil
+	}
 }
 
 // seedAppIngestInstallation inserts one active installation carrying the
@@ -127,9 +153,27 @@ func TestAppNotificationIngest(t *testing.T) {
 	}
 
 	// Fresh create: one app-origin notification bound to this installation.
-	first, err := create(installationID, "key-1", "Hello from app", "Inert <script>text</script>", 1)
-	if err != nil {
-		t.Fatalf("create: %v", err)
+	concurrent := make([]notificationapp.CreateAppNotificationResult, 8)
+	concurrentErrs := make([]error, len(concurrent))
+	var wg sync.WaitGroup
+	for i := range concurrent {
+		wg.Add(1)
+		go func(slot int) {
+			defer wg.Done()
+			concurrent[slot], concurrentErrs[slot] = create(
+				installationID, "key-1", "Hello from app", "Inert <script>text</script>", 1)
+		}(i)
+	}
+	wg.Wait()
+	first := concurrent[0]
+	for i, err := range concurrentErrs {
+		if err != nil {
+			t.Fatalf("concurrent create %d: %v", i, err)
+		}
+		if concurrent[i].Notification.ID != first.Notification.ID ||
+			concurrent[i].ChangeSequence != first.ChangeSequence {
+			t.Fatalf("concurrent create %d drifted: %+v vs %+v", i, concurrent[i], first)
+		}
 	}
 	if first.Notification.Kind != "app.instance.message" || first.Notification.Origin != "app" ||
 		first.Notification.TargetID != installationID || first.Notification.AppID != "fixture-app" {
@@ -185,21 +229,27 @@ func TestAppNotificationIngest(t *testing.T) {
 		t.Fatalf("denied creates changed the notification set: %d -> %d", before, after)
 	}
 
-	// Quota: the burst cap is atomic and per installation. A fresh
-	// installation gets its own bucket; the replay of key-1 keeps succeeding
-	// without consuming quota (replay-first) on the old, now-tombstoned
-	// installation's already-created facts.
-	replay, err = create(installationID, "key-1", "Hello from app", "Inert <script>text</script>", 1)
-	if err != nil {
-		t.Fatalf("post-exhaustion replay: %v", err)
+	// Every call re-authorizes before replay, so uninstalling immediately
+	// revokes even a previously consumed key without changing old facts.
+	if _, err := create(installationID, "key-1", "Hello from app", "Inert <script>text</script>", 1); !errors.Is(err, notificationports.ErrAppNotificationDenied) {
+		t.Fatalf("uninstalled replay error = %v, want ErrAppNotificationDenied", err)
 	}
-	if replay.Notification.ID != first.Notification.ID {
-		t.Fatal("post-exhaustion replay drifted")
-	}
+
+	// Quota: the burst cap is atomic and per installation. Concurrent
+	// distinct keys also exercise first-bucket creation arbitration.
 	secondInstallation := seedAppIngestInstallation(t, pool, owner, projectID, "burst-app",
 		[]string{"knowledge.read", "notifications.create"})
+	burstErrs := make([]error, 10)
 	for i := 0; i < 10; i++ {
-		if _, err := create(secondInstallation, fmt.Sprintf("burst-%d", i), "Burst", "body", 1); err != nil {
+		wg.Add(1)
+		go func(slot int) {
+			defer wg.Done()
+			_, burstErrs[slot] = create(secondInstallation, fmt.Sprintf("burst-%d", slot), "Burst", "body", 1)
+		}(i)
+	}
+	wg.Wait()
+	for i, err := range burstErrs {
+		if err != nil {
 			t.Fatalf("burst create %d: %v", i, err)
 		}
 	}
@@ -256,5 +306,97 @@ func TestAppNotificationIngestRequiresGrant(t *testing.T) {
 	}
 	if got := countScratchRows(t, pool, `SELECT count(*) FROM workos_core.notifications WHERE owner_user_id = $1`, owner); got != 0 {
 		t.Fatalf("denied create projected a notification: %d", got)
+	}
+}
+
+// TestAppNotificationIngestAuthorizationSerializesRevocation proves the current
+// authorization verdict and its notification write are one serializable
+// decision: an uninstall that arrives after authorization waits for the
+// notification commit, and every later create is denied.
+func TestAppNotificationIngestAuthorizationSerializesRevocation(t *testing.T) {
+	service, _, pool, owner := notificationFixture(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	projectID := ids.UUIDv7{}.New()
+	if _, err := pool.Exec(ctx,
+		`INSERT INTO workos_core.projects (id, owner_user_id, idempotency_key, name, knowledge_collection_id, artifact_collection_id, created_at, updated_at)
+		 VALUES ($1, $2, 'app-ingest-revocation-race', 'App Ingest Revocation Race', $3, $4, now(), now())`,
+		projectID, owner, ids.UUIDv7{}.New(), ids.UUIDv7{}.New()); err != nil {
+		t.Fatalf("seed project: %v", err)
+	}
+	installationID := seedAppIngestInstallation(t, pool, owner, projectID, "race-app",
+		[]string{"notifications.create"})
+
+	projectService, err := projectapp.NewInstallationService(projectpostgres.New(pool), stubAppCatalog{}, ids.UUIDv7{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	appAgent, err := orchestration.NewAppAgentService(projectService, stubAppTaskGateway{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	realAuthorizer, err := orchestration.NewAppNotificationAuthorizer(appAgent)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pausingAuthorizer := &pausingAppNotificationAuthorizer{
+		inner: realAuthorizer, locked: make(chan struct{}), release: make(chan struct{}),
+	}
+	if err := service.WithAppAuthorizer(pausingAuthorizer); err != nil {
+		t.Fatal(err)
+	}
+
+	createDone := make(chan error, 1)
+	go func() {
+		_, err := service.CreateAppNotification(ctx, notificationapp.CreateAppNotificationInput{
+			OwnerUserID: owner, ProjectID: projectID, AppInstanceID: installationID,
+			InstallationGrantRevision: 1, IdempotencyKey: "revocation-race-create",
+			Title: "Authorized before uninstall", Body: "body",
+		})
+		createDone <- err
+	}()
+	select {
+	case <-pausingAuthorizer.locked:
+	case <-ctx.Done():
+		t.Fatal("notification authorization did not acquire its locks")
+	}
+
+	updateStarted := make(chan struct{})
+	updateDone := make(chan error, 1)
+	go func() {
+		close(updateStarted)
+		_, err := pool.Exec(ctx,
+			`UPDATE workos_core.project_app_installations SET uninstalled_at = now() WHERE id = $1`,
+			installationID)
+		updateDone <- err
+	}()
+	<-updateStarted
+	select {
+	case err := <-updateDone:
+		t.Fatalf("uninstall bypassed notification authorization lock: %v", err)
+	case <-time.After(150 * time.Millisecond):
+	}
+
+	close(pausingAuthorizer.release)
+	select {
+	case err := <-createDone:
+		if err != nil {
+			t.Fatalf("authorized notification create: %v", err)
+		}
+	case <-ctx.Done():
+		t.Fatal("authorized notification create did not complete")
+	}
+	select {
+	case err := <-updateDone:
+		if err != nil {
+			t.Fatalf("uninstall after notification commit: %v", err)
+		}
+	case <-ctx.Done():
+		t.Fatal("uninstall did not resume after notification commit")
+	}
+	if got := countScratchRows(t, pool,
+		`SELECT count(*) FROM workos_core.notifications WHERE owner_user_id = $1 AND app_installation_id = $2`,
+		owner, installationID); got != 1 {
+		t.Fatalf("authorized transaction projected %d notifications, want 1", got)
 	}
 }

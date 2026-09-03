@@ -104,6 +104,23 @@ WHERE i.owner_user_id = sqlc.arg(owner_user_id)
   AND i.id = sqlc.arg(id)
   AND i.uninstalled_at IS NULL;
 
+-- name: LockProjectForNotification :one
+SELECT id
+FROM workos_core.projects
+WHERE owner_user_id = sqlc.arg(owner_user_id)
+  AND id = sqlc.arg(project_id)
+  AND archived_at IS NULL
+FOR SHARE;
+
+-- name: ResolveActiveInstallationForNotification :one
+SELECT i.id, i.owner_user_id, i.project_id, i.app_id, i.version, i.manifest_digest, i.granted_permissions, i.grant_revision, i.installed_at, i.uninstalled_at
+FROM workos_core.project_app_installations i
+WHERE i.owner_user_id = sqlc.arg(owner_user_id)
+  AND i.project_id = sqlc.arg(project_id)
+  AND i.id = sqlc.arg(id)
+  AND i.uninstalled_at IS NULL
+FOR SHARE;
+
 -- name: SetInstallationGrants :one
 UPDATE workos_core.project_app_installations
 SET granted_permissions = sqlc.arg(granted_permissions),

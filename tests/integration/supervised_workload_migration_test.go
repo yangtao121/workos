@@ -295,6 +295,34 @@ func TestIncidentConvergenceConstraints(t *testing.T) {
 	if err != nil || len(pending) != 1 || pending[0].ID != incident.ID {
 		t.Fatalf("pending action incidents=%+v err=%v", pending, err)
 	}
+	// A retryable unavailable action must rotate behind never-attempted work.
+	// Otherwise a fixed-size recovery batch can select the same old rows on
+	// every poll and permanently starve a newly observed workload.
+	retried := incident
+	retried.ID = "0198d7ea-2110-7c42-b659-c5e4d73bc383"
+	retried.OccurrenceDigest = "sha256:" + strings.Repeat("4", 64)
+	retried.CreatedAt = now.Add(-2 * time.Minute)
+	retried.UpdatedAt = retried.CreatedAt
+	if created, createErr := repository.CreateIncident(ctx, retried); createErr != nil || !created {
+		t.Fatalf("create retried incident: created=%v err=%v", created, createErr)
+	}
+	fresh := incident
+	fresh.ID = "0198d7ea-2110-7c42-b659-c5e4d73bc384"
+	fresh.OccurrenceDigest = "sha256:" + strings.Repeat("5", 64)
+	fresh.CreatedAt = now.Add(-time.Minute)
+	fresh.UpdatedAt = fresh.CreatedAt
+	if created, createErr := repository.CreateIncident(ctx, fresh); createErr != nil || !created {
+		t.Fatalf("create fresh incident: created=%v err=%v", created, createErr)
+	}
+	if actionErr := repository.RecordAction(ctx, retried.ID, "restart", reliabilityports.ControlResult{
+		Outcome: reliabilityports.ControlUnavailable,
+	}, now); actionErr != nil {
+		t.Fatalf("record retryable unavailable action: %v", actionErr)
+	}
+	next, listErr := repository.ListPendingActionIncidents(ctx, 1)
+	if listErr != nil || len(next) != 1 || next[0].ID != fresh.ID {
+		t.Fatalf("pending fairness next=%+v err=%v, want fresh incident", next, listErr)
+	}
 	if err := repository.RecordAction(ctx, incident.ID, "restart", reliabilityports.ControlResult{
 		Outcome: reliabilityports.ControlUnsupported,
 	}, now); err != nil {

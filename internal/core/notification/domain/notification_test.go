@@ -64,6 +64,9 @@ func TestPrepareSystemFactRejectsUnknownAndMalformed(t *testing.T) {
 	if _, err := PrepareSystemFact(foreign, time.Now().UTC()); err == nil {
 		t.Fatal("malformed owner accepted")
 	}
+	if _, err := PrepareSystemFact(validFact(), time.Time{}); err == nil {
+		t.Fatal("zero occurrence time accepted")
+	}
 }
 
 func TestValidStoredNotificationRejectsDrift(t *testing.T) {
@@ -71,6 +74,7 @@ func TestValidStoredNotificationRejectsDrift(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	notification.CreatedChangeSequence = 1
 	if err := ValidStoredNotification(notification); err != nil {
 		t.Fatalf("fresh fact invalid: %v", err)
 	}
@@ -95,17 +99,50 @@ func TestValidStoredNotificationRejectsDrift(t *testing.T) {
 	if err := ValidStoredNotification(appBound); err == nil {
 		t.Fatal("app kind without app binding accepted")
 	}
+	wrongSource := notification
+	wrongSource.SourceProcess = SourceProcessReliability
+	if err := ValidStoredNotification(wrongSource); err == nil {
+		t.Fatal("wrong source process accepted")
+	}
+	badDigest := notification
+	badDigest.SourceDigest = "sha256:not-hex"
+	if err := ValidStoredNotification(badDigest); err == nil {
+		t.Fatal("malformed source digest accepted")
+	}
 }
 
 func TestValidIdempotencyKeyAndTime(t *testing.T) {
 	if !ValidIdempotencyKey("read-once") {
 		t.Fatal("valid key rejected")
 	}
-	if ValidIdempotencyKey("") || ValidIdempotencyKey(strings.Repeat("x", 129)) || ValidIdempotencyKey("bad\x00key") {
+	if ValidIdempotencyKey("") || ValidIdempotencyKey(strings.Repeat("x", 129)) ||
+		ValidIdempotencyKey("bad\x00key") || ValidIdempotencyKey("bad\u0085key") {
 		t.Fatal("malformed key accepted")
 	}
 	stamp := time.Date(2026, 9, 2, 12, 0, 0, 123456789, time.UTC)
 	if got := CanonicalUTCTime(stamp); got.Nanosecond() != 123456000 {
 		t.Fatalf("canonical time not microsecond: %v", got)
+	}
+}
+
+func TestPrepareIncidentPublicationRejectsInvalidFiniteFacts(t *testing.T) {
+	fact := IncidentPublicationFact{
+		OwnerUserID: "0194a1f0-0000-7000-8000-000000000001",
+		ProjectID:   "0194a1f0-0000-7000-8000-000000000002",
+		IncidentID:  "0194a1f0-0000-7000-8000-000000000003",
+		Severity:    "critical", ActionOutcome: "pending",
+		Digest:   SystemSourceDigest(KindReliabilityIncidentOpen, "critical", "publication-1"),
+		SourceID: "publication-1",
+	}
+	if _, err := PrepareIncidentPublication(fact, time.Now().UTC()); err != nil {
+		t.Fatalf("valid publication rejected: %v", err)
+	}
+	fact.ActionOutcome = "invented"
+	if _, err := PrepareIncidentPublication(fact, time.Now().UTC()); err == nil {
+		t.Fatal("unknown action outcome accepted")
+	}
+	fact.ActionOutcome = "pending"
+	if _, err := PrepareIncidentPublication(fact, time.Time{}); err == nil {
+		t.Fatal("zero occurrence time accepted")
 	}
 }

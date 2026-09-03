@@ -14,6 +14,7 @@ import (
 	"github.com/yangtao121/workos/internal/core/project/adapters/postgres/projectdb"
 	"github.com/yangtao121/workos/internal/core/project/domain"
 	"github.com/yangtao121/workos/internal/core/project/ports"
+	"github.com/yangtao121/workos/internal/platform/dbtx"
 )
 
 // Installation repository methods live on the same Repository as Project
@@ -79,6 +80,29 @@ func (r *Repository) ResolveActiveInstallation(ctx context.Context, ownerUserID,
 		OwnerUserID: ownerUserID, ProjectID: projectID, ID: installationID,
 	})
 	return installationFromResolver(value, err)
+}
+
+func (r *Repository) ResolveActiveInstallationForNotificationTx(ctx context.Context, tx dbtx.Tx, ownerUserID, projectID, installationID string) (domain.Installation, error) {
+	queries := r.queries.WithTx(tx)
+	if _, err := queries.LockProjectForNotification(ctx, projectdb.LockProjectForNotificationParams{
+		OwnerUserID: ownerUserID, ProjectID: projectID,
+	}); errors.Is(err, pgx.ErrNoRows) {
+		return domain.Installation{}, domain.ErrNotFound
+	} else if err != nil {
+		return domain.Installation{}, storeError("lock project for notification authorization", err)
+	}
+	value, err := queries.ResolveActiveInstallationForNotification(ctx, projectdb.ResolveActiveInstallationForNotificationParams{
+		OwnerUserID: ownerUserID, ProjectID: projectID, ID: installationID,
+	})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return domain.Installation{}, domain.ErrNotFound
+	}
+	if err != nil {
+		return domain.Installation{}, storeError("lock installation for notification authorization", err)
+	}
+	return installationFromColumns(
+		value.ID, value.OwnerUserID, value.ProjectID, value.AppID, value.Version, value.ManifestDigest,
+		value.GrantedPermissions, value.GrantRevision, value.InstalledAt, value.UninstalledAt)
 }
 
 // Install executes one install command in a single transaction: lock and

@@ -39,13 +39,14 @@ email/SMS/第三方 provider、任意 App 广播、通知正文搜索/semantic e
 
 ### 2. 通知事实模型
 
-migration `029`（owner：workos-core Notification）持久化：
+migration `029`（owner：workos-core Notification）持久化；2026-09-03 的 forward-only migration
+`031` 为既有事实回填并约束 `created_change_sequence`，使 snapshot 的 `revision` 从 CREATED 起即为正数：
 
 - `workos_core.notifications`：immutable identity（UUIDv7）、owner binding、可选 project scope、
   finite kind/severity/origin、server-derived 有界 inert title/body、typed target
   （`target_kind` + `target_id`）、source binding（`source_process`、`source_id`、`source_digest`）、
   App origin binding（`app_installation_id`，仅 app origin）、`created_at`、`read_at`、
-  `read_change_sequence`。CHECK 约束落实 kind/target/app-origin 形状、正文上限、UTC 时间
+  `created_change_sequence`、`read_change_sequence`。CHECK 约束落实 kind/target/app-origin 形状、正文上限、UTC 时间
   coherence；stored row 每次读取与幂等 replay 都重新验证，损坏 fail closed 为净化 Internal。
 - `workos_core.notification_changes`：owner-wide 严格递增 change log（PK
   `(owner_user_id, change_sequence)`），`change_type ∈ {created, read}`；read mutation 也产生
@@ -136,6 +137,9 @@ ids，单事务全有或全无）、`WatchNotificationEvents`（owner-wide resum
   sequence/notification/revision 幂等应用，重复/乱序/旧 revision inert。
 - List 返回与 snapshot 对应的 high watermark；客户端固定顺序：snapshot/watermark → 建
   after-watermark stream，避免 list/watch 窗口丢事件。
+- repository 在同一 repeatable-read snapshot 内读取 page、unread count 与 owner counter；page token
+  固定首次 page 的 watermark，后续页即使遇到并发插入也不得推进 watch cursor。watermark 始终来自
+  `notification_owner_sequences.last_sequence`，即使 sweep 后 retained change 的最大值更小也不回退。
 - cursor 落在被 sweep 区间（`after_sequence < owner.swept_through`）→ 服务端发
   `RESET_REQUIRED`（携带新 snapshot watermark），客户端清空本地 projection 后走 authoritative
   List。绝不从当前最小 sequence 静默继续。
@@ -153,6 +157,9 @@ ids，单事务全有或全无）、`WatchNotificationEvents`（owner-wide resum
   mutation。
 - bounded sweep 只清理满足明确 age/state 的 read notification 与旧 change，绝不删除近期
   unread fact；sweep 推进 `swept_through` 水位，是 stream-gap 的权威事实。
+- producer/read/App request 的 check+insert 由 PostgreSQL transaction advisory lock 按 canonical
+  request/source key 串行，首次并发也返回同一 first response；App quota bucket 的首次并发创建由
+  `ON CONFLICT` + row lock 仲裁。
 - App 配额由 Core PostgreSQL 原子裁决：短窗口 burst（默认 10/分钟）与 UTC daily hard cap
   （默认 200/日，数值写入 config/status evidence）；不同 App 隔离，系统通知不占 App quota。
   quota exhausted → 稳定 `ResourceExhausted`；失败不消费 key、不产生通知；任何抑制都是
@@ -167,6 +174,9 @@ ids，单事务全有或全无）、`WatchNotificationEvents`（owner-wide resum
   Project、app instance/version、active installation 与 exact current grant revision，再调用
   Core private `AppNotificationIngest`。grant revoke、uninstall、version/grant epoch 变化、
   surface close 后旧 MessagePort 立即 fail closed，零 Core create/quota 副作用。
+- Core ingest 在自己的写事务内先以 Project→installation 的固定顺序取得 share row locks，再判断
+  active installation/current grant，然后才处理 replay/quota/create；因此 consumed key 不是卸载或
+  revoke 后的授权凭据，并发 revoke 与 create 也具有确定的数据库顺序。
 - App body 不能携带 owner/project/device/origin/severity override/target URL。请求只有
   App-scoped idempotency key、bounded title、optional bounded body（UTF-8/code-point/byte/
   line/control-char 上限；invalid UTF-8、NUL、C0/C1、异常换行拒绝；`<script>` 只作为文字）。
@@ -187,7 +197,7 @@ ids，单事务全有或全无）、`WatchNotificationEvents`（owner-wide resum
 
 ### 10. 客户端与 UI
 
-- Desktop 以内存 projection 消费（可丢弃、可从 Core 重建）；cursor 不进 URL/DOM attribute/
+- Desktop 以内存 projection 消费（可丢弃、可从 Core 重建，最多保留最近 100 条）；cursor 不进 URL/DOM attribute/
   不受控 localStorage。Core/Gateway 短暂不可达时 UI 显示 bounded degraded state，指数/有界
   backoff 重连并从最后 sequence 补收。
 - 新增普通 Notification Center system window：expanded 顶部 bell + bounded unread badge、
@@ -195,6 +205,9 @@ ids，单事务全有或全无）、`WatchNotificationEvents`（owner-wide resum
   window projection；loading/empty/unread/read/unavailable/reconnect/reset 全状态；
   All/Current Project/Unread 有界过滤；显式 Mark read / Mark visible page read；"进入窗口"
   不自动读掉。
+- `make test-lan-pairing` 使用生产 TLS/session gate 配对两个独立 Chromium persistent profile，
+  再验证两端收到同一 Project 的 terminal/artifact 通知以及一端 read 后另一端仅靠 READ change 收敛；
+  开发 bypass 的双 context 仍作为快速专项回归，但不冒充真实配对证据。
 - 浏览器 Notification API 是可选增强：明确 toggle、permission 状态、preview 默认关闭、仅页面
   活跃且 hidden 时触发；denied/unavailable 不影响 durable Center；不写固定成功 Service Worker。
 - UI 证据按 `docs/ui/README.md` 保存 before/after/current + notes。

@@ -39,7 +39,7 @@ var ErrAppExhausted = errors.New("app notification allowance is exhausted")
 // grant revision, and the notifications.create grant; denial is sanitized
 // and leaves zero side effects.
 type AppInstallationAuthorizer interface {
-	AuthorizeAppNotification(ctx context.Context, ownerUserID, projectID, appInstanceID string, installationGrantRevision int64) (ports.AppInstallationFacts, error)
+	AuthorizeAppNotificationTx(ctx context.Context, tx dbtx.Tx, ownerUserID, projectID, appInstanceID string, installationGrantRevision int64) (ports.AppInstallationFacts, error)
 }
 
 // CreateAppNotificationInput is one bounded create command.
@@ -83,10 +83,31 @@ func (s *Service) CreateAppNotification(ctx context.Context, input CreateAppNoti
 	digest := appNotificationDigest(input.ProjectID, input.AppInstanceID, title, body)
 	now := domain.CanonicalUTCTime(s.now())
 
-	if record, found, err := s.store.GetAppRequest(ctx, input.OwnerUserID, input.AppInstanceID, input.IdempotencyKey); err != nil {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return CreateAppNotificationResult{}, storeFailure("begin app notification", err)
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck
+
+	// Authorization precedes every replay and locks the installation row in
+	// this transaction. An uninstall/grant write either wins before this read
+	// and is denied, or waits until this authorized notification commits.
+	if s.appAuthorizer == nil {
+		return CreateAppNotificationResult{}, ports.ErrAppNotificationDenied
+	}
+	facts, err := s.appAuthorizer.AuthorizeAppNotificationTx(ctx, tx, input.OwnerUserID, input.ProjectID, input.AppInstanceID, input.InstallationGrantRevision)
+	if err != nil {
+		return CreateAppNotificationResult{}, err
+	}
+	lockKey := sha256Sum("workos.notification-app-lock.v1\x00" + input.OwnerUserID + "\x00" + input.AppInstanceID + "\x00" + input.IdempotencyKey)
+	if err := s.store.SerializeRequestTx(ctx, tx, lockKey); err != nil {
+		return CreateAppNotificationResult{}, err
+	}
+	if record, found, err := s.store.GetAppRequestTx(ctx, tx, input.OwnerUserID, input.AppInstanceID, input.IdempotencyKey); err != nil {
 		return CreateAppNotificationResult{}, err
 	} else if found {
-		// Replay-first: a consumed key is adjudicated before anything else.
+		// A consumed key is adjudicated before quota. Authorization still
+		// precedes replay so an uninstalled app cannot reuse an old response.
 		if record.RequestDigest != digest || record.ResultVersion != 1 {
 			return CreateAppNotificationResult{}, ErrConflict
 		}
@@ -101,24 +122,13 @@ func (s *Service) CreateAppNotification(ctx context.Context, input CreateAppNoti
 			return CreateAppNotificationResult{}, err
 		}
 		if first.Notification.OwnerUserID != input.OwnerUserID || first.Notification.ProjectID != input.ProjectID ||
-			first.Notification.AppInstallationID != input.AppInstanceID {
+			first.Notification.AppInstallationID != input.AppInstanceID || first.Notification.AppID != facts.AppID {
 			return CreateAppNotificationResult{}, domain.ErrCorrupt
 		}
 		return CreateAppNotificationResult{
 			Notification: first.Notification, ChangeSequence: first.ChangeSequence, UnreadCount: first.UnreadCount,
 		}, nil
 	}
-
-	facts, err := s.appAuthorizer.AuthorizeAppNotification(ctx, input.OwnerUserID, input.ProjectID, input.AppInstanceID, input.InstallationGrantRevision)
-	if err != nil {
-		return CreateAppNotificationResult{}, err
-	}
-
-	tx, err := s.pool.Begin(ctx)
-	if err != nil {
-		return CreateAppNotificationResult{}, storeFailure("begin app notification", err)
-	}
-	defer tx.Rollback(ctx) //nolint:errcheck
 	if err := s.reserveAppQuotaTx(ctx, tx, input.OwnerUserID, input.AppInstanceID, now); err != nil {
 		return CreateAppNotificationResult{}, err
 	}
@@ -208,26 +218,24 @@ func ValidAppText(rawTitle, rawBody string) (string, string, error) {
 	if !utf8.ValidString(rawTitle) || !utf8.ValidString(rawBody) {
 		return "", "", domain.ErrInvalid
 	}
+	if strings.IndexFunc(rawTitle, isControl) >= 0 ||
+		strings.IndexFunc(rawBody, func(r rune) bool { return isControl(r) && r != '\n' }) >= 0 ||
+		(rawBody != "" && strings.Count(rawBody, "\n")+1 > domain.MaxAppBodyLines) {
+		return "", "", domain.ErrInvalid
+	}
 	title := strings.TrimSpace(rawTitle)
 	if utf8.RuneCountInString(title) < 1 || utf8.RuneCountInString(title) > domain.MaxAppTitleCodePoints ||
-		len(title) > domain.MaxAppTitleBytes || strings.IndexFunc(title, isControl) >= 0 {
+		len(title) > domain.MaxAppTitleBytes {
 		return "", "", domain.ErrInvalid
 	}
-	body := strings.ReplaceAll(rawBody, "\r\n", "\n")
-	body = strings.TrimRight(body, "\n")
+	body := strings.TrimRight(rawBody, "\n")
 	if utf8.RuneCountInString(body) > domain.MaxAppBodyCodePoints || len(body) > domain.MaxAppBodyBytes {
-		return "", "", domain.ErrInvalid
-	}
-	if strings.IndexFunc(body, func(r rune) bool { return isControl(r) && r != '\n' }) >= 0 {
-		return "", "", domain.ErrInvalid
-	}
-	if strings.Count(body, "\n") > domain.MaxAppBodyLines {
 		return "", "", domain.ErrInvalid
 	}
 	return title, body, nil
 }
 
-func isControl(r rune) bool { return r < 0x20 || r == 0x7f }
+func isControl(r rune) bool { return r < 0x20 || (r >= 0x7f && r <= 0x9f) }
 
 func appNotificationDigest(projectID, appInstanceID, title, body string) string {
 	canonical := fmt.Sprintf("workos.app-notification-create.v1|%s|%s|%s|%s", projectID, appInstanceID, title, body)

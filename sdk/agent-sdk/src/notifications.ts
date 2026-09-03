@@ -3,7 +3,7 @@
 // authoritative snapshot with the owner-wide change stream, applies events
 // idempotently by (change sequence, notification id, revision), reconnects
 // with bounded backoff from the last applied cursor, and rebuilds from an
-// authoritative full list whenever the server answers RESET_REQUIRED.
+// authoritative bounded latest page whenever the server answers RESET_REQUIRED.
 // Cursors and facts never enter URLs, DOM attributes, or localStorage.
 import type { Client } from "@connectrpc/connect";
 import {
@@ -17,6 +17,7 @@ import {
 
 // Bounds shared with the Core transport.
 const MAX_PAGE_SIZE = 100;
+const MAX_PROJECTION_NOTIFICATIONS = 100;
 const RECONNECT_MIN_MS = 500;
 const RECONNECT_MAX_MS = 10_000;
 
@@ -124,6 +125,27 @@ export function createNotificationProjection(
     for (const listener of listeners) listener(snapshot);
   }
 
+  function trimProjection() {
+    if (order.length <= MAX_PROJECTION_NOTIFICATIONS) return;
+    const removed = order.slice(MAX_PROJECTION_NOTIFICATIONS);
+    order = order.slice(0, MAX_PROJECTION_NOTIFICATIONS);
+    for (const id of removed) byId.delete(id);
+  }
+
+  function sortProjection() {
+    order = [...byId.keys()].sort((leftID, rightID) => {
+      const left = byId.get(leftID);
+      const right = byId.get(rightID);
+      if (!left || !right) return left ? -1 : right ? 1 : 0;
+      const byTime = right.createdAt.getTime() - left.createdAt.getTime();
+      return byTime !== 0 ? byTime : rightID.localeCompare(leftID);
+    });
+  }
+
+  function maxRevision(...values: bigint[]): bigint {
+    return values.reduce((highest, value) => (value > highest ? value : highest), 0n);
+  }
+
   function applyView(
     notification: WireNotification,
     overrides?: { readAt?: Date | null; revision?: bigint },
@@ -154,9 +176,15 @@ export function createNotificationProjection(
     if (event.changeSequence <= cursor) return false;
     const existing = byId.get(event.notificationId);
     if (event.type === NotificationChangeType.READ) {
-      if (existing && existing.readAt === null) {
-        existing.readAt = timestampToDate(event.notification?.readAt);
-        existing.revision = event.revision;
+      if (existing) {
+        if (existing.readAt === null) {
+          existing.readAt = timestampToDate(event.notification?.readAt);
+        }
+        existing.revision = maxRevision(
+          existing.revision,
+          event.revision,
+          event.notification?.revision ?? 0n,
+        );
       }
       unreadCount = Number(event.unreadCount);
       cursor = event.changeSequence;
@@ -165,12 +193,17 @@ export function createNotificationProjection(
     if (event.notification) {
       // A local read fact is monotonic: a duplicated CREATED replay can
       // never resurrect unread state.
-      if (existing && existing.readAt !== null) {
-        applyView(event.notification, { readAt: existing.readAt, revision: event.revision });
-      } else {
-        applyView(event.notification, { revision: event.revision });
-      }
-      order = [event.notificationId, ...order.filter((id) => id !== event.notificationId)];
+      const readAt = existing?.readAt ?? timestampToDate(event.notification.readAt);
+      applyView(event.notification, {
+        readAt,
+        revision: maxRevision(
+          existing?.revision ?? 0n,
+          event.revision,
+          event.notification.revision,
+        ),
+      });
+      sortProjection();
+      trimProjection();
       unreadCount = Number(event.unreadCount);
       cursor = event.changeSequence;
       return true;
@@ -185,23 +218,30 @@ export function createNotificationProjection(
     // Authoritative snapshot first, then the stream from its watermark, so
     // nothing is lost in the list/watch window.
     const summary = await notifications.getNotificationSummary({});
-    unreadCount = Number(summary.unreadCount);
-    incidentSourceReady = summary.incidentSourceReady;
+    // The desktop projection is intentionally bounded to the latest page;
+    // older history remains pageable at the Core authority and never grows
+    // a long-running browser process without limit.
+    const page = await notifications.listNotifications({
+      pageSize: MAX_PAGE_SIZE,
+      pageToken: "",
+    });
+    if (page.watermark < cursor) {
+      // A manual refresh may overlap the live stream. Never let a slower,
+      // older snapshot roll the cursor or projection back after a newer event.
+      state = "live";
+      publish();
+      return;
+    }
+    // Only replace the live projection after the candidate snapshot has
+    // passed the cursor check. Clearing earlier would let an older overlapping
+    // refresh keep the new cursor while publishing an empty fact set.
     byId.clear();
     order = [];
-    let pageToken = "";
-    for (;;) {
-      const page = await notifications.listNotifications({
-        pageSize: MAX_PAGE_SIZE,
-        pageToken,
-      });
-      for (const notification of page.notifications) applyView(notification);
-      order = [...order, ...page.notifications.map((n) => n.id)];
-      cursor = page.watermark;
-      unreadCount = Number(page.unreadCount);
-      if (!page.nextPageToken) break;
-      pageToken = page.nextPageToken;
-    }
+    for (const notification of page.notifications) applyView(notification);
+    order = page.notifications.map((n) => n.id);
+    cursor = page.watermark;
+    unreadCount = Number(page.unreadCount);
+    incidentSourceReady = summary.incidentSourceReady;
     state = "live";
     publish();
   }
@@ -303,7 +343,7 @@ export function createNotificationProjection(
     async markVisibleRead(notificationIds) {
       if (notificationIds.length === 0) return;
       await notifications.markNotificationsRead({
-        notificationIds,
+        notificationIds: notificationIds.slice(0, MAX_PROJECTION_NOTIFICATIONS),
         idempotencyKey: crypto.randomUUID(),
       });
     },

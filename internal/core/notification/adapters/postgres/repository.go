@@ -8,6 +8,8 @@ package postgres
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"time"
@@ -50,6 +52,13 @@ func New(pool *pgxpool.Pool) *Repository {
 	return &Repository{pool: pool, queries: notificationdb.New(pool)}
 }
 
+func (r *Repository) SerializeRequestTx(ctx context.Context, tx dbtx.Tx, key string) error {
+	if err := r.queries.WithTx(tx).SerializeNotificationRequest(ctx, key); err != nil {
+		return storeError("serialize notification request", err)
+	}
+	return nil
+}
+
 // AppendSystemNotification implements the tx-scoped producer sink: the
 // projection joins the caller's source-mutation transaction, so a
 // notification failure must roll the source back.
@@ -70,8 +79,11 @@ func (r *Repository) AppendSystemNotification(ctx context.Context, tx dbtx.Tx, f
 // stored fact; a same-source/different-digest drift is corruption.
 func (r *Repository) AppendTx(ctx context.Context, tx dbtx.Tx, notification domain.Notification) (domain.Notification, bool, error) {
 	queries := r.queries.WithTx(tx)
+	if err := r.SerializeRequestTx(ctx, tx, sourceRequestLockKey(notification.SourceProcess, notification.SourceID)); err != nil {
+		return domain.Notification{}, false, err
+	}
 	if existing, err := r.replayTx(ctx, queries, notification); err != nil || existing != nil {
-		return dereplay(existing), existing != nil, err
+		return dereplay(existing), false, err
 	}
 	sequence, err := queries.AllocateNotificationChangeSequence(ctx, notificationdb.AllocateNotificationChangeSequenceParams{
 		OwnerUserID: notification.OwnerUserID, UpdatedAt: notification.CreatedAt,
@@ -79,6 +91,7 @@ func (r *Repository) AppendTx(ctx context.Context, tx dbtx.Tx, notification doma
 	if err != nil {
 		return domain.Notification{}, false, storeError("allocate notification change sequence", err)
 	}
+	notification.CreatedChangeSequence = sequence
 	rows, err := queries.InsertNotification(ctx, notificationdb.InsertNotificationParams{
 		ID: notification.ID, OwnerUserID: notification.OwnerUserID,
 		ProjectID: uuidParam(notification.ProjectID), Kind: notification.Kind,
@@ -88,12 +101,13 @@ func (r *Repository) AppendTx(ctx context.Context, tx dbtx.Tx, notification doma
 		AppID: textParam(notification.AppID), AppInstallationID: uuidParam(notification.AppInstallationID),
 		SourceProcess: notification.SourceProcess, SourceID: notification.SourceID,
 		SourceDigest: notification.SourceDigest, CreatedAt: notification.CreatedAt,
+		CreatedChangeSequence: notification.CreatedChangeSequence,
 	})
 	if err != nil {
 		// A concurrent winner may have committed between the receipt check
 		// and this insert; re-read inside this transaction before failing.
 		if existing, replayErr := r.replayTx(ctx, queries, notification); replayErr == nil && existing != nil {
-			return *existing, true, nil
+			return *existing, false, nil
 		}
 		return domain.Notification{}, false, storeError("insert notification", err)
 	}
@@ -113,11 +127,16 @@ func (r *Repository) AppendTx(ctx context.Context, tx dbtx.Tx, notification doma
 		RecordedAt: notification.CreatedAt,
 	}); err != nil {
 		if existing, replayErr := r.replayTx(ctx, queries, notification); replayErr == nil && existing != nil {
-			return *existing, true, nil
+			return *existing, false, nil
 		}
 		return domain.Notification{}, false, storeError("insert notification receipt", err)
 	}
 	return notification, true, nil
+}
+
+func sourceRequestLockKey(sourceProcess, sourceID string) string {
+	sum := sha256.Sum256([]byte("workos.notification-source-lock.v1\x00" + sourceProcess + "\x00" + sourceID))
+	return hex.EncodeToString(sum[:])
 }
 
 // replayTx classifies an existing projection for the same source fact:
@@ -139,8 +158,13 @@ func (r *Repository) replayTx(ctx context.Context, queries *notificationdb.Queri
 	if err != nil {
 		return nil, err
 	}
-	if fact.OwnerUserID != notification.OwnerUserID || fact.Kind != notification.Kind ||
-		fact.TargetID != notification.TargetID || fact.SourceDigest != notification.SourceDigest {
+	if fact.OwnerUserID != notification.OwnerUserID || fact.ProjectID != notification.ProjectID ||
+		fact.Kind != notification.Kind || fact.Severity != notification.Severity ||
+		fact.Origin != notification.Origin || fact.Title != notification.Title || fact.Body != notification.Body ||
+		fact.TargetKind != notification.TargetKind || fact.TargetID != notification.TargetID ||
+		fact.AppID != notification.AppID || fact.AppInstallationID != notification.AppInstallationID ||
+		fact.SourceProcess != notification.SourceProcess || fact.SourceID != notification.SourceID ||
+		fact.SourceDigest != notification.SourceDigest {
 		return nil, domain.ErrCorrupt
 	}
 	return &fact, nil
@@ -164,7 +188,7 @@ func (r *Repository) storedByIDTx(ctx context.Context, queries *notificationdb.Q
 	fact := notificationFromRow(row.ID, row.OwnerUserID, row.ProjectID, row.Kind, row.Severity,
 		row.Origin, row.Title, row.Body, row.TargetKind, row.TargetID, row.AppID,
 		row.AppInstallationID, row.SourceProcess, row.SourceID, row.SourceDigest,
-		row.CreatedAt, row.ReadAt, row.ReadChangeSequence)
+		row.CreatedAt, row.CreatedChangeSequence, row.ReadAt, row.ReadChangeSequence)
 	if err := domain.ValidStoredNotification(fact); err != nil {
 		return domain.Notification{}, err
 	}
@@ -184,7 +208,7 @@ func (r *Repository) OwnerNotification(ctx context.Context, ownerUserID, notific
 	fact := notificationFromRow(row.ID, row.OwnerUserID, row.ProjectID, row.Kind, row.Severity,
 		row.Origin, row.Title, row.Body, row.TargetKind, row.TargetID, row.AppID,
 		row.AppInstallationID, row.SourceProcess, row.SourceID, row.SourceDigest,
-		row.CreatedAt, row.ReadAt, row.ReadChangeSequence)
+		row.CreatedAt, row.CreatedChangeSequence, row.ReadAt, row.ReadChangeSequence)
 	if err := domain.ValidStoredNotification(fact); err != nil {
 		return domain.Notification{}, err
 	}
@@ -192,7 +216,13 @@ func (r *Repository) OwnerNotification(ctx context.Context, ownerUserID, notific
 }
 
 func (r *Repository) ListPage(ctx context.Context, ownerUserID string, filter ports.Filter, cursor ports.Cursor, limit int) (ports.Page, error) {
-	rows, err := r.queries.ListNotificationsPage(ctx, notificationdb.ListNotificationsPageParams{
+	tx, err := r.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
+	if err != nil {
+		return ports.Page{}, storeError("begin notification list snapshot", err)
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck
+	queries := r.queries.WithTx(tx)
+	rows, err := queries.ListNotificationsPage(ctx, notificationdb.ListNotificationsPageParams{
 		OwnerUserID:   ownerUserID,
 		ProjectID:     uuidParam(filter.ProjectID),
 		UnreadOnly:    filter.UnreadOnly,
@@ -213,13 +243,13 @@ func (r *Repository) ListPage(ctx context.Context, ownerUserID string, filter po
 		fact := notificationFromRow(row.ID, row.OwnerUserID, row.ProjectID, row.Kind, row.Severity,
 			row.Origin, row.Title, row.Body, row.TargetKind, row.TargetID, row.AppID,
 			row.AppInstallationID, row.SourceProcess, row.SourceID, row.SourceDigest,
-			row.CreatedAt, row.ReadAt, row.ReadChangeSequence)
+			row.CreatedAt, row.CreatedChangeSequence, row.ReadAt, row.ReadChangeSequence)
 		if err := domain.ValidStoredNotification(fact); err != nil {
 			return ports.Page{}, err
 		}
 		facts = append(facts, fact)
 	}
-	summary, err := r.Summary(ctx, ownerUserID)
+	summary, err := r.summary(ctx, queries, ownerUserID)
 	if err != nil {
 		return ports.Page{}, err
 	}
@@ -228,19 +258,38 @@ func (r *Repository) ListPage(ctx context.Context, ownerUserID string, filter po
 		last := facts[len(facts)-1]
 		page.NextCursor = ports.Cursor{CreatedAt: last.CreatedAt, ID: last.ID}
 	}
+	if err := tx.Commit(ctx); err != nil {
+		return ports.Page{}, storeError("commit notification list snapshot", err)
+	}
 	return page, nil
 }
 
 func (r *Repository) Summary(ctx context.Context, ownerUserID string) (ports.Summary, error) {
-	unread, err := r.queries.CountOwnerUnread(ctx, ownerUserID)
+	tx, err := r.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
+	if err != nil {
+		return ports.Summary{}, storeError("begin notification summary snapshot", err)
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck
+	summary, err := r.summary(ctx, r.queries.WithTx(tx), ownerUserID)
+	if err != nil {
+		return ports.Summary{}, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return ports.Summary{}, storeError("commit notification summary snapshot", err)
+	}
+	return summary, nil
+}
+
+func (r *Repository) summary(ctx context.Context, queries *notificationdb.Queries, ownerUserID string) (ports.Summary, error) {
+	unread, err := queries.CountOwnerUnread(ctx, ownerUserID)
 	if err != nil {
 		return ports.Summary{}, storeError("count unread notifications", err)
 	}
-	watermark, err := r.queries.GetOwnerChangeWatermark(ctx, ownerUserID)
+	watermark, err := queries.GetOwnerChangeWatermark(ctx, ownerUserID)
 	if err != nil {
 		return ports.Summary{}, storeError("query notification watermark", err)
 	}
-	swept, err := r.queries.GetOwnerSweptThrough(ctx, ownerUserID)
+	swept, err := queries.GetOwnerSweptThrough(ctx, ownerUserID)
 	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 		return ports.Summary{}, storeError("query notification sweep watermark", err)
 	}
@@ -259,7 +308,7 @@ func (r *Repository) LockForRead(ctx context.Context, tx dbtx.Tx, ownerUserID st
 		fact := notificationFromRow(row.ID, row.OwnerUserID, row.ProjectID, row.Kind, row.Severity,
 			row.Origin, row.Title, row.Body, row.TargetKind, row.TargetID, row.AppID,
 			row.AppInstallationID, row.SourceProcess, row.SourceID, row.SourceDigest,
-			row.CreatedAt, row.ReadAt, row.ReadChangeSequence)
+			row.CreatedAt, row.CreatedChangeSequence, row.ReadAt, row.ReadChangeSequence)
 		if err := domain.ValidStoredNotification(fact); err != nil {
 			return nil, err
 		}
@@ -317,8 +366,8 @@ func (r *Repository) UnreadTx(ctx context.Context, tx dbtx.Tx, ownerUserID strin
 	return count, nil
 }
 
-func (r *Repository) GetReadRequest(ctx context.Context, ownerUserID, idempotencyKey string) (ports.ReadRequestRecord, bool, error) {
-	row, err := r.queries.GetNotificationReadRequest(ctx, notificationdb.GetNotificationReadRequestParams{
+func (r *Repository) GetReadRequestTx(ctx context.Context, tx dbtx.Tx, ownerUserID, idempotencyKey string) (ports.ReadRequestRecord, bool, error) {
+	row, err := r.queries.WithTx(tx).GetNotificationReadRequest(ctx, notificationdb.GetNotificationReadRequestParams{
 		OwnerUserID: ownerUserID, IdempotencyKey: idempotencyKey,
 	})
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -358,7 +407,7 @@ func (r *Repository) ChangesAfter(ctx context.Context, ownerUserID string, after
 		fact := notificationFromRow(row.NotificationID, ownerUserID, row.ProjectID, row.Kind, row.Severity,
 			row.Origin, row.Title, row.Body, row.TargetKind, row.TargetID, row.AppID,
 			row.AppInstallationID, row.SourceProcess, row.SourceID, row.SourceDigest,
-			row.CreatedAt, row.ReadAt, row.ReadChangeSequence)
+			row.CreatedAt, row.CreatedChangeSequence, row.ReadAt, row.ReadChangeSequence)
 		if err := domain.ValidStoredNotification(fact); err != nil {
 			return nil, err
 		}
@@ -440,13 +489,14 @@ func (r *Repository) SweepRead(ctx context.Context, cutoff time.Time, maxBatch i
 func notificationFromRow(id, ownerUserID string, projectID pgtype.UUID, kind, severity, origin,
 	title, body, targetKind string, targetID string, appID pgtype.Text, appInstallationID pgtype.UUID,
 	sourceProcess, sourceID, sourceDigest string,
-	createdAt time.Time, readAt *time.Time, readChangeSequence int64) domain.Notification {
+	createdAt time.Time, createdChangeSequence int64, readAt *time.Time, readChangeSequence int64) domain.Notification {
 	fact := domain.Notification{
 		ID: id, OwnerUserID: ownerUserID, Kind: kind, Severity: severity, Origin: origin,
 		Title: title, Body: body, TargetKind: targetKind, TargetID: targetID,
 		AppID: appID.String, AppInstallationID: uuidString(appInstallationID),
 		SourceProcess: sourceProcess, SourceID: sourceID,
-		SourceDigest: sourceDigest, CreatedAt: createdAt, ReadChangeSequence: readChangeSequence,
+		SourceDigest: sourceDigest, CreatedAt: createdAt, CreatedChangeSequence: createdChangeSequence,
+		ReadChangeSequence: readChangeSequence,
 	}
 	if projectID.Valid {
 		fact.ProjectID = uuidString(projectID)
@@ -499,8 +549,8 @@ func (r *Repository) LastOwnerSequenceTx(ctx context.Context, tx dbtx.Tx, ownerU
 	return sequence, nil
 }
 
-func (r *Repository) GetAppRequest(ctx context.Context, ownerUserID, appInstanceID, idempotencyKey string) (ports.AppRequestRecord, bool, error) {
-	row, err := r.queries.GetNotificationAppRequest(ctx, notificationdb.GetNotificationAppRequestParams{
+func (r *Repository) GetAppRequestTx(ctx context.Context, tx dbtx.Tx, ownerUserID, appInstanceID, idempotencyKey string) (ports.AppRequestRecord, bool, error) {
+	row, err := r.queries.WithTx(tx).GetNotificationAppRequest(ctx, notificationdb.GetNotificationAppRequestParams{
 		OwnerUserID: ownerUserID, AppInstallationID: appInstanceID, IdempotencyKey: idempotencyKey,
 	})
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -555,7 +605,9 @@ func (r *Repository) InsertAppQuota(ctx context.Context, tx dbtx.Tx, ownerUserID
 		return ports.AppQuotaBucket{}, storeError("insert app quota bucket", err)
 	}
 	if rows == 0 {
-		return ports.AppQuotaBucket{}, storeError("insert app quota bucket", errors.New("no rows inserted"))
+		// A concurrent first request created the bucket. ON CONFLICT DO
+		// NOTHING waited for it; lock and use that committed authority.
+		return r.LockAppQuota(ctx, tx, ownerUserID, appInstanceID)
 	}
 	return ports.AppQuotaBucket{UtcDate: now.Truncate(24 * time.Hour), BurstWindowStart: now}, nil
 }

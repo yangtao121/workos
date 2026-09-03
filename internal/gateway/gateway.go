@@ -128,7 +128,10 @@ const notificationWatchPath = "/workos.notification.v1.NotificationService/Watch
 // authorized notification stream; the Core handler's own bounded stream
 // lifetime is the second bound. Store outages never cancel streams — only
 // a definitive authentication failure does.
-const streamRevalidateInterval = 30 * time.Second
+const (
+	streamRevalidateInterval = 30 * time.Second
+	streamRevalidateTimeout  = 5 * time.Second
+)
 
 func New(cfg config.Config, logger *slog.Logger, auth *AuthStack) (*Handler, error) {
 	core, err := newUpstreamProxy(cfg.Services.Core, cfg, logger, "core")
@@ -482,7 +485,10 @@ func (h *Handler) serveStreamWithRevalidation(w http.ResponseWriter, r *http.Req
 			case <-streamCtx.Done():
 				return
 			case <-ticker.C:
-				if _, err := h.auth.Service.ResolveSession(context.Background(), cookie.Value); err != nil {
+				revalidateCtx, revalidateCancel := context.WithTimeout(streamCtx, streamRevalidateTimeout)
+				_, err := h.auth.Service.ResolveSession(revalidateCtx, cookie.Value)
+				revalidateCancel()
+				if err != nil {
 					if errors.Is(err, domain.ErrAuthenticationFailed) {
 						cancel()
 						return

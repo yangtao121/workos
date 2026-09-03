@@ -738,13 +738,17 @@ func (q *Queries) ListOpenIncidentsForWorkload(ctx context.Context, arg ListOpen
 }
 
 const listPendingActionIncidents = `-- name: ListPendingActionIncidents :many
-SELECT id, owner_user_id, project_id, app_instance_id, app_id, workload_id,
-       workload_generation, violation, severity, summary, occurrence_digest,
-       evidence_digest, state, restart_outcome, revision, acknowledge_key,
-       acknowledged_at, mitigated_at, resolved_at, created_at, updated_at
-FROM workos_reliability.incidents
-WHERE state = 'open' AND restart_outcome = 'pending'
-ORDER BY (violation = 'restart_limit_exhausted') DESC, created_at, id
+SELECT i.id, i.owner_user_id, i.project_id, i.app_instance_id, i.app_id, i.workload_id,
+       i.workload_generation, i.violation, i.severity, i.summary, i.occurrence_digest,
+       i.evidence_digest, i.state, i.restart_outcome, i.revision, i.acknowledge_key,
+       i.acknowledged_at, i.mitigated_at, i.resolved_at, i.created_at, i.updated_at
+FROM workos_reliability.incidents AS i
+LEFT JOIN workos_reliability.incident_actions AS a
+  ON a.incident_id = i.id
+ AND a.action = CASE WHEN i.violation = 'restart_limit_exhausted' THEN 'terminate' ELSE 'restart' END
+WHERE i.state = 'open' AND i.restart_outcome = 'pending'
+ORDER BY (a.incident_id IS NOT NULL), COALESCE(a.updated_at, i.created_at),
+         (i.violation = 'restart_limit_exhausted') DESC, i.created_at, i.id
 LIMIT $1
 `
 
@@ -774,6 +778,9 @@ type ListPendingActionIncidentsRow struct {
 
 // Crash recovery is deliberately not owner-scoped: this is a private
 // supervisor queue over reliability-owned rows, not an owner-facing list.
+// Never-attempted work runs before retries. An unavailable retry updates the
+// action timestamp and rotates behind its peers, so a bounded batch cannot
+// permanently starve a newer incident during a long Runtime outage.
 func (q *Queries) ListPendingActionIncidents(ctx context.Context, rowLimit int32) ([]ListPendingActionIncidentsRow, error) {
 	rows, err := q.db.Query(ctx, listPendingActionIncidents, rowLimit)
 	if err != nil {
