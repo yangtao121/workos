@@ -69,8 +69,15 @@ type HarnessCapabilities struct {
 	// Core refuses fresh tasks whose context refs fall outside the resolved
 	// provider's exact list before queueing.
 	SupportedContextRefTypes []string `protobuf:"bytes,18,rep,name=supported_context_ref_types,json=supportedContextRefTypes,proto3" json:"supported_context_ref_types,omitempty"`
-	unknownFields            protoimpl.UnknownFields
-	sizeCache                protoimpl.SizeCache
+	// The exact canonical credential purpose (kind) this adapter consumes
+	// from the Core Credential Vault. required only when
+	// requires_task_credential_lease is true; Core resolves the owner's
+	// active credential for exactly this purpose and treats an
+	// empty/unknown purpose on a lease-requiring adapter as capability
+	// corruption (ADR-0015).
+	RequiredCredentialPurpose string `protobuf:"bytes,19,opt,name=required_credential_purpose,json=requiredCredentialPurpose,proto3" json:"required_credential_purpose,omitempty"`
+	unknownFields             protoimpl.UnknownFields
+	sizeCache                 protoimpl.SizeCache
 }
 
 func (x *HarnessCapabilities) Reset() {
@@ -227,6 +234,13 @@ func (x *HarnessCapabilities) GetSupportedContextRefTypes() []string {
 		return x.SupportedContextRefTypes
 	}
 	return nil
+}
+
+func (x *HarnessCapabilities) GetRequiredCredentialPurpose() string {
+	if x != nil {
+		return x.RequiredCredentialPurpose
+	}
+	return ""
 }
 
 type HarnessProviderInfo struct {
@@ -605,7 +619,7 @@ var File_workos_harness_v1_harness_proto protoreflect.FileDescriptor
 
 const file_workos_harness_v1_harness_proto_rawDesc = "" +
 	"\n" +
-	"\x1fworkos/harness/v1/harness.proto\x12\x11workos.harness.v1\x1a\x1bworkos/agent/v1/agent.proto\x1a\x1dworkos/common/v1/common.proto\"\xa0\x06\n" +
+	"\x1fworkos/harness/v1/harness.proto\x12\x11workos.harness.v1\x1a\x1bworkos/agent/v1/agent.proto\x1a\x1dworkos/common/v1/common.proto\"\xe0\x06\n" +
 	"\x13HarnessCapabilities\x12\x1c\n" +
 	"\tstreaming\x18\x01 \x01(\bR\tstreaming\x12/\n" +
 	"\x13persistent_sessions\x18\x02 \x01(\bR\x12persistentSessions\x12\x16\n" +
@@ -625,7 +639,8 @@ const file_workos_harness_v1_harness_proto_rawDesc = "" +
 	"\x13max_runtime_seconds\x18\x0f \x01(\x03R\x11maxRuntimeSeconds\x128\n" +
 	"\x18supported_artifact_types\x18\x10 \x03(\tR\x16supportedArtifactTypes\x12C\n" +
 	"\x1erequires_task_credential_lease\x18\x11 \x01(\bR\x1brequiresTaskCredentialLease\x12=\n" +
-	"\x1bsupported_context_ref_types\x18\x12 \x03(\tR\x18supportedContextRefTypes\"\xa3\x02\n" +
+	"\x1bsupported_context_ref_types\x18\x12 \x03(\tR\x18supportedContextRefTypes\x12>\n" +
+	"\x1brequired_credential_purpose\x18\x13 \x01(\tR\x19requiredCredentialPurpose\"\xa3\x02\n" +
 	"\x13HarnessProviderInfo\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12!\n" +
 	"\fdisplay_name\x18\x02 \x01(\tR\vdisplayName\x12'\n" +

@@ -152,6 +152,8 @@ type Harness struct {
 	PollInterval time.Duration `yaml:"poll_interval"`
 	CoreURL      string        `yaml:"core_url"`
 	Generic      GenericCLI    `yaml:"generic_cli"`
+	Codex        Codex         `yaml:"codex"`
+	MCP          MCP           `yaml:"mcp"`
 	DeepSeek     DeepSeek      `yaml:"deepseek"`
 	// Execution identity for the private harness execution channel
 	// (client side). Required for harness-host to claim tasks at all.
@@ -166,6 +168,19 @@ type GenericCLI struct {
 	Executable string        `yaml:"executable"`
 	Args       []string      `yaml:"args"`
 	Timeout    time.Duration `yaml:"timeout"`
+}
+
+type MCP struct {
+	Enabled   bool          `yaml:"enabled"`
+	Server    string        `yaml:"server"`
+	Timeout   time.Duration `yaml:"timeout"`
+	Arguments []string      `yaml:"arguments"`
+}
+
+type Codex struct {
+	Enabled   bool          `yaml:"enabled"`
+	AppServer string        `yaml:"app_server"`
+	Timeout   time.Duration `yaml:"timeout"`
 }
 
 type DeepSeek struct {
@@ -203,6 +218,8 @@ func defaults() Config {
 			WorkerID: "harness-host-local", PollInterval: 250 * time.Millisecond,
 			CoreURL: "http://127.0.0.1:8081",
 			Generic: GenericCLI{Timeout: 2 * time.Minute},
+			Codex:   Codex{Timeout: 2 * time.Minute},
+			MCP:     MCP{Timeout: 2 * time.Minute},
 			DeepSeek: DeepSeek{
 				BaseURL: "https://api.deepseek.com", Model: "deepseek-v4-flash", Timeout: 2 * time.Minute,
 				RuntimePath: "/usr/local/libexec/workos/dsh-jsonrpc-agent", CordisConfigPath: "/etc/workos/deepseek.cordis.yml",
@@ -294,6 +311,20 @@ func Load() (Config, error) {
 	// Credential Vault.
 	if legacyKey, legacySet := os.LookupEnv("DEEPSEEK_API_KEY"); legacySet && strings.TrimSpace(legacyKey) != "" {
 		cfg.Harness.DeepSeek.ConfigurationIssue = "DEEPSEEK_API_KEY is retired: store the provider credential in the WorkOS Credential Vault with workosctl credential put"
+	}
+	setString(&cfg.Harness.MCP.Server, "WORKOS_MCP_SERVER")
+	if value, err := strconv.ParseBool(os.Getenv("WORKOS_MCP_ENABLED")); err == nil {
+		cfg.Harness.MCP.Enabled = value
+	}
+	if value, err := time.ParseDuration(os.Getenv("WORKOS_MCP_TIMEOUT")); err == nil && value > 0 {
+		cfg.Harness.MCP.Timeout = value
+	}
+	setString(&cfg.Harness.Codex.AppServer, "WORKOS_CODEX_APP_SERVER")
+	if value, err := strconv.ParseBool(os.Getenv("WORKOS_CODEX_ENABLED")); err == nil {
+		cfg.Harness.Codex.Enabled = value
+	}
+	if value, err := time.ParseDuration(os.Getenv("WORKOS_CODEX_TIMEOUT")); err == nil && value > 0 {
+		cfg.Harness.Codex.Timeout = value
 	}
 	setString(&cfg.Harness.DeepSeek.BaseURL, "WORKOS_DEEPSEEK_BASE_URL")
 	setString(&cfg.Harness.DeepSeek.Model, "WORKOS_DEEPSEEK_MODEL")

@@ -167,7 +167,10 @@ func seed(ctx context.Context, client *http.Client, baseURL string) error {
 		// ADR-0009: a credential-requiring provider carries a server-derived
 		// opaque credential_ref; providers without that requirement never do.
 		credentialRef := activeProject.GetHarnessBinding().GetCredentialRef()
-		if providerID == "deepseek" {
+		if providerID == "deepseek" || providerID == "codex" {
+			// Both providers require a task-bound credential lease (ADR-0009
+			// and ADR-0015): their bindings must carry the server-derived
+			// opaque credential reference.
 			if len(credentialRef) != 36 {
 				return errors.New("server binding did not carry the derived credential reference")
 			}
@@ -226,7 +229,7 @@ func verify(ctx context.Context, client *http.Client, baseURL, taskID string) er
 		if projectResponse.Msg.GetProject().GetHarnessBinding() != nil {
 			return errors.New("global-default Project unexpectedly gained a persisted binding")
 		}
-	} else if binding := projectResponse.Msg.GetProject().GetHarnessBinding(); binding.GetProviderId() != expectedProvider || (expectedProvider == "deepseek") != (len(binding.GetCredentialRef()) == 36) {
+	} else if binding := projectResponse.Msg.GetProject().GetHarnessBinding(); binding.GetProviderId() != expectedProvider || (expectedProvider == "deepseek" || expectedProvider == "codex") != (len(binding.GetCredentialRef()) == 36) {
 		return fmt.Errorf("Project binding was not durably restored: provider=%q", binding.GetProviderId())
 	}
 	stream, err := tasks.WatchTaskEvents(ctx, connect.NewRequest(&agentv1.WatchTaskEventsRequest{

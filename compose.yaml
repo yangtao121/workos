@@ -103,6 +103,10 @@ services:
       WORKOS_DEEPSEEK_BASE_URL: ${WORKOS_DEEPSEEK_BASE_URL:-https://api.deepseek.com}
       WORKOS_DEEPSEEK_MODEL: ${WORKOS_DEEPSEEK_MODEL:-deepseek-v4-flash}
       WORKOS_DEEPSEEK_TIMEOUT: ${WORKOS_DEEPSEEK_TIMEOUT:-2m}
+      WORKOS_CODEX_ENABLED: ${WORKOS_CODEX_ENABLED:-false}
+      WORKOS_CODEX_APP_SERVER: /usr/local/bin/codex-app-server-fixture
+      WORKOS_MCP_ENABLED: ${WORKOS_MCP_ENABLED:-false}
+      WORKOS_MCP_SERVER: /usr/local/bin/mcp-server-fixture
       # Harness receives only its client identity and the public trust
       # anchor; it cannot mount the Core key or vault master key.
       WORKOS_CORE_EXECUTION_URL: https://127.0.0.1:8086

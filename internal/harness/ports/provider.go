@@ -27,8 +27,13 @@ type ArtifactOutput struct {
 // and must not emit its terminal event after a failed output.
 type ArtifactSink func(ArtifactOutput) error
 
-// Canonical credential purposes the lease contract understands.
-const PurposeProviderAPIKeyV1 = "provider-api-key.v1"
+// Canonical credential purposes the lease contract understands. The set
+// mirrors the Credential Vault's finite kind vocabulary (ADR-0015); an
+// adapter must require exactly the purpose its provider consumes.
+const (
+	PurposeProviderAPIKeyV1 = "provider-api-key.v1"
+	PurposeCodexAuthV1      = "codex-auth.v1"
+)
 
 // CredentialLease is the neutral short-lived task-bound credential grant a
 // worker derives from the Core Credential Vault (ADR-0009). Secret material

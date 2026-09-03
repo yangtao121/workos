@@ -52,6 +52,13 @@ message HarnessCapabilities {
   // Core refuses fresh tasks whose context refs fall outside the resolved
   // provider's exact list before queueing.
   repeated string supported_context_ref_types = 18;
+  // The exact canonical credential purpose (kind) this adapter consumes
+  // from the Core Credential Vault. required only when
+  // requires_task_credential_lease is true; Core resolves the owner's
+  // active credential for exactly this purpose and treats an
+  // empty/unknown purpose on a lease-requiring adapter as capability
+  // corruption (ADR-0015).
+  string required_credential_purpose = 19;
 }
 
 message HarnessProviderInfo {

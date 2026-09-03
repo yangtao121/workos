@@ -9,9 +9,11 @@ import (
 	"github.com/yangtao121/workos/gen/go/workos/common/v1/commonv1connect"
 	"github.com/yangtao121/workos/gen/go/workos/credential/v1/credentialv1connect"
 	"github.com/yangtao121/workos/gen/go/workos/harness/v1/harnessv1connect"
+	"github.com/yangtao121/workos/internal/harness/adapters/codex"
 	"github.com/yangtao121/workos/internal/harness/adapters/deepseek"
 	"github.com/yangtao121/workos/internal/harness/adapters/fake"
 	"github.com/yangtao121/workos/internal/harness/adapters/genericcli"
+	"github.com/yangtao121/workos/internal/harness/adapters/mcp"
 	"github.com/yangtao121/workos/internal/harness/broker"
 	"github.com/yangtao121/workos/internal/harness/ports"
 	harnesstransport "github.com/yangtao121/workos/internal/harness/transport"
@@ -72,6 +74,24 @@ func run(logger *slog.Logger) error {
 		}
 		providers = append(providers, provider)
 	}
+	// Codex (ADR-0015) holds no long-lived material either: every run needs a
+	// task-bound codex-auth.v1 lease, and an unavailable app server keeps the
+	// provider honestly unavailable instead of silently absent.
+	codexProvider := codex.New(codex.Config{
+		Enabled: cfg.Harness.Codex.Enabled, AppServer: cfg.Harness.Codex.AppServer, Timeout: cfg.Harness.Codex.Timeout,
+	}, ids.UUIDv7{})
+	if cfg.Harness.Codex.Enabled {
+		providers = append(providers, codexProvider)
+	}
+	// MCP (ADR-0015) declares the honest degraded subset: no streaming, no
+	// usage, no budgets, and no credential path at all.
+	mcpProvider := mcp.New(mcp.Config{
+		Enabled: cfg.Harness.MCP.Enabled, Server: cfg.Harness.MCP.Server,
+		Timeout: cfg.Harness.MCP.Timeout, Arguments: cfg.Harness.MCP.Arguments,
+	})
+	if cfg.Harness.MCP.Enabled {
+		providers = append(providers, mcpProvider)
+	}
 	value := broker.New(providers...)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -84,6 +104,8 @@ func run(logger *slog.Logger) error {
 	systemPath, systemHandler := commonv1connect.NewSystemServiceHandler(systemhandler.New("harness-host", commonv1.HealthState_HEALTH_STATE_HEALTHY,
 		&commonv1.FeatureCapability{Id: "fake", Available: true},
 		&commonv1.FeatureCapability{Id: "generic-cli", Available: cfg.Harness.Generic.Enabled, Reason: "requires an absolute allowlisted executable"},
+		&commonv1.FeatureCapability{Id: "codex", Available: cfg.Harness.Codex.Enabled && codexProvider.Describe().GetHealth() == commonv1.HealthState_HEALTH_STATE_HEALTHY, Reason: codexProvider.Describe().GetUnavailableReason()},
+		&commonv1.FeatureCapability{Id: "mcp", Available: cfg.Harness.MCP.Enabled && mcpProvider.Describe().GetHealth() == commonv1.HealthState_HEALTH_STATE_HEALTHY, Reason: mcpProvider.Describe().GetUnavailableReason()},
 		&commonv1.FeatureCapability{Id: "deepseek", Available: deepSeekProvider.Describe().GetHealth() == commonv1.HealthState_HEALTH_STATE_HEALTHY, Reason: deepSeekProvider.Describe().GetUnavailableReason()},
 	))
 	mux.Handle(systemPath, systemHandler)

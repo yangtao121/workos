@@ -80,6 +80,8 @@ func (p *Provider) Describe() *harnessv1.HarnessProviderInfo {
 			// short-lived, task-bound credential lease from the Core
 			// Credential Vault (ADR-0009).
 			RequiresTaskCredentialLease: true,
+			// ADR-0015: the exact canonical kind every run acquires.
+			RequiredCredentialPurpose: "provider-api-key.v1",
 			// Proven only after the materialized-context tests pass: the
 			// adapter consumes review artifacts as bounded untrusted context
 			// through the versioned task envelope (ADR-0010).
