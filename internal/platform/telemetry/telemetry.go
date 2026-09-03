@@ -179,7 +179,6 @@ type trimmedSpan struct {
 func (s *trimmedSpan) Attributes() []attribute.KeyValue { return s.attributes }
 
 func (e *boundsExporter) ExportSpans(ctx context.Context, spans []sdktrace.ReadOnlySpan) error {
-	println("DEBUG bounds exporter invoked with", len(spans), "spans")
 	trimmed := make([]sdktrace.ReadOnlySpan, 0, len(spans))
 	for _, span := range spans {
 		kept, dropped := trimSpanAttributes(span.Attributes())
