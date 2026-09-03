@@ -1,0 +1,15 @@
+# Supervision software-chain acceptance overlay (ADR-0016): enables the
+# bounded in-process fixture engine for runtime-host and a fast supervision
+# poll cadence. Used only by `make test-real-supervision`; production and
+# every other gate use the plain compose topology with the real Podman probe.
+services:
+  runtime-host:
+    environment:
+      WORKOS_RUNTIME_WORKLOAD_ENGINE: fake-fixture
+      WORKOS_RUNTIME_FIXTURE_SCENARIO_FILE: /run/workos/fake-engine/scenario.conf
+    volumes:
+      - ./tmp/fake-engine-scenario.conf:/run/workos/fake-engine/scenario.conf
+  reliability-host:
+    environment:
+      WORKOS_RELIABILITY_POLL_INTERVAL: 1s
+      WORKOS_RELIABILITY_POLL_TIMEOUT: 900ms

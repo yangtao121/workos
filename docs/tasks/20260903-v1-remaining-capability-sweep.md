@@ -32,12 +32,12 @@ W1 → W2 → W3 → W4 → W6 → W5，全部在同一 branch 严格串行。
 
 | 阶段                                                                           | 状态    | 提交 | 证据 |
 | ------------------------------------------------------------------------------ | ------- | ---- | ---- |
-| W2.1 ADR-0016：监督验收标准、遥测脱敏矩阵、Repair/Deployment 语义与 L 级别映射 | pending |      |      |
-| W2.2 rootless Podman 宿主探测（或 blocker 记录）+ `make test-rootless-runtime` | pending |      |      |
-| W2.3 真实监督链 + `make test-real-supervision`                                 | pending |      |      |
-| W2.4 遥测（collector 输出/存储/System Monitor 消费）+ `make test-telemetry`    | pending |      |      |
-| W2.5 Repair Orchestrator                                                       | pending |      |      |
-| W2.6 Deployment Controller + `make test-repair-deployment`                     | pending |      |      |
+| W2.1 ADR-0016：监督验收标准、遥测脱敏矩阵、Repair/Deployment 语义与 L 级别映射 | done  | 待填 | `docs/decisions/0016-real-runtime-supervision-and-repair.md` |
+| W2.2 rootless Podman 宿主探测（或 blocker 记录）+ `make test-rootless-runtime` | blocked-environment | | 探测：podman 不可用（command -v 失败）；cgroup v2 可用；user namespaces=123655 → 门禁 BLOCKED，container-runner 保持 unavailable |
+| W2.3 真实监督链 + `make test-real-supervision`                                 | done  | 待填 | 门禁 PASS（2026-09-03）：fixture engine + 六进程栈，crash→incident（occurrence 唯一）→restart 推进 generation→restart limit→deterministic stop→owner 可见 |
+| W2.4 遥测（collector 输出/存储/System Monitor 消费）+ `make test-telemetry`    | pending |      | 下一会话：ADR-0016 §4 矩阵已定；需实现采集脱敏 decorator 白名单断言 + System Monitor 真实遥测视图 |
+| W2.5 Repair Orchestrator                                                       | pending |      | 下一会话：ADR-0016 §5；incident_ref 入 AgentTaskInput（proto additive）+ 路由 + 台账 |
+| W2.6 Deployment Controller + `make test-repair-deployment`                     | pending |      | 下一会话：ADR-0016 §6；candidate→canary→promote/rollback 状态机 + 私有协作 Core |
 
 ### W3 Surface 与 Bridge 补全
 

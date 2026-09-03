@@ -476,6 +476,53 @@ capture-provider-catalog: e2e-image
 		cp docs/ui/desktop-web/changes/20260903-remaining-capability-sweep/after/harness-settings--provider-catalog-expanded--1440x900.png docs/ui/desktop-web/current/harness-settings--provider-catalog--1440x900.png; \
 		echo "capture-provider-catalog: PASS"
 
+# The REAL rootless Podman + cgroup v2 acceptance gate (ADR-0006/ADR-0016).
+# Like test-podman-fixture, it is compiled in the pinned toolchain container
+# and executed on the host. It fails loudly - never silently passes - on
+# hosts without the full acceptance precondition set, recording the exact
+# probe output as the task's BLOCKED evidence.
+test-rootless-runtime:
+	@set -eu; \
+		echo "== rootless acceptance probe (ADR-0016 §1) =="; \
+		probe_ok=1; \
+		if command -v podman >/dev/null 2>&1; then \
+			echo "podman: $$(command -v podman)"; \
+			podman info --format '{{.Host.Security.Rootless}} {{.Host.CgroupsVersion}}' || probe_ok=0; \
+		else \
+			echo "podman: NOT AVAILABLE (command -v podman failed)"; \
+			probe_ok=0; \
+		fi; \
+		if [ -f /sys/fs/cgroup/cgroup.controllers ]; then \
+			echo "cgroup v2: yes ($$(head -c 120 /sys/fs/cgroup/cgroup.controllers))"; \
+		else \
+			echo "cgroup v2: no"; \
+			probe_ok=0; \
+		fi; \
+		echo "user namespaces: $$(cat /proc/sys/user/max_user_namespaces 2>/dev/null || echo unknown)"; \
+		if [ "$$probe_ok" != "1" ]; then \
+			echo "test-rootless-runtime: BLOCKED - the acceptance host does not satisfy the rootless Podman preconditions above."; \
+			echo "The container-runner capability stays unavailable; no host software is installed."; \
+			exit 1; \
+		fi; \
+		trap 'rm -f tmp/rootlessruntime.test tmp/workos-web-fixture' EXIT HUP INT TERM; \
+		$(GO_RUN) sh -c 'go test -c -o tmp/rootlessruntime.test -tags podmanfixture ./tests/podmanfixture && CGO_ENABLED=0 go build -o tmp/workos-web-fixture ./tests/podmanfixture/fixture'; \
+		WORKOS_PODMAN_FIXTURE_BINARY="$$(pwd)/tmp/workos-web-fixture" tmp/rootlessruntime.test -test.v; \
+		echo "test-rootless-runtime: PASS"
+
+# The REAL supervision chain gate (ADR-0016 §3): the six-process stack with
+# the bounded fixture engine (no Podman on this host). Proves observation ->
+# incident (exactly one per occurrence) -> restart action advancing the
+# workload generation -> deterministic stop at the restart limit -> the
+# incident lands in the owner-visible projection.
+test-real-supervision: e2e-image
+	@set -eu; \
+		mkdir -p tmp; \
+		printf '# fake engine scenario (ADR-0016): name=ok|crash|oom|flap\n' > tmp/fake-engine-scenario.conf; \
+		WORKOS_UID="$$(id -u)" WORKOS_GID="$$(id -g)" \
+		docker compose -f compose.yaml -f deploy/compose.supervision.yaml up -d --build --force-recreate postgres bootstrap workos-core harness-host runtime-host reliability-host workos-gateway; \
+		$(GO_HOST_RUN) go test -tags='integration realsupervision' -count=1 -run '^TestRealSupervisionChain$$' -v ./tests/integration; \
+		echo "test-real-supervision: PASS"
+
 e2e-image:
 	docker build \
 		--build-arg DEBIAN_MIRROR=$(DEBIAN_MIRROR) \

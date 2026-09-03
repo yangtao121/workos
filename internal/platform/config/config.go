@@ -57,6 +57,13 @@ type Indexer struct {
 
 type Runtime struct {
 	PodmanBin string `yaml:"podman_bin"`
+	// WorkloadEngine selects the supervised-workload engine. Empty (or
+	// "podman") is the only production value: the real rootless Podman
+	// adapter. "fake-fixture" enables the bounded in-process simulator
+	// (ADR-0016) for supervision software-chain acceptance on hosts without
+	// Podman; it never claims the container capability.
+	WorkloadEngine      string `yaml:"workload_engine"`
+	FixtureScenarioFile string `yaml:"fixture_scenario_file"`
 	// IndexerURL configures the runtime's scoped knowledge search upstream.
 	// Empty means not configured: knowledge.search is never negotiated.
 	IndexerURL        string        `yaml:"indexer_url"`
@@ -312,6 +319,8 @@ func Load() (Config, error) {
 	if legacyKey, legacySet := os.LookupEnv("DEEPSEEK_API_KEY"); legacySet && strings.TrimSpace(legacyKey) != "" {
 		cfg.Harness.DeepSeek.ConfigurationIssue = "DEEPSEEK_API_KEY is retired: store the provider credential in the WorkOS Credential Vault with workosctl credential put"
 	}
+	setString(&cfg.Runtime.WorkloadEngine, "WORKOS_RUNTIME_WORKLOAD_ENGINE")
+	setString(&cfg.Runtime.FixtureScenarioFile, "WORKOS_RUNTIME_FIXTURE_SCENARIO_FILE")
 	setString(&cfg.Harness.MCP.Server, "WORKOS_MCP_SERVER")
 	if value, err := strconv.ParseBool(os.Getenv("WORKOS_MCP_ENABLED")); err == nil {
 		cfg.Harness.MCP.Enabled = value
@@ -385,6 +394,13 @@ func Load() (Config, error) {
 			return Config{}, errors.New("WORKOS_RELIABILITY_POLL_INTERVAL must be a positive duration")
 		}
 		cfg.Reliability.PollInterval = value
+	}
+	if raw, ok := os.LookupEnv("WORKOS_RELIABILITY_POLL_TIMEOUT"); ok {
+		value, err := time.ParseDuration(raw)
+		if err != nil || value <= 0 {
+			return Config{}, errors.New("WORKOS_RELIABILITY_POLL_TIMEOUT must be a positive duration")
+		}
+		cfg.Reliability.PollTimeout = value
 	}
 	if raw, ok := os.LookupEnv("WORKOS_SURFACE_SESSION_TTL"); ok {
 		value, err := time.ParseDuration(raw)

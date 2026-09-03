@@ -28,6 +28,7 @@ import (
 	surfaceapp "github.com/yangtao121/workos/internal/runtime/surface/application"
 	surfacetransport "github.com/yangtao121/workos/internal/runtime/surface/transport"
 	runtimetransport "github.com/yangtao121/workos/internal/runtime/transport"
+	fakefixture "github.com/yangtao121/workos/internal/runtime/workload/adapters/fakefixture"
 	workloadpodman "github.com/yangtao121/workos/internal/runtime/workload/adapters/podman"
 	workloadpostgres "github.com/yangtao121/workos/internal/runtime/workload/adapters/postgres"
 	workloadapp "github.com/yangtao121/workos/internal/runtime/workload/application"
@@ -41,6 +42,19 @@ func main() {
 		logger.Error("service stopped", "error", err)
 		os.Exit(1)
 	}
+}
+
+// rootlessRunnerReason keeps the rootless verdict honest even when the
+// fixture engine is operational: simulated lifecycle is not a container
+// runtime (ADR-0016 §2).
+func rootlessRunnerReason(engine string, capability workloadports.Capability) string {
+	if engine == "fake-fixture" {
+		return "the fixture engine simulates the container lifecycle; rootless isolation is unproven on this host"
+	}
+	if capability.Reason == "" {
+		return "verified rootless capability unavailable"
+	}
+	return capability.Reason
 }
 
 // workloadCapability projects the verified runner capability honestly: the
@@ -107,22 +121,32 @@ func run(logger *slog.Logger) error {
 	}
 	var engine workloadports.Engine
 	var cgroupReader workloadports.CgroupReader
-	podmanEngine, engineErr := workloadpodman.New(cfg.Runtime.PodmanBin)
-	if engineErr == nil {
-		reader, readerErr := workloadpodman.NewCgroupReader()
-		if readerErr == nil {
-			engine = podmanEngine
-			cgroupReader = reader
+	if cfg.Runtime.WorkloadEngine == "fake-fixture" {
+		// ADR-0016 §2: the bounded in-process simulator proves the
+		// supervision software chain on hosts without rootless Podman. It
+		// never claims the container capability and is never a production
+		// fallback.
+		fixtureEngine, fixtureReader := fakefixture.New(cfg.Runtime.FixtureScenarioFile)
+		engine = fixtureEngine
+		cgroupReader = fixtureReader
+	} else {
+		podmanEngine, engineErr := workloadpodman.New(cfg.Runtime.PodmanBin)
+		if engineErr == nil {
+			reader, readerErr := workloadpodman.NewCgroupReader()
+			if readerErr == nil {
+				engine = podmanEngine
+				cgroupReader = reader
+			} else {
+				// Podman without a readable cgroup v2 hierarchy is an unavailable
+				// combined runner capability, not a reason to take down runtime-host's
+				// DB-backed Surface and Workload fact services.
+				engine = workloadpodman.NewUnavailableEngine("cgroup v2 is not available")
+				cgroupReader = workloadpodman.NewUnavailableCgroupReader()
+			}
 		} else {
-			// Podman without a readable cgroup v2 hierarchy is an unavailable
-			// combined runner capability, not a reason to take down runtime-host's
-			// DB-backed Surface and Workload fact services.
-			engine = workloadpodman.NewUnavailableEngine("cgroup v2 is not available")
+			engine = workloadpodman.NewUnavailableEngine("podman executable is not available")
 			cgroupReader = workloadpodman.NewUnavailableCgroupReader()
 		}
-	} else {
-		engine = workloadpodman.NewUnavailableEngine("podman executable is not available")
-		cgroupReader = workloadpodman.NewUnavailableCgroupReader()
 	}
 	verifier := &coreInstallationVerifier{resolver: resolverClient}
 	references := &surfaceReferenceSource{sessions: sessionStore}
@@ -224,6 +248,7 @@ func run(logger *slog.Logger) error {
 	systemPath, systemHandler := commonv1connect.NewSystemServiceHandler(systemhandler.New("runtime-host", commonv1.HealthState_HEALTH_STATE_HEALTHY,
 		&commonv1.FeatureCapability{Id: "node-inspection", Available: true},
 		workloadCapability(capability, "container-runner"),
+		&commonv1.FeatureCapability{Id: "rootless-container-runner", Available: cfg.Runtime.WorkloadEngine != "fake-fixture" && capability.Available && capability.Rootless, Reason: rootlessRunnerReason(cfg.Runtime.WorkloadEngine, capability)},
 		&commonv1.FeatureCapability{Id: "native-runner", Available: false, Reason: "not implemented"},
 		&commonv1.FeatureCapability{Id: "surface-broker", Available: true, Reason: "web bundle and supervised web service surfaces"},
 		&commonv1.FeatureCapability{Id: "app-bridge", Available: true, Reason: "agent.task.run, agent.event.watch, and knowledge.search for real knowledge.read grants when the indexer is configured"},

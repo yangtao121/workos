@@ -1085,6 +1085,31 @@ harness 侧新增两个本地 Provider 适配器，Vault 扩展为有限凭据�
   Core mTLS → harness-host → 浏览器 + 重启持久）、`make test-mcp-harness`（stdio
   fixture → provider 链路 + 重启持久）。
 
+## 真实 Runtime 自愈链：fixture engine、监督验收与 rootless blocker（ADR-0016，2026-09-03）
+
+- **rootless 验收前提与 blocker**：`make test-rootless-runtime` 在验收主机显式探测
+  （用户级 podman、cgroup v2、user namespaces、rootless=true、内部网络），任一缺失即
+  BLOCKED 并输出精确探测结果，不安装宿主软件、不伪造 PASS。当前主机：podman 不可用、
+  cgroup v2 可用、user namespaces=123655 → BLOCKED，`container-runner` 保持 unavailable。
+- **fixture engine**（`internal/runtime/workload/adapters/fakefixture`）：与 Podman
+  adapter 相同的 `ports.Engine` 契约的进程内有界模拟器。真实 loopback health listener
+  支撑启动/持续健康探测；engine 与 cgroup reader 共享 State，使"已生效策略回读"与
+  manager 的 fail-closed 校验（cpu/memory/pids、/tmp noexec tmpfs、只读 rootfs、
+  零 capabilities、内部网络、restart=no）全部按真实契约执行。失败脚本经有界场景文件
+  （`*=ok|crash|oom|flap`，跨进程可翻转）驱动。仅由 compose overlay
+  `deploy/compose.supervision.yaml`（`WORKOS_RUNTIME_WORKLOAD_ENGINE=fake-fixture`）
+  启用；生产装配无回退（ADR-0006 §4 不变）。`rootless-container-runner`
+  SystemService capability 在 fixture 模式下如实 false。
+- **真实监督验收（`make test-real-supervision`）**：六进程栈上证明 crash-loop
+  workload → supervisor 观测 unexpected exit → 每 occurrence 恰一个 Incident →
+  restart 动作真实推进 generation → restart limit 后确定性 stop（violation
+  restart-limit-exhausted + outcome stopped）→ owner 可见 projection。
+  `WORKOS_RELIABILITY_POLL_TIMEOUT` env override 新增（与既有 interval 解析同模式）。
+- **状态语义**：fixture engine 证明的监督软件链与宿主证明的 rootless 容器能力在
+  `docs/status.json` 分开表述；软件链证据带 "fake engine" 限定词，container-runner
+  不升级。遥测矩阵、Repair Orchestrator（L3）、Deployment Controller（L4）语义由
+  ADR-0016 §4-6 固定，实现为后续阶段。
+
 ## 状态与失败
 
 - liveness 表示进程事件循环存活，readiness 表示必需依赖可用。
