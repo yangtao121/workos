@@ -14,14 +14,6 @@ exporters:
   file/telemetry:
     path: /var/lib/workos-telemetry/telemetry.jsonl
     flush_interval: 1s
-    sending_queue:
-      enabled: true
-      queue_size: 4096
-    retry_on_failure:
-      enabled: true
-      initial_interval: 1s
-      max_interval: 5s
-      max_elapsed_time: 0s
 
 service:
   pipelines:
