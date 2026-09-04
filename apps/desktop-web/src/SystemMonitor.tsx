@@ -411,26 +411,27 @@ function TelemetrySection({ workosClients }: { workosClients: WorkOSClients }) {
   const [attributesDropped, setAttributesDropped] = useState(0);
   const attempt = useRef(0);
 
-  const load = useCallback(() => {
-    if (typeof workosClients.incidents.getTelemetrySummary !== "function") {
-      setState("unavailable");
-      return;
-    }
-    const current = ++attempt.current;
-    setState("loading");
-    void workosClients.incidents
-      .getTelemetrySummary({})
-      .then((response) => {
+  const load = useCallback((): Promise<void> => {
+    const run = async (): Promise<void> => {
+      if (typeof workosClients.incidents.getTelemetrySummary !== "function") {
+        setState("unavailable");
+        return;
+      }
+      const current = ++attempt.current;
+      setState("loading");
+      try {
+        const response = await workosClients.incidents.getTelemetrySummary({});
         if (attempt.current !== current) return;
         setServices(response.services);
         setSpansObserved(Number(response.spansObserved));
         setAttributesDropped(Number(response.attributesDropped));
         setState("ready");
-      })
-      .catch(() => {
+      } catch {
         if (attempt.current !== current) return;
         setState("unavailable");
-      });
+      }
+    };
+    return run();
   }, [workosClients]);
 
   useEffect(() => {
@@ -444,7 +445,12 @@ function TelemetrySection({ workosClients }: { workosClients: WorkOSClients }) {
     <section className="telemetry-section" aria-label="Telemetry">
       <div className="telemetry-head">
         <h2>Telemetry</h2>
-        <Button onClick={load} type="button">
+        <Button
+          onClick={() => {
+            void load();
+          }}
+          type="button"
+        >
           Refresh telemetry
         </Button>
       </div>
@@ -455,10 +461,11 @@ function TelemetrySection({ workosClients }: { workosClients: WorkOSClients }) {
       ) : (
         <table className="telemetry-table">
           <caption className="empty-state">
-            {spansObserved} spans observed
-            {attributesDropped > 0
-              ? `, ${attributesDropped} attributes dropped by the in-process budget`
-              : ""}
+            {`${String(spansObserved)} spans observed${
+              attributesDropped > 0
+                ? `, ${String(attributesDropped)} attributes dropped by the in-process budget`
+                : ""
+            }`}
           </caption>
           <thead>
             <tr>

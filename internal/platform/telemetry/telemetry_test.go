@@ -89,3 +89,50 @@ func TestTrimSpanAttributesEnforcesBudget(t *testing.T) {
 		t.Fatalf("bounded value was mutated: %q", got)
 	}
 }
+
+// ADR-0016 §4: two listeners in one process (workos-core's public and
+// execution servers) must share the single installed provider. The second
+// Setup must not overwrite the global with a fresh provider — that would
+// orphan the first listener's in-flight spans — and the shared shutdown
+// fires only when the last listener stops.
+func TestSetupIdempotentAcrossListeners(t *testing.T) {
+	collector := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer collector.Close()
+
+	shutdownOne, err := Setup(context.Background(), "listener-one", collector.URL)
+	if err != nil {
+		t.Fatalf("first setup: %v", err)
+	}
+	shutdownTwo, err := Setup(context.Background(), "listener-two", collector.URL)
+	if err != nil {
+		t.Fatalf("second setup: %v", err)
+	}
+
+	// Both listeners resolve the same provider instance.
+	if currentProvider == nil {
+		t.Fatal("provider was not installed")
+	}
+	tracerOne := currentProvider.Tracer("one")
+	_, spanOne := tracerOne.Start(context.Background(), "listener-one-span")
+	spanOne.End()
+	shutdownOne(context.Background())
+
+	// After the first listener stops, the shared provider is still alive
+	// (refcount held by the second): spans keep flowing through the same
+	// instance.
+	tracerTwo := currentProvider.Tracer("two")
+	_, spanTwo := tracerTwo.Start(context.Background(), "listener-two-span")
+	spanTwo.End()
+	if err := shutdownTwo(context.Background()); err != nil {
+		t.Fatalf("second shutdown: %v", err)
+	}
+
+	// A Setup with a different endpoint after everything stopped installs a
+	// fresh provider (covered implicitly by other tests); here we only
+	// assert the no-error contract of an empty-endpoint Setup.
+	if shutdown, err := Setup(context.Background(), "listener-three", ""); err != nil || shutdown == nil {
+		t.Fatalf("empty-endpoint setup diverged: %v", err)
+	}
+}

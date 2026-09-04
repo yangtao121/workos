@@ -68,10 +68,10 @@ type oneSpan struct {
 type resourceSpans struct {
 	Resource struct {
 		Attributes []attribute `json:"attributes"`
-		ScopeSpans []struct {
-			Spans []oneSpan `json:"spans"`
-		} `json:"scopeSpans"`
 	} `json:"resource"`
+	ScopeSpans []struct {
+		Spans []oneSpan `json:"spans"`
+	} `json:"scopeSpans"`
 }
 
 type exportBatch struct {
@@ -140,7 +140,7 @@ func aggregateBatch(snapshot *application.TelemetrySnapshot, batch *exportBatch)
 			service = "unknown"
 		}
 		stats := snapshot.ServiceStats(service, maxServices)
-		for _, scope := range resourceSpans.Resource.ScopeSpans {
+		for _, scope := range resourceSpans.ScopeSpans {
 			for _, span := range scope.Spans {
 				snapshot.SpansObserved++
 				durationMS := spanDurationMS(span)

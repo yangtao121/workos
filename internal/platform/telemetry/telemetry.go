@@ -9,8 +9,10 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+
 	"net/url"
 	"strings"
+	"sync"
 	"sync/atomic"
 
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
@@ -29,12 +31,21 @@ import (
 // time, so the instrumentation in Handler must see the same provider Setup
 // configured, never an import-order-dependent global.
 var (
+	setupMu         sync.Mutex
 	currentProvider oteltrace.TracerProvider
+	currentShutdown func(context.Context) error
+	activeListeners int
+	sharedService   string
 	otelLogger      = slog.Default().With("component", "telemetry")
 )
 
-// Setup installs an OTLP/HTTP trace provider. With an empty endpoint it keeps
-// the default no-op provider and returns a no-op shutdown function.
+// Setup installs the process-wide OTLP/HTTP trace provider exactly once.
+// With an empty endpoint it keeps the default no-op provider and returns a
+// no-op shutdown function. A second caller with the same endpoint — a second
+// listener in the same process (workos-core's public and execution servers) —
+// shares the already-installed provider and receives a refcounted shutdown:
+// reinstalling a second global provider mid-flight would orphan every span
+// the first listener had not yet flushed (ADR-0016 §4).
 func Setup(ctx context.Context, service, endpoint string) (func(context.Context) error, error) {
 	otel.SetTextMapPropagator(propagation.NewCompositeTextMapPropagator(
 		propagation.TraceContext{}, propagation.Baggage{},
@@ -51,11 +62,27 @@ func Setup(ctx context.Context, service, endpoint string) (func(context.Context)
 	if err != nil {
 		return nil, err
 	}
+
+	setupMu.Lock()
+	defer setupMu.Unlock()
+	if currentProvider != nil {
+		activeListeners++
+		return func(shutdownCtx context.Context) error {
+			setupMu.Lock()
+			defer setupMu.Unlock()
+			activeListeners--
+			if activeListeners == 0 {
+				return currentShutdown(shutdownCtx)
+			}
+			return nil
+		}, nil
+	}
+
 	otlpExporter, err := otlptracehttp.New(ctx, otlptracehttp.WithEndpointURL(traceEndpoint))
 	if err != nil {
 		return nil, fmt.Errorf("create OTLP trace exporter: %w", err)
 	}
-	exporter := &boundsExporter{next: otlpExporter}
+	exporter := &boundsExporter{next: otlpExporter, endpoint: traceEndpoint}
 	resources, err := resource.Merge(
 		resource.Default(),
 		resource.NewWithAttributes(semconv.SchemaURL, semconv.ServiceName(service)),
@@ -70,7 +97,17 @@ func Setup(ctx context.Context, service, endpoint string) (func(context.Context)
 	provider.RegisterSpanProcessor(NewExportCounter())
 	otel.SetTracerProvider(provider)
 	currentProvider = provider
-	return provider.Shutdown, nil
+	currentShutdown = provider.Shutdown
+	activeListeners = 1
+	return func(shutdownCtx context.Context) error {
+		setupMu.Lock()
+		defer setupMu.Unlock()
+		activeListeners--
+		if activeListeners == 0 {
+			return currentShutdown(shutdownCtx)
+		}
+		return nil
+	}, nil
 }
 
 func traceEndpointURL(endpoint string) (string, error) {
@@ -146,9 +183,11 @@ func NewExportCounter() sdktrace.SpanProcessor { return exportCounter{} }
 type exportCounter struct{}
 
 func (exportCounter) OnStart(context.Context, sdktrace.ReadWriteSpan) {}
-func (exportCounter) OnEnd(sdktrace.ReadOnlySpan)                     {}
-func (exportCounter) Shutdown(context.Context) error                  { return nil }
-func (exportCounter) ForceFlush(context.Context) error                { return nil }
+func (exportCounter) OnEnd(span sdktrace.ReadOnlySpan) {
+	println("DEBUG export counter span ended:", span.Name())
+}
+func (exportCounter) Shutdown(context.Context) error   { return nil }
+func (exportCounter) ForceFlush(context.Context) error { return nil }
 
 // trimSpanAttributes enforces the attribute budget: at most
 // MaxSpanAttributes entries, string values truncated to
@@ -174,8 +213,9 @@ func trimSpanAttributes(attributes []attribute.KeyValue) ([]attribute.KeyValue, 
 
 // boundsExporter wraps the OTLP exporter with the ADR-0016 §4 export budget.
 type boundsExporter struct {
-	next    sdktrace.SpanExporter
-	dropped atomic.Uint64
+	next     sdktrace.SpanExporter
+	dropped  atomic.Uint64
+	endpoint string
 }
 
 // trimmedSpan delegates everything to the original span except the
@@ -197,8 +237,12 @@ func (e *boundsExporter) ExportSpans(ctx context.Context, spans []sdktrace.ReadO
 				Key: attribute.Key(DroppedAttributesKey), Value: attribute.Int64Value(int64(dropped)),
 			})
 		}
+		trimmed = append(trimmed, &trimmedSpan{ReadOnlySpan: span, attributes: kept})
 	}
-	return e.next.ExportSpans(ctx, trimmed)
+	println("DEBUG batch export posting:", len(trimmed), "to", e.endpoint)
+	postErr := e.next.ExportSpans(ctx, trimmed)
+	println("DEBUG batch export posted:", fmt.Sprint(postErr))
+	return postErr
 }
 
 func (e *boundsExporter) Shutdown(ctx context.Context) error { return e.next.Shutdown(ctx) }

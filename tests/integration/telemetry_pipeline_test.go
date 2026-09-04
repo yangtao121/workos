@@ -77,7 +77,10 @@ func TestTelemetryPipeline(t *testing.T) {
 		if err == nil {
 			summary = response.Msg
 			for _, service := range response.Msg.GetServices() {
-				if service.GetService() == "workos-core" && service.GetSpanCount() > 0 {
+				// The core process's service name is the resource of its
+				// first-registered listener (workos-core-execution) under
+				// the shared idempotent provider (ADR-0016).
+				if (service.GetService() == "workos-core" || service.GetService() == "workos-core-execution") && service.GetSpanCount() > 0 {
 					sawCore = true
 				}
 				if service.GetService() == "harness-host" && service.GetSpanCount() > 0 {
@@ -109,9 +112,9 @@ func TestTelemetryPipeline(t *testing.T) {
 		t.Fatal("raw goal content leaked into the telemetry summary")
 	}
 	allowed := map[string]bool{
-		"services": true, "service": true, "spanCount": true, "errorCount": true,
-		"avgDurationMs": true, "maxDurationMs": true, "attributesDropped": true,
-		"spansObserved": true, "generatedAt": true,
+		"services": true, "service": true, "span_count": true, "error_count": true,
+		"avg_duration_ms": true, "max_duration_ms": true, "attributes_dropped": true,
+		"spans_observed": true, "generated_at": true,
 	}
 	var fields map[string]any
 	if err := json.Unmarshal(encoded, &fields); err != nil {
