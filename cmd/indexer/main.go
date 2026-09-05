@@ -268,6 +268,10 @@ func (c compositeIndexService) Search(ctx context.Context, input indexerapp.Sear
 	return c.search.Search(ctx, input)
 }
 
+func (c compositeIndexService) SearchHybrid(ctx context.Context, input indexerapp.SearchInput) (indexerapp.SearchResult, error) {
+	return c.search.Search(ctx, input)
+}
+
 func (c compositeIndexService) CreateRepairJob(ctx context.Context, input indexerapp.JobRequestInput) (indexerapp.JobView, bool, error) {
 	return c.repair.CreateJob(ctx, input)
 }

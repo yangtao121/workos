@@ -56,7 +56,7 @@ type IndexServiceClient interface {
 	// Hybrid semantic search: lexical matches fused with deterministic
 	// embedding cosine similarity over the same bounded projection (ADR-0017).
 	// The response shape matches Search; ordering is deterministic.
-	SearchHybrid(context.Context, *connect.Request[v1.SearchRequest]) (*connect.Response[v1.SearchResponse], error)
+	SearchHybrid(context.Context, *connect.Request[v1.SearchHybridRequest]) (*connect.Response[v1.SearchHybridResponse], error)
 }
 
 // NewIndexServiceClient constructs a client for the workos.index.v1.IndexService service. By
@@ -82,7 +82,7 @@ func NewIndexServiceClient(httpClient connect.HTTPClient, baseURL string, opts .
 			connect.WithSchema(indexServiceMethods.ByName("Search")),
 			connect.WithClientOptions(opts...),
 		),
-		searchHybrid: connect.NewClient[v1.SearchRequest, v1.SearchResponse](
+		searchHybrid: connect.NewClient[v1.SearchHybridRequest, v1.SearchHybridResponse](
 			httpClient,
 			baseURL+IndexServiceSearchHybridProcedure,
 			connect.WithSchema(indexServiceMethods.ByName("SearchHybrid")),
@@ -95,7 +95,7 @@ func NewIndexServiceClient(httpClient connect.HTTPClient, baseURL string, opts .
 type indexServiceClient struct {
 	indexContext *connect.Client[v1.IndexContextRequest, v1.IndexContextResponse]
 	search       *connect.Client[v1.SearchRequest, v1.SearchResponse]
-	searchHybrid *connect.Client[v1.SearchRequest, v1.SearchResponse]
+	searchHybrid *connect.Client[v1.SearchHybridRequest, v1.SearchHybridResponse]
 }
 
 // IndexContext calls workos.index.v1.IndexService.IndexContext.
@@ -109,7 +109,7 @@ func (c *indexServiceClient) Search(ctx context.Context, req *connect.Request[v1
 }
 
 // SearchHybrid calls workos.index.v1.IndexService.SearchHybrid.
-func (c *indexServiceClient) SearchHybrid(ctx context.Context, req *connect.Request[v1.SearchRequest]) (*connect.Response[v1.SearchResponse], error) {
+func (c *indexServiceClient) SearchHybrid(ctx context.Context, req *connect.Request[v1.SearchHybridRequest]) (*connect.Response[v1.SearchHybridResponse], error) {
 	return c.searchHybrid.CallUnary(ctx, req)
 }
 
@@ -126,7 +126,7 @@ type IndexServiceHandler interface {
 	// Hybrid semantic search: lexical matches fused with deterministic
 	// embedding cosine similarity over the same bounded projection (ADR-0017).
 	// The response shape matches Search; ordering is deterministic.
-	SearchHybrid(context.Context, *connect.Request[v1.SearchRequest]) (*connect.Response[v1.SearchResponse], error)
+	SearchHybrid(context.Context, *connect.Request[v1.SearchHybridRequest]) (*connect.Response[v1.SearchHybridResponse], error)
 }
 
 // NewIndexServiceHandler builds an HTTP handler from the service implementation. It returns the
@@ -179,6 +179,6 @@ func (UnimplementedIndexServiceHandler) Search(context.Context, *connect.Request
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("workos.index.v1.IndexService.Search is not implemented"))
 }
 
-func (UnimplementedIndexServiceHandler) SearchHybrid(context.Context, *connect.Request[v1.SearchRequest]) (*connect.Response[v1.SearchResponse], error) {
+func (UnimplementedIndexServiceHandler) SearchHybrid(context.Context, *connect.Request[v1.SearchHybridRequest]) (*connect.Response[v1.SearchHybridResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("workos.index.v1.IndexService.SearchHybrid is not implemented"))
 }

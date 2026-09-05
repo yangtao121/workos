@@ -1,10 +1,9 @@
-// Package embedding: deterministic local feature-hash embeddings for the
-// indexer's semantic slice (ADR-0017). Vectors are 384-dimensional, L2-
-// normalized, derived purely from the document text via seeded feature
-// hashing — zero external dependencies, fully offline-reproducible. This is
-// a bounded lexical-semantics approximation, not a neural model: it captures
-// token overlap and rough term frequency, and deliberately claims nothing
-// about deep semantic similarity.
+// Deterministic local feature-hash embeddings for the indexer's semantic
+// slice (ADR-0017). Vectors are 384-dimensional, L2-normalized, derived
+// purely from the document text via seeded feature hashing — zero external
+// dependencies, fully offline-reproducible. This is a bounded lexical-
+// semantics approximation, not a neural model: it captures token overlap
+// and rough term frequency.
 package domain
 
 import (
@@ -14,31 +13,22 @@ import (
 	"strings"
 )
 
-// Dimensions is the fixed embedding width.
-const Dimensions = 384
-
-// Tokenize splits text into lowercase alphanumeric word tokens.
-func Tokenize(text string) []string {
-	fields := strings.FieldsFunc(strings.ToLower(text), func(r rune) bool {
-		return !(r >= 'a' && r <= 'z' || r >= '0' && r <= '9' || r > 0x7f && r > ' ')
-	})
-	return fields
-}
+const EmbeddingDimensions = 384
 
 // Embed computes the deterministic feature-hash embedding: each token votes
-// for one of Dimensions buckets with a +1/-1 sign derived from a second
+// for one of EmbeddingDimensions buckets with a +/-1 sign from a second
 // hash; the summed vector is L2-normalized. Empty text yields the zero
-// vector (which never matches cosine thresholds above 0).
-func Embed(text string) [Dimensions]float32 {
-	var vec [Dimensions]float32
-	for _, token := range Tokenize(text) {
+// vector (which never passes a cosine threshold above 0).
+func Embed(text string) [EmbeddingDimensions]float32 {
+	var vec [EmbeddingDimensions]float32
+	for _, token := range strings.Fields(strings.ToLower(text)) {
 		sum := sha256.Sum256([]byte(token))
-		bucket := int(binary.BigEndian.Uint32(sum[0:4]) % Dimensions)
-		sign := 1.0
+		bucket := int(binary.BigEndian.Uint32(sum[0:4]) % EmbeddingDimensions)
+		sign := float32(1)
 		if sum[4]&1 == 1 {
-			sign = -1.0
+			sign = -1
 		}
-		vec[bucket] += float32(sign)
+		vec[bucket] += sign
 	}
 	norm := 0.0
 	for i := range vec {
@@ -54,8 +44,8 @@ func Embed(text string) [Dimensions]float32 {
 	return vec
 }
 
-// Cosine returns the cosine similarity of two vectors.
-func Cosine(a, b *[Dimensions]float32) float32 {
+// Cosine similarity of two 384-dim float32 vectors.
+func CosineSimilarity(a, b [EmbeddingDimensions]float32) float32 {
 	var dot, na, nb float64
 	for i := range a {
 		dot += float64(a[i]) * float64(b[i])

@@ -60,6 +60,17 @@ message IndexJob {
   string updated_at = 10;
 }
 
+message SearchHybridRequest {
+  string project_id = 1;
+  string query = 2;
+  workos.common.v1.PageRequest page = 3;
+}
+
+message SearchHybridResponse {
+  repeated SearchHit hits = 1;
+  workos.common.v1.PageResponse page = 2;
+}
+
 message SearchRequest {
   string project_id = 1;
   // Bounded lexical query: 1..256 code points after whitespace
@@ -124,5 +135,5 @@ service IndexService {
   // Hybrid semantic search: lexical matches fused with deterministic
   // embedding cosine similarity over the same bounded projection (ADR-0017).
   // The response shape matches Search; ordering is deterministic.
-  rpc SearchHybrid(SearchRequest) returns (SearchResponse) {}
+  rpc SearchHybrid(SearchHybridRequest) returns (SearchHybridResponse) {}
 }

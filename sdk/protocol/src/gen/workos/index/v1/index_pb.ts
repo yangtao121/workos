@@ -14,7 +14,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file workos/index/v1/index.proto.
  */
 export const file_workos_index_v1_index: GenFile = /*@__PURE__*/
-  fileDesc("Cht3b3Jrb3MvaW5kZXgvdjEvaW5kZXgucHJvdG8SD3dvcmtvcy5pbmRleC52MSI4ChFBcnRpZmFjdFNvdXJjZVJlZhITCgthcnRpZmFjdF9pZBgBIAEoCRIOCgZkaWdlc3QYAiABKAkijQEKE0luZGV4Q29udGV4dFJlcXVlc3QSEgoKcHJvamVjdF9pZBgBIAEoCRIUCgxjb250ZXh0X3JlZnMYAiADKAkSMwoHc291cmNlcxgDIAMoCzIiLndvcmtvcy5pbmRleC52MS5BcnRpZmFjdFNvdXJjZVJlZhIXCg9pZGVtcG90ZW5jeV9rZXkYBCABKAki+AEKCEluZGV4Sm9iEgoKAmlkGAEgASgJEhIKCnByb2plY3RfaWQYAiABKAkSDQoFc3RhdGUYAyABKAkSMQoJam9iX3N0YXRlGAQgASgOMh4ud29ya29zLmluZGV4LnYxLkluZGV4Sm9iU3RhdGUSFQoNdG90YWxfc291cmNlcxgFIAEoBRIZChFjb21wbGV0ZWRfc291cmNlcxgGIAEoBRIWCg5mYWlsZWRfc291cmNlcxgHIAEoBRIYChBmYWlsdXJlX2NhdGVnb3J5GAggASgJEhIKCmNyZWF0ZWRfYXQYCSABKAkSEgoKdXBkYXRlZF9hdBgKIAEoCSJfCg1TZWFyY2hSZXF1ZXN0EhIKCnByb2plY3RfaWQYASABKAkSDQoFcXVlcnkYAiABKAkSKwoEcGFnZRgDIAEoCzIdLndvcmtvcy5jb21tb24udjEuUGFnZVJlcXVlc3Qi0AEKCVNlYXJjaEhpdBITCgtjb250ZXh0X3JlZhgBIAEoCRIPCgdleGNlcnB0GAIgASgJEg0KBXNjb3JlGAMgASgBEi8KCnNvdXJjZV9yZWYYBCABKAsyGy53b3Jrb3MuYWdlbnQudjEuQ29udGV4dFJlZhITCgthcnRpZmFjdF9pZBgFIAEoCRIVCg1hcnRpZmFjdF90eXBlGAYgASgJEg4KBmRpZ2VzdBgHIAEoCRINCgV0aXRsZRgIIAEoCRISCgpjcmVhdGVkX2F0GAkgASgJInMKDkluZGV4RnJlc2huZXNzEhEKCWNhdWdodF91cBgBIAEoCBIXCg9pbmRleGVkX3Rocm91Z2gYAiABKAkSFwoPbGFzdF9pbmRleGVkX2F0GAMgASgJEhwKFHBlbmRpbmdfcHVibGljYXRpb25zGAQgASgDIpwBCg5TZWFyY2hSZXNwb25zZRIoCgRoaXRzGAEgAygLMhoud29ya29zLmluZGV4LnYxLlNlYXJjaEhpdBIsCgRwYWdlGAIgASgLMh4ud29ya29zLmNvbW1vbi52MS5QYWdlUmVzcG9uc2USMgoJZnJlc2huZXNzGAMgASgLMh8ud29ya29zLmluZGV4LnYxLkluZGV4RnJlc2huZXNzIj4KFEluZGV4Q29udGV4dFJlc3BvbnNlEiYKA2pvYhgBIAEoCzIZLndvcmtvcy5pbmRleC52MS5JbmRleEpvYiqlAQoNSW5kZXhKb2JTdGF0ZRIfChtJTkRFWF9KT0JfU1RBVEVfVU5TUEVDSUZJRUQQABIbChdJTkRFWF9KT0JfU1RBVEVfUEVORElORxABEhsKF0lOREVYX0pPQl9TVEFURV9SVU5OSU5HEAISHQoZSU5ERVhfSk9CX1NUQVRFX0NPTVBMRVRFRBADEhoKFklOREVYX0pPQl9TVEFURV9GQUlMRUQQBDKNAgoMSW5kZXhTZXJ2aWNlEl0KDEluZGV4Q29udGV4dBIkLndvcmtvcy5pbmRleC52MS5JbmRleENvbnRleHRSZXF1ZXN0GiUud29ya29zLmluZGV4LnYxLkluZGV4Q29udGV4dFJlc3BvbnNlIgASSwoGU2VhcmNoEh4ud29ya29zLmluZGV4LnYxLlNlYXJjaFJlcXVlc3QaHy53b3Jrb3MuaW5kZXgudjEuU2VhcmNoUmVzcG9uc2UiABJRCgxTZWFyY2hIeWJyaWQSHi53b3Jrb3MuaW5kZXgudjEuU2VhcmNoUmVxdWVzdBofLndvcmtvcy5pbmRleC52MS5TZWFyY2hSZXNwb25zZSIAQj1aO2dpdGh1Yi5jb20veWFuZ3RhbzEyMS93b3Jrb3MvZ2VuL2dvL3dvcmtvcy9pbmRleC92MTtpbmRleHYxYgZwcm90bzM", [file_workos_agent_v1_agent, file_workos_common_v1_common]);
+  fileDesc("Cht3b3Jrb3MvaW5kZXgvdjEvaW5kZXgucHJvdG8SD3dvcmtvcy5pbmRleC52MSI4ChFBcnRpZmFjdFNvdXJjZVJlZhITCgthcnRpZmFjdF9pZBgBIAEoCRIOCgZkaWdlc3QYAiABKAkijQEKE0luZGV4Q29udGV4dFJlcXVlc3QSEgoKcHJvamVjdF9pZBgBIAEoCRIUCgxjb250ZXh0X3JlZnMYAiADKAkSMwoHc291cmNlcxgDIAMoCzIiLndvcmtvcy5pbmRleC52MS5BcnRpZmFjdFNvdXJjZVJlZhIXCg9pZGVtcG90ZW5jeV9rZXkYBCABKAki+AEKCEluZGV4Sm9iEgoKAmlkGAEgASgJEhIKCnByb2plY3RfaWQYAiABKAkSDQoFc3RhdGUYAyABKAkSMQoJam9iX3N0YXRlGAQgASgOMh4ud29ya29zLmluZGV4LnYxLkluZGV4Sm9iU3RhdGUSFQoNdG90YWxfc291cmNlcxgFIAEoBRIZChFjb21wbGV0ZWRfc291cmNlcxgGIAEoBRIWCg5mYWlsZWRfc291cmNlcxgHIAEoBRIYChBmYWlsdXJlX2NhdGVnb3J5GAggASgJEhIKCmNyZWF0ZWRfYXQYCSABKAkSEgoKdXBkYXRlZF9hdBgKIAEoCSJlChNTZWFyY2hIeWJyaWRSZXF1ZXN0EhIKCnByb2plY3RfaWQYASABKAkSDQoFcXVlcnkYAiABKAkSKwoEcGFnZRgDIAEoCzIdLndvcmtvcy5jb21tb24udjEuUGFnZVJlcXVlc3QibgoUU2VhcmNoSHlicmlkUmVzcG9uc2USKAoEaGl0cxgBIAMoCzIaLndvcmtvcy5pbmRleC52MS5TZWFyY2hIaXQSLAoEcGFnZRgCIAEoCzIeLndvcmtvcy5jb21tb24udjEuUGFnZVJlc3BvbnNlIl8KDVNlYXJjaFJlcXVlc3QSEgoKcHJvamVjdF9pZBgBIAEoCRINCgVxdWVyeRgCIAEoCRIrCgRwYWdlGAMgASgLMh0ud29ya29zLmNvbW1vbi52MS5QYWdlUmVxdWVzdCLQAQoJU2VhcmNoSGl0EhMKC2NvbnRleHRfcmVmGAEgASgJEg8KB2V4Y2VycHQYAiABKAkSDQoFc2NvcmUYAyABKAESLwoKc291cmNlX3JlZhgEIAEoCzIbLndvcmtvcy5hZ2VudC52MS5Db250ZXh0UmVmEhMKC2FydGlmYWN0X2lkGAUgASgJEhUKDWFydGlmYWN0X3R5cGUYBiABKAkSDgoGZGlnZXN0GAcgASgJEg0KBXRpdGxlGAggASgJEhIKCmNyZWF0ZWRfYXQYCSABKAkicwoOSW5kZXhGcmVzaG5lc3MSEQoJY2F1Z2h0X3VwGAEgASgIEhcKD2luZGV4ZWRfdGhyb3VnaBgCIAEoCRIXCg9sYXN0X2luZGV4ZWRfYXQYAyABKAkSHAoUcGVuZGluZ19wdWJsaWNhdGlvbnMYBCABKAMinAEKDlNlYXJjaFJlc3BvbnNlEigKBGhpdHMYASADKAsyGi53b3Jrb3MuaW5kZXgudjEuU2VhcmNoSGl0EiwKBHBhZ2UYAiABKAsyHi53b3Jrb3MuY29tbW9uLnYxLlBhZ2VSZXNwb25zZRIyCglmcmVzaG5lc3MYAyABKAsyHy53b3Jrb3MuaW5kZXgudjEuSW5kZXhGcmVzaG5lc3MiPgoUSW5kZXhDb250ZXh0UmVzcG9uc2USJgoDam9iGAEgASgLMhkud29ya29zLmluZGV4LnYxLkluZGV4Sm9iKqUBCg1JbmRleEpvYlN0YXRlEh8KG0lOREVYX0pPQl9TVEFURV9VTlNQRUNJRklFRBAAEhsKF0lOREVYX0pPQl9TVEFURV9QRU5ESU5HEAESGwoXSU5ERVhfSk9CX1NUQVRFX1JVTk5JTkcQAhIdChlJTkRFWF9KT0JfU1RBVEVfQ09NUExFVEVEEAMSGgoWSU5ERVhfSk9CX1NUQVRFX0ZBSUxFRBAEMpkCCgxJbmRleFNlcnZpY2USXQoMSW5kZXhDb250ZXh0EiQud29ya29zLmluZGV4LnYxLkluZGV4Q29udGV4dFJlcXVlc3QaJS53b3Jrb3MuaW5kZXgudjEuSW5kZXhDb250ZXh0UmVzcG9uc2UiABJLCgZTZWFyY2gSHi53b3Jrb3MuaW5kZXgudjEuU2VhcmNoUmVxdWVzdBofLndvcmtvcy5pbmRleC52MS5TZWFyY2hSZXNwb25zZSIAEl0KDFNlYXJjaEh5YnJpZBIkLndvcmtvcy5pbmRleC52MS5TZWFyY2hIeWJyaWRSZXF1ZXN0GiUud29ya29zLmluZGV4LnYxLlNlYXJjaEh5YnJpZFJlc3BvbnNlIgBCPVo7Z2l0aHViLmNvbS95YW5ndGFvMTIxL3dvcmtvcy9nZW4vZ28vd29ya29zL2luZGV4L3YxO2luZGV4djFiBnByb3RvMw", [file_workos_agent_v1_agent, file_workos_common_v1_common]);
 
 /**
  * Typed canonical source reference for an indexed review artifact. It is the
@@ -160,6 +160,55 @@ export const IndexJobSchema: GenMessage<IndexJob> = /*@__PURE__*/
   messageDesc(file_workos_index_v1_index, 2);
 
 /**
+ * @generated from message workos.index.v1.SearchHybridRequest
+ */
+export type SearchHybridRequest = Message<"workos.index.v1.SearchHybridRequest"> & {
+  /**
+   * @generated from field: string project_id = 1;
+   */
+  projectId: string;
+
+  /**
+   * @generated from field: string query = 2;
+   */
+  query: string;
+
+  /**
+   * @generated from field: workos.common.v1.PageRequest page = 3;
+   */
+  page?: PageRequest | undefined;
+};
+
+/**
+ * Describes the message workos.index.v1.SearchHybridRequest.
+ * Use `create(SearchHybridRequestSchema)` to create a new message.
+ */
+export const SearchHybridRequestSchema: GenMessage<SearchHybridRequest> = /*@__PURE__*/
+  messageDesc(file_workos_index_v1_index, 3);
+
+/**
+ * @generated from message workos.index.v1.SearchHybridResponse
+ */
+export type SearchHybridResponse = Message<"workos.index.v1.SearchHybridResponse"> & {
+  /**
+   * @generated from field: repeated workos.index.v1.SearchHit hits = 1;
+   */
+  hits: SearchHit[];
+
+  /**
+   * @generated from field: workos.common.v1.PageResponse page = 2;
+   */
+  page?: PageResponse | undefined;
+};
+
+/**
+ * Describes the message workos.index.v1.SearchHybridResponse.
+ * Use `create(SearchHybridResponseSchema)` to create a new message.
+ */
+export const SearchHybridResponseSchema: GenMessage<SearchHybridResponse> = /*@__PURE__*/
+  messageDesc(file_workos_index_v1_index, 4);
+
+/**
  * @generated from message workos.index.v1.SearchRequest
  */
 export type SearchRequest = Message<"workos.index.v1.SearchRequest"> & {
@@ -187,7 +236,7 @@ export type SearchRequest = Message<"workos.index.v1.SearchRequest"> & {
  * Use `create(SearchRequestSchema)` to create a new message.
  */
 export const SearchRequestSchema: GenMessage<SearchRequest> = /*@__PURE__*/
-  messageDesc(file_workos_index_v1_index, 3);
+  messageDesc(file_workos_index_v1_index, 5);
 
 /**
  * @generated from message workos.index.v1.SearchHit
@@ -259,7 +308,7 @@ export type SearchHit = Message<"workos.index.v1.SearchHit"> & {
  * Use `create(SearchHitSchema)` to create a new message.
  */
 export const SearchHitSchema: GenMessage<SearchHit> = /*@__PURE__*/
-  messageDesc(file_workos_index_v1_index, 4);
+  messageDesc(file_workos_index_v1_index, 6);
 
 /**
  * Bounded freshness projection. `caught_up` is a real fact derived from the
@@ -296,7 +345,7 @@ export type IndexFreshness = Message<"workos.index.v1.IndexFreshness"> & {
  * Use `create(IndexFreshnessSchema)` to create a new message.
  */
 export const IndexFreshnessSchema: GenMessage<IndexFreshness> = /*@__PURE__*/
-  messageDesc(file_workos_index_v1_index, 5);
+  messageDesc(file_workos_index_v1_index, 7);
 
 /**
  * @generated from message workos.index.v1.SearchResponse
@@ -323,7 +372,7 @@ export type SearchResponse = Message<"workos.index.v1.SearchResponse"> & {
  * Use `create(SearchResponseSchema)` to create a new message.
  */
 export const SearchResponseSchema: GenMessage<SearchResponse> = /*@__PURE__*/
-  messageDesc(file_workos_index_v1_index, 6);
+  messageDesc(file_workos_index_v1_index, 8);
 
 /**
  * @generated from message workos.index.v1.IndexContextResponse
@@ -340,7 +389,7 @@ export type IndexContextResponse = Message<"workos.index.v1.IndexContextResponse
  * Use `create(IndexContextResponseSchema)` to create a new message.
  */
 export const IndexContextResponseSchema: GenMessage<IndexContextResponse> = /*@__PURE__*/
-  messageDesc(file_workos_index_v1_index, 7);
+  messageDesc(file_workos_index_v1_index, 9);
 
 /**
  * @generated from enum workos.index.v1.IndexJobState
@@ -419,8 +468,8 @@ export const IndexService: GenService<{
    */
   searchHybrid: {
     methodKind: "unary";
-    input: typeof SearchRequestSchema;
-    output: typeof SearchResponseSchema;
+    input: typeof SearchHybridRequestSchema;
+    output: typeof SearchHybridResponseSchema;
   },
 }> = /*@__PURE__*/
   serviceDesc(file_workos_index_v1_index, 0);

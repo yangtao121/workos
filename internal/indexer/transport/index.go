@@ -96,6 +96,47 @@ func (h *Handler) Search(ctx context.Context, req *connect.Request[indexv1.Searc
 	return connect.NewResponse(response), nil
 }
 
+// SearchHybrid serves the semantic-boosted search RPC (ADR-0017). The
+// implementation currently delegates to the proven lexical Search path.
+func (h *Handler) SearchHybrid(ctx context.Context, req *connect.Request[indexv1.SearchHybridRequest]) (*connect.Response[indexv1.SearchHybridResponse], error) {
+	id, err := identity.FromContext(ctx)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeUnauthenticated, err)
+	}
+	pageSize := int32(0)
+	if req.Msg.GetPage() != nil {
+		pageSize = req.Msg.GetPage().GetPageSize()
+	}
+	result, err := h.service.Search(ctx, indexerapp.SearchInput{
+		OwnerUserID: id.UserID,
+		ProjectID:   req.Msg.GetProjectId(),
+		RawQuery:    req.Msg.GetQuery(),
+		PageSize:    pageSize,
+		PageToken:   req.Msg.GetPage().GetPageToken(),
+	})
+	if err != nil {
+		return nil, mapError(err)
+	}
+	hits := make([]*indexv1.SearchHit, 0, len(result.Page.Hits))
+	for _, hit := range result.Page.Hits {
+		hits = append(hits, &indexv1.SearchHit{
+			ContextRef:   hit.ContextRef,
+			Excerpt:      hit.Excerpt,
+			Score:        hit.Score,
+			SourceRef:    &agentv1.ContextRef{Type: "artifact.review.v1", Id: hit.ArtifactID, Revision: hit.Digest},
+			ArtifactId:   hit.ArtifactID,
+			ArtifactType: hit.ArtifactType,
+			Digest:       hit.Digest,
+			Title:        hit.Title,
+			CreatedAt:    hit.CreatedAt.UTC().Format("2006-01-02T15:04:05.000000Z07:00"),
+		})
+	}
+		return connect.NewResponse(&indexv1.SearchHybridResponse{
+		Hits: hits,
+		Page: &commonv1.PageResponse{NextPageToken: result.Page.NextPageToken},
+	}), nil
+}
+
 func formatSearchTime(value time.Time) string {
 	if value.IsZero() {
 		return ""

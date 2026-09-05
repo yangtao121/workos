@@ -334,6 +334,118 @@ func (x *IndexJob) GetUpdatedAt() string {
 	return ""
 }
 
+type SearchHybridRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	ProjectId     string                 `protobuf:"bytes,1,opt,name=project_id,json=projectId,proto3" json:"project_id,omitempty"`
+	Query         string                 `protobuf:"bytes,2,opt,name=query,proto3" json:"query,omitempty"`
+	Page          *v1.PageRequest        `protobuf:"bytes,3,opt,name=page,proto3" json:"page,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SearchHybridRequest) Reset() {
+	*x = SearchHybridRequest{}
+	mi := &file_workos_index_v1_index_proto_msgTypes[3]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SearchHybridRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SearchHybridRequest) ProtoMessage() {}
+
+func (x *SearchHybridRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_workos_index_v1_index_proto_msgTypes[3]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SearchHybridRequest.ProtoReflect.Descriptor instead.
+func (*SearchHybridRequest) Descriptor() ([]byte, []int) {
+	return file_workos_index_v1_index_proto_rawDescGZIP(), []int{3}
+}
+
+func (x *SearchHybridRequest) GetProjectId() string {
+	if x != nil {
+		return x.ProjectId
+	}
+	return ""
+}
+
+func (x *SearchHybridRequest) GetQuery() string {
+	if x != nil {
+		return x.Query
+	}
+	return ""
+}
+
+func (x *SearchHybridRequest) GetPage() *v1.PageRequest {
+	if x != nil {
+		return x.Page
+	}
+	return nil
+}
+
+type SearchHybridResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Hits          []*SearchHit           `protobuf:"bytes,1,rep,name=hits,proto3" json:"hits,omitempty"`
+	Page          *v1.PageResponse       `protobuf:"bytes,2,opt,name=page,proto3" json:"page,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SearchHybridResponse) Reset() {
+	*x = SearchHybridResponse{}
+	mi := &file_workos_index_v1_index_proto_msgTypes[4]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SearchHybridResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SearchHybridResponse) ProtoMessage() {}
+
+func (x *SearchHybridResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_workos_index_v1_index_proto_msgTypes[4]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SearchHybridResponse.ProtoReflect.Descriptor instead.
+func (*SearchHybridResponse) Descriptor() ([]byte, []int) {
+	return file_workos_index_v1_index_proto_rawDescGZIP(), []int{4}
+}
+
+func (x *SearchHybridResponse) GetHits() []*SearchHit {
+	if x != nil {
+		return x.Hits
+	}
+	return nil
+}
+
+func (x *SearchHybridResponse) GetPage() *v1.PageResponse {
+	if x != nil {
+		return x.Page
+	}
+	return nil
+}
+
 type SearchRequest struct {
 	state     protoimpl.MessageState `protogen:"open.v1"`
 	ProjectId string                 `protobuf:"bytes,1,opt,name=project_id,json=projectId,proto3" json:"project_id,omitempty"`
@@ -347,7 +459,7 @@ type SearchRequest struct {
 
 func (x *SearchRequest) Reset() {
 	*x = SearchRequest{}
-	mi := &file_workos_index_v1_index_proto_msgTypes[3]
+	mi := &file_workos_index_v1_index_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -359,7 +471,7 @@ func (x *SearchRequest) String() string {
 func (*SearchRequest) ProtoMessage() {}
 
 func (x *SearchRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_workos_index_v1_index_proto_msgTypes[3]
+	mi := &file_workos_index_v1_index_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -372,7 +484,7 @@ func (x *SearchRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SearchRequest.ProtoReflect.Descriptor instead.
 func (*SearchRequest) Descriptor() ([]byte, []int) {
-	return file_workos_index_v1_index_proto_rawDescGZIP(), []int{3}
+	return file_workos_index_v1_index_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *SearchRequest) GetProjectId() string {
@@ -422,7 +534,7 @@ type SearchHit struct {
 
 func (x *SearchHit) Reset() {
 	*x = SearchHit{}
-	mi := &file_workos_index_v1_index_proto_msgTypes[4]
+	mi := &file_workos_index_v1_index_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -434,7 +546,7 @@ func (x *SearchHit) String() string {
 func (*SearchHit) ProtoMessage() {}
 
 func (x *SearchHit) ProtoReflect() protoreflect.Message {
-	mi := &file_workos_index_v1_index_proto_msgTypes[4]
+	mi := &file_workos_index_v1_index_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -447,7 +559,7 @@ func (x *SearchHit) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SearchHit.ProtoReflect.Descriptor instead.
 func (*SearchHit) Descriptor() ([]byte, []int) {
-	return file_workos_index_v1_index_proto_rawDescGZIP(), []int{4}
+	return file_workos_index_v1_index_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *SearchHit) GetContextRef() string {
@@ -528,7 +640,7 @@ type IndexFreshness struct {
 
 func (x *IndexFreshness) Reset() {
 	*x = IndexFreshness{}
-	mi := &file_workos_index_v1_index_proto_msgTypes[5]
+	mi := &file_workos_index_v1_index_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -540,7 +652,7 @@ func (x *IndexFreshness) String() string {
 func (*IndexFreshness) ProtoMessage() {}
 
 func (x *IndexFreshness) ProtoReflect() protoreflect.Message {
-	mi := &file_workos_index_v1_index_proto_msgTypes[5]
+	mi := &file_workos_index_v1_index_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -553,7 +665,7 @@ func (x *IndexFreshness) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use IndexFreshness.ProtoReflect.Descriptor instead.
 func (*IndexFreshness) Descriptor() ([]byte, []int) {
-	return file_workos_index_v1_index_proto_rawDescGZIP(), []int{5}
+	return file_workos_index_v1_index_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *IndexFreshness) GetCaughtUp() bool {
@@ -595,7 +707,7 @@ type SearchResponse struct {
 
 func (x *SearchResponse) Reset() {
 	*x = SearchResponse{}
-	mi := &file_workos_index_v1_index_proto_msgTypes[6]
+	mi := &file_workos_index_v1_index_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -607,7 +719,7 @@ func (x *SearchResponse) String() string {
 func (*SearchResponse) ProtoMessage() {}
 
 func (x *SearchResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_workos_index_v1_index_proto_msgTypes[6]
+	mi := &file_workos_index_v1_index_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -620,7 +732,7 @@ func (x *SearchResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SearchResponse.ProtoReflect.Descriptor instead.
 func (*SearchResponse) Descriptor() ([]byte, []int) {
-	return file_workos_index_v1_index_proto_rawDescGZIP(), []int{6}
+	return file_workos_index_v1_index_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *SearchResponse) GetHits() []*SearchHit {
@@ -653,7 +765,7 @@ type IndexContextResponse struct {
 
 func (x *IndexContextResponse) Reset() {
 	*x = IndexContextResponse{}
-	mi := &file_workos_index_v1_index_proto_msgTypes[7]
+	mi := &file_workos_index_v1_index_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -665,7 +777,7 @@ func (x *IndexContextResponse) String() string {
 func (*IndexContextResponse) ProtoMessage() {}
 
 func (x *IndexContextResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_workos_index_v1_index_proto_msgTypes[7]
+	mi := &file_workos_index_v1_index_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -678,7 +790,7 @@ func (x *IndexContextResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use IndexContextResponse.ProtoReflect.Descriptor instead.
 func (*IndexContextResponse) Descriptor() ([]byte, []int) {
-	return file_workos_index_v1_index_proto_rawDescGZIP(), []int{7}
+	return file_workos_index_v1_index_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *IndexContextResponse) GetJob() *IndexJob {
@@ -717,7 +829,15 @@ const file_workos_index_v1_index_proto_rawDesc = "" +
 	"created_at\x18\t \x01(\tR\tcreatedAt\x12\x1d\n" +
 	"\n" +
 	"updated_at\x18\n" +
-	" \x01(\tR\tupdatedAt\"w\n" +
+	" \x01(\tR\tupdatedAt\"}\n" +
+	"\x13SearchHybridRequest\x12\x1d\n" +
+	"\n" +
+	"project_id\x18\x01 \x01(\tR\tprojectId\x12\x14\n" +
+	"\x05query\x18\x02 \x01(\tR\x05query\x121\n" +
+	"\x04page\x18\x03 \x01(\v2\x1d.workos.common.v1.PageRequestR\x04page\"z\n" +
+	"\x14SearchHybridResponse\x12.\n" +
+	"\x04hits\x18\x01 \x03(\v2\x1a.workos.index.v1.SearchHitR\x04hits\x122\n" +
+	"\x04page\x18\x02 \x01(\v2\x1e.workos.common.v1.PageResponseR\x04page\"w\n" +
 	"\rSearchRequest\x12\x1d\n" +
 	"\n" +
 	"project_id\x18\x01 \x01(\tR\tprojectId\x12\x14\n" +
@@ -753,11 +873,11 @@ const file_workos_index_v1_index_proto_rawDesc = "" +
 	"\x17INDEX_JOB_STATE_PENDING\x10\x01\x12\x1b\n" +
 	"\x17INDEX_JOB_STATE_RUNNING\x10\x02\x12\x1d\n" +
 	"\x19INDEX_JOB_STATE_COMPLETED\x10\x03\x12\x1a\n" +
-	"\x16INDEX_JOB_STATE_FAILED\x10\x042\x8d\x02\n" +
+	"\x16INDEX_JOB_STATE_FAILED\x10\x042\x99\x02\n" +
 	"\fIndexService\x12]\n" +
 	"\fIndexContext\x12$.workos.index.v1.IndexContextRequest\x1a%.workos.index.v1.IndexContextResponse\"\x00\x12K\n" +
-	"\x06Search\x12\x1e.workos.index.v1.SearchRequest\x1a\x1f.workos.index.v1.SearchResponse\"\x00\x12Q\n" +
-	"\fSearchHybrid\x12\x1e.workos.index.v1.SearchRequest\x1a\x1f.workos.index.v1.SearchResponse\"\x00B=Z;github.com/yangtao121/workos/gen/go/workos/index/v1;indexv1b\x06proto3"
+	"\x06Search\x12\x1e.workos.index.v1.SearchRequest\x1a\x1f.workos.index.v1.SearchResponse\"\x00\x12]\n" +
+	"\fSearchHybrid\x12$.workos.index.v1.SearchHybridRequest\x1a%.workos.index.v1.SearchHybridResponse\"\x00B=Z;github.com/yangtao121/workos/gen/go/workos/index/v1;indexv1b\x06proto3"
 
 var (
 	file_workos_index_v1_index_proto_rawDescOnce sync.Once
@@ -772,41 +892,46 @@ func file_workos_index_v1_index_proto_rawDescGZIP() []byte {
 }
 
 var file_workos_index_v1_index_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_workos_index_v1_index_proto_msgTypes = make([]protoimpl.MessageInfo, 8)
+var file_workos_index_v1_index_proto_msgTypes = make([]protoimpl.MessageInfo, 10)
 var file_workos_index_v1_index_proto_goTypes = []any{
 	(IndexJobState)(0),           // 0: workos.index.v1.IndexJobState
 	(*ArtifactSourceRef)(nil),    // 1: workos.index.v1.ArtifactSourceRef
 	(*IndexContextRequest)(nil),  // 2: workos.index.v1.IndexContextRequest
 	(*IndexJob)(nil),             // 3: workos.index.v1.IndexJob
-	(*SearchRequest)(nil),        // 4: workos.index.v1.SearchRequest
-	(*SearchHit)(nil),            // 5: workos.index.v1.SearchHit
-	(*IndexFreshness)(nil),       // 6: workos.index.v1.IndexFreshness
-	(*SearchResponse)(nil),       // 7: workos.index.v1.SearchResponse
-	(*IndexContextResponse)(nil), // 8: workos.index.v1.IndexContextResponse
-	(*v1.PageRequest)(nil),       // 9: workos.common.v1.PageRequest
-	(*v11.ContextRef)(nil),       // 10: workos.agent.v1.ContextRef
-	(*v1.PageResponse)(nil),      // 11: workos.common.v1.PageResponse
+	(*SearchHybridRequest)(nil),  // 4: workos.index.v1.SearchHybridRequest
+	(*SearchHybridResponse)(nil), // 5: workos.index.v1.SearchHybridResponse
+	(*SearchRequest)(nil),        // 6: workos.index.v1.SearchRequest
+	(*SearchHit)(nil),            // 7: workos.index.v1.SearchHit
+	(*IndexFreshness)(nil),       // 8: workos.index.v1.IndexFreshness
+	(*SearchResponse)(nil),       // 9: workos.index.v1.SearchResponse
+	(*IndexContextResponse)(nil), // 10: workos.index.v1.IndexContextResponse
+	(*v1.PageRequest)(nil),       // 11: workos.common.v1.PageRequest
+	(*v1.PageResponse)(nil),      // 12: workos.common.v1.PageResponse
+	(*v11.ContextRef)(nil),       // 13: workos.agent.v1.ContextRef
 }
 var file_workos_index_v1_index_proto_depIdxs = []int32{
 	1,  // 0: workos.index.v1.IndexContextRequest.sources:type_name -> workos.index.v1.ArtifactSourceRef
 	0,  // 1: workos.index.v1.IndexJob.job_state:type_name -> workos.index.v1.IndexJobState
-	9,  // 2: workos.index.v1.SearchRequest.page:type_name -> workos.common.v1.PageRequest
-	10, // 3: workos.index.v1.SearchHit.source_ref:type_name -> workos.agent.v1.ContextRef
-	5,  // 4: workos.index.v1.SearchResponse.hits:type_name -> workos.index.v1.SearchHit
-	11, // 5: workos.index.v1.SearchResponse.page:type_name -> workos.common.v1.PageResponse
-	6,  // 6: workos.index.v1.SearchResponse.freshness:type_name -> workos.index.v1.IndexFreshness
-	3,  // 7: workos.index.v1.IndexContextResponse.job:type_name -> workos.index.v1.IndexJob
-	2,  // 8: workos.index.v1.IndexService.IndexContext:input_type -> workos.index.v1.IndexContextRequest
-	4,  // 9: workos.index.v1.IndexService.Search:input_type -> workos.index.v1.SearchRequest
-	4,  // 10: workos.index.v1.IndexService.SearchHybrid:input_type -> workos.index.v1.SearchRequest
-	8,  // 11: workos.index.v1.IndexService.IndexContext:output_type -> workos.index.v1.IndexContextResponse
-	7,  // 12: workos.index.v1.IndexService.Search:output_type -> workos.index.v1.SearchResponse
-	7,  // 13: workos.index.v1.IndexService.SearchHybrid:output_type -> workos.index.v1.SearchResponse
-	11, // [11:14] is the sub-list for method output_type
-	8,  // [8:11] is the sub-list for method input_type
-	8,  // [8:8] is the sub-list for extension type_name
-	8,  // [8:8] is the sub-list for extension extendee
-	0,  // [0:8] is the sub-list for field type_name
+	11, // 2: workos.index.v1.SearchHybridRequest.page:type_name -> workos.common.v1.PageRequest
+	7,  // 3: workos.index.v1.SearchHybridResponse.hits:type_name -> workos.index.v1.SearchHit
+	12, // 4: workos.index.v1.SearchHybridResponse.page:type_name -> workos.common.v1.PageResponse
+	11, // 5: workos.index.v1.SearchRequest.page:type_name -> workos.common.v1.PageRequest
+	13, // 6: workos.index.v1.SearchHit.source_ref:type_name -> workos.agent.v1.ContextRef
+	7,  // 7: workos.index.v1.SearchResponse.hits:type_name -> workos.index.v1.SearchHit
+	12, // 8: workos.index.v1.SearchResponse.page:type_name -> workos.common.v1.PageResponse
+	8,  // 9: workos.index.v1.SearchResponse.freshness:type_name -> workos.index.v1.IndexFreshness
+	3,  // 10: workos.index.v1.IndexContextResponse.job:type_name -> workos.index.v1.IndexJob
+	2,  // 11: workos.index.v1.IndexService.IndexContext:input_type -> workos.index.v1.IndexContextRequest
+	6,  // 12: workos.index.v1.IndexService.Search:input_type -> workos.index.v1.SearchRequest
+	4,  // 13: workos.index.v1.IndexService.SearchHybrid:input_type -> workos.index.v1.SearchHybridRequest
+	10, // 14: workos.index.v1.IndexService.IndexContext:output_type -> workos.index.v1.IndexContextResponse
+	9,  // 15: workos.index.v1.IndexService.Search:output_type -> workos.index.v1.SearchResponse
+	5,  // 16: workos.index.v1.IndexService.SearchHybrid:output_type -> workos.index.v1.SearchHybridResponse
+	14, // [14:17] is the sub-list for method output_type
+	11, // [11:14] is the sub-list for method input_type
+	11, // [11:11] is the sub-list for extension type_name
+	11, // [11:11] is the sub-list for extension extendee
+	0,  // [0:11] is the sub-list for field type_name
 }
 
 func init() { file_workos_index_v1_index_proto_init() }
@@ -820,7 +945,7 @@ func file_workos_index_v1_index_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_workos_index_v1_index_proto_rawDesc), len(file_workos_index_v1_index_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   8,
+			NumMessages:   10,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
