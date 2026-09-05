@@ -602,6 +602,22 @@ test-browser-surface: e2e-image
 			$(E2E_IMAGE) pnpm exec playwright test browser-surface.spec.ts; \
 		echo "test-browser-surface: PASS"
 
+# The remote-native status surface gate (W3.5 hosting slice): a remote
+# native app is installed and opened as an opaque-origin surface window
+# rendering its bounded status page through the supervised web surface path.
+test-remote-native-surface: e2e-image
+	@set -eu; \
+		WORKOS_UID="$$(id -u)" WORKOS_GID="$$(id -g)" \
+		docker compose up -d --build --force-recreate postgres bootstrap workos-core runtime-host workos-gateway; \
+		docker run --rm --network host $(USER_FLAGS) \
+			-e PLAYWRIGHT_BROWSERS_PATH=/ms-playwright \
+			-e WORKOS_E2E_URL=http://127.0.0.1:8080 \
+			-e WORKOS_E2E_OUTPUT_DIR=/tmp/workos-playwright-results \
+			-v $(CURDIR):$(WORKDIR) \
+			-w $(WORKDIR)/apps/desktop-web \
+			$(E2E_IMAGE) pnpm exec playwright test native-status.spec.ts; \
+		echo "test-remote-native-surface: PASS"
+
 e2e-image:
 	docker build \
 		--build-arg DEBIAN_MIRROR=$(DEBIAN_MIRROR) \
