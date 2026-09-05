@@ -470,6 +470,9 @@ button {
   left: 50%;
   bottom: 18px;
   transform: translateX(-50%);
+  /* The dock floats above every free window (whose inline zIndex starts
+     at 1); only the palette overlay (400) sits higher. */
+  z-index: 300;
   display: flex;
   gap: 8px;
   padding: 8px;
