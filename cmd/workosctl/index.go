@@ -89,6 +89,8 @@ func runIndex(ctx context.Context, cfg config.Config, args []string) error {
 		}
 		printIndexJob(response.Msg.GetJob())
 		return nil
+	case "workspace":
+		return runIndexWorkspace(ctx, client, args[1:])
 	case "job":
 		if len(args) < 2 {
 			return errors.New(indexUsage)
@@ -136,7 +138,88 @@ func runIndex(ctx context.Context, cfg config.Config, args []string) error {
 	}
 }
 
-const indexUsage = "usage: workosctl index status [--json] | index rebuild --all|--project --idempotency-key <key> | index job get --job <id> [--json] | index job cancel --job <id>"
+const indexUsage = "usage: workosctl index status [--json] | index rebuild --all|--project --idempotency-key <key> | index job get --job <id> [--json] | index job cancel --job <id> | index workspace register --owner <id> --project <id> --root <dir> | index workspace list [--json] | index workspace sync --source <id> [--json]"
+
+// runIndexWorkspace executes `workosctl index workspace ...`: the
+// owner-bound local mount lifecycle over the local admin socket.
+func runIndexWorkspace(ctx context.Context, client indexv1connect.IndexAdminServiceClient, args []string) error {
+	if len(args) == 0 {
+		return errors.New(indexUsage)
+	}
+	switch args[0] {
+	case "register":
+		fs := flag.NewFlagSet("index workspace register", flag.ContinueOnError)
+		owner := fs.String("owner", "", "project owner UUIDv7")
+		project := fs.String("project", "", "project UUIDv7")
+		root := fs.String("root", "", "absolute local directory bound as the mount")
+		if err := fs.Parse(args[1:]); err != nil {
+			return err
+		}
+		if *owner == "" || *project == "" || *root == "" {
+			return errors.New(indexUsage)
+		}
+		response, err := client.RegisterWorkspaceSource(ctx, connect.NewRequest(&indexv1.RegisterWorkspaceSourceRequest{
+			OwnerUserId: *owner, ProjectId: *project, RootPath: *root,
+		}))
+		if err != nil {
+			return err
+		}
+		printWorkspaceSource(response.Msg.GetSource())
+		return nil
+	case "list":
+		fs := flag.NewFlagSet("index workspace list", flag.ContinueOnError)
+		jsonOut := fs.Bool("json", false, "emit machine-readable JSON")
+		if err := fs.Parse(args[1:]); err != nil {
+			return err
+		}
+		response, err := client.ListWorkspaceSources(ctx, connect.NewRequest(&indexv1.ListWorkspaceSourcesRequest{}))
+		if err != nil {
+			return err
+		}
+		if *jsonOut {
+			return json.NewEncoder(os.Stdout).Encode(response.Msg)
+		}
+		for _, source := range response.Msg.GetSources() {
+			printWorkspaceSource(source)
+		}
+		return nil
+	case "sync":
+		fs := flag.NewFlagSet("index workspace sync", flag.ContinueOnError)
+		jsonOut := fs.Bool("json", false, "emit machine-readable JSON")
+		source := fs.String("source", "", "workspace source UUID")
+		if err := fs.Parse(args[1:]); err != nil {
+			return err
+		}
+		if *source == "" {
+			return errors.New(indexUsage)
+		}
+		response, err := client.SyncWorkspaceSource(ctx, connect.NewRequest(&indexv1.SyncWorkspaceSourceRequest{SourceId: *source}))
+		if err != nil {
+			return err
+		}
+		if *jsonOut {
+			return json.NewEncoder(os.Stdout).Encode(response.Msg)
+		}
+		printWorkspaceSource(response.Msg.GetSource())
+		fmt.Fprintf(os.Stdout, "applied: %d tombstoned: %d skipped: %d\n",
+			response.Msg.GetAppliedCount(), response.Msg.GetTombstonedCount(), response.Msg.GetSkippedCount())
+		return nil
+	default:
+		return errors.New(indexUsage)
+	}
+}
+
+func printWorkspaceSource(source *indexv1.IndexWorkspaceSource) {
+	out := os.Stdout
+	fmt.Fprintf(out, "source: %s\n", source.GetSourceId())
+	fmt.Fprintf(out, "owner: %s project: %s\n", source.GetOwnerUserId(), source.GetProjectId())
+	fmt.Fprintf(out, "root: %s status: %s\n", source.GetRootPath(), source.GetStatus())
+	if strings.TrimSpace(source.GetDegradedReason()) != "" {
+		fmt.Fprintf(out, "degraded reason: %s\n", source.GetDegradedReason())
+	}
+	fmt.Fprintf(out, "indexed: %d skipped: %d tombstoned: %d\n",
+		source.GetIndexedCount(), source.GetSkippedCount(), source.GetTombstonedCount())
+}
 
 func printIndexStatus(status *indexv1.GetIndexAdminStatusResponse) {
 	out := os.Stdout

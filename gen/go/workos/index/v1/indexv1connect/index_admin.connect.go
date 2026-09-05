@@ -51,6 +51,15 @@ const (
 	// IndexAdminServiceCancelIndexRebuildJobProcedure is the fully-qualified name of the
 	// IndexAdminService's CancelIndexRebuildJob RPC.
 	IndexAdminServiceCancelIndexRebuildJobProcedure = "/workos.index.v1.IndexAdminService/CancelIndexRebuildJob"
+	// IndexAdminServiceRegisterWorkspaceSourceProcedure is the fully-qualified name of the
+	// IndexAdminService's RegisterWorkspaceSource RPC.
+	IndexAdminServiceRegisterWorkspaceSourceProcedure = "/workos.index.v1.IndexAdminService/RegisterWorkspaceSource"
+	// IndexAdminServiceListWorkspaceSourcesProcedure is the fully-qualified name of the
+	// IndexAdminService's ListWorkspaceSources RPC.
+	IndexAdminServiceListWorkspaceSourcesProcedure = "/workos.index.v1.IndexAdminService/ListWorkspaceSources"
+	// IndexAdminServiceSyncWorkspaceSourceProcedure is the fully-qualified name of the
+	// IndexAdminService's SyncWorkspaceSource RPC.
+	IndexAdminServiceSyncWorkspaceSourceProcedure = "/workos.index.v1.IndexAdminService/SyncWorkspaceSource"
 )
 
 // IndexAdminServiceClient is a client for the workos.index.v1.IndexAdminService service.
@@ -59,6 +68,9 @@ type IndexAdminServiceClient interface {
 	StartIndexRebuild(context.Context, *connect.Request[v1.StartIndexRebuildRequest]) (*connect.Response[v1.StartIndexRebuildResponse], error)
 	GetIndexRebuildJob(context.Context, *connect.Request[v1.GetIndexRebuildJobRequest]) (*connect.Response[v1.GetIndexRebuildJobResponse], error)
 	CancelIndexRebuildJob(context.Context, *connect.Request[v1.CancelIndexRebuildJobRequest]) (*connect.Response[v1.CancelIndexRebuildJobResponse], error)
+	RegisterWorkspaceSource(context.Context, *connect.Request[v1.RegisterWorkspaceSourceRequest]) (*connect.Response[v1.RegisterWorkspaceSourceResponse], error)
+	ListWorkspaceSources(context.Context, *connect.Request[v1.ListWorkspaceSourcesRequest]) (*connect.Response[v1.ListWorkspaceSourcesResponse], error)
+	SyncWorkspaceSource(context.Context, *connect.Request[v1.SyncWorkspaceSourceRequest]) (*connect.Response[v1.SyncWorkspaceSourceResponse], error)
 }
 
 // NewIndexAdminServiceClient constructs a client for the workos.index.v1.IndexAdminService service.
@@ -96,15 +108,36 @@ func NewIndexAdminServiceClient(httpClient connect.HTTPClient, baseURL string, o
 			connect.WithSchema(indexAdminServiceMethods.ByName("CancelIndexRebuildJob")),
 			connect.WithClientOptions(opts...),
 		),
+		registerWorkspaceSource: connect.NewClient[v1.RegisterWorkspaceSourceRequest, v1.RegisterWorkspaceSourceResponse](
+			httpClient,
+			baseURL+IndexAdminServiceRegisterWorkspaceSourceProcedure,
+			connect.WithSchema(indexAdminServiceMethods.ByName("RegisterWorkspaceSource")),
+			connect.WithClientOptions(opts...),
+		),
+		listWorkspaceSources: connect.NewClient[v1.ListWorkspaceSourcesRequest, v1.ListWorkspaceSourcesResponse](
+			httpClient,
+			baseURL+IndexAdminServiceListWorkspaceSourcesProcedure,
+			connect.WithSchema(indexAdminServiceMethods.ByName("ListWorkspaceSources")),
+			connect.WithClientOptions(opts...),
+		),
+		syncWorkspaceSource: connect.NewClient[v1.SyncWorkspaceSourceRequest, v1.SyncWorkspaceSourceResponse](
+			httpClient,
+			baseURL+IndexAdminServiceSyncWorkspaceSourceProcedure,
+			connect.WithSchema(indexAdminServiceMethods.ByName("SyncWorkspaceSource")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
 // indexAdminServiceClient implements IndexAdminServiceClient.
 type indexAdminServiceClient struct {
-	getIndexAdminStatus   *connect.Client[v1.GetIndexAdminStatusRequest, v1.GetIndexAdminStatusResponse]
-	startIndexRebuild     *connect.Client[v1.StartIndexRebuildRequest, v1.StartIndexRebuildResponse]
-	getIndexRebuildJob    *connect.Client[v1.GetIndexRebuildJobRequest, v1.GetIndexRebuildJobResponse]
-	cancelIndexRebuildJob *connect.Client[v1.CancelIndexRebuildJobRequest, v1.CancelIndexRebuildJobResponse]
+	getIndexAdminStatus     *connect.Client[v1.GetIndexAdminStatusRequest, v1.GetIndexAdminStatusResponse]
+	startIndexRebuild       *connect.Client[v1.StartIndexRebuildRequest, v1.StartIndexRebuildResponse]
+	getIndexRebuildJob      *connect.Client[v1.GetIndexRebuildJobRequest, v1.GetIndexRebuildJobResponse]
+	cancelIndexRebuildJob   *connect.Client[v1.CancelIndexRebuildJobRequest, v1.CancelIndexRebuildJobResponse]
+	registerWorkspaceSource *connect.Client[v1.RegisterWorkspaceSourceRequest, v1.RegisterWorkspaceSourceResponse]
+	listWorkspaceSources    *connect.Client[v1.ListWorkspaceSourcesRequest, v1.ListWorkspaceSourcesResponse]
+	syncWorkspaceSource     *connect.Client[v1.SyncWorkspaceSourceRequest, v1.SyncWorkspaceSourceResponse]
 }
 
 // GetIndexAdminStatus calls workos.index.v1.IndexAdminService.GetIndexAdminStatus.
@@ -127,12 +160,30 @@ func (c *indexAdminServiceClient) CancelIndexRebuildJob(ctx context.Context, req
 	return c.cancelIndexRebuildJob.CallUnary(ctx, req)
 }
 
+// RegisterWorkspaceSource calls workos.index.v1.IndexAdminService.RegisterWorkspaceSource.
+func (c *indexAdminServiceClient) RegisterWorkspaceSource(ctx context.Context, req *connect.Request[v1.RegisterWorkspaceSourceRequest]) (*connect.Response[v1.RegisterWorkspaceSourceResponse], error) {
+	return c.registerWorkspaceSource.CallUnary(ctx, req)
+}
+
+// ListWorkspaceSources calls workos.index.v1.IndexAdminService.ListWorkspaceSources.
+func (c *indexAdminServiceClient) ListWorkspaceSources(ctx context.Context, req *connect.Request[v1.ListWorkspaceSourcesRequest]) (*connect.Response[v1.ListWorkspaceSourcesResponse], error) {
+	return c.listWorkspaceSources.CallUnary(ctx, req)
+}
+
+// SyncWorkspaceSource calls workos.index.v1.IndexAdminService.SyncWorkspaceSource.
+func (c *indexAdminServiceClient) SyncWorkspaceSource(ctx context.Context, req *connect.Request[v1.SyncWorkspaceSourceRequest]) (*connect.Response[v1.SyncWorkspaceSourceResponse], error) {
+	return c.syncWorkspaceSource.CallUnary(ctx, req)
+}
+
 // IndexAdminServiceHandler is an implementation of the workos.index.v1.IndexAdminService service.
 type IndexAdminServiceHandler interface {
 	GetIndexAdminStatus(context.Context, *connect.Request[v1.GetIndexAdminStatusRequest]) (*connect.Response[v1.GetIndexAdminStatusResponse], error)
 	StartIndexRebuild(context.Context, *connect.Request[v1.StartIndexRebuildRequest]) (*connect.Response[v1.StartIndexRebuildResponse], error)
 	GetIndexRebuildJob(context.Context, *connect.Request[v1.GetIndexRebuildJobRequest]) (*connect.Response[v1.GetIndexRebuildJobResponse], error)
 	CancelIndexRebuildJob(context.Context, *connect.Request[v1.CancelIndexRebuildJobRequest]) (*connect.Response[v1.CancelIndexRebuildJobResponse], error)
+	RegisterWorkspaceSource(context.Context, *connect.Request[v1.RegisterWorkspaceSourceRequest]) (*connect.Response[v1.RegisterWorkspaceSourceResponse], error)
+	ListWorkspaceSources(context.Context, *connect.Request[v1.ListWorkspaceSourcesRequest]) (*connect.Response[v1.ListWorkspaceSourcesResponse], error)
+	SyncWorkspaceSource(context.Context, *connect.Request[v1.SyncWorkspaceSourceRequest]) (*connect.Response[v1.SyncWorkspaceSourceResponse], error)
 }
 
 // NewIndexAdminServiceHandler builds an HTTP handler from the service implementation. It returns
@@ -166,6 +217,24 @@ func NewIndexAdminServiceHandler(svc IndexAdminServiceHandler, opts ...connect.H
 		connect.WithSchema(indexAdminServiceMethods.ByName("CancelIndexRebuildJob")),
 		connect.WithHandlerOptions(opts...),
 	)
+	indexAdminServiceRegisterWorkspaceSourceHandler := connect.NewUnaryHandler(
+		IndexAdminServiceRegisterWorkspaceSourceProcedure,
+		svc.RegisterWorkspaceSource,
+		connect.WithSchema(indexAdminServiceMethods.ByName("RegisterWorkspaceSource")),
+		connect.WithHandlerOptions(opts...),
+	)
+	indexAdminServiceListWorkspaceSourcesHandler := connect.NewUnaryHandler(
+		IndexAdminServiceListWorkspaceSourcesProcedure,
+		svc.ListWorkspaceSources,
+		connect.WithSchema(indexAdminServiceMethods.ByName("ListWorkspaceSources")),
+		connect.WithHandlerOptions(opts...),
+	)
+	indexAdminServiceSyncWorkspaceSourceHandler := connect.NewUnaryHandler(
+		IndexAdminServiceSyncWorkspaceSourceProcedure,
+		svc.SyncWorkspaceSource,
+		connect.WithSchema(indexAdminServiceMethods.ByName("SyncWorkspaceSource")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/workos.index.v1.IndexAdminService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case IndexAdminServiceGetIndexAdminStatusProcedure:
@@ -176,6 +245,12 @@ func NewIndexAdminServiceHandler(svc IndexAdminServiceHandler, opts ...connect.H
 			indexAdminServiceGetIndexRebuildJobHandler.ServeHTTP(w, r)
 		case IndexAdminServiceCancelIndexRebuildJobProcedure:
 			indexAdminServiceCancelIndexRebuildJobHandler.ServeHTTP(w, r)
+		case IndexAdminServiceRegisterWorkspaceSourceProcedure:
+			indexAdminServiceRegisterWorkspaceSourceHandler.ServeHTTP(w, r)
+		case IndexAdminServiceListWorkspaceSourcesProcedure:
+			indexAdminServiceListWorkspaceSourcesHandler.ServeHTTP(w, r)
+		case IndexAdminServiceSyncWorkspaceSourceProcedure:
+			indexAdminServiceSyncWorkspaceSourceHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -199,4 +274,16 @@ func (UnimplementedIndexAdminServiceHandler) GetIndexRebuildJob(context.Context,
 
 func (UnimplementedIndexAdminServiceHandler) CancelIndexRebuildJob(context.Context, *connect.Request[v1.CancelIndexRebuildJobRequest]) (*connect.Response[v1.CancelIndexRebuildJobResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("workos.index.v1.IndexAdminService.CancelIndexRebuildJob is not implemented"))
+}
+
+func (UnimplementedIndexAdminServiceHandler) RegisterWorkspaceSource(context.Context, *connect.Request[v1.RegisterWorkspaceSourceRequest]) (*connect.Response[v1.RegisterWorkspaceSourceResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("workos.index.v1.IndexAdminService.RegisterWorkspaceSource is not implemented"))
+}
+
+func (UnimplementedIndexAdminServiceHandler) ListWorkspaceSources(context.Context, *connect.Request[v1.ListWorkspaceSourcesRequest]) (*connect.Response[v1.ListWorkspaceSourcesResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("workos.index.v1.IndexAdminService.ListWorkspaceSources is not implemented"))
+}
+
+func (UnimplementedIndexAdminServiceHandler) SyncWorkspaceSource(context.Context, *connect.Request[v1.SyncWorkspaceSourceRequest]) (*connect.Response[v1.SyncWorkspaceSourceResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("workos.index.v1.IndexAdminService.SyncWorkspaceSource is not implemented"))
 }

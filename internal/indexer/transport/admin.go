@@ -15,7 +15,8 @@ import (
 	indexv1 "github.com/yangtao121/workos/gen/go/workos/index/v1"
 	indexv1connect "github.com/yangtao121/workos/gen/go/workos/index/v1/indexv1connect"
 	indexerapp "github.com/yangtao121/workos/internal/indexer/application"
-	"github.com/yangtao121/workos/internal/indexer/domain"
+	indexerdomain "github.com/yangtao121/workos/internal/indexer/domain"
+	"github.com/yangtao121/workos/internal/indexer/ports"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
@@ -25,6 +26,12 @@ type AdminService interface {
 	StartRebuild(ctx context.Context, request indexerapp.RebuildRequest) (indexerapp.RebuildJobView, bool, error)
 	GetRebuildJob(ctx context.Context, jobID string) (indexerapp.RebuildJobView, error)
 	CancelRebuildJob(ctx context.Context, jobID string) (bool, error)
+	// RegisterWorkspaceSource binds (or rebinds) the owner's local mount.
+	RegisterWorkspaceSource(ctx context.Context, ownerUserID, projectID, rootPath string) (ports.WorkspaceSource, error)
+	// ListWorkspaceSources reads every bound mount.
+	ListWorkspaceSources(ctx context.Context) ([]ports.WorkspaceSource, error)
+	// SyncWorkspaceSource runs one bounded ingestion pass.
+	SyncWorkspaceSource(ctx context.Context, sourceID string) (indexerapp.SyncResult, error)
 }
 
 type AdminHandler struct {
@@ -146,6 +153,49 @@ func timestampOf(value time.Time) *timestamppb.Timestamp {
 	return timestamppb.New(value)
 }
 
+func (h *AdminHandler) RegisterWorkspaceSource(ctx context.Context, req *connect.Request[indexv1.RegisterWorkspaceSourceRequest]) (*connect.Response[indexv1.RegisterWorkspaceSourceResponse], error) {
+	source, err := h.service.RegisterWorkspaceSource(ctx, req.Msg.GetOwnerUserId(), req.Msg.GetProjectId(), req.Msg.GetRootPath())
+	if err != nil {
+		return nil, mapAdminError(err)
+	}
+	return connect.NewResponse(&indexv1.RegisterWorkspaceSourceResponse{Source: workspaceSourceProto(source)}), nil
+}
+
+func (h *AdminHandler) ListWorkspaceSources(ctx context.Context, _ *connect.Request[indexv1.ListWorkspaceSourcesRequest]) (*connect.Response[indexv1.ListWorkspaceSourcesResponse], error) {
+	sources, err := h.service.ListWorkspaceSources(ctx)
+	if err != nil {
+		return nil, mapAdminError(err)
+	}
+	views := make([]*indexv1.IndexWorkspaceSource, 0, len(sources))
+	for _, source := range sources {
+		views = append(views, workspaceSourceProto(source))
+	}
+	return connect.NewResponse(&indexv1.ListWorkspaceSourcesResponse{Sources: views}), nil
+}
+
+func (h *AdminHandler) SyncWorkspaceSource(ctx context.Context, req *connect.Request[indexv1.SyncWorkspaceSourceRequest]) (*connect.Response[indexv1.SyncWorkspaceSourceResponse], error) {
+	result, err := h.service.SyncWorkspaceSource(ctx, req.Msg.GetSourceId())
+	if err != nil {
+		return nil, mapAdminError(err)
+	}
+	return connect.NewResponse(&indexv1.SyncWorkspaceSourceResponse{
+		Source:          workspaceSourceProto(result.Source),
+		AppliedCount:    result.Applied,
+		TombstonedCount: result.Tombstoned,
+		SkippedCount:    result.Skipped,
+		SkippedReasons:  result.SkipReasons,
+	}), nil
+}
+
+func workspaceSourceProto(source ports.WorkspaceSource) *indexv1.IndexWorkspaceSource {
+	return &indexv1.IndexWorkspaceSource{
+		SourceId: source.ID, OwnerUserId: source.OwnerUserID, ProjectId: source.ProjectID,
+		RootPath: source.RootPath, Status: source.Status, DegradedReason: source.DegradedReason,
+		IndexedCount: source.IndexedCount, SkippedCount: source.SkippedCount, TombstonedCount: source.TombstonedCount,
+		LastSyncedAt: formatMicros(source.LastSyncedAt), CreatedAt: formatMicros(source.CreatedAt),
+	}
+}
+
 // mapAdminError keeps the operator surface sanitized: conflicts are
 // Aborted, malformed input is InvalidArgument, misses are NotFound.
 func mapAdminError(err error) error {
@@ -154,7 +204,15 @@ func mapAdminError(err error) error {
 		return connect.NewError(connect.CodeAborted, errors.New("rebuild conflicts with an existing key or live scope"))
 	case errors.Is(err, indexerapp.ErrInvalidRebuild):
 		return connect.NewError(connect.CodeInvalidArgument, errors.New("rebuild request is invalid"))
-	case errors.Is(err, domain.ErrNotFound):
+	case errors.Is(err, indexerapp.ErrWorkspaceStopped):
+		return connect.NewError(connect.CodeFailedPrecondition, errors.New("workspace source is stopped"))
+	case errors.Is(err, indexerapp.ErrWorkspaceSymlinkEscape):
+		return connect.NewError(connect.CodeInvalidArgument, errors.New("workspace root resolves through a symlink"))
+	case errors.Is(err, indexerdomain.ErrWorkspaceDegraded):
+		return connect.NewError(connect.CodeFailedPrecondition, errors.New("workspace mount is degraded"))
+	case errors.Is(err, indexerdomain.ErrWorkspaceInvalidPath), errors.Is(err, indexerdomain.ErrInvalid):
+		return connect.NewError(connect.CodeInvalidArgument, errors.New("workspace source request is invalid"))
+	case errors.Is(err, indexerdomain.ErrNotFound):
 		return connect.NewError(connect.CodeNotFound, errors.New("index job is not available"))
 	default:
 		if strings.Contains(err.Error(), "temporarily unavailable") {

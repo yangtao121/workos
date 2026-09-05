@@ -27,15 +27,23 @@ func ValidRanking(r int) bool { return r == RankingLexical || r == RankingHybrid
 // SearchHit is one projected hit: safe fields only. There is no full text,
 // no internal row id, no owner id, no lease/publication token.
 type SearchHit struct {
-	ContextRef   string // canonical "artifact.review.v1:<id>:<digest>" projection
+	ContextRef   string // canonical "<source_type>:<id>:<digest>" projection
 	Excerpt      string
 	Score        float64
 	ArtifactID   string
+	SourceType   string // "artifact.review.v1" or "workspace.file.v1"
 	ArtifactType string
 	Digest       string
 	Title        string
 	CreatedAt    time.Time
 }
+
+// Source types are the documented provenance vocabulary of indexed
+// documents (ADR-0013 §4, ADR-0017 §4).
+const (
+	SourceReviewArtifact = "artifact.review.v1"
+	SourceWorkspaceFile  = "workspace.file.v1"
+)
 
 // SearchPage is one explicit page plus the continuation decided by the
 // limit+1 probe. A full final page produces no phantom token.
@@ -59,5 +67,11 @@ type Freshness struct {
 // ContextRefString renders the canonical string projection of a typed
 // artifact.review.v1 ref (the legacy SearchHit.context_ref grammar).
 func ContextRefString(artifactID, digest string) string {
-	return "artifact.review.v1:" + artifactID + ":" + digest
+	return ContextRef(SourceReviewArtifact, artifactID, digest)
+}
+
+// ContextRef renders the canonical "<source_type>:<id>:<digest>" projection
+// for any documented source type.
+func ContextRef(sourceType, artifactID, digest string) string {
+	return sourceType + ":" + artifactID + ":" + digest
 }

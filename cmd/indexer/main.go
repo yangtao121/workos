@@ -15,9 +15,11 @@ import (
 	commonv1 "github.com/yangtao121/workos/gen/go/workos/common/v1"
 	"github.com/yangtao121/workos/gen/go/workos/common/v1/commonv1connect"
 	"github.com/yangtao121/workos/internal/indexer/adapters/coreclient"
+	"github.com/yangtao121/workos/internal/indexer/adapters/localmount"
 	indexerpostgres "github.com/yangtao121/workos/internal/indexer/adapters/postgres"
 	indexerapp "github.com/yangtao121/workos/internal/indexer/application"
 	indexerdomain "github.com/yangtao121/workos/internal/indexer/domain"
+	"github.com/yangtao121/workos/internal/indexer/ports"
 	indexertransport "github.com/yangtao121/workos/internal/indexer/transport"
 	"github.com/yangtao121/workos/internal/platform/config"
 	"github.com/yangtao121/workos/internal/platform/database"
@@ -141,6 +143,12 @@ func run(logger *slog.Logger) error {
 	if err != nil {
 		return err
 	}
+	// Workspace ingestion (ADR-0017 §4): owner-bound local mounts converge
+	// through the local admin socket only; the gateway never routes them.
+	workspaces, err := indexerapp.NewWorkspaceIngestor(projection, localmount.NewWalker(), generator.New)
+	if err != nil {
+		return err
+	}
 	// The rebuild loop advances the durable state machine; passes are bounded
 	// and a crash resumes from the stored phase and cursor.
 	go func() {
@@ -187,7 +195,7 @@ func run(logger *slog.Logger) error {
 	var adminErr chan error
 	var adminSock *indexertransport.AdminSocket
 	if cfg.Indexer.AdminSocketPath != "" {
-		_, adminHandler := indexertransport.NewAdminConnectHandler(adminServiceSurface{admin})
+		_, adminHandler := indexertransport.NewAdminConnectHandler(adminServiceSurface{admin: admin, workspaces: workspaces})
 		adminSock, err = indexertransport.ListenAdminSocket(cfg.Indexer.AdminSocketPath, adminHandler, logger)
 		if err != nil {
 			return err
@@ -228,7 +236,8 @@ func run(logger *slog.Logger) error {
 
 // adminServiceSurface adapts the AdminService to the transport interface.
 type adminServiceSurface struct {
-	admin *indexerapp.AdminService
+	admin      *indexerapp.AdminService
+	workspaces *indexerapp.WorkspaceIngestor
 }
 
 func (a adminServiceSurface) Status(ctx context.Context) (indexerapp.IndexStatus, error) {
@@ -245,6 +254,18 @@ func (a adminServiceSurface) GetRebuildJob(ctx context.Context, jobID string) (i
 
 func (a adminServiceSurface) CancelRebuildJob(ctx context.Context, jobID string) (bool, error) {
 	return a.admin.CancelRebuildJob(ctx, jobID)
+}
+
+func (a adminServiceSurface) RegisterWorkspaceSource(ctx context.Context, ownerUserID, projectID, rootPath string) (ports.WorkspaceSource, error) {
+	return a.workspaces.Register(ctx, ownerUserID, projectID, rootPath)
+}
+
+func (a adminServiceSurface) ListWorkspaceSources(ctx context.Context) ([]ports.WorkspaceSource, error) {
+	return a.workspaces.List(ctx)
+}
+
+func (a adminServiceSurface) SyncWorkspaceSource(ctx context.Context, sourceID string) (indexerapp.SyncResult, error) {
+	return a.workspaces.Sync(ctx, sourceID)
 }
 
 // rebuildFeed composes the Core feed with the projection's active pointer

@@ -40,6 +40,7 @@ type Querier interface {
 	GetRebuildJob(ctx context.Context, id string) (WorkosIndexRebuildJob, error)
 	GetRebuildJobRequest(ctx context.Context, idempotencyKey string) (WorkosIndexRebuildJobRequest, error)
 	GetReceipt(ctx context.Context, arg GetReceiptParams) (WorkosIndexPublicationReceipt, error)
+	GetWorkspaceSource(ctx context.Context, id string) (WorkosIndexWorkspaceSource, error)
 	InsertGeneration(ctx context.Context, arg InsertGenerationParams) error
 	// Shadow-generation rebuild facts (ADR-0013 §9). Generations and rebuild
 	// jobs are durable: a restart resumes from the stored phase and cursor.
@@ -49,9 +50,16 @@ type Querier interface {
 	InsertIndexJobSource(ctx context.Context, arg InsertIndexJobSourceParams) error
 	InsertRebuildJob(ctx context.Context, arg InsertRebuildJobParams) error
 	InsertRebuildJobRequest(ctx context.Context, arg InsertRebuildJobRequestParams) error
+	// Workspace file sources (ADR-0017 §4). Owner-bound mounts live in the same
+	// indexer-owned schema; re-registering a scope rebinds the root and
+	// reactivates the source.
+	InsertWorkspaceSource(ctx context.Context, arg InsertWorkspaceSourceParams) (WorkosIndexWorkspaceSource, error)
 	ListIndexJobSources(ctx context.Context, jobID string) ([]WorkosIndexIndexJobSource, error)
+	ListLiveWorkspaceDocuments(ctx context.Context, arg ListLiveWorkspaceDocumentsParams) ([]ListLiveWorkspaceDocumentsRow, error)
+	ListWorkspaceSources(ctx context.Context) ([]WorkosIndexWorkspaceSource, error)
 	MarkIndexJobFailed(ctx context.Context, arg MarkIndexJobFailedParams) error
 	PromoteGeneration(ctx context.Context, arg PromoteGenerationParams) (int64, error)
+	RecordWorkspaceSync(ctx context.Context, arg RecordWorkspaceSyncParams) error
 	SearchFreshness(ctx context.Context) (time.Time, error)
 	// Deterministic lexical page (ADR-0013 §5): rank over the built-in 'simple'
 	// tsquery, title hits weighted 2x, fixed tie-break (score DESC,
@@ -67,8 +75,10 @@ type Querier interface {
 	// are computed in the indexer. Bounded by the generation's per-project
 	// document count (single-owner local scale, ≤2000 by ADR-0017 §3).
 	SearchProjectDocumentsHybrid(ctx context.Context, arg SearchProjectDocumentsHybridParams) ([]SearchProjectDocumentsHybridRow, error)
+	SetWorkspaceSourceStatus(ctx context.Context, arg SetWorkspaceSourceStatusParams) error
 	TombstoneGenerationDocuments(ctx context.Context, arg TombstoneGenerationDocumentsParams) (int64, error)
 	TombstoneProjectDocuments(ctx context.Context, arg TombstoneProjectDocumentsParams) (int64, error)
+	TombstoneWorkspaceDocument(ctx context.Context, arg TombstoneWorkspaceDocumentParams) (int64, error)
 	UpdateGenerationStatus(ctx context.Context, arg UpdateGenerationStatusParams) error
 	UpdateIndexJobSource(ctx context.Context, arg UpdateIndexJobSourceParams) error
 	UpdateIndexJobState(ctx context.Context, arg UpdateIndexJobStateParams) error

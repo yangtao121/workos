@@ -79,7 +79,7 @@ func ValidStoredDocument(document Document) error {
 		return ErrCorrupt
 	}
 	switch document.ArtifactType {
-	case "document.markdown.v1", "code.unified-diff.v1":
+	case "document.markdown.v1", "code.unified-diff.v1", "workspace.text.v1":
 	default:
 		return ErrCorrupt
 	}

@@ -44,10 +44,10 @@ INSERT INTO workos_index.documents (
     last_publication_id, source_operation, indexed_at, updated_at, embedding
 ) VALUES (
     sqlc.arg(projection_generation), sqlc.arg(owner_user_id), sqlc.arg(project_id),
-    'artifact.review.v1', sqlc.arg(source_id), sqlc.arg(source_digest),
+    sqlc.arg(source_type), sqlc.arg(source_id), sqlc.arg(source_digest),
     sqlc.arg(artifact_type), sqlc.arg(title), sqlc.arg(content),
     sqlc.arg(source_created_at), sqlc.arg(last_publication_id),
-    'review-artifact.upsert', sqlc.arg(indexed_at), sqlc.arg(updated_at),
+    sqlc.arg(source_operation), sqlc.arg(indexed_at), sqlc.arg(updated_at),
     sqlc.arg(embedding)
 )
 ON CONFLICT (projection_generation, owner_user_id, project_id, source_id) DO UPDATE
@@ -127,7 +127,7 @@ WITH q AS (
     SELECT websearch_to_tsquery('simple', sqlc.arg(query_text)) AS tsq
 ),
 scored AS (
-    SELECT d.source_id, d.source_digest, d.artifact_type, d.title, d.source_created_at, d.content,
+    SELECT d.source_id, d.source_digest, d.source_type, d.artifact_type, d.title, d.source_created_at, d.content,
            d.last_publication_id, d.indexed_at,
            ((CASE WHEN d.title_tsv @@ q.tsq THEN ts_rank(d.title_tsv, q.tsq) ELSE 0.0::double precision END) * 2.0
            + (CASE WHEN d.body_tsv @@ q.tsq THEN ts_rank(d.body_tsv, q.tsq) ELSE 0.0::double precision END))::double precision AS score
@@ -139,7 +139,7 @@ scored AS (
       AND d.indexed_at <= sqlc.arg(snapshot_through)
       AND (d.title_tsv @@ q.tsq OR d.body_tsv @@ q.tsq)
 )
-SELECT source_id, source_digest, artifact_type, title, source_created_at, content,
+SELECT source_id, source_digest, source_type, artifact_type, title, source_created_at, content,
        last_publication_id, indexed_at, score
 FROM scored
 WHERE score > 0
@@ -377,7 +377,7 @@ LIMIT sqlc.arg(page_limit);
 WITH q AS (
     SELECT websearch_to_tsquery('simple', sqlc.arg(query_text)) AS tsq
 )
-SELECT d.source_id, d.source_digest, d.artifact_type, d.title, d.source_created_at, d.content,
+SELECT d.source_id, d.source_digest, d.source_type, d.artifact_type, d.title, d.source_created_at, d.content,
        d.last_publication_id, d.indexed_at, d.embedding,
        ((CASE WHEN d.title_tsv @@ q.tsq THEN ts_rank(d.title_tsv, q.tsq) ELSE 0.0::double precision END) * 2.0
        + (CASE WHEN d.body_tsv @@ q.tsq THEN ts_rank(d.body_tsv, q.tsq) ELSE 0.0::double precision END))::double precision AS lexical_score
@@ -389,3 +389,70 @@ WHERE d.projection_generation = sqlc.arg(generation_id)
   AND d.indexed_at <= sqlc.arg(snapshot_through)
   AND (d.title_tsv @@ q.tsq OR d.body_tsv @@ q.tsq OR d.embedding IS NOT NULL)
 LIMIT sqlc.arg(row_limit);
+
+-- Workspace file sources (ADR-0017 §4). Owner-bound mounts live in the same
+-- indexer-owned schema; re-registering a scope rebinds the root and
+-- reactivates the source.
+
+-- name: InsertWorkspaceSource :one
+INSERT INTO workos_index.workspace_sources (
+    id, owner_user_id, project_id, root_path, status, created_at, updated_at
+) VALUES (
+    sqlc.arg(id), sqlc.arg(owner_user_id), sqlc.arg(project_id),
+    sqlc.arg(root_path), 'active', sqlc.arg(created_at), sqlc.arg(updated_at)
+)
+ON CONFLICT (owner_user_id, project_id) DO UPDATE
+SET root_path = EXCLUDED.root_path,
+    status = 'active',
+    degraded_reason = '',
+    updated_at = EXCLUDED.updated_at
+RETURNING id, owner_user_id, project_id, root_path, status, degraded_reason,
+          indexed_count, skipped_count, tombstoned_count, last_synced_at,
+          created_at, updated_at;
+
+-- name: GetWorkspaceSource :one
+SELECT id, owner_user_id, project_id, root_path, status, degraded_reason,
+       indexed_count, skipped_count, tombstoned_count, last_synced_at,
+       created_at, updated_at
+FROM workos_index.workspace_sources
+WHERE id = sqlc.arg(id)::uuid;
+
+-- name: ListWorkspaceSources :many
+SELECT id, owner_user_id, project_id, root_path, status, degraded_reason,
+       indexed_count, skipped_count, tombstoned_count, last_synced_at,
+       created_at, updated_at
+FROM workos_index.workspace_sources
+ORDER BY created_at, id;
+
+-- name: SetWorkspaceSourceStatus :exec
+UPDATE workos_index.workspace_sources
+SET status = sqlc.arg(status), degraded_reason = sqlc.arg(degraded_reason),
+    updated_at = sqlc.arg(updated_at)
+WHERE id = sqlc.arg(id)::uuid;
+
+-- name: RecordWorkspaceSync :exec
+UPDATE workos_index.workspace_sources
+SET indexed_count = sqlc.arg(indexed_count),
+    skipped_count = sqlc.arg(skipped_count),
+    tombstoned_count = sqlc.arg(tombstoned_count),
+    last_synced_at = sqlc.arg(last_synced_at),
+    updated_at = sqlc.arg(updated_at)
+WHERE id = sqlc.arg(id)::uuid;
+
+-- name: ListLiveWorkspaceDocuments :many
+SELECT source_id, source_digest
+FROM workos_index.documents
+WHERE projection_generation = sqlc.arg(generation_id)
+  AND owner_user_id = sqlc.arg(owner_user_id)
+  AND project_id = sqlc.arg(project_id)
+  AND source_type = 'workspace.file.v1'
+  AND tombstoned_at IS NULL;
+
+-- name: TombstoneWorkspaceDocument :execrows
+UPDATE workos_index.documents
+SET tombstoned_at = sqlc.arg(tombstoned_at), updated_at = sqlc.arg(updated_at)
+WHERE projection_generation = sqlc.arg(generation_id)
+  AND owner_user_id = sqlc.arg(owner_user_id)
+  AND project_id = sqlc.arg(project_id)
+  AND source_id = sqlc.arg(source_id)::uuid
+  AND tombstoned_at IS NULL;

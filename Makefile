@@ -23,7 +23,7 @@ NODE_RUN := docker run --rm $(USER_FLAGS) -e COREPACK_NPM_REGISTRY=$(NPM_REGISTR
 BUF_RUN := docker run --rm $(USER_FLAGS) $(MOUNT) $(BUF_IMAGE)
 SQLC_RUN := docker run --rm $(USER_FLAGS) -v $(CURDIR):/src -w /src $(SQLC_IMAGE)
 
-.PHONY: bootstrap generate docs check check-native proto-check go-check web-check test-semantic-knowledge test test-integration test-credential-vault-expansion test-codex-harness test-mcp-harness test-artifact-context test-deepseek-fixture test-deepseek-structured-review test-credential-vault e2e-image test-e2e test-adaptive-shell test-app-version-rollback test-podman-fixture test-lan-pairing test-project-knowledge-search test-app-knowledge-search test-project-knowledge-rebuild test-notification-center test-incident-notifications test-app-notifications capture-notification-visual capture-artifact-context-visual capture-lan-pairing-visual capture-provider-catalog build web-build scaffold-module dev down logs clean
+.PHONY: bootstrap generate docs check check-native proto-check go-check web-check test-semantic-knowledge test-workspace-indexing test test-integration test-credential-vault-expansion test-codex-harness test-mcp-harness test-artifact-context test-deepseek-fixture test-deepseek-structured-review test-credential-vault e2e-image test-e2e test-adaptive-shell test-app-version-rollback test-podman-fixture test-lan-pairing test-project-knowledge-search test-app-knowledge-search test-project-knowledge-rebuild test-notification-center test-incident-notifications test-app-notifications capture-notification-visual capture-artifact-context-visual capture-lan-pairing-visual capture-provider-catalog build web-build scaffold-module dev down logs clean
 
 bootstrap:
 	@docker version >/dev/null
@@ -630,6 +630,17 @@ test-semantic-knowledge:
 	i=0; until curl -sf http://127.0.0.1:8085/readyz >/dev/null 2>&1; do i=$$((i+1)); [ $$i -le 60 ] || { echo 'indexer readiness timed out' >&2; exit 1; }; sleep 1; done
 	$(GO_HOST_RUN) go test -tags=integration -count=1 -run 'TestSemanticKnowledge' -v ./tests/integration
 	@echo "test-semantic-knowledge: PASS"
+
+# The workspace indexing gate (ADR-0017 §4, W4): owner-bound local mounts
+# converge into the projection over the real mount walker — bounded
+# ingestion with honest skip categories, convergent upsert/tombstone
+# passes, explicit degraded mounts, symlink-escape rejection, and project
+# archive dominance.
+test-workspace-indexing:
+	docker compose up -d --build postgres
+	@set -eu; 	i=0; until docker compose exec -T postgres pg_isready -U workos >/dev/null 2>&1; do i=$$((i+1)); [ $$i -le 60 ] || { echo 'postgres readiness timed out' >&2; exit 1; }; sleep 1; done
+	$(GO_HOST_RUN) go test -tags=integration -count=1 -run 'TestWorkspaceIndexing' -v ./tests/integration
+	@echo "test-workspace-indexing: PASS"
 
 e2e-image:
 	docker build \

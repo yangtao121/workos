@@ -729,6 +729,439 @@ func (x *CancelIndexRebuildJobResponse) GetJob() *IndexAdminRebuildJob {
 	return nil
 }
 
+type IndexWorkspaceSource struct {
+	state       protoimpl.MessageState `protogen:"open.v1"`
+	SourceId    string                 `protobuf:"bytes,1,opt,name=source_id,json=sourceId,proto3" json:"source_id,omitempty"`
+	OwnerUserId string                 `protobuf:"bytes,2,opt,name=owner_user_id,json=ownerUserId,proto3" json:"owner_user_id,omitempty"`
+	ProjectId   string                 `protobuf:"bytes,3,opt,name=project_id,json=projectId,proto3" json:"project_id,omitempty"`
+	// Mount root as explicitly bound by the owner (safe operational fact).
+	RootPath string `protobuf:"bytes,4,opt,name=root_path,json=rootPath,proto3" json:"root_path,omitempty"`
+	// active | degraded | stopped. Unknown values fail closed at the CLI.
+	Status string `protobuf:"bytes,5,opt,name=status,proto3" json:"status,omitempty"`
+	// Sanitized failure category; empty unless degraded.
+	DegradedReason  string `protobuf:"bytes,6,opt,name=degraded_reason,json=degradedReason,proto3" json:"degraded_reason,omitempty"`
+	IndexedCount    int64  `protobuf:"varint,7,opt,name=indexed_count,json=indexedCount,proto3" json:"indexed_count,omitempty"`
+	SkippedCount    int64  `protobuf:"varint,8,opt,name=skipped_count,json=skippedCount,proto3" json:"skipped_count,omitempty"`
+	TombstonedCount int64  `protobuf:"varint,9,opt,name=tombstoned_count,json=tombstonedCount,proto3" json:"tombstoned_count,omitempty"`
+	// UTC RFC 3339 microseconds; empty before the first sync.
+	LastSyncedAt  string `protobuf:"bytes,10,opt,name=last_synced_at,json=lastSyncedAt,proto3" json:"last_synced_at,omitempty"`
+	CreatedAt     string `protobuf:"bytes,11,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *IndexWorkspaceSource) Reset() {
+	*x = IndexWorkspaceSource{}
+	mi := &file_workos_index_v1_index_admin_proto_msgTypes[10]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *IndexWorkspaceSource) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*IndexWorkspaceSource) ProtoMessage() {}
+
+func (x *IndexWorkspaceSource) ProtoReflect() protoreflect.Message {
+	mi := &file_workos_index_v1_index_admin_proto_msgTypes[10]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use IndexWorkspaceSource.ProtoReflect.Descriptor instead.
+func (*IndexWorkspaceSource) Descriptor() ([]byte, []int) {
+	return file_workos_index_v1_index_admin_proto_rawDescGZIP(), []int{10}
+}
+
+func (x *IndexWorkspaceSource) GetSourceId() string {
+	if x != nil {
+		return x.SourceId
+	}
+	return ""
+}
+
+func (x *IndexWorkspaceSource) GetOwnerUserId() string {
+	if x != nil {
+		return x.OwnerUserId
+	}
+	return ""
+}
+
+func (x *IndexWorkspaceSource) GetProjectId() string {
+	if x != nil {
+		return x.ProjectId
+	}
+	return ""
+}
+
+func (x *IndexWorkspaceSource) GetRootPath() string {
+	if x != nil {
+		return x.RootPath
+	}
+	return ""
+}
+
+func (x *IndexWorkspaceSource) GetStatus() string {
+	if x != nil {
+		return x.Status
+	}
+	return ""
+}
+
+func (x *IndexWorkspaceSource) GetDegradedReason() string {
+	if x != nil {
+		return x.DegradedReason
+	}
+	return ""
+}
+
+func (x *IndexWorkspaceSource) GetIndexedCount() int64 {
+	if x != nil {
+		return x.IndexedCount
+	}
+	return 0
+}
+
+func (x *IndexWorkspaceSource) GetSkippedCount() int64 {
+	if x != nil {
+		return x.SkippedCount
+	}
+	return 0
+}
+
+func (x *IndexWorkspaceSource) GetTombstonedCount() int64 {
+	if x != nil {
+		return x.TombstonedCount
+	}
+	return 0
+}
+
+func (x *IndexWorkspaceSource) GetLastSyncedAt() string {
+	if x != nil {
+		return x.LastSyncedAt
+	}
+	return ""
+}
+
+func (x *IndexWorkspaceSource) GetCreatedAt() string {
+	if x != nil {
+		return x.CreatedAt
+	}
+	return ""
+}
+
+type RegisterWorkspaceSourceRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	OwnerUserId   string                 `protobuf:"bytes,1,opt,name=owner_user_id,json=ownerUserId,proto3" json:"owner_user_id,omitempty"`
+	ProjectId     string                 `protobuf:"bytes,2,opt,name=project_id,json=projectId,proto3" json:"project_id,omitempty"`
+	RootPath      string                 `protobuf:"bytes,3,opt,name=root_path,json=rootPath,proto3" json:"root_path,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RegisterWorkspaceSourceRequest) Reset() {
+	*x = RegisterWorkspaceSourceRequest{}
+	mi := &file_workos_index_v1_index_admin_proto_msgTypes[11]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RegisterWorkspaceSourceRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RegisterWorkspaceSourceRequest) ProtoMessage() {}
+
+func (x *RegisterWorkspaceSourceRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_workos_index_v1_index_admin_proto_msgTypes[11]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RegisterWorkspaceSourceRequest.ProtoReflect.Descriptor instead.
+func (*RegisterWorkspaceSourceRequest) Descriptor() ([]byte, []int) {
+	return file_workos_index_v1_index_admin_proto_rawDescGZIP(), []int{11}
+}
+
+func (x *RegisterWorkspaceSourceRequest) GetOwnerUserId() string {
+	if x != nil {
+		return x.OwnerUserId
+	}
+	return ""
+}
+
+func (x *RegisterWorkspaceSourceRequest) GetProjectId() string {
+	if x != nil {
+		return x.ProjectId
+	}
+	return ""
+}
+
+func (x *RegisterWorkspaceSourceRequest) GetRootPath() string {
+	if x != nil {
+		return x.RootPath
+	}
+	return ""
+}
+
+type RegisterWorkspaceSourceResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Source        *IndexWorkspaceSource  `protobuf:"bytes,1,opt,name=source,proto3" json:"source,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RegisterWorkspaceSourceResponse) Reset() {
+	*x = RegisterWorkspaceSourceResponse{}
+	mi := &file_workos_index_v1_index_admin_proto_msgTypes[12]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RegisterWorkspaceSourceResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RegisterWorkspaceSourceResponse) ProtoMessage() {}
+
+func (x *RegisterWorkspaceSourceResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_workos_index_v1_index_admin_proto_msgTypes[12]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RegisterWorkspaceSourceResponse.ProtoReflect.Descriptor instead.
+func (*RegisterWorkspaceSourceResponse) Descriptor() ([]byte, []int) {
+	return file_workos_index_v1_index_admin_proto_rawDescGZIP(), []int{12}
+}
+
+func (x *RegisterWorkspaceSourceResponse) GetSource() *IndexWorkspaceSource {
+	if x != nil {
+		return x.Source
+	}
+	return nil
+}
+
+type ListWorkspaceSourcesRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListWorkspaceSourcesRequest) Reset() {
+	*x = ListWorkspaceSourcesRequest{}
+	mi := &file_workos_index_v1_index_admin_proto_msgTypes[13]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListWorkspaceSourcesRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListWorkspaceSourcesRequest) ProtoMessage() {}
+
+func (x *ListWorkspaceSourcesRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_workos_index_v1_index_admin_proto_msgTypes[13]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListWorkspaceSourcesRequest.ProtoReflect.Descriptor instead.
+func (*ListWorkspaceSourcesRequest) Descriptor() ([]byte, []int) {
+	return file_workos_index_v1_index_admin_proto_rawDescGZIP(), []int{13}
+}
+
+type ListWorkspaceSourcesResponse struct {
+	state         protoimpl.MessageState  `protogen:"open.v1"`
+	Sources       []*IndexWorkspaceSource `protobuf:"bytes,1,rep,name=sources,proto3" json:"sources,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListWorkspaceSourcesResponse) Reset() {
+	*x = ListWorkspaceSourcesResponse{}
+	mi := &file_workos_index_v1_index_admin_proto_msgTypes[14]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListWorkspaceSourcesResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListWorkspaceSourcesResponse) ProtoMessage() {}
+
+func (x *ListWorkspaceSourcesResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_workos_index_v1_index_admin_proto_msgTypes[14]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListWorkspaceSourcesResponse.ProtoReflect.Descriptor instead.
+func (*ListWorkspaceSourcesResponse) Descriptor() ([]byte, []int) {
+	return file_workos_index_v1_index_admin_proto_rawDescGZIP(), []int{14}
+}
+
+func (x *ListWorkspaceSourcesResponse) GetSources() []*IndexWorkspaceSource {
+	if x != nil {
+		return x.Sources
+	}
+	return nil
+}
+
+type SyncWorkspaceSourceRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	SourceId      string                 `protobuf:"bytes,1,opt,name=source_id,json=sourceId,proto3" json:"source_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SyncWorkspaceSourceRequest) Reset() {
+	*x = SyncWorkspaceSourceRequest{}
+	mi := &file_workos_index_v1_index_admin_proto_msgTypes[15]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SyncWorkspaceSourceRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SyncWorkspaceSourceRequest) ProtoMessage() {}
+
+func (x *SyncWorkspaceSourceRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_workos_index_v1_index_admin_proto_msgTypes[15]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SyncWorkspaceSourceRequest.ProtoReflect.Descriptor instead.
+func (*SyncWorkspaceSourceRequest) Descriptor() ([]byte, []int) {
+	return file_workos_index_v1_index_admin_proto_rawDescGZIP(), []int{15}
+}
+
+func (x *SyncWorkspaceSourceRequest) GetSourceId() string {
+	if x != nil {
+		return x.SourceId
+	}
+	return ""
+}
+
+type SyncWorkspaceSourceResponse struct {
+	state           protoimpl.MessageState `protogen:"open.v1"`
+	Source          *IndexWorkspaceSource  `protobuf:"bytes,1,opt,name=source,proto3" json:"source,omitempty"`
+	AppliedCount    int64                  `protobuf:"varint,2,opt,name=applied_count,json=appliedCount,proto3" json:"applied_count,omitempty"`
+	TombstonedCount int64                  `protobuf:"varint,3,opt,name=tombstoned_count,json=tombstonedCount,proto3" json:"tombstoned_count,omitempty"`
+	SkippedCount    int64                  `protobuf:"varint,4,opt,name=skipped_count,json=skippedCount,proto3" json:"skipped_count,omitempty"`
+	// Sanitized skip categories observed this pass (bounded).
+	SkippedReasons []string `protobuf:"bytes,5,rep,name=skipped_reasons,json=skippedReasons,proto3" json:"skipped_reasons,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
+}
+
+func (x *SyncWorkspaceSourceResponse) Reset() {
+	*x = SyncWorkspaceSourceResponse{}
+	mi := &file_workos_index_v1_index_admin_proto_msgTypes[16]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SyncWorkspaceSourceResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SyncWorkspaceSourceResponse) ProtoMessage() {}
+
+func (x *SyncWorkspaceSourceResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_workos_index_v1_index_admin_proto_msgTypes[16]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SyncWorkspaceSourceResponse.ProtoReflect.Descriptor instead.
+func (*SyncWorkspaceSourceResponse) Descriptor() ([]byte, []int) {
+	return file_workos_index_v1_index_admin_proto_rawDescGZIP(), []int{16}
+}
+
+func (x *SyncWorkspaceSourceResponse) GetSource() *IndexWorkspaceSource {
+	if x != nil {
+		return x.Source
+	}
+	return nil
+}
+
+func (x *SyncWorkspaceSourceResponse) GetAppliedCount() int64 {
+	if x != nil {
+		return x.AppliedCount
+	}
+	return 0
+}
+
+func (x *SyncWorkspaceSourceResponse) GetTombstonedCount() int64 {
+	if x != nil {
+		return x.TombstonedCount
+	}
+	return 0
+}
+
+func (x *SyncWorkspaceSourceResponse) GetSkippedCount() int64 {
+	if x != nil {
+		return x.SkippedCount
+	}
+	return 0
+}
+
+func (x *SyncWorkspaceSourceResponse) GetSkippedReasons() []string {
+	if x != nil {
+		return x.SkippedReasons
+	}
+	return nil
+}
+
 type StartIndexRebuildRequest_AllScope struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	unknownFields protoimpl.UnknownFields
@@ -737,7 +1170,7 @@ type StartIndexRebuildRequest_AllScope struct {
 
 func (x *StartIndexRebuildRequest_AllScope) Reset() {
 	*x = StartIndexRebuildRequest_AllScope{}
-	mi := &file_workos_index_v1_index_admin_proto_msgTypes[10]
+	mi := &file_workos_index_v1_index_admin_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -749,7 +1182,7 @@ func (x *StartIndexRebuildRequest_AllScope) String() string {
 func (*StartIndexRebuildRequest_AllScope) ProtoMessage() {}
 
 func (x *StartIndexRebuildRequest_AllScope) ProtoReflect() protoreflect.Message {
-	mi := &file_workos_index_v1_index_admin_proto_msgTypes[10]
+	mi := &file_workos_index_v1_index_admin_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -775,7 +1208,7 @@ type StartIndexRebuildRequest_ProjectScope struct {
 
 func (x *StartIndexRebuildRequest_ProjectScope) Reset() {
 	*x = StartIndexRebuildRequest_ProjectScope{}
-	mi := &file_workos_index_v1_index_admin_proto_msgTypes[11]
+	mi := &file_workos_index_v1_index_admin_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -787,7 +1220,7 @@ func (x *StartIndexRebuildRequest_ProjectScope) String() string {
 func (*StartIndexRebuildRequest_ProjectScope) ProtoMessage() {}
 
 func (x *StartIndexRebuildRequest_ProjectScope) ProtoReflect() protoreflect.Message {
-	mi := &file_workos_index_v1_index_admin_proto_msgTypes[11]
+	mi := &file_workos_index_v1_index_admin_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -883,12 +1316,48 @@ const file_workos_index_v1_index_admin_proto_rawDesc = "" +
 	"\x1cCancelIndexRebuildJobRequest\x12\x15\n" +
 	"\x06job_id\x18\x01 \x01(\tR\x05jobId\"X\n" +
 	"\x1dCancelIndexRebuildJobResponse\x127\n" +
-	"\x03job\x18\x01 \x01(\v2%.workos.index.v1.IndexAdminRebuildJobR\x03job2\xe0\x03\n" +
+	"\x03job\x18\x01 \x01(\v2%.workos.index.v1.IndexAdminRebuildJobR\x03job\"\x8e\x03\n" +
+	"\x14IndexWorkspaceSource\x12\x1b\n" +
+	"\tsource_id\x18\x01 \x01(\tR\bsourceId\x12\"\n" +
+	"\rowner_user_id\x18\x02 \x01(\tR\vownerUserId\x12\x1d\n" +
+	"\n" +
+	"project_id\x18\x03 \x01(\tR\tprojectId\x12\x1b\n" +
+	"\troot_path\x18\x04 \x01(\tR\brootPath\x12\x16\n" +
+	"\x06status\x18\x05 \x01(\tR\x06status\x12'\n" +
+	"\x0fdegraded_reason\x18\x06 \x01(\tR\x0edegradedReason\x12#\n" +
+	"\rindexed_count\x18\a \x01(\x03R\findexedCount\x12#\n" +
+	"\rskipped_count\x18\b \x01(\x03R\fskippedCount\x12)\n" +
+	"\x10tombstoned_count\x18\t \x01(\x03R\x0ftombstonedCount\x12$\n" +
+	"\x0elast_synced_at\x18\n" +
+	" \x01(\tR\flastSyncedAt\x12\x1d\n" +
+	"\n" +
+	"created_at\x18\v \x01(\tR\tcreatedAt\"\x80\x01\n" +
+	"\x1eRegisterWorkspaceSourceRequest\x12\"\n" +
+	"\rowner_user_id\x18\x01 \x01(\tR\vownerUserId\x12\x1d\n" +
+	"\n" +
+	"project_id\x18\x02 \x01(\tR\tprojectId\x12\x1b\n" +
+	"\troot_path\x18\x03 \x01(\tR\brootPath\"`\n" +
+	"\x1fRegisterWorkspaceSourceResponse\x12=\n" +
+	"\x06source\x18\x01 \x01(\v2%.workos.index.v1.IndexWorkspaceSourceR\x06source\"\x1d\n" +
+	"\x1bListWorkspaceSourcesRequest\"_\n" +
+	"\x1cListWorkspaceSourcesResponse\x12?\n" +
+	"\asources\x18\x01 \x03(\v2%.workos.index.v1.IndexWorkspaceSourceR\asources\"9\n" +
+	"\x1aSyncWorkspaceSourceRequest\x12\x1b\n" +
+	"\tsource_id\x18\x01 \x01(\tR\bsourceId\"\xfa\x01\n" +
+	"\x1bSyncWorkspaceSourceResponse\x12=\n" +
+	"\x06source\x18\x01 \x01(\v2%.workos.index.v1.IndexWorkspaceSourceR\x06source\x12#\n" +
+	"\rapplied_count\x18\x02 \x01(\x03R\fappliedCount\x12)\n" +
+	"\x10tombstoned_count\x18\x03 \x01(\x03R\x0ftombstonedCount\x12#\n" +
+	"\rskipped_count\x18\x04 \x01(\x03R\fskippedCount\x12'\n" +
+	"\x0fskipped_reasons\x18\x05 \x03(\tR\x0eskippedReasons2\xcb\x06\n" +
 	"\x11IndexAdminService\x12r\n" +
 	"\x13GetIndexAdminStatus\x12+.workos.index.v1.GetIndexAdminStatusRequest\x1a,.workos.index.v1.GetIndexAdminStatusResponse\"\x00\x12l\n" +
 	"\x11StartIndexRebuild\x12).workos.index.v1.StartIndexRebuildRequest\x1a*.workos.index.v1.StartIndexRebuildResponse\"\x00\x12o\n" +
 	"\x12GetIndexRebuildJob\x12*.workos.index.v1.GetIndexRebuildJobRequest\x1a+.workos.index.v1.GetIndexRebuildJobResponse\"\x00\x12x\n" +
-	"\x15CancelIndexRebuildJob\x12-.workos.index.v1.CancelIndexRebuildJobRequest\x1a..workos.index.v1.CancelIndexRebuildJobResponse\"\x00B=Z;github.com/yangtao121/workos/gen/go/workos/index/v1;indexv1b\x06proto3"
+	"\x15CancelIndexRebuildJob\x12-.workos.index.v1.CancelIndexRebuildJobRequest\x1a..workos.index.v1.CancelIndexRebuildJobResponse\"\x00\x12~\n" +
+	"\x17RegisterWorkspaceSource\x12/.workos.index.v1.RegisterWorkspaceSourceRequest\x1a0.workos.index.v1.RegisterWorkspaceSourceResponse\"\x00\x12u\n" +
+	"\x14ListWorkspaceSources\x12,.workos.index.v1.ListWorkspaceSourcesRequest\x1a-.workos.index.v1.ListWorkspaceSourcesResponse\"\x00\x12r\n" +
+	"\x13SyncWorkspaceSource\x12+.workos.index.v1.SyncWorkspaceSourceRequest\x1a,.workos.index.v1.SyncWorkspaceSourceResponse\"\x00B=Z;github.com/yangtao121/workos/gen/go/workos/index/v1;indexv1b\x06proto3"
 
 var (
 	file_workos_index_v1_index_admin_proto_rawDescOnce sync.Once
@@ -902,7 +1371,7 @@ func file_workos_index_v1_index_admin_proto_rawDescGZIP() []byte {
 	return file_workos_index_v1_index_admin_proto_rawDescData
 }
 
-var file_workos_index_v1_index_admin_proto_msgTypes = make([]protoimpl.MessageInfo, 12)
+var file_workos_index_v1_index_admin_proto_msgTypes = make([]protoimpl.MessageInfo, 19)
 var file_workos_index_v1_index_admin_proto_goTypes = []any{
 	(*IndexAdminGeneration)(nil),                  // 0: workos.index.v1.IndexAdminGeneration
 	(*IndexAdminRebuildJob)(nil),                  // 1: workos.index.v1.IndexAdminRebuildJob
@@ -914,33 +1383,49 @@ var file_workos_index_v1_index_admin_proto_goTypes = []any{
 	(*GetIndexRebuildJobResponse)(nil),            // 7: workos.index.v1.GetIndexRebuildJobResponse
 	(*CancelIndexRebuildJobRequest)(nil),          // 8: workos.index.v1.CancelIndexRebuildJobRequest
 	(*CancelIndexRebuildJobResponse)(nil),         // 9: workos.index.v1.CancelIndexRebuildJobResponse
-	(*StartIndexRebuildRequest_AllScope)(nil),     // 10: workos.index.v1.StartIndexRebuildRequest.AllScope
-	(*StartIndexRebuildRequest_ProjectScope)(nil), // 11: workos.index.v1.StartIndexRebuildRequest.ProjectScope
-	(*timestamppb.Timestamp)(nil),                 // 12: google.protobuf.Timestamp
+	(*IndexWorkspaceSource)(nil),                  // 10: workos.index.v1.IndexWorkspaceSource
+	(*RegisterWorkspaceSourceRequest)(nil),        // 11: workos.index.v1.RegisterWorkspaceSourceRequest
+	(*RegisterWorkspaceSourceResponse)(nil),       // 12: workos.index.v1.RegisterWorkspaceSourceResponse
+	(*ListWorkspaceSourcesRequest)(nil),           // 13: workos.index.v1.ListWorkspaceSourcesRequest
+	(*ListWorkspaceSourcesResponse)(nil),          // 14: workos.index.v1.ListWorkspaceSourcesResponse
+	(*SyncWorkspaceSourceRequest)(nil),            // 15: workos.index.v1.SyncWorkspaceSourceRequest
+	(*SyncWorkspaceSourceResponse)(nil),           // 16: workos.index.v1.SyncWorkspaceSourceResponse
+	(*StartIndexRebuildRequest_AllScope)(nil),     // 17: workos.index.v1.StartIndexRebuildRequest.AllScope
+	(*StartIndexRebuildRequest_ProjectScope)(nil), // 18: workos.index.v1.StartIndexRebuildRequest.ProjectScope
+	(*timestamppb.Timestamp)(nil),                 // 19: google.protobuf.Timestamp
 }
 var file_workos_index_v1_index_admin_proto_depIdxs = []int32{
-	12, // 0: workos.index.v1.IndexAdminRebuildJob.created_at:type_name -> google.protobuf.Timestamp
-	12, // 1: workos.index.v1.IndexAdminRebuildJob.updated_at:type_name -> google.protobuf.Timestamp
+	19, // 0: workos.index.v1.IndexAdminRebuildJob.created_at:type_name -> google.protobuf.Timestamp
+	19, // 1: workos.index.v1.IndexAdminRebuildJob.updated_at:type_name -> google.protobuf.Timestamp
 	0,  // 2: workos.index.v1.GetIndexAdminStatusResponse.active_generation:type_name -> workos.index.v1.IndexAdminGeneration
 	1,  // 3: workos.index.v1.GetIndexAdminStatusResponse.active_rebuild:type_name -> workos.index.v1.IndexAdminRebuildJob
-	10, // 4: workos.index.v1.StartIndexRebuildRequest.all:type_name -> workos.index.v1.StartIndexRebuildRequest.AllScope
-	11, // 5: workos.index.v1.StartIndexRebuildRequest.project:type_name -> workos.index.v1.StartIndexRebuildRequest.ProjectScope
+	17, // 4: workos.index.v1.StartIndexRebuildRequest.all:type_name -> workos.index.v1.StartIndexRebuildRequest.AllScope
+	18, // 5: workos.index.v1.StartIndexRebuildRequest.project:type_name -> workos.index.v1.StartIndexRebuildRequest.ProjectScope
 	1,  // 6: workos.index.v1.StartIndexRebuildResponse.job:type_name -> workos.index.v1.IndexAdminRebuildJob
 	1,  // 7: workos.index.v1.GetIndexRebuildJobResponse.job:type_name -> workos.index.v1.IndexAdminRebuildJob
 	1,  // 8: workos.index.v1.CancelIndexRebuildJobResponse.job:type_name -> workos.index.v1.IndexAdminRebuildJob
-	2,  // 9: workos.index.v1.IndexAdminService.GetIndexAdminStatus:input_type -> workos.index.v1.GetIndexAdminStatusRequest
-	4,  // 10: workos.index.v1.IndexAdminService.StartIndexRebuild:input_type -> workos.index.v1.StartIndexRebuildRequest
-	6,  // 11: workos.index.v1.IndexAdminService.GetIndexRebuildJob:input_type -> workos.index.v1.GetIndexRebuildJobRequest
-	8,  // 12: workos.index.v1.IndexAdminService.CancelIndexRebuildJob:input_type -> workos.index.v1.CancelIndexRebuildJobRequest
-	3,  // 13: workos.index.v1.IndexAdminService.GetIndexAdminStatus:output_type -> workos.index.v1.GetIndexAdminStatusResponse
-	5,  // 14: workos.index.v1.IndexAdminService.StartIndexRebuild:output_type -> workos.index.v1.StartIndexRebuildResponse
-	7,  // 15: workos.index.v1.IndexAdminService.GetIndexRebuildJob:output_type -> workos.index.v1.GetIndexRebuildJobResponse
-	9,  // 16: workos.index.v1.IndexAdminService.CancelIndexRebuildJob:output_type -> workos.index.v1.CancelIndexRebuildJobResponse
-	13, // [13:17] is the sub-list for method output_type
-	9,  // [9:13] is the sub-list for method input_type
-	9,  // [9:9] is the sub-list for extension type_name
-	9,  // [9:9] is the sub-list for extension extendee
-	0,  // [0:9] is the sub-list for field type_name
+	10, // 9: workos.index.v1.RegisterWorkspaceSourceResponse.source:type_name -> workos.index.v1.IndexWorkspaceSource
+	10, // 10: workos.index.v1.ListWorkspaceSourcesResponse.sources:type_name -> workos.index.v1.IndexWorkspaceSource
+	10, // 11: workos.index.v1.SyncWorkspaceSourceResponse.source:type_name -> workos.index.v1.IndexWorkspaceSource
+	2,  // 12: workos.index.v1.IndexAdminService.GetIndexAdminStatus:input_type -> workos.index.v1.GetIndexAdminStatusRequest
+	4,  // 13: workos.index.v1.IndexAdminService.StartIndexRebuild:input_type -> workos.index.v1.StartIndexRebuildRequest
+	6,  // 14: workos.index.v1.IndexAdminService.GetIndexRebuildJob:input_type -> workos.index.v1.GetIndexRebuildJobRequest
+	8,  // 15: workos.index.v1.IndexAdminService.CancelIndexRebuildJob:input_type -> workos.index.v1.CancelIndexRebuildJobRequest
+	11, // 16: workos.index.v1.IndexAdminService.RegisterWorkspaceSource:input_type -> workos.index.v1.RegisterWorkspaceSourceRequest
+	13, // 17: workos.index.v1.IndexAdminService.ListWorkspaceSources:input_type -> workos.index.v1.ListWorkspaceSourcesRequest
+	15, // 18: workos.index.v1.IndexAdminService.SyncWorkspaceSource:input_type -> workos.index.v1.SyncWorkspaceSourceRequest
+	3,  // 19: workos.index.v1.IndexAdminService.GetIndexAdminStatus:output_type -> workos.index.v1.GetIndexAdminStatusResponse
+	5,  // 20: workos.index.v1.IndexAdminService.StartIndexRebuild:output_type -> workos.index.v1.StartIndexRebuildResponse
+	7,  // 21: workos.index.v1.IndexAdminService.GetIndexRebuildJob:output_type -> workos.index.v1.GetIndexRebuildJobResponse
+	9,  // 22: workos.index.v1.IndexAdminService.CancelIndexRebuildJob:output_type -> workos.index.v1.CancelIndexRebuildJobResponse
+	12, // 23: workos.index.v1.IndexAdminService.RegisterWorkspaceSource:output_type -> workos.index.v1.RegisterWorkspaceSourceResponse
+	14, // 24: workos.index.v1.IndexAdminService.ListWorkspaceSources:output_type -> workos.index.v1.ListWorkspaceSourcesResponse
+	16, // 25: workos.index.v1.IndexAdminService.SyncWorkspaceSource:output_type -> workos.index.v1.SyncWorkspaceSourceResponse
+	19, // [19:26] is the sub-list for method output_type
+	12, // [12:19] is the sub-list for method input_type
+	12, // [12:12] is the sub-list for extension type_name
+	12, // [12:12] is the sub-list for extension extendee
+	0,  // [0:12] is the sub-list for field type_name
 }
 
 func init() { file_workos_index_v1_index_admin_proto_init() }
@@ -958,7 +1443,7 @@ func file_workos_index_v1_index_admin_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_workos_index_v1_index_admin_proto_rawDesc), len(file_workos_index_v1_index_admin_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   12,
+			NumMessages:   19,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

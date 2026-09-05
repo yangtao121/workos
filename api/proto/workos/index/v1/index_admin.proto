@@ -99,9 +99,59 @@ message CancelIndexRebuildJobResponse {
   IndexAdminRebuildJob job = 1;
 }
 
+message IndexWorkspaceSource {
+  string source_id = 1;
+  string owner_user_id = 2;
+  string project_id = 3;
+  // Mount root as explicitly bound by the owner (safe operational fact).
+  string root_path = 4;
+  // active | degraded | stopped. Unknown values fail closed at the CLI.
+  string status = 5;
+  // Sanitized failure category; empty unless degraded.
+  string degraded_reason = 6;
+  int64 indexed_count = 7;
+  int64 skipped_count = 8;
+  int64 tombstoned_count = 9;
+  // UTC RFC 3339 microseconds; empty before the first sync.
+  string last_synced_at = 10;
+  string created_at = 11;
+}
+
+message RegisterWorkspaceSourceRequest {
+  string owner_user_id = 1;
+  string project_id = 2;
+  string root_path = 3;
+}
+
+message RegisterWorkspaceSourceResponse {
+  IndexWorkspaceSource source = 1;
+}
+
+message ListWorkspaceSourcesRequest {}
+
+message ListWorkspaceSourcesResponse {
+  repeated IndexWorkspaceSource sources = 1;
+}
+
+message SyncWorkspaceSourceRequest {
+  string source_id = 1;
+}
+
+message SyncWorkspaceSourceResponse {
+  IndexWorkspaceSource source = 1;
+  int64 applied_count = 2;
+  int64 tombstoned_count = 3;
+  int64 skipped_count = 4;
+  // Sanitized skip categories observed this pass (bounded).
+  repeated string skipped_reasons = 5;
+}
+
 service IndexAdminService {
   rpc GetIndexAdminStatus(GetIndexAdminStatusRequest) returns (GetIndexAdminStatusResponse) {}
   rpc StartIndexRebuild(StartIndexRebuildRequest) returns (StartIndexRebuildResponse) {}
   rpc GetIndexRebuildJob(GetIndexRebuildJobRequest) returns (GetIndexRebuildJobResponse) {}
   rpc CancelIndexRebuildJob(CancelIndexRebuildJobRequest) returns (CancelIndexRebuildJobResponse) {}
+  rpc RegisterWorkspaceSource(RegisterWorkspaceSourceRequest) returns (RegisterWorkspaceSourceResponse) {}
+  rpc ListWorkspaceSources(ListWorkspaceSourcesRequest) returns (ListWorkspaceSourcesResponse) {}
+  rpc SyncWorkspaceSource(SyncWorkspaceSourceRequest) returns (SyncWorkspaceSourceResponse) {}
 }

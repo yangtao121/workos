@@ -183,6 +183,15 @@ func (r *Repository) ApplyResolvedSource(ctx context.Context, source ports.Resol
 		!domain.ValidDigest(requestDigest) || source.OccurredAt.IsZero() {
 		return domain.ErrInvalid
 	}
+	var sourceType string
+	switch source.Operation {
+	case "review-artifact.upsert":
+		sourceType = domain.SourceReviewArtifact
+	case "workspace.upsert":
+		sourceType = domain.SourceWorkspaceFile
+	default:
+		sourceType = ""
+	}
 	switch outcome {
 	case domain.OutcomeApplied:
 		document := domain.Document{
@@ -192,7 +201,7 @@ func (r *Repository) ApplyResolvedSource(ctx context.Context, source ports.Resol
 			Content: string(source.Content), SourceCreatedAt: source.CreatedAt,
 			LastPublication: source.PublicationID, IndexedAt: now,
 		}
-		if source.Operation != "review-artifact.upsert" || domain.ValidStoredDocument(document) != nil {
+		if sourceType == "" || domain.ValidStoredDocument(document) != nil {
 			return domain.ErrInvalid
 		}
 	case domain.OutcomeTombstoned:
@@ -283,6 +292,8 @@ func (r *Repository) ApplyResolvedSource(ctx context.Context, source ports.Resol
 				ProjectionGeneration: generation,
 				OwnerUserID:          source.OwnerUserID,
 				ProjectID:            source.ProjectID,
+				SourceType:           sourceType,
+				SourceOperation:      source.Operation,
 				SourceID:             source.ArtifactID,
 				SourceDigest:         source.Digest,
 				ArtifactType:         source.ArtifactType,
@@ -413,10 +424,11 @@ func (r *Repository) Search(ctx context.Context, query domain.SearchQuery) (doma
 			return domain.SearchPage{}, domain.ErrCorrupt
 		}
 		page.Hits = append(page.Hits, domain.SearchHit{
-			ContextRef:   domain.ContextRefString(row.SourceID, row.SourceDigest),
+			ContextRef:   domain.ContextRef(row.SourceType, row.SourceID, row.SourceDigest),
 			Excerpt:      domain.BuildExcerpt(domain.ExcerptRequest{Content: row.Content, Terms: queryTerms(query.CanonicalQuery)}),
 			Score:        float64(row.Score),
 			ArtifactID:   row.SourceID,
+			SourceType:   row.SourceType,
 			ArtifactType: row.ArtifactType,
 			Digest:       row.SourceDigest,
 			Title:        row.Title,
@@ -570,10 +582,11 @@ func (r *Repository) SearchHybrid(ctx context.Context, query domain.SearchQuery)
 			return domain.SearchPage{}, domain.ErrCorrupt
 		}
 		page.Hits = append(page.Hits, domain.SearchHit{
-			ContextRef:   domain.ContextRefString(row.SourceID, row.SourceDigest),
+			ContextRef:   domain.ContextRef(row.SourceType, row.SourceID, row.SourceDigest),
 			Excerpt:      domain.BuildExcerpt(domain.ExcerptRequest{Content: row.Content, Terms: queryTerms(query.CanonicalQuery)}),
 			Score:        item.fused,
 			ArtifactID:   row.SourceID,
+			SourceType:   row.SourceType,
 			ArtifactType: row.ArtifactType,
 			Digest:       row.SourceDigest,
 			Title:        row.Title,
@@ -644,4 +657,165 @@ func (r *Repository) DocumentStatus(ctx context.Context, ownerUserID, projectID,
 		return ports.DocumentStatus{}, domain.ErrCorrupt
 	}
 	return ports.DocumentStatus{Known: true, Digest: row.SourceDigest, Tombstoned: row.TombstonedAt != nil}, nil
+}
+
+// InsertWorkspaceSource binds (or rebinds) the owner's mount for one project
+// and reactivates it. One scope carries at most one source by durable
+// constraint.
+func (r *Repository) InsertWorkspaceSource(ctx context.Context, source ports.WorkspaceSource) (ports.WorkspaceSource, error) {
+	if !domain.ValidUUID(source.OwnerUserID) || !domain.ValidUUID(source.ProjectID) ||
+		!domain.ValidWorkspaceRoot(source.RootPath) {
+		return ports.WorkspaceSource{}, domain.ErrInvalid
+	}
+	now := canonical(time.Now().UTC())
+	row, err := r.queries.InsertWorkspaceSource(ctx, indexerdb.InsertWorkspaceSourceParams{
+		ID: source.ID, OwnerUserID: source.OwnerUserID, ProjectID: source.ProjectID,
+		RootPath: source.RootPath, CreatedAt: now, UpdatedAt: now,
+	})
+	if err != nil {
+		return ports.WorkspaceSource{}, storeError("insert workspace source", err)
+	}
+	return workspaceSourceRow(row), nil
+}
+
+// GetWorkspaceSource reads one bound source; a miss is ErrNotFound.
+func (r *Repository) GetWorkspaceSource(ctx context.Context, id string) (ports.WorkspaceSource, error) {
+	if !domain.ValidUUID(id) {
+		return ports.WorkspaceSource{}, domain.ErrInvalid
+	}
+	row, err := r.queries.GetWorkspaceSource(ctx, id)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return ports.WorkspaceSource{}, domain.ErrNotFound
+	}
+	if err != nil {
+		return ports.WorkspaceSource{}, storeError("read workspace source", err)
+	}
+	return workspaceSourceRow(row), nil
+}
+
+// ListWorkspaceSources reads every bound source.
+func (r *Repository) ListWorkspaceSources(ctx context.Context) ([]ports.WorkspaceSource, error) {
+	rows, err := r.queries.ListWorkspaceSources(ctx)
+	if err != nil {
+		return nil, storeError("list workspace sources", err)
+	}
+	sources := make([]ports.WorkspaceSource, 0, len(rows))
+	for _, row := range rows {
+		sources = append(sources, workspaceSourceRow(row))
+	}
+	return sources, nil
+}
+
+// SetWorkspaceSourceStatus records a lifecycle transition with its sanitized
+// reason category.
+func (r *Repository) SetWorkspaceSourceStatus(ctx context.Context, id, status, degradedReason string, now time.Time) error {
+	if !domain.ValidUUID(id) || !domain.ValidWorkspaceSourceStatus(status) {
+		return domain.ErrInvalid
+	}
+	if status == domain.WorkspaceDegraded && degradedReason == "" {
+		return domain.ErrInvalid
+	}
+	if err := r.queries.SetWorkspaceSourceStatus(ctx, indexerdb.SetWorkspaceSourceStatusParams{
+		ID: id, Status: status, DegradedReason: degradedReason, UpdatedAt: canonical(now),
+	}); err != nil {
+		return storeError("set workspace source status", err)
+	}
+	return nil
+}
+
+// RecordWorkspaceSync persists the bounded per-pass outcome facts.
+func (r *Repository) RecordWorkspaceSync(ctx context.Context, id string, indexed, skipped, tombstoned int64, now time.Time) error {
+	if !domain.ValidUUID(id) || indexed < 0 || skipped < 0 || tombstoned < 0 {
+		return domain.ErrInvalid
+	}
+	if err := r.queries.RecordWorkspaceSync(ctx, indexerdb.RecordWorkspaceSyncParams{
+		ID: id, IndexedCount: indexed, SkippedCount: skipped,
+		TombstonedCount: tombstoned, LastSyncedAt: timePtr(canonical(now)), UpdatedAt: canonical(now),
+	}); err != nil {
+		return storeError("record workspace sync", err)
+	}
+	return nil
+}
+
+// ConvergeWorkspacePass projects one bounded sync pass: every walked file is
+// upserted with a fresh pass publication, and live workspace documents that
+// the walk no longer sees are tombstoned — in one local transaction per
+// writable generation set. The pass is idempotent by construction (digest
+// upserts plus a set-difference tombstone), so the pull-based sync carries
+// no receipt machinery.
+func (r *Repository) ConvergeWorkspacePass(ctx context.Context, source ports.WorkspaceSource, files []ports.MountFile, passPublication func() string, now time.Time) (applied, tombstoned int64, err error) {
+	if !domain.ValidUUID(source.OwnerUserID) || !domain.ValidUUID(source.ProjectID) || passPublication == nil {
+		return 0, 0, domain.ErrInvalid
+	}
+	writable, err := r.WritableGenerationIDs(ctx, source.OwnerUserID, source.ProjectID)
+	if err != nil {
+		return 0, 0, err
+	}
+	if len(writable) == 0 {
+		return 0, 0, domain.ErrCorrupt
+	}
+	for _, file := range files {
+		// One fresh monotonic publication per file: receipt arbitration keys
+		// on (publication, generation), so a shared pass id would collapse
+		// every file after the first into a replay. The canonical effect
+		// digest is the file content digest.
+		resolved := ports.ResolvedSource{
+			Verdict: "resolved", Operation: "workspace.upsert",
+			OwnerUserID: source.OwnerUserID, ProjectID: source.ProjectID,
+			ArtifactID: file.SourceID, ArtifactType: "workspace.text.v1",
+			Digest: file.Digest, Title: file.Title, Content: file.Content,
+			CreatedAt: now, PublicationID: passPublication(), OccurredAt: now,
+		}
+		if applyErr := r.ApplyResolvedSource(ctx, resolved, domain.OutcomeApplied,
+			file.Digest, now); applyErr != nil {
+			return applied, tombstoned, applyErr
+		}
+		applied++
+	}
+	// Set-difference tombstones per writable generation: a live workspace
+	// document the pass no longer sees leaves the search projection.
+	kept := make(map[string]bool, len(files))
+	for _, file := range files {
+		kept[file.SourceID] = true
+	}
+	for _, generation := range writable {
+		live, listErr := r.queries.ListLiveWorkspaceDocuments(ctx, indexerdb.ListLiveWorkspaceDocumentsParams{
+			GenerationID: generation, OwnerUserID: source.OwnerUserID, ProjectID: source.ProjectID,
+		})
+		if listErr != nil {
+			return applied, tombstoned, storeError("list live workspace documents", listErr)
+		}
+		for _, row := range live {
+			if kept[row.SourceID] {
+				continue
+			}
+			rows, tombErr := r.queries.TombstoneWorkspaceDocument(ctx, indexerdb.TombstoneWorkspaceDocumentParams{
+				GenerationID: generation, OwnerUserID: source.OwnerUserID,
+				ProjectID: source.ProjectID, SourceID: row.SourceID,
+				TombstonedAt: timePtr(canonical(now)), UpdatedAt: canonical(now),
+			})
+			if tombErr != nil {
+				return applied, tombstoned, storeError("tombstone workspace document", tombErr)
+			}
+			if rows != 1 {
+				return applied, tombstoned, domain.ErrCorrupt
+			}
+			tombstoned++
+		}
+	}
+	return applied, tombstoned, nil
+}
+
+func workspaceSourceRow(row indexerdb.WorkosIndexWorkspaceSource) ports.WorkspaceSource {
+	source := ports.WorkspaceSource{
+		ID: row.ID, OwnerUserID: row.OwnerUserID, ProjectID: row.ProjectID,
+		RootPath: row.RootPath, Status: row.Status, DegradedReason: row.DegradedReason,
+		IndexedCount: row.IndexedCount, SkippedCount: row.SkippedCount,
+		TombstonedCount: row.TombstonedCount,
+		CreatedAt:       row.CreatedAt, UpdatedAt: row.UpdatedAt,
+	}
+	if row.LastSyncedAt != nil {
+		source.LastSyncedAt = *row.LastSyncedAt
+	}
+	return source
 }

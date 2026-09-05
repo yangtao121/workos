@@ -101,3 +101,19 @@ type WorkosIndexRebuildJobRequest struct {
 	JobID          string
 	CreatedAt      time.Time
 }
+
+// owner: indexer; owner-bound local directory mounts ingested as workspace documents (ADR-0017 §4)
+type WorkosIndexWorkspaceSource struct {
+	ID              string
+	OwnerUserID     string
+	ProjectID       string
+	RootPath        string
+	Status          string
+	DegradedReason  string
+	IndexedCount    int64
+	SkippedCount    int64
+	TombstonedCount int64
+	LastSyncedAt    *time.Time
+	CreatedAt       time.Time
+	UpdatedAt       time.Time
+}

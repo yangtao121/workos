@@ -547,6 +547,34 @@ func (q *Queries) GetReceipt(ctx context.Context, arg GetReceiptParams) (WorkosI
 	return i, err
 }
 
+const getWorkspaceSource = `-- name: GetWorkspaceSource :one
+SELECT id, owner_user_id, project_id, root_path, status, degraded_reason,
+       indexed_count, skipped_count, tombstoned_count, last_synced_at,
+       created_at, updated_at
+FROM workos_index.workspace_sources
+WHERE id = $1::uuid
+`
+
+func (q *Queries) GetWorkspaceSource(ctx context.Context, id string) (WorkosIndexWorkspaceSource, error) {
+	row := q.db.QueryRow(ctx, getWorkspaceSource, id)
+	var i WorkosIndexWorkspaceSource
+	err := row.Scan(
+		&i.ID,
+		&i.OwnerUserID,
+		&i.ProjectID,
+		&i.RootPath,
+		&i.Status,
+		&i.DegradedReason,
+		&i.IndexedCount,
+		&i.SkippedCount,
+		&i.TombstonedCount,
+		&i.LastSyncedAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const insertGeneration = `-- name: InsertGeneration :exec
 INSERT INTO workos_index.projection_generations (id, scope, owner_user_id, project_id, status, created_at)
 VALUES ($1, $2, $3, $4, $5, $6)
@@ -739,6 +767,63 @@ func (q *Queries) InsertRebuildJobRequest(ctx context.Context, arg InsertRebuild
 	return err
 }
 
+const insertWorkspaceSource = `-- name: InsertWorkspaceSource :one
+
+INSERT INTO workos_index.workspace_sources (
+    id, owner_user_id, project_id, root_path, status, created_at, updated_at
+) VALUES (
+    $1, $2, $3,
+    $4, 'active', $5, $6
+)
+ON CONFLICT (owner_user_id, project_id) DO UPDATE
+SET root_path = EXCLUDED.root_path,
+    status = 'active',
+    degraded_reason = '',
+    updated_at = EXCLUDED.updated_at
+RETURNING id, owner_user_id, project_id, root_path, status, degraded_reason,
+          indexed_count, skipped_count, tombstoned_count, last_synced_at,
+          created_at, updated_at
+`
+
+type InsertWorkspaceSourceParams struct {
+	ID          string
+	OwnerUserID string
+	ProjectID   string
+	RootPath    string
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
+}
+
+// Workspace file sources (ADR-0017 §4). Owner-bound mounts live in the same
+// indexer-owned schema; re-registering a scope rebinds the root and
+// reactivates the source.
+func (q *Queries) InsertWorkspaceSource(ctx context.Context, arg InsertWorkspaceSourceParams) (WorkosIndexWorkspaceSource, error) {
+	row := q.db.QueryRow(ctx, insertWorkspaceSource,
+		arg.ID,
+		arg.OwnerUserID,
+		arg.ProjectID,
+		arg.RootPath,
+		arg.CreatedAt,
+		arg.UpdatedAt,
+	)
+	var i WorkosIndexWorkspaceSource
+	err := row.Scan(
+		&i.ID,
+		&i.OwnerUserID,
+		&i.ProjectID,
+		&i.RootPath,
+		&i.Status,
+		&i.DegradedReason,
+		&i.IndexedCount,
+		&i.SkippedCount,
+		&i.TombstonedCount,
+		&i.LastSyncedAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const listIndexJobSources = `-- name: ListIndexJobSources :many
 SELECT job_id, artifact_id, expected_digest, state, outcome, updated_at
 FROM workos_index.index_job_sources
@@ -761,6 +846,88 @@ func (q *Queries) ListIndexJobSources(ctx context.Context, jobID string) ([]Work
 			&i.ExpectedDigest,
 			&i.State,
 			&i.Outcome,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listLiveWorkspaceDocuments = `-- name: ListLiveWorkspaceDocuments :many
+SELECT source_id, source_digest
+FROM workos_index.documents
+WHERE projection_generation = $1
+  AND owner_user_id = $2
+  AND project_id = $3
+  AND source_type = 'workspace.file.v1'
+  AND tombstoned_at IS NULL
+`
+
+type ListLiveWorkspaceDocumentsParams struct {
+	GenerationID string
+	OwnerUserID  string
+	ProjectID    string
+}
+
+type ListLiveWorkspaceDocumentsRow struct {
+	SourceID     string
+	SourceDigest string
+}
+
+func (q *Queries) ListLiveWorkspaceDocuments(ctx context.Context, arg ListLiveWorkspaceDocumentsParams) ([]ListLiveWorkspaceDocumentsRow, error) {
+	rows, err := q.db.Query(ctx, listLiveWorkspaceDocuments, arg.GenerationID, arg.OwnerUserID, arg.ProjectID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListLiveWorkspaceDocumentsRow
+	for rows.Next() {
+		var i ListLiveWorkspaceDocumentsRow
+		if err := rows.Scan(&i.SourceID, &i.SourceDigest); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listWorkspaceSources = `-- name: ListWorkspaceSources :many
+SELECT id, owner_user_id, project_id, root_path, status, degraded_reason,
+       indexed_count, skipped_count, tombstoned_count, last_synced_at,
+       created_at, updated_at
+FROM workos_index.workspace_sources
+ORDER BY created_at, id
+`
+
+func (q *Queries) ListWorkspaceSources(ctx context.Context) ([]WorkosIndexWorkspaceSource, error) {
+	rows, err := q.db.Query(ctx, listWorkspaceSources)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []WorkosIndexWorkspaceSource
+	for rows.Next() {
+		var i WorkosIndexWorkspaceSource
+		if err := rows.Scan(
+			&i.ID,
+			&i.OwnerUserID,
+			&i.ProjectID,
+			&i.RootPath,
+			&i.Status,
+			&i.DegradedReason,
+			&i.IndexedCount,
+			&i.SkippedCount,
+			&i.TombstonedCount,
+			&i.LastSyncedAt,
+			&i.CreatedAt,
 			&i.UpdatedAt,
 		); err != nil {
 			return nil, err
@@ -810,6 +977,37 @@ func (q *Queries) PromoteGeneration(ctx context.Context, arg PromoteGenerationPa
 	return result.RowsAffected(), nil
 }
 
+const recordWorkspaceSync = `-- name: RecordWorkspaceSync :exec
+UPDATE workos_index.workspace_sources
+SET indexed_count = $1,
+    skipped_count = $2,
+    tombstoned_count = $3,
+    last_synced_at = $4,
+    updated_at = $5
+WHERE id = $6::uuid
+`
+
+type RecordWorkspaceSyncParams struct {
+	IndexedCount    int64
+	SkippedCount    int64
+	TombstonedCount int64
+	LastSyncedAt    *time.Time
+	UpdatedAt       time.Time
+	ID              string
+}
+
+func (q *Queries) RecordWorkspaceSync(ctx context.Context, arg RecordWorkspaceSyncParams) error {
+	_, err := q.db.Exec(ctx, recordWorkspaceSync,
+		arg.IndexedCount,
+		arg.SkippedCount,
+		arg.TombstonedCount,
+		arg.LastSyncedAt,
+		arg.UpdatedAt,
+		arg.ID,
+	)
+	return err
+}
+
 const searchFreshness = `-- name: SearchFreshness :one
 SELECT
     COALESCE((SELECT max(indexed_at) FROM workos_index.documents
@@ -829,7 +1027,7 @@ WITH q AS (
     SELECT websearch_to_tsquery('simple', $5) AS tsq
 ),
 scored AS (
-    SELECT d.source_id, d.source_digest, d.artifact_type, d.title, d.source_created_at, d.content,
+    SELECT d.source_id, d.source_digest, d.source_type, d.artifact_type, d.title, d.source_created_at, d.content,
            d.last_publication_id, d.indexed_at,
            ((CASE WHEN d.title_tsv @@ q.tsq THEN ts_rank(d.title_tsv, q.tsq) ELSE 0.0::double precision END) * 2.0
            + (CASE WHEN d.body_tsv @@ q.tsq THEN ts_rank(d.body_tsv, q.tsq) ELSE 0.0::double precision END))::double precision AS score
@@ -841,7 +1039,7 @@ scored AS (
       AND d.indexed_at <= $9
       AND (d.title_tsv @@ q.tsq OR d.body_tsv @@ q.tsq)
 )
-SELECT source_id, source_digest, artifact_type, title, source_created_at, content,
+SELECT source_id, source_digest, source_type, artifact_type, title, source_created_at, content,
        last_publication_id, indexed_at, score
 FROM scored
 WHERE score > 0
@@ -869,6 +1067,7 @@ type SearchProjectDocumentsParams struct {
 type SearchProjectDocumentsRow struct {
 	SourceID          string
 	SourceDigest      string
+	SourceType        string
 	ArtifactType      string
 	Title             string
 	SourceCreatedAt   time.Time
@@ -906,6 +1105,7 @@ func (q *Queries) SearchProjectDocuments(ctx context.Context, arg SearchProjectD
 		if err := rows.Scan(
 			&i.SourceID,
 			&i.SourceDigest,
+			&i.SourceType,
 			&i.ArtifactType,
 			&i.Title,
 			&i.SourceCreatedAt,
@@ -928,7 +1128,7 @@ const searchProjectDocumentsHybrid = `-- name: SearchProjectDocumentsHybrid :man
 WITH q AS (
     SELECT websearch_to_tsquery('simple', $6) AS tsq
 )
-SELECT d.source_id, d.source_digest, d.artifact_type, d.title, d.source_created_at, d.content,
+SELECT d.source_id, d.source_digest, d.source_type, d.artifact_type, d.title, d.source_created_at, d.content,
        d.last_publication_id, d.indexed_at, d.embedding,
        ((CASE WHEN d.title_tsv @@ q.tsq THEN ts_rank(d.title_tsv, q.tsq) ELSE 0.0::double precision END) * 2.0
        + (CASE WHEN d.body_tsv @@ q.tsq THEN ts_rank(d.body_tsv, q.tsq) ELSE 0.0::double precision END))::double precision AS lexical_score
@@ -954,6 +1154,7 @@ type SearchProjectDocumentsHybridParams struct {
 type SearchProjectDocumentsHybridRow struct {
 	SourceID          string
 	SourceDigest      string
+	SourceType        string
 	ArtifactType      string
 	Title             string
 	SourceCreatedAt   time.Time
@@ -989,6 +1190,7 @@ func (q *Queries) SearchProjectDocumentsHybrid(ctx context.Context, arg SearchPr
 		if err := rows.Scan(
 			&i.SourceID,
 			&i.SourceDigest,
+			&i.SourceType,
 			&i.ArtifactType,
 			&i.Title,
 			&i.SourceCreatedAt,
@@ -1006,6 +1208,30 @@ func (q *Queries) SearchProjectDocumentsHybrid(ctx context.Context, arg SearchPr
 		return nil, err
 	}
 	return items, nil
+}
+
+const setWorkspaceSourceStatus = `-- name: SetWorkspaceSourceStatus :exec
+UPDATE workos_index.workspace_sources
+SET status = $1, degraded_reason = $2,
+    updated_at = $3
+WHERE id = $4::uuid
+`
+
+type SetWorkspaceSourceStatusParams struct {
+	Status         string
+	DegradedReason string
+	UpdatedAt      time.Time
+	ID             string
+}
+
+func (q *Queries) SetWorkspaceSourceStatus(ctx context.Context, arg SetWorkspaceSourceStatusParams) error {
+	_, err := q.db.Exec(ctx, setWorkspaceSourceStatus,
+		arg.Status,
+		arg.DegradedReason,
+		arg.UpdatedAt,
+		arg.ID,
+	)
+	return err
 }
 
 const tombstoneGenerationDocuments = `-- name: TombstoneGenerationDocuments :execrows
@@ -1061,6 +1287,40 @@ func (q *Queries) TombstoneProjectDocuments(ctx context.Context, arg TombstonePr
 		arg.ProjectionGeneration,
 		arg.OwnerUserID,
 		arg.ProjectID,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const tombstoneWorkspaceDocument = `-- name: TombstoneWorkspaceDocument :execrows
+UPDATE workos_index.documents
+SET tombstoned_at = $1, updated_at = $2
+WHERE projection_generation = $3
+  AND owner_user_id = $4
+  AND project_id = $5
+  AND source_id = $6::uuid
+  AND tombstoned_at IS NULL
+`
+
+type TombstoneWorkspaceDocumentParams struct {
+	TombstonedAt *time.Time
+	UpdatedAt    time.Time
+	GenerationID string
+	OwnerUserID  string
+	ProjectID    string
+	SourceID     string
+}
+
+func (q *Queries) TombstoneWorkspaceDocument(ctx context.Context, arg TombstoneWorkspaceDocumentParams) (int64, error) {
+	result, err := q.db.Exec(ctx, tombstoneWorkspaceDocument,
+		arg.TombstonedAt,
+		arg.UpdatedAt,
+		arg.GenerationID,
+		arg.OwnerUserID,
+		arg.ProjectID,
+		arg.SourceID,
 	)
 	if err != nil {
 		return 0, err
@@ -1292,11 +1552,11 @@ INSERT INTO workos_index.documents (
     last_publication_id, source_operation, indexed_at, updated_at, embedding
 ) VALUES (
     $1, $2, $3,
-    'artifact.review.v1', $4, $5,
-    $6, $7, $8,
-    $9, $10,
-    'review-artifact.upsert', $11, $12,
-    $13
+    $4, $5, $6,
+    $7, $8, $9,
+    $10, $11,
+    $12, $13, $14,
+    $15
 )
 ON CONFLICT (projection_generation, owner_user_id, project_id, source_id) DO UPDATE
 SET source_digest = EXCLUDED.source_digest,
@@ -1317,6 +1577,7 @@ type UpsertSearchDocumentParams struct {
 	ProjectionGeneration string
 	OwnerUserID          string
 	ProjectID            string
+	SourceType           string
 	SourceID             string
 	SourceDigest         string
 	ArtifactType         string
@@ -1324,6 +1585,7 @@ type UpsertSearchDocumentParams struct {
 	Content              string
 	SourceCreatedAt      time.Time
 	LastPublicationID    string
+	SourceOperation      string
 	IndexedAt            time.Time
 	UpdatedAt            time.Time
 	Embedding            []float32
@@ -1334,6 +1596,7 @@ func (q *Queries) UpsertSearchDocument(ctx context.Context, arg UpsertSearchDocu
 		arg.ProjectionGeneration,
 		arg.OwnerUserID,
 		arg.ProjectID,
+		arg.SourceType,
 		arg.SourceID,
 		arg.SourceDigest,
 		arg.ArtifactType,
@@ -1341,6 +1604,7 @@ func (q *Queries) UpsertSearchDocument(ctx context.Context, arg UpsertSearchDocu
 		arg.Content,
 		arg.SourceCreatedAt,
 		arg.LastPublicationID,
+		arg.SourceOperation,
 		arg.IndexedAt,
 		arg.UpdatedAt,
 		arg.Embedding,

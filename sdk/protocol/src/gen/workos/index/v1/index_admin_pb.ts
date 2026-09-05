@@ -18,7 +18,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file workos/index/v1/index_admin.proto.
  */
 export const file_workos_index_v1_index_admin: GenFile = /*@__PURE__*/
-  fileDesc("CiF3b3Jrb3MvaW5kZXgvdjEvaW5kZXhfYWRtaW4ucHJvdG8SD3dvcmtvcy5pbmRleC52MSLRAQoUSW5kZXhBZG1pbkdlbmVyYXRpb24SFQoNZ2VuZXJhdGlvbl9pZBgBIAEoCRINCgVzY29wZRgCIAEoCRIVCg1vd25lcl91c2VyX2lkGAMgASgJEhIKCnByb2plY3RfaWQYBCABKAkSDgoGc3RhdHVzGAUgASgJEhYKDmRvY3VtZW50X2NvdW50GAYgASgDEhcKD3RvbWJzdG9uZV9jb3VudBgHIAEoAxISCgpjcmVhdGVkX2F0GAggASgJEhMKC3Byb21vdGVkX2F0GAkgASgJIv4CChRJbmRleEFkbWluUmVidWlsZEpvYhIOCgZqb2JfaWQYASABKAkSDQoFc2NvcGUYAiABKAkSFQoNb3duZXJfdXNlcl9pZBgDIAEoCRISCgpwcm9qZWN0X2lkGAQgASgJEg0KBXN0YXRlGAUgASgJEhQKDHBoYXNlX2N1cnNvchgGIAEoCRIZChFzbmFwc2hvdF9ib3VuZGFyeRgHIAEoCRIUCgxzb3VyY2VfY291bnQYCCABKAMSFQoNYXBwbGllZF9jb3VudBgJIAEoAxIXCg90b21ic3RvbmVfY291bnQYCiABKAMSGAoQZmFpbHVyZV9jYXRlZ29yeRgLIAEoCRIuCgpjcmVhdGVkX2F0GAwgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcBIuCgp1cGRhdGVkX2F0GA0gASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcBIcChR0YXJnZXRfZ2VuZXJhdGlvbl9pZBgOIAEoCSIcChpHZXRJbmRleEFkbWluU3RhdHVzUmVxdWVzdCKDAgobR2V0SW5kZXhBZG1pblN0YXR1c1Jlc3BvbnNlEkAKEWFjdGl2ZV9nZW5lcmF0aW9uGAEgASgLMiUud29ya29zLmluZGV4LnYxLkluZGV4QWRtaW5HZW5lcmF0aW9uEhMKC2NhdGNoaW5nX3VwGAIgASgIEhwKFHBlbmRpbmdfcHVibGljYXRpb25zGAMgASgDEhcKD2luZGV4ZWRfdGhyb3VnaBgEIAEoCRIXCg9sYXN0X2luZGV4ZWRfYXQYBSABKAkSPQoOYWN0aXZlX3JlYnVpbGQYBiABKAsyJS53b3Jrb3MuaW5kZXgudjEuSW5kZXhBZG1pblJlYnVpbGRKb2IikQIKGFN0YXJ0SW5kZXhSZWJ1aWxkUmVxdWVzdBJBCgNhbGwYASABKAsyMi53b3Jrb3MuaW5kZXgudjEuU3RhcnRJbmRleFJlYnVpbGRSZXF1ZXN0LkFsbFNjb3BlSAASSQoHcHJvamVjdBgCIAEoCzI2Lndvcmtvcy5pbmRleC52MS5TdGFydEluZGV4UmVidWlsZFJlcXVlc3QuUHJvamVjdFNjb3BlSAASFwoPaWRlbXBvdGVuY3lfa2V5GAMgASgJGgoKCEFsbFNjb3BlGjkKDFByb2plY3RTY29wZRIVCg1vd25lcl91c2VyX2lkGAEgASgJEhIKCnByb2plY3RfaWQYAiABKAlCBwoFc2NvcGUiTwoZU3RhcnRJbmRleFJlYnVpbGRSZXNwb25zZRIyCgNqb2IYASABKAsyJS53b3Jrb3MuaW5kZXgudjEuSW5kZXhBZG1pblJlYnVpbGRKb2IiKwoZR2V0SW5kZXhSZWJ1aWxkSm9iUmVxdWVzdBIOCgZqb2JfaWQYASABKAkiUAoaR2V0SW5kZXhSZWJ1aWxkSm9iUmVzcG9uc2USMgoDam9iGAEgASgLMiUud29ya29zLmluZGV4LnYxLkluZGV4QWRtaW5SZWJ1aWxkSm9iIi4KHENhbmNlbEluZGV4UmVidWlsZEpvYlJlcXVlc3QSDgoGam9iX2lkGAEgASgJIlMKHUNhbmNlbEluZGV4UmVidWlsZEpvYlJlc3BvbnNlEjIKA2pvYhgBIAEoCzIlLndvcmtvcy5pbmRleC52MS5JbmRleEFkbWluUmVidWlsZEpvYjLgAwoRSW5kZXhBZG1pblNlcnZpY2UScgoTR2V0SW5kZXhBZG1pblN0YXR1cxIrLndvcmtvcy5pbmRleC52MS5HZXRJbmRleEFkbWluU3RhdHVzUmVxdWVzdBosLndvcmtvcy5pbmRleC52MS5HZXRJbmRleEFkbWluU3RhdHVzUmVzcG9uc2UiABJsChFTdGFydEluZGV4UmVidWlsZBIpLndvcmtvcy5pbmRleC52MS5TdGFydEluZGV4UmVidWlsZFJlcXVlc3QaKi53b3Jrb3MuaW5kZXgudjEuU3RhcnRJbmRleFJlYnVpbGRSZXNwb25zZSIAEm8KEkdldEluZGV4UmVidWlsZEpvYhIqLndvcmtvcy5pbmRleC52MS5HZXRJbmRleFJlYnVpbGRKb2JSZXF1ZXN0Gisud29ya29zLmluZGV4LnYxLkdldEluZGV4UmVidWlsZEpvYlJlc3BvbnNlIgASeAoVQ2FuY2VsSW5kZXhSZWJ1aWxkSm9iEi0ud29ya29zLmluZGV4LnYxLkNhbmNlbEluZGV4UmVidWlsZEpvYlJlcXVlc3QaLi53b3Jrb3MuaW5kZXgudjEuQ2FuY2VsSW5kZXhSZWJ1aWxkSm9iUmVzcG9uc2UiAEI9WjtnaXRodWIuY29tL3lhbmd0YW8xMjEvd29ya29zL2dlbi9nby93b3Jrb3MvaW5kZXgvdjE7aW5kZXh2MWIGcHJvdG8z", [file_google_protobuf_timestamp]);
+  fileDesc("CiF3b3Jrb3MvaW5kZXgvdjEvaW5kZXhfYWRtaW4ucHJvdG8SD3dvcmtvcy5pbmRleC52MSLRAQoUSW5kZXhBZG1pbkdlbmVyYXRpb24SFQoNZ2VuZXJhdGlvbl9pZBgBIAEoCRINCgVzY29wZRgCIAEoCRIVCg1vd25lcl91c2VyX2lkGAMgASgJEhIKCnByb2plY3RfaWQYBCABKAkSDgoGc3RhdHVzGAUgASgJEhYKDmRvY3VtZW50X2NvdW50GAYgASgDEhcKD3RvbWJzdG9uZV9jb3VudBgHIAEoAxISCgpjcmVhdGVkX2F0GAggASgJEhMKC3Byb21vdGVkX2F0GAkgASgJIv4CChRJbmRleEFkbWluUmVidWlsZEpvYhIOCgZqb2JfaWQYASABKAkSDQoFc2NvcGUYAiABKAkSFQoNb3duZXJfdXNlcl9pZBgDIAEoCRISCgpwcm9qZWN0X2lkGAQgASgJEg0KBXN0YXRlGAUgASgJEhQKDHBoYXNlX2N1cnNvchgGIAEoCRIZChFzbmFwc2hvdF9ib3VuZGFyeRgHIAEoCRIUCgxzb3VyY2VfY291bnQYCCABKAMSFQoNYXBwbGllZF9jb3VudBgJIAEoAxIXCg90b21ic3RvbmVfY291bnQYCiABKAMSGAoQZmFpbHVyZV9jYXRlZ29yeRgLIAEoCRIuCgpjcmVhdGVkX2F0GAwgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcBIuCgp1cGRhdGVkX2F0GA0gASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcBIcChR0YXJnZXRfZ2VuZXJhdGlvbl9pZBgOIAEoCSIcChpHZXRJbmRleEFkbWluU3RhdHVzUmVxdWVzdCKDAgobR2V0SW5kZXhBZG1pblN0YXR1c1Jlc3BvbnNlEkAKEWFjdGl2ZV9nZW5lcmF0aW9uGAEgASgLMiUud29ya29zLmluZGV4LnYxLkluZGV4QWRtaW5HZW5lcmF0aW9uEhMKC2NhdGNoaW5nX3VwGAIgASgIEhwKFHBlbmRpbmdfcHVibGljYXRpb25zGAMgASgDEhcKD2luZGV4ZWRfdGhyb3VnaBgEIAEoCRIXCg9sYXN0X2luZGV4ZWRfYXQYBSABKAkSPQoOYWN0aXZlX3JlYnVpbGQYBiABKAsyJS53b3Jrb3MuaW5kZXgudjEuSW5kZXhBZG1pblJlYnVpbGRKb2IikQIKGFN0YXJ0SW5kZXhSZWJ1aWxkUmVxdWVzdBJBCgNhbGwYASABKAsyMi53b3Jrb3MuaW5kZXgudjEuU3RhcnRJbmRleFJlYnVpbGRSZXF1ZXN0LkFsbFNjb3BlSAASSQoHcHJvamVjdBgCIAEoCzI2Lndvcmtvcy5pbmRleC52MS5TdGFydEluZGV4UmVidWlsZFJlcXVlc3QuUHJvamVjdFNjb3BlSAASFwoPaWRlbXBvdGVuY3lfa2V5GAMgASgJGgoKCEFsbFNjb3BlGjkKDFByb2plY3RTY29wZRIVCg1vd25lcl91c2VyX2lkGAEgASgJEhIKCnByb2plY3RfaWQYAiABKAlCBwoFc2NvcGUiTwoZU3RhcnRJbmRleFJlYnVpbGRSZXNwb25zZRIyCgNqb2IYASABKAsyJS53b3Jrb3MuaW5kZXgudjEuSW5kZXhBZG1pblJlYnVpbGRKb2IiKwoZR2V0SW5kZXhSZWJ1aWxkSm9iUmVxdWVzdBIOCgZqb2JfaWQYASABKAkiUAoaR2V0SW5kZXhSZWJ1aWxkSm9iUmVzcG9uc2USMgoDam9iGAEgASgLMiUud29ya29zLmluZGV4LnYxLkluZGV4QWRtaW5SZWJ1aWxkSm9iIi4KHENhbmNlbEluZGV4UmVidWlsZEpvYlJlcXVlc3QSDgoGam9iX2lkGAEgASgJIlMKHUNhbmNlbEluZGV4UmVidWlsZEpvYlJlc3BvbnNlEjIKA2pvYhgBIAEoCzIlLndvcmtvcy5pbmRleC52MS5JbmRleEFkbWluUmVidWlsZEpvYiKEAgoUSW5kZXhXb3Jrc3BhY2VTb3VyY2USEQoJc291cmNlX2lkGAEgASgJEhUKDW93bmVyX3VzZXJfaWQYAiABKAkSEgoKcHJvamVjdF9pZBgDIAEoCRIRCglyb290X3BhdGgYBCABKAkSDgoGc3RhdHVzGAUgASgJEhcKD2RlZ3JhZGVkX3JlYXNvbhgGIAEoCRIVCg1pbmRleGVkX2NvdW50GAcgASgDEhUKDXNraXBwZWRfY291bnQYCCABKAMSGAoQdG9tYnN0b25lZF9jb3VudBgJIAEoAxIWCg5sYXN0X3N5bmNlZF9hdBgKIAEoCRISCgpjcmVhdGVkX2F0GAsgASgJIl4KHlJlZ2lzdGVyV29ya3NwYWNlU291cmNlUmVxdWVzdBIVCg1vd25lcl91c2VyX2lkGAEgASgJEhIKCnByb2plY3RfaWQYAiABKAkSEQoJcm9vdF9wYXRoGAMgASgJIlgKH1JlZ2lzdGVyV29ya3NwYWNlU291cmNlUmVzcG9uc2USNQoGc291cmNlGAEgASgLMiUud29ya29zLmluZGV4LnYxLkluZGV4V29ya3NwYWNlU291cmNlIh0KG0xpc3RXb3Jrc3BhY2VTb3VyY2VzUmVxdWVzdCJWChxMaXN0V29ya3NwYWNlU291cmNlc1Jlc3BvbnNlEjYKB3NvdXJjZXMYASADKAsyJS53b3Jrb3MuaW5kZXgudjEuSW5kZXhXb3Jrc3BhY2VTb3VyY2UiLwoaU3luY1dvcmtzcGFjZVNvdXJjZVJlcXVlc3QSEQoJc291cmNlX2lkGAEgASgJIrUBChtTeW5jV29ya3NwYWNlU291cmNlUmVzcG9uc2USNQoGc291cmNlGAEgASgLMiUud29ya29zLmluZGV4LnYxLkluZGV4V29ya3NwYWNlU291cmNlEhUKDWFwcGxpZWRfY291bnQYAiABKAMSGAoQdG9tYnN0b25lZF9jb3VudBgDIAEoAxIVCg1za2lwcGVkX2NvdW50GAQgASgDEhcKD3NraXBwZWRfcmVhc29ucxgFIAMoCTLLBgoRSW5kZXhBZG1pblNlcnZpY2UScgoTR2V0SW5kZXhBZG1pblN0YXR1cxIrLndvcmtvcy5pbmRleC52MS5HZXRJbmRleEFkbWluU3RhdHVzUmVxdWVzdBosLndvcmtvcy5pbmRleC52MS5HZXRJbmRleEFkbWluU3RhdHVzUmVzcG9uc2UiABJsChFTdGFydEluZGV4UmVidWlsZBIpLndvcmtvcy5pbmRleC52MS5TdGFydEluZGV4UmVidWlsZFJlcXVlc3QaKi53b3Jrb3MuaW5kZXgudjEuU3RhcnRJbmRleFJlYnVpbGRSZXNwb25zZSIAEm8KEkdldEluZGV4UmVidWlsZEpvYhIqLndvcmtvcy5pbmRleC52MS5HZXRJbmRleFJlYnVpbGRKb2JSZXF1ZXN0Gisud29ya29zLmluZGV4LnYxLkdldEluZGV4UmVidWlsZEpvYlJlc3BvbnNlIgASeAoVQ2FuY2VsSW5kZXhSZWJ1aWxkSm9iEi0ud29ya29zLmluZGV4LnYxLkNhbmNlbEluZGV4UmVidWlsZEpvYlJlcXVlc3QaLi53b3Jrb3MuaW5kZXgudjEuQ2FuY2VsSW5kZXhSZWJ1aWxkSm9iUmVzcG9uc2UiABJ+ChdSZWdpc3RlcldvcmtzcGFjZVNvdXJjZRIvLndvcmtvcy5pbmRleC52MS5SZWdpc3RlcldvcmtzcGFjZVNvdXJjZVJlcXVlc3QaMC53b3Jrb3MuaW5kZXgudjEuUmVnaXN0ZXJXb3Jrc3BhY2VTb3VyY2VSZXNwb25zZSIAEnUKFExpc3RXb3Jrc3BhY2VTb3VyY2VzEiwud29ya29zLmluZGV4LnYxLkxpc3RXb3Jrc3BhY2VTb3VyY2VzUmVxdWVzdBotLndvcmtvcy5pbmRleC52MS5MaXN0V29ya3NwYWNlU291cmNlc1Jlc3BvbnNlIgAScgoTU3luY1dvcmtzcGFjZVNvdXJjZRIrLndvcmtvcy5pbmRleC52MS5TeW5jV29ya3NwYWNlU291cmNlUmVxdWVzdBosLndvcmtvcy5pbmRleC52MS5TeW5jV29ya3NwYWNlU291cmNlUmVzcG9uc2UiAEI9WjtnaXRodWIuY29tL3lhbmd0YW8xMjEvd29ya29zL2dlbi9nby93b3Jrb3MvaW5kZXgvdjE7aW5kZXh2MWIGcHJvdG8z", [file_google_protobuf_timestamp]);
 
 /**
  * @generated from message workos.index.v1.IndexAdminGeneration
@@ -394,6 +394,211 @@ export const CancelIndexRebuildJobResponseSchema: GenMessage<CancelIndexRebuildJ
   messageDesc(file_workos_index_v1_index_admin, 9);
 
 /**
+ * @generated from message workos.index.v1.IndexWorkspaceSource
+ */
+export type IndexWorkspaceSource = Message<"workos.index.v1.IndexWorkspaceSource"> & {
+  /**
+   * @generated from field: string source_id = 1;
+   */
+  sourceId: string;
+
+  /**
+   * @generated from field: string owner_user_id = 2;
+   */
+  ownerUserId: string;
+
+  /**
+   * @generated from field: string project_id = 3;
+   */
+  projectId: string;
+
+  /**
+   * Mount root as explicitly bound by the owner (safe operational fact).
+   *
+   * @generated from field: string root_path = 4;
+   */
+  rootPath: string;
+
+  /**
+   * active | degraded | stopped. Unknown values fail closed at the CLI.
+   *
+   * @generated from field: string status = 5;
+   */
+  status: string;
+
+  /**
+   * Sanitized failure category; empty unless degraded.
+   *
+   * @generated from field: string degraded_reason = 6;
+   */
+  degradedReason: string;
+
+  /**
+   * @generated from field: int64 indexed_count = 7;
+   */
+  indexedCount: bigint;
+
+  /**
+   * @generated from field: int64 skipped_count = 8;
+   */
+  skippedCount: bigint;
+
+  /**
+   * @generated from field: int64 tombstoned_count = 9;
+   */
+  tombstonedCount: bigint;
+
+  /**
+   * UTC RFC 3339 microseconds; empty before the first sync.
+   *
+   * @generated from field: string last_synced_at = 10;
+   */
+  lastSyncedAt: string;
+
+  /**
+   * @generated from field: string created_at = 11;
+   */
+  createdAt: string;
+};
+
+/**
+ * Describes the message workos.index.v1.IndexWorkspaceSource.
+ * Use `create(IndexWorkspaceSourceSchema)` to create a new message.
+ */
+export const IndexWorkspaceSourceSchema: GenMessage<IndexWorkspaceSource> = /*@__PURE__*/
+  messageDesc(file_workos_index_v1_index_admin, 10);
+
+/**
+ * @generated from message workos.index.v1.RegisterWorkspaceSourceRequest
+ */
+export type RegisterWorkspaceSourceRequest = Message<"workos.index.v1.RegisterWorkspaceSourceRequest"> & {
+  /**
+   * @generated from field: string owner_user_id = 1;
+   */
+  ownerUserId: string;
+
+  /**
+   * @generated from field: string project_id = 2;
+   */
+  projectId: string;
+
+  /**
+   * @generated from field: string root_path = 3;
+   */
+  rootPath: string;
+};
+
+/**
+ * Describes the message workos.index.v1.RegisterWorkspaceSourceRequest.
+ * Use `create(RegisterWorkspaceSourceRequestSchema)` to create a new message.
+ */
+export const RegisterWorkspaceSourceRequestSchema: GenMessage<RegisterWorkspaceSourceRequest> = /*@__PURE__*/
+  messageDesc(file_workos_index_v1_index_admin, 11);
+
+/**
+ * @generated from message workos.index.v1.RegisterWorkspaceSourceResponse
+ */
+export type RegisterWorkspaceSourceResponse = Message<"workos.index.v1.RegisterWorkspaceSourceResponse"> & {
+  /**
+   * @generated from field: workos.index.v1.IndexWorkspaceSource source = 1;
+   */
+  source?: IndexWorkspaceSource | undefined;
+};
+
+/**
+ * Describes the message workos.index.v1.RegisterWorkspaceSourceResponse.
+ * Use `create(RegisterWorkspaceSourceResponseSchema)` to create a new message.
+ */
+export const RegisterWorkspaceSourceResponseSchema: GenMessage<RegisterWorkspaceSourceResponse> = /*@__PURE__*/
+  messageDesc(file_workos_index_v1_index_admin, 12);
+
+/**
+ * @generated from message workos.index.v1.ListWorkspaceSourcesRequest
+ */
+export type ListWorkspaceSourcesRequest = Message<"workos.index.v1.ListWorkspaceSourcesRequest"> & {
+};
+
+/**
+ * Describes the message workos.index.v1.ListWorkspaceSourcesRequest.
+ * Use `create(ListWorkspaceSourcesRequestSchema)` to create a new message.
+ */
+export const ListWorkspaceSourcesRequestSchema: GenMessage<ListWorkspaceSourcesRequest> = /*@__PURE__*/
+  messageDesc(file_workos_index_v1_index_admin, 13);
+
+/**
+ * @generated from message workos.index.v1.ListWorkspaceSourcesResponse
+ */
+export type ListWorkspaceSourcesResponse = Message<"workos.index.v1.ListWorkspaceSourcesResponse"> & {
+  /**
+   * @generated from field: repeated workos.index.v1.IndexWorkspaceSource sources = 1;
+   */
+  sources: IndexWorkspaceSource[];
+};
+
+/**
+ * Describes the message workos.index.v1.ListWorkspaceSourcesResponse.
+ * Use `create(ListWorkspaceSourcesResponseSchema)` to create a new message.
+ */
+export const ListWorkspaceSourcesResponseSchema: GenMessage<ListWorkspaceSourcesResponse> = /*@__PURE__*/
+  messageDesc(file_workos_index_v1_index_admin, 14);
+
+/**
+ * @generated from message workos.index.v1.SyncWorkspaceSourceRequest
+ */
+export type SyncWorkspaceSourceRequest = Message<"workos.index.v1.SyncWorkspaceSourceRequest"> & {
+  /**
+   * @generated from field: string source_id = 1;
+   */
+  sourceId: string;
+};
+
+/**
+ * Describes the message workos.index.v1.SyncWorkspaceSourceRequest.
+ * Use `create(SyncWorkspaceSourceRequestSchema)` to create a new message.
+ */
+export const SyncWorkspaceSourceRequestSchema: GenMessage<SyncWorkspaceSourceRequest> = /*@__PURE__*/
+  messageDesc(file_workos_index_v1_index_admin, 15);
+
+/**
+ * @generated from message workos.index.v1.SyncWorkspaceSourceResponse
+ */
+export type SyncWorkspaceSourceResponse = Message<"workos.index.v1.SyncWorkspaceSourceResponse"> & {
+  /**
+   * @generated from field: workos.index.v1.IndexWorkspaceSource source = 1;
+   */
+  source?: IndexWorkspaceSource | undefined;
+
+  /**
+   * @generated from field: int64 applied_count = 2;
+   */
+  appliedCount: bigint;
+
+  /**
+   * @generated from field: int64 tombstoned_count = 3;
+   */
+  tombstonedCount: bigint;
+
+  /**
+   * @generated from field: int64 skipped_count = 4;
+   */
+  skippedCount: bigint;
+
+  /**
+   * Sanitized skip categories observed this pass (bounded).
+   *
+   * @generated from field: repeated string skipped_reasons = 5;
+   */
+  skippedReasons: string[];
+};
+
+/**
+ * Describes the message workos.index.v1.SyncWorkspaceSourceResponse.
+ * Use `create(SyncWorkspaceSourceResponseSchema)` to create a new message.
+ */
+export const SyncWorkspaceSourceResponseSchema: GenMessage<SyncWorkspaceSourceResponse> = /*@__PURE__*/
+  messageDesc(file_workos_index_v1_index_admin, 16);
+
+/**
  * @generated from service workos.index.v1.IndexAdminService
  */
 export const IndexAdminService: GenService<{
@@ -428,6 +633,30 @@ export const IndexAdminService: GenService<{
     methodKind: "unary";
     input: typeof CancelIndexRebuildJobRequestSchema;
     output: typeof CancelIndexRebuildJobResponseSchema;
+  },
+  /**
+   * @generated from rpc workos.index.v1.IndexAdminService.RegisterWorkspaceSource
+   */
+  registerWorkspaceSource: {
+    methodKind: "unary";
+    input: typeof RegisterWorkspaceSourceRequestSchema;
+    output: typeof RegisterWorkspaceSourceResponseSchema;
+  },
+  /**
+   * @generated from rpc workos.index.v1.IndexAdminService.ListWorkspaceSources
+   */
+  listWorkspaceSources: {
+    methodKind: "unary";
+    input: typeof ListWorkspaceSourcesRequestSchema;
+    output: typeof ListWorkspaceSourcesResponseSchema;
+  },
+  /**
+   * @generated from rpc workos.index.v1.IndexAdminService.SyncWorkspaceSource
+   */
+  syncWorkspaceSource: {
+    methodKind: "unary";
+    input: typeof SyncWorkspaceSourceRequestSchema;
+    output: typeof SyncWorkspaceSourceResponseSchema;
   },
 }> = /*@__PURE__*/
   serviceDesc(file_workos_index_v1_index_admin, 0);

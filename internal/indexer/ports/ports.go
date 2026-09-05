@@ -142,3 +142,59 @@ type ProjectionRepository interface {
 	// Freshness reads the bounded freshness projection.
 	Freshness(ctx context.Context, pending int64) (domain.Freshness, error)
 }
+
+// WorkspaceSource is one owner-bound local mount (ADR-0017 §4).
+type WorkspaceSource struct {
+	ID              string
+	OwnerUserID     string
+	ProjectID       string
+	RootPath        string
+	Status          string // active | degraded | stopped
+	DegradedReason  string
+	IndexedCount    int64
+	SkippedCount    int64
+	TombstonedCount int64
+	LastSyncedAt    time.Time
+	CreatedAt       time.Time
+	UpdatedAt       time.Time
+}
+
+// MountFile is one bounded file fact produced by a mount walk. SourceID is
+// the deterministic per-scope document identity of the relative path.
+type MountFile struct {
+	RelPath  string
+	Title    string
+	Content  []byte
+	Digest   string
+	SourceID string
+}
+
+// MountSkip is one sanitized skip fact: a fixed category, never content.
+type MountSkip struct {
+	RelPath string
+	Reason  string
+}
+
+// MountResult is one bounded walk over a mount root.
+type MountResult struct {
+	Files []MountFile
+	Skips []MountSkip
+}
+
+// MountReader reads owner-bound local roots. It is the only filesystem
+// boundary of the workspace slice; implementations must never follow
+// symlinks out of the root.
+type MountReader interface {
+	Walk(root string) (MountResult, error)
+}
+
+// WorkspaceStore owns the durable workspace source lifecycle and projects
+// sync passes into the search documents.
+type WorkspaceStore interface {
+	InsertWorkspaceSource(ctx context.Context, source WorkspaceSource) (WorkspaceSource, error)
+	GetWorkspaceSource(ctx context.Context, id string) (WorkspaceSource, error)
+	ListWorkspaceSources(ctx context.Context) ([]WorkspaceSource, error)
+	SetWorkspaceSourceStatus(ctx context.Context, id, status, degradedReason string, now time.Time) error
+	RecordWorkspaceSync(ctx context.Context, id string, indexed, skipped, tombstoned int64, now time.Time) error
+	ConvergeWorkspacePass(ctx context.Context, source WorkspaceSource, files []MountFile, passPublication func() string, now time.Time) (applied, tombstoned int64, err error)
+}
