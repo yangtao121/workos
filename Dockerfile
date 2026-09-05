@@ -35,7 +35,8 @@ RUN CGO_ENABLED=0 go build -trimpath -ldflags='-s -w' -o /out/workos-gateway ./c
     && CGO_ENABLED=0 go build -trimpath -ldflags='-s -w' -o /out/workosctl ./cmd/workosctl \
     && CGO_ENABLED=0 go build -trimpath -ldflags='-s -w' -o /out/generic-harness-fixture ./cmd/generic-harness-fixture \
     && CGO_ENABLED=0 go build -trimpath -ldflags='-s -w' -o /out/codex-app-server-fixture ./cmd/codex-app-server-fixture \
-    && CGO_ENABLED=0 go build -trimpath -ldflags='-s -w' -o /out/mcp-server-fixture ./cmd/mcp-server-fixture
+    && CGO_ENABLED=0 go build -trimpath -ldflags='-s -w' -o /out/mcp-server-fixture ./cmd/mcp-server-fixture \
+    && CGO_ENABLED=0 go build -trimpath -ldflags='-s -w' -o /out/browser-worker-fixture ./cmd/browser-worker-fixture
 COPY tests ./tests
 # workos-dev-fixture is DEV/CI-only: it generates the throwaway execution
 # CA/leaf identities and the dev vault master key. It is never a production
