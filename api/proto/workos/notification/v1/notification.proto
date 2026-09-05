@@ -218,4 +218,56 @@ service NotificationService {
   // lifetime with heartbeat control frames; clients reconnect from their
   // last applied change sequence. Control frames never advance the cursor.
   rpc WatchNotificationEvents(WatchNotificationEventsRequest) returns (stream WatchNotificationEventsResponse) {}
+  // Push wake subscriptions (ADR-0018): the relay receives only the
+  // notification id, never body content, project names, or code.
+  rpc SubscribePush(SubscribePushRequest) returns (SubscribePushResponse) {}
+  rpc UnsubscribePush(UnsubscribePushRequest) returns (UnsubscribePushResponse) {}
+  rpc GetPushPreferences(GetPushPreferencesRequest) returns (GetPushPreferencesResponse) {}
+  rpc SetPushPreferences(SetPushPreferencesRequest) returns (SetPushPreferencesResponse) {}
+}
+
+message SubscribePushRequest {
+  // Device-scoped: one subscription per (device, platform) per owner.
+  string device_id = 1;
+  // "web-push" or "fixture". APNs/FCM stay unavailable until real
+  // provider credentials exist; unknown values fail closed.
+  string platform = 2;
+  // Relay endpoint URL (https) or fixture relay reference; bounded.
+  string endpoint = 3;
+  // Web Push client keys for the encrypted payload; the fixture relay may
+  // leave them empty.
+  string p256dh = 4;
+  string auth_secret = 5;
+}
+
+message SubscribePushResponse {}
+
+message UnsubscribePushRequest {
+  string device_id = 1;
+  string platform = 2;
+}
+
+message UnsubscribePushResponse {}
+
+message PushPreferences {
+  // Owner-level do-not-disturb window, evaluated server-side in UTC.
+  // Quiet-hour events never wake devices; durable facts are unaffected.
+  bool quiet_enabled = 1;
+  // "HH:MM" UTC grammar.
+  string quiet_start_utc = 2;
+  string quiet_end_utc = 3;
+}
+
+message GetPushPreferencesRequest {}
+
+message GetPushPreferencesResponse {
+  PushPreferences preferences = 1;
+}
+
+message SetPushPreferencesRequest {
+  PushPreferences preferences = 1;
+}
+
+message SetPushPreferencesResponse {
+  PushPreferences preferences = 1;
 }

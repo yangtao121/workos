@@ -39,9 +39,13 @@ import (
 	indexfeedpostgres "github.com/yangtao121/workos/internal/core/indexfeed/adapters/postgres"
 	indexfeedapp "github.com/yangtao121/workos/internal/core/indexfeed/application"
 	indexfeedtransport "github.com/yangtao121/workos/internal/core/indexfeed/transport"
+	fixturerelay "github.com/yangtao121/workos/internal/core/notification/adapters/fixturerelay"
 	notificationpostgres "github.com/yangtao121/workos/internal/core/notification/adapters/postgres"
 	reliabilityclient "github.com/yangtao121/workos/internal/core/notification/adapters/reliabilityclient"
+	unavailable "github.com/yangtao121/workos/internal/core/notification/adapters/unavailable"
 	notificationapp "github.com/yangtao121/workos/internal/core/notification/application"
+	notificationdomain "github.com/yangtao121/workos/internal/core/notification/domain"
+	notificationports "github.com/yangtao121/workos/internal/core/notification/ports"
 	notificationtransport "github.com/yangtao121/workos/internal/core/notification/transport"
 	"github.com/yangtao121/workos/internal/core/orchestration"
 	orchestrationtransport "github.com/yangtao121/workos/internal/core/orchestration/transport"
@@ -96,6 +100,18 @@ func run(logger *slog.Logger) error {
 	// transactions.
 	notificationRepository := notificationpostgres.New(pool)
 	notificationService, err := notificationapp.New(notificationRepository, pool, generator)
+	if err != nil {
+		return err
+	}
+	// Push wake dispatch (ADR-0018): the fixture relay is the working egress;
+	// platforms without a sender (APNs/FCM until real credentials exist)
+	// subscribe but never pretend to deliver. Constructed before every
+	// consumer so the post-commit hook is race-free.
+	pushSenders := map[string]notificationports.PushRelaySender{
+		notificationdomain.PushPlatformFixture: fixturerelay.New(),
+		notificationdomain.PushPlatformWebPush: unavailable.New(),
+	}
+	pushService, err := notificationapp.NewPushService(notificationRepository, pushSenders, logger)
 	if err != nil {
 		return err
 	}
@@ -374,13 +390,17 @@ func run(logger *slog.Logger) error {
 		if err != nil {
 			return err
 		}
+		// Post-commit wake dispatch: a push failure never affects the
+		// already-committed durable fact.
+		incidentConsumer.SetPushDispatch(pushService.Dispatch)
 		go incidentConsumer.Run(ctx, logger)
 	}
 	// The public summary reports the live consumer's most recent upstream
 	// result. Configured-but-unreachable and unconfigured sources both fail
 	// honestly closed instead of claiming readiness from configuration alone.
-	notificationPath, notificationHandler := notificationtransport.NewConnectHandler(
+	notificationPath, notificationHandler := notificationtransport.NewConnectHandlerWithPush(
 		notificationService,
+		pushService,
 		func() bool { return incidentConsumer != nil && incidentConsumer.Ready() },
 	)
 	mux.Handle(notificationPath, identity.Middleware(notificationHandler))

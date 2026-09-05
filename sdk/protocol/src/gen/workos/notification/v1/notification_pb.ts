@@ -17,7 +17,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file workos/notification/v1/notification.proto.
  */
 export const file_workos_notification_v1_notification: GenFile = /*@__PURE__*/
-  fileDesc("Cil3b3Jrb3Mvbm90aWZpY2F0aW9uL3YxL25vdGlmaWNhdGlvbi5wcm90bxIWd29ya29zLm5vdGlmaWNhdGlvbi52MSJ1ChJOb3RpZmljYXRpb25UYXJnZXQSPAoEa2luZBgBIAEoDjIuLndvcmtvcy5ub3RpZmljYXRpb24udjEuTm90aWZpY2F0aW9uVGFyZ2V0S2luZBIRCgl0YXJnZXRfaWQYAiABKAkSDgoGYXBwX2lkGAMgASgJIrsDCgxOb3RpZmljYXRpb24SCgoCaWQYASABKAkSEgoKcHJvamVjdF9pZBgCIAEoCRI2CgRraW5kGAMgASgOMigud29ya29zLm5vdGlmaWNhdGlvbi52MS5Ob3RpZmljYXRpb25LaW5kEj4KCHNldmVyaXR5GAQgASgOMiwud29ya29zLm5vdGlmaWNhdGlvbi52MS5Ob3RpZmljYXRpb25TZXZlcml0eRI6CgZvcmlnaW4YBSABKA4yKi53b3Jrb3Mubm90aWZpY2F0aW9uLnYxLk5vdGlmaWNhdGlvbk9yaWdpbhINCgV0aXRsZRgGIAEoCRIMCgRib2R5GAcgASgJEjoKBnRhcmdldBgIIAEoCzIqLndvcmtvcy5ub3RpZmljYXRpb24udjEuTm90aWZpY2F0aW9uVGFyZ2V0Ei4KCmNyZWF0ZWRfYXQYCSABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wEjAKB3JlYWRfYXQYCiABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wSACIAQESEAoIcmV2aXNpb24YCyABKANCCgoIX3JlYWRfYXQi5wEKEU5vdGlmaWNhdGlvbkV2ZW50EhcKD2NoYW5nZV9zZXF1ZW5jZRgBIAEoAxI8CgR0eXBlGAIgASgOMi4ud29ya29zLm5vdGlmaWNhdGlvbi52MS5Ob3RpZmljYXRpb25DaGFuZ2VUeXBlEhcKD25vdGlmaWNhdGlvbl9pZBgDIAEoCRIQCghyZXZpc2lvbhgEIAEoAxI6Cgxub3RpZmljYXRpb24YBSABKAsyJC53b3Jrb3Mubm90aWZpY2F0aW9uLnYxLk5vdGlmaWNhdGlvbhIUCgx1bnJlYWRfY291bnQYBiABKAMiKgoOV2F0Y2hIZWFydGJlYXQSGAoQc2VydmVyX3dhdGVybWFyaxgBIAEoAyIwChJXYXRjaFJlc2V0UmVxdWlyZWQSGgoSc25hcHNob3Rfd2F0ZXJtYXJrGAEgASgDIjgKHldhdGNoTm90aWZpY2F0aW9uRXZlbnRzUmVxdWVzdBIWCg5hZnRlcl9zZXF1ZW5jZRgBIAEoAyLrAQofV2F0Y2hOb3RpZmljYXRpb25FdmVudHNSZXNwb25zZRI6CgVldmVudBgBIAEoCzIpLndvcmtvcy5ub3RpZmljYXRpb24udjEuTm90aWZpY2F0aW9uRXZlbnRIABI7CgloZWFydGJlYXQYAiABKAsyJi53b3Jrb3Mubm90aWZpY2F0aW9uLnYxLldhdGNoSGVhcnRiZWF0SAASRAoOcmVzZXRfcmVxdWlyZWQYAyABKAsyKi53b3Jrb3Mubm90aWZpY2F0aW9uLnYxLldhdGNoUmVzZXRSZXF1aXJlZEgAQgkKB3BheWxvYWQisAEKGExpc3ROb3RpZmljYXRpb25zUmVxdWVzdBISCgpwcm9qZWN0X2lkGAEgASgJEhMKC3VucmVhZF9vbmx5GAIgASgIEjsKBGtpbmQYAyABKA4yKC53b3Jrb3Mubm90aWZpY2F0aW9uLnYxLk5vdGlmaWNhdGlvbktpbmRIAIgBARIRCglwYWdlX3NpemUYBCABKAUSEgoKcGFnZV90b2tlbhgFIAEoCUIHCgVfa2luZCKaAQoZTGlzdE5vdGlmaWNhdGlvbnNSZXNwb25zZRI7Cg1ub3RpZmljYXRpb25zGAEgAygLMiQud29ya29zLm5vdGlmaWNhdGlvbi52MS5Ob3RpZmljYXRpb24SFwoPbmV4dF9wYWdlX3Rva2VuGAIgASgJEhQKDHVucmVhZF9jb3VudBgDIAEoAxIRCgl3YXRlcm1hcmsYBCABKAMiMQoWR2V0Tm90aWZpY2F0aW9uUmVxdWVzdBIXCg9ub3RpZmljYXRpb25faWQYASABKAkiVQoXR2V0Tm90aWZpY2F0aW9uUmVzcG9uc2USOgoMbm90aWZpY2F0aW9uGAEgASgLMiQud29ya29zLm5vdGlmaWNhdGlvbi52MS5Ob3RpZmljYXRpb24iHwodR2V0Tm90aWZpY2F0aW9uU3VtbWFyeVJlcXVlc3QiaAoeR2V0Tm90aWZpY2F0aW9uU3VtbWFyeVJlc3BvbnNlEhQKDHVucmVhZF9jb3VudBgBIAEoAxIRCgl3YXRlcm1hcmsYAiABKAMSHQoVaW5jaWRlbnRfc291cmNlX3JlYWR5GAMgASgIIk8KG01hcmtOb3RpZmljYXRpb25SZWFkUmVxdWVzdBIXCg9ub3RpZmljYXRpb25faWQYASABKAkSFwoPaWRlbXBvdGVuY3lfa2V5GAIgASgJIokBChxNYXJrTm90aWZpY2F0aW9uUmVhZFJlc3BvbnNlEjoKDG5vdGlmaWNhdGlvbhgBIAEoCzIkLndvcmtvcy5ub3RpZmljYXRpb24udjEuTm90aWZpY2F0aW9uEhQKDHVucmVhZF9jb3VudBgCIAEoAxIXCg9jaGFuZ2Vfc2VxdWVuY2UYAyABKAMiUQocTWFya05vdGlmaWNhdGlvbnNSZWFkUmVxdWVzdBIYChBub3RpZmljYXRpb25faWRzGAEgAygJEhcKD2lkZW1wb3RlbmN5X2tleRgCIAEoCSJOCh1NYXJrTm90aWZpY2F0aW9uc1JlYWRSZXNwb25zZRIUCgx1bnJlYWRfY291bnQYAyABKAMSFwoPY2hhbmdlX3NlcXVlbmNlGAQgASgDKp0CChBOb3RpZmljYXRpb25LaW5kEiEKHU5PVElGSUNBVElPTl9LSU5EX1VOU1BFQ0lGSUVEEAASLQopTk9USUZJQ0FUSU9OX0tJTkRfQUdFTlRfQVBQUk9WQUxfUkVRVUlSRUQQARIpCiVOT1RJRklDQVRJT05fS0lORF9BR0VOVF9UQVNLX1RFUk1JTkFMEAISLQopTk9USUZJQ0FUSU9OX0tJTkRfQVJUSUZBQ1RfUkVWSUVXX0NSRUFURUQQAxIxCi1OT1RJRklDQVRJT05fS0lORF9SRUxJQUJJTElUWV9JTkNJREVOVF9PUEVORUQQBBIqCiZOT1RJRklDQVRJT05fS0lORF9BUFBfSU5TVEFOQ0VfTUVTU0FHRRAFKoMBChROb3RpZmljYXRpb25TZXZlcml0eRIlCiFOT1RJRklDQVRJT05fU0VWRVJJVFlfVU5TUEVDSUZJRUQQABIgChxOT1RJRklDQVRJT05fU0VWRVJJVFlfTk9STUFMEAESIgoeTk9USUZJQ0FUSU9OX1NFVkVSSVRZX0NSSVRJQ0FMEAIqdgoSTm90aWZpY2F0aW9uT3JpZ2luEiMKH05PVElGSUNBVElPTl9PUklHSU5fVU5TUEVDSUZJRUQQABIeChpOT1RJRklDQVRJT05fT1JJR0lOX1NZU1RFTRABEhsKF05PVElGSUNBVElPTl9PUklHSU5fQVBQEAIq/AEKFk5vdGlmaWNhdGlvblRhcmdldEtpbmQSKAokTk9USUZJQ0FUSU9OX1RBUkdFVF9LSU5EX1VOU1BFQ0lGSUVEEAASJQohTk9USUZJQ0FUSU9OX1RBUkdFVF9LSU5EX0FQUFJPVkFMEAESIQodTk9USUZJQ0FUSU9OX1RBUkdFVF9LSU5EX1RBU0sQAhIlCiFOT1RJRklDQVRJT05fVEFSR0VUX0tJTkRfQVJUSUZBQ1QQAxIlCiFOT1RJRklDQVRJT05fVEFSR0VUX0tJTkRfSU5DSURFTlQQBBIgChxOT1RJRklDQVRJT05fVEFSR0VUX0tJTkRfQVBQEAUqiwEKFk5vdGlmaWNhdGlvbkNoYW5nZVR5cGUSKAokTk9USUZJQ0FUSU9OX0NIQU5HRV9UWVBFX1VOU1BFQ0lGSUVEEAASJAogTk9USUZJQ0FUSU9OX0NIQU5HRV9UWVBFX0NSRUFURUQQARIhCh1OT1RJRklDQVRJT05fQ0hBTkdFX1RZUEVfUkVBRBACMrMGChNOb3RpZmljYXRpb25TZXJ2aWNlEnoKEUxpc3ROb3RpZmljYXRpb25zEjAud29ya29zLm5vdGlmaWNhdGlvbi52MS5MaXN0Tm90aWZpY2F0aW9uc1JlcXVlc3QaMS53b3Jrb3Mubm90aWZpY2F0aW9uLnYxLkxpc3ROb3RpZmljYXRpb25zUmVzcG9uc2UiABJ0Cg9HZXROb3RpZmljYXRpb24SLi53b3Jrb3Mubm90aWZpY2F0aW9uLnYxLkdldE5vdGlmaWNhdGlvblJlcXVlc3QaLy53b3Jrb3Mubm90aWZpY2F0aW9uLnYxLkdldE5vdGlmaWNhdGlvblJlc3BvbnNlIgASgwEKFE1hcmtOb3RpZmljYXRpb25SZWFkEjMud29ya29zLm5vdGlmaWNhdGlvbi52MS5NYXJrTm90aWZpY2F0aW9uUmVhZFJlcXVlc3QaNC53b3Jrb3Mubm90aWZpY2F0aW9uLnYxLk1hcmtOb3RpZmljYXRpb25SZWFkUmVzcG9uc2UiABKGAQoVTWFya05vdGlmaWNhdGlvbnNSZWFkEjQud29ya29zLm5vdGlmaWNhdGlvbi52MS5NYXJrTm90aWZpY2F0aW9uc1JlYWRSZXF1ZXN0GjUud29ya29zLm5vdGlmaWNhdGlvbi52MS5NYXJrTm90aWZpY2F0aW9uc1JlYWRSZXNwb25zZSIAEokBChZHZXROb3RpZmljYXRpb25TdW1tYXJ5EjUud29ya29zLm5vdGlmaWNhdGlvbi52MS5HZXROb3RpZmljYXRpb25TdW1tYXJ5UmVxdWVzdBo2Lndvcmtvcy5ub3RpZmljYXRpb24udjEuR2V0Tm90aWZpY2F0aW9uU3VtbWFyeVJlc3BvbnNlIgASjgEKF1dhdGNoTm90aWZpY2F0aW9uRXZlbnRzEjYud29ya29zLm5vdGlmaWNhdGlvbi52MS5XYXRjaE5vdGlmaWNhdGlvbkV2ZW50c1JlcXVlc3QaNy53b3Jrb3Mubm90aWZpY2F0aW9uLnYxLldhdGNoTm90aWZpY2F0aW9uRXZlbnRzUmVzcG9uc2UiADABQktaSWdpdGh1Yi5jb20veWFuZ3RhbzEyMS93b3Jrb3MvZ2VuL2dvL3dvcmtvcy9ub3RpZmljYXRpb24vdjE7bm90aWZpY2F0aW9udjFiBnByb3RvMw", [file_google_protobuf_timestamp]);
+  fileDesc("Cil3b3Jrb3Mvbm90aWZpY2F0aW9uL3YxL25vdGlmaWNhdGlvbi5wcm90bxIWd29ya29zLm5vdGlmaWNhdGlvbi52MSJ1ChJOb3RpZmljYXRpb25UYXJnZXQSPAoEa2luZBgBIAEoDjIuLndvcmtvcy5ub3RpZmljYXRpb24udjEuTm90aWZpY2F0aW9uVGFyZ2V0S2luZBIRCgl0YXJnZXRfaWQYAiABKAkSDgoGYXBwX2lkGAMgASgJIrsDCgxOb3RpZmljYXRpb24SCgoCaWQYASABKAkSEgoKcHJvamVjdF9pZBgCIAEoCRI2CgRraW5kGAMgASgOMigud29ya29zLm5vdGlmaWNhdGlvbi52MS5Ob3RpZmljYXRpb25LaW5kEj4KCHNldmVyaXR5GAQgASgOMiwud29ya29zLm5vdGlmaWNhdGlvbi52MS5Ob3RpZmljYXRpb25TZXZlcml0eRI6CgZvcmlnaW4YBSABKA4yKi53b3Jrb3Mubm90aWZpY2F0aW9uLnYxLk5vdGlmaWNhdGlvbk9yaWdpbhINCgV0aXRsZRgGIAEoCRIMCgRib2R5GAcgASgJEjoKBnRhcmdldBgIIAEoCzIqLndvcmtvcy5ub3RpZmljYXRpb24udjEuTm90aWZpY2F0aW9uVGFyZ2V0Ei4KCmNyZWF0ZWRfYXQYCSABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wEjAKB3JlYWRfYXQYCiABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wSACIAQESEAoIcmV2aXNpb24YCyABKANCCgoIX3JlYWRfYXQi5wEKEU5vdGlmaWNhdGlvbkV2ZW50EhcKD2NoYW5nZV9zZXF1ZW5jZRgBIAEoAxI8CgR0eXBlGAIgASgOMi4ud29ya29zLm5vdGlmaWNhdGlvbi52MS5Ob3RpZmljYXRpb25DaGFuZ2VUeXBlEhcKD25vdGlmaWNhdGlvbl9pZBgDIAEoCRIQCghyZXZpc2lvbhgEIAEoAxI6Cgxub3RpZmljYXRpb24YBSABKAsyJC53b3Jrb3Mubm90aWZpY2F0aW9uLnYxLk5vdGlmaWNhdGlvbhIUCgx1bnJlYWRfY291bnQYBiABKAMiKgoOV2F0Y2hIZWFydGJlYXQSGAoQc2VydmVyX3dhdGVybWFyaxgBIAEoAyIwChJXYXRjaFJlc2V0UmVxdWlyZWQSGgoSc25hcHNob3Rfd2F0ZXJtYXJrGAEgASgDIjgKHldhdGNoTm90aWZpY2F0aW9uRXZlbnRzUmVxdWVzdBIWCg5hZnRlcl9zZXF1ZW5jZRgBIAEoAyLrAQofV2F0Y2hOb3RpZmljYXRpb25FdmVudHNSZXNwb25zZRI6CgVldmVudBgBIAEoCzIpLndvcmtvcy5ub3RpZmljYXRpb24udjEuTm90aWZpY2F0aW9uRXZlbnRIABI7CgloZWFydGJlYXQYAiABKAsyJi53b3Jrb3Mubm90aWZpY2F0aW9uLnYxLldhdGNoSGVhcnRiZWF0SAASRAoOcmVzZXRfcmVxdWlyZWQYAyABKAsyKi53b3Jrb3Mubm90aWZpY2F0aW9uLnYxLldhdGNoUmVzZXRSZXF1aXJlZEgAQgkKB3BheWxvYWQisAEKGExpc3ROb3RpZmljYXRpb25zUmVxdWVzdBISCgpwcm9qZWN0X2lkGAEgASgJEhMKC3VucmVhZF9vbmx5GAIgASgIEjsKBGtpbmQYAyABKA4yKC53b3Jrb3Mubm90aWZpY2F0aW9uLnYxLk5vdGlmaWNhdGlvbktpbmRIAIgBARIRCglwYWdlX3NpemUYBCABKAUSEgoKcGFnZV90b2tlbhgFIAEoCUIHCgVfa2luZCKaAQoZTGlzdE5vdGlmaWNhdGlvbnNSZXNwb25zZRI7Cg1ub3RpZmljYXRpb25zGAEgAygLMiQud29ya29zLm5vdGlmaWNhdGlvbi52MS5Ob3RpZmljYXRpb24SFwoPbmV4dF9wYWdlX3Rva2VuGAIgASgJEhQKDHVucmVhZF9jb3VudBgDIAEoAxIRCgl3YXRlcm1hcmsYBCABKAMiMQoWR2V0Tm90aWZpY2F0aW9uUmVxdWVzdBIXCg9ub3RpZmljYXRpb25faWQYASABKAkiVQoXR2V0Tm90aWZpY2F0aW9uUmVzcG9uc2USOgoMbm90aWZpY2F0aW9uGAEgASgLMiQud29ya29zLm5vdGlmaWNhdGlvbi52MS5Ob3RpZmljYXRpb24iHwodR2V0Tm90aWZpY2F0aW9uU3VtbWFyeVJlcXVlc3QiaAoeR2V0Tm90aWZpY2F0aW9uU3VtbWFyeVJlc3BvbnNlEhQKDHVucmVhZF9jb3VudBgBIAEoAxIRCgl3YXRlcm1hcmsYAiABKAMSHQoVaW5jaWRlbnRfc291cmNlX3JlYWR5GAMgASgIIk8KG01hcmtOb3RpZmljYXRpb25SZWFkUmVxdWVzdBIXCg9ub3RpZmljYXRpb25faWQYASABKAkSFwoPaWRlbXBvdGVuY3lfa2V5GAIgASgJIokBChxNYXJrTm90aWZpY2F0aW9uUmVhZFJlc3BvbnNlEjoKDG5vdGlmaWNhdGlvbhgBIAEoCzIkLndvcmtvcy5ub3RpZmljYXRpb24udjEuTm90aWZpY2F0aW9uEhQKDHVucmVhZF9jb3VudBgCIAEoAxIXCg9jaGFuZ2Vfc2VxdWVuY2UYAyABKAMiUQocTWFya05vdGlmaWNhdGlvbnNSZWFkUmVxdWVzdBIYChBub3RpZmljYXRpb25faWRzGAEgAygJEhcKD2lkZW1wb3RlbmN5X2tleRgCIAEoCSJOCh1NYXJrTm90aWZpY2F0aW9uc1JlYWRSZXNwb25zZRIUCgx1bnJlYWRfY291bnQYAyABKAMSFwoPY2hhbmdlX3NlcXVlbmNlGAQgASgDInIKFFN1YnNjcmliZVB1c2hSZXF1ZXN0EhEKCWRldmljZV9pZBgBIAEoCRIQCghwbGF0Zm9ybRgCIAEoCRIQCghlbmRwb2ludBgDIAEoCRIOCgZwMjU2ZGgYBCABKAkSEwoLYXV0aF9zZWNyZXQYBSABKAkiFwoVU3Vic2NyaWJlUHVzaFJlc3BvbnNlIj0KFlVuc3Vic2NyaWJlUHVzaFJlcXVlc3QSEQoJZGV2aWNlX2lkGAEgASgJEhAKCHBsYXRmb3JtGAIgASgJIhkKF1Vuc3Vic2NyaWJlUHVzaFJlc3BvbnNlIlgKD1B1c2hQcmVmZXJlbmNlcxIVCg1xdWlldF9lbmFibGVkGAEgASgIEhcKD3F1aWV0X3N0YXJ0X3V0YxgCIAEoCRIVCg1xdWlldF9lbmRfdXRjGAMgASgJIhsKGUdldFB1c2hQcmVmZXJlbmNlc1JlcXVlc3QiWgoaR2V0UHVzaFByZWZlcmVuY2VzUmVzcG9uc2USPAoLcHJlZmVyZW5jZXMYASABKAsyJy53b3Jrb3Mubm90aWZpY2F0aW9uLnYxLlB1c2hQcmVmZXJlbmNlcyJZChlTZXRQdXNoUHJlZmVyZW5jZXNSZXF1ZXN0EjwKC3ByZWZlcmVuY2VzGAEgASgLMicud29ya29zLm5vdGlmaWNhdGlvbi52MS5QdXNoUHJlZmVyZW5jZXMiWgoaU2V0UHVzaFByZWZlcmVuY2VzUmVzcG9uc2USPAoLcHJlZmVyZW5jZXMYASABKAsyJy53b3Jrb3Mubm90aWZpY2F0aW9uLnYxLlB1c2hQcmVmZXJlbmNlcyqdAgoQTm90aWZpY2F0aW9uS2luZBIhCh1OT1RJRklDQVRJT05fS0lORF9VTlNQRUNJRklFRBAAEi0KKU5PVElGSUNBVElPTl9LSU5EX0FHRU5UX0FQUFJPVkFMX1JFUVVJUkVEEAESKQolTk9USUZJQ0FUSU9OX0tJTkRfQUdFTlRfVEFTS19URVJNSU5BTBACEi0KKU5PVElGSUNBVElPTl9LSU5EX0FSVElGQUNUX1JFVklFV19DUkVBVEVEEAMSMQotTk9USUZJQ0FUSU9OX0tJTkRfUkVMSUFCSUxJVFlfSU5DSURFTlRfT1BFTkVEEAQSKgomTk9USUZJQ0FUSU9OX0tJTkRfQVBQX0lOU1RBTkNFX01FU1NBR0UQBSqDAQoUTm90aWZpY2F0aW9uU2V2ZXJpdHkSJQohTk9USUZJQ0FUSU9OX1NFVkVSSVRZX1VOU1BFQ0lGSUVEEAASIAocTk9USUZJQ0FUSU9OX1NFVkVSSVRZX05PUk1BTBABEiIKHk5PVElGSUNBVElPTl9TRVZFUklUWV9DUklUSUNBTBACKnYKEk5vdGlmaWNhdGlvbk9yaWdpbhIjCh9OT1RJRklDQVRJT05fT1JJR0lOX1VOU1BFQ0lGSUVEEAASHgoaTk9USUZJQ0FUSU9OX09SSUdJTl9TWVNURU0QARIbChdOT1RJRklDQVRJT05fT1JJR0lOX0FQUBACKvwBChZOb3RpZmljYXRpb25UYXJnZXRLaW5kEigKJE5PVElGSUNBVElPTl9UQVJHRVRfS0lORF9VTlNQRUNJRklFRBAAEiUKIU5PVElGSUNBVElPTl9UQVJHRVRfS0lORF9BUFBST1ZBTBABEiEKHU5PVElGSUNBVElPTl9UQVJHRVRfS0lORF9UQVNLEAISJQohTk9USUZJQ0FUSU9OX1RBUkdFVF9LSU5EX0FSVElGQUNUEAMSJQohTk9USUZJQ0FUSU9OX1RBUkdFVF9LSU5EX0lOQ0lERU5UEAQSIAocTk9USUZJQ0FUSU9OX1RBUkdFVF9LSU5EX0FQUBAFKosBChZOb3RpZmljYXRpb25DaGFuZ2VUeXBlEigKJE5PVElGSUNBVElPTl9DSEFOR0VfVFlQRV9VTlNQRUNJRklFRBAAEiQKIE5PVElGSUNBVElPTl9DSEFOR0VfVFlQRV9DUkVBVEVEEAESIQodTk9USUZJQ0FUSU9OX0NIQU5HRV9UWVBFX1JFQUQQAjKXCgoTTm90aWZpY2F0aW9uU2VydmljZRJ6ChFMaXN0Tm90aWZpY2F0aW9ucxIwLndvcmtvcy5ub3RpZmljYXRpb24udjEuTGlzdE5vdGlmaWNhdGlvbnNSZXF1ZXN0GjEud29ya29zLm5vdGlmaWNhdGlvbi52MS5MaXN0Tm90aWZpY2F0aW9uc1Jlc3BvbnNlIgASdAoPR2V0Tm90aWZpY2F0aW9uEi4ud29ya29zLm5vdGlmaWNhdGlvbi52MS5HZXROb3RpZmljYXRpb25SZXF1ZXN0Gi8ud29ya29zLm5vdGlmaWNhdGlvbi52MS5HZXROb3RpZmljYXRpb25SZXNwb25zZSIAEoMBChRNYXJrTm90aWZpY2F0aW9uUmVhZBIzLndvcmtvcy5ub3RpZmljYXRpb24udjEuTWFya05vdGlmaWNhdGlvblJlYWRSZXF1ZXN0GjQud29ya29zLm5vdGlmaWNhdGlvbi52MS5NYXJrTm90aWZpY2F0aW9uUmVhZFJlc3BvbnNlIgAShgEKFU1hcmtOb3RpZmljYXRpb25zUmVhZBI0Lndvcmtvcy5ub3RpZmljYXRpb24udjEuTWFya05vdGlmaWNhdGlvbnNSZWFkUmVxdWVzdBo1Lndvcmtvcy5ub3RpZmljYXRpb24udjEuTWFya05vdGlmaWNhdGlvbnNSZWFkUmVzcG9uc2UiABKJAQoWR2V0Tm90aWZpY2F0aW9uU3VtbWFyeRI1Lndvcmtvcy5ub3RpZmljYXRpb24udjEuR2V0Tm90aWZpY2F0aW9uU3VtbWFyeVJlcXVlc3QaNi53b3Jrb3Mubm90aWZpY2F0aW9uLnYxLkdldE5vdGlmaWNhdGlvblN1bW1hcnlSZXNwb25zZSIAEo4BChdXYXRjaE5vdGlmaWNhdGlvbkV2ZW50cxI2Lndvcmtvcy5ub3RpZmljYXRpb24udjEuV2F0Y2hOb3RpZmljYXRpb25FdmVudHNSZXF1ZXN0Gjcud29ya29zLm5vdGlmaWNhdGlvbi52MS5XYXRjaE5vdGlmaWNhdGlvbkV2ZW50c1Jlc3BvbnNlIgAwARJuCg1TdWJzY3JpYmVQdXNoEiwud29ya29zLm5vdGlmaWNhdGlvbi52MS5TdWJzY3JpYmVQdXNoUmVxdWVzdBotLndvcmtvcy5ub3RpZmljYXRpb24udjEuU3Vic2NyaWJlUHVzaFJlc3BvbnNlIgASdAoPVW5zdWJzY3JpYmVQdXNoEi4ud29ya29zLm5vdGlmaWNhdGlvbi52MS5VbnN1YnNjcmliZVB1c2hSZXF1ZXN0Gi8ud29ya29zLm5vdGlmaWNhdGlvbi52MS5VbnN1YnNjcmliZVB1c2hSZXNwb25zZSIAEn0KEkdldFB1c2hQcmVmZXJlbmNlcxIxLndvcmtvcy5ub3RpZmljYXRpb24udjEuR2V0UHVzaFByZWZlcmVuY2VzUmVxdWVzdBoyLndvcmtvcy5ub3RpZmljYXRpb24udjEuR2V0UHVzaFByZWZlcmVuY2VzUmVzcG9uc2UiABJ9ChJTZXRQdXNoUHJlZmVyZW5jZXMSMS53b3Jrb3Mubm90aWZpY2F0aW9uLnYxLlNldFB1c2hQcmVmZXJlbmNlc1JlcXVlc3QaMi53b3Jrb3Mubm90aWZpY2F0aW9uLnYxLlNldFB1c2hQcmVmZXJlbmNlc1Jlc3BvbnNlIgBCS1pJZ2l0aHViLmNvbS95YW5ndGFvMTIxL3dvcmtvcy9nZW4vZ28vd29ya29zL25vdGlmaWNhdGlvbi92MTtub3RpZmljYXRpb252MWIGcHJvdG8z", [file_google_protobuf_timestamp]);
 
 /**
  * The finite typed action target. A client may only reopen the authoritative
@@ -553,6 +553,197 @@ export const MarkNotificationsReadResponseSchema: GenMessage<MarkNotificationsRe
   messageDesc(file_workos_notification_v1_notification, 16);
 
 /**
+ * @generated from message workos.notification.v1.SubscribePushRequest
+ */
+export type SubscribePushRequest = Message<"workos.notification.v1.SubscribePushRequest"> & {
+  /**
+   * Device-scoped: one subscription per (device, platform) per owner.
+   *
+   * @generated from field: string device_id = 1;
+   */
+  deviceId: string;
+
+  /**
+   * "web-push" or "fixture". APNs/FCM stay unavailable until real
+   * provider credentials exist; unknown values fail closed.
+   *
+   * @generated from field: string platform = 2;
+   */
+  platform: string;
+
+  /**
+   * Relay endpoint URL (https) or fixture relay reference; bounded.
+   *
+   * @generated from field: string endpoint = 3;
+   */
+  endpoint: string;
+
+  /**
+   * Web Push client keys for the encrypted payload; the fixture relay may
+   * leave them empty.
+   *
+   * @generated from field: string p256dh = 4;
+   */
+  p256dh: string;
+
+  /**
+   * @generated from field: string auth_secret = 5;
+   */
+  authSecret: string;
+};
+
+/**
+ * Describes the message workos.notification.v1.SubscribePushRequest.
+ * Use `create(SubscribePushRequestSchema)` to create a new message.
+ */
+export const SubscribePushRequestSchema: GenMessage<SubscribePushRequest> = /*@__PURE__*/
+  messageDesc(file_workos_notification_v1_notification, 17);
+
+/**
+ * @generated from message workos.notification.v1.SubscribePushResponse
+ */
+export type SubscribePushResponse = Message<"workos.notification.v1.SubscribePushResponse"> & {
+};
+
+/**
+ * Describes the message workos.notification.v1.SubscribePushResponse.
+ * Use `create(SubscribePushResponseSchema)` to create a new message.
+ */
+export const SubscribePushResponseSchema: GenMessage<SubscribePushResponse> = /*@__PURE__*/
+  messageDesc(file_workos_notification_v1_notification, 18);
+
+/**
+ * @generated from message workos.notification.v1.UnsubscribePushRequest
+ */
+export type UnsubscribePushRequest = Message<"workos.notification.v1.UnsubscribePushRequest"> & {
+  /**
+   * @generated from field: string device_id = 1;
+   */
+  deviceId: string;
+
+  /**
+   * @generated from field: string platform = 2;
+   */
+  platform: string;
+};
+
+/**
+ * Describes the message workos.notification.v1.UnsubscribePushRequest.
+ * Use `create(UnsubscribePushRequestSchema)` to create a new message.
+ */
+export const UnsubscribePushRequestSchema: GenMessage<UnsubscribePushRequest> = /*@__PURE__*/
+  messageDesc(file_workos_notification_v1_notification, 19);
+
+/**
+ * @generated from message workos.notification.v1.UnsubscribePushResponse
+ */
+export type UnsubscribePushResponse = Message<"workos.notification.v1.UnsubscribePushResponse"> & {
+};
+
+/**
+ * Describes the message workos.notification.v1.UnsubscribePushResponse.
+ * Use `create(UnsubscribePushResponseSchema)` to create a new message.
+ */
+export const UnsubscribePushResponseSchema: GenMessage<UnsubscribePushResponse> = /*@__PURE__*/
+  messageDesc(file_workos_notification_v1_notification, 20);
+
+/**
+ * @generated from message workos.notification.v1.PushPreferences
+ */
+export type PushPreferences = Message<"workos.notification.v1.PushPreferences"> & {
+  /**
+   * Owner-level do-not-disturb window, evaluated server-side in UTC.
+   * Quiet-hour events never wake devices; durable facts are unaffected.
+   *
+   * @generated from field: bool quiet_enabled = 1;
+   */
+  quietEnabled: boolean;
+
+  /**
+   * "HH:MM" UTC grammar.
+   *
+   * @generated from field: string quiet_start_utc = 2;
+   */
+  quietStartUtc: string;
+
+  /**
+   * @generated from field: string quiet_end_utc = 3;
+   */
+  quietEndUtc: string;
+};
+
+/**
+ * Describes the message workos.notification.v1.PushPreferences.
+ * Use `create(PushPreferencesSchema)` to create a new message.
+ */
+export const PushPreferencesSchema: GenMessage<PushPreferences> = /*@__PURE__*/
+  messageDesc(file_workos_notification_v1_notification, 21);
+
+/**
+ * @generated from message workos.notification.v1.GetPushPreferencesRequest
+ */
+export type GetPushPreferencesRequest = Message<"workos.notification.v1.GetPushPreferencesRequest"> & {
+};
+
+/**
+ * Describes the message workos.notification.v1.GetPushPreferencesRequest.
+ * Use `create(GetPushPreferencesRequestSchema)` to create a new message.
+ */
+export const GetPushPreferencesRequestSchema: GenMessage<GetPushPreferencesRequest> = /*@__PURE__*/
+  messageDesc(file_workos_notification_v1_notification, 22);
+
+/**
+ * @generated from message workos.notification.v1.GetPushPreferencesResponse
+ */
+export type GetPushPreferencesResponse = Message<"workos.notification.v1.GetPushPreferencesResponse"> & {
+  /**
+   * @generated from field: workos.notification.v1.PushPreferences preferences = 1;
+   */
+  preferences?: PushPreferences | undefined;
+};
+
+/**
+ * Describes the message workos.notification.v1.GetPushPreferencesResponse.
+ * Use `create(GetPushPreferencesResponseSchema)` to create a new message.
+ */
+export const GetPushPreferencesResponseSchema: GenMessage<GetPushPreferencesResponse> = /*@__PURE__*/
+  messageDesc(file_workos_notification_v1_notification, 23);
+
+/**
+ * @generated from message workos.notification.v1.SetPushPreferencesRequest
+ */
+export type SetPushPreferencesRequest = Message<"workos.notification.v1.SetPushPreferencesRequest"> & {
+  /**
+   * @generated from field: workos.notification.v1.PushPreferences preferences = 1;
+   */
+  preferences?: PushPreferences | undefined;
+};
+
+/**
+ * Describes the message workos.notification.v1.SetPushPreferencesRequest.
+ * Use `create(SetPushPreferencesRequestSchema)` to create a new message.
+ */
+export const SetPushPreferencesRequestSchema: GenMessage<SetPushPreferencesRequest> = /*@__PURE__*/
+  messageDesc(file_workos_notification_v1_notification, 24);
+
+/**
+ * @generated from message workos.notification.v1.SetPushPreferencesResponse
+ */
+export type SetPushPreferencesResponse = Message<"workos.notification.v1.SetPushPreferencesResponse"> & {
+  /**
+   * @generated from field: workos.notification.v1.PushPreferences preferences = 1;
+   */
+  preferences?: PushPreferences | undefined;
+};
+
+/**
+ * Describes the message workos.notification.v1.SetPushPreferencesResponse.
+ * Use `create(SetPushPreferencesResponseSchema)` to create a new message.
+ */
+export const SetPushPreferencesResponseSchema: GenMessage<SetPushPreferencesResponse> = /*@__PURE__*/
+  messageDesc(file_workos_notification_v1_notification, 25);
+
+/**
  * @generated from enum workos.notification.v1.NotificationKind
  */
 export enum NotificationKind {
@@ -786,6 +977,41 @@ export const NotificationService: GenService<{
     methodKind: "server_streaming";
     input: typeof WatchNotificationEventsRequestSchema;
     output: typeof WatchNotificationEventsResponseSchema;
+  },
+  /**
+   * Push wake subscriptions (ADR-0018): the relay receives only the
+   * notification id, never body content, project names, or code.
+   *
+   * @generated from rpc workos.notification.v1.NotificationService.SubscribePush
+   */
+  subscribePush: {
+    methodKind: "unary";
+    input: typeof SubscribePushRequestSchema;
+    output: typeof SubscribePushResponseSchema;
+  },
+  /**
+   * @generated from rpc workos.notification.v1.NotificationService.UnsubscribePush
+   */
+  unsubscribePush: {
+    methodKind: "unary";
+    input: typeof UnsubscribePushRequestSchema;
+    output: typeof UnsubscribePushResponseSchema;
+  },
+  /**
+   * @generated from rpc workos.notification.v1.NotificationService.GetPushPreferences
+   */
+  getPushPreferences: {
+    methodKind: "unary";
+    input: typeof GetPushPreferencesRequestSchema;
+    output: typeof GetPushPreferencesResponseSchema;
+  },
+  /**
+   * @generated from rpc workos.notification.v1.NotificationService.SetPushPreferences
+   */
+  setPushPreferences: {
+    methodKind: "unary";
+    input: typeof SetPushPreferencesRequestSchema;
+    output: typeof SetPushPreferencesResponseSchema;
   },
 }> = /*@__PURE__*/
   serviceDesc(file_workos_notification_v1_notification, 0);

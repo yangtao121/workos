@@ -1389,6 +1389,443 @@ func (x *MarkNotificationsReadResponse) GetChangeSequence() int64 {
 	return 0
 }
 
+type SubscribePushRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Device-scoped: one subscription per (device, platform) per owner.
+	DeviceId string `protobuf:"bytes,1,opt,name=device_id,json=deviceId,proto3" json:"device_id,omitempty"`
+	// "web-push" or "fixture". APNs/FCM stay unavailable until real
+	// provider credentials exist; unknown values fail closed.
+	Platform string `protobuf:"bytes,2,opt,name=platform,proto3" json:"platform,omitempty"`
+	// Relay endpoint URL (https) or fixture relay reference; bounded.
+	Endpoint string `protobuf:"bytes,3,opt,name=endpoint,proto3" json:"endpoint,omitempty"`
+	// Web Push client keys for the encrypted payload; the fixture relay may
+	// leave them empty.
+	P256Dh        string `protobuf:"bytes,4,opt,name=p256dh,proto3" json:"p256dh,omitempty"`
+	AuthSecret    string `protobuf:"bytes,5,opt,name=auth_secret,json=authSecret,proto3" json:"auth_secret,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SubscribePushRequest) Reset() {
+	*x = SubscribePushRequest{}
+	mi := &file_workos_notification_v1_notification_proto_msgTypes[17]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SubscribePushRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SubscribePushRequest) ProtoMessage() {}
+
+func (x *SubscribePushRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_workos_notification_v1_notification_proto_msgTypes[17]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SubscribePushRequest.ProtoReflect.Descriptor instead.
+func (*SubscribePushRequest) Descriptor() ([]byte, []int) {
+	return file_workos_notification_v1_notification_proto_rawDescGZIP(), []int{17}
+}
+
+func (x *SubscribePushRequest) GetDeviceId() string {
+	if x != nil {
+		return x.DeviceId
+	}
+	return ""
+}
+
+func (x *SubscribePushRequest) GetPlatform() string {
+	if x != nil {
+		return x.Platform
+	}
+	return ""
+}
+
+func (x *SubscribePushRequest) GetEndpoint() string {
+	if x != nil {
+		return x.Endpoint
+	}
+	return ""
+}
+
+func (x *SubscribePushRequest) GetP256Dh() string {
+	if x != nil {
+		return x.P256Dh
+	}
+	return ""
+}
+
+func (x *SubscribePushRequest) GetAuthSecret() string {
+	if x != nil {
+		return x.AuthSecret
+	}
+	return ""
+}
+
+type SubscribePushResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SubscribePushResponse) Reset() {
+	*x = SubscribePushResponse{}
+	mi := &file_workos_notification_v1_notification_proto_msgTypes[18]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SubscribePushResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SubscribePushResponse) ProtoMessage() {}
+
+func (x *SubscribePushResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_workos_notification_v1_notification_proto_msgTypes[18]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SubscribePushResponse.ProtoReflect.Descriptor instead.
+func (*SubscribePushResponse) Descriptor() ([]byte, []int) {
+	return file_workos_notification_v1_notification_proto_rawDescGZIP(), []int{18}
+}
+
+type UnsubscribePushRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	DeviceId      string                 `protobuf:"bytes,1,opt,name=device_id,json=deviceId,proto3" json:"device_id,omitempty"`
+	Platform      string                 `protobuf:"bytes,2,opt,name=platform,proto3" json:"platform,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *UnsubscribePushRequest) Reset() {
+	*x = UnsubscribePushRequest{}
+	mi := &file_workos_notification_v1_notification_proto_msgTypes[19]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *UnsubscribePushRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*UnsubscribePushRequest) ProtoMessage() {}
+
+func (x *UnsubscribePushRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_workos_notification_v1_notification_proto_msgTypes[19]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use UnsubscribePushRequest.ProtoReflect.Descriptor instead.
+func (*UnsubscribePushRequest) Descriptor() ([]byte, []int) {
+	return file_workos_notification_v1_notification_proto_rawDescGZIP(), []int{19}
+}
+
+func (x *UnsubscribePushRequest) GetDeviceId() string {
+	if x != nil {
+		return x.DeviceId
+	}
+	return ""
+}
+
+func (x *UnsubscribePushRequest) GetPlatform() string {
+	if x != nil {
+		return x.Platform
+	}
+	return ""
+}
+
+type UnsubscribePushResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *UnsubscribePushResponse) Reset() {
+	*x = UnsubscribePushResponse{}
+	mi := &file_workos_notification_v1_notification_proto_msgTypes[20]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *UnsubscribePushResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*UnsubscribePushResponse) ProtoMessage() {}
+
+func (x *UnsubscribePushResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_workos_notification_v1_notification_proto_msgTypes[20]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use UnsubscribePushResponse.ProtoReflect.Descriptor instead.
+func (*UnsubscribePushResponse) Descriptor() ([]byte, []int) {
+	return file_workos_notification_v1_notification_proto_rawDescGZIP(), []int{20}
+}
+
+type PushPreferences struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Owner-level do-not-disturb window, evaluated server-side in UTC.
+	// Quiet-hour events never wake devices; durable facts are unaffected.
+	QuietEnabled bool `protobuf:"varint,1,opt,name=quiet_enabled,json=quietEnabled,proto3" json:"quiet_enabled,omitempty"`
+	// "HH:MM" UTC grammar.
+	QuietStartUtc string `protobuf:"bytes,2,opt,name=quiet_start_utc,json=quietStartUtc,proto3" json:"quiet_start_utc,omitempty"`
+	QuietEndUtc   string `protobuf:"bytes,3,opt,name=quiet_end_utc,json=quietEndUtc,proto3" json:"quiet_end_utc,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *PushPreferences) Reset() {
+	*x = PushPreferences{}
+	mi := &file_workos_notification_v1_notification_proto_msgTypes[21]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *PushPreferences) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*PushPreferences) ProtoMessage() {}
+
+func (x *PushPreferences) ProtoReflect() protoreflect.Message {
+	mi := &file_workos_notification_v1_notification_proto_msgTypes[21]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use PushPreferences.ProtoReflect.Descriptor instead.
+func (*PushPreferences) Descriptor() ([]byte, []int) {
+	return file_workos_notification_v1_notification_proto_rawDescGZIP(), []int{21}
+}
+
+func (x *PushPreferences) GetQuietEnabled() bool {
+	if x != nil {
+		return x.QuietEnabled
+	}
+	return false
+}
+
+func (x *PushPreferences) GetQuietStartUtc() string {
+	if x != nil {
+		return x.QuietStartUtc
+	}
+	return ""
+}
+
+func (x *PushPreferences) GetQuietEndUtc() string {
+	if x != nil {
+		return x.QuietEndUtc
+	}
+	return ""
+}
+
+type GetPushPreferencesRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetPushPreferencesRequest) Reset() {
+	*x = GetPushPreferencesRequest{}
+	mi := &file_workos_notification_v1_notification_proto_msgTypes[22]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetPushPreferencesRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetPushPreferencesRequest) ProtoMessage() {}
+
+func (x *GetPushPreferencesRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_workos_notification_v1_notification_proto_msgTypes[22]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetPushPreferencesRequest.ProtoReflect.Descriptor instead.
+func (*GetPushPreferencesRequest) Descriptor() ([]byte, []int) {
+	return file_workos_notification_v1_notification_proto_rawDescGZIP(), []int{22}
+}
+
+type GetPushPreferencesResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Preferences   *PushPreferences       `protobuf:"bytes,1,opt,name=preferences,proto3" json:"preferences,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetPushPreferencesResponse) Reset() {
+	*x = GetPushPreferencesResponse{}
+	mi := &file_workos_notification_v1_notification_proto_msgTypes[23]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetPushPreferencesResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetPushPreferencesResponse) ProtoMessage() {}
+
+func (x *GetPushPreferencesResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_workos_notification_v1_notification_proto_msgTypes[23]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetPushPreferencesResponse.ProtoReflect.Descriptor instead.
+func (*GetPushPreferencesResponse) Descriptor() ([]byte, []int) {
+	return file_workos_notification_v1_notification_proto_rawDescGZIP(), []int{23}
+}
+
+func (x *GetPushPreferencesResponse) GetPreferences() *PushPreferences {
+	if x != nil {
+		return x.Preferences
+	}
+	return nil
+}
+
+type SetPushPreferencesRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Preferences   *PushPreferences       `protobuf:"bytes,1,opt,name=preferences,proto3" json:"preferences,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SetPushPreferencesRequest) Reset() {
+	*x = SetPushPreferencesRequest{}
+	mi := &file_workos_notification_v1_notification_proto_msgTypes[24]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SetPushPreferencesRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SetPushPreferencesRequest) ProtoMessage() {}
+
+func (x *SetPushPreferencesRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_workos_notification_v1_notification_proto_msgTypes[24]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SetPushPreferencesRequest.ProtoReflect.Descriptor instead.
+func (*SetPushPreferencesRequest) Descriptor() ([]byte, []int) {
+	return file_workos_notification_v1_notification_proto_rawDescGZIP(), []int{24}
+}
+
+func (x *SetPushPreferencesRequest) GetPreferences() *PushPreferences {
+	if x != nil {
+		return x.Preferences
+	}
+	return nil
+}
+
+type SetPushPreferencesResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Preferences   *PushPreferences       `protobuf:"bytes,1,opt,name=preferences,proto3" json:"preferences,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SetPushPreferencesResponse) Reset() {
+	*x = SetPushPreferencesResponse{}
+	mi := &file_workos_notification_v1_notification_proto_msgTypes[25]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SetPushPreferencesResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SetPushPreferencesResponse) ProtoMessage() {}
+
+func (x *SetPushPreferencesResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_workos_notification_v1_notification_proto_msgTypes[25]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SetPushPreferencesResponse.ProtoReflect.Descriptor instead.
+func (*SetPushPreferencesResponse) Descriptor() ([]byte, []int) {
+	return file_workos_notification_v1_notification_proto_rawDescGZIP(), []int{25}
+}
+
+func (x *SetPushPreferencesResponse) GetPreferences() *PushPreferences {
+	if x != nil {
+		return x.Preferences
+	}
+	return nil
+}
+
 var File_workos_notification_v1_notification_proto protoreflect.FileDescriptor
 
 const file_workos_notification_v1_notification_proto_rawDesc = "" +
@@ -1469,7 +1906,30 @@ const file_workos_notification_v1_notification_proto_rawDesc = "" +
 	"\x0fidempotency_key\x18\x02 \x01(\tR\x0eidempotencyKey\"k\n" +
 	"\x1dMarkNotificationsReadResponse\x12!\n" +
 	"\funread_count\x18\x03 \x01(\x03R\vunreadCount\x12'\n" +
-	"\x0fchange_sequence\x18\x04 \x01(\x03R\x0echangeSequence*\x9d\x02\n" +
+	"\x0fchange_sequence\x18\x04 \x01(\x03R\x0echangeSequence\"\xa4\x01\n" +
+	"\x14SubscribePushRequest\x12\x1b\n" +
+	"\tdevice_id\x18\x01 \x01(\tR\bdeviceId\x12\x1a\n" +
+	"\bplatform\x18\x02 \x01(\tR\bplatform\x12\x1a\n" +
+	"\bendpoint\x18\x03 \x01(\tR\bendpoint\x12\x16\n" +
+	"\x06p256dh\x18\x04 \x01(\tR\x06p256dh\x12\x1f\n" +
+	"\vauth_secret\x18\x05 \x01(\tR\n" +
+	"authSecret\"\x17\n" +
+	"\x15SubscribePushResponse\"Q\n" +
+	"\x16UnsubscribePushRequest\x12\x1b\n" +
+	"\tdevice_id\x18\x01 \x01(\tR\bdeviceId\x12\x1a\n" +
+	"\bplatform\x18\x02 \x01(\tR\bplatform\"\x19\n" +
+	"\x17UnsubscribePushResponse\"\x82\x01\n" +
+	"\x0fPushPreferences\x12#\n" +
+	"\rquiet_enabled\x18\x01 \x01(\bR\fquietEnabled\x12&\n" +
+	"\x0fquiet_start_utc\x18\x02 \x01(\tR\rquietStartUtc\x12\"\n" +
+	"\rquiet_end_utc\x18\x03 \x01(\tR\vquietEndUtc\"\x1b\n" +
+	"\x19GetPushPreferencesRequest\"g\n" +
+	"\x1aGetPushPreferencesResponse\x12I\n" +
+	"\vpreferences\x18\x01 \x01(\v2'.workos.notification.v1.PushPreferencesR\vpreferences\"f\n" +
+	"\x19SetPushPreferencesRequest\x12I\n" +
+	"\vpreferences\x18\x01 \x01(\v2'.workos.notification.v1.PushPreferencesR\vpreferences\"g\n" +
+	"\x1aSetPushPreferencesResponse\x12I\n" +
+	"\vpreferences\x18\x01 \x01(\v2'.workos.notification.v1.PushPreferencesR\vpreferences*\x9d\x02\n" +
 	"\x10NotificationKind\x12!\n" +
 	"\x1dNOTIFICATION_KIND_UNSPECIFIED\x10\x00\x12-\n" +
 	")NOTIFICATION_KIND_AGENT_APPROVAL_REQUIRED\x10\x01\x12)\n" +
@@ -1495,14 +1955,19 @@ const file_workos_notification_v1_notification_proto_rawDesc = "" +
 	"\x16NotificationChangeType\x12(\n" +
 	"$NOTIFICATION_CHANGE_TYPE_UNSPECIFIED\x10\x00\x12$\n" +
 	" NOTIFICATION_CHANGE_TYPE_CREATED\x10\x01\x12!\n" +
-	"\x1dNOTIFICATION_CHANGE_TYPE_READ\x10\x022\xb3\x06\n" +
+	"\x1dNOTIFICATION_CHANGE_TYPE_READ\x10\x022\x97\n" +
+	"\n" +
 	"\x13NotificationService\x12z\n" +
 	"\x11ListNotifications\x120.workos.notification.v1.ListNotificationsRequest\x1a1.workos.notification.v1.ListNotificationsResponse\"\x00\x12t\n" +
 	"\x0fGetNotification\x12..workos.notification.v1.GetNotificationRequest\x1a/.workos.notification.v1.GetNotificationResponse\"\x00\x12\x83\x01\n" +
 	"\x14MarkNotificationRead\x123.workos.notification.v1.MarkNotificationReadRequest\x1a4.workos.notification.v1.MarkNotificationReadResponse\"\x00\x12\x86\x01\n" +
 	"\x15MarkNotificationsRead\x124.workos.notification.v1.MarkNotificationsReadRequest\x1a5.workos.notification.v1.MarkNotificationsReadResponse\"\x00\x12\x89\x01\n" +
 	"\x16GetNotificationSummary\x125.workos.notification.v1.GetNotificationSummaryRequest\x1a6.workos.notification.v1.GetNotificationSummaryResponse\"\x00\x12\x8e\x01\n" +
-	"\x17WatchNotificationEvents\x126.workos.notification.v1.WatchNotificationEventsRequest\x1a7.workos.notification.v1.WatchNotificationEventsResponse\"\x000\x01BKZIgithub.com/yangtao121/workos/gen/go/workos/notification/v1;notificationv1b\x06proto3"
+	"\x17WatchNotificationEvents\x126.workos.notification.v1.WatchNotificationEventsRequest\x1a7.workos.notification.v1.WatchNotificationEventsResponse\"\x000\x01\x12n\n" +
+	"\rSubscribePush\x12,.workos.notification.v1.SubscribePushRequest\x1a-.workos.notification.v1.SubscribePushResponse\"\x00\x12t\n" +
+	"\x0fUnsubscribePush\x12..workos.notification.v1.UnsubscribePushRequest\x1a/.workos.notification.v1.UnsubscribePushResponse\"\x00\x12}\n" +
+	"\x12GetPushPreferences\x121.workos.notification.v1.GetPushPreferencesRequest\x1a2.workos.notification.v1.GetPushPreferencesResponse\"\x00\x12}\n" +
+	"\x12SetPushPreferences\x121.workos.notification.v1.SetPushPreferencesRequest\x1a2.workos.notification.v1.SetPushPreferencesResponse\"\x00BKZIgithub.com/yangtao121/workos/gen/go/workos/notification/v1;notificationv1b\x06proto3"
 
 var (
 	file_workos_notification_v1_notification_proto_rawDescOnce sync.Once
@@ -1517,7 +1982,7 @@ func file_workos_notification_v1_notification_proto_rawDescGZIP() []byte {
 }
 
 var file_workos_notification_v1_notification_proto_enumTypes = make([]protoimpl.EnumInfo, 5)
-var file_workos_notification_v1_notification_proto_msgTypes = make([]protoimpl.MessageInfo, 17)
+var file_workos_notification_v1_notification_proto_msgTypes = make([]protoimpl.MessageInfo, 26)
 var file_workos_notification_v1_notification_proto_goTypes = []any{
 	(NotificationKind)(0),                   // 0: workos.notification.v1.NotificationKind
 	(NotificationSeverity)(0),               // 1: workos.notification.v1.NotificationSeverity
@@ -1541,7 +2006,16 @@ var file_workos_notification_v1_notification_proto_goTypes = []any{
 	(*MarkNotificationReadResponse)(nil),    // 19: workos.notification.v1.MarkNotificationReadResponse
 	(*MarkNotificationsReadRequest)(nil),    // 20: workos.notification.v1.MarkNotificationsReadRequest
 	(*MarkNotificationsReadResponse)(nil),   // 21: workos.notification.v1.MarkNotificationsReadResponse
-	(*timestamppb.Timestamp)(nil),           // 22: google.protobuf.Timestamp
+	(*SubscribePushRequest)(nil),            // 22: workos.notification.v1.SubscribePushRequest
+	(*SubscribePushResponse)(nil),           // 23: workos.notification.v1.SubscribePushResponse
+	(*UnsubscribePushRequest)(nil),          // 24: workos.notification.v1.UnsubscribePushRequest
+	(*UnsubscribePushResponse)(nil),         // 25: workos.notification.v1.UnsubscribePushResponse
+	(*PushPreferences)(nil),                 // 26: workos.notification.v1.PushPreferences
+	(*GetPushPreferencesRequest)(nil),       // 27: workos.notification.v1.GetPushPreferencesRequest
+	(*GetPushPreferencesResponse)(nil),      // 28: workos.notification.v1.GetPushPreferencesResponse
+	(*SetPushPreferencesRequest)(nil),       // 29: workos.notification.v1.SetPushPreferencesRequest
+	(*SetPushPreferencesResponse)(nil),      // 30: workos.notification.v1.SetPushPreferencesResponse
+	(*timestamppb.Timestamp)(nil),           // 31: google.protobuf.Timestamp
 }
 var file_workos_notification_v1_notification_proto_depIdxs = []int32{
 	3,  // 0: workos.notification.v1.NotificationTarget.kind:type_name -> workos.notification.v1.NotificationTargetKind
@@ -1549,8 +2023,8 @@ var file_workos_notification_v1_notification_proto_depIdxs = []int32{
 	1,  // 2: workos.notification.v1.Notification.severity:type_name -> workos.notification.v1.NotificationSeverity
 	2,  // 3: workos.notification.v1.Notification.origin:type_name -> workos.notification.v1.NotificationOrigin
 	5,  // 4: workos.notification.v1.Notification.target:type_name -> workos.notification.v1.NotificationTarget
-	22, // 5: workos.notification.v1.Notification.created_at:type_name -> google.protobuf.Timestamp
-	22, // 6: workos.notification.v1.Notification.read_at:type_name -> google.protobuf.Timestamp
+	31, // 5: workos.notification.v1.Notification.created_at:type_name -> google.protobuf.Timestamp
+	31, // 6: workos.notification.v1.Notification.read_at:type_name -> google.protobuf.Timestamp
 	4,  // 7: workos.notification.v1.NotificationEvent.type:type_name -> workos.notification.v1.NotificationChangeType
 	6,  // 8: workos.notification.v1.NotificationEvent.notification:type_name -> workos.notification.v1.Notification
 	7,  // 9: workos.notification.v1.WatchNotificationEventsResponse.event:type_name -> workos.notification.v1.NotificationEvent
@@ -1560,23 +2034,34 @@ var file_workos_notification_v1_notification_proto_depIdxs = []int32{
 	6,  // 13: workos.notification.v1.ListNotificationsResponse.notifications:type_name -> workos.notification.v1.Notification
 	6,  // 14: workos.notification.v1.GetNotificationResponse.notification:type_name -> workos.notification.v1.Notification
 	6,  // 15: workos.notification.v1.MarkNotificationReadResponse.notification:type_name -> workos.notification.v1.Notification
-	12, // 16: workos.notification.v1.NotificationService.ListNotifications:input_type -> workos.notification.v1.ListNotificationsRequest
-	14, // 17: workos.notification.v1.NotificationService.GetNotification:input_type -> workos.notification.v1.GetNotificationRequest
-	18, // 18: workos.notification.v1.NotificationService.MarkNotificationRead:input_type -> workos.notification.v1.MarkNotificationReadRequest
-	20, // 19: workos.notification.v1.NotificationService.MarkNotificationsRead:input_type -> workos.notification.v1.MarkNotificationsReadRequest
-	16, // 20: workos.notification.v1.NotificationService.GetNotificationSummary:input_type -> workos.notification.v1.GetNotificationSummaryRequest
-	10, // 21: workos.notification.v1.NotificationService.WatchNotificationEvents:input_type -> workos.notification.v1.WatchNotificationEventsRequest
-	13, // 22: workos.notification.v1.NotificationService.ListNotifications:output_type -> workos.notification.v1.ListNotificationsResponse
-	15, // 23: workos.notification.v1.NotificationService.GetNotification:output_type -> workos.notification.v1.GetNotificationResponse
-	19, // 24: workos.notification.v1.NotificationService.MarkNotificationRead:output_type -> workos.notification.v1.MarkNotificationReadResponse
-	21, // 25: workos.notification.v1.NotificationService.MarkNotificationsRead:output_type -> workos.notification.v1.MarkNotificationsReadResponse
-	17, // 26: workos.notification.v1.NotificationService.GetNotificationSummary:output_type -> workos.notification.v1.GetNotificationSummaryResponse
-	11, // 27: workos.notification.v1.NotificationService.WatchNotificationEvents:output_type -> workos.notification.v1.WatchNotificationEventsResponse
-	22, // [22:28] is the sub-list for method output_type
-	16, // [16:22] is the sub-list for method input_type
-	16, // [16:16] is the sub-list for extension type_name
-	16, // [16:16] is the sub-list for extension extendee
-	0,  // [0:16] is the sub-list for field type_name
+	26, // 16: workos.notification.v1.GetPushPreferencesResponse.preferences:type_name -> workos.notification.v1.PushPreferences
+	26, // 17: workos.notification.v1.SetPushPreferencesRequest.preferences:type_name -> workos.notification.v1.PushPreferences
+	26, // 18: workos.notification.v1.SetPushPreferencesResponse.preferences:type_name -> workos.notification.v1.PushPreferences
+	12, // 19: workos.notification.v1.NotificationService.ListNotifications:input_type -> workos.notification.v1.ListNotificationsRequest
+	14, // 20: workos.notification.v1.NotificationService.GetNotification:input_type -> workos.notification.v1.GetNotificationRequest
+	18, // 21: workos.notification.v1.NotificationService.MarkNotificationRead:input_type -> workos.notification.v1.MarkNotificationReadRequest
+	20, // 22: workos.notification.v1.NotificationService.MarkNotificationsRead:input_type -> workos.notification.v1.MarkNotificationsReadRequest
+	16, // 23: workos.notification.v1.NotificationService.GetNotificationSummary:input_type -> workos.notification.v1.GetNotificationSummaryRequest
+	10, // 24: workos.notification.v1.NotificationService.WatchNotificationEvents:input_type -> workos.notification.v1.WatchNotificationEventsRequest
+	22, // 25: workos.notification.v1.NotificationService.SubscribePush:input_type -> workos.notification.v1.SubscribePushRequest
+	24, // 26: workos.notification.v1.NotificationService.UnsubscribePush:input_type -> workos.notification.v1.UnsubscribePushRequest
+	27, // 27: workos.notification.v1.NotificationService.GetPushPreferences:input_type -> workos.notification.v1.GetPushPreferencesRequest
+	29, // 28: workos.notification.v1.NotificationService.SetPushPreferences:input_type -> workos.notification.v1.SetPushPreferencesRequest
+	13, // 29: workos.notification.v1.NotificationService.ListNotifications:output_type -> workos.notification.v1.ListNotificationsResponse
+	15, // 30: workos.notification.v1.NotificationService.GetNotification:output_type -> workos.notification.v1.GetNotificationResponse
+	19, // 31: workos.notification.v1.NotificationService.MarkNotificationRead:output_type -> workos.notification.v1.MarkNotificationReadResponse
+	21, // 32: workos.notification.v1.NotificationService.MarkNotificationsRead:output_type -> workos.notification.v1.MarkNotificationsReadResponse
+	17, // 33: workos.notification.v1.NotificationService.GetNotificationSummary:output_type -> workos.notification.v1.GetNotificationSummaryResponse
+	11, // 34: workos.notification.v1.NotificationService.WatchNotificationEvents:output_type -> workos.notification.v1.WatchNotificationEventsResponse
+	23, // 35: workos.notification.v1.NotificationService.SubscribePush:output_type -> workos.notification.v1.SubscribePushResponse
+	25, // 36: workos.notification.v1.NotificationService.UnsubscribePush:output_type -> workos.notification.v1.UnsubscribePushResponse
+	28, // 37: workos.notification.v1.NotificationService.GetPushPreferences:output_type -> workos.notification.v1.GetPushPreferencesResponse
+	30, // 38: workos.notification.v1.NotificationService.SetPushPreferences:output_type -> workos.notification.v1.SetPushPreferencesResponse
+	29, // [29:39] is the sub-list for method output_type
+	19, // [19:29] is the sub-list for method input_type
+	19, // [19:19] is the sub-list for extension type_name
+	19, // [19:19] is the sub-list for extension extendee
+	0,  // [0:19] is the sub-list for field type_name
 }
 
 func init() { file_workos_notification_v1_notification_proto_init() }
@@ -1597,7 +2082,7 @@ func file_workos_notification_v1_notification_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_workos_notification_v1_notification_proto_rawDesc), len(file_workos_notification_v1_notification_proto_rawDesc)),
 			NumEnums:      5,
-			NumMessages:   17,
+			NumMessages:   26,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

@@ -180,3 +180,22 @@ type ReadRequestRecord struct {
 	Result         []byte
 	CreatedAt      time.Time
 }
+
+// PushStore owns the durable push facts.
+type PushStore interface {
+	UpsertPushSubscription(ctx context.Context, subscription domain.PushSubscription) error
+	RevokePushSubscription(ctx context.Context, ownerUserID, deviceID, platform string, now time.Time) error
+	ActivePushSubscriptions(ctx context.Context, ownerUserID string) ([]domain.PushSubscription, error)
+	SavePushPreferences(ctx context.Context, ownerUserID string, quiet domain.QuietHours, now time.Time) error
+	PushPreferencesFor(ctx context.Context, ownerUserID string) (domain.QuietHours, error)
+	// InsertPushDelivery records exactly-once dispatch; it returns false when
+	// the (notification, device, platform) triple already exists.
+	InsertPushDelivery(ctx context.Context, ownerUserID, notificationID, deviceID, platform, payload string, now time.Time) (bool, error)
+	CountPushDeliveries(ctx context.Context, notificationID, deviceID, platform string) (int64, error)
+}
+
+// PushRelaySender is the pluggable relay egress. Implementations receive the
+// whitelist payload only — never notification bodies or project facts.
+type PushRelaySender interface {
+	Deliver(ctx context.Context, subscription domain.PushSubscription, payload domain.PushPayload) error
+}

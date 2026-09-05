@@ -12,6 +12,44 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const activePushSubscriptions = `-- name: ActivePushSubscriptions :many
+SELECT owner_user_id, device_id, platform, endpoint, p256dh, auth_secret,
+       status, created_at, updated_at
+FROM workos_core.push_subscriptions
+WHERE owner_user_id = $1 AND status = 'active'
+ORDER BY device_id, platform
+`
+
+func (q *Queries) ActivePushSubscriptions(ctx context.Context, ownerUserID string) ([]WorkosCorePushSubscription, error) {
+	rows, err := q.db.Query(ctx, activePushSubscriptions, ownerUserID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []WorkosCorePushSubscription
+	for rows.Next() {
+		var i WorkosCorePushSubscription
+		if err := rows.Scan(
+			&i.OwnerUserID,
+			&i.DeviceID,
+			&i.Platform,
+			&i.Endpoint,
+			&i.P256dh,
+			&i.AuthSecret,
+			&i.Status,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const advanceOwnerSweptThrough = `-- name: AdvanceOwnerSweptThrough :execrows
 UPDATE workos_core.notification_owner_sequences
 SET swept_through = GREATEST(swept_through, $1), updated_at = $2
@@ -67,6 +105,26 @@ WHERE owner_user_id = $1 AND read_at IS NULL
 
 func (q *Queries) CountOwnerUnread(ctx context.Context, ownerUserID string) (int64, error) {
 	row := q.db.QueryRow(ctx, countOwnerUnread, ownerUserID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
+const countPushDeliveries = `-- name: CountPushDeliveries :one
+SELECT count(*) FROM workos_core.push_deliveries
+WHERE notification_id = $1
+  AND device_id = $2
+  AND platform = $3
+`
+
+type CountPushDeliveriesParams struct {
+	NotificationID string
+	DeviceID       string
+	Platform       string
+}
+
+func (q *Queries) CountPushDeliveries(ctx context.Context, arg CountPushDeliveriesParams) (int64, error) {
+	row := q.db.QueryRow(ctx, countPushDeliveries, arg.NotificationID, arg.DeviceID, arg.Platform)
 	var count int64
 	err := row.Scan(&count)
 	return count, err
@@ -642,6 +700,40 @@ func (q *Queries) InsertNotificationSourceReceipt(ctx context.Context, arg Inser
 	return result.RowsAffected(), nil
 }
 
+const insertPushDelivery = `-- name: InsertPushDelivery :execrows
+INSERT INTO workos_core.push_deliveries (
+    owner_user_id, notification_id, device_id, platform, relay_payload, delivered_at
+) VALUES (
+    $1, $2, $3,
+    $4, $5, $6
+)
+ON CONFLICT (notification_id, device_id, platform) DO NOTHING
+`
+
+type InsertPushDeliveryParams struct {
+	OwnerUserID    string
+	NotificationID string
+	DeviceID       string
+	Platform       string
+	RelayPayload   string
+	DeliveredAt    time.Time
+}
+
+func (q *Queries) InsertPushDelivery(ctx context.Context, arg InsertPushDeliveryParams) (int64, error) {
+	result, err := q.db.Exec(ctx, insertPushDelivery,
+		arg.OwnerUserID,
+		arg.NotificationID,
+		arg.DeviceID,
+		arg.Platform,
+		arg.RelayPayload,
+		arg.DeliveredAt,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const listNotificationsPage = `-- name: ListNotificationsPage :many
 SELECT id, owner_user_id, project_id, kind, severity, origin, title, body,
        target_kind, target_id, app_id, app_installation_id, source_process,
@@ -828,6 +920,86 @@ func (q *Queries) MaxChangeSequenceForNotifications(ctx context.Context, ids []s
 	return items, nil
 }
 
+const pushPreferencesFor = `-- name: PushPreferencesFor :one
+SELECT owner_user_id, quiet_enabled, quiet_start_utc, quiet_end_utc, updated_at
+FROM workos_core.push_preferences
+WHERE owner_user_id = $1
+`
+
+func (q *Queries) PushPreferencesFor(ctx context.Context, ownerUserID string) (WorkosCorePushPreference, error) {
+	row := q.db.QueryRow(ctx, pushPreferencesFor, ownerUserID)
+	var i WorkosCorePushPreference
+	err := row.Scan(
+		&i.OwnerUserID,
+		&i.QuietEnabled,
+		&i.QuietStartUtc,
+		&i.QuietEndUtc,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const pushPreferencesUpsert = `-- name: PushPreferencesUpsert :exec
+INSERT INTO workos_core.push_preferences (
+    owner_user_id, quiet_enabled, quiet_start_utc, quiet_end_utc, updated_at
+) VALUES (
+    $1, $2,
+    $3, $4, $5
+)
+ON CONFLICT (owner_user_id) DO UPDATE
+SET quiet_enabled = EXCLUDED.quiet_enabled,
+    quiet_start_utc = EXCLUDED.quiet_start_utc,
+    quiet_end_utc = EXCLUDED.quiet_end_utc,
+    updated_at = EXCLUDED.updated_at
+`
+
+type PushPreferencesUpsertParams struct {
+	OwnerUserID   string
+	QuietEnabled  bool
+	QuietStartUtc string
+	QuietEndUtc   string
+	UpdatedAt     time.Time
+}
+
+func (q *Queries) PushPreferencesUpsert(ctx context.Context, arg PushPreferencesUpsertParams) error {
+	_, err := q.db.Exec(ctx, pushPreferencesUpsert,
+		arg.OwnerUserID,
+		arg.QuietEnabled,
+		arg.QuietStartUtc,
+		arg.QuietEndUtc,
+		arg.UpdatedAt,
+	)
+	return err
+}
+
+const revokePushSubscription = `-- name: RevokePushSubscription :execrows
+UPDATE workos_core.push_subscriptions
+SET status = 'revoked', updated_at = $1
+WHERE owner_user_id = $2
+  AND device_id = $3
+  AND platform = $4
+`
+
+type RevokePushSubscriptionParams struct {
+	UpdatedAt   time.Time
+	OwnerUserID string
+	DeviceID    string
+	Platform    string
+}
+
+func (q *Queries) RevokePushSubscription(ctx context.Context, arg RevokePushSubscriptionParams) (int64, error) {
+	result, err := q.db.Exec(ctx, revokePushSubscription,
+		arg.UpdatedAt,
+		arg.OwnerUserID,
+		arg.DeviceID,
+		arg.Platform,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const selectSweepableNotifications = `-- name: SelectSweepableNotifications :many
 SELECT id, owner_user_id FROM workos_core.notifications
 WHERE read_at IS NOT NULL AND read_at < $1
@@ -909,4 +1081,48 @@ func (q *Queries) UpdateNotificationAppQuota(ctx context.Context, arg UpdateNoti
 		return 0, err
 	}
 	return result.RowsAffected(), nil
+}
+
+const upsertPushSubscription = `-- name: UpsertPushSubscription :exec
+
+INSERT INTO workos_core.push_subscriptions (
+    owner_user_id, device_id, platform, endpoint, p256dh, auth_secret,
+    status, created_at, updated_at
+) VALUES (
+    $1, $2, $3,
+    $4, $5, $6,
+    'active', $7, $8
+)
+ON CONFLICT (owner_user_id, device_id, platform) DO UPDATE
+SET endpoint = EXCLUDED.endpoint,
+    p256dh = EXCLUDED.p256dh,
+    auth_secret = EXCLUDED.auth_secret,
+    status = 'active',
+    updated_at = EXCLUDED.updated_at
+`
+
+type UpsertPushSubscriptionParams struct {
+	OwnerUserID string
+	DeviceID    string
+	Platform    string
+	Endpoint    string
+	P256dh      string
+	AuthSecret  string
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
+}
+
+// Push wake subscriptions (ADR-0018): owner: core.
+func (q *Queries) UpsertPushSubscription(ctx context.Context, arg UpsertPushSubscriptionParams) error {
+	_, err := q.db.Exec(ctx, upsertPushSubscription,
+		arg.OwnerUserID,
+		arg.DeviceID,
+		arg.Platform,
+		arg.Endpoint,
+		arg.P256dh,
+		arg.AuthSecret,
+		arg.CreatedAt,
+		arg.UpdatedAt,
+	)
+	return err
 }

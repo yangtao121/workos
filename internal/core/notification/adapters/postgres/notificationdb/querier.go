@@ -10,12 +10,14 @@ import (
 )
 
 type Querier interface {
+	ActivePushSubscriptions(ctx context.Context, ownerUserID string) ([]WorkosCorePushSubscription, error)
 	AdvanceOwnerSweptThrough(ctx context.Context, arg AdvanceOwnerSweptThroughParams) (int64, error)
 	// Core notification facts (ADR-0014, migration 029). Every statement here
 	// touches only the workos_core notification tables; other modules are
 	// reached through their owning modules' ports.
 	AllocateNotificationChangeSequence(ctx context.Context, arg AllocateNotificationChangeSequenceParams) (int64, error)
 	CountOwnerUnread(ctx context.Context, ownerUserID string) (int64, error)
+	CountPushDeliveries(ctx context.Context, arg CountPushDeliveriesParams) (int64, error)
 	DeleteNotificationChangesFor(ctx context.Context, ids []string) (int64, error)
 	DeleteNotifications(ctx context.Context, ids []string) (int64, error)
 	// Receipts outlive notifications (longer horizon, same bounded sweep) so a
@@ -37,15 +39,21 @@ type Querier interface {
 	InsertNotificationChange(ctx context.Context, arg InsertNotificationChangeParams) (int64, error)
 	InsertNotificationReadRequest(ctx context.Context, arg InsertNotificationReadRequestParams) (int64, error)
 	InsertNotificationSourceReceipt(ctx context.Context, arg InsertNotificationSourceReceiptParams) (int64, error)
+	InsertPushDelivery(ctx context.Context, arg InsertPushDeliveryParams) (int64, error)
 	ListNotificationsPage(ctx context.Context, arg ListNotificationsPageParams) ([]WorkosCoreNotification, error)
 	LockOwnerNotifications(ctx context.Context, arg LockOwnerNotificationsParams) ([]WorkosCoreNotification, error)
 	MarkNotificationRead(ctx context.Context, arg MarkNotificationReadParams) (int64, error)
 	MaxChangeSequenceForNotifications(ctx context.Context, ids []string) ([]MaxChangeSequenceForNotificationsRow, error)
+	PushPreferencesFor(ctx context.Context, ownerUserID string) (WorkosCorePushPreference, error)
+	PushPreferencesUpsert(ctx context.Context, arg PushPreferencesUpsertParams) error
+	RevokePushSubscription(ctx context.Context, arg RevokePushSubscriptionParams) (int64, error)
 	// Bounded sweep: only already-read notifications older than the cutoff are
 	// candidates. Recent unread facts are never swept.
 	SelectSweepableNotifications(ctx context.Context, arg SelectSweepableNotificationsParams) ([]SelectSweepableNotificationsRow, error)
 	SerializeNotificationRequest(ctx context.Context, lockKey string) error
 	UpdateNotificationAppQuota(ctx context.Context, arg UpdateNotificationAppQuotaParams) (int64, error)
+	// Push wake subscriptions (ADR-0018): owner: core.
+	UpsertPushSubscription(ctx context.Context, arg UpsertPushSubscriptionParams) error
 }
 
 var _ Querier = (*Queries)(nil)

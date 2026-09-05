@@ -629,3 +629,96 @@ func (r *Repository) UpdateAppQuota(ctx context.Context, tx dbtx.Tx, ownerUserID
 	}
 	return nil
 }
+
+// UpsertPushSubscription registers (or re-registers) one device subscription.
+func (r *Repository) UpsertPushSubscription(ctx context.Context, subscription domain.PushSubscription) error {
+	err := r.queries.UpsertPushSubscription(ctx, notificationdb.UpsertPushSubscriptionParams{
+		OwnerUserID: subscription.OwnerUserID, DeviceID: subscription.DeviceID,
+		Platform: subscription.Platform, Endpoint: subscription.Endpoint,
+		P256dh: subscription.P256DH, AuthSecret: subscription.AuthSecret,
+		CreatedAt: subscription.CreatedAt, UpdatedAt: subscription.UpdatedAt,
+	})
+	if err != nil {
+		return storeError("upsert push subscription", err)
+	}
+	return nil
+}
+
+// RevokePushSubscription revokes one registration; an unknown registration
+// is still a success (idempotent revoke).
+func (r *Repository) RevokePushSubscription(ctx context.Context, ownerUserID, deviceID, platform string, now time.Time) error {
+	if _, err := r.queries.RevokePushSubscription(ctx, notificationdb.RevokePushSubscriptionParams{
+		OwnerUserID: ownerUserID, DeviceID: deviceID, Platform: platform, UpdatedAt: now,
+	}); err != nil {
+		return storeError("revoke push subscription", err)
+	}
+	return nil
+}
+
+// ActivePushSubscriptions lists the owner's active registrations.
+func (r *Repository) ActivePushSubscriptions(ctx context.Context, ownerUserID string) ([]domain.PushSubscription, error) {
+	rows, err := r.queries.ActivePushSubscriptions(ctx, ownerUserID)
+	if err != nil {
+		return nil, storeError("list push subscriptions", err)
+	}
+	subs := make([]domain.PushSubscription, 0, len(rows))
+	for _, row := range rows {
+		subs = append(subs, domain.PushSubscription{
+			OwnerUserID: row.OwnerUserID, DeviceID: row.DeviceID,
+			Platform: row.Platform, Endpoint: row.Endpoint,
+			P256DH: row.P256dh, AuthSecret: row.AuthSecret, Status: row.Status,
+			CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt,
+		})
+	}
+	return subs, nil
+}
+
+// SavePushPreferences stores the owner quiet window.
+func (r *Repository) SavePushPreferences(ctx context.Context, ownerUserID string, quiet domain.QuietHours, now time.Time) error {
+	err := r.queries.PushPreferencesUpsert(ctx, notificationdb.PushPreferencesUpsertParams{
+		OwnerUserID: ownerUserID, QuietEnabled: quiet.Enabled,
+		QuietStartUtc: quiet.Start, QuietEndUtc: quiet.End, UpdatedAt: now,
+	})
+	if err != nil {
+		return storeError("save push preferences", err)
+	}
+	return nil
+}
+
+// PushPreferencesFor reads the owner quiet window; the zero owner reads the
+// documented defaults.
+func (r *Repository) PushPreferencesFor(ctx context.Context, ownerUserID string) (domain.QuietHours, error) {
+	row, err := r.queries.PushPreferencesFor(ctx, ownerUserID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return domain.QuietHours{Start: "22:00", End: "07:00"}, nil
+	}
+	if err != nil {
+		return domain.QuietHours{}, storeError("read push preferences", err)
+	}
+	return domain.QuietHours{Enabled: row.QuietEnabled, Start: row.QuietStartUtc, End: row.QuietEndUtc}, nil
+}
+
+// InsertPushDelivery records exactly-once dispatch; a repeated triple is a
+// no-op returning false.
+func (r *Repository) InsertPushDelivery(ctx context.Context, ownerUserID, notificationID, deviceID, platform, payload string, now time.Time) (bool, error) {
+	rows, err := r.queries.InsertPushDelivery(ctx, notificationdb.InsertPushDeliveryParams{
+		OwnerUserID: ownerUserID, NotificationID: notificationID,
+		DeviceID: deviceID, Platform: platform,
+		RelayPayload: payload, DeliveredAt: now,
+	})
+	if err != nil {
+		return false, storeError("insert push delivery", err)
+	}
+	return rows == 1, nil
+}
+
+// CountPushDeliveries reads the dispatch count for one triple.
+func (r *Repository) CountPushDeliveries(ctx context.Context, notificationID, deviceID, platform string) (int64, error) {
+	count, err := r.queries.CountPushDeliveries(ctx, notificationdb.CountPushDeliveriesParams{
+		NotificationID: notificationID, DeviceID: deviceID, Platform: platform,
+	})
+	if err != nil {
+		return 0, storeError("count push deliveries", err)
+	}
+	return count, nil
+}

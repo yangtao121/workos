@@ -45,6 +45,7 @@ const (
 // Handler serves the public NotificationService.
 type Handler struct {
 	service             *application.Service
+	push                *application.PushService
 	incidentSourceReady func() bool
 	// watchBudgets bounds concurrent streams per owner. It is an ephemeral
 	// connection budget, not a durable authority; entries exist only while
@@ -64,10 +65,91 @@ func New(service *application.Service, incidentSourceReady ...func() bool) *Hand
 // NewConnectHandler wires the public transport with the pre-decode wire
 // budget. Composition roots and tests must use this constructor.
 func NewConnectHandler(service *application.Service, incidentSourceReady ...func() bool) (string, http.Handler) {
+	return NewConnectHandlerWithPush(service, nil, incidentSourceReady...)
+}
+
+// NewConnectHandlerWithPush is NewConnectHandler plus the optional push
+// wake service (ADR-0018). A nil push keeps every RPC answering with the
+// sanitized unavailable verdict instead of pretending.
+func NewConnectHandlerWithPush(service *application.Service, push *application.PushService, incidentSourceReady ...func() bool) (string, http.Handler) {
+	handler := New(service, incidentSourceReady...)
+	handler.push = push
 	return notificationv1connect.NewNotificationServiceHandler(
-		New(service, incidentSourceReady...),
+		handler,
 		connect.WithReadMaxBytes(MaxRequestBytes),
 	)
+}
+
+func (h *Handler) SubscribePush(ctx context.Context, req *connect.Request[notificationv1.SubscribePushRequest]) (*connect.Response[notificationv1.SubscribePushResponse], error) {
+	if h.push == nil {
+		return nil, connect.NewError(connect.CodeUnavailable, errors.New("push delivery is not available"))
+	}
+	if err := h.push.Subscribe(ctx, req.Msg.GetDeviceId(), req.Msg.GetPlatform(), req.Msg.GetEndpoint(), req.Msg.GetP256Dh(), req.Msg.GetAuthSecret()); err != nil {
+		return nil, mapPushError(err)
+	}
+	return connect.NewResponse(&notificationv1.SubscribePushResponse{}), nil
+}
+
+func (h *Handler) UnsubscribePush(ctx context.Context, req *connect.Request[notificationv1.UnsubscribePushRequest]) (*connect.Response[notificationv1.UnsubscribePushResponse], error) {
+	if h.push == nil {
+		return nil, connect.NewError(connect.CodeUnavailable, errors.New("push delivery is not available"))
+	}
+	if err := h.push.Unsubscribe(ctx, req.Msg.GetDeviceId(), req.Msg.GetPlatform()); err != nil {
+		return nil, mapPushError(err)
+	}
+	return connect.NewResponse(&notificationv1.UnsubscribePushResponse{}), nil
+}
+
+func (h *Handler) GetPushPreferences(ctx context.Context, _ *connect.Request[notificationv1.GetPushPreferencesRequest]) (*connect.Response[notificationv1.GetPushPreferencesResponse], error) {
+	if h.push == nil {
+		return nil, connect.NewError(connect.CodeUnavailable, errors.New("push delivery is not available"))
+	}
+	quiet, err := h.push.Preferences(ctx)
+	if err != nil {
+		return nil, mapPushError(err)
+	}
+	return connect.NewResponse(&notificationv1.GetPushPreferencesResponse{
+		Preferences: &notificationv1.PushPreferences{
+			QuietEnabled:  quiet.Enabled,
+			QuietStartUtc: quiet.Start,
+			QuietEndUtc:   quiet.End,
+		},
+	}), nil
+}
+
+func (h *Handler) SetPushPreferences(ctx context.Context, req *connect.Request[notificationv1.SetPushPreferencesRequest]) (*connect.Response[notificationv1.SetPushPreferencesResponse], error) {
+	if h.push == nil {
+		return nil, connect.NewError(connect.CodeUnavailable, errors.New("push delivery is not available"))
+	}
+	requested := req.Msg.GetPreferences()
+	quiet, err := h.push.SetPreferences(ctx, domain.QuietHours{
+		Enabled: requested.GetQuietEnabled(),
+		Start:   requested.GetQuietStartUtc(),
+		End:     requested.GetQuietEndUtc(),
+	})
+	if err != nil {
+		return nil, mapPushError(err)
+	}
+	return connect.NewResponse(&notificationv1.SetPushPreferencesResponse{
+		Preferences: &notificationv1.PushPreferences{
+			QuietEnabled:  quiet.Enabled,
+			QuietStartUtc: quiet.Start,
+			QuietEndUtc:   quiet.End,
+		},
+	}), nil
+}
+
+// mapPushError keeps the push surface sanitized: malformed input is
+// InvalidArgument, store outages are retryable Unavailable.
+func mapPushError(err error) error {
+	switch {
+	case errors.Is(err, domain.ErrPushInvalid):
+		return connect.NewError(connect.CodeInvalidArgument, errors.New("push request is invalid"))
+	case errors.Is(err, ports.ErrStoreUnavailable):
+		return connect.NewError(connect.CodeUnavailable, errors.New("notification store is temporarily unavailable"))
+	default:
+		return connect.NewError(connect.CodeInternal, errors.New("push operation failed"))
+	}
 }
 
 func (h *Handler) ListNotifications(ctx context.Context, req *connect.Request[notificationv1.ListNotificationsRequest]) (*connect.Response[notificationv1.ListNotificationsResponse], error) {

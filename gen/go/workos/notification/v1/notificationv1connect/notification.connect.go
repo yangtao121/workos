@@ -56,6 +56,18 @@ const (
 	// NotificationServiceWatchNotificationEventsProcedure is the fully-qualified name of the
 	// NotificationService's WatchNotificationEvents RPC.
 	NotificationServiceWatchNotificationEventsProcedure = "/workos.notification.v1.NotificationService/WatchNotificationEvents"
+	// NotificationServiceSubscribePushProcedure is the fully-qualified name of the
+	// NotificationService's SubscribePush RPC.
+	NotificationServiceSubscribePushProcedure = "/workos.notification.v1.NotificationService/SubscribePush"
+	// NotificationServiceUnsubscribePushProcedure is the fully-qualified name of the
+	// NotificationService's UnsubscribePush RPC.
+	NotificationServiceUnsubscribePushProcedure = "/workos.notification.v1.NotificationService/UnsubscribePush"
+	// NotificationServiceGetPushPreferencesProcedure is the fully-qualified name of the
+	// NotificationService's GetPushPreferences RPC.
+	NotificationServiceGetPushPreferencesProcedure = "/workos.notification.v1.NotificationService/GetPushPreferences"
+	// NotificationServiceSetPushPreferencesProcedure is the fully-qualified name of the
+	// NotificationService's SetPushPreferences RPC.
+	NotificationServiceSetPushPreferencesProcedure = "/workos.notification.v1.NotificationService/SetPushPreferences"
 )
 
 // NotificationServiceClient is a client for the workos.notification.v1.NotificationService service.
@@ -69,6 +81,12 @@ type NotificationServiceClient interface {
 	// lifetime with heartbeat control frames; clients reconnect from their
 	// last applied change sequence. Control frames never advance the cursor.
 	WatchNotificationEvents(context.Context, *connect.Request[v1.WatchNotificationEventsRequest]) (*connect.ServerStreamForClient[v1.WatchNotificationEventsResponse], error)
+	// Push wake subscriptions (ADR-0018): the relay receives only the
+	// notification id, never body content, project names, or code.
+	SubscribePush(context.Context, *connect.Request[v1.SubscribePushRequest]) (*connect.Response[v1.SubscribePushResponse], error)
+	UnsubscribePush(context.Context, *connect.Request[v1.UnsubscribePushRequest]) (*connect.Response[v1.UnsubscribePushResponse], error)
+	GetPushPreferences(context.Context, *connect.Request[v1.GetPushPreferencesRequest]) (*connect.Response[v1.GetPushPreferencesResponse], error)
+	SetPushPreferences(context.Context, *connect.Request[v1.SetPushPreferencesRequest]) (*connect.Response[v1.SetPushPreferencesResponse], error)
 }
 
 // NewNotificationServiceClient constructs a client for the
@@ -118,6 +136,30 @@ func NewNotificationServiceClient(httpClient connect.HTTPClient, baseURL string,
 			connect.WithSchema(notificationServiceMethods.ByName("WatchNotificationEvents")),
 			connect.WithClientOptions(opts...),
 		),
+		subscribePush: connect.NewClient[v1.SubscribePushRequest, v1.SubscribePushResponse](
+			httpClient,
+			baseURL+NotificationServiceSubscribePushProcedure,
+			connect.WithSchema(notificationServiceMethods.ByName("SubscribePush")),
+			connect.WithClientOptions(opts...),
+		),
+		unsubscribePush: connect.NewClient[v1.UnsubscribePushRequest, v1.UnsubscribePushResponse](
+			httpClient,
+			baseURL+NotificationServiceUnsubscribePushProcedure,
+			connect.WithSchema(notificationServiceMethods.ByName("UnsubscribePush")),
+			connect.WithClientOptions(opts...),
+		),
+		getPushPreferences: connect.NewClient[v1.GetPushPreferencesRequest, v1.GetPushPreferencesResponse](
+			httpClient,
+			baseURL+NotificationServiceGetPushPreferencesProcedure,
+			connect.WithSchema(notificationServiceMethods.ByName("GetPushPreferences")),
+			connect.WithClientOptions(opts...),
+		),
+		setPushPreferences: connect.NewClient[v1.SetPushPreferencesRequest, v1.SetPushPreferencesResponse](
+			httpClient,
+			baseURL+NotificationServiceSetPushPreferencesProcedure,
+			connect.WithSchema(notificationServiceMethods.ByName("SetPushPreferences")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -129,6 +171,10 @@ type notificationServiceClient struct {
 	markNotificationsRead   *connect.Client[v1.MarkNotificationsReadRequest, v1.MarkNotificationsReadResponse]
 	getNotificationSummary  *connect.Client[v1.GetNotificationSummaryRequest, v1.GetNotificationSummaryResponse]
 	watchNotificationEvents *connect.Client[v1.WatchNotificationEventsRequest, v1.WatchNotificationEventsResponse]
+	subscribePush           *connect.Client[v1.SubscribePushRequest, v1.SubscribePushResponse]
+	unsubscribePush         *connect.Client[v1.UnsubscribePushRequest, v1.UnsubscribePushResponse]
+	getPushPreferences      *connect.Client[v1.GetPushPreferencesRequest, v1.GetPushPreferencesResponse]
+	setPushPreferences      *connect.Client[v1.SetPushPreferencesRequest, v1.SetPushPreferencesResponse]
 }
 
 // ListNotifications calls workos.notification.v1.NotificationService.ListNotifications.
@@ -161,6 +207,26 @@ func (c *notificationServiceClient) WatchNotificationEvents(ctx context.Context,
 	return c.watchNotificationEvents.CallServerStream(ctx, req)
 }
 
+// SubscribePush calls workos.notification.v1.NotificationService.SubscribePush.
+func (c *notificationServiceClient) SubscribePush(ctx context.Context, req *connect.Request[v1.SubscribePushRequest]) (*connect.Response[v1.SubscribePushResponse], error) {
+	return c.subscribePush.CallUnary(ctx, req)
+}
+
+// UnsubscribePush calls workos.notification.v1.NotificationService.UnsubscribePush.
+func (c *notificationServiceClient) UnsubscribePush(ctx context.Context, req *connect.Request[v1.UnsubscribePushRequest]) (*connect.Response[v1.UnsubscribePushResponse], error) {
+	return c.unsubscribePush.CallUnary(ctx, req)
+}
+
+// GetPushPreferences calls workos.notification.v1.NotificationService.GetPushPreferences.
+func (c *notificationServiceClient) GetPushPreferences(ctx context.Context, req *connect.Request[v1.GetPushPreferencesRequest]) (*connect.Response[v1.GetPushPreferencesResponse], error) {
+	return c.getPushPreferences.CallUnary(ctx, req)
+}
+
+// SetPushPreferences calls workos.notification.v1.NotificationService.SetPushPreferences.
+func (c *notificationServiceClient) SetPushPreferences(ctx context.Context, req *connect.Request[v1.SetPushPreferencesRequest]) (*connect.Response[v1.SetPushPreferencesResponse], error) {
+	return c.setPushPreferences.CallUnary(ctx, req)
+}
+
 // NotificationServiceHandler is an implementation of the workos.notification.v1.NotificationService
 // service.
 type NotificationServiceHandler interface {
@@ -173,6 +239,12 @@ type NotificationServiceHandler interface {
 	// lifetime with heartbeat control frames; clients reconnect from their
 	// last applied change sequence. Control frames never advance the cursor.
 	WatchNotificationEvents(context.Context, *connect.Request[v1.WatchNotificationEventsRequest], *connect.ServerStream[v1.WatchNotificationEventsResponse]) error
+	// Push wake subscriptions (ADR-0018): the relay receives only the
+	// notification id, never body content, project names, or code.
+	SubscribePush(context.Context, *connect.Request[v1.SubscribePushRequest]) (*connect.Response[v1.SubscribePushResponse], error)
+	UnsubscribePush(context.Context, *connect.Request[v1.UnsubscribePushRequest]) (*connect.Response[v1.UnsubscribePushResponse], error)
+	GetPushPreferences(context.Context, *connect.Request[v1.GetPushPreferencesRequest]) (*connect.Response[v1.GetPushPreferencesResponse], error)
+	SetPushPreferences(context.Context, *connect.Request[v1.SetPushPreferencesRequest]) (*connect.Response[v1.SetPushPreferencesResponse], error)
 }
 
 // NewNotificationServiceHandler builds an HTTP handler from the service implementation. It returns
@@ -218,6 +290,30 @@ func NewNotificationServiceHandler(svc NotificationServiceHandler, opts ...conne
 		connect.WithSchema(notificationServiceMethods.ByName("WatchNotificationEvents")),
 		connect.WithHandlerOptions(opts...),
 	)
+	notificationServiceSubscribePushHandler := connect.NewUnaryHandler(
+		NotificationServiceSubscribePushProcedure,
+		svc.SubscribePush,
+		connect.WithSchema(notificationServiceMethods.ByName("SubscribePush")),
+		connect.WithHandlerOptions(opts...),
+	)
+	notificationServiceUnsubscribePushHandler := connect.NewUnaryHandler(
+		NotificationServiceUnsubscribePushProcedure,
+		svc.UnsubscribePush,
+		connect.WithSchema(notificationServiceMethods.ByName("UnsubscribePush")),
+		connect.WithHandlerOptions(opts...),
+	)
+	notificationServiceGetPushPreferencesHandler := connect.NewUnaryHandler(
+		NotificationServiceGetPushPreferencesProcedure,
+		svc.GetPushPreferences,
+		connect.WithSchema(notificationServiceMethods.ByName("GetPushPreferences")),
+		connect.WithHandlerOptions(opts...),
+	)
+	notificationServiceSetPushPreferencesHandler := connect.NewUnaryHandler(
+		NotificationServiceSetPushPreferencesProcedure,
+		svc.SetPushPreferences,
+		connect.WithSchema(notificationServiceMethods.ByName("SetPushPreferences")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/workos.notification.v1.NotificationService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case NotificationServiceListNotificationsProcedure:
@@ -232,6 +328,14 @@ func NewNotificationServiceHandler(svc NotificationServiceHandler, opts ...conne
 			notificationServiceGetNotificationSummaryHandler.ServeHTTP(w, r)
 		case NotificationServiceWatchNotificationEventsProcedure:
 			notificationServiceWatchNotificationEventsHandler.ServeHTTP(w, r)
+		case NotificationServiceSubscribePushProcedure:
+			notificationServiceSubscribePushHandler.ServeHTTP(w, r)
+		case NotificationServiceUnsubscribePushProcedure:
+			notificationServiceUnsubscribePushHandler.ServeHTTP(w, r)
+		case NotificationServiceGetPushPreferencesProcedure:
+			notificationServiceGetPushPreferencesHandler.ServeHTTP(w, r)
+		case NotificationServiceSetPushPreferencesProcedure:
+			notificationServiceSetPushPreferencesHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -263,4 +367,20 @@ func (UnimplementedNotificationServiceHandler) GetNotificationSummary(context.Co
 
 func (UnimplementedNotificationServiceHandler) WatchNotificationEvents(context.Context, *connect.Request[v1.WatchNotificationEventsRequest], *connect.ServerStream[v1.WatchNotificationEventsResponse]) error {
 	return connect.NewError(connect.CodeUnimplemented, errors.New("workos.notification.v1.NotificationService.WatchNotificationEvents is not implemented"))
+}
+
+func (UnimplementedNotificationServiceHandler) SubscribePush(context.Context, *connect.Request[v1.SubscribePushRequest]) (*connect.Response[v1.SubscribePushResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("workos.notification.v1.NotificationService.SubscribePush is not implemented"))
+}
+
+func (UnimplementedNotificationServiceHandler) UnsubscribePush(context.Context, *connect.Request[v1.UnsubscribePushRequest]) (*connect.Response[v1.UnsubscribePushResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("workos.notification.v1.NotificationService.UnsubscribePush is not implemented"))
+}
+
+func (UnimplementedNotificationServiceHandler) GetPushPreferences(context.Context, *connect.Request[v1.GetPushPreferencesRequest]) (*connect.Response[v1.GetPushPreferencesResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("workos.notification.v1.NotificationService.GetPushPreferences is not implemented"))
+}
+
+func (UnimplementedNotificationServiceHandler) SetPushPreferences(context.Context, *connect.Request[v1.SetPushPreferencesRequest]) (*connect.Response[v1.SetPushPreferencesResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("workos.notification.v1.NotificationService.SetPushPreferences is not implemented"))
 }

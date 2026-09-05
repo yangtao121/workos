@@ -211,3 +211,68 @@ WHERE recorded_at < sqlc.arg(cutoff);
 -- name: GetOwnerLastSequence :one
 SELECT last_sequence FROM workos_core.notification_owner_sequences
 WHERE owner_user_id = sqlc.arg(owner_user_id);
+
+-- Push wake subscriptions (ADR-0018): owner: core.
+
+-- name: UpsertPushSubscription :exec
+INSERT INTO workos_core.push_subscriptions (
+    owner_user_id, device_id, platform, endpoint, p256dh, auth_secret,
+    status, created_at, updated_at
+) VALUES (
+    sqlc.arg(owner_user_id), sqlc.arg(device_id), sqlc.arg(platform),
+    sqlc.arg(endpoint), sqlc.arg(p256dh), sqlc.arg(auth_secret),
+    'active', sqlc.arg(created_at), sqlc.arg(updated_at)
+)
+ON CONFLICT (owner_user_id, device_id, platform) DO UPDATE
+SET endpoint = EXCLUDED.endpoint,
+    p256dh = EXCLUDED.p256dh,
+    auth_secret = EXCLUDED.auth_secret,
+    status = 'active',
+    updated_at = EXCLUDED.updated_at;
+
+-- name: RevokePushSubscription :execrows
+UPDATE workos_core.push_subscriptions
+SET status = 'revoked', updated_at = sqlc.arg(updated_at)
+WHERE owner_user_id = sqlc.arg(owner_user_id)
+  AND device_id = sqlc.arg(device_id)
+  AND platform = sqlc.arg(platform);
+
+-- name: ActivePushSubscriptions :many
+SELECT owner_user_id, device_id, platform, endpoint, p256dh, auth_secret,
+       status, created_at, updated_at
+FROM workos_core.push_subscriptions
+WHERE owner_user_id = sqlc.arg(owner_user_id) AND status = 'active'
+ORDER BY device_id, platform;
+
+-- name: PushPreferencesUpsert :exec
+INSERT INTO workos_core.push_preferences (
+    owner_user_id, quiet_enabled, quiet_start_utc, quiet_end_utc, updated_at
+) VALUES (
+    sqlc.arg(owner_user_id), sqlc.arg(quiet_enabled),
+    sqlc.arg(quiet_start_utc), sqlc.arg(quiet_end_utc), sqlc.arg(updated_at)
+)
+ON CONFLICT (owner_user_id) DO UPDATE
+SET quiet_enabled = EXCLUDED.quiet_enabled,
+    quiet_start_utc = EXCLUDED.quiet_start_utc,
+    quiet_end_utc = EXCLUDED.quiet_end_utc,
+    updated_at = EXCLUDED.updated_at;
+
+-- name: PushPreferencesFor :one
+SELECT owner_user_id, quiet_enabled, quiet_start_utc, quiet_end_utc, updated_at
+FROM workos_core.push_preferences
+WHERE owner_user_id = sqlc.arg(owner_user_id);
+
+-- name: InsertPushDelivery :execrows
+INSERT INTO workos_core.push_deliveries (
+    owner_user_id, notification_id, device_id, platform, relay_payload, delivered_at
+) VALUES (
+    sqlc.arg(owner_user_id), sqlc.arg(notification_id), sqlc.arg(device_id),
+    sqlc.arg(platform), sqlc.arg(relay_payload), sqlc.arg(delivered_at)
+)
+ON CONFLICT (notification_id, device_id, platform) DO NOTHING;
+
+-- name: CountPushDeliveries :one
+SELECT count(*) FROM workos_core.push_deliveries
+WHERE notification_id = sqlc.arg(notification_id)
+  AND device_id = sqlc.arg(device_id)
+  AND platform = sqlc.arg(platform);

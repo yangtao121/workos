@@ -33,3 +33,25 @@ type WorkosCoreNotification struct {
 	// owner: workos-core Notification; immutable CREATED revision for snapshots
 	CreatedChangeSequence int64
 }
+
+// owner: core; owner-level quiet hours evaluated server-side before dispatch
+type WorkosCorePushPreference struct {
+	OwnerUserID   string
+	QuietEnabled  bool
+	QuietStartUtc string
+	QuietEndUtc   string
+	UpdatedAt     time.Time
+}
+
+// owner: core; device push wake registrations; relay sees notification ids only (ADR-0018)
+type WorkosCorePushSubscription struct {
+	OwnerUserID string
+	DeviceID    string
+	Platform    string
+	Endpoint    string
+	P256dh      string
+	AuthSecret  string
+	Status      string
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
+}
