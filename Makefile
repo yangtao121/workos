@@ -360,11 +360,11 @@ test-deepseek-structured-review: e2e-image
 		WORKOS_DEEPSEEK_ENABLED=true \
 		WORKOS_DEEPSEEK_BASE_URL=http://127.0.0.1:18086 \
 		docker compose --profile deepseek-fixture up -d --build --force-recreate postgres bootstrap workos-core harness-host workos-gateway deepseek-api-fixture; \
-		cred_id="$$(docker compose exec -T workos-core /usr/local/bin/workosctl credential list 2>/dev/null | awk '/^id: /{id=$$2} /^consumer: /{consumer=$$2} /^status: /{status=$$2} consumer=="deepseek" && status=="ACTIVE"{print id; exit}')"; \
+		cred_id="$$(docker compose exec -T workos-core /usr/local/bin/workosctl credential list 2>/dev/null | awk '/^id: /{id=$$2} /^consumer: /{consumer=$$2} /^status: /{ if (consumer=="deepseek" && $$2=="ACTIVE") { print id; exit } }')"; \
 		if [ -z "$$cred_id" ]; then \
 			printf '%s' 'workos-fixture-only-not-a-real-key' | docker compose exec -T workos-core /bin/sh -c "/usr/local/bin/workosctl credential put --consumer deepseek --purpose provider-api-key.v1 --label 'structured fixture' --idempotency-key 'structured-fixture-$$(date +%s%N)'"; \
 		else \
-			cred_rev="$$(docker compose exec -T workos-core /usr/local/bin/workosctl credential list 2>/dev/null | awk '/^consumer: /{consumer=$$2} /^revision: /{revision=$$2} /^status: /{status=$$2} consumer=="deepseek" && status=="ACTIVE"{print revision; exit}')"; \
+			cred_rev="$$(docker compose exec -T workos-core /usr/local/bin/workosctl credential list 2>/dev/null | awk '/^id: /{id=$$2} /^consumer: /{consumer=$$2} /^revision: /{revision=$$2} /^status: /{ if (consumer=="deepseek" && $$2=="ACTIVE") { print revision; exit } }')"; \
 			printf '%s' 'workos-fixture-only-not-a-real-key' | docker compose exec -T workos-core /bin/sh -c "/usr/local/bin/workosctl credential rotate --credential '$$cred_id' --expected-revision '$$cred_rev' --label 'structured fixture' --idempotency-key 'structured-fixture-reseal-$$(date +%s%N)'" >/dev/null; \
 		fi; \
 		docker run --rm --network host $(USER_FLAGS) \
@@ -384,11 +384,11 @@ test-deepseek-fixture: e2e-image
 		WORKOS_DEEPSEEK_ENABLED=true \
 		WORKOS_DEEPSEEK_BASE_URL=http://127.0.0.1:18086 \
 		docker compose --profile deepseek-fixture up -d --build --force-recreate postgres bootstrap workos-core harness-host workos-gateway deepseek-api-fixture; \
-		cred_id="$$(docker compose exec -T workos-core /usr/local/bin/workosctl credential list 2>/dev/null | awk '/^id: /{id=$$2} /^consumer: /{consumer=$$2} /^status: /{status=$$2} consumer=="deepseek" && status=="ACTIVE"{print id; exit}')"; \
+		cred_id="$$(docker compose exec -T workos-core /usr/local/bin/workosctl credential list 2>/dev/null | awk '/^id: /{id=$$2} /^consumer: /{consumer=$$2} /^status: /{ if (consumer=="deepseek" && $$2=="ACTIVE") { print id; exit } }')"; \
 		if [ -z "$$cred_id" ]; then \
 			printf '%s' 'workos-fixture-only-not-a-real-key' | docker compose exec -T workos-core /bin/sh -c "/usr/local/bin/workosctl credential put --consumer deepseek --purpose provider-api-key.v1 --label 'deepseek fixture' --idempotency-key 'deepseek-fixture-$$(date +%s%N)'"; \
 		else \
-			cred_rev="$$(docker compose exec -T workos-core /usr/local/bin/workosctl credential list 2>/dev/null | awk '/^consumer: /{consumer=$$2} /^revision: /{revision=$$2} /^status: /{status=$$2} consumer=="deepseek" && status=="ACTIVE"{print revision; exit}')"; \
+			cred_rev="$$(docker compose exec -T workos-core /usr/local/bin/workosctl credential list 2>/dev/null | awk '/^id: /{id=$$2} /^consumer: /{consumer=$$2} /^revision: /{revision=$$2} /^status: /{ if (consumer=="deepseek" && $$2=="ACTIVE") { print revision; exit } }')"; \
 			printf '%s' 'workos-fixture-only-not-a-real-key' | docker compose exec -T workos-core /bin/sh -c "/usr/local/bin/workosctl credential rotate --credential '$$cred_id' --expected-revision '$$cred_rev' --label 'deepseek fixture' --idempotency-key 'deepseek-fixture-reseal-$$(date +%s%N)'" >/dev/null; \
 		fi; \
 		$(GO_HOST_RUN) go test -tags='integration deepseekfixture' -count=1 -run '^TestDeepSeekProjectBindingFixtureVerticalSlice$$' -v ./tests/integration; \
