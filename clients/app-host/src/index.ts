@@ -568,10 +568,7 @@ export function openAppBridgeHost(options: AppBridgeHostOptions): AppBridgeHost 
       };
       pending.set(request.requestId, entry);
       void (async () => {
-        let payload:
-          | BridgeProjectCurrentResult
-          | BridgeThemeGetResult
-          | BridgeWindowOkResult;
+        let payload: BridgeProjectCurrentResult | BridgeThemeGetResult | BridgeWindowOkResult;
         if (request.method === "project.current") {
           payload = await shell.projectCurrent();
         } else if (request.method === "theme.get") {

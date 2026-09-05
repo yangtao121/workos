@@ -230,7 +230,7 @@ function createBridge(
   timeoutMs: number,
 ): WorkOSAppBridge {
   let nextRequestId = 0;
-  const pending = new Map<string, Pending>()
+  const pending = new Map<string, Pending>();
 
   port.onmessage = (event: MessageEvent) => {
     const envelope: unknown = event.data;
@@ -260,7 +260,7 @@ function createBridge(
 
   const call = (
     method: BridgeMethod,
-    payload: BridgeRequest['payload'],
+    payload: BridgeRequest["payload"],
     onEvent?: (event: AgentEvent) => void,
     onRegistered?: (requestId: string) => void,
   ): Promise<

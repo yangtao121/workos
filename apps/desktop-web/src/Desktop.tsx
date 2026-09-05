@@ -1128,7 +1128,7 @@ export function Desktop({
           projectCurrent: async () => {
             const surface = windowState.surface;
             const project = surface
-              ? projects.find((item) => item.id === surface.projectId) ?? activeProject
+              ? (projects.find((item) => item.id === surface.projectId) ?? activeProject)
               : undefined;
             await Promise.resolve();
             return {

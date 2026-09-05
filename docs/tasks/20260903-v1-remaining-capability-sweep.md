@@ -41,13 +41,13 @@ W1 → W2 → W3 → W4 → W6 → W5，全部在同一 branch 严格串行。
 
 ### W3 Surface 与 Bridge 补全
 
-| 阶段                                                                                                            | 状态    | 提交 | 证据 |
-| --------------------------------------------------------------------------------------------------------------- | ------- | ---- | ---- |
-| W3.1 ADR-0017：Bridge 能力清单/授权矩阵、FileRef/workspace 挂载、Declarative schema 版本、远程 Surface 安全边界 | pending |      |      |
-| W3.2 Bridge 全能力（shell 侧切片）+ `make test-app-bridge-full`                                                \| done    | 待填 | 门禁 PASS：project.current（project.read 授权，经 runtime 协商 + 共享 provider）、theme.get、window.setTitle、window.close（app-host shell 侧执行，能力协商后提供）；未授权 knowledge.search fail closed；files.*/artifacts.create/maximize/minimize 留待下阶段（需 workspace 挂载与 artifact 写通道） |
-| W3.3 Declarative Surface + `make test-declarative-surface`                                                      | pending |      |      |
-| W3.4 Remote Browser Pool + Browser Surface                                                                      | pending |      |      |
-| W3.5 Native Runner + WebRTC 回环 + Human Native Workspace + `make test-remote-native-surface`                   | pending |      |      |
+| 阶段                                                                                                            | 状态    | 提交                                                                                                                                                                                                                                                                                                    | 证据 |
+| --------------------------------------------------------------------------------------------------------------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---- |
+| W3.1 ADR-0017：Bridge 能力清单/授权矩阵、FileRef/workspace 挂载、Declarative schema 版本、远程 Surface 安全边界 | pending |                                                                                                                                                                                                                                                                                                         |      |
+| W3.2 Bridge 全能力（shell 侧切片）+ `make test-app-bridge-full` \| done                                         | 待填    | 门禁 PASS：project.current（project.read 授权，经 runtime 协商 + 共享 provider）、theme.get、window.setTitle、window.close（app-host shell 侧执行，能力协商后提供）；未授权 knowledge.search fail closed；files.\*/artifacts.create/maximize/minimize 留待下阶段（需 workspace 挂载与 artifact 写通道） |
+| W3.3 Declarative Surface + `make test-declarative-surface`                                                      | pending |                                                                                                                                                                                                                                                                                                         |      |
+| W3.4 Remote Browser Pool + Browser Surface                                                                      | pending |                                                                                                                                                                                                                                                                                                         |      |
+| W3.5 Native Runner + WebRTC 回环 + Human Native Workspace + `make test-remote-native-surface`                   | pending |                                                                                                                                                                                                                                                                                                         |      |
 
 ### W4 语义知识与工作区源
 
@@ -151,7 +151,7 @@ W1 → W2 → W3 → W4 → W6 → W5，全部在同一 branch 严格串行。
 - W2.5/2.6 已固化：Core 私有 AgentRepairTaskService（走 TaskRouter 完整准入）、
   repair orchestrator 台账（035）、deployment ledger（036）、canary
   promote/rollback（ADR-0012 语义经 loopback 驱动）。
-- W3 续作第一步：Bridge 全能力（window.*/files.*/artifacts.*/theme.get）—
+- W3 续作第一步：Bridge 全能力（window._/files._/artifacts.\*/theme.get）—
   surface-sdk + runtime bridge 校验 + Core private command 通道；
   `make test-app-bridge-full`。
 

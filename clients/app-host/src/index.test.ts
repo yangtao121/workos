@@ -62,6 +62,12 @@ function setup(options?: {
   capabilities?: string[];
   timeoutMs?: number;
   transport?: Partial<AppBridgeTransport>;
+  shell?: {
+    projectCurrent: () => Promise<{ projectId: string; name: string; revision: string }>;
+    getTheme: () => Promise<{ scheme: "light" | "dark" }>;
+    setWindowTitle: (title: string) => void;
+    closeWindow: () => void;
+  };
 }): ReturnType<typeof setupImplementation> {
   const normalized: Parameters<typeof setupImplementation>[0] = {};
   if (options?.capabilities !== undefined) {
@@ -73,6 +79,9 @@ function setup(options?: {
   if (options?.transport !== undefined) {
     normalized.transport = options.transport;
   }
+  if (options?.shell !== undefined) {
+    normalized.shell = options.shell;
+  }
   return setupImplementation(normalized);
 }
 
@@ -80,6 +89,12 @@ function setupImplementation(options: {
   capabilities?: string[];
   timeoutMs?: number;
   transport?: Partial<AppBridgeTransport>;
+  shell?: {
+    projectCurrent: () => Promise<{ projectId: string; name: string; revision: string }>;
+    getTheme: () => Promise<{ scheme: "light" | "dark" }>;
+    setWindowTitle: (title: string) => void;
+    closeWindow: () => void;
+  };
 }) {
   const channel = new NodeMessageChannel();
   const hellos: RecordedHello[] = [];
@@ -110,10 +125,6 @@ function setupImplementation(options: {
     searchKnowledge,
     createNotification: () => Promise.reject(new Error("not used in this test")),
     watchAgentTaskEvents,
-    projectCurrent: () => Promise.resolve({ projectId: "p-1", name: "Project One", revision: "3" }),
-    getTheme: () => Promise.resolve({ scheme: "light" as const }),
-    setWindowTitle: () => undefined,
-    closeWindow: () => undefined,
     ...options.transport,
   };
   const onHandshakeComplete = vi.fn();
@@ -122,12 +133,6 @@ function setupImplementation(options: {
     frameWindow: frameWindow as unknown as Window,
     capabilities: options.capabilities ?? ["agent.task.run", "agent.event.watch"],
     transport,
-    shell: {
-      projectCurrent: () => Promise.resolve({ projectId: "p-1", name: "Project One", revision: "3" }),
-      getTheme: () => Promise.resolve({ scheme: "light" as const }),
-      setWindowTitle: () => undefined,
-      closeWindow: () => undefined,
-    },
     timeoutMs: options.timeoutMs ?? REQUEST_TIMEOUT_MS,
     nonceGenerator: () => "nonce-1",
     channelFactory: () => channel as unknown as MessageChannel,
@@ -322,7 +327,7 @@ describe("App Bridge host dispatch", () => {
           new Promise<void>((resolve) => {
             push = (event: unknown) => {
               onEvent(event as never);
-            }
+            };
             void resolve;
           }),
       },
