@@ -23,7 +23,7 @@ NODE_RUN := docker run --rm $(USER_FLAGS) -e COREPACK_NPM_REGISTRY=$(NPM_REGISTR
 BUF_RUN := docker run --rm $(USER_FLAGS) $(MOUNT) $(BUF_IMAGE)
 SQLC_RUN := docker run --rm $(USER_FLAGS) -v $(CURDIR):/src -w /src $(SQLC_IMAGE)
 
-.PHONY: bootstrap generate docs check check-native proto-check go-check web-check test-semantic-knowledge test-workspace-indexing test-push-relay test-mobile-wrappers test-desktop-system-apps capture-desktop-system-apps test test-integration test-credential-vault-expansion test-codex-harness test-mcp-harness test-artifact-context test-deepseek-fixture test-deepseek-structured-review test-credential-vault e2e-image test-e2e test-adaptive-shell test-app-version-rollback test-podman-fixture test-lan-pairing test-project-knowledge-search test-app-knowledge-search test-project-knowledge-rebuild test-notification-center test-incident-notifications test-app-notifications capture-notification-visual capture-artifact-context-visual capture-lan-pairing-visual capture-provider-catalog build web-build scaffold-module dev down logs clean
+.PHONY: bootstrap generate docs check check-native proto-check go-check web-check test-semantic-knowledge test-workspace-indexing test-push-relay test-mobile-wrappers test-mdns-discovery test-desktop-system-apps capture-desktop-system-apps test test-integration test-credential-vault-expansion test-codex-harness test-mcp-harness test-artifact-context test-deepseek-fixture test-deepseek-structured-review test-credential-vault e2e-image test-e2e test-adaptive-shell test-app-version-rollback test-podman-fixture test-lan-pairing test-project-knowledge-search test-app-knowledge-search test-project-knowledge-rebuild test-notification-center test-incident-notifications test-app-notifications capture-notification-visual capture-artifact-context-visual capture-lan-pairing-visual capture-provider-catalog build web-build scaffold-module dev down logs clean
 
 bootstrap:
 	@docker version >/dev/null
@@ -648,6 +648,15 @@ test-workspace-indexing:
 # boundary, bounded Files/Docs/Code surfaces, and snap geometry.
 test-desktop-system-apps: e2e-image
 	@set -eu; 		WORKOS_UID="$$(id -u)" WORKOS_GID="$$(id -g)" 		docker compose up -d --build --force-recreate postgres bootstrap workos-core runtime-host workos-gateway; 		docker run --rm --network host $(USER_FLAGS) 			-e PLAYWRIGHT_BROWSERS_PATH=/ms-playwright 			-e WORKOS_E2E_URL=http://127.0.0.1:8080 			-e WORKOS_E2E_OUTPUT_DIR=/tmp/workos-playwright-results 			-v $(CURDIR):$(WORKDIR) 			-w $(WORKDIR)/apps/desktop-web 			$(E2E_IMAGE) pnpm exec playwright test desktop-system-apps.spec.ts; 		echo "test-desktop-system-apps: PASS"
+
+# The mDNS discovery gate (ADR-0019, W5): real multicast announce/browse on
+# the host segment, constant-time fingerprint verification admitting only
+# the pairing expectation, forged advertisements rejected, and Relay/Overlay
+# honestly unavailable. Skips with a recorded note when the host has no
+# multicast.
+test-mdns-discovery:
+	$(GO_HOST_RUN) go test -tags=integration -count=1 -run 'TestMDNSDiscovery' -v ./tests/integration
+	@echo "test-mdns-discovery: PASS"
 
 # The mobile wrapper gate (ADR-0019, W5, build-level): typecheck, unit
 # tests, vite bundle, and Capacitor config integrity all PASS without any
