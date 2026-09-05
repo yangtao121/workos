@@ -109,11 +109,11 @@ maintainer: {}
 
 	// Launch the fixture-engine workload.
 	if _, err := surfaces.CreateSurface(ctx, connect.NewRequest(&surfacev1.CreateSurfaceRequest{
-		IdempotencyKey:    key + "-surface",
-		AppInstanceId:     installed.Msg.GetInstallation().GetId(),
-		ProjectId:         project.GetId(),
-		DeviceClass:       surfacev1.DeviceClass_DEVICE_CLASS_DESKTOP,
-		Viewport:          &surfacev1.Viewport{Width: 1280, Height: 800, PixelRatio: 2},
+		IdempotencyKey: key + "-surface",
+		AppInstanceId:  installed.Msg.GetInstallation().GetId(),
+		ProjectId:      project.GetId(),
+		DeviceClass:    surfacev1.DeviceClass_DEVICE_CLASS_DESKTOP,
+		Viewport:       &surfacev1.Viewport{Width: 1280, Height: 800, PixelRatio: 2},
 	})); err != nil {
 		t.Fatalf("create surface: %v", err)
 	}
