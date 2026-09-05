@@ -1,9 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import {
-  createDeviceKeyStore,
-  registerPushToken,
-} from "./native.js";
+import { createDeviceKeyStore, registerPushToken } from "./native.js";
 
 describe("device key store", () => {
   it("reports an honest insecure status on the web runtime and never claims protection", async () => {
@@ -22,7 +19,8 @@ describe("push token registration", () => {
   it("posts the token and device id to the relay and reports success", async () => {
     let capturedBody = "";
     const fetchImpl = vi.fn((_input: string | URL, init?: RequestInit) => {
-      capturedBody = String(init?.body ?? "");
+      const body: unknown = init?.body;
+      capturedBody = typeof body === "string" ? body : "";
       return Promise.resolve(new Response(null, { status: 200 }));
     });
     const result = await registerPushToken({
@@ -51,9 +49,7 @@ describe("push token registration", () => {
   });
 
   it("reports a relay rejection with the sanitized status", async () => {
-    const fetchImpl = vi.fn(() =>
-      Promise.resolve(new Response(null, { status: 503 })),
-    );
+    const fetchImpl = vi.fn(() => Promise.resolve(new Response(null, { status: 503 })));
     const result = await registerPushToken({
       relayEndpoint: "https://push.example/register",
       token: "native-token",

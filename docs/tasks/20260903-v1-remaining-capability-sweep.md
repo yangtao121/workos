@@ -258,12 +258,12 @@ W1 → W2 → W3 → W4 → W6 → W5，全部在同一 branch 严格串行。
 | 门禁                                    | 结果                                                         |
 | --------------------------------------- | ------------------------------------------------------------ |
 | make test-semantic-knowledge            | PASS（首轮失败为测试查询词与融合分页缺陷，已修）             |
-| make test-workspace-indexing            | PASS（首轮失败为 SourceOperation 未传与 skip 计数，已修）     |
-| make test-desktop-system-apps           | PASS（5 passed；首轮 MC 卡片选择非确定性，已改为唯一名）      |
+| make test-workspace-indexing            | PASS（首轮失败为 SourceOperation 未传与 skip 计数，已修）    |
+| make test-desktop-system-apps           | PASS（5 passed；首轮 MC 卡片选择非确定性，已改为唯一名）     |
 | make test-push-relay                    | PASS                                                         |
-| make test-mobile-wrappers               | PASS（android sync 记录 BLOCKED-ENVIRONMENT，构建级 PASS）    |
+| make test-mobile-wrappers               | PASS（android sync 记录 BLOCKED-ENVIRONMENT，构建级 PASS）   |
 | make test-mdns-discovery                | PASS（宿主真实多播；无多播宿主显式 skip）                    |
-| make go-check / proto-check / web-check | PASS（gateway 架构测试一次偶发并发抖动，重复 5 次稳定 PASS）  |
+| make go-check / proto-check / web-check | PASS（gateway 架构测试一次偶发并发抖动，重复 5 次稳定 PASS） |
 
 ### 关键实现事实（续作者必读）
 

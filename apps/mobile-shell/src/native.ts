@@ -32,26 +32,25 @@ export interface DeviceKeyStore {
 const deviceKeySlot = "workos.device-key.v1";
 
 export function createDeviceKeyStore(): DeviceKeyStore {
-  const nativeSecure =
-    Capacitor.isNativePlatform() && Capacitor.isPluginAvailable("SecureStorage");
+  const nativeSecure = Capacitor.isNativePlatform() && Capacitor.isPluginAvailable("SecureStorage");
   // The ephemeral fallback keeps a session working without ever claiming
   // protection it does not have.
   let fallback: string | undefined;
   return {
-    async status() {
+    status(): Promise<SecureKeyStatus> {
       if (nativeSecure) {
-        return { secure: true, reason: "native secure storage" };
+        return Promise.resolve({ secure: true, reason: "native secure storage" });
       }
       if (Capacitor.isNativePlatform()) {
-        return {
+        return Promise.resolve({
           secure: false,
           reason: "native secure storage plugin is not installed; using ephemeral memory",
-        };
+        });
       }
-      return {
+      return Promise.resolve({
         secure: false,
         reason: "web runtime; using ephemeral memory",
-      };
+      });
     },
     async load() {
       if (nativeSecure) {
@@ -92,7 +91,11 @@ export async function registerPushToken(props: {
   fetchImpl?: typeof fetch;
 }): Promise<PushRegistrationResult> {
   const doFetch = props.fetchImpl ?? fetch;
-  if (!props.relayEndpoint.startsWith("https://") && !props.relayEndpoint.startsWith("http://127.0.0.1") && !props.relayEndpoint.startsWith("http://localhost")) {
+  if (
+    !props.relayEndpoint.startsWith("https://") &&
+    !props.relayEndpoint.startsWith("http://127.0.0.1") &&
+    !props.relayEndpoint.startsWith("http://localhost")
+  ) {
     return { registered: false, detail: "relay endpoint must be https or an explicit loopback" };
   }
   if (props.token.length === 0 || props.token.length > 4096) {
@@ -105,7 +108,10 @@ export async function registerPushToken(props: {
       body: JSON.stringify({ token: props.token, deviceId: props.deviceId }),
     });
     if (!response.ok) {
-      return { registered: false, detail: `relay rejected registration: ${String(response.status)}` };
+      return {
+        registered: false,
+        detail: `relay rejected registration: ${String(response.status)}`,
+      };
     }
     return { registered: true, detail: "registered with relay" };
   } catch (reason) {
