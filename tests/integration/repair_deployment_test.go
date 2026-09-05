@@ -106,6 +106,32 @@ maintainer: {}
 	if err != nil {
 		t.Fatalf("install container app: %v", err)
 	}
+	// Gate hygiene: the canary workload outlives this test by design, but a
+	// running fixture workload left in the shared store would poison later
+	// gates' runtime observations (a podman-mode runtime cannot inspect a
+	// fake-fixture cgroup). Remove the rows when the gate finishes.
+	t.Cleanup(func() {
+		cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 15*time.Second)
+		defer cleanupCancel()
+		admin, adminErr := pgx.Connect(cleanupCtx, scratchDatabaseURL())
+		if adminErr != nil {
+			return
+		}
+		defer admin.Close(cleanupCtx) //nolint:errcheck
+		// FK-aware teardown: surface requests -> sessions -> operations ->
+		// workload rows, so the canary workload can never blind a later
+		// podman-mode runtime's whole-snapshot observation.
+		_, _ = admin.Exec(cleanupCtx, `
+DELETE FROM workos_runtime.surface_session_requests WHERE (owner_user_id, session_id) IN (
+    SELECT owner_user_id, id FROM workos_runtime.surface_sessions
+    WHERE workload_id IN (SELECT id FROM workos_runtime.workloads WHERE app_instance_id = $1));
+DELETE FROM workos_runtime.surface_sessions WHERE workload_id IN (
+    SELECT id FROM workos_runtime.workloads WHERE app_instance_id = $1);
+DELETE FROM workos_runtime.workload_operations WHERE workload_id IN (
+    SELECT id FROM workos_runtime.workloads WHERE app_instance_id = $1);
+DELETE FROM workos_runtime.workloads WHERE app_instance_id = $1;`,
+			installed.Msg.GetInstallation().GetId())
+	})
 
 	// Launch the fixture-engine workload.
 	if _, err := surfaces.CreateSurface(ctx, connect.NewRequest(&surfacev1.CreateSurfaceRequest{
