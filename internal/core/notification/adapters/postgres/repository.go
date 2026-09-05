@@ -227,6 +227,7 @@ func (r *Repository) ListPage(ctx context.Context, ownerUserID string, filter po
 		ProjectID:     uuidParam(filter.ProjectID),
 		UnreadOnly:    filter.UnreadOnly,
 		Kind:          textParam(filter.Kind),
+		TitleNeedle:   textParam(filter.TitleNeedle),
 		CursorCreated: pgTimestampParam(cursor.CreatedAt),
 		CursorID:      uuidParam(cursor.ID),
 		RowLimit:      int32(limit + 1),

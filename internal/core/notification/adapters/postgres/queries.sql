@@ -101,6 +101,8 @@ WHERE owner_user_id = sqlc.arg(owner_user_id)
   AND (sqlc.narg('project_id') ::uuid IS NULL OR project_id = sqlc.narg('project_id') ::uuid)
   AND (NOT sqlc.arg(unread_only) OR read_at IS NULL)
   AND (sqlc.narg('kind') ::text IS NULL OR kind = sqlc.narg('kind') ::text)
+  AND (sqlc.narg('title_needle') ::text IS NULL
+       OR position(sqlc.narg('title_needle') ::text IN lower(title)) > 0)
   AND (sqlc.narg('cursor_created') ::timestamptz IS NULL
        OR (created_at, id) < (sqlc.narg('cursor_created') ::timestamptz, sqlc.narg('cursor_id') ::uuid))
 ORDER BY created_at DESC, id DESC

@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/yangtao121/workos/internal/core/notification/domain"
@@ -317,4 +318,23 @@ func storeFailure(stage string, err error) error {
 		return fmt.Errorf("%s: %w: %w", stage, ports.ErrStoreUnavailable, err)
 	}
 	return fmt.Errorf("%s: %w", stage, err)
+}
+
+// Search runs the bounded owner-scoped notification search (ADR-0018):
+// case-insensitive substring over the inert title with the same
+// deterministic ordering, signed pagination, and sanitized empty verdict as
+// the list surface. The query grammar fails closed: 1..128 code points
+// after trim, no control characters.
+func (s *Service) Search(ctx context.Context, ownerUserID, rawQuery string, filter ports.Filter, pageSize int, pageToken string) (ports.Page, string, error) {
+	query := strings.TrimSpace(rawQuery)
+	if query == "" || len([]rune(query)) > 128 {
+		return ports.Page{}, "", ErrInvalid
+	}
+	for _, char := range query {
+		if char <= 0x1f || (char >= 0x7f && char <= 0x9f) {
+			return ports.Page{}, "", ErrInvalid
+		}
+	}
+	filter.TitleNeedle = strings.ToLower(query)
+	return s.List(ctx, ownerUserID, filter, pageSize, pageToken)
 }

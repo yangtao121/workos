@@ -218,12 +218,30 @@ service NotificationService {
   // lifetime with heartbeat control frames; clients reconnect from their
   // last applied change sequence. Control frames never advance the cursor.
   rpc WatchNotificationEvents(WatchNotificationEventsRequest) returns (stream WatchNotificationEventsResponse) {}
+  // Bounded owner-scoped notification search (ADR-0018 §2): case-insensitive
+  // substring over the inert title, deterministic ordering, sanitized empty
+  // verdict for foreign scopes. No existence oracle.
+  rpc SearchNotifications(SearchNotificationsRequest) returns (SearchNotificationsResponse) {}
   // Push wake subscriptions (ADR-0018): the relay receives only the
   // notification id, never body content, project names, or code.
   rpc SubscribePush(SubscribePushRequest) returns (SubscribePushResponse) {}
   rpc UnsubscribePush(UnsubscribePushRequest) returns (UnsubscribePushResponse) {}
   rpc GetPushPreferences(GetPushPreferencesRequest) returns (GetPushPreferencesResponse) {}
   rpc SetPushPreferences(SetPushPreferencesRequest) returns (SetPushPreferencesResponse) {}
+}
+
+message SearchNotificationsRequest {
+  // 1..128 code points after trim; control characters fail closed.
+  string query = 1;
+  // Optional project scope narrowing.
+  string project_id = 2;
+  int32 page_size = 3;
+  string page_token = 4;
+}
+
+message SearchNotificationsResponse {
+  repeated Notification notifications = 1;
+  string next_page_token = 2;
 }
 
 message SubscribePushRequest {

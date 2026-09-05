@@ -743,10 +743,12 @@ WHERE owner_user_id = $1
   AND ($2 ::uuid IS NULL OR project_id = $2 ::uuid)
   AND (NOT $3 OR read_at IS NULL)
   AND ($4 ::text IS NULL OR kind = $4 ::text)
-  AND ($5 ::timestamptz IS NULL
-       OR (created_at, id) < ($5 ::timestamptz, $6 ::uuid))
+  AND ($5 ::text IS NULL
+       OR position($5 ::text IN lower(title)) > 0)
+  AND ($6 ::timestamptz IS NULL
+       OR (created_at, id) < ($6 ::timestamptz, $7 ::uuid))
 ORDER BY created_at DESC, id DESC
-LIMIT $7
+LIMIT $8
 `
 
 type ListNotificationsPageParams struct {
@@ -754,6 +756,7 @@ type ListNotificationsPageParams struct {
 	ProjectID     pgtype.UUID
 	UnreadOnly    interface{}
 	Kind          pgtype.Text
+	TitleNeedle   pgtype.Text
 	CursorCreated *time.Time
 	CursorID      pgtype.UUID
 	RowLimit      int32
@@ -765,6 +768,7 @@ func (q *Queries) ListNotificationsPage(ctx context.Context, arg ListNotificatio
 		arg.ProjectID,
 		arg.UnreadOnly,
 		arg.Kind,
+		arg.TitleNeedle,
 		arg.CursorCreated,
 		arg.CursorID,
 		arg.RowLimit,

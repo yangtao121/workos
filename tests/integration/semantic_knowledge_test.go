@@ -239,8 +239,11 @@ func TestSemanticKnowledgeStack(t *testing.T) {
 	if !capabilities["semantic-hybrid-search"] {
 		t.Fatalf("semantic hybrid capability must be available: %+v", capabilities)
 	}
-	if capabilities["rag"] || capabilities["archive"] {
-		t.Fatalf("rag/archive must stay honestly unavailable: %+v", capabilities)
+	if capabilities["rag"] {
+		t.Fatalf("rag must stay honestly unavailable: %+v", capabilities)
+	}
+	if !capabilities["archive"] {
+		t.Fatalf("bounded archive capability must be available: %+v", capabilities)
 	}
 
 	projects := projectv1connect.NewProjectServiceClient(client, stackGatewayURL)

@@ -146,3 +146,26 @@ func WorkspaceSourceID(ownerUserID, projectID, relPath string) string {
 	id[8] = (id[8] & 0x3f) | 0x80
 	return id.String()
 }
+
+// Generic archive bounds (ADR-0017 §5).
+const (
+	ArchiveMaxObjectBytes = 8 * 1024 * 1024
+	// Local-first single-owner scale; the count is enforced by the service
+	// before every put.
+	ArchiveMaxObjects   = 200
+	ArchiveMaxMediaType = 128
+)
+
+// ValidArchiveMediaType pins the bounded media-type grammar: printable
+// ASCII, no spaces beyond the type/subtype+parameter shape, bounded length.
+func ValidArchiveMediaType(mediaType string) bool {
+	if mediaType == "" || len(mediaType) > ArchiveMaxMediaType {
+		return false
+	}
+	for _, r := range mediaType {
+		if r <= 0x20 || r >= 0x7f {
+			return false
+		}
+	}
+	return true
+}

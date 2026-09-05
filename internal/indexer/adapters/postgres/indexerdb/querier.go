@@ -22,9 +22,11 @@ type Querier interface {
 	// overwrite a later successful promotion.
 	CasPromoteGeneration(ctx context.Context, arg CasPromoteGenerationParams) (int64, error)
 	ClaimRunnableIndexJob(ctx context.Context, updatedAt time.Time) (WorkosIndexIndexJob, error)
+	CountArchiveObjects(ctx context.Context, ownerUserID string) (int64, error)
 	CountGenerationDocs(ctx context.Context, generationID string) (CountGenerationDocsRow, error)
 	CountGenerationDocuments(ctx context.Context, generationID string) (int64, error)
 	CountIndexJobSources(ctx context.Context, jobID string) (CountIndexJobSourcesRow, error)
+	GetArchiveObject(ctx context.Context, arg GetArchiveObjectParams) (WorkosIndexArchiveObject, error)
 	GetBuildingGenerationForScope(ctx context.Context, arg GetBuildingGenerationForScopeParams) (string, error)
 	GetConsumerCursor(ctx context.Context, workerID string) (WorkosIndexConsumerState, error)
 	GetDocumentStatus(ctx context.Context, arg GetDocumentStatusParams) (GetDocumentStatusRow, error)
@@ -54,6 +56,7 @@ type Querier interface {
 	// indexer-owned schema; re-registering a scope rebinds the root and
 	// reactivates the source.
 	InsertWorkspaceSource(ctx context.Context, arg InsertWorkspaceSourceParams) (WorkosIndexWorkspaceSource, error)
+	ListArchiveObjects(ctx context.Context, arg ListArchiveObjectsParams) ([]ListArchiveObjectsRow, error)
 	ListIndexJobSources(ctx context.Context, jobID string) ([]WorkosIndexIndexJobSource, error)
 	ListLiveWorkspaceDocuments(ctx context.Context, arg ListLiveWorkspaceDocumentsParams) ([]ListLiveWorkspaceDocumentsRow, error)
 	ListWorkspaceSources(ctx context.Context) ([]WorkosIndexWorkspaceSource, error)
@@ -83,6 +86,9 @@ type Querier interface {
 	UpdateIndexJobSource(ctx context.Context, arg UpdateIndexJobSourceParams) error
 	UpdateIndexJobState(ctx context.Context, arg UpdateIndexJobStateParams) error
 	UpdateRebuildJob(ctx context.Context, arg UpdateRebuildJobParams) error
+	// Generic archive (ADR-0017 §5): bounded content-addressed objects. Objects
+	// are never joined into the search projection.
+	UpsertArchiveObject(ctx context.Context, arg UpsertArchiveObjectParams) (UpsertArchiveObjectRow, error)
 	UpsertConsumerCursor(ctx context.Context, arg UpsertConsumerCursorParams) error
 	UpsertProjectTombstone(ctx context.Context, arg UpsertProjectTombstoneParams) error
 	UpsertReceipt(ctx context.Context, arg UpsertReceiptParams) error

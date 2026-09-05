@@ -137,6 +137,12 @@ func (h *Handler) SearchHybrid(ctx context.Context, req *connect.Request[indexv1
 	return connect.NewResponse(&indexv1.SearchHybridResponse{
 		Hits: hits,
 		Page: &commonv1.PageResponse{NextPageToken: result.Page.NextPageToken},
+		Freshness: &indexv1.IndexFreshness{
+			CaughtUp:            result.Freshness.CaughtUp,
+			IndexedThrough:      formatSearchTime(result.Freshness.IndexedThrough),
+			LastIndexedAt:       formatSearchTime(result.Freshness.LastIndexedAt),
+			PendingPublications: result.Freshness.PendingPublications,
+		},
 	}), nil
 }
 

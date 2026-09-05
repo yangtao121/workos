@@ -198,3 +198,22 @@ type WorkspaceStore interface {
 	RecordWorkspaceSync(ctx context.Context, id string, indexed, skipped, tombstoned int64, now time.Time) error
 	ConvergeWorkspacePass(ctx context.Context, source WorkspaceSource, files []MountFile, passPublication func() string, now time.Time) (applied, tombstoned int64, err error)
 }
+
+// ArchiveObject is one bounded archive object fact (ADR-0017 §5).
+type ArchiveObject struct {
+	ID          string
+	OwnerUserID string
+	Sha256      string
+	MediaType   string
+	ByteCount   int64
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
+}
+
+// ArchiveStore owns the bounded content-addressed archive.
+type ArchiveStore interface {
+	PutArchiveObject(ctx context.Context, ownerUserID, digest, mediaType string, content []byte, now time.Time) (ArchiveObject, bool, error)
+	GetArchiveObject(ctx context.Context, ownerUserID, objectID string) (ArchiveObject, []byte, error)
+	ListArchiveObjects(ctx context.Context, ownerUserID string, limit int) ([]ArchiveObject, error)
+	CountArchiveObjects(ctx context.Context, ownerUserID string) (int64, error)
+}

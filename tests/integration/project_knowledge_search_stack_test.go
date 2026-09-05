@@ -50,8 +50,11 @@ func TestProjectKnowledgeSearchStack(t *testing.T) {
 	if !capabilities["project-review-index"] || !capabilities["project-knowledge-search"] || !capabilities["project-knowledge-rebuild"] {
 		t.Fatalf("indexer lexical capabilities must be available: %+v", capabilities)
 	}
-	if capabilities["archive"] || capabilities["rag"] {
-		t.Fatalf("archive/rag must stay unavailable: %+v", capabilities)
+	if capabilities["archive"] {
+		t.Fatal("archive must advertise honest bounded-store facts, but rag must stay unavailable")
+	}
+	if capabilities["rag"] {
+		t.Fatalf("rag must stay unavailable: %+v", capabilities)
 	}
 
 	projects := projectv1connect.NewProjectServiceClient(client, stackGatewayURL)

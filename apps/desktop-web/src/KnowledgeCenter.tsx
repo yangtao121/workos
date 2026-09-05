@@ -1,4 +1,4 @@
-// Knowledge Center: one normal desktop window with bounded lexical search
+// Knowledge Center: one normal desktop window over the bounded hybrid
 // over the active project's indexed review artifacts (ADR-0013). The window
 // is generation-guarded per project and per query, renders excerpts as
 // inert text only, and never injects anything into an Agent task by itself —
@@ -46,7 +46,7 @@ interface KnowledgeHit {
 }
 
 function validateHit(
-  hit: NonNullable<Awaited<ReturnType<WorkOSClients["index"]["search"]>>["hits"]>[number],
+  hit: NonNullable<Awaited<ReturnType<WorkOSClients["index"]["searchHybrid"]>>["hits"]>[number],
 ): KnowledgeHit | null {
   const artifactId = hit.artifactId;
   const digest = hit.digest;
@@ -156,7 +156,9 @@ export function KnowledgeCenter({
       }
       setError("");
       try {
-        const response = await workosClients.index.search({
+        // The fused lexical+cosine ranking (ADR-0017) serves the Center;
+        // hits carry the same bounded projections and signed pagination.
+        const response = await workosClients.index.searchHybrid({
           projectId,
           query: trimmed,
           page: { pageSize: PAGE_SIZE, pageToken: cursor },

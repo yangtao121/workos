@@ -10,6 +10,18 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+// owner: indexer; bounded content-addressed archive objects (ADR-0017 §5); never indexed into search
+type WorkosIndexArchiveObject struct {
+	ID          string
+	OwnerUserID string
+	Sha256      string
+	MediaType   string
+	ByteCount   int64
+	Bytes       []byte
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
+}
+
 type WorkosIndexConsumerState struct {
 	WorkerID            string
 	CursorPublicationID pgtype.UUID

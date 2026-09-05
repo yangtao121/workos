@@ -56,6 +56,9 @@ const (
 	// NotificationServiceWatchNotificationEventsProcedure is the fully-qualified name of the
 	// NotificationService's WatchNotificationEvents RPC.
 	NotificationServiceWatchNotificationEventsProcedure = "/workos.notification.v1.NotificationService/WatchNotificationEvents"
+	// NotificationServiceSearchNotificationsProcedure is the fully-qualified name of the
+	// NotificationService's SearchNotifications RPC.
+	NotificationServiceSearchNotificationsProcedure = "/workos.notification.v1.NotificationService/SearchNotifications"
 	// NotificationServiceSubscribePushProcedure is the fully-qualified name of the
 	// NotificationService's SubscribePush RPC.
 	NotificationServiceSubscribePushProcedure = "/workos.notification.v1.NotificationService/SubscribePush"
@@ -81,6 +84,10 @@ type NotificationServiceClient interface {
 	// lifetime with heartbeat control frames; clients reconnect from their
 	// last applied change sequence. Control frames never advance the cursor.
 	WatchNotificationEvents(context.Context, *connect.Request[v1.WatchNotificationEventsRequest]) (*connect.ServerStreamForClient[v1.WatchNotificationEventsResponse], error)
+	// Bounded owner-scoped notification search (ADR-0018 §2): case-insensitive
+	// substring over the inert title, deterministic ordering, sanitized empty
+	// verdict for foreign scopes. No existence oracle.
+	SearchNotifications(context.Context, *connect.Request[v1.SearchNotificationsRequest]) (*connect.Response[v1.SearchNotificationsResponse], error)
 	// Push wake subscriptions (ADR-0018): the relay receives only the
 	// notification id, never body content, project names, or code.
 	SubscribePush(context.Context, *connect.Request[v1.SubscribePushRequest]) (*connect.Response[v1.SubscribePushResponse], error)
@@ -136,6 +143,12 @@ func NewNotificationServiceClient(httpClient connect.HTTPClient, baseURL string,
 			connect.WithSchema(notificationServiceMethods.ByName("WatchNotificationEvents")),
 			connect.WithClientOptions(opts...),
 		),
+		searchNotifications: connect.NewClient[v1.SearchNotificationsRequest, v1.SearchNotificationsResponse](
+			httpClient,
+			baseURL+NotificationServiceSearchNotificationsProcedure,
+			connect.WithSchema(notificationServiceMethods.ByName("SearchNotifications")),
+			connect.WithClientOptions(opts...),
+		),
 		subscribePush: connect.NewClient[v1.SubscribePushRequest, v1.SubscribePushResponse](
 			httpClient,
 			baseURL+NotificationServiceSubscribePushProcedure,
@@ -171,6 +184,7 @@ type notificationServiceClient struct {
 	markNotificationsRead   *connect.Client[v1.MarkNotificationsReadRequest, v1.MarkNotificationsReadResponse]
 	getNotificationSummary  *connect.Client[v1.GetNotificationSummaryRequest, v1.GetNotificationSummaryResponse]
 	watchNotificationEvents *connect.Client[v1.WatchNotificationEventsRequest, v1.WatchNotificationEventsResponse]
+	searchNotifications     *connect.Client[v1.SearchNotificationsRequest, v1.SearchNotificationsResponse]
 	subscribePush           *connect.Client[v1.SubscribePushRequest, v1.SubscribePushResponse]
 	unsubscribePush         *connect.Client[v1.UnsubscribePushRequest, v1.UnsubscribePushResponse]
 	getPushPreferences      *connect.Client[v1.GetPushPreferencesRequest, v1.GetPushPreferencesResponse]
@@ -207,6 +221,11 @@ func (c *notificationServiceClient) WatchNotificationEvents(ctx context.Context,
 	return c.watchNotificationEvents.CallServerStream(ctx, req)
 }
 
+// SearchNotifications calls workos.notification.v1.NotificationService.SearchNotifications.
+func (c *notificationServiceClient) SearchNotifications(ctx context.Context, req *connect.Request[v1.SearchNotificationsRequest]) (*connect.Response[v1.SearchNotificationsResponse], error) {
+	return c.searchNotifications.CallUnary(ctx, req)
+}
+
 // SubscribePush calls workos.notification.v1.NotificationService.SubscribePush.
 func (c *notificationServiceClient) SubscribePush(ctx context.Context, req *connect.Request[v1.SubscribePushRequest]) (*connect.Response[v1.SubscribePushResponse], error) {
 	return c.subscribePush.CallUnary(ctx, req)
@@ -239,6 +258,10 @@ type NotificationServiceHandler interface {
 	// lifetime with heartbeat control frames; clients reconnect from their
 	// last applied change sequence. Control frames never advance the cursor.
 	WatchNotificationEvents(context.Context, *connect.Request[v1.WatchNotificationEventsRequest], *connect.ServerStream[v1.WatchNotificationEventsResponse]) error
+	// Bounded owner-scoped notification search (ADR-0018 §2): case-insensitive
+	// substring over the inert title, deterministic ordering, sanitized empty
+	// verdict for foreign scopes. No existence oracle.
+	SearchNotifications(context.Context, *connect.Request[v1.SearchNotificationsRequest]) (*connect.Response[v1.SearchNotificationsResponse], error)
 	// Push wake subscriptions (ADR-0018): the relay receives only the
 	// notification id, never body content, project names, or code.
 	SubscribePush(context.Context, *connect.Request[v1.SubscribePushRequest]) (*connect.Response[v1.SubscribePushResponse], error)
@@ -290,6 +313,12 @@ func NewNotificationServiceHandler(svc NotificationServiceHandler, opts ...conne
 		connect.WithSchema(notificationServiceMethods.ByName("WatchNotificationEvents")),
 		connect.WithHandlerOptions(opts...),
 	)
+	notificationServiceSearchNotificationsHandler := connect.NewUnaryHandler(
+		NotificationServiceSearchNotificationsProcedure,
+		svc.SearchNotifications,
+		connect.WithSchema(notificationServiceMethods.ByName("SearchNotifications")),
+		connect.WithHandlerOptions(opts...),
+	)
 	notificationServiceSubscribePushHandler := connect.NewUnaryHandler(
 		NotificationServiceSubscribePushProcedure,
 		svc.SubscribePush,
@@ -328,6 +357,8 @@ func NewNotificationServiceHandler(svc NotificationServiceHandler, opts ...conne
 			notificationServiceGetNotificationSummaryHandler.ServeHTTP(w, r)
 		case NotificationServiceWatchNotificationEventsProcedure:
 			notificationServiceWatchNotificationEventsHandler.ServeHTTP(w, r)
+		case NotificationServiceSearchNotificationsProcedure:
+			notificationServiceSearchNotificationsHandler.ServeHTTP(w, r)
 		case NotificationServiceSubscribePushProcedure:
 			notificationServiceSubscribePushHandler.ServeHTTP(w, r)
 		case NotificationServiceUnsubscribePushProcedure:
@@ -367,6 +398,10 @@ func (UnimplementedNotificationServiceHandler) GetNotificationSummary(context.Co
 
 func (UnimplementedNotificationServiceHandler) WatchNotificationEvents(context.Context, *connect.Request[v1.WatchNotificationEventsRequest], *connect.ServerStream[v1.WatchNotificationEventsResponse]) error {
 	return connect.NewError(connect.CodeUnimplemented, errors.New("workos.notification.v1.NotificationService.WatchNotificationEvents is not implemented"))
+}
+
+func (UnimplementedNotificationServiceHandler) SearchNotifications(context.Context, *connect.Request[v1.SearchNotificationsRequest]) (*connect.Response[v1.SearchNotificationsResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("workos.notification.v1.NotificationService.SearchNotifications is not implemented"))
 }
 
 func (UnimplementedNotificationServiceHandler) SubscribePush(context.Context, *connect.Request[v1.SubscribePushRequest]) (*connect.Response[v1.SubscribePushResponse], error) {

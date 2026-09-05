@@ -819,3 +819,74 @@ func workspaceSourceRow(row indexerdb.WorkosIndexWorkspaceSource) ports.Workspac
 	}
 	return source
 }
+
+// PutArchiveObject stores one bounded object, content-addressed per owner.
+// A repeated digest returns the existing object id with inserted=false.
+func (r *Repository) PutArchiveObject(ctx context.Context, ownerUserID, digest, mediaType string, content []byte, now time.Time) (ports.ArchiveObject, bool, error) {
+	if !domain.ValidUUID(ownerUserID) || !domain.ValidDigest(digest) ||
+		!domain.ValidArchiveMediaType(mediaType) ||
+		len(content) == 0 || len(content) > domain.ArchiveMaxObjectBytes {
+		return ports.ArchiveObject{}, false, domain.ErrInvalid
+	}
+	row, err := r.queries.UpsertArchiveObject(ctx, indexerdb.UpsertArchiveObjectParams{
+		ID: r.ids.New(), OwnerUserID: ownerUserID, Sha256: digest,
+		MediaType: mediaType, ByteCount: int64(len(content)),
+		Bytes: content, CreatedAt: canonical(now), UpdatedAt: canonical(now),
+	})
+	if err != nil {
+		return ports.ArchiveObject{}, false, storeError("upsert archive object", err)
+	}
+	return ports.ArchiveObject{
+		ID: row.ID, OwnerUserID: row.OwnerUserID, Sha256: row.Sha256,
+		MediaType: row.MediaType, ByteCount: row.ByteCount, CreatedAt: row.CreatedAt,
+	}, row.Inserted, nil
+}
+
+// GetArchiveObject reads one object with its bytes; a miss is ErrNotFound.
+func (r *Repository) GetArchiveObject(ctx context.Context, ownerUserID, objectID string) (ports.ArchiveObject, []byte, error) {
+	if !domain.ValidUUID(ownerUserID) || !domain.ValidUUID(objectID) {
+		return ports.ArchiveObject{}, nil, domain.ErrInvalid
+	}
+	row, err := r.queries.GetArchiveObject(ctx, indexerdb.GetArchiveObjectParams{
+		OwnerUserID: ownerUserID, ID: objectID,
+	})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return ports.ArchiveObject{}, nil, domain.ErrNotFound
+	}
+	if err != nil {
+		return ports.ArchiveObject{}, nil, storeError("get archive object", err)
+	}
+	if int64(len(row.Bytes)) != row.ByteCount {
+		return ports.ArchiveObject{}, nil, domain.ErrCorrupt
+	}
+	return ports.ArchiveObject{
+		ID: row.ID, OwnerUserID: row.OwnerUserID, Sha256: row.Sha256,
+		MediaType: row.MediaType, ByteCount: row.ByteCount, CreatedAt: row.CreatedAt,
+	}, row.Bytes, nil
+}
+
+// ListArchiveObjects reads one bounded metadata page.
+func (r *Repository) ListArchiveObjects(ctx context.Context, ownerUserID string, limit int) ([]ports.ArchiveObject, error) {
+	if limit <= 0 || limit > 200 {
+		return nil, domain.ErrInvalid
+	}
+	rows, err := r.queries.ListArchiveObjects(ctx, indexerdb.ListArchiveObjectsParams{
+		OwnerUserID: ownerUserID, RowLimit: int32(limit),
+	})
+	if err != nil {
+		return nil, storeError("list archive objects", err)
+	}
+	objects := make([]ports.ArchiveObject, 0, len(rows))
+	for _, row := range rows {
+		objects = append(objects, ports.ArchiveObject{
+			ID: row.ID, OwnerUserID: row.OwnerUserID, Sha256: row.Sha256,
+			MediaType: row.MediaType, ByteCount: row.ByteCount, CreatedAt: row.CreatedAt,
+		})
+	}
+	return objects, nil
+}
+
+// CountArchiveObjects returns the owner's object count for the bound check.
+func (r *Repository) CountArchiveObjects(ctx context.Context, ownerUserID string) (int64, error) {
+	return r.queries.CountArchiveObjects(ctx, ownerUserID)
+}

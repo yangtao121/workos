@@ -172,6 +172,18 @@ func (q *Queries) ClaimRunnableIndexJob(ctx context.Context, updatedAt time.Time
 	return i, err
 }
 
+const countArchiveObjects = `-- name: CountArchiveObjects :one
+SELECT count(*) FROM workos_index.archive_objects
+WHERE owner_user_id = $1
+`
+
+func (q *Queries) CountArchiveObjects(ctx context.Context, ownerUserID string) (int64, error) {
+	row := q.db.QueryRow(ctx, countArchiveObjects, ownerUserID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const countGenerationDocs = `-- name: CountGenerationDocs :one
 SELECT
     count(*) FILTER (WHERE tombstoned_at IS NULL) AS documents,
@@ -220,6 +232,33 @@ func (q *Queries) CountIndexJobSources(ctx context.Context, jobID string) (Count
 	row := q.db.QueryRow(ctx, countIndexJobSources, jobID)
 	var i CountIndexJobSourcesRow
 	err := row.Scan(&i.Total, &i.Completed, &i.Failed)
+	return i, err
+}
+
+const getArchiveObject = `-- name: GetArchiveObject :one
+SELECT id, owner_user_id, sha256, media_type, byte_count, bytes, created_at, updated_at
+FROM workos_index.archive_objects
+WHERE owner_user_id = $1 AND id = $2::uuid
+`
+
+type GetArchiveObjectParams struct {
+	OwnerUserID string
+	ID          string
+}
+
+func (q *Queries) GetArchiveObject(ctx context.Context, arg GetArchiveObjectParams) (WorkosIndexArchiveObject, error) {
+	row := q.db.QueryRow(ctx, getArchiveObject, arg.OwnerUserID, arg.ID)
+	var i WorkosIndexArchiveObject
+	err := row.Scan(
+		&i.ID,
+		&i.OwnerUserID,
+		&i.Sha256,
+		&i.MediaType,
+		&i.ByteCount,
+		&i.Bytes,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
 	return i, err
 }
 
@@ -822,6 +861,57 @@ func (q *Queries) InsertWorkspaceSource(ctx context.Context, arg InsertWorkspace
 		&i.UpdatedAt,
 	)
 	return i, err
+}
+
+const listArchiveObjects = `-- name: ListArchiveObjects :many
+SELECT id, owner_user_id, sha256, media_type, byte_count, created_at, updated_at
+FROM workos_index.archive_objects
+WHERE owner_user_id = $1
+ORDER BY created_at DESC, id DESC
+LIMIT $2
+`
+
+type ListArchiveObjectsParams struct {
+	OwnerUserID string
+	RowLimit    int32
+}
+
+type ListArchiveObjectsRow struct {
+	ID          string
+	OwnerUserID string
+	Sha256      string
+	MediaType   string
+	ByteCount   int64
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
+}
+
+func (q *Queries) ListArchiveObjects(ctx context.Context, arg ListArchiveObjectsParams) ([]ListArchiveObjectsRow, error) {
+	rows, err := q.db.Query(ctx, listArchiveObjects, arg.OwnerUserID, arg.RowLimit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListArchiveObjectsRow
+	for rows.Next() {
+		var i ListArchiveObjectsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.OwnerUserID,
+			&i.Sha256,
+			&i.MediaType,
+			&i.ByteCount,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const listIndexJobSources = `-- name: ListIndexJobSources :many
@@ -1428,6 +1518,69 @@ func (q *Queries) UpdateRebuildJob(ctx context.Context, arg UpdateRebuildJobPara
 		arg.ID,
 	)
 	return err
+}
+
+const upsertArchiveObject = `-- name: UpsertArchiveObject :one
+
+INSERT INTO workos_index.archive_objects (
+    id, owner_user_id, sha256, media_type, byte_count, bytes, created_at, updated_at
+) VALUES (
+    $1, $2, $3, $4,
+    $5, $6, $7, $8
+)
+ON CONFLICT (owner_user_id, sha256) DO UPDATE
+SET updated_at = EXCLUDED.updated_at
+RETURNING id, owner_user_id, sha256, media_type, byte_count, created_at, updated_at,
+          (xmax = 0) AS inserted
+`
+
+type UpsertArchiveObjectParams struct {
+	ID          string
+	OwnerUserID string
+	Sha256      string
+	MediaType   string
+	ByteCount   int64
+	Bytes       []byte
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
+}
+
+type UpsertArchiveObjectRow struct {
+	ID          string
+	OwnerUserID string
+	Sha256      string
+	MediaType   string
+	ByteCount   int64
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
+	Inserted    bool
+}
+
+// Generic archive (ADR-0017 §5): bounded content-addressed objects. Objects
+// are never joined into the search projection.
+func (q *Queries) UpsertArchiveObject(ctx context.Context, arg UpsertArchiveObjectParams) (UpsertArchiveObjectRow, error) {
+	row := q.db.QueryRow(ctx, upsertArchiveObject,
+		arg.ID,
+		arg.OwnerUserID,
+		arg.Sha256,
+		arg.MediaType,
+		arg.ByteCount,
+		arg.Bytes,
+		arg.CreatedAt,
+		arg.UpdatedAt,
+	)
+	var i UpsertArchiveObjectRow
+	err := row.Scan(
+		&i.ID,
+		&i.OwnerUserID,
+		&i.Sha256,
+		&i.MediaType,
+		&i.ByteCount,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.Inserted,
+	)
+	return i, err
 }
 
 const upsertConsumerCursor = `-- name: UpsertConsumerCursor :exec

@@ -35,7 +35,7 @@ function response(overrides: Record<string, unknown> = {}) {
 }
 
 function clients(search: ReturnType<typeof vi.fn>): WorkOSClients {
-  return { index: { search } } as unknown as WorkOSClients;
+  return { index: { searchHybrid: search } } as unknown as WorkOSClients;
 }
 
 function renderCenter(search: ReturnType<typeof vi.fn>) {

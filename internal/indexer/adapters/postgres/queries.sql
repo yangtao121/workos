@@ -456,3 +456,34 @@ WHERE projection_generation = sqlc.arg(generation_id)
   AND project_id = sqlc.arg(project_id)
   AND source_id = sqlc.arg(source_id)::uuid
   AND tombstoned_at IS NULL;
+
+-- Generic archive (ADR-0017 §5): bounded content-addressed objects. Objects
+-- are never joined into the search projection.
+
+-- name: UpsertArchiveObject :one
+INSERT INTO workos_index.archive_objects (
+    id, owner_user_id, sha256, media_type, byte_count, bytes, created_at, updated_at
+) VALUES (
+    sqlc.arg(id), sqlc.arg(owner_user_id), sqlc.arg(sha256), sqlc.arg(media_type),
+    sqlc.arg(byte_count), sqlc.arg(bytes), sqlc.arg(created_at), sqlc.arg(updated_at)
+)
+ON CONFLICT (owner_user_id, sha256) DO UPDATE
+SET updated_at = EXCLUDED.updated_at
+RETURNING id, owner_user_id, sha256, media_type, byte_count, created_at, updated_at,
+          (xmax = 0) AS inserted;
+
+-- name: GetArchiveObject :one
+SELECT id, owner_user_id, sha256, media_type, byte_count, bytes, created_at, updated_at
+FROM workos_index.archive_objects
+WHERE owner_user_id = sqlc.arg(owner_user_id) AND id = sqlc.arg(id)::uuid;
+
+-- name: ListArchiveObjects :many
+SELECT id, owner_user_id, sha256, media_type, byte_count, created_at, updated_at
+FROM workos_index.archive_objects
+WHERE owner_user_id = sqlc.arg(owner_user_id)
+ORDER BY created_at DESC, id DESC
+LIMIT sqlc.arg(row_limit);
+
+-- name: CountArchiveObjects :one
+SELECT count(*) FROM workos_index.archive_objects
+WHERE owner_user_id = sqlc.arg(owner_user_id);

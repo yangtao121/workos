@@ -33,7 +33,7 @@ func main() {
 
 func run(ctx context.Context, args []string) error {
 	if len(args) == 0 {
-		return errors.New("usage: workosctl bootstrap | db migrate | owner init | device pair | credential put|rotate|revoke|list | index status|rebuild|job | doctor")
+		return errors.New("usage: workosctl bootstrap | db migrate | owner init | device pair | device scan --fingerprint <sha256:...> | credential put|rotate|revoke|list | index status|rebuild|job|workspace | doctor")
 	}
 	cfg, err := config.Load()
 	if err != nil {
@@ -51,6 +51,8 @@ func run(ctx context.Context, args []string) error {
 		return initializeOwner(ctx, cfg)
 	case len(args) == 2 && args[0] == "device" && args[1] == "pair":
 		return devicePair(ctx, cfg)
+	case len(args) >= 2 && args[0] == "device" && args[1] == "scan":
+		return deviceScan(ctx, args[2:])
 	case len(args) >= 1 && args[0] == "index":
 		return runIndex(ctx, cfg, args[1:])
 	case len(args) >= 2 && args[0] == "credential":
@@ -58,7 +60,7 @@ func run(ctx context.Context, args []string) error {
 	case len(args) == 1 && args[0] == "doctor":
 		return doctor(ctx, cfg)
 	default:
-		return errors.New("usage: workosctl bootstrap | db migrate | owner init | device pair | credential put|rotate|revoke|list | index status|rebuild|job | doctor")
+		return errors.New("usage: workosctl bootstrap | db migrate | owner init | device pair | device scan --fingerprint <sha256:...> | credential put|rotate|revoke|list | index status|rebuild|job|workspace | doctor")
 	}
 }
 

@@ -32,6 +32,12 @@ type AdminService interface {
 	ListWorkspaceSources(ctx context.Context) ([]ports.WorkspaceSource, error)
 	// SyncWorkspaceSource runs one bounded ingestion pass.
 	SyncWorkspaceSource(ctx context.Context, sourceID string) (indexerapp.SyncResult, error)
+	// PutArchiveObject stores one bounded content-addressed object.
+	PutArchiveObject(ctx context.Context, ownerUserID, mediaType string, content []byte) (indexerapp.ArchivePutResult, error)
+	// GetArchiveObject reads one object's metadata and bytes.
+	GetArchiveObject(ctx context.Context, ownerUserID, objectID string) (ports.ArchiveObject, []byte, error)
+	// ListArchiveObjects reads one bounded metadata page.
+	ListArchiveObjects(ctx context.Context, ownerUserID string, limit int) ([]ports.ArchiveObject, error)
 }
 
 type AdminHandler struct {
@@ -185,6 +191,52 @@ func (h *AdminHandler) SyncWorkspaceSource(ctx context.Context, req *connect.Req
 		SkippedCount:    result.Skipped,
 		SkippedReasons:  result.SkipReasons,
 	}), nil
+}
+
+func (h *AdminHandler) PutArchiveObject(ctx context.Context, req *connect.Request[indexv1.PutArchiveObjectRequest]) (*connect.Response[indexv1.PutArchiveObjectResponse], error) {
+	result, err := h.service.PutArchiveObject(ctx, req.Msg.GetOwnerUserId(), req.Msg.GetMediaType(), req.Msg.GetContent())
+	if err != nil {
+		return nil, mapAdminError(err)
+	}
+	object, inserted := result.Object, result.Inserted
+	if err != nil {
+		return nil, mapAdminError(err)
+	}
+	return connect.NewResponse(&indexv1.PutArchiveObjectResponse{
+		ObjectId: object.ID, Sha256: object.Sha256,
+		ByteCount: object.ByteCount, Deduplicated: !inserted,
+	}), nil
+}
+
+func (h *AdminHandler) GetArchiveObject(ctx context.Context, req *connect.Request[indexv1.GetArchiveObjectRequest]) (*connect.Response[indexv1.GetArchiveObjectResponse], error) {
+	object, content, err := h.service.GetArchiveObject(ctx, req.Msg.GetOwnerUserId(), req.Msg.GetObjectId())
+	if err != nil {
+		return nil, mapAdminError(err)
+	}
+	return connect.NewResponse(&indexv1.GetArchiveObjectResponse{
+		Object: &indexv1.ArchiveObjectMetadata{
+			ObjectId: object.ID, Sha256: object.Sha256,
+			MediaType: object.MediaType, ByteCount: object.ByteCount,
+			CreatedAt: formatMicros(object.CreatedAt),
+		},
+		Content: content,
+	}), nil
+}
+
+func (h *AdminHandler) ListArchiveObjects(ctx context.Context, req *connect.Request[indexv1.ListArchiveObjectsRequest]) (*connect.Response[indexv1.ListArchiveObjectsResponse], error) {
+	objects, err := h.service.ListArchiveObjects(ctx, req.Msg.GetOwnerUserId(), int(req.Msg.GetLimit()))
+	if err != nil {
+		return nil, mapAdminError(err)
+	}
+	metadata := make([]*indexv1.ArchiveObjectMetadata, 0, len(objects))
+	for _, object := range objects {
+		metadata = append(metadata, &indexv1.ArchiveObjectMetadata{
+			ObjectId: object.ID, Sha256: object.Sha256,
+			MediaType: object.MediaType, ByteCount: object.ByteCount,
+			CreatedAt: formatMicros(object.CreatedAt),
+		})
+	}
+	return connect.NewResponse(&indexv1.ListArchiveObjectsResponse{Objects: metadata}), nil
 }
 
 func workspaceSourceProto(source ports.WorkspaceSource) *indexv1.IndexWorkspaceSource {

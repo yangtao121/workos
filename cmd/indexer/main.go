@@ -19,7 +19,7 @@ import (
 	indexerpostgres "github.com/yangtao121/workos/internal/indexer/adapters/postgres"
 	indexerapp "github.com/yangtao121/workos/internal/indexer/application"
 	indexerdomain "github.com/yangtao121/workos/internal/indexer/domain"
-	"github.com/yangtao121/workos/internal/indexer/ports"
+	indexerports "github.com/yangtao121/workos/internal/indexer/ports"
 	indexertransport "github.com/yangtao121/workos/internal/indexer/transport"
 	"github.com/yangtao121/workos/internal/platform/config"
 	"github.com/yangtao121/workos/internal/platform/database"
@@ -149,6 +149,12 @@ func run(logger *slog.Logger) error {
 	if err != nil {
 		return err
 	}
+	// Generic archive (ADR-0017 §5): bounded content-addressed objects over
+	// the local admin socket only.
+	archive, err := indexerapp.NewArchiveService(projection)
+	if err != nil {
+		return err
+	}
 	// The rebuild loop advances the durable state machine; passes are bounded
 	// and a crash resumes from the stored phase and cursor.
 	go func() {
@@ -183,8 +189,8 @@ func run(logger *slog.Logger) error {
 			Reason: "deterministic local feature-hash hybrid lexical+cosine search (ADR-0017)"},
 		&commonv1.FeatureCapability{Id: "project-knowledge-rebuild", Available: true,
 			Reason: "local-admin Core-authoritative shadow-generation rebuild"},
-		&commonv1.FeatureCapability{Id: "archive", Available: false,
-			Reason: "generic archive and object storage are not implemented"},
+		&commonv1.FeatureCapability{Id: "archive", Available: true,
+			Reason: "bounded content-addressed object store (ADR-0017 section 5); no knowledge graph"},
 		&commonv1.FeatureCapability{Id: "rag", Available: false,
 			Reason: "external embedding-model RAG is out of scope without provider accounts; the semantic slice runs on deterministic local feature-hash vectors"},
 	))
@@ -195,7 +201,7 @@ func run(logger *slog.Logger) error {
 	var adminErr chan error
 	var adminSock *indexertransport.AdminSocket
 	if cfg.Indexer.AdminSocketPath != "" {
-		_, adminHandler := indexertransport.NewAdminConnectHandler(adminServiceSurface{admin: admin, workspaces: workspaces})
+		_, adminHandler := indexertransport.NewAdminConnectHandler(adminServiceSurface{admin: admin, workspaces: workspaces, archive: archive})
 		adminSock, err = indexertransport.ListenAdminSocket(cfg.Indexer.AdminSocketPath, adminHandler, logger)
 		if err != nil {
 			return err
@@ -238,6 +244,7 @@ func run(logger *slog.Logger) error {
 type adminServiceSurface struct {
 	admin      *indexerapp.AdminService
 	workspaces *indexerapp.WorkspaceIngestor
+	archive    *indexerapp.ArchiveService
 }
 
 func (a adminServiceSurface) Status(ctx context.Context) (indexerapp.IndexStatus, error) {
@@ -256,16 +263,28 @@ func (a adminServiceSurface) CancelRebuildJob(ctx context.Context, jobID string)
 	return a.admin.CancelRebuildJob(ctx, jobID)
 }
 
-func (a adminServiceSurface) RegisterWorkspaceSource(ctx context.Context, ownerUserID, projectID, rootPath string) (ports.WorkspaceSource, error) {
+func (a adminServiceSurface) RegisterWorkspaceSource(ctx context.Context, ownerUserID, projectID, rootPath string) (indexerports.WorkspaceSource, error) {
 	return a.workspaces.Register(ctx, ownerUserID, projectID, rootPath)
 }
 
-func (a adminServiceSurface) ListWorkspaceSources(ctx context.Context) ([]ports.WorkspaceSource, error) {
+func (a adminServiceSurface) ListWorkspaceSources(ctx context.Context) ([]indexerports.WorkspaceSource, error) {
 	return a.workspaces.List(ctx)
 }
 
 func (a adminServiceSurface) SyncWorkspaceSource(ctx context.Context, sourceID string) (indexerapp.SyncResult, error) {
 	return a.workspaces.Sync(ctx, sourceID)
+}
+
+func (a adminServiceSurface) PutArchiveObject(ctx context.Context, ownerUserID, mediaType string, content []byte) (indexerapp.ArchivePutResult, error) {
+	return a.archive.PutResult(ctx, ownerUserID, mediaType, content)
+}
+
+func (a adminServiceSurface) GetArchiveObject(ctx context.Context, ownerUserID, objectID string) (indexerports.ArchiveObject, []byte, error) {
+	return a.archive.Get(ctx, ownerUserID, objectID)
+}
+
+func (a adminServiceSurface) ListArchiveObjects(ctx context.Context, ownerUserID string, limit int) ([]indexerports.ArchiveObject, error) {
+	return a.archive.List(ctx, ownerUserID, limit)
 }
 
 // rebuildFeed composes the Core feed with the projection's active pointer

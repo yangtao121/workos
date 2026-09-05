@@ -18,7 +18,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file workos/index/v1/index_admin.proto.
  */
 export const file_workos_index_v1_index_admin: GenFile = /*@__PURE__*/
-  fileDesc("CiF3b3Jrb3MvaW5kZXgvdjEvaW5kZXhfYWRtaW4ucHJvdG8SD3dvcmtvcy5pbmRleC52MSLRAQoUSW5kZXhBZG1pbkdlbmVyYXRpb24SFQoNZ2VuZXJhdGlvbl9pZBgBIAEoCRINCgVzY29wZRgCIAEoCRIVCg1vd25lcl91c2VyX2lkGAMgASgJEhIKCnByb2plY3RfaWQYBCABKAkSDgoGc3RhdHVzGAUgASgJEhYKDmRvY3VtZW50X2NvdW50GAYgASgDEhcKD3RvbWJzdG9uZV9jb3VudBgHIAEoAxISCgpjcmVhdGVkX2F0GAggASgJEhMKC3Byb21vdGVkX2F0GAkgASgJIv4CChRJbmRleEFkbWluUmVidWlsZEpvYhIOCgZqb2JfaWQYASABKAkSDQoFc2NvcGUYAiABKAkSFQoNb3duZXJfdXNlcl9pZBgDIAEoCRISCgpwcm9qZWN0X2lkGAQgASgJEg0KBXN0YXRlGAUgASgJEhQKDHBoYXNlX2N1cnNvchgGIAEoCRIZChFzbmFwc2hvdF9ib3VuZGFyeRgHIAEoCRIUCgxzb3VyY2VfY291bnQYCCABKAMSFQoNYXBwbGllZF9jb3VudBgJIAEoAxIXCg90b21ic3RvbmVfY291bnQYCiABKAMSGAoQZmFpbHVyZV9jYXRlZ29yeRgLIAEoCRIuCgpjcmVhdGVkX2F0GAwgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcBIuCgp1cGRhdGVkX2F0GA0gASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcBIcChR0YXJnZXRfZ2VuZXJhdGlvbl9pZBgOIAEoCSIcChpHZXRJbmRleEFkbWluU3RhdHVzUmVxdWVzdCKDAgobR2V0SW5kZXhBZG1pblN0YXR1c1Jlc3BvbnNlEkAKEWFjdGl2ZV9nZW5lcmF0aW9uGAEgASgLMiUud29ya29zLmluZGV4LnYxLkluZGV4QWRtaW5HZW5lcmF0aW9uEhMKC2NhdGNoaW5nX3VwGAIgASgIEhwKFHBlbmRpbmdfcHVibGljYXRpb25zGAMgASgDEhcKD2luZGV4ZWRfdGhyb3VnaBgEIAEoCRIXCg9sYXN0X2luZGV4ZWRfYXQYBSABKAkSPQoOYWN0aXZlX3JlYnVpbGQYBiABKAsyJS53b3Jrb3MuaW5kZXgudjEuSW5kZXhBZG1pblJlYnVpbGRKb2IikQIKGFN0YXJ0SW5kZXhSZWJ1aWxkUmVxdWVzdBJBCgNhbGwYASABKAsyMi53b3Jrb3MuaW5kZXgudjEuU3RhcnRJbmRleFJlYnVpbGRSZXF1ZXN0LkFsbFNjb3BlSAASSQoHcHJvamVjdBgCIAEoCzI2Lndvcmtvcy5pbmRleC52MS5TdGFydEluZGV4UmVidWlsZFJlcXVlc3QuUHJvamVjdFNjb3BlSAASFwoPaWRlbXBvdGVuY3lfa2V5GAMgASgJGgoKCEFsbFNjb3BlGjkKDFByb2plY3RTY29wZRIVCg1vd25lcl91c2VyX2lkGAEgASgJEhIKCnByb2plY3RfaWQYAiABKAlCBwoFc2NvcGUiTwoZU3RhcnRJbmRleFJlYnVpbGRSZXNwb25zZRIyCgNqb2IYASABKAsyJS53b3Jrb3MuaW5kZXgudjEuSW5kZXhBZG1pblJlYnVpbGRKb2IiKwoZR2V0SW5kZXhSZWJ1aWxkSm9iUmVxdWVzdBIOCgZqb2JfaWQYASABKAkiUAoaR2V0SW5kZXhSZWJ1aWxkSm9iUmVzcG9uc2USMgoDam9iGAEgASgLMiUud29ya29zLmluZGV4LnYxLkluZGV4QWRtaW5SZWJ1aWxkSm9iIi4KHENhbmNlbEluZGV4UmVidWlsZEpvYlJlcXVlc3QSDgoGam9iX2lkGAEgASgJIlMKHUNhbmNlbEluZGV4UmVidWlsZEpvYlJlc3BvbnNlEjIKA2pvYhgBIAEoCzIlLndvcmtvcy5pbmRleC52MS5JbmRleEFkbWluUmVidWlsZEpvYiKEAgoUSW5kZXhXb3Jrc3BhY2VTb3VyY2USEQoJc291cmNlX2lkGAEgASgJEhUKDW93bmVyX3VzZXJfaWQYAiABKAkSEgoKcHJvamVjdF9pZBgDIAEoCRIRCglyb290X3BhdGgYBCABKAkSDgoGc3RhdHVzGAUgASgJEhcKD2RlZ3JhZGVkX3JlYXNvbhgGIAEoCRIVCg1pbmRleGVkX2NvdW50GAcgASgDEhUKDXNraXBwZWRfY291bnQYCCABKAMSGAoQdG9tYnN0b25lZF9jb3VudBgJIAEoAxIWCg5sYXN0X3N5bmNlZF9hdBgKIAEoCRISCgpjcmVhdGVkX2F0GAsgASgJIl4KHlJlZ2lzdGVyV29ya3NwYWNlU291cmNlUmVxdWVzdBIVCg1vd25lcl91c2VyX2lkGAEgASgJEhIKCnByb2plY3RfaWQYAiABKAkSEQoJcm9vdF9wYXRoGAMgASgJIlgKH1JlZ2lzdGVyV29ya3NwYWNlU291cmNlUmVzcG9uc2USNQoGc291cmNlGAEgASgLMiUud29ya29zLmluZGV4LnYxLkluZGV4V29ya3NwYWNlU291cmNlIh0KG0xpc3RXb3Jrc3BhY2VTb3VyY2VzUmVxdWVzdCJWChxMaXN0V29ya3NwYWNlU291cmNlc1Jlc3BvbnNlEjYKB3NvdXJjZXMYASADKAsyJS53b3Jrb3MuaW5kZXgudjEuSW5kZXhXb3Jrc3BhY2VTb3VyY2UiLwoaU3luY1dvcmtzcGFjZVNvdXJjZVJlcXVlc3QSEQoJc291cmNlX2lkGAEgASgJIrUBChtTeW5jV29ya3NwYWNlU291cmNlUmVzcG9uc2USNQoGc291cmNlGAEgASgLMiUud29ya29zLmluZGV4LnYxLkluZGV4V29ya3NwYWNlU291cmNlEhUKDWFwcGxpZWRfY291bnQYAiABKAMSGAoQdG9tYnN0b25lZF9jb3VudBgDIAEoAxIVCg1za2lwcGVkX2NvdW50GAQgASgDEhcKD3NraXBwZWRfcmVhc29ucxgFIAMoCTLLBgoRSW5kZXhBZG1pblNlcnZpY2UScgoTR2V0SW5kZXhBZG1pblN0YXR1cxIrLndvcmtvcy5pbmRleC52MS5HZXRJbmRleEFkbWluU3RhdHVzUmVxdWVzdBosLndvcmtvcy5pbmRleC52MS5HZXRJbmRleEFkbWluU3RhdHVzUmVzcG9uc2UiABJsChFTdGFydEluZGV4UmVidWlsZBIpLndvcmtvcy5pbmRleC52MS5TdGFydEluZGV4UmVidWlsZFJlcXVlc3QaKi53b3Jrb3MuaW5kZXgudjEuU3RhcnRJbmRleFJlYnVpbGRSZXNwb25zZSIAEm8KEkdldEluZGV4UmVidWlsZEpvYhIqLndvcmtvcy5pbmRleC52MS5HZXRJbmRleFJlYnVpbGRKb2JSZXF1ZXN0Gisud29ya29zLmluZGV4LnYxLkdldEluZGV4UmVidWlsZEpvYlJlc3BvbnNlIgASeAoVQ2FuY2VsSW5kZXhSZWJ1aWxkSm9iEi0ud29ya29zLmluZGV4LnYxLkNhbmNlbEluZGV4UmVidWlsZEpvYlJlcXVlc3QaLi53b3Jrb3MuaW5kZXgudjEuQ2FuY2VsSW5kZXhSZWJ1aWxkSm9iUmVzcG9uc2UiABJ+ChdSZWdpc3RlcldvcmtzcGFjZVNvdXJjZRIvLndvcmtvcy5pbmRleC52MS5SZWdpc3RlcldvcmtzcGFjZVNvdXJjZVJlcXVlc3QaMC53b3Jrb3MuaW5kZXgudjEuUmVnaXN0ZXJXb3Jrc3BhY2VTb3VyY2VSZXNwb25zZSIAEnUKFExpc3RXb3Jrc3BhY2VTb3VyY2VzEiwud29ya29zLmluZGV4LnYxLkxpc3RXb3Jrc3BhY2VTb3VyY2VzUmVxdWVzdBotLndvcmtvcy5pbmRleC52MS5MaXN0V29ya3NwYWNlU291cmNlc1Jlc3BvbnNlIgAScgoTU3luY1dvcmtzcGFjZVNvdXJjZRIrLndvcmtvcy5pbmRleC52MS5TeW5jV29ya3NwYWNlU291cmNlUmVxdWVzdBosLndvcmtvcy5pbmRleC52MS5TeW5jV29ya3NwYWNlU291cmNlUmVzcG9uc2UiAEI9WjtnaXRodWIuY29tL3lhbmd0YW8xMjEvd29ya29zL2dlbi9nby93b3Jrb3MvaW5kZXgvdjE7aW5kZXh2MWIGcHJvdG8z", [file_google_protobuf_timestamp]);
+  fileDesc("CiF3b3Jrb3MvaW5kZXgvdjEvaW5kZXhfYWRtaW4ucHJvdG8SD3dvcmtvcy5pbmRleC52MSLRAQoUSW5kZXhBZG1pbkdlbmVyYXRpb24SFQoNZ2VuZXJhdGlvbl9pZBgBIAEoCRINCgVzY29wZRgCIAEoCRIVCg1vd25lcl91c2VyX2lkGAMgASgJEhIKCnByb2plY3RfaWQYBCABKAkSDgoGc3RhdHVzGAUgASgJEhYKDmRvY3VtZW50X2NvdW50GAYgASgDEhcKD3RvbWJzdG9uZV9jb3VudBgHIAEoAxISCgpjcmVhdGVkX2F0GAggASgJEhMKC3Byb21vdGVkX2F0GAkgASgJIv4CChRJbmRleEFkbWluUmVidWlsZEpvYhIOCgZqb2JfaWQYASABKAkSDQoFc2NvcGUYAiABKAkSFQoNb3duZXJfdXNlcl9pZBgDIAEoCRISCgpwcm9qZWN0X2lkGAQgASgJEg0KBXN0YXRlGAUgASgJEhQKDHBoYXNlX2N1cnNvchgGIAEoCRIZChFzbmFwc2hvdF9ib3VuZGFyeRgHIAEoCRIUCgxzb3VyY2VfY291bnQYCCABKAMSFQoNYXBwbGllZF9jb3VudBgJIAEoAxIXCg90b21ic3RvbmVfY291bnQYCiABKAMSGAoQZmFpbHVyZV9jYXRlZ29yeRgLIAEoCRIuCgpjcmVhdGVkX2F0GAwgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcBIuCgp1cGRhdGVkX2F0GA0gASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcBIcChR0YXJnZXRfZ2VuZXJhdGlvbl9pZBgOIAEoCSIcChpHZXRJbmRleEFkbWluU3RhdHVzUmVxdWVzdCKDAgobR2V0SW5kZXhBZG1pblN0YXR1c1Jlc3BvbnNlEkAKEWFjdGl2ZV9nZW5lcmF0aW9uGAEgASgLMiUud29ya29zLmluZGV4LnYxLkluZGV4QWRtaW5HZW5lcmF0aW9uEhMKC2NhdGNoaW5nX3VwGAIgASgIEhwKFHBlbmRpbmdfcHVibGljYXRpb25zGAMgASgDEhcKD2luZGV4ZWRfdGhyb3VnaBgEIAEoCRIXCg9sYXN0X2luZGV4ZWRfYXQYBSABKAkSPQoOYWN0aXZlX3JlYnVpbGQYBiABKAsyJS53b3Jrb3MuaW5kZXgudjEuSW5kZXhBZG1pblJlYnVpbGRKb2IikQIKGFN0YXJ0SW5kZXhSZWJ1aWxkUmVxdWVzdBJBCgNhbGwYASABKAsyMi53b3Jrb3MuaW5kZXgudjEuU3RhcnRJbmRleFJlYnVpbGRSZXF1ZXN0LkFsbFNjb3BlSAASSQoHcHJvamVjdBgCIAEoCzI2Lndvcmtvcy5pbmRleC52MS5TdGFydEluZGV4UmVidWlsZFJlcXVlc3QuUHJvamVjdFNjb3BlSAASFwoPaWRlbXBvdGVuY3lfa2V5GAMgASgJGgoKCEFsbFNjb3BlGjkKDFByb2plY3RTY29wZRIVCg1vd25lcl91c2VyX2lkGAEgASgJEhIKCnByb2plY3RfaWQYAiABKAlCBwoFc2NvcGUiTwoZU3RhcnRJbmRleFJlYnVpbGRSZXNwb25zZRIyCgNqb2IYASABKAsyJS53b3Jrb3MuaW5kZXgudjEuSW5kZXhBZG1pblJlYnVpbGRKb2IiKwoZR2V0SW5kZXhSZWJ1aWxkSm9iUmVxdWVzdBIOCgZqb2JfaWQYASABKAkiUAoaR2V0SW5kZXhSZWJ1aWxkSm9iUmVzcG9uc2USMgoDam9iGAEgASgLMiUud29ya29zLmluZGV4LnYxLkluZGV4QWRtaW5SZWJ1aWxkSm9iIi4KHENhbmNlbEluZGV4UmVidWlsZEpvYlJlcXVlc3QSDgoGam9iX2lkGAEgASgJIlMKHUNhbmNlbEluZGV4UmVidWlsZEpvYlJlc3BvbnNlEjIKA2pvYhgBIAEoCzIlLndvcmtvcy5pbmRleC52MS5JbmRleEFkbWluUmVidWlsZEpvYiKEAgoUSW5kZXhXb3Jrc3BhY2VTb3VyY2USEQoJc291cmNlX2lkGAEgASgJEhUKDW93bmVyX3VzZXJfaWQYAiABKAkSEgoKcHJvamVjdF9pZBgDIAEoCRIRCglyb290X3BhdGgYBCABKAkSDgoGc3RhdHVzGAUgASgJEhcKD2RlZ3JhZGVkX3JlYXNvbhgGIAEoCRIVCg1pbmRleGVkX2NvdW50GAcgASgDEhUKDXNraXBwZWRfY291bnQYCCABKAMSGAoQdG9tYnN0b25lZF9jb3VudBgJIAEoAxIWCg5sYXN0X3N5bmNlZF9hdBgKIAEoCRISCgpjcmVhdGVkX2F0GAsgASgJIl4KHlJlZ2lzdGVyV29ya3NwYWNlU291cmNlUmVxdWVzdBIVCg1vd25lcl91c2VyX2lkGAEgASgJEhIKCnByb2plY3RfaWQYAiABKAkSEQoJcm9vdF9wYXRoGAMgASgJIlgKH1JlZ2lzdGVyV29ya3NwYWNlU291cmNlUmVzcG9uc2USNQoGc291cmNlGAEgASgLMiUud29ya29zLmluZGV4LnYxLkluZGV4V29ya3NwYWNlU291cmNlIh0KG0xpc3RXb3Jrc3BhY2VTb3VyY2VzUmVxdWVzdCJWChxMaXN0V29ya3NwYWNlU291cmNlc1Jlc3BvbnNlEjYKB3NvdXJjZXMYASADKAsyJS53b3Jrb3MuaW5kZXgudjEuSW5kZXhXb3Jrc3BhY2VTb3VyY2UiLwoaU3luY1dvcmtzcGFjZVNvdXJjZVJlcXVlc3QSEQoJc291cmNlX2lkGAEgASgJIrUBChtTeW5jV29ya3NwYWNlU291cmNlUmVzcG9uc2USNQoGc291cmNlGAEgASgLMiUud29ya29zLmluZGV4LnYxLkluZGV4V29ya3NwYWNlU291cmNlEhUKDWFwcGxpZWRfY291bnQYAiABKAMSGAoQdG9tYnN0b25lZF9jb3VudBgDIAEoAxIVCg1za2lwcGVkX2NvdW50GAQgASgDEhcKD3NraXBwZWRfcmVhc29ucxgFIAMoCSJVChdQdXRBcmNoaXZlT2JqZWN0UmVxdWVzdBIVCg1vd25lcl91c2VyX2lkGAEgASgJEhIKCm1lZGlhX3R5cGUYAiABKAkSDwoHY29udGVudBgDIAEoDCJnChhQdXRBcmNoaXZlT2JqZWN0UmVzcG9uc2USEQoJb2JqZWN0X2lkGAEgASgJEg4KBnNoYTI1NhgCIAEoCRISCgpieXRlX2NvdW50GAMgASgDEhQKDGRlZHVwbGljYXRlZBgEIAEoCCJDChdHZXRBcmNoaXZlT2JqZWN0UmVxdWVzdBIVCg1vd25lcl91c2VyX2lkGAEgASgJEhEKCW9iamVjdF9pZBgCIAEoCSJ2ChVBcmNoaXZlT2JqZWN0TWV0YWRhdGESEQoJb2JqZWN0X2lkGAEgASgJEg4KBnNoYTI1NhgCIAEoCRISCgptZWRpYV90eXBlGAMgASgJEhIKCmJ5dGVfY291bnQYBCABKAMSEgoKY3JlYXRlZF9hdBgFIAEoCSJjChhHZXRBcmNoaXZlT2JqZWN0UmVzcG9uc2USNgoGb2JqZWN0GAEgASgLMiYud29ya29zLmluZGV4LnYxLkFyY2hpdmVPYmplY3RNZXRhZGF0YRIPCgdjb250ZW50GAIgASgMIkEKGUxpc3RBcmNoaXZlT2JqZWN0c1JlcXVlc3QSFQoNb3duZXJfdXNlcl9pZBgBIAEoCRINCgVsaW1pdBgCIAEoBSJVChpMaXN0QXJjaGl2ZU9iamVjdHNSZXNwb25zZRI3CgdvYmplY3RzGAEgAygLMiYud29ya29zLmluZGV4LnYxLkFyY2hpdmVPYmplY3RNZXRhZGF0YTKSCQoRSW5kZXhBZG1pblNlcnZpY2UScgoTR2V0SW5kZXhBZG1pblN0YXR1cxIrLndvcmtvcy5pbmRleC52MS5HZXRJbmRleEFkbWluU3RhdHVzUmVxdWVzdBosLndvcmtvcy5pbmRleC52MS5HZXRJbmRleEFkbWluU3RhdHVzUmVzcG9uc2UiABJsChFTdGFydEluZGV4UmVidWlsZBIpLndvcmtvcy5pbmRleC52MS5TdGFydEluZGV4UmVidWlsZFJlcXVlc3QaKi53b3Jrb3MuaW5kZXgudjEuU3RhcnRJbmRleFJlYnVpbGRSZXNwb25zZSIAEm8KEkdldEluZGV4UmVidWlsZEpvYhIqLndvcmtvcy5pbmRleC52MS5HZXRJbmRleFJlYnVpbGRKb2JSZXF1ZXN0Gisud29ya29zLmluZGV4LnYxLkdldEluZGV4UmVidWlsZEpvYlJlc3BvbnNlIgASeAoVQ2FuY2VsSW5kZXhSZWJ1aWxkSm9iEi0ud29ya29zLmluZGV4LnYxLkNhbmNlbEluZGV4UmVidWlsZEpvYlJlcXVlc3QaLi53b3Jrb3MuaW5kZXgudjEuQ2FuY2VsSW5kZXhSZWJ1aWxkSm9iUmVzcG9uc2UiABJ+ChdSZWdpc3RlcldvcmtzcGFjZVNvdXJjZRIvLndvcmtvcy5pbmRleC52MS5SZWdpc3RlcldvcmtzcGFjZVNvdXJjZVJlcXVlc3QaMC53b3Jrb3MuaW5kZXgudjEuUmVnaXN0ZXJXb3Jrc3BhY2VTb3VyY2VSZXNwb25zZSIAEnUKFExpc3RXb3Jrc3BhY2VTb3VyY2VzEiwud29ya29zLmluZGV4LnYxLkxpc3RXb3Jrc3BhY2VTb3VyY2VzUmVxdWVzdBotLndvcmtvcy5pbmRleC52MS5MaXN0V29ya3NwYWNlU291cmNlc1Jlc3BvbnNlIgAScgoTU3luY1dvcmtzcGFjZVNvdXJjZRIrLndvcmtvcy5pbmRleC52MS5TeW5jV29ya3NwYWNlU291cmNlUmVxdWVzdBosLndvcmtvcy5pbmRleC52MS5TeW5jV29ya3NwYWNlU291cmNlUmVzcG9uc2UiABJpChBQdXRBcmNoaXZlT2JqZWN0Eigud29ya29zLmluZGV4LnYxLlB1dEFyY2hpdmVPYmplY3RSZXF1ZXN0Gikud29ya29zLmluZGV4LnYxLlB1dEFyY2hpdmVPYmplY3RSZXNwb25zZSIAEmkKEEdldEFyY2hpdmVPYmplY3QSKC53b3Jrb3MuaW5kZXgudjEuR2V0QXJjaGl2ZU9iamVjdFJlcXVlc3QaKS53b3Jrb3MuaW5kZXgudjEuR2V0QXJjaGl2ZU9iamVjdFJlc3BvbnNlIgASbwoSTGlzdEFyY2hpdmVPYmplY3RzEioud29ya29zLmluZGV4LnYxLkxpc3RBcmNoaXZlT2JqZWN0c1JlcXVlc3QaKy53b3Jrb3MuaW5kZXgudjEuTGlzdEFyY2hpdmVPYmplY3RzUmVzcG9uc2UiAEI9WjtnaXRodWIuY29tL3lhbmd0YW8xMjEvd29ya29zL2dlbi9nby93b3Jrb3MvaW5kZXgvdjE7aW5kZXh2MWIGcHJvdG8z", [file_google_protobuf_timestamp]);
 
 /**
  * @generated from message workos.index.v1.IndexAdminGeneration
@@ -599,6 +599,195 @@ export const SyncWorkspaceSourceResponseSchema: GenMessage<SyncWorkspaceSourceRe
   messageDesc(file_workos_index_v1_index_admin, 16);
 
 /**
+ * @generated from message workos.index.v1.PutArchiveObjectRequest
+ */
+export type PutArchiveObjectRequest = Message<"workos.index.v1.PutArchiveObjectRequest"> & {
+  /**
+   * @generated from field: string owner_user_id = 1;
+   */
+  ownerUserId: string;
+
+  /**
+   * Bounded IANA media type; defaults to application/octet-stream.
+   *
+   * @generated from field: string media_type = 2;
+   */
+  mediaType: string;
+
+  /**
+   * 1..8 MiB. Larger payloads are rejected, never truncated.
+   *
+   * @generated from field: bytes content = 3;
+   */
+  content: Uint8Array;
+};
+
+/**
+ * Describes the message workos.index.v1.PutArchiveObjectRequest.
+ * Use `create(PutArchiveObjectRequestSchema)` to create a new message.
+ */
+export const PutArchiveObjectRequestSchema: GenMessage<PutArchiveObjectRequest> = /*@__PURE__*/
+  messageDesc(file_workos_index_v1_index_admin, 17);
+
+/**
+ * @generated from message workos.index.v1.PutArchiveObjectResponse
+ */
+export type PutArchiveObjectResponse = Message<"workos.index.v1.PutArchiveObjectResponse"> & {
+  /**
+   * @generated from field: string object_id = 1;
+   */
+  objectId: string;
+
+  /**
+   * @generated from field: string sha256 = 2;
+   */
+  sha256: string;
+
+  /**
+   * @generated from field: int64 byte_count = 3;
+   */
+  byteCount: bigint;
+
+  /**
+   * True when an existing object with the same owner+digest was returned.
+   *
+   * @generated from field: bool deduplicated = 4;
+   */
+  deduplicated: boolean;
+};
+
+/**
+ * Describes the message workos.index.v1.PutArchiveObjectResponse.
+ * Use `create(PutArchiveObjectResponseSchema)` to create a new message.
+ */
+export const PutArchiveObjectResponseSchema: GenMessage<PutArchiveObjectResponse> = /*@__PURE__*/
+  messageDesc(file_workos_index_v1_index_admin, 18);
+
+/**
+ * @generated from message workos.index.v1.GetArchiveObjectRequest
+ */
+export type GetArchiveObjectRequest = Message<"workos.index.v1.GetArchiveObjectRequest"> & {
+  /**
+   * @generated from field: string owner_user_id = 1;
+   */
+  ownerUserId: string;
+
+  /**
+   * @generated from field: string object_id = 2;
+   */
+  objectId: string;
+};
+
+/**
+ * Describes the message workos.index.v1.GetArchiveObjectRequest.
+ * Use `create(GetArchiveObjectRequestSchema)` to create a new message.
+ */
+export const GetArchiveObjectRequestSchema: GenMessage<GetArchiveObjectRequest> = /*@__PURE__*/
+  messageDesc(file_workos_index_v1_index_admin, 19);
+
+/**
+ * @generated from message workos.index.v1.ArchiveObjectMetadata
+ */
+export type ArchiveObjectMetadata = Message<"workos.index.v1.ArchiveObjectMetadata"> & {
+  /**
+   * @generated from field: string object_id = 1;
+   */
+  objectId: string;
+
+  /**
+   * @generated from field: string sha256 = 2;
+   */
+  sha256: string;
+
+  /**
+   * @generated from field: string media_type = 3;
+   */
+  mediaType: string;
+
+  /**
+   * @generated from field: int64 byte_count = 4;
+   */
+  byteCount: bigint;
+
+  /**
+   * UTC RFC 3339 microseconds.
+   *
+   * @generated from field: string created_at = 5;
+   */
+  createdAt: string;
+};
+
+/**
+ * Describes the message workos.index.v1.ArchiveObjectMetadata.
+ * Use `create(ArchiveObjectMetadataSchema)` to create a new message.
+ */
+export const ArchiveObjectMetadataSchema: GenMessage<ArchiveObjectMetadata> = /*@__PURE__*/
+  messageDesc(file_workos_index_v1_index_admin, 20);
+
+/**
+ * @generated from message workos.index.v1.GetArchiveObjectResponse
+ */
+export type GetArchiveObjectResponse = Message<"workos.index.v1.GetArchiveObjectResponse"> & {
+  /**
+   * @generated from field: workos.index.v1.ArchiveObjectMetadata object = 1;
+   */
+  object?: ArchiveObjectMetadata | undefined;
+
+  /**
+   * @generated from field: bytes content = 2;
+   */
+  content: Uint8Array;
+};
+
+/**
+ * Describes the message workos.index.v1.GetArchiveObjectResponse.
+ * Use `create(GetArchiveObjectResponseSchema)` to create a new message.
+ */
+export const GetArchiveObjectResponseSchema: GenMessage<GetArchiveObjectResponse> = /*@__PURE__*/
+  messageDesc(file_workos_index_v1_index_admin, 21);
+
+/**
+ * @generated from message workos.index.v1.ListArchiveObjectsRequest
+ */
+export type ListArchiveObjectsRequest = Message<"workos.index.v1.ListArchiveObjectsRequest"> & {
+  /**
+   * @generated from field: string owner_user_id = 1;
+   */
+  ownerUserId: string;
+
+  /**
+   * 1..200; defaults to 50.
+   *
+   * @generated from field: int32 limit = 2;
+   */
+  limit: number;
+};
+
+/**
+ * Describes the message workos.index.v1.ListArchiveObjectsRequest.
+ * Use `create(ListArchiveObjectsRequestSchema)` to create a new message.
+ */
+export const ListArchiveObjectsRequestSchema: GenMessage<ListArchiveObjectsRequest> = /*@__PURE__*/
+  messageDesc(file_workos_index_v1_index_admin, 22);
+
+/**
+ * @generated from message workos.index.v1.ListArchiveObjectsResponse
+ */
+export type ListArchiveObjectsResponse = Message<"workos.index.v1.ListArchiveObjectsResponse"> & {
+  /**
+   * @generated from field: repeated workos.index.v1.ArchiveObjectMetadata objects = 1;
+   */
+  objects: ArchiveObjectMetadata[];
+};
+
+/**
+ * Describes the message workos.index.v1.ListArchiveObjectsResponse.
+ * Use `create(ListArchiveObjectsResponseSchema)` to create a new message.
+ */
+export const ListArchiveObjectsResponseSchema: GenMessage<ListArchiveObjectsResponse> = /*@__PURE__*/
+  messageDesc(file_workos_index_v1_index_admin, 23);
+
+/**
  * @generated from service workos.index.v1.IndexAdminService
  */
 export const IndexAdminService: GenService<{
@@ -657,6 +846,33 @@ export const IndexAdminService: GenService<{
     methodKind: "unary";
     input: typeof SyncWorkspaceSourceRequestSchema;
     output: typeof SyncWorkspaceSourceResponseSchema;
+  },
+  /**
+   * Bounded generic archive (ADR-0017 §5): content-addressed object facts.
+   * Objects never enter the search projection.
+   *
+   * @generated from rpc workos.index.v1.IndexAdminService.PutArchiveObject
+   */
+  putArchiveObject: {
+    methodKind: "unary";
+    input: typeof PutArchiveObjectRequestSchema;
+    output: typeof PutArchiveObjectResponseSchema;
+  },
+  /**
+   * @generated from rpc workos.index.v1.IndexAdminService.GetArchiveObject
+   */
+  getArchiveObject: {
+    methodKind: "unary";
+    input: typeof GetArchiveObjectRequestSchema;
+    output: typeof GetArchiveObjectResponseSchema;
+  },
+  /**
+   * @generated from rpc workos.index.v1.IndexAdminService.ListArchiveObjects
+   */
+  listArchiveObjects: {
+    methodKind: "unary";
+    input: typeof ListArchiveObjectsRequestSchema;
+    output: typeof ListArchiveObjectsResponseSchema;
   },
 }> = /*@__PURE__*/
   serviceDesc(file_workos_index_v1_index_admin, 0);

@@ -631,7 +631,7 @@ test-semantic-knowledge:
 	$(GO_HOST_RUN) go test -tags=integration -count=1 -run 'TestSemanticKnowledge' -v ./tests/integration
 	@echo "test-semantic-knowledge: PASS"
 
-# The workspace indexing gate (ADR-0017 §4, W4): owner-bound local mounts
+# The workspace indexing gate (ADR-0017 §4+§5, W4): owner-bound local mounts
 # converge into the projection over the real mount walker — bounded
 # ingestion with honest skip categories, convergent upsert/tombstone
 # passes, explicit degraded mounts, symlink-escape rejection, and project
@@ -639,7 +639,7 @@ test-semantic-knowledge:
 test-workspace-indexing:
 	docker compose up -d --build postgres
 	@set -eu; 	i=0; until docker compose exec -T postgres pg_isready -U workos >/dev/null 2>&1; do i=$$((i+1)); [ $$i -le 60 ] || { echo 'postgres readiness timed out' >&2; exit 1; }; sleep 1; done
-	$(GO_HOST_RUN) go test -tags=integration -count=1 -run 'TestWorkspaceIndexing' -v ./tests/integration
+	$(GO_HOST_RUN) go test -tags=integration -count=1 -run 'TestWorkspaceIndexing|TestArchiveObjects' -v ./tests/integration
 	@echo "test-workspace-indexing: PASS"
 
 # The desktop system-apps gate (W6): Command Palette keyboard surface with
@@ -677,6 +677,8 @@ test-mobile-wrappers:
 	echo "test-mobile-wrappers: PASS"
 
 # The push relay gate (ADR-0018, W5): relay payload whitelist
+# plus the bounded owner-scoped notification search (title substring,
+# deterministic ordering, closed-fail grammar, foreign-scope emptiness).
 # (notificationId only), exactly-once dispatch under at-least-once replay,
 # idempotent revocation, the owner quiet window, honest unavailable
 # platforms, and relay outage containment.
@@ -684,7 +686,7 @@ test-push-relay:
 	docker compose up -d --build postgres
 	@set -eu; \
 	i=0; until docker compose exec -T postgres pg_isready -U workos >/dev/null 2>&1; do i=$$((i+1)); [ $$i -le 60 ] || { echo 'postgres readiness timed out' >&2; exit 1; }; sleep 1; done
-	$(GO_HOST_RUN) go test -tags=integration -count=1 -run 'TestPushRelay' -v ./tests/integration
+	$(GO_HOST_RUN) go test -tags=integration -count=1 -run 'TestPushRelay|TestNotificationSearch' -v ./tests/integration
 	@echo "test-push-relay: PASS"
 
 capture-desktop-system-apps: e2e-image
@@ -913,7 +915,14 @@ test-lan-pairing: e2e-image
 	test -f "$$certdir/leaf.crt" -a -f "$$certdir/leaf.key"; \
 	export WORKOS_TLS_CERT="$$certdir/leaf.crt" WORKOS_TLS_KEY="$$certdir/leaf.key"; \
 	echo "== starting the production-auth gateway =="; \
-	docker compose --profile lan-pairing up -d --build postgres bootstrap workos-core harness-host runtime-host workos-gateway-tls; \
+	docker compose --profile lan-pairing up -d --build postgres bootstrap workos-core harness-host runtime-host workos-gateway-tls workos-mdns-announce; \
+	echo "== phase: LAN discovery over mDNS (ADR-0019) =="; \
+	mdns_fp="sha256:$$(openssl x509 -in "$$certdir/leaf.crt" -outform DER 2>/dev/null | sha256sum | awk '{print $$1}')"; \
+	test "$$(printf '%.7s' "$$mdns_fp")" = "sha256:"; \
+	sleep 2; \
+	discovered_origin="$$(docker compose exec -T workos-mdns-announce /usr/local/bin/workosctl device scan --fingerprint "$$mdns_fp" --timeout 6s | grep '^origin: ' | head -1 | cut -d' ' -f2-)"; \
+	test -n "$$discovered_origin"; \
+	echo "discovered origin: $$discovered_origin"; \
 	echo "== rotating an operator pairing ticket over the admin socket =="; \
 	pair_url="$$(docker compose exec -T workos-gateway-tls /usr/local/bin/workosctl device pair | grep '^https://')"; \
 	test -n "$$pair_url"; \

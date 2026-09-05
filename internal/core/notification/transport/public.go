@@ -80,6 +80,26 @@ func NewConnectHandlerWithPush(service *application.Service, push *application.P
 	)
 }
 
+func (h *Handler) SearchNotifications(ctx context.Context, req *connect.Request[notificationv1.SearchNotificationsRequest]) (*connect.Response[notificationv1.SearchNotificationsResponse], error) {
+	owner, err := requireOwner(ctx)
+	if err != nil {
+		return nil, err
+	}
+	msg := req.Msg
+	page, next, err := h.service.Search(ctx, owner, msg.GetQuery(), ports.Filter{ProjectID: msg.GetProjectId()}, int(msg.GetPageSize()), msg.GetPageToken())
+	if err != nil {
+		return nil, mapError(err)
+	}
+	notifications := make([]*notificationv1.Notification, 0, len(page.Notifications))
+	for _, fact := range page.Notifications {
+		notifications = append(notifications, notificationProto(fact))
+	}
+	return connect.NewResponse(&notificationv1.SearchNotificationsResponse{
+		Notifications: notifications,
+		NextPageToken: next,
+	}), nil
+}
+
 func (h *Handler) SubscribePush(ctx context.Context, req *connect.Request[notificationv1.SubscribePushRequest]) (*connect.Response[notificationv1.SubscribePushResponse], error) {
 	if h.push == nil {
 		return nil, connect.NewError(connect.CodeUnavailable, errors.New("push delivery is not available"))

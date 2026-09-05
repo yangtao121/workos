@@ -395,9 +395,11 @@ func (x *SearchHybridRequest) GetPage() *v1.PageRequest {
 }
 
 type SearchHybridResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Hits          []*SearchHit           `protobuf:"bytes,1,rep,name=hits,proto3" json:"hits,omitempty"`
-	Page          *v1.PageResponse       `protobuf:"bytes,2,opt,name=page,proto3" json:"page,omitempty"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	Hits  []*SearchHit           `protobuf:"bytes,1,rep,name=hits,proto3" json:"hits,omitempty"`
+	Page  *v1.PageResponse       `protobuf:"bytes,2,opt,name=page,proto3" json:"page,omitempty"`
+	// Same bounded freshness projection the lexical Search serves.
+	Freshness     *IndexFreshness `protobuf:"bytes,3,opt,name=freshness,proto3" json:"freshness,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -442,6 +444,13 @@ func (x *SearchHybridResponse) GetHits() []*SearchHit {
 func (x *SearchHybridResponse) GetPage() *v1.PageResponse {
 	if x != nil {
 		return x.Page
+	}
+	return nil
+}
+
+func (x *SearchHybridResponse) GetFreshness() *IndexFreshness {
+	if x != nil {
+		return x.Freshness
 	}
 	return nil
 }
@@ -834,10 +843,11 @@ const file_workos_index_v1_index_proto_rawDesc = "" +
 	"\n" +
 	"project_id\x18\x01 \x01(\tR\tprojectId\x12\x14\n" +
 	"\x05query\x18\x02 \x01(\tR\x05query\x121\n" +
-	"\x04page\x18\x03 \x01(\v2\x1d.workos.common.v1.PageRequestR\x04page\"z\n" +
+	"\x04page\x18\x03 \x01(\v2\x1d.workos.common.v1.PageRequestR\x04page\"\xb9\x01\n" +
 	"\x14SearchHybridResponse\x12.\n" +
 	"\x04hits\x18\x01 \x03(\v2\x1a.workos.index.v1.SearchHitR\x04hits\x122\n" +
-	"\x04page\x18\x02 \x01(\v2\x1e.workos.common.v1.PageResponseR\x04page\"w\n" +
+	"\x04page\x18\x02 \x01(\v2\x1e.workos.common.v1.PageResponseR\x04page\x12=\n" +
+	"\tfreshness\x18\x03 \x01(\v2\x1f.workos.index.v1.IndexFreshnessR\tfreshness\"w\n" +
 	"\rSearchRequest\x12\x1d\n" +
 	"\n" +
 	"project_id\x18\x01 \x01(\tR\tprojectId\x12\x14\n" +
@@ -915,23 +925,24 @@ var file_workos_index_v1_index_proto_depIdxs = []int32{
 	11, // 2: workos.index.v1.SearchHybridRequest.page:type_name -> workos.common.v1.PageRequest
 	7,  // 3: workos.index.v1.SearchHybridResponse.hits:type_name -> workos.index.v1.SearchHit
 	12, // 4: workos.index.v1.SearchHybridResponse.page:type_name -> workos.common.v1.PageResponse
-	11, // 5: workos.index.v1.SearchRequest.page:type_name -> workos.common.v1.PageRequest
-	13, // 6: workos.index.v1.SearchHit.source_ref:type_name -> workos.agent.v1.ContextRef
-	7,  // 7: workos.index.v1.SearchResponse.hits:type_name -> workos.index.v1.SearchHit
-	12, // 8: workos.index.v1.SearchResponse.page:type_name -> workos.common.v1.PageResponse
-	8,  // 9: workos.index.v1.SearchResponse.freshness:type_name -> workos.index.v1.IndexFreshness
-	3,  // 10: workos.index.v1.IndexContextResponse.job:type_name -> workos.index.v1.IndexJob
-	2,  // 11: workos.index.v1.IndexService.IndexContext:input_type -> workos.index.v1.IndexContextRequest
-	6,  // 12: workos.index.v1.IndexService.Search:input_type -> workos.index.v1.SearchRequest
-	4,  // 13: workos.index.v1.IndexService.SearchHybrid:input_type -> workos.index.v1.SearchHybridRequest
-	10, // 14: workos.index.v1.IndexService.IndexContext:output_type -> workos.index.v1.IndexContextResponse
-	9,  // 15: workos.index.v1.IndexService.Search:output_type -> workos.index.v1.SearchResponse
-	5,  // 16: workos.index.v1.IndexService.SearchHybrid:output_type -> workos.index.v1.SearchHybridResponse
-	14, // [14:17] is the sub-list for method output_type
-	11, // [11:14] is the sub-list for method input_type
-	11, // [11:11] is the sub-list for extension type_name
-	11, // [11:11] is the sub-list for extension extendee
-	0,  // [0:11] is the sub-list for field type_name
+	8,  // 5: workos.index.v1.SearchHybridResponse.freshness:type_name -> workos.index.v1.IndexFreshness
+	11, // 6: workos.index.v1.SearchRequest.page:type_name -> workos.common.v1.PageRequest
+	13, // 7: workos.index.v1.SearchHit.source_ref:type_name -> workos.agent.v1.ContextRef
+	7,  // 8: workos.index.v1.SearchResponse.hits:type_name -> workos.index.v1.SearchHit
+	12, // 9: workos.index.v1.SearchResponse.page:type_name -> workos.common.v1.PageResponse
+	8,  // 10: workos.index.v1.SearchResponse.freshness:type_name -> workos.index.v1.IndexFreshness
+	3,  // 11: workos.index.v1.IndexContextResponse.job:type_name -> workos.index.v1.IndexJob
+	2,  // 12: workos.index.v1.IndexService.IndexContext:input_type -> workos.index.v1.IndexContextRequest
+	6,  // 13: workos.index.v1.IndexService.Search:input_type -> workos.index.v1.SearchRequest
+	4,  // 14: workos.index.v1.IndexService.SearchHybrid:input_type -> workos.index.v1.SearchHybridRequest
+	10, // 15: workos.index.v1.IndexService.IndexContext:output_type -> workos.index.v1.IndexContextResponse
+	9,  // 16: workos.index.v1.IndexService.Search:output_type -> workos.index.v1.SearchResponse
+	5,  // 17: workos.index.v1.IndexService.SearchHybrid:output_type -> workos.index.v1.SearchHybridResponse
+	15, // [15:18] is the sub-list for method output_type
+	12, // [12:15] is the sub-list for method input_type
+	12, // [12:12] is the sub-list for extension type_name
+	12, // [12:12] is the sub-list for extension extendee
+	0,  // [0:12] is the sub-list for field type_name
 }
 
 func init() { file_workos_index_v1_index_proto_init() }

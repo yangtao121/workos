@@ -205,6 +205,23 @@ services:
       - ${WORKOS_TLS_CERT:-/workos-tls-not-configured/leaf.crt}:/run/workos/tls/leaf.crt:ro
       - ${WORKOS_TLS_KEY:-/workos-tls-not-configured/leaf.key}:/run/workos/tls/leaf.key:ro
 
+  # LAN discovery responder (ADR-0019): announces the public origin and the
+  # pinned TLS leaf fingerprint over mDNS so LAN clients can discover and
+  # verify the pairing target. Host networking is required for multicast;
+  # the certificate is the same fixture the TLS gateway serves, so the
+  # advertised fingerprint matches the pairing ticket by construction.
+  workos-mdns-announce:
+    <<: *workos-service
+    profiles: [lan-pairing]
+    command: ["/usr/local/bin/workos-mdns-announce"]
+    environment:
+      <<: *workos-environment
+      WORKOS_MDNS_ORIGIN: ${WORKOS_LAN_ORIGIN:-https://localhost:8443}
+      WORKOS_MDNS_INSTANCE: workos-gateway
+      WORKOS_HTTP_TLS_CERT_FILE: /run/workos/tls/leaf.crt
+    volumes:
+      - ${WORKOS_TLS_CERT:-/workos-tls-not-configured/leaf.crt}:/run/workos/tls/leaf.crt:ro
+
 volumes:
   workos-postgres:
   workos-go-cache:

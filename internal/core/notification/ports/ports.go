@@ -143,6 +143,9 @@ type Filter struct {
 	ProjectID  string
 	UnreadOnly bool
 	Kind       string
+	// TitleNeedle, when non-empty, narrows to notifications whose lowercased
+	// inert title contains it (bounded notification search, ADR-0018).
+	TitleNeedle string
 }
 
 // Cursor is the keyset continuation (created_at, id); zero time means the

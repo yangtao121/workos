@@ -146,6 +146,51 @@ message SyncWorkspaceSourceResponse {
   repeated string skipped_reasons = 5;
 }
 
+message PutArchiveObjectRequest {
+  string owner_user_id = 1;
+  // Bounded IANA media type; defaults to application/octet-stream.
+  string media_type = 2;
+  // 1..8 MiB. Larger payloads are rejected, never truncated.
+  bytes content = 3;
+}
+
+message PutArchiveObjectResponse {
+  string object_id = 1;
+  string sha256 = 2;
+  int64 byte_count = 3;
+  // True when an existing object with the same owner+digest was returned.
+  bool deduplicated = 4;
+}
+
+message GetArchiveObjectRequest {
+  string owner_user_id = 1;
+  string object_id = 2;
+}
+
+message ArchiveObjectMetadata {
+  string object_id = 1;
+  string sha256 = 2;
+  string media_type = 3;
+  int64 byte_count = 4;
+  // UTC RFC 3339 microseconds.
+  string created_at = 5;
+}
+
+message GetArchiveObjectResponse {
+  ArchiveObjectMetadata object = 1;
+  bytes content = 2;
+}
+
+message ListArchiveObjectsRequest {
+  string owner_user_id = 1;
+  // 1..200; defaults to 50.
+  int32 limit = 2;
+}
+
+message ListArchiveObjectsResponse {
+  repeated ArchiveObjectMetadata objects = 1;
+}
+
 service IndexAdminService {
   rpc GetIndexAdminStatus(GetIndexAdminStatusRequest) returns (GetIndexAdminStatusResponse) {}
   rpc StartIndexRebuild(StartIndexRebuildRequest) returns (StartIndexRebuildResponse) {}
@@ -154,4 +199,9 @@ service IndexAdminService {
   rpc RegisterWorkspaceSource(RegisterWorkspaceSourceRequest) returns (RegisterWorkspaceSourceResponse) {}
   rpc ListWorkspaceSources(ListWorkspaceSourcesRequest) returns (ListWorkspaceSourcesResponse) {}
   rpc SyncWorkspaceSource(SyncWorkspaceSourceRequest) returns (SyncWorkspaceSourceResponse) {}
+  // Bounded generic archive (ADR-0017 §5): content-addressed object facts.
+  // Objects never enter the search projection.
+  rpc PutArchiveObject(PutArchiveObjectRequest) returns (PutArchiveObjectResponse) {}
+  rpc GetArchiveObject(GetArchiveObjectRequest) returns (GetArchiveObjectResponse) {}
+  rpc ListArchiveObjects(ListArchiveObjectsRequest) returns (ListArchiveObjectsResponse) {}
 }

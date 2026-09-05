@@ -69,6 +69,8 @@ message SearchHybridRequest {
 message SearchHybridResponse {
   repeated SearchHit hits = 1;
   workos.common.v1.PageResponse page = 2;
+  // Same bounded freshness projection the lexical Search serves.
+  workos.index.v1.IndexFreshness freshness = 3;
 }
 
 message SearchRequest {
