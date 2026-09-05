@@ -138,6 +138,19 @@ W1 → W2 → W3 → W4 → W6 → W5，全部在同一 branch 严格串行。
   - 真实 Codex OAuth（client secret）与真实 MCP 远程部署属于外部账号前提，
     保持 fixture 形态（非 blocker，本批范围明确不含）
 
+## 会话 3 交接（W2.4/W2.5/W2.6 完成后更新）
+
+- W2.4 遥测门禁已绿：根因=collector file exporter 配置含无效 sending_queue/
+  retry_on_failure 字段（该 exporter 不支持）导致 collector 崩溃循环、receiver
+  从未监听 + 调试容器 otel-cap5 曾占用 127.0.0.1:4318 吞 POST。修复后探针与
+  真实流量全部落盘。make test-telemetry PASS。
+- W2.5/2.6 门禁 make test-repair-deployment PASS：repair orchestrator（台账 035）
+  + Core 私有 AgentRepairTaskService（TaskRouter 完整准入）+ deployment ledger
+  （036）+ canary promote / ADR-0012 rollback driver。
+- 新增 make test-app-bridge-full PASS：shell-side bridge（project.current/
+  theme.get/window.setTitle/window.close）经 app-host shell dispatch +
+  runtime project.current 协商；未授权 knowledge.search fail closed。
+
 ## 会话 2 交接（W2 收口，供 W3 续作）
 
 - W2.4/W2.5/W2.6 提交：`4104e12`（遥测管道）、`642e511`（repair orchestrator）、
