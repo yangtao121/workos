@@ -223,6 +223,74 @@ func (q *Queries) CountIndexJobSources(ctx context.Context, jobID string) (Count
 	return i, err
 }
 
+const fetchGenerationDocsForSemantic = `-- name: FetchGenerationDocsForSemantic :many
+SELECT source_id, source_digest, artifact_type, title, source_created_at, content,
+       last_publication_id, indexed_at, embedding
+FROM workos_index.documents
+WHERE projection_generation = $1
+  AND owner_user_id = $2
+  AND project_id = $3
+  AND tombstoned_at IS NULL
+  AND indexed_at <= $4
+`
+
+type FetchGenerationDocsForSemanticParams struct {
+	GenerationID    string
+	OwnerUserID     string
+	ProjectID       string
+	SnapshotThrough time.Time
+}
+
+type FetchGenerationDocsForSemanticRow struct {
+	SourceID          string
+	SourceDigest      string
+	ArtifactType      string
+	Title             string
+	SourceCreatedAt   time.Time
+	Content           string
+	LastPublicationID string
+	IndexedAt         time.Time
+	Embedding         []float32
+}
+
+// Hybrid semantic search (ADR-0017): bounded generation fetch; cosine is
+// computed in the indexer against the query embedding (deterministic local
+// feature-hash vectors). Bounded by the generation's document count.
+func (q *Queries) FetchGenerationDocsForSemantic(ctx context.Context, arg FetchGenerationDocsForSemanticParams) ([]FetchGenerationDocsForSemanticRow, error) {
+	rows, err := q.db.Query(ctx, fetchGenerationDocsForSemantic,
+		arg.GenerationID,
+		arg.OwnerUserID,
+		arg.ProjectID,
+		arg.SnapshotThrough,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []FetchGenerationDocsForSemanticRow
+	for rows.Next() {
+		var i FetchGenerationDocsForSemanticRow
+		if err := rows.Scan(
+			&i.SourceID,
+			&i.SourceDigest,
+			&i.ArtifactType,
+			&i.Title,
+			&i.SourceCreatedAt,
+			&i.Content,
+			&i.LastPublicationID,
+			&i.IndexedAt,
+			&i.Embedding,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getBuildingGenerationForScope = `-- name: GetBuildingGenerationForScope :one
 SELECT id FROM workos_index.projection_generations
 WHERE status = 'building' AND scope = $1

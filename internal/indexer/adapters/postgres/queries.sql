@@ -363,3 +363,17 @@ WHERE projection_generation = sqlc.arg(generation_id)
   AND (source_created_at, source_id) > (sqlc.arg(cursor_created_at)::timestamptz, sqlc.arg(cursor_source_id)::uuid)
 ORDER BY source_created_at, source_id
 LIMIT sqlc.arg(page_limit);
+
+
+-- Hybrid semantic search (ADR-0017): bounded generation fetch; cosine is
+-- computed in the indexer against the query embedding (deterministic local
+-- feature-hash vectors). Bounded by the generation's document count.
+-- name: FetchGenerationDocsForSemantic :many
+SELECT source_id, source_digest, artifact_type, title, source_created_at, content,
+       last_publication_id, indexed_at, embedding
+FROM workos_index.documents
+WHERE projection_generation = sqlc.arg(generation_id)
+  AND owner_user_id = sqlc.arg(owner_user_id)
+  AND project_id = sqlc.arg(project_id)
+  AND tombstoned_at IS NULL
+  AND indexed_at <= sqlc.arg(snapshot_through);

@@ -25,6 +25,10 @@ type Querier interface {
 	CountGenerationDocs(ctx context.Context, generationID string) (CountGenerationDocsRow, error)
 	CountGenerationDocuments(ctx context.Context, generationID string) (int64, error)
 	CountIndexJobSources(ctx context.Context, jobID string) (CountIndexJobSourcesRow, error)
+	// Hybrid semantic search (ADR-0017): bounded generation fetch; cosine is
+	// computed in the indexer against the query embedding (deterministic local
+	// feature-hash vectors). Bounded by the generation's document count.
+	FetchGenerationDocsForSemantic(ctx context.Context, arg FetchGenerationDocsForSemanticParams) ([]FetchGenerationDocsForSemanticRow, error)
 	GetBuildingGenerationForScope(ctx context.Context, arg GetBuildingGenerationForScopeParams) (string, error)
 	GetConsumerCursor(ctx context.Context, workerID string) (WorkosIndexConsumerState, error)
 	GetDocumentStatus(ctx context.Context, arg GetDocumentStatusParams) (GetDocumentStatusRow, error)

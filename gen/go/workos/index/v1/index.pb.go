@@ -753,10 +753,11 @@ const file_workos_index_v1_index_proto_rawDesc = "" +
 	"\x17INDEX_JOB_STATE_PENDING\x10\x01\x12\x1b\n" +
 	"\x17INDEX_JOB_STATE_RUNNING\x10\x02\x12\x1d\n" +
 	"\x19INDEX_JOB_STATE_COMPLETED\x10\x03\x12\x1a\n" +
-	"\x16INDEX_JOB_STATE_FAILED\x10\x042\xba\x01\n" +
+	"\x16INDEX_JOB_STATE_FAILED\x10\x042\x8d\x02\n" +
 	"\fIndexService\x12]\n" +
 	"\fIndexContext\x12$.workos.index.v1.IndexContextRequest\x1a%.workos.index.v1.IndexContextResponse\"\x00\x12K\n" +
-	"\x06Search\x12\x1e.workos.index.v1.SearchRequest\x1a\x1f.workos.index.v1.SearchResponse\"\x00B=Z;github.com/yangtao121/workos/gen/go/workos/index/v1;indexv1b\x06proto3"
+	"\x06Search\x12\x1e.workos.index.v1.SearchRequest\x1a\x1f.workos.index.v1.SearchResponse\"\x00\x12Q\n" +
+	"\fSearchHybrid\x12\x1e.workos.index.v1.SearchRequest\x1a\x1f.workos.index.v1.SearchResponse\"\x00B=Z;github.com/yangtao121/workos/gen/go/workos/index/v1;indexv1b\x06proto3"
 
 var (
 	file_workos_index_v1_index_proto_rawDescOnce sync.Once
@@ -797,10 +798,12 @@ var file_workos_index_v1_index_proto_depIdxs = []int32{
 	3,  // 7: workos.index.v1.IndexContextResponse.job:type_name -> workos.index.v1.IndexJob
 	2,  // 8: workos.index.v1.IndexService.IndexContext:input_type -> workos.index.v1.IndexContextRequest
 	4,  // 9: workos.index.v1.IndexService.Search:input_type -> workos.index.v1.SearchRequest
-	8,  // 10: workos.index.v1.IndexService.IndexContext:output_type -> workos.index.v1.IndexContextResponse
-	7,  // 11: workos.index.v1.IndexService.Search:output_type -> workos.index.v1.SearchResponse
-	10, // [10:12] is the sub-list for method output_type
-	8,  // [8:10] is the sub-list for method input_type
+	4,  // 10: workos.index.v1.IndexService.SearchHybrid:input_type -> workos.index.v1.SearchRequest
+	8,  // 11: workos.index.v1.IndexService.IndexContext:output_type -> workos.index.v1.IndexContextResponse
+	7,  // 12: workos.index.v1.IndexService.Search:output_type -> workos.index.v1.SearchResponse
+	7,  // 13: workos.index.v1.IndexService.SearchHybrid:output_type -> workos.index.v1.SearchResponse
+	11, // [11:14] is the sub-list for method output_type
+	8,  // [8:11] is the sub-list for method input_type
 	8,  // [8:8] is the sub-list for extension type_name
 	8,  // [8:8] is the sub-list for extension extendee
 	0,  // [0:8] is the sub-list for field type_name

@@ -121,4 +121,8 @@ service IndexService {
   // Bounded deterministic lexical search over the owner's active project
   // review-artifact projection.
   rpc Search(SearchRequest) returns (SearchResponse) {}
+  // Hybrid semantic search: lexical matches fused with deterministic
+  // embedding cosine similarity over the same bounded projection (ADR-0017).
+  // The response shape matches Search; ordering is deterministic.
+  rpc SearchHybrid(SearchRequest) returns (SearchResponse) {}
 }
