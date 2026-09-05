@@ -10,13 +10,18 @@
   "scripts": {
     "check": "tsc --noEmit && vitest run",
     "test": "vitest run",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "build": "vite build",
+    "cap:sync": "cap sync"
   },
   "dependencies": {
     "@workos/adaptive-shell": "workspace:*"
   },
   "devDependencies": {
+    "@capacitor/cli": "6.2.1",
+    "@capacitor/core": "6.2.1",
     "typescript": "5.9.2",
-    "vitest": "4.1.11"
+    "vitest": "4.1.11",
+    "vite": "8.2.2"
   }
 }
