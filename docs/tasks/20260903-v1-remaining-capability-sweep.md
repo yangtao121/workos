@@ -138,6 +138,23 @@ W1 → W2 → W3 → W4 → W6 → W5，全部在同一 branch 严格串行。
   - 真实 Codex OAuth（client secret）与真实 MCP 远程部署属于外部账号前提，
     保持 fixture 形态（非 blocker，本批范围明确不含）
 
+## 会话 2 交接（W2 收口，供 W3 续作）
+
+- W2.4/W2.5/W2.6 提交：`4104e12`（遥测管道）、`642e511`（repair orchestrator）、
+  `d831811`（deployment controller）、`7296a73`/`500cea4`/`2b0d374`/`db47b15`/`5607516`
+  （调试矩阵与修复）。全部经 `make check`。
+- 遥测根因终判：collector file exporter 配置含无效字段 → collector 崩溃循环
+  （receiver 从未监听）；调试容器 otel-cap5 曾占 127.0.0.1:4318。两者修复后
+  探针与真实流量全部落盘。已固化：boundsExporter 采集前预算、file exporter JSONL
+  共享卷、telemetryfile.Reader+TelemetryAggregator、GetTelemetrySummary 白名单、
+  System Monitor Telemetry 区。
+- W2.5/2.6 已固化：Core 私有 AgentRepairTaskService（走 TaskRouter 完整准入）、
+  repair orchestrator 台账（035）、deployment ledger（036）、canary
+  promote/rollback（ADR-0012 语义经 loopback 驱动）。
+- W3 续作第一步：Bridge 全能力（window.*/files.*/artifacts.*/theme.get）—
+  surface-sdk + runtime bridge 校验 + Core private command 通道；
+  `make test-app-bridge-full`。
+
 ## 会话 1 交接（2026-09-03 收口，供会话 2 续作）
 
 ### 本会话提交（branch `feat/v1-remaining-capability-sweep`，均经 `make check`）
