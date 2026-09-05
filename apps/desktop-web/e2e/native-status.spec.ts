@@ -69,9 +69,7 @@ maintainer: {}
   expect(registerResponse.ok()).toBeTruthy();
 }
 
-test("remote-native status surface renders through the supervised path", async ({
-  page,
-}) => {
+test("remote-native status surface renders through the supervised path", async ({ page }) => {
   const stamp = String(Date.now());
   const appId = `e2e-native-${stamp}`;
 
@@ -107,16 +105,14 @@ test("remote-native status surface renders through the supervised path", async (
   const frame = page.locator(".app-surface-frame");
   await expect(frame).toBeVisible({ timeout: libraryTimeout });
 
-  const nativeBody = page
-    .frameLocator(".app-surface-frame")
-    .locator("#native-runner");
+  const nativeBody = page.frameLocator(".app-surface-frame").locator("#native-runner");
   await expect(nativeBody).toBeVisible({ timeout: libraryTimeout });
-  await expect(
-    page.frameLocator(".app-surface-frame").locator("#native-title"),
-  ).toHaveText("Native runner");
-  await expect(
-    page.frameLocator(".app-surface-frame").locator("#native-state"),
-  ).toHaveText("status: OK");
+  await expect(page.frameLocator(".app-surface-frame").locator("#native-title")).toHaveText(
+    "Native runner",
+  );
+  await expect(page.frameLocator(".app-surface-frame").locator("#native-state")).toHaveText(
+    "status: OK",
+  );
 
   // Owner-side uninstall tears the surface window down (session revalidation
   // closes stale windows server-side).
