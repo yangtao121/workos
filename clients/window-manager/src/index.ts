@@ -5,7 +5,13 @@ export interface Rect {
   height: number;
 }
 
-export type WindowMode = "normal" | "minimized" | "maximized" | "fullscreen";
+export type WindowMode =
+  | "normal"
+  | "minimized"
+  | "maximized"
+  | "fullscreen"
+  | "snap-left"
+  | "snap-right";
 
 // The discriminated window kind: Agent Center windows render the task
 // composer; app-surface windows render one sandboxed installed-app surface;
@@ -18,7 +24,13 @@ export type WindowKind =
   | "artifact-center"
   | "artifact-viewer"
   | "knowledge-center"
-  | "notification-center";
+  | "notification-center"
+  | "mission-control"
+  | "home"
+  | "files"
+  | "docs"
+  | "code"
+  | "browser";
 
 // AppSurfaceRef binds a window to one durable surface session. The URL is
 // the same-origin relative path returned by CreateSurface — never a private
@@ -63,6 +75,7 @@ export type WindowAction =
   | { type: "move"; id: string; x: number; y: number }
   | { type: "resize"; id: string; width: number; height: number }
   | { type: "mode"; id: string; mode: WindowMode }
+  | { type: "snap"; id: string; side: "left" | "right"; viewport: Rect }
   | { type: "close"; id: string }
   | { type: "rename"; id: string; title: string };
 
@@ -121,6 +134,26 @@ export function windowReducer(state: WindowState, action: WindowAction): WindowS
           mode: action.mode,
           zIndex: state.nextZIndex,
         };
+      case "snap": {
+        // Snap is a deterministic half-viewport geometry (ADR W6): the
+        // pre-snap rect is preserved as the restore target, so returning to
+        // "normal" is exact. Snapping never nests on an already-snapped
+        // window — the restore target stays the last normal rect.
+        const half = Math.max(320, Math.floor(action.viewport.width / 2));
+        const rect: Rect = {
+          x: action.side === "left" ? 0 : Math.max(0, action.viewport.width - half),
+          y: 0,
+          width: half,
+          height: Math.max(220, action.viewport.height),
+        };
+        return {
+          ...item,
+          restoreRect: item.mode === "normal" ? item.rect : item.restoreRect,
+          rect,
+          mode: (action.side === "left" ? "snap-left" : "snap-right") as WindowMode,
+          zIndex: state.nextZIndex,
+        };
+      }
       default:
         return item;
     }

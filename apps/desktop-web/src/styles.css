@@ -1948,3 +1948,254 @@ button {
 .declarative-button[disabled] {
   opacity: 0.7;
 }
+
+/* Command Palette (W6) */
+.palette-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 18, 25, 0.45);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 12vh;
+  z-index: 400;
+}
+.palette-panel {
+  background: var(--surface, #fff);
+  border-radius: 10px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.25);
+  width: min(560px, 92vw);
+  padding: 8px;
+}
+.palette-input {
+  width: 100%;
+  border: 1px solid #d4d8e0;
+  border-radius: 6px;
+  padding: 10px 12px;
+  font-size: 15px;
+  box-sizing: border-box;
+}
+.palette-results {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  max-height: 320px;
+  overflow-y: auto;
+}
+.palette-item {
+  display: flex;
+  width: 100%;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 9px 10px;
+  border: 0;
+  background: transparent;
+  border-radius: 6px;
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+}
+.palette-item.active {
+  background: #eef2ff;
+}
+.palette-hint {
+  color: #6b7280;
+  font-size: 12px;
+}
+.palette-empty,
+.palette-stale {
+  padding: 10px;
+  color: #6b7280;
+}
+.palette-stale {
+  color: #92400e;
+}
+
+/* Mission Control (W6) */
+.mission-cards {
+  list-style: none;
+  margin: 12px 0 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 12px;
+}
+.mission-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+  padding: 14px;
+  border: 1px solid #d4d8e0;
+  border-radius: 10px;
+  background: #fff;
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+}
+.mission-card.active {
+  border-color: #4f46e5;
+  box-shadow: 0 0 0 1px #4f46e5 inset;
+}
+.mission-name {
+  font-weight: 600;
+}
+.mission-facts {
+  color: #6b7280;
+  font-size: 12px;
+}
+.mission-create {
+  display: flex;
+  gap: 8px;
+}
+.mission-create-input {
+  flex: 1;
+  border: 1px solid #d4d8e0;
+  border-radius: 6px;
+  padding: 8px 10px;
+  font: inherit;
+}
+.mission-verdict {
+  color: #92400e;
+}
+
+/* Home launchpad (W6) */
+.home-grid {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 12px;
+}
+.home-entry {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 100%;
+  padding: 14px;
+  border: 1px solid #d4d8e0;
+  border-radius: 10px;
+  background: #fff;
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+}
+.home-entry:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+.home-label {
+  font-weight: 600;
+}
+.home-hint {
+  color: #6b7280;
+  font-size: 12px;
+}
+
+/* Files / Docs / Code (W6) */
+.files-search {
+  display: flex;
+  gap: 8px;
+}
+.files-query {
+  flex: 1;
+  border: 1px solid #d4d8e0;
+  border-radius: 6px;
+  padding: 8px 10px;
+  font: inherit;
+}
+.files-results,
+.docs-list,
+.code-list {
+  list-style: none;
+  margin: 12px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.files-hit {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+}
+.files-title,
+.docs-title,
+.code-title {
+  font-weight: 600;
+}
+.files-excerpt {
+  color: #374151;
+  font-size: 13px;
+}
+.docs-entry,
+.code-entry {
+  display: flex;
+  width: 100%;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  background: #fff;
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+}
+.docs-meta,
+.code-meta {
+  color: #6b7280;
+  font-size: 12px;
+}
+.docs-verdict,
+.code-verdict,
+.files-verdict {
+  color: #92400e;
+}
+.files-note {
+  color: #6b7280;
+  font-size: 12px;
+  margin-top: 14px;
+}
+
+/* Browser (W6) */
+.browser-bar {
+  display: flex;
+  gap: 8px;
+}
+.browser-address {
+  flex: 1;
+  border: 1px solid #d4d8e0;
+  border-radius: 6px;
+  padding: 8px 10px;
+  font: inherit;
+}
+.browser-verdict {
+  color: #92400e;
+}
+.browser-frame {
+  width: 100%;
+  height: calc(100% - 52px);
+  min-height: 320px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  box-sizing: border-box;
+}
+
+.window-snaps {
+  margin-left: auto;
+  display: inline-flex;
+  gap: 4px;
+}
+.window-snaps button {
+  border: 1px solid #d4d8e0;
+  background: #fff;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+  padding: 2px 6px;
+}

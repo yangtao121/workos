@@ -1,5 +1,65 @@
 import { describe, expect, it } from "vitest";
-import { initialWindowState, windowReducer, type WindowAction } from "./index.js";
+import {
+  initialWindowState,
+  windowReducer,
+  type WindowAction,
+  type WorkOSWindow,
+} from "./index.js";
+
+const viewport = { x: 0, y: 0, width: 1440, height: 900 };
+
+function normalWindow(id: string, kind: WorkOSWindow["kind"]): WorkOSWindow {
+  return {
+    id,
+    appId: id,
+    title: id,
+    kind,
+    rect: { x: 40, y: 60, width: 520, height: 420 },
+    restoreRect: { x: 40, y: 60, width: 520, height: 420 },
+    mode: "normal",
+    zIndex: 1,
+  };
+}
+
+describe("windowReducer snap", () => {
+  it("snaps to the exact left/right half and restores the last normal rect", () => {
+    let state = windowReducer(initialWindowState, {
+      type: "open",
+      window: normalWindow("docs", "docs"),
+    });
+    state = windowReducer(state, { type: "snap", id: "docs", side: "left", viewport });
+    const snapped = state.windows[0];
+    expect(snapped?.mode).toBe("snap-left");
+    expect(snapped?.rect).toEqual({ x: 0, y: 0, width: 720, height: 900 });
+    expect(snapped?.restoreRect).toEqual({ x: 40, y: 60, width: 520, height: 420 });
+    state = windowReducer(state, { type: "mode", id: "docs", mode: "normal" });
+    expect(state.windows[0]?.rect).toEqual({ x: 40, y: 60, width: 520, height: 420 });
+  });
+
+  it("snapping an already-snapped window keeps the original restore target", () => {
+    let state = windowReducer(initialWindowState, {
+      type: "open",
+      window: normalWindow("code", "code"),
+    });
+    state = windowReducer(state, { type: "snap", id: "code", side: "left", viewport });
+    state = windowReducer(state, { type: "snap", id: "code", side: "right", viewport });
+    const target = state.windows[0];
+    expect(target?.mode).toBe("snap-right");
+    expect(target?.rect.x).toBe(720);
+    expect(target?.restoreRect).toEqual({ x: 40, y: 60, width: 520, height: 420 });
+  });
+
+  it("snapped windows ignore move and resize", () => {
+    let state = windowReducer(initialWindowState, {
+      type: "open",
+      window: normalWindow("files", "files"),
+    });
+    state = windowReducer(state, { type: "snap", id: "files", side: "right", viewport });
+    state = windowReducer(state, { type: "move", id: "files", x: 10, y: 10 });
+    state = windowReducer(state, { type: "resize", id: "files", width: 100, height: 100 });
+    expect(state.windows[0]?.rect).toEqual({ x: 720, y: 0, width: 720, height: 900 });
+  });
+});
 
 describe("windowReducer", () => {
   it("opens, focuses, and restores a window without losing its normal rect", () => {

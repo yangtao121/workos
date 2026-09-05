@@ -48,6 +48,16 @@ import { HarnessSettings, type CatalogState } from "./HarnessSettings.js";
 import { KnowledgeCenter, type KnowledgeHit } from "./KnowledgeCenter.js";
 import { NotificationCenter } from "./NotificationCenter.js";
 import { SystemMonitor } from "./SystemMonitor.js";
+import { CommandPalette, type PaletteAction } from "./CommandPalette.js";
+import { MissionControl, type MissionControlProject } from "./MissionControl.js";
+import {
+  BrowserApp,
+  CodeApp,
+  DocsApp,
+  FilesApp,
+  HomeApp,
+  type HomeAppEntry,
+} from "./SystemApps.js";
 import { DeclarativeSurface } from "./DeclarativeSurface.js";
 import { UsageView } from "./UsageView.js";
 import { selectionFromProject, taskStatus, type HarnessSelection } from "./model.js";
@@ -132,6 +142,7 @@ export function Desktop({
   // The owner notification projection (ADR-0014): an in-memory, discardable
   // projection reconciled from Core authority. The cursor and facts stay
   // here — never in URLs, DOM attributes, or storage.
+  const [paletteOpen, setPaletteOpen] = useState(false);
   const [notificationSnapshot, setNotificationSnapshot] = useState<NotificationProjectionSnapshot>({
     state: "idle",
     notifications: [],
@@ -409,6 +420,101 @@ export function Desktop({
       },
     });
     recordLayout((state) => ({ ...state, activeSystemWindow: "notification-center" }));
+  }, [recordLayout]);
+
+  // Mission Control (W6): the project-card overview and the project
+  // creation/switch entry. A normal, closable window.
+  const openMissionControl = useCallback(() => {
+    dispatch({
+      type: "open",
+      window: {
+        id: "mission-control",
+        appId: "mission-control",
+        title: "Mission Control",
+        kind: "mission-control",
+        rect: { x: 180, y: 90, width: 640, height: 520 },
+        mode: "normal",
+      },
+    });
+    recordLayout((state) => ({ ...state, activeSystemWindow: "mission-control" }));
+  }, [recordLayout]);
+
+  const openHome = useCallback(() => {
+    dispatch({
+      type: "open",
+      window: {
+        id: "home",
+        appId: "home",
+        title: "Home",
+        kind: "home",
+        rect: { x: 220, y: 110, width: 560, height: 420 },
+        mode: "normal",
+      },
+    });
+    recordLayout((state) => ({ ...state, activeSystemWindow: "home" }));
+  }, [recordLayout]);
+
+  const openFiles = useCallback(() => {
+    if (!activeProjectId) return;
+    dispatch({
+      type: "open",
+      window: {
+        id: "files",
+        appId: "files",
+        title: "Files",
+        kind: "files",
+        rect: { x: 200, y: 120, width: 560, height: 460 },
+        mode: "normal",
+      },
+    });
+    recordLayout((state) => ({ ...state, activeSystemWindow: "files" }));
+  }, [activeProjectId, recordLayout]);
+
+  const openDocs = useCallback(() => {
+    if (!activeProjectId) return;
+    dispatch({
+      type: "open",
+      window: {
+        id: "docs",
+        appId: "docs",
+        title: "Docs",
+        kind: "docs",
+        rect: { x: 240, y: 130, width: 540, height: 460 },
+        mode: "normal",
+      },
+    });
+    recordLayout((state) => ({ ...state, activeSystemWindow: "docs" }));
+  }, [activeProjectId, recordLayout]);
+
+  const openCode = useCallback(() => {
+    if (!activeProjectId) return;
+    dispatch({
+      type: "open",
+      window: {
+        id: "code",
+        appId: "code",
+        title: "Code",
+        kind: "code",
+        rect: { x: 260, y: 140, width: 560, height: 460 },
+        mode: "normal",
+      },
+    });
+    recordLayout((state) => ({ ...state, activeSystemWindow: "code" }));
+  }, [activeProjectId, recordLayout]);
+
+  const openBrowser = useCallback(() => {
+    dispatch({
+      type: "open",
+      window: {
+        id: "browser",
+        appId: "browser",
+        title: "Browser",
+        kind: "browser",
+        rect: { x: 160, y: 100, width: 720, height: 520 },
+        mode: "normal",
+      },
+    });
+    recordLayout((state) => ({ ...state, activeSystemWindow: "browser" }));
   }, [recordLayout]);
 
   // Opening one artifact opens (or focuses) exactly one viewer window keyed
@@ -1118,6 +1224,149 @@ export function Desktop({
     [openArtifactViewer, openSystemMonitor, workosClients],
   );
 
+  // Command Palette (W6): one fixed action set over existing public
+  // services. Project switching revalidates the live project through
+  // GetProject before switching — a vanished target yields the fixed stale
+  // verdict inside the palette, never a fallback navigation.
+  const paletteActions = useCallback((): PaletteAction[] => {
+    const actions: PaletteAction[] = [];
+    for (const project of projects) {
+      actions.push({
+        id: `switch-project-${project.id}`,
+        label: `Switch to project: ${project.name}`,
+        hint: "project",
+        run: async () => {
+          try {
+            await workosClients.projects.getProject({ projectId: project.id });
+            setActiveProjectId(project.id);
+            return "ok";
+          } catch (reason) {
+            if (reason instanceof ConnectError && reason.code === Code.NotFound) {
+              return "stale";
+            }
+            throw reason;
+          }
+        },
+      });
+    }
+    actions.push(
+      {
+        id: "open-mission-control",
+        label: "Open Mission Control",
+        hint: "window",
+        run: () => {
+          openMissionControl();
+          return Promise.resolve("ok" as const);
+        },
+      },
+      {
+        id: "open-home",
+        label: "Open Home",
+        hint: "window",
+        run: () => {
+          openHome();
+          return Promise.resolve("ok" as const);
+        },
+      },
+      {
+        id: "open-files",
+        label: "Open Files",
+        hint: "window",
+        run: () => {
+          if (!activeProjectId) return Promise.resolve("stale" as const);
+          openFiles();
+          return Promise.resolve("ok" as const);
+        },
+      },
+      {
+        id: "open-docs",
+        label: "Open Docs",
+        hint: "window",
+        run: () => {
+          if (!activeProjectId) return Promise.resolve("stale" as const);
+          openDocs();
+          return Promise.resolve("ok" as const);
+        },
+      },
+      {
+        id: "open-code",
+        label: "Open Code",
+        hint: "window",
+        run: () => {
+          if (!activeProjectId) return Promise.resolve("stale" as const);
+          openCode();
+          return Promise.resolve("ok" as const);
+        },
+      },
+      {
+        id: "open-browser",
+        label: "Open Browser",
+        hint: "window",
+        run: () => {
+          openBrowser();
+          return Promise.resolve("ok" as const);
+        },
+      },
+      {
+        id: "open-agent-center",
+        label: "Ask the project agent",
+        hint: "agent",
+        run: () => {
+          dispatch({
+            type: "focus",
+            id: "agent-center",
+          });
+          return Promise.resolve("ok" as const);
+        },
+      },
+      {
+        id: "open-system-monitor",
+        label: "Open System Monitor",
+        hint: "window",
+        run: () => {
+          openSystemMonitor();
+          return Promise.resolve("ok" as const);
+        },
+      },
+      {
+        id: "open-knowledge-center",
+        label: "Open Knowledge Center",
+        hint: "window",
+        run: () => {
+          if (!activeProjectId) return Promise.resolve("stale" as const);
+          openKnowledgeCenter();
+          return Promise.resolve("ok" as const);
+        },
+      },
+    );
+    return actions;
+  }, [
+    projects,
+    workosClients,
+    activeProjectId,
+    openMissionControl,
+    openHome,
+    openFiles,
+    openDocs,
+    openCode,
+    openBrowser,
+    openSystemMonitor,
+    openKnowledgeCenter,
+  ]);
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
+        event.preventDefault();
+        setPaletteOpen((open) => !open);
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, []);
+
   // renderWindowBody renders one window's body. Both the expanded free-window
   // shell and the adaptive panes render exactly these bodies, so behavior
   // never forks per mode.
@@ -1236,6 +1485,120 @@ export function Desktop({
           });
         }}
       />
+    ) : windowState.kind === "mission-control" ? (
+      <MissionControl
+        projects={projects.map(
+          (project): MissionControlProject => ({
+            id: project.id,
+            name: project.name,
+            revision: project.revision,
+            unreadNotifications: notificationSnapshot.notifications.filter(
+              (notification) =>
+                notification.projectId === project.id && notification.readAt == null,
+            ).length,
+            isActive: project.id === activeProjectId,
+          }),
+        )}
+        onSelect={(projectId) => {
+          setActiveProjectId(projectId);
+        }}
+        onCreateProject={async (name) => {
+          try {
+            await createProjectNamed(name);
+            return "ok";
+          } catch {
+            return "stale";
+          }
+        }}
+      />
+    ) : windowState.kind === "home" ? (
+      <HomeApp
+        apps={(() => {
+          const entries: HomeAppEntry[] = [
+            {
+              id: "mission-control",
+              label: "Mission Control",
+              hint: "Projects overview",
+              available: true,
+              open: openMissionControl,
+            },
+            {
+              id: "files",
+              label: "Files",
+              hint: "Indexed workspace files",
+              available: Boolean(activeProjectId),
+              open: openFiles,
+            },
+            {
+              id: "docs",
+              label: "Docs",
+              hint: "Project markdown documents",
+              available: Boolean(activeProjectId),
+              open: openDocs,
+            },
+            {
+              id: "code",
+              label: "Code",
+              hint: "Read-only proposed patches",
+              available: Boolean(activeProjectId),
+              open: openCode,
+            },
+            {
+              id: "browser",
+              label: "Browser",
+              hint: "Sandboxed in-window pages",
+              available: true,
+              open: openBrowser,
+            },
+            {
+              id: "terminal",
+              label: "Terminal",
+              hint: "requires the Native Runner",
+              available: false,
+              open: () => {},
+            },
+          ];
+          return entries;
+        })()}
+      />
+    ) : windowState.kind === "files" ? (
+      activeProject ? (
+        <FilesApp
+          key={activeProject.id}
+          projectId={activeProject.id}
+          workosClients={workosClients}
+        />
+      ) : (
+        <p className="empty-state">Create a project to browse its workspace files.</p>
+      )
+    ) : windowState.kind === "docs" ? (
+      activeProject ? (
+        <DocsApp
+          key={activeProject.id}
+          projectId={activeProject.id}
+          workosClients={workosClients}
+          onOpenArtifact={(artifact) => {
+            openArtifactViewer(artifact.id, activeProject.id);
+          }}
+        />
+      ) : (
+        <p className="empty-state">Create a project to read its documents.</p>
+      )
+    ) : windowState.kind === "code" ? (
+      activeProject ? (
+        <CodeApp
+          key={activeProject.id}
+          projectId={activeProject.id}
+          workosClients={workosClients}
+          onOpenArtifact={(artifact) => {
+            openArtifactViewer(artifact.id, activeProject.id);
+          }}
+        />
+      ) : (
+        <p className="empty-state">Create a project to review proposed patches.</p>
+      )
+    ) : windowState.kind === "browser" ? (
+      <BrowserApp />
     ) : windowState.kind === "device-center" ? (
       deviceAuth ? (
         <DeviceCenter deviceAuth={deviceAuth} onSessionEnded={() => layoutStore.clearAll()} />
@@ -1349,67 +1712,77 @@ export function Desktop({
   // the exact free-window desktop, so desktop behavior cannot regress.
   if (adaptive) {
     return (
-      <AdaptiveShell
-        layout={deviceLayout}
-        windows={windows}
-        status={status}
-        activeProject={activeProject}
-        projects={projects}
-        layoutState={deviceLayoutState}
-        unreadNotifications={notificationSnapshot.unreadCount}
-        onSwitchProject={setActiveProjectId}
-        onCreateProject={(name) => void createProjectNamed(name)}
-        onOpenSystemWindow={openAdaptiveSystemWindow}
-        onFocusWindow={focusAdaptiveWindow}
-        onCloseWindow={closeWindow}
-        onLayoutPreference={(preference) => {
-          recordLayout((state) => ({ ...state, layoutPreference: preference }));
-        }}
-        onOpenAppInstance={openAdaptiveAppInstance}
-        renderWindowBody={renderWindowBody}
-        renderAppLibrary={() =>
-          activeProject ? (
-            <AppLibrary
-              key={activeProject.id}
-              project={activeProject}
-              deviceClass={protoFromDeviceClass(deviceLayout.deviceClass)}
-              workosClients={workosClients}
-              onProjectRefreshed={replaceProject}
-              onSurfaceOpened={surfaceOpened}
-              onInstallationRemoved={installationRemoved}
-              onInstallationGrantsChanged={invalidateInstallationReferences}
-              onInstallationVersionChanged={invalidateInstallationReferences}
-            />
-          ) : null
-        }
-        renderProjectSettings={() =>
-          activeProject ? (
-            <HarnessSettings
-              catalog={catalog}
-              catalogError={catalogError}
-              catalogState={catalogState}
-              draft={bindingDraft}
-              feedback={activeEditor?.feedback?.text}
-              feedbackIsError={activeEditor?.feedback?.isError}
-              project={activeProject}
-              saving={bindingSaving[activeProject.id] ?? false}
-              onRetry={() => void refreshCatalog()}
-              onSave={() => {
-                void saveHarnessBinding(activeProject.id, bindingDraft);
-              }}
-              onSelectionChange={(selection) => {
-                setBindingEditor({ projectId: activeProject.id, draft: selection });
-              }}
-            />
-          ) : null
-        }
-      >
-        {error ? (
-          <p className="error-toast" role="alert">
-            {error}
-          </p>
+      <>
+        <AdaptiveShell
+          layout={deviceLayout}
+          windows={windows}
+          status={status}
+          activeProject={activeProject}
+          projects={projects}
+          layoutState={deviceLayoutState}
+          unreadNotifications={notificationSnapshot.unreadCount}
+          onSwitchProject={setActiveProjectId}
+          onCreateProject={(name) => void createProjectNamed(name)}
+          onOpenSystemWindow={openAdaptiveSystemWindow}
+          onFocusWindow={focusAdaptiveWindow}
+          onCloseWindow={closeWindow}
+          onLayoutPreference={(preference) => {
+            recordLayout((state) => ({ ...state, layoutPreference: preference }));
+          }}
+          onOpenAppInstance={openAdaptiveAppInstance}
+          renderWindowBody={renderWindowBody}
+          renderAppLibrary={() =>
+            activeProject ? (
+              <AppLibrary
+                key={activeProject.id}
+                project={activeProject}
+                deviceClass={protoFromDeviceClass(deviceLayout.deviceClass)}
+                workosClients={workosClients}
+                onProjectRefreshed={replaceProject}
+                onSurfaceOpened={surfaceOpened}
+                onInstallationRemoved={installationRemoved}
+                onInstallationGrantsChanged={invalidateInstallationReferences}
+                onInstallationVersionChanged={invalidateInstallationReferences}
+              />
+            ) : null
+          }
+          renderProjectSettings={() =>
+            activeProject ? (
+              <HarnessSettings
+                catalog={catalog}
+                catalogError={catalogError}
+                catalogState={catalogState}
+                draft={bindingDraft}
+                feedback={activeEditor?.feedback?.text}
+                feedbackIsError={activeEditor?.feedback?.isError}
+                project={activeProject}
+                saving={bindingSaving[activeProject.id] ?? false}
+                onRetry={() => void refreshCatalog()}
+                onSave={() => {
+                  void saveHarnessBinding(activeProject.id, bindingDraft);
+                }}
+                onSelectionChange={(selection) => {
+                  setBindingEditor({ projectId: activeProject.id, draft: selection });
+                }}
+              />
+            ) : null
+          }
+        >
+          {error ? (
+            <p className="error-toast" role="alert">
+              {error}
+            </p>
+          ) : null}
+        </AdaptiveShell>
+        {paletteOpen ? (
+          <CommandPalette
+            actions={paletteActions()}
+            onClose={() => {
+              setPaletteOpen(false);
+            }}
+          />
         ) : null}
-      </AdaptiveShell>
+      </>
     );
   }
 
@@ -1567,6 +1940,48 @@ export function Desktop({
               </div>
               <strong>{windowState.title}</strong>
               <span>{activeProject?.name ?? "No project"}</span>
+              <span className="window-snaps">
+                <button
+                  aria-label={`Snap ${windowState.title} left`}
+                  data-testid={`snap-left-${windowState.id}`}
+                  onClick={() => {
+                    dispatch({
+                      type: "snap",
+                      id: windowState.id,
+                      side: "left",
+                      viewport: {
+                        x: 0,
+                        y: 0,
+                        width: window.innerWidth,
+                        height: window.innerHeight,
+                      },
+                    });
+                  }}
+                  type="button"
+                >
+                  ⬐
+                </button>
+                <button
+                  aria-label={`Snap ${windowState.title} right`}
+                  data-testid={`snap-right-${windowState.id}`}
+                  onClick={() => {
+                    dispatch({
+                      type: "snap",
+                      id: windowState.id,
+                      side: "right",
+                      viewport: {
+                        x: 0,
+                        y: 0,
+                        width: window.innerWidth,
+                        height: window.innerHeight,
+                      },
+                    });
+                  }}
+                  type="button"
+                >
+                  ⬗
+                </button>
+              </span>
             </header>
             {renderWindowBody(windowState)}
           </section>
@@ -1619,7 +2034,71 @@ export function Desktop({
         >
           ✦
         </button>
+        <button
+          type="button"
+          aria-label="Open Mission Control"
+          data-testid="open-mission-control"
+          onClick={openMissionControl}
+        >
+          ▦
+        </button>
+        <button type="button" aria-label="Open Home" data-testid="open-home" onClick={openHome}>
+          ⌂
+        </button>
+        <button
+          type="button"
+          aria-label="Open Files"
+          data-testid="open-files"
+          disabled={!activeProject}
+          onClick={openFiles}
+        >
+          ▤
+        </button>
+        <button
+          type="button"
+          aria-label="Open Docs"
+          data-testid="open-docs"
+          disabled={!activeProject}
+          onClick={openDocs}
+        >
+          📄
+        </button>
+        <button
+          type="button"
+          aria-label="Open Code"
+          data-testid="open-code"
+          disabled={!activeProject}
+          onClick={openCode}
+        >
+          ⟨⟩
+        </button>
+        <button
+          type="button"
+          aria-label="Open Browser"
+          data-testid="open-browser"
+          onClick={openBrowser}
+        >
+          ◍
+        </button>
+        <button
+          type="button"
+          aria-label="Open command palette"
+          data-testid="open-command-palette"
+          onClick={() => {
+            setPaletteOpen(true);
+          }}
+        >
+          ⌘K
+        </button>
       </nav>
+      {paletteOpen ? (
+        <CommandPalette
+          actions={paletteActions()}
+          onClose={() => {
+            setPaletteOpen(false);
+          }}
+        />
+      ) : null}
     </main>
   );
 }
