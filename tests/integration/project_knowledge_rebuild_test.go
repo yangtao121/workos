@@ -621,7 +621,7 @@ func TestProjectKnowledgeRebuildGoldenCrashResumeAndDestroyRestore(t *testing.T)
 	if _, err := f.pool.Exec(ctx, `DROP SCHEMA workos_index CASCADE`); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := f.pool.Exec(ctx, `DELETE FROM workos_meta.schema_migrations WHERE name IN ('027_index_projection.sql', '028_index_projection_invariants.sql')`); err != nil {
+	if _, err := f.pool.Exec(ctx, `DELETE FROM workos_meta.schema_migrations WHERE name IN ('027_index_projection.sql', '028_index_projection_invariants.sql', '037_indexer_semantic_embeddings.sql', '038_indexer_workspace_sources.sql', '040_indexer_archive_objects.sql')`); err != nil {
 		t.Fatal(err)
 	}
 	if err := migrations.Run(ctx, f.dsn); err != nil {
