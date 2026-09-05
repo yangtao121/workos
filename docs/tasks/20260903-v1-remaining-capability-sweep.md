@@ -213,3 +213,74 @@ W1 → W2 → W3 → W4 → W6 → W5，全部在同一 branch 严格串行。
    版本历史；`make test-repair-deployment` 一并覆盖 2.5+2.6。
 4. W3 → W4 → W6 → W5 按提示词继续；UI 变更沿用
    `docs/ui/desktop-web/changes/20260903-remaining-capability-sweep/` 与 notes 惯例。
+
+## 会话 2 交接（2026-09-05 收口，W2 收尾 + W3.4/3.5 + W4 全量 + W6 全量 + W5 全量）
+
+### 本会话提交（branch `feat/v1-remaining-capability-sweep`，均经 make check）
+
+- W2 收尾：`make test-telemetry`、`make test-repair-deployment` PASS（遥测聚合、
+  repair orchestrator、deployment controller、telemetryfile bounds exporter）。
+- W3.4/3.5：`make test-app-bridge-full`、`make test-declarative-surface`、
+  `make test-browser-surface`、`make test-remote-native-surface` PASS。
+- `feat: add semantic embedding function and pgvector migration`（037、domain.Embed、
+  CosineSimilarity、SearchHybrid proto/delegate 桩）。
+- `feat: add remote native surface hosting slice and gate`（native-status spec）。
+- `feat: add fused semantic hybrid search with stored embeddings`：真实融合检索
+  （摄取时计算 384 维 feature-hash embedding 落库；单条有界候选查询同时携带
+  ts_rank 与 embedding；Go 侧 0.5 词法归一 + 0.5 cosine 融合，fused DESC /
+  created DESC / id ASC 确定性排序；分页 token 绑定 ranking 版本，跨 ranking
+  拒绝；无 embedding 旧行词法路径照常）；`make test-semantic-knowledge` PASS
+  （scratch 仓储级 + compose 全栈 RPC 级）。
+- `feat: add workspace file sources with bounded mount ingestion`（038、
+  localmount walker、确定性 UUIDv7 文档身份、upsert/集合差 tombstone 收敛、
+  显式 degraded、workosctl index workspace register/list/sync）；
+  `make test-workspace-indexing` PASS。
+- `feat: add desktop command palette, mission control, and system apps`
+  （⌘K Palette 固定动作集 + stale 文案、Mission Control、Home/Files/Docs/Code/
+  Browser、Terminal unavailable 入口、窗口 snap left/right + 精确 restore、
+  adaptive 布局可达）；
+  `make test-desktop-system-apps` PASS（5 E2E）+ `make capture-desktop-system-apps`
+  视觉证据（1440x900 × 5 + 390x844 × 1，notes.md 已更新，current/ 同步）。
+- `feat: add push relay slice with payload whitelist and quiet hours`（039、
+  domain.PushPayload 白名单、fixture relay、exactly-once 投递账本、owner 免打扰、
+  consumer post-commit 派发、gateway 路由 SubscribePush 等 RPC、
+  web-push/APNs/FCM 如实 unavailable）；`make test-push-relay` PASS。
+- `feat: add capacitor mobile shell wrapper with build-level gate`
+  （原生安全存储诚实回退、fixture relay token 注册、vite bundle、
+  BLOCKED-ENVIRONMENT 记录）；`make test-mobile-wrappers` PASS。
+- `feat: add mdns lan discovery with fingerprint trust chain`
+  （TransportProvider 抽象、LanDirect mDNS 广播/发现仅 origin+fp、常量时间
+  指纹校验、Relay/Overlay 诚实 unavailable）；`make test-mdns-discovery` PASS。
+- ADR：0017（语义检索）、0018（推送白名单/免打扰）、0019（传输提供方/移动封装）。
+
+### 本会话门禁裁决（真实执行结果）
+
+| 门禁                                    | 结果                                                         |
+| --------------------------------------- | ------------------------------------------------------------ |
+| make test-semantic-knowledge            | PASS（首轮失败为测试查询词与融合分页缺陷，已修）             |
+| make test-workspace-indexing            | PASS（首轮失败为 SourceOperation 未传与 skip 计数，已修）     |
+| make test-desktop-system-apps           | PASS（5 passed；首轮 MC 卡片选择非确定性，已改为唯一名）      |
+| make test-push-relay                    | PASS                                                         |
+| make test-mobile-wrappers               | PASS（android sync 记录 BLOCKED-ENVIRONMENT，构建级 PASS）    |
+| make test-mdns-discovery                | PASS（宿主真实多播；无多播宿主显式 skip）                    |
+| make go-check / proto-check / web-check | PASS（gateway 架构测试一次偶发并发抖动，重复 5 次稳定 PASS）  |
+
+### 关键实现事实（续作者必读）
+
+- 混合检索分页：continuation 锚在"最后一条已发射 hit"（limit+1 probe 判定存在
+  下页）；谓词为严格 `< cursorScore` + tie-break after，锚定 probe 行会自我排除。
+- workspace 文档身份：`domain.WorkspaceSourceID` 确定性构造 v7（version/variant
+  位固定 + sha256 载荷），ValidUUID 全链路 v7 约束不破坏。
+- ConvergeWorkspacePass 每文件独立 UUIDv7 publication（共享 pass id 会被
+  receipt 仲裁折叠成 replay，导致只落第一个文件）。
+- push 派发钩子在 `go incidentConsumer.Run` 之前 SetPushDispatch（避免数据竞态）。
+- 16 门禁总表中 `make test-rootless-runtime` 仍为 BLOCKED（宿主无 rootless
+  Podman，探测输出见任务记录会话 1 部分）；其余 15 门禁 PASS。
+
+### 剩余事项（供下一会话）
+
+1. 16 门禁全量复跑 + `buf breaking` + `go test -race` 收口（本会话已单点复跑）。
+2. W4 通用 archive（ADR-0017 §5 最小实现）与 Knowledge Center 混合检索 UI 收口
+   （Knowledge Center 当前仍走词法 Search，可切 SearchHybrid）。
+3. Web Push RFC 8291 加密 + Service Worker 展示（ADR-0018 §5 诚实 unavailable）。
+4. W6 视觉证据 before/ 基线为新增界面（无既有 current），已在 notes.md 说明。
