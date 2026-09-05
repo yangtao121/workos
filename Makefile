@@ -568,6 +568,23 @@ test-app-bridge-full: e2e-image
 			$(E2E_IMAGE) pnpm exec playwright test app-bridge-full.spec.ts; \
 		echo "test-app-bridge-full: PASS"
 
+# The declarative surface gate: a web-bundle app whose bundle carries a
+# versioned declarative document renders natively with inert components.
+# Proves document fetch through the session path, schema version + bounds
+# validation, and the inert render contract (no scripts, no network).
+test-declarative-surface: e2e-image
+	@set -eu; \
+		WORKOS_UID="$$(id -u)" WORKOS_GID="$$(id -g)" \
+		docker compose up -d --build --force-recreate postgres bootstrap workos-core runtime-host workos-gateway; \
+		docker run --rm --network host $(USER_FLAGS) \
+			-e PLAYWRIGHT_BROWSERS_PATH=/ms-playwright \
+			-e WORKOS_E2E_URL=http://127.0.0.1:8080 \
+			-e WORKOS_E2E_OUTPUT_DIR=/tmp/workos-playwright-results \
+			-v $(CURDIR):$(WORKDIR) \
+			-w $(WORKDIR)/apps/desktop-web \
+			$(E2E_IMAGE) pnpm exec playwright test declarative-surface.spec.ts; \
+		echo "test-declarative-surface: PASS"
+
 e2e-image:
 	docker build \
 		--build-arg DEBIAN_MIRROR=$(DEBIAN_MIRROR) \

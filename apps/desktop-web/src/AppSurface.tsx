@@ -26,6 +26,12 @@ export interface SurfaceBridgeCredentials {
   capabilities: string[];
 }
 
+import {
+  DeclarativeSurface,
+  parseDeclarativeDoc,
+  type DeclarativeDoc,
+} from "./DeclarativeSurface.js";
+
 export interface AppSurfaceShellHost {
   /** Bounded summary of the surface's project (canonical facts only). */
   projectCurrent(): Promise<{ projectId: string; name: string; revision: string }>;
@@ -189,6 +195,37 @@ export function AppSurface({ surface, bridge, appBridge, shell }: AppSurfaceProp
   const [bridgeState, setBridgeState] = useState<BridgeState>("pending");
   const frameRef = useRef<HTMLIFrameElement>(null);
   const hostRef = useRef<AppBridgeHost | undefined>(undefined);
+  // Declarative probe (ADR-0016-era slice): a bundle may ship a versioned
+  // `surface.json` declarative document instead of an interactive page. If
+  // the probe finds one, WorkOS renders it with inert native components —
+  // no iframe, no bridge. Otherwise the standard sandboxed iframe flow runs.
+  const [declarative, setDeclarative] = useState<
+    | { mode: "probing" }
+    | { mode: "native"; doc: DeclarativeDoc }
+    | { mode: "iframe" }
+  >({ mode: "probing" });
+
+  useEffect(() => {
+    let alive = true;
+    const probe = async () => {
+      try {
+        const response = await fetch(`${surface.url}surface.json`, {
+          credentials: "include",
+          redirect: "error",
+        });
+        if (!response.ok) throw new Error("no declarative document");
+        const raw = await response.text();
+        const doc = parseDeclarativeDoc(raw);
+        if (alive) setDeclarative({ mode: "native", doc });
+      } catch {
+        if (alive) setDeclarative({ mode: "iframe" });
+      }
+    };
+    void probe();
+    return () => {
+      alive = false;
+    };
+  }, [surface.url]);
 
   const startHandshake = useCallback(() => {
     hostRef.current?.close();
@@ -243,6 +280,14 @@ export function AppSurface({ surface, bridge, appBridge, shell }: AppSurfaceProp
       hostRef.current = undefined;
     };
   }, [surface.url]);
+
+  if (declarative.mode === "native") {
+    return (
+      <div className="app-surface-body">
+        <DeclarativeSurface surfaceUrl={surface.url.endsWith("/") ? surface.url : `${surface.url}/`} />
+      </div>
+    );
+  }
 
   return (
     <div className="app-surface-body">

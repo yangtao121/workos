@@ -27,6 +27,7 @@ import {
   type WorkOSClients,
 } from "@workos/agent-sdk";
 import type { DeviceAuthClient } from "@workos/device-auth";
+import { SurfaceRenderer } from "@workos/protocol";
 import type {
   AgentEvent,
   AgentTask,
@@ -47,6 +48,7 @@ import { HarnessSettings, type CatalogState } from "./HarnessSettings.js";
 import { KnowledgeCenter, type KnowledgeHit } from "./KnowledgeCenter.js";
 import { NotificationCenter } from "./NotificationCenter.js";
 import { SystemMonitor } from "./SystemMonitor.js";
+import { DeclarativeSurface } from "./DeclarativeSurface.js";
 import { UsageView } from "./UsageView.js";
 import { selectionFromProject, taskStatus, type HarnessSelection } from "./model.js";
 
@@ -614,6 +616,7 @@ export function Desktop({
           surfaceSessionId: session.id,
           url: session.url,
           projectId: session.projectId,
+          renderer: SurfaceRenderer[session.renderer] ?? undefined,
         },
         // The app window opens over the launch area, beside — not on top of —
         // the Agent Center window, so approvals and usage stay reachable while
@@ -1119,6 +1122,16 @@ export function Desktop({
   // shell and the adaptive panes render exactly these bodies, so behavior
   // never forks per mode.
   function renderWindowBody(windowState: WorkOSWindow) {
+    if (
+      windowState.kind === "app-surface" &&
+      windowState.surface?.renderer === "declarative"
+    ) {
+      return (
+        <DeclarativeSurface
+          surfaceUrl={windowState.surface.url.endsWith("/") ? windowState.surface.url : `${windowState.surface.url}/`}
+        />
+      );
+    }
     return windowState.kind === "app-surface" && windowState.surface ? (
       <AppSurface
         surface={windowState.surface}

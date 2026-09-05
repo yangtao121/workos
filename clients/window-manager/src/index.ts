@@ -27,6 +27,8 @@ export interface AppSurfaceRef {
   surfaceSessionId: string;
   url: string;
   projectId: string;
+  /** The negotiated renderer id ("web-bundle" | "declarative" | ...). */
+  renderer?: string | undefined;
 }
 
 // ArtifactRef binds one viewer window to exactly one artifact of one
