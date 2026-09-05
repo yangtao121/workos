@@ -12,10 +12,11 @@ import (
 
 // RepairCandidate is one open incident eligible for a repair task.
 type RepairCandidate struct {
-	IncidentID  string
-	OwnerUserID string
-	ProjectID   string
-	Summary     string
+	IncidentID    string
+	OwnerUserID   string
+	ProjectID     string
+	AppInstanceID string
+	Summary       string
 }
 
 // RepairCandidatesSource reads repair-eligible incidents and records the
@@ -27,6 +28,19 @@ type RepairCandidatesSource interface {
 	// RecordRepairSubmitted inserts the ledger row (idempotent on the
 	// incident id) and projects the repair task id onto the incident.
 	RecordRepairSubmitted(ctx context.Context, candidate RepairCandidate, taskID string) error
+	// ListRepairCompleted returns submitted repair rows whose Agent task
+	// reached the terminal COMPLETED state on Core, for the repair-to-
+	// deployment hand-off (ADR-0016 §6).
+	ListRepairCompleted(ctx context.Context, limit int) ([]RepairCompletedRow, error)
+	// ClearRepairCompleted moves the row out of the submitted state after
+	// the hand-off consumed it.
+	ClearRepairCompleted(ctx context.Context, incidentID string) error
+}
+
+// RepairCompletedRow is a submitted ledger row whose repair task finished.
+type RepairCompletedRow struct {
+	RepairCandidate
+	TaskID string
 }
 
 // RepairSubmitter admits the repair task on Core through the private repair
@@ -34,19 +48,30 @@ type RepairCandidatesSource interface {
 // same task.
 type RepairSubmitter interface {
 	SubmitRepair(ctx context.Context, ownerUserID, projectID, incidentID, idempotencyKey, violationSummary string) (taskID, providerID string, err error)
+	// RepairTaskCompleted reports whether the submitted repair task reached
+	// its terminal COMPLETED state on Core.
+	RepairTaskCompleted(ctx context.Context, ownerUserID, taskID string) (bool, error)
 }
 
-// RepairOrchestrator drives the bounded repair pass.
+// RepairCompletionHandler receives incidents whose repair task reached the
+// terminal completed state — the deployment controller's canary trigger.
+type RepairCompletionHandler interface {
+	HandleRepairCompleted(ctx context.Context, candidate RepairCandidate) error
+}
+
+// RepairOrchestrator drives the bounded repair pass and the repair-to-
+// deployment hand-off.
 type RepairOrchestrator struct {
 	candidates RepairCandidatesSource
 	submitter  RepairSubmitter
+	completion RepairCompletionHandler
 }
 
-func NewRepairOrchestrator(candidates RepairCandidatesSource, submitter RepairSubmitter) (*RepairOrchestrator, error) {
+func NewRepairOrchestrator(candidates RepairCandidatesSource, submitter RepairSubmitter, completion RepairCompletionHandler) (*RepairOrchestrator, error) {
 	if candidates == nil || submitter == nil {
 		return nil, fmt.Errorf("repair orchestrator requires candidates source and submitter")
 	}
-	return &RepairOrchestrator{candidates: candidates, submitter: submitter}, nil
+	return &RepairOrchestrator{candidates: candidates, submitter: submitter, completion: completion}, nil
 }
 
 // RunPass performs one bounded repair pass: every incident without a
@@ -71,6 +96,33 @@ func (o *RepairOrchestrator) RunPass(ctx context.Context, limit int) (int, error
 			return submitted, err
 		}
 		submitted++
+	}
+
+	// Repair-to-deployment hand-off (ADR-0016 §6): submitted ledger rows
+	// whose repair task completed on Core trigger the deployment controller's
+	// canary. The candidates source reports terminal completions.
+	if o.completion != nil {
+		completed, completedErr := o.candidates.ListRepairCompleted(ctx, 4)
+		if completedErr != nil {
+			return submitted, completedErr
+		}
+		for _, row := range completed {
+			done, doneErr := o.submitter.RepairTaskCompleted(ctx, row.OwnerUserID, row.TaskID)
+			if doneErr != nil {
+				lastErr = doneErr
+				continue
+			}
+			if !done {
+				continue
+			}
+			if err := o.completion.HandleRepairCompleted(ctx, row.RepairCandidate); err != nil {
+				lastErr = err
+				continue
+			}
+			if err := o.candidates.ClearRepairCompleted(ctx, row.IncidentID); err != nil {
+				return submitted, err
+			}
+		}
 	}
 	return submitted, lastErr
 }

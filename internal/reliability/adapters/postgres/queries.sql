@@ -260,7 +260,7 @@ SELECT count(*) FROM workos_reliability.notification_publications WHERE outcome 
 -- One repair record per incident, regardless of lifecycle state: the 1s
 -- supervision cadence resolves incidents within seconds, so the lifecycle
 -- window cannot be the repair trigger. The ledger row is the audit record.
-SELECT i.id, i.owner_user_id, i.project_id, i.summary
+SELECT i.id, i.owner_user_id, i.project_id, i.app_instance_id, i.summary
 FROM workos_reliability.incidents i
 LEFT JOIN workos_reliability.repair_ledger l ON l.incident_id = i.id
 WHERE l.incident_id IS NULL
@@ -282,3 +282,45 @@ WHERE incident_id = $1;
 UPDATE workos_reliability.incidents
 SET repair_task_id = $1
 WHERE id = $2;
+
+-- Deployment controller (ADR-0016 section 6).
+
+-- name: StartDeploymentLedger :execrows
+INSERT INTO workos_reliability.deployment_ledger (
+    incident_id, owner_user_id, project_id, installation_id, target_version,
+    state, canary_until, created_at, updated_at
+) VALUES ($1, $2, $3, $4, $5, 'canary', $6, $7, $7)
+ON CONFLICT (incident_id) DO NOTHING;
+
+-- name: HasDeploymentLedger :one
+SELECT EXISTS (
+    SELECT 1 FROM workos_reliability.deployment_ledger WHERE incident_id = $1
+) AS has_incident;
+
+-- name: ListCanaryDue :many
+SELECT incident_id, owner_user_id, project_id, installation_id, target_version,
+       state, canary_until, created_at, updated_at
+FROM workos_reliability.deployment_ledger
+WHERE state = 'canary' AND canary_until <= $1
+ORDER BY canary_until
+LIMIT $2;
+
+-- name: SetDeploymentState :execrows
+UPDATE workos_reliability.deployment_ledger
+SET state = $2, updated_at = $3
+WHERE incident_id = $1;
+
+-- name: ListRepairCompleted :many
+-- Submitted repair rows whose task terminal state is unknown to the
+-- orchestrator; the orchestrator asks Core which ones completed.
+SELECT l.incident_id, l.project_id, l.task_id, i.owner_user_id, i.app_instance_id, i.summary
+FROM workos_reliability.repair_ledger l
+JOIN workos_reliability.incidents i ON i.id = l.incident_id
+WHERE l.state = 'submitted'
+ORDER BY l.created_at
+LIMIT $1;
+
+-- name: ClearRepairCompleted :execrows
+UPDATE workos_reliability.repair_ledger
+SET state = 'terminal', updated_at = $2
+WHERE incident_id = $1 AND state = 'submitted';

@@ -17,12 +17,19 @@ import (
 
 // RepairSubmitterClient submits repair tasks to Core's private repair RPC.
 type RepairSubmitterClient struct {
-	client agentv1connect.AgentRepairTaskServiceClient
+	client   agentv1connect.AgentRepairTaskServiceClient
+	tasks    agentv1connect.AgentTaskServiceClient
+	deviceID string
 }
 
-// NewRepairSubmitterClient wires the Core repair admission client.
-func NewRepairSubmitterClient(coreURL string) *RepairSubmitterClient {
-	return &RepairSubmitterClient{client: agentv1connect.NewAgentRepairTaskServiceClient(telemetry.HTTPClient(), coreURL)}
+// NewRepairSubmitterClient wires the Core repair admission client plus the
+// task state reader (the terminal check drives the deployment hand-off).
+func NewRepairSubmitterClient(coreURL string, deviceID string) *RepairSubmitterClient {
+	return &RepairSubmitterClient{
+		client:   agentv1connect.NewAgentRepairTaskServiceClient(telemetry.HTTPClient(), coreURL),
+		tasks:    agentv1connect.NewAgentTaskServiceClient(telemetry.HTTPClient(), coreURL),
+		deviceID: deviceID,
+	}
 }
 
 // SubmitRepair admits one repair task. The reliability orchestrator derives
@@ -43,4 +50,17 @@ func (c *RepairSubmitterClient) SubmitRepair(ctx context.Context, ownerUserID, p
 		return "", "", err
 	}
 	return response.Msg.GetTaskId(), response.Msg.GetProviderId(), nil
+}
+
+// RepairTaskCompleted reports whether one repair task reached the terminal
+// COMPLETED state on Core (ADR-0016 §5-6 hand-off).
+func (c *RepairSubmitterClient) RepairTaskCompleted(ctx context.Context, ownerUserID, taskID string) (bool, error) {
+	request := connect.NewRequest(&agentv1.GetTaskRequest{TaskId: taskID})
+	request.Header().Set(identity.UserHeader, ownerUserID)
+	request.Header().Set(identity.DeviceHeader, c.deviceID)
+	response, err := c.tasks.GetTask(ctx, request)
+	if err != nil {
+		return false, err
+	}
+	return response.Msg.GetTask().GetState() == agentv1.AgentTaskState_AGENT_TASK_STATE_COMPLETED, nil
 }

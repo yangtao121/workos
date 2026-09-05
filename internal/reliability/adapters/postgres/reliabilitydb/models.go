@@ -10,6 +10,18 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+type WorkosReliabilityDeploymentLedger struct {
+	IncidentID     string    `json:"incident_id"`
+	OwnerUserID    string    `json:"owner_user_id"`
+	ProjectID      string    `json:"project_id"`
+	InstallationID string    `json:"installation_id"`
+	TargetVersion  string    `json:"target_version"`
+	State          string    `json:"state"`
+	CanaryUntil    time.Time `json:"canary_until"`
+	CreatedAt      time.Time `json:"created_at"`
+	UpdatedAt      time.Time `json:"updated_at"`
+}
+
 type WorkosReliabilityIncidentAction struct {
 	IncidentID       string      `json:"incident_id"`
 	Action           string      `json:"action"`

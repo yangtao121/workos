@@ -573,3 +573,89 @@ func (r *Repository) RecordRepairSubmitted(ctx context.Context, candidate applic
 	}
 	return tx.Commit(ctx)
 }
+
+// ListCanaryDue implements the deployment ledger port: canary rows whose
+// observation window has ended, oldest first (ADR-0016 §6).
+func (r *Repository) ListCanaryDue(ctx context.Context, now time.Time, limit int) ([]application.DeploymentCandidate, error) {
+	rows, err := r.queries.ListCanaryDue(ctx, reliabilitydb.ListCanaryDueParams{
+		CanaryUntil: now, Limit: int32(limit),
+	})
+	if err != nil {
+		return nil, storeError("list due canaries", err)
+	}
+	candidates := make([]application.DeploymentCandidate, 0, len(rows))
+	for _, row := range rows {
+		candidates = append(candidates, application.DeploymentCandidate{
+			IncidentID: row.IncidentID, OwnerUserID: row.OwnerUserID,
+			ProjectID: row.ProjectID, InstallationID: row.InstallationID,
+			TargetVersion: row.TargetVersion,
+		})
+	}
+	return candidates, nil
+}
+
+// Start implements the deployment ledger port: idempotent canary insert.
+func (r *Repository) Start(ctx context.Context, candidate application.DeploymentCandidate, canaryUntil time.Time) error {
+	now := time.Now().UTC()
+	if _, err := r.queries.StartDeploymentLedger(ctx, reliabilitydb.StartDeploymentLedgerParams{
+		IncidentID: candidate.IncidentID, OwnerUserID: candidate.OwnerUserID,
+		ProjectID: candidate.ProjectID, InstallationID: candidate.InstallationID,
+		TargetVersion: candidate.TargetVersion, CanaryUntil: canaryUntil,
+		CreatedAt: now,
+	}); err != nil {
+		return storeError("start deployment canary", err)
+	}
+	return nil
+}
+
+// HasIncident implements the deployment ledger port.
+func (r *Repository) HasIncident(ctx context.Context, incidentID string) (bool, error) {
+	has, err := r.queries.HasDeploymentLedger(ctx, incidentID)
+	if err != nil {
+		return false, storeError("read deployment ledger", err)
+	}
+	return has, nil
+}
+
+// SetState implements the deployment ledger port.
+func (r *Repository) SetState(ctx context.Context, incidentID, state string) error {
+	if _, err := r.queries.SetDeploymentState(ctx, reliabilitydb.SetDeploymentStateParams{
+		IncidentID: incidentID, State: state, UpdatedAt: now(),
+	}); err != nil {
+		return storeError("set deployment state", err)
+	}
+	return nil
+}
+
+// ListRepairCompleted implements the repair orchestrator's hand-off port:
+// submitted ledger rows pending terminal reconciliation, joined with the
+// incident's owner, project, and app instance (ADR-0016 §5-6).
+func (r *Repository) ListRepairCompleted(ctx context.Context, limit int) ([]application.RepairCompletedRow, error) {
+	rows, err := r.queries.ListRepairCompleted(ctx, int32(limit))
+	if err != nil {
+		return nil, storeError("list completed repairs", err)
+	}
+	rowsOut := make([]application.RepairCompletedRow, 0, len(rows))
+	for _, row := range rows {
+		candidate := application.RepairCandidate{
+			IncidentID: row.IncidentID, OwnerUserID: row.OwnerUserID,
+			ProjectID: row.ProjectID, AppInstanceID: row.AppInstanceID,
+			Summary: row.Summary,
+		}
+		rowsOut = append(rowsOut, application.RepairCompletedRow{RepairCandidate: candidate, TaskID: row.TaskID})
+	}
+	return rowsOut, nil
+}
+
+// ClearRepairCompleted implements the deployment ledger port side of the
+// hand-off: the row leaves the submitted state once consumed.
+func (r *Repository) ClearRepairCompleted(ctx context.Context, incidentID string) error {
+	updated, err := r.queries.ClearRepairCompleted(ctx, reliabilitydb.ClearRepairCompletedParams{
+		IncidentID: incidentID, UpdatedAt: now(),
+	})
+	if err != nil {
+		return storeError("clear completed repair", err)
+	}
+	_ = updated
+	return nil
+}

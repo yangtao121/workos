@@ -74,8 +74,19 @@ func run(logger *slog.Logger) error {
 	// The repair orchestrator (ADR-0016 §5): bounded passes turn open
 	// incidents into ordinary Agent repair tasks on Core, idempotently
 	// anchored by the per-incident ledger.
-	repairSubmitter := transport.NewRepairSubmitterClient(cfg.Services.Core)
-	repairOrchestrator, err := application.NewRepairOrchestrator(repository, repairSubmitter)
+	repairSubmitter := transport.NewRepairSubmitterClient(cfg.Services.Core, cfg.Auth.DeviceID)
+
+	// The deployment controller (ADR-0016 §6): repair-completed incidents
+	// run a bounded canary window and then promote; a fresh incident during
+	// the window rolls back to the previous pinned version. Empty target
+	// versions mean the repair ran on the pinned version, so promotion is
+	// the calm-window verdict itself.
+	deploymentController, err := application.NewDeploymentController(
+		repository, transport.NewDeploymentDriverClient(cfg.Services.Core), cfg.Reliability.PollInterval*3)
+	if err != nil {
+		return err
+	}
+	repairOrchestrator, err := application.NewRepairOrchestrator(repository, repairSubmitter, deploymentController)
 	if err != nil {
 		return err
 	}

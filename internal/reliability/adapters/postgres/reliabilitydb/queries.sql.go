@@ -123,6 +123,25 @@ func (q *Queries) ClaimPendingIncidentPublications(ctx context.Context, arg Clai
 	return items, nil
 }
 
+const clearRepairCompleted = `-- name: ClearRepairCompleted :execrows
+UPDATE workos_reliability.repair_ledger
+SET state = 'terminal', updated_at = $2
+WHERE incident_id = $1 AND state = 'submitted'
+`
+
+type ClearRepairCompletedParams struct {
+	IncidentID string    `json:"incident_id"`
+	UpdatedAt  time.Time `json:"updated_at"`
+}
+
+func (q *Queries) ClearRepairCompleted(ctx context.Context, arg ClearRepairCompletedParams) (int64, error) {
+	result, err := q.db.Exec(ctx, clearRepairCompleted, arg.IncidentID, arg.UpdatedAt)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const completeIncidentPublications = `-- name: CompleteIncidentPublications :execrows
 UPDATE workos_reliability.notification_publications
 SET outcome = 'completed',
@@ -360,6 +379,19 @@ func (q *Queries) GetSupervisorCheckpoint(ctx context.Context) (WorkosReliabilit
 	return i, err
 }
 
+const hasDeploymentLedger = `-- name: HasDeploymentLedger :one
+SELECT EXISTS (
+    SELECT 1 FROM workos_reliability.deployment_ledger WHERE incident_id = $1
+) AS has_incident
+`
+
+func (q *Queries) HasDeploymentLedger(ctx context.Context, incidentID string) (bool, error) {
+	row := q.db.QueryRow(ctx, hasDeploymentLedger, incidentID)
+	var has_incident bool
+	err := row.Scan(&has_incident)
+	return has_incident, err
+}
+
 const incidentAcknowledgeKeyExists = `-- name: IncidentAcknowledgeKeyExists :one
 SELECT EXISTS (
     SELECT 1 FROM workos_reliability.incidents
@@ -518,6 +550,50 @@ func (q *Queries) InsertRepairLedger(ctx context.Context, arg InsertRepairLedger
 		return 0, err
 	}
 	return result.RowsAffected(), nil
+}
+
+const listCanaryDue = `-- name: ListCanaryDue :many
+SELECT incident_id, owner_user_id, project_id, installation_id, target_version,
+       state, canary_until, created_at, updated_at
+FROM workos_reliability.deployment_ledger
+WHERE state = 'canary' AND canary_until <= $1
+ORDER BY canary_until
+LIMIT $2
+`
+
+type ListCanaryDueParams struct {
+	CanaryUntil time.Time `json:"canary_until"`
+	Limit       int32     `json:"limit"`
+}
+
+func (q *Queries) ListCanaryDue(ctx context.Context, arg ListCanaryDueParams) ([]WorkosReliabilityDeploymentLedger, error) {
+	rows, err := q.db.Query(ctx, listCanaryDue, arg.CanaryUntil, arg.Limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []WorkosReliabilityDeploymentLedger
+	for rows.Next() {
+		var i WorkosReliabilityDeploymentLedger
+		if err := rows.Scan(
+			&i.IncidentID,
+			&i.OwnerUserID,
+			&i.ProjectID,
+			&i.InstallationID,
+			&i.TargetVersion,
+			&i.State,
+			&i.CanaryUntil,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const listIncidentsPage = `-- name: ListIncidentsPage :many
@@ -885,7 +961,7 @@ func (q *Queries) ListPendingActionIncidents(ctx context.Context, rowLimit int32
 
 const listRepairCandidates = `-- name: ListRepairCandidates :many
 
-SELECT i.id, i.owner_user_id, i.project_id, i.summary
+SELECT i.id, i.owner_user_id, i.project_id, i.app_instance_id, i.summary
 FROM workos_reliability.incidents i
 LEFT JOIN workos_reliability.repair_ledger l ON l.incident_id = i.id
 WHERE l.incident_id IS NULL
@@ -894,10 +970,11 @@ LIMIT $1
 `
 
 type ListRepairCandidatesRow struct {
-	ID          string `json:"id"`
-	OwnerUserID string `json:"owner_user_id"`
-	ProjectID   string `json:"project_id"`
-	Summary     string `json:"summary"`
+	ID            string `json:"id"`
+	OwnerUserID   string `json:"owner_user_id"`
+	ProjectID     string `json:"project_id"`
+	AppInstanceID string `json:"app_instance_id"`
+	Summary       string `json:"summary"`
 }
 
 // Repair orchestrator (ADR-0016 section 5): open incidents without a repair
@@ -919,6 +996,54 @@ func (q *Queries) ListRepairCandidates(ctx context.Context, limit int32) ([]List
 			&i.ID,
 			&i.OwnerUserID,
 			&i.ProjectID,
+			&i.AppInstanceID,
+			&i.Summary,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listRepairCompleted = `-- name: ListRepairCompleted :many
+SELECT l.incident_id, l.project_id, l.task_id, i.owner_user_id, i.app_instance_id, i.summary
+FROM workos_reliability.repair_ledger l
+JOIN workos_reliability.incidents i ON i.id = l.incident_id
+WHERE l.state = 'submitted'
+ORDER BY l.created_at
+LIMIT $1
+`
+
+type ListRepairCompletedRow struct {
+	IncidentID    string `json:"incident_id"`
+	ProjectID     string `json:"project_id"`
+	TaskID        string `json:"task_id"`
+	OwnerUserID   string `json:"owner_user_id"`
+	AppInstanceID string `json:"app_instance_id"`
+	Summary       string `json:"summary"`
+}
+
+// Submitted repair rows whose task terminal state is unknown to the
+// orchestrator; the orchestrator asks Core which ones completed.
+func (q *Queries) ListRepairCompleted(ctx context.Context, limit int32) ([]ListRepairCompletedRow, error) {
+	rows, err := q.db.Query(ctx, listRepairCompleted, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListRepairCompletedRow
+	for rows.Next() {
+		var i ListRepairCompletedRow
+		if err := rows.Scan(
+			&i.IncidentID,
+			&i.ProjectID,
+			&i.TaskID,
+			&i.OwnerUserID,
+			&i.AppInstanceID,
 			&i.Summary,
 		); err != nil {
 			return nil, err
@@ -977,6 +1102,62 @@ type MarkIncidentResolvedParams struct {
 
 func (q *Queries) MarkIncidentResolved(ctx context.Context, arg MarkIncidentResolvedParams) (int64, error) {
 	result, err := q.db.Exec(ctx, markIncidentResolved, arg.ResolvedAt, arg.UpdatedAt, arg.ID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const setDeploymentState = `-- name: SetDeploymentState :execrows
+UPDATE workos_reliability.deployment_ledger
+SET state = $2, updated_at = $3
+WHERE incident_id = $1
+`
+
+type SetDeploymentStateParams struct {
+	IncidentID string    `json:"incident_id"`
+	State      string    `json:"state"`
+	UpdatedAt  time.Time `json:"updated_at"`
+}
+
+func (q *Queries) SetDeploymentState(ctx context.Context, arg SetDeploymentStateParams) (int64, error) {
+	result, err := q.db.Exec(ctx, setDeploymentState, arg.IncidentID, arg.State, arg.UpdatedAt)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const startDeploymentLedger = `-- name: StartDeploymentLedger :execrows
+
+INSERT INTO workos_reliability.deployment_ledger (
+    incident_id, owner_user_id, project_id, installation_id, target_version,
+    state, canary_until, created_at, updated_at
+) VALUES ($1, $2, $3, $4, $5, 'canary', $6, $7, $7)
+ON CONFLICT (incident_id) DO NOTHING
+`
+
+type StartDeploymentLedgerParams struct {
+	IncidentID     string    `json:"incident_id"`
+	OwnerUserID    string    `json:"owner_user_id"`
+	ProjectID      string    `json:"project_id"`
+	InstallationID string    `json:"installation_id"`
+	TargetVersion  string    `json:"target_version"`
+	CanaryUntil    time.Time `json:"canary_until"`
+	CreatedAt      time.Time `json:"created_at"`
+}
+
+// Deployment controller (ADR-0016 section 6).
+func (q *Queries) StartDeploymentLedger(ctx context.Context, arg StartDeploymentLedgerParams) (int64, error) {
+	result, err := q.db.Exec(ctx, startDeploymentLedger,
+		arg.IncidentID,
+		arg.OwnerUserID,
+		arg.ProjectID,
+		arg.InstallationID,
+		arg.TargetVersion,
+		arg.CanaryUntil,
+		arg.CreatedAt,
+	)
 	if err != nil {
 		return 0, err
 	}

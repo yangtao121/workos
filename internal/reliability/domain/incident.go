@@ -129,7 +129,7 @@ type Incident struct {
 	// this incident (ADR-0016 §5); empty until the orchestrator submits it.
 	RepairTaskID   string
 	Revision       int64
-	AcknowledgedAt     *time.Time
+	AcknowledgedAt *time.Time
 	// AcknowledgeKey is the durable idempotency key of the acknowledge
 	// write. It is an internal replay fact and is never projected publicly.
 	AcknowledgeKey string

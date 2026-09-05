@@ -184,7 +184,6 @@ type exportCounter struct{}
 
 func (exportCounter) OnStart(context.Context, sdktrace.ReadWriteSpan) {}
 func (exportCounter) OnEnd(span sdktrace.ReadOnlySpan) {
-	println("DEBUG export counter span ended:", span.Name())
 }
 func (exportCounter) Shutdown(context.Context) error   { return nil }
 func (exportCounter) ForceFlush(context.Context) error { return nil }
@@ -239,9 +238,7 @@ func (e *boundsExporter) ExportSpans(ctx context.Context, spans []sdktrace.ReadO
 		}
 		trimmed = append(trimmed, &trimmedSpan{ReadOnlySpan: span, attributes: kept})
 	}
-	println("DEBUG batch export posting:", len(trimmed), "to", e.endpoint)
 	postErr := e.next.ExportSpans(ctx, trimmed)
-	println("DEBUG batch export posted:", fmt.Sprint(postErr))
 	return postErr
 }
 

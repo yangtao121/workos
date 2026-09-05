@@ -15,6 +15,7 @@ type Querier interface {
 	// the partial unique index from 017. Repeat acknowledges are no-ops.
 	AcknowledgeIncident(ctx context.Context, arg AcknowledgeIncidentParams) (int64, error)
 	ClaimPendingIncidentPublications(ctx context.Context, arg ClaimPendingIncidentPublicationsParams) ([]ClaimPendingIncidentPublicationsRow, error)
+	ClearRepairCompleted(ctx context.Context, arg ClearRepairCompletedParams) (int64, error)
 	// One batch is one claim: every claimed publication shares the claim's
 	// lease token, so completion proves worker + live lease for the whole batch.
 	CompleteIncidentPublications(ctx context.Context, arg CompleteIncidentPublicationsParams) (int64, error)
@@ -24,6 +25,7 @@ type Querier interface {
 	GetIncidentByOccurrence(ctx context.Context, occurrenceDigest string) (GetIncidentByOccurrenceRow, error)
 	GetRepairLedger(ctx context.Context, incidentID string) (WorkosReliabilityRepairLedger, error)
 	GetSupervisorCheckpoint(ctx context.Context) (WorkosReliabilitySupervisorCheckpoint, error)
+	HasDeploymentLedger(ctx context.Context, incidentID string) (bool, error)
 	IncidentAcknowledgeKeyExists(ctx context.Context, arg IncidentAcknowledgeKeyExistsParams) (bool, error)
 	// Reliability Incident persistence queries (reliability-host owned tables
 	// only; the runtime schema is never queried).
@@ -35,6 +37,7 @@ type Querier interface {
 	// private source service and never issues this SQL.
 	InsertIncidentNotificationPublication(ctx context.Context, arg InsertIncidentNotificationPublicationParams) (int64, error)
 	InsertRepairLedger(ctx context.Context, arg InsertRepairLedgerParams) (int64, error)
+	ListCanaryDue(ctx context.Context, arg ListCanaryDueParams) ([]WorkosReliabilityDeploymentLedger, error)
 	// Owner-scoped, project-optional, keyed pagination on (created_at, id). The
 	// caller probes limit+1 rows so a full final page never phantom-pages.
 	ListIncidentsPage(ctx context.Context, arg ListIncidentsPageParams) ([]ListIncidentsPageRow, error)
@@ -55,8 +58,14 @@ type Querier interface {
 	// supervision cadence resolves incidents within seconds, so the lifecycle
 	// window cannot be the repair trigger. The ledger row is the audit record.
 	ListRepairCandidates(ctx context.Context, limit int32) ([]ListRepairCandidatesRow, error)
+	// Submitted repair rows whose task terminal state is unknown to the
+	// orchestrator; the orchestrator asks Core which ones completed.
+	ListRepairCompleted(ctx context.Context, limit int32) ([]ListRepairCompletedRow, error)
 	LoadSupervisorProgress(ctx context.Context, workloadID string) (WorkosReliabilitySupervisorWorkload, error)
 	MarkIncidentResolved(ctx context.Context, arg MarkIncidentResolvedParams) (int64, error)
+	SetDeploymentState(ctx context.Context, arg SetDeploymentStateParams) (int64, error)
+	// Deployment controller (ADR-0016 section 6).
+	StartDeploymentLedger(ctx context.Context, arg StartDeploymentLedgerParams) (int64, error)
 	UpdateIncidentOutcome(ctx context.Context, arg UpdateIncidentOutcomeParams) (int64, error)
 	UpdateIncidentRepairTask(ctx context.Context, arg UpdateIncidentRepairTaskParams) (int64, error)
 	// Only unavailable is retryable. A late/concurrent retry must never erase a
