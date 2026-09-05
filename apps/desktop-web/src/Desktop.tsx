@@ -1122,13 +1122,14 @@ export function Desktop({
   // shell and the adaptive panes render exactly these bodies, so behavior
   // never forks per mode.
   function renderWindowBody(windowState: WorkOSWindow) {
-    if (
-      windowState.kind === "app-surface" &&
-      windowState.surface?.renderer === "declarative"
-    ) {
+    if (windowState.kind === "app-surface" && windowState.surface?.renderer === "declarative") {
       return (
         <DeclarativeSurface
-          surfaceUrl={windowState.surface.url.endsWith("/") ? windowState.surface.url : `${windowState.surface.url}/`}
+          surfaceUrl={
+            windowState.surface.url.endsWith("/")
+              ? windowState.surface.url
+              : `${windowState.surface.url}/`
+          }
         />
       );
     }

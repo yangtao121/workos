@@ -134,8 +134,7 @@ export function DeclarativeSurface({
   if (state === "invalid" || !doc) {
     return (
       <div className="declarative-body declarative-invalid" role="alert">
-        The declarative surface document is unavailable or violates the
-        bounded schema.
+        The declarative surface document is unavailable or violates the bounded schema.
       </div>
     );
   }

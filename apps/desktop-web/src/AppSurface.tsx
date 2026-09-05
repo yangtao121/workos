@@ -200,9 +200,7 @@ export function AppSurface({ surface, bridge, appBridge, shell }: AppSurfaceProp
   // the probe finds one, WorkOS renders it with inert native components —
   // no iframe, no bridge. Otherwise the standard sandboxed iframe flow runs.
   const [declarative, setDeclarative] = useState<
-    | { mode: "probing" }
-    | { mode: "native"; doc: DeclarativeDoc }
-    | { mode: "iframe" }
+    { mode: "probing" } | { mode: "native"; doc: DeclarativeDoc } | { mode: "iframe" }
   >({ mode: "probing" });
 
   useEffect(() => {
@@ -284,7 +282,9 @@ export function AppSurface({ surface, bridge, appBridge, shell }: AppSurfaceProp
   if (declarative.mode === "native") {
     return (
       <div className="app-surface-body">
-        <DeclarativeSurface surfaceUrl={surface.url.endsWith("/") ? surface.url : `${surface.url}/`} />
+        <DeclarativeSurface
+          surfaceUrl={surface.url.endsWith("/") ? surface.url : `${surface.url}/`}
+        />
       </div>
     );
   }

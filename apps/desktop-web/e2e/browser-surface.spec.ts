@@ -72,9 +72,7 @@ maintainer: {}
   expect(registerResponse.ok()).toBeTruthy();
 }
 
-test("browser surface window renders the fixture browser chrome", async ({
-  page,
-}) => {
+test("browser surface window renders the fixture browser chrome", async ({ page }) => {
   const stamp = String(Date.now());
   const appId = `e2e-browser-${stamp}`;
 
@@ -110,13 +108,9 @@ test("browser surface window renders the fixture browser chrome", async ({
   const frame = page.locator(".app-surface-frame");
   await expect(frame).toBeVisible({ timeout: libraryTimeout });
 
-  const browserBody = page
-    .frameLocator(".app-surface-frame")
-    .locator("#browser-fixture");
+  const browserBody = page.frameLocator(".app-surface-frame").locator("#browser-fixture");
   await expect(browserBody).toBeVisible({ timeout: libraryTimeout });
-  await expect(frame.contentFrame().locator("#tabs .tab.active")).toHaveText(
-    "start",
-  );
+  await expect(frame.contentFrame().locator("#tabs .tab.active")).toHaveText("start");
   await expect(frame.contentFrame().locator("#content")).toContainText(
     "Browser fixture start page",
   );

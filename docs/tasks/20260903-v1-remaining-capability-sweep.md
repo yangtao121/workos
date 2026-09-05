@@ -145,8 +145,8 @@ W1 → W2 → W3 → W4 → W6 → W5，全部在同一 branch 严格串行。
   从未监听 + 调试容器 otel-cap5 曾占用 127.0.0.1:4318 吞 POST。修复后探针与
   真实流量全部落盘。make test-telemetry PASS。
 - W2.5/2.6 门禁 make test-repair-deployment PASS：repair orchestrator（台账 035）
-  + Core 私有 AgentRepairTaskService（TaskRouter 完整准入）+ deployment ledger
-  （036）+ canary promote / ADR-0012 rollback driver。
+  - Core 私有 AgentRepairTaskService（TaskRouter 完整准入）+ deployment ledger
+    （036）+ canary promote / ADR-0012 rollback driver。
 - 新增 make test-app-bridge-full PASS：shell-side bridge（project.current/
   theme.get/window.setTitle/window.close）经 app-host shell dispatch +
   runtime project.current 协商；未授权 knowledge.search fail closed。

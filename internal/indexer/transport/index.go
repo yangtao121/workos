@@ -131,7 +131,7 @@ func (h *Handler) SearchHybrid(ctx context.Context, req *connect.Request[indexv1
 			CreatedAt:    hit.CreatedAt.UTC().Format("2006-01-02T15:04:05.000000Z07:00"),
 		})
 	}
-		return connect.NewResponse(&indexv1.SearchHybridResponse{
+	return connect.NewResponse(&indexv1.SearchHybridResponse{
 		Hits: hits,
 		Page: &commonv1.PageResponse{NextPageToken: result.Page.NextPageToken},
 	}), nil
