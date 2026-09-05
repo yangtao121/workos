@@ -244,7 +244,7 @@ test("granted app searches project knowledge and fails closed on revoke", async 
   const frameRoot = () => page.frameLocator(".app-surface-frame").locator("#root");
   await expect(frameRoot()).toHaveText("bridge-ready", { timeout: libraryTimeout });
   await expect(page.frameLocator(".app-surface-frame").locator("#methods")).toHaveText(
-    "methods:knowledge.search",
+    "methods:knowledge.search,theme.get,window.setTitle,window.close",
   );
 
   // Search the project knowledge: the hit must carry the exact artifact
@@ -343,6 +343,6 @@ test("an app without knowledge.read never negotiates knowledge.search", async ({
   await expect(frameRoot()).toHaveText("bridge-ready", { timeout: libraryTimeout });
   // The agent grant set must not implicitly carry knowledge.search.
   await expect(page.frameLocator(".app-surface-frame").locator("#methods")).toHaveText(
-    "methods:agent.run,agent.stream",
+    "methods:agent.run,agent.stream,theme.get,window.setTitle,window.close",
   );
 });
