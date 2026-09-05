@@ -223,74 +223,6 @@ func (q *Queries) CountIndexJobSources(ctx context.Context, jobID string) (Count
 	return i, err
 }
 
-const fetchGenerationDocsForSemantic = `-- name: FetchGenerationDocsForSemantic :many
-SELECT source_id, source_digest, artifact_type, title, source_created_at, content,
-       last_publication_id, indexed_at, embedding
-FROM workos_index.documents
-WHERE projection_generation = $1
-  AND owner_user_id = $2
-  AND project_id = $3
-  AND tombstoned_at IS NULL
-  AND indexed_at <= $4
-`
-
-type FetchGenerationDocsForSemanticParams struct {
-	GenerationID    string
-	OwnerUserID     string
-	ProjectID       string
-	SnapshotThrough time.Time
-}
-
-type FetchGenerationDocsForSemanticRow struct {
-	SourceID          string
-	SourceDigest      string
-	ArtifactType      string
-	Title             string
-	SourceCreatedAt   time.Time
-	Content           string
-	LastPublicationID string
-	IndexedAt         time.Time
-	Embedding         []float32
-}
-
-// Hybrid semantic search (ADR-0017): bounded generation fetch; cosine is
-// computed in the indexer against the query embedding (deterministic local
-// feature-hash vectors). Bounded by the generation's document count.
-func (q *Queries) FetchGenerationDocsForSemantic(ctx context.Context, arg FetchGenerationDocsForSemanticParams) ([]FetchGenerationDocsForSemanticRow, error) {
-	rows, err := q.db.Query(ctx, fetchGenerationDocsForSemantic,
-		arg.GenerationID,
-		arg.OwnerUserID,
-		arg.ProjectID,
-		arg.SnapshotThrough,
-	)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var items []FetchGenerationDocsForSemanticRow
-	for rows.Next() {
-		var i FetchGenerationDocsForSemanticRow
-		if err := rows.Scan(
-			&i.SourceID,
-			&i.SourceDigest,
-			&i.ArtifactType,
-			&i.Title,
-			&i.SourceCreatedAt,
-			&i.Content,
-			&i.LastPublicationID,
-			&i.IndexedAt,
-			&i.Embedding,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
 const getBuildingGenerationForScope = `-- name: GetBuildingGenerationForScope :one
 SELECT id FROM workos_index.projection_generations
 WHERE status = 'building' AND scope = $1
@@ -992,6 +924,90 @@ func (q *Queries) SearchProjectDocuments(ctx context.Context, arg SearchProjectD
 	return items, nil
 }
 
+const searchProjectDocumentsHybrid = `-- name: SearchProjectDocumentsHybrid :many
+WITH q AS (
+    SELECT websearch_to_tsquery('simple', $6) AS tsq
+)
+SELECT d.source_id, d.source_digest, d.artifact_type, d.title, d.source_created_at, d.content,
+       d.last_publication_id, d.indexed_at, d.embedding,
+       ((CASE WHEN d.title_tsv @@ q.tsq THEN ts_rank(d.title_tsv, q.tsq) ELSE 0.0::double precision END) * 2.0
+       + (CASE WHEN d.body_tsv @@ q.tsq THEN ts_rank(d.body_tsv, q.tsq) ELSE 0.0::double precision END))::double precision AS lexical_score
+FROM workos_index.documents d, q
+WHERE d.projection_generation = $1
+  AND d.owner_user_id = $2
+  AND d.project_id = $3
+  AND d.tombstoned_at IS NULL
+  AND d.indexed_at <= $4
+  AND (d.title_tsv @@ q.tsq OR d.body_tsv @@ q.tsq OR d.embedding IS NOT NULL)
+LIMIT $5
+`
+
+type SearchProjectDocumentsHybridParams struct {
+	GenerationID    string
+	OwnerUserID     string
+	ProjectID       string
+	SnapshotThrough time.Time
+	RowLimit        int32
+	QueryText       string
+}
+
+type SearchProjectDocumentsHybridRow struct {
+	SourceID          string
+	SourceDigest      string
+	ArtifactType      string
+	Title             string
+	SourceCreatedAt   time.Time
+	Content           string
+	LastPublicationID string
+	IndexedAt         time.Time
+	Embedding         []float32
+	LexicalScore      float64
+}
+
+// Hybrid semantic search (ADR-0017): one bounded per-scope candidate fetch
+// carrying both the lexical ts_rank and the stored feature-hash embedding;
+// cosine, fusion (0.5 lexical-norm + 0.5 cosine), deterministic ordering
+// (fused DESC, source_created_at DESC, source_id ASC) and cursor pagination
+// are computed in the indexer. Bounded by the generation's per-project
+// document count (single-owner local scale, ≤2000 by ADR-0017 §3).
+func (q *Queries) SearchProjectDocumentsHybrid(ctx context.Context, arg SearchProjectDocumentsHybridParams) ([]SearchProjectDocumentsHybridRow, error) {
+	rows, err := q.db.Query(ctx, searchProjectDocumentsHybrid,
+		arg.GenerationID,
+		arg.OwnerUserID,
+		arg.ProjectID,
+		arg.SnapshotThrough,
+		arg.RowLimit,
+		arg.QueryText,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []SearchProjectDocumentsHybridRow
+	for rows.Next() {
+		var i SearchProjectDocumentsHybridRow
+		if err := rows.Scan(
+			&i.SourceID,
+			&i.SourceDigest,
+			&i.ArtifactType,
+			&i.Title,
+			&i.SourceCreatedAt,
+			&i.Content,
+			&i.LastPublicationID,
+			&i.IndexedAt,
+			&i.Embedding,
+			&i.LexicalScore,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const tombstoneGenerationDocuments = `-- name: TombstoneGenerationDocuments :execrows
 UPDATE workos_index.documents
 SET tombstoned_at = $1, updated_at = $2
@@ -1273,13 +1289,14 @@ const upsertSearchDocument = `-- name: UpsertSearchDocument :execrows
 INSERT INTO workos_index.documents (
     projection_generation, owner_user_id, project_id, source_type, source_id,
     source_digest, artifact_type, title, content, source_created_at,
-    last_publication_id, source_operation, indexed_at, updated_at
+    last_publication_id, source_operation, indexed_at, updated_at, embedding
 ) VALUES (
     $1, $2, $3,
     'artifact.review.v1', $4, $5,
     $6, $7, $8,
     $9, $10,
-    'review-artifact.upsert', $11, $12
+    'review-artifact.upsert', $11, $12,
+    $13
 )
 ON CONFLICT (projection_generation, owner_user_id, project_id, source_id) DO UPDATE
 SET source_digest = EXCLUDED.source_digest,
@@ -1290,6 +1307,7 @@ SET source_digest = EXCLUDED.source_digest,
     last_publication_id = EXCLUDED.last_publication_id,
     indexed_at = EXCLUDED.indexed_at,
     tombstoned_at = NULL,
+    embedding = EXCLUDED.embedding,
     updated_at = EXCLUDED.updated_at
 WHERE workos_index.documents.last_publication_id <= EXCLUDED.last_publication_id
    OR workos_index.documents.tombstoned_at IS NULL AND workos_index.documents.source_digest = EXCLUDED.source_digest
@@ -1308,6 +1326,7 @@ type UpsertSearchDocumentParams struct {
 	LastPublicationID    string
 	IndexedAt            time.Time
 	UpdatedAt            time.Time
+	Embedding            []float32
 }
 
 func (q *Queries) UpsertSearchDocument(ctx context.Context, arg UpsertSearchDocumentParams) (int64, error) {
@@ -1324,6 +1343,7 @@ func (q *Queries) UpsertSearchDocument(ctx context.Context, arg UpsertSearchDocu
 		arg.LastPublicationID,
 		arg.IndexedAt,
 		arg.UpdatedAt,
+		arg.Embedding,
 	)
 	if err != nil {
 		return 0, err

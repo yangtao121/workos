@@ -9,6 +9,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
+	"sort"
 	"strings"
 	"time"
 
@@ -269,6 +271,14 @@ func (r *Repository) ApplyResolvedSource(ctx context.Context, source ports.Resol
 		}
 
 		if !tombstoned && outcome == domain.OutcomeApplied {
+			// Deterministic local feature-hash embedding of the bounded
+			// title+content (ADR-0017 §3): computed at write time so every
+			// stored document carries its semantic projection.
+			vector := domain.Embed(source.Title + "\n" + string(source.Content))
+			embedding := make([]float32, len(vector))
+			for i := range vector {
+				embedding[i] = vector[i]
+			}
 			rows, err := queries.UpsertSearchDocument(ctx, indexerdb.UpsertSearchDocumentParams{
 				ProjectionGeneration: generation,
 				OwnerUserID:          source.OwnerUserID,
@@ -282,6 +292,7 @@ func (r *Repository) ApplyResolvedSource(ctx context.Context, source ports.Resol
 				LastPublicationID:    source.PublicationID,
 				IndexedAt:            canonical(now),
 				UpdatedAt:            canonical(now),
+				Embedding:            embedding,
 			})
 			if err != nil {
 				return storeError("upsert search document", err)
@@ -334,6 +345,12 @@ const tombstoneOperation = "project.tombstone"
 // Search runs one bounded deterministic lexical page over the active
 // generation and revalidates every stored fact it returns.
 func (r *Repository) Search(ctx context.Context, query domain.SearchQuery) (domain.SearchPage, error) {
+	if query.Ranking == 0 {
+		query.Ranking = domain.RankingLexical
+	}
+	if !domain.ValidRanking(query.Ranking) {
+		return domain.SearchPage{}, domain.ErrInvalid
+	}
 	generation, err := r.ActiveGenerationID(ctx)
 	if err != nil {
 		return domain.SearchPage{}, err
@@ -345,6 +362,10 @@ func (r *Repository) Search(ctx context.Context, query domain.SearchQuery) (doma
 	var cursorCreated time.Time
 	cursorSource := uuid.Nil.String()
 	if query.Decoded != nil {
+		if query.Decoded.RankingVersion != query.Ranking {
+			// A token from one ranking never paginates another.
+			return domain.SearchPage{}, domain.ErrInvalid
+		}
 		if query.Decoded.GenerationID != generation {
 			// The generation moved (rebuild promoted): the old chain must not
 			// mix documents across generations.
@@ -406,9 +427,167 @@ func (r *Repository) Search(ctx context.Context, query domain.SearchQuery) (doma
 		last := rows[len(rows)-1]
 		page.Continuation = &domain.PageToken{
 			OwnerUserID: query.OwnerUserID, ProjectID: query.ProjectID,
-			QueryDigest: query.QueryDigest, RankingVersion: domain.RankingVersion,
+			QueryDigest: query.QueryDigest, RankingVersion: query.Ranking,
 			GenerationID: generation, SnapshotThrough: snapshot,
 			LastScore: float64(last.Score), LastSourceCreated: last.SourceCreatedAt, LastSourceID: last.SourceID,
+		}
+	}
+	return page, nil
+}
+
+// hybridCandidateLimit bounds the per-scope semantic candidate fetch
+// (ADR-0017 §3: single-owner local scale, ≤2000 documents per generation).
+const hybridCandidateLimit = 2000
+
+// SearchHybrid runs one bounded deterministic hybrid page (ADR-0017): the
+// per-scope candidate fetch carries both the lexical ts_rank and the stored
+// feature-hash embedding; cosine, the 0.5 lexical-normalized + 0.5 cosine
+// fusion, the fused DESC / created DESC / source_id ASC ordering, and cursor
+// pagination are computed in the indexer from the same bounded candidate set,
+// so every page of one chain sees identical deterministic ordering.
+func (r *Repository) SearchHybrid(ctx context.Context, query domain.SearchQuery) (domain.SearchPage, error) {
+	if query.Ranking == 0 {
+		query.Ranking = domain.RankingHybrid
+	}
+	if !domain.ValidRanking(query.Ranking) {
+		return domain.SearchPage{}, domain.ErrInvalid
+	}
+	generation, err := r.ActiveGenerationID(ctx)
+	if err != nil {
+		return domain.SearchPage{}, err
+	}
+	snapshot := canonical(time.Now().UTC())
+	var cursorCreated time.Time
+	cursorSource := uuid.Nil.String()
+	cursorScore := math.Inf(1)
+	if query.Decoded != nil {
+		if query.Decoded.RankingVersion != query.Ranking {
+			return domain.SearchPage{}, domain.ErrInvalid
+		}
+		if query.Decoded.GenerationID != generation {
+			// The generation moved (rebuild promoted): the old chain must not
+			// mix documents across generations.
+			return domain.SearchPage{}, domain.ErrInvalid
+		}
+		snapshot = canonical(query.Decoded.SnapshotThrough)
+		cursorScore = query.Decoded.LastScore
+		cursorCreated = canonical(query.Decoded.LastSourceCreated)
+		cursorSource = query.Decoded.LastSourceID
+	}
+	if strings.TrimSpace(domain.LexicalQueryText(query.CanonicalQuery)) == "" {
+		return domain.SearchPage{GenerationID: generation}, nil
+	}
+	rows, err := r.queries.SearchProjectDocumentsHybrid(ctx, indexerdb.SearchProjectDocumentsHybridParams{
+		GenerationID:    generation,
+		OwnerUserID:     query.OwnerUserID,
+		ProjectID:       query.ProjectID,
+		QueryText:       domain.LexicalQueryText(query.CanonicalQuery),
+		SnapshotThrough: snapshot,
+		RowLimit:        hybridCandidateLimit,
+	})
+	if err != nil {
+		return domain.SearchPage{}, storeError("search documents hybrid", err)
+	}
+	queryVector := domain.Embed(query.CanonicalQuery)
+	type candidate struct {
+		row   indexerdb.SearchProjectDocumentsHybridRow
+		fused float64
+	}
+	candidates := make([]candidate, 0, len(rows))
+	maxLexical := 0.0
+	for _, row := range rows {
+		if row.LexicalScore > maxLexical {
+			maxLexical = row.LexicalScore
+		}
+		candidates = append(candidates, candidate{row: row})
+	}
+	for i := range candidates {
+		row := candidates[i].row
+		lexical := 0.0
+		if maxLexical > 0 {
+			lexical = row.LexicalScore / maxLexical
+		}
+		semantic := 0.0
+		if len(row.Embedding) == domain.EmbeddingDimensions {
+			var docVector [domain.EmbeddingDimensions]float32
+			copy(docVector[:], row.Embedding)
+			semantic = float64(domain.CosineSimilarity(queryVector, docVector))
+			if semantic < 0 || domain.IsDisallowedScore(semantic) {
+				// Feature-hash cosine is bounded in [-1,1]; a negative value
+				// contributes no recall, and any non-finite value is treated
+				// the same way rather than poisoning the ordering.
+				semantic = 0
+			}
+		}
+		candidates[i].fused = 0.5*lexical + 0.5*semantic
+	}
+	sort.Slice(candidates, func(i, j int) bool {
+		a, b := candidates[i], candidates[j]
+		if a.fused != b.fused {
+			return a.fused > b.fused
+		}
+		if !a.row.SourceCreatedAt.Equal(b.row.SourceCreatedAt) {
+			return a.row.SourceCreatedAt.After(b.row.SourceCreatedAt)
+		}
+		return a.row.SourceID < b.row.SourceID
+	})
+	page := domain.SearchPage{GenerationID: generation, SnapshotThrough: snapshot}
+	emitted := 0
+	var lastEmitted candidate
+	hasProbe := false
+	for _, item := range candidates {
+		row := item.row
+		if item.fused <= 0 {
+			break
+		}
+		after := item.fused < cursorScore ||
+			(item.fused == cursorScore &&
+				(row.SourceCreatedAt.After(cursorCreated) ||
+					(row.SourceCreatedAt.Equal(cursorCreated) && row.SourceID > cursorSource)))
+		if !after {
+			continue
+		}
+		if emitted == query.PageSize {
+			// Limit+1 probe: one more row exists after a full page, so the
+			// continuation anchors at the last emitted hit (the lexical
+			// cursor grammar excludes its own anchor row on the next page).
+			// A page that drains the candidates exactly produces no phantom
+			// token.
+			hasProbe = true
+			break
+		}
+		if domain.ValidStoredScore(item.fused) != nil {
+			return domain.SearchPage{}, domain.ErrCorrupt
+		}
+		document := domain.Document{
+			OwnerUserID: query.OwnerUserID, ProjectID: query.ProjectID,
+			SourceID: row.SourceID, SourceDigest: row.SourceDigest,
+			ArtifactType: row.ArtifactType, Title: row.Title, Content: row.Content,
+			SourceCreatedAt: row.SourceCreatedAt, LastPublication: row.LastPublicationID,
+			IndexedAt: row.IndexedAt,
+		}
+		if domain.ValidStoredDocument(document) != nil {
+			return domain.SearchPage{}, domain.ErrCorrupt
+		}
+		page.Hits = append(page.Hits, domain.SearchHit{
+			ContextRef:   domain.ContextRefString(row.SourceID, row.SourceDigest),
+			Excerpt:      domain.BuildExcerpt(domain.ExcerptRequest{Content: row.Content, Terms: queryTerms(query.CanonicalQuery)}),
+			Score:        item.fused,
+			ArtifactID:   row.SourceID,
+			ArtifactType: row.ArtifactType,
+			Digest:       row.SourceDigest,
+			Title:        row.Title,
+			CreatedAt:    row.SourceCreatedAt,
+		})
+		lastEmitted = item
+		emitted++
+	}
+	if hasProbe {
+		page.Continuation = &domain.PageToken{
+			OwnerUserID: query.OwnerUserID, ProjectID: query.ProjectID,
+			QueryDigest: query.QueryDigest, RankingVersion: query.Ranking,
+			GenerationID: generation, SnapshotThrough: snapshot,
+			LastScore: lastEmitted.fused, LastSourceCreated: lastEmitted.row.SourceCreatedAt, LastSourceID: lastEmitted.row.SourceID,
 		}
 	}
 	return page, nil

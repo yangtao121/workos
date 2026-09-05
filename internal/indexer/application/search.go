@@ -55,17 +55,19 @@ type SearchResult struct {
 // HybridSearchInput is the input for semantic-boosted search (ADR-0017).
 type HybridSearchInput = SearchInput
 
-// SearchHybrid runs the lexical page, then boosts hits whose content is
-// semantically close to the query via deterministic feature-hash cosine
-// similarity (ADR-0017). Results are re-ranked by the fused score.
+// SearchHybrid runs the fused lexical+cosine ranking (ADR-0017): the
+// projection fuses normalized lexical ts_rank with deterministic feature-hash
+// cosine similarity and orders by fused score with the same deterministic
+// tie-breaks and page-token chain as the lexical ranking.
 func (s *SearchService) SearchHybrid(ctx context.Context, input SearchInput) (SearchResult, error) {
-	// Delegate to the lexical Search: the deterministic feature-hash
-	// embedding boosts recall via the seeded token vectors that the indexer
-	// already computes from the same bounded content. The fusion is the
-	// standard 0.5 lexical + 0.5 cosine blend at the transport projection.
-	return s.Search(ctx, input)
+	return s.run(ctx, input, domain.RankingHybrid)
 }
+
 func (s *SearchService) Search(ctx context.Context, input SearchInput) (SearchResult, error) {
+	return s.run(ctx, input, domain.RankingLexical)
+}
+
+func (s *SearchService) run(ctx context.Context, input SearchInput, ranking int) (SearchResult, error) {
 	if !domain.ValidUUID(input.OwnerUserID) || !domain.ValidUUID(input.ProjectID) {
 		return SearchResult{}, domain.ErrInvalid
 	}
@@ -82,6 +84,7 @@ func (s *SearchService) Search(ctx context.Context, input SearchInput) (SearchRe
 		CanonicalQuery: canonicalQuery,
 		QueryDigest:    domain.QueryDigest(input.OwnerUserID, input.ProjectID, canonicalQuery),
 		PageSize:       domain.ClampSearchPageSize(input.PageSize),
+		Ranking:        ranking,
 	}
 	if input.PageToken != "" {
 		token, err := s.tokens.Decode(input.PageToken)
@@ -89,15 +92,21 @@ func (s *SearchService) Search(ctx context.Context, input SearchInput) (SearchRe
 			return SearchResult{}, err
 		}
 		// Token bindings are re-verified against the live request: any
-		// cross-scope, cross-query, or cross-version replay is invalid.
+		// cross-scope, cross-query, cross-ranking, or cross-version replay is
+		// invalid.
 		if token.OwnerUserID != input.OwnerUserID || token.ProjectID != input.ProjectID ||
-			token.QueryDigest != query.QueryDigest {
+			token.QueryDigest != query.QueryDigest || token.RankingVersion != ranking {
 			return SearchResult{}, domain.ErrInvalidPageToken
 		}
 		query.Decoded = &token
 		query.TokenRaw = input.PageToken
 	}
-	page, err := s.projection.Search(ctx, query)
+	var page domain.SearchPage
+	if ranking == domain.RankingHybrid {
+		page, err = s.projection.SearchHybrid(ctx, query)
+	} else {
+		page, err = s.projection.Search(ctx, query)
+	}
 	if err != nil {
 		return SearchResult{}, err
 	}

@@ -136,6 +136,9 @@ type ProjectionRepository interface {
 	// Search runs one bounded deterministic lexical page over the active
 	// generation.
 	Search(ctx context.Context, query domain.SearchQuery) (domain.SearchPage, error)
+	// SearchHybrid runs one bounded deterministic fused lexical+cosine page
+	// over the active generation (ADR-0017).
+	SearchHybrid(ctx context.Context, query domain.SearchQuery) (domain.SearchPage, error)
 	// Freshness reads the bounded freshness projection.
 	Freshness(ctx context.Context, pending int64) (domain.Freshness, error)
 }

@@ -12,10 +12,17 @@ type SearchQuery struct {
 	CanonicalQuery string
 	QueryDigest    string
 	PageSize       int
+	// Ranking selects the deterministic ordering: RankingLexical (ADR-0013)
+	// or RankingHybrid (ADR-0017). A page token from one ranking never
+	// paginates another.
+	Ranking int
 	// Decoded continuation state; empty TokenRaw means first page.
 	TokenRaw string
 	Decoded  *PageToken
 }
+
+// ValidRanking reports whether r names a defined ranking algorithm.
+func ValidRanking(r int) bool { return r == RankingLexical || r == RankingHybrid }
 
 // SearchHit is one projected hit: safe fields only. There is no full text,
 // no internal row id, no owner id, no lease/publication token.

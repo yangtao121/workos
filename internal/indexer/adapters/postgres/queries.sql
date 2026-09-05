@@ -41,13 +41,14 @@ LIMIT 1;
 INSERT INTO workos_index.documents (
     projection_generation, owner_user_id, project_id, source_type, source_id,
     source_digest, artifact_type, title, content, source_created_at,
-    last_publication_id, source_operation, indexed_at, updated_at
+    last_publication_id, source_operation, indexed_at, updated_at, embedding
 ) VALUES (
     sqlc.arg(projection_generation), sqlc.arg(owner_user_id), sqlc.arg(project_id),
     'artifact.review.v1', sqlc.arg(source_id), sqlc.arg(source_digest),
     sqlc.arg(artifact_type), sqlc.arg(title), sqlc.arg(content),
     sqlc.arg(source_created_at), sqlc.arg(last_publication_id),
-    'review-artifact.upsert', sqlc.arg(indexed_at), sqlc.arg(updated_at)
+    'review-artifact.upsert', sqlc.arg(indexed_at), sqlc.arg(updated_at),
+    sqlc.arg(embedding)
 )
 ON CONFLICT (projection_generation, owner_user_id, project_id, source_id) DO UPDATE
 SET source_digest = EXCLUDED.source_digest,
@@ -58,6 +59,7 @@ SET source_digest = EXCLUDED.source_digest,
     last_publication_id = EXCLUDED.last_publication_id,
     indexed_at = EXCLUDED.indexed_at,
     tombstoned_at = NULL,
+    embedding = EXCLUDED.embedding,
     updated_at = EXCLUDED.updated_at
 WHERE workos_index.documents.last_publication_id <= EXCLUDED.last_publication_id
    OR workos_index.documents.tombstoned_at IS NULL AND workos_index.documents.source_digest = EXCLUDED.source_digest;
@@ -365,15 +367,25 @@ ORDER BY source_created_at, source_id
 LIMIT sqlc.arg(page_limit);
 
 
--- Hybrid semantic search (ADR-0017): bounded generation fetch; cosine is
--- computed in the indexer against the query embedding (deterministic local
--- feature-hash vectors). Bounded by the generation's document count.
--- name: FetchGenerationDocsForSemantic :many
-SELECT source_id, source_digest, artifact_type, title, source_created_at, content,
-       last_publication_id, indexed_at, embedding
-FROM workos_index.documents
-WHERE projection_generation = sqlc.arg(generation_id)
-  AND owner_user_id = sqlc.arg(owner_user_id)
-  AND project_id = sqlc.arg(project_id)
-  AND tombstoned_at IS NULL
-  AND indexed_at <= sqlc.arg(snapshot_through);
+-- Hybrid semantic search (ADR-0017): one bounded per-scope candidate fetch
+-- carrying both the lexical ts_rank and the stored feature-hash embedding;
+-- cosine, fusion (0.5 lexical-norm + 0.5 cosine), deterministic ordering
+-- (fused DESC, source_created_at DESC, source_id ASC) and cursor pagination
+-- are computed in the indexer. Bounded by the generation's per-project
+-- document count (single-owner local scale, ≤2000 by ADR-0017 §3).
+-- name: SearchProjectDocumentsHybrid :many
+WITH q AS (
+    SELECT websearch_to_tsquery('simple', sqlc.arg(query_text)) AS tsq
+)
+SELECT d.source_id, d.source_digest, d.artifact_type, d.title, d.source_created_at, d.content,
+       d.last_publication_id, d.indexed_at, d.embedding,
+       ((CASE WHEN d.title_tsv @@ q.tsq THEN ts_rank(d.title_tsv, q.tsq) ELSE 0.0::double precision END) * 2.0
+       + (CASE WHEN d.body_tsv @@ q.tsq THEN ts_rank(d.body_tsv, q.tsq) ELSE 0.0::double precision END))::double precision AS lexical_score
+FROM workos_index.documents d, q
+WHERE d.projection_generation = sqlc.arg(generation_id)
+  AND d.owner_user_id = sqlc.arg(owner_user_id)
+  AND d.project_id = sqlc.arg(project_id)
+  AND d.tombstoned_at IS NULL
+  AND d.indexed_at <= sqlc.arg(snapshot_through)
+  AND (d.title_tsv @@ q.tsq OR d.body_tsv @@ q.tsq OR d.embedding IS NOT NULL)
+LIMIT sqlc.arg(row_limit);

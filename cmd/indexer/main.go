@@ -171,12 +171,14 @@ func run(logger *slog.Logger) error {
 			Reason: "durable review-artifact lexical projection (evidence limited to review artifacts)"},
 		&commonv1.FeatureCapability{Id: "project-knowledge-search", Available: true,
 			Reason: "bounded deterministic lexical search over review artifacts"},
+		&commonv1.FeatureCapability{Id: "semantic-hybrid-search", Available: true,
+			Reason: "deterministic local feature-hash hybrid lexical+cosine search (ADR-0017)"},
 		&commonv1.FeatureCapability{Id: "project-knowledge-rebuild", Available: true,
 			Reason: "local-admin Core-authoritative shadow-generation rebuild"},
 		&commonv1.FeatureCapability{Id: "archive", Available: false,
 			Reason: "generic archive and object storage are not implemented"},
 		&commonv1.FeatureCapability{Id: "rag", Available: false,
-			Reason: "semantic RAG, embeddings, and pgvector are not implemented; lexical search only"},
+			Reason: "external embedding-model RAG is out of scope without provider accounts; the semantic slice runs on deterministic local feature-hash vectors"},
 	))
 	mux.Handle(systemPath, systemHandler)
 
@@ -269,7 +271,7 @@ func (c compositeIndexService) Search(ctx context.Context, input indexerapp.Sear
 }
 
 func (c compositeIndexService) SearchHybrid(ctx context.Context, input indexerapp.SearchInput) (indexerapp.SearchResult, error) {
-	return c.search.Search(ctx, input)
+	return c.search.SearchHybrid(ctx, input)
 }
 
 func (c compositeIndexService) CreateRepairJob(ctx context.Context, input indexerapp.JobRequestInput) (indexerapp.JobView, bool, error) {

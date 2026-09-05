@@ -16,7 +16,7 @@ func TestPageTokenCodecRoundTripAndAuthentication(t *testing.T) {
 	token := PageToken{
 		OwnerUserID: "01999999-9999-7999-8999-000000000001",
 		ProjectID:   "01999999-9999-7999-8999-000000000002",
-		QueryDigest: "sha256:" + strings.Repeat("a", 64), RankingVersion: RankingVersion,
+		QueryDigest: "sha256:" + strings.Repeat("a", 64), RankingVersion: RankingLexical,
 		GenerationID:    "01999999-9999-7999-8999-000000000003",
 		SnapshotThrough: time.Unix(10, 0).UTC(), LastScore: 1.25,
 		LastSourceCreated: time.Unix(9, 0).UTC(), LastSourceID: "01999999-9999-7999-8999-000000000004",
@@ -53,7 +53,7 @@ func TestPageTokenCodecRejectsInvalidConfigurationAndFacts(t *testing.T) {
 		t.Fatal("short key unexpectedly accepted")
 	}
 	codec, _ := NewPageTokenCodec([]byte("0123456789abcdef0123456789abcdef"))
-	bad := PageToken{RankingVersion: RankingVersion}
+	bad := PageToken{RankingVersion: RankingLexical}
 	raw, err := codec.Encode(bad)
 	if err != nil {
 		t.Fatal(err)

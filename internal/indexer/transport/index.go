@@ -26,6 +26,8 @@ import (
 // IndexService is the application surface the handler serves.
 type IndexService interface {
 	Search(ctx context.Context, input indexerapp.SearchInput) (indexerapp.SearchResult, error)
+	// SearchHybrid serves the fused lexical+semantic ranking (ADR-0017).
+	SearchHybrid(ctx context.Context, input indexerapp.SearchInput) (indexerapp.SearchResult, error)
 	// CreateRepairJob adjudicates and persists one repair job.
 	CreateRepairJob(ctx context.Context, input indexerapp.JobRequestInput) (indexerapp.JobView, bool, error)
 	// GetRepairJob reads one owner-scoped job.
@@ -96,8 +98,9 @@ func (h *Handler) Search(ctx context.Context, req *connect.Request[indexv1.Searc
 	return connect.NewResponse(response), nil
 }
 
-// SearchHybrid serves the semantic-boosted search RPC (ADR-0017). The
-// implementation currently delegates to the proven lexical Search path.
+// SearchHybrid serves the fused lexical+semantic ranking RPC (ADR-0017).
+// Validation, fusion, and pagination live in the application/projection
+// layers; the handler only carries identity and bounded input.
 func (h *Handler) SearchHybrid(ctx context.Context, req *connect.Request[indexv1.SearchHybridRequest]) (*connect.Response[indexv1.SearchHybridResponse], error) {
 	id, err := identity.FromContext(ctx)
 	if err != nil {
@@ -107,7 +110,7 @@ func (h *Handler) SearchHybrid(ctx context.Context, req *connect.Request[indexv1
 	if req.Msg.GetPage() != nil {
 		pageSize = req.Msg.GetPage().GetPageSize()
 	}
-	result, err := h.service.Search(ctx, indexerapp.SearchInput{
+	result, err := h.service.SearchHybrid(ctx, indexerapp.SearchInput{
 		OwnerUserID: id.UserID,
 		ProjectID:   req.Msg.GetProjectId(),
 		RawQuery:    req.Msg.GetQuery(),

@@ -25,10 +25,6 @@ type Querier interface {
 	CountGenerationDocs(ctx context.Context, generationID string) (CountGenerationDocsRow, error)
 	CountGenerationDocuments(ctx context.Context, generationID string) (int64, error)
 	CountIndexJobSources(ctx context.Context, jobID string) (CountIndexJobSourcesRow, error)
-	// Hybrid semantic search (ADR-0017): bounded generation fetch; cosine is
-	// computed in the indexer against the query embedding (deterministic local
-	// feature-hash vectors). Bounded by the generation's document count.
-	FetchGenerationDocsForSemantic(ctx context.Context, arg FetchGenerationDocsForSemanticParams) ([]FetchGenerationDocsForSemanticRow, error)
 	GetBuildingGenerationForScope(ctx context.Context, arg GetBuildingGenerationForScopeParams) (string, error)
 	GetConsumerCursor(ctx context.Context, workerID string) (WorkosIndexConsumerState, error)
 	GetDocumentStatus(ctx context.Context, arg GetDocumentStatusParams) (GetDocumentStatusRow, error)
@@ -64,6 +60,13 @@ type Querier interface {
 	// documents indexed after the chain started, so late arrivals never join an
 	// open page chain.
 	SearchProjectDocuments(ctx context.Context, arg SearchProjectDocumentsParams) ([]SearchProjectDocumentsRow, error)
+	// Hybrid semantic search (ADR-0017): one bounded per-scope candidate fetch
+	// carrying both the lexical ts_rank and the stored feature-hash embedding;
+	// cosine, fusion (0.5 lexical-norm + 0.5 cosine), deterministic ordering
+	// (fused DESC, source_created_at DESC, source_id ASC) and cursor pagination
+	// are computed in the indexer. Bounded by the generation's per-project
+	// document count (single-owner local scale, ≤2000 by ADR-0017 §3).
+	SearchProjectDocumentsHybrid(ctx context.Context, arg SearchProjectDocumentsHybridParams) ([]SearchProjectDocumentsHybridRow, error)
 	TombstoneGenerationDocuments(ctx context.Context, arg TombstoneGenerationDocumentsParams) (int64, error)
 	TombstoneProjectDocuments(ctx context.Context, arg TombstoneProjectDocumentsParams) (int64, error)
 	UpdateGenerationStatus(ctx context.Context, arg UpdateGenerationStatusParams) error

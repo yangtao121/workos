@@ -23,7 +23,7 @@ NODE_RUN := docker run --rm $(USER_FLAGS) -e COREPACK_NPM_REGISTRY=$(NPM_REGISTR
 BUF_RUN := docker run --rm $(USER_FLAGS) $(MOUNT) $(BUF_IMAGE)
 SQLC_RUN := docker run --rm $(USER_FLAGS) -v $(CURDIR):/src -w /src $(SQLC_IMAGE)
 
-.PHONY: bootstrap generate docs check check-native proto-check go-check web-check test test-integration test-credential-vault-expansion test-codex-harness test-mcp-harness test-artifact-context test-deepseek-fixture test-deepseek-structured-review test-credential-vault e2e-image test-e2e test-adaptive-shell test-app-version-rollback test-podman-fixture test-lan-pairing test-project-knowledge-search test-app-knowledge-search test-project-knowledge-rebuild test-notification-center test-incident-notifications test-app-notifications capture-notification-visual capture-artifact-context-visual capture-lan-pairing-visual capture-provider-catalog build web-build scaffold-module dev down logs clean
+.PHONY: bootstrap generate docs check check-native proto-check go-check web-check test-semantic-knowledge test test-integration test-credential-vault-expansion test-codex-harness test-mcp-harness test-artifact-context test-deepseek-fixture test-deepseek-structured-review test-credential-vault e2e-image test-e2e test-adaptive-shell test-app-version-rollback test-podman-fixture test-lan-pairing test-project-knowledge-search test-app-knowledge-search test-project-knowledge-rebuild test-notification-center test-incident-notifications test-app-notifications capture-notification-visual capture-artifact-context-visual capture-lan-pairing-visual capture-provider-catalog build web-build scaffold-module dev down logs clean
 
 bootstrap:
 	@docker version >/dev/null
@@ -617,6 +617,19 @@ test-remote-native-surface: e2e-image
 			-w $(WORKDIR)/apps/desktop-web \
 			$(E2E_IMAGE) pnpm exec playwright test native-status.spec.ts; \
 		echo "test-remote-native-surface: PASS"
+
+# The semantic knowledge gate (ADR-0017, W4): deterministic feature-hash
+# embeddings stored at ingest, fused lexical+cosine ranking with deterministic
+# pagination over the real repository on a scratch database, honest
+# degradation for legacy rows without embeddings, and the full-stack hybrid
+# RPC chain through the Gateway with the lexical/hybrid token boundary.
+test-semantic-knowledge:
+	docker compose up -d --build postgres bootstrap workos-core harness-host runtime-host workos-gateway indexer
+	@set -eu; \
+	i=0; until curl -sf http://127.0.0.1:8080/healthz >/dev/null 2>&1; do i=$$((i+1)); [ $$i -le 60 ] || { echo 'gateway readiness timed out' >&2; exit 1; }; sleep 1; done; \
+	i=0; until curl -sf http://127.0.0.1:8085/readyz >/dev/null 2>&1; do i=$$((i+1)); [ $$i -le 60 ] || { echo 'indexer readiness timed out' >&2; exit 1; }; sleep 1; done
+	$(GO_HOST_RUN) go test -tags=integration -count=1 -run 'TestSemanticKnowledge' -v ./tests/integration
+	@echo "test-semantic-knowledge: PASS"
 
 e2e-image:
 	docker build \

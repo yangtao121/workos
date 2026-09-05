@@ -21,10 +21,15 @@ import (
 	"time"
 )
 
-// RankingVersion is the fixed lexical ranking algorithm version. Changing
-// weights, tie-breaks, or the score formula requires a new version and
-// invalidates outstanding tokens by definition.
-const RankingVersion = 1
+// Ranking algorithm versions (ADR-0017 §2). A token is only valid for the
+// ranking that issued it: changing weights, tie-breaks, or the score formula
+// requires a new version and invalidates outstanding tokens by definition.
+const (
+	// RankingLexical is the ADR-0013 ts_rank ordering.
+	RankingLexical = 1
+	// RankingHybrid is the ADR-0017 fused lexical+cosine ordering.
+	RankingHybrid = 2
+)
 
 // PageTokenVersion is the wire version of the token envelope.
 const PageTokenVersion = 1
@@ -128,7 +133,8 @@ func (c PageTokenCodec) Decode(raw string) (PageToken, error) {
 	if !hmac.Equal(provided, mac.Sum(nil)) {
 		return PageToken{}, ErrInvalidPageToken
 	}
-	if token.Version != PageTokenVersion || token.RankingVersion != RankingVersion {
+	if token.Version != PageTokenVersion ||
+		(token.RankingVersion != RankingLexical && token.RankingVersion != RankingHybrid) {
 		return PageToken{}, ErrInvalidPageToken
 	}
 	if !ValidUUID(token.OwnerUserID) || !ValidUUID(token.ProjectID) || !ValidUUID(token.GenerationID) || !ValidUUID(token.LastSourceID) {
