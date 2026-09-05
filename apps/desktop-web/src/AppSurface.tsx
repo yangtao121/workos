@@ -26,10 +26,23 @@ export interface SurfaceBridgeCredentials {
   capabilities: string[];
 }
 
+export interface AppSurfaceShellHost {
+  /** Bounded summary of the surface's project (canonical facts only). */
+  projectCurrent(): Promise<{ projectId: string; name: string; revision: string }>;
+  /** The shell's active color scheme. */
+  getTheme(): Promise<{ scheme: "light" | "dark" }>;
+  /** Renames the hosting window. */
+  setWindowTitle(title: string): void;
+  /** Closes the hosting window. */
+  closeWindow(): void;
+}
+
 interface AppSurfaceProps {
   surface: AppSurfaceRef;
   bridge?: SurfaceBridgeCredentials | undefined;
   appBridge: Client<typeof AppBridgeService>;
+  /** Shell-side bridge host; when absent the shell methods fail closed. */
+  shell?: AppSurfaceShellHost | undefined;
 }
 
 // notificationKindName projects the wire enum onto the canonical stored
@@ -171,7 +184,7 @@ function buildTransport(
 // Every iframe load starts a fresh handshake: the old port is closed, old
 // pending requests fail, and a new nonce/channel pair is minted for the
 // exact new contentWindow.
-export function AppSurface({ surface, bridge, appBridge }: AppSurfaceProps) {
+export function AppSurface({ surface, bridge, appBridge, shell }: AppSurfaceProps) {
   const [state, setState] = useState<SurfaceWindowState>("loading");
   const [bridgeState, setBridgeState] = useState<BridgeState>("pending");
   const frameRef = useRef<HTMLIFrameElement>(null);
@@ -190,6 +203,26 @@ export function AppSurface({ surface, bridge, appBridge }: AppSurfaceProps) {
       frameWindow,
       capabilities: bridge.capabilities,
       transport: buildTransport(appBridge, bridge),
+      ...(shell === undefined
+        ? {}
+        : {
+            shell: {
+              projectCurrent: async () => {
+                const result = await shell.projectCurrent();
+                return result;
+              },
+              getTheme: async () => {
+                const result = await shell.getTheme();
+                return result;
+              },
+              setWindowTitle: (title: string) => {
+                shell.setWindowTitle(title);
+              },
+              closeWindow: () => {
+                shell.closeWindow();
+              },
+            },
+          }),
       onHandshakeComplete: () => {
         setBridgeState("ready");
       },

@@ -74,7 +74,8 @@ func TestEffectiveBridgeCapabilitiesIntersection(t *testing.T) {
 	effective := EffectiveBridgeCapabilities([]string{
 		"agent.task.run", "artifact.read", "agent.event.watch", "project.read",
 	}, false)
-	if len(effective) != 2 || effective[0] != "agent.event.watch" || effective[1] != "agent.task.run" {
+	if len(effective) != 3 || effective[0] != "agent.event.watch" ||
+		effective[1] != "agent.task.run" || effective[2] != "project.current" {
 		t.Fatalf("unexpected effective list: %v", effective)
 	}
 	// Unimplemented-but-granted capabilities never become effective.

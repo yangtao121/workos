@@ -1124,6 +1124,30 @@ export function Desktop({
         surface={windowState.surface}
         bridge={bridgeCredentialsRef.current.get(windowState.surface.surfaceSessionId)}
         appBridge={workosClients.appBridge}
+        shell={{
+          projectCurrent: async () => {
+            const surface = windowState.surface;
+            const project = surface
+              ? projects.find((item) => item.id === surface.projectId) ?? activeProject
+              : undefined;
+            await Promise.resolve();
+            return {
+              projectId: project?.id ?? surface?.projectId ?? "",
+              name: project?.name ?? "",
+              revision: String(project?.revision ?? 0),
+            };
+          },
+          getTheme: async () => {
+            await Promise.resolve();
+            return { scheme: "light" as const };
+          },
+          setWindowTitle: (title) => {
+            dispatch({ type: "rename", id: windowState.id, title });
+          },
+          closeWindow: () => {
+            closeWindow(windowState.id);
+          },
+        }}
       />
     ) : windowState.kind === "system-monitor" ? (
       <SystemMonitor

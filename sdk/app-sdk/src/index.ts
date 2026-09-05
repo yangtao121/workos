@@ -16,6 +16,9 @@ import {
   type BridgeKnowledgeSearchPayload,
   type BridgeKnowledgeSearchResult,
   type BridgeNotificationCreatePayload,
+  type BridgeResponse,
+  type BridgeRequest,
+  type BridgeWindowSetTitlePayload,
   type BridgeNotificationCreateResult,
   type BridgeRunResult,
   type BridgeStreamPayload,
@@ -50,6 +53,20 @@ export interface AppAgentRunResult {
 }
 
 export interface WorkOSAppBridge {
+  project: {
+    /** Bounded summary of THIS app's project (requires project.read). */
+    current(): Promise<AppProjectCurrentResult>;
+  };
+  theme: {
+    /** The shell's active color scheme. */
+    get(): Promise<{ scheme: "light" | "dark" }>;
+  };
+  window: {
+    /** Sets THIS surface's window title (shell-side, bounded). */
+    setTitle(title: string): Promise<void>;
+    /** Closes THIS surface's window (shell-side). */
+    close(): Promise<void>;
+  };
   agent: {
     /** Runs one project-scoped agent task (requires agent.task.run). */
     run(input: AppAgentRunInput): Promise<AppAgentRunResult>;
@@ -101,6 +118,12 @@ export interface AppKnowledgeHit {
 export interface AppKnowledgeSearchResult {
   hits: AppKnowledgeHit[];
   nextPageToken: string;
+}
+
+export interface AppProjectCurrentResult {
+  projectId: string;
+  name: string;
+  revision: string;
 }
 
 export interface AppNotificationCreateInput {
@@ -194,13 +217,7 @@ export function connectWorkOSAppBridge(
 }
 
 type Pending = {
-  resolve: (
-    value:
-      | BridgeRunResult
-      | BridgeKnowledgeSearchResult
-      | BridgeNotificationCreateResult
-      | { done: true },
-  ) => void;
+  resolve: (value: BridgeResponse["payload"]) => void;
   reject: (error: BridgeProtocolError) => void;
   onEvent?: ((event: AgentEvent) => void) | undefined;
   canceled?: boolean | undefined;
@@ -213,7 +230,7 @@ function createBridge(
   timeoutMs: number,
 ): WorkOSAppBridge {
   let nextRequestId = 0;
-  const pending = new Map<string, Pending>();
+  const pending = new Map<string, Pending>()
 
   port.onmessage = (event: MessageEvent) => {
     const envelope: unknown = event.data;
@@ -243,11 +260,7 @@ function createBridge(
 
   const call = (
     method: BridgeMethod,
-    payload:
-      | BridgeRunPayload
-      | BridgeStreamPayload
-      | BridgeKnowledgeSearchPayload
-      | BridgeNotificationCreatePayload,
+    payload: BridgeRequest['payload'],
     onEvent?: (event: AgentEvent) => void,
     onRegistered?: (requestId: string) => void,
   ): Promise<
@@ -267,7 +280,12 @@ function createBridge(
         pending.delete(requestId);
         reject(new BridgeProtocolError("timeout"));
       }, timeoutMs);
-      pending.set(requestId, { resolve, reject, onEvent, timer });
+      pending.set(requestId, {
+        resolve: (value) => resolve(value as Parameters<typeof resolve>[0]),
+        reject,
+        onEvent,
+        timer,
+      });
       onRegistered?.(requestId);
       try {
         // Outbound traffic uses the same bounded helper as the trusted host:
@@ -417,6 +435,40 @@ function createBridge(
           throw new BridgeProtocolError("internal");
         }
         return result;
+      },
+    },
+    project: {
+      /**
+       * Returns the bounded summary of THIS app's project (requires
+       * project.read). Canonical facts only; scope is the validated surface
+       * session.
+       */
+      async current(): Promise<AppProjectCurrentResult> {
+        const result = (await call("project.current", {})) as unknown as AppProjectCurrentResult;
+        if (!result || !result.projectId) {
+          throw new BridgeProtocolError("internal");
+        }
+        return result;
+      },
+    },
+    theme: {
+      /** Returns the shell's active color scheme. */
+      async get(): Promise<{ scheme: "light" | "dark" }> {
+        const result = (await call("theme.get", {})) as unknown as { scheme: "light" | "dark" };
+        if (!result || !result.scheme) {
+          throw new BridgeProtocolError("internal");
+        }
+        return result;
+      },
+    },
+    window: {
+      /** Sets THIS surface's window title (shell-side, bounded). */
+      async setTitle(title: string): Promise<void> {
+        await call("window.setTitle", { title } as BridgeWindowSetTitlePayload);
+      },
+      /** Closes THIS surface's window (shell-side). */
+      async close(): Promise<void> {
+        await call("window.close", {});
       },
     },
   };

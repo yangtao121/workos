@@ -550,6 +550,24 @@ test-repair-deployment: e2e-image
 		$(GO_HOST_RUN) go test -tags='integration repairdeployment' -count=1 -run '^TestRepairOrchestratorTurnsIncidentIntoTask$$' -v ./tests/integration; \
 		echo "test-repair-deployment: PASS"
 
+# The full App Bridge capability gate (ADR-0016 §5 / structure 10.5): a
+# granted web bundle exercises the shell-side bridge methods (project.current
+# with the project.read grant, theme.get, window.setTitle, window.close) and
+# the fail-closed path for an ungranted capability, end to end through the
+# opaque-origin surface, app-host shell dispatch, and the runtime/Core chain.
+test-app-bridge-full: e2e-image
+	@set -eu; \
+		WORKOS_UID="$$(id -u)" WORKOS_GID="$$(id -g)" \
+		docker compose up -d --build --force-recreate postgres bootstrap workos-core runtime-host workos-gateway; \
+		docker run --rm --network host $(USER_FLAGS) \
+			-e PLAYWRIGHT_BROWSERS_PATH=/ms-playwright \
+			-e WORKOS_E2E_URL=http://127.0.0.1:8080 \
+			-e WORKOS_E2E_OUTPUT_DIR=/tmp/workos-playwright-results \
+			-v $(CURDIR):$(WORKDIR) \
+			-w $(WORKDIR)/apps/desktop-web \
+			$(E2E_IMAGE) pnpm exec playwright test app-bridge-full.spec.ts; \
+		echo "test-app-bridge-full: PASS"
+
 e2e-image:
 	docker build \
 		--build-arg DEBIAN_MIRROR=$(DEBIAN_MIRROR) \

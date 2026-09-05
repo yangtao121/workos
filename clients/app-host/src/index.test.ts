@@ -110,6 +110,10 @@ function setupImplementation(options: {
     searchKnowledge,
     createNotification: () => Promise.reject(new Error("not used in this test")),
     watchAgentTaskEvents,
+    projectCurrent: () => Promise.resolve({ projectId: "p-1", name: "Project One", revision: "3" }),
+    getTheme: () => Promise.resolve({ scheme: "light" as const }),
+    setWindowTitle: () => undefined,
+    closeWindow: () => undefined,
     ...options.transport,
   };
   const onHandshakeComplete = vi.fn();
@@ -118,6 +122,12 @@ function setupImplementation(options: {
     frameWindow: frameWindow as unknown as Window,
     capabilities: options.capabilities ?? ["agent.task.run", "agent.event.watch"],
     transport,
+    shell: {
+      projectCurrent: () => Promise.resolve({ projectId: "p-1", name: "Project One", revision: "3" }),
+      getTheme: () => Promise.resolve({ scheme: "light" as const }),
+      setWindowTitle: () => undefined,
+      closeWindow: () => undefined,
+    },
     timeoutMs: options.timeoutMs ?? REQUEST_TIMEOUT_MS,
     nonceGenerator: () => "nonce-1",
     channelFactory: () => channel as unknown as MessageChannel,
@@ -312,7 +322,7 @@ describe("App Bridge host dispatch", () => {
           new Promise<void>((resolve) => {
             push = (event: unknown) => {
               onEvent(event as never);
-            };
+            }
             void resolve;
           }),
       },

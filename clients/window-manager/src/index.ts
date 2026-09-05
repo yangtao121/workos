@@ -61,7 +61,8 @@ export type WindowAction =
   | { type: "move"; id: string; x: number; y: number }
   | { type: "resize"; id: string; width: number; height: number }
   | { type: "mode"; id: string; mode: WindowMode }
-  | { type: "close"; id: string };
+  | { type: "close"; id: string }
+  | { type: "rename"; id: string; title: string };
 
 export const initialWindowState: WindowState = { windows: [], nextZIndex: 1 };
 
@@ -91,6 +92,8 @@ export function windowReducer(state: WindowState, action: WindowAction): WindowS
   const windows = state.windows.map((item) => {
     if (item.id !== action.id) return item;
     switch (action.type) {
+      case "rename":
+        return { ...item, title: action.title };
       case "focus":
         return { ...item, zIndex: state.nextZIndex };
       case "move":

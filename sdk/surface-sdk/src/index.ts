@@ -19,6 +19,10 @@ export const BRIDGE_METHODS = [
   "agent.stream",
   "knowledge.search",
   "notifications.create",
+  "project.current",
+  "theme.get",
+  "window.setTitle",
+  "window.close",
 ] as const;
 export type BridgeMethod = (typeof BRIDGE_METHODS)[number];
 
@@ -112,6 +116,27 @@ export interface BridgeKnowledgeSearchResult {
   nextPageToken: string;
 }
 
+/** project.current result: the bounded canonical project summary. */
+export interface BridgeProjectCurrentResult {
+  projectId: string;
+  name: string;
+  revision: string;
+}
+
+/** theme.get result: the shell's active color scheme. */
+export interface BridgeThemeGetResult {
+  scheme: "light" | "dark";
+}
+
+/** window.setTitle payload: the bounded new window title. */
+export interface BridgeWindowSetTitlePayload {
+  title: string;
+}
+
+export interface BridgeWindowOkResult {
+  ok: true;
+}
+
 export interface BridgeRequest {
   version: typeof APP_BRIDGE_VERSION;
   type: "request";
@@ -121,7 +146,9 @@ export interface BridgeRequest {
     | BridgeRunPayload
     | BridgeStreamPayload
     | BridgeKnowledgeSearchPayload
-    | BridgeNotificationCreatePayload;
+    | BridgeNotificationCreatePayload
+    | BridgeWindowSetTitlePayload
+    | Record<string, never>;
 }
 
 export interface BridgeResponse {
@@ -132,6 +159,9 @@ export interface BridgeResponse {
     | BridgeRunResult
     | BridgeKnowledgeSearchResult
     | BridgeNotificationCreateResult
+    | BridgeProjectCurrentResult
+    | BridgeThemeGetResult
+    | BridgeWindowOkResult
     | { done: true };
 }
 

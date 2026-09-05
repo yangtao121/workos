@@ -91,6 +91,14 @@ const (
 	// BridgeGrantKnowledgeRead is the manifest/grant vocabulary entry that
 	// can negotiate the knowledge.search method.
 	BridgeGrantKnowledgeRead = "knowledge.read"
+	// BridgeCapabilityProjectCurrent is the read-only project summary bridge
+	// method (structure 10.5 project.current). It maps to the `project.read`
+	// grant — the capability string itself is never a grant name — and is
+	// offered to every surface whose session carries the grant (ADR-0016).
+	BridgeCapabilityProjectCurrent = "project.current"
+	// BridgeGrantProjectRead is the manifest/grant vocabulary entry that can
+	// negotiate the project.current method.
+	BridgeGrantProjectRead = "project.read"
 )
 
 // EffectiveBridgeCapabilities intersects the installation grant snapshot with
@@ -118,6 +126,9 @@ func EffectiveBridgeCapabilities(granted []string, indexerConfigured bool) []str
 		if _, ok := grantedSet[BridgeGrantKnowledgeRead]; ok {
 			effective = append(effective, BridgeCapabilityKnowledgeSearch)
 		}
+	}
+	if _, ok := grantedSet[BridgeGrantProjectRead]; ok {
+		effective = append(effective, BridgeCapabilityProjectCurrent)
 	}
 	sort.Strings(effective)
 	return effective

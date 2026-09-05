@@ -31,6 +31,9 @@ import {
   type BridgeKnowledgeSearchResult,
   type BridgeNotificationCreatePayload,
   type BridgeNotificationCreateResult,
+  type BridgeProjectCurrentResult,
+  type BridgeThemeGetResult,
+  type BridgeWindowOkResult,
 } from "@workos/surface-sdk";
 import type { AgentEvent } from "@workos/protocol";
 
@@ -81,12 +84,25 @@ export interface AppBridgeTransport {
   ): Promise<void>;
 }
 
+export interface AppBridgeShellHost {
+  /** Returns the bounded summary of the surface's active project. */
+  projectCurrent(): Promise<{ projectId: string; name: string; revision: string }>;
+  /** Returns the shell's active color scheme. */
+  getTheme(): Promise<{ scheme: "light" | "dark" }>;
+  /** Sets the hosting window's title. */
+  setWindowTitle(title: string): void;
+  /** Closes the hosting window. */
+  closeWindow(): void;
+}
+
 export interface AppBridgeHostOptions {
   /** The exact iframe window the handshake targets; never a global lookup. */
   frameWindow: Window;
   /** Effective capabilities of this surface, from the CreateSurface session. */
   capabilities: readonly string[];
   transport: AppBridgeTransport;
+  /** Shell-side method host: the trusted parent executes these itself. */
+  shell?: AppBridgeShellHost;
   timeoutMs?: number;
   nonceGenerator?: () => string;
   /** Test seam: defaults to a real MessageChannel. */
@@ -107,6 +123,14 @@ export interface AppBridgeHost {
 const capabilityMethods: Record<string, BridgeMethod> = {
   "agent.task.run": "agent.run",
   "agent.event.watch": "agent.stream",
+  // Shell-side methods: executed by the trusted parent itself (window
+  // management, theme, and the project summary the Desktop already holds).
+  // The capability gate still applies: only granted capabilities negotiate
+  // the method.
+  "project.read": "project.current",
+  "theme.get": "theme.get",
+  "window.setTitle": "window.setTitle",
+  "window.close": "window.close",
   // The session's effective list carries the METHOD name for knowledge
   // search: the runtime already negotiated it from a real `knowledge.read`
   // grant plus its configured indexer, so the grant name never crosses the
@@ -168,6 +192,13 @@ function hasExactKeys(payload: Record<string, unknown>, keys: readonly string[])
 function safeRequestId(envelope: unknown): string {
   const id = isPlainObject(envelope) ? envelope["requestId"] : undefined;
   return typeof id === "string" && requestIdPattern.test(id) ? id : "";
+}
+
+function validSetTitlePayload(payload: unknown): payload is { title: string } {
+  if (!isPlainObject(payload)) return false;
+  if (!hasExactKeys(payload, ["title"])) return false;
+  const { title } = payload;
+  return typeof title === "string" && title.length > 0 && title.length <= 120;
 }
 
 function validRunPayload(payload: unknown): payload is BridgeRunPayload {
@@ -289,6 +320,22 @@ export function openAppBridgeHost(options: AppBridgeHostOptions): AppBridgeHost 
   const methods = Object.entries(capabilityMethods)
     .filter(([capability]) => options.capabilities.includes(capability))
     .map(([, method]) => method);
+  // Shell-side methods: the trusted parent executes these itself, so they
+  // are offered only when the parent actually supplies a shell host (the
+  // Desktop always does). Theme and the app's own window management are
+  // inherent to hosting the surface; project.current is negotiated from the
+  // `project.read` grant (ADR-0016 §5).
+  if (options.shell !== undefined) {
+    const shellOffered = ["theme.get", "window.setTitle", "window.close"];
+    if (options.capabilities.includes("project.current")) {
+      shellOffered.push("project.current");
+    }
+    for (const method of shellOffered) {
+      if (!methods.includes(method as BridgeMethod)) {
+        methods.push(method as BridgeMethod);
+      }
+    }
+  }
 
   const channel = options.channelFactory?.() ?? new MessageChannel();
   let closed = false;
@@ -478,6 +525,18 @@ export function openAppBridgeHost(options: AppBridgeHostOptions): AppBridgeHost 
     if (request.method === "notifications.create") {
       return validNotificationCreatePayload(request.payload) ? null : "invalid_argument";
     }
+    if (request.method === "window.setTitle") {
+      return validSetTitlePayload(request.payload) ? null : "invalid_argument";
+    }
+    if (
+      request.method === "project.current" ||
+      request.method === "theme.get" ||
+      request.method === "window.close"
+    ) {
+      return hasExactKeys(request.payload as Record<string, unknown>, [])
+        ? null
+        : "invalid_argument";
+    }
     return validStreamPayload(request.payload) ? null : "invalid_argument";
   };
 
@@ -489,6 +548,64 @@ export function openAppBridgeHost(options: AppBridgeHostOptions): AppBridgeHost 
       respondError(safeRequestId(request), failure);
       return;
     }
+    if (
+      request.method === "project.current" ||
+      request.method === "theme.get" ||
+      request.method === "window.setTitle" ||
+      request.method === "window.close"
+    ) {
+      const shell = options.shell;
+      if (!shell) {
+        respondError(request.requestId, "permission_denied");
+        return;
+      }
+      const entry = {
+        timer: window.setTimeout(() => {
+          if (pending.delete(request.requestId)) {
+            respondError(request.requestId, "timeout");
+          }
+        }, timeoutMs),
+      };
+      pending.set(request.requestId, entry);
+      void (async () => {
+        let payload:
+          | BridgeProjectCurrentResult
+          | BridgeThemeGetResult
+          | BridgeWindowOkResult;
+        if (request.method === "project.current") {
+          payload = await shell.projectCurrent();
+        } else if (request.method === "theme.get") {
+          payload = await shell.getTheme();
+        } else {
+          shell.setWindowTitle((request.payload as { title: string }).title);
+          payload = { ok: true } as const;
+          if (request.method === "window.close") {
+            // The close runs after the response is posted so the frame sees
+            // the acknowledgment before the window tears down.
+            window.setTimeout(() => {
+              shell.closeWindow();
+            }, 0);
+          }
+        }
+        if (!pending.has(request.requestId)) return;
+        clearPending(request.requestId);
+        if (closed || !handshaked) return;
+        postBridgeMessage(channel.port1, {
+          version: APP_BRIDGE_VERSION,
+          type: "response",
+          requestId: request.requestId,
+          payload,
+        });
+      })().catch((reason: unknown) => {
+        if (!pending.has(request.requestId)) return;
+        clearPending(request.requestId);
+        const code: BridgeErrorCode =
+          reason instanceof BridgeProtocolError ? reason.code : "internal";
+        respondError(request.requestId, code);
+      });
+      return;
+    }
+
     if (request.method === "agent.run") {
       const payload = request.payload as BridgeRunPayload;
       const entry = {
