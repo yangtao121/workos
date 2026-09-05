@@ -284,3 +284,60 @@ W1 → W2 → W3 → W4 → W6 → W5，全部在同一 branch 严格串行。
    （Knowledge Center 当前仍走词法 Search，可切 SearchHybrid）。
 3. Web Push RFC 8291 加密 + Service Worker 展示（ADR-0018 §5 诚实 unavailable）。
 4. W6 视觉证据 before/ 基线为新增界面（无既有 current），已在 notes.md 说明。
+
+## 会话 4 收口（2026-09-05）：剩余范围补齐 + 全量门禁复跑
+
+### 补齐项（全部有真实证据）
+
+- Knowledge Center 切换 SearchHybrid：SearchHybridResponse additive 增加
+  freshness（字段 3），Catching-up 指示保持；Center 走融合排序。
+  `corepack pnpm --filter @workos/desktop-web exec vitest run src/KnowledgeCenter.test.tsx` PASS。
+- 有界通知搜索（ADR-0018 §2）：SearchNotifications RPC（网关路由）复用
+  snapshot/签名分页机制，title 子串大小写不敏感，1..128 语法 fail-closed，
+  外 owner 恒空页；TestNotificationSearch（scratch 真库）PASS，
+  并入 `make test-push-relay`。
+- W4 通用 archive 最小实现（ADR-0017 §5）：migration 040（owner indexer）、
+  内容寻址去重、8 MiB/对象、200 对象/owner、media-type 语法、超界拒绝；
+  admin socket 三 RPC；archive 能力翻转 available（诚实注明"无知识图谱"）；
+  TestArchiveObjects PASS 并入 `make test-workspace-indexing`。
+- mDNS 接入 compose + 发现 UX 接配对：`cmd/workos-mdns-announce`（lan-pairing
+  profile，host 网络，广播 origin+配对指纹，与网关证书同源）；`workosctl
+  device scan --fingerprint`（常量时间指纹校验后输出 origin，接既有
+  `device pair` 流程）；`make test-lan-pairing` 增加 mDNS 发现阶段
+  （真实发现 origin https://localhost:8443）。
+
+### 复跑中发现并修复的真实缺陷
+
+1. dock 层级缺陷：W6 新增 7 个 dock 按钮使居中 dock 左移，app 窗口的
+   bridge 浮层拦截了 dock 点击 → dock 显式 z-index 提层（test-app-version-
+   rollback 捕获）。
+2. bridge 协商方法断言漂移：app-notifications / app-knowledge-search spec
+   未计入 shell 侧方法（theme.get/window.setTitle/window.close），已更新。
+3. knowledge-rebuild 销毁/恢复只重放 027/028：037/038/040 被账本跳过导致
+   documents 缺 embedding 列 → 重放全部 indexer 迁移。
+4. repair 门禁泄漏 running fixture workload（fake-fixture cgroup）毒化后续
+   podman 模式 runtime 的整表观察 → FK 感知清理（surface requests →
+   sessions → operations → workload）。
+5. deepseek 门禁 awk 状态机在 consumer 行误触发，把 REVOKED 块 id 与 codex
+   的 revision 配对 → 改为仅在 status 行判定同块匹配。
+
+### 全量门禁复跑（最终 HEAD）
+
+| 门禁 | 结果 |
+| --- | --- |
+| test-credential-vault-expansion / test-codex-harness / test-mcp-harness | PASS |
+| test-real-supervision / test-telemetry / test-repair-deployment | PASS |
+| test-rootless-runtime | BLOCKED（宿主无 rootless Podman，如实记录） |
+| test-app-bridge-full / test-declarative-surface / test-browser-surface / test-remote-native-surface | PASS |
+| test-semantic-knowledge / test-workspace-indexing（含 archive） | PASS |
+| test-push-relay（含通知搜索） | PASS |
+| test-mobile-wrappers / test-mdns-discovery / test-desktop-system-apps | PASS |
+| test-e2e（完整 Playwright 套件） | PASS（30 passed / 17 skipped-profile；修复 1/2/4 后） |
+| test-adaptive-shell | PASS |
+| test-lan-pairing（含新 mDNS 发现阶段） | PASS |
+| test-project-knowledge-search / test-app-knowledge-search / test-project-knowledge-rebuild | PASS（修复 3 后） |
+| test-notification-center / test-incident-notifications / test-app-notifications | PASS（修复 4/5 后） |
+| test-artifact-context / test-artifact-review / test-deepseek-fixture / test-deepseek-structured-review / test-app-version-rollback | PASS（修复 1/2/5 后） |
+| test-podman-fixture | BLOCKED（宿主无 rootless Podman，如实记录） |
+| test-integration（全量集成） | PASS |
+| make check / go test -race ./internal/... ./cmd/... / buf lint / buf breaking（vs main） | PASS / 干净 / PASS / PASS |
