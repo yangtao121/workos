@@ -212,3 +212,36 @@ service AgentTaskService {
   rpc CancelTask(CancelTaskRequest) returns (CancelTaskResponse) {}
   rpc WatchTaskEvents(WatchTaskEventsRequest) returns (stream WatchTaskEventsResponse) {}
 }
+
+// ---------------------------------------------------------------------------
+// Repair task admission (ADR-0016 section 5). This private service is served
+// on Core's ordinary listener for the reliability-host repair orchestrator
+// only; it is never in the Gateway allowlist, so browsers and apps cannot
+// reach it. Repair tasks are ordinary Agent tasks: they flow the standard
+// queue, lease, budget, and terminal machinery.
+// ---------------------------------------------------------------------------
+
+message CreateRepairTaskRequest {
+  // UUIDv7 of the reliability-owned incident this repair repairs.
+  string incident_id = 1;
+  // UUIDv7 of the project the incident belongs to; the repair task is
+  // project-scoped.
+  string project_id = 2;
+  // Bounded sanitized violation summary (fixed phrase from the violation
+  // enum, never engine output or user content).
+  string violation_summary = 3;
+  // Deterministic orchestrator key derived from the incident id: the Agent
+  // idempotency mapping replays the same task on retry.
+  string idempotency_key = 4;
+}
+
+message CreateRepairTaskResponse {
+  string task_id = 1;
+  string provider_id = 2;
+  // True when the idempotency mapping replayed an existing repair task.
+  bool replay = 3;
+}
+
+service AgentRepairTaskService {
+  rpc CreateRepairTask(CreateRepairTaskRequest) returns (CreateRepairTaskResponse) {}
+}

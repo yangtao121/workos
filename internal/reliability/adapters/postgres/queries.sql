@@ -21,7 +21,7 @@ ON CONFLICT (occurrence_digest) DO NOTHING;
 SELECT id, owner_user_id, project_id, app_instance_id, app_id, workload_id,
        workload_generation, violation, severity, summary, occurrence_digest,
        evidence_digest, state, restart_outcome, revision, acknowledge_key,
-       acknowledged_at, mitigated_at, resolved_at, created_at, updated_at
+       acknowledged_at, mitigated_at, resolved_at, repair_task_id, created_at, updated_at
 FROM workos_reliability.incidents
 WHERE id = sqlc.arg(id);
 
@@ -31,7 +31,7 @@ WHERE id = sqlc.arg(id);
 SELECT i.id, i.owner_user_id, i.project_id, i.app_instance_id, i.app_id, i.workload_id,
        i.workload_generation, i.violation, i.severity, i.summary, i.occurrence_digest,
        i.evidence_digest, i.state, i.restart_outcome, i.revision, i.acknowledge_key,
-       i.acknowledged_at, i.mitigated_at, i.resolved_at, i.created_at, i.updated_at
+       i.acknowledged_at, i.mitigated_at, i.resolved_at, i.repair_task_id, i.created_at, i.updated_at
 FROM workos_reliability.incidents i
 WHERE i.owner_user_id = sqlc.arg(owner_user_id)
   AND (sqlc.arg(project_id)::text = '' OR i.project_id = sqlc.arg(project_id)::uuid)
@@ -90,7 +90,7 @@ SELECT EXISTS (
 SELECT id, owner_user_id, project_id, app_instance_id, app_id, workload_id,
        workload_generation, violation, severity, summary, occurrence_digest,
        evidence_digest, state, restart_outcome, revision, acknowledge_key,
-       acknowledged_at, mitigated_at, resolved_at, created_at, updated_at
+       acknowledged_at, mitigated_at, resolved_at, repair_task_id, created_at, updated_at
 FROM workos_reliability.incidents
 WHERE workload_id = sqlc.arg(workload_id)
   AND workload_generation = sqlc.arg(workload_generation)
@@ -165,7 +165,7 @@ SET last_poll_at = sqlc.arg(last_poll_at),
 SELECT id, owner_user_id, project_id, app_instance_id, app_id, workload_id,
        workload_generation, violation, severity, summary, occurrence_digest,
        evidence_digest, state, restart_outcome, revision, acknowledge_key,
-       acknowledged_at, mitigated_at, resolved_at, created_at, updated_at
+       acknowledged_at, mitigated_at, resolved_at, repair_task_id, created_at, updated_at
 FROM workos_reliability.incidents
 WHERE occurrence_digest = sqlc.arg(occurrence_digest);
 
@@ -175,7 +175,7 @@ WHERE occurrence_digest = sqlc.arg(occurrence_digest);
 SELECT i.id, i.owner_user_id, i.project_id, i.app_instance_id, i.app_id, i.workload_id,
        i.workload_generation, i.violation, i.severity, i.summary, i.occurrence_digest,
        i.evidence_digest, i.state, i.restart_outcome, i.revision, i.acknowledge_key,
-       i.acknowledged_at, i.mitigated_at, i.resolved_at, i.created_at, i.updated_at
+       i.acknowledged_at, i.mitigated_at, i.resolved_at, i.repair_task_id, i.created_at, i.updated_at
 FROM workos_reliability.incidents AS i
 LEFT JOIN workos_reliability.incident_actions AS a
   ON a.incident_id = i.id
@@ -194,7 +194,7 @@ LIMIT sqlc.arg(row_limit);
 SELECT id, owner_user_id, project_id, app_instance_id, app_id, workload_id,
        workload_generation, violation, severity, summary, occurrence_digest,
        evidence_digest, state, restart_outcome, revision, acknowledge_key,
-       acknowledged_at, mitigated_at, resolved_at, created_at, updated_at
+       acknowledged_at, mitigated_at, resolved_at, repair_task_id, created_at, updated_at
 FROM workos_reliability.incidents
 WHERE workload_id = sqlc.arg(workload_id)
   AND workload_generation <= sqlc.arg(through_generation)
@@ -251,3 +251,34 @@ WHERE id = ANY (sqlc.arg(ids)::uuid[])
 
 -- name: CountPendingIncidentPublications :one
 SELECT count(*) FROM workos_reliability.notification_publications WHERE outcome IS NULL;
+
+-- Repair orchestrator (ADR-0016 section 5): open incidents without a repair
+-- ledger row, the per-incident ledger row, and the incident's repair-task
+-- projection.
+
+-- name: ListRepairCandidates :many
+-- One repair record per incident, regardless of lifecycle state: the 1s
+-- supervision cadence resolves incidents within seconds, so the lifecycle
+-- window cannot be the repair trigger. The ledger row is the audit record.
+SELECT i.id, i.owner_user_id, i.project_id, i.summary
+FROM workos_reliability.incidents i
+LEFT JOIN workos_reliability.repair_ledger l ON l.incident_id = i.id
+WHERE l.incident_id IS NULL
+ORDER BY i.created_at
+LIMIT $1;
+
+-- name: InsertRepairLedger :execrows
+INSERT INTO workos_reliability.repair_ledger (
+    incident_id, project_id, task_id, state, attempts, created_at, updated_at
+) VALUES ($1, $2, $3, 'submitted', 1, $4, $4)
+ON CONFLICT (incident_id) DO NOTHING;
+
+-- name: GetRepairLedger :one
+SELECT incident_id, project_id, task_id, state, attempts, created_at, updated_at
+FROM workos_reliability.repair_ledger
+WHERE incident_id = $1;
+
+-- name: UpdateIncidentRepairTask :execrows
+UPDATE workos_reliability.incidents
+SET repair_task_id = $1
+WHERE id = $2;

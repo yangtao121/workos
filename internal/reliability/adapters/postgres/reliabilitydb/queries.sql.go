@@ -176,7 +176,7 @@ const getIncident = `-- name: GetIncident :one
 SELECT id, owner_user_id, project_id, app_instance_id, app_id, workload_id,
        workload_generation, violation, severity, summary, occurrence_digest,
        evidence_digest, state, restart_outcome, revision, acknowledge_key,
-       acknowledged_at, mitigated_at, resolved_at, created_at, updated_at
+       acknowledged_at, mitigated_at, resolved_at, repair_task_id, created_at, updated_at
 FROM workos_reliability.incidents
 WHERE id = $1
 `
@@ -201,6 +201,7 @@ type GetIncidentRow struct {
 	AcknowledgedAt     *time.Time  `json:"acknowledged_at"`
 	MitigatedAt        *time.Time  `json:"mitigated_at"`
 	ResolvedAt         *time.Time  `json:"resolved_at"`
+	RepairTaskID       pgtype.UUID `json:"repair_task_id"`
 	CreatedAt          time.Time   `json:"created_at"`
 	UpdatedAt          time.Time   `json:"updated_at"`
 }
@@ -228,6 +229,7 @@ func (q *Queries) GetIncident(ctx context.Context, id string) (GetIncidentRow, e
 		&i.AcknowledgedAt,
 		&i.MitigatedAt,
 		&i.ResolvedAt,
+		&i.RepairTaskID,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
@@ -264,7 +266,7 @@ const getIncidentByOccurrence = `-- name: GetIncidentByOccurrence :one
 SELECT id, owner_user_id, project_id, app_instance_id, app_id, workload_id,
        workload_generation, violation, severity, summary, occurrence_digest,
        evidence_digest, state, restart_outcome, revision, acknowledge_key,
-       acknowledged_at, mitigated_at, resolved_at, created_at, updated_at
+       acknowledged_at, mitigated_at, resolved_at, repair_task_id, created_at, updated_at
 FROM workos_reliability.incidents
 WHERE occurrence_digest = $1
 `
@@ -289,6 +291,7 @@ type GetIncidentByOccurrenceRow struct {
 	AcknowledgedAt     *time.Time  `json:"acknowledged_at"`
 	MitigatedAt        *time.Time  `json:"mitigated_at"`
 	ResolvedAt         *time.Time  `json:"resolved_at"`
+	RepairTaskID       pgtype.UUID `json:"repair_task_id"`
 	CreatedAt          time.Time   `json:"created_at"`
 	UpdatedAt          time.Time   `json:"updated_at"`
 }
@@ -316,6 +319,28 @@ func (q *Queries) GetIncidentByOccurrence(ctx context.Context, occurrenceDigest 
 		&i.AcknowledgedAt,
 		&i.MitigatedAt,
 		&i.ResolvedAt,
+		&i.RepairTaskID,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const getRepairLedger = `-- name: GetRepairLedger :one
+SELECT incident_id, project_id, task_id, state, attempts, created_at, updated_at
+FROM workos_reliability.repair_ledger
+WHERE incident_id = $1
+`
+
+func (q *Queries) GetRepairLedger(ctx context.Context, incidentID string) (WorkosReliabilityRepairLedger, error) {
+	row := q.db.QueryRow(ctx, getRepairLedger, incidentID)
+	var i WorkosReliabilityRepairLedger
+	err := row.Scan(
+		&i.IncidentID,
+		&i.ProjectID,
+		&i.TaskID,
+		&i.State,
+		&i.Attempts,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
@@ -468,11 +493,38 @@ func (q *Queries) InsertIncidentNotificationPublication(ctx context.Context, arg
 	return result.RowsAffected(), nil
 }
 
+const insertRepairLedger = `-- name: InsertRepairLedger :execrows
+INSERT INTO workos_reliability.repair_ledger (
+    incident_id, project_id, task_id, state, attempts, created_at, updated_at
+) VALUES ($1, $2, $3, 'submitted', 1, $4, $4)
+ON CONFLICT (incident_id) DO NOTHING
+`
+
+type InsertRepairLedgerParams struct {
+	IncidentID string    `json:"incident_id"`
+	ProjectID  string    `json:"project_id"`
+	TaskID     string    `json:"task_id"`
+	CreatedAt  time.Time `json:"created_at"`
+}
+
+func (q *Queries) InsertRepairLedger(ctx context.Context, arg InsertRepairLedgerParams) (int64, error) {
+	result, err := q.db.Exec(ctx, insertRepairLedger,
+		arg.IncidentID,
+		arg.ProjectID,
+		arg.TaskID,
+		arg.CreatedAt,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const listIncidentsPage = `-- name: ListIncidentsPage :many
 SELECT i.id, i.owner_user_id, i.project_id, i.app_instance_id, i.app_id, i.workload_id,
        i.workload_generation, i.violation, i.severity, i.summary, i.occurrence_digest,
        i.evidence_digest, i.state, i.restart_outcome, i.revision, i.acknowledge_key,
-       i.acknowledged_at, i.mitigated_at, i.resolved_at, i.created_at, i.updated_at
+       i.acknowledged_at, i.mitigated_at, i.resolved_at, i.repair_task_id, i.created_at, i.updated_at
 FROM workos_reliability.incidents i
 WHERE i.owner_user_id = $1
   AND ($2::text = '' OR i.project_id = $2::uuid)
@@ -516,6 +568,7 @@ type ListIncidentsPageRow struct {
 	AcknowledgedAt     *time.Time  `json:"acknowledged_at"`
 	MitigatedAt        *time.Time  `json:"mitigated_at"`
 	ResolvedAt         *time.Time  `json:"resolved_at"`
+	RepairTaskID       pgtype.UUID `json:"repair_task_id"`
 	CreatedAt          time.Time   `json:"created_at"`
 	UpdatedAt          time.Time   `json:"updated_at"`
 }
@@ -556,6 +609,7 @@ func (q *Queries) ListIncidentsPage(ctx context.Context, arg ListIncidentsPagePa
 			&i.AcknowledgedAt,
 			&i.MitigatedAt,
 			&i.ResolvedAt,
+			&i.RepairTaskID,
 			&i.CreatedAt,
 			&i.UpdatedAt,
 		); err != nil {
@@ -573,7 +627,7 @@ const listMitigatedIncidentsForWorkload = `-- name: ListMitigatedIncidentsForWor
 SELECT id, owner_user_id, project_id, app_instance_id, app_id, workload_id,
        workload_generation, violation, severity, summary, occurrence_digest,
        evidence_digest, state, restart_outcome, revision, acknowledge_key,
-       acknowledged_at, mitigated_at, resolved_at, created_at, updated_at
+       acknowledged_at, mitigated_at, resolved_at, repair_task_id, created_at, updated_at
 FROM workos_reliability.incidents
 WHERE workload_id = $1
   AND workload_generation <= $2
@@ -606,6 +660,7 @@ type ListMitigatedIncidentsForWorkloadRow struct {
 	AcknowledgedAt     *time.Time  `json:"acknowledged_at"`
 	MitigatedAt        *time.Time  `json:"mitigated_at"`
 	ResolvedAt         *time.Time  `json:"resolved_at"`
+	RepairTaskID       pgtype.UUID `json:"repair_task_id"`
 	CreatedAt          time.Time   `json:"created_at"`
 	UpdatedAt          time.Time   `json:"updated_at"`
 }
@@ -641,6 +696,7 @@ func (q *Queries) ListMitigatedIncidentsForWorkload(ctx context.Context, arg Lis
 			&i.AcknowledgedAt,
 			&i.MitigatedAt,
 			&i.ResolvedAt,
+			&i.RepairTaskID,
 			&i.CreatedAt,
 			&i.UpdatedAt,
 		); err != nil {
@@ -658,7 +714,7 @@ const listOpenIncidentsForWorkload = `-- name: ListOpenIncidentsForWorkload :man
 SELECT id, owner_user_id, project_id, app_instance_id, app_id, workload_id,
        workload_generation, violation, severity, summary, occurrence_digest,
        evidence_digest, state, restart_outcome, revision, acknowledge_key,
-       acknowledged_at, mitigated_at, resolved_at, created_at, updated_at
+       acknowledged_at, mitigated_at, resolved_at, repair_task_id, created_at, updated_at
 FROM workos_reliability.incidents
 WHERE workload_id = $1
   AND workload_generation = $2
@@ -691,6 +747,7 @@ type ListOpenIncidentsForWorkloadRow struct {
 	AcknowledgedAt     *time.Time  `json:"acknowledged_at"`
 	MitigatedAt        *time.Time  `json:"mitigated_at"`
 	ResolvedAt         *time.Time  `json:"resolved_at"`
+	RepairTaskID       pgtype.UUID `json:"repair_task_id"`
 	CreatedAt          time.Time   `json:"created_at"`
 	UpdatedAt          time.Time   `json:"updated_at"`
 }
@@ -724,6 +781,7 @@ func (q *Queries) ListOpenIncidentsForWorkload(ctx context.Context, arg ListOpen
 			&i.AcknowledgedAt,
 			&i.MitigatedAt,
 			&i.ResolvedAt,
+			&i.RepairTaskID,
 			&i.CreatedAt,
 			&i.UpdatedAt,
 		); err != nil {
@@ -741,7 +799,7 @@ const listPendingActionIncidents = `-- name: ListPendingActionIncidents :many
 SELECT i.id, i.owner_user_id, i.project_id, i.app_instance_id, i.app_id, i.workload_id,
        i.workload_generation, i.violation, i.severity, i.summary, i.occurrence_digest,
        i.evidence_digest, i.state, i.restart_outcome, i.revision, i.acknowledge_key,
-       i.acknowledged_at, i.mitigated_at, i.resolved_at, i.created_at, i.updated_at
+       i.acknowledged_at, i.mitigated_at, i.resolved_at, i.repair_task_id, i.created_at, i.updated_at
 FROM workos_reliability.incidents AS i
 LEFT JOIN workos_reliability.incident_actions AS a
   ON a.incident_id = i.id
@@ -772,6 +830,7 @@ type ListPendingActionIncidentsRow struct {
 	AcknowledgedAt     *time.Time  `json:"acknowledged_at"`
 	MitigatedAt        *time.Time  `json:"mitigated_at"`
 	ResolvedAt         *time.Time  `json:"resolved_at"`
+	RepairTaskID       pgtype.UUID `json:"repair_task_id"`
 	CreatedAt          time.Time   `json:"created_at"`
 	UpdatedAt          time.Time   `json:"updated_at"`
 }
@@ -810,8 +869,57 @@ func (q *Queries) ListPendingActionIncidents(ctx context.Context, rowLimit int32
 			&i.AcknowledgedAt,
 			&i.MitigatedAt,
 			&i.ResolvedAt,
+			&i.RepairTaskID,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listRepairCandidates = `-- name: ListRepairCandidates :many
+
+SELECT i.id, i.owner_user_id, i.project_id, i.summary
+FROM workos_reliability.incidents i
+LEFT JOIN workos_reliability.repair_ledger l ON l.incident_id = i.id
+WHERE l.incident_id IS NULL
+ORDER BY i.created_at
+LIMIT $1
+`
+
+type ListRepairCandidatesRow struct {
+	ID          string `json:"id"`
+	OwnerUserID string `json:"owner_user_id"`
+	ProjectID   string `json:"project_id"`
+	Summary     string `json:"summary"`
+}
+
+// Repair orchestrator (ADR-0016 section 5): open incidents without a repair
+// ledger row, the per-incident ledger row, and the incident's repair-task
+// projection.
+// One repair record per incident, regardless of lifecycle state: the 1s
+// supervision cadence resolves incidents within seconds, so the lifecycle
+// window cannot be the repair trigger. The ledger row is the audit record.
+func (q *Queries) ListRepairCandidates(ctx context.Context, limit int32) ([]ListRepairCandidatesRow, error) {
+	rows, err := q.db.Query(ctx, listRepairCandidates, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListRepairCandidatesRow
+	for rows.Next() {
+		var i ListRepairCandidatesRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.OwnerUserID,
+			&i.ProjectID,
+			&i.Summary,
 		); err != nil {
 			return nil, err
 		}
@@ -901,6 +1009,25 @@ func (q *Queries) UpdateIncidentOutcome(ctx context.Context, arg UpdateIncidentO
 		arg.UpdatedAt,
 		arg.ID,
 	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const updateIncidentRepairTask = `-- name: UpdateIncidentRepairTask :execrows
+UPDATE workos_reliability.incidents
+SET repair_task_id = $1
+WHERE id = $2
+`
+
+type UpdateIncidentRepairTaskParams struct {
+	RepairTaskID pgtype.UUID `json:"repair_task_id"`
+	ID           string      `json:"id"`
+}
+
+func (q *Queries) UpdateIncidentRepairTask(ctx context.Context, arg UpdateIncidentRepairTaskParams) (int64, error) {
+	result, err := q.db.Exec(ctx, updateIncidentRepairTask, arg.RepairTaskID, arg.ID)
 	if err != nil {
 		return 0, err
 	}

@@ -2022,6 +2022,142 @@ func (x *WatchTaskEventsResponse) GetEvent() *AgentEvent {
 	return nil
 }
 
+type CreateRepairTaskRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// UUIDv7 of the reliability-owned incident this repair repairs.
+	IncidentId string `protobuf:"bytes,1,opt,name=incident_id,json=incidentId,proto3" json:"incident_id,omitempty"`
+	// UUIDv7 of the project the incident belongs to; the repair task is
+	// project-scoped.
+	ProjectId string `protobuf:"bytes,2,opt,name=project_id,json=projectId,proto3" json:"project_id,omitempty"`
+	// Bounded sanitized violation summary (fixed phrase from the violation
+	// enum, never engine output or user content).
+	ViolationSummary string `protobuf:"bytes,3,opt,name=violation_summary,json=violationSummary,proto3" json:"violation_summary,omitempty"`
+	// Deterministic orchestrator key derived from the incident id: the Agent
+	// idempotency mapping replays the same task on retry.
+	IdempotencyKey string `protobuf:"bytes,4,opt,name=idempotency_key,json=idempotencyKey,proto3" json:"idempotency_key,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
+}
+
+func (x *CreateRepairTaskRequest) Reset() {
+	*x = CreateRepairTaskRequest{}
+	mi := &file_workos_agent_v1_agent_proto_msgTypes[30]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CreateRepairTaskRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CreateRepairTaskRequest) ProtoMessage() {}
+
+func (x *CreateRepairTaskRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_workos_agent_v1_agent_proto_msgTypes[30]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CreateRepairTaskRequest.ProtoReflect.Descriptor instead.
+func (*CreateRepairTaskRequest) Descriptor() ([]byte, []int) {
+	return file_workos_agent_v1_agent_proto_rawDescGZIP(), []int{30}
+}
+
+func (x *CreateRepairTaskRequest) GetIncidentId() string {
+	if x != nil {
+		return x.IncidentId
+	}
+	return ""
+}
+
+func (x *CreateRepairTaskRequest) GetProjectId() string {
+	if x != nil {
+		return x.ProjectId
+	}
+	return ""
+}
+
+func (x *CreateRepairTaskRequest) GetViolationSummary() string {
+	if x != nil {
+		return x.ViolationSummary
+	}
+	return ""
+}
+
+func (x *CreateRepairTaskRequest) GetIdempotencyKey() string {
+	if x != nil {
+		return x.IdempotencyKey
+	}
+	return ""
+}
+
+type CreateRepairTaskResponse struct {
+	state      protoimpl.MessageState `protogen:"open.v1"`
+	TaskId     string                 `protobuf:"bytes,1,opt,name=task_id,json=taskId,proto3" json:"task_id,omitempty"`
+	ProviderId string                 `protobuf:"bytes,2,opt,name=provider_id,json=providerId,proto3" json:"provider_id,omitempty"`
+	// True when the idempotency mapping replayed an existing repair task.
+	Replay        bool `protobuf:"varint,3,opt,name=replay,proto3" json:"replay,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CreateRepairTaskResponse) Reset() {
+	*x = CreateRepairTaskResponse{}
+	mi := &file_workos_agent_v1_agent_proto_msgTypes[31]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CreateRepairTaskResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CreateRepairTaskResponse) ProtoMessage() {}
+
+func (x *CreateRepairTaskResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_workos_agent_v1_agent_proto_msgTypes[31]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CreateRepairTaskResponse.ProtoReflect.Descriptor instead.
+func (*CreateRepairTaskResponse) Descriptor() ([]byte, []int) {
+	return file_workos_agent_v1_agent_proto_rawDescGZIP(), []int{31}
+}
+
+func (x *CreateRepairTaskResponse) GetTaskId() string {
+	if x != nil {
+		return x.TaskId
+	}
+	return ""
+}
+
+func (x *CreateRepairTaskResponse) GetProviderId() string {
+	if x != nil {
+		return x.ProviderId
+	}
+	return ""
+}
+
+func (x *CreateRepairTaskResponse) GetReplay() bool {
+	if x != nil {
+		return x.Replay
+	}
+	return false
+}
+
 var File_workos_agent_v1_agent_proto protoreflect.FileDescriptor
 
 const file_workos_agent_v1_agent_proto_rawDesc = "" +
@@ -2169,7 +2305,19 @@ const file_workos_agent_v1_agent_proto_rawDesc = "" +
 	"\x12CancelTaskResponse\x12.\n" +
 	"\x04task\x18\x01 \x01(\v2\x1a.workos.agent.v1.AgentTaskR\x04task\"L\n" +
 	"\x17WatchTaskEventsResponse\x121\n" +
-	"\x05event\x18\x01 \x01(\v2\x1b.workos.agent.v1.AgentEventR\x05event*\xe8\x01\n" +
+	"\x05event\x18\x01 \x01(\v2\x1b.workos.agent.v1.AgentEventR\x05event\"\xaf\x01\n" +
+	"\x17CreateRepairTaskRequest\x12\x1f\n" +
+	"\vincident_id\x18\x01 \x01(\tR\n" +
+	"incidentId\x12\x1d\n" +
+	"\n" +
+	"project_id\x18\x02 \x01(\tR\tprojectId\x12+\n" +
+	"\x11violation_summary\x18\x03 \x01(\tR\x10violationSummary\x12'\n" +
+	"\x0fidempotency_key\x18\x04 \x01(\tR\x0eidempotencyKey\"l\n" +
+	"\x18CreateRepairTaskResponse\x12\x17\n" +
+	"\atask_id\x18\x01 \x01(\tR\x06taskId\x12\x1f\n" +
+	"\vprovider_id\x18\x02 \x01(\tR\n" +
+	"providerId\x12\x16\n" +
+	"\x06replay\x18\x03 \x01(\bR\x06replay*\xe8\x01\n" +
 	"\x0eAgentTaskState\x12 \n" +
 	"\x1cAGENT_TASK_STATE_UNSPECIFIED\x10\x00\x12\x1b\n" +
 	"\x17AGENT_TASK_STATE_QUEUED\x10\x01\x12\x1c\n" +
@@ -2185,7 +2333,9 @@ const file_workos_agent_v1_agent_proto_rawDesc = "" +
 	"\tListTasks\x12!.workos.agent.v1.ListTasksRequest\x1a\".workos.agent.v1.ListTasksResponse\"\x00\x12W\n" +
 	"\n" +
 	"CancelTask\x12\".workos.agent.v1.CancelTaskRequest\x1a#.workos.agent.v1.CancelTaskResponse\"\x00\x12h\n" +
-	"\x0fWatchTaskEvents\x12'.workos.agent.v1.WatchTaskEventsRequest\x1a(.workos.agent.v1.WatchTaskEventsResponse\"\x000\x01B=Z;github.com/yangtao121/workos/gen/go/workos/agent/v1;agentv1b\x06proto3"
+	"\x0fWatchTaskEvents\x12'.workos.agent.v1.WatchTaskEventsRequest\x1a(.workos.agent.v1.WatchTaskEventsResponse\"\x000\x012\x83\x01\n" +
+	"\x16AgentRepairTaskService\x12i\n" +
+	"\x10CreateRepairTask\x12(.workos.agent.v1.CreateRepairTaskRequest\x1a).workos.agent.v1.CreateRepairTaskResponse\"\x00B=Z;github.com/yangtao121/workos/gen/go/workos/agent/v1;agentv1b\x06proto3"
 
 var (
 	file_workos_agent_v1_agent_proto_rawDescOnce sync.Once
@@ -2200,44 +2350,46 @@ func file_workos_agent_v1_agent_proto_rawDescGZIP() []byte {
 }
 
 var file_workos_agent_v1_agent_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_workos_agent_v1_agent_proto_msgTypes = make([]protoimpl.MessageInfo, 30)
+var file_workos_agent_v1_agent_proto_msgTypes = make([]protoimpl.MessageInfo, 32)
 var file_workos_agent_v1_agent_proto_goTypes = []any{
-	(AgentTaskState)(0),             // 0: workos.agent.v1.AgentTaskState
-	(*TargetScope)(nil),             // 1: workos.agent.v1.TargetScope
-	(*ContextRef)(nil),              // 2: workos.agent.v1.ContextRef
-	(*AgentBudget)(nil),             // 3: workos.agent.v1.AgentBudget
-	(*AgentTaskInput)(nil),          // 4: workos.agent.v1.AgentTaskInput
-	(*AgentTask)(nil),               // 5: workos.agent.v1.AgentTask
-	(*RunStarted)(nil),              // 6: workos.agent.v1.RunStarted
-	(*AssistantDelta)(nil),          // 7: workos.agent.v1.AssistantDelta
-	(*AssistantMessage)(nil),        // 8: workos.agent.v1.AssistantMessage
-	(*ToolCallStarted)(nil),         // 9: workos.agent.v1.ToolCallStarted
-	(*ToolCallCompleted)(nil),       // 10: workos.agent.v1.ToolCallCompleted
-	(*ApprovalRequired)(nil),        // 11: workos.agent.v1.ApprovalRequired
-	(*ArtifactCreated)(nil),         // 12: workos.agent.v1.ArtifactCreated
-	(*UsageRecorded)(nil),           // 13: workos.agent.v1.UsageRecorded
-	(*RunWaiting)(nil),              // 14: workos.agent.v1.RunWaiting
-	(*RunCompleted)(nil),            // 15: workos.agent.v1.RunCompleted
-	(*RunFailed)(nil),               // 16: workos.agent.v1.RunFailed
-	(*RunCancelled)(nil),            // 17: workos.agent.v1.RunCancelled
-	(*ApprovalDecided)(nil),         // 18: workos.agent.v1.ApprovalDecided
-	(*ApprovalExpired)(nil),         // 19: workos.agent.v1.ApprovalExpired
-	(*AgentEvent)(nil),              // 20: workos.agent.v1.AgentEvent
-	(*SubmitTaskRequest)(nil),       // 21: workos.agent.v1.SubmitTaskRequest
-	(*GetTaskRequest)(nil),          // 22: workos.agent.v1.GetTaskRequest
-	(*CancelTaskRequest)(nil),       // 23: workos.agent.v1.CancelTaskRequest
-	(*WatchTaskEventsRequest)(nil),  // 24: workos.agent.v1.WatchTaskEventsRequest
-	(*ListTasksRequest)(nil),        // 25: workos.agent.v1.ListTasksRequest
-	(*ListTasksResponse)(nil),       // 26: workos.agent.v1.ListTasksResponse
-	(*SubmitTaskResponse)(nil),      // 27: workos.agent.v1.SubmitTaskResponse
-	(*GetTaskResponse)(nil),         // 28: workos.agent.v1.GetTaskResponse
-	(*CancelTaskResponse)(nil),      // 29: workos.agent.v1.CancelTaskResponse
-	(*WatchTaskEventsResponse)(nil), // 30: workos.agent.v1.WatchTaskEventsResponse
-	(*timestamppb.Timestamp)(nil),   // 31: google.protobuf.Timestamp
-	(*structpb.Struct)(nil),         // 32: google.protobuf.Struct
-	(AppAgentApprovalDecision)(0),   // 33: workos.agent.v1.AppAgentApprovalDecision
-	(*v1.PageRequest)(nil),          // 34: workos.common.v1.PageRequest
-	(*v1.PageResponse)(nil),         // 35: workos.common.v1.PageResponse
+	(AgentTaskState)(0),              // 0: workos.agent.v1.AgentTaskState
+	(*TargetScope)(nil),              // 1: workos.agent.v1.TargetScope
+	(*ContextRef)(nil),               // 2: workos.agent.v1.ContextRef
+	(*AgentBudget)(nil),              // 3: workos.agent.v1.AgentBudget
+	(*AgentTaskInput)(nil),           // 4: workos.agent.v1.AgentTaskInput
+	(*AgentTask)(nil),                // 5: workos.agent.v1.AgentTask
+	(*RunStarted)(nil),               // 6: workos.agent.v1.RunStarted
+	(*AssistantDelta)(nil),           // 7: workos.agent.v1.AssistantDelta
+	(*AssistantMessage)(nil),         // 8: workos.agent.v1.AssistantMessage
+	(*ToolCallStarted)(nil),          // 9: workos.agent.v1.ToolCallStarted
+	(*ToolCallCompleted)(nil),        // 10: workos.agent.v1.ToolCallCompleted
+	(*ApprovalRequired)(nil),         // 11: workos.agent.v1.ApprovalRequired
+	(*ArtifactCreated)(nil),          // 12: workos.agent.v1.ArtifactCreated
+	(*UsageRecorded)(nil),            // 13: workos.agent.v1.UsageRecorded
+	(*RunWaiting)(nil),               // 14: workos.agent.v1.RunWaiting
+	(*RunCompleted)(nil),             // 15: workos.agent.v1.RunCompleted
+	(*RunFailed)(nil),                // 16: workos.agent.v1.RunFailed
+	(*RunCancelled)(nil),             // 17: workos.agent.v1.RunCancelled
+	(*ApprovalDecided)(nil),          // 18: workos.agent.v1.ApprovalDecided
+	(*ApprovalExpired)(nil),          // 19: workos.agent.v1.ApprovalExpired
+	(*AgentEvent)(nil),               // 20: workos.agent.v1.AgentEvent
+	(*SubmitTaskRequest)(nil),        // 21: workos.agent.v1.SubmitTaskRequest
+	(*GetTaskRequest)(nil),           // 22: workos.agent.v1.GetTaskRequest
+	(*CancelTaskRequest)(nil),        // 23: workos.agent.v1.CancelTaskRequest
+	(*WatchTaskEventsRequest)(nil),   // 24: workos.agent.v1.WatchTaskEventsRequest
+	(*ListTasksRequest)(nil),         // 25: workos.agent.v1.ListTasksRequest
+	(*ListTasksResponse)(nil),        // 26: workos.agent.v1.ListTasksResponse
+	(*SubmitTaskResponse)(nil),       // 27: workos.agent.v1.SubmitTaskResponse
+	(*GetTaskResponse)(nil),          // 28: workos.agent.v1.GetTaskResponse
+	(*CancelTaskResponse)(nil),       // 29: workos.agent.v1.CancelTaskResponse
+	(*WatchTaskEventsResponse)(nil),  // 30: workos.agent.v1.WatchTaskEventsResponse
+	(*CreateRepairTaskRequest)(nil),  // 31: workos.agent.v1.CreateRepairTaskRequest
+	(*CreateRepairTaskResponse)(nil), // 32: workos.agent.v1.CreateRepairTaskResponse
+	(*timestamppb.Timestamp)(nil),    // 33: google.protobuf.Timestamp
+	(*structpb.Struct)(nil),          // 34: google.protobuf.Struct
+	(AppAgentApprovalDecision)(0),    // 35: workos.agent.v1.AppAgentApprovalDecision
+	(*v1.PageRequest)(nil),           // 36: workos.common.v1.PageRequest
+	(*v1.PageResponse)(nil),          // 37: workos.common.v1.PageResponse
 }
 var file_workos_agent_v1_agent_proto_depIdxs = []int32{
 	1,  // 0: workos.agent.v1.AgentTaskInput.target_scope:type_name -> workos.agent.v1.TargetScope
@@ -2245,12 +2397,12 @@ var file_workos_agent_v1_agent_proto_depIdxs = []int32{
 	3,  // 2: workos.agent.v1.AgentTaskInput.budget:type_name -> workos.agent.v1.AgentBudget
 	4,  // 3: workos.agent.v1.AgentTask.input:type_name -> workos.agent.v1.AgentTaskInput
 	0,  // 4: workos.agent.v1.AgentTask.state:type_name -> workos.agent.v1.AgentTaskState
-	31, // 5: workos.agent.v1.AgentTask.created_at:type_name -> google.protobuf.Timestamp
-	31, // 6: workos.agent.v1.AgentTask.updated_at:type_name -> google.protobuf.Timestamp
-	32, // 7: workos.agent.v1.ToolCallStarted.input:type_name -> google.protobuf.Struct
-	32, // 8: workos.agent.v1.ToolCallCompleted.output:type_name -> google.protobuf.Struct
-	33, // 9: workos.agent.v1.ApprovalDecided.decision:type_name -> workos.agent.v1.AppAgentApprovalDecision
-	31, // 10: workos.agent.v1.AgentEvent.occurred_at:type_name -> google.protobuf.Timestamp
+	33, // 5: workos.agent.v1.AgentTask.created_at:type_name -> google.protobuf.Timestamp
+	33, // 6: workos.agent.v1.AgentTask.updated_at:type_name -> google.protobuf.Timestamp
+	34, // 7: workos.agent.v1.ToolCallStarted.input:type_name -> google.protobuf.Struct
+	34, // 8: workos.agent.v1.ToolCallCompleted.output:type_name -> google.protobuf.Struct
+	35, // 9: workos.agent.v1.ApprovalDecided.decision:type_name -> workos.agent.v1.AppAgentApprovalDecision
+	33, // 10: workos.agent.v1.AgentEvent.occurred_at:type_name -> google.protobuf.Timestamp
 	6,  // 11: workos.agent.v1.AgentEvent.run_started:type_name -> workos.agent.v1.RunStarted
 	7,  // 12: workos.agent.v1.AgentEvent.assistant_delta:type_name -> workos.agent.v1.AssistantDelta
 	8,  // 13: workos.agent.v1.AgentEvent.assistant_message:type_name -> workos.agent.v1.AssistantMessage
@@ -2266,9 +2418,9 @@ var file_workos_agent_v1_agent_proto_depIdxs = []int32{
 	18, // 23: workos.agent.v1.AgentEvent.approval_decided:type_name -> workos.agent.v1.ApprovalDecided
 	19, // 24: workos.agent.v1.AgentEvent.approval_expired:type_name -> workos.agent.v1.ApprovalExpired
 	4,  // 25: workos.agent.v1.SubmitTaskRequest.input:type_name -> workos.agent.v1.AgentTaskInput
-	34, // 26: workos.agent.v1.ListTasksRequest.page:type_name -> workos.common.v1.PageRequest
+	36, // 26: workos.agent.v1.ListTasksRequest.page:type_name -> workos.common.v1.PageRequest
 	5,  // 27: workos.agent.v1.ListTasksResponse.tasks:type_name -> workos.agent.v1.AgentTask
-	35, // 28: workos.agent.v1.ListTasksResponse.page:type_name -> workos.common.v1.PageResponse
+	37, // 28: workos.agent.v1.ListTasksResponse.page:type_name -> workos.common.v1.PageResponse
 	5,  // 29: workos.agent.v1.SubmitTaskResponse.task:type_name -> workos.agent.v1.AgentTask
 	5,  // 30: workos.agent.v1.GetTaskResponse.task:type_name -> workos.agent.v1.AgentTask
 	5,  // 31: workos.agent.v1.CancelTaskResponse.task:type_name -> workos.agent.v1.AgentTask
@@ -2278,13 +2430,15 @@ var file_workos_agent_v1_agent_proto_depIdxs = []int32{
 	25, // 35: workos.agent.v1.AgentTaskService.ListTasks:input_type -> workos.agent.v1.ListTasksRequest
 	23, // 36: workos.agent.v1.AgentTaskService.CancelTask:input_type -> workos.agent.v1.CancelTaskRequest
 	24, // 37: workos.agent.v1.AgentTaskService.WatchTaskEvents:input_type -> workos.agent.v1.WatchTaskEventsRequest
-	27, // 38: workos.agent.v1.AgentTaskService.SubmitTask:output_type -> workos.agent.v1.SubmitTaskResponse
-	28, // 39: workos.agent.v1.AgentTaskService.GetTask:output_type -> workos.agent.v1.GetTaskResponse
-	26, // 40: workos.agent.v1.AgentTaskService.ListTasks:output_type -> workos.agent.v1.ListTasksResponse
-	29, // 41: workos.agent.v1.AgentTaskService.CancelTask:output_type -> workos.agent.v1.CancelTaskResponse
-	30, // 42: workos.agent.v1.AgentTaskService.WatchTaskEvents:output_type -> workos.agent.v1.WatchTaskEventsResponse
-	38, // [38:43] is the sub-list for method output_type
-	33, // [33:38] is the sub-list for method input_type
+	31, // 38: workos.agent.v1.AgentRepairTaskService.CreateRepairTask:input_type -> workos.agent.v1.CreateRepairTaskRequest
+	27, // 39: workos.agent.v1.AgentTaskService.SubmitTask:output_type -> workos.agent.v1.SubmitTaskResponse
+	28, // 40: workos.agent.v1.AgentTaskService.GetTask:output_type -> workos.agent.v1.GetTaskResponse
+	26, // 41: workos.agent.v1.AgentTaskService.ListTasks:output_type -> workos.agent.v1.ListTasksResponse
+	29, // 42: workos.agent.v1.AgentTaskService.CancelTask:output_type -> workos.agent.v1.CancelTaskResponse
+	30, // 43: workos.agent.v1.AgentTaskService.WatchTaskEvents:output_type -> workos.agent.v1.WatchTaskEventsResponse
+	32, // 44: workos.agent.v1.AgentRepairTaskService.CreateRepairTask:output_type -> workos.agent.v1.CreateRepairTaskResponse
+	39, // [39:45] is the sub-list for method output_type
+	33, // [33:39] is the sub-list for method input_type
 	33, // [33:33] is the sub-list for extension type_name
 	33, // [33:33] is the sub-list for extension extendee
 	0,  // [0:33] is the sub-list for field type_name
@@ -2322,9 +2476,9 @@ func file_workos_agent_v1_agent_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_workos_agent_v1_agent_proto_rawDesc), len(file_workos_agent_v1_agent_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   30,
+			NumMessages:   32,
 			NumExtensions: 0,
-			NumServices:   1,
+			NumServices:   2,
 		},
 		GoTypes:           file_workos_agent_v1_agent_proto_goTypes,
 		DependencyIndexes: file_workos_agent_v1_agent_proto_depIdxs,

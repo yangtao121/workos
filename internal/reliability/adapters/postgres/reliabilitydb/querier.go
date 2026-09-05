@@ -22,6 +22,7 @@ type Querier interface {
 	GetIncident(ctx context.Context, id string) (GetIncidentRow, error)
 	GetIncidentAction(ctx context.Context, arg GetIncidentActionParams) (WorkosReliabilityIncidentAction, error)
 	GetIncidentByOccurrence(ctx context.Context, occurrenceDigest string) (GetIncidentByOccurrenceRow, error)
+	GetRepairLedger(ctx context.Context, incidentID string) (WorkosReliabilityRepairLedger, error)
 	GetSupervisorCheckpoint(ctx context.Context) (WorkosReliabilitySupervisorCheckpoint, error)
 	IncidentAcknowledgeKeyExists(ctx context.Context, arg IncidentAcknowledgeKeyExistsParams) (bool, error)
 	// Reliability Incident persistence queries (reliability-host owned tables
@@ -33,6 +34,7 @@ type Querier interface {
 	// workos_reliability.notification_publications; Core consumes them over the
 	// private source service and never issues this SQL.
 	InsertIncidentNotificationPublication(ctx context.Context, arg InsertIncidentNotificationPublicationParams) (int64, error)
+	InsertRepairLedger(ctx context.Context, arg InsertRepairLedgerParams) (int64, error)
 	// Owner-scoped, project-optional, keyed pagination on (created_at, id). The
 	// caller probes limit+1 rows so a full final page never phantom-pages.
 	ListIncidentsPage(ctx context.Context, arg ListIncidentsPageParams) ([]ListIncidentsPageRow, error)
@@ -46,9 +48,17 @@ type Querier interface {
 	// action timestamp and rotates behind its peers, so a bounded batch cannot
 	// permanently starve a newer incident during a long Runtime outage.
 	ListPendingActionIncidents(ctx context.Context, rowLimit int32) ([]ListPendingActionIncidentsRow, error)
+	// Repair orchestrator (ADR-0016 section 5): open incidents without a repair
+	// ledger row, the per-incident ledger row, and the incident's repair-task
+	// projection.
+	// One repair record per incident, regardless of lifecycle state: the 1s
+	// supervision cadence resolves incidents within seconds, so the lifecycle
+	// window cannot be the repair trigger. The ledger row is the audit record.
+	ListRepairCandidates(ctx context.Context, limit int32) ([]ListRepairCandidatesRow, error)
 	LoadSupervisorProgress(ctx context.Context, workloadID string) (WorkosReliabilitySupervisorWorkload, error)
 	MarkIncidentResolved(ctx context.Context, arg MarkIncidentResolvedParams) (int64, error)
 	UpdateIncidentOutcome(ctx context.Context, arg UpdateIncidentOutcomeParams) (int64, error)
+	UpdateIncidentRepairTask(ctx context.Context, arg UpdateIncidentRepairTaskParams) (int64, error)
 	// Only unavailable is retryable. A late/concurrent retry must never erase a
 	// terminal action verdict already made authoritative by the runtime key.
 	UpsertIncidentAction(ctx context.Context, arg UpsertIncidentActionParams) error

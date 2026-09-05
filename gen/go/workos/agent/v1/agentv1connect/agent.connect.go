@@ -23,6 +23,8 @@ const _ = connect.IsAtLeastVersion1_13_0
 const (
 	// AgentTaskServiceName is the fully-qualified name of the AgentTaskService service.
 	AgentTaskServiceName = "workos.agent.v1.AgentTaskService"
+	// AgentRepairTaskServiceName is the fully-qualified name of the AgentRepairTaskService service.
+	AgentRepairTaskServiceName = "workos.agent.v1.AgentRepairTaskService"
 )
 
 // These constants are the fully-qualified names of the RPCs defined in this package. They're
@@ -48,6 +50,9 @@ const (
 	// AgentTaskServiceWatchTaskEventsProcedure is the fully-qualified name of the AgentTaskService's
 	// WatchTaskEvents RPC.
 	AgentTaskServiceWatchTaskEventsProcedure = "/workos.agent.v1.AgentTaskService/WatchTaskEvents"
+	// AgentRepairTaskServiceCreateRepairTaskProcedure is the fully-qualified name of the
+	// AgentRepairTaskService's CreateRepairTask RPC.
+	AgentRepairTaskServiceCreateRepairTaskProcedure = "/workos.agent.v1.AgentRepairTaskService/CreateRepairTask"
 )
 
 // AgentTaskServiceClient is a client for the workos.agent.v1.AgentTaskService service.
@@ -222,4 +227,75 @@ func (UnimplementedAgentTaskServiceHandler) CancelTask(context.Context, *connect
 
 func (UnimplementedAgentTaskServiceHandler) WatchTaskEvents(context.Context, *connect.Request[v1.WatchTaskEventsRequest], *connect.ServerStream[v1.WatchTaskEventsResponse]) error {
 	return connect.NewError(connect.CodeUnimplemented, errors.New("workos.agent.v1.AgentTaskService.WatchTaskEvents is not implemented"))
+}
+
+// AgentRepairTaskServiceClient is a client for the workos.agent.v1.AgentRepairTaskService service.
+type AgentRepairTaskServiceClient interface {
+	CreateRepairTask(context.Context, *connect.Request[v1.CreateRepairTaskRequest]) (*connect.Response[v1.CreateRepairTaskResponse], error)
+}
+
+// NewAgentRepairTaskServiceClient constructs a client for the
+// workos.agent.v1.AgentRepairTaskService service. By default, it uses the Connect protocol with the
+// binary Protobuf Codec, asks for gzipped responses, and sends uncompressed requests. To use the
+// gRPC or gRPC-Web protocols, supply the connect.WithGRPC() or connect.WithGRPCWeb() options.
+//
+// The URL supplied here should be the base URL for the Connect or gRPC server (for example,
+// http://api.acme.com or https://acme.com/grpc).
+func NewAgentRepairTaskServiceClient(httpClient connect.HTTPClient, baseURL string, opts ...connect.ClientOption) AgentRepairTaskServiceClient {
+	baseURL = strings.TrimRight(baseURL, "/")
+	agentRepairTaskServiceMethods := v1.File_workos_agent_v1_agent_proto.Services().ByName("AgentRepairTaskService").Methods()
+	return &agentRepairTaskServiceClient{
+		createRepairTask: connect.NewClient[v1.CreateRepairTaskRequest, v1.CreateRepairTaskResponse](
+			httpClient,
+			baseURL+AgentRepairTaskServiceCreateRepairTaskProcedure,
+			connect.WithSchema(agentRepairTaskServiceMethods.ByName("CreateRepairTask")),
+			connect.WithClientOptions(opts...),
+		),
+	}
+}
+
+// agentRepairTaskServiceClient implements AgentRepairTaskServiceClient.
+type agentRepairTaskServiceClient struct {
+	createRepairTask *connect.Client[v1.CreateRepairTaskRequest, v1.CreateRepairTaskResponse]
+}
+
+// CreateRepairTask calls workos.agent.v1.AgentRepairTaskService.CreateRepairTask.
+func (c *agentRepairTaskServiceClient) CreateRepairTask(ctx context.Context, req *connect.Request[v1.CreateRepairTaskRequest]) (*connect.Response[v1.CreateRepairTaskResponse], error) {
+	return c.createRepairTask.CallUnary(ctx, req)
+}
+
+// AgentRepairTaskServiceHandler is an implementation of the workos.agent.v1.AgentRepairTaskService
+// service.
+type AgentRepairTaskServiceHandler interface {
+	CreateRepairTask(context.Context, *connect.Request[v1.CreateRepairTaskRequest]) (*connect.Response[v1.CreateRepairTaskResponse], error)
+}
+
+// NewAgentRepairTaskServiceHandler builds an HTTP handler from the service implementation. It
+// returns the path on which to mount the handler and the handler itself.
+//
+// By default, handlers support the Connect, gRPC, and gRPC-Web protocols with the binary Protobuf
+// and JSON codecs. They also support gzip compression.
+func NewAgentRepairTaskServiceHandler(svc AgentRepairTaskServiceHandler, opts ...connect.HandlerOption) (string, http.Handler) {
+	agentRepairTaskServiceMethods := v1.File_workos_agent_v1_agent_proto.Services().ByName("AgentRepairTaskService").Methods()
+	agentRepairTaskServiceCreateRepairTaskHandler := connect.NewUnaryHandler(
+		AgentRepairTaskServiceCreateRepairTaskProcedure,
+		svc.CreateRepairTask,
+		connect.WithSchema(agentRepairTaskServiceMethods.ByName("CreateRepairTask")),
+		connect.WithHandlerOptions(opts...),
+	)
+	return "/workos.agent.v1.AgentRepairTaskService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case AgentRepairTaskServiceCreateRepairTaskProcedure:
+			agentRepairTaskServiceCreateRepairTaskHandler.ServeHTTP(w, r)
+		default:
+			http.NotFound(w, r)
+		}
+	})
+}
+
+// UnimplementedAgentRepairTaskServiceHandler returns CodeUnimplemented from all methods.
+type UnimplementedAgentRepairTaskServiceHandler struct{}
+
+func (UnimplementedAgentRepairTaskServiceHandler) CreateRepairTask(context.Context, *connect.Request[v1.CreateRepairTaskRequest]) (*connect.Response[v1.CreateRepairTaskResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("workos.agent.v1.AgentRepairTaskService.CreateRepairTask is not implemented"))
 }

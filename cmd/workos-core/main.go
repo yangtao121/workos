@@ -299,6 +299,9 @@ func run(logger *slog.Logger) error {
 	if err != nil {
 		return err
 	}
+	repairTaskPath, repairTaskHandler := orchestrationtransport.NewRepairTaskHandler(taskRouter)
+	mux.Handle(repairTaskPath, identity.Middleware(repairTaskHandler))
+
 	agentPath, agentHandler := agentv1connect.NewAgentTaskServiceHandler(agenttransport.New(agentService, taskRouter))
 	mux.Handle(agentPath, identity.Middleware(agentHandler))
 	policyPath, policyHandler := agenttransport.NewPolicyConnectHandler(policyService)

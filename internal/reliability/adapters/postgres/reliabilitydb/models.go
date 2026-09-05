@@ -20,6 +20,16 @@ type WorkosReliabilityIncidentAction struct {
 	UpdatedAt        time.Time   `json:"updated_at"`
 }
 
+type WorkosReliabilityRepairLedger struct {
+	IncidentID string    `json:"incident_id"`
+	ProjectID  string    `json:"project_id"`
+	TaskID     string    `json:"task_id"`
+	State      string    `json:"state"`
+	Attempts   int32     `json:"attempts"`
+	CreatedAt  time.Time `json:"created_at"`
+	UpdatedAt  time.Time `json:"updated_at"`
+}
+
 type WorkosReliabilitySupervisorCheckpoint struct {
 	ID         string    `json:"id"`
 	LastPollAt time.Time `json:"last_poll_at"`

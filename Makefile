@@ -536,6 +536,20 @@ test-telemetry: e2e-image
 		$(GO_HOST_RUN) go test -tags='integration telemetryfixture' -count=1 -run '^TestTelemetryPipeline$$' -v ./tests/integration; \
 		echo "test-telemetry: PASS"
 
+# The repair/deployment gate (ADR-0016 sections 5-6): the fixture-engine
+# supervision chain produces a real incident, the reliability repair
+# orchestrator submits the repair task through Core's private admission RPC
+# (standard queue/lease/terminal chain), and the incident projects the
+# repair task idempotently.
+test-repair-deployment: e2e-image
+	@set -eu; \
+		mkdir -p tmp; \
+		printf '# fake engine scenario (ADR-0016): name=ok|crash|oom|flap\n' > tmp/fake-engine-scenario.conf; \
+		WORKOS_UID="$$(id -u)" WORKOS_GID="$$(id -g)" \
+		docker compose -f compose.yaml -f deploy/compose.supervision.yaml up -d --build --force-recreate postgres bootstrap workos-core harness-host runtime-host reliability-host workos-gateway; \
+		$(GO_HOST_RUN) go test -tags='integration repairdeployment' -count=1 -run '^TestRepairOrchestratorTurnsIncidentIntoTask$$' -v ./tests/integration; \
+		echo "test-repair-deployment: PASS"
+
 e2e-image:
 	docker build \
 		--build-arg DEBIAN_MIRROR=$(DEBIAN_MIRROR) \

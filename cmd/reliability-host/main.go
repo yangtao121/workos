@@ -71,6 +71,15 @@ func run(logger *slog.Logger) error {
 	incidentPath, incidentHandler := transport.NewIncidentConnectHandlerWithTelemetry(incidentService, telemetryAggregator)
 	mux.Handle(incidentPath, identity.Middleware(incidentHandler))
 
+	// The repair orchestrator (ADR-0016 §5): bounded passes turn open
+	// incidents into ordinary Agent repair tasks on Core, idempotently
+	// anchored by the per-incident ledger.
+	repairSubmitter := transport.NewRepairSubmitterClient(cfg.Services.Core)
+	repairOrchestrator, err := application.NewRepairOrchestrator(repository, repairSubmitter)
+	if err != nil {
+		return err
+	}
+
 	// The private incident notification publication source (ADR-0014): the
 	// Core notification consumer claims completed-at-least-once publications
 	// here. It never enters the gateway allowlist, so browsers and apps
@@ -115,6 +124,17 @@ func run(logger *slog.Logger) error {
 					logger.Warn("supervision poll pending", "error", err)
 				}
 				cancel()
+
+				// The repair pass rides the same cadence: bounded, one
+				// repair task per open incident, idempotent (ADR-0016 §5).
+				repairCtx, repairCancel := context.WithTimeout(ctx, cfg.Reliability.PollTimeout)
+				submitted, passErr := repairOrchestrator.RunPass(repairCtx, 4)
+				if passErr != nil {
+					logger.Warn("repair pass pending", "error", passErr)
+				} else if submitted > 0 {
+					logger.Info("repair pass submitted tasks", "count", submitted)
+				}
+				repairCancel()
 			}
 		}
 	}()
@@ -122,7 +142,7 @@ func run(logger *slog.Logger) error {
 	systemPath, systemHandler := commonv1connect.NewSystemServiceHandler(systemhandler.New("reliability-host", commonv1.HealthState_HEALTH_STATE_DEGRADED,
 		&commonv1.FeatureCapability{Id: "supervisor", Available: false, Reason: "implemented but awaiting real observation-to-action E2E evidence"},
 		&commonv1.FeatureCapability{Id: "incident-manager", Available: false, Reason: "implemented but awaiting real incident lifecycle E2E evidence"},
-		&commonv1.FeatureCapability{Id: "repair-orchestrator", Available: false, Reason: "contract only"},
+		&commonv1.FeatureCapability{Id: "repair-orchestrator", Available: true, Reason: "incident-driven repair tasks on the standard task chain"},
 		&commonv1.FeatureCapability{Id: "deployment-controller", Available: false, Reason: "contract only"},
 	))
 	mux.Handle(systemPath, systemHandler)

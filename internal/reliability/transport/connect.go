@@ -123,6 +123,7 @@ func incidentToProto(incident domain.Incident) *incidentv1.Incident {
 		WorkloadGeneration: incident.WorkloadGeneration,
 		Revision:           incident.Revision,
 		RestartOutcome:     outcomeProto(incident.RestartOutcome),
+		RepairTaskId:       incident.RepairTaskID,
 	}
 	if incident.AcknowledgedAt != nil {
 		proto.AcknowledgedAt = timestamp(*incident.AcknowledgedAt)

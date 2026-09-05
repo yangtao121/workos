@@ -18,6 +18,7 @@ import (
 
 	"github.com/yangtao121/workos/internal/platform/dbtransient"
 	"github.com/yangtao121/workos/internal/reliability/adapters/postgres/reliabilitydb"
+	"github.com/yangtao121/workos/internal/reliability/application"
 	"github.com/yangtao121/workos/internal/reliability/domain"
 	"github.com/yangtao121/workos/internal/reliability/ports"
 )
@@ -359,45 +360,55 @@ func incidentFromRow(row any) domain.Incident {
 			value.AppInstanceID, value.AppID, value.WorkloadID, value.WorkloadGeneration,
 			value.Violation, value.Summary, value.OccurrenceDigest, value.EvidenceDigest,
 			value.State, value.RestartOutcome, value.Revision,
-			value.AcknowledgedAt, value.MitigatedAt, value.ResolvedAt, value.CreatedAt, value.UpdatedAt)
+			value.AcknowledgedAt, value.MitigatedAt, value.ResolvedAt, value.CreatedAt, value.UpdatedAt, uuidPtr(value.RepairTaskID))
 		incident.AcknowledgeKey = value.AcknowledgeKey.String
 	case reliabilitydb.GetIncidentByOccurrenceRow:
 		incident = incidentFromColumns(value.ID, value.OwnerUserID, value.ProjectID,
 			value.AppInstanceID, value.AppID, value.WorkloadID, value.WorkloadGeneration,
 			value.Violation, value.Summary, value.OccurrenceDigest, value.EvidenceDigest,
 			value.State, value.RestartOutcome, value.Revision,
-			value.AcknowledgedAt, value.MitigatedAt, value.ResolvedAt, value.CreatedAt, value.UpdatedAt)
+			value.AcknowledgedAt, value.MitigatedAt, value.ResolvedAt, value.CreatedAt, value.UpdatedAt, uuidPtr(value.RepairTaskID))
 		incident.AcknowledgeKey = value.AcknowledgeKey.String
 	case reliabilitydb.ListIncidentsPageRow:
 		incident = incidentFromColumns(value.ID, value.OwnerUserID, value.ProjectID,
 			value.AppInstanceID, value.AppID, value.WorkloadID, value.WorkloadGeneration,
 			value.Violation, value.Summary, value.OccurrenceDigest, value.EvidenceDigest,
 			value.State, value.RestartOutcome, value.Revision,
-			value.AcknowledgedAt, value.MitigatedAt, value.ResolvedAt, value.CreatedAt, value.UpdatedAt)
+			value.AcknowledgedAt, value.MitigatedAt, value.ResolvedAt, value.CreatedAt, value.UpdatedAt, uuidPtr(value.RepairTaskID))
 		incident.AcknowledgeKey = value.AcknowledgeKey.String
 	case reliabilitydb.ListOpenIncidentsForWorkloadRow:
 		incident = incidentFromColumns(value.ID, value.OwnerUserID, value.ProjectID,
 			value.AppInstanceID, value.AppID, value.WorkloadID, value.WorkloadGeneration,
 			value.Violation, value.Summary, value.OccurrenceDigest, value.EvidenceDigest,
 			value.State, value.RestartOutcome, value.Revision,
-			value.AcknowledgedAt, value.MitigatedAt, value.ResolvedAt, value.CreatedAt, value.UpdatedAt)
+			value.AcknowledgedAt, value.MitigatedAt, value.ResolvedAt, value.CreatedAt, value.UpdatedAt, uuidPtr(value.RepairTaskID))
 		incident.AcknowledgeKey = value.AcknowledgeKey.String
 	case reliabilitydb.ListPendingActionIncidentsRow:
 		incident = incidentFromColumns(value.ID, value.OwnerUserID, value.ProjectID,
 			value.AppInstanceID, value.AppID, value.WorkloadID, value.WorkloadGeneration,
 			value.Violation, value.Summary, value.OccurrenceDigest, value.EvidenceDigest,
 			value.State, value.RestartOutcome, value.Revision,
-			value.AcknowledgedAt, value.MitigatedAt, value.ResolvedAt, value.CreatedAt, value.UpdatedAt)
+			value.AcknowledgedAt, value.MitigatedAt, value.ResolvedAt, value.CreatedAt, value.UpdatedAt, uuidPtr(value.RepairTaskID))
 		incident.AcknowledgeKey = value.AcknowledgeKey.String
 	case reliabilitydb.ListMitigatedIncidentsForWorkloadRow:
 		incident = incidentFromColumns(value.ID, value.OwnerUserID, value.ProjectID,
 			value.AppInstanceID, value.AppID, value.WorkloadID, value.WorkloadGeneration,
 			value.Violation, value.Summary, value.OccurrenceDigest, value.EvidenceDigest,
 			value.State, value.RestartOutcome, value.Revision,
-			value.AcknowledgedAt, value.MitigatedAt, value.ResolvedAt, value.CreatedAt, value.UpdatedAt)
+			value.AcknowledgedAt, value.MitigatedAt, value.ResolvedAt, value.CreatedAt, value.UpdatedAt, uuidPtr(value.RepairTaskID))
 		incident.AcknowledgeKey = value.AcknowledgeKey.String
 	}
 	return incident
+}
+
+// uuidPtr converts the nullable generated UUID into a pointer for the
+// incident column mapping.
+func uuidPtr(value pgtype.UUID) *uuid.UUID {
+	if !value.Valid {
+		return nil
+	}
+	parsed := uuid.UUID(value.Bytes)
+	return &parsed
 }
 
 func incidentFromColumns(
@@ -405,6 +416,7 @@ func incidentFromColumns(
 	workloadGeneration int64, violation, summary, occurrenceDigest, evidenceDigest,
 	state, restartOutcome string, revision int64,
 	acknowledgedAt, mitigatedAt, resolvedAt *time.Time, createdAt, updatedAt time.Time,
+	repairTaskID *uuid.UUID,
 ) domain.Incident {
 	incident := domain.Incident{
 		ID: id, OwnerUserID: ownerUserID, ProjectID: projectID,
@@ -414,6 +426,9 @@ func incidentFromColumns(
 		OccurrenceDigest: occurrenceDigest, EvidenceDigest: evidenceDigest,
 		State: domain.State(state), RestartOutcome: domain.RestartOutcome(restartOutcome),
 		Revision: revision, CreatedAt: createdAt, UpdatedAt: updatedAt,
+	}
+	if repairTaskID != nil {
+		incident.RepairTaskID = uuid.UUID(*repairTaskID).String()
 	}
 	if acknowledgedAt != nil {
 		incident.AcknowledgedAt = acknowledgedAt
@@ -505,4 +520,56 @@ func (r *Repository) CountPendingIncidentPublications(ctx context.Context) (int6
 		return 0, storeError("count pending incident notification publications", err)
 	}
 	return count, nil
+}
+
+func now() time.Time { return time.Now().UTC() }
+
+// ListRepairCandidates implements the repair orchestrator's source port:
+// open incidents without a repair ledger row, oldest first (ADR-0016 §5).
+func (r *Repository) ListRepairCandidates(ctx context.Context, limit int) ([]application.RepairCandidate, error) {
+	rows, err := r.queries.ListRepairCandidates(ctx, int32(limit))
+	if err != nil {
+		return nil, storeError("list repair candidates", err)
+	}
+	candidates := make([]application.RepairCandidate, 0, len(rows))
+	for _, row := range rows {
+		candidates = append(candidates, application.RepairCandidate{
+			IncidentID: row.ID, OwnerUserID: row.OwnerUserID,
+			ProjectID: row.ProjectID, Summary: row.Summary,
+		})
+	}
+	return candidates, nil
+}
+
+// RecordRepairSubmitted implements the source port: idempotent ledger insert
+// plus the incident's repair-task projection, in one transaction.
+func (r *Repository) RecordRepairSubmitted(ctx context.Context, candidate application.RepairCandidate, taskID string) error {
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return storeError("begin repair record", err)
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck -- explicit commit or classified failure
+	queries := r.queries.WithTx(tx)
+	now := time.Now().UTC()
+	inserted, err := queries.InsertRepairLedger(ctx, reliabilitydb.InsertRepairLedgerParams{
+		IncidentID: candidate.IncidentID, ProjectID: candidate.ProjectID,
+		TaskID: taskID, CreatedAt: now,
+	})
+	if err != nil {
+		return storeError("insert repair ledger", err)
+	}
+	if inserted == 0 {
+		// A concurrent orchestrator won the incident: replay is success.
+		return tx.Commit(ctx)
+	}
+	repairTaskID, parseErr := uuid.Parse(taskID)
+	if parseErr != nil {
+		return storeError("parse repair task id", parseErr)
+	}
+	if _, err := queries.UpdateIncidentRepairTask(ctx, reliabilitydb.UpdateIncidentRepairTaskParams{
+		RepairTaskID: pgtype.UUID{Bytes: repairTaskID, Valid: true}, ID: candidate.IncidentID,
+	}); err != nil {
+		return storeError("project repair task on incident", err)
+	}
+	return tx.Commit(ctx)
 }

@@ -54,6 +54,9 @@ message Incident {
   google.protobuf.Timestamp mitigated_at = 18;
   google.protobuf.Timestamp resolved_at = 19;
   IncidentRestartOutcome restart_outcome = 20;
+  // The Agent repair task this incident produced (ADR-0016 section 5), when
+  // the repair orchestrator has submitted one. Empty until then.
+  string repair_task_id = 21;
 }
 
 message GetIncidentRequest {

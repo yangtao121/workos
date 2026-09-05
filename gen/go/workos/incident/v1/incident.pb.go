@@ -330,8 +330,11 @@ type Incident struct {
 	MitigatedAt    *timestamppb.Timestamp `protobuf:"bytes,18,opt,name=mitigated_at,json=mitigatedAt,proto3" json:"mitigated_at,omitempty"`
 	ResolvedAt     *timestamppb.Timestamp `protobuf:"bytes,19,opt,name=resolved_at,json=resolvedAt,proto3" json:"resolved_at,omitempty"`
 	RestartOutcome IncidentRestartOutcome `protobuf:"varint,20,opt,name=restart_outcome,json=restartOutcome,proto3,enum=workos.incident.v1.IncidentRestartOutcome" json:"restart_outcome,omitempty"`
-	unknownFields  protoimpl.UnknownFields
-	sizeCache      protoimpl.SizeCache
+	// The Agent repair task this incident produced (ADR-0016 section 5), when
+	// the repair orchestrator has submitted one. Empty until then.
+	RepairTaskId  string `protobuf:"bytes,21,opt,name=repair_task_id,json=repairTaskId,proto3" json:"repair_task_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *Incident) Reset() {
@@ -502,6 +505,13 @@ func (x *Incident) GetRestartOutcome() IncidentRestartOutcome {
 		return x.RestartOutcome
 	}
 	return IncidentRestartOutcome_INCIDENT_RESTART_OUTCOME_UNSPECIFIED
+}
+
+func (x *Incident) GetRepairTaskId() string {
+	if x != nil {
+		return x.RepairTaskId
+	}
+	return ""
 }
 
 type GetIncidentRequest struct {
@@ -992,7 +1002,7 @@ const file_workos_incident_v1_incident_proto_rawDesc = "" +
 	"\vEvidenceRef\x12\x12\n" +
 	"\x04type\x18\x01 \x01(\tR\x04type\x12\x10\n" +
 	"\x03ref\x18\x02 \x01(\tR\x03ref\x12\x16\n" +
-	"\x06digest\x18\x03 \x01(\tR\x06digest\"\xca\a\n" +
+	"\x06digest\x18\x03 \x01(\tR\x06digest\"\xf0\a\n" +
 	"\bIncident\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x1f\n" +
 	"\vworkload_id\x18\x02 \x01(\tR\n" +
@@ -1019,7 +1029,8 @@ const file_workos_incident_v1_incident_proto_rawDesc = "" +
 	"\fmitigated_at\x18\x12 \x01(\v2\x1a.google.protobuf.TimestampR\vmitigatedAt\x12;\n" +
 	"\vresolved_at\x18\x13 \x01(\v2\x1a.google.protobuf.TimestampR\n" +
 	"resolvedAt\x12S\n" +
-	"\x0frestart_outcome\x18\x14 \x01(\x0e2*.workos.incident.v1.IncidentRestartOutcomeR\x0erestartOutcome\"5\n" +
+	"\x0frestart_outcome\x18\x14 \x01(\x0e2*.workos.incident.v1.IncidentRestartOutcomeR\x0erestartOutcome\x12$\n" +
+	"\x0erepair_task_id\x18\x15 \x01(\tR\frepairTaskId\"5\n" +
 	"\x12GetIncidentRequest\x12\x1f\n" +
 	"\vincident_id\x18\x01 \x01(\tR\n" +
 	"incidentId\"h\n" +
