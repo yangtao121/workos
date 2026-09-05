@@ -281,7 +281,9 @@ function createBridge(
         reject(new BridgeProtocolError("timeout"));
       }, timeoutMs);
       pending.set(requestId, {
-        resolve: (value) => resolve(value as Parameters<typeof resolve>[0]),
+        resolve: (value) => {
+          resolve(value as Parameters<typeof resolve>[0]);
+        },
         reject,
         onEvent,
         timer,
@@ -444,21 +446,31 @@ function createBridge(
        * session.
        */
       async current(): Promise<AppProjectCurrentResult> {
-        const result = (await call("project.current", {})) as unknown as AppProjectCurrentResult;
-        if (!result || !result.projectId) {
+        const result = (await call("project.current", {})) as unknown;
+        if (
+          typeof result !== "object" ||
+          result === null ||
+          !("projectId" in result) ||
+          typeof (result as { projectId?: unknown }).projectId !== "string"
+        ) {
           throw new BridgeProtocolError("internal");
         }
-        return result;
+        return result as AppProjectCurrentResult;
       },
     },
     theme: {
       /** Returns the shell's active color scheme. */
       async get(): Promise<{ scheme: "light" | "dark" }> {
-        const result = (await call("theme.get", {})) as unknown as { scheme: "light" | "dark" };
-        if (!result || !result.scheme) {
+        const result = (await call("theme.get", {})) as unknown;
+        if (
+          typeof result !== "object" ||
+          result === null ||
+          !("scheme" in result) ||
+          typeof (result as { scheme?: unknown }).scheme !== "string"
+        ) {
           throw new BridgeProtocolError("internal");
         }
-        return result;
+        return result as { scheme: "light" | "dark" };
       },
     },
     window: {
