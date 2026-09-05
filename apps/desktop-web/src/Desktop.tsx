@@ -616,7 +616,7 @@ export function Desktop({
           surfaceSessionId: session.id,
           url: session.url,
           projectId: session.projectId,
-          renderer: SurfaceRenderer[session.renderer] ?? undefined,
+          renderer: SurfaceRenderer[session.renderer],
         },
         // The app window opens over the launch area, beside — not on top of —
         // the Agent Center window, so approvals and usage stay reachable while
