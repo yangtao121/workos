@@ -33,6 +33,13 @@ type Config struct {
 	Indexer     Indexer     `yaml:"indexer"`
 	Reliability Reliability `yaml:"reliability"`
 	Telemetry   Telemetry   `yaml:"telemetry"`
+	Push        Push        `yaml:"push"`
+}
+
+// Push is read only by Core. A missing dedicated VAPID key disables Web Push.
+type Push struct {
+	PrivateKeyFile string `yaml:"private_key_file"`
+	Subject        string `yaml:"subject"`
 }
 
 // Reliability configures the supervisor loop: the poll cadence, the stable
@@ -286,6 +293,8 @@ func Load() (Config, error) {
 	setString(&cfg.Auth.PublicOrigin, "WORKOS_AUTH_PUBLIC_ORIGIN")
 	setString(&cfg.Auth.AdminSocketPath, "WORKOS_AUTH_ADMIN_SOCKET")
 	setString(&cfg.Credential.MasterKeyFile, "WORKOS_CREDENTIAL_MASTER_KEY_FILE")
+	setString(&cfg.Push.PrivateKeyFile, "WORKOS_PUSH_PRIVATE_KEY_FILE")
+	setString(&cfg.Push.Subject, "WORKOS_PUSH_SUBJECT")
 	setString(&cfg.Credential.AdminSocketPath, "WORKOS_CREDENTIAL_ADMIN_SOCKET")
 	setString(&cfg.Execution.Address, "WORKOS_CORE_EXECUTION_ADDRESS")
 	setString(&cfg.Execution.CAFile, "WORKOS_CORE_EXECUTION_CA_FILE")

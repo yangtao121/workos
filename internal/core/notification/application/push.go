@@ -59,12 +59,28 @@ func (s *PushService) Subscribe(ctx context.Context, deviceID, platform, endpoin
 		!domain.ValidPushKey(p256dh) || !domain.ValidPushKey(authSecret) {
 		return domain.ErrPushInvalid
 	}
+	if platform == domain.PushPlatformWebPush {
+		if !domain.ValidWebPushKeys(p256dh, authSecret) {
+			return domain.ErrPushInvalid
+		}
+		if s.PublicKey() == "" {
+			return domain.ErrPushUnavailable
+		}
+	}
 	now := time.Now().UTC()
 	return s.store.UpsertPushSubscription(ctx, domain.PushSubscription{
 		OwnerUserID: owner, DeviceID: deviceID, Platform: platform,
 		Endpoint: endpoint, P256DH: p256dh, AuthSecret: authSecret,
 		Status: domain.PushActive, CreatedAt: now, UpdatedAt: now,
 	})
+}
+
+// Only the public subscription key crosses the transport boundary.
+func (s *PushService) PublicKey() string {
+	if sender, ok := s.senders[domain.PushPlatformWebPush].(interface{ PublicKey() string }); ok {
+		return sender.PublicKey()
+	}
+	return ""
 }
 
 // Unsubscribe revokes one device registration; revoking an unknown or
@@ -95,13 +111,10 @@ func (s *PushService) SetPreferences(ctx context.Context, quiet domain.QuietHour
 	if err != nil {
 		return domain.QuietHours{}, err
 	}
-	if !domain.ValidQuietClock(quiet.Start) || !domain.ValidQuietClock(quiet.End) {
+	if quiet.Revision < 0 || !domain.ValidQuietClock(quiet.Start) || !domain.ValidQuietClock(quiet.End) {
 		return domain.QuietHours{}, domain.ErrPushInvalid
 	}
-	if err := s.store.SavePushPreferences(ctx, owner, quiet, time.Now().UTC()); err != nil {
-		return domain.QuietHours{}, err
-	}
-	return quiet, nil
+	return s.store.SavePushPreferences(ctx, owner, quiet, time.Now().UTC())
 }
 
 // Pass delivers a bounded leased batch. Success is recorded only after the
@@ -113,7 +126,10 @@ func (s *PushService) Pass(ctx context.Context) error {
 		return err
 	}
 	for _, delivery := range deliveries {
-		sub := delivery.Subscription
+		sub, err := s.store.PushSubscriptionFor(ctx, delivery.Subscription.OwnerUserID, delivery.Subscription.DeviceID, delivery.Subscription.Platform)
+		if err != nil {
+			return err
+		}
 		quiet, err := s.store.PushPreferencesFor(ctx, sub.OwnerUserID)
 		if err != nil {
 			return err
@@ -129,7 +145,12 @@ func (s *PushService) Pass(ctx context.Context) error {
 				sendErr = sender.Deliver(sendCtx, sub, domain.PushPayload{NotificationID: delivery.NotificationID})
 				cancel()
 			}
-			if sendErr == nil {
+			if errors.Is(sendErr, domain.ErrPushExpired) {
+				if err := s.store.RevokePushSubscription(ctx, sub.OwnerUserID, sub.DeviceID, sub.Platform, time.Now().UTC()); err != nil {
+					return err
+				}
+				state = "suppressed"
+			} else if sendErr == nil {
 				state = "delivered"
 			} else {
 				// Egress errors may contain subscription URLs or credentials.

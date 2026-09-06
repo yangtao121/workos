@@ -49,7 +49,7 @@ type Querier interface {
 	MarkNotificationRead(ctx context.Context, arg MarkNotificationReadParams) (int64, error)
 	MaxChangeSequenceForNotifications(ctx context.Context, ids []string) ([]MaxChangeSequenceForNotificationsRow, error)
 	PushPreferencesFor(ctx context.Context, ownerUserID string) (WorkosCorePushPreference, error)
-	PushPreferencesUpsert(ctx context.Context, arg PushPreferencesUpsertParams) error
+	PushPreferencesUpsert(ctx context.Context, arg PushPreferencesUpsertParams) (int64, error)
 	RevokePushSubscription(ctx context.Context, arg RevokePushSubscriptionParams) (int64, error)
 	// Bounded sweep: only already-read notifications older than the cutoff are
 	// candidates. Recent unread facts are never swept.

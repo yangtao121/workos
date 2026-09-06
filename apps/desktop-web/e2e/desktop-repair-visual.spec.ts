@@ -1,59 +1,7 @@
+import { desktopFixture } from "./desktop-fixture.js";
 import { expect, test, type Page } from "@playwright/test";
 
 const captureDir = process.env.WORKOS_CAPTURE_DIR;
-const projectId = "01999999-9999-7999-8999-000000000001";
-const projects = [
-  { id: projectId, name: "Studio", icon: "S", revision: "3", installedAppIds: [] },
-  {
-    id: "01999999-9999-7999-8999-000000000002",
-    name: "Field notes",
-    icon: "F",
-    revision: "1",
-    installedAppIds: [],
-  },
-];
-
-async function fixture(page: Page) {
-  await page.clock.setFixedTime(new Date("2026-09-06T09:00:00Z"));
-  await page.route("**/workos.*/**", async (route) => {
-    const path = new URL(route.request().url()).pathname;
-    if (path.includes("workos.auth.")) {
-      await route.fulfill({
-        status: 404,
-        contentType: "application/json",
-        body: JSON.stringify({ code: "unimplemented", message: "fixture auth bypass" }),
-      });
-      return;
-    }
-    const method = path.split("/").at(-1);
-    const responses: Record<string, unknown> = {
-      ListProjects: { projects },
-      GetProject: { project: projects[0] },
-      GetHarnessCatalog: { providers: [], defaultProviderId: "" },
-      ListInstalledApps: { installations: [] },
-      ListApps: { apps: [] },
-      ListArtifacts: { artifacts: [] },
-      SearchHybrid: { hits: [], freshness: { caughtUp: true } },
-      ListNotifications: {
-        notifications: [],
-        unreadCount: "0",
-        snapshotRevision: "0",
-        incidentSourceReady: true,
-      },
-      GetCapabilities: { capabilities: [] },
-      ListIncidents: { incidents: [] },
-      GetTelemetrySummary: { services: [] },
-    };
-    if (method === "WatchNotifications") {
-      await route.abort();
-      return;
-    }
-    await route.fulfill({
-      contentType: "application/json",
-      body: JSON.stringify(responses[method ?? ""] ?? {}),
-    });
-  });
-}
 async function open(page: Page, label: string) {
   await page.keyboard.press("ControlOrMeta+k");
   await page.getByLabel("Search commands").fill(label);
@@ -71,7 +19,7 @@ for (const [width, height] of [
       return;
     }
     await page.setViewportSize({ width: width, height: height });
-    await fixture(page);
+    await desktopFixture(page);
     await page.goto("/");
     if (width === 820) await page.getByTestId("open-agent-slideover").click();
     else if (width < 1024)

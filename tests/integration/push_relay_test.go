@@ -5,6 +5,7 @@ package integration_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"testing"
 	"time"
 
@@ -162,14 +163,20 @@ func TestPushRelay(t *testing.T) {
 	state(second.ID, deviceB, "suppressed")
 
 	quiet := domain.QuietHours{Enabled: true, Start: "00:00", End: "00:00"}
-	if _, err := service.SetPreferences(ownerCtx, quiet); err != nil {
+	if quiet, err = service.SetPreferences(ownerCtx, quiet); err != nil {
 		t.Fatal(err)
 	}
 	third := fact(owner)
 	appendFact(third, true)
 	quiet.Enabled = false
-	if _, err := service.SetPreferences(ownerCtx, quiet); err != nil {
+	if quiet, err = service.SetPreferences(ownerCtx, quiet); err != nil {
 		t.Fatal(err)
+	}
+	stale := quiet
+	stale.Revision--
+	stale.Enabled = true
+	if _, err := service.SetPreferences(ownerCtx, stale); !errors.Is(err, domain.ErrPushConflict) {
+		t.Fatalf("stale quiet preference overwrote latest: %v", err)
 	}
 	pass()
 	count(3)

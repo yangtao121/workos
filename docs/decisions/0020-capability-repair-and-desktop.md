@@ -35,3 +35,9 @@ failed，不冒充实际部署证据。修复任务完成本身不是候选，�
 过期租约可接管，确认必须匹配 claim token。远端接受后本地确认前崩溃可能重复唤醒，
 因此是 at-least-once，接收方按 notification id 去重，不承诺 exactly-once。
 迁移 042 保留旧记录为 unknown；旧发送时间不能证明投递成功。
+
+Web Push 使用 [RFC 8291](https://www.rfc-editor.org/rfc/rfc8291) 单记录加密与
+[RFC 8292](https://www.rfc-editor.org/rfc/rfc8292) VAPID；认证标识与内容加密使用不同 P-256 密钥。
+持久专用密钥只存在于 Core 的 owner-only 文件，浏览器只接收公开订阅密钥。
+relay 不接受重定向，404/410 撤销失效订阅，其他失败回到 outbox 重试。
+免打扰设置以 migration 043 的 revision 实施并发控制；stale 更新 Aborted，避免多设备静默覆盖。

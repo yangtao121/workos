@@ -387,3 +387,15 @@ device scan --fingerprint`（常量时间指纹校验后输出 origin，接既�
 - [before](../ui/desktop-web/changes/20260906-desktop-repair/before/) / [after](../ui/desktop-web/changes/20260906-desktop-repair/after/) / [notes](../ui/desktop-web/changes/20260906-desktop-repair/notes.md)：固定 fixture 与 1440×900 / 820×1180 / 390×844，三个 Chromium 场景 PASS。
 - 尚需全栈浏览器验收与其他受影响状态截图，R4/R6 保持 active。
 - R5 开始：迁移 042 将通知投递改成同事务 outbox，旧发送尝试保留 unknown；通知模块与 Core 编译/单测、`TestPushRelay` scratch PostgreSQL 全部 PASS；验证事务回滚、发送失败后重建服务重试、租约接管/旧确认拒绝、重放去重、撤销、免打扰与八次失败终止。Web Push 软件链仍待完成。
+
+### R5 Web Push 软件检查点（2026-09-06，active）
+
+- 通知 outbox 已提交 514373e；桌面/知识检查点 7a75d92。
+- `make web-check` PASS；`make test-desktop-system-apps` 5 个真实 Gateway/Core/Chromium 场景 PASS，新增拖动、键盘缩放、吸附/最小化/恢复与 Dock 边界断言。
+- Web Push adapter 使用标准库 P-256、HKDF-SHA256、AES-GCM 和 ES256 VAPID；专用 owner-only key file；公开 RPC 只返回 public key。RFC 8291 标准向量与本地 TLS relay、VAPID 签名/claims、失败/redirect/expired、私钥文件权限测试 PASS。
+- Worker 只接受单一 notificationId，固定提醒文案，同 tag 去重；唤醒后 shell 补收通知、点击打开通知窗口。`push-worker.spec.ts` 在完整 Chromium 的 CDP push driver 下 PASS（headless_shell 无真实通知后端，因此此项指定 channel chromium）。
+- [before](../ui/desktop-web/changes/20260906-push-repair/before/) / [after](../ui/desktop-web/changes/20260906-push-repair/after/) / [notes](../ui/desktop-web/changes/20260906-push-repair/notes.md)：前后各三尺寸 PASS。修复移动顶部铃铛不导航与通知深色文字对比度。
+- 迁移 043 为免打扰设置增加 revision；SetPushPreferences 拒绝 stale revision，UI 加载最新状态供重试。
+- 待验收：真实 Core outbox → 加密 relay fixture → 浏览器 wake 的组合专项门禁；启用/停用失败测试、移动撤销边界；知识/遥测非空视觉证据。R5 尚未 done，不能把各切片测试当成完整远端交付。
+
+- R5 当前检查点 `make check` PASS（Go/proto/TypeScript/lint/unit/build）；完整组合链与其余工作流仍 active。

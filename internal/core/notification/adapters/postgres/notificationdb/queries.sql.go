@@ -1052,7 +1052,7 @@ func (q *Queries) MaxChangeSequenceForNotifications(ctx context.Context, ids []s
 }
 
 const pushPreferencesFor = `-- name: PushPreferencesFor :one
-SELECT owner_user_id, quiet_enabled, quiet_start_utc, quiet_end_utc, updated_at
+SELECT owner_user_id, quiet_enabled, quiet_start_utc, quiet_end_utc, updated_at, revision
 FROM workos_core.push_preferences
 WHERE owner_user_id = $1
 `
@@ -1066,41 +1066,50 @@ func (q *Queries) PushPreferencesFor(ctx context.Context, ownerUserID string) (W
 		&i.QuietStartUtc,
 		&i.QuietEndUtc,
 		&i.UpdatedAt,
+		&i.Revision,
 	)
 	return i, err
 }
 
-const pushPreferencesUpsert = `-- name: PushPreferencesUpsert :exec
+const pushPreferencesUpsert = `-- name: PushPreferencesUpsert :one
 INSERT INTO workos_core.push_preferences (
-    owner_user_id, quiet_enabled, quiet_start_utc, quiet_end_utc, updated_at
-) VALUES (
-    $1, $2,
-    $3, $4, $5
+    owner_user_id, quiet_enabled, quiet_start_utc, quiet_end_utc, updated_at, revision
 )
+SELECT $1, $2, $3,
+       $4, $5, 1
+WHERE $6::bigint = 0
+   OR EXISTS (SELECT 1 FROM workos_core.push_preferences p WHERE p.owner_user_id = $1)
 ON CONFLICT (owner_user_id) DO UPDATE
 SET quiet_enabled = EXCLUDED.quiet_enabled,
     quiet_start_utc = EXCLUDED.quiet_start_utc,
     quiet_end_utc = EXCLUDED.quiet_end_utc,
-    updated_at = EXCLUDED.updated_at
+    updated_at = EXCLUDED.updated_at,
+    revision = workos_core.push_preferences.revision + 1
+WHERE workos_core.push_preferences.revision = $6
+RETURNING revision
 `
 
 type PushPreferencesUpsertParams struct {
-	OwnerUserID   string
-	QuietEnabled  bool
-	QuietStartUtc string
-	QuietEndUtc   string
-	UpdatedAt     time.Time
+	OwnerUserID      string
+	QuietEnabled     bool
+	QuietStartUtc    string
+	QuietEndUtc      string
+	UpdatedAt        time.Time
+	ExpectedRevision int64
 }
 
-func (q *Queries) PushPreferencesUpsert(ctx context.Context, arg PushPreferencesUpsertParams) error {
-	_, err := q.db.Exec(ctx, pushPreferencesUpsert,
+func (q *Queries) PushPreferencesUpsert(ctx context.Context, arg PushPreferencesUpsertParams) (int64, error) {
+	row := q.db.QueryRow(ctx, pushPreferencesUpsert,
 		arg.OwnerUserID,
 		arg.QuietEnabled,
 		arg.QuietStartUtc,
 		arg.QuietEndUtc,
 		arg.UpdatedAt,
+		arg.ExpectedRevision,
 	)
-	return err
+	var revision int64
+	err := row.Scan(&revision)
+	return revision, err
 }
 
 const revokePushSubscription = `-- name: RevokePushSubscription :execrows

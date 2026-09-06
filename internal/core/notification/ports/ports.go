@@ -189,7 +189,8 @@ type PushStore interface {
 	UpsertPushSubscription(ctx context.Context, subscription domain.PushSubscription) error
 	RevokePushSubscription(ctx context.Context, ownerUserID, deviceID, platform string, now time.Time) error
 	ActivePushSubscriptions(ctx context.Context, ownerUserID string) ([]domain.PushSubscription, error)
-	SavePushPreferences(ctx context.Context, ownerUserID string, quiet domain.QuietHours, now time.Time) error
+	PushSubscriptionFor(ctx context.Context, ownerUserID, deviceID, platform string) (domain.PushSubscription, error)
+	SavePushPreferences(ctx context.Context, ownerUserID string, quiet domain.QuietHours, now time.Time) (domain.QuietHours, error)
 	PushPreferencesFor(ctx context.Context, ownerUserID string) (domain.QuietHours, error)
 	ClaimPushDeliveries(ctx context.Context, now time.Time, limit int32) ([]domain.PushDelivery, error)
 	CompletePushDelivery(ctx context.Context, delivery domain.PushDelivery, state string, nextAttempt time.Time) error

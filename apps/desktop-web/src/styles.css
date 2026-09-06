@@ -1808,8 +1808,8 @@ svg {
   gap: 4px;
   width: 100%;
   text-align: left;
-  background: #f4f5f7;
-  border: 1px solid #d1d5db;
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
   border-radius: 8px;
   padding: 10px;
   cursor: pointer;
@@ -1823,7 +1823,7 @@ svg {
 
 .knowledge-excerpt {
   margin: 0;
-  color: #374151;
+  color: var(--muted);
   font-size: 0.9em;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
@@ -1832,7 +1832,7 @@ svg {
 .knowledge-freshness {
   margin: 0;
   color: #efbd85;
-  background: #fef3c7;
+  background: #33291e;
   border-radius: 6px;
   padding: 6px 10px;
 }
@@ -1875,7 +1875,7 @@ svg {
 }
 
 .notification-center {
-  color: #1a1f2e;
+  color: var(--text);
   display: flex;
   flex-direction: column;
   gap: 10px;
@@ -1895,10 +1895,10 @@ svg {
 }
 
 .notification-filter {
-  background: #f7f8fa;
-  border: 1px solid #cfd4dc;
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
   border-radius: 999px;
-  color: #1a1f2e;
+  color: var(--text);
   cursor: pointer;
   font: inherit;
   font-size: 12px;
@@ -1906,8 +1906,8 @@ svg {
 }
 
 .notification-filter.active {
-  background: #1a237e;
-  border-color: #1a237e;
+  background: #294267;
+  border-color: #537cb4;
   color: #fff;
 }
 
@@ -1916,13 +1916,13 @@ svg {
 }
 
 .notification-stream {
-  color: #444;
+  color: var(--muted);
   font-size: 12px;
   margin: 0;
 }
 
 .notification-stream.degraded {
-  color: #8a5a00;
+  color: #efbd85;
 }
 
 .notification-list {
@@ -1937,8 +1937,8 @@ svg {
 
 .notification-item {
   align-items: flex-start;
-  background: #f7f8fa;
-  border: 1px solid #e3e6eb;
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
   border-radius: 10px;
   display: flex;
   gap: 10px;
@@ -1946,8 +1946,8 @@ svg {
 }
 
 .notification-item.unread {
-  background: #eef1fb;
-  border-color: #b9c4ef;
+  background: #24334c;
+  border-color: #537cb4;
 }
 
 .notification-severity {
@@ -1976,19 +1976,19 @@ svg {
 }
 
 .notification-title {
-  color: #10142a;
+  color: var(--text);
   font-weight: 600;
   margin: 0 0 2px;
 }
 
 .notification-origin {
-  color: #5c6bc0;
+  color: var(--accent);
   font-size: 11px;
   font-weight: 500;
 }
 
 .notification-text {
-  color: #4b5563;
+  color: var(--muted);
   font-size: 12px;
   margin: 0;
   overflow-wrap: anywhere;
@@ -1996,7 +1996,7 @@ svg {
 }
 
 .notification-stale {
-  color: #8a5a00;
+  color: #efbd85;
   font-size: 12px;
   margin: 4px 0 0;
 }
@@ -2012,9 +2012,9 @@ svg {
 .telemetry-section {
   margin: 0 0 16px;
   padding: 12px;
-  border: 1px solid var(--workos-border, #d7d2e8);
+  border: 1px solid var(--border);
   border-radius: 8px;
-  background: var(--workos-panel, #faf9fd);
+  background: var(--surface-raised);
 }
 
 .telemetry-head {
@@ -2040,7 +2040,7 @@ svg {
 .telemetry-table td {
   padding: 4px 8px;
   text-align: left;
-  border-bottom: 1px solid var(--workos-border, #e6e2f0);
+  border-bottom: 1px solid var(--border);
 }
 
 .telemetry-table caption {
@@ -2056,7 +2056,7 @@ svg {
   height: 100%;
 }
 .declarative-invalid {
-  color: var(--workos-danger, #a33);
+  color: #ff9c9c;
 }
 .declarative-markdown {
   white-space: pre-wrap;
@@ -2086,7 +2086,7 @@ svg {
   z-index: 400;
 }
 .palette-panel {
-  background: var(--surface, #fff);
+  background: var(--surface);
   border-radius: 10px;
   box-shadow: 0 12px 40px rgba(0, 0, 0, 0.25);
   width: min(560px, 92vw);
@@ -2527,4 +2527,59 @@ svg {
     13px/1.7 ui-monospace,
     monospace;
   color: #cdd8e8;
+}
+
+.notification-preferences {
+  padding: 12px 0;
+  border-bottom: 1px solid var(--border);
+}
+.notification-preferences > button {
+  color: var(--muted);
+  background: transparent;
+  border: 0;
+  padding: 6px 0;
+  cursor: pointer;
+}
+.push-settings {
+  display: grid;
+  gap: 16px;
+  padding: 18px;
+  margin-top: 10px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+.push-settings p {
+  margin: 6px 0 0;
+  color: var(--muted);
+  line-height: 1.6;
+  font-size: 12px;
+}
+.push-settings form {
+  display: grid;
+  gap: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+}
+.push-settings input[type="checkbox"] {
+  width: auto;
+  margin-right: 8px;
+}
+.quiet-hours {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+.quiet-hours label {
+  display: grid;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.workos-window > .notification-center {
+  padding: 20px;
+}
+.notification-preferences {
+  flex-shrink: 0;
 }

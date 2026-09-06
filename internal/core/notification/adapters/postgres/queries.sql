@@ -246,21 +246,25 @@ FROM workos_core.push_subscriptions
 WHERE owner_user_id = sqlc.arg(owner_user_id) AND status = 'active'
 ORDER BY device_id, platform;
 
--- name: PushPreferencesUpsert :exec
+-- name: PushPreferencesUpsert :one
 INSERT INTO workos_core.push_preferences (
-    owner_user_id, quiet_enabled, quiet_start_utc, quiet_end_utc, updated_at
-) VALUES (
-    sqlc.arg(owner_user_id), sqlc.arg(quiet_enabled),
-    sqlc.arg(quiet_start_utc), sqlc.arg(quiet_end_utc), sqlc.arg(updated_at)
+    owner_user_id, quiet_enabled, quiet_start_utc, quiet_end_utc, updated_at, revision
 )
+SELECT sqlc.arg(owner_user_id), sqlc.arg(quiet_enabled), sqlc.arg(quiet_start_utc),
+       sqlc.arg(quiet_end_utc), sqlc.arg(updated_at), 1
+WHERE sqlc.arg(expected_revision)::bigint = 0
+   OR EXISTS (SELECT 1 FROM workos_core.push_preferences p WHERE p.owner_user_id = sqlc.arg(owner_user_id))
 ON CONFLICT (owner_user_id) DO UPDATE
 SET quiet_enabled = EXCLUDED.quiet_enabled,
     quiet_start_utc = EXCLUDED.quiet_start_utc,
     quiet_end_utc = EXCLUDED.quiet_end_utc,
-    updated_at = EXCLUDED.updated_at;
+    updated_at = EXCLUDED.updated_at,
+    revision = workos_core.push_preferences.revision + 1
+WHERE workos_core.push_preferences.revision = sqlc.arg(expected_revision)
+RETURNING revision;
 
 -- name: PushPreferencesFor :one
-SELECT owner_user_id, quiet_enabled, quiet_start_utc, quiet_end_utc, updated_at
+SELECT owner_user_id, quiet_enabled, quiet_start_utc, quiet_end_utc, updated_at, revision
 FROM workos_core.push_preferences
 WHERE owner_user_id = sqlc.arg(owner_user_id);
 

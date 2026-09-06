@@ -1725,6 +1725,7 @@ type PushPreferences struct {
 	// "HH:MM" UTC grammar.
 	QuietStartUtc string `protobuf:"bytes,2,opt,name=quiet_start_utc,json=quietStartUtc,proto3" json:"quiet_start_utc,omitempty"`
 	QuietEndUtc   string `protobuf:"bytes,3,opt,name=quiet_end_utc,json=quietEndUtc,proto3" json:"quiet_end_utc,omitempty"`
+	Revision      int64  `protobuf:"varint,4,opt,name=revision,proto3" json:"revision,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1780,6 +1781,13 @@ func (x *PushPreferences) GetQuietEndUtc() string {
 	return ""
 }
 
+func (x *PushPreferences) GetRevision() int64 {
+	if x != nil {
+		return x.Revision
+	}
+	return 0
+}
+
 type GetPushPreferencesRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	unknownFields protoimpl.UnknownFields
@@ -1817,10 +1825,13 @@ func (*GetPushPreferencesRequest) Descriptor() ([]byte, []int) {
 }
 
 type GetPushPreferencesResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Preferences   *PushPreferences       `protobuf:"bytes,1,opt,name=preferences,proto3" json:"preferences,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state       protoimpl.MessageState `protogen:"open.v1"`
+	Preferences *PushPreferences       `protobuf:"bytes,1,opt,name=preferences,proto3" json:"preferences,omitempty"`
+	// Public VAPID subscription key only. Empty means Web Push is unavailable.
+	WebPushPublicKey         string `protobuf:"bytes,2,opt,name=web_push_public_key,json=webPushPublicKey,proto3" json:"web_push_public_key,omitempty"`
+	WebPushUnavailableReason string `protobuf:"bytes,3,opt,name=web_push_unavailable_reason,json=webPushUnavailableReason,proto3" json:"web_push_unavailable_reason,omitempty"`
+	unknownFields            protoimpl.UnknownFields
+	sizeCache                protoimpl.SizeCache
 }
 
 func (x *GetPushPreferencesResponse) Reset() {
@@ -1860,11 +1871,27 @@ func (x *GetPushPreferencesResponse) GetPreferences() *PushPreferences {
 	return nil
 }
 
+func (x *GetPushPreferencesResponse) GetWebPushPublicKey() string {
+	if x != nil {
+		return x.WebPushPublicKey
+	}
+	return ""
+}
+
+func (x *GetPushPreferencesResponse) GetWebPushUnavailableReason() string {
+	if x != nil {
+		return x.WebPushUnavailableReason
+	}
+	return ""
+}
+
 type SetPushPreferencesRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Preferences   *PushPreferences       `protobuf:"bytes,1,opt,name=preferences,proto3" json:"preferences,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state       protoimpl.MessageState `protogen:"open.v1"`
+	Preferences *PushPreferences       `protobuf:"bytes,1,opt,name=preferences,proto3" json:"preferences,omitempty"`
+	// Zero creates preferences; stale updates are Aborted.
+	ExpectedRevision int64 `protobuf:"varint,2,opt,name=expected_revision,json=expectedRevision,proto3" json:"expected_revision,omitempty"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
 }
 
 func (x *SetPushPreferencesRequest) Reset() {
@@ -1902,6 +1929,13 @@ func (x *SetPushPreferencesRequest) GetPreferences() *PushPreferences {
 		return x.Preferences
 	}
 	return nil
+}
+
+func (x *SetPushPreferencesRequest) GetExpectedRevision() int64 {
+	if x != nil {
+		return x.ExpectedRevision
+	}
+	return 0
 }
 
 type SetPushPreferencesResponse struct {
@@ -2050,16 +2084,20 @@ const file_workos_notification_v1_notification_proto_rawDesc = "" +
 	"\x16UnsubscribePushRequest\x12\x1b\n" +
 	"\tdevice_id\x18\x01 \x01(\tR\bdeviceId\x12\x1a\n" +
 	"\bplatform\x18\x02 \x01(\tR\bplatform\"\x19\n" +
-	"\x17UnsubscribePushResponse\"\x82\x01\n" +
+	"\x17UnsubscribePushResponse\"\x9e\x01\n" +
 	"\x0fPushPreferences\x12#\n" +
 	"\rquiet_enabled\x18\x01 \x01(\bR\fquietEnabled\x12&\n" +
 	"\x0fquiet_start_utc\x18\x02 \x01(\tR\rquietStartUtc\x12\"\n" +
-	"\rquiet_end_utc\x18\x03 \x01(\tR\vquietEndUtc\"\x1b\n" +
-	"\x19GetPushPreferencesRequest\"g\n" +
+	"\rquiet_end_utc\x18\x03 \x01(\tR\vquietEndUtc\x12\x1a\n" +
+	"\brevision\x18\x04 \x01(\x03R\brevision\"\x1b\n" +
+	"\x19GetPushPreferencesRequest\"\xd5\x01\n" +
 	"\x1aGetPushPreferencesResponse\x12I\n" +
-	"\vpreferences\x18\x01 \x01(\v2'.workos.notification.v1.PushPreferencesR\vpreferences\"f\n" +
+	"\vpreferences\x18\x01 \x01(\v2'.workos.notification.v1.PushPreferencesR\vpreferences\x12-\n" +
+	"\x13web_push_public_key\x18\x02 \x01(\tR\x10webPushPublicKey\x12=\n" +
+	"\x1bweb_push_unavailable_reason\x18\x03 \x01(\tR\x18webPushUnavailableReason\"\x93\x01\n" +
 	"\x19SetPushPreferencesRequest\x12I\n" +
-	"\vpreferences\x18\x01 \x01(\v2'.workos.notification.v1.PushPreferencesR\vpreferences\"g\n" +
+	"\vpreferences\x18\x01 \x01(\v2'.workos.notification.v1.PushPreferencesR\vpreferences\x12+\n" +
+	"\x11expected_revision\x18\x02 \x01(\x03R\x10expectedRevision\"g\n" +
 	"\x1aSetPushPreferencesResponse\x12I\n" +
 	"\vpreferences\x18\x01 \x01(\v2'.workos.notification.v1.PushPreferencesR\vpreferences*\x9d\x02\n" +
 	"\x10NotificationKind\x12!\n" +

@@ -232,7 +232,7 @@ export function AdaptiveShell({
             className="notification-bell"
             data-testid="open-notifications"
             onClick={() => {
-              onOpenSystemWindow("notification-center");
+              openSystemWindow("notification-center");
             }}
             type="button"
           >

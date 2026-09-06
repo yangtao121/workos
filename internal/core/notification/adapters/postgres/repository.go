@@ -697,15 +697,19 @@ func (r *Repository) ActivePushSubscriptions(ctx context.Context, ownerUserID st
 }
 
 // SavePushPreferences stores the owner quiet window.
-func (r *Repository) SavePushPreferences(ctx context.Context, ownerUserID string, quiet domain.QuietHours, now time.Time) error {
-	err := r.queries.PushPreferencesUpsert(ctx, notificationdb.PushPreferencesUpsertParams{
+func (r *Repository) SavePushPreferences(ctx context.Context, ownerUserID string, quiet domain.QuietHours, now time.Time) (domain.QuietHours, error) {
+	revision, err := r.queries.PushPreferencesUpsert(ctx, notificationdb.PushPreferencesUpsertParams{
 		OwnerUserID: ownerUserID, QuietEnabled: quiet.Enabled,
-		QuietStartUtc: quiet.Start, QuietEndUtc: quiet.End, UpdatedAt: now,
+		QuietStartUtc: quiet.Start, QuietEndUtc: quiet.End, UpdatedAt: now, ExpectedRevision: quiet.Revision,
 	})
-	if err != nil {
-		return storeError("save push preferences", err)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return domain.QuietHours{}, domain.ErrPushConflict
 	}
-	return nil
+	if err != nil {
+		return domain.QuietHours{}, storeError("save push preferences", err)
+	}
+	quiet.Revision = revision
+	return quiet, nil
 }
 
 // PushPreferencesFor reads the owner quiet window; the zero owner reads the
@@ -718,7 +722,7 @@ func (r *Repository) PushPreferencesFor(ctx context.Context, ownerUserID string)
 	if err != nil {
 		return domain.QuietHours{}, storeError("read push preferences", err)
 	}
-	return domain.QuietHours{Enabled: row.QuietEnabled, Start: row.QuietStartUtc, End: row.QuietEndUtc}, nil
+	return domain.QuietHours{Revision: row.Revision, Enabled: row.QuietEnabled, Start: row.QuietStartUtc, End: row.QuietEndUtc}, nil
 }
 
 func (r *Repository) ClaimPushDeliveries(ctx context.Context, now time.Time, limit int32) ([]domain.PushDelivery, error) {
@@ -740,15 +744,19 @@ func (r *Repository) ClaimPushDeliveries(ctx context.Context, now time.Time, lim
 	}
 	result := make([]domain.PushDelivery, 0, len(rows))
 	for _, row := range rows {
-		sub, err := r.queries.GetPushSubscription(ctx, notificationdb.GetPushSubscriptionParams{OwnerUserID: row.OwnerUserID, DeviceID: row.DeviceID, Platform: row.Platform})
-		if err != nil {
-			return nil, storeError("read delivery subscription", err)
-		}
+
 		result = append(result, domain.PushDelivery{NotificationID: row.NotificationID, ClaimToken: token.String(), Attempts: row.Attempts,
-			Subscription: domain.PushSubscription{OwnerUserID: sub.OwnerUserID, DeviceID: sub.DeviceID, Platform: sub.Platform,
-				Endpoint: sub.Endpoint, P256DH: sub.P256dh, AuthSecret: sub.AuthSecret, Status: sub.Status, CreatedAt: sub.CreatedAt, UpdatedAt: sub.UpdatedAt}})
+			Subscription: domain.PushSubscription{OwnerUserID: row.OwnerUserID, DeviceID: row.DeviceID, Platform: row.Platform}})
 	}
 	return result, nil
+}
+
+func (r *Repository) PushSubscriptionFor(ctx context.Context, ownerUserID, deviceID, platform string) (domain.PushSubscription, error) {
+	sub, err := r.queries.GetPushSubscription(ctx, notificationdb.GetPushSubscriptionParams{OwnerUserID: ownerUserID, DeviceID: deviceID, Platform: platform})
+	if err != nil {
+		return domain.PushSubscription{}, storeError("read delivery subscription", err)
+	}
+	return domain.PushSubscription{OwnerUserID: sub.OwnerUserID, DeviceID: sub.DeviceID, Platform: sub.Platform, Endpoint: sub.Endpoint, P256DH: sub.P256dh, AuthSecret: sub.AuthSecret, Status: sub.Status, CreatedAt: sub.CreatedAt, UpdatedAt: sub.UpdatedAt}, nil
 }
 
 func (r *Repository) CompletePushDelivery(ctx context.Context, delivery domain.PushDelivery, state string, nextAttempt time.Time) error {

@@ -36,6 +36,7 @@ import type {
   SurfaceSession,
 } from "@workos/protocol";
 import { Button, Icon } from "@workos/ui-kit";
+import { PushSettings } from "./PushSettings.js";
 import {
   initialWindowState,
   windowReducer,
@@ -446,7 +447,41 @@ export function Desktop({
       },
     });
     recordLayout((state) => ({ ...state, activeSystemWindow: "notification-center" }));
+    setAppActivation((current) => ({
+      id: "notification-center",
+      sequence: (current?.sequence ?? 0) + 1,
+    }));
   }, [recordLayout]);
+
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    if (url.searchParams.get("notifications") === "1") {
+      url.searchParams.delete("notifications");
+      window.history.replaceState(null, "", url);
+      openNotificationCenter();
+    }
+    if (!("serviceWorker" in navigator)) return;
+    const wake = (event: MessageEvent<unknown>) => {
+      if (
+        event.origin !== window.location.origin ||
+        !event.data ||
+        typeof event.data !== "object" ||
+        !("type" in event.data)
+      )
+        return;
+      if (
+        event.data.type !== "workos.notification.wake.v1" &&
+        event.data.type !== "workos.notification.open.v1"
+      )
+        return;
+      void notificationProjection?.refresh().catch(() => undefined);
+      if (event.data.type === "workos.notification.open.v1") openNotificationCenter();
+    };
+    navigator.serviceWorker.addEventListener("message", wake);
+    return () => {
+      navigator.serviceWorker.removeEventListener("message", wake);
+    };
+  }, [notificationProjection, openNotificationCenter]);
 
   // Mission Control (W6): the project-card overview and the project
   // creation/switch entry. A normal, closable window.
@@ -1524,6 +1559,7 @@ export function Desktop({
       )
     ) : windowState.kind === "notification-center" ? (
       <NotificationCenter
+        settings={<PushSettings workosClients={workosClients} deviceAuth={deviceAuth} />}
         snapshot={notificationSnapshot}
         activeProjectId={activeProjectId}
         onMarkRead={(id) => notificationProjection?.markRead(id) ?? Promise.resolve()}

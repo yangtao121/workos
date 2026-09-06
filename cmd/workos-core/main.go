@@ -42,7 +42,7 @@ import (
 	fixturerelay "github.com/yangtao121/workos/internal/core/notification/adapters/fixturerelay"
 	notificationpostgres "github.com/yangtao121/workos/internal/core/notification/adapters/postgres"
 	reliabilityclient "github.com/yangtao121/workos/internal/core/notification/adapters/reliabilityclient"
-	unavailable "github.com/yangtao121/workos/internal/core/notification/adapters/unavailable"
+	webpush "github.com/yangtao121/workos/internal/core/notification/adapters/webpush"
 	notificationapp "github.com/yangtao121/workos/internal/core/notification/application"
 	notificationdomain "github.com/yangtao121/workos/internal/core/notification/domain"
 	notificationports "github.com/yangtao121/workos/internal/core/notification/ports"
@@ -107,7 +107,13 @@ func run(logger *slog.Logger) error {
 	// failures retry independently of notification consumption.
 	pushSenders := map[string]notificationports.PushRelaySender{
 		notificationdomain.PushPlatformFixture: fixturerelay.New(),
-		notificationdomain.PushPlatformWebPush: unavailable.New(),
+	}
+	if cfg.Push.PrivateKeyFile != "" {
+		sender, err := webpush.Load(cfg.Push.PrivateKeyFile, cfg.Push.Subject)
+		if err != nil {
+			return err
+		}
+		pushSenders[notificationdomain.PushPlatformWebPush] = sender
 	}
 	pushService, err := notificationapp.NewPushService(notificationRepository, pushSenders, logger)
 	if err != nil {

@@ -128,8 +128,16 @@ func (h *Handler) GetPushPreferences(ctx context.Context, _ *connect.Request[not
 	if err != nil {
 		return nil, mapPushError(err)
 	}
+	key := h.push.PublicKey()
+	reason := ""
+	if key == "" {
+		reason = "Web Push is not configured on this WorkOS host."
+	}
 	return connect.NewResponse(&notificationv1.GetPushPreferencesResponse{
+		WebPushPublicKey:         key,
+		WebPushUnavailableReason: reason,
 		Preferences: &notificationv1.PushPreferences{
+			Revision:      quiet.Revision,
 			QuietEnabled:  quiet.Enabled,
 			QuietStartUtc: quiet.Start,
 			QuietEndUtc:   quiet.End,
@@ -143,15 +151,17 @@ func (h *Handler) SetPushPreferences(ctx context.Context, req *connect.Request[n
 	}
 	requested := req.Msg.GetPreferences()
 	quiet, err := h.push.SetPreferences(ctx, domain.QuietHours{
-		Enabled: requested.GetQuietEnabled(),
-		Start:   requested.GetQuietStartUtc(),
-		End:     requested.GetQuietEndUtc(),
+		Revision: req.Msg.GetExpectedRevision(),
+		Enabled:  requested.GetQuietEnabled(),
+		Start:    requested.GetQuietStartUtc(),
+		End:      requested.GetQuietEndUtc(),
 	})
 	if err != nil {
 		return nil, mapPushError(err)
 	}
 	return connect.NewResponse(&notificationv1.SetPushPreferencesResponse{
 		Preferences: &notificationv1.PushPreferences{
+			Revision:      quiet.Revision,
 			QuietEnabled:  quiet.Enabled,
 			QuietStartUtc: quiet.Start,
 			QuietEndUtc:   quiet.End,
@@ -163,6 +173,10 @@ func (h *Handler) SetPushPreferences(ctx context.Context, req *connect.Request[n
 // InvalidArgument, store outages are retryable Unavailable.
 func mapPushError(err error) error {
 	switch {
+	case errors.Is(err, domain.ErrPushConflict):
+		return connect.NewError(connect.CodeAborted, errors.New("notification preferences changed; refresh and retry"))
+	case errors.Is(err, domain.ErrPushUnavailable):
+		return connect.NewError(connect.CodeUnavailable, errors.New("push delivery is unavailable"))
 	case errors.Is(err, domain.ErrPushInvalid):
 		return connect.NewError(connect.CodeInvalidArgument, errors.New("push request is invalid"))
 	case errors.Is(err, ports.ErrStoreUnavailable):

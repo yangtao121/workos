@@ -5,6 +5,8 @@
 package domain
 
 import (
+	"crypto/ecdh"
+	"encoding/base64"
 	"errors"
 	"net/url"
 	"regexp"
@@ -17,6 +19,8 @@ var (
 	// ErrPushUnavailable reports a delivery path without a working sender
 	// (APNs/FCM until real credentials exist).
 	ErrPushUnavailable = errors.New("push delivery is not available for this platform")
+	ErrPushExpired     = errors.New("push subscription has expired")
+	ErrPushConflict    = errors.New("push preferences changed")
 )
 
 // Push platforms. Real APNs/FCM require external provider accounts; until
@@ -48,7 +52,7 @@ func ValidPushEndpoint(platform, endpoint string) bool {
 	}
 	if platform == PushPlatformWebPush {
 		parsed, err := url.Parse(endpoint)
-		return err == nil && parsed.Scheme == "https" && parsed.Host != ""
+		return err == nil && parsed.Scheme == "https" && parsed.Host != "" && parsed.User == nil && parsed.Fragment == ""
 	}
 	return true
 }
@@ -56,6 +60,18 @@ func ValidPushEndpoint(platform, endpoint string) bool {
 // ValidPushKey bounds the Web Push client key material grammar (base64url
 // blobs are checked loosely here; the encrypted payload is the boundary).
 func ValidPushKey(value string) bool { return len(value) <= 512 }
+
+func ValidWebPushKeys(public, auth string) bool {
+	key, err := base64.RawURLEncoding.Strict().DecodeString(public)
+	if err != nil {
+		return false
+	}
+	if _, err := ecdh.P256().NewPublicKey(key); err != nil {
+		return false
+	}
+	secret, err := base64.RawURLEncoding.Strict().DecodeString(auth)
+	return err == nil && len(secret) == 16
+}
 
 // PushSubscription is one device wake registration.
 type PushSubscription struct {
@@ -72,9 +88,10 @@ type PushSubscription struct {
 
 // QuietHours is the owner-level do-not-disturb window in UTC.
 type QuietHours struct {
-	Enabled bool
-	Start   string // "HH:MM" UTC
-	End     string // "HH:MM" UTC
+	Revision int64
+	Enabled  bool
+	Start    string // "HH:MM" UTC
+	End      string // "HH:MM" UTC
 }
 
 // ValidQuietClock pins the "HH:MM" grammar.

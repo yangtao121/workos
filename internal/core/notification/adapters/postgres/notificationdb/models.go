@@ -41,6 +41,7 @@ type WorkosCorePushPreference struct {
 	QuietStartUtc string
 	QuietEndUtc   string
 	UpdatedAt     time.Time
+	Revision      int64
 }
 
 // owner: core; device push wake registrations; relay sees notification ids only (ADR-0018)

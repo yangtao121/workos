@@ -1215,3 +1215,9 @@ Docs/Code 共享 Artifact 分页列表。新读取链已有真实 PostgreSQL 测
 PushService 后台循环租约领取、发送、按 token 确认；八次有界重试、quiet/revoked 抑制；
 日志只记平台与尝试次数。migration 042 的 unknown 记录保留旧尝试但不计已送达。
 真实 PostgreSQL 测试覆盖回滚、重放、重试恢复、租约接管、旧 token 拒绝与免打扰。
+
+Core 可选 `WORKOS_PUSH_PRIVATE_KEY_FILE` / `WORKOS_PUSH_SUBJECT` 启用 Web Push；
+独立 P-256 key，未配置时 GetPushPreferences 返回 unavailable 原因，不接受伪有效订阅。
+RPC 仅公开 public key；端点 HTTPS、客户端 P-256 点和 16-byte auth 验证，网络错误净化。
+Push Worker 不读取 Cookie/RPC、不存正文；固定文案提醒后通知 shell 从权威 projection 补收。
+设置有 revision 并发控制。加密 TLS 与 Chromium push driver 切片已验证，组合 E2E 仍在进行。

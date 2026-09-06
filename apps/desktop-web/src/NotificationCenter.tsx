@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useState, type ReactNode } from "react";
 import type {
   NotificationProjectionSnapshot,
   NotificationStreamState,
@@ -13,6 +13,7 @@ import { Button } from "@workos/ui-kit";
 // target shows the fixed verdict with an explicit mark-read — never an
 // arbitrary fallback.
 export interface NotificationCenterProps {
+  settings?: ReactNode;
   snapshot: NotificationProjectionSnapshot;
   activeProjectId: string | undefined;
   onRefresh: () => Promise<void>;
@@ -61,6 +62,7 @@ function streamCopy(state: NotificationStreamState): string {
 }
 
 export function NotificationCenter({
+  settings,
   snapshot,
   activeProjectId,
   onRefresh,
@@ -69,6 +71,7 @@ export function NotificationCenter({
   onOpenTarget,
 }: NotificationCenterProps) {
   const [filter, setFilter] = useState<Filter>("all");
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [busyIds, setBusyIds] = useState<Set<string>>(new Set());
   const [staleIds, setStaleIds] = useState<Set<string>>(new Set());
   const [actionError, setActionError] = useState<string>();
@@ -151,6 +154,21 @@ export function NotificationCenter({
           Mark visible read ({unreadInScope.length})
         </Button>
       </div>
+
+      {settings ? (
+        <div className="notification-preferences">
+          <button
+            type="button"
+            aria-expanded={settingsOpen}
+            onClick={() => {
+              setSettingsOpen((value) => !value);
+            }}
+          >
+            Notification settings
+          </button>
+          {settingsOpen ? settings : null}
+        </div>
+      ) : null}
 
       {streamBanner ? (
         <p

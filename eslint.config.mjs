@@ -21,4 +21,9 @@ export default tseslint.config(
       "@typescript-eslint/no-floating-promises": "error",
     },
   },
+  {
+    files: ["apps/desktop-web/public/push-worker.js"],
+    extends: [tseslint.configs.disableTypeChecked],
+    languageOptions: { globals: globals.serviceworker },
+  },
 );

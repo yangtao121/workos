@@ -274,16 +274,22 @@ message PushPreferences {
   // "HH:MM" UTC grammar.
   string quiet_start_utc = 2;
   string quiet_end_utc = 3;
+  int64 revision = 4;
 }
 
 message GetPushPreferencesRequest {}
 
 message GetPushPreferencesResponse {
   PushPreferences preferences = 1;
+  // Public VAPID subscription key only. Empty means Web Push is unavailable.
+  string web_push_public_key = 2;
+  string web_push_unavailable_reason = 3;
 }
 
 message SetPushPreferencesRequest {
   PushPreferences preferences = 1;
+  // Zero creates preferences; stale updates are Aborted.
+  int64 expected_revision = 2;
 }
 
 message SetPushPreferencesResponse {
