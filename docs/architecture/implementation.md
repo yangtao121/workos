@@ -1237,3 +1237,14 @@ Linux adapter 以 openat2 BENEATH/NO_SYMLINKS/NO_XDEV 处理逻辑路径；文�
 App SDK files.pick/read/write 走 MessageChannel，picker 为有焦点约束的 shell 弹窗；
 取消/窗口关闭会终止未决选择。Indexer 的注册仍只提供只读索引，不是文件写授权。
 `make test-app-files` 已取得真实 SDK/Gateway/Core/Runtime/Chromium/磁盘证据。
+
+### App review artifacts (2026-09-06)
+
+`artifacts.create/open` 由 Runtime surface 模块验证 live token、owner/device、安装 epoch，
+再调用 Core 私有 `workos.artifact.v1.AppArtifactService`。Core orchestration 通过 Project
+事务 port 锁定安装/项目，Artifact adapter 拥有 migration 044 的来源与 App 幂等映射。
+review 来源严格 task/App 二选一，不伪造 Agent task；每安装最多 100 项，32 KiB 输入，
+同 key 内容重放/冲突。Artifact、Index feed publication 与 Notification/outbox 原子提交。
+公开 Get/List/GetReviewArtifact 复用来源校验；open 只允许当前安装项目的 review artifact，
+App host 在响应仍有效时打开现有 Artifact Review 窗口，不接受 URL。端到端门禁
+`make test-app-artifacts` 覆盖真实 SDK、Gateway、Runtime、Core、PostgreSQL、Chromium。

@@ -13,8 +13,9 @@ package bridgev1
 
 import (
 	v1 "github.com/yangtao121/workos/gen/go/workos/agent/v1"
+	v12 "github.com/yangtao121/workos/gen/go/workos/artifact/v1"
 	v11 "github.com/yangtao121/workos/gen/go/workos/index/v1"
-	v12 "github.com/yangtao121/workos/gen/go/workos/notification/v1"
+	v13 "github.com/yangtao121/workos/gen/go/workos/notification/v1"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	reflect "reflect"
@@ -791,6 +792,208 @@ func (x *WriteFileResponse) GetRef() *FileRef {
 	return nil
 }
 
+type CreateReviewArtifactRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Stable per-installation output key: [a-z][a-z0-9._-]{0,63}.
+	IdempotencyKey string `protobuf:"bytes,1,opt,name=idempotency_key,json=idempotencyKey,proto3" json:"idempotency_key,omitempty"`
+	Type           string `protobuf:"bytes,2,opt,name=type,proto3" json:"type,omitempty"`
+	Title          string `protobuf:"bytes,3,opt,name=title,proto3" json:"title,omitempty"`
+	// Canonical Markdown or unified diff, bounded to 32 KiB at the Bridge.
+	Content       []byte `protobuf:"bytes,4,opt,name=content,proto3" json:"content,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CreateReviewArtifactRequest) Reset() {
+	*x = CreateReviewArtifactRequest{}
+	mi := &file_workos_bridge_v1_bridge_proto_msgTypes[14]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CreateReviewArtifactRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CreateReviewArtifactRequest) ProtoMessage() {}
+
+func (x *CreateReviewArtifactRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_workos_bridge_v1_bridge_proto_msgTypes[14]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CreateReviewArtifactRequest.ProtoReflect.Descriptor instead.
+func (*CreateReviewArtifactRequest) Descriptor() ([]byte, []int) {
+	return file_workos_bridge_v1_bridge_proto_rawDescGZIP(), []int{14}
+}
+
+func (x *CreateReviewArtifactRequest) GetIdempotencyKey() string {
+	if x != nil {
+		return x.IdempotencyKey
+	}
+	return ""
+}
+
+func (x *CreateReviewArtifactRequest) GetType() string {
+	if x != nil {
+		return x.Type
+	}
+	return ""
+}
+
+func (x *CreateReviewArtifactRequest) GetTitle() string {
+	if x != nil {
+		return x.Title
+	}
+	return ""
+}
+
+func (x *CreateReviewArtifactRequest) GetContent() []byte {
+	if x != nil {
+		return x.Content
+	}
+	return nil
+}
+
+type CreateReviewArtifactResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Artifact      *v12.Artifact          `protobuf:"bytes,1,opt,name=artifact,proto3" json:"artifact,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CreateReviewArtifactResponse) Reset() {
+	*x = CreateReviewArtifactResponse{}
+	mi := &file_workos_bridge_v1_bridge_proto_msgTypes[15]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CreateReviewArtifactResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CreateReviewArtifactResponse) ProtoMessage() {}
+
+func (x *CreateReviewArtifactResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_workos_bridge_v1_bridge_proto_msgTypes[15]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CreateReviewArtifactResponse.ProtoReflect.Descriptor instead.
+func (*CreateReviewArtifactResponse) Descriptor() ([]byte, []int) {
+	return file_workos_bridge_v1_bridge_proto_rawDescGZIP(), []int{15}
+}
+
+func (x *CreateReviewArtifactResponse) GetArtifact() *v12.Artifact {
+	if x != nil {
+		return x.Artifact
+	}
+	return nil
+}
+
+type OpenReviewArtifactRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	ArtifactId    string                 `protobuf:"bytes,1,opt,name=artifact_id,json=artifactId,proto3" json:"artifact_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *OpenReviewArtifactRequest) Reset() {
+	*x = OpenReviewArtifactRequest{}
+	mi := &file_workos_bridge_v1_bridge_proto_msgTypes[16]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *OpenReviewArtifactRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*OpenReviewArtifactRequest) ProtoMessage() {}
+
+func (x *OpenReviewArtifactRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_workos_bridge_v1_bridge_proto_msgTypes[16]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use OpenReviewArtifactRequest.ProtoReflect.Descriptor instead.
+func (*OpenReviewArtifactRequest) Descriptor() ([]byte, []int) {
+	return file_workos_bridge_v1_bridge_proto_rawDescGZIP(), []int{16}
+}
+
+func (x *OpenReviewArtifactRequest) GetArtifactId() string {
+	if x != nil {
+		return x.ArtifactId
+	}
+	return ""
+}
+
+type OpenReviewArtifactResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Artifact      *v12.Artifact          `protobuf:"bytes,1,opt,name=artifact,proto3" json:"artifact,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *OpenReviewArtifactResponse) Reset() {
+	*x = OpenReviewArtifactResponse{}
+	mi := &file_workos_bridge_v1_bridge_proto_msgTypes[17]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *OpenReviewArtifactResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*OpenReviewArtifactResponse) ProtoMessage() {}
+
+func (x *OpenReviewArtifactResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_workos_bridge_v1_bridge_proto_msgTypes[17]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use OpenReviewArtifactResponse.ProtoReflect.Descriptor instead.
+func (*OpenReviewArtifactResponse) Descriptor() ([]byte, []int) {
+	return file_workos_bridge_v1_bridge_proto_rawDescGZIP(), []int{17}
+}
+
+func (x *OpenReviewArtifactResponse) GetArtifact() *v12.Artifact {
+	if x != nil {
+		return x.Artifact
+	}
+	return nil
+}
+
 type AuthorizeShellActionRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Finite vocabulary: project.current, theme.get and own-window actions.
@@ -801,7 +1004,7 @@ type AuthorizeShellActionRequest struct {
 
 func (x *AuthorizeShellActionRequest) Reset() {
 	*x = AuthorizeShellActionRequest{}
-	mi := &file_workos_bridge_v1_bridge_proto_msgTypes[14]
+	mi := &file_workos_bridge_v1_bridge_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -813,7 +1016,7 @@ func (x *AuthorizeShellActionRequest) String() string {
 func (*AuthorizeShellActionRequest) ProtoMessage() {}
 
 func (x *AuthorizeShellActionRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_workos_bridge_v1_bridge_proto_msgTypes[14]
+	mi := &file_workos_bridge_v1_bridge_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -826,7 +1029,7 @@ func (x *AuthorizeShellActionRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AuthorizeShellActionRequest.ProtoReflect.Descriptor instead.
 func (*AuthorizeShellActionRequest) Descriptor() ([]byte, []int) {
-	return file_workos_bridge_v1_bridge_proto_rawDescGZIP(), []int{14}
+	return file_workos_bridge_v1_bridge_proto_rawDescGZIP(), []int{18}
 }
 
 func (x *AuthorizeShellActionRequest) GetMethod() string {
@@ -844,7 +1047,7 @@ type AuthorizeShellActionResponse struct {
 
 func (x *AuthorizeShellActionResponse) Reset() {
 	*x = AuthorizeShellActionResponse{}
-	mi := &file_workos_bridge_v1_bridge_proto_msgTypes[15]
+	mi := &file_workos_bridge_v1_bridge_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -856,7 +1059,7 @@ func (x *AuthorizeShellActionResponse) String() string {
 func (*AuthorizeShellActionResponse) ProtoMessage() {}
 
 func (x *AuthorizeShellActionResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_workos_bridge_v1_bridge_proto_msgTypes[15]
+	mi := &file_workos_bridge_v1_bridge_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -869,7 +1072,7 @@ func (x *AuthorizeShellActionResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AuthorizeShellActionResponse.ProtoReflect.Descriptor instead.
 func (*AuthorizeShellActionResponse) Descriptor() ([]byte, []int) {
-	return file_workos_bridge_v1_bridge_proto_rawDescGZIP(), []int{15}
+	return file_workos_bridge_v1_bridge_proto_rawDescGZIP(), []int{19}
 }
 
 // CreateNotification is negotiated only by the notifications.create grant
@@ -892,7 +1095,7 @@ type CreateNotificationRequest struct {
 
 func (x *CreateNotificationRequest) Reset() {
 	*x = CreateNotificationRequest{}
-	mi := &file_workos_bridge_v1_bridge_proto_msgTypes[16]
+	mi := &file_workos_bridge_v1_bridge_proto_msgTypes[20]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -904,7 +1107,7 @@ func (x *CreateNotificationRequest) String() string {
 func (*CreateNotificationRequest) ProtoMessage() {}
 
 func (x *CreateNotificationRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_workos_bridge_v1_bridge_proto_msgTypes[16]
+	mi := &file_workos_bridge_v1_bridge_proto_msgTypes[20]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -917,7 +1120,7 @@ func (x *CreateNotificationRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateNotificationRequest.ProtoReflect.Descriptor instead.
 func (*CreateNotificationRequest) Descriptor() ([]byte, []int) {
-	return file_workos_bridge_v1_bridge_proto_rawDescGZIP(), []int{16}
+	return file_workos_bridge_v1_bridge_proto_rawDescGZIP(), []int{20}
 }
 
 func (x *CreateNotificationRequest) GetIdempotencyKey() string {
@@ -945,7 +1148,7 @@ type CreateNotificationResponse struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// The projected owner notification (kind app.instance.message, origin
 	// app, severity normal, target app).
-	Notification  *v12.Notification `protobuf:"bytes,1,opt,name=notification,proto3" json:"notification,omitempty"`
+	Notification  *v13.Notification `protobuf:"bytes,1,opt,name=notification,proto3" json:"notification,omitempty"`
 	UnreadCount   int64             `protobuf:"varint,2,opt,name=unread_count,json=unreadCount,proto3" json:"unread_count,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -953,7 +1156,7 @@ type CreateNotificationResponse struct {
 
 func (x *CreateNotificationResponse) Reset() {
 	*x = CreateNotificationResponse{}
-	mi := &file_workos_bridge_v1_bridge_proto_msgTypes[17]
+	mi := &file_workos_bridge_v1_bridge_proto_msgTypes[21]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -965,7 +1168,7 @@ func (x *CreateNotificationResponse) String() string {
 func (*CreateNotificationResponse) ProtoMessage() {}
 
 func (x *CreateNotificationResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_workos_bridge_v1_bridge_proto_msgTypes[17]
+	mi := &file_workos_bridge_v1_bridge_proto_msgTypes[21]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -978,10 +1181,10 @@ func (x *CreateNotificationResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateNotificationResponse.ProtoReflect.Descriptor instead.
 func (*CreateNotificationResponse) Descriptor() ([]byte, []int) {
-	return file_workos_bridge_v1_bridge_proto_rawDescGZIP(), []int{17}
+	return file_workos_bridge_v1_bridge_proto_rawDescGZIP(), []int{21}
 }
 
-func (x *CreateNotificationResponse) GetNotification() *v12.Notification {
+func (x *CreateNotificationResponse) GetNotification() *v13.Notification {
 	if x != nil {
 		return x.Notification
 	}
@@ -999,7 +1202,7 @@ var File_workos_bridge_v1_bridge_proto protoreflect.FileDescriptor
 
 const file_workos_bridge_v1_bridge_proto_rawDesc = "" +
 	"\n" +
-	"\x1dworkos/bridge/v1/bridge.proto\x12\x10workos.bridge.v1\x1a\x1bworkos/agent/v1/agent.proto\x1a\x1bworkos/index/v1/index.proto\x1a)workos/notification/v1/notification.proto\"f\n" +
+	"\x1dworkos/bridge/v1/bridge.proto\x12\x10workos.bridge.v1\x1a\x1bworkos/agent/v1/agent.proto\x1a!workos/artifact/v1/artifact.proto\x1a\x1bworkos/index/v1/index.proto\x1a)workos/notification/v1/notification.proto\"f\n" +
 	"\x13RunAgentTaskRequest\x12'\n" +
 	"\x0fidempotency_key\x18\x01 \x01(\tR\x0eidempotencyKey\x12\x12\n" +
 	"\x04role\x18\x02 \x01(\tR\x04role\x12\x12\n" +
@@ -1046,7 +1249,19 @@ const file_workos_bridge_v1_bridge_proto_rawDesc = "" +
 	"\x03ref\x18\x01 \x01(\v2\x19.workos.bridge.v1.FileRefR\x03ref\x12\x12\n" +
 	"\x04data\x18\x02 \x01(\fR\x04data\"@\n" +
 	"\x11WriteFileResponse\x12+\n" +
-	"\x03ref\x18\x01 \x01(\v2\x19.workos.bridge.v1.FileRefR\x03ref\"5\n" +
+	"\x03ref\x18\x01 \x01(\v2\x19.workos.bridge.v1.FileRefR\x03ref\"\x8a\x01\n" +
+	"\x1bCreateReviewArtifactRequest\x12'\n" +
+	"\x0fidempotency_key\x18\x01 \x01(\tR\x0eidempotencyKey\x12\x12\n" +
+	"\x04type\x18\x02 \x01(\tR\x04type\x12\x14\n" +
+	"\x05title\x18\x03 \x01(\tR\x05title\x12\x18\n" +
+	"\acontent\x18\x04 \x01(\fR\acontent\"X\n" +
+	"\x1cCreateReviewArtifactResponse\x128\n" +
+	"\bartifact\x18\x01 \x01(\v2\x1c.workos.artifact.v1.ArtifactR\bartifact\"<\n" +
+	"\x19OpenReviewArtifactRequest\x12\x1f\n" +
+	"\vartifact_id\x18\x01 \x01(\tR\n" +
+	"artifactId\"V\n" +
+	"\x1aOpenReviewArtifactResponse\x128\n" +
+	"\bartifact\x18\x01 \x01(\v2\x1c.workos.artifact.v1.ArtifactR\bartifact\"5\n" +
 	"\x1bAuthorizeShellActionRequest\x12\x16\n" +
 	"\x06method\x18\x01 \x01(\tR\x06method\"\x1e\n" +
 	"\x1cAuthorizeShellActionResponse\"n\n" +
@@ -1056,8 +1271,10 @@ const file_workos_bridge_v1_bridge_proto_rawDesc = "" +
 	"\x04body\x18\x03 \x01(\tR\x04body\"\x89\x01\n" +
 	"\x1aCreateNotificationResponse\x12H\n" +
 	"\fnotification\x18\x01 \x01(\v2$.workos.notification.v1.NotificationR\fnotification\x12!\n" +
-	"\funread_count\x18\x02 \x01(\x03R\vunreadCount2\xc9\x06\n" +
-	"\x10AppBridgeService\x12V\n" +
+	"\funread_count\x18\x02 \x01(\x03R\vunreadCount2\xb5\b\n" +
+	"\x10AppBridgeService\x12w\n" +
+	"\x14CreateReviewArtifact\x12-.workos.bridge.v1.CreateReviewArtifactRequest\x1a..workos.bridge.v1.CreateReviewArtifactResponse\"\x00\x12q\n" +
+	"\x12OpenReviewArtifact\x12+.workos.bridge.v1.OpenReviewArtifactRequest\x1a,.workos.bridge.v1.OpenReviewArtifactResponse\"\x00\x12V\n" +
 	"\tListFiles\x12\".workos.bridge.v1.ListFilesRequest\x1a#.workos.bridge.v1.ListFilesResponse\"\x00\x12S\n" +
 	"\bReadFile\x12!.workos.bridge.v1.ReadFileRequest\x1a\".workos.bridge.v1.ReadFileResponse\"\x00\x12V\n" +
 	"\tWriteFile\x12\".workos.bridge.v1.WriteFileRequest\x1a#.workos.bridge.v1.WriteFileResponse\"\x00\x12w\n" +
@@ -1079,7 +1296,7 @@ func file_workos_bridge_v1_bridge_proto_rawDescGZIP() []byte {
 	return file_workos_bridge_v1_bridge_proto_rawDescData
 }
 
-var file_workos_bridge_v1_bridge_proto_msgTypes = make([]protoimpl.MessageInfo, 18)
+var file_workos_bridge_v1_bridge_proto_msgTypes = make([]protoimpl.MessageInfo, 22)
 var file_workos_bridge_v1_bridge_proto_goTypes = []any{
 	(*RunAgentTaskRequest)(nil),          // 0: workos.bridge.v1.RunAgentTaskRequest
 	(*RunAgentTaskResponse)(nil),         // 1: workos.bridge.v1.RunAgentTaskResponse
@@ -1095,46 +1312,57 @@ var file_workos_bridge_v1_bridge_proto_goTypes = []any{
 	(*ReadFileResponse)(nil),             // 11: workos.bridge.v1.ReadFileResponse
 	(*WriteFileRequest)(nil),             // 12: workos.bridge.v1.WriteFileRequest
 	(*WriteFileResponse)(nil),            // 13: workos.bridge.v1.WriteFileResponse
-	(*AuthorizeShellActionRequest)(nil),  // 14: workos.bridge.v1.AuthorizeShellActionRequest
-	(*AuthorizeShellActionResponse)(nil), // 15: workos.bridge.v1.AuthorizeShellActionResponse
-	(*CreateNotificationRequest)(nil),    // 16: workos.bridge.v1.CreateNotificationRequest
-	(*CreateNotificationResponse)(nil),   // 17: workos.bridge.v1.CreateNotificationResponse
-	(v1.AgentTaskState)(0),               // 18: workos.agent.v1.AgentTaskState
-	(*v1.AgentEvent)(nil),                // 19: workos.agent.v1.AgentEvent
-	(*v11.SearchHit)(nil),                // 20: workos.index.v1.SearchHit
-	(*v12.Notification)(nil),             // 21: workos.notification.v1.Notification
+	(*CreateReviewArtifactRequest)(nil),  // 14: workos.bridge.v1.CreateReviewArtifactRequest
+	(*CreateReviewArtifactResponse)(nil), // 15: workos.bridge.v1.CreateReviewArtifactResponse
+	(*OpenReviewArtifactRequest)(nil),    // 16: workos.bridge.v1.OpenReviewArtifactRequest
+	(*OpenReviewArtifactResponse)(nil),   // 17: workos.bridge.v1.OpenReviewArtifactResponse
+	(*AuthorizeShellActionRequest)(nil),  // 18: workos.bridge.v1.AuthorizeShellActionRequest
+	(*AuthorizeShellActionResponse)(nil), // 19: workos.bridge.v1.AuthorizeShellActionResponse
+	(*CreateNotificationRequest)(nil),    // 20: workos.bridge.v1.CreateNotificationRequest
+	(*CreateNotificationResponse)(nil),   // 21: workos.bridge.v1.CreateNotificationResponse
+	(v1.AgentTaskState)(0),               // 22: workos.agent.v1.AgentTaskState
+	(*v1.AgentEvent)(nil),                // 23: workos.agent.v1.AgentEvent
+	(*v11.SearchHit)(nil),                // 24: workos.index.v1.SearchHit
+	(*v12.Artifact)(nil),                 // 25: workos.artifact.v1.Artifact
+	(*v13.Notification)(nil),             // 26: workos.notification.v1.Notification
 }
 var file_workos_bridge_v1_bridge_proto_depIdxs = []int32{
-	18, // 0: workos.bridge.v1.RunAgentTaskResponse.state:type_name -> workos.agent.v1.AgentTaskState
-	19, // 1: workos.bridge.v1.WatchAgentTaskEventsResponse.event:type_name -> workos.agent.v1.AgentEvent
-	20, // 2: workos.bridge.v1.SearchKnowledgeResponse.hits:type_name -> workos.index.v1.SearchHit
+	22, // 0: workos.bridge.v1.RunAgentTaskResponse.state:type_name -> workos.agent.v1.AgentTaskState
+	23, // 1: workos.bridge.v1.WatchAgentTaskEventsResponse.event:type_name -> workos.agent.v1.AgentEvent
+	24, // 2: workos.bridge.v1.SearchKnowledgeResponse.hits:type_name -> workos.index.v1.SearchHit
 	6,  // 3: workos.bridge.v1.FileEntry.ref:type_name -> workos.bridge.v1.FileRef
 	7,  // 4: workos.bridge.v1.ListFilesResponse.entries:type_name -> workos.bridge.v1.FileEntry
 	6,  // 5: workos.bridge.v1.ReadFileRequest.ref:type_name -> workos.bridge.v1.FileRef
 	6,  // 6: workos.bridge.v1.WriteFileRequest.ref:type_name -> workos.bridge.v1.FileRef
 	6,  // 7: workos.bridge.v1.WriteFileResponse.ref:type_name -> workos.bridge.v1.FileRef
-	21, // 8: workos.bridge.v1.CreateNotificationResponse.notification:type_name -> workos.notification.v1.Notification
-	8,  // 9: workos.bridge.v1.AppBridgeService.ListFiles:input_type -> workos.bridge.v1.ListFilesRequest
-	10, // 10: workos.bridge.v1.AppBridgeService.ReadFile:input_type -> workos.bridge.v1.ReadFileRequest
-	12, // 11: workos.bridge.v1.AppBridgeService.WriteFile:input_type -> workos.bridge.v1.WriteFileRequest
-	14, // 12: workos.bridge.v1.AppBridgeService.AuthorizeShellAction:input_type -> workos.bridge.v1.AuthorizeShellActionRequest
-	0,  // 13: workos.bridge.v1.AppBridgeService.RunAgentTask:input_type -> workos.bridge.v1.RunAgentTaskRequest
-	2,  // 14: workos.bridge.v1.AppBridgeService.WatchAgentTaskEvents:input_type -> workos.bridge.v1.WatchAgentTaskEventsRequest
-	4,  // 15: workos.bridge.v1.AppBridgeService.SearchKnowledge:input_type -> workos.bridge.v1.SearchKnowledgeRequest
-	16, // 16: workos.bridge.v1.AppBridgeService.CreateNotification:input_type -> workos.bridge.v1.CreateNotificationRequest
-	9,  // 17: workos.bridge.v1.AppBridgeService.ListFiles:output_type -> workos.bridge.v1.ListFilesResponse
-	11, // 18: workos.bridge.v1.AppBridgeService.ReadFile:output_type -> workos.bridge.v1.ReadFileResponse
-	13, // 19: workos.bridge.v1.AppBridgeService.WriteFile:output_type -> workos.bridge.v1.WriteFileResponse
-	15, // 20: workos.bridge.v1.AppBridgeService.AuthorizeShellAction:output_type -> workos.bridge.v1.AuthorizeShellActionResponse
-	1,  // 21: workos.bridge.v1.AppBridgeService.RunAgentTask:output_type -> workos.bridge.v1.RunAgentTaskResponse
-	3,  // 22: workos.bridge.v1.AppBridgeService.WatchAgentTaskEvents:output_type -> workos.bridge.v1.WatchAgentTaskEventsResponse
-	5,  // 23: workos.bridge.v1.AppBridgeService.SearchKnowledge:output_type -> workos.bridge.v1.SearchKnowledgeResponse
-	17, // 24: workos.bridge.v1.AppBridgeService.CreateNotification:output_type -> workos.bridge.v1.CreateNotificationResponse
-	17, // [17:25] is the sub-list for method output_type
-	9,  // [9:17] is the sub-list for method input_type
-	9,  // [9:9] is the sub-list for extension type_name
-	9,  // [9:9] is the sub-list for extension extendee
-	0,  // [0:9] is the sub-list for field type_name
+	25, // 8: workos.bridge.v1.CreateReviewArtifactResponse.artifact:type_name -> workos.artifact.v1.Artifact
+	25, // 9: workos.bridge.v1.OpenReviewArtifactResponse.artifact:type_name -> workos.artifact.v1.Artifact
+	26, // 10: workos.bridge.v1.CreateNotificationResponse.notification:type_name -> workos.notification.v1.Notification
+	14, // 11: workos.bridge.v1.AppBridgeService.CreateReviewArtifact:input_type -> workos.bridge.v1.CreateReviewArtifactRequest
+	16, // 12: workos.bridge.v1.AppBridgeService.OpenReviewArtifact:input_type -> workos.bridge.v1.OpenReviewArtifactRequest
+	8,  // 13: workos.bridge.v1.AppBridgeService.ListFiles:input_type -> workos.bridge.v1.ListFilesRequest
+	10, // 14: workos.bridge.v1.AppBridgeService.ReadFile:input_type -> workos.bridge.v1.ReadFileRequest
+	12, // 15: workos.bridge.v1.AppBridgeService.WriteFile:input_type -> workos.bridge.v1.WriteFileRequest
+	18, // 16: workos.bridge.v1.AppBridgeService.AuthorizeShellAction:input_type -> workos.bridge.v1.AuthorizeShellActionRequest
+	0,  // 17: workos.bridge.v1.AppBridgeService.RunAgentTask:input_type -> workos.bridge.v1.RunAgentTaskRequest
+	2,  // 18: workos.bridge.v1.AppBridgeService.WatchAgentTaskEvents:input_type -> workos.bridge.v1.WatchAgentTaskEventsRequest
+	4,  // 19: workos.bridge.v1.AppBridgeService.SearchKnowledge:input_type -> workos.bridge.v1.SearchKnowledgeRequest
+	20, // 20: workos.bridge.v1.AppBridgeService.CreateNotification:input_type -> workos.bridge.v1.CreateNotificationRequest
+	15, // 21: workos.bridge.v1.AppBridgeService.CreateReviewArtifact:output_type -> workos.bridge.v1.CreateReviewArtifactResponse
+	17, // 22: workos.bridge.v1.AppBridgeService.OpenReviewArtifact:output_type -> workos.bridge.v1.OpenReviewArtifactResponse
+	9,  // 23: workos.bridge.v1.AppBridgeService.ListFiles:output_type -> workos.bridge.v1.ListFilesResponse
+	11, // 24: workos.bridge.v1.AppBridgeService.ReadFile:output_type -> workos.bridge.v1.ReadFileResponse
+	13, // 25: workos.bridge.v1.AppBridgeService.WriteFile:output_type -> workos.bridge.v1.WriteFileResponse
+	19, // 26: workos.bridge.v1.AppBridgeService.AuthorizeShellAction:output_type -> workos.bridge.v1.AuthorizeShellActionResponse
+	1,  // 27: workos.bridge.v1.AppBridgeService.RunAgentTask:output_type -> workos.bridge.v1.RunAgentTaskResponse
+	3,  // 28: workos.bridge.v1.AppBridgeService.WatchAgentTaskEvents:output_type -> workos.bridge.v1.WatchAgentTaskEventsResponse
+	5,  // 29: workos.bridge.v1.AppBridgeService.SearchKnowledge:output_type -> workos.bridge.v1.SearchKnowledgeResponse
+	21, // 30: workos.bridge.v1.AppBridgeService.CreateNotification:output_type -> workos.bridge.v1.CreateNotificationResponse
+	21, // [21:31] is the sub-list for method output_type
+	11, // [11:21] is the sub-list for method input_type
+	11, // [11:11] is the sub-list for extension type_name
+	11, // [11:11] is the sub-list for extension extendee
+	0,  // [0:11] is the sub-list for field type_name
 }
 
 func init() { file_workos_bridge_v1_bridge_proto_init() }
@@ -1148,7 +1376,7 @@ func file_workos_bridge_v1_bridge_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_workos_bridge_v1_bridge_proto_rawDesc), len(file_workos_bridge_v1_bridge_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   18,
+			NumMessages:   22,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

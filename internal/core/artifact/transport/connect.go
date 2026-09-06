@@ -72,7 +72,7 @@ func (h *Handler) CreateArtifact(ctx context.Context, req *connect.Request[artif
 	if metadata.GetId() != "" || metadata.GetProjectId() != "" || metadata.GetType() != "" ||
 		metadata.GetMediaType() != "" || metadata.GetContentRef() != "" || metadata.GetDigest() != "" ||
 		metadata.GetCreatedAt() != nil || metadata.GetTotalSizeBytes() != 0 || metadata.GetFileCount() != 0 ||
-		metadata.GetSourceTaskId() != "" {
+		metadata.GetSourceTaskId() != "" || metadata.GetSourceAppInstanceId() != "" {
 		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("artifact metadata is server-owned; only the title may be set"))
 	}
 	files := make([]domain.BundleFileInput, 0, len(bundleInput.GetFiles()))
@@ -187,7 +187,7 @@ func metadataProjection(fact domain.ReviewArtifact) domain.Artifact {
 		ID: fact.ID, OwnerUserID: fact.OwnerUserID, Type: fact.Type, Title: fact.Title,
 		MediaType: fact.MediaType, Digest: fact.Digest, FileCount: 1,
 		TotalSizeBytes: int64(fact.ByteCount), CreatedAt: fact.CreatedAt,
-		ProjectID: fact.ProjectID, SourceTaskID: fact.SourceTask,
+		ProjectID: fact.ProjectID, SourceTaskID: fact.SourceTask, SourceAppInstanceID: fact.SourceAppInstanceID,
 	}
 }
 
@@ -228,6 +228,6 @@ func ArtifactToProto(artifact domain.Artifact) *artifactv1.Artifact {
 		MediaType: artifact.MediaType, ContentRef: artifact.ContentRef,
 		Digest: artifact.Digest, TotalSizeBytes: artifact.TotalSizeBytes,
 		FileCount: int32(artifact.FileCount), CreatedAt: timestamppb.New(created),
-		SourceTaskId: artifact.SourceTaskID,
+		SourceTaskId: artifact.SourceTaskID, SourceAppInstanceId: artifact.SourceAppInstanceID,
 	}
 }

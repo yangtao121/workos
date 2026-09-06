@@ -147,7 +147,7 @@ func (r *Repository) InsertTaskOutput(ctx context.Context, tx dbtx.Tx, command p
 		ID: command.Artifact.ID, OwnerUserID: command.Artifact.OwnerUserID,
 		Type: command.Artifact.Type, Title: command.Artifact.Title,
 		MediaType: command.Artifact.MediaType, Digest: command.Artifact.Digest,
-		ProjectID: command.Artifact.ProjectID, SourceTaskID: command.Artifact.SourceTask,
+		ProjectID: command.Artifact.ProjectID, SourceTaskID: nullableUUID(command.Artifact.SourceTask),
 		OutputKey: command.Artifact.OutputKey, ByteCount: int32(command.Artifact.ByteCount),
 		LineCount: int32(command.Artifact.LineCount), Content: command.Content,
 		CreatedAt: timestamp(command.Artifact.CreatedAt),
@@ -193,7 +193,7 @@ func (r *Repository) ReviewArtifactByID(ctx context.Context, tx dbtx.Tx, artifac
 func reviewFactFromModel(row artifactdb.WorkosCoreProjectReviewArtifact) domain.ReviewArtifact {
 	return domain.ReviewArtifact{
 		ID: row.ID, OwnerUserID: row.OwnerUserID, ProjectID: row.ProjectID,
-		SourceTask: row.SourceTaskID, OutputKey: row.OutputKey, Type: row.Type,
+		SourceTask: uuidText(row.SourceTaskID), SourceAppInstanceID: uuidText(row.SourceAppInstanceID), OutputKey: row.OutputKey, Type: row.Type,
 		Title: row.Title, MediaType: row.MediaType, Digest: row.Digest,
 		ByteCount: int(row.ByteCount), LineCount: int(row.LineCount),
 		CreatedAt: row.CreatedAt.Time,
@@ -203,14 +203,14 @@ func reviewFactFromModel(row artifactdb.WorkosCoreProjectReviewArtifact) domain.
 func artifactFromUnion(row artifactdb.GetArtifactMetadataUnionRow) (domain.Artifact, error) {
 	artifact := unionArtifact(row.ID, row.OwnerUserID, row.Type, row.Title, row.MediaType,
 		row.ContentRef, row.Digest, row.Entrypoint, row.FileCount, row.TotalSizeBytes,
-		row.CreatedAt, row.ProjectID, row.SourceTaskID)
+		row.CreatedAt, row.ProjectID, row.SourceTaskID, row.SourceAppInstanceID)
 	return validateUnionArtifact(artifact, row.OutputKey, row.LineCount, row.ReviewContent)
 }
 
 func artifactFromSummariesUnion(row artifactdb.ListArtifactSummariesUnionRow) (domain.Artifact, error) {
 	artifact := unionArtifact(row.ID, row.OwnerUserID, row.Type, row.Title, row.MediaType,
 		row.ContentRef, row.Digest, row.Entrypoint, row.FileCount, row.TotalSizeBytes,
-		row.CreatedAt, row.ProjectID, row.SourceTaskID)
+		row.CreatedAt, row.ProjectID, row.SourceTaskID, row.SourceAppInstanceID)
 	return validateUnionArtifact(artifact, row.OutputKey, row.LineCount, row.ReviewContent)
 }
 
@@ -233,7 +233,7 @@ func validateUnionArtifact(artifact domain.Artifact, outputKey pgtype.Text, line
 	}
 	fact := domain.ReviewArtifact{
 		ID: artifact.ID, OwnerUserID: artifact.OwnerUserID, ProjectID: artifact.ProjectID,
-		SourceTask: artifact.SourceTaskID, OutputKey: outputKey.String, Type: artifact.Type,
+		SourceTask: artifact.SourceTaskID, SourceAppInstanceID: artifact.SourceAppInstanceID, OutputKey: outputKey.String, Type: artifact.Type,
 		Title: artifact.Title, MediaType: artifact.MediaType, Digest: artifact.Digest,
 		ByteCount: int(artifact.TotalSizeBytes), LineCount: int(lineCount.Int32),
 		CreatedAt: artifact.CreatedAt,
@@ -250,15 +250,16 @@ func validateUnionArtifact(artifact domain.Artifact, outputKey pgtype.Text, line
 }
 
 func unionArtifact(id, ownerUserID, artifactType, title, mediaType, contentRef, digest, entrypoint string,
-	fileCount int32, totalSizeBytes int64, createdAt pgtype.Timestamptz, projectID, sourceTaskID pgtype.UUID,
+	fileCount int32, totalSizeBytes int64, createdAt pgtype.Timestamptz, projectID, sourceTaskID, sourceAppID pgtype.UUID,
 ) domain.Artifact {
 	return domain.Artifact{
 		ID: id, OwnerUserID: ownerUserID, Type: artifactType, Title: title,
 		MediaType: mediaType, ContentRef: contentRef, Digest: digest,
 		Entrypoint: entrypoint, FileCount: int(fileCount),
 		TotalSizeBytes: totalSizeBytes, CreatedAt: createdAt.Time,
-		ProjectID:    uuidText(projectID),
-		SourceTaskID: uuidText(sourceTaskID),
+		ProjectID:           uuidText(projectID),
+		SourceTaskID:        uuidText(sourceTaskID),
+		SourceAppInstanceID: uuidText(sourceAppID),
 	}
 }
 
@@ -267,4 +268,12 @@ func uuidText(value pgtype.UUID) string {
 		return ""
 	}
 	return uuid.UUID(value.Bytes).String()
+}
+
+func nullableUUID(value string) pgtype.UUID {
+	var result pgtype.UUID
+	if value != "" {
+		_ = result.Scan(value)
+	}
+	return result
 }

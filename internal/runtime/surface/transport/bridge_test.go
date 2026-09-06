@@ -12,6 +12,7 @@ import (
 	"connectrpc.com/connect"
 
 	agentv1 "github.com/yangtao121/workos/gen/go/workos/agent/v1"
+	artifactv1 "github.com/yangtao121/workos/gen/go/workos/artifact/v1"
 	bridgev1 "github.com/yangtao121/workos/gen/go/workos/bridge/v1"
 	bridgev1connect "github.com/yangtao121/workos/gen/go/workos/bridge/v1/bridgev1connect"
 	notificationv1 "github.com/yangtao121/workos/gen/go/workos/notification/v1"
@@ -275,4 +276,11 @@ func (s *fakeBridgeService) ReadFile(context.Context, string, string, string, do
 }
 func (s *fakeBridgeService) WriteFile(context.Context, string, string, string, domain.FileRef, []byte) (domain.FileRef, error) {
 	return domain.FileRef{}, domain.ErrPermissionDenied
+}
+
+func (f *fakeBridgeService) CreateReviewArtifact(context.Context, string, string, string, ports.AppArtifactInput) (*artifactv1.Artifact, error) {
+	return nil, domain.ErrPermissionDenied
+}
+func (f *fakeBridgeService) OpenReviewArtifact(context.Context, string, string, string, string) (*artifactv1.Artifact, error) {
+	return nil, domain.ErrPermissionDenied
 }

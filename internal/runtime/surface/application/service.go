@@ -36,6 +36,7 @@ type Service struct {
 	// read-only knowledge.search bridge method (ADR-0013).
 	knowledgeConfigured bool
 	workspace           ports.Workspace
+	artifactsConfigured bool
 }
 
 func New(repository ports.SessionRepository, resolver ports.LaunchResolver, generator ids.Generator, sessionTTL time.Duration) (*Service, error) {
@@ -50,20 +51,31 @@ func (s *Service) WithKnowledgeConfigured() *Service {
 	return s
 }
 
+func (s *Service) WithArtifactsConfigured() *Service { s.artifactsConfigured = true; return s }
+
 func (s *Service) WithWorkspace(workspace ports.Workspace) *Service {
 	s.workspace = workspace
 	return s
 }
 
-func (s *Service) fileCapabilities(owner, project string, granted []string) []string {
+func (s *Service) resourceCapabilities(owner, project string, granted []string) []string {
+	var capabilities []string
+	if s.artifactsConfigured {
+		if domain.BridgeCapabilityGranted(granted, "artifact.read") {
+			capabilities = append(capabilities, "artifacts.open")
+		}
+		if domain.BridgeCapabilityGranted(granted, "artifact.write") {
+			capabilities = append(capabilities, "artifacts.create")
+		}
+	}
 	if s.workspace == nil {
-		return nil
+		return capabilities
 	}
 	available, writable := s.workspace.Access(ports.FileScope{OwnerUserID: owner, ProjectID: project})
 	if !available {
-		return nil
+		return capabilities
 	}
-	return domain.WorkspaceCapabilities(granted, writable)
+	return append(capabilities, domain.WorkspaceCapabilities(granted, writable)...)
 }
 
 // NewWithWorkloads wires the broker with the runtime's Workload Manager.
@@ -184,7 +196,7 @@ func (s *Service) Create(ctx context.Context, command CreateCommand) (CreatedSur
 			AppID: resolved.AppID, Version: resolved.Version,
 			ManifestDigest: resolved.ManifestDigest,
 		},
-		BridgeCapabilities: append(domain.EffectiveBridgeCapabilities(resolved.GrantedPermissions, s.knowledgeConfigured), s.fileCapabilities(command.OwnerUserID, command.ProjectID, resolved.GrantedPermissions)...),
+		BridgeCapabilities: append(domain.EffectiveBridgeCapabilities(resolved.GrantedPermissions, s.knowledgeConfigured), s.resourceCapabilities(command.OwnerUserID, command.ProjectID, resolved.GrantedPermissions)...),
 		// The pinned authorization epoch is exactly what Core resolved —
 		// never a constant and never a client input (ADR-0003 §7).
 		InstallationGrantRevision: resolved.GrantRevision,

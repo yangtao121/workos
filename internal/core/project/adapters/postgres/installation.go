@@ -82,7 +82,7 @@ func (r *Repository) ResolveActiveInstallation(ctx context.Context, ownerUserID,
 	return installationFromResolver(value, err)
 }
 
-func (r *Repository) ResolveActiveInstallationForNotificationTx(ctx context.Context, tx dbtx.Tx, ownerUserID, projectID, installationID string) (domain.Installation, error) {
+func (r *Repository) ResolveActiveInstallationForAppTx(ctx context.Context, tx dbtx.Tx, ownerUserID, projectID, installationID string) (domain.Installation, error) {
 	queries := r.queries.WithTx(tx)
 	if _, err := queries.LockProjectForNotification(ctx, projectdb.LockProjectForNotificationParams{
 		OwnerUserID: ownerUserID, ProjectID: projectID,

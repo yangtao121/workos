@@ -278,3 +278,45 @@ describe("workspace files", () => {
     expect(await picking).toEqual([]);
   });
 });
+
+describe("app artifacts", () => {
+  it("encodes UTF-8 content and returns canonical metadata", async () => {
+    const { bridge, port } = await connectedBridge({ methods: ["artifacts.create"] });
+    const pending = bridge.artifacts.create({
+      idempotencyKey: "notes",
+      type: "document.markdown.v1",
+      title: "Notes",
+      content: "中文",
+    });
+    expect(port.sent.at(-1)).toMatchObject({
+      method: "artifacts.create",
+      payload: { contentBase64: "5Lit5paH" },
+    });
+    const artifact = {
+      id: "0198d7ea-2110-7c42-b659-c5e4d73bc353",
+      projectId: "0198d7ea-2110-7c42-b659-c5e4d73bc352",
+      type: "document.markdown.v1",
+      title: "Notes",
+      digest: `sha256:${"a".repeat(64)}`,
+    };
+    port.receive({
+      version: APP_BRIDGE_VERSION,
+      type: "response",
+      requestId: "req-1",
+      payload: { artifact },
+    });
+    expect(await pending).toEqual(artifact);
+  });
+  it("rejects a byte-oversized artifact without sending a request", async () => {
+    const { bridge, port } = await connectedBridge({ methods: ["artifacts.create"] });
+    await expect(
+      bridge.artifacts.create({
+        idempotencyKey: "notes",
+        type: "document.markdown.v1",
+        title: "Notes",
+        content: "中".repeat(11000),
+      }),
+    ).rejects.toMatchObject({ code: "oversize" });
+    expect(port.sent).toHaveLength(1);
+  });
+});

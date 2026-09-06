@@ -12,6 +12,7 @@ import (
 	"connectrpc.com/connect"
 
 	agentv1 "github.com/yangtao121/workos/gen/go/workos/agent/v1"
+	artifactv1 "github.com/yangtao121/workos/gen/go/workos/artifact/v1"
 	bridgev1 "github.com/yangtao121/workos/gen/go/workos/bridge/v1"
 	bridgev1connect "github.com/yangtao121/workos/gen/go/workos/bridge/v1/bridgev1connect"
 	indexv1 "github.com/yangtao121/workos/gen/go/workos/index/v1"
@@ -31,6 +32,8 @@ const (
 
 // BridgeService abstracts the application bridge use cases for tests.
 type BridgeService interface {
+	CreateReviewArtifact(context.Context, string, string, string, ports.AppArtifactInput) (*artifactv1.Artifact, error)
+	OpenReviewArtifact(context.Context, string, string, string, string) (*artifactv1.Artifact, error)
 	ListFiles(context.Context, string, string, string, string, string) (domain.FilePage, error)
 	ReadFile(context.Context, string, string, string, domain.FileRef) ([]byte, error)
 	WriteFile(context.Context, string, string, string, domain.FileRef, []byte) (domain.FileRef, error)

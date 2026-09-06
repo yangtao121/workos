@@ -68,3 +68,14 @@ Linux adapter 使用内核 [openat2](https://pkg.go.dev/golang.org/x/sys/unix#Op
 BENEATH/NO_SYMLINKS 解析；不把先检查路径再普通 open 当作安全边界，
 见 [Go 路径遍历说明](https://go.dev/blog/osroot)。缺少内核支持时不协商文件能力。
 选择器由 shell 渲染，用户可取消；App 只拿 FileRef 与有界文件内容，不能指定宿主目录。
+
+## App 产物
+
+App 的 artifacts.create/open 使用 artifact.write/read grant；只支持既有 Markdown/diff
+不可变 review 内容与系统查看器。公开 Bridge 不接收 owner、project 或来源字段；Runtime
+从 session 派生，Core 私有服务在事务内锁定安装并重验 epoch。App 创建产物记录
+source_app_instance_id，与 source_task_id 恰好二选一；不制造 Agent 任务或 timeline 事件。
+迁移 044 由 Core Artifact 独占，新增 App 幂等映射；安装内 key 采用既有 output-key 语法。
+同 key 同内容重放首个产物，不同内容 Aborted；单安装最多 100 个产物。
+产物、索引 publication、通知在一个事务提交。open 只返回当前安装项目内经授权重读的
+review 元数据，由 shell 打开既有查看器，禁止 App 指定 URL 或任意窗口目标。

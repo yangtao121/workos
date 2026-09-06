@@ -35,6 +35,7 @@ function reviewArtifact(id: string): Artifact {
     totalSizeBytes: BigInt(MARKDOWN_BYTES.length),
     fileCount: 1,
     sourceTaskId: "task-1",
+    sourceAppInstanceId: "",
   };
 }
 

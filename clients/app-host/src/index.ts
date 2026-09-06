@@ -1,3 +1,9 @@
+import {
+  validBridgeArtifactRef,
+  type BridgeArtifactRef,
+  type BridgeArtifactCreatePayload,
+  type BridgeArtifactOpenPayload,
+} from "@workos/surface-sdk";
 // The trusted parent-side App Bridge host. Running inside the Desktop (never
 // inside the iframe), it owns the versioned MessageChannel handshake with the
 // exact sandboxed iframe window and dispatches bounded bridge requests to the
@@ -68,6 +74,11 @@ export interface AppBridgeRunResult {
  * `internal` and its details never cross the port.
  */
 export interface AppBridgeTransport {
+  createArtifact(
+    input: BridgeArtifactCreatePayload,
+    signal: AbortSignal,
+  ): Promise<BridgeArtifactRef>;
+  openArtifact(input: BridgeArtifactOpenPayload, signal: AbortSignal): Promise<BridgeArtifactRef>;
   listFiles(directory: string, after: string, signal: AbortSignal): Promise<BridgeFilePage>;
   readFile(input: BridgeFileReadPayload, signal: AbortSignal): Promise<{ dataBase64: string }>;
   writeFile(input: BridgeFileWritePayload, signal: AbortSignal): Promise<{ ref: BridgeFileRef }>;
@@ -99,6 +110,7 @@ export interface AppBridgeTransport {
 }
 
 export interface AppBridgeShellHost {
+  openArtifact?(artifact: BridgeArtifactRef): void;
   /** Returns the bounded summary of the surface's active project. */
   projectCurrent(): Promise<{ projectId: string; name: string; revision: string }>;
   /** Returns the shell's active color scheme. */
@@ -148,6 +160,8 @@ const capabilityMethods: Record<string, BridgeMethod> = {
   // ADR-0014: the grant name and the method name are identical, so the
   // effective capability list carries the method name directly.
   "notifications.create": "notifications.create",
+  "artifacts.create": "artifacts.create",
+  "artifacts.open": "artifacts.open",
   "files.pick": "files.pick",
   "files.read": "files.read",
   "files.write": "files.write",
@@ -341,7 +355,8 @@ export function openAppBridgeHost(options: AppBridgeHostOptions): AppBridgeHost 
     .filter(
       ([capability]) =>
         options.capabilities.includes(capability) &&
-        (capability !== "files.pick" || options.filePicker !== undefined),
+        (capability !== "files.pick" || options.filePicker !== undefined) &&
+        (capability !== "artifacts.open" || options.shell?.openArtifact !== undefined),
     )
     .map(([, method]) => method);
   // Shell-side methods: the trusted parent executes these itself, so they
@@ -550,6 +565,38 @@ export function openAppBridgeHost(options: AppBridgeHostOptions): AppBridgeHost 
       return "too_many_inflight";
     }
 
+    if (request.method === "artifacts.open") {
+      const payload: unknown = request.payload;
+      return isPlainObject(payload) &&
+        hasExactKeys(payload, ["artifactId"]) &&
+        typeof payload["artifactId"] === "string" &&
+        /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(
+          payload["artifactId"],
+        )
+        ? null
+        : "invalid_argument";
+    }
+    if (request.method === "artifacts.create") {
+      const payload: unknown = request.payload;
+      if (
+        !isPlainObject(payload) ||
+        !hasExactKeys(payload, ["idempotencyKey", "type", "title", "contentBase64"]) ||
+        typeof payload["idempotencyKey"] !== "string" ||
+        !/^[a-z][a-z0-9._-]{0,63}$/.test(payload["idempotencyKey"]) ||
+        (payload["type"] !== "document.markdown.v1" &&
+          payload["type"] !== "code.unified-diff.v1") ||
+        typeof payload["title"] !== "string" ||
+        payload["title"].length === 0 ||
+        payload["title"].length > 400
+      )
+        return "invalid_argument";
+      try {
+        if (decodeFileData(payload["contentBase64"]).length === 0) return "invalid_argument";
+      } catch {
+        return "invalid_argument";
+      }
+      return null;
+    }
     if (request.method === "files.pick") {
       const payload: unknown = request.payload;
       return isPlainObject(payload) &&
@@ -683,6 +730,8 @@ export function openAppBridgeHost(options: AppBridgeHostOptions): AppBridgeHost 
     }
 
     if (
+      request.method === "artifacts.create" ||
+      request.method === "artifacts.open" ||
       request.method === "files.pick" ||
       request.method === "files.read" ||
       request.method === "files.write"
@@ -699,8 +748,23 @@ export function openAppBridgeHost(options: AppBridgeHostOptions): AppBridgeHost 
       );
       pending.set(request.requestId, { timer, controller });
       void (async () => {
-        let payload: BridgeFileResult;
-        if (request.method === "files.pick") {
+        let payload: BridgeFileResult | { artifact: BridgeArtifactRef };
+        if (request.method === "artifacts.create" || request.method === "artifacts.open") {
+          const artifact =
+            request.method === "artifacts.create"
+              ? await options.transport.createArtifact(
+                  request.payload as BridgeArtifactCreatePayload,
+                  controller.signal,
+                )
+              : await options.transport.openArtifact(
+                  request.payload as BridgeArtifactOpenPayload,
+                  controller.signal,
+                );
+          if (!pending.has(request.requestId)) return;
+          if (!validBridgeArtifactRef(artifact)) throw new BridgeProtocolError("internal");
+          if (request.method === "artifacts.open") options.shell?.openArtifact?.(artifact);
+          payload = { artifact };
+        } else if (request.method === "files.pick") {
           if (!options.filePicker) throw new BridgeProtocolError("permission_denied");
           const refs = await options.filePicker(
             request.payload as BridgeFilePickPayload,

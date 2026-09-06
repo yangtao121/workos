@@ -38,6 +38,12 @@ const (
 // reflection-formatted method names, remove the leading slash and convert the remaining slash to a
 // period.
 const (
+	// AppBridgeServiceCreateReviewArtifactProcedure is the fully-qualified name of the
+	// AppBridgeService's CreateReviewArtifact RPC.
+	AppBridgeServiceCreateReviewArtifactProcedure = "/workos.bridge.v1.AppBridgeService/CreateReviewArtifact"
+	// AppBridgeServiceOpenReviewArtifactProcedure is the fully-qualified name of the AppBridgeService's
+	// OpenReviewArtifact RPC.
+	AppBridgeServiceOpenReviewArtifactProcedure = "/workos.bridge.v1.AppBridgeService/OpenReviewArtifact"
 	// AppBridgeServiceListFilesProcedure is the fully-qualified name of the AppBridgeService's
 	// ListFiles RPC.
 	AppBridgeServiceListFilesProcedure = "/workos.bridge.v1.AppBridgeService/ListFiles"
@@ -66,6 +72,8 @@ const (
 
 // AppBridgeServiceClient is a client for the workos.bridge.v1.AppBridgeService service.
 type AppBridgeServiceClient interface {
+	CreateReviewArtifact(context.Context, *connect.Request[v1.CreateReviewArtifactRequest]) (*connect.Response[v1.CreateReviewArtifactResponse], error)
+	OpenReviewArtifact(context.Context, *connect.Request[v1.OpenReviewArtifactRequest]) (*connect.Response[v1.OpenReviewArtifactResponse], error)
 	ListFiles(context.Context, *connect.Request[v1.ListFilesRequest]) (*connect.Response[v1.ListFilesResponse], error)
 	ReadFile(context.Context, *connect.Request[v1.ReadFileRequest]) (*connect.Response[v1.ReadFileResponse], error)
 	WriteFile(context.Context, *connect.Request[v1.WriteFileRequest]) (*connect.Response[v1.WriteFileResponse], error)
@@ -95,6 +103,18 @@ func NewAppBridgeServiceClient(httpClient connect.HTTPClient, baseURL string, op
 	baseURL = strings.TrimRight(baseURL, "/")
 	appBridgeServiceMethods := v1.File_workos_bridge_v1_bridge_proto.Services().ByName("AppBridgeService").Methods()
 	return &appBridgeServiceClient{
+		createReviewArtifact: connect.NewClient[v1.CreateReviewArtifactRequest, v1.CreateReviewArtifactResponse](
+			httpClient,
+			baseURL+AppBridgeServiceCreateReviewArtifactProcedure,
+			connect.WithSchema(appBridgeServiceMethods.ByName("CreateReviewArtifact")),
+			connect.WithClientOptions(opts...),
+		),
+		openReviewArtifact: connect.NewClient[v1.OpenReviewArtifactRequest, v1.OpenReviewArtifactResponse](
+			httpClient,
+			baseURL+AppBridgeServiceOpenReviewArtifactProcedure,
+			connect.WithSchema(appBridgeServiceMethods.ByName("OpenReviewArtifact")),
+			connect.WithClientOptions(opts...),
+		),
 		listFiles: connect.NewClient[v1.ListFilesRequest, v1.ListFilesResponse](
 			httpClient,
 			baseURL+AppBridgeServiceListFilesProcedure,
@@ -148,6 +168,8 @@ func NewAppBridgeServiceClient(httpClient connect.HTTPClient, baseURL string, op
 
 // appBridgeServiceClient implements AppBridgeServiceClient.
 type appBridgeServiceClient struct {
+	createReviewArtifact *connect.Client[v1.CreateReviewArtifactRequest, v1.CreateReviewArtifactResponse]
+	openReviewArtifact   *connect.Client[v1.OpenReviewArtifactRequest, v1.OpenReviewArtifactResponse]
 	listFiles            *connect.Client[v1.ListFilesRequest, v1.ListFilesResponse]
 	readFile             *connect.Client[v1.ReadFileRequest, v1.ReadFileResponse]
 	writeFile            *connect.Client[v1.WriteFileRequest, v1.WriteFileResponse]
@@ -156,6 +178,16 @@ type appBridgeServiceClient struct {
 	watchAgentTaskEvents *connect.Client[v1.WatchAgentTaskEventsRequest, v1.WatchAgentTaskEventsResponse]
 	searchKnowledge      *connect.Client[v1.SearchKnowledgeRequest, v1.SearchKnowledgeResponse]
 	createNotification   *connect.Client[v1.CreateNotificationRequest, v1.CreateNotificationResponse]
+}
+
+// CreateReviewArtifact calls workos.bridge.v1.AppBridgeService.CreateReviewArtifact.
+func (c *appBridgeServiceClient) CreateReviewArtifact(ctx context.Context, req *connect.Request[v1.CreateReviewArtifactRequest]) (*connect.Response[v1.CreateReviewArtifactResponse], error) {
+	return c.createReviewArtifact.CallUnary(ctx, req)
+}
+
+// OpenReviewArtifact calls workos.bridge.v1.AppBridgeService.OpenReviewArtifact.
+func (c *appBridgeServiceClient) OpenReviewArtifact(ctx context.Context, req *connect.Request[v1.OpenReviewArtifactRequest]) (*connect.Response[v1.OpenReviewArtifactResponse], error) {
+	return c.openReviewArtifact.CallUnary(ctx, req)
 }
 
 // ListFiles calls workos.bridge.v1.AppBridgeService.ListFiles.
@@ -200,6 +232,8 @@ func (c *appBridgeServiceClient) CreateNotification(ctx context.Context, req *co
 
 // AppBridgeServiceHandler is an implementation of the workos.bridge.v1.AppBridgeService service.
 type AppBridgeServiceHandler interface {
+	CreateReviewArtifact(context.Context, *connect.Request[v1.CreateReviewArtifactRequest]) (*connect.Response[v1.CreateReviewArtifactResponse], error)
+	OpenReviewArtifact(context.Context, *connect.Request[v1.OpenReviewArtifactRequest]) (*connect.Response[v1.OpenReviewArtifactResponse], error)
 	ListFiles(context.Context, *connect.Request[v1.ListFilesRequest]) (*connect.Response[v1.ListFilesResponse], error)
 	ReadFile(context.Context, *connect.Request[v1.ReadFileRequest]) (*connect.Response[v1.ReadFileResponse], error)
 	WriteFile(context.Context, *connect.Request[v1.WriteFileRequest]) (*connect.Response[v1.WriteFileResponse], error)
@@ -225,6 +259,18 @@ type AppBridgeServiceHandler interface {
 // and JSON codecs. They also support gzip compression.
 func NewAppBridgeServiceHandler(svc AppBridgeServiceHandler, opts ...connect.HandlerOption) (string, http.Handler) {
 	appBridgeServiceMethods := v1.File_workos_bridge_v1_bridge_proto.Services().ByName("AppBridgeService").Methods()
+	appBridgeServiceCreateReviewArtifactHandler := connect.NewUnaryHandler(
+		AppBridgeServiceCreateReviewArtifactProcedure,
+		svc.CreateReviewArtifact,
+		connect.WithSchema(appBridgeServiceMethods.ByName("CreateReviewArtifact")),
+		connect.WithHandlerOptions(opts...),
+	)
+	appBridgeServiceOpenReviewArtifactHandler := connect.NewUnaryHandler(
+		AppBridgeServiceOpenReviewArtifactProcedure,
+		svc.OpenReviewArtifact,
+		connect.WithSchema(appBridgeServiceMethods.ByName("OpenReviewArtifact")),
+		connect.WithHandlerOptions(opts...),
+	)
 	appBridgeServiceListFilesHandler := connect.NewUnaryHandler(
 		AppBridgeServiceListFilesProcedure,
 		svc.ListFiles,
@@ -275,6 +321,10 @@ func NewAppBridgeServiceHandler(svc AppBridgeServiceHandler, opts ...connect.Han
 	)
 	return "/workos.bridge.v1.AppBridgeService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
+		case AppBridgeServiceCreateReviewArtifactProcedure:
+			appBridgeServiceCreateReviewArtifactHandler.ServeHTTP(w, r)
+		case AppBridgeServiceOpenReviewArtifactProcedure:
+			appBridgeServiceOpenReviewArtifactHandler.ServeHTTP(w, r)
 		case AppBridgeServiceListFilesProcedure:
 			appBridgeServiceListFilesHandler.ServeHTTP(w, r)
 		case AppBridgeServiceReadFileProcedure:
@@ -299,6 +349,14 @@ func NewAppBridgeServiceHandler(svc AppBridgeServiceHandler, opts ...connect.Han
 
 // UnimplementedAppBridgeServiceHandler returns CodeUnimplemented from all methods.
 type UnimplementedAppBridgeServiceHandler struct{}
+
+func (UnimplementedAppBridgeServiceHandler) CreateReviewArtifact(context.Context, *connect.Request[v1.CreateReviewArtifactRequest]) (*connect.Response[v1.CreateReviewArtifactResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("workos.bridge.v1.AppBridgeService.CreateReviewArtifact is not implemented"))
+}
+
+func (UnimplementedAppBridgeServiceHandler) OpenReviewArtifact(context.Context, *connect.Request[v1.OpenReviewArtifactRequest]) (*connect.Response[v1.OpenReviewArtifactResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("workos.bridge.v1.AppBridgeService.OpenReviewArtifact is not implemented"))
+}
 
 func (UnimplementedAppBridgeServiceHandler) ListFiles(context.Context, *connect.Request[v1.ListFilesRequest]) (*connect.Response[v1.ListFilesResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("workos.bridge.v1.AppBridgeService.ListFiles is not implemented"))

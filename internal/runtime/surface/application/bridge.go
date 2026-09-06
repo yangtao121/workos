@@ -26,6 +26,7 @@ type BridgeService struct {
 	appAgent   ports.AppAgentClient
 	resolver   ports.LaunchResolver
 	workspace  ports.Workspace
+	artifacts  ports.AppArtifactClient
 	// knowledge is the scoped search pipeline (Core re-authorization +
 	// indexer call). It is nil when the runtime has no configured indexer
 	// adapter: then knowledge.search is never negotiated and every call
@@ -96,6 +97,10 @@ func (s *BridgeService) authorizeCurrent(ctx context.Context, ownerUserID, devic
 	switch capability {
 	case "project.current":
 		grant = "project.read"
+	case "artifacts.create":
+		grant = "artifact.write"
+	case "artifacts.open":
+		grant = "artifact.read"
 	case "files.pick":
 		grant = "files.read"
 	}

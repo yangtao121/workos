@@ -212,21 +212,22 @@ func writeDigestField(digest hash.Hash, value string) {
 }
 
 // ReviewArtifact is the immutable project review artifact fact. It is
-// permanently bound to its owner, project, source task, and provider output
+// permanently bound to its owner, project, task or App source, and output
 // key; the content bytes travel separately in typed reads only.
 type ReviewArtifact struct {
-	ID          string
-	OwnerUserID string
-	ProjectID   string
-	SourceTask  string
-	OutputKey   string
-	Type        string
-	Title       string
-	MediaType   string
-	Digest      string
-	ByteCount   int
-	LineCount   int
-	CreatedAt   time.Time
+	ID                  string
+	OwnerUserID         string
+	ProjectID           string
+	SourceTask          string
+	SourceAppInstanceID string
+	OutputKey           string
+	Type                string
+	Title               string
+	MediaType           string
+	Digest              string
+	ByteCount           int
+	LineCount           int
+	CreatedAt           time.Time
 }
 
 // PublicationRecord is the Core-minted timeline publication reference stored
@@ -273,7 +274,7 @@ func CanonicalUTCTime(value time.Time) time.Time {
 // immutable, so any drift is internal corruption, never a client error.
 func ValidStoredReviewFact(artifact ReviewArtifact) bool {
 	if !ValidArtifactUUID(artifact.ID) || !ValidArtifactUUID(artifact.OwnerUserID) ||
-		!ValidArtifactUUID(artifact.ProjectID) || !ValidArtifactUUID(artifact.SourceTask) ||
+		!ValidArtifactUUID(artifact.ProjectID) || !ValidReviewProvenance(artifact.SourceTask, artifact.SourceAppInstanceID) ||
 		!ValidReviewOutputKey(artifact.OutputKey) {
 		return false
 	}
@@ -296,7 +297,7 @@ func ValidStoredReviewFact(artifact ReviewArtifact) bool {
 
 // ValidStoredArtifact revalidates one stored metadata row of either subtype
 // on every read. Web bundle provenance fields stay empty; review artifacts
-// always carry project and source task. Any drift is internal corruption.
+// always carry project and exactly one source. Any drift is internal corruption.
 func ValidStoredArtifact(artifact Artifact) bool {
 	if !ValidArtifactUUID(artifact.ID) || artifact.OwnerUserID == "" ||
 		!ValidArtifactTitle(artifact.Title) || !ValidArtifactDigest(artifact.Digest) ||
@@ -306,18 +307,23 @@ func ValidStoredArtifact(artifact Artifact) bool {
 	switch artifact.Type {
 	case TypeWebBundle:
 		return artifact.MediaType == MediaTypeBundle && artifact.ProjectID == "" &&
-			artifact.SourceTaskID == "" && artifact.FileCount >= 1 &&
+			artifact.SourceTaskID == "" && artifact.SourceAppInstanceID == "" && artifact.FileCount >= 1 &&
 			artifact.TotalSizeBytes >= 1 && artifact.ContentRef != ""
 	case TypeMarkdown, TypeUnifiedDiff:
 		_, expectedMedia, ok := ReviewType(artifact.Type)
 		canonicalTitle, titleOK := NormalizeReviewTitle(artifact.Title)
 		return ok && artifact.MediaType == expectedMedia &&
 			ValidArtifactUUID(artifact.OwnerUserID) && titleOK && canonicalTitle == artifact.Title &&
-			ValidArtifactUUID(artifact.ProjectID) && ValidArtifactUUID(artifact.SourceTaskID) &&
+			ValidArtifactUUID(artifact.ProjectID) && ValidReviewProvenance(artifact.SourceTaskID, artifact.SourceAppInstanceID) &&
 			artifact.FileCount == 1 && artifact.TotalSizeBytes >= 1 &&
 			artifact.TotalSizeBytes <= MaxReviewContentBytes && artifact.ContentRef == "" &&
 			artifact.Entrypoint == ""
 	default:
 		return false
 	}
+}
+
+// ValidReviewProvenance requires exactly one canonical source identity.
+func ValidReviewProvenance(taskID, appID string) bool {
+	return (ValidArtifactUUID(taskID) && appID == "") || (taskID == "" && ValidArtifactUUID(appID))
 }

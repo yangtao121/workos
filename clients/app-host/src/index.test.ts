@@ -120,6 +120,8 @@ function setupImplementation(options: {
     }) => Promise<BridgeKnowledgeSearchResult>
   >(() => Promise.resolve({ hits: [], nextPageToken: "" }));
   const transport: AppBridgeTransport = {
+    createArtifact: () => Promise.reject(new BridgeProtocolError("permission_denied")),
+    openArtifact: () => Promise.reject(new BridgeProtocolError("permission_denied")),
     listFiles: () => Promise.reject(new BridgeProtocolError("permission_denied")),
     readFile: () => Promise.reject(new BridgeProtocolError("permission_denied")),
     writeFile: () => Promise.reject(new BridgeProtocolError("permission_denied")),
@@ -979,5 +981,83 @@ describe("file Bridge dispatch", () => {
     await flush();
     expect(received).toHaveLength(0);
     expect(listFiles).not.toHaveBeenCalled();
+  });
+});
+
+describe("artifact Bridge dispatch", () => {
+  const artifact = {
+    id: "0198d7ea-2110-7c42-b659-c5e4d73bc353",
+    projectId: "0198d7ea-2110-7c42-b659-c5e4d73bc352",
+    type: "document.markdown.v1",
+    title: "Notes",
+    digest: `sha256:${"a".repeat(64)}`,
+  };
+  it("rejects injected scope and malformed content before creating anything", async () => {
+    const createArtifact = vi.fn(() => Promise.resolve(artifact));
+    const { host, port, received } = await handshakenHost({
+      capabilities: ["artifacts.create"],
+      transport: { createArtifact },
+    });
+    try {
+      port.postMessage({
+        version: APP_BRIDGE_VERSION,
+        type: "request",
+        requestId: "injected-scope",
+        method: "artifacts.create",
+        payload: {
+          idempotencyKey: "notes",
+          type: artifact.type,
+          title: "Notes",
+          contentBase64: "bm90ZXM=",
+          projectId: artifact.projectId,
+        },
+      });
+      await vi.waitFor(() => {
+        expect(received.at(-1)?.data).toMatchObject({ type: "error", code: "invalid_argument" });
+      });
+      expect(createArtifact).not.toHaveBeenCalled();
+    } finally {
+      host.close();
+    }
+  });
+  it("does not open a viewer after its requesting surface closes", async () => {
+    let finish!: () => void;
+    const openArtifact = vi.fn(
+      () =>
+        new Promise<typeof artifact>((resolve) => {
+          finish = () => {
+            resolve(artifact);
+          };
+        }),
+    );
+    const openViewer = vi.fn();
+    const shell: AppBridgeShellHost = {
+      projectCurrent: () => Promise.reject(new Error("unused")),
+      getTheme: () => Promise.resolve({ scheme: "dark" }),
+      setWindowTitle: vi.fn(),
+      closeWindow: vi.fn(),
+      setWindowBadge: vi.fn(),
+      setWindowMode: vi.fn(),
+      openArtifact: openViewer,
+    };
+    const { host, port } = await handshakenHost({
+      capabilities: ["artifacts.open"],
+      shell,
+      transport: { openArtifact },
+    });
+    port.postMessage({
+      version: APP_BRIDGE_VERSION,
+      type: "request",
+      requestId: "open",
+      method: "artifacts.open",
+      payload: { artifactId: artifact.id },
+    });
+    await vi.waitFor(() => {
+      expect(openArtifact).toHaveBeenCalledOnce();
+    });
+    host.close();
+    finish();
+    await flush();
+    expect(openViewer).not.toHaveBeenCalled();
   });
 });

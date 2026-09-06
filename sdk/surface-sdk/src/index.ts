@@ -3,7 +3,7 @@
 // payloads reuse the generated canonical types from @workos/protocol — this
 // module defines only the bounded envelopes, versions, limits, and stable
 // error codes, never a second DTO for agent data.
-import type { AgentEvent, FileRef } from "@workos/protocol";
+import type { AgentEvent, Artifact, FileRef } from "@workos/protocol";
 
 /** The one protocol version; a mismatch fails the handshake closed. */
 export const APP_BRIDGE_VERSION = "workos.app-bridge/v1" as const;
@@ -28,6 +28,8 @@ export const BRIDGE_METHODS = [
   "window.setBadge",
   "window.maximize",
   "window.minimize",
+  "artifacts.create",
+  "artifacts.open",
   "files.pick",
   "files.read",
   "files.write",
@@ -149,6 +151,34 @@ export interface BridgeWindowOkResult {
   ok: true;
 }
 
+export type BridgeArtifactRef = Pick<Artifact, "id" | "projectId" | "type" | "title" | "digest">;
+export interface BridgeArtifactCreatePayload {
+  idempotencyKey: string;
+  type: "document.markdown.v1" | "code.unified-diff.v1";
+  title: string;
+  contentBase64: string;
+}
+export interface BridgeArtifactOpenPayload {
+  artifactId: string;
+}
+export function validBridgeArtifactRef(value: unknown): value is BridgeArtifactRef {
+  if (typeof value !== "object" || value === null) return false;
+  const ref = value as Record<string, unknown>;
+  const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+  return (
+    typeof ref["id"] === "string" &&
+    uuid.test(ref["id"]) &&
+    typeof ref["projectId"] === "string" &&
+    uuid.test(ref["projectId"]) &&
+    (ref["type"] === "document.markdown.v1" || ref["type"] === "code.unified-diff.v1") &&
+    typeof ref["title"] === "string" &&
+    ref["title"].length > 0 &&
+    ref["title"].length <= 400 &&
+    typeof ref["digest"] === "string" &&
+    /^sha256:[0-9a-f]{64}$/.test(ref["digest"])
+  );
+}
+
 export type BridgeFileRef = Pick<FileRef, "projectId" | "path" | "etag">;
 export interface BridgeFileEntry {
   ref: BridgeFileRef;
@@ -218,6 +248,8 @@ export interface BridgeRequest {
     | BridgeNotificationCreatePayload
     | BridgeWindowSetTitlePayload
     | BridgeWindowSetBadgePayload
+    | BridgeArtifactCreatePayload
+    | BridgeArtifactOpenPayload
     | BridgeFilePickPayload
     | BridgeFileReadPayload
     | BridgeFileWritePayload
@@ -235,6 +267,7 @@ export interface BridgeResponse {
     | BridgeProjectCurrentResult
     | BridgeThemeGetResult
     | BridgeWindowOkResult
+    | { artifact: BridgeArtifactRef }
     | BridgeFileResult
     | { done: true };
 }

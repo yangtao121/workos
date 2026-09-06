@@ -40,9 +40,11 @@ type Artifact struct {
 	// Web bundle artifacts leave it and project_id empty. It is provenance
 	// metadata, never an authorization token: every read stays owner/project
 	// scoped and the source task UUID alone grants nothing.
-	SourceTaskId  string `protobuf:"bytes,11,opt,name=source_task_id,json=sourceTaskId,proto3" json:"source_task_id,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	SourceTaskId string `protobuf:"bytes,11,opt,name=source_task_id,json=sourceTaskId,proto3" json:"source_task_id,omitempty"`
+	// Review provenance: exactly one source is set; never an authority token.
+	SourceAppInstanceId string `protobuf:"bytes,12,opt,name=source_app_instance_id,json=sourceAppInstanceId,proto3" json:"source_app_instance_id,omitempty"`
+	unknownFields       protoimpl.UnknownFields
+	sizeCache           protoimpl.SizeCache
 }
 
 func (x *Artifact) Reset() {
@@ -148,6 +150,13 @@ func (x *Artifact) GetFileCount() int32 {
 func (x *Artifact) GetSourceTaskId() string {
 	if x != nil {
 		return x.SourceTaskId
+	}
+	return ""
+}
+
+func (x *Artifact) GetSourceAppInstanceId() string {
+	if x != nil {
+		return x.SourceAppInstanceId
 	}
 	return ""
 }
@@ -859,7 +868,7 @@ var File_workos_artifact_v1_artifact_proto protoreflect.FileDescriptor
 
 const file_workos_artifact_v1_artifact_proto_rawDesc = "" +
 	"\n" +
-	"!workos/artifact/v1/artifact.proto\x12\x12workos.artifact.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1dworkos/common/v1/common.proto\"\xe5\x02\n" +
+	"!workos/artifact/v1/artifact.proto\x12\x12workos.artifact.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1dworkos/common/v1/common.proto\"\x9a\x03\n" +
 	"\bArtifact\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x1d\n" +
 	"\n" +
@@ -877,7 +886,8 @@ const file_workos_artifact_v1_artifact_proto_rawDesc = "" +
 	"\n" +
 	"file_count\x18\n" +
 	" \x01(\x05R\tfileCount\x12$\n" +
-	"\x0esource_task_id\x18\v \x01(\tR\fsourceTaskId\"=\n" +
+	"\x0esource_task_id\x18\v \x01(\tR\fsourceTaskId\x123\n" +
+	"\x16source_app_instance_id\x18\f \x01(\tR\x13sourceAppInstanceId\"=\n" +
 	"\rWebBundleFile\x12\x12\n" +
 	"\x04path\x18\x01 \x01(\tR\x04path\x12\x18\n" +
 	"\acontent\x18\x02 \x01(\fR\acontent\"k\n" +

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	agentv1connect "github.com/yangtao121/workos/gen/go/workos/agent/v1/agentv1connect"
+	artifactv1connect "github.com/yangtao121/workos/gen/go/workos/artifact/v1/artifactv1connect"
 	commonv1 "github.com/yangtao121/workos/gen/go/workos/common/v1"
 	"github.com/yangtao121/workos/gen/go/workos/common/v1/commonv1connect"
 	notificationv1connect "github.com/yangtao121/workos/gen/go/workos/notification/v1/notificationv1connect"
@@ -233,6 +234,8 @@ func run(logger *slog.Logger) error {
 		return err
 	}
 
+	bridgeService.WithArtifacts(surfacecoreclient.AppArtifacts{Client: artifactv1connect.NewAppArtifactServiceClient(telemetry.HTTPClient(), cfg.Services.Core)})
+	surfaceService.WithArtifactsConfigured()
 	mounts := make([]workspaceadapter.Mount, 0, len(cfg.Runtime.WorkspaceMounts))
 	for _, mount := range cfg.Runtime.WorkspaceMounts {
 		mounts = append(mounts, workspaceadapter.Mount{OwnerUserID: mount.OwnerUserID, ProjectID: mount.ProjectID, Path: mount.RootPath, ReadOnly: mount.ReadOnly})

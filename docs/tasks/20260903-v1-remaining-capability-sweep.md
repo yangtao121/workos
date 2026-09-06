@@ -445,3 +445,24 @@ stale etag/路径穿越/链接/撤销 grant 拒绝；临时 Runtime 配置和目
 
 恢复后复验：`make check` 全部 PASS（Proto/Go vet/Go tests/前端 lint、类型、单测、构建）；
 `make generate` PASS。运行环境重启后的专项浏览器门禁正在复跑，沿用同一固定 fixture。
+
+### R3 App 产物（active）
+
+文件 Bridge 检查点 0aee618；恢复后的 `make test-app-files` PASS。
+新增 App source provenance（Proto additive、ADR-0020、Core-owned migration 044），
+Core 私有 AppArtifactService + Runtime Bridge + SDK artifacts.create/open + 原有查看器。
+安装事务授权、每安装幂等/100 项配额，产物、索引、通知原子提交；App 无权指定来源或项目。
+
+`TestAppArtifacts`（真实 scratch PostgreSQL）PASS：8 并发同 key、重建服务后 canonical
+重放、冲突、metadata/content 来源、错误项目、stale epoch、feed 失败回滚、通知去重与撤权。
+`make test-app-artifacts` PASS：真实 SDK 创建、重放、冲突、打开、来源校验、撤权后创建/打开拒绝，
+private RPC Gateway 404。配额/有效异项目安装的追加用例与 race 复验进行中。
+[before](../ui/desktop-web/changes/20260906-artifacts-bridge/before/) /
+[after](../ui/desktop-web/changes/20260906-artifacts-bridge/after/) /
+[notes](../ui/desktop-web/changes/20260906-artifacts-bridge/notes.md) 已保存。
+
+App 产物检查点复验：`make generate`、`make check` 全部 PASS；App host 35、SDK 16、
+Desktop 130 单测 PASS。`TestAppArtifacts` + 并发撤权 integration race PASS，含 100 项配额、
+满额重放和另一个有效安装的跨项目拒绝。浏览器追加非 review 类型拒绝用例 PASS。
+下一步：R2 Build/Test 的隔离执行和已完成 repair task → 已验证候选交接尚未实现，
+不能把普通 App review artifact 或任务 completed 状态当成可部署版本。其他恢复范围继续 active。

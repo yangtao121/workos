@@ -11,6 +11,8 @@ import type { GenFile, GenMessage, GenService } from "@bufbuild/protobuf/codegen
 import { fileDesc, messageDesc, serviceDesc } from "@bufbuild/protobuf/codegenv2";
 import type { AgentEvent, AgentTaskState } from "../../agent/v1/agent_pb.js";
 import { file_workos_agent_v1_agent } from "../../agent/v1/agent_pb.js";
+import type { Artifact } from "../../artifact/v1/artifact_pb.js";
+import { file_workos_artifact_v1_artifact } from "../../artifact/v1/artifact_pb.js";
 import type { SearchHit } from "../../index/v1/index_pb.js";
 import { file_workos_index_v1_index } from "../../index/v1/index_pb.js";
 import type { Notification } from "../../notification/v1/notification_pb.js";
@@ -21,7 +23,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file workos/bridge/v1/bridge.proto.
  */
 export const file_workos_bridge_v1_bridge: GenFile = /*@__PURE__*/
-  fileDesc("Ch13b3Jrb3MvYnJpZGdlL3YxL2JyaWRnZS5wcm90bxIQd29ya29zLmJyaWRnZS52MSJKChNSdW5BZ2VudFRhc2tSZXF1ZXN0EhcKD2lkZW1wb3RlbmN5X2tleRgBIAEoCRIMCgRyb2xlGAIgASgJEgwKBGdvYWwYAyABKAkidAoUUnVuQWdlbnRUYXNrUmVzcG9uc2USDwoHdGFza19pZBgBIAEoCRIuCgVzdGF0ZRgCIAEoDjIfLndvcmtvcy5hZ2VudC52MS5BZ2VudFRhc2tTdGF0ZRIbChNsYXN0X2V2ZW50X3NlcXVlbmNlGAMgASgDIkYKG1dhdGNoQWdlbnRUYXNrRXZlbnRzUmVxdWVzdBIPCgd0YXNrX2lkGAEgASgJEhYKDmFmdGVyX3NlcXVlbmNlGAIgASgDIkoKHFdhdGNoQWdlbnRUYXNrRXZlbnRzUmVzcG9uc2USKgoFZXZlbnQYASABKAsyGy53b3Jrb3MuYWdlbnQudjEuQWdlbnRFdmVudCJOChZTZWFyY2hLbm93bGVkZ2VSZXF1ZXN0Eg0KBXF1ZXJ5GAEgASgJEhEKCXBhZ2Vfc2l6ZRgCIAEoBRISCgpwYWdlX3Rva2VuGAMgASgJIlwKF1NlYXJjaEtub3dsZWRnZVJlc3BvbnNlEigKBGhpdHMYASADKAsyGi53b3Jrb3MuaW5kZXgudjEuU2VhcmNoSGl0EhcKD25leHRfcGFnZV90b2tlbhgCIAEoCSI5CgdGaWxlUmVmEhIKCnByb2plY3RfaWQYASABKAkSDAoEcGF0aBgCIAEoCRIMCgRldGFnGAMgASgJIloKCUZpbGVFbnRyeRImCgNyZWYYASABKAsyGS53b3Jrb3MuYnJpZGdlLnYxLkZpbGVSZWYSEQoJZGlyZWN0b3J5GAIgASgIEhIKCnNpemVfYnl0ZXMYAyABKAMiNAoQTGlzdEZpbGVzUmVxdWVzdBIRCglkaXJlY3RvcnkYASABKAkSDQoFYWZ0ZXIYAiABKAkiVQoRTGlzdEZpbGVzUmVzcG9uc2USLAoHZW50cmllcxgBIAMoCzIbLndvcmtvcy5icmlkZ2UudjEuRmlsZUVudHJ5EhIKCm5leHRfYWZ0ZXIYAiABKAkiOQoPUmVhZEZpbGVSZXF1ZXN0EiYKA3JlZhgBIAEoCzIZLndvcmtvcy5icmlkZ2UudjEuRmlsZVJlZiIgChBSZWFkRmlsZVJlc3BvbnNlEgwKBGRhdGEYASABKAwiSAoQV3JpdGVGaWxlUmVxdWVzdBImCgNyZWYYASABKAsyGS53b3Jrb3MuYnJpZGdlLnYxLkZpbGVSZWYSDAoEZGF0YRgCIAEoDCI7ChFXcml0ZUZpbGVSZXNwb25zZRImCgNyZWYYASABKAsyGS53b3Jrb3MuYnJpZGdlLnYxLkZpbGVSZWYiLQobQXV0aG9yaXplU2hlbGxBY3Rpb25SZXF1ZXN0Eg4KBm1ldGhvZBgBIAEoCSIeChxBdXRob3JpemVTaGVsbEFjdGlvblJlc3BvbnNlIlEKGUNyZWF0ZU5vdGlmaWNhdGlvblJlcXVlc3QSFwoPaWRlbXBvdGVuY3lfa2V5GAEgASgJEg0KBXRpdGxlGAIgASgJEgwKBGJvZHkYAyABKAkibgoaQ3JlYXRlTm90aWZpY2F0aW9uUmVzcG9uc2USOgoMbm90aWZpY2F0aW9uGAEgASgLMiQud29ya29zLm5vdGlmaWNhdGlvbi52MS5Ob3RpZmljYXRpb24SFAoMdW5yZWFkX2NvdW50GAIgASgDMskGChBBcHBCcmlkZ2VTZXJ2aWNlElYKCUxpc3RGaWxlcxIiLndvcmtvcy5icmlkZ2UudjEuTGlzdEZpbGVzUmVxdWVzdBojLndvcmtvcy5icmlkZ2UudjEuTGlzdEZpbGVzUmVzcG9uc2UiABJTCghSZWFkRmlsZRIhLndvcmtvcy5icmlkZ2UudjEuUmVhZEZpbGVSZXF1ZXN0GiIud29ya29zLmJyaWRnZS52MS5SZWFkRmlsZVJlc3BvbnNlIgASVgoJV3JpdGVGaWxlEiIud29ya29zLmJyaWRnZS52MS5Xcml0ZUZpbGVSZXF1ZXN0GiMud29ya29zLmJyaWRnZS52MS5Xcml0ZUZpbGVSZXNwb25zZSIAEncKFEF1dGhvcml6ZVNoZWxsQWN0aW9uEi0ud29ya29zLmJyaWRnZS52MS5BdXRob3JpemVTaGVsbEFjdGlvblJlcXVlc3QaLi53b3Jrb3MuYnJpZGdlLnYxLkF1dGhvcml6ZVNoZWxsQWN0aW9uUmVzcG9uc2UiABJfCgxSdW5BZ2VudFRhc2sSJS53b3Jrb3MuYnJpZGdlLnYxLlJ1bkFnZW50VGFza1JlcXVlc3QaJi53b3Jrb3MuYnJpZGdlLnYxLlJ1bkFnZW50VGFza1Jlc3BvbnNlIgASeQoUV2F0Y2hBZ2VudFRhc2tFdmVudHMSLS53b3Jrb3MuYnJpZGdlLnYxLldhdGNoQWdlbnRUYXNrRXZlbnRzUmVxdWVzdBouLndvcmtvcy5icmlkZ2UudjEuV2F0Y2hBZ2VudFRhc2tFdmVudHNSZXNwb25zZSIAMAESaAoPU2VhcmNoS25vd2xlZGdlEigud29ya29zLmJyaWRnZS52MS5TZWFyY2hLbm93bGVkZ2VSZXF1ZXN0Gikud29ya29zLmJyaWRnZS52MS5TZWFyY2hLbm93bGVkZ2VSZXNwb25zZSIAEnEKEkNyZWF0ZU5vdGlmaWNhdGlvbhIrLndvcmtvcy5icmlkZ2UudjEuQ3JlYXRlTm90aWZpY2F0aW9uUmVxdWVzdBosLndvcmtvcy5icmlkZ2UudjEuQ3JlYXRlTm90aWZpY2F0aW9uUmVzcG9uc2UiAEI/Wj1naXRodWIuY29tL3lhbmd0YW8xMjEvd29ya29zL2dlbi9nby93b3Jrb3MvYnJpZGdlL3YxO2JyaWRnZXYxYgZwcm90bzM", [file_workos_agent_v1_agent, file_workos_index_v1_index, file_workos_notification_v1_notification]);
+  fileDesc("Ch13b3Jrb3MvYnJpZGdlL3YxL2JyaWRnZS5wcm90bxIQd29ya29zLmJyaWRnZS52MSJKChNSdW5BZ2VudFRhc2tSZXF1ZXN0EhcKD2lkZW1wb3RlbmN5X2tleRgBIAEoCRIMCgRyb2xlGAIgASgJEgwKBGdvYWwYAyABKAkidAoUUnVuQWdlbnRUYXNrUmVzcG9uc2USDwoHdGFza19pZBgBIAEoCRIuCgVzdGF0ZRgCIAEoDjIfLndvcmtvcy5hZ2VudC52MS5BZ2VudFRhc2tTdGF0ZRIbChNsYXN0X2V2ZW50X3NlcXVlbmNlGAMgASgDIkYKG1dhdGNoQWdlbnRUYXNrRXZlbnRzUmVxdWVzdBIPCgd0YXNrX2lkGAEgASgJEhYKDmFmdGVyX3NlcXVlbmNlGAIgASgDIkoKHFdhdGNoQWdlbnRUYXNrRXZlbnRzUmVzcG9uc2USKgoFZXZlbnQYASABKAsyGy53b3Jrb3MuYWdlbnQudjEuQWdlbnRFdmVudCJOChZTZWFyY2hLbm93bGVkZ2VSZXF1ZXN0Eg0KBXF1ZXJ5GAEgASgJEhEKCXBhZ2Vfc2l6ZRgCIAEoBRISCgpwYWdlX3Rva2VuGAMgASgJIlwKF1NlYXJjaEtub3dsZWRnZVJlc3BvbnNlEigKBGhpdHMYASADKAsyGi53b3Jrb3MuaW5kZXgudjEuU2VhcmNoSGl0EhcKD25leHRfcGFnZV90b2tlbhgCIAEoCSI5CgdGaWxlUmVmEhIKCnByb2plY3RfaWQYASABKAkSDAoEcGF0aBgCIAEoCRIMCgRldGFnGAMgASgJIloKCUZpbGVFbnRyeRImCgNyZWYYASABKAsyGS53b3Jrb3MuYnJpZGdlLnYxLkZpbGVSZWYSEQoJZGlyZWN0b3J5GAIgASgIEhIKCnNpemVfYnl0ZXMYAyABKAMiNAoQTGlzdEZpbGVzUmVxdWVzdBIRCglkaXJlY3RvcnkYASABKAkSDQoFYWZ0ZXIYAiABKAkiVQoRTGlzdEZpbGVzUmVzcG9uc2USLAoHZW50cmllcxgBIAMoCzIbLndvcmtvcy5icmlkZ2UudjEuRmlsZUVudHJ5EhIKCm5leHRfYWZ0ZXIYAiABKAkiOQoPUmVhZEZpbGVSZXF1ZXN0EiYKA3JlZhgBIAEoCzIZLndvcmtvcy5icmlkZ2UudjEuRmlsZVJlZiIgChBSZWFkRmlsZVJlc3BvbnNlEgwKBGRhdGEYASABKAwiSAoQV3JpdGVGaWxlUmVxdWVzdBImCgNyZWYYASABKAsyGS53b3Jrb3MuYnJpZGdlLnYxLkZpbGVSZWYSDAoEZGF0YRgCIAEoDCI7ChFXcml0ZUZpbGVSZXNwb25zZRImCgNyZWYYASABKAsyGS53b3Jrb3MuYnJpZGdlLnYxLkZpbGVSZWYiZAobQ3JlYXRlUmV2aWV3QXJ0aWZhY3RSZXF1ZXN0EhcKD2lkZW1wb3RlbmN5X2tleRgBIAEoCRIMCgR0eXBlGAIgASgJEg0KBXRpdGxlGAMgASgJEg8KB2NvbnRlbnQYBCABKAwiTgocQ3JlYXRlUmV2aWV3QXJ0aWZhY3RSZXNwb25zZRIuCghhcnRpZmFjdBgBIAEoCzIcLndvcmtvcy5hcnRpZmFjdC52MS5BcnRpZmFjdCIwChlPcGVuUmV2aWV3QXJ0aWZhY3RSZXF1ZXN0EhMKC2FydGlmYWN0X2lkGAEgASgJIkwKGk9wZW5SZXZpZXdBcnRpZmFjdFJlc3BvbnNlEi4KCGFydGlmYWN0GAEgASgLMhwud29ya29zLmFydGlmYWN0LnYxLkFydGlmYWN0Ii0KG0F1dGhvcml6ZVNoZWxsQWN0aW9uUmVxdWVzdBIOCgZtZXRob2QYASABKAkiHgocQXV0aG9yaXplU2hlbGxBY3Rpb25SZXNwb25zZSJRChlDcmVhdGVOb3RpZmljYXRpb25SZXF1ZXN0EhcKD2lkZW1wb3RlbmN5X2tleRgBIAEoCRINCgV0aXRsZRgCIAEoCRIMCgRib2R5GAMgASgJIm4KGkNyZWF0ZU5vdGlmaWNhdGlvblJlc3BvbnNlEjoKDG5vdGlmaWNhdGlvbhgBIAEoCzIkLndvcmtvcy5ub3RpZmljYXRpb24udjEuTm90aWZpY2F0aW9uEhQKDHVucmVhZF9jb3VudBgCIAEoAzK1CAoQQXBwQnJpZGdlU2VydmljZRJ3ChRDcmVhdGVSZXZpZXdBcnRpZmFjdBItLndvcmtvcy5icmlkZ2UudjEuQ3JlYXRlUmV2aWV3QXJ0aWZhY3RSZXF1ZXN0Gi4ud29ya29zLmJyaWRnZS52MS5DcmVhdGVSZXZpZXdBcnRpZmFjdFJlc3BvbnNlIgAScQoST3BlblJldmlld0FydGlmYWN0Eisud29ya29zLmJyaWRnZS52MS5PcGVuUmV2aWV3QXJ0aWZhY3RSZXF1ZXN0Giwud29ya29zLmJyaWRnZS52MS5PcGVuUmV2aWV3QXJ0aWZhY3RSZXNwb25zZSIAElYKCUxpc3RGaWxlcxIiLndvcmtvcy5icmlkZ2UudjEuTGlzdEZpbGVzUmVxdWVzdBojLndvcmtvcy5icmlkZ2UudjEuTGlzdEZpbGVzUmVzcG9uc2UiABJTCghSZWFkRmlsZRIhLndvcmtvcy5icmlkZ2UudjEuUmVhZEZpbGVSZXF1ZXN0GiIud29ya29zLmJyaWRnZS52MS5SZWFkRmlsZVJlc3BvbnNlIgASVgoJV3JpdGVGaWxlEiIud29ya29zLmJyaWRnZS52MS5Xcml0ZUZpbGVSZXF1ZXN0GiMud29ya29zLmJyaWRnZS52MS5Xcml0ZUZpbGVSZXNwb25zZSIAEncKFEF1dGhvcml6ZVNoZWxsQWN0aW9uEi0ud29ya29zLmJyaWRnZS52MS5BdXRob3JpemVTaGVsbEFjdGlvblJlcXVlc3QaLi53b3Jrb3MuYnJpZGdlLnYxLkF1dGhvcml6ZVNoZWxsQWN0aW9uUmVzcG9uc2UiABJfCgxSdW5BZ2VudFRhc2sSJS53b3Jrb3MuYnJpZGdlLnYxLlJ1bkFnZW50VGFza1JlcXVlc3QaJi53b3Jrb3MuYnJpZGdlLnYxLlJ1bkFnZW50VGFza1Jlc3BvbnNlIgASeQoUV2F0Y2hBZ2VudFRhc2tFdmVudHMSLS53b3Jrb3MuYnJpZGdlLnYxLldhdGNoQWdlbnRUYXNrRXZlbnRzUmVxdWVzdBouLndvcmtvcy5icmlkZ2UudjEuV2F0Y2hBZ2VudFRhc2tFdmVudHNSZXNwb25zZSIAMAESaAoPU2VhcmNoS25vd2xlZGdlEigud29ya29zLmJyaWRnZS52MS5TZWFyY2hLbm93bGVkZ2VSZXF1ZXN0Gikud29ya29zLmJyaWRnZS52MS5TZWFyY2hLbm93bGVkZ2VSZXNwb25zZSIAEnEKEkNyZWF0ZU5vdGlmaWNhdGlvbhIrLndvcmtvcy5icmlkZ2UudjEuQ3JlYXRlTm90aWZpY2F0aW9uUmVxdWVzdBosLndvcmtvcy5icmlkZ2UudjEuQ3JlYXRlTm90aWZpY2F0aW9uUmVzcG9uc2UiAEI/Wj1naXRodWIuY29tL3lhbmd0YW8xMjEvd29ya29zL2dlbi9nby93b3Jrb3MvYnJpZGdlL3YxO2JyaWRnZXYxYgZwcm90bzM", [file_workos_agent_v1_agent, file_workos_artifact_v1_artifact, file_workos_index_v1_index, file_workos_notification_v1_notification]);
 
 /**
  * @generated from message workos.bridge.v1.RunAgentTaskRequest
@@ -376,6 +378,93 @@ export const WriteFileResponseSchema: GenMessage<WriteFileResponse> = /*@__PURE_
   messageDesc(file_workos_bridge_v1_bridge, 13);
 
 /**
+ * @generated from message workos.bridge.v1.CreateReviewArtifactRequest
+ */
+export type CreateReviewArtifactRequest = Message<"workos.bridge.v1.CreateReviewArtifactRequest"> & {
+  /**
+   * Stable per-installation output key: [a-z][a-z0-9._-]{0,63}.
+   *
+   * @generated from field: string idempotency_key = 1;
+   */
+  idempotencyKey: string;
+
+  /**
+   * @generated from field: string type = 2;
+   */
+  type: string;
+
+  /**
+   * @generated from field: string title = 3;
+   */
+  title: string;
+
+  /**
+   * Canonical Markdown or unified diff, bounded to 32 KiB at the Bridge.
+   *
+   * @generated from field: bytes content = 4;
+   */
+  content: Uint8Array;
+};
+
+/**
+ * Describes the message workos.bridge.v1.CreateReviewArtifactRequest.
+ * Use `create(CreateReviewArtifactRequestSchema)` to create a new message.
+ */
+export const CreateReviewArtifactRequestSchema: GenMessage<CreateReviewArtifactRequest> = /*@__PURE__*/
+  messageDesc(file_workos_bridge_v1_bridge, 14);
+
+/**
+ * @generated from message workos.bridge.v1.CreateReviewArtifactResponse
+ */
+export type CreateReviewArtifactResponse = Message<"workos.bridge.v1.CreateReviewArtifactResponse"> & {
+  /**
+   * @generated from field: workos.artifact.v1.Artifact artifact = 1;
+   */
+  artifact?: Artifact | undefined;
+};
+
+/**
+ * Describes the message workos.bridge.v1.CreateReviewArtifactResponse.
+ * Use `create(CreateReviewArtifactResponseSchema)` to create a new message.
+ */
+export const CreateReviewArtifactResponseSchema: GenMessage<CreateReviewArtifactResponse> = /*@__PURE__*/
+  messageDesc(file_workos_bridge_v1_bridge, 15);
+
+/**
+ * @generated from message workos.bridge.v1.OpenReviewArtifactRequest
+ */
+export type OpenReviewArtifactRequest = Message<"workos.bridge.v1.OpenReviewArtifactRequest"> & {
+  /**
+   * @generated from field: string artifact_id = 1;
+   */
+  artifactId: string;
+};
+
+/**
+ * Describes the message workos.bridge.v1.OpenReviewArtifactRequest.
+ * Use `create(OpenReviewArtifactRequestSchema)` to create a new message.
+ */
+export const OpenReviewArtifactRequestSchema: GenMessage<OpenReviewArtifactRequest> = /*@__PURE__*/
+  messageDesc(file_workos_bridge_v1_bridge, 16);
+
+/**
+ * @generated from message workos.bridge.v1.OpenReviewArtifactResponse
+ */
+export type OpenReviewArtifactResponse = Message<"workos.bridge.v1.OpenReviewArtifactResponse"> & {
+  /**
+   * @generated from field: workos.artifact.v1.Artifact artifact = 1;
+   */
+  artifact?: Artifact | undefined;
+};
+
+/**
+ * Describes the message workos.bridge.v1.OpenReviewArtifactResponse.
+ * Use `create(OpenReviewArtifactResponseSchema)` to create a new message.
+ */
+export const OpenReviewArtifactResponseSchema: GenMessage<OpenReviewArtifactResponse> = /*@__PURE__*/
+  messageDesc(file_workos_bridge_v1_bridge, 17);
+
+/**
  * @generated from message workos.bridge.v1.AuthorizeShellActionRequest
  */
 export type AuthorizeShellActionRequest = Message<"workos.bridge.v1.AuthorizeShellActionRequest"> & {
@@ -392,7 +481,7 @@ export type AuthorizeShellActionRequest = Message<"workos.bridge.v1.AuthorizeShe
  * Use `create(AuthorizeShellActionRequestSchema)` to create a new message.
  */
 export const AuthorizeShellActionRequestSchema: GenMessage<AuthorizeShellActionRequest> = /*@__PURE__*/
-  messageDesc(file_workos_bridge_v1_bridge, 14);
+  messageDesc(file_workos_bridge_v1_bridge, 18);
 
 /**
  * @generated from message workos.bridge.v1.AuthorizeShellActionResponse
@@ -405,7 +494,7 @@ export type AuthorizeShellActionResponse = Message<"workos.bridge.v1.AuthorizeSh
  * Use `create(AuthorizeShellActionResponseSchema)` to create a new message.
  */
 export const AuthorizeShellActionResponseSchema: GenMessage<AuthorizeShellActionResponse> = /*@__PURE__*/
-  messageDesc(file_workos_bridge_v1_bridge, 15);
+  messageDesc(file_workos_bridge_v1_bridge, 19);
 
 /**
  * CreateNotification is negotiated only by the notifications.create grant
@@ -444,7 +533,7 @@ export type CreateNotificationRequest = Message<"workos.bridge.v1.CreateNotifica
  * Use `create(CreateNotificationRequestSchema)` to create a new message.
  */
 export const CreateNotificationRequestSchema: GenMessage<CreateNotificationRequest> = /*@__PURE__*/
-  messageDesc(file_workos_bridge_v1_bridge, 16);
+  messageDesc(file_workos_bridge_v1_bridge, 20);
 
 /**
  * @generated from message workos.bridge.v1.CreateNotificationResponse
@@ -469,12 +558,28 @@ export type CreateNotificationResponse = Message<"workos.bridge.v1.CreateNotific
  * Use `create(CreateNotificationResponseSchema)` to create a new message.
  */
 export const CreateNotificationResponseSchema: GenMessage<CreateNotificationResponse> = /*@__PURE__*/
-  messageDesc(file_workos_bridge_v1_bridge, 17);
+  messageDesc(file_workos_bridge_v1_bridge, 21);
 
 /**
  * @generated from service workos.bridge.v1.AppBridgeService
  */
 export const AppBridgeService: GenService<{
+  /**
+   * @generated from rpc workos.bridge.v1.AppBridgeService.CreateReviewArtifact
+   */
+  createReviewArtifact: {
+    methodKind: "unary";
+    input: typeof CreateReviewArtifactRequestSchema;
+    output: typeof CreateReviewArtifactResponseSchema;
+  },
+  /**
+   * @generated from rpc workos.bridge.v1.AppBridgeService.OpenReviewArtifact
+   */
+  openReviewArtifact: {
+    methodKind: "unary";
+    input: typeof OpenReviewArtifactRequestSchema;
+    output: typeof OpenReviewArtifactResponseSchema;
+  },
   /**
    * @generated from rpc workos.bridge.v1.AppBridgeService.ListFiles
    */

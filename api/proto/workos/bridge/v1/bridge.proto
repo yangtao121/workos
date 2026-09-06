@@ -7,6 +7,7 @@ syntax = "proto3";
 package workos.bridge.v1;
 
 import "workos/agent/v1/agent.proto";
+import "workos/artifact/v1/artifact.proto";
 import "workos/index/v1/index.proto";
 import "workos/notification/v1/notification.proto";
 
@@ -102,7 +103,27 @@ message WriteFileResponse {
   FileRef ref = 1;
 }
 
+message CreateReviewArtifactRequest {
+  // Stable per-installation output key: [a-z][a-z0-9._-]{0,63}.
+  string idempotency_key = 1;
+  string type = 2;
+  string title = 3;
+  // Canonical Markdown or unified diff, bounded to 32 KiB at the Bridge.
+  bytes content = 4;
+}
+message CreateReviewArtifactResponse {
+  workos.artifact.v1.Artifact artifact = 1;
+}
+message OpenReviewArtifactRequest {
+  string artifact_id = 1;
+}
+message OpenReviewArtifactResponse {
+  workos.artifact.v1.Artifact artifact = 1;
+}
+
 service AppBridgeService {
+  rpc CreateReviewArtifact(CreateReviewArtifactRequest) returns (CreateReviewArtifactResponse) {}
+  rpc OpenReviewArtifact(OpenReviewArtifactRequest) returns (OpenReviewArtifactResponse) {}
   rpc ListFiles(ListFilesRequest) returns (ListFilesResponse) {}
   rpc ReadFile(ReadFileRequest) returns (ReadFileResponse) {}
   rpc WriteFile(WriteFileRequest) returns (WriteFileResponse) {}

@@ -9,6 +9,8 @@ import (
 )
 
 type Querier interface {
+	CountAppArtifacts(ctx context.Context, appInstanceID string) (int64, error)
+	GetAppArtifactRequest(ctx context.Context, arg GetAppArtifactRequestParams) (GetAppArtifactRequestRow, error)
 	GetArtifact(ctx context.Context, arg GetArtifactParams) (WorkosCoreWebBundleArtifact, error)
 	// Metadata projection shared by both implemented subtypes. Exactly one branch
 	// matches a given (owner, id); the union keeps the read a single snapshot.
@@ -25,6 +27,8 @@ type Querier interface {
 	// Replay read of one stored review artifact row (identity re-validated by
 	// the caller against the lease-derived owner/project/task).
 	GetReviewFact(ctx context.Context, artifactID string) (WorkosCoreProjectReviewArtifact, error)
+	InsertAppArtifactRequest(ctx context.Context, arg InsertAppArtifactRequestParams) error
+	InsertAppReviewArtifact(ctx context.Context, arg InsertAppReviewArtifactParams) error
 	InsertArtifact(ctx context.Context, arg InsertArtifactParams) error
 	InsertArtifactRequest(ctx context.Context, arg InsertArtifactRequestParams) (int64, error)
 	InsertBundleFile(ctx context.Context, arg InsertBundleFileParams) error
@@ -41,6 +45,7 @@ type Querier interface {
 	// Summary projection shared by both subtypes for exactly the given IDs.
 	ListArtifactSummariesUnion(ctx context.Context, arg ListArtifactSummariesUnionParams) ([]ListArtifactSummariesUnionRow, error)
 	ListProjectReviewArtifactIDPage(ctx context.Context, arg ListProjectReviewArtifactIDPageParams) ([]string, error)
+	LockAppArtifactWrites(ctx context.Context, appInstanceID string) error
 	ReadBundleAsset(ctx context.Context, arg ReadBundleAssetParams) (ReadBundleAssetRow, error)
 	// Index-feed reconciliation page (ADR-0013): a stable (created_at, id)
 	// ordered walk over this module's immutable review artifacts. Identity

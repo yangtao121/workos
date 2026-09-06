@@ -1509,6 +1509,9 @@ export function Desktop({
         bridge={bridgeCredentialsRef.current.get(windowState.surface.surfaceSessionId)}
         appBridge={workosClients.appBridge}
         shell={{
+          openArtifact: (artifact) => {
+            openArtifactViewer(artifact.id, artifact.projectId);
+          },
           projectCurrent: async () => {
             const projectId = windowState.surface?.projectId;
             if (!projectId) throw new Error("Project unavailable");

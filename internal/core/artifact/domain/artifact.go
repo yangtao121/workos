@@ -16,6 +16,7 @@ import (
 )
 
 var (
+	ErrQuota = errors.New("app artifact quota reached")
 	// ErrInvalid marks a request that violates the artifact grammar.
 	ErrInvalid = errors.New("artifact request is invalid")
 	// ErrNotFound marks an unknown or foreign artifact, read, or asset.
@@ -58,19 +59,20 @@ const (
 // content reference and bind ProjectID/SourceTaskID instead, while web
 // bundles leave both empty.
 type Artifact struct {
-	ID             string
-	OwnerUserID    string
-	Type           string
-	Title          string
-	MediaType      string
-	ContentRef     string
-	Digest         string
-	Entrypoint     string
-	FileCount      int
-	TotalSizeBytes int64
-	CreatedAt      time.Time
-	ProjectID      string
-	SourceTaskID   string
+	ID                  string
+	OwnerUserID         string
+	Type                string
+	Title               string
+	MediaType           string
+	ContentRef          string
+	Digest              string
+	Entrypoint          string
+	FileCount           int
+	TotalSizeBytes      int64
+	CreatedAt           time.Time
+	ProjectID           string
+	SourceTaskID        string
+	SourceAppInstanceID string
 }
 
 // BundleFile is one normalized bundle file: a safe relative POSIX path, the

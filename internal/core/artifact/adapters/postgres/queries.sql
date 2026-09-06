@@ -53,20 +53,20 @@ WHERE a.owner_user_id = $1 AND a.id = $2 AND f.path = $3;
 -- name: GetArtifactMetadataUnion :one
 SELECT id, owner_user_id, type, title, media_type, content_ref, digest,
        file_count, total_size_bytes, created_at, entrypoint, project_id, source_task_id,
-       output_key, line_count, review_content
+       output_key, line_count, review_content, source_app_instance_id
 FROM (
     SELECT id, owner_user_id, type, title, media_type, content_ref, digest,
            file_count, total_size_bytes, created_at, entrypoint,
            NULL::uuid AS project_id, NULL::uuid AS source_task_id,
            NULL::text AS output_key, NULL::integer AS line_count,
-           NULL::bytea AS review_content
+           NULL::bytea AS review_content, NULL::uuid AS source_app_instance_id
     FROM workos_core.web_bundle_artifacts w
     WHERE w.owner_user_id = sqlc.arg(owner_user_id) AND w.id = sqlc.arg(artifact_id)
     UNION ALL
     SELECT id, owner_user_id, type, title, media_type, ''::text AS content_ref, digest,
            1 AS file_count, byte_count AS total_size_bytes, created_at,
            ''::text AS entrypoint, project_id, source_task_id,
-           output_key, line_count, content AS review_content
+           output_key, line_count, content AS review_content, source_app_instance_id
     FROM workos_core.project_review_artifacts p
     WHERE p.owner_user_id = sqlc.arg(owner_user_id) AND p.id = sqlc.arg(artifact_id)
 ) AS artifact;
@@ -89,20 +89,20 @@ LIMIT sqlc.arg(row_limit);
 -- name: ListArtifactSummariesUnion :many
 SELECT id, owner_user_id, type, title, media_type, content_ref, digest,
        file_count, total_size_bytes, created_at, entrypoint, project_id, source_task_id,
-       output_key, line_count, review_content
+       output_key, line_count, review_content, source_app_instance_id
 FROM (
     SELECT id, owner_user_id, type, title, media_type, content_ref, digest,
            file_count, total_size_bytes, created_at, entrypoint,
            NULL::uuid AS project_id, NULL::uuid AS source_task_id,
            NULL::text AS output_key, NULL::integer AS line_count,
-           NULL::bytea AS review_content
+           NULL::bytea AS review_content, NULL::uuid AS source_app_instance_id
     FROM workos_core.web_bundle_artifacts w
     WHERE w.owner_user_id = sqlc.arg(owner_user_id) AND w.id = ANY(sqlc.arg(ids)::uuid[])
     UNION ALL
     SELECT id, owner_user_id, type, title, media_type, ''::text AS content_ref, digest,
            1 AS file_count, byte_count AS total_size_bytes, created_at,
            ''::text AS entrypoint, project_id, source_task_id,
-           output_key, line_count, content AS review_content
+           output_key, line_count, content AS review_content, source_app_instance_id
     FROM workos_core.project_review_artifacts p
     WHERE p.owner_user_id = sqlc.arg(owner_user_id) AND p.id = ANY(sqlc.arg(ids)::uuid[])
 ) AS artifact
@@ -112,13 +112,13 @@ ORDER BY id;
 -- the same row snapshot.
 -- name: GetReviewArtifactContent :one
 SELECT id, owner_user_id, type, title, media_type, digest, project_id, source_task_id,
-       output_key, byte_count, line_count, content, created_at
+       output_key, byte_count, line_count, content, created_at, source_app_instance_id
 FROM workos_core.project_review_artifacts
 WHERE owner_user_id = sqlc.arg(owner_user_id) AND id = sqlc.arg(artifact_id);
 
 -- name: GetReviewArtifactContentByID :one
 SELECT id, owner_user_id, type, title, media_type, digest, project_id, source_task_id,
-       output_key, byte_count, line_count, content, created_at
+       output_key, byte_count, line_count, content, created_at, source_app_instance_id
 FROM workos_core.project_review_artifacts
 WHERE id = sqlc.arg(artifact_id);
 
@@ -170,7 +170,7 @@ ON CONFLICT DO NOTHING;
 -- the caller against the lease-derived owner/project/task).
 -- name: GetReviewFact :one
 SELECT id, owner_user_id, type, title, media_type, digest, project_id, source_task_id,
-       output_key, byte_count, line_count, content, created_at
+       output_key, byte_count, line_count, content, created_at, source_app_instance_id
 FROM workos_core.project_review_artifacts
 WHERE id = sqlc.arg(artifact_id)::uuid;
 
@@ -185,3 +185,26 @@ FROM workos_core.project_review_artifacts
 WHERE (created_at, id) > (sqlc.arg(cursor_created_at)::timestamptz, sqlc.arg(cursor_id)::uuid)
 ORDER BY created_at, id
 LIMIT sqlc.arg(page_limit);
+
+-- name: LockAppArtifactWrites :exec
+SELECT pg_advisory_xact_lock(hashtextextended('workos.app-artifact:' || sqlc.arg(app_instance_id)::text, 0));
+
+-- name: GetAppArtifactRequest :one
+SELECT artifact_id, owner_user_id, project_id, request_digest
+FROM workos_core.app_review_artifact_requests
+WHERE app_instance_id = sqlc.arg(app_instance_id) AND output_key = sqlc.arg(output_key);
+
+-- name: CountAppArtifacts :one
+SELECT count(*) FROM workos_core.app_review_artifact_requests
+WHERE app_instance_id = sqlc.arg(app_instance_id);
+
+-- name: InsertAppArtifactRequest :exec
+INSERT INTO workos_core.app_review_artifact_requests
+    (app_instance_id, output_key, owner_user_id, project_id, artifact_id, request_digest)
+VALUES ($1, $2, $3, $4, $5, $6);
+
+-- name: InsertAppReviewArtifact :exec
+INSERT INTO workos_core.project_review_artifacts
+    (id, owner_user_id, type, title, media_type, digest, project_id,
+     source_app_instance_id, output_key, byte_count, line_count, content, created_at)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13);

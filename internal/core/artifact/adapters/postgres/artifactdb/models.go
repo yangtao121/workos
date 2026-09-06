@@ -9,19 +9,20 @@ import (
 )
 
 type WorkosCoreProjectReviewArtifact struct {
-	ID           string             `json:"id"`
-	OwnerUserID  string             `json:"owner_user_id"`
-	Type         string             `json:"type"`
-	Title        string             `json:"title"`
-	MediaType    string             `json:"media_type"`
-	Digest       string             `json:"digest"`
-	ProjectID    string             `json:"project_id"`
-	SourceTaskID string             `json:"source_task_id"`
-	OutputKey    string             `json:"output_key"`
-	ByteCount    int32              `json:"byte_count"`
-	LineCount    int32              `json:"line_count"`
-	Content      []byte             `json:"content"`
-	CreatedAt    pgtype.Timestamptz `json:"created_at"`
+	ID                  string             `json:"id"`
+	OwnerUserID         string             `json:"owner_user_id"`
+	Type                string             `json:"type"`
+	Title               string             `json:"title"`
+	MediaType           string             `json:"media_type"`
+	Digest              string             `json:"digest"`
+	ProjectID           string             `json:"project_id"`
+	SourceTaskID        pgtype.UUID        `json:"source_task_id"`
+	OutputKey           string             `json:"output_key"`
+	ByteCount           int32              `json:"byte_count"`
+	LineCount           int32              `json:"line_count"`
+	Content             []byte             `json:"content"`
+	CreatedAt           pgtype.Timestamptz `json:"created_at"`
+	SourceAppInstanceID pgtype.UUID        `json:"source_app_instance_id"`
 }
 
 type WorkosCoreProjectReviewArtifactOutput struct {

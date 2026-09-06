@@ -154,20 +154,25 @@ func (s *AppAgentService) AuthorizeAppNotificationForIngest(ctx context.Context,
 // installation authority takes a row share lock in the notification write
 // transaction so uninstall/grant mutation cannot race a successful verdict.
 func (s *AppAgentService) AuthorizeAppNotificationForIngestTx(ctx context.Context, tx dbtx.Tx, ownerUserID, projectID, appInstanceID string, installationGrantRevision int64) (string, string, string, error) {
-	if ownerUserID == "" {
+	return s.AuthorizeAppWriteTx(ctx, tx, ownerUserID, projectID, appInstanceID, installationGrantRevision, AppBridgeCapabilityNotificationsCreate)
+}
+
+// AuthorizeAppWriteTx holds installation/project locks until the caller commits.
+func (s *AppAgentService) AuthorizeAppWriteTx(ctx context.Context, tx dbtx.Tx, ownerUserID, projectID, appInstanceID string, installationGrantRevision int64, capability string) (string, string, string, error) {
+	if ownerUserID == "" || !appregistrydomain.KnownPermission(capability) {
 		return "", "", "", projectdomain.ErrInvalid
 	}
 	resolver, ok := s.installations.(interface {
-		ResolveActiveInstallationForNotificationTx(context.Context, dbtx.Tx, string, string, string) (projectdomain.Installation, error)
+		ResolveActiveInstallationForAppTx(context.Context, dbtx.Tx, string, string, string) (projectdomain.Installation, error)
 	})
 	if !ok {
-		return "", "", "", errors.New("installation source does not support transaction-scoped notification authorization")
+		return "", "", "", errors.New("installation source does not support transaction-scoped app authorization")
 	}
-	installation, err := resolver.ResolveActiveInstallationForNotificationTx(ctx, tx, ownerUserID, projectID, appInstanceID)
+	installation, err := resolver.ResolveActiveInstallationForAppTx(ctx, tx, ownerUserID, projectID, appInstanceID)
 	if err != nil {
 		return "", "", "", err
 	}
-	if err := authorizeInstallation(installation, installationGrantRevision, AppBridgeCapabilityNotificationsCreate); err != nil {
+	if err := authorizeInstallation(installation, installationGrantRevision, capability); err != nil {
 		return "", "", "", err
 	}
 	return ownerUserID, projectID, installation.AppID, nil

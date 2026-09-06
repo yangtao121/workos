@@ -452,20 +452,20 @@ func (s *InstallationService) ResolveActiveInstallation(ctx context.Context, own
 	return s.repository.ResolveActiveInstallation(ctx, ownerUserID, projectID, installationID)
 }
 
-// ResolveActiveInstallationForNotificationTx locks the active installation
+// ResolveActiveInstallationForAppTx locks the active installation
 // against concurrent uninstall/grant writes for the lifetime of the caller's
-// notification transaction.
-func (s *InstallationService) ResolveActiveInstallationForNotificationTx(ctx context.Context, tx dbtx.Tx, ownerUserID, projectID, installationID string) (domain.Installation, error) {
+// App command transaction.
+func (s *InstallationService) ResolveActiveInstallationForAppTx(ctx context.Context, tx dbtx.Tx, ownerUserID, projectID, installationID string) (domain.Installation, error) {
 	if tx == nil || ownerUserID == "" || !domain.ValidInstallationUUID(projectID) || !domain.ValidInstallationUUID(installationID) {
 		return domain.Installation{}, domain.ErrInvalid
 	}
 	resolver, ok := s.repository.(interface {
-		ResolveActiveInstallationForNotificationTx(context.Context, dbtx.Tx, string, string, string) (domain.Installation, error)
+		ResolveActiveInstallationForAppTx(context.Context, dbtx.Tx, string, string, string) (domain.Installation, error)
 	})
 	if !ok {
-		return domain.Installation{}, errors.New("installation repository does not support transaction-scoped notification authorization")
+		return domain.Installation{}, errors.New("installation repository does not support transaction-scoped app authorization")
 	}
-	return resolver.ResolveActiveInstallationForNotificationTx(ctx, tx, ownerUserID, projectID, installationID)
+	return resolver.ResolveActiveInstallationForAppTx(ctx, tx, ownerUserID, projectID, installationID)
 }
 
 // ListInstalled returns one page of active installations ordered by app ID.

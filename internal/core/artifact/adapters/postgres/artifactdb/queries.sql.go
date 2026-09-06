@@ -11,6 +11,48 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const countAppArtifacts = `-- name: CountAppArtifacts :one
+SELECT count(*) FROM workos_core.app_review_artifact_requests
+WHERE app_instance_id = $1
+`
+
+func (q *Queries) CountAppArtifacts(ctx context.Context, appInstanceID string) (int64, error) {
+	row := q.db.QueryRow(ctx, countAppArtifacts, appInstanceID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
+const getAppArtifactRequest = `-- name: GetAppArtifactRequest :one
+SELECT artifact_id, owner_user_id, project_id, request_digest
+FROM workos_core.app_review_artifact_requests
+WHERE app_instance_id = $1 AND output_key = $2
+`
+
+type GetAppArtifactRequestParams struct {
+	AppInstanceID string `json:"app_instance_id"`
+	OutputKey     string `json:"output_key"`
+}
+
+type GetAppArtifactRequestRow struct {
+	ArtifactID    string `json:"artifact_id"`
+	OwnerUserID   string `json:"owner_user_id"`
+	ProjectID     string `json:"project_id"`
+	RequestDigest string `json:"request_digest"`
+}
+
+func (q *Queries) GetAppArtifactRequest(ctx context.Context, arg GetAppArtifactRequestParams) (GetAppArtifactRequestRow, error) {
+	row := q.db.QueryRow(ctx, getAppArtifactRequest, arg.AppInstanceID, arg.OutputKey)
+	var i GetAppArtifactRequestRow
+	err := row.Scan(
+		&i.ArtifactID,
+		&i.OwnerUserID,
+		&i.ProjectID,
+		&i.RequestDigest,
+	)
+	return i, err
+}
+
 const getArtifact = `-- name: GetArtifact :one
 SELECT id, owner_user_id, type, title, media_type, content_ref, digest,
        entrypoint, file_count, total_size_bytes, created_at
@@ -45,20 +87,20 @@ func (q *Queries) GetArtifact(ctx context.Context, arg GetArtifactParams) (Worko
 const getArtifactMetadataUnion = `-- name: GetArtifactMetadataUnion :one
 SELECT id, owner_user_id, type, title, media_type, content_ref, digest,
        file_count, total_size_bytes, created_at, entrypoint, project_id, source_task_id,
-       output_key, line_count, review_content
+       output_key, line_count, review_content, source_app_instance_id
 FROM (
     SELECT id, owner_user_id, type, title, media_type, content_ref, digest,
            file_count, total_size_bytes, created_at, entrypoint,
            NULL::uuid AS project_id, NULL::uuid AS source_task_id,
            NULL::text AS output_key, NULL::integer AS line_count,
-           NULL::bytea AS review_content
+           NULL::bytea AS review_content, NULL::uuid AS source_app_instance_id
     FROM workos_core.web_bundle_artifacts w
     WHERE w.owner_user_id = $1 AND w.id = $2
     UNION ALL
     SELECT id, owner_user_id, type, title, media_type, ''::text AS content_ref, digest,
            1 AS file_count, byte_count AS total_size_bytes, created_at,
            ''::text AS entrypoint, project_id, source_task_id,
-           output_key, line_count, content AS review_content
+           output_key, line_count, content AS review_content, source_app_instance_id
     FROM workos_core.project_review_artifacts p
     WHERE p.owner_user_id = $1 AND p.id = $2
 ) AS artifact
@@ -70,22 +112,23 @@ type GetArtifactMetadataUnionParams struct {
 }
 
 type GetArtifactMetadataUnionRow struct {
-	ID             string             `json:"id"`
-	OwnerUserID    string             `json:"owner_user_id"`
-	Type           string             `json:"type"`
-	Title          string             `json:"title"`
-	MediaType      string             `json:"media_type"`
-	ContentRef     string             `json:"content_ref"`
-	Digest         string             `json:"digest"`
-	FileCount      int32              `json:"file_count"`
-	TotalSizeBytes int64              `json:"total_size_bytes"`
-	CreatedAt      pgtype.Timestamptz `json:"created_at"`
-	Entrypoint     string             `json:"entrypoint"`
-	ProjectID      pgtype.UUID        `json:"project_id"`
-	SourceTaskID   pgtype.UUID        `json:"source_task_id"`
-	OutputKey      pgtype.Text        `json:"output_key"`
-	LineCount      pgtype.Int4        `json:"line_count"`
-	ReviewContent  []byte             `json:"review_content"`
+	ID                  string             `json:"id"`
+	OwnerUserID         string             `json:"owner_user_id"`
+	Type                string             `json:"type"`
+	Title               string             `json:"title"`
+	MediaType           string             `json:"media_type"`
+	ContentRef          string             `json:"content_ref"`
+	Digest              string             `json:"digest"`
+	FileCount           int32              `json:"file_count"`
+	TotalSizeBytes      int64              `json:"total_size_bytes"`
+	CreatedAt           pgtype.Timestamptz `json:"created_at"`
+	Entrypoint          string             `json:"entrypoint"`
+	ProjectID           pgtype.UUID        `json:"project_id"`
+	SourceTaskID        pgtype.UUID        `json:"source_task_id"`
+	OutputKey           pgtype.Text        `json:"output_key"`
+	LineCount           pgtype.Int4        `json:"line_count"`
+	ReviewContent       []byte             `json:"review_content"`
+	SourceAppInstanceID pgtype.UUID        `json:"source_app_instance_id"`
 }
 
 // Metadata projection shared by both implemented subtypes. Exactly one branch
@@ -111,6 +154,7 @@ func (q *Queries) GetArtifactMetadataUnion(ctx context.Context, arg GetArtifactM
 		&i.OutputKey,
 		&i.LineCount,
 		&i.ReviewContent,
+		&i.SourceAppInstanceID,
 	)
 	return i, err
 }
@@ -141,7 +185,7 @@ func (q *Queries) GetArtifactRequest(ctx context.Context, arg GetArtifactRequest
 
 const getReviewArtifactContent = `-- name: GetReviewArtifactContent :one
 SELECT id, owner_user_id, type, title, media_type, digest, project_id, source_task_id,
-       output_key, byte_count, line_count, content, created_at
+       output_key, byte_count, line_count, content, created_at, source_app_instance_id
 FROM workos_core.project_review_artifacts
 WHERE owner_user_id = $1 AND id = $2
 `
@@ -170,13 +214,14 @@ func (q *Queries) GetReviewArtifactContent(ctx context.Context, arg GetReviewArt
 		&i.LineCount,
 		&i.Content,
 		&i.CreatedAt,
+		&i.SourceAppInstanceID,
 	)
 	return i, err
 }
 
 const getReviewArtifactContentByID = `-- name: GetReviewArtifactContentByID :one
 SELECT id, owner_user_id, type, title, media_type, digest, project_id, source_task_id,
-       output_key, byte_count, line_count, content, created_at
+       output_key, byte_count, line_count, content, created_at, source_app_instance_id
 FROM workos_core.project_review_artifacts
 WHERE id = $1
 `
@@ -198,6 +243,7 @@ func (q *Queries) GetReviewArtifactContentByID(ctx context.Context, artifactID s
 		&i.LineCount,
 		&i.Content,
 		&i.CreatedAt,
+		&i.SourceAppInstanceID,
 	)
 	return i, err
 }
@@ -237,7 +283,7 @@ func (q *Queries) GetReviewArtifactOutput(ctx context.Context, arg GetReviewArti
 
 const getReviewFact = `-- name: GetReviewFact :one
 SELECT id, owner_user_id, type, title, media_type, digest, project_id, source_task_id,
-       output_key, byte_count, line_count, content, created_at
+       output_key, byte_count, line_count, content, created_at, source_app_instance_id
 FROM workos_core.project_review_artifacts
 WHERE id = $1::uuid
 `
@@ -261,8 +307,78 @@ func (q *Queries) GetReviewFact(ctx context.Context, artifactID string) (WorkosC
 		&i.LineCount,
 		&i.Content,
 		&i.CreatedAt,
+		&i.SourceAppInstanceID,
 	)
 	return i, err
+}
+
+const insertAppArtifactRequest = `-- name: InsertAppArtifactRequest :exec
+INSERT INTO workos_core.app_review_artifact_requests
+    (app_instance_id, output_key, owner_user_id, project_id, artifact_id, request_digest)
+VALUES ($1, $2, $3, $4, $5, $6)
+`
+
+type InsertAppArtifactRequestParams struct {
+	AppInstanceID string `json:"app_instance_id"`
+	OutputKey     string `json:"output_key"`
+	OwnerUserID   string `json:"owner_user_id"`
+	ProjectID     string `json:"project_id"`
+	ArtifactID    string `json:"artifact_id"`
+	RequestDigest string `json:"request_digest"`
+}
+
+func (q *Queries) InsertAppArtifactRequest(ctx context.Context, arg InsertAppArtifactRequestParams) error {
+	_, err := q.db.Exec(ctx, insertAppArtifactRequest,
+		arg.AppInstanceID,
+		arg.OutputKey,
+		arg.OwnerUserID,
+		arg.ProjectID,
+		arg.ArtifactID,
+		arg.RequestDigest,
+	)
+	return err
+}
+
+const insertAppReviewArtifact = `-- name: InsertAppReviewArtifact :exec
+INSERT INTO workos_core.project_review_artifacts
+    (id, owner_user_id, type, title, media_type, digest, project_id,
+     source_app_instance_id, output_key, byte_count, line_count, content, created_at)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+`
+
+type InsertAppReviewArtifactParams struct {
+	ID                  string             `json:"id"`
+	OwnerUserID         string             `json:"owner_user_id"`
+	Type                string             `json:"type"`
+	Title               string             `json:"title"`
+	MediaType           string             `json:"media_type"`
+	Digest              string             `json:"digest"`
+	ProjectID           string             `json:"project_id"`
+	SourceAppInstanceID pgtype.UUID        `json:"source_app_instance_id"`
+	OutputKey           string             `json:"output_key"`
+	ByteCount           int32              `json:"byte_count"`
+	LineCount           int32              `json:"line_count"`
+	Content             []byte             `json:"content"`
+	CreatedAt           pgtype.Timestamptz `json:"created_at"`
+}
+
+func (q *Queries) InsertAppReviewArtifact(ctx context.Context, arg InsertAppReviewArtifactParams) error {
+	_, err := q.db.Exec(ctx, insertAppReviewArtifact,
+		arg.ID,
+		arg.OwnerUserID,
+		arg.Type,
+		arg.Title,
+		arg.MediaType,
+		arg.Digest,
+		arg.ProjectID,
+		arg.SourceAppInstanceID,
+		arg.OutputKey,
+		arg.ByteCount,
+		arg.LineCount,
+		arg.Content,
+		arg.CreatedAt,
+	)
+	return err
 }
 
 const insertArtifact = `-- name: InsertArtifact :exec
@@ -379,7 +495,7 @@ type InsertReviewArtifactParams struct {
 	MediaType    string             `json:"media_type"`
 	Digest       string             `json:"digest"`
 	ProjectID    string             `json:"project_id"`
-	SourceTaskID string             `json:"source_task_id"`
+	SourceTaskID pgtype.UUID        `json:"source_task_id"`
 	OutputKey    string             `json:"output_key"`
 	ByteCount    int32              `json:"byte_count"`
 	LineCount    int32              `json:"line_count"`
@@ -581,20 +697,20 @@ func (q *Queries) ListArtifactSummaries(ctx context.Context, arg ListArtifactSum
 const listArtifactSummariesUnion = `-- name: ListArtifactSummariesUnion :many
 SELECT id, owner_user_id, type, title, media_type, content_ref, digest,
        file_count, total_size_bytes, created_at, entrypoint, project_id, source_task_id,
-       output_key, line_count, review_content
+       output_key, line_count, review_content, source_app_instance_id
 FROM (
     SELECT id, owner_user_id, type, title, media_type, content_ref, digest,
            file_count, total_size_bytes, created_at, entrypoint,
            NULL::uuid AS project_id, NULL::uuid AS source_task_id,
            NULL::text AS output_key, NULL::integer AS line_count,
-           NULL::bytea AS review_content
+           NULL::bytea AS review_content, NULL::uuid AS source_app_instance_id
     FROM workos_core.web_bundle_artifacts w
     WHERE w.owner_user_id = $1 AND w.id = ANY($2::uuid[])
     UNION ALL
     SELECT id, owner_user_id, type, title, media_type, ''::text AS content_ref, digest,
            1 AS file_count, byte_count AS total_size_bytes, created_at,
            ''::text AS entrypoint, project_id, source_task_id,
-           output_key, line_count, content AS review_content
+           output_key, line_count, content AS review_content, source_app_instance_id
     FROM workos_core.project_review_artifacts p
     WHERE p.owner_user_id = $1 AND p.id = ANY($2::uuid[])
 ) AS artifact
@@ -607,22 +723,23 @@ type ListArtifactSummariesUnionParams struct {
 }
 
 type ListArtifactSummariesUnionRow struct {
-	ID             string             `json:"id"`
-	OwnerUserID    string             `json:"owner_user_id"`
-	Type           string             `json:"type"`
-	Title          string             `json:"title"`
-	MediaType      string             `json:"media_type"`
-	ContentRef     string             `json:"content_ref"`
-	Digest         string             `json:"digest"`
-	FileCount      int32              `json:"file_count"`
-	TotalSizeBytes int64              `json:"total_size_bytes"`
-	CreatedAt      pgtype.Timestamptz `json:"created_at"`
-	Entrypoint     string             `json:"entrypoint"`
-	ProjectID      pgtype.UUID        `json:"project_id"`
-	SourceTaskID   pgtype.UUID        `json:"source_task_id"`
-	OutputKey      pgtype.Text        `json:"output_key"`
-	LineCount      pgtype.Int4        `json:"line_count"`
-	ReviewContent  []byte             `json:"review_content"`
+	ID                  string             `json:"id"`
+	OwnerUserID         string             `json:"owner_user_id"`
+	Type                string             `json:"type"`
+	Title               string             `json:"title"`
+	MediaType           string             `json:"media_type"`
+	ContentRef          string             `json:"content_ref"`
+	Digest              string             `json:"digest"`
+	FileCount           int32              `json:"file_count"`
+	TotalSizeBytes      int64              `json:"total_size_bytes"`
+	CreatedAt           pgtype.Timestamptz `json:"created_at"`
+	Entrypoint          string             `json:"entrypoint"`
+	ProjectID           pgtype.UUID        `json:"project_id"`
+	SourceTaskID        pgtype.UUID        `json:"source_task_id"`
+	OutputKey           pgtype.Text        `json:"output_key"`
+	LineCount           pgtype.Int4        `json:"line_count"`
+	ReviewContent       []byte             `json:"review_content"`
+	SourceAppInstanceID pgtype.UUID        `json:"source_app_instance_id"`
 }
 
 // Summary projection shared by both subtypes for exactly the given IDs.
@@ -652,6 +769,7 @@ func (q *Queries) ListArtifactSummariesUnion(ctx context.Context, arg ListArtifa
 			&i.OutputKey,
 			&i.LineCount,
 			&i.ReviewContent,
+			&i.SourceAppInstanceID,
 		); err != nil {
 			return nil, err
 		}
@@ -703,6 +821,15 @@ func (q *Queries) ListProjectReviewArtifactIDPage(ctx context.Context, arg ListP
 		return nil, err
 	}
 	return items, nil
+}
+
+const lockAppArtifactWrites = `-- name: LockAppArtifactWrites :exec
+SELECT pg_advisory_xact_lock(hashtextextended('workos.app-artifact:' || $1::text, 0))
+`
+
+func (q *Queries) LockAppArtifactWrites(ctx context.Context, appInstanceID string) error {
+	_, err := q.db.Exec(ctx, lockAppArtifactWrites, appInstanceID)
+	return err
 }
 
 const readBundleAsset = `-- name: ReadBundleAsset :one

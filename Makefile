@@ -1027,3 +1027,10 @@ clean:
 test-app-files: e2e-image
 	WORKOS_UID="$$(id -u)" WORKOS_GID="$$(id -g)" docker compose up -d --build --force-recreate postgres bootstrap workos-core runtime-host workos-gateway
 	sh tests/filesbridge/run.sh
+
+.PHONY: test-app-artifacts
+test-app-artifacts: e2e-image
+	docker compose up -d --build postgres bootstrap workos-core runtime-host workos-gateway
+	$(GO_HOST_RUN) go test -tags=integration -count=1 -run TestAppArtifacts ./tests/integration
+	$(NODE_RUN) sh -c 'cd apps/desktop-web && corepack pnpm exec vite build --config e2e/fixtures/artifacts-bridge.config.ts'
+	docker run --rm --network host $(USER_FLAGS) -e PLAYWRIGHT_BROWSERS_PATH=/ms-playwright -e WORKOS_E2E_URL=http://127.0.0.1:8080 -e WORKOS_E2E_OUTPUT_DIR=/tmp/workos-playwright-results -e WORKOS_APP_ARTIFACTS=1 -e WORKOS_ARTIFACTS_CAPTURE_DIR -e WORKOS_ARTIFACTS_BEFORE_DIR -v $(CURDIR):$(WORKDIR) -w $(WORKDIR)/apps/desktop-web $(E2E_IMAGE) pnpm exec playwright test '(^|/)app-artifacts\.spec\.ts$$'

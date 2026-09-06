@@ -1,3 +1,8 @@
+import {
+  validBridgeArtifactRef,
+  type BridgeArtifactRef,
+  type BridgeArtifactCreatePayload,
+} from "@workos/surface-sdk";
 // The iframe-side WorkOS App SDK. A sandboxed web bundle app calls this at
 // startup to receive its App Bridge over a versioned MessageChannel
 // handshake from the trusted parent. The SDK only ever talks to
@@ -56,6 +61,12 @@ export interface AppAgentRunResult {
 }
 
 export interface WorkOSAppBridge {
+  artifacts: {
+    create(
+      input: Omit<BridgeArtifactCreatePayload, "contentBase64"> & { content: string },
+    ): Promise<BridgeArtifactRef>;
+    open(artifactId: string): Promise<BridgeArtifactRef>;
+  };
   files: {
     pick(options?: { multiple?: boolean }): Promise<BridgeFileRef[]>;
     read(ref: BridgeFileRef): Promise<ArrayBuffer>;
@@ -453,6 +464,25 @@ function createBridge(
       },
     },
 
+    artifacts: {
+      async create(input) {
+        const result = await call("artifacts.create", {
+          idempotencyKey: input.idempotencyKey,
+          type: input.type,
+          title: input.title,
+          contentBase64: encodeFileData(new TextEncoder().encode(input.content)),
+        });
+        if (!("artifact" in result) || !validBridgeArtifactRef(result.artifact))
+          throw new BridgeProtocolError("internal");
+        return result.artifact;
+      },
+      async open(artifactId) {
+        const result = await call("artifacts.open", { artifactId });
+        if (!("artifact" in result) || !validBridgeArtifactRef(result.artifact))
+          throw new BridgeProtocolError("internal");
+        return result.artifact;
+      },
+    },
     files: {
       async pick(options = {}) {
         const result = await call("files.pick", options);

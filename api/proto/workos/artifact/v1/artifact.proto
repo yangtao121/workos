@@ -24,6 +24,8 @@ message Artifact {
   // metadata, never an authorization token: every read stays owner/project
   // scoped and the source task UUID alone grants nothing.
   string source_task_id = 11;
+  // Review provenance: exactly one source is set; never an authority token.
+  string source_app_instance_id = 12;
 }
 
 // WebBundleFile is one regular file of a web bundle upload. The path is an

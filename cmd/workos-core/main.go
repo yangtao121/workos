@@ -357,6 +357,12 @@ func run(logger *slog.Logger) error {
 	if err := notificationService.WithAppAuthorizer(notificationAuthorizer); err != nil {
 		return err
 	}
+	appArtifacts, err := orchestration.NewAppArtifactService(pool, appAgentService, artifactRepository, feedRepository, notificationRepository, generator)
+	if err != nil {
+		return err
+	}
+	appArtifactPath, appArtifactHandler := orchestrationtransport.NewAppArtifactConnectHandler(appArtifacts)
+	mux.Handle(appArtifactPath, identity.Middleware(appArtifactHandler))
 	appAgentPath, appAgentHandler := orchestrationtransport.NewAppAgentConnectHandler(appAgentService)
 	mux.Handle(appAgentPath, identity.Middleware(appAgentHandler))
 	// The private app notification ingest surface (ADR-0014): only

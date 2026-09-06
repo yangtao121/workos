@@ -90,6 +90,44 @@ function buildTransport(
         throw asBridgeProtocolError(error);
       }
     },
+    async createArtifact(input, signal) {
+      try {
+        const { artifact } = await appBridge.createReviewArtifact(
+          {
+            idempotencyKey: input.idempotencyKey,
+            type: input.type,
+            title: input.title,
+            content: decodeFileData(input.contentBase64),
+          },
+          { headers, signal },
+        );
+        if (!artifact) throw new BridgeProtocolError("internal");
+        return {
+          id: artifact.id,
+          projectId: artifact.projectId,
+          type: artifact.type,
+          title: artifact.title,
+          digest: artifact.digest,
+        };
+      } catch (error) {
+        throw asBridgeProtocolError(error);
+      }
+    },
+    async openArtifact(input, signal) {
+      try {
+        const { artifact } = await appBridge.openReviewArtifact(input, { headers, signal });
+        if (!artifact) throw new BridgeProtocolError("internal");
+        return {
+          id: artifact.id,
+          projectId: artifact.projectId,
+          type: artifact.type,
+          title: artifact.title,
+          digest: artifact.digest,
+        };
+      } catch (error) {
+        throw asBridgeProtocolError(error);
+      }
+    },
     async readFile(input, signal) {
       try {
         const result = await appBridge.readFile(input, { headers, signal });
