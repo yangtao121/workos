@@ -7,7 +7,12 @@ import {
   type AppBridgeService,
 } from "@workos/protocol";
 import { BridgeProtocolError } from "@workos/surface-sdk";
-import { openAppBridgeHost, type AppBridgeHost, type AppBridgeTransport } from "@workos/app-host";
+import {
+  openAppBridgeHost,
+  type AppBridgeHost,
+  type AppBridgeTransport,
+  type AppBridgeShellHost,
+} from "@workos/app-host";
 import { asBridgeProtocolError } from "./bridgeErrors.js";
 import type { AppSurfaceRef } from "@workos/window-manager";
 
@@ -32,16 +37,7 @@ import {
   type DeclarativeDoc,
 } from "./DeclarativeSurface.js";
 
-export interface AppSurfaceShellHost {
-  /** Bounded summary of the surface's project (canonical facts only). */
-  projectCurrent(): Promise<{ projectId: string; name: string; revision: string }>;
-  /** The shell's active color scheme. */
-  getTheme(): Promise<{ scheme: "light" | "dark" }>;
-  /** Renames the hosting window. */
-  setWindowTitle(title: string): void;
-  /** Closes the hosting window. */
-  closeWindow(): void;
-}
+export type AppSurfaceShellHost = AppBridgeShellHost;
 
 interface AppSurfaceProps {
   surface: AppSurfaceRef;
@@ -74,6 +70,13 @@ function buildTransport(
 ): AppBridgeTransport {
   const headers = { "X-WorkOS-Bridge-Token": credentials.token };
   return {
+    async authorizeShellAction(method) {
+      try {
+        await appBridge.authorizeShellAction({ method }, { headers });
+      } catch (error) {
+        throw asBridgeProtocolError(error);
+      }
+    },
     async runAgentTask(input) {
       try {
         const response = await appBridge.runAgentTask(
@@ -238,26 +241,7 @@ export function AppSurface({ surface, bridge, appBridge, shell }: AppSurfaceProp
       frameWindow,
       capabilities: bridge.capabilities,
       transport: buildTransport(appBridge, bridge),
-      ...(shell === undefined
-        ? {}
-        : {
-            shell: {
-              projectCurrent: async () => {
-                const result = await shell.projectCurrent();
-                return result;
-              },
-              getTheme: async () => {
-                const result = await shell.getTheme();
-                return result;
-              },
-              setWindowTitle: (title: string) => {
-                shell.setWindowTitle(title);
-              },
-              closeWindow: () => {
-                shell.closeWindow();
-              },
-            },
-          }),
+      ...(shell === undefined ? {} : { shell }),
       onHandshakeComplete: () => {
         setBridgeState("ready");
       },

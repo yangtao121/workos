@@ -55,6 +55,7 @@ export interface WorkOSWindow {
   id: string;
   appId: string;
   title: string;
+  badge?: string;
   kind: WindowKind;
   surface?: AppSurfaceRef | undefined;
   artifact?: ArtifactRef | undefined;
@@ -79,6 +80,7 @@ export type WindowAction =
   | { type: "work-area"; viewport: Rect }
   | { type: "snap"; id: string; side: "left" | "right"; viewport: Rect }
   | { type: "close"; id: string }
+  | { type: "badge"; id: string; badge: string }
   | { type: "rename"; id: string; title: string };
 
 export const initialWindowState: WindowState = { windows: [], nextZIndex: 1 };
@@ -150,6 +152,8 @@ export function windowReducer(state: WindowState, action: WindowAction): WindowS
   const windows = state.windows.map((item) => {
     if (item.id !== action.id) return item;
     switch (action.type) {
+      case "badge":
+        return { ...item, badge: action.badge };
       case "rename":
         return { ...item, title: action.title };
       case "focus":

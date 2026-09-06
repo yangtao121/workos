@@ -9,6 +9,9 @@ import { expect, test, type Page } from "@playwright/test";
 const libraryTimeout = 30_000;
 
 test.setTimeout(240_000);
+test.use({ viewport: { width: 1440, height: 900 } });
+const baseline = !!process.env.WORKOS_VISUAL_BASELINE;
+const capture = process.env.WORKOS_BRIDGE_CAPTURE_DIR;
 
 const fixtureScript = `
 var root = document.getElementById('root');
@@ -67,6 +70,9 @@ document.addEventListener('DOMContentLoaded', function () {
   button('theme', 'Theme get', 'theme.get', {}, 'theme');
   button('knowledge', 'Knowledge search', 'knowledge.search', { query: 'probe' }, 'knowledge');
   button('rename', 'Rename window', 'window.setTitle', { title: 'Renamed E2E' }, 'rename');
+  button('badge', 'Set badge', 'window.setBadge', { count: 3 }, 'badge');
+  button('maximize', 'Maximize', 'window.maximize', {}, 'maximize');
+  button('minimize', 'Minimize', 'window.minimize', {}, 'minimize');
   button('closewin', 'Close window', 'window.close', {}, 'close');
 });
 `;
@@ -144,7 +150,7 @@ test("shell-side bridge methods exercise project.current, theme, window manageme
     {
       data: {
         idempotencyKey: `e2e-app-bridge-full-project-${stamp}`,
-        name: `Bridge Full E2E ${stamp}`,
+        name: "Bridge workspace",
       },
     },
   );
@@ -160,7 +166,7 @@ test("shell-side bridge methods exercise project.current, theme, window manageme
   }, projectId);
   await page.goto("/");
 
-  await page.getByRole("button", { name: "App Library" }).click();
+  await page.getByRole("button", { name: "App Library", exact: true }).click();
   const row = page.locator(".app-library .app-row", { hasText: appId });
   await expect(row.getByRole("button", { name: "Install", exact: true })).toBeVisible({
     timeout: libraryTimeout,
@@ -180,6 +186,9 @@ test("shell-side bridge methods exercise project.current, theme, window manageme
   const frameRoot = () => page.frameLocator(".app-surface-frame").locator("#root");
   await expect(frameRoot()).toHaveText("bridge-ready", { timeout: libraryTimeout });
 
+  if (baseline) await page.getByRole("button", { name: "Close App Library", exact: true }).click();
+  else await expect(page.locator(".app-library")).toHaveCount(0);
+
   // Shell methods are negotiated: project.current from the project.read
   // grant; theme/window management as inherent shell-side surface facts.
   const advertised = page.frameLocator(".app-surface-frame").locator("#methods");
@@ -198,7 +207,7 @@ test("shell-side bridge methods exercise project.current, theme, window manageme
 
   // theme.get: the shell's active scheme.
   await frameLoc().locator("#theme").click();
-  await expect(out).toHaveText(/theme-ok:scheme:light/, { timeout: 30_000 });
+  await expect(out).toHaveText(/theme-ok:scheme:dark/, { timeout: 30_000 });
 
   // Ungranted capability fails closed with zero side effects.
   await frameLoc().locator("#knowledge").click();
@@ -210,7 +219,61 @@ test("shell-side bridge methods exercise project.current, theme, window manageme
     timeout: 30_000,
   });
 
-  // window.close tears the surface window down (the ack lands first).
-  await page.frameLocator(".app-surface-frame").locator("#closewin").click();
+  if (!baseline) {
+    await frameLoc().locator("#badge").click();
+    await expect(page.getByLabel("App badge 3", { exact: true })).toBeVisible();
+    await frameLoc().locator("#maximize").click();
+    await expect(page.locator(".app-window")).toHaveAttribute("data-mode", "maximized");
+    await frameLoc().locator("#minimize").click();
+    await expect(page.locator(".app-window")).toBeHidden();
+    await page.locator(".dock").getByRole("button", { name: "Open Renamed E2E" }).click();
+    await expect(page.locator(".app-window")).toHaveAttribute("data-mode", "maximized");
+    await page.getByRole("button", { name: "Restore Renamed E2E", exact: true }).click();
+  }
+  if (capture)
+    await page
+      .locator(".app-window")
+      .screenshot({ path: `${capture}/app-bridge--window--1440x900.png`, animations: "disabled" });
+  // The ack is delivered before the host closes the surface.
+  await frameLoc().locator("#closewin").click();
   await expect(frame).toBeHidden({ timeout: 30_000 });
+  if (baseline) return;
+
+  // An installation mutation outside this page leaves the old iframe alive.
+  // Every shell operation must still re-authorize against current Core facts.
+  await page.getByTestId("open-app-library").click();
+  await row.getByRole("button", { name: "Open", exact: true }).click();
+  await expect(frameRoot()).toHaveText("bridge-ready", { timeout: libraryTimeout });
+  const installed = await page.request.post(
+    "/workos.app.v1.AppInstallationService/ListInstalledApps",
+    { data: { projectId } },
+  );
+  const installations = (await installed.json()) as {
+    installations: { id: string; appId: string }[];
+  };
+  const installation = installations.installations.find((item) => item.appId === appId);
+  if (!installation) throw new Error("Fixture installation missing");
+  const current = await page.request.post("/workos.project.v1.ProjectService/GetProject", {
+    data: { projectId },
+  });
+  const { project } = (await current.json()) as { project: { revision: string } };
+  const revoke = await page.request.post("/workos.app.v1.AppInstallationService/SetAppGrants", {
+    data: {
+      idempotencyKey: `revoke-${stamp}`,
+      projectId,
+      installationId: installation.id,
+      expectedProjectRevision: project.revision,
+      grantedPermissions: [],
+    },
+  });
+  expect(revoke.ok()).toBeTruthy();
+  for (const [button, tag] of [
+    ["project", "project"],
+    ["rename", "rename"],
+    ["closewin", "close"],
+  ] as const) {
+    await frameLoc().locator(`#${button}`).click();
+    await expect(out).toHaveText(`${tag}-error:permission_denied`, { timeout: 30_000 });
+  }
+  await expect(frame).toBeVisible();
 });

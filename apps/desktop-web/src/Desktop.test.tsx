@@ -884,40 +884,20 @@ describe("app surface windows", () => {
     clients.appRegistry.getApp = vi.fn((request: { appId: string }) =>
       Promise.resolve({ app: request.appId === "board-app" ? boardApp : notesApp }),
     ) as unknown as typeof clients.appRegistry.getApp;
-    (clients.appInstallations.listInstalledApps as ReturnType<typeof vi.fn>)
-      .mockResolvedValueOnce({
+    let revoked = false;
+    clients.appInstallations.listInstalledApps = vi.fn(() =>
+      Promise.resolve({
         installations: [
           {
             ...installedApp("board-app", "installation-board", "p1"),
-            grantedPermissions: ["agent.task.run"],
+            grantedPermissions: revoked ? [] : ["agent.task.run"],
+            grantRevision: revoked ? 2n : 1n,
           },
           installedApp("notes-app", "installation-notes", "p1"),
         ],
         page: { nextPageToken: "" },
-      })
-      // The dialog-opening fresh read still sees the granted epoch-1 row;
-      // only the post-save reads see the revocation.
-      .mockResolvedValueOnce({
-        installations: [
-          {
-            ...installedApp("board-app", "installation-board", "p1"),
-            grantedPermissions: ["agent.task.run"],
-          },
-          installedApp("notes-app", "installation-notes", "p1"),
-        ],
-        page: { nextPageToken: "" },
-      })
-      .mockResolvedValue({
-        installations: [
-          {
-            ...installedApp("board-app", "installation-board", "p1"),
-            grantedPermissions: [],
-            grantRevision: 2n,
-          },
-          installedApp("notes-app", "installation-notes", "p1"),
-        ],
-        page: { nextPageToken: "" },
-      });
+      }),
+    ) as unknown as typeof clients.appInstallations.listInstalledApps;
     clients.surfaces.createSurface = vi.fn((request: { appInstanceId: string }) =>
       Promise.resolve({
         session: request.appInstanceId === "installation-board" ? boardSession : notesSession,
@@ -927,14 +907,17 @@ describe("app surface windows", () => {
       Promise.resolve({ $typeName: "workos.surface.v1.CloseSurfaceResponse" }),
     ) as unknown as typeof clients.surfaces.closeSurface;
     clients.surfaces.closeSurface = closeSurface;
-    (clients.appInstallations.setAppGrants as ReturnType<typeof vi.fn>).mockResolvedValue({
-      installation: {
-        ...installedApp("board-app", "installation-board", "p1"),
-        grantedPermissions: [],
-        grantRevision: 2n,
-      },
-      projectRevision: 2n,
-    });
+    clients.appInstallations.setAppGrants = vi.fn(() => {
+      revoked = true;
+      return Promise.resolve({
+        installation: {
+          ...installedApp("board-app", "installation-board", "p1"),
+          grantedPermissions: [],
+          grantRevision: 2n,
+        },
+        projectRevision: 2n,
+      });
+    }) as unknown as typeof clients.appInstallations.setAppGrants;
     (clients.projects.getProject as ReturnType<typeof vi.fn>).mockResolvedValue({
       project: project("p1", "Alpha", 2n),
     });
@@ -948,9 +931,14 @@ describe("app surface windows", () => {
     // each time because the buttons re-render between the two opens.
     await user.click(screen.getAllByRole("button", { name: "Open" })[0] as HTMLElement);
     expect(await screen.findByTitle(`App surface ${boardSession.id}`)).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Close App Library" })).toBeNull();
+    await user.click(screen.getByTestId("open-app-library"));
+    await screen.findAllByText(/Installed · pinned 1\.0\.0/);
     await user.click(screen.getAllByRole("button", { name: "Open" })[1] as HTMLElement);
     expect(await screen.findByTitle(`App surface ${notesSession.id}`)).toBeTruthy();
 
+    await user.click(screen.getByTestId("open-app-library"));
+    await screen.findAllByText(/Installed · pinned 1\.0\.0/);
     // Revoke board's only permission through the manage dialog.
     await user.click(
       screen.getAllByRole("button", { name: "Manage permissions" })[0] as HTMLElement,

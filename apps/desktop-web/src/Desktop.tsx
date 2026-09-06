@@ -749,6 +749,7 @@ export function Desktop({
   // The device-local layout record learns the active instance and the
   // recency lists (bounded canonical IDs only).
   function surfaceOpened(session: SurfaceSession) {
+    setLibraryOpen(false);
     openSurfaceSessionsRef.current = openSurfaceSessionsRef.current.concat({
       surfaceSessionId: session.id,
     });
@@ -1509,15 +1510,14 @@ export function Desktop({
         appBridge={workosClients.appBridge}
         shell={{
           projectCurrent: async () => {
-            const surface = windowState.surface;
-            const project = surface
-              ? (projects.find((item) => item.id === surface.projectId) ?? activeProject)
-              : undefined;
-            await Promise.resolve();
+            const projectId = windowState.surface?.projectId;
+            if (!projectId) throw new Error("Project unavailable");
+            const { project } = await workosClients.projects.getProject({ projectId });
+            if (!project || project.id !== projectId) throw new Error("Project unavailable");
             return {
-              projectId: project?.id ?? surface?.projectId ?? "",
-              name: project?.name ?? "",
-              revision: String(project?.revision ?? 0),
+              projectId: project.id,
+              name: project.name,
+              revision: String(project.revision),
             };
           },
           getTheme: async () => {
@@ -1526,6 +1526,12 @@ export function Desktop({
           },
           setWindowTitle: (title) => {
             dispatch({ type: "rename", id: windowState.id, title });
+          },
+          setWindowBadge: (badge) => {
+            dispatch({ type: "badge", id: windowState.id, badge });
+          },
+          setWindowMode: (mode) => {
+            dispatch({ type: "mode", id: windowState.id, mode, viewport: workArea() });
           },
           closeWindow: () => {
             closeWindow(windowState.id);
@@ -2019,8 +2025,18 @@ export function Desktop({
                   size={17}
                 />
                 <strong>{windowState.title}</strong>
+                {windowState.badge ? (
+                  <span className="window-badge" aria-label={`App badge ${windowState.badge}`}>
+                    {windowState.badge}
+                  </span>
+                ) : null}
               </div>
-              <span className="window-project">{activeProject?.name ?? "No project"}</span>
+              <span className="window-project">
+                {(windowState.surface
+                  ? projects.find((project) => project.id === windowState.surface?.projectId)
+                  : activeProject
+                )?.name ?? "No project"}
+              </span>
               <div className="window-controls">
                 <button
                   type="button"
@@ -2160,6 +2176,22 @@ export function Desktop({
               onClick={app.open}
             >
               <Icon name={app.icon} size={22} />
+            </button>
+          ))}
+        {windows.windows
+          .filter((item) => !systemApps.some((app) => app.id === item.kind))
+          .map((item) => (
+            <button
+              key={item.id}
+              type="button"
+              className="dock-app running"
+              aria-label={`Open ${item.title}`}
+              title={item.title}
+              onClick={() => {
+                dispatch({ type: "focus", id: item.id });
+              }}
+            >
+              <Icon name="docs" size={22} />
             </button>
           ))}
         <span className="dock-divider" />

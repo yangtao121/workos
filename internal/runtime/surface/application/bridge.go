@@ -24,6 +24,7 @@ import (
 type BridgeService struct {
 	repository ports.SessionRepository
 	appAgent   ports.AppAgentClient
+	resolver   ports.LaunchResolver
 	// knowledge is the scoped search pipeline (Core re-authorization +
 	// indexer call). It is nil when the runtime has no configured indexer
 	// adapter: then knowledge.search is never negotiated and every call
@@ -49,11 +50,40 @@ func NewKnowledgeSearchPipeline(authorizer ports.AppAgentClient, indexer ports.K
 // NewBridgeService composes the bridge use cases on the same session facts
 // and the private Core App Agent client. knowledge may be nil when the
 // runtime has no indexer adapter configured.
-func NewBridgeService(repository ports.SessionRepository, appAgent ports.AppAgentClient, knowledge *KnowledgeSearchPipeline) (*BridgeService, error) {
+func NewBridgeService(repository ports.SessionRepository, appAgent ports.AppAgentClient, knowledge *KnowledgeSearchPipeline, resolver ports.LaunchResolver) (*BridgeService, error) {
 	if repository == nil || appAgent == nil {
 		return nil, errors.New("bridge service requires the session repository and the core app agent client")
 	}
-	return &BridgeService{repository: repository, appAgent: appAgent, knowledge: knowledge, now: func() time.Time { return time.Now().UTC() }}, nil
+	return &BridgeService{repository: repository, appAgent: appAgent, knowledge: knowledge, resolver: resolver, now: func() time.Time { return time.Now().UTC() }}, nil
+}
+
+func (s *BridgeService) AuthorizeShellAction(ctx context.Context, ownerUserID, deviceID, token, method string) error {
+	capability := ""
+	switch method {
+	case "project.current":
+		capability = domain.BridgeCapabilityProjectCurrent
+	case "theme.get", "window.setTitle", "window.setBadge", "window.maximize", "window.minimize", "window.close":
+	default:
+		return domain.ErrInvalid
+	}
+	session, err := s.authorize(ctx, ownerUserID, deviceID, token, capability)
+	if err != nil {
+		return err
+	}
+	if s.resolver == nil {
+		return domain.ErrUnavailable
+	}
+	launch, err := s.resolver.ResolveSurfaceLaunch(ctx, ports.ResolveQuery{ProjectID: session.ProjectID, AppInstanceID: session.AppInstanceID})
+	if err != nil {
+		return mapResolverError(err)
+	}
+	if launch.GrantRevision <= 0 || launch.GrantRevision != session.InstallationGrantRevision || launch.AppID != session.Descriptor.AppID || launch.Version != session.Descriptor.Version || launch.ManifestDigest != session.Descriptor.ManifestDigest {
+		return domain.ErrPermissionDenied
+	}
+	if capability != "" && !domain.BridgeCapabilityGranted(domain.EffectiveBridgeCapabilities(launch.GrantedPermissions, false), capability) {
+		return domain.ErrPermissionDenied
+	}
+	return nil
 }
 
 // RunAgentTask validates the presented bridge token and submits one
@@ -123,7 +153,7 @@ func (s *BridgeService) authorize(ctx context.Context, ownerUserID, deviceID, to
 		// failed credential: the binding facts must all match.
 		return domain.SurfaceSession{}, domain.ErrUnauthenticated
 	}
-	if !domain.BridgeCapabilityGranted(session.BridgeCapabilities, capability) {
+	if capability != "" && !domain.BridgeCapabilityGranted(session.BridgeCapabilities, capability) {
 		return domain.SurfaceSession{}, domain.ErrPermissionDenied
 	}
 	return session, nil

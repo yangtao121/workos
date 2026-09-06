@@ -23,6 +23,9 @@ export const BRIDGE_METHODS = [
   "theme.get",
   "window.setTitle",
   "window.close",
+  "window.setBadge",
+  "window.maximize",
+  "window.minimize",
 ] as const;
 export type BridgeMethod = (typeof BRIDGE_METHODS)[number];
 
@@ -133,6 +136,10 @@ export interface BridgeWindowSetTitlePayload {
   title: string;
 }
 
+export interface BridgeWindowSetBadgePayload {
+  count?: number;
+}
+
 export interface BridgeWindowOkResult {
   ok: true;
 }
@@ -148,6 +155,7 @@ export interface BridgeRequest {
     | BridgeKnowledgeSearchPayload
     | BridgeNotificationCreatePayload
     | BridgeWindowSetTitlePayload
+    | BridgeWindowSetBadgePayload
     | Record<string, never>;
 }
 

@@ -21,12 +21,14 @@ import (
 )
 
 type fakeBridgeService struct {
-	runErr     error
-	streamErr  error
-	submission ports.AppTaskSubmission
-	lastToken  string
-	ran        bool
-	watched    bool
+	shellIdentity []string
+	shellErr      error
+	runErr        error
+	streamErr     error
+	submission    ports.AppTaskSubmission
+	lastToken     string
+	ran           bool
+	watched       bool
 }
 
 func (f *fakeBridgeService) RunAgentTask(_ context.Context, _, _, token, _, _, _ string) (ports.AppTaskSubmission, error) {
@@ -237,4 +239,30 @@ func (s *fakeBridgeService) SearchKnowledge(context.Context, string, string, str
 
 func (f *fakeBridgeService) CreateNotification(ctx context.Context, ownerUserID, deviceID, token, idempotencyKey, title, body string) (*notificationv1.CreateAppNotificationResponse, error) {
 	return &notificationv1.CreateAppNotificationResponse{}, nil
+}
+
+func (s *fakeBridgeService) AuthorizeShellAction(_ context.Context, owner, device, token, method string) error {
+	s.shellIdentity = []string{owner, device, token, method}
+	return s.shellErr
+}
+
+func TestShellTransportIdentityAndDenial(t *testing.T) {
+	service := &fakeBridgeService{shellErr: domain.ErrPermissionDenied}
+	client := newBridgeServer(t, service)
+	request := connect.NewRequest(&bridgev1.AuthorizeShellActionRequest{Method: "window.close"})
+	request.Header().Set(identity.UserHeader, "owner-1")
+	request.Header().Set(identity.DeviceHeader, "device-1")
+	request.Header().Set(identity.BridgeTokenHeader, bridgeValidToken)
+	_, err := client.AuthorizeShellAction(context.Background(), request)
+	assertBridgeCode(t, err, "permission_denied")
+	if strings.Join(service.shellIdentity, "|") != strings.Join([]string{"owner-1", "device-1", bridgeValidToken, "window.close"}, "|") {
+		t.Fatal("identity was not forwarded")
+	}
+	service.shellIdentity = nil
+	request.Header().Del(identity.UserHeader)
+	_, err = client.AuthorizeShellAction(context.Background(), request)
+	assertBridgeCode(t, err, "unauthenticated")
+	if service.shellIdentity != nil {
+		t.Fatal("missing identity reached service")
+	}
 }

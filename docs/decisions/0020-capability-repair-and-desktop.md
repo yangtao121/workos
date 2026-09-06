@@ -41,3 +41,12 @@ Web Push 使用 [RFC 8291](https://www.rfc-editor.org/rfc/rfc8291) 单记录加�
 持久专用密钥只存在于 Core 的 owner-only 文件，浏览器只接收公开订阅密钥。
 relay 不接受重定向，404/410 撤销失效订阅，其他失败回到 outbox 重试。
 免打扰设置以 migration 043 的 revision 实施并发控制；stale 更新 Aborted，避免多设备静默覆盖。
+
+## App shell 调用
+
+`AuthorizeShellAction` 只接受固定方法名。Runtime 每次从 token 查有效 owner/device session，
+经 Core resolver 重读活动安装，比较 grant revision、App ID、版本、manifest digest；
+`project.current` 还需 `project.read`。未配置 resolver 或 Core 不可用不执行动作。
+Shell 的 title/badge/maximize/minimize/close 只绑定自己的窗口；授权超时后的迟到结果丢弃。
+项目摘要读取原 surface 项目，禁止回退活动项目；徽标是可清除的 0..9999 整数。
+此 RPC 不表示 files/artifacts 能力已实现，完整 Bridge 验收仍由任务表追踪。

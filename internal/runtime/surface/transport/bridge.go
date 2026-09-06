@@ -31,10 +31,22 @@ const (
 
 // BridgeService abstracts the application bridge use cases for tests.
 type BridgeService interface {
+	AuthorizeShellAction(ctx context.Context, ownerUserID, deviceID, token, method string) error
 	RunAgentTask(ctx context.Context, ownerUserID, deviceID, token, idempotencyKey, role, goal string) (ports.AppTaskSubmission, error)
 	StreamAgentEvents(ctx context.Context, ownerUserID, deviceID, token, taskID string, after int64, onEvent func(*agentv1.AgentEvent) error) error
 	SearchKnowledge(ctx context.Context, ownerUserID, deviceID, token, query string, pageSize int32, pageToken string) (ports.KnowledgeSearchPage, error)
 	CreateNotification(ctx context.Context, ownerUserID, deviceID, token, idempotencyKey, title, body string) (*notificationv1.CreateAppNotificationResponse, error)
+}
+
+func (h *BridgeHandler) AuthorizeShellAction(ctx context.Context, req *connect.Request[bridgev1.AuthorizeShellActionRequest]) (*connect.Response[bridgev1.AuthorizeShellActionResponse], error) {
+	id, err := identity.FromContext(ctx)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeUnauthenticated, err)
+	}
+	if err := h.service.AuthorizeShellAction(ctx, id.UserID, id.DeviceID, req.Header().Get(identity.BridgeTokenHeader), req.Msg.GetMethod()); err != nil {
+		return nil, mapBridgeError(err)
+	}
+	return connect.NewResponse(&bridgev1.AuthorizeShellActionResponse{}), nil
 }
 
 type BridgeHandler struct {

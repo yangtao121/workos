@@ -29,7 +29,7 @@ W1 → W2 → W3 → W4 → W6 → W5，全部在同一 branch 严格串行。
 | ---------------------------- | ------------------------------------------------------------ | -------------------------------------------------------------- |
 | R1 Provider/凭据与工具链基线 | verified                                                     | 既有协议 fixture、租约、预算、取消、轮换门禁                   |
 | R2 自愈与部署                | active（候选状态机已修复；Build/Test 交接依赖 R3 workspace） | 真实候选、先切换后观察、失败回滚、持久重试；禁止空候选成功     |
-| R3 Surface/Bridge            | pending                                                      | 文件/窗口/产物能力、真实浏览器/Native 交互，不能用静态页面替代 |
+| R3 Surface/Bridge            | active                                                       | 文件/窗口/产物能力、真实浏览器/Native 交互，不能用静态页面替代 |
 | R4 工作区/知识               | active                                                       | 混合来源结果、服务端来源过滤、分页、打开与跨项目隔离           |
 | R6 桌面                      | active                                                       | 统一深色控件、入口、窗口几何、键盘与响应式；确定性视觉证据     |
 | R5 通知/移动                 | active                                                       | 持久推送重试、唤醒补收、配对/发现/原生边界                     |
@@ -399,3 +399,24 @@ device scan --fingerprint`（常量时间指纹校验后输出 origin，接既�
 - 待验收：真实 Core outbox → 加密 relay fixture → 浏览器 wake 的组合专项门禁；启用/停用失败测试、移动撤销边界；知识/遥测非空视觉证据。R5 尚未 done，不能把各切片测试当成完整远端交付。
 
 - R5 当前检查点 `make check` PASS（Go/proto/TypeScript/lint/unit/build）；完整组合链与其余工作流仍 active。
+
+### R3 当前工作（2026-09-06）
+
+7e449d6 保存 Web Push 切片与通过 make check 的检查点。开始修复 Bridge：
+window.close 误调用 setTitle(undefined)，project.current 回退到活动项目，shell 动作缺少逐次 session/epoch 重验。
+先新增 AuthorizeShellAction RPC 与安全检查，再补齐 own-window / 文件 / 产物能力。
+
+R3 own-window 检查点：App host 31、App SDK 11 单测与 desktop typecheck PASS；
+Runtime surface 模块单测 PASS。修复项目回退、close 误 rename、旧 epoch shell 调用、
+超时后迟到操作，以及应用库遮挡新窗口和已安装应用最小化后无 Dock 恢复入口。
+专项浏览器门禁正在重建运行；files/artifacts 与远程栈仍待完成，R3 保持 active。
+
+R3 own-window 验收：`make test-app-bridge-full` PASS（真实 Gateway/Core/Runtime/Chromium，
+含外部 grant 撤销后旧窗口 fail-closed）；独立 transport 身份映射/拒绝测试 PASS。
+[before](../ui/desktop-web/changes/20260906-bridge-repair/before/) /
+[after](../ui/desktop-web/changes/20260906-bridge-repair/after/) /
+[notes](../ui/desktop-web/changes/20260906-bridge-repair/notes.md) 已保存。
+
+本检查点的 Proto 格式/lint/sqlc、Go vet/全仓单测已通过；修正桌面 fixture 后，
+`make -o proto-check -o go-check check` PASS（未变的前两项沿用本轮已通过结果，
+重新验证全仓 TypeScript/lint/unit/build 和 status 渲染一致性）。下一步：R3 工作区文件 Bridge。

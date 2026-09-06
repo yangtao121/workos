@@ -1221,3 +1221,9 @@ Core 可选 `WORKOS_PUSH_PRIVATE_KEY_FILE` / `WORKOS_PUSH_SUBJECT` 启用 Web Pu
 RPC 仅公开 public key；端点 HTTPS、客户端 P-256 点和 16-byte auth 验证，网络错误净化。
 Push Worker 不读取 Cookie/RPC、不存正文；固定文案提醒后通知 shell 从权威 projection 补收。
 设置有 revision 并发控制。加密 TLS 与 Chromium push driver 切片已验证，组合 E2E 仍在进行。
+
+App shell 修复：公共 `AuthorizeShellAction` 经 Gateway 到 runtime-host，逐次验证有效
+owner/device token 与 Core 安装版本/清单/授权 epoch。trusted host 只有授权成功且请求仍有效
+时才修改自己窗口；关闭不再触发错误重命名。项目摘要读取确切 surface 项目；
+支持整数徽标、最大化/最小化，Dock 可恢复已安装应用与产物窗口。应用启动后收起应用库，
+避免固定层级挡住 iframe。文件与产物写 Bridge 尚未实现。

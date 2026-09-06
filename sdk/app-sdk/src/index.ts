@@ -64,6 +64,9 @@ export interface WorkOSAppBridge {
   window: {
     /** Sets THIS surface's window title (shell-side, bounded). */
     setTitle(title: string): Promise<void>;
+    setBadge(count?: number): Promise<void>;
+    maximize(): Promise<void>;
+    minimize(): Promise<void>;
     /** Closes THIS surface's window (shell-side). */
     close(): Promise<void>;
   };
@@ -466,7 +469,7 @@ function createBridge(
           typeof result !== "object" ||
           result === null ||
           !("scheme" in result) ||
-          typeof (result as { scheme?: unknown }).scheme !== "string"
+          (result.scheme !== "light" && result.scheme !== "dark")
         ) {
           throw new BridgeProtocolError("internal");
         }
@@ -477,6 +480,15 @@ function createBridge(
       /** Sets THIS surface's window title (shell-side, bounded). */
       async setTitle(title: string): Promise<void> {
         await call("window.setTitle", { title } as BridgeWindowSetTitlePayload);
+      },
+      async setBadge(count?: number): Promise<void> {
+        await call("window.setBadge", count === undefined ? {} : { count });
+      },
+      async maximize(): Promise<void> {
+        await call("window.maximize", {});
+      },
+      async minimize(): Promise<void> {
+        await call("window.minimize", {});
       },
       /** Closes THIS surface's window (shell-side). */
       async close(): Promise<void> {

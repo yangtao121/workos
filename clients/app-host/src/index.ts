@@ -59,6 +59,7 @@ export interface AppBridgeRunResult {
  * `internal` and its details never cross the port.
  */
 export interface AppBridgeTransport {
+  authorizeShellAction(method: BridgeMethod): Promise<void>;
   runAgentTask(input: BridgeRunPayload): Promise<AppBridgeRunResult>;
   /**
    * Executes one bounded read-only knowledge search for this surface's
@@ -93,6 +94,8 @@ export interface AppBridgeShellHost {
   setWindowTitle(title: string): void;
   /** Closes the hosting window. */
   closeWindow(): void;
+  setWindowBadge(badge: string): void;
+  setWindowMode(mode: "maximized" | "minimized"): void;
 }
 
 export interface AppBridgeHostOptions {
@@ -198,7 +201,15 @@ function validSetTitlePayload(payload: unknown): payload is { title: string } {
   if (!isPlainObject(payload)) return false;
   if (!hasExactKeys(payload, ["title"])) return false;
   const { title } = payload;
-  return typeof title === "string" && title.length > 0 && title.length <= 120;
+  return (
+    typeof title === "string" &&
+    title.length > 0 &&
+    title.length <= 120 &&
+    !Array.from(title).some((char) => {
+      const code = char.charCodeAt(0);
+      return code <= 31 || (code >= 127 && code <= 159);
+    })
+  );
 }
 
 function validRunPayload(payload: unknown): payload is BridgeRunPayload {
@@ -326,13 +337,20 @@ export function openAppBridgeHost(options: AppBridgeHostOptions): AppBridgeHost 
   // inherent to hosting the surface; project.current is negotiated from the
   // `project.read` grant (ADR-0016 §5).
   if (options.shell !== undefined) {
-    const shellOffered = ["theme.get", "window.setTitle", "window.close"];
+    const shellOffered: BridgeMethod[] = [
+      "theme.get",
+      "window.setTitle",
+      "window.setBadge",
+      "window.maximize",
+      "window.minimize",
+      "window.close",
+    ];
     if (options.capabilities.includes("project.current")) {
       shellOffered.push("project.current");
     }
     for (const method of shellOffered) {
-      if (!methods.includes(method as BridgeMethod)) {
-        methods.push(method as BridgeMethod);
+      if (!methods.includes(method)) {
+        methods.push(method);
       }
     }
   }
@@ -528,10 +546,25 @@ export function openAppBridgeHost(options: AppBridgeHostOptions): AppBridgeHost 
     if (request.method === "window.setTitle") {
       return validSetTitlePayload(request.payload) ? null : "invalid_argument";
     }
+    if (request.method === "window.setBadge") {
+      const payload: unknown = request.payload;
+      return isPlainObject(payload) &&
+        (hasExactKeys(payload, []) ||
+          (hasExactKeys(payload, ["count"]) &&
+            typeof payload["count"] === "number" &&
+            Number.isInteger(payload["count"]) &&
+            payload["count"] >= 0 &&
+            payload["count"] <= 9999))
+        ? null
+        : "invalid_argument";
+    }
+
     if (
       request.method === "project.current" ||
       request.method === "theme.get" ||
-      request.method === "window.close"
+      request.method === "window.close" ||
+      request.method === "window.maximize" ||
+      request.method === "window.minimize"
     ) {
       return hasExactKeys(request.payload as Record<string, unknown>, [])
         ? null
@@ -552,6 +585,9 @@ export function openAppBridgeHost(options: AppBridgeHostOptions): AppBridgeHost 
       request.method === "project.current" ||
       request.method === "theme.get" ||
       request.method === "window.setTitle" ||
+      request.method === "window.setBadge" ||
+      request.method === "window.maximize" ||
+      request.method === "window.minimize" ||
       request.method === "window.close"
     ) {
       const shell = options.shell;
@@ -568,31 +604,32 @@ export function openAppBridgeHost(options: AppBridgeHostOptions): AppBridgeHost 
       };
       pending.set(request.requestId, entry);
       void (async () => {
+        await options.transport.authorizeShellAction(request.method);
+        if (!pending.has(request.requestId) || closed || !handshaked) return;
         let payload: BridgeProjectCurrentResult | BridgeThemeGetResult | BridgeWindowOkResult;
-        if (request.method === "project.current") {
-          payload = await shell.projectCurrent();
-        } else if (request.method === "theme.get") {
-          payload = await shell.getTheme();
-        } else {
-          shell.setWindowTitle((request.payload as { title: string }).title);
-          payload = { ok: true } as const;
-          if (request.method === "window.close") {
-            // The close runs after the response is posted so the frame sees
-            // the acknowledgment before the window tears down.
-            window.setTimeout(() => {
-              shell.closeWindow();
-            }, 0);
-          }
+        if (request.method === "project.current") payload = await shell.projectCurrent();
+        else if (request.method === "theme.get") payload = await shell.getTheme();
+        else {
+          if (request.method === "window.setTitle")
+            shell.setWindowTitle((request.payload as { title: string }).title);
+          else if (request.method === "window.setBadge")
+            shell.setWindowBadge(String((request.payload as { count?: number }).count ?? ""));
+          else if (request.method === "window.maximize") shell.setWindowMode("maximized");
+          else if (request.method === "window.minimize") shell.setWindowMode("minimized");
+          payload = { ok: true };
         }
         if (!pending.has(request.requestId)) return;
         clearPending(request.requestId);
-        if (closed || !handshaked) return;
         postBridgeMessage(channel.port1, {
           version: APP_BRIDGE_VERSION,
           type: "response",
           requestId: request.requestId,
           payload,
         });
+        if (request.method === "window.close")
+          window.setTimeout(() => {
+            if (!closed) shell.closeWindow();
+          }, 0);
       })().catch((reason: unknown) => {
         if (!pending.has(request.requestId)) return;
         clearPending(request.requestId);

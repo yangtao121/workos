@@ -184,7 +184,7 @@ test("granted app creates owner notifications; replay dedupes and revoke fails c
   // The negotiated set is notifications.create plus the shell-side methods
   // the Desktop always offers (theme.get, window.setTitle, window.close).
   await expect(page.frameLocator(".app-surface-frame").locator("#methods")).toHaveText(
-    "methods:notifications.create,theme.get,window.setTitle,window.close",
+    "methods:notifications.create,theme.get,window.setTitle,window.setBadge,window.maximize,window.minimize,window.close",
   );
 
   const out = page.frameLocator(".app-surface-frame").locator("#notify-out");

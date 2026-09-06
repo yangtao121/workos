@@ -68,6 +68,9 @@ message SearchKnowledgeResponse {
 }
 
 service AppBridgeService {
+  // Revalidates a shell-local action against the live session and current
+  // installation epoch before the trusted shell performs any side effect.
+  rpc AuthorizeShellAction(AuthorizeShellActionRequest) returns (AuthorizeShellActionResponse) {}
   rpc RunAgentTask(RunAgentTaskRequest) returns (RunAgentTaskResponse) {}
   rpc WatchAgentTaskEvents(WatchAgentTaskEventsRequest) returns (stream WatchAgentTaskEventsResponse) {}
   // Read-only knowledge search, negotiated only when the manifest requests
@@ -79,6 +82,13 @@ service AppBridgeService {
   // CreateNotificationRequest for the bounded body contract.
   rpc CreateNotification(CreateNotificationRequest) returns (CreateNotificationResponse) {}
 }
+
+message AuthorizeShellActionRequest {
+  // Finite vocabulary: project.current, theme.get and own-window actions.
+  string method = 1;
+}
+
+message AuthorizeShellActionResponse {}
 
 // CreateNotification is negotiated only by the notifications.create grant
 // (the grant name and the bridge method name are identical by design). The

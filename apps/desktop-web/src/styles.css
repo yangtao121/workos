@@ -2386,6 +2386,8 @@ svg {
 }
 
 .dock {
+  max-width: calc(100vw - 32px);
+  overflow-x: auto;
   gap: 5px;
   padding: 7px;
   bottom: 18px;
@@ -2394,6 +2396,7 @@ svg {
   box-shadow: 0 10px 36px #0006;
 }
 .dock button {
+  flex-shrink: 0;
   position: relative;
   width: 46px;
   height: 46px;
@@ -2582,4 +2585,13 @@ svg {
 }
 .notification-preferences {
   flex-shrink: 0;
+}
+
+.window-badge {
+  background: var(--accent);
+  color: var(--surface-input);
+  border-radius: 999px;
+  padding: 2px 7px;
+  font-size: 11px;
+  line-height: 1.2;
 }

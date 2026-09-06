@@ -129,7 +129,7 @@ func newBridgeTest(t *testing.T) (*BridgeService, *bridgeRepository, *bridgeAppA
 	t.Helper()
 	repository := &bridgeRepository{sessions: map[string]domain.SurfaceSession{}}
 	appAgent := &bridgeAppAgent{runResult: ports.AppTaskSubmission{TaskID: "task-1", State: "queued"}}
-	service, err := NewBridgeService(repository, appAgent, nil)
+	service, err := NewBridgeService(repository, appAgent, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -228,7 +228,7 @@ func TestBridgeCredentialChainFailsClosed(t *testing.T) {
 func TestBridgeCapabilityGate(t *testing.T) {
 	repository := &bridgeRepository{sessions: map[string]domain.SurfaceSession{}}
 	appAgent := &bridgeAppAgent{runResult: ports.AppTaskSubmission{TaskID: "task-1"}}
-	service, err := NewBridgeService(repository, appAgent, nil)
+	service, err := NewBridgeService(repository, appAgent, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -270,10 +270,10 @@ func TestBridgeCoreDenialAndOutagePassThrough(t *testing.T) {
 }
 
 func TestNewBridgeServiceRequiresDependencies(t *testing.T) {
-	if _, err := NewBridgeService(nil, &bridgeAppAgent{}, nil); err == nil {
+	if _, err := NewBridgeService(nil, &bridgeAppAgent{}, nil, nil); err == nil {
 		t.Fatal("nil repository accepted")
 	}
-	if _, err := NewBridgeService(&bridgeRepository{sessions: map[string]domain.SurfaceSession{}}, nil, nil); err == nil {
+	if _, err := NewBridgeService(&bridgeRepository{sessions: map[string]domain.SurfaceSession{}}, nil, nil, nil); err == nil {
 		t.Fatal("nil app agent accepted")
 	}
 }
@@ -320,7 +320,7 @@ func TestBridgeKnowledgeSearchOrder(t *testing.T) {
 	t.Run("nil pipeline denies without touching Core", func(t *testing.T) {
 		repo := &bridgeRepository{sessions: map[string]domain.SurfaceSession{}}
 		appAgent := &bridgeAppAgent{}
-		service, err := NewBridgeService(repo, appAgent, nil)
+		service, err := NewBridgeService(repo, appAgent, nil, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -338,7 +338,7 @@ func TestBridgeKnowledgeSearchOrder(t *testing.T) {
 		repo := &bridgeRepository{sessions: map[string]domain.SurfaceSession{}}
 		appAgent := &bridgeAppAgent{authorizeDeny: true}
 		indexer := &recordingKnowledgeSearch{}
-		service, err := NewBridgeService(repo, appAgent, mustPipeline(t, appAgent, indexer))
+		service, err := NewBridgeService(repo, appAgent, mustPipeline(t, appAgent, indexer), nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -356,7 +356,7 @@ func TestBridgeKnowledgeSearchOrder(t *testing.T) {
 		repo := &bridgeRepository{sessions: map[string]domain.SurfaceSession{}}
 		appAgent := &bridgeAppAgent{authorizeOwner: "01999999-9999-7999-8999-0000000000b1"}
 		indexer := &recordingKnowledgeSearch{page: ports.KnowledgeSearchPage{NextPageToken: ""}}
-		service, err := NewBridgeService(repo, appAgent, mustPipeline(t, appAgent, indexer))
+		service, err := NewBridgeService(repo, appAgent, mustPipeline(t, appAgent, indexer), nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -374,7 +374,7 @@ func TestBridgeKnowledgeSearchOrder(t *testing.T) {
 		repo := &bridgeRepository{sessions: map[string]domain.SurfaceSession{}}
 		appAgent := &bridgeAppAgent{}
 		indexer := &recordingKnowledgeSearch{}
-		service, err := NewBridgeService(repo, appAgent, mustPipeline(t, appAgent, indexer))
+		service, err := NewBridgeService(repo, appAgent, mustPipeline(t, appAgent, indexer), nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -399,7 +399,7 @@ func TestBridgeKnowledgeSearchOrder(t *testing.T) {
 		repo := &bridgeRepository{sessions: map[string]domain.SurfaceSession{}}
 		appAgent := &bridgeAppAgent{authorizeOwner: "someone-else"}
 		indexer := &recordingKnowledgeSearch{}
-		service, err := NewBridgeService(repo, appAgent, mustPipeline(t, appAgent, indexer))
+		service, err := NewBridgeService(repo, appAgent, mustPipeline(t, appAgent, indexer), nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -422,7 +422,7 @@ func TestBridgeKnowledgeSearchOrder(t *testing.T) {
 				ArtifactType: "document.markdown.v1", Title: "Doc", Excerpt: "unique", Score: 1,
 			}},
 		}}
-		service, err := NewBridgeService(repo, appAgent, mustPipeline(t, appAgent, indexer))
+		service, err := NewBridgeService(repo, appAgent, mustPipeline(t, appAgent, indexer), nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -468,4 +468,54 @@ func (a *bridgeAppAgent) CreateAppNotification(_ context.Context, query ports.Ap
 		return nil, a.createErr
 	}
 	return &notificationv1.CreateAppNotificationResponse{}, nil
+}
+
+func TestShellActionReauthorizesInstallation(t *testing.T) {
+	service, repository, _, token := newBridgeTest(t)
+	for _, session := range repository.sessions {
+		session.Descriptor.AppID = "notes"
+		session.Descriptor.Version = "1.0.0"
+		session.Descriptor.ManifestDigest = "sha256:" + strings.Repeat("a", 64)
+		session.BridgeCapabilities = append(session.BridgeCapabilities, domain.BridgeCapabilityProjectCurrent)
+		repository.put(session)
+	}
+	launch := ports.ResolvedLaunch{Kind: ports.LaunchKindWebBundle, AppID: "notes", Version: "1.0.0", ManifestDigest: "sha256:" + strings.Repeat("a", 64), GrantRevision: 9, GrantedPermissions: []string{"project.read"}}
+	resolver := &fakeResolver{resolved: launch}
+	service.resolver = resolver
+	ctx := context.Background()
+	for _, method := range []string{"project.current", "theme.get", "window.setTitle", "window.setBadge", "window.maximize", "window.minimize", "window.close"} {
+		if err := service.AuthorizeShellAction(ctx, "owner-1", "device-1", token, method); err != nil {
+			t.Fatalf("%s: %v", method, err)
+		}
+	}
+	for name, mutate := range map[string]func(*ports.ResolvedLaunch){
+		"grant":      func(l *ports.ResolvedLaunch) { l.GrantRevision++ },
+		"version":    func(l *ports.ResolvedLaunch) { l.Version = "2.0.0" },
+		"manifest":   func(l *ports.ResolvedLaunch) { l.ManifestDigest = "other" },
+		"app":        func(l *ports.ResolvedLaunch) { l.AppID = "other" },
+		"permission": func(l *ports.ResolvedLaunch) { l.GrantedPermissions = nil },
+	} {
+		t.Run(name, func(t *testing.T) {
+			resolver.resolved = launch
+			mutate(&resolver.resolved)
+			if err := service.AuthorizeShellAction(ctx, "owner-1", "device-1", token, "project.current"); !errors.Is(err, domain.ErrPermissionDenied) {
+				t.Fatalf("got %v", err)
+			}
+		})
+	}
+	resolver.resolved = launch
+	before := resolver.calls.Load()
+	if err := service.AuthorizeShellAction(ctx, "owner-1", "other-device", token, "window.close"); !errors.Is(err, domain.ErrUnauthenticated) {
+		t.Fatal(err)
+	}
+	if err := service.AuthorizeShellAction(ctx, "owner-1", "device-1", token, "window.destroyAll"); !errors.Is(err, domain.ErrInvalid) {
+		t.Fatal(err)
+	}
+	if resolver.calls.Load() != before {
+		t.Fatal("invalid identity/method reached Core")
+	}
+	service.resolver = nil
+	if err := service.AuthorizeShellAction(ctx, "owner-1", "device-1", token, "theme.get"); !errors.Is(err, domain.ErrUnavailable) {
+		t.Fatal(err)
+	}
 }

@@ -38,6 +38,9 @@ const (
 // reflection-formatted method names, remove the leading slash and convert the remaining slash to a
 // period.
 const (
+	// AppBridgeServiceAuthorizeShellActionProcedure is the fully-qualified name of the
+	// AppBridgeService's AuthorizeShellAction RPC.
+	AppBridgeServiceAuthorizeShellActionProcedure = "/workos.bridge.v1.AppBridgeService/AuthorizeShellAction"
 	// AppBridgeServiceRunAgentTaskProcedure is the fully-qualified name of the AppBridgeService's
 	// RunAgentTask RPC.
 	AppBridgeServiceRunAgentTaskProcedure = "/workos.bridge.v1.AppBridgeService/RunAgentTask"
@@ -54,6 +57,9 @@ const (
 
 // AppBridgeServiceClient is a client for the workos.bridge.v1.AppBridgeService service.
 type AppBridgeServiceClient interface {
+	// Revalidates a shell-local action against the live session and current
+	// installation epoch before the trusted shell performs any side effect.
+	AuthorizeShellAction(context.Context, *connect.Request[v1.AuthorizeShellActionRequest]) (*connect.Response[v1.AuthorizeShellActionResponse], error)
 	RunAgentTask(context.Context, *connect.Request[v1.RunAgentTaskRequest]) (*connect.Response[v1.RunAgentTaskResponse], error)
 	WatchAgentTaskEvents(context.Context, *connect.Request[v1.WatchAgentTaskEventsRequest]) (*connect.ServerStreamForClient[v1.WatchAgentTaskEventsResponse], error)
 	// Read-only knowledge search, negotiated only when the manifest requests
@@ -77,6 +83,12 @@ func NewAppBridgeServiceClient(httpClient connect.HTTPClient, baseURL string, op
 	baseURL = strings.TrimRight(baseURL, "/")
 	appBridgeServiceMethods := v1.File_workos_bridge_v1_bridge_proto.Services().ByName("AppBridgeService").Methods()
 	return &appBridgeServiceClient{
+		authorizeShellAction: connect.NewClient[v1.AuthorizeShellActionRequest, v1.AuthorizeShellActionResponse](
+			httpClient,
+			baseURL+AppBridgeServiceAuthorizeShellActionProcedure,
+			connect.WithSchema(appBridgeServiceMethods.ByName("AuthorizeShellAction")),
+			connect.WithClientOptions(opts...),
+		),
 		runAgentTask: connect.NewClient[v1.RunAgentTaskRequest, v1.RunAgentTaskResponse](
 			httpClient,
 			baseURL+AppBridgeServiceRunAgentTaskProcedure,
@@ -106,10 +118,16 @@ func NewAppBridgeServiceClient(httpClient connect.HTTPClient, baseURL string, op
 
 // appBridgeServiceClient implements AppBridgeServiceClient.
 type appBridgeServiceClient struct {
+	authorizeShellAction *connect.Client[v1.AuthorizeShellActionRequest, v1.AuthorizeShellActionResponse]
 	runAgentTask         *connect.Client[v1.RunAgentTaskRequest, v1.RunAgentTaskResponse]
 	watchAgentTaskEvents *connect.Client[v1.WatchAgentTaskEventsRequest, v1.WatchAgentTaskEventsResponse]
 	searchKnowledge      *connect.Client[v1.SearchKnowledgeRequest, v1.SearchKnowledgeResponse]
 	createNotification   *connect.Client[v1.CreateNotificationRequest, v1.CreateNotificationResponse]
+}
+
+// AuthorizeShellAction calls workos.bridge.v1.AppBridgeService.AuthorizeShellAction.
+func (c *appBridgeServiceClient) AuthorizeShellAction(ctx context.Context, req *connect.Request[v1.AuthorizeShellActionRequest]) (*connect.Response[v1.AuthorizeShellActionResponse], error) {
+	return c.authorizeShellAction.CallUnary(ctx, req)
 }
 
 // RunAgentTask calls workos.bridge.v1.AppBridgeService.RunAgentTask.
@@ -134,6 +152,9 @@ func (c *appBridgeServiceClient) CreateNotification(ctx context.Context, req *co
 
 // AppBridgeServiceHandler is an implementation of the workos.bridge.v1.AppBridgeService service.
 type AppBridgeServiceHandler interface {
+	// Revalidates a shell-local action against the live session and current
+	// installation epoch before the trusted shell performs any side effect.
+	AuthorizeShellAction(context.Context, *connect.Request[v1.AuthorizeShellActionRequest]) (*connect.Response[v1.AuthorizeShellActionResponse], error)
 	RunAgentTask(context.Context, *connect.Request[v1.RunAgentTaskRequest]) (*connect.Response[v1.RunAgentTaskResponse], error)
 	WatchAgentTaskEvents(context.Context, *connect.Request[v1.WatchAgentTaskEventsRequest], *connect.ServerStream[v1.WatchAgentTaskEventsResponse]) error
 	// Read-only knowledge search, negotiated only when the manifest requests
@@ -153,6 +174,12 @@ type AppBridgeServiceHandler interface {
 // and JSON codecs. They also support gzip compression.
 func NewAppBridgeServiceHandler(svc AppBridgeServiceHandler, opts ...connect.HandlerOption) (string, http.Handler) {
 	appBridgeServiceMethods := v1.File_workos_bridge_v1_bridge_proto.Services().ByName("AppBridgeService").Methods()
+	appBridgeServiceAuthorizeShellActionHandler := connect.NewUnaryHandler(
+		AppBridgeServiceAuthorizeShellActionProcedure,
+		svc.AuthorizeShellAction,
+		connect.WithSchema(appBridgeServiceMethods.ByName("AuthorizeShellAction")),
+		connect.WithHandlerOptions(opts...),
+	)
 	appBridgeServiceRunAgentTaskHandler := connect.NewUnaryHandler(
 		AppBridgeServiceRunAgentTaskProcedure,
 		svc.RunAgentTask,
@@ -179,6 +206,8 @@ func NewAppBridgeServiceHandler(svc AppBridgeServiceHandler, opts ...connect.Han
 	)
 	return "/workos.bridge.v1.AppBridgeService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
+		case AppBridgeServiceAuthorizeShellActionProcedure:
+			appBridgeServiceAuthorizeShellActionHandler.ServeHTTP(w, r)
 		case AppBridgeServiceRunAgentTaskProcedure:
 			appBridgeServiceRunAgentTaskHandler.ServeHTTP(w, r)
 		case AppBridgeServiceWatchAgentTaskEventsProcedure:
@@ -195,6 +224,10 @@ func NewAppBridgeServiceHandler(svc AppBridgeServiceHandler, opts ...connect.Han
 
 // UnimplementedAppBridgeServiceHandler returns CodeUnimplemented from all methods.
 type UnimplementedAppBridgeServiceHandler struct{}
+
+func (UnimplementedAppBridgeServiceHandler) AuthorizeShellAction(context.Context, *connect.Request[v1.AuthorizeShellActionRequest]) (*connect.Response[v1.AuthorizeShellActionResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("workos.bridge.v1.AppBridgeService.AuthorizeShellAction is not implemented"))
+}
 
 func (UnimplementedAppBridgeServiceHandler) RunAgentTask(context.Context, *connect.Request[v1.RunAgentTaskRequest]) (*connect.Response[v1.RunAgentTaskResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("workos.bridge.v1.AppBridgeService.RunAgentTask is not implemented"))

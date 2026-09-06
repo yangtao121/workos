@@ -10,7 +10,12 @@ import {
   REQUEST_TIMEOUT_MS,
   type BridgeMethod,
 } from "@workos/surface-sdk";
-import { openAppBridgeHost, type AppBridgeRunResult, type AppBridgeTransport } from "./index.js";
+import {
+  openAppBridgeHost,
+  type AppBridgeRunResult,
+  type AppBridgeTransport,
+  type AppBridgeShellHost,
+} from "./index.js";
 import type { BridgeKnowledgeSearchResult } from "@workos/surface-sdk";
 
 // The host uses window timers; the node environment provides none.
@@ -62,12 +67,7 @@ function setup(options?: {
   capabilities?: string[];
   timeoutMs?: number;
   transport?: Partial<AppBridgeTransport>;
-  shell?: {
-    projectCurrent: () => Promise<{ projectId: string; name: string; revision: string }>;
-    getTheme: () => Promise<{ scheme: "light" | "dark" }>;
-    setWindowTitle: (title: string) => void;
-    closeWindow: () => void;
-  };
+  shell?: AppBridgeShellHost;
 }): ReturnType<typeof setupImplementation> {
   const normalized: Parameters<typeof setupImplementation>[0] = {};
   if (options?.capabilities !== undefined) {
@@ -89,12 +89,7 @@ function setupImplementation(options: {
   capabilities?: string[];
   timeoutMs?: number;
   transport?: Partial<AppBridgeTransport>;
-  shell?: {
-    projectCurrent: () => Promise<{ projectId: string; name: string; revision: string }>;
-    getTheme: () => Promise<{ scheme: "light" | "dark" }>;
-    setWindowTitle: (title: string) => void;
-    closeWindow: () => void;
-  };
+  shell?: AppBridgeShellHost;
 }) {
   const channel = new NodeMessageChannel();
   const hellos: RecordedHello[] = [];
@@ -121,6 +116,7 @@ function setupImplementation(options: {
     }) => Promise<BridgeKnowledgeSearchResult>
   >(() => Promise.resolve({ hits: [], nextPageToken: "" }));
   const transport: AppBridgeTransport = {
+    authorizeShellAction: () => Promise.resolve(),
     runAgentTask,
     searchKnowledge,
     createNotification: () => Promise.reject(new Error("not used in this test")),
@@ -133,6 +129,7 @@ function setupImplementation(options: {
     frameWindow: frameWindow as unknown as Window,
     capabilities: options.capabilities ?? ["agent.task.run", "agent.event.watch"],
     transport,
+    ...(options.shell ? { shell: options.shell } : {}),
     timeoutMs: options.timeoutMs ?? REQUEST_TIMEOUT_MS,
     nonceGenerator: () => "nonce-1",
     channelFactory: () => channel as unknown as MessageChannel,
@@ -223,10 +220,7 @@ describe("App Bridge host handshake", () => {
   });
 });
 
-async function handshakenHost(options?: {
-  capabilities?: string[];
-  transport?: Partial<AppBridgeTransport>;
-}) {
+async function handshakenHost(options?: Parameters<typeof setup>[0]) {
   const setupResult = setup(options);
   const port = framePortOf(setupResult.hellos);
   const received: { data: unknown }[] = [];
@@ -800,5 +794,118 @@ describe("App Bridge host untrusted-port boundary", () => {
     });
     await flush();
     expect(received.length).toBe(count);
+  });
+});
+
+describe("authorized shell actions", () => {
+  function shellHost() {
+    return {
+      projectCurrent: vi.fn(() =>
+        Promise.resolve({ projectId: "project-1", name: "Notes", revision: "9" }),
+      ),
+      getTheme: vi.fn(() => Promise.resolve({ scheme: "dark" as const })),
+      setWindowTitle: vi.fn(),
+      setWindowBadge: vi.fn(),
+      setWindowMode: vi.fn(),
+      closeWindow: vi.fn(),
+    };
+  }
+  it("dispatches own-window actions only after authorization; close never renames", async () => {
+    const shell = shellHost();
+    const authorizeShellAction = vi.fn(() => Promise.resolve());
+    const { host, port, received } = await handshakenHost({
+      shell,
+      transport: { authorizeShellAction },
+    });
+    try {
+      const actions: [BridgeMethod, Record<string, string | number>][] = [
+        ["window.setTitle", { title: "Notes" }],
+        ["window.setBadge", { count: 3 }],
+        ["window.maximize", {}],
+        ["window.minimize", {}],
+        ["window.close", {}],
+      ];
+      for (const [i, [method, payload]] of actions.entries()) {
+        port.postMessage({
+          version: APP_BRIDGE_VERSION,
+          type: "request",
+          requestId: `shell-${String(i)}`,
+          method,
+          payload,
+        });
+        await vi.waitFor(() => {
+          expect(
+            received.some(
+              (e) => (e.data as { requestId?: string }).requestId === `shell-${String(i)}`,
+            ),
+          ).toBe(true);
+        });
+        expect(authorizeShellAction).toHaveBeenLastCalledWith(method);
+      }
+      await vi.waitFor(() => {
+        expect(shell.closeWindow).toHaveBeenCalledOnce();
+      });
+      expect(shell.setWindowTitle).toHaveBeenCalledExactlyOnceWith("Notes");
+      expect(shell.setWindowBadge).toHaveBeenCalledExactlyOnceWith("3");
+      expect(shell.setWindowMode).toHaveBeenNthCalledWith(1, "maximized");
+      expect(shell.setWindowMode).toHaveBeenNthCalledWith(2, "minimized");
+    } finally {
+      host.close();
+    }
+  });
+  it.each(["permission_denied", "unavailable"] as const)("does not mutate on %s", async (code) => {
+    const shell = shellHost();
+    const { host, port, received } = await handshakenHost({
+      shell,
+      transport: { authorizeShellAction: () => Promise.reject(new BridgeProtocolError(code)) },
+    });
+    try {
+      port.postMessage({
+        version: APP_BRIDGE_VERSION,
+        type: "request",
+        requestId: "denied",
+        method: "window.close",
+        payload: {},
+      });
+      await vi.waitFor(() => {
+        expect(received.at(-1)?.data).toMatchObject({ requestId: "denied", code });
+      });
+      expect(shell.closeWindow).not.toHaveBeenCalled();
+      expect(shell.setWindowTitle).not.toHaveBeenCalled();
+    } finally {
+      host.close();
+    }
+  });
+  it("discards authorization arriving after the request timeout", async () => {
+    let resolveAuth!: () => void;
+    const auth = new Promise<void>((resolve) => {
+      resolveAuth = resolve;
+    });
+    const shell = shellHost();
+    const { host, port, received } = await handshakenHost({
+      shell,
+      timeoutMs: 40,
+      transport: { authorizeShellAction: () => auth },
+    });
+    try {
+      port.postMessage({
+        version: APP_BRIDGE_VERSION,
+        type: "request",
+        requestId: "late",
+        method: "window.setTitle",
+        payload: { title: "Too late" },
+      });
+      await vi.waitFor(() => {
+        expect(received.at(-1)?.data).toMatchObject({
+          requestId: "late",
+          code: "timeout",
+        });
+      });
+      resolveAuth();
+      await flush();
+      expect(shell.setWindowTitle).not.toHaveBeenCalled();
+    } finally {
+      host.close();
+    }
   });
 });
