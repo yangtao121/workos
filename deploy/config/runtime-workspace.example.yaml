@@ -1,0 +1,8 @@
+# Runtime alone writes these directories; other processes may mount them read-only.
+# Replace the fixture UUIDs and directory before enabling WORKOS_CONFIG_FILE.
+runtime:
+  workspace_mounts:
+    - owner_user_id: 0198d7ea-2110-7c42-b659-c5e4d73bc337
+      project_id: 0198d7ea-2110-7c42-b659-c5e4d73bc352
+      root_path: /var/lib/workos/workspaces/example
+      read_only: false

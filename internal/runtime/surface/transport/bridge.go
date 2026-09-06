@@ -31,6 +31,10 @@ const (
 
 // BridgeService abstracts the application bridge use cases for tests.
 type BridgeService interface {
+	ListFiles(context.Context, string, string, string, string, string) (domain.FilePage, error)
+	ReadFile(context.Context, string, string, string, domain.FileRef) ([]byte, error)
+	WriteFile(context.Context, string, string, string, domain.FileRef, []byte) (domain.FileRef, error)
+
 	AuthorizeShellAction(ctx context.Context, ownerUserID, deviceID, token, method string) error
 	RunAgentTask(ctx context.Context, ownerUserID, deviceID, token, idempotencyKey, role, goal string) (ports.AppTaskSubmission, error)
 	StreamAgentEvents(ctx context.Context, ownerUserID, deviceID, token, taskID string, after int64, onEvent func(*agentv1.AgentEvent) error) error
@@ -64,7 +68,7 @@ func NewBridge(service BridgeService) *BridgeHandler {
 func NewBridgeConnectHandler(service BridgeService) (string, http.Handler) {
 	return bridgev1connect.NewAppBridgeServiceHandler(
 		NewBridge(service),
-		connect.WithReadMaxBytes(32*1024),
+		connect.WithReadMaxBytes(64*1024),
 	)
 }
 
@@ -191,6 +195,10 @@ func (h *BridgeHandler) CreateNotification(ctx context.Context, req *connect.Req
 
 func mapBridgeError(err error) error {
 	switch {
+	case errors.Is(err, domain.ErrFileConflict):
+		return connect.NewError(connect.CodeAborted, domain.ErrFileConflict)
+	case errors.Is(err, domain.ErrFileLimit):
+		return connect.NewError(connect.CodeResourceExhausted, domain.ErrFileLimit)
 	case errors.Is(err, domain.ErrInvalid):
 		return connect.NewError(connect.CodeInvalidArgument, errors.New("bridge request is invalid"))
 	case errors.Is(err, domain.ErrUnauthenticated):
@@ -198,7 +206,7 @@ func mapBridgeError(err error) error {
 	case errors.Is(err, domain.ErrPermissionDenied):
 		return connect.NewError(connect.CodePermissionDenied, errors.New("bridge capability is not granted"))
 	case errors.Is(err, domain.ErrNotFound):
-		return connect.NewError(connect.CodeNotFound, errors.New("app task is not available"))
+		return connect.NewError(connect.CodeNotFound, errors.New("requested resource is not available"))
 	case errors.Is(err, ports.ErrAppAgentConflict):
 		return connect.NewError(connect.CodeAborted, errors.New("idempotency key was already used for a different request"))
 	case errors.Is(err, ports.ErrAppAgentExhausted):

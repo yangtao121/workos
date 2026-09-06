@@ -227,3 +227,54 @@ describe("WorkOSAppBridge outbound bounds", () => {
     expect(port.sent).toHaveLength(1);
   });
 });
+
+describe("workspace files", () => {
+  const ref = {
+    projectId: "0198d7ea-2110-7c42-b659-c5e4d73bc352",
+    path: "notes.txt",
+    etag: `sha256:${"a".repeat(64)}`,
+  };
+  it("round-trips binary files and adopts the returned content etag", async () => {
+    const { bridge, port } = await connectedBridge({ methods: ["files.read", "files.write"] });
+    const reading = bridge.files.read(ref);
+    port.receive({
+      version: APP_BRIDGE_VERSION,
+      type: "response",
+      requestId: "req-1",
+      payload: { dataBase64: "AP8=" },
+    });
+    expect(new Uint8Array(await reading)).toEqual(new Uint8Array([0, 255]));
+    const updated = { ...ref, etag: `sha256:${"b".repeat(64)}` };
+    const writing = bridge.files.write(ref, new Uint8Array([0, 255]).buffer);
+    expect(port.sent.at(-1)).toMatchObject({
+      method: "files.write",
+      payload: { ref, dataBase64: "AP8=" },
+    });
+    port.receive({
+      version: APP_BRIDGE_VERSION,
+      type: "response",
+      requestId: "req-2",
+      payload: { ref: updated },
+    });
+    expect(await writing).toEqual(updated);
+  });
+  it("does not send an oversized file", async () => {
+    const { bridge, port } = await connectedBridge({ methods: ["files.write"] });
+    await expect(bridge.files.write(ref, new ArrayBuffer(32769))).rejects.toMatchObject({
+      code: "oversize",
+    });
+    expect(port.sent).toHaveLength(1);
+  });
+  it("returns no references when the person cancels the picker", async () => {
+    const { bridge, port } = await connectedBridge({ methods: ["files.pick"] });
+    const picking = bridge.files.pick({ multiple: true });
+    expect(port.sent.at(-1)).toMatchObject({ method: "files.pick", payload: { multiple: true } });
+    port.receive({
+      version: APP_BRIDGE_VERSION,
+      type: "response",
+      requestId: "req-1",
+      payload: { refs: [] },
+    });
+    expect(await picking).toEqual([]);
+  });
+});

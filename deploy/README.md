@@ -76,3 +76,23 @@ The units in `deploy/systemd` assume binaries under `/usr/local/libexec/workos`,
 4. Install the units, run `systemctl daemon-reload`, and enable `workos.target`.
 
 The Runtime unit is hardened for its current read-only capability probe. Enabling the supervised rootless Podman workload runner (ADR-0006) requires the reviewed, runtime-host-only drop-in in `deploy/systemd/workos-runtime-host.service.d/rootless-podman.conf.example`: it redirects podman's per-user state onto StateDirectory/RuntimeDirectory owned by the service user and grants nothing to any other WorkOS process. The host itself must provide cgroup v2 with the memory/cpu/pids controllers, permitted unprivileged user namespaces, and a rootless podman installation; the runtime verifies all of this at startup with a bounded `podman info` probe and honestly reports `container-runner` unavailable — it never falls back to Docker, a rootful daemon, or a bare process.
+
+### Runtime project files
+
+`deploy/config/runtime-workspace.example.yaml` shows explicit owner/project directory bindings,
+loaded by runtime-host through `WORKOS_CONFIG_FILE`. The directory must already exist, be owned
+by the Runtime OS user, and not be writable by other users. Linux `openat2` support is required;
+invalid bindings disable file capabilities without exposing their host paths to Apps.
+Runtime owns writes; mount the same source read-only in Indexer or other consumers.
+
+An App must request `files.read` / `files.write` and receive the corresponding installation grants.
+Read grants enable the shell picker; read-only bindings never negotiate writes. Files are bounded
+to 32 KiB, paths to 8 components and directories to 1000 entries (20 per listing page). Hidden
+paths and symbolic links are excluded. The `.workos-write-<UUIDv7>` namespace is reserved for
+atomic writes; abandoned temporary files are reclaimed under the project lock on the next write.
+Write returns a new FileRef etag; callers must retain it for subsequent reads/writes. An empty
+etag only creates a new path, and stale references return Aborted without changing the file.
+
+`make test-app-files` builds a fixture using the real App SDK and proves the browser-to-filesystem
+chain, stale-write/path/symlink/grant rejection and persisted content. It uses a temporary bound
+workspace, then restores the default Runtime configuration and removes its fixture directory.

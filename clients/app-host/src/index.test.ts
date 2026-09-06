@@ -15,6 +15,7 @@ import {
   type AppBridgeRunResult,
   type AppBridgeTransport,
   type AppBridgeShellHost,
+  type AppBridgeHostOptions,
 } from "./index.js";
 import type { BridgeKnowledgeSearchResult } from "@workos/surface-sdk";
 
@@ -68,6 +69,7 @@ function setup(options?: {
   timeoutMs?: number;
   transport?: Partial<AppBridgeTransport>;
   shell?: AppBridgeShellHost;
+  filePicker?: AppBridgeHostOptions["filePicker"];
 }): ReturnType<typeof setupImplementation> {
   const normalized: Parameters<typeof setupImplementation>[0] = {};
   if (options?.capabilities !== undefined) {
@@ -82,6 +84,7 @@ function setup(options?: {
   if (options?.shell !== undefined) {
     normalized.shell = options.shell;
   }
+  if (options?.filePicker !== undefined) normalized.filePicker = options.filePicker;
   return setupImplementation(normalized);
 }
 
@@ -90,6 +93,7 @@ function setupImplementation(options: {
   timeoutMs?: number;
   transport?: Partial<AppBridgeTransport>;
   shell?: AppBridgeShellHost;
+  filePicker?: AppBridgeHostOptions["filePicker"];
 }) {
   const channel = new NodeMessageChannel();
   const hellos: RecordedHello[] = [];
@@ -116,6 +120,9 @@ function setupImplementation(options: {
     }) => Promise<BridgeKnowledgeSearchResult>
   >(() => Promise.resolve({ hits: [], nextPageToken: "" }));
   const transport: AppBridgeTransport = {
+    listFiles: () => Promise.reject(new BridgeProtocolError("permission_denied")),
+    readFile: () => Promise.reject(new BridgeProtocolError("permission_denied")),
+    writeFile: () => Promise.reject(new BridgeProtocolError("permission_denied")),
     authorizeShellAction: () => Promise.resolve(),
     runAgentTask,
     searchKnowledge,
@@ -130,6 +137,7 @@ function setupImplementation(options: {
     capabilities: options.capabilities ?? ["agent.task.run", "agent.event.watch"],
     transport,
     ...(options.shell ? { shell: options.shell } : {}),
+    ...(options.filePicker ? { filePicker: options.filePicker } : {}),
     timeoutMs: options.timeoutMs ?? REQUEST_TIMEOUT_MS,
     nonceGenerator: () => "nonce-1",
     channelFactory: () => channel as unknown as MessageChannel,
@@ -907,5 +915,69 @@ describe("authorized shell actions", () => {
     } finally {
       host.close();
     }
+  });
+});
+
+describe("file Bridge dispatch", () => {
+  const ref = {
+    projectId: "0198d7ea-2110-7c42-b659-c5e4d73bc352",
+    path: "notes.txt",
+    etag: `sha256:${"a".repeat(64)}`,
+  };
+  it("rejects malformed file data before the transport", async () => {
+    const writeFile = vi.fn(() => Promise.resolve({ ref }));
+    const { host, port, received } = await handshakenHost({
+      capabilities: ["files.write"],
+      transport: { writeFile },
+    });
+    try {
+      port.postMessage({
+        version: APP_BRIDGE_VERSION,
+        type: "request",
+        requestId: "bad-file",
+        method: "files.write",
+        payload: { ref, dataBase64: "not base64" },
+      });
+      await vi.waitFor(() => {
+        expect(received.at(-1)?.data).toMatchObject({ type: "error", code: "invalid_argument" });
+      });
+      expect(writeFile).not.toHaveBeenCalled();
+    } finally {
+      host.close();
+    }
+  });
+  it("aborts the picker when its surface closes and discards late choices", async () => {
+    let pickerSignal: AbortSignal | undefined;
+    let finish!: () => void;
+    const filePicker = vi.fn((_input: unknown, signal: AbortSignal) => {
+      pickerSignal = signal;
+      return new Promise<(typeof ref)[]>((resolve) => {
+        finish = () => {
+          resolve([ref]);
+        };
+      });
+    });
+    const listFiles = vi.fn(() => Promise.resolve({ entries: [], nextAfter: "" }));
+    const { host, port, received } = await handshakenHost({
+      capabilities: ["files.pick"],
+      filePicker,
+      transport: { listFiles },
+    });
+    port.postMessage({
+      version: APP_BRIDGE_VERSION,
+      type: "request",
+      requestId: "pick",
+      method: "files.pick",
+      payload: {},
+    });
+    await vi.waitFor(() => {
+      expect(filePicker).toHaveBeenCalledOnce();
+    });
+    host.close();
+    expect(pickerSignal?.aborted).toBe(true);
+    finish();
+    await flush();
+    expect(received).toHaveLength(0);
+    expect(listFiles).not.toHaveBeenCalled();
   });
 });

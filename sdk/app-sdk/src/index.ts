@@ -14,13 +14,15 @@ import {
   type BridgeMethod,
   type BridgeRunPayload,
   type BridgeKnowledgeSearchPayload,
-  type BridgeKnowledgeSearchResult,
   type BridgeNotificationCreatePayload,
   type BridgeResponse,
   type BridgeRequest,
+  type BridgeFileRef,
+  validBridgeFileRef,
+  encodeFileData,
+  decodeFileData,
+  FILE_PICK_TIMEOUT_MS,
   type BridgeWindowSetTitlePayload,
-  type BridgeNotificationCreateResult,
-  type BridgeRunResult,
   type BridgeStreamPayload,
 } from "@workos/surface-sdk";
 import type { AgentEvent } from "@workos/protocol";
@@ -28,14 +30,15 @@ import type { AgentEvent } from "@workos/protocol";
 /**
  * The canonical capability vocabulary. These names mirror the registry
  * manifest vocabulary exactly; a manifest asking for anything else is
- * rejected at registration, and only `agent.task.run`/`agent.event.watch`
- * have bridge executors today.
+ * rejected at registration. The runtime advertises only currently executable grants.
  */
 export type Capability =
   | "agent.task.run"
   | "agent.event.watch"
   | "artifact.read"
   | "artifact.write"
+  | "files.read"
+  | "files.write"
   | "knowledge.read"
   | "notifications.create"
   | "project.read";
@@ -53,6 +56,12 @@ export interface AppAgentRunResult {
 }
 
 export interface WorkOSAppBridge {
+  files: {
+    pick(options?: { multiple?: boolean }): Promise<BridgeFileRef[]>;
+    read(ref: BridgeFileRef): Promise<ArrayBuffer>;
+    write(ref: BridgeFileRef, data: ArrayBuffer): Promise<BridgeFileRef>;
+  };
+
   project: {
     /** Bounded summary of THIS app's project (requires project.read). */
     current(): Promise<AppProjectCurrentResult>;
@@ -266,9 +275,7 @@ function createBridge(
     payload: BridgeRequest["payload"],
     onEvent?: (event: AgentEvent) => void,
     onRegistered?: (requestId: string) => void,
-  ): Promise<
-    BridgeRunResult | BridgeKnowledgeSearchResult | BridgeNotificationCreateResult | { done: true }
-  > => {
+  ): Promise<BridgeResponse["payload"]> => {
     return new Promise((resolve, reject) => {
       if (!methods.includes(method)) {
         reject(new BridgeProtocolError("permission_denied"));
@@ -279,10 +286,13 @@ function createBridge(
         return;
       }
       const requestId = `req-${String(++nextRequestId)}`;
-      const timer = window.setTimeout(() => {
-        pending.delete(requestId);
-        reject(new BridgeProtocolError("timeout"));
-      }, timeoutMs);
+      const timer = window.setTimeout(
+        () => {
+          pending.delete(requestId);
+          reject(new BridgeProtocolError("timeout"));
+        },
+        method === "files.pick" ? FILE_PICK_TIMEOUT_MS : timeoutMs,
+      );
       pending.set(requestId, {
         resolve: (value) => {
           resolve(value as Parameters<typeof resolve>[0]);
@@ -440,6 +450,34 @@ function createBridge(
           throw new BridgeProtocolError("internal");
         }
         return result;
+      },
+    },
+
+    files: {
+      async pick(options = {}) {
+        const result = await call("files.pick", options);
+        if (
+          !("refs" in result) ||
+          !Array.isArray(result.refs) ||
+          result.refs.length > 20 ||
+          !result.refs.every((ref) => validBridgeFileRef(ref))
+        )
+          throw new BridgeProtocolError("internal");
+        return result.refs;
+      },
+      async read(ref) {
+        const result = await call("files.read", { ref });
+        if (!("dataBase64" in result)) throw new BridgeProtocolError("internal");
+        return decodeFileData(result.dataBase64).buffer;
+      },
+      async write(ref, data) {
+        const result = await call("files.write", {
+          ref,
+          dataBase64: encodeFileData(new Uint8Array(data)),
+        });
+        if (!("ref" in result) || !validBridgeFileRef(result.ref))
+          throw new BridgeProtocolError("internal");
+        return result.ref;
       },
     },
     project: {

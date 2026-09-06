@@ -1022,3 +1022,8 @@ logs:
 
 clean:
 	docker compose down --remove-orphans
+
+.PHONY: test-app-files
+test-app-files: e2e-image
+	WORKOS_UID="$$(id -u)" WORKOS_GID="$$(id -g)" docker compose up -d --build --force-recreate postgres bootstrap workos-core runtime-host workos-gateway
+	sh tests/filesbridge/run.sh

@@ -420,3 +420,28 @@ R3 own-window 验收：`make test-app-bridge-full` PASS（真实 Gateway/Core/Ru
 本检查点的 Proto 格式/lint/sqlc、Go vet/全仓单测已通过；修正桌面 fixture 后，
 `make -o proto-check -o go-check check` PASS（未变的前两项沿用本轮已通过结果，
 重新验证全仓 TypeScript/lint/unit/build 和 status 渲染一致性）。下一步：R3 工作区文件 Bridge。
+
+### R3 文件 Bridge（active）
+
+窗口检查点 9ea6ac0 已提交。Runtime 通过 owner 配置的项目目录映射持有可写工作区，
+不借用 Indexer 的读快照或 SQL。新增 files.read/files.write grant；FileRef 包含原项目、
+相对路径和 etag，32 KiB 单文件界限；每次 RPC 重验 token/session/安装 epoch。
+Linux openat2 NO_SYMLINKS/BENEATH、受控目录内临时文件原子替换、写前 etag 比较；
+其他平台/不支持的内核明确 unavailable。file picker 在 shell 显示原项目目录，应用不见宿主路径。
+验收：并发 stale write、跨项目/路径/符号链接拒绝、真实 Gateway/Runtime/Core/iframe 读写及视觉证据。
+
+文件阶段测试：workspace adapter race（重启、两个实例并发写、只读/跨项目/路径/链接、分页）
+PASS；文件授权单测证明 epoch 变化及错项目请求不触碰文件系统；App host 33、SDK 14、
+picker 2 单测 PASS。`make test-app-files` PASS：真实 SDK 选取/分页/读取/保存，磁盘复核，
+stale etag/路径穿越/链接/撤销 grant 拒绝；临时 Runtime 配置和目录已恢复/清理。
+原子写残留清理与目录创建界限 race 测试 PASS；文件选择器按钮对比度与快捷键隔离微调待复拍。
+
+文件阶段复验：`make test-app-files`（最终按钮样式）PASS；保存真实 before/after；
+[before](../ui/desktop-web/changes/20260906-files-bridge/before/) /
+[after](../ui/desktop-web/changes/20260906-files-bridge/after/) /
+[notes](../ui/desktop-web/changes/20260906-files-bridge/notes.md)。
+新增原子替换保留 executable mode 的 race 测试 PASS；workspace 与 application race PASS。
+下一步：Core 所有的 App artifact create/open 与 Repair Build/Test 交接；R3 整体仍 active。
+
+恢复后复验：`make check` 全部 PASS（Proto/Go vet/Go tests/前端 lint、类型、单测、构建）；
+`make generate` PASS。运行环境重启后的专项浏览器门禁正在复跑，沿用同一固定 fixture。

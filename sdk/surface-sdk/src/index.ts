@@ -3,7 +3,7 @@
 // payloads reuse the generated canonical types from @workos/protocol — this
 // module defines only the bounded envelopes, versions, limits, and stable
 // error codes, never a second DTO for agent data.
-import type { AgentEvent } from "@workos/protocol";
+import type { AgentEvent, FileRef } from "@workos/protocol";
 
 /** The one protocol version; a mismatch fails the handshake closed. */
 export const APP_BRIDGE_VERSION = "workos.app-bridge/v1" as const;
@@ -12,6 +12,8 @@ export const APP_BRIDGE_VERSION = "workos.app-bridge/v1" as const;
 export const MAX_SINGLE_MESSAGE_BYTES = 64 * 1024;
 export const MAX_INFLIGHT_REQUESTS = 32;
 export const REQUEST_TIMEOUT_MS = 15_000;
+export const FILE_PICK_TIMEOUT_MS = 120_000;
+export const MAX_FILE_BYTES = 32 * 1024;
 
 /** The only bridge methods that exist; anything else fails closed. */
 export const BRIDGE_METHODS = [
@@ -26,6 +28,9 @@ export const BRIDGE_METHODS = [
   "window.setBadge",
   "window.maximize",
   "window.minimize",
+  "files.pick",
+  "files.read",
+  "files.write",
 ] as const;
 export type BridgeMethod = (typeof BRIDGE_METHODS)[number];
 
@@ -144,6 +149,63 @@ export interface BridgeWindowOkResult {
   ok: true;
 }
 
+export type BridgeFileRef = Pick<FileRef, "projectId" | "path" | "etag">;
+export interface BridgeFileEntry {
+  ref: BridgeFileRef;
+  directory: boolean;
+  sizeBytes: number;
+}
+export interface BridgeFilePage {
+  entries: BridgeFileEntry[];
+  nextAfter: string;
+}
+export interface BridgeFilePickPayload {
+  multiple?: boolean;
+}
+export interface BridgeFileReadPayload {
+  ref: BridgeFileRef;
+}
+export interface BridgeFileWritePayload {
+  ref: BridgeFileRef;
+  dataBase64: string;
+}
+export type BridgeFileResult =
+  | { refs: BridgeFileRef[] }
+  | { dataBase64: string }
+  | { ref: BridgeFileRef };
+
+export function validBridgeFileRef(value: unknown, create = false): value is BridgeFileRef {
+  if (typeof value !== "object" || value === null) return false;
+  const ref = value as Record<string, unknown>;
+  return (
+    Object.keys(ref).length === 3 &&
+    typeof ref["projectId"] === "string" &&
+    /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(
+      ref["projectId"],
+    ) &&
+    typeof ref["path"] === "string" &&
+    ref["path"].length > 0 &&
+    ref["path"].length <= 1024 &&
+    typeof ref["etag"] === "string" &&
+    ((create && ref["etag"] === "") || /^sha256:[0-9a-f]{64}$/.test(ref["etag"]))
+  );
+}
+export function encodeFileData(data: Uint8Array): string {
+  if (data.byteLength > MAX_FILE_BYTES) throw new BridgeProtocolError("oversize");
+  return btoa(String.fromCharCode(...data));
+}
+export function decodeFileData(value: unknown): Uint8Array<ArrayBuffer> {
+  if (typeof value !== "string" || value.length > Math.ceil(MAX_FILE_BYTES / 3) * 4)
+    throw new BridgeProtocolError("invalid_argument");
+  try {
+    const raw = atob(value);
+    if (raw.length > MAX_FILE_BYTES || btoa(raw) !== value) throw new Error("invalid file data");
+    return Uint8Array.from(raw, (char) => char.charCodeAt(0));
+  } catch {
+    throw new BridgeProtocolError("invalid_argument");
+  }
+}
+
 export interface BridgeRequest {
   version: typeof APP_BRIDGE_VERSION;
   type: "request";
@@ -156,6 +218,9 @@ export interface BridgeRequest {
     | BridgeNotificationCreatePayload
     | BridgeWindowSetTitlePayload
     | BridgeWindowSetBadgePayload
+    | BridgeFilePickPayload
+    | BridgeFileReadPayload
+    | BridgeFileWritePayload
     | Record<string, never>;
 }
 
@@ -170,6 +235,7 @@ export interface BridgeResponse {
     | BridgeProjectCurrentResult
     | BridgeThemeGetResult
     | BridgeWindowOkResult
+    | BridgeFileResult
     | { done: true };
 }
 

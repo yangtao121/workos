@@ -1227,3 +1227,13 @@ owner/device token 与 Core 安装版本/清单/授权 epoch。trusted host 只�
 时才修改自己窗口；关闭不再触发错误重命名。项目摘要读取确切 surface 项目；
 支持整数徽标、最大化/最小化，Dock 可恢复已安装应用与产物窗口。应用启动后收起应用库，
 避免固定层级挡住 iframe。文件与产物写 Bridge 尚未实现。
+
+Runtime 文件 Bridge：`runtime.workspace_mounts` 为 owner/project 绑定本地目录；
+App 的 `files.read`/`files.write` grant 与挂载的读写模式共同决定有效能力。
+`FileRef` 是 Proto 契约（project_id/path/etag），RPC 每次验证当前安装与授权版本。
+Linux adapter 以 openat2 BENEATH/NO_SYMLINKS/NO_XDEV 处理逻辑路径；文件 32 KiB、
+目录 1000 项、每页 20 项，拒绝隐藏路径。项目级进程锁与文件锁串行化跨实例写入；
+校验 etag 后临时文件 fsync + 原子替换，崩溃残留在后续写入时清理。
+App SDK files.pick/read/write 走 MessageChannel，picker 为有焦点约束的 shell 弹窗；
+取消/窗口关闭会终止未决选择。Indexer 的注册仍只提供只读索引，不是文件写授权。
+`make test-app-files` 已取得真实 SDK/Gateway/Core/Runtime/Chromium/磁盘证据。

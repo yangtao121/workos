@@ -6,13 +6,14 @@ import {
   NotificationTargetKind,
   type AppBridgeService,
 } from "@workos/protocol";
-import { BridgeProtocolError } from "@workos/surface-sdk";
+import { BridgeProtocolError, encodeFileData, decodeFileData } from "@workos/surface-sdk";
 import {
   openAppBridgeHost,
   type AppBridgeHost,
   type AppBridgeTransport,
   type AppBridgeShellHost,
 } from "@workos/app-host";
+import { useWorkspaceFilePicker } from "./WorkspaceFilePicker.js";
 import { asBridgeProtocolError } from "./bridgeErrors.js";
 import type { AppSurfaceRef } from "@workos/window-manager";
 
@@ -70,6 +71,46 @@ function buildTransport(
 ): AppBridgeTransport {
   const headers = { "X-WorkOS-Bridge-Token": credentials.token };
   return {
+    async listFiles(directory, after, signal) {
+      try {
+        const page = await appBridge.listFiles({ directory, after }, { headers, signal });
+        return {
+          entries: page.entries.map((entry) => {
+            if (!entry.ref) throw new BridgeProtocolError("internal");
+            const { projectId, path, etag } = entry.ref;
+            return {
+              ref: { projectId, path, etag },
+              directory: entry.directory,
+              sizeBytes: Number(entry.sizeBytes),
+            };
+          }),
+          nextAfter: page.nextAfter,
+        };
+      } catch (error) {
+        throw asBridgeProtocolError(error);
+      }
+    },
+    async readFile(input, signal) {
+      try {
+        const result = await appBridge.readFile(input, { headers, signal });
+        return { dataBase64: encodeFileData(result.data) };
+      } catch (error) {
+        throw asBridgeProtocolError(error);
+      }
+    },
+    async writeFile(input, signal) {
+      try {
+        const result = await appBridge.writeFile(
+          { ref: input.ref, data: decodeFileData(input.dataBase64) },
+          { headers, signal },
+        );
+        if (!result.ref) throw new BridgeProtocolError("internal");
+        const { projectId, path, etag } = result.ref;
+        return { ref: { projectId, path, etag } };
+      } catch (error) {
+        throw asBridgeProtocolError(error);
+      }
+    },
     async authorizeShellAction(method) {
       try {
         await appBridge.authorizeShellAction({ method }, { headers });
@@ -197,6 +238,7 @@ export function AppSurface({ surface, bridge, appBridge, shell }: AppSurfaceProp
   const [state, setState] = useState<SurfaceWindowState>("loading");
   const [bridgeState, setBridgeState] = useState<BridgeState>("pending");
   const frameRef = useRef<HTMLIFrameElement>(null);
+  const filePicker = useWorkspaceFilePicker();
   const hostRef = useRef<AppBridgeHost | undefined>(undefined);
   // Declarative probe (ADR-0016-era slice): a bundle may ship a versioned
   // `surface.json` declarative document instead of an interactive page. If
@@ -237,10 +279,12 @@ export function AppSurface({ surface, bridge, appBridge, shell }: AppSurfaceProp
     }
     const frameWindow = frameRef.current?.contentWindow;
     if (!frameWindow) return;
+    const transport = buildTransport(appBridge, bridge);
     const host = openAppBridgeHost({
       frameWindow,
       capabilities: bridge.capabilities,
-      transport: buildTransport(appBridge, bridge),
+      transport,
+      filePicker: (input, signal) => filePicker.open(transport, input, signal),
       ...(shell === undefined ? {} : { shell }),
       onHandshakeComplete: () => {
         setBridgeState("ready");
@@ -250,7 +294,7 @@ export function AppSurface({ surface, bridge, appBridge, shell }: AppSurfaceProp
       },
     });
     hostRef.current = host;
-  }, [appBridge, bridge]);
+  }, [appBridge, bridge, filePicker.open]);
 
   useEffect(() => {
     setState("loading");
@@ -275,6 +319,7 @@ export function AppSurface({ surface, bridge, appBridge, shell }: AppSurfaceProp
 
   return (
     <div className="app-surface-body">
+      {filePicker.dialog}
       {state === "loading" ? (
         <p className="surface-state" role="status">
           Opening app surface…

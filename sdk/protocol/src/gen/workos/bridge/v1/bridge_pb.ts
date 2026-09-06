@@ -21,7 +21,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file workos/bridge/v1/bridge.proto.
  */
 export const file_workos_bridge_v1_bridge: GenFile = /*@__PURE__*/
-  fileDesc("Ch13b3Jrb3MvYnJpZGdlL3YxL2JyaWRnZS5wcm90bxIQd29ya29zLmJyaWRnZS52MSJKChNSdW5BZ2VudFRhc2tSZXF1ZXN0EhcKD2lkZW1wb3RlbmN5X2tleRgBIAEoCRIMCgRyb2xlGAIgASgJEgwKBGdvYWwYAyABKAkidAoUUnVuQWdlbnRUYXNrUmVzcG9uc2USDwoHdGFza19pZBgBIAEoCRIuCgVzdGF0ZRgCIAEoDjIfLndvcmtvcy5hZ2VudC52MS5BZ2VudFRhc2tTdGF0ZRIbChNsYXN0X2V2ZW50X3NlcXVlbmNlGAMgASgDIkYKG1dhdGNoQWdlbnRUYXNrRXZlbnRzUmVxdWVzdBIPCgd0YXNrX2lkGAEgASgJEhYKDmFmdGVyX3NlcXVlbmNlGAIgASgDIkoKHFdhdGNoQWdlbnRUYXNrRXZlbnRzUmVzcG9uc2USKgoFZXZlbnQYASABKAsyGy53b3Jrb3MuYWdlbnQudjEuQWdlbnRFdmVudCJOChZTZWFyY2hLbm93bGVkZ2VSZXF1ZXN0Eg0KBXF1ZXJ5GAEgASgJEhEKCXBhZ2Vfc2l6ZRgCIAEoBRISCgpwYWdlX3Rva2VuGAMgASgJIlwKF1NlYXJjaEtub3dsZWRnZVJlc3BvbnNlEigKBGhpdHMYASADKAsyGi53b3Jrb3MuaW5kZXgudjEuU2VhcmNoSGl0EhcKD25leHRfcGFnZV90b2tlbhgCIAEoCSItChtBdXRob3JpemVTaGVsbEFjdGlvblJlcXVlc3QSDgoGbWV0aG9kGAEgASgJIh4KHEF1dGhvcml6ZVNoZWxsQWN0aW9uUmVzcG9uc2UiUQoZQ3JlYXRlTm90aWZpY2F0aW9uUmVxdWVzdBIXCg9pZGVtcG90ZW5jeV9rZXkYASABKAkSDQoFdGl0bGUYAiABKAkSDAoEYm9keRgDIAEoCSJuChpDcmVhdGVOb3RpZmljYXRpb25SZXNwb25zZRI6Cgxub3RpZmljYXRpb24YASABKAsyJC53b3Jrb3Mubm90aWZpY2F0aW9uLnYxLk5vdGlmaWNhdGlvbhIUCgx1bnJlYWRfY291bnQYAiABKAMyxAQKEEFwcEJyaWRnZVNlcnZpY2USdwoUQXV0aG9yaXplU2hlbGxBY3Rpb24SLS53b3Jrb3MuYnJpZGdlLnYxLkF1dGhvcml6ZVNoZWxsQWN0aW9uUmVxdWVzdBouLndvcmtvcy5icmlkZ2UudjEuQXV0aG9yaXplU2hlbGxBY3Rpb25SZXNwb25zZSIAEl8KDFJ1bkFnZW50VGFzaxIlLndvcmtvcy5icmlkZ2UudjEuUnVuQWdlbnRUYXNrUmVxdWVzdBomLndvcmtvcy5icmlkZ2UudjEuUnVuQWdlbnRUYXNrUmVzcG9uc2UiABJ5ChRXYXRjaEFnZW50VGFza0V2ZW50cxItLndvcmtvcy5icmlkZ2UudjEuV2F0Y2hBZ2VudFRhc2tFdmVudHNSZXF1ZXN0Gi4ud29ya29zLmJyaWRnZS52MS5XYXRjaEFnZW50VGFza0V2ZW50c1Jlc3BvbnNlIgAwARJoCg9TZWFyY2hLbm93bGVkZ2USKC53b3Jrb3MuYnJpZGdlLnYxLlNlYXJjaEtub3dsZWRnZVJlcXVlc3QaKS53b3Jrb3MuYnJpZGdlLnYxLlNlYXJjaEtub3dsZWRnZVJlc3BvbnNlIgAScQoSQ3JlYXRlTm90aWZpY2F0aW9uEisud29ya29zLmJyaWRnZS52MS5DcmVhdGVOb3RpZmljYXRpb25SZXF1ZXN0Giwud29ya29zLmJyaWRnZS52MS5DcmVhdGVOb3RpZmljYXRpb25SZXNwb25zZSIAQj9aPWdpdGh1Yi5jb20veWFuZ3RhbzEyMS93b3Jrb3MvZ2VuL2dvL3dvcmtvcy9icmlkZ2UvdjE7YnJpZGdldjFiBnByb3RvMw", [file_workos_agent_v1_agent, file_workos_index_v1_index, file_workos_notification_v1_notification]);
+  fileDesc("Ch13b3Jrb3MvYnJpZGdlL3YxL2JyaWRnZS5wcm90bxIQd29ya29zLmJyaWRnZS52MSJKChNSdW5BZ2VudFRhc2tSZXF1ZXN0EhcKD2lkZW1wb3RlbmN5X2tleRgBIAEoCRIMCgRyb2xlGAIgASgJEgwKBGdvYWwYAyABKAkidAoUUnVuQWdlbnRUYXNrUmVzcG9uc2USDwoHdGFza19pZBgBIAEoCRIuCgVzdGF0ZRgCIAEoDjIfLndvcmtvcy5hZ2VudC52MS5BZ2VudFRhc2tTdGF0ZRIbChNsYXN0X2V2ZW50X3NlcXVlbmNlGAMgASgDIkYKG1dhdGNoQWdlbnRUYXNrRXZlbnRzUmVxdWVzdBIPCgd0YXNrX2lkGAEgASgJEhYKDmFmdGVyX3NlcXVlbmNlGAIgASgDIkoKHFdhdGNoQWdlbnRUYXNrRXZlbnRzUmVzcG9uc2USKgoFZXZlbnQYASABKAsyGy53b3Jrb3MuYWdlbnQudjEuQWdlbnRFdmVudCJOChZTZWFyY2hLbm93bGVkZ2VSZXF1ZXN0Eg0KBXF1ZXJ5GAEgASgJEhEKCXBhZ2Vfc2l6ZRgCIAEoBRISCgpwYWdlX3Rva2VuGAMgASgJIlwKF1NlYXJjaEtub3dsZWRnZVJlc3BvbnNlEigKBGhpdHMYASADKAsyGi53b3Jrb3MuaW5kZXgudjEuU2VhcmNoSGl0EhcKD25leHRfcGFnZV90b2tlbhgCIAEoCSI5CgdGaWxlUmVmEhIKCnByb2plY3RfaWQYASABKAkSDAoEcGF0aBgCIAEoCRIMCgRldGFnGAMgASgJIloKCUZpbGVFbnRyeRImCgNyZWYYASABKAsyGS53b3Jrb3MuYnJpZGdlLnYxLkZpbGVSZWYSEQoJZGlyZWN0b3J5GAIgASgIEhIKCnNpemVfYnl0ZXMYAyABKAMiNAoQTGlzdEZpbGVzUmVxdWVzdBIRCglkaXJlY3RvcnkYASABKAkSDQoFYWZ0ZXIYAiABKAkiVQoRTGlzdEZpbGVzUmVzcG9uc2USLAoHZW50cmllcxgBIAMoCzIbLndvcmtvcy5icmlkZ2UudjEuRmlsZUVudHJ5EhIKCm5leHRfYWZ0ZXIYAiABKAkiOQoPUmVhZEZpbGVSZXF1ZXN0EiYKA3JlZhgBIAEoCzIZLndvcmtvcy5icmlkZ2UudjEuRmlsZVJlZiIgChBSZWFkRmlsZVJlc3BvbnNlEgwKBGRhdGEYASABKAwiSAoQV3JpdGVGaWxlUmVxdWVzdBImCgNyZWYYASABKAsyGS53b3Jrb3MuYnJpZGdlLnYxLkZpbGVSZWYSDAoEZGF0YRgCIAEoDCI7ChFXcml0ZUZpbGVSZXNwb25zZRImCgNyZWYYASABKAsyGS53b3Jrb3MuYnJpZGdlLnYxLkZpbGVSZWYiLQobQXV0aG9yaXplU2hlbGxBY3Rpb25SZXF1ZXN0Eg4KBm1ldGhvZBgBIAEoCSIeChxBdXRob3JpemVTaGVsbEFjdGlvblJlc3BvbnNlIlEKGUNyZWF0ZU5vdGlmaWNhdGlvblJlcXVlc3QSFwoPaWRlbXBvdGVuY3lfa2V5GAEgASgJEg0KBXRpdGxlGAIgASgJEgwKBGJvZHkYAyABKAkibgoaQ3JlYXRlTm90aWZpY2F0aW9uUmVzcG9uc2USOgoMbm90aWZpY2F0aW9uGAEgASgLMiQud29ya29zLm5vdGlmaWNhdGlvbi52MS5Ob3RpZmljYXRpb24SFAoMdW5yZWFkX2NvdW50GAIgASgDMskGChBBcHBCcmlkZ2VTZXJ2aWNlElYKCUxpc3RGaWxlcxIiLndvcmtvcy5icmlkZ2UudjEuTGlzdEZpbGVzUmVxdWVzdBojLndvcmtvcy5icmlkZ2UudjEuTGlzdEZpbGVzUmVzcG9uc2UiABJTCghSZWFkRmlsZRIhLndvcmtvcy5icmlkZ2UudjEuUmVhZEZpbGVSZXF1ZXN0GiIud29ya29zLmJyaWRnZS52MS5SZWFkRmlsZVJlc3BvbnNlIgASVgoJV3JpdGVGaWxlEiIud29ya29zLmJyaWRnZS52MS5Xcml0ZUZpbGVSZXF1ZXN0GiMud29ya29zLmJyaWRnZS52MS5Xcml0ZUZpbGVSZXNwb25zZSIAEncKFEF1dGhvcml6ZVNoZWxsQWN0aW9uEi0ud29ya29zLmJyaWRnZS52MS5BdXRob3JpemVTaGVsbEFjdGlvblJlcXVlc3QaLi53b3Jrb3MuYnJpZGdlLnYxLkF1dGhvcml6ZVNoZWxsQWN0aW9uUmVzcG9uc2UiABJfCgxSdW5BZ2VudFRhc2sSJS53b3Jrb3MuYnJpZGdlLnYxLlJ1bkFnZW50VGFza1JlcXVlc3QaJi53b3Jrb3MuYnJpZGdlLnYxLlJ1bkFnZW50VGFza1Jlc3BvbnNlIgASeQoUV2F0Y2hBZ2VudFRhc2tFdmVudHMSLS53b3Jrb3MuYnJpZGdlLnYxLldhdGNoQWdlbnRUYXNrRXZlbnRzUmVxdWVzdBouLndvcmtvcy5icmlkZ2UudjEuV2F0Y2hBZ2VudFRhc2tFdmVudHNSZXNwb25zZSIAMAESaAoPU2VhcmNoS25vd2xlZGdlEigud29ya29zLmJyaWRnZS52MS5TZWFyY2hLbm93bGVkZ2VSZXF1ZXN0Gikud29ya29zLmJyaWRnZS52MS5TZWFyY2hLbm93bGVkZ2VSZXNwb25zZSIAEnEKEkNyZWF0ZU5vdGlmaWNhdGlvbhIrLndvcmtvcy5icmlkZ2UudjEuQ3JlYXRlTm90aWZpY2F0aW9uUmVxdWVzdBosLndvcmtvcy5icmlkZ2UudjEuQ3JlYXRlTm90aWZpY2F0aW9uUmVzcG9uc2UiAEI/Wj1naXRodWIuY29tL3lhbmd0YW8xMjEvd29ya29zL2dlbi9nby93b3Jrb3MvYnJpZGdlL3YxO2JyaWRnZXYxYgZwcm90bzM", [file_workos_agent_v1_agent, file_workos_index_v1_index, file_workos_notification_v1_notification]);
 
 /**
  * @generated from message workos.bridge.v1.RunAgentTaskRequest
@@ -199,6 +199,183 @@ export const SearchKnowledgeResponseSchema: GenMessage<SearchKnowledgeResponse> 
   messageDesc(file_workos_bridge_v1_bridge, 5);
 
 /**
+ * @generated from message workos.bridge.v1.FileRef
+ */
+export type FileRef = Message<"workos.bridge.v1.FileRef"> & {
+  /**
+   * Must equal the session project; never selects or widens the scope.
+   *
+   * @generated from field: string project_id = 1;
+   */
+  projectId: string;
+
+  /**
+   * @generated from field: string path = 2;
+   */
+  path: string;
+
+  /**
+   * sha256 content digest; empty only for a new file or a directory.
+   *
+   * @generated from field: string etag = 3;
+   */
+  etag: string;
+};
+
+/**
+ * Describes the message workos.bridge.v1.FileRef.
+ * Use `create(FileRefSchema)` to create a new message.
+ */
+export const FileRefSchema: GenMessage<FileRef> = /*@__PURE__*/
+  messageDesc(file_workos_bridge_v1_bridge, 6);
+
+/**
+ * @generated from message workos.bridge.v1.FileEntry
+ */
+export type FileEntry = Message<"workos.bridge.v1.FileEntry"> & {
+  /**
+   * @generated from field: workos.bridge.v1.FileRef ref = 1;
+   */
+  ref?: FileRef | undefined;
+
+  /**
+   * @generated from field: bool directory = 2;
+   */
+  directory: boolean;
+
+  /**
+   * @generated from field: int64 size_bytes = 3;
+   */
+  sizeBytes: bigint;
+};
+
+/**
+ * Describes the message workos.bridge.v1.FileEntry.
+ * Use `create(FileEntrySchema)` to create a new message.
+ */
+export const FileEntrySchema: GenMessage<FileEntry> = /*@__PURE__*/
+  messageDesc(file_workos_bridge_v1_bridge, 7);
+
+/**
+ * @generated from message workos.bridge.v1.ListFilesRequest
+ */
+export type ListFilesRequest = Message<"workos.bridge.v1.ListFilesRequest"> & {
+  /**
+   * @generated from field: string directory = 1;
+   */
+  directory: string;
+
+  /**
+   * Last basename from the preceding live directory page.
+   *
+   * @generated from field: string after = 2;
+   */
+  after: string;
+};
+
+/**
+ * Describes the message workos.bridge.v1.ListFilesRequest.
+ * Use `create(ListFilesRequestSchema)` to create a new message.
+ */
+export const ListFilesRequestSchema: GenMessage<ListFilesRequest> = /*@__PURE__*/
+  messageDesc(file_workos_bridge_v1_bridge, 8);
+
+/**
+ * @generated from message workos.bridge.v1.ListFilesResponse
+ */
+export type ListFilesResponse = Message<"workos.bridge.v1.ListFilesResponse"> & {
+  /**
+   * @generated from field: repeated workos.bridge.v1.FileEntry entries = 1;
+   */
+  entries: FileEntry[];
+
+  /**
+   * @generated from field: string next_after = 2;
+   */
+  nextAfter: string;
+};
+
+/**
+ * Describes the message workos.bridge.v1.ListFilesResponse.
+ * Use `create(ListFilesResponseSchema)` to create a new message.
+ */
+export const ListFilesResponseSchema: GenMessage<ListFilesResponse> = /*@__PURE__*/
+  messageDesc(file_workos_bridge_v1_bridge, 9);
+
+/**
+ * @generated from message workos.bridge.v1.ReadFileRequest
+ */
+export type ReadFileRequest = Message<"workos.bridge.v1.ReadFileRequest"> & {
+  /**
+   * @generated from field: workos.bridge.v1.FileRef ref = 1;
+   */
+  ref?: FileRef | undefined;
+};
+
+/**
+ * Describes the message workos.bridge.v1.ReadFileRequest.
+ * Use `create(ReadFileRequestSchema)` to create a new message.
+ */
+export const ReadFileRequestSchema: GenMessage<ReadFileRequest> = /*@__PURE__*/
+  messageDesc(file_workos_bridge_v1_bridge, 10);
+
+/**
+ * @generated from message workos.bridge.v1.ReadFileResponse
+ */
+export type ReadFileResponse = Message<"workos.bridge.v1.ReadFileResponse"> & {
+  /**
+   * @generated from field: bytes data = 1;
+   */
+  data: Uint8Array;
+};
+
+/**
+ * Describes the message workos.bridge.v1.ReadFileResponse.
+ * Use `create(ReadFileResponseSchema)` to create a new message.
+ */
+export const ReadFileResponseSchema: GenMessage<ReadFileResponse> = /*@__PURE__*/
+  messageDesc(file_workos_bridge_v1_bridge, 11);
+
+/**
+ * @generated from message workos.bridge.v1.WriteFileRequest
+ */
+export type WriteFileRequest = Message<"workos.bridge.v1.WriteFileRequest"> & {
+  /**
+   * @generated from field: workos.bridge.v1.FileRef ref = 1;
+   */
+  ref?: FileRef | undefined;
+
+  /**
+   * @generated from field: bytes data = 2;
+   */
+  data: Uint8Array;
+};
+
+/**
+ * Describes the message workos.bridge.v1.WriteFileRequest.
+ * Use `create(WriteFileRequestSchema)` to create a new message.
+ */
+export const WriteFileRequestSchema: GenMessage<WriteFileRequest> = /*@__PURE__*/
+  messageDesc(file_workos_bridge_v1_bridge, 12);
+
+/**
+ * @generated from message workos.bridge.v1.WriteFileResponse
+ */
+export type WriteFileResponse = Message<"workos.bridge.v1.WriteFileResponse"> & {
+  /**
+   * @generated from field: workos.bridge.v1.FileRef ref = 1;
+   */
+  ref?: FileRef | undefined;
+};
+
+/**
+ * Describes the message workos.bridge.v1.WriteFileResponse.
+ * Use `create(WriteFileResponseSchema)` to create a new message.
+ */
+export const WriteFileResponseSchema: GenMessage<WriteFileResponse> = /*@__PURE__*/
+  messageDesc(file_workos_bridge_v1_bridge, 13);
+
+/**
  * @generated from message workos.bridge.v1.AuthorizeShellActionRequest
  */
 export type AuthorizeShellActionRequest = Message<"workos.bridge.v1.AuthorizeShellActionRequest"> & {
@@ -215,7 +392,7 @@ export type AuthorizeShellActionRequest = Message<"workos.bridge.v1.AuthorizeShe
  * Use `create(AuthorizeShellActionRequestSchema)` to create a new message.
  */
 export const AuthorizeShellActionRequestSchema: GenMessage<AuthorizeShellActionRequest> = /*@__PURE__*/
-  messageDesc(file_workos_bridge_v1_bridge, 6);
+  messageDesc(file_workos_bridge_v1_bridge, 14);
 
 /**
  * @generated from message workos.bridge.v1.AuthorizeShellActionResponse
@@ -228,7 +405,7 @@ export type AuthorizeShellActionResponse = Message<"workos.bridge.v1.AuthorizeSh
  * Use `create(AuthorizeShellActionResponseSchema)` to create a new message.
  */
 export const AuthorizeShellActionResponseSchema: GenMessage<AuthorizeShellActionResponse> = /*@__PURE__*/
-  messageDesc(file_workos_bridge_v1_bridge, 7);
+  messageDesc(file_workos_bridge_v1_bridge, 15);
 
 /**
  * CreateNotification is negotiated only by the notifications.create grant
@@ -267,7 +444,7 @@ export type CreateNotificationRequest = Message<"workos.bridge.v1.CreateNotifica
  * Use `create(CreateNotificationRequestSchema)` to create a new message.
  */
 export const CreateNotificationRequestSchema: GenMessage<CreateNotificationRequest> = /*@__PURE__*/
-  messageDesc(file_workos_bridge_v1_bridge, 8);
+  messageDesc(file_workos_bridge_v1_bridge, 16);
 
 /**
  * @generated from message workos.bridge.v1.CreateNotificationResponse
@@ -292,12 +469,36 @@ export type CreateNotificationResponse = Message<"workos.bridge.v1.CreateNotific
  * Use `create(CreateNotificationResponseSchema)` to create a new message.
  */
 export const CreateNotificationResponseSchema: GenMessage<CreateNotificationResponse> = /*@__PURE__*/
-  messageDesc(file_workos_bridge_v1_bridge, 9);
+  messageDesc(file_workos_bridge_v1_bridge, 17);
 
 /**
  * @generated from service workos.bridge.v1.AppBridgeService
  */
 export const AppBridgeService: GenService<{
+  /**
+   * @generated from rpc workos.bridge.v1.AppBridgeService.ListFiles
+   */
+  listFiles: {
+    methodKind: "unary";
+    input: typeof ListFilesRequestSchema;
+    output: typeof ListFilesResponseSchema;
+  },
+  /**
+   * @generated from rpc workos.bridge.v1.AppBridgeService.ReadFile
+   */
+  readFile: {
+    methodKind: "unary";
+    input: typeof ReadFileRequestSchema;
+    output: typeof ReadFileResponseSchema;
+  },
+  /**
+   * @generated from rpc workos.bridge.v1.AppBridgeService.WriteFile
+   */
+  writeFile: {
+    methodKind: "unary";
+    input: typeof WriteFileRequestSchema;
+    output: typeof WriteFileResponseSchema;
+  },
   /**
    * Revalidates a shell-local action against the live session and current
    * installation epoch before the trusted shell performs any side effect.

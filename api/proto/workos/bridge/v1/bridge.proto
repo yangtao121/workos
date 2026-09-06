@@ -67,7 +67,46 @@ message SearchKnowledgeResponse {
   string next_page_token = 2;
 }
 
+message FileRef {
+  // Must equal the session project; never selects or widens the scope.
+  string project_id = 1;
+  string path = 2;
+  // sha256 content digest; empty only for a new file or a directory.
+  string etag = 3;
+}
+message FileEntry {
+  FileRef ref = 1;
+  bool directory = 2;
+  int64 size_bytes = 3;
+}
+message ListFilesRequest {
+  string directory = 1;
+  // Last basename from the preceding live directory page.
+  string after = 2;
+}
+message ListFilesResponse {
+  repeated FileEntry entries = 1;
+  string next_after = 2;
+}
+message ReadFileRequest {
+  FileRef ref = 1;
+}
+message ReadFileResponse {
+  bytes data = 1;
+}
+message WriteFileRequest {
+  FileRef ref = 1;
+  bytes data = 2;
+}
+message WriteFileResponse {
+  FileRef ref = 1;
+}
+
 service AppBridgeService {
+  rpc ListFiles(ListFilesRequest) returns (ListFilesResponse) {}
+  rpc ReadFile(ReadFileRequest) returns (ReadFileResponse) {}
+  rpc WriteFile(WriteFileRequest) returns (WriteFileResponse) {}
+
   // Revalidates a shell-local action against the live session and current
   // installation epoch before the trusted shell performs any side effect.
   rpc AuthorizeShellAction(AuthorizeShellActionRequest) returns (AuthorizeShellActionResponse) {}

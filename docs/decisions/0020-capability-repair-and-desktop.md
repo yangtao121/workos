@@ -50,3 +50,21 @@ relay 不接受重定向，404/410 撤销失效订阅，其他失败回到 outbo
 Shell 的 title/badge/maximize/minimize/close 只绑定自己的窗口；授权超时后的迟到结果丢弃。
 项目摘要读取原 surface 项目，禁止回退活动项目；徽标是可清除的 0..9999 整数。
 此 RPC 不表示 files/artifacts 能力已实现，完整 Bridge 验收仍由任务表追踪。
+
+## 项目文件 Bridge
+
+Runtime 配置 `runtime.workspace_mounts` 显式绑定 owner UUID、project UUID、本地绝对目录与
+read_only；最多 32 项，禁止根目录、重复/重叠路径、符号链接及非受控目录。原 Indexer
+注册保持只读索引用途，不成为写入授权。安装新增 files.read/files.write grant，未绑定目录
+不协商文件能力；files.pick 来自 files.read，写能力还受 read_only 限制。
+
+FileRef 的 project_id 只用于拒绝错项目引用，真实 owner/project 始终来自有效 session。
+相对 POSIX 路径最长 1024 字节、最多 8 层；文件最多 32 KiB，目录最多 1000 项，
+每页最多 20 项。列表是实时目录分页，etag 为内容 SHA-256；写入必须匹配旧 etag，
+空 etag 仅创建不存在的文件。目录绑定由 Runtime 独占写入，其他进程只读挂载；
+写操作按项目串行化，临时文件 fsync 后原子替换，错误不截断旧内容。
+
+Linux adapter 使用内核 [openat2](https://pkg.go.dev/golang.org/x/sys/unix#Openat2) 的
+BENEATH/NO_SYMLINKS 解析；不把先检查路径再普通 open 当作安全边界，
+见 [Go 路径遍历说明](https://go.dev/blog/osroot)。缺少内核支持时不协商文件能力。
+选择器由 shell 渲染，用户可取消；App 只拿 FileRef 与有界文件内容，不能指定宿主目录。

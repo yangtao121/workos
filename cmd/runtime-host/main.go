@@ -25,6 +25,7 @@ import (
 	surfacecoreclient "github.com/yangtao121/workos/internal/runtime/surface/adapters/coreclient"
 	indexerclient "github.com/yangtao121/workos/internal/runtime/surface/adapters/indexerclient"
 	surfacepostgres "github.com/yangtao121/workos/internal/runtime/surface/adapters/postgres"
+	workspaceadapter "github.com/yangtao121/workos/internal/runtime/surface/adapters/workspace"
 	surfaceapp "github.com/yangtao121/workos/internal/runtime/surface/application"
 	surfacetransport "github.com/yangtao121/workos/internal/runtime/surface/transport"
 	runtimetransport "github.com/yangtao121/workos/internal/runtime/transport"
@@ -231,6 +232,19 @@ func run(logger *slog.Logger) error {
 	if err != nil {
 		return err
 	}
+
+	mounts := make([]workspaceadapter.Mount, 0, len(cfg.Runtime.WorkspaceMounts))
+	for _, mount := range cfg.Runtime.WorkspaceMounts {
+		mounts = append(mounts, workspaceadapter.Mount{OwnerUserID: mount.OwnerUserID, ProjectID: mount.ProjectID, Path: mount.RootPath, ReadOnly: mount.ReadOnly})
+	}
+	workspace, workspaceErr := workspaceadapter.New(mounts)
+	if workspaceErr != nil {
+		logger.Warn("project workspace bindings unavailable")
+	} else {
+		defer workspace.Close()
+		surfaceService.WithWorkspace(workspace)
+		bridgeService.WithWorkspace(workspace)
+	}
 	bridgePath, bridgeHandler := surfacetransport.NewBridgeConnectHandler(bridgeService)
 	mux.Handle(bridgePath, identity.Middleware(bridgeHandler))
 	// The asset route is served ahead of the ServeMux: mux path cleaning
@@ -251,7 +265,8 @@ func run(logger *slog.Logger) error {
 		&commonv1.FeatureCapability{Id: "rootless-container-runner", Available: cfg.Runtime.WorkloadEngine != "fake-fixture" && capability.Available && capability.Rootless, Reason: rootlessRunnerReason(cfg.Runtime.WorkloadEngine, capability)},
 		&commonv1.FeatureCapability{Id: "native-runner", Available: false, Reason: "not implemented"},
 		&commonv1.FeatureCapability{Id: "surface-broker", Available: true, Reason: "web bundle and supervised web service surfaces"},
-		&commonv1.FeatureCapability{Id: "app-bridge", Available: true, Reason: "agent.task.run, agent.event.watch, and knowledge.search for real knowledge.read grants when the indexer is configured"},
+		&commonv1.FeatureCapability{Id: "app-bridge", Available: true, Reason: "grant-checked agent, knowledge, notifications, project and own-window methods; files require explicit workspace bindings"},
+		&commonv1.FeatureCapability{Id: "workspace-files", Available: workspaceErr == nil && len(mounts) > 0, Reason: "requires usable owner-bound workspace directories and explicit files.read/files.write grants"},
 		&commonv1.FeatureCapability{Id: "app-knowledge-search", Available: knowledgePipeline != nil, Reason: "scoped read-only project knowledge search over the indexer"},
 	))
 	mux.Handle(systemPath, systemHandler)

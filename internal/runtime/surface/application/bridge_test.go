@@ -519,3 +519,64 @@ func TestShellActionReauthorizesInstallation(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+type bridgeWorkspace struct {
+	calls    int
+	writable bool
+}
+
+func (w *bridgeWorkspace) Access(ports.FileScope) (bool, bool) { return true, w.writable }
+func (w *bridgeWorkspace) List(context.Context, ports.FileScope, string, string) (domain.FilePage, error) {
+	w.calls++
+	return domain.FilePage{}, nil
+}
+func (w *bridgeWorkspace) Read(context.Context, ports.FileScope, domain.FileRef) ([]byte, error) {
+	w.calls++
+	return []byte("fixture"), nil
+}
+func (w *bridgeWorkspace) Write(_ context.Context, _ ports.FileScope, ref domain.FileRef, _ []byte) (domain.FileRef, error) {
+	w.calls++
+	return ref, nil
+}
+func TestFileBridgeRejectsStaleGrantAndWrongProjectBeforeIO(t *testing.T) {
+	service, repository, _, token := newBridgeTest(t)
+	workspace := &bridgeWorkspace{writable: true}
+	service.WithWorkspace(workspace)
+	for _, session := range repository.sessions {
+		session.BridgeCapabilities = append(session.BridgeCapabilities, "files.pick", "files.read", "files.write")
+		repository.put(session)
+	}
+	resolver := &fakeResolver{resolved: ports.ResolvedLaunch{Kind: ports.LaunchKindWebBundle, GrantRevision: 9, GrantedPermissions: []string{"files.read", "files.write"}}}
+	service.resolver = resolver
+	ref := domain.FileRef{ProjectID: "0198d7ea-2110-7c42-b659-c5e4d73bc352", Path: "notes.txt", ETag: "sha256:" + strings.Repeat("a", 64)}
+	ctx := context.Background()
+	if _, err := service.ReadFile(ctx, "owner-1", "device-1", token, ref); err != nil || workspace.calls != 1 {
+		t.Fatal(err)
+	}
+	if _, err := service.WriteFile(ctx, "owner-1", "device-1", token, ref, nil); err != nil || workspace.calls != 2 {
+		t.Fatal(err)
+	}
+	resolver.resolved.GrantRevision++
+	if _, err := service.ReadFile(ctx, "owner-1", "device-1", token, ref); !errors.Is(err, domain.ErrPermissionDenied) {
+		t.Fatal(err)
+	}
+	if _, err := service.WriteFile(ctx, "owner-1", "device-1", token, ref, nil); !errors.Is(err, domain.ErrPermissionDenied) {
+		t.Fatal(err)
+	}
+	if _, err := service.ListFiles(ctx, "owner-1", "device-1", token, "", ""); !errors.Is(err, domain.ErrPermissionDenied) {
+		t.Fatal(err)
+	}
+	resolver.resolved.GrantRevision = 9
+	foreign := ref
+	foreign.ProjectID = "other"
+	if _, err := service.ReadFile(ctx, "owner-1", "device-1", token, foreign); !errors.Is(err, domain.ErrPermissionDenied) {
+		t.Fatal(err)
+	}
+	workspace.writable = false
+	if _, err := service.WriteFile(ctx, "owner-1", "device-1", token, ref, nil); !errors.Is(err, domain.ErrPermissionDenied) {
+		t.Fatal(err)
+	}
+	if workspace.calls != 2 {
+		t.Fatal("denied call touched workspace")
+	}
+}

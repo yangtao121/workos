@@ -2595,3 +2595,94 @@ svg {
   font-size: 11px;
   line-height: 1.2;
 }
+
+.workspace-picker-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 500;
+  background: #050811aa;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+}
+.workspace-picker {
+  width: min(620px, 100%);
+  max-height: 80dvh;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  box-shadow: 0 24px 80px #0009;
+  overflow: hidden;
+}
+.workspace-picker header,
+.workspace-picker footer,
+.workspace-picker-path {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border);
+}
+.workspace-picker h2 {
+  font-size: 18px;
+  margin: 0 0 6px;
+}
+.workspace-picker p,
+.workspace-picker small,
+.workspace-picker footer {
+  color: var(--muted);
+  font-size: 13px;
+}
+.workspace-picker p {
+  margin: 0;
+}
+.workspace-picker-list {
+  padding: 8px 12px;
+  min-height: 160px;
+  overflow: auto;
+}
+.workspace-picker-path span {
+  overflow-wrap: anywhere;
+  font-size: 13px;
+}
+.workspace-picker-folder,
+.workspace-picker-file {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 12px 8px;
+  background: transparent;
+  border: 0;
+  border-radius: 8px;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+.workspace-picker-file span {
+  flex: 1;
+  overflow-wrap: anywhere;
+}
+.workspace-picker-folder:hover,
+.workspace-picker-file:hover {
+  background: var(--surface-raised);
+}
+.workspace-picker input {
+  accent-color: var(--accent);
+}
+.workspace-picker footer {
+  border-top: 1px solid var(--border);
+  border-bottom: 0;
+}
+
+.workspace-picker .workos-button {
+  color: var(--text);
+}
+.workspace-picker header .workos-button,
+.workspace-picker-path .workos-button {
+  background: var(--surface-raised);
+  border-color: var(--border);
+}

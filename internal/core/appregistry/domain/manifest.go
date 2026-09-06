@@ -31,6 +31,8 @@ var knownPermissions = map[string]struct{}{
 	"agent.event.watch":    {},
 	"artifact.read":        {},
 	"artifact.write":       {},
+	"files.read":           {},
+	"files.write":          {},
 	"knowledge.read":       {},
 	"notifications.create": {},
 	"project.read":         {},

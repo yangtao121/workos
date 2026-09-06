@@ -38,6 +38,15 @@ const (
 // reflection-formatted method names, remove the leading slash and convert the remaining slash to a
 // period.
 const (
+	// AppBridgeServiceListFilesProcedure is the fully-qualified name of the AppBridgeService's
+	// ListFiles RPC.
+	AppBridgeServiceListFilesProcedure = "/workos.bridge.v1.AppBridgeService/ListFiles"
+	// AppBridgeServiceReadFileProcedure is the fully-qualified name of the AppBridgeService's ReadFile
+	// RPC.
+	AppBridgeServiceReadFileProcedure = "/workos.bridge.v1.AppBridgeService/ReadFile"
+	// AppBridgeServiceWriteFileProcedure is the fully-qualified name of the AppBridgeService's
+	// WriteFile RPC.
+	AppBridgeServiceWriteFileProcedure = "/workos.bridge.v1.AppBridgeService/WriteFile"
 	// AppBridgeServiceAuthorizeShellActionProcedure is the fully-qualified name of the
 	// AppBridgeService's AuthorizeShellAction RPC.
 	AppBridgeServiceAuthorizeShellActionProcedure = "/workos.bridge.v1.AppBridgeService/AuthorizeShellAction"
@@ -57,6 +66,9 @@ const (
 
 // AppBridgeServiceClient is a client for the workos.bridge.v1.AppBridgeService service.
 type AppBridgeServiceClient interface {
+	ListFiles(context.Context, *connect.Request[v1.ListFilesRequest]) (*connect.Response[v1.ListFilesResponse], error)
+	ReadFile(context.Context, *connect.Request[v1.ReadFileRequest]) (*connect.Response[v1.ReadFileResponse], error)
+	WriteFile(context.Context, *connect.Request[v1.WriteFileRequest]) (*connect.Response[v1.WriteFileResponse], error)
 	// Revalidates a shell-local action against the live session and current
 	// installation epoch before the trusted shell performs any side effect.
 	AuthorizeShellAction(context.Context, *connect.Request[v1.AuthorizeShellActionRequest]) (*connect.Response[v1.AuthorizeShellActionResponse], error)
@@ -83,6 +95,24 @@ func NewAppBridgeServiceClient(httpClient connect.HTTPClient, baseURL string, op
 	baseURL = strings.TrimRight(baseURL, "/")
 	appBridgeServiceMethods := v1.File_workos_bridge_v1_bridge_proto.Services().ByName("AppBridgeService").Methods()
 	return &appBridgeServiceClient{
+		listFiles: connect.NewClient[v1.ListFilesRequest, v1.ListFilesResponse](
+			httpClient,
+			baseURL+AppBridgeServiceListFilesProcedure,
+			connect.WithSchema(appBridgeServiceMethods.ByName("ListFiles")),
+			connect.WithClientOptions(opts...),
+		),
+		readFile: connect.NewClient[v1.ReadFileRequest, v1.ReadFileResponse](
+			httpClient,
+			baseURL+AppBridgeServiceReadFileProcedure,
+			connect.WithSchema(appBridgeServiceMethods.ByName("ReadFile")),
+			connect.WithClientOptions(opts...),
+		),
+		writeFile: connect.NewClient[v1.WriteFileRequest, v1.WriteFileResponse](
+			httpClient,
+			baseURL+AppBridgeServiceWriteFileProcedure,
+			connect.WithSchema(appBridgeServiceMethods.ByName("WriteFile")),
+			connect.WithClientOptions(opts...),
+		),
 		authorizeShellAction: connect.NewClient[v1.AuthorizeShellActionRequest, v1.AuthorizeShellActionResponse](
 			httpClient,
 			baseURL+AppBridgeServiceAuthorizeShellActionProcedure,
@@ -118,11 +148,29 @@ func NewAppBridgeServiceClient(httpClient connect.HTTPClient, baseURL string, op
 
 // appBridgeServiceClient implements AppBridgeServiceClient.
 type appBridgeServiceClient struct {
+	listFiles            *connect.Client[v1.ListFilesRequest, v1.ListFilesResponse]
+	readFile             *connect.Client[v1.ReadFileRequest, v1.ReadFileResponse]
+	writeFile            *connect.Client[v1.WriteFileRequest, v1.WriteFileResponse]
 	authorizeShellAction *connect.Client[v1.AuthorizeShellActionRequest, v1.AuthorizeShellActionResponse]
 	runAgentTask         *connect.Client[v1.RunAgentTaskRequest, v1.RunAgentTaskResponse]
 	watchAgentTaskEvents *connect.Client[v1.WatchAgentTaskEventsRequest, v1.WatchAgentTaskEventsResponse]
 	searchKnowledge      *connect.Client[v1.SearchKnowledgeRequest, v1.SearchKnowledgeResponse]
 	createNotification   *connect.Client[v1.CreateNotificationRequest, v1.CreateNotificationResponse]
+}
+
+// ListFiles calls workos.bridge.v1.AppBridgeService.ListFiles.
+func (c *appBridgeServiceClient) ListFiles(ctx context.Context, req *connect.Request[v1.ListFilesRequest]) (*connect.Response[v1.ListFilesResponse], error) {
+	return c.listFiles.CallUnary(ctx, req)
+}
+
+// ReadFile calls workos.bridge.v1.AppBridgeService.ReadFile.
+func (c *appBridgeServiceClient) ReadFile(ctx context.Context, req *connect.Request[v1.ReadFileRequest]) (*connect.Response[v1.ReadFileResponse], error) {
+	return c.readFile.CallUnary(ctx, req)
+}
+
+// WriteFile calls workos.bridge.v1.AppBridgeService.WriteFile.
+func (c *appBridgeServiceClient) WriteFile(ctx context.Context, req *connect.Request[v1.WriteFileRequest]) (*connect.Response[v1.WriteFileResponse], error) {
+	return c.writeFile.CallUnary(ctx, req)
 }
 
 // AuthorizeShellAction calls workos.bridge.v1.AppBridgeService.AuthorizeShellAction.
@@ -152,6 +200,9 @@ func (c *appBridgeServiceClient) CreateNotification(ctx context.Context, req *co
 
 // AppBridgeServiceHandler is an implementation of the workos.bridge.v1.AppBridgeService service.
 type AppBridgeServiceHandler interface {
+	ListFiles(context.Context, *connect.Request[v1.ListFilesRequest]) (*connect.Response[v1.ListFilesResponse], error)
+	ReadFile(context.Context, *connect.Request[v1.ReadFileRequest]) (*connect.Response[v1.ReadFileResponse], error)
+	WriteFile(context.Context, *connect.Request[v1.WriteFileRequest]) (*connect.Response[v1.WriteFileResponse], error)
 	// Revalidates a shell-local action against the live session and current
 	// installation epoch before the trusted shell performs any side effect.
 	AuthorizeShellAction(context.Context, *connect.Request[v1.AuthorizeShellActionRequest]) (*connect.Response[v1.AuthorizeShellActionResponse], error)
@@ -174,6 +225,24 @@ type AppBridgeServiceHandler interface {
 // and JSON codecs. They also support gzip compression.
 func NewAppBridgeServiceHandler(svc AppBridgeServiceHandler, opts ...connect.HandlerOption) (string, http.Handler) {
 	appBridgeServiceMethods := v1.File_workos_bridge_v1_bridge_proto.Services().ByName("AppBridgeService").Methods()
+	appBridgeServiceListFilesHandler := connect.NewUnaryHandler(
+		AppBridgeServiceListFilesProcedure,
+		svc.ListFiles,
+		connect.WithSchema(appBridgeServiceMethods.ByName("ListFiles")),
+		connect.WithHandlerOptions(opts...),
+	)
+	appBridgeServiceReadFileHandler := connect.NewUnaryHandler(
+		AppBridgeServiceReadFileProcedure,
+		svc.ReadFile,
+		connect.WithSchema(appBridgeServiceMethods.ByName("ReadFile")),
+		connect.WithHandlerOptions(opts...),
+	)
+	appBridgeServiceWriteFileHandler := connect.NewUnaryHandler(
+		AppBridgeServiceWriteFileProcedure,
+		svc.WriteFile,
+		connect.WithSchema(appBridgeServiceMethods.ByName("WriteFile")),
+		connect.WithHandlerOptions(opts...),
+	)
 	appBridgeServiceAuthorizeShellActionHandler := connect.NewUnaryHandler(
 		AppBridgeServiceAuthorizeShellActionProcedure,
 		svc.AuthorizeShellAction,
@@ -206,6 +275,12 @@ func NewAppBridgeServiceHandler(svc AppBridgeServiceHandler, opts ...connect.Han
 	)
 	return "/workos.bridge.v1.AppBridgeService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
+		case AppBridgeServiceListFilesProcedure:
+			appBridgeServiceListFilesHandler.ServeHTTP(w, r)
+		case AppBridgeServiceReadFileProcedure:
+			appBridgeServiceReadFileHandler.ServeHTTP(w, r)
+		case AppBridgeServiceWriteFileProcedure:
+			appBridgeServiceWriteFileHandler.ServeHTTP(w, r)
 		case AppBridgeServiceAuthorizeShellActionProcedure:
 			appBridgeServiceAuthorizeShellActionHandler.ServeHTTP(w, r)
 		case AppBridgeServiceRunAgentTaskProcedure:
@@ -224,6 +299,18 @@ func NewAppBridgeServiceHandler(svc AppBridgeServiceHandler, opts ...connect.Han
 
 // UnimplementedAppBridgeServiceHandler returns CodeUnimplemented from all methods.
 type UnimplementedAppBridgeServiceHandler struct{}
+
+func (UnimplementedAppBridgeServiceHandler) ListFiles(context.Context, *connect.Request[v1.ListFilesRequest]) (*connect.Response[v1.ListFilesResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("workos.bridge.v1.AppBridgeService.ListFiles is not implemented"))
+}
+
+func (UnimplementedAppBridgeServiceHandler) ReadFile(context.Context, *connect.Request[v1.ReadFileRequest]) (*connect.Response[v1.ReadFileResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("workos.bridge.v1.AppBridgeService.ReadFile is not implemented"))
+}
+
+func (UnimplementedAppBridgeServiceHandler) WriteFile(context.Context, *connect.Request[v1.WriteFileRequest]) (*connect.Response[v1.WriteFileResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("workos.bridge.v1.AppBridgeService.WriteFile is not implemented"))
+}
 
 func (UnimplementedAppBridgeServiceHandler) AuthorizeShellAction(context.Context, *connect.Request[v1.AuthorizeShellActionRequest]) (*connect.Response[v1.AuthorizeShellActionResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("workos.bridge.v1.AppBridgeService.AuthorizeShellAction is not implemented"))

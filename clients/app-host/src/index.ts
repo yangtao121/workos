@@ -18,6 +18,15 @@ import {
   MAX_INFLIGHT_REQUESTS,
   MAX_SINGLE_MESSAGE_BYTES,
   REQUEST_TIMEOUT_MS,
+  FILE_PICK_TIMEOUT_MS,
+  validBridgeFileRef,
+  decodeFileData,
+  type BridgeFileRef,
+  type BridgeFilePage,
+  type BridgeFilePickPayload,
+  type BridgeFileReadPayload,
+  type BridgeFileWritePayload,
+  type BridgeFileResult,
   isFrameEnvelope,
   postBridgeHello,
   postBridgeMessage,
@@ -59,6 +68,10 @@ export interface AppBridgeRunResult {
  * `internal` and its details never cross the port.
  */
 export interface AppBridgeTransport {
+  listFiles(directory: string, after: string, signal: AbortSignal): Promise<BridgeFilePage>;
+  readFile(input: BridgeFileReadPayload, signal: AbortSignal): Promise<{ dataBase64: string }>;
+  writeFile(input: BridgeFileWritePayload, signal: AbortSignal): Promise<{ ref: BridgeFileRef }>;
+
   authorizeShellAction(method: BridgeMethod): Promise<void>;
   runAgentTask(input: BridgeRunPayload): Promise<AppBridgeRunResult>;
   /**
@@ -106,6 +119,7 @@ export interface AppBridgeHostOptions {
   transport: AppBridgeTransport;
   /** Shell-side method host: the trusted parent executes these itself. */
   shell?: AppBridgeShellHost;
+  filePicker?: (input: BridgeFilePickPayload, signal: AbortSignal) => Promise<BridgeFileRef[]>;
   timeoutMs?: number;
   nonceGenerator?: () => string;
   /** Test seam: defaults to a real MessageChannel. */
@@ -126,14 +140,6 @@ export interface AppBridgeHost {
 const capabilityMethods: Record<string, BridgeMethod> = {
   "agent.task.run": "agent.run",
   "agent.event.watch": "agent.stream",
-  // Shell-side methods: executed by the trusted parent itself (window
-  // management, theme, and the project summary the Desktop already holds).
-  // The capability gate still applies: only granted capabilities negotiate
-  // the method.
-  "project.read": "project.current",
-  "theme.get": "theme.get",
-  "window.setTitle": "window.setTitle",
-  "window.close": "window.close",
   // The session's effective list carries the METHOD name for knowledge
   // search: the runtime already negotiated it from a real `knowledge.read`
   // grant plus its configured indexer, so the grant name never crosses the
@@ -142,6 +148,9 @@ const capabilityMethods: Record<string, BridgeMethod> = {
   // ADR-0014: the grant name and the method name are identical, so the
   // effective capability list carries the method name directly.
   "notifications.create": "notifications.create",
+  "files.pick": "files.pick",
+  "files.read": "files.read",
+  "files.write": "files.write",
 };
 
 // Request-boundary grammar enforced on the untrusted inbound stream. These
@@ -329,7 +338,11 @@ export function openAppBridgeHost(options: AppBridgeHostOptions): AppBridgeHost 
     (typeof crypto.randomUUID === "function" ? crypto.randomUUID() : String(Math.random()));
 
   const methods = Object.entries(capabilityMethods)
-    .filter(([capability]) => options.capabilities.includes(capability))
+    .filter(
+      ([capability]) =>
+        options.capabilities.includes(capability) &&
+        (capability !== "files.pick" || options.filePicker !== undefined),
+    )
     .map(([, method]) => method);
   // Shell-side methods: the trusted parent executes these itself, so they
   // are offered only when the parent actually supplies a shell host (the
@@ -361,7 +374,7 @@ export function openAppBridgeHost(options: AppBridgeHostOptions): AppBridgeHost 
   // Pending runs and live streams both count against the in-flight bound;
   // timers are owned by their entries so teardown and timeouts always clean
   // up the exact operation that timed out.
-  const pending = new Map<string, { timer: number }>();
+  const pending = new Map<string, { timer: number; controller?: AbortController }>();
   const streams = new Map<string, { controller: AbortController; timer: number }>();
 
   const clearPending = (requestId: string): void => {
@@ -369,11 +382,13 @@ export function openAppBridgeHost(options: AppBridgeHostOptions): AppBridgeHost 
     if (!entry) return;
     window.clearTimeout(entry.timer);
     pending.delete(requestId);
+    entry.controller?.abort();
   };
 
   const failAll = (): void => {
     for (const entry of pending.values()) {
       window.clearTimeout(entry.timer);
+      entry.controller?.abort();
     }
     pending.clear();
     for (const { controller, timer } of streams.values()) {
@@ -534,6 +549,33 @@ export function openAppBridgeHost(options: AppBridgeHostOptions): AppBridgeHost 
     if (pending.size + streams.size >= MAX_INFLIGHT_REQUESTS) {
       return "too_many_inflight";
     }
+
+    if (request.method === "files.pick") {
+      const payload: unknown = request.payload;
+      return isPlainObject(payload) &&
+        (hasExactKeys(payload, []) ||
+          (hasExactKeys(payload, ["multiple"]) && typeof payload["multiple"] === "boolean"))
+        ? null
+        : "invalid_argument";
+    }
+    if (request.method === "files.read" || request.method === "files.write") {
+      const payload: unknown = request.payload;
+      const write = request.method === "files.write";
+      if (
+        !isPlainObject(payload) ||
+        !hasExactKeys(payload, write ? ["ref", "dataBase64"] : ["ref"]) ||
+        !validBridgeFileRef(payload["ref"], write)
+      )
+        return "invalid_argument";
+      if (write) {
+        try {
+          decodeFileData(payload["dataBase64"]);
+        } catch {
+          return "invalid_argument";
+        }
+      }
+      return null;
+    }
     if (request.method === "agent.run") {
       return validRunPayload(request.payload) ? null : "invalid_argument";
     }
@@ -636,6 +678,65 @@ export function openAppBridgeHost(options: AppBridgeHostOptions): AppBridgeHost 
         const code: BridgeErrorCode =
           reason instanceof BridgeProtocolError ? reason.code : "internal";
         respondError(request.requestId, code);
+      });
+      return;
+    }
+
+    if (
+      request.method === "files.pick" ||
+      request.method === "files.read" ||
+      request.method === "files.write"
+    ) {
+      const controller = new AbortController();
+      const timer = window.setTimeout(
+        () => {
+          if (pending.has(request.requestId)) {
+            clearPending(request.requestId);
+            respondError(request.requestId, "timeout");
+          }
+        },
+        request.method === "files.pick" ? FILE_PICK_TIMEOUT_MS : timeoutMs,
+      );
+      pending.set(request.requestId, { timer, controller });
+      void (async () => {
+        let payload: BridgeFileResult;
+        if (request.method === "files.pick") {
+          if (!options.filePicker) throw new BridgeProtocolError("permission_denied");
+          const refs = await options.filePicker(
+            request.payload as BridgeFilePickPayload,
+            controller.signal,
+          );
+          if (!pending.has(request.requestId)) return;
+          if (refs.length > 20 || !refs.every((ref) => validBridgeFileRef(ref)))
+            throw new BridgeProtocolError("internal");
+          // A grant may change while the person is choosing a file.
+          if (refs.length > 0) await options.transport.listFiles("", "", controller.signal);
+          payload = { refs };
+        } else if (request.method === "files.read")
+          payload = await options.transport.readFile(
+            request.payload as BridgeFileReadPayload,
+            controller.signal,
+          );
+        else
+          payload = await options.transport.writeFile(
+            request.payload as BridgeFileWritePayload,
+            controller.signal,
+          );
+        if (!pending.has(request.requestId)) return;
+        clearPending(request.requestId);
+        postBridgeMessage(channel.port1, {
+          version: APP_BRIDGE_VERSION,
+          type: "response",
+          requestId: request.requestId,
+          payload,
+        });
+      })().catch((error: unknown) => {
+        if (!pending.has(request.requestId)) return;
+        clearPending(request.requestId);
+        respondError(
+          request.requestId,
+          error instanceof BridgeProtocolError ? error.code : "internal",
+        );
       });
       return;
     }

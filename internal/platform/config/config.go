@@ -62,7 +62,16 @@ type Indexer struct {
 	PageTokenKey    string `yaml:"page_token_key"`
 }
 
+type WorkspaceMount struct {
+	OwnerUserID string `yaml:"owner_user_id"`
+	ProjectID   string `yaml:"project_id"`
+	RootPath    string `yaml:"root_path"`
+	ReadOnly    bool   `yaml:"read_only"`
+}
+
 type Runtime struct {
+	WorkspaceMounts []WorkspaceMount `yaml:"workspace_mounts"`
+
 	PodmanBin string `yaml:"podman_bin"`
 	// WorkloadEngine selects the supervised-workload engine. Empty (or
 	// "podman") is the only production value: the real rootless Podman

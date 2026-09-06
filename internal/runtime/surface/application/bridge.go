@@ -25,6 +25,7 @@ type BridgeService struct {
 	repository ports.SessionRepository
 	appAgent   ports.AppAgentClient
 	resolver   ports.LaunchResolver
+	workspace  ports.Workspace
 	// knowledge is the scoped search pipeline (Core re-authorization +
 	// indexer call). It is nil when the runtime has no configured indexer
 	// adapter: then knowledge.search is never negotiated and every call
@@ -66,24 +67,42 @@ func (s *BridgeService) AuthorizeShellAction(ctx context.Context, ownerUserID, d
 	default:
 		return domain.ErrInvalid
 	}
+
+	_, err := s.authorizeCurrent(ctx, ownerUserID, deviceID, token, capability)
+	return err
+}
+
+func (s *BridgeService) WithWorkspace(workspace ports.Workspace) *BridgeService {
+	s.workspace = workspace
+	return s
+}
+
+func (s *BridgeService) authorizeCurrent(ctx context.Context, ownerUserID, deviceID, token, capability string) (domain.SurfaceSession, error) {
 	session, err := s.authorize(ctx, ownerUserID, deviceID, token, capability)
 	if err != nil {
-		return err
+		return domain.SurfaceSession{}, err
 	}
 	if s.resolver == nil {
-		return domain.ErrUnavailable
+		return domain.SurfaceSession{}, domain.ErrUnavailable
 	}
 	launch, err := s.resolver.ResolveSurfaceLaunch(ctx, ports.ResolveQuery{ProjectID: session.ProjectID, AppInstanceID: session.AppInstanceID})
 	if err != nil {
-		return mapResolverError(err)
+		return domain.SurfaceSession{}, mapResolverError(err)
 	}
 	if launch.GrantRevision <= 0 || launch.GrantRevision != session.InstallationGrantRevision || launch.AppID != session.Descriptor.AppID || launch.Version != session.Descriptor.Version || launch.ManifestDigest != session.Descriptor.ManifestDigest {
-		return domain.ErrPermissionDenied
+		return domain.SurfaceSession{}, domain.ErrPermissionDenied
 	}
-	if capability != "" && !domain.BridgeCapabilityGranted(domain.EffectiveBridgeCapabilities(launch.GrantedPermissions, false), capability) {
-		return domain.ErrPermissionDenied
+	grant := capability
+	switch capability {
+	case "project.current":
+		grant = "project.read"
+	case "files.pick":
+		grant = "files.read"
 	}
-	return nil
+	if grant != "" && !domain.BridgeCapabilityGranted(launch.GrantedPermissions, grant) {
+		return domain.SurfaceSession{}, domain.ErrPermissionDenied
+	}
+	return session, nil
 }
 
 // RunAgentTask validates the presented bridge token and submits one

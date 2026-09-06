@@ -266,3 +266,13 @@ func TestShellTransportIdentityAndDenial(t *testing.T) {
 		t.Fatal("missing identity reached service")
 	}
 }
+
+func (s *fakeBridgeService) ListFiles(context.Context, string, string, string, string, string) (domain.FilePage, error) {
+	return domain.FilePage{}, domain.ErrPermissionDenied
+}
+func (s *fakeBridgeService) ReadFile(context.Context, string, string, string, domain.FileRef) ([]byte, error) {
+	return nil, domain.ErrPermissionDenied
+}
+func (s *fakeBridgeService) WriteFile(context.Context, string, string, string, domain.FileRef, []byte) (domain.FileRef, error) {
+	return domain.FileRef{}, domain.ErrPermissionDenied
+}

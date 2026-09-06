@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sort"
 	"time"
 
 	"github.com/yangtao121/workos/internal/platform/ids"
@@ -34,6 +35,7 @@ type Service struct {
 	// indexer adapter. Only then can `knowledge.read` grants negotiate the
 	// read-only knowledge.search bridge method (ADR-0013).
 	knowledgeConfigured bool
+	workspace           ports.Workspace
 }
 
 func New(repository ports.SessionRepository, resolver ports.LaunchResolver, generator ids.Generator, sessionTTL time.Duration) (*Service, error) {
@@ -46,6 +48,22 @@ func New(repository ports.SessionRepository, resolver ports.LaunchResolver, gene
 func (s *Service) WithKnowledgeConfigured() *Service {
 	s.knowledgeConfigured = true
 	return s
+}
+
+func (s *Service) WithWorkspace(workspace ports.Workspace) *Service {
+	s.workspace = workspace
+	return s
+}
+
+func (s *Service) fileCapabilities(owner, project string, granted []string) []string {
+	if s.workspace == nil {
+		return nil
+	}
+	available, writable := s.workspace.Access(ports.FileScope{OwnerUserID: owner, ProjectID: project})
+	if !available {
+		return nil
+	}
+	return domain.WorkspaceCapabilities(granted, writable)
 }
 
 // NewWithWorkloads wires the broker with the runtime's Workload Manager.
@@ -166,12 +184,13 @@ func (s *Service) Create(ctx context.Context, command CreateCommand) (CreatedSur
 			AppID: resolved.AppID, Version: resolved.Version,
 			ManifestDigest: resolved.ManifestDigest,
 		},
-		BridgeCapabilities: domain.EffectiveBridgeCapabilities(resolved.GrantedPermissions, s.knowledgeConfigured),
+		BridgeCapabilities: append(domain.EffectiveBridgeCapabilities(resolved.GrantedPermissions, s.knowledgeConfigured), s.fileCapabilities(command.OwnerUserID, command.ProjectID, resolved.GrantedPermissions)...),
 		// The pinned authorization epoch is exactly what Core resolved —
 		// never a constant and never a client input (ADR-0003 §7).
 		InstallationGrantRevision: resolved.GrantRevision,
 		CreatedAt:                 now, ExpiresAt: now.Add(s.ttl),
 	}
+	sort.Strings(session.BridgeCapabilities)
 	switch resolved.Kind {
 	case ports.LaunchKindWebBundle:
 		session.Descriptor.ArtifactID = resolved.ArtifactID
