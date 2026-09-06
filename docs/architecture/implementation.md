@@ -1195,3 +1195,10 @@ indexer worker：Core claim（lease + FOR UPDATE SKIP LOCKED）
   `make test-project-knowledge-rebuild`（golden 等价 + 崩溃恢复 + 幂等 +
   销毁/恢复）；restart battery 增加 index-seed/index-verify（Core+indexer
   重启后索引/cursor/幂等一致）。
+
+## 2026-09-06 部署修复（ADR-0020）
+
+Reliability 台账增加 candidate/starting/canary/rollback 阶段与固定 expected revision。
+候选先持久化，再通过 Core 切换并启动 Surface，成功后才开始观察。每次协调持有该行事务锁，
+跨进程重复调用依赖固定 idempotency key，终态不再协调。启动失败或新 incident 驱动有界回滚。
+修复任务完成不再制造空目标部署；Build/Test 产物交接仍待完整软件链验收。

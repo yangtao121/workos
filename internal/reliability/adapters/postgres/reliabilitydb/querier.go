@@ -25,7 +25,6 @@ type Querier interface {
 	GetIncidentByOccurrence(ctx context.Context, occurrenceDigest string) (GetIncidentByOccurrenceRow, error)
 	GetRepairLedger(ctx context.Context, incidentID string) (WorkosReliabilityRepairLedger, error)
 	GetSupervisorCheckpoint(ctx context.Context) (WorkosReliabilitySupervisorCheckpoint, error)
-	HasDeploymentLedger(ctx context.Context, incidentID string) (bool, error)
 	IncidentAcknowledgeKeyExists(ctx context.Context, arg IncidentAcknowledgeKeyExistsParams) (bool, error)
 	// Reliability Incident persistence queries (reliability-host owned tables
 	// only; the runtime schema is never queried).
@@ -37,7 +36,6 @@ type Querier interface {
 	// private source service and never issues this SQL.
 	InsertIncidentNotificationPublication(ctx context.Context, arg InsertIncidentNotificationPublicationParams) (int64, error)
 	InsertRepairLedger(ctx context.Context, arg InsertRepairLedgerParams) (int64, error)
-	ListCanaryDue(ctx context.Context, arg ListCanaryDueParams) ([]WorkosReliabilityDeploymentLedger, error)
 	// Owner-scoped, project-optional, keyed pagination on (created_at, id). The
 	// caller probes limit+1 rows so a full final page never phantom-pages.
 	ListIncidentsPage(ctx context.Context, arg ListIncidentsPageParams) ([]ListIncidentsPageRow, error)
@@ -62,8 +60,9 @@ type Querier interface {
 	// orchestrator; the orchestrator asks Core which ones completed.
 	ListRepairCompleted(ctx context.Context, limit int32) ([]ListRepairCompletedRow, error)
 	LoadSupervisorProgress(ctx context.Context, workloadID string) (WorkosReliabilitySupervisorWorkload, error)
+	LockPendingDeployments(ctx context.Context, limit int32) ([]LockPendingDeploymentsRow, error)
 	MarkIncidentResolved(ctx context.Context, arg MarkIncidentResolvedParams) (int64, error)
-	SetDeploymentState(ctx context.Context, arg SetDeploymentStateParams) (int64, error)
+	SaveDeployment(ctx context.Context, arg SaveDeploymentParams) error
 	// Deployment controller (ADR-0016 section 6).
 	StartDeploymentLedger(ctx context.Context, arg StartDeploymentLedgerParams) (int64, error)
 	UpdateIncidentOutcome(ctx context.Context, arg UpdateIncidentOutcomeParams) (int64, error)

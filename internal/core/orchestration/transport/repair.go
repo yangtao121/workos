@@ -55,7 +55,7 @@ func (h *RepairTaskHandler) CreateRepairTask(ctx context.Context, req *connect.R
 	switch {
 	case id.UserID == "" || id.DeviceID == "":
 		return nil, connect.NewError(connect.CodeUnauthenticated, errors.New("identity is required"))
-	case len(msg.GetIncidentId()) != 36 || len(msg.GetProjectId()) != 36:
+	case !agentdomain.ValidAppTaskUUID(msg.GetIncidentId()) || !agentdomain.ValidAppTaskUUID(msg.GetProjectId()):
 		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("incident and project must be canonical UUIDv7"))
 	case spec == "" || len(spec) > maxRepairSpecBytes || strings.ContainsFunc(spec, func(r rune) bool { return r < 0x20 || r == 0x7f }):
 		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("violation summary is invalid"))

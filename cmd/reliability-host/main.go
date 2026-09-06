@@ -76,13 +76,9 @@ func run(logger *slog.Logger) error {
 	// anchored by the per-incident ledger.
 	repairSubmitter := transport.NewRepairSubmitterClient(cfg.Services.Core, cfg.Auth.DeviceID)
 
-	// The deployment controller (ADR-0016 §6): repair-completed incidents
-	// run a bounded canary window and then promote; a fresh incident during
-	// the window rolls back to the previous pinned version. Empty target
-	// versions mean the repair ran on the pinned version, so promotion is
-	// the calm-window verdict itself.
+	// Candidate reconciliation persists version requests before execution (ADR-0020).
 	deploymentController, err := application.NewDeploymentController(
-		repository, transport.NewDeploymentDriverClient(cfg.Services.Core), cfg.Reliability.PollInterval*3)
+		repository, transport.NewDeploymentDriverClient(cfg.Services.Core, cfg.Services.Runtime, cfg.Auth.DeviceID), cfg.Reliability.PollInterval*3)
 	if err != nil {
 		return err
 	}
@@ -146,6 +142,11 @@ func run(logger *slog.Logger) error {
 					logger.Info("repair pass submitted tasks", "count", submitted)
 				}
 				repairCancel()
+				deployCtx, deployCancel := context.WithTimeout(ctx, cfg.Reliability.PollTimeout)
+				if _, err := deploymentController.Pass(deployCtx, time.Now().UTC(), 4); err != nil {
+					logger.Warn("deployment pass pending", "error", err)
+				}
+				deployCancel()
 			}
 		}
 	}()

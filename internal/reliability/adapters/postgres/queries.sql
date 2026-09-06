@@ -288,27 +288,31 @@ WHERE id = $2;
 -- name: StartDeploymentLedger :execrows
 INSERT INTO workos_reliability.deployment_ledger (
     incident_id, owner_user_id, project_id, installation_id, target_version,
-    state, canary_until, created_at, updated_at
-) VALUES ($1, $2, $3, $4, $5, 'canary', $6, $7, $7)
-ON CONFLICT (incident_id) DO NOTHING;
+    expected_revision, state, canary_until, canary_started_at, created_at, updated_at
+) VALUES ($1, $2, $3, $4, $5, $6, 'candidate', sqlc.arg(created_at), sqlc.arg(created_at), sqlc.arg(created_at), sqlc.arg(created_at))
+ON CONFLICT (incident_id) DO UPDATE SET incident_id = EXCLUDED.incident_id
+WHERE deployment_ledger.owner_user_id = EXCLUDED.owner_user_id
+  AND deployment_ledger.project_id = EXCLUDED.project_id
+  AND deployment_ledger.installation_id = EXCLUDED.installation_id
+  AND deployment_ledger.target_version = EXCLUDED.target_version
+  AND deployment_ledger.expected_revision = EXCLUDED.expected_revision;
 
--- name: HasDeploymentLedger :one
-SELECT EXISTS (
-    SELECT 1 FROM workos_reliability.deployment_ledger WHERE incident_id = $1
-) AS has_incident;
+-- name: LockPendingDeployments :many
+SELECT d.*, EXISTS (
+    SELECT 1 FROM workos_reliability.incidents i
+    WHERE i.owner_user_id = d.owner_user_id AND i.project_id = d.project_id
+      AND i.app_instance_id = d.installation_id AND i.id <> d.incident_id
+      AND i.created_at >= d.canary_started_at
+) AS new_incident
+FROM workos_reliability.deployment_ledger d
+WHERE d.state IN ('candidate', 'starting', 'canary', 'rollback')
+ORDER BY d.updated_at, d.incident_id
+LIMIT $1 FOR UPDATE OF d SKIP LOCKED;
 
--- name: ListCanaryDue :many
-SELECT incident_id, owner_user_id, project_id, installation_id, target_version,
-       state, canary_until, created_at, updated_at
-FROM workos_reliability.deployment_ledger
-WHERE state = 'canary' AND canary_until <= $1
-ORDER BY canary_until
-LIMIT $2;
-
--- name: SetDeploymentState :execrows
+-- name: SaveDeployment :exec
 UPDATE workos_reliability.deployment_ledger
-SET state = $2, updated_at = $3
-WHERE incident_id = $1;
+SET state = $2, attempts = $3, canary_started_at = $4, canary_until = $5, updated_at = $6
+WHERE incident_id = $1 AND state IN ('candidate', 'starting', 'canary', 'rollback');
 
 -- name: ListRepairCompleted :many
 -- Submitted repair rows whose task terminal state is unknown to the

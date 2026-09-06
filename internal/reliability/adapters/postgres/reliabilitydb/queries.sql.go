@@ -379,19 +379,6 @@ func (q *Queries) GetSupervisorCheckpoint(ctx context.Context) (WorkosReliabilit
 	return i, err
 }
 
-const hasDeploymentLedger = `-- name: HasDeploymentLedger :one
-SELECT EXISTS (
-    SELECT 1 FROM workos_reliability.deployment_ledger WHERE incident_id = $1
-) AS has_incident
-`
-
-func (q *Queries) HasDeploymentLedger(ctx context.Context, incidentID string) (bool, error) {
-	row := q.db.QueryRow(ctx, hasDeploymentLedger, incidentID)
-	var has_incident bool
-	err := row.Scan(&has_incident)
-	return has_incident, err
-}
-
 const incidentAcknowledgeKeyExists = `-- name: IncidentAcknowledgeKeyExists :one
 SELECT EXISTS (
     SELECT 1 FROM workos_reliability.incidents
@@ -550,50 +537,6 @@ func (q *Queries) InsertRepairLedger(ctx context.Context, arg InsertRepairLedger
 		return 0, err
 	}
 	return result.RowsAffected(), nil
-}
-
-const listCanaryDue = `-- name: ListCanaryDue :many
-SELECT incident_id, owner_user_id, project_id, installation_id, target_version,
-       state, canary_until, created_at, updated_at
-FROM workos_reliability.deployment_ledger
-WHERE state = 'canary' AND canary_until <= $1
-ORDER BY canary_until
-LIMIT $2
-`
-
-type ListCanaryDueParams struct {
-	CanaryUntil time.Time `json:"canary_until"`
-	Limit       int32     `json:"limit"`
-}
-
-func (q *Queries) ListCanaryDue(ctx context.Context, arg ListCanaryDueParams) ([]WorkosReliabilityDeploymentLedger, error) {
-	rows, err := q.db.Query(ctx, listCanaryDue, arg.CanaryUntil, arg.Limit)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var items []WorkosReliabilityDeploymentLedger
-	for rows.Next() {
-		var i WorkosReliabilityDeploymentLedger
-		if err := rows.Scan(
-			&i.IncidentID,
-			&i.OwnerUserID,
-			&i.ProjectID,
-			&i.InstallationID,
-			&i.TargetVersion,
-			&i.State,
-			&i.CanaryUntil,
-			&i.CreatedAt,
-			&i.UpdatedAt,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
 }
 
 const listIncidentsPage = `-- name: ListIncidentsPage :many
@@ -1085,6 +1028,69 @@ func (q *Queries) LoadSupervisorProgress(ctx context.Context, workloadID string)
 	return i, err
 }
 
+const lockPendingDeployments = `-- name: LockPendingDeployments :many
+SELECT d.incident_id, d.owner_user_id, d.project_id, d.installation_id, d.target_version, d.state, d.canary_until, d.created_at, d.updated_at, d.expected_revision, d.attempts, d.canary_started_at, EXISTS (
+    SELECT 1 FROM workos_reliability.incidents i
+    WHERE i.owner_user_id = d.owner_user_id AND i.project_id = d.project_id
+      AND i.app_instance_id = d.installation_id AND i.id <> d.incident_id
+      AND i.created_at >= d.canary_started_at
+) AS new_incident
+FROM workos_reliability.deployment_ledger d
+WHERE d.state IN ('candidate', 'starting', 'canary', 'rollback')
+ORDER BY d.updated_at, d.incident_id
+LIMIT $1 FOR UPDATE OF d SKIP LOCKED
+`
+
+type LockPendingDeploymentsRow struct {
+	IncidentID       string    `json:"incident_id"`
+	OwnerUserID      string    `json:"owner_user_id"`
+	ProjectID        string    `json:"project_id"`
+	InstallationID   string    `json:"installation_id"`
+	TargetVersion    string    `json:"target_version"`
+	State            string    `json:"state"`
+	CanaryUntil      time.Time `json:"canary_until"`
+	CreatedAt        time.Time `json:"created_at"`
+	UpdatedAt        time.Time `json:"updated_at"`
+	ExpectedRevision int64     `json:"expected_revision"`
+	Attempts         int32     `json:"attempts"`
+	CanaryStartedAt  time.Time `json:"canary_started_at"`
+	NewIncident      bool      `json:"new_incident"`
+}
+
+func (q *Queries) LockPendingDeployments(ctx context.Context, limit int32) ([]LockPendingDeploymentsRow, error) {
+	rows, err := q.db.Query(ctx, lockPendingDeployments, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []LockPendingDeploymentsRow
+	for rows.Next() {
+		var i LockPendingDeploymentsRow
+		if err := rows.Scan(
+			&i.IncidentID,
+			&i.OwnerUserID,
+			&i.ProjectID,
+			&i.InstallationID,
+			&i.TargetVersion,
+			&i.State,
+			&i.CanaryUntil,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.ExpectedRevision,
+			&i.Attempts,
+			&i.CanaryStartedAt,
+			&i.NewIncident,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const markIncidentResolved = `-- name: MarkIncidentResolved :execrows
 UPDATE workos_reliability.incidents SET
     state = 'resolved',
@@ -1108,43 +1114,55 @@ func (q *Queries) MarkIncidentResolved(ctx context.Context, arg MarkIncidentReso
 	return result.RowsAffected(), nil
 }
 
-const setDeploymentState = `-- name: SetDeploymentState :execrows
+const saveDeployment = `-- name: SaveDeployment :exec
 UPDATE workos_reliability.deployment_ledger
-SET state = $2, updated_at = $3
-WHERE incident_id = $1
+SET state = $2, attempts = $3, canary_started_at = $4, canary_until = $5, updated_at = $6
+WHERE incident_id = $1 AND state IN ('candidate', 'starting', 'canary', 'rollback')
 `
 
-type SetDeploymentStateParams struct {
-	IncidentID string    `json:"incident_id"`
-	State      string    `json:"state"`
-	UpdatedAt  time.Time `json:"updated_at"`
+type SaveDeploymentParams struct {
+	IncidentID      string    `json:"incident_id"`
+	State           string    `json:"state"`
+	Attempts        int32     `json:"attempts"`
+	CanaryStartedAt time.Time `json:"canary_started_at"`
+	CanaryUntil     time.Time `json:"canary_until"`
+	UpdatedAt       time.Time `json:"updated_at"`
 }
 
-func (q *Queries) SetDeploymentState(ctx context.Context, arg SetDeploymentStateParams) (int64, error) {
-	result, err := q.db.Exec(ctx, setDeploymentState, arg.IncidentID, arg.State, arg.UpdatedAt)
-	if err != nil {
-		return 0, err
-	}
-	return result.RowsAffected(), nil
+func (q *Queries) SaveDeployment(ctx context.Context, arg SaveDeploymentParams) error {
+	_, err := q.db.Exec(ctx, saveDeployment,
+		arg.IncidentID,
+		arg.State,
+		arg.Attempts,
+		arg.CanaryStartedAt,
+		arg.CanaryUntil,
+		arg.UpdatedAt,
+	)
+	return err
 }
 
 const startDeploymentLedger = `-- name: StartDeploymentLedger :execrows
 
 INSERT INTO workos_reliability.deployment_ledger (
     incident_id, owner_user_id, project_id, installation_id, target_version,
-    state, canary_until, created_at, updated_at
-) VALUES ($1, $2, $3, $4, $5, 'canary', $6, $7, $7)
-ON CONFLICT (incident_id) DO NOTHING
+    expected_revision, state, canary_until, canary_started_at, created_at, updated_at
+) VALUES ($1, $2, $3, $4, $5, $6, 'candidate', $7, $7, $7, $7)
+ON CONFLICT (incident_id) DO UPDATE SET incident_id = EXCLUDED.incident_id
+WHERE deployment_ledger.owner_user_id = EXCLUDED.owner_user_id
+  AND deployment_ledger.project_id = EXCLUDED.project_id
+  AND deployment_ledger.installation_id = EXCLUDED.installation_id
+  AND deployment_ledger.target_version = EXCLUDED.target_version
+  AND deployment_ledger.expected_revision = EXCLUDED.expected_revision
 `
 
 type StartDeploymentLedgerParams struct {
-	IncidentID     string    `json:"incident_id"`
-	OwnerUserID    string    `json:"owner_user_id"`
-	ProjectID      string    `json:"project_id"`
-	InstallationID string    `json:"installation_id"`
-	TargetVersion  string    `json:"target_version"`
-	CanaryUntil    time.Time `json:"canary_until"`
-	CreatedAt      time.Time `json:"created_at"`
+	IncidentID       string    `json:"incident_id"`
+	OwnerUserID      string    `json:"owner_user_id"`
+	ProjectID        string    `json:"project_id"`
+	InstallationID   string    `json:"installation_id"`
+	TargetVersion    string    `json:"target_version"`
+	ExpectedRevision int64     `json:"expected_revision"`
+	CreatedAt        time.Time `json:"created_at"`
 }
 
 // Deployment controller (ADR-0016 section 6).
@@ -1155,7 +1173,7 @@ func (q *Queries) StartDeploymentLedger(ctx context.Context, arg StartDeployment
 		arg.ProjectID,
 		arg.InstallationID,
 		arg.TargetVersion,
-		arg.CanaryUntil,
+		arg.ExpectedRevision,
 		arg.CreatedAt,
 	)
 	if err != nil {

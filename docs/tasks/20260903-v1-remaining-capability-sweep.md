@@ -1,6 +1,6 @@
 # Task: v1 剩余能力总攻——Provider 扩展、真实 Runtime 自愈链、远程 Surface、语义知识、后台推送与移动原生、桌面系统应用
 
-- 状态：active（W1 进行中）
+- 状态：active（2026-09-06 全面修复；以下修复验收表为当前恢复点）
 - Owner/Agent：overnight capability-sweep implementation agent（单一写入智能体，单分支单 worktree 串行）
 - 进程/模块：全部六进程 + desktop-web/mobile-shell/sdk
 - 依赖：ADR-0001..0014 全部既有裁决；实现依据 `docs/prompts/20260903-next-agent-remaining-capability-sweep.md`
@@ -18,6 +18,34 @@ W1 → W2 → W3 → W4 → W6 → W5，全部在同一 branch 严格串行。
 手改生成区、复杂窗口动画等）。
 
 ## 阶段清单（唯一恢复点：本节状态 + 提交哈希）
+
+### 2026-09-06 修复验收（基线 3da0478）
+
+用户授权：全面修复六条工作流，补齐已承诺的软件链路；精简深色桌面，保留已有数据，
+清理冗余实现；沿用当前单分支、单 worktree、单写入智能体，完成后合并本地 main，不 push。
+下方历史阶段表仅保留溯源，不能作为本轮完成证据。
+
+| 阶段                         | 状态                                                         | 验收                                                           |
+| ---------------------------- | ------------------------------------------------------------ | -------------------------------------------------------------- |
+| R1 Provider/凭据与工具链基线 | verified                                                     | 既有协议 fixture、租约、预算、取消、轮换门禁                   |
+| R2 自愈与部署                | active（候选状态机已修复；Build/Test 交接依赖 R3 workspace） | 真实候选、先切换后观察、失败回滚、持久重试；禁止空候选成功     |
+| R3 Surface/Bridge            | pending                                                      | 文件/窗口/产物能力、真实浏览器/Native 交互，不能用静态页面替代 |
+| R4 工作区/知识               | pending                                                      | 混合来源结果、服务端来源过滤、分页、打开与跨项目隔离           |
+| R6 桌面                      | pending                                                      | 统一深色控件、入口、窗口几何、键盘与响应式；确定性视觉证据     |
+| R5 通知/移动                 | pending                                                      | 持久推送重试、唤醒补收、配对/发现/原生边界                     |
+| 收口/main                    | pending                                                      | generate 幂等、check、integration/E2E、专项门禁、文档一致      |
+
+已确认缺陷：部署在观察结束才切换版本且允许空候选；推送发送前消耗去重记录且失败不重试；
+Knowledge Center 拒绝 workspace 来源导致整页失败；Files 先分页后过滤；Docs/Code 只读首屏；
+窗口吸附未使用可用工作区域，层级推进遗漏；新增白底控件继承浅色文字；截图使用随机时间与共享数据。
+
+R1：2026-09-06 `make test-credential-vault-expansion`、`make test-codex-harness`、`make test-mcp-harness` 全部 PASS。
+
+基线：工作树干净；固定 Node 24 容器下 CommandPalette/Desktop/KnowledgeCenter 共 19 测试 PASS。
+宿主 Node 22 无法运行 pnpm 11，后续采用 Makefile 的固定容器工具链，不修改宿主。
+
+视觉证据计划：`docs/ui/desktop-web/changes/20260906-desktop-repair/` 的 before/after/notes.md，
+使用同一固定 fixture 和 viewport 采集并更新 current。完成前不得标记 done。
 
 ### W1 Provider 与凭据扩展
 
@@ -302,7 +330,7 @@ W1 → W2 → W3 → W4 → W6 → W5，全部在同一 branch 严格串行。
   TestArchiveObjects PASS 并入 `make test-workspace-indexing`。
 - mDNS 接入 compose + 发现 UX 接配对：`cmd/workos-mdns-announce`（lan-pairing
   profile，host 网络，广播 origin+配对指纹，与网关证书同源）；`workosctl
-  device scan --fingerprint`（常量时间指纹校验后输出 origin，接既有
+device scan --fingerprint`（常量时间指纹校验后输出 origin，接既有
   `device pair` 流程）；`make test-lan-pairing` 增加 mDNS 发现阶段
   （真实发现 origin https://localhost:8443）。
 
@@ -323,21 +351,29 @@ W1 → W2 → W3 → W4 → W6 → W5，全部在同一 branch 严格串行。
 
 ### 全量门禁复跑（最终 HEAD）
 
-| 门禁 | 结果 |
-| --- | --- |
-| test-credential-vault-expansion / test-codex-harness / test-mcp-harness | PASS |
-| test-real-supervision / test-telemetry / test-repair-deployment | PASS |
-| test-rootless-runtime | BLOCKED（宿主无 rootless Podman，如实记录） |
-| test-app-bridge-full / test-declarative-surface / test-browser-surface / test-remote-native-surface | PASS |
-| test-semantic-knowledge / test-workspace-indexing（含 archive） | PASS |
-| test-push-relay（含通知搜索） | PASS |
-| test-mobile-wrappers / test-mdns-discovery / test-desktop-system-apps | PASS |
-| test-e2e（完整 Playwright 套件） | PASS（30 passed / 17 skipped-profile；修复 1/2/4 后） |
-| test-adaptive-shell | PASS |
-| test-lan-pairing（含新 mDNS 发现阶段） | PASS |
-| test-project-knowledge-search / test-app-knowledge-search / test-project-knowledge-rebuild | PASS（修复 3 后） |
-| test-notification-center / test-incident-notifications / test-app-notifications | PASS（修复 4/5 后） |
-| test-artifact-context / test-artifact-review / test-deepseek-fixture / test-deepseek-structured-review / test-app-version-rollback | PASS（修复 1/2/5 后） |
-| test-podman-fixture | BLOCKED（宿主无 rootless Podman，如实记录） |
-| test-integration（全量集成） | PASS |
-| make check / go test -race ./internal/... ./cmd/... / buf lint / buf breaking（vs main） | PASS / 干净 / PASS / PASS |
+| 门禁                                                                                                                               | 结果                                                  |
+| ---------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------- |
+| test-credential-vault-expansion / test-codex-harness / test-mcp-harness                                                            | PASS                                                  |
+| test-real-supervision / test-telemetry / test-repair-deployment                                                                    | PASS                                                  |
+| test-rootless-runtime                                                                                                              | BLOCKED（宿主无 rootless Podman，如实记录）           |
+| test-app-bridge-full / test-declarative-surface / test-browser-surface / test-remote-native-surface                                | PASS                                                  |
+| test-semantic-knowledge / test-workspace-indexing（含 archive）                                                                    | PASS                                                  |
+| test-push-relay（含通知搜索）                                                                                                      | PASS                                                  |
+| test-mobile-wrappers / test-mdns-discovery / test-desktop-system-apps                                                              | PASS                                                  |
+| test-e2e（完整 Playwright 套件）                                                                                                   | PASS（30 passed / 17 skipped-profile；修复 1/2/4 后） |
+| test-adaptive-shell                                                                                                                | PASS                                                  |
+| test-lan-pairing（含新 mDNS 发现阶段）                                                                                             | PASS                                                  |
+| test-project-knowledge-search / test-app-knowledge-search / test-project-knowledge-rebuild                                         | PASS（修复 3 后）                                     |
+| test-notification-center / test-incident-notifications / test-app-notifications                                                    | PASS（修复 4/5 后）                                   |
+| test-artifact-context / test-artifact-review / test-deepseek-fixture / test-deepseek-structured-review / test-app-version-rollback | PASS（修复 1/2/5 后）                                 |
+| test-podman-fixture                                                                                                                | BLOCKED（宿主无 rootless Podman，如实记录）           |
+| test-integration（全量集成）                                                                                                       | PASS                                                  |
+| make check / go test -race ./internal/... ./cmd/... / buf lint / buf breaking（vs main）                                           | PASS / 干净 / PASS / PASS                             |
+
+### R2 候选协调检查点（2026-09-06）
+
+- 部署单元测试和 `go test ./internal/reliability/... ./cmd/reliability-host` PASS。
+- `go test -tags=integration -count=1 -run TestDeploymentReconciliationDurability ./tests/integration` PASS（scratch PostgreSQL；迁移、请求冲突、并发锁、终态恢复）。
+- rootless 探测 BLOCKED：podman command 不存在；cgroup v2 存在；user namespaces=123655。
+- 修复旧 repairdeployment tag 测试漏导入 pgx 的编译错误。
+- 下一步：工作区文件/窗口能力是完整 Build/Test 交接的前提；R2 仍 active，尚未取得部署 E2E。

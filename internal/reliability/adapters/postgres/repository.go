@@ -574,57 +574,59 @@ func (r *Repository) RecordRepairSubmitted(ctx context.Context, candidate applic
 	return tx.Commit(ctx)
 }
 
-// ListCanaryDue implements the deployment ledger port: canary rows whose
-// observation window has ended, oldest first (ADR-0016 §6).
-func (r *Repository) ListCanaryDue(ctx context.Context, now time.Time, limit int) ([]application.DeploymentCandidate, error) {
-	rows, err := r.queries.ListCanaryDue(ctx, reliabilitydb.ListCanaryDueParams{
-		CanaryUntil: now, Limit: int32(limit),
-	})
-	if err != nil {
-		return nil, storeError("list due canaries", err)
-	}
-	candidates := make([]application.DeploymentCandidate, 0, len(rows))
-	for _, row := range rows {
-		candidates = append(candidates, application.DeploymentCandidate{
-			IncidentID: row.IncidentID, OwnerUserID: row.OwnerUserID,
-			ProjectID: row.ProjectID, InstallationID: row.InstallationID,
-			TargetVersion: row.TargetVersion,
-		})
-	}
-	return candidates, nil
-}
-
-// Start implements the deployment ledger port: idempotent canary insert.
-func (r *Repository) Start(ctx context.Context, candidate application.DeploymentCandidate, canaryUntil time.Time) error {
-	now := time.Now().UTC()
-	if _, err := r.queries.StartDeploymentLedger(ctx, reliabilitydb.StartDeploymentLedgerParams{
+// Start persists the immutable request before any external side effect.
+func (r *Repository) Start(ctx context.Context, candidate application.DeploymentCandidate) error {
+	inserted, err := r.queries.StartDeploymentLedger(ctx, reliabilitydb.StartDeploymentLedgerParams{
 		IncidentID: candidate.IncidentID, OwnerUserID: candidate.OwnerUserID,
 		ProjectID: candidate.ProjectID, InstallationID: candidate.InstallationID,
-		TargetVersion: candidate.TargetVersion, CanaryUntil: canaryUntil,
-		CreatedAt: now,
-	}); err != nil {
-		return storeError("start deployment canary", err)
-	}
-	return nil
-}
-
-// HasIncident implements the deployment ledger port.
-func (r *Repository) HasIncident(ctx context.Context, incidentID string) (bool, error) {
-	has, err := r.queries.HasDeploymentLedger(ctx, incidentID)
+		TargetVersion: candidate.TargetVersion, ExpectedRevision: candidate.ExpectedRevision,
+		CreatedAt: time.Now().UTC(),
+	})
 	if err != nil {
-		return false, storeError("read deployment ledger", err)
+		return storeError("prepare deployment", err)
 	}
-	return has, nil
-}
-
-// SetState implements the deployment ledger port.
-func (r *Repository) SetState(ctx context.Context, incidentID, state string) error {
-	if _, err := r.queries.SetDeploymentState(ctx, reliabilitydb.SetDeploymentStateParams{
-		IncidentID: incidentID, State: state, UpdatedAt: now(),
-	}); err != nil {
-		return storeError("set deployment state", err)
+	if inserted == 0 {
+		return application.ErrDeploymentCandidateRequired
 	}
 	return nil
+}
+
+func (r *Repository) Reconcile(ctx context.Context, limit int, apply func(*application.DeploymentRecord) error) (int, error) {
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return 0, storeError("begin deployment pass", err)
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck
+	queries := r.queries.WithTx(tx)
+	rows, err := queries.LockPendingDeployments(ctx, int32(limit))
+	if err != nil {
+		return 0, storeError("lock deployments", err)
+	}
+	for _, row := range rows {
+		record := application.DeploymentRecord{
+			DeploymentCandidate: application.DeploymentCandidate{
+				IncidentID: row.IncidentID, OwnerUserID: row.OwnerUserID,
+				ProjectID: row.ProjectID, InstallationID: row.InstallationID,
+				TargetVersion: row.TargetVersion, ExpectedRevision: row.ExpectedRevision,
+			},
+			State: row.State, Attempts: row.Attempts, CanaryUntil: row.CanaryUntil,
+			CanaryStartedAt: row.CanaryStartedAt, NewIncident: row.NewIncident,
+		}
+		if err := apply(&record); err != nil {
+			return 0, err
+		}
+		if err := queries.SaveDeployment(ctx, reliabilitydb.SaveDeploymentParams{
+			IncidentID: record.IncidentID, State: record.State, Attempts: record.Attempts,
+			CanaryStartedAt: record.CanaryStartedAt, CanaryUntil: record.CanaryUntil,
+			UpdatedAt: time.Now().UTC(),
+		}); err != nil {
+			return 0, storeError("save deployment", err)
+		}
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return 0, storeError("commit deployment pass", err)
+	}
+	return len(rows), nil
 }
 
 // ListRepairCompleted implements the repair orchestrator's hand-off port:
