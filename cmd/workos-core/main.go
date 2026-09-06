@@ -103,10 +103,8 @@ func run(logger *slog.Logger) error {
 	if err != nil {
 		return err
 	}
-	// Push wake dispatch (ADR-0018): the fixture relay is the working egress;
-	// platforms without a sender (APNs/FCM until real credentials exist)
-	// subscribe but never pretend to deliver. Constructed before every
-	// consumer so the post-commit hook is race-free.
+	// The transactional outbox covers every notification producer. Relay
+	// failures retry independently of notification consumption.
 	pushSenders := map[string]notificationports.PushRelaySender{
 		notificationdomain.PushPlatformFixture: fixturerelay.New(),
 		notificationdomain.PushPlatformWebPush: unavailable.New(),
@@ -115,6 +113,7 @@ func run(logger *slog.Logger) error {
 	if err != nil {
 		return err
 	}
+	go pushService.Run(ctx)
 	projectRepository, err := projectpostgres.NewWithFeed(pool, feedRepository)
 	if err != nil {
 		return err
@@ -390,9 +389,6 @@ func run(logger *slog.Logger) error {
 		if err != nil {
 			return err
 		}
-		// Post-commit wake dispatch: a push failure never affects the
-		// already-committed durable fact.
-		incidentConsumer.SetPushDispatch(pushService.Dispatch)
 		go incidentConsumer.Run(ctx, logger)
 	}
 	// The public summary reports the live consumer's most recent upstream

@@ -264,17 +264,48 @@ SELECT owner_user_id, quiet_enabled, quiet_start_utc, quiet_end_utc, updated_at
 FROM workos_core.push_preferences
 WHERE owner_user_id = sqlc.arg(owner_user_id);
 
--- name: InsertPushDelivery :execrows
+-- name: EnqueuePushDeliveries :exec
 INSERT INTO workos_core.push_deliveries (
-    owner_user_id, notification_id, device_id, platform, relay_payload, delivered_at
-) VALUES (
-    sqlc.arg(owner_user_id), sqlc.arg(notification_id), sqlc.arg(device_id),
-    sqlc.arg(platform), sqlc.arg(relay_payload), sqlc.arg(delivered_at)
+    owner_user_id, notification_id, device_id, platform, relay_payload, state, next_attempt_at
 )
+SELECT s.owner_user_id, sqlc.arg(notification_id), s.device_id, s.platform,
+       sqlc.arg(relay_payload), sqlc.arg(state), sqlc.arg(next_attempt_at)
+FROM workos_core.push_subscriptions s
+WHERE s.owner_user_id = sqlc.arg(owner_user_id) AND s.status = 'active'
 ON CONFLICT (notification_id, device_id, platform) DO NOTHING;
+
+-- name: ClaimPushDeliveries :many
+WITH pending AS (
+    SELECT q.notification_id, q.device_id, q.platform FROM workos_core.push_deliveries q
+    WHERE q.state = 'pending' AND q.attempts < 8 AND q.next_attempt_at <= sqlc.arg(now_at)
+    ORDER BY q.next_attempt_at, q.notification_id, q.device_id, q.platform
+    LIMIT sqlc.arg(batch_limit) FOR UPDATE SKIP LOCKED
+)
+UPDATE workos_core.push_deliveries d
+SET claim_token = sqlc.arg(claim_token), next_attempt_at = sqlc.arg(lease_until),
+    attempts = LEAST(d.attempts + 1, 8)
+FROM pending p
+WHERE d.notification_id = p.notification_id AND d.device_id = p.device_id AND d.platform = p.platform
+RETURNING d.owner_user_id, d.notification_id, d.device_id, d.platform, d.attempts;
+
+-- name: GetPushSubscription :one
+SELECT owner_user_id, device_id, platform, endpoint, p256dh, auth_secret, status, created_at, updated_at
+FROM workos_core.push_subscriptions
+WHERE owner_user_id = sqlc.arg(owner_user_id) AND device_id = sqlc.arg(device_id) AND platform = sqlc.arg(platform);
+
+-- name: CompletePushDelivery :exec
+UPDATE workos_core.push_deliveries
+SET state = sqlc.arg(state), next_attempt_at = sqlc.arg(next_attempt_at), claim_token = NULL,
+    delivered_at = CASE WHEN sqlc.arg(state)::text = 'delivered' THEN sqlc.arg(now_at)::timestamptz ELSE NULL END
+WHERE notification_id = sqlc.arg(notification_id) AND device_id = sqlc.arg(device_id)
+  AND platform = sqlc.arg(platform) AND claim_token = sqlc.arg(claim_token) AND state = 'pending';
 
 -- name: CountPushDeliveries :one
 SELECT count(*) FROM workos_core.push_deliveries
 WHERE notification_id = sqlc.arg(notification_id)
   AND device_id = sqlc.arg(device_id)
-  AND platform = sqlc.arg(platform);
+  AND platform = sqlc.arg(platform) AND state = 'delivered';
+
+-- name: ExhaustPushDeliveries :exec
+UPDATE workos_core.push_deliveries SET state = 'failed', claim_token = NULL
+WHERE state = 'pending' AND attempts = 8 AND next_attempt_at <= sqlc.arg(now_at);

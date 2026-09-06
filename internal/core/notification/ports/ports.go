@@ -191,9 +191,8 @@ type PushStore interface {
 	ActivePushSubscriptions(ctx context.Context, ownerUserID string) ([]domain.PushSubscription, error)
 	SavePushPreferences(ctx context.Context, ownerUserID string, quiet domain.QuietHours, now time.Time) error
 	PushPreferencesFor(ctx context.Context, ownerUserID string) (domain.QuietHours, error)
-	// InsertPushDelivery records exactly-once dispatch; it returns false when
-	// the (notification, device, platform) triple already exists.
-	InsertPushDelivery(ctx context.Context, ownerUserID, notificationID, deviceID, platform, payload string, now time.Time) (bool, error)
+	ClaimPushDeliveries(ctx context.Context, now time.Time, limit int32) ([]domain.PushDelivery, error)
+	CompletePushDelivery(ctx context.Context, delivery domain.PushDelivery, state string, nextAttempt time.Time) error
 	CountPushDeliveries(ctx context.Context, notificationID, deviceID, platform string) (int64, error)
 }
 

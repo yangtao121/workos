@@ -5,214 +5,214 @@ package integration_test
 import (
 	"context"
 	"encoding/json"
-	"log/slog"
-	"strings"
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	fixturerelay "github.com/yangtao121/workos/internal/core/notification/adapters/fixturerelay"
+	"github.com/yangtao121/workos/internal/core/notification/adapters/fixturerelay"
 	notificationpostgres "github.com/yangtao121/workos/internal/core/notification/adapters/postgres"
-	unavailable "github.com/yangtao121/workos/internal/core/notification/adapters/unavailable"
+	"github.com/yangtao121/workos/internal/core/notification/adapters/unavailable"
 	notificationapp "github.com/yangtao121/workos/internal/core/notification/application"
-	notificationdomain "github.com/yangtao121/workos/internal/core/notification/domain"
-	notificationports "github.com/yangtao121/workos/internal/core/notification/ports"
+	"github.com/yangtao121/workos/internal/core/notification/domain"
+	"github.com/yangtao121/workos/internal/core/notification/ports"
 	"github.com/yangtao121/workos/internal/platform/identity"
 	"github.com/yangtao121/workos/internal/platform/migrations"
 )
 
-// pushQuietClock renders a UTC "HH:MM" offset from now.
-func pushQuietClock(offset time.Duration) string {
-	t := time.Now().UTC().Add(offset)
-	return t.Format("15:04")
-}
-
-// TestPushRelay proves the ADR-0018 push slice over the real Core store:
-// the relay payload whitelist (notification id and nothing else),
-// exactly-once dispatch under at-least-once replay, idempotent revocation,
-// the owner quiet window verdict, and honest unavailable platforms.
+// Real notification transactions, not arbitrary ids, are the only source of wakes.
 func TestPushRelay(t *testing.T) {
 	ctx := context.Background()
 	dsn := scratchDatabase(t)
 	if err := migrations.Run(ctx, dsn); err != nil {
-		t.Fatalf("run migrations: %v", err)
+		t.Fatal(err)
 	}
 	pool, err := pgxpool.New(ctx, dsn)
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(pool.Close)
-
+	repo := notificationpostgres.New(pool)
 	relay := fixturerelay.New()
-	pushService, err := notificationapp.NewPushService(
-		notificationpostgres.New(pool),
-		map[string]notificationports.PushRelaySender{
-			notificationdomain.PushPlatformFixture: relay,
-			notificationdomain.PushPlatformWebPush: unavailable.New(),
-		},
-		slog.Default(),
-	)
-	if err != nil {
+	newService := func() *notificationapp.PushService {
+		service, err := notificationapp.NewPushService(notificationpostgres.New(pool), map[string]ports.PushRelaySender{
+			domain.PushPlatformFixture: relay, domain.PushPlatformWebPush: unavailable.New(),
+		}, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return service
+	}
+	service := newService()
+	owner, deviceA, deviceB := uuid.Must(uuid.NewV7()).String(), uuid.Must(uuid.NewV7()).String(), uuid.Must(uuid.NewV7()).String()
+	foreign := uuid.Must(uuid.NewV7()).String()
+	// This scratch database exercises the same multi-owner isolation as
+	// notification_test; production retains the single-owner deployment policy.
+	if _, err := pool.Exec(ctx, "DROP INDEX workos_core.users_single_owner_idx"); err != nil {
 		t.Fatal(err)
 	}
-
-	owner := "01999999-9999-7999-8999-000000000e01"
-	deviceA := "01999999-9999-7999-8999-000000000ea1"
-	deviceB := "01999999-9999-7999-8999-000000000ea2"
-	deviceC := "01999999-9999-7999-8999-000000000ea3"
+	for _, user := range []string{owner, foreign} {
+		if _, err := pool.Exec(ctx, "INSERT INTO workos_core.users (id,kind,display_name,created_at) VALUES ($1,'owner','Push fixture',now())", user); err != nil {
+			t.Fatal(err)
+		}
+	}
 	ownerCtx := identity.WithContext(ctx, identity.Identity{UserID: owner, DeviceID: deviceA})
-
-	// Subscriptions are owner-scoped, idempotent, and validated.
-	if err := pushService.Subscribe(ownerCtx, deviceA, notificationdomain.PushPlatformFixture, "fixture://relay/device-a", "", ""); err != nil {
-		t.Fatalf("subscribe deviceA: %v", err)
-	}
-	if err := pushService.Subscribe(ownerCtx, deviceB, notificationdomain.PushPlatformFixture, "fixture://relay/device-b", "", ""); err != nil {
-		t.Fatalf("subscribe deviceB: %v", err)
-	}
-	// The web-push platform subscribes but its sender is honestly
-	// unavailable (RFC 8291 encryption is a later scope).
-	if err := pushService.Subscribe(ownerCtx, deviceC, notificationdomain.PushPlatformWebPush, "https://push.example/sub/c", "p256dh-key", "auth-secret"); err != nil {
-		t.Fatalf("subscribe deviceC: %v", err)
-	}
-	if err := pushService.Subscribe(ownerCtx, deviceA, notificationdomain.PushPlatformFixture, "", "", ""); err == nil {
-		t.Fatal("empty endpoint must fail closed")
-	}
-
-	// First dispatch wakes both fixture devices. The recorded payload must
-	// contain exactly the whitelisted key: no title, body, project, or any
-	// other field may leak through the relay.
-	notificationID := "01999999-9999-7999-8999-000000000eb1"
-	richTitle := "critical incident with secret body content"
-	if err := pushService.Dispatch(ctx, owner, notificationID, richTitle); err != nil {
-		t.Fatalf("dispatch: %v", err)
-	}
-	delivered := relay.Delivered()
-	if len(delivered) != 2 {
-		t.Fatalf("relay deliveries = %d, want 2 fixture devices", len(delivered))
-	}
-	for _, record := range delivered {
-		var fields map[string]any
-		if err := json.Unmarshal([]byte(record.PayloadJSON), &fields); err != nil {
-			t.Fatalf("relay payload is not JSON: %v", record.PayloadJSON)
-		}
-		if len(fields) != 1 {
-			t.Fatalf("relay payload whitelist violated: %s", record.PayloadJSON)
-		}
-		if _, ok := fields["notificationId"]; !ok {
-			t.Fatalf("relay payload missing notificationId: %s", record.PayloadJSON)
+	for _, device := range []string{deviceA, deviceB} {
+		if err := service.Subscribe(ownerCtx, device, domain.PushPlatformFixture, "fixture://device/"+device, "", ""); err != nil {
+			t.Fatal(err)
 		}
 	}
-	for _, record := range delivered {
-		if strings.Contains(record.PayloadJSON, "secret body content") || strings.Contains(record.PayloadJSON, richTitle) {
-			t.Fatalf("relay payload leaked content: %s", record.PayloadJSON)
+	if err := service.Subscribe(ownerCtx, deviceA, domain.PushPlatformFixture, "", "", ""); err == nil {
+		t.Fatal("empty endpoint accepted")
+	}
+	appendFact := func(fact domain.Notification, commit bool) {
+		t.Helper()
+		tx, err := pool.Begin(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer tx.Rollback(ctx)
+		if _, _, err := repo.AppendTx(ctx, tx, fact); err != nil {
+			t.Fatal(err)
+		}
+		if commit {
+			if err := tx.Commit(ctx); err != nil {
+				t.Fatal(err)
+			}
 		}
 	}
-
-	// At-least-once replay: a second dispatch of the same notification is a
-	// no-op on the relay (exactly-once wake), regardless of device count.
-	if err := pushService.Dispatch(ctx, owner, notificationID, richTitle); err != nil {
-		t.Fatalf("replayed dispatch: %v", err)
+	fact := func(ownerID string) domain.Notification {
+		t.Helper()
+		target := uuid.Must(uuid.NewV7()).String()
+		n, err := domain.PrepareSystemFact(domain.SystemFact{Kind: domain.KindAgentTaskTerminal, OwnerUserID: ownerID, TargetID: target, SourceID: target, Category: "completed"}, time.Now().UTC())
+		if err != nil {
+			t.Fatal(err)
+		}
+		return n
 	}
-	if got := len(relay.Delivered()); got != 2 {
-		t.Fatalf("replayed dispatch changed relay count to %d", got)
+	pass := func() {
+		t.Helper()
+		if err := service.Pass(ctx); err != nil {
+			t.Fatal(err)
+		}
 	}
-
-	// Revocation is idempotent and stops delivery for that device only.
-	if err := pushService.Unsubscribe(ownerCtx, deviceB, notificationdomain.PushPlatformFixture); err != nil {
-		t.Fatalf("unsubscribe deviceB: %v", err)
+	count := func(want int) {
+		t.Helper()
+		if got := len(relay.Delivered()); got != want {
+			t.Fatalf("relay count %d, want %d", got, want)
+		}
 	}
-	if err := pushService.Unsubscribe(ownerCtx, deviceB, notificationdomain.PushPlatformFixture); err != nil {
-		t.Fatalf("idempotent unsubscribe: %v", err)
+	makeDue := func(id string) {
+		t.Helper()
+		if _, err := pool.Exec(ctx, "UPDATE workos_core.push_deliveries SET next_attempt_at=$2 WHERE notification_id=$1 AND state='pending'", id, time.Now().UTC().Add(-time.Second)); err != nil {
+			t.Fatal(err)
+		}
 	}
-	second := "01999999-9999-7999-8999-000000000eb2"
-	if err := pushService.Dispatch(ctx, owner, second, "second"); err != nil {
-		t.Fatalf("dispatch after revoke: %v", err)
-	}
-	delivered = relay.Delivered()
-	if len(delivered) != 3 {
-		t.Fatalf("relay deliveries after revoke = %d, want 3", len(delivered))
-	}
-	for _, record := range delivered {
-		if record.NotificationID == second && record.DeviceID == deviceB {
-			t.Fatal("revoked device was woken")
+	state := func(id, device string, want string) {
+		t.Helper()
+		var got string
+		if err := pool.QueryRow(ctx, "SELECT state FROM workos_core.push_deliveries WHERE notification_id=$1 AND device_id=$2", id, device).Scan(&got); err != nil {
+			t.Fatal(err)
+		}
+		if got != want {
+			t.Fatalf("state %s want %s", got, want)
 		}
 	}
 
-	// The quiet window suppresses wakes server-side; the durable facts and
-	// preferences are unaffected.
-	quiet := notificationdomain.QuietHours{
-		Enabled: true,
-		Start:   pushQuietClock(-5 * time.Minute),
-		End:     pushQuietClock(5 * time.Minute),
-	}
-	if _, err := pushService.SetPreferences(ownerCtx, quiet); err != nil {
-		t.Fatalf("set preferences: %v", err)
-	}
-	stored, err := pushService.Preferences(ownerCtx)
-	if err != nil || !stored.Enabled {
-		t.Fatalf("preferences roundtrip drifted: %+v err=%v", stored, err)
-	}
-	third := "01999999-9999-7999-8999-000000000eb3"
-	if err := pushService.Dispatch(ctx, owner, third, "quiet event"); err != nil {
-		t.Fatalf("quiet dispatch: %v", err)
-	}
-	if got := len(relay.Delivered()); got != 3 {
-		t.Fatalf("quiet window did not suppress wakes: relay = %d", got)
-	}
-
-	// Disabling quiet resumes delivery.
-	quiet.Enabled = false
-	if _, err := pushService.SetPreferences(ownerCtx, quiet); err != nil {
-		t.Fatalf("disable quiet: %v", err)
-	}
-	if err := pushService.Dispatch(ctx, owner, third, "re-wake"); err != nil {
-		t.Fatalf("post-quiet dispatch: %v", err)
-	}
-	if got := len(relay.Delivered()); got != 4 {
-		t.Fatalf("post-quiet relay = %d, want 4", got)
-	}
-
-	// A relay outage is observable and never corrupts state: dispatch
-	// succeeds overall, the attempt is logged, and nothing pretends.
+	first := fact(owner)
+	appendFact(first, false)
+	pass()
+	count(0) // rollback never wakes
+	appendFact(first, true)
 	relay.SetDown(true)
-	fourth := "01999999-9999-7999-8999-000000000eb4"
-	if err := pushService.Dispatch(ctx, owner, fourth, "outage"); err != nil {
-		t.Fatalf("outage dispatch must not fail the caller: %v", err)
-	}
-	if got := len(relay.Delivered()); got != 4 {
-		t.Fatalf("down relay delivered %d", got)
+	pass()
+	count(0)
+	state(first.ID, deviceA, "pending")
+	if delivered, err := repo.CountPushDeliveries(ctx, first.ID, deviceA, domain.PushPlatformFixture); err != nil || delivered != 0 {
+		t.Fatalf("failed attempt counted as delivered: %d %v", delivered, err)
 	}
 	relay.SetDown(false)
-
-	// The quiet-window math: overnight wrap and daylight-agnostic UTC.
-	window := notificationdomain.QuietHours{Enabled: true, Start: "22:00", End: "07:00"}
-	for _, probe := range []struct {
-		hour int
-		want bool
-	}{
-		{hour: 23, want: true}, {hour: 3, want: true}, {hour: 6, want: true},
-		{hour: 7, want: false}, {hour: 12, want: false}, {hour: 21, want: false},
-	} {
-		stamp := time.Date(2026, 9, 5, probe.hour, 30, 0, 0, time.UTC)
-		if got := window.Suppress(stamp); got != probe.want {
-			t.Fatalf("Suppress(%02d:30) = %v, want %v", probe.hour, got, probe.want)
+	service = newService() // service recreation uses only persisted retry state
+	makeDue(first.ID)
+	pass()
+	count(2)
+	state(first.ID, deviceA, "delivered")
+	appendFact(first, true)
+	pass()
+	count(2) // committed source replay does not enqueue again
+	for _, record := range relay.Delivered() {
+		var fields map[string]string
+		if err := json.Unmarshal([]byte(record.PayloadJSON), &fields); err != nil {
+			t.Fatal(err)
+		}
+		if len(fields) != 1 || fields["notificationId"] != first.ID {
+			t.Fatalf("non-whitelisted payload: %s", record.PayloadJSON)
 		}
 	}
-	always := notificationdomain.QuietHours{Enabled: true, Start: "09:00", End: "09:00"}
-	if !always.Suppress(time.Date(2026, 9, 5, 14, 0, 0, 0, time.UTC)) {
-		t.Fatal("equal bounds must mean always quiet")
+	second := fact(owner)
+	appendFact(second, true)
+	for range 2 {
+		if err := service.Unsubscribe(ownerCtx, deviceB, domain.PushPlatformFixture); err != nil {
+			t.Fatal(err)
+		}
 	}
-	if (notificationdomain.QuietHours{Enabled: false, Start: "00:00", End: "23:59"}).Suppress(time.Now()) {
-		t.Fatal("disabled window must never suppress")
-	}
+	pass()
+	count(3)
+	state(second.ID, deviceB, "suppressed")
 
-	// Foreign owners never see each other's dispatches.
-	foreign := "01999999-9999-7999-8999-000000000e02"
-	if err := pushService.Dispatch(ctx, foreign, third, "foreign"); err != nil {
-		t.Fatalf("foreign dispatch: %v", err)
+	quiet := domain.QuietHours{Enabled: true, Start: "00:00", End: "00:00"}
+	if _, err := service.SetPreferences(ownerCtx, quiet); err != nil {
+		t.Fatal(err)
 	}
-	if got := len(relay.Delivered()); got != 4 {
-		t.Fatalf("foreign owner woke %d devices", got-4)
+	third := fact(owner)
+	appendFact(third, true)
+	quiet.Enabled = false
+	if _, err := service.SetPreferences(ownerCtx, quiet); err != nil {
+		t.Fatal(err)
 	}
+	pass()
+	count(3)
+	state(third.ID, deviceA, "suppressed") // quiet-created wakes stay suppressed
+	appendFact(fact(foreign), true)
+	pass()
+	count(3) // owner isolation
+
+	fourth := fact(owner)
+	appendFact(fourth, true)
+	claims, err := repo.ClaimPushDeliveries(ctx, time.Now().UTC(), 8)
+	if err != nil || len(claims) != 1 {
+		t.Fatalf("claim: %v %v", claims, err)
+	}
+	parallel, err := notificationpostgres.New(pool).ClaimPushDeliveries(ctx, time.Now().UTC(), 8)
+	if err != nil || len(parallel) != 0 {
+		t.Fatalf("unexpired claim was stolen: %v %v", parallel, err)
+	}
+	makeDue(fourth.ID)
+	replacement, err := repo.ClaimPushDeliveries(ctx, time.Now().UTC(), 8)
+	if err != nil || len(replacement) != 1 {
+		t.Fatalf("expired claim not recovered: %v %v", replacement, err)
+	}
+	if err := repo.CompletePushDelivery(ctx, claims[0], "delivered", time.Now().UTC()); err != nil {
+		t.Fatal(err)
+	}
+	state(fourth.ID, deviceA, "pending") // stale worker cannot acknowledge new claim
+	if err := repo.CompletePushDelivery(ctx, replacement[0], "pending", time.Now().UTC()); err != nil {
+		t.Fatal(err)
+	}
+	pass()
+	count(4)
+	state(fourth.ID, deviceA, "delivered")
+
+	exhausted := fact(owner)
+	appendFact(exhausted, true)
+	relay.SetDown(true)
+	for range 8 {
+		makeDue(exhausted.ID)
+		pass()
+	}
+	state(exhausted.ID, deviceA, "failed")
+	relay.SetDown(false)
+	pass()
+	count(4)
 }

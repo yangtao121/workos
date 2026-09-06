@@ -10,6 +10,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
@@ -130,6 +131,27 @@ func (r *Repository) AppendTx(ctx context.Context, tx dbtx.Tx, notification doma
 			return *existing, false, nil
 		}
 		return domain.Notification{}, false, storeError("insert notification receipt", err)
+	}
+	quiet := domain.QuietHours{}
+	preferences, err := queries.PushPreferencesFor(ctx, notification.OwnerUserID)
+	if err == nil {
+		quiet = domain.QuietHours{Enabled: preferences.QuietEnabled, Start: preferences.QuietStartUtc, End: preferences.QuietEndUtc}
+	} else if !errors.Is(err, pgx.ErrNoRows) {
+		return domain.Notification{}, false, storeError("read push preferences", err)
+	}
+	state := "pending"
+	if quiet.Suppress(notification.CreatedAt) {
+		state = "suppressed"
+	}
+	payload, err := json.Marshal(domain.PushPayload{NotificationID: notification.ID})
+	if err != nil {
+		return domain.Notification{}, false, err
+	}
+	if err := queries.EnqueuePushDeliveries(ctx, notificationdb.EnqueuePushDeliveriesParams{
+		OwnerUserID: notification.OwnerUserID, NotificationID: notification.ID,
+		RelayPayload: string(payload), State: state, NextAttemptAt: time.Now().UTC(),
+	}); err != nil {
+		return domain.Notification{}, false, storeError("enqueue push wakes", err)
 	}
 	return notification, true, nil
 }
@@ -699,18 +721,45 @@ func (r *Repository) PushPreferencesFor(ctx context.Context, ownerUserID string)
 	return domain.QuietHours{Enabled: row.QuietEnabled, Start: row.QuietStartUtc, End: row.QuietEndUtc}, nil
 }
 
-// InsertPushDelivery records exactly-once dispatch; a repeated triple is a
-// no-op returning false.
-func (r *Repository) InsertPushDelivery(ctx context.Context, ownerUserID, notificationID, deviceID, platform, payload string, now time.Time) (bool, error) {
-	rows, err := r.queries.InsertPushDelivery(ctx, notificationdb.InsertPushDeliveryParams{
-		OwnerUserID: ownerUserID, NotificationID: notificationID,
-		DeviceID: deviceID, Platform: platform,
-		RelayPayload: payload, DeliveredAt: now,
+func (r *Repository) ClaimPushDeliveries(ctx context.Context, now time.Time, limit int32) ([]domain.PushDelivery, error) {
+	if limit < 1 || limit > 16 {
+		return nil, domain.ErrPushInvalid
+	}
+	token, err := uuid.NewV7()
+	if err != nil {
+		return nil, err
+	}
+	if err := r.queries.ExhaustPushDeliveries(ctx, now); err != nil {
+		return nil, storeError("exhaust push retries", err)
+	}
+	rows, err := r.queries.ClaimPushDeliveries(ctx, notificationdb.ClaimPushDeliveriesParams{
+		NowAt: now, BatchLimit: limit, ClaimToken: uuidParam(token.String()), LeaseUntil: now.Add(time.Minute),
 	})
 	if err != nil {
-		return false, storeError("insert push delivery", err)
+		return nil, storeError("claim push deliveries", err)
 	}
-	return rows == 1, nil
+	result := make([]domain.PushDelivery, 0, len(rows))
+	for _, row := range rows {
+		sub, err := r.queries.GetPushSubscription(ctx, notificationdb.GetPushSubscriptionParams{OwnerUserID: row.OwnerUserID, DeviceID: row.DeviceID, Platform: row.Platform})
+		if err != nil {
+			return nil, storeError("read delivery subscription", err)
+		}
+		result = append(result, domain.PushDelivery{NotificationID: row.NotificationID, ClaimToken: token.String(), Attempts: row.Attempts,
+			Subscription: domain.PushSubscription{OwnerUserID: sub.OwnerUserID, DeviceID: sub.DeviceID, Platform: sub.Platform,
+				Endpoint: sub.Endpoint, P256DH: sub.P256dh, AuthSecret: sub.AuthSecret, Status: sub.Status, CreatedAt: sub.CreatedAt, UpdatedAt: sub.UpdatedAt}})
+	}
+	return result, nil
+}
+
+func (r *Repository) CompletePushDelivery(ctx context.Context, delivery domain.PushDelivery, state string, nextAttempt time.Time) error {
+	err := r.queries.CompletePushDelivery(ctx, notificationdb.CompletePushDeliveryParams{
+		NotificationID: delivery.NotificationID, DeviceID: delivery.Subscription.DeviceID, Platform: delivery.Subscription.Platform,
+		ClaimToken: uuidParam(delivery.ClaimToken), State: state, NextAttemptAt: nextAttempt, NowAt: time.Now().UTC(),
+	})
+	if err != nil {
+		return storeError("complete push delivery", err)
+	}
+	return nil
 }
 
 // CountPushDeliveries reads the dispatch count for one triple.

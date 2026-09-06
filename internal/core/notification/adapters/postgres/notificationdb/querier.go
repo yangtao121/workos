@@ -16,6 +16,8 @@ type Querier interface {
 	// touches only the workos_core notification tables; other modules are
 	// reached through their owning modules' ports.
 	AllocateNotificationChangeSequence(ctx context.Context, arg AllocateNotificationChangeSequenceParams) (int64, error)
+	ClaimPushDeliveries(ctx context.Context, arg ClaimPushDeliveriesParams) ([]ClaimPushDeliveriesRow, error)
+	CompletePushDelivery(ctx context.Context, arg CompletePushDeliveryParams) error
 	CountOwnerUnread(ctx context.Context, ownerUserID string) (int64, error)
 	CountPushDeliveries(ctx context.Context, arg CountPushDeliveriesParams) (int64, error)
 	DeleteNotificationChangesFor(ctx context.Context, ids []string) (int64, error)
@@ -23,6 +25,8 @@ type Querier interface {
 	// Receipts outlive notifications (longer horizon, same bounded sweep) so a
 	// pathological late replay can never project a second notification.
 	DeleteOldSourceReceipts(ctx context.Context, cutoff time.Time) (int64, error)
+	EnqueuePushDeliveries(ctx context.Context, arg EnqueuePushDeliveriesParams) error
+	ExhaustPushDeliveries(ctx context.Context, nowAt time.Time) error
 	GetChangesAfter(ctx context.Context, arg GetChangesAfterParams) ([]GetChangesAfterRow, error)
 	GetNotificationAppQuotaForUpdate(ctx context.Context, arg GetNotificationAppQuotaForUpdateParams) (GetNotificationAppQuotaForUpdateRow, error)
 	GetNotificationAppRequest(ctx context.Context, arg GetNotificationAppRequestParams) (GetNotificationAppRequestRow, error)
@@ -33,13 +37,13 @@ type Querier interface {
 	GetOwnerLastSequence(ctx context.Context, ownerUserID string) (int64, error)
 	GetOwnerNotification(ctx context.Context, arg GetOwnerNotificationParams) (WorkosCoreNotification, error)
 	GetOwnerSweptThrough(ctx context.Context, ownerUserID string) (int64, error)
+	GetPushSubscription(ctx context.Context, arg GetPushSubscriptionParams) (WorkosCorePushSubscription, error)
 	InsertNotification(ctx context.Context, arg InsertNotificationParams) (int64, error)
 	InsertNotificationAppQuota(ctx context.Context, arg InsertNotificationAppQuotaParams) (int64, error)
 	InsertNotificationAppRequest(ctx context.Context, arg InsertNotificationAppRequestParams) (int64, error)
 	InsertNotificationChange(ctx context.Context, arg InsertNotificationChangeParams) (int64, error)
 	InsertNotificationReadRequest(ctx context.Context, arg InsertNotificationReadRequestParams) (int64, error)
 	InsertNotificationSourceReceipt(ctx context.Context, arg InsertNotificationSourceReceiptParams) (int64, error)
-	InsertPushDelivery(ctx context.Context, arg InsertPushDeliveryParams) (int64, error)
 	ListNotificationsPage(ctx context.Context, arg ListNotificationsPageParams) ([]WorkosCoreNotification, error)
 	LockOwnerNotifications(ctx context.Context, arg LockOwnerNotificationsParams) ([]WorkosCoreNotification, error)
 	MarkNotificationRead(ctx context.Context, arg MarkNotificationReadParams) (int64, error)

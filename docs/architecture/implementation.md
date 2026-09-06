@@ -1210,3 +1210,8 @@ ReadDocument 只返回 active generation 中未 tombstone、owner/project/source
 不返回数据库全文索引列。Files 消费 workspace 过滤，Knowledge Center 接受混合来源并显示只读快照；
 Docs/Code 共享 Artifact 分页列表。新读取链已有真实 PostgreSQL 测试，浏览器全链重验仍在进行。
 桌面使用共享 SVG 图标和应用注册表、深色控件、可用区域窗口几何，保留最小化 Surface 的挂载会话。
+
+通知仓储 AppendTx 以同事务写 push outbox，所有生产者共享此边界。
+PushService 后台循环租约领取、发送、按 token 确认；八次有界重试、quiet/revoked 抑制；
+日志只记平台与尝试次数。migration 042 的 unknown 记录保留旧尝试但不计已送达。
+真实 PostgreSQL 测试覆盖回滚、重放、重试恢复、租约接管、旧 token 拒绝与免打扰。

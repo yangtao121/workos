@@ -110,3 +110,12 @@ func parseClock(value string) int {
 type PushPayload struct {
 	NotificationID string `json:"notificationId"`
 }
+
+// PushDelivery is a leased outbox entry. A relay can accept a wake before a
+// process loses its lease; consumers must deduplicate by notification id.
+type PushDelivery struct {
+	Subscription   PushSubscription
+	NotificationID string
+	ClaimToken     string
+	Attempts       int32
+}

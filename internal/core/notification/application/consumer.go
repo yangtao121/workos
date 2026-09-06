@@ -53,10 +53,7 @@ type IncidentConsumer struct {
 	store    ports.NotificationStore
 	pool     TxSource
 	workerID string
-	// pushDispatch, when set, runs after the durable fact commits: the push
-	// path is a wake signal only and never a correctness dependency.
-	pushDispatch func(ctx context.Context, ownerUserID, notificationID, title string) error
-	ready        atomic.Bool
+	ready    atomic.Bool
 }
 
 func NewIncidentConsumer(source IncidentPublicationSource, store ports.NotificationStore, pool TxSource, workerID string) (*IncidentConsumer, error) {
@@ -67,11 +64,6 @@ func NewIncidentConsumer(source IncidentPublicationSource, store ports.Notificat
 		return nil, errors.New("incident consumer requires a bounded worker identity")
 	}
 	return &IncidentConsumer{source: source, store: store, pool: pool, workerID: workerID}, nil
-}
-
-// SetPushDispatch attaches the post-commit push wake hook (ADR-0018).
-func (c *IncidentConsumer) SetPushDispatch(dispatch func(ctx context.Context, ownerUserID, notificationID, title string) error) {
-	c.pushDispatch = dispatch
 }
 
 // Poll runs one claim/apply/complete cycle. Transient failures return an
@@ -158,13 +150,7 @@ func (c *IncidentConsumer) apply(ctx context.Context, publication IncidentPublic
 	if err := tx.Commit(ctx); err != nil {
 		return storeFailure("commit incident notification apply", err)
 	}
-	if c.pushDispatch != nil {
-		if err := c.pushDispatch(ctx, publication.OwnerUserID, notification.ID, notification.Title); err != nil {
-			// A push failure is observability, never a correctness failure:
-			// the durable notification fact is already committed.
-			return nil
-		}
-	}
+
 	return nil
 }
 

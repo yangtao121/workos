@@ -1,13 +1,9 @@
 // Push wake application service (ADR-0018): device subscriptions,
-// owner-level quiet hours, and relay dispatch with exactly-once semantics.
-// The relay payload is the domain whitelist; dispatch happens only for
-// active subscriptions outside the quiet window, and the durable
-// delivery log makes replays no-ops.
+// owner-level quiet hours and durable at-least-once relay delivery.
 package application
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"log/slog"
 	"time"
@@ -108,55 +104,66 @@ func (s *PushService) SetPreferences(ctx context.Context, quiet domain.QuietHour
 	return quiet, nil
 }
 
-// Dispatch pushes one committed notification to every active subscription
-// outside the quiet window. Exactly-once per (notification, device,
-// platform) comes from the durable delivery log, so consumer replays never
-// double-wake. Senders receive the whitelist payload only.
-func (s *PushService) Dispatch(ctx context.Context, ownerUserID, notificationID, title string) error {
-	if !ValidUUID(ownerUserID) || !ValidUUID(notificationID) {
-		return domain.ErrPushInvalid
-	}
-	quiet, err := s.store.PushPreferencesFor(ctx, ownerUserID)
+// Pass delivers a bounded leased batch. Success is recorded only after the
+// relay accepts the wake. A lost acknowledgement can produce a duplicate;
+// notification id is the recipient's idempotency key.
+func (s *PushService) Pass(ctx context.Context) error {
+	deliveries, err := s.store.ClaimPushDeliveries(ctx, time.Now().UTC(), 8)
 	if err != nil {
 		return err
 	}
-	if quiet.Suppress(time.Now().UTC()) {
-		// Quiet-hour events never wake devices; durable facts stand.
-		return nil
-	}
-	subs, err := s.store.ActivePushSubscriptions(ctx, ownerUserID)
-	if err != nil {
-		return err
-	}
-	payload := domain.PushPayload{NotificationID: notificationID}
-	body, err := json.Marshal(payload)
-	if err != nil {
-		return err
-	}
-	for _, sub := range subs {
-		delivered, err := s.store.InsertPushDelivery(ctx, ownerUserID, notificationID, sub.DeviceID, sub.Platform, string(body), time.Now().UTC())
+	for _, delivery := range deliveries {
+		sub := delivery.Subscription
+		quiet, err := s.store.PushPreferencesFor(ctx, sub.OwnerUserID)
 		if err != nil {
 			return err
 		}
-		if !delivered {
-			continue
+		state := "suppressed"
+		next := time.Now().UTC()
+		if sub.Status == domain.PushActive && !quiet.Suppress(next) {
+			state = "pending"
+			sender := s.senders[sub.Platform]
+			sendErr := domain.ErrPushUnavailable
+			if sender != nil {
+				sendCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+				sendErr = sender.Deliver(sendCtx, sub, domain.PushPayload{NotificationID: delivery.NotificationID})
+				cancel()
+			}
+			if sendErr == nil {
+				state = "delivered"
+			} else {
+				// Egress errors may contain subscription URLs or credentials.
+				s.logger.Warn("push delivery deferred", "platform", sub.Platform, "attempt", delivery.Attempts)
+				next = next.Add(time.Duration(1<<delivery.Attempts) * time.Second)
+				if delivery.Attempts >= 8 {
+					state = "failed"
+				}
+			}
 		}
-		sender, ok := s.senders[sub.Platform]
-		if !ok {
-			s.logger.Warn("push platform unavailable", "platform", sub.Platform)
-			continue
-		}
-		if err := sender.Deliver(ctx, sub, payload); err != nil {
-			// One device's outage never blocks the others; the delivery log
-			// records the attempt, the notification fact stays authoritative.
-			s.logger.Warn("push deliver failed", "platform", sub.Platform, "error", err)
+		if err := s.store.CompletePushDelivery(ctx, delivery, state, next); err != nil {
+			return err
 		}
 	}
 	return nil
 }
 
+func (s *PushService) Run(ctx context.Context) {
+	ticker := time.NewTicker(time.Second)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			if err := s.Pass(ctx); err != nil && ctx.Err() == nil {
+				s.logger.Warn("push outbox pass failed")
+			}
+		}
+	}
+}
+
 // ValidUUID re-exports the canonical grammar check for push facts.
 func ValidUUID(value string) bool {
 	parsed, err := uuid.Parse(value)
-	return err == nil && parsed.Version() == 7 && parsed.Variant() == uuid.RFC4122
+	return err == nil && parsed.Version() == 7 && parsed.Variant() == uuid.RFC4122 && parsed.String() == value
 }

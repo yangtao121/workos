@@ -98,6 +98,98 @@ func (q *Queries) AllocateNotificationChangeSequence(ctx context.Context, arg Al
 	return last_sequence, err
 }
 
+const claimPushDeliveries = `-- name: ClaimPushDeliveries :many
+WITH pending AS (
+    SELECT q.notification_id, q.device_id, q.platform FROM workos_core.push_deliveries q
+    WHERE q.state = 'pending' AND q.attempts < 8 AND q.next_attempt_at <= $3
+    ORDER BY q.next_attempt_at, q.notification_id, q.device_id, q.platform
+    LIMIT $4 FOR UPDATE SKIP LOCKED
+)
+UPDATE workos_core.push_deliveries d
+SET claim_token = $1, next_attempt_at = $2,
+    attempts = LEAST(d.attempts + 1, 8)
+FROM pending p
+WHERE d.notification_id = p.notification_id AND d.device_id = p.device_id AND d.platform = p.platform
+RETURNING d.owner_user_id, d.notification_id, d.device_id, d.platform, d.attempts
+`
+
+type ClaimPushDeliveriesParams struct {
+	ClaimToken pgtype.UUID
+	LeaseUntil time.Time
+	NowAt      time.Time
+	BatchLimit int32
+}
+
+type ClaimPushDeliveriesRow struct {
+	OwnerUserID    string
+	NotificationID string
+	DeviceID       string
+	Platform       string
+	Attempts       int32
+}
+
+func (q *Queries) ClaimPushDeliveries(ctx context.Context, arg ClaimPushDeliveriesParams) ([]ClaimPushDeliveriesRow, error) {
+	rows, err := q.db.Query(ctx, claimPushDeliveries,
+		arg.ClaimToken,
+		arg.LeaseUntil,
+		arg.NowAt,
+		arg.BatchLimit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ClaimPushDeliveriesRow
+	for rows.Next() {
+		var i ClaimPushDeliveriesRow
+		if err := rows.Scan(
+			&i.OwnerUserID,
+			&i.NotificationID,
+			&i.DeviceID,
+			&i.Platform,
+			&i.Attempts,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const completePushDelivery = `-- name: CompletePushDelivery :exec
+UPDATE workos_core.push_deliveries
+SET state = $1, next_attempt_at = $2, claim_token = NULL,
+    delivered_at = CASE WHEN $1::text = 'delivered' THEN $3::timestamptz ELSE NULL END
+WHERE notification_id = $4 AND device_id = $5
+  AND platform = $6 AND claim_token = $7 AND state = 'pending'
+`
+
+type CompletePushDeliveryParams struct {
+	State          string
+	NextAttemptAt  time.Time
+	NowAt          time.Time
+	NotificationID string
+	DeviceID       string
+	Platform       string
+	ClaimToken     pgtype.UUID
+}
+
+func (q *Queries) CompletePushDelivery(ctx context.Context, arg CompletePushDeliveryParams) error {
+	_, err := q.db.Exec(ctx, completePushDelivery,
+		arg.State,
+		arg.NextAttemptAt,
+		arg.NowAt,
+		arg.NotificationID,
+		arg.DeviceID,
+		arg.Platform,
+		arg.ClaimToken,
+	)
+	return err
+}
+
 const countOwnerUnread = `-- name: CountOwnerUnread :one
 SELECT count(*) FROM workos_core.notifications
 WHERE owner_user_id = $1 AND read_at IS NULL
@@ -114,7 +206,7 @@ const countPushDeliveries = `-- name: CountPushDeliveries :one
 SELECT count(*) FROM workos_core.push_deliveries
 WHERE notification_id = $1
   AND device_id = $2
-  AND platform = $3
+  AND platform = $3 AND state = 'delivered'
 `
 
 type CountPushDeliveriesParams struct {
@@ -169,6 +261,46 @@ func (q *Queries) DeleteOldSourceReceipts(ctx context.Context, cutoff time.Time)
 		return 0, err
 	}
 	return result.RowsAffected(), nil
+}
+
+const enqueuePushDeliveries = `-- name: EnqueuePushDeliveries :exec
+INSERT INTO workos_core.push_deliveries (
+    owner_user_id, notification_id, device_id, platform, relay_payload, state, next_attempt_at
+)
+SELECT s.owner_user_id, $1, s.device_id, s.platform,
+       $2, $3, $4
+FROM workos_core.push_subscriptions s
+WHERE s.owner_user_id = $5 AND s.status = 'active'
+ON CONFLICT (notification_id, device_id, platform) DO NOTHING
+`
+
+type EnqueuePushDeliveriesParams struct {
+	NotificationID string
+	RelayPayload   string
+	State          string
+	NextAttemptAt  time.Time
+	OwnerUserID    string
+}
+
+func (q *Queries) EnqueuePushDeliveries(ctx context.Context, arg EnqueuePushDeliveriesParams) error {
+	_, err := q.db.Exec(ctx, enqueuePushDeliveries,
+		arg.NotificationID,
+		arg.RelayPayload,
+		arg.State,
+		arg.NextAttemptAt,
+		arg.OwnerUserID,
+	)
+	return err
+}
+
+const exhaustPushDeliveries = `-- name: ExhaustPushDeliveries :exec
+UPDATE workos_core.push_deliveries SET state = 'failed', claim_token = NULL
+WHERE state = 'pending' AND attempts = 8 AND next_attempt_at <= $1
+`
+
+func (q *Queries) ExhaustPushDeliveries(ctx context.Context, nowAt time.Time) error {
+	_, err := q.db.Exec(ctx, exhaustPushDeliveries, nowAt)
+	return err
 }
 
 const getChangesAfter = `-- name: GetChangesAfter :many
@@ -478,6 +610,35 @@ func (q *Queries) GetOwnerSweptThrough(ctx context.Context, ownerUserID string) 
 	return swept_through, err
 }
 
+const getPushSubscription = `-- name: GetPushSubscription :one
+SELECT owner_user_id, device_id, platform, endpoint, p256dh, auth_secret, status, created_at, updated_at
+FROM workos_core.push_subscriptions
+WHERE owner_user_id = $1 AND device_id = $2 AND platform = $3
+`
+
+type GetPushSubscriptionParams struct {
+	OwnerUserID string
+	DeviceID    string
+	Platform    string
+}
+
+func (q *Queries) GetPushSubscription(ctx context.Context, arg GetPushSubscriptionParams) (WorkosCorePushSubscription, error) {
+	row := q.db.QueryRow(ctx, getPushSubscription, arg.OwnerUserID, arg.DeviceID, arg.Platform)
+	var i WorkosCorePushSubscription
+	err := row.Scan(
+		&i.OwnerUserID,
+		&i.DeviceID,
+		&i.Platform,
+		&i.Endpoint,
+		&i.P256dh,
+		&i.AuthSecret,
+		&i.Status,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const insertNotification = `-- name: InsertNotification :execrows
 INSERT INTO workos_core.notifications (
     id, owner_user_id, project_id, kind, severity, origin, title, body,
@@ -693,40 +854,6 @@ func (q *Queries) InsertNotificationSourceReceipt(ctx context.Context, arg Inser
 		arg.SourceDigest,
 		arg.NotificationID,
 		arg.RecordedAt,
-	)
-	if err != nil {
-		return 0, err
-	}
-	return result.RowsAffected(), nil
-}
-
-const insertPushDelivery = `-- name: InsertPushDelivery :execrows
-INSERT INTO workos_core.push_deliveries (
-    owner_user_id, notification_id, device_id, platform, relay_payload, delivered_at
-) VALUES (
-    $1, $2, $3,
-    $4, $5, $6
-)
-ON CONFLICT (notification_id, device_id, platform) DO NOTHING
-`
-
-type InsertPushDeliveryParams struct {
-	OwnerUserID    string
-	NotificationID string
-	DeviceID       string
-	Platform       string
-	RelayPayload   string
-	DeliveredAt    time.Time
-}
-
-func (q *Queries) InsertPushDelivery(ctx context.Context, arg InsertPushDeliveryParams) (int64, error) {
-	result, err := q.db.Exec(ctx, insertPushDelivery,
-		arg.OwnerUserID,
-		arg.NotificationID,
-		arg.DeviceID,
-		arg.Platform,
-		arg.RelayPayload,
-		arg.DeliveredAt,
 	)
 	if err != nil {
 		return 0, err
