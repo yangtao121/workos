@@ -1,3 +1,4 @@
+import { openDesktopApp } from "./open-app.js";
 import { expect, test, type Page } from "@playwright/test";
 
 // The adaptive shell gate (docs/tasks/20260831-v1-runtime-reliability-adaptive-closeout.md).
@@ -210,7 +211,7 @@ test.describe("adaptive expanded regression (1440x900)", () => {
     await page.getByRole("button", { name: "Create space" }).click();
     await expect(page.locator(".project-card.active")).toContainText(`Adaptive Expanded ${stamp}`);
 
-    await page.getByTestId("open-system-monitor").click();
+    await openDesktopApp(page, "system-monitor");
     await expect(
       page.locator(".workos-window", { hasText: "System Monitor" }).first(),
     ).toBeVisible();

@@ -395,6 +395,7 @@ func (r *Repository) Search(ctx context.Context, query domain.SearchQuery) (doma
 		OwnerUserID:     query.OwnerUserID,
 		ProjectID:       query.ProjectID,
 		QueryText:       domain.LexicalQueryText(query.CanonicalQuery),
+		SourceType:      query.SourceType,
 		SnapshotThrough: snapshot,
 		CursorScore:     cursorScore,
 		CursorCreatedAt: cursorCreated,
@@ -494,6 +495,7 @@ func (r *Repository) SearchHybrid(ctx context.Context, query domain.SearchQuery)
 		OwnerUserID:     query.OwnerUserID,
 		ProjectID:       query.ProjectID,
 		QueryText:       domain.LexicalQueryText(query.CanonicalQuery),
+		SourceType:      query.SourceType,
 		SnapshotThrough: snapshot,
 		RowLimit:        hybridCandidateLimit,
 	})
@@ -889,4 +891,23 @@ func (r *Repository) ListArchiveObjects(ctx context.Context, ownerUserID string,
 // CountArchiveObjects returns the owner's object count for the bound check.
 func (r *Repository) CountArchiveObjects(ctx context.Context, ownerUserID string) (int64, error) {
 	return r.queries.CountArchiveObjects(ctx, ownerUserID)
+}
+
+func (r *Repository) ReadDocument(ctx context.Context, input domain.DocumentRead) (domain.Document, error) {
+	row, err := r.queries.ReadIndexedDocument(ctx, indexerdb.ReadIndexedDocumentParams{
+		OwnerUserID: input.OwnerUserID, ProjectID: input.ProjectID, SourceType: input.SourceType, SourceID: input.SourceID, Digest: input.Digest,
+	})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return domain.Document{}, domain.ErrNotFound
+	}
+	if err != nil {
+		return domain.Document{}, storeError("read indexed document", err)
+	}
+	doc := domain.Document{OwnerUserID: row.OwnerUserID, ProjectID: row.ProjectID, SourceID: row.SourceID, SourceDigest: row.SourceDigest,
+		ArtifactType: row.ArtifactType, Title: row.Title, Content: row.Content, SourceCreatedAt: row.SourceCreatedAt,
+		LastPublication: row.LastPublicationID, IndexedAt: row.IndexedAt}
+	if err := domain.ValidStoredDocument(doc); err != nil {
+		return domain.Document{}, err
+	}
+	return doc, nil
 }

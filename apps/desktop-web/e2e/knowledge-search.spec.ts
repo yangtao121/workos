@@ -1,3 +1,4 @@
+import { openDesktopApp } from "./open-app.js";
 import { expect, test } from "@playwright/test";
 
 // The owner knowledge-search acceptance gate (ADR-0013): the full browser
@@ -30,7 +31,7 @@ test("owner searches knowledge, pins a hit as Agent context, and re-runs a task"
 
   // Knowledge Center: bounded polling until the durable projection catches
   // up, then the exact hit with an inert excerpt.
-  await page.getByTestId("open-knowledge-center").click();
+  await openDesktopApp(page, "knowledge-center");
   const input = page.getByTestId("knowledge-search-input");
   const submit = page.getByTestId("knowledge-search-submit");
   const firstResult = page.getByTestId("knowledge-result").first();
@@ -70,7 +71,7 @@ test("owner searches knowledge, pins a hit as Agent context, and re-runs a task"
 
   // Restarting the browser page keeps the durable facts searchable.
   await page.reload();
-  await page.getByTestId("open-knowledge-center").click();
+  await openDesktopApp(page, "knowledge-center");
   for (let attempt = 0; attempt < 20; attempt++) {
     await input.fill(phrase);
     await submit.click();
@@ -90,7 +91,7 @@ test("an empty query never reaches the server and results stay per project", asy
   await page.getByRole("button", { name: "Create space" }).click();
   await expect(page.locator(".project-card.active")).toContainText("Knowledge Empty");
 
-  await page.getByTestId("open-knowledge-center").click();
+  await openDesktopApp(page, "knowledge-center");
   await page.getByTestId("knowledge-search-input").fill("   ");
   await page.getByTestId("knowledge-search-submit").click();
   // The idle hint stays: no RPC was issued and no fake state appeared.

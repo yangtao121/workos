@@ -3,6 +3,7 @@
 // is generation-guarded per project and per query, renders excerpts as
 // inert text only, and never injects anything into an Agent task by itself —
 // pinning a hit goes through the Desktop's existing canonical context chips.
+import { IndexedDocumentPreview } from "./IndexedDocumentPreview.js";
 import { Code, ConnectError } from "@connectrpc/connect";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { WorkOSClients } from "@workos/agent-sdk";
@@ -37,6 +38,7 @@ function isSafePlainText(value: string, maxCodePoints: number, allowEmpty: boole
 }
 
 interface KnowledgeHit {
+  sourceType: "artifact.review.v1" | "workspace.file.v1";
   artifactId: string;
   digest: string;
   artifactType: string;
@@ -51,7 +53,14 @@ function validateHit(
   const artifactId = hit.artifactId;
   const digest = hit.digest;
   if (!UUID_V7.test(artifactId) || !SHA256.test(digest)) return null;
-  if (!REVIEW_TYPES.has(hit.artifactType)) return null;
+  const sourceType = hit.sourceRef?.type;
+  if (sourceType !== "artifact.review.v1" && sourceType !== "workspace.file.v1") return null;
+  if (
+    sourceType === "artifact.review.v1"
+      ? !REVIEW_TYPES.has(hit.artifactType)
+      : hit.artifactType !== "workspace.text.v1"
+  )
+    return null;
   if (!Number.isFinite(hit.score) || hit.score < 0 || hit.score > 3) return null;
   const title = hit.title;
   if (!isSafePlainText(title, 200, false)) return null;
@@ -60,14 +69,14 @@ function validateHit(
   // The typed ref and the legacy projection must agree — a drifting pair is
   // corruption, not a display problem.
   if (
-    hit.sourceRef?.type !== "artifact.review.v1" ||
-    hit.sourceRef.id !== artifactId ||
+    hit.sourceRef?.id !== artifactId ||
     hit.sourceRef.revision !== digest ||
-    hit.contextRef !== `artifact.review.v1:${artifactId}:${digest}`
+    hit.contextRef !== `${sourceType}:${artifactId}:${digest}`
   ) {
     return null;
   }
   return {
+    sourceType,
     artifactId,
     digest,
     artifactType: hit.artifactType,
@@ -111,6 +120,7 @@ export function KnowledgeCenter({
   onUseAsContext,
   onOpenArtifact,
 }: KnowledgeCenterProps) {
+  const [preview, setPreview] = useState<KnowledgeHit>();
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState<KnowledgeStatus>("idle");
   const [hits, setHits] = useState<KnowledgeHit[]>([]);
@@ -198,6 +208,17 @@ export function KnowledgeCenter({
     void runSearch("");
   };
 
+  if (preview)
+    return (
+      <IndexedDocumentPreview
+        projectId={projectId}
+        source={{ type: preview.sourceType, id: preview.artifactId, revision: preview.digest }}
+        workosClients={workosClients}
+        onClose={() => {
+          setPreview(undefined);
+        }}
+      />
+    );
   return (
     <div className="knowledge-center-body" aria-label="Knowledge Center">
       <form
@@ -280,16 +301,23 @@ export function KnowledgeCenter({
                   className="knowledge-hit"
                   type="button"
                   onClick={() => {
-                    onOpenArtifact(hit.artifactId);
+                    if (hit.sourceType === "workspace.file.v1") setPreview(hit);
+                    else onOpenArtifact(hit.artifactId);
                   }}
                 >
                   <strong>{hit.title}</strong>
                   <span>
-                    {hit.artifactType === "document.markdown.v1" ? "Markdown" : "Unified diff"}
+                    {hit.sourceType === "workspace.file.v1"
+                      ? "Workspace file"
+                      : hit.artifactType === "document.markdown.v1"
+                        ? "Markdown"
+                        : "Unified diff"}
                   </span>
                   <p className="knowledge-excerpt">{hit.excerpt}</p>
                 </button>
-                {selectedContextIds?.has(hit.artifactId) ? (
+                {hit.sourceType === "workspace.file.v1" ? null : selectedContextIds?.has(
+                    hit.artifactId,
+                  ) ? (
                   <p className="context-selected-note" data-testid="knowledge-context-selected">
                     Pinned as Agent context.
                   </p>

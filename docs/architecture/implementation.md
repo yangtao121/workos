@@ -1202,3 +1202,11 @@ Reliability 台账增加 candidate/starting/canary/rollback 阶段与固定 expe
 候选先持久化，再通过 Core 切换并启动 Surface，成功后才开始观察。每次协调持有该行事务锁，
 跨进程重复调用依赖固定 idempotency key，终态不再协调。启动失败或新 incident 驱动有界回滚。
 修复任务完成不再制造空目标部署；Build/Test 产物交接仍待完整软件链验收。
+
+## 2026-09-06 桌面与知识修复
+
+IndexService 的 source_type 在 SQL 分页之前过滤，并参与 page token 的查询绑定。
+ReadDocument 只返回 active generation 中未 tombstone、owner/project/source/id/digest 精确匹配的文档；
+不返回数据库全文索引列。Files 消费 workspace 过滤，Knowledge Center 接受混合来源并显示只读快照；
+Docs/Code 共享 Artifact 分页列表。新读取链已有真实 PostgreSQL 测试，浏览器全链重验仍在进行。
+桌面使用共享 SVG 图标和应用注册表、深色控件、可用区域窗口几何，保留最小化 Surface 的挂载会话。

@@ -115,6 +115,7 @@ type AppliedDocument struct {
 // effect, cursor, and job progress commit inside one local transaction; the
 // tx-scoped methods exist so the ingestion coordinator can compose them.
 type ProjectionRepository interface {
+	ReadDocument(context.Context, domain.DocumentRead) (domain.Document, error)
 	// ActiveGenerationID returns the generation every search reads. A missing
 	// pointer before first boot is ErrNotFound.
 	ActiveGenerationID(ctx context.Context) (string, error)

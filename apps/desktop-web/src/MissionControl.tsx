@@ -24,6 +24,11 @@ export function MissionControl(props: {
 
   return (
     <div className="mission-control" data-testid="mission-control">
+      <header className="app-heading">
+        <p>PROJECT SPACES</p>
+        <h1>Projects</h1>
+        <span>Switch workspaces or create a new project.</span>
+      </header>
       <form
         className="mission-create"
         onSubmit={(event) => {
@@ -39,6 +44,9 @@ export function MissionControl(props: {
               } else {
                 setName("");
               }
+            })
+            .catch(() => {
+              setVerdict("Project creation failed. Try again.");
             })
             .finally(() => {
               setBusy(false);

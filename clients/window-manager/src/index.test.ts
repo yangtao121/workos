@@ -32,7 +32,7 @@ describe("windowReducer snap", () => {
     expect(snapped?.mode).toBe("snap-left");
     expect(snapped?.rect).toEqual({ x: 0, y: 0, width: 720, height: 900 });
     expect(snapped?.restoreRect).toEqual({ x: 40, y: 60, width: 520, height: 420 });
-    state = windowReducer(state, { type: "mode", id: "docs", mode: "normal" });
+    state = windowReducer(state, { type: "mode", id: "docs", mode: "normal", viewport });
     expect(state.windows[0]?.rect).toEqual({ x: 40, y: 60, width: 520, height: 420 });
   });
 
@@ -75,8 +75,8 @@ describe("windowReducer", () => {
         mode: "normal",
       },
     });
-    state = windowReducer(state, { type: "mode", id: "agent", mode: "maximized" });
-    state = windowReducer(state, { type: "mode", id: "agent", mode: "normal" });
+    state = windowReducer(state, { type: "mode", id: "agent", mode: "maximized", viewport });
+    state = windowReducer(state, { type: "mode", id: "agent", mode: "normal", viewport });
     expect(state.windows[0]?.rect).toEqual(rect);
     expect(state.windows[0]?.zIndex).toBeGreaterThan(1);
   });
@@ -155,5 +155,47 @@ describe("windowReducer", () => {
     state = windowReducer(state, open);
     expect(state.windows).toHaveLength(1);
     expect(state.windows[0]?.zIndex).toBeGreaterThan(firstZ ?? 0);
+  });
+});
+
+describe("work area and minimized windows", () => {
+  it("respects an offset work area and accounts for odd widths", () => {
+    let state = windowReducer(initialWindowState, {
+      type: "open",
+      window: normalWindow("docs", "docs"),
+    });
+    state = windowReducer(state, {
+      type: "snap",
+      id: "docs",
+      side: "right",
+      viewport: { x: 12, y: 20, width: 1001, height: 700 },
+    });
+    expect(state.windows[0]?.rect).toEqual({ x: 512, y: 20, width: 501, height: 700 });
+    expect(state.nextZIndex).toBe(3);
+  });
+  it("reopens a minimized snapped window without losing its normal geometry", () => {
+    let state = windowReducer(initialWindowState, {
+      type: "open",
+      window: normalWindow("docs", "docs"),
+    });
+    state = windowReducer(state, { type: "snap", id: "docs", side: "left", viewport });
+    state = windowReducer(state, { type: "mode", id: "docs", mode: "minimized", viewport });
+    state = windowReducer(state, { type: "open", window: normalWindow("docs", "docs") });
+    expect(state.windows[0]?.mode).toBe("snap-left");
+    state = windowReducer(state, { type: "mode", id: "docs", mode: "normal", viewport });
+    expect(state.windows[0]?.rect).toEqual(normalWindow("docs", "docs").rect);
+  });
+  it("maximizes to available bounds and keeps windows reachable after resizing", () => {
+    let state = windowReducer(initialWindowState, {
+      type: "open",
+      window: normalWindow("docs", "docs"),
+    });
+    state = windowReducer(state, { type: "mode", id: "docs", mode: "maximized", viewport });
+    expect(state.windows[0]?.rect).toEqual(viewport);
+    const smaller = { x: 0, y: 0, width: 400, height: 300 };
+    state = windowReducer(state, { type: "work-area", viewport: smaller });
+    expect(state.windows[0]?.rect).toEqual(smaller);
+    state = windowReducer(state, { type: "mode", id: "docs", mode: "normal", viewport: smaller });
+    expect(state.windows[0]?.rect).toEqual(smaller);
   });
 });

@@ -262,12 +262,12 @@ describe("Desktop adaptive shell", () => {
     expect(screen.queryByTestId("fold-pane-main")).toBeNull();
   });
 
-  it("keeps the expanded desktop unchanged at desktop widths", async () => {
+  it("renders the free-window desktop with a compact dock at desktop widths", async () => {
     pinViewport(1440, 900);
     render(<Desktop workosClients={clientsFixture([project(PROJECT_A, "Wide P", 1n)])} />);
     expect(await screen.findByText("PROJECT SPACES")).toBeTruthy();
     expect(screen.queryByTestId("adaptive-bottom-nav")).toBeNull();
-    expect(screen.getByRole("button", { name: "Open System Monitor" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Open Home" })).toBeTruthy();
   });
 
   it("responds to a viewport resize between expanded and compact", async () => {

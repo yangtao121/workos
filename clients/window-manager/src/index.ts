@@ -62,6 +62,7 @@ export interface WorkOSWindow {
   restoreRect: Rect;
   mode: WindowMode;
   zIndex: number;
+  minimizedMode?: Exclude<WindowMode, "minimized"> | undefined;
 }
 
 export interface WindowState {
@@ -74,43 +75,85 @@ export type WindowAction =
   | { type: "focus"; id: string }
   | { type: "move"; id: string; x: number; y: number }
   | { type: "resize"; id: string; width: number; height: number }
-  | { type: "mode"; id: string; mode: WindowMode }
+  | { type: "mode"; id: string; mode: WindowMode; viewport: Rect }
+  | { type: "work-area"; viewport: Rect }
   | { type: "snap"; id: string; side: "left" | "right"; viewport: Rect }
   | { type: "close"; id: string }
   | { type: "rename"; id: string; title: string };
 
 export const initialWindowState: WindowState = { windows: [], nextZIndex: 1 };
 
-export function windowReducer(state: WindowState, action: WindowAction): WindowState {
-  if (action.type === "open") {
-    if (state.windows.some((item) => item.id === action.window.id)) {
-      return {
-        windows: state.windows.map((item) =>
-          item.id === action.window.id ? { ...item, zIndex: state.nextZIndex } : item,
-        ),
-        nextZIndex: state.nextZIndex + 1,
-      };
-    }
+export function fitRect(rect: Rect, bounds: Rect): Rect {
+  const width = Math.min(bounds.width, Math.max(320, rect.width));
+  const height = Math.min(bounds.height, Math.max(220, rect.height));
+  return {
+    x: Math.min(bounds.x + bounds.width - width, Math.max(bounds.x, rect.x)),
+    y: Math.min(bounds.y + bounds.height - height, Math.max(bounds.y, rect.y)),
+    width,
+    height,
+  };
+}
+
+function modeRect(mode: WindowMode, rect: Rect, viewport: Rect): Rect {
+  if (mode === "maximized" || mode === "fullscreen") return { ...viewport };
+  if (mode === "snap-left" || mode === "snap-right") {
+    const leftWidth = Math.floor(viewport.width / 2);
     return {
-      windows: [
-        ...state.windows,
-        { ...action.window, restoreRect: action.window.rect, zIndex: state.nextZIndex },
-      ],
+      x: viewport.x + (mode === "snap-right" ? leftWidth : 0),
+      y: viewport.y,
+      width: mode === "snap-right" ? viewport.width - leftWidth : leftWidth,
+      height: viewport.height,
+    };
+  }
+  return fitRect(rect, viewport);
+}
+
+function restoreMinimized(item: WorkOSWindow): WorkOSWindow {
+  return item.mode === "minimized" ? { ...item, mode: item.minimizedMode ?? "normal" } : item;
+}
+
+export function windowReducer(state: WindowState, action: WindowAction): WindowState {
+  if (action.type === "work-area") {
+    return {
+      ...state,
+      windows: state.windows.map((item) => ({
+        ...item,
+        rect: modeRect(
+          item.mode === "minimized" ? (item.minimizedMode ?? "normal") : item.mode,
+          item.rect,
+          action.viewport,
+        ),
+        restoreRect: fitRect(item.restoreRect, action.viewport),
+      })),
+    };
+  }
+  if (action.type === "open") {
+    const existing = state.windows.some((item) => item.id === action.window.id);
+    return {
+      windows: existing
+        ? state.windows.map((item) =>
+            item.id === action.window.id
+              ? { ...restoreMinimized(item), zIndex: state.nextZIndex }
+              : item,
+          )
+        : [
+            ...state.windows,
+            { ...action.window, restoreRect: action.window.rect, zIndex: state.nextZIndex },
+          ],
       nextZIndex: state.nextZIndex + 1,
     };
   }
-  if (action.type === "close") {
+  if (action.type === "close")
     return { ...state, windows: state.windows.filter((item) => item.id !== action.id) };
-  }
-  const target = state.windows.find((item) => item.id === action.id);
-  if (!target) return state;
+  if (!state.windows.some((item) => item.id === action.id)) return state;
+  const raises = action.type === "focus" || action.type === "mode" || action.type === "snap";
   const windows = state.windows.map((item) => {
     if (item.id !== action.id) return item;
     switch (action.type) {
       case "rename":
         return { ...item, title: action.title };
       case "focus":
-        return { ...item, zIndex: state.nextZIndex };
+        return { ...restoreMinimized(item), zIndex: state.nextZIndex };
       case "move":
         return item.mode === "normal"
           ? { ...item, rect: { ...item.rect, x: action.x, y: action.y } }
@@ -127,37 +170,34 @@ export function windowReducer(state: WindowState, action: WindowAction): WindowS
             }
           : item;
       case "mode":
-        return {
-          ...item,
-          restoreRect: item.mode === "normal" ? item.rect : item.restoreRect,
-          rect: action.mode === "normal" ? item.restoreRect : item.rect,
-          mode: action.mode,
-          zIndex: state.nextZIndex,
-        };
       case "snap": {
-        // Snap is a deterministic half-viewport geometry (ADR W6): the
-        // pre-snap rect is preserved as the restore target, so returning to
-        // "normal" is exact. Snapping never nests on an already-snapped
-        // window — the restore target stays the last normal rect.
-        const half = Math.max(320, Math.floor(action.viewport.width / 2));
-        const rect: Rect = {
-          x: action.side === "left" ? 0 : Math.max(0, action.viewport.width - half),
-          y: 0,
-          width: half,
-          height: Math.max(220, action.viewport.height),
-        };
+        const mode: WindowMode =
+          action.type === "snap"
+            ? action.side === "left"
+              ? "snap-left"
+              : "snap-right"
+            : action.mode;
+        const restoreRect = item.mode === "normal" ? item.rect : item.restoreRect;
         return {
           ...item,
-          restoreRect: item.mode === "normal" ? item.rect : item.restoreRect,
-          rect,
-          mode: (action.side === "left" ? "snap-left" : "snap-right") as WindowMode,
+          restoreRect,
+          mode,
           zIndex: state.nextZIndex,
+          minimizedMode:
+            mode === "minimized"
+              ? item.mode === "minimized"
+                ? (item.minimizedMode ?? "normal")
+                : item.mode
+              : item.minimizedMode,
+          rect:
+            mode === "minimized"
+              ? item.rect
+              : modeRect(mode, mode === "normal" ? restoreRect : item.rect, action.viewport),
         };
       }
       default:
         return item;
     }
   });
-  const raises = action.type === "focus" || action.type === "mode";
   return { windows, nextZIndex: raises ? state.nextZIndex + 1 : state.nextZIndex };
 }

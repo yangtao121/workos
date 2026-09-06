@@ -1,3 +1,4 @@
+import { openDesktopApp } from "./open-app.js";
 import { expect, test } from "@playwright/test";
 
 // This spec is run only by the owner knowledge gate while the Indexer
@@ -25,7 +26,7 @@ test("an Indexer outage leaves project and Agent work usable", async ({ page }) 
     timeout: 120_000,
   });
 
-  await page.getByTestId("open-knowledge-center").click();
+  await openDesktopApp(page, "knowledge-center");
   await page.getByTestId("knowledge-search-input").fill("deterministic synthetic output");
   await page.getByTestId("knowledge-search-submit").click();
   await expect(page.getByTestId("knowledge-unavailable")).toContainText(

@@ -14,7 +14,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file workos/index/v1/index.proto.
  */
 export const file_workos_index_v1_index: GenFile = /*@__PURE__*/
-  fileDesc("Cht3b3Jrb3MvaW5kZXgvdjEvaW5kZXgucHJvdG8SD3dvcmtvcy5pbmRleC52MSI4ChFBcnRpZmFjdFNvdXJjZVJlZhITCgthcnRpZmFjdF9pZBgBIAEoCRIOCgZkaWdlc3QYAiABKAkijQEKE0luZGV4Q29udGV4dFJlcXVlc3QSEgoKcHJvamVjdF9pZBgBIAEoCRIUCgxjb250ZXh0X3JlZnMYAiADKAkSMwoHc291cmNlcxgDIAMoCzIiLndvcmtvcy5pbmRleC52MS5BcnRpZmFjdFNvdXJjZVJlZhIXCg9pZGVtcG90ZW5jeV9rZXkYBCABKAki+AEKCEluZGV4Sm9iEgoKAmlkGAEgASgJEhIKCnByb2plY3RfaWQYAiABKAkSDQoFc3RhdGUYAyABKAkSMQoJam9iX3N0YXRlGAQgASgOMh4ud29ya29zLmluZGV4LnYxLkluZGV4Sm9iU3RhdGUSFQoNdG90YWxfc291cmNlcxgFIAEoBRIZChFjb21wbGV0ZWRfc291cmNlcxgGIAEoBRIWCg5mYWlsZWRfc291cmNlcxgHIAEoBRIYChBmYWlsdXJlX2NhdGVnb3J5GAggASgJEhIKCmNyZWF0ZWRfYXQYCSABKAkSEgoKdXBkYXRlZF9hdBgKIAEoCSJlChNTZWFyY2hIeWJyaWRSZXF1ZXN0EhIKCnByb2plY3RfaWQYASABKAkSDQoFcXVlcnkYAiABKAkSKwoEcGFnZRgDIAEoCzIdLndvcmtvcy5jb21tb24udjEuUGFnZVJlcXVlc3QiogEKFFNlYXJjaEh5YnJpZFJlc3BvbnNlEigKBGhpdHMYASADKAsyGi53b3Jrb3MuaW5kZXgudjEuU2VhcmNoSGl0EiwKBHBhZ2UYAiABKAsyHi53b3Jrb3MuY29tbW9uLnYxLlBhZ2VSZXNwb25zZRIyCglmcmVzaG5lc3MYAyABKAsyHy53b3Jrb3MuaW5kZXgudjEuSW5kZXhGcmVzaG5lc3MiXwoNU2VhcmNoUmVxdWVzdBISCgpwcm9qZWN0X2lkGAEgASgJEg0KBXF1ZXJ5GAIgASgJEisKBHBhZ2UYAyABKAsyHS53b3Jrb3MuY29tbW9uLnYxLlBhZ2VSZXF1ZXN0ItABCglTZWFyY2hIaXQSEwoLY29udGV4dF9yZWYYASABKAkSDwoHZXhjZXJwdBgCIAEoCRINCgVzY29yZRgDIAEoARIvCgpzb3VyY2VfcmVmGAQgASgLMhsud29ya29zLmFnZW50LnYxLkNvbnRleHRSZWYSEwoLYXJ0aWZhY3RfaWQYBSABKAkSFQoNYXJ0aWZhY3RfdHlwZRgGIAEoCRIOCgZkaWdlc3QYByABKAkSDQoFdGl0bGUYCCABKAkSEgoKY3JlYXRlZF9hdBgJIAEoCSJzCg5JbmRleEZyZXNobmVzcxIRCgljYXVnaHRfdXAYASABKAgSFwoPaW5kZXhlZF90aHJvdWdoGAIgASgJEhcKD2xhc3RfaW5kZXhlZF9hdBgDIAEoCRIcChRwZW5kaW5nX3B1YmxpY2F0aW9ucxgEIAEoAyKcAQoOU2VhcmNoUmVzcG9uc2USKAoEaGl0cxgBIAMoCzIaLndvcmtvcy5pbmRleC52MS5TZWFyY2hIaXQSLAoEcGFnZRgCIAEoCzIeLndvcmtvcy5jb21tb24udjEuUGFnZVJlc3BvbnNlEjIKCWZyZXNobmVzcxgDIAEoCzIfLndvcmtvcy5pbmRleC52MS5JbmRleEZyZXNobmVzcyI+ChRJbmRleENvbnRleHRSZXNwb25zZRImCgNqb2IYASABKAsyGS53b3Jrb3MuaW5kZXgudjEuSW5kZXhKb2IqpQEKDUluZGV4Sm9iU3RhdGUSHwobSU5ERVhfSk9CX1NUQVRFX1VOU1BFQ0lGSUVEEAASGwoXSU5ERVhfSk9CX1NUQVRFX1BFTkRJTkcQARIbChdJTkRFWF9KT0JfU1RBVEVfUlVOTklORxACEh0KGUlOREVYX0pPQl9TVEFURV9DT01QTEVURUQQAxIaChZJTkRFWF9KT0JfU1RBVEVfRkFJTEVEEAQymQIKDEluZGV4U2VydmljZRJdCgxJbmRleENvbnRleHQSJC53b3Jrb3MuaW5kZXgudjEuSW5kZXhDb250ZXh0UmVxdWVzdBolLndvcmtvcy5pbmRleC52MS5JbmRleENvbnRleHRSZXNwb25zZSIAEksKBlNlYXJjaBIeLndvcmtvcy5pbmRleC52MS5TZWFyY2hSZXF1ZXN0Gh8ud29ya29zLmluZGV4LnYxLlNlYXJjaFJlc3BvbnNlIgASXQoMU2VhcmNoSHlicmlkEiQud29ya29zLmluZGV4LnYxLlNlYXJjaEh5YnJpZFJlcXVlc3QaJS53b3Jrb3MuaW5kZXgudjEuU2VhcmNoSHlicmlkUmVzcG9uc2UiAEI9WjtnaXRodWIuY29tL3lhbmd0YW8xMjEvd29ya29zL2dlbi9nby93b3Jrb3MvaW5kZXgvdjE7aW5kZXh2MWIGcHJvdG8z", [file_workos_agent_v1_agent, file_workos_common_v1_common]);
+  fileDesc("Cht3b3Jrb3MvaW5kZXgvdjEvaW5kZXgucHJvdG8SD3dvcmtvcy5pbmRleC52MSI4ChFBcnRpZmFjdFNvdXJjZVJlZhITCgthcnRpZmFjdF9pZBgBIAEoCRIOCgZkaWdlc3QYAiABKAkijQEKE0luZGV4Q29udGV4dFJlcXVlc3QSEgoKcHJvamVjdF9pZBgBIAEoCRIUCgxjb250ZXh0X3JlZnMYAiADKAkSMwoHc291cmNlcxgDIAMoCzIiLndvcmtvcy5pbmRleC52MS5BcnRpZmFjdFNvdXJjZVJlZhIXCg9pZGVtcG90ZW5jeV9rZXkYBCABKAki+AEKCEluZGV4Sm9iEgoKAmlkGAEgASgJEhIKCnByb2plY3RfaWQYAiABKAkSDQoFc3RhdGUYAyABKAkSMQoJam9iX3N0YXRlGAQgASgOMh4ud29ya29zLmluZGV4LnYxLkluZGV4Sm9iU3RhdGUSFQoNdG90YWxfc291cmNlcxgFIAEoBRIZChFjb21wbGV0ZWRfc291cmNlcxgGIAEoBRIWCg5mYWlsZWRfc291cmNlcxgHIAEoBRIYChBmYWlsdXJlX2NhdGVnb3J5GAggASgJEhIKCmNyZWF0ZWRfYXQYCSABKAkSEgoKdXBkYXRlZF9hdBgKIAEoCSJ6ChNTZWFyY2hIeWJyaWRSZXF1ZXN0EhIKCnByb2plY3RfaWQYASABKAkSDQoFcXVlcnkYAiABKAkSKwoEcGFnZRgDIAEoCzIdLndvcmtvcy5jb21tb24udjEuUGFnZVJlcXVlc3QSEwoLc291cmNlX3R5cGUYBCABKAkiogEKFFNlYXJjaEh5YnJpZFJlc3BvbnNlEigKBGhpdHMYASADKAsyGi53b3Jrb3MuaW5kZXgudjEuU2VhcmNoSGl0EiwKBHBhZ2UYAiABKAsyHi53b3Jrb3MuY29tbW9uLnYxLlBhZ2VSZXNwb25zZRIyCglmcmVzaG5lc3MYAyABKAsyHy53b3Jrb3MuaW5kZXgudjEuSW5kZXhGcmVzaG5lc3MidAoNU2VhcmNoUmVxdWVzdBISCgpwcm9qZWN0X2lkGAEgASgJEg0KBXF1ZXJ5GAIgASgJEisKBHBhZ2UYAyABKAsyHS53b3Jrb3MuY29tbW9uLnYxLlBhZ2VSZXF1ZXN0EhMKC3NvdXJjZV90eXBlGAQgASgJItABCglTZWFyY2hIaXQSEwoLY29udGV4dF9yZWYYASABKAkSDwoHZXhjZXJwdBgCIAEoCRINCgVzY29yZRgDIAEoARIvCgpzb3VyY2VfcmVmGAQgASgLMhsud29ya29zLmFnZW50LnYxLkNvbnRleHRSZWYSEwoLYXJ0aWZhY3RfaWQYBSABKAkSFQoNYXJ0aWZhY3RfdHlwZRgGIAEoCRIOCgZkaWdlc3QYByABKAkSDQoFdGl0bGUYCCABKAkSEgoKY3JlYXRlZF9hdBgJIAEoCSJzCg5JbmRleEZyZXNobmVzcxIRCgljYXVnaHRfdXAYASABKAgSFwoPaW5kZXhlZF90aHJvdWdoGAIgASgJEhcKD2xhc3RfaW5kZXhlZF9hdBgDIAEoCRIcChRwZW5kaW5nX3B1YmxpY2F0aW9ucxgEIAEoAyKcAQoOU2VhcmNoUmVzcG9uc2USKAoEaGl0cxgBIAMoCzIaLndvcmtvcy5pbmRleC52MS5TZWFyY2hIaXQSLAoEcGFnZRgCIAEoCzIeLndvcmtvcy5jb21tb24udjEuUGFnZVJlc3BvbnNlEjIKCWZyZXNobmVzcxgDIAEoCzIfLndvcmtvcy5pbmRleC52MS5JbmRleEZyZXNobmVzcyI+ChRJbmRleENvbnRleHRSZXNwb25zZRImCgNqb2IYASABKAsyGS53b3Jrb3MuaW5kZXgudjEuSW5kZXhKb2IiVgoTUmVhZERvY3VtZW50UmVxdWVzdBISCgpwcm9qZWN0X2lkGAEgASgJEisKBnNvdXJjZRgCIAEoCzIbLndvcmtvcy5hZ2VudC52MS5Db250ZXh0UmVmIncKFFJlYWREb2N1bWVudFJlc3BvbnNlEisKBnNvdXJjZRgBIAEoCzIbLndvcmtvcy5hZ2VudC52MS5Db250ZXh0UmVmEg0KBXRpdGxlGAIgASgJEg8KB2NvbnRlbnQYAyABKAkSEgoKaW5kZXhlZF9hdBgEIAEoCSqlAQoNSW5kZXhKb2JTdGF0ZRIfChtJTkRFWF9KT0JfU1RBVEVfVU5TUEVDSUZJRUQQABIbChdJTkRFWF9KT0JfU1RBVEVfUEVORElORxABEhsKF0lOREVYX0pPQl9TVEFURV9SVU5OSU5HEAISHQoZSU5ERVhfSk9CX1NUQVRFX0NPTVBMRVRFRBADEhoKFklOREVYX0pPQl9TVEFURV9GQUlMRUQQBDL4AgoMSW5kZXhTZXJ2aWNlEl0KDFJlYWREb2N1bWVudBIkLndvcmtvcy5pbmRleC52MS5SZWFkRG9jdW1lbnRSZXF1ZXN0GiUud29ya29zLmluZGV4LnYxLlJlYWREb2N1bWVudFJlc3BvbnNlIgASXQoMSW5kZXhDb250ZXh0EiQud29ya29zLmluZGV4LnYxLkluZGV4Q29udGV4dFJlcXVlc3QaJS53b3Jrb3MuaW5kZXgudjEuSW5kZXhDb250ZXh0UmVzcG9uc2UiABJLCgZTZWFyY2gSHi53b3Jrb3MuaW5kZXgudjEuU2VhcmNoUmVxdWVzdBofLndvcmtvcy5pbmRleC52MS5TZWFyY2hSZXNwb25zZSIAEl0KDFNlYXJjaEh5YnJpZBIkLndvcmtvcy5pbmRleC52MS5TZWFyY2hIeWJyaWRSZXF1ZXN0GiUud29ya29zLmluZGV4LnYxLlNlYXJjaEh5YnJpZFJlc3BvbnNlIgBCPVo7Z2l0aHViLmNvbS95YW5ndGFvMTIxL3dvcmtvcy9nZW4vZ28vd29ya29zL2luZGV4L3YxO2luZGV4djFiBnByb3RvMw", [file_workos_agent_v1_agent, file_workos_common_v1_common]);
 
 /**
  * Typed canonical source reference for an indexed review artifact. It is the
@@ -177,6 +177,14 @@ export type SearchHybridRequest = Message<"workos.index.v1.SearchHybridRequest">
    * @generated from field: workos.common.v1.PageRequest page = 3;
    */
   page?: PageRequest | undefined;
+
+  /**
+   * Empty searches all sources; otherwise artifact.review.v1 or workspace.file.v1.
+   * Filtering happens before ranking and pagination. Tokens bind this selection.
+   *
+   * @generated from field: string source_type = 4;
+   */
+  sourceType: string;
 };
 
 /**
@@ -236,6 +244,14 @@ export type SearchRequest = Message<"workos.index.v1.SearchRequest"> & {
    * @generated from field: workos.common.v1.PageRequest page = 3;
    */
   page?: PageRequest | undefined;
+
+  /**
+   * Empty searches all sources; otherwise artifact.review.v1 or workspace.file.v1.
+   * Filtering happens before ranking and pagination. Tokens bind this selection.
+   *
+   * @generated from field: string source_type = 4;
+   */
+  sourceType: string;
 };
 
 /**
@@ -399,6 +415,62 @@ export const IndexContextResponseSchema: GenMessage<IndexContextResponse> = /*@_
   messageDesc(file_workos_index_v1_index, 9);
 
 /**
+ * Read one exact indexed snapshot. This is a preview, not a filesystem write API.
+ *
+ * @generated from message workos.index.v1.ReadDocumentRequest
+ */
+export type ReadDocumentRequest = Message<"workos.index.v1.ReadDocumentRequest"> & {
+  /**
+   * @generated from field: string project_id = 1;
+   */
+  projectId: string;
+
+  /**
+   * @generated from field: workos.agent.v1.ContextRef source = 2;
+   */
+  source?: ContextRef | undefined;
+};
+
+/**
+ * Describes the message workos.index.v1.ReadDocumentRequest.
+ * Use `create(ReadDocumentRequestSchema)` to create a new message.
+ */
+export const ReadDocumentRequestSchema: GenMessage<ReadDocumentRequest> = /*@__PURE__*/
+  messageDesc(file_workos_index_v1_index, 10);
+
+/**
+ * @generated from message workos.index.v1.ReadDocumentResponse
+ */
+export type ReadDocumentResponse = Message<"workos.index.v1.ReadDocumentResponse"> & {
+  /**
+   * @generated from field: workos.agent.v1.ContextRef source = 1;
+   */
+  source?: ContextRef | undefined;
+
+  /**
+   * @generated from field: string title = 2;
+   */
+  title: string;
+
+  /**
+   * @generated from field: string content = 3;
+   */
+  content: string;
+
+  /**
+   * @generated from field: string indexed_at = 4;
+   */
+  indexedAt: string;
+};
+
+/**
+ * Describes the message workos.index.v1.ReadDocumentResponse.
+ * Use `create(ReadDocumentResponseSchema)` to create a new message.
+ */
+export const ReadDocumentResponseSchema: GenMessage<ReadDocumentResponse> = /*@__PURE__*/
+  messageDesc(file_workos_index_v1_index, 11);
+
+/**
  * @generated from enum workos.index.v1.IndexJobState
  */
 export enum IndexJobState {
@@ -442,6 +514,14 @@ export const IndexJobStateSchema: GenEnum<IndexJobState> = /*@__PURE__*/
  * @generated from service workos.index.v1.IndexService
  */
 export const IndexService: GenService<{
+  /**
+   * @generated from rpc workos.index.v1.IndexService.ReadDocument
+   */
+  readDocument: {
+    methodKind: "unary";
+    input: typeof ReadDocumentRequestSchema;
+    output: typeof ReadDocumentResponseSchema;
+  },
   /**
    * Owner-triggered, idempotent repair/reindex job for exact review
    * artifacts in the current project. This is a repair path for the same

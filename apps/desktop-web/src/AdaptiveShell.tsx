@@ -7,7 +7,7 @@ import {
   type DeviceLayoutState,
 } from "@workos/adaptive-shell";
 import type { Project } from "@workos/protocol";
-import { Button } from "@workos/ui-kit";
+import { Button, Icon } from "@workos/ui-kit";
 import type { WindowState, WorkOSWindow } from "@workos/window-manager";
 
 // The adaptive shell renders the same Project/Surface/Agent/Artifact state
@@ -27,6 +27,7 @@ export type SystemWindowId =
   | "notification-center";
 
 export interface AdaptiveShellProps {
+  activation?: { id: string; sequence: number } | undefined;
   layout: DeviceLayout;
   windows: WindowState;
   status: string;
@@ -72,6 +73,7 @@ export function AdaptiveShell({
   onOpenSystemWindow,
   onFocusWindow,
   onCloseWindow,
+  activation,
   onLayoutPreference,
   onOpenAppInstance,
   renderWindowBody,
@@ -93,6 +95,14 @@ export function AdaptiveShell({
   const secondary = dualPane ? secondaryWindow(windows, main?.id) : undefined;
   const medium = layout.mode === "medium";
   const fold = layout.mode === "fold-separated";
+  useEffect(() => {
+    if (!activation) return;
+    setSlideOverOpen(false);
+    setAppsOpen(activation.id === "app-library");
+    setSheetOpen(activation.id === "settings");
+    setDockRevealed(false);
+    if (activation.id !== "app-library" && activation.id !== "settings") setView("window");
+  }, [activation]);
 
   // Opening an overlay collapses the others so the shell never stacks two
   // competing modals.
@@ -158,17 +168,17 @@ export function AdaptiveShell({
         }}
       >
         <header className="adaptive-pane-header">
-          <div className="traffic-lights">
-            <button
-              aria-label={`Close ${windowState.title}`}
-              className="traffic-close"
-              onClick={(event) => {
-                event.stopPropagation();
-                onCloseWindow(windowState.id);
-              }}
-              type="button"
-            />
-          </div>
+          <button
+            aria-label={`Close ${windowState.title}`}
+            className="adaptive-window-close"
+            onClick={(event) => {
+              event.stopPropagation();
+              onCloseWindow(windowState.id);
+            }}
+            type="button"
+          >
+            <Icon name="close" size={18} />
+          </button>
           <strong>{windowState.title}</strong>
           <span>{activeProject?.name ?? "No project"}</span>
         </header>
@@ -195,7 +205,9 @@ export function AdaptiveShell({
   return (
     <main className="adaptive-shell" data-mode={layout.mode}>
       <header className="system-bar adaptive-bar">
-        <strong>◈ WorkOS</strong>
+        <strong>
+          <Icon name="apps" size={18} /> WorkOS
+        </strong>
         <button
           aria-expanded={sheetOpen}
           className="project-switcher"
@@ -224,7 +236,7 @@ export function AdaptiveShell({
             }}
             type="button"
           >
-            ◔
+            <Icon name="bell" size={20} />
             {unreadNotifications > 0 ? (
               <span className="notification-badge">
                 {unreadNotifications > 99 ? "99+" : String(unreadNotifications)}
@@ -452,7 +464,7 @@ export function AdaptiveShell({
             }}
             type="button"
           >
-            ⌂
+            <Icon name="home" size={20} />
           </button>
           <button
             aria-label="Agent Center"
@@ -465,7 +477,7 @@ export function AdaptiveShell({
             onClick={openAgent}
             type="button"
           >
-            A
+            <Icon name="agent" size={20} />
           </button>
           <button
             aria-label="App Library"
@@ -477,7 +489,7 @@ export function AdaptiveShell({
             }}
             type="button"
           >
-            ▦
+            <Icon name="apps" size={20} />
           </button>
           <button
             aria-label="System Monitor"
@@ -492,7 +504,7 @@ export function AdaptiveShell({
             }}
             type="button"
           >
-            ⏻
+            <Icon name="activity" size={20} />
           </button>
           <button
             aria-label={
@@ -507,7 +519,7 @@ export function AdaptiveShell({
             }}
             type="button"
           >
-            ◔
+            <Icon name="bell" size={20} />
           </button>
         </nav>
       )}

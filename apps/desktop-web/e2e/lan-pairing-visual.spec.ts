@@ -1,3 +1,4 @@
+import { openDesktopApp } from "./open-app.js";
 import { chromium, expect, test } from "@playwright/test";
 
 // Visual capture for the LAN device pairing slice
@@ -95,7 +96,7 @@ test("captures the paired device center from deterministic Connect fixtures", as
 
   await page.goto(`${tlsURL}/`);
   await expect(page.locator(".desktop-shell")).toBeVisible({ timeout: 30_000 });
-  await page.getByTestId("open-device-center").click();
+  await openDesktopApp(page, "device-center");
   const center = page.getByTestId("device-center");
   await expect(center).toBeVisible();
   await expect(center).toContainText("Fixture Desktop");

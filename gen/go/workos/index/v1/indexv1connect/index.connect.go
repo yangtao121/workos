@@ -33,6 +33,9 @@ const (
 // reflection-formatted method names, remove the leading slash and convert the remaining slash to a
 // period.
 const (
+	// IndexServiceReadDocumentProcedure is the fully-qualified name of the IndexService's ReadDocument
+	// RPC.
+	IndexServiceReadDocumentProcedure = "/workos.index.v1.IndexService/ReadDocument"
 	// IndexServiceIndexContextProcedure is the fully-qualified name of the IndexService's IndexContext
 	// RPC.
 	IndexServiceIndexContextProcedure = "/workos.index.v1.IndexService/IndexContext"
@@ -45,6 +48,7 @@ const (
 
 // IndexServiceClient is a client for the workos.index.v1.IndexService service.
 type IndexServiceClient interface {
+	ReadDocument(context.Context, *connect.Request[v1.ReadDocumentRequest]) (*connect.Response[v1.ReadDocumentResponse], error)
 	// Owner-triggered, idempotent repair/reindex job for exact review
 	// artifacts in the current project. This is a repair path for the same
 	// source authority, never a second ingestion entry point for arbitrary
@@ -70,6 +74,12 @@ func NewIndexServiceClient(httpClient connect.HTTPClient, baseURL string, opts .
 	baseURL = strings.TrimRight(baseURL, "/")
 	indexServiceMethods := v1.File_workos_index_v1_index_proto.Services().ByName("IndexService").Methods()
 	return &indexServiceClient{
+		readDocument: connect.NewClient[v1.ReadDocumentRequest, v1.ReadDocumentResponse](
+			httpClient,
+			baseURL+IndexServiceReadDocumentProcedure,
+			connect.WithSchema(indexServiceMethods.ByName("ReadDocument")),
+			connect.WithClientOptions(opts...),
+		),
 		indexContext: connect.NewClient[v1.IndexContextRequest, v1.IndexContextResponse](
 			httpClient,
 			baseURL+IndexServiceIndexContextProcedure,
@@ -93,9 +103,15 @@ func NewIndexServiceClient(httpClient connect.HTTPClient, baseURL string, opts .
 
 // indexServiceClient implements IndexServiceClient.
 type indexServiceClient struct {
+	readDocument *connect.Client[v1.ReadDocumentRequest, v1.ReadDocumentResponse]
 	indexContext *connect.Client[v1.IndexContextRequest, v1.IndexContextResponse]
 	search       *connect.Client[v1.SearchRequest, v1.SearchResponse]
 	searchHybrid *connect.Client[v1.SearchHybridRequest, v1.SearchHybridResponse]
+}
+
+// ReadDocument calls workos.index.v1.IndexService.ReadDocument.
+func (c *indexServiceClient) ReadDocument(ctx context.Context, req *connect.Request[v1.ReadDocumentRequest]) (*connect.Response[v1.ReadDocumentResponse], error) {
+	return c.readDocument.CallUnary(ctx, req)
 }
 
 // IndexContext calls workos.index.v1.IndexService.IndexContext.
@@ -115,6 +131,7 @@ func (c *indexServiceClient) SearchHybrid(ctx context.Context, req *connect.Requ
 
 // IndexServiceHandler is an implementation of the workos.index.v1.IndexService service.
 type IndexServiceHandler interface {
+	ReadDocument(context.Context, *connect.Request[v1.ReadDocumentRequest]) (*connect.Response[v1.ReadDocumentResponse], error)
 	// Owner-triggered, idempotent repair/reindex job for exact review
 	// artifacts in the current project. This is a repair path for the same
 	// source authority, never a second ingestion entry point for arbitrary
@@ -136,6 +153,12 @@ type IndexServiceHandler interface {
 // and JSON codecs. They also support gzip compression.
 func NewIndexServiceHandler(svc IndexServiceHandler, opts ...connect.HandlerOption) (string, http.Handler) {
 	indexServiceMethods := v1.File_workos_index_v1_index_proto.Services().ByName("IndexService").Methods()
+	indexServiceReadDocumentHandler := connect.NewUnaryHandler(
+		IndexServiceReadDocumentProcedure,
+		svc.ReadDocument,
+		connect.WithSchema(indexServiceMethods.ByName("ReadDocument")),
+		connect.WithHandlerOptions(opts...),
+	)
 	indexServiceIndexContextHandler := connect.NewUnaryHandler(
 		IndexServiceIndexContextProcedure,
 		svc.IndexContext,
@@ -156,6 +179,8 @@ func NewIndexServiceHandler(svc IndexServiceHandler, opts ...connect.HandlerOpti
 	)
 	return "/workos.index.v1.IndexService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
+		case IndexServiceReadDocumentProcedure:
+			indexServiceReadDocumentHandler.ServeHTTP(w, r)
 		case IndexServiceIndexContextProcedure:
 			indexServiceIndexContextHandler.ServeHTTP(w, r)
 		case IndexServiceSearchProcedure:
@@ -170,6 +195,10 @@ func NewIndexServiceHandler(svc IndexServiceHandler, opts ...connect.HandlerOpti
 
 // UnimplementedIndexServiceHandler returns CodeUnimplemented from all methods.
 type UnimplementedIndexServiceHandler struct{}
+
+func (UnimplementedIndexServiceHandler) ReadDocument(context.Context, *connect.Request[v1.ReadDocumentRequest]) (*connect.Response[v1.ReadDocumentResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("workos.index.v1.IndexService.ReadDocument is not implemented"))
+}
 
 func (UnimplementedIndexServiceHandler) IndexContext(context.Context, *connect.Request[v1.IndexContextRequest]) (*connect.Response[v1.IndexContextResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("workos.index.v1.IndexService.IndexContext is not implemented"))

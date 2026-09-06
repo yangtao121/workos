@@ -1,3 +1,4 @@
+import { openDesktopApp } from "./open-app.js";
 import { expect, test } from "@playwright/test";
 
 // The W6 desktop system-apps gate: Command Palette keyboard surface,
@@ -36,7 +37,7 @@ test("Mission Control creates a project and switches the active project", async 
   await page.getByRole("button", { name: "Create space" }).click();
   await expect(page.locator(".project-card.active")).toContainText("MC first");
 
-  await page.getByTestId("open-mission-control").click();
+  await openDesktopApp(page, "mission-control");
   const mission = page.getByTestId("mission-control");
   await expect(mission).toBeVisible();
 
@@ -91,10 +92,10 @@ test("Docs, Code, and Files open per project with bounded empty states", async (
   await page.getByRole("button", { name: "Create space" }).click();
   await expect(page.locator(".project-card.active")).toContainText("Apps");
 
-  await page.getByTestId("open-docs").click();
+  await openDesktopApp(page, "docs");
   await expect(page.getByTestId("docs-app")).toBeVisible();
 
-  await page.getByTestId("open-code").click();
+  await openDesktopApp(page, "code");
   await expect(page.getByTestId("code-app")).toBeVisible();
 
   await page.getByTestId("open-files").click();
@@ -116,12 +117,11 @@ test("windows snap to the exact half viewport and restore", async ({ page }) => 
   await page.getByRole("button", { name: "Create space" }).click();
   await expect(page.locator(".project-card.active")).toContainText("Snap");
 
-  await page.getByTestId("open-docs").click();
-  const docsWindow = page
-    .locator(".workos-window")
-    .filter({ has: page.getByText("Docs", { exact: true }) })
-    .first();
+  await openDesktopApp(page, "docs");
+  const docsWindow = page.locator('[data-window-id="docs"]');
   await expect(docsWindow).toBeVisible();
+  const original = await docsWindow.boundingBox();
+  if (!original) throw new Error("Docs window has no geometry");
 
   await page.getByTestId("snap-left-docs").click();
   await expect(docsWindow).toHaveCSS("left", "0px");
@@ -131,4 +131,28 @@ test("windows snap to the exact half viewport and restore", async ({ page }) => 
   await page.getByTestId("snap-right-docs").click();
   const rightX = await docsWindow.evaluate((element) => element.getBoundingClientRect().x);
   expect(Math.abs(rightX - 720)).toBeLessThanOrEqual(1);
+  await page.getByRole("button", { name: "Minimize Docs", exact: true }).click();
+  await expect(docsWindow).toBeHidden();
+  await openDesktopApp(page, "docs");
+  await expect(docsWindow).toHaveAttribute("data-mode", "snap-right");
+  await page.getByRole("button", { name: "Restore Docs", exact: true }).click();
+  expect(await docsWindow.boundingBox()).toEqual(original);
+  const resize = page.getByRole("button", { name: "Resize Docs", exact: true });
+  await resize.focus();
+  await page.keyboard.press("ArrowRight");
+  expect((await docsWindow.boundingBox())?.width).toBe(original.width + 20);
+  const title = docsWindow.locator(".window-identity");
+  const box = await title.boundingBox();
+  if (!box) throw new Error("Docs title has no geometry");
+  await page.mouse.move(box.x + 20, box.y + 10);
+  await page.mouse.down();
+  await page.mouse.move(box.x + 60, box.y + 40);
+  await page.mouse.up();
+  expect((await docsWindow.boundingBox())?.x).toBe(original.x + 40);
+  expect((await docsWindow.boundingBox())?.y).toBe(original.y + 30);
+  await page.getByRole("button", { name: "Maximize Docs", exact: true }).click();
+  const maximized = await docsWindow.boundingBox();
+  const dock = await page.getByRole("navigation", { name: "WorkOS Dock" }).boundingBox();
+  if (!maximized || !dock) throw new Error("Desktop geometry unavailable");
+  expect(maximized.y + maximized.height).toBeLessThanOrEqual(dock.y);
 });

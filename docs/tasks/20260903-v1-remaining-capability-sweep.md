@@ -30,9 +30,9 @@ W1 → W2 → W3 → W4 → W6 → W5，全部在同一 branch 严格串行。
 | R1 Provider/凭据与工具链基线 | verified                                                     | 既有协议 fixture、租约、预算、取消、轮换门禁                   |
 | R2 自愈与部署                | active（候选状态机已修复；Build/Test 交接依赖 R3 workspace） | 真实候选、先切换后观察、失败回滚、持久重试；禁止空候选成功     |
 | R3 Surface/Bridge            | pending                                                      | 文件/窗口/产物能力、真实浏览器/Native 交互，不能用静态页面替代 |
-| R4 工作区/知识               | pending                                                      | 混合来源结果、服务端来源过滤、分页、打开与跨项目隔离           |
-| R6 桌面                      | pending                                                      | 统一深色控件、入口、窗口几何、键盘与响应式；确定性视觉证据     |
-| R5 通知/移动                 | pending                                                      | 持久推送重试、唤醒补收、配对/发现/原生边界                     |
+| R4 工作区/知识               | active                                                       | 混合来源结果、服务端来源过滤、分页、打开与跨项目隔离           |
+| R6 桌面                      | active                                                       | 统一深色控件、入口、窗口几何、键盘与响应式；确定性视觉证据     |
+| R5 通知/移动                 | active                                                       | 持久推送重试、唤醒补收、配对/发现/原生边界                     |
 | 收口/main                    | pending                                                      | generate 幂等、check、integration/E2E、专项门禁、文档一致      |
 
 已确认缺陷：部署在观察结束才切换版本且允许空候选；推送发送前消耗去重记录且失败不重试；
@@ -377,3 +377,13 @@ device scan --fingerprint`（常量时间指纹校验后输出 origin，接既�
 - rootless 探测 BLOCKED：podman command 不存在；cgroup v2 存在；user namespaces=123655。
 - 修复旧 repairdeployment tag 测试漏导入 pgx 的编译错误。
 - 下一步：工作区文件/窗口能力是完整 Build/Test 交接的前提；R2 仍 active，尚未取得部署 E2E。
+
+### R4 / R6 修复检查点（2026-09-06）
+
+- Files 服务端过滤 workspace 后分页；混合检索接受 review/workspace 两种来源，文件通过精确引用读取只读快照；Docs/Code 共享列表逻辑并支持后续页。
+- IndexService additive source_type 与 ReadDocument 已通过 make generate 生成。`TestIndexSourceFilterAndExactSnapshotRead`（scratch PostgreSQL）PASS；包括跨过滤 token 拒绝、外 owner 拒绝、删除后旧引用失效。
+- 桌面统一深色 token、SVG 图标和应用入口，窗口拖动/缩放/吸附/最小化恢复限制在可用区域，Palette 失败可重试、重复按键保护和焦点恢复；修复平板命令不导航及手机长面板挤走导航。
+- Desktop 125 单测 PASS；window-manager 10、adaptive-shell 40 PASS。
+- [before](../ui/desktop-web/changes/20260906-desktop-repair/before/) / [after](../ui/desktop-web/changes/20260906-desktop-repair/after/) / [notes](../ui/desktop-web/changes/20260906-desktop-repair/notes.md)：固定 fixture 与 1440×900 / 820×1180 / 390×844，三个 Chromium 场景 PASS。
+- 尚需全栈浏览器验收与其他受影响状态截图，R4/R6 保持 active。
+- R5 开始：迁移 042 将通知投递改成同事务 outbox，旧发送尝试保留 unknown；通知模块与 Core 编译/单测、`TestPushRelay` scratch PostgreSQL 全部 PASS；验证事务回滚、发送失败后重建服务重试、租约接管/旧确认拒绝、重放去重、撤销、免打扰与八次失败终止。Web Push 软件链仍待完成。

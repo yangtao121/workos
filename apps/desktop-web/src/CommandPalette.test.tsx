@@ -70,4 +70,54 @@ describe("CommandPalette", () => {
     fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape" });
     expect(onClose).toHaveBeenCalled();
   });
+
+  it("keeps rejected actions retryable and prevents duplicate execution", async () => {
+    let reject!: (reason: Error) => void;
+    const run = vi
+      .fn()
+      .mockImplementationOnce(
+        () =>
+          new Promise((_resolve, fail) => {
+            reject = fail;
+          }),
+      )
+      .mockResolvedValue("ok");
+    const onClose = vi.fn();
+    render(<CommandPalette actions={[action("open", "Open Files", run)]} onClose={onClose} />);
+    const dialog = screen.getByRole("dialog");
+    fireEvent.keyDown(dialog, { key: "Enter" });
+    fireEvent.keyDown(dialog, { key: "Enter" });
+    expect(run).toHaveBeenCalledTimes(1);
+    reject(new Error("private server details"));
+    expect((await screen.findByRole("status")).textContent).toBe(
+      "Could not complete this action. Try again.",
+    );
+    expect(onClose).not.toHaveBeenCalled();
+    fireEvent.keyDown(dialog, { key: "Enter" });
+    await waitFor(() => {
+      expect(onClose).toHaveBeenCalledOnce();
+    });
+    expect(run).toHaveBeenCalledTimes(2);
+  });
+
+  it("traps keyboard focus and returns it to the launcher", () => {
+    const launcher = document.createElement("button");
+    document.body.append(launcher);
+    launcher.focus();
+    const view = render(
+      <CommandPalette
+        actions={[action("open", "Open Files", () => Promise.resolve("ok"))]}
+        onClose={() => undefined}
+      />,
+    );
+    const input = screen.getByLabelText("Search commands");
+    expect(document.activeElement).toBe(input);
+    fireEvent.keyDown(input, { key: "Tab", shiftKey: true });
+    expect(document.activeElement).toBe(screen.getByRole("button", { name: "Open Files window" }));
+    fireEvent.keyDown(screen.getByRole("button", { name: "Open Files window" }), { key: "Tab" });
+    expect(document.activeElement).toBe(input);
+    view.unmount();
+    expect(document.activeElement).toBe(launcher);
+    launcher.remove();
+  });
 });

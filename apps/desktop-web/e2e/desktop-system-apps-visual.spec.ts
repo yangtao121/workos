@@ -1,3 +1,4 @@
+import { openDesktopApp } from "./open-app.js";
 import { expect, test } from "@playwright/test";
 
 // Visual capture for the W6 desktop system-apps slice
@@ -21,7 +22,7 @@ test("captures the desktop system-apps states", async ({ page }) => {
   await expect(page.locator(".project-card.active")).toContainText("Capture");
 
   // Mission Control with real project cards.
-  await page.getByTestId("open-mission-control").click();
+  await openDesktopApp(page, "mission-control");
   await expect(page.getByTestId("mission-control")).toBeVisible();
   await page.waitForTimeout(300);
   await page.screenshot({
@@ -58,7 +59,7 @@ test("captures the desktop system-apps states", async ({ page }) => {
   });
 
   // Snap: the Docs window snapped to the exact left half.
-  await page.getByTestId("open-docs").click();
+  await openDesktopApp(page, "docs");
   await expect(page.getByTestId("docs-app")).toBeVisible();
   const docsId = "docs";
   await page.getByTestId(`snap-left-${docsId}`).click();

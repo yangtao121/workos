@@ -150,7 +150,8 @@ describe("Artifact Center", () => {
       />,
     );
 
-    await userEvent.click(await screen.findByRole("button", { name: "Open Artifact Center" }));
+    await userEvent.click(await screen.findByRole("button", { name: "Open Home" }));
+    await userEvent.click(screen.getByTestId("home-entry-artifact-center"));
     const rows = await screen.findAllByTestId("artifact-row");
     expect(rows).toHaveLength(2);
 
@@ -177,7 +178,8 @@ describe("Artifact Center", () => {
         })}
       />,
     );
-    await userEvent.click(await screen.findByRole("button", { name: "Open Artifact Center" }));
+    await userEvent.click(await screen.findByRole("button", { name: "Open Home" }));
+    await userEvent.click(screen.getByTestId("home-entry-artifact-center"));
     expect(await screen.findByText("Artifact store is temporarily unavailable.")).toBeTruthy();
     await userEvent.click(screen.getByRole("button", { name: "Retry" }));
     expect(screen.getByText("Artifact store is temporarily unavailable.")).toBeTruthy();
@@ -364,7 +366,8 @@ describe("Timeline artifact events", () => {
     } as never;
     render(<Desktop workosClients={workosClients} />);
 
-    await userEvent.click(await screen.findByRole("button", { name: /Artifact/ }));
+    await userEvent.click(await screen.findByRole("button", { name: "Open Home" }));
+    await userEvent.click(screen.getByTestId("home-entry-artifact-center"));
     await userEvent.click(await screen.findByRole("button", { name: "Use as Agent context" }));
     expect(screen.getByTestId("context-chip")).toBeTruthy();
     await userEvent.type(screen.getByRole("textbox", { name: "Agent goal" }), "review this");
@@ -396,7 +399,8 @@ describe("Timeline artifact events", () => {
     });
     render(<Desktop workosClients={workosClients} />);
 
-    await userEvent.click(await screen.findByRole("button", { name: /Artifact/ }));
+    await userEvent.click(await screen.findByRole("button", { name: "Open Home" }));
+    await userEvent.click(screen.getByTestId("home-entry-artifact-center"));
     const pins = await screen.findAllByRole("button", { name: "Use as Agent context" });
     for (const pin of pins) {
       await userEvent.click(pin);

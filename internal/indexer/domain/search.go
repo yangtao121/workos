@@ -7,6 +7,7 @@ import "time"
 
 // SearchQuery is one fully validated search command.
 type SearchQuery struct {
+	SourceType     string
 	OwnerUserID    string
 	ProjectID      string
 	CanonicalQuery string
@@ -74,4 +75,13 @@ func ContextRefString(artifactID, digest string) string {
 // for any documented source type.
 func ContextRef(sourceType, artifactID, digest string) string {
 	return sourceType + ":" + artifactID + ":" + digest
+}
+
+// DocumentRead identifies one immutable snapshot in the current projection.
+type DocumentRead struct {
+	OwnerUserID string
+	ProjectID   string
+	SourceType  string
+	SourceID    string
+	Digest      string
 }

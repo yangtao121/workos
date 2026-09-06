@@ -321,3 +321,7 @@ func (c compositeIndexService) CreateRepairJob(ctx context.Context, input indexe
 func (c compositeIndexService) GetRepairJob(ctx context.Context, ownerUserID, jobID string) (indexerapp.JobView, []indexerapp.JobSourceView, error) {
 	return c.repair.GetJob(ctx, ownerUserID, jobID)
 }
+
+func (c compositeIndexService) ReadDocument(ctx context.Context, input indexerdomain.DocumentRead) (indexerdomain.Document, error) {
+	return c.search.ReadDocument(ctx, input)
+}

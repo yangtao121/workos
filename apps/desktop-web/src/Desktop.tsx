@@ -35,8 +35,14 @@ import type {
   Project,
   SurfaceSession,
 } from "@workos/protocol";
-import { Button } from "@workos/ui-kit";
-import { initialWindowState, windowReducer, type WorkOSWindow } from "@workos/window-manager";
+import { Button, Icon } from "@workos/ui-kit";
+import {
+  initialWindowState,
+  windowReducer,
+  fitRect,
+  type Rect,
+  type WorkOSWindow,
+} from "@workos/window-manager";
 import { AdaptiveShell, type SystemWindowId } from "./AdaptiveShell.js";
 import { ArtifactCenter } from "./ArtifactCenter.js";
 import { ArtifactViewerWindow } from "./ArtifactViewerWindow.js";
@@ -190,6 +196,26 @@ export function Desktop({
   // renders the adaptive shell.
   const deviceLayout = useDeviceLayout();
   const adaptive = deviceLayout.mode !== "expanded";
+  const workArea = useCallback(
+    (): Rect => ({
+      x: 0,
+      y: 0,
+      width: window.innerWidth,
+      height: Math.max(220, window.innerHeight - 132),
+    }),
+    [],
+  );
+  useEffect(() => {
+    if (adaptive) return;
+    const constrain = () => {
+      dispatch({ type: "work-area", viewport: workArea() });
+    };
+    constrain();
+    window.addEventListener("resize", constrain);
+    return () => {
+      window.removeEventListener("resize", constrain);
+    };
+  }, [adaptive, workArea, windows.windows.length]);
   const [deviceLayoutState, setDeviceLayoutState] = useState<DeviceLayoutState>();
   const layoutGenerationRef = useRef(0);
 
@@ -447,7 +473,7 @@ export function Desktop({
         appId: "home",
         title: "Home",
         kind: "home",
-        rect: { x: 220, y: 110, width: 560, height: 420 },
+        rect: { x: 340, y: 32, width: 720, height: 680 },
         mode: "normal",
       },
     });
@@ -779,32 +805,49 @@ export function Desktop({
     dispatch({ type: "close", id: windowId });
   }
 
-  // beginWindowDrag starts a header drag for one managed window. The
-  // reducer owns the geometry; the drag previews via inline style and commits
-  // the translated rect on mouseup. Traffic lights never start a drag.
-  function beginWindowDrag(event: ReactMouseEvent<HTMLElement>, windowId: string) {
-    if ((event.target as HTMLElement).closest(".traffic-lights")) return;
-    const target = event.currentTarget;
-    const startX = event.clientX;
-    const startY = event.clientY;
-    const box = target.getBoundingClientRect();
-    const originX = box.left;
-    const originY = box.top;
-    let lastX = originX;
-    let lastY = originY;
+  const dragCleanup = useRef<(() => void) | undefined>(undefined);
+  useEffect(() => () => dragCleanup.current?.(), []);
+
+  function beginWindowDrag(event: ReactMouseEvent<HTMLElement>, windowId: string, resize = false) {
+    if (event.button !== 0 || (!resize && (event.target as HTMLElement).closest("button,input")))
+      return;
+    const target = windows.windows.find((item) => item.id === windowId);
+    if (!target || target.mode !== "normal") return;
+    event.preventDefault();
+    dragCleanup.current?.();
+    const startX = event.clientX,
+      startY = event.clientY;
     const onMove = (move: MouseEvent) => {
-      lastX = originX + (move.clientX - startX);
-      lastY = originY + (move.clientY - startY);
-      target.style.left = `${String(lastX)}px`;
-      target.style.top = `${String(lastY)}px`;
+      if (resize) {
+        const bounds = workArea();
+        dispatch({
+          type: "resize",
+          id: windowId,
+          width: Math.min(bounds.width - target.rect.x, target.rect.width + move.clientX - startX),
+          height: Math.min(
+            bounds.height - target.rect.y,
+            target.rect.height + move.clientY - startY,
+          ),
+        });
+      } else {
+        const rect = fitRect(
+          {
+            ...target.rect,
+            x: target.rect.x + move.clientX - startX,
+            y: target.rect.y + move.clientY - startY,
+          },
+          workArea(),
+        );
+        dispatch({ type: "move", id: windowId, x: rect.x, y: rect.y });
+      }
     };
-    const onUp = () => {
+    const cleanup = () => {
       window.removeEventListener("mousemove", onMove);
-      window.removeEventListener("mouseup", onUp);
-      dispatch({ type: "move", id: windowId, x: lastX, y: lastY });
+      window.removeEventListener("mouseup", cleanup);
     };
+    dragCleanup.current = cleanup;
     window.addEventListener("mousemove", onMove);
-    window.addEventListener("mouseup", onUp);
+    window.addEventListener("mouseup", cleanup);
   }
 
   // A server-confirmed install security-fact change (uninstall, grants, or
@@ -847,11 +890,23 @@ export function Desktop({
 
   const openAdaptiveSystemWindow = useCallback(
     (id: SystemWindowId) => {
-      if (id === "system-monitor") openSystemMonitor();
+      if (id === "agent-center")
+        dispatch({
+          type: "open",
+          window: {
+            id: "agent-center",
+            appId: "agent-center",
+            title: "Agent Center",
+            kind: "agent-center",
+            rect: { x: 380, y: 40, width: 640, height: 580 },
+            mode: "normal",
+          },
+        });
+      else if (id === "system-monitor") openSystemMonitor();
       else if (id === "device-center") openDeviceCenter();
       else if (id === "artifact-center") openArtifactCenter();
       else if (id === "knowledge-center") openKnowledgeCenter();
-      else if (id === "notification-center") openNotificationCenter();
+      else openNotificationCenter();
       const existing = windows.windows.some((item) => item.id === id);
       if (existing) dispatch({ type: "focus", id });
       recordLayout((state) => ({ ...state, activeSystemWindow: id }));
@@ -1224,135 +1279,165 @@ export function Desktop({
     [openArtifactViewer, openSystemMonitor, workosClients],
   );
 
-  // Command Palette (W6): one fixed action set over existing public
-  // services. Project switching revalidates the live project through
-  // GetProject before switching — a vanished target yields the fixed stale
-  // verdict inside the palette, never a fallback navigation.
-  const paletteActions = useCallback((): PaletteAction[] => {
-    const actions: PaletteAction[] = [];
-    for (const project of projects) {
-      actions.push({
+  const [appActivation, setAppActivation] = useState<{ id: string; sequence: number }>();
+  const appEntries: HomeAppEntry[] = [
+    {
+      id: "home",
+      label: "Home",
+      hint: "Your workspace launcher",
+      icon: "home",
+      available: true,
+      open: openHome,
+    },
+    {
+      id: "agent-center",
+      label: "Agent Center",
+      hint: "Ask, review and move work forward",
+      icon: "agent",
+      available: true,
+      open: () => {
+        openAdaptiveSystemWindow("agent-center");
+      },
+    },
+    {
+      id: "files",
+      label: "Files",
+      hint: "Explore your workspace",
+      icon: "files",
+      available: !!activeProjectId,
+      open: openFiles,
+    },
+    {
+      id: "app-library",
+      label: "App Library",
+      hint: "Install and manage project apps",
+      icon: "apps",
+      available: !!activeProjectId,
+      open: () => {
+        setLibraryOpen(true);
+      },
+    },
+    {
+      id: "docs",
+      label: "Docs",
+      hint: "Read project documents",
+      icon: "docs",
+      available: !!activeProjectId,
+      open: openDocs,
+    },
+    {
+      id: "code",
+      label: "Code",
+      hint: "Review proposed changes",
+      icon: "code",
+      available: !!activeProjectId,
+      open: openCode,
+    },
+    {
+      id: "knowledge-center",
+      label: "Knowledge Center",
+      hint: "Find answers in project sources",
+      icon: "search",
+      available: !!activeProjectId,
+      open: openKnowledgeCenter,
+    },
+    {
+      id: "artifact-center",
+      label: "Artifact Center",
+      hint: "Review project deliverables",
+      icon: "docs",
+      available: !!activeProjectId,
+      open: openArtifactCenter,
+    },
+    {
+      id: "browser",
+      label: "Browser",
+      hint: "Browse in your workspace",
+      icon: "browser",
+      available: true,
+      open: openBrowser,
+    },
+    {
+      id: "mission-control",
+      label: "Mission Control",
+      hint: "Switch between projects",
+      icon: "apps",
+      available: true,
+      open: openMissionControl,
+    },
+    {
+      id: "system-monitor",
+      label: "System Monitor",
+      hint: "Health, incidents and recovery",
+      icon: "activity",
+      available: true,
+      open: openSystemMonitor,
+    },
+    {
+      id: "device-center",
+      label: "Device Center",
+      hint: "Manage paired devices",
+      icon: "devices",
+      available: true,
+      open: openDeviceCenter,
+    },
+    {
+      id: "settings",
+      label: "Project settings",
+      hint: "Configure the project harness",
+      icon: "settings",
+      available: !!activeProjectId,
+      open: () => {
+        setSettingsOpen(true);
+      },
+    },
+    {
+      id: "terminal",
+      label: "Terminal",
+      hint: "Requires the Native Runner",
+      icon: "terminal",
+      available: false,
+      open: () => {},
+    },
+  ];
+  const systemApps = appEntries.map((app) => ({
+    ...app,
+    open: () => {
+      app.open();
+      setAppActivation((current) => ({ id: app.id, sequence: (current?.sequence ?? 0) + 1 }));
+    },
+  }));
+  function paletteActions(): PaletteAction[] {
+    return [
+      ...systemApps
+        .filter((app) => app.available)
+        .map((app) => ({
+          id: `open-${app.id}`,
+          label: `Open ${app.label}`,
+          hint: app.hint,
+          run: () => {
+            app.open();
+            return Promise.resolve("ok" as const);
+          },
+        })),
+      ...projects.map((project) => ({
         id: `switch-project-${project.id}`,
         label: `Switch to project: ${project.name}`,
-        hint: "project",
+        hint: "Projects",
         run: async () => {
           try {
             await workosClients.projects.getProject({ projectId: project.id });
             setActiveProjectId(project.id);
-            return "ok";
+            return "ok" as const;
           } catch (reason) {
-            if (reason instanceof ConnectError && reason.code === Code.NotFound) {
-              return "stale";
-            }
+            if (reason instanceof ConnectError && reason.code === Code.NotFound)
+              return "stale" as const;
             throw reason;
           }
         },
-      });
-    }
-    actions.push(
-      {
-        id: "open-mission-control",
-        label: "Open Mission Control",
-        hint: "window",
-        run: () => {
-          openMissionControl();
-          return Promise.resolve("ok" as const);
-        },
-      },
-      {
-        id: "open-home",
-        label: "Open Home",
-        hint: "window",
-        run: () => {
-          openHome();
-          return Promise.resolve("ok" as const);
-        },
-      },
-      {
-        id: "open-files",
-        label: "Open Files",
-        hint: "window",
-        run: () => {
-          if (!activeProjectId) return Promise.resolve("stale" as const);
-          openFiles();
-          return Promise.resolve("ok" as const);
-        },
-      },
-      {
-        id: "open-docs",
-        label: "Open Docs",
-        hint: "window",
-        run: () => {
-          if (!activeProjectId) return Promise.resolve("stale" as const);
-          openDocs();
-          return Promise.resolve("ok" as const);
-        },
-      },
-      {
-        id: "open-code",
-        label: "Open Code",
-        hint: "window",
-        run: () => {
-          if (!activeProjectId) return Promise.resolve("stale" as const);
-          openCode();
-          return Promise.resolve("ok" as const);
-        },
-      },
-      {
-        id: "open-browser",
-        label: "Open Browser",
-        hint: "window",
-        run: () => {
-          openBrowser();
-          return Promise.resolve("ok" as const);
-        },
-      },
-      {
-        id: "open-agent-center",
-        label: "Ask the project agent",
-        hint: "agent",
-        run: () => {
-          dispatch({
-            type: "focus",
-            id: "agent-center",
-          });
-          return Promise.resolve("ok" as const);
-        },
-      },
-      {
-        id: "open-system-monitor",
-        label: "Open System Monitor",
-        hint: "window",
-        run: () => {
-          openSystemMonitor();
-          return Promise.resolve("ok" as const);
-        },
-      },
-      {
-        id: "open-knowledge-center",
-        label: "Open Knowledge Center",
-        hint: "window",
-        run: () => {
-          if (!activeProjectId) return Promise.resolve("stale" as const);
-          openKnowledgeCenter();
-          return Promise.resolve("ok" as const);
-        },
-      },
-    );
-    return actions;
-  }, [
-    projects,
-    workosClients,
-    activeProjectId,
-    openMissionControl,
-    openHome,
-    openFiles,
-    openDocs,
-    openCode,
-    openBrowser,
-    openSystemMonitor,
-    openKnowledgeCenter,
-  ]);
+      })),
+    ];
+  }
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -1402,7 +1487,7 @@ export function Desktop({
           },
           getTheme: async () => {
             await Promise.resolve();
-            return { scheme: "light" as const };
+            return { scheme: "dark" as const };
           },
           setWindowTitle: (title) => {
             dispatch({ type: "rename", id: windowState.id, title });
@@ -1512,55 +1597,7 @@ export function Desktop({
         }}
       />
     ) : windowState.kind === "home" ? (
-      <HomeApp
-        apps={(() => {
-          const entries: HomeAppEntry[] = [
-            {
-              id: "mission-control",
-              label: "Mission Control",
-              hint: "Projects overview",
-              available: true,
-              open: openMissionControl,
-            },
-            {
-              id: "files",
-              label: "Files",
-              hint: "Indexed workspace files",
-              available: Boolean(activeProjectId),
-              open: openFiles,
-            },
-            {
-              id: "docs",
-              label: "Docs",
-              hint: "Project markdown documents",
-              available: Boolean(activeProjectId),
-              open: openDocs,
-            },
-            {
-              id: "code",
-              label: "Code",
-              hint: "Read-only proposed patches",
-              available: Boolean(activeProjectId),
-              open: openCode,
-            },
-            {
-              id: "browser",
-              label: "Browser",
-              hint: "Sandboxed in-window pages",
-              available: true,
-              open: openBrowser,
-            },
-            {
-              id: "terminal",
-              label: "Terminal",
-              hint: "requires the Native Runner",
-              available: false,
-              open: () => {},
-            },
-          ];
-          return entries;
-        })()}
-      />
+      <HomeApp apps={systemApps.filter((app) => app.id !== "home")} />
     ) : windowState.kind === "files" ? (
       activeProject ? (
         <FilesApp
@@ -1730,6 +1767,7 @@ export function Desktop({
             recordLayout((state) => ({ ...state, layoutPreference: preference }));
           }}
           onOpenAppInstance={openAdaptiveAppInstance}
+          activation={appActivation}
           renderWindowBody={renderWindowBody}
           renderAppLibrary={() =>
             activeProject ? (
@@ -1789,9 +1827,16 @@ export function Desktop({
   return (
     <main className="desktop-shell">
       <header className="system-bar">
-        <strong>◈ WorkOS</strong>
-        <button className="project-switcher" type="button">
-          {activeProject?.name ?? "Global Space"} <span>⌄</span>
+        <strong className="workos-brand">
+          <Icon name="apps" size={19} /> WorkOS
+        </strong>
+        <button
+          className="project-switcher"
+          type="button"
+          aria-label="Switch project"
+          onClick={openMissionControl}
+        >
+          {activeProject?.name ?? "Global Space"} <Icon name="chevron" size={14} />
         </button>
         <span className="agent-status">
           <i /> Project Agent · {status}
@@ -1807,7 +1852,7 @@ export function Desktop({
           onClick={openNotificationCenter}
           type="button"
         >
-          ◔
+          <Icon name="bell" size={18} />
           {notificationSnapshot.unreadCount > 0 ? (
             <span className="notification-badge">
               {notificationSnapshot.unreadCount > 99
@@ -1819,7 +1864,7 @@ export function Desktop({
       </header>
 
       <section className="desktop-canvas">
-        <aside className="mission-control" aria-label="Projects">
+        <aside className="project-sidebar" aria-label="Projects">
           <p>PROJECT SPACES</p>
           <div className="project-grid">
             {projects.map((project) => (
@@ -1912,6 +1957,12 @@ export function Desktop({
               windowState.kind === "app-surface" ? "workos-window app-window" : "workos-window"
             }
             key={windowState.id}
+            hidden={windowState.mode === "minimized"}
+            data-window-id={windowState.id}
+            data-mode={windowState.mode}
+            onMouseDownCapture={() => {
+              dispatch({ type: "focus", id: windowState.id });
+            }}
             style={{
               zIndex: windowState.zIndex,
               left: windowState.rect.x,
@@ -1926,22 +1977,17 @@ export function Desktop({
                 beginWindowDrag(event, windowState.id);
               }}
             >
-              <div className="traffic-lights">
-                <i />
-                <i />
-                <button
-                  aria-label={`Close ${windowState.title}`}
-                  className="traffic-close"
-                  onClick={() => {
-                    closeWindow(windowState.id);
-                  }}
-                  type="button"
+              <div className="window-identity">
+                <Icon
+                  name={systemApps.find((app) => app.id === windowState.kind)?.icon ?? "docs"}
+                  size={17}
                 />
+                <strong>{windowState.title}</strong>
               </div>
-              <strong>{windowState.title}</strong>
-              <span>{activeProject?.name ?? "No project"}</span>
-              <span className="window-snaps">
+              <span className="window-project">{activeProject?.name ?? "No project"}</span>
+              <div className="window-controls">
                 <button
+                  type="button"
                   aria-label={`Snap ${windowState.title} left`}
                   data-testid={`snap-left-${windowState.id}`}
                   onClick={() => {
@@ -1949,19 +1995,14 @@ export function Desktop({
                       type: "snap",
                       id: windowState.id,
                       side: "left",
-                      viewport: {
-                        x: 0,
-                        y: 0,
-                        width: window.innerWidth,
-                        height: window.innerHeight,
-                      },
+                      viewport: workArea(),
                     });
                   }}
-                  type="button"
                 >
-                  ⬐
+                  <Icon name="left" size={16} />
                 </button>
                 <button
+                  type="button"
                   aria-label={`Snap ${windowState.title} right`}
                   data-testid={`snap-right-${windowState.id}`}
                   onClick={() => {
@@ -1969,21 +2010,87 @@ export function Desktop({
                       type: "snap",
                       id: windowState.id,
                       side: "right",
-                      viewport: {
-                        x: 0,
-                        y: 0,
-                        width: window.innerWidth,
-                        height: window.innerHeight,
-                      },
+                      viewport: workArea(),
                     });
                   }}
-                  type="button"
                 >
-                  ⬗
+                  <Icon name="right" size={16} />
                 </button>
-              </span>
+                <button
+                  type="button"
+                  aria-label={`Minimize ${windowState.title}`}
+                  onClick={() => {
+                    dispatch({
+                      type: "mode",
+                      id: windowState.id,
+                      mode: "minimized",
+                      viewport: workArea(),
+                    });
+                  }}
+                >
+                  <Icon name="minimize" size={16} />
+                </button>
+                <button
+                  type="button"
+                  aria-label={`${windowState.mode === "normal" ? "Maximize" : "Restore"} ${windowState.title}`}
+                  onClick={() => {
+                    dispatch({
+                      type: "mode",
+                      id: windowState.id,
+                      mode: windowState.mode === "normal" ? "maximized" : "normal",
+                      viewport: workArea(),
+                    });
+                  }}
+                >
+                  <Icon name={windowState.mode === "normal" ? "maximize" : "restore"} size={15} />
+                </button>
+                <button
+                  type="button"
+                  className="window-close"
+                  aria-label={`Close ${windowState.title}`}
+                  onClick={() => {
+                    closeWindow(windowState.id);
+                  }}
+                >
+                  <Icon name="close" size={16} />
+                </button>
+              </div>
             </header>
             {renderWindowBody(windowState)}
+            {windowState.mode === "normal" ? (
+              <button
+                type="button"
+                className="window-resize"
+                aria-label={`Resize ${windowState.title}`}
+                onMouseDown={(event) => {
+                  beginWindowDrag(event, windowState.id, true);
+                }}
+                onKeyDown={(event) => {
+                  const delta: Record<string, [number, number]> = {
+                    ArrowLeft: [-20, 0],
+                    ArrowRight: [20, 0],
+                    ArrowUp: [0, -20],
+                    ArrowDown: [0, 20],
+                  };
+                  const step = delta[event.key];
+                  if (!step) return;
+                  event.preventDefault();
+                  const bounds = workArea();
+                  dispatch({
+                    type: "resize",
+                    id: windowState.id,
+                    width: Math.min(
+                      bounds.width - windowState.rect.x,
+                      windowState.rect.width + step[0],
+                    ),
+                    height: Math.min(
+                      bounds.height - windowState.rect.y,
+                      windowState.rect.height + step[1],
+                    ),
+                  });
+                }}
+              />
+            ) : null}
           </section>
         ))}
 
@@ -1995,100 +2102,41 @@ export function Desktop({
       </section>
 
       <nav className="dock" aria-label="WorkOS Dock">
-        {["⌂", "A", "◫", "⌘", "▤", "⚙"].map((item, index) => (
-          <button type="button" key={`${item}-${String(index)}`}>
-            {item}
-          </button>
-        ))}
-        <button
-          type="button"
-          aria-label="Open System Monitor"
-          data-testid="open-system-monitor"
-          onClick={openSystemMonitor}
-        >
-          ⏻
-        </button>
-        <button
-          type="button"
-          aria-label="Open Device Center"
-          data-testid="open-device-center"
-          onClick={openDeviceCenter}
-        >
-          🔑
-        </button>
-        <button
-          type="button"
-          aria-label="Open Artifact Center"
-          data-testid="open-artifact-center"
-          disabled={!activeProject}
-          onClick={openArtifactCenter}
-        >
-          ☰
-        </button>
-        <button
-          type="button"
-          aria-label="Open Knowledge Center"
-          data-testid="open-knowledge-center"
-          disabled={!activeProject}
-          onClick={openKnowledgeCenter}
-        >
-          ✦
-        </button>
-        <button
-          type="button"
-          aria-label="Open Mission Control"
-          data-testid="open-mission-control"
-          onClick={openMissionControl}
-        >
-          ▦
-        </button>
-        <button type="button" aria-label="Open Home" data-testid="open-home" onClick={openHome}>
-          ⌂
-        </button>
-        <button
-          type="button"
-          aria-label="Open Files"
-          data-testid="open-files"
-          disabled={!activeProject}
-          onClick={openFiles}
-        >
-          ▤
-        </button>
-        <button
-          type="button"
-          aria-label="Open Docs"
-          data-testid="open-docs"
-          disabled={!activeProject}
-          onClick={openDocs}
-        >
-          📄
-        </button>
-        <button
-          type="button"
-          aria-label="Open Code"
-          data-testid="open-code"
-          disabled={!activeProject}
-          onClick={openCode}
-        >
-          ⟨⟩
-        </button>
-        <button
-          type="button"
-          aria-label="Open Browser"
-          data-testid="open-browser"
-          onClick={openBrowser}
-        >
-          ◍
-        </button>
+        {systemApps
+          .filter(
+            (app) =>
+              ["home", "agent-center", "files", "app-library"].includes(app.id) ||
+              windows.windows.some((item) => item.kind === app.id),
+          )
+          .map((app) => (
+            <button
+              key={app.id}
+              type="button"
+              aria-label={`Open ${app.label}`}
+              title={app.label}
+              data-testid={`open-${app.id}`}
+              className={
+                windows.windows.some((item) => item.kind === app.id)
+                  ? "dock-app running"
+                  : "dock-app"
+              }
+              disabled={!app.available}
+              onClick={app.open}
+            >
+              <Icon name={app.icon} size={22} />
+            </button>
+          ))}
+        <span className="dock-divider" />
         <button
           type="button"
           aria-label="Open command palette"
+          title="Search commands · Ctrl / ⌘ K"
           data-testid="open-command-palette"
           onClick={() => {
             setPaletteOpen(true);
           }}
         >
-          ⌘K
+          <Icon name="search" size={21} />
         </button>
       </nav>
       {paletteOpen ? (

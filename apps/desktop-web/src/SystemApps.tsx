@@ -4,13 +4,15 @@
 // the Browser renders external pages inside a sandboxed iframe whose
 // missing allow-popups/allow-top-navigation flags are the _blank and
 // top-navigation interception boundary.
-import { Code, ConnectError } from "@connectrpc/connect";
-import { useEffect, useMemo, useState } from "react";
+import { IndexedDocumentPreview } from "./IndexedDocumentPreview.js";
+import { Icon, Button, type IconName } from "@workos/ui-kit";
+import { useEffect, useCallback, useRef, useState } from "react";
 import type { WorkOSClients } from "@workos/agent-sdk";
 import type { ArtifactReference } from "./ArtifactCenter.js";
 
 export interface HomeAppEntry {
   id: string;
+  icon: IconName;
   label: string;
   hint: string;
   available: boolean;
@@ -20,7 +22,12 @@ export interface HomeAppEntry {
 export function HomeApp(props: { apps: HomeAppEntry[] }) {
   const { apps } = props;
   return (
-    <div className="home-app" data-testid="home-app">
+    <div className="home-app system-app" data-testid="home-app">
+      <header className="app-heading">
+        <p>YOUR WORKSPACE</p>
+        <h1>Your workspace</h1>
+        <span>Open a tool to get started.</span>
+      </header>
       <ul className="home-grid">
         {apps.map((app) => (
           <li key={app.id}>
@@ -32,6 +39,9 @@ export function HomeApp(props: { apps: HomeAppEntry[] }) {
               title={app.available ? app.hint : `${app.label} is unavailable: ${app.hint}`}
               onClick={app.open}
             >
+              <span className="home-icon">
+                <Icon name={app.icon} size={24} />
+              </span>
               <span className="home-label">{app.label}</span>
               <span className="home-hint">{app.available ? app.hint : "unavailable"}</span>
             </button>
@@ -42,54 +52,100 @@ export function HomeApp(props: { apps: HomeAppEntry[] }) {
   );
 }
 
-// FilesApp is the bounded read view over the indexed workspace projection:
-// an explicit bounded query (the search grammar requires one), results
-// filtered to workspace.file.v1 provenance. There is no full-directory
-// listing RPC, and this surface never pretends otherwise.
-export function FilesApp(props: { projectId: string; workosClients: WorkOSClients }) {
-  const { projectId, workosClients } = props;
+type IndexedHit = Awaited<ReturnType<WorkOSClients["index"]["searchHybrid"]>>["hits"][number];
+
+export function FilesApp({
+  projectId,
+  workosClients,
+}: {
+  projectId: string;
+  workosClients: WorkOSClients;
+}) {
   const [query, setQuery] = useState("");
-  const [results, setResults] = useState<
-    Array<{ title: string; excerpt: string; artifactId: string }>
-  >([]);
+  const [hits, setHits] = useState<IndexedHit[]>([]);
+  const [cursor, setCursor] = useState("");
   const [verdict, setVerdict] = useState("");
   const [busy, setBusy] = useState(false);
-
-  const search = async () => {
-    const trimmed = query.trim();
-    if (trimmed.length === 0 || busy) return;
+  const [searched, setSearched] = useState(false);
+  const [preview, setPreview] = useState<IndexedHit>();
+  const generation = useRef(0);
+  const running = useRef(false);
+  const submittedQuery = useRef("");
+  useEffect(
+    () => () => {
+      generation.current++;
+    },
+    [projectId],
+  );
+  const search = async (pageToken = "") => {
+    const text = pageToken ? submittedQuery.current : query.trim();
+    if (!text || running.current) return;
+    const operation = ++generation.current;
+    running.current = true;
     setBusy(true);
     setVerdict("");
+    if (!pageToken) {
+      setHits([]);
+      setCursor("");
+      submittedQuery.current = text;
+    }
     try {
-      const response = await workosClients.index.searchHybrid({
+      const result = await workosClients.index.searchHybrid({
         projectId,
-        query: trimmed,
-        page: { pageSize: 20 },
+        query: text,
+        sourceType: "workspace.file.v1",
+        page: { pageSize: 20, pageToken },
       });
-      const files = response.hits.filter((hit) => hit.sourceRef?.type === "workspace.file.v1");
-      setResults(
-        files.map((hit) => ({
-          title: hit.title,
-          excerpt: hit.excerpt,
-          artifactId: hit.artifactId,
-        })),
+      if (operation !== generation.current) return;
+      if (
+        result.hits.some(
+          (hit) =>
+            hit.sourceRef?.type !== "workspace.file.v1" ||
+            hit.sourceRef.id !== hit.artifactId ||
+            hit.sourceRef.revision !== hit.digest,
+        )
+      )
+        throw new Error("invalid file result");
+      setHits((current) =>
+        pageToken
+          ? [
+              ...current,
+              ...result.hits.filter(
+                (hit) => !current.some((old) => old.artifactId === hit.artifactId),
+              ),
+            ]
+          : result.hits,
       );
-      if (files.length === 0) {
-        setVerdict("No indexed workspace file matches this query.");
-      }
-    } catch (reason) {
-      setVerdict(
-        reason instanceof ConnectError && reason.code === Code.InvalidArgument
-          ? "The query is invalid."
-          : "Workspace search is temporarily unavailable.",
-      );
+      setCursor(result.page?.nextPageToken ?? "");
+      setSearched(true);
+    } catch {
+      if (operation === generation.current)
+        setVerdict("Workspace search could not be loaded. Try again.");
     } finally {
-      setBusy(false);
+      if (operation === generation.current) {
+        running.current = false;
+        setBusy(false);
+      }
     }
   };
-
+  if (preview?.sourceRef)
+    return (
+      <IndexedDocumentPreview
+        projectId={projectId}
+        source={preview.sourceRef}
+        workosClients={workosClients}
+        onClose={() => {
+          setPreview(undefined);
+        }}
+      />
+    );
   return (
     <div className="files-app" data-testid="files-app">
+      <header className="app-heading">
+        <p>WORKSPACE</p>
+        <h1>Files</h1>
+        <span>Search and preview indexed project files.</span>
+      </header>
       <form
         className="files-search"
         onSubmit={(event) => {
@@ -99,160 +155,191 @@ export function FilesApp(props: { projectId: string; workosClients: WorkOSClient
       >
         <input
           aria-label="Search workspace files"
+          placeholder="Search files…"
           className="files-query"
-          placeholder="Search indexed workspace files…"
           value={query}
           maxLength={256}
           onChange={(event) => {
             setQuery(event.target.value);
           }}
         />
-        <button
-          className="files-search-button"
-          type="submit"
-          disabled={busy || query.trim().length === 0}
-        >
+        <Button type="submit" disabled={busy || !query.trim()}>
           Search
-        </button>
+        </Button>
       </form>
+      {busy ? <p role="status">Searching…</p> : null}
       {verdict ? (
-        <p className="files-verdict" role="status">
+        <p role="alert" className="files-verdict">
           {verdict}
         </p>
       ) : null}
       <ul className="files-results">
-        {results.map((result) => (
-          <li key={result.artifactId} className="files-hit">
-            <span className="files-title">{result.title}</span>
-            <span className="files-excerpt">{result.excerpt}</span>
+        {hits.map((hit) => (
+          <li key={hit.artifactId}>
+            <button
+              className="files-hit"
+              type="button"
+              onClick={() => {
+                setPreview(hit);
+              }}
+            >
+              <span className="files-title">{hit.title}</span>
+              <span className="files-excerpt">{hit.excerpt}</span>
+            </button>
           </li>
         ))}
       </ul>
-      <p className="files-note">
-        Files are indexed from the project&apos;s bound workspace source. Register one with{" "}
-        <code>workosctl index workspace register</code>.
-      </p>
+      {!busy && !verdict && searched && !hits.length ? (
+        <p className="empty-state">No indexed files match this search.</p>
+      ) : null}
+      {cursor ? (
+        <Button type="button" disabled={busy} onClick={() => void search(cursor)}>
+          Load more files
+        </Button>
+      ) : null}
+      {!searched ? (
+        <p className="files-note">
+          Files appear here after a workspace has been connected and indexed.
+        </p>
+      ) : null}
     </div>
   );
 }
 
-// useProjectArtifacts lists the project's review artifacts through the
-// authoritative service, remounting per project. The list is bounded at one
-// page; content is never shown here — selection opens the read-only viewer.
-function useProjectArtifacts(projectId: string, workosClients: WorkOSClients) {
+function ArtifactList({
+  projectId,
+  workosClients,
+  onOpenArtifact,
+  type,
+  label,
+}: {
+  projectId: string;
+  workosClients: WorkOSClients;
+  onOpenArtifact: (artifact: ArtifactReference) => void;
+  type: string;
+  label: "Docs" | "Code";
+}) {
   const [artifacts, setArtifacts] = useState<ArtifactReference[]>([]);
-  const [verdict, setVerdict] = useState("");
-  useEffect(() => {
-    let live = true;
-    setArtifacts([]);
-    setVerdict("");
-    workosClients.artifacts
-      .listArtifacts({ projectId, page: { pageSize: 50 } })
-      .then((response) => {
-        if (!live) return;
-        setArtifacts(
-          response.artifacts.map((artifact) => ({
-            id: artifact.id,
+  const [cursor, setCursor] = useState("");
+  const [busy, setBusy] = useState(true);
+  const [error, setError] = useState("");
+  const generation = useRef(0);
+  const running = useRef(false);
+  const load = useCallback(
+    async (pageToken = "") => {
+      if (running.current) return;
+      const operation = generation.current;
+      running.current = true;
+      setBusy(true);
+      setError("");
+      try {
+        const result = await workosClients.artifacts.listArtifacts({
+          projectId,
+          page: { pageSize: 50, pageToken },
+        });
+        if (operation !== generation.current) return;
+        const items = result.artifacts
+          .filter((item) => item.type === type)
+          .map((item) => ({
+            id: item.id,
             projectId,
-            title: artifact.title,
-            type: artifact.type,
-            digest: artifact.digest,
-          })),
+            title: item.title,
+            type: item.type,
+            digest: item.digest,
+          }));
+        setArtifacts((current) =>
+          pageToken
+            ? [...current, ...items.filter((item) => !current.some((old) => old.id === item.id))]
+            : items,
         );
-      })
-      .catch((reason: unknown) => {
-        if (!live) return;
-        setVerdict(
-          reason instanceof ConnectError && reason.code === Code.NotFound
-            ? "This project's artifacts are not available."
-            : "Artifact list is temporarily unavailable.",
-        );
-      });
+        setCursor(result.page?.nextPageToken ?? "");
+      } catch {
+        if (operation === generation.current) setError("Could not load this list. Try again.");
+      } finally {
+        if (operation === generation.current) {
+          running.current = false;
+          setBusy(false);
+        }
+      }
+    },
+    [projectId, type, workosClients],
+  );
+  useEffect(() => {
+    generation.current++;
+    running.current = false;
+    setArtifacts([]);
+    setCursor("");
+    void load();
     return () => {
-      live = false;
+      generation.current++;
+      running.current = false;
     };
-  }, [projectId, workosClients]);
-  return { artifacts, verdict };
-}
-
-export function DocsApp(props: {
-  projectId: string;
-  workosClients: WorkOSClients;
-  onOpenArtifact: (artifact: ArtifactReference) => void;
-}) {
-  const { artifacts, verdict } = useProjectArtifacts(props.projectId, props.workosClients);
-  const docs = useMemo(
-    () => artifacts.filter((artifact) => artifact.type === "document.markdown.v1"),
-    [artifacts],
-  );
+  }, [load]);
+  const kind = label.toLowerCase();
   return (
-    <div className="docs-app" data-testid="docs-app">
-      {verdict ? (
-        <p className="docs-verdict" role="status">
-          {verdict}
-        </p>
+    <div className={`${kind}-app`} data-testid={`${kind}-app`}>
+      <header className="app-heading">
+        <p>PROJECT OUTPUTS</p>
+        <h1>{label === "Docs" ? "Documents" : "Proposed changes"}</h1>
+        <span>
+          {label === "Docs"
+            ? "Read and review project documents."
+            : "Inspect patches before taking the next step."}
+        </span>
+      </header>
+      {busy ? <p role="status">Loading…</p> : null}
+      {error ? (
+        <div role="alert">
+          <p>{error}</p>
+          <Button type="button" onClick={() => void load(cursor)}>
+            Retry
+          </Button>
+        </div>
       ) : null}
-      <ul className="docs-list">
-        {docs.map((artifact) => (
+      <ul className={`${kind}-list`}>
+        {artifacts.map((artifact) => (
           <li key={artifact.id}>
             <button
               type="button"
-              className="docs-entry"
+              className={`${kind}-entry`}
               onClick={() => {
-                props.onOpenArtifact(artifact);
+                onOpenArtifact(artifact);
               }}
             >
-              <span className="docs-title">{artifact.title}</span>
-              <span className="docs-meta">{(artifact.digest ?? "").slice(0, 18)}…</span>
+              <span className={`${kind}-title`}>{artifact.title}</span>
+              <Icon name="arrow" size={16} />
             </button>
           </li>
         ))}
-        {docs.length === 0 && verdict === "" ? (
-          <li className="empty-state">No markdown documents in this project yet.</li>
-        ) : null}
       </ul>
+      {!busy && !error && !artifacts.length ? (
+        <p className="empty-state">
+          {cursor
+            ? "More project outputs are available on the next page."
+            : label === "Docs"
+              ? "No markdown documents in this project yet."
+              : "No proposed patches in this project yet."}
+        </p>
+      ) : null}
+      {cursor && !error ? (
+        <Button type="button" disabled={busy} onClick={() => void load(cursor)}>
+          Load more
+        </Button>
+      ) : null}
     </div>
   );
 }
 
-export function CodeApp(props: {
+type ArtifactAppProps = {
   projectId: string;
   workosClients: WorkOSClients;
   onOpenArtifact: (artifact: ArtifactReference) => void;
-}) {
-  const { artifacts, verdict } = useProjectArtifacts(props.projectId, props.workosClients);
-  const patches = useMemo(
-    () => artifacts.filter((artifact) => artifact.type === "code.unified-diff.v1"),
-    [artifacts],
-  );
-  return (
-    <div className="code-app" data-testid="code-app">
-      {verdict ? (
-        <p className="code-verdict" role="status">
-          {verdict}
-        </p>
-      ) : null}
-      <ul className="code-list">
-        {patches.map((artifact) => (
-          <li key={artifact.id}>
-            <button
-              type="button"
-              className="code-entry"
-              onClick={() => {
-                props.onOpenArtifact(artifact);
-              }}
-            >
-              <span className="code-title">{artifact.title}</span>
-              <span className="code-meta">read-only diff</span>
-            </button>
-          </li>
-        ))}
-        {patches.length === 0 && verdict === "" ? (
-          <li className="empty-state">No proposed patches in this project yet.</li>
-        ) : null}
-      </ul>
-    </div>
-  );
+};
+export function DocsApp(props: ArtifactAppProps) {
+  return <ArtifactList {...props} type="document.markdown.v1" label="Docs" />;
+}
+export function CodeApp(props: ArtifactAppProps) {
+  return <ArtifactList {...props} type="code.unified-diff.v1" label="Code" />;
 }
 
 // BrowserApp keeps external web content inside the WorkOS window with a

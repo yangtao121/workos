@@ -136,6 +136,7 @@ scored AS (
       AND d.owner_user_id = sqlc.arg(owner_user_id)
       AND d.project_id = sqlc.arg(project_id)
       AND d.tombstoned_at IS NULL
+      AND (sqlc.arg(source_type)::text = '' OR d.source_type = sqlc.arg(source_type))
       AND d.indexed_at <= sqlc.arg(snapshot_through)
       AND (d.title_tsv @@ q.tsq OR d.body_tsv @@ q.tsq)
 )
@@ -386,6 +387,7 @@ WHERE d.projection_generation = sqlc.arg(generation_id)
   AND d.owner_user_id = sqlc.arg(owner_user_id)
   AND d.project_id = sqlc.arg(project_id)
   AND d.tombstoned_at IS NULL
+      AND (sqlc.arg(source_type)::text = '' OR d.source_type = sqlc.arg(source_type))
   AND d.indexed_at <= sqlc.arg(snapshot_through)
   AND (d.title_tsv @@ q.tsq OR d.body_tsv @@ q.tsq OR d.embedding IS NOT NULL)
 LIMIT sqlc.arg(row_limit);
@@ -487,3 +489,13 @@ LIMIT sqlc.arg(row_limit);
 -- name: CountArchiveObjects :one
 SELECT count(*) FROM workos_index.archive_objects
 WHERE owner_user_id = sqlc.arg(owner_user_id);
+
+-- name: ReadIndexedDocument :one
+SELECT d.owner_user_id, d.project_id, d.source_id, d.source_digest,
+       d.artifact_type, d.title, d.content, d.source_created_at,
+       d.last_publication_id, d.indexed_at
+FROM workos_index.documents d
+WHERE d.projection_generation = (SELECT generation_id FROM workos_index.active_generation)
+  AND d.owner_user_id = sqlc.arg(owner_user_id) AND d.project_id = sqlc.arg(project_id)
+  AND d.source_type = sqlc.arg(source_type) AND d.source_id = sqlc.arg(source_id)
+  AND d.source_digest = sqlc.arg(digest) AND d.tombstoned_at IS NULL;

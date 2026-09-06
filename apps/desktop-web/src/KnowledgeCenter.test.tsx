@@ -93,3 +93,41 @@ describe("KnowledgeCenter response and generation boundary", () => {
     expect(screen.queryByTestId("knowledge-result")).toBeNull();
   });
 });
+
+it("renders mixed sources and opens workspace previews without adding invalid Agent context", async () => {
+  const fileId = "01990000-0000-7000-8000-000000000003";
+  const file = {
+    ...response().hits[0],
+    artifactId: fileId,
+    artifactType: "workspace.text.v1",
+    title: "notes.md",
+    sourceRef: { type: "workspace.file.v1", id: fileId, revision: digest },
+    contextRef: `workspace.file.v1:${fileId}:${digest}`,
+  };
+  const search = vi.fn(() => Promise.resolve({ ...response(), hits: [response().hits[0], file] }));
+  const readDocument = vi.fn(() =>
+    Promise.resolve({
+      source: file.sourceRef,
+      title: "notes.md",
+      content: "# Project notes\n\nA real indexed snapshot.",
+    }),
+  );
+  const useContext = vi.fn();
+  const openArtifact = vi.fn();
+  render(
+    <KnowledgeCenter
+      projectId="01990000-0000-7000-8000-000000000002"
+      workosClients={{ index: { searchHybrid: search, readDocument } } as unknown as WorkOSClients}
+      onUseAsContext={useContext}
+      onOpenArtifact={openArtifact}
+    />,
+  );
+  await userEvent.type(screen.getByTestId("knowledge-search-input"), "project");
+  await userEvent.click(screen.getByTestId("knowledge-search-submit"));
+  expect(await screen.findAllByTestId("knowledge-result")).toHaveLength(2);
+  expect(screen.getAllByTestId("knowledge-use-as-context")).toHaveLength(1);
+  await userEvent.click(screen.getByRole("button", { name: /notes.md/ }));
+  expect(await screen.findByText(/A real indexed snapshot/)).toBeTruthy();
+  expect(openArtifact).not.toHaveBeenCalled();
+  expect(useContext).not.toHaveBeenCalled();
+});

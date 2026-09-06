@@ -1,3 +1,4 @@
+import { openDesktopApp } from "./open-app.js";
 import { expect, test, type BrowserContext, type Page } from "@playwright/test";
 
 // The production-auth acceptance gate (make test-lan-pairing; ADR-0007).
@@ -274,7 +275,7 @@ test("lan-pairing phase runs", async () => {
     if (phase === "revoke") {
       await page.goto(tlsURL);
       await expect(page.locator(".desktop-shell")).toBeVisible({ timeout: 30_000 });
-      await page.getByTestId("open-device-center").click();
+      await openDesktopApp(page, "device-center");
       const center = page.getByTestId("device-center");
       await expect(center).toBeVisible();
       await expect(center).toContainText(deviceName);

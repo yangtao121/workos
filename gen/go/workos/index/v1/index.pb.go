@@ -335,10 +335,13 @@ func (x *IndexJob) GetUpdatedAt() string {
 }
 
 type SearchHybridRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	ProjectId     string                 `protobuf:"bytes,1,opt,name=project_id,json=projectId,proto3" json:"project_id,omitempty"`
-	Query         string                 `protobuf:"bytes,2,opt,name=query,proto3" json:"query,omitempty"`
-	Page          *v1.PageRequest        `protobuf:"bytes,3,opt,name=page,proto3" json:"page,omitempty"`
+	state     protoimpl.MessageState `protogen:"open.v1"`
+	ProjectId string                 `protobuf:"bytes,1,opt,name=project_id,json=projectId,proto3" json:"project_id,omitempty"`
+	Query     string                 `protobuf:"bytes,2,opt,name=query,proto3" json:"query,omitempty"`
+	Page      *v1.PageRequest        `protobuf:"bytes,3,opt,name=page,proto3" json:"page,omitempty"`
+	// Empty searches all sources; otherwise artifact.review.v1 or workspace.file.v1.
+	// Filtering happens before ranking and pagination. Tokens bind this selection.
+	SourceType    string `protobuf:"bytes,4,opt,name=source_type,json=sourceType,proto3" json:"source_type,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -392,6 +395,13 @@ func (x *SearchHybridRequest) GetPage() *v1.PageRequest {
 		return x.Page
 	}
 	return nil
+}
+
+func (x *SearchHybridRequest) GetSourceType() string {
+	if x != nil {
+		return x.SourceType
+	}
+	return ""
 }
 
 type SearchHybridResponse struct {
@@ -460,8 +470,11 @@ type SearchRequest struct {
 	ProjectId string                 `protobuf:"bytes,1,opt,name=project_id,json=projectId,proto3" json:"project_id,omitempty"`
 	// Bounded lexical query: 1..256 code points after whitespace
 	// canonicalization; control characters are rejected.
-	Query         string          `protobuf:"bytes,2,opt,name=query,proto3" json:"query,omitempty"`
-	Page          *v1.PageRequest `protobuf:"bytes,3,opt,name=page,proto3" json:"page,omitempty"`
+	Query string          `protobuf:"bytes,2,opt,name=query,proto3" json:"query,omitempty"`
+	Page  *v1.PageRequest `protobuf:"bytes,3,opt,name=page,proto3" json:"page,omitempty"`
+	// Empty searches all sources; otherwise artifact.review.v1 or workspace.file.v1.
+	// Filtering happens before ranking and pagination. Tokens bind this selection.
+	SourceType    string `protobuf:"bytes,4,opt,name=source_type,json=sourceType,proto3" json:"source_type,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -515,6 +528,13 @@ func (x *SearchRequest) GetPage() *v1.PageRequest {
 		return x.Page
 	}
 	return nil
+}
+
+func (x *SearchRequest) GetSourceType() string {
+	if x != nil {
+		return x.SourceType
+	}
+	return ""
 }
 
 type SearchHit struct {
@@ -809,6 +829,127 @@ func (x *IndexContextResponse) GetJob() *IndexJob {
 	return nil
 }
 
+// Read one exact indexed snapshot. This is a preview, not a filesystem write API.
+type ReadDocumentRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	ProjectId     string                 `protobuf:"bytes,1,opt,name=project_id,json=projectId,proto3" json:"project_id,omitempty"`
+	Source        *v11.ContextRef        `protobuf:"bytes,2,opt,name=source,proto3" json:"source,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ReadDocumentRequest) Reset() {
+	*x = ReadDocumentRequest{}
+	mi := &file_workos_index_v1_index_proto_msgTypes[10]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ReadDocumentRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ReadDocumentRequest) ProtoMessage() {}
+
+func (x *ReadDocumentRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_workos_index_v1_index_proto_msgTypes[10]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ReadDocumentRequest.ProtoReflect.Descriptor instead.
+func (*ReadDocumentRequest) Descriptor() ([]byte, []int) {
+	return file_workos_index_v1_index_proto_rawDescGZIP(), []int{10}
+}
+
+func (x *ReadDocumentRequest) GetProjectId() string {
+	if x != nil {
+		return x.ProjectId
+	}
+	return ""
+}
+
+func (x *ReadDocumentRequest) GetSource() *v11.ContextRef {
+	if x != nil {
+		return x.Source
+	}
+	return nil
+}
+
+type ReadDocumentResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Source        *v11.ContextRef        `protobuf:"bytes,1,opt,name=source,proto3" json:"source,omitempty"`
+	Title         string                 `protobuf:"bytes,2,opt,name=title,proto3" json:"title,omitempty"`
+	Content       string                 `protobuf:"bytes,3,opt,name=content,proto3" json:"content,omitempty"`
+	IndexedAt     string                 `protobuf:"bytes,4,opt,name=indexed_at,json=indexedAt,proto3" json:"indexed_at,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ReadDocumentResponse) Reset() {
+	*x = ReadDocumentResponse{}
+	mi := &file_workos_index_v1_index_proto_msgTypes[11]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ReadDocumentResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ReadDocumentResponse) ProtoMessage() {}
+
+func (x *ReadDocumentResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_workos_index_v1_index_proto_msgTypes[11]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ReadDocumentResponse.ProtoReflect.Descriptor instead.
+func (*ReadDocumentResponse) Descriptor() ([]byte, []int) {
+	return file_workos_index_v1_index_proto_rawDescGZIP(), []int{11}
+}
+
+func (x *ReadDocumentResponse) GetSource() *v11.ContextRef {
+	if x != nil {
+		return x.Source
+	}
+	return nil
+}
+
+func (x *ReadDocumentResponse) GetTitle() string {
+	if x != nil {
+		return x.Title
+	}
+	return ""
+}
+
+func (x *ReadDocumentResponse) GetContent() string {
+	if x != nil {
+		return x.Content
+	}
+	return ""
+}
+
+func (x *ReadDocumentResponse) GetIndexedAt() string {
+	if x != nil {
+		return x.IndexedAt
+	}
+	return ""
+}
+
 var File_workos_index_v1_index_proto protoreflect.FileDescriptor
 
 const file_workos_index_v1_index_proto_rawDesc = "" +
@@ -838,21 +979,25 @@ const file_workos_index_v1_index_proto_rawDesc = "" +
 	"created_at\x18\t \x01(\tR\tcreatedAt\x12\x1d\n" +
 	"\n" +
 	"updated_at\x18\n" +
-	" \x01(\tR\tupdatedAt\"}\n" +
+	" \x01(\tR\tupdatedAt\"\x9e\x01\n" +
 	"\x13SearchHybridRequest\x12\x1d\n" +
 	"\n" +
 	"project_id\x18\x01 \x01(\tR\tprojectId\x12\x14\n" +
 	"\x05query\x18\x02 \x01(\tR\x05query\x121\n" +
-	"\x04page\x18\x03 \x01(\v2\x1d.workos.common.v1.PageRequestR\x04page\"\xb9\x01\n" +
+	"\x04page\x18\x03 \x01(\v2\x1d.workos.common.v1.PageRequestR\x04page\x12\x1f\n" +
+	"\vsource_type\x18\x04 \x01(\tR\n" +
+	"sourceType\"\xb9\x01\n" +
 	"\x14SearchHybridResponse\x12.\n" +
 	"\x04hits\x18\x01 \x03(\v2\x1a.workos.index.v1.SearchHitR\x04hits\x122\n" +
 	"\x04page\x18\x02 \x01(\v2\x1e.workos.common.v1.PageResponseR\x04page\x12=\n" +
-	"\tfreshness\x18\x03 \x01(\v2\x1f.workos.index.v1.IndexFreshnessR\tfreshness\"w\n" +
+	"\tfreshness\x18\x03 \x01(\v2\x1f.workos.index.v1.IndexFreshnessR\tfreshness\"\x98\x01\n" +
 	"\rSearchRequest\x12\x1d\n" +
 	"\n" +
 	"project_id\x18\x01 \x01(\tR\tprojectId\x12\x14\n" +
 	"\x05query\x18\x02 \x01(\tR\x05query\x121\n" +
-	"\x04page\x18\x03 \x01(\v2\x1d.workos.common.v1.PageRequestR\x04page\"\xab\x02\n" +
+	"\x04page\x18\x03 \x01(\v2\x1d.workos.common.v1.PageRequestR\x04page\x12\x1f\n" +
+	"\vsource_type\x18\x04 \x01(\tR\n" +
+	"sourceType\"\xab\x02\n" +
 	"\tSearchHit\x12\x1f\n" +
 	"\vcontext_ref\x18\x01 \x01(\tR\n" +
 	"contextRef\x12\x18\n" +
@@ -877,14 +1022,25 @@ const file_workos_index_v1_index_proto_rawDesc = "" +
 	"\x04page\x18\x02 \x01(\v2\x1e.workos.common.v1.PageResponseR\x04page\x12=\n" +
 	"\tfreshness\x18\x03 \x01(\v2\x1f.workos.index.v1.IndexFreshnessR\tfreshness\"C\n" +
 	"\x14IndexContextResponse\x12+\n" +
-	"\x03job\x18\x01 \x01(\v2\x19.workos.index.v1.IndexJobR\x03job*\xa5\x01\n" +
+	"\x03job\x18\x01 \x01(\v2\x19.workos.index.v1.IndexJobR\x03job\"i\n" +
+	"\x13ReadDocumentRequest\x12\x1d\n" +
+	"\n" +
+	"project_id\x18\x01 \x01(\tR\tprojectId\x123\n" +
+	"\x06source\x18\x02 \x01(\v2\x1b.workos.agent.v1.ContextRefR\x06source\"\x9a\x01\n" +
+	"\x14ReadDocumentResponse\x123\n" +
+	"\x06source\x18\x01 \x01(\v2\x1b.workos.agent.v1.ContextRefR\x06source\x12\x14\n" +
+	"\x05title\x18\x02 \x01(\tR\x05title\x12\x18\n" +
+	"\acontent\x18\x03 \x01(\tR\acontent\x12\x1d\n" +
+	"\n" +
+	"indexed_at\x18\x04 \x01(\tR\tindexedAt*\xa5\x01\n" +
 	"\rIndexJobState\x12\x1f\n" +
 	"\x1bINDEX_JOB_STATE_UNSPECIFIED\x10\x00\x12\x1b\n" +
 	"\x17INDEX_JOB_STATE_PENDING\x10\x01\x12\x1b\n" +
 	"\x17INDEX_JOB_STATE_RUNNING\x10\x02\x12\x1d\n" +
 	"\x19INDEX_JOB_STATE_COMPLETED\x10\x03\x12\x1a\n" +
-	"\x16INDEX_JOB_STATE_FAILED\x10\x042\x99\x02\n" +
+	"\x16INDEX_JOB_STATE_FAILED\x10\x042\xf8\x02\n" +
 	"\fIndexService\x12]\n" +
+	"\fReadDocument\x12$.workos.index.v1.ReadDocumentRequest\x1a%.workos.index.v1.ReadDocumentResponse\"\x00\x12]\n" +
 	"\fIndexContext\x12$.workos.index.v1.IndexContextRequest\x1a%.workos.index.v1.IndexContextResponse\"\x00\x12K\n" +
 	"\x06Search\x12\x1e.workos.index.v1.SearchRequest\x1a\x1f.workos.index.v1.SearchResponse\"\x00\x12]\n" +
 	"\fSearchHybrid\x12$.workos.index.v1.SearchHybridRequest\x1a%.workos.index.v1.SearchHybridResponse\"\x00B=Z;github.com/yangtao121/workos/gen/go/workos/index/v1;indexv1b\x06proto3"
@@ -902,7 +1058,7 @@ func file_workos_index_v1_index_proto_rawDescGZIP() []byte {
 }
 
 var file_workos_index_v1_index_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_workos_index_v1_index_proto_msgTypes = make([]protoimpl.MessageInfo, 10)
+var file_workos_index_v1_index_proto_msgTypes = make([]protoimpl.MessageInfo, 12)
 var file_workos_index_v1_index_proto_goTypes = []any{
 	(IndexJobState)(0),           // 0: workos.index.v1.IndexJobState
 	(*ArtifactSourceRef)(nil),    // 1: workos.index.v1.ArtifactSourceRef
@@ -915,34 +1071,40 @@ var file_workos_index_v1_index_proto_goTypes = []any{
 	(*IndexFreshness)(nil),       // 8: workos.index.v1.IndexFreshness
 	(*SearchResponse)(nil),       // 9: workos.index.v1.SearchResponse
 	(*IndexContextResponse)(nil), // 10: workos.index.v1.IndexContextResponse
-	(*v1.PageRequest)(nil),       // 11: workos.common.v1.PageRequest
-	(*v1.PageResponse)(nil),      // 12: workos.common.v1.PageResponse
-	(*v11.ContextRef)(nil),       // 13: workos.agent.v1.ContextRef
+	(*ReadDocumentRequest)(nil),  // 11: workos.index.v1.ReadDocumentRequest
+	(*ReadDocumentResponse)(nil), // 12: workos.index.v1.ReadDocumentResponse
+	(*v1.PageRequest)(nil),       // 13: workos.common.v1.PageRequest
+	(*v1.PageResponse)(nil),      // 14: workos.common.v1.PageResponse
+	(*v11.ContextRef)(nil),       // 15: workos.agent.v1.ContextRef
 }
 var file_workos_index_v1_index_proto_depIdxs = []int32{
 	1,  // 0: workos.index.v1.IndexContextRequest.sources:type_name -> workos.index.v1.ArtifactSourceRef
 	0,  // 1: workos.index.v1.IndexJob.job_state:type_name -> workos.index.v1.IndexJobState
-	11, // 2: workos.index.v1.SearchHybridRequest.page:type_name -> workos.common.v1.PageRequest
+	13, // 2: workos.index.v1.SearchHybridRequest.page:type_name -> workos.common.v1.PageRequest
 	7,  // 3: workos.index.v1.SearchHybridResponse.hits:type_name -> workos.index.v1.SearchHit
-	12, // 4: workos.index.v1.SearchHybridResponse.page:type_name -> workos.common.v1.PageResponse
+	14, // 4: workos.index.v1.SearchHybridResponse.page:type_name -> workos.common.v1.PageResponse
 	8,  // 5: workos.index.v1.SearchHybridResponse.freshness:type_name -> workos.index.v1.IndexFreshness
-	11, // 6: workos.index.v1.SearchRequest.page:type_name -> workos.common.v1.PageRequest
-	13, // 7: workos.index.v1.SearchHit.source_ref:type_name -> workos.agent.v1.ContextRef
+	13, // 6: workos.index.v1.SearchRequest.page:type_name -> workos.common.v1.PageRequest
+	15, // 7: workos.index.v1.SearchHit.source_ref:type_name -> workos.agent.v1.ContextRef
 	7,  // 8: workos.index.v1.SearchResponse.hits:type_name -> workos.index.v1.SearchHit
-	12, // 9: workos.index.v1.SearchResponse.page:type_name -> workos.common.v1.PageResponse
+	14, // 9: workos.index.v1.SearchResponse.page:type_name -> workos.common.v1.PageResponse
 	8,  // 10: workos.index.v1.SearchResponse.freshness:type_name -> workos.index.v1.IndexFreshness
 	3,  // 11: workos.index.v1.IndexContextResponse.job:type_name -> workos.index.v1.IndexJob
-	2,  // 12: workos.index.v1.IndexService.IndexContext:input_type -> workos.index.v1.IndexContextRequest
-	6,  // 13: workos.index.v1.IndexService.Search:input_type -> workos.index.v1.SearchRequest
-	4,  // 14: workos.index.v1.IndexService.SearchHybrid:input_type -> workos.index.v1.SearchHybridRequest
-	10, // 15: workos.index.v1.IndexService.IndexContext:output_type -> workos.index.v1.IndexContextResponse
-	9,  // 16: workos.index.v1.IndexService.Search:output_type -> workos.index.v1.SearchResponse
-	5,  // 17: workos.index.v1.IndexService.SearchHybrid:output_type -> workos.index.v1.SearchHybridResponse
-	15, // [15:18] is the sub-list for method output_type
-	12, // [12:15] is the sub-list for method input_type
-	12, // [12:12] is the sub-list for extension type_name
-	12, // [12:12] is the sub-list for extension extendee
-	0,  // [0:12] is the sub-list for field type_name
+	15, // 12: workos.index.v1.ReadDocumentRequest.source:type_name -> workos.agent.v1.ContextRef
+	15, // 13: workos.index.v1.ReadDocumentResponse.source:type_name -> workos.agent.v1.ContextRef
+	11, // 14: workos.index.v1.IndexService.ReadDocument:input_type -> workos.index.v1.ReadDocumentRequest
+	2,  // 15: workos.index.v1.IndexService.IndexContext:input_type -> workos.index.v1.IndexContextRequest
+	6,  // 16: workos.index.v1.IndexService.Search:input_type -> workos.index.v1.SearchRequest
+	4,  // 17: workos.index.v1.IndexService.SearchHybrid:input_type -> workos.index.v1.SearchHybridRequest
+	12, // 18: workos.index.v1.IndexService.ReadDocument:output_type -> workos.index.v1.ReadDocumentResponse
+	10, // 19: workos.index.v1.IndexService.IndexContext:output_type -> workos.index.v1.IndexContextResponse
+	9,  // 20: workos.index.v1.IndexService.Search:output_type -> workos.index.v1.SearchResponse
+	5,  // 21: workos.index.v1.IndexService.SearchHybrid:output_type -> workos.index.v1.SearchHybridResponse
+	18, // [18:22] is the sub-list for method output_type
+	14, // [14:18] is the sub-list for method input_type
+	14, // [14:14] is the sub-list for extension type_name
+	14, // [14:14] is the sub-list for extension extendee
+	0,  // [0:14] is the sub-list for field type_name
 }
 
 func init() { file_workos_index_v1_index_proto_init() }
@@ -956,7 +1118,7 @@ func file_workos_index_v1_index_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_workos_index_v1_index_proto_rawDesc), len(file_workos_index_v1_index_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   10,
+			NumMessages:   12,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

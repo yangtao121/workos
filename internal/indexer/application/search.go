@@ -39,6 +39,7 @@ func errServiceWiring(message string) error { return serviceWiringError(message)
 // transport owns identity sanitation; this layer owns grammar and scope
 // binding.
 type SearchInput struct {
+	SourceType  string
 	OwnerUserID string
 	ProjectID   string
 	RawQuery    string
@@ -71,18 +72,23 @@ func (s *SearchService) run(ctx context.Context, input SearchInput, ranking int)
 	if !domain.ValidUUID(input.OwnerUserID) || !domain.ValidUUID(input.ProjectID) {
 		return SearchResult{}, domain.ErrInvalid
 	}
-	if input.PageSize < 0 {
+	if input.PageSize < 0 || (input.SourceType != "" && input.SourceType != domain.SourceReviewArtifact && input.SourceType != domain.SourceWorkspaceFile) {
 		return SearchResult{}, domain.ErrInvalid
 	}
 	canonicalQuery, err := domain.CanonicalQuery(input.RawQuery)
 	if err != nil {
 		return SearchResult{}, err
 	}
+	digestQuery := canonicalQuery
+	if input.SourceType != "" {
+		digestQuery += "\x00" + input.SourceType
+	}
 	query := domain.SearchQuery{
+		SourceType:     input.SourceType,
 		OwnerUserID:    input.OwnerUserID,
 		ProjectID:      input.ProjectID,
 		CanonicalQuery: canonicalQuery,
-		QueryDigest:    domain.QueryDigest(input.OwnerUserID, input.ProjectID, canonicalQuery),
+		QueryDigest:    domain.QueryDigest(input.OwnerUserID, input.ProjectID, digestQuery),
 		PageSize:       domain.ClampSearchPageSize(input.PageSize),
 		Ranking:        ranking,
 	}
@@ -136,4 +142,12 @@ func NewSearchServiceForTest(projection ports.ProjectionRepository) *SearchServi
 		panic(err)
 	}
 	return &SearchService{projection: projection, tokens: codec}
+}
+
+func (s *SearchService) ReadDocument(ctx context.Context, input domain.DocumentRead) (domain.Document, error) {
+	if !domain.ValidUUID(input.OwnerUserID) || !domain.ValidUUID(input.ProjectID) || !domain.ValidUUID(input.SourceID) || !domain.ValidDigest(input.Digest) ||
+		(input.SourceType != domain.SourceReviewArtifact && input.SourceType != domain.SourceWorkspaceFile) {
+		return domain.Document{}, domain.ErrInvalid
+	}
+	return s.projection.ReadDocument(ctx, input)
 }

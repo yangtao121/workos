@@ -1067,6 +1067,62 @@ func (q *Queries) PromoteGeneration(ctx context.Context, arg PromoteGenerationPa
 	return result.RowsAffected(), nil
 }
 
+const readIndexedDocument = `-- name: ReadIndexedDocument :one
+SELECT d.owner_user_id, d.project_id, d.source_id, d.source_digest,
+       d.artifact_type, d.title, d.content, d.source_created_at,
+       d.last_publication_id, d.indexed_at
+FROM workos_index.documents d
+WHERE d.projection_generation = (SELECT generation_id FROM workos_index.active_generation)
+  AND d.owner_user_id = $1 AND d.project_id = $2
+  AND d.source_type = $3 AND d.source_id = $4
+  AND d.source_digest = $5 AND d.tombstoned_at IS NULL
+`
+
+type ReadIndexedDocumentParams struct {
+	OwnerUserID string
+	ProjectID   string
+	SourceType  string
+	SourceID    string
+	Digest      string
+}
+
+type ReadIndexedDocumentRow struct {
+	OwnerUserID       string
+	ProjectID         string
+	SourceID          string
+	SourceDigest      string
+	ArtifactType      string
+	Title             string
+	Content           string
+	SourceCreatedAt   time.Time
+	LastPublicationID string
+	IndexedAt         time.Time
+}
+
+func (q *Queries) ReadIndexedDocument(ctx context.Context, arg ReadIndexedDocumentParams) (ReadIndexedDocumentRow, error) {
+	row := q.db.QueryRow(ctx, readIndexedDocument,
+		arg.OwnerUserID,
+		arg.ProjectID,
+		arg.SourceType,
+		arg.SourceID,
+		arg.Digest,
+	)
+	var i ReadIndexedDocumentRow
+	err := row.Scan(
+		&i.OwnerUserID,
+		&i.ProjectID,
+		&i.SourceID,
+		&i.SourceDigest,
+		&i.ArtifactType,
+		&i.Title,
+		&i.Content,
+		&i.SourceCreatedAt,
+		&i.LastPublicationID,
+		&i.IndexedAt,
+	)
+	return i, err
+}
+
 const recordWorkspaceSync = `-- name: RecordWorkspaceSync :exec
 UPDATE workos_index.workspace_sources
 SET indexed_count = $1,
@@ -1126,7 +1182,8 @@ scored AS (
       AND d.owner_user_id = $7
       AND d.project_id = $8
       AND d.tombstoned_at IS NULL
-      AND d.indexed_at <= $9
+      AND ($9::text = '' OR d.source_type = $9)
+      AND d.indexed_at <= $10
       AND (d.title_tsv @@ q.tsq OR d.body_tsv @@ q.tsq)
 )
 SELECT source_id, source_digest, source_type, artifact_type, title, source_created_at, content,
@@ -1151,6 +1208,7 @@ type SearchProjectDocumentsParams struct {
 	GenerationID    string
 	OwnerUserID     string
 	ProjectID       string
+	SourceType      string
 	SnapshotThrough time.Time
 }
 
@@ -1183,6 +1241,7 @@ func (q *Queries) SearchProjectDocuments(ctx context.Context, arg SearchProjectD
 		arg.GenerationID,
 		arg.OwnerUserID,
 		arg.ProjectID,
+		arg.SourceType,
 		arg.SnapshotThrough,
 	)
 	if err != nil {
@@ -1216,7 +1275,7 @@ func (q *Queries) SearchProjectDocuments(ctx context.Context, arg SearchProjectD
 
 const searchProjectDocumentsHybrid = `-- name: SearchProjectDocumentsHybrid :many
 WITH q AS (
-    SELECT websearch_to_tsquery('simple', $6) AS tsq
+    SELECT websearch_to_tsquery('simple', $7) AS tsq
 )
 SELECT d.source_id, d.source_digest, d.source_type, d.artifact_type, d.title, d.source_created_at, d.content,
        d.last_publication_id, d.indexed_at, d.embedding,
@@ -1227,15 +1286,17 @@ WHERE d.projection_generation = $1
   AND d.owner_user_id = $2
   AND d.project_id = $3
   AND d.tombstoned_at IS NULL
-  AND d.indexed_at <= $4
+      AND ($4::text = '' OR d.source_type = $4)
+  AND d.indexed_at <= $5
   AND (d.title_tsv @@ q.tsq OR d.body_tsv @@ q.tsq OR d.embedding IS NOT NULL)
-LIMIT $5
+LIMIT $6
 `
 
 type SearchProjectDocumentsHybridParams struct {
 	GenerationID    string
 	OwnerUserID     string
 	ProjectID       string
+	SourceType      string
 	SnapshotThrough time.Time
 	RowLimit        int32
 	QueryText       string
@@ -1266,6 +1327,7 @@ func (q *Queries) SearchProjectDocumentsHybrid(ctx context.Context, arg SearchPr
 		arg.GenerationID,
 		arg.OwnerUserID,
 		arg.ProjectID,
+		arg.SourceType,
 		arg.SnapshotThrough,
 		arg.RowLimit,
 		arg.QueryText,

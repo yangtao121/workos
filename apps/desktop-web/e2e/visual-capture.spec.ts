@@ -1,3 +1,4 @@
+import { openDesktopApp } from "./open-app.js";
 import { expect, test } from "@playwright/test";
 
 // Visual capture for the supervised web-service workload slice
@@ -93,7 +94,7 @@ test("captures the web-service states", async ({ page }) => {
 
   // System Monitor: a normal, non-permanent window fed by the reliability
   // upstream (running in this stack) with a fixed empty state.
-  await page.getByTestId("open-system-monitor").click();
+  await openDesktopApp(page, "system-monitor");
   await expect(page.getByText(/No incidents recorded for this project\./)).toBeVisible({
     timeout: libraryTimeout,
   });

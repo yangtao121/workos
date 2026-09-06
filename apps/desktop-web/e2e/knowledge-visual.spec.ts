@@ -1,3 +1,4 @@
+import { openDesktopApp } from "./open-app.js";
 import { expect, test, type Page } from "@playwright/test";
 
 // Deterministic visual capture for the project knowledge-search slice
@@ -148,7 +149,7 @@ test("captures knowledge center and app surface evidence", async ({ page }) => {
   });
 
   // Expanded: Knowledge Center results.
-  await page.getByTestId("open-knowledge-center").click();
+  await openDesktopApp(page, "knowledge-center");
   const input = page.getByTestId("knowledge-search-input");
   const firstResult = page.getByTestId("knowledge-result").first();
   for (let attempt = 0; attempt < 40; attempt++) {

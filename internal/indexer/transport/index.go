@@ -25,6 +25,7 @@ import (
 
 // IndexService is the application surface the handler serves.
 type IndexService interface {
+	ReadDocument(context.Context, domain.DocumentRead) (domain.Document, error)
 	Search(ctx context.Context, input indexerapp.SearchInput) (indexerapp.SearchResult, error)
 	// SearchHybrid serves the fused lexical+semantic ranking (ADR-0017).
 	SearchHybrid(ctx context.Context, input indexerapp.SearchInput) (indexerapp.SearchResult, error)
@@ -65,6 +66,7 @@ func (h *Handler) Search(ctx context.Context, req *connect.Request[indexv1.Searc
 		OwnerUserID: id.UserID,
 		ProjectID:   req.Msg.GetProjectId(),
 		RawQuery:    req.Msg.GetQuery(),
+		SourceType:  req.Msg.GetSourceType(),
 		PageSize:    pageSize,
 		PageToken:   req.Msg.GetPage().GetPageToken(),
 	})
@@ -114,6 +116,7 @@ func (h *Handler) SearchHybrid(ctx context.Context, req *connect.Request[indexv1
 		OwnerUserID: id.UserID,
 		ProjectID:   req.Msg.GetProjectId(),
 		RawQuery:    req.Msg.GetQuery(),
+		SourceType:  req.Msg.GetSourceType(),
 		PageSize:    pageSize,
 		PageToken:   req.Msg.GetPage().GetPageToken(),
 	})
@@ -236,4 +239,17 @@ func mapError(err error) error {
 	default:
 		return connect.NewError(connect.CodeInternal, errors.New("index operation failed"))
 	}
+}
+
+func (h *Handler) ReadDocument(ctx context.Context, req *connect.Request[indexv1.ReadDocumentRequest]) (*connect.Response[indexv1.ReadDocumentResponse], error) {
+	id, err := identity.FromContext(ctx)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeUnauthenticated, err)
+	}
+	source := req.Msg.GetSource()
+	doc, err := h.service.ReadDocument(ctx, domain.DocumentRead{OwnerUserID: id.UserID, ProjectID: req.Msg.GetProjectId(), SourceType: source.GetType(), SourceID: source.GetId(), Digest: source.GetRevision()})
+	if err != nil {
+		return nil, mapError(err)
+	}
+	return connect.NewResponse(&indexv1.ReadDocumentResponse{Source: source, Title: doc.Title, Content: doc.Content, IndexedAt: formatSearchTime(doc.IndexedAt)}), nil
 }

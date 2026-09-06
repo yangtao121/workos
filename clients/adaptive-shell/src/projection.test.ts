@@ -52,7 +52,12 @@ describe("orderedWindows", () => {
 
   it("excludes minimized windows", () => {
     let state = stateWithWindows();
-    state = windowReducer(state, { type: "mode", id: "artifact-center", mode: "minimized" });
+    state = windowReducer(state, {
+      type: "mode",
+      id: "artifact-center",
+      mode: "minimized",
+      viewport: { x: 0, y: 0, width: 1440, height: 900 },
+    });
     expect(orderedWindows(state).map((window) => window.id)).not.toContain("artifact-center");
   });
 });

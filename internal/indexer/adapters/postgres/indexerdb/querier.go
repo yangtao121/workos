@@ -62,6 +62,7 @@ type Querier interface {
 	ListWorkspaceSources(ctx context.Context) ([]WorkosIndexWorkspaceSource, error)
 	MarkIndexJobFailed(ctx context.Context, arg MarkIndexJobFailedParams) error
 	PromoteGeneration(ctx context.Context, arg PromoteGenerationParams) (int64, error)
+	ReadIndexedDocument(ctx context.Context, arg ReadIndexedDocumentParams) (ReadIndexedDocumentRow, error)
 	RecordWorkspaceSync(ctx context.Context, arg RecordWorkspaceSyncParams) error
 	SearchFreshness(ctx context.Context) (time.Time, error)
 	// Deterministic lexical page (ADR-0013 §5): rank over the built-in 'simple'
