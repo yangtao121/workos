@@ -186,7 +186,8 @@ type MountResult struct {
 // boundary of the workspace slice; implementations must never follow
 // symlinks out of the root.
 type MountReader interface {
-	Walk(root string) (MountResult, error)
+	ValidateRoot(root string) error
+	Walk(ctx context.Context, root string) (MountResult, error)
 }
 
 // WorkspaceStore owns the durable workspace source lifecycle and projects

@@ -41,7 +41,7 @@ workspace 文件源与通用 archive 的最小实现。
 ### 4. Workspace 文件源
 
 - workspace 文件源 = 已安装 app 的本地目录经 runtime 映射到逻辑路径。
-- 索引器读取有界文件列表（≤1000 files、≤1 MiB each），按文件扩展名过滤
+- 索引器读取有界文件列表（≤1000 files、≤512 KiB each），按文件扩展名过滤
   （允许 .md/.txt/.go/.ts/.json 等），计算 feature-hash embedding 并入索引。
 - 忽略规则：.git、node_modules、.env、二进制文件。
 
@@ -55,3 +55,16 @@ workspace 文件源与通用 archive 的最小实现。
 - 语义知识有真实门禁证据（`make test-semantic-knowledge` +
   `make test-workspace-indexing`）后才在 status.json 升级。
 - 真模型调用/公网 embedding 服务属于外部账号前提，本批不实现。
+
+## 2026-09-07 工作区扫描修正
+
+- 注册及每次扫描通过 MountReader 使用 Linux openat2 打开根目录，禁止所有路径段的
+  符号链接；子路径还限制 BENEATH/NO_XDEV，并以 NONBLOCK 打开、fstat 确认常规文件。
+  不支持该内核能力时明确 filesystem-unavailable，不退回 check-then-open。
+- 每次扫描最多 1000 个文本文件、10000 个目录条目、16 MiB 实际读取，单文件 512 KiB；
+  路径最多 1024 bytes/16 层，每段最多 255 bytes。读取前检查大小，读取仍有硬上限。
+  忽略树直接裁剪；文本与路径校验 UTF-8 和控制字符，长标题按 code point 截断。
+- 扫描错误或总预算超限为 degraded，不把部分结果交给 set-difference tombstone。
+  状态原因使用固定类别，不泄露原始文件系统错误；后续完整扫描恢复 active 并清空原因。
+- 挂载路径由 operator 明确绑定，当前实现不等于 Runtime 自动 workspace 映射；
+  并发变动目录不承诺文件系统快照，写入投影的事务与并发收敛仍需独立审查。

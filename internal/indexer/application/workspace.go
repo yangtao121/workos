@@ -7,8 +7,6 @@ package application
 import (
 	"context"
 	"errors"
-	"os"
-	"path/filepath"
 	"time"
 
 	indexerdomain "github.com/yangtao121/workos/internal/indexer/domain"
@@ -17,10 +15,6 @@ import (
 
 // ErrWorkspaceStopped reports a sync against an owner-stopped source.
 var ErrWorkspaceStopped = errors.New("workspace source is stopped")
-
-// ErrWorkspaceSymlinkEscape rejects a mount root that resolves elsewhere —
-// the registration-time symlink escape verdict.
-var ErrWorkspaceSymlinkEscape = errors.New("workspace root resolves through a symlink")
 
 // WorkspaceIngestor depends on the durable source store and the (only)
 // filesystem boundary adapter.
@@ -58,16 +52,8 @@ func (w *WorkspaceIngestor) Register(ctx context.Context, ownerUserID, projectID
 	if !indexerdomain.ValidWorkspaceRoot(root) {
 		return ports.WorkspaceSource{}, indexerdomain.ErrInvalid
 	}
-	resolved, err := filepath.EvalSymlinks(root)
-	if err != nil {
-		return ports.WorkspaceSource{}, indexerdomain.ErrWorkspaceDegraded
-	}
-	if resolved != filepath.Clean(root) {
-		return ports.WorkspaceSource{}, ErrWorkspaceSymlinkEscape
-	}
-	info, err := os.Lstat(resolved)
-	if err != nil || !info.IsDir() {
-		return ports.WorkspaceSource{}, indexerdomain.ErrWorkspaceDegraded
+	if err := w.mounts.ValidateRoot(root); err != nil {
+		return ports.WorkspaceSource{}, err
 	}
 	source, err := w.store.InsertWorkspaceSource(ctx, ports.WorkspaceSource{
 		ID: w.pubs(), OwnerUserID: ownerUserID, ProjectID: projectID, RootPath: root,
@@ -99,14 +85,15 @@ func (w *WorkspaceIngestor) Sync(ctx context.Context, sourceID string) (SyncResu
 	if source.Status == indexerdomain.WorkspaceStopped {
 		return SyncResult{}, ErrWorkspaceStopped
 	}
-	walk, walkErr := w.mounts.Walk(source.RootPath)
+	walk, walkErr := w.mounts.Walk(ctx, source.RootPath)
 	if walkErr != nil {
 		if errors.Is(walkErr, indexerdomain.ErrWorkspaceDegraded) {
 			degraded := source
 			degraded.Status = indexerdomain.WorkspaceDegraded
-			degraded.DegradedReason = indexerdomain.DegradedMountMissing
-			if _, statErr := os.Lstat(source.RootPath); statErr == nil {
-				degraded.DegradedReason = indexerdomain.DegradedMountNotDir
+			degraded.DegradedReason = indexerdomain.DegradedReadFailed
+			var failure *indexerdomain.WorkspaceFailure
+			if errors.As(walkErr, &failure) {
+				degraded.DegradedReason = failure.Reason
 			}
 			if statusErr := w.store.SetWorkspaceSourceStatus(ctx, source.ID,
 				indexerdomain.WorkspaceDegraded, degraded.DegradedReason, w.now()); statusErr != nil {

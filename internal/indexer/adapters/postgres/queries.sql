@@ -434,7 +434,8 @@ WHERE id = sqlc.arg(id)::uuid;
 
 -- name: RecordWorkspaceSync :exec
 UPDATE workos_index.workspace_sources
-SET indexed_count = sqlc.arg(indexed_count),
+SET status = 'active', degraded_reason = '',
+    indexed_count = sqlc.arg(indexed_count),
     skipped_count = sqlc.arg(skipped_count),
     tombstoned_count = sqlc.arg(tombstoned_count),
     last_synced_at = sqlc.arg(last_synced_at),

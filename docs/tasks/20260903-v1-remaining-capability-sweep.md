@@ -544,3 +544,16 @@ Browser 隔离：Chromium baseline 明确读到 `Desktop fixture data`，回归�
 不涉及可见 UI：仅改变 iframe sandbox 权限；产品布局/控件/普通静态内容渲染均不变，
 无需无差异截图。`make -o proto-check -o go-check check` PASS（Go/Proto 未变，复用
 4f63c16 完整检查）；真实远程执行栈仍未完成。
+
+### R4 工作区扫描边界（active，2026-09-07）
+
+Browser 检查点 fecc26d。修复 localmount check-then-open、无界 ReadFile、截断扫描误作完整
+收敛；文件系统验证移入 MountReader port。依赖 Linux openat2，不增加跨模块 adapter 引用。
+验收：符号链接/替换竞争/FIFO、单文件与整体预算、无效 UTF-8、取消、超限保持已有索引，
+完整扫描恢复后正常删除。此阶段没有 UI 变化；真实语义模型与工作区浏览器组合证据仍待补齐。
+
+扫描修复验证：Indexer 全模块 race PASS；`TestWorkspaceIndexing` 实际 PostgreSQL/race PASS，
+包含超限不修改已有文档、恢复后删除及 active 状态恢复。首次恢复回归揭示 RecordWorkspaceSync
+未清除 degraded，已在同一 SQL 更新修复并重新生成。真实目录/外链并发交换 200 次扫描、
+1 TiB sparse 文件、FIFO、无效文本、总预算/深度/取消均 PASS。`make generate` PASS。
+全仓 `make go-check` PASS；投影写入目前逐文件事务，下一阶段修复整次扫描的原子性和并发 CAS。

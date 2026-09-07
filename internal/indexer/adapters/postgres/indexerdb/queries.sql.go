@@ -1125,7 +1125,8 @@ func (q *Queries) ReadIndexedDocument(ctx context.Context, arg ReadIndexedDocume
 
 const recordWorkspaceSync = `-- name: RecordWorkspaceSync :exec
 UPDATE workos_index.workspace_sources
-SET indexed_count = $1,
+SET status = 'active', degraded_reason = '',
+    indexed_count = $1,
     skipped_count = $2,
     tombstoned_count = $3,
     last_synced_at = $4,

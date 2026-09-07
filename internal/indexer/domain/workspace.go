@@ -8,25 +8,36 @@ import (
 	"errors"
 	"path"
 	"strings"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/google/uuid"
 )
 
 var (
-	ErrWorkspaceInvalidPath = errors.New("workspace file path is invalid")
+	ErrWorkspaceSymlinkEscape = errors.New("workspace root resolves through a symlink")
+	ErrWorkspaceInvalidPath   = errors.New("workspace file path is invalid")
 	// ErrWorkspaceDegraded reports a mount-level failure recorded on the
 	// source instead of a silent stop.
 	ErrWorkspaceDegraded = errors.New("workspace mount is degraded")
 )
 
-// Bounded ingestion budget per sync pass (ADR-0017 §4). The per-file cap is
-// the stricter durable content bound (512 KiB documents CHECK), which the
-// 1 MiB walk budget never reaches.
+// Bounded ingestion budgets per complete sync pass.
 const (
 	WorkspaceMaxFiles      = 1000
 	WorkspaceMaxFileBytes  = 512 * 1024
+	WorkspaceMaxTotalBytes = 16 * 1024 * 1024
+	WorkspaceMaxEntries    = 10000
+	WorkspaceMaxDepth      = 16
+	WorkspaceMaxPathBytes  = 1024
 	WorkspaceMaxRootLength = 4096
 )
+
+// WorkspaceFailure contains only a fixed category, never a filesystem error.
+type WorkspaceFailure struct{ Reason string }
+
+func (e *WorkspaceFailure) Error() string { return "workspace mount is degraded: " + e.Reason }
+func (e *WorkspaceFailure) Unwrap() error { return ErrWorkspaceDegraded }
 
 // WorkspaceSkip reasons are sanitized, bounded categories — never paths or
 // content from the mount.
@@ -36,7 +47,6 @@ const (
 	SkipBinary    = "binary"
 	SkipExtension = "extension"
 	SkipSymlink   = "symlink"
-	SkipLimit     = "limit"
 	SkipInvalid   = "invalid"
 )
 
@@ -51,6 +61,10 @@ const (
 const (
 	DegradedMountMissing = "mount-missing"
 	DegradedMountNotDir  = "mount-not-dir"
+	DegradedMountUnsafe  = "mount-unsafe"
+	DegradedReadFailed   = "read-failed"
+	DegradedScanLimit    = "scan-limit"
+	DegradedUnavailable  = "filesystem-unavailable"
 )
 
 // WorkspaceExtensions is the allowlist of text file extensions ingested as
@@ -74,11 +88,11 @@ func ValidWorkspaceSourceStatus(status string) bool {
 // ValidWorkspaceRoot pins the mount root grammar: absolute, bounded, no
 // traversal, never a bare relative guess.
 func ValidWorkspaceRoot(root string) bool {
-	if root == "" || len(root) > WorkspaceMaxRootLength || !path.IsAbs(root) {
+	if root == "" || root == "/" || !utf8.ValidString(root) || len(root) > WorkspaceMaxRootLength || !path.IsAbs(root) {
 		return false
 	}
 	clean := path.Clean(root)
-	return clean == root && !strings.Contains(root, "\x00")
+	return clean == root && !strings.ContainsFunc(root, unicode.IsControl)
 }
 
 // WorkspaceRelPath validates one walked file path relative to the mount
@@ -86,23 +100,23 @@ func ValidWorkspaceRoot(root string) bool {
 // the stored title grammar. Ignore rules are a separate verdict so the
 // walker can record skipped reasons honestly.
 func WorkspaceRelPath(relPath string) (string, error) {
-	if relPath == "" || relPath == "." {
+	if relPath == "" || relPath == "." || len(relPath) > WorkspaceMaxPathBytes ||
+		!utf8.ValidString(relPath) || strings.ContainsAny(relPath, "\\") || strings.ContainsFunc(relPath, unicode.IsControl) ||
+		strings.Count(relPath, "/") >= WorkspaceMaxDepth {
 		return "", ErrWorkspaceInvalidPath
 	}
 	clean := path.Clean(relPath)
-	if clean != relPath || strings.HasPrefix(clean, "/") || strings.HasPrefix(clean, "..") {
+	if clean != relPath || strings.HasPrefix(clean, "/") || (clean == ".." || strings.HasPrefix(clean, "../")) {
 		return "", ErrWorkspaceInvalidPath
 	}
 	for _, part := range strings.Split(clean, "/") {
-		if part == "" || part == "." || part == ".." {
+		if part == "" || part == "." || part == ".." || len(part) > 255 {
 			return "", ErrWorkspaceInvalidPath
 		}
 	}
 	title := clean
-	if len(title) > 200 {
-		// Stored titles are bounded at 200; overflow keeps a stable suffix
-		// so long paths still index deterministically.
-		title = "…" + title[len(title)-199:]
+	if runes := []rune(title); len(runes) > 200 {
+		title = "…" + string(runes[len(runes)-199:])
 	}
 	return title, nil
 }
@@ -117,19 +131,9 @@ func WorkspaceExtension(relPath string) bool {
 	return WorkspaceExtensions[strings.ToLower(path.Ext(relPath))]
 }
 
-// LooksBinary rejects files whose first bytes contain a NUL — the cheap,
-// deterministic binary sniff for the bounded ingestion path.
+// LooksBinary excludes invalid UTF-8 and disallowed controls anywhere in a bounded text file.
 func LooksBinary(content []byte) bool {
-	limit := len(content)
-	if limit > 8000 {
-		limit = 8000
-	}
-	for i := 0; i < limit; i++ {
-		if content[i] == 0 {
-			return true
-		}
-	}
-	return false
+	return !utf8.Valid(content) || hasControl(string(content))
 }
 
 // WorkspaceSourceID derives the deterministic per-scope document identity of

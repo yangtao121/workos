@@ -258,7 +258,7 @@ func mapAdminError(err error) error {
 		return connect.NewError(connect.CodeInvalidArgument, errors.New("rebuild request is invalid"))
 	case errors.Is(err, indexerapp.ErrWorkspaceStopped):
 		return connect.NewError(connect.CodeFailedPrecondition, errors.New("workspace source is stopped"))
-	case errors.Is(err, indexerapp.ErrWorkspaceSymlinkEscape):
+	case errors.Is(err, indexerdomain.ErrWorkspaceSymlinkEscape):
 		return connect.NewError(connect.CodeInvalidArgument, errors.New("workspace root resolves through a symlink"))
 	case errors.Is(err, indexerdomain.ErrWorkspaceDegraded):
 		return connect.NewError(connect.CodeFailedPrecondition, errors.New("workspace mount is degraded"))

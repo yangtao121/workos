@@ -5,6 +5,7 @@ package integration_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -76,7 +77,7 @@ func TestWorkspaceIndexing(t *testing.T) {
 	if err := os.Symlink(t.TempDir(), filepath.Join(mount, "elsewhere")); err != nil {
 		t.Skipf("symlinks unavailable: %v", err)
 	}
-	if _, err := ingestor.Register(ctx, owner, project, filepath.Join(mount, "elsewhere")); !errors.Is(err, indexerapp.ErrWorkspaceSymlinkEscape) {
+	if _, err := ingestor.Register(ctx, owner, project, filepath.Join(mount, "elsewhere")); !errors.Is(err, indexerdomain.ErrWorkspaceSymlinkEscape) {
 		t.Fatalf("symlink escape must be rejected, got %v", err)
 	}
 	if _, err := ingestor.Register(ctx, owner, project, "relative/path"); !errors.Is(err, indexerdomain.ErrInvalid) {
@@ -184,6 +185,44 @@ func TestWorkspaceIndexing(t *testing.T) {
 	}
 	if !revised {
 		t.Fatalf("revised notes.md not recalled semantically: %+v", converged.Page.Hits)
+	}
+
+	// An incomplete pass must preserve the previous projection, even if a
+	// formerly indexed file is absent from the truncated scan. A later full
+	// pass is the only authority allowed to tombstone it.
+	if err := os.Remove(filepath.Join(mount, "notes.md")); err != nil {
+		t.Fatal(err)
+	}
+	overflow := filepath.Join(mount, "overflow")
+	if err := os.Mkdir(overflow, 0700); err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i <= indexerdomain.WorkspaceMaxFiles; i++ {
+		writeWorkspaceFile(t, overflow, fmt.Sprintf("%04d.md", i), "bounded fixture")
+	}
+	incomplete, err := ingestor.Sync(ctx, source.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if incomplete.Source.Status != indexerdomain.WorkspaceDegraded || incomplete.Source.DegradedReason != indexerdomain.DegradedScanLimit || incomplete.Applied != 0 || incomplete.Tombstoned != 0 {
+		t.Fatalf("incomplete scan: %+v", incomplete)
+	}
+	var live int
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM workos_index.documents WHERE source_id = $1::uuid AND tombstoned_at IS NULL`, notes.ArtifactID).Scan(&live); err != nil {
+		t.Fatal(err)
+	}
+	if live != 1 {
+		t.Fatal("incomplete pass deleted the previous document")
+	}
+	if err := os.RemoveAll(overflow); err != nil {
+		t.Fatal(err)
+	}
+	recovered, err := ingestor.Sync(ctx, source.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if recovered.Source.Status != indexerdomain.WorkspaceActive || recovered.Tombstoned != 1 {
+		t.Fatalf("recovered scan: %+v", recovered)
 	}
 
 	// A vanished mount degrades explicitly and never pretends freshness.

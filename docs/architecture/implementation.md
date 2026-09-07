@@ -1287,3 +1287,9 @@ Core 私有 DevicePushService 不经 Gateway public allowlist；可信 owner/dev
 桌面相同 origin 的页面，也不能读取桌面 DOM、storage 或设备资料；popup/top navigation 仍禁用。
 Chromium 本地同源 fixture 在修复前读取到桌面测试值，修复后被拒绝且页面脚本按钮仍可交互。
 这只证明嵌入页面边界，真实 Remote Browser Pool/Native runner/WebRTC 仍需后续实现与验收。
+
+Indexer 工作区扫描：注册和扫描的文件系统访问集中在 localmount adapter，Linux openat2
+从根目录句柄解析子路径，禁止 symlink/跨子挂载；读取前 fstat 并限制读取长度，FIFO 不阻塞。
+单次最多 1000 文本文件、10000 条目、16 MiB 读取，单文件 512 KiB、路径 1024 bytes/16 层。
+无效文本跳过，扫描不完整则 degraded 且不执行删除收敛；完整扫描成功恢复 active。
+这不提供文件系统快照或真实语义模型，工作区投影的原子性与浏览器组合门禁继续审查。
