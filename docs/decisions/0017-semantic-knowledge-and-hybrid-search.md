@@ -19,7 +19,7 @@ workspace 文件源与通用 archive 的最小实现。
   哈希到 384 个桶之一，正负号由第二个哈希位决定，累加后 L2 归一化。
 - 零外部依赖、完全离线可复现。不调用外部模型 API。
 - 诚实声明：这是词法语义的有界近似——捕捉 token 重叠与粗粒度词频，不声称
-  深层语义相似性。真模型调用需要外部 API key（停止条件）。
+  深层语义相似性。本地真实模型路径由 ADR-0021 定义，不需要外部 API key。
 
 ### 2. pgvector 混合检索
 
@@ -54,7 +54,7 @@ workspace 文件源与通用 archive 的最小实现。
 
 - 语义知识有真实门禁证据（`make test-semantic-knowledge` +
   `make test-workspace-indexing`）后才在 status.json 升级。
-- 真模型调用/公网 embedding 服务属于外部账号前提，本批不实现。
+- 公网 embedding 服务仍需要外部账号；本地真实模型按 ADR-0021 接入并单独验收。
 
 ## 2026-09-07 工作区扫描修正
 

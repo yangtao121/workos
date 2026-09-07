@@ -1,0 +1,30 @@
+syntax = "proto3";
+
+package workos.index.v1;
+
+option go_package = "github.com/yangtao121/workos/gen/go/workos/index/v1;indexv1";
+
+// Private Indexer-owned child protocol, never a Gateway RPC. One request and
+// response per line of protobuf JSON; at most one outstanding request. Input
+// lines are limited to 64 KiB and output lines to 32 KiB. A malformed request
+// or inference failure terminates the child; the Indexer reports unavailable.
+message LocalEmbeddingRequest {
+  LocalEmbeddingInputKind input_kind = 1;
+  // UTF-8, at most 16 KiB before the model-specific prefix and token limit.
+  // The caller chooses the bounded text projection; no path or URL is accepted.
+  string text = 2;
+}
+
+enum LocalEmbeddingInputKind {
+  LOCAL_EMBEDDING_INPUT_KIND_UNSPECIFIED = 0;
+  LOCAL_EMBEDDING_INPUT_KIND_QUERY = 1;
+  LOCAL_EMBEDDING_INPUT_KIND_DOCUMENT = 2;
+}
+
+message LocalEmbeddingResponse {
+  // Exactly 384 finite, L2-normalized values.
+  repeated float vector = 1;
+  // SHA-256 fingerprint of the pinned model, tokenizer and preprocessing recipe.
+  // Consumers reject results from a different fingerprint.
+  string model_fingerprint = 2;
+}

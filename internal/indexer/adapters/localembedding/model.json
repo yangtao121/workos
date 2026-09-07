@@ -1,0 +1,23 @@
+{
+  "model": "intfloat/multilingual-e5-small",
+  "revision": "614241f622f53c4eeff9890bdc4f31cfecc418b3",
+  "files": {
+    "model.onnx": "ca456c06b3a9505ddfd9131408916dd79290368331e7d76bb621f1cba6bc8665",
+    "tokenizer.json": "0b44a9d7b51c3c62626640cda0e2c2f70fdacdc25bbbd68038369d14ebdf4c39"
+  },
+  "dimensions": 384,
+  "max_input_bytes": 16384,
+  "max_tokens": 512,
+  "pooling": "attention-mask-mean-l2",
+  "prefixes": {
+    "LOCAL_EMBEDDING_INPUT_KIND_QUERY": "query: ",
+    "LOCAL_EMBEDDING_INPUT_KIND_DOCUMENT": "passage: "
+  },
+  "runtime": {
+    "onnxruntime": "1.29.0",
+    "tokenizers": "0.23.2",
+    "numpy": "2.5.3",
+    "provider": "CPUExecutionProvider",
+    "threads": 1
+  }
+}

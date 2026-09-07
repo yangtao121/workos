@@ -728,3 +728,29 @@ workos*push*\* scratch 数据库和隔离容器已清理。下一步继续检索
 全模块 race PASS（`tmp/hybrid-pagination-after.log`）；`make test-semantic-knowledge`
 含 Gateway/Core/Indexer 的实际 RPC 链 PASS（`tmp/hybrid-pagination-gate.log`）。完整
 `make check` PASS（`tmp/hybrid-pagination-check.log`），无 Proto/SQL 生成输入变更。
+
+### R4 离线模型路径（active，2026-09-07）
+
+分页检查点 37aa9a6。核查官方 intfloat/multilingual-e5-small 固定 revision
+614241f622f53c4eeff9890bdc4f31cfecc418b3，取得模型/tokenizer SHA-256，下载至 ignored tmp
+并先用无网络 CPU 容器验证中英检索。该路径不需要真实 Provider 密钥，原 ADR 的
+“真模型必需外部 API key”判断不成立。暂未改变运行中的检索实现或升级状态。
+
+离线模型 adapter 已取得真实证据：固定 FP32 权重与 tokenizer SHA-256 校验通过；禁网、
+只读、2 CPU/2 GiB 容器中的 Go adapter → Python child 通过三条中英跨语言查询、同进程
+重复和子进程重启向量一致性（`tmp/embedding-real-gate.log`，PASS）。单独数学探测的
+排名为 [0,2,1]，重复最大误差 0（`tmp/embedding-offline-probe.log`）。进程错误矩阵
+race PASS（`tmp/embedding-adapter-tests.log`）。新增内部 Proto 已 make generate +
+proto-check PASS；ADR-0021 记录路径与长文截断边界。当前尚未接入生产摄取、pgvector、
+重建和搜索，状态不升级。依赖下载因容器网络较慢改用已有代理与镜像，未安装宿主软件。
+
+adapter 收尾：`make test-local-embedding` PASS（`tmp/embedding-gate-final2.log`），固定依赖
+镜像、Go race 故障矩阵、禁网只读真实模型及损坏 tokenizer 拒绝全部通过。首轮组合门禁
+因 /tmp noexec 拒绝故障 fixture 脚本，已将该矩阵放在 Go 工具容器；真实模型仍保持
+noexec/禁网/只读限制。`make check` PASS（`tmp/embedding-check.log`），生成后 131 个
+源码 SHA-256 不变（`tmp/embedding-generate-final.log`）。本阶段没有运行客户端 UI 变化。
+下一阶段将通过 application 层组合 model port，存储绑定 fingerprint，替换 feature-hash；
+模型计算必须在 SQL 事务/项目锁之外，保留 archive/CAS 优先级及完整重建回填验收。
+
+adapter 最终完整 `make check` 再次 PASS（`tmp/embedding-check-final.log`，退出 0），
+已包含真实模型缓存损坏回归；生成和门禁结果如上。工作树只含本阶段改动。

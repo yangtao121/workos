@@ -637,6 +637,11 @@ test-semantic-knowledge:
 	$(GO_HOST_RUN) go test -tags=integration -count=1 -run 'TestSemanticKnowledge' -v ./tests/integration
 	@echo "test-semantic-knowledge: PASS"
 
+test-local-embedding:
+	sh tools/embedding/gate.sh
+
+.PHONY: test-local-embedding
+
 # The workspace indexing gate (ADR-0017 §4+§5, W4): owner-bound local mounts
 # converge into the projection over the real mount walker — bounded
 # ingestion with honest skip categories, convergent upsert/tombstone

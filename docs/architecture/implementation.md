@@ -1325,3 +1325,13 @@ project archive 并遵守持久 tombstone，迟到快照不得复活已归档内
 
 混合检索同分分页使用 created_at 更早的候选，与 created DESC 的排序一致；同时间继续按
 source ID ASC。真实 PostgreSQL 以四种页大小验证不丢失、不重复和正常终止。
+
+## 离线 embedding adapter（ADR-0021，接入待完成）
+
+`internal/indexer/adapters/localembedding` 通过 port 隔离真实 CPU 模型推理；模型身份是
+固定权重/tokenizer/预处理配方的 SHA-256，内部 `index/v1/embedding.proto` 定义有界
+stdio 消息。Indexer 拥有请求串行、超时、进程组清理与空闲退出；子进程无独立服务端口。
+只读禁网容器验证真实模型，Go 工具容器验证进程错误矩阵；当前尚未接入生产摄取、
+pgvector、重建与搜索，
+既有 feature-hash 证据不能因此升级为真实模型语义链。`make test-local-embedding`
+提供可复现 adapter 门禁，固定依赖及公共模型缓存不包含凭据或用户内容。
