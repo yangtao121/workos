@@ -313,3 +313,20 @@ WHERE notification_id = sqlc.arg(notification_id)
 -- name: ExhaustPushDeliveries :exec
 UPDATE workos_core.push_deliveries SET state = 'failed', claim_token = NULL
 WHERE state = 'pending' AND attempts = 8 AND next_attempt_at <= sqlc.arg(now_at);
+
+-- name: LockPushDevice :exec
+SELECT pg_advisory_xact_lock(hashtextextended('workos.push-device/v1:' || sqlc.arg(device_scope)::text, 0));
+
+-- name: IsPushDeviceRevoked :one
+SELECT EXISTS (SELECT 1 FROM workos_core.revoked_push_devices
+    WHERE owner_user_id = sqlc.arg(owner_user_id) AND device_id = sqlc.arg(device_id));
+
+-- name: RememberPushDeviceRevocation :one
+INSERT INTO workos_core.revoked_push_devices (owner_user_id, device_id, revoked_at)
+VALUES (sqlc.arg(owner_user_id), sqlc.arg(device_id), sqlc.arg(revoked_at)::timestamptz)
+ON CONFLICT (owner_user_id, device_id) DO UPDATE SET revoked_at = workos_core.revoked_push_devices.revoked_at
+RETURNING revoked_at;
+
+-- name: RevokeDevicePushSubscriptions :exec
+UPDATE workos_core.push_subscriptions SET status = 'revoked', updated_at = sqlc.arg(now)::timestamptz
+WHERE owner_user_id = sqlc.arg(owner_user_id) AND device_id = sqlc.arg(device_id) AND status = 'active';

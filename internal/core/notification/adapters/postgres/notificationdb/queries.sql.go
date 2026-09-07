@@ -861,6 +861,23 @@ func (q *Queries) InsertNotificationSourceReceipt(ctx context.Context, arg Inser
 	return result.RowsAffected(), nil
 }
 
+const isPushDeviceRevoked = `-- name: IsPushDeviceRevoked :one
+SELECT EXISTS (SELECT 1 FROM workos_core.revoked_push_devices
+    WHERE owner_user_id = $1 AND device_id = $2)
+`
+
+type IsPushDeviceRevokedParams struct {
+	OwnerUserID string
+	DeviceID    string
+}
+
+func (q *Queries) IsPushDeviceRevoked(ctx context.Context, arg IsPushDeviceRevokedParams) (bool, error) {
+	row := q.db.QueryRow(ctx, isPushDeviceRevoked, arg.OwnerUserID, arg.DeviceID)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
+}
+
 const listNotificationsPage = `-- name: ListNotificationsPage :many
 SELECT id, owner_user_id, project_id, kind, severity, origin, title, body,
        target_kind, target_id, app_id, app_installation_id, source_process,
@@ -993,6 +1010,15 @@ func (q *Queries) LockOwnerNotifications(ctx context.Context, arg LockOwnerNotif
 	return items, nil
 }
 
+const lockPushDevice = `-- name: LockPushDevice :exec
+SELECT pg_advisory_xact_lock(hashtextextended('workos.push-device/v1:' || $1::text, 0))
+`
+
+func (q *Queries) LockPushDevice(ctx context.Context, deviceScope string) error {
+	_, err := q.db.Exec(ctx, lockPushDevice, deviceScope)
+	return err
+}
+
 const markNotificationRead = `-- name: MarkNotificationRead :execrows
 UPDATE workos_core.notifications
 SET read_at = $1, read_change_sequence = $2
@@ -1110,6 +1136,42 @@ func (q *Queries) PushPreferencesUpsert(ctx context.Context, arg PushPreferences
 	var revision int64
 	err := row.Scan(&revision)
 	return revision, err
+}
+
+const rememberPushDeviceRevocation = `-- name: RememberPushDeviceRevocation :one
+INSERT INTO workos_core.revoked_push_devices (owner_user_id, device_id, revoked_at)
+VALUES ($1, $2, $3::timestamptz)
+ON CONFLICT (owner_user_id, device_id) DO UPDATE SET revoked_at = workos_core.revoked_push_devices.revoked_at
+RETURNING revoked_at
+`
+
+type RememberPushDeviceRevocationParams struct {
+	OwnerUserID string
+	DeviceID    string
+	RevokedAt   time.Time
+}
+
+func (q *Queries) RememberPushDeviceRevocation(ctx context.Context, arg RememberPushDeviceRevocationParams) (time.Time, error) {
+	row := q.db.QueryRow(ctx, rememberPushDeviceRevocation, arg.OwnerUserID, arg.DeviceID, arg.RevokedAt)
+	var revoked_at time.Time
+	err := row.Scan(&revoked_at)
+	return revoked_at, err
+}
+
+const revokeDevicePushSubscriptions = `-- name: RevokeDevicePushSubscriptions :exec
+UPDATE workos_core.push_subscriptions SET status = 'revoked', updated_at = $1::timestamptz
+WHERE owner_user_id = $2 AND device_id = $3 AND status = 'active'
+`
+
+type RevokeDevicePushSubscriptionsParams struct {
+	Now         time.Time
+	OwnerUserID string
+	DeviceID    string
+}
+
+func (q *Queries) RevokeDevicePushSubscriptions(ctx context.Context, arg RevokeDevicePushSubscriptionsParams) error {
+	_, err := q.db.Exec(ctx, revokeDevicePushSubscriptions, arg.Now, arg.OwnerUserID, arg.DeviceID)
+	return err
 }
 
 const revokePushSubscription = `-- name: RevokePushSubscription :execrows

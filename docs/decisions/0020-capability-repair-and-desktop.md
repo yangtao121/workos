@@ -85,3 +85,16 @@ review 元数据，由 shell 打开既有查看器，禁止 App 指定 URL 或�
 Shell 将 Core digest、浏览器订阅与当前 VAPID public key 一并核对；不自动恢复撤销订阅，
 需要用户点击重新连接。公钥变化时先撤销旧 Core 注册，再清理浏览器旧订阅并注册新密钥。
 Core 撤销成功而浏览器清理失败时明确显示未完成的清理，禁止宣称完全成功。
+
+## 设备撤销与后台提醒
+
+Gateway 在撤销 credential/session 的同一事务写 Core 通知义务（migration 045，Gateway 独占）。
+私有 DevicePushService 以可信 owner/device 身份和原始 revoked_at 消费；Core 同事务保存永久
+设备 tombstone 与撤销全部平台注册（migration 046，Core 独占）。稳定幂等键为设备 UUID，
+与可信身份绑定；同键 revoked_at 漂移返回 Aborted。Subscribe 与该消费共用设备锁，
+防止已通过旧 session gate 的迟到请求恢复推送。设备 UUID 不复用，单平台手动停用仍可重连。
+
+Gateway 批量租约领取，成功 RPC 后按 claim token 确认；丢失确认可重放，失败/重启后恢复。
+每次最多 32 项、30 秒租约，安全撤销义务持续重试，不以固定失败次数放弃。
+会话撤销立即生效；Core 可达时后台提醒在下次协调后停止。已在途/已被 relay 接收的通用提醒
+无法撤回。跨进程不读对方 SQL；未同步期间不声称已完成后台推送撤销。

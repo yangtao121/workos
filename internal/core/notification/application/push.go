@@ -106,6 +106,20 @@ func (s *PushService) Unsubscribe(ctx context.Context, deviceID, platform string
 	return s.store.RevokePushSubscription(ctx, owner, deviceID, platform, time.Now().UTC())
 }
 
+// RevokeDevice consumes a Gateway revocation; unlike a platform unsubscribe,
+// this permanently disables the device UUID and serializes with late subscribes.
+func (s *PushService) RevokeDevice(ctx context.Context, revokedAt time.Time) error {
+	owner, err := s.ownerFrom(ctx)
+	if err != nil {
+		return err
+	}
+	id, err := identity.FromContext(ctx)
+	if err != nil || !ValidUUID(id.DeviceID) || revokedAt.IsZero() {
+		return domain.ErrPushInvalid
+	}
+	return s.store.RevokePushDevice(ctx, owner, id.DeviceID, revokedAt.UTC())
+}
+
 // SubscriptionDigest returns only the authenticated device's active endpoint digest.
 func (s *PushService) SubscriptionDigest(ctx context.Context) (string, error) {
 	owner, err := s.ownerFrom(ctx)

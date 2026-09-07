@@ -84,6 +84,50 @@ func (q *Queries) ClaimPairingTicket(ctx context.Context, arg ClaimPairingTicket
 	return i, err
 }
 
+const claimPushRevocations = `-- name: ClaimPushRevocations :many
+WITH candidates AS (
+    SELECT device_id FROM workos_gateway.push_revocations
+    WHERE delivered_at IS NULL AND next_attempt_at <= $2::timestamptz
+    ORDER BY next_attempt_at, device_id LIMIT 32 FOR UPDATE SKIP LOCKED
+)
+UPDATE workos_gateway.push_revocations p
+SET claim_token = $1::uuid,
+    next_attempt_at = $2::timestamptz + interval '30 seconds'
+FROM candidates c WHERE p.device_id = c.device_id
+RETURNING p.device_id, p.owner_user_id, p.revoked_at
+`
+
+type ClaimPushRevocationsParams struct {
+	ClaimToken string    `json:"claim_token"`
+	Now        time.Time `json:"now"`
+}
+
+type ClaimPushRevocationsRow struct {
+	DeviceID    string    `json:"device_id"`
+	OwnerUserID string    `json:"owner_user_id"`
+	RevokedAt   time.Time `json:"revoked_at"`
+}
+
+func (q *Queries) ClaimPushRevocations(ctx context.Context, arg ClaimPushRevocationsParams) ([]ClaimPushRevocationsRow, error) {
+	rows, err := q.db.Query(ctx, claimPushRevocations, arg.ClaimToken, arg.Now)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ClaimPushRevocationsRow
+	for rows.Next() {
+		var i ClaimPushRevocationsRow
+		if err := rows.Scan(&i.DeviceID, &i.OwnerUserID, &i.RevokedAt); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const completePairingTicket = `-- name: CompletePairingTicket :execrows
 UPDATE workos_gateway.pairing_tickets
 SET state = 'completed', completed_at = $1::timestamptz
@@ -101,6 +145,30 @@ func (q *Queries) CompletePairingTicket(ctx context.Context, arg CompletePairing
 		return 0, err
 	}
 	return result.RowsAffected(), nil
+}
+
+const completePushRevocation = `-- name: CompletePushRevocation :exec
+UPDATE workos_gateway.push_revocations
+SET delivered_at = $1::timestamptz, claim_token = NULL
+WHERE device_id = $2 AND owner_user_id = $3
+  AND claim_token = $4::uuid AND delivered_at IS NULL
+`
+
+type CompletePushRevocationParams struct {
+	Now         time.Time `json:"now"`
+	DeviceID    string    `json:"device_id"`
+	OwnerUserID string    `json:"owner_user_id"`
+	ClaimToken  string    `json:"claim_token"`
+}
+
+func (q *Queries) CompletePushRevocation(ctx context.Context, arg CompletePushRevocationParams) error {
+	_, err := q.db.Exec(ctx, completePushRevocation,
+		arg.Now,
+		arg.DeviceID,
+		arg.OwnerUserID,
+		arg.ClaimToken,
+	)
+	return err
 }
 
 const consumeChallenge = `-- name: ConsumeChallenge :execrows
@@ -128,6 +196,23 @@ func (q *Queries) ConsumeChallenge(ctx context.Context, arg ConsumeChallengePara
 		return 0, err
 	}
 	return result.RowsAffected(), nil
+}
+
+const enqueuePushRevocation = `-- name: EnqueuePushRevocation :exec
+INSERT INTO workos_gateway.push_revocations (device_id, owner_user_id, revoked_at, next_attempt_at)
+VALUES ($1, $2, $3::timestamptz, $3::timestamptz)
+ON CONFLICT (device_id) DO NOTHING
+`
+
+type EnqueuePushRevocationParams struct {
+	DeviceID    string    `json:"device_id"`
+	OwnerUserID string    `json:"owner_user_id"`
+	RevokedAt   time.Time `json:"revoked_at"`
+}
+
+func (q *Queries) EnqueuePushRevocation(ctx context.Context, arg EnqueuePushRevocationParams) error {
+	_, err := q.db.Exec(ctx, enqueuePushRevocation, arg.DeviceID, arg.OwnerUserID, arg.RevokedAt)
+	return err
 }
 
 const failChallengeAttempt = `-- name: FailChallengeAttempt :execrows

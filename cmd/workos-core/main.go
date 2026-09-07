@@ -412,6 +412,8 @@ func run(logger *slog.Logger) error {
 		func() bool { return incidentConsumer != nil && incidentConsumer.Ready() },
 	)
 	mux.Handle(notificationPath, identity.Middleware(notificationHandler))
+	devicePushPath, devicePushHandler := notificationtransport.NewDevicePushConnectHandler(pushService)
+	mux.Handle(devicePushPath, identity.Middleware(devicePushHandler))
 	// Bounded housekeeping: old read facts are swept and the owner sweep
 	// watermark advances, so stream-gap detection stays authoritative.
 	// Correctness never relies on this loop; every failure is observable.

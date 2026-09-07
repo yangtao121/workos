@@ -222,3 +222,26 @@ INSERT INTO workos_gateway.device_revocation_requests (
     sqlc.arg(owner_user_id), sqlc.arg(idempotency_key), sqlc.arg(request_digest),
     sqlc.arg(result)::jsonb, 'v1', sqlc.arg(created_at)::timestamptz
 );
+
+-- name: EnqueuePushRevocation :exec
+INSERT INTO workos_gateway.push_revocations (device_id, owner_user_id, revoked_at, next_attempt_at)
+VALUES (sqlc.arg(device_id), sqlc.arg(owner_user_id), sqlc.arg(revoked_at)::timestamptz, sqlc.arg(revoked_at)::timestamptz)
+ON CONFLICT (device_id) DO NOTHING;
+
+-- name: ClaimPushRevocations :many
+WITH candidates AS (
+    SELECT device_id FROM workos_gateway.push_revocations
+    WHERE delivered_at IS NULL AND next_attempt_at <= sqlc.arg(now)::timestamptz
+    ORDER BY next_attempt_at, device_id LIMIT 32 FOR UPDATE SKIP LOCKED
+)
+UPDATE workos_gateway.push_revocations p
+SET claim_token = sqlc.arg(claim_token)::uuid,
+    next_attempt_at = sqlc.arg(now)::timestamptz + interval '30 seconds'
+FROM candidates c WHERE p.device_id = c.device_id
+RETURNING p.device_id, p.owner_user_id, p.revoked_at;
+
+-- name: CompletePushRevocation :exec
+UPDATE workos_gateway.push_revocations
+SET delivered_at = sqlc.arg(now)::timestamptz, claim_token = NULL
+WHERE device_id = sqlc.arg(device_id) AND owner_user_id = sqlc.arg(owner_user_id)
+  AND claim_token = sqlc.arg(claim_token)::uuid AND delivered_at IS NULL;

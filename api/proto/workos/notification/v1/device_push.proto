@@ -1,0 +1,22 @@
+syntax = "proto3";
+
+package workos.notification.v1;
+
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/yangtao121/workos/gen/go/workos/notification/v1;notificationv1";
+
+// Gateway-owned device revocation, delivered at least once to Core.
+// Owner and revoked device are carried in trusted private identity headers.
+message RevokeDevicePushRequest {
+  google.protobuf.Timestamp revoked_at = 1;
+  // Stable Gateway event key: exactly the revoked device UUID.
+  string idempotency_key = 2;
+}
+
+message RevokeDevicePushResponse {}
+
+// Private listener only; never exposed by Gateway's public route allowlist.
+service DevicePushService {
+  rpc RevokeDevicePush(RevokeDevicePushRequest) returns (RevokeDevicePushResponse);
+}

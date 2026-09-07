@@ -1265,3 +1265,18 @@ System Monitor 对 unavailable 保留说明与重试，窄屏仅表格横向滚�
 项目列表改为紧凑单列。App 启动后关闭目录窗口；通知中的 App action 在手机也打开目录。
 App Library 缺少可选分页对象时结束读取，重复 cursor 作为失败停止，避免无限请求。
 项目创建统一使用权威 CreateProject 返回值更新列表；失败返回明确结果，Mission Control 保留输入。
+
+### 设备撤销传播（2026-09-07）
+
+Gateway auth 拥有 migration 045 的 push_revocations。RevokeDevice 在 credential/session 与
+幂等快照事务中入队；迁移也补入已有 revoked 设备。production Gateway consumer 每批最多
+32 项、30 秒租约、25 秒批次预算和 3 秒 RPC 超时，按 claim token 确认，失败持续恢复。
+Core 私有 DevicePushService 不经 Gateway public allowlist；可信 owner/device 与稳定设备 UUID
+幂等键绑定，原始 revoked_at 冲突返回 Aborted。Core notification 独占 migration 046，
+永久 tombstone 与全部平台订阅撤销同事务，并与 Subscribe 共用设备 advisory lock。
+因此已通过旧 Gateway gate 的迟到订阅无法恢复设备。单平台手动停用不写永久 tombstone。
+
+真实 PostgreSQL + 两侧 adapter + Connect 验证事务回滚、重复事件、Core 不可用、租约过期/
+旧 token、丢失确认、并发订阅和只抑制目标设备；production TLS 配对门禁从 Device Center
+撤销，再等待真实 Gateway consumer 让 private Core 拒绝迟到请求。会话失效立即生效，
+后台提醒在传播完成后停止；已被 relay 接收的通用提醒无法撤回。

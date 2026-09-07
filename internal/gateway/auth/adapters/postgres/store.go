@@ -501,6 +501,12 @@ func (s *Store) RevokeDevice(ctx context.Context, op ports.RevokeDeviceOp) (doma
 		}); err != nil {
 			return err
 		}
+		if err := q.EnqueuePushRevocation(ctx, gatewayauthdb.EnqueuePushRevocationParams{
+			DeviceID: op.DeviceID, OwnerUserID: op.OwnerID, RevokedAt: op.Now,
+		}); err != nil {
+			return err
+		}
+
 		current.Revision = op.ExpectedRevision + 1
 		current.RevokedAt = &op.Now
 		snapshot := domain.RevocationSnapshot{

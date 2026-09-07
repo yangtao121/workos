@@ -281,6 +281,38 @@ test("lan-pairing phase runs", async () => {
       await expect(center).toContainText(deviceName);
       await expect(center).toContainText("this device");
 
+      const current = await page.request.post(
+        `${tlsURL}/workos.auth.v1.DeviceService/GetCurrentDevice`,
+        { data: {}, headers: { Origin: new URL(tlsURL).origin } },
+      );
+      expect(current.ok()).toBeTruthy();
+      const { device } = (await current.json()) as { device: { deviceId: string } };
+      const listed = await page.request.post(
+        `${tlsURL}/workos.project.v1.ProjectService/ListProjects`,
+        { data: {}, headers: { Origin: new URL(tlsURL).origin } },
+      );
+      expect(listed.ok()).toBeTruthy();
+      const { projects } = (await listed.json()) as { projects: { ownerUserId: string }[] };
+      const owner = projects[0]?.ownerUserId;
+      expect(owner).toBeTruthy();
+      if (!owner) throw new Error("paired owner missing");
+      const subscription = {
+        deviceId: device.deviceId,
+        platform: "fixture",
+        endpoint: "fixture://paired-browser-revocation",
+      };
+      const registered = await page.request.post(
+        `${tlsURL}/workos.notification.v1.NotificationService/SubscribePush`,
+        { data: subscription, headers: { Origin: new URL(tlsURL).origin } },
+      );
+      expect(registered.ok()).toBeTruthy();
+      const privatePath = "/workos.notification.v1.DevicePushService/RevokeDevicePush";
+      const refused = await page.request.post(`${tlsURL}${privatePath}`, {
+        data: {},
+        headers: { Origin: new URL(tlsURL).origin },
+      });
+      expect(refused.status()).toBe(404);
+
       // Revoke the current device: two clicks (arm, then confirm).
       await center.getByRole("button", { name: "Remove this device" }).click();
       await center.getByRole("button", { name: "Confirm: remove this device?" }).click();
@@ -291,6 +323,24 @@ test("lan-pairing phase runs", async () => {
         timeout: 30_000,
       });
       await expect(page.locator(".desktop-shell")).toHaveCount(0);
+      // Simulate an already-admitted request arriving late at private Core.
+      // The real Gateway consumer must persist its tombstone before this
+      // request is permanently denied; browser session denial alone cannot prove it.
+      await expect
+        .poll(
+          async () => {
+            const late = await page.request.post(
+              "http://127.0.0.1:8081/workos.notification.v1.NotificationService/SubscribePush",
+              {
+                headers: { "X-WorkOS-User-ID": owner, "X-WorkOS-Device-ID": device.deviceId },
+                data: subscription,
+              },
+            );
+            return late.status();
+          },
+          { timeout: 40_000, intervals: [250, 500, 1000] },
+        )
+        .toBe(403);
       return;
     }
 

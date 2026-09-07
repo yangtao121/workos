@@ -186,6 +186,7 @@ type ReadRequestRecord struct {
 
 // PushStore owns the durable push facts.
 type PushStore interface {
+	RevokePushDevice(ctx context.Context, ownerUserID, deviceID string, revokedAt time.Time) error
 	UpsertPushSubscription(ctx context.Context, subscription domain.PushSubscription) error
 	RevokePushSubscription(ctx context.Context, ownerUserID, deviceID, platform string, now time.Time) error
 	ActivePushSubscriptions(ctx context.Context, ownerUserID string) ([]domain.PushSubscription, error)

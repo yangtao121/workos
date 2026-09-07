@@ -15,6 +15,7 @@ import (
 
 	"github.com/yangtao121/workos/gen/go/workos/auth/v1/authv1connect"
 	"github.com/yangtao121/workos/internal/gateway"
+	"github.com/yangtao121/workos/internal/gateway/auth/adapters/corepush"
 	authpostgres "github.com/yangtao121/workos/internal/gateway/auth/adapters/postgres"
 	"github.com/yangtao121/workos/internal/gateway/auth/adapters/randsource"
 	"github.com/yangtao121/workos/internal/gateway/auth/application"
@@ -71,7 +72,13 @@ func run(logger *slog.Logger) error {
 		if err != nil {
 			return err
 		}
-		defer pool.Close()
+		defer func() {
+			stop()
+			pool.Close()
+		}()
+		go (&application.PushRevocationConsumer{
+			Store: authpostgres.New(pool), Sink: corepush.New(telemetry.HTTPClient(), cfg.Services.Core),
+		}).Run(ctx, logger)
 		authApp, err = application.New(
 			authpostgres.New(pool),
 			application.Config{

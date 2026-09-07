@@ -44,12 +44,16 @@ type Querier interface {
 	InsertNotificationChange(ctx context.Context, arg InsertNotificationChangeParams) (int64, error)
 	InsertNotificationReadRequest(ctx context.Context, arg InsertNotificationReadRequestParams) (int64, error)
 	InsertNotificationSourceReceipt(ctx context.Context, arg InsertNotificationSourceReceiptParams) (int64, error)
+	IsPushDeviceRevoked(ctx context.Context, arg IsPushDeviceRevokedParams) (bool, error)
 	ListNotificationsPage(ctx context.Context, arg ListNotificationsPageParams) ([]WorkosCoreNotification, error)
 	LockOwnerNotifications(ctx context.Context, arg LockOwnerNotificationsParams) ([]WorkosCoreNotification, error)
+	LockPushDevice(ctx context.Context, deviceScope string) error
 	MarkNotificationRead(ctx context.Context, arg MarkNotificationReadParams) (int64, error)
 	MaxChangeSequenceForNotifications(ctx context.Context, ids []string) ([]MaxChangeSequenceForNotificationsRow, error)
 	PushPreferencesFor(ctx context.Context, ownerUserID string) (WorkosCorePushPreference, error)
 	PushPreferencesUpsert(ctx context.Context, arg PushPreferencesUpsertParams) (int64, error)
+	RememberPushDeviceRevocation(ctx context.Context, arg RememberPushDeviceRevocationParams) (time.Time, error)
+	RevokeDevicePushSubscriptions(ctx context.Context, arg RevokeDevicePushSubscriptionsParams) error
 	RevokePushSubscription(ctx context.Context, arg RevokePushSubscriptionParams) (int64, error)
 	// Bounded sweep: only already-read notifications older than the cutoff are
 	// candidates. Recent unread facts are never swept.

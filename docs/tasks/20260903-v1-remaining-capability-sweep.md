@@ -509,3 +509,26 @@ PASS（重新构建的真实 Gateway/Core/Runtime/Chromium，打开 Surface 与�
 本阶段仅 TypeScript/样式/文档变更，`make -o proto-check -o go-check check` PASS，复用前一
 检查点未变的 Go/Proto 结果，完整重跑前端 lint/格式/类型/全仓单测/构建与 status 校验。
 下一步：设备撤销需可靠同步到 Core，停止后台推送；随后继续其余未完成验收，main 暂不合并。
+
+### R5 设备撤销传播（active，2026-09-07）
+
+桌面检查点 d39228b。新增 Gateway 事务 outbox → Core 私有设备推送撤销 RPC；Core 永久
+设备 tombstone 与 subscribe 串行化，防止已通过旧 session gate 的迟到请求恢复订阅。
+迁移 045 仅 Gateway、046 仅 Core；不修改旧迁移。验收：事务回滚/幂等/重启/租约接管，
+跨 owner 拒绝、撤销前后推送数量、并发订阅和 Gateway public RPC 不暴露；补充生产配对 E2E。
+不涉及可见 UI，本阶段复用已有 Device Center；推送组合加密 relay 到浏览器门禁仍待完成。
+
+设备撤销阶段：`TestDevicePushRevocation` integration/race PASS；Gateway auth repository/concurrency
+与 TestPushRelay race PASS。覆盖 enqueue 错误整笔回滚、foreign owner、Core 不可用、旧租约确认
+拒绝、RPC 成功/确认丢失重放、12 个并发订阅、待发送抑制、其他设备继续接收和 tombstone 不被
+单平台停用抹除。私有 Gateway route 拒绝测试 PASS。`make check`（首次完整实现）PASS。
+
+`make test-lan-pairing` PASS（生产 TLS/admin socket/真实配对、Gateway 重启、重认证、两设备通知、
+Device Center 撤销与 Core 迟到订阅拒绝）；新增探针首次缺 Origin 已修正。随后显式稳定设备幂等键
+与 revoked_at 漂移 Aborted 已补入契约，race 复验 PASS，最终同链重建与 check 进行中。
+该阶段不涉及可见 UI。其余 R2/R3/R4 与推送组合加密 relay→浏览器链仍待完成，main 尚未合并。
+
+设备撤销最终复验：显式设备幂等键版本 `TestDevicePushRevocation` race PASS，含同键时间漂移
+Aborted；完整 `make check` PASS；`make test-lan-pairing` 重建复跑 PASS。门禁退出同步停止
+自身 mDNS announcer，避免 TLS fixture 已删除后继续广播。`make generate` 幂等 PASS，
+Go/TypeScript/SQLC 全部生成文件逐项 SHA-256 前后一致。下一步继续 Browser 隔离与其余链路。

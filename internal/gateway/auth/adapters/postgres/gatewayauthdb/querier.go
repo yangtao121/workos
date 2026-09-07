@@ -16,8 +16,11 @@ type Querier interface {
 	// lost race or an expired object, never as silent success.
 	AuthStoreReady(ctx context.Context) (int32, error)
 	ClaimPairingTicket(ctx context.Context, arg ClaimPairingTicketParams) (WorkosGatewayPairingTicket, error)
+	ClaimPushRevocations(ctx context.Context, arg ClaimPushRevocationsParams) ([]ClaimPushRevocationsRow, error)
 	CompletePairingTicket(ctx context.Context, arg CompletePairingTicketParams) (int64, error)
+	CompletePushRevocation(ctx context.Context, arg CompletePushRevocationParams) error
 	ConsumeChallenge(ctx context.Context, arg ConsumeChallengeParams) (int64, error)
+	EnqueuePushRevocation(ctx context.Context, arg EnqueuePushRevocationParams) error
 	FailChallengeAttempt(ctx context.Context, id string) (int64, error)
 	FailTicketAttempt(ctx context.Context, id string) (int64, error)
 	GetActiveDeviceByID(ctx context.Context, id string) (WorkosGatewayDeviceCredential, error)

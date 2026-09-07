@@ -692,7 +692,7 @@ test-push-relay:
 	docker compose up -d --build postgres
 	@set -eu; \
 	i=0; until docker compose exec -T postgres pg_isready -U workos >/dev/null 2>&1; do i=$$((i+1)); [ $$i -le 60 ] || { echo 'postgres readiness timed out' >&2; exit 1; }; sleep 1; done
-	$(GO_HOST_RUN) go test -tags=integration -count=1 -run 'TestPushRelay|TestNotificationSearch' -v ./tests/integration
+	$(GO_HOST_RUN) go test -tags=integration -count=1 -run 'TestPushRelay|TestNotificationSearch|TestDevicePushRevocation' -v ./tests/integration
 	@echo "test-push-relay: PASS"
 
 capture-desktop-system-apps: e2e-image
@@ -910,7 +910,7 @@ test-lan-pairing: e2e-image
 	profiledir="$$(mktemp -d)"; \
 	profiledir_b="$$(mktemp -d)"; \
 	stamp="$$(date +%s)"; \
-	cleanup() { docker compose --profile lan-pairing stop workos-gateway-tls >/dev/null 2>&1 || true; rm -rf "$$certdir" "$$profiledir" "$$profiledir_b"; }; \
+	cleanup() { docker compose --profile lan-pairing stop workos-gateway-tls workos-mdns-announce >/dev/null 2>&1 || true; rm -rf "$$certdir" "$$profiledir" "$$profiledir_b"; }; \
 	trap cleanup EXIT HUP INT TERM; \
 	echo "== generating temporary TLS fixture =="; \
 	docker run --rm $(USER_FLAGS) -e HOME=/tmp -e GOPATH=/tmp/workos-go \
@@ -1000,7 +1000,7 @@ test-lan-pairing: e2e-image
 		-v $(CURDIR):$(WORKDIR) \
 		-w $(WORKDIR)/apps/desktop-web \
 		$(E2E_IMAGE) pnpm exec playwright test lan-pairing.spec.ts; \
-	echo "test-lan-pairing: PASS (temp TLS + admin ticket + two browser pairings + paired notification convergence + cookie + restart + re-auth + revoke)"
+	echo "test-lan-pairing: PASS (temp TLS + admin ticket + two browser pairings + paired notification convergence + cookie + restart + re-auth + revoke + durable push revocation)"
 
 build:
 	docker build \

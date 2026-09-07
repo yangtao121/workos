@@ -655,16 +655,21 @@ func (r *Repository) UpdateAppQuota(ctx context.Context, tx dbtx.Tx, ownerUserID
 
 // UpsertPushSubscription registers (or re-registers) one device subscription.
 func (r *Repository) UpsertPushSubscription(ctx context.Context, subscription domain.PushSubscription) error {
-	err := r.queries.UpsertPushSubscription(ctx, notificationdb.UpsertPushSubscriptionParams{
-		OwnerUserID: subscription.OwnerUserID, DeviceID: subscription.DeviceID,
-		Platform: subscription.Platform, Endpoint: subscription.Endpoint,
-		P256dh: subscription.P256DH, AuthSecret: subscription.AuthSecret,
-		CreatedAt: subscription.CreatedAt, UpdatedAt: subscription.UpdatedAt,
+	return r.writePushDevice(ctx, subscription.OwnerUserID, subscription.DeviceID, func(q *notificationdb.Queries) error {
+		revoked, err := q.IsPushDeviceRevoked(ctx, notificationdb.IsPushDeviceRevokedParams{OwnerUserID: subscription.OwnerUserID, DeviceID: subscription.DeviceID})
+		if err != nil {
+			return err
+		}
+		if revoked {
+			return domain.ErrPushDenied
+		}
+		return q.UpsertPushSubscription(ctx, notificationdb.UpsertPushSubscriptionParams{
+			OwnerUserID: subscription.OwnerUserID, DeviceID: subscription.DeviceID,
+			Platform: subscription.Platform, Endpoint: subscription.Endpoint,
+			P256dh: subscription.P256DH, AuthSecret: subscription.AuthSecret,
+			CreatedAt: subscription.CreatedAt, UpdatedAt: subscription.UpdatedAt,
+		})
 	})
-	if err != nil {
-		return storeError("upsert push subscription", err)
-	}
-	return nil
 }
 
 // RevokePushSubscription revokes one registration; an unknown registration
