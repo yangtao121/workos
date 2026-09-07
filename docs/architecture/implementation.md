@@ -1304,3 +1304,11 @@ Workspace operator 停用：私有 IndexAdminService.StopWorkspaceSource 消费 
 停用与 indexed snapshot tombstone 在同一事务，陈旧 scan/stop 无法撤销重绑后的目录。
 CLI 从 workspace list 获取 etag 后执行 stop；停止后 sync 拒绝，重新 register + sync 可恢复。
 公开 Gateway 拒绝此方法；桌面界面没有新增管理入口。
+
+工作区实际链路：`make test-workspace-browser` 使用临时只读目录和独立 fixture Project，
+通过 CLI/admin socket 索引 23 个文件；Files 服务端过滤后分页、精确 preview、Knowledge
+24 条混合结果、Indexer 重启、全量重建与 stop 后旧引用拒绝均由真实 Chromium 验证。
+退出停用本次绑定并归档 fixture Project，恢复默认 Indexer 配置；不删除现有数据卷。
+Core review/archived-project reconciliation 使用 LIMIT+1 保留续页；snapshot 写入与 live
+写入使用相同的检索向量计算，避免重建后丢失混合检索结果；snapshot 同样串行化
+project archive 并遵守持久 tombstone，迟到快照不得复活已归档内容。真实语义模型仍未实现。

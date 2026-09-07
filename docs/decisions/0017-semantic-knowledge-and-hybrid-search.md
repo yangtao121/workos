@@ -100,3 +100,11 @@ workspace 文件源与通用 archive 的最小实现。
   generation 的 workspace tombstone 在同一事务提交；失败不撤下已索引文档。
 - 停用后 sync 拒绝，旧 snapshot ReadDocument 返回 NotFound；operator 重新 register + sync
   可恢复。当前 stopped etag 可重复停用，已消费的旧 etag 不复用。Gateway 不公开此 RPC。
+
+## 2026-09-07 真实链路补漏
+
+- review snapshot 与 live ingest 必须计算相同的检索向量；重建后结果和分数有一致性 golden。
+- Core review-artifact / archived-project reconciliation 的仓储均使用 LIMIT+1 probe；
+  返回的 active source 页可短于请求大小，consumer 必须按 continuation 遍历。
+- 真实 CLI/admin socket/Gateway/Chromium 门禁验证文件分页、混合来源、重启、重建与停用。
+  这补齐 workspace 的端到端证据，不将 feature-hash 标记为真实模型语义搜索。

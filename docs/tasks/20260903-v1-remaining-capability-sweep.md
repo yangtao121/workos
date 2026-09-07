@@ -606,3 +606,34 @@ PASS。覆盖最后状态更新失败回滚、旧文档不可读/不可搜、停
 旧 etag Aborted、当前 stopped etag 重复操作、重绑恢复。Gateway 私有 route 拒绝 PASS。
 CLI 文本输出增加 etag，不改变桌面可见 UI；`make generate` 与完整 `make check`
 PASS，退出码 0。下一步使用真实 CLI/admin socket/Gateway/Chromium 串起工作区门禁。
+
+### R4 工作区浏览器门禁（active，2026-09-07）
+
+停用检查点 18b8c38。门禁串起真实 operator CLI/admin socket/Indexer/Gateway/Chromium，
+验证 23 文件过滤分页、精确只读快照、Knowledge 混合来源、重建保留、停用后旧引用拒绝。
+使用唯一临时只读 fixture 目录和新建 fixture Project；退出停用该绑定、归档该 Project，
+恢复默认 Indexer 配置，不删除现有数据卷。无计划中的 UI 像素变更。
+
+浏览器首轮：CLI 绑定/23 文件分页/精确 preview/24 条混合 Knowledge/Indexer 真重启 PASS。
+脚本读取 GetJobResponse 的 JSON envelope 已修正；随后 rebuilt 阶段复现产品缺陷：
+Knowledge 24→23，review snapshot 写入未携带 embedding，部分词匹配退化。修复该写入
+路径并追加重建前后混合检索 golden，浏览器验收仍要求完整的 24 条混合结果。
+
+继续真实门禁定位：rebuild source_count 固定 100；Core artifact 与 archived-project
+reconciliation 仓储都忘记 LIMIT+1，导致 continuation 永远为空。生产适配器 + Core authority
+
+- Connect + Indexer client 的新门禁明确复现 99/210 review sources（首 100 含 1 archived）。
+  补齐两条 probe，并简化重复映射；该问题无法由自带正确分页的 fake rebuild feed 覆盖。
+
+浏览器门禁最终结果：`sh tools/workspace-index/gate.sh` PASS，退出 0；真实 CLI/admin socket/
+Gateway/Core/Indexer/Chromium 的 seed、indexed、restarted、rebuilt、stopped、cleanup 六阶段
+均 PASS，23 文件分页/精确 preview 和 24 条混合结果在重启/重建后保持，stop 使旧引用 404。
+门禁清理已停用绑定、归档本次 Project、恢复默认 Indexer，临时目录仅保留本地诊断结果。
+`TestIndexFeedCompletePagination` 真实 Core 仓储/authority/Connect/client PASS（210 条 review
+及多页 archived-project，无遗漏/重复）；review hybrid golden 与 workspace rebuild race PASS。
+本阶段补功能证据，未改变 UI 布局/控件/样式；完整 `make check` PASS，退出 0。
+
+收尾回归另复现迟到 rebuild snapshot 会复活已归档 Project；snapshot 与 live 写入共享
+generation/project 锁并检查持久 tombstone，重复快照记为 tombstoned。新增真实 PostgreSQL
+回归先失败、修复后与分页/hybrid/workspace/golden rebuild race 全部 PASS。包含该修复的
+真实浏览器门禁再次 PASS（`/tmp/workos-workspace-browser-final.log`）；全仓检查再次退出 0。

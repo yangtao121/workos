@@ -45,13 +45,13 @@ const applyResolvedSourceToGeneration = `-- name: ApplyResolvedSourceToGeneratio
 INSERT INTO workos_index.documents (
     projection_generation, owner_user_id, project_id, source_type, source_id,
     source_digest, artifact_type, title, content, source_created_at,
-    last_publication_id, source_operation, indexed_at, updated_at
+    last_publication_id, source_operation, indexed_at, updated_at, embedding
 ) VALUES (
     $1, $2, $3,
     'artifact.review.v1', $4, $5,
     $6, $7, $8,
     $9, $10,
-    'review-artifact.upsert', $11, $12
+    'review-artifact.upsert', $11, $12, $13
 )
 ON CONFLICT (projection_generation, owner_user_id, project_id, source_id) DO UPDATE
 SET source_digest = EXCLUDED.source_digest,
@@ -62,6 +62,7 @@ SET source_digest = EXCLUDED.source_digest,
     last_publication_id = EXCLUDED.last_publication_id,
     indexed_at = EXCLUDED.indexed_at,
     tombstoned_at = NULL,
+    embedding = EXCLUDED.embedding,
     updated_at = EXCLUDED.updated_at
 `
 
@@ -78,6 +79,7 @@ type ApplyResolvedSourceToGenerationParams struct {
 	LastPublicationID    string
 	IndexedAt            time.Time
 	UpdatedAt            time.Time
+	Embedding            []float32
 }
 
 func (q *Queries) ApplyResolvedSourceToGeneration(ctx context.Context, arg ApplyResolvedSourceToGenerationParams) (int64, error) {
@@ -94,6 +96,7 @@ func (q *Queries) ApplyResolvedSourceToGeneration(ctx context.Context, arg Apply
 		arg.LastPublicationID,
 		arg.IndexedAt,
 		arg.UpdatedAt,
+		arg.Embedding,
 	)
 	if err != nil {
 		return 0, err

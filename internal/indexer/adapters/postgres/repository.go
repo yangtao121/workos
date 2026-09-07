@@ -300,10 +300,6 @@ func applyResolvedSource(ctx context.Context, queries *indexerdb.Queries, source
 			// title+content (ADR-0017 §3): computed at write time so every
 			// stored document carries its semantic projection.
 			vector := domain.Embed(source.Title + "\n" + string(source.Content))
-			embedding := make([]float32, len(vector))
-			for i := range vector {
-				embedding[i] = vector[i]
-			}
 			rows, err := queries.UpsertSearchDocument(ctx, indexerdb.UpsertSearchDocumentParams{
 				ProjectionGeneration: generation,
 				OwnerUserID:          source.OwnerUserID,
@@ -319,7 +315,7 @@ func applyResolvedSource(ctx context.Context, queries *indexerdb.Queries, source
 				LastPublicationID:    source.PublicationID,
 				IndexedAt:            canonical(now),
 				UpdatedAt:            canonical(now),
-				Embedding:            embedding,
+				Embedding:            vector[:],
 			})
 			if err != nil {
 				return storeError("upsert search document", err)

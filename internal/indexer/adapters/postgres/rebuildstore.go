@@ -216,6 +216,12 @@ func (s *RebuildStore) ApplySnapshotSource(ctx context.Context, effect indexerap
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck
 	queries := s.queries.WithTx(tx)
+	if _, err := queries.LockActiveGeneration(ctx); err != nil {
+		return storeError("lock snapshot generation", err)
+	}
+	if err := queries.LockIndexProject(ctx, effect.OwnerUserID+"/"+effect.ProjectID); err != nil {
+		return storeError("lock snapshot project", err)
+	}
 	receipt, err := queries.GetReceipt(ctx, indexerdb.GetReceiptParams{
 		PublicationID: effect.PublicationID, ProjectionGeneration: generation,
 	})
@@ -229,7 +235,14 @@ func (s *RebuildStore) ApplySnapshotSource(ctx context.Context, effect indexerap
 		}
 		return tx.Commit(ctx)
 	}
-	if !effect.Tombstone {
+	tombstoned := effect.Tombstone
+	if _, err := queries.GetProjectTombstone(ctx, indexerdb.GetProjectTombstoneParams{OwnerUserID: effect.OwnerUserID, ProjectID: effect.ProjectID}); err == nil {
+		tombstoned = true
+	} else if !errors.Is(err, pgx.ErrNoRows) {
+		return storeError("read snapshot project tombstone", err)
+	}
+	if !tombstoned {
+		vector := domain.Embed(effect.Title + "\n" + string(effect.Content))
 		rows, err := queries.ApplyResolvedSourceToGeneration(ctx, indexerdb.ApplyResolvedSourceToGenerationParams{
 			ProjectionGeneration: generation,
 			OwnerUserID:          effect.OwnerUserID,
@@ -239,6 +252,7 @@ func (s *RebuildStore) ApplySnapshotSource(ctx context.Context, effect indexerap
 			ArtifactType:         effect.ArtifactType,
 			Title:                effect.Title,
 			Content:              string(effect.Content),
+			Embedding:            vector[:],
 			SourceCreatedAt:      effect.CreatedAt,
 			LastPublicationID:    effect.PublicationID,
 			IndexedAt:            now,
@@ -262,7 +276,7 @@ func (s *RebuildStore) ApplySnapshotSource(ctx context.Context, effect indexerap
 		}
 	}
 	outcome := "applied"
-	if effect.Tombstone {
+	if tombstoned {
 		outcome = "tombstoned"
 	}
 	if err := queries.UpsertReceiptForGeneration(ctx, indexerdb.UpsertReceiptForGenerationParams{

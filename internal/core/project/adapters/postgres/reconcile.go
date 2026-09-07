@@ -60,30 +60,24 @@ func (r *Repository) ReconcileArchivedProjectsPage(ctx context.Context, cursor s
 	rows, err := r.queries.ReconcileArchivedProjects(ctx, projectdb.ReconcileArchivedProjectsParams{
 		CursorArchivedAt: pgtype.Timestamptz{Time: cursorAt, Valid: true},
 		CursorID:         cursorUUIDText(cursorID),
-		PageLimit:        int32(limit),
+		PageLimit:        int32(limit + 1),
 	})
 	if err != nil {
 		return nil, "", storeError("reconcile archived projects", err)
 	}
-	makeRef := func(row projectdb.ReconcileArchivedProjectsRow) projectports.ArchivedProjectRef {
-		return projectports.ArchivedProjectRef{
+	next := ""
+	if len(rows) > limit {
+		rows = rows[:limit]
+		last := rows[len(rows)-1]
+		next = encodeProjectCursor(last.ArchivedAt.Time.UTC(), last.ID)
+	}
+	out := make([]projectports.ArchivedProjectRef, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, projectports.ArchivedProjectRef{
 			OwnerUserID: row.OwnerUserID, ProjectID: row.ID, ArchivedAt: row.ArchivedAt.Time.UTC(),
-		}
+		})
 	}
-	if len(rows) <= limit {
-		out := make([]projectports.ArchivedProjectRef, 0, len(rows))
-		for _, row := range rows {
-			out = append(out, makeRef(row))
-		}
-		return out, "", nil
-	}
-	page := rows[:limit]
-	out := make([]projectports.ArchivedProjectRef, 0, len(page))
-	for _, row := range page {
-		out = append(out, makeRef(row))
-	}
-	last := page[len(page)-1]
-	return out, encodeProjectCursor(last.ArchivedAt.Time.UTC(), last.ID), nil
+	return out, next, nil
 }
 
 // ReviewProjectActiveTx reports whether the project exists, is owned by the

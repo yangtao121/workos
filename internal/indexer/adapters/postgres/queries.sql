@@ -317,13 +317,13 @@ WHERE id = sqlc.arg(id)
 INSERT INTO workos_index.documents (
     projection_generation, owner_user_id, project_id, source_type, source_id,
     source_digest, artifact_type, title, content, source_created_at,
-    last_publication_id, source_operation, indexed_at, updated_at
+    last_publication_id, source_operation, indexed_at, updated_at, embedding
 ) VALUES (
     sqlc.arg(projection_generation), sqlc.arg(owner_user_id), sqlc.arg(project_id),
     'artifact.review.v1', sqlc.arg(source_id), sqlc.arg(source_digest),
     sqlc.arg(artifact_type), sqlc.arg(title), sqlc.arg(content),
     sqlc.arg(source_created_at), sqlc.arg(last_publication_id),
-    'review-artifact.upsert', sqlc.arg(indexed_at), sqlc.arg(updated_at)
+    'review-artifact.upsert', sqlc.arg(indexed_at), sqlc.arg(updated_at), sqlc.arg(embedding)
 )
 ON CONFLICT (projection_generation, owner_user_id, project_id, source_id) DO UPDATE
 SET source_digest = EXCLUDED.source_digest,
@@ -334,6 +334,7 @@ SET source_digest = EXCLUDED.source_digest,
     last_publication_id = EXCLUDED.last_publication_id,
     indexed_at = EXCLUDED.indexed_at,
     tombstoned_at = NULL,
+    embedding = EXCLUDED.embedding,
     updated_at = EXCLUDED.updated_at;
 
 -- name: TombstoneGenerationDocuments :execrows

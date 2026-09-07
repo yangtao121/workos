@@ -645,7 +645,7 @@ test-semantic-knowledge:
 test-workspace-indexing:
 	docker compose up -d --build postgres
 	@set -eu; 	i=0; until docker compose exec -T postgres pg_isready -U workos >/dev/null 2>&1; do i=$$((i+1)); [ $$i -le 60 ] || { echo 'postgres readiness timed out' >&2; exit 1; }; sleep 1; done
-	$(GO_HOST_RUN) go test -tags=integration -count=1 -run 'TestWorkspaceIndexing|TestWorkspaceTransactionalConvergence|TestWorkspaceConcurrentArchive|TestWorkspaceSurvivesRebuild|TestWorkspaceRebuildCopyLimits|TestWorkspaceStop|TestArchiveObjects' -v ./tests/integration
+	$(GO_HOST_RUN) go test -tags=integration -count=1 -run 'TestWorkspaceIndexing|TestWorkspaceTransactionalConvergence|TestWorkspaceConcurrentArchive|TestWorkspaceSurvivesRebuild|TestWorkspaceRebuildCopyLimits|TestWorkspaceStop|TestRebuildPreservesHybridReviewRanking|TestIndexFeedCompletePagination|TestRebuildSnapshotRespectsProjectArchive|TestArchiveObjects' -v ./tests/integration
 	@echo "test-workspace-indexing: PASS"
 
 # The desktop system-apps gate (W6): Command Palette keyboard surface with
@@ -1040,3 +1040,8 @@ test-app-artifacts: e2e-image
 	$(GO_HOST_RUN) go test -tags=integration -count=1 -run TestAppArtifacts ./tests/integration
 	$(NODE_RUN) sh -c 'cd apps/desktop-web && corepack pnpm exec vite build --config e2e/fixtures/artifacts-bridge.config.ts'
 	docker run --rm --network host $(USER_FLAGS) -e PLAYWRIGHT_BROWSERS_PATH=/ms-playwright -e WORKOS_E2E_URL=http://127.0.0.1:8080 -e WORKOS_E2E_OUTPUT_DIR=/tmp/workos-playwright-results -e WORKOS_APP_ARTIFACTS=1 -e WORKOS_ARTIFACTS_CAPTURE_DIR -e WORKOS_ARTIFACTS_BEFORE_DIR -v $(CURDIR):$(WORKDIR) -w $(WORKDIR)/apps/desktop-web $(E2E_IMAGE) pnpm exec playwright test '(^|/)app-artifacts\.spec\.ts$$'
+
+# Actual workspace CLI/admin socket/Gateway/Chromium lifecycle.
+.PHONY: test-workspace-browser
+test-workspace-browser: e2e-image
+	E2E_IMAGE=$(E2E_IMAGE) sh tools/workspace-index/gate.sh
