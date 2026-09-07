@@ -645,7 +645,7 @@ test-semantic-knowledge:
 test-workspace-indexing:
 	docker compose up -d --build postgres
 	@set -eu; 	i=0; until docker compose exec -T postgres pg_isready -U workos >/dev/null 2>&1; do i=$$((i+1)); [ $$i -le 60 ] || { echo 'postgres readiness timed out' >&2; exit 1; }; sleep 1; done
-	$(GO_HOST_RUN) go test -tags=integration -count=1 -run 'TestWorkspaceIndexing|TestArchiveObjects' -v ./tests/integration
+	$(GO_HOST_RUN) go test -tags=integration -count=1 -run 'TestWorkspaceIndexing|TestWorkspaceTransactionalConvergence|TestWorkspaceConcurrentArchive|TestArchiveObjects' -v ./tests/integration
 	@echo "test-workspace-indexing: PASS"
 
 # The desktop system-apps gate (W6): Command Palette keyboard surface with

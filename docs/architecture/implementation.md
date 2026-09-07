@@ -1292,4 +1292,7 @@ Indexer 工作区扫描：注册和扫描的文件系统访问集中在 localmou
 从根目录句柄解析子路径，禁止 symlink/跨子挂载；读取前 fstat 并限制读取长度，FIFO 不阻塞。
 单次最多 1000 文本文件、10000 条目、16 MiB 读取，单文件 512 KiB、路径 1024 bytes/16 层。
 无效文本跳过，扫描不完整则 degraded 且不执行删除收敛；完整扫描成功恢复 active。
-这不提供文件系统快照或真实语义模型，工作区投影的原子性与浏览器组合门禁继续审查。
+完整扫描的文档/receipt/cursor/删除/统计在一个事务提交；锁定源后检查起始版本和绑定，
+拒绝过期扫描与迟到 degraded 更新。状态时间至少推进一微秒，完整成功结果来自事务内返回值。
+共享 generation 锁与 promotion 互斥，project 锁串行化 live upsert/archive。
+这不提供文件系统快照或真实语义模型；workspace rebuild 与浏览器组合门禁继续审查。

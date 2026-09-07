@@ -158,6 +158,10 @@ func (s *scan) read(rel, title string) error {
 		s.skip(rel, domain.SkipOversize)
 		return nil
 	}
+	if len(content) == 0 {
+		s.skip(rel, domain.SkipInvalid)
+		return nil
+	}
 	if domain.LooksBinary(content) {
 		s.skip(rel, domain.SkipBinary)
 		return nil

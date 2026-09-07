@@ -95,11 +95,12 @@ func (w *WorkspaceIngestor) Sync(ctx context.Context, sourceID string) (SyncResu
 			if errors.As(walkErr, &failure) {
 				degraded.DegradedReason = failure.Reason
 			}
-			if statusErr := w.store.SetWorkspaceSourceStatus(ctx, source.ID,
-				indexerdomain.WorkspaceDegraded, degraded.DegradedReason, w.now()); statusErr != nil {
+			updated, statusErr := w.store.SetWorkspaceSourceStatus(ctx, source,
+				indexerdomain.WorkspaceDegraded, degraded.DegradedReason, w.now())
+			if statusErr != nil {
 				return SyncResult{}, statusErr
 			}
-			return SyncResult{Source: degraded}, nil
+			return SyncResult{Source: updated}, nil
 		}
 		return SyncResult{}, walkErr
 	}
@@ -111,20 +112,13 @@ func (w *WorkspaceIngestor) Sync(ctx context.Context, sourceID string) (SyncResu
 		})
 	}
 	now := w.now()
-	applied, tombstoned, convergeErr := w.store.ConvergeWorkspacePass(ctx, source, files, w.pubs, now)
+	updated, applied, tombstoned, convergeErr := w.store.ConvergeWorkspacePass(ctx, source, files, int64(len(walk.Skips)), w.pubs, now)
 	if convergeErr != nil {
 		return SyncResult{}, convergeErr
 	}
 	reasons := make([]string, 0, len(walk.Skips))
 	for _, skip := range walk.Skips {
 		reasons = append(reasons, skip.Reason)
-	}
-	if err := w.store.RecordWorkspaceSync(ctx, source.ID, applied, int64(len(walk.Skips)), tombstoned, now); err != nil {
-		return SyncResult{}, err
-	}
-	updated, err := w.store.GetWorkspaceSource(ctx, source.ID)
-	if err != nil {
-		return SyncResult{}, err
 	}
 	return SyncResult{
 		Source: updated, Applied: applied, Tombstoned: tombstoned,

@@ -67,4 +67,15 @@ workspace 文件源与通用 archive 的最小实现。
 - 扫描错误或总预算超限为 degraded，不把部分结果交给 set-difference tombstone。
   状态原因使用固定类别，不泄露原始文件系统错误；后续完整扫描恢复 active 并清空原因。
 - 挂载路径由 operator 明确绑定，当前实现不等于 Runtime 自动 workspace 映射；
-  并发变动目录不承诺文件系统快照，写入投影的事务与并发收敛仍需独立审查。
+  并发变动目录不承诺文件系统快照。
+
+## 2026-09-07 工作区收敛修正
+
+- 完整 pass 的所有文档、publication receipts、cursor、缺失文档 tombstone 和源统计
+  由单个 Indexer PostgreSQL 事务提交；失败不返回已应用数量，也不留下部分结果。
+- 事务锁定 workspace source 后比较扫描起始版本（updated_at）、原始 root/owner/project
+  和 stopped 状态；版本失效返回 Aborted，由调用者重新扫描。更新时间至少推进一微秒，
+  同时刻重试也不能绕过 CAS；重新绑定及迟到的 degraded 结果遵循同样版本边界。
+- 活跃 generation 指针的共享锁与 promotion 互斥；同 project 的 live upsert/archive
+  使用同一事务 advisory lock，避免 archive 之后被在途写入恢复。
+- 以上不宣称 filesystem snapshot。Rebuild 对 workspace 的完整复制/验证仍需组合门禁审查。

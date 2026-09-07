@@ -196,9 +196,8 @@ type WorkspaceStore interface {
 	InsertWorkspaceSource(ctx context.Context, source WorkspaceSource) (WorkspaceSource, error)
 	GetWorkspaceSource(ctx context.Context, id string) (WorkspaceSource, error)
 	ListWorkspaceSources(ctx context.Context) ([]WorkspaceSource, error)
-	SetWorkspaceSourceStatus(ctx context.Context, id, status, degradedReason string, now time.Time) error
-	RecordWorkspaceSync(ctx context.Context, id string, indexed, skipped, tombstoned int64, now time.Time) error
-	ConvergeWorkspacePass(ctx context.Context, source WorkspaceSource, files []MountFile, passPublication func() string, now time.Time) (applied, tombstoned int64, err error)
+	SetWorkspaceSourceStatus(ctx context.Context, source WorkspaceSource, status, degradedReason string, now time.Time) (WorkspaceSource, error)
+	ConvergeWorkspacePass(ctx context.Context, source WorkspaceSource, files []MountFile, skipped int64, passPublication func() string, now time.Time) (updated WorkspaceSource, applied, tombstoned int64, err error)
 }
 
 // ArchiveObject is one bounded archive object fact (ADR-0017 §5).

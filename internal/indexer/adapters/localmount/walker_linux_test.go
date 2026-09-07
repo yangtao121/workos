@@ -39,6 +39,7 @@ func TestWalkBounds(t *testing.T) {
 			t.Fatal(err)
 		}
 		write(t, root, "invalid.md", "\xff")
+		write(t, root, "empty.md", "")
 		write(t, root, "control.md", "\x1b")
 		write(t, root, "late-nul.md", strings.Repeat("a", 9000)+"\x00")
 		write(t, root, "valid.md", "bounded text")
@@ -46,7 +47,7 @@ func TestWalkBounds(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if len(result.Files) != 1 || result.Files[0].RelPath != "valid.md" || len(result.Skips) != 5 {
+		if len(result.Files) != 1 || result.Files[0].RelPath != "valid.md" || len(result.Skips) != 6 {
 			t.Fatalf("result: %+v", result)
 		}
 	})

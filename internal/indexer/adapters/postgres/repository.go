@@ -177,6 +177,28 @@ func (r *Repository) EnsureBootstrapGeneration(ctx context.Context, now time.Tim
 // replays as a no-op, and the same publication with a drifted digest is
 // corruption instead of an overwrite.
 func (r *Repository) ApplyResolvedSource(ctx context.Context, source ports.ResolvedSource, outcome, requestDigest string, now time.Time) error {
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return storeError("begin apply resolved source", err)
+	}
+	defer tx.Rollback(ctx)
+	queries := r.queries.WithTx(tx)
+	if _, err := queries.LockActiveGeneration(ctx); err != nil {
+		return storeError("lock active generation", err)
+	}
+	if err := queries.LockIndexProject(ctx, source.OwnerUserID+"/"+source.ProjectID); err != nil {
+		return storeError("lock index project", err)
+	}
+	if err := applyResolvedSource(ctx, queries, source, outcome, requestDigest, now); err != nil {
+		return err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return storeError("commit apply resolved source", err)
+	}
+	return nil
+}
+
+func applyResolvedSource(ctx context.Context, queries *indexerdb.Queries, source ports.ResolvedSource, outcome, requestDigest string, now time.Time) error {
 	publicationUUID, err := uuid.Parse(source.PublicationID)
 	if err != nil || publicationUUID.Version() != 7 || !domain.ValidUUID(source.PublicationID) ||
 		!domain.ValidUUID(source.OwnerUserID) || !domain.ValidUUID(source.ProjectID) ||
@@ -215,12 +237,6 @@ func (r *Repository) ApplyResolvedSource(ctx context.Context, source ports.Resol
 	default:
 		return domain.ErrInvalid
 	}
-	tx, err := r.pool.Begin(ctx)
-	if err != nil {
-		return storeError("begin apply resolved source", err)
-	}
-	defer tx.Rollback(ctx) //nolint:errcheck
-	queries := r.queries.WithTx(tx)
 
 	writable, err := queries.WritableGenerationIDs(ctx)
 	if err != nil {
@@ -341,9 +357,6 @@ func (r *Repository) ApplyResolvedSource(ctx context.Context, source ports.Resol
 		UpdatedAt:           canonical(now),
 	}); err != nil {
 		return storeError("advance consumer cursor", err)
-	}
-	if err := tx.Commit(ctx); err != nil {
-		return storeError("commit apply resolved source", err)
 	}
 	return nil
 }
@@ -708,53 +721,54 @@ func (r *Repository) ListWorkspaceSources(ctx context.Context) ([]ports.Workspac
 	return sources, nil
 }
 
-// SetWorkspaceSourceStatus records a lifecycle transition with its sanitized
-// reason category.
-func (r *Repository) SetWorkspaceSourceStatus(ctx context.Context, id, status, degradedReason string, now time.Time) error {
-	if !domain.ValidUUID(id) || !domain.ValidWorkspaceSourceStatus(status) {
-		return domain.ErrInvalid
+// SetWorkspaceSourceStatus rejects an outcome from a scan of an older binding.
+func (r *Repository) SetWorkspaceSourceStatus(ctx context.Context, source ports.WorkspaceSource, status, degradedReason string, now time.Time) (ports.WorkspaceSource, error) {
+	if !domain.ValidUUID(source.ID) || !domain.ValidWorkspaceSourceStatus(status) || source.UpdatedAt.IsZero() || now.IsZero() || (status == domain.WorkspaceDegraded && degradedReason == "") {
+		return ports.WorkspaceSource{}, domain.ErrInvalid
 	}
-	if status == domain.WorkspaceDegraded && degradedReason == "" {
-		return domain.ErrInvalid
+	row, err := r.queries.SetWorkspaceSourceStatus(ctx, indexerdb.SetWorkspaceSourceStatusParams{
+		ID: source.ID, Status: status, DegradedReason: degradedReason, UpdatedAt: canonical(now), ExpectedUpdatedAt: canonical(source.UpdatedAt),
+	})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return ports.WorkspaceSource{}, domain.ErrWorkspaceConflict
 	}
-	if err := r.queries.SetWorkspaceSourceStatus(ctx, indexerdb.SetWorkspaceSourceStatusParams{
-		ID: id, Status: status, DegradedReason: degradedReason, UpdatedAt: canonical(now),
-	}); err != nil {
-		return storeError("set workspace source status", err)
-	}
-	return nil
-}
-
-// RecordWorkspaceSync persists the bounded per-pass outcome facts.
-func (r *Repository) RecordWorkspaceSync(ctx context.Context, id string, indexed, skipped, tombstoned int64, now time.Time) error {
-	if !domain.ValidUUID(id) || indexed < 0 || skipped < 0 || tombstoned < 0 {
-		return domain.ErrInvalid
-	}
-	if err := r.queries.RecordWorkspaceSync(ctx, indexerdb.RecordWorkspaceSyncParams{
-		ID: id, IndexedCount: indexed, SkippedCount: skipped,
-		TombstonedCount: tombstoned, LastSyncedAt: timePtr(canonical(now)), UpdatedAt: canonical(now),
-	}); err != nil {
-		return storeError("record workspace sync", err)
-	}
-	return nil
-}
-
-// ConvergeWorkspacePass projects one bounded sync pass: every walked file is
-// upserted with a fresh pass publication, and live workspace documents that
-// the walk no longer sees are tombstoned — in one local transaction per
-// writable generation set. The pass is idempotent by construction (digest
-// upserts plus a set-difference tombstone), so the pull-based sync carries
-// no receipt machinery.
-func (r *Repository) ConvergeWorkspacePass(ctx context.Context, source ports.WorkspaceSource, files []ports.MountFile, passPublication func() string, now time.Time) (applied, tombstoned int64, err error) {
-	if !domain.ValidUUID(source.OwnerUserID) || !domain.ValidUUID(source.ProjectID) || passPublication == nil {
-		return 0, 0, domain.ErrInvalid
-	}
-	writable, err := r.WritableGenerationIDs(ctx, source.OwnerUserID, source.ProjectID)
 	if err != nil {
-		return 0, 0, err
+		return ports.WorkspaceSource{}, storeError("set workspace source status", err)
+	}
+	return workspaceSourceRow(row), nil
+}
+
+// ConvergeWorkspacePass atomically commits the complete scan and its source
+// status. Source locking plus version comparison reject overlapping stale scans.
+func (r *Repository) ConvergeWorkspacePass(ctx context.Context, source ports.WorkspaceSource, files []ports.MountFile, skipped int64, passPublication func() string, now time.Time) (updated ports.WorkspaceSource, applied, tombstoned int64, err error) {
+	if !domain.ValidUUID(source.ID) || !domain.ValidUUID(source.OwnerUserID) || !domain.ValidUUID(source.ProjectID) || source.UpdatedAt.IsZero() || now.IsZero() || skipped < 0 || len(files) > domain.WorkspaceMaxFiles || passPublication == nil {
+		return ports.WorkspaceSource{}, 0, 0, domain.ErrInvalid
+	}
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return ports.WorkspaceSource{}, 0, 0, storeError("begin workspace pass", err)
+	}
+	defer tx.Rollback(ctx)
+	queries := r.queries.WithTx(tx)
+	current, err := queries.GetWorkspaceSourceForUpdate(ctx, source.ID)
+	if err != nil {
+		return ports.WorkspaceSource{}, 0, 0, storeError("lock workspace source", err)
+	}
+	if current.OwnerUserID != source.OwnerUserID || current.ProjectID != source.ProjectID || current.RootPath != source.RootPath || current.Status == domain.WorkspaceStopped || !current.UpdatedAt.Equal(canonical(source.UpdatedAt)) {
+		return ports.WorkspaceSource{}, 0, 0, domain.ErrWorkspaceConflict
+	}
+	if _, err := queries.LockActiveGeneration(ctx); err != nil {
+		return ports.WorkspaceSource{}, 0, 0, storeError("lock active generation", err)
+	}
+	if err := queries.LockIndexProject(ctx, source.OwnerUserID+"/"+source.ProjectID); err != nil {
+		return ports.WorkspaceSource{}, 0, 0, storeError("lock index project", err)
+	}
+	writable, err := queries.WritableGenerationIDs(ctx)
+	if err != nil {
+		return ports.WorkspaceSource{}, 0, 0, storeError("read writable generations", err)
 	}
 	if len(writable) == 0 {
-		return 0, 0, domain.ErrCorrupt
+		return ports.WorkspaceSource{}, 0, 0, domain.ErrCorrupt
 	}
 	for _, file := range files {
 		// One fresh monotonic publication per file: receipt arbitration keys
@@ -768,9 +782,9 @@ func (r *Repository) ConvergeWorkspacePass(ctx context.Context, source ports.Wor
 			Digest: file.Digest, Title: file.Title, Content: file.Content,
 			CreatedAt: now, PublicationID: passPublication(), OccurredAt: now,
 		}
-		if applyErr := r.ApplyResolvedSource(ctx, resolved, domain.OutcomeApplied,
+		if applyErr := applyResolvedSource(ctx, queries, resolved, domain.OutcomeApplied,
 			file.Digest, now); applyErr != nil {
-			return applied, tombstoned, applyErr
+			return ports.WorkspaceSource{}, 0, 0, applyErr
 		}
 		applied++
 	}
@@ -781,31 +795,42 @@ func (r *Repository) ConvergeWorkspacePass(ctx context.Context, source ports.Wor
 		kept[file.SourceID] = true
 	}
 	for _, generation := range writable {
-		live, listErr := r.queries.ListLiveWorkspaceDocuments(ctx, indexerdb.ListLiveWorkspaceDocumentsParams{
+		live, listErr := queries.ListLiveWorkspaceDocuments(ctx, indexerdb.ListLiveWorkspaceDocumentsParams{
 			GenerationID: generation, OwnerUserID: source.OwnerUserID, ProjectID: source.ProjectID,
 		})
 		if listErr != nil {
-			return applied, tombstoned, storeError("list live workspace documents", listErr)
+			return ports.WorkspaceSource{}, 0, 0, storeError("list live workspace documents", listErr)
 		}
 		for _, row := range live {
 			if kept[row.SourceID] {
 				continue
 			}
-			rows, tombErr := r.queries.TombstoneWorkspaceDocument(ctx, indexerdb.TombstoneWorkspaceDocumentParams{
+			rows, tombErr := queries.TombstoneWorkspaceDocument(ctx, indexerdb.TombstoneWorkspaceDocumentParams{
 				GenerationID: generation, OwnerUserID: source.OwnerUserID,
 				ProjectID: source.ProjectID, SourceID: row.SourceID,
 				TombstonedAt: timePtr(canonical(now)), UpdatedAt: canonical(now),
 			})
 			if tombErr != nil {
-				return applied, tombstoned, storeError("tombstone workspace document", tombErr)
+				return ports.WorkspaceSource{}, 0, 0, storeError("tombstone workspace document", tombErr)
 			}
 			if rows != 1 {
-				return applied, tombstoned, domain.ErrCorrupt
+				return ports.WorkspaceSource{}, 0, 0, domain.ErrCorrupt
 			}
 			tombstoned++
 		}
 	}
-	return applied, tombstoned, nil
+
+	row, err := queries.RecordWorkspaceSync(ctx, indexerdb.RecordWorkspaceSyncParams{
+		ID: source.ID, IndexedCount: applied, SkippedCount: skipped, TombstonedCount: tombstoned,
+		LastSyncedAt: timePtr(canonical(now)), UpdatedAt: canonical(now),
+	})
+	if err != nil {
+		return ports.WorkspaceSource{}, 0, 0, storeError("record workspace sync", err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return ports.WorkspaceSource{}, 0, 0, storeError("commit workspace pass", err)
+	}
+	return workspaceSourceRow(row), applied, tombstoned, nil
 }
 
 func workspaceSourceRow(row indexerdb.WorkosIndexWorkspaceSource) ports.WorkspaceSource {

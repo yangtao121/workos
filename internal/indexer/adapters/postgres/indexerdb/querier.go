@@ -43,6 +43,7 @@ type Querier interface {
 	GetRebuildJobRequest(ctx context.Context, idempotencyKey string) (WorkosIndexRebuildJobRequest, error)
 	GetReceipt(ctx context.Context, arg GetReceiptParams) (WorkosIndexPublicationReceipt, error)
 	GetWorkspaceSource(ctx context.Context, id string) (WorkosIndexWorkspaceSource, error)
+	GetWorkspaceSourceForUpdate(ctx context.Context, id string) (WorkosIndexWorkspaceSource, error)
 	InsertGeneration(ctx context.Context, arg InsertGenerationParams) error
 	// Shadow-generation rebuild facts (ADR-0013 §9). Generations and rebuild
 	// jobs are durable: a restart resumes from the stored phase and cursor.
@@ -60,10 +61,12 @@ type Querier interface {
 	ListIndexJobSources(ctx context.Context, jobID string) ([]WorkosIndexIndexJobSource, error)
 	ListLiveWorkspaceDocuments(ctx context.Context, arg ListLiveWorkspaceDocumentsParams) ([]ListLiveWorkspaceDocumentsRow, error)
 	ListWorkspaceSources(ctx context.Context) ([]WorkosIndexWorkspaceSource, error)
+	LockActiveGeneration(ctx context.Context) (string, error)
+	LockIndexProject(ctx context.Context, scope string) error
 	MarkIndexJobFailed(ctx context.Context, arg MarkIndexJobFailedParams) error
 	PromoteGeneration(ctx context.Context, arg PromoteGenerationParams) (int64, error)
 	ReadIndexedDocument(ctx context.Context, arg ReadIndexedDocumentParams) (ReadIndexedDocumentRow, error)
-	RecordWorkspaceSync(ctx context.Context, arg RecordWorkspaceSyncParams) error
+	RecordWorkspaceSync(ctx context.Context, arg RecordWorkspaceSyncParams) (WorkosIndexWorkspaceSource, error)
 	SearchFreshness(ctx context.Context) (time.Time, error)
 	// Deterministic lexical page (ADR-0013 §5): rank over the built-in 'simple'
 	// tsquery, title hits weighted 2x, fixed tie-break (score DESC,
@@ -79,7 +82,7 @@ type Querier interface {
 	// are computed in the indexer. Bounded by the generation's per-project
 	// document count (single-owner local scale, ≤2000 by ADR-0017 §3).
 	SearchProjectDocumentsHybrid(ctx context.Context, arg SearchProjectDocumentsHybridParams) ([]SearchProjectDocumentsHybridRow, error)
-	SetWorkspaceSourceStatus(ctx context.Context, arg SetWorkspaceSourceStatusParams) error
+	SetWorkspaceSourceStatus(ctx context.Context, arg SetWorkspaceSourceStatusParams) (WorkosIndexWorkspaceSource, error)
 	TombstoneGenerationDocuments(ctx context.Context, arg TombstoneGenerationDocumentsParams) (int64, error)
 	TombstoneProjectDocuments(ctx context.Context, arg TombstoneProjectDocumentsParams) (int64, error)
 	TombstoneWorkspaceDocument(ctx context.Context, arg TombstoneWorkspaceDocumentParams) (int64, error)

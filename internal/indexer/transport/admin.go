@@ -256,6 +256,8 @@ func mapAdminError(err error) error {
 		return connect.NewError(connect.CodeAborted, errors.New("rebuild conflicts with an existing key or live scope"))
 	case errors.Is(err, indexerapp.ErrInvalidRebuild):
 		return connect.NewError(connect.CodeInvalidArgument, errors.New("rebuild request is invalid"))
+	case errors.Is(err, indexerdomain.ErrWorkspaceConflict):
+		return connect.NewError(connect.CodeAborted, errors.New("workspace source changed during scan; retry sync"))
 	case errors.Is(err, indexerapp.ErrWorkspaceStopped):
 		return connect.NewError(connect.CodeFailedPrecondition, errors.New("workspace source is stopped"))
 	case errors.Is(err, indexerdomain.ErrWorkspaceSymlinkEscape):

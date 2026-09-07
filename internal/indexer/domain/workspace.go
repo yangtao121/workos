@@ -15,6 +15,7 @@ import (
 )
 
 var (
+	ErrWorkspaceConflict      = errors.New("workspace source changed during scan")
 	ErrWorkspaceSymlinkEscape = errors.New("workspace root resolves through a symlink")
 	ErrWorkspaceInvalidPath   = errors.New("workspace file path is invalid")
 	// ErrWorkspaceDegraded reports a mount-level failure recorded on the

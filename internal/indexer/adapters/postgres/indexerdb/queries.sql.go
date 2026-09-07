@@ -614,6 +614,30 @@ func (q *Queries) GetWorkspaceSource(ctx context.Context, id string) (WorkosInde
 	return i, err
 }
 
+const getWorkspaceSourceForUpdate = `-- name: GetWorkspaceSourceForUpdate :one
+SELECT id, owner_user_id, project_id, root_path, status, degraded_reason, indexed_count, skipped_count, tombstoned_count, last_synced_at, created_at, updated_at FROM workos_index.workspace_sources WHERE id = $1::uuid FOR UPDATE
+`
+
+func (q *Queries) GetWorkspaceSourceForUpdate(ctx context.Context, id string) (WorkosIndexWorkspaceSource, error) {
+	row := q.db.QueryRow(ctx, getWorkspaceSourceForUpdate, id)
+	var i WorkosIndexWorkspaceSource
+	err := row.Scan(
+		&i.ID,
+		&i.OwnerUserID,
+		&i.ProjectID,
+		&i.RootPath,
+		&i.Status,
+		&i.DegradedReason,
+		&i.IndexedCount,
+		&i.SkippedCount,
+		&i.TombstonedCount,
+		&i.LastSyncedAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const insertGeneration = `-- name: InsertGeneration :exec
 INSERT INTO workos_index.projection_generations (id, scope, owner_user_id, project_id, status, created_at)
 VALUES ($1, $2, $3, $4, $5, $6)
@@ -818,7 +842,7 @@ ON CONFLICT (owner_user_id, project_id) DO UPDATE
 SET root_path = EXCLUDED.root_path,
     status = 'active',
     degraded_reason = '',
-    updated_at = EXCLUDED.updated_at
+    updated_at = GREATEST(EXCLUDED.updated_at, workos_index.workspace_sources.updated_at + interval '1 microsecond')
 RETURNING id, owner_user_id, project_id, root_path, status, degraded_reason,
           indexed_count, skipped_count, tombstoned_count, last_synced_at,
           created_at, updated_at
@@ -1030,6 +1054,26 @@ func (q *Queries) ListWorkspaceSources(ctx context.Context) ([]WorkosIndexWorksp
 	return items, nil
 }
 
+const lockActiveGeneration = `-- name: LockActiveGeneration :one
+SELECT generation_id FROM workos_index.active_generation FOR SHARE
+`
+
+func (q *Queries) LockActiveGeneration(ctx context.Context) (string, error) {
+	row := q.db.QueryRow(ctx, lockActiveGeneration)
+	var generation_id string
+	err := row.Scan(&generation_id)
+	return generation_id, err
+}
+
+const lockIndexProject = `-- name: LockIndexProject :exec
+SELECT pg_advisory_xact_lock(hashtextextended($1::text, 18029848))
+`
+
+func (q *Queries) LockIndexProject(ctx context.Context, scope string) error {
+	_, err := q.db.Exec(ctx, lockIndexProject, scope)
+	return err
+}
+
 const markIndexJobFailed = `-- name: MarkIndexJobFailed :exec
 UPDATE workos_index.index_jobs SET state = 'failed', failure_category = $1, updated_at = $2
 WHERE id = $3 AND state = 'running'
@@ -1123,15 +1167,16 @@ func (q *Queries) ReadIndexedDocument(ctx context.Context, arg ReadIndexedDocume
 	return i, err
 }
 
-const recordWorkspaceSync = `-- name: RecordWorkspaceSync :exec
+const recordWorkspaceSync = `-- name: RecordWorkspaceSync :one
 UPDATE workos_index.workspace_sources
 SET status = 'active', degraded_reason = '',
     indexed_count = $1,
     skipped_count = $2,
     tombstoned_count = $3,
     last_synced_at = $4,
-    updated_at = $5
+    updated_at = GREATEST($5::timestamptz, updated_at + interval '1 microsecond')
 WHERE id = $6::uuid
+RETURNING id, owner_user_id, project_id, root_path, status, degraded_reason, indexed_count, skipped_count, tombstoned_count, last_synced_at, created_at, updated_at
 `
 
 type RecordWorkspaceSyncParams struct {
@@ -1143,8 +1188,8 @@ type RecordWorkspaceSyncParams struct {
 	ID              string
 }
 
-func (q *Queries) RecordWorkspaceSync(ctx context.Context, arg RecordWorkspaceSyncParams) error {
-	_, err := q.db.Exec(ctx, recordWorkspaceSync,
+func (q *Queries) RecordWorkspaceSync(ctx context.Context, arg RecordWorkspaceSyncParams) (WorkosIndexWorkspaceSource, error) {
+	row := q.db.QueryRow(ctx, recordWorkspaceSync,
 		arg.IndexedCount,
 		arg.SkippedCount,
 		arg.TombstonedCount,
@@ -1152,7 +1197,22 @@ func (q *Queries) RecordWorkspaceSync(ctx context.Context, arg RecordWorkspaceSy
 		arg.UpdatedAt,
 		arg.ID,
 	)
-	return err
+	var i WorkosIndexWorkspaceSource
+	err := row.Scan(
+		&i.ID,
+		&i.OwnerUserID,
+		&i.ProjectID,
+		&i.RootPath,
+		&i.Status,
+		&i.DegradedReason,
+		&i.IndexedCount,
+		&i.SkippedCount,
+		&i.TombstonedCount,
+		&i.LastSyncedAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
 }
 
 const searchFreshness = `-- name: SearchFreshness :one
@@ -1363,28 +1423,46 @@ func (q *Queries) SearchProjectDocumentsHybrid(ctx context.Context, arg SearchPr
 	return items, nil
 }
 
-const setWorkspaceSourceStatus = `-- name: SetWorkspaceSourceStatus :exec
+const setWorkspaceSourceStatus = `-- name: SetWorkspaceSourceStatus :one
 UPDATE workos_index.workspace_sources
 SET status = $1, degraded_reason = $2,
-    updated_at = $3
-WHERE id = $4::uuid
+    updated_at = GREATEST($3::timestamptz, updated_at + interval '1 microsecond')
+WHERE id = $4::uuid AND updated_at = $5
+RETURNING id, owner_user_id, project_id, root_path, status, degraded_reason, indexed_count, skipped_count, tombstoned_count, last_synced_at, created_at, updated_at
 `
 
 type SetWorkspaceSourceStatusParams struct {
-	Status         string
-	DegradedReason string
-	UpdatedAt      time.Time
-	ID             string
+	Status            string
+	DegradedReason    string
+	UpdatedAt         time.Time
+	ID                string
+	ExpectedUpdatedAt time.Time
 }
 
-func (q *Queries) SetWorkspaceSourceStatus(ctx context.Context, arg SetWorkspaceSourceStatusParams) error {
-	_, err := q.db.Exec(ctx, setWorkspaceSourceStatus,
+func (q *Queries) SetWorkspaceSourceStatus(ctx context.Context, arg SetWorkspaceSourceStatusParams) (WorkosIndexWorkspaceSource, error) {
+	row := q.db.QueryRow(ctx, setWorkspaceSourceStatus,
 		arg.Status,
 		arg.DegradedReason,
 		arg.UpdatedAt,
 		arg.ID,
+		arg.ExpectedUpdatedAt,
 	)
-	return err
+	var i WorkosIndexWorkspaceSource
+	err := row.Scan(
+		&i.ID,
+		&i.OwnerUserID,
+		&i.ProjectID,
+		&i.RootPath,
+		&i.Status,
+		&i.DegradedReason,
+		&i.IndexedCount,
+		&i.SkippedCount,
+		&i.TombstonedCount,
+		&i.LastSyncedAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
 }
 
 const tombstoneGenerationDocuments = `-- name: TombstoneGenerationDocuments :execrows

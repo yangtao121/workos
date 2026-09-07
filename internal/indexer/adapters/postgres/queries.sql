@@ -407,7 +407,7 @@ ON CONFLICT (owner_user_id, project_id) DO UPDATE
 SET root_path = EXCLUDED.root_path,
     status = 'active',
     degraded_reason = '',
-    updated_at = EXCLUDED.updated_at
+    updated_at = GREATEST(EXCLUDED.updated_at, workos_index.workspace_sources.updated_at + interval '1 microsecond')
 RETURNING id, owner_user_id, project_id, root_path, status, degraded_reason,
           indexed_count, skipped_count, tombstoned_count, last_synced_at,
           created_at, updated_at;
@@ -426,21 +426,32 @@ SELECT id, owner_user_id, project_id, root_path, status, degraded_reason,
 FROM workos_index.workspace_sources
 ORDER BY created_at, id;
 
--- name: SetWorkspaceSourceStatus :exec
+-- name: GetWorkspaceSourceForUpdate :one
+SELECT * FROM workos_index.workspace_sources WHERE id = sqlc.arg(id)::uuid FOR UPDATE;
+
+-- name: SetWorkspaceSourceStatus :one
 UPDATE workos_index.workspace_sources
 SET status = sqlc.arg(status), degraded_reason = sqlc.arg(degraded_reason),
-    updated_at = sqlc.arg(updated_at)
-WHERE id = sqlc.arg(id)::uuid;
+    updated_at = GREATEST(sqlc.arg(updated_at)::timestamptz, updated_at + interval '1 microsecond')
+WHERE id = sqlc.arg(id)::uuid AND updated_at = sqlc.arg(expected_updated_at)
+RETURNING *;
 
--- name: RecordWorkspaceSync :exec
+-- name: RecordWorkspaceSync :one
 UPDATE workos_index.workspace_sources
 SET status = 'active', degraded_reason = '',
     indexed_count = sqlc.arg(indexed_count),
     skipped_count = sqlc.arg(skipped_count),
     tombstoned_count = sqlc.arg(tombstoned_count),
     last_synced_at = sqlc.arg(last_synced_at),
-    updated_at = sqlc.arg(updated_at)
-WHERE id = sqlc.arg(id)::uuid;
+    updated_at = GREATEST(sqlc.arg(updated_at)::timestamptz, updated_at + interval '1 microsecond')
+WHERE id = sqlc.arg(id)::uuid
+RETURNING *;
+
+-- name: LockIndexProject :exec
+SELECT pg_advisory_xact_lock(hashtextextended(sqlc.arg(scope)::text, 18029848));
+
+-- name: LockActiveGeneration :one
+SELECT generation_id FROM workos_index.active_generation FOR SHARE;
 
 -- name: ListLiveWorkspaceDocuments :many
 SELECT source_id, source_digest

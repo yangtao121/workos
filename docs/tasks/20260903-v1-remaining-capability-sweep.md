@@ -557,3 +557,19 @@ Browser 检查点 fecc26d。修复 localmount check-then-open、无界 ReadFile�
 未清除 degraded，已在同一 SQL 更新修复并重新生成。真实目录/外链并发交换 200 次扫描、
 1 TiB sparse 文件、FIFO、无效文本、总预算/深度/取消均 PASS。`make generate` PASS。
 全仓 `make go-check` PASS；投影写入目前逐文件事务，下一阶段修复整次扫描的原子性和并发 CAS。
+
+### R4 工作区投影事务（active，2026-09-07）
+
+扫描检查点 dff0f26。将 workspace 完整 pass 的文档、receipt/cursor、删除及源状态置于一个
+Indexer 事务；源更新时间 CAS 拒绝旧扫描和迟到的 degraded 状态，重新绑定不得被旧 pass 覆盖。
+验收：第二文件失败整次回滚、状态更新失败回滚、并发 pass 仅一个提交、重绑/取消冲突、
+重启后完整重试。复用源表更新时间，不增加兼容层；无用户可见 UI 变化。
+
+事务阶段复验：Indexer 全模块 race PASS；`TestWorkspaceIndexing`、
+`TestWorkspaceTransactionalConvergence`、`TestWorkspaceConcurrentArchive` PostgreSQL/race PASS。
+第二文件与最后状态更新注入失败，文档/receipt/cursor/状态逐项快照不变；重建 repository 重试成功，
+8 个旧版本并发只有 1 次提交，迟到降级/重绑/stopped/等待锁取消均不修改已提交事实。
+16 组 live upsert/archive 竞争无归档后复活。精确读取/过滤与混合检索集成 PASS；
+既有 review rebuild golden/crash/destroy-restore PASS。`make generate`、完整 `make check` PASS。
+下一步补 workspace 与 rebuild 的组合：当前 Core authority snapshot 未携带 workspace，
+仅 review 的既有门禁不能证明重建保留文件。无 UI 变化；main 尚未合并。
