@@ -1299,3 +1299,8 @@ Indexer 工作区扫描：注册和扫描的文件系统访问集中在 localmou
 复制预算 2000 文档/64 MiB，超限保留旧 active 并记录 workspace-copy-limit。
 普通重建保留挂载与 degraded 状态；schema 灾难删除后需 operator 重新绑定和 sync。
 这不提供文件系统快照或真实语义模型；workspace 浏览器组合门禁继续审查。
+
+Workspace operator 停用：私有 IndexAdminService.StopWorkspaceSource 消费 source etag；
+停用与 indexed snapshot tombstone 在同一事务，陈旧 scan/stop 无法撤销重绑后的目录。
+CLI 从 workspace list 获取 etag 后执行 stop；停止后 sync 拒绝，重新 register + sync 可恢复。
+公开 Gateway 拒绝此方法；桌面界面没有新增管理入口。

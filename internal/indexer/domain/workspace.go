@@ -5,9 +5,11 @@ package domain
 
 import (
 	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"path"
 	"strings"
+	"time"
 	"unicode"
 	"unicode/utf8"
 
@@ -176,4 +178,10 @@ func ValidArchiveMediaType(mediaType string) bool {
 		}
 	}
 	return true
+}
+
+// WorkspaceETag identifies the exact operator binding and its durable version.
+func WorkspaceETag(id string, updated time.Time) string {
+	sum := sha256.Sum256([]byte(id + "\n" + updated.UTC().Format(time.RFC3339Nano)))
+	return "sha256:" + hex.EncodeToString(sum[:])
 }

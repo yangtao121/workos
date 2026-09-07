@@ -60,6 +60,9 @@ const (
 	// IndexAdminServiceSyncWorkspaceSourceProcedure is the fully-qualified name of the
 	// IndexAdminService's SyncWorkspaceSource RPC.
 	IndexAdminServiceSyncWorkspaceSourceProcedure = "/workos.index.v1.IndexAdminService/SyncWorkspaceSource"
+	// IndexAdminServiceStopWorkspaceSourceProcedure is the fully-qualified name of the
+	// IndexAdminService's StopWorkspaceSource RPC.
+	IndexAdminServiceStopWorkspaceSourceProcedure = "/workos.index.v1.IndexAdminService/StopWorkspaceSource"
 	// IndexAdminServicePutArchiveObjectProcedure is the fully-qualified name of the IndexAdminService's
 	// PutArchiveObject RPC.
 	IndexAdminServicePutArchiveObjectProcedure = "/workos.index.v1.IndexAdminService/PutArchiveObject"
@@ -80,6 +83,7 @@ type IndexAdminServiceClient interface {
 	RegisterWorkspaceSource(context.Context, *connect.Request[v1.RegisterWorkspaceSourceRequest]) (*connect.Response[v1.RegisterWorkspaceSourceResponse], error)
 	ListWorkspaceSources(context.Context, *connect.Request[v1.ListWorkspaceSourcesRequest]) (*connect.Response[v1.ListWorkspaceSourcesResponse], error)
 	SyncWorkspaceSource(context.Context, *connect.Request[v1.SyncWorkspaceSourceRequest]) (*connect.Response[v1.SyncWorkspaceSourceResponse], error)
+	StopWorkspaceSource(context.Context, *connect.Request[v1.StopWorkspaceSourceRequest]) (*connect.Response[v1.StopWorkspaceSourceResponse], error)
 	// Bounded generic archive (ADR-0017 §5): content-addressed object facts.
 	// Objects never enter the search projection.
 	PutArchiveObject(context.Context, *connect.Request[v1.PutArchiveObjectRequest]) (*connect.Response[v1.PutArchiveObjectResponse], error)
@@ -140,6 +144,12 @@ func NewIndexAdminServiceClient(httpClient connect.HTTPClient, baseURL string, o
 			connect.WithSchema(indexAdminServiceMethods.ByName("SyncWorkspaceSource")),
 			connect.WithClientOptions(opts...),
 		),
+		stopWorkspaceSource: connect.NewClient[v1.StopWorkspaceSourceRequest, v1.StopWorkspaceSourceResponse](
+			httpClient,
+			baseURL+IndexAdminServiceStopWorkspaceSourceProcedure,
+			connect.WithSchema(indexAdminServiceMethods.ByName("StopWorkspaceSource")),
+			connect.WithClientOptions(opts...),
+		),
 		putArchiveObject: connect.NewClient[v1.PutArchiveObjectRequest, v1.PutArchiveObjectResponse](
 			httpClient,
 			baseURL+IndexAdminServicePutArchiveObjectProcedure,
@@ -170,6 +180,7 @@ type indexAdminServiceClient struct {
 	registerWorkspaceSource *connect.Client[v1.RegisterWorkspaceSourceRequest, v1.RegisterWorkspaceSourceResponse]
 	listWorkspaceSources    *connect.Client[v1.ListWorkspaceSourcesRequest, v1.ListWorkspaceSourcesResponse]
 	syncWorkspaceSource     *connect.Client[v1.SyncWorkspaceSourceRequest, v1.SyncWorkspaceSourceResponse]
+	stopWorkspaceSource     *connect.Client[v1.StopWorkspaceSourceRequest, v1.StopWorkspaceSourceResponse]
 	putArchiveObject        *connect.Client[v1.PutArchiveObjectRequest, v1.PutArchiveObjectResponse]
 	getArchiveObject        *connect.Client[v1.GetArchiveObjectRequest, v1.GetArchiveObjectResponse]
 	listArchiveObjects      *connect.Client[v1.ListArchiveObjectsRequest, v1.ListArchiveObjectsResponse]
@@ -210,6 +221,11 @@ func (c *indexAdminServiceClient) SyncWorkspaceSource(ctx context.Context, req *
 	return c.syncWorkspaceSource.CallUnary(ctx, req)
 }
 
+// StopWorkspaceSource calls workos.index.v1.IndexAdminService.StopWorkspaceSource.
+func (c *indexAdminServiceClient) StopWorkspaceSource(ctx context.Context, req *connect.Request[v1.StopWorkspaceSourceRequest]) (*connect.Response[v1.StopWorkspaceSourceResponse], error) {
+	return c.stopWorkspaceSource.CallUnary(ctx, req)
+}
+
 // PutArchiveObject calls workos.index.v1.IndexAdminService.PutArchiveObject.
 func (c *indexAdminServiceClient) PutArchiveObject(ctx context.Context, req *connect.Request[v1.PutArchiveObjectRequest]) (*connect.Response[v1.PutArchiveObjectResponse], error) {
 	return c.putArchiveObject.CallUnary(ctx, req)
@@ -234,6 +250,7 @@ type IndexAdminServiceHandler interface {
 	RegisterWorkspaceSource(context.Context, *connect.Request[v1.RegisterWorkspaceSourceRequest]) (*connect.Response[v1.RegisterWorkspaceSourceResponse], error)
 	ListWorkspaceSources(context.Context, *connect.Request[v1.ListWorkspaceSourcesRequest]) (*connect.Response[v1.ListWorkspaceSourcesResponse], error)
 	SyncWorkspaceSource(context.Context, *connect.Request[v1.SyncWorkspaceSourceRequest]) (*connect.Response[v1.SyncWorkspaceSourceResponse], error)
+	StopWorkspaceSource(context.Context, *connect.Request[v1.StopWorkspaceSourceRequest]) (*connect.Response[v1.StopWorkspaceSourceResponse], error)
 	// Bounded generic archive (ADR-0017 §5): content-addressed object facts.
 	// Objects never enter the search projection.
 	PutArchiveObject(context.Context, *connect.Request[v1.PutArchiveObjectRequest]) (*connect.Response[v1.PutArchiveObjectResponse], error)
@@ -290,6 +307,12 @@ func NewIndexAdminServiceHandler(svc IndexAdminServiceHandler, opts ...connect.H
 		connect.WithSchema(indexAdminServiceMethods.ByName("SyncWorkspaceSource")),
 		connect.WithHandlerOptions(opts...),
 	)
+	indexAdminServiceStopWorkspaceSourceHandler := connect.NewUnaryHandler(
+		IndexAdminServiceStopWorkspaceSourceProcedure,
+		svc.StopWorkspaceSource,
+		connect.WithSchema(indexAdminServiceMethods.ByName("StopWorkspaceSource")),
+		connect.WithHandlerOptions(opts...),
+	)
 	indexAdminServicePutArchiveObjectHandler := connect.NewUnaryHandler(
 		IndexAdminServicePutArchiveObjectProcedure,
 		svc.PutArchiveObject,
@@ -324,6 +347,8 @@ func NewIndexAdminServiceHandler(svc IndexAdminServiceHandler, opts ...connect.H
 			indexAdminServiceListWorkspaceSourcesHandler.ServeHTTP(w, r)
 		case IndexAdminServiceSyncWorkspaceSourceProcedure:
 			indexAdminServiceSyncWorkspaceSourceHandler.ServeHTTP(w, r)
+		case IndexAdminServiceStopWorkspaceSourceProcedure:
+			indexAdminServiceStopWorkspaceSourceHandler.ServeHTTP(w, r)
 		case IndexAdminServicePutArchiveObjectProcedure:
 			indexAdminServicePutArchiveObjectHandler.ServeHTTP(w, r)
 		case IndexAdminServiceGetArchiveObjectProcedure:
@@ -365,6 +390,10 @@ func (UnimplementedIndexAdminServiceHandler) ListWorkspaceSources(context.Contex
 
 func (UnimplementedIndexAdminServiceHandler) SyncWorkspaceSource(context.Context, *connect.Request[v1.SyncWorkspaceSourceRequest]) (*connect.Response[v1.SyncWorkspaceSourceResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("workos.index.v1.IndexAdminService.SyncWorkspaceSource is not implemented"))
+}
+
+func (UnimplementedIndexAdminServiceHandler) StopWorkspaceSource(context.Context, *connect.Request[v1.StopWorkspaceSourceRequest]) (*connect.Response[v1.StopWorkspaceSourceResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("workos.index.v1.IndexAdminService.StopWorkspaceSource is not implemented"))
 }
 
 func (UnimplementedIndexAdminServiceHandler) PutArchiveObject(context.Context, *connect.Request[v1.PutArchiveObjectRequest]) (*connect.Response[v1.PutArchiveObjectResponse], error) {

@@ -363,6 +363,7 @@ func TestIndexerRoutesAreOptionalExactAndSanitized(t *testing.T) {
 	for _, path := range []string{
 		"/workos.index.v1.IndexPublicationSourceService/ClaimIndexPublications",
 		"/workos.index.v1.IndexAdminService/StartIndexRebuild",
+		"/workos.index.v1.IndexAdminService/StopWorkspaceSource",
 	} {
 		request := httptest.NewRequest(http.MethodPost, path, strings.NewReader("{}"))
 		response := httptest.NewRecorder()

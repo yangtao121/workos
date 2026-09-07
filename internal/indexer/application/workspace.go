@@ -130,3 +130,18 @@ func (w *WorkspaceIngestor) Sync(ctx context.Context, sourceID string) (SyncResu
 func (w *WorkspaceIngestor) List(ctx context.Context) ([]ports.WorkspaceSource, error) {
 	return w.store.ListWorkspaceSources(ctx)
 }
+
+// Stop withdraws the exact operator binding and all of its indexed snapshots.
+func (w *WorkspaceIngestor) Stop(ctx context.Context, sourceID, expectedETag string) (ports.WorkspaceSource, error) {
+	if !indexerdomain.ValidUUID(sourceID) || !indexerdomain.ValidDigest(expectedETag) {
+		return ports.WorkspaceSource{}, indexerdomain.ErrInvalid
+	}
+	source, err := w.store.GetWorkspaceSource(ctx, sourceID)
+	if err != nil {
+		return ports.WorkspaceSource{}, err
+	}
+	if expectedETag != indexerdomain.WorkspaceETag(source.ID, source.UpdatedAt) {
+		return ports.WorkspaceSource{}, indexerdomain.ErrWorkspaceConflict
+	}
+	return w.store.StopWorkspaceSource(ctx, source, w.now())
+}

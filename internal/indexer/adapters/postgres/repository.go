@@ -833,6 +833,49 @@ func (r *Repository) ConvergeWorkspacePass(ctx context.Context, source ports.Wor
 	return workspaceSourceRow(row), applied, tombstoned, nil
 }
 
+// StopWorkspaceSource serializes with scan commits and generation promotion.
+func (r *Repository) StopWorkspaceSource(ctx context.Context, source ports.WorkspaceSource, now time.Time) (ports.WorkspaceSource, error) {
+	if !domain.ValidUUID(source.ID) || source.UpdatedAt.IsZero() || now.IsZero() {
+		return ports.WorkspaceSource{}, domain.ErrInvalid
+	}
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return ports.WorkspaceSource{}, storeError("begin workspace stop", err)
+	}
+	defer tx.Rollback(ctx)
+	queries := r.queries.WithTx(tx)
+	current, err := queries.GetWorkspaceSourceForUpdate(ctx, source.ID)
+	if err != nil {
+		return ports.WorkspaceSource{}, storeError("lock workspace source", err)
+	}
+	if current.OwnerUserID != source.OwnerUserID || current.ProjectID != source.ProjectID || current.RootPath != source.RootPath || !current.UpdatedAt.Equal(canonical(source.UpdatedAt)) {
+		return ports.WorkspaceSource{}, domain.ErrWorkspaceConflict
+	}
+	if current.Status == domain.WorkspaceStopped {
+		return workspaceSourceRow(current), nil
+	}
+	if _, err := queries.LockActiveGeneration(ctx); err != nil {
+		return ports.WorkspaceSource{}, storeError("lock active generation", err)
+	}
+	if err := queries.LockIndexProject(ctx, source.OwnerUserID+"/"+source.ProjectID); err != nil {
+		return ports.WorkspaceSource{}, storeError("lock index project", err)
+	}
+	count, err := queries.TombstoneWorkspaceSourceDocuments(ctx, indexerdb.TombstoneWorkspaceSourceDocumentsParams{
+		OwnerUserID: source.OwnerUserID, ProjectID: source.ProjectID, Now: canonical(now),
+	})
+	if err != nil {
+		return ports.WorkspaceSource{}, storeError("withdraw workspace documents", err)
+	}
+	stopped, err := queries.StopWorkspaceSource(ctx, indexerdb.StopWorkspaceSourceParams{ID: source.ID, TombstonedCount: count, UpdatedAt: canonical(now)})
+	if err != nil {
+		return ports.WorkspaceSource{}, storeError("stop workspace source", err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return ports.WorkspaceSource{}, storeError("commit workspace stop", err)
+	}
+	return workspaceSourceRow(stopped), nil
+}
+
 func workspaceSourceRow(row indexerdb.WorkosIndexWorkspaceSource) ports.WorkspaceSource {
 	source := ports.WorkspaceSource{
 		ID: row.ID, OwnerUserID: row.OwnerUserID, ProjectID: row.ProjectID,

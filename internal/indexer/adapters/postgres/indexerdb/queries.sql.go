@@ -1515,6 +1515,41 @@ func (q *Queries) SetWorkspaceSourceStatus(ctx context.Context, arg SetWorkspace
 	return i, err
 }
 
+const stopWorkspaceSource = `-- name: StopWorkspaceSource :one
+UPDATE workos_index.workspace_sources
+SET status = 'stopped', degraded_reason = '', indexed_count = 0,
+    tombstoned_count = $1,
+    updated_at = GREATEST($2::timestamptz, updated_at + interval '1 microsecond')
+WHERE id = $3::uuid
+RETURNING id, owner_user_id, project_id, root_path, status, degraded_reason, indexed_count, skipped_count, tombstoned_count, last_synced_at, created_at, updated_at
+`
+
+type StopWorkspaceSourceParams struct {
+	TombstonedCount int64
+	UpdatedAt       time.Time
+	ID              string
+}
+
+func (q *Queries) StopWorkspaceSource(ctx context.Context, arg StopWorkspaceSourceParams) (WorkosIndexWorkspaceSource, error) {
+	row := q.db.QueryRow(ctx, stopWorkspaceSource, arg.TombstonedCount, arg.UpdatedAt, arg.ID)
+	var i WorkosIndexWorkspaceSource
+	err := row.Scan(
+		&i.ID,
+		&i.OwnerUserID,
+		&i.ProjectID,
+		&i.RootPath,
+		&i.Status,
+		&i.DegradedReason,
+		&i.IndexedCount,
+		&i.SkippedCount,
+		&i.TombstonedCount,
+		&i.LastSyncedAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const tombstoneGenerationDocuments = `-- name: TombstoneGenerationDocuments :execrows
 UPDATE workos_index.documents
 SET tombstoned_at = $1, updated_at = $2
@@ -1603,6 +1638,28 @@ func (q *Queries) TombstoneWorkspaceDocument(ctx context.Context, arg TombstoneW
 		arg.ProjectID,
 		arg.SourceID,
 	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const tombstoneWorkspaceSourceDocuments = `-- name: TombstoneWorkspaceSourceDocuments :execrows
+UPDATE workos_index.documents d
+SET tombstoned_at = GREATEST($1::timestamptz, d.indexed_at), updated_at = $1
+WHERE d.owner_user_id = $2::uuid AND d.project_id = $3::uuid
+  AND d.source_type = 'workspace.file.v1' AND d.tombstoned_at IS NULL
+  AND d.projection_generation IN (SELECT g.id FROM workos_index.projection_generations g WHERE g.status IN ('active', 'building'))
+`
+
+type TombstoneWorkspaceSourceDocumentsParams struct {
+	Now         time.Time
+	OwnerUserID string
+	ProjectID   string
+}
+
+func (q *Queries) TombstoneWorkspaceSourceDocuments(ctx context.Context, arg TombstoneWorkspaceSourceDocumentsParams) (int64, error) {
+	result, err := q.db.Exec(ctx, tombstoneWorkspaceSourceDocuments, arg.Now, arg.OwnerUserID, arg.ProjectID)
 	if err != nil {
 		return 0, err
 	}

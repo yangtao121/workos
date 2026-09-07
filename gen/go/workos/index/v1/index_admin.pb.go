@@ -744,8 +744,10 @@ type IndexWorkspaceSource struct {
 	SkippedCount    int64  `protobuf:"varint,8,opt,name=skipped_count,json=skippedCount,proto3" json:"skipped_count,omitempty"`
 	TombstonedCount int64  `protobuf:"varint,9,opt,name=tombstoned_count,json=tombstonedCount,proto3" json:"tombstoned_count,omitempty"`
 	// UTC RFC 3339 microseconds; empty before the first sync.
-	LastSyncedAt  string `protobuf:"bytes,10,opt,name=last_synced_at,json=lastSyncedAt,proto3" json:"last_synced_at,omitempty"`
-	CreatedAt     string `protobuf:"bytes,11,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	LastSyncedAt string `protobuf:"bytes,10,opt,name=last_synced_at,json=lastSyncedAt,proto3" json:"last_synced_at,omitempty"`
+	CreatedAt    string `protobuf:"bytes,11,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	// Opaque source version; required when stopping this binding.
+	Etag          string `protobuf:"bytes,12,opt,name=etag,proto3" json:"etag,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -853,6 +855,13 @@ func (x *IndexWorkspaceSource) GetLastSyncedAt() string {
 func (x *IndexWorkspaceSource) GetCreatedAt() string {
 	if x != nil {
 		return x.CreatedAt
+	}
+	return ""
+}
+
+func (x *IndexWorkspaceSource) GetEtag() string {
+	if x != nil {
+		return x.Etag
 	}
 	return ""
 }
@@ -1162,6 +1171,104 @@ func (x *SyncWorkspaceSourceResponse) GetSkippedReasons() []string {
 	return nil
 }
 
+// Local operator stop removes this binding's indexed workspace snapshots.
+// A stale etag is Aborted and has no effect on a newer binding.
+type StopWorkspaceSourceRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	SourceId      string                 `protobuf:"bytes,1,opt,name=source_id,json=sourceId,proto3" json:"source_id,omitempty"`
+	ExpectedEtag  string                 `protobuf:"bytes,2,opt,name=expected_etag,json=expectedEtag,proto3" json:"expected_etag,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *StopWorkspaceSourceRequest) Reset() {
+	*x = StopWorkspaceSourceRequest{}
+	mi := &file_workos_index_v1_index_admin_proto_msgTypes[17]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *StopWorkspaceSourceRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*StopWorkspaceSourceRequest) ProtoMessage() {}
+
+func (x *StopWorkspaceSourceRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_workos_index_v1_index_admin_proto_msgTypes[17]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use StopWorkspaceSourceRequest.ProtoReflect.Descriptor instead.
+func (*StopWorkspaceSourceRequest) Descriptor() ([]byte, []int) {
+	return file_workos_index_v1_index_admin_proto_rawDescGZIP(), []int{17}
+}
+
+func (x *StopWorkspaceSourceRequest) GetSourceId() string {
+	if x != nil {
+		return x.SourceId
+	}
+	return ""
+}
+
+func (x *StopWorkspaceSourceRequest) GetExpectedEtag() string {
+	if x != nil {
+		return x.ExpectedEtag
+	}
+	return ""
+}
+
+type StopWorkspaceSourceResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Source        *IndexWorkspaceSource  `protobuf:"bytes,1,opt,name=source,proto3" json:"source,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *StopWorkspaceSourceResponse) Reset() {
+	*x = StopWorkspaceSourceResponse{}
+	mi := &file_workos_index_v1_index_admin_proto_msgTypes[18]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *StopWorkspaceSourceResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*StopWorkspaceSourceResponse) ProtoMessage() {}
+
+func (x *StopWorkspaceSourceResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_workos_index_v1_index_admin_proto_msgTypes[18]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use StopWorkspaceSourceResponse.ProtoReflect.Descriptor instead.
+func (*StopWorkspaceSourceResponse) Descriptor() ([]byte, []int) {
+	return file_workos_index_v1_index_admin_proto_rawDescGZIP(), []int{18}
+}
+
+func (x *StopWorkspaceSourceResponse) GetSource() *IndexWorkspaceSource {
+	if x != nil {
+		return x.Source
+	}
+	return nil
+}
+
 type PutArchiveObjectRequest struct {
 	state       protoimpl.MessageState `protogen:"open.v1"`
 	OwnerUserId string                 `protobuf:"bytes,1,opt,name=owner_user_id,json=ownerUserId,proto3" json:"owner_user_id,omitempty"`
@@ -1175,7 +1282,7 @@ type PutArchiveObjectRequest struct {
 
 func (x *PutArchiveObjectRequest) Reset() {
 	*x = PutArchiveObjectRequest{}
-	mi := &file_workos_index_v1_index_admin_proto_msgTypes[17]
+	mi := &file_workos_index_v1_index_admin_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1187,7 +1294,7 @@ func (x *PutArchiveObjectRequest) String() string {
 func (*PutArchiveObjectRequest) ProtoMessage() {}
 
 func (x *PutArchiveObjectRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_workos_index_v1_index_admin_proto_msgTypes[17]
+	mi := &file_workos_index_v1_index_admin_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1200,7 +1307,7 @@ func (x *PutArchiveObjectRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PutArchiveObjectRequest.ProtoReflect.Descriptor instead.
 func (*PutArchiveObjectRequest) Descriptor() ([]byte, []int) {
-	return file_workos_index_v1_index_admin_proto_rawDescGZIP(), []int{17}
+	return file_workos_index_v1_index_admin_proto_rawDescGZIP(), []int{19}
 }
 
 func (x *PutArchiveObjectRequest) GetOwnerUserId() string {
@@ -1237,7 +1344,7 @@ type PutArchiveObjectResponse struct {
 
 func (x *PutArchiveObjectResponse) Reset() {
 	*x = PutArchiveObjectResponse{}
-	mi := &file_workos_index_v1_index_admin_proto_msgTypes[18]
+	mi := &file_workos_index_v1_index_admin_proto_msgTypes[20]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1249,7 +1356,7 @@ func (x *PutArchiveObjectResponse) String() string {
 func (*PutArchiveObjectResponse) ProtoMessage() {}
 
 func (x *PutArchiveObjectResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_workos_index_v1_index_admin_proto_msgTypes[18]
+	mi := &file_workos_index_v1_index_admin_proto_msgTypes[20]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1262,7 +1369,7 @@ func (x *PutArchiveObjectResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PutArchiveObjectResponse.ProtoReflect.Descriptor instead.
 func (*PutArchiveObjectResponse) Descriptor() ([]byte, []int) {
-	return file_workos_index_v1_index_admin_proto_rawDescGZIP(), []int{18}
+	return file_workos_index_v1_index_admin_proto_rawDescGZIP(), []int{20}
 }
 
 func (x *PutArchiveObjectResponse) GetObjectId() string {
@@ -1303,7 +1410,7 @@ type GetArchiveObjectRequest struct {
 
 func (x *GetArchiveObjectRequest) Reset() {
 	*x = GetArchiveObjectRequest{}
-	mi := &file_workos_index_v1_index_admin_proto_msgTypes[19]
+	mi := &file_workos_index_v1_index_admin_proto_msgTypes[21]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1315,7 +1422,7 @@ func (x *GetArchiveObjectRequest) String() string {
 func (*GetArchiveObjectRequest) ProtoMessage() {}
 
 func (x *GetArchiveObjectRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_workos_index_v1_index_admin_proto_msgTypes[19]
+	mi := &file_workos_index_v1_index_admin_proto_msgTypes[21]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1328,7 +1435,7 @@ func (x *GetArchiveObjectRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetArchiveObjectRequest.ProtoReflect.Descriptor instead.
 func (*GetArchiveObjectRequest) Descriptor() ([]byte, []int) {
-	return file_workos_index_v1_index_admin_proto_rawDescGZIP(), []int{19}
+	return file_workos_index_v1_index_admin_proto_rawDescGZIP(), []int{21}
 }
 
 func (x *GetArchiveObjectRequest) GetOwnerUserId() string {
@@ -1359,7 +1466,7 @@ type ArchiveObjectMetadata struct {
 
 func (x *ArchiveObjectMetadata) Reset() {
 	*x = ArchiveObjectMetadata{}
-	mi := &file_workos_index_v1_index_admin_proto_msgTypes[20]
+	mi := &file_workos_index_v1_index_admin_proto_msgTypes[22]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1371,7 +1478,7 @@ func (x *ArchiveObjectMetadata) String() string {
 func (*ArchiveObjectMetadata) ProtoMessage() {}
 
 func (x *ArchiveObjectMetadata) ProtoReflect() protoreflect.Message {
-	mi := &file_workos_index_v1_index_admin_proto_msgTypes[20]
+	mi := &file_workos_index_v1_index_admin_proto_msgTypes[22]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1384,7 +1491,7 @@ func (x *ArchiveObjectMetadata) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ArchiveObjectMetadata.ProtoReflect.Descriptor instead.
 func (*ArchiveObjectMetadata) Descriptor() ([]byte, []int) {
-	return file_workos_index_v1_index_admin_proto_rawDescGZIP(), []int{20}
+	return file_workos_index_v1_index_admin_proto_rawDescGZIP(), []int{22}
 }
 
 func (x *ArchiveObjectMetadata) GetObjectId() string {
@@ -1432,7 +1539,7 @@ type GetArchiveObjectResponse struct {
 
 func (x *GetArchiveObjectResponse) Reset() {
 	*x = GetArchiveObjectResponse{}
-	mi := &file_workos_index_v1_index_admin_proto_msgTypes[21]
+	mi := &file_workos_index_v1_index_admin_proto_msgTypes[23]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1444,7 +1551,7 @@ func (x *GetArchiveObjectResponse) String() string {
 func (*GetArchiveObjectResponse) ProtoMessage() {}
 
 func (x *GetArchiveObjectResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_workos_index_v1_index_admin_proto_msgTypes[21]
+	mi := &file_workos_index_v1_index_admin_proto_msgTypes[23]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1457,7 +1564,7 @@ func (x *GetArchiveObjectResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetArchiveObjectResponse.ProtoReflect.Descriptor instead.
 func (*GetArchiveObjectResponse) Descriptor() ([]byte, []int) {
-	return file_workos_index_v1_index_admin_proto_rawDescGZIP(), []int{21}
+	return file_workos_index_v1_index_admin_proto_rawDescGZIP(), []int{23}
 }
 
 func (x *GetArchiveObjectResponse) GetObject() *ArchiveObjectMetadata {
@@ -1485,7 +1592,7 @@ type ListArchiveObjectsRequest struct {
 
 func (x *ListArchiveObjectsRequest) Reset() {
 	*x = ListArchiveObjectsRequest{}
-	mi := &file_workos_index_v1_index_admin_proto_msgTypes[22]
+	mi := &file_workos_index_v1_index_admin_proto_msgTypes[24]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1497,7 +1604,7 @@ func (x *ListArchiveObjectsRequest) String() string {
 func (*ListArchiveObjectsRequest) ProtoMessage() {}
 
 func (x *ListArchiveObjectsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_workos_index_v1_index_admin_proto_msgTypes[22]
+	mi := &file_workos_index_v1_index_admin_proto_msgTypes[24]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1510,7 +1617,7 @@ func (x *ListArchiveObjectsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListArchiveObjectsRequest.ProtoReflect.Descriptor instead.
 func (*ListArchiveObjectsRequest) Descriptor() ([]byte, []int) {
-	return file_workos_index_v1_index_admin_proto_rawDescGZIP(), []int{22}
+	return file_workos_index_v1_index_admin_proto_rawDescGZIP(), []int{24}
 }
 
 func (x *ListArchiveObjectsRequest) GetOwnerUserId() string {
@@ -1536,7 +1643,7 @@ type ListArchiveObjectsResponse struct {
 
 func (x *ListArchiveObjectsResponse) Reset() {
 	*x = ListArchiveObjectsResponse{}
-	mi := &file_workos_index_v1_index_admin_proto_msgTypes[23]
+	mi := &file_workos_index_v1_index_admin_proto_msgTypes[25]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1548,7 +1655,7 @@ func (x *ListArchiveObjectsResponse) String() string {
 func (*ListArchiveObjectsResponse) ProtoMessage() {}
 
 func (x *ListArchiveObjectsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_workos_index_v1_index_admin_proto_msgTypes[23]
+	mi := &file_workos_index_v1_index_admin_proto_msgTypes[25]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1561,7 +1668,7 @@ func (x *ListArchiveObjectsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListArchiveObjectsResponse.ProtoReflect.Descriptor instead.
 func (*ListArchiveObjectsResponse) Descriptor() ([]byte, []int) {
-	return file_workos_index_v1_index_admin_proto_rawDescGZIP(), []int{23}
+	return file_workos_index_v1_index_admin_proto_rawDescGZIP(), []int{25}
 }
 
 func (x *ListArchiveObjectsResponse) GetObjects() []*ArchiveObjectMetadata {
@@ -1579,7 +1686,7 @@ type StartIndexRebuildRequest_AllScope struct {
 
 func (x *StartIndexRebuildRequest_AllScope) Reset() {
 	*x = StartIndexRebuildRequest_AllScope{}
-	mi := &file_workos_index_v1_index_admin_proto_msgTypes[24]
+	mi := &file_workos_index_v1_index_admin_proto_msgTypes[26]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1591,7 +1698,7 @@ func (x *StartIndexRebuildRequest_AllScope) String() string {
 func (*StartIndexRebuildRequest_AllScope) ProtoMessage() {}
 
 func (x *StartIndexRebuildRequest_AllScope) ProtoReflect() protoreflect.Message {
-	mi := &file_workos_index_v1_index_admin_proto_msgTypes[24]
+	mi := &file_workos_index_v1_index_admin_proto_msgTypes[26]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1617,7 +1724,7 @@ type StartIndexRebuildRequest_ProjectScope struct {
 
 func (x *StartIndexRebuildRequest_ProjectScope) Reset() {
 	*x = StartIndexRebuildRequest_ProjectScope{}
-	mi := &file_workos_index_v1_index_admin_proto_msgTypes[25]
+	mi := &file_workos_index_v1_index_admin_proto_msgTypes[27]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1629,7 +1736,7 @@ func (x *StartIndexRebuildRequest_ProjectScope) String() string {
 func (*StartIndexRebuildRequest_ProjectScope) ProtoMessage() {}
 
 func (x *StartIndexRebuildRequest_ProjectScope) ProtoReflect() protoreflect.Message {
-	mi := &file_workos_index_v1_index_admin_proto_msgTypes[25]
+	mi := &file_workos_index_v1_index_admin_proto_msgTypes[27]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1725,7 +1832,7 @@ const file_workos_index_v1_index_admin_proto_rawDesc = "" +
 	"\x1cCancelIndexRebuildJobRequest\x12\x15\n" +
 	"\x06job_id\x18\x01 \x01(\tR\x05jobId\"X\n" +
 	"\x1dCancelIndexRebuildJobResponse\x127\n" +
-	"\x03job\x18\x01 \x01(\v2%.workos.index.v1.IndexAdminRebuildJobR\x03job\"\x8e\x03\n" +
+	"\x03job\x18\x01 \x01(\v2%.workos.index.v1.IndexAdminRebuildJobR\x03job\"\xa2\x03\n" +
 	"\x14IndexWorkspaceSource\x12\x1b\n" +
 	"\tsource_id\x18\x01 \x01(\tR\bsourceId\x12\"\n" +
 	"\rowner_user_id\x18\x02 \x01(\tR\vownerUserId\x12\x1d\n" +
@@ -1740,7 +1847,8 @@ const file_workos_index_v1_index_admin_proto_rawDesc = "" +
 	"\x0elast_synced_at\x18\n" +
 	" \x01(\tR\flastSyncedAt\x12\x1d\n" +
 	"\n" +
-	"created_at\x18\v \x01(\tR\tcreatedAt\"\x80\x01\n" +
+	"created_at\x18\v \x01(\tR\tcreatedAt\x12\x12\n" +
+	"\x04etag\x18\f \x01(\tR\x04etag\"\x80\x01\n" +
 	"\x1eRegisterWorkspaceSourceRequest\x12\"\n" +
 	"\rowner_user_id\x18\x01 \x01(\tR\vownerUserId\x12\x1d\n" +
 	"\n" +
@@ -1758,7 +1866,12 @@ const file_workos_index_v1_index_admin_proto_rawDesc = "" +
 	"\rapplied_count\x18\x02 \x01(\x03R\fappliedCount\x12)\n" +
 	"\x10tombstoned_count\x18\x03 \x01(\x03R\x0ftombstonedCount\x12#\n" +
 	"\rskipped_count\x18\x04 \x01(\x03R\fskippedCount\x12'\n" +
-	"\x0fskipped_reasons\x18\x05 \x03(\tR\x0eskippedReasons\"v\n" +
+	"\x0fskipped_reasons\x18\x05 \x03(\tR\x0eskippedReasons\"^\n" +
+	"\x1aStopWorkspaceSourceRequest\x12\x1b\n" +
+	"\tsource_id\x18\x01 \x01(\tR\bsourceId\x12#\n" +
+	"\rexpected_etag\x18\x02 \x01(\tR\fexpectedEtag\"\\\n" +
+	"\x1bStopWorkspaceSourceResponse\x12=\n" +
+	"\x06source\x18\x01 \x01(\v2%.workos.index.v1.IndexWorkspaceSourceR\x06source\"v\n" +
 	"\x17PutArchiveObjectRequest\x12\"\n" +
 	"\rowner_user_id\x18\x01 \x01(\tR\vownerUserId\x12\x1d\n" +
 	"\n" +
@@ -1789,7 +1902,8 @@ const file_workos_index_v1_index_admin_proto_rawDesc = "" +
 	"\rowner_user_id\x18\x01 \x01(\tR\vownerUserId\x12\x14\n" +
 	"\x05limit\x18\x02 \x01(\x05R\x05limit\"^\n" +
 	"\x1aListArchiveObjectsResponse\x12@\n" +
-	"\aobjects\x18\x01 \x03(\v2&.workos.index.v1.ArchiveObjectMetadataR\aobjects2\x92\t\n" +
+	"\aobjects\x18\x01 \x03(\v2&.workos.index.v1.ArchiveObjectMetadataR\aobjects2\x86\n" +
+	"\n" +
 	"\x11IndexAdminService\x12r\n" +
 	"\x13GetIndexAdminStatus\x12+.workos.index.v1.GetIndexAdminStatusRequest\x1a,.workos.index.v1.GetIndexAdminStatusResponse\"\x00\x12l\n" +
 	"\x11StartIndexRebuild\x12).workos.index.v1.StartIndexRebuildRequest\x1a*.workos.index.v1.StartIndexRebuildResponse\"\x00\x12o\n" +
@@ -1797,7 +1911,8 @@ const file_workos_index_v1_index_admin_proto_rawDesc = "" +
 	"\x15CancelIndexRebuildJob\x12-.workos.index.v1.CancelIndexRebuildJobRequest\x1a..workos.index.v1.CancelIndexRebuildJobResponse\"\x00\x12~\n" +
 	"\x17RegisterWorkspaceSource\x12/.workos.index.v1.RegisterWorkspaceSourceRequest\x1a0.workos.index.v1.RegisterWorkspaceSourceResponse\"\x00\x12u\n" +
 	"\x14ListWorkspaceSources\x12,.workos.index.v1.ListWorkspaceSourcesRequest\x1a-.workos.index.v1.ListWorkspaceSourcesResponse\"\x00\x12r\n" +
-	"\x13SyncWorkspaceSource\x12+.workos.index.v1.SyncWorkspaceSourceRequest\x1a,.workos.index.v1.SyncWorkspaceSourceResponse\"\x00\x12i\n" +
+	"\x13SyncWorkspaceSource\x12+.workos.index.v1.SyncWorkspaceSourceRequest\x1a,.workos.index.v1.SyncWorkspaceSourceResponse\"\x00\x12r\n" +
+	"\x13StopWorkspaceSource\x12+.workos.index.v1.StopWorkspaceSourceRequest\x1a,.workos.index.v1.StopWorkspaceSourceResponse\"\x00\x12i\n" +
 	"\x10PutArchiveObject\x12(.workos.index.v1.PutArchiveObjectRequest\x1a).workos.index.v1.PutArchiveObjectResponse\"\x00\x12i\n" +
 	"\x10GetArchiveObject\x12(.workos.index.v1.GetArchiveObjectRequest\x1a).workos.index.v1.GetArchiveObjectResponse\"\x00\x12o\n" +
 	"\x12ListArchiveObjects\x12*.workos.index.v1.ListArchiveObjectsRequest\x1a+.workos.index.v1.ListArchiveObjectsResponse\"\x00B=Z;github.com/yangtao121/workos/gen/go/workos/index/v1;indexv1b\x06proto3"
@@ -1814,7 +1929,7 @@ func file_workos_index_v1_index_admin_proto_rawDescGZIP() []byte {
 	return file_workos_index_v1_index_admin_proto_rawDescData
 }
 
-var file_workos_index_v1_index_admin_proto_msgTypes = make([]protoimpl.MessageInfo, 26)
+var file_workos_index_v1_index_admin_proto_msgTypes = make([]protoimpl.MessageInfo, 28)
 var file_workos_index_v1_index_admin_proto_goTypes = []any{
 	(*IndexAdminGeneration)(nil),                  // 0: workos.index.v1.IndexAdminGeneration
 	(*IndexAdminRebuildJob)(nil),                  // 1: workos.index.v1.IndexAdminRebuildJob
@@ -1833,57 +1948,62 @@ var file_workos_index_v1_index_admin_proto_goTypes = []any{
 	(*ListWorkspaceSourcesResponse)(nil),          // 14: workos.index.v1.ListWorkspaceSourcesResponse
 	(*SyncWorkspaceSourceRequest)(nil),            // 15: workos.index.v1.SyncWorkspaceSourceRequest
 	(*SyncWorkspaceSourceResponse)(nil),           // 16: workos.index.v1.SyncWorkspaceSourceResponse
-	(*PutArchiveObjectRequest)(nil),               // 17: workos.index.v1.PutArchiveObjectRequest
-	(*PutArchiveObjectResponse)(nil),              // 18: workos.index.v1.PutArchiveObjectResponse
-	(*GetArchiveObjectRequest)(nil),               // 19: workos.index.v1.GetArchiveObjectRequest
-	(*ArchiveObjectMetadata)(nil),                 // 20: workos.index.v1.ArchiveObjectMetadata
-	(*GetArchiveObjectResponse)(nil),              // 21: workos.index.v1.GetArchiveObjectResponse
-	(*ListArchiveObjectsRequest)(nil),             // 22: workos.index.v1.ListArchiveObjectsRequest
-	(*ListArchiveObjectsResponse)(nil),            // 23: workos.index.v1.ListArchiveObjectsResponse
-	(*StartIndexRebuildRequest_AllScope)(nil),     // 24: workos.index.v1.StartIndexRebuildRequest.AllScope
-	(*StartIndexRebuildRequest_ProjectScope)(nil), // 25: workos.index.v1.StartIndexRebuildRequest.ProjectScope
-	(*timestamppb.Timestamp)(nil),                 // 26: google.protobuf.Timestamp
+	(*StopWorkspaceSourceRequest)(nil),            // 17: workos.index.v1.StopWorkspaceSourceRequest
+	(*StopWorkspaceSourceResponse)(nil),           // 18: workos.index.v1.StopWorkspaceSourceResponse
+	(*PutArchiveObjectRequest)(nil),               // 19: workos.index.v1.PutArchiveObjectRequest
+	(*PutArchiveObjectResponse)(nil),              // 20: workos.index.v1.PutArchiveObjectResponse
+	(*GetArchiveObjectRequest)(nil),               // 21: workos.index.v1.GetArchiveObjectRequest
+	(*ArchiveObjectMetadata)(nil),                 // 22: workos.index.v1.ArchiveObjectMetadata
+	(*GetArchiveObjectResponse)(nil),              // 23: workos.index.v1.GetArchiveObjectResponse
+	(*ListArchiveObjectsRequest)(nil),             // 24: workos.index.v1.ListArchiveObjectsRequest
+	(*ListArchiveObjectsResponse)(nil),            // 25: workos.index.v1.ListArchiveObjectsResponse
+	(*StartIndexRebuildRequest_AllScope)(nil),     // 26: workos.index.v1.StartIndexRebuildRequest.AllScope
+	(*StartIndexRebuildRequest_ProjectScope)(nil), // 27: workos.index.v1.StartIndexRebuildRequest.ProjectScope
+	(*timestamppb.Timestamp)(nil),                 // 28: google.protobuf.Timestamp
 }
 var file_workos_index_v1_index_admin_proto_depIdxs = []int32{
-	26, // 0: workos.index.v1.IndexAdminRebuildJob.created_at:type_name -> google.protobuf.Timestamp
-	26, // 1: workos.index.v1.IndexAdminRebuildJob.updated_at:type_name -> google.protobuf.Timestamp
+	28, // 0: workos.index.v1.IndexAdminRebuildJob.created_at:type_name -> google.protobuf.Timestamp
+	28, // 1: workos.index.v1.IndexAdminRebuildJob.updated_at:type_name -> google.protobuf.Timestamp
 	0,  // 2: workos.index.v1.GetIndexAdminStatusResponse.active_generation:type_name -> workos.index.v1.IndexAdminGeneration
 	1,  // 3: workos.index.v1.GetIndexAdminStatusResponse.active_rebuild:type_name -> workos.index.v1.IndexAdminRebuildJob
-	24, // 4: workos.index.v1.StartIndexRebuildRequest.all:type_name -> workos.index.v1.StartIndexRebuildRequest.AllScope
-	25, // 5: workos.index.v1.StartIndexRebuildRequest.project:type_name -> workos.index.v1.StartIndexRebuildRequest.ProjectScope
+	26, // 4: workos.index.v1.StartIndexRebuildRequest.all:type_name -> workos.index.v1.StartIndexRebuildRequest.AllScope
+	27, // 5: workos.index.v1.StartIndexRebuildRequest.project:type_name -> workos.index.v1.StartIndexRebuildRequest.ProjectScope
 	1,  // 6: workos.index.v1.StartIndexRebuildResponse.job:type_name -> workos.index.v1.IndexAdminRebuildJob
 	1,  // 7: workos.index.v1.GetIndexRebuildJobResponse.job:type_name -> workos.index.v1.IndexAdminRebuildJob
 	1,  // 8: workos.index.v1.CancelIndexRebuildJobResponse.job:type_name -> workos.index.v1.IndexAdminRebuildJob
 	10, // 9: workos.index.v1.RegisterWorkspaceSourceResponse.source:type_name -> workos.index.v1.IndexWorkspaceSource
 	10, // 10: workos.index.v1.ListWorkspaceSourcesResponse.sources:type_name -> workos.index.v1.IndexWorkspaceSource
 	10, // 11: workos.index.v1.SyncWorkspaceSourceResponse.source:type_name -> workos.index.v1.IndexWorkspaceSource
-	20, // 12: workos.index.v1.GetArchiveObjectResponse.object:type_name -> workos.index.v1.ArchiveObjectMetadata
-	20, // 13: workos.index.v1.ListArchiveObjectsResponse.objects:type_name -> workos.index.v1.ArchiveObjectMetadata
-	2,  // 14: workos.index.v1.IndexAdminService.GetIndexAdminStatus:input_type -> workos.index.v1.GetIndexAdminStatusRequest
-	4,  // 15: workos.index.v1.IndexAdminService.StartIndexRebuild:input_type -> workos.index.v1.StartIndexRebuildRequest
-	6,  // 16: workos.index.v1.IndexAdminService.GetIndexRebuildJob:input_type -> workos.index.v1.GetIndexRebuildJobRequest
-	8,  // 17: workos.index.v1.IndexAdminService.CancelIndexRebuildJob:input_type -> workos.index.v1.CancelIndexRebuildJobRequest
-	11, // 18: workos.index.v1.IndexAdminService.RegisterWorkspaceSource:input_type -> workos.index.v1.RegisterWorkspaceSourceRequest
-	13, // 19: workos.index.v1.IndexAdminService.ListWorkspaceSources:input_type -> workos.index.v1.ListWorkspaceSourcesRequest
-	15, // 20: workos.index.v1.IndexAdminService.SyncWorkspaceSource:input_type -> workos.index.v1.SyncWorkspaceSourceRequest
-	17, // 21: workos.index.v1.IndexAdminService.PutArchiveObject:input_type -> workos.index.v1.PutArchiveObjectRequest
-	19, // 22: workos.index.v1.IndexAdminService.GetArchiveObject:input_type -> workos.index.v1.GetArchiveObjectRequest
-	22, // 23: workos.index.v1.IndexAdminService.ListArchiveObjects:input_type -> workos.index.v1.ListArchiveObjectsRequest
-	3,  // 24: workos.index.v1.IndexAdminService.GetIndexAdminStatus:output_type -> workos.index.v1.GetIndexAdminStatusResponse
-	5,  // 25: workos.index.v1.IndexAdminService.StartIndexRebuild:output_type -> workos.index.v1.StartIndexRebuildResponse
-	7,  // 26: workos.index.v1.IndexAdminService.GetIndexRebuildJob:output_type -> workos.index.v1.GetIndexRebuildJobResponse
-	9,  // 27: workos.index.v1.IndexAdminService.CancelIndexRebuildJob:output_type -> workos.index.v1.CancelIndexRebuildJobResponse
-	12, // 28: workos.index.v1.IndexAdminService.RegisterWorkspaceSource:output_type -> workos.index.v1.RegisterWorkspaceSourceResponse
-	14, // 29: workos.index.v1.IndexAdminService.ListWorkspaceSources:output_type -> workos.index.v1.ListWorkspaceSourcesResponse
-	16, // 30: workos.index.v1.IndexAdminService.SyncWorkspaceSource:output_type -> workos.index.v1.SyncWorkspaceSourceResponse
-	18, // 31: workos.index.v1.IndexAdminService.PutArchiveObject:output_type -> workos.index.v1.PutArchiveObjectResponse
-	21, // 32: workos.index.v1.IndexAdminService.GetArchiveObject:output_type -> workos.index.v1.GetArchiveObjectResponse
-	23, // 33: workos.index.v1.IndexAdminService.ListArchiveObjects:output_type -> workos.index.v1.ListArchiveObjectsResponse
-	24, // [24:34] is the sub-list for method output_type
-	14, // [14:24] is the sub-list for method input_type
-	14, // [14:14] is the sub-list for extension type_name
-	14, // [14:14] is the sub-list for extension extendee
-	0,  // [0:14] is the sub-list for field type_name
+	10, // 12: workos.index.v1.StopWorkspaceSourceResponse.source:type_name -> workos.index.v1.IndexWorkspaceSource
+	22, // 13: workos.index.v1.GetArchiveObjectResponse.object:type_name -> workos.index.v1.ArchiveObjectMetadata
+	22, // 14: workos.index.v1.ListArchiveObjectsResponse.objects:type_name -> workos.index.v1.ArchiveObjectMetadata
+	2,  // 15: workos.index.v1.IndexAdminService.GetIndexAdminStatus:input_type -> workos.index.v1.GetIndexAdminStatusRequest
+	4,  // 16: workos.index.v1.IndexAdminService.StartIndexRebuild:input_type -> workos.index.v1.StartIndexRebuildRequest
+	6,  // 17: workos.index.v1.IndexAdminService.GetIndexRebuildJob:input_type -> workos.index.v1.GetIndexRebuildJobRequest
+	8,  // 18: workos.index.v1.IndexAdminService.CancelIndexRebuildJob:input_type -> workos.index.v1.CancelIndexRebuildJobRequest
+	11, // 19: workos.index.v1.IndexAdminService.RegisterWorkspaceSource:input_type -> workos.index.v1.RegisterWorkspaceSourceRequest
+	13, // 20: workos.index.v1.IndexAdminService.ListWorkspaceSources:input_type -> workos.index.v1.ListWorkspaceSourcesRequest
+	15, // 21: workos.index.v1.IndexAdminService.SyncWorkspaceSource:input_type -> workos.index.v1.SyncWorkspaceSourceRequest
+	17, // 22: workos.index.v1.IndexAdminService.StopWorkspaceSource:input_type -> workos.index.v1.StopWorkspaceSourceRequest
+	19, // 23: workos.index.v1.IndexAdminService.PutArchiveObject:input_type -> workos.index.v1.PutArchiveObjectRequest
+	21, // 24: workos.index.v1.IndexAdminService.GetArchiveObject:input_type -> workos.index.v1.GetArchiveObjectRequest
+	24, // 25: workos.index.v1.IndexAdminService.ListArchiveObjects:input_type -> workos.index.v1.ListArchiveObjectsRequest
+	3,  // 26: workos.index.v1.IndexAdminService.GetIndexAdminStatus:output_type -> workos.index.v1.GetIndexAdminStatusResponse
+	5,  // 27: workos.index.v1.IndexAdminService.StartIndexRebuild:output_type -> workos.index.v1.StartIndexRebuildResponse
+	7,  // 28: workos.index.v1.IndexAdminService.GetIndexRebuildJob:output_type -> workos.index.v1.GetIndexRebuildJobResponse
+	9,  // 29: workos.index.v1.IndexAdminService.CancelIndexRebuildJob:output_type -> workos.index.v1.CancelIndexRebuildJobResponse
+	12, // 30: workos.index.v1.IndexAdminService.RegisterWorkspaceSource:output_type -> workos.index.v1.RegisterWorkspaceSourceResponse
+	14, // 31: workos.index.v1.IndexAdminService.ListWorkspaceSources:output_type -> workos.index.v1.ListWorkspaceSourcesResponse
+	16, // 32: workos.index.v1.IndexAdminService.SyncWorkspaceSource:output_type -> workos.index.v1.SyncWorkspaceSourceResponse
+	18, // 33: workos.index.v1.IndexAdminService.StopWorkspaceSource:output_type -> workos.index.v1.StopWorkspaceSourceResponse
+	20, // 34: workos.index.v1.IndexAdminService.PutArchiveObject:output_type -> workos.index.v1.PutArchiveObjectResponse
+	23, // 35: workos.index.v1.IndexAdminService.GetArchiveObject:output_type -> workos.index.v1.GetArchiveObjectResponse
+	25, // 36: workos.index.v1.IndexAdminService.ListArchiveObjects:output_type -> workos.index.v1.ListArchiveObjectsResponse
+	26, // [26:37] is the sub-list for method output_type
+	15, // [15:26] is the sub-list for method input_type
+	15, // [15:15] is the sub-list for extension type_name
+	15, // [15:15] is the sub-list for extension extendee
+	0,  // [0:15] is the sub-list for field type_name
 }
 
 func init() { file_workos_index_v1_index_admin_proto_init() }
@@ -1901,7 +2021,7 @@ func file_workos_index_v1_index_admin_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_workos_index_v1_index_admin_proto_rawDesc), len(file_workos_index_v1_index_admin_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   26,
+			NumMessages:   28,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

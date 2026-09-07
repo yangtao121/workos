@@ -590,3 +590,19 @@ Golden/crash/destroy-restore 与 workspace 事务/归档竞争 PostgreSQL/race P
 最后 sync/promotion 重叠测试 PASS：真实 sync 持有共享 generation 锁时 promotion 等待并
 可取消，随后重试包含新文件。`make generate` 幂等 PASS（129 个生成文件逐项 SHA-256
 一致），完整 `make check` PASS。无 UI 变化；接下来补 operator 停用与浏览器实际链路。
+
+重建全仓检查补充：首轮最后 status check 进程退出 143，未以日志末尾推断成功；
+完整重跑 `/tmp/workos-workspace-rebuild-check-final.log` 退出 0，`make check` 确认 PASS。
+
+### R4 工作区停用（active，2026-09-07）
+
+重建检查点 19eeee1。新增私有 admin StopWorkspaceSource 与 workosctl stop；返回 source etag，
+停用使用 etag 防止撤销已重新绑定的目录，并在同一事务 tombstone workspace 搜索快照。
+验收：停止后旧引用不可读/搜索为空，重复使用旧 etag 拒绝、在途 sync 冲突、重绑恢复；
+Gateway 不暴露 private RPC。用于闭合 operator 生命周期及真实浏览器门禁 fixture 清理。
+
+停用阶段：Indexer/Gateway/CLI race PASS，`TestWorkspaceStop` 实际 PostgreSQL + Connect/race
+PASS。覆盖最后状态更新失败回滚、旧文档不可读/不可搜、停止后 sync 拒绝、旧在途 pass 冲突、
+旧 etag Aborted、当前 stopped etag 重复操作、重绑恢复。Gateway 私有 route 拒绝 PASS。
+CLI 文本输出增加 etag，不改变桌面可见 UI；`make generate` 与完整 `make check`
+PASS，退出码 0。下一步使用真实 CLI/admin socket/Gateway/Chromium 串起工作区门禁。

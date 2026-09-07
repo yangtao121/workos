@@ -197,6 +197,7 @@ type WorkspaceStore interface {
 	GetWorkspaceSource(ctx context.Context, id string) (WorkspaceSource, error)
 	ListWorkspaceSources(ctx context.Context) ([]WorkspaceSource, error)
 	SetWorkspaceSourceStatus(ctx context.Context, source WorkspaceSource, status, degradedReason string, now time.Time) (WorkspaceSource, error)
+	StopWorkspaceSource(ctx context.Context, source WorkspaceSource, now time.Time) (WorkspaceSource, error)
 	ConvergeWorkspacePass(ctx context.Context, source WorkspaceSource, files []MountFile, skipped int64, passPublication func() string, now time.Time) (updated WorkspaceSource, applied, tombstoned int64, err error)
 }
 

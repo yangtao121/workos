@@ -86,9 +86,11 @@ type Querier interface {
 	// document count (single-owner local scale, ≤2000 by ADR-0017 §3).
 	SearchProjectDocumentsHybrid(ctx context.Context, arg SearchProjectDocumentsHybridParams) ([]SearchProjectDocumentsHybridRow, error)
 	SetWorkspaceSourceStatus(ctx context.Context, arg SetWorkspaceSourceStatusParams) (WorkosIndexWorkspaceSource, error)
+	StopWorkspaceSource(ctx context.Context, arg StopWorkspaceSourceParams) (WorkosIndexWorkspaceSource, error)
 	TombstoneGenerationDocuments(ctx context.Context, arg TombstoneGenerationDocumentsParams) (int64, error)
 	TombstoneProjectDocuments(ctx context.Context, arg TombstoneProjectDocumentsParams) (int64, error)
 	TombstoneWorkspaceDocument(ctx context.Context, arg TombstoneWorkspaceDocumentParams) (int64, error)
+	TombstoneWorkspaceSourceDocuments(ctx context.Context, arg TombstoneWorkspaceSourceDocumentsParams) (int64, error)
 	UpdateGenerationStatus(ctx context.Context, arg UpdateGenerationStatusParams) error
 	UpdateIndexJobSource(ctx context.Context, arg UpdateIndexJobSourceParams) error
 	UpdateIndexJobState(ctx context.Context, arg UpdateIndexJobStateParams) error

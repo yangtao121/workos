@@ -544,3 +544,18 @@ SELECT sqlc.arg(target_generation)::uuid, d.owner_user_id, d.project_id, d.sourc
 FROM workos_index.documents d
 WHERE d.projection_generation = sqlc.arg(source_generation)::uuid
   AND d.source_type = 'workspace.file.v1' AND d.tombstoned_at IS NULL;
+
+-- name: TombstoneWorkspaceSourceDocuments :execrows
+UPDATE workos_index.documents d
+SET tombstoned_at = GREATEST(sqlc.arg(now)::timestamptz, d.indexed_at), updated_at = sqlc.arg(now)
+WHERE d.owner_user_id = sqlc.arg(owner_user_id)::uuid AND d.project_id = sqlc.arg(project_id)::uuid
+  AND d.source_type = 'workspace.file.v1' AND d.tombstoned_at IS NULL
+  AND d.projection_generation IN (SELECT g.id FROM workos_index.projection_generations g WHERE g.status IN ('active', 'building'));
+
+-- name: StopWorkspaceSource :one
+UPDATE workos_index.workspace_sources
+SET status = 'stopped', degraded_reason = '', indexed_count = 0,
+    tombstoned_count = sqlc.arg(tombstoned_count),
+    updated_at = GREATEST(sqlc.arg(updated_at)::timestamptz, updated_at + interval '1 microsecond')
+WHERE id = sqlc.arg(id)::uuid
+RETURNING *;

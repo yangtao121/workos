@@ -138,7 +138,7 @@ func runIndex(ctx context.Context, cfg config.Config, args []string) error {
 	}
 }
 
-const indexUsage = "usage: workosctl index status [--json] | index rebuild --all|--project --idempotency-key <key> | index job get --job <id> [--json] | index job cancel --job <id> | index workspace register --owner <id> --project <id> --root <dir> | index workspace list [--json] | index workspace sync --source <id> [--json]"
+const indexUsage = "usage: workosctl index status [--json] | index rebuild --all|--project --idempotency-key <key> | index job get --job <id> [--json] | index job cancel --job <id> | index workspace register --owner <id> --project <id> --root <dir> | index workspace list [--json] | index workspace sync --source <id> [--json] | index workspace stop --source <id> --etag <etag> [--json]"
 
 // runIndexWorkspace executes `workosctl index workspace ...`: the
 // owner-bound local mount lifecycle over the local admin socket.
@@ -183,6 +183,26 @@ func runIndexWorkspace(ctx context.Context, client indexv1connect.IndexAdminServ
 			printWorkspaceSource(source)
 		}
 		return nil
+	case "stop":
+		fs := flag.NewFlagSet("index workspace stop", flag.ContinueOnError)
+		source := fs.String("source", "", "workspace source UUID")
+		etag := fs.String("etag", "", "current source etag from workspace list")
+		jsonOut := fs.Bool("json", false, "emit machine-readable JSON")
+		if err := fs.Parse(args[1:]); err != nil {
+			return err
+		}
+		if *source == "" || *etag == "" || fs.NArg() != 0 {
+			return errors.New(indexUsage)
+		}
+		response, err := client.StopWorkspaceSource(ctx, connect.NewRequest(&indexv1.StopWorkspaceSourceRequest{SourceId: *source, ExpectedEtag: *etag}))
+		if err != nil {
+			return err
+		}
+		if *jsonOut {
+			return json.NewEncoder(os.Stdout).Encode(response.Msg)
+		}
+		printWorkspaceSource(response.Msg.GetSource())
+		return nil
 	case "sync":
 		fs := flag.NewFlagSet("index workspace sync", flag.ContinueOnError)
 		jsonOut := fs.Bool("json", false, "emit machine-readable JSON")
@@ -214,6 +234,7 @@ func printWorkspaceSource(source *indexv1.IndexWorkspaceSource) {
 	fmt.Fprintf(out, "source: %s\n", source.GetSourceId())
 	fmt.Fprintf(out, "owner: %s project: %s\n", source.GetOwnerUserId(), source.GetProjectId())
 	fmt.Fprintf(out, "root: %s status: %s\n", source.GetRootPath(), source.GetStatus())
+	fmt.Fprintf(out, "etag: %s\n", source.GetEtag())
 	if strings.TrimSpace(source.GetDegradedReason()) != "" {
 		fmt.Fprintf(out, "degraded reason: %s\n", source.GetDegradedReason())
 	}

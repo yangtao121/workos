@@ -91,3 +91,12 @@ workspace 文件源与通用 archive 的最小实现。
   promotion 的显式预算，后续大规模实现需要分页 checkpoint，不能暗中截断。
 - indexer schema 灾难删除会失去 operator 挂载登记；review 可由 Core 重建，workspace
   需要重新绑定并 sync。普通重建保留 workspace 登记、degraded 状态和已索引快照。
+
+## 2026-09-07 Operator 停用
+
+- IndexWorkspaceSource 提供 etag；私有 StopWorkspaceSource 和
+  `workosctl index workspace stop --source <id> --etag <etag>` 操作精确绑定版本。
+- 源行锁与版本检查保护重绑/并发 sync，旧 etag 返回 Aborted。停用状态和所有 writable
+  generation 的 workspace tombstone 在同一事务提交；失败不撤下已索引文档。
+- 停用后 sync 拒绝，旧 snapshot ReadDocument 返回 NotFound；operator 重新 register + sync
+  可恢复。当前 stopped etag 可重复停用，已消费的旧 etag 不复用。Gateway 不公开此 RPC。

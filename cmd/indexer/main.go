@@ -275,6 +275,10 @@ func (a adminServiceSurface) SyncWorkspaceSource(ctx context.Context, sourceID s
 	return a.workspaces.Sync(ctx, sourceID)
 }
 
+func (a adminServiceSurface) StopWorkspaceSource(ctx context.Context, sourceID, expectedETag string) (indexerports.WorkspaceSource, error) {
+	return a.workspaces.Stop(ctx, sourceID, expectedETag)
+}
+
 func (a adminServiceSurface) PutArchiveObject(ctx context.Context, ownerUserID, mediaType string, content []byte) (indexerapp.ArchivePutResult, error) {
 	return a.archive.PutResult(ctx, ownerUserID, mediaType, content)
 }

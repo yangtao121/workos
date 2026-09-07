@@ -32,6 +32,7 @@ type AdminService interface {
 	ListWorkspaceSources(ctx context.Context) ([]ports.WorkspaceSource, error)
 	// SyncWorkspaceSource runs one bounded ingestion pass.
 	SyncWorkspaceSource(ctx context.Context, sourceID string) (indexerapp.SyncResult, error)
+	StopWorkspaceSource(ctx context.Context, sourceID, expectedETag string) (ports.WorkspaceSource, error)
 	// PutArchiveObject stores one bounded content-addressed object.
 	PutArchiveObject(ctx context.Context, ownerUserID, mediaType string, content []byte) (indexerapp.ArchivePutResult, error)
 	// GetArchiveObject reads one object's metadata and bytes.
@@ -193,6 +194,14 @@ func (h *AdminHandler) SyncWorkspaceSource(ctx context.Context, req *connect.Req
 	}), nil
 }
 
+func (h *AdminHandler) StopWorkspaceSource(ctx context.Context, req *connect.Request[indexv1.StopWorkspaceSourceRequest]) (*connect.Response[indexv1.StopWorkspaceSourceResponse], error) {
+	source, err := h.service.StopWorkspaceSource(ctx, req.Msg.GetSourceId(), req.Msg.GetExpectedEtag())
+	if err != nil {
+		return nil, mapAdminError(err)
+	}
+	return connect.NewResponse(&indexv1.StopWorkspaceSourceResponse{Source: workspaceSourceProto(source)}), nil
+}
+
 func (h *AdminHandler) PutArchiveObject(ctx context.Context, req *connect.Request[indexv1.PutArchiveObjectRequest]) (*connect.Response[indexv1.PutArchiveObjectResponse], error) {
 	result, err := h.service.PutArchiveObject(ctx, req.Msg.GetOwnerUserId(), req.Msg.GetMediaType(), req.Msg.GetContent())
 	if err != nil {
@@ -242,6 +251,7 @@ func (h *AdminHandler) ListArchiveObjects(ctx context.Context, req *connect.Requ
 func workspaceSourceProto(source ports.WorkspaceSource) *indexv1.IndexWorkspaceSource {
 	return &indexv1.IndexWorkspaceSource{
 		SourceId: source.ID, OwnerUserId: source.OwnerUserID, ProjectId: source.ProjectID,
+		Etag:     indexerdomain.WorkspaceETag(source.ID, source.UpdatedAt),
 		RootPath: source.RootPath, Status: source.Status, DegradedReason: source.DegradedReason,
 		IndexedCount: source.IndexedCount, SkippedCount: source.SkippedCount, TombstonedCount: source.TombstonedCount,
 		LastSyncedAt: formatMicros(source.LastSyncedAt), CreatedAt: formatMicros(source.CreatedAt),

@@ -115,6 +115,8 @@ message IndexWorkspaceSource {
   // UTC RFC 3339 microseconds; empty before the first sync.
   string last_synced_at = 10;
   string created_at = 11;
+  // Opaque source version; required when stopping this binding.
+  string etag = 12;
 }
 
 message RegisterWorkspaceSourceRequest {
@@ -144,6 +146,17 @@ message SyncWorkspaceSourceResponse {
   int64 skipped_count = 4;
   // Sanitized skip categories observed this pass (bounded).
   repeated string skipped_reasons = 5;
+}
+
+// Local operator stop removes this binding's indexed workspace snapshots.
+// A stale etag is Aborted and has no effect on a newer binding.
+message StopWorkspaceSourceRequest {
+  string source_id = 1;
+  string expected_etag = 2;
+}
+
+message StopWorkspaceSourceResponse {
+  IndexWorkspaceSource source = 1;
 }
 
 message PutArchiveObjectRequest {
@@ -199,6 +212,7 @@ service IndexAdminService {
   rpc RegisterWorkspaceSource(RegisterWorkspaceSourceRequest) returns (RegisterWorkspaceSourceResponse) {}
   rpc ListWorkspaceSources(ListWorkspaceSourcesRequest) returns (ListWorkspaceSourcesResponse) {}
   rpc SyncWorkspaceSource(SyncWorkspaceSourceRequest) returns (SyncWorkspaceSourceResponse) {}
+  rpc StopWorkspaceSource(StopWorkspaceSourceRequest) returns (StopWorkspaceSourceResponse) {}
   // Bounded generic archive (ADR-0017 §5): content-addressed object facts.
   // Objects never enter the search projection.
   rpc PutArchiveObject(PutArchiveObjectRequest) returns (PutArchiveObjectResponse) {}
