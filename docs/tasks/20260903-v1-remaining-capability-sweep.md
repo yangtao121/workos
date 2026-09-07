@@ -573,3 +573,20 @@ Indexer 事务；源更新时间 CAS 拒绝旧扫描和迟到的 degraded 状态
 既有 review rebuild golden/crash/destroy-restore PASS。`make generate`、完整 `make check` PASS。
 下一步补 workspace 与 rebuild 的组合：当前 Core authority snapshot 未携带 workspace，
 仅 review 的既有门禁不能证明重建保留文件。无 UI 变化；main 尚未合并。
+
+### R4 重建保留工作区（active，2026-09-07）
+
+事务检查点 737412d。先复现仅 Core review snapshot 的重建会丢失已有 workspace 搜索结果。
+重建 review authority 单独验证；promotion 持有 active generation 排他锁时，从旧 active
+复制当前已索引的 workspace 集合，与切换一起提交。复用可靠扫描结果，不在 promotion
+重新读取文件；文件刷新由 workspace sync 负责。复制限定 2000 文档/64 MiB，超限失败并保留
+原 active；失败重试、promotion 后响应丢失重放、并发 sync 和已删除/归档文件均需验证。
+
+重建阶段 baseline：`TestWorkspaceSurvivesRebuild` 在 737412d 明确失败（rebuild lost indexed
+workspace document）。修复后 PASS；期间修改/删除、target 旧内容重取、copy 触发器失败
+保持旧 active/target、每步重建 executor、成功后新增文件再重放 promotion 均 PASS。
+2001 文档与 64 MiB 超界均显式 workspace-copy-limit 且原 active 不变；既有 review rebuild
+Golden/crash/destroy-restore 与 workspace 事务/归档竞争 PostgreSQL/race PASS。
+最后 sync/promotion 重叠测试 PASS：真实 sync 持有共享 generation 锁时 promotion 等待并
+可取消，随后重试包含新文件。`make generate` 幂等 PASS（129 个生成文件逐项 SHA-256
+一致），完整 `make check` PASS。无 UI 变化；接下来补 operator 停用与浏览器实际链路。

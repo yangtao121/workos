@@ -359,10 +359,11 @@ WHERE projection_generation = sqlc.arg(generation_id)
 ORDER BY source_created_at, source_id
 LIMIT sqlc.arg(page_limit);
 
--- name: WalkGenerationDocumentsAfter :many
+-- name: WalkReviewGenerationDocumentsAfter :many
 SELECT source_id, source_digest, artifact_type, source_created_at, tombstoned_at
 FROM workos_index.documents
 WHERE projection_generation = sqlc.arg(generation_id)
+  AND source_type = 'artifact.review.v1'
   AND (source_created_at, source_id) > (sqlc.arg(cursor_created_at)::timestamptz, sqlc.arg(cursor_source_id)::uuid)
 ORDER BY source_created_at, source_id
 LIMIT sqlc.arg(page_limit);
@@ -511,3 +512,35 @@ WHERE d.projection_generation = (SELECT generation_id FROM workos_index.active_g
   AND d.owner_user_id = sqlc.arg(owner_user_id) AND d.project_id = sqlc.arg(project_id)
   AND d.source_type = sqlc.arg(source_type) AND d.source_id = sqlc.arg(source_id)
   AND d.source_digest = sqlc.arg(digest) AND d.tombstoned_at IS NULL;
+
+-- name: CountReviewGenerationDocuments :one
+SELECT count(*) FROM workos_index.documents
+WHERE projection_generation = sqlc.arg(generation_id)
+  AND source_type = 'artifact.review.v1' AND tombstoned_at IS NULL;
+
+-- name: WorkspaceGenerationBudget :one
+SELECT count(*) AS documents, COALESCE(sum(bytes), 0)::bigint AS byte_count
+FROM (
+  SELECT octet_length(content) AS bytes FROM workos_index.documents
+  WHERE projection_generation = sqlc.arg(generation_id)
+    AND source_type = 'workspace.file.v1'
+    AND (NOT sqlc.arg(live_only)::boolean OR tombstoned_at IS NULL)
+  LIMIT sqlc.arg(row_limit)
+) AS bounded;
+
+-- name: ClearGenerationWorkspaceDocuments :exec
+DELETE FROM workos_index.documents
+WHERE projection_generation = sqlc.arg(generation_id) AND source_type = 'workspace.file.v1';
+
+-- name: CopyGenerationWorkspaceDocuments :execrows
+INSERT INTO workos_index.documents (
+  projection_generation, owner_user_id, project_id, source_type, source_id, source_digest,
+  artifact_type, title, content, source_created_at, last_publication_id, source_operation,
+  indexed_at, tombstoned_at, updated_at, embedding
+)
+SELECT sqlc.arg(target_generation)::uuid, d.owner_user_id, d.project_id, d.source_type, d.source_id, d.source_digest,
+  d.artifact_type, d.title, d.content, d.source_created_at, d.last_publication_id, d.source_operation,
+  d.indexed_at, d.tombstoned_at, d.updated_at, d.embedding
+FROM workos_index.documents d
+WHERE d.projection_generation = sqlc.arg(source_generation)::uuid
+  AND d.source_type = 'workspace.file.v1' AND d.tombstoned_at IS NULL;

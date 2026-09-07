@@ -79,3 +79,15 @@ workspace 文件源与通用 archive 的最小实现。
 - 活跃 generation 指针的共享锁与 promotion 互斥；同 project 的 live upsert/archive
   使用同一事务 advisory lock，避免 archive 之后被在途写入恢复。
 - 以上不宣称 filesystem snapshot。Rebuild 对 workspace 的完整复制/验证仍需组合门禁审查。
+
+## 2026-09-07 混合来源重建修正
+
+- Core authority 只验证 review-artifact 集合；workspace 不伪装成 Core artifact。
+- promotion 锁住 active generation 后，以旧 active 中最后一次成功 sync 的 workspace
+  集合替换 target 中的 workspace，再与 generation 切换一起提交。期间完整 sync 被共享锁
+  正确排序；删除与归档文件不会从旧 target 恢复。重建不表示重新读取文件系统。
+- promotion 复制最多 2000 个文件、64 MiB 文本；旧 active 的 live 集合和 target 的 workspace
+  集合均预检，超限将 job 标记 workspace-copy-limit 并保留原 active。该限制是本地规模
+  promotion 的显式预算，后续大规模实现需要分页 checkpoint，不能暗中截断。
+- indexer schema 灾难删除会失去 operator 挂载登记；review 可由 Core 重建，workspace
+  需要重新绑定并 sync。普通重建保留 workspace 登记、degraded 状态和已索引快照。

@@ -281,18 +281,18 @@ func (s *RebuildStore) ApplySnapshotSource(ctx context.Context, effect indexerap
 // ValidateGeneration compares the target generation's document set against
 // the authoritative digest map inside one ordered database walk.
 func (s *RebuildStore) ValidateGeneration(ctx context.Context, generation string, authoritative map[string]string) (bool, error) {
-	counts, err := s.queries.CountGenerationDocs(ctx, generation)
+	count, err := s.queries.CountReviewGenerationDocuments(ctx, generation)
 	if err != nil {
 		return false, storeError("count generation documents", err)
 	}
-	if counts.Documents != int64(len(authoritative)) {
+	if count != int64(len(authoritative)) {
 		return false, nil
 	}
 	cursor := time.Time{}
 	cursorID := uuid.Nil.String()
 	seen := 0
 	for {
-		rows, err := s.queries.WalkGenerationDocumentsAfter(ctx, indexerdb.WalkGenerationDocumentsAfterParams{
+		rows, err := s.queries.WalkReviewGenerationDocumentsAfter(ctx, indexerdb.WalkReviewGenerationDocumentsAfterParams{
 			GenerationID:    generation,
 			CursorCreatedAt: cursor,
 			CursorSourceID:  cursorID,
@@ -357,10 +357,36 @@ func (s *RebuildStore) CompletePromotion(ctx context.Context, jobID, target, exp
 	if current != expectCurrent {
 		return false, nil
 	}
-	if current != target {
-		if _, err := tx.Exec(ctx, `UPDATE workos_index.projection_generations SET status = 'retired', retired_at = $2 WHERE id = $1::uuid AND status = 'active'`, current, now); err != nil {
-			return false, storeError("retire active generation", err)
+	if current == target {
+		return false, errCorruptProjection
+	}
+	queries := s.queries.WithTx(tx)
+	// The active-generation lock also excludes workspace sync transactions.
+	// Copy their latest committed set immediately before the pointer swap.
+	for _, budget := range []struct {
+		generation string
+		liveOnly   bool
+	}{{current, true}, {target, false}} {
+		size, err := queries.WorkspaceGenerationBudget(ctx, indexerdb.WorkspaceGenerationBudgetParams{
+			GenerationID: budget.generation, LiveOnly: budget.liveOnly, RowLimit: domain.WorkspaceMaxRebuildDocuments + 1,
+		})
+		if err != nil {
+			return false, storeError("check workspace copy budget", err)
 		}
+		if size.Documents > domain.WorkspaceMaxRebuildDocuments || size.ByteCount > domain.WorkspaceMaxRebuildBytes {
+			return false, domain.ErrWorkspaceRebuildLimit
+		}
+	}
+	if err := queries.ClearGenerationWorkspaceDocuments(ctx, target); err != nil {
+		return false, storeError("clear target workspace documents", err)
+	}
+	if _, err := queries.CopyGenerationWorkspaceDocuments(ctx, indexerdb.CopyGenerationWorkspaceDocumentsParams{
+		TargetGeneration: target, SourceGeneration: current,
+	}); err != nil {
+		return false, storeError("copy workspace documents", err)
+	}
+	if _, err := tx.Exec(ctx, `UPDATE workos_index.projection_generations SET status = 'retired', retired_at = $2 WHERE id = $1::uuid AND status = 'active'`, current, now); err != nil {
+		return false, storeError("retire active generation", err)
 	}
 	command, err := tx.Exec(ctx, `UPDATE workos_index.projection_generations SET status = 'active', promoted_at = $2, retired_at = NULL WHERE id = $1::uuid AND status IN ('building','active')`, target, now)
 	if err != nil {

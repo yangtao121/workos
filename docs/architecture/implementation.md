@@ -1295,4 +1295,7 @@ Indexer 工作区扫描：注册和扫描的文件系统访问集中在 localmou
 完整扫描的文档/receipt/cursor/删除/统计在一个事务提交；锁定源后检查起始版本和绑定，
 拒绝过期扫描与迟到 degraded 更新。状态时间至少推进一微秒，完整成功结果来自事务内返回值。
 共享 generation 锁与 promotion 互斥，project 锁串行化 live upsert/archive。
-这不提供文件系统快照或真实语义模型；workspace rebuild 与浏览器组合门禁继续审查。
+重建单独验证 Core review authority；promotion 在同一事务中保留当前 workspace 索引，
+复制预算 2000 文档/64 MiB，超限保留旧 active 并记录 workspace-copy-limit。
+普通重建保留挂载与 degraded 状态；schema 灾难删除后需 operator 重新绑定和 sync。
+这不提供文件系统快照或真实语义模型；workspace 浏览器组合门禁继续审查。

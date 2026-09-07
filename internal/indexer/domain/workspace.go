@@ -15,6 +15,7 @@ import (
 )
 
 var (
+	ErrWorkspaceRebuildLimit  = errors.New("workspace rebuild copy limit exceeded")
 	ErrWorkspaceConflict      = errors.New("workspace source changed during scan")
 	ErrWorkspaceSymlinkEscape = errors.New("workspace root resolves through a symlink")
 	ErrWorkspaceInvalidPath   = errors.New("workspace file path is invalid")
@@ -25,13 +26,15 @@ var (
 
 // Bounded ingestion budgets per complete sync pass.
 const (
-	WorkspaceMaxFiles      = 1000
-	WorkspaceMaxFileBytes  = 512 * 1024
-	WorkspaceMaxTotalBytes = 16 * 1024 * 1024
-	WorkspaceMaxEntries    = 10000
-	WorkspaceMaxDepth      = 16
-	WorkspaceMaxPathBytes  = 1024
-	WorkspaceMaxRootLength = 4096
+	WorkspaceMaxFiles            = 1000
+	WorkspaceMaxFileBytes        = 512 * 1024
+	WorkspaceMaxTotalBytes       = 16 * 1024 * 1024
+	WorkspaceMaxEntries          = 10000
+	WorkspaceMaxDepth            = 16
+	WorkspaceMaxPathBytes        = 1024
+	WorkspaceMaxRootLength       = 4096
+	WorkspaceMaxRebuildDocuments = 2000
+	WorkspaceMaxRebuildBytes     = 64 * 1024 * 1024
 )
 
 // WorkspaceFailure contains only a fixed category, never a filesystem error.

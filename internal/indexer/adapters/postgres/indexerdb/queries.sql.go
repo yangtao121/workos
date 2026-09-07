@@ -172,6 +172,43 @@ func (q *Queries) ClaimRunnableIndexJob(ctx context.Context, updatedAt time.Time
 	return i, err
 }
 
+const clearGenerationWorkspaceDocuments = `-- name: ClearGenerationWorkspaceDocuments :exec
+DELETE FROM workos_index.documents
+WHERE projection_generation = $1 AND source_type = 'workspace.file.v1'
+`
+
+func (q *Queries) ClearGenerationWorkspaceDocuments(ctx context.Context, generationID string) error {
+	_, err := q.db.Exec(ctx, clearGenerationWorkspaceDocuments, generationID)
+	return err
+}
+
+const copyGenerationWorkspaceDocuments = `-- name: CopyGenerationWorkspaceDocuments :execrows
+INSERT INTO workos_index.documents (
+  projection_generation, owner_user_id, project_id, source_type, source_id, source_digest,
+  artifact_type, title, content, source_created_at, last_publication_id, source_operation,
+  indexed_at, tombstoned_at, updated_at, embedding
+)
+SELECT $1::uuid, d.owner_user_id, d.project_id, d.source_type, d.source_id, d.source_digest,
+  d.artifact_type, d.title, d.content, d.source_created_at, d.last_publication_id, d.source_operation,
+  d.indexed_at, d.tombstoned_at, d.updated_at, d.embedding
+FROM workos_index.documents d
+WHERE d.projection_generation = $2::uuid
+  AND d.source_type = 'workspace.file.v1' AND d.tombstoned_at IS NULL
+`
+
+type CopyGenerationWorkspaceDocumentsParams struct {
+	TargetGeneration string
+	SourceGeneration string
+}
+
+func (q *Queries) CopyGenerationWorkspaceDocuments(ctx context.Context, arg CopyGenerationWorkspaceDocumentsParams) (int64, error) {
+	result, err := q.db.Exec(ctx, copyGenerationWorkspaceDocuments, arg.TargetGeneration, arg.SourceGeneration)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const countArchiveObjects = `-- name: CountArchiveObjects :one
 SELECT count(*) FROM workos_index.archive_objects
 WHERE owner_user_id = $1
@@ -233,6 +270,19 @@ func (q *Queries) CountIndexJobSources(ctx context.Context, jobID string) (Count
 	var i CountIndexJobSourcesRow
 	err := row.Scan(&i.Total, &i.Completed, &i.Failed)
 	return i, err
+}
+
+const countReviewGenerationDocuments = `-- name: CountReviewGenerationDocuments :one
+SELECT count(*) FROM workos_index.documents
+WHERE projection_generation = $1
+  AND source_type = 'artifact.review.v1' AND tombstoned_at IS NULL
+`
+
+func (q *Queries) CountReviewGenerationDocuments(ctx context.Context, generationID string) (int64, error) {
+	row := q.db.QueryRow(ctx, countReviewGenerationDocuments, generationID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
 }
 
 const getArchiveObject = `-- name: GetArchiveObject :one
@@ -1956,23 +2006,24 @@ func (q *Queries) WalkGenerationDocuments(ctx context.Context, arg WalkGeneratio
 	return items, nil
 }
 
-const walkGenerationDocumentsAfter = `-- name: WalkGenerationDocumentsAfter :many
+const walkReviewGenerationDocumentsAfter = `-- name: WalkReviewGenerationDocumentsAfter :many
 SELECT source_id, source_digest, artifact_type, source_created_at, tombstoned_at
 FROM workos_index.documents
 WHERE projection_generation = $1
+  AND source_type = 'artifact.review.v1'
   AND (source_created_at, source_id) > ($2::timestamptz, $3::uuid)
 ORDER BY source_created_at, source_id
 LIMIT $4
 `
 
-type WalkGenerationDocumentsAfterParams struct {
+type WalkReviewGenerationDocumentsAfterParams struct {
 	GenerationID    string
 	CursorCreatedAt time.Time
 	CursorSourceID  string
 	PageLimit       int32
 }
 
-type WalkGenerationDocumentsAfterRow struct {
+type WalkReviewGenerationDocumentsAfterRow struct {
 	SourceID        string
 	SourceDigest    string
 	ArtifactType    string
@@ -1980,8 +2031,8 @@ type WalkGenerationDocumentsAfterRow struct {
 	TombstonedAt    *time.Time
 }
 
-func (q *Queries) WalkGenerationDocumentsAfter(ctx context.Context, arg WalkGenerationDocumentsAfterParams) ([]WalkGenerationDocumentsAfterRow, error) {
-	rows, err := q.db.Query(ctx, walkGenerationDocumentsAfter,
+func (q *Queries) WalkReviewGenerationDocumentsAfter(ctx context.Context, arg WalkReviewGenerationDocumentsAfterParams) ([]WalkReviewGenerationDocumentsAfterRow, error) {
+	rows, err := q.db.Query(ctx, walkReviewGenerationDocumentsAfter,
 		arg.GenerationID,
 		arg.CursorCreatedAt,
 		arg.CursorSourceID,
@@ -1991,9 +2042,9 @@ func (q *Queries) WalkGenerationDocumentsAfter(ctx context.Context, arg WalkGene
 		return nil, err
 	}
 	defer rows.Close()
-	var items []WalkGenerationDocumentsAfterRow
+	var items []WalkReviewGenerationDocumentsAfterRow
 	for rows.Next() {
-		var i WalkGenerationDocumentsAfterRow
+		var i WalkReviewGenerationDocumentsAfterRow
 		if err := rows.Scan(
 			&i.SourceID,
 			&i.SourceDigest,
@@ -2009,6 +2060,35 @@ func (q *Queries) WalkGenerationDocumentsAfter(ctx context.Context, arg WalkGene
 		return nil, err
 	}
 	return items, nil
+}
+
+const workspaceGenerationBudget = `-- name: WorkspaceGenerationBudget :one
+SELECT count(*) AS documents, COALESCE(sum(bytes), 0)::bigint AS byte_count
+FROM (
+  SELECT octet_length(content) AS bytes FROM workos_index.documents
+  WHERE projection_generation = $1
+    AND source_type = 'workspace.file.v1'
+    AND (NOT $2::boolean OR tombstoned_at IS NULL)
+  LIMIT $3
+) AS bounded
+`
+
+type WorkspaceGenerationBudgetParams struct {
+	GenerationID string
+	LiveOnly     bool
+	RowLimit     int32
+}
+
+type WorkspaceGenerationBudgetRow struct {
+	Documents int64
+	ByteCount int64
+}
+
+func (q *Queries) WorkspaceGenerationBudget(ctx context.Context, arg WorkspaceGenerationBudgetParams) (WorkspaceGenerationBudgetRow, error) {
+	row := q.db.QueryRow(ctx, workspaceGenerationBudget, arg.GenerationID, arg.LiveOnly, arg.RowLimit)
+	var i WorkspaceGenerationBudgetRow
+	err := row.Scan(&i.Documents, &i.ByteCount)
+	return i, err
 }
 
 const writableGenerationIDs = `-- name: WritableGenerationIDs :many

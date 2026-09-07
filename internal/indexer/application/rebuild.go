@@ -246,6 +246,9 @@ func (e *RebuildExecutor) promoteStep(ctx context.Context, job RebuildJobView) e
 	}
 	now := e.now().UTC()
 	promoted, err := e.store.CompletePromotion(ctx, job.ID, job.TargetGeneration, current, now)
+	if errors.Is(err, domain.ErrWorkspaceRebuildLimit) {
+		return e.failGeneration(ctx, job, "workspace-copy-limit")
+	}
 	if err != nil {
 		return err
 	}

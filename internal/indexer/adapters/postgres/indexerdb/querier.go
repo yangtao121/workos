@@ -22,10 +22,13 @@ type Querier interface {
 	// overwrite a later successful promotion.
 	CasPromoteGeneration(ctx context.Context, arg CasPromoteGenerationParams) (int64, error)
 	ClaimRunnableIndexJob(ctx context.Context, updatedAt time.Time) (WorkosIndexIndexJob, error)
+	ClearGenerationWorkspaceDocuments(ctx context.Context, generationID string) error
+	CopyGenerationWorkspaceDocuments(ctx context.Context, arg CopyGenerationWorkspaceDocumentsParams) (int64, error)
 	CountArchiveObjects(ctx context.Context, ownerUserID string) (int64, error)
 	CountGenerationDocs(ctx context.Context, generationID string) (CountGenerationDocsRow, error)
 	CountGenerationDocuments(ctx context.Context, generationID string) (int64, error)
 	CountIndexJobSources(ctx context.Context, jobID string) (CountIndexJobSourcesRow, error)
+	CountReviewGenerationDocuments(ctx context.Context, generationID string) (int64, error)
 	GetArchiveObject(ctx context.Context, arg GetArchiveObjectParams) (WorkosIndexArchiveObject, error)
 	GetBuildingGenerationForScope(ctx context.Context, arg GetBuildingGenerationForScopeParams) (string, error)
 	GetConsumerCursor(ctx context.Context, workerID string) (WorkosIndexConsumerState, error)
@@ -99,7 +102,8 @@ type Querier interface {
 	UpsertReceiptForGeneration(ctx context.Context, arg UpsertReceiptForGenerationParams) error
 	UpsertSearchDocument(ctx context.Context, arg UpsertSearchDocumentParams) (int64, error)
 	WalkGenerationDocuments(ctx context.Context, arg WalkGenerationDocumentsParams) ([]WalkGenerationDocumentsRow, error)
-	WalkGenerationDocumentsAfter(ctx context.Context, arg WalkGenerationDocumentsAfterParams) ([]WalkGenerationDocumentsAfterRow, error)
+	WalkReviewGenerationDocumentsAfter(ctx context.Context, arg WalkReviewGenerationDocumentsAfterParams) ([]WalkReviewGenerationDocumentsAfterRow, error)
+	WorkspaceGenerationBudget(ctx context.Context, arg WorkspaceGenerationBudgetParams) (WorkspaceGenerationBudgetRow, error)
 	WritableGenerationIDs(ctx context.Context) ([]string, error)
 }
 
