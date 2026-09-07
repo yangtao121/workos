@@ -73,8 +73,26 @@ func (p *ModelProjection) ConvergeWorkspacePass(ctx context.Context, source port
 	if len(files) > domain.WorkspaceMaxFiles {
 		return ports.WorkspaceSource{}, 0, 0, domain.ErrInvalid
 	}
+	cached := make(map[string]ports.CachedWorkspaceEmbedding)
+	if len(files) > 0 {
+		rows, err := p.WorkspaceEmbeddings(ctx, source.OwnerUserID, source.ProjectID)
+		if err != nil {
+			return ports.WorkspaceSource{}, 0, 0, err
+		}
+		for _, row := range rows {
+			cached[row.SourceID] = row
+		}
+	}
 	files = slices.Clone(files)
 	for i := range files {
+		previous, ok := cached[files[i].SourceID]
+		if ok && previous.Digest == files[i].Digest && previous.Title == files[i].Title {
+			if !previous.Vector.Valid() || previous.Vector.Fingerprint != p.model.Fingerprint() {
+				return ports.WorkspaceSource{}, 0, 0, domain.ErrCorrupt
+			}
+			files[i].Embedding = previous.Vector
+			continue
+		}
 		vector, err := documentVector(ctx, p.model, files[i].Title, string(files[i].Content))
 		if err != nil {
 			return ports.WorkspaceSource{}, 0, 0, err

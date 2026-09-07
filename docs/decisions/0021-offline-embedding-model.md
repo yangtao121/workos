@@ -65,3 +65,16 @@ Runtime 使用既有 SearchHybrid RPC，并在索引排序/分页前固定 revie
 真实 Connect 与 PostgreSQL 测试证明更靠前的 workspace 行不会挤掉合法 review；
 opaque App 浏览器门禁用中文查询英文 review（词法零命中），并验证无授权不协商、
 撤销后拒绝。SDK 仅更新语义说明，已有消息结构与字段号不变。
+
+## Workspace 向量复用与预算
+
+完整扫描先一次有界读取当前项目的 active workspace 向量，最多 1000 条且不读取全文；
+只有 source ID、digest、title 和模型指纹全匹配才复用，缓存格式损坏返回明确错误。
+新文件、内容/标题变化、缺失或不同模型的向量重新计算。原有 source etag、事务与
+archive/promotion 检查仍在最终写入时执行，推理与缓存读取均不持有数据库事务。
+
+`workosctl index workspace sync` 使用十分钟有界预算，其他 admin 请求仍为 30 秒。
+真实 CPU/CLI 门禁的 1000 文件、约 8 MiB 内容冷同步用时 290 秒，未改内容的再次同步
+为 3 秒；原 30 秒预算确定性失败。时间是当前主机观测，不是跨设备性能保证；十分钟
+为冷推理留出余量，取消或失败仍保留上一完整投影。`make test-workspace-model-capacity`
+复用真实 workspace 六阶段链并执行冷/重复同步与最终撤销清理。

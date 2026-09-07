@@ -1050,3 +1050,8 @@ test-workspace-browser: e2e-image
 .PHONY: test-model-postgres
 test-model-postgres:
 	tools/embedding/postgres-gate.sh
+
+
+.PHONY: test-workspace-model-capacity
+test-workspace-model-capacity: e2e-image
+	WORKOS_WORKSPACE_MODEL_CAPACITY=true sh tools/workspace-index/gate.sh

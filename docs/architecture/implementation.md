@@ -1356,3 +1356,8 @@ App knowledge adapter 已改为带固定 review 来源的 SearchHybrid RPC；wor
 files.read 权限。真实 Connect/PostgreSQL 与 opaque App 浏览器验证了中文检索英文 review、
 来源过滤及撤销拒绝；无效 token/上游损坏/暂时不可用分别保持净化的 InvalidArgument/
 Internal/Unavailable。
+
+Workspace 完整同步复用当前代、同 owner/project/source/digest/title/model 的已验证向量，
+缓存读取上限 1000 条且不加载全文，内容/标题/指纹变化会重算。事务和 source etag 继续
+保护整批写入；没有新的表或 migration。模型上限门禁记录 1000 长文本文件冷同步
+290 秒、未变重复同步 3 秒；CLI sync 预算为十分钟，其他 admin 调用仍为 30 秒。

@@ -22,13 +22,13 @@ import (
 // indexAdminClient builds the local IndexAdminService client over the
 // indexer's owner-verified Unix admin socket. The socket is the only door to
 // these commands; there is no TCP or gateway path by design (ADR-0013 §8).
-func indexAdminClient(cfg config.Config) (indexv1connect.IndexAdminServiceClient, error) {
+func indexAdminClient(cfg config.Config, timeout time.Duration) (indexv1connect.IndexAdminServiceClient, error) {
 	socket := cfg.Indexer.AdminSocketPath
 	if socket == "" {
 		return nil, errors.New("WORKOS_INDEX_ADMIN_SOCKET is not configured; the indexer admin socket path is required")
 	}
 	client := &http.Client{
-		Timeout: 30 * time.Second,
+		Timeout: timeout,
 		Transport: &http.Transport{
 			DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
 				return (&net.Dialer{}).DialContext(ctx, "unix", socket)
@@ -43,7 +43,13 @@ func runIndex(ctx context.Context, cfg config.Config, args []string) error {
 	if len(args) == 0 {
 		return errors.New(indexUsage)
 	}
-	client, err := indexAdminClient(cfg)
+	timeout := 30 * time.Second
+	// A complete 1000-file CPU-model scan is one atomic operation. Other admin
+	// calls retain the short budget; cancellation still stops the entire pass.
+	if len(args) >= 2 && args[0] == "workspace" && args[1] == "sync" {
+		timeout = 10 * time.Minute
+	}
+	client, err := indexAdminClient(cfg, timeout)
 	if err != nil {
 		return err
 	}

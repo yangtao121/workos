@@ -949,3 +949,27 @@ func (r *Repository) ReadDocument(ctx context.Context, input domain.DocumentRead
 	}
 	return doc, nil
 }
+
+func (r *Repository) WorkspaceEmbeddings(ctx context.Context, owner, project string) ([]ports.CachedWorkspaceEmbedding, error) {
+	if !domain.ValidUUID(owner) || !domain.ValidUUID(project) {
+		return nil, domain.ErrInvalid
+	}
+	rows, err := r.queries.CachedWorkspaceEmbeddings(ctx, indexerdb.CachedWorkspaceEmbeddingsParams{
+		OwnerUserID: owner, ProjectID: project, EmbeddingModel: modelText(r.modelFingerprint), RowLimit: domain.WorkspaceMaxFiles + 1,
+	})
+	if err != nil {
+		return nil, storeError("read workspace vectors", err)
+	}
+	if len(rows) > domain.WorkspaceMaxFiles {
+		return nil, domain.ErrCorrupt
+	}
+	cached := make([]ports.CachedWorkspaceEmbedding, 0, len(rows))
+	for _, row := range rows {
+		vector := domain.ModelVector{Values: row.Vector, Fingerprint: r.modelFingerprint}
+		if !domain.ValidUUID(row.SourceID) || !domain.ValidDigest(row.SourceDigest) || !vector.Valid() {
+			return nil, domain.ErrCorrupt
+		}
+		cached = append(cached, ports.CachedWorkspaceEmbedding{SourceID: row.SourceID, Digest: row.SourceDigest, Title: row.Title, Vector: vector})
+	}
+	return cached, nil
+}

@@ -107,6 +107,62 @@ func (q *Queries) ApplyResolvedSourceToGeneration(ctx context.Context, arg Apply
 	return result.RowsAffected(), nil
 }
 
+const cachedWorkspaceEmbeddings = `-- name: CachedWorkspaceEmbeddings :many
+SELECT d.source_id, d.source_digest, d.title, d.embedding::real[] AS vector
+FROM workos_index.documents d
+JOIN workos_index.active_generation a ON a.generation_id = d.projection_generation
+WHERE d.owner_user_id = $1
+  AND d.project_id = $2
+  AND d.source_type = 'workspace.file.v1' AND d.tombstoned_at IS NULL
+  AND d.embedding IS NOT NULL AND d.embedding_model = $3
+ORDER BY d.source_id
+LIMIT $4
+`
+
+type CachedWorkspaceEmbeddingsParams struct {
+	OwnerUserID    string
+	ProjectID      string
+	EmbeddingModel pgtype.Text
+	RowLimit       int32
+}
+
+type CachedWorkspaceEmbeddingsRow struct {
+	SourceID     string
+	SourceDigest string
+	Title        string
+	Vector       []float32
+}
+
+func (q *Queries) CachedWorkspaceEmbeddings(ctx context.Context, arg CachedWorkspaceEmbeddingsParams) ([]CachedWorkspaceEmbeddingsRow, error) {
+	rows, err := q.db.Query(ctx, cachedWorkspaceEmbeddings,
+		arg.OwnerUserID,
+		arg.ProjectID,
+		arg.EmbeddingModel,
+		arg.RowLimit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []CachedWorkspaceEmbeddingsRow
+	for rows.Next() {
+		var i CachedWorkspaceEmbeddingsRow
+		if err := rows.Scan(
+			&i.SourceID,
+			&i.SourceDigest,
+			&i.Title,
+			&i.Vector,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const cancelRebuildJob = `-- name: CancelRebuildJob :execrows
 UPDATE workos_index.rebuild_jobs
 SET state = 'canceled', failure_category = $1,

@@ -23,7 +23,17 @@ type EmbeddingSnapshot struct {
 	Document     domain.Document
 }
 
+// CachedWorkspaceEmbedding omits document content: reuse is permitted only
+// when the new complete scan has the same source, digest, title and model.
+type CachedWorkspaceEmbedding struct {
+	SourceID string
+	Digest   string
+	Title    string
+	Vector   domain.ModelVector
+}
+
 type EmbeddingStore interface {
+	WorkspaceEmbeddings(context.Context, string, string) ([]CachedWorkspaceEmbedding, error)
 	MissingEmbeddings(context.Context, string, int) ([]EmbeddingSnapshot, error)
 	StoreEmbedding(context.Context, EmbeddingSnapshot, domain.ModelVector) (bool, error)
 }

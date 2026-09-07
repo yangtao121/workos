@@ -18,6 +18,7 @@ type Querier interface {
 	// client. Search reads only the active generation.
 	ActiveGenerationID(ctx context.Context) (string, error)
 	ApplyResolvedSourceToGeneration(ctx context.Context, arg ApplyResolvedSourceToGenerationParams) (int64, error)
+	CachedWorkspaceEmbeddings(ctx context.Context, arg CachedWorkspaceEmbeddingsParams) ([]CachedWorkspaceEmbeddingsRow, error)
 	CancelRebuildJob(ctx context.Context, arg CancelRebuildJobParams) (int64, error)
 	// Promote is a single-row compare-and-swap: the winner held the previous
 	// active generation at commit time, so a stale or failed worker can never

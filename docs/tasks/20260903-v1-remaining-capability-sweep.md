@@ -827,3 +827,35 @@ review 前，再验证来源过滤不会丢失第一页。`WORKOS_BUILD_NETWORK=
 （`tmp/app-model-check.log`）；再次 generate 后 132 个生成文件/README 不变
 （`tmp/app-model-generate-idempotent.log`）。status、SDK 注释、ADR 与模块文档同步。
 没有 UI 控件变化。下一步用真实模型验证 1000 文件长文本同步的 30 秒 CLI 预算。
+
+### R4 大批量模型同步（active，2026-09-07）
+
+依赖 ca77bf5。workosctl admin client 固定 30 秒超时；目前每次完整 workspace scan
+都会对所有文件重做模型推理。先用 1000 文件、每文件约 8 KiB 的确定性内容复现真实 CPU
+上限（总量小于 16 MiB scanner 限制），记录冷同步与重复同步时间，再按结果修复预算和
+已验证向量复用。继续保留整批事务、source etag、archive/promotion 和取消边界。
+
+上限基线已复现失败（`tmp/workspace-model-capacity-before.log`）：1000 文件同步被
+Client.Timeout 在 30 秒中断，失败 fixture 已清理；重复推理基线
+`tmp/workspace-model-cache-before.log` FAIL（两个未变文件的第二次同步把调用数从 2 增至 4）。
+现已仅为 workspace sync 提供五分钟 CLI 预算，其他 admin 命令仍为 30 秒。
+Indexer 一次有界读取 active generation 的 workspace 向量缓存，不读取全文；复用要求
+source ID、digest、title、model fingerprint 全匹配，指纹变更/新文件/内容或标题变更重算。
+缓存和推理都在事务外，原 source etag 与整批落库保持不变，无新增 migration。
+`tmp/workspace-model-cache-after.log` Indexer/workosctl 单元与 PostgreSQL/race PASS，覆盖
+模型缓存计数、模型回填、2102 分页、workspace 并发/撤销/重建与 copy limits。
+`make check` PASS（`tmp/workspace-model-cache-check.log`）；真实冷同步/重复同步上限门禁进行中。
+
+上限门禁完整 PASS（`tmp/workspace-model-capacity-after.log`，fixture
+`tmp/workspace-index.jRhiUU`）：1000 文件冷同步 290 秒、未变重复同步 3 秒；原六阶段
+浏览器链、stop 与 fixture cleanup 全部通过。大批次计算期间旧投影仍只有原 23 个文件，
+证明没有中途发布半批文档。五分钟只剩十秒余量，最终将 sync 预算设为十分钟，其他
+admin 调用仍为 30 秒；该单调增加仅留宿主负载余量，不改变计算与提交逻辑。
+ADR/status/implementation 如实记录冷启动耗时，不宣称所有设备同等性能。
+
+大批次修复收尾：最终十分钟预算代码的 `make check` PASS
+（`tmp/workspace-model-cache-check-final.log`），统一镜像构建 PASS 并已恢复到默认 Indexer
+（`tmp/workspace-model-cache-build-final.log` / `tmp/workspace-model-cache-deploy-final.log`）。
+真实 admin status 返回 active generation、pending publications=0；没有仍挂载的 gate 目录。
+再次 generate 后 132 个生成文件/README 不变（`tmp/workspace-model-generate-idempotent.log`）。
+本阶段完成；下一阶段回到 R2 的 Repair/Build/Test/候选版本交接，整个任务仍 active。

@@ -615,3 +615,15 @@ SET status = 'stopped', degraded_reason = '', indexed_count = 0,
     updated_at = GREATEST(sqlc.arg(updated_at)::timestamptz, updated_at + interval '1 microsecond')
 WHERE id = sqlc.arg(id)::uuid
 RETURNING *;
+
+
+-- name: CachedWorkspaceEmbeddings :many
+SELECT d.source_id, d.source_digest, d.title, d.embedding::real[] AS vector
+FROM workos_index.documents d
+JOIN workos_index.active_generation a ON a.generation_id = d.projection_generation
+WHERE d.owner_user_id = sqlc.arg(owner_user_id)
+  AND d.project_id = sqlc.arg(project_id)
+  AND d.source_type = 'workspace.file.v1' AND d.tombstoned_at IS NULL
+  AND d.embedding IS NOT NULL AND d.embedding_model = sqlc.arg(embedding_model)
+ORDER BY d.source_id
+LIMIT sqlc.arg(row_limit);

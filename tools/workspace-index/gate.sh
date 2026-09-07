@@ -103,5 +103,32 @@ while :; do
   sleep 1
 done
 browser rebuilt
+if [ "${WORKOS_WORKSPACE_MODEL_CAPACITY:-false}" = true ]; then
+  python3 - "$task_dir/files" <<'PYFIXTURE'
+import pathlib,sys
+root=pathlib.Path(sys.argv[1])
+body=('Synthetic workspace capacity fixture with durable indexing and bounded model inference. '*100)[:8192]+'\n'
+for i in range(23,1000):
+    file=root/f'capacity-{i:04d}.md'
+    file.write_text(body)
+    file.chmod(0o644)
+PYFIXTURE
+  date -u +%s > "$task_dir/capacity-start.txt"
+  admin workspace sync --source "$(field "$task_dir/source.json" source_id)" > "$task_dir/capacity-sync.txt"
+  date -u +%s > "$task_dir/capacity-end.txt"
+  admin workspace sync --source "$(field "$task_dir/source.json" source_id)" > "$task_dir/capacity-repeat.txt"
+  date -u +%s > "$task_dir/capacity-repeat-end.txt"
+  source_state
+  python3 - "$task_dir" <<'PYCHECK'
+import json,pathlib,sys
+root=pathlib.Path(sys.argv[1])
+source=json.loads((root/'source.json').read_text())
+if int(source.get('indexed_count',0))!=1000 or source.get('status')!='active':
+    raise SystemExit('capacity sync did not commit all 1000 documents')
+seconds=int((root/'capacity-end.txt').read_text())-int((root/'capacity-start.txt').read_text())
+repeat=int((root/'capacity-repeat-end.txt').read_text())-int((root/'capacity-end.txt').read_text())
+print(f'workspace-model-capacity: 1000 documents committed in {seconds}s; unchanged repeat {repeat}s')
+PYCHECK
+fi
 stop_source
 browser stopped
