@@ -3,6 +3,7 @@ self.addEventListener("activate", (event) => {
 });
 // Wake payloads carry one id. Display text is fixed; notification contents are
 // fetched by the authenticated shell after it resumes, never by this worker.
+let pendingPush = Promise.resolve();
 self.addEventListener("push", (event) => {
   let payload;
   try {
@@ -21,8 +22,10 @@ self.addEventListener("push", (event) => {
     )
   )
     return;
-  event.waitUntil(
-    (async () => {
+  // Keep notification lookup/display ordered when several pushes arrive together.
+  pendingPush = pendingPush
+    .catch(() => undefined)
+    .then(async () => {
       const tag = `workos-${payload.notificationId}`;
       const shown = await self.registration.getNotifications({ tag });
       if (shown.length === 0) {
@@ -35,8 +38,8 @@ self.addEventListener("push", (event) => {
       for (const client of await self.clients.matchAll({ type: "window" })) {
         client.postMessage({ type: "workos.notification.wake.v1" });
       }
-    })(),
-  );
+    });
+  event.waitUntil(pendingPush);
 });
 
 self.addEventListener("notificationclick", (event) => {

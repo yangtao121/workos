@@ -685,3 +685,33 @@ http://localhost.example 及 http://127.0.0.1.example。未新增另一套 DTO �
 
 移动核查收尾：`make -o proto-check -o go-check check` PASS，退出 0（Go/Proto 未改，复用
 既有完整检查）；门禁脚本真实执行与 `node --check` 通过，generated 区没有改动。
+
+### R5 加密推送组合门禁（active，2026-09-07）
+
+移动核查检查点 ba57f4d。门禁使用独立 scratch database、独立端口和六进程 fixture 实例，
+不启用默认数据库的推送发送器，不改变既有订阅/免打扰。真实 Core outbox 经 RFC 8291/8292
+TLS relay 验签/解密；先返回 503，再重启 Core 验证持久重试。Chromium 通过实际 push driver
+接收解密结果，恢复窗口后从真实 Core 补收。仅对通知流/读取注入断线，不 mock 成功响应。
+外部 FCM/APNs、原生移动封装不在该软件证据内；UI 渲染无计划变更。
+
+推送组合门禁完成：`sh tools/push-wake/gate.sh` PASS，退出 0，证据
+`tmp/push-wake-gate7.log`。独立 Core outbox 的两条任务/产物通知经 RFC 8291 加密、
+RFC 8292 验签与严格 TLS receiver 解密，首次 503 后 Core 真重启，持久重试 delivered；
+Chromium 冻结页面收到实际解密 payload，唤醒后真实 ListNotifications 补收两条事实。
+未 mock 成功 API，仅阻滞 Watch；验证两个系统提醒和重复推送去重，最终 SQL 台账及
+独立数据库/密钥/容器清理通过。开发身份与 CDP 注入不证明真实厂商服务或原生后台。
+
+真实门禁复现连续推送丢一条系统提醒；Worker 顺序执行查重/展示后浏览器通过，新增
+两项测试覆盖重叠重复通知及一次展示失败后的继续处理。`tmp/push-worker-unit.log` PASS，
+receiver/notification race PASS（`tmp/push-wake-race.log`）。首轮全仓 `make check` PASS
+（`tmp/push-wake-check1.log`）；新增回归测试与文档后再执行最终检查。无可见界面布局、
+控件、固定文案变化；修复 Worker 内部并发调度，不制造无差异 UI 截图。
+
+恢复环境时启动原 PostgreSQL 容器；此前临时门禁因容器 UID、目录 umask、宿主代理
+及测试在导航前误捕旧 response 失败，均已修复后复跑。中间修改运行中的 gate.sh 导致
+一次 shell 读取偏移错误，该轮浏览器虽过但不计整体通过。总任务仍 active，未合并 main。
+
+推送收尾：Go/Proto 检查 PASS；新增 Worker 回归测试的 lint 已修正，完整 Web 检查及
+Desktop 144 单测 PASS（`tmp/push-wake-web-final.log`，退出 0）。`make generate`
+成功且 129 个生成源码 SHA-256 不变（`tmp/push-wake-generate.log`）。所有本轮
+workos_push_* scratch 数据库和隔离容器已清理。下一步继续检索与剩余部署/远程/移动软件缺口。

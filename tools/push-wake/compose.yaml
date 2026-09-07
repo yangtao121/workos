@@ -1,0 +1,105 @@
+x-environment: &environment
+  WORKOS_DATABASE_URL: ${WORKOS_PUSH_GATE_DATABASE_URL:?}
+  WORKOS_OWNER_ID: 01999999-9999-7999-8999-000000000a01
+  WORKOS_DEVICE_ID: 01999999-9999-7999-8999-000000000a02
+  WORKOS_DEV_AUTH_BYPASS: "true"
+  WORKOS_CORE_URL: http://127.0.0.1:${WORKOS_PUSH_GATE_CORE_PORT:?}
+  WORKOS_HARNESS_URL: http://127.0.0.1:${WORKOS_PUSH_GATE_HARNESS_PORT:?}
+  WORKOS_RUNTIME_URL: http://127.0.0.1:${WORKOS_PUSH_GATE_RUNTIME_PORT:?}
+  WORKOS_RELIABILITY_URL: http://127.0.0.1:${WORKOS_PUSH_GATE_RELIABILITY_PORT:?}
+  WORKOS_INDEXER_URL: http://127.0.0.1:${WORKOS_PUSH_GATE_INDEXER_PORT:?}
+x-service: &service
+  image: workos:dev
+  user: ${WORKOS_PUSH_GATE_USER:?}
+  network_mode: host
+  restart: "no"
+  depends_on:
+    bootstrap:
+      condition: service_completed_successfully
+services:
+  bootstrap:
+    image: workos:dev
+    user: ${WORKOS_PUSH_GATE_USER:?}
+    network_mode: host
+    environment: *environment
+    command:
+      [
+        /bin/sh,
+        -c,
+        "workosctl bootstrap && workos-dev-fixture -core-dir /fixture/core-execution -harness-dir /fixture/harness-execution -vault-dir /fixture/vault",
+      ]
+    volumes:
+      - ${WORKOS_PUSH_GATE_DIR:?}/core-execution:/fixture/core-execution
+      - ${WORKOS_PUSH_GATE_DIR:?}/harness-execution:/fixture/harness-execution
+      - ${WORKOS_PUSH_GATE_DIR:?}/vault:/fixture/vault
+  core:
+    <<: *service
+    command: [workos-core]
+    environment:
+      <<: *environment
+      WORKOS_HTTP_ADDRESS: 127.0.0.1:${WORKOS_PUSH_GATE_CORE_PORT:?}
+      WORKOS_PUSH_PRIVATE_KEY_FILE: /fixture/push.key
+      WORKOS_PUSH_SUBJECT: mailto:push@example.invalid
+      SSL_CERT_FILE: /fixture/ca.crt
+      WORKOS_CREDENTIAL_MASTER_KEY_FILE: /fixture/vault/vault-master.key
+      WORKOS_CREDENTIAL_ADMIN_SOCKET: /run/workos/credential-admin.sock
+      WORKOS_CORE_EXECUTION_ADDRESS: 127.0.0.1:${WORKOS_PUSH_GATE_EXECUTION_PORT:?}
+      WORKOS_CORE_EXECUTION_CA_FILE: /fixture/execution/ca.crt
+      WORKOS_CORE_EXECUTION_CERT_FILE: /fixture/execution/core.crt
+      WORKOS_CORE_EXECUTION_KEY_FILE: /fixture/execution/core.key
+    volumes:
+      - ${WORKOS_PUSH_GATE_DIR:?}/run:/run/workos
+      - ${WORKOS_PUSH_GATE_DIR:?}/core/push.key:/fixture/push.key:ro
+      - ${WORKOS_PUSH_GATE_DIR:?}/tls/ca.crt:/fixture/ca.crt:ro
+      - ${WORKOS_PUSH_GATE_DIR:?}/core-execution:/fixture/execution:ro
+      - ${WORKOS_PUSH_GATE_DIR:?}/vault:/fixture/vault:ro
+  harness:
+    <<: *service
+    command: [harness-host]
+    environment:
+      <<: *environment
+      WORKOS_HTTP_ADDRESS: 127.0.0.1:${WORKOS_PUSH_GATE_HARNESS_PORT:?}
+      WORKOS_CORE_EXECUTION_URL: https://127.0.0.1:${WORKOS_PUSH_GATE_EXECUTION_PORT:?}
+      WORKOS_HARNESS_EXECUTION_CA_FILE: /fixture/ca.crt
+      WORKOS_HARNESS_EXECUTION_CERT_FILE: /fixture/harness.crt
+      WORKOS_HARNESS_EXECUTION_KEY_FILE: /fixture/harness.key
+    volumes:
+      - ${WORKOS_PUSH_GATE_DIR:?}/harness-execution:/fixture:ro
+  runtime:
+    <<: *service
+    command: [runtime-host]
+    environment:
+      <<: *environment
+      WORKOS_HTTP_ADDRESS: 127.0.0.1:${WORKOS_PUSH_GATE_RUNTIME_PORT:?}
+      WORKOS_RUNTIME_INDEXER_URL: http://127.0.0.1:${WORKOS_PUSH_GATE_INDEXER_PORT:?}
+  reliability:
+    <<: *service
+    command: [reliability-host]
+    environment:
+      <<: *environment
+      WORKOS_HTTP_ADDRESS: 127.0.0.1:${WORKOS_PUSH_GATE_RELIABILITY_PORT:?}
+  indexer:
+    <<: *service
+    command: [indexer]
+    environment:
+      <<: *environment
+      WORKOS_HTTP_ADDRESS: 127.0.0.1:${WORKOS_PUSH_GATE_INDEXER_PORT:?}
+      WORKOS_INDEX_PAGE_TOKEN_KEY: 0123456789abcdef0123456789abcdef
+  gateway:
+    <<: *service
+    command: [workos-gateway]
+    environment:
+      <<: *environment
+      WORKOS_HTTP_ADDRESS: 127.0.0.1:${WORKOS_PUSH_GATE_GATEWAY_PORT:?}
+      WORKOS_STATIC_DIR: /srv/workos/desktop
+  relay:
+    image: workos:dev
+    user: ${WORKOS_PUSH_GATE_USER:?}
+    network_mode: host
+    command:
+      [/fixture/push-relay, -dir, /fixture, -address, "127.0.0.1:${WORKOS_PUSH_GATE_RELAY_PORT:?}"]
+    volumes:
+      - ${WORKOS_PUSH_GATE_DIR:?}/relay:/fixture/relay:ro
+      - ${WORKOS_PUSH_GATE_DIR:?}/tls:/fixture/tls:ro
+      - ${WORKOS_PUSH_GATE_DIR:?}/public:/fixture/public:ro
+      - ${WORKOS_PUSH_GATE_DIR:?}/push-relay:/fixture/push-relay:ro

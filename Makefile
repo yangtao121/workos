@@ -685,6 +685,12 @@ test-push-relay:
 	$(GO_HOST_RUN) go test -tags=integration -count=1 -run 'TestPushRelay|TestNotificationSearch|TestDevicePushRevocation' -v ./tests/integration
 	@echo "test-push-relay: PASS"
 
+# Isolated real outbox, encrypted receiver and Chromium wake/catch-up chain.
+test-push-wake: e2e-image
+	sh tools/push-wake/gate.sh
+
+.PHONY: test-push-wake
+
 capture-desktop-system-apps: e2e-image
 	@set -eu; \
 		mkdir -p docs/ui/desktop-web/changes/20260903-remaining-capability-sweep/after; \

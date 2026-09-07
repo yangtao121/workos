@@ -1223,7 +1223,11 @@ Core 可选 `WORKOS_PUSH_PRIVATE_KEY_FILE` / `WORKOS_PUSH_SUBJECT` 启用 Web Pu
 独立 P-256 key，未配置时 GetPushPreferences 返回 unavailable 原因，不接受伪有效订阅。
 RPC 仅公开 public key；端点 HTTPS、客户端 P-256 点和 16-byte auth 验证，网络错误净化。
 Push Worker 不读取 Cookie/RPC、不存正文；固定文案提醒后通知 shell 从权威 projection 补收。
-设置有 revision 并发控制。加密 TLS 与 Chromium push driver 切片已验证，组合 E2E 仍在进行。
+设置有 revision 并发控制。`make test-push-wake` 使用独立数据库、密钥与六进程 fixture 栈：
+Core outbox → 严格 TLS receiver 验签解密 → 503 → Core 真重启 → 新密文重试 →
+Chromium 冻结页面唤醒 → 权威通知补收，全链 PASS。Worker 顺序处理通知查重/展示，
+避免并发 display 丢提醒；失败不阻断后续唤醒。测试通过开发身份与 CDP 注入解密载荷，
+不证明商业 Push Service、原生后台或 APNs/FCM。
 
 App shell 修复：公共 `AuthorizeShellAction` 经 Gateway 到 runtime-host，逐次验证有效
 owner/device token 与 Core 安装版本/清单/授权 epoch。trusted host 只有授权成功且请求仍有效
