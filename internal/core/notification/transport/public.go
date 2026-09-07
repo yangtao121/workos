@@ -128,14 +128,19 @@ func (h *Handler) GetPushPreferences(ctx context.Context, _ *connect.Request[not
 	if err != nil {
 		return nil, mapPushError(err)
 	}
+	digest, err := h.push.SubscriptionDigest(ctx)
+	if err != nil {
+		return nil, mapPushError(err)
+	}
 	key := h.push.PublicKey()
 	reason := ""
 	if key == "" {
 		reason = "Web Push is not configured on this WorkOS host."
 	}
 	return connect.NewResponse(&notificationv1.GetPushPreferencesResponse{
-		WebPushPublicKey:         key,
-		WebPushUnavailableReason: reason,
+		WebPushPublicKey:          key,
+		WebPushSubscriptionDigest: digest,
+		WebPushUnavailableReason:  reason,
 		Preferences: &notificationv1.PushPreferences{
 			Revision:      quiet.Revision,
 			QuietEnabled:  quiet.Enabled,
@@ -173,6 +178,8 @@ func (h *Handler) SetPushPreferences(ctx context.Context, req *connect.Request[n
 // InvalidArgument, store outages are retryable Unavailable.
 func mapPushError(err error) error {
 	switch {
+	case errors.Is(err, domain.ErrPushDenied):
+		return connect.NewError(connect.CodePermissionDenied, errors.New("push device is not authorized"))
 	case errors.Is(err, domain.ErrPushConflict):
 		return connect.NewError(connect.CodeAborted, errors.New("notification preferences changed; refresh and retry"))
 	case errors.Is(err, domain.ErrPushUnavailable):

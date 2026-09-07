@@ -32,7 +32,13 @@ bootstrap:
 	@echo "WorkOS toolchain is ready."
 
 generate:
-	$(BUF_RUN) generate
+	@set -eu; mkdir -p tmp; generated=$$(mktemp -d tmp/proto.XXXXXX); \
+		trap 'rm -rf "$$generated"' EXIT HUP INT TERM; \
+		$(BUF_RUN) generate --output "$$generated"; \
+		test -d "$$generated/gen/go"; test -d "$$generated/sdk/protocol/src/gen"; \
+		rm -rf gen/go sdk/protocol/src/gen; \
+		mv "$$generated/gen/go" gen/go; \
+		mv "$$generated/sdk/protocol/src/gen" sdk/protocol/src/gen
 	$(SQLC_RUN) generate
 	$(NODE_RUN) node tools/status/render.mjs
 

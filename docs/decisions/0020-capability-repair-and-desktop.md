@@ -79,3 +79,9 @@ source_app_instance_id，与 source_task_id 恰好二选一；不制造 Agent �
 同 key 同内容重放首个产物，不同内容 Aborted；单安装最多 100 个产物。
 产物、索引 publication、通知在一个事务提交。open 只返回当前安装项目内经授权重读的
 review 元数据，由 shell 打开既有查看器，禁止 App 指定 URL 或任意窗口目标。
+
+推送偏好额外返回当前认证设备 active endpoint 的 SHA-256；不返回 endpoint 或订阅密钥。
+订阅/撤订阅请求中的 device_id 必须等于可信身份，不允许一个设备替另一个设备写入。
+Shell 将 Core digest、浏览器订阅与当前 VAPID public key 一并核对；不自动恢复撤销订阅，
+需要用户点击重新连接。公钥变化时先撤销旧 Core 注册，再清理浏览器旧订阅并注册新密钥。
+Core 撤销成功而浏览器清理失败时明确显示未完成的清理，禁止宣称完全成功。

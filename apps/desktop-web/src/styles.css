@@ -2043,10 +2043,8 @@ svg {
   border-bottom: 1px solid var(--border);
 }
 
-.telemetry-table caption {
-  text-align: left;
-  padding: 4px 0;
-  caption-side: bottom;
+.telemetry-summary {
+  margin: 8px 0 0;
 }
 
 /* ADR-0016-era slice: native declarative surface renderer (inert). */
@@ -2685,4 +2683,24 @@ svg {
 .workspace-picker-path .workos-button {
   background: var(--surface-raised);
   border-color: var(--border);
+}
+
+.telemetry-scroll {
+  max-width: 100%;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+}
+.telemetry-scroll:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.telemetry-table th,
+.telemetry-table td {
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.push-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
 }

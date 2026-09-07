@@ -753,6 +753,9 @@ func (r *Repository) ClaimPushDeliveries(ctx context.Context, now time.Time, lim
 
 func (r *Repository) PushSubscriptionFor(ctx context.Context, ownerUserID, deviceID, platform string) (domain.PushSubscription, error) {
 	sub, err := r.queries.GetPushSubscription(ctx, notificationdb.GetPushSubscriptionParams{OwnerUserID: ownerUserID, DeviceID: deviceID, Platform: platform})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return domain.PushSubscription{}, domain.ErrNotFound
+	}
 	if err != nil {
 		return domain.PushSubscription{}, storeError("read delivery subscription", err)
 	}

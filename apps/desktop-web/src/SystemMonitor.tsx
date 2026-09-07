@@ -405,7 +405,7 @@ function outcomeLabel(outcome: IncidentRestartOutcome): string {
 // numeric facts only: no spans, attribute maps, log bodies, or user content
 // are reachable from this view.
 function TelemetrySection({ workosClients }: { workosClients: WorkOSClients }) {
-  const [state, setState] = useState<"hidden" | "loading" | "ready" | "unavailable">("loading");
+  const [state, setState] = useState<"loading" | "ready" | "unavailable">("loading");
   const [services, setServices] = useState<TelemetryServiceStats[]>([]);
   const [spansObserved, setSpansObserved] = useState(0);
   const [attributesDropped, setAttributesDropped] = useState(0);
@@ -413,10 +413,6 @@ function TelemetrySection({ workosClients }: { workosClients: WorkOSClients }) {
 
   const load = useCallback((): Promise<void> => {
     const run = async (): Promise<void> => {
-      if (typeof workosClients.incidents.getTelemetrySummary !== "function") {
-        setState("unavailable");
-        return;
-      }
       const current = ++attempt.current;
       setState("loading");
       try {
@@ -436,60 +432,74 @@ function TelemetrySection({ workosClients }: { workosClients: WorkOSClients }) {
 
   useEffect(() => {
     void load();
+    return () => {
+      attempt.current += 1;
+    };
   }, [load]);
 
-  if (state === "unavailable") {
-    return null;
-  }
   return (
-    <section className="telemetry-section" aria-label="Telemetry">
+    <section className="telemetry-section" aria-label="Telemetry" aria-busy={state === "loading"}>
       <div className="telemetry-head">
         <h2>Telemetry</h2>
         <Button
+          disabled={state === "loading"}
           onClick={() => {
             void load();
           }}
           type="button"
         >
-          Refresh telemetry
+          {state === "unavailable" ? "Retry telemetry" : "Refresh telemetry"}
         </Button>
       </div>
-      {state === "loading" ? (
+      {state === "unavailable" ? (
+        <p className="empty-state" role="alert">
+          Telemetry is temporarily unavailable.
+        </p>
+      ) : state === "loading" ? (
         <p className="empty-state">Loading telemetry…</p>
       ) : services.length === 0 ? (
         <p className="empty-state">No telemetry aggregates yet.</p>
       ) : (
-        <table className="telemetry-table">
-          <caption className="empty-state">
+        <>
+          <div
+            className="telemetry-scroll"
+            role="region"
+            aria-label="Telemetry statistics"
+            tabIndex={0}
+          >
+            <table className="telemetry-table" aria-label="Service telemetry">
+              <thead>
+                <tr>
+                  <th scope="col">Service</th>
+                  <th scope="col">Spans</th>
+                  <th scope="col">Errors</th>
+                  <th scope="col">Avg ms</th>
+                  <th scope="col">Max ms</th>
+                  <th scope="col">Dropped attrs</th>
+                </tr>
+              </thead>
+              <tbody>
+                {services.map((service) => (
+                  <tr key={service.service}>
+                    <td>{service.service}</td>
+                    <td>{Number(service.spanCount)}</td>
+                    <td>{Number(service.errorCount)}</td>
+                    <td>{service.avgDurationMs.toFixed(1)}</td>
+                    <td>{service.maxDurationMs.toFixed(1)}</td>
+                    <td>{Number(service.attributesDropped)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <p className="empty-state telemetry-summary">
             {`${String(spansObserved)} spans observed${
               attributesDropped > 0
-                ? `, ${String(attributesDropped)} attributes dropped by the in-process budget`
+                ? `, ${String(attributesDropped)} attributes dropped by the collection limit`
                 : ""
             }`}
-          </caption>
-          <thead>
-            <tr>
-              <th scope="col">Service</th>
-              <th scope="col">Spans</th>
-              <th scope="col">Errors</th>
-              <th scope="col">Avg ms</th>
-              <th scope="col">Max ms</th>
-              <th scope="col">Dropped attrs</th>
-            </tr>
-          </thead>
-          <tbody>
-            {services.map((service) => (
-              <tr key={service.service}>
-                <td>{service.service}</td>
-                <td>{Number(service.spanCount)}</td>
-                <td>{Number(service.errorCount)}</td>
-                <td>{service.avgDurationMs.toFixed(1)}</td>
-                <td>{service.maxDurationMs.toFixed(1)}</td>
-                <td>{Number(service.attributesDropped)}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+          </p>
+        </>
       )}
     </section>
   );

@@ -466,3 +466,25 @@ Desktop 130 单测 PASS。`TestAppArtifacts` + 并发撤权 integration race PAS
 满额重放和另一个有效安装的跨项目拒绝。浏览器追加非 review 类型拒绝用例 PASS。
 下一步：R2 Build/Test 的隔离执行和已完成 repair task → 已验证候选交接尚未实现，
 不能把普通 App review artifact 或任务 completed 状态当成可部署版本。其他恢复范围继续 active。
+
+### R5 订阅状态与 R6 服务视图（2026-09-07）
+
+App 产物检查点 3831ea1。修复 Core 撤销后浏览器误报已开启、VAPID key 轮换、注册失败清理和
+停用失败状态；浏览器查询失败仍可编辑 quiet hours。公开摘要只限当前设备，跨设备修改拒绝。
+Desktop 138 单测与 typecheck PASS；`make test-push-relay` PASS，含 active/absent/revoked
+摘要、owner/device 隔离和事务 outbox 重试。修复遥测 unavailable 消失、窄屏表格及摘要裁切；
+Knowledge 明示混合来源；命令结果缩短和查询变化后 Enter 选择错误有回归覆盖。
+
+视觉：[订阅 before](../ui/desktop-web/changes/20260906-push-state/before/) /
+[after](../ui/desktop-web/changes/20260906-push-state/after/) /
+[notes](../ui/desktop-web/changes/20260906-push-state/notes.md)；
+[服务 before](../ui/desktop-web/changes/20260906-service-views/before/) /
+[after](../ui/desktop-web/changes/20260906-service-views/after/) /
+[notes](../ui/desktop-web/changes/20260906-service-views/notes.md)。
+
+生成脚本先向临时目录执行 Buf，远程插件失败不再删除现存 generated 文件。
+本阶段 `make generate` PASS；失败注入验证所有生成文件保持且临时目录清理。
+Proto/Go vet/全仓 Go 测试 PASS；前端 lint 修正后 `make -o proto-check -o go-check check`
+PASS（复用未变的 Go/Proto 结果，重跑全仓前端 lint/类型/单测/构建/status）。
+六项视觉场景门禁 PASS，共 12 组 before/after，已同步 current。剩余 R2 Build/Test、真实远程 Surface、
+语义模型与知识打开链、桌面入口收口、推送组合门禁和设备撤销同步仍 active；不提前合并 main。

@@ -4,6 +4,8 @@ package integration_test
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"testing"
@@ -60,12 +62,43 @@ func TestPushRelay(t *testing.T) {
 	}
 	ownerCtx := identity.WithContext(ctx, identity.Identity{UserID: owner, DeviceID: deviceA})
 	for _, device := range []string{deviceA, deviceB} {
-		if err := service.Subscribe(ownerCtx, device, domain.PushPlatformFixture, "fixture://device/"+device, "", ""); err != nil {
+		if err := service.Subscribe(identity.WithContext(ctx, identity.Identity{UserID: owner, DeviceID: device}), device, domain.PushPlatformFixture, "fixture://device/"+device, "", ""); err != nil {
 			t.Fatal(err)
 		}
 	}
 	if err := service.Subscribe(ownerCtx, deviceA, domain.PushPlatformFixture, "", "", ""); err == nil {
 		t.Fatal("empty endpoint accepted")
+	}
+	if err := service.Subscribe(ownerCtx, deviceB, domain.PushPlatformFixture, "fixture://device/foreign", "", ""); !errors.Is(err, domain.ErrPushDenied) {
+		t.Fatalf("cross-device subscribe: %v", err)
+	}
+	if err := service.Unsubscribe(ownerCtx, deviceB, domain.PushPlatformFixture); !errors.Is(err, domain.ErrPushDenied) {
+		t.Fatalf("cross-device unsubscribe: %v", err)
+	}
+	if digest, err := service.SubscriptionDigest(ownerCtx); err != nil || digest != "" {
+		t.Fatalf("absent subscription digest: %q %v", digest, err)
+	}
+	endpoint := "https://push.fixture.test/device-a"
+	if err := repo.UpsertPushSubscription(ctx, domain.PushSubscription{
+		OwnerUserID: owner, DeviceID: deviceA, Platform: domain.PushPlatformWebPush,
+		Endpoint: endpoint, CreatedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC(),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	hash := sha256.Sum256([]byte(endpoint))
+	if digest, err := service.SubscriptionDigest(ownerCtx); err != nil || digest != "sha256:"+hex.EncodeToString(hash[:]) {
+		t.Fatalf("active subscription digest: %q %v", digest, err)
+	}
+	for _, id := range []identity.Identity{{UserID: owner, DeviceID: deviceB}, {UserID: foreign, DeviceID: deviceA}} {
+		if digest, err := service.SubscriptionDigest(identity.WithContext(ctx, id)); err != nil || digest != "" {
+			t.Fatalf("foreign subscription disclosed: %q %v", digest, err)
+		}
+	}
+	if err := service.Unsubscribe(ownerCtx, deviceA, domain.PushPlatformWebPush); err != nil {
+		t.Fatal(err)
+	}
+	if digest, err := service.SubscriptionDigest(ownerCtx); err != nil || digest != "" {
+		t.Fatalf("revoked subscription digest: %q %v", digest, err)
 	}
 	appendFact := func(fact domain.Notification, commit bool) {
 		t.Helper()
@@ -154,7 +187,7 @@ func TestPushRelay(t *testing.T) {
 	second := fact(owner)
 	appendFact(second, true)
 	for range 2 {
-		if err := service.Unsubscribe(ownerCtx, deviceB, domain.PushPlatformFixture); err != nil {
+		if err := service.Unsubscribe(identity.WithContext(ctx, identity.Identity{UserID: owner, DeviceID: deviceB}), deviceB, domain.PushPlatformFixture); err != nil {
 			t.Fatal(err)
 		}
 	}

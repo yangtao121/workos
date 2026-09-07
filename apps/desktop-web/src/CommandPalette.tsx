@@ -44,10 +44,8 @@ export function CommandPalette(props: { actions: PaletteAction[]; onClose: () =>
     };
   }, []);
 
-  useEffect(() => {
-    setCursor(0);
-    setMessage("");
-  }, [query]);
+  const activeIndex = Math.max(0, Math.min(cursor, results.length - 1));
+  const selected = results[activeIndex];
 
   const runAction = async (action: PaletteAction) => {
     if (running.current) return;
@@ -89,10 +87,10 @@ export function CommandPalette(props: { actions: PaletteAction[]; onClose: () =>
             onClose();
           } else if (event.key === "ArrowDown") {
             event.preventDefault();
-            setCursor((value) => Math.max(0, Math.min(value + 1, results.length - 1)));
+            setCursor(Math.max(0, Math.min(activeIndex + 1, results.length - 1)));
           } else if (event.key === "ArrowUp") {
             event.preventDefault();
-            setCursor((value) => Math.max(value - 1, 0));
+            setCursor(Math.max(activeIndex - 1, 0));
           } else if (event.key === "Tab") {
             const controls = [
               ...event.currentTarget.querySelectorAll<HTMLElement>("input,button:not(:disabled)"),
@@ -106,9 +104,9 @@ export function CommandPalette(props: { actions: PaletteAction[]; onClose: () =>
               event.preventDefault();
               first?.focus();
             }
-          } else if (event.key === "Enter" && results[cursor]) {
+          } else if (event.key === "Enter" && selected) {
             event.preventDefault();
-            void runAction(results[cursor]);
+            void runAction(selected);
           }
         }}
       >
@@ -118,13 +116,15 @@ export function CommandPalette(props: { actions: PaletteAction[]; onClose: () =>
           role="combobox"
           aria-expanded="true"
           aria-controls={listId}
-          aria-activedescendant={results[cursor] ? `${listId}-${String(cursor)}` : undefined}
+          aria-activedescendant={selected ? `${listId}-${String(activeIndex)}` : undefined}
           className="palette-input"
           placeholder="Type a command…"
           value={query}
           maxLength={128}
           onChange={(event) => {
             setQuery(event.target.value);
+            setCursor(0);
+            setMessage("");
           }}
         />
         {message ? (
@@ -138,12 +138,12 @@ export function CommandPalette(props: { actions: PaletteAction[]; onClose: () =>
               id={`${listId}-${String(index)}`}
               key={action.id}
               role="option"
-              aria-selected={index === cursor}
+              aria-selected={index === activeIndex}
             >
               <button
                 type="button"
                 disabled={busy}
-                className={index === cursor ? "palette-item active" : "palette-item"}
+                className={index === activeIndex ? "palette-item active" : "palette-item"}
                 onMouseEnter={() => {
                   setCursor(index);
                 }}

@@ -256,3 +256,18 @@ describe("System Monitor", () => {
     expect(clients.incidents.listIncidents).not.toHaveBeenCalled();
   });
 });
+
+it("keeps telemetry failure visible and recovers through the same window", async () => {
+  const clients = clientsWith(Promise.resolve({ incidents: [] }));
+  clients.incidents.getTelemetrySummary.mockRejectedValueOnce(new Error("private endpoint"));
+  render(
+    <SystemMonitor projectId="project-1" expectedProjectRevision={5n} workosClients={clients} />,
+  );
+  await screen.findByText("Telemetry is temporarily unavailable.");
+  expect(screen.queryByText("private endpoint")).toBeNull();
+  const user = userEvent.setup();
+  await user.click(screen.getByRole("button", { name: "Retry telemetry" }));
+  await screen.findByText("No telemetry aggregates yet.");
+  expect(clients.incidents.getTelemetrySummary).toHaveBeenCalledTimes(2);
+  cleanup();
+});

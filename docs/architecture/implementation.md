@@ -1226,7 +1226,7 @@ App shell 修复：公共 `AuthorizeShellAction` 经 Gateway 到 runtime-host，
 owner/device token 与 Core 安装版本/清单/授权 epoch。trusted host 只有授权成功且请求仍有效
 时才修改自己窗口；关闭不再触发错误重命名。项目摘要读取确切 surface 项目；
 支持整数徽标、最大化/最小化，Dock 可恢复已安装应用与产物窗口。应用启动后收起应用库，
-避免固定层级挡住 iframe。文件与产物写 Bridge 尚未实现。
+避免固定层级挡住 iframe。文件与产物写 Bridge 见下文。
 
 Runtime 文件 Bridge：`runtime.workspace_mounts` 为 owner/project 绑定本地目录；
 App 的 `files.read`/`files.write` grant 与挂载的读写模式共同决定有效能力。
@@ -1248,3 +1248,12 @@ review 来源严格 task/App 二选一，不伪造 Agent task；每安装最多 
 公开 Get/List/GetReviewArtifact 复用来源校验；open 只允许当前安装项目的 review artifact，
 App host 在响应仍有效时打开现有 Artifact Review 窗口，不接受 URL。端到端门禁
 `make test-app-artifacts` 覆盖真实 SDK、Gateway、Runtime、Core、PostgreSQL、Chromium。
+
+### 推送订阅状态与服务视图（2026-09-07）
+
+GetPushPreferences 仅返回当前认证设备 active endpoint 的 SHA-256；Subscribe/Unsubscribe
+要求 device_id 等于可信设备身份。浏览器将本地订阅、公钥与 Core 摘要同时匹配，撤销后需
+用户重连；密钥轮换先撤旧再注册，Core 注册失败尝试回收新订阅，清理失败允许重试。
+Quiet hours 不受浏览器订阅查询失败影响。真实 PostgreSQL 验证摘要的 owner/device 隔离。
+System Monitor 对 unavailable 保留说明与重试，窄屏仅表格横向滚动；Knowledge 明示两类来源。
+命令面板查询变化重置选择，结果缩短夹紧光标，Enter 始终执行可见选项。

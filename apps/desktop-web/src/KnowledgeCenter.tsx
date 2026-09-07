@@ -231,7 +231,7 @@ export function KnowledgeCenter({
         <input
           data-testid="knowledge-search-input"
           aria-label="Search project knowledge"
-          placeholder="Search this project's reviews"
+          placeholder="Search project documents and files"
           value={query}
           onChange={(event) => {
             generationRef.current += 1;
@@ -275,7 +275,9 @@ export function KnowledgeCenter({
       ) : null}
       {status === "searching" ? <p className="empty-state">Searching…</p> : null}
       {status === "idle" ? (
-        <p className="empty-state">Search the review documents this project has produced.</p>
+        <p className="empty-state">
+          Search review documents and indexed workspace files in this project.
+        </p>
       ) : null}
       {status === "empty" ? (
         <p className="empty-state" data-testid="knowledge-empty">

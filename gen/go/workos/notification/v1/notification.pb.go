@@ -1830,8 +1830,11 @@ type GetPushPreferencesResponse struct {
 	// Public VAPID subscription key only. Empty means Web Push is unavailable.
 	WebPushPublicKey         string `protobuf:"bytes,2,opt,name=web_push_public_key,json=webPushPublicKey,proto3" json:"web_push_public_key,omitempty"`
 	WebPushUnavailableReason string `protobuf:"bytes,3,opt,name=web_push_unavailable_reason,json=webPushUnavailableReason,proto3" json:"web_push_unavailable_reason,omitempty"`
-	unknownFields            protoimpl.UnknownFields
-	sizeCache                protoimpl.SizeCache
+	// SHA-256 of this authenticated device's active endpoint. Empty when
+	// absent or revoked. Neither endpoint nor subscription keys are disclosed.
+	WebPushSubscriptionDigest string `protobuf:"bytes,4,opt,name=web_push_subscription_digest,json=webPushSubscriptionDigest,proto3" json:"web_push_subscription_digest,omitempty"`
+	unknownFields             protoimpl.UnknownFields
+	sizeCache                 protoimpl.SizeCache
 }
 
 func (x *GetPushPreferencesResponse) Reset() {
@@ -1881,6 +1884,13 @@ func (x *GetPushPreferencesResponse) GetWebPushPublicKey() string {
 func (x *GetPushPreferencesResponse) GetWebPushUnavailableReason() string {
 	if x != nil {
 		return x.WebPushUnavailableReason
+	}
+	return ""
+}
+
+func (x *GetPushPreferencesResponse) GetWebPushSubscriptionDigest() string {
+	if x != nil {
+		return x.WebPushSubscriptionDigest
 	}
 	return ""
 }
@@ -2090,11 +2100,12 @@ const file_workos_notification_v1_notification_proto_rawDesc = "" +
 	"\x0fquiet_start_utc\x18\x02 \x01(\tR\rquietStartUtc\x12\"\n" +
 	"\rquiet_end_utc\x18\x03 \x01(\tR\vquietEndUtc\x12\x1a\n" +
 	"\brevision\x18\x04 \x01(\x03R\brevision\"\x1b\n" +
-	"\x19GetPushPreferencesRequest\"\xd5\x01\n" +
+	"\x19GetPushPreferencesRequest\"\x96\x02\n" +
 	"\x1aGetPushPreferencesResponse\x12I\n" +
 	"\vpreferences\x18\x01 \x01(\v2'.workos.notification.v1.PushPreferencesR\vpreferences\x12-\n" +
 	"\x13web_push_public_key\x18\x02 \x01(\tR\x10webPushPublicKey\x12=\n" +
-	"\x1bweb_push_unavailable_reason\x18\x03 \x01(\tR\x18webPushUnavailableReason\"\x93\x01\n" +
+	"\x1bweb_push_unavailable_reason\x18\x03 \x01(\tR\x18webPushUnavailableReason\x12?\n" +
+	"\x1cweb_push_subscription_digest\x18\x04 \x01(\tR\x19webPushSubscriptionDigest\"\x93\x01\n" +
 	"\x19SetPushPreferencesRequest\x12I\n" +
 	"\vpreferences\x18\x01 \x01(\v2'.workos.notification.v1.PushPreferencesR\vpreferences\x12+\n" +
 	"\x11expected_revision\x18\x02 \x01(\x03R\x10expectedRevision\"g\n" +

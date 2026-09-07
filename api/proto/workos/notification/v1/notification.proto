@@ -284,6 +284,9 @@ message GetPushPreferencesResponse {
   // Public VAPID subscription key only. Empty means Web Push is unavailable.
   string web_push_public_key = 2;
   string web_push_unavailable_reason = 3;
+  // SHA-256 of this authenticated device's active endpoint. Empty when
+  // absent or revoked. Neither endpoint nor subscription keys are disclosed.
+  string web_push_subscription_digest = 4;
 }
 
 message SetPushPreferencesRequest {

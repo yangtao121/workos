@@ -4,6 +4,8 @@ package application
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"log/slog"
 	"time"
@@ -50,6 +52,10 @@ func (s *PushService) ownerFrom(ctx context.Context) (string, error) {
 // Subscribe registers (or re-registers) one device wake subscription.
 // Re-subscription is idempotent and reactivates a revoked registration.
 func (s *PushService) Subscribe(ctx context.Context, deviceID, platform, endpoint, p256dh, authSecret string) error {
+	id, identityErr := identity.FromContext(ctx)
+	if identityErr != nil || id.DeviceID != deviceID {
+		return domain.ErrPushDenied
+	}
 	owner, err := s.ownerFrom(ctx)
 	if err != nil {
 		return err
@@ -86,6 +92,10 @@ func (s *PushService) PublicKey() string {
 // Unsubscribe revokes one device registration; revoking an unknown or
 // already-revoked subscription succeeds (idempotent).
 func (s *PushService) Unsubscribe(ctx context.Context, deviceID, platform string) error {
+	id, identityErr := identity.FromContext(ctx)
+	if identityErr != nil || id.DeviceID != deviceID {
+		return domain.ErrPushDenied
+	}
 	owner, err := s.ownerFrom(ctx)
 	if err != nil {
 		return err
@@ -94,6 +104,30 @@ func (s *PushService) Unsubscribe(ctx context.Context, deviceID, platform string
 		return domain.ErrPushInvalid
 	}
 	return s.store.RevokePushSubscription(ctx, owner, deviceID, platform, time.Now().UTC())
+}
+
+// SubscriptionDigest returns only the authenticated device's active endpoint digest.
+func (s *PushService) SubscriptionDigest(ctx context.Context) (string, error) {
+	owner, err := s.ownerFrom(ctx)
+	if err != nil {
+		return "", err
+	}
+	id, err := identity.FromContext(ctx)
+	if err != nil || !ValidUUID(id.DeviceID) {
+		return "", domain.ErrPushDenied
+	}
+	sub, err := s.store.PushSubscriptionFor(ctx, owner, id.DeviceID, domain.PushPlatformWebPush)
+	if errors.Is(err, domain.ErrNotFound) {
+		return "", nil
+	}
+	if err != nil {
+		return "", err
+	}
+	if sub.Status != domain.PushActive {
+		return "", nil
+	}
+	hash := sha256.Sum256([]byte(sub.Endpoint))
+	return "sha256:" + hex.EncodeToString(hash[:]), nil
 }
 
 // Preferences reads the owner quiet window (defaults when unset).

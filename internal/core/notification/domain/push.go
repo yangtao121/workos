@@ -14,6 +14,7 @@ import (
 )
 
 var (
+	ErrPushDenied = errors.New("push device is not authorized")
 	// ErrPushInvalid rejects malformed subscriptions and preferences.
 	ErrPushInvalid = errors.New("push subscription or preference is invalid")
 	// ErrPushUnavailable reports a delivery path without a working sender

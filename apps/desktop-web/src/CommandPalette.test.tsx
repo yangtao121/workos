@@ -121,3 +121,18 @@ describe("CommandPalette", () => {
     launcher.remove();
   });
 });
+
+it("keeps Enter usable when refreshed actions shrink below the selection", async () => {
+  const run = vi.fn(() => Promise.resolve("ok" as const));
+  const first = action("a", "Open Alpha", run);
+  const view = render(
+    <CommandPalette actions={[first, action("b", "Open Beta", run)]} onClose={vi.fn()} />,
+  );
+  fireEvent.keyDown(screen.getByRole("dialog"), { key: "ArrowDown" });
+  view.rerender(<CommandPalette actions={[first]} onClose={vi.fn()} />);
+  expect(screen.getByRole("option").getAttribute("aria-selected")).toBe("true");
+  fireEvent.keyDown(screen.getByRole("dialog"), { key: "Enter" });
+  await waitFor(() => {
+    expect(run).toHaveBeenCalledOnce();
+  });
+});

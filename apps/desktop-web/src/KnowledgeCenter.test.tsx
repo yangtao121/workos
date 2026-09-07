@@ -72,7 +72,9 @@ describe("KnowledgeCenter response and generation boundary", () => {
     });
 
     expect(screen.queryByTestId("knowledge-result")).toBeNull();
-    expect(screen.getByText("Search the review documents this project has produced.")).toBeTruthy();
+    expect(
+      screen.getByText("Search review documents and indexed workspace files in this project."),
+    ).toBeTruthy();
   });
 
   it("fails the whole page closed when typed and legacy refs drift", async () => {
