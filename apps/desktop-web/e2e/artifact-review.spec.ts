@@ -1,3 +1,4 @@
+import { createDesktopProject, openDesktopApp } from "./open-app.js";
 import { expect, test } from "@playwright/test";
 
 // The full review-artifact chain runs against the real compose stack:
@@ -8,9 +9,10 @@ import { expect, test } from "@playwright/test";
 test("materializes fake harness artifacts and reviews them read-only", async ({ page }) => {
   test.setTimeout(120_000);
   await page.goto("/");
-  await page.getByLabel("Project name").fill(`Artifact E2E ${String(Date.now())}`);
-  await page.getByRole("button", { name: "Create space" }).click();
-  await expect(page.locator(".project-card.active")).toContainText("Artifact E2E");
+  await createDesktopProject(page, `Artifact E2E ${String(Date.now())}`);
+  await expect(page.getByRole("button", { name: "Switch project", exact: true })).toContainText(
+    "Artifact E2E",
+  );
 
   // Request both canonical artifact outputs for the run.
   await page.getByLabel("Agent goal").fill("produce the synthetic review documents");
@@ -48,7 +50,7 @@ test("materializes fake harness artifacts and reviews them read-only", async ({ 
   await page.getByRole("button", { name: "Close Artifact Review" }).last().click();
 
   // The Artifact Center lists the current project's artifacts after the run.
-  await page.getByRole("button", { name: "Open Artifact Center" }).click();
+  await openDesktopApp(page, "artifact-center");
   const rows = page.getByTestId("artifact-row");
   await expect(rows).toHaveCount(2);
   await expect(rows.first()).toContainText("Fake Harness Review Document");
@@ -56,7 +58,7 @@ test("materializes fake harness artifacts and reviews them read-only", async ({ 
   // The same artifacts are still listed after a full page reload — they are
   // durable Project facts, not window state.
   await page.reload();
-  await page.getByRole("button", { name: "Open Artifact Center" }).click();
+  await openDesktopApp(page, "artifact-center");
   await expect(page.getByTestId("artifact-row")).toHaveCount(2);
 
   // Opening from the center goes through the same authoritative viewer.

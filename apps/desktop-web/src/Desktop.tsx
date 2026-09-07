@@ -527,12 +527,15 @@ export function Desktop({
         appId: "home",
         title: "Home",
         kind: "home",
-        rect: { x: 340, y: 32, width: 720, height: 680 },
+        rect: fitRect(
+          { x: (window.innerWidth - 900) / 2, y: 32, width: 900, height: 680 },
+          workArea(),
+        ),
         mode: "normal",
       },
     });
     recordLayout((state) => ({ ...state, activeSystemWindow: "home" }));
-  }, [recordLayout]);
+  }, [recordLayout, workArea]);
 
   const openFiles = useCallback(() => {
     if (!activeProjectId) return;
@@ -724,15 +727,6 @@ export function Desktop({
     if (!adaptive || !projectsAuthoritative) return;
     void layoutStore.sweep(new Set(projects.map((project) => project.id))).catch(() => undefined);
   }, [adaptive, projects, projectsAuthoritative]);
-
-  async function createProject(event: SyntheticEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const formElement = event.currentTarget;
-    const form = new FormData(formElement);
-    const name = formString(form, "name");
-    if (!name) return;
-    if (await createProjectNamed(name)) formElement.reset();
-  }
 
   function replaceProject(project: Project) {
     setProjects((current) =>
@@ -1660,7 +1654,6 @@ export function Desktop({
           (project): MissionControlProject => ({
             id: project.id,
             name: project.name,
-            revision: project.revision,
             unreadNotifications: notificationSnapshot.notifications.filter(
               (notification) =>
                 notification.projectId === project.id && notification.readAt == null,
@@ -1670,6 +1663,7 @@ export function Desktop({
         )}
         onSelect={(projectId) => {
           setActiveProjectId(projectId);
+          closeWindow("mission-control");
         }}
         onCreateProject={async (name) => ((await createProjectNamed(name)) ? "ok" : "stale")}
       />
@@ -1719,6 +1713,24 @@ export function Desktop({
       ) : (
         <p className="empty-state">Device management is not available in this deployment.</p>
       )
+    ) : !activeProjectId && !loading ? (
+      <div className="project-welcome">
+        <Icon name="apps" size={32} />
+        <h2>A space for your next idea</h2>
+        <p>Create a project to work with your agent, files and apps.</p>
+        <Button
+          onClick={() => {
+            openMissionControl();
+            setAppActivation((current) => ({
+              id: "mission-control",
+              sequence: (current?.sequence ?? 0) + 1,
+            }));
+          }}
+          type="button"
+        >
+          Create a project
+        </Button>
+      </div>
     ) : (
       <div className="agent-center-body">
         <div className="agent-views" role="tablist" aria-label="Agent Center views">
@@ -1907,58 +1919,6 @@ export function Desktop({
       </header>
 
       <section className="desktop-canvas">
-        <aside className="project-sidebar" aria-label="Projects">
-          <p>PROJECT SPACES</p>
-          <div className="project-grid">
-            {projects.map((project) => (
-              <button
-                className={project.id === activeProjectId ? "project-card active" : "project-card"}
-                key={project.id}
-                onClick={() => {
-                  setActiveProjectId(project.id);
-                }}
-                type="button"
-              >
-                <span>{project.icon || "◌"}</span>
-                <strong>{project.name}</strong>
-                <small>revision {project.revision.toString()}</small>
-              </button>
-            ))}
-            <form
-              className="project-card new-project"
-              onSubmit={(event) => void createProject(event)}
-            >
-              <input
-                aria-label="Project name"
-                name="name"
-                placeholder="New project"
-                maxLength={120}
-              />
-              <Button type="submit">Create space</Button>
-            </form>
-          </div>
-          <div className="project-tools">
-            <button
-              disabled={!activeProject}
-              onClick={() => {
-                openProjectTool("settings");
-              }}
-              type="button"
-            >
-              <Icon name="settings" size={17} /> Project settings
-            </button>
-            <button
-              disabled={!activeProject}
-              onClick={() => {
-                openProjectTool("app-library");
-              }}
-              type="button"
-            >
-              <Icon name="apps" size={17} /> App Library
-            </button>
-          </div>
-        </aside>
-
         {windows.windows.map((windowState) => (
           <section
             className={

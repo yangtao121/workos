@@ -1,3 +1,4 @@
+import { createDesktopProject, openDesktopApp } from "./open-app.js";
 import { expect, test, type Page } from "@playwright/test";
 
 // The persistent acceptance volume accumulates registered apps across runs,
@@ -143,11 +144,12 @@ test("require-approval policy gates app tasks until the owner decides", async ({
   const appId = await registerApprovalApp(page, stamp);
 
   await page.goto("/");
-  await page.getByLabel("Project name").fill(`E2E Approval ${stamp}`);
-  await page.getByRole("button", { name: "Create space" }).click();
-  await expect(page.locator(".project-card.active")).toContainText("E2E Approval");
+  await createDesktopProject(page, `E2E Approval ${stamp}`);
+  await expect(page.getByRole("button", { name: "Switch project", exact: true })).toContainText(
+    "E2E Approval",
+  );
 
-  await page.getByRole("button", { name: "App Library" }).click();
+  await openDesktopApp(page, "app-library");
   const row = page.locator(".app-library .app-row", { hasText: appId });
   await expect(row.getByRole("button", { name: "Install", exact: true })).toBeVisible({
     timeout: libraryTimeout,

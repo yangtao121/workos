@@ -637,3 +637,29 @@ Gateway/Core/Indexer/Chromium 的 seed、indexed、restarted、rebuilt、stopped
 generation/project 锁并检查持久 tombstone，重复快照记为 tombstoned。新增真实 PostgreSQL
 回归先失败、修复后与分页/hybrid/workspace/golden rebuild race 全部 PASS。包含该修复的
 真实浏览器门禁再次 PASS（`/tmp/workos-workspace-browser-final.log`）；全仓检查再次退出 0。
+
+### R6 完整桌面画布（active，2026-09-07）
+
+工作区门禁检查点 d70f72d。依照 structure 11.1–11.3 移除永久项目侧栏，项目创建/切换统一
+使用顶部 Mission Control；设置与应用库继续使用正常窗口和 Home/Dock/搜索入口。
+Home 重新排列工具，去除用户界面的 revision 实现细节。验收空项目创建、切换、设置保存、
+窗口管理和多尺寸视觉；同步迁移依赖旧侧栏的浏览器门禁。现有 current 已保存为
+[before](../ui/desktop-web/changes/20260907-desktop-canvas/before/)，完成后追加 after/notes。
+
+画布阶段完成：删除永久侧栏与重复创建表单；Mission Control 选择后返回工作区；Home 居中加宽、
+统一卡片高度，1440×900 无溢出。空项目可在三种尺寸直接创建，同时全局工具仍可用。
+真实回归揭示 adaptive pane 的冒泡 focus 覆盖内部新窗口，已移至捕获阶段；六条三尺寸
+创建/Home→设置→切换链均 PASS，连同六条原视觉捕获共 12 PASS。
+视觉：[before](../ui/desktop-web/changes/20260907-desktop-canvas/before/)、
+[after](../ui/desktop-web/changes/20260907-desktop-canvas/after/)、
+[notes](../ui/desktop-web/changes/20260907-desktop-canvas/notes.md)，21 组已同步 current。
+
+真实 Gateway/Core/Runtime/harness/Chromium：adaptive 四模式、五条桌面链、foundation、
+安装/移除/重载、两条 context、artifact review、完整 App Bridge 共 15 条 PASS。
+重跑最后两条前已修复测试在页面挂载前发送快捷键；记录为 real3 的 13 PASS 与 real4 的
+2 PASS，不以失败首轮作为完成证据。迁移旧侧栏/常驻 Dock 入口，revision 由 RPC 断言。
+Desktop 142 单测及完整 TypeScript 工作区检查 PASS；`make -o proto-check -o go-check check`
+退出 0，复用本阶段已通过且未变的 Go/Proto 检查。下一步核查 R5 移动封装的实际启动与门禁，
+其当前 lib bundle 不能证明可启动的 Capacitor App；总任务仍 active，尚未合并 main。
+
+画布收尾 `make generate` 幂等 PASS：129 个生成源码文件 SHA-256 完全一致。

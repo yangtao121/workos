@@ -1,4 +1,4 @@
-import { openDesktopApp } from "./open-app.js";
+import { openDesktopApp, createDesktopProject } from "./open-app.js";
 import { expect, test } from "@playwright/test";
 
 // Visual capture for the W6 desktop system-apps slice
@@ -17,9 +17,10 @@ test("captures the desktop system-apps states", async ({ page }) => {
 
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto("/");
-  await page.getByLabel("Project name").fill(`Capture ${String(Date.now())}`);
-  await page.getByRole("button", { name: "Create space" }).click();
-  await expect(page.locator(".project-card.active")).toContainText("Capture");
+  await createDesktopProject(page, `Capture ${String(Date.now())}`);
+  await expect(page.getByRole("button", { name: "Switch project", exact: true })).toContainText(
+    "Capture",
+  );
 
   // Mission Control with real project cards.
   await openDesktopApp(page, "mission-control");

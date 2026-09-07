@@ -1,3 +1,4 @@
+import { openDesktopApp } from "./open-app.js";
 import { expect, test, type Page } from "@playwright/test";
 
 // Deterministic visual capture for the local-first notification slice
@@ -198,7 +199,7 @@ maintainer: {}
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto("/");
 
-  await page.getByRole("button", { name: "App Library" }).click();
+  await openDesktopApp(page, "app-library");
   const row = page.locator(".app-library .app-row", { hasText: appId });
   await expect(row.getByRole("button", { name: "Install", exact: true })).toBeVisible({
     timeout: libraryTimeout,

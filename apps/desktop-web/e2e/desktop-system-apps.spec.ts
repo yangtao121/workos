@@ -1,4 +1,4 @@
-import { openDesktopApp } from "./open-app.js";
+import { openDesktopApp, createDesktopProject } from "./open-app.js";
 import { expect, test } from "@playwright/test";
 
 // The W6 desktop system-apps gate: Command Palette keyboard surface,
@@ -8,9 +8,10 @@ import { expect, test } from "@playwright/test";
 
 test("palette opens with the keyboard, navigates, and opens Mission Control", async ({ page }) => {
   await page.goto("/");
-  await page.getByLabel("Project name").fill(`Palette ${String(Date.now())}`);
-  await page.getByRole("button", { name: "Create space" }).click();
-  await expect(page.locator(".project-card.active")).toContainText("Palette");
+  await createDesktopProject(page, `Palette ${String(Date.now())}`);
+  await expect(page.getByRole("button", { name: "Switch project", exact: true })).toContainText(
+    "Palette",
+  );
 
   await page.keyboard.press("ControlOrMeta+k");
   const palette = page.getByTestId("command-palette");
@@ -33,9 +34,10 @@ test("palette opens with the keyboard, navigates, and opens Mission Control", as
 test("Mission Control creates a project and switches the active project", async ({ page }) => {
   const firstName = `MC first ${String(Date.now())}`;
   await page.goto("/");
-  await page.getByLabel("Project name").fill(firstName);
-  await page.getByRole("button", { name: "Create space" }).click();
-  await expect(page.locator(".project-card.active")).toContainText("MC first");
+  await createDesktopProject(page, firstName);
+  await expect(page.getByRole("button", { name: "Switch project", exact: true })).toContainText(
+    "MC first",
+  );
 
   await openDesktopApp(page, "mission-control");
   const mission = page.getByTestId("mission-control");
@@ -44,21 +46,26 @@ test("Mission Control creates a project and switches the active project", async 
   const unique = `MC second ${String(Date.now())}`;
   await mission.getByLabel("New project name").fill(unique);
   await mission.getByRole("button", { name: "Create project" }).click();
-  await expect(page.locator(".project-card.active")).toContainText("MC second");
+  await expect(page.getByRole("button", { name: "Switch project", exact: true })).toContainText(
+    "MC second",
+  );
 
   // Switching back to the named project from its card is bounded and live.
   await page
     .getByTestId("mission-control")
     .locator(".mission-card", { hasText: firstName })
     .click();
-  await expect(page.locator(".project-card.active")).toContainText("MC first");
+  await expect(page.getByRole("button", { name: "Switch project", exact: true })).toContainText(
+    "MC first",
+  );
 });
 
 test("Home launchpad opens system apps and marks Terminal unavailable", async ({ page }) => {
   await page.goto("/");
-  await page.getByLabel("Project name").fill(`Home ${String(Date.now())}`);
-  await page.getByRole("button", { name: "Create space" }).click();
-  await expect(page.locator(".project-card.active")).toContainText("Home");
+  await createDesktopProject(page, `Home ${String(Date.now())}`);
+  await expect(page.getByRole("button", { name: "Switch project", exact: true })).toContainText(
+    "Home",
+  );
 
   await page.getByTestId("open-home").click();
   const home = page.getByTestId("home-app");
@@ -88,9 +95,10 @@ test("Home launchpad opens system apps and marks Terminal unavailable", async ({
 
 test("Docs, Code, and Files open per project with bounded empty states", async ({ page }) => {
   await page.goto("/");
-  await page.getByLabel("Project name").fill(`Apps ${String(Date.now())}`);
-  await page.getByRole("button", { name: "Create space" }).click();
-  await expect(page.locator(".project-card.active")).toContainText("Apps");
+  await createDesktopProject(page, `Apps ${String(Date.now())}`);
+  await expect(page.getByRole("button", { name: "Switch project", exact: true })).toContainText(
+    "Apps",
+  );
 
   await openDesktopApp(page, "docs");
   await expect(page.getByTestId("docs-app")).toBeVisible();
@@ -113,9 +121,10 @@ test("Docs, Code, and Files open per project with bounded empty states", async (
 test("windows snap to the exact half viewport and restore", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto("/");
-  await page.getByLabel("Project name").fill(`Snap ${String(Date.now())}`);
-  await page.getByRole("button", { name: "Create space" }).click();
-  await expect(page.locator(".project-card.active")).toContainText("Snap");
+  await createDesktopProject(page, `Snap ${String(Date.now())}`);
+  await expect(page.getByRole("button", { name: "Switch project", exact: true })).toContainText(
+    "Snap",
+  );
 
   await openDesktopApp(page, "docs");
   const docsWindow = page.locator('[data-window-id="docs"]');

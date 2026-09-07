@@ -1,3 +1,4 @@
+import { openDesktopApp } from "./open-app.js";
 import { expect, test, type Page } from "@playwright/test";
 
 // The full App Bridge capability gate (ADR-0016 §5): a granted web bundle
@@ -166,7 +167,7 @@ test("shell-side bridge methods exercise project.current, theme, window manageme
   }, projectId);
   await page.goto("/");
 
-  await page.getByRole("button", { name: "App Library", exact: true }).click();
+  await openDesktopApp(page, "app-library");
   const row = page.locator(".app-library .app-row", { hasText: appId });
   await expect(row.getByRole("button", { name: "Install", exact: true })).toBeVisible({
     timeout: libraryTimeout,

@@ -163,7 +163,7 @@ export function AdaptiveShell({
       <div
         className="adaptive-pane"
         data-testid={testid}
-        onClick={() => {
+        onClickCapture={() => {
           onFocusWindow(windowState.id);
         }}
       >
@@ -209,6 +209,7 @@ export function AdaptiveShell({
           <Icon name="apps" size={18} /> WorkOS
         </strong>
         <button
+          aria-label="Switch project"
           aria-expanded={sheetOpen}
           className="project-switcher"
           data-testid="nav-projects"

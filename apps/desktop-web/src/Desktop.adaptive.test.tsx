@@ -265,7 +265,7 @@ describe("Desktop adaptive shell", () => {
   it("renders the free-window desktop with a compact dock at desktop widths", async () => {
     pinViewport(1440, 900);
     render(<Desktop workosClients={clientsFixture([project(PROJECT_A, "Wide P", 1n)])} />);
-    expect(await screen.findByText("PROJECT SPACES")).toBeTruthy();
+    expect(await screen.findByRole("button", { name: "Switch project" })).toBeTruthy();
     expect(screen.queryByTestId("adaptive-bottom-nav")).toBeNull();
     expect(screen.getByRole("button", { name: "Open Home" })).toBeTruthy();
   });
@@ -273,7 +273,7 @@ describe("Desktop adaptive shell", () => {
   it("responds to a viewport resize between expanded and compact", async () => {
     pinViewport(1440, 900);
     render(<Desktop workosClients={clientsFixture([project(PROJECT_A, "Resize P", 1n)])} />);
-    expect(await screen.findByText("PROJECT SPACES")).toBeTruthy();
+    expect(await screen.findByRole("button", { name: "Switch project" })).toBeTruthy();
     await act(async () => {
       pinViewport(390, 844);
       window.dispatchEvent(new Event("resize"));

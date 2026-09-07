@@ -194,7 +194,9 @@ test("captures the expanded and fold-fallback desktop states", async ({ page }) 
   // adaptive slice.
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto("/");
-  await expect(page.locator(".project-card.active")).toContainText("Fixture Project");
+  await expect(page.getByRole("button", { name: "Switch project", exact: true })).toContainText(
+    "Fixture Project",
+  );
   await runTask(page);
   await page.screenshot({ path: `${captureDir}/expanded--desktop--1440x900.png` });
 

@@ -1,3 +1,4 @@
+import { createDesktopProject, openDesktopApp } from "./open-app.js";
 import { expect, test } from "@playwright/test";
 
 // The persistent acceptance volume accumulates registered apps across runs,
@@ -131,11 +132,12 @@ maintainer: {}
   expect(registerResponse.ok()).toBeTruthy();
 
   await page.goto("/");
-  await page.getByLabel("Project name").fill(`E2E Bridge ${stamp}`);
-  await page.getByRole("button", { name: "Create space" }).click();
-  await expect(page.locator(".project-card.active")).toContainText("E2E Bridge");
+  await createDesktopProject(page, `E2E Bridge ${stamp}`);
+  await expect(page.getByRole("button", { name: "Switch project", exact: true })).toContainText(
+    "E2E Bridge",
+  );
 
-  await page.getByRole("button", { name: "App Library" }).click();
+  await openDesktopApp(page, "app-library");
   const row = page.locator(".app-library .app-row", { hasText: appId });
   await expect(row.getByRole("button", { name: "Install", exact: true })).toBeVisible({
     timeout: libraryTimeout,

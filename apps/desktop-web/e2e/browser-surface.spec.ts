@@ -1,3 +1,4 @@
+import { openDesktopApp } from "./open-app.js";
 import { expect, test, type Page } from "@playwright/test";
 
 // The browser surface gate (W3.4 slice): a "Browser" app whose bundle is the
@@ -91,7 +92,7 @@ test("browser surface window renders the fixture browser chrome", async ({ page 
   await registerApp(page, stamp, appId, artifact.artifact);
 
   await page.goto("/");
-  await page.getByRole("button", { name: "App Library" }).click();
+  await openDesktopApp(page, "app-library");
   const row = page.locator(".app-library .app-row", { hasText: appId });
   await expect(row.getByRole("button", { name: "Install", exact: true })).toBeVisible({
     timeout: libraryTimeout,

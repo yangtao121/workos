@@ -7,7 +7,6 @@ import { useState } from "react";
 export interface MissionControlProject {
   id: string;
   name: string;
-  revision: number | bigint;
   unreadNotifications: number;
   isActive: boolean;
 }
@@ -83,17 +82,18 @@ export function MissionControl(props: {
               type="button"
               className={project.isActive ? "mission-card active" : "mission-card"}
               data-testid={`mission-card-${project.id}`}
+              aria-label={project.name}
+              aria-pressed={project.isActive}
               onClick={() => {
                 onSelect(project.id);
               }}
             >
               <span className="mission-name">{project.name}</span>
               <span className="mission-facts">
-                revision {String(project.revision)}
+                {project.isActive ? "Current workspace" : "Open workspace"}
                 {project.unreadNotifications > 0
                   ? ` · ${String(project.unreadNotifications)} unread`
                   : ""}
-                {project.isActive ? " · active" : ""}
               </span>
             </button>
           </li>

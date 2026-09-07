@@ -1,4 +1,4 @@
-import { openDesktopApp } from "./open-app.js";
+import { openDesktopApp, createDesktopProject } from "./open-app.js";
 import { expect, test } from "@playwright/test";
 
 // The owner knowledge-search acceptance gate (ADR-0013): the full browser
@@ -17,9 +17,10 @@ test("owner searches knowledge, pins a hit as Agent context, and re-runs a task"
   const phrase = "deterministic synthetic output";
 
   await page.goto("/");
-  await page.getByLabel("Project name").fill(`Knowledge UI ${stamp}`);
-  await page.getByRole("button", { name: "Create space" }).click();
-  await expect(page.locator(".project-card.active")).toContainText("Knowledge UI");
+  await createDesktopProject(page, `Knowledge UI ${stamp}`);
+  await expect(page.getByRole("button", { name: "Switch project", exact: true })).toContainText(
+    "Knowledge UI",
+  );
 
   // Produce one review artifact through the real fake-harness chain.
   await page.getByLabel("Agent goal").fill("produce the knowledge fixture review");
@@ -87,9 +88,10 @@ test("an empty query never reaches the server and results stay per project", asy
 }) => {
   const stamp = String(Date.now());
   await page.goto("/");
-  await page.getByLabel("Project name").fill(`Knowledge Empty ${stamp}`);
-  await page.getByRole("button", { name: "Create space" }).click();
-  await expect(page.locator(".project-card.active")).toContainText("Knowledge Empty");
+  await createDesktopProject(page, `Knowledge Empty ${stamp}`);
+  await expect(page.getByRole("button", { name: "Switch project", exact: true })).toContainText(
+    "Knowledge Empty",
+  );
 
   await openDesktopApp(page, "knowledge-center");
   await page.getByTestId("knowledge-search-input").fill("   ");

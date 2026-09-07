@@ -1,3 +1,4 @@
+import { createDesktopProject, openDesktopApp } from "./open-app.js";
 import { expect, test, type Page } from "@playwright/test";
 
 // Deterministic visual capture for the ADR-0015 provider expansion: the
@@ -25,11 +26,12 @@ test("captures harness settings with the expanded provider catalog", async ({ pa
   );
 
   await page.goto("/");
-  await page.getByLabel("Project name").fill(`Provider Catalog ${String(Date.now())}`);
-  await page.getByRole("button", { name: "Create space" }).click();
-  await expect(page.locator(".project-card.active")).toContainText("Provider Catalog");
+  await createDesktopProject(page, `Provider Catalog ${String(Date.now())}`);
+  await expect(page.getByRole("button", { name: "Switch project", exact: true })).toContainText(
+    "Provider Catalog",
+  );
 
-  await page.getByRole("button", { name: "Project settings" }).click();
+  await openDesktopApp(page, "settings");
   const settings = page.locator(".harness-settings");
   await expect(
     settings.getByRole("radio", { name: "Select Deterministic Fake Harness" }),

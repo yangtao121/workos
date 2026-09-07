@@ -77,7 +77,6 @@ export function HarnessSettings({
           <p>PROJECT SETTINGS</p>
           <h2 id="harness-settings-title">Harness provider</h2>
         </div>
-        <span>revision {project.revision.toString()}</span>
       </header>
 
       <form onSubmit={submit}>

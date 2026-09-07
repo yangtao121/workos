@@ -1,3 +1,4 @@
+import { openDesktopApp } from "./open-app.js";
 import { expect, test } from "@playwright/test";
 
 // Deterministic visual capture for the Project Agent Markdown / Diff review
@@ -245,7 +246,9 @@ test("captures the artifact review surfaces", async ({ page }) => {
   );
 
   await page.goto("/");
-  await expect(page.locator(".project-card.active")).toContainText("Fixture Project");
+  await expect(page.getByRole("button", { name: "Switch project", exact: true })).toContainText(
+    "Fixture Project",
+  );
   await page.getByLabel("Agent goal").fill("Synthetic review goal");
   await page.getByRole("checkbox", { name: "Markdown document" }).check();
   await page.getByRole("checkbox", { name: "Unified diff" }).check();
@@ -346,7 +349,7 @@ test("captures the artifact review surfaces", async ({ page }) => {
       }),
     ),
   );
-  await page.getByRole("button", { name: "Open Artifact Center" }).click();
+  await openDesktopApp(page, "artifact-center");
   await expect(page.getByTestId("artifact-row")).toHaveCount(2);
   await page.screenshot({ path: `${captureDir}/artifact-center--project-list--1440x900.png` });
 });

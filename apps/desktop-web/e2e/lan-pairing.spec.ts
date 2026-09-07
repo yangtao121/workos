@@ -1,4 +1,4 @@
-import { openDesktopApp } from "./open-app.js";
+import { openDesktopApp, createDesktopProject } from "./open-app.js";
 import { expect, test, type BrowserContext, type Page } from "@playwright/test";
 
 // The production-auth acceptance gate (make test-lan-pairing; ADR-0007).
@@ -150,9 +150,10 @@ test("lan-pairing phase runs", async () => {
 
       // 5. A real business request through the Desktop proves the Gateway
       // injected the fresh device identity into Core.
-      await page.getByLabel("Project name").fill(projectName);
-      await page.getByRole("button", { name: "Create space" }).click();
-      await expect(page.locator(".project-card.active")).toContainText(projectName);
+      await createDesktopProject(page, projectName);
+      await expect(page.getByRole("button", { name: "Switch project", exact: true })).toContainText(
+        projectName,
+      );
 
       // 6. The surface asset route is gated by the same session: with the
       // cookie the gate passes (runtime answers 404 for the unknown
@@ -178,11 +179,13 @@ test("lan-pairing phase runs", async () => {
       await page.goto(tlsURL);
       await expect(page.locator(".desktop-shell")).toBeVisible({ timeout: 30_000 });
       const persistName = `${projectName}-persist`;
-      await page.getByLabel("Project name").fill(persistName);
-      await page.getByRole("button", { name: "Create space" }).click();
-      await expect(page.locator(".project-card.active")).toContainText(persistName, {
-        timeout: 15_000,
-      });
+      await createDesktopProject(page, persistName);
+      await expect(page.getByRole("button", { name: "Switch project", exact: true })).toContainText(
+        persistName,
+        {
+          timeout: 15_000,
+        },
+      );
       return;
     }
 
@@ -204,11 +207,13 @@ test("lan-pairing phase runs", async () => {
       // The proof re-authenticated without replaying anything; prove the
       // fresh session with a real business write.
       const reauthName = `${projectName}-reauth`;
-      await page.getByLabel("Project name").fill(reauthName);
-      await page.getByRole("button", { name: "Create space" }).click();
-      await expect(page.locator(".project-card.active")).toContainText(reauthName, {
-        timeout: 15_000,
-      });
+      await createDesktopProject(page, reauthName);
+      await expect(page.getByRole("button", { name: "Switch project", exact: true })).toContainText(
+        reauthName,
+        {
+          timeout: 15_000,
+        },
+      );
       return;
     }
 

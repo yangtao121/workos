@@ -1,3 +1,4 @@
+import { openDesktopApp } from "./open-app.js";
 import { expect, test, type Page } from "@playwright/test";
 
 // The declarative surface gate (ADR-0016-era slice): a web-bundle app ships
@@ -120,7 +121,7 @@ test("renders declarative documents with inert native components", async ({ page
   }, projectId);
   await page.goto("/");
 
-  await page.getByRole("button", { name: "App Library" }).click();
+  await openDesktopApp(page, "app-library");
   const row = page.locator(".app-library .app-row", { hasText: appId });
   await expect(row.getByRole("button", { name: "Install", exact: true })).toBeVisible({
     timeout: libraryTimeout,

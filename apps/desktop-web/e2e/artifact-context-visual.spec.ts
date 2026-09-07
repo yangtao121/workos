@@ -1,3 +1,4 @@
+import { createDesktopProject, openDesktopApp } from "./open-app.js";
 // Deterministic visual evidence for the review-artifact-as-Agent-context
 // slice (ADR-0010), captured per docs/ui/README.md: fixed Chromium
 // 1440x900 @ deviceScaleFactor 1, synthetic fixtures only.
@@ -11,9 +12,10 @@ test("captures the agent context surfaces", async ({ page }) => {
   test.skip(!process.env.WORKOS_CAPTURE_DIR, "visual capture runs explicitly");
   test.setTimeout(180_000);
   await page.goto("/");
-  await page.getByLabel("Project name").fill(projectName);
-  await page.getByRole("button", { name: "Create space" }).click();
-  await expect(page.locator(".project-card.active")).toContainText(projectName);
+  await createDesktopProject(page, projectName);
+  await expect(page.getByRole("button", { name: "Switch project", exact: true })).toContainText(
+    projectName,
+  );
   // Hide unrelated persistent project cards and the server-minted task ID:
   // neither is part of this visual contract, and both would make recaptures
   // depend on prior local database state. Apply this only after project
@@ -30,7 +32,7 @@ test("captures the agent context surfaces", async ({ page }) => {
   await expect(page.getByText(/completed by fake harness/)).toBeVisible();
 
   // Artifact Center with the Use-as-context actions.
-  await page.getByRole("button", { name: "Open Artifact Center" }).click();
+  await openDesktopApp(page, "artifact-center");
   await expect(page.getByTestId("artifact-row")).toHaveCount(2);
   await page.getByTestId("use-as-context").first().click();
   await expect(

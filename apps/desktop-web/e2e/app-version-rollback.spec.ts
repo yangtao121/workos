@@ -1,3 +1,4 @@
+import { createDesktopProject, openDesktopApp } from "./open-app.js";
 import { expect, test, type Page } from "@playwright/test";
 
 // The app version transition / rollback gate (ADR-0012,
@@ -105,10 +106,11 @@ maintainer: {}
 
   // Install v1 through the real consent flow.
   await page.goto("/");
-  await page.getByLabel("Project name").fill(projectName);
-  await page.getByRole("button", { name: "Create space" }).click();
-  await expect(page.locator(".project-card.active")).toContainText(projectName);
-  await page.getByRole("button", { name: "App Library" }).click();
+  await createDesktopProject(page, projectName);
+  await expect(page.getByRole("button", { name: "Switch project", exact: true })).toContainText(
+    projectName,
+  );
+  await openDesktopApp(page, "app-library");
   const library = page.locator(".app-library");
   await expect(
     library.locator(".app-row", { hasText: appId }).getByText(/registry 1\.0\.0/),
@@ -195,7 +197,7 @@ maintainer: {}
     }),
   );
   await page.getByRole("button", { name: "Close App Library" }).click();
-  await page.getByRole("button", { name: "Open System Monitor" }).click();
+  await openDesktopApp(page, "system-monitor");
   const monitor = page.locator(".system-monitor-body");
   const rollbackButton = monitor.getByRole("button", { name: "Roll back to 1.0.0" });
   await expect(rollbackButton).toBeVisible({ timeout: libraryTimeout });
@@ -293,7 +295,7 @@ maintainer: {}
 
   // The rolled-back-to v2 pin serves the v2 surface again after everything.
   await page.reload();
-  await page.getByRole("button", { name: "App Library" }).click();
+  await openDesktopApp(page, "app-library");
   const reloadedRow = page.locator(".app-library .app-row", { hasText: appId });
   await expect(reloadedRow.getByText(/Installed · pinned 1\.1\.0/)).toBeVisible({
     timeout: libraryTimeout,
@@ -331,17 +333,10 @@ async function installCaptureRedaction(page: Page): Promise<void> {
         content: "e2e-version-fixture";
         font-size: 11px;
       }
-      /* The acceptance database is intentionally persistent. Hide unrelated
-         fixture Projects during capture so their run-specific names and
-         revisions cannot make this task's visual evidence nondeterministic. */
-      .project-grid > .project-card:not(.active) {
-        visibility: hidden !important;
-      }
-      .project-switcher, .project-card.active strong, .workos-window > header > span {
+      .project-switcher, .window-project {
         font-size: 0 !important;
       }
-      .project-switcher::after, .project-card.active strong::after,
-      .workos-window > header > span::after {
+      .project-switcher::after, .window-project::after {
         content: "Version E2E Fixture";
         font-size: 14px;
       }

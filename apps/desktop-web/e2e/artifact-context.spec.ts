@@ -1,3 +1,4 @@
+import { createDesktopProject, openDesktopApp } from "./open-app.js";
 import { expect, test } from "@playwright/test";
 
 // The review-artifact-as-Agent-context chain runs against the real compose
@@ -10,9 +11,10 @@ import { expect, test } from "@playwright/test";
 test("pins a review artifact as Agent context and runs a context-bound task", async ({ page }) => {
   test.setTimeout(120_000);
   await page.goto("/");
-  await page.getByLabel("Project name").fill(`Context E2E ${String(Date.now())}`);
-  await page.getByRole("button", { name: "Create space" }).click();
-  await expect(page.locator(".project-card.active")).toContainText("Context E2E");
+  await createDesktopProject(page, `Context E2E ${String(Date.now())}`);
+  await expect(page.getByRole("button", { name: "Switch project", exact: true })).toContainText(
+    "Context E2E",
+  );
 
   // Produce one markdown review artifact to pin.
   await page.getByLabel("Agent goal").fill("produce the synthetic review documents");
@@ -22,7 +24,7 @@ test("pins a review artifact as Agent context and runs a context-bound task", as
   await expect(page.getByText(/completed by fake harness/)).toBeVisible();
 
   // Pin the artifact as Agent context from the Artifact Center.
-  await page.getByRole("button", { name: "Open Artifact Center" }).click();
+  await openDesktopApp(page, "artifact-center");
   const center = page.locator(".artifact-center-body");
   await expect(page.getByTestId("artifact-row")).toHaveCount(2);
   await center.getByTestId("use-as-context").first().click();
@@ -51,9 +53,10 @@ test("pins a review artifact as Agent context and runs a context-bound task", as
 
   // A second project starts with an empty context set: switching projects
   // can never carry stale chips across.
-  await page.getByLabel("Project name").fill(`Context E2E B ${String(Date.now())}`);
-  await page.getByRole("button", { name: "Create space" }).click();
-  await expect(page.locator(".project-card.active")).toContainText("Context E2E B");
+  await createDesktopProject(page, `Context E2E B ${String(Date.now())}`);
+  await expect(page.getByRole("button", { name: "Switch project", exact: true })).toContainText(
+    "Context E2E B",
+  );
   await expect(page.getByTestId("context-chip")).toHaveCount(0);
   await expect(page.getByTestId("context-hint")).toHaveCount(0);
 });
@@ -61,9 +64,10 @@ test("pins a review artifact as Agent context and runs a context-bound task", as
 test("caps pinned context at four with a fixed hint", async ({ page }) => {
   test.setTimeout(180_000);
   await page.goto("/");
-  await page.getByLabel("Project name").fill(`Context Cap ${String(Date.now())}`);
-  await page.getByRole("button", { name: "Create space" }).click();
-  await expect(page.locator(".project-card.active")).toContainText("Context Cap");
+  await createDesktopProject(page, `Context Cap ${String(Date.now())}`);
+  await expect(page.getByRole("button", { name: "Switch project", exact: true })).toContainText(
+    "Context Cap",
+  );
 
   // Three runs produce five review artifacts: pinning all five exercises
   // the four-chip cap and its fixed hint.
@@ -78,7 +82,7 @@ test("caps pinned context at four with a fixed hint", async ({ page }) => {
   await page.getByRole("checkbox", { name: "Markdown document" }).check();
   await page.getByRole("button", { name: "Run task" }).click();
   await expect(page.getByText(/completed by fake harness/)).toBeVisible();
-  await page.getByRole("button", { name: "Open Artifact Center" }).click();
+  await openDesktopApp(page, "artifact-center");
   await expect(page.getByTestId("artifact-row")).toHaveCount(5);
 
   await expect(page.getByTestId("use-as-context")).toHaveCount(5);

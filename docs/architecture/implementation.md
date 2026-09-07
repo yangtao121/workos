@@ -1261,8 +1261,11 @@ System Monitor 对 unavailable 保留说明与重试，窄屏仅表格横向滚�
 ### 项目工具窗口（2026-09-07）
 
 桌面 App Library 与 Project settings 使用 window-manager 本地 WindowKind 和既有自由窗口
-几何/层级/恢复；adaptive shell 的 overlay/sheet 复用同一内容渲染函数。去掉侧栏固定覆盖层，
-项目列表改为紧凑单列。App 启动后关闭目录窗口；通知中的 App action 在手机也打开目录。
+几何/层级/恢复；adaptive shell 的 overlay/sheet 复用同一内容渲染函数。桌面取消常驻项目侧栏，
+顶部 Mission Control 统一创建/切换，选择后回到工作区。Home/Dock/命令搜索打开工具；
+Home 在 1440×900 完整显示工具，空项目提供直接创建入口。项目卡片与设置不再显示 revision。
+Adaptive pane 在捕获阶段聚焦，防止内部按钮打开新窗口后被父容器抢回焦点。
+App 启动后关闭目录窗口；通知中的 App action 在手机也打开目录。
 App Library 缺少可选分页对象时结束读取，重复 cursor 作为失败停止，避免无限请求。
 项目创建统一使用权威 CreateProject 返回值更新列表；失败返回明确结果，Mission Control 保留输入。
 

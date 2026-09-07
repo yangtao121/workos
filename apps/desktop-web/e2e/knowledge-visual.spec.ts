@@ -1,4 +1,4 @@
-import { openDesktopApp } from "./open-app.js";
+import { openDesktopApp, createDesktopProject } from "./open-app.js";
 import { expect, test, type Page } from "@playwright/test";
 
 // Deterministic visual capture for the project knowledge-search slice
@@ -71,7 +71,7 @@ async function capture(page: Page, name: string) {
 async function stabilizeEvidenceFrame(page: Page) {
   await page.addStyleTag({
     content: `
-      .mission-control .project-card:not(.active):not(.new-project) { display: none !important; }
+      .mission-card:not(.active) { display: none !important; }
       .task-snapshot dd:last-of-type { visibility: hidden !important; }
     `,
   });
@@ -138,9 +138,10 @@ test("captures knowledge center and app surface evidence", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto("/");
   await stabilizeEvidenceFrame(page);
-  await page.getByLabel("Project name").fill("Knowledge Lab");
-  await page.getByRole("button", { name: "Create space" }).click();
-  await expect(page.locator(".project-card.active")).toContainText("Knowledge Lab");
+  await createDesktopProject(page, "Knowledge Lab");
+  await expect(page.getByRole("button", { name: "Switch project", exact: true })).toContainText(
+    "Knowledge Lab",
+  );
   await page.getByLabel("Agent goal").fill("produce the knowledge fixture review");
   await page.getByLabel("Markdown document").check();
   await page.getByRole("button", { name: "Run task" }).click();
@@ -187,7 +188,7 @@ test("captures knowledge center and app surface evidence", async ({ page }) => {
 
   // Expanded: granted opaque web-bundle app with knowledge results.
   await registerKnowledgeApp(page, stamp, appId);
-  await page.getByRole("button", { name: "App Library" }).click();
+  await openDesktopApp(page, "app-library");
   const row = page.locator(".app-library .app-row", { hasText: appId });
   await expect(row.getByRole("button", { name: "Install", exact: true })).toBeVisible({
     timeout: libraryTimeout,

@@ -1,3 +1,4 @@
+import { createDesktopProject, openDesktopApp } from "./open-app.js";
 import { expect, test } from "@playwright/test";
 
 // The DeepSeek structured review chain runs against the real compose stack
@@ -15,13 +16,14 @@ test("runs a structured DeepSeek review and opens both inert viewers", async ({ 
   );
 
   await page.goto("/");
-  await page.getByLabel("Project name").fill(`Structured Review ${Date.now().toString()}`);
-  await page.getByRole("button", { name: "Create space" }).click();
-  await expect(page.locator(".project-card.active")).toContainText("Structured Review");
+  await createDesktopProject(page, `Structured Review ${Date.now().toString()}`);
+  await expect(page.getByRole("button", { name: "Switch project", exact: true })).toContainText(
+    "Structured Review",
+  );
 
   // Bind DeepSeek: the vault credential was stored by the make target, so
   // the server-derived binding carries the opaque credential ref.
-  await page.getByRole("button", { name: "Project settings" }).click();
+  await openDesktopApp(page, "settings");
   const settings = page.locator(".harness-settings");
   const deepSeek = settings.getByRole("radio", { name: "Select DeepSeek Harness" });
   await expect(deepSeek).toBeEnabled();
@@ -31,6 +33,7 @@ test("runs a structured DeepSeek review and opens both inert viewers", async ({ 
 
   // Structured run: both canonical outputs requested. The raw JSON review
   // document never appears in the timeline — only the validated summary.
+  await openDesktopApp(page, "agent-center");
   await page.getByLabel("Agent goal").fill("produce structured review");
   await page.getByRole("checkbox", { name: "Markdown document" }).check();
   await page.getByRole("checkbox", { name: "Unified diff" }).check();
@@ -43,12 +46,12 @@ test("runs a structured DeepSeek review and opens both inert viewers", async ({ 
   await expect(page.locator('li[data-event="artifactCreated"]')).toHaveCount(2);
 
   // The batch-produced artifacts review read-only through ArtifactService.
-  await page.getByRole("button", { name: "Open Artifact Center" }).click();
+  await openDesktopApp(page, "artifact-center");
   await expect(page.getByTestId("artifact-row")).toHaveCount(2);
 
   // The same artifacts are durable after a full page reload.
   await page.reload();
-  await page.getByRole("button", { name: "Open Artifact Center" }).click();
+  await openDesktopApp(page, "artifact-center");
   await expect(page.getByTestId("artifact-row")).toHaveCount(2);
 });
 
@@ -59,11 +62,12 @@ test("malformed structured output fails closed without timeline leakage", async 
   );
 
   await page.goto("/");
-  await page.getByLabel("Project name").fill(`Structured Failure ${Date.now().toString()}`);
-  await page.getByRole("button", { name: "Create space" }).click();
-  await expect(page.locator(".project-card.active")).toContainText("Structured Failure");
+  await createDesktopProject(page, `Structured Failure ${Date.now().toString()}`);
+  await expect(page.getByRole("button", { name: "Switch project", exact: true })).toContainText(
+    "Structured Failure",
+  );
 
-  await page.getByRole("button", { name: "Project settings" }).click();
+  await openDesktopApp(page, "settings");
   const settings = page.locator(".harness-settings");
   const deepSeek = settings.getByRole("radio", { name: "Select DeepSeek Harness" });
   await expect(deepSeek).toBeEnabled();
@@ -71,6 +75,7 @@ test("malformed structured output fails closed without timeline leakage", async 
   await settings.getByRole("button", { name: "Save harness setting" }).click();
   await expect(settings.getByText("Harness setting saved.")).toBeVisible();
 
+  await openDesktopApp(page, "agent-center");
   await page.getByLabel("Agent goal").fill("fixture malformed output");
   await page.getByRole("checkbox", { name: "Markdown document" }).check();
   await page.getByRole("button", { name: "Run task" }).click();

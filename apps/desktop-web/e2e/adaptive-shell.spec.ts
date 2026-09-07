@@ -1,4 +1,4 @@
-import { openDesktopApp } from "./open-app.js";
+import { openDesktopApp, createDesktopProject } from "./open-app.js";
 import { expect, test, type Page } from "@playwright/test";
 
 // The adaptive shell gate (docs/tasks/20260831-v1-runtime-reliability-adaptive-closeout.md).
@@ -203,13 +203,16 @@ test.describe("adaptive expanded regression (1440x900)", () => {
     test.setTimeout(120_000);
     const stamp = String(Date.now());
     await page.goto("/");
-    await expect(page.locator(".mission-control")).toBeVisible({ timeout: libraryTimeout });
+    await expect(page.getByRole("button", { name: "Switch project" })).toBeVisible({
+      timeout: libraryTimeout,
+    });
     await expect(page.getByTestId("adaptive-bottom-nav")).toHaveCount(0);
     await expect(page.getByTestId("fold-pane-main")).toHaveCount(0);
 
-    await page.getByLabel("Project name").fill(`Adaptive Expanded ${stamp}`);
-    await page.getByRole("button", { name: "Create space" }).click();
-    await expect(page.locator(".project-card.active")).toContainText(`Adaptive Expanded ${stamp}`);
+    await createDesktopProject(page, `Adaptive Expanded ${stamp}`);
+    await expect(page.getByRole("button", { name: "Switch project", exact: true })).toContainText(
+      `Adaptive Expanded ${stamp}`,
+    );
 
     await openDesktopApp(page, "system-monitor");
     await expect(

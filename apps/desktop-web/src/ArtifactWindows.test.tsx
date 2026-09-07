@@ -449,7 +449,8 @@ describe("Timeline artifact events", () => {
     await userEvent.type(await screen.findByRole("textbox", { name: "Agent goal" }), "review");
     await userEvent.click(screen.getByRole("button", { name: "Run task" }));
     expect(await screen.findByText("task-1")).toBeTruthy();
-    await userEvent.click(screen.getByRole("button", { name: /Project Two revision 1/ }));
+    await userEvent.click(screen.getByRole("button", { name: "Switch project" }));
+    await userEvent.click(screen.getByRole("button", { name: "Project Two" }));
     release?.();
     await waitFor(() => {
       expect(screen.queryByText("task-1")).toBeNull();

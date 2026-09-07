@@ -1,3 +1,4 @@
+import { createDesktopProject, openDesktopApp } from "./open-app.js";
 import { expect, test } from "@playwright/test";
 
 // The persistent acceptance volume accumulates registered apps across runs,
@@ -137,11 +138,12 @@ maintainer: {}
 
   // Tab 1: install with both requested permissions explicitly granted.
   await page.goto("/");
-  await page.getByLabel("Project name").fill(`E2E Grants ${stamp}`);
-  await page.getByRole("button", { name: "Create space" }).click();
-  await expect(page.locator(".project-card.active")).toContainText("E2E Grants");
+  await createDesktopProject(page, `E2E Grants ${stamp}`);
+  await expect(page.getByRole("button", { name: "Switch project", exact: true })).toContainText(
+    "E2E Grants",
+  );
 
-  await page.getByRole("button", { name: "App Library" }).click();
+  await openDesktopApp(page, "app-library");
   const row = page.locator(".app-library .app-row", { hasText: appId });
   await expect(row.getByRole("button", { name: "Install", exact: true })).toBeVisible({
     timeout: libraryTimeout,
@@ -191,7 +193,7 @@ maintainer: {}
   await expect(pageTwo.locator(".project-switcher")).toContainText(`E2E Grants ${stamp}`, {
     timeout: libraryTimeout,
   });
-  await pageTwo.getByRole("button", { name: "App Library" }).click();
+  await openDesktopApp(pageTwo, "app-library");
   const rowTwo = pageTwo.locator(".app-library .app-row", { hasText: appId });
   await expect(rowTwo.getByText(/grant revision 1/)).toBeVisible({ timeout: libraryTimeout });
   await rowTwo.getByRole("button", { name: "Manage permissions" }).click();

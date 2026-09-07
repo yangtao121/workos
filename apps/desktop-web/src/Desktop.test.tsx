@@ -47,7 +47,7 @@ describe("Desktop harness workflow", () => {
         workosClients={clientFixture({ projects: [project("project-1", "Project One", 1n)] })}
       />,
     );
-    await userEvent.click(await screen.findByRole("button", { name: "Project settings" }));
+    await openTool("Project settings");
     await screen.findByRole("heading", { name: "Harness provider" });
     await userEvent.click(screen.getByRole("button", { name: "Minimize Project settings" }));
     expect(screen.queryByRole("heading", { name: "Harness provider" })).toBeNull();
@@ -68,7 +68,7 @@ describe("Desktop harness workflow", () => {
       <Desktop workosClients={clientFixture({ projects: [first], setBinding, getProject })} />,
     );
 
-    await userEvent.click(await screen.findByRole("button", { name: "Project settings" }));
+    await openTool("Project settings");
     await userEvent.click(screen.getByRole("radio", { name: "Select DeepSeek Harness" }));
     await userEvent.click(screen.getByRole("button", { name: "Save harness setting" }));
 
@@ -85,7 +85,13 @@ describe("Desktop harness workflow", () => {
         "Project settings changed elsewhere. The latest revision was loaded.",
       ),
     ).toBeTruthy();
-    expect(screen.getAllByText("revision 2")).toHaveLength(2);
+    await userEvent.click(screen.getByRole("radio", { name: "Select DeepSeek Harness" }));
+    await userEvent.click(screen.getByRole("button", { name: "Save harness setting" }));
+    expect(setBinding).toHaveBeenLastCalledWith({
+      projectId: "project-1",
+      expectedRevision: 2n,
+      selection: { case: "providerId", value: "deepseek" },
+    });
     expect(
       screen.getByRole<HTMLInputElement>("radio", { name: "Select Fake Harness" }).checked,
     ).toBe(true);
@@ -103,11 +109,11 @@ describe("Desktop harness workflow", () => {
       />,
     );
 
-    await userEvent.click(await screen.findByRole("button", { name: "Project settings" }));
+    await openTool("Project settings");
     expect(
       screen.getByRole<HTMLInputElement>("radio", { name: "Select Fake Harness" }).checked,
     ).toBe(true);
-    await userEvent.click(screen.getByRole("button", { name: /Project Two revision 8/ }));
+    await switchProject("Project Two");
     await waitFor(() => {
       expect(
         screen.getByRole<HTMLInputElement>("radio", {
@@ -154,7 +160,7 @@ describe("Desktop harness workflow", () => {
       />,
     );
 
-    await userEvent.click(await screen.findByRole("button", { name: "Project settings" }));
+    await openTool("Project settings");
     await userEvent.click(screen.getByRole("radio", { name: "Select DeepSeek Harness" }));
     await userEvent.click(screen.getByRole("button", { name: "Save harness setting" }));
     expect(setBinding).toHaveBeenCalledWith({
@@ -163,7 +169,7 @@ describe("Desktop harness workflow", () => {
       selection: { case: "providerId", value: "deepseek" },
     });
 
-    await userEvent.click(screen.getByRole("button", { name: /Project Two revision 8/ }));
+    await switchProject("Project Two");
     expect(
       screen.getByRole<HTMLInputElement>("radio", { name: "Select DeepSeek Harness" }).checked,
     ).toBe(true);
@@ -175,9 +181,6 @@ describe("Desktop harness workflow", () => {
       screen.getByRole<HTMLInputElement>("radio", { name: "Select DeepSeek Harness" }).checked,
     ).toBe(true);
     expect(screen.queryByText("Harness setting saved.")).toBeNull();
-    await waitFor(() => {
-      expect(screen.getByRole("button", { name: /Project One revision 2/ })).toBeTruthy();
-    });
 
     await userEvent.click(screen.getByRole("radio", { name: "Select Fake Harness" }));
     await userEvent.click(screen.getByRole("button", { name: "Save harness setting" }));
@@ -190,12 +193,18 @@ describe("Desktop harness workflow", () => {
     // A's success settled while A was inactive: returning to A shows the
     // response revision/binding from the updated cache, but no stale
     // success feedback.
-    await userEvent.click(screen.getByRole("button", { name: /Project One revision 2/ }));
+    await switchProject("Project One");
     expect(
       screen.getByRole<HTMLInputElement>("radio", { name: "Select Fake Harness" }).checked,
     ).toBe(true);
-    expect(screen.getAllByText("revision 2")).toHaveLength(2);
     expect(screen.queryByText("Harness setting saved.")).toBeNull();
+    await userEvent.click(screen.getByRole("radio", { name: "Select DeepSeek Harness" }));
+    await userEvent.click(screen.getByRole("button", { name: "Save harness setting" }));
+    expect(setBinding).toHaveBeenLastCalledWith({
+      projectId: "project-1",
+      expectedRevision: 2n,
+      selection: { case: "providerId", value: "deepseek" },
+    });
   });
 
   it("discards an unsaved draft and its feedback when leaving and returning to a Project", async () => {
@@ -214,7 +223,7 @@ describe("Desktop harness workflow", () => {
       />,
     );
 
-    await userEvent.click(await screen.findByRole("button", { name: "Project settings" }));
+    await openTool("Project settings");
     expect(
       screen.getByRole<HTMLInputElement>("radio", { name: "Use Global Default" }).checked,
     ).toBe(true);
@@ -222,8 +231,8 @@ describe("Desktop harness workflow", () => {
     // An unsaved selection must not survive a round-trip through Project Two.
     await userEvent.click(screen.getByRole("radio", { name: "Select Fake Harness" }));
     expect(saveButton().disabled).toBe(false);
-    await userEvent.click(screen.getByRole("button", { name: /Project Two revision 8/ }));
-    await userEvent.click(screen.getByRole("button", { name: /Project One revision 1/ }));
+    await switchProject("Project Two");
+    await switchProject("Project One");
     expect(
       screen.getByRole<HTMLInputElement>("radio", { name: "Use Global Default" }).checked,
     ).toBe(true);
@@ -236,8 +245,8 @@ describe("Desktop harness workflow", () => {
     expect(await screen.findByText("Harness setting saved.")).toBeTruthy();
 
     await userEvent.click(screen.getByRole("radio", { name: "Use Global Default" }));
-    await userEvent.click(screen.getByRole("button", { name: /Project Two revision 8/ }));
-    await userEvent.click(screen.getByRole("button", { name: /Project One revision 2/ }));
+    await switchProject("Project Two");
+    await switchProject("Project One");
     expect(
       screen.getByRole<HTMLInputElement>("radio", { name: "Select Fake Harness" }).checked,
     ).toBe(true);
@@ -260,7 +269,7 @@ describe("Desktop harness workflow", () => {
       />,
     );
 
-    await userEvent.click(await screen.findByRole("button", { name: "Project settings" }));
+    await openTool("Project settings");
     await userEvent.click(screen.getByRole("radio", { name: "Select Fake Harness" }));
     await userEvent.click(screen.getByRole("button", { name: "Save harness setting" }));
     expect(setBinding).toHaveBeenCalledWith({
@@ -269,7 +278,7 @@ describe("Desktop harness workflow", () => {
       selection: { case: "providerId", value: "fake" },
     });
 
-    await userEvent.click(screen.getByRole("button", { name: /Project Two revision 8/ }));
+    await switchProject("Project Two");
     await act(async () => {
       await pending.reject(new ConnectError("offline", Code.Unavailable)).catch(() => undefined);
     });
@@ -282,7 +291,7 @@ describe("Desktop harness workflow", () => {
       ),
     ).toBeNull();
 
-    await userEvent.click(screen.getByRole("button", { name: /Project One revision 1/ }));
+    await switchProject("Project One");
     expect(
       screen.getByRole<HTMLInputElement>("radio", { name: "Use Global Default" }).checked,
     ).toBe(true);
@@ -312,11 +321,11 @@ describe("Desktop harness workflow", () => {
       />,
     );
 
-    await userEvent.click(await screen.findByRole("button", { name: "Project settings" }));
+    await openTool("Project settings");
     await userEvent.click(screen.getByRole("radio", { name: "Select Fake Harness" }));
     await userEvent.click(screen.getByRole("button", { name: "Save harness setting" }));
 
-    await userEvent.click(screen.getByRole("button", { name: /Project Two revision 8/ }));
+    await switchProject("Project Two");
     await userEvent.click(screen.getByRole("radio", { name: "Select Fake Harness" }));
     await userEvent.click(screen.getByRole("button", { name: "Save harness setting" }));
     expect(setBinding).toHaveBeenNthCalledWith(1, {
@@ -349,12 +358,18 @@ describe("Desktop harness workflow", () => {
       screen.getByRole<HTMLInputElement>("radio", { name: "Select Fake Harness" }).checked,
     ).toBe(true);
 
-    await userEvent.click(screen.getByRole("button", { name: /Project One revision 2/ }));
+    await switchProject("Project One");
     expect(
       screen.getByRole<HTMLInputElement>("radio", { name: "Select Fake Harness" }).checked,
     ).toBe(true);
-    expect(screen.getAllByText("revision 2")).toHaveLength(2);
     expect(screen.queryByText("Harness setting saved.")).toBeNull();
+    await userEvent.click(screen.getByRole("radio", { name: "Select DeepSeek Harness" }));
+    await userEvent.click(screen.getByRole("button", { name: "Save harness setting" }));
+    expect(setBinding).toHaveBeenLastCalledWith({
+      projectId: "project-1",
+      expectedRevision: 2n,
+      selection: { case: "providerId", value: "deepseek" },
+    });
   });
 
   it("ignores binding responses that settle after the Desktop unmounts", async () => {
@@ -369,7 +384,7 @@ describe("Desktop harness workflow", () => {
           })}
         />,
       );
-      await userEvent.click(await screen.findByRole("button", { name: "Project settings" }));
+      await openTool("Project settings");
       await userEvent.click(screen.getByRole("radio", { name: "Select Fake Harness" }));
       await userEvent.click(screen.getByRole("button", { name: "Save harness setting" }));
       first.unmount();
@@ -392,7 +407,7 @@ describe("Desktop harness workflow", () => {
           })}
         />,
       );
-      await userEvent.click(await screen.findByRole("button", { name: "Project settings" }));
+      await openTool("Project settings");
       await userEvent.click(screen.getByRole("radio", { name: "Select Fake Harness" }));
       await userEvent.click(screen.getByRole("button", { name: "Save harness setting" }));
       await waitFor(() => {
@@ -444,15 +459,16 @@ describe("Desktop harness workflow", () => {
       />,
     );
 
-    const nameInput = await screen.findByRole("textbox", { name: "Project name" });
+    await userEvent.click(await screen.findByRole("button", { name: "Switch project" }));
+    const nameInput = await screen.findByRole("textbox", { name: "New project name" });
     await userEvent.type(nameInput, "Project Three");
-    await userEvent.click(screen.getByRole("button", { name: "Create space" }));
+    await userEvent.click(screen.getByRole("button", { name: "Create project" }));
 
-    const createdCard = await screen.findByRole("button", { name: /Project Three revision 1/ });
+    const createdCard = await screen.findByRole("button", { name: "Project Three" });
     expect(createdCard.className).toContain("active");
     expect((nameInput as HTMLInputElement).value).toBe("");
     expect(screen.queryByRole("alert")).toBeNull();
-    await userEvent.click(screen.getByRole("button", { name: "Project settings" }));
+    await openTool("Project settings");
     expect(screen.getByText("Harness provider")).toBeTruthy();
   });
 
@@ -475,14 +491,14 @@ describe("Desktop harness workflow", () => {
       />,
     );
 
-    await userEvent.click(await screen.findByRole("button", { name: "Project settings" }));
+    await openTool("Project settings");
     await userEvent.click(screen.getByRole("radio", { name: "Select DeepSeek Harness" }));
     await userEvent.click(screen.getByRole("button", { name: "Save harness setting" }));
     await waitFor(() => {
       expect(getProject).toHaveBeenCalledWith({ projectId: "project-1" });
     });
 
-    await userEvent.click(screen.getByRole("button", { name: /Project Two revision 8/ }));
+    await switchProject("Project Two");
     expect(screen.queryByText(/changed elsewhere/)).toBeNull();
 
     await act(async () => {
@@ -492,11 +508,8 @@ describe("Desktop harness workflow", () => {
       screen.getByRole<HTMLInputElement>("radio", { name: "Select DeepSeek Harness" }).checked,
     ).toBe(true);
     expect(screen.queryByText(/changed elsewhere/)).toBeNull();
-    await waitFor(() => {
-      expect(screen.getByRole("button", { name: /Project One revision 2/ })).toBeTruthy();
-    });
 
-    await userEvent.click(screen.getByRole("button", { name: /Project One revision 2/ }));
+    await switchProject("Project One");
     expect(
       screen.getByRole<HTMLInputElement>("radio", { name: "Select Fake Harness" }).checked,
     ).toBe(true);
@@ -756,7 +769,7 @@ describe("app surface windows", () => {
 
     render(<Desktop workosClients={clients} />);
     await screen.findAllByText("Alpha");
-    await user.click(screen.getByRole("button", { name: "App Library" }));
+    await openTool("App Library");
     await screen.findByText(/Installed · pinned 1\.0\.0/);
     await user.click(screen.getByRole("button", { name: "Open" }));
 
@@ -817,11 +830,11 @@ describe("app surface windows", () => {
 
     render(<Desktop workosClients={clients} />);
     await screen.findAllByText("Alpha");
-    await user.click(screen.getByRole("button", { name: "App Library" }));
+    await openTool("App Library");
     await user.click(screen.getByRole("button", { name: "Open" }));
     expect(await screen.findByTestId("app-surface-frame")).toBeTruthy();
 
-    await user.click(screen.getByRole("button", { name: /Beta revision 1/ }));
+    await switchProject("Beta");
     await waitFor(() => {
       expect(closeSurface).toHaveBeenCalledWith({ surfaceSessionId: session.id });
     });
@@ -870,7 +883,7 @@ describe("app surface windows", () => {
 
     const mounted = render(<Desktop workosClients={clients} />);
     await screen.findAllByText("Alpha");
-    await user.click(screen.getByRole("button", { name: "App Library" }));
+    await openTool("App Library");
     await user.click(screen.getByRole("button", { name: "Open" }));
     expect(await screen.findByTestId("app-surface-frame")).toBeTruthy();
 
@@ -959,7 +972,7 @@ describe("app surface windows", () => {
 
     render(<Desktop workosClients={clients} />);
     await screen.findAllByText("Alpha");
-    await user.click(screen.getByRole("button", { name: "App Library" }));
+    await openTool("App Library");
     // Both apps are installed, so both rows show the pinned version.
     await screen.findAllByText(/Installed · pinned 1\.0\.0/);
     // Open both apps: one surface window each. The rows are queried fresh
@@ -999,3 +1012,13 @@ describe("app surface windows", () => {
     expect(screen.getByText("Granted: none · grant revision 2")).toBeTruthy();
   });
 });
+
+async function openTool(name: string) {
+  await userEvent.click(screen.getByRole("button", { name: "Open command palette" }));
+  await userEvent.type(screen.getByLabelText("Search commands"), `Open ${name}`);
+  await userEvent.keyboard("{Enter}");
+}
+async function switchProject(name: string) {
+  await userEvent.click(screen.getByRole("button", { name: "Switch project" }));
+  await userEvent.click(screen.getByRole("button", { name }));
+}

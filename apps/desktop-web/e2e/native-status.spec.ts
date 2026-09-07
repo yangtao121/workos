@@ -1,3 +1,4 @@
+import { openDesktopApp } from "./open-app.js";
 import { expect, test, type Page } from "@playwright/test";
 
 // The remote-native status surface gate (W3.5 hosting slice): a remote
@@ -88,7 +89,7 @@ test("remote-native status surface renders through the supervised path", async (
   await registerApp(page, stamp, appId, artifact.artifact);
 
   await page.goto("/");
-  await page.getByRole("button", { name: "App Library" }).click();
+  await openDesktopApp(page, "app-library");
   const row = page.locator(".app-library .app-row", { hasText: appId });
   await expect(row.getByRole("button", { name: "Install", exact: true })).toBeVisible({
     timeout: libraryTimeout,

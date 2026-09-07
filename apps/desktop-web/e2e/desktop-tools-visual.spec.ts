@@ -43,6 +43,7 @@ for (const [width, height] of [
     await expect(
       page.getByRole("button", { name: "Notifications", exact: true }).first(),
     ).toBeVisible();
+    await expect(page.locator(".project-switcher")).toContainText("Studio");
     for (const [label, surface, ready] of [
       ["App Library", "app-library", "Project Notes"],
       ["Project settings", "project-settings", "Harness provider"],

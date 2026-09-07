@@ -1,3 +1,4 @@
+import { createDesktopProject, openDesktopApp } from "./open-app.js";
 import { expect, test, type Page } from "@playwright/test";
 
 // The app knowledge-search acceptance gate (ADR-0013): a deterministic web
@@ -221,7 +222,7 @@ test("granted app searches project knowledge and fails closed on revoke", async 
 
   // Install with explicit consent: knowledge.read is the only granted
   // permission, so the negotiated methods are exactly knowledge.search.
-  await page.getByRole("button", { name: "App Library" }).click();
+  await openDesktopApp(page, "app-library");
   const row = page.locator(".app-library .app-row", { hasText: appId });
   await expect(row.getByRole("button", { name: "Install", exact: true })).toBeVisible({
     timeout: libraryTimeout,
@@ -316,14 +317,15 @@ test("an app without knowledge.read never negotiates knowledge.search", async ({
   const appId = `e2e-app-agentonly-${stamp}`;
 
   await page.goto("/");
-  await page.getByLabel("Project name").fill(`Agent Only ${stamp}`);
-  await page.getByRole("button", { name: "Create space" }).click();
-  await expect(page.locator(".project-card.active")).toContainText("Agent Only");
+  await createDesktopProject(page, `Agent Only ${stamp}`);
+  await expect(page.getByRole("button", { name: "Switch project", exact: true })).toContainText(
+    "Agent Only",
+  );
 
   const artifact = await createBundle(page, stamp, "agentonly");
   await registerApp(page, stamp, appId, artifact.artifact, "agent.task.run, agent.event.watch");
 
-  await page.getByRole("button", { name: "App Library" }).click();
+  await openDesktopApp(page, "app-library");
   const row = page.locator(".app-library .app-row", { hasText: appId });
   await expect(row.getByRole("button", { name: "Install", exact: true })).toBeVisible({
     timeout: libraryTimeout,

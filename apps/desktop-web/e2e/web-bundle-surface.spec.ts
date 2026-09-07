@@ -1,3 +1,4 @@
+import { createDesktopProject, openDesktopApp } from "./open-app.js";
 import { expect, test } from "@playwright/test";
 
 // The persistent acceptance volume accumulates registered apps across runs,
@@ -86,16 +87,17 @@ maintainer: {}
 
   // 3. Create a project and install the app through the real UI.
   await page.goto("/");
-  await page.getByLabel("Project name").fill(`E2E Surface ${stamp}`);
-  await page.getByRole("button", { name: "Create space" }).click();
-  await expect(page.locator(".project-card.active")).toContainText("E2E Surface");
+  await createDesktopProject(page, `E2E Surface ${stamp}`);
+  await expect(page.getByRole("button", { name: "Switch project", exact: true })).toContainText(
+    "E2E Surface",
+  );
   // A synthetic origin-storage marker the sandboxed surface must never be
   // able to read later (no real credential is ever used as a marker).
   await page.evaluate(() => {
     window.localStorage.setItem("workos-e2e-synthetic-probe", "origin-value");
   });
 
-  await page.getByRole("button", { name: "App Library" }).click();
+  await openDesktopApp(page, "app-library");
   const library = page.locator(".app-library");
   const row = library.locator(".app-row", { hasText: appId });
   await expect(row.getByText(`${appId} · registry 1.0.0`)).toBeVisible({
@@ -142,8 +144,10 @@ maintainer: {}
   // 5. Reload the desktop and open the app again: the durable chain serves a
   //    fresh surface for the still-installed instance.
   await page.reload();
-  await expect(page.locator(".project-card.active")).toContainText("E2E Surface");
-  await page.getByRole("button", { name: "App Library" }).click();
+  await expect(page.getByRole("button", { name: "Switch project", exact: true })).toContainText(
+    "E2E Surface",
+  );
+  await openDesktopApp(page, "app-library");
   const reloadedRow = page.locator(".app-library .app-row", { hasText: appId });
   await expect(reloadedRow.getByText(/Installed · pinned 1\.0\.0/)).toBeVisible({
     timeout: libraryTimeout,
@@ -185,8 +189,10 @@ maintainer: {}
   //    navigation, so open the app once more, then close the window — the
   //    session is revoked server-side and the old URL stops serving.
   await page.goto("/");
-  await expect(page.locator(".project-card.active")).toContainText("E2E Surface");
-  await page.getByRole("button", { name: "App Library" }).click();
+  await expect(page.getByRole("button", { name: "Switch project", exact: true })).toContainText(
+    "E2E Surface",
+  );
+  await openDesktopApp(page, "app-library");
   const activeRow = page.locator(".app-library .app-row", { hasText: appId });
   await expect(activeRow.getByText(/Installed · pinned 1\.0\.0/)).toBeVisible({
     timeout: libraryTimeout,

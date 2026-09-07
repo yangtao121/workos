@@ -1,4 +1,4 @@
-import { openDesktopApp } from "./open-app.js";
+import { openDesktopApp, createDesktopProject } from "./open-app.js";
 import { expect, test } from "@playwright/test";
 
 // Visual capture for the supervised web-service workload slice
@@ -61,11 +61,12 @@ test("captures the web-service states", async ({ page }) => {
   expect(registerResponse.ok()).toBeTruthy();
 
   await page.goto("/");
-  await page.getByLabel("Project name").fill(`Supervised E2E ${stamp}`);
-  await page.getByRole("button", { name: "Create space" }).click();
-  await expect(page.locator(".project-card.active")).toContainText(`Supervised E2E ${stamp}`);
+  await createDesktopProject(page, `Supervised E2E ${stamp}`);
+  await expect(page.getByRole("button", { name: "Switch project", exact: true })).toContainText(
+    `Supervised E2E ${stamp}`,
+  );
 
-  await page.getByRole("button", { name: "App Library" }).click();
+  await openDesktopApp(page, "app-library");
   const library = page.locator(".app-library");
   await expect(library.getByText(`${appId} · registry 1.0.0`)).toBeVisible({
     timeout: libraryTimeout,

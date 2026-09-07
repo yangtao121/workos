@@ -1,11 +1,13 @@
+import { createDesktopProject, openDesktopApp } from "./open-app.js";
 import { expect, test } from "@playwright/test";
 
 test("creates a project and runs a durable fake harness task", async ({ page }) => {
   await page.goto("/");
-  await page.getByLabel("Project name").fill(`E2E ${String(Date.now())}`);
-  await page.getByRole("button", { name: "Create space" }).click();
-  await expect(page.locator(".project-card.active")).toContainText("E2E");
-  await page.getByRole("button", { name: "Project settings" }).click();
+  await createDesktopProject(page, `E2E ${String(Date.now())}`);
+  await expect(page.getByRole("button", { name: "Switch project", exact: true })).toContainText(
+    "E2E",
+  );
+  await openDesktopApp(page, "settings");
   const settings = page.locator(".harness-settings");
   await expect(settings.getByText("Core default · fake")).toBeVisible();
   await expect(
@@ -14,6 +16,7 @@ test("creates a project and runs a durable fake harness task", async ({ page }) 
   await expect(settings.getByRole("radio", { name: "Select DeepSeek Harness" })).toBeDisabled();
   await expect(settings.getByText("Provider is disabled or misconfigured")).toBeVisible();
   await expect(settings.getByRole("radio", { name: "Use Global Default" })).toBeChecked();
+  await openDesktopApp(page, "agent-center");
   await page.getByLabel("Agent goal").fill("verify the WorkOS foundation");
   await page.getByRole("button", { name: "Run task" }).click();
   await expect(page.getByLabel("Task provider snapshot")).toContainText("fake");

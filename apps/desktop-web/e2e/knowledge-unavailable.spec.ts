@@ -1,4 +1,4 @@
-import { openDesktopApp } from "./open-app.js";
+import { openDesktopApp, createDesktopProject } from "./open-app.js";
 import { expect, test } from "@playwright/test";
 
 // This spec is run only by the owner knowledge gate while the Indexer
@@ -15,9 +15,10 @@ test("an Indexer outage leaves project and Agent work usable", async ({ page }) 
   const stamp = String(Date.now());
 
   await page.goto("/");
-  await page.getByLabel("Project name").fill(`Knowledge Outage ${stamp}`);
-  await page.getByRole("button", { name: "Create space" }).click();
-  await expect(page.locator(".project-card.active")).toContainText("Knowledge Outage");
+  await createDesktopProject(page, `Knowledge Outage ${stamp}`);
+  await expect(page.getByRole("button", { name: "Switch project", exact: true })).toContainText(
+    "Knowledge Outage",
+  );
 
   await page.getByLabel("Agent goal").fill("produce a review while the knowledge index is offline");
   await page.getByLabel("Markdown document").check();

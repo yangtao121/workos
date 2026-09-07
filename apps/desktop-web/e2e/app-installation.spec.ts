@@ -1,3 +1,4 @@
+import { createDesktopProject, openDesktopApp, expectProjectRevision } from "./open-app.js";
 import { expect, test } from "@playwright/test";
 
 // The persistent acceptance volume accumulates registered apps across runs,
@@ -46,9 +47,10 @@ test("installs a registered app into a project and persists it across reloads", 
   const appId = `e2e-install-${stamp}`;
 
   await page.goto("/");
-  await page.getByLabel("Project name").fill(`E2E Install ${stamp}`);
-  await page.getByRole("button", { name: "Create space" }).click();
-  await expect(page.locator(".project-card.active")).toContainText("E2E Install");
+  const projectId = await createDesktopProject(page, `E2E Install ${stamp}`);
+  await expect(page.getByRole("button", { name: "Switch project", exact: true })).toContainText(
+    "E2E Install",
+  );
 
   // Register two synthetic apps directly through the public registry API
   // before the library loads, so the catalog walk includes them: one is the
@@ -65,7 +67,7 @@ test("installs a registered app into a project and persists it across reloads", 
   await register(appId, "1.0.0");
   await register(`${appId}-other`, "1.0.0");
 
-  await page.getByRole("button", { name: "App Library" }).click();
+  await openDesktopApp(page, "app-library");
   const library = page.locator(".app-library");
 
   await expect(library.getByText(`${appId} · registry 1.0.0`)).toBeVisible({
@@ -90,15 +92,17 @@ test("installs a registered app into a project and persists it across reloads", 
   await expect(row.getByRole("button", { name: "Remove" })).toBeVisible();
 
   // The project projection reflects the server-confirmed installation.
-  await expect(page.locator(".project-card.active")).toContainText("revision 2");
+  await expectProjectRevision(page, projectId, "2");
 
   // Reload: the installation list and pinned version are served from
   // durable state, not from browser memory.
   // The desktop restores the last active project across a reload, so the
   // library opens straight onto this test's project.
   await page.reload();
-  await expect(page.locator(".project-card.active")).toContainText(`E2E Install ${stamp}`);
-  await page.getByRole("button", { name: "App Library" }).click();
+  await expect(page.getByRole("button", { name: "Switch project", exact: true })).toContainText(
+    `E2E Install ${stamp}`,
+  );
+  await openDesktopApp(page, "app-library");
   await expect(
     page
       .locator(".app-library .app-row", { hasText: appId })
@@ -115,11 +119,13 @@ test("installs a registered app into a project and persists it across reloads", 
   await expect(reloadedRow.getByRole("button", { name: "Install", exact: true })).toBeVisible({
     timeout: libraryTimeout,
   });
-  await expect(page.locator(".project-card.active")).toContainText("revision 3");
+  await expectProjectRevision(page, projectId, "3");
 
   await page.reload();
-  await expect(page.locator(".project-card.active")).toContainText(`E2E Install ${stamp}`);
-  await page.getByRole("button", { name: "App Library" }).click();
+  await expect(page.getByRole("button", { name: "Switch project", exact: true })).toContainText(
+    `E2E Install ${stamp}`,
+  );
+  await openDesktopApp(page, "app-library");
   const finalRow = page.locator(".app-library .app-row", { hasText: appId }).filter({
     hasNotText: `${appId}-other`,
   });
