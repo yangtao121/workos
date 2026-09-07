@@ -108,3 +108,9 @@ workspace 文件源与通用 archive 的最小实现。
   返回的 active source 页可短于请求大小，consumer 必须按 continuation 遍历。
 - 真实 CLI/admin socket/Gateway/Chromium 门禁验证文件分页、混合来源、重启、重建与停用。
   这补齐 workspace 的端到端证据，不将 feature-hash 标记为真实模型语义搜索。
+
+## 2026-09-07 同分分页修正
+
+Hybrid 游标与实际排序一致：较低分数，或同分且创建时间更早，或同分同时间且 source ID
+更大。原 After 判断会重复较新结果并漏掉较旧结果；真实 PostgreSQL 同分四文档覆盖
+不同时间与同时间 ID 排序，以 page size 1/2/3/4 逐页验证完整性、无重复和正常终止。

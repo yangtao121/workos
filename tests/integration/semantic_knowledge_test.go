@@ -206,6 +206,69 @@ func TestSemanticKnowledgeHybridRepository(t *testing.T) {
 	}
 }
 
+func TestSemanticKnowledgeEqualScorePagination(t *testing.T) {
+	ctx := context.Background()
+	dsn := scratchDatabase(t)
+	if err := migrations.Run(ctx, dsn); err != nil {
+		t.Fatal(err)
+	}
+	pool, err := pgxpool.New(ctx, dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(pool.Close)
+	projection, err := indexerpostgres.New(pool, ids.UUIDv7{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now().UTC()
+	if _, err := projection.EnsureBootstrapGeneration(ctx, now); err != nil {
+		t.Fatal(err)
+	}
+	owner, project := "01999999-9999-7999-8999-000000000d01", "01999999-9999-7999-8999-000000000d02"
+	var expected []string
+	for i, age := range []time.Duration{time.Hour, 2 * time.Hour, 2 * time.Hour, 3 * time.Hour} {
+		id := fmt.Sprintf("01999999-9999-7999-8999-%012x", 0xd10+i)
+		pub := fmt.Sprintf("01999999-9999-7999-8999-%012x", 0xd20+i)
+		applySemanticDocument(t, ctx, projection, owner, project, id, pub, "Same score", "search pagination fixture", now.Add(-age), now)
+		expected = append(expected, id)
+	}
+	search := indexerapp.NewSearchServiceForTest(projection)
+	for _, size := range []int32{1, 2, 3, 4} {
+		t.Run(fmt.Sprintf("page-size-%d", size), func(t *testing.T) {
+			query := indexerapp.SearchInput{OwnerUserID: owner, ProjectID: project, RawQuery: "search pagination fixture", PageSize: size}
+			var found []string
+			var score float64
+			for pageNumber := 0; ; pageNumber++ {
+				if pageNumber > len(expected) {
+					t.Fatal("pagination does not terminate")
+				}
+				result, err := search.SearchHybrid(ctx, query)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if len(result.Page.Hits) == 0 {
+					t.Fatal("continuation returned an empty page")
+				}
+				for _, hit := range result.Page.Hits {
+					if len(found) > 0 && hit.Score != score {
+						t.Fatal("fixture must have equal scores")
+					}
+					score = hit.Score
+					found = append(found, hit.ArtifactID)
+				}
+				query.PageToken = result.Page.NextPageToken
+				if query.PageToken == "" {
+					break
+				}
+			}
+			if strings.Join(found, ",") != strings.Join(expected, ",") {
+				t.Fatalf("page order = %v, want %v", found, expected)
+			}
+		})
+	}
+}
+
 func applySemanticDocument(t *testing.T, ctx context.Context, projection *indexerpostgres.Repository, owner, project, artifactID, publicationID, title, body string, created, now time.Time) {
 	t.Helper()
 	if err := projection.ApplyResolvedSource(ctx, indexerports.ResolvedSource{

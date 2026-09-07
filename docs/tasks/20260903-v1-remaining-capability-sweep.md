@@ -714,4 +714,17 @@ receiver/notification race PASS（`tmp/push-wake-race.log`）。首轮全仓 `ma
 推送收尾：Go/Proto 检查 PASS；新增 Worker 回归测试的 lint 已修正，完整 Web 检查及
 Desktop 144 单测 PASS（`tmp/push-wake-web-final.log`，退出 0）。`make generate`
 成功且 129 个生成源码 SHA-256 不变（`tmp/push-wake-generate.log`）。所有本轮
-workos_push_* scratch 数据库和隔离容器已清理。下一步继续检索与剩余部署/远程/移动软件缺口。
+workos*push*\* scratch 数据库和隔离容器已清理。下一步继续检索与剩余部署/远程/移动软件缺口。
+
+### R4 混合检索同分分页（active，2026-09-07）
+
+推送检查点 bf20dd0。审查模型接入前发现现有 hybrid 的同分时间游标使用 After，
+与 score DESC / created DESC / id ASC 排序相反，可能漏掉较旧结果或重发较新结果。
+先通过真实 scratch PostgreSQL 的跨时间/同时间同分分页复现并修复，再推进语义模型。
+保持来源、owner/project、签名 token 及 generation 隔离；无可见 UI 布局/控件变化。
+
+同分分页 baseline 在 page size 1/2/3 均 FAIL（空续页或重复新结果/遗漏旧结果）；
+修正为 Before 后四种页大小全部 PASS。真实 PostgreSQL hybrid/rebuild golden 与 Indexer
+全模块 race PASS（`tmp/hybrid-pagination-after.log`）；`make test-semantic-knowledge`
+含 Gateway/Core/Indexer 的实际 RPC 链 PASS（`tmp/hybrid-pagination-gate.log`）。完整
+`make check` PASS（`tmp/hybrid-pagination-check.log`），无 Proto/SQL 生成输入变更。

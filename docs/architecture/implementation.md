@@ -1322,3 +1322,6 @@ CLI 从 workspace list 获取 etag 后执行 stop；停止后 sync 拒绝，重�
 Core review/archived-project reconciliation 使用 LIMIT+1 保留续页；snapshot 写入与 live
 写入使用相同的检索向量计算，避免重建后丢失混合检索结果；snapshot 同样串行化
 project archive 并遵守持久 tombstone，迟到快照不得复活已归档内容。真实语义模型仍未实现。
+
+混合检索同分分页使用 created_at 更早的候选，与 created DESC 的排序一致；同时间继续按
+source ID ASC。真实 PostgreSQL 以四种页大小验证不丢失、不重复和正常终止。

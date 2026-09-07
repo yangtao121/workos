@@ -565,7 +565,7 @@ func (r *Repository) SearchHybrid(ctx context.Context, query domain.SearchQuery)
 		}
 		after := item.fused < cursorScore ||
 			(item.fused == cursorScore &&
-				(row.SourceCreatedAt.After(cursorCreated) ||
+				(row.SourceCreatedAt.Before(cursorCreated) ||
 					(row.SourceCreatedAt.Equal(cursorCreated) && row.SourceID > cursorSource)))
 		if !after {
 			continue
