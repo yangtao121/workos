@@ -82,7 +82,7 @@ test("Home launchpad opens system apps and marks Terminal unavailable", async ({
   await browser.getByRole("button", { name: "Go" }).click();
   await expect(browser.getByTestId("browser-frame")).toHaveAttribute(
     "sandbox",
-    "allow-scripts allow-forms allow-same-origin",
+    "allow-scripts allow-forms",
   );
 });
 

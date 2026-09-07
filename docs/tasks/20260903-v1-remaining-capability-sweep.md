@@ -532,3 +532,15 @@ Device Center 撤销与 Core 迟到订阅拒绝）；新增探针首次缺 Origi
 Aborted；完整 `make check` PASS；`make test-lan-pairing` 重建复跑 PASS。门禁退出同步停止
 自身 mDNS announcer，避免 TLS fixture 已删除后继续广播。`make generate` 幂等 PASS，
 Go/TypeScript/SQLC 全部生成文件逐项 SHA-256 前后一致。下一步继续 Browser 隔离与其余链路。
+
+### R3 Browser 隔离（active，2026-09-07）
+
+设备撤销检查点 4f63c16。内置 Browser 使用 allow-scripts + allow-same-origin，同源页面可能
+读取桌面 DOM/storage；先通过纯本地 Chromium fixture 复现，再移除同源豁免并验证脚本仍可交互。
+不将 iframe 当成真实 Remote Browser Pool；这里只修复已实现嵌入浏览器的边界。
+
+Browser 隔离：Chromium baseline 明确读到 `Desktop fixture data`，回归按预期失败；
+移除 allow-same-origin 后同一脚本返回 Isolated，6 条 Browser/桌面 E2E PASS。
+不涉及可见 UI：仅改变 iframe sandbox 权限；产品布局/控件/普通静态内容渲染均不变，
+无需无差异截图。`make -o proto-check -o go-check check` PASS（Go/Proto 未变，复用
+4f63c16 完整检查）；真实远程执行栈仍未完成。

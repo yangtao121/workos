@@ -343,8 +343,8 @@ export function CodeApp(props: ArtifactAppProps) {
 }
 
 // BrowserApp keeps external web content inside the WorkOS window with a
-// fixed sandbox: no allow-popups (window.open/_blank is intercepted by the
-// sandbox) and no allow-top-navigation (the embedder can never be replaced).
+// opaque sandbox: even a same-origin page cannot access desktop storage or DOM.
+// Popups and top navigation remain disabled.
 // Only http(s) URLs are accepted; everything else is a fixed verdict.
 export function BrowserApp(props: { initialUrl?: string }) {
   const [url, setUrl] = useState(props.initialUrl ?? "");
@@ -411,7 +411,7 @@ export function BrowserApp(props: { initialUrl?: string }) {
           // Fixed boundary: popups (_blank) and top navigation are
           // intercepted by the sandbox itself; the WorkOS window is never
           // navigated away and no browser tab is opened.
-          sandbox="allow-scripts allow-forms allow-same-origin"
+          sandbox="allow-scripts allow-forms"
           title="Embedded browser"
         />
       ) : (

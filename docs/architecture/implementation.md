@@ -1280,3 +1280,10 @@ Core 私有 DevicePushService 不经 Gateway public allowlist；可信 owner/dev
 旧 token、丢失确认、并发订阅和只抑制目标设备；production TLS 配对门禁从 Device Center
 撤销，再等待真实 Gateway consumer 让 private Core 拒绝迟到请求。会话失效立即生效，
 后台提醒在传播完成后停止；已被 relay 接收的通用提醒无法撤回。
+
+### Browser 同源隔离（2026-09-07）
+
+内置 Browser iframe 的 sandbox 仅允许 scripts/forms，移除 allow-same-origin。即使导航到与
+桌面相同 origin 的页面，也不能读取桌面 DOM、storage 或设备资料；popup/top navigation 仍禁用。
+Chromium 本地同源 fixture 在修复前读取到桌面测试值，修复后被拒绝且页面脚本按钮仍可交互。
+这只证明嵌入页面边界，真实 Remote Browser Pool/Native runner/WebRTC 仍需后续实现与验收。
