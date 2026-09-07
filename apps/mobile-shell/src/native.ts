@@ -2,8 +2,6 @@
 // the shared adaptive shell. Device keys live in native secure storage when
 // the runtime provides it; otherwise the wrapper degrades to a documented
 // fallback and REPORTS the degraded status honestly instead of pretending.
-// Push registration posts the device token to the fixture relay endpoint
-// configured by the deployment.
 import { Capacitor, registerPlugin } from "@capacitor/core";
 
 export interface SecureKeyStatus {
@@ -74,50 +72,4 @@ export function createDeviceKeyStore(): DeviceKeyStore {
       fallback = undefined;
     },
   };
-}
-
-export interface PushRegistrationResult {
-  registered: boolean;
-  detail: string;
-}
-
-// registerPushToken posts the native push token to the deployment's fixture
-// relay registration endpoint. The relay sees only the token and device id —
-// never notification content (ADR-0018).
-export async function registerPushToken(props: {
-  relayEndpoint: string;
-  token: string;
-  deviceId: string;
-  fetchImpl?: typeof fetch;
-}): Promise<PushRegistrationResult> {
-  const doFetch = props.fetchImpl ?? fetch;
-  if (
-    !props.relayEndpoint.startsWith("https://") &&
-    !props.relayEndpoint.startsWith("http://127.0.0.1") &&
-    !props.relayEndpoint.startsWith("http://localhost")
-  ) {
-    return { registered: false, detail: "relay endpoint must be https or an explicit loopback" };
-  }
-  if (props.token.length === 0 || props.token.length > 4096) {
-    return { registered: false, detail: "push token grammar is invalid" };
-  }
-  try {
-    const response = await doFetch(props.relayEndpoint, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ token: props.token, deviceId: props.deviceId }),
-    });
-    if (!response.ok) {
-      return {
-        registered: false,
-        detail: `relay rejected registration: ${String(response.status)}`,
-      };
-    }
-    return { registered: true, detail: "registered with relay" };
-  } catch (reason) {
-    return {
-      registered: false,
-      detail: reason instanceof Error ? reason.message : "relay unreachable",
-    };
-  }
 }

@@ -1,8 +1,6 @@
 import { defineConfig } from "vite";
 
-// The mobile wrapper builds a minimal entry bundle (the shared adaptive
-// shell mount) into dist/ for the Capacitor webDir. Native sync/build needs
-// Xcode or the Android SDK and is gated separately (test-mobile-wrappers).
+// Library scaffold. The wrapper gate requires a real HTML entry and native projects.
 export default defineConfig({
   build: {
     lib: {

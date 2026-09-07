@@ -387,7 +387,10 @@ viewport-fit；HTML/manifest no-store、内容哈希 assets immutable，不缓�
 门禁 `make test-adaptive-shell` 在真实 Gateway/Core/harness/runtime/reliability + Chromium 上覆盖
 390×844、820×1180、1440×900 与注入双 segment；`@workos/adaptive-shell` 40 个测试和
 desktop-web 110 个测试覆盖 store/layout/hook 与共享 UI 回归。真实 foldable hardware、Capacitor
-iPad/Android wrapper、push/native secure storage 仍不在当前证据内。
+iPad/Android wrapper、push/native secure storage 仍不在当前证据内。2026-09-07 核查确认
+mobile-shell 是未挂载 UI 的 library bundle，缺少 HTML 入口及两种平台工程；真实 Android
+sync 报 platform not added，不能归因 SDK。wrapper 门禁对此直接失败；删除没有 caller 或
+canonical service 契约的直接 push token POST helper。详见 ADR-0019。
 
 ## Gateway 设备配对与会话（ADR-0007）
 

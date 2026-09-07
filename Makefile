@@ -664,23 +664,13 @@ test-mdns-discovery:
 	$(GO_HOST_RUN) go test -tags=integration -count=1 -run 'TestMDNSDiscovery' -v ./tests/integration
 	@echo "test-mdns-discovery: PASS"
 
-# The mobile wrapper gate (ADR-0019, W5, build-level): typecheck, unit
-# tests, vite bundle, and Capacitor config integrity all PASS without any
-# native SDK. The native sync/build portion requires Xcode or the Android
-# SDK; on a host without them the gate records a blocked-environment note
-# and never fakes native PASS.
+# Software prerequisites must succeed before any native SDK diagnosis.
+# Android sync errors are failures, never inferred environment blockers.
 test-mobile-wrappers:
-	@set -eu; \
-	$(NODE_RUN) sh -c 'corepack pnpm --filter @workos/mobile-shell typecheck'; \
-	$(NODE_RUN) sh -c 'corepack pnpm --filter @workos/mobile-shell test'; \
-	$(NODE_RUN) sh -c 'corepack pnpm --filter @workos/mobile-shell build'; \
-	$(NODE_RUN) node -e 'const c=require("./apps/mobile-shell/capacitor.config.json"); if(c.webDir!=="dist"||!c.appId) { console.error("capacitor config invalid"); process.exit(1); } console.log("capacitor config: OK");'; \
-	if $(NODE_RUN) sh -c 'cd apps/mobile-shell && corepack pnpm exec cap sync android' >/tmp/workos-cap-sync.log 2>&1; then \
-		echo "native sync android: OK"; \
-	else \
-		echo "BLOCKED-ENVIRONMENT: native android sync requires the Android SDK (see /tmp/workos-cap-sync.log); build-level wrapper gate remains authoritative"; \
-	fi; \
-	echo "test-mobile-wrappers: PASS"
+	$(NODE_RUN) sh -c 'corepack pnpm --filter @workos/mobile-shell check && corepack pnpm --filter @workos/mobile-shell build'
+	$(NODE_RUN) node tools/mobile/check-wrapper.mjs
+	$(NODE_RUN) sh -c 'cd apps/mobile-shell && corepack pnpm exec cap sync android'
+	@echo "test-mobile-wrappers: PASS (web assets/platform sources/Android sync; native binaries unverified)"
 
 # The push relay gate (ADR-0018, W5): relay payload whitelist
 # plus the bounded owner-scoped notification search (title substring,

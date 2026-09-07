@@ -2,7 +2,6 @@
   "appId": "dev.workos.mobile",
   "appName": "WorkOS",
   "webDir": "dist",
-  "bundledWebRuntime": false,
   "server": {
     "androidScheme": "https"
   },

@@ -663,3 +663,25 @@ Desktop 142 单测及完整 TypeScript 工作区检查 PASS；`make -o proto-che
 其当前 lib bundle 不能证明可启动的 Capacitor App；总任务仍 active，尚未合并 main。
 
 画布收尾 `make generate` 幂等 PASS：129 个生成源码文件 SHA-256 完全一致。
+
+### R5 移动封装核查（active，2026-09-07）
+
+画布检查点 79dd8e2。现有 main.ts 只导入分类工具，Vite library mode 不产生可启动 HTML；
+原门禁把任意 cap sync 失败归因 SDK，不能作为可启动 wrapper 证据。本阶段先精确复现、
+修复错误验收与 relay URL 边界；完整启动和原生平台接入仍须单独实现/验证，不标环境阻塞冒充。
+不涉及已运行客户端的可见 UI。
+
+核查结果：固定 Node 24/Capacitor 6.2.1 的 build 仅输出 main.js；真实 `cap sync android`
+失败为 platform has not been added yet（`/tmp/workos-mobile-baseline.log`）。现已修正门禁：
+检查缺失的 HTML/Android/iOS 工程并失败，不再捕获任意 sync 错误后打印 PASS。Mobile Shell
+状态下调 scaffolded，响应式 Desktop 的已有证据保留。去掉已弃用 bundledWebRuntime 选项。
+
+删除无 caller、无 Core canonical 契约的 registerPushToken；其前缀比较还会允许伪装的
+http://localhost.example 及 http://127.0.0.1.example。未新增另一套 DTO 或兼容入口。
+剩余移动工具的 typecheck/2 单测/library build PASS；修正后的 wrapper 门禁预期 FAIL，
+列出 dist/index.html 与 Android/iOS 工程三项软件缺口。无运行 UI 变化，无需截图。
+完整 wrapper 启动与原生接入仍是软件待实现，不能按宿主阻塞关闭任务。接下来先补 R5 的
+真实 Core outbox→加密 TLS relay→Chromium wake→权威通知补收组合证据。
+
+移动核查收尾：`make -o proto-check -o go-check check` PASS，退出 0（Go/Proto 未改，复用
+既有完整检查）；门禁脚本真实执行与 `node --check` 通过，generated 区没有改动。
