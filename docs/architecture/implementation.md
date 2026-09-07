@@ -1350,3 +1350,9 @@ ranking v3 与模型指纹共同绑定页 token，缺失向量明确 unavailable
 review 重建。统一镜像内置校验后的权重与 CPU runtime，只有 Indexer 拥有推理子进程；
 不增加独立服务，也不使用外部 Provider 凭据。Gateway/Core/Indexer 混合检索门禁与 workspace 浏览器六阶段门禁通过：中文查询英文文件
 在首次摄取、Indexer 重启及全量重建后均保持正确召回与快照读取，停用后旧引用失效。
+
+App knowledge adapter 已改为带固定 review 来源的 SearchHybrid RPC；workspace 行在分页前
+排除，符合 App 当前 review 引用契约。安装授权仍逐次由 Core 重验，模型结果不能扩张
+files.read 权限。真实 Connect/PostgreSQL 与 opaque App 浏览器验证了中文检索英文 review、
+来源过滤及撤销拒绝；无效 token/上游损坏/暂时不可用分别保持净化的 InvalidArgument/
+Internal/Unavailable。

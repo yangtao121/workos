@@ -53,3 +53,15 @@ Go race 回归。`make test-model-postgres` 已验证真实模型 → pgvector �
 
 依据：[官方模型卡及固定版本](https://huggingface.co/intfloat/multilingual-e5-small/tree/614241f622f53c4eeff9890bdc4f31cfecc418b3)、
 [ONNX Runtime CPU 线程配置](https://onnxruntime.ai/docs/performance/tune-performance/threading.html)。
+
+## App 知识入口
+
+Runtime 使用既有 SearchHybrid RPC，并在索引排序/分页前固定 review 来源；App 的输出
+契约是 review artifact 引用，不把 workspace 快照当成可供 Agent 读取的 review 引用。
+每次调用仍先由 Core 重验安装 grant revision 和 owner/project 绑定。`knowledge.read`
+不产生文件读取授权。模型分数只接受 [0,1]；无效 token 保持 InvalidArgument，存储损坏
+保持净化 Internal，模型/网络暂不可用保持 Unavailable，不回退词法接口。
+
+真实 Connect 与 PostgreSQL 测试证明更靠前的 workspace 行不会挤掉合法 review；
+opaque App 浏览器门禁用中文查询英文 review（词法零命中），并验证无授权不协商、
+撤销后拒绝。SDK 仅更新语义说明，已有消息结构与字段号不变。

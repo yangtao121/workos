@@ -271,6 +271,17 @@ test("granted app searches project knowledge and fails closed on revoke", async 
   expect(await firstHit.getAttribute("data-artifact-id")).toBe(artifactId);
   expect(await firstHit.getAttribute("data-digest")).toMatch(/^sha256:[0-9a-f]{64}$/);
 
+  // The opaque App receives true model retrieval, not just token overlap.
+  const semanticQuery = "寻找用来端到端验证审核流程的确定性合成文档";
+  const lexical = await page.request.post("/workos.index.v1.IndexService/Search", {
+    data: { projectId, query: semanticQuery, sourceType: "artifact.review.v1" },
+  });
+  expect(lexical.ok()).toBeTruthy();
+  expect(((await lexical.json()) as { hits?: unknown[] }).hits ?? []).toHaveLength(0);
+  await frameQuery.fill(semanticQuery);
+  await searchButton.click();
+  await expect(firstHit).toHaveAttribute("data-artifact-id", artifactId);
+
   // Revoke the grant while the surface stays open: the stale session's very
   // next call is denied at the Core grant-revision comparison, before the
   // indexer is ever touched (the revoke action itself uses the public RPC
@@ -304,7 +315,7 @@ test("granted app searches project knowledge and fails closed on revoke", async 
   );
   expect(revokeResponse.ok()).toBeTruthy();
 
-  await frameQuery.fill(phrase);
+  await frameQuery.fill(semanticQuery);
   await searchButton.click();
   await expect(page.frameLocator(".app-surface-frame").locator("#search-error")).toHaveText(
     "search-error:permission_denied",

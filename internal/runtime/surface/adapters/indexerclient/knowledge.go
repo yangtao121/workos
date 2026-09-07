@@ -23,6 +23,7 @@ import (
 	indexv1 "github.com/yangtao121/workos/gen/go/workos/index/v1"
 	indexv1connect "github.com/yangtao121/workos/gen/go/workos/index/v1/indexv1connect"
 	"github.com/yangtao121/workos/internal/platform/identity"
+	"github.com/yangtao121/workos/internal/runtime/surface/domain"
 	"github.com/yangtao121/workos/internal/runtime/surface/ports"
 )
 
@@ -56,23 +57,24 @@ func NewKnowledgeSearch(indexerURL, deviceID string) (*KnowledgeSearch, error) {
 func (k *KnowledgeSearch) Search(ctx context.Context, query ports.KnowledgeSearchQuery) (ports.KnowledgeSearchPage, error) {
 	callCtx, cancel := context.WithTimeout(ctx, k.timeout)
 	defer cancel()
-	request := connect.NewRequest(&indexv1.SearchRequest{
-		ProjectId: query.ProjectID,
-		Query:     query.Query,
-		Page:      &commonv1.PageRequest{PageSize: query.PageSize, PageToken: query.PageToken},
+	request := connect.NewRequest(&indexv1.SearchHybridRequest{
+		ProjectId:  query.ProjectID,
+		SourceType: "artifact.review.v1",
+		Query:      query.Query,
+		Page:       &commonv1.PageRequest{PageSize: query.PageSize, PageToken: query.PageToken},
 	})
 	// The trusted binding is the session-derived owner under this process's
 	// device identity; it is overwritten, never merged.
 	request.Header().Set(identity.UserHeader, query.OwnerUserID)
 	request.Header().Set(identity.DeviceHeader, k.deviceID)
-	response, err := k.client.Search(callCtx, request)
+	response, err := k.client.SearchHybrid(callCtx, request)
 	if err != nil {
 		return ports.KnowledgeSearchPage{}, mapIndexerError(err)
 	}
 	return projectKnowledgeResponse(response.Msg, int(query.PageSize))
 }
 
-func projectKnowledgeResponse(response *indexv1.SearchResponse, requestedPageSize int) (ports.KnowledgeSearchPage, error) {
+func projectKnowledgeResponse(response *indexv1.SearchHybridResponse, requestedPageSize int) (ports.KnowledgeSearchPage, error) {
 	if response == nil || requestedPageSize < 1 || requestedPageSize > 50 || len(response.GetHits()) > requestedPageSize {
 		return ports.KnowledgeSearchPage{}, ports.ErrKnowledgeMalformed
 	}
@@ -100,7 +102,7 @@ func projectKnowledgeResponse(response *indexv1.SearchResponse, requestedPageSiz
 			return ports.KnowledgeSearchPage{}, ports.ErrKnowledgeMalformed
 		}
 		score := hit.GetScore()
-		if math.IsNaN(score) || math.IsInf(score, 0) || score < 0 || score > 3 {
+		if math.IsNaN(score) || math.IsInf(score, 0) || score < 0 || score > 1 {
 			return ports.KnowledgeSearchPage{}, ports.ErrKnowledgeMalformed
 		}
 		ref := hit.GetSourceRef()
@@ -173,6 +175,10 @@ func validRequiredTimestamp(value string) bool {
 
 func mapIndexerError(err error) error {
 	switch connect.CodeOf(err) {
+	case connect.CodeInvalidArgument:
+		return domain.ErrInvalid
+	case connect.CodeInternal:
+		return ports.ErrKnowledgeMalformed
 	case connect.CodeUnavailable, connect.CodeDeadlineExceeded, connect.CodeCanceled:
 		return fmt.Errorf("indexer is temporarily unavailable: %w", ports.ErrKnowledgeUnavailable)
 	default:

@@ -102,9 +102,9 @@ export interface WorkOSAppBridge {
   };
   knowledge: {
     /**
-     * One bounded, read-only lexical search over THIS app's project knowledge
+     * One bounded, read-only hybrid search over THIS app's project review artifacts
      * (requires knowledge.read). The payload can never carry owner, project,
-     * or source scope: the runtime derives both from the validated surface
+     * or source scope: the runtime derives project identity from the validated surface
      * session and re-verifies the exact grant revision with Core on every
      * call (ADR-0013). Excerpts are bounded plain text — render inert.
      */

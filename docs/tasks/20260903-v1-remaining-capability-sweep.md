@@ -810,3 +810,20 @@ R3 远程 Browser/Native/WebRTC/PTY 与 R5 原生 wrapper 仍需继续；全部�
 收尾审查发现两项需继续核对：Runtime App knowledge adapter 仍调用词法 RPC 且未过滤
 workspace 来源（其输出契约只接受 review）；workosctl 的 workspace sync 固定 30 秒预算
 需要用最大文件数与长文本真实模型验证。先完成这两项，再进入 R2 Build/Test 交接。
+
+### R4 App 知识入口修复（active，2026-09-07）
+
+依赖模型接入提交 bb835e0。Runtime 的知识输出契约只接受 review artifact，但 adapter
+当前未在 Indexer 侧过滤 workspace，且仍调用 Search 词法 RPC。改为既有 SearchHybrid RPC
+并在排序/分页前限定 artifact.review.v1，沿用当前安装 grant revision 与 owner/project 绑定；
+不扩展 App 的文件读取授权。验收：真实 Connect 请求边界、workspace 混入拒绝、模型分数
+范围、中文查询英文 review 的 opaque App/Gateway/Runtime/Indexer/CPU 链及撤销后零调用。
+不修改已有 Proto 字段或 migration，不保留旧 RPC 回退。
+
+App 模型入口已完成：`tmp/app-model-unit2.log` Runtime surface 全部 race PASS；
+`tmp/app-model-pg-final.log` 真实 Connect/PostgreSQL PASS，先证明 workspace 行确实排在
+review 前，再验证来源过滤不会丢失第一页。`WORKOS_BUILD_NETWORK=host make test-app-knowledge-search` 最终两项浏览器测试 PASS（`tmp/app-model-browser-gate2.log`），
+中文查询英文 review、无 grant 不协商、撤销后拒绝均通过。`make check` PASS
+（`tmp/app-model-check.log`）；再次 generate 后 132 个生成文件/README 不变
+（`tmp/app-model-generate-idempotent.log`）。status、SDK 注释、ADR 与模块文档同步。
+没有 UI 控件变化。下一步用真实模型验证 1000 文件长文本同步的 30 秒 CLI 预算。
