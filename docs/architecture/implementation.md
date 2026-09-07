@@ -1257,3 +1257,11 @@ GetPushPreferences 仅返回当前认证设备 active endpoint 的 SHA-256；Sub
 Quiet hours 不受浏览器订阅查询失败影响。真实 PostgreSQL 验证摘要的 owner/device 隔离。
 System Monitor 对 unavailable 保留说明与重试，窄屏仅表格横向滚动；Knowledge 明示两类来源。
 命令面板查询变化重置选择，结果缩短夹紧光标，Enter 始终执行可见选项。
+
+### 项目工具窗口（2026-09-07）
+
+桌面 App Library 与 Project settings 使用 window-manager 本地 WindowKind 和既有自由窗口
+几何/层级/恢复；adaptive shell 的 overlay/sheet 复用同一内容渲染函数。去掉侧栏固定覆盖层，
+项目列表改为紧凑单列。App 启动后关闭目录窗口；通知中的 App action 在手机也打开目录。
+App Library 缺少可选分页对象时结束读取，重复 cursor 作为失败停止，避免无限请求。
+项目创建统一使用权威 CreateProject 返回值更新列表；失败返回明确结果，Mission Control 保留输入。

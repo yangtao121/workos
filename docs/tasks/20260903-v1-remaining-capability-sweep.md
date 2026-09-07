@@ -488,3 +488,24 @@ Proto/Go vet/全仓 Go 测试 PASS；前端 lint 修正后 `make -o proto-check 
 PASS（复用未变的 Go/Proto 结果，重跑全仓前端 lint/类型/单测/构建/status）。
 六项视觉场景门禁 PASS，共 12 组 before/after，已同步 current。剩余 R2 Build/Test、真实远程 Surface、
 语义模型与知识打开链、桌面入口收口、推送组合门禁和设备撤销同步仍 active；不提前合并 main。
+
+### R6 项目工具窗口（active，2026-09-07）
+
+推送/服务视图检查点 9d52fd3。App Library 与项目设置脱离固定覆盖侧栏，接入统一窗口状态；
+保留项目切换及创建入口，精简侧栏布局。桌面/平板/手机采用共享内容渲染函数，减少重复 JSX。
+开始前已保存 9d52fd3 的桌面四态 before；项目工具非空目录 fixture 对比正在采集。
+验收：项目切换隔离、工具最小化/恢复/关闭、App 打开不被遮挡、三尺寸 before/after/current、
+桌面单测与真实应用链 E2E。创建失败不得被 Mission Control 当成功；一并去掉重复创建实现。
+
+项目工具初验：Desktop 141 单测 PASS（新增窗口恢复、缺省分页和重复 cursor）；
+五条桌面 E2E 经 Vite/真实 Gateway/Core PASS；六条视觉场景 PASS，18 组对比同步 current。
+[before](../ui/desktop-web/changes/20260907-desktop-tools/before/) /
+[after](../ui/desktop-web/changes/20260907-desktop-tools/after/) /
+[notes](../ui/desktop-web/changes/20260907-desktop-tools/notes.md)。
+创建失败回归测试已追加，Bridge 重建与全仓前端检查进行中。
+
+项目工具复验：Desktop 142 单测 PASS（含创建失败保留输入）；`make test-app-bridge-full`
+PASS（重新构建的真实 Gateway/Core/Runtime/Chromium，打开 Surface 与撤权拒绝）。
+本阶段仅 TypeScript/样式/文档变更，`make -o proto-check -o go-check check` PASS，复用前一
+检查点未变的 Go/Proto 结果，完整重跑前端 lint/格式/类型/全仓单测/构建与 status 校验。
+下一步：设备撤销需可靠同步到 Core，停止后台推送；随后继续其余未完成验收，main 暂不合并。

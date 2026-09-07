@@ -721,14 +721,17 @@ async function listAllCatalogApps(
 ): Promise<WorkOSApp[]> {
   const apps: WorkOSApp[] = [];
   let token = "";
+  const seen = new Set<string>();
   for (;;) {
     const page = await workosClients.appRegistry.listApps({
       projectId,
       page: { pageSize: 100, pageToken: token },
     });
     apps.push(...page.apps);
-    if (page.page?.nextPageToken === "") break;
     token = page.page?.nextPageToken ?? "";
+    if (!token) break;
+    if (seen.has(token)) throw new Error("repeated page token");
+    seen.add(token);
   }
   return apps;
 }
@@ -739,14 +742,17 @@ async function listAllInstallations(
 ): Promise<AppInstallation[]> {
   const installations: AppInstallation[] = [];
   let token = "";
+  const seen = new Set<string>();
   for (;;) {
     const page = await workosClients.appInstallations.listInstalledApps({
       projectId,
       page: { pageSize: 100, pageToken: token },
     });
     installations.push(...page.installations);
-    if (page.page?.nextPageToken === "") break;
     token = page.page?.nextPageToken ?? "";
+    if (!token) break;
+    if (seen.has(token)) throw new Error("repeated page token");
+    seen.add(token);
   }
   return installations;
 }

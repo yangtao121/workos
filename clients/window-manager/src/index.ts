@@ -27,6 +27,8 @@ export type WindowKind =
   | "notification-center"
   | "mission-control"
   | "home"
+  | "app-library"
+  | "settings"
   | "files"
   | "docs"
   | "code"

@@ -268,6 +268,40 @@ describe("App Library", () => {
     expect(await screen.findByText("No apps have been registered yet.")).toBeTruthy();
   });
 
+  it("finishes an empty response without an optional page object", async () => {
+    const listApps = vi.fn().mockResolvedValue({ apps: [] });
+    const listInstalledApps = vi.fn().mockResolvedValue({ installations: [] });
+    render(
+      <AppLibrary
+        project={project("project-1", 1n)}
+        deviceClass={DeviceClass.DESKTOP}
+        workosClients={clientsFixture({ listApps, listInstalledApps })}
+        onProjectRefreshed={() => undefined}
+        onSurfaceOpened={() => undefined}
+        onInstallationRemoved={() => undefined}
+      />,
+    );
+    await screen.findByText("No apps have been registered yet.");
+    expect(listApps).toHaveBeenCalledOnce();
+    expect(listInstalledApps).toHaveBeenCalledOnce();
+  });
+
+  it("stops when a server repeats its pagination cursor", async () => {
+    const listApps = vi.fn().mockResolvedValue({ apps: [], page: { nextPageToken: "repeated" } });
+    render(
+      <AppLibrary
+        project={project("project-1", 1n)}
+        deviceClass={DeviceClass.DESKTOP}
+        workosClients={clientsFixture({ listApps })}
+        onProjectRefreshed={() => undefined}
+        onSurfaceOpened={() => undefined}
+        onInstallationRemoved={() => undefined}
+      />,
+    );
+    await screen.findByText("The app library is temporarily unavailable.");
+    expect(listApps).toHaveBeenCalledTimes(2);
+  });
+
   it("retries after a load failure and hides the error once ready", async () => {
     const clients = clientsFixture({});
     let failing = true;

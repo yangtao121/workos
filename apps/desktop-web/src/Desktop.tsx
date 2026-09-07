@@ -132,8 +132,6 @@ export function Desktop({
   const [catalog, setCatalog] = useState<GetHarnessCatalogResponse>();
   const [catalogState, setCatalogState] = useState<CatalogState>("loading");
   const [catalogError, setCatalogError] = useState<string>();
-  const [settingsOpen, setSettingsOpen] = useState(false);
-  const [libraryOpen, setLibraryOpen] = useState(false);
   const [bindingSaving, setBindingSaving] = useState<Record<string, boolean>>({});
   const [bindingEditor, setBindingEditor] = useState<BindingEditor>();
   const [editorProjectId, setEditorProjectId] = useState<string | undefined>(activeProjectId);
@@ -145,6 +143,7 @@ export function Desktop({
     tokens: {},
   });
   const [windows, dispatch] = useReducer(windowReducer, initialWindowState);
+  const [appActivation, setAppActivation] = useState<{ id: string; sequence: number }>();
   const [agentView, setAgentView] = useState<AgentView>("tasks");
   // The owner notification projection (ADR-0014): an in-memory, discardable
   // projection reconciled from Core authority. The cursor and facts stay
@@ -205,6 +204,26 @@ export function Desktop({
       height: Math.max(220, window.innerHeight - 132),
     }),
     [],
+  );
+  const openProjectTool = useCallback(
+    (kind: "app-library" | "settings") => {
+      if (adaptive) {
+        setAppActivation((current) => ({ id: kind, sequence: (current?.sequence ?? 0) + 1 }));
+        return;
+      }
+      dispatch({
+        type: "open",
+        window: {
+          id: kind,
+          appId: kind,
+          kind,
+          title: kind === "app-library" ? "App Library" : "Project settings",
+          rect: fitRect({ x: 300, y: 52, width: 740, height: 610 }, workArea()),
+          mode: "normal",
+        },
+      });
+    },
+    [adaptive, workArea],
   );
   useEffect(() => {
     if (adaptive) return;
@@ -712,30 +731,7 @@ export function Desktop({
     const form = new FormData(formElement);
     const name = formString(form, "name");
     if (!name) return;
-    setError(undefined);
-    try {
-      const response = await workosClients.projects.createProject({
-        idempotencyKey: crypto.randomUUID(),
-        name,
-        icon: "◈",
-        workspaceRefs: [],
-      });
-      await refreshProjects();
-      const created = response.project;
-      if (created) {
-        // listProjects is page-limited, so a fresh Project can be missing
-        // from the refreshed first page; upsert keeps it selectable.
-        setProjects((current) =>
-          current.some((candidate) => candidate.id === created.id)
-            ? current
-            : current.concat(created),
-        );
-        setActiveProjectId(created.id);
-      }
-      formElement.reset();
-    } catch (reason) {
-      setError(asMessage(reason));
-    }
+    if (await createProjectNamed(name)) formElement.reset();
   }
 
   function replaceProject(project: Project) {
@@ -749,7 +745,7 @@ export function Desktop({
   // The device-local layout record learns the active instance and the
   // recency lists (bounded canonical IDs only).
   function surfaceOpened(session: SurfaceSession) {
-    setLibraryOpen(false);
+    dispatch({ type: "close", id: "app-library" });
     openSurfaceSessionsRef.current = openSurfaceSessionsRef.current.concat({
       surfaceSessionId: session.id,
     });
@@ -1009,16 +1005,17 @@ export function Desktop({
         workspaceRefs: [],
       });
       const created = response.project;
-      if (created) {
-        setProjects((current) =>
-          current.some((candidate) => candidate.id === created.id)
-            ? current
-            : current.concat(created),
-        );
-        setActiveProjectId(created.id);
-      }
+      if (!created) throw new Error("Project creation returned no project.");
+      setProjects((current) =>
+        current.some((candidate) => candidate.id === created.id)
+          ? current
+          : current.concat(created),
+      );
+      setActiveProjectId(created.id);
+      return true;
     } catch (reason) {
       setError(asMessage(reason));
+      return false;
     }
   }
 
@@ -1301,7 +1298,7 @@ export function Desktop({
           } while (!live && pageToken !== "");
           if (!live) return "stale";
           setActiveProjectId(notification.projectId);
-          setLibraryOpen(true);
+          openProjectTool("app-library");
           return "opened";
         }
         return "stale";
@@ -1312,10 +1309,9 @@ export function Desktop({
         throw reason;
       }
     },
-    [openArtifactViewer, openSystemMonitor, workosClients],
+    [openArtifactViewer, openSystemMonitor, openProjectTool, workosClients],
   );
 
-  const [appActivation, setAppActivation] = useState<{ id: string; sequence: number }>();
   const appEntries: HomeAppEntry[] = [
     {
       id: "home",
@@ -1350,7 +1346,7 @@ export function Desktop({
       icon: "apps",
       available: !!activeProjectId,
       open: () => {
-        setLibraryOpen(true);
+        openProjectTool("app-library");
       },
     },
     {
@@ -1424,7 +1420,7 @@ export function Desktop({
       icon: "settings",
       available: !!activeProjectId,
       open: () => {
-        setSettingsOpen(true);
+        openProjectTool("settings");
       },
     },
     {
@@ -1488,10 +1484,53 @@ export function Desktop({
     };
   }, []);
 
+  function renderAppLibrary() {
+    return activeProject ? (
+      <AppLibrary
+        key={activeProject.id}
+        project={activeProject}
+        deviceClass={protoFromDeviceClass(deviceLayout.deviceClass)}
+        workosClients={workosClients}
+        onProjectRefreshed={replaceProject}
+        onSurfaceOpened={surfaceOpened}
+        onInstallationRemoved={installationRemoved}
+        onInstallationGrantsChanged={invalidateInstallationReferences}
+        onInstallationVersionChanged={invalidateInstallationReferences}
+      />
+    ) : null;
+  }
+  function renderProjectSettings() {
+    return activeProject ? (
+      <HarnessSettings
+        catalog={catalog}
+        catalogError={catalogError}
+        catalogState={catalogState}
+        draft={bindingDraft}
+        feedback={activeEditor?.feedback?.text}
+        feedbackIsError={activeEditor?.feedback?.isError}
+        project={activeProject}
+        saving={bindingSaving[activeProject.id] ?? false}
+        onRetry={() => void refreshCatalog()}
+        onSave={() => {
+          void saveHarnessBinding(activeProject.id, bindingDraft);
+        }}
+        onSelectionChange={(selection) => {
+          setBindingEditor({ projectId: activeProject.id, draft: selection });
+        }}
+      />
+    ) : null;
+  }
+
   // renderWindowBody renders one window's body. Both the expanded free-window
   // shell and the adaptive panes render exactly these bodies, so behavior
   // never forks per mode.
   function renderWindowBody(windowState: WorkOSWindow) {
+    if (windowState.kind === "app-library" || windowState.kind === "settings")
+      return (
+        <div className="project-tool-body">
+          {windowState.kind === "app-library" ? renderAppLibrary() : renderProjectSettings()}
+        </div>
+      );
     if (windowState.kind === "app-surface" && windowState.surface?.renderer === "declarative") {
       return (
         <DeclarativeSurface
@@ -1632,14 +1671,7 @@ export function Desktop({
         onSelect={(projectId) => {
           setActiveProjectId(projectId);
         }}
-        onCreateProject={async (name) => {
-          try {
-            await createProjectNamed(name);
-            return "ok";
-          } catch {
-            return "stale";
-          }
-        }}
+        onCreateProject={async (name) => ((await createProjectNamed(name)) ? "ok" : "stale")}
       />
     ) : windowState.kind === "home" ? (
       <HomeApp apps={systemApps.filter((app) => app.id !== "home")} />
@@ -1814,42 +1846,8 @@ export function Desktop({
           onOpenAppInstance={openAdaptiveAppInstance}
           activation={appActivation}
           renderWindowBody={renderWindowBody}
-          renderAppLibrary={() =>
-            activeProject ? (
-              <AppLibrary
-                key={activeProject.id}
-                project={activeProject}
-                deviceClass={protoFromDeviceClass(deviceLayout.deviceClass)}
-                workosClients={workosClients}
-                onProjectRefreshed={replaceProject}
-                onSurfaceOpened={surfaceOpened}
-                onInstallationRemoved={installationRemoved}
-                onInstallationGrantsChanged={invalidateInstallationReferences}
-                onInstallationVersionChanged={invalidateInstallationReferences}
-              />
-            ) : null
-          }
-          renderProjectSettings={() =>
-            activeProject ? (
-              <HarnessSettings
-                catalog={catalog}
-                catalogError={catalogError}
-                catalogState={catalogState}
-                draft={bindingDraft}
-                feedback={activeEditor?.feedback?.text}
-                feedbackIsError={activeEditor?.feedback?.isError}
-                project={activeProject}
-                saving={bindingSaving[activeProject.id] ?? false}
-                onRetry={() => void refreshCatalog()}
-                onSave={() => {
-                  void saveHarnessBinding(activeProject.id, bindingDraft);
-                }}
-                onSelectionChange={(selection) => {
-                  setBindingEditor({ projectId: activeProject.id, draft: selection });
-                }}
-              />
-            ) : null
-          }
+          renderAppLibrary={renderAppLibrary}
+          renderProjectSettings={renderProjectSettings}
         >
           {error ? (
             <p className="error-toast" role="alert">
@@ -1939,61 +1937,26 @@ export function Desktop({
               <Button type="submit">Create space</Button>
             </form>
           </div>
-          <Button
-            aria-expanded={settingsOpen}
-            disabled={!activeProject}
-            onClick={() => {
-              setSettingsOpen((current) => !current);
-            }}
-            type="button"
-          >
-            {settingsOpen ? "Close project settings" : "Project settings"}
-          </Button>
-          <Button
-            aria-expanded={libraryOpen}
-            disabled={!activeProject}
-            onClick={() => {
-              setLibraryOpen((current) => !current);
-            }}
-            type="button"
-          >
-            {libraryOpen ? "Close App Library" : "App Library"}
-          </Button>
-          {/* Keying on the project id remounts the library when the active
-              project changes, so lists, feedback, and in-flight operations
-              never leak across projects. */}
-          {libraryOpen && activeProject ? (
-            <AppLibrary
-              key={activeProject.id}
-              project={activeProject}
-              deviceClass={protoFromDeviceClass(deviceLayout.deviceClass)}
-              workosClients={workosClients}
-              onProjectRefreshed={replaceProject}
-              onSurfaceOpened={surfaceOpened}
-              onInstallationRemoved={installationRemoved}
-              onInstallationGrantsChanged={invalidateInstallationReferences}
-              onInstallationVersionChanged={invalidateInstallationReferences}
-            />
-          ) : null}
-          {settingsOpen && activeProject ? (
-            <HarnessSettings
-              catalog={catalog}
-              catalogError={catalogError}
-              catalogState={catalogState}
-              draft={bindingDraft}
-              feedback={activeEditor?.feedback?.text}
-              feedbackIsError={activeEditor?.feedback?.isError}
-              project={activeProject}
-              saving={bindingSaving[activeProject.id] ?? false}
-              onRetry={() => void refreshCatalog()}
-              onSave={() => {
-                void saveHarnessBinding(activeProject.id, bindingDraft);
+          <div className="project-tools">
+            <button
+              disabled={!activeProject}
+              onClick={() => {
+                openProjectTool("settings");
               }}
-              onSelectionChange={(selection) => {
-                setBindingEditor({ projectId: activeProject.id, draft: selection });
+              type="button"
+            >
+              <Icon name="settings" size={17} /> Project settings
+            </button>
+            <button
+              disabled={!activeProject}
+              onClick={() => {
+                openProjectTool("app-library");
               }}
-            />
-          ) : null}
+              type="button"
+            >
+              <Icon name="apps" size={17} /> App Library
+            </button>
+          </div>
         </aside>
 
         {windows.windows.map((windowState) => (

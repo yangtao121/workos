@@ -41,6 +41,22 @@ afterEach(() => {
 });
 
 describe("Desktop harness workflow", () => {
+  it("minimizes, restores and closes project tools through the window manager", async () => {
+    render(
+      <Desktop
+        workosClients={clientFixture({ projects: [project("project-1", "Project One", 1n)] })}
+      />,
+    );
+    await userEvent.click(await screen.findByRole("button", { name: "Project settings" }));
+    await screen.findByRole("heading", { name: "Harness provider" });
+    await userEvent.click(screen.getByRole("button", { name: "Minimize Project settings" }));
+    expect(screen.queryByRole("heading", { name: "Harness provider" })).toBeNull();
+    await userEvent.click(screen.getByRole("button", { name: "Open Project settings" }));
+    expect(screen.getByRole("heading", { name: "Harness provider" })).toBeTruthy();
+    await userEvent.click(screen.getByRole("button", { name: "Close Project settings" }));
+    expect(screen.queryByRole("heading", { name: "Harness provider" })).toBeNull();
+  });
+
   it("reloads the Project after a revision conflict and resets the selection", async () => {
     const first = project("project-1", "Project One", 1n);
     const refreshed = project("project-1", "Project One", 2n, "fake");
@@ -390,6 +406,25 @@ describe("Desktop harness workflow", () => {
     } finally {
       consoleError.mockRestore();
     }
+  });
+
+  it("keeps a failed Mission Control creation available to retry", async () => {
+    render(
+      <Desktop
+        workosClients={clientFixture({
+          projects: [project("project-1", "Project One", 1n)],
+          createProject: vi.fn().mockRejectedValue(new ConnectError("offline", Code.Unavailable)),
+        })}
+      />,
+    );
+    await userEvent.click(await screen.findByRole("button", { name: "Switch project" }));
+    const input = await screen.findByRole<HTMLInputElement>("textbox", {
+      name: "New project name",
+    });
+    await userEvent.type(input, "My project");
+    await userEvent.click(screen.getByRole("button", { name: "Create project" }));
+    await screen.findByText("Project creation is not available right now.");
+    expect(input.value).toBe("My project");
   });
 
   it("activates a newly created Project even when it is missing from the refreshed first page", async () => {

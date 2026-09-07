@@ -133,7 +133,7 @@ svg {
   z-index: 0;
 }
 .project-sidebar {
-  width: 320px;
+  width: 240px;
   max-height: calc(100vh - 150px);
   padding-right: 8px;
   overflow-y: auto;
@@ -145,12 +145,12 @@ svg {
 }
 .project-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: 1fr;
   gap: 10px;
 }
 .project-card {
-  min-height: 110px;
-  padding: 14px;
+  min-height: 64px;
+  padding: 12px 14px;
   display: flex;
   flex-direction: column;
   align-items: flex-start;
@@ -172,7 +172,6 @@ svg {
   color: #92a0b3;
 }
 .new-project {
-  grid-column: span 2;
   min-height: auto;
   flex-direction: row;
   align-items: center;
@@ -185,9 +184,59 @@ svg {
   border: 0;
   outline: 0;
 }
-.project-sidebar > .workos-button {
+.project-card:not(.new-project) {
+  display: grid;
+  grid-template-columns: 30px 1fr;
+  gap: 3px 10px;
+  align-items: center;
+  border-radius: 10px;
+}
+.project-card > span {
+  grid-row: span 2;
+}
+.project-card strong {
+  overflow-wrap: anywhere;
+}
+.new-project {
+  flex-wrap: wrap;
+  border-radius: 10px;
+}
+.new-project .workos-button {
   width: 100%;
-  margin-top: 12px;
+}
+.project-tools {
+  display: grid;
+  gap: 4px;
+  margin-top: 16px;
+}
+.project-tools button {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--ink-soft);
+  text-align: left;
+  cursor: pointer;
+}
+.project-tools button:hover {
+  background: var(--surface-raised);
+  color: var(--ink);
+}
+.project-tool-body {
+  height: calc(100% - 48px);
+  overflow: auto;
+  padding: 20px;
+}
+.project-tool-body > .app-library,
+.project-tool-body > .harness-settings {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
 }
 
 .harness-settings {
@@ -402,17 +451,6 @@ svg {
     transparent 80%
   );
   cursor: nwse-resize;
-}
-.project-sidebar:has(.harness-settings),
-.project-sidebar:has(.app-library) {
-  position: relative;
-  z-index: 200;
-  padding: 16px;
-  width: 420px;
-  border: 1px solid var(--border);
-  border-radius: 14px;
-  background: var(--surface);
-  box-shadow: 0 24px 60px #0009;
 }
 
 .app-surface-body {
