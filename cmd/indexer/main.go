@@ -1,8 +1,7 @@
 // The indexer composition root (ADR-0013): database/migration readiness, the
 // real at-least-once ingestion worker, bounded startup + periodic
 // reconciliation, the public owner-facing IndexService (Search + repair
-// jobs), and honest system capabilities. Generic archive and semantic
-// RAG/embedding stay unavailable with fixed reasons.
+// jobs), and the pinned offline embedding child owned by this process.
 package main
 
 import (
@@ -15,6 +14,7 @@ import (
 	commonv1 "github.com/yangtao121/workos/gen/go/workos/common/v1"
 	"github.com/yangtao121/workos/gen/go/workos/common/v1/commonv1connect"
 	"github.com/yangtao121/workos/internal/indexer/adapters/coreclient"
+	"github.com/yangtao121/workos/internal/indexer/adapters/localembedding"
 	"github.com/yangtao121/workos/internal/indexer/adapters/localmount"
 	indexerpostgres "github.com/yangtao121/workos/internal/indexer/adapters/postgres"
 	indexerapp "github.com/yangtao121/workos/internal/indexer/application"
@@ -62,7 +62,18 @@ func run(logger *slog.Logger) error {
 	}
 	defer pool.Close()
 	generator := ids.UUIDv7{}
-	projection, err := indexerpostgres.New(pool, generator)
+	model, err := localembedding.New(ctx, localembedding.Config{
+		PythonPath: "/usr/local/bin/python3", WorkerPath: "/opt/workos/embedding/worker.py", ModelDir: "/opt/workos/embedding/model",
+	})
+	if err != nil {
+		return err
+	}
+	defer model.Close()
+	repository, err := indexerpostgres.New(pool, generator, model.Fingerprint())
+	if err != nil {
+		return err
+	}
+	projection, err := indexerapp.NewModelProjection(repository, model)
 	if err != nil {
 		return err
 	}
@@ -104,6 +115,23 @@ func run(logger *slog.Logger) error {
 	workerErr := make(chan error, 1)
 	go func() { workerErr <- worker.Run(ctx) }()
 
+	// Model fingerprints persist backfill progress; each pass reads at most eight
+	// documents and performs inference without holding a database transaction.
+	go func() {
+		ticker := time.NewTicker(time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				if _, err := projection.Backfill(ctx); err != nil && ctx.Err() == nil {
+					logger.Warn("index embedding backfill pass unavailable")
+				}
+			}
+		}
+	}()
+
 	// Bounded startup reconciliation + periodic reconciliation: additive
 	// digest repair and archived-project tombstones over authoritative
 	// pages. It never blocks readiness.
@@ -131,7 +159,11 @@ func run(logger *slog.Logger) error {
 	// The rebuild driver composes the feed (Core authority pages, drain
 	// barrier, digest-pinned content) with the projection's active pointer.
 	rebuildDriver := indexerapp.NewRebuildDriver(&rebuildFeed{FeedClient: feed, proj: projection}, generator)
-	rebuildStore, err := indexerpostgres.NewRebuildStore(pool, generator)
+	rawRebuildStore, err := indexerpostgres.NewRebuildStore(pool, generator, model.Fingerprint())
+	if err != nil {
+		return err
+	}
+	rebuildStore, err := indexerapp.NewModelRebuildStore(rawRebuildStore, model)
 	if err != nil {
 		return err
 	}
@@ -186,13 +218,13 @@ func run(logger *slog.Logger) error {
 		&commonv1.FeatureCapability{Id: "project-knowledge-search", Available: true,
 			Reason: "bounded deterministic lexical search over review artifacts"},
 		&commonv1.FeatureCapability{Id: "semantic-hybrid-search", Available: true,
-			Reason: "deterministic local feature-hash hybrid lexical+cosine search (ADR-0017)"},
+			Reason: "pinned offline multilingual model with exact pgvector hybrid search (ADR-0021)"},
 		&commonv1.FeatureCapability{Id: "project-knowledge-rebuild", Available: true,
 			Reason: "local-admin Core-authoritative shadow-generation rebuild"},
 		&commonv1.FeatureCapability{Id: "archive", Available: true,
 			Reason: "bounded content-addressed object store (ADR-0017 section 5); no knowledge graph"},
 		&commonv1.FeatureCapability{Id: "rag", Available: false,
-			Reason: "external embedding-model RAG is out of scope without provider accounts; the semantic slice runs on deterministic local feature-hash vectors"},
+			Reason: "retrieval is available; answer generation with cited retrieval context is not implemented"},
 	))
 	mux.Handle(systemPath, systemHandler)
 
@@ -296,7 +328,7 @@ func (a adminServiceSurface) ListArchiveObjects(ctx context.Context, ownerUserID
 // generation pointer comes from the projection.
 type rebuildFeed struct {
 	*coreclient.FeedClient
-	proj *indexerpostgres.Repository
+	proj indexerports.ProjectionRepository
 }
 
 func (r *rebuildFeed) ActiveGenerationID(ctx context.Context) (string, error) {

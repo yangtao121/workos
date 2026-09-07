@@ -6,7 +6,6 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
-	"github.com/yangtao121/workos/internal/indexer/adapters/postgres"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -123,7 +122,7 @@ func TestWorkspaceSurvivesRebuild(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Fatal("workspace transaction never admitted")
 	}
-	store, err := postgres.NewRebuildStore(f.pool, f.ids)
+	store, err := newModelRebuildStore(f.pool, f.ids)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -142,7 +141,7 @@ func TestWorkspaceSurvivesRebuild(t *testing.T) {
 	execScratch(t, f.pool, `UPDATE workos_index.documents SET content = 'stale target fixture' WHERE projection_generation = $1 AND source_type = 'workspace.file.v1' AND tombstoned_at IS NULL`, job.TargetGeneration)
 	execScratch(t, f.pool, `CREATE FUNCTION workos_index.reject_workspace_copy() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.source_type = 'workspace.file.v1' THEN RAISE EXCEPTION 'fixture copy failure'; END IF; RETURN NEW; END $$;
  CREATE TRIGGER reject_workspace_copy BEFORE INSERT ON workos_index.documents FOR EACH ROW EXECUTE FUNCTION workos_index.reject_workspace_copy()`)
-	store, err = postgres.NewRebuildStore(f.pool, f.ids)
+	store, err = newModelRebuildStore(f.pool, f.ids)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -181,7 +180,7 @@ func TestWorkspaceSurvivesRebuild(t *testing.T) {
 	if _, err := ingestor.Sync(ctx, source.ID); err != nil {
 		t.Fatal(err)
 	}
-	store, err = postgres.NewRebuildStore(f.pool, f.ids)
+	store, err = newModelRebuildStore(f.pool, f.ids)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -225,11 +224,11 @@ func TestWorkspaceRebuildCopyLimits(t *testing.T) {
 			execScratch(t, f.pool, `INSERT INTO workos_index.documents (
     projection_generation, owner_user_id, project_id, source_type, source_id, source_digest,
     artifact_type, title, content, source_created_at, last_publication_id, source_operation,
-    indexed_at, updated_at, embedding)
+    indexed_at, updated_at, embedding, embedding_model)
     SELECT d.projection_generation, d.owner_user_id, d.project_id, d.source_type,
      ('01999999-1234-7abc-8abc-' || lpad(to_hex(n), 12, '0'))::uuid, d.source_digest,
      d.artifact_type, 'copy.md', $3, d.source_created_at, d.last_publication_id,
-     d.source_operation, d.indexed_at, d.updated_at, d.embedding
+     d.source_operation, d.indexed_at, d.updated_at, d.embedding, d.embedding_model
     FROM workos_index.documents d CROSS JOIN generate_series(1, $2::integer) AS n
     WHERE d.projection_generation = $1 AND d.source_type = 'workspace.file.v1'`, active, budget.copies, strings.Repeat("fixture ", budget.bytes/8))
 			executor, _ := f.buildExecutor(t)
@@ -271,7 +270,7 @@ func TestRebuildPreservesHybridReviewRanking(t *testing.T) {
 		t.Fatal(err)
 	}
 	search := app.NewSearchServiceForTest(f.proj)
-	input := app.SearchInput{OwnerUserID: f.owner, ProjectID: "01999999-9999-7999-8999-000000000942", RawQuery: "alpha unmatchedtoken", SourceType: domain.SourceReviewArtifact, PageSize: 50}
+	input := app.SearchInput{OwnerUserID: f.owner, ProjectID: "01999999-9999-7999-8999-000000000942", RawQuery: "alpha", SourceType: domain.SourceReviewArtifact, PageSize: 50}
 	before, err := search.SearchHybrid(ctx, input)
 	if err != nil || len(before.Page.Hits) == 0 {
 		t.Fatalf("initial hybrid recall: %v", err)
@@ -290,7 +289,7 @@ func TestRebuildPreservesHybridReviewRanking(t *testing.T) {
 		t.Fatal("rebuild changed hybrid review scores or recall")
 	}
 	var missing int
-	if err := f.pool.QueryRow(ctx, `SELECT count(*) FROM workos_index.documents WHERE projection_generation = $1 AND source_type = 'artifact.review.v1' AND (embedding IS NULL OR cardinality(embedding) <> $2)`, job.TargetGeneration, domain.EmbeddingDimensions).Scan(&missing); err != nil {
+	if err := f.pool.QueryRow(ctx, `SELECT count(*) FROM workos_index.documents WHERE projection_generation = $1 AND source_type = 'artifact.review.v1' AND (embedding IS NULL OR public.vector_dims(embedding) <> $2)`, job.TargetGeneration, domain.EmbeddingDimensions).Scan(&missing); err != nil {
 		t.Fatal(err)
 	}
 	if missing != 0 {
@@ -306,7 +305,7 @@ func TestRebuildSnapshotRespectsProjectArchive(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	store, err := postgres.NewRebuildStore(f.pool, f.ids)
+	store, err := newModelRebuildStore(f.pool, f.ids)
 	if err != nil {
 		t.Fatal(err)
 	}

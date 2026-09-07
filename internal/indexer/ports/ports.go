@@ -29,8 +29,9 @@ var (
 
 // ResolvedSource is one verified canonical source snapshot from Core.
 type ResolvedSource struct {
-	Verdict       string // "resolved" | "tombstoned" | "corrupt" | "unsupported"
-	Operation     string // "review-artifact.upsert" | "project.tombstone"
+	Embedding     domain.ModelVector // derived in application, never supplied by Core
+	Verdict       string             // "resolved" | "tombstoned" | "corrupt" | "unsupported"
+	Operation     string             // "review-artifact.upsert" | "project.tombstone"
 	OwnerUserID   string
 	ProjectID     string
 	ArtifactID    string
@@ -115,6 +116,7 @@ type AppliedDocument struct {
 // effect, cursor, and job progress commit inside one local transaction; the
 // tx-scoped methods exist so the ingestion coordinator can compose them.
 type ProjectionRepository interface {
+	ModelFingerprint() string
 	ReadDocument(context.Context, domain.DocumentRead) (domain.Document, error)
 	// ActiveGenerationID returns the generation every search reads. A missing
 	// pointer before first boot is ErrNotFound.
@@ -163,11 +165,12 @@ type WorkspaceSource struct {
 // MountFile is one bounded file fact produced by a mount walk. SourceID is
 // the deterministic per-scope document identity of the relative path.
 type MountFile struct {
-	RelPath  string
-	Title    string
-	Content  []byte
-	Digest   string
-	SourceID string
+	Embedding domain.ModelVector // derived after the complete filesystem scan
+	RelPath   string
+	Title     string
+	Content   []byte
+	Digest    string
+	SourceID  string
 }
 
 // MountSkip is one sanitized skip fact: a fixed category, never content.

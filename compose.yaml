@@ -2,6 +2,7 @@ name: workos
 
 x-workos-build: &workos-build
   context: .
+  network: ${WORKOS_BUILD_NETWORK:-default}
   args:
     GO_IMAGE: ${GO_IMAGE:-golang:1.26.7-bookworm}
     GOPROXY: ${GOPROXY:-https://goproxy.cn,direct}

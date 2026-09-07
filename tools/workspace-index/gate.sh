@@ -24,7 +24,8 @@ import pathlib,sys
 root=pathlib.Path(sys.argv[1])
 for i in range(23):
     file=root/f'note-{i:02d}.md'
-    file.write_text(f'# Workspace fixture {i:02d}\n\ndeterministic synthetic output\n')
+    semantic = '\nStore private credentials in a hardware security key and require physical presence before authentication.\n' if i == 0 else ''
+    file.write_text(f'# Workspace fixture {i:02d}\n\ndeterministic synthetic output\n{semantic}')
     file.chmod(0o644)
 PY
 compose() { docker compose -f compose.yaml -f "$task_dir/compose.yaml" "$@"; }

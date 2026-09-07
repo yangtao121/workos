@@ -232,7 +232,7 @@ func mapError(err error) error {
 		return connect.NewError(connect.CodeAborted, errors.New("idempotency key was already used for a different request"))
 	case errors.Is(err, domain.ErrNotFound), errors.Is(err, ports.ErrProjectNotFound):
 		return connect.NewError(connect.CodeNotFound, errors.New("index scope is not available"))
-	case errors.Is(err, domain.ErrUnavailable), errors.Is(err, ports.ErrStoreUnavailable):
+	case errors.Is(err, domain.ErrUnavailable), errors.Is(err, ports.ErrStoreUnavailable), errors.Is(err, ports.ErrEmbeddingUnavailable):
 		return connect.NewError(connect.CodeUnavailable, errors.New("index service is temporarily unavailable"))
 	case errors.Is(err, ports.ErrCoreUnavailable):
 		return connect.NewError(connect.CodeUnavailable, errors.New("index service is temporarily unavailable"))

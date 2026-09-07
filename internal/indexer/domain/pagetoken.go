@@ -27,8 +27,9 @@ import (
 const (
 	// RankingLexical is the ADR-0013 ts_rank ordering.
 	RankingLexical = 1
-	// RankingHybrid is the ADR-0017 fused lexical+cosine ordering.
-	RankingHybrid = 2
+	// RankingHybrid is the ADR-0021 pgvector model/lexical ordering. Version 2
+	// feature-hash tokens are invalid after the algorithm change.
+	RankingHybrid = 3
 )
 
 // PageTokenVersion is the wire version of the token envelope.

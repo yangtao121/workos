@@ -71,7 +71,7 @@ func (s *IngestionService) IngestOne(ctx context.Context, claimed ports.ClaimedP
 		return PublicationOutcome{}, effectErr
 	}
 	if err := s.proj.ApplyResolvedSource(ctx, resolved, outcome, publicationRequestDigest(resolved), canonical(s.now())); err != nil {
-		if errors.Is(err, ports.ErrStoreUnavailable) {
+		if errors.Is(err, ports.ErrStoreUnavailable) || errors.Is(err, ports.ErrEmbeddingUnavailable) {
 			return PublicationOutcome{PublicationID: claimed.PublicationID, Retryable: true}, err
 		}
 		return PublicationOutcome{}, err

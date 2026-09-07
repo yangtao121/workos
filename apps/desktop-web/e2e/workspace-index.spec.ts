@@ -112,4 +112,20 @@ test("workspace admin changes reach Files and Knowledge through the real stack",
   await expect(page.getByRole("region", { name: "Indexed document preview" })).toContainText(
     "Workspace fixture 00",
   );
+  // Chinese query against English-only content: a lexical RPC returns no hits,
+  // while the real model must surface the matching file through the desktop.
+  await page.getByRole("button", { name: "Back to results", exact: true }).click();
+  const semanticQuery = "如何安全保存私钥并要求本人确认？";
+  const lexical = await page.request.post("/workos.index.v1.IndexService/Search", {
+    data: { projectId: scope.id, query: semanticQuery },
+  });
+  expect(lexical.ok()).toBeTruthy();
+  expect(((await lexical.json()) as { hits?: unknown[] }).hits ?? []).toHaveLength(0);
+  await page.getByTestId("knowledge-search-input").fill(semanticQuery);
+  await search.click();
+  await expect(results.first()).toContainText("note-00.md");
+  await results.first().locator(".knowledge-hit").click();
+  await expect(page.getByRole("region", { name: "Indexed document preview" })).toContainText(
+    "hardware security key",
+  );
 });

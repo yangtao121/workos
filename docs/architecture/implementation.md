@@ -1192,7 +1192,7 @@ indexer worker：Core claim（lease + FOR UPDATE SKIP LOCKED）
 - 能力裁决：`project-review-index`/`project-knowledge-search`/
   `project-knowledge-rebuild` available（有专项门禁证据）；Runtime 的
   `app-knowledge-search` 仅在配置 indexer upstream 时 available；泛化
-  `archive` 与 `rag`/embedding 继续 false（固定原因文案）。
+  `archive` 已具备有界对象链，模型检索按 ADR-0021 接入；`rag` 生成回答继续 unavailable。
 - 门禁：`make test-project-knowledge-search`（全栈 owner 旅程 + Chromium）、
   `make test-app-knowledge-search`（granted App + revoke fail-closed）、
   `make test-project-knowledge-rebuild`（golden 等价 + 崩溃恢复 + 幂等 +
@@ -1335,3 +1335,18 @@ stdio 消息。Indexer 拥有请求串行、超时、进程组清理与空闲退
 pgvector、重建与搜索，
 既有 feature-hash 证据不能因此升级为真实模型语义链。`make test-local-embedding`
 提供可复现 adapter 门禁，固定依赖及公共模型缓存不包含凭据或用户内容。
+
+## 2026-09-07 离线模型接入（ADR-0021）
+
+Indexer application 组合固定多语言模型与 PostgreSQL ports；摄取、workspace 整批同步和
+重建快照在事务外完成推理。migration 047 只替换可再生向量缓存为 vector(384)，记录
+模型指纹并保留文档、receipt、cursor。后台从已存文本每批八条回填，以 digest/publication
+条件写避免覆盖新快照；切换代际前必须确保模型齐备。SQL 在同一 repeatable-read 快照
+内完成 readiness、全量词法/余弦排名与 page+1，不再丢弃第 2001 条以后的候选。
+ranking v3 与模型指纹共同绑定页 token，缺失向量明确 unavailable，词法读取仍然可用。
+
+真实离线模型/pgvector 联测已通过中英查询、摄取/重建向量一致与重启回填。PostgreSQL/race
+覆盖迁移事实保留、五种回填竞争、2102 文档分页、模型未齐备拒绝切换及现有 workspace/
+review 重建。统一镜像内置校验后的权重与 CPU runtime，只有 Indexer 拥有推理子进程；
+不增加独立服务，也不使用外部 Provider 凭据。Gateway/Core/Indexer 混合检索门禁与 workspace 浏览器六阶段门禁通过：中文查询英文文件
+在首次摄取、Indexer 重启及全量重建后均保持正确召回与快照读取，停用后旧引用失效。

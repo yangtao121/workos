@@ -57,7 +57,7 @@ type SearchResult struct {
 type HybridSearchInput = SearchInput
 
 // SearchHybrid runs the fused lexical+cosine ranking (ADR-0017): the
-// projection fuses normalized lexical ts_rank with deterministic feature-hash
+// projection fuses normalized lexical ts_rank with pinned model
 // cosine similarity and orders by fused score with the same deterministic
 // tie-breaks and page-token chain as the lexical ranking.
 func (s *SearchService) SearchHybrid(ctx context.Context, input SearchInput) (SearchResult, error) {
@@ -82,6 +82,9 @@ func (s *SearchService) run(ctx context.Context, input SearchInput, ranking int)
 	digestQuery := canonicalQuery
 	if input.SourceType != "" {
 		digestQuery += "\x00" + input.SourceType
+	}
+	if ranking == domain.RankingHybrid {
+		digestQuery += "\x00" + s.projection.ModelFingerprint()
 	}
 	query := domain.SearchQuery{
 		SourceType:     input.SourceType,

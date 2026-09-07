@@ -7,6 +7,8 @@ package indexerdb
 import (
 	"context"
 	"time"
+
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 type Querier interface {
@@ -67,6 +69,11 @@ type Querier interface {
 	LockActiveGeneration(ctx context.Context) (string, error)
 	LockIndexProject(ctx context.Context, scope string) error
 	MarkIndexJobFailed(ctx context.Context, arg MarkIndexJobFailedParams) error
+	MissingModelEmbeddings(ctx context.Context, arg MissingModelEmbeddingsParams) ([]MissingModelEmbeddingsRow, error)
+	// Hybrid semantic search (ADR-0017): one bounded per-scope candidate fetch
+	// with complete pinned model vectors. Ranking and pagination execute in SQL;
+	// only the requested page carries document content back to the application.
+	ModelScopeReady(ctx context.Context, arg ModelScopeReadyParams) (pgtype.Bool, error)
 	PromoteGeneration(ctx context.Context, arg PromoteGenerationParams) (int64, error)
 	ReadIndexedDocument(ctx context.Context, arg ReadIndexedDocumentParams) (ReadIndexedDocumentRow, error)
 	RecordWorkspaceSync(ctx context.Context, arg RecordWorkspaceSyncParams) (WorkosIndexWorkspaceSource, error)
@@ -78,15 +85,10 @@ type Querier interface {
 	// documents indexed after the chain started, so late arrivals never join an
 	// open page chain.
 	SearchProjectDocuments(ctx context.Context, arg SearchProjectDocumentsParams) ([]SearchProjectDocumentsRow, error)
-	// Hybrid semantic search (ADR-0017): one bounded per-scope candidate fetch
-	// carrying both the lexical ts_rank and the stored feature-hash embedding;
-	// cosine, fusion (0.5 lexical-norm + 0.5 cosine), deterministic ordering
-	// (fused DESC, source_created_at DESC, source_id ASC) and cursor pagination
-	// are computed in the indexer. Bounded by the generation's per-project
-	// document count (single-owner local scale, ≤2000 by ADR-0017 §3).
 	SearchProjectDocumentsHybrid(ctx context.Context, arg SearchProjectDocumentsHybridParams) ([]SearchProjectDocumentsHybridRow, error)
 	SetWorkspaceSourceStatus(ctx context.Context, arg SetWorkspaceSourceStatusParams) (WorkosIndexWorkspaceSource, error)
 	StopWorkspaceSource(ctx context.Context, arg StopWorkspaceSourceParams) (WorkosIndexWorkspaceSource, error)
+	StoreModelEmbedding(ctx context.Context, arg StoreModelEmbeddingParams) (int64, error)
 	TombstoneGenerationDocuments(ctx context.Context, arg TombstoneGenerationDocumentsParams) (int64, error)
 	TombstoneProjectDocuments(ctx context.Context, arg TombstoneProjectDocumentsParams) (int64, error)
 	TombstoneWorkspaceDocument(ctx context.Context, arg TombstoneWorkspaceDocumentParams) (int64, error)

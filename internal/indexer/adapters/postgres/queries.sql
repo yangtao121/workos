@@ -41,14 +41,14 @@ LIMIT 1;
 INSERT INTO workos_index.documents (
     projection_generation, owner_user_id, project_id, source_type, source_id,
     source_digest, artifact_type, title, content, source_created_at,
-    last_publication_id, source_operation, indexed_at, updated_at, embedding
+    last_publication_id, source_operation, indexed_at, updated_at, embedding, embedding_model
 ) VALUES (
     sqlc.arg(projection_generation), sqlc.arg(owner_user_id), sqlc.arg(project_id),
     sqlc.arg(source_type), sqlc.arg(source_id), sqlc.arg(source_digest),
     sqlc.arg(artifact_type), sqlc.arg(title), sqlc.arg(content),
     sqlc.arg(source_created_at), sqlc.arg(last_publication_id),
     sqlc.arg(source_operation), sqlc.arg(indexed_at), sqlc.arg(updated_at),
-    sqlc.arg(embedding)
+    sqlc.arg(embedding)::text::public.vector, sqlc.arg(embedding_model)
 )
 ON CONFLICT (projection_generation, owner_user_id, project_id, source_id) DO UPDATE
 SET source_digest = EXCLUDED.source_digest,
@@ -60,6 +60,7 @@ SET source_digest = EXCLUDED.source_digest,
     indexed_at = EXCLUDED.indexed_at,
     tombstoned_at = NULL,
     embedding = EXCLUDED.embedding,
+    embedding_model = EXCLUDED.embedding_model,
     updated_at = EXCLUDED.updated_at
 WHERE workos_index.documents.last_publication_id <= EXCLUDED.last_publication_id
    OR workos_index.documents.tombstoned_at IS NULL AND workos_index.documents.source_digest = EXCLUDED.source_digest;
@@ -317,13 +318,13 @@ WHERE id = sqlc.arg(id)
 INSERT INTO workos_index.documents (
     projection_generation, owner_user_id, project_id, source_type, source_id,
     source_digest, artifact_type, title, content, source_created_at,
-    last_publication_id, source_operation, indexed_at, updated_at, embedding
+    last_publication_id, source_operation, indexed_at, updated_at, embedding, embedding_model
 ) VALUES (
     sqlc.arg(projection_generation), sqlc.arg(owner_user_id), sqlc.arg(project_id),
     'artifact.review.v1', sqlc.arg(source_id), sqlc.arg(source_digest),
     sqlc.arg(artifact_type), sqlc.arg(title), sqlc.arg(content),
     sqlc.arg(source_created_at), sqlc.arg(last_publication_id),
-    'review-artifact.upsert', sqlc.arg(indexed_at), sqlc.arg(updated_at), sqlc.arg(embedding)
+    'review-artifact.upsert', sqlc.arg(indexed_at), sqlc.arg(updated_at), sqlc.arg(embedding)::text::public.vector, sqlc.arg(embedding_model)
 )
 ON CONFLICT (projection_generation, owner_user_id, project_id, source_id) DO UPDATE
 SET source_digest = EXCLUDED.source_digest,
@@ -335,6 +336,7 @@ SET source_digest = EXCLUDED.source_digest,
     indexed_at = EXCLUDED.indexed_at,
     tombstoned_at = NULL,
     embedding = EXCLUDED.embedding,
+    embedding_model = EXCLUDED.embedding_model,
     updated_at = EXCLUDED.updated_at;
 
 -- name: TombstoneGenerationDocuments :execrows
@@ -371,28 +373,81 @@ LIMIT sqlc.arg(page_limit);
 
 
 -- Hybrid semantic search (ADR-0017): one bounded per-scope candidate fetch
--- carrying both the lexical ts_rank and the stored feature-hash embedding;
--- cosine, fusion (0.5 lexical-norm + 0.5 cosine), deterministic ordering
--- (fused DESC, source_created_at DESC, source_id ASC) and cursor pagination
--- are computed in the indexer. Bounded by the generation's per-project
--- document count (single-owner local scale, ≤2000 by ADR-0017 §3).
+-- with complete pinned model vectors. Ranking and pagination execute in SQL;
+-- only the requested page carries document content back to the application.
+-- name: ModelScopeReady :one
+SELECT NOT EXISTS (
+    SELECT 1 FROM workos_index.documents d
+    WHERE d.projection_generation = sqlc.arg(generation_id)
+      AND d.owner_user_id = sqlc.arg(owner_user_id)
+      AND d.project_id = sqlc.arg(project_id)
+      AND d.tombstoned_at IS NULL
+      AND (sqlc.arg(source_type)::text = '' OR d.source_type = sqlc.arg(source_type))
+      AND d.indexed_at <= sqlc.arg(snapshot_through)
+      AND (d.embedding IS NULL OR d.embedding_model IS DISTINCT FROM sqlc.arg(embedding_model))
+)::boolean AS ready;
+
 -- name: SearchProjectDocumentsHybrid :many
 WITH q AS (
     SELECT websearch_to_tsquery('simple', sqlc.arg(query_text)) AS tsq
+), scored AS (
+    SELECT d.source_id, d.source_created_at,
+           ((CASE WHEN d.title_tsv @@ q.tsq THEN ts_rank(d.title_tsv, q.tsq) ELSE 0.0::double precision END) * 2.0
+           + (CASE WHEN d.body_tsv @@ q.tsq THEN ts_rank(d.body_tsv, q.tsq) ELSE 0.0::double precision END))::double precision AS lexical_score,
+           greatest(0.0, least(1.0, 1.0 - (d.embedding OPERATOR(public.<=>) sqlc.arg(query_vector)::text::public.vector)))::double precision AS semantic_score
+    FROM workos_index.documents d, q
+    WHERE d.projection_generation = sqlc.arg(generation_id)
+      AND d.owner_user_id = sqlc.arg(owner_user_id)
+      AND d.project_id = sqlc.arg(project_id)
+      AND d.tombstoned_at IS NULL
+      AND d.embedding_model = sqlc.arg(embedding_model)
+      AND (sqlc.arg(source_type)::text = '' OR d.source_type = sqlc.arg(source_type))
+      AND d.indexed_at <= sqlc.arg(snapshot_through)
+), fused AS (
+    SELECT source_id, source_created_at,
+           (CASE WHEN max(lexical_score) OVER () > 0
+                 THEN 0.5 * lexical_score / max(lexical_score) OVER () ELSE 0 END
+            + 0.5 * semantic_score)::double precision AS score
+    FROM scored
+    WHERE lexical_score > 0 OR semantic_score >= 0.75
+), page AS (
+    SELECT source_id, source_created_at, score FROM fused
+    WHERE score > 0
+      AND (score < sqlc.arg(cursor_score)::double precision
+           OR (score = sqlc.arg(cursor_score)::double precision
+               AND (source_created_at < sqlc.arg(cursor_created_at)::timestamptz
+                    OR (source_created_at = sqlc.arg(cursor_created_at)::timestamptz
+                        AND source_id > sqlc.arg(cursor_source_id)::uuid))))
+    ORDER BY score DESC, source_created_at DESC, source_id
+    LIMIT sqlc.arg(row_limit)
 )
-SELECT d.source_id, d.source_digest, d.source_type, d.artifact_type, d.title, d.source_created_at, d.content,
-       d.last_publication_id, d.indexed_at, d.embedding,
-       ((CASE WHEN d.title_tsv @@ q.tsq THEN ts_rank(d.title_tsv, q.tsq) ELSE 0.0::double precision END) * 2.0
-       + (CASE WHEN d.body_tsv @@ q.tsq THEN ts_rank(d.body_tsv, q.tsq) ELSE 0.0::double precision END))::double precision AS lexical_score
-FROM workos_index.documents d, q
+SELECT d.source_id, d.source_digest, d.source_type, d.artifact_type, d.title,
+       d.source_created_at, d.content, d.last_publication_id, d.indexed_at, page.score
+FROM page JOIN workos_index.documents d ON d.source_id = page.source_id
 WHERE d.projection_generation = sqlc.arg(generation_id)
   AND d.owner_user_id = sqlc.arg(owner_user_id)
   AND d.project_id = sqlc.arg(project_id)
-  AND d.tombstoned_at IS NULL
-      AND (sqlc.arg(source_type)::text = '' OR d.source_type = sqlc.arg(source_type))
-  AND d.indexed_at <= sqlc.arg(snapshot_through)
-  AND (d.title_tsv @@ q.tsq OR d.body_tsv @@ q.tsq OR d.embedding IS NOT NULL)
+ORDER BY page.score DESC, d.source_created_at DESC, d.source_id;
+
+-- name: MissingModelEmbeddings :many
+SELECT d.projection_generation, d.owner_user_id, d.project_id, d.source_id,
+       d.source_digest, d.artifact_type, d.title, d.content, d.source_created_at,
+       d.last_publication_id, d.indexed_at
+FROM workos_index.documents d JOIN workos_index.projection_generations g ON g.id = d.projection_generation
+WHERE d.tombstoned_at IS NULL AND g.status IN ('active', 'building')
+  AND (d.embedding IS NULL OR d.embedding_model IS DISTINCT FROM sqlc.arg(embedding_model))
+ORDER BY d.projection_generation, d.owner_user_id, d.project_id, d.source_id
 LIMIT sqlc.arg(row_limit);
+
+-- name: StoreModelEmbedding :execrows
+UPDATE workos_index.documents d
+SET embedding = sqlc.arg(embedding)::text::public.vector, embedding_model = sqlc.arg(embedding_model)
+WHERE d.projection_generation = sqlc.arg(generation_id)
+  AND d.owner_user_id = sqlc.arg(owner_user_id) AND d.project_id = sqlc.arg(project_id)
+  AND d.source_id = sqlc.arg(source_id) AND d.source_digest = sqlc.arg(source_digest)
+  AND d.last_publication_id = sqlc.arg(publication_id) AND d.tombstoned_at IS NULL
+  AND d.projection_generation IN (SELECT g.id FROM workos_index.projection_generations g WHERE g.status IN ('active', 'building'))
+  AND (d.embedding IS NULL OR d.embedding_model IS DISTINCT FROM sqlc.arg(embedding_model));
 
 -- Workspace file sources (ADR-0017 §4). Owner-bound mounts live in the same
 -- indexer-owned schema; re-registering a scope rebinds the root and
@@ -537,11 +592,11 @@ WHERE projection_generation = sqlc.arg(generation_id) AND source_type = 'workspa
 INSERT INTO workos_index.documents (
   projection_generation, owner_user_id, project_id, source_type, source_id, source_digest,
   artifact_type, title, content, source_created_at, last_publication_id, source_operation,
-  indexed_at, tombstoned_at, updated_at, embedding
+  indexed_at, tombstoned_at, updated_at, embedding, embedding_model
 )
 SELECT sqlc.arg(target_generation)::uuid, d.owner_user_id, d.project_id, d.source_type, d.source_id, d.source_digest,
   d.artifact_type, d.title, d.content, d.source_created_at, d.last_publication_id, d.source_operation,
-  d.indexed_at, d.tombstoned_at, d.updated_at, d.embedding
+  d.indexed_at, d.tombstoned_at, d.updated_at, d.embedding, d.embedding_model
 FROM workos_index.documents d
 WHERE d.projection_generation = sqlc.arg(source_generation)::uuid
   AND d.source_type = 'workspace.file.v1' AND d.tombstoned_at IS NULL;

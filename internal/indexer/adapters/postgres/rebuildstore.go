@@ -17,6 +17,7 @@ import (
 	indexerdb "github.com/yangtao121/workos/internal/indexer/adapters/postgres/indexerdb"
 	indexerapp "github.com/yangtao121/workos/internal/indexer/application"
 	"github.com/yangtao121/workos/internal/indexer/domain"
+	"github.com/yangtao121/workos/internal/indexer/ports"
 	"github.com/yangtao121/workos/internal/platform/ids"
 )
 
@@ -36,16 +37,17 @@ func isConstraint(err error, name string) bool {
 }
 
 type RebuildStore struct {
-	pool    *pgxpool.Pool
-	queries *indexerdb.Queries
-	ids     ids.Generator
+	pool             *pgxpool.Pool
+	queries          *indexerdb.Queries
+	ids              ids.Generator
+	modelFingerprint string
 }
 
-func NewRebuildStore(pool *pgxpool.Pool, generator ids.Generator) (*RebuildStore, error) {
-	if pool == nil || generator == nil {
+func NewRebuildStore(pool *pgxpool.Pool, generator ids.Generator, modelFingerprint string) (*RebuildStore, error) {
+	if pool == nil || generator == nil || !domain.ValidDigest(modelFingerprint) {
 		return nil, errors.New("indexer rebuild store requires pool and id generator")
 	}
-	return &RebuildStore{pool: pool, queries: indexerdb.New(pool), ids: generator}, nil
+	return &RebuildStore{pool: pool, queries: indexerdb.New(pool), ids: generator, modelFingerprint: modelFingerprint}, nil
 }
 
 // AdjudicateRebuildRequest serializes one idempotency key and commits the
@@ -242,7 +244,9 @@ func (s *RebuildStore) ApplySnapshotSource(ctx context.Context, effect indexerap
 		return storeError("read snapshot project tombstone", err)
 	}
 	if !tombstoned {
-		vector := domain.Embed(effect.Title + "\n" + string(effect.Content))
+		if !effect.Embedding.Valid() || effect.Embedding.Fingerprint != s.modelFingerprint {
+			return ports.ErrEmbeddingUnavailable
+		}
 		rows, err := queries.ApplyResolvedSourceToGeneration(ctx, indexerdb.ApplyResolvedSourceToGenerationParams{
 			ProjectionGeneration: generation,
 			OwnerUserID:          effect.OwnerUserID,
@@ -252,7 +256,8 @@ func (s *RebuildStore) ApplySnapshotSource(ctx context.Context, effect indexerap
 			ArtifactType:         effect.ArtifactType,
 			Title:                effect.Title,
 			Content:              string(effect.Content),
-			Embedding:            vector[:],
+			Embedding:            vectorText(effect.Embedding),
+			EmbeddingModel:       modelText(s.modelFingerprint),
 			SourceCreatedAt:      effect.CreatedAt,
 			LastPublicationID:    effect.PublicationID,
 			IndexedAt:            now,
@@ -398,6 +403,13 @@ func (s *RebuildStore) CompletePromotion(ctx context.Context, jobID, target, exp
 		TargetGeneration: target, SourceGeneration: current,
 	}); err != nil {
 		return false, storeError("copy workspace documents", err)
+	}
+	var modelReady bool
+	if err := tx.QueryRow(ctx, `SELECT NOT EXISTS (SELECT 1 FROM workos_index.documents WHERE projection_generation = $1::uuid AND tombstoned_at IS NULL AND (embedding IS NULL OR embedding_model IS DISTINCT FROM $2))`, target, s.modelFingerprint).Scan(&modelReady); err != nil {
+		return false, storeError("check promotion model vectors", err)
+	}
+	if !modelReady {
+		return false, ports.ErrEmbeddingUnavailable
 	}
 	if _, err := tx.Exec(ctx, `UPDATE workos_index.projection_generations SET status = 'retired', retired_at = $2 WHERE id = $1::uuid AND status = 'active'`, current, now); err != nil {
 		return false, storeError("retire active generation", err)

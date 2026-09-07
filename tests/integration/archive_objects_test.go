@@ -10,7 +10,6 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	indexerpostgres "github.com/yangtao121/workos/internal/indexer/adapters/postgres"
 	indexerapp "github.com/yangtao121/workos/internal/indexer/application"
 	indexerdomain "github.com/yangtao121/workos/internal/indexer/domain"
 	"github.com/yangtao121/workos/internal/platform/ids"
@@ -33,7 +32,7 @@ func TestArchiveObjects(t *testing.T) {
 	}
 	t.Cleanup(pool.Close)
 	generator := ids.UUIDv7{}
-	projection, err := indexerpostgres.New(pool, generator)
+	projection, err := newModelProjection(pool, generator)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -15,7 +15,6 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/yangtao121/workos/internal/indexer/adapters/localmount"
-	indexerpostgres "github.com/yangtao121/workos/internal/indexer/adapters/postgres"
 	indexerapp "github.com/yangtao121/workos/internal/indexer/application"
 	indexerdomain "github.com/yangtao121/workos/internal/indexer/domain"
 	indexerports "github.com/yangtao121/workos/internal/indexer/ports"
@@ -40,7 +39,7 @@ func TestWorkspaceIndexing(t *testing.T) {
 	}
 	t.Cleanup(pool.Close)
 	generator := ids.UUIDv7{}
-	projection, err := indexerpostgres.New(pool, generator)
+	projection, err := newModelProjection(pool, generator)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -137,7 +136,7 @@ func TestWorkspaceIndexing(t *testing.T) {
 		t.Fatalf("context ref grammar drifted: %q", notes.ContextRef)
 	}
 	var dims int
-	if err := pool.QueryRow(ctx, `SELECT count(*) FROM workos_index.documents, unnest(embedding) WHERE source_id = $1::uuid`, notes.ArtifactID).Scan(&dims); err != nil {
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM workos_index.documents, unnest(embedding::real[]) WHERE source_id = $1::uuid`, notes.ArtifactID).Scan(&dims); err != nil {
 		t.Fatal(err)
 	}
 	if dims != indexerdomain.EmbeddingDimensions {
@@ -161,7 +160,7 @@ func TestWorkspaceIndexing(t *testing.T) {
 		t.Fatalf("second pass applied=%d tombstoned=%d, want 3/1", second.Applied, second.Tombstoned)
 	}
 	converged, err := search.SearchHybrid(ctx, indexerapp.SearchInput{
-		OwnerUserID: owner, ProjectID: project, RawQuery: "workspace greenhouse humidity", PageSize: 20,
+		OwnerUserID: owner, ProjectID: project, RawQuery: "greenhouse humidity", PageSize: 20,
 	})
 	if err != nil {
 		t.Fatalf("converged search: %v", err)
@@ -172,9 +171,8 @@ func TestWorkspaceIndexing(t *testing.T) {
 			t.Fatal("deleted file survived convergence in the projection")
 		}
 		if hit.Title == "notes.md" {
-			// The revised query terms no longer lexically AND-match the
-			// revised notes (no "workspace" token in it): the hit proves the
-			// cosine half of the fusion carries the recall.
+			// Storage fixtures verify convergence; real cross-language recall
+			// is covered by TestOfflineModelPostgres.
 			if strings.Contains(hit.Excerpt, "rollout pacing") {
 				t.Fatal("stale content survived the content upsert")
 			}
@@ -184,7 +182,7 @@ func TestWorkspaceIndexing(t *testing.T) {
 		}
 	}
 	if !revised {
-		t.Fatalf("revised notes.md not recalled semantically: %+v", converged.Page.Hits)
+		t.Fatalf("revised notes.md not recalled: %+v", converged.Page.Hits)
 	}
 
 	// An incomplete pass must preserve the previous projection, even if a

@@ -14,7 +14,6 @@ import (
 	indexv1 "github.com/yangtao121/workos/gen/go/workos/index/v1"
 	"github.com/yangtao121/workos/gen/go/workos/index/v1/indexv1connect"
 	"github.com/yangtao121/workos/internal/indexer/adapters/localmount"
-	postgres "github.com/yangtao121/workos/internal/indexer/adapters/postgres"
 	app "github.com/yangtao121/workos/internal/indexer/application"
 	domain "github.com/yangtao121/workos/internal/indexer/domain"
 	"github.com/yangtao121/workos/internal/indexer/ports"
@@ -47,7 +46,7 @@ func TestWorkspaceStop(t *testing.T) {
 	}
 	defer pool.Close()
 	generator := ids.UUIDv7{}
-	repo, err := postgres.New(pool, generator)
+	repo, err := newModelProjection(pool, generator)
 	if err != nil {
 		t.Fatal(err)
 	}

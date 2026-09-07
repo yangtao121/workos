@@ -311,6 +311,7 @@ func validSnapshotEffect(effect SnapshotEffect, indexedAt time.Time) bool {
 
 // SnapshotEffect is the generation-scoped effect the store persists.
 type SnapshotEffect struct {
+	Embedding     domain.ModelVector
 	OwnerUserID   string
 	ProjectID     string
 	ArtifactID    string

@@ -754,3 +754,59 @@ noexec/禁网/只读限制。`make check` PASS（`tmp/embedding-check.log`），
 
 adapter 最终完整 `make check` 再次 PASS（`tmp/embedding-check-final.log`，退出 0），
 已包含真实模型缓存损坏回归；生成和门禁结果如上。工作树只含本阶段改动。
+
+### R4 模型摄取与 pgvector 接入（active，2026-09-07）
+
+adapter 检查点 f353fdc。在 application 层组合模型与 projection/workspace/rebuild ports，
+SQL 只接收经过验证的向量与指纹；模型推理不持有事务锁。计划新增 Indexer-owned
+forward migration 047，将可再生 feature-hash 缓存换为 pgvector，保留全部文档/receipt/
+cursor，并用已有快照的 digest/publication CAS 回填，无需原目录仍然存在。
+当前默认库已经有 public.vector 扩展；沿用该不可变类型，不迁移或删除用户扩展。
+混合搜索必须按指纹隔离、在 SQL 内完成排序分页，杜绝原 LIMIT 2000 的静默截断。
+workspace promotion 必须检查目标向量齐备；缺模型、回填中或指纹不符如实 unavailable。
+本阶段尚未修改默认数据库，现有 046 及以前的 migration 保持不变。
+
+R4 接入进展：047 已在独立临时库验证，再通过新镜像应用到默认库；全部有效文档已回填
+至一个模型指纹，缺失数为 0。未删除文档、receipt、cursor 或卷。旧 Indexer 在迁移前
+已停止，随后启动新栈，未保留旧向量格式兼容逻辑。固定模型内置统一镜像，模型推理
+仍是 Indexer 拥有的子进程。Compose 新增可选 WORKOS_BUILD_NETWORK，仅解决构建时
+本地代理可达性；首轮默认网络连不到宿主代理，host 构建重试通过。构建缓存来自公开、
+校验过的模型文件，无宿主安装或真实服务凭据。
+
+已验证：
+
+- PostgreSQL/race：`tmp/model-pg-regression5.log` PASS，迁移事实保留、五种 CAS 竞争、
+  2102 文档完整分页、缺向量拒绝 promotion、workspace/review 重建与 archive 全部通过。
+- 页 token 模型指纹隔离和 source/digest 精确读取：`tmp/model-token-final.log` PASS。
+- 模型故障不会落库或确认 Core，恢复后正常消费；transport 固定 unavailable；模型排队
+  内部超时按 retryable 处理，避免退出摄取进程。`tmp/model-unit-final.log` 及完整检查通过。
+- `make test-model-postgres`：`tmp/model-real-pg-gate2.log` PASS，真实固定模型、pgvector、
+  三项中英跨语言查询、摄取/重建向量一致、子进程重启回填后的排序一致；禁止 SKIP 假 PASS。
+- `make test-local-embedding`：`tmp/model-offline-final-gate.log` PASS，含 20 秒排队超时回归、
+  race 故障矩阵和禁网只读真实模型。
+- `WORKOS_BUILD_NETWORK=host make test-semantic-knowledge`：
+  `tmp/model-semantic-stack-gate.log` PASS，新栈 Gateway/Core/Indexer 真实 RPC。
+- `make check`：`tmp/model-full-check.log` PASS。后续浏览器 fixture 扩展仍需最终复验。
+
+浏览器门禁正在运行：`tmp/model-workspace-browser-gate.log`，在原 23 文件/混合 review/
+重启/重建/stop 链路加入中文查询英文私钥文档、词法零命中与正确只读快照断言。
+本阶段没有修改客户端布局或控件；新增的是确定性 E2E fixture 与检索语义。
+
+R4 浏览器收尾：首轮因新增测试未从只读预览返回结果页而超时，已修正测试导航；
+失败 fixture 已按原 gate 清理。`WORKOS_BUILD_NETWORK=host make test-workspace-browser`
+第二轮六阶段全部 PASS（`tmp/model-workspace-browser-gate2.log`，fixture
+`tmp/workspace-index.Jq5jgh`）：首次摄取、重启和全量重建后中文查询英文文件均正确召回，
+词法 RPC 零命中；23 文件与混合 review 分页、只读快照、stop 拒绝与 cleanup 均通过。
+完整模型检索链已有实际 CPU/Gateway/Chromium 证据，status/ADR/implementation 同步。
+尚不声称分块索引、ANN、生成式 RAG 或多 owner 部署。
+
+下一阶段：R2 的 Repair Task → Build/Test → 不可变候选 → Registry version/grants →
+Deployment 交接。rootless Podman 缺失仍是真实宿主门禁 blocker，但不能代替缺失的软件实现。
+R3 远程 Browser/Native/WebRTC/PTY 与 R5 原生 wrapper 仍需继续；全部完成前不合并 main。
+
+模型接入最终检查：`make check` 再次 PASS（`tmp/model-full-check-final.log`）；
+`make generate` 后 132 个生成源码/README 的 SHA-256 全部不变
+（`tmp/model-generate-idempotent.log`）。本检查点可提交，整个总攻仍 active。
+收尾审查发现两项需继续核对：Runtime App knowledge adapter 仍调用词法 RPC 且未过滤
+workspace 来源（其输出契约只接受 review）；workosctl 的 workspace sync 固定 30 秒预算
+需要用最大文件数与长文本真实模型验证。先完成这两项，再进入 R2 Build/Test 交接。

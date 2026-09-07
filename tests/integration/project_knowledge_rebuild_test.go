@@ -14,7 +14,6 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	indexerpostgres "github.com/yangtao121/workos/internal/indexer/adapters/postgres"
 	indexerapp "github.com/yangtao121/workos/internal/indexer/application"
 	indexerdomain "github.com/yangtao121/workos/internal/indexer/domain"
 	indexerports "github.com/yangtao121/workos/internal/indexer/ports"
@@ -33,7 +32,7 @@ import (
 type rebuildFixture struct {
 	pool  *pgxpool.Pool
 	dsn   string
-	proj  *indexerpostgres.Repository
+	proj  *indexerapp.ModelProjection
 	ids   ids.Generator
 	owner string
 	// foreignOwner owns nothing; searches under it must always be empty.
@@ -54,7 +53,7 @@ func newRebuildFixture(t *testing.T) *rebuildFixture {
 	}
 	t.Cleanup(pool.Close)
 	generator := ids.UUIDv7{}
-	projection, err := indexerpostgres.New(pool, generator)
+	projection, err := newModelProjection(pool, generator)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -135,7 +134,7 @@ func reviewDigest(body string) string {
 // the same pages the real IndexPublicationSourceService would produce.
 type fakeRebuildFeed struct {
 	pool *pgxpool.Pool
-	proj *indexerpostgres.Repository
+	proj *indexerapp.ModelProjection
 }
 
 func (f *fakeRebuildFeed) ReconcileSources(ctx context.Context, pageSize int, cursor string) ([]indexerports.ReconcileSource, string, string, error) {
@@ -229,7 +228,7 @@ func (f *rebuildFixture) buildExecutor(t *testing.T) (*indexerapp.RebuildExecuto
 	return f.buildExecutorOn(t, f.pool, f.proj)
 }
 
-func (f *rebuildFixture) buildExecutorOn(t *testing.T, pool *pgxpool.Pool, projection *indexerpostgres.Repository) (*indexerapp.RebuildExecutor, *fakeRebuildFeed) {
+func (f *rebuildFixture) buildExecutorOn(t *testing.T, pool *pgxpool.Pool, projection *indexerapp.ModelProjection) (*indexerapp.RebuildExecutor, *fakeRebuildFeed) {
 	t.Helper()
 	feed := &fakeRebuildFeed{pool: pool, proj: projection}
 	executor, err := indexerapp.NewRebuildExecutor(
@@ -246,7 +245,7 @@ func (f *rebuildFixture) buildExecutorOn(t *testing.T, pool *pgxpool.Pool, proje
 // in this fixture and fail loudly if ever called.
 type portsCoreFeedAdapter struct {
 	fake *fakeRebuildFeed
-	proj *indexerpostgres.Repository
+	proj *indexerapp.ModelProjection
 }
 
 func (a *portsCoreFeedAdapter) Claim(context.Context, string, int, time.Duration) ([]indexerports.ClaimedPublication, error) {
@@ -307,7 +306,7 @@ func (a *portsCoreFeedAdapter) ActiveGenerationID(ctx context.Context) (string, 
 
 func mustRebuildStore(t *testing.T, pool *pgxpool.Pool, generator ids.Generator) indexerapp.RebuildStore {
 	t.Helper()
-	store, err := indexerpostgres.NewRebuildStore(pool, generator)
+	store, err := newModelRebuildStore(pool, generator)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -621,7 +620,7 @@ func TestProjectKnowledgeRebuildGoldenCrashResumeAndDestroyRestore(t *testing.T)
 	if _, err := f.pool.Exec(ctx, `DROP SCHEMA workos_index CASCADE`); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := f.pool.Exec(ctx, `DELETE FROM workos_meta.schema_migrations WHERE name IN ('027_index_projection.sql', '028_index_projection_invariants.sql', '037_indexer_semantic_embeddings.sql', '038_indexer_workspace_sources.sql', '040_indexer_archive_objects.sql')`); err != nil {
+	if _, err := f.pool.Exec(ctx, `DELETE FROM workos_meta.schema_migrations WHERE name IN ('027_index_projection.sql', '028_index_projection_invariants.sql', '037_indexer_semantic_embeddings.sql', '038_indexer_workspace_sources.sql', '040_indexer_archive_objects.sql', '047_indexer_model_vectors.sql')`); err != nil {
 		t.Fatal(err)
 	}
 	if err := migrations.Run(ctx, f.dsn); err != nil {
@@ -632,7 +631,7 @@ func TestProjectKnowledgeRebuildGoldenCrashResumeAndDestroyRestore(t *testing.T)
 		t.Fatal(err)
 	}
 	defer pool2.Close()
-	projection2, err := indexerpostgres.New(pool2, f.ids)
+	projection2, err := newModelProjection(pool2, f.ids)
 	if err != nil {
 		t.Fatal(err)
 	}

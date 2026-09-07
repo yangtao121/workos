@@ -24,7 +24,6 @@ import (
 	indexv1connect "github.com/yangtao121/workos/gen/go/workos/index/v1/indexv1connect"
 	projectv1 "github.com/yangtao121/workos/gen/go/workos/project/v1"
 	projectv1connect "github.com/yangtao121/workos/gen/go/workos/project/v1/projectv1connect"
-	indexerpostgres "github.com/yangtao121/workos/internal/indexer/adapters/postgres"
 	indexerapp "github.com/yangtao121/workos/internal/indexer/application"
 	indexerdomain "github.com/yangtao121/workos/internal/indexer/domain"
 	indexerports "github.com/yangtao121/workos/internal/indexer/ports"
@@ -49,7 +48,7 @@ func TestSemanticKnowledgeHybridRepository(t *testing.T) {
 	}
 	t.Cleanup(pool.Close)
 	generator := ids.UUIDv7{}
-	projection, err := indexerpostgres.New(pool, generator)
+	projection, err := newModelProjection(pool, generator)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -88,7 +87,7 @@ func TestSemanticKnowledgeHybridRepository(t *testing.T) {
 	var dims int
 	var norm float64
 	if err := pool.QueryRow(ctx, `SELECT count(*), sqrt(sum(power(value, 2)))
-		FROM workos_index.documents, unnest(embedding) AS value
+		FROM workos_index.documents, unnest(embedding::real[]) AS value
 		WHERE source_id = $1::uuid`, docs[0].id).Scan(&dims, &norm); err != nil {
 		t.Fatalf("read stored embedding: %v", err)
 	}
@@ -98,7 +97,6 @@ func TestSemanticKnowledgeHybridRepository(t *testing.T) {
 
 	search := indexerapp.NewSearchServiceForTest(projection)
 	query := indexerapp.SearchInput{OwnerUserID: owner, ProjectID: project, RawQuery: "kubernetes rollout pacing gate", PageSize: 20}
-	var gardenFused float64
 
 	hybrid, err := search.SearchHybrid(ctx, query)
 	if err != nil {
@@ -127,27 +125,28 @@ func TestSemanticKnowledgeHybridRepository(t *testing.T) {
 		}
 	}
 
-	for _, hit := range hybrid.Page.Hits {
-		if hit.ArtifactID == docs[1].id {
-			gardenFused = hit.Score
-		}
-	}
-
-	// Legacy rows without embeddings degrade honestly: the lexical path
-	// keeps the document searchable and its fused score loses exactly the
-	// semantic half.
-	if _, err := pool.Exec(ctx, `UPDATE workos_index.documents SET embedding = NULL WHERE source_id = $1::uuid`, docs[1].id); err != nil {
+	// Missing model vectors never claim a complete hybrid result. Lexical search
+	// stays available, and the durable backfill restores the exact prior ranking.
+	if _, err := pool.Exec(ctx, `UPDATE workos_index.documents SET embedding = NULL, embedding_model = NULL WHERE source_id = $1::uuid`, docs[1].id); err != nil {
 		t.Fatal(err)
 	}
-	degraded, err := search.SearchHybrid(ctx, query)
+	if _, err := search.SearchHybrid(ctx, query); !errors.Is(err, indexerports.ErrEmbeddingUnavailable) {
+		t.Fatalf("missing model: %v", err)
+	}
+	if _, err := search.Search(ctx, query); err != nil {
+		t.Fatal(err)
+	}
+	if count, err := projection.Backfill(ctx); err != nil || count != 1 {
+		t.Fatalf("backfill: %d, %v", count, err)
+	}
+	restored, err := search.SearchHybrid(ctx, query)
 	if err != nil {
-		t.Fatalf("degraded hybrid search: %v", err)
+		t.Fatal(err)
 	}
-	if len(degraded.Page.Hits) != 2 || degraded.Page.Hits[1].ArtifactID != docs[1].id {
-		t.Fatalf("degraded document lost from hybrid results: %+v", degraded.Page.Hits)
-	}
-	if degraded.Page.Hits[1].Score >= gardenFused {
-		t.Fatalf("removing the embedding must lower the fused score: %v >= %v", degraded.Page.Hits[1].Score, gardenFused)
+	for i, hit := range restored.Page.Hits {
+		if hit.ArtifactID != hybrid.Page.Hits[i].ArtifactID || hit.Score != hybrid.Page.Hits[i].Score {
+			t.Fatal("backfill changed ranking")
+		}
 	}
 
 	// A page token from one ranking never paginates the other.
@@ -217,7 +216,7 @@ func TestSemanticKnowledgeEqualScorePagination(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(pool.Close)
-	projection, err := indexerpostgres.New(pool, ids.UUIDv7{})
+	projection, err := newModelProjection(pool, ids.UUIDv7{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -269,7 +268,7 @@ func TestSemanticKnowledgeEqualScorePagination(t *testing.T) {
 	}
 }
 
-func applySemanticDocument(t *testing.T, ctx context.Context, projection *indexerpostgres.Repository, owner, project, artifactID, publicationID, title, body string, created, now time.Time) {
+func applySemanticDocument(t *testing.T, ctx context.Context, projection *indexerapp.ModelProjection, owner, project, artifactID, publicationID, title, body string, created, now time.Time) {
 	t.Helper()
 	if err := projection.ApplyResolvedSource(ctx, indexerports.ResolvedSource{
 		Verdict: "resolved", Operation: "review-artifact.upsert",

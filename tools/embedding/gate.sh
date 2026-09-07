@@ -5,7 +5,7 @@ cd "$repo"
 cache=${WORKOS_EMBEDDING_CACHE_DIR:-$repo/tmp/embedding-model}
 python3 tools/embedding/fetch.py "$cache"
 docker build --network host --build-arg HTTPS_PROXY --build-arg HTTP_PROXY \
-  -t workos-embedding:dev -f deploy/embedding/Dockerfile .
+  -t workos-embedding:dev --target embedding-runtime .
 directory=$(mktemp -d "$repo/tmp/embedding-gate.XXXXXX")
 trap 'rm -f "$directory/embedding.test"' EXIT
 docker run --rm --user "$(id -u):$(id -g)" -e HOME=/tmp \

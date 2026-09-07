@@ -12,7 +12,6 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/yangtao121/workos/internal/indexer/adapters/localmount"
-	indexerpostgres "github.com/yangtao121/workos/internal/indexer/adapters/postgres"
 	indexerapp "github.com/yangtao121/workos/internal/indexer/application"
 	indexerdomain "github.com/yangtao121/workos/internal/indexer/domain"
 	"github.com/yangtao121/workos/internal/platform/ids"
@@ -31,7 +30,7 @@ func TestIndexSourceFilterAndExactSnapshotRead(t *testing.T) {
 	}
 	defer pool.Close()
 	generator := ids.UUIDv7{}
-	repo, err := indexerpostgres.New(pool, generator)
+	repo, err := newModelProjection(pool, generator)
 	if err != nil {
 		t.Fatal(err)
 	}

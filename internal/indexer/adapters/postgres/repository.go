@@ -7,10 +7,10 @@ package postgres
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"math"
-	"sort"
 	"strings"
 	"time"
 
@@ -27,17 +27,20 @@ import (
 )
 
 type Repository struct {
-	pool    *pgxpool.Pool
-	queries *indexerdb.Queries
-	ids     ids.Generator
+	pool             *pgxpool.Pool
+	queries          *indexerdb.Queries
+	ids              ids.Generator
+	modelFingerprint string
 }
 
-func New(pool *pgxpool.Pool, generator ids.Generator) (*Repository, error) {
-	if pool == nil || generator == nil {
+func New(pool *pgxpool.Pool, generator ids.Generator, modelFingerprint string) (*Repository, error) {
+	if pool == nil || generator == nil || !domain.ValidDigest(modelFingerprint) {
 		return nil, errors.New("indexer projection repository requires pool and id generator")
 	}
-	return &Repository{pool: pool, queries: indexerdb.New(pool), ids: generator}, nil
+	return &Repository{pool: pool, queries: indexerdb.New(pool), ids: generator, modelFingerprint: modelFingerprint}, nil
 }
+
+func (r *Repository) ModelFingerprint() string { return r.modelFingerprint }
 
 func storeError(operation string, err error) error {
 	if err == nil {
@@ -189,7 +192,7 @@ func (r *Repository) ApplyResolvedSource(ctx context.Context, source ports.Resol
 	if err := queries.LockIndexProject(ctx, source.OwnerUserID+"/"+source.ProjectID); err != nil {
 		return storeError("lock index project", err)
 	}
-	if err := applyResolvedSource(ctx, queries, source, outcome, requestDigest, now); err != nil {
+	if err := applyResolvedSource(ctx, queries, source, outcome, requestDigest, r.modelFingerprint, now); err != nil {
 		return err
 	}
 	if err := tx.Commit(ctx); err != nil {
@@ -198,7 +201,7 @@ func (r *Repository) ApplyResolvedSource(ctx context.Context, source ports.Resol
 	return nil
 }
 
-func applyResolvedSource(ctx context.Context, queries *indexerdb.Queries, source ports.ResolvedSource, outcome, requestDigest string, now time.Time) error {
+func applyResolvedSource(ctx context.Context, queries *indexerdb.Queries, source ports.ResolvedSource, outcome, requestDigest, modelFingerprint string, now time.Time) error {
 	publicationUUID, err := uuid.Parse(source.PublicationID)
 	if err != nil || publicationUUID.Version() != 7 || !domain.ValidUUID(source.PublicationID) ||
 		!domain.ValidUUID(source.OwnerUserID) || !domain.ValidUUID(source.ProjectID) ||
@@ -296,10 +299,10 @@ func applyResolvedSource(ctx context.Context, queries *indexerdb.Queries, source
 		}
 
 		if !tombstoned && outcome == domain.OutcomeApplied {
-			// Deterministic local feature-hash embedding of the bounded
-			// title+content (ADR-0017 §3): computed at write time so every
-			// stored document carries its semantic projection.
-			vector := domain.Embed(source.Title + "\n" + string(source.Content))
+			if !source.Embedding.Valid() || source.Embedding.Fingerprint != modelFingerprint {
+				return domain.ErrInvalid
+			}
+			vector := vectorText(source.Embedding)
 			rows, err := queries.UpsertSearchDocument(ctx, indexerdb.UpsertSearchDocumentParams{
 				ProjectionGeneration: generation,
 				OwnerUserID:          source.OwnerUserID,
@@ -315,7 +318,8 @@ func applyResolvedSource(ctx context.Context, queries *indexerdb.Queries, source
 				LastPublicationID:    source.PublicationID,
 				IndexedAt:            canonical(now),
 				UpdatedAt:            canonical(now),
-				Embedding:            vector[:],
+				Embedding:            vector,
+				EmbeddingModel:       modelText(source.Embedding.Fingerprint),
 			})
 			if err != nil {
 				return storeError("upsert search document", err)
@@ -457,164 +461,134 @@ func (r *Repository) Search(ctx context.Context, query domain.SearchQuery) (doma
 	return page, nil
 }
 
-// hybridCandidateLimit bounds the per-scope semantic candidate fetch
-// (ADR-0017 §3: single-owner local scale, ≤2000 documents per generation).
-const hybridCandidateLimit = 2000
-
-// SearchHybrid runs one bounded deterministic hybrid page (ADR-0017): the
-// per-scope candidate fetch carries both the lexical ts_rank and the stored
-// feature-hash embedding; cosine, the 0.5 lexical-normalized + 0.5 cosine
-// fusion, the fused DESC / created DESC / source_id ASC ordering, and cursor
-// pagination are computed in the indexer from the same bounded candidate set,
-// so every page of one chain sees identical deterministic ordering.
+// SearchHybrid performs the complete pgvector/lexical ranking in PostgreSQL.
+// The readiness check and page share one repeatable-read snapshot; no truncated
+// in-memory candidate set or partial model backfill can masquerade as a page.
 func (r *Repository) SearchHybrid(ctx context.Context, query domain.SearchQuery) (domain.SearchPage, error) {
+	if query.PageSize < 1 || query.PageSize > domain.MaxSearchPageSize {
+		return domain.SearchPage{}, domain.ErrInvalid
+	}
 	if query.Ranking == 0 {
 		query.Ranking = domain.RankingHybrid
 	}
-	if !domain.ValidRanking(query.Ranking) {
+	if query.Ranking != domain.RankingHybrid {
 		return domain.SearchPage{}, domain.ErrInvalid
 	}
-	generation, err := r.ActiveGenerationID(ctx)
+	tx, err := r.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
 	if err != nil {
-		return domain.SearchPage{}, err
+		return domain.SearchPage{}, storeError("begin model search", err)
+	}
+	defer tx.Rollback(ctx)
+	queries := r.queries.WithTx(tx)
+	generation, err := queries.ActiveGenerationID(ctx)
+	if err != nil {
+		return domain.SearchPage{}, storeError("read model generation", err)
 	}
 	snapshot := canonical(time.Now().UTC())
-	var cursorCreated time.Time
-	cursorSource := uuid.Nil.String()
-	cursorScore := math.Inf(1)
+	cursorCreated, cursorSource, cursorScore := time.Time{}, uuid.Nil.String(), math.Inf(1)
 	if query.Decoded != nil {
-		if query.Decoded.RankingVersion != query.Ranking {
-			return domain.SearchPage{}, domain.ErrInvalid
-		}
-		if query.Decoded.GenerationID != generation {
-			// The generation moved (rebuild promoted): the old chain must not
-			// mix documents across generations.
+		if query.Decoded.RankingVersion != query.Ranking || query.Decoded.GenerationID != generation {
 			return domain.SearchPage{}, domain.ErrInvalid
 		}
 		snapshot = canonical(query.Decoded.SnapshotThrough)
-		cursorScore = query.Decoded.LastScore
-		cursorCreated = canonical(query.Decoded.LastSourceCreated)
-		cursorSource = query.Decoded.LastSourceID
+		cursorCreated, cursorSource, cursorScore = canonical(query.Decoded.LastSourceCreated), query.Decoded.LastSourceID, query.Decoded.LastScore
 	}
-	if strings.TrimSpace(domain.LexicalQueryText(query.CanonicalQuery)) == "" {
+	if domain.LexicalQueryText(query.CanonicalQuery) == "" {
 		return domain.SearchPage{GenerationID: generation}, nil
 	}
-	rows, err := r.queries.SearchProjectDocumentsHybrid(ctx, indexerdb.SearchProjectDocumentsHybridParams{
-		GenerationID:    generation,
-		OwnerUserID:     query.OwnerUserID,
-		ProjectID:       query.ProjectID,
-		QueryText:       domain.LexicalQueryText(query.CanonicalQuery),
-		SourceType:      query.SourceType,
-		SnapshotThrough: snapshot,
-		RowLimit:        hybridCandidateLimit,
+	if !query.Embedding.Valid() || query.Embedding.Fingerprint != r.modelFingerprint {
+		return domain.SearchPage{}, ports.ErrEmbeddingUnavailable
+	}
+	ready, err := queries.ModelScopeReady(ctx, indexerdb.ModelScopeReadyParams{
+		GenerationID: generation, OwnerUserID: query.OwnerUserID, ProjectID: query.ProjectID,
+		SourceType: query.SourceType, SnapshotThrough: snapshot, EmbeddingModel: modelText(r.modelFingerprint),
 	})
 	if err != nil {
-		return domain.SearchPage{}, storeError("search documents hybrid", err)
+		return domain.SearchPage{}, storeError("read model readiness", err)
 	}
-	queryVector := domain.Embed(query.CanonicalQuery)
-	type candidate struct {
-		row   indexerdb.SearchProjectDocumentsHybridRow
-		fused float64
+	if !ready.Valid || !ready.Bool {
+		return domain.SearchPage{}, ports.ErrEmbeddingUnavailable
 	}
-	candidates := make([]candidate, 0, len(rows))
-	maxLexical := 0.0
-	for _, row := range rows {
-		if row.LexicalScore > maxLexical {
-			maxLexical = row.LexicalScore
-		}
-		candidates = append(candidates, candidate{row: row})
-	}
-	for i := range candidates {
-		row := candidates[i].row
-		lexical := 0.0
-		if maxLexical > 0 {
-			lexical = row.LexicalScore / maxLexical
-		}
-		semantic := 0.0
-		if len(row.Embedding) == domain.EmbeddingDimensions {
-			var docVector [domain.EmbeddingDimensions]float32
-			copy(docVector[:], row.Embedding)
-			semantic = float64(domain.CosineSimilarity(queryVector, docVector))
-			if semantic < 0 || domain.IsDisallowedScore(semantic) {
-				// Feature-hash cosine is bounded in [-1,1]; a negative value
-				// contributes no recall, and any non-finite value is treated
-				// the same way rather than poisoning the ordering.
-				semantic = 0
-			}
-		}
-		candidates[i].fused = 0.5*lexical + 0.5*semantic
-	}
-	sort.Slice(candidates, func(i, j int) bool {
-		a, b := candidates[i], candidates[j]
-		if a.fused != b.fused {
-			return a.fused > b.fused
-		}
-		if !a.row.SourceCreatedAt.Equal(b.row.SourceCreatedAt) {
-			return a.row.SourceCreatedAt.After(b.row.SourceCreatedAt)
-		}
-		return a.row.SourceID < b.row.SourceID
+	rows, err := queries.SearchProjectDocumentsHybrid(ctx, indexerdb.SearchProjectDocumentsHybridParams{
+		GenerationID: generation, OwnerUserID: query.OwnerUserID, ProjectID: query.ProjectID,
+		QueryText: domain.LexicalQueryText(query.CanonicalQuery), QueryVector: vectorText(query.Embedding),
+		EmbeddingModel: modelText(r.modelFingerprint), SourceType: query.SourceType, SnapshotThrough: snapshot,
+		CursorScore: cursorScore, CursorCreatedAt: cursorCreated, CursorSourceID: cursorSource, RowLimit: int32(query.PageSize + 1),
 	})
+	if err != nil {
+		return domain.SearchPage{}, storeError("search model documents", err)
+	}
+	more := len(rows) > query.PageSize
+	if more {
+		rows = rows[:query.PageSize]
+	}
 	page := domain.SearchPage{GenerationID: generation, SnapshotThrough: snapshot}
-	emitted := 0
-	var lastEmitted candidate
-	hasProbe := false
-	for _, item := range candidates {
-		row := item.row
-		if item.fused <= 0 {
-			break
-		}
-		after := item.fused < cursorScore ||
-			(item.fused == cursorScore &&
-				(row.SourceCreatedAt.Before(cursorCreated) ||
-					(row.SourceCreatedAt.Equal(cursorCreated) && row.SourceID > cursorSource)))
-		if !after {
-			continue
-		}
-		if emitted == query.PageSize {
-			// Limit+1 probe: one more row exists after a full page, so the
-			// continuation anchors at the last emitted hit (the lexical
-			// cursor grammar excludes its own anchor row on the next page).
-			// A page that drains the candidates exactly produces no phantom
-			// token.
-			hasProbe = true
-			break
-		}
-		if domain.ValidStoredScore(item.fused) != nil {
-			return domain.SearchPage{}, domain.ErrCorrupt
-		}
-		document := domain.Document{
-			OwnerUserID: query.OwnerUserID, ProjectID: query.ProjectID,
-			SourceID: row.SourceID, SourceDigest: row.SourceDigest,
-			ArtifactType: row.ArtifactType, Title: row.Title, Content: row.Content,
-			SourceCreatedAt: row.SourceCreatedAt, LastPublication: row.LastPublicationID,
-			IndexedAt: row.IndexedAt,
-		}
-		if domain.ValidStoredDocument(document) != nil {
+	for _, row := range rows {
+		document := domain.Document{OwnerUserID: query.OwnerUserID, ProjectID: query.ProjectID,
+			SourceID: row.SourceID, SourceDigest: row.SourceDigest, ArtifactType: row.ArtifactType,
+			Title: row.Title, Content: row.Content, SourceCreatedAt: row.SourceCreatedAt,
+			LastPublication: row.LastPublicationID, IndexedAt: row.IndexedAt}
+		if domain.ValidStoredDocument(document) != nil || domain.ValidStoredScore(row.Score) != nil {
 			return domain.SearchPage{}, domain.ErrCorrupt
 		}
 		page.Hits = append(page.Hits, domain.SearchHit{
-			ContextRef:   domain.ContextRef(row.SourceType, row.SourceID, row.SourceDigest),
-			Excerpt:      domain.BuildExcerpt(domain.ExcerptRequest{Content: row.Content, Terms: queryTerms(query.CanonicalQuery)}),
-			Score:        item.fused,
-			ArtifactID:   row.SourceID,
-			SourceType:   row.SourceType,
-			ArtifactType: row.ArtifactType,
-			Digest:       row.SourceDigest,
-			Title:        row.Title,
-			CreatedAt:    row.SourceCreatedAt,
+			ContextRef: domain.ContextRef(row.SourceType, row.SourceID, row.SourceDigest),
+			Excerpt:    domain.BuildExcerpt(domain.ExcerptRequest{Content: row.Content, Terms: queryTerms(query.CanonicalQuery)}),
+			Score:      row.Score, ArtifactID: row.SourceID, SourceType: row.SourceType, ArtifactType: row.ArtifactType,
+			Digest: row.SourceDigest, Title: row.Title, CreatedAt: row.SourceCreatedAt,
 		})
-		lastEmitted = item
-		emitted++
 	}
-	if hasProbe {
-		page.Continuation = &domain.PageToken{
-			OwnerUserID: query.OwnerUserID, ProjectID: query.ProjectID,
-			QueryDigest: query.QueryDigest, RankingVersion: query.Ranking,
-			GenerationID: generation, SnapshotThrough: snapshot,
-			LastScore: lastEmitted.fused, LastSourceCreated: lastEmitted.row.SourceCreatedAt, LastSourceID: lastEmitted.row.SourceID,
-		}
+	if more {
+		last := rows[len(rows)-1]
+		page.Continuation = &domain.PageToken{OwnerUserID: query.OwnerUserID, ProjectID: query.ProjectID,
+			QueryDigest: query.QueryDigest, RankingVersion: query.Ranking, GenerationID: generation,
+			SnapshotThrough: snapshot, LastScore: last.Score, LastSourceCreated: last.SourceCreatedAt, LastSourceID: last.SourceID}
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return domain.SearchPage{}, storeError("commit model search", err)
 	}
 	return page, nil
+}
+
+func vectorText(vector domain.ModelVector) string {
+	data, _ := json.Marshal(vector.Values) // Valid() has already excluded non-finite values.
+	return string(data)
+}
+func modelText(value string) pgtype.Text { return pgtype.Text{String: value, Valid: true} }
+
+func (r *Repository) MissingEmbeddings(ctx context.Context, fingerprint string, limit int) ([]ports.EmbeddingSnapshot, error) {
+	if fingerprint != r.modelFingerprint || limit < 1 || limit > 8 {
+		return nil, domain.ErrInvalid
+	}
+	rows, err := r.queries.MissingModelEmbeddings(ctx, indexerdb.MissingModelEmbeddingsParams{EmbeddingModel: modelText(fingerprint), RowLimit: int32(limit)})
+	if err != nil {
+		return nil, storeError("read missing model vectors", err)
+	}
+	snapshots := make([]ports.EmbeddingSnapshot, 0, len(rows))
+	for _, row := range rows {
+		snapshots = append(snapshots, ports.EmbeddingSnapshot{GenerationID: row.ProjectionGeneration,
+			Document: domain.Document{OwnerUserID: row.OwnerUserID, ProjectID: row.ProjectID,
+				SourceID: row.SourceID, SourceDigest: row.SourceDigest, ArtifactType: row.ArtifactType,
+				Title: row.Title, Content: row.Content, SourceCreatedAt: row.SourceCreatedAt,
+				LastPublication: row.LastPublicationID, IndexedAt: row.IndexedAt}})
+	}
+	return snapshots, nil
+}
+
+func (r *Repository) StoreEmbedding(ctx context.Context, snapshot ports.EmbeddingSnapshot, vector domain.ModelVector) (bool, error) {
+	if !domain.ValidUUID(snapshot.GenerationID) || domain.ValidStoredDocument(snapshot.Document) != nil || !vector.Valid() || vector.Fingerprint != r.modelFingerprint {
+		return false, domain.ErrInvalid
+	}
+	document := snapshot.Document
+	count, err := r.queries.StoreModelEmbedding(ctx, indexerdb.StoreModelEmbeddingParams{
+		GenerationID: snapshot.GenerationID, OwnerUserID: document.OwnerUserID, ProjectID: document.ProjectID,
+		SourceID: document.SourceID, SourceDigest: document.SourceDigest, PublicationID: document.LastPublication,
+		Embedding: vectorText(vector), EmbeddingModel: modelText(vector.Fingerprint),
+	})
+	if err != nil {
+		return false, storeError("store model vector", err)
+	}
+	return count == 1, nil
 }
 
 // Freshness reads the bounded freshness projection from durable facts: the
@@ -772,14 +746,14 @@ func (r *Repository) ConvergeWorkspacePass(ctx context.Context, source ports.Wor
 		// every file after the first into a replay. The canonical effect
 		// digest is the file content digest.
 		resolved := ports.ResolvedSource{
-			Verdict: "resolved", Operation: "workspace.upsert",
+			Verdict: "resolved", Operation: "workspace.upsert", Embedding: file.Embedding,
 			OwnerUserID: source.OwnerUserID, ProjectID: source.ProjectID,
 			ArtifactID: file.SourceID, ArtifactType: "workspace.text.v1",
 			Digest: file.Digest, Title: file.Title, Content: file.Content,
 			CreatedAt: now, PublicationID: passPublication(), OccurredAt: now,
 		}
 		if applyErr := applyResolvedSource(ctx, queries, resolved, domain.OutcomeApplied,
-			file.Digest, now); applyErr != nil {
+			file.Digest, r.modelFingerprint, now); applyErr != nil {
 			return ports.WorkspaceSource{}, 0, 0, applyErr
 		}
 		applied++

@@ -13,6 +13,9 @@ workspace 文件源与通用 archive 的最小实现。
 
 ## 决策
 
+以下第 1–3 节记录早期 feature-hash 实现，已由 ADR-0021 的固定离线模型、
+pgvector SQL 排序与 fingerprint 回填策略取代；第 4 节摄取也使用同一模型 port。
+
 ### 1. 确定性本地 embedding
 
 - 384 维 feature-hash 向量：每个 token（小写字母/数字/Unicode 序列）经 SHA-256

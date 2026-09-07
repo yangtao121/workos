@@ -92,7 +92,10 @@ func (m *Model) infer(parent context.Context, text string, kind indexv1.LocalEmb
 	defer cancel()
 	select {
 	case <-ctx.Done():
-		return nil, ctx.Err()
+		if parent.Err() != nil {
+			return nil, parent.Err()
+		}
+		return nil, ports.ErrEmbeddingUnavailable
 	case <-m.ctx.Done():
 		return nil, ports.ErrEmbeddingUnavailable
 	case <-m.slot:

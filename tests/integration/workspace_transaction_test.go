@@ -13,7 +13,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
-	postgres "github.com/yangtao121/workos/internal/indexer/adapters/postgres"
+	app "github.com/yangtao121/workos/internal/indexer/application"
 	domain "github.com/yangtao121/workos/internal/indexer/domain"
 	"github.com/yangtao121/workos/internal/indexer/ports"
 	"github.com/yangtao121/workos/internal/platform/ids"
@@ -32,8 +32,8 @@ func TestWorkspaceTransactionalConvergence(t *testing.T) {
 	}
 	defer pool.Close()
 	generator := ids.UUIDv7{}
-	repository := func() *postgres.Repository {
-		r, err := postgres.New(pool, generator)
+	repository := func() *app.ModelProjection {
+		r, err := newModelProjection(pool, generator)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -191,7 +191,7 @@ func TestWorkspaceConcurrentArchive(t *testing.T) {
 	}
 	defer pool.Close()
 	generator := ids.UUIDv7{}
-	repo, err := postgres.New(pool, generator)
+	repo, err := newModelProjection(pool, generator)
 	if err != nil {
 		t.Fatal(err)
 	}

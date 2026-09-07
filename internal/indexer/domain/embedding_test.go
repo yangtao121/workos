@@ -1,42 +1,10 @@
 package domain
 
 import (
-	"math"
 	"strings"
 	"testing"
 	"time"
 )
-
-func TestEmbedIsDeterministicL2NormalizedAndDiscriminating(t *testing.T) {
-	t.Parallel()
-	text := "Deploy the notification relay before the indexer restart"
-	first := Embed(text)
-	second := Embed(text)
-	if first != second {
-		t.Fatal("embedding is not deterministic for identical text")
-	}
-	var norm float64
-	for i := range first {
-		norm += float64(first[i]) * float64(first[i])
-	}
-	if math.Abs(norm-1) > 1e-5 {
-		t.Fatalf("embedding is not L2-normalized: norm=%v", norm)
-	}
-	same := Embed("deploy the NOTIFICATION relay before the indexer restart")
-	if CosineSimilarity(first, same) < 0.99 {
-		t.Fatalf("case-insensitive same-text cosine = %v", CosineSimilarity(first, same))
-	}
-	unrelated := Embed("quantum pottery glaze recipes for desert climates")
-	if CosineSimilarity(first, unrelated) > 0.2 {
-		t.Fatalf("unrelated text cosine too high: %v", CosineSimilarity(first, unrelated))
-	}
-	if got := Embed(""); got != ([EmbeddingDimensions]float32{}) {
-		t.Fatal("empty text must yield the zero vector")
-	}
-	if CosineSimilarity(first, [EmbeddingDimensions]float32{}) != 0 {
-		t.Fatal("zero-vector cosine must be 0")
-	}
-}
 
 func TestHybridRankingVersionRoundTripsAndLexicalStillValid(t *testing.T) {
 	t.Parallel()

@@ -209,3 +209,14 @@ func TestPinnedOfflineModel(t *testing.T) {
 		t.Fatalf("corrupt cached tokenizer was not rejected: %v", err)
 	}
 }
+
+func TestQueueDeadlineRemainsRetryable(t *testing.T) {
+	// A saturated model slot must not leak its internal deadline as a fatal
+	// ingestion error while the worker's parent context is still alive.
+	ctx, cancel := context.WithTimeout(context.Background(), 25*time.Second)
+	defer cancel()
+	model := &Model{ctx: ctx, slot: make(chan struct{}, 1)}
+	if _, err := model.Query(ctx, "queued query"); !errors.Is(err, ports.ErrEmbeddingUnavailable) || ctx.Err() != nil {
+		t.Fatalf("queue overload is not retryable: %v (parent %v)", err, ctx.Err())
+	}
+}

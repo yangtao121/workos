@@ -627,7 +627,7 @@ test-remote-native-surface: e2e-image
 # The semantic knowledge gate (ADR-0017, W4): deterministic feature-hash
 # embeddings stored at ingest, fused lexical+cosine ranking with deterministic
 # pagination over the real repository on a scratch database, honest
-# degradation for legacy rows without embeddings, and the full-stack hybrid
+# explicit unavailability for rows awaiting model backfill, and the full-stack hybrid
 # RPC chain through the Gateway with the lexical/hybrid token boundary.
 test-semantic-knowledge:
 	docker compose up -d --build postgres bootstrap workos-core harness-host runtime-host workos-gateway indexer
@@ -1046,3 +1046,7 @@ test-app-artifacts: e2e-image
 .PHONY: test-workspace-browser
 test-workspace-browser: e2e-image
 	E2E_IMAGE=$(E2E_IMAGE) sh tools/workspace-index/gate.sh
+
+.PHONY: test-model-postgres
+test-model-postgres:
+	tools/embedding/postgres-gate.sh

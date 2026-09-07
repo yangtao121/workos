@@ -7,6 +7,7 @@ import "time"
 
 // SearchQuery is one fully validated search command.
 type SearchQuery struct {
+	Embedding      ModelVector
 	SourceType     string
 	OwnerUserID    string
 	ProjectID      string
