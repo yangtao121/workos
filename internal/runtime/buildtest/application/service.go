@@ -16,8 +16,8 @@ import (
 
 const (
 	maxAttempts    = 3
-	leaseDuration  = 10 * time.Minute
 	defaultTimeout = 10 * time.Minute
+	defaultLease   = 10 * time.Minute
 	maxBatch       = 8
 )
 
@@ -29,9 +29,10 @@ type Service struct {
 	generator ids.Generator
 	identity  string
 	timeout   time.Duration
+	lease     time.Duration
 }
 
-func NewService(store ports.JobStore, engine ports.BuildEngine, generator ids.Generator, identity string, timeout time.Duration) (*Service, error) {
+func NewService(store ports.JobStore, engine ports.BuildEngine, generator ids.Generator, identity string, timeout, lease time.Duration) (*Service, error) {
 	if store == nil || engine == nil || generator == nil {
 		return nil, errors.New("build test service requires store, engine and ids")
 	}
@@ -41,7 +42,10 @@ func NewService(store ports.JobStore, engine ports.BuildEngine, generator ids.Ge
 	if timeout <= 0 {
 		timeout = defaultTimeout
 	}
-	return &Service{store: store, engine: engine, generator: generator, identity: identity, timeout: timeout}, nil
+	if lease <= 0 {
+		lease = defaultLease
+	}
+	return &Service{store: store, engine: engine, generator: generator, identity: identity, timeout: timeout, lease: lease}, nil
 }
 
 // Submit persists one queued job per task. Same task and same canonical
@@ -115,7 +119,7 @@ func (s *Service) RunPass(ctx context.Context, now time.Time) (int, error) {
 		if job.State == domain.StateRunning && job.ID == "" {
 			continue
 		}
-		claimed, err := s.store.ClaimJob(ctx, job.ID, s.identity, now.Add(leaseDuration), now)
+		claimed, err := s.store.ClaimJob(ctx, job.ID, s.identity, now.Add(s.lease), now)
 		if err != nil {
 			lastErr = err
 			continue

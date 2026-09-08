@@ -74,7 +74,7 @@ func repairVersionError(err error) error {
 		code = connect.CodeNotFound
 	case errors.Is(err, registrydomain.ErrIdempotencyConflict), errors.Is(err, projectdomain.ErrConflict):
 		code = connect.CodeAborted
-	case errors.Is(err, orchestration.ErrRepairCandidateNotReady), errors.Is(err, registryapp.ErrBuildUnavailable), errors.Is(err, registryapp.ErrNotStaged):
+	case errors.Is(err, orchestration.ErrRepairCandidateNotReady), errors.Is(err, registryapp.ErrBuildUnavailable), errors.Is(err, registryapp.ErrNotStaged), errors.Is(err, orchestration.ErrInstallationChanged):
 		code = connect.CodeFailedPrecondition
 	case errors.Is(err, agentports.ErrStoreUnavailable), errors.Is(err, registryports.ErrStoreUnavailable), errors.Is(err, projectports.ErrStoreUnavailable), dbtransient.IsTransient(err):
 		code = connect.CodeUnavailable

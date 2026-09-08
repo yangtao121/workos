@@ -163,14 +163,18 @@ func (e *Engine) runStage(ctx context.Context, directory string, command []strin
 	argv := append([]string{"bash", "-c", ulimitScript(e.config.Processes), "stage"}, command...)
 	process := exec.CommandContext(commandCtx, argv[0], argv[1:]...)
 	process.Dir = directory
+	// Go refuses modules under its temp root, so the sandbox keeps TMPDIR
+	// in a dedicated subdirectory rather than the module root itself.
+	tempDir := filepath.Join(directory, ".tmp")
+	_ = os.Mkdir(tempDir, 0o700)
 	process.Env = []string{
 		"HOME=" + directory,
-		"TMPDIR=" + directory,
+		"TMPDIR=" + tempDir,
 		"PATH=/usr/local/go/bin:/usr/local/bin:/usr/bin:/bin",
 		"LANG=C.UTF-8",
 		"TZ=UTC",
 		"GOPROXY=off",
-		
+
 		"GOCACHE=" + filepath.Join(directory, ".gocache"),
 		"GOMODCACHE=" + filepath.Join(directory, ".gomodcache"),
 		"GOTMPDIR=" + directory,

@@ -119,12 +119,12 @@ func run(logger *slog.Logger) error {
 	// sandbox engine with kernel rlimits, and the Reliability-facing RPC.
 	// Empty scratch config disables the service honestly.
 	if strings.TrimSpace(cfg.Runtime.BuildTestScratch) != "" {
-		buildEngine, engineErr := processexec.New(processexec.Config{ScratchRoot: cfg.Runtime.BuildTestScratch})
+		buildEngine, engineErr := processexec.New(processexec.Config{ScratchRoot: cfg.Runtime.BuildTestScratch, Processes: cfg.Runtime.BuildTestProcessLimit})
 		if engineErr != nil {
 			return engineErr
 		}
 		buildStore := buildtestpostgres.New(pool)
-		buildService, serviceErr := buildtestapp.NewService(buildStore, buildEngine, generator, cfg.Runtime.InstanceName, cfg.Runtime.BuildTestTimeout)
+		buildService, serviceErr := buildtestapp.NewService(buildStore, buildEngine, generator, cfg.Runtime.InstanceName, cfg.Runtime.BuildTestTimeout, cfg.Runtime.BuildTestLeaseTTL)
 		if serviceErr != nil {
 			return serviceErr
 		}

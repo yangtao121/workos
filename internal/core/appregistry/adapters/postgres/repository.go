@@ -192,10 +192,13 @@ LIMIT 1`, ownerUserID, appID, version)
 func (r *Repository) GetVersionManifest(ctx context.Context, ownerUserID, appID, version string) (string, []byte, error) {
 	var digest string
 	var canonical []byte
+	// State-agnostic by design (ADR-0026): an installation may legitimately
+	// pin a staged canary version; owner-facing summary reads keep the
+	// published filter.
 	err := r.pool.QueryRow(ctx, `
 SELECT manifest_digest, canonical_manifest
 FROM workos_core.app_versions
-WHERE owner_user_id = $1 AND app_id = $2 AND version = $3 AND state = 'published'
+WHERE owner_user_id = $1 AND app_id = $2 AND version = $3
 LIMIT 1`, ownerUserID, appID, version).Scan(&digest, &canonical)
 	if err != nil {
 		return "", nil, appVersionError("query app version manifest", err)

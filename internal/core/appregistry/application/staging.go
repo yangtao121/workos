@@ -81,12 +81,13 @@ func (s *StagingService) Register(ctx context.Context, tx dbtx.Tx, registration 
 		return StagingResult{}, err
 	}
 	// The candidate source must exist and match the presented digest.
-	build, err := s.builds.Resolve(ctx, tx, registration.OwnerUserID, registration.AppID, registration.BaseVersion, registration.BaseManifestDigest)
+	baseDigest, baseRaw, err := s.builds.Manifest(ctx, tx, registration.OwnerUserID, registration.AppID, registration.BaseVersion)
 	if err != nil {
 		return StagingResult{}, err
 	}
-	baseDigest, baseRaw, err := s.builds.Manifest(ctx, tx, registration.OwnerUserID, registration.AppID, registration.BaseVersion)
-	if err != nil {
+	// Resolve re-verifies the pinned base version's manifest digest and its
+	// build recipe binding before any derivation happens.
+	if _, err := s.builds.Resolve(ctx, tx, registration.OwnerUserID, registration.AppID, registration.BaseVersion, registration.BaseManifestDigest); err != nil {
 		return StagingResult{}, err
 	}
 	if baseDigest != registration.BaseManifestDigest || len(baseRaw) == 0 {
@@ -96,7 +97,10 @@ func (s *StagingService) Register(ctx context.Context, tx dbtx.Tx, registration 
 	if err != nil {
 		return StagingResult{}, err
 	}
-	if candidate.OwnerUserID != registration.OwnerUserID || candidate.Digest != registration.SourceDigest || candidate.ID != build.Source.ID {
+	// The candidate is the task's own submitted source bundle — by design a
+	// different bundle from the base version's; only the owner binding and
+	// the presented digest must match exactly.
+	if candidate.OwnerUserID != registration.OwnerUserID || candidate.Digest != registration.SourceDigest {
 		return StagingResult{}, domain.ErrSourceCorrupt
 	}
 	derived, digest, err := deriveStagedManifest(baseRaw, candidate, registration.BaseVersion, registration.TaskID)
@@ -221,7 +225,9 @@ func deriveStagedManifest(baseRaw []byte, candidate domain.SourceBundle, baseVer
 	if err := json.Unmarshal(baseRaw, &document); err != nil {
 		return nil, "", domain.ErrSourceCorrupt
 	}
-	label := fmt.Sprintf("%d.%d.%d-repair.%s", parsed.Major, parsed.Minor, parsed.Patch+1, strings.ReplaceAll(taskID, "-", "")[:8])
+	// The full task hex keeps the label unique: UUIDv7 prefixes share
+	// milliseconds, so a short prefix collides for concurrent repairs.
+	label := fmt.Sprintf("%d.%d.%d-repair.%s", parsed.Major, parsed.Minor, parsed.Patch+1, strings.ReplaceAll(taskID, "-", ""))
 	if _, ok := domain.ParseVersion(label); !ok {
 		return nil, "", domain.ErrInvalid
 	}

@@ -341,3 +341,10 @@ ORDER BY l.updated_at, l.incident_id;
 UPDATE workos_reliability.repair_ledger
 SET state = 'terminal', updated_at = $2
 WHERE incident_id = $1 AND state = 'submitted';
+
+-- name: CountActiveDeploymentsForInstallation :one
+SELECT count(*) AS active
+FROM workos_reliability.deployment_ledger
+WHERE installation_id = sqlc.arg(installation_id)
+  AND incident_id <> sqlc.arg(incident_id)
+  AND state IN ('candidate', 'starting', 'canary', 'rollback');

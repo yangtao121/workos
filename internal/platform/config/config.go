@@ -97,6 +97,12 @@ type Runtime struct {
 	BuildTestScratch  string        `yaml:"buildtest_scratch"`
 	BuildTestTimeout  time.Duration `yaml:"buildtest_timeout"`
 	BuildTestInterval time.Duration `yaml:"buildtest_interval"`
+	// BuildTestLeaseTTL bounds how long a crashed executor's running job
+	// stays lease-protected before takeover (ADR-0026 restart recovery).
+	BuildTestLeaseTTL time.Duration `yaml:"buildtest_lease_ttl"`
+	// BuildTestProcessLimit scales the kernel NPROC bound for hosts that
+	// share one uid across many processes; the limit stays kernel enforced.
+	BuildTestProcessLimit int `yaml:"buildtest_process_limit"`
 }
 
 // Surface configures the runtime-host Surface Broker session lifetime.
@@ -261,17 +267,19 @@ func defaults() Config {
 		},
 		Surface: Surface{SessionTTL: 15 * time.Minute},
 		Runtime: Runtime{
-			PodmanBin:         "podman",
-			IdleTTL:           5 * time.Minute,
-			ReconcileInterval: 15 * time.Second,
-			OperationTimeout:  2 * time.Minute,
-			CoreGrace:         2 * time.Minute,
-			LeaseTTL:          30 * time.Second,
-			InstanceName:      "runtime-host-local",
-			DeviceID:          "0198d7ea-2110-7c42-b659-c5e4d73bc339",
-			BuildTestScratch:  "/tmp/workos-buildtest",
-			BuildTestTimeout:  10 * time.Minute,
-			BuildTestInterval: 5 * time.Second,
+			PodmanBin:             "podman",
+			IdleTTL:               5 * time.Minute,
+			ReconcileInterval:     15 * time.Second,
+			OperationTimeout:      2 * time.Minute,
+			CoreGrace:             2 * time.Minute,
+			LeaseTTL:              30 * time.Second,
+			InstanceName:          "runtime-host-local",
+			DeviceID:              "0198d7ea-2110-7c42-b659-c5e4d73bc339",
+			BuildTestScratch:      "/tmp/workos-buildtest",
+			BuildTestTimeout:      10 * time.Minute,
+			BuildTestInterval:     5 * time.Second,
+			BuildTestLeaseTTL:     10 * time.Minute,
+			BuildTestProcessLimit: 4096,
 		},
 		Reliability: Reliability{
 			PollInterval:         5 * time.Second,
@@ -402,6 +410,13 @@ func Load() (Config, error) {
 	setString(&cfg.Indexer.PageTokenKey, "WORKOS_INDEX_PAGE_TOKEN_KEY")
 	setString(&cfg.Runtime.InstanceName, "WORKOS_RUNTIME_INSTANCE_NAME")
 	setString(&cfg.Runtime.BuildTestScratch, "WORKOS_RUNTIME_BUILDTEST_SCRATCH")
+	if raw, ok := os.LookupEnv("WORKOS_RUNTIME_BUILDTEST_PROCESS_LIMIT"); ok {
+		value, err := strconv.Atoi(raw)
+		if err != nil || value < 64 {
+			return Config{}, fmt.Errorf("WORKOS_RUNTIME_BUILDTEST_PROCESS_LIMIT must be an integer >= 64")
+		}
+		cfg.Runtime.BuildTestProcessLimit = value
+	}
 	setString(&cfg.Runtime.DeviceID, "WORKOS_RUNTIME_DEVICE_ID")
 	for _, override := range []struct {
 		key   string
@@ -415,6 +430,7 @@ func Load() (Config, error) {
 		{"WORKOS_RUNTIME_LEASE_TTL", &cfg.Runtime.LeaseTTL, "WORKOS_RUNTIME_LEASE_TTL"},
 		{"WORKOS_RUNTIME_BUILDTEST_TIMEOUT", &cfg.Runtime.BuildTestTimeout, "WORKOS_RUNTIME_BUILDTEST_TIMEOUT"},
 		{"WORKOS_RUNTIME_BUILDTEST_INTERVAL", &cfg.Runtime.BuildTestInterval, "WORKOS_RUNTIME_BUILDTEST_INTERVAL"},
+		{"WORKOS_RUNTIME_BUILDTEST_LEASE_TTL", &cfg.Runtime.BuildTestLeaseTTL, "WORKOS_RUNTIME_BUILDTEST_LEASE_TTL"},
 	} {
 		if raw, ok := os.LookupEnv(override.key); ok {
 			value, err := time.ParseDuration(raw)

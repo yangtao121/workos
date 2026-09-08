@@ -1201,3 +1201,37 @@ BuildTest→staged 注册→Offer（staged 事实持久化）；promote 先 publ
 2. rootless Podman 构建引擎（本宿主 BLOCKED 不变）；进程引擎不声明容器级
    隔离。
 3. R2 Recovery 治理、监督/遥测复核仍待做；R3/R4/R5/R6 未动。
+
+### R2 repair-buildtest 跨进程门禁（verified，2026-09-08）
+
+`make test-repair-buildtest` PASS（`tools/repair-buildtest/gate.sh`，30 轮迭代调试后完整通过，
+日志 `tmp/repair-buildtest-run30.log`）：真实 PostgreSQL/Core/Harness/Gateway/Runtime/
+Reliability 六进程 + golang 工具链镜像 runtime-host + 通用 CLI fixture 候选产出。覆盖矩阵：
+
+- 成功链：incident → 编排器 repair task → CLI 候选 → Runtime 真实 `go build`/`go test` →
+  staged 注册（owner 不可见）→ canary 精确切换 + surface 启动 → 观察窗后 publish →
+  默认版本切换；台账 promoted、安装 pin、surface 会话逐项断言；重复提交/注册幂等。
+- 测试失败/构建失败：真实 verdict（test-failed/build-failed）后零 staged 版本、零部署、
+  安装与默认版本不变、台账无行。
+- 用户版本变更：canary 期间 owner 切到 2.0.0 后 promote 拒绝（Publish 前置校验
+  installation pin），staged 永不发布，用户版本不被覆盖。
+- 进程重启：慢构建运行中重启 runtime-host，租约到期接管（attempts≥2）后完成验证链并
+  promoted。
+- 部署故障矩阵（真实 Core staged RPC + 真实 surface + 真实台账 + 脚本驱动）：
+  启动故障×8 → 回滚恢复上一 pin；canary 期间新 incident → 回滚；回滚前两次失败第三次
+  成功（有界重试）；重复 Offer 单行。
+
+门禁调试过程中发现并修复的真实产品缺陷：
+
+1. reliability `ListRepairCandidates` 映射丢失 `AppInstanceID`（既有回归，d831811 后
+   incident 驱动的 repair 提交一直 InvalidArgument）。
+2. Core `GetVersionManifest` 被误加 published 过滤（我此前批量编辑误伤）：canary 安装
+   pin 无法解析 staged 版本 → 启动/表面创建全部 NotFound。已恢复 state-agnostic 并注释。
+3. staged 版本标签用 task 前 8 hex（毫秒前缀）会碰撞 → 改为完整 32 hex。
+4. Publish 增加 ADR-0026 承诺的前置：installation 仍 pin canary 版本，否则稳定拒绝。
+5. 同安装并发 incident 的部署竞争 → 部署台账增加 active-deployment 守卫（可重试拒绝）。
+6. 进程引擎 TMPDIR 指向模块根导致 go 拒绝临时根下模块 → 独立 .tmp 子目录；
+   RLIMIT_NPROC 计入共享 uid 线程 → 可配置（默认 4096，门禁 65534，仍内核强制）。
+
+当前未完成（继续项）：默认栈 Core/Runtime/Reliability 尚未部署本批新二进制（门禁
+用独立栈验证）；R2 Recovery 治理、监督/遥测复核、R3/R4/R5/R6 与最终联合验收未动。

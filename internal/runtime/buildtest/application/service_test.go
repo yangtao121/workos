@@ -147,7 +147,7 @@ func repeat(char rune, count int) string {
 func newTestService(t *testing.T, engine ports.BuildEngine) (*Service, *fakeStore) {
 	t.Helper()
 	store := &fakeStore{jobs: map[string]*domain.Job{}}
-	service, err := NewService(store, engine, fixedIDs{}, "runtime-test", time.Minute)
+	service, err := NewService(store, engine, fixedIDs{}, "runtime-test", time.Minute, time.Minute)
 	if err != nil {
 		t.Fatalf("service: %v", err)
 	}

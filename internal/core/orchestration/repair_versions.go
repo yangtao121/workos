@@ -95,6 +95,19 @@ func (s *RepairVersions) Publish(ctx context.Context, owner, taskID, projectID, 
 	if !agentdomain.ValidAppTaskUUID(owner) || !agentdomain.ValidAppTaskUUID(taskID) {
 		return false, agentdomain.ErrInvalid
 	}
+	if s.transitions == nil {
+		return false, agentdomain.ErrInvalid
+	}
+	// ADR-0026: a user version change is never overridden by retries. The
+	// publish precondition is that the installation still pins the staged
+	// canary; anything else is a stable FailedPrecondition.
+	pinned, _, err := s.transitions.ActiveFacts(ctx, owner, projectID, installationID)
+	if err != nil {
+		return false, err
+	}
+	if pinned != version {
+		return false, ErrInstallationChanged
+	}
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
 		return false, storeFailureContext("begin repair version publish", err)
@@ -109,6 +122,10 @@ func (s *RepairVersions) Publish(ctx context.Context, owner, taskID, projectID, 
 	}
 	return published, nil
 }
+
+// ErrInstallationChanged is the stable publish rejection when the user moved
+// the installation off the canary pin (ADR-0026).
+var ErrInstallationChanged = errors.New("installation no longer pins the staged candidate")
 
 // TransitionCandidate pins the exact staged version for the canary window.
 // The durable staged mapping must still match the installation facts; a user

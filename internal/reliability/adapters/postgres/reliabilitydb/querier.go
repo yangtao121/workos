@@ -19,6 +19,7 @@ type Querier interface {
 	// One batch is one claim: every claimed publication shares the claim's
 	// lease token, so completion proves worker + live lease for the whole batch.
 	CompleteIncidentPublications(ctx context.Context, arg CompleteIncidentPublicationsParams) (int64, error)
+	CountActiveDeploymentsForInstallation(ctx context.Context, arg CountActiveDeploymentsForInstallationParams) (int64, error)
 	CountPendingIncidentPublications(ctx context.Context) (int64, error)
 	GetIncident(ctx context.Context, id string) (GetIncidentRow, error)
 	GetIncidentAction(ctx context.Context, arg GetIncidentActionParams) (WorkosReliabilityIncidentAction, error)

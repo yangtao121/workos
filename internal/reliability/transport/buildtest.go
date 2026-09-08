@@ -3,6 +3,7 @@ package transport
 import (
 	"context"
 	"errors"
+	"fmt"
 
 	"connectrpc.com/connect"
 	appv1 "github.com/yangtao121/workos/gen/go/workos/app/v1"
@@ -122,7 +123,7 @@ func (c *RepairVersionClient) Register(ctx context.Context, ownerUserID, taskID,
 	request.Header().Set(identity.DeviceHeader, c.deviceID)
 	response, err := c.client.RegisterRepairCandidateVersion(ctx, request)
 	if err != nil {
-		return application.RegisteredVersion{}, err
+		return application.RegisteredVersion{}, fmt.Errorf("register repair version: %w", err)
 	}
 	return application.RegisteredVersion{
 		Version: response.Msg.GetVersion(), ManifestDigest: response.Msg.GetManifestDigest(),
@@ -140,7 +141,7 @@ func (c *RepairVersionClient) Publish(ctx context.Context, ownerUserID, taskID, 
 	request.Header().Set(identity.DeviceHeader, c.deviceID)
 	response, err := c.client.PublishRepairCandidateVersion(ctx, request)
 	if err != nil {
-		return false, err
+		return false, fmt.Errorf("publish repair version: %w", err)
 	}
 	return response.Msg.GetPublished(), nil
 }

@@ -21,6 +21,11 @@ const (
 
 var ErrDeploymentCandidateRequired = errors.New("deployment requires a verified candidate version and project revision")
 
+// ErrDeploymentActive defers an offer while a different incident's
+// deployment is still in flight for the same installation (ADR-0026: one
+// canary per installation; concurrent incidents serialize).
+var ErrDeploymentActive = errors.New("installation already has an active deployment")
+
 // A candidate refers to an immutable registered version. The revision is
 // captured before any side effect and reused unchanged on every replay.
 // Since ADR-0026 a repair candidate additionally carries the staged facts:

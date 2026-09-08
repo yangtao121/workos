@@ -3,6 +3,7 @@ package transport
 import (
 	"context"
 	"errors"
+	"fmt"
 	"time"
 
 	"connectrpc.com/connect"
@@ -47,7 +48,7 @@ func (c *DeploymentDriverClient) Transition(ctx context.Context, candidate appli
 		request.Header().Set(identity.DeviceHeader, c.deviceID)
 		response, err := c.versions.TransitionCandidateVersion(ctx, request)
 		if err != nil {
-			return err
+			return fmt.Errorf("transition staged candidate: %w", err)
 		}
 		if response.Msg.GetVersion() != candidate.TargetVersion {
 			return connect.NewError(connect.CodeInternal, errors.New("staged transition returned a different version"))

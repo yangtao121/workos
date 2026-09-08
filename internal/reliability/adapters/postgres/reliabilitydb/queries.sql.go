@@ -180,6 +180,26 @@ func (q *Queries) CompleteIncidentPublications(ctx context.Context, arg Complete
 	return result.RowsAffected(), nil
 }
 
+const countActiveDeploymentsForInstallation = `-- name: CountActiveDeploymentsForInstallation :one
+SELECT count(*) AS active
+FROM workos_reliability.deployment_ledger
+WHERE installation_id = $1
+  AND incident_id <> $2
+  AND state IN ('candidate', 'starting', 'canary', 'rollback')
+`
+
+type CountActiveDeploymentsForInstallationParams struct {
+	InstallationID string `json:"installation_id"`
+	IncidentID     string `json:"incident_id"`
+}
+
+func (q *Queries) CountActiveDeploymentsForInstallation(ctx context.Context, arg CountActiveDeploymentsForInstallationParams) (int64, error) {
+	row := q.db.QueryRow(ctx, countActiveDeploymentsForInstallation, arg.InstallationID, arg.IncidentID)
+	var active int64
+	err := row.Scan(&active)
+	return active, err
+}
+
 const countPendingIncidentPublications = `-- name: CountPendingIncidentPublications :one
 SELECT count(*) FROM workos_reliability.notification_publications WHERE outcome IS NULL
 `

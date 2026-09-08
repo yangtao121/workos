@@ -535,7 +535,7 @@ func (r *Repository) ListRepairCandidates(ctx context.Context, limit int) ([]app
 	for _, row := range rows {
 		candidates = append(candidates, application.RepairCandidate{
 			IncidentID: row.ID, OwnerUserID: row.OwnerUserID,
-			ProjectID: row.ProjectID, Summary: row.Summary,
+			ProjectID: row.ProjectID, AppInstanceID: row.AppInstanceID, Summary: row.Summary,
 		})
 	}
 	return candidates, nil
@@ -574,8 +574,19 @@ func (r *Repository) RecordRepairSubmitted(ctx context.Context, candidate applic
 	return tx.Commit(ctx)
 }
 
-// Start persists the immutable request before any external side effect.
+// Start persists the immutable request before any external side effect. A
+// different incident's deployment already in flight for the same
+// installation defers this offer (retryable) instead of racing it.
 func (r *Repository) Start(ctx context.Context, candidate application.DeploymentCandidate) error {
+	active, err := r.queries.CountActiveDeploymentsForInstallation(ctx, reliabilitydb.CountActiveDeploymentsForInstallationParams{
+		InstallationID: candidate.InstallationID, IncidentID: candidate.IncidentID,
+	})
+	if err != nil {
+		return storeError("count active deployments", err)
+	}
+	if active > 0 {
+		return application.ErrDeploymentActive
+	}
 	inserted, err := r.queries.StartDeploymentLedger(ctx, reliabilitydb.StartDeploymentLedgerParams{
 		IncidentID: candidate.IncidentID, OwnerUserID: candidate.OwnerUserID,
 		ProjectID: candidate.ProjectID, InstallationID: candidate.InstallationID,
@@ -663,6 +674,14 @@ func (r *Repository) ClearRepairCompleted(ctx context.Context, incidentID string
 	}
 	_ = updated
 	return nil
+}
+
+func mustUUID(value string) pgtype.UUID {
+	parsed, err := uuid.Parse(value)
+	if err != nil {
+		return pgtype.UUID{}
+	}
+	return pgtype.UUID{Bytes: parsed, Valid: true}
 }
 
 func uuidText(value string) pgtype.UUID {

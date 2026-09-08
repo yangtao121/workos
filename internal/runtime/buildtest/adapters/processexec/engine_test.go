@@ -21,7 +21,9 @@ import (
 func newTestEngine(t *testing.T) *Engine {
 	t.Helper()
 	root := t.TempDir()
-	engine, err := New(Config{ScratchRoot: root})
+	// The dev/test host shares uid 1000 across many containers whose threads
+	// count toward RLIMIT_NPROC; the dedicated bound stays kernel enforced.
+	engine, err := New(Config{ScratchRoot: root, Processes: 65534})
 	if err != nil {
 		t.Fatalf("engine: %v", err)
 	}

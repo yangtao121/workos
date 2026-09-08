@@ -1097,3 +1097,14 @@ test-repair-producer:
 test-build-engine:
 	$(GO_HOST_RUN) sh -c 'go test -count=1 -tags engineexec ./internal/runtime/buildtest/adapters/processexec/ -v'
 	@echo "test-build-engine: PASS"
+
+# The Repair Build/Test chain gate (ADR-0026): a real six-process stack on a
+# scratch database where the toolchain-image runtime-host executes the fixed
+# go build/test commands over real repair candidates. Covers success,
+# test/build failure (zero deployment side effects), restart recovery via
+# lease takeover, duplicate submission, user version change rejection, and
+# the deployment fault matrix (startup fault, canary incident, bounded
+# rollback retries, duplicate offers) with ledger/surface assertions.
+.PHONY: test-repair-buildtest
+test-repair-buildtest:
+	@set -eu; sh tools/repair-buildtest/gate.sh
