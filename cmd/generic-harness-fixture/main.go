@@ -1,15 +1,18 @@
 package main
 
 import (
+	"bytes"
 	"fmt"
 	"io"
 	"os"
 
 	agentv1 "github.com/yangtao121/workos/gen/go/workos/agent/v1"
+	appv1 "github.com/yangtao121/workos/gen/go/workos/app/v1"
 	harnessv1 "github.com/yangtao121/workos/gen/go/workos/harness/v1"
 	executionv1 "github.com/yangtao121/workos/gen/go/workos/taskexecution/v1"
 	"github.com/yangtao121/workos/internal/platform/ids"
 	"google.golang.org/protobuf/encoding/protojson"
+	"google.golang.org/protobuf/proto"
 )
 
 func main() {
@@ -41,6 +44,22 @@ func main() {
 			fail()
 		}
 		write(&harnessv1.HarnessCLIResponse{Payload: &harnessv1.HarnessCLIResponse_Artifact{Artifact: artifact}})
+	}
+	if repair := request.GetRepair(); repair != nil {
+		output := &executionv1.RepairSourceOutput{}
+		changed := false
+		for _, file := range repair.GetSource().GetFiles() {
+			next := proto.Clone(file).(*appv1.AppSourceFile)
+			if next.Path == "main.go" && bytes.Contains(next.Content, []byte("return 0")) {
+				next.Content = bytes.ReplaceAll(next.Content, []byte("return 0"), []byte("return 42"))
+				changed = true
+			}
+			output.Files = append(output.Files, next)
+		}
+		if !changed {
+			fail()
+		}
+		write(&harnessv1.HarnessCLIResponse{Payload: &harnessv1.HarnessCLIResponse_RepairSource{RepairSource: output}})
 	}
 	emit(&agentv1.AgentEvent{Event: &agentv1.AgentEvent_RunCompleted{RunCompleted: &agentv1.RunCompleted{Summary: "Generic CLI fixture completed"}}})
 }

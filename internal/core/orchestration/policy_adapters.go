@@ -88,6 +88,7 @@ func (a *providerCapabilities) Capabilities(ctx context.Context, providerID stri
 			SupportedContextRefTypes:    provider.Capabilities.SupportedContextRefTypes,
 			RequiresTaskCredentialLease: provider.Capabilities.RequiresTaskCredentialLease,
 			RequiredCredentialPurpose:   provider.Capabilities.RequiredCredentialPurpose,
+			RepairSourceCandidates:      provider.Capabilities.RepairSourceCandidates,
 		}, nil
 	}
 	return agentports.ProviderCapabilities{}, agentdomain.ErrNotFound

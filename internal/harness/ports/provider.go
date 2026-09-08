@@ -5,7 +5,9 @@ import (
 	"time"
 
 	agentv1 "github.com/yangtao121/workos/gen/go/workos/agent/v1"
+	appv1 "github.com/yangtao121/workos/gen/go/workos/app/v1"
 	harnessv1 "github.com/yangtao121/workos/gen/go/workos/harness/v1"
+	executionv1 "github.com/yangtao121/workos/gen/go/workos/taskexecution/v1"
 )
 
 type Emit func(*agentv1.AgentEvent) error
@@ -94,6 +96,8 @@ type Execution struct {
 	ArtifactsBatch ArtifactBatchSink
 	Credential     *CredentialLease
 	Context        []ContextDocument
+	Repair         *executionv1.RepairBuildInput
+	RepairSource   func([]*appv1.AppSourceFile) error
 }
 
 type Provider interface {

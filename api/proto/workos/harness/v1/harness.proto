@@ -59,6 +59,10 @@ message HarnessCapabilities {
   // empty/unknown purpose on a lease-requiring adapter as capability
   // corruption (ADR-0015).
   string required_credential_purpose = 19;
+  // Consumes Core-resolved repair build input and produces a bounded source
+  // proposal through the lease-bound candidate sink. Does not imply build,
+  // deployment, token budgets or kernel isolation.
+  bool repair_source_candidates = 20;
 }
 
 message HarnessProviderInfo {

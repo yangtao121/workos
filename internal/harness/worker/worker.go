@@ -12,6 +12,7 @@ import (
 	"google.golang.org/protobuf/types/known/durationpb"
 
 	agentv1 "github.com/yangtao121/workos/gen/go/workos/agent/v1"
+	appv1 "github.com/yangtao121/workos/gen/go/workos/app/v1"
 	credentialv1 "github.com/yangtao121/workos/gen/go/workos/credential/v1"
 	taskv1 "github.com/yangtao121/workos/gen/go/workos/taskexecution/v1"
 	"github.com/yangtao121/workos/gen/go/workos/taskexecution/v1/taskexecutionv1connect"
@@ -48,6 +49,7 @@ type Worker struct {
 	abandonAfter time.Duration
 	client       taskexecutionv1connect.TaskExecutionServiceClient
 	credentials  CredentialLeases
+	repairs      taskexecutionv1connect.RepairExecutionServiceClient
 	broker       *broker.Broker
 	logger       *slog.Logger
 }
@@ -68,7 +70,8 @@ func New(id, coreURL string, pollInterval time.Duration, value *broker.Broker, l
 	return &Worker{
 		id: id, pollInterval: pollInterval, heartbeat: leaseDuration / 3, abandonAfter: abortGrace,
 		broker: value, logger: logger, credentials: credentials,
-		client: taskexecutionv1connect.NewTaskExecutionServiceClient(httpClient, coreURL),
+		client:  taskexecutionv1connect.NewTaskExecutionServiceClient(httpClient, coreURL),
+		repairs: taskexecutionv1connect.NewRepairExecutionServiceClient(httpClient, coreURL, connect.WithReadMaxBytes(1024*1024)),
 	}
 }
 
@@ -158,6 +161,19 @@ func (w *Worker) process(parent context.Context, lease *taskv1.TaskLease) {
 				Content: document.GetContent(),
 			})
 		}
+	}
+	var repairInput *taskv1.RepairBuildInput
+	if task.GetInput().GetRepairTarget() != nil {
+		if w.repairs == nil {
+			w.failWithoutProvider(parent, lease, "repair source service is unavailable")
+			return
+		}
+		response, err := w.repairs.ResolveRepairBuildInput(runCtx, connect.NewRequest(&taskv1.ResolveRepairBuildInputRequest{LeaseId: lease.GetLeaseId(), WorkerId: w.id}))
+		if err != nil || response.Msg.GetInput() == nil {
+			w.failWithoutProvider(parent, lease, "repair build input is unavailable")
+			return
+		}
+		repairInput = response.Msg.GetInput()
 	}
 	// The server-derived runtime deadline is enforced here, independently of
 	// the adapter: even a provider that ignores context cancellation is
@@ -252,10 +268,32 @@ func (w *Worker) process(parent context.Context, lease *taskv1.TaskLease) {
 			}
 			return nil
 		}
+		candidateSubmitted := false
+		submitCandidate := func(files []*appv1.AppSourceFile) error {
+			if repairInput == nil || candidateSubmitted {
+				return ports.NewRunError(ports.ErrorKindProtocol, "unexpected repair source output", false, nil)
+			}
+			if err := ports.ValidateRepairFiles(files); err != nil {
+				return err
+			}
+			response, err := w.repairs.SubmitRepairSourceCandidate(runCtx, connect.NewRequest(&taskv1.SubmitRepairSourceCandidateRequest{LeaseId: lease.GetLeaseId(), WorkerId: w.id, Files: files}))
+			if err != nil {
+				return err
+			}
+			candidate := response.Msg.GetCandidate()
+			if candidate.GetTaskId() != task.GetId() || candidate.GetSourceBundleId() == "" || candidate.GetSourceDigest() == "" || candidate.GetCreatedAt() == nil || candidate.GetCreatedAt().CheckValid() != nil {
+				return ports.NewRunError(ports.ErrorKindProtocol, "repair source receipt does not match task", false, nil)
+			}
+			candidateSubmitted = true
+			return nil
+		}
 		err := w.broker.Run(runCtx, ports.Execution{
 			TaskID: task.GetId(), Input: task.GetInput(), Credential: credentialLease, Artifacts: artifacts,
-			ArtifactsBatch: batch, Context: contextDocuments,
+			ArtifactsBatch: batch, Context: contextDocuments, Repair: repairInput, RepairSource: submitCandidate,
 			Emit: func(event *agentv1.AgentEvent) error {
+				if event.GetRunCompleted() != nil && repairInput != nil && !candidateSubmitted {
+					return ports.NewRunError(ports.ErrorKindProtocol, "provider completed without a repair candidate", false, nil)
+				}
 				// A completion that would leave requested artifact outputs
 				// missing fails closed here — before the terminal event lands —
 				// so the task deterministically ends with the failure below

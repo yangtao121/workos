@@ -70,6 +70,7 @@ func (s *Source) ListProviders(ctx context.Context) ([]domain.Provider, error) {
 				SupportedContextRefTypes:    capabilities.GetSupportedContextRefTypes(),
 				RequiresTaskCredentialLease: capabilities.GetRequiresTaskCredentialLease(),
 				RequiredCredentialPurpose:   capabilities.GetRequiredCredentialPurpose(),
+				RepairSourceCandidates:      capabilities.GetRepairSourceCandidates(),
 			},
 		})
 	}

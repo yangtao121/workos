@@ -1,10 +1,10 @@
 # Task: v1 剩余能力总攻——Provider 扩展、真实 Runtime 自愈链、远程 Surface、语义知识、后台推送与移动原生、桌面系统应用
 
-- 状态：active（2026-09-06 全面修复；以下修复验收表为当前恢复点）
-- Owner/Agent：overnight capability-sweep implementation agent（单一写入智能体，单分支单 worktree 串行）
+- 状态：active（2026-09-08 检查点交接；以末尾最新记录和 GLM-5.3 交接为恢复点）
+- Owner/Agent：当前实现者完成检查点交接；后续由 GLM-5.3 认领（单一写入智能体）
 - 进程/模块：全部六进程 + desktop-web/mobile-shell/sdk
 - 依赖：ADR-0001..0014 全部既有裁决；实现依据 `docs/prompts/20260903-next-agent-remaining-capability-sweep.md`
-- Branch：`feat/v1-remaining-capability-sweep`（自本地 `main` @ `afe8580`）
+- Branch：`feat/v1-remaining-capability-sweep`（自本地 `main` @ `afe8580`）；按 2026-09-08 最新授权合并本地 main，接手者再从 main 建任务分支
 - 基线：`make bootstrap` PASS、`make generate` 幂等 PASS、`make check`（见下方基线记录）、
   `make test-integration`、`make test-e2e` 结果随执行更新
 
@@ -1084,3 +1084,59 @@ v2 后重启 Core，修复输入仍是 v1 的源码/测试命令，候选首次 
 
 再次 generate 后 140 个生成文件/README 不变（`tmp/repair-source-idempotent-generate.log`，
 摘要 `tmp/repair-source-generated-before.json`）。
+
+### R2 Harness 候选 producer（检查点 verified，2026-09-08）
+
+依赖 91ce9af。扩展 canonical CLI v2 与 Harness capability，worker 在执行前从租约解析
+固定源码，provider 只提交普通文件候选；Core 新入队校验候选能力，worker 不允许缺少候选
+的 repair 成功终态。Generic CLI 完整验证流与子进程退出后再发布，拒绝多候选、伪造输入
+关联、混合 review/candidate 与异常退出。Fake 仅产出明确合成候选用于软件链测试；真实
+CLI fixture 修改有断言的示例程序，验证候选进入 Core。此阶段仍不升级 token/usage/内核
+隔离或 Recovery 治理，Runtime Build/Test 另行接入。无 migration/UI 变化，先 Proto/generate。
+
+### 2026-09-08 用户授权检查点合并与 GLM-5.3 交接
+
+用户最新明确要求“将当前的修改合并到 main”，并在 docs/prompts 将剩余任务交给
+GLM-5.3。此指令替代本记录此前“全部完成前不合并 main”的阶段限制；允许合并当前
+检查点，不代表 R2/R3/R5 已完成，不推送远端。总任务继续 active。
+
+交接入口：[GLM-5.3 剩余任务说明](../prompts/20260908-glm-5.3-remaining-work-handoff.md)。
+已列出已验证边界、具体文件/Proto/调用入口、剩余执行顺序、失败矩阵、环境约束和验证
+命令；要求至少三轮实现、失败/重启、完成前复核，禁止用 fixture 或历史 PASS 冒充完整功能。
+
+本次 producer 包含 Core 入队能力检查、Harness 租约输入解析、CLI 完整成功退出后提交
+唯一候选、worker 回执与缺失候选拒绝，以及普通 Core 私有 listener 的 owner-scoped
+completed-task 候选读取。消费者返回原始 build 输入和候选文件，保留 project/incident 关联；
+Gateway 不开放此读取。没有新增 migration；001–049 不变，下一迁移为 050。
+
+此次没有用户可见 UI 变化：桌面三处修改仅补测试 fixture 的 capability 字段。之前画布
+视觉证据仍为 [21 组前后对比](../ui/desktop-web/changes/20260907-desktop-canvas/notes.md)。
+检查环境时原 PostgreSQL 容器停止，启动原容器后 PostgreSQL 与依赖服务恢复，未重置数据。
+此次只验证独立 gate，不把共享镜像构建视为默认六进程已部署。
+
+合并前最终代码验证（2026-09-08，全部 PASS）：
+
+- `make check`：Go vet/tests、Proto/SQL lint、架构/格式/TS 检查及桌面 build，桌面 144 tests；
+  日志 `tmp/glm-handoff-check.log`。
+- Harness、Core Agent/orchestration/AppRegistry/HarnessCatalog 的 `go test -race`；
+  日志 `tmp/glm-handoff-race.log`。
+- 真实 PostgreSQL `go test -tags='integration repairsource' -count=1 -run '^TestRepairSources|^TestAppSource' -v ./tests/integration`：
+  并发身份、持久完整性、completed 读取、失效与提交前到期回滚；日志 `tmp/glm-handoff-pg.log`。
+- `WORKOS_BUILD_NETWORK=host sh tools/generic-cli/gate.sh repair-producer`：真实 worker/CLI
+  文件产出，原输入/测试不变、错 owner 与公开接口拒绝、Core/Harness 重启后候选完全一致；
+  日志 `tmp/glm-handoff-producer-gate.log`。示例测试与镜像构建没有执行。
+- 同一脚本默认 Generic CLI 与 `repair-sources` 回归：
+  `tmp/glm-handoff-generic-gate.log`、`tmp/glm-handoff-source-gate.log`。
+- `buf breaking --against '.git#branch=main'`，在合并前对旧 main 检查；
+  日志 `tmp/glm-handoff-breaking.log`。
+
+早期 producer 检查曾暴露三处 TS capability fixture 缺字段，以及 capability 拒绝测试的
+stub 默认值覆盖显式 false；已修正 fixture 并由上述完整检查/race 重新验证，未放宽断言。
+
+下一步由 GLM-5.3 从合并后的 main 建分支认领：先完成 Runtime Build/Test 和候选版本暂存/
+Deployment 交接，再完成 Recovery 治理、R3 真实远程 Surface、R5 移动原生软件工程，最后
+复核 R1/R4/R6 和原完整验收。未实现项仍为软件缺口，不因本次合并自动变为 working。
+
+再次 `make generate` 后 140 个生成文件及 README 内容摘要完全不变（包括 README 在内共 140 个文件）；
+日志 `tmp/glm-handoff-idempotent-generate.log`，摘要 `tmp/glm-handoff-generated-before.json`。
+此检查点按用户授权合并到本地 main；保留原任务分支，不推送、不标记总任务 done。

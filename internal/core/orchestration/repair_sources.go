@@ -14,7 +14,8 @@ import (
 	"google.golang.org/protobuf/encoding/protojson"
 )
 
-type RepairSourceLeaseAuthority interface {
+type RepairTaskSource interface {
+	Get(context.Context, string, string) (agentdomain.Task, error)
 	LockTaskArtifactStream(context.Context, dbtx.Tx, string, string, time.Time) (agentports.TaskStreamFacts, error)
 	TaskLeaseExpiry(context.Context, dbtx.Tx, string, string, time.Time) (time.Time, bool, error)
 }
@@ -27,15 +28,15 @@ type RepairBuildInput struct {
 
 type RepairSources struct {
 	pool   TaskTxSource
-	leases RepairSourceLeaseAuthority
+	tasks  RepairTaskSource
 	builds *registryapp.BuildService
 }
 
-func NewRepairSources(pool TaskTxSource, leases RepairSourceLeaseAuthority, builds *registryapp.BuildService) (*RepairSources, error) {
-	if pool == nil || leases == nil || builds == nil {
+func NewRepairSources(pool TaskTxSource, tasks RepairTaskSource, builds *registryapp.BuildService) (*RepairSources, error) {
+	if pool == nil || tasks == nil || builds == nil {
 		return nil, errors.New("repair sources require transactions, task authority and registry")
 	}
-	return &RepairSources{pool: pool, leases: leases, builds: builds}, nil
+	return &RepairSources{pool: pool, tasks: tasks, builds: builds}, nil
 }
 
 func (s *RepairSources) Resolve(ctx context.Context, leaseID, workerID string) (RepairBuildInput, error) {
@@ -55,7 +56,7 @@ func (s *RepairSources) execute(ctx context.Context, leaseID, workerID string, f
 		return fail(storeFailureContext("begin repair source", err))
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck
-	stream, err := s.leases.LockTaskArtifactStream(ctx, tx, leaseID, workerID, time.Now().UTC())
+	stream, err := s.tasks.LockTaskArtifactStream(ctx, tx, leaseID, workerID, time.Now().UTC())
 	if err != nil {
 		return fail(err)
 	}
@@ -80,7 +81,7 @@ func (s *RepairSources) execute(ctx context.Context, leaseID, workerID string, f
 	}
 	// Recheck after lock waits and Registry work. A lease that expired while
 	// this transaction waited may neither reveal input nor commit a candidate.
-	expiry, live, err := s.leases.TaskLeaseExpiry(ctx, tx, leaseID, workerID, time.Now().UTC())
+	expiry, live, err := s.tasks.TaskLeaseExpiry(ctx, tx, leaseID, workerID, time.Now().UTC())
 	if err != nil {
 		return fail(err)
 	}
@@ -99,4 +100,56 @@ func validRepairSourceTask(stream agentports.TaskStreamFacts, input *agentv1.Age
 	}
 	_, ok := registrydomain.ParseVersion(target.GetVersion())
 	return ok
+}
+
+var ErrRepairCandidateNotReady = errors.New("repair candidate requires a completed task")
+
+type CompletedRepairSource struct {
+	Input                 RepairBuildInput
+	Candidate             registrydomain.SourceBundle
+	ProjectID, IncidentID string
+}
+
+// A completed task and its source are immutable. Reading through the Agent
+// port preserves ownership; Registry reads stay in their own transaction.
+func (s *RepairSources) Completed(ctx context.Context, owner, taskID string) (CompletedRepairSource, error) {
+	fail := func(err error) (CompletedRepairSource, error) {
+		return CompletedRepairSource{}, err
+	}
+	if !agentdomain.ValidAppTaskUUID(owner) || !agentdomain.ValidAppTaskUUID(taskID) {
+		return fail(agentdomain.ErrInvalid)
+	}
+	task, err := s.tasks.Get(ctx, owner, taskID)
+	if err != nil {
+		return fail(err)
+	}
+	if task.ID != taskID || task.OwnerUserID != owner {
+		return fail(agentdomain.ErrNotFound)
+	}
+	if task.State != agentdomain.StateCompleted || task.CancellationRequested {
+		return fail(ErrRepairCandidateNotReady)
+	}
+	input := &agentv1.AgentTaskInput{}
+	stream := agentports.TaskStreamFacts{TaskID: task.ID, OwnerUserID: task.OwnerUserID, ProjectID: task.ProjectID}
+	if protojson.Unmarshal(task.Input, input) != nil || !validRepairSourceTask(stream, input) {
+		return fail(agentdomain.ErrInvalid)
+	}
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return fail(storeFailureContext("begin repair candidate read", err))
+	}
+	defer tx.Rollback(ctx)
+	target := input.GetRepairTarget()
+	build, err := s.builds.Resolve(ctx, tx, owner, target.GetAppId(), target.GetVersion(), target.GetManifestDigest())
+	if err != nil {
+		return fail(err)
+	}
+	candidate, err := s.builds.Candidate(ctx, tx, owner, taskID)
+	if err != nil {
+		return fail(err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return fail(storeFailureContext("commit repair candidate read", err))
+	}
+	return CompletedRepairSource{Input: RepairBuildInput{TaskID: taskID, Target: target, Build: build}, Candidate: candidate, ProjectID: task.ProjectID, IncidentID: input.GetIncidentId()}, nil
 }

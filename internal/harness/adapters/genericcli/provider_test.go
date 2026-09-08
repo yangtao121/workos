@@ -13,6 +13,7 @@ import (
 	"time"
 
 	agentv1 "github.com/yangtao121/workos/gen/go/workos/agent/v1"
+	appv1 "github.com/yangtao121/workos/gen/go/workos/app/v1"
 	commonv1 "github.com/yangtao121/workos/gen/go/workos/common/v1"
 	harnessv1 "github.com/yangtao121/workos/gen/go/workos/harness/v1"
 	executionv1 "github.com/yangtao121/workos/gen/go/workos/taskexecution/v1"
@@ -107,6 +108,40 @@ func TestGenericCLIHelperProcess(t *testing.T) {
 	event := func(raw string) { fmt.Printf("{\"event\":%s}\n", raw) }
 	started := `{"runStarted":{"runId":"run-1","providerId":"generic-cli"}}`
 	completed := `{"runCompleted":{"summary":"done"}}`
+	if strings.HasPrefix(mode, "repair-") {
+		candidate := func() {
+			files := []*appv1.AppSourceFile{{Path: "main.go", Content: []byte("candidate")}}
+			if mode == "repair-oversize" {
+				files[0].Content = []byte(strings.Repeat("x", 256*1024+1))
+			}
+			body, _ := protojson.Marshal(&harnessv1.HarnessCLIResponse{Payload: &harnessv1.HarnessCLIResponse_RepairSource{RepairSource: &executionv1.RepairSourceOutput{Files: files}}})
+			fmt.Println(string(body))
+		}
+		if mode != "repair-unsolicited" && (envelope.GetRepair().GetSource().GetId() != "base-source" || string(envelope.GetRepair().GetSource().GetFiles()[0].GetContent()) != "pinned source") {
+			os.Exit(10)
+		}
+		if mode != "repair-before-start" {
+			event(started)
+		}
+		if mode != "repair-missing" {
+			candidate()
+		}
+		if mode == "repair-duplicate" {
+			candidate()
+		}
+		if mode == "repair-failed" {
+			event(`{"runFailed":{"reason":"fixture failure"}}`)
+		} else {
+			event(completed)
+		}
+		if mode == "repair-after-terminal" {
+			candidate()
+		}
+		if mode == "repair-exit-failure" {
+			os.Exit(9)
+		}
+		os.Exit(0)
+	}
 	if strings.HasPrefix(mode, "structured-") {
 		artifact := func(kind string) {
 			output := &executionv1.TaskArtifactOutput{OutputKey: kind, Title: "Structured fixture"}

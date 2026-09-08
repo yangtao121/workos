@@ -1451,3 +1451,25 @@ worker 的 batch sink 原子发布；失败、取消或缺失产物不发布 com
 Gateway/Core/Harness 与 CLI 子进程，验证两类产物、精确上下文内容、可执行文件失效后的
 新任务拒绝/旧任务重放和权限恢复后的重新入队。门禁回收自身容器、数据库及凭据，保留
 默认栈。此证据不包括 source bundle、Build/Test 或自动部署。
+
+## 2026-09-08 Harness 修复候选输出
+
+HarnessCapabilities.repair_source_candidates 表示已支持固定源码输入与有界文件候选，
+不包含构建/测试、发布、token budget 或内核隔离。Core 私有 RepairAdmission 设置内部
+RepairSources 入队条件，普通 TaskRouter 在排队前验证该能力；目前仍没有 Recovery
+fallback 和 L3 完整治理。Generic CLI 与 Fake 声明候选能力，其他 adapter 不声明。
+
+Worker 从任务租约解析 RepairBuildInput，经 Broker 校验 task/target 关联后才启动 provider；
+普通任务不能附带修复输入，repair 不混合 review 产物输出。CLI v2 新增 repair 输入与
+repair_source 输出；多候选、越界文件、输出顺序错误、缺失候选、子进程退出失败均不能
+发布成功。候选在完整成功流与 exit 0 后提交 Core，worker 校验 Core 回执并拒绝无候选的
+completed。Fake 只添加明确的合成说明文件，不证明代码修复有效。
+
+私有 RepairCandidateService.GetRepairSourceCandidate 注册在普通 Core listener，Gateway
+不开放。Owner 从服务身份上下文派生，只读取已 completed 且未取消的任务，重验原版本
+manifest/source 并返回原输入、候选源码、project/incident。它供后续 Reliability/Runtime
+交接使用，目前尚未连接 Runtime Build/Test，也不会插入 app_versions。
+
+make test-repair-producer 的真实 Gateway/Core/Harness/CLI/PG fixture 把示例程序的
+return 0 改为 return 42，保留原测试源码与配置；Core/Harness 重启后候选精确重放。
+此门禁验证候选产出与持久化，不执行示例测试，不证明镜像构建、canary 或自动修复成功。

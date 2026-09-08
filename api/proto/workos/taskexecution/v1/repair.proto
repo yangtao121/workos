@@ -35,6 +35,11 @@ message RepairSourceCandidate {
   google.protobuf.Timestamp created_at = 4;
 }
 
+// Provider-selected file contents only; authority stays in the pinned manifest.
+message RepairSourceOutput {
+  repeated workos.app.v1.AppSourceFile files = 1;
+}
+
 message SubmitRepairSourceCandidateRequest {
   string lease_id = 1;
   string worker_id = 2;
@@ -50,4 +55,21 @@ message SubmitRepairSourceCandidateResponse {
 service RepairExecutionService {
   rpc ResolveRepairBuildInput(ResolveRepairBuildInputRequest) returns (ResolveRepairBuildInputResponse) {}
   rpc SubmitRepairSourceCandidate(SubmitRepairSourceCandidateRequest) returns (SubmitRepairSourceCandidateResponse) {}
+}
+
+message GetRepairSourceCandidateRequest {
+  string task_id = 1;
+}
+
+message GetRepairSourceCandidateResponse {
+  RepairBuildInput input = 1;
+  workos.app.v1.AppSourceBundle candidate_source = 2;
+  string project_id = 3;
+  string incident_id = 4;
+}
+
+// Core's private Reliability-facing listener only. Owner identity comes from
+// the trusted service context. Only completed tasks with verified sources read.
+service RepairCandidateService {
+  rpc GetRepairSourceCandidate(GetRepairSourceCandidateRequest) returns (GetRepairSourceCandidateResponse) {}
 }

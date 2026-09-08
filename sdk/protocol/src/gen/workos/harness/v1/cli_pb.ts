@@ -8,13 +8,15 @@ import type { AgentEvent, AgentTaskInput } from "../../agent/v1/agent_pb.js";
 import { file_workos_agent_v1_agent } from "../../agent/v1/agent_pb.js";
 import type { ResolvedTaskContextDocument, TaskArtifactOutput } from "../../taskexecution/v1/execution_pb.js";
 import { file_workos_taskexecution_v1_execution } from "../../taskexecution/v1/execution_pb.js";
+import type { RepairBuildInput, RepairSourceOutput } from "../../taskexecution/v1/repair_pb.js";
+import { file_workos_taskexecution_v1_repair } from "../../taskexecution/v1/repair_pb.js";
 import type { Message } from "@bufbuild/protobuf";
 
 /**
  * Describes the file workos/harness/v1/cli.proto.
  */
 export const file_workos_harness_v1_cli: GenFile = /*@__PURE__*/
-  fileDesc("Cht3b3Jrb3MvaGFybmVzcy92MS9jbGkucHJvdG8SEXdvcmtvcy5oYXJuZXNzLnYxIrUBChFIYXJuZXNzQ0xJUmVxdWVzdBIYChBwcm90b2NvbF92ZXJzaW9uGAEgASgJEg8KB3Rhc2tfaWQYAiABKAkSLgoFaW5wdXQYAyABKAsyHy53b3Jrb3MuYWdlbnQudjEuQWdlbnRUYXNrSW5wdXQSRQoHY29udGV4dBgEIAMoCzI0Lndvcmtvcy50YXNrZXhlY3V0aW9uLnYxLlJlc29sdmVkVGFza0NvbnRleHREb2N1bWVudCKOAQoSSGFybmVzc0NMSVJlc3BvbnNlEiwKBWV2ZW50GAEgASgLMhsud29ya29zLmFnZW50LnYxLkFnZW50RXZlbnRIABI/CghhcnRpZmFjdBgCIAEoCzIrLndvcmtvcy50YXNrZXhlY3V0aW9uLnYxLlRhc2tBcnRpZmFjdE91dHB1dEgAQgkKB3BheWxvYWRCQVo/Z2l0aHViLmNvbS95YW5ndGFvMTIxL3dvcmtvcy9nZW4vZ28vd29ya29zL2hhcm5lc3MvdjE7aGFybmVzc3YxYgZwcm90bzM", [file_workos_agent_v1_agent, file_workos_taskexecution_v1_execution]);
+  fileDesc("Cht3b3Jrb3MvaGFybmVzcy92MS9jbGkucHJvdG8SEXdvcmtvcy5oYXJuZXNzLnYxIvABChFIYXJuZXNzQ0xJUmVxdWVzdBIYChBwcm90b2NvbF92ZXJzaW9uGAEgASgJEg8KB3Rhc2tfaWQYAiABKAkSLgoFaW5wdXQYAyABKAsyHy53b3Jrb3MuYWdlbnQudjEuQWdlbnRUYXNrSW5wdXQSRQoHY29udGV4dBgEIAMoCzI0Lndvcmtvcy50YXNrZXhlY3V0aW9uLnYxLlJlc29sdmVkVGFza0NvbnRleHREb2N1bWVudBI5CgZyZXBhaXIYBSABKAsyKS53b3Jrb3MudGFza2V4ZWN1dGlvbi52MS5SZXBhaXJCdWlsZElucHV0ItQBChJIYXJuZXNzQ0xJUmVzcG9uc2USLAoFZXZlbnQYASABKAsyGy53b3Jrb3MuYWdlbnQudjEuQWdlbnRFdmVudEgAEj8KCGFydGlmYWN0GAIgASgLMisud29ya29zLnRhc2tleGVjdXRpb24udjEuVGFza0FydGlmYWN0T3V0cHV0SAASRAoNcmVwYWlyX3NvdXJjZRgDIAEoCzIrLndvcmtvcy50YXNrZXhlY3V0aW9uLnYxLlJlcGFpclNvdXJjZU91dHB1dEgAQgkKB3BheWxvYWRCQVo/Z2l0aHViLmNvbS95YW5ndGFvMTIxL3dvcmtvcy9nZW4vZ28vd29ya29zL2hhcm5lc3MvdjE7aGFybmVzc3YxYgZwcm90bzM", [file_workos_agent_v1_agent, file_workos_taskexecution_v1_execution, file_workos_taskexecution_v1_repair]);
 
 /**
  * Canonical workos.harness-cli/v2 request, sent once to an allowlisted child.
@@ -43,6 +45,13 @@ export type HarnessCLIRequest = Message<"workos.harness.v1.HarnessCLIRequest"> &
    * @generated from field: repeated workos.taskexecution.v1.ResolvedTaskContextDocument context = 4;
    */
   context: ResolvedTaskContextDocument[];
+
+  /**
+   * Present only for a lease-verified repair task, resolved by Core.
+   *
+   * @generated from field: workos.taskexecution.v1.RepairBuildInput repair = 5;
+   */
+  repair?: RepairBuildInput | undefined;
 };
 
 /**
@@ -75,6 +84,12 @@ export type HarnessCLIResponse = Message<"workos.harness.v1.HarnessCLIResponse">
      */
     value: TaskArtifactOutput;
     case: "artifact";
+  } | {
+    /**
+     * @generated from field: workos.taskexecution.v1.RepairSourceOutput repair_source = 3;
+     */
+    value: RepairSourceOutput;
+    case: "repairSource";
   } | { case: undefined; value?: undefined };
 };
 

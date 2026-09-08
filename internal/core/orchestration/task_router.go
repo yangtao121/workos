@@ -139,6 +139,9 @@ func (r *TaskRouter) SubmitWithResult(ctx context.Context, input agentapp.Submit
 	if err != nil {
 		return agentports.TaskSubmission{}, fmt.Errorf("resolve provider capabilities: %w", err)
 	}
+	if input.RepairSources && !capabilities.RepairSourceCandidates {
+		return agentports.TaskSubmission{}, agentdomain.ErrProviderCapabilityMissing
+	}
 	if len(input.OutputArtifactTypes) > 0 && !capabilities.SupportsArtifactTypes(input.OutputArtifactTypes) {
 		return agentports.TaskSubmission{}, agentdomain.ErrProviderCapabilityMissing
 	}

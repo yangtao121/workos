@@ -2,7 +2,7 @@
 set -eu
 umask 077
 test_spec=${1:-generic-cli.spec.ts}
-case "$test_spec" in generic-cli.spec.ts|app-build-inputs.spec.ts|repair-sources) ;; *) exit 2 ;; esac
+case "$test_spec" in generic-cli.spec.ts|app-build-inputs.spec.ts|repair-sources|repair-producer) ;; *) exit 2 ;; esac
 repo=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
 cd "$repo"
 mkdir -p tmp
@@ -79,7 +79,12 @@ run_repair_test() {
   docker run --rm --network host --user "$WORKOS_CLI_GATE_USER" -e HOME=/tmp -e GOPATH=/tmp/workos-go -e GOMODCACHE=/go/pkg/mod -e GOCACHE=/workspace/tmp/go-build-cache -e WORKOS_REPAIR_SOURCE_DIR="/workspace/${task_dir#"$repo/"}" -e WORKOS_REPAIR_SOURCE_GATEWAY_URL="http://127.0.0.1:$WORKOS_CLI_GATE_GATEWAY_PORT" -e WORKOS_REPAIR_SOURCE_CORE_URL="http://127.0.0.1:$WORKOS_CLI_GATE_CORE_PORT" -e WORKOS_REPAIR_SOURCE_EXECUTION_URL="https://127.0.0.1:$WORKOS_CLI_GATE_EXECUTION_PORT" -v workos-go-cache:/go/pkg/mod -v "$repo:/workspace" -w /workspace golang:1.26.7-bookworm go test -tags='integration repairsource' -count=1 -run "^TestRepairSourceRPC$1$" -v ./tests/integration
 }
 wait_ready
-if [ "$test_spec" = repair-sources ]; then
+if [ "$test_spec" = repair-producer ]; then
+  run_repair_test Producer
+  compose restart core harness
+  wait_ready
+  run_repair_test ProducerRestore
+elif [ "$test_spec" = repair-sources ]; then
   run_repair_test Seed
   compose restart core
   wait_ready

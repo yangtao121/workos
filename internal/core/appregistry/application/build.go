@@ -94,3 +94,18 @@ func (s *BuildService) SubmitSource(ctx context.Context, tx dbtx.Tx, owner, task
 	}
 	return source, nil
 }
+
+func (s *BuildService) Candidate(ctx context.Context, tx dbtx.Tx, owner, taskID string) (domain.SourceBundle, error) {
+	sourceID, err := s.store.FindRepairSource(ctx, tx, owner, taskID)
+	if err != nil {
+		return domain.SourceBundle{}, err
+	}
+	source, err := s.store.GetBuildSource(ctx, tx, owner, sourceID)
+	if err != nil {
+		return domain.SourceBundle{}, err
+	}
+	if source.OwnerUserID != owner || source.ID != sourceID {
+		return domain.SourceBundle{}, domain.ErrSourceCorrupt
+	}
+	return source, nil
+}

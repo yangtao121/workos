@@ -50,7 +50,7 @@ func (p *Provider) Describe() *harnessv1.HarnessProviderInfo {
 	info := &harnessv1.HarnessProviderInfo{
 		Id: "generic-cli", DisplayName: "Generic CLI Harness", AdapterVersion: "2.0.0",
 		Health:       commonv1.HealthState_HEALTH_STATE_HEALTHY,
-		Capabilities: &harnessv1.HarnessCapabilities{Streaming: true, StructuredArtifacts: true, SupportedArtifactTypes: []string{"document.markdown.v1", "code.unified-diff.v1"}, SupportedContextRefTypes: []string{"artifact.review.v1"}, HardRuntimeDeadline: p.config.Timeout >= time.Second, MaxRuntimeSeconds: int64(p.config.Timeout / time.Second)},
+		Capabilities: &harnessv1.HarnessCapabilities{Streaming: true, RepairSourceCandidates: true, StructuredArtifacts: true, SupportedArtifactTypes: []string{"document.markdown.v1", "code.unified-diff.v1"}, SupportedContextRefTypes: []string{"artifact.review.v1"}, HardRuntimeDeadline: p.config.Timeout >= time.Second, MaxRuntimeSeconds: int64(p.config.Timeout / time.Second)},
 	}
 	if _, err := exec.LookPath(p.config.Executable); err != nil {
 		info.Health = commonv1.HealthState_HEALTH_STATE_UNAVAILABLE
@@ -111,6 +111,7 @@ func (p *Provider) Run(ctx context.Context, execution ports.Execution) (runErr e
 	count, total := 0, 0
 	var terminal *agentv1.AgentEvent
 	var artifacts []ports.ArtifactOutput
+	var candidate *harnessv1.HarnessCLIResponse_RepairSource
 	seen := make(map[string]bool, len(requested))
 	for scanner.Scan() {
 		total += len(scanner.Bytes()) + 1
@@ -123,6 +124,17 @@ func (p *Provider) Run(ctx context.Context, execution ports.Execution) (runErr e
 		}
 		if terminal != nil {
 			return errors.New("generic CLI emitted an event after a terminal event")
+		}
+		if output, ok := response.Payload.(*harnessv1.HarnessCLIResponse_RepairSource); ok {
+			if count == 0 || execution.Repair == nil || candidate != nil {
+				return errors.New("generic CLI emitted an unexpected repair candidate")
+			}
+			if err := ports.ValidateRepairFiles(output.RepairSource.GetFiles()); err != nil {
+				return err
+			}
+			candidate = output
+			count++
+			continue
 		}
 		if artifact := response.GetArtifact(); artifact != nil {
 			if count == 0 {
@@ -176,6 +188,14 @@ func (p *Provider) Run(ctx context.Context, execution ports.Execution) (runErr e
 	if terminal.GetRunCompleted() != nil {
 		if len(artifacts) != len(requested) {
 			return errors.New("generic CLI completed without every requested artifact")
+		}
+		if execution.Repair != nil {
+			if candidate == nil {
+				return errors.New("generic CLI completed without a repair candidate")
+			}
+			if err := execution.RepairSource(candidate.RepairSource.GetFiles()); err != nil {
+				return err
+			}
 		}
 		if len(artifacts) > 0 {
 			if execution.ArtifactsBatch != nil {

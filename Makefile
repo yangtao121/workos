@@ -1084,3 +1084,7 @@ test-app-build-inputs: e2e-image
 .PHONY: test-repair-sources
 test-repair-sources:
 	sh tools/generic-cli/gate.sh repair-sources
+
+.PHONY: test-repair-producer
+test-repair-producer:
+	sh tools/generic-cli/gate.sh repair-producer

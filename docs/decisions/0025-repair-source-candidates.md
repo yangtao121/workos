@@ -19,3 +19,14 @@ lease/worker，不接受 owner、project、installation 或版本选择。Agent 
 权限、资源或部署版本，也不会成为默认版本。后续 Runtime Build/Test 必须使用原版本的
 固定配置；Reliability 只有在验证构建结果和当前安装前置条件后才能发起 canary。
 本阶段不声明 Recovery 入队治理、构建执行或自动发布完成。
+
+## Harness producer 与后续消费者读取
+
+CLI v2 通过 repair 输入与 repair_source 输出扩展；候选能力单独声明，Core 在新 Repair
+入队前校验。Worker 与 adapter 都验证输入绑定，完整成功流且子进程 exit 0 后才保存候选，
+成功回执先于 task completed。候选不与 review artifact 混合发布。Fake 候选是明确的
+合成说明，不作为实际修复结果。
+
+普通 Core listener 上的私有 RepairCandidateService 只允许 owner-scoped completed task
+读取原始构建输入与候选；Gateway 不路由此服务。运行中、失败、取消、外 owner 均不可
+作为可部署候选读取。消费者必须继续证明 Runtime Build/Test 和当前安装版本前置条件。

@@ -71,7 +71,7 @@ func (s *RepairAdmission) Submit(ctx context.Context, input RepairAdmissionInput
 	if err != nil {
 		return agentports.TaskSubmission{}, agentdomain.ErrInvalid
 	}
-	result, err := s.router.SubmitWithResult(ctx, agentapp.SubmitInput{OwnerUserID: input.OwnerUserID, ProjectID: input.ProjectID, IdempotencyKey: input.IdempotencyKey, Payload: payload})
+	result, err := s.router.SubmitWithResult(ctx, agentapp.SubmitInput{OwnerUserID: input.OwnerUserID, ProjectID: input.ProjectID, IdempotencyKey: input.IdempotencyKey, Payload: payload, RepairSources: true})
 	if errors.Is(err, agentdomain.ErrIdempotencyConflict) {
 		// A concurrent admission may have snapshotted an earlier version. Only
 		// matching caller facts may adopt its immutable target.

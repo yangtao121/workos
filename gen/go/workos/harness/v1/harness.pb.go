@@ -76,8 +76,12 @@ type HarnessCapabilities struct {
 	// empty/unknown purpose on a lease-requiring adapter as capability
 	// corruption (ADR-0015).
 	RequiredCredentialPurpose string `protobuf:"bytes,19,opt,name=required_credential_purpose,json=requiredCredentialPurpose,proto3" json:"required_credential_purpose,omitempty"`
-	unknownFields             protoimpl.UnknownFields
-	sizeCache                 protoimpl.SizeCache
+	// Consumes Core-resolved repair build input and produces a bounded source
+	// proposal through the lease-bound candidate sink. Does not imply build,
+	// deployment, token budgets or kernel isolation.
+	RepairSourceCandidates bool `protobuf:"varint,20,opt,name=repair_source_candidates,json=repairSourceCandidates,proto3" json:"repair_source_candidates,omitempty"`
+	unknownFields          protoimpl.UnknownFields
+	sizeCache              protoimpl.SizeCache
 }
 
 func (x *HarnessCapabilities) Reset() {
@@ -241,6 +245,13 @@ func (x *HarnessCapabilities) GetRequiredCredentialPurpose() string {
 		return x.RequiredCredentialPurpose
 	}
 	return ""
+}
+
+func (x *HarnessCapabilities) GetRepairSourceCandidates() bool {
+	if x != nil {
+		return x.RepairSourceCandidates
+	}
+	return false
 }
 
 type HarnessProviderInfo struct {
@@ -619,7 +630,7 @@ var File_workos_harness_v1_harness_proto protoreflect.FileDescriptor
 
 const file_workos_harness_v1_harness_proto_rawDesc = "" +
 	"\n" +
-	"\x1fworkos/harness/v1/harness.proto\x12\x11workos.harness.v1\x1a\x1bworkos/agent/v1/agent.proto\x1a\x1dworkos/common/v1/common.proto\"\xe0\x06\n" +
+	"\x1fworkos/harness/v1/harness.proto\x12\x11workos.harness.v1\x1a\x1bworkos/agent/v1/agent.proto\x1a\x1dworkos/common/v1/common.proto\"\x9a\a\n" +
 	"\x13HarnessCapabilities\x12\x1c\n" +
 	"\tstreaming\x18\x01 \x01(\bR\tstreaming\x12/\n" +
 	"\x13persistent_sessions\x18\x02 \x01(\bR\x12persistentSessions\x12\x16\n" +
@@ -640,7 +651,8 @@ const file_workos_harness_v1_harness_proto_rawDesc = "" +
 	"\x18supported_artifact_types\x18\x10 \x03(\tR\x16supportedArtifactTypes\x12C\n" +
 	"\x1erequires_task_credential_lease\x18\x11 \x01(\bR\x1brequiresTaskCredentialLease\x12=\n" +
 	"\x1bsupported_context_ref_types\x18\x12 \x03(\tR\x18supportedContextRefTypes\x12>\n" +
-	"\x1brequired_credential_purpose\x18\x13 \x01(\tR\x19requiredCredentialPurpose\"\xa3\x02\n" +
+	"\x1brequired_credential_purpose\x18\x13 \x01(\tR\x19requiredCredentialPurpose\x128\n" +
+	"\x18repair_source_candidates\x18\x14 \x01(\bR\x16repairSourceCandidates\"\xa3\x02\n" +
 	"\x13HarnessProviderInfo\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12!\n" +
 	"\fdisplay_name\x18\x02 \x01(\tR\vdisplayName\x12'\n" +

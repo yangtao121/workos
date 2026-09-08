@@ -4,6 +4,7 @@ package workos.harness.v1;
 
 import "workos/agent/v1/agent.proto";
 import "workos/taskexecution/v1/execution.proto";
+import "workos/taskexecution/v1/repair.proto";
 
 option go_package = "github.com/yangtao121/workos/gen/go/workos/harness/v1;harnessv1";
 
@@ -15,6 +16,8 @@ message HarnessCLIRequest {
   string task_id = 2;
   workos.agent.v1.AgentTaskInput input = 3;
   repeated workos.taskexecution.v1.ResolvedTaskContextDocument context = 4;
+  // Present only for a lease-verified repair task, resolved by Core.
+  workos.taskexecution.v1.RepairBuildInput repair = 5;
 }
 
 // One NDJSON response record. Artifact identity remains Core-owned; the
@@ -24,5 +27,6 @@ message HarnessCLIResponse {
   oneof payload {
     workos.agent.v1.AgentEvent event = 1;
     workos.taskexecution.v1.TaskArtifactOutput artifact = 2;
+    workos.taskexecution.v1.RepairSourceOutput repair_source = 3;
   }
 }

@@ -37,6 +37,8 @@ type SubmitInput struct {
 	// (ADR-0010); the payload itself stays the wire input and keeps only the
 	// triples, in request order.
 	ContextRefs []ports.ContextRef
+	// RepairSources is set only by private repair admission.
+	RepairSources bool
 }
 
 // AppSubmitInput is one bridge-submitted project task. The caller (the

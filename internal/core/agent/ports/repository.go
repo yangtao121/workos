@@ -74,11 +74,12 @@ type InstallationSource interface {
 // provider declared; zero means the corresponding hard capability is
 // unsupported.
 type ProviderCapabilities struct {
-	HardTokenBudget     bool
-	HardRuntimeDeadline bool
-	UsageReporting      bool
-	MaxOutputTokens     int64
-	MaxRuntimeSeconds   int64
+	RepairSourceCandidates bool
+	HardTokenBudget        bool
+	HardRuntimeDeadline    bool
+	UsageReporting         bool
+	MaxOutputTokens        int64
+	MaxRuntimeSeconds      int64
 	// StructuredArtifacts is only true when SupportedArtifactTypes is
 	// non-empty and exact (ADR-0008). Core refuses requested artifact types
 	// outside the resolved provider's exact list before queueing.

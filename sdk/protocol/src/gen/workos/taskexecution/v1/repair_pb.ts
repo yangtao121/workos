@@ -16,7 +16,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file workos/taskexecution/v1/repair.proto.
  */
 export const file_workos_taskexecution_v1_repair: GenFile = /*@__PURE__*/
-  fileDesc("CiR3b3Jrb3MvdGFza2V4ZWN1dGlvbi92MS9yZXBhaXIucHJvdG8SF3dvcmtvcy50YXNrZXhlY3V0aW9uLnYxIsMBChBSZXBhaXJCdWlsZElucHV0Eg8KB3Rhc2tfaWQYASABKAkSLQoGdGFyZ2V0GAIgASgLMh0ud29ya29zLmFnZW50LnYxLlJlcGFpclRhcmdldBIuCgZzb3VyY2UYAyABKAsyHi53b3Jrb3MuYXBwLnYxLkFwcFNvdXJjZUJ1bmRsZRISCgpiYXNlX2ltYWdlGAQgASgJEhUKDWJ1aWxkX2NvbW1hbmQYBSADKAkSFAoMdGVzdF9jb21tYW5kGAYgAygJIkUKHlJlc29sdmVSZXBhaXJCdWlsZElucHV0UmVxdWVzdBIQCghsZWFzZV9pZBgBIAEoCRIRCgl3b3JrZXJfaWQYAiABKAkiWwofUmVzb2x2ZVJlcGFpckJ1aWxkSW5wdXRSZXNwb25zZRI4CgVpbnB1dBgBIAEoCzIpLndvcmtvcy50YXNrZXhlY3V0aW9uLnYxLlJlcGFpckJ1aWxkSW5wdXQiiQEKFVJlcGFpclNvdXJjZUNhbmRpZGF0ZRIPCgd0YXNrX2lkGAEgASgJEhgKEHNvdXJjZV9idW5kbGVfaWQYAiABKAkSFQoNc291cmNlX2RpZ2VzdBgDIAEoCRIuCgpjcmVhdGVkX2F0GAQgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcCJ2CiJTdWJtaXRSZXBhaXJTb3VyY2VDYW5kaWRhdGVSZXF1ZXN0EhAKCGxlYXNlX2lkGAEgASgJEhEKCXdvcmtlcl9pZBgCIAEoCRIrCgVmaWxlcxgDIAMoCzIcLndvcmtvcy5hcHAudjEuQXBwU291cmNlRmlsZSJoCiNTdWJtaXRSZXBhaXJTb3VyY2VDYW5kaWRhdGVSZXNwb25zZRJBCgljYW5kaWRhdGUYASABKAsyLi53b3Jrb3MudGFza2V4ZWN1dGlvbi52MS5SZXBhaXJTb3VyY2VDYW5kaWRhdGUyxgIKFlJlcGFpckV4ZWN1dGlvblNlcnZpY2USjgEKF1Jlc29sdmVSZXBhaXJCdWlsZElucHV0Ejcud29ya29zLnRhc2tleGVjdXRpb24udjEuUmVzb2x2ZVJlcGFpckJ1aWxkSW5wdXRSZXF1ZXN0Gjgud29ya29zLnRhc2tleGVjdXRpb24udjEuUmVzb2x2ZVJlcGFpckJ1aWxkSW5wdXRSZXNwb25zZSIAEpoBChtTdWJtaXRSZXBhaXJTb3VyY2VDYW5kaWRhdGUSOy53b3Jrb3MudGFza2V4ZWN1dGlvbi52MS5TdWJtaXRSZXBhaXJTb3VyY2VDYW5kaWRhdGVSZXF1ZXN0Gjwud29ya29zLnRhc2tleGVjdXRpb24udjEuU3VibWl0UmVwYWlyU291cmNlQ2FuZGlkYXRlUmVzcG9uc2UiAEJNWktnaXRodWIuY29tL3lhbmd0YW8xMjEvd29ya29zL2dlbi9nby93b3Jrb3MvdGFza2V4ZWN1dGlvbi92MTt0YXNrZXhlY3V0aW9udjFiBnByb3RvMw", [file_google_protobuf_timestamp, file_workos_agent_v1_agent, file_workos_app_v1_source]);
+  fileDesc("CiR3b3Jrb3MvdGFza2V4ZWN1dGlvbi92MS9yZXBhaXIucHJvdG8SF3dvcmtvcy50YXNrZXhlY3V0aW9uLnYxIsMBChBSZXBhaXJCdWlsZElucHV0Eg8KB3Rhc2tfaWQYASABKAkSLQoGdGFyZ2V0GAIgASgLMh0ud29ya29zLmFnZW50LnYxLlJlcGFpclRhcmdldBIuCgZzb3VyY2UYAyABKAsyHi53b3Jrb3MuYXBwLnYxLkFwcFNvdXJjZUJ1bmRsZRISCgpiYXNlX2ltYWdlGAQgASgJEhUKDWJ1aWxkX2NvbW1hbmQYBSADKAkSFAoMdGVzdF9jb21tYW5kGAYgAygJIkUKHlJlc29sdmVSZXBhaXJCdWlsZElucHV0UmVxdWVzdBIQCghsZWFzZV9pZBgBIAEoCRIRCgl3b3JrZXJfaWQYAiABKAkiWwofUmVzb2x2ZVJlcGFpckJ1aWxkSW5wdXRSZXNwb25zZRI4CgVpbnB1dBgBIAEoCzIpLndvcmtvcy50YXNrZXhlY3V0aW9uLnYxLlJlcGFpckJ1aWxkSW5wdXQiiQEKFVJlcGFpclNvdXJjZUNhbmRpZGF0ZRIPCgd0YXNrX2lkGAEgASgJEhgKEHNvdXJjZV9idW5kbGVfaWQYAiABKAkSFQoNc291cmNlX2RpZ2VzdBgDIAEoCRIuCgpjcmVhdGVkX2F0GAQgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcCJBChJSZXBhaXJTb3VyY2VPdXRwdXQSKwoFZmlsZXMYASADKAsyHC53b3Jrb3MuYXBwLnYxLkFwcFNvdXJjZUZpbGUidgoiU3VibWl0UmVwYWlyU291cmNlQ2FuZGlkYXRlUmVxdWVzdBIQCghsZWFzZV9pZBgBIAEoCRIRCgl3b3JrZXJfaWQYAiABKAkSKwoFZmlsZXMYAyADKAsyHC53b3Jrb3MuYXBwLnYxLkFwcFNvdXJjZUZpbGUiaAojU3VibWl0UmVwYWlyU291cmNlQ2FuZGlkYXRlUmVzcG9uc2USQQoJY2FuZGlkYXRlGAEgASgLMi4ud29ya29zLnRhc2tleGVjdXRpb24udjEuUmVwYWlyU291cmNlQ2FuZGlkYXRlIjIKH0dldFJlcGFpclNvdXJjZUNhbmRpZGF0ZVJlcXVlc3QSDwoHdGFza19pZBgBIAEoCSK/AQogR2V0UmVwYWlyU291cmNlQ2FuZGlkYXRlUmVzcG9uc2USOAoFaW5wdXQYASABKAsyKS53b3Jrb3MudGFza2V4ZWN1dGlvbi52MS5SZXBhaXJCdWlsZElucHV0EjgKEGNhbmRpZGF0ZV9zb3VyY2UYAiABKAsyHi53b3Jrb3MuYXBwLnYxLkFwcFNvdXJjZUJ1bmRsZRISCgpwcm9qZWN0X2lkGAMgASgJEhMKC2luY2lkZW50X2lkGAQgASgJMsYCChZSZXBhaXJFeGVjdXRpb25TZXJ2aWNlEo4BChdSZXNvbHZlUmVwYWlyQnVpbGRJbnB1dBI3Lndvcmtvcy50YXNrZXhlY3V0aW9uLnYxLlJlc29sdmVSZXBhaXJCdWlsZElucHV0UmVxdWVzdBo4Lndvcmtvcy50YXNrZXhlY3V0aW9uLnYxLlJlc29sdmVSZXBhaXJCdWlsZElucHV0UmVzcG9uc2UiABKaAQobU3VibWl0UmVwYWlyU291cmNlQ2FuZGlkYXRlEjsud29ya29zLnRhc2tleGVjdXRpb24udjEuU3VibWl0UmVwYWlyU291cmNlQ2FuZGlkYXRlUmVxdWVzdBo8Lndvcmtvcy50YXNrZXhlY3V0aW9uLnYxLlN1Ym1pdFJlcGFpclNvdXJjZUNhbmRpZGF0ZVJlc3BvbnNlIgAyrAEKFlJlcGFpckNhbmRpZGF0ZVNlcnZpY2USkQEKGEdldFJlcGFpclNvdXJjZUNhbmRpZGF0ZRI4Lndvcmtvcy50YXNrZXhlY3V0aW9uLnYxLkdldFJlcGFpclNvdXJjZUNhbmRpZGF0ZVJlcXVlc3QaOS53b3Jrb3MudGFza2V4ZWN1dGlvbi52MS5HZXRSZXBhaXJTb3VyY2VDYW5kaWRhdGVSZXNwb25zZSIAQk1aS2dpdGh1Yi5jb20veWFuZ3RhbzEyMS93b3Jrb3MvZ2VuL2dvL3dvcmtvcy90YXNrZXhlY3V0aW9uL3YxO3Rhc2tleGVjdXRpb252MWIGcHJvdG8z", [file_google_protobuf_timestamp, file_workos_agent_v1_agent, file_workos_app_v1_source]);
 
 /**
  * Execution projection of an immutable manifest, not a second manifest format.
@@ -136,6 +136,25 @@ export const RepairSourceCandidateSchema: GenMessage<RepairSourceCandidate> = /*
   messageDesc(file_workos_taskexecution_v1_repair, 3);
 
 /**
+ * Provider-selected file contents only; authority stays in the pinned manifest.
+ *
+ * @generated from message workos.taskexecution.v1.RepairSourceOutput
+ */
+export type RepairSourceOutput = Message<"workos.taskexecution.v1.RepairSourceOutput"> & {
+  /**
+   * @generated from field: repeated workos.app.v1.AppSourceFile files = 1;
+   */
+  files: AppSourceFile[];
+};
+
+/**
+ * Describes the message workos.taskexecution.v1.RepairSourceOutput.
+ * Use `create(RepairSourceOutputSchema)` to create a new message.
+ */
+export const RepairSourceOutputSchema: GenMessage<RepairSourceOutput> = /*@__PURE__*/
+  messageDesc(file_workos_taskexecution_v1_repair, 4);
+
+/**
  * @generated from message workos.taskexecution.v1.SubmitRepairSourceCandidateRequest
  */
 export type SubmitRepairSourceCandidateRequest = Message<"workos.taskexecution.v1.SubmitRepairSourceCandidateRequest"> & {
@@ -162,7 +181,7 @@ export type SubmitRepairSourceCandidateRequest = Message<"workos.taskexecution.v
  * Use `create(SubmitRepairSourceCandidateRequestSchema)` to create a new message.
  */
 export const SubmitRepairSourceCandidateRequestSchema: GenMessage<SubmitRepairSourceCandidateRequest> = /*@__PURE__*/
-  messageDesc(file_workos_taskexecution_v1_repair, 4);
+  messageDesc(file_workos_taskexecution_v1_repair, 5);
 
 /**
  * @generated from message workos.taskexecution.v1.SubmitRepairSourceCandidateResponse
@@ -179,7 +198,56 @@ export type SubmitRepairSourceCandidateResponse = Message<"workos.taskexecution.
  * Use `create(SubmitRepairSourceCandidateResponseSchema)` to create a new message.
  */
 export const SubmitRepairSourceCandidateResponseSchema: GenMessage<SubmitRepairSourceCandidateResponse> = /*@__PURE__*/
-  messageDesc(file_workos_taskexecution_v1_repair, 5);
+  messageDesc(file_workos_taskexecution_v1_repair, 6);
+
+/**
+ * @generated from message workos.taskexecution.v1.GetRepairSourceCandidateRequest
+ */
+export type GetRepairSourceCandidateRequest = Message<"workos.taskexecution.v1.GetRepairSourceCandidateRequest"> & {
+  /**
+   * @generated from field: string task_id = 1;
+   */
+  taskId: string;
+};
+
+/**
+ * Describes the message workos.taskexecution.v1.GetRepairSourceCandidateRequest.
+ * Use `create(GetRepairSourceCandidateRequestSchema)` to create a new message.
+ */
+export const GetRepairSourceCandidateRequestSchema: GenMessage<GetRepairSourceCandidateRequest> = /*@__PURE__*/
+  messageDesc(file_workos_taskexecution_v1_repair, 7);
+
+/**
+ * @generated from message workos.taskexecution.v1.GetRepairSourceCandidateResponse
+ */
+export type GetRepairSourceCandidateResponse = Message<"workos.taskexecution.v1.GetRepairSourceCandidateResponse"> & {
+  /**
+   * @generated from field: workos.taskexecution.v1.RepairBuildInput input = 1;
+   */
+  input?: RepairBuildInput | undefined;
+
+  /**
+   * @generated from field: workos.app.v1.AppSourceBundle candidate_source = 2;
+   */
+  candidateSource?: AppSourceBundle | undefined;
+
+  /**
+   * @generated from field: string project_id = 3;
+   */
+  projectId: string;
+
+  /**
+   * @generated from field: string incident_id = 4;
+   */
+  incidentId: string;
+};
+
+/**
+ * Describes the message workos.taskexecution.v1.GetRepairSourceCandidateResponse.
+ * Use `create(GetRepairSourceCandidateResponseSchema)` to create a new message.
+ */
+export const GetRepairSourceCandidateResponseSchema: GenMessage<GetRepairSourceCandidateResponse> = /*@__PURE__*/
+  messageDesc(file_workos_taskexecution_v1_repair, 8);
 
 /**
  * Only on Core's Harness-authenticated mTLS listener; never Gateway-routable.
@@ -205,4 +273,22 @@ export const RepairExecutionService: GenService<{
   },
 }> = /*@__PURE__*/
   serviceDesc(file_workos_taskexecution_v1_repair, 0);
+
+/**
+ * Core's private Reliability-facing listener only. Owner identity comes from
+ * the trusted service context. Only completed tasks with verified sources read.
+ *
+ * @generated from service workos.taskexecution.v1.RepairCandidateService
+ */
+export const RepairCandidateService: GenService<{
+  /**
+   * @generated from rpc workos.taskexecution.v1.RepairCandidateService.GetRepairSourceCandidate
+   */
+  getRepairSourceCandidate: {
+    methodKind: "unary";
+    input: typeof GetRepairSourceCandidateRequestSchema;
+    output: typeof GetRepairSourceCandidateResponseSchema;
+  },
+}> = /*@__PURE__*/
+  serviceDesc(file_workos_taskexecution_v1_repair, 1);
 

@@ -7,10 +7,12 @@ import (
 	"strings"
 
 	agentv1 "github.com/yangtao121/workos/gen/go/workos/agent/v1"
+	appv1 "github.com/yangtao121/workos/gen/go/workos/app/v1"
 	commonv1 "github.com/yangtao121/workos/gen/go/workos/common/v1"
 	harnessv1 "github.com/yangtao121/workos/gen/go/workos/harness/v1"
 	"github.com/yangtao121/workos/internal/harness/ports"
 	"github.com/yangtao121/workos/internal/platform/ids"
+	"google.golang.org/protobuf/proto"
 )
 
 // The fake provider's deterministic output budget: the canonical event stream
@@ -26,10 +28,8 @@ const maxOutputTokenCap = 1_000_000
 // maxRuntimeSecondsCap bounds the accepted AgentBudget.max_runtime_seconds.
 const maxRuntimeSecondsCap = 86_400
 
-// The fake adapter is the only provider in this slice that demonstrably
-// produces structured artifact output (ADR-0008): exactly one bounded,
-// deterministic document per requested canonical type, emitted before the
-// terminal event. DeepSeek and Generic CLI keep reporting unsupported.
+// The fake adapter emits a deterministic bounded document for each requested
+// canonical artifact type before the terminal event (ADR-0008).
 var supportedArtifactTypes = []string{"document.markdown.v1", "code.unified-diff.v1"}
 
 // Deterministic artifact facts: output key, title, and synthetic content are
@@ -82,7 +82,7 @@ func (p *Provider) Describe() *harnessv1.HarnessProviderInfo {
 		Id: "fake", DisplayName: "Deterministic Fake Harness", AdapterVersion: "1.0.0",
 		Health: commonv1.HealthState_HEALTH_STATE_HEALTHY,
 		Capabilities: &harnessv1.HarnessCapabilities{
-			Streaming: true, UsageReporting: true,
+			Streaming: true, UsageReporting: true, RepairSourceCandidates: true,
 			// The fake adapter enforces the budget contract deterministically:
 			// the run stops on context cancellation (deadline or cancel) and
 			// the reported usage never exceeds an accepted token cap.
@@ -106,6 +106,9 @@ func (p *Provider) Describe() *harnessv1.HarnessProviderInfo {
 }
 
 func (p *Provider) Run(ctx context.Context, execution ports.Execution) error {
+	if err := ports.ValidateRepairExecution(execution); err != nil {
+		return err
+	}
 	taskID, input, emit, artifacts := execution.TaskID, execution.Input, execution.Emit, execution.Artifacts
 	outputTokens, err := p.validateBudget(input.GetBudget())
 	if err != nil {
@@ -152,6 +155,21 @@ func (p *Provider) Run(ctx context.Context, execution ports.Execution) error {
 		}
 		key, title, content := deterministicArtifact(artifactType)
 		if err := artifacts(ports.ArtifactOutput{Key: key, Title: title, Type: artifactType, Content: content}); err != nil {
+			return err
+		}
+	}
+	if execution.Repair != nil {
+		files := make([]*appv1.AppSourceFile, 0, len(execution.Repair.GetSource().GetFiles())+1)
+		for _, file := range execution.Repair.GetSource().GetFiles() {
+			if file.GetPath() != "WORKOS_FAKE_REPAIR.md" {
+				files = append(files, proto.Clone(file).(*appv1.AppSourceFile))
+			}
+		}
+		files = append(files, &appv1.AppSourceFile{Path: "WORKOS_FAKE_REPAIR.md", Content: []byte("Synthetic fake-harness source proposal. Build and test results are not implied.\n")})
+		if err := ports.ValidateRepairFiles(files); err != nil {
+			return err
+		}
+		if err := execution.RepairSource(files); err != nil {
 			return err
 		}
 	}

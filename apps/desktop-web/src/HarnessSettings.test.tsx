@@ -326,6 +326,7 @@ function provider(
       requiresTaskCredentialLease: false,
       supportedContextRefTypes: [],
       requiredCredentialPurpose: "",
+      repairSourceCandidates: false,
       ...enabled,
     },
   };

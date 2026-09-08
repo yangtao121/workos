@@ -294,6 +294,8 @@ func run(logger *slog.Logger) error {
 	}
 	repairSourcePath, repairSourceHandler := orchestrationtransport.NewRepairSourceHandler(repairSources)
 	executionMux.Handle(repairSourcePath, repairSourceHandler)
+	candidatePath, candidateHandler := orchestrationtransport.NewRepairCandidateHandler(repairSources)
+	mux.Handle(candidatePath, identity.Middleware(candidateHandler))
 
 	appCatalog, err := orchestration.NewAppCatalog(appService)
 	if err != nil {

@@ -32,8 +32,10 @@ type HarnessCLIRequest struct {
 	TaskId          string                             `protobuf:"bytes,2,opt,name=task_id,json=taskId,proto3" json:"task_id,omitempty"`
 	Input           *v1.AgentTaskInput                 `protobuf:"bytes,3,opt,name=input,proto3" json:"input,omitempty"`
 	Context         []*v11.ResolvedTaskContextDocument `protobuf:"bytes,4,rep,name=context,proto3" json:"context,omitempty"`
-	unknownFields   protoimpl.UnknownFields
-	sizeCache       protoimpl.SizeCache
+	// Present only for a lease-verified repair task, resolved by Core.
+	Repair        *v11.RepairBuildInput `protobuf:"bytes,5,opt,name=repair,proto3" json:"repair,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *HarnessCLIRequest) Reset() {
@@ -94,6 +96,13 @@ func (x *HarnessCLIRequest) GetContext() []*v11.ResolvedTaskContextDocument {
 	return nil
 }
 
+func (x *HarnessCLIRequest) GetRepair() *v11.RepairBuildInput {
+	if x != nil {
+		return x.Repair
+	}
+	return nil
+}
+
 // One NDJSON response record. Artifact identity remains Core-owned; the
 // adapter buffers typed outputs until the complete stream and process exit
 // have succeeded, then publishes through the worker's atomic batch sink.
@@ -103,6 +112,7 @@ type HarnessCLIResponse struct {
 	//
 	//	*HarnessCLIResponse_Event
 	//	*HarnessCLIResponse_Artifact
+	//	*HarnessCLIResponse_RepairSource
 	Payload       isHarnessCLIResponse_Payload `protobuf_oneof:"payload"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -163,6 +173,15 @@ func (x *HarnessCLIResponse) GetArtifact() *v11.TaskArtifactOutput {
 	return nil
 }
 
+func (x *HarnessCLIResponse) GetRepairSource() *v11.RepairSourceOutput {
+	if x != nil {
+		if x, ok := x.Payload.(*HarnessCLIResponse_RepairSource); ok {
+			return x.RepairSource
+		}
+	}
+	return nil
+}
+
 type isHarnessCLIResponse_Payload interface {
 	isHarnessCLIResponse_Payload()
 }
@@ -175,23 +194,31 @@ type HarnessCLIResponse_Artifact struct {
 	Artifact *v11.TaskArtifactOutput `protobuf:"bytes,2,opt,name=artifact,proto3,oneof"`
 }
 
+type HarnessCLIResponse_RepairSource struct {
+	RepairSource *v11.RepairSourceOutput `protobuf:"bytes,3,opt,name=repair_source,json=repairSource,proto3,oneof"`
+}
+
 func (*HarnessCLIResponse_Event) isHarnessCLIResponse_Payload() {}
 
 func (*HarnessCLIResponse_Artifact) isHarnessCLIResponse_Payload() {}
+
+func (*HarnessCLIResponse_RepairSource) isHarnessCLIResponse_Payload() {}
 
 var File_workos_harness_v1_cli_proto protoreflect.FileDescriptor
 
 const file_workos_harness_v1_cli_proto_rawDesc = "" +
 	"\n" +
-	"\x1bworkos/harness/v1/cli.proto\x12\x11workos.harness.v1\x1a\x1bworkos/agent/v1/agent.proto\x1a'workos/taskexecution/v1/execution.proto\"\xde\x01\n" +
+	"\x1bworkos/harness/v1/cli.proto\x12\x11workos.harness.v1\x1a\x1bworkos/agent/v1/agent.proto\x1a'workos/taskexecution/v1/execution.proto\x1a$workos/taskexecution/v1/repair.proto\"\xa1\x02\n" +
 	"\x11HarnessCLIRequest\x12)\n" +
 	"\x10protocol_version\x18\x01 \x01(\tR\x0fprotocolVersion\x12\x17\n" +
 	"\atask_id\x18\x02 \x01(\tR\x06taskId\x125\n" +
 	"\x05input\x18\x03 \x01(\v2\x1f.workos.agent.v1.AgentTaskInputR\x05input\x12N\n" +
-	"\acontext\x18\x04 \x03(\v24.workos.taskexecution.v1.ResolvedTaskContextDocumentR\acontext\"\x9f\x01\n" +
+	"\acontext\x18\x04 \x03(\v24.workos.taskexecution.v1.ResolvedTaskContextDocumentR\acontext\x12A\n" +
+	"\x06repair\x18\x05 \x01(\v2).workos.taskexecution.v1.RepairBuildInputR\x06repair\"\xf3\x01\n" +
 	"\x12HarnessCLIResponse\x123\n" +
 	"\x05event\x18\x01 \x01(\v2\x1b.workos.agent.v1.AgentEventH\x00R\x05event\x12I\n" +
-	"\bartifact\x18\x02 \x01(\v2+.workos.taskexecution.v1.TaskArtifactOutputH\x00R\bartifactB\t\n" +
+	"\bartifact\x18\x02 \x01(\v2+.workos.taskexecution.v1.TaskArtifactOutputH\x00R\bartifact\x12R\n" +
+	"\rrepair_source\x18\x03 \x01(\v2+.workos.taskexecution.v1.RepairSourceOutputH\x00R\frepairSourceB\t\n" +
 	"\apayloadBAZ?github.com/yangtao121/workos/gen/go/workos/harness/v1;harnessv1b\x06proto3"
 
 var (
@@ -212,19 +239,23 @@ var file_workos_harness_v1_cli_proto_goTypes = []any{
 	(*HarnessCLIResponse)(nil),              // 1: workos.harness.v1.HarnessCLIResponse
 	(*v1.AgentTaskInput)(nil),               // 2: workos.agent.v1.AgentTaskInput
 	(*v11.ResolvedTaskContextDocument)(nil), // 3: workos.taskexecution.v1.ResolvedTaskContextDocument
-	(*v1.AgentEvent)(nil),                   // 4: workos.agent.v1.AgentEvent
-	(*v11.TaskArtifactOutput)(nil),          // 5: workos.taskexecution.v1.TaskArtifactOutput
+	(*v11.RepairBuildInput)(nil),            // 4: workos.taskexecution.v1.RepairBuildInput
+	(*v1.AgentEvent)(nil),                   // 5: workos.agent.v1.AgentEvent
+	(*v11.TaskArtifactOutput)(nil),          // 6: workos.taskexecution.v1.TaskArtifactOutput
+	(*v11.RepairSourceOutput)(nil),          // 7: workos.taskexecution.v1.RepairSourceOutput
 }
 var file_workos_harness_v1_cli_proto_depIdxs = []int32{
 	2, // 0: workos.harness.v1.HarnessCLIRequest.input:type_name -> workos.agent.v1.AgentTaskInput
 	3, // 1: workos.harness.v1.HarnessCLIRequest.context:type_name -> workos.taskexecution.v1.ResolvedTaskContextDocument
-	4, // 2: workos.harness.v1.HarnessCLIResponse.event:type_name -> workos.agent.v1.AgentEvent
-	5, // 3: workos.harness.v1.HarnessCLIResponse.artifact:type_name -> workos.taskexecution.v1.TaskArtifactOutput
-	4, // [4:4] is the sub-list for method output_type
-	4, // [4:4] is the sub-list for method input_type
-	4, // [4:4] is the sub-list for extension type_name
-	4, // [4:4] is the sub-list for extension extendee
-	0, // [0:4] is the sub-list for field type_name
+	4, // 2: workos.harness.v1.HarnessCLIRequest.repair:type_name -> workos.taskexecution.v1.RepairBuildInput
+	5, // 3: workos.harness.v1.HarnessCLIResponse.event:type_name -> workos.agent.v1.AgentEvent
+	6, // 4: workos.harness.v1.HarnessCLIResponse.artifact:type_name -> workos.taskexecution.v1.TaskArtifactOutput
+	7, // 5: workos.harness.v1.HarnessCLIResponse.repair_source:type_name -> workos.taskexecution.v1.RepairSourceOutput
+	6, // [6:6] is the sub-list for method output_type
+	6, // [6:6] is the sub-list for method input_type
+	6, // [6:6] is the sub-list for extension type_name
+	6, // [6:6] is the sub-list for extension extendee
+	0, // [0:6] is the sub-list for field type_name
 }
 
 func init() { file_workos_harness_v1_cli_proto_init() }
@@ -235,6 +266,7 @@ func file_workos_harness_v1_cli_proto_init() {
 	file_workos_harness_v1_cli_proto_msgTypes[1].OneofWrappers = []any{
 		(*HarnessCLIResponse_Event)(nil),
 		(*HarnessCLIResponse_Artifact)(nil),
+		(*HarnessCLIResponse_RepairSource)(nil),
 	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{

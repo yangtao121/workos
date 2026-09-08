@@ -23,6 +23,8 @@ const _ = connect.IsAtLeastVersion1_13_0
 const (
 	// RepairExecutionServiceName is the fully-qualified name of the RepairExecutionService service.
 	RepairExecutionServiceName = "workos.taskexecution.v1.RepairExecutionService"
+	// RepairCandidateServiceName is the fully-qualified name of the RepairCandidateService service.
+	RepairCandidateServiceName = "workos.taskexecution.v1.RepairCandidateService"
 )
 
 // These constants are the fully-qualified names of the RPCs defined in this package. They're
@@ -39,6 +41,9 @@ const (
 	// RepairExecutionServiceSubmitRepairSourceCandidateProcedure is the fully-qualified name of the
 	// RepairExecutionService's SubmitRepairSourceCandidate RPC.
 	RepairExecutionServiceSubmitRepairSourceCandidateProcedure = "/workos.taskexecution.v1.RepairExecutionService/SubmitRepairSourceCandidate"
+	// RepairCandidateServiceGetRepairSourceCandidateProcedure is the fully-qualified name of the
+	// RepairCandidateService's GetRepairSourceCandidate RPC.
+	RepairCandidateServiceGetRepairSourceCandidateProcedure = "/workos.taskexecution.v1.RepairCandidateService/GetRepairSourceCandidate"
 )
 
 // RepairExecutionServiceClient is a client for the workos.taskexecution.v1.RepairExecutionService
@@ -140,4 +145,78 @@ func (UnimplementedRepairExecutionServiceHandler) ResolveRepairBuildInput(contex
 
 func (UnimplementedRepairExecutionServiceHandler) SubmitRepairSourceCandidate(context.Context, *connect.Request[v1.SubmitRepairSourceCandidateRequest]) (*connect.Response[v1.SubmitRepairSourceCandidateResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("workos.taskexecution.v1.RepairExecutionService.SubmitRepairSourceCandidate is not implemented"))
+}
+
+// RepairCandidateServiceClient is a client for the workos.taskexecution.v1.RepairCandidateService
+// service.
+type RepairCandidateServiceClient interface {
+	GetRepairSourceCandidate(context.Context, *connect.Request[v1.GetRepairSourceCandidateRequest]) (*connect.Response[v1.GetRepairSourceCandidateResponse], error)
+}
+
+// NewRepairCandidateServiceClient constructs a client for the
+// workos.taskexecution.v1.RepairCandidateService service. By default, it uses the Connect protocol
+// with the binary Protobuf Codec, asks for gzipped responses, and sends uncompressed requests. To
+// use the gRPC or gRPC-Web protocols, supply the connect.WithGRPC() or connect.WithGRPCWeb()
+// options.
+//
+// The URL supplied here should be the base URL for the Connect or gRPC server (for example,
+// http://api.acme.com or https://acme.com/grpc).
+func NewRepairCandidateServiceClient(httpClient connect.HTTPClient, baseURL string, opts ...connect.ClientOption) RepairCandidateServiceClient {
+	baseURL = strings.TrimRight(baseURL, "/")
+	repairCandidateServiceMethods := v1.File_workos_taskexecution_v1_repair_proto.Services().ByName("RepairCandidateService").Methods()
+	return &repairCandidateServiceClient{
+		getRepairSourceCandidate: connect.NewClient[v1.GetRepairSourceCandidateRequest, v1.GetRepairSourceCandidateResponse](
+			httpClient,
+			baseURL+RepairCandidateServiceGetRepairSourceCandidateProcedure,
+			connect.WithSchema(repairCandidateServiceMethods.ByName("GetRepairSourceCandidate")),
+			connect.WithClientOptions(opts...),
+		),
+	}
+}
+
+// repairCandidateServiceClient implements RepairCandidateServiceClient.
+type repairCandidateServiceClient struct {
+	getRepairSourceCandidate *connect.Client[v1.GetRepairSourceCandidateRequest, v1.GetRepairSourceCandidateResponse]
+}
+
+// GetRepairSourceCandidate calls
+// workos.taskexecution.v1.RepairCandidateService.GetRepairSourceCandidate.
+func (c *repairCandidateServiceClient) GetRepairSourceCandidate(ctx context.Context, req *connect.Request[v1.GetRepairSourceCandidateRequest]) (*connect.Response[v1.GetRepairSourceCandidateResponse], error) {
+	return c.getRepairSourceCandidate.CallUnary(ctx, req)
+}
+
+// RepairCandidateServiceHandler is an implementation of the
+// workos.taskexecution.v1.RepairCandidateService service.
+type RepairCandidateServiceHandler interface {
+	GetRepairSourceCandidate(context.Context, *connect.Request[v1.GetRepairSourceCandidateRequest]) (*connect.Response[v1.GetRepairSourceCandidateResponse], error)
+}
+
+// NewRepairCandidateServiceHandler builds an HTTP handler from the service implementation. It
+// returns the path on which to mount the handler and the handler itself.
+//
+// By default, handlers support the Connect, gRPC, and gRPC-Web protocols with the binary Protobuf
+// and JSON codecs. They also support gzip compression.
+func NewRepairCandidateServiceHandler(svc RepairCandidateServiceHandler, opts ...connect.HandlerOption) (string, http.Handler) {
+	repairCandidateServiceMethods := v1.File_workos_taskexecution_v1_repair_proto.Services().ByName("RepairCandidateService").Methods()
+	repairCandidateServiceGetRepairSourceCandidateHandler := connect.NewUnaryHandler(
+		RepairCandidateServiceGetRepairSourceCandidateProcedure,
+		svc.GetRepairSourceCandidate,
+		connect.WithSchema(repairCandidateServiceMethods.ByName("GetRepairSourceCandidate")),
+		connect.WithHandlerOptions(opts...),
+	)
+	return "/workos.taskexecution.v1.RepairCandidateService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case RepairCandidateServiceGetRepairSourceCandidateProcedure:
+			repairCandidateServiceGetRepairSourceCandidateHandler.ServeHTTP(w, r)
+		default:
+			http.NotFound(w, r)
+		}
+	})
+}
+
+// UnimplementedRepairCandidateServiceHandler returns CodeUnimplemented from all methods.
+type UnimplementedRepairCandidateServiceHandler struct{}
+
+func (UnimplementedRepairCandidateServiceHandler) GetRepairSourceCandidate(context.Context, *connect.Request[v1.GetRepairSourceCandidateRequest]) (*connect.Response[v1.GetRepairSourceCandidateResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("workos.taskexecution.v1.RepairCandidateService.GetRepairSourceCandidate is not implemented"))
 }

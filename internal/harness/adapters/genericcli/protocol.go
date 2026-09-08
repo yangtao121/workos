@@ -13,6 +13,9 @@ import (
 const protocolVersion = "workos.harness-cli/v2"
 
 func prepareRequest(execution ports.Execution, timeout time.Duration) ([]byte, time.Duration, map[string]bool, error) {
+	if err := ports.ValidateRepairExecution(execution); err != nil {
+		return nil, 0, nil, err
+	}
 	input := execution.Input
 	invalid := func() ([]byte, time.Duration, map[string]bool, error) {
 		return nil, 0, nil, ports.NewRunError(ports.ErrorKindInvalidInput, "generic CLI input is unsupported or inconsistent", false, nil)
@@ -37,7 +40,7 @@ func prepareRequest(execution ports.Execution, timeout time.Duration) ([]byte, t
 	if len(requested) > 0 && execution.ArtifactsBatch == nil && (len(requested) > 1 || execution.Artifacts == nil) {
 		return invalid()
 	}
-	request := &harnessv1.HarnessCLIRequest{ProtocolVersion: protocolVersion, TaskId: execution.TaskID, Input: input}
+	request := &harnessv1.HarnessCLIRequest{ProtocolVersion: protocolVersion, TaskId: execution.TaskID, Input: input, Repair: execution.Repair}
 	if len(input.GetContextRefs()) != len(execution.Context) {
 		return invalid()
 	}

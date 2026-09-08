@@ -133,6 +133,17 @@ func TestRepairSourcesConcurrentIdentityAndRestart(t *testing.T) {
 	if err != nil || input.Build.Source.ID != base.ID {
 		t.Fatalf("candidate replaced base input: %v", err)
 	}
+	if _, err := service.Completed(ctx, f.owner, f.task); !errors.Is(err, orchestration.ErrRepairCandidateNotReady) {
+		t.Fatalf("running candidate read: %v", err)
+	}
+	execScratch(t, f.pool, `UPDATE workos_core.agent_tasks SET state='completed' WHERE id=$1`, f.task)
+	ready, err := service.Completed(ctx, f.owner, f.task)
+	if err != nil || !reflect.DeepEqual(ready.Candidate, winner) || ready.Input.Build.Source.ID != base.ID || ready.ProjectID != f.project || ready.IncidentID == "" {
+		t.Fatalf("completed source read: %v", err)
+	}
+	if _, err := service.Completed(ctx, ids.UUIDv7{}.New(), f.task); !errors.Is(err, agentdomain.ErrNotFound) {
+		t.Fatalf("foreign owner read: %v", err)
+	}
 	for query, want := range map[string]int{`SELECT count(*) FROM workos_core.app_repair_source_candidates`: 1, `SELECT count(*) FROM workos_core.app_source_bundles`: 2, `SELECT count(*) FROM workos_core.app_versions`: 1} {
 		var count int
 		if err := f.pool.QueryRow(ctx, query).Scan(&count); err != nil || count != want {

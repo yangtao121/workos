@@ -274,6 +274,51 @@ func (x *RepairSourceCandidate) GetCreatedAt() *timestamppb.Timestamp {
 	return nil
 }
 
+// Provider-selected file contents only; authority stays in the pinned manifest.
+type RepairSourceOutput struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Files         []*v11.AppSourceFile   `protobuf:"bytes,1,rep,name=files,proto3" json:"files,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RepairSourceOutput) Reset() {
+	*x = RepairSourceOutput{}
+	mi := &file_workos_taskexecution_v1_repair_proto_msgTypes[4]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RepairSourceOutput) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RepairSourceOutput) ProtoMessage() {}
+
+func (x *RepairSourceOutput) ProtoReflect() protoreflect.Message {
+	mi := &file_workos_taskexecution_v1_repair_proto_msgTypes[4]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RepairSourceOutput.ProtoReflect.Descriptor instead.
+func (*RepairSourceOutput) Descriptor() ([]byte, []int) {
+	return file_workos_taskexecution_v1_repair_proto_rawDescGZIP(), []int{4}
+}
+
+func (x *RepairSourceOutput) GetFiles() []*v11.AppSourceFile {
+	if x != nil {
+		return x.Files
+	}
+	return nil
+}
+
 type SubmitRepairSourceCandidateRequest struct {
 	state    protoimpl.MessageState `protogen:"open.v1"`
 	LeaseId  string                 `protobuf:"bytes,1,opt,name=lease_id,json=leaseId,proto3" json:"lease_id,omitempty"`
@@ -286,7 +331,7 @@ type SubmitRepairSourceCandidateRequest struct {
 
 func (x *SubmitRepairSourceCandidateRequest) Reset() {
 	*x = SubmitRepairSourceCandidateRequest{}
-	mi := &file_workos_taskexecution_v1_repair_proto_msgTypes[4]
+	mi := &file_workos_taskexecution_v1_repair_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -298,7 +343,7 @@ func (x *SubmitRepairSourceCandidateRequest) String() string {
 func (*SubmitRepairSourceCandidateRequest) ProtoMessage() {}
 
 func (x *SubmitRepairSourceCandidateRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_workos_taskexecution_v1_repair_proto_msgTypes[4]
+	mi := &file_workos_taskexecution_v1_repair_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -311,7 +356,7 @@ func (x *SubmitRepairSourceCandidateRequest) ProtoReflect() protoreflect.Message
 
 // Deprecated: Use SubmitRepairSourceCandidateRequest.ProtoReflect.Descriptor instead.
 func (*SubmitRepairSourceCandidateRequest) Descriptor() ([]byte, []int) {
-	return file_workos_taskexecution_v1_repair_proto_rawDescGZIP(), []int{4}
+	return file_workos_taskexecution_v1_repair_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *SubmitRepairSourceCandidateRequest) GetLeaseId() string {
@@ -344,7 +389,7 @@ type SubmitRepairSourceCandidateResponse struct {
 
 func (x *SubmitRepairSourceCandidateResponse) Reset() {
 	*x = SubmitRepairSourceCandidateResponse{}
-	mi := &file_workos_taskexecution_v1_repair_proto_msgTypes[5]
+	mi := &file_workos_taskexecution_v1_repair_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -356,7 +401,7 @@ func (x *SubmitRepairSourceCandidateResponse) String() string {
 func (*SubmitRepairSourceCandidateResponse) ProtoMessage() {}
 
 func (x *SubmitRepairSourceCandidateResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_workos_taskexecution_v1_repair_proto_msgTypes[5]
+	mi := &file_workos_taskexecution_v1_repair_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -369,7 +414,7 @@ func (x *SubmitRepairSourceCandidateResponse) ProtoReflect() protoreflect.Messag
 
 // Deprecated: Use SubmitRepairSourceCandidateResponse.ProtoReflect.Descriptor instead.
 func (*SubmitRepairSourceCandidateResponse) Descriptor() ([]byte, []int) {
-	return file_workos_taskexecution_v1_repair_proto_rawDescGZIP(), []int{5}
+	return file_workos_taskexecution_v1_repair_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *SubmitRepairSourceCandidateResponse) GetCandidate() *RepairSourceCandidate {
@@ -377,6 +422,118 @@ func (x *SubmitRepairSourceCandidateResponse) GetCandidate() *RepairSourceCandid
 		return x.Candidate
 	}
 	return nil
+}
+
+type GetRepairSourceCandidateRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	TaskId        string                 `protobuf:"bytes,1,opt,name=task_id,json=taskId,proto3" json:"task_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetRepairSourceCandidateRequest) Reset() {
+	*x = GetRepairSourceCandidateRequest{}
+	mi := &file_workos_taskexecution_v1_repair_proto_msgTypes[7]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetRepairSourceCandidateRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetRepairSourceCandidateRequest) ProtoMessage() {}
+
+func (x *GetRepairSourceCandidateRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_workos_taskexecution_v1_repair_proto_msgTypes[7]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetRepairSourceCandidateRequest.ProtoReflect.Descriptor instead.
+func (*GetRepairSourceCandidateRequest) Descriptor() ([]byte, []int) {
+	return file_workos_taskexecution_v1_repair_proto_rawDescGZIP(), []int{7}
+}
+
+func (x *GetRepairSourceCandidateRequest) GetTaskId() string {
+	if x != nil {
+		return x.TaskId
+	}
+	return ""
+}
+
+type GetRepairSourceCandidateResponse struct {
+	state           protoimpl.MessageState `protogen:"open.v1"`
+	Input           *RepairBuildInput      `protobuf:"bytes,1,opt,name=input,proto3" json:"input,omitempty"`
+	CandidateSource *v11.AppSourceBundle   `protobuf:"bytes,2,opt,name=candidate_source,json=candidateSource,proto3" json:"candidate_source,omitempty"`
+	ProjectId       string                 `protobuf:"bytes,3,opt,name=project_id,json=projectId,proto3" json:"project_id,omitempty"`
+	IncidentId      string                 `protobuf:"bytes,4,opt,name=incident_id,json=incidentId,proto3" json:"incident_id,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
+}
+
+func (x *GetRepairSourceCandidateResponse) Reset() {
+	*x = GetRepairSourceCandidateResponse{}
+	mi := &file_workos_taskexecution_v1_repair_proto_msgTypes[8]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetRepairSourceCandidateResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetRepairSourceCandidateResponse) ProtoMessage() {}
+
+func (x *GetRepairSourceCandidateResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_workos_taskexecution_v1_repair_proto_msgTypes[8]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetRepairSourceCandidateResponse.ProtoReflect.Descriptor instead.
+func (*GetRepairSourceCandidateResponse) Descriptor() ([]byte, []int) {
+	return file_workos_taskexecution_v1_repair_proto_rawDescGZIP(), []int{8}
+}
+
+func (x *GetRepairSourceCandidateResponse) GetInput() *RepairBuildInput {
+	if x != nil {
+		return x.Input
+	}
+	return nil
+}
+
+func (x *GetRepairSourceCandidateResponse) GetCandidateSource() *v11.AppSourceBundle {
+	if x != nil {
+		return x.CandidateSource
+	}
+	return nil
+}
+
+func (x *GetRepairSourceCandidateResponse) GetProjectId() string {
+	if x != nil {
+		return x.ProjectId
+	}
+	return ""
+}
+
+func (x *GetRepairSourceCandidateResponse) GetIncidentId() string {
+	if x != nil {
+		return x.IncidentId
+	}
+	return ""
 }
 
 var File_workos_taskexecution_v1_repair_proto protoreflect.FileDescriptor
@@ -402,16 +559,29 @@ const file_workos_taskexecution_v1_repair_proto_rawDesc = "" +
 	"\x10source_bundle_id\x18\x02 \x01(\tR\x0esourceBundleId\x12#\n" +
 	"\rsource_digest\x18\x03 \x01(\tR\fsourceDigest\x129\n" +
 	"\n" +
-	"created_at\x18\x04 \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\"\x90\x01\n" +
+	"created_at\x18\x04 \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\"H\n" +
+	"\x12RepairSourceOutput\x122\n" +
+	"\x05files\x18\x01 \x03(\v2\x1c.workos.app.v1.AppSourceFileR\x05files\"\x90\x01\n" +
 	"\"SubmitRepairSourceCandidateRequest\x12\x19\n" +
 	"\blease_id\x18\x01 \x01(\tR\aleaseId\x12\x1b\n" +
 	"\tworker_id\x18\x02 \x01(\tR\bworkerId\x122\n" +
 	"\x05files\x18\x03 \x03(\v2\x1c.workos.app.v1.AppSourceFileR\x05files\"s\n" +
 	"#SubmitRepairSourceCandidateResponse\x12L\n" +
-	"\tcandidate\x18\x01 \x01(\v2..workos.taskexecution.v1.RepairSourceCandidateR\tcandidate2\xc6\x02\n" +
+	"\tcandidate\x18\x01 \x01(\v2..workos.taskexecution.v1.RepairSourceCandidateR\tcandidate\":\n" +
+	"\x1fGetRepairSourceCandidateRequest\x12\x17\n" +
+	"\atask_id\x18\x01 \x01(\tR\x06taskId\"\xee\x01\n" +
+	" GetRepairSourceCandidateResponse\x12?\n" +
+	"\x05input\x18\x01 \x01(\v2).workos.taskexecution.v1.RepairBuildInputR\x05input\x12I\n" +
+	"\x10candidate_source\x18\x02 \x01(\v2\x1e.workos.app.v1.AppSourceBundleR\x0fcandidateSource\x12\x1d\n" +
+	"\n" +
+	"project_id\x18\x03 \x01(\tR\tprojectId\x12\x1f\n" +
+	"\vincident_id\x18\x04 \x01(\tR\n" +
+	"incidentId2\xc6\x02\n" +
 	"\x16RepairExecutionService\x12\x8e\x01\n" +
 	"\x17ResolveRepairBuildInput\x127.workos.taskexecution.v1.ResolveRepairBuildInputRequest\x1a8.workos.taskexecution.v1.ResolveRepairBuildInputResponse\"\x00\x12\x9a\x01\n" +
-	"\x1bSubmitRepairSourceCandidate\x12;.workos.taskexecution.v1.SubmitRepairSourceCandidateRequest\x1a<.workos.taskexecution.v1.SubmitRepairSourceCandidateResponse\"\x00BMZKgithub.com/yangtao121/workos/gen/go/workos/taskexecution/v1;taskexecutionv1b\x06proto3"
+	"\x1bSubmitRepairSourceCandidate\x12;.workos.taskexecution.v1.SubmitRepairSourceCandidateRequest\x1a<.workos.taskexecution.v1.SubmitRepairSourceCandidateResponse\"\x002\xac\x01\n" +
+	"\x16RepairCandidateService\x12\x91\x01\n" +
+	"\x18GetRepairSourceCandidate\x128.workos.taskexecution.v1.GetRepairSourceCandidateRequest\x1a9.workos.taskexecution.v1.GetRepairSourceCandidateResponse\"\x00BMZKgithub.com/yangtao121/workos/gen/go/workos/taskexecution/v1;taskexecutionv1b\x06proto3"
 
 var (
 	file_workos_taskexecution_v1_repair_proto_rawDescOnce sync.Once
@@ -425,35 +595,43 @@ func file_workos_taskexecution_v1_repair_proto_rawDescGZIP() []byte {
 	return file_workos_taskexecution_v1_repair_proto_rawDescData
 }
 
-var file_workos_taskexecution_v1_repair_proto_msgTypes = make([]protoimpl.MessageInfo, 6)
+var file_workos_taskexecution_v1_repair_proto_msgTypes = make([]protoimpl.MessageInfo, 9)
 var file_workos_taskexecution_v1_repair_proto_goTypes = []any{
 	(*RepairBuildInput)(nil),                    // 0: workos.taskexecution.v1.RepairBuildInput
 	(*ResolveRepairBuildInputRequest)(nil),      // 1: workos.taskexecution.v1.ResolveRepairBuildInputRequest
 	(*ResolveRepairBuildInputResponse)(nil),     // 2: workos.taskexecution.v1.ResolveRepairBuildInputResponse
 	(*RepairSourceCandidate)(nil),               // 3: workos.taskexecution.v1.RepairSourceCandidate
-	(*SubmitRepairSourceCandidateRequest)(nil),  // 4: workos.taskexecution.v1.SubmitRepairSourceCandidateRequest
-	(*SubmitRepairSourceCandidateResponse)(nil), // 5: workos.taskexecution.v1.SubmitRepairSourceCandidateResponse
-	(*v1.RepairTarget)(nil),                     // 6: workos.agent.v1.RepairTarget
-	(*v11.AppSourceBundle)(nil),                 // 7: workos.app.v1.AppSourceBundle
-	(*timestamppb.Timestamp)(nil),               // 8: google.protobuf.Timestamp
-	(*v11.AppSourceFile)(nil),                   // 9: workos.app.v1.AppSourceFile
+	(*RepairSourceOutput)(nil),                  // 4: workos.taskexecution.v1.RepairSourceOutput
+	(*SubmitRepairSourceCandidateRequest)(nil),  // 5: workos.taskexecution.v1.SubmitRepairSourceCandidateRequest
+	(*SubmitRepairSourceCandidateResponse)(nil), // 6: workos.taskexecution.v1.SubmitRepairSourceCandidateResponse
+	(*GetRepairSourceCandidateRequest)(nil),     // 7: workos.taskexecution.v1.GetRepairSourceCandidateRequest
+	(*GetRepairSourceCandidateResponse)(nil),    // 8: workos.taskexecution.v1.GetRepairSourceCandidateResponse
+	(*v1.RepairTarget)(nil),                     // 9: workos.agent.v1.RepairTarget
+	(*v11.AppSourceBundle)(nil),                 // 10: workos.app.v1.AppSourceBundle
+	(*timestamppb.Timestamp)(nil),               // 11: google.protobuf.Timestamp
+	(*v11.AppSourceFile)(nil),                   // 12: workos.app.v1.AppSourceFile
 }
 var file_workos_taskexecution_v1_repair_proto_depIdxs = []int32{
-	6, // 0: workos.taskexecution.v1.RepairBuildInput.target:type_name -> workos.agent.v1.RepairTarget
-	7, // 1: workos.taskexecution.v1.RepairBuildInput.source:type_name -> workos.app.v1.AppSourceBundle
-	0, // 2: workos.taskexecution.v1.ResolveRepairBuildInputResponse.input:type_name -> workos.taskexecution.v1.RepairBuildInput
-	8, // 3: workos.taskexecution.v1.RepairSourceCandidate.created_at:type_name -> google.protobuf.Timestamp
-	9, // 4: workos.taskexecution.v1.SubmitRepairSourceCandidateRequest.files:type_name -> workos.app.v1.AppSourceFile
-	3, // 5: workos.taskexecution.v1.SubmitRepairSourceCandidateResponse.candidate:type_name -> workos.taskexecution.v1.RepairSourceCandidate
-	1, // 6: workos.taskexecution.v1.RepairExecutionService.ResolveRepairBuildInput:input_type -> workos.taskexecution.v1.ResolveRepairBuildInputRequest
-	4, // 7: workos.taskexecution.v1.RepairExecutionService.SubmitRepairSourceCandidate:input_type -> workos.taskexecution.v1.SubmitRepairSourceCandidateRequest
-	2, // 8: workos.taskexecution.v1.RepairExecutionService.ResolveRepairBuildInput:output_type -> workos.taskexecution.v1.ResolveRepairBuildInputResponse
-	5, // 9: workos.taskexecution.v1.RepairExecutionService.SubmitRepairSourceCandidate:output_type -> workos.taskexecution.v1.SubmitRepairSourceCandidateResponse
-	8, // [8:10] is the sub-list for method output_type
-	6, // [6:8] is the sub-list for method input_type
-	6, // [6:6] is the sub-list for extension type_name
-	6, // [6:6] is the sub-list for extension extendee
-	0, // [0:6] is the sub-list for field type_name
+	9,  // 0: workos.taskexecution.v1.RepairBuildInput.target:type_name -> workos.agent.v1.RepairTarget
+	10, // 1: workos.taskexecution.v1.RepairBuildInput.source:type_name -> workos.app.v1.AppSourceBundle
+	0,  // 2: workos.taskexecution.v1.ResolveRepairBuildInputResponse.input:type_name -> workos.taskexecution.v1.RepairBuildInput
+	11, // 3: workos.taskexecution.v1.RepairSourceCandidate.created_at:type_name -> google.protobuf.Timestamp
+	12, // 4: workos.taskexecution.v1.RepairSourceOutput.files:type_name -> workos.app.v1.AppSourceFile
+	12, // 5: workos.taskexecution.v1.SubmitRepairSourceCandidateRequest.files:type_name -> workos.app.v1.AppSourceFile
+	3,  // 6: workos.taskexecution.v1.SubmitRepairSourceCandidateResponse.candidate:type_name -> workos.taskexecution.v1.RepairSourceCandidate
+	0,  // 7: workos.taskexecution.v1.GetRepairSourceCandidateResponse.input:type_name -> workos.taskexecution.v1.RepairBuildInput
+	10, // 8: workos.taskexecution.v1.GetRepairSourceCandidateResponse.candidate_source:type_name -> workos.app.v1.AppSourceBundle
+	1,  // 9: workos.taskexecution.v1.RepairExecutionService.ResolveRepairBuildInput:input_type -> workos.taskexecution.v1.ResolveRepairBuildInputRequest
+	5,  // 10: workos.taskexecution.v1.RepairExecutionService.SubmitRepairSourceCandidate:input_type -> workos.taskexecution.v1.SubmitRepairSourceCandidateRequest
+	7,  // 11: workos.taskexecution.v1.RepairCandidateService.GetRepairSourceCandidate:input_type -> workos.taskexecution.v1.GetRepairSourceCandidateRequest
+	2,  // 12: workos.taskexecution.v1.RepairExecutionService.ResolveRepairBuildInput:output_type -> workos.taskexecution.v1.ResolveRepairBuildInputResponse
+	6,  // 13: workos.taskexecution.v1.RepairExecutionService.SubmitRepairSourceCandidate:output_type -> workos.taskexecution.v1.SubmitRepairSourceCandidateResponse
+	8,  // 14: workos.taskexecution.v1.RepairCandidateService.GetRepairSourceCandidate:output_type -> workos.taskexecution.v1.GetRepairSourceCandidateResponse
+	12, // [12:15] is the sub-list for method output_type
+	9,  // [9:12] is the sub-list for method input_type
+	9,  // [9:9] is the sub-list for extension type_name
+	9,  // [9:9] is the sub-list for extension extendee
+	0,  // [0:9] is the sub-list for field type_name
 }
 
 func init() { file_workos_taskexecution_v1_repair_proto_init() }
@@ -467,9 +645,9 @@ func file_workos_taskexecution_v1_repair_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_workos_taskexecution_v1_repair_proto_rawDesc), len(file_workos_taskexecution_v1_repair_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   6,
+			NumMessages:   9,
 			NumExtensions: 0,
-			NumServices:   1,
+			NumServices:   2,
 		},
 		GoTypes:           file_workos_taskexecution_v1_repair_proto_goTypes,
 		DependencyIndexes: file_workos_taskexecution_v1_repair_proto_depIdxs,

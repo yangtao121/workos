@@ -46,7 +46,13 @@ func (b *Broker) Run(ctx context.Context, execution ports.Execution, providerID 
 	if !ok {
 		return ports.NewRunError(ports.ErrorKindUnavailable, fmt.Sprintf("harness provider %q is not registered", providerID), false, ErrProviderUnavailable)
 	}
+	if err := ports.ValidateRepairExecution(execution); err != nil {
+		return err
+	}
 	description := provider.Describe()
+	if execution.Repair != nil && !description.GetCapabilities().GetRepairSourceCandidates() {
+		return ports.NewRunError(ports.ErrorKindInvalidInput, "provider does not support repair sources", false, nil)
+	}
 	switch description.GetHealth() {
 	case commonv1.HealthState_HEALTH_STATE_HEALTHY, commonv1.HealthState_HEALTH_STATE_DEGRADED:
 	case commonv1.HealthState_HEALTH_STATE_STARTING:

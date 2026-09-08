@@ -529,3 +529,20 @@ func TestTaskRouterRejectsDifferentInputUnderConsumedKey(t *testing.T) {
 		t.Fatalf("mismatched repair replay accepted: err=%v lookups=%d submissions=%d", err, projects.gets, len(agents.submitted))
 	}
 }
+
+func TestRepairAdmissionChecksCandidateCapabilityBeforeQueueing(t *testing.T) {
+	agents := &fakeAgents{}
+	providers := &fakeProviders{capabilities: agentports.ProviderCapabilities{HardRuntimeDeadline: true}}
+	router, err := NewTaskRouter(agents, &fakeProjects{}, &fakePolicies{}, providers, fakeCredentials{}, stubContextVerifier{}, "fake")
+	if err != nil {
+		t.Fatal(err)
+	}
+	input := agentapp.SubmitInput{OwnerUserID: "owner", ProjectID: "project", IdempotencyKey: "repair", Payload: []byte(`{"goal":"repair"}`), RepairSources: true}
+	if _, err := router.Submit(context.Background(), input); !errors.Is(err, agentdomain.ErrProviderCapabilityMissing) || len(agents.submitted) != 0 {
+		t.Fatalf("missing repair capability queued: %v", err)
+	}
+	providers.capabilities.RepairSourceCandidates = true
+	if _, err := router.Submit(context.Background(), input); err != nil || len(agents.submitted) != 1 {
+		t.Fatalf("supported repair not queued: %v", err)
+	}
+}
