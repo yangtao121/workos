@@ -62,14 +62,27 @@ type TaskRouter struct {
 	credentials     CredentialSnapshots
 	contexts        ArtifactContextVerifier
 	defaultProvider string
+	// recoveryProvider is the explicitly configured Recovery harness for
+	// repair admissions whose project binding cannot serve them (ADR-0016
+	// §5). Empty disables the fallback: ordinary tasks never fall back, and
+	// the same health and capability verification applies unchanged.
+	recoveryProvider string
 }
 
 func NewTaskRouter(agents AgentTasks, projects Projects, policies AgentAppPolicies, providers AgentProviderCapabilities, credentials CredentialSnapshots, contexts ArtifactContextVerifier, defaultProvider string) (*TaskRouter, error) {
+	return newTaskRouter(agents, projects, policies, providers, credentials, contexts, defaultProvider, "")
+}
+
+func NewTaskRouterWithRecovery(agents AgentTasks, projects Projects, policies AgentAppPolicies, providers AgentProviderCapabilities, credentials CredentialSnapshots, contexts ArtifactContextVerifier, defaultProvider, recoveryProvider string) (*TaskRouter, error) {
+	return newTaskRouter(agents, projects, policies, providers, credentials, contexts, defaultProvider, recoveryProvider)
+}
+
+func newTaskRouter(agents AgentTasks, projects Projects, policies AgentAppPolicies, providers AgentProviderCapabilities, credentials CredentialSnapshots, contexts ArtifactContextVerifier, defaultProvider, recoveryProvider string) (*TaskRouter, error) {
 	defaultProvider = strings.TrimSpace(defaultProvider)
 	if agents == nil || projects == nil || policies == nil || providers == nil || credentials == nil || contexts == nil || defaultProvider == "" {
 		return nil, errors.New("task router requires agent, project, policy, provider, credential, context, and default provider dependencies")
 	}
-	return &TaskRouter{agents: agents, projects: projects, policies: policies, providers: providers, credentials: credentials, contexts: contexts, defaultProvider: defaultProvider}, nil
+	return &TaskRouter{agents: agents, projects: projects, policies: policies, providers: providers, credentials: credentials, contexts: contexts, defaultProvider: defaultProvider, recoveryProvider: strings.TrimSpace(recoveryProvider)}, nil
 }
 
 // resolveCredentialSnapshot derives the durable credential snapshot for one
@@ -133,14 +146,23 @@ func (r *TaskRouter) SubmitWithResult(ctx context.Context, input agentapp.Submit
 	// Artifact, context and credential checks share one healthy provider
 	// snapshot. A later catalog change cannot mix capabilities in one admission.
 	capabilities, err := r.providers.Capabilities(ctx, providerID)
-	if errors.Is(err, agentdomain.ErrNotFound) {
-		return agentports.TaskSubmission{}, agentdomain.ErrProviderCapabilityMissing
+	if errors.Is(err, agentdomain.ErrNotFound) || errors.Is(err, agentdomain.ErrProviderUnavailable) {
+		if !r.repairFallback(input) {
+			if errors.Is(err, agentdomain.ErrProviderUnavailable) {
+				return agentports.TaskSubmission{}, agentdomain.ErrProviderUnavailable
+			}
+			return agentports.TaskSubmission{}, agentdomain.ErrProviderCapabilityMissing
+		}
+		return r.submitRepairFallback(ctx, input, providerID)
 	}
 	if err != nil {
 		return agentports.TaskSubmission{}, fmt.Errorf("resolve provider capabilities: %w", err)
 	}
 	if input.RepairSources && !capabilities.RepairSourceCandidates {
-		return agentports.TaskSubmission{}, agentdomain.ErrProviderCapabilityMissing
+		if !r.repairFallback(input) {
+			return agentports.TaskSubmission{}, agentdomain.ErrProviderCapabilityMissing
+		}
+		return r.submitRepairFallback(ctx, input, providerID)
 	}
 	if len(input.OutputArtifactTypes) > 0 && !capabilities.SupportsArtifactTypes(input.OutputArtifactTypes) {
 		return agentports.TaskSubmission{}, agentdomain.ErrProviderCapabilityMissing
@@ -291,4 +313,45 @@ func (r *TaskRouter) GetAppTaskByIdempotency(ctx context.Context, ownerID, appIn
 // AppTaskEvents exposes the Agent module's provenance-bound event read.
 func (r *TaskRouter) AppTaskEvents(ctx context.Context, ownerID, appInstanceID, taskID string, after int64, limit int) ([]agentdomain.Event, error) {
 	return r.agents.AppTaskEvents(ctx, ownerID, appInstanceID, taskID, after, limit)
+}
+
+// repairFallback reports whether this admission may consider the configured
+// Recovery harness: repair admissions only, and only when a recovery provider
+// is explicitly configured. Ordinary tasks never fall back (ADR-0016 §5).
+func (r *TaskRouter) repairFallback(input agentapp.SubmitInput) bool {
+	return input.RepairSources && r.recoveryProvider != ""
+}
+
+// submitRepairFallback admits the repair on the configured Recovery harness.
+// The same health, capability (including repair candidates), and credential
+// verification applies; when the recovery tier is also unavailable the
+// admission ends in the precise awaiting-manual verdict with zero side
+// effects — no task, no queue slot, no key consumption.
+func (r *TaskRouter) submitRepairFallback(ctx context.Context, input agentapp.SubmitInput, failedProvider string) (agentports.TaskSubmission, error) {
+	if r.recoveryProvider == failedProvider {
+		return agentports.TaskSubmission{}, agentdomain.ErrRepairAwaitingManual
+	}
+	capabilities, err := r.providers.Capabilities(ctx, r.recoveryProvider)
+	if errors.Is(err, agentdomain.ErrNotFound) || errors.Is(err, agentdomain.ErrProviderUnavailable) {
+		return agentports.TaskSubmission{}, agentdomain.ErrRepairAwaitingManual
+	}
+	if err != nil {
+		return agentports.TaskSubmission{}, fmt.Errorf("resolve recovery provider capabilities: %w", err)
+	}
+	if !capabilities.RepairSourceCandidates {
+		return agentports.TaskSubmission{}, agentdomain.ErrRepairAwaitingManual
+	}
+	fallback := input
+	fallback.ProviderID = r.recoveryProvider
+	snapshot, err := r.resolveCredentialSnapshot(ctx, input.OwnerUserID, r.recoveryProvider, capabilities)
+	if err != nil {
+		// The recovery tier's credential contract cannot be satisfied: an
+		// accurate awaiting-manual verdict, never a budget or verification
+		// bypass.
+		return agentports.TaskSubmission{}, agentdomain.ErrRepairAwaitingManual
+	}
+	if snapshot != nil {
+		fallback.Credential = &agentdomain.CredentialSnapshot{CredentialID: snapshot.CredentialID, Revision: snapshot.Revision, Purpose: snapshot.Purpose}
+	}
+	return r.agents.SubmitWithResult(ctx, fallback)
 }

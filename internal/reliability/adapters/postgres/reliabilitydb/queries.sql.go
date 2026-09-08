@@ -1151,6 +1151,41 @@ func (q *Queries) MarkIncidentResolved(ctx context.Context, arg MarkIncidentReso
 	return result.RowsAffected(), nil
 }
 
+const markRepairAwaitingManual = `-- name: MarkRepairAwaitingManual :execrows
+INSERT INTO workos_reliability.repair_ledger (
+    incident_id, project_id, task_id, state, attempts, created_at, updated_at
+) VALUES ($1, $2, '00000000-0000-0000-0000-000000000000', 'awaiting_manual', 1, $3, $3)
+ON CONFLICT (incident_id) DO UPDATE SET state = 'awaiting_manual', updated_at = EXCLUDED.updated_at
+WHERE workos_reliability.repair_ledger.state = 'submitted'
+`
+
+type MarkRepairAwaitingManualParams struct {
+	IncidentID string    `json:"incident_id"`
+	ProjectID  string    `json:"project_id"`
+	CreatedAt  time.Time `json:"created_at"`
+}
+
+func (q *Queries) MarkRepairAwaitingManual(ctx context.Context, arg MarkRepairAwaitingManualParams) (int64, error) {
+	result, err := q.db.Exec(ctx, markRepairAwaitingManual, arg.IncidentID, arg.ProjectID, arg.CreatedAt)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const repairProjectForIncident = `-- name: RepairProjectForIncident :one
+SELECT i.project_id::text
+FROM workos_reliability.incidents i
+WHERE i.id = $1
+`
+
+func (q *Queries) RepairProjectForIncident(ctx context.Context, incidentID string) (string, error) {
+	row := q.db.QueryRow(ctx, repairProjectForIncident, incidentID)
+	var i_project_id string
+	err := row.Scan(&i_project_id)
+	return i_project_id, err
+}
+
 const saveDeployment = `-- name: SaveDeployment :exec
 UPDATE workos_reliability.deployment_ledger
 SET state = $2, attempts = $3, canary_started_at = $4, canary_until = $5, updated_at = $6

@@ -643,6 +643,23 @@ func (r *Repository) Reconcile(ctx context.Context, limit int, apply func(*appli
 	return len(rows), nil
 }
 
+// RecordRepairAwaitingManual implements the terminal both-tiers-unavailable
+// outcome: the ledger row stops future passes from retrying the admission.
+func (r *Repository) RecordRepairAwaitingManual(ctx context.Context, incidentID string) error {
+	projectID, err := r.queries.RepairProjectForIncident(ctx, incidentID)
+	if err != nil {
+		return storeError("resolve awaiting-manual project", err)
+	}
+	updated, err := r.queries.MarkRepairAwaitingManual(ctx, reliabilitydb.MarkRepairAwaitingManualParams{
+		IncidentID: incidentID, ProjectID: projectID, CreatedAt: time.Now().UTC(),
+	})
+	if err != nil {
+		return storeError("mark repair awaiting manual", err)
+	}
+	_ = updated
+	return nil
+}
+
 // ListRepairCompleted implements the repair orchestrator's hand-off port:
 // submitted ledger rows pending terminal reconciliation, joined with the
 // incident's owner, project, and app instance (ADR-0016 §5-6).

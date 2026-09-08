@@ -52,6 +52,9 @@ func (c *RepairSubmitterClient) SubmitRepair(ctx context.Context, ownerUserID, p
 	if err != nil {
 		return "", "", err
 	}
+	if response.Msg.GetAwaitingManual() {
+		return "", "", application.ErrRepairAwaitingManual
+	}
 	return response.Msg.GetTaskId(), response.Msg.GetProviderId(), nil
 }
 

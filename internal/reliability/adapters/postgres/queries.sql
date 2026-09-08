@@ -348,3 +348,15 @@ FROM workos_reliability.deployment_ledger
 WHERE installation_id = sqlc.arg(installation_id)
   AND incident_id <> sqlc.arg(incident_id)
   AND state IN ('candidate', 'starting', 'canary', 'rollback');
+
+-- name: MarkRepairAwaitingManual :execrows
+INSERT INTO workos_reliability.repair_ledger (
+    incident_id, project_id, task_id, state, attempts, created_at, updated_at
+) VALUES ($1, $2, '00000000-0000-0000-0000-000000000000', 'awaiting_manual', 1, $3, $3)
+ON CONFLICT (incident_id) DO UPDATE SET state = 'awaiting_manual', updated_at = EXCLUDED.updated_at
+WHERE workos_reliability.repair_ledger.state = 'submitted';
+
+-- name: RepairProjectForIncident :one
+SELECT i.project_id::text
+FROM workos_reliability.incidents i
+WHERE i.id = sqlc.arg(incident_id);

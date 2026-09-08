@@ -255,6 +255,10 @@ message CreateRepairTaskResponse {
   string provider_id = 2;
   // True when the idempotency mapping replayed an existing repair task.
   bool replay = 3;
+  // True when neither the project harness nor the configured recovery
+  // harness could admit the repair (ADR-0016 §5): nothing was consumed and
+  // the caller must record the awaiting-manual outcome instead of retrying.
+  bool awaiting_manual = 4;
 }
 
 service AgentRepairTaskService {

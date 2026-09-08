@@ -63,6 +63,8 @@ type Querier interface {
 	LoadSupervisorProgress(ctx context.Context, workloadID string) (WorkosReliabilitySupervisorWorkload, error)
 	LockPendingDeployments(ctx context.Context, limit int32) ([]LockPendingDeploymentsRow, error)
 	MarkIncidentResolved(ctx context.Context, arg MarkIncidentResolvedParams) (int64, error)
+	MarkRepairAwaitingManual(ctx context.Context, arg MarkRepairAwaitingManualParams) (int64, error)
+	RepairProjectForIncident(ctx context.Context, incidentID string) (string, error)
 	SaveDeployment(ctx context.Context, arg SaveDeploymentParams) error
 	// Deployment controller (ADR-0016 section 6).
 	StartDeploymentLedger(ctx context.Context, arg StartDeploymentLedgerParams) (int64, error)

@@ -1235,3 +1235,29 @@ Reliability 六进程 + golang 工具链镜像 runtime-host + 通用 CLI fixture
 
 当前未完成（继续项）：默认栈 Core/Runtime/Reliability 尚未部署本批新二进制（门禁
 用独立栈验证）；R2 Recovery 治理、监督/遥测复核、R3/R4/R5/R6 与最终联合验收未动。
+
+### R2 Recovery 治理（verified 单元级，2026-09-08）
+
+按 ADR-0016 §5 落地 Recovery 路由（migration 053 + Proto additive）：
+
+- TaskRouter 新增 `recoveryProvider`（`WORKOS_AGENT_RECOVERY_PROVIDER`，空=禁用
+  fallback）：仅 repair 准入（RepairSources）在项目绑定 provider 不健康
+  （ErrProviderUnavailable/NotFound）或缺少候选能力时回退到 Recovery 层；回退
+  层自身必须健康 + 声明 RepairSourceCandidates + 凭据契约可满足——任何一项不
+  满足即精确 `ErrRepairAwaitingManual`，零任务/队列/幂等键副作用。普通任务永不
+  回退（保持诚实 fail-closed）；recovery==primary 拒绝自回退。已入队任务重放
+  走存储任务（Provider 不漂移，既有行为）。
+- 两级不可用：私有 CreateRepairTaskResponse 增加 `awaiting_manual`（additive）；
+  reliability 编排器把该终态记入 ledger `awaiting_manual`（053 扩展 state
+  CHECK），不再无限重试同一准入；incident 既有通知链继续告知 owner。瞬时失败
+  仍重试不落 awaiting_manual。
+- 不放宽任何保护：Generic CLI 的 token/cost budget 与 usage 能力声明保持 false，
+  回退路径复用同一 capability/credential 快照链；App 策略（审批/配额/断路/usage）
+  不受 repair 用户主体路径影响，无绕过。
+
+验证：`go test ./internal/...` 全绿（新增 recovery_routing_test 六例：健康优先/
+不健康回退/能力缺失回退/两级不可用零副作用/普通任务不回退+无配置保持原判定/
+拒绝自回退；recovery_governance_test 两例：awaiting_manual 终态记录、瞬时失败
+重试不误标）；migration 053 在 scratch 库真实应用（约束含 awaiting_manual）；
+`make check` PASS。默认栈未部署新二进制；跨进程 Recovery 切换证据待默认栈或
+门禁扩展（gate 可设 WORKOS_AGENT_RECOVERY_PROVIDER）后补。

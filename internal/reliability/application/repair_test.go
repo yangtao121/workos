@@ -22,6 +22,9 @@ func (f *repairFixture) ListRepairCandidates(context.Context, int) ([]RepairCand
 func (f *repairFixture) RecordRepairSubmitted(context.Context, RepairCandidate, string) error {
 	return nil
 }
+func (f *repairFixture) RecordRepairAwaitingManual(context.Context, string) error {
+	return nil
+}
 func (f *repairFixture) ListRepairCompleted(context.Context, int) ([]RepairCompletedRow, error) {
 	return f.rows, nil
 }

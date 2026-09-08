@@ -7,6 +7,7 @@ package application
 
 import (
 	"context"
+	"errors"
 	"fmt"
 )
 
@@ -28,6 +29,9 @@ type RepairCandidatesSource interface {
 	// RecordRepairSubmitted inserts the ledger row (idempotent on the
 	// incident id) and projects the repair task id onto the incident.
 	RecordRepairSubmitted(ctx context.Context, candidate RepairCandidate, taskID string) error
+	// RecordRepairAwaitingManual moves the incident's ledger row into the
+	// terminal awaiting_manual state so the pass stops retrying it.
+	RecordRepairAwaitingManual(ctx context.Context, incidentID string) error
 	// ListRepairCompleted rotates through submitted rows by their last poll.
 	// Core remains the authority for the task's actual terminal state.
 	ListRepairCompleted(ctx context.Context, limit int) ([]RepairCompletedRow, error)
@@ -35,6 +39,11 @@ type RepairCandidatesSource interface {
 	// the hand-off consumed it.
 	ClearRepairCompleted(ctx context.Context, incidentID string) error
 }
+
+// ErrRepairAwaitingManual is the terminal repair-admission outcome when no
+// harness tier can serve the incident (ADR-0016 §5): the existing incident
+// notification informs the owner and the orchestrator stops retrying.
+var ErrRepairAwaitingManual = errors.New("repair is awaiting manual action")
 
 // RepairCompletedRow is a submitted ledger row awaiting reconciliation.
 type RepairCompletedRow struct {
@@ -94,6 +103,15 @@ func (o *RepairOrchestrator) RunPass(ctx context.Context, limit int) (int, error
 	for _, candidate := range candidates {
 		key := "repair-" + candidate.IncidentID
 		taskID, _, err := o.submitter.SubmitRepair(ctx, candidate.OwnerUserID, candidate.ProjectID, candidate.AppInstanceID, candidate.IncidentID, key, candidate.Summary)
+		if errors.Is(err, ErrRepairAwaitingManual) {
+			// Terminal: both harness tiers are unavailable. The incident's
+			// existing notification chain informs the owner; the ledger row
+			// stops the retry loop instead of spinning every pass.
+			if recordErr := o.candidates.RecordRepairAwaitingManual(ctx, candidate.IncidentID); recordErr != nil {
+				return submitted, recordErr
+			}
+			continue
+		}
 		if err != nil {
 			lastErr = err
 			continue

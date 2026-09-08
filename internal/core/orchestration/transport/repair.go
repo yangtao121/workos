@@ -39,6 +39,11 @@ func (h *RepairTaskHandler) CreateRepairTask(ctx context.Context, req *connect.R
 		return nil, connect.NewError(connect.CodeUnauthenticated, err)
 	}
 	result, err := h.admission.Submit(ctx, orchestration.RepairAdmissionInput{OwnerUserID: id.UserID, ProjectID: req.Msg.GetProjectId(), InstallationID: req.Msg.GetAppInstanceId(), IncidentID: req.Msg.GetIncidentId(), IdempotencyKey: req.Msg.GetIdempotencyKey(), Summary: req.Msg.GetViolationSummary()})
+	if errors.Is(err, agentdomain.ErrRepairAwaitingManual) {
+		// Both harness tiers are unavailable: nothing was consumed; the
+		// caller records the awaiting-manual outcome (ADR-0016 §5).
+		return connect.NewResponse(&agentv1.CreateRepairTaskResponse{AwaitingManual: true}), nil
+	}
 	if err != nil {
 		code := connect.CodeInternal
 		switch {

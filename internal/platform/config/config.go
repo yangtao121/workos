@@ -156,6 +156,10 @@ type Auth struct {
 
 type Agent struct {
 	DefaultProvider string               `yaml:"default_provider"`
+	// RecoveryProvider is the explicitly configured Recovery harness for
+	// repair admissions whose project binding cannot serve them
+	// (ADR-0016 §5). Empty disables the fallback tier.
+	RecoveryProvider string `yaml:"recovery_provider"`
 	CatalogTimeout  time.Duration        `yaml:"catalog_timeout"`
 	ProjectBinding  HarnessBindingPreset `yaml:"project_binding"`
 }
@@ -348,6 +352,7 @@ func Load() (Config, error) {
 		}
 	}
 	setString(&cfg.Agent.DefaultProvider, "WORKOS_AGENT_DEFAULT_PROVIDER")
+	setString(&cfg.Agent.RecoveryProvider, "WORKOS_AGENT_RECOVERY_PROVIDER")
 	setString(&cfg.Agent.ProjectBinding.InstancePolicy, "WORKOS_PROJECT_HARNESS_INSTANCE_POLICY")
 	setString(&cfg.Agent.ProjectBinding.ProfileID, "WORKOS_PROJECT_HARNESS_PROFILE_ID")
 	setString(&cfg.Agent.ProjectBinding.ResourcePolicyID, "WORKOS_PROJECT_HARNESS_RESOURCE_POLICY_ID")

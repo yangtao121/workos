@@ -350,7 +350,7 @@ func run(logger *slog.Logger) error {
 	if err != nil {
 		return err
 	}
-	taskRouter, err := orchestration.NewTaskRouter(agentService, projectService, policyService, providerCapabilitiesAdapter, orchestration.NewCredentialSnapshots(credentialService), artifactContextVerifier, cfg.Agent.DefaultProvider)
+	taskRouter, err := orchestration.NewTaskRouterWithRecovery(agentService, projectService, policyService, providerCapabilitiesAdapter, orchestration.NewCredentialSnapshots(credentialService), artifactContextVerifier, cfg.Agent.DefaultProvider, cfg.Agent.RecoveryProvider)
 	if err != nil {
 		return err
 	}

@@ -41,6 +41,11 @@ var (
 	ErrProviderCapabilityMissing = errors.New("provider does not support the required budget contract")
 	// ErrProviderUnavailable rejects fresh work while provider health is not healthy.
 	ErrProviderUnavailable = errors.New("provider is not healthy enough to accept new tasks")
+	// ErrRepairAwaitingManual is the precise repair-admission verdict when
+	// neither the project harness nor the configured recovery harness can
+	// serve the task (ADR-0016 §5): the incident's owner notification chain
+	// takes over and the orchestrator stops retrying the same admission.
+	ErrRepairAwaitingManual = errors.New("no healthy harness is available for the repair; awaiting manual action")
 	// ErrPolicyCorrupt marks a stored policy fact that fails its own
 	// integrity validation: spec grammar, positive revision, bound project,
 	// or the recomputed spec digest. It is storage corruption — an internal
