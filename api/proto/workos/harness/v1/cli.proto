@@ -1,0 +1,28 @@
+syntax = "proto3";
+
+package workos.harness.v1;
+
+import "workos/agent/v1/agent.proto";
+import "workos/taskexecution/v1/execution.proto";
+
+option go_package = "github.com/yangtao121/workos/gen/go/workos/harness/v1;harnessv1";
+
+// Canonical workos.harness-cli/v2 request, sent once to an allowlisted child.
+// Context documents are resolved by the worker under its task lease. No
+// credential, lease token, filesystem path or owner identity is passed here.
+message HarnessCLIRequest {
+  string protocol_version = 1;
+  string task_id = 2;
+  workos.agent.v1.AgentTaskInput input = 3;
+  repeated workos.taskexecution.v1.ResolvedTaskContextDocument context = 4;
+}
+
+// One NDJSON response record. Artifact identity remains Core-owned; the
+// adapter buffers typed outputs until the complete stream and process exit
+// have succeeded, then publishes through the worker's atomic batch sink.
+message HarnessCLIResponse {
+  oneof payload {
+    workos.agent.v1.AgentEvent event = 1;
+    workos.taskexecution.v1.TaskArtifactOutput artifact = 2;
+  }
+}

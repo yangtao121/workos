@@ -1,0 +1,69 @@
+x-environment: &environment
+  WORKOS_DATABASE_URL: ${WORKOS_CLI_GATE_DATABASE_URL:?}
+  WORKOS_OWNER_ID: 01999999-9999-7999-8999-000000000b01
+  WORKOS_DEVICE_ID: 01999999-9999-7999-8999-000000000b02
+  WORKOS_DEV_AUTH_BYPASS: "true"
+  WORKOS_CORE_URL: http://127.0.0.1:${WORKOS_CLI_GATE_CORE_PORT:?}
+  WORKOS_HARNESS_URL: http://127.0.0.1:${WORKOS_CLI_GATE_HARNESS_PORT:?}
+  WORKOS_RUNTIME_URL: http://127.0.0.1:1
+  WORKOS_RELIABILITY_URL: http://127.0.0.1:1
+  WORKOS_INDEXER_URL: http://127.0.0.1:1
+x-service: &service
+  image: workos:dev
+  user: ${WORKOS_CLI_GATE_USER:?}
+  network_mode: host
+  restart: "no"
+  depends_on:
+    bootstrap:
+      condition: service_completed_successfully
+services:
+  bootstrap:
+    image: workos:dev
+    user: ${WORKOS_CLI_GATE_USER:?}
+    network_mode: host
+    environment: *environment
+    command:
+      - /bin/sh
+      - -c
+      - workosctl bootstrap && workos-dev-fixture -core-dir /fixture/core-execution -harness-dir /fixture/harness-execution -vault-dir /fixture/vault
+    volumes:
+      - ${WORKOS_CLI_GATE_DIR:?}/core-execution:/fixture/core-execution
+      - ${WORKOS_CLI_GATE_DIR:?}/harness-execution:/fixture/harness-execution
+      - ${WORKOS_CLI_GATE_DIR:?}/vault:/fixture/vault
+  core:
+    <<: *service
+    command: [workos-core]
+    environment:
+      <<: *environment
+      WORKOS_HTTP_ADDRESS: 127.0.0.1:${WORKOS_CLI_GATE_CORE_PORT:?}
+      WORKOS_CREDENTIAL_MASTER_KEY_FILE: /fixture/vault/vault-master.key
+      WORKOS_CREDENTIAL_ADMIN_SOCKET: /run/workos/credential-admin.sock
+      WORKOS_CORE_EXECUTION_ADDRESS: 127.0.0.1:${WORKOS_CLI_GATE_EXECUTION_PORT:?}
+      WORKOS_CORE_EXECUTION_CA_FILE: /fixture/execution/ca.crt
+      WORKOS_CORE_EXECUTION_CERT_FILE: /fixture/execution/core.crt
+      WORKOS_CORE_EXECUTION_KEY_FILE: /fixture/execution/core.key
+    volumes:
+      - ${WORKOS_CLI_GATE_DIR:?}/run:/run/workos
+      - ${WORKOS_CLI_GATE_DIR:?}/core-execution:/fixture/execution:ro
+      - ${WORKOS_CLI_GATE_DIR:?}/vault:/fixture/vault:ro
+  harness:
+    <<: *service
+    command: [harness-host]
+    environment:
+      <<: *environment
+      WORKOS_HTTP_ADDRESS: 127.0.0.1:${WORKOS_CLI_GATE_HARNESS_PORT:?}
+      WORKOS_CONFIG_FILE: /fixture/cli/config.yaml
+      WORKOS_CORE_EXECUTION_URL: https://127.0.0.1:${WORKOS_CLI_GATE_EXECUTION_PORT:?}
+      WORKOS_HARNESS_EXECUTION_CA_FILE: /fixture/execution/ca.crt
+      WORKOS_HARNESS_EXECUTION_CERT_FILE: /fixture/execution/harness.crt
+      WORKOS_HARNESS_EXECUTION_KEY_FILE: /fixture/execution/harness.key
+    volumes:
+      - ${WORKOS_CLI_GATE_DIR:?}/harness-execution:/fixture/execution:ro
+      - ${WORKOS_CLI_GATE_DIR:?}/cli:/fixture/cli:ro
+  gateway:
+    <<: *service
+    command: [workos-gateway]
+    environment:
+      <<: *environment
+      WORKOS_HTTP_ADDRESS: 127.0.0.1:${WORKOS_CLI_GATE_GATEWAY_PORT:?}
+      WORKOS_STATIC_DIR: /srv/workos/desktop

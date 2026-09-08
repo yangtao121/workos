@@ -1072,3 +1072,7 @@ test-task-submission-identity: e2e-image
 test-repair-target:
 	docker compose up -d --build postgres bootstrap workos-core harness-host reliability-host workos-gateway
 	$(GO_HOST_RUN) go test -tags='integration repairtarget' -count=1 -run '^TestRepairTarget' -v ./tests/integration
+
+.PHONY: test-generic-cli
+test-generic-cli: e2e-image
+	sh tools/generic-cli/gate.sh

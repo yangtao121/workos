@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -49,9 +48,9 @@ func New(config Config) (*Provider, error) {
 
 func (p *Provider) Describe() *harnessv1.HarnessProviderInfo {
 	info := &harnessv1.HarnessProviderInfo{
-		Id: "generic-cli", DisplayName: "Generic CLI Harness", AdapterVersion: "1.0.0",
+		Id: "generic-cli", DisplayName: "Generic CLI Harness", AdapterVersion: "2.0.0",
 		Health:       commonv1.HealthState_HEALTH_STATE_HEALTHY,
-		Capabilities: &harnessv1.HarnessCapabilities{Streaming: true},
+		Capabilities: &harnessv1.HarnessCapabilities{Streaming: true, StructuredArtifacts: true, SupportedArtifactTypes: []string{"document.markdown.v1", "code.unified-diff.v1"}, SupportedContextRefTypes: []string{"artifact.review.v1"}, HardRuntimeDeadline: p.config.Timeout >= time.Second, MaxRuntimeSeconds: int64(p.config.Timeout / time.Second)},
 	}
 	if _, err := exec.LookPath(p.config.Executable); err != nil {
 		info.Health = commonv1.HealthState_HEALTH_STATE_UNAVAILABLE
@@ -60,31 +59,14 @@ func (p *Provider) Describe() *harnessv1.HarnessProviderInfo {
 	return info
 }
 
-// Run keeps structured artifact support honestly unsupported (ADR-0008): the
-// sink is ignored and requested artifact types are refused outright.
+// Run publishes requested artifacts only after a complete successful CLI run.
 func (p *Provider) Run(ctx context.Context, execution ports.Execution) (runErr error) {
-	taskID, input, emit := execution.TaskID, execution.Input, execution.Emit
-	if taskID == "" || input == nil || emit == nil {
-		return ports.NewRunError(ports.ErrorKindInvalidInput, "generic CLI execution is invalid", false, nil)
+	emit := execution.Emit
+	request, timeout, requested, err := prepareRequest(execution, p.config.Timeout)
+	if err != nil {
+		return err
 	}
-	if len(input.GetOutputArtifactTypes()) != 0 {
-		return ports.NewRunError(ports.ErrorKindInvalidInput, "generic CLI harness does not support structured artifacts", false, nil)
-	}
-	if execution.Credential != nil {
-		return ports.NewRunError(ports.ErrorKindInvalidInput, "generic CLI harness does not accept credential leases", false, nil)
-	}
-	if len(execution.Context) != 0 {
-		return ports.NewRunError(ports.ErrorKindInvalidInput, "generic CLI harness does not accept resolved context", false, nil)
-	}
-	inputJSON, err := protojson.Marshal(input)
-	if err != nil || len(inputJSON) > maxRequestBytes {
-		return ports.NewRunError(ports.ErrorKindInvalidInput, "generic CLI input exceeds its protocol", false, nil)
-	}
-	var request bytes.Buffer
-	if err := json.NewEncoder(&request).Encode(map[string]any{"version": "workos.harness-cli/v1", "taskId": taskID, "input": json.RawMessage(inputJSON)}); err != nil || request.Len() > maxRequestBytes {
-		return ports.NewRunError(ports.ErrorKindInvalidInput, "generic CLI request exceeds its protocol", false, nil)
-	}
-	ctx, cancel := context.WithTimeout(ctx, p.config.Timeout)
+	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	defer func() {
 		if runErr != nil && ctx.Err() != nil {
@@ -102,7 +84,7 @@ func (p *Provider) Run(ctx context.Context, execution ports.Execution) (runErr e
 	command.SysProcAttr = &syscall.SysProcAttr{Setpgid: true, Pdeathsig: syscall.SIGKILL}
 	command.Cancel = func() error { return killGroup(command) }
 	command.WaitDelay = time.Second
-	command.Stdin = &request
+	command.Stdin = bytes.NewReader(request)
 	command.Stderr = io.Discard
 	stdout, err := command.StdoutPipe()
 	if err != nil {
@@ -128,26 +110,53 @@ func (p *Provider) Run(ctx context.Context, execution ports.Execution) (runErr e
 	scanner.Buffer(make([]byte, 64*1024), maxEventBytes)
 	count, total := 0, 0
 	var terminal *agentv1.AgentEvent
+	var artifacts []ports.ArtifactOutput
+	seen := make(map[string]bool, len(requested))
 	for scanner.Scan() {
 		total += len(scanner.Bytes()) + 1
 		if count >= maxEvents || total > maxOutputBytes {
 			return ports.NewRunError(ports.ErrorKindProtocol, "generic CLI output budget exceeded", false, nil)
 		}
-		var event agentv1.AgentEvent
-		if err := protojson.Unmarshal(scanner.Bytes(), &event); err != nil {
+		var response harnessv1.HarnessCLIResponse
+		if err := protojson.Unmarshal(scanner.Bytes(), &response); err != nil {
 			return ports.NewRunError(ports.ErrorKindProtocol, "decode generic CLI event failed", false, nil)
 		}
-		if err := validateEvent(&event, count, terminal != nil); err != nil {
+		if terminal != nil {
+			return errors.New("generic CLI emitted an event after a terminal event")
+		}
+		if artifact := response.GetArtifact(); artifact != nil {
+			if count == 0 {
+				return errors.New("generic CLI artifact preceded run start")
+			}
+			output, err := decodeArtifact(artifact, requested, seen)
+			if err != nil {
+				return err
+			}
+			for _, previous := range artifacts {
+				if previous.Key == output.Key {
+					return errors.New("generic CLI artifact key is duplicated")
+				}
+			}
+			artifacts = append(artifacts, output)
+			count++
+			continue
+		}
+		event := response.GetEvent()
+		if event == nil {
+			return errors.New("generic CLI response has no payload")
+		}
+		if err := validateEvent(event, count); err != nil {
 			return err
 		}
 		count++
-		if isTerminal(&event) {
-			terminal = &event
+		if isTerminal(event) {
+			terminal = event
 			continue
 		}
-		if err := emit(&event); err != nil {
+		if err := emit(event); err != nil {
 			return err
 		}
+
 	}
 	if scanner.Err() != nil {
 		return ports.NewRunError(ports.ErrorKindProtocol, "read generic CLI events failed", false, nil)
@@ -160,12 +169,32 @@ func (p *Provider) Run(ctx context.Context, execution ports.Execution) (runErr e
 	if terminal == nil {
 		return errors.New("generic CLI ended without a terminal event")
 	}
-	// A claimed completion is not trusted until the child exits successfully
-	// and the complete bounded stream has passed validation.
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	// Failed/cancelled runs never publish their buffered artifacts.
+	if terminal.GetRunCompleted() != nil {
+		if len(artifacts) != len(requested) {
+			return errors.New("generic CLI completed without every requested artifact")
+		}
+		if len(artifacts) > 0 {
+			if execution.ArtifactsBatch != nil {
+				err = execution.ArtifactsBatch(artifacts)
+			} else {
+				err = execution.Artifacts(artifacts[0])
+			}
+			if err != nil {
+				return err
+			}
+		}
+	}
 	return emit(terminal)
 }
 
-func validateEvent(event *agentv1.AgentEvent, eventCount int, sawTerminal bool) error {
+func validateEvent(event *agentv1.AgentEvent, eventCount int) error {
+	if eventCount == 0 && event.GetRunStarted() == nil {
+		return errors.New("generic CLI first event must start the run")
+	}
 	if event.Event == nil {
 		return errors.New("generic CLI emitted an empty event")
 	}
@@ -188,9 +217,6 @@ func validateEvent(event *agentv1.AgentEvent, eventCount int, sawTerminal bool) 
 		if started == nil || started.GetRunId() == "" || started.GetProviderId() != "generic-cli" {
 			return errors.New("generic CLI first event must start a generic-cli run")
 		}
-	}
-	if sawTerminal {
-		return errors.New("generic CLI emitted an event after a terminal event")
 	}
 	return nil
 }

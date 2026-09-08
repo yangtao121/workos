@@ -996,3 +996,33 @@ FailedPrecondition，不冒充 token budget 缺失；最终 Core race PASS
 再次 `make generate` 后 132 个生成文件/README 不变
 （`tmp/provider-health-idempotent-generate.log`，摘要
 `tmp/provider-health-generated-before.json`）。健康入队检查点完成，完整任务保持 active。
+
+### R2 Generic CLI 结构化输入输出（active，2026-09-08）
+
+依赖 1eb4a32；单分支工作树干净。按 ADR-0023 先新增 canonical CLI v2 Proto，再实现
+context 精确绑定、显式 review 输出、完整成功后原子发布、任务级 runtime deadline。
+保留既有最小环境/进程组/总流预算；不保留旧 CLI 格式，不升级缺失的 token/usage/隔离能力。
+验收：真实子进程错误矩阵、真实 Core/Harness/CLI review 与 context 门禁、全量检查及
+generate 无漂移。无 UI/migration；候选 Build/Test 和 Repair 治理仍在后续范围内。
+
+Generic CLI v2 子进程/race PASS（`tmp/generic-structured-final-tests.log`）：结构化成功后
+batch 先于 completed；假完成退出失败、failed、缺失/重复/终态后产物、旧格式与 sink 失败
+均不发布成功；上下文内容精确匹配、错 digest 拒绝、任务 1 秒 deadline、unsupported
+budget/sink 在执行前拒绝。既有最小环境、stderr、流量上限与后代取消测试继续通过。
+
+独立跨进程门禁 PASS（`tmp/generic-structured-gate.log`，1.6 秒测试时间）：真实
+Gateway/Core/Harness/CLI 发布 markdown+diff、以首次 markdown 的 ID/digest 解析上下文并
+产出包含原文的新 review；临时 CLI 失去执行权限后新入队 FailedPrecondition 且不消费 key，
+原任务可重放，恢复权限后同 key 成功入队。共六份带 source_task_id 的 review 产物。
+门禁仅回收自己的临时数据库/容器/凭据，默认栈没有被 fixture 配置覆盖。
+
+CLI v2 收尾：首轮 `make check` 因 architecture 文档格式失败，格式化后通过。CLI 专用
+消息放在独立 cli.proto，避免桌面 catalog 引入整个私有 execution 描述符；最终
+`make check` PASS（`tmp/generic-structured-split-check.log`），buf breaking 对 main PASS
+（`tmp/generic-structured-breaking.log`）。默认 Harness 已更新
+（`tmp/generic-structured-default-deploy.log`），Generic 默认仍关闭。没有 migration 或
+客户端布局/控件变化，R2 Build/Test、Recovery 治理和 R3/R5 尚未完成，不合并 main。
+再次 `make generate` 后 134 个生成文件/README 不变
+（`tmp/generic-structured-idempotent-generate.log`，摘要
+`tmp/generic-structured-generated-before.json`）。CLI v2 检查点完成；下一阶段固定 Registry
+拥有的源码与构建配置，再实现候选交接和运行时构建，完整任务仍 active。

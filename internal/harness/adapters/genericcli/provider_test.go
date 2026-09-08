@@ -3,7 +3,6 @@ package genericcli
 import (
 	"bufio"
 	"context"
-	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
@@ -15,7 +14,10 @@ import (
 
 	agentv1 "github.com/yangtao121/workos/gen/go/workos/agent/v1"
 	commonv1 "github.com/yangtao121/workos/gen/go/workos/common/v1"
+	harnessv1 "github.com/yangtao121/workos/gen/go/workos/harness/v1"
+	executionv1 "github.com/yangtao121/workos/gen/go/workos/taskexecution/v1"
 	"github.com/yangtao121/workos/internal/harness/ports"
+	"google.golang.org/protobuf/encoding/protojson"
 )
 
 func TestProviderAcceptsCanonicalNDJSON(t *testing.T) {
@@ -97,16 +99,51 @@ func TestGenericCLIHelperProcess(t *testing.T) {
 		time.Sleep(time.Minute)
 		os.Exit(0)
 	}
-	var envelope struct {
-		Version string          `json:"version"`
-		TaskID  string          `json:"taskId"`
-		Input   json.RawMessage `json:"input"`
-	}
-	if err := json.NewDecoder(bufio.NewReader(os.Stdin)).Decode(&envelope); err != nil || envelope.Version != "workos.harness-cli/v1" || envelope.TaskID != "task-1" {
+	line, err := bufio.NewReader(os.Stdin).ReadBytes('\n')
+	envelope := &harnessv1.HarnessCLIRequest{}
+	if err != nil || protojson.Unmarshal(line, envelope) != nil || envelope.GetProtocolVersion() != protocolVersion || envelope.GetTaskId() != "task-1" {
 		os.Exit(3)
 	}
+	event := func(raw string) { fmt.Printf("{\"event\":%s}\n", raw) }
 	started := `{"runStarted":{"runId":"run-1","providerId":"generic-cli"}}`
 	completed := `{"runCompleted":{"summary":"done"}}`
+	if strings.HasPrefix(mode, "structured-") {
+		artifact := func(kind string) {
+			output := &executionv1.TaskArtifactOutput{OutputKey: kind, Title: "Structured fixture"}
+			if kind == "markdown" {
+				output.Content = &executionv1.TaskArtifactOutput_Markdown{Markdown: &executionv1.MarkdownArtifactContent{Content: []byte("# Fixture review\n")}}
+			} else {
+				output.Content = &executionv1.TaskArtifactOutput_UnifiedDiff{UnifiedDiff: &executionv1.UnifiedDiffArtifactContent{Content: []byte("--- a/file\n+++ b/file\n@@ -1 +1 @@\n-old\n+new\n")}}
+			}
+			body, _ := protojson.Marshal(&harnessv1.HarnessCLIResponse{Payload: &harnessv1.HarnessCLIResponse_Artifact{Artifact: output}})
+			fmt.Println(string(body))
+		}
+		if mode == "structured-context" && (len(envelope.GetContext()) != 1 || string(envelope.Context[0].GetContent()) != "synthetic pinned context" || envelope.Context[0].GetArtifactId() != "artifact-1" || envelope.Context[0].GetDigest() != "sha256:fixture") {
+			os.Exit(10)
+		}
+		if mode != "structured-before-start" {
+			event(started)
+		}
+		artifact("markdown")
+		if mode == "structured-duplicate" {
+			artifact("markdown")
+		}
+		if mode != "structured-missing" {
+			artifact("diff")
+		}
+		if mode == "structured-failed" {
+			event(`{"runFailed":{"reason":"fixture failed"}}`)
+		} else {
+			event(completed)
+		}
+		if mode == "structured-after-terminal" {
+			artifact("markdown")
+		}
+		if mode == "structured-exit-failure" {
+			os.Exit(9)
+		}
+		os.Exit(0)
+	}
 	switch mode {
 	case "descendant-pipe":
 		executable, _ := os.Executable()
@@ -115,55 +152,60 @@ func TestGenericCLIHelperProcess(t *testing.T) {
 		if child.Start() != nil {
 			os.Exit(7)
 		}
-		fmt.Printf(`{"runStarted":{"runId":"%d","providerId":"generic-cli"}}`+"\n", child.Process.Pid)
+		event(fmt.Sprintf(`{"runStarted":{"runId":"%d","providerId":"generic-cli"}}`, child.Process.Pid))
 		time.Sleep(time.Minute)
 	case "false-completion":
-		fmt.Println(started)
-		fmt.Println(completed)
+		event(started)
+		event(completed)
 		os.Exit(8)
 	case "check-env":
 		if os.Getenv("WORKOS_CLI_SYNTHETIC_SECRET") != "" {
 			os.Exit(5)
 		}
-		fmt.Println(started)
-		fmt.Println(completed)
+		event(started)
+		event(completed)
 	case "stderr-secret":
 		fmt.Fprintln(os.Stderr, "synthetic-secret-not-for-logs")
 		os.Exit(6)
 	case "byte-flood":
-		fmt.Println(started)
+		event(started)
 		for range 100 {
-			fmt.Printf(`{"assistantMessage":{"text":"%s"}}`+"\n", strings.Repeat("x", 64*1024))
+			event(fmt.Sprintf(`{"assistantMessage":{"text":"%s"}}`, strings.Repeat("x", 64*1024)))
 		}
-		fmt.Println(completed)
+		event(completed)
 	case "long-line":
-		fmt.Println(started)
-		fmt.Printf(`{"assistantMessage":{"text":"%s"}}`+"\n", strings.Repeat("x", maxEventBytes))
-		fmt.Println(completed)
+		event(started)
+		event(fmt.Sprintf(`{"assistantMessage":{"text":"%s"}}`, strings.Repeat("x", maxEventBytes)))
+		event(completed)
 	case "flood":
-		fmt.Println(started)
+		event(started)
 		for range 2048 {
-			fmt.Println(`{"assistantMessage":{"text":"bounded fixture"}}`)
+			event(`{"assistantMessage":{"text":"bounded fixture"}}`)
 		}
-		fmt.Println(completed)
+		event(completed)
 	case "forged-artifact":
-		fmt.Println(started)
-		fmt.Println(`{"artifactCreated":{"artifactId":"unminted","artifactType":"document.markdown.v1"}}`)
-		fmt.Println(completed)
+		event(started)
+		event(`{"artifactCreated":{"artifactId":"unminted","artifactType":"document.markdown.v1"}}`)
+		event(completed)
 	case "valid":
-		fmt.Println(started)
-		fmt.Println(`{"assistantMessage":{"text":"hello"}}`)
-		fmt.Println(completed)
+		event(started)
+		event(`{"assistantMessage":{"text":"hello"}}`)
+		event(completed)
 	case "malformed":
-		fmt.Println("not-json")
+		event("not-json")
 	case "missing-terminal":
-		fmt.Println(started)
+		event(started)
 	case "spoofed-metadata":
-		fmt.Println(`{"id":"not-owned-here","runStarted":{"runId":"run-1","providerId":"generic-cli"}}`)
+		event(`{"id":"not-owned-here","runStarted":{"runId":"run-1","providerId":"generic-cli"}}`)
 	case "after-terminal":
+		event(started)
+		event(completed)
+		event(`{"assistantMessage":{"text":"late"}}`)
+	case "legacy":
 		fmt.Println(started)
-		fmt.Println(completed)
-		fmt.Println(`{"assistantMessage":{"text":"late"}}`)
+	case "timeout-long":
+		event(started)
+		time.Sleep(10 * time.Second)
 	case "timeout":
 		time.Sleep(time.Second)
 	default:

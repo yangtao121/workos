@@ -270,7 +270,8 @@ harness-host worker（provider 经中立 ports.ArtifactSink 输出）
   unavailable）；Task Router 在入队前按 resolved provider 的 exact list 校验请求
   （≤2、无重复、global scope 拒绝），unsupported → FailedPrecondition、零副作用、不 fallback。
   Fake adapter 声明两类并产出 deterministic bounded 输出（每请求 type 恰一个、terminal 前）；
-  DeepSeek/Generic CLI 保持 false/empty 并拒绝非空请求。worker 在完成事件前校验全部请求
+  DeepSeek（ADR-0011）与 Generic CLI v2（ADR-0023）通过结构化协议原子发布两类输出。
+  worker 在完成事件前校验全部请求
   type 已 materialize，缺失 → run 确定性失败。
 - 公开错误矩阵固定：unknown/foreign/wrong-project → 统一 NotFound；stored corruption（每次
   读重验 grammar 并重算 digest）→ sanitized Internal；transient → Unavailable；Web Bundle
@@ -712,7 +713,8 @@ breached bucket 的后续 fresh run fail closed（ResourceExhausted）
 - Harness 侧 `HarnessCapabilities` 增加 additive `hard_token_budget` 与
   `hard_runtime_deadline`：Fake/DeepSeek 经测试证明后声明 true（Fake 的确定性
   token cap 截断 + ctx deadline；DeepSeek 的 provider-side max_tokens cap 与
-  进程级 runtime deadline）；Generic CLI 如实 false，其上的 App run 入队前被
+  进程级 runtime deadline）；Generic CLI v2 支持受配置上限约束的 runtime deadline，
+  token budget/usage 仍为 false，其上的 App run 入队前被
   拒绝（FailedPrecondition），不 fallback。worker 用 server-derived
   `max_runtime_seconds` 建立独立 deadline：即使 adapter 忽略 context，worker
   也取消 run、合成恰好一个 terminal 事件并正确结束 lease。
@@ -935,8 +937,8 @@ harness worker：provider 启动前一次 ResolveTaskContext(lease_id, worker_id
   submission↔execution 无内容漂移，execution 重验只捕获 stored 事实漂移（fail closed）。
 - `HarnessCapabilities.supported_context_ref_types`（additive exact list）：词表外值/重复 =
   capability corruption → provider 投影 unavailable；Fake 与 DeepSeek 声明
-  `artifact.review.v1`（经 materialized-context 测试证据），Generic CLI 保持空并对非空
-  resolved context fail closed。
+  `artifact.review.v1`（经 materialized-context 测试证据）；Generic CLI v2 同样支持此类型，
+  在交给子进程前逐项核对 ref ID/type/digest 并限制请求总体积。
 - DeepSeek 把 goal/context 编码为 versioned canonical JSON task envelope
   （`workos.deepseek.task-envelope.v1`）作为唯一 user content block，artifact bytes 位于
   `untrusted_contexts` 数组；Fake 以 deterministic receipt 证明 exact count/order/digest
@@ -1381,7 +1383,8 @@ Generic CLI 每任务使用 0700 临时工作目录和独立 HOME，环境只含
 取消时终止进程组并关闭本端 stdout，防止继承 pipe 的后代拖住 RPC；父进程退出信号
 终止直接子进程。真实子进程/race 覆盖后代持有 pipe、环境泄漏、stderr、输出洪泛和假完成。
 这些是执行生命周期保护，不是内核隔离：rootless/cgroup 边界与 token budget 仍未由
-Generic CLI 提供，现有 streaming-only 能力声明不扩大。Recovery 路由和候选输出仍待实现。
+Generic CLI 提供。后续 ADR-0023 增加 review/context/runtime 能力，Recovery 路由和
+候选输出仍待实现。
 
 ## 2026-09-08 Task 提交幂等来源
 
@@ -1405,3 +1408,16 @@ Unavailable。普通任务的 artifact/context/credential 校验复用一次能�
 catalog 读取混合不同能力。已存在任务先重放首次快照，不重新校验当前 Provider 健康。
 Generic CLI 的 catalog 健康包含可执行文件存在与执行权限，拒绝时不泄露文件路径。
 这不证明 CLI 的内核隔离、token budget 或 Recovery 专用路由已经实现。
+
+## 2026-09-08 Generic CLI v2 结构化执行
+
+ADR-0023 以 Harness Proto 定义单请求和互斥 event/artifact 响应，替换旧 CLI NDJSON 格式。
+复用 canonical task/context/output 类型，无自定义同义 DTO。CLI 不收到执行 lease 或凭据；
+上下文必须与任务 ref 逐项一致。每种请求的 review 类型恰一份，完整流和退出码成功后才经
+worker 的 batch sink 原子发布；失败、取消或缺失产物不发布 completed。配置和任务期限
+取较小值；token/cost 预算仍明确不支持，不能用于绕过 App/Repair 治理。
+
+`make test-generic-cli` 使用独立 Compose 项目、临时数据库及合成执行凭据，启动真实
+Gateway/Core/Harness 与 CLI 子进程，验证两类产物、精确上下文内容、可执行文件失效后的
+新任务拒绝/旧任务重放和权限恢复后的重新入队。门禁回收自身容器、数据库及凭据，保留
+默认栈。此证据不包括 source bundle、Build/Test 或自动部署。
