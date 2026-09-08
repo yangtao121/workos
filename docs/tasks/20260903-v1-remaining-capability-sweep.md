@@ -4,7 +4,7 @@
 - Owner/Agent：当前实现者完成检查点交接；后续由 GLM-5.3 认领（单一写入智能体）
 - 进程/模块：全部六进程 + desktop-web/mobile-shell/sdk
 - 依赖：ADR-0001..0014 全部既有裁决；实现依据 `docs/prompts/20260903-next-agent-remaining-capability-sweep.md`
-- Branch：`feat/v1-remaining-capability-sweep`（自本地 `main` @ `afe8580`）；按 2026-09-08 最新授权合并本地 main，接手者再从 main 建任务分支
+- Branch：唯一开发分支 `feat/v1-remaining-capability-sweep`（自本地 `main` @ `afe8580`）；检查点 `d4fca63` 已合并，后续继续复用此分支，不再创建分支
 - 基线：`make bootstrap` PASS、`make generate` 幂等 PASS、`make check`（见下方基线记录）、
   `make test-integration`、`make test-e2e` 结果随执行更新
 
@@ -1133,10 +1133,32 @@ Gateway 不开放此读取。没有新增 migration；001–049 不变，下一�
 早期 producer 检查曾暴露三处 TS capability fixture 缺字段，以及 capability 拒绝测试的
 stub 默认值覆盖显式 false；已修正 fixture 并由上述完整检查/race 重新验证，未放宽断言。
 
-下一步由 GLM-5.3 从合并后的 main 建分支认领：先完成 Runtime Build/Test 和候选版本暂存/
+下一步由 GLM-5.3 认领（分支方式以下方最新补正为准）：先完成 Runtime Build/Test 和候选版本暂存/
 Deployment 交接，再完成 Recovery 治理、R3 真实远程 Surface、R5 移动原生软件工程，最后
 复核 R1/R4/R6 和原完整验收。未实现项仍为软件缺口，不因本次合并自动变为 working。
 
 再次 `make generate` 后 140 个生成文件及 README 内容摘要完全不变（包括 README 在内共 140 个文件）；
 日志 `tmp/glm-handoff-idempotent-generate.log`，摘要 `tmp/glm-handoff-generated-before.json`。
 此检查点按用户授权合并到本地 main；保留原任务分支，不推送、不标记总任务 done。
+
+### 2026-09-08 交接范围与唯一分支规则补正
+
+用户指出交接的分支保护要求不够明确、任务范围偏少。当前在唯一现有任务分支
+`feat/v1-remaining-capability-sweep` 修订交接；此记录替代上文“接手者从 main 建分支”
+的后续操作建议。main 已包含检查点 d4fca63，此前合并授权已经执行；后续开发、测试、
+文档和提交均在唯一任务分支，不增设 worktree/辅助分支，不改动其他历史分支。
+没有远端分支保护也禁止直接写 main；后续合并须有用户新的明确授权。应用版本 promote
+与 Git merge 分别定义，不能互相代替授权。
+
+[更新后的 GLM-5.3 交接](../prompts/20260908-glm-5.3-remaining-work-handoff.md) 补齐六条
+工作流逐项验收：除 Build/Test、Recovery、远程栈与 mobile 外，明确要求完成监督/遥测、
+Provider/凭据失效链、Bridge/Declarative、知识源/索引/归档、通知/LAN、全部桌面系统入口
+与多尺寸交互的核查修复；增加完整专项门禁矩阵和最终交付标准。已有证据需复核，发现
+缺陷必须修复，不要求重写无缺陷实现；仍保留原计划非范围及真实环境阻塞边界。
+
+本次仅修改提示词和任务记录，没有代码、协议、数据库、模块能力或可见 UI 变化，
+`docs/status.json` 保持原有事实，不生成无差异截图。验收为文档格式、引用/Make target
+可解析、分支断言、diff 检查，以及确认 main 未移动；不重复运行无代码变化的全栈门禁。
+
+验证 PASS：两份文档的 Prettier check、status renderer --check、交接中 49 个 Make target
+及显式仓库路径核查、git diff --check；唯一任务分支正确，main 保持 d4fca63。
