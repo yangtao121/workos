@@ -1,0 +1,53 @@
+syntax = "proto3";
+
+package workos.taskexecution.v1;
+
+import "google/protobuf/timestamp.proto";
+import "workos/agent/v1/agent.proto";
+import "workos/app/v1/source.proto";
+
+option go_package = "github.com/yangtao121/workos/gen/go/workos/taskexecution/v1;taskexecutionv1";
+
+// Execution projection of an immutable manifest, not a second manifest format.
+message RepairBuildInput {
+  string task_id = 1;
+  workos.agent.v1.RepairTarget target = 2;
+  workos.app.v1.AppSourceBundle source = 3;
+  string base_image = 4;
+  repeated string build_command = 5;
+  repeated string test_command = 6;
+}
+
+message ResolveRepairBuildInputRequest {
+  string lease_id = 1;
+  string worker_id = 2;
+}
+
+message ResolveRepairBuildInputResponse {
+  RepairBuildInput input = 1;
+}
+
+// All fields are Core-derived. A source candidate is not an installable version.
+message RepairSourceCandidate {
+  string task_id = 1;
+  string source_bundle_id = 2;
+  string source_digest = 3;
+  google.protobuf.Timestamp created_at = 4;
+}
+
+message SubmitRepairSourceCandidateRequest {
+  string lease_id = 1;
+  string worker_id = 2;
+  // A complete replacement file set; no manifest, command or authority overrides.
+  repeated workos.app.v1.AppSourceFile files = 3;
+}
+
+message SubmitRepairSourceCandidateResponse {
+  RepairSourceCandidate candidate = 1;
+}
+
+// Only on Core's Harness-authenticated mTLS listener; never Gateway-routable.
+service RepairExecutionService {
+  rpc ResolveRepairBuildInput(ResolveRepairBuildInputRequest) returns (ResolveRepairBuildInputResponse) {}
+  rpc SubmitRepairSourceCandidate(SubmitRepairSourceCandidateRequest) returns (SubmitRepairSourceCandidateResponse) {}
+}

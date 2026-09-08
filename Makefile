@@ -1080,3 +1080,7 @@ test-generic-cli: e2e-image
 .PHONY: test-app-build-inputs
 test-app-build-inputs: e2e-image
 	sh tools/generic-cli/gate.sh app-build-inputs.spec.ts
+
+.PHONY: test-repair-sources
+test-repair-sources:
+	sh tools/generic-cli/gate.sh repair-sources

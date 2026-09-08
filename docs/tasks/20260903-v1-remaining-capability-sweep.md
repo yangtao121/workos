@@ -1053,3 +1053,34 @@ buf breaking 对 main PASS（`tmp/app-build-inputs-breaking.log`）；再次 gen
 生成文件/README 不变（`tmp/app-build-inputs-idempotent-generate.log`、摘要
 `tmp/app-build-inputs-generated-before.json`）。没有用户可见 UI 变化。源码/build 配置检查点
 完成；Runtime Build/Test、候选交接、Recovery 治理及 R3/R5 仍待完成，整个任务保持 active。
+
+### R2 租约绑定的修复源码交接（active，2026-09-08）
+
+依赖 30bc8a7，按 ADR-0025 实现私有 RepairExecutionService：从有效 lease 推导固定构建
+输入；普通任务、错 worker、失效 lease、错 manifest/source digest 均拒绝；每任务至多一个
+不可变文件候选，提交和重放必须继续验证租约，候选不进入可安装版本列表。先 Proto/generate，
+新增 Registry 自有 049 候选映射，001–048 保持不变。验收包含真实 PG 并发/事务与私有 RPC
+重启/失效矩阵；实际 Harness producer、Runtime Build/Test 和治理继续在后续接通。
+
+租约源码交接验证 PASS：`tmp/repair-source-pg-tests4.log` 覆盖十请求同任务五成功/五内容
+冲突、单一候选/源码事实、重新装配后精确重放、普通/错 worker/取消/过期/终态拒绝、
+manifest/source 损坏与无 build 配置，以及写入后到期导致源码和映射全部回滚。初轮 fixture
+遗漏必需的 restartLimit，第二轮错误假设一个数据库可有两个 owner；均修正为现有单 owner
+架构，没有放松生产校验或修改既有迁移。Core Agent/Registry/orchestration race PASS
+（`tmp/repair-source-race.log`）。
+
+`make test-repair-sources` 真实独立 Gateway/Core/PG/mTLS 门禁 PASS
+（`tmp/repair-source-rpc-gate.log`）：真实入队并 claim、源码解析/候选保存、非法路径/不同
+内容/超大体积、错 worker、无客户端证书、Gateway 与普通 Core listener 排除；安装升级为
+v2 后重启 Core，修复输入仍是 v1 的源码/测试命令，候选首次 ID/摘要/时间不变；取消后读取
+和重放均拒绝。此测试由专用客户端充当 worker，Harness catalog 正常运行、worker poll
+设为一小时以避免抢占，不宣称 provider 自动生成候选或执行 Build/Test。
+
+049 已应用并更新默认 Core（`tmp/repair-source-default-migrate.log` /
+`tmp/repair-source-default-deploy.log`），001–049 不再修改，下一迁移 050。
+`make check` PASS（`tmp/repair-source-check.log`）；buf breaking 对 main PASS
+（`tmp/repair-source-breaking.log`）。没有 UI 变化。本阶段检查点完成，下一步为 Harness
+真实候选输出与 Runtime 构建/测试；整个任务仍 active，未合并 main。
+
+再次 generate 后 140 个生成文件/README 不变（`tmp/repair-source-idempotent-generate.log`，
+摘要 `tmp/repair-source-generated-before.json`）。

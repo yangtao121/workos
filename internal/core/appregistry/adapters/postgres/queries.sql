@@ -55,3 +55,19 @@ SELECT id, owner_user_id, idempotency_key, digest,
        total_size_bytes, created_at
 FROM workos_core.app_source_bundles
 WHERE owner_user_id = $1 AND idempotency_key = $2;
+
+-- name: GetAppBuildManifest :one
+SELECT manifest_digest,
+       CASE WHEN octet_length(canonical_manifest::text) <= 524288
+            THEN canonical_manifest ELSE NULL::jsonb END AS canonical_manifest
+FROM workos_core.app_versions
+WHERE owner_user_id = $1 AND app_id = $2 AND version = $3;
+
+-- name: InsertRepairSourceCandidate :exec
+INSERT INTO workos_core.app_repair_source_candidates (task_id, owner_user_id, source_bundle_id)
+VALUES ($1, $2, $3);
+
+-- name: GetRepairSourceCandidate :one
+SELECT source_bundle_id
+FROM workos_core.app_repair_source_candidates
+WHERE task_id = $1 AND owner_user_id = $2;

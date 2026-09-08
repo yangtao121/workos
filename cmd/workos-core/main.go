@@ -284,6 +284,17 @@ func run(logger *slog.Logger) error {
 	sourcePath, sourceHandler := appregistrytransport.NewSourceHandler(sourceService)
 	mux.Handle(sourcePath, identity.Middleware(sourceHandler))
 
+	buildService, err := appregistryapp.NewBuildService(appRepository, manifestValidator, generator)
+	if err != nil {
+		return err
+	}
+	repairSources, err := orchestration.NewRepairSources(pool, agentRepository, buildService)
+	if err != nil {
+		return err
+	}
+	repairSourcePath, repairSourceHandler := orchestrationtransport.NewRepairSourceHandler(repairSources)
+	executionMux.Handle(repairSourcePath, repairSourceHandler)
+
 	appCatalog, err := orchestration.NewAppCatalog(appService)
 	if err != nil {
 		return err

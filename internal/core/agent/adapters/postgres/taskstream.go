@@ -45,13 +45,14 @@ func (r *Repository) LockTaskArtifactStream(ctx context.Context, tx dbtx.Tx, lea
 		return agentports.TaskStreamFacts{}, agentdomain.ErrTerminal
 	}
 	return agentports.TaskStreamFacts{
-		TaskID:            stream.ID,
-		OwnerUserID:       stream.OwnerUserID,
-		ProjectID:         uuidTextValue(stream.ProjectID),
-		ProviderID:        stream.ProviderID,
-		State:             agentdomain.State(stream.State),
-		Input:             stream.Input,
-		LastEventSequence: stream.LastEventSequence,
+		TaskID:                stream.ID,
+		OwnerUserID:           stream.OwnerUserID,
+		ProjectID:             uuidTextValue(stream.ProjectID),
+		ProviderID:            stream.ProviderID,
+		State:                 agentdomain.State(stream.State),
+		Input:                 stream.Input,
+		LastEventSequence:     stream.LastEventSequence,
+		CancellationRequested: stream.CancellationRequested,
 	}, nil
 }
 

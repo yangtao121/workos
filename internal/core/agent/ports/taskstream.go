@@ -15,13 +15,14 @@ import (
 // the raw task input travels so the coordinator can verify the task actually
 // requested the artifact output being materialized.
 type TaskStreamFacts struct {
-	TaskID            string
-	OwnerUserID       string
-	ProjectID         string
-	ProviderID        string
-	State             domain.State
-	Input             json.RawMessage
-	LastEventSequence int64
+	TaskID                string
+	OwnerUserID           string
+	ProjectID             string
+	ProviderID            string
+	State                 domain.State
+	Input                 json.RawMessage
+	LastEventSequence     int64
+	CancellationRequested bool
 }
 
 // TaskCredentialFacts is what the credential-lease coordinator derives from

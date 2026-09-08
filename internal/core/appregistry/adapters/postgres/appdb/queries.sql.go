@@ -12,6 +12,32 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const getAppBuildManifest = `-- name: GetAppBuildManifest :one
+SELECT manifest_digest,
+       CASE WHEN octet_length(canonical_manifest::text) <= 524288
+            THEN canonical_manifest ELSE NULL::jsonb END AS canonical_manifest
+FROM workos_core.app_versions
+WHERE owner_user_id = $1 AND app_id = $2 AND version = $3
+`
+
+type GetAppBuildManifestParams struct {
+	OwnerUserID string `json:"owner_user_id"`
+	AppID       string `json:"app_id"`
+	Version     string `json:"version"`
+}
+
+type GetAppBuildManifestRow struct {
+	ManifestDigest    string          `json:"manifest_digest"`
+	CanonicalManifest json.RawMessage `json:"canonical_manifest"`
+}
+
+func (q *Queries) GetAppBuildManifest(ctx context.Context, arg GetAppBuildManifestParams) (GetAppBuildManifestRow, error) {
+	row := q.db.QueryRow(ctx, getAppBuildManifest, arg.OwnerUserID, arg.AppID, arg.Version)
+	var i GetAppBuildManifestRow
+	err := row.Scan(&i.ManifestDigest, &i.CanonicalManifest)
+	return i, err
+}
+
 const getAppSourceBundle = `-- name: GetAppSourceBundle :one
 SELECT id, owner_user_id, idempotency_key, digest,
        CASE WHEN octet_length(files::text) <= 1048576 THEN files ELSE NULL::jsonb END AS files,
@@ -168,6 +194,24 @@ func (q *Queries) GetRegistrationRequest(ctx context.Context, arg GetRegistratio
 	return i, err
 }
 
+const getRepairSourceCandidate = `-- name: GetRepairSourceCandidate :one
+SELECT source_bundle_id
+FROM workos_core.app_repair_source_candidates
+WHERE task_id = $1 AND owner_user_id = $2
+`
+
+type GetRepairSourceCandidateParams struct {
+	TaskID      string `json:"task_id"`
+	OwnerUserID string `json:"owner_user_id"`
+}
+
+func (q *Queries) GetRepairSourceCandidate(ctx context.Context, arg GetRepairSourceCandidateParams) (string, error) {
+	row := q.db.QueryRow(ctx, getRepairSourceCandidate, arg.TaskID, arg.OwnerUserID)
+	var source_bundle_id string
+	err := row.Scan(&source_bundle_id)
+	return source_bundle_id, err
+}
+
 const insertAppSourceBundle = `-- name: InsertAppSourceBundle :execrows
 INSERT INTO workos_core.app_source_bundles (
     id, owner_user_id, idempotency_key, digest, files, total_size_bytes, created_at
@@ -268,6 +312,22 @@ func (q *Queries) InsertRegistrationRequest(ctx context.Context, arg InsertRegis
 		return 0, err
 	}
 	return result.RowsAffected(), nil
+}
+
+const insertRepairSourceCandidate = `-- name: InsertRepairSourceCandidate :exec
+INSERT INTO workos_core.app_repair_source_candidates (task_id, owner_user_id, source_bundle_id)
+VALUES ($1, $2, $3)
+`
+
+type InsertRepairSourceCandidateParams struct {
+	TaskID         string `json:"task_id"`
+	OwnerUserID    string `json:"owner_user_id"`
+	SourceBundleID string `json:"source_bundle_id"`
+}
+
+func (q *Queries) InsertRepairSourceCandidate(ctx context.Context, arg InsertRepairSourceCandidateParams) error {
+	_, err := q.db.Exec(ctx, insertRepairSourceCandidate, arg.TaskID, arg.OwnerUserID, arg.SourceBundleID)
+	return err
 }
 
 const listAppIDPage = `-- name: ListAppIDPage :many

@@ -154,6 +154,20 @@ make test-app-build-inputs 使用独立真实 Gateway/Core/PG，证明上传、�
 拒绝及真实 Core 重启后的精确重放；单元和真实 PG 覆盖边界、并发与损坏读取。
 此阶段没有执行构建/测试或产生部署候选，Recovery 治理及 Runtime 执行仍待完成。
 
+### 修复源码交接（ADR-0025）
+
+RepairExecutionService 仅注册在 Core 的 Harness mTLS execution listener，Gateway 与普通
+Core listener 均不可路由。orchestration 通过 Agent port 锁定 lease/task，并由 Registry
+application 核验入队时的 manifest/source 摘要和固定配置；普通、取消、过期、终态任务
+拒绝，没有 build 配置明确 FailedPrecondition。事务等待与读取后再次核验 lease 到期时间。
+
+049 的 app_repair_source_candidates 由 Registry 独占，task 对应最多一个不可变源码包，
+映射和源码在同一事务内保存。重放保留第一次 ID/摘要/时间，不同文件 Aborted；任何失效
+或写入失败回滚两者。候选不写入 app_versions，不影响默认可安装版本。make test-repair-sources
+使用真实 Gateway/Core/PG 与 Harness 身份 mTLS 客户端，证明入队、lease 解析/提交、输入
+非法与超大拒绝、证书/监听器隔离、升级后固定配置、真实 Core 重启及取消后的重放拒绝。
+该门禁由测试程序担任 worker；实际 Harness 候选 producer、Runtime Build/Test 及部署尚待接入。
+
 ## Project App Installation
 
 Project App Installation 把 Registry 的一个 immutable version 变成 Project 持有的安装实例事实。

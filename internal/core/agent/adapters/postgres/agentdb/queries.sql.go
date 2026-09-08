@@ -1191,7 +1191,7 @@ func (q *Queries) LockAgentAppPolicyChain(ctx context.Context, arg LockAgentAppP
 
 const lockTaskArtifactStream = `-- name: LockTaskArtifactStream :one
 SELECT t.id, t.owner_user_id, t.project_id, t.input, t.last_event_sequence, t.state,
-       t.provider_id, t.created_at
+       t.provider_id, t.created_at, t.cancellation_requested
 FROM workos_events.outbox AS o
 JOIN workos_core.agent_tasks AS t ON t.id = o.aggregate_id
 WHERE o.lease_id = $1 AND o.locked_by = $2 AND o.processed_at IS NULL AND o.locked_until >= $3
@@ -1205,14 +1205,15 @@ type LockTaskArtifactStreamParams struct {
 }
 
 type LockTaskArtifactStreamRow struct {
-	ID                string             `json:"id"`
-	OwnerUserID       string             `json:"owner_user_id"`
-	ProjectID         pgtype.UUID        `json:"project_id"`
-	Input             json.RawMessage    `json:"input"`
-	LastEventSequence int64              `json:"last_event_sequence"`
-	State             string             `json:"state"`
-	ProviderID        string             `json:"provider_id"`
-	CreatedAt         pgtype.Timestamptz `json:"created_at"`
+	ID                    string             `json:"id"`
+	OwnerUserID           string             `json:"owner_user_id"`
+	ProjectID             pgtype.UUID        `json:"project_id"`
+	Input                 json.RawMessage    `json:"input"`
+	LastEventSequence     int64              `json:"last_event_sequence"`
+	State                 string             `json:"state"`
+	ProviderID            string             `json:"provider_id"`
+	CreatedAt             pgtype.Timestamptz `json:"created_at"`
+	CancellationRequested bool               `json:"cancellation_requested"`
 }
 
 func (q *Queries) LockTaskArtifactStream(ctx context.Context, arg LockTaskArtifactStreamParams) (LockTaskArtifactStreamRow, error) {
@@ -1227,6 +1228,7 @@ func (q *Queries) LockTaskArtifactStream(ctx context.Context, arg LockTaskArtifa
 		&i.State,
 		&i.ProviderID,
 		&i.CreatedAt,
+		&i.CancellationRequested,
 	)
 	return i, err
 }
