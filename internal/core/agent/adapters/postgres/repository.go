@@ -121,7 +121,14 @@ func (r *Repository) Create(ctx context.Context, task domain.Task, idempotencyKe
 		if err := tx.Commit(ctx); err != nil {
 			return domain.Task{}, fmt.Errorf("commit idempotent task: %w", err)
 		}
-		return r.GetByIdempotency(ctx, task.OwnerUserID, idempotencyKey)
+		existing, err := r.GetByIdempotency(ctx, task.OwnerUserID, idempotencyKey)
+		if err != nil {
+			return domain.Task{}, err
+		}
+		if !existing.MatchesSubmission(task.OwnerUserID, task.ProjectID, task.Input) {
+			return domain.Task{}, domain.ErrIdempotencyConflict
+		}
+		return existing, nil
 	}
 	payload, err := json.Marshal(map[string]string{"taskId": task.ID})
 	if err != nil {

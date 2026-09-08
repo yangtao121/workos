@@ -98,6 +98,9 @@ func (r *TaskRouter) resolveCredentialSnapshot(ctx context.Context, ownerUserID,
 func (r *TaskRouter) Submit(ctx context.Context, input agentapp.SubmitInput) (agentdomain.Task, error) {
 	existing, err := r.agents.GetByIdempotency(ctx, input.OwnerUserID, input.IdempotencyKey)
 	if err == nil {
+		if !existing.MatchesSubmission(input.OwnerUserID, input.ProjectID, input.Payload) {
+			return agentdomain.Task{}, agentdomain.ErrIdempotencyConflict
+		}
 		return existing, nil
 	}
 	if !errors.Is(err, agentdomain.ErrNotFound) {

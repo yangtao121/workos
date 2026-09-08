@@ -21,10 +21,9 @@ var (
 	// matching active credential in the vault (ADR-0009). It is a sanitized
 	// FailedPrecondition with zero side effects.
 	ErrProviderCredentialMissing = errors.New("provider requires a credential that is not configured")
-	// ErrIdempotencyConflict marks an App task client key that was already
-	// consumed by a different canonical request (same owner + app instance +
-	// client key, different digest). Transport maps it to a sanitized Aborted.
-	ErrIdempotencyConflict = errors.New("app task idempotency key was used for a different request")
+	// ErrIdempotencyConflict marks a consumed task key with different caller
+	// facts. Transport maps it to a sanitized Aborted.
+	ErrIdempotencyConflict = errors.New("task idempotency key was used for a different request")
 )
 
 type State string

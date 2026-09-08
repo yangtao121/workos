@@ -1055,3 +1055,14 @@ test-model-postgres:
 .PHONY: test-workspace-model-capacity
 test-workspace-model-capacity: e2e-image
 	WORKOS_WORKSPACE_MODEL_CAPACITY=true sh tools/workspace-index/gate.sh
+
+# Public task idempotency through the actual Gateway/Core/PostgreSQL stack.
+.PHONY: test-task-submission-identity
+test-task-submission-identity: e2e-image
+	docker compose up -d --build postgres bootstrap workos-core harness-host runtime-host reliability-host indexer workos-gateway
+	docker run --rm --network host $(USER_FLAGS) \
+		-e PLAYWRIGHT_BROWSERS_PATH=/ms-playwright \
+		-e WORKOS_E2E_URL=http://127.0.0.1:8080 \
+		-e WORKOS_E2E_OUTPUT_DIR=/tmp/workos-playwright-results \
+		-v $(CURDIR):$(WORKDIR) -w $(WORKDIR)/apps/desktop-web \
+		$(E2E_IMAGE) node node_modules/@playwright/test/cli.js test task-submission-identity.spec.ts --workers=1

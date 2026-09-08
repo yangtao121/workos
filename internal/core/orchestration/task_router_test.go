@@ -163,7 +163,7 @@ func TestTaskRouterResolvesProviderSnapshots(t *testing.T) {
 
 func TestTaskRouterReturnsIdempotentTaskBeforeProjectLookup(t *testing.T) {
 	t.Parallel()
-	existing := agentdomain.Task{ID: "existing", ProviderID: "deepseek"}
+	existing := agentdomain.Task{ID: "existing", OwnerUserID: "owner", ProjectID: "project-1", Input: []byte(`{}`), ProviderID: "deepseek"}
 	agents := &fakeAgents{existing: &existing}
 	projects := &fakeProjects{
 		project: projectdomain.Project{HarnessBinding: &projectdomain.HarnessBinding{ProviderID: "fake"}},
@@ -514,4 +514,18 @@ type stubContextVerifier struct{}
 
 func (stubContextVerifier) VerifyTaskContext(context.Context, string, string, []agentports.ContextRef) error {
 	return nil
+}
+
+func TestTaskRouterRejectsDifferentInputUnderConsumedKey(t *testing.T) {
+	existing := agentdomain.Task{ID: "existing", OwnerUserID: "owner", ProjectID: "project-1", ProviderID: "original", Input: []byte(`{"goal":"original","incidentId":"incident-1"}`)}
+	agents := &fakeAgents{existing: &existing}
+	projects := &fakeProjects{}
+	router, err := newTestRouter(agents, projects)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = router.Submit(context.Background(), agentapp.SubmitInput{OwnerUserID: "owner", ProjectID: "project-1", IdempotencyKey: "repair-incident", Payload: []byte(`{"goal":"different","incidentId":"incident-2"}`)})
+	if !errors.Is(err, agentdomain.ErrIdempotencyConflict) || projects.gets != 0 || len(agents.submitted) != 0 {
+		t.Fatalf("mismatched repair replay accepted: err=%v lookups=%d submissions=%d", err, projects.gets, len(agents.submitted))
+	}
 }

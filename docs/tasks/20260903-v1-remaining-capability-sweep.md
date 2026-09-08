@@ -922,3 +922,22 @@ CLI 执行边界检查点收尾：`make check` PASS（`tmp/recovery-cli-check.lo
 `make generate` 后 132 个生成文件/README 不变（`tmp/recovery-cli-generate.log`，摘要
 `tmp/recovery-cli-generated-before.json`）。没有 Proto 或 migration 变化，没有 UI 变化。
 本阶段可提交；接下来处理 Repair 入队目标快照与幂等来源校验，再实现候选 Build/Test。
+
+### R2 Repair 入队来源与目标（active，2026-09-08）
+
+依赖 ff1d8c6。首先修复普通 TaskRouter 与 Agent Create 在同 key、不同输入时直接返回
+旧任务的漏洞；否则 repair-incident 键碰撞会绑定错误任务。匹配必须覆盖 owner/project
+和规范 JSON 输入，忽略已快照的 Provider/credential 变化；并发落库路径也须裁决冲突。
+公开 SubmitTask 禁止伪造私有 incident_id。验收包括无副作用单元、真实 PostgreSQL
+并发（恰一个 task/outbox）及公开 Connect 拒绝；随后增加故障安装的固定版本目标快照。
+
+入队来源修复检查点：基线 `tmp/repair-admission-before.log` FAIL（不同 goal/incident
+错误重放旧任务），修复后 Core Agent/orchestration race 与 PostgreSQL 十请求并发 PASS
+（`tmp/repair-admission-after.log`），恰一 task/outbox，五次同输入成功、五次不同输入冲突。
+镜像构建与 Core/Harness 更新 PASS（`tmp/repair-admission-build.log` /
+`tmp/repair-admission-deploy.log`）；真实 Gateway/Core/PG E2E PASS
+（`tmp/repair-admission-e2e.log`），新增可复跑 `make test-task-submission-identity`。
+`make check` PASS（`tmp/repair-admission-check.log`），再次 generate 后 132 个生成文件/
+README 不变（`tmp/repair-admission-generate.log`，摘要
+`tmp/repair-admission-generated-before.json`）。无 UI 像素变化、无 migration/Proto 变化。
+下一步继续固定 Repair 安装版本快照；完整 R2/R3/R5 未完成，不合并 main。

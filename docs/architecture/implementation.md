@@ -1382,3 +1382,12 @@ Generic CLI 每任务使用 0700 临时工作目录和独立 HOME，环境只含
 终止直接子进程。真实子进程/race 覆盖后代持有 pipe、环境泄漏、stderr、输出洪泛和假完成。
 这些是执行生命周期保护，不是内核隔离：rootless/cgroup 边界与 token budget 仍未由
 Generic CLI 提供，现有 streaming-only 能力声明不扩大。Recovery 路由和候选输出仍待实现。
+
+## 2026-09-08 Task 提交幂等来源
+
+普通 TaskRouter 重放与 Agent PostgreSQL 并发冲突路径均比较 owner/project 和规范 JSON
+输入；仅键相同不足以返回旧任务。比较忽略 JSON 空格和对象键顺序，保留数组顺序与精确
+数字，避免 JSONB 重排误拒绝或 float64 精度损失误接受。Provider/credential 是首次入队的
+服务端快照，不参与客户端请求匹配。不同输入返回 Aborted，只有首个 task/outbox 落库。
+公开 SubmitTask 拒绝私有 incident_id，Reliability 的私有 repair admission 保留该字段，
+且键冲突同样返回 Aborted。故障安装的固定版本快照、Recovery 路由和 Build/Test 尚待接入。

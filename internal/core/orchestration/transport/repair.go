@@ -83,6 +83,9 @@ func (h *RepairTaskHandler) CreateRepairTask(ctx context.Context, req *connect.R
 		Payload:        payload,
 	})
 	if err != nil {
+		if errors.Is(err, agentdomain.ErrIdempotencyConflict) {
+			return nil, connect.NewError(connect.CodeAborted, agentdomain.ErrIdempotencyConflict)
+		}
 		return nil, connect.NewError(connect.CodeInternal, errors.New("repair task admission failed"))
 	}
 	return connect.NewResponse(&agentv1.CreateRepairTaskResponse{

@@ -21,6 +21,8 @@ failed，不冒充实际部署证据。修复任务完成本身不是候选，�
 幂等摘要，防止重试时用户已切换的安装被当作候选或恢复版本；过期/关闭的重放不算启动成功。
 Repair 轮询按最后查询时间轮转并持久化顺序；失败/取消任务退出 submitted，成功交接
 必须保留 TaskID 并验证 Core 的 owner/project/incident 关联，候选尚未就绪的任务继续轮转。
+任务键重放必须匹配 owner/project 与精确 JSON 输入，Router 早期重放和数据库并发插入
+冲突均执行校验；不同来源不得复用旧任务。公开 SubmitTask 不接受私有 incident_id。
 
 ## 桌面与契约
 
