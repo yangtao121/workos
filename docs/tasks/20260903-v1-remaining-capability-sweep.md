@@ -941,3 +941,30 @@ CLI 执行边界检查点收尾：`make check` PASS（`tmp/recovery-cli-check.lo
 README 不变（`tmp/repair-admission-generate.log`，摘要
 `tmp/repair-admission-generated-before.json`）。无 UI 像素变化、无 migration/Proto 变化。
 下一步继续固定 Repair 安装版本快照；完整 R2/R3/R5 未完成，不合并 main。
+
+### R2 Repair 版本快照（active，2026-09-08）
+
+前置入队幂等修复已提交。新增 canonical RepairTarget 到 AgentTaskInput，并在私有
+CreateRepairTask 请求携带 installation ID；公开 SubmitTask 不接受这两个私有来源字段。
+Core 从 Project 自有安装/项目表的同一 SQL snapshot 读取 installation、App/version/digest
+和 project revision，写入不可变任务输入。重放只比较调用者事实，保留第一次版本快照，
+不得因后续升级或归档重新解析目标。修复 queued task 的 replay 标识不准确问题：创建结果
+显式返回是否新建，不再用 task state 推断。计划无 migration，先 Proto/generate 后实现。
+验收：目标归属/停用/归档、同一快照、版本变更后的重放、并发同请求只创建一个任务、
+私有来源拒绝和真实 Core/Reliability 调用；Build/Test 与 Recovery 路由仍为后续独立工作。
+
+版本快照验证通过：Core Agent/orchestration 与 Reliability race
+（`tmp/repair-target-tests.log`）；真实 PostgreSQL（`tmp/repair-target-pg.log`）覆盖
+升级事务期间 80 次读取无版本/revision 撕裂、owner/project/归档/卸载拒绝，以及十请求并发
+只有一次 Created、一个 task/outbox。统一镜像已构建并更新 Core/Harness/Reliability
+（`tmp/repair-target-build.log`、`tmp/repair-target-deploy.log`）。真实私有 RPC 门禁 PASS
+（`tmp/repair-target-rpc.log`，新增 `make test-repair-target`）：Reliability producer adapter
+重放升级且已归档的安装仍得到首次版本、错误安装冲突、缺字段拒绝、Gateway 隔离。
+本门禁验证 Repair admission，不宣称 incident 采集或 Build/Test/发布完成。
+
+版本快照检查点收尾：`make check` PASS（`tmp/repair-target-check.log`），buf breaking
+对本地 main PASS（`tmp/repair-target-breaking.log`；首次运行因容器未设置 HOME 无法写
+cache，补为 /tmp 后通过）。再次 `make generate` 后 132 个生成文件/README 不变
+（`tmp/repair-target-idempotent-generate.log`，摘要
+`tmp/repair-target-generated-before.json`）。没有 migration 或 UI 像素变化。
+本阶段完成，整个任务仍 active；下一步是健康 Provider 选择、Recovery 入队治理及候选构建。

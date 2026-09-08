@@ -54,7 +54,7 @@ const (
 // RPC. The deterministic key makes retries and crash replays resolve to the
 // same task.
 type RepairSubmitter interface {
-	SubmitRepair(ctx context.Context, ownerUserID, projectID, incidentID, idempotencyKey, violationSummary string) (taskID, providerID string, err error)
+	SubmitRepair(ctx context.Context, ownerUserID, projectID, appInstanceID, incidentID, idempotencyKey, violationSummary string) (taskID, providerID string, err error)
 	// TaskState verifies task provenance and reads Core's terminal state.
 	TaskState(ctx context.Context, row RepairCompletedRow) (RepairTaskState, error)
 }
@@ -93,7 +93,7 @@ func (o *RepairOrchestrator) RunPass(ctx context.Context, limit int) (int, error
 	var lastErr error
 	for _, candidate := range candidates {
 		key := "repair-" + candidate.IncidentID
-		taskID, _, err := o.submitter.SubmitRepair(ctx, candidate.OwnerUserID, candidate.ProjectID, candidate.IncidentID, key, candidate.Summary)
+		taskID, _, err := o.submitter.SubmitRepair(ctx, candidate.OwnerUserID, candidate.ProjectID, candidate.AppInstanceID, candidate.IncidentID, key, candidate.Summary)
 		if err != nil {
 			lastErr = err
 			continue

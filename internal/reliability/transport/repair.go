@@ -38,9 +38,10 @@ func NewRepairSubmitterClient(coreURL string, deviceID string) *RepairSubmitterC
 // every fact from its own incident row; the identity headers carry the
 // incident's owner exactly like the forwarded trusted identity on every
 // other internal call.
-func (c *RepairSubmitterClient) SubmitRepair(ctx context.Context, ownerUserID, projectID, incidentID, idempotencyKey, violationSummary string) (taskID, providerID string, err error) {
+func (c *RepairSubmitterClient) SubmitRepair(ctx context.Context, ownerUserID, projectID, appInstanceID, incidentID, idempotencyKey, violationSummary string) (taskID, providerID string, err error) {
 	request := connect.NewRequest(&agentv1.CreateRepairTaskRequest{
 		IncidentId:       incidentID,
+		AppInstanceId:    appInstanceID,
 		ProjectId:        projectID,
 		ViolationSummary: violationSummary,
 		IdempotencyKey:   idempotencyKey,
@@ -64,7 +65,7 @@ func (c *RepairSubmitterClient) TaskState(ctx context.Context, row application.R
 		return application.RepairTaskPending, err
 	}
 	task := response.Msg.GetTask()
-	if task.GetId() != row.TaskID || task.GetOwnerUserId() != row.OwnerUserID || task.GetInput().GetTargetScope().GetProjectId() != row.ProjectID || task.GetInput().GetIncidentId() != row.IncidentID {
+	if task.GetId() != row.TaskID || task.GetOwnerUserId() != row.OwnerUserID || task.GetInput().GetTargetScope().GetProjectId() != row.ProjectID || task.GetInput().GetIncidentId() != row.IncidentID || task.GetInput().GetRepairTarget().GetAppInstanceId() != row.AppInstanceID || row.AppInstanceID == "" {
 		return application.RepairTaskPending, connect.NewError(connect.CodeInternal, errors.New("repair task provenance is invalid"))
 	}
 	switch task.GetState() {

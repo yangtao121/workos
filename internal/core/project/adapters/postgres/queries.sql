@@ -95,7 +95,7 @@ FROM workos_core.project_app_installations
 WHERE owner_user_id = $1 AND id = $2;
 
 -- name: ResolveActiveInstallation :one
-SELECT i.id, i.owner_user_id, i.project_id, i.app_id, i.version, i.manifest_digest, i.granted_permissions, i.grant_revision, i.installed_at, i.uninstalled_at
+SELECT i.id, i.owner_user_id, i.project_id, i.app_id, i.version, i.manifest_digest, i.granted_permissions, i.grant_revision, i.installed_at, i.uninstalled_at, p.revision AS project_revision
 FROM workos_core.project_app_installations i
 JOIN workos_core.projects p
   ON p.id = i.project_id AND p.owner_user_id = i.owner_user_id AND p.archived_at IS NULL

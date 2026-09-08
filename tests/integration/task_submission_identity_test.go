@@ -34,8 +34,9 @@ func TestTaskSubmissionIdentityArbitratesConcurrentInputs(t *testing.T) {
 	}
 	repo := agentpostgres.New(pool)
 	type result struct {
-		task agentdomain.Task
-		err  error
+		task    agentdomain.Task
+		err     error
+		created bool
 	}
 	results := make(chan result, 10)
 	ready := make(chan struct{})
@@ -45,17 +46,20 @@ func TestTaskSubmissionIdentityArbitratesConcurrentInputs(t *testing.T) {
 			now := time.Now().UTC()
 			task := agentdomain.Task{ID: uuid.Must(uuid.NewV7()).String(), OwnerUserID: owner, Input: []byte(fmt.Sprintf(`{"role":"general","goal":"variant-%d"}`, i%2)), ProviderID: "fake", State: agentdomain.StateQueued, CreatedAt: now, UpdatedAt: now}
 			saved, err := repo.Create(ctx, task, "repair-key")
-			results <- result{saved, err}
+			results <- result{saved.Task, err, saved.Created}
 		}()
 	}
 	close(ready)
 	var winner agentdomain.Task
-	successes, conflicts := 0, 0
+	successes, conflicts, created := 0, 0, 0
 	for range 10 {
 		r := <-results
 		switch {
 		case r.err == nil:
 			successes++
+			if r.created {
+				created++
+			}
 			if winner.ID != "" && winner.ID != r.task.ID {
 				t.Fatal("one key created multiple tasks")
 			}
@@ -66,8 +70,8 @@ func TestTaskSubmissionIdentityArbitratesConcurrentInputs(t *testing.T) {
 			t.Fatalf("unexpected race result: %v", r.err)
 		}
 	}
-	if successes != 5 || conflicts != 5 {
-		t.Fatalf("successes=%d conflicts=%d", successes, conflicts)
+	if successes != 5 || conflicts != 5 || created != 1 {
+		t.Fatalf("successes=%d conflicts=%d created=%d", successes, conflicts, created)
 	}
 	var tasks, outbox int
 	if err := pool.QueryRow(ctx, `SELECT count(*) FROM workos_core.agent_tasks WHERE owner_user_id=$1`, owner).Scan(&tasks); err != nil {
@@ -84,7 +88,7 @@ func TestTaskSubmissionIdentityArbitratesConcurrentInputs(t *testing.T) {
 	replay.ID = uuid.Must(uuid.NewV7()).String()
 	replay.ProviderID = "changed-provider"
 	saved, err := repo.Create(ctx, replay, "repair-key")
-	if err != nil || saved.ID != winner.ID || saved.ProviderID != "fake" {
+	if err != nil || saved.ID != winner.ID || saved.ProviderID != "fake" || saved.Created {
 		t.Fatalf("replay lost original snapshot: task=%s provider=%s err=%v", saved.ID, saved.ProviderID, err)
 	}
 	replay.ProjectID = uuid.Must(uuid.NewV7()).String()

@@ -320,7 +320,15 @@ func run(logger *slog.Logger) error {
 	if err != nil {
 		return err
 	}
-	repairTaskPath, repairTaskHandler := orchestrationtransport.NewRepairTaskHandler(taskRouter)
+	repairTargets, err := projectapp.NewRepairTargets(projectRepository)
+	if err != nil {
+		return err
+	}
+	repairAdmission, err := orchestration.NewRepairAdmission(agentService, taskRouter, repairTargets)
+	if err != nil {
+		return err
+	}
+	repairTaskPath, repairTaskHandler := orchestrationtransport.NewRepairTaskHandler(repairAdmission)
 	mux.Handle(repairTaskPath, identity.Middleware(repairTaskHandler))
 
 	agentPath, agentHandler := agentv1connect.NewAgentTaskServiceHandler(agenttransport.New(agentService, taskRouter))

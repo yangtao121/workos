@@ -29,7 +29,7 @@ func (f *repairFixture) ClearRepairCompleted(_ context.Context, id string) error
 	f.cleared = append(f.cleared, id)
 	return nil
 }
-func (f *repairFixture) SubmitRepair(context.Context, string, string, string, string, string) (string, string, error) {
+func (f *repairFixture) SubmitRepair(context.Context, string, string, string, string, string, string) (string, string, error) {
 	return "", "", nil
 }
 func (f *repairFixture) TaskState(_ context.Context, row RepairCompletedRow) (RepairTaskState, error) {

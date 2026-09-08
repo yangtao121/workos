@@ -88,8 +88,13 @@ func New(repository ports.Repository, generator ids.Generator) *Service {
 }
 
 func (s *Service) Submit(ctx context.Context, input SubmitInput) (domain.Task, error) {
+	result, err := s.SubmitWithResult(ctx, input)
+	return result.Task, err
+}
+
+func (s *Service) SubmitWithResult(ctx context.Context, input SubmitInput) (ports.TaskSubmission, error) {
 	if input.OwnerUserID == "" || input.IdempotencyKey == "" || input.ProviderID == "" || len(input.Payload) == 0 {
-		return domain.Task{}, domain.ErrInvalid
+		return ports.TaskSubmission{}, domain.ErrInvalid
 	}
 	now := s.now()
 	task := domain.Task{

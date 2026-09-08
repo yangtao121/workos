@@ -73,9 +73,9 @@ func (f *fakeAgents) GetByIdempotency(context.Context, string, string) (agentdom
 	return *f.existing, nil
 }
 
-func (f *fakeAgents) Submit(_ context.Context, input agentapp.SubmitInput) (agentdomain.Task, error) {
+func (f *fakeAgents) SubmitWithResult(_ context.Context, input agentapp.SubmitInput) (agentports.TaskSubmission, error) {
 	f.submitted = append(f.submitted, input)
-	return agentdomain.Task{ID: "new-task", ProviderID: input.ProviderID}, nil
+	return agentports.TaskSubmission{Task: agentdomain.Task{ID: "new-task", ProviderID: input.ProviderID, OwnerUserID: input.OwnerUserID, ProjectID: input.ProjectID, Input: input.Payload}, Created: true}, nil
 }
 
 func (f *fakeAgents) SubmitForApp(_ context.Context, input agentapp.AppSubmitInput) (agentdomain.Task, error) {

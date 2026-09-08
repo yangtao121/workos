@@ -32,3 +32,17 @@ func TestPublicSubmissionRejectsPrivateIncidentLink(t *testing.T) {
 		t.Fatalf("public incident provenance accepted: %v calls=%d", err, submitter.calls)
 	}
 }
+
+func TestPublicSubmissionRejectsPrivateRepairTarget(t *testing.T) {
+	submitter := &recordingSubmitter{}
+	_, handler := agentv1connect.NewAgentTaskServiceHandler(New(nil, submitter))
+	server := httptest.NewServer(identity.Middleware(handler))
+	defer server.Close()
+	client := agentv1connect.NewAgentTaskServiceClient(server.Client(), server.URL)
+	request := connect.NewRequest(&agentv1.SubmitTaskRequest{IdempotencyKey: "spoofed-target", Input: &agentv1.AgentTaskInput{Goal: "repair", RepairTarget: &agentv1.RepairTarget{AppInstanceId: "0198d7ea-2110-7c42-b659-c5e4d73bc331"}}})
+	request.Header().Set(identity.UserHeader, "owner")
+	request.Header().Set(identity.DeviceHeader, "device")
+	if _, err := client.SubmitTask(context.Background(), request); connect.CodeOf(err) != connect.CodeInvalidArgument || submitter.calls != 0 {
+		t.Fatalf("public repair target accepted: %v calls=%d", err, submitter.calls)
+	}
+}

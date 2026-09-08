@@ -34,8 +34,8 @@ type stubRepository struct {
 	usage ports.DailyUsage
 }
 
-func (s *stubRepository) Create(context.Context, domain.Task, string) (domain.Task, error) {
-	return domain.Task{}, nil
+func (s *stubRepository) Create(context.Context, domain.Task, string) (ports.TaskSubmission, error) {
+	return ports.TaskSubmission{}, nil
 }
 
 func (s *stubRepository) CreateForApp(context.Context, domain.Task, ports.AppTaskProvenance, ports.PolicySnapshot, ports.DailyAllowance) (domain.Task, error) {

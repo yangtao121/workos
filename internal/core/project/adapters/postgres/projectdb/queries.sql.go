@@ -886,7 +886,7 @@ func (q *Queries) ReconcileArchivedProjects(ctx context.Context, arg ReconcileAr
 }
 
 const resolveActiveInstallation = `-- name: ResolveActiveInstallation :one
-SELECT i.id, i.owner_user_id, i.project_id, i.app_id, i.version, i.manifest_digest, i.granted_permissions, i.grant_revision, i.installed_at, i.uninstalled_at
+SELECT i.id, i.owner_user_id, i.project_id, i.app_id, i.version, i.manifest_digest, i.granted_permissions, i.grant_revision, i.installed_at, i.uninstalled_at, p.revision AS project_revision
 FROM workos_core.project_app_installations i
 JOIN workos_core.projects p
   ON p.id = i.project_id AND p.owner_user_id = i.owner_user_id AND p.archived_at IS NULL
@@ -913,6 +913,7 @@ type ResolveActiveInstallationRow struct {
 	GrantRevision      int64              `json:"grant_revision"`
 	InstalledAt        pgtype.Timestamptz `json:"installed_at"`
 	UninstalledAt      pgtype.Timestamptz `json:"uninstalled_at"`
+	ProjectRevision    int64              `json:"project_revision"`
 }
 
 func (q *Queries) ResolveActiveInstallation(ctx context.Context, arg ResolveActiveInstallationParams) (ResolveActiveInstallationRow, error) {
@@ -929,6 +930,7 @@ func (q *Queries) ResolveActiveInstallation(ctx context.Context, arg ResolveActi
 		&i.GrantRevision,
 		&i.InstalledAt,
 		&i.UninstalledAt,
+		&i.ProjectRevision,
 	)
 	return i, err
 }

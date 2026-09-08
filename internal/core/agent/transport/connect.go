@@ -39,7 +39,7 @@ func (h *Handler) SubmitTask(ctx context.Context, req *connect.Request[agentv1.S
 		return nil, connect.NewError(connect.CodeUnauthenticated, err)
 	}
 	input := req.Msg.GetInput()
-	if input == nil || input.GetTargetScope() == nil || strings.TrimSpace(input.GetGoal()) == "" || input.GetIncidentId() != "" {
+	if input == nil || input.GetTargetScope() == nil || strings.TrimSpace(input.GetGoal()) == "" || input.GetIncidentId() != "" || input.GetRepairTarget() != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, domain.ErrInvalid)
 	}
 	projectID := ""

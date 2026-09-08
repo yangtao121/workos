@@ -1066,3 +1066,9 @@ test-task-submission-identity: e2e-image
 		-e WORKOS_E2E_OUTPUT_DIR=/tmp/workos-playwright-results \
 		-v $(CURDIR):$(WORKDIR) -w $(WORKDIR)/apps/desktop-web \
 		$(E2E_IMAGE) node node_modules/@playwright/test/cli.js test task-submission-identity.spec.ts --workers=1
+
+# Private Reliability → Core repair admission and immutable target replay.
+.PHONY: test-repair-target
+test-repair-target:
+	docker compose up -d --build postgres bootstrap workos-core harness-host reliability-host workos-gateway
+	$(GO_HOST_RUN) go test -tags='integration repairtarget' -count=1 -run '^TestRepairTarget' -v ./tests/integration

@@ -94,14 +94,14 @@ func streamProjectIDString(projectID pgtype.UUID) string {
 	return projectID.String()
 }
 
-func (r *Repository) Create(ctx context.Context, task domain.Task, idempotencyKey string) (domain.Task, error) {
+func (r *Repository) Create(ctx context.Context, task domain.Task, idempotencyKey string) (ports.TaskSubmission, error) {
 	projectID, err := nullableUUID(task.ProjectID)
 	if err != nil {
-		return domain.Task{}, domain.ErrInvalid
+		return ports.TaskSubmission{}, domain.ErrInvalid
 	}
 	tx, err := r.pool.Begin(ctx)
 	if err != nil {
-		return domain.Task{}, fmt.Errorf("begin create task: %w", err)
+		return ports.TaskSubmission{}, fmt.Errorf("begin create task: %w", err)
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck
 	queries := r.queries.WithTx(tx)
@@ -115,28 +115,28 @@ func (r *Repository) Create(ctx context.Context, task domain.Task, idempotencyKe
 		BudgetMaxOutputTokens: pgtype.Int8{}, BudgetMaxRuntimeSeconds: pgtype.Int8{},
 	})
 	if err != nil {
-		return domain.Task{}, fmt.Errorf("insert task: %w", err)
+		return ports.TaskSubmission{}, fmt.Errorf("insert task: %w", err)
 	}
 	if rows == 0 {
 		if err := tx.Commit(ctx); err != nil {
-			return domain.Task{}, fmt.Errorf("commit idempotent task: %w", err)
+			return ports.TaskSubmission{}, fmt.Errorf("commit idempotent task: %w", err)
 		}
 		existing, err := r.GetByIdempotency(ctx, task.OwnerUserID, idempotencyKey)
 		if err != nil {
-			return domain.Task{}, err
+			return ports.TaskSubmission{}, err
 		}
 		if !existing.MatchesSubmission(task.OwnerUserID, task.ProjectID, task.Input) {
-			return domain.Task{}, domain.ErrIdempotencyConflict
+			return ports.TaskSubmission{}, domain.ErrIdempotencyConflict
 		}
-		return existing, nil
+		return ports.TaskSubmission{Task: existing}, nil
 	}
 	payload, err := json.Marshal(map[string]string{"taskId": task.ID})
 	if err != nil {
-		return domain.Task{}, fmt.Errorf("encode task request: %w", err)
+		return ports.TaskSubmission{}, fmt.Errorf("encode task request: %w", err)
 	}
 	outboxID, err := uuid.NewV7()
 	if err != nil {
-		return domain.Task{}, fmt.Errorf("generate task outbox id: %w", err)
+		return ports.TaskSubmission{}, fmt.Errorf("generate task outbox id: %w", err)
 	}
 	if err := queries.InsertTaskOutbox(ctx, agentdb.InsertTaskOutboxParams{
 		ID: outboxID.String(), AggregateID: task.ID, Payload: payload, OccurredAt: timestamp(task.CreatedAt),
@@ -145,15 +145,15 @@ func (r *Repository) Create(ctx context.Context, task domain.Task, idempotencyKe
 		// PostgreSQL failure here must carry the ErrStoreUnavailable
 		// sentinel so transports answer sanitized Unavailable, never a raw
 		// Internal with database detail.
-		return domain.Task{}, storeError("append task outbox", err)
+		return ports.TaskSubmission{}, storeError("append task outbox", err)
 	}
 	if err := insertTaskCredentialSnapshot(ctx, queries, task); err != nil {
-		return domain.Task{}, err
+		return ports.TaskSubmission{}, err
 	}
 	if err := tx.Commit(ctx); err != nil {
-		return domain.Task{}, fmt.Errorf("commit task: %w", err)
+		return ports.TaskSubmission{}, fmt.Errorf("commit task: %w", err)
 	}
-	return task, nil
+	return ports.TaskSubmission{Task: task, Created: true}, nil
 }
 
 func (r *Repository) Get(ctx context.Context, ownerID, taskID string) (domain.Task, error) {

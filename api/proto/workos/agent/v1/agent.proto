@@ -38,6 +38,19 @@ message AgentTaskInput {
   AgentBudget budget = 7;
   string parent_task_id = 8;
   string incident_id = 9;
+  // Core-derived immutable target for a private repair admission. Public
+  // SubmitTask rejects both incident_id and repair_target.
+  RepairTarget repair_target = 10;
+}
+
+// One Project-owned installation and revision read from the same snapshot.
+// This is provenance for candidate validation, not a capability or grant.
+message RepairTarget {
+  string app_instance_id = 1;
+  string app_id = 2;
+  string version = 3;
+  string manifest_digest = 4;
+  int64 project_revision = 5;
 }
 
 enum AgentTaskState {
@@ -233,6 +246,8 @@ message CreateRepairTaskRequest {
   // Deterministic orchestrator key derived from the incident id: the Agent
   // idempotency mapping replays the same task on retry.
   string idempotency_key = 4;
+  // The incident's UUIDv7 installation, resolved by Core in this project.
+  string app_instance_id = 5;
 }
 
 message CreateRepairTaskResponse {

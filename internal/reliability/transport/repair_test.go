@@ -30,9 +30,9 @@ func TestRepairTaskStateRequiresExactProvenance(t *testing.T) {
 	server := httptest.NewServer(handler)
 	defer server.Close()
 	client := NewRepairSubmitterClient(server.URL, "device")
-	row := application.RepairCompletedRow{RepairCandidate: application.RepairCandidate{OwnerUserID: "owner", ProjectID: "project", IncidentID: "incident"}, TaskID: "task"}
+	row := application.RepairCompletedRow{RepairCandidate: application.RepairCandidate{OwnerUserID: "owner", ProjectID: "project", IncidentID: "incident", AppInstanceID: "installation"}, TaskID: "task"}
 	fresh := func() *agentv1.AgentTask {
-		return &agentv1.AgentTask{Id: "task", OwnerUserId: "owner", State: agentv1.AgentTaskState_AGENT_TASK_STATE_COMPLETED, Input: &agentv1.AgentTaskInput{IncidentId: "incident", TargetScope: &agentv1.TargetScope{Scope: &agentv1.TargetScope_ProjectId{ProjectId: "project"}}}}
+		return &agentv1.AgentTask{Id: "task", OwnerUserId: "owner", State: agentv1.AgentTaskState_AGENT_TASK_STATE_COMPLETED, Input: &agentv1.AgentTaskInput{IncidentId: "incident", RepairTarget: &agentv1.RepairTarget{AppInstanceId: "installation"}, TargetScope: &agentv1.TargetScope{Scope: &agentv1.TargetScope_ProjectId{ProjectId: "project"}}}}
 	}
 	for _, tc := range []struct {
 		state agentv1.AgentTaskState
@@ -62,6 +62,8 @@ func TestRepairTaskStateRequiresExactProvenance(t *testing.T) {
 			task.Input.TargetScope = &agentv1.TargetScope{Scope: &agentv1.TargetScope_ProjectId{ProjectId: "other"}}
 		}},
 		{"incident", func(task *agentv1.AgentTask) { task.Input.IncidentId = "other" }},
+		{"installation", func(task *agentv1.AgentTask) { task.Input.RepairTarget.AppInstanceId = "other" }},
+		{"missing target", func(task *agentv1.AgentTask) { task.Input.RepairTarget = nil }},
 		{"missing input", func(task *agentv1.AgentTask) { task.Input = nil }},
 		{"unknown state", func(task *agentv1.AgentTask) { task.State = agentv1.AgentTaskState_AGENT_TASK_STATE_UNSPECIFIED }},
 	} {

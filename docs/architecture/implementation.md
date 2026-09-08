@@ -1389,5 +1389,10 @@ Generic CLI 提供，现有 streaming-only 能力声明不扩大。Recovery 路�
 输入；仅键相同不足以返回旧任务。比较忽略 JSON 空格和对象键顺序，保留数组顺序与精确
 数字，避免 JSONB 重排误拒绝或 float64 精度损失误接受。Provider/credential 是首次入队的
 服务端快照，不参与客户端请求匹配。不同输入返回 Aborted，只有首个 task/outbox 落库。
-公开 SubmitTask 拒绝私有 incident_id，Reliability 的私有 repair admission 保留该字段，
-且键冲突同样返回 Aborted。故障安装的固定版本快照、Recovery 路由和 Build/Test 尚待接入。
+公开 SubmitTask 拒绝私有 incident_id / repair_target，Reliability 的私有 repair admission
+携带 incident/project/installation，且键冲突同样返回 Aborted。Core 从 Project 自有表的一次
+SQL snapshot 读取活动安装的 App/version/digest 与未归档项目 revision，写入不可变任务
+输入（ADR-0022）。重放比较调用者事实并保留首次快照，不重新解析升级或归档后的安装；
+并发创建返回明确 Created 标识，queued 重放不会被误报为新建。Reliability 读取完成任务时
+同时核对 installation 关联。快照描述入队时安装，不推断原故障 workload 的版本。
+Recovery 路由和 Build/Test 尚待接入。

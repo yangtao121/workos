@@ -252,8 +252,14 @@ type DecideApprovalCommand struct {
 	Now            time.Time
 }
 
+// TaskSubmission reports the database's actual create/replay ruling.
+type TaskSubmission struct {
+	domain.Task
+	Created bool
+}
+
 type Repository interface {
-	Create(context.Context, domain.Task, string) (domain.Task, error)
+	Create(context.Context, domain.Task, string) (TaskSubmission, error)
 	// CreateForApp inserts the task, the App provenance mapping, the guarded
 	// daily quota reservation, and the task outbox row in one transaction
 	// (policy mode allow). A concurrent same-key mapping winner replays or

@@ -13,7 +13,7 @@ import (
 )
 
 type AgentTasks interface {
-	Submit(context.Context, agentapp.SubmitInput) (agentdomain.Task, error)
+	SubmitWithResult(context.Context, agentapp.SubmitInput) (agentports.TaskSubmission, error)
 	GetByIdempotency(context.Context, string, string) (agentdomain.Task, error)
 	// App bridge surface: durable (owner, app instance, client key)
 	// adjudication and provenance-bound reads live in the Agent module.
@@ -96,15 +96,20 @@ func (r *TaskRouter) resolveCredentialSnapshot(ctx context.Context, ownerUserID,
 }
 
 func (r *TaskRouter) Submit(ctx context.Context, input agentapp.SubmitInput) (agentdomain.Task, error) {
+	result, err := r.SubmitWithResult(ctx, input)
+	return result.Task, err
+}
+
+func (r *TaskRouter) SubmitWithResult(ctx context.Context, input agentapp.SubmitInput) (agentports.TaskSubmission, error) {
 	existing, err := r.agents.GetByIdempotency(ctx, input.OwnerUserID, input.IdempotencyKey)
 	if err == nil {
 		if !existing.MatchesSubmission(input.OwnerUserID, input.ProjectID, input.Payload) {
-			return agentdomain.Task{}, agentdomain.ErrIdempotencyConflict
+			return agentports.TaskSubmission{}, agentdomain.ErrIdempotencyConflict
 		}
-		return existing, nil
+		return agentports.TaskSubmission{Task: existing}, nil
 	}
 	if !errors.Is(err, agentdomain.ErrNotFound) {
-		return agentdomain.Task{}, err
+		return agentports.TaskSubmission{}, err
 	}
 
 	providerID := r.defaultProvider
@@ -112,11 +117,11 @@ func (r *TaskRouter) Submit(ctx context.Context, input agentapp.SubmitInput) (ag
 		project, getErr := r.projects.Get(ctx, input.OwnerUserID, input.ProjectID)
 		switch {
 		case errors.Is(getErr, projectdomain.ErrNotFound), errors.Is(getErr, projectdomain.ErrInvalid):
-			return agentdomain.Task{}, agentdomain.ErrProjectDenied
+			return agentports.TaskSubmission{}, agentdomain.ErrProjectDenied
 		case getErr != nil:
-			return agentdomain.Task{}, fmt.Errorf("resolve project for task routing: %w", getErr)
+			return agentports.TaskSubmission{}, fmt.Errorf("resolve project for task routing: %w", getErr)
 		case project.ArchivedAt != nil:
-			return agentdomain.Task{}, agentdomain.ErrProjectDenied
+			return agentports.TaskSubmission{}, agentdomain.ErrProjectDenied
 		case project.HarnessBinding != nil && strings.TrimSpace(project.HarnessBinding.ProviderID) != "":
 			providerID = strings.TrimSpace(project.HarnessBinding.ProviderID)
 		}
@@ -131,17 +136,17 @@ func (r *TaskRouter) Submit(ctx context.Context, input agentapp.SubmitInput) (ag
 		if input.ProjectID == "" {
 			// Project review artifacts are project-scoped facts; global
 			// tasks cannot request them in this slice.
-			return agentdomain.Task{}, agentdomain.ErrInvalid
+			return agentports.TaskSubmission{}, agentdomain.ErrInvalid
 		}
 		capabilities, capErr := r.providers.Capabilities(ctx, providerID)
 		if errors.Is(capErr, agentdomain.ErrNotFound) {
-			return agentdomain.Task{}, agentdomain.ErrProviderCapabilityMissing
+			return agentports.TaskSubmission{}, agentdomain.ErrProviderCapabilityMissing
 		}
 		if capErr != nil {
-			return agentdomain.Task{}, fmt.Errorf("resolve provider artifact capabilities: %w", capErr)
+			return agentports.TaskSubmission{}, fmt.Errorf("resolve provider artifact capabilities: %w", capErr)
 		}
 		if !capabilities.SupportsArtifactTypes(input.OutputArtifactTypes) {
-			return agentdomain.Task{}, agentdomain.ErrProviderCapabilityMissing
+			return agentports.TaskSubmission{}, agentdomain.ErrProviderCapabilityMissing
 		}
 	}
 
@@ -153,7 +158,7 @@ func (r *TaskRouter) Submit(ctx context.Context, input agentapp.SubmitInput) (ag
 	// never falls back. Global tasks never accept project artifact context.
 	if len(input.ContextRefs) > 0 {
 		if input.ProjectID == "" {
-			return agentdomain.Task{}, agentdomain.ErrInvalid
+			return agentports.TaskSubmission{}, agentdomain.ErrInvalid
 		}
 		requestedTypes := make([]string, 0, len(input.ContextRefs))
 		for _, ref := range input.ContextRefs {
@@ -161,34 +166,34 @@ func (r *TaskRouter) Submit(ctx context.Context, input agentapp.SubmitInput) (ag
 		}
 		contextCapabilities, ctxCapErr := r.providers.Capabilities(ctx, providerID)
 		if errors.Is(ctxCapErr, agentdomain.ErrNotFound) {
-			return agentdomain.Task{}, agentdomain.ErrProviderCapabilityMissing
+			return agentports.TaskSubmission{}, agentdomain.ErrProviderCapabilityMissing
 		}
 		if ctxCapErr != nil {
-			return agentdomain.Task{}, fmt.Errorf("resolve provider context capabilities: %w", ctxCapErr)
+			return agentports.TaskSubmission{}, fmt.Errorf("resolve provider context capabilities: %w", ctxCapErr)
 		}
 		if !contextCapabilities.SupportsContextRefTypes(requestedTypes) {
-			return agentdomain.Task{}, agentdomain.ErrProviderCapabilityMissing
+			return agentports.TaskSubmission{}, agentdomain.ErrProviderCapabilityMissing
 		}
 		if err := r.contexts.VerifyTaskContext(ctx, input.OwnerUserID, input.ProjectID, input.ContextRefs); err != nil {
-			return agentdomain.Task{}, err
+			return agentports.TaskSubmission{}, err
 		}
 	}
 	input.ProviderID = providerID
 	capabilities, capErr := r.providers.Capabilities(ctx, providerID)
 	if errors.Is(capErr, agentdomain.ErrNotFound) {
-		return agentdomain.Task{}, agentdomain.ErrProviderCapabilityMissing
+		return agentports.TaskSubmission{}, agentdomain.ErrProviderCapabilityMissing
 	}
 	if capErr != nil {
-		return agentdomain.Task{}, fmt.Errorf("resolve provider credential requirements: %w", capErr)
+		return agentports.TaskSubmission{}, fmt.Errorf("resolve provider credential requirements: %w", capErr)
 	}
 	snapshot, err := r.resolveCredentialSnapshot(ctx, input.OwnerUserID, providerID, capabilities)
 	if err != nil {
-		return agentdomain.Task{}, err
+		return agentports.TaskSubmission{}, err
 	}
 	if snapshot != nil {
 		input.Credential = &agentdomain.CredentialSnapshot{CredentialID: snapshot.CredentialID, Revision: snapshot.Revision, Purpose: snapshot.Purpose}
 	}
-	return r.agents.Submit(ctx, input)
+	return r.agents.SubmitWithResult(ctx, input)
 }
 
 // SubmitForApp routes one App-principal project task through the fixed
