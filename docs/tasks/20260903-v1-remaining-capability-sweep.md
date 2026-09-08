@@ -859,3 +859,45 @@ ADR/status/implementation 如实记录冷启动耗时，不宣称所有设备同
 真实 admin status 返回 active generation、pending publications=0；没有仍挂载的 gate 目录。
 再次 generate 后 132 个生成文件/README 不变（`tmp/workspace-model-generate-idempotent.log`）。
 本阶段完成；下一阶段回到 R2 的 Repair/Build/Test/候选版本交接，整个任务仍 active。
+
+### R2 部署协调修复（active，2026-09-07）
+
+依赖 4722a40，工作树干净。先修复候选启动期间故障被观察窗起点遗漏、回滚只改 Core pin
+而未启动恢复版本的问题；随后补齐 Repair 产物与 Build/Test 交接。部署故障检测覆盖从
+candidate 持久化到观察窗结束的整段时间，观察窗仍须在候选实际启动成功后完整计时。
+回滚命令与恢复 Surface 使用固定且不同的幂等键，恢复启动成功后才能记录 rolled_back。
+验收包括状态机重启/失败重试、真实 Connect 边界与 PostgreSQL 时间/安装范围；无 UI 变化。
+完整 R2 仍须 Build/Test/Registry/Canary 跨进程证据，不能因这些修复标记完成。
+
+2026-09-08 续接：宿主重启中断上轮浏览器门禁，`tmp/deployment-startup-browser.log`
+只有启动行，不能作为 PASS。已通过的 `tmp/deployment-startup-after.log` 包含 Reliability/
+Runtime race 与两项 PostgreSQL 部署测试；最后并发 replay descriptor 修复单元另见
+`tmp/deployment-version-final-unit.log`。全量检查第一轮因新增 E2E 四处缺少类型声明失败，
+已修正，等待 Docker 恢复后重新执行镜像、浏览器与全量检查。
+
+继续审查发现 Repair 轮询固定取最早四条 submitted，失败/取消任务或没有候选产物的完成任务
+会永久占住队首。此次 R2 范围增加公平轮询、失败终态收敛和 TaskID 完整交接；复用原
+repair ledger，不变更已应用 migration。验收须证明超过四条任务时后续行仍被处理，
+失败/取消不触发部署，完成交接保留 owner/project/incident/task 关联。
+
+Docker 恢复后重新启动原 postgres 容器成功，六进程恢复运行，原 volume 未删除/替换。
+Repair 轮询修复与部署回归 PASS（`tmp/repair-fairness-tests.log`）：全部 Reliability/
+Runtime surface race、部署台账锁与重启、启动期 incident 范围、九条 submitted 公平轮询
+及 terminal 清理。Connect 单元覆盖 TaskState 六种正常状态、错 owner/task/project/
+incident、缺少 input/task 与未知状态；application 单元验证失败任务不部署、交接失败不
+丢弃、成功交接保留 TaskID。最终镜像构建与浏览器版本门禁仍在运行。
+
+最终统一镜像构建 PASS（`tmp/deployment-repair-final-build.log`），Runtime/Reliability 已
+更新（`tmp/deployment-repair-final-deploy.log`）。浏览器第二轮发现旧测试在启动 App 后仍
+操作自动关闭的 App Library；按现有桌面流程重新打开 Library，并移除重复关闭步骤，
+没有更改 UI 行为。最终浏览器 PASS（`tmp/deployment-startup-browser3.log`，11 秒）：
+真实 Gateway/Core/Runtime 精确版本启动、错误前置条件不消费 key、回滚后旧版本重放拒绝、
+恢复版本实际页面内容、版本历史/冲突和 UI 版本切换全部通过。原静态 bundle fixture 不含
+Bridge SDK，测试仅证明版本与页面链，不将其算作 Bridge 握手或自动 Build/Test 验收。
+
+R2 协调修复检查点：`make check` PASS（`tmp/deployment-repair-final-check.log`）；
+`buf breaking --against .git#branch=main` PASS（`tmp/deployment-repair-buf-breaking.log`）；
+再次 `make generate` 后 132 个生成文件/README 不变（摘要基线
+`tmp/deployment-generated-before.json`、生成日志 `tmp/deployment-repair-generate-final.log`）。
+没有 UI 像素变化或新增 migration。本检查点完成；整个任务保持 active，下一步仍为
+Recovery Harness 安全执行边界与 Repair 候选协议、Build/Test producer/consumer 实现。

@@ -302,7 +302,7 @@ SELECT d.*, EXISTS (
     SELECT 1 FROM workos_reliability.incidents i
     WHERE i.owner_user_id = d.owner_user_id AND i.project_id = d.project_id
       AND i.app_instance_id = d.installation_id AND i.id <> d.incident_id
-      AND i.created_at >= d.canary_started_at
+      AND i.created_at >= d.created_at
 ) AS new_incident
 FROM workos_reliability.deployment_ledger d
 WHERE d.state IN ('candidate', 'starting', 'canary', 'rollback')
@@ -315,14 +315,25 @@ SET state = $2, attempts = $3, canary_started_at = $4, canary_until = $5, update
 WHERE incident_id = $1 AND state IN ('candidate', 'starting', 'canary', 'rollback');
 
 -- name: ListRepairCompleted :many
--- Submitted repair rows whose task terminal state is unknown to the
--- orchestrator; the orchestrator asks Core which ones completed.
+-- Rotate pending tasks, including failed RPCs and completed tasks whose
+-- candidate is not ready. A stalled oldest batch must not starve later rows.
+WITH selected AS (
+    SELECT l.incident_id
+    FROM workos_reliability.repair_ledger l
+    JOIN workos_reliability.incidents i ON i.id = l.incident_id
+    WHERE l.state = 'submitted'
+    ORDER BY l.updated_at, l.incident_id
+    LIMIT $1 FOR UPDATE OF l SKIP LOCKED
+), touched AS (
+    UPDATE workos_reliability.repair_ledger l
+    SET updated_at = GREATEST(l.updated_at, clock_timestamp())
+    FROM selected s WHERE l.incident_id = s.incident_id
+    RETURNING l.*
+)
 SELECT l.incident_id, l.project_id, l.task_id, i.owner_user_id, i.app_instance_id, i.summary
-FROM workos_reliability.repair_ledger l
+FROM touched l
 JOIN workos_reliability.incidents i ON i.id = l.incident_id
-WHERE l.state = 'submitted'
-ORDER BY l.created_at
-LIMIT $1;
+ORDER BY l.updated_at, l.incident_id;
 
 -- name: ClearRepairCompleted :execrows
 UPDATE workos_reliability.repair_ledger

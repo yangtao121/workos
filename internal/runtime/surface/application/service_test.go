@@ -1228,3 +1228,87 @@ func (r *fakeRepository) HasActiveSurface(_ context.Context, ownerUserID, appIns
 	}
 	return false, nil
 }
+
+func TestCreateExpectedVersionRefusesChangedInstallationBeforeLaunch(t *testing.T) {
+	repository := newFakeRepository()
+	resolver := &fakeResolver{resolved: containerResolution()}
+	workloads := &fakeWorkloads{}
+	service := newTestServiceWithWorkloads(repository, resolver, workloads)
+	command := validCommand("expected-version")
+	command.PreferredRenderer = domain.RendererWebService
+	command.ExpectedAppVersion = "2.0.0"
+	if _, err := service.Create(context.Background(), command); !errors.Is(err, domain.ErrVersionStale) {
+		t.Fatalf("changed installation accepted: %v", err)
+	}
+	if len(repository.sessions) != 0 || len(repository.requests) != 0 || workloads.ensureCalls != 0 {
+		t.Fatal("version mismatch had side effects")
+	}
+}
+
+func TestCreateVersionPreconditionIsBoundToIdempotency(t *testing.T) {
+	repository := newFakeRepository()
+	resolver := &fakeResolver{descriptor: launchDescriptor()}
+	service := newTestService(repository, resolver)
+	command := validCommand("version-replay")
+	command.ExpectedAppVersion = "1.0.0"
+	first, err := service.Create(context.Background(), command)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.Create(context.Background(), command); err != nil {
+		t.Fatal(err)
+	}
+	command.ExpectedAppVersion = ""
+	if _, err := service.Create(context.Background(), command); !errors.Is(err, domain.ErrIdempotencyConflict) {
+		t.Fatalf("precondition removed on replay: %v", err)
+	}
+	hash := repository.sessions[first.Session.ID].BridgeTokenHash
+	command.ExpectedAppVersion = "1.0.0"
+	resolver.descriptor.Version = "2.0.0"
+	if _, err := service.Create(context.Background(), command); !errors.Is(err, domain.ErrVersionStale) {
+		t.Fatalf("stale version replayed: %v", err)
+	}
+	if repository.sessions[first.Session.ID].BridgeTokenHash != hash {
+		t.Fatal("stale replay rotated credentials")
+	}
+}
+
+func TestUnpinnedCreateReplayRejectsSupersededDescriptor(t *testing.T) {
+	repository := newFakeRepository()
+	resolver := &fakeResolver{descriptor: launchDescriptor()}
+	service := newTestService(repository, resolver)
+	command := validCommand("unpinned-version-replay")
+	first, err := service.Create(context.Background(), command)
+	if err != nil {
+		t.Fatal(err)
+	}
+	hash := repository.sessions[first.Session.ID].BridgeTokenHash
+	resolver.descriptor.Version = "2.0.0"
+	if _, err := service.Create(context.Background(), command); !errors.Is(err, domain.ErrVersionStale) {
+		t.Fatalf("superseded descriptor replayed: %v", err)
+	}
+	if repository.sessions[first.Session.ID].BridgeTokenHash != hash {
+		t.Fatal("superseded replay rotated credentials")
+	}
+}
+
+func TestConcurrentCreateRejectsWinnerFromPreviousVersion(t *testing.T) {
+	repository := newFakeRepository()
+	resolver := &fakeResolver{descriptor: launchDescriptor()}
+	service := newTestService(repository, resolver)
+	command := validCommand("concurrent-version")
+	first, err := service.Create(context.Background(), command)
+	if err != nil {
+		t.Fatal(err)
+	}
+	winner := repository.sessions[first.Session.ID]
+	delete(repository.requests, testOwner+"/"+command.IdempotencyKey)
+	repository.internalWinner = &winner
+	resolver.descriptor.Version = "2.0.0"
+	if _, err := service.Create(context.Background(), command); !errors.Is(err, domain.ErrVersionStale) {
+		t.Fatalf("concurrent stale winner replayed: %v", err)
+	}
+	if repository.sessions[first.Session.ID].BridgeTokenHash != winner.BridgeTokenHash {
+		t.Fatal("concurrent loser rotated previous version credentials")
+	}
+}

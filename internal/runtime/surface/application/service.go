@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/yangtao121/workos/internal/platform/ids"
@@ -99,16 +100,17 @@ func NewWithWorkloads(repository ports.SessionRepository, resolver ports.LaunchR
 // CreateCommand is one validated-boundary create request. Owner and device
 // come exclusively from the trusted gateway identity, never the client body.
 type CreateCommand struct {
-	OwnerUserID       string
-	DeviceID          string
-	IdempotencyKey    string
-	ProjectID         string
-	AppInstanceID     string
-	DeviceClass       string
-	ViewportWidth     int32
-	ViewportHeight    int32
-	ViewportRatio     float64
-	PreferredRenderer string
+	OwnerUserID        string
+	DeviceID           string
+	IdempotencyKey     string
+	ProjectID          string
+	AppInstanceID      string
+	DeviceClass        string
+	ViewportWidth      int32
+	ViewportHeight     int32
+	ViewportRatio      float64
+	PreferredRenderer  string
+	ExpectedAppVersion string
 }
 
 // CreatedSurface is the create result: the session snapshot plus the bridge
@@ -140,7 +142,9 @@ func (s *Service) Create(ctx context.Context, command CreateCommand) (CreatedSur
 		!domain.ValidSessionUUID(command.ProjectID) || !domain.ValidSessionUUID(command.AppInstanceID) ||
 		!domain.ValidDeviceClass(command.DeviceClass) ||
 		!domain.ValidViewport(command.ViewportWidth, command.ViewportHeight, command.ViewportRatio) ||
-		!domain.ValidPreferredRenderer(command.PreferredRenderer) {
+		!domain.ValidPreferredRenderer(command.PreferredRenderer) ||
+		len(command.ExpectedAppVersion) > 64 ||
+		strings.ContainsFunc(command.ExpectedAppVersion, func(r rune) bool { return r <= 0x20 || r >= 0x7f }) {
 		return CreatedSurface{}, domain.ErrInvalid
 	}
 	// The key ruling comes first: a store outage is an Unavailable, and a
@@ -183,7 +187,7 @@ func (s *Service) Create(ctx context.Context, command CreateCommand) (CreatedSur
 		// The replay re-resolves the authoritative grant epoch: the stored
 		// snapshot alone must never authorize rotating a credential that a
 		// later SetAppGrants mutation has already superseded.
-		return s.replayBridge(ctx, command, session, resolved.GrantRevision)
+		return s.replayBridge(ctx, command, session, resolved)
 	}
 	digest := s.createDigest(command, replayCandidates[0])
 	now := s.now()
@@ -243,7 +247,7 @@ func (s *Service) Create(ctx context.Context, command CreateCommand) (CreatedSur
 	// The same epoch check guards this concurrent-replay form: if the winner
 	// persisted a different grant epoch than this request resolved, the
 	// response fails closed instead of minting a superseded-epoch credential.
-	return s.replayBridge(ctx, command, created, resolved.GrantRevision)
+	return s.replayBridge(ctx, command, created, resolved)
 }
 
 // rendererRuling decides the session renderer and the digest candidates for
@@ -284,6 +288,9 @@ func (s *Service) rendererRuling(preferred string, kind ports.LaunchKind) (strin
 // segment. The segment values are server facts: "auto:<kind>" for
 // server-selected creates, the explicit renderer for explicit ones.
 func (s *Service) createDigest(command CreateCommand, rendererSegment string) string {
+	if command.ExpectedAppVersion != "" {
+		rendererSegment += "\nexpected_version=" + command.ExpectedAppVersion
+	}
 	return domain.CreateRequestDigest(command.DeviceID, command.ProjectID, command.AppInstanceID,
 		command.DeviceClass, command.ViewportWidth, command.ViewportHeight, command.ViewportRatio, rendererSegment)
 }
@@ -304,6 +311,9 @@ func (s *Service) resolveGeneric(ctx context.Context, command CreateCommand) (po
 	}
 	if resolved.GrantRevision < 1 {
 		return ports.ResolvedLaunch{}, fmt.Errorf("resolve installed instance: %w", ports.ErrResolverCorrupt)
+	}
+	if command.ExpectedAppVersion != "" && resolved.Version != command.ExpectedAppVersion {
+		return ports.ResolvedLaunch{}, domain.ErrVersionStale
 	}
 	return resolved, nil
 }
@@ -353,9 +363,12 @@ func (s *Service) ensureWorkload(ctx context.Context, command CreateCommand, res
 // grant epoch no longer equals the session's persisted epoch fails closed
 // before any rotation (ADR-0003 §3): no token bound to the superseded epoch
 // is ever minted, and the caller must open a new surface under a new key.
-func (s *Service) replayBridge(ctx context.Context, command CreateCommand, session domain.SurfaceSession, resolvedGrantRevision int64) (CreatedSurface, error) {
-	if resolvedGrantRevision != session.InstallationGrantRevision {
+func (s *Service) replayBridge(ctx context.Context, command CreateCommand, session domain.SurfaceSession, resolved ports.ResolvedLaunch) (CreatedSurface, error) {
+	if resolved.GrantRevision != session.InstallationGrantRevision {
 		return CreatedSurface{}, domain.ErrGrantEpochStale
+	}
+	if session.Descriptor.AppID != resolved.AppID || session.Descriptor.Version != resolved.Version || session.Descriptor.ManifestDigest != resolved.ManifestDigest {
+		return CreatedSurface{}, domain.ErrVersionStale
 	}
 	result := CreatedSurface{Session: session, BridgeCapabilities: session.BridgeCapabilities}
 	now := s.now()

@@ -127,10 +127,20 @@ func TestDeploymentStartFailureRollsBackInsteadOfPromoting(t *testing.T) {
 func TestDeploymentRejectsTaskCompletionWithoutCandidate(t *testing.T) {
 	m, d := &deploymentMemory{}, &deploymentDriver{}
 	c, _ := NewDeploymentController(m, d, time.Minute)
-	if !errors.Is(c.HandleRepairCompleted(context.Background(), RepairCandidate{}), ErrDeploymentCandidateRequired) {
+	if !errors.Is(c.HandleRepairCompleted(context.Background(), RepairCompletedRow{}), ErrDeploymentCandidateRequired) {
 		t.Fatal("completion alone became a deployment")
 	}
 	if !errors.Is(c.Offer(context.Background(), DeploymentCandidate{}), ErrDeploymentCandidateRequired) || m.row != nil || len(d.calls) != 0 {
 		t.Fatal("invalid candidate had side effects")
+	}
+}
+
+func TestDeploymentStartupIncidentPreventsCanary(t *testing.T) {
+	c, m, d := deploymentFixture(t)
+	passDeployment(t, c, time.Now())
+	m.row.NewIncident = true
+	passDeployment(t, c, time.Now())
+	if m.row.State != DeploymentRollback || len(d.calls) != 1 {
+		t.Fatalf("startup incident was ignored: state=%s calls=%v", m.row.State, d.calls)
 	}
 }

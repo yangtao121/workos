@@ -1205,6 +1205,14 @@ Reliability 台账增加 candidate/starting/canary/rollback 阶段与固定 expe
 候选先持久化，再通过 Core 切换并启动 Surface，成功后才开始观察。每次协调持有该行事务锁，
 跨进程重复调用依赖固定 idempotency key，终态不再协调。启动失败或新 incident 驱动有界回滚。
 修复任务完成不再制造空目标部署；Build/Test 产物交接仍待完整软件链验收。
+故障检测从 candidate 持久化起覆盖启动和完整观察窗，按 owner/project/installation 限定，
+不再漏掉候选启动期事件。rollback 重放固定 Core 命令并以独立固定 key 启动恢复版本，
+只有活动 Surface 返回才结束；Core revision 冲突与 Runtime 失败均保持有界重试。
+CreateSurface.expected_app_version 是可选精确版本前置条件并绑定幂等摘要；版本不符
+在 workload 启动前拒绝，所有 create 重放还核对持久 descriptor 与当前 Registry 版本。
+Repair submitted 轮询按 updated_at/incident ID 选取并原子更新时间，失败 RPC 或未就绪候选
+不会长期占住最早四条。Core TaskState 校验 owner/project/incident/task，失败或取消则
+终结 repair ledger；完成任务将 TaskID 原样交给后续候选处理器，不把完成本身当作候选。
 
 ## 2026-09-06 桌面与知识修复
 

@@ -338,8 +338,12 @@ type CreateSurfaceRequest struct {
 	Viewport          *Viewport              `protobuf:"bytes,4,opt,name=viewport,proto3" json:"viewport,omitempty"`
 	PreferredRenderer SurfaceRenderer        `protobuf:"varint,5,opt,name=preferred_renderer,json=preferredRenderer,proto3,enum=workos.surface.v1.SurfaceRenderer" json:"preferred_renderer,omitempty"`
 	IdempotencyKey    string                 `protobuf:"bytes,6,opt,name=idempotency_key,json=idempotencyKey,proto3" json:"idempotency_key,omitempty"`
-	unknownFields     protoimpl.UnknownFields
-	sizeCache         protoimpl.SizeCache
+	// Optional exact Registry version precondition. Deployment and recovery
+	// launches use it to refuse a concurrently changed installation before
+	// starting a workload. Empty means the current pinned version.
+	ExpectedAppVersion string `protobuf:"bytes,7,opt,name=expected_app_version,json=expectedAppVersion,proto3" json:"expected_app_version,omitempty"`
+	unknownFields      protoimpl.UnknownFields
+	sizeCache          protoimpl.SizeCache
 }
 
 func (x *CreateSurfaceRequest) Reset() {
@@ -410,6 +414,13 @@ func (x *CreateSurfaceRequest) GetPreferredRenderer() SurfaceRenderer {
 func (x *CreateSurfaceRequest) GetIdempotencyKey() string {
 	if x != nil {
 		return x.IdempotencyKey
+	}
+	return ""
+}
+
+func (x *CreateSurfaceRequest) GetExpectedAppVersion() string {
+	if x != nil {
+		return x.ExpectedAppVersion
 	}
 	return ""
 }
@@ -565,7 +576,7 @@ const file_workos_surface_v1_surface_proto_rawDesc = "" +
 	" \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x129\n" +
 	"\n" +
 	"expires_at\x18\v \x01(\v2\x1a.google.protobuf.TimestampR\texpiresAt\x12/\n" +
-	"\x13bridge_capabilities\x18\f \x03(\tR\x12bridgeCapabilities\"\xd5\x02\n" +
+	"\x13bridge_capabilities\x18\f \x03(\tR\x12bridgeCapabilities\"\x87\x03\n" +
 	"\x14CreateSurfaceRequest\x12&\n" +
 	"\x0fapp_instance_id\x18\x01 \x01(\tR\rappInstanceId\x12\x1d\n" +
 	"\n" +
@@ -573,7 +584,8 @@ const file_workos_surface_v1_surface_proto_rawDesc = "" +
 	"\fdevice_class\x18\x03 \x01(\x0e2\x1e.workos.surface.v1.DeviceClassR\vdeviceClass\x127\n" +
 	"\bviewport\x18\x04 \x01(\v2\x1b.workos.surface.v1.ViewportR\bviewport\x12Q\n" +
 	"\x12preferred_renderer\x18\x05 \x01(\x0e2\".workos.surface.v1.SurfaceRendererR\x11preferredRenderer\x12'\n" +
-	"\x0fidempotency_key\x18\x06 \x01(\tR\x0eidempotencyKey\"C\n" +
+	"\x0fidempotency_key\x18\x06 \x01(\tR\x0eidempotencyKey\x120\n" +
+	"\x14expected_app_version\x18\a \x01(\tR\x12expectedAppVersion\"C\n" +
 	"\x13CloseSurfaceRequest\x12,\n" +
 	"\x12surface_session_id\x18\x01 \x01(\tR\x10surfaceSessionId\"\x16\n" +
 	"\x14CloseSurfaceResponse\"T\n" +

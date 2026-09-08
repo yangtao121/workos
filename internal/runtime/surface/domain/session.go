@@ -16,7 +16,8 @@ import (
 
 var (
 	// ErrInvalid marks a request that violates the surface grammar.
-	ErrInvalid = errors.New("surface request is invalid")
+	ErrInvalid      = errors.New("surface request is invalid")
+	ErrVersionStale = errors.New("installed app version changed")
 	// ErrNotFound marks an unknown, foreign, closed, or expired session.
 	ErrNotFound = errors.New("surface session is not available")
 	// ErrIdempotencyConflict marks a create key consumed by a different

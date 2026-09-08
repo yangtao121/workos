@@ -953,12 +953,23 @@ func (q *Queries) ListRepairCandidates(ctx context.Context, limit int32) ([]List
 }
 
 const listRepairCompleted = `-- name: ListRepairCompleted :many
+WITH selected AS (
+    SELECT l.incident_id
+    FROM workos_reliability.repair_ledger l
+    JOIN workos_reliability.incidents i ON i.id = l.incident_id
+    WHERE l.state = 'submitted'
+    ORDER BY l.updated_at, l.incident_id
+    LIMIT $1 FOR UPDATE OF l SKIP LOCKED
+), touched AS (
+    UPDATE workos_reliability.repair_ledger l
+    SET updated_at = GREATEST(l.updated_at, clock_timestamp())
+    FROM selected s WHERE l.incident_id = s.incident_id
+    RETURNING l.incident_id, l.project_id, l.task_id, l.state, l.attempts, l.created_at, l.updated_at
+)
 SELECT l.incident_id, l.project_id, l.task_id, i.owner_user_id, i.app_instance_id, i.summary
-FROM workos_reliability.repair_ledger l
+FROM touched l
 JOIN workos_reliability.incidents i ON i.id = l.incident_id
-WHERE l.state = 'submitted'
-ORDER BY l.created_at
-LIMIT $1
+ORDER BY l.updated_at, l.incident_id
 `
 
 type ListRepairCompletedRow struct {
@@ -970,8 +981,8 @@ type ListRepairCompletedRow struct {
 	Summary       string `json:"summary"`
 }
 
-// Submitted repair rows whose task terminal state is unknown to the
-// orchestrator; the orchestrator asks Core which ones completed.
+// Rotate pending tasks, including failed RPCs and completed tasks whose
+// candidate is not ready. A stalled oldest batch must not starve later rows.
 func (q *Queries) ListRepairCompleted(ctx context.Context, limit int32) ([]ListRepairCompletedRow, error) {
 	rows, err := q.db.Query(ctx, listRepairCompleted, limit)
 	if err != nil {
@@ -1033,7 +1044,7 @@ SELECT d.incident_id, d.owner_user_id, d.project_id, d.installation_id, d.target
     SELECT 1 FROM workos_reliability.incidents i
     WHERE i.owner_user_id = d.owner_user_id AND i.project_id = d.project_id
       AND i.app_instance_id = d.installation_id AND i.id <> d.incident_id
-      AND i.created_at >= d.canary_started_at
+      AND i.created_at >= d.created_at
 ) AS new_incident
 FROM workos_reliability.deployment_ledger d
 WHERE d.state IN ('candidate', 'starting', 'canary', 'rollback')

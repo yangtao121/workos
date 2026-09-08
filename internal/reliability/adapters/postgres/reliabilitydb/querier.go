@@ -56,8 +56,8 @@ type Querier interface {
 	// supervision cadence resolves incidents within seconds, so the lifecycle
 	// window cannot be the repair trigger. The ledger row is the audit record.
 	ListRepairCandidates(ctx context.Context, limit int32) ([]ListRepairCandidatesRow, error)
-	// Submitted repair rows whose task terminal state is unknown to the
-	// orchestrator; the orchestrator asks Core which ones completed.
+	// Rotate pending tasks, including failed RPCs and completed tasks whose
+	// candidate is not ready. A stalled oldest batch must not starve later rows.
 	ListRepairCompleted(ctx context.Context, limit int32) ([]ListRepairCompletedRow, error)
 	LoadSupervisorProgress(ctx context.Context, workloadID string) (WorkosReliabilitySupervisorWorkload, error)
 	LockPendingDeployments(ctx context.Context, limit int32) ([]LockPendingDeploymentsRow, error)

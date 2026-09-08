@@ -15,6 +15,13 @@ expected revision 均来自持久记录，不在重试时改写。Core 的 revis
 台账终态不再进入协调循环；候选/回滚失败有界重试。原 observation-only canary 保留记录并标记
 failed，不冒充实际部署证据。修复任务完成本身不是候选，完整 Build/Test 产物交接仍是验收必需项。
 
+故障检测覆盖 candidate 创建后的启动与观察阶段；完整观察窗依然从 Surface 成功启动后计时。
+回滚成功要求 Core 恢复 previous pin，并由 Runtime 启动该精确版本的活动 Surface；
+两条命令各用稳定幂等键。CreateSurface 的可选 expected_app_version 前置条件参与
+幂等摘要，防止重试时用户已切换的安装被当作候选或恢复版本；过期/关闭的重放不算启动成功。
+Repair 轮询按最后查询时间轮转并持久化顺序；失败/取消任务退出 submitted，成功交接
+必须保留 TaskID 并验证 Core 的 owner/project/incident 关联，候选尚未就绪的任务继续轮转。
+
 ## 桌面与契约
 
 保留自由窗口桌面和现有 responsive 状态模型；统一深色控件、图标、工作区几何及入口注册。

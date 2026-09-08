@@ -46,16 +46,17 @@ func (h *Handler) CreateSurface(ctx context.Context, req *connect.Request[surfac
 		return nil, connect.NewError(connect.CodeInvalidArgument, err)
 	}
 	created, err := h.service.Create(ctx, application.CreateCommand{
-		OwnerUserID:       id.UserID,
-		DeviceID:          id.DeviceID,
-		IdempotencyKey:    req.Msg.GetIdempotencyKey(),
-		ProjectID:         req.Msg.GetProjectId(),
-		AppInstanceID:     req.Msg.GetAppInstanceId(),
-		DeviceClass:       deviceClassFromProto(req.Msg.GetDeviceClass()),
-		ViewportWidth:     width,
-		ViewportHeight:    height,
-		ViewportRatio:     ratio,
-		PreferredRenderer: renderer,
+		OwnerUserID:        id.UserID,
+		DeviceID:           id.DeviceID,
+		IdempotencyKey:     req.Msg.GetIdempotencyKey(),
+		ProjectID:          req.Msg.GetProjectId(),
+		AppInstanceID:      req.Msg.GetAppInstanceId(),
+		DeviceClass:        deviceClassFromProto(req.Msg.GetDeviceClass()),
+		ViewportWidth:      width,
+		ViewportHeight:     height,
+		ViewportRatio:      ratio,
+		PreferredRenderer:  renderer,
+		ExpectedAppVersion: req.Msg.GetExpectedAppVersion(),
 	})
 	if err != nil {
 		return nil, mapError(err)
@@ -157,7 +158,7 @@ func mapError(err error) error {
 		return connect.NewError(connect.CodeNotFound, errors.New("surface session or installed app is not available"))
 	case errors.Is(err, domain.ErrIdempotencyConflict):
 		return connect.NewError(connect.CodeAborted, errors.New("idempotency key was already used for a different request"))
-	case errors.Is(err, domain.ErrGrantEpochStale):
+	case errors.Is(err, domain.ErrGrantEpochStale), errors.Is(err, domain.ErrVersionStale):
 		// ADR-0003 §3: the caller must reopen with a new create key; the
 		// verdict is fixed and content-free.
 		return connect.NewError(connect.CodeFailedPrecondition, errors.New("surface grants changed; create a new surface with a new idempotency key"))

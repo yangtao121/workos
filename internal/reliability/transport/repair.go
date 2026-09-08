@@ -6,6 +6,8 @@ package transport
 
 import (
 	"context"
+	"errors"
+	"github.com/yangtao121/workos/internal/reliability/application"
 
 	"connectrpc.com/connect"
 
@@ -44,7 +46,7 @@ func (c *RepairSubmitterClient) SubmitRepair(ctx context.Context, ownerUserID, p
 		IdempotencyKey:   idempotencyKey,
 	})
 	request.Header().Set(identity.UserHeader, ownerUserID)
-	request.Header().Set(identity.DeviceHeader, "reliability-host-repair")
+	request.Header().Set(identity.DeviceHeader, c.deviceID)
 	response, err := c.client.CreateRepairTask(ctx, request)
 	if err != nil {
 		return "", "", err
@@ -52,15 +54,27 @@ func (c *RepairSubmitterClient) SubmitRepair(ctx context.Context, ownerUserID, p
 	return response.Msg.GetTaskId(), response.Msg.GetProviderId(), nil
 }
 
-// RepairTaskCompleted reports whether one repair task reached the terminal
-// COMPLETED state on Core (ADR-0016 §5-6 hand-off).
-func (c *RepairSubmitterClient) RepairTaskCompleted(ctx context.Context, ownerUserID, taskID string) (bool, error) {
-	request := connect.NewRequest(&agentv1.GetTaskRequest{TaskId: taskID})
-	request.Header().Set(identity.UserHeader, ownerUserID)
+// TaskState refuses a task that is not bound to this exact repair incident.
+func (c *RepairSubmitterClient) TaskState(ctx context.Context, row application.RepairCompletedRow) (application.RepairTaskState, error) {
+	request := connect.NewRequest(&agentv1.GetTaskRequest{TaskId: row.TaskID})
+	request.Header().Set(identity.UserHeader, row.OwnerUserID)
 	request.Header().Set(identity.DeviceHeader, c.deviceID)
 	response, err := c.tasks.GetTask(ctx, request)
 	if err != nil {
-		return false, err
+		return application.RepairTaskPending, err
 	}
-	return response.Msg.GetTask().GetState() == agentv1.AgentTaskState_AGENT_TASK_STATE_COMPLETED, nil
+	task := response.Msg.GetTask()
+	if task.GetId() != row.TaskID || task.GetOwnerUserId() != row.OwnerUserID || task.GetInput().GetTargetScope().GetProjectId() != row.ProjectID || task.GetInput().GetIncidentId() != row.IncidentID {
+		return application.RepairTaskPending, connect.NewError(connect.CodeInternal, errors.New("repair task provenance is invalid"))
+	}
+	switch task.GetState() {
+	case agentv1.AgentTaskState_AGENT_TASK_STATE_QUEUED, agentv1.AgentTaskState_AGENT_TASK_STATE_RUNNING, agentv1.AgentTaskState_AGENT_TASK_STATE_WAITING:
+		return application.RepairTaskPending, nil
+	case agentv1.AgentTaskState_AGENT_TASK_STATE_COMPLETED:
+		return application.RepairTaskCompleted, nil
+	case agentv1.AgentTaskState_AGENT_TASK_STATE_FAILED, agentv1.AgentTaskState_AGENT_TASK_STATE_CANCELLED:
+		return application.RepairTaskFailed, nil
+	default:
+		return application.RepairTaskPending, connect.NewError(connect.CodeInternal, errors.New("repair task state is invalid"))
+	}
 }

@@ -2,6 +2,8 @@ package transport
 
 import (
 	"context"
+	"errors"
+	"time"
 
 	"connectrpc.com/connect"
 	appv1 "github.com/yangtao121/workos/gen/go/workos/app/v1"
@@ -40,15 +42,26 @@ func (c *DeploymentDriverClient) Transition(ctx context.Context, candidate appli
 }
 
 func (c *DeploymentDriverClient) StartSurface(ctx context.Context, candidate application.DeploymentCandidate, key string) error {
+	if candidate.TargetVersion == "" {
+		return application.ErrDeploymentCandidateRequired
+	}
 	surface := connect.NewRequest(&surfacev1.CreateSurfaceRequest{
 		IdempotencyKey: key, ProjectId: candidate.ProjectID,
 		AppInstanceId: candidate.InstallationID, DeviceClass: surfacev1.DeviceClass_DEVICE_CLASS_DESKTOP,
-		Viewport: &surfacev1.Viewport{Width: 1280, Height: 800, PixelRatio: 1},
+		Viewport:           &surfacev1.Viewport{Width: 1280, Height: 800, PixelRatio: 1},
+		ExpectedAppVersion: candidate.TargetVersion,
 	})
 	surface.Header().Set(identity.UserHeader, candidate.OwnerUserID)
 	surface.Header().Set(identity.DeviceHeader, c.deviceID)
-	_, err := c.surfaces.CreateSurface(ctx, surface)
-	return err
+	response, err := c.surfaces.CreateSurface(ctx, surface)
+	if err != nil {
+		return err
+	}
+	session := response.Msg.GetSession()
+	if session.GetId() == "" || session.GetProjectId() != candidate.ProjectID || session.GetAppInstanceId() != candidate.InstallationID || session.GetBridgeToken() == "" || session.GetExpiresAt() == nil || !time.Now().Before(session.GetExpiresAt().AsTime()) {
+		return connect.NewError(connect.CodeFailedPrecondition, errors.New("deployment surface is not active"))
+	}
+	return nil
 }
 
 func (c *DeploymentDriverClient) Rollback(ctx context.Context, candidate application.DeploymentCandidate, key string) error {
@@ -59,6 +72,16 @@ func (c *DeploymentDriverClient) Rollback(ctx context.Context, candidate applica
 	})
 	request.Header().Set(identity.UserHeader, candidate.OwnerUserID)
 	request.Header().Set(identity.DeviceHeader, c.deviceID)
-	_, err := c.client.RollbackAppVersion(ctx, request)
-	return err
+	response, err := c.client.RollbackAppVersion(ctx, request)
+	if err != nil {
+		return err
+	}
+	installation := response.Msg.GetInstallation()
+	if installation.GetId() != candidate.InstallationID || installation.GetProjectId() != candidate.ProjectID || installation.GetVersion() == "" {
+		return connect.NewError(connect.CodeInternal, errors.New("rollback installation is invalid"))
+	}
+	candidate.TargetVersion = installation.GetVersion()
+	// Replaying the Core command returns its original pin without rolling
+	// back again. Recovery is complete only after Runtime starts that pin.
+	return c.StartSurface(ctx, candidate, key+"-surface")
 }

@@ -137,6 +137,9 @@ maintainer: {}
     timeout: libraryTimeout,
   });
 
+  // Launch returns to the desktop canvas; reopen the library to manage it.
+  await expect(library).toHaveCount(0);
+  await openDesktopApp(page, "app-library");
   // Owner-visible transition via the Versions dialog (UI chain).
   await row.getByRole("button", { name: "Versions" }).click();
   const dialog = page.getByRole("dialog");
@@ -169,6 +172,25 @@ maintainer: {}
   // the real Gateway/Core/Runtime chain.
   const project = await fetchProject();
   const installedId = await installationId(page, project.id, appId);
+  const createPinnedSurface = (version: string, key: string) =>
+    page.request.post("/workos.surface.v1.SurfaceService/CreateSurface", {
+      data: {
+        idempotencyKey: key,
+        appInstanceId: installedId,
+        projectId: project.id,
+        deviceClass: "DEVICE_CLASS_DESKTOP",
+        viewport: { width: 1280, height: 800, pixelRatio: 1 },
+        expectedAppVersion: version,
+      },
+    });
+  const pinnedKey = `e2e-version-pinned-${stamp}`;
+  const wrongPin = await createPinnedSurface("1.0.0", pinnedKey);
+  expect(((await wrongPin.json()) as { code: string }).code).toBe("failed_precondition");
+  // The refusal consumes no key; the exact currently installed pin opens.
+  const pinned = await createPinnedSurface("1.1.0", pinnedKey);
+  expect(pinned.ok()).toBeTruthy();
+  const pinnedSession = ((await pinned.json()) as { session: { id: string; url: string } }).session;
+  expect(await (await page.request.get(pinnedSession.url)).text()).toContain(markerV2);
   await page.route("**/workos.incident.v1.IncidentService/ListIncidents", (route) =>
     route.fulfill({
       contentType: "application/json",
@@ -196,7 +218,7 @@ maintainer: {}
       }),
     }),
   );
-  await page.getByRole("button", { name: "Close App Library" }).click();
+  await expect(library).toHaveCount(0);
   await openDesktopApp(page, "system-monitor");
   const monitor = page.locator(".system-monitor-body");
   const rollbackButton = monitor.getByRole("button", { name: "Roll back to 1.0.0" });
@@ -219,6 +241,20 @@ maintainer: {}
   // The stale v2 surface window was closed by the confirmed System Monitor
   // rollback, while Core also invalidated its server-side session facts.
   await expect(page.locator("iframe")).toHaveCount(0, { timeout: libraryTimeout });
+
+  const stalePinnedReplay = await createPinnedSurface("1.1.0", pinnedKey);
+  expect(((await stalePinnedReplay.json()) as { code: string }).code).toBe("failed_precondition");
+  const recovered = await createPinnedSurface("1.0.0", `${pinnedKey}-recovery`);
+  expect(recovered.ok()).toBeTruthy();
+  const recoveredSession = ((await recovered.json()) as { session: { id: string; url: string } })
+    .session;
+  expect(await (await page.request.get(recoveredSession.url)).text()).toContain(markerV1);
+  for (const session of [pinnedSession, recoveredSession]) {
+    const closed = await page.request.post("/workos.surface.v1.SurfaceService/CloseSurface", {
+      data: { surfaceSessionId: session.id },
+    });
+    expect(closed.ok()).toBeTruthy();
+  }
 
   // Server-side rollback through the browser session with a known key, then
   // an exact replay of the same canonical request.

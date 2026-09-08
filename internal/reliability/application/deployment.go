@@ -82,7 +82,7 @@ func (c *DeploymentController) Offer(ctx context.Context, candidate DeploymentCa
 
 // Task completion alone is not a deployment candidate. Admission of a
 // verified version must happen separately; never manufacture a promotion.
-func (c *DeploymentController) HandleRepairCompleted(context.Context, RepairCandidate) error {
+func (c *DeploymentController) HandleRepairCompleted(context.Context, RepairCompletedRow) error {
 	return ErrDeploymentCandidateRequired
 }
 
@@ -103,6 +103,11 @@ func (c *DeploymentController) Pass(ctx context.Context, now time.Time, limit in
 			row.State = DeploymentStarting
 			row.Attempts = 0
 		case DeploymentStarting:
+			if row.NewIncident {
+				row.State = DeploymentRollback
+				row.Attempts = 0
+				return nil
+			}
 			row.Attempts++
 			if err := c.driver.StartSurface(ctx, row.DeploymentCandidate, "deploy-"+row.IncidentID+"-surface"); err != nil {
 				if row.Attempts >= 8 {

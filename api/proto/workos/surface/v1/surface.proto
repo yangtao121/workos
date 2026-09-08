@@ -56,6 +56,10 @@ message CreateSurfaceRequest {
   Viewport viewport = 4;
   SurfaceRenderer preferred_renderer = 5;
   string idempotency_key = 6;
+  // Optional exact Registry version precondition. Deployment and recovery
+  // launches use it to refuse a concurrently changed installation before
+  // starting a workload. Empty means the current pinned version.
+  string expected_app_version = 7;
 }
 
 message CloseSurfaceRequest {
