@@ -12,6 +12,82 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const getAppSourceBundle = `-- name: GetAppSourceBundle :one
+SELECT id, owner_user_id, idempotency_key, digest,
+       CASE WHEN octet_length(files::text) <= 1048576 THEN files ELSE NULL::jsonb END AS files,
+       total_size_bytes, created_at
+FROM workos_core.app_source_bundles
+WHERE owner_user_id = $1 AND id = $2
+`
+
+type GetAppSourceBundleParams struct {
+	OwnerUserID string `json:"owner_user_id"`
+	ID          string `json:"id"`
+}
+
+type GetAppSourceBundleRow struct {
+	ID             string             `json:"id"`
+	OwnerUserID    string             `json:"owner_user_id"`
+	IdempotencyKey string             `json:"idempotency_key"`
+	Digest         string             `json:"digest"`
+	Files          json.RawMessage    `json:"files"`
+	TotalSizeBytes int64              `json:"total_size_bytes"`
+	CreatedAt      pgtype.Timestamptz `json:"created_at"`
+}
+
+func (q *Queries) GetAppSourceBundle(ctx context.Context, arg GetAppSourceBundleParams) (GetAppSourceBundleRow, error) {
+	row := q.db.QueryRow(ctx, getAppSourceBundle, arg.OwnerUserID, arg.ID)
+	var i GetAppSourceBundleRow
+	err := row.Scan(
+		&i.ID,
+		&i.OwnerUserID,
+		&i.IdempotencyKey,
+		&i.Digest,
+		&i.Files,
+		&i.TotalSizeBytes,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
+const getAppSourceBundleByKey = `-- name: GetAppSourceBundleByKey :one
+SELECT id, owner_user_id, idempotency_key, digest,
+       CASE WHEN octet_length(files::text) <= 1048576 THEN files ELSE NULL::jsonb END AS files,
+       total_size_bytes, created_at
+FROM workos_core.app_source_bundles
+WHERE owner_user_id = $1 AND idempotency_key = $2
+`
+
+type GetAppSourceBundleByKeyParams struct {
+	OwnerUserID    string `json:"owner_user_id"`
+	IdempotencyKey string `json:"idempotency_key"`
+}
+
+type GetAppSourceBundleByKeyRow struct {
+	ID             string             `json:"id"`
+	OwnerUserID    string             `json:"owner_user_id"`
+	IdempotencyKey string             `json:"idempotency_key"`
+	Digest         string             `json:"digest"`
+	Files          json.RawMessage    `json:"files"`
+	TotalSizeBytes int64              `json:"total_size_bytes"`
+	CreatedAt      pgtype.Timestamptz `json:"created_at"`
+}
+
+func (q *Queries) GetAppSourceBundleByKey(ctx context.Context, arg GetAppSourceBundleByKeyParams) (GetAppSourceBundleByKeyRow, error) {
+	row := q.db.QueryRow(ctx, getAppSourceBundleByKey, arg.OwnerUserID, arg.IdempotencyKey)
+	var i GetAppSourceBundleByKeyRow
+	err := row.Scan(
+		&i.ID,
+		&i.OwnerUserID,
+		&i.IdempotencyKey,
+		&i.Digest,
+		&i.Files,
+		&i.TotalSizeBytes,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
 const getAppVersion = `-- name: GetAppVersion :one
 SELECT id, owner_user_id, app_id, version, scope, name, permissions,
        manifest_digest, canonical_manifest, created_at
@@ -90,6 +166,39 @@ func (q *Queries) GetRegistrationRequest(ctx context.Context, arg GetRegistratio
 		&i.CreatedAt,
 	)
 	return i, err
+}
+
+const insertAppSourceBundle = `-- name: InsertAppSourceBundle :execrows
+INSERT INTO workos_core.app_source_bundles (
+    id, owner_user_id, idempotency_key, digest, files, total_size_bytes, created_at
+) VALUES ($1, $2, $3, $4, $5, $6, $7)
+ON CONFLICT (owner_user_id, idempotency_key) DO NOTHING
+`
+
+type InsertAppSourceBundleParams struct {
+	ID             string             `json:"id"`
+	OwnerUserID    string             `json:"owner_user_id"`
+	IdempotencyKey string             `json:"idempotency_key"`
+	Digest         string             `json:"digest"`
+	Files          json.RawMessage    `json:"files"`
+	TotalSizeBytes int64              `json:"total_size_bytes"`
+	CreatedAt      pgtype.Timestamptz `json:"created_at"`
+}
+
+func (q *Queries) InsertAppSourceBundle(ctx context.Context, arg InsertAppSourceBundleParams) (int64, error) {
+	result, err := q.db.Exec(ctx, insertAppSourceBundle,
+		arg.ID,
+		arg.OwnerUserID,
+		arg.IdempotencyKey,
+		arg.Digest,
+		arg.Files,
+		arg.TotalSizeBytes,
+		arg.CreatedAt,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const insertAppVersion = `-- name: InsertAppVersion :execrows

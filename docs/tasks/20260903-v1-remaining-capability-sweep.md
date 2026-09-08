@@ -1026,3 +1026,30 @@ CLI v2 收尾：首轮 `make check` 因 architecture 文档格式失败，格式
 （`tmp/generic-structured-idempotent-generate.log`，摘要
 `tmp/generic-structured-generated-before.json`）。CLI v2 检查点完成；下一阶段固定 Registry
 拥有的源码与构建配置，再实现候选交接和运行时构建，完整任务仍 active。
+
+### R2 不可变构建输入（active，2026-09-08）
+
+依赖 301cf41。按 ADR-0024 先实现 Registry 自有源码包 Create/Get 与 canonical digest、
+owner/idempotency/并发/读取完整性；然后在唯一 manifest JSON Schema 接入固定 build 配置
+并校验 owner+source digest。后续候选不得自行更改测试命令或安全配置。计划新增 048，
+001–047 不变；跨进程契约先 Proto/generate。验收包括源码路径/预算/冲突矩阵、真实 PG
+并发与重启、真实 RPC 注册/绑定源码；此阶段不宣称 Runtime Build/Test 或 Recovery 治理完成。
+
+不可变输入门禁通过：AppRegistry/orchestration/Gateway race 与真实 PostgreSQL 并发、损坏读取
+（`tmp/app-source-bounded-tests.log`）；十请求只保留一个源码事实，不同内容/执行位冲突，
+超大损坏 JSON 在 SQL 投影阶段截断后拒绝。传输单元覆盖二进制/JSON 合法 512 KiB 边界、
+超大与 gzip bomb、无身份零持久化；包含在完整 `make check` PASS
+（`tmp/app-build-inputs-check.log`，桌面 144 tests）。
+
+真实独立 Gateway/Core/PG 门禁 PASS（`tmp/app-build-inputs-final-gate.log`）：中文源码字节数、
+排序/ID/摘要/时间、注册 build 绑定、错 owner/摘要、冲突失败不消费 key，真实 Core 重启后
+上传与注册精确重放。共享门禁脚本的 Generic CLI 回归 PASS
+（`tmp/app-build-inputs-generic-regression.log`）。默认 Core/Gateway 已更新，048 已应用
+（`tmp/app-build-inputs-default-migrate.log` / `tmp/app-build-inputs-default-deploy.log`）；
+001–048 从此保持不变，下一 migration 为 049。默认任务入队和 Repair 快照 RPC 回归 PASS
+（`tmp/app-build-inputs-default-tasks.log` / `tmp/app-build-inputs-default-repair.log`）。
+
+buf breaking 对 main PASS（`tmp/app-build-inputs-breaking.log`）；再次 generate 后 137 个
+生成文件/README 不变（`tmp/app-build-inputs-idempotent-generate.log`、摘要
+`tmp/app-build-inputs-generated-before.json`）。没有用户可见 UI 变化。源码/build 配置检查点
+完成；Runtime Build/Test、候选交接、Recovery 治理及 R3/R5 仍待完成，整个任务保持 active。

@@ -606,3 +606,10 @@ func TestResolveWebBundleVerdicts(t *testing.T) {
 		t.Fatalf("legacy version verdict: %v", err)
 	}
 }
+
+func (*fakeRepository) CreateSource(context.Context, domain.SourceBundle) (domain.SourceBundle, error) {
+	return domain.SourceBundle{}, domain.ErrInvalid
+}
+func (*fakeRepository) GetSource(context.Context, string, string) (domain.SourceBundle, error) {
+	return domain.SourceBundle{}, domain.ErrNotFound
+}

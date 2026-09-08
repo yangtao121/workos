@@ -60,7 +60,7 @@
       "name": "App Registry",
       "process": "workos-core",
       "status": "working",
-      "evidence": "schema-backed immutable registration + durable idempotency + bounded paging/read + credential-shaped key rejection + restart persistence"
+      "evidence": "schema-backed immutable registration + durable idempotency + bounded paging/read + credential-shaped key rejection + restart persistence; ADR-0024 immutable owner-scoped source bundles (migration 048), bounded canonical file identity and durable concurrent idempotency, integrity-checked bounded reads, and schema-owned fixed build recipes verified against source owner/digest. make test-app-build-inputs proves real Gateway/Core/PostgreSQL upload/register, conflict and ownership refusal, and exact replay after real Core restart. Build/Test execution and deployable candidate production remain unimplemented."
     },
     {
       "name": "Project App Installation",

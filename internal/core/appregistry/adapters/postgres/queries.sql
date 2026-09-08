@@ -35,3 +35,23 @@ WHERE owner_user_id = sqlc.arg(owner_user_id)
   AND app_id > sqlc.arg(cursor)
 ORDER BY app_id
 LIMIT sqlc.arg(row_limit);
+
+-- name: InsertAppSourceBundle :execrows
+INSERT INTO workos_core.app_source_bundles (
+    id, owner_user_id, idempotency_key, digest, files, total_size_bytes, created_at
+) VALUES ($1, $2, $3, $4, $5, $6, $7)
+ON CONFLICT (owner_user_id, idempotency_key) DO NOTHING;
+
+-- name: GetAppSourceBundle :one
+SELECT id, owner_user_id, idempotency_key, digest,
+       CASE WHEN octet_length(files::text) <= 1048576 THEN files ELSE NULL::jsonb END AS files,
+       total_size_bytes, created_at
+FROM workos_core.app_source_bundles
+WHERE owner_user_id = $1 AND id = $2;
+
+-- name: GetAppSourceBundleByKey :one
+SELECT id, owner_user_id, idempotency_key, digest,
+       CASE WHEN octet_length(files::text) <= 1048576 THEN files ELSE NULL::jsonb END AS files,
+       total_size_bytes, created_at
+FROM workos_core.app_source_bundles
+WHERE owner_user_id = $1 AND idempotency_key = $2;

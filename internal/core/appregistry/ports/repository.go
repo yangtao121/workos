@@ -21,6 +21,7 @@ var ErrStoreUnavailable = errors.New("app registry store is temporarily unavaila
 // errors. Public read paths stream bounded summaries and never materialize
 // canonical manifests.
 type Repository interface {
+	SourceRepository
 	Register(context.Context, domain.AppVersion) (domain.AppVersionSummary, error)
 	GetVersion(ctx context.Context, ownerUserID, appID, version string) (domain.AppVersionSummary, error)
 	// GetVersionManifest reads the exact immutable version's manifest digest

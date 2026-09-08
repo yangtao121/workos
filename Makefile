@@ -1076,3 +1076,7 @@ test-repair-target:
 .PHONY: test-generic-cli
 test-generic-cli: e2e-image
 	sh tools/generic-cli/gate.sh
+
+.PHONY: test-app-build-inputs
+test-app-build-inputs: e2e-image
+	sh tools/generic-cli/gate.sh app-build-inputs.spec.ts

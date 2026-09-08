@@ -174,3 +174,10 @@ func hex64(char rune) string {
 	}
 	return string(value)
 }
+
+func (registryRepoStub) CreateSource(context.Context, appregistrydomain.SourceBundle) (appregistrydomain.SourceBundle, error) {
+	return appregistrydomain.SourceBundle{}, appregistrydomain.ErrInvalid
+}
+func (registryRepoStub) GetSource(context.Context, string, string) (appregistrydomain.SourceBundle, error) {
+	return appregistrydomain.SourceBundle{}, appregistrydomain.ErrNotFound
+}

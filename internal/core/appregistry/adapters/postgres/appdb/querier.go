@@ -9,9 +9,12 @@ import (
 )
 
 type Querier interface {
+	GetAppSourceBundle(ctx context.Context, arg GetAppSourceBundleParams) (GetAppSourceBundleRow, error)
+	GetAppSourceBundleByKey(ctx context.Context, arg GetAppSourceBundleByKeyParams) (GetAppSourceBundleByKeyRow, error)
 	GetAppVersion(ctx context.Context, arg GetAppVersionParams) (WorkosCoreAppVersion, error)
 	GetAppVersionByID(ctx context.Context, id string) (WorkosCoreAppVersion, error)
 	GetRegistrationRequest(ctx context.Context, arg GetRegistrationRequestParams) (WorkosCoreAppRegistrationRequest, error)
+	InsertAppSourceBundle(ctx context.Context, arg InsertAppSourceBundleParams) (int64, error)
 	InsertAppVersion(ctx context.Context, arg InsertAppVersionParams) (int64, error)
 	InsertRegistrationRequest(ctx context.Context, arg InsertRegistrationRequestParams) (int64, error)
 	ListAppIDPage(ctx context.Context, arg ListAppIDPageParams) ([]string, error)

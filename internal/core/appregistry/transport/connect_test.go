@@ -481,3 +481,10 @@ func TestMapErrorSanitizesInternalDetails(t *testing.T) {
 		}
 	}
 }
+
+func (*stubRepository) CreateSource(context.Context, domain.SourceBundle) (domain.SourceBundle, error) {
+	return domain.SourceBundle{}, domain.ErrInvalid
+}
+func (*stubRepository) GetSource(context.Context, string, string) (domain.SourceBundle, error) {
+	return domain.SourceBundle{}, domain.ErrNotFound
+}

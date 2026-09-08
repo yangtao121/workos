@@ -87,6 +87,7 @@ var publicServicePrefixes = []string{
 	"/workos.agent.v1.AgentAppUsageService/",
 	"/workos.app.v1.AppInstallationService/",
 	"/workos.app.v1.AppRegistryService/",
+	"/workos.app.v1.AppSourceBundleService/",
 	"/workos.artifact.v1.ArtifactService/",
 	"/workos.common.v1.SystemService/",
 	"/workos.harness.v1.HarnessCatalogService/",

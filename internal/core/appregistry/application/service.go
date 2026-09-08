@@ -117,6 +117,19 @@ func (s *Service) Register(ctx context.Context, ownerUserID, idempotencyKey stri
 			return domain.AppVersionSummary{}, fmt.Errorf("verify web bundle reference: %w", err)
 		}
 	}
+	if manifest.Build != nil {
+		if !domain.ValidSourceID(ownerUserID) {
+			return domain.AppVersionSummary{}, domain.ErrInvalid
+		}
+		source, err := s.repository.GetSource(ctx, ownerUserID, manifest.Build.SourceBundleID)
+		if err != nil {
+			return domain.AppVersionSummary{}, err
+		}
+		if source.OwnerUserID != ownerUserID || source.ID != manifest.Build.SourceBundleID || source.Digest != manifest.Build.SourceDigest {
+			return domain.AppVersionSummary{}, domain.ErrNotFound
+		}
+	}
+
 	record := domain.AppVersion{
 		ID: s.ids.New(), OwnerUserID: ownerUserID, AppID: manifest.ID, Version: manifest.Version,
 		Scope: manifest.Scope, Name: manifest.Name, Permissions: manifest.Permissions,

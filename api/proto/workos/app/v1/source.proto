@@ -1,0 +1,46 @@
+syntax = "proto3";
+
+package workos.app.v1;
+
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/yangtao121/workos/gen/go/workos/app/v1;appv1";
+
+// A regular source file, never a link, archive entry or host filesystem path.
+message AppSourceFile {
+  string path = 1;
+  bytes content = 2;
+  bool executable = 3;
+}
+
+// Immutable owner-scoped Registry build input. Identity, digest, order and
+// creation time are server-derived. It is not an App filesystem capability.
+message AppSourceBundle {
+  string id = 1;
+  string digest = 2;
+  repeated AppSourceFile files = 3;
+  int64 total_size_bytes = 4;
+  google.protobuf.Timestamp created_at = 5;
+}
+
+message CreateAppSourceBundleRequest {
+  string idempotency_key = 1;
+  repeated AppSourceFile files = 2;
+}
+
+message CreateAppSourceBundleResponse {
+  AppSourceBundle bundle = 1;
+}
+
+message GetAppSourceBundleRequest {
+  string bundle_id = 1;
+}
+
+message GetAppSourceBundleResponse {
+  AppSourceBundle bundle = 1;
+}
+
+service AppSourceBundleService {
+  rpc CreateAppSourceBundle(CreateAppSourceBundleRequest) returns (CreateAppSourceBundleResponse) {}
+  rpc GetAppSourceBundle(GetAppSourceBundleRequest) returns (GetAppSourceBundleResponse) {}
+}

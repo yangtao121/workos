@@ -270,12 +270,19 @@ func run(logger *slog.Logger) error {
 	if err != nil {
 		return err
 	}
-	appService, err := appregistryapp.New(appregistrypostgres.New(pool), manifestValidator, projectDirectory, artifactDirectory, generator)
+	appRepository := appregistrypostgres.New(pool)
+	appService, err := appregistryapp.New(appRepository, manifestValidator, projectDirectory, artifactDirectory, generator)
 	if err != nil {
 		return err
 	}
 	appPath, appHandler := appregistrytransport.NewConnectHandler(appService)
 	mux.Handle(appPath, identity.Middleware(appHandler))
+	sourceService, err := appregistryapp.NewSourceService(appRepository, generator)
+	if err != nil {
+		return err
+	}
+	sourcePath, sourceHandler := appregistrytransport.NewSourceHandler(sourceService)
+	mux.Handle(sourcePath, identity.Middleware(sourceHandler))
 
 	appCatalog, err := orchestration.NewAppCatalog(appService)
 	if err != nil {

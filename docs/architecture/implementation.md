@@ -138,6 +138,22 @@ Core: 结构安全检查 → YAML→JSON 规范化 → canonical JSON bytes
 - 违规输出只含字段路径与规则说明（排序、去重、数量/长度上限），不含原始 YAML value；错误映射
   不回传 SQL、constraint、路径或 validator 内部信息。
 
+### 不可变构建输入（ADR-0024）
+
+公开 AppSourceBundleService 经 Gateway/Core 身份校验创建和读取 owner 自有源码包。
+Registry 独占 048 app_source_bundles；最多 128 个普通文件、每文件 256 KiB、总共
+512 KiB，拒绝链接格式、路径穿越、重复及文件/目录冲突。排序后的路径、字节和执行位
+共同决定摘要；同 key/同内容返回第一次 ID/UTC 时间，不同内容返回 Aborted。
+RPC 在解码/解压前限制 1 MiB，数据库读取在传输到 Go 前限制 JSON 大小，再校验内容、
+顺序、摘要和总字节数；损坏数据不会作为有效源码返回。
+
+唯一 manifest Schema 新增可选 build 配置，固定 owner 的源码 ID/digest、不可变工具链
+镜像与 build/test argv，仅用于 container runtime。注册前核验源码归属和摘要；配置变化
+改变 manifest digest。SDK 导出 canonical Source Proto，App Bridge 不开放此服务。
+make test-app-build-inputs 使用独立真实 Gateway/Core/PG，证明上传、注册、冲突、跨 owner
+拒绝及真实 Core 重启后的精确重放；单元和真实 PG 覆盖边界、并发与损坏读取。
+此阶段没有执行构建/测试或产生部署候选，Recovery 治理及 Runtime 执行仍待完成。
+
 ## Project App Installation
 
 Project App Installation 把 Registry 的一个 immutable version 变成 Project 持有的安装实例事实。

@@ -68,6 +68,7 @@ type Manifest struct {
 	RuntimeType   string
 	WebBundle     *WebBundleRef
 	Container     *ContainerLaunch
+	Build         *BuildRecipe
 	CanonicalJSON []byte
 	Digest        string
 }

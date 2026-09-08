@@ -346,6 +346,12 @@ func (w *structureWalker) reportTag(path string) {
 // public trust boundary, capability vocabulary, and secret-bearing content.
 // It only inspects values that decode to the expected shape.
 func (v *Validator) policy(tree map[string]any, add func(path, message string)) {
+	if _, present := tree["build"]; present {
+		canonical, err := domain.CanonicalJSON(tree)
+		if _, valid := domain.ParseBuildRecipe(canonical); err != nil || !valid {
+			add("/build", "build requires an immutable source, image and bounded build/test argv for a container runtime")
+		}
+	}
 	if scope, ok := tree["scope"].(string); ok && domain.Scope(scope) == domain.ScopeSystem {
 		add("/scope", "scope 'system' requires a trusted installation path and cannot be self-registered")
 	}
@@ -662,6 +668,7 @@ func sortPermissions(tree map[string]any) {
 
 func manifestFromTree(tree map[string]any, canonical []byte) domain.Manifest {
 	manifest := domain.Manifest{CanonicalJSON: canonical, Digest: domain.ManifestDigest(canonical)}
+	manifest.Build, _ = domain.ParseBuildRecipe(canonical)
 	if id, ok := tree["id"].(string); ok {
 		manifest.ID = id
 	}
