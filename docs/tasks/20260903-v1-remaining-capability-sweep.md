@@ -901,3 +901,24 @@ R2 协调修复检查点：`make check` PASS（`tmp/deployment-repair-final-chec
 `tmp/deployment-generated-before.json`、生成日志 `tmp/deployment-repair-generate-final.log`）。
 没有 UI 像素变化或新增 migration。本检查点完成；整个任务保持 active，下一步仍为
 Recovery Harness 安全执行边界与 Repair 候选协议、Build/Test producer/consumer 实现。
+
+### R2 Recovery CLI 执行边界（active，2026-09-08）
+
+依赖 7694941。Generic CLI 当前继承整个 Harness 环境、把 stderr 附入错误、取消只杀直接
+子进程，后代持有 stdout 时可能拖住轮询；其 streaming-only 声明也未拒绝伪造 artifact/
+approval/usage 事件。先修复这些现有问题，再扩展候选输出协议，避免把不完整执行边界
+带入自动修复。范围：最小环境/独立临时目录、输入与总输出预算、进程组和父进程退出
+清理、确定性错误、能力一致性。验收使用真实子进程故障矩阵与 Harness 单元/race；
+不以进程组替代 rootless/cgroup 安全隔离，不升级缺失的 token budget 或容器能力。
+
+CLI 基线 FAIL（`tmp/recovery-cli-before.log`）复现父环境泄漏、stderr 进入错误、无全流
+预算和伪造 artifact 事件被接受。修复后真实子进程/race PASS
+（`tmp/recovery-cli-final-tests.log`，包含整个 internal/harness）：空 HOME/CWD、最小环境、
+stderr 丢弃、1 MiB 请求/单行、4 MiB/1024 事件总预算、未声明事件拒绝、后代 pipe 取消、
+子进程非零退出不得发布 completed。默认 Generic CLI 仍关闭，未升级其 token budget、
+Recovery 路由或 structured candidate 能力；完整候选链 E2E 仍是 R2 后续任务。
+
+CLI 执行边界检查点收尾：`make check` PASS（`tmp/recovery-cli-check.log`）；再次
+`make generate` 后 132 个生成文件/README 不变（`tmp/recovery-cli-generate.log`，摘要
+`tmp/recovery-cli-generated-before.json`）。没有 Proto 或 migration 变化，没有 UI 变化。
+本阶段可提交；接下来处理 Repair 入队目标快照与幂等来源校验，再实现候选 Build/Test。

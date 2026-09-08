@@ -1369,3 +1369,16 @@ Workspace 完整同步复用当前代、同 owner/project/source/digest/title/mo
 缓存读取上限 1000 条且不加载全文，内容/标题/指纹变化会重算。事务和 source etag 继续
 保护整批写入；没有新的表或 migration。模型上限门禁记录 1000 长文本文件冷同步
 290 秒、未变重复同步 3 秒；CLI sync 预算为十分钟，其他 admin 调用仍为 30 秒。
+
+## 2026-09-08 Generic CLI 执行边界
+
+Generic CLI 每任务使用 0700 临时工作目录和独立 HOME，环境只含固定 PATH/LANG/TZ，
+不继承 Harness 环境或凭据。请求最多 1 MiB；输出每行最多 1 MiB、全流最多 4 MiB/
+1024 事件。stderr 丢弃，协议错误不附原始子进程内容；伪造 ArtifactCreated、审批、usage
+和 waiting 事件在 adapter 拒绝。终态先保留，完整输出验证且子进程 exit 0 后才发布，
+因此先声称完成再崩溃的 CLI 不会把任务写成 completed。
+
+取消时终止进程组并关闭本端 stdout，防止继承 pipe 的后代拖住 RPC；父进程退出信号
+终止直接子进程。真实子进程/race 覆盖后代持有 pipe、环境泄漏、stderr、输出洪泛和假完成。
+这些是执行生命周期保护，不是内核隔离：rootless/cgroup 边界与 token budget 仍未由
+Generic CLI 提供，现有 streaming-only 能力声明不扩大。Recovery 路由和候选输出仍待实现。

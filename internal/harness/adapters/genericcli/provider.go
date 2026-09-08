@@ -8,8 +8,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"os/exec"
 	"path/filepath"
+	"syscall"
 	"time"
 
 	"google.golang.org/protobuf/encoding/protojson"
@@ -20,7 +22,12 @@ import (
 	"github.com/yangtao121/workos/internal/harness/ports"
 )
 
-const maxEventBytes = 1024 * 1024
+const (
+	maxEventBytes   = 1 << 20
+	maxRequestBytes = 1 << 20
+	maxOutputBytes  = 4 << 20
+	maxEvents       = 1024
+)
 
 type Config struct {
 	Executable string
@@ -50,83 +57,107 @@ func (p *Provider) Describe() *harnessv1.HarnessProviderInfo {
 
 // Run keeps structured artifact support honestly unsupported (ADR-0008): the
 // sink is ignored and requested artifact types are refused outright.
-func (p *Provider) Run(ctx context.Context, execution ports.Execution) error {
+func (p *Provider) Run(ctx context.Context, execution ports.Execution) (runErr error) {
 	taskID, input, emit := execution.TaskID, execution.Input, execution.Emit
-	_ = execution.Artifacts
+	if taskID == "" || input == nil || emit == nil {
+		return ports.NewRunError(ports.ErrorKindInvalidInput, "generic CLI execution is invalid", false, nil)
+	}
 	if len(input.GetOutputArtifactTypes()) != 0 {
 		return ports.NewRunError(ports.ErrorKindInvalidInput, "generic CLI harness does not support structured artifacts", false, nil)
 	}
-	// The generic CLI has no credential path: a credential lease attached to
-	// its execution is a protocol violation, never silently ignored.
 	if execution.Credential != nil {
 		return ports.NewRunError(ports.ErrorKindInvalidInput, "generic CLI harness does not accept credential leases", false, nil)
 	}
-	// Resolved context is equally out of contract for the generic CLI.
 	if len(execution.Context) != 0 {
 		return ports.NewRunError(ports.ErrorKindInvalidInput, "generic CLI harness does not accept resolved context", false, nil)
 	}
+	inputJSON, err := protojson.Marshal(input)
+	if err != nil || len(inputJSON) > maxRequestBytes {
+		return ports.NewRunError(ports.ErrorKindInvalidInput, "generic CLI input exceeds its protocol", false, nil)
+	}
+	var request bytes.Buffer
+	if err := json.NewEncoder(&request).Encode(map[string]any{"version": "workos.harness-cli/v1", "taskId": taskID, "input": json.RawMessage(inputJSON)}); err != nil || request.Len() > maxRequestBytes {
+		return ports.NewRunError(ports.ErrorKindInvalidInput, "generic CLI request exceeds its protocol", false, nil)
+	}
 	ctx, cancel := context.WithTimeout(ctx, p.config.Timeout)
 	defer cancel()
-	command := exec.CommandContext(ctx, p.config.Executable, p.config.Args...)
-	stdin, err := command.StdinPipe()
+	defer func() {
+		if runErr != nil && ctx.Err() != nil {
+			runErr = fmt.Errorf("generic CLI stopped: %w", ctx.Err())
+		}
+	}()
+	directory, err := os.MkdirTemp("", "workos-cli-")
 	if err != nil {
-		return fmt.Errorf("open generic CLI stdin: %w", err)
+		return ports.NewRunError(ports.ErrorKindUnavailable, "generic CLI workspace is unavailable", true, nil)
 	}
+	defer os.RemoveAll(directory)
+	command := exec.CommandContext(ctx, p.config.Executable, p.config.Args...)
+	command.Dir = directory
+	command.Env = []string{"HOME=" + directory, "PATH=/usr/local/bin:/usr/bin:/bin", "LANG=C.UTF-8", "TZ=UTC"}
+	command.SysProcAttr = &syscall.SysProcAttr{Setpgid: true, Pdeathsig: syscall.SIGKILL}
+	command.Cancel = func() error { return killGroup(command) }
+	command.WaitDelay = time.Second
+	command.Stdin = &request
+	command.Stderr = io.Discard
 	stdout, err := command.StdoutPipe()
 	if err != nil {
-		return fmt.Errorf("open generic CLI stdout: %w", err)
+		return ports.NewRunError(ports.ErrorKindUnavailable, "generic CLI output pipe is unavailable", true, nil)
 	}
-	var stderr cappedBuffer
-	command.Stderr = &stderr
 	if err := command.Start(); err != nil {
-		return fmt.Errorf("start generic CLI: %w", err)
+		_ = stdout.Close()
+		return ports.NewRunError(ports.ErrorKindConfiguration, "generic CLI executable is unavailable", false, nil)
 	}
-	inputJSON, _ := protojson.Marshal(input)
-	envelope := map[string]any{"version": "workos.harness-cli/v1", "taskId": taskID, "input": json.RawMessage(inputJSON)}
-	if err := json.NewEncoder(stdin).Encode(envelope); err != nil {
-		stop(command)
-		return fmt.Errorf("write generic CLI request: %w", err)
-	}
-	if err := stdin.Close(); err != nil {
-		stop(command)
-		return fmt.Errorf("close generic CLI stdin: %w", err)
-	}
-
+	// Close our reader on cancellation too: a descendant that escaped the
+	// process group must not keep this RPC waiting on an inherited pipe.
+	stopRead := context.AfterFunc(ctx, func() { _ = stdout.Close() })
+	defer stopRead()
+	waited := false
+	defer func() {
+		_ = killGroup(command)
+		_ = stdout.Close()
+		if !waited {
+			_ = command.Wait()
+		}
+	}()
 	scanner := bufio.NewScanner(stdout)
 	scanner.Buffer(make([]byte, 64*1024), maxEventBytes)
-	eventCount := 0
-	sawTerminal := false
+	count, total := 0, 0
+	var terminal *agentv1.AgentEvent
 	for scanner.Scan() {
+		total += len(scanner.Bytes()) + 1
+		if count >= maxEvents || total > maxOutputBytes {
+			return ports.NewRunError(ports.ErrorKindProtocol, "generic CLI output budget exceeded", false, nil)
+		}
 		var event agentv1.AgentEvent
 		if err := protojson.Unmarshal(scanner.Bytes(), &event); err != nil {
-			stop(command)
-			return fmt.Errorf("decode generic CLI event: %w", err)
+			return ports.NewRunError(ports.ErrorKindProtocol, "decode generic CLI event failed", false, nil)
 		}
-		if err := validateEvent(&event, eventCount, sawTerminal); err != nil {
-			stop(command)
+		if err := validateEvent(&event, count, terminal != nil); err != nil {
 			return err
 		}
-		eventCount++
-		sawTerminal = sawTerminal || isTerminal(&event)
+		count++
+		if isTerminal(&event) {
+			terminal = &event
+			continue
+		}
 		if err := emit(&event); err != nil {
-			stop(command)
 			return err
 		}
 	}
-	if err := scanner.Err(); err != nil {
-		stop(command)
-		return fmt.Errorf("read generic CLI events: %w", err)
+	if scanner.Err() != nil {
+		return ports.NewRunError(ports.ErrorKindProtocol, "read generic CLI events failed", false, nil)
 	}
-	if err := command.Wait(); err != nil {
-		if ctx.Err() != nil {
-			return fmt.Errorf("generic CLI stopped: %w", ctx.Err())
-		}
-		return fmt.Errorf("generic CLI failed: %w: %s", err, stderr.String())
+	err = command.Wait()
+	waited = true
+	if err != nil {
+		return ports.NewRunError(ports.ErrorKindProvider, "generic CLI execution failed", false, nil)
 	}
-	if !sawTerminal {
+	if terminal == nil {
 		return errors.New("generic CLI ended without a terminal event")
 	}
-	return nil
+	// A claimed completion is not trusted until the child exits successfully
+	// and the complete bounded stream has passed validation.
+	return emit(terminal)
 }
 
 func validateEvent(event *agentv1.AgentEvent, eventCount int, sawTerminal bool) error {
@@ -135,6 +166,17 @@ func validateEvent(event *agentv1.AgentEvent, eventCount int, sawTerminal bool) 
 	}
 	if event.GetId() != "" || event.GetTaskId() != "" || event.GetSequence() != 0 || event.GetOccurredAt() != nil {
 		return errors.New("generic CLI must not set Core-owned event metadata")
+	}
+	switch event.Event.(type) {
+	case *agentv1.AgentEvent_RunStarted:
+		if eventCount != 0 {
+			return errors.New("generic CLI emitted a duplicate run start")
+		}
+	case *agentv1.AgentEvent_AssistantDelta, *agentv1.AgentEvent_AssistantMessage,
+		*agentv1.AgentEvent_ToolCallStarted, *agentv1.AgentEvent_ToolCallCompleted,
+		*agentv1.AgentEvent_RunCompleted, *agentv1.AgentEvent_RunFailed, *agentv1.AgentEvent_RunCancelled:
+	default:
+		return errors.New("generic CLI emitted an event outside its capabilities")
 	}
 	if eventCount == 0 {
 		started := event.GetRunStarted()
@@ -152,25 +194,13 @@ func isTerminal(event *agentv1.AgentEvent) bool {
 	return event.GetRunCompleted() != nil || event.GetRunFailed() != nil || event.GetRunCancelled() != nil
 }
 
-func stop(command *exec.Cmd) {
-	if command.Process != nil {
-		_ = command.Process.Kill()
+func killGroup(command *exec.Cmd) error {
+	if command.Process == nil {
+		return os.ErrProcessDone
 	}
-	_ = command.Wait()
+	err := syscall.Kill(-command.Process.Pid, syscall.SIGKILL)
+	if errors.Is(err, syscall.ESRCH) {
+		return os.ErrProcessDone
+	}
+	return err
 }
-
-type cappedBuffer struct{ bytes.Buffer }
-
-func (b *cappedBuffer) Write(value []byte) (int, error) {
-	remaining := 16*1024 - b.Len()
-	if remaining <= 0 {
-		return len(value), nil
-	}
-	if len(value) > remaining {
-		_, _ = b.Buffer.Write(value[:remaining])
-		return len(value), nil
-	}
-	return b.Buffer.Write(value)
-}
-
-var _ io.Writer = (*cappedBuffer)(nil)
