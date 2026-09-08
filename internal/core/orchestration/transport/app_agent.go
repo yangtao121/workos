@@ -165,7 +165,7 @@ func mapAppAgentError(err error) error {
 		return connect.NewError(connect.CodeAborted, errors.New("idempotency key was already used for a different request"))
 	case errors.Is(err, domain.ErrPolicyBlocksRuns):
 		return connect.NewError(connect.CodePermissionDenied, errors.New("app policy blocks new runs"))
-	case errors.Is(err, domain.ErrApprovalNotPending), errors.Is(err, domain.ErrProviderCapabilityMissing):
+	case errors.Is(err, domain.ErrApprovalNotPending), errors.Is(err, domain.ErrProviderCapabilityMissing), errors.Is(err, domain.ErrProviderUnavailable):
 		return connect.NewError(connect.CodeFailedPrecondition, errors.New("app task cannot start right now"))
 	case errors.Is(err, domain.ErrQuotaExhausted), errors.Is(err, domain.ErrQuotaBreached):
 		return connect.NewError(connect.CodeResourceExhausted, errors.New("app agent daily quota is exhausted"))

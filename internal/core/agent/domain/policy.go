@@ -39,6 +39,8 @@ var (
 	// deadline, and usage-reporting contract. Transport maps it to
 	// FailedPrecondition.
 	ErrProviderCapabilityMissing = errors.New("provider does not support the required budget contract")
+	// ErrProviderUnavailable rejects fresh work while provider health is not healthy.
+	ErrProviderUnavailable = errors.New("provider is not healthy enough to accept new tasks")
 	// ErrPolicyCorrupt marks a stored policy fact that fails its own
 	// integrity validation: spec grammar, positive revision, bound project,
 	// or the recomputed spec digest. It is storage corruption — an internal

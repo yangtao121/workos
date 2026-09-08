@@ -48,7 +48,8 @@ func (a *installationFacts) ResolveActiveInstallation(ctx context.Context, owner
 
 // providerCapabilities adapts the harness catalog application service to the
 // Agent module's neutral ProviderCatalog port. Unknown providers are
-// sanitized NotFound; an unreachable catalog is retryable Unavailable
+// sanitized NotFound; unhealthy providers cannot admit fresh tasks.
+// An unreachable catalog is retryable Unavailable
 // semantics via the Agent store sentinel.
 type providerCapabilities struct {
 	catalog *catalogapp.Service
@@ -72,6 +73,9 @@ func (a *providerCapabilities) Capabilities(ctx context.Context, providerID stri
 	for _, provider := range catalog.Providers {
 		if provider.ID != providerID {
 			continue
+		}
+		if provider.Health != catalogdomain.HealthHealthy {
+			return agentports.ProviderCapabilities{}, agentdomain.ErrProviderUnavailable
 		}
 		return agentports.ProviderCapabilities{
 			HardTokenBudget:             provider.Capabilities.HardTokenBudget,

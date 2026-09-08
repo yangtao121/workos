@@ -14,6 +14,7 @@ import (
 	"time"
 
 	agentv1 "github.com/yangtao121/workos/gen/go/workos/agent/v1"
+	commonv1 "github.com/yangtao121/workos/gen/go/workos/common/v1"
 	"github.com/yangtao121/workos/internal/harness/ports"
 )
 
@@ -266,4 +267,32 @@ func TestProviderRejectsOversizeRequestBeforeStartingChild(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "protocol") {
 		t.Fatalf("oversize request reached executable: %v", err)
 	}
+}
+
+func TestProviderHealthTracksExecutableAvailability(t *testing.T) {
+	path := t.TempDir() + "/synthetic-private-path"
+	provider, err := New(Config{Executable: path})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertHealth := func(want commonv1.HealthState) {
+		t.Helper()
+		info := provider.Describe()
+		if info.GetHealth() != want || strings.Contains(info.GetUnavailableReason(), path) {
+			t.Fatalf("health=%v reason=%q", info.GetHealth(), info.GetUnavailableReason())
+		}
+	}
+	assertHealth(commonv1.HealthState_HEALTH_STATE_UNAVAILABLE)
+	if err := os.WriteFile(path, []byte("#!/bin/sh\nexit 0\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	assertHealth(commonv1.HealthState_HEALTH_STATE_UNAVAILABLE)
+	if err := os.Chmod(path, 0700); err != nil {
+		t.Fatal(err)
+	}
+	assertHealth(commonv1.HealthState_HEALTH_STATE_HEALTHY)
+	if err := os.Remove(path); err != nil {
+		t.Fatal(err)
+	}
+	assertHealth(commonv1.HealthState_HEALTH_STATE_UNAVAILABLE)
 }

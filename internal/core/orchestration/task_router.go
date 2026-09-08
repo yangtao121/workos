@@ -127,51 +127,27 @@ func (r *TaskRouter) SubmitWithResult(ctx context.Context, input agentapp.Submit
 		}
 	}
 
-	// Exact artifact-capability verification happens before any task row,
-	// outbox entry, or lease exists (ADR-0008): a provider that does not
-	// demonstrably produce every requested artifact type fails closed with
-	// zero side effects and never falls back to another provider. The
-	// replay path above stays snapshot-exact and never re-adjudicates.
-	if len(input.OutputArtifactTypes) > 0 {
-		if input.ProjectID == "" {
-			// Project review artifacts are project-scoped facts; global
-			// tasks cannot request them in this slice.
-			return agentports.TaskSubmission{}, agentdomain.ErrInvalid
-		}
-		capabilities, capErr := r.providers.Capabilities(ctx, providerID)
-		if errors.Is(capErr, agentdomain.ErrNotFound) {
-			return agentports.TaskSubmission{}, agentdomain.ErrProviderCapabilityMissing
-		}
-		if capErr != nil {
-			return agentports.TaskSubmission{}, fmt.Errorf("resolve provider artifact capabilities: %w", capErr)
-		}
-		if !capabilities.SupportsArtifactTypes(input.OutputArtifactTypes) {
-			return agentports.TaskSubmission{}, agentdomain.ErrProviderCapabilityMissing
-		}
+	if input.ProjectID == "" && (len(input.OutputArtifactTypes) > 0 || len(input.ContextRefs) > 0) {
+		return agentports.TaskSubmission{}, agentdomain.ErrInvalid
 	}
-
-	// Context ref capability and existence verification happen before any
-	// task row, outbox entry, or lease exists (ADR-0010): a provider that
-	// does not demonstrably consume every requested context type, or a ref
-	// that does not pin an existing immutable artifact of this owner and
-	// project at the exact digest, fails closed with zero side effects and
-	// never falls back. Global tasks never accept project artifact context.
+	// Artifact, context and credential checks share one healthy provider
+	// snapshot. A later catalog change cannot mix capabilities in one admission.
+	capabilities, err := r.providers.Capabilities(ctx, providerID)
+	if errors.Is(err, agentdomain.ErrNotFound) {
+		return agentports.TaskSubmission{}, agentdomain.ErrProviderCapabilityMissing
+	}
+	if err != nil {
+		return agentports.TaskSubmission{}, fmt.Errorf("resolve provider capabilities: %w", err)
+	}
+	if len(input.OutputArtifactTypes) > 0 && !capabilities.SupportsArtifactTypes(input.OutputArtifactTypes) {
+		return agentports.TaskSubmission{}, agentdomain.ErrProviderCapabilityMissing
+	}
 	if len(input.ContextRefs) > 0 {
-		if input.ProjectID == "" {
-			return agentports.TaskSubmission{}, agentdomain.ErrInvalid
-		}
 		requestedTypes := make([]string, 0, len(input.ContextRefs))
 		for _, ref := range input.ContextRefs {
 			requestedTypes = append(requestedTypes, ref.Type)
 		}
-		contextCapabilities, ctxCapErr := r.providers.Capabilities(ctx, providerID)
-		if errors.Is(ctxCapErr, agentdomain.ErrNotFound) {
-			return agentports.TaskSubmission{}, agentdomain.ErrProviderCapabilityMissing
-		}
-		if ctxCapErr != nil {
-			return agentports.TaskSubmission{}, fmt.Errorf("resolve provider context capabilities: %w", ctxCapErr)
-		}
-		if !contextCapabilities.SupportsContextRefTypes(requestedTypes) {
+		if !capabilities.SupportsContextRefTypes(requestedTypes) {
 			return agentports.TaskSubmission{}, agentdomain.ErrProviderCapabilityMissing
 		}
 		if err := r.contexts.VerifyTaskContext(ctx, input.OwnerUserID, input.ProjectID, input.ContextRefs); err != nil {
@@ -179,13 +155,7 @@ func (r *TaskRouter) SubmitWithResult(ctx context.Context, input agentapp.Submit
 		}
 	}
 	input.ProviderID = providerID
-	capabilities, capErr := r.providers.Capabilities(ctx, providerID)
-	if errors.Is(capErr, agentdomain.ErrNotFound) {
-		return agentports.TaskSubmission{}, agentdomain.ErrProviderCapabilityMissing
-	}
-	if capErr != nil {
-		return agentports.TaskSubmission{}, fmt.Errorf("resolve provider credential requirements: %w", capErr)
-	}
+
 	snapshot, err := r.resolveCredentialSnapshot(ctx, input.OwnerUserID, providerID, capabilities)
 	if err != nil {
 		return agentports.TaskSubmission{}, err

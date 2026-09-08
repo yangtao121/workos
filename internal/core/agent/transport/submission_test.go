@@ -46,3 +46,10 @@ func TestPublicSubmissionRejectsPrivateRepairTarget(t *testing.T) {
 		t.Fatalf("public repair target accepted: %v calls=%d", err, submitter.calls)
 	}
 }
+
+func TestUnhealthyProviderReturnsActionablePrecondition(t *testing.T) {
+	err := mapError(domain.ErrProviderUnavailable)
+	if connect.CodeOf(err) != connect.CodeFailedPrecondition {
+		t.Fatalf("health error: %v", err)
+	}
+}

@@ -1396,3 +1396,12 @@ SQL snapshot 读取活动安装的 App/version/digest 与未归档项目 revisio
 并发创建返回明确 Created 标识，queued 重放不会被误报为新建。Reliability 读取完成任务时
 同时核对 installation 关联。快照描述入队时安装，不推断原故障 workload 的版本。
 Recovery 路由和 Build/Test 尚待接入。
+
+## 2026-09-08 Provider 健康入队
+
+Core 的 ProviderCatalog port 只向新入队和待审批任务的批准校验提供 healthy Provider 的
+能力；starting/degraded/unavailable/unknown 均拒绝，catalog 连接故障仍是可重试
+Unavailable。普通任务的 artifact/context/credential 校验复用一次能力快照，避免多次
+catalog 读取混合不同能力。已存在任务先重放首次快照，不重新校验当前 Provider 健康。
+Generic CLI 的 catalog 健康包含可执行文件存在与执行权限，拒绝时不泄露文件路径。
+这不证明 CLI 的内核隔离、token budget 或 Recovery 专用路由已经实现。

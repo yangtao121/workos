@@ -48,11 +48,16 @@ func New(config Config) (*Provider, error) {
 }
 
 func (p *Provider) Describe() *harnessv1.HarnessProviderInfo {
-	return &harnessv1.HarnessProviderInfo{
+	info := &harnessv1.HarnessProviderInfo{
 		Id: "generic-cli", DisplayName: "Generic CLI Harness", AdapterVersion: "1.0.0",
 		Health:       commonv1.HealthState_HEALTH_STATE_HEALTHY,
 		Capabilities: &harnessv1.HarnessCapabilities{Streaming: true},
 	}
+	if _, err := exec.LookPath(p.config.Executable); err != nil {
+		info.Health = commonv1.HealthState_HEALTH_STATE_UNAVAILABLE
+		info.UnavailableReason = "Generic CLI executable is unavailable"
+	}
+	return info
 }
 
 // Run keeps structured artifact support honestly unsupported (ADR-0008): the

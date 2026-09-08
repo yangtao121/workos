@@ -50,7 +50,7 @@ func (h *RepairTaskHandler) CreateRepairTask(ctx context.Context, req *connect.R
 			code = connect.CodePermissionDenied
 		case errors.Is(err, projectdomain.ErrNotFound):
 			code = connect.CodeNotFound
-		case errors.Is(err, agentdomain.ErrProviderCapabilityMissing), errors.Is(err, agentdomain.ErrProviderCredentialMissing):
+		case errors.Is(err, agentdomain.ErrProviderCapabilityMissing), errors.Is(err, agentdomain.ErrProviderUnavailable), errors.Is(err, agentdomain.ErrProviderCredentialMissing):
 			code = connect.CodeFailedPrecondition
 		case errors.Is(err, agentports.ErrStoreUnavailable), errors.Is(err, projectports.ErrStoreUnavailable):
 			code = connect.CodeUnavailable

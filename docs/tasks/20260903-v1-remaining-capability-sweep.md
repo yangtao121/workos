@@ -968,3 +968,31 @@ cache，补为 /tmp 后通过）。再次 `make generate` 后 132 个生成文�
 （`tmp/repair-target-idempotent-generate.log`，摘要
 `tmp/repair-target-generated-before.json`）。没有 migration 或 UI 像素变化。
 本阶段完成，整个任务仍 active；下一步是健康 Provider 选择、Recovery 入队治理及候选构建。
+
+### R2 Provider 健康入队（active，2026-09-08）
+
+依赖 350248e。审查发现 providerCapabilities 只复制能力、忽略健康状态，普通/Repair/App
+新任务可能排给 catalog 已声明 unavailable 的 Provider；普通入队还最多重复查询三次
+catalog，artifact/context/credential 判定可能来自不同事实。先收口为新入队健康验证与
+一次能力快照，保留 replay-first；不把瞬时不可用转换为权限授予或静默更换普通任务绑定。
+验收覆盖真实 catalog adapter、健康状态矩阵、零入队副作用、重放不依赖当前健康。
+Recovery 专用路由、预算/审批与 Build/Test 继续在本总任务内推进。
+
+健康检查基线 FAIL（`tmp/provider-health-before.log`）：四种非 healthy 状态仍然入队，
+同时请求 artifact/context 时 catalog 被读取三次。修复后的 Core Agent/orchestration/
+Harness Catalog race PASS（`tmp/provider-health-after.log`）。Generic CLI 还会在可执行文件
+缺失时固定声明 healthy；补上存在/执行权限检查，错误只返回固定原因，不暴露路径。
+CLI 基线 FAIL（`tmp/provider-health-cli-before.log`），整个 Harness race PASS
+（`tmp/provider-health-cli-after.log`），验证缺失、无执行权限、恢复可执行、再次删除。
+
+健康检查最终镜像/部署 PASS（`tmp/provider-health-final-build.log`、
+`tmp/provider-health-final-deploy.log`）；真实 Repair RPC 回归 PASS
+（`tmp/provider-health-final-rpc.log`），公开任务并发/重放/私有来源拒绝 E2E PASS
+（`tmp/provider-health-e2e.log`）。新 ErrProviderUnavailable 返回明确健康原因与
+FailedPrecondition，不冒充 token budget 缺失；最终 Core race PASS
+（`tmp/provider-health-final-unit.log`）。非健康状态的拒绝与执行文件故障证据来自测试矩阵，
+此次默认栈回归不宣称覆盖真实 Provider 健康切换。
+`make check` PASS（`tmp/provider-health-final-check.log`）。没有 Proto/migration/UI 变化。
+再次 `make generate` 后 132 个生成文件/README 不变
+（`tmp/provider-health-idempotent-generate.log`，摘要
+`tmp/provider-health-generated-before.json`）。健康入队检查点完成，完整任务保持 active。
