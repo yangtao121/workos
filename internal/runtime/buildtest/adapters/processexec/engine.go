@@ -170,7 +170,7 @@ func (e *Engine) runStage(ctx context.Context, directory string, command []strin
 		"LANG=C.UTF-8",
 		"TZ=UTC",
 		"GOPROXY=off",
-		"GOFLAGS=-mod=vendor",
+		
 		"GOCACHE=" + filepath.Join(directory, ".gocache"),
 		"GOMODCACHE=" + filepath.Join(directory, ".gomodcache"),
 		"GOTMPDIR=" + directory,
