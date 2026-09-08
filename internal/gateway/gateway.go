@@ -100,6 +100,9 @@ var publicServicePrefixes = []string{
 // upstream. Workload and private host management stay unreachable here.
 var runtimeServicePrefixes = []string{
 	"/workos.surface.v1.SurfaceService/",
+	// The Remote Browser Pool control plane (ADR-0027): owner-identity gated
+	// on the runtime host like the surface service itself.
+	"/workos.surface.v1.BrowserSessionService/",
 	"/workos.bridge.v1.AppBridgeService/",
 }
 

@@ -95,11 +95,24 @@ func TestDeepSeekProjectBindingFixtureVerticalSlice(t *testing.T) {
 	if rebound.Msg.GetProject().GetRevision() != 3 || rebound.Msg.GetProject().GetHarnessBinding().GetProviderId() != "fake" {
 		t.Fatalf("unexpected rebound Project: %#v", rebound.Msg.GetProject())
 	}
+	// Since the caller-input idempotency binding, a changed replay payload is
+	// a stable Aborted; the identical payload still replays the exact task
+	// with its first provider snapshot despite the later binding change.
+	changed, err := tasks.SubmitTask(ctx, connect.NewRequest(&agentv1.SubmitTaskRequest{
+		IdempotencyKey: taskKey,
+		Input: &agentv1.AgentTaskInput{
+			TargetScope: &agentv1.TargetScope{Scope: &agentv1.TargetScope_ProjectId{ProjectId: project.GetId()}},
+			Role:        "general", Goal: "this changed retry payload must be refused",
+		},
+	}))
+	if connect.CodeOf(err) != connect.CodeAborted {
+		t.Fatalf("changed replay payload must abort, got %#v err=%v", changed, err)
+	}
 	repeated, err := tasks.SubmitTask(ctx, connect.NewRequest(&agentv1.SubmitTaskRequest{
 		IdempotencyKey: taskKey,
 		Input: &agentv1.AgentTaskInput{
 			TargetScope: &agentv1.TargetScope{Scope: &agentv1.TargetScope_ProjectId{ProjectId: project.GetId()}},
-			Role:        "general", Goal: "this changed retry payload must be ignored",
+			Role:        "general", Goal: "prove the DeepSeek project binding fixture", Budget: &agentv1.AgentBudget{MaxTokens: 2048, MaxRuntimeSeconds: 20},
 		},
 	}))
 	if err != nil {
@@ -276,5 +289,31 @@ func assertDeepSeekFixtureFailure(
 	}
 	if startedProvider != "deepseek" || failed == nil || failed.GetReason() == "" || failed.GetRetryable() != retryable || strings.Contains(failed.GetReason(), "workos-fixture-only") {
 		t.Fatalf("unexpected failure mapping: provider=%q failed=%#v", startedProvider, failed)
+	}
+	// A failure degrades adapter health; fresh admission requires healthy
+	// (ADR-0016 admission discipline). One successful run on the same
+	// project restores it so the next failure fixture can be admitted.
+	recovery, err := tasks.SubmitTask(ctx, connect.NewRequest(&agentv1.SubmitTaskRequest{
+		IdempotencyKey: "recover-" + key,
+		Input: &agentv1.AgentTaskInput{
+			TargetScope: &agentv1.TargetScope{Scope: &agentv1.TargetScope_ProjectId{ProjectId: bound.Msg.GetProject().GetId()}},
+			Role:        "general", Goal: "prove the DeepSeek project binding fixture", Budget: &agentv1.AgentBudget{MaxTokens: 2048, MaxRuntimeSeconds: 20},
+		},
+	}))
+	if err != nil {
+		t.Fatalf("submit recovery task: %v", err)
+	}
+	recoveryStream, err := tasks.WatchTaskEvents(ctx, connect.NewRequest(&agentv1.WatchTaskEventsRequest{TaskId: recovery.Msg.GetTask().GetId()}))
+	if err != nil {
+		t.Fatalf("watch recovery task: %v", err)
+	}
+	for recoveryStream.Receive() {
+	}
+	if err := recoveryStream.Err(); err != nil {
+		t.Fatalf("recovery stream: %v", err)
+	}
+	final, err := tasks.GetTask(ctx, connect.NewRequest(&agentv1.GetTaskRequest{TaskId: recovery.Msg.GetTask().GetId()}))
+	if err != nil || final.Msg.GetTask().GetState() != agentv1.AgentTaskState_AGENT_TASK_STATE_COMPLETED {
+		t.Fatalf("recovery run did not complete: %v %#v", err, final.Msg.GetTask())
 	}
 }

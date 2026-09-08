@@ -1495,3 +1495,16 @@ return 0 改为 return 42，保留原测试源码与配置；Core/Harness 重启
   BuildTest 提交/轮询 → 成功才 Register + DeploymentController.Offer（带
   staged 事实，migration 052 持久化）；失败构建零部署副作用，pending 保留
   轮询。DeploymentDriver 增加 Publish；staged 候选走私有 TransitionCandidate。
+
+## Remote Browser Pool（ADR-0027，2026-09-08）
+
+- `internal/runtime/browserpool/`：runtime-host 拥有的真实 Chromium worker 池。
+  migration 054（workos_runtime.browser_sessions）持久 owner-scoped 会话；
+  `chromiumengine` 固定 flag 启动 headless Chromium（私有 0700 profile、进程组
+  SIGKILL + Pdeathsig、并发 4/owner、TTL sweep）；CDP 页面驱动与有界 JPEG
+  screencast（≤256 KiB @2fps）；崩溃检测 = 进程 reap ∨ 页面 websocket 死亡，
+  有界重启 3 次后 failed。EngineFacts 如实声明无 cgroup 隔离。
+- `workos.surface.v1.BrowserSessionService`（Create/Navigate/Close/Get/Watch）：
+  Gateway 路由（runtime 上游 allowlist）+ owner 身份；Watch 为有界帧服务端流。
+- `make test-browser-pool`：Playwright 镜像 runtime + 真实页面 fixture，覆盖真实
+  渲染/幂等/漂移/导航/崩溃恢复/Close 回收/会话上限/scheme 拒绝。

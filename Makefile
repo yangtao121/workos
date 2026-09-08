@@ -1108,3 +1108,11 @@ test-build-engine:
 .PHONY: test-repair-buildtest
 test-repair-buildtest:
 	@set -eu; sh tools/repair-buildtest/gate.sh
+
+# The Remote Browser Pool gate (ADR-0027): real Chromium workers inside the
+# Playwright-image runtime-host. Proves real rendering, idempotency, drift
+# aborts, navigation, crash recovery with bounded restarts, close reaping,
+# the session cap and scheme refusal.
+.PHONY: test-browser-pool
+test-browser-pool:
+	@set -eu; sh tools/browser-pool/gate.sh

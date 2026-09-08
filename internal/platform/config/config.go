@@ -100,6 +100,11 @@ type Runtime struct {
 	// BuildTestLeaseTTL bounds how long a crashed executor's running job
 	// stays lease-protected before takeover (ADR-0026 restart recovery).
 	BuildTestLeaseTTL time.Duration `yaml:"buildtest_lease_ttl"`
+	// BrowserBinary enables the Remote Browser Pool with an absolute
+	// Chromium path (ADR-0027); empty keeps the capability unavailable.
+	BrowserBinary string `yaml:"browser_binary"`
+	// BrowserScratch is the pool's private profile root.
+	BrowserScratch string `yaml:"browser_scratch"`
 	// BuildTestProcessLimit scales the kernel NPROC bound for hosts that
 	// share one uid across many processes; the limit stays kernel enforced.
 	BuildTestProcessLimit int `yaml:"buildtest_process_limit"`
@@ -415,6 +420,8 @@ func Load() (Config, error) {
 	setString(&cfg.Indexer.PageTokenKey, "WORKOS_INDEX_PAGE_TOKEN_KEY")
 	setString(&cfg.Runtime.InstanceName, "WORKOS_RUNTIME_INSTANCE_NAME")
 	setString(&cfg.Runtime.BuildTestScratch, "WORKOS_RUNTIME_BUILDTEST_SCRATCH")
+	setString(&cfg.Runtime.BrowserBinary, "WORKOS_RUNTIME_BROWSER_BINARY")
+	setString(&cfg.Runtime.BrowserScratch, "WORKOS_RUNTIME_BROWSER_SCRATCH")
 	if raw, ok := os.LookupEnv("WORKOS_RUNTIME_BUILDTEST_PROCESS_LIMIT"); ok {
 		value, err := strconv.Atoi(raw)
 		if err != nil || value < 64 {

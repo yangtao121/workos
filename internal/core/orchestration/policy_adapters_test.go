@@ -50,6 +50,12 @@ func TestAdmissionRequiresHealthyProviderAndPreservesReplay(t *testing.T) {
 				if err != nil || replay.ID != task.ID || source.reads != 1 || len(agents.submitted) != 1 {
 					t.Fatalf("replay depended on current health: %v reads=%d", err, source.reads)
 				}
+			} else if health == catalogdomain.HealthDegraded {
+				// Degraded still admits: transient upstream failures only
+				// recover through a subsequent run.
+				if err != nil || len(agents.submitted) != 1 {
+					t.Fatalf("degraded admission: %v submissions=%d", err, len(agents.submitted))
+				}
 			} else if !errors.Is(err, agentdomain.ErrProviderUnavailable) || len(agents.submitted) != 0 {
 				t.Fatalf("unhealthy provider admitted: %v submissions=%d", err, len(agents.submitted))
 			}

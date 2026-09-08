@@ -1265,7 +1265,7 @@ Reliability 六进程 + golang 工具链镜像 runtime-host + 通用 CLI fixture
 ### R2 监督/遥测复核与默认栈修复（verified，2026-09-08）
 
 - `make test-telemetry` 重跑 PASS（真实 RPC 流量 + 白名单摘要）；`make
-  test-real-supervision` 重跑 PASS（观察→incident 唯一→restart 推进→上限停止）。
+test-real-supervision` 重跑 PASS（观察→incident 唯一→restart 推进→上限停止）。
   均在本轮全部代码之上真实执行（tmp/telemetry-reverify.log、
   tmp/supervision-reverify.log）。
 - `make test-repair-deployment` 首轮 FAIL 暴露两处真实问题并修复：
@@ -1283,3 +1283,38 @@ Reliability 六进程 + golang 工具链镜像 runtime-host + 通用 CLI fixture
   ADR-0026 的引擎诚实声明一致（工具链证据在 repair-buildtest 门禁的 golang
   镜像栈）。进程引擎 scratch 根缺失时自动创建（0700），不再误报引擎不可用。
 - `make check` PASS（含 prettier 修正 docs/status.json）。
+
+### R1 基线复核与既有缺陷修复（verified，2026-09-08）
+
+- `make test-credential-vault-expansion`、`make test-mcp-harness` 重跑 PASS。
+- `make test-codex-harness` FAIL 暴露测试与 10e2396 幂等语义漂移（同 key 不同输入应
+  Aborted）：更新断言为新契约后 PASS；`make test-deepseek-fixture` 首轮暴露两处：
+  1. 产品缺陷：fresh admission 只接受 Healthy，DEGRADED 也拒绝——上游瞬态故障后
+     provider 无法通过任何后续运行恢复健康（死锁）。binding 选择本就接受
+     Healthy+Degraded，capabilities 现对齐：DEGRADED 仍准入（单元断言更新），
+     Unavailable/Unknown 保持 fail-closed。
+  2. E2E 竞态：expectProjectRevision 单次读取与异步 save 竞争，改为 expect.poll。
+     修复后全部 PASS（tmp/r1-codex2.log、tmp/r1-deepseek4.log、tmp/r1-vault.log、
+     tmp/r1-mcp.log）。
+
+### R3 Remote Browser Pool（verified，2026-09-08）
+
+ADR-0027 + migration 054（workos_runtime.browser_sessions，owner runtime-host）+
+`workos.surface.v1.BrowserSessionService`（Gateway 路由 + owner 身份）：
+
+- `internal/runtime/browserpool`：durable owner-scoped 会话（幂等 key + 请求摘要
+  漂移 Aborted）、`chromiumengine` 真实 headless Chromium worker（固定 flag、私有
+  0700 profile、进程组 kill + Pdeathsig、并发 4 上限、TTL sweep）、CDP 页面驱动
+  （/json/new 单次开页、Page.navigate 等 loadEvent、captureScreenshot JPEG 帧
+  ≤256 KiB @2fps）、崩溃检测（进程 reap + 页面 websocket 双信号——chrome 子进程
+  持有 stderr 管道会阻塞 Wait，ws 死亡是权威信号）与有界重启（3 次后 failed）。
+  `--disable-dev-shm-usage` 修复容器 64MiB /dev/shm 下多 worker 页面崩塌。
+- 关键产品缺陷（本门禁 31 轮迭代揪出）：`Service.Capture` 原通过 `worker()` 取
+  worker——该 helper 过滤已退出 worker，导致崩溃恢复路径不可达（worker 死后
+  永远 Unavailable 而非重启）。改为缺失/死亡即进入有界恢复。
+- `make test-browser-pool` PASS ×3（tools/browser-pool：Playwright 镜像 runtime +
+  真实 fixture 页面）：真实渲染帧（≥4KiB 且色彩多样）、幂等重放、漂移 Aborted、
+  二次导航内容更新、docker 内杀掉全部 chromium 进程后有界恢复（restart_count
+  ≥1 或 failed）、Close 回收、每 owner 会话上限（恰好 4，第 5 拒绝）、file://
+  拒绝。容器级 cgroup 隔离如实未声明（EngineFacts）。
+- `make check` PASS（含 buf lint——流响应命名符合规范）。

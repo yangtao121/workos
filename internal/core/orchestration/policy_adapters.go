@@ -74,7 +74,12 @@ func (a *providerCapabilities) Capabilities(ctx context.Context, providerID stri
 		if provider.ID != providerID {
 			continue
 		}
-		if provider.Health != catalogdomain.HealthHealthy {
+		// Degraded providers still admit: transient upstream failures (rate
+		// limit, transport) only recover through a subsequent run, so a full
+		// admission block would dead-lock the provider at degraded forever.
+		// Unavailable and unknown states keep failing closed, matching the
+		// binding selection's health gate.
+		if provider.Health != catalogdomain.HealthHealthy && provider.Health != catalogdomain.HealthDegraded {
 			return agentports.ProviderCapabilities{}, agentdomain.ErrProviderUnavailable
 		}
 		return agentports.ProviderCapabilities{

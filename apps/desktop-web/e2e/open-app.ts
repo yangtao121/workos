@@ -47,11 +47,19 @@ export async function createDesktopProject(page: Page, name: string) {
 }
 
 export async function expectProjectRevision(page: Page, projectId: string, revision: string) {
-  const response = await page.request.post("/workos.project.v1.ProjectService/GetProject", {
-    data: { projectId },
-  });
-  expect(response.ok()).toBe(true);
-  expect(((await response.json()) as { project: { revision: string } }).project.revision).toBe(
-    revision,
-  );
+  // The binding save commits asynchronously after the click; poll instead of
+  // racing a single read.
+  await expect
+    .poll(
+      async () => {
+        const response = await page.request.post("/workos.project.v1.ProjectService/GetProject", {
+          data: { projectId },
+        });
+        if (!response.ok()) return "request-failed";
+        const body = (await response.json()) as { project: { revision: string } };
+        return body.project.revision;
+      },
+      { timeout: 10_000 },
+    )
+    .toBe(revision);
 }

@@ -92,16 +92,28 @@ func TestCodexProjectBindingFixtureVerticalSlice(t *testing.T) {
 	if task.GetProviderId() != "codex" {
 		t.Fatalf("task did not snapshot Codex binding: %#v", task)
 	}
-	// Replay keeps the first provider snapshot exactly like every provider.
+	// Since the caller-input idempotency binding, a same-key replay with a
+	// different payload is a stable Aborted (the first Codex snapshot is
+	// immutable); the identical payload still replays the exact task.
+	changed, err := tasks.SubmitTask(ctx, connect.NewRequest(&agentv1.SubmitTaskRequest{
+		IdempotencyKey: taskKey,
+		Input: &agentv1.AgentTaskInput{
+			TargetScope: &agentv1.TargetScope{Scope: &agentv1.TargetScope_ProjectId{ProjectId: project.GetId()}},
+			Role:        "general", Goal: "changed retry payload must be refused",
+		},
+	}))
+	if connect.CodeOf(err) != connect.CodeAborted {
+		t.Fatalf("changed replay payload must abort, got %#v err=%v", changed, err)
+	}
 	repeated, err := tasks.SubmitTask(ctx, connect.NewRequest(&agentv1.SubmitTaskRequest{
 		IdempotencyKey: taskKey,
 		Input: &agentv1.AgentTaskInput{
 			TargetScope: &agentv1.TargetScope{Scope: &agentv1.TargetScope_ProjectId{ProjectId: project.GetId()}},
-			Role:        "general", Goal: "changed retry payload must be ignored",
+			Role:        "general", Goal: "prove the codex project binding fixture", Budget: &agentv1.AgentBudget{MaxTokens: 64, MaxRuntimeSeconds: 20},
 		},
 	}))
 	if err != nil || repeated.Msg.GetTask().GetId() != task.GetId() || repeated.Msg.GetTask().GetProviderId() != "codex" {
-		t.Fatalf("idempotency did not preserve the Codex snapshot: %#v err=%v", repeated.Msg.GetTask(), err)
+		t.Fatalf("identical replay did not preserve the Codex snapshot: %#v err=%v", repeated.Msg.GetTask(), err)
 	}
 
 	stream, err := tasks.WatchTaskEvents(ctx, connect.NewRequest(&agentv1.WatchTaskEventsRequest{TaskId: task.GetId()}))

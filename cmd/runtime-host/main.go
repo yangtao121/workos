@@ -23,6 +23,10 @@ import (
 	"github.com/yangtao121/workos/internal/platform/logging"
 	"github.com/yangtao121/workos/internal/platform/systemhandler"
 	"github.com/yangtao121/workos/internal/platform/telemetry"
+	chromiumengine "github.com/yangtao121/workos/internal/runtime/browserpool/adapters/chromiumengine"
+	browserpoolpostgres "github.com/yangtao121/workos/internal/runtime/browserpool/adapters/postgres"
+	browserpoolapp "github.com/yangtao121/workos/internal/runtime/browserpool/application"
+	browserpooltransport "github.com/yangtao121/workos/internal/runtime/browserpool/transport"
 	buildtestpostgres "github.com/yangtao121/workos/internal/runtime/buildtest/adapters/postgres"
 	"github.com/yangtao121/workos/internal/runtime/buildtest/adapters/processexec"
 	buildtestapp "github.com/yangtao121/workos/internal/runtime/buildtest/application"
@@ -302,6 +306,40 @@ func run(logger *slog.Logger) error {
 		}
 		mux.ServeHTTP(w, r)
 	})
+
+	// The Remote Browser Pool (ADR-0027): real Chromium workers behind the
+	// owner-identity gate. Without a configured binary the capability stays
+	// honestly unavailable and the handler reports it.
+	if strings.TrimSpace(cfg.Runtime.BrowserBinary) != "" {
+		browserEngine, engineErr := chromiumengine.New(cfg.Runtime.BrowserBinary, cfg.Runtime.BrowserScratch)
+		if engineErr != nil {
+			return engineErr
+		}
+		browserService, serviceErr := browserpoolapp.NewService(browserpoolpostgres.New(pool), browserEngine, browserEngine, generator, cfg.Runtime.InstanceName, logger)
+		if serviceErr != nil {
+			return serviceErr
+		}
+		browserPath, browserHandler := browserpooltransport.NewBrowserPoolHandler(browserService)
+		mux.Handle(browserPath, identity.Middleware(browserHandler))
+		browserStop := make(chan struct{})
+		defer close(browserStop)
+		go func() {
+			ticker := time.NewTicker(30 * time.Second)
+			defer ticker.Stop()
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case <-browserStop:
+					return
+				case <-ticker.C:
+					if err := browserService.Sweep(ctx); err != nil {
+						logger.Info("browser pool sweep pending", "error", err)
+					}
+				}
+			}
+		}()
+	}
 
 	systemPath, systemHandler := commonv1connect.NewSystemServiceHandler(systemhandler.New("runtime-host", commonv1.HealthState_HEALTH_STATE_HEALTHY,
 		&commonv1.FeatureCapability{Id: "node-inspection", Available: true},

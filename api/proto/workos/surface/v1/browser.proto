@@ -1,0 +1,92 @@
+syntax = "proto3";
+
+package workos.surface.v1;
+
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/yangtao121/workos/gen/go/workos/surface/v1;surfacev1";
+
+// One Remote Browser Pool session: a real Chromium worker owned by the
+// runtime host (ADR-0027). Sessions are owner-scoped and bounded; the
+// desktop Browser window is the rendering consumer.
+message BrowserSession {
+  string id = 1;
+  string owner_user_id = 2;
+  string project_id = 3;
+  // queued|running|restarting|closed|failed
+  string state = 4;
+  string current_url = 5;
+  // Honest engine facts: the worker process and its bounds.
+  string engine = 6;
+  int32 restart_count = 7;
+  google.protobuf.Timestamp created_at = 8;
+  google.protobuf.Timestamp expires_at = 9;
+}
+
+message CreateBrowserSessionRequest {
+  string idempotency_key = 1;
+  string project_id = 2;
+  // Empty opens the session's start page; only http(s) is accepted.
+  string initial_url = 3;
+}
+
+message CreateBrowserSessionResponse {
+  BrowserSession session = 1;
+}
+
+message NavigateBrowserSessionRequest {
+  string session_id = 1;
+  string url = 2;
+}
+
+message NavigateBrowserSessionResponse {
+  BrowserSession session = 1;
+}
+
+message CloseBrowserSessionRequest {
+  string session_id = 1;
+}
+
+message CloseBrowserSessionResponse {
+  BrowserSession session = 1;
+}
+
+message GetBrowserSessionRequest {
+  string session_id = 1;
+}
+
+message GetBrowserSessionResponse {
+  BrowserSession session = 1;
+}
+
+message WatchBrowserSessionRequest {
+  string session_id = 1;
+}
+
+// One screencast frame (bounded JPEG bytes) or a session state change. The
+// stream ends when the session closes; the client reconnects to re-watch.
+message WatchBrowserSessionResponse {
+  oneof kind {
+    BrowserFrame frame = 1;
+    BrowserSession state = 2;
+  }
+}
+
+message BrowserFrame {
+  // Monotonic per-session frame number.
+  int64 sequence = 1;
+  bytes jpeg = 2;
+  int32 width = 3;
+  int32 height = 4;
+}
+
+// The Remote Browser Pool control plane. Create/Navigate/Close/Get are
+// ordinary RPCs; Watch streams bounded screencast frames to the desktop
+// Browser window. Gateway-routable with owner identity only.
+service BrowserSessionService {
+  rpc CreateBrowserSession(CreateBrowserSessionRequest) returns (CreateBrowserSessionResponse) {}
+  rpc NavigateBrowserSession(NavigateBrowserSessionRequest) returns (NavigateBrowserSessionResponse) {}
+  rpc CloseBrowserSession(CloseBrowserSessionRequest) returns (CloseBrowserSessionResponse) {}
+  rpc GetBrowserSession(GetBrowserSessionRequest) returns (GetBrowserSessionResponse) {}
+  rpc WatchBrowserSession(WatchBrowserSessionRequest) returns (stream WatchBrowserSessionResponse) {}
+}
