@@ -112,6 +112,10 @@ func (r *fakeRepository) GetVersion(_ context.Context, ownerUserID, appID, versi
 	return domain.AppVersionSummary{}, domain.ErrNotFound
 }
 
+func (r *fakeRepository) GetVersionAnyStateByKey(ctx context.Context, ownerUserID, appID, version string) (domain.AppVersionSummary, error) {
+	return r.GetVersion(ctx, ownerUserID, appID, version)
+}
+
 func (r *fakeRepository) GetVersionManifest(_ context.Context, ownerUserID, appID, version string) (string, []byte, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()

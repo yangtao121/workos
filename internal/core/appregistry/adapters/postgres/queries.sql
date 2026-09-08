@@ -71,3 +71,38 @@ VALUES ($1, $2, $3);
 SELECT source_bundle_id
 FROM workos_core.app_repair_source_candidates
 WHERE task_id = $1 AND owner_user_id = $2;
+
+-- name: FindRepairCandidateVersion :one
+SELECT task_id, owner_user_id, project_id, installation_id, incident_id, build_job_id,
+       source_digest, app_version_id, published_at, created_at
+FROM workos_core.app_repair_candidate_versions
+WHERE task_id = $1;
+
+-- name: GetAppVersionByIDAnyState :one
+SELECT owner_user_id, app_id, version, scope, name, permissions, manifest_digest, state
+FROM workos_core.app_versions
+WHERE id = $1;
+
+-- name: InsertStagedAppVersion :execrows
+INSERT INTO workos_core.app_versions (
+    id, owner_user_id, app_id, version, scope, name, permissions,
+    manifest_digest, canonical_manifest, state, created_at
+) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'staged', $10)
+ON CONFLICT DO NOTHING;
+
+-- name: InsertRepairCandidateVersion :execrows
+INSERT INTO workos_core.app_repair_candidate_versions (
+    task_id, owner_user_id, project_id, installation_id, incident_id, build_job_id,
+    source_digest, app_version_id, created_at
+) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+ON CONFLICT (task_id) DO NOTHING;
+
+-- name: PublishStagedAppVersion :execrows
+UPDATE workos_core.app_versions
+SET state = 'published'
+WHERE id = $1 AND state = 'staged';
+
+-- name: MarkCandidateVersionPublished :execrows
+UPDATE workos_core.app_repair_candidate_versions
+SET published_at = $2
+WHERE task_id = $1 AND published_at IS NULL;

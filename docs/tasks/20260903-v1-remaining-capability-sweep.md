@@ -1162,3 +1162,42 @@ Provider/凭据失效链、Bridge/Declarative、知识源/索引/归档、通知
 
 验证 PASS：两份文档的 Prettier check、status renderer --check、交接中 49 个 Make target
 及显式仓库路径核查、git diff --check；唯一任务分支正确，main 保持 d4fca63。
+
+### R2 Runtime Build/Test 与候选发布（active，2026-09-08）
+
+按 ADR-0026 实现 Build/Test 执行段。先 Proto（taskexecution/v1/build.proto：
+Runtime 私有 BuildTestService + Core 私有 RepairVersionService），migration
+050（Core app_versions.state + 任务映射）、051（workos_runtime.build_jobs）、
+052（部署台账 staged 事实）。Runtime `internal/runtime/buildtest`：持久作业
+状态机（task 幂等/规范摘要漂移拒绝/租约恢复/transient 三次重试后终态）+
+进程沙箱引擎（bash ulimit 内核限制、墙钟 deadline、进程组清理、1 MiB 输出
+预算、最小环境 GOPROXY=off）。Core：staged 版本注册（派生 manifest 仅换
+build source 绑定）、私有 canary 精确切换、canary 后 publish；owner 读取与
+默认版本选择只见 published。Reliability：BuildCoordinator 串起 候选读取→
+BuildTest→staged 注册→Offer（staged 事实持久化）；promote 先 publish；
+失败构建零部署副作用。默认六进程未部署新版本（本次仅代码+单测）。
+
+已验证（2026-09-08，全部真实执行）：
+
+- `make test-build-engine` PASS：真实子进程矩阵——成功、测试失败终态、构建
+  失败不跑测试（exit 7 断言日志无测试输出）、墙钟超时、输出预算、内核
+  地址空间 kill（有界内存版）、路径穿越拒绝、无代理最小环境。
+- `go test ./internal/...` 全部 PASS（buildtest 状态机：幂等/漂移 Abort/
+  重试耗尽 engine-failed/cancel 终态不可变；deployment promote-publish、
+  staged 切换；受影响 fake 全部补齐）。
+- `make check` PASS（首轮格式化后）；`buf breaking --against .git#branch=main`
+  PASS；buf+sqlc 再次生成 94 个生成文件 SHA-256 不变。
+- 开发中断排查：go module 缓存卷 root 属主目录已恢复 uid 1000；桥接网络
+  goproxy.cn 不可达时按交接文档改用 host 网络运行 Go 工具容器。引擎
+  RLIMIT_NPROC 计入线程，并行测试套件共享 uid 会触发 Cannot fork：默认
+  4096 并把真实子进程矩阵放入 engineexec 标签的专用门禁。
+
+未完成（下一阶段继续，不作为完成证据）：
+
+1. `tools/repair-buildtest` 跨进程门禁：成功/测试失败/构建失败/启动故障/
+   canary 故障回滚/回滚失败重试/进程重启/重复提交/用户版本变更矩阵，断言
+   实际版本、Surface 与持久台账。默认栈 Core/Runtime/Reliability 需成组
+   部署后再验收。
+2. rootless Podman 构建引擎（本宿主 BLOCKED 不变）；进程引擎不声明容器级
+   隔离。
+3. R2 Recovery 治理、监督/遥测复核仍待做；R3/R4/R5/R6 未动。

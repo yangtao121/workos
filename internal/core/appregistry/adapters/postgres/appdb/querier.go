@@ -9,18 +9,24 @@ import (
 )
 
 type Querier interface {
+	FindRepairCandidateVersion(ctx context.Context, taskID string) (WorkosCoreAppRepairCandidateVersion, error)
 	GetAppBuildManifest(ctx context.Context, arg GetAppBuildManifestParams) (GetAppBuildManifestRow, error)
 	GetAppSourceBundle(ctx context.Context, arg GetAppSourceBundleParams) (GetAppSourceBundleRow, error)
 	GetAppSourceBundleByKey(ctx context.Context, arg GetAppSourceBundleByKeyParams) (GetAppSourceBundleByKeyRow, error)
-	GetAppVersion(ctx context.Context, arg GetAppVersionParams) (WorkosCoreAppVersion, error)
-	GetAppVersionByID(ctx context.Context, id string) (WorkosCoreAppVersion, error)
+	GetAppVersion(ctx context.Context, arg GetAppVersionParams) (GetAppVersionRow, error)
+	GetAppVersionByID(ctx context.Context, id string) (GetAppVersionByIDRow, error)
+	GetAppVersionByIDAnyState(ctx context.Context, id string) (GetAppVersionByIDAnyStateRow, error)
 	GetRegistrationRequest(ctx context.Context, arg GetRegistrationRequestParams) (WorkosCoreAppRegistrationRequest, error)
 	GetRepairSourceCandidate(ctx context.Context, arg GetRepairSourceCandidateParams) (string, error)
 	InsertAppSourceBundle(ctx context.Context, arg InsertAppSourceBundleParams) (int64, error)
 	InsertAppVersion(ctx context.Context, arg InsertAppVersionParams) (int64, error)
 	InsertRegistrationRequest(ctx context.Context, arg InsertRegistrationRequestParams) (int64, error)
+	InsertRepairCandidateVersion(ctx context.Context, arg InsertRepairCandidateVersionParams) (int64, error)
 	InsertRepairSourceCandidate(ctx context.Context, arg InsertRepairSourceCandidateParams) error
+	InsertStagedAppVersion(ctx context.Context, arg InsertStagedAppVersionParams) (int64, error)
 	ListAppIDPage(ctx context.Context, arg ListAppIDPageParams) ([]string, error)
+	MarkCandidateVersionPublished(ctx context.Context, arg MarkCandidateVersionPublishedParams) (int64, error)
+	PublishStagedAppVersion(ctx context.Context, id string) (int64, error)
 }
 
 var _ Querier = (*Queries)(nil)

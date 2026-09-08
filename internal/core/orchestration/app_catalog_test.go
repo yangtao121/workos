@@ -41,6 +41,10 @@ func (r registryRepoStub) Register(context.Context, appregistrydomain.AppVersion
 	return appregistrydomain.AppVersionSummary{}, nil
 }
 
+func (r registryRepoStub) GetVersionAnyStateByKey(ctx context.Context, ownerUserID, appID, version string) (appregistrydomain.AppVersionSummary, error) {
+	return r.GetVersion(ctx, ownerUserID, appID, version)
+}
+
 func (registryRepoStub) GetVersionManifest(_ context.Context, _, _, _ string) (string, []byte, error) {
 	return "", nil, nil
 }

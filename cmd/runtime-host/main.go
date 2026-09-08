@@ -23,6 +23,10 @@ import (
 	"github.com/yangtao121/workos/internal/platform/logging"
 	"github.com/yangtao121/workos/internal/platform/systemhandler"
 	"github.com/yangtao121/workos/internal/platform/telemetry"
+	buildtestpostgres "github.com/yangtao121/workos/internal/runtime/buildtest/adapters/postgres"
+	"github.com/yangtao121/workos/internal/runtime/buildtest/adapters/processexec"
+	buildtestapp "github.com/yangtao121/workos/internal/runtime/buildtest/application"
+	buildtesttransport "github.com/yangtao121/workos/internal/runtime/buildtest/transport"
 	surfacecoreclient "github.com/yangtao121/workos/internal/runtime/surface/adapters/coreclient"
 	indexerclient "github.com/yangtao121/workos/internal/runtime/surface/adapters/indexerclient"
 	surfacepostgres "github.com/yangtao121/workos/internal/runtime/surface/adapters/postgres"
@@ -110,6 +114,43 @@ func run(logger *slog.Logger) error {
 		return err
 	}
 	generator := ids.UUIDv7{}
+
+	// The private Build/Test executor (ADR-0026): durable jobs, process-tier
+	// sandbox engine with kernel rlimits, and the Reliability-facing RPC.
+	// Empty scratch config disables the service honestly.
+	if strings.TrimSpace(cfg.Runtime.BuildTestScratch) != "" {
+		buildEngine, engineErr := processexec.New(processexec.Config{ScratchRoot: cfg.Runtime.BuildTestScratch})
+		if engineErr != nil {
+			return engineErr
+		}
+		buildStore := buildtestpostgres.New(pool)
+		buildService, serviceErr := buildtestapp.NewService(buildStore, buildEngine, generator, cfg.Runtime.InstanceName, cfg.Runtime.BuildTestTimeout)
+		if serviceErr != nil {
+			return serviceErr
+		}
+		buildPath, buildHandler := buildtesttransport.NewBuildTestHandler(buildService)
+		mux.Handle(buildPath, buildHandler)
+		buildStop := make(chan struct{})
+		defer close(buildStop)
+		go func() {
+			ticker := time.NewTicker(cfg.Runtime.BuildTestInterval)
+			defer ticker.Stop()
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case <-buildStop:
+					return
+				case <-ticker.C:
+					driveCtx, cancel := context.WithTimeout(ctx, cfg.Runtime.BuildTestTimeout)
+					if _, err := buildService.RunPass(driveCtx, time.Now().UTC()); err != nil {
+						logger.Info("build test pass pending", "error", err)
+					}
+					cancel()
+				}
+			}
+		}()
+	}
 	sessionStore := surfacepostgres.New(pool)
 
 	// The Workload Manager owns supervised containers in runtime-owned

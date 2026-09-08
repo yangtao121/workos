@@ -82,6 +82,19 @@ func (r *Repository) ResolveActiveInstallation(ctx context.Context, ownerUserID,
 	return installationFromResolver(value, err)
 }
 
+// ResolveActiveInstallationFacts also surfaces the project revision captured
+// in the same read, for the staged candidate lifecycle (ADR-0026).
+func (r *Repository) ResolveActiveInstallationFacts(ctx context.Context, ownerUserID, projectID, installationID string) (domain.Installation, int64, error) {
+	row, err := r.queries.ResolveActiveInstallation(ctx, projectdb.ResolveActiveInstallationParams{
+		OwnerUserID: ownerUserID, ProjectID: projectID, ID: installationID,
+	})
+	installation, mapErr := installationFromResolver(row, err)
+	if mapErr != nil {
+		return domain.Installation{}, 0, mapErr
+	}
+	return installation, row.ProjectRevision, nil
+}
+
 func (r *Repository) ResolveActiveInstallationForAppTx(ctx context.Context, tx dbtx.Tx, ownerUserID, projectID, installationID string) (domain.Installation, error) {
 	queries := r.queries.WithTx(tx)
 	if _, err := queries.LockProjectForNotification(ctx, projectdb.LockProjectForNotificationParams{

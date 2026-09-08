@@ -10,6 +10,8 @@ import (
 	appv1connect "github.com/yangtao121/workos/gen/go/workos/app/v1/appv1connect"
 	surfacev1 "github.com/yangtao121/workos/gen/go/workos/surface/v1"
 	surfacev1connect "github.com/yangtao121/workos/gen/go/workos/surface/v1/surfacev1connect"
+	executionv1 "github.com/yangtao121/workos/gen/go/workos/taskexecution/v1"
+	"github.com/yangtao121/workos/gen/go/workos/taskexecution/v1/taskexecutionv1connect"
 	"github.com/yangtao121/workos/internal/platform/identity"
 	"github.com/yangtao121/workos/internal/platform/telemetry"
 	"github.com/yangtao121/workos/internal/reliability/application"
@@ -18,6 +20,7 @@ import (
 type DeploymentDriverClient struct {
 	client   appv1connect.AppInstallationServiceClient
 	surfaces surfacev1connect.SurfaceServiceClient
+	versions taskexecutionv1connect.RepairVersionServiceClient
 	deviceID string
 }
 
@@ -25,11 +28,32 @@ func NewDeploymentDriverClient(coreURL, runtimeURL, deviceID string) *Deployment
 	return &DeploymentDriverClient{
 		client:   appv1connect.NewAppInstallationServiceClient(telemetry.HTTPClient(), coreURL),
 		surfaces: surfacev1connect.NewSurfaceServiceClient(telemetry.HTTPClient(), runtimeURL),
+		versions: taskexecutionv1connect.NewRepairVersionServiceClient(telemetry.HTTPClient(), coreURL),
 		deviceID: deviceID,
 	}
 }
 
+// Transition pins the candidate version. Staged repair candidates (ADR-0026)
+// go through Core's private staged canary transition; ordinary candidates
+// keep the public exact-version transition.
 func (c *DeploymentDriverClient) Transition(ctx context.Context, candidate application.DeploymentCandidate, key string) error {
+	if candidate.Staged() {
+		request := connect.NewRequest(&executionv1.TransitionCandidateVersionRequest{
+			IdempotencyKey: key, ProjectId: candidate.ProjectID,
+			InstallationId: candidate.InstallationID, Version: candidate.TargetVersion,
+			ManifestDigest: candidate.ManifestDigest, ExpectedProjectRevision: candidate.ExpectedRevision,
+		})
+		request.Header().Set(identity.UserHeader, candidate.OwnerUserID)
+		request.Header().Set(identity.DeviceHeader, c.deviceID)
+		response, err := c.versions.TransitionCandidateVersion(ctx, request)
+		if err != nil {
+			return err
+		}
+		if response.Msg.GetVersion() != candidate.TargetVersion {
+			return connect.NewError(connect.CodeInternal, errors.New("staged transition returned a different version"))
+		}
+		return nil
+	}
 	request := connect.NewRequest(&appv1.TransitionAppVersionRequest{
 		IdempotencyKey: key, ProjectId: candidate.ProjectID,
 		InstallationId: candidate.InstallationID, Version: candidate.TargetVersion,
@@ -38,6 +62,23 @@ func (c *DeploymentDriverClient) Transition(ctx context.Context, candidate appli
 	request.Header().Set(identity.UserHeader, candidate.OwnerUserID)
 	request.Header().Set(identity.DeviceHeader, c.deviceID)
 	_, err := c.client.TransitionAppVersion(ctx, request)
+	return err
+}
+
+// Publish flips the staged candidate to a published version (ADR-0026).
+func (c *DeploymentDriverClient) Publish(ctx context.Context, candidate application.DeploymentCandidate) error {
+	if !candidate.Staged() {
+		// Ordinary candidates were published versions from the start.
+		return nil
+	}
+	request := connect.NewRequest(&executionv1.PublishRepairCandidateVersionRequest{
+		TaskId: candidate.TaskID, ProjectId: candidate.ProjectID,
+		InstallationId: candidate.InstallationID, Version: candidate.TargetVersion,
+		ManifestDigest: candidate.ManifestDigest,
+	})
+	request.Header().Set(identity.UserHeader, candidate.OwnerUserID)
+	request.Header().Set(identity.DeviceHeader, c.deviceID)
+	_, err := c.versions.PublishRepairCandidateVersion(ctx, request)
 	return err
 }
 

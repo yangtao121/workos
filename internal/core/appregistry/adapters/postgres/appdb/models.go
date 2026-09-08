@@ -5,8 +5,6 @@
 package appdb
 
 import (
-	"encoding/json"
-
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
@@ -18,15 +16,15 @@ type WorkosCoreAppRegistrationRequest struct {
 	CreatedAt      pgtype.Timestamptz `json:"created_at"`
 }
 
-type WorkosCoreAppVersion struct {
-	ID                string             `json:"id"`
-	OwnerUserID       string             `json:"owner_user_id"`
-	AppID             string             `json:"app_id"`
-	Version           string             `json:"version"`
-	Scope             string             `json:"scope"`
-	Name              string             `json:"name"`
-	Permissions       []string           `json:"permissions"`
-	ManifestDigest    string             `json:"manifest_digest"`
-	CanonicalManifest json.RawMessage    `json:"canonical_manifest"`
-	CreatedAt         pgtype.Timestamptz `json:"created_at"`
+type WorkosCoreAppRepairCandidateVersion struct {
+	TaskID         string             `json:"task_id"`
+	OwnerUserID    string             `json:"owner_user_id"`
+	ProjectID      string             `json:"project_id"`
+	InstallationID string             `json:"installation_id"`
+	IncidentID     string             `json:"incident_id"`
+	BuildJobID     string             `json:"build_job_id"`
+	SourceDigest   string             `json:"source_digest"`
+	AppVersionID   string             `json:"app_version_id"`
+	PublishedAt    pgtype.Timestamptz `json:"published_at"`
+	CreatedAt      pgtype.Timestamptz `json:"created_at"`
 }

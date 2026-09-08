@@ -82,7 +82,19 @@ func run(logger *slog.Logger) error {
 	if err != nil {
 		return err
 	}
-	repairOrchestrator, err := application.NewRepairOrchestrator(repository, repairSubmitter, deploymentController)
+	// The verified Build/Test chain (ADR-0026): a completed repair task now
+	// advances through Runtime's build verdict and Core's staged
+	// registration before any deployment offer. A failed build clears the
+	// row with zero deployment side effects.
+	buildCoordinator, err := application.NewBuildCoordinator(
+		transport.NewCandidateReaderClient(cfg.Services.Core, cfg.Auth.DeviceID),
+		transport.NewBuildTestServiceClient(cfg.Services.Runtime),
+		transport.NewRepairVersionClient(cfg.Services.Core, cfg.Auth.DeviceID),
+		deploymentController)
+	if err != nil {
+		return err
+	}
+	repairOrchestrator, err := application.NewRepairOrchestrator(repository, repairSubmitter, buildCoordinator)
 	if err != nil {
 		return err
 	}

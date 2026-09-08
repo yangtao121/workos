@@ -63,6 +63,10 @@ func (r *stubRepository) Register(_ context.Context, record domain.AppVersion) (
 	return domain.SummaryOf(record), nil
 }
 
+func (r *stubRepository) GetVersionAnyStateByKey(ctx context.Context, ownerUserID, appID, version string) (domain.AppVersionSummary, error) {
+	return r.GetVersion(ctx, ownerUserID, appID, version)
+}
+
 func (r *stubRepository) GetVersionManifest(_ context.Context, ownerUserID, appID, version string) (string, []byte, error) {
 	return "", nil, domain.ErrNotFound
 }

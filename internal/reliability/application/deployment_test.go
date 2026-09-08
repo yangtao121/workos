@@ -36,6 +36,13 @@ func (d *deploymentDriver) Transition(_ context.Context, c DeploymentCandidate, 
 	d.revision = c.ExpectedRevision
 	return nil
 }
+func (d *deploymentDriver) Publish(_ context.Context, candidate DeploymentCandidate) error {
+	if candidate.Staged() {
+		d.calls = append(d.calls, "publish:"+candidate.TargetVersion)
+	}
+	return nil
+}
+
 func (d *deploymentDriver) StartSurface(_ context.Context, _ DeploymentCandidate, key string) error {
 	d.calls = append(d.calls, "start:"+key)
 	if d.failStart {

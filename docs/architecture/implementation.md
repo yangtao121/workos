@@ -1473,3 +1473,25 @@ manifest/source 并返回原输入、候选源码、project/incident。它供后
 make test-repair-producer 的真实 Gateway/Core/Harness/CLI/PG fixture 把示例程序的
 return 0 改为 return 42，保留原测试源码与配置；Core/Harness 重启后候选精确重放。
 此门禁验证候选产出与持久化，不执行示例测试，不证明镜像构建、canary 或自动修复成功。
+
+## Runtime Build/Test 与候选发布（ADR-0026，2026-09-08）
+
+- `internal/runtime/buildtest/`：Runtime 拥有的 Build/Test 执行器。
+  `workos_runtime.build_jobs`（migration 051）持久作业台账，queued→running→
+  succeeded/failed/cancelled 状态机，task_id 幂等 + 规范载荷摘要漂移拒绝，
+  租约恢复与 transient 有界重试（3 次后 engine-failed 终态）。
+- `adapters/processexec`：进程沙箱引擎。0700 私有目录物化候选文件、bash
+  ulimit 内核强制 CPU 秒/地址空间/文件大小/进程数/打开文件、墙钟 deadline +
+  进程组 SIGKILL、1 MiB 输出预算、最小环境（GOPROXY=off、无代理变量）。
+  能力事实如实记录 network_namespace=false、image_pinned=false；容器级隔离
+  留给 rootless 引擎（本宿主 BLOCKED）。真实子进程矩阵在 `engineexec` 标签
+  门禁（`make test-build-engine`）。
+- Core `RepairVersionService`（私有 Reliability listener）：Register 派生
+  staged manifest（仅替换 build source 绑定 + 确定性版本号 patch+1-repair.
+  {task8}，其余字节保留）、Publish 在 canary 后翻转、TransitionCandidate
+  精确 staged canary 切换。`app_versions.state`（migration 050）+ 任务映射表；
+  owner 可见读取与默认版本选择只看 published。
+- Reliability `BuildCoordinator`：完成 repair task → Core 候选读取 → Runtime
+  BuildTest 提交/轮询 → 成功才 Register + DeploymentController.Offer（带
+  staged 事实，migration 052 持久化）；失败构建零部署副作用，pending 保留
+  轮询。DeploymentDriver 增加 Publish；staged 候选走私有 TransitionCandidate。

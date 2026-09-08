@@ -138,6 +138,9 @@ type InstallationRepository interface {
 	// non-archived project; anything else is NotFound. It is the authority for
 	// installed-instance surface resolution.
 	ResolveActiveInstallation(ctx context.Context, ownerUserID, projectID, installationID string) (domain.Installation, error)
+	// ResolveActiveInstallationFacts additionally surfaces the current project
+	// revision from the same read (staged candidate lifecycle, ADR-0026).
+	ResolveActiveInstallationFacts(ctx context.Context, ownerUserID, projectID, installationID string) (domain.Installation, int64, error)
 	Install(ctx context.Context, command InstallCommand) (InstallationResult, error)
 	Uninstall(ctx context.Context, command UninstallCommand) (InstallationResult, error)
 	// SetAppGrants replaces one active installation's entire grant set in one

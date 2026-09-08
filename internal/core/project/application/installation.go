@@ -241,6 +241,71 @@ type TransitionInput struct {
 	InstallationID   string
 	ExpectedRevision int64
 	Version          string
+	// ManifestDigest binds the deployment-driven candidate transition to the
+	// exact staged identity (ADR-0026); the owner-driven path leaves it empty.
+	ManifestDigest string
+}
+
+// StagedAppCatalog resolves staged repair candidate versions for the
+// deployment-driven canary path only. Owner-facing resolution never sees
+// staged versions; this narrower port exists so the canary transition can
+// pin the exact verified candidate (ADR-0026).
+type StagedAppCatalog interface {
+	ResolveStaged(ctx context.Context, ownerUserID, appID, version string) (domain.PinnedApp, error)
+}
+
+var errStagedResolutionUnavailable = errors.New("staged version resolution is unavailable")
+
+var errStagedDigestMismatch = errors.New("staged version digest mismatch")
+
+// TransitionCandidate pins one staged repair candidate version onto the
+// active installation for the canary window (ADR-0026). Semantics match
+// Transition — idempotent key consumption, exact revision precondition,
+// grants-never-expand — plus the exact staged digest binding. It is only
+// reachable from Core's private Reliability-facing listener.
+func (s *InstallationService) TransitionCandidate(ctx context.Context, input TransitionInput) (ports.InstallationResult, error) {
+	stagedCatalog, ok := s.catalog.(StagedAppCatalog)
+	if !ok {
+		return ports.InstallationResult{}, errStagedResolutionUnavailable
+	}
+	if input.OwnerUserID == "" || !domain.ValidInstallationIdempotencyKey(input.IdempotencyKey) ||
+		!domain.ValidInstallationUUID(input.ProjectID) || !domain.ValidInstallationUUID(input.InstallationID) ||
+		input.ExpectedRevision <= 0 || !domain.ValidInstallationVersion(input.Version) {
+		return ports.InstallationResult{}, domain.ErrInvalid
+	}
+	digest := domain.TransitionRequestDigest(input.ProjectID, input.InstallationID, input.ExpectedRevision, input.Version)
+	if result, found, err := s.replayIfConsumed(ctx, input.OwnerUserID, input.IdempotencyKey, digest); found || err != nil {
+		return result, err
+	}
+	installation, err := s.repository.ResolveActiveInstallation(ctx, input.OwnerUserID, input.ProjectID, input.InstallationID)
+	if err != nil {
+		return ports.InstallationResult{}, err
+	}
+	pinned, err := stagedCatalog.ResolveStaged(ctx, input.OwnerUserID, installation.AppID, input.Version)
+	if err != nil {
+		return ports.InstallationResult{}, err
+	}
+	if pinned.AppID != installation.AppID || pinned.Version != input.Version ||
+		!domain.ValidInstallationVersion(pinned.Version) ||
+		!domain.ValidInstallationManifestDigest(pinned.ManifestDigest) ||
+		!validRequestedPermissions(pinned.Permissions) {
+		return ports.InstallationResult{}, errCatalogCorrupt
+	}
+	if !domain.InstallableScope(pinned.Scope) {
+		return ports.InstallationResult{}, errAppScopeViolated
+	}
+	if pinned.ManifestDigest != input.ManifestDigest {
+		return ports.InstallationResult{}, errStagedDigestMismatch
+	}
+	if err := domain.GrantsCompatibleWithTarget(installation.GrantedPermissions, pinned.Permissions); err != nil {
+		return ports.InstallationResult{}, err
+	}
+	return s.repository.Transition(ctx, ports.TransitionCommand{
+		OwnerUserID: input.OwnerUserID, IdempotencyKey: input.IdempotencyKey,
+		ProjectID: input.ProjectID, InstallationID: input.InstallationID,
+		Target: pinned, Source: domain.VersionSourceTransition,
+		ExpectedRevision: input.ExpectedRevision, RequestDigest: digest, Now: domain.CanonicalInstallationTime(s.now()),
+	})
 }
 
 // RollbackInput is one validated-boundary previous-pinned-version rollback
@@ -445,6 +510,17 @@ func deriveRollbackTarget(history []domain.VersionSnapshot, installation domain.
 // surface resolution: the installation must be active, belong to the owner's
 // project, and sit under a non-archived project. Unknown, foreign, archived,
 // or tombstoned instances are sanitized NotFound verdicts.
+// ActiveFacts resolves the pinned version and the current project revision
+// for the staged candidate lifecycle (ADR-0026): the revision is captured
+// before any deployment side effect and reused unchanged on every replay.
+func (s *InstallationService) ActiveFacts(ctx context.Context, ownerUserID, projectID, installationID string) (string, int64, error) {
+	installation, revision, err := s.repository.ResolveActiveInstallationFacts(ctx, ownerUserID, projectID, installationID)
+	if err != nil {
+		return "", 0, err
+	}
+	return installation.Version, revision, nil
+}
+
 func (s *InstallationService) ResolveActiveInstallation(ctx context.Context, ownerUserID, projectID, installationID string) (domain.Installation, error) {
 	if ownerUserID == "" || !domain.ValidInstallationUUID(projectID) || !domain.ValidInstallationUUID(installationID) {
 		return domain.Installation{}, domain.ErrInvalid

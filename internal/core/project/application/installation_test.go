@@ -59,6 +59,14 @@ func (f *fakeRepository) ResolveActiveInstallation(_ context.Context, ownerUserI
 	return installation, nil
 }
 
+func (f *fakeRepository) ResolveActiveInstallationFacts(ctx context.Context, ownerUserID, projectID, installationID string) (domain.Installation, int64, error) {
+	installation, err := f.ResolveActiveInstallation(ctx, ownerUserID, projectID, installationID)
+	if err != nil {
+		return domain.Installation{}, 0, err
+	}
+	return installation, f.projectRevision, nil
+}
+
 func (f *fakeRepository) GetInstallation(_ context.Context, _, installationID string) (domain.Installation, error) {
 	installation, ok := f.byID[installationID]
 	if !ok {

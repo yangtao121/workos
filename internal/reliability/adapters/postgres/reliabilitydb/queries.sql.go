@@ -1040,7 +1040,7 @@ func (q *Queries) LoadSupervisorProgress(ctx context.Context, workloadID string)
 }
 
 const lockPendingDeployments = `-- name: LockPendingDeployments :many
-SELECT d.incident_id, d.owner_user_id, d.project_id, d.installation_id, d.target_version, d.state, d.canary_until, d.created_at, d.updated_at, d.expected_revision, d.attempts, d.canary_started_at, EXISTS (
+SELECT d.incident_id, d.owner_user_id, d.project_id, d.installation_id, d.target_version, d.state, d.canary_until, d.created_at, d.updated_at, d.expected_revision, d.attempts, d.canary_started_at, d.task_id, d.manifest_digest, d.base_version, EXISTS (
     SELECT 1 FROM workos_reliability.incidents i
     WHERE i.owner_user_id = d.owner_user_id AND i.project_id = d.project_id
       AND i.app_instance_id = d.installation_id AND i.id <> d.incident_id
@@ -1053,19 +1053,22 @@ LIMIT $1 FOR UPDATE OF d SKIP LOCKED
 `
 
 type LockPendingDeploymentsRow struct {
-	IncidentID       string    `json:"incident_id"`
-	OwnerUserID      string    `json:"owner_user_id"`
-	ProjectID        string    `json:"project_id"`
-	InstallationID   string    `json:"installation_id"`
-	TargetVersion    string    `json:"target_version"`
-	State            string    `json:"state"`
-	CanaryUntil      time.Time `json:"canary_until"`
-	CreatedAt        time.Time `json:"created_at"`
-	UpdatedAt        time.Time `json:"updated_at"`
-	ExpectedRevision int64     `json:"expected_revision"`
-	Attempts         int32     `json:"attempts"`
-	CanaryStartedAt  time.Time `json:"canary_started_at"`
-	NewIncident      bool      `json:"new_incident"`
+	IncidentID       string      `json:"incident_id"`
+	OwnerUserID      string      `json:"owner_user_id"`
+	ProjectID        string      `json:"project_id"`
+	InstallationID   string      `json:"installation_id"`
+	TargetVersion    string      `json:"target_version"`
+	State            string      `json:"state"`
+	CanaryUntil      time.Time   `json:"canary_until"`
+	CreatedAt        time.Time   `json:"created_at"`
+	UpdatedAt        time.Time   `json:"updated_at"`
+	ExpectedRevision int64       `json:"expected_revision"`
+	Attempts         int32       `json:"attempts"`
+	CanaryStartedAt  time.Time   `json:"canary_started_at"`
+	TaskID           pgtype.UUID `json:"task_id"`
+	ManifestDigest   pgtype.Text `json:"manifest_digest"`
+	BaseVersion      pgtype.Text `json:"base_version"`
+	NewIncident      bool        `json:"new_incident"`
 }
 
 func (q *Queries) LockPendingDeployments(ctx context.Context, limit int32) ([]LockPendingDeploymentsRow, error) {
@@ -1090,6 +1093,9 @@ func (q *Queries) LockPendingDeployments(ctx context.Context, limit int32) ([]Lo
 			&i.ExpectedRevision,
 			&i.Attempts,
 			&i.CanaryStartedAt,
+			&i.TaskID,
+			&i.ManifestDigest,
+			&i.BaseVersion,
 			&i.NewIncident,
 		); err != nil {
 			return nil, err
@@ -1156,8 +1162,10 @@ const startDeploymentLedger = `-- name: StartDeploymentLedger :execrows
 
 INSERT INTO workos_reliability.deployment_ledger (
     incident_id, owner_user_id, project_id, installation_id, target_version,
-    expected_revision, state, canary_until, canary_started_at, created_at, updated_at
-) VALUES ($1, $2, $3, $4, $5, $6, 'candidate', $7, $7, $7, $7)
+    expected_revision, state, canary_until, canary_started_at, created_at, updated_at,
+    task_id, manifest_digest, base_version
+) VALUES ($1, $2, $3, $4, $5, $6, 'candidate', $7, $7, $7, $7,
+          $8, $9, $10)
 ON CONFLICT (incident_id) DO UPDATE SET incident_id = EXCLUDED.incident_id
 WHERE deployment_ledger.owner_user_id = EXCLUDED.owner_user_id
   AND deployment_ledger.project_id = EXCLUDED.project_id
@@ -1167,13 +1175,16 @@ WHERE deployment_ledger.owner_user_id = EXCLUDED.owner_user_id
 `
 
 type StartDeploymentLedgerParams struct {
-	IncidentID       string    `json:"incident_id"`
-	OwnerUserID      string    `json:"owner_user_id"`
-	ProjectID        string    `json:"project_id"`
-	InstallationID   string    `json:"installation_id"`
-	TargetVersion    string    `json:"target_version"`
-	ExpectedRevision int64     `json:"expected_revision"`
-	CreatedAt        time.Time `json:"created_at"`
+	IncidentID       string      `json:"incident_id"`
+	OwnerUserID      string      `json:"owner_user_id"`
+	ProjectID        string      `json:"project_id"`
+	InstallationID   string      `json:"installation_id"`
+	TargetVersion    string      `json:"target_version"`
+	ExpectedRevision int64       `json:"expected_revision"`
+	CreatedAt        time.Time   `json:"created_at"`
+	TaskID           pgtype.UUID `json:"task_id"`
+	ManifestDigest   pgtype.Text `json:"manifest_digest"`
+	BaseVersion      pgtype.Text `json:"base_version"`
 }
 
 // Deployment controller (ADR-0016 section 6).
@@ -1186,6 +1197,9 @@ func (q *Queries) StartDeploymentLedger(ctx context.Context, arg StartDeployment
 		arg.TargetVersion,
 		arg.ExpectedRevision,
 		arg.CreatedAt,
+		arg.TaskID,
+		arg.ManifestDigest,
+		arg.BaseVersion,
 	)
 	if err != nil {
 		return 0, err

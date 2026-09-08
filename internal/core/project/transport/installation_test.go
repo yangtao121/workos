@@ -57,6 +57,14 @@ func (r *stubInstallationRepository) ResolveActiveInstallation(_ context.Context
 	return *r.active, nil
 }
 
+func (r *stubInstallationRepository) ResolveActiveInstallationFacts(ctx context.Context, ownerUserID, projectID, installationID string) (domain.Installation, int64, error) {
+	installation, err := r.ResolveActiveInstallation(ctx, ownerUserID, projectID, installationID)
+	if err != nil {
+		return domain.Installation{}, 0, err
+	}
+	return installation, 1, nil
+}
+
 func (r *stubInstallationRepository) GetInstallation(context.Context, string, string) (domain.Installation, error) {
 	return domain.Installation{}, domain.ErrNotFound
 }

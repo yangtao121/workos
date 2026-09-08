@@ -245,6 +245,19 @@ func (s *Service) ResolveSurfaceLaunch(ctx context.Context, ownerUserID, appID, 
 // Get returns the current version for an empty version, or the exact
 // immutable version when one is requested. Both paths read the bounded
 // summary projection only.
+// GetStaged resolves one version regardless of lifecycle state. It serves
+// only Core's private deployment-driven resolution (ADR-0026); the owner
+// path keeps using Get (published only).
+func (s *Service) GetStaged(ctx context.Context, ownerUserID, appID, version string) (domain.AppVersionSummary, error) {
+	if ownerUserID == "" || !domain.ValidAppID(appID) {
+		return domain.AppVersionSummary{}, domain.ErrInvalid
+	}
+	if _, ok := domain.ParseVersion(version); !ok {
+		return domain.AppVersionSummary{}, domain.ErrInvalid
+	}
+	return s.repository.GetVersionAnyStateByKey(ctx, ownerUserID, appID, version)
+}
+
 func (s *Service) Get(ctx context.Context, ownerUserID, appID, version string) (domain.AppVersionSummary, error) {
 	if ownerUserID == "" || !domain.ValidAppID(appID) {
 		return domain.AppVersionSummary{}, domain.ErrInvalid

@@ -109,3 +109,14 @@ func (s *BuildService) Candidate(ctx context.Context, tx dbtx.Tx, owner, taskID 
 	}
 	return source, nil
 }
+
+// Manifest reads the exact immutable version's canonical manifest bytes.
+func (s *BuildService) Manifest(ctx context.Context, tx dbtx.Tx, owner, appID, version string) (string, []byte, error) {
+	if !domain.ValidSourceID(owner) || !domain.ValidAppID(appID) {
+		return "", nil, domain.ErrInvalid
+	}
+	if _, ok := domain.ParseVersion(version); !ok {
+		return "", nil, domain.ErrInvalid
+	}
+	return s.store.GetBuildManifest(ctx, tx, owner, appID, version)
+}

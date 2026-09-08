@@ -12,6 +12,31 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const findRepairCandidateVersion = `-- name: FindRepairCandidateVersion :one
+SELECT task_id, owner_user_id, project_id, installation_id, incident_id, build_job_id,
+       source_digest, app_version_id, published_at, created_at
+FROM workos_core.app_repair_candidate_versions
+WHERE task_id = $1
+`
+
+func (q *Queries) FindRepairCandidateVersion(ctx context.Context, taskID string) (WorkosCoreAppRepairCandidateVersion, error) {
+	row := q.db.QueryRow(ctx, findRepairCandidateVersion, taskID)
+	var i WorkosCoreAppRepairCandidateVersion
+	err := row.Scan(
+		&i.TaskID,
+		&i.OwnerUserID,
+		&i.ProjectID,
+		&i.InstallationID,
+		&i.IncidentID,
+		&i.BuildJobID,
+		&i.SourceDigest,
+		&i.AppVersionID,
+		&i.PublishedAt,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
 const getAppBuildManifest = `-- name: GetAppBuildManifest :one
 SELECT manifest_digest,
        CASE WHEN octet_length(canonical_manifest::text) <= 524288
@@ -127,9 +152,22 @@ type GetAppVersionParams struct {
 	Version     string `json:"version"`
 }
 
-func (q *Queries) GetAppVersion(ctx context.Context, arg GetAppVersionParams) (WorkosCoreAppVersion, error) {
+type GetAppVersionRow struct {
+	ID                string             `json:"id"`
+	OwnerUserID       string             `json:"owner_user_id"`
+	AppID             string             `json:"app_id"`
+	Version           string             `json:"version"`
+	Scope             string             `json:"scope"`
+	Name              string             `json:"name"`
+	Permissions       []string           `json:"permissions"`
+	ManifestDigest    string             `json:"manifest_digest"`
+	CanonicalManifest json.RawMessage    `json:"canonical_manifest"`
+	CreatedAt         pgtype.Timestamptz `json:"created_at"`
+}
+
+func (q *Queries) GetAppVersion(ctx context.Context, arg GetAppVersionParams) (GetAppVersionRow, error) {
 	row := q.db.QueryRow(ctx, getAppVersion, arg.OwnerUserID, arg.AppID, arg.Version)
-	var i WorkosCoreAppVersion
+	var i GetAppVersionRow
 	err := row.Scan(
 		&i.ID,
 		&i.OwnerUserID,
@@ -152,9 +190,22 @@ FROM workos_core.app_versions
 WHERE id = $1
 `
 
-func (q *Queries) GetAppVersionByID(ctx context.Context, id string) (WorkosCoreAppVersion, error) {
+type GetAppVersionByIDRow struct {
+	ID                string             `json:"id"`
+	OwnerUserID       string             `json:"owner_user_id"`
+	AppID             string             `json:"app_id"`
+	Version           string             `json:"version"`
+	Scope             string             `json:"scope"`
+	Name              string             `json:"name"`
+	Permissions       []string           `json:"permissions"`
+	ManifestDigest    string             `json:"manifest_digest"`
+	CanonicalManifest json.RawMessage    `json:"canonical_manifest"`
+	CreatedAt         pgtype.Timestamptz `json:"created_at"`
+}
+
+func (q *Queries) GetAppVersionByID(ctx context.Context, id string) (GetAppVersionByIDRow, error) {
 	row := q.db.QueryRow(ctx, getAppVersionByID, id)
-	var i WorkosCoreAppVersion
+	var i GetAppVersionByIDRow
 	err := row.Scan(
 		&i.ID,
 		&i.OwnerUserID,
@@ -166,6 +217,39 @@ func (q *Queries) GetAppVersionByID(ctx context.Context, id string) (WorkosCoreA
 		&i.ManifestDigest,
 		&i.CanonicalManifest,
 		&i.CreatedAt,
+	)
+	return i, err
+}
+
+const getAppVersionByIDAnyState = `-- name: GetAppVersionByIDAnyState :one
+SELECT owner_user_id, app_id, version, scope, name, permissions, manifest_digest, state
+FROM workos_core.app_versions
+WHERE id = $1
+`
+
+type GetAppVersionByIDAnyStateRow struct {
+	OwnerUserID    string   `json:"owner_user_id"`
+	AppID          string   `json:"app_id"`
+	Version        string   `json:"version"`
+	Scope          string   `json:"scope"`
+	Name           string   `json:"name"`
+	Permissions    []string `json:"permissions"`
+	ManifestDigest string   `json:"manifest_digest"`
+	State          string   `json:"state"`
+}
+
+func (q *Queries) GetAppVersionByIDAnyState(ctx context.Context, id string) (GetAppVersionByIDAnyStateRow, error) {
+	row := q.db.QueryRow(ctx, getAppVersionByIDAnyState, id)
+	var i GetAppVersionByIDAnyStateRow
+	err := row.Scan(
+		&i.OwnerUserID,
+		&i.AppID,
+		&i.Version,
+		&i.Scope,
+		&i.Name,
+		&i.Permissions,
+		&i.ManifestDigest,
+		&i.State,
 	)
 	return i, err
 }
@@ -314,6 +398,44 @@ func (q *Queries) InsertRegistrationRequest(ctx context.Context, arg InsertRegis
 	return result.RowsAffected(), nil
 }
 
+const insertRepairCandidateVersion = `-- name: InsertRepairCandidateVersion :execrows
+INSERT INTO workos_core.app_repair_candidate_versions (
+    task_id, owner_user_id, project_id, installation_id, incident_id, build_job_id,
+    source_digest, app_version_id, created_at
+) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+ON CONFLICT (task_id) DO NOTHING
+`
+
+type InsertRepairCandidateVersionParams struct {
+	TaskID         string             `json:"task_id"`
+	OwnerUserID    string             `json:"owner_user_id"`
+	ProjectID      string             `json:"project_id"`
+	InstallationID string             `json:"installation_id"`
+	IncidentID     string             `json:"incident_id"`
+	BuildJobID     string             `json:"build_job_id"`
+	SourceDigest   string             `json:"source_digest"`
+	AppVersionID   string             `json:"app_version_id"`
+	CreatedAt      pgtype.Timestamptz `json:"created_at"`
+}
+
+func (q *Queries) InsertRepairCandidateVersion(ctx context.Context, arg InsertRepairCandidateVersionParams) (int64, error) {
+	result, err := q.db.Exec(ctx, insertRepairCandidateVersion,
+		arg.TaskID,
+		arg.OwnerUserID,
+		arg.ProjectID,
+		arg.InstallationID,
+		arg.IncidentID,
+		arg.BuildJobID,
+		arg.SourceDigest,
+		arg.AppVersionID,
+		arg.CreatedAt,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const insertRepairSourceCandidate = `-- name: InsertRepairSourceCandidate :exec
 INSERT INTO workos_core.app_repair_source_candidates (task_id, owner_user_id, source_bundle_id)
 VALUES ($1, $2, $3)
@@ -328,6 +450,46 @@ type InsertRepairSourceCandidateParams struct {
 func (q *Queries) InsertRepairSourceCandidate(ctx context.Context, arg InsertRepairSourceCandidateParams) error {
 	_, err := q.db.Exec(ctx, insertRepairSourceCandidate, arg.TaskID, arg.OwnerUserID, arg.SourceBundleID)
 	return err
+}
+
+const insertStagedAppVersion = `-- name: InsertStagedAppVersion :execrows
+INSERT INTO workos_core.app_versions (
+    id, owner_user_id, app_id, version, scope, name, permissions,
+    manifest_digest, canonical_manifest, state, created_at
+) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'staged', $10)
+ON CONFLICT DO NOTHING
+`
+
+type InsertStagedAppVersionParams struct {
+	ID                string             `json:"id"`
+	OwnerUserID       string             `json:"owner_user_id"`
+	AppID             string             `json:"app_id"`
+	Version           string             `json:"version"`
+	Scope             string             `json:"scope"`
+	Name              string             `json:"name"`
+	Permissions       []string           `json:"permissions"`
+	ManifestDigest    string             `json:"manifest_digest"`
+	CanonicalManifest json.RawMessage    `json:"canonical_manifest"`
+	CreatedAt         pgtype.Timestamptz `json:"created_at"`
+}
+
+func (q *Queries) InsertStagedAppVersion(ctx context.Context, arg InsertStagedAppVersionParams) (int64, error) {
+	result, err := q.db.Exec(ctx, insertStagedAppVersion,
+		arg.ID,
+		arg.OwnerUserID,
+		arg.AppID,
+		arg.Version,
+		arg.Scope,
+		arg.Name,
+		arg.Permissions,
+		arg.ManifestDigest,
+		arg.CanonicalManifest,
+		arg.CreatedAt,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const listAppIDPage = `-- name: ListAppIDPage :many
@@ -363,4 +525,37 @@ func (q *Queries) ListAppIDPage(ctx context.Context, arg ListAppIDPageParams) ([
 		return nil, err
 	}
 	return items, nil
+}
+
+const markCandidateVersionPublished = `-- name: MarkCandidateVersionPublished :execrows
+UPDATE workos_core.app_repair_candidate_versions
+SET published_at = $2
+WHERE task_id = $1 AND published_at IS NULL
+`
+
+type MarkCandidateVersionPublishedParams struct {
+	TaskID      string             `json:"task_id"`
+	PublishedAt pgtype.Timestamptz `json:"published_at"`
+}
+
+func (q *Queries) MarkCandidateVersionPublished(ctx context.Context, arg MarkCandidateVersionPublishedParams) (int64, error) {
+	result, err := q.db.Exec(ctx, markCandidateVersionPublished, arg.TaskID, arg.PublishedAt)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const publishStagedAppVersion = `-- name: PublishStagedAppVersion :execrows
+UPDATE workos_core.app_versions
+SET state = 'published'
+WHERE id = $1 AND state = 'staged'
+`
+
+func (q *Queries) PublishStagedAppVersion(ctx context.Context, id string) (int64, error) {
+	result, err := q.db.Exec(ctx, publishStagedAppVersion, id)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }

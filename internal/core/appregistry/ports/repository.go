@@ -24,6 +24,9 @@ type Repository interface {
 	SourceRepository
 	Register(context.Context, domain.AppVersion) (domain.AppVersionSummary, error)
 	GetVersion(ctx context.Context, ownerUserID, appID, version string) (domain.AppVersionSummary, error)
+	// GetVersionAnyStateByKey resolves one version regardless of lifecycle
+	// state: the deployment-driven staged resolution path only (ADR-0026).
+	GetVersionAnyStateByKey(ctx context.Context, ownerUserID, appID, version string) (domain.AppVersionSummary, error)
 	// GetVersionManifest reads the exact immutable version's manifest digest
 	// and canonical bytes. It is the internal read for installed-instance
 	// resolution; public projections never expose the manifest.

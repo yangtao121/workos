@@ -23,6 +23,11 @@ var ErrDeploymentCandidateRequired = errors.New("deployment requires a verified 
 
 // A candidate refers to an immutable registered version. The revision is
 // captured before any side effect and reused unchanged on every replay.
+// Since ADR-0026 a repair candidate additionally carries the staged facts:
+// the producing task, the staged manifest digest and the version the
+// installation pinned when the staged version was registered (the canary
+// precondition — a user version change in between is a stable rejection,
+// never overridden by retries).
 type DeploymentCandidate struct {
 	IncidentID       string
 	OwnerUserID      string
@@ -30,6 +35,15 @@ type DeploymentCandidate struct {
 	InstallationID   string
 	TargetVersion    string
 	ExpectedRevision int64
+	TaskID           string
+	ManifestDigest   string
+	BaseVersion      string
+}
+
+// Staged reports whether this candidate went through the verified
+// Build/Test chain (ADR-0026).
+func (c DeploymentCandidate) Staged() bool {
+	return c.TaskID != "" && c.ManifestDigest != ""
 }
 
 type DeploymentRecord struct {
@@ -45,6 +59,9 @@ type DeploymentDriver interface {
 	Transition(context.Context, DeploymentCandidate, string) error
 	Rollback(context.Context, DeploymentCandidate, string) error
 	StartSurface(context.Context, DeploymentCandidate, string) error
+	// Publish flips the staged candidate to a published version after the
+	// canary window passed (ADR-0026). It is a durable no-op on replay.
+	Publish(context.Context, DeploymentCandidate) error
 }
 
 type DeploymentLedger interface {
@@ -76,6 +93,15 @@ func (c *DeploymentController) Offer(ctx context.Context, candidate DeploymentCa
 	}
 	if candidate.ExpectedRevision <= 0 || strings.TrimSpace(candidate.TargetVersion) == "" || len(candidate.TargetVersion) > 64 {
 		return ErrDeploymentCandidateRequired
+	}
+	if candidate.Staged() {
+		parsed, err := uuid.Parse(candidate.TaskID)
+		if err != nil || parsed.Version() != 7 || parsed.String() != candidate.TaskID {
+			return ErrDeploymentCandidateRequired
+		}
+		if len(candidate.ManifestDigest) != 71 || !strings.HasPrefix(candidate.ManifestDigest, "sha256:") {
+			return ErrDeploymentCandidateRequired
+		}
 	}
 	return c.ledger.Start(ctx, candidate)
 }
@@ -124,6 +150,15 @@ func (c *DeploymentController) Pass(ctx context.Context, now time.Time, limit in
 			if row.NewIncident {
 				row.State = DeploymentRollback
 			} else if !now.Before(row.CanaryUntil) {
+				// Promote first publishes the staged version (ADR-0026);
+				// only a published flip may mark the deployment promoted.
+				row.Attempts++
+				if err := c.driver.Publish(ctx, row.DeploymentCandidate); err != nil {
+					if row.Attempts >= 8 {
+						row.State = DeploymentFailed
+					}
+					return nil
+				}
 				row.State = DeploymentPromoted
 			}
 		case DeploymentRollback:

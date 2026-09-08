@@ -581,6 +581,8 @@ func (r *Repository) Start(ctx context.Context, candidate application.Deployment
 		ProjectID: candidate.ProjectID, InstallationID: candidate.InstallationID,
 		TargetVersion: candidate.TargetVersion, ExpectedRevision: candidate.ExpectedRevision,
 		CreatedAt: time.Now().UTC(),
+		TaskID:    uuidText(candidate.TaskID), ManifestDigest: pgtype.Text{String: candidate.ManifestDigest, Valid: candidate.ManifestDigest != ""},
+		BaseVersion: pgtype.Text{String: candidate.BaseVersion, Valid: candidate.BaseVersion != ""},
 	})
 	if err != nil {
 		return storeError("prepare deployment", err)
@@ -608,6 +610,7 @@ func (r *Repository) Reconcile(ctx context.Context, limit int, apply func(*appli
 				IncidentID: row.IncidentID, OwnerUserID: row.OwnerUserID,
 				ProjectID: row.ProjectID, InstallationID: row.InstallationID,
 				TargetVersion: row.TargetVersion, ExpectedRevision: row.ExpectedRevision,
+				TaskID: uuidFromPg(row.TaskID), ManifestDigest: row.ManifestDigest.String, BaseVersion: row.BaseVersion.String,
 			},
 			State: row.State, Attempts: row.Attempts, CanaryUntil: row.CanaryUntil,
 			CanaryStartedAt: row.CanaryStartedAt, NewIncident: row.NewIncident,
@@ -660,4 +663,22 @@ func (r *Repository) ClearRepairCompleted(ctx context.Context, incidentID string
 	}
 	_ = updated
 	return nil
+}
+
+func uuidText(value string) pgtype.UUID {
+	if value == "" {
+		return pgtype.UUID{}
+	}
+	parsed, err := uuid.Parse(value)
+	if err != nil {
+		return pgtype.UUID{}
+	}
+	return pgtype.UUID{Bytes: parsed, Valid: true}
+}
+
+func uuidFromPg(value pgtype.UUID) string {
+	if !value.Valid {
+		return ""
+	}
+	return uuid.UUID(value.Bytes).String()
 }

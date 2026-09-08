@@ -288,8 +288,10 @@ WHERE id = $2;
 -- name: StartDeploymentLedger :execrows
 INSERT INTO workos_reliability.deployment_ledger (
     incident_id, owner_user_id, project_id, installation_id, target_version,
-    expected_revision, state, canary_until, canary_started_at, created_at, updated_at
-) VALUES ($1, $2, $3, $4, $5, $6, 'candidate', sqlc.arg(created_at), sqlc.arg(created_at), sqlc.arg(created_at), sqlc.arg(created_at))
+    expected_revision, state, canary_until, canary_started_at, created_at, updated_at,
+    task_id, manifest_digest, base_version
+) VALUES ($1, $2, $3, $4, $5, $6, 'candidate', sqlc.arg(created_at), sqlc.arg(created_at), sqlc.arg(created_at), sqlc.arg(created_at),
+          sqlc.arg(task_id), sqlc.arg(manifest_digest), sqlc.arg(base_version))
 ON CONFLICT (incident_id) DO UPDATE SET incident_id = EXCLUDED.incident_id
 WHERE deployment_ledger.owner_user_id = EXCLUDED.owner_user_id
   AND deployment_ledger.project_id = EXCLUDED.project_id

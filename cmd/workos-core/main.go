@@ -308,6 +308,20 @@ func run(logger *slog.Logger) error {
 	installationPath, installationHandler := projecttransport.NewInstallationConnectHandler(installationService)
 	mux.Handle(installationPath, identity.Middleware(installationHandler))
 
+	// The staged repair candidate lifecycle (ADR-0026): registration after a
+	// verified Runtime build verdict, the deployment-driven staged canary
+	// transition, and post-canary publication. Private listener only.
+	stagingService, err := appregistryapp.NewStagingService(appRepository, buildService, manifestValidator, generator)
+	if err != nil {
+		return err
+	}
+	repairVersions, err := orchestration.NewRepairVersions(pool, repairSources, stagingService, installationService)
+	if err != nil {
+		return err
+	}
+	repairVersionPath, repairVersionHandler := orchestrationtransport.NewRepairVersionHandler(repairVersions)
+	mux.Handle(repairVersionPath, identity.Middleware(repairVersionHandler))
+
 	// The Agent policy/approval/usage facts revalidate installation liveness
 	// through the neutral facts adapter above; they never touch Project
 	// tables. The three public services are owner-only surfaces behind the

@@ -52,7 +52,7 @@ func (r *Repository) Register(ctx context.Context, record domain.AppVersion) (do
 		if err != nil {
 			return domain.AppVersionSummary{}, fmt.Errorf("query idempotent app version: %w", err)
 		}
-		return summaryFromDB(version), nil
+		return summaryFromIDRow(version), nil
 	}
 	if !errors.Is(err, pgx.ErrNoRows) {
 		return domain.AppVersionSummary{}, fmt.Errorf("query registration request: %w", err)
@@ -130,7 +130,7 @@ func (r *Repository) consumeKey(
 	if err != nil {
 		return domain.AppVersionSummary{}, fmt.Errorf("query consumed app version: %w", err)
 	}
-	return summaryFromDB(version), nil
+	return summaryFromIDRow(version), nil
 }
 
 // summarySelect lists exactly the columns public projections and SemVer
@@ -141,6 +141,32 @@ FROM workos_core.app_versions`
 
 func (r *Repository) GetVersion(ctx context.Context, ownerUserID, appID, version string) (domain.AppVersionSummary, error) {
 	rows, err := r.pool.Query(ctx, summarySelect+`
+WHERE owner_user_id = $1 AND app_id = $2 AND version = $3 AND state = 'published'
+LIMIT 1`, ownerUserID, appID, version)
+	if err != nil {
+		return domain.AppVersionSummary{}, appVersionError("query app version", err)
+	}
+	defer rows.Close()
+	if !rows.Next() {
+		if err := rows.Err(); err != nil {
+			return domain.AppVersionSummary{}, appVersionError("query app version", err)
+		}
+		return domain.AppVersionSummary{}, domain.ErrNotFound
+	}
+	summary, err := scanSummary(rows)
+	if err != nil {
+		return domain.AppVersionSummary{}, err
+	}
+	return summary, nil
+}
+
+// GetVersionAnyStateByKey reads one version summary regardless of lifecycle
+// state. It exists for the deployment-driven staged resolution path only
+// (ADR-0026); every owner-facing read keeps the published filter.
+func (r *Repository) GetVersionAnyStateByKey(ctx context.Context, ownerUserID, appID, version string) (domain.AppVersionSummary, error) {
+	rows, err := r.pool.Query(ctx, `
+SELECT owner_user_id, app_id, version, scope, name, permissions, manifest_digest
+FROM workos_core.app_versions
 WHERE owner_user_id = $1 AND app_id = $2 AND version = $3
 LIMIT 1`, ownerUserID, appID, version)
 	if err != nil {
@@ -169,7 +195,7 @@ func (r *Repository) GetVersionManifest(ctx context.Context, ownerUserID, appID,
 	err := r.pool.QueryRow(ctx, `
 SELECT manifest_digest, canonical_manifest
 FROM workos_core.app_versions
-WHERE owner_user_id = $1 AND app_id = $2 AND version = $3
+WHERE owner_user_id = $1 AND app_id = $2 AND version = $3 AND state = 'published'
 LIMIT 1`, ownerUserID, appID, version).Scan(&digest, &canonical)
 	if err != nil {
 		return "", nil, appVersionError("query app version manifest", err)
@@ -201,7 +227,7 @@ func (r *Repository) VisitVersionSummaries(ctx context.Context, ownerUserID stri
 		return nil
 	}
 	rows, err := r.pool.Query(ctx, summarySelect+`
-WHERE owner_user_id = $1 AND app_id = ANY($2::text[])
+WHERE owner_user_id = $1 AND app_id = ANY($2::text[]) AND state = 'published'
 ORDER BY app_id`, ownerUserID, appIDs)
 	if err != nil {
 		return appVersionError("list app version summaries", err)
@@ -238,7 +264,14 @@ func scanSummary(rows pgx.Rows) (domain.AppVersionSummary, error) {
 // summaryFromDB strips the manifest from a full-row read: only Register's
 // replay and classification paths load full rows, and even they return the
 // summary projection.
-func summaryFromDB(value appdb.WorkosCoreAppVersion) domain.AppVersionSummary {
+func summaryFromDB(value appdb.GetAppVersionRow) domain.AppVersionSummary {
+	return domain.AppVersionSummary{
+		AppID: value.AppID, Version: value.Version, Scope: domain.Scope(value.Scope),
+		Name: value.Name, Permissions: value.Permissions, ManifestDigest: value.ManifestDigest,
+	}
+}
+
+func summaryFromIDRow(value appdb.GetAppVersionByIDRow) domain.AppVersionSummary {
 	return domain.AppVersionSummary{
 		AppID: value.AppID, Version: value.Version, Scope: domain.Scope(value.Scope),
 		Name: value.Name, Permissions: value.Permissions, ManifestDigest: value.ManifestDigest,

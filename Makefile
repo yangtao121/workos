@@ -1088,3 +1088,12 @@ test-repair-sources:
 .PHONY: test-repair-producer
 test-repair-producer:
 	sh tools/generic-cli/gate.sh repair-producer
+
+# Real-subprocess Build/Test engine evidence (ADR-0026): kernel rlimits,
+# deadlines and output budgets against live children. Tagged out of the
+# parallel unit suite because RLIMIT_NPROC counts the shared dev uid's
+# threads; the dedicated run below executes them serially.
+.PHONY: test-build-engine
+test-build-engine:
+	$(GO_HOST_RUN) sh -c 'go test -count=1 -tags engineexec ./internal/runtime/buildtest/adapters/processexec/ -v'
+	@echo "test-build-engine: PASS"

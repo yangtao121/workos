@@ -90,6 +90,13 @@ type Runtime struct {
 	LeaseTTL          time.Duration `yaml:"lease_ttl"`
 	InstanceName      string        `yaml:"instance_name"`
 	DeviceID          string        `yaml:"device_id"`
+
+	// Build/Test executor (ADR-0026). The process engine runs the fixed
+	// build/test argv from trusted inputs inside a private scratch tree
+	// with kernel rlimits; empty disables the private BuildTestService.
+	BuildTestScratch  string        `yaml:"buildtest_scratch"`
+	BuildTestTimeout  time.Duration `yaml:"buildtest_timeout"`
+	BuildTestInterval time.Duration `yaml:"buildtest_interval"`
 }
 
 // Surface configures the runtime-host Surface Broker session lifetime.
@@ -262,6 +269,9 @@ func defaults() Config {
 			LeaseTTL:          30 * time.Second,
 			InstanceName:      "runtime-host-local",
 			DeviceID:          "0198d7ea-2110-7c42-b659-c5e4d73bc339",
+			BuildTestScratch:  "/tmp/workos-buildtest",
+			BuildTestTimeout:  10 * time.Minute,
+			BuildTestInterval: 5 * time.Second,
 		},
 		Reliability: Reliability{
 			PollInterval:         5 * time.Second,
@@ -391,6 +401,7 @@ func Load() (Config, error) {
 	setString(&cfg.Indexer.AdminSocketPath, "WORKOS_INDEX_ADMIN_SOCKET")
 	setString(&cfg.Indexer.PageTokenKey, "WORKOS_INDEX_PAGE_TOKEN_KEY")
 	setString(&cfg.Runtime.InstanceName, "WORKOS_RUNTIME_INSTANCE_NAME")
+	setString(&cfg.Runtime.BuildTestScratch, "WORKOS_RUNTIME_BUILDTEST_SCRATCH")
 	setString(&cfg.Runtime.DeviceID, "WORKOS_RUNTIME_DEVICE_ID")
 	for _, override := range []struct {
 		key   string
@@ -402,6 +413,8 @@ func Load() (Config, error) {
 		{"WORKOS_RUNTIME_OPERATION_TIMEOUT", &cfg.Runtime.OperationTimeout, "WORKOS_RUNTIME_OPERATION_TIMEOUT"},
 		{"WORKOS_RUNTIME_CORE_GRACE", &cfg.Runtime.CoreGrace, "WORKOS_RUNTIME_CORE_GRACE"},
 		{"WORKOS_RUNTIME_LEASE_TTL", &cfg.Runtime.LeaseTTL, "WORKOS_RUNTIME_LEASE_TTL"},
+		{"WORKOS_RUNTIME_BUILDTEST_TIMEOUT", &cfg.Runtime.BuildTestTimeout, "WORKOS_RUNTIME_BUILDTEST_TIMEOUT"},
+		{"WORKOS_RUNTIME_BUILDTEST_INTERVAL", &cfg.Runtime.BuildTestInterval, "WORKOS_RUNTIME_BUILDTEST_INTERVAL"},
 	} {
 		if raw, ok := os.LookupEnv(override.key); ok {
 			value, err := time.ParseDuration(raw)

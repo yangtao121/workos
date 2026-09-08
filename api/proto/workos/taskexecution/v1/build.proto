@@ -1,0 +1,142 @@
+syntax = "proto3";
+
+package workos.taskexecution.v1;
+
+import "workos/app/v1/source.proto";
+import "workos/taskexecution/v1/repair.proto";
+
+option go_package = "github.com/yangtao121/workos/gen/go/workos/taskexecution/v1;taskexecutionv1";
+
+// One bounded Build/Test job over an immutable repair candidate. Runtime is
+// the authority for execution facts only; inputs stay Core-owned.
+message BuildTestJob {
+  string task_id = 1;
+  string incident_id = 2;
+  string owner_user_id = 3;
+  string project_id = 4;
+  string installation_id = 5;
+  RepairBuildInput input = 6;
+  // The candidate source files (ADR-0024 limits); the engine materializes
+  // them into an isolated working tree before any command runs.
+  repeated workos.app.v1.AppSourceFile candidate_files = 7;
+}
+
+// Digest binding for idempotency: the submit is bound to one exact input.
+message BuildTestInputFacts {
+  string source_bundle_id = 1;
+  string source_digest = 2;
+  string manifest_digest = 3;
+  string base_image = 4;
+}
+
+message SubmitBuildTestRequest {
+  BuildTestJob job = 1;
+  BuildTestInputFacts input_facts = 2;
+}
+
+message SubmitBuildTestResponse {
+  string job_id = 1;
+  bool created = 2;
+}
+
+message GetBuildTestRequest {
+  string task_id = 1;
+}
+
+// Engine capability facts as enforced for this verdict. Never asserted from
+// configuration alone; the reduced process tier reports its own limits.
+message BuildEngineFacts {
+  string engine = 1;
+  bool network_isolated = 2;
+  bool image_pinned = 3;
+  // Kernel-enforced limits actually applied, fixed grammar:
+  // cpu-seconds|address-space|file-size|processes|open-files|wall-clock|output-bytes
+  repeated string enforced_limits = 4;
+}
+
+message GetBuildTestResponse {
+  string job_id = 1;
+  string task_id = 2;
+  // queued|running|succeeded|failed|cancelled
+  string state = 3;
+  // The fixed grammar of the last stage entered: submit|materialize|build|test|verify.
+  string stage = 4;
+  int32 build_exit_code = 5;
+  int32 test_exit_code = 6;
+  // Fixed grammar of the terminal reason on failure:
+  // build-failed|test-failed|timeout|engine-failed|output-budget|input-drift|cancelled|none
+  string failure_reason = 7;
+  BuildEngineFacts engine = 8;
+  string source_digest = 9;
+  int32 attempts = 10;
+}
+
+message CancelBuildTestRequest {
+  string task_id = 1;
+}
+
+message CancelBuildTestResponse {
+  string state = 1;
+}
+
+// Runtime's private Reliability-facing listener only; Gateway never routes it.
+service BuildTestService {
+  rpc SubmitBuildTest(SubmitBuildTestRequest) returns (SubmitBuildTestResponse) {}
+  rpc GetBuildTest(GetBuildTestRequest) returns (GetBuildTestResponse) {}
+  rpc CancelBuildTest(CancelBuildTestRequest) returns (CancelBuildTestResponse) {}
+}
+
+message RegisterRepairCandidateVersionRequest {
+  string task_id = 1;
+  string incident_id = 2;
+  string project_id = 3;
+  string installation_id = 4;
+  // The Runtime job verdict facts Reliability observed before registering.
+  string build_job_id = 5;
+  string source_digest = 6;
+}
+
+message RegisterRepairCandidateVersionResponse {
+  string version = 1;
+  string manifest_digest = 2;
+  bool created = 3;
+  // The installation's current pin and project revision, captured before any
+  // deployment side effect (ADR-0026 offer-time preconditions).
+  string base_version = 4;
+  int64 project_revision = 5;
+}
+
+message PublishRepairCandidateVersionRequest {
+  string task_id = 1;
+  string project_id = 2;
+  string installation_id = 3;
+  string version = 4;
+  string manifest_digest = 5;
+}
+
+message PublishRepairCandidateVersionResponse {
+  bool published = 1;
+}
+
+message TransitionCandidateVersionRequest {
+  string idempotency_key = 1;
+  string project_id = 2;
+  string installation_id = 3;
+  string version = 4;
+  string manifest_digest = 5;
+  int64 expected_project_revision = 6;
+}
+
+message TransitionCandidateVersionResponse {
+  string version = 1;
+  int64 project_revision = 2;
+}
+
+// Core's private Reliability-facing listener only: staged candidate lifecycle.
+// Owner identity comes from the trusted service context. Staged versions are
+// invisible to default selection and owner-driven transitions (ADR-0026).
+service RepairVersionService {
+  rpc RegisterRepairCandidateVersion(RegisterRepairCandidateVersionRequest) returns (RegisterRepairCandidateVersionResponse) {}
+  rpc PublishRepairCandidateVersion(PublishRepairCandidateVersionRequest) returns (PublishRepairCandidateVersionResponse) {}
+  rpc TransitionCandidateVersion(TransitionCandidateVersionRequest) returns (TransitionCandidateVersionResponse) {}
+}
