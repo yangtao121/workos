@@ -65,17 +65,20 @@ func (e *Engine) Facts() ports.EngineFacts {
 	}
 }
 
-// Available verifies bash (the ulimit launcher), the scratch root and the
-// build command's executable exist. It never fabricates capability.
+// Available verifies bash (the ulimit launcher) and a usable scratch root,
+// creating the engine-owned root when missing. It never fabricates the
+// toolchain: a missing build command still fails the run honestly.
 func (e *Engine) Available(ctx context.Context) error {
 	if _, err := exec.LookPath("bash"); err != nil {
 		return ports.ErrEngineUnavailable
 	}
-	info, err := os.Stat(e.config.ScratchRoot)
-	if err != nil || !info.IsDir() {
-		return ports.ErrEngineUnavailable
+	if info, err := os.Stat(e.config.ScratchRoot); err == nil {
+		if !info.IsDir() {
+			return ports.ErrEngineUnavailable
+		}
+		return nil
 	}
-	return nil
+	return os.MkdirAll(e.config.ScratchRoot, 0o700)
 }
 
 // ulimitScript is the kernel-enforced preamble applied to every stage.

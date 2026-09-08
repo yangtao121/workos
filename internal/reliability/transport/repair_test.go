@@ -2,6 +2,7 @@ package transport
 
 import (
 	"context"
+	"errors"
 	"net/http/httptest"
 	"testing"
 
@@ -65,18 +66,19 @@ func TestRepairTaskStateRequiresExactProvenance(t *testing.T) {
 		{"installation", func(task *agentv1.AgentTask) { task.Input.RepairTarget.AppInstanceId = "other" }},
 		{"missing target", func(task *agentv1.AgentTask) { task.Input.RepairTarget = nil }},
 		{"missing input", func(task *agentv1.AgentTask) { task.Input = nil }},
-		{"unknown state", func(task *agentv1.AgentTask) { task.State = agentv1.AgentTaskState_AGENT_TASK_STATE_UNSPECIFIED }},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			f.task = fresh()
 			tc.mutate(f.task)
-			if _, err := client.TaskState(context.Background(), row); connect.CodeOf(err) != connect.CodeInternal {
+			if _, err := client.TaskState(context.Background(), row); !errors.Is(err, application.ErrRepairProvenanceInvalid) {
 				t.Fatalf("untrusted task accepted: %v", err)
 			}
 		})
 	}
-	f.task = nil
+	// An unknown state stays a separate sanitized internal verdict.
+	f.task = fresh()
+	f.task.State = agentv1.AgentTaskState_AGENT_TASK_STATE_UNSPECIFIED
 	if _, err := client.TaskState(context.Background(), row); connect.CodeOf(err) != connect.CodeInternal {
-		t.Fatalf("missing task accepted: %v", err)
+		t.Fatalf("unknown state accepted: %v", err)
 	}
 }

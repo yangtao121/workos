@@ -69,6 +69,20 @@ func TestRepairOrchestratorTurnsIncidentIntoTask(t *testing.T) {
 	project := created.Msg.GetProject()
 
 	appID := fmt.Sprintf("repair-fixture-%d", time.Now().UnixNano())
+	// Since ADR-0025 every repair target needs a build recipe: the worker
+	// resolves the pinned build input before running, and the fake provider
+	// publishes an explicitly synthetic candidate against it.
+	source, err := appv1connect.NewAppSourceBundleServiceClient(client, baseURL).CreateAppSourceBundle(ctx, connect.NewRequest(&appv1.CreateAppSourceBundleRequest{
+		IdempotencyKey: key + "-source",
+		Files: []*appv1.AppSourceFile{
+			{Path: "go.mod", Content: []byte("module repair-fixture\n\ngo 1.26\n")},
+			{Path: "main.go", Content: []byte("package main\nfunc answer() int { return 0 }\nfunc main() {}\n")},
+			{Path: "main_test.go", Content: []byte("package main\nimport \"testing\"\nfunc TestAnswer(t *testing.T) { if answer() != 42 { t.Fatal(\"wrong answer\") } }\n")},
+		},
+	}))
+	if err != nil {
+		t.Fatalf("upload repair source: %v", err)
+	}
 	manifest := fmt.Sprintf(`apiVersion: workos.app/v1
 id: %s
 name: Repair Fixture
@@ -93,8 +107,14 @@ health:
   httpPath: /health
   startupSeconds: 10
   restartLimit: 1
+build:
+  sourceBundleId: %s
+  sourceDigest: %s
+  baseImage: localhost/toolchain@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+  buildCommand: ["go", "build", "./..."]
+  testCommand: ["go", "test", "./..."]
 maintainer: {}
-`, appID)
+`, appID, source.Msg.GetBundle().GetId(), source.Msg.GetBundle().GetDigest())
 	if _, err := registry.RegisterApp(ctx, connect.NewRequest(&appv1.RegisterAppRequest{
 		IdempotencyKey: key + "-register", ManifestYaml: []byte(manifest),
 	})); err != nil {

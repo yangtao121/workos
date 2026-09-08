@@ -69,7 +69,7 @@ func (c *RepairSubmitterClient) TaskState(ctx context.Context, row application.R
 	}
 	task := response.Msg.GetTask()
 	if task.GetId() != row.TaskID || task.GetOwnerUserId() != row.OwnerUserID || task.GetInput().GetTargetScope().GetProjectId() != row.ProjectID || task.GetInput().GetIncidentId() != row.IncidentID || task.GetInput().GetRepairTarget().GetAppInstanceId() != row.AppInstanceID || row.AppInstanceID == "" {
-		return application.RepairTaskPending, connect.NewError(connect.CodeInternal, errors.New("repair task provenance is invalid"))
+		return application.RepairTaskPending, application.ErrRepairProvenanceInvalid
 	}
 	switch task.GetState() {
 	case agentv1.AgentTaskState_AGENT_TASK_STATE_QUEUED, agentv1.AgentTaskState_AGENT_TASK_STATE_RUNNING, agentv1.AgentTaskState_AGENT_TASK_STATE_WAITING:

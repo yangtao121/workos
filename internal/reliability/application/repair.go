@@ -45,6 +45,11 @@ type RepairCandidatesSource interface {
 // notification informs the owner and the orchestrator stops retrying.
 var ErrRepairAwaitingManual = errors.New("repair is awaiting manual action")
 
+// ErrRepairProvenanceInvalid marks a ledger row whose task no longer binds
+// to the incident (stale rows from an earlier defect period). The row is
+// cleared terminally instead of poisoning every later pass.
+var ErrRepairProvenanceInvalid = errors.New("repair task provenance is invalid")
+
 // RepairCompletedRow is a submitted ledger row awaiting reconciliation.
 type RepairCompletedRow struct {
 	RepairCandidate
@@ -132,6 +137,15 @@ func (o *RepairOrchestrator) RunPass(ctx context.Context, limit int) (int, error
 		}
 		for _, row := range completed {
 			state, doneErr := o.submitter.TaskState(ctx, row)
+			if errors.Is(doneErr, ErrRepairProvenanceInvalid) {
+				// A row whose task can never satisfy the incident binding is
+				// cleared terminally: retrying it forever would starve the
+				// rotation for live incidents.
+				if clearErr := o.candidates.ClearRepairCompleted(ctx, row.IncidentID); clearErr != nil {
+					return submitted, clearErr
+				}
+				continue
+			}
 			if doneErr != nil {
 				lastErr = doneErr
 				continue

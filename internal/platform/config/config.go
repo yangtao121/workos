@@ -155,13 +155,13 @@ type Auth struct {
 }
 
 type Agent struct {
-	DefaultProvider string               `yaml:"default_provider"`
+	DefaultProvider string `yaml:"default_provider"`
 	// RecoveryProvider is the explicitly configured Recovery harness for
 	// repair admissions whose project binding cannot serve them
 	// (ADR-0016 §5). Empty disables the fallback tier.
-	RecoveryProvider string `yaml:"recovery_provider"`
-	CatalogTimeout  time.Duration        `yaml:"catalog_timeout"`
-	ProjectBinding  HarnessBindingPreset `yaml:"project_binding"`
+	RecoveryProvider string               `yaml:"recovery_provider"`
+	CatalogTimeout   time.Duration        `yaml:"catalog_timeout"`
+	ProjectBinding   HarnessBindingPreset `yaml:"project_binding"`
 }
 
 type HarnessBindingPreset struct {

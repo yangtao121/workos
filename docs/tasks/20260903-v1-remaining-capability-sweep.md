@@ -1261,3 +1261,25 @@ Reliability 六进程 + golang 工具链镜像 runtime-host + 通用 CLI fixture
 重试不误标）；migration 053 在 scratch 库真实应用（约束含 awaiting_manual）；
 `make check` PASS。默认栈未部署新二进制；跨进程 Recovery 切换证据待默认栈或
 门禁扩展（gate 可设 WORKOS_AGENT_RECOVERY_PROVIDER）后补。
+
+### R2 监督/遥测复核与默认栈修复（verified，2026-09-08）
+
+- `make test-telemetry` 重跑 PASS（真实 RPC 流量 + 白名单摘要）；`make
+  test-real-supervision` 重跑 PASS（观察→incident 唯一→restart 推进→上限停止）。
+  均在本轮全部代码之上真实执行（tmp/telemetry-reverify.log、
+  tmp/supervision-reverify.log）。
+- `make test-repair-deployment` 首轮 FAIL 暴露两处真实问题并修复：
+  1. fixture 应用 manifest 无 build 配置——ADR-0025 后 worker 必须解析固定构建
+     输入，缺配置即任务明确失败。补齐 source bundle + build recipe（修复测试
+     fixture，不放宽产品行为）；修复后门禁 PASS（tmp/repairdeploy-reverify2.log）。
+  2. 缺陷期遗留的 138 条 'submitted' repair ledger 行：TaskState 溯源不符返回
+     Internal，每秒重试污染 pass。改为类型化 `ErrRepairProvenanceInvalid`，
+     编排器将该行终态清除（不删除 incident，通知链保留），修复后默认库全部
+     收敛 terminal（147 条），无重试风暴。
+- 默认栈（repair-deployment 门禁按其 target 定义重建）已带本批全部新代码与
+  migration 050–053 运行：AppInstanceID 修复后 incident 驱动 repair 真实入队；
+  BuildCoordinator 真实提交构建；默认 runtime 镜像无 go 工具链 → 作业诚实
+  build-failed（`go: not found` 记录在 log_tail）、行终态清除、零部署——与
+  ADR-0026 的引擎诚实声明一致（工具链证据在 repair-buildtest 门禁的 golang
+  镜像栈）。进程引擎 scratch 根缺失时自动创建（0700），不再误报引擎不可用。
+- `make check` PASS（含 prettier 修正 docs/status.json）。

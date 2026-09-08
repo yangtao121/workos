@@ -18,7 +18,7 @@ type recoveryProviders struct {
 	primaryErr     error
 	recoveryErr    error
 	recoveryHealth bool
-	lookups         []string
+	lookups        []string
 }
 
 func (f *recoveryProviders) Capabilities(_ context.Context, providerID string) (agentports.ProviderCapabilities, error) {
