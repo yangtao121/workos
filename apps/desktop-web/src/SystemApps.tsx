@@ -346,6 +346,8 @@ export function CodeApp(props: ArtifactAppProps) {
 // opaque sandbox: even a same-origin page cannot access desktop storage or DOM.
 // Popups and top navigation remain disabled.
 // Only http(s) URLs are accepted; everything else is a fixed verdict.
+export { TerminalApp } from "./TerminalApp.js";
+
 export function BrowserApp(props: {
   initialUrl?: string;
   workosClients?: WorkOSClients;

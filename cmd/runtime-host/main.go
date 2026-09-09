@@ -31,6 +31,10 @@ import (
 	"github.com/yangtao121/workos/internal/runtime/buildtest/adapters/processexec"
 	buildtestapp "github.com/yangtao121/workos/internal/runtime/buildtest/application"
 	buildtesttransport "github.com/yangtao121/workos/internal/runtime/buildtest/transport"
+	ptyhostpostgres "github.com/yangtao121/workos/internal/runtime/ptyhost/adapters/postgres"
+	shellexec "github.com/yangtao121/workos/internal/runtime/ptyhost/adapters/shellexec"
+	ptyhostapp "github.com/yangtao121/workos/internal/runtime/ptyhost/application"
+	ptyhosttransport "github.com/yangtao121/workos/internal/runtime/ptyhost/transport"
 	surfacecoreclient "github.com/yangtao121/workos/internal/runtime/surface/adapters/coreclient"
 	indexerclient "github.com/yangtao121/workos/internal/runtime/surface/adapters/indexerclient"
 	surfacepostgres "github.com/yangtao121/workos/internal/runtime/surface/adapters/postgres"
@@ -341,11 +345,45 @@ func run(logger *slog.Logger) error {
 		}()
 	}
 
+	// Supervised terminal sessions (ADR-0028): real login shells behind the
+	// owner-identity gate; without a configured shell the capability stays
+	// honestly unavailable.
+	if strings.TrimSpace(cfg.Runtime.PtyShell) != "" {
+		ptyEngine, engineErr := shellexec.New(cfg.Runtime.PtyShell)
+		if engineErr != nil {
+			return engineErr
+		}
+		ptyService, serviceErr := ptyhostapp.NewService(ptyhostpostgres.New(pool), ptyEngine, generator, logger)
+		if serviceErr != nil {
+			return serviceErr
+		}
+		ptyPath, ptyHandler := ptyhosttransport.NewPtyHandler(ptyService)
+		mux.Handle(ptyPath, identity.Middleware(ptyHandler))
+		ptyStop := make(chan struct{})
+		defer close(ptyStop)
+		go func() {
+			ticker := time.NewTicker(30 * time.Second)
+			defer ticker.Stop()
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case <-ptyStop:
+					return
+				case <-ticker.C:
+					if err := ptyService.Sweep(ctx); err != nil {
+						logger.Info("pty sweep pending", "error", err)
+					}
+				}
+			}
+		}()
+	}
+
 	systemPath, systemHandler := commonv1connect.NewSystemServiceHandler(systemhandler.New("runtime-host", commonv1.HealthState_HEALTH_STATE_HEALTHY,
 		&commonv1.FeatureCapability{Id: "node-inspection", Available: true},
 		workloadCapability(capability, "container-runner"),
 		&commonv1.FeatureCapability{Id: "rootless-container-runner", Available: cfg.Runtime.WorkloadEngine != "fake-fixture" && capability.Available && capability.Rootless, Reason: rootlessRunnerReason(cfg.Runtime.WorkloadEngine, capability)},
-		&commonv1.FeatureCapability{Id: "native-runner", Available: false, Reason: "not implemented"},
+		&commonv1.FeatureCapability{Id: "native-runner", Available: strings.TrimSpace(cfg.Runtime.PtyShell) != "", Reason: "supervised PTY sessions require a configured login shell (ADR-0028); virtual-display WebRTC runner remains unimplemented"},
 		&commonv1.FeatureCapability{Id: "surface-broker", Available: true, Reason: "web bundle and supervised web service surfaces"},
 		&commonv1.FeatureCapability{Id: "app-bridge", Available: true, Reason: "grant-checked agent, knowledge, notifications, project and own-window methods; files require explicit workspace bindings"},
 		&commonv1.FeatureCapability{Id: "workspace-files", Available: workspaceErr == nil && len(mounts) > 0, Reason: "requires usable owner-bound workspace directories and explicit files.read/files.write grants"},

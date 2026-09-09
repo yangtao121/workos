@@ -1330,3 +1330,20 @@ ADR-0027 + migration 054（workos_runtime.browser_sessions，owner runtime-host�
   真实桌面窗口导航 → canvas 1280×800 真实帧 → 二次导航同一会话 → Pool 存活时
   iframe 降级与 pool-notice 均不出现。全套（Go RPC 矩阵 + 崩溃恢复 + 桌面
   E2E）PASS（tmp/browser-pool-run34.log）。`make check` PASS。
+
+### R3 PTY 终端会话（verified，2026-09-09）
+
+ADR-0028 + migration 055 + `workos.surface.v1.PtySessionService`：
+
+- `internal/runtime/ptyhost`：durable owner-scoped 会话（幂等 + 摘要漂移
+  Aborted）、shellexec 真实 /bin/sh@pty（Setsid+Pdeathsig+TIOCSWINSZ、
+  256 KiB 输出 ring + 严格 cursor、进程组 kill、并发 4 上限、TTL sweep）。
+  关键坑：SysProcAttr.Setpgid 与 pty 库的 Setsid 冲突 → fork/exec EPERM，
+  移除 Setpgid（setsid 后子进程即自身组长，组 kill 仍有效）。
+- 桌面 Terminal 系统窗口（原 unavailable）→ 真实 shell 消费者；键入经
+  串行化 promise 写入链（逐字符并发 RPC 曾把 "echo" 乱序成 "echwo"）。
+- `make test-terminal-sessions` PASS（tmp/terminal-run7.log）：RPC 矩阵 +
+  外 owner 隔离（直连 runtime；Gateway 身份不可伪造是正确行为）+ 桌面
+  Chromium E2E 真实输入输出。`make check` PASS。
+- native-runner 能力按 WORKOS_RUNTIME_PTY_SHELL 配置如实报告；
+  虚拟显示/WebRTC Native Runner 仍未实现（ADR-0027/0028 边界）。

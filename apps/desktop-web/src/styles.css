@@ -2701,3 +2701,38 @@ svg {
   font-size: 13px;
   margin-bottom: 24px;
 }
+
+/* Terminal system window (ADR-0028): bounded scrollback, keyboard input. */
+.terminal-app {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  background: var(--wk-surface, #10151c);
+  color: var(--wk-text, #e6edf3);
+  padding: 8px;
+}
+.terminal-output {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  margin: 0;
+  padding: 8px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 13px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  word-break: break-all;
+  background: #0b0f14;
+  border: 1px solid #2a3441;
+  border-radius: 8px;
+  outline: none;
+}
+.terminal-output:focus {
+  border-color: #4c8bf5;
+}
+.terminal-verdict {
+  margin: 6px 2px 0;
+  font-size: 12px;
+  color: #9aa7b4;
+}

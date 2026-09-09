@@ -103,6 +103,8 @@ var runtimeServicePrefixes = []string{
 	// The Remote Browser Pool control plane (ADR-0027): owner-identity gated
 	// on the runtime host like the surface service itself.
 	"/workos.surface.v1.BrowserSessionService/",
+	// Supervised terminal sessions (ADR-0028): owner-identity gated.
+	"/workos.surface.v1.PtySessionService/",
 	"/workos.bridge.v1.AppBridgeService/",
 }
 

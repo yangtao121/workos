@@ -1116,3 +1116,10 @@ test-repair-buildtest:
 .PHONY: test-browser-pool
 test-browser-pool:
 	@set -eu; sh tools/browser-pool/gate.sh
+
+# The supervised terminal sessions gate (ADR-2028): real /bin/sh children on
+# PTYs inside the runtime-host, owner-identity-gated, driven by the real
+# desktop Terminal window.
+.PHONY: test-terminal-sessions
+test-terminal-sessions:
+	@set -eu; sh tools/terminal-sessions/gate.sh

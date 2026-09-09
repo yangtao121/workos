@@ -32,7 +32,8 @@ export type WindowKind =
   | "files"
   | "docs"
   | "code"
-  | "browser";
+  | "browser"
+  | "terminal";
 
 // AppSurfaceRef binds a window to one durable surface session. The URL is
 // the same-origin relative path returned by CreateSurface — never a private

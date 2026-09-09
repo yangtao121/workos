@@ -1508,3 +1508,15 @@ return 0 改为 return 42，保留原测试源码与配置；Core/Harness 重启
   Gateway 路由（runtime 上游 allowlist）+ owner 身份；Watch 为有界帧服务端流。
 - `make test-browser-pool`：Playwright 镜像 runtime + 真实页面 fixture，覆盖真实
   渲染/幂等/漂移/导航/崩溃恢复/Close 回收/会话上限/scheme 拒绝。
+
+## 受监督 PTY 终端会话（ADR-0028，2026-09-09）
+
+- `internal/runtime/ptyhost/`：runtime-host 拥有的真实登录 shell 会话。
+  migration 055（workos_runtime.pty_sessions）持久 owner-scoped 行；
+  shellexec 引擎以 Setsid+Pdeathsig 在 pty 上启动 /bin/sh（禁止 Setpgid：
+  与 pty 库 setsid 冲突 → EPERM），TIOCSWINSZ resize，256 KiB 输出 ring +
+  严格递增 cursor，进程组 kill，并发 4/owner，TTL sweep。
+- `workos.surface.v1.PtySessionService`（Gateway 路由 + owner 身份）：
+  Create/Write/Read/Resize/Close；输入 16 KiB 上界、NUL 拒绝。
+- 桌面 Terminal 系统窗口消费该服务（串行化写入链保证键序）。
+- `make test-terminal-sessions`：RPC 矩阵 + 外 owner 隔离 + 桌面 E2E。

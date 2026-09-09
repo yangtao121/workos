@@ -1,0 +1,89 @@
+syntax = "proto3";
+
+package workos.surface.v1;
+
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/yangtao121/workos/gen/go/workos/surface/v1;surfacev1";
+
+// One supervised PTY session: an owner-started real login shell on the
+// runtime host (ADR-0028). Output is bounded and attributed; the child is
+// killed when the session closes or expires.
+message PtySession {
+  string id = 1;
+  string owner_user_id = 2;
+  string project_id = 3;
+  // queued|running|closed|failed
+  string state = 4;
+  // Honest engine facts: the supervised login-shell supervisor id.
+  string engine = 7;
+  google.protobuf.Timestamp created_at = 5;
+  google.protobuf.Timestamp expires_at = 6;
+}
+
+message CreatePtySessionRequest {
+  string idempotency_key = 1;
+  string project_id = 2;
+  // Client-side terminal size for the initial pty window.
+  int32 columns = 3;
+  int32 rows = 4;
+}
+
+message CreatePtySessionResponse {
+  PtySession session = 1;
+}
+
+message WritePtySessionRequest {
+  string session_id = 1;
+  // Bounded raw terminal input bytes (UTF-8 or control sequences).
+  bytes input = 2;
+}
+
+message WritePtySessionResponse {
+  PtySession session = 1;
+}
+
+message ReadPtySessionRequest {
+  string session_id = 1;
+  // Read output strictly after this cursor; 0 reads from the session start.
+  int64 after = 2;
+  // Client-side bound on the returned chunk.
+  int32 max_bytes = 3;
+}
+
+message ReadPtySessionResponse {
+  // The cursor to pass next: strictly increasing per session.
+  int64 cursor = 1;
+  bytes output = 2;
+  // True when the child has exited and no more output will arrive.
+  bool closed = 3;
+}
+
+message ResizePtySessionRequest {
+  string session_id = 1;
+  int32 columns = 2;
+  int32 rows = 3;
+}
+
+message ResizePtySessionResponse {
+  PtySession session = 1;
+}
+
+message ClosePtySessionRequest {
+  string session_id = 1;
+}
+
+message ClosePtySessionResponse {
+  PtySession session = 1;
+}
+
+// Supervised owner-scoped terminal sessions on the runtime host. Gateway
+// routes it with owner identity; the shell runs as the runtime's own user
+// with a bounded environment, and nothing here grants filesystem escapes.
+service PtySessionService {
+  rpc CreatePtySession(CreatePtySessionRequest) returns (CreatePtySessionResponse) {}
+  rpc WritePtySession(WritePtySessionRequest) returns (WritePtySessionResponse) {}
+  rpc ReadPtySession(ReadPtySessionRequest) returns (ReadPtySessionResponse) {}
+  rpc ResizePtySession(ResizePtySessionRequest) returns (ResizePtySessionResponse) {}
+  rpc ClosePtySession(ClosePtySessionRequest) returns (ClosePtySessionResponse) {}
+}

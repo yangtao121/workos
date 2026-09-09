@@ -59,6 +59,7 @@ import { CommandPalette, type PaletteAction } from "./CommandPalette.js";
 import { MissionControl, type MissionControlProject } from "./MissionControl.js";
 import {
   BrowserApp,
+  TerminalApp,
   CodeApp,
   DocsApp,
   FilesApp,
@@ -599,6 +600,22 @@ export function Desktop({
     });
     recordLayout((state) => ({ ...state, activeSystemWindow: "browser" }));
   }, [recordLayout]);
+
+  const openTerminal = useCallback(() => {
+    if (!activeProjectId) return;
+    dispatch({
+      type: "open",
+      window: {
+        id: "terminal",
+        appId: "terminal",
+        title: "Terminal",
+        kind: "terminal",
+        rect: { x: 200, y: 120, width: 680, height: 440 },
+        mode: "normal",
+      },
+    });
+    recordLayout((state) => ({ ...state, activeSystemWindow: "terminal" }));
+  }, [activeProjectId, recordLayout]);
 
   // Opening one artifact opens (or focuses) exactly one viewer window keyed
   // on the artifact id. The window fetches authoritative content itself; a
@@ -1420,10 +1437,10 @@ export function Desktop({
     {
       id: "terminal",
       label: "Terminal",
-      hint: "Requires the Native Runner",
+      hint: "Supervised shell session",
       icon: "terminal",
-      available: false,
-      open: () => {},
+      available: !!activeProjectId,
+      open: openTerminal,
     },
   ];
   const systemApps = appEntries.map((app) => ({
@@ -1707,6 +1724,8 @@ export function Desktop({
       )
     ) : windowState.kind === "browser" ? (
       <BrowserApp workosClients={workosClients} activeProjectId={activeProject?.id ?? ""} />
+    ) : windowState.kind === "terminal" ? (
+      <TerminalApp workosClients={workosClients} activeProjectId={activeProject?.id ?? ""} />
     ) : windowState.kind === "device-center" ? (
       deviceAuth ? (
         <DeviceCenter deviceAuth={deviceAuth} onSessionEnded={() => layoutStore.clearAll()} />

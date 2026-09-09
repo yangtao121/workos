@@ -105,6 +105,9 @@ type Runtime struct {
 	BrowserBinary string `yaml:"browser_binary"`
 	// BrowserScratch is the pool's private profile root.
 	BrowserScratch string `yaml:"browser_scratch"`
+	// PtyShell enables supervised terminal sessions with the login shell
+	// path (ADR-0028); empty keeps the capability unavailable.
+	PtyShell string `yaml:"pty_shell"`
 	// BuildTestProcessLimit scales the kernel NPROC bound for hosts that
 	// share one uid across many processes; the limit stays kernel enforced.
 	BuildTestProcessLimit int `yaml:"buildtest_process_limit"`
@@ -421,6 +424,7 @@ func Load() (Config, error) {
 	setString(&cfg.Runtime.InstanceName, "WORKOS_RUNTIME_INSTANCE_NAME")
 	setString(&cfg.Runtime.BuildTestScratch, "WORKOS_RUNTIME_BUILDTEST_SCRATCH")
 	setString(&cfg.Runtime.BrowserBinary, "WORKOS_RUNTIME_BROWSER_BINARY")
+	setString(&cfg.Runtime.PtyShell, "WORKOS_RUNTIME_PTY_SHELL")
 	setString(&cfg.Runtime.BrowserScratch, "WORKOS_RUNTIME_BROWSER_SCRATCH")
 	if raw, ok := os.LookupEnv("WORKOS_RUNTIME_BUILDTEST_PROCESS_LIMIT"); ok {
 		value, err := strconv.Atoi(raw)
