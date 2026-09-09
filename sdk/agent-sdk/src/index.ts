@@ -9,6 +9,7 @@ import {
   AppInstallationService,
   AppRegistryService,
   ArtifactService,
+  BrowserSessionService,
   HarnessCatalogService,
   IncidentService,
   IndexService,
@@ -30,6 +31,7 @@ export interface WorkOSClients {
   appInstallations: Client<typeof AppInstallationService>;
   artifacts: Client<typeof ArtifactService>;
   surfaces: Client<typeof SurfaceService>;
+  browserSessions: Client<typeof BrowserSessionService>;
   appBridge: Client<typeof AppBridgeService>;
   incidents: Client<typeof IncidentService>;
   index: Client<typeof IndexService>;
@@ -50,6 +52,7 @@ export function createWorkOSClients(baseUrl: string, transport?: Transport): Wor
     appInstallations: createClient(AppInstallationService, activeTransport),
     artifacts: createClient(ArtifactService, activeTransport),
     surfaces: createClient(SurfaceService, activeTransport),
+    browserSessions: createClient(BrowserSessionService, activeTransport),
     appBridge: createClient(AppBridgeService, activeTransport),
     incidents: createClient(IncidentService, activeTransport),
     index: createClient(IndexService, activeTransport),

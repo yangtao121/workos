@@ -78,3 +78,12 @@ for pid in $found; do
   docker exec "${project}-runtime-1" sh -c "kill -9 $pid" 2>/dev/null || true
 done
 run_test 'TestBrowserPoolCrashRestore'
+# Desktop consumer: the Browser system window drives a pool session and
+# paints real frames (Chromium E2E through the gateway).
+docker run --rm --network host --user "$WORKOS_BROWSERPOOL_GATE_USER" \
+  -e HOME=/tmp -e PLAYWRIGHT_BROWSERS_PATH=/ms-playwright \
+  -e WORKOS_E2E_URL="http://127.0.0.1:$WORKOS_BROWSERPOOL_GATE_GATEWAY_PORT" \
+  -e WORKOS_E2E_OUTPUT_DIR="/tmp/workos-playwright-results" \
+  -e WORKOS_BROWSER_POOL_E2E=true \
+  -v "$repo:/workspace" -w /workspace/apps/desktop-web \
+  "${E2E_IMAGE:-workos-playwright:1.62.1}" node node_modules/@playwright/test/cli.js test browser-pool-desktop.spec.ts --workers=1

@@ -14,6 +14,7 @@ export * from "./gen/workos/index/v1/index_pb.js";
 export * from "./gen/workos/project/v1/project_pb.js";
 export * from "./gen/workos/project/v1/harness_binding_pb.js";
 export * from "./gen/workos/surface/v1/surface_pb.js";
+export * from "./gen/workos/surface/v1/browser_pb.js";
 export * from "./gen/workos/taskexecution/v1/execution_pb.js";
 export * from "./gen/workos/workload/v1/workload_pb.js";
 export * from "./gen/workos/bridge/v1/bridge_pb.js";

@@ -1318,3 +1318,15 @@ ADR-0027 + migration 054（workos_runtime.browser_sessions，owner runtime-host�
   ≥1 或 failed）、Close 回收、每 owner 会话上限（恰好 4，第 5 拒绝）、file://
   拒绝。容器级 cgroup 隔离如实未声明（EngineFacts）。
 - `make check` PASS（含 buf lint——流响应命名符合规范）。
+
+### R3/R6 桌面 Browser 窗口接入 Pool（verified，2026-09-09）
+
+- 桌面 Browser 系统窗口从纯沙箱 iframe 升级为 Pool 消费者：地址栏驱动
+  CreateBrowserSession/NavigateBrowserSession，canvas 绘制 WatchBrowserSession
+  的有界 JPEG 帧；Pool 不可用时显式降级文案 + 原沙箱 iframe（保留既有
+  `_blank`/top-navigation 边界），不静默。agent-sdk 增加 browserSessions
+  client；protocol 导出 browser_pb。
+- `make test-browser-pool` 增加 Chromium E2E 阶段（browser-pool-desktop.spec.ts）：
+  真实桌面窗口导航 → canvas 1280×800 真实帧 → 二次导航同一会话 → Pool 存活时
+  iframe 降级与 pool-notice 均不出现。全套（Go RPC 矩阵 + 崩溃恢复 + 桌面
+  E2E）PASS（tmp/browser-pool-run34.log）。`make check` PASS。

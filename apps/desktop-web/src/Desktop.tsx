@@ -1706,7 +1706,7 @@ export function Desktop({
         <p className="empty-state">Create a project to review proposed patches.</p>
       )
     ) : windowState.kind === "browser" ? (
-      <BrowserApp />
+      <BrowserApp workosClients={workosClients} activeProjectId={activeProject?.id ?? ""} />
     ) : windowState.kind === "device-center" ? (
       deviceAuth ? (
         <DeviceCenter deviceAuth={deviceAuth} onSessionEnded={() => layoutStore.clearAll()} />

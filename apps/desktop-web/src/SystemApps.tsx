@@ -346,10 +346,23 @@ export function CodeApp(props: ArtifactAppProps) {
 // opaque sandbox: even a same-origin page cannot access desktop storage or DOM.
 // Popups and top navigation remain disabled.
 // Only http(s) URLs are accepted; everything else is a fixed verdict.
-export function BrowserApp(props: { initialUrl?: string }) {
+export function BrowserApp(props: {
+  initialUrl?: string;
+  workosClients?: WorkOSClients;
+  activeProjectId?: string;
+}) {
   const [url, setUrl] = useState(props.initialUrl ?? "");
   const [target, setTarget] = useState("");
   const [verdict, setVerdict] = useState("");
+  const [poolNotice, setPoolNotice] = useState("");
+  const [frame, setFrame] = useState<{ data: Uint8Array; width: number; height: number } | null>(
+    null,
+  );
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const sessionIdRef = useRef<string>("");
+  const [sessionReady, setSessionReady] = useState(false);
+  const clients = props.workosClients;
+  const projectId = props.activeProjectId ?? "";
 
   const navigate = (raw: string) => {
     const trimmed = raw.trim();
@@ -366,14 +379,86 @@ export function BrowserApp(props: { initialUrl?: string }) {
       return;
     }
     setVerdict("");
-    setTarget(parsed.toString());
+    void (async () => {
+      if (!clients || !projectId) {
+        setPoolNotice("browser pool unavailable — sandboxed view");
+        setTarget(parsed.toString());
+        return;
+      }
+      setPoolNotice("");
+      try {
+        if (sessionIdRef.current) {
+          await clients.browserSessions.navigateBrowserSession({
+            sessionId: sessionIdRef.current,
+            url: parsed.toString(),
+          });
+          return;
+        }
+        const created = await clients.browserSessions.createBrowserSession({
+          idempotencyKey: `desktop-browser-${crypto.randomUUID()}`,
+          projectId,
+          initialUrl: parsed.toString(),
+        });
+        sessionIdRef.current = created.session?.id ?? "";
+        setSessionReady(Boolean(created.session?.id));
+      } catch {
+        setPoolNotice("browser pool unavailable — sandboxed view");
+        setTarget(parsed.toString());
+      }
+    })();
   };
 
   useEffect(() => {
     if (props.initialUrl) {
       navigate(props.initialUrl);
     }
+    // navigate is a stable local closure over the current clients/project.
   }, [props.initialUrl]);
+
+  useEffect(() => {
+    if (!clients || !sessionReady || !sessionIdRef.current) return;
+    const abort = new AbortController();
+    const paint = async () => {
+      try {
+        for await (const event of clients.browserSessions.watchBrowserSession(
+          { sessionId: sessionIdRef.current },
+          { signal: abort.signal },
+        )) {
+          if (event.kind.case === "frame" && event.kind.value.jpeg.length > 0) {
+            const frame = event.kind.value;
+            setFrame({ data: frame.jpeg, width: frame.width || 1280, height: frame.height || 800 });
+          }
+        }
+      } catch {
+        setPoolNotice("browser pool unavailable — sandboxed view");
+      }
+    };
+    void paint();
+    return () => {
+      abort.abort();
+      const session = sessionIdRef.current;
+      if (session) {
+        void clients.browserSessions
+          .closeBrowserSession({ sessionId: session })
+          .catch(() => undefined);
+      }
+    };
+  }, [clients, sessionReady]);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas || !frame) return;
+    const blob = new Blob([frame.data as unknown as BlobPart], { type: "image/jpeg" });
+    const bitmapUrl = URL.createObjectURL(blob);
+    const image = new Image();
+    image.onload = () => {
+      canvas.width = image.width;
+      canvas.height = image.height;
+      canvas.getContext("2d")?.drawImage(image, 0, 0);
+      URL.revokeObjectURL(bitmapUrl);
+    };
+    image.src = bitmapUrl;
+  }, [frame]);
 
   return (
     <div className="browser-app" data-testid="browser-app">
@@ -403,20 +488,34 @@ export function BrowserApp(props: { initialUrl?: string }) {
           {verdict}
         </p>
       ) : null}
-      {target ? (
+      {poolNotice ? (
+        <p className="browser-verdict" role="status" data-testid="browser-pool-notice">
+          {poolNotice}
+        </p>
+      ) : null}
+      {sessionReady ? (
+        <canvas
+          className="browser-frame"
+          data-testid="browser-canvas"
+          ref={canvasRef}
+          title="Remote browser"
+        />
+      ) : null}
+      {!sessionReady && props.initialUrl && poolNotice ? (
         <iframe
           className="browser-frame"
           data-testid="browser-frame"
-          src={target}
+          src={props.initialUrl}
           // Fixed boundary: popups (_blank) and top navigation are
           // intercepted by the sandbox itself; the WorkOS window is never
           // navigated away and no browser tab is opened.
           sandbox="allow-scripts allow-forms"
           title="Embedded browser"
         />
-      ) : (
+      ) : null}
+      {!sessionReady && !target ? (
         <p className="empty-state">Enter an address to browse inside WorkOS.</p>
-      )}
+      ) : null}
     </div>
   );
 }
