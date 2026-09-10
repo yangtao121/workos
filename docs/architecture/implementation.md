@@ -419,9 +419,12 @@ viewport-fit；HTML/manifest no-store、内容哈希 assets immutable，不缓�
 390×844、820×1180、1440×900 与注入双 segment；`@workos/adaptive-shell` 40 个测试和
 desktop-web 110 个测试覆盖 store/layout/hook 与共享 UI 回归。真实 foldable hardware、Capacitor
 iPad/Android wrapper、push/native secure storage 仍不在当前证据内。2026-09-07 核查确认
-mobile-shell 是未挂载 UI 的 library bundle，缺少 HTML 入口及两种平台工程；真实 Android
-sync 报 platform not added，不能归因 SDK。wrapper 门禁对此直接失败；删除没有 caller 或
-canonical service 契约的直接 push token POST helper。详见 ADR-0019。
+当时 mobile-shell 尚无 HTML 入口及平台工程。2026-09-10 合入已有工作树改动，
+补入 React HTML 入口、网关不可用/项目列表视图及 Android/iOS 工程；wrapper 门禁检查
+Web 构建、Android sync 和 Chromium 挂载。此 UI 仅复用设备分类契约，尚未接通真实
+设备配对、完整桌面能力或原生安全存储，Mobile Shell 仍为 scaffolded。
+首次确定性视觉记录见 `docs/ui/mobile-shell/changes/20260910-mobile-worktree-integration/`。
+详见 ADR-0019。
 
 ## Gateway 设备配对与会话（ADR-0007）
 

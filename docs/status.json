@@ -96,7 +96,7 @@
       "name": "Mobile Shell",
       "process": "mobile-shell",
       "status": "scaffolded",
-      "evidence": "Shared adaptive contract and responsive Desktop UI are verified through four-mode real Gateway/Core/Chromium tests and 40 layout/store/hook tests. The apps/mobile-shell package itself remains a library scaffold: main.ts mounts no UI, dist/index.html is absent, and Android/iOS platform projects have not been added. The 2026-09-07 real cap sync android probe fails with platform not added; this is missing software, not evidence of an Android SDK blocker. make test-mobile-wrappers now fails on these precise prerequisites and does not print PASS. Removed the unused native push POST helper: it had no canonical service contract or caller and used an unsafe loopback string-prefix check. Native push, secure-storage integration, file sharing, pairing and hardware acceptance remain unimplemented/unverified. The standalone optional key-store helper has an ephemeral web fallback test only; it does not establish native protection."
+      "evidence": "2026-09-10: merged launchable React HTML entry and Android/iOS platform projects. Mobile view reuses adaptive device classification and displays project or gateway-unavailable state. Wrapper gate covers web checks/build, platform prerequisites, Android sync and deterministic Chromium mount. Visual record: docs/ui/mobile-shell/changes/20260910-mobile-worktree-integration/. Native binary/device acceptance, pairing, native secure storage, push and file sharing remain unverified; this is a scaffold, not full mobile end-to-end delivery."
     },
     {
       "name": "Notification",

@@ -671,11 +671,21 @@ test-mdns-discovery:
 
 # Software prerequisites must succeed before any native SDK diagnosis.
 # Android sync errors are failures, never inferred environment blockers.
-test-mobile-wrappers:
+test-mobile-wrappers: e2e-image
 	$(NODE_RUN) sh -c 'corepack pnpm --filter @workos/mobile-shell check && corepack pnpm --filter @workos/mobile-shell build'
 	$(NODE_RUN) node tools/mobile/check-wrapper.mjs
 	$(NODE_RUN) sh -c 'cd apps/mobile-shell && corepack pnpm exec cap sync android'
-	@echo "test-mobile-wrappers: PASS (web assets/platform sources/Android sync; native binaries unverified)"
+	@set -eu; serve=$$(mktemp -d tmp/mobile-serve.XXXXXX); \
+		cp -r apps/mobile-shell/dist/* "$$serve/"; \
+		python3 -m http.server 18099 --bind 127.0.0.1 --directory "$$serve" >/dev/null 2>&1 & server_pid=$$!; \
+		trap 'kill $$server_pid 2>/dev/null || true; rm -rf "$$serve"' EXIT; \
+		sleep 1; \
+		docker run --rm --network host $(USER_FLAGS) \
+			-e HOME=/tmp -e PLAYWRIGHT_BROWSERS_PATH=/ms-playwright \
+			-v $(CURDIR):$(WORKDIR) -w $(WORKDIR)/apps/mobile-shell \
+			$(E2E_IMAGE) node node_modules/@playwright/test/cli.js test; \
+		rm -rf "$$serve"
+	@echo "test-mobile-wrappers: PASS (launchable app, platform sources, Android sync, browser mount; native binaries unverified)"
 
 # The push relay gate (ADR-0018, W5): relay payload whitelist
 # plus the bounded owner-scoped notification search (title substring,

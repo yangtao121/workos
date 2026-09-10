@@ -6,3 +6,7 @@ docs/structure.md
 .zcode/
 
 tmp/
+
+apps/mobile-shell/android/app/src/main/assets/
+apps/mobile-shell/ios/App/App/public/
+apps/mobile-shell/ios/App/App/capacitor.config.json
