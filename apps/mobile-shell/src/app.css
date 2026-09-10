@@ -1,0 +1,113 @@
+/* Mobile shell surface (ADR-0019 W5): posture-aware layout with safe-area
+   padding, dark scheme by default, and bounded cards. */
+:root {
+  color-scheme: dark light;
+  font-family:
+    system-ui,
+    -apple-system,
+    "Segoe UI",
+    Roboto,
+    sans-serif;
+}
+* {
+  box-sizing: border-box;
+}
+html,
+body,
+#root {
+  margin: 0;
+  height: 100%;
+  background: #0b0f14;
+  color: #e6edf3;
+}
+.workos-mobile {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  padding-top: env(safe-area-inset-top);
+  padding-bottom: env(safe-area-inset-bottom);
+}
+.mobile-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 16px;
+  background: #10151c;
+  border-bottom: 1px solid #2a3441;
+}
+.mobile-brand {
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+.mobile-connection {
+  font-size: 12px;
+  color: #9aa7b4;
+}
+.connection-online {
+  color: #3fb950;
+}
+.mobile-content {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 16px;
+}
+.mobile-card {
+  background: #10151c;
+  border: 1px solid #2a3441;
+  border-radius: 12px;
+  padding: 16px;
+}
+.mobile-card h1 {
+  margin: 0 0 8px;
+  font-size: 18px;
+}
+.mobile-card p {
+  margin: 0 0 12px;
+  font-size: 14px;
+  color: #9aa7b4;
+}
+.mobile-card code {
+  font-size: 12px;
+  color: #c9d6e3;
+}
+.mobile-button {
+  border: 1px solid #4c8bf5;
+  background: transparent;
+  color: #4c8bf5;
+  border-radius: 8px;
+  padding: 8px 16px;
+  font-size: 14px;
+}
+.mobile-project-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.mobile-project {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  background: #10151c;
+  border: 1px solid #2a3441;
+  border-radius: 12px;
+  padding: 12px 14px;
+}
+.mobile-project-name {
+  font-size: 15px;
+}
+.mobile-project-revision {
+  font-size: 12px;
+  color: #9aa7b4;
+}
+.mobile-footer {
+  display: flex;
+  justify-content: space-between;
+  padding: 8px 16px;
+  border-top: 1px solid #2a3441;
+  font-size: 11px;
+  color: #6e7d8c;
+}
