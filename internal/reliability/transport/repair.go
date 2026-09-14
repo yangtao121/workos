@@ -50,6 +50,12 @@ func (c *RepairSubmitterClient) SubmitRepair(ctx context.Context, ownerUserID, p
 	request.Header().Set(identity.DeviceHeader, c.deviceID)
 	response, err := c.client.CreateRepairTask(ctx, request)
 	if err != nil {
+		// Core reports a vanished project/installation as NotFound: the
+		// incident can never be admitted, which the orchestrator records
+		// terminally instead of treating as a transient retry.
+		if connect.CodeOf(err) == connect.CodeNotFound {
+			return "", "", application.ErrRepairTargetGone
+		}
 		return "", "", err
 	}
 	if response.Msg.GetAwaitingManual() {

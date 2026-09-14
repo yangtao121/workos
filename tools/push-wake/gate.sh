@@ -57,7 +57,10 @@ docker compose build workos-core
 mkdir -p "$task_dir/core-execution" "$task_dir/harness-execution" "$task_dir/vault" "$task_dir/tls" "$task_dir/run"
 go_run go run ./tests/lanpairing/gencert -out "/workspace/${task_dir#"$repo/"}/tls"
 go_run go build -o "/workspace/${task_dir#"$repo/"}/push-relay" ./tests/fixtures/pushrelay
-"$task_dir/push-relay" -init -dir "$task_dir" -address "127.0.0.1:$WORKOS_PUSH_GATE_RELAY_PORT"
+# The one-shot init runs through the same glibc image the compose relay
+# service uses, so the gate never depends on the invoking shell's libc.
+docker run --rm --user "$WORKOS_PUSH_GATE_USER" -v "$task_dir:/fixture" workos:dev \
+  /fixture/push-relay -init -dir /fixture -address "127.0.0.1:$WORKOS_PUSH_GATE_RELAY_PORT"
 docker compose exec -T postgres createdb -U workos -T template0 "$database"
 owned_database=true
 compose up -d

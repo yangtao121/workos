@@ -50,6 +50,12 @@ var ErrRepairAwaitingManual = errors.New("repair is awaiting manual action")
 // cleared terminally instead of poisoning every later pass.
 var ErrRepairProvenanceInvalid = errors.New("repair task provenance is invalid")
 
+// ErrRepairTargetGone marks an incident whose repair target facts (project
+// or installation) no longer exist on Core: admission can never succeed and
+// the incident needs the owner's attention, so the ledger row becomes
+// terminal instead of retrying every pass.
+var ErrRepairTargetGone = errors.New("repair target no longer exists")
+
 // RepairCompletedRow is a submitted ledger row awaiting reconciliation.
 type RepairCompletedRow struct {
 	RepairCandidate
@@ -112,6 +118,16 @@ func (o *RepairOrchestrator) RunPass(ctx context.Context, limit int) (int, error
 			// Terminal: both harness tiers are unavailable. The incident's
 			// existing notification chain informs the owner; the ledger row
 			// stops the retry loop instead of spinning every pass.
+			if recordErr := o.candidates.RecordRepairAwaitingManual(ctx, candidate.IncidentID); recordErr != nil {
+				return submitted, recordErr
+			}
+			continue
+		}
+		if errors.Is(err, ErrRepairTargetGone) {
+			// Terminal: the incident's project/installation facts vanished
+			// (project archived, installation uninstalled or deleted), so
+			// admission can never succeed. The row goes to the same
+			// owner-attention terminal state instead of spinning forever.
 			if recordErr := o.candidates.RecordRepairAwaitingManual(ctx, candidate.IncidentID); recordErr != nil {
 				return submitted, recordErr
 			}

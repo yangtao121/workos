@@ -97,7 +97,9 @@ test("an empty query never reaches the server and results stay per project", asy
   await page.getByTestId("knowledge-search-input").fill("   ");
   await page.getByTestId("knowledge-search-submit").click();
   // The idle hint stays: no RPC was issued and no fake state appeared.
-  await expect(page.locator(".knowledge-center-body")).toContainText("Search the review documents");
+  await expect(page.locator(".knowledge-center-body")).toContainText(
+    "review documents and indexed workspace files",
+  );
 
   // A fresh project cannot see another project's knowledge even for the
   // same phrase.

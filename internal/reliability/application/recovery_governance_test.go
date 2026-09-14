@@ -70,3 +70,25 @@ func TestRepairPassRetriesTransientAdmissionFailures(t *testing.T) {
 		t.Fatalf("transient failure must not mark awaiting_manual: %v", f.awaiting)
 	}
 }
+
+// An incident whose target facts vanished (project archived, installation
+// uninstalled) can never be admitted: the row becomes terminal instead of
+// poisoning every later pass with a not-found retry storm.
+func TestRepairPassTerminatesGoneTargets(t *testing.T) {
+	f := &awaitingFixture{submitErr: ErrRepairTargetGone}
+	f.candidates = []RepairCandidate{{IncidentID: "incident-gone", OwnerUserID: "owner", ProjectID: "project", AppInstanceID: "installation"}}
+	o, err := NewRepairOrchestrator(f, f, f)
+	if err != nil {
+		t.Fatal(err)
+	}
+	submitted, err := o.RunPass(context.Background(), 4)
+	if err != nil {
+		t.Fatalf("a gone target must not surface as a pass error: %v", err)
+	}
+	if submitted != 0 {
+		t.Fatal("a gone target must not count as a submitted task")
+	}
+	if len(f.awaiting) != 1 || f.awaiting[0] != "incident-gone" {
+		t.Fatalf("ledger must record the gone target terminally: %v", f.awaiting)
+	}
+}
