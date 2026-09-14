@@ -19,6 +19,10 @@ def valid(path, checksum):
 def fetch(directory):
     recipe = Path(__file__).resolve().parents[2] / "internal/indexer/adapters/localembedding/model.json"
     config = json.loads(recipe.read_bytes())
+    # HF_ENDPOINT mirrors the standard huggingface_hub variable: builds on
+    # hosts whose direct huggingface.co data path is unreachable can point it
+    # at a mirror. Checksums stay authoritative either way.
+    endpoint = os.environ.get("HF_ENDPOINT", "https://huggingface.co").rstrip("/")
     directory.mkdir(parents=True, exist_ok=True)
     for name, checksum in config["files"].items():
         target = directory / name
@@ -26,7 +30,7 @@ def fetch(directory):
             if not valid(target, checksum):
                 raise ValueError("existing model cache failed checksum validation")
             continue
-        url = f"https://huggingface.co/{config['model']}/resolve/{config['revision']}/onnx/{name}"
+        url = f"{endpoint}/{config['model']}/resolve/{config['revision']}/onnx/{name}"
         temporary = None
         try:
             with tempfile.NamedTemporaryFile(dir=directory, delete=False) as file:

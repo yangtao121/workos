@@ -19,11 +19,17 @@ for (const file of required) {
     missing.push(file);
   }
 }
+// The secure storage plugin must actually be linked into the native build:
+// the device key vault is only real when the platform project depends on it.
+const gradle = await readFile(resolve(root, "android/app/capacitor.build.gradle"), "utf8");
+if (!gradle.includes("capacitor-secure-storage-plugin")) {
+  missing.push("android secure-storage plugin link");
+}
 if (missing.length) {
   console.error(`Mobile wrapper software is incomplete: ${missing.join(", ")}`);
   process.exitCode = 1;
 } else {
   console.log(
-    "Mobile wrapper software prerequisites exist; sync and device acceptance still required.",
+    "Mobile wrapper software prerequisites exist (launchable app, platform sources, secure-storage plugin link); native binaries and device acceptance still required.",
   );
 }

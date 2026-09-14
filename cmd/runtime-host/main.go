@@ -31,6 +31,10 @@ import (
 	"github.com/yangtao121/workos/internal/runtime/buildtest/adapters/processexec"
 	buildtestapp "github.com/yangtao121/workos/internal/runtime/buildtest/application"
 	buildtesttransport "github.com/yangtao121/workos/internal/runtime/buildtest/transport"
+	nativehostpostgres "github.com/yangtao121/workos/internal/runtime/nativehost/adapters/postgres"
+	xvfbengine "github.com/yangtao121/workos/internal/runtime/nativehost/adapters/xvfbengine"
+	nativehostapp "github.com/yangtao121/workos/internal/runtime/nativehost/application"
+	nativehosttransport "github.com/yangtao121/workos/internal/runtime/nativehost/transport"
 	ptyhostpostgres "github.com/yangtao121/workos/internal/runtime/ptyhost/adapters/postgres"
 	shellexec "github.com/yangtao121/workos/internal/runtime/ptyhost/adapters/shellexec"
 	ptyhostapp "github.com/yangtao121/workos/internal/runtime/ptyhost/application"
@@ -379,11 +383,47 @@ func run(logger *slog.Logger) error {
 		}()
 	}
 
+	// The virtual-display native runner (ADR-0029): real Xvfb displays with
+	// WebRTC video and data-channel input behind the owner-identity gate.
+	// Without the X11 toolchain the capability stays honestly unavailable.
+	nativeConfigured := strings.TrimSpace(cfg.Runtime.NativeDisplay) != ""
+	if nativeConfigured {
+		nativeEngine, engineErr := xvfbengine.New(cfg.Runtime.NativeDisplay, cfg.Runtime.NativeClient, cfg.Runtime.NativeFFmpeg, cfg.Runtime.NativeXdotool, cfg.Runtime.NativeScratch)
+		if engineErr != nil {
+			return engineErr
+		}
+		nativeService, serviceErr := nativehostapp.NewService(nativehostpostgres.New(pool), nativeEngine, generator, logger)
+		if serviceErr != nil {
+			return serviceErr
+		}
+		nativePath, nativeHandler := nativehosttransport.NewNativeHandler(nativeService)
+		mux.Handle(nativePath, identity.Middleware(nativeHandler))
+		nativeStop := make(chan struct{})
+		defer close(nativeStop)
+		go func() {
+			ticker := time.NewTicker(30 * time.Second)
+			defer ticker.Stop()
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case <-nativeStop:
+					return
+				case <-ticker.C:
+					if err := nativeService.Sweep(ctx); err != nil {
+						logger.Info("native runner sweep pending", "error", err)
+					}
+				}
+			}
+		}()
+	}
+
 	systemPath, systemHandler := commonv1connect.NewSystemServiceHandler(systemhandler.New("runtime-host", commonv1.HealthState_HEALTH_STATE_HEALTHY,
 		&commonv1.FeatureCapability{Id: "node-inspection", Available: true},
 		workloadCapability(capability, "container-runner"),
 		&commonv1.FeatureCapability{Id: "rootless-container-runner", Available: cfg.Runtime.WorkloadEngine != "fake-fixture" && capability.Available && capability.Rootless, Reason: rootlessRunnerReason(cfg.Runtime.WorkloadEngine, capability)},
-		&commonv1.FeatureCapability{Id: "native-runner", Available: strings.TrimSpace(cfg.Runtime.PtyShell) != "", Reason: "supervised PTY sessions require a configured login shell (ADR-0028); virtual-display WebRTC runner remains unimplemented"},
+		&commonv1.FeatureCapability{Id: "native-runner", Available: strings.TrimSpace(cfg.Runtime.PtyShell) != "", Reason: "supervised PTY sessions require a configured login shell (ADR-0028)"},
+		&commonv1.FeatureCapability{Id: "virtual-display-native-runner", Available: nativeConfigured, Reason: "virtual-display WebRTC sessions require the Xvfb/ffmpeg/xdotool toolchain (ADR-0029); loopback host candidates only"},
 		&commonv1.FeatureCapability{Id: "surface-broker", Available: true, Reason: "web bundle and supervised web service surfaces"},
 		&commonv1.FeatureCapability{Id: "app-bridge", Available: true, Reason: "grant-checked agent, knowledge, notifications, project and own-window methods; files require explicit workspace bindings"},
 		&commonv1.FeatureCapability{Id: "workspace-files", Available: workspaceErr == nil && len(mounts) > 0, Reason: "requires usable owner-bound workspace directories and explicit files.read/files.write grants"},

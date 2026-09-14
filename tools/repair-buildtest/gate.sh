@@ -83,6 +83,13 @@ run_test 'TestRepairBuildTestChain'
 run_test 'TestRepairBuildTestRestartSeed'
 compose restart runtime
 run_test 'TestRepairBuildTestRestartRestore'
+# Recovery governance cross-process (ADR-0016 §5): an MCP-bound project
+# (healthy, honestly candidate-incapable) falls back to the configured
+# generic-cli Recovery layer and still delivers the promoted chain; with the
+# recovery executable broken, the verdict terminates awaiting_manual with
+# zero task side effects.
+run_test 'TestRepairRecoveryFallback'
+run_test 'TestRepairRecoveryAwaitingManual'
 # The deployment fault matrix seeds its verified candidates first, then the
 # reliability loop stops so the scripted fault driver owns the ledger
 # exclusively (the real loop would race the same rows to promotion).

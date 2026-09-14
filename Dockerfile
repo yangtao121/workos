@@ -88,6 +88,8 @@ FROM embedding-runtime AS embedding-model
 WORKDIR /src
 COPY tools/embedding/fetch.py tools/embedding/fetch.py
 COPY internal/indexer/adapters/localembedding/model.json internal/indexer/adapters/localembedding/model.json
+ARG HF_ENDPOINT=https://huggingface.co
+ENV HF_ENDPOINT=${HF_ENDPOINT}
 RUN --mount=type=cache,id=workos-embedding-model,target=/model-cache \
     python tools/embedding/fetch.py /model-cache \
     && mkdir -p /opt/workos/embedding/model \

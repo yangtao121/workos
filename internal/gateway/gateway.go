@@ -105,6 +105,9 @@ var runtimeServicePrefixes = []string{
 	"/workos.surface.v1.BrowserSessionService/",
 	// Supervised terminal sessions (ADR-0028): owner-identity gated.
 	"/workos.surface.v1.PtySessionService/",
+	// Virtual-display native runner (ADR-0029): owner-identity gated; the
+	// Gateway carries signaling, the media path stays loopback WebRTC.
+	"/workos.surface.v1.NativeSessionService/",
 	"/workos.bridge.v1.AppBridgeService/",
 }
 

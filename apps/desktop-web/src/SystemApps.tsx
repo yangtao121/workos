@@ -347,6 +347,7 @@ export function CodeApp(props: ArtifactAppProps) {
 // Popups and top navigation remain disabled.
 // Only http(s) URLs are accepted; everything else is a fixed verdict.
 export { TerminalApp } from "./TerminalApp.js";
+export { NativeApp } from "./NativeApp.js";
 
 export function BrowserApp(props: {
   initialUrl?: string;

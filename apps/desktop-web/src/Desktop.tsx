@@ -60,6 +60,7 @@ import { MissionControl, type MissionControlProject } from "./MissionControl.js"
 import {
   BrowserApp,
   TerminalApp,
+  NativeApp,
   CodeApp,
   DocsApp,
   FilesApp,
@@ -615,6 +616,22 @@ export function Desktop({
       },
     });
     recordLayout((state) => ({ ...state, activeSystemWindow: "terminal" }));
+  }, [activeProjectId, recordLayout]);
+
+  const openNative = useCallback(() => {
+    if (!activeProjectId) return;
+    dispatch({
+      type: "open",
+      window: {
+        id: "native",
+        appId: "native",
+        title: "Native",
+        kind: "native",
+        rect: { x: 220, y: 110, width: 760, height: 560 },
+        mode: "normal",
+      },
+    });
+    recordLayout((state) => ({ ...state, activeSystemWindow: "native" }));
   }, [activeProjectId, recordLayout]);
 
   // Opening one artifact opens (or focuses) exactly one viewer window keyed
@@ -1442,6 +1459,14 @@ export function Desktop({
       available: !!activeProjectId,
       open: openTerminal,
     },
+    {
+      id: "native",
+      label: "Native",
+      hint: "Virtual display over WebRTC",
+      icon: "apps",
+      available: !!activeProjectId,
+      open: openNative,
+    },
   ];
   const systemApps = appEntries.map((app) => ({
     ...app,
@@ -1726,6 +1751,8 @@ export function Desktop({
       <BrowserApp workosClients={workosClients} activeProjectId={activeProject?.id ?? ""} />
     ) : windowState.kind === "terminal" ? (
       <TerminalApp workosClients={workosClients} activeProjectId={activeProject?.id ?? ""} />
+    ) : windowState.kind === "native" ? (
+      <NativeApp workosClients={workosClients} activeProjectId={activeProject?.id ?? ""} />
     ) : windowState.kind === "device-center" ? (
       deviceAuth ? (
         <DeviceCenter deviceAuth={deviceAuth} onSessionEnded={() => layoutStore.clearAll()} />

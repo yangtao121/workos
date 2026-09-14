@@ -424,6 +424,18 @@ iPad/Android wrapper、push/native secure storage 仍不在当前证据内。202
 Web 构建、Android sync 和 Chromium 挂载。此 UI 仅复用设备分类契约，尚未接通真实
 设备配对、完整桌面能力或原生安全存储，Mobile Shell 仍为 scaffolded。
 首次确定性视觉记录见 `docs/ui/mobile-shell/changes/20260910-mobile-worktree-integration/`。
+2026-09-14 升级：平台工程迁移 Capacitor 8（模板重生成）并连入
+capacitor-secure-storage-plugin；`@workos/device-auth` 增加可选
+DeviceKeyBackend（默认浏览器档案 IndexedDB 非导出密钥不变；
+`createSecureDeviceKeyBackend` 把生成的密钥以 JWK 形式经平台安全存储
+持久化——native 后端诚实折衷：密钥材料由 Keychain/Keystore 而非浏览器
+structured clone 持有，签名仍用同一 transcript 契约）。移动壳接通
+配对 fragment（deviceClass phone）、会话恢复（cookie-included 传输）、
+项目/通知投影与已读、fold 段检测、visualViewport 键盘 inset、Forget
+device；wrapper 门禁增加 secure-storage 插件链接断言，E2E 覆盖
+unavailable/unpaired/paired 三态。原生二进制编译与真机配对/推送
+仍无 Android SDK/Xcode/签名设备，保持 scaffolded 边界。
+视觉记录见 `docs/ui/mobile-shell/changes/20260914-mobile-native-shell/`。
 详见 ADR-0019。
 
 ## Gateway 设备配对与会话（ADR-0007）
@@ -1523,3 +1535,24 @@ return 0 改为 return 42，保留原测试源码与配置；Core/Harness 重启
   Create/Write/Read/Resize/Close；输入 16 KiB 上界、NUL 拒绝。
 - 桌面 Terminal 系统窗口消费该服务（串行化写入链保证键序）。
 - `make test-terminal-sessions`：RPC 矩阵 + 外 owner 隔离 + 桌面 E2E。
+
+## 虚拟显示原生运行器（ADR-0029，2026-09-14）
+
+- `internal/runtime/nativehost/`：runtime-host 拥有的受监督虚拟显示会话。
+  migration 056（workos_runtime.native_sessions）持久 owner-scoped 行；
+  `xvfbengine` 每会话启动真实 Xvfb + 配置的原生 X 客户端 + ffmpeg
+  x11grab→VP8 IVF 捕获（等待客户端窗口映射后才开捕获，避免 x11grab 过早
+  打开显示挂起/空屏）；pion WebRTC TrackLocalStaticSample 推流；
+  `workos.input` Data Channel → xdotool XTEST 注入（令牌桶 64 事件/s，
+  有界 JSON 事件：text/key 允许表/pointer 归一坐标）；进程组 kill +
+  Pdeathsig；并发 2/owner、TTL 30min sweep。EngineFacts 如实声明无
+  cgroup 隔离、无 TURN（仅回环 host candidates）。
+- `workos.surface.v1.NativeSessionService`（Create/Connect/Get/Close）：
+  Gateway 路由（鉴权/信令）+ owner 身份；会话身份与信令分离，Connect 可
+  重连（完整 SDP 交换，无 trickle）。
+- 桌面 Native 系统窗口消费该服务（`<video>` 渲染远端轨道、键盘/指针经
+  Data Channel、帧计数）。
+- `make test-native-surface`：X11 工具链镜像 runtime + pion 对等端集成测试
+  （真实 VP8 帧、输入回传改变显示内容）+ 桌面 Chromium E2E。
+- 配置：WORKOS*RUNTIME_NATIVE*{DISPLAY,CLIENT,FFMPEG,XDOTOOL,SCRATCH}；
+  未配置时 `virtual-display-native-runner` 能力如实 unavailable。

@@ -1347,3 +1347,60 @@ ADR-0028 + migration 055 + `workos.surface.v1.PtySessionService`：
   Chromium E2E 真实输入输出。`make check` PASS。
 - native-runner 能力按 WORKOS_RUNTIME_PTY_SHELL 配置如实报告；
   虚拟显示/WebRTC Native Runner 仍未实现（ADR-0027/0028 边界）。
+
+### GLM-5.3 接手续作（2026-09-14，环境重建 + R3/R2/R5 软件补齐）
+
+接手时仓库 main=69e75bc（2026-09-10 两次授权合并后任务分支已被删除）。按唯一分支
+规则核对任务历史后，在 main HEAD 重建同名分支 `feat/v1-remaining-capability-sweep`
+继续开发；main 保持只读。
+
+环境事实（重置后新机器）：宿主无 make/node、docker 无容器与卷（无用户数据可保留）。
+处置：不安装宿主软件，构建 `workos-make:local`（docker:28-cli + make/git）经
+`wmake` 包装执行 Makefile（socket + uid 映射保持嵌套 docker 与文件属主）；
+`tools/embedding/fetch.py` 增加 HF_ENDPOINT 镜像支持（校验和不变），Dockerfile 透传
+build-arg 后 workos:dev/workos-playwright 构建成功。Go 模块缓存卷属主修复
+（root→1000，任务记录既有先例）。
+
+R3 Native Runner（ADR-0029，本轮最大缺口）：虚拟显示 → 编码 → 回环 WebRTC →
+桌面渲染 + Data Channel 输入回传全部落地——
+
+- Proto `workos.surface.v1.NativeSessionService`（Create/Connect/Get/Close，
+  Gateway 路由 + owner 身份；信令与会话身份分离，Connect 可重连）。
+- migration 056（workos_runtime.native_sessions，owner runtime-host）。
+- `internal/runtime/nativehost`：domain/ports/application（幂等/漂移/上限 2/owner/
+  TTL 30min/Sweep）、postgres（sqlc）、transport、`xvfbengine`（每会话真实
+  Xvfb + 配置的原生 X 客户端 + ffmpeg x11grab→VP8 IVF 捕获；pion WebRTC
+  TrackLocalStaticSample；`workos.input` Data Channel → xdotool XTEST 注入，
+  令牌桶 64 事件/s；进程组 + Pdeathsig；诚实引擎事实：无 cgroup/无 TURN/
+  仅 host candidates）。
+- runtime-host 接线 + `virtual-display-native-runner` 能力（未配置工具链时
+  unavailable）；配置 WORKOS_RUNTIME_NATIVE_{DISPLAY,CLIENT,FFmpeg,XDOTOOL,SCRATCH}。
+- 桌面 Native 系统窗口（NativeApp.tsx：RTCPeerConnection 收流渲染 `<video>`、
+  键盘/指针经 Data Channel、帧计数器）；agent-sdk/protocol 导出
+  NativeSessionService 客户端。
+- 门禁 `make test-native-surface`（tools/native-surface：真实 PG/Core/Runtime/
+  Gateway + X11 工具链镜像）+ 集成测试（pion 对等端验证真实 VP8 RTP 帧、
+  Data Channel 键入 exit → xterm 关闭 → 帧负载坍缩证明输入回传改变真实显示）
+  + Chromium E2E（桌面窗口视频 readyState/像素方差/输入后变化）。
+- 单测：nativehost application 六例（幂等/漂移/校验/上限/Connect/死显示/启动失败）。
+- 门禁调试中修复的真实缺陷：engine 用 os.Stat 校验 PATH 相对名（xterm）导致
+  runtime 拒启（改 exec.LookPath）；ffmpeg 5.x 的 VP8 编码器名是 `libvpx` 而非
+  `libvpx-vp8`（Debian bookworm 实测 Unknown encoder）。
+
+R2 Recovery 跨进程证据：repair-buildtest compose 增加
+WORKOS_AGENT_RECOVERY_PROVIDER=generic-cli 与 MCP fixture（健康但如实无候选能力）；
+新增 TestRepairRecoveryFallback（MCP 绑定项目 incident → 回退 generic-cli → 任务
+绑定 recovery 层 → 完整 verified chain → promoted）与 TestRepairRecoveryAwaitingManual
+（破坏 recovery 可执行文件 → awaiting_manual 台账终态 + 零任务副作用）。
+
+R5 移动原生软件链：device-auth 增加可选 DeviceKeyBackend（默认 IndexedDB
+非导出密钥不变；`createSecureDeviceKeyBackend` 经平台安全存储 JWK 持久化，
+诚实折衷已注明）；移动壳升级 Capacitor 8 平台工程（模板重生成）+
+capacitor-secure-storage-plugin 0.13.0 连入 Android（gradle 依赖已断言）；
+shell 重写（配对 fragment → phone 配对、会话恢复、cookie-included 传输、
+项目/通知投影 + 已读、fold 段检测、visualViewport 键盘 inset、Forget device）；
+E2E 扩展 unavailable/unpaired/paired 三态（页面级路由确定性响应）；
+check-wrapper 增加 secure-storage 插件链接断言。原生二进制/真机验收保持
+scaffolded blocker（无 Android SDK/Xcode/签名/设备）。
+
+以上为本阶段代码事实；门禁结果以最终验收矩阵为准，逐项记录退出码与日志路径。

@@ -1,0 +1,77 @@
+syntax = "proto3";
+
+package workos.surface.v1;
+
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/yangtao121/workos/gen/go/workos/surface/v1;surfacev1";
+
+// One supervised virtual-display native session (ADR-0029): a real Xvfb
+// display, a configured native X client, and an ffmpeg x11grab/VP8 capture
+// streamed to the desktop over loopback WebRTC. Input returns over a data
+// channel. Gateway routes the service with owner identity.
+message NativeSession {
+  string id = 1;
+  string owner_user_id = 2;
+  string project_id = 3;
+  // queued|running|closed|failed
+  string state = 4;
+  // Honest engine facts: the virtual display engine id.
+  string engine = 5;
+  int32 width = 6;
+  int32 height = 7;
+  google.protobuf.Timestamp created_at = 8;
+  google.protobuf.Timestamp expires_at = 9;
+}
+
+message CreateNativeSessionRequest {
+  string idempotency_key = 1;
+  string project_id = 2;
+  // Fixed initial display size; later changes are not negotiated.
+  int32 width = 3;
+  int32 height = 4;
+}
+
+message CreateNativeSessionResponse {
+  NativeSession session = 1;
+}
+
+// Signaling segment, separate from session identity so a browser reload can
+// re-offer without breaking the creation idempotency key. Offers and answers
+// carry complete ICE candidates (no trickle).
+message ConnectNativeSessionRequest {
+  string session_id = 1;
+  string offer_sdp = 2;
+}
+
+message ConnectNativeSessionResponse {
+  NativeSession session = 1;
+  string answer_sdp = 2;
+}
+
+message CloseNativeSessionRequest {
+  string session_id = 1;
+}
+
+message CloseNativeSessionResponse {
+  NativeSession session = 1;
+}
+
+message GetNativeSessionRequest {
+  string session_id = 1;
+}
+
+message GetNativeSessionResponse {
+  NativeSession session = 1;
+}
+
+// Supervised owner-scoped virtual-display sessions on the runtime host
+// (ADR-0029). Gateway routes it with owner identity; the display children run
+// as the runtime's own user with process-group supervision, and nothing here
+// grants filesystem or host-input escapes.
+service NativeSessionService {
+  rpc CreateNativeSession(CreateNativeSessionRequest) returns (CreateNativeSessionResponse) {}
+  rpc ConnectNativeSession(ConnectNativeSessionRequest) returns (ConnectNativeSessionResponse) {}
+  rpc GetNativeSession(GetNativeSessionRequest) returns (GetNativeSessionResponse) {}
+  rpc CloseNativeSession(CloseNativeSessionRequest) returns (CloseNativeSessionResponse) {}
+}

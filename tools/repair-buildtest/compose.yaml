@@ -35,6 +35,10 @@ services:
     command: [workos-core]
     environment:
       <<: *environment
+      # Recovery governance (ADR-0016 §5): the generic CLI serves as the
+      # configured Recovery layer; the primary bindings stay per project so
+      # the fallback phases bind MCP (healthy, honestly candidate-incapable).
+      WORKOS_AGENT_RECOVERY_PROVIDER: generic-cli
       WORKOS_HTTP_ADDRESS: 127.0.0.1:${WORKOS_BUILDTEST_GATE_CORE_PORT:?}
       WORKOS_CREDENTIAL_MASTER_KEY_FILE: /fixture/vault/vault-master.key
       WORKOS_CREDENTIAL_ADMIN_SOCKET: /run/workos/credential-admin.sock
@@ -53,6 +57,10 @@ services:
       <<: *environment
       WORKOS_HTTP_ADDRESS: 127.0.0.1:${WORKOS_BUILDTEST_GATE_HARNESS_PORT:?}
       WORKOS_CONFIG_FILE: /fixture/cli/config.yaml
+      # MCP joins the catalog as the healthy candidate-incapable primary the
+      # recovery fallback phases bind against.
+      WORKOS_MCP_ENABLED: "true"
+      WORKOS_MCP_SERVER: /usr/local/bin/mcp-server-fixture
       WORKOS_CORE_EXECUTION_URL: https://127.0.0.1:${WORKOS_BUILDTEST_GATE_EXECUTION_PORT:?}
       WORKOS_HARNESS_EXECUTION_CA_FILE: /fixture/execution/ca.crt
       WORKOS_HARNESS_EXECUTION_CERT_FILE: /fixture/execution/harness.crt

@@ -11,6 +11,7 @@ import {
   ArtifactService,
   BrowserSessionService,
   PtySessionService,
+  NativeSessionService,
   HarnessCatalogService,
   IncidentService,
   IndexService,
@@ -34,6 +35,7 @@ export interface WorkOSClients {
   surfaces: Client<typeof SurfaceService>;
   browserSessions: Client<typeof BrowserSessionService>;
   ptySessions: Client<typeof PtySessionService>;
+  nativeSessions: Client<typeof NativeSessionService>;
   appBridge: Client<typeof AppBridgeService>;
   incidents: Client<typeof IncidentService>;
   index: Client<typeof IndexService>;
@@ -56,6 +58,7 @@ export function createWorkOSClients(baseUrl: string, transport?: Transport): Wor
     surfaces: createClient(SurfaceService, activeTransport),
     browserSessions: createClient(BrowserSessionService, activeTransport),
     ptySessions: createClient(PtySessionService, activeTransport),
+    nativeSessions: createClient(NativeSessionService, activeTransport),
     appBridge: createClient(AppBridgeService, activeTransport),
     incidents: createClient(IncidentService, activeTransport),
     index: createClient(IndexService, activeTransport),

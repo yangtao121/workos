@@ -1133,3 +1133,11 @@ test-browser-pool:
 .PHONY: test-terminal-sessions
 test-terminal-sessions:
 	@set -eu; sh tools/terminal-sessions/gate.sh
+
+# The virtual-display native runner gate (ADR-0029): real Xvfb displays with
+# ffmpeg x11grab/VP8 capture and loopback WebRTC video, data-channel input
+# through xdotool XTEST, driven by a Go peer and the real desktop Native
+# window.
+.PHONY: test-native-surface
+test-native-surface:
+	@set -eu; sh tools/native-surface/gate.sh

@@ -108,6 +108,18 @@ type Runtime struct {
 	// PtyShell enables supervised terminal sessions with the login shell
 	// path (ADR-0028); empty keeps the capability unavailable.
 	PtyShell string `yaml:"pty_shell"`
+	// NativeDisplay enables the virtual-display native runner with the Xvfb
+	// binary path (ADR-0029); empty keeps the capability unavailable.
+	NativeDisplay string `yaml:"native_display"`
+	// NativeClient is the native X client argv run inside each session
+	// display (space separated, operator configured).
+	NativeClient string `yaml:"native_client"`
+	// NativeFFmpeg is the x11grab/VP8 capture binary path.
+	NativeFFmpeg string `yaml:"native_ffmpeg"`
+	// NativeXdotool is the XTEST injection binary path.
+	NativeXdotool string `yaml:"native_xdotool"`
+	// NativeScratch is the runner's private scratch root.
+	NativeScratch string `yaml:"native_scratch"`
 	// BuildTestProcessLimit scales the kernel NPROC bound for hosts that
 	// share one uid across many processes; the limit stays kernel enforced.
 	BuildTestProcessLimit int `yaml:"buildtest_process_limit"`
@@ -426,6 +438,11 @@ func Load() (Config, error) {
 	setString(&cfg.Runtime.BrowserBinary, "WORKOS_RUNTIME_BROWSER_BINARY")
 	setString(&cfg.Runtime.PtyShell, "WORKOS_RUNTIME_PTY_SHELL")
 	setString(&cfg.Runtime.BrowserScratch, "WORKOS_RUNTIME_BROWSER_SCRATCH")
+	setString(&cfg.Runtime.NativeDisplay, "WORKOS_RUNTIME_NATIVE_DISPLAY")
+	setString(&cfg.Runtime.NativeClient, "WORKOS_RUNTIME_NATIVE_CLIENT")
+	setString(&cfg.Runtime.NativeFFmpeg, "WORKOS_RUNTIME_NATIVE_FFMPEG")
+	setString(&cfg.Runtime.NativeXdotool, "WORKOS_RUNTIME_NATIVE_XDOTOOL")
+	setString(&cfg.Runtime.NativeScratch, "WORKOS_RUNTIME_NATIVE_SCRATCH")
 	if raw, ok := os.LookupEnv("WORKOS_RUNTIME_BUILDTEST_PROCESS_LIMIT"); ok {
 		value, err := strconv.Atoi(raw)
 		if err != nil || value < 64 {
