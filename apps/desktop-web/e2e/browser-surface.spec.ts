@@ -117,7 +117,12 @@ test("browser surface window renders the fixture browser chrome", async ({ page 
   );
 
   // Session revalidation closes stale surfaces: after the owner closes the
-  // window the surface session is closed best-effort server-side.
+  // window the surface session is closed best-effort server-side. Launching
+  // the app closes the library panel, so reopen it through the same flow.
+  await openDesktopApp(page, "app-library");
+  await expect(row.getByRole("button", { name: "Remove", exact: true })).toBeVisible({
+    timeout: libraryTimeout,
+  });
   await row.getByRole("button", { name: "Remove", exact: true }).click();
   const confirm = page.getByRole("dialog");
   if (await confirm.isVisible()) {

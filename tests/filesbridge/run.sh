@@ -1,6 +1,8 @@
 #!/bin/sh
 set -eu
-fixture=$(mktemp -d /tmp/workos-filesbridge.XXXXXX)
+# The fixture dir is bind-mounted into sibling containers, so it must live
+# where the docker daemon can see it: honor TMPDIR for wrapper environments.
+fixture=$(mktemp -d "${TMPDIR:-/tmp}/workos-filesbridge.XXXXXX")
 cleanup() {
   docker compose up -d --no-deps --force-recreate runtime-host >/dev/null 2>&1 || true
   docker run --rm --user 0 -v "$fixture:/fixture" node:24.19.0-bookworm-slim rm -rf /fixture/workspace
