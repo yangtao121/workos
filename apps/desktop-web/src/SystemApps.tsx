@@ -402,8 +402,15 @@ export function BrowserApp(props: {
           projectId,
           initialUrl: parsed.toString(),
         });
-        sessionIdRef.current = created.session?.id ?? "";
-        setSessionReady(Boolean(created.session?.id));
+        // A response without a usable session id is not a live pool: fall
+        // back to the sandboxed view instead of rendering nothing.
+        if (!created.session?.id) {
+          setPoolNotice("browser pool unavailable — sandboxed view");
+          setTarget(parsed.toString());
+          return;
+        }
+        sessionIdRef.current = created.session.id;
+        setSessionReady(true);
       } catch {
         setPoolNotice("browser pool unavailable — sandboxed view");
         setTarget(parsed.toString());

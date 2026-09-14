@@ -218,7 +218,8 @@ test("captures knowledge center and app surface evidence", async ({ page }) => {
   await expect(page.frameLocator(".app-surface-frame").locator("#results li").first()).toBeVisible({
     timeout: 30_000,
   });
-  await page.getByRole("button", { name: "Close App Library" }).click();
+  // Launching the app already closed the library panel; the capture shows
+  // the app surface over the workspace directly.
   await capture(page, "app-knowledge-search--results--1440x900.png");
   await page.getByRole("button", { name: "Close App", exact: true }).click();
 });

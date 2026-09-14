@@ -6,7 +6,8 @@ test("Generic CLI materializes reviews, consumes pinned context and rejects unhe
 }) => {
   test.setTimeout(90_000);
   const executable = process.env.WORKOS_CLI_GATE_EXECUTABLE;
-  if (!executable) throw new Error("run this test through make test-generic-cli");
+  test.skip(!executable, "run this test through make test-generic-cli");
+  const cliExecutable = executable as string;
   const rpc = async <T>(method: string, data: object): Promise<T> => {
     const response = await request.post(method, { data });
     expect(response.ok(), await response.text()).toBe(true);
@@ -76,7 +77,7 @@ test("Generic CLI materializes reviews, consumes pinned context and rejects unhe
   expect(body).toContain(`Context: ${markdown.id} at ${markdown.digest}`);
   expect(body).toContain("Deterministic fixture output.");
   try {
-    await chmod(executable, 0o600);
+    await chmod(cliExecutable, 0o600);
     const catalog = await rpc<{ providers: Array<{ id: string; health: string }> }>(
       "/workos.harness.v1.HarnessCatalogService/GetHarnessCatalog",
       {},
@@ -94,7 +95,7 @@ test("Generic CLI materializes reviews, consumes pinned context and rejects unhe
     const tasks = await rpc<{ tasks: Task[] }>(taskAPI + "ListTasks", { projectId: project.id });
     expect(tasks.tasks).toHaveLength(2);
   } finally {
-    await chmod(executable, 0o700);
+    await chmod(cliExecutable, 0o700);
   }
   const recovered = await submit("generic-recovered");
   await complete(recovered.task.id);

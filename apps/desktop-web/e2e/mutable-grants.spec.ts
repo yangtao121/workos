@@ -234,6 +234,11 @@ maintainer: {}
   // dialog starts from the now-empty current grant at revision 2.
   await page.getByRole("button", { name: "Close App", exact: true }).click();
   await expect(frame).toHaveCount(0);
+  // Launching the app closed the library panel; reopen it for re-granting.
+  await openDesktopApp(page, "app-library");
+  await expect(row.getByRole("button", { name: "Manage permissions" })).toBeVisible({
+    timeout: libraryTimeout,
+  });
   await row.getByRole("button", { name: "Manage permissions" }).click();
   const manageAgain = page.getByRole("dialog");
   await expect(manageAgain).toBeVisible({ timeout: libraryTimeout });

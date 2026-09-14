@@ -219,6 +219,11 @@ maintainer: {}
     .toBe(404);
 
   // 8. Uninstall the app; the earlier session URL keeps failing closed.
+  // Launching the app closed the library panel; reopen it for the uninstall.
+  await openDesktopApp(page, "app-library");
+  await expect(activeRow.getByRole("button", { name: "Remove" })).toBeVisible({
+    timeout: libraryTimeout,
+  });
   await activeRow.getByRole("button", { name: "Remove" }).click();
   await expect(activeRow.getByRole("button", { name: "Install", exact: true })).toBeVisible({
     timeout: libraryTimeout,

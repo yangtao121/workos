@@ -28,6 +28,7 @@ const files: SourceFile[] = [
   { path: "go.mod", content: Buffer.from("module source-fixture\n\ngo 1.26\n").toString("base64") },
 ];
 files.push({ path: "说明.md", content: Buffer.from("固定源码与测试配置\n").toString("base64") });
+test.skip(!process.env.WORKOS_APP_SOURCE_STATE, "run this test through make test-app-build-inputs");
 const statePath = () => {
   const path = process.env.WORKOS_APP_SOURCE_STATE;
   if (!path) throw new Error("run this test through make test-app-build-inputs");

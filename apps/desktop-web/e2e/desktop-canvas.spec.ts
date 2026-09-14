@@ -80,7 +80,10 @@ for (const [width, height] of [
       content: element.scrollHeight,
     }));
     if (width === 1440) expect(extent.content).toBeLessThanOrEqual(extent.height);
-    await expect(home.getByTestId("home-entry-terminal")).toBeDisabled();
+    // The Terminal entry is project-scoped; the deployment verdict lives
+    // inside the window (test-desktop-system-apps asserts the unavailable
+    // verdict; test-terminal-sessions proves the real shell when configured).
+    await expect(home.getByTestId("home-entry-terminal")).toBeEnabled();
     await home.getByTestId("home-entry-settings").click();
     await expect(page.getByRole("heading", { name: "Harness provider" })).toBeVisible();
     await openDesktopApp(page, "mission-control");
