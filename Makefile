@@ -198,8 +198,8 @@ test-credential-vault:
 		trap cleanup EXIT INT TERM; \
 		active_deepseek_id() { \
 			docker compose exec -T workos-core /usr/local/bin/workosctl credential list 2>/dev/null | awk '\
-				/^id: /{id=$$2} /^consumer: /{consumer=$$2} /^status: /{status=$$2} \
-				consumer=="deepseek" && status=="ACTIVE"{print id; exit}'; \
+				/^id: /{id=$$2} /^consumer: /{consumer=$$2} \
+				/^status: /{status=$$2; if (consumer=="deepseek" && status=="ACTIVE") {print id; exit}}'; \
 		}; \
 		echo "== phase 1: no active credential → credential-bearing providers fail closed =="; \
 		WORKOS_UID="$$(id -u)" WORKOS_GID="$$(id -g)" \
@@ -215,10 +215,10 @@ test-credential-vault:
 			cred_id="$$(active_deepseek_id)"; \
 		else \
 			echo "an active deepseek credential already exists; phase 1 skipped and fixture material is resealed"; \
-			cred_rev="$$(docker compose exec -T workos-core /usr/local/bin/workosctl credential list 2>/dev/null | awk '/^id: /{id=$$2} /^consumer: /{consumer=$$2} /^revision: /{revision=$$2} /^status: /{status=$$2} consumer=="deepseek" && status=="ACTIVE"{print revision; exit}')"; \
+			cred_rev="$$(docker compose exec -T workos-core /usr/local/bin/workosctl credential list 2>/dev/null | awk '/^id: /{id=$$2} /^consumer: /{consumer=$$2} /^revision: /{revision=$$2} /^status: /{status=$$2; if (consumer=="deepseek" && status=="ACTIVE") {print revision; exit}}')"; \
 			printf '%s' 'workos-fixture-only-not-a-real-key' | docker compose exec -T workos-core /bin/sh -c "/usr/local/bin/workosctl credential rotate --credential '$$cred_id' --expected-revision '$$cred_rev' --label 'vault fixture' --idempotency-key 'vault-fixture-reseal-$$(date +%s%N)'" >/dev/null; \
 		fi; \
-		cred_rev="$$(docker compose exec -T workos-core /usr/local/bin/workosctl credential list 2>/dev/null | awk '/^id: /{id=$$2} /^consumer: /{consumer=$$2} /^revision: /{revision=$$2} /^status: /{status=$$2} consumer=="deepseek" && status=="ACTIVE"{print revision; exit}')"; \
+		cred_rev="$$(docker compose exec -T workos-core /usr/local/bin/workosctl credential list 2>/dev/null | awk '/^id: /{id=$$2} /^consumer: /{consumer=$$2} /^revision: /{revision=$$2} /^status: /{status=$$2; if (consumer=="deepseek" && status=="ACTIVE") {print revision; exit}}')"; \
 		test -n "$$cred_id" && test -n "$$cred_rev"; \
 		echo "== phase 1b: in-process vault protocol against real PostgreSQL =="; \
 		$(GO_HOST_RUN) go test -tags=integration -count=1 -run 'TestVaultPutRotateRevokeLifecycle|TestVaultSealedMaterialFailsClosed|TestCredentialLeaseStateMachine' -v ./tests/integration; \
