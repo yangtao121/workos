@@ -91,9 +91,7 @@ test("Native window streams the real virtual display and forwards input", async 
     throw new Error("native video pixels stayed uniform; not a real display");
   }
   // Typing a long line leaves visibly more ink on the display.
-  await expect
-    .poll(() => readVariance(), { timeout: 30_000 })
-    .not.toBe(varianceBefore);
+  await expect.poll(() => readVariance(), { timeout: 30_000 }).not.toBe(varianceBefore);
   // Visual record: the streaming Native window with real decoded content.
   await page.screenshot({
     path: `${CAPTURE}/native-window--streaming--1440x900.png`,

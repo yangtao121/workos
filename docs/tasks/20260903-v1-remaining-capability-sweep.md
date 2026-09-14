@@ -1438,3 +1438,61 @@ scaffolded blocker（无 Android SDK/Xcode/签名/设备）。
   awaiting_manual 台账终态 + 零 agent 任务/零部署副作用。
 - compose 增加 WORKOS_AGENT_RECOVERY_PROVIDER 与 MCP fixture；对既有阶段
   无行为影响（primary 健康+有能力时不触发回退）。
+
+### GLM-5.3 最终验收矩阵（2026-09-14，唯一分支串行执行）
+
+全部命令真实执行（经 wmake 包装或直接运行 gate 脚本），日志在 tmp/。宿主 make 缺失为
+环境事实（重置后新机器），wmake=docker:28-cli+make/git/bash/python3/curl/openssl 经
+socket/uid 映射执行 Makefile；TMPDIR/HF_ENDPOINT 按需透传，不安装宿主软件。
+
+全局：
+
+| 检查                                                                           | 结果                                         | 日志                                     |
+| ------------------------------------------------------------------------------ | -------------------------------------------- | ---------------------------------------- |
+| make generate（两次，无漂移）                                                  | PASS                                         | /tmp/generate-idem1.log /tmp/b13-gen.log |
+| make check（proto/SQL/Go vet+test/架构/lint/prettier/TS/桌面构建/status 渲染） | PASS                                         | /tmp/b11-check3.log                      |
+| buf breaking --against .git#branch=main                                        | PASS                                         | （直接执行）                             |
+| make test-integration                                                          | PASS                                         | /tmp/b10-integration.log                 |
+| make test-e2e（全量 Playwright）                                               | PASS（36+ passed，gate 专用 spec 诚实 skip） | /tmp/b9-e2e4.log                         |
+
+按交接 §8.1 矩阵（全部在本分支最终代码上执行）：
+
+- R1：test-credential-vault / -expansion、test-deepseek-fixture / -structured-review、
+  test-codex-harness、test-mcp-harness、test-generic-cli、test-task-submission-identity、
+  test-artifact-review / -context 全 PASS。
+- R2：test-repair-target / -sources / -producer / -deployment / -buildtest（含新增
+  Recovery 回退与 awaiting_manual 阶段）、test-app-build-inputs、test-app-version-rollback、
+  test-real-supervision、test-telemetry 全 PASS；test-rootless-runtime / test-podman-fixture
+  保持 BLOCKED（宿主无 podman，探测：command -v 失败、cgroup v2 可用）。
+- R3：test-app-bridge-full、test-declarative-surface、test-browser-surface、
+  test-browser-pool、test-terminal-sessions、test-remote-native-surface、test-app-files、
+  test-app-artifacts、test-native-surface（新增）全 PASS。
+- R4：test-semantic-knowledge、test-local-embedding、test-model-postgres、
+  test-workspace-indexing、test-workspace-browser、test-workspace-model-capacity、
+  test-project-knowledge-search / -rebuild、test-app-knowledge-search 全 PASS。
+- R5：test-push-relay / -wake、test-mdns-discovery、test-lan-pairing、
+  test-notification-center、test-incident-notifications、test-app-notifications、
+  test-mobile-wrappers 全 PASS。
+- R6：test-desktop-system-apps、test-adaptive-shell、全量 test-e2e 全 PASS；视觉证据
+  20260914-native-runner/ 与 20260914-mobile-native-shell/ 已入库并同步 current。
+
+复跑揪出并修复的真实缺陷（本轮提交）：
+
+1. 桌面 Browser 地址栏导航的沙箱回退 iframe 误键于 initialUrl prop（pool 接入回归）；
+   空池会话响应渲染空白（51eb222/收尾提交修复）。
+2. repair admission 对已消失目标（项目归档/安装卸载）无限重试 not_found，饿死活
+   incident——ErrRepairTargetGone 终态（257c266）。
+3. vault 门禁 awk 裸模式匹配读到上一凭据块的陈旧 revision→rotate 恒 Aborted
+   （顺序依赖缺陷，5682196）。
+4. 全量 e2e 自 9/8 起必挂：gate 专用 spec 用 throw 守卫 + 三个 spec 在"启动即关
+   Library"行为后未复跑 + Terminal 入口旧契约断言（收尾提交）。
+5. filesbridge fixture 硬编码 /tmp（TMPDIR 感知）与 push-wake relay init 依赖宿主
+   libc（改经 workos:dev 执行）。
+
+环境注记：HF_ENDPOINT 镜像支持为 tools/embedding/fetch.py 与 Dockerfile 的新增能力
+（校验和不变）；共享默认栈多次 recreate 属各 target 定义行为，未删除任何卷/库。
+
+未决边界（诚实保持）：rootless Podman（宿主无 podman）；移动原生二进制/真机配对推送
+（无 Android SDK/Xcode/签名设备）；WebRTC 仅回环 host candidates 无 TURN；默认栈未
+配置 X11 工具链时 virtual-display-native-runner 如实 unavailable。以上均有精确前提，
+不阻塞软件完成度结论。

@@ -60,7 +60,9 @@ test("Mission Control creates a project and switches the active project", async 
   );
 });
 
-test("Home launchpad opens system apps; Terminal states the deployment verdict", async ({ page }) => {
+test("Home launchpad opens system apps; Terminal states the deployment verdict", async ({
+  page,
+}) => {
   await page.goto("/");
   await createDesktopProject(page, `Home ${String(Date.now())}`);
   await expect(page.getByRole("button", { name: "Switch project", exact: true })).toContainText(
