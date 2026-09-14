@@ -60,7 +60,7 @@ test("Mission Control creates a project and switches the active project", async 
   );
 });
 
-test("Home launchpad opens system apps and marks Terminal unavailable", async ({ page }) => {
+test("Home launchpad opens system apps; Terminal states the deployment verdict", async ({ page }) => {
   await page.goto("/");
   await createDesktopProject(page, `Home ${String(Date.now())}`);
   await expect(page.getByRole("button", { name: "Switch project", exact: true })).toContainText(
@@ -71,9 +71,17 @@ test("Home launchpad opens system apps and marks Terminal unavailable", async ({
   const home = page.getByTestId("home-app");
   await expect(home).toBeVisible();
 
+  // The entry is project-scoped; without a configured PTY shell the window
+  // itself carries the honest unavailable verdict (the terminal-sessions
+  // gate proves the real shell on a configured runtime).
   const terminal = home.getByTestId("home-entry-terminal");
-  await expect(terminal).toBeDisabled();
-  await expect(terminal).toContainText("unavailable");
+  await expect(terminal).toBeEnabled();
+  await terminal.click();
+  const terminalWindow = page.getByTestId("terminal-app");
+  await expect(terminalWindow).toBeVisible();
+  await expect(terminalWindow.getByTestId("terminal-unavailable")).toContainText("unavailable");
+  await page.getByRole("button", { name: "Close Terminal" }).click();
+  await expect(terminalWindow).toBeHidden();
 
   await home.getByTestId("home-entry-browser").click();
   const browser = page.getByTestId("browser-app");

@@ -504,11 +504,11 @@ export function BrowserApp(props: {
           title="Remote browser"
         />
       ) : null}
-      {!sessionReady && props.initialUrl && poolNotice ? (
+      {!sessionReady && target && poolNotice ? (
         <iframe
           className="browser-frame"
           data-testid="browser-frame"
-          src={props.initialUrl}
+          src={target}
           // Fixed boundary: popups (_blank) and top navigation are
           // intercepted by the sandbox itself; the WorkOS window is never
           // navigated away and no browser tab is opened.

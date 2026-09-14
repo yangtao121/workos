@@ -116,7 +116,12 @@ test("remote-native status surface renders through the supervised path", async (
   );
 
   // Owner-side uninstall tears the surface window down (session revalidation
-  // closes stale windows server-side).
+  // closes stale windows server-side). Launching the app closes the library
+  // panel, so reopen it through the same desktop flow first.
+  await openDesktopApp(page, "app-library");
+  await expect(row.getByRole("button", { name: "Remove", exact: true })).toBeVisible({
+    timeout: libraryTimeout,
+  });
   await row.getByRole("button", { name: "Remove", exact: true }).click();
   const confirm = page.getByRole("dialog");
   if (await confirm.isVisible()) {
