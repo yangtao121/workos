@@ -92,9 +92,19 @@ test("Native window streams the real virtual display and forwards input", async 
   }
   // Typing a long line leaves visibly more ink on the display.
   await expect.poll(() => readVariance(), { timeout: 30_000 }).not.toBe(varianceBefore);
-  // Visual record: the streaming Native window with real decoded content.
-  await page.screenshot({
-    path: `${CAPTURE}/native-window--streaming--1440x900.png`,
-    animations: "disabled",
-  });
+  // Visual record: the streaming Native window with real decoded content at
+  // the repo's three standard viewports (the session and video keep flowing
+  // through the resizes).
+  for (const size of [
+    { width: 1440, height: 900 },
+    { width: 820, height: 1180 },
+    { width: 390, height: 844 },
+  ]) {
+    await page.setViewportSize(size);
+    await expect(page.getByTestId("native-stage")).toBeVisible();
+    await page.screenshot({
+      path: `${CAPTURE}/native-window--streaming--${String(size.width)}x${String(size.height)}.png`,
+      animations: "disabled",
+    });
+  }
 });

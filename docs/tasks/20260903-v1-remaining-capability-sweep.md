@@ -1496,3 +1496,21 @@ socket/uid 映射执行 Makefile；TMPDIR/HF_ENDPOINT 按需透传，不安装�
 （无 Android SDK/Xcode/签名设备）；WebRTC 仅回环 host candidates 无 TURN；默认栈未
 配置 X11 工具链时 virtual-display-native-runner 如实 unavailable。以上均有精确前提，
 不阻塞软件完成度结论。
+
+### GLM-5.3 完成前独立复核补遗（2026-09-14 第三轮）
+
+用户要求核查遗漏后，按交接 §8.1/§9 逐项复审，补齐四项：
+
+1. `docker compose config --quiet` PASS。
+2. test-rootless-runtime / test-podman-fixture 以当前宿主重新探测：
+   podman: NOT AVAILABLE（command -v 失败）；cgroup v2: yes；user namespaces:
+   123691 → 两者 BLOCKED（与既有记录一致，凭据为新鲜探测输出）。
+3. Go race：nativehost/reliability/gateway + 交接标准集（harness 全部、
+   core agent/orchestration/appregistry）全部 ok。
+4. 视觉证据补全：Native 窗口三尺寸 streaming 截图（resize 后会话持续），
+   默认栈不可用态由 test-desktop-system-apps 断言（native-status/verdict
+   unavailable）后关闭窗口；两门禁复跑 PASS。全部新增截图逐张查看
+   （含移动 unavailable/unpaired、桌面三尺寸）。
+5. 最终 diff 审查：无 secret/私钥/用户内容；唯一二进制为 UI PNG（均 <2 MiB，
+   规范内）与 Capacitor 生成的 gradle-wrapper.jar（43 KB，上游模板）；
+   `git diff --check` 仅 gradlew.bat 上游模板尾随空格（旧版一致，不手改生成物）。

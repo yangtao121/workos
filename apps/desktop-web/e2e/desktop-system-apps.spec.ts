@@ -85,6 +85,20 @@ test("Home launchpad opens system apps; Terminal states the deployment verdict",
   await page.getByRole("button", { name: "Close Terminal" }).click();
   await expect(terminalWindow).toBeHidden();
 
+  // The Native entry states the same honest verdict on a runtime without
+  // the X11 toolchain (the native-surface gate proves real streaming).
+  const native = home.getByTestId("home-entry-native");
+  await expect(native).toBeEnabled();
+  await native.click();
+  const nativeWindow = page.getByTestId("native-app");
+  await expect(nativeWindow).toBeVisible();
+  await expect(nativeWindow.getByTestId("native-status")).toHaveText("unavailable", {
+    timeout: 30_000,
+  });
+  await expect(nativeWindow.getByTestId("native-verdict")).toContainText("unavailable");
+  await page.getByRole("button", { name: "Close Native" }).click();
+  await expect(nativeWindow).toBeHidden();
+
   await home.getByTestId("home-entry-browser").click();
   const browser = page.getByTestId("browser-app");
   await expect(browser).toBeVisible();
