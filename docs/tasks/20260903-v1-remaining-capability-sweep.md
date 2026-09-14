@@ -1374,14 +1374,14 @@ R3 Native Runner（ADR-0029，本轮最大缺口）：虚拟显示 → 编码 �
   令牌桶 64 事件/s；进程组 + Pdeathsig；诚实引擎事实：无 cgroup/无 TURN/
   仅 host candidates）。
 - runtime-host 接线 + `virtual-display-native-runner` 能力（未配置工具链时
-  unavailable）；配置 WORKOS_RUNTIME_NATIVE_{DISPLAY,CLIENT,FFmpeg,XDOTOOL,SCRATCH}。
+  unavailable）；配置 WORKOS*RUNTIME_NATIVE*{DISPLAY,CLIENT,FFmpeg,XDOTOOL,SCRATCH}。
 - 桌面 Native 系统窗口（NativeApp.tsx：RTCPeerConnection 收流渲染 `<video>`、
   键盘/指针经 Data Channel、帧计数器）；agent-sdk/protocol 导出
   NativeSessionService 客户端。
 - 门禁 `make test-native-surface`（tools/native-surface：真实 PG/Core/Runtime/
   Gateway + X11 工具链镜像）+ 集成测试（pion 对等端验证真实 VP8 RTP 帧、
   Data Channel 键入 exit → xterm 关闭 → 帧负载坍缩证明输入回传改变真实显示）
-  + Chromium E2E（桌面窗口视频 readyState/像素方差/输入后变化）。
+  - Chromium E2E（桌面窗口视频 readyState/像素方差/输入后变化）。
 - 单测：nativehost application 六例（幂等/漂移/校验/上限/Connect/死显示/启动失败）。
 - 门禁调试中修复的真实缺陷：engine 用 os.Stat 校验 PATH 相对名（xterm）导致
   runtime 拒启（改 exec.LookPath）；ffmpeg 5.x 的 VP8 编码器名是 `libvpx` 而非
@@ -1404,3 +1404,37 @@ check-wrapper 增加 secure-storage 插件链接断言。原生二进制/真机�
 scaffolded blocker（无 Android SDK/Xcode/签名/设备）。
 
 以上为本阶段代码事实；门禁结果以最终验收矩阵为准，逐项记录退出码与日志路径。
+
+### R3/R5 门禁最终结果（2026-09-14）
+
+- `make test-native-surface` PASS（tools/native-surface，第 16/17 轮；日志
+  tmp/native-gate-run16.log / run17.log）：TestNativeSessions 全矩阵 +
+  桌面 Chromium E2E（像素读回）+ 视觉证据。门禁调试揪出并修复六个真实
+  缺陷：exec.LookPath 解析 PATH 相对名、Debian ffmpeg 5.x VP8 编码器名为
+  libvpx（非 libvpx-vp8）、xterm 缺 misc-fixed 字体（镜像补 xfonts-base）、
+  IVF 时间戳按 header rate/scale 换算、捕获前等待并聚焦客户端窗口
+  （无 WM 时新窗口不获焦）、输入 worker 的 sync.Once 同步死锁（首条
+  DataChannel 消息把回调 goroutine 堵死）。另修正测试断言：VP8 对纯色
+  画面编码极小（~1 KiB 关键帧），改用内容驱动信号（yes 灌屏→帧增大，
+  exit→坍缩）。提交 dd11618。
+- `make test-mobile-wrappers` PASS（tmp/mobile-gate-run6.log）：三态挂载
+  （unavailable/unpaired/paired+已读交互）、Android sync、secure-storage
+  插件链接断言；E2E 修复两处 fixture 缺陷（DeviceInfo 字段名、Timestamp
+  需 RFC3339 字符串）。提交 f5ce2f4。
+- 视觉证据：desktop-web `20260914-native-runner/`（Home before/after +
+  Native streaming）与 mobile-shell `20260914-mobile-native-shell/`，
+  current 已同步。
+
+### R2 Recovery 跨进程证据（verified，2026-09-14）
+
+`make test-repair-buildtest` PASS（tmp/repair-buildtest-run3.log，第三轮；
+前两轮分别暴露 promote 断言未轮询与变量重声明）：
+
+- 既有六阶段全部保持：成功链/测试失败/构建失败/重启接管/矩阵种子/部署故障矩阵。
+- 新增 TestRepairRecoveryFallback：MCP 绑定（健康、如实无候选能力）的项目
+  incident → admission 回退 generic-cli（agent_tasks.provider_id 断言）→
+  Build/Test → staged → canary → promoted 全链在 recovery 层完成。
+- 新增 TestRepairRecoveryAwaitingManual：破坏 recovery 可执行文件后，
+  awaiting_manual 台账终态 + 零 agent 任务/零部署副作用。
+- compose 增加 WORKOS_AGENT_RECOVERY_PROVIDER 与 MCP fixture；对既有阶段
+  无行为影响（primary 健康+有能力时不触发回退）。

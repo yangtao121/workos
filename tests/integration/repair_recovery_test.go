@@ -113,9 +113,21 @@ func TestRepairRecoveryFallback(t *testing.T) {
 	if len(rows) == 0 || rows[0]["provider_id"] != "generic-cli" {
 		t.Fatalf("repair task must bind the recovery provider, got %v", rows)
 	}
-	// The verified chain completes end to end on the fallback layer.
-	ledger := waitForBuildtestRows(t, `SELECT state FROM workos_reliability.deployment_ledger WHERE incident_id::text = $1`, fixture.IncidentID)
-	if len(ledger) != 1 || ledger[0]["state"] != "promoted" {
+	// The verified chain completes end to end on the fallback layer: build,
+	// staged registration, canary and promotion all run on the recovery
+	// provider's candidate, so poll the ledger to its terminal state.
+	promoted := false
+	promoteDeadline := time.Now().Add(150 * time.Second)
+	for time.Now().Before(promoteDeadline) && !promoted {
+		ledger := buildtestQuery(t, `SELECT state FROM workos_reliability.deployment_ledger WHERE incident_id::text = $1`, fixture.IncidentID)
+		if len(ledger) == 1 && ledger[0]["state"] == "promoted" {
+			promoted = true
+			break
+		}
+		time.Sleep(500 * time.Millisecond)
+	}
+	if !promoted {
+		ledger := buildtestQuery(t, `SELECT state FROM workos_reliability.deployment_ledger WHERE incident_id::text = $1`, fixture.IncidentID)
 		t.Fatalf("recovery deployment must end promoted, got %v", ledger)
 	}
 }
