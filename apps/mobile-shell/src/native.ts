@@ -1,75 +1,69 @@
 // Mobile native wrapper (ADR-0019, W5): the Capacitor-side bridge around
-// the shared adaptive shell. Device keys live in native secure storage when
-// the runtime provides it; otherwise the wrapper degrades to a documented
-// fallback and REPORTS the degraded status honestly instead of pretending.
+// the shared shell. Device key material persists through the platform
+// secure storage plugin (Android Keystore / iOS Keychain) when the runtime
+// provides it; the web fallback is honestly reported as insecure instead of
+// pretending localStorage protects the credential.
 import { Capacitor, registerPlugin } from "@capacitor/core";
+import type { SecureVault } from "@workos/device-auth";
 
-export interface SecureKeyStatus {
+interface SecureStoragePluginDefinition {
+  get(options: { key: string }): Promise<{ value: string }>;
+  set(options: { key: string; value: string }): Promise<{ value: boolean }>;
+  remove(options: { key: string }): Promise<{ value: boolean }>;
+}
+
+const SecureStorage = registerPlugin<SecureStoragePluginDefinition>("SecureStoragePlugin");
+
+export interface VaultStatus {
   secure: boolean;
   reason: string;
 }
 
-export interface SecureKeyVaultPlugin {
-  set(options: { key: string; value: string }): Promise<void>;
-  get(options: { key: string }): Promise<{ value?: string | undefined }>;
-  remove(options: { key: string }): Promise<void>;
+export interface MobileVault {
+  vault: SecureVault;
+  status(): Promise<VaultStatus>;
 }
 
-// The plugin id matches @capacitor-community/secure-storage; when the
-// community plugin is absent from the native build the registry resolves to
-// the web fallback, which the wrapper then classifies as insecure.
-const SecureStorage = registerPlugin<SecureKeyVaultPlugin>("SecureStorage");
-
-export interface DeviceKeyStore {
-  status(): Promise<SecureKeyStatus>;
-  load(): Promise<string | undefined>;
-  store(value: string): Promise<void>;
-  clear(): Promise<void>;
-}
-
-const deviceKeySlot = "workos.device-key.v1";
-
-export function createDeviceKeyStore(): DeviceKeyStore {
-  const nativeSecure = Capacitor.isNativePlatform() && Capacitor.isPluginAvailable("SecureStorage");
-  // The ephemeral fallback keeps a session working without ever claiming
-  // protection it does not have.
-  let fallback: string | undefined;
+// createMobileVault adapts the platform plugin to the device-auth SecureVault
+// contract. On native platforms the plugin is Keychain/Keystore-backed; on
+// the web its localStorage fallback is explicitly NOT secure storage.
+export function createMobileVault(): MobileVault {
+  const nativeSecure =
+    Capacitor.isNativePlatform() && Capacitor.isPluginAvailable("SecureStoragePlugin");
   return {
-    status(): Promise<SecureKeyStatus> {
+    vault: {
+      async get(key) {
+        try {
+          const result = await SecureStorage.get({ key });
+          return result.value;
+        } catch {
+          return undefined;
+        }
+      },
+      async set(key, value) {
+        await SecureStorage.set({ key, value });
+      },
+      async remove(key) {
+        await SecureStorage.remove({ key });
+      },
+    },
+    status(): Promise<VaultStatus> {
       if (nativeSecure) {
-        return Promise.resolve({ secure: true, reason: "native secure storage" });
+        return Promise.resolve({
+          secure: true,
+          reason: "native secure storage (Keystore/Keychain)",
+        });
       }
       if (Capacitor.isNativePlatform()) {
         return Promise.resolve({
           secure: false,
-          reason: "native secure storage plugin is not installed; using ephemeral memory",
+          reason: "native secure storage plugin is not installed; profile storage fallback",
         });
       }
       return Promise.resolve({
         secure: false,
-        reason: "web runtime; using ephemeral memory",
+        reason: "web runtime; profile storage fallback",
       });
-    },
-    async load() {
-      if (nativeSecure) {
-        const result = await SecureStorage.get({ key: deviceKeySlot });
-        return result.value;
-      }
-      return fallback;
-    },
-    async store(value: string) {
-      if (nativeSecure) {
-        await SecureStorage.set({ key: deviceKeySlot, value });
-        return;
-      }
-      fallback = value;
-    },
-    async clear() {
-      if (nativeSecure) {
-        await SecureStorage.remove({ key: deviceKeySlot });
-        return;
-      }
-      fallback = undefined;
     },
   };
 }

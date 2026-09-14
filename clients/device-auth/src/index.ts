@@ -17,13 +17,9 @@ import {
 
 import { assertProofChallenge } from "./challenge.js";
 import { encodeProofTranscript, isCanonicalUUIDv7, type ProofFacts } from "./transcript.js";
-import { generateDeviceKeyPair, signTranscript, validateDeviceKeyMaterial } from "./keys.js";
-import {
-  clearDeviceIdentity,
-  loadDeviceIdentity,
-  saveDeviceIdentity,
-  type StoredDeviceIdentity,
-} from "./store.js";
+import { signTranscript } from "./keys.js";
+import { type StoredDeviceIdentity } from "./store.js";
+import { profileDeviceKeyBackend, type DeviceKeyBackend } from "./backend.js";
 
 export {
   encodeProofTranscript,
@@ -33,6 +29,12 @@ export {
 } from "./transcript.js";
 export { generateDeviceKeyPair, signTranscript, validateDeviceKeyMaterial } from "./keys.js";
 export { clearDeviceIdentity, loadDeviceIdentity, saveDeviceIdentity } from "./store.js";
+export {
+  createSecureDeviceKeyBackend,
+  profileDeviceKeyBackend,
+  type DeviceKeyBackend,
+  type SecureVault,
+} from "./backend.js";
 export type { DeviceInfo } from "@workos/protocol";
 
 export type DeviceClass = "desktop" | "tablet" | "foldable" | "phone";
@@ -101,16 +103,18 @@ export function isUnavailable(error: unknown): boolean {
 export class DeviceAuthClient {
   private readonly pairing: Client<typeof DevicePairingService>;
   private readonly devices: Client<typeof DeviceService>;
+  private readonly keys: DeviceKeyBackend;
 
   // pairingClient exposes the generated client for capability probes only.
   get pairingClient(): Client<typeof DevicePairingService> {
     return this.pairing;
   }
 
-  constructor(baseUrl: string, transport?: Transport) {
+  constructor(baseUrl: string, transport?: Transport, keyBackend?: DeviceKeyBackend) {
     const active = transport ?? createConnectTransport({ baseUrl });
     this.pairing = createClient(DevicePairingService, active);
     this.devices = createClient(DeviceService, active);
+    this.keys = keyBackend ?? profileDeviceKeyBackend;
   }
 
   // canonicalOrigin is the origin the Gateway validates Host/Origin against.
@@ -118,30 +122,24 @@ export class DeviceAuthClient {
     return window.location.origin;
   }
 
-  // ensureProfileKey loads the stored profile key or creates and persists a
-  // new one BEFORE any ticket is claimed: if IndexedDB fails, pairing stops.
+  // ensureProfileKey loads the stored key or creates and persists a new one
+  // BEFORE any ticket is claimed: if the backend cannot round-trip the
+  // credential, pairing stops.
   private async ensureProfileKey(
     deviceName: string,
     deviceClass: DeviceClass,
   ): Promise<StoredDeviceIdentity> {
-    const existing = await loadDeviceIdentity();
-    if (existing !== undefined && (await isWellFormedIdentity(existing))) {
+    const existing = await this.keys.load();
+    if (existing !== undefined && (await this.keys.validate(existing))) {
       return existing;
     }
-    const generated = await generateDeviceKeyPair();
-    const identity: StoredDeviceIdentity = {
-      privateKey: generated.privateKey,
-      publicKeyHash: generated.publicKeyHash,
-      publicKeySpki: generated.publicKeySpki,
-      deviceName,
-      deviceClass,
-    };
-    await saveDeviceIdentity(identity);
-    // Read back the committed structured clone and prove the private/public
-    // binding before the first network call can claim a ticket.
-    const persisted = await loadDeviceIdentity();
-    if (persisted === undefined || !(await isWellFormedIdentity(persisted))) {
-      throw new Error("IndexedDB did not preserve the device credential");
+    const identity = await this.keys.generate(deviceName, deviceClass);
+    await this.keys.save(identity);
+    // Read back the committed record and prove the private/public binding
+    // before the first network call can claim a ticket.
+    const persisted = await this.keys.load();
+    if (persisted === undefined || !(await this.keys.validate(persisted))) {
+      throw new Error("the device key backend did not preserve the credential");
     }
     return persisted;
   }
@@ -187,7 +185,7 @@ export class DeviceAuthClient {
     }
     // Persist the pending binding before proving, so a lost completion
     // response can be recovered through the session proof.
-    await saveDeviceIdentity({
+    await this.keys.save({
       ...identity,
       deviceId,
       deviceName: input.deviceName,
@@ -237,14 +235,14 @@ export class DeviceAuthClient {
   // cookie after expiry or logout. This is authentication only — business
   // operations are never replayed automatically.
   async reauthenticate(): Promise<DeviceInfo> {
-    const identity = await loadDeviceIdentity();
+    const identity = await this.keys.load();
     if (
       identity === undefined ||
       !identity.deviceId ||
       !isCanonicalUUIDv7(identity.deviceId) ||
-      !(await isWellFormedIdentity(identity))
+      !(await this.keys.validate(identity))
     ) {
-      throw new Error("this browser has no device credential to prove");
+      throw new Error("this device has no stored credential to prove");
     }
     const begin = await this.pairing.beginDeviceSession({ deviceId: identity.deviceId });
     const challenge = begin.challenge;
@@ -324,16 +322,15 @@ export class DeviceAuthClient {
     await this.devices.logout({});
   }
 
-  // forget is the explicit "Forget this browser" action: logout first, then
-  // delete the IndexedDB credential. It never runs during a transient
-  // outage.
+  // forget is the explicit "Forget this device" action: logout first, then
+  // delete the stored credential. It never runs during a transient outage.
   async forget(): Promise<void> {
     try {
       await this.logout();
     } catch (error) {
       if (!isAuthError(error)) throw error;
     }
-    await clearDeviceIdentity();
+    await this.keys.clear();
   }
 
   private publicKeySpkiOf(identity: StoredDeviceIdentity): Uint8Array {
@@ -346,26 +343,8 @@ export class DeviceAuthClient {
   }
 }
 
-// isWellFormedIdentity tolerates records written by older builds or partial
-// writes, and re-verifies the loaded private key's contract before anything
-// relies on it: non-extractable ECDSA over P-256 with sign-only usage,
-// matching exportable verify material. Pairing regenerates malformed state
-// before claiming a ticket; re-authentication rejects it before networking.
-async function isWellFormedIdentity(identity: StoredDeviceIdentity | undefined): Promise<boolean> {
-  if (
-    identity === undefined ||
-    !(identity.publicKeySpki instanceof Uint8Array) ||
-    typeof identity.publicKeyHash !== "string"
-  ) {
-    return false;
-  }
-  return validateDeviceKeyMaterial(
-    identity.privateKey,
-    identity.publicKeySpki,
-    identity.publicKeyHash,
-  );
-}
-
+// isAuthError classifies the Connect codes that mean "this session/device is
+// no longer authorized" as opposed to a transient infrastructure failure.
 function isAuthError(error: unknown): boolean {
   return (
     error instanceof ConnectError &&

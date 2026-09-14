@@ -1,16 +1,26 @@
 import { describe, expect, it } from "vitest";
 
-import { createDeviceKeyStore } from "./native.js";
+import { createMobileVault } from "./native.js";
 
-describe("device key store", () => {
+describe("mobile vault", () => {
   it("reports an honest insecure status on the web runtime and never claims protection", async () => {
-    const store = createDeviceKeyStore();
-    const status = await store.status();
+    const mobileVault = createMobileVault();
+    const status = await mobileVault.status();
     expect(status.secure).toBe(false);
-    expect(status.reason).toContain("ephemeral");
-    await store.store("device-secret");
-    expect(await store.load()).toBe("device-secret");
-    await store.clear();
-    expect(await store.load()).toBeUndefined();
+    expect(status.reason).toContain("web runtime");
   });
+
+  // The web fallback stores through localStorage; the plain node test
+  // environment has no storage at all, so the round trip runs only where
+  // the browser storage exists (real coverage: the Chromium mount gate).
+  it.skipIf(typeof globalThis.localStorage === "undefined")(
+    "round-trips values through the vault contract",
+    async () => {
+      const mobileVault = createMobileVault();
+      await mobileVault.vault.set("workos.test.slot", "material");
+      expect(await mobileVault.vault.get("workos.test.slot")).toBe("material");
+      await mobileVault.vault.remove("workos.test.slot");
+      expect(await mobileVault.vault.get("workos.test.slot")).toBeUndefined();
+    },
+  );
 });

@@ -1,10 +1,10 @@
 // The launchable mobile entry (ADR-0019 W5): mounts the shared shell
-// against the configured WorkOS origin with device-key storage behind the
-// native wrapper. Falls back to an honest origin prompt when the wrapper
-// runs on a host without a paired deployment.
+// against the configured WorkOS origin with device pairing and key storage
+// behind the native wrapper. Falls back to an honest origin prompt when the
+// wrapper runs on a host without a paired deployment.
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
-import { createDeviceKeyStore } from "./native.js";
+import { createMobileVault } from "./native.js";
 import { MobileShell } from "./shell.js";
 import "./app.css";
 
@@ -27,10 +27,12 @@ const root = document.getElementById("root");
 if (!root) throw new Error("WorkOS root element is missing");
 
 const origin = resolveOrigin();
-const keyStore = createDeviceKeyStore();
+const mobileVault = createMobileVault();
 
-createRoot(root).render(
-  <StrictMode>
-    <MobileShell origin={origin} keyStore={keyStore} />
-  </StrictMode>,
-);
+void mobileVault.status().then((status) => {
+  createRoot(root).render(
+    <StrictMode>
+      <MobileShell origin={origin} secureVaultReady={status.secure} vault={mobileVault} />
+    </StrictMode>,
+  );
+});

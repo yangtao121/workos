@@ -111,3 +111,78 @@ body,
   font-size: 11px;
   color: #6e7d8c;
 }
+
+/* Paired shell: tabs, notification list, keyboard-aware footer. */
+.mobile-tabs {
+  display: flex;
+  gap: 4px;
+}
+.mobile-tab {
+  border: 1px solid transparent;
+  background: transparent;
+  color: #9aa7b4;
+  border-radius: 8px;
+  padding: 6px 12px;
+  font-size: 13px;
+}
+.mobile-tab.active {
+  color: #4c8bf5;
+  border-color: #4c8bf5;
+}
+.mobile-notification-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.mobile-notification {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  background: #10151c;
+  border: 1px solid #2a3441;
+  border-radius: 12px;
+  padding: 12px 14px;
+}
+.mobile-notification.unread {
+  border-color: #4c8bf5;
+}
+.mobile-notification-title {
+  font-size: 14px;
+}
+.mobile-mark-read {
+  border: 1px solid #2a3441;
+  background: transparent;
+  color: #9aa7b4;
+  border-radius: 8px;
+  padding: 4px 8px;
+  font-size: 12px;
+  white-space: nowrap;
+}
+.mobile-empty {
+  color: #9aa7b4;
+  font-size: 14px;
+  text-align: center;
+  padding: 24px 0;
+}
+.mobile-hint {
+  font-size: 12px;
+  color: #6e7d8c;
+  margin: 0;
+}
+.mobile-logout {
+  border: 1px solid #2a3441;
+  background: transparent;
+  color: #9aa7b4;
+  border-radius: 8px;
+  padding: 4px 8px;
+  font-size: 11px;
+}
+/* The keyboard inset keeps the footer and composer visible above the soft
+   keyboard without shrinking the scrolling content area. */
+.workos-mobile {
+  padding-bottom: max(env(safe-area-inset-bottom), var(--mobile-keyboard-inset, 0px));
+}
