@@ -136,12 +136,32 @@ test("Native window streams the real virtual display and forwards input", async 
       animations: "disabled",
     });
   }
-  // Closing the window must release the durable session, even with media active.
+  // ADR-0031 (B08): closing the window DETACHES — the display keeps running
+  // under its bounded policy — and re-opening attaches the SAME session
+  // (never a second CreateNativeSession). The explicit Stop control is the
+  // only stop.
   await page.getByRole("button", { name: "Close Native", exact: true }).click();
   await expect(native).toHaveCount(0);
   await expect
     .poll(async () => {
       if (sessions.length === 0) return "missing";
+      const response = await page.request.post(
+        "/workos.surface.v1.NativeSessionService/GetNativeSession",
+        { data: { sessionId: sessions[sessions.length - 1] } },
+      );
+      const body = (await response.json()) as { session?: { id?: string; state?: string } };
+      return body.session?.state;
+    })
+    .toBe("running");
+
+  await nativeEntry.click();
+  await expect(page.getByTestId("native-app")).toBeVisible();
+  await expect(page.getByTestId("native-status")).toHaveText("streaming", { timeout: 90_000 });
+  expect(sessions).toHaveLength(1);
+  await page.getByTestId("native-stop").click();
+  await expect(page.getByTestId("native-status")).toHaveText("ended", { timeout: 30_000 });
+  await expect
+    .poll(async () => {
       const response = await page.request.post(
         "/workos.surface.v1.NativeSessionService/GetNativeSession",
         { data: { sessionId: sessions[sessions.length - 1] } },

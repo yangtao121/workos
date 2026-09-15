@@ -4,6 +4,7 @@ import {
   AgentApprovalService,
   AgentAppPolicyService,
   AgentAppUsageService,
+  AgentSessionService,
   AgentTaskService,
   AppBridgeService,
   AppInstallationService,
@@ -18,14 +19,18 @@ import {
   NotificationService,
   ProjectHarnessBindingService,
   ProjectService,
+  ProjectWorkspaceService,
   SurfaceService,
+  SurfaceContinuityService,
 } from "@workos/protocol";
 
 export interface WorkOSClients {
   projects: Client<typeof ProjectService>;
+  projectWorkspaces: Client<typeof ProjectWorkspaceService>;
   projectHarnessBindings: Client<typeof ProjectHarnessBindingService>;
   harnessCatalog: Client<typeof HarnessCatalogService>;
   agentTasks: Client<typeof AgentTaskService>;
+  agentSessions: Client<typeof AgentSessionService>;
   appPolicies: Client<typeof AgentAppPolicyService>;
   approvals: Client<typeof AgentApprovalService>;
   appUsage: Client<typeof AgentAppUsageService>;
@@ -33,6 +38,7 @@ export interface WorkOSClients {
   appInstallations: Client<typeof AppInstallationService>;
   artifacts: Client<typeof ArtifactService>;
   surfaces: Client<typeof SurfaceService>;
+  surfaceContinuity: Client<typeof SurfaceContinuityService>;
   browserSessions: Client<typeof BrowserSessionService>;
   ptySessions: Client<typeof PtySessionService>;
   nativeSessions: Client<typeof NativeSessionService>;
@@ -46,9 +52,11 @@ export function createWorkOSClients(baseUrl: string, transport?: Transport): Wor
   const activeTransport = transport ?? createConnectTransport({ baseUrl });
   return {
     projects: createClient(ProjectService, activeTransport),
+    projectWorkspaces: createClient(ProjectWorkspaceService, activeTransport),
     projectHarnessBindings: createClient(ProjectHarnessBindingService, activeTransport),
     harnessCatalog: createClient(HarnessCatalogService, activeTransport),
     agentTasks: createClient(AgentTaskService, activeTransport),
+    agentSessions: createClient(AgentSessionService, activeTransport),
     appPolicies: createClient(AgentAppPolicyService, activeTransport),
     approvals: createClient(AgentApprovalService, activeTransport),
     appUsage: createClient(AgentAppUsageService, activeTransport),
@@ -56,6 +64,7 @@ export function createWorkOSClients(baseUrl: string, transport?: Transport): Wor
     appInstallations: createClient(AppInstallationService, activeTransport),
     artifacts: createClient(ArtifactService, activeTransport),
     surfaces: createClient(SurfaceService, activeTransport),
+    surfaceContinuity: createClient(SurfaceContinuityService, activeTransport),
     browserSessions: createClient(BrowserSessionService, activeTransport),
     ptySessions: createClient(PtySessionService, activeTransport),
     nativeSessions: createClient(NativeSessionService, activeTransport),

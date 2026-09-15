@@ -6,7 +6,7 @@
 // top-navigation interception boundary.
 import { IndexedDocumentPreview } from "./IndexedDocumentPreview.js";
 import { Icon, Button, type IconName } from "@workos/ui-kit";
-import { useEffect, useCallback, useRef, useState } from "react";
+import { useEffect, useCallback, useRef, useState, type ReactNode } from "react";
 import type { WorkOSClients } from "@workos/agent-sdk";
 import type { ArtifactReference } from "./ArtifactCenter.js";
 
@@ -19,8 +19,8 @@ export interface HomeAppEntry {
   open: () => void;
 }
 
-export function HomeApp(props: { apps: HomeAppEntry[] }) {
-  const { apps } = props;
+export function HomeApp(props: { apps: HomeAppEntry[]; children?: ReactNode }) {
+  const { apps, children } = props;
   return (
     <div className="home-app system-app" data-testid="home-app">
       <header className="app-heading">
@@ -48,6 +48,7 @@ export function HomeApp(props: { apps: HomeAppEntry[] }) {
           </li>
         ))}
       </ul>
+      {children}
     </div>
   );
 }

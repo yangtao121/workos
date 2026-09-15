@@ -1607,6 +1607,50 @@ Native 的创建、连接、关闭和 sweep 在 runtime-host 内串行协调；�
   PermissionDenied/接管矩阵、sweep 过期、stop 回收）。桌面窗口关闭→Detach 的迁移
   属 B05/B08。
 
+## Agent 会话窗口与桌面接续入口（ADR-0030 B05 / ADR-0031 B08，2026-09-15）
+
+- SDK（TS）：`sdk/protocol/src/index.ts` 重导出 `agent/v1/session_pb`、
+  `surface/v1/continuity_pb`、`project/v1/workspace_pb`；`sdk/agent-sdk` 的
+  WorkOSClients 增加 `agentSessions` / `surfaceContinuity` / `projectWorkspaces`
+  客户端。无 proto/Go 变更。
+- Desktop Agent Sessions 窗口（`apps/desktop-web/src/AgentSessions.tsx`）：
+  普通可关系统窗口（window kind `agent-sessions`，expanded/adaptive Home、命令面板、
+  adaptive home 快捷入口可达；无新增常驻侧栏）。列表 = ListSessions（不含已关闭）+
+  每会话首输入摘录；New session 使用组件态 idempotency key（失败重试复用同一 key）。
+  会话视图：ListSessionInputs 全量输入 + 活跃输入与最近一个带 task 输入各自的
+  WatchTaskEvents 时间线（终态后保留 replay，不清空会话）；提交 =
+  SubmitSessionInput（每次提交一个 client_input_id；12s 超时只以 GetSessionInput
+  同 key 恢复，绝不换 key 重发；失败 Retry 复用同一 client_input_id）；忙时轮询
+  2.5s 对账；「停止当前执行」（CancelSessionExecution，仅活跃 run 显示）与
+  「关闭会话」（CloseSession）为两个明确区分的显式动作；queued 输入显示排队态与
+  排队提示；provider id 与（若有）workspace display name 只读显示
+  （ListProjectWorkspaces active binding）。Project 切换/窗口关闭仅 unmount
+  （组件按 project key 重挂载、selected session 提升到 Desktop 状态以跨断点
+  remount 保留），绝不触发服务端取消；generation ref 使晚到响应 inert。
+- Native/Terminal 窗口生命周期迁移（B08）：窗口关闭与 project 切换改为
+  DetachNativeSession / DetachPtySession（程序按 30 分钟策略继续运行；旧
+  Close 语义仅保留在显式 Stop）。重开流程：ListProjectSurfaces 发现本 project
+  运行中的同类 workload（native=REMOTE_NATIVE、pty=UNSPECIFIED 且非 app
+  workload）→ AttachSurface 同一实例（绝不二次创建；continuity 不可用或无
+  运行实例时如实回退创建路径）；attach 后非 controller 时禁用输入并显示
+  Take control（RequestSurfaceControl）直到接管。两窗口工具条提供显式 Stop
+  （StopSurfaceWorkload，幂等 actionKey）；native 的媒体重连在 observer 态仅
+  观看。
+- Running apps（`RunningSurfaces.tsx`）：Home 启动台下的小节，ListProjectSurfaces
+  服务端事实（displayName/state/attachment 数，10s 轮询 + stop 后即时刷新），
+  Open 按类型路由（terminal/native 窗口或 app instance surface），Stop 为唯一
+  停止路径；continuity 不可用时如实显示不可用判定。
+- 门禁 `tools/v2-development-journey/gate.sh`（Makefile
+  `test-v2-development-journey` / `capture-v2-development-journey`）：独立
+  compose 项目（共享 dev postgres、一次性数据库与端口；runtime 启用
+  WORKOS_RUNTIME_PTY_SHELL=/bin/sh；harness-host 携 fake provider），真实
+  desktop E2E（agent-sessions.spec.ts）：全真链路（建会话→提交→fake provider
+  完成→刷新恢复→同会话第二轮）+ 传输层确定性 busy 契约（held WatchTaskEvents
+  下 running+停止按钮可见、第二输入排队、取消后会话仍开放）+ 三档 viewport 视觉
+  证据采集（WORKOS_CAPTURE_DIR）。native-surface-desktop.spec.ts 的关闭断言同步
+  迁移：关窗=detach（workload 仍 running）、重开=attach 同一 session（无第二次
+  Create）、显式 Stop 后 closed。
+
 移动端 canonical proof 使用配置的部署 origin；平台密钥槽按 origin 隔离。
 过期 Cookie 经同一持久密钥后端重建 session，原生 JSON RPC 经 Capacitor HTTP bridge
 访问严格校验的 Gateway，浏览器仍用标准 fetch。安全存储故障和 Forget 失败不伪报成功；

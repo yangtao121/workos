@@ -20,6 +20,7 @@ import type { WindowState, WorkOSWindow } from "@workos/window-manager";
 
 export type SystemWindowId =
   | "agent-center"
+  | "agent-sessions"
   | "system-monitor"
   | "device-center"
   | "artifact-center"
@@ -324,6 +325,15 @@ export function AdaptiveShell({
                 type="button"
               >
                 Knowledge Center
+              </Button>
+              <Button
+                disabled={!activeProject}
+                onClick={() => {
+                  openSystemWindow("agent-sessions");
+                }}
+                type="button"
+              >
+                Agent Sessions
               </Button>
               <Button
                 disabled={!activeProject}

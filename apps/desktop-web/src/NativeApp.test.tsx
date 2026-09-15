@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { WorkOSClients } from "@workos/agent-sdk";
 import { NativeSessionLease } from "./nativeSession.js";
@@ -25,9 +26,24 @@ function fixture(create = vi.fn(() => Promise.resolve({ session: { id: "session-
     createNativeSession: create,
     connectNativeSession: vi.fn(() => Promise.resolve({ answerSdp: "answer" })),
     closeNativeSession: vi.fn(() => Promise.resolve({})),
+    detachNativeSession: vi.fn(() => Promise.resolve({})),
+  };
+  // Surface continuity is honestly unavailable in the default fixture: the
+  // window falls back to creating its own session.
+  const surfaceContinuity = {
+    listProjectSurfaces: vi.fn<() => Promise<unknown>>(() =>
+      Promise.reject(new Error("unavailable")),
+    ),
+    attachSurface: vi.fn<() => Promise<unknown>>(() => Promise.resolve({})),
+    requestSurfaceControl: vi.fn<() => Promise<unknown>>(() => Promise.resolve({})),
+    stopSurfaceWorkload: vi.fn<() => Promise<unknown>>(() => Promise.resolve({})),
   };
   vi.stubGlobal("RTCPeerConnection", Peer);
-  return { nativeSessions, clients: { nativeSessions } as unknown as WorkOSClients };
+  return {
+    nativeSessions,
+    surfaceContinuity,
+    clients: { nativeSessions, surfaceContinuity } as unknown as WorkOSClients,
+  };
 }
 afterEach(() => {
   cleanup();
@@ -36,7 +52,7 @@ afterEach(() => {
 });
 
 describe("Native window lifecycle and input", () => {
-  it("negotiates SCTP and closes the peer and session on unmount", async () => {
+  it("negotiates SCTP and detaches (never closes) the session on unmount", async () => {
     const f = fixture();
     const view = render(<NativeApp workosClients={f.clients} activeProjectId="project" />);
     await waitFor(() => {
@@ -47,10 +63,11 @@ describe("Native window lifecycle and input", () => {
     view.unmount();
     expect(peer.close).toHaveBeenCalledOnce();
     await waitFor(() => {
-      expect(f.nativeSessions.closeNativeSession).toHaveBeenCalledWith({ sessionId: "session-1" });
+      expect(f.nativeSessions.detachNativeSession).toHaveBeenCalledWith({ sessionId: "session-1" });
     });
+    expect(f.nativeSessions.closeNativeSession).not.toHaveBeenCalled();
   });
-  it("closes a creation response arriving after the window disappeared", async () => {
+  it("detaches a creation response arriving after the window disappeared", async () => {
     let complete!: (value: { session: { id: string } }) => void;
     const f = fixture(
       vi.fn(
@@ -61,13 +78,18 @@ describe("Native window lifecycle and input", () => {
       ),
     );
     const view = render(<NativeApp workosClients={f.clients} activeProjectId="project" />);
+    // The continuity list fails first; the create call only starts after it.
+    await waitFor(() => {
+      expect(f.nativeSessions.createNativeSession).toHaveBeenCalled();
+    });
     view.unmount();
     complete({ session: { id: "late-session" } });
     await waitFor(() => {
-      expect(f.nativeSessions.closeNativeSession).toHaveBeenCalledWith({
+      expect(f.nativeSessions.detachNativeSession).toHaveBeenCalledWith({
         sessionId: "late-session",
       });
     });
+    expect(f.nativeSessions.closeNativeSession).not.toHaveBeenCalled();
     expect(Peer.instances).toHaveLength(0);
   });
   it("keeps one session across a responsive remount and closes it with the window", async () => {
@@ -100,7 +122,57 @@ describe("Native window lifecycle and input", () => {
     view.unmount();
     lease.dispose();
     await waitFor(() => {
-      expect(f.nativeSessions.closeNativeSession).toHaveBeenCalledOnce();
+      expect(f.nativeSessions.detachNativeSession).toHaveBeenCalledOnce();
+    });
+  });
+  it("reattaches the project's live native workload instead of creating one", async () => {
+    const f = fixture();
+    f.surfaceContinuity.listProjectSurfaces = vi.fn<() => Promise<unknown>>(() =>
+      Promise.resolve({
+        workloads: [
+          {
+            workloadId: "workload-1",
+            projectId: "project",
+            appInstanceId: "",
+            renderer: 4,
+            state: "running",
+            displayName: "Native display",
+            attachmentCount: 1,
+          },
+        ],
+      }),
+    );
+    f.surfaceContinuity.attachSurface = vi.fn<() => Promise<unknown>>(() =>
+      Promise.resolve({
+        session: { id: "workload-1" },
+        attachment: { controls: false, surfaceSessionId: "workload-1" },
+      }),
+    );
+    render(<NativeApp workosClients={f.clients} activeProjectId="project" />);
+    await waitFor(() => {
+      expect(f.surfaceContinuity.attachSurface).toHaveBeenCalled();
+    });
+    expect(f.nativeSessions.createNativeSession).not.toHaveBeenCalled();
+    await waitFor(() => {
+      expect(f.nativeSessions.connectNativeSession).toHaveBeenCalledWith(
+        expect.objectContaining({ sessionId: "workload-1" }),
+      );
+    });
+    // Observer attachment: the takeover button is the only way to input.
+    expect(screen.getByTestId("native-take-control")).toBeTruthy();
+    f.surfaceContinuity.requestSurfaceControl = vi.fn<() => Promise<unknown>>(() =>
+      Promise.resolve({ attachment: { controls: true } }),
+    );
+    await userEvent.click(screen.getByTestId("native-take-control"));
+    await waitFor(() => {
+      expect(screen.queryByTestId("native-take-control")).toBeNull();
+    });
+    // The explicit stop affordance is the only stop path.
+    await userEvent.click(screen.getByTestId("native-stop"));
+    await waitFor(() => {
+      expect(f.surfaceContinuity.stopSurfaceWorkload).toHaveBeenCalledWith(
+        expect.objectContaining({ workloadId: "workload-1" }),
+      );
     });
   });
   it("releases a captured pointer outside the video and preserves right-button mapping", async () => {

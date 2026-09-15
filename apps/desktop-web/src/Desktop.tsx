@@ -46,6 +46,7 @@ import {
   type WorkOSWindow,
 } from "@workos/window-manager";
 import { AdaptiveShell, type SystemWindowId } from "./AdaptiveShell.js";
+import { AgentSessionsApp } from "./AgentSessions.js";
 import { ArtifactCenter } from "./ArtifactCenter.js";
 import { ArtifactViewerWindow } from "./ArtifactViewerWindow.js";
 import { AppLibrary, openInstallationSurface } from "./AppLibrary.js";
@@ -55,6 +56,7 @@ import { DeviceCenter } from "./DeviceCenter.js";
 import { HarnessSettings, type CatalogState } from "./HarnessSettings.js";
 import { KnowledgeCenter, type KnowledgeHit } from "./KnowledgeCenter.js";
 import { NotificationCenter } from "./NotificationCenter.js";
+import { RunningSurfaces } from "./RunningSurfaces.js";
 import { SystemMonitor } from "./SystemMonitor.js";
 import { CommandPalette, type PaletteAction } from "./CommandPalette.js";
 import { MissionControl, type MissionControlProject } from "./MissionControl.js";
@@ -148,6 +150,10 @@ export function Desktop({
   const [windows, dispatch] = useReducer(windowReducer, initialWindowState);
   const [appActivation, setAppActivation] = useState<{ id: string; sequence: number }>();
   const [agentView, setAgentView] = useState<AgentView>("tasks");
+  // The Agent Sessions window's selected session (B05): held here so the
+  // responsive breakpoint crossing — which remounts window bodies — keeps
+  // the session the user was reading instead of snapping back to the list.
+  const [agentSessionViewId, setAgentSessionViewId] = useState<string>();
   // The owner notification projection (ADR-0014): an in-memory, discardable
   // projection reconciled from Core authority. The cursor and facts stay
   // here — never in URLs, DOM attributes, or storage.
@@ -280,6 +286,7 @@ export function Desktop({
   useEffect(() => {
     setContextChips([]);
     setContextHint(undefined);
+    setAgentSessionViewId(undefined);
   }, [activeProjectId]);
   useEffect(() => {
     if (!activeProjectId) return;
@@ -647,6 +654,31 @@ export function Desktop({
     recordLayout((state) => ({ ...state, activeSystemWindow: "native" }));
   }, [activeProjectId, recordLayout]);
 
+  // Agent Sessions (B05): a normal, closable work window — not a permanent
+  // sidebar. Closing it never touches the server-side session lifecycle;
+  // the window remounts per project and refetches on reopen.
+  const openAgentSessions = useCallback(() => {
+    if (!activeProjectId) return;
+    if (adaptive) {
+      setAppActivation((current) => ({
+        id: "agent-sessions",
+        sequence: (current?.sequence ?? 0) + 1,
+      }));
+    }
+    dispatch({
+      type: "open",
+      window: {
+        id: "agent-sessions",
+        appId: "agent-sessions",
+        title: "Agent Sessions",
+        kind: "agent-sessions",
+        rect: fitRect({ x: 240, y: 88, width: 760, height: 580 }, workArea()),
+        mode: "normal",
+      },
+    });
+    recordLayout((state) => ({ ...state, activeSystemWindow: "agent-sessions" }));
+  }, [activeProjectId, adaptive, recordLayout, workArea]);
+
   // Opening one artifact opens (or focuses) exactly one viewer window keyed
   // on the artifact id. The window fetches authoritative content itself; a
   // foreign or vanished reference renders the fixed unavailable verdict.
@@ -866,7 +898,8 @@ export function Desktop({
         target.kind === "system-monitor" ||
         target.kind === "device-center" ||
         target.kind === "artifact-center" ||
-        target.kind === "agent-center"
+        target.kind === "agent-center" ||
+        target.kind === "agent-sessions"
       ) {
         recordLayout((state) => ({
           ...state,
@@ -979,12 +1012,14 @@ export function Desktop({
       else if (id === "device-center") openDeviceCenter();
       else if (id === "artifact-center") openArtifactCenter();
       else if (id === "knowledge-center") openKnowledgeCenter();
+      else if (id === "agent-sessions") openAgentSessions();
       else openNotificationCenter();
       const existing = windows.windows.some((item) => item.id === id);
       if (existing) dispatch({ type: "focus", id });
       recordLayout((state) => ({ ...state, activeSystemWindow: id }));
     },
     [
+      openAgentSessions,
       openArtifactCenter,
       openDeviceCenter,
       openKnowledgeCenter,
@@ -1373,6 +1408,14 @@ export function Desktop({
       },
     },
     {
+      id: "agent-sessions",
+      label: "Agent Sessions",
+      hint: "Continue work in persistent sessions",
+      icon: "agent",
+      available: !!activeProjectId,
+      open: openAgentSessions,
+    },
+    {
       id: "files",
       label: "Files",
       hint: "Explore your workspace",
@@ -1723,7 +1766,27 @@ export function Desktop({
         onCreateProject={async (name) => ((await createProjectNamed(name)) ? "ok" : "stale")}
       />
     ) : windowState.kind === "home" ? (
-      <HomeApp apps={systemApps.filter((app) => app.id !== "home")} />
+      <HomeApp apps={systemApps.filter((app) => app.id !== "home")}>
+        <RunningSurfaces
+          projectId={activeProjectId}
+          workosClients={workosClients}
+          onOpenTerminal={openTerminal}
+          onOpenNative={openNative}
+          onOpenAppInstance={openAdaptiveAppInstance}
+        />
+      </HomeApp>
+    ) : windowState.kind === "agent-sessions" ? (
+      activeProject ? (
+        <AgentSessionsApp
+          key={activeProject.id}
+          projectId={activeProject.id}
+          workosClients={workosClients}
+          selectedSessionId={agentSessionViewId}
+          onSelectSession={setAgentSessionViewId}
+        />
+      ) : (
+        <p className="empty-state">Create a project to start an agent session.</p>
+      )
     ) : windowState.kind === "files" ? (
       activeProject ? (
         <FilesApp

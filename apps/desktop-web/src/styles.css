@@ -2788,3 +2788,308 @@ svg {
   font-size: 12px;
   color: #9aa7b4;
 }
+
+/* Agent Sessions window (B05, ADR-0030): a normal work window listing the
+   project's persistent harness sessions and running one selected session. */
+.agent-sessions-app {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  padding: 20px 24px;
+  overflow: hidden;
+}
+.agent-sessions-app .app-heading {
+  margin-bottom: 18px;
+}
+.session-list-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 12px;
+}
+.session-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  overflow: auto;
+  min-height: 0;
+}
+.session-entry {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #1c2431;
+  text-align: left;
+}
+.session-entry:hover {
+  border-color: #5777a7;
+}
+.session-entry-title {
+  font-size: 13px;
+  font-weight: 550;
+  overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.session-entry-facts,
+.session-facts,
+.running-app-facts {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--muted);
+  font-size: 11px;
+  flex-wrap: wrap;
+}
+.session-state-chip {
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #a9c4ff;
+  background: #2a3953;
+}
+.session-state-chip[data-state="closed"],
+.session-state-chip[data-state="stopped"] {
+  color: #d8dee7;
+  background: #333c47;
+}
+.session-state-chip[data-state="running"] {
+  color: #8fd6a0;
+  background: #1f3a2a;
+}
+.session-state-chip[data-state="queued"] {
+  color: #efbd85;
+  background: #3a2f1f;
+}
+.session-view {
+  gap: 10px;
+}
+.session-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--border);
+}
+.session-header-actions {
+  display: flex;
+  gap: 8px;
+  margin-left: auto;
+  flex-wrap: wrap;
+}
+.session-back {
+  padding: 6px 12px;
+}
+.sessions-verdict,
+.session-notice {
+  margin: 0;
+  font-size: 12px;
+  color: #efbd85;
+}
+.session-notice {
+  color: #9aa7b4;
+}
+.session-transcript {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding-right: 4px;
+}
+.session-inputs {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.session-input {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: #1c2431;
+}
+.session-input[data-input-state="running"] {
+  border-color: #2f5c3f;
+}
+.session-input[data-input-state="failed"] {
+  border-color: #6b3a3a;
+}
+.session-input-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+.session-input-text {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+.session-input-state {
+  flex-shrink: 0;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.session-input-summary {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.session-input-summary.failure {
+  color: #e08d8d;
+}
+.session-input-retry {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: #e08d8d;
+  font-size: 12px;
+  flex-wrap: wrap;
+}
+.session-task-timeline {
+  margin-top: 4px;
+  border-top: 1px dashed var(--border);
+  padding-top: 8px;
+}
+.session-composer {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: end;
+  gap: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+}
+.session-composer textarea {
+  min-height: 64px;
+  resize: vertical;
+  color: #eef3fb;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 13px;
+  background: rgba(0, 0, 0, 0.18);
+  padding: 12px;
+  outline: none;
+}
+.session-queue-hint {
+  grid-column: 1 / -1;
+  margin: 0;
+  color: #efbd85;
+  font-size: 12px;
+}
+@media (max-width: 520px) {
+  .session-header-actions {
+    margin-left: 0;
+    width: 100%;
+  }
+  .session-header-actions .workos-button {
+    flex: 1;
+  }
+  .session-composer {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Terminal / Native explicit stop + single-controller takeover controls
+   (B08): window close detaches; these are the only stop affordances. */
+.terminal-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 2px 4px 6px;
+  font-size: 12px;
+  color: #9aa7b4;
+  flex-wrap: wrap;
+}
+.terminal-toolbar .workos-button,
+.native-toolbar .workos-button {
+  padding: 4px 10px;
+  font-size: 11px;
+}
+.terminal-toolbar-state {
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+.terminal-control-hint,
+.native-control-hint {
+  font-size: 11px;
+  color: #efbd85;
+}
+
+/* Running apps (B08): the server-derived live workload list on Home. */
+.running-apps {
+  margin-top: 28px;
+  padding-top: 18px;
+  border-top: 1px solid var(--border);
+}
+.running-apps-heading h2 {
+  margin: 0 0 4px;
+  font-size: 15px;
+  font-weight: 550;
+  letter-spacing: -0.02em;
+}
+.running-apps-heading span {
+  color: var(--muted);
+  font-size: 12px;
+}
+.running-apps-list {
+  list-style: none;
+  margin: 14px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.running-app-entry {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #1c2431;
+  flex-wrap: wrap;
+}
+.running-app-name {
+  font-size: 13px;
+  font-weight: 550;
+}
+.running-app-facts {
+  gap: 8px;
+}
+.running-app-actions {
+  display: flex;
+  gap: 8px;
+  margin-left: auto;
+}
+.running-app-actions .workos-button {
+  padding: 4px 12px;
+  font-size: 11px;
+}
+.running-apps-note {
+  margin: 12px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+}

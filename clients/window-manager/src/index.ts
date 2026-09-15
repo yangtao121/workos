@@ -18,6 +18,7 @@ export type WindowMode =
 // artifact-center/artifact-viewer windows render read-only project reviews.
 export type WindowKind =
   | "agent-center"
+  | "agent-sessions"
   | "app-surface"
   | "system-monitor"
   | "device-center"

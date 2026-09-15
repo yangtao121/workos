@@ -1164,3 +1164,26 @@ test-native-surface:
 .PHONY: test-surface-continuity
 test-surface-continuity:
 	@set -eu; sh tools/surface-continuity/gate.sh
+
+# The V2 development journey gate (ADR-0030 B05/B08): the real desktop Agent
+# Sessions window runs the deterministic fake-provider loop end to end on
+# the shared compose stack — create, submit, visible completion, refresh
+# resume, second input — plus the busy-state UI contract (running cancel
+# action distinct from closing, queued inputs). WORKOS_CAPTURE_DIR adds the
+# task's visual evidence capture (see capture-v2-development-journey).
+.PHONY: test-v2-development-journey
+test-v2-development-journey:
+	@set -eu; sh tools/v2-development-journey/gate.sh
+
+# Visual evidence capture for the V2 agent workspace slice: runs the same
+# gate with WORKOS_CAPTURE_DIR pointing at the task's docs/ui folder, then
+# updates the current/ baseline from the captured after/ set.
+.PHONY: capture-v2-development-journey
+capture-v2-development-journey:
+	@set -eu; \
+	capture="docs/ui/desktop-web/changes/20260915-v2-agent-workspace-ui/after"; \
+	mkdir -p "$$capture"; \
+	WORKOS_CAPTURE_DIR="$(CURDIR)/$$capture" sh tools/v2-development-journey/gate.sh; \
+	for frame in "$$capture"/*.png; do \
+		cp "$$frame" "docs/ui/desktop-web/current/$$(basename "$$frame")"; \
+	done

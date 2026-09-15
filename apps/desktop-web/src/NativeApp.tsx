@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { NativeSessionLease } from "./nativeSession.js";
 import type { NativeInputEvent } from "@workos/protocol";
 import type { WorkOSClients } from "@workos/agent-sdk";
+import { Button } from "@workos/ui-kit";
 
 // NativeApp consumes the virtual-display native runner (ADR-0029): one
 // owner-scoped WebRTC session per window. The video track renders the real
@@ -16,10 +17,14 @@ export function NativeApp(props: {
   const sessionLease = props.sessionLease ?? ownLease;
   const [status, setStatus] = useState("connecting");
   const [verdict, setVerdict] = useState("");
+  const [controls, setControls] = useState(true);
+  const [stopping, setStopping] = useState(false);
   const clients = props.workosClients;
   const projectId = props.activeProjectId ?? "";
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const channelRef = useRef<RTCDataChannel | null>(null);
+  const controlsRef = useRef(true);
+  const handleRef = useRef<ReturnType<NativeSessionLease["acquire"]> | undefined>(undefined);
   const pointerStampRef = useRef(0);
 
   useEffect(() => {
@@ -27,6 +32,7 @@ export function NativeApp(props: {
     let disposed = false;
     const isDisposed = () => disposed;
     const lease = sessionLease.acquire(clients, projectId);
+    handleRef.current = lease;
     let session = "";
     let renewal: number | undefined;
     let peer: RTCPeerConnection | undefined;
@@ -40,6 +46,8 @@ export function NativeApp(props: {
     };
     setStatus("connecting");
     setVerdict("");
+    setControls(true);
+    controlsRef.current = true;
     const run = async () => {
       try {
         session = await lease.session;
@@ -48,6 +56,10 @@ export function NativeApp(props: {
           return;
         }
         if (!session) throw new Error("missing native session");
+        const held = await lease.controls.catch(() => true);
+        if (isDisposed()) return;
+        controlsRef.current = held;
+        setControls(held);
         const renew = async () => {
           if (isDisposed()) return;
           setStatus("connecting");
@@ -120,12 +132,45 @@ export function NativeApp(props: {
 
   // The flat scalar payload follows NativeInputEvent protobuf JSON. Derive its
   // fields from the generated contract instead of maintaining a second DTO.
+  // Input stays disabled until this device holds the single-controller lease.
   const sendInput = (payload: Partial<Omit<NativeInputEvent, "$typeName" | "$unknown">>) => {
+    if (!controlsRef.current) return;
     const channel = channelRef.current;
     if (channel && channel.readyState === "open") {
       if (channel.bufferedAmount > 64 * 1024) return;
       channel.send(JSON.stringify(payload));
     }
+  };
+
+  const takeControl = () => {
+    const handle = handleRef.current;
+    if (!handle) return;
+    void handle
+      .requestControl()
+      .then((held) => {
+        controlsRef.current = held;
+        setControls(held);
+      })
+      .catch(() => undefined);
+  };
+
+  const stopWorkload = () => {
+    if (stopping) return;
+    const handle = handleRef.current;
+    if (!handle) return;
+    setStopping(true);
+    void handle
+      .stop()
+      .then(() => {
+        setStatus("ended");
+        setVerdict("The native display was stopped.");
+      })
+      .catch(() => {
+        setVerdict("The native display could not be stopped. Try again.");
+      })
+      .finally(() => {
+        setStopping(false);
+      });
   };
 
   const onKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
@@ -223,6 +268,27 @@ export function NativeApp(props: {
     <div className="native-app" data-testid="native-app">
       <div className="native-toolbar">
         <span data-testid="native-status">{status}</span>
+        {!controls && status !== "ended" ? (
+          <Button data-testid="native-take-control" onClick={takeControl} type="button">
+            Take control
+          </Button>
+        ) : null}
+        {status !== "ended" && status !== "unavailable" ? (
+          <Button
+            className="native-stop"
+            data-testid="native-stop"
+            disabled={stopping}
+            onClick={stopWorkload}
+            type="button"
+          >
+            {stopping ? "Stopping…" : "Stop"}
+          </Button>
+        ) : null}
+        {!controls && status !== "ended" && status !== "unavailable" ? (
+          <span className="native-control-hint" role="status">
+            Input is disabled: another device holds control.
+          </span>
+        ) : null}
       </div>
       {verdict ? (
         <p className="native-verdict" data-testid="native-verdict">
