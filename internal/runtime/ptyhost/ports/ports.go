@@ -17,6 +17,10 @@ type SessionStore interface {
 	// ListProjectSessions returns the owner's non-terminal sessions of one
 	// project: the surface continuity discovery view (ADR-0031).
 	ListProjectSessions(ctx context.Context, ownerUserID, projectID string) ([]domain.Session, error)
+	// ListActive returns every non-terminal row across owners: the startup
+	// reconcile input. A row without a live terminal is dead by definition —
+	// the runtime host owns the children (Pdeathsig + PID namespace).
+	ListActive(ctx context.Context) ([]domain.Session, error)
 	UpdateState(ctx context.Context, ownerUserID, sessionID string, state domain.State, now time.Time) error
 	CloseSession(ctx context.Context, ownerUserID, sessionID string, state domain.State, now time.Time) error
 	ExpireIdle(ctx context.Context, now time.Time) ([]string, error)

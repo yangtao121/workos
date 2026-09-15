@@ -10,7 +10,7 @@
 1. **运行与访问分离。** App 是软件及配置，Workload 是实际运行实例（带服务端派生
    `generation`），Surface/attachment 是设备访问关系（migration
    `workos_runtime.surface_attachments`）。新增 `workos.surface.v1.
-   SurfaceContinuityService`：`ListProjectSurfaces`（发现运行实例）、`AttachSurface`
+SurfaceContinuityService`：`ListProjectSurfaces`（发现运行实例）、`AttachSurface`
    （附着既有实例，不重复 Create 程序）、`DetachSurface`（仅释放本设备连接资源）、
    `RequestSurfaceControl`（显式接管）、`GetSurfaceControl`、`StopSurfaceWorkload`、
    `RestartSurfaceWorkload`（新 generation）。

@@ -1577,6 +1577,52 @@ Native 的创建、连接、关闭和 sweep 在 runtime-host 内串行协调；�
 排队输入不会跨续期复用。桌面正确协商 SCTP、映射 Ctrl/指针并回收迟到会话。
 详见 ADR-0029 修正段及 nativehost 的应用层/引擎回归测试。
 
+## Project 工作区注册与共享执行（ADR-0030 B02，2026-09-15）
+
+- 契约：`project/v1/workspace.proto` `ProjectWorkspaceService`（Core）——
+  BindWorkspace/Get/ListProjectWorkspaces/UpdateWorkspaceAccess/ArchiveWorkspace，
+  binding 带单调 revision 与 read_only；客户端只引用操作员注册的
+  workspace_source_id，绝不提交宿主路径。migration 058（Core 拥有）。
+- runtime 侧 `internal/runtime/workspacehost/`：私有 WorkspaceHostService
+  报告可用 sources；操作员用 `WORKOS_RUNTIME_WORKSPACE_MOUNTS`
+  （`owner:project:/abs/path[:ro]` 分号分隔，非绝对路径/含 `:` 拒绝）注册。
+  PTY/Native 引擎启动时绑定该工作目录（请求幂等摘要含目录，变更即新会话）。
+- 边界：只读绑定写入失败；归档/revision 变更阻止旧授权；openat2 内核级
+  越界/符号链接拒绝；跨 Project 隔离（store_linux_test + workspacehost 单测）。
+- `make test-workspace-execution`：真实 git 树上核对 Terminal pwd/git HEAD、
+  host 写入 shell 可读、shell 写入文件界面可见、归档后无 active 绑定。
+  已知限制：runtime 容器无 git 二进制（读取 `.git` 文件验证 HEAD）。
+
+## DeepSeek 原生持续会话与 Core 会话服务（ADR-0030 B03/B04，2026-09-15）
+
+- 契约：`agent/v1/session.proto` `AgentSessionService`（Gateway 路由 + owner
+  身份）：Create/List(include_closed)/Get/SubmitSessionInput/GetSessionInput/
+  ListSessionInputs/CancelSessionExecution/CloseSession/WatchSessionEvents。
+  输入按 (session, client_input_id) 持久幂等，同 key 异文 = Aborted；忙时
+  排队按持久顺序提交；migration 057（Core 拥有）。终态钩子把结果摘要写回
+  输入行（FinishTaskRun）。
+- DeepSeek adapter `sessions.go`：`SessionManager` 每 Core 会话 id 持有一个
+  常驻官方 runtime 子进程（无 wire resume，连续性 = 进程连续性）。生成的
+  cordis 组合 = 官方 26 行 base + 1 行 configuration-relative `workos-tools`
+  插件（spawn 时拷入会话私有 stateDir；缺文件 fail closed）。凭据指纹
+  （lease secret SHA-256）或 owner/project 变化即杀组重生；轮错误/超时杀组，
+  下一轮重生。会话轮映射 ToolCallStarted/Completed（结构化输入/输出）。
+- B04 只读 WorkOS 工具：`deploy/harness/workos-tools.mjs` 零依赖插件注册
+  `workos_project_info` / `workos_list_artifacts`；owner/project 由 worker 从
+  task 事实派生注入子环境（WORKOS*TOOL*\*），模型不可提交；缺事实时工具
+  返回 `Error:` 结果（fail closed），不崩溃。审批路径不支持：审批类事件
+  fail closed（非重试协议错误），composition 保持 `policy: ask`
+  （`TestSessionApprovalEventsFailClosed`）。
+- 环境变量：`WORKOS_HARNESS_SESSION_STATE_ROOT`（默认
+  `/var/lib/workos/harness-sessions`，0700；每会话 home/state/ws/persistence/
+  cordis.yml/runtime.stderr）。子环境最小化：key 只进
+  `DEEPSEEK_API_KEY`，bash 子进程 env 无 key（官方 env 隔离 + WorkOS 进程
+  边界；官方 bash-local 不 confine —— B00 记录）。
+- `make test-harness-sessions`：官方 runtime + 本地 API fixture 三轮（真实
+  bash 写文件、has_turn1 上下文延续、workos_project_info 真实项目名）+
+  replay/冲突/关闭语义。真实模型验收 A15 为独立操作员门
+  （`make test-real-model-acceptance`）。
+
 ## Surface 连续性与单控制器（ADR-0031，B06/B07，2026-09-15）
 
 - `internal/runtime/surface/`：runtime-host 拥有的设备访问关系与控制权事实。
@@ -1599,13 +1645,20 @@ Native 的创建、连接、关闭和 sweep 在 runtime-host 内串行协调；�
   GuardInput，被接管设备的排队输入同样失效。无租约的直连会话保持 owner-scoped。
 - 30s sweep：过期控制租约与终态 workload 的 attachment 标记 expired；策略保持
   30 分钟单上限，无无限保活。
+- 重启 reconcile（B09 A13）：nativehost 沿用启动 sweep（无活 display 的持久行
+  → failed）；ptyhost 新增启动 `Reconcile`（`ListActivePtySessions` +
+  无活 terminal 的非终态行 → failed）——runtime-host 容器死亡时 PTY 子进程
+  随之死亡（setsid+Pdeathsig），重启后 ListProjectSurfaces 不再把死程序列为
+  running，attach 如实 FailedPrecondition，死会话 IO = NotFound。
 - 媒体候选：WORKOS_RUNTIME_NATIVE_CANDIDATES=loopback（默认，单测锁定过滤不变）
   或 lan（移除 IsLoopback 过滤且不强插 loopback 候选；需 host 网络；无 STUN/TURN）；
   EngineFacts 如实报告候选范围。
 - `make test-surface-continuity`：仓库级真实 Postgres 状态机（含并发接管收敛）+
   E2E（detach 后输出持续累积、二次 attach+显式接管恢复输入、双设备数据路径
-  PermissionDenied/接管矩阵、sweep 过期、stop 回收）。桌面窗口关闭→Detach 的迁移
-  属 B05/B08。
+  PermissionDenied/接管矩阵、sweep 过期、stop 回收）+ A13 重启相（prepare 固定
+  一个 live workload → 停/启 runtime 容器 → verify 断言不再列为 running、控制
+  事实 not-running、attach FailedPrecondition、死会话 IO NotFound）。桌面窗口
+  关闭→Detach 的迁移属 B05/B08。
 
 ## Agent 会话窗口与桌面接续入口（ADR-0030 B05 / ADR-0031 B08，2026-09-15）
 
@@ -1650,6 +1703,32 @@ Native 的创建、连接、关闭和 sweep 在 runtime-host 内串行协调；�
   证据采集（WORKOS_CAPTURE_DIR）。native-surface-desktop.spec.ts 的关闭断言同步
   迁移：关窗=detach（workload 仍 running）、重开=attach 同一 session（无第二次
   Create）、显式 Stop 后 closed。
+
+## B09 收口：重启恢复、诚实不支持与操作员门（2026-09-15）
+
+- **A05 重启恢复**：`tools/harness-sessions/gate.sh` 追加 restart 相——phase 1
+  在 stdout 打印 `WORKOS_HARNESS_SESSION_GATE_SESSION_ID/PROJECT_ID`，
+  gate 捕获后 `docker compose restart workos-core harness-host`，等待
+  AgentSessionService 就绪，再跑
+  `TestHarnessSessionRestartRecovery`（同 build tag）：include_closed 列出已
+  关闭会话、ListSessionInputs 恰为三轮且各保持原 task id 与 COMPLETED、
+  GetTask/WatchTaskEvents 可重放、WatchSessionEvents 生命周期完整（每输入
+  accepted/dispatched/terminal 各一次 + CLOSED 状态变更）、关闭后输入仍
+  FailedPrecondition、**新会话执行全新原生轮**（fixture 答
+  `has_turn1=false total=1` 证明重启后的栈真的在跑）。
+- **A09 审批诚实不支持**：见上文 B03/B04 节——审批类 session 事件 fail closed
+  （`TestSessionApprovalEventsFailClosed`：非重试协议错误、零事件、
+  composition `policy: ask`）。pinned runtime 的 sdk wire 没有审批响应方法。
+- **A13 重启 reconcile**：见上文 Surface 节（ptyhost 启动 Reconcile + 门禁
+  prepare/verify 两相）。
+- **A15/A16 操作员门**：`make test-real-model-acceptance`
+  （`tools/real-model-acceptance/gate.sh`，build tag `realmodelgate`）——真实
+  DeepSeek API 两轮 + usage + 真实工具写；缺 `WORKOS_REAL_DEEPSEEK=1`、缺
+  vault ACTIVE 凭据或指向回环 fixture 时响亮 BLOCKED，绝不静默通过。
+  A16 runbook：`docs/runbooks/lan-second-device.md`（第二台物理设备配对 →
+  Running apps → Take control → A 输入被拒的证据模板）。
+- **A14 回归**：workspace-execution / harness-sessions / surface-continuity /
+  terminal-sessions 四门禁在 B09 变更后全量重跑（结果记入任务记录）。
 
 移动端 canonical proof 使用配置的部署 origin；平台密钥槽按 origin 隔离。
 过期 Cookie 经同一持久密钥后端重建 session，原生 JSON RPC 经 Capacitor HTTP bridge

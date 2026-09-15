@@ -40,7 +40,7 @@
 7. 新增 **WorkspaceBinding**（`workos.project.v1.ProjectWorkspaceService`，migration
    `workos_core.project_workspace_bindings`）：Core 管归属与授权（source 引用、读写
    模式、revision、归档）；runtime-host 管实际目录装配（`workos.workload.v1.
-   WorkspaceHostService`，私有，不经 Gateway）。浏览器/Provider 不能自选宿主路径；
+WorkspaceHostService`，私有，不经 Gateway）。浏览器/Provider 不能自选宿主路径；
    workspace source 由操作员在 runtime-host 部署配置注册，`BindWorkspace` 只能引用
    已注册 source。首期一个 Project 一个 active binding。
 8. 每次执行解析固定 workspace revision 与读写模式；只读 binding 拒绝写；归档/变更

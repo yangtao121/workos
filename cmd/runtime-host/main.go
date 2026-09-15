@@ -379,6 +379,13 @@ func run(logger *slog.Logger) error {
 		if workspaceHost != nil {
 			ptyService.WithWorkspace(workspaceHost)
 		}
+		// Startup reconcile (A13): finalize durable rows whose child died
+		// with a previous runtime host (setsid+Pdeathsig) before serving,
+		// so the continuity discovery view never reports a dead program as
+		// running. Mirrors the native runner's startup sweep.
+		if err := ptyService.Reconcile(ctx); err != nil {
+			return err
+		}
 		ptyPath, ptyHandler := ptyhosttransport.NewPtyHandler(ptyService)
 		mux.Handle(ptyPath, identity.Middleware(ptyHandler))
 		ptyStop := make(chan struct{})

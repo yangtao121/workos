@@ -287,3 +287,33 @@ func (s *Service) Sweep(ctx context.Context) error {
 	}
 	return nil
 }
+
+// Reconcile finalizes durable rows whose process is gone (A13): the runtime
+// host owns every PTY child (setsid + Pdeathsig inside its PID namespace),
+// so after a host restart any non-terminal row without a live in-memory
+// terminal is honestly failed — never listed as running again. It runs at
+// startup before the listener serves traffic, mirroring the native runner's
+// startup sweep; the interactive IO path already refuses such rows (the
+// terminal lookup is NotFound), this makes the discovery view agree.
+func (s *Service) Reconcile(ctx context.Context) error {
+	sessions, err := s.store.ListActive(ctx)
+	if err != nil {
+		return err
+	}
+	for _, session := range sessions {
+		if session.State.Terminal() {
+			continue
+		}
+		s.mu.Lock()
+		terminal := s.terminals[session.SessionID]
+		s.mu.Unlock()
+		if terminal != nil && !terminal.Exited() {
+			continue
+		}
+		s.reap(session.SessionID)
+		if err := s.store.CloseSession(ctx, session.OwnerUserID, session.SessionID, domain.StateFailed, time.Now().UTC()); err != nil {
+			return err
+		}
+	}
+	return nil
+}

@@ -91,6 +91,50 @@ as one `session/prompt` on that child.
 - `Describe()` is unchanged: sessions and tools are not advertised
   capabilities yet (B05/B09 own that once proven end to end).
 
+### Session restart and credential-rotation respawn semantics (B09)
+
+The pinned runtime has no wire-level session resume (the service-layer
+`agents.resume` exists upstream but the sdk-jsonrpc-server of 0.1.1rc1
+dispatches only `initialize` / `session/prompt` / `shutdown`), so session
+continuity is process continuity and restarts are honest:
+
+- **harness-host restart**: every session child dies with the host
+  (process-group kill). WorkOS keeps the durable Core facts (session row,
+  accepted inputs with their task ids and terminal states, lifecycle event
+  log); the native context of unfinished work is NOT resurrected. The next
+  turn on a live session respawns a fresh child over the same per-session
+  state directory (native jsonl persistence and scratch workspace survive
+  on disk), and a brand-new session proves the stack recovered. The
+  `tools/harness-sessions` gate's restart phase asserts exactly this:
+  closed-session history is complete and readable after a
+  workos-core+harness-host restart, inputs keep their recorded task ids and
+  terminal states (no duplicate executions), and a new session executes a
+  fresh native turn (`has_turn1=false total=1`).
+- **Credential rotation**: sessions never cache a key. Each turn's
+  `Ensure` compares the SHA-256 fingerprint of the current lease secret
+  with the child's; a mismatch (rotation, revocation, new lease) plus any
+  owner/project change kills the process group and respawns under the new
+  secret — the previous native context is deliberately lost rather than
+  served under a different credential. Old keys never survive a rotation.
+- **Turn errors**: any mapped protocol/transport error fails the turn and
+  drops the child (the stream position is untrusted); the next `Ensure`
+  respawns. A crash mid-turn leaves results unknown by design — the worker
+  marks the input failed rather than blindly replaying side effects.
+
+### Unsupported approvals fail closed (B09, A09)
+
+The pinned runtime's event vocabulary contains `approval/asked` /
+`approval/decided` (and the ACP-style `session/request_permission`), but its
+sdk server wire exposes **no approval-response method** WorkOS could call,
+and B04's WorkOS toolset is read-only (nothing it registers can trigger an
+escalation). The adapter therefore treats any approval-style session event
+as unsupported: `sessionEventMapper` fails the turn with a non-retryable
+protocol error and emits nothing — never a silent continue that would read
+as an implicit approval. The generated composition keeps the official
+`approval` row at `policy: ask`; WorkOS maps no approval semantics onto the
+canonical protocol in this version. `TestSessionApprovalEventsFailClosed`
+pins all three facts (rejection, no events, `policy: ask`).
+
 ## Read-only WorkOS tools (B04)
 
 The generated session composition appends one configuration-relative row

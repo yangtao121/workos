@@ -1,10 +1,12 @@
 #!/bin/sh
-# The surface continuity gate (ADR-0031, B06/B07): program execution and
-# device access are separate lifecycles on a real stack. One real PTY shell
-# survives detach with output accumulating, an explicit takeover switches the
-# single controller server-side, the PTY data path enforces the control lease
-# for two independent device identities, the bounded sweep expires elapsed
-# attachments, and stop deterministically reaps the program.
+# The surface continuity gate (ADR-0031, B06/B07 + B09 A13): program
+# execution and device access are separate lifecycles on a real stack. One
+# real PTY shell survives detach with output accumulating, an explicit
+# takeover switches the single controller server-side, the PTY data path
+# enforces the control lease for two independent device identities, the
+# bounded sweep expires elapsed attachments, stop deterministically reaps
+# the program, and a runtime-host stop/start proves dead sessions are
+# reconciled to honest terminal states instead of staying "running".
 set -eu
 umask 077
 repo=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
@@ -40,7 +42,7 @@ cleanup() {
     docker compose exec -T postgres dropdb -U workos --force "$database" || result=1
   fi
   docker run --rm -v "$task_dir:/gate" busybox:latest sh -c 'rm -rf /gate/core-execution /gate/harness-execution /gate/vault /gate/run' >/dev/null 2>&1 || true
-  if [ "$result" -eq 0 ]; then printf 'surface-continuity: PASS (detach keeps programs, single controller enforced)\n'; fi
+  if [ "$result" -eq 0 ]; then printf 'surface-continuity: PASS (detach keeps programs, single controller enforced, runtime restart reconciles dead workloads)\n'; fi
   exit "$result"
 }
 trap cleanup EXIT
@@ -66,4 +68,34 @@ wait_ready
 # concurrent-takeover convergence at the repository level.
 docker run --rm --network host --user "$WORKOS_SURFACE_GATE_USER" -e HOME=/tmp -e GOPATH=/tmp/workos-go -e GOMODCACHE=/go/pkg/mod -e GOCACHE=/workspace/tmp/go-build-cache -e GOPROXY=https://goproxy.cn,direct -e WORKOS_SURFACE_CONTINUITY_TEST_DATABASE_URL="$WORKOS_SURFACE_GATE_DATABASE_URL" -v workos-go-cache:/go/pkg/mod -v "$repo:/workspace" -w /workspace golang:1.26.7-bookworm go test -count=1 -run 'TestContinuityStore' ./internal/runtime/surface/adapters/postgres/
 # End-to-end chain through the gateway and the runtime listener.
-docker run --rm --network host --user "$WORKOS_SURFACE_GATE_USER" -e HOME=/tmp -e GOPATH=/tmp/workos-go -e GOMODCACHE=/go/pkg/mod -e GOCACHE=/workspace/tmp/go-build-cache -e GOPROXY=https://goproxy.cn,direct -e WORKOS_SURFACE_GATE_GATEWAY_URL="http://127.0.0.1:$WORKOS_SURFACE_GATE_GATEWAY_PORT" -e WORKOS_SURFACE_GATE_CORE_URL="http://127.0.0.1:$WORKOS_SURFACE_GATE_CORE_PORT" -e WORKOS_SURFACE_GATE_RUNTIME_URL="http://127.0.0.1:$WORKOS_SURFACE_GATE_RUNTIME_PORT" -e WORKOS_SURFACE_GATE_DATABASE_URL="$WORKOS_SURFACE_GATE_DATABASE_URL" -v workos-go-cache:/go/pkg/mod -v "$repo:/workspace" -w /workspace golang:1.26.7-bookworm go test -tags='integration continuitygate' -count=1 -run "^TestSurfaceContinuity$" -v ./tests/integration
+if ! docker run --rm --network host --user "$WORKOS_SURFACE_GATE_USER" -e HOME=/tmp -e GOPATH=/tmp/workos-go -e GOMODCACHE=/go/pkg/mod -e GOCACHE=/workspace/tmp/go-build-cache -e GOPROXY=https://goproxy.cn,direct -e WORKOS_SURFACE_GATE_GATEWAY_URL="http://127.0.0.1:$WORKOS_SURFACE_GATE_GATEWAY_PORT" -e WORKOS_SURFACE_GATE_CORE_URL="http://127.0.0.1:$WORKOS_SURFACE_GATE_CORE_PORT" -e WORKOS_SURFACE_GATE_RUNTIME_URL="http://127.0.0.1:$WORKOS_SURFACE_GATE_RUNTIME_PORT" -e WORKOS_SURFACE_GATE_DATABASE_URL="$WORKOS_SURFACE_GATE_DATABASE_URL" -v workos-go-cache:/go/pkg/mod -v "$repo:/workspace" -w /workspace golang:1.26.7-bookworm go test -tags='integration continuitygate' -count=1 -run "^TestSurfaceContinuity$" -v ./tests/integration > "$task_dir/phase1.log" 2>&1; then
+  cat "$task_dir/phase1.log"
+  exit 1
+fi
+cat "$task_dir/phase1.log"
+
+# A13 restart phase: a live PTY session is created and pinned, then the
+# runtime-host container is stopped and started again. Its child processes
+# die with the container; the startup reconcile must finalize the durable row
+# so ListProjectSurfaces never reports the dead program as running.
+if ! docker run --rm --network host --user "$WORKOS_SURFACE_GATE_USER" -e HOME=/tmp -e GOPATH=/tmp/workos-go -e GOMODCACHE=/go/pkg/mod -e GOCACHE=/workspace/tmp/go-build-cache -e GOPROXY=https://goproxy.cn,direct -e WORKOS_SURFACE_GATE_GATEWAY_URL="http://127.0.0.1:$WORKOS_SURFACE_GATE_GATEWAY_PORT" -e WORKOS_SURFACE_GATE_CORE_URL="http://127.0.0.1:$WORKOS_SURFACE_GATE_CORE_PORT" -e WORKOS_SURFACE_GATE_RUNTIME_URL="http://127.0.0.1:$WORKOS_SURFACE_GATE_RUNTIME_PORT" -e WORKOS_SURFACE_GATE_DATABASE_URL="$WORKOS_SURFACE_GATE_DATABASE_URL" -e WORKOS_SURFACE_GATE_RESTART_PHASE=prepare -v workos-go-cache:/go/pkg/mod -v "$repo:/workspace" -w /workspace golang:1.26.7-bookworm go test -tags='integration continuitygate' -count=1 -run "^TestSurfaceContinuityRestartReconcile$" -v ./tests/integration > "$task_dir/phase2a.log" 2>&1; then
+  cat "$task_dir/phase2a.log"
+  exit 1
+fi
+cat "$task_dir/phase2a.log"
+restart_workload="$(sed -n 's/^WORKOS_SURFACE_GATE_RESTART_WORKLOAD=//p' "$task_dir/phase2a.log" | tail -n 1)"
+restart_project="$(sed -n 's/^WORKOS_SURFACE_GATE_RESTART_PROJECT=//p' "$task_dir/phase2a.log" | tail -n 1)"
+test -n "$restart_workload" || { echo "restart prepare never reported the workload id" >&2; exit 1; }
+test -n "$restart_project" || { echo "restart prepare never reported the project id" >&2; exit 1; }
+compose stop runtime >/dev/null
+compose up -d runtime >/dev/null
+for attempt in $(seq 1 90); do
+  code=$(curl --noproxy '*' --silent --output /dev/null --write-out '%{http_code}' --max-time 2 -H 'Content-Type: application/json' -d '{}' "http://127.0.0.1:$WORKOS_SURFACE_GATE_RUNTIME_PORT/workos.surface.v1.SurfaceContinuityService/ListProjectSurfaces" 2>/dev/null || true)
+  case "$code" in 200|400|401|403|404|409|422|429|500|501|503) break;; esac
+  sleep 1
+done
+if ! docker run --rm --network host --user "$WORKOS_SURFACE_GATE_USER" -e HOME=/tmp -e GOPATH=/tmp/workos-go -e GOMODCACHE=/go/pkg/mod -e GOCACHE=/workspace/tmp/go-build-cache -e GOPROXY=https://goproxy.cn,direct -e WORKOS_SURFACE_GATE_GATEWAY_URL="http://127.0.0.1:$WORKOS_SURFACE_GATE_GATEWAY_PORT" -e WORKOS_SURFACE_GATE_CORE_URL="http://127.0.0.1:$WORKOS_SURFACE_GATE_CORE_PORT" -e WORKOS_SURFACE_GATE_RUNTIME_URL="http://127.0.0.1:$WORKOS_SURFACE_GATE_RUNTIME_PORT" -e WORKOS_SURFACE_GATE_DATABASE_URL="$WORKOS_SURFACE_GATE_DATABASE_URL" -e WORKOS_SURFACE_GATE_RESTART_PHASE=verify -e WORKOS_SURFACE_GATE_RESTART_WORKLOAD="$restart_workload" -e WORKOS_SURFACE_GATE_RESTART_PROJECT="$restart_project" -v workos-go-cache:/go/pkg/mod -v "$repo:/workspace" -w /workspace golang:1.26.7-bookworm go test -tags='integration continuitygate' -count=1 -run "^TestSurfaceContinuityRestartReconcile$" -v ./tests/integration > "$task_dir/phase2b.log" 2>&1; then
+  cat "$task_dir/phase2b.log"
+  exit 1
+fi
+cat "$task_dir/phase2b.log"

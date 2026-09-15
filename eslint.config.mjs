@@ -13,6 +13,10 @@ export default tseslint.config(
       "tmp/**",
       "eslint.config.mjs",
       "tools/**/*.mjs",
+      // The harness plugin ships as a zero-dependency plain-JS file executed
+      // by the vendored DeepSeek runtime outside any TS project (see
+      // internal/harness/adapters/deepseek/README.md).
+      "deploy/**/*.mjs",
     ],
   },
   js.configs.recommended,

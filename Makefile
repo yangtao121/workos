@@ -1141,6 +1141,15 @@ test-terminal-sessions:
 test-harness-sessions:
 	@set -eu; sh tools/harness-sessions/gate.sh
 
+# OPERATOR-GATED (A15): the real DeepSeek API acceptance run. This spends
+# real quota and refuses to start without WORKOS_REAL_DEEPSEEK=1 plus an
+# ACTIVE vault credential; it never runs from the ordinary suite and never
+# silently passes. Preconditions and evidence duties are documented in the
+# script header.
+.PHONY: test-real-model-acceptance
+test-real-model-acceptance:
+	@set -eu; sh tools/real-model-acceptance/gate.sh
+
 # The workspace execution gate (ADR-0030): one real git repository shared by
 # the owner's terminal and the host file view. pwd, git identity, and
 # bidirectional file flow resolve against the real disk tree.

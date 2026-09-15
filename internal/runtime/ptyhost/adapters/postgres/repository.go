@@ -99,6 +99,20 @@ func (r *Repository) ListProjectSessions(ctx context.Context, ownerUserID, proje
 	return sessions, nil
 }
 
+// ListActive returns every non-terminal session row across owners: the
+// startup reconcile input (a dead process must be finalized, never listed).
+func (r *Repository) ListActive(ctx context.Context) ([]domain.Session, error) {
+	rows, err := r.queries.ListActivePtySessions(ctx)
+	if err != nil {
+		return nil, transient(err)
+	}
+	sessions := make([]domain.Session, 0, len(rows))
+	for _, row := range rows {
+		sessions = append(sessions, sessionFromRow(row))
+	}
+	return sessions, nil
+}
+
 func (r *Repository) UpdateState(ctx context.Context, ownerUserID, sessionID string, state domain.State, now time.Time) error {
 	updated, err := r.queries.UpdatePtySessionState(ctx, ptyhostdb.UpdatePtySessionStateParams{
 		OwnerUserID: ownerUserID, SessionID: sessionID, State: string(state), UpdatedAt: now,

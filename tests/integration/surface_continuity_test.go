@@ -379,3 +379,103 @@ func TestSurfaceContinuity(t *testing.T) {
 }
 
 var _ = identity.UserHeader
+
+// TestSurfaceContinuityRestartReconcile proves A13: a previously-live session
+// whose process died with the runtime-host container is finalized honestly
+// at startup — after the gate stops and restarts the runtime, the workload is
+// no longer listed as running, control facts report not-running, attach
+// fails FailedPrecondition with the true state, and the dead session's IO
+// path is NotFound. The gate drives the two phases through
+// WORKOS_SURFACE_GATE_RESTART_PHASE (prepare creates and pins the workload,
+// verify asserts the reconciled facts); without the flag the test skips.
+func TestSurfaceContinuityRestartReconcile(t *testing.T) {
+	phase := os.Getenv("WORKOS_SURFACE_GATE_RESTART_PHASE")
+	if phase == "" {
+		t.Skip("run through tools/surface-continuity/gate.sh restart phase (WORKOS_SURFACE_GATE_RESTART_PHASE)")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
+	defer cancel()
+	client := &http.Client{Transport: &http.Transport{Proxy: nil}, Timeout: 30 * time.Second}
+	t.Cleanup(client.CloseIdleConnections)
+	gatewayURL := surfaceGateEnv(t, "GATEWAY_URL")
+
+	pty := surfacev1connect.NewPtySessionServiceClient(client, gatewayURL)
+	continuity := surfacev1connect.NewSurfaceContinuityServiceClient(client, gatewayURL)
+	projects := projectv1connect.NewProjectServiceClient(client, gatewayURL)
+
+	owner := "01999999-9999-7999-8999-000000000b01"
+	gatewayDevice := "01999999-9999-7999-8999-000000000b02"
+
+	switch phase {
+	case "prepare":
+		created, err := projects.CreateProject(ctx, connect.NewRequest(&projectv1.CreateProjectRequest{
+			IdempotencyKey: fmt.Sprintf("continuity-restart-%d", time.Now().UnixNano()), Name: "Continuity Restart Fixture",
+		}))
+		if err != nil {
+			t.Fatalf("create project: %v", err)
+		}
+		projectID := created.Msg.GetProject().GetId()
+		session, err := pty.CreatePtySession(ctx, continuityRequest(&surfacev1.CreatePtySessionRequest{
+			IdempotencyKey: fmt.Sprintf("surface-restart-%d", time.Now().UnixNano()),
+			ProjectId:      projectID, Columns: 90, Rows: 26,
+		}, owner, gatewayDevice))
+		if err != nil || session.Msg.GetSession().GetState() != "running" {
+			t.Fatalf("create pty: %v %+v", err, session.Msg.GetSession())
+		}
+		workloadID := session.Msg.GetSession().GetId()
+		listed, err := continuity.ListProjectSurfaces(ctx, continuityRequest(&surfacev1.ListProjectSurfacesRequest{ProjectId: projectID}, owner, gatewayDevice))
+		if err != nil {
+			t.Fatalf("list before restart: %v", err)
+		}
+		found := false
+		for _, entry := range listed.Msg.GetWorkloads() {
+			if entry.GetWorkloadId() == workloadID {
+				found = entry.GetState() == "running"
+			}
+		}
+		if !found {
+			t.Fatalf("workload %s not listed running before the restart", workloadID)
+		}
+		attached, err := continuity.AttachSurface(ctx, continuityRequest(&surfacev1.AttachSurfaceRequest{
+			WorkloadId: workloadID, IdempotencyKey: "restart-attach",
+		}, owner, gatewayDevice))
+		if err != nil || !attached.Msg.GetAttachment().GetControls() || attached.Msg.GetAttachment().GetControlGeneration() != 1 {
+			t.Fatalf("attach before restart: %v %+v", err, attached.Msg.GetAttachment())
+		}
+		// The session is deliberately left running: its process must die with
+		// the runtime container the gate stops next. No close/stop cleanup.
+		fmt.Printf("WORKOS_SURFACE_GATE_RESTART_WORKLOAD=%s\n", workloadID)
+		fmt.Printf("WORKOS_SURFACE_GATE_RESTART_PROJECT=%s\n", projectID)
+	case "verify":
+		workloadID := surfaceGateEnv(t, "RESTART_WORKLOAD")
+		projectID := surfaceGateEnv(t, "RESTART_PROJECT")
+		listed, err := continuity.ListProjectSurfaces(ctx, continuityRequest(&surfacev1.ListProjectSurfacesRequest{ProjectId: projectID}, owner, gatewayDevice))
+		if err != nil {
+			t.Fatalf("list after restart: %v", err)
+		}
+		for _, entry := range listed.Msg.GetWorkloads() {
+			if entry.GetWorkloadId() == workloadID {
+				t.Fatalf("workload %s whose process died with the runtime is still listed (state %s)", workloadID, entry.GetState())
+			}
+		}
+		control, err := continuity.GetSurfaceControl(ctx, continuityRequest(&surfacev1.GetSurfaceControlRequest{WorkloadId: workloadID}, owner, gatewayDevice))
+		if err != nil {
+			t.Fatalf("control facts after restart: %v", err)
+		}
+		if control.Msg.GetWorkloadRunning() {
+			t.Fatal("control facts still claim the dead workload is running")
+		}
+		if _, err := continuity.AttachSurface(ctx, continuityRequest(&surfacev1.AttachSurfaceRequest{
+			WorkloadId: workloadID, IdempotencyKey: "restart-attach-after",
+		}, owner, gatewayDevice)); connect.CodeOf(err) != connect.CodeFailedPrecondition {
+			t.Fatalf("attach after the runtime restart must fail with the honest terminal state, got: %v", err)
+		}
+		if _, err := pty.WritePtySession(ctx, continuityRequest(&surfacev1.WritePtySessionRequest{
+			SessionId: workloadID, Input: []byte("echo dead\n"),
+		}, owner, gatewayDevice)); connect.CodeOf(err) != connect.CodeNotFound {
+			t.Fatalf("write to the dead session must be NotFound, got: %v", err)
+		}
+	default:
+		t.Fatalf("unknown WORKOS_SURFACE_GATE_RESTART_PHASE %q", phase)
+	}
+}

@@ -99,6 +99,11 @@ func TestHarnessContinuousSessions(t *testing.T) {
 		t.Fatalf("create session: %v", err)
 	}
 	sessionID := created.Msg.GetSession().GetId()
+	// The gate greps these markers off stdout to drive the A05 restart
+	// phase: the recovery test re-reads exactly this session's facts after
+	// workos-core and harness-host restart.
+	fmt.Printf("WORKOS_HARNESS_SESSION_GATE_SESSION_ID=%s\n", sessionID)
+	fmt.Printf("WORKOS_HARNESS_SESSION_GATE_PROJECT_ID=%s\n", projectID)
 	defer func() {
 		closeRequest := connect.NewRequest(&agentv1.CloseSessionRequest{SessionId: sessionID})
 		closeRequest.Header().Set(identity.UserHeader, owner)
