@@ -24,6 +24,7 @@ type Service struct {
 	generator ids.Generator
 	logger    *slog.Logger
 
+	opMu     sync.Mutex
 	mu       sync.Mutex
 	displays map[string]ports.Display
 	releases map[string]func()
@@ -53,6 +54,8 @@ func requestDigest(projectID string, width, height int32) string {
 
 // Create admits one durable session per owner/key and starts its display.
 func (s *Service) Create(ctx context.Context, ownerUserID, projectID, idempotencyKey string, width, height int32) (domain.Session, error) {
+	s.opMu.Lock()
+	defer s.opMu.Unlock()
 	if !domain.ValidUUIDv7(ownerUserID) || !domain.ValidUUIDv7(projectID) || idempotencyKey == "" || len(idempotencyKey) > 128 || !domain.ValidSize(width, height) {
 		return domain.Session{}, domain.ErrInvalid
 	}
@@ -72,8 +75,22 @@ func (s *Service) Create(ctx context.Context, ownerUserID, projectID, idempotenc
 		if storedDigest != digest {
 			return domain.Session{}, domain.ErrIdempotencyDrift
 		}
-		return s.store.GetSessionByKey(ctx, ownerUserID, idempotencyKey)
+		replay, err := s.store.GetSessionByKey(ctx, ownerUserID, idempotencyKey)
+		if err != nil {
+			return domain.Session{}, err
+		}
+		return s.reconcile(ctx, replay)
 	}
+	completed := false
+	defer func() {
+		if completed {
+			return
+		}
+		cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+		defer cancel()
+		s.reap(session.SessionID)
+		_ = s.store.CloseSession(cleanupCtx, ownerUserID, session.SessionID, domain.StateFailed, time.Now().UTC())
+	}()
 	count, err := s.store.CountActive(ctx, ownerUserID)
 	if err != nil {
 		return domain.Session{}, err
@@ -110,18 +127,28 @@ func (s *Service) Create(ctx context.Context, ownerUserID, projectID, idempotenc
 		return domain.Session{}, err
 	}
 	session.State = domain.StateRunning
+	completed = true
 	return session, nil
 }
 
 // Connect exchanges one complete WebRTC offer for the answer of the session's
 // live display. A dead display is an honest engine failure, not a restart.
 func (s *Service) Connect(ctx context.Context, ownerUserID, sessionID, offerSDP string) (domain.Session, string, error) {
+	s.opMu.Lock()
+	defer s.opMu.Unlock()
 	if !domain.ValidUUIDv7(ownerUserID) || !domain.ValidUUIDv7(sessionID) || offerSDP == "" || len(offerSDP) > domain.MaxSDPBytes {
 		return domain.Session{}, "", domain.ErrInvalid
 	}
 	session, err := s.store.GetSession(ctx, ownerUserID, sessionID)
 	if err != nil {
 		return domain.Session{}, "", err
+	}
+	session, err = s.reconcile(ctx, session)
+	if err != nil {
+		return domain.Session{}, "", err
+	}
+	if session.State == domain.StateFailed {
+		return domain.Session{}, "", domain.ErrEngineUnavailable
 	}
 	if session.State.Terminal() {
 		return domain.Session{}, "", domain.ErrInvalid
@@ -143,6 +170,8 @@ func (s *Service) Connect(ctx context.Context, ownerUserID, sessionID, offerSDP 
 
 // Close terminates the session and reaps its display.
 func (s *Service) Close(ctx context.Context, ownerUserID, sessionID string) (domain.Session, error) {
+	s.opMu.Lock()
+	defer s.opMu.Unlock()
 	if !domain.ValidUUIDv7(ownerUserID) || !domain.ValidUUIDv7(sessionID) {
 		return domain.Session{}, domain.ErrInvalid
 	}
@@ -154,16 +183,21 @@ func (s *Service) Close(ctx context.Context, ownerUserID, sessionID string) (dom
 	if err := s.store.CloseSession(ctx, ownerUserID, sessionID, domain.StateClosed, time.Now().UTC()); err != nil {
 		return domain.Session{}, err
 	}
-	session.State = domain.StateClosed
-	return session, nil
+	return s.store.GetSession(ctx, ownerUserID, session.SessionID)
 }
 
 // Get reads one session for its owner.
 func (s *Service) Get(ctx context.Context, ownerUserID, sessionID string) (domain.Session, error) {
+	s.opMu.Lock()
+	defer s.opMu.Unlock()
 	if !domain.ValidUUIDv7(ownerUserID) || !domain.ValidUUIDv7(sessionID) {
 		return domain.Session{}, domain.ErrInvalid
 	}
-	return s.store.GetSession(ctx, ownerUserID, sessionID)
+	session, err := s.store.GetSession(ctx, ownerUserID, sessionID)
+	if err != nil {
+		return domain.Session{}, err
+	}
+	return s.reconcile(ctx, session)
 }
 
 func (s *Service) reap(sessionID string) {
@@ -181,14 +215,59 @@ func (s *Service) reap(sessionID string) {
 	}
 }
 
-// Sweep closes idle sessions whose peers disappeared (ADR-0029 TTL).
+// reconcile makes reads and replay agree with live resources and the absolute TTL.
+// A process restart cannot resurrect a display: its persisted row becomes failed.
+func (s *Service) reconcile(ctx context.Context, session domain.Session) (domain.Session, error) {
+	if session.State.Terminal() {
+		return session, nil
+	}
+	s.mu.Lock()
+	display := s.displays[session.SessionID]
+	s.mu.Unlock()
+	now := time.Now().UTC()
+	state := session.State
+	if !session.ExpiresAt.After(now) {
+		state = domain.StateClosed
+	} else if display == nil || display.Exited() {
+		state = domain.StateFailed
+	}
+	if state == session.State {
+		return session, nil
+	}
+	s.reap(session.SessionID)
+	if err := s.store.CloseSession(ctx, session.OwnerUserID, session.SessionID, state, now); err != nil {
+		return domain.Session{}, err
+	}
+	return s.store.GetSession(ctx, session.OwnerUserID, session.SessionID)
+}
+
+// Sweep runs at startup and periodically to reclaim dead or expired sessions.
 func (s *Service) Sweep(ctx context.Context) error {
-	expired, err := s.store.ExpireIdle(ctx, time.Now().UTC())
+	s.opMu.Lock()
+	defer s.opMu.Unlock()
+	sessions, err := s.store.ListActive(ctx)
 	if err != nil {
 		return err
 	}
-	for _, sessionID := range expired {
-		s.reap(sessionID)
+	for _, session := range sessions {
+		if _, err := s.reconcile(ctx, session); err != nil {
+			return err
+		}
 	}
 	return nil
+}
+
+// Shutdown closes all process-owned displays before the host returns.
+func (s *Service) Shutdown() {
+	s.opMu.Lock()
+	defer s.opMu.Unlock()
+	s.mu.Lock()
+	ids := make([]string, 0, len(s.displays))
+	for id := range s.displays {
+		ids = append(ids, id)
+	}
+	s.mu.Unlock()
+	for _, id := range ids {
+		s.reap(id)
+	}
 }

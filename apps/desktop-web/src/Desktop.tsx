@@ -1,3 +1,4 @@
+import { NativeSessionLease } from "./nativeSession.js";
 import { Code, ConnectError } from "@connectrpc/connect";
 import {
   useCallback,
@@ -617,6 +618,18 @@ export function Desktop({
     });
     recordLayout((state) => ({ ...state, activeSystemWindow: "terminal" }));
   }, [activeProjectId, recordLayout]);
+
+  const nativeSessionLease = useMemo(() => new NativeSessionLease(true), []);
+  const nativeWindowOpen = windows.windows.some((window) => window.kind === "native");
+  useEffect(() => {
+    if (!nativeWindowOpen) nativeSessionLease.dispose();
+  }, [nativeWindowOpen, nativeSessionLease]);
+  useEffect(
+    () => () => {
+      nativeSessionLease.dispose();
+    },
+    [nativeSessionLease, activeProjectId],
+  );
 
   const openNative = useCallback(() => {
     if (!activeProjectId) return;
@@ -1752,7 +1765,11 @@ export function Desktop({
     ) : windowState.kind === "terminal" ? (
       <TerminalApp workosClients={workosClients} activeProjectId={activeProject?.id ?? ""} />
     ) : windowState.kind === "native" ? (
-      <NativeApp workosClients={workosClients} activeProjectId={activeProject?.id ?? ""} />
+      <NativeApp
+        sessionLease={nativeSessionLease}
+        workosClients={workosClients}
+        activeProjectId={activeProject?.id ?? ""}
+      />
     ) : windowState.kind === "device-center" ? (
       deviceAuth ? (
         <DeviceCenter deviceAuth={deviceAuth} onSessionEnded={() => layoutStore.clearAll()} />

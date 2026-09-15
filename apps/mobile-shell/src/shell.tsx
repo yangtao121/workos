@@ -3,6 +3,7 @@
 // paired project and notification projections, and the honest gateway state
 // machine (connecting / unavailable / unpaired / paired).
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Code, ConnectError } from "@connectrpc/connect";
 import { classifyDevice } from "@workos/adaptive-shell";
 import { createWorkOSClients } from "@workos/agent-sdk";
 import { createMobileAuth, type MobileAuthPhase } from "./auth.js";
@@ -41,11 +42,21 @@ export function MobileShell(props: {
   const [vaultReason, setVaultReason] = useState("");
   const origin = props.origin;
   const pairedClientsRef = useRef(false);
-
-  const auth = useMemo(
-    () => createMobileAuth(origin, props.secureVaultReady ? props.vault.vault : undefined),
-    [origin, props.secureVaultReady, props.vault],
+  const projectionEpoch = useRef(0);
+  const authEpoch = useRef(0);
+  const pendingReads = useRef(new Set<string>());
+  const [actionError, setActionError] = useState("");
+  const pairingFragment = useRef(
+    window.location.hash.length > 1 ? window.location.hash : undefined,
   );
+
+  const auth = useMemo(() => {
+    try {
+      return createMobileAuth(origin, props.secureVaultReady ? props.vault.vault : undefined);
+    } catch {
+      return undefined;
+    }
+  }, [origin, props.secureVaultReady, props.vault]);
 
   useEffect(() => {
     const update = () => {
@@ -81,10 +92,19 @@ export function MobileShell(props: {
   }, [props.vault]);
 
   const begin = useCallback(async () => {
+    if (!auth) {
+      setAuthPhase({ phase: "unavailable" });
+      return;
+    }
+    const epoch = ++authEpoch.current;
     setAuthPhase({ phase: "connecting" });
-    const fragment = window.location.hash.length > 1 ? window.location.hash : undefined;
+    const fragment = pairingFragment.current;
+    if (window.location.hash)
+      window.history.replaceState(null, "", window.location.pathname + window.location.search);
     const phase = await auth.begin(fragment);
+    if (epoch !== authEpoch.current) return;
     setAuthPhase(phase);
+    if (phase.phase === "paired" || phase.phase === "unpaired") pairingFragment.current = undefined;
     if (phase.phase === "paired" && fragment) {
       // Scrub the one-time pairing secret after a successful pairing.
       window.history.replaceState(null, "", window.location.pathname + window.location.search);
@@ -93,15 +113,21 @@ export function MobileShell(props: {
 
   useEffect(() => {
     void begin();
+    return () => {
+      projectionEpoch.current++;
+      authEpoch.current++;
+    };
   }, [begin]);
 
   const loadProjections = useCallback(async () => {
-    if (authPhase.phase !== "paired") return;
+    if (authPhase.phase !== "paired" || !auth) return;
+    const epoch = ++projectionEpoch.current;
     setConnection("connecting");
     const clients = createWorkOSClients(origin, auth.transport);
     try {
       const projectPage = await clients.projects.listProjects({});
       const notificationPage = await clients.notifications.listNotifications({ pageSize: 20 });
+      if (epoch !== projectionEpoch.current) return;
       setProjects(
         projectPage.projects.map((project) => ({
           id: project.id,
@@ -121,14 +147,30 @@ export function MobileShell(props: {
       );
       setUnread(notificationPage.unreadCount);
       setConnection("online");
-    } catch {
+    } catch (error) {
+      if (epoch !== projectionEpoch.current) return;
+      if (
+        error instanceof ConnectError &&
+        (error.code === Code.Unauthenticated || error.code === Code.PermissionDenied)
+      ) {
+        setProjects([]);
+        setNotifications([]);
+        setUnread(0n);
+        setAuthPhase({ phase: "connecting" });
+        const epoch = ++authEpoch.current;
+        const phase = await auth.begin(undefined);
+        if (epoch !== authEpoch.current) return;
+        setAuthPhase(phase);
+        return;
+      }
       setConnection("unavailable");
     }
-  }, [authPhase.phase, auth.transport, origin]);
+  }, [authPhase.phase, auth, origin]);
 
   useEffect(() => {
     if (authPhase.phase !== "paired") {
       pairedClientsRef.current = false;
+      projectionEpoch.current++;
       return;
     }
     if (pairedClientsRef.current) return;
@@ -143,18 +185,25 @@ export function MobileShell(props: {
 
   const markRead = useCallback(
     async (notificationId: string) => {
+      if (!auth || pendingReads.current.has(notificationId)) return;
+      pendingReads.current.add(notificationId);
+      const epoch = authEpoch.current;
       const clients = createWorkOSClients(origin, auth.transport);
       try {
         await clients.notifications.markNotificationRead({ notificationId });
+        if (epoch !== authEpoch.current) return;
+        projectionEpoch.current++;
         setNotifications((current) =>
           current.map((item) => (item.id === notificationId ? { ...item, read: true } : item)),
         );
         setUnread((count) => (count > 0n ? count - 1n : 0n));
       } catch {
         // The next projection refresh reconciles the authoritative state.
+      } finally {
+        pendingReads.current.delete(notificationId);
       }
     },
-    [auth.transport, origin],
+    [auth, origin],
   );
 
   const paired = authPhase.phase === "paired";
@@ -203,6 +252,7 @@ export function MobileShell(props: {
         )}
       </header>
       <main className="mobile-content">
+        {actionError ? <p role="alert">{actionError}</p> : null}
         {authPhase.phase === "unavailable" ? (
           <section className="mobile-card" data-testid="mobile-unavailable">
             <h1>No gateway</h1>
@@ -288,7 +338,20 @@ export function MobileShell(props: {
             className="mobile-logout"
             onClick={() =>
               void (async () => {
+                if (!auth) return;
+                const epoch = ++authEpoch.current;
+                projectionEpoch.current++;
+                setActionError("");
                 const phase = await auth.logout();
+                if (epoch !== authEpoch.current) return;
+                if (phase.phase === "unavailable") {
+                  setActionError("Forget device failed. Try again.");
+                  return;
+                }
+                projectionEpoch.current++;
+                setProjects([]);
+                setNotifications([]);
+                setUnread(0n);
                 setAuthPhase(phase);
               })()
             }

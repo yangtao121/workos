@@ -30,7 +30,7 @@
 ### 3. 移动封装信任链
 
 - Capacitor 封装共享 adaptive-shell；设备密钥走原生安全存储，插件缺失时
-  回退临时内存并如实上报 insecure 状态，绝不静默。
+  报告配对 unavailable，禁止回退到普通存储。
 - 原生推送通过 canonical notification 契约接入，禁止另造直接发送 token 的 JSON relay API；
   现有未接入的 registerPushToken 已删除，APNs/FCM 仍 unavailable。
 - library bundle 不能证明可启动封装。门禁必须检查 HTML 入口及 Android/iOS 工程，
@@ -52,3 +52,22 @@
 
 依据：[Capacitor v6 sync](https://capacitorjs.com/docs/v6/cli/commands/sync) 组合 copy/update，
 [官方工作流](https://capacitorjs.com/docs/v6/basics/workflow) 将资源同步与原生二进制构建分开。
+
+## 2026-09-14 合并审查修正
+
+- Web 使用非导出 IndexedDB 密钥；原生插件缺失时配对 unavailable，不回退到
+  普通存储。平台 vault 只把插件明确的 missing-key 错误视作未配对，锁定、损坏、
+  写入失败与删除失败均传播；JWK 载入后重新验证私钥、公钥和摘要绑定。
+- 原生身份存储槽按部署 origin 隔离；pair、session proof、forget 使用同一后端。
+  Cookie 过期时可用持久设备密钥重新证明，证明 transcript 绑定配置的 Gateway
+  origin（原生 WebView 自己的 origin 不是部署 origin）。重复 begin 合并为一个请求链。
+- 原生 unary JSON RPC 使用 Capacitor 内置 HTTP bridge 和其 Cookie jar；携带准确
+  Origin、固定部署 URL、禁止重定向，仍要求系统信任的 TLS 证书。禁止放宽 Gateway
+  CORS、Host/Origin 或 SameSite 校验。浏览器使用原有 fetch credentials=include。
+- Vite 仅注入 `WORKOS_MOBILE_` 前缀的公开配置。未配置有效 Gateway 时界面报告
+  unavailable；不是启动异常。Forget 失败保留当前身份并提供明确失败状态。
+- 原生 HTTP/密钥边界有软件单测；真机 Cookie jar、证书安装、链接唤起、Keychain/
+  Keystore 和 APNs/FCM 仍须平台验收，Mobile Shell 保持 scaffolded。
+
+Forget 在发起时使旧读取失效，并等待已发出的配对/Session proof 结束后再执行 Logout，
+避免旧 proof 回执的 Set-Cookie 在退出后重新建会话；重复 Forget 共享同一执行。

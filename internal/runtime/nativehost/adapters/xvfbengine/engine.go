@@ -13,6 +13,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -50,8 +51,9 @@ type Engine struct {
 	Xdotool string
 	Scratch string
 
-	mu    sync.Mutex
-	count int
+	launchMu sync.Mutex
+	mu       sync.Mutex
+	count    int
 }
 
 // resolveExecutable accepts an absolute path or a PATH-relative binary name
@@ -78,6 +80,7 @@ func New(xvfb, client, ffmpeg, xdotool, scratch string) (*Engine, error) {
 	if resolvedXvfb == "" || resolvedFFmpeg == "" || resolvedXdotool == "" || resolvedClient == "" {
 		return nil, fmt.Errorf("native engine toolchain is not executable (xvfb=%q client=%q ffmpeg=%q xdotool=%q)", xvfb, argv[0], ffmpeg, xdotool)
 	}
+	argv[0] = resolvedClient
 	return &Engine{Xvfb: resolvedXvfb, Client: argv, FFmpeg: resolvedFFmpeg, Xdotool: resolvedXdotool, Scratch: scratch}, nil
 }
 
@@ -86,7 +89,7 @@ func (e *Engine) Facts() ports.EngineFacts {
 		Engine:           "xvfb-x11grab-vp8-webrtc",
 		ProcessGroupKill: true,
 		ParentDeathSig:   true,
-		EnforcedLimits:   []string{"process-group-kill", "parent-death-signal", "input-rate", "session-ttl", "loopback-host-candidates-only"},
+		EnforcedLimits:   []string{"process-group-kill", "parent-death-signal", "input-rate", "session-ttl", "loopback-host-candidates-only", "peer-authorization-ttl-30s"},
 	}
 }
 
@@ -109,16 +112,13 @@ func (e *Engine) Reserve() (func(), error) {
 		return nil, domain.ErrSessionLimit
 	}
 	e.count++
-	var released bool
-	return func() {
-		if released {
-			return
-		}
-		released = true
-		e.mu.Lock()
-		e.count--
-		e.mu.Unlock()
-	}, nil
+	var once sync.Once
+	return func() { once.Do(func() { e.mu.Lock(); defer e.mu.Unlock(); e.count-- }) }, nil
+}
+
+type queuedInput struct {
+	raw   json.RawMessage
+	epoch uint64
 }
 
 type sampleSink func(frame []byte, duration time.Duration)
@@ -131,23 +131,29 @@ type display struct {
 	width       int32
 	height      int32
 
-	xvfbCmd   *exec.Cmd
-	clientCm  *exec.Cmd
-	ffmpegCmd *exec.Cmd
-	cancel    context.CancelFunc
-	exited    chan struct{}
-	closeOnce sync.Once
+	xvfbCmd    *exec.Cmd
+	clientCm   *exec.Cmd
+	ffmpegCmd  *exec.Cmd
+	cancel     context.CancelFunc
+	exited     chan struct{}
+	stopOnce   sync.Once
+	runCtx     context.Context
+	children   sync.WaitGroup
+	inputDone  chan struct{}
+	frameReady chan struct{}
+	readyOnce  sync.Once
 
 	sinkMu sync.Mutex
 	sink   sampleSink
 
-	peerMu sync.Mutex
-	peer   *webrtc.PeerConnection
+	peerMu    sync.Mutex
+	peer      *webrtc.PeerConnection
+	peerEpoch uint64
 
 	inputMu      sync.Mutex
 	inputTokens  float64
 	inputStamp   time.Time
-	inputQueue   chan json.RawMessage
+	inputQueue   chan queuedInput
 	inputDropped int64
 }
 
@@ -155,104 +161,134 @@ func (e *Engine) Launch(ctx context.Context, width, height int32) (ports.Display
 	if !domain.ValidSize(width, height) {
 		return nil, domain.ErrInvalid
 	}
-	runCtx, cancel := context.WithCancel(context.WithoutCancel(ctx))
-	dir, err := os.MkdirTemp(e.Scratch, "native-")
-	if err != nil {
-		cancel()
+	e.launchMu.Lock()
+	defer e.launchMu.Unlock()
+	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	_ = os.Chmod(dir, 0o700)
+	dir, err := os.MkdirTemp(e.Scratch, "native-")
+	if err != nil {
+		return nil, err
+	}
+	runCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), domain.SessionTTL)
+	d := &display{engine: e, dir: dir, width: width, height: height,
+		runCtx: runCtx, cancel: cancel, exited: make(chan struct{}), inputDone: make(chan struct{}), frameReady: make(chan struct{}),
+		inputQueue:  make(chan queuedInput, inputQueueDepth),
+		inputTokens: float64(domain.InputBurst), inputStamp: time.Now()}
+	launched := false
+	defer func() {
+		if !launched {
+			d.Stop()
+		}
+	}()
 	number, err := freeDisplayNumber()
 	if err != nil {
-		cancel()
-		_ = os.RemoveAll(dir)
 		return nil, err
 	}
 	name := ":" + strconv.Itoa(number)
+	d.displayName = name
 	xvfb := exec.Command(e.Xvfb, name, "-screen", "0", fmt.Sprintf("%dx%dx24", width, height), "-nolisten", "tcp", "-ac")
+	// No runtime secrets in any of the display children's environments.
+	env := []string{"DISPLAY=" + name, "HOME=" + dir, "PATH=/usr/local/bin:/usr/bin:/bin", "LANG=C.UTF-8", "XDG_RUNTIME_DIR=" + dir}
+	xvfb.Env = env
 	xvfb.SysProcAttr = &syscall.SysProcAttr{Setpgid: true, Pdeathsig: syscall.SIGKILL}
+	d.xvfbCmd = xvfb
 	if err := xvfb.Start(); err != nil {
-		cancel()
-		_ = os.RemoveAll(dir)
 		return nil, fmt.Errorf("start xvfb: %w", err)
 	}
+	xvfbDone := make(chan struct{})
+	d.children.Add(1)
+	go func() { defer d.children.Done(); _ = xvfb.Wait(); close(xvfbDone) }()
 	socket := filepath.Join("/tmp", ".X11-unix", "X"+strconv.Itoa(number))
-	if err := waitForSocket(socket, xvfb); err != nil {
-		_ = xvfb.Process.Kill()
-		cancel()
-		_ = os.RemoveAll(dir)
+	if err := waitForSocket(ctx, socket, xvfbDone); err != nil {
 		return nil, err
 	}
-	env := []string{fmt.Sprintf("DISPLAY=%s", name), "HOME=" + dir, "PATH=/usr/local/bin:/usr/bin:/bin", "LANG=C.UTF-8", "XDG_RUNTIME_DIR=" + dir}
 	client := exec.Command(e.Client[0], e.Client[1:]...)
 	client.Env = env
 	client.SysProcAttr = &syscall.SysProcAttr{Setpgid: true, Pgid: xvfb.Process.Pid, Pdeathsig: syscall.SIGKILL}
-	clientErr := client.Start()
-	if clientErr == nil {
-		go func() {
-			err := client.Wait()
-			slog.Warn("native client exited", "display", name, "error", err)
-		}()
-	} else {
-		slog.Warn("native client start failed; display serves the root window", "error", clientErr)
+	d.clientCm = client
+	if err := client.Start(); err != nil {
+		return nil, fmt.Errorf("start native client: %w", err)
 	}
-	// Opening the display before it serves clients makes x11grab hang, and
-	// capturing before the client maps its window streams an empty root.
-	// Wait for the first visible window (bounded); the capture then starts
-	// against an established display with real content.
-	waitForClientWindow(env, e.Xdotool)
-
+	clientDone := make(chan struct{})
+	d.children.Add(1)
+	go func() { defer d.children.Done(); _ = client.Wait(); close(clientDone) }()
+	if err := waitForClientWindow(ctx, env, e.Xdotool, clientDone); err != nil {
+		return nil, err
+	}
 	ffmpeg := exec.CommandContext(runCtx, e.FFmpeg, "-nostdin", "-loglevel", "error",
 		"-f", "x11grab", "-draw_mouse", "1", "-video_size", fmt.Sprintf("%dx%d", width, height),
 		"-framerate", strconv.Itoa(domain.FrameRate), "-i", name,
-		// Debian ffmpeg 5.x registers the VP8 encoder as plain "libvpx".
-		// -g 20 keeps a keyframe every two seconds so consumers (and the
-		// gate) can observe display content changes deterministically.
-		"-c:v", "libvpx", "-deadline", "realtime", "-cpu-used", "8", "-b:v", "800k",
-		"-g", "20",
-		"-pix_fmt", "yuv420p", "-vf", "scale=trunc(iw/2)*2:trunc(ih/2)*2",
-		"-f", "ivf", "pipe:1")
+		"-c:v", "libvpx", "-deadline", "realtime", "-cpu-used", "8", "-b:v", "800k", "-g", "20",
+		"-pix_fmt", "yuv420p", "-vf", "scale=trunc(iw/2)*2:trunc(ih/2)*2", "-f", "ivf", "pipe:1")
 	ffmpeg.Env = env
 	ffmpeg.SysProcAttr = &syscall.SysProcAttr{Setpgid: true, Pgid: xvfb.Process.Pid, Pdeathsig: syscall.SIGKILL}
 	ffmpeg.WaitDelay = time.Second
+	d.ffmpegCmd = ffmpeg
 	stdout, err := ffmpeg.StdoutPipe()
 	if err != nil {
-		_ = xvfb.Process.Kill()
-		cancel()
-		_ = os.RemoveAll(dir)
 		return nil, err
 	}
 	if err := ffmpeg.Start(); err != nil {
-		_ = xvfb.Process.Kill()
-		cancel()
-		_ = os.RemoveAll(dir)
+		_ = stdout.Close()
 		return nil, fmt.Errorf("start ffmpeg: %w", err)
 	}
-	d := &display{
-		engine: e, dir: dir, displayName: name, width: width, height: height,
-		xvfbCmd: xvfb, clientCm: client, ffmpegCmd: ffmpeg, cancel: cancel,
-		exited:      make(chan struct{}),
-		inputQueue:  make(chan json.RawMessage, inputQueueDepth),
-		inputTokens: float64(domain.InputBurst),
-		inputStamp:  time.Now(),
-	}
-	// The single input worker owns xdotool ordering; it runs on its own
-	// goroutine so the data-channel callback never blocks on injection.
+	ffmpegDone := make(chan struct{})
+	d.children.Add(1)
 	go func() {
-		for event := range d.inputQueue {
-			d.applyInput(event)
+		defer d.children.Done()
+		// Drain the pipe before Wait: Wait closes StdoutPipe and must not race the reader.
+		d.readIVF(bufio.NewReaderSize(stdout, 64*1024))
+		_ = ffmpeg.Process.Kill()
+		_ = ffmpeg.Wait()
+		close(ffmpegDone)
+	}()
+	d.children.Add(1)
+	go func() {
+		defer d.children.Done()
+		defer close(d.inputDone)
+		for {
+			select {
+			case <-runCtx.Done():
+				return
+			case event := <-d.inputQueue:
+				if runCtx.Err() != nil {
+					return
+				}
+				d.peerMu.Lock()
+				if event.epoch == d.peerEpoch && !d.Exited() {
+					d.applyInput(event.raw)
+				}
+				d.peerMu.Unlock()
+			}
 		}
 	}()
+	// Any child exit terminates the entire session; an empty X root is not a running app.
 	go func() {
-		_ = xvfb.Wait()
-		d.markExited()
+		select {
+		case <-xvfbDone:
+		case <-clientDone:
+		case <-ffmpegDone:
+		case <-runCtx.Done():
+		}
+		d.Stop()
 	}()
-	go func() {
-		_ = ffmpeg.Wait()
-		d.markExited()
-	}()
-	go d.readIVF(bufio.NewReaderSize(stdout, 64*1024))
-	return d, nil
+	select {
+	case <-d.frameReady:
+		if d.Exited() {
+			return nil, domain.ErrEngineUnavailable
+		}
+		launched = true
+		return d, nil
+	case <-ctx.Done():
+		d.Stop()
+		return nil, ctx.Err()
+	case <-d.exited:
+		return nil, domain.ErrEngineUnavailable
+	case <-time.After(socketWait):
+		d.Stop()
+		return nil, domain.ErrEngineUnavailable
+	}
 }
 
 func (e *Engine) EngineClient() string { return e.Client[0] }
@@ -270,54 +306,60 @@ func freeDisplayNumber() (int, error) {
 	return 0, errors.New("no free display number")
 }
 
-func waitForSocket(socket string, xvfb *exec.Cmd) error {
-	deadline := time.Now().Add(socketWait)
-	for time.Now().Before(deadline) {
+func waitForSocket(ctx context.Context, socket string, exited <-chan struct{}) error {
+	timer := time.NewTimer(socketWait)
+	defer timer.Stop()
+	ticker := time.NewTicker(50 * time.Millisecond)
+	defer ticker.Stop()
+	for {
 		select {
-		case <-time.After(50 * time.Millisecond):
-		}
-		if _, err := os.Stat(socket); err == nil {
-			return nil
-		}
-		if xvfb.ProcessState != nil {
-			return fmt.Errorf("xvfb exited during startup")
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-exited:
+			return errors.New("xvfb exited during startup")
+		case <-timer.C:
+			return errors.New("xvfb socket did not appear")
+		case <-ticker.C:
+			if _, err := os.Stat(socket); err == nil {
+				return nil
+			}
 		}
 	}
-	return errors.New("xvfb socket did not appear")
 }
 
-// waitForClientWindow polls xdotool until the client maps a visible window
-// (bounded), then focuses it: with no window manager the new window never
-// receives keyboard focus on its own, and XTEST keystrokes would go nowhere.
-// A headless or slow client falls through to the root-window capture
-// honestly, with the outcome logged.
-func waitForClientWindow(env []string, xdotool string) {
-	deadline := time.Now().Add(5 * time.Second)
-	for time.Now().Before(deadline) {
-		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-		probe := exec.CommandContext(ctx, xdotool, "search", "--onlyvisible", "--name", ".")
+func waitForClientWindow(ctx context.Context, env []string, xdotool string, exited <-chan struct{}) error {
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	for {
+		select {
+		case <-ctx.Done():
+			return errors.New("native client window did not appear")
+		case <-exited:
+			return errors.New("native client exited during startup")
+		default:
+		}
+		probeCtx, probeCancel := context.WithTimeout(ctx, time.Second)
+		probe := exec.CommandContext(probeCtx, xdotool, "search", "--onlyvisible", "--name", ".")
 		probe.Env = env
 		output, err := probe.Output()
-		cancel()
+		probeCancel()
 		if err == nil {
 			windowID := strings.TrimSpace(strings.SplitN(string(output), "\n", 2)[0])
 			if windowID != "" {
-				focusCtx, focusCancel := context.WithTimeout(context.Background(), time.Second)
-				focus := exec.CommandContext(focusCtx, xdotool, "windowfocus", "--sync", windowID)
+				focus := exec.CommandContext(ctx, xdotool, "windowfocus", "--sync", windowID)
 				focus.Env = env
-				focusErr := focus.Run()
-				focusCancel()
-				slog.Info("native client window detected before capture", "display", env[0], "window", windowID, "focusError", focusErr)
-				return
+				if err := focus.Run(); err != nil {
+					return errors.New("native client focus failed")
+				}
+				return nil
 			}
 		}
-		time.Sleep(100 * time.Millisecond)
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(100 * time.Millisecond):
+		}
 	}
-	slog.Warn("native client window never appeared; capturing the root window", "display", env[0])
-}
-
-func (d *display) markExited() {
-	d.closeOnce.Do(func() { close(d.exited) })
 }
 
 func (d *display) Exited() bool {
@@ -330,22 +372,25 @@ func (d *display) Exited() bool {
 }
 
 func (d *display) Stop() {
-	if d.xvfbCmd.Process != nil {
-		_ = syscall.Kill(-d.xvfbCmd.Process.Pid, syscall.SIGKILL)
-	}
-	deadline := time.Now().Add(3 * time.Second)
-	for !d.Exited() && time.Now().Before(deadline) {
-		time.Sleep(50 * time.Millisecond)
-	}
-	d.peerMu.Lock()
-	peer := d.peer
-	d.peer = nil
-	d.peerMu.Unlock()
-	if peer != nil {
-		_ = peer.Close()
-	}
-	d.cancel()
-	_ = os.RemoveAll(d.dir)
+	d.stopOnce.Do(func() {
+		close(d.exited)
+		d.cancel()
+		if d.xvfbCmd != nil && d.xvfbCmd.Process != nil {
+			_ = syscall.Kill(-d.xvfbCmd.Process.Pid, syscall.SIGKILL)
+		}
+		d.peerMu.Lock()
+		peer := d.peer
+		d.peer = nil
+		d.sinkMu.Lock()
+		d.sink = nil
+		d.sinkMu.Unlock()
+		d.peerMu.Unlock()
+		if peer != nil {
+			_ = peer.Close()
+		}
+		d.children.Wait()
+		_ = os.RemoveAll(d.dir)
+	})
 }
 
 // readIVF parses the ffmpeg IVF stream and pushes each VP8 frame into the
@@ -354,11 +399,9 @@ func (d *display) Stop() {
 func (d *display) readIVF(reader *bufio.Reader) {
 	header := make([]byte, 32)
 	if _, err := ioReadFull(reader, header); err != nil {
-		d.markExited()
 		return
 	}
 	if string(header[0:4]) != "DKIF" || string(header[8:12]) != "VP80" {
-		d.markExited()
 		return
 	}
 	// IVF frame timestamps count in scale/rate seconds per tick (ffmpeg
@@ -376,20 +419,18 @@ func (d *display) readIVF(reader *bufio.Reader) {
 	var frames, bytes, largest int
 	for {
 		if _, err := ioReadFull(reader, frameHeader); err != nil {
-			d.markExited()
 			return
 		}
 		size := binary.LittleEndian.Uint32(frameHeader[0:4])
 		ts := binary.LittleEndian.Uint64(frameHeader[4:12])
 		if size == 0 || size > maxIVFFramePayload {
-			d.markExited()
 			return
 		}
 		payload := make([]byte, size)
 		if _, err := ioReadFull(reader, payload); err != nil {
-			d.markExited()
 			return
 		}
+		d.readyOnce.Do(func() { close(d.frameReady) })
 		duration := time.Duration(tickNanos)
 		if ts > lastTS {
 			duration = time.Duration(float64(ts-lastTS) * tickNanos)
@@ -426,10 +467,17 @@ func ioReadFull(reader *bufio.Reader, buffer []byte) (int, error) {
 
 // Connect exchanges one complete offer for an answer and swaps the live peer.
 func (d *display) Connect(ctx context.Context, offerSDP string) (string, error) {
+	leaseDeadline := time.Now().Add(30 * time.Second)
+	if deadline, ok := ctx.Deadline(); ok && deadline.Before(leaseDeadline) {
+		leaseDeadline = deadline
+	}
 	if d.Exited() {
 		return "", domain.ErrEngineUnavailable
 	}
-	pc, err := webrtc.NewPeerConnection(webrtc.Configuration{})
+	settings := webrtc.SettingEngine{}
+	settings.SetIncludeLoopbackCandidate(true)
+	settings.SetIPFilter(func(ip net.IP) bool { return ip.IsLoopback() })
+	pc, err := webrtc.NewAPI(webrtc.WithSettingEngine(settings)).NewPeerConnection(webrtc.Configuration{})
 	if err != nil {
 		return "", err
 	}
@@ -439,18 +487,30 @@ func (d *display) Connect(ctx context.Context, offerSDP string) (string, error) 
 		_ = pc.Close()
 		return "", err
 	}
-	if _, err := pc.AddTrack(track); err != nil {
+	sender, err := pc.AddTrack(track)
+	if err != nil {
 		_ = pc.Close()
 		return "", err
 	}
+	go func() {
+		buffer := make([]byte, 1500)
+		for {
+			if _, _, err := sender.Read(buffer); err != nil {
+				return
+			}
+		}
+	}()
 	channel, err := pc.CreateDataChannel("workos.input", nil)
 	if err != nil {
 		_ = pc.Close()
 		return "", err
 	}
 	channel.OnMessage(func(message webrtc.DataChannelMessage) {
-		slog.Info("native input received", "display", d.displayName, "bytes", len(message.Data))
-		d.enqueueInput(message.Data)
+		d.peerMu.Lock()
+		defer d.peerMu.Unlock()
+		if d.peer == pc && !d.Exited() {
+			d.enqueueInput(message.Data)
+		}
 	})
 	gather := webrtc.GatheringCompletePromise(pc)
 	if err := pc.SetRemoteDescription(webrtc.SessionDescription{Type: webrtc.SDPTypeOffer, SDP: offerSDP}); err != nil {
@@ -476,12 +536,15 @@ func (d *display) Connect(ctx context.Context, offerSDP string) (string, error) 
 		return "", ctx.Err()
 	}
 	d.peerMu.Lock()
+	if d.Exited() || ctx.Err() != nil {
+		d.peerMu.Unlock()
+		_ = pc.Close()
+		return "", domain.ErrEngineUnavailable
+	}
+	// Discard queued events from the superseded peer.
+	d.peerEpoch++
 	previous := d.peer
 	d.peer = pc
-	d.peerMu.Unlock()
-	if previous != nil {
-		_ = previous.Close()
-	}
 	d.sinkMu.Lock()
 	d.sink = func(frame []byte, duration time.Duration) {
 		if err := track.WriteSample(media.Sample{Data: frame, Duration: duration}); err != nil {
@@ -489,8 +552,29 @@ func (d *display) Connect(ctx context.Context, offerSDP string) (string, error) 
 		}
 	}
 	d.sinkMu.Unlock()
+	d.peerMu.Unlock()
+	if previous != nil {
+		_ = previous.Close()
+	}
+	// Media bypasses Gateway after signaling. Expire the peer after 30s so
+	// continuing input/video requires a newly authenticated Gateway request.
+	time.AfterFunc(time.Until(leaseDeadline), func() { d.expirePeer(pc) })
 	return pc.LocalDescription().SDP, nil
 }
 
 var _ ports.Display = (*display)(nil)
 var _ ports.Engine = (*Engine)(nil)
+
+// An old timer cannot close a newer authorized peer.
+func (d *display) expirePeer(pc *webrtc.PeerConnection) {
+	d.peerMu.Lock()
+	if d.peer == pc {
+		d.peer = nil
+		d.peerEpoch++
+		d.sinkMu.Lock()
+		d.sink = nil
+		d.sinkMu.Unlock()
+	}
+	d.peerMu.Unlock()
+	_ = pc.Close()
+}

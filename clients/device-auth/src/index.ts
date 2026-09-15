@@ -104,6 +104,7 @@ export class DeviceAuthClient {
   private readonly pairing: Client<typeof DevicePairingService>;
   private readonly devices: Client<typeof DeviceService>;
   private readonly keys: DeviceKeyBackend;
+  private readonly canonicalOrigin: string;
 
   // pairingClient exposes the generated client for capability probes only.
   get pairingClient(): Client<typeof DevicePairingService> {
@@ -111,15 +112,11 @@ export class DeviceAuthClient {
   }
 
   constructor(baseUrl: string, transport?: Transport, keyBackend?: DeviceKeyBackend) {
+    this.canonicalOrigin = new URL(baseUrl).origin;
     const active = transport ?? createConnectTransport({ baseUrl });
     this.pairing = createClient(DevicePairingService, active);
     this.devices = createClient(DeviceService, active);
     this.keys = keyBackend ?? profileDeviceKeyBackend;
-  }
-
-  // canonicalOrigin is the origin the Gateway validates Host/Origin against.
-  private get canonicalOrigin(): string {
-    return window.location.origin;
   }
 
   // ensureProfileKey loads the stored key or creates and persists a new one

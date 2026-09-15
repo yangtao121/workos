@@ -1,7 +1,7 @@
 # Task: v1 剩余能力总攻——Provider 扩展、真实 Runtime 自愈链、远程 Surface、语义知识、后台推送与移动原生、桌面系统应用
 
-- 状态：active（2026-09-08 检查点交接；以末尾最新记录和 GLM-5.3 交接为恢复点）
-- Owner/Agent：当前实现者完成检查点交接；后续由 GLM-5.3 认领（单一写入智能体）
+- 状态：active（2026-09-15 本轮软件合并审查通过；平台验收仍有环境阻塞，以末尾矩阵为准）
+- Owner/Agent：Codex 完成本轮 main 合并前审查与修复（单一写入智能体）
 - 进程/模块：全部六进程 + desktop-web/mobile-shell/sdk
 - 依赖：ADR-0001..0014 全部既有裁决；实现依据 `docs/prompts/20260903-next-agent-remaining-capability-sweep.md`
 - Branch：唯一开发分支 `feat/v1-remaining-capability-sweep`（自本地 `main` @ `afe8580`）；检查点 `d4fca63` 已合并，后续继续复用此分支，不再创建分支
@@ -1514,3 +1514,137 @@ socket/uid 映射执行 Makefile；TMPDIR/HF_ENDPOINT 按需透传，不安装�
 5. 最终 diff 审查：无 secret/私钥/用户内容；唯一二进制为 UI PNG（均 <2 MiB，
    规范内）与 Capacitor 生成的 gradle-wrapper.jar（43 KB，上游模板）；
    `git diff --check` 仅 gradlew.bat 上游模板尾随空格（旧版一致，不手改生成物）。
+
+### main 合并前复核与修复（Codex，2026-09-14 至 15）
+
+- 认领既有单一任务；范围为 main `69e75bc` 至 GLM HEAD `da8a262` 的全部差异、
+  相关回归及交接完成度。只在 `feat/v1-remaining-capability-sweep` 串行修改。
+- 初始工作树干净，唯一 worktree 为 `/home/aquatao/workos`；merge-base 为
+  `69e75bc3e34807940368aeaed39d2be34890670a`，无其他用户改动。
+- 依赖：已有 Docker 工具链和测试 fixture；使用既有 `wmake` 执行 Makefile。
+- 验收：逐项实现审查、可复现问题的回归测试与修复、相关真实链路门禁、
+  generate 幂等、make check、integration/E2E、文档及状态事实一致。
+- 优先核查 Native 会话权限/生命周期/WebRTC 输入、移动设备密钥存储与配对、
+  Recovery 终态。新增 UI 变化按 docs/ui/README.md 保存视觉证据。
+- 当前复核未完成；GLM 历史 PASS 不替代本轮证据。最终命令、结果、遗留边界续写于此。
+
+#### 审查第 1/2 轮：实现与失败路径
+
+- Native 的 3 个新增桌面回归先在 GLM 原实现失败，再在修复后通过：SCTP 未协商、
+  迟到 Create 会话泄漏、Ctrl+C 被当作文本 c（tmp/codex-native-red.log、
+  tmp/codex-native-ui.log）。同时关闭 RTCPeerConnection，修复项目切换/异步失败回收。
+- 引擎输入错误日志原样输出 argv，泄漏完整文本；已去除并补日志回归。原生客户端
+  启动失败曾返回空根窗口成功态；现验证窗口/焦点/首帧，并在任一子进程退出时回收。
+  真实 X11 测试发现失败路径返回早于 scratch 清理的问题，修复后工具链测试通过。
+- 新增重启/过期/容量回收与终态一致性回归，Go race 通过（tmp/codex-native-go2.log）。
+  peer 最长 30 秒，经 Gateway 续期；旧 timer 不会撤销替换后的 peer。
+- 移动端修复原生身份丢失恢复、部署 origin proof、无效配置崩溃、安全存储故障吞掉、
+  Forget 假成功、重复 claim、配对 fragment 残留、过期投影写回与重复已读递减。
+  新增原生 HTTP bridge unary 路径；设备认证/移动软件单测通过，真机证据仍待平台。
+- 发现原桌面 current 的 native-window--streaming--1440x900.png 实际为 1280×720；
+  对比中保留原图为正确尺寸名，1440×900 before 取 GLM 同任务 after 的真实尺寸图。
+  新截图强制固定 viewport，避免沿用 Playwright 默认 1280×720。
+- 本轮没有更改表结构或复用 Proto 字段号；native.proto 新增 canonical 输入记录与授权注释，
+  sqlc 新查询仍由 runtime-host 持有，全部生成文件只通过 make generate 更新。
+- 最终全局/专项门禁及视觉复核仍在执行，后续记录实际结果，不沿用旧假 PASS。
+
+#### 审查中的多尺寸回归与移动视觉验收
+
+- 原 Native 多尺寸 gate 保存的截图未等待解码，并且跨布局时 NativeApp 被卸载，
+  造成新会话/原生程序状态丢失。已将持久会话交给 Desktop 窗口生命周期，隐藏的
+  mobile pane 与响应式重挂载只重连 peer；关闭窗口/项目切换才释放会话。
+  单测覆盖该行为（tmp/codex-native-lease3.log），真实门禁继续验证同一 session ID
+  与键入后的红色显示在三尺寸间保留。删除无用户决策价值的调试帧数和会话 ID。
+- 移动门禁最终已 PASS：tmp/codex-mobile-gate2.log；原生二进制仍未验证。
+  视觉证据：[before](../ui/mobile-shell/changes/20260914-merge-review/before)、
+  [after](../ui/mobile-shell/changes/20260914-merge-review/after)、
+  [notes](../ui/mobile-shell/changes/20260914-merge-review/notes.md)，四张 after 已逐张审阅并同步 current。
+
+#### 最终审查证据（2026-09-15）
+
+- Native 最终输入链路使用同一会话跨三尺寸验证，等待的是当前 DOM 视频的持续解码。
+  审查期间 requestVideoFrameCallback 曾挂在已卸载节点上，现通过重新定位视频并
+  检查 currentTime 前进消除无效等待；不删减红色像素、单会话、续期和持久 Close 断言。
+- 真实 runtime 重启先检查数据库中的 failed 行，再调用读取/重放，排除 Get 自愈
+  掩盖启动 sweep 缺失。新会话可重新占用容量。
+- Native 视觉证据：[before](../ui/desktop-web/changes/20260914-merge-review/before)、
+  [after](../ui/desktop-web/changes/20260914-merge-review/after)、
+  [notes](../ui/desktop-web/changes/20260914-merge-review/notes.md)。Home 与三尺寸 Native
+  均逐张检查；after/current 已使用固定 fixture 的实际解码画面。
+- `.gitattributes` 为 Windows Gradle wrapper 声明 text/eol=crlf，并经 Git renormalize
+  将仓库 blob 规范为 LF；Windows 工作副本仍为 CRLF。全分支 diff whitespace 检查
+  不再把回车误判为尾空格；没有修改上游 wrapper 命令内容。
+- `make generate` 连跑两次：168 个生成文件及 README 字节相同；Proto 对 main 的
+  `buf breaking` 通过。文档、status 与 README 同步，Mobile Shell 仍为 scaffolded。
+- Go race：nativehost、reliability、gateway、harness、core agent/orchestration/appregistry
+  全部通过（`tmp/codex-final-race.log`）。
+- `make test-repair-buildtest` 通过（`tmp/codex-final-repair.log`）：真实六进程完整发布链、
+  构建/测试失败零部署、版本漂移、runtime 重启接管、Recovery fallback/awaiting_manual、
+  启动/canary 故障、回滚重试和重复 Offer。
+- 最后全局检查、集成/E2E/LAN 门禁结果与合并结论在下表统一记录；无真实收费 Provider 调用。
+
+- 最终移动回归再修正 Forget 的异步竞态：操作开始即撤销旧投影/认证回执，
+  已发出的 proof 必须先结束再 Logout，重复 Forget 合并；旧请求不能让已退出界面
+  或服务端 Cookie 恢复。新增真实 Connect router 单测与 Chromium 迟到请求测试。
+  `make test-mobile-wrappers` 最终通过（`tmp/codex-final-mobile2.log`）：8 单测、构建、
+  Android sync、4 Chromium 场景；最后一轮四张截图与已审阅 current 字节一致。
+- `make test-integration` 全部通过（`tmp/codex-final-integration.log`）：主体 123.5 秒，
+  随后 task/app/install/surface/bridge/grants/policy/version/index/notification 的真实重启
+  持久化验证全部通过。`make check` 已通过（`tmp/codex-final-check.log`，148 桌面单测）；
+  移动最后变更另通过定向 ESLint，并待最终文档同步后的 check 收尾。
+
+#### 最终门禁与交付结论
+
+全量 E2E 揪出 Declarative 用例等待 iframe 的旧竞态断言：真实内容已经由原生
+组件渲染，iframe 消失才是正确行为。现等待文档内容并断言零 iframe；未修改产品
+渲染或削弱安全断言，复跑整套通过，不涉及可见 UI 变化。
+
+| 本轮最终命令                                                                       | 结果                                                                                                  | 证据                                                    |
+| ---------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- | ------------------------------------------------------- |
+| `make check`                                                                       | PASS；Go vet/test、协议/SQL/架构/ESLint/Prettier、149 桌面单测、8 移动单测、全部 workspace 检查与构建 | `tmp/codex-final-check4.log`                            |
+| `make test-integration`                                                            | PASS；150 顶层用例及全部真实重启恢复阶段                                                              | `tmp/codex-final-integration.log`                       |
+| `make test-e2e`                                                                    | PASS；39 passed、42 专项环境/视觉捕获项 skipped                                                       | `tmp/codex-final-e2e2.log`                              |
+| `make test-native-surface`                                                         | PASS；真实 X11 故障/输入/清理、RPC、runtime 重启、Chromium 三尺寸                                     | `tmp/codex-final-native3.log`                           |
+| `make test-mobile-wrappers`                                                        | PASS；8 单测、构建、双平台引用、Android sync、4 Chromium 场景                                         | `tmp/codex-final-mobile2.log`                           |
+| `TMPDIR=$PWD/tmp make test-lan-pairing`                                            | PASS；临时 TLS、mDNS/指纹、双浏览器配对、Cookie、重启、重认证、撤销与推送撤销事实                     | `tmp/codex-final-lan2.log`                              |
+| `make test-repair-buildtest`                                                       | PASS；完整发布链、失败零发布、重启、Recovery 与回滚矩阵                                               | `tmp/codex-final-repair.log`                            |
+| 交接要求的 Go race 集合                                                            | PASS                                                                                                  | `tmp/codex-final-race.log`、`tmp/codex-input-race.log`  |
+| `buf breaking --against '.git#branch=main'`                                        | PASS                                                                                                  | `tmp/codex-final-buf-breaking2.log`                     |
+| `make generate` 重复生成、`git diff main --check`、`docker compose config --quiet` | PASS                                                                                                  | `tmp/codex-final-generate4.log`；提交前再次检查生成幂等 |
+
+宿主缺少 make/Go/Node，表中 make 命令实际经既有 `/home/aquatao/.local/bin/wmake`
+工具容器执行。LAN 初跑因嵌套 Docker 看不到 helper 私有 `/tmp` 而失败；把 TMPDIR
+指向仓库共享挂载后完整通过，不是软件授权错误。未改宿主工具或绕过 Gateway 鉴权。
+
+下表是本轮差异审查与回归结论；历史专项证据保留在前文，本轮没有重新声称所有历史
+外部环境门禁均已执行。
+
+| 工作流            | 本轮审查结论              | 验证范围与保留边界                                                                                                                                                                            |
+| ----------------- | ------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| R1 Provider/凭据  | PASS                      | Provider 适配器未改；默认任务/凭据/策略集成与指定 race 回归通过，fixture 工具改动已核对。既有不支持预算/usage 的 Provider 仍不得宣称支持。                                                    |
+| R2 Runtime/自愈   | PASS 软件链               | 真实 Recovery fallback/人工终态、Build/Test、发布/回滚/重启矩阵通过；宿主无 podman，rootless 隔离未验收。                                                                                     |
+| R3 Surface/Bridge | PASS 当前声明范围         | Native 生命周期/输入/授权续期已修复并有真实多尺寸证据；Bridge/Declarative 通用集成与 E2E 通过。WebRTC 仅同主机，无 TURN/内核隔离。                                                            |
+| R4 工作区/知识    | PASS 回归                 | archive、索引/知识持久化、检索、App scope、上下文与真实知识 E2E 通过；此次没有变更语义模型或扩大能力声明。                                                                                    |
+| R5 通知/移动/LAN  | PASS 软件链；平台 BLOCKED | 移动认证/存储/Forget 修复，真实 TLS 配对/重启/撤销及通知收敛通过；缺 Android SDK/Xcode/签名设备，原生二进制、Keychain/Keystore/设备 HTTP 与 APNs/FCM 仍未验证，Mobile Shell 保持 scaffolded。 |
+| R6 桌面/交互      | PASS                      | 149 单测、39 通用浏览器 E2E、Native 专项及固定 fixture 的逐张视觉验收；before/after/current 与任务链接完整。                                                                                  |
+
+**合并结论：本轮发现的软件合并阻塞项已修复，当前改动可合并到 main。**
+main 与远端 main 均复核为 `69e75bc3e34807940368aeaed39d2be34890670a`，是开发分支的
+祖先，可快进合并。依交接的 main 保护规则，交付停在唯一开发分支的干净提交；本轮不更新
+main、不 push，也不把平台缺失证据改成 working 或把总任务伪报为所有能力 done。
+下一步是用户明确发起本轮最终合并，以及在具备前提的宿主完成上表列明的平台验收。
+
+提交前协议复核补充：`workos.input` 原由 Go/TypeScript 各手写 JSON 形状，不符合
+仓库跨进程契约先行规则。已先新增 Proto `NativeInputEvent` 并执行 `make generate`，
+再将 Go 解析替换为严格 protojson、桌面输入类型派生自生成消息（平面标量的 protobuf JSON），
+删除手写 Go DTO。新增未知字段、混合事件及 NaN 坐标拒绝回归；v1 原字段号未改动。
+此变更不改变已验证的有效输入与界面像素，随后复跑 Native 真链路与总检查。
+
+指针补充回归：鼠标移出视频后松开仍向边界坐标发送 up，避免原生按钮卡住；
+Native 桌面单测现为 5 个（`tmp/codex-input-ui2.log`），有效右键映射保留为 X button 3。
+
+收尾确认：协议与指针最后变更后的 `make check`（`tmp/codex-final-check4.log`）及
+`make test-native-surface`（`tmp/codex-final-native3.log`）全部 PASS；Proto breaking
+复查 PASS，Native 追加 race PASS。149 个桌面单测、8 个移动单测通过。最后 Native
+三尺寸截图再次目视检查，与 current 字节一致；Home 同样一致。README 状态重新生成
+后通过一致性检查。最终只做本节日志路径/结果收口及格式检查，不再修改实现。

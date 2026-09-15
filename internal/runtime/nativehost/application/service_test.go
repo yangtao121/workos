@@ -74,6 +74,9 @@ func (m *memoryStore) CloseSession(_ context.Context, ownerUserID, sessionID str
 	if !ok || session.OwnerUserID != ownerUserID {
 		return domain.ErrNotFound
 	}
+	if session.State.Terminal() {
+		return nil
+	}
 	session.State = state
 	session.UpdatedAt = now
 	session.ExpiresAt = now
@@ -304,5 +307,58 @@ func TestNativeServiceLaunchFailureIsUnavailable(t *testing.T) {
 	engine.mu.Unlock()
 	if _, err := service.Create(context.Background(), testOwner, testProject, "boom", 800, 600); !errors.Is(err, domain.ErrEngineUnavailable) {
 		t.Fatalf("launch failure must surface unavailable: %v", err)
+	}
+}
+
+func (m *memoryStore) ListActive(_ context.Context) ([]domain.Session, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	var result []domain.Session
+	for _, session := range m.sessions {
+		if !session.State.Terminal() {
+			result = append(result, session)
+		}
+	}
+	return result, nil
+}
+
+func TestNativeRestartAndExpiryReclaimCapacity(t *testing.T) {
+	ctx := context.Background()
+	service, engine := newTestService(t)
+	first, err := service.Create(ctx, testOwner, testProject, "restart", 800, 600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	service.Shutdown()
+	restarted, err := NewService(service.store, engine, &seqGenerator{counter: 100}, slog.Default())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := restarted.Sweep(ctx); err != nil {
+		t.Fatal(err)
+	}
+	replay, err := restarted.Create(ctx, testOwner, testProject, "restart", 800, 600)
+	if err != nil || replay.SessionID != first.SessionID || replay.State != domain.StateFailed {
+		t.Fatalf("restart revived stale session: %+v %v", replay, err)
+	}
+	second, err := restarted.Create(ctx, testOwner, testProject, "expiry", 800, 600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	store := service.store.(*memoryStore)
+	store.mu.Lock()
+	row := store.sessions[second.SessionID]
+	row.ExpiresAt = time.Now().Add(-time.Second)
+	store.sessions[second.SessionID] = row
+	store.mu.Unlock()
+	if _, _, err := restarted.Connect(ctx, testOwner, second.SessionID, "offer"); err == nil {
+		t.Fatal("expired session connected before sweep")
+	}
+	if engine.count != 0 {
+		t.Fatalf("capacity leaked: %d", engine.count)
+	}
+	closed, err := restarted.Close(ctx, testOwner, first.SessionID)
+	if err != nil || closed.State != domain.StateFailed {
+		t.Fatal("close replay disagreed with durable terminal state")
 	}
 }

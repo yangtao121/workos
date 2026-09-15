@@ -5,7 +5,7 @@
 // and the transcript contract never change — only where the private key
 // lives between runs.
 
-import { generateDeviceKeyPair, signTranscript, validateDeviceKeyMaterial } from "./keys.js";
+import { generateDeviceKeyPair, validateDeviceKeyMaterial } from "./keys.js";
 import {
   clearDeviceIdentity,
   loadDeviceIdentity,
@@ -95,11 +95,24 @@ export function createSecureDeviceKeyBackend(vault: SecureVault, slot: string): 
   const readRecord = async (): Promise<SecuredIdentityRecord | undefined> => {
     const raw = await vault.get(slot);
     if (raw === undefined) return undefined;
+    let parsed: unknown;
     try {
-      return JSON.parse(raw) as SecuredIdentityRecord;
+      parsed = JSON.parse(raw) as unknown;
     } catch {
-      return undefined;
+      throw new Error("stored device identity is corrupt");
     }
+    if (typeof parsed !== "object" || parsed === null)
+      throw new Error("stored device identity is corrupt");
+    const record = parsed as Record<string, unknown>;
+    if (
+      typeof record.privateJwk !== "object" ||
+      record.privateJwk === null ||
+      typeof record.publicKeySpki !== "string" ||
+      typeof record.publicKeyHash !== "string"
+    ) {
+      throw new Error("stored device identity is corrupt");
+    }
+    return record as unknown as SecuredIdentityRecord;
   };
   return {
     id: "platform-secure-storage",
@@ -117,6 +130,15 @@ export function createSecureDeviceKeyBackend(vault: SecureVault, slot: string): 
       if (record.deviceId !== undefined) identity.deviceId = record.deviceId;
       if (record.deviceName !== undefined) identity.deviceName = record.deviceName;
       if (record.deviceClass !== undefined) identity.deviceClass = record.deviceClass;
+      if (
+        !(await validateDeviceKeyMaterial(
+          identity.privateKey,
+          identity.publicKeySpki,
+          identity.publicKeyHash,
+        ))
+      ) {
+        throw new Error("stored device identity does not match its key");
+      }
       return identity;
     },
     async save(identity) {
@@ -124,7 +146,11 @@ export function createSecureDeviceKeyBackend(vault: SecureVault, slot: string): 
       let privateJwk: JsonWebKey;
       if (identity.privateKey.extractable) {
         privateJwk = await subtle().exportKey("jwk", identity.privateKey);
-      } else if (existing !== undefined) {
+      } else if (
+        existing !== undefined &&
+        existing.publicKeyHash === identity.publicKeyHash &&
+        existing.publicKeySpki === toBase64(identity.publicKeySpki)
+      ) {
         privateJwk = existing.privateJwk;
       } else {
         throw new Error("secure backend cannot persist an unexportable unknown key");
@@ -158,35 +184,12 @@ export function createSecureDeviceKeyBackend(vault: SecureVault, slot: string): 
         deviceClass,
       };
     },
-    async validate(identity) {
-      try {
-        const publicKey = await subtle().importKey(
-          "spki",
-          identity.publicKeySpki.slice().buffer,
-          ALGORITHM,
-          true,
-          ["verify"],
-        );
-        const canonical = new Uint8Array(await subtle().exportKey("spki", publicKey));
-        if (canonical.length !== identity.publicKeySpki.length) return false;
-        for (const [index, byte] of canonical.entries()) {
-          if (identity.publicKeySpki[index] !== byte) return false;
-        }
-        const digest = await subtle().digest("SHA-256", identity.publicKeySpki.slice().buffer);
-        let hash = "";
-        for (const byte of new Uint8Array(digest)) hash += byte.toString(16).padStart(2, "0");
-        if (`sha256:${hash}` !== identity.publicKeyHash) return false;
-        const message = new TextEncoder().encode("workos.device-key-check/v1");
-        const signature = await signTranscript(identity.privateKey, message);
-        return await subtle().verify(
-          { name: "ECDSA", hash: "SHA-256" },
-          publicKey,
-          signature.slice().buffer,
-          message.slice().buffer,
-        );
-      } catch {
-        return false;
-      }
+    validate(identity) {
+      return validateDeviceKeyMaterial(
+        identity.privateKey,
+        identity.publicKeySpki,
+        identity.publicKeyHash,
+      );
     },
   };
 }

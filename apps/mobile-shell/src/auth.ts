@@ -5,12 +5,15 @@
 // flow the desktop uses.
 import {
   DeviceAuthClient,
+  profileDeviceKeyBackend,
   createSecureDeviceKeyBackend,
   parsePairingFragment,
   type DeviceInfo,
   type SecureVault,
 } from "@workos/device-auth";
-import { createConnectTransport } from "@connectrpc/connect-web";
+import { Capacitor } from "@capacitor/core";
+import { createMobileTransport } from "./transport.js";
+import { Code, ConnectError } from "@connectrpc/connect";
 import type { Transport } from "@connectrpc/connect";
 
 export const DEVICE_IDENTITY_SLOT = "workos.device-identity.v1";
@@ -36,55 +39,77 @@ export interface MobileAuth {
 // (native webview); the web runtime keeps the non-extractable profile
 // backend instead of storing key material in localStorage.
 export function createMobileAuth(origin: string, secureVault: SecureVault | undefined): MobileAuth {
-  // credentials: include keeps the __Host- session cookie flowing on the
-  // cross-origin native webview (the desktop is same-origin by construction).
-  const transport = createConnectTransport({
-    baseUrl: origin,
-    fetch: (input, init) => globalThis.fetch(input, { ...init, credentials: "include" }),
-  });
-  const client = new DeviceAuthClient(origin, transport);
-  const secureClient =
+  const transport = createMobileTransport(origin);
+  const backend =
     secureVault !== undefined
-      ? new DeviceAuthClient(
-          origin,
-          transport,
-          createSecureDeviceKeyBackend(secureVault, DEVICE_IDENTITY_SLOT),
+      ? createSecureDeviceKeyBackend(
+          secureVault,
+          `${DEVICE_IDENTITY_SLOT}:${new URL(origin).origin}`,
         )
-      : client;
-
-  return {
-    transport,
-    backendId: secureVault !== undefined ? "platform-secure-storage" : "profile-indexeddb",
-    async begin(fragment) {
-      try {
-        if (fragment !== undefined && fragment.length > 0) {
-          const parsed = parsePairingFragment(fragment);
-          const device = await secureClient.pairWithTicket({
-            secret: parsed.secret,
-            tlsFingerprint: parsed.tlsFingerprint,
-            deviceName: "WorkOS Mobile",
-            deviceClass: "phone",
-          });
-          return { phase: "paired", device };
-        }
-        const device = await client.restoreSession();
-        return device ? { phase: "paired", device } : { phase: "unpaired" };
-      } catch (error) {
-        if (error instanceof Error && error.message.includes("pairing")) {
-          // A malformed fragment is a user-visible pairing failure, not an
-          // outage: surface the unpaired screen with the fragment scrubbed.
+      : profileDeviceKeyBackend;
+  const client = new DeviceAuthClient(origin, transport, backend);
+  let pending: Promise<MobileAuthPhase> | undefined;
+  let forgetting: Promise<MobileAuthPhase> | undefined;
+  const begin = async (fragment: string | undefined): Promise<MobileAuthPhase> => {
+    if (Capacitor.isNativePlatform() && secureVault === undefined) return { phase: "unavailable" };
+    try {
+      if (fragment) {
+        let parsed;
+        try {
+          parsed = parsePairingFragment(fragment);
+        } catch {
           return { phase: "unpaired" };
         }
-        return { phase: "unavailable" };
+        const device = await client.pairWithTicket({
+          secret: parsed.secret,
+          tlsFingerprint: parsed.tlsFingerprint,
+          deviceName: "WorkOS Mobile",
+          deviceClass: "phone",
+        });
+        return { phase: "paired", device };
       }
+      const session = await client.restoreSession();
+      if (session) return { phase: "paired", device: session };
+      const identity = await backend.load();
+      if (!identity?.deviceId) return { phase: "unpaired" };
+      return { phase: "paired", device: await client.reauthenticate() };
+    } catch (error) {
+      if (
+        error instanceof ConnectError &&
+        (error.code === Code.Unauthenticated ||
+          error.code === Code.NotFound ||
+          error.code === Code.PermissionDenied)
+      )
+        return { phase: "unpaired" };
+      return { phase: "unavailable" };
+    }
+  };
+  return {
+    transport,
+    backendId: backend.id,
+    begin(fragment) {
+      if (forgetting) return forgetting;
+      // React StrictMode and repeated retry taps must not claim a ticket twice.
+      pending ??= begin(fragment).finally(() => {
+        pending = undefined;
+      });
+      return pending;
     },
-    async logout() {
-      try {
-        await secureClient.forget();
-      } catch {
-        // Logout is best effort locally; the next begin() reconciles state.
-      }
-      return { phase: "unpaired" };
+    logout() {
+      // Finish any in-flight proof before Logout so its late Set-Cookie cannot
+      // recreate a server session after the device has been forgotten.
+      forgetting ??= (async (): Promise<MobileAuthPhase> => {
+        try {
+          await pending;
+          await client.forget();
+          return { phase: "unpaired" };
+        } catch {
+          return { phase: "unavailable" };
+        }
+      })().finally(() => {
+        forgetting = undefined;
+      });
+      return forgetting;
     },
   };
 }

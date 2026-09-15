@@ -5,6 +5,7 @@ import { defineConfig } from "vite";
 // shell; the library exports stay for workspace consumers.
 export default defineConfig({
   plugins: [react()],
+  envPrefix: ["VITE_", "WORKOS_MOBILE_"],
   build: {
     rollupOptions: {
       input: "index.html",

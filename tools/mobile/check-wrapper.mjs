@@ -21,6 +21,8 @@ for (const file of required) {
 }
 // The secure storage plugin must actually be linked into the native build:
 // the device key vault is only real when the platform project depends on it.
+const swift = await readFile(resolve(root, "ios/App/CapApp-SPM/Package.swift"), "utf8");
+if (!swift.includes("CapacitorSecureStoragePlugin")) missing.push("iOS secure-storage plugin link");
 const gradle = await readFile(resolve(root, "android/app/capacitor.build.gradle"), "utf8");
 if (!gradle.includes("capacitor-secure-storage-plugin")) {
   missing.push("android secure-storage plugin link");

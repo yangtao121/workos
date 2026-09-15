@@ -12,7 +12,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file workos/surface/v1/native.proto.
  */
 export const file_workos_surface_v1_native: GenFile = /*@__PURE__*/
-  fileDesc("Ch53b3Jrb3Mvc3VyZmFjZS92MS9uYXRpdmUucHJvdG8SEXdvcmtvcy5zdXJmYWNlLnYxIuQBCg1OYXRpdmVTZXNzaW9uEgoKAmlkGAEgASgJEhUKDW93bmVyX3VzZXJfaWQYAiABKAkSEgoKcHJvamVjdF9pZBgDIAEoCRINCgVzdGF0ZRgEIAEoCRIOCgZlbmdpbmUYBSABKAkSDQoFd2lkdGgYBiABKAUSDgoGaGVpZ2h0GAcgASgFEi4KCmNyZWF0ZWRfYXQYCCABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wEi4KCmV4cGlyZXNfYXQYCSABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wImgKGkNyZWF0ZU5hdGl2ZVNlc3Npb25SZXF1ZXN0EhcKD2lkZW1wb3RlbmN5X2tleRgBIAEoCRISCgpwcm9qZWN0X2lkGAIgASgJEg0KBXdpZHRoGAMgASgFEg4KBmhlaWdodBgEIAEoBSJQChtDcmVhdGVOYXRpdmVTZXNzaW9uUmVzcG9uc2USMQoHc2Vzc2lvbhgBIAEoCzIgLndvcmtvcy5zdXJmYWNlLnYxLk5hdGl2ZVNlc3Npb24iRAobQ29ubmVjdE5hdGl2ZVNlc3Npb25SZXF1ZXN0EhIKCnNlc3Npb25faWQYASABKAkSEQoJb2ZmZXJfc2RwGAIgASgJImUKHENvbm5lY3ROYXRpdmVTZXNzaW9uUmVzcG9uc2USMQoHc2Vzc2lvbhgBIAEoCzIgLndvcmtvcy5zdXJmYWNlLnYxLk5hdGl2ZVNlc3Npb24SEgoKYW5zd2VyX3NkcBgCIAEoCSIvChlDbG9zZU5hdGl2ZVNlc3Npb25SZXF1ZXN0EhIKCnNlc3Npb25faWQYASABKAkiTwoaQ2xvc2VOYXRpdmVTZXNzaW9uUmVzcG9uc2USMQoHc2Vzc2lvbhgBIAEoCzIgLndvcmtvcy5zdXJmYWNlLnYxLk5hdGl2ZVNlc3Npb24iLQoXR2V0TmF0aXZlU2Vzc2lvblJlcXVlc3QSEgoKc2Vzc2lvbl9pZBgBIAEoCSJNChhHZXROYXRpdmVTZXNzaW9uUmVzcG9uc2USMQoHc2Vzc2lvbhgBIAEoCzIgLndvcmtvcy5zdXJmYWNlLnYxLk5hdGl2ZVNlc3Npb24y7QMKFE5hdGl2ZVNlc3Npb25TZXJ2aWNlEnYKE0NyZWF0ZU5hdGl2ZVNlc3Npb24SLS53b3Jrb3Muc3VyZmFjZS52MS5DcmVhdGVOYXRpdmVTZXNzaW9uUmVxdWVzdBouLndvcmtvcy5zdXJmYWNlLnYxLkNyZWF0ZU5hdGl2ZVNlc3Npb25SZXNwb25zZSIAEnkKFENvbm5lY3ROYXRpdmVTZXNzaW9uEi4ud29ya29zLnN1cmZhY2UudjEuQ29ubmVjdE5hdGl2ZVNlc3Npb25SZXF1ZXN0Gi8ud29ya29zLnN1cmZhY2UudjEuQ29ubmVjdE5hdGl2ZVNlc3Npb25SZXNwb25zZSIAEm0KEEdldE5hdGl2ZVNlc3Npb24SKi53b3Jrb3Muc3VyZmFjZS52MS5HZXROYXRpdmVTZXNzaW9uUmVxdWVzdBorLndvcmtvcy5zdXJmYWNlLnYxLkdldE5hdGl2ZVNlc3Npb25SZXNwb25zZSIAEnMKEkNsb3NlTmF0aXZlU2Vzc2lvbhIsLndvcmtvcy5zdXJmYWNlLnYxLkNsb3NlTmF0aXZlU2Vzc2lvblJlcXVlc3QaLS53b3Jrb3Muc3VyZmFjZS52MS5DbG9zZU5hdGl2ZVNlc3Npb25SZXNwb25zZSIAQkFaP2dpdGh1Yi5jb20veWFuZ3RhbzEyMS93b3Jrb3MvZ2VuL2dvL3dvcmtvcy9zdXJmYWNlL3YxO3N1cmZhY2V2MWIGcHJvdG8z", [file_google_protobuf_timestamp]);
+  fileDesc("Ch53b3Jrb3Mvc3VyZmFjZS92MS9uYXRpdmUucHJvdG8SEXdvcmtvcy5zdXJmYWNlLnYxIuQBCg1OYXRpdmVTZXNzaW9uEgoKAmlkGAEgASgJEhUKDW93bmVyX3VzZXJfaWQYAiABKAkSEgoKcHJvamVjdF9pZBgDIAEoCRINCgVzdGF0ZRgEIAEoCRIOCgZlbmdpbmUYBSABKAkSDQoFd2lkdGgYBiABKAUSDgoGaGVpZ2h0GAcgASgFEi4KCmNyZWF0ZWRfYXQYCCABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wEi4KCmV4cGlyZXNfYXQYCSABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wImgKGkNyZWF0ZU5hdGl2ZVNlc3Npb25SZXF1ZXN0EhcKD2lkZW1wb3RlbmN5X2tleRgBIAEoCRISCgpwcm9qZWN0X2lkGAIgASgJEg0KBXdpZHRoGAMgASgFEg4KBmhlaWdodBgEIAEoBSJQChtDcmVhdGVOYXRpdmVTZXNzaW9uUmVzcG9uc2USMQoHc2Vzc2lvbhgBIAEoCzIgLndvcmtvcy5zdXJmYWNlLnYxLk5hdGl2ZVNlc3Npb24iRAobQ29ubmVjdE5hdGl2ZVNlc3Npb25SZXF1ZXN0EhIKCnNlc3Npb25faWQYASABKAkSEQoJb2ZmZXJfc2RwGAIgASgJImUKHENvbm5lY3ROYXRpdmVTZXNzaW9uUmVzcG9uc2USMQoHc2Vzc2lvbhgBIAEoCzIgLndvcmtvcy5zdXJmYWNlLnYxLk5hdGl2ZVNlc3Npb24SEgoKYW5zd2VyX3NkcBgCIAEoCSIvChlDbG9zZU5hdGl2ZVNlc3Npb25SZXF1ZXN0EhIKCnNlc3Npb25faWQYASABKAkiTwoaQ2xvc2VOYXRpdmVTZXNzaW9uUmVzcG9uc2USMQoHc2Vzc2lvbhgBIAEoCzIgLndvcmtvcy5zdXJmYWNlLnYxLk5hdGl2ZVNlc3Npb24iLQoXR2V0TmF0aXZlU2Vzc2lvblJlcXVlc3QSEgoKc2Vzc2lvbl9pZBgBIAEoCSJNChhHZXROYXRpdmVTZXNzaW9uUmVzcG9uc2USMQoHc2Vzc2lvbhgBIAEoCzIgLndvcmtvcy5zdXJmYWNlLnYxLk5hdGl2ZVNlc3Npb24icQoQTmF0aXZlSW5wdXRFdmVudBIMCgR0eXBlGAEgASgJEgwKBHRleHQYAiABKAkSCwoDa2V5GAMgASgJEg4KBmFjdGlvbhgEIAEoCRIJCgF4GAUgASgBEgkKAXkYBiABKAESDgoGYnV0dG9uGAcgASgFMu0DChROYXRpdmVTZXNzaW9uU2VydmljZRJ2ChNDcmVhdGVOYXRpdmVTZXNzaW9uEi0ud29ya29zLnN1cmZhY2UudjEuQ3JlYXRlTmF0aXZlU2Vzc2lvblJlcXVlc3QaLi53b3Jrb3Muc3VyZmFjZS52MS5DcmVhdGVOYXRpdmVTZXNzaW9uUmVzcG9uc2UiABJ5ChRDb25uZWN0TmF0aXZlU2Vzc2lvbhIuLndvcmtvcy5zdXJmYWNlLnYxLkNvbm5lY3ROYXRpdmVTZXNzaW9uUmVxdWVzdBovLndvcmtvcy5zdXJmYWNlLnYxLkNvbm5lY3ROYXRpdmVTZXNzaW9uUmVzcG9uc2UiABJtChBHZXROYXRpdmVTZXNzaW9uEioud29ya29zLnN1cmZhY2UudjEuR2V0TmF0aXZlU2Vzc2lvblJlcXVlc3QaKy53b3Jrb3Muc3VyZmFjZS52MS5HZXROYXRpdmVTZXNzaW9uUmVzcG9uc2UiABJzChJDbG9zZU5hdGl2ZVNlc3Npb24SLC53b3Jrb3Muc3VyZmFjZS52MS5DbG9zZU5hdGl2ZVNlc3Npb25SZXF1ZXN0Gi0ud29ya29zLnN1cmZhY2UudjEuQ2xvc2VOYXRpdmVTZXNzaW9uUmVzcG9uc2UiAEJBWj9naXRodWIuY29tL3lhbmd0YW8xMjEvd29ya29zL2dlbi9nby93b3Jrb3Mvc3VyZmFjZS92MTtzdXJmYWNldjFiBnByb3RvMw", [file_google_protobuf_timestamp]);
 
 /**
  * One supervised virtual-display native session (ADR-0029): a real Xvfb
@@ -134,7 +134,8 @@ export const CreateNativeSessionResponseSchema: GenMessage<CreateNativeSessionRe
 /**
  * Signaling segment, separate from session identity so a browser reload can
  * re-offer without breaking the creation idempotency key. Offers and answers
- * carry complete ICE candidates (no trickle).
+ * carry complete ICE candidates (no trickle). Each peer expires after 30 seconds;
+ * continuing media/input requires another authenticated Connect through Gateway.
  *
  * @generated from message workos.surface.v1.ConnectNativeSessionRequest
  */
@@ -246,6 +247,67 @@ export type GetNativeSessionResponse = Message<"workos.surface.v1.GetNativeSessi
  */
 export const GetNativeSessionResponseSchema: GenMessage<GetNativeSessionResponse> = /*@__PURE__*/
   messageDesc(file_workos_surface_v1_native, 8);
+
+/**
+ * Canonical workos.input data-channel payload, serialized as protobuf JSON.
+ * The adapter rejects unknown fields/types, invalid combinations and oversized
+ * events. Only the bounded text/key/pointer vocabulary below is supported.
+ *
+ * @generated from message workos.surface.v1.NativeInputEvent
+ */
+export type NativeInputEvent = Message<"workos.surface.v1.NativeInputEvent"> & {
+  /**
+   * text|key|pointer
+   *
+   * @generated from field: string type = 1;
+   */
+  type: string;
+
+  /**
+   * text events: at most 256 printable Unicode runes (newline/tab allowed).
+   *
+   * @generated from field: string text = 2;
+   */
+  text: string;
+
+  /**
+   * key events: the versioned finite key allowlist in ADR-0029.
+   *
+   * @generated from field: string key = 3;
+   */
+  key: string;
+
+  /**
+   * pointer events: move|down|up|click; coordinates must be finite in [0,1].
+   *
+   * @generated from field: string action = 4;
+   */
+  action: string;
+
+  /**
+   * @generated from field: double x = 5;
+   */
+  x: number;
+
+  /**
+   * @generated from field: double y = 6;
+   */
+  y: number;
+
+  /**
+   * X button mapping: 1=left, 2=middle, 3=right; required for down/up/click.
+   *
+   * @generated from field: int32 button = 7;
+   */
+  button: number;
+};
+
+/**
+ * Describes the message workos.surface.v1.NativeInputEvent.
+ * Use `create(NativeInputEventSchema)` to create a new message.
+ */
+export const NativeInputEventSchema: GenMessage<NativeInputEvent> = /*@__PURE__*/
+  messageDesc(file_workos_surface_v1_native, 9);
 
 /**
  * Supervised owner-scoped virtual-display sessions on the runtime host

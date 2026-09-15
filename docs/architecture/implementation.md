@@ -1544,15 +1544,30 @@ return 0 改为 return 42，保留原测试源码与配置；Core/Harness 重启
   x11grab→VP8 IVF 捕获（等待客户端窗口映射后才开捕获，避免 x11grab 过早
   打开显示挂起/空屏）；pion WebRTC TrackLocalStaticSample 推流；
   `workos.input` Data Channel → xdotool XTEST 注入（令牌桶 64 事件/s，
-  有界 JSON 事件：text/key 允许表/pointer 归一坐标）；进程组 kill +
+  Proto NativeInputEvent 的有界 JSON：text/key 允许表/pointer 归一坐标）；进程组 kill +
   Pdeathsig；并发 2/owner、TTL 30min sweep。EngineFacts 如实声明无
   cgroup 隔离、无 TURN（仅回环 host candidates）。
 - `workos.surface.v1.NativeSessionService`（Create/Connect/Get/Close）：
   Gateway 路由（鉴权/信令）+ owner 身份；会话身份与信令分离，Connect 可
   重连（完整 SDP 交换，无 trickle）。
 - 桌面 Native 系统窗口消费该服务（`<video>` 渲染远端轨道、键盘/指针经
-  Data Channel、帧计数）。
+  Data Channel、用户连接状态）。
 - `make test-native-surface`：X11 工具链镜像 runtime + pion 对等端集成测试
   （真实 VP8 帧、输入回传改变显示内容）+ 桌面 Chromium E2E。
 - 配置：WORKOS*RUNTIME_NATIVE*{DISPLAY,CLIENT,FFMPEG,XDOTOOL,SCRATCH}；
   未配置时 `virtual-display-native-runner` 能力如实 unavailable。
+
+### 2026-09-14 合并审查：Native 与移动认证
+
+Native 的创建、连接、关闭和 sweep 在 runtime-host 内串行协调；重启先将没有
+活进程的持久行终结，再服务请求。客户端或编码器退出终结整个 display，输入 worker
+使用同一取消上下文，启动必须收到有效首帧。日志不记录输入 argv。Pion 只发布 loopback
+地址；每个 peer 的授权窗口为 30 秒，桌面每 20 秒经 Gateway 重新鉴权，旧 peer 与
+排队输入不会跨续期复用。桌面正确协商 SCTP、映射 Ctrl/指针并回收迟到会话。
+详见 ADR-0029 修正段及 nativehost 的应用层/引擎回归测试。
+
+移动端 canonical proof 使用配置的部署 origin；平台密钥槽按 origin 隔离。
+过期 Cookie 经同一持久密钥后端重建 session，原生 JSON RPC 经 Capacitor HTTP bridge
+访问严格校验的 Gateway，浏览器仍用标准 fetch。安全存储故障和 Forget 失败不伪报成功；
+StrictMode 不重复 claim 配对 ticket，配对 fragment 在请求前从地址栏移除，晚到的投影
+不得覆盖注销后的状态。平台二进制、设备 Cookie jar/证书/链接唤起/安全存储/推送仍未验证。

@@ -5,24 +5,17 @@ package xvfbengine
 
 import (
 	"context"
-	"encoding/json"
 	"log/slog"
+	"math"
 	"os/exec"
 	"strconv"
 	"time"
+	"unicode/utf8"
 
+	surfacev1 "github.com/yangtao121/workos/gen/go/workos/surface/v1"
 	"github.com/yangtao121/workos/internal/runtime/nativehost/domain"
+	"google.golang.org/protobuf/encoding/protojson"
 )
-
-type inputEvent struct {
-	Type   string  `json:"type"`
-	Text   string  `json:"text,omitempty"`
-	Key    string  `json:"key,omitempty"`
-	Action string  `json:"action,omitempty"`
-	X      float64 `json:"x,omitempty"`
-	Y      float64 `json:"y,omitempty"`
-	Button int32   `json:"button,omitempty"`
-}
 
 // keyAllowlist keeps XTEST injection to an explicit, finite key set; anything
 // else (arbitrary keysyms, shell metacharacters) is rejected outright.
@@ -41,7 +34,7 @@ var keyAllowlist = map[string]bool{
 // single worker (started in Launch) preserves ordering like a real input
 // device.
 func (d *display) enqueueInput(raw []byte) {
-	if len(raw) == 0 || len(raw) > domain.MaxInputEvent {
+	if d.Exited() || len(raw) == 0 || len(raw) > domain.MaxInputEvent {
 		return
 	}
 	now := time.Now()
@@ -63,7 +56,7 @@ func (d *display) enqueueInput(raw []byte) {
 	d.inputMu.Unlock()
 
 	select {
-	case d.inputQueue <- raw:
+	case d.inputQueue <- queuedInput{raw: append([]byte(nil), raw...), epoch: d.peerEpoch}:
 	default:
 		d.inputMu.Lock()
 		d.inputDropped++
@@ -72,26 +65,29 @@ func (d *display) enqueueInput(raw []byte) {
 }
 
 func (d *display) applyInput(raw []byte) {
-	var event inputEvent
-	if err := json.Unmarshal(raw, &event); err != nil {
+	var event surfacev1.NativeInputEvent
+	if err := protojson.Unmarshal(raw, &event); err != nil {
 		return
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), xdotoolTimeout)
+	ctx, cancel := context.WithTimeout(d.runCtx, xdotoolTimeout)
 	defer cancel()
 	var argv []string
 	switch event.Type {
 	case "text":
-		if !validText(event.Text) {
+		if !validText(event.Text) || event.Key != "" || event.Action != "" || event.X != 0 || event.Y != 0 || event.Button != 0 {
 			return
 		}
-		argv = []string{"type", "--clearmodifiers", "--delay", "30", "--", event.Text}
+		argv = []string{"type", "--clearmodifiers", "--delay", "0", "--", event.Text}
 	case "key":
-		if !keyAllowlist[event.Key] {
+		if !keyAllowlist[event.Key] || event.Text != "" || event.Action != "" || event.X != 0 || event.Y != 0 || event.Button != 0 {
 			return
 		}
 		argv = []string{"key", "--clearmodifiers", "--", event.Key}
 	case "pointer":
-		argv = d.pointerArgv(event)
+		if event.Text != "" || event.Key != "" {
+			return
+		}
+		argv = d.pointerArgv(&event)
 	default:
 		return
 	}
@@ -101,7 +97,7 @@ func (d *display) applyInput(raw []byte) {
 	cmd := exec.CommandContext(ctx, d.engine.Xdotool, argv...)
 	cmd.Env = []string{"DISPLAY=" + d.displayName, "HOME=" + d.dir, "PATH=/usr/local/bin:/usr/bin:/bin"}
 	if err := cmd.Run(); err != nil {
-		slog.Warn("native input injection failed", "display", d.displayName, "argv", argv, "error", err)
+		slog.Warn("native input injection failed", "display", d.displayName, "type", event.Type, "error", err)
 		return
 	}
 	slog.Info("native input injected", "display", d.displayName, "type", event.Type)
@@ -110,6 +106,9 @@ func (d *display) applyInput(raw []byte) {
 // validText admits printable runes plus newline and tab only, bounded to the
 // documented per-event run budget.
 func validText(text string) bool {
+	if !utf8.ValidString(text) {
+		return false
+	}
 	count := 0
 	for _, r := range text {
 		count++
@@ -128,12 +127,12 @@ func validText(text string) bool {
 
 // pointerArgv maps normalized coordinates to the display pixel space; the
 // action set is exactly move/down/up/click with buttons 1..3.
-func (d *display) pointerArgv(event inputEvent) []string {
-	if event.X < 0 || event.X > 1 || event.Y < 0 || event.Y > 1 {
+func (d *display) pointerArgv(event *surfacev1.NativeInputEvent) []string {
+	if math.IsNaN(event.X) || math.IsNaN(event.Y) || event.X < 0 || event.X > 1 || event.Y < 0 || event.Y > 1 {
 		return nil
 	}
-	x := int(event.X * float64(d.width))
-	y := int(event.Y * float64(d.height))
+	x := int(event.X * float64(d.width-1))
+	y := int(event.Y * float64(d.height-1))
 	validButton := event.Button >= 1 && event.Button <= 3
 	switch event.Action {
 	case "move":
@@ -142,17 +141,17 @@ func (d *display) pointerArgv(event inputEvent) []string {
 		if !validButton {
 			return nil
 		}
-		return []string{"mousedown", strconv.Itoa(int(event.Button))}
+		return []string{"mousemove", "--sync", strconv.Itoa(x), strconv.Itoa(y), "mousedown", strconv.Itoa(int(event.Button))}
 	case "up":
 		if !validButton {
 			return nil
 		}
-		return []string{"mouseup", strconv.Itoa(int(event.Button))}
+		return []string{"mousemove", "--sync", strconv.Itoa(x), strconv.Itoa(y), "mouseup", strconv.Itoa(int(event.Button))}
 	case "click":
 		if !validButton {
 			return nil
 		}
-		return []string{"click", strconv.Itoa(int(event.Button))}
+		return []string{"mousemove", "--sync", strconv.Itoa(x), strconv.Itoa(y), "click", strconv.Itoa(int(event.Button))}
 	default:
 		return nil
 	}

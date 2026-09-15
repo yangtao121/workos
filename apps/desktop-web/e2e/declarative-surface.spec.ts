@@ -135,12 +135,12 @@ test("renders declarative documents with inert native components", async ({ page
   });
 
   await row.getByRole("button", { name: "Open", exact: true }).click();
-  const frame = page.locator(".app-surface-frame");
-  await expect(frame).toBeVisible({ timeout: libraryTimeout });
-
   // The native declarative renderer ran: inert components, real document.
   const body = page.locator(".app-surface-body");
-  await expect(body.locator(".declarative-markdown")).toHaveText("Quarterly review summary");
+  await expect(body.locator(".declarative-markdown")).toHaveText("Quarterly review summary", {
+    timeout: libraryTimeout,
+  });
+  await expect(body.locator("iframe")).toHaveCount(0);
   await expect(body.locator(".declarative-kv dt").first()).toHaveText("Region");
   await expect(body.locator(".declarative-kv dd").nth(1)).toHaveText("fixture");
   await expect(body.locator(".declarative-progress")).toHaveAttribute("value", "72");

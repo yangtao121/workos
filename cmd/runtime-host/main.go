@@ -396,6 +396,10 @@ func run(logger *slog.Logger) error {
 		if serviceErr != nil {
 			return serviceErr
 		}
+		if err := nativeService.Sweep(ctx); err != nil {
+			return err
+		}
+		defer nativeService.Shutdown()
 		nativePath, nativeHandler := nativehosttransport.NewNativeHandler(nativeService)
 		mux.Handle(nativePath, identity.Middleware(nativeHandler))
 		nativeStop := make(chan struct{})

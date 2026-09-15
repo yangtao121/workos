@@ -122,3 +122,15 @@ func (r *Repository) CountActive(ctx context.Context, ownerUserID string) (int, 
 	}
 	return int(count), nil
 }
+
+func (r *Repository) ListActive(ctx context.Context) ([]domain.Session, error) {
+	rows, err := r.queries.ListActiveNativeSessions(ctx)
+	if err != nil {
+		return nil, transient(err)
+	}
+	sessions := make([]domain.Session, 0, len(rows))
+	for _, row := range rows {
+		sessions = append(sessions, sessionFromRow(row))
+	}
+	return sessions, nil
+}

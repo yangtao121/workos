@@ -11,6 +11,7 @@ import (
 
 // SessionStore owns the durable native session rows (migration 056).
 type SessionStore interface {
+	ListActive(ctx context.Context) ([]domain.Session, error)
 	// InsertSession persists a queued session; a same-owner/key replay
 	// returns the stored request digest for drift adjudication.
 	InsertSession(ctx context.Context, session domain.Session) (storedDigest string, created bool, err error)

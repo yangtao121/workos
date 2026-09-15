@@ -61,7 +61,13 @@ wait_ready
 run_test() {
   docker run --rm --network host --user "$WORKOS_NATIVE_GATE_USER" -e HOME=/tmp -e GOPATH=/tmp/workos-go -e GOMODCACHE=/go/pkg/mod -e GOCACHE=/workspace/tmp/go-build-cache -e GOPROXY=https://goproxy.cn,direct -e WORKOS_NATIVE_GATE_DIR="/workspace/${task_dir#"$repo"/}" -e WORKOS_NATIVE_GATE_GATEWAY_URL="http://127.0.0.1:$WORKOS_NATIVE_GATE_GATEWAY_PORT" -e WORKOS_NATIVE_GATE_CORE_URL="http://127.0.0.1:$WORKOS_NATIVE_GATE_CORE_PORT" -e WORKOS_NATIVE_GATE_RUNTIME_URL="http://127.0.0.1:$WORKOS_NATIVE_GATE_RUNTIME_PORT" -e WORKOS_NATIVE_GATE_DATABASE_URL="$WORKOS_NATIVE_GATE_DATABASE_URL" -v workos-go-cache:/go/pkg/mod -v "$repo:/workspace" -w /workspace golang:1.26.7-bookworm go test -tags='integration nativegate' -count=1 -run "^$1$" -v ./tests/integration
 }
+# Engine lifecycle failures run against the real installed toolchain too.
+docker run --rm --user "$WORKOS_NATIVE_GATE_USER" -e HOME=/tmp -e GOPATH=/tmp/workos-go -e GOMODCACHE=/go/pkg/mod -e GOCACHE=/workspace/tmp/go-build-cache -v workos-go-cache:/go/pkg/mod -v "$repo:/workspace" -w /workspace golang:1.26.7-bookworm go test -c -o "/workspace/${task_dir#"$repo"/}/native-engine.test" ./internal/runtime/nativehost/adapters/xvfbengine
+docker run --rm --user "$WORKOS_NATIVE_GATE_USER" -e WORKOS_NATIVE_ENGINE_TEST=1 -v "$task_dir:/gate:ro" workos-native-runtime:dev /gate/native-engine.test -test.v
 run_test 'TestNativeSessions'
+run_test 'TestNativeRestartSeed'
+compose restart runtime
+run_test 'TestNativeRestartVerify'
 # Desktop consumer: the Native system window renders the WebRTC video and
 # types over the data channel.
 docker run --rm --network host --user "$WORKOS_NATIVE_GATE_USER" \

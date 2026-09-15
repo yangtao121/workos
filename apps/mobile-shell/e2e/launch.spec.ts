@@ -1,5 +1,5 @@
 import { mkdir } from "node:fs/promises";
-import { expect, test } from "@playwright/test";
+import { expect, test, type Route } from "@playwright/test";
 
 // The launchable mobile entry (ADR-0019 W5): the built app mounts the shared
 // shell with posture detection, the canonical pairing/session phases, the
@@ -9,7 +9,7 @@ import { expect, test } from "@playwright/test";
 // for real against those deterministic responses.
 test.setTimeout(60_000);
 
-const CAPTURE = "../../docs/ui/mobile-shell/changes/20260914-mobile-native-shell/after";
+const CAPTURE = "../../docs/ui/mobile-shell/changes/20260914-merge-review/after";
 
 await mkdir(CAPTURE, { recursive: true });
 
@@ -100,6 +100,13 @@ test("paired session lists projects and notifications and marks them read", asyn
   await page.route("**/workos.notification.v1.NotificationService/MarkNotificationRead", (route) =>
     route.fulfill(json({ notification: {} })),
   );
+  await page.route("**/workos.auth.v1.DeviceService/Logout", (route) =>
+    route.fulfill({
+      status: 503,
+      contentType: "application/json",
+      body: JSON.stringify({ code: "unavailable", message: "fixture outage" }),
+    }),
+  );
   await page.goto("/");
   await expect(page.getByTestId("mobile-projects")).toBeVisible({ timeout: 30_000 });
   await expect(page.getByTestId("mobile-projects")).toContainText("Atlas");
@@ -110,9 +117,70 @@ test("paired session lists projects and notifications and marks them read", asyn
   await expect(notification).toBeVisible();
   await expect(notification).toContainText("Task completed");
   await notification.getByText("Mark read").click();
-  await expect(page.getByTestId("mobile-tabs")).toContainText("Alerts", { timeout: 10_000 });
+  await expect(notification.getByText("Mark read")).toHaveCount(0);
+  await expect(page.getByTestId("mobile-tabs").getByText("Alerts", { exact: true })).toBeVisible();
   await page.screenshot({
     path: `${CAPTURE}/mobile-shell--paired-alerts--390x844.png`,
     animations: "disabled",
   });
+  await page.getByRole("button", { name: "Forget device" }).click();
+  await expect(page.getByRole("alert")).toHaveText("Forget device failed. Try again.");
+  await expect(page.getByTestId("mobile-notifications")).toBeVisible();
+  await page.screenshot({
+    path: `${CAPTURE}/mobile-shell--forget-failed--390x844.png`,
+    animations: "disabled",
+  });
+});
+
+test("Forget prevents a late projection failure from restarting authentication", async ({
+  page,
+}) => {
+  let restores = 0;
+  let projectRoute: Route | undefined;
+  let logoutRoute: Route | undefined;
+  await page.route("**/workos.auth.v1.DeviceService/GetCurrentDevice", (route) => {
+    restores++;
+    // A second restore remains pending: the regression must detect its admission.
+    if (restores > 1) return;
+    return route.fulfill(
+      json({
+        device: {
+          deviceId: "01999999-9999-7999-8999-000000000d01",
+          name: "Pixel",
+          deviceClass: 4,
+          revision: "1",
+          isCurrent: true,
+        },
+      }),
+    );
+  });
+  await page.route("**/workos.project.v1.ProjectService/ListProjects", (route) => {
+    projectRoute = route;
+  });
+  await page.route("**/workos.auth.v1.DeviceService/Logout", (route) => {
+    logoutRoute = route;
+  });
+  await page.goto("/");
+  await expect.poll(() => projectRoute !== undefined).toBe(true);
+  await page.getByRole("button", { name: "Forget device" }).click();
+  await expect.poll(() => logoutRoute !== undefined).toBe(true);
+  if (!projectRoute || !logoutRoute) throw new Error("fixture requests did not arrive");
+  const failure = page.waitForResponse("**/workos.project.v1.ProjectService/ListProjects");
+  await projectRoute.fulfill({ status: 401, contentType: "application/json", body: "{}" });
+  await (await failure).finished();
+  // Let the response promise and React commit finish while Logout is still pending.
+  await page.evaluate(
+    () =>
+      new Promise<void>((resolve) => {
+        requestAnimationFrame(() =>
+          requestAnimationFrame(() => {
+            resolve();
+          }),
+        );
+      }),
+  );
+  expect(restores).toBe(1);
+  await logoutRoute.fulfill(json({}));
+  await expect(page.getByTestId("mobile-unpaired")).toBeVisible();
+  await expect(page.getByTestId("mobile-projects")).toHaveCount(0);
 });

@@ -5,15 +5,18 @@ package integration_test
 import (
 	"context"
 	"crypto/sha256"
+	"encoding/json"
 	"fmt"
 	"hash"
 	"net/http"
 	"os"
+	"path/filepath"
 	"sync"
 	"testing"
 	"time"
 
 	"connectrpc.com/connect"
+	"github.com/jackc/pgx/v5"
 	"github.com/pion/webrtc/v4"
 	projectv1 "github.com/yangtao121/workos/gen/go/workos/project/v1"
 	"github.com/yangtao121/workos/gen/go/workos/project/v1/projectv1connect"
@@ -67,7 +70,7 @@ func maxSize(sizes []int) int {
 // TestNativeSessions proves the virtual-display native runner (ADR-0029) on
 // a real stack: a Go WebRTC peer receives genuine VP8 frames of the Xvfb
 // display, Data Channel input drives the native xterm (exit closes the
-// window and collapses the frame payloads), and the durable RPC matrix
+// window and terminally fails the session), and the durable RPC matrix
 // (idempotency, drift, sizes, cap, isolation, close) holds.
 func TestNativeSessions(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 240*time.Second)
@@ -250,28 +253,32 @@ func TestNativeSessions(t *testing.T) {
 		t.Fatalf("typing did not fill the display: static max %d, after max %d (sizes %v)",
 			beforeMax, maxSize(sizes[floodStart:]), sizes[floodStart:floodStart+20])
 	}
-	floodedMax := func() int {
-		_, sizes := stats.snapshot()
-		return maxSize(sizes[floodStart:])
-	}()
 	if err := channel.SendText(`{"type":"key","key":"ctrl+c"}`); err != nil {
-		t.Fatalf("send ctrl+c: %v", err)
+		t.Fatal(err)
 	}
 	if err := channel.SendText(`{"type":"text","text":"exit"}`); err != nil {
-		t.Fatalf("send exit: %v", err)
+		t.Fatal(err)
 	}
 	if err := channel.SendText(`{"type":"key","key":"Return"}`); err != nil {
-		t.Fatalf("send key: %v", err)
+		t.Fatal(err)
 	}
-	_, sizesAtExit := stats.snapshot()
-	exitStart := len(sizesAtExit)
-	collapsed := waitFor(exitStart, func(tail []int) bool {
-		return maxSize(tail) < floodedMax/2
-	}, 30*time.Second)
-	if !collapsed {
-		_, sizes := stats.snapshot()
-		t.Fatalf("exit did not collapse the display: flooded max %d, tail max %d",
-			floodedMax, maxSize(sizes[len(sizes)-25:]))
+	// Exiting the client must terminate the session and release the display,
+	// rather than continuing to stream a successful empty X root.
+	deadline := time.Now().Add(15 * time.Second)
+	failed := false
+	for time.Now().Before(deadline) {
+		result, err := natives.GetNativeSession(ctx, connect.NewRequest(&surfacev1.GetNativeSessionRequest{SessionId: sessionID}))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if result.Msg.GetSession().GetState() == "failed" {
+			failed = true
+			break
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	if !failed {
+		t.Fatal("client exit did not terminal-fail the session")
 	}
 
 	// Foreign owners never see or drive the session (identity headers are
@@ -282,13 +289,16 @@ func TestNativeSessions(t *testing.T) {
 		t.Fatalf("foreign get must 404: %v", err)
 	}
 
-	// The per-owner cap holds: one live session exists, exactly one more is
-	// admitted, the third is rejected (ADR-0029: 2/owner).
+	// The exited display releases capacity: exactly two new sessions are admitted,
+	// and the third is rejected with ResourceExhausted.
 	admitted := 0
-	for index := 0; index < 2; index++ {
+	for index := 0; index < 3; index++ {
 		extra, err := natives.CreateNativeSession(ctx, nativeRequest(&surfacev1.CreateNativeSessionRequest{
 			IdempotencyKey: fmt.Sprintf("%s-cap-%d", key, index), ProjectId: projectID, Width: 640, Height: 480,
 		}, owner, device))
+		if err != nil && connect.CodeOf(err) != connect.CodeResourceExhausted {
+			t.Fatalf("unexpected admission failure: %v", err)
+		}
 		if err == nil {
 			admitted++
 			defer func(id string) {
@@ -296,7 +306,7 @@ func TestNativeSessions(t *testing.T) {
 			}(extra.Msg.GetSession().GetId())
 		}
 	}
-	if admitted > 1 {
+	if admitted != 2 {
 		t.Fatalf("session cap did not hold: %d admitted", admitted)
 	}
 
@@ -340,4 +350,76 @@ func nativeRequest[Req any](body *Req, owner, device string) *connect.Request[Re
 	request.Header().Set(identity.UserHeader, owner)
 	request.Header().Set(identity.DeviceHeader, device)
 	return request
+}
+
+type nativeRestartState struct{ SessionID, ProjectID, Key string }
+
+func TestNativeRestartSeed(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	client := &http.Client{Timeout: 20 * time.Second}
+	gateway := nativeGateEnv(t, "GATEWAY_URL")
+	projects := projectv1connect.NewProjectServiceClient(client, gateway)
+	project, err := projects.CreateProject(ctx, connect.NewRequest(&projectv1.CreateProjectRequest{IdempotencyKey: fmt.Sprintf("native-restart-%d", time.Now().UnixNano()), Name: "Native restart fixture"}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	state := nativeRestartState{ProjectID: project.Msg.GetProject().GetId(), Key: fmt.Sprintf("native-restart-%d", time.Now().UnixNano())}
+	natives := surfacev1connect.NewNativeSessionServiceClient(client, gateway)
+	created, err := natives.CreateNativeSession(ctx, connect.NewRequest(&surfacev1.CreateNativeSessionRequest{IdempotencyKey: state.Key, ProjectId: state.ProjectID, Width: 640, Height: 480}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	state.SessionID = created.Msg.GetSession().GetId()
+	data, err := json.Marshal(state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(nativeGateEnv(t, "DIR"), "restart-state.json"), data, 0600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestNativeRestartVerify(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	data, err := os.ReadFile(filepath.Join(nativeGateEnv(t, "DIR"), "restart-state.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var state nativeRestartState
+	if err := json.Unmarshal(data, &state); err != nil {
+		t.Fatal(err)
+	}
+	database, err := pgx.Connect(ctx, nativeGateEnv(t, "DATABASE_URL"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close(context.Background())
+	// Verify the startup sweep's durable effect before a Get RPC can reconcile it.
+	var stored string
+	for deadline := time.Now().Add(15 * time.Second); time.Now().Before(deadline); {
+		if err := database.QueryRow(ctx, "SELECT state FROM workos_runtime.native_sessions WHERE session_id=$1", state.SessionID).Scan(&stored); err != nil {
+			t.Fatal(err)
+		}
+		if stored == "failed" {
+			break
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	if stored != "failed" {
+		t.Fatalf("startup did not retire lost display: %s", stored)
+	}
+	natives := surfacev1connect.NewNativeSessionServiceClient(&http.Client{Timeout: 20 * time.Second}, nativeGateEnv(t, "GATEWAY_URL"))
+	replay, err := natives.CreateNativeSession(ctx, connect.NewRequest(&surfacev1.CreateNativeSessionRequest{IdempotencyKey: state.Key, ProjectId: state.ProjectID, Width: 640, Height: 480}))
+	if err != nil || replay.Msg.GetSession().GetId() != state.SessionID || replay.Msg.GetSession().GetState() != "failed" {
+		t.Fatalf("restart replay revived display: %v %+v", err, replay)
+	}
+	fresh, err := natives.CreateNativeSession(ctx, connect.NewRequest(&surfacev1.CreateNativeSessionRequest{IdempotencyKey: state.Key + "-fresh", ProjectId: state.ProjectID, Width: 640, Height: 480}))
+	if err != nil || fresh.Msg.GetSession().GetState() != "running" {
+		t.Fatalf("restart capacity was not reclaimed: %v", err)
+	}
+	if _, err := natives.CloseNativeSession(ctx, connect.NewRequest(&surfacev1.CloseNativeSessionRequest{SessionId: fresh.Msg.GetSession().GetId()})); err != nil {
+		t.Fatal(err)
+	}
 }

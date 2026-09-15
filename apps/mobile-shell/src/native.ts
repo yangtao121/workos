@@ -36,15 +36,25 @@ export function createMobileVault(): MobileVault {
         try {
           const result = await SecureStorage.get({ key });
           return result.value;
-        } catch {
-          return undefined;
+        } catch (error) {
+          if (error instanceof Error && error.message === "Item with given key does not exist")
+            return undefined;
+          throw error;
         }
       },
       async set(key, value) {
-        await SecureStorage.set({ key, value });
+        const result = await SecureStorage.set({ key, value });
+        if (!result.value) throw new Error("secure storage write failed");
       },
       async remove(key) {
-        await SecureStorage.remove({ key });
+        try {
+          const result = await SecureStorage.remove({ key });
+          if (!result.value) throw new Error("secure storage removal failed");
+        } catch (error) {
+          if (error instanceof Error && error.message === "Item with given key does not exist")
+            return;
+          throw error;
+        }
       },
     },
     status(): Promise<VaultStatus> {
@@ -57,7 +67,7 @@ export function createMobileVault(): MobileVault {
       if (Capacitor.isNativePlatform()) {
         return Promise.resolve({
           secure: false,
-          reason: "native secure storage plugin is not installed; profile storage fallback",
+          reason: "native secure storage plugin is not installed; pairing unavailable",
         });
       }
       return Promise.resolve({

@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"time"
 
 	"connectrpc.com/connect"
 	surfacev1 "github.com/yangtao121/workos/gen/go/workos/surface/v1"
@@ -49,7 +50,11 @@ func (h *NativeHandler) ConnectNativeSession(ctx context.Context, req *connect.R
 	if err != nil {
 		return nil, connect.NewError(connect.CodeUnauthenticated, err)
 	}
-	session, answer, err := h.service.Connect(ctx, owner.UserID, req.Msg.GetSessionId(), req.Msg.GetOfferSdp())
+	// Anchor the media lease before queueing/signaling, so delayed work cannot
+	// extend a previously authenticated request beyond its authorization window.
+	leaseCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+	session, answer, err := h.service.Connect(leaseCtx, owner.UserID, req.Msg.GetSessionId(), req.Msg.GetOfferSdp())
 	if err != nil {
 		return nil, nativeError(err)
 	}

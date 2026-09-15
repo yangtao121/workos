@@ -16,6 +16,7 @@ type Querier interface {
 	GetNativeSession(ctx context.Context, arg GetNativeSessionParams) (WorkosRuntimeNativeSession, error)
 	GetNativeSessionByKey(ctx context.Context, arg GetNativeSessionByKeyParams) (WorkosRuntimeNativeSession, error)
 	InsertNativeSession(ctx context.Context, arg InsertNativeSessionParams) (int64, error)
+	ListActiveNativeSessions(ctx context.Context) ([]WorkosRuntimeNativeSession, error)
 	UpdateNativeSessionState(ctx context.Context, arg UpdateNativeSessionStateParams) (int64, error)
 }
 

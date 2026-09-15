@@ -37,3 +37,9 @@ UPDATE workos_runtime.native_sessions
 SET state = 'closed', updated_at = $1, expires_at = $1
 WHERE state IN ('queued', 'running') AND expires_at < $1
 RETURNING session_id::text AS session_id;
+
+-- name: ListActiveNativeSessions :many
+SELECT session_id, owner_user_id, project_id, idempotency_key, request_digest,
+       state, width, height, created_at, updated_at, expires_at
+FROM workos_runtime.native_sessions
+WHERE state IN ('queued', 'running');

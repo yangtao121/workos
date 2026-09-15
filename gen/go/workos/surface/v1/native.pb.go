@@ -251,7 +251,8 @@ func (x *CreateNativeSessionResponse) GetSession() *NativeSession {
 
 // Signaling segment, separate from session identity so a browser reload can
 // re-offer without breaking the creation idempotency key. Offers and answers
-// carry complete ICE candidates (no trickle).
+// carry complete ICE candidates (no trickle). Each peer expires after 30 seconds;
+// continuing media/input requires another authenticated Connect through Gateway.
 type ConnectNativeSessionRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	SessionId     string                 `protobuf:"bytes,1,opt,name=session_id,json=sessionId,proto3" json:"session_id,omitempty"`
@@ -532,6 +533,106 @@ func (x *GetNativeSessionResponse) GetSession() *NativeSession {
 	return nil
 }
 
+// Canonical workos.input data-channel payload, serialized as protobuf JSON.
+// The adapter rejects unknown fields/types, invalid combinations and oversized
+// events. Only the bounded text/key/pointer vocabulary below is supported.
+type NativeInputEvent struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// text|key|pointer
+	Type string `protobuf:"bytes,1,opt,name=type,proto3" json:"type,omitempty"`
+	// text events: at most 256 printable Unicode runes (newline/tab allowed).
+	Text string `protobuf:"bytes,2,opt,name=text,proto3" json:"text,omitempty"`
+	// key events: the versioned finite key allowlist in ADR-0029.
+	Key string `protobuf:"bytes,3,opt,name=key,proto3" json:"key,omitempty"`
+	// pointer events: move|down|up|click; coordinates must be finite in [0,1].
+	Action string  `protobuf:"bytes,4,opt,name=action,proto3" json:"action,omitempty"`
+	X      float64 `protobuf:"fixed64,5,opt,name=x,proto3" json:"x,omitempty"`
+	Y      float64 `protobuf:"fixed64,6,opt,name=y,proto3" json:"y,omitempty"`
+	// X button mapping: 1=left, 2=middle, 3=right; required for down/up/click.
+	Button        int32 `protobuf:"varint,7,opt,name=button,proto3" json:"button,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *NativeInputEvent) Reset() {
+	*x = NativeInputEvent{}
+	mi := &file_workos_surface_v1_native_proto_msgTypes[9]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *NativeInputEvent) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*NativeInputEvent) ProtoMessage() {}
+
+func (x *NativeInputEvent) ProtoReflect() protoreflect.Message {
+	mi := &file_workos_surface_v1_native_proto_msgTypes[9]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use NativeInputEvent.ProtoReflect.Descriptor instead.
+func (*NativeInputEvent) Descriptor() ([]byte, []int) {
+	return file_workos_surface_v1_native_proto_rawDescGZIP(), []int{9}
+}
+
+func (x *NativeInputEvent) GetType() string {
+	if x != nil {
+		return x.Type
+	}
+	return ""
+}
+
+func (x *NativeInputEvent) GetText() string {
+	if x != nil {
+		return x.Text
+	}
+	return ""
+}
+
+func (x *NativeInputEvent) GetKey() string {
+	if x != nil {
+		return x.Key
+	}
+	return ""
+}
+
+func (x *NativeInputEvent) GetAction() string {
+	if x != nil {
+		return x.Action
+	}
+	return ""
+}
+
+func (x *NativeInputEvent) GetX() float64 {
+	if x != nil {
+		return x.X
+	}
+	return 0
+}
+
+func (x *NativeInputEvent) GetY() float64 {
+	if x != nil {
+		return x.Y
+	}
+	return 0
+}
+
+func (x *NativeInputEvent) GetButton() int32 {
+	if x != nil {
+		return x.Button
+	}
+	return 0
+}
+
 var File_workos_surface_v1_native_proto protoreflect.FileDescriptor
 
 const file_workos_surface_v1_native_proto_rawDesc = "" +
@@ -575,7 +676,15 @@ const file_workos_surface_v1_native_proto_rawDesc = "" +
 	"\n" +
 	"session_id\x18\x01 \x01(\tR\tsessionId\"V\n" +
 	"\x18GetNativeSessionResponse\x12:\n" +
-	"\asession\x18\x01 \x01(\v2 .workos.surface.v1.NativeSessionR\asession2\xed\x03\n" +
+	"\asession\x18\x01 \x01(\v2 .workos.surface.v1.NativeSessionR\asession\"\x98\x01\n" +
+	"\x10NativeInputEvent\x12\x12\n" +
+	"\x04type\x18\x01 \x01(\tR\x04type\x12\x12\n" +
+	"\x04text\x18\x02 \x01(\tR\x04text\x12\x10\n" +
+	"\x03key\x18\x03 \x01(\tR\x03key\x12\x16\n" +
+	"\x06action\x18\x04 \x01(\tR\x06action\x12\f\n" +
+	"\x01x\x18\x05 \x01(\x01R\x01x\x12\f\n" +
+	"\x01y\x18\x06 \x01(\x01R\x01y\x12\x16\n" +
+	"\x06button\x18\a \x01(\x05R\x06button2\xed\x03\n" +
 	"\x14NativeSessionService\x12v\n" +
 	"\x13CreateNativeSession\x12-.workos.surface.v1.CreateNativeSessionRequest\x1a..workos.surface.v1.CreateNativeSessionResponse\"\x00\x12y\n" +
 	"\x14ConnectNativeSession\x12..workos.surface.v1.ConnectNativeSessionRequest\x1a/.workos.surface.v1.ConnectNativeSessionResponse\"\x00\x12m\n" +
@@ -594,7 +703,7 @@ func file_workos_surface_v1_native_proto_rawDescGZIP() []byte {
 	return file_workos_surface_v1_native_proto_rawDescData
 }
 
-var file_workos_surface_v1_native_proto_msgTypes = make([]protoimpl.MessageInfo, 9)
+var file_workos_surface_v1_native_proto_msgTypes = make([]protoimpl.MessageInfo, 10)
 var file_workos_surface_v1_native_proto_goTypes = []any{
 	(*NativeSession)(nil),                // 0: workos.surface.v1.NativeSession
 	(*CreateNativeSessionRequest)(nil),   // 1: workos.surface.v1.CreateNativeSessionRequest
@@ -605,11 +714,12 @@ var file_workos_surface_v1_native_proto_goTypes = []any{
 	(*CloseNativeSessionResponse)(nil),   // 6: workos.surface.v1.CloseNativeSessionResponse
 	(*GetNativeSessionRequest)(nil),      // 7: workos.surface.v1.GetNativeSessionRequest
 	(*GetNativeSessionResponse)(nil),     // 8: workos.surface.v1.GetNativeSessionResponse
-	(*timestamppb.Timestamp)(nil),        // 9: google.protobuf.Timestamp
+	(*NativeInputEvent)(nil),             // 9: workos.surface.v1.NativeInputEvent
+	(*timestamppb.Timestamp)(nil),        // 10: google.protobuf.Timestamp
 }
 var file_workos_surface_v1_native_proto_depIdxs = []int32{
-	9,  // 0: workos.surface.v1.NativeSession.created_at:type_name -> google.protobuf.Timestamp
-	9,  // 1: workos.surface.v1.NativeSession.expires_at:type_name -> google.protobuf.Timestamp
+	10, // 0: workos.surface.v1.NativeSession.created_at:type_name -> google.protobuf.Timestamp
+	10, // 1: workos.surface.v1.NativeSession.expires_at:type_name -> google.protobuf.Timestamp
 	0,  // 2: workos.surface.v1.CreateNativeSessionResponse.session:type_name -> workos.surface.v1.NativeSession
 	0,  // 3: workos.surface.v1.ConnectNativeSessionResponse.session:type_name -> workos.surface.v1.NativeSession
 	0,  // 4: workos.surface.v1.CloseNativeSessionResponse.session:type_name -> workos.surface.v1.NativeSession
@@ -640,7 +750,7 @@ func file_workos_surface_v1_native_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_workos_surface_v1_native_proto_rawDesc), len(file_workos_surface_v1_native_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   9,
+			NumMessages:   10,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

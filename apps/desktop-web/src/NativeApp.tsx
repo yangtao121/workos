@@ -1,72 +1,111 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { NativeSessionLease } from "./nativeSession.js";
+import type { NativeInputEvent } from "@workos/protocol";
 import type { WorkOSClients } from "@workos/agent-sdk";
 
 // NativeApp consumes the virtual-display native runner (ADR-0029): one
 // owner-scoped WebRTC session per window. The video track renders the real
 // Xvfb display; keyboard and pointer events return over the workos.input
 // data channel. Without the runner the window states the honest verdict.
-export function NativeApp(props: { workosClients?: WorkOSClients; activeProjectId?: string }) {
+export function NativeApp(props: {
+  workosClients?: WorkOSClients;
+  activeProjectId?: string;
+  sessionLease?: NativeSessionLease;
+}) {
+  const ownLease = useMemo(() => new NativeSessionLease(), []);
+  const sessionLease = props.sessionLease ?? ownLease;
   const [status, setStatus] = useState("connecting");
   const [verdict, setVerdict] = useState("");
-  const [sessionId, setSessionId] = useState("");
-  const [frameCount, setFrameCount] = useState(0);
   const clients = props.workosClients;
   const projectId = props.activeProjectId ?? "";
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const channelRef = useRef<RTCDataChannel | null>(null);
-  const sessionIdRef = useRef("");
   const pointerStampRef = useRef(0);
 
   useEffect(() => {
-    if (!clients || !projectId || sessionIdRef.current) return;
-    const state = { disposed: false };
-    // The property check goes through a function so control-flow analysis
-    // cannot narrow it to the initial literal before the awaits complete.
-    const isDisposed = () => state.disposed;
+    if (!clients || !projectId) return;
+    let disposed = false;
+    const isDisposed = () => disposed;
+    const lease = sessionLease.acquire(clients, projectId);
+    let session = "";
+    let renewal: number | undefined;
+    let peer: RTCPeerConnection | undefined;
+    let channel: RTCDataChannel | undefined;
+    const close = () => {
+      window.clearTimeout(renewal);
+      peer?.close();
+      channel?.close();
+      if (channelRef.current === channel) channelRef.current = null;
+      lease.release();
+    };
+    setStatus("connecting");
+    setVerdict("");
     const run = async () => {
       try {
-        const created = await clients.nativeSessions.createNativeSession({
-          idempotencyKey: `desktop-native-${crypto.randomUUID()}`,
-          projectId,
-          width: 800,
-          height: 600,
-        });
-        if (isDisposed() || !created.session?.id) return;
-        sessionIdRef.current = created.session.id;
-        setSessionId(created.session.id);
-
-        const peer = new RTCPeerConnection({});
-        peer.addTransceiver("video", { direction: "recvonly" });
-        peer.ontrack = (event) => {
-          const [stream] = event.streams;
-          const video = videoRef.current;
-          if (!video || !stream) return;
-          video.srcObject = stream;
-          setStatus("streaming");
+        session = await lease.session;
+        if (isDisposed()) {
+          close();
+          return;
+        }
+        if (!session) throw new Error("missing native session");
+        const renew = async () => {
+          if (isDisposed()) return;
+          setStatus("connecting");
+          const previous = peer;
+          const next = new RTCPeerConnection({});
+          peer = next;
+          previous?.close();
+          next.addTransceiver("video", { direction: "recvonly" });
+          // An offer must contain the SCTP m-line before the answerer can open input.
+          next.createDataChannel("offer-sctp");
+          next.ontrack = (event) => {
+            if (disposed || peer !== next) return;
+            const [stream] = event.streams;
+            const video = videoRef.current;
+            if (!video || !stream) return;
+            video.srcObject = stream;
+          };
+          next.ondatachannel = (event) => {
+            if (disposed || peer !== next || event.channel.label !== "workos.input") {
+              event.channel.close();
+              return;
+            }
+            channel = event.channel;
+            channelRef.current = channel;
+          };
+          next.onconnectionstatechange = () => {
+            if (
+              !disposed &&
+              peer === next &&
+              (next.connectionState === "failed" ||
+                next.connectionState === "disconnected" ||
+                next.connectionState === "closed")
+            ) {
+              setStatus("ended");
+            }
+          };
+          const offer = await next.createOffer();
+          if (isDisposed()) return;
+          await next.setLocalDescription(offer);
+          await waitIceGathered(next);
+          if (isDisposed()) return;
+          const connected = await clients.nativeSessions.connectNativeSession({
+            sessionId: session,
+            offerSdp: next.localDescription?.sdp ?? "",
+          });
+          if (isDisposed()) return;
+          await next.setRemoteDescription({ type: "answer", sdp: connected.answerSdp });
+          renewal = window.setTimeout(() => {
+            void renew().catch(() => {
+              close();
+              if (!disposed) setStatus("ended");
+            });
+          }, 20000);
         };
-        peer.ondatachannel = (event) => {
-          if (event.channel.label !== "workos.input") return;
-          channelRef.current = event.channel;
-        };
-        peer.onconnectionstatechange = () => {
-          if (peer.connectionState === "failed" || peer.connectionState === "disconnected") {
-            setStatus("ended");
-          }
-        };
-        const offer = await peer.createOffer();
-        await peer.setLocalDescription(offer);
-        // Loopback topology: the runtime answer embeds its complete host
-        // candidates, so both sides wait for full gathering before the
-        // exchange (no trickle signaling on this path).
-        await waitIceGathered(peer);
-        const connected = await clients.nativeSessions.connectNativeSession({
-          sessionId: created.session.id,
-          offerSdp: peer.localDescription?.sdp ?? "",
-        });
-        if (isDisposed()) return;
-        await peer.setRemoteDescription({ type: "answer", sdp: connected.answerSdp });
+        await renew();
       } catch {
-        if (!isDisposed()) {
+        close();
+        if (!disposed) {
           setStatus("unavailable");
           setVerdict("Native sessions are unavailable in this deployment.");
         }
@@ -74,54 +113,40 @@ export function NativeApp(props: { workosClients?: WorkOSClients; activeProjectI
     };
     void run();
     return () => {
-      state.disposed = true;
+      disposed = true;
+      close();
     };
-  }, [clients, projectId]);
+  }, [clients, projectId, sessionLease]);
 
-  // Frame accounting proves live video, not a frozen poster frame.
-  useEffect(() => {
-    if (!sessionId) return;
-    const video = videoRef.current;
-    if (!video) return;
-    let stopped = false;
-    let lastTime = -1;
-    const tick = () => {
-      if (stopped) return;
-      if (video.readyState >= 2 && video.currentTime > 0 && video.currentTime !== lastTime) {
-        lastTime = video.currentTime;
-        setFrameCount((count) => count + 1);
-      }
-      window.requestAnimationFrame(tick);
-    };
-    const handle = window.requestAnimationFrame(tick);
-    return () => {
-      stopped = true;
-      window.cancelAnimationFrame(handle);
-    };
-  }, [sessionId]);
-
-  // Close the session when the window unmounts.
-  useEffect(() => {
-    return () => {
-      const session = sessionIdRef.current;
-      channelRef.current?.close();
-      if (session && clients) {
-        void clients.nativeSessions.closeNativeSession({ sessionId: session }).then(
-          () => undefined,
-          () => undefined,
-        );
-      }
-    };
-  }, [clients]);
-
-  const sendInput = (payload: unknown) => {
+  // The flat scalar payload follows NativeInputEvent protobuf JSON. Derive its
+  // fields from the generated contract instead of maintaining a second DTO.
+  const sendInput = (payload: Partial<Omit<NativeInputEvent, "$typeName" | "$unknown">>) => {
     const channel = channelRef.current;
     if (channel && channel.readyState === "open") {
+      if (channel.bufferedAmount > 64 * 1024) return;
       channel.send(JSON.stringify(payload));
     }
   };
 
   const onKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (event.ctrlKey || event.metaKey || event.altKey) {
+      if (
+        event.ctrlKey &&
+        !event.altKey &&
+        !event.metaKey &&
+        "cdluaewz".includes(event.key.toLowerCase()) &&
+        event.key.length === 1
+      ) {
+        event.preventDefault();
+        sendInput({ type: "key", key: `ctrl+${event.key.toLowerCase()}` });
+      }
+      return;
+    }
+    if (event.key === "Tab" && event.shiftKey) {
+      event.preventDefault();
+      sendInput({ type: "key", key: "shift+Tab" });
+      return;
+    }
     if (event.key.length === 1) {
       event.preventDefault();
       sendInput({ type: "text", text: event.key });
@@ -148,10 +173,18 @@ export function NativeApp(props: { workosClients?: WorkOSClients; activeProjectI
     sendInput({ type: "key", key: mapped });
   };
 
-  const normalizedPointer = (event: React.PointerEvent<HTMLDivElement>) => {
-    const bounds = event.currentTarget.getBoundingClientRect();
-    const x = (event.clientX - bounds.left) / Math.max(1, bounds.width);
-    const y = (event.clientY - bounds.top) / Math.max(1, bounds.height);
+  const normalizedPointer = (event: React.PointerEvent<HTMLDivElement>, clamp = false) => {
+    const video = videoRef.current;
+    if (!video || !video.videoWidth || !video.videoHeight) return;
+    const bounds = video.getBoundingClientRect();
+    const scale = Math.min(bounds.width / video.videoWidth, bounds.height / video.videoHeight);
+    const width = video.videoWidth * scale;
+    const height = video.videoHeight * scale;
+    const x = (event.clientX - bounds.left - (bounds.width - width) / 2) / width;
+    const y = (event.clientY - bounds.top - (bounds.height - height) / 2) / height;
+    if (!Number.isFinite(x + y)) return;
+    if (clamp) return { x: Math.max(0, Math.min(1, x)), y: Math.max(0, Math.min(1, y)) };
+    if (x < 0 || x > 1 || y < 0 || y > 1) return;
     return { x, y };
   };
 
@@ -161,19 +194,28 @@ export function NativeApp(props: { workosClients?: WorkOSClients; activeProjectI
     const now = performance.now();
     if (now - pointerStampRef.current < 25) return;
     pointerStampRef.current = now;
-    const { x, y } = normalizedPointer(event);
+    const point = normalizedPointer(event);
+    if (!point) return;
+    const { x, y } = point;
     sendInput({ type: "pointer", action: "move", x, y });
   };
 
   const onPointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
-    const { x, y } = normalizedPointer(event);
-    const button = event.button === 2 ? 2 : event.button === 1 ? 2 : 1;
+    event.currentTarget.focus();
+    event.currentTarget.setPointerCapture(event.pointerId);
+    const point = normalizedPointer(event);
+    if (!point) return;
+    const { x, y } = point;
+    const button = event.button + 1;
     sendInput({ type: "pointer", action: "down", x, y, button });
   };
 
   const onPointerUp = (event: React.PointerEvent<HTMLDivElement>) => {
-    const { x, y } = normalizedPointer(event);
-    const button = event.button === 2 ? 2 : event.button === 1 ? 2 : 1;
+    // Pointer capture must release a pressed button even outside the video.
+    const point = normalizedPointer(event, true);
+    if (!point) return;
+    const { x, y } = point;
+    const button = event.button + 1;
     sendInput({ type: "pointer", action: "up", x, y, button });
   };
 
@@ -181,8 +223,6 @@ export function NativeApp(props: { workosClients?: WorkOSClients; activeProjectI
     <div className="native-app" data-testid="native-app">
       <div className="native-toolbar">
         <span data-testid="native-status">{status}</span>
-        <span data-testid="native-frames">frames: {frameCount}</span>
-        {sessionId ? <span className="native-session">session {sessionId.slice(0, 8)}</span> : null}
       </div>
       {verdict ? (
         <p className="native-verdict" data-testid="native-verdict">
@@ -193,12 +233,24 @@ export function NativeApp(props: { workosClients?: WorkOSClients; activeProjectI
         className="native-stage"
         data-testid="native-stage"
         tabIndex={0}
+        onContextMenu={(event) => {
+          event.preventDefault();
+        }}
         onKeyDown={onKeyDown}
         onPointerDown={onPointerDown}
         onPointerUp={onPointerUp}
         onPointerMove={onPointerMove}
       >
-        <video ref={videoRef} data-testid="native-video" autoPlay playsInline muted />
+        <video
+          ref={videoRef}
+          data-testid="native-video"
+          onPlaying={() => {
+            setStatus("streaming");
+          }}
+          autoPlay
+          playsInline
+          muted
+        />
       </div>
       <p className="native-hint">Click the stage, then type; input goes to the native display.</p>
     </div>

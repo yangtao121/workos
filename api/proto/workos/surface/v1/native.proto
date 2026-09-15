@@ -38,7 +38,8 @@ message CreateNativeSessionResponse {
 
 // Signaling segment, separate from session identity so a browser reload can
 // re-offer without breaking the creation idempotency key. Offers and answers
-// carry complete ICE candidates (no trickle).
+// carry complete ICE candidates (no trickle). Each peer expires after 30 seconds;
+// continuing media/input requires another authenticated Connect through Gateway.
 message ConnectNativeSessionRequest {
   string session_id = 1;
   string offer_sdp = 2;
@@ -63,6 +64,24 @@ message GetNativeSessionRequest {
 
 message GetNativeSessionResponse {
   NativeSession session = 1;
+}
+
+// Canonical workos.input data-channel payload, serialized as protobuf JSON.
+// The adapter rejects unknown fields/types, invalid combinations and oversized
+// events. Only the bounded text/key/pointer vocabulary below is supported.
+message NativeInputEvent {
+  // text|key|pointer
+  string type = 1;
+  // text events: at most 256 printable Unicode runes (newline/tab allowed).
+  string text = 2;
+  // key events: the versioned finite key allowlist in ADR-0029.
+  string key = 3;
+  // pointer events: move|down|up|click; coordinates must be finite in [0,1].
+  string action = 4;
+  double x = 5;
+  double y = 6;
+  // X button mapping: 1=left, 2=middle, 3=right; required for down/up/click.
+  int32 button = 7;
 }
 
 // Supervised owner-scoped virtual-display sessions on the runtime host
