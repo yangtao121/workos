@@ -14,10 +14,22 @@ type SessionStore interface {
 	InsertSession(ctx context.Context, session domain.Session) (storedDigest string, created bool, err error)
 	GetSession(ctx context.Context, ownerUserID, sessionID string) (domain.Session, error)
 	GetSessionByKey(ctx context.Context, ownerUserID, idempotencyKey string) (domain.Session, error)
+	// ListProjectSessions returns the owner's non-terminal sessions of one
+	// project: the surface continuity discovery view (ADR-0031).
+	ListProjectSessions(ctx context.Context, ownerUserID, projectID string) ([]domain.Session, error)
 	UpdateState(ctx context.Context, ownerUserID, sessionID string, state domain.State, now time.Time) error
 	CloseSession(ctx context.Context, ownerUserID, sessionID string, state domain.State, now time.Time) error
 	ExpireIdle(ctx context.Context, now time.Time) ([]string, error)
 	CountActive(ctx context.Context, ownerUserID string) (int, error)
+}
+
+// ControlAuthorizer is the server-side single-controller gate of the input
+// path (ADR-0031 §4). Every write and resize consults the CURRENT control
+// lease of the workload; a device whose attachment does not hold the live
+// control epoch is refused. It is implemented by the surface continuity
+// application; sessions without any attachment keep the owner-scoped path.
+type ControlAuthorizer interface {
+	AuthorizeInput(ctx context.Context, ownerUserID, workloadID, deviceID string) error
 }
 
 // Engine facts as enforced for the pty supervisor.

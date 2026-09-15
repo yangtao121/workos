@@ -6,6 +6,11 @@ import (
 	"fmt"
 	"time"
 
+	nativehostapp "github.com/yangtao121/workos/internal/runtime/nativehost/application"
+	nativedomain "github.com/yangtao121/workos/internal/runtime/nativehost/domain"
+	ptyhostapp "github.com/yangtao121/workos/internal/runtime/ptyhost/application"
+	ptydomain "github.com/yangtao121/workos/internal/runtime/ptyhost/domain"
+	surfaceapp "github.com/yangtao121/workos/internal/runtime/surface/application"
 	surfaceports "github.com/yangtao121/workos/internal/runtime/surface/ports"
 	workloadapp "github.com/yangtao121/workos/internal/runtime/workload/application"
 	workloaddomain "github.com/yangtao121/workos/internal/runtime/workload/domain"
@@ -109,4 +114,145 @@ type surfaceReferenceSource struct {
 
 func (s *surfaceReferenceSource) HasActiveSurface(ctx context.Context, ownerUserID, appInstanceID string) (bool, error) {
 	return s.sessions.HasActiveSurface(ctx, ownerUserID, appInstanceID, time.Now().UTC())
+}
+
+// surfaceInteractiveRuntime adapts the PTY and native runner services to the
+// surface continuity ports (ADR-0031). It lives in the composition root like
+// the workload launcher: it is the seam between the runtime modules, and
+// neither module imports the other. An unconfigured runner is an honest
+// not-found, never an invented workload.
+type surfaceInteractiveRuntime struct {
+	pty    *ptyhostapp.Service
+	native *nativehostapp.Service
+}
+
+var _ surfaceports.InteractiveWorkloadRuntime = (*surfaceInteractiveRuntime)(nil)
+
+func (a *surfaceInteractiveRuntime) sessionWorkload(kind surfaceports.WorkloadKind, session ptydomain.Session) surfaceports.InteractiveWorkload {
+	_ = kind
+	return surfaceports.InteractiveWorkload{
+		WorkloadID: session.SessionID, Kind: surfaceports.WorkloadKindPty, OwnerUserID: session.OwnerUserID,
+		ProjectID: session.ProjectID, State: string(session.State), Terminal: session.State.Terminal(),
+		CreatedAt: session.CreatedAt, ExpiresAt: session.ExpiresAt,
+	}
+}
+
+func (a *surfaceInteractiveRuntime) nativeWorkload(session nativedomain.Session) surfaceports.InteractiveWorkload {
+	return surfaceports.InteractiveWorkload{
+		WorkloadID: session.SessionID, Kind: surfaceports.WorkloadKindNative, OwnerUserID: session.OwnerUserID,
+		ProjectID: session.ProjectID, State: string(session.State), Terminal: session.State.Terminal(),
+		CreatedAt: session.CreatedAt, ExpiresAt: session.ExpiresAt,
+		Width: session.Width, Height: session.Height,
+	}
+}
+
+// Resolve finds the owner's interactive workload by id in the configured
+// runners; terminal sessions are returned with their true state so Attach
+// can report the stopped verdict.
+func (a *surfaceInteractiveRuntime) Resolve(ctx context.Context, ownerUserID, workloadID string) (surfaceports.InteractiveWorkload, error) {
+	if a.pty != nil {
+		if session, err := a.pty.Get(ctx, ownerUserID, workloadID); err == nil {
+			return a.sessionWorkload(surfaceports.WorkloadKindPty, session), nil
+		}
+	}
+	if a.native != nil {
+		if session, err := a.native.Get(ctx, ownerUserID, workloadID); err == nil {
+			return a.nativeWorkload(session), nil
+		}
+	}
+	return surfaceports.InteractiveWorkload{}, surfaceports.ErrContinuityNotFound
+}
+
+func (a *surfaceInteractiveRuntime) ListProject(ctx context.Context, ownerUserID, projectID string) ([]surfaceports.InteractiveWorkload, error) {
+	workloads := make([]surfaceports.InteractiveWorkload, 0)
+	if a.pty != nil {
+		sessions, err := a.pty.ListProject(ctx, ownerUserID, projectID)
+		if err != nil {
+			return nil, err
+		}
+		for _, session := range sessions {
+			workloads = append(workloads, a.sessionWorkload(surfaceports.WorkloadKindPty, session))
+		}
+	}
+	if a.native != nil {
+		sessions, err := a.native.ListProject(ctx, ownerUserID, projectID)
+		if err != nil {
+			return nil, err
+		}
+		for _, session := range sessions {
+			workloads = append(workloads, a.nativeWorkload(session))
+		}
+	}
+	return workloads, nil
+}
+
+func (a *surfaceInteractiveRuntime) DetachWorkload(ctx context.Context, kind surfaceports.WorkloadKind, ownerUserID, workloadID string) error {
+	switch kind {
+	case surfaceports.WorkloadKindNative:
+		if a.native == nil {
+			return surfaceports.ErrContinuityNotFound
+		}
+		if _, err := a.native.Detach(ctx, ownerUserID, workloadID); err != nil {
+			if errors.Is(err, nativedomain.ErrNotFound) || errors.Is(err, nativedomain.ErrInvalid) {
+				return surfaceports.ErrContinuityNotFound
+			}
+			return err
+		}
+		return nil
+	case surfaceports.WorkloadKindPty:
+		// A PTY session's only per-device connection state is the attachment
+		// row itself; there is no media peer to release.
+		return nil
+	default:
+		return surfaceports.ErrContinuityNotFound
+	}
+}
+
+func (a *surfaceInteractiveRuntime) StopWorkload(ctx context.Context, kind surfaceports.WorkloadKind, ownerUserID, workloadID string) (surfaceports.InteractiveWorkload, error) {
+	switch kind {
+	case surfaceports.WorkloadKindPty:
+		if a.pty == nil {
+			return surfaceports.InteractiveWorkload{}, surfaceports.ErrContinuityNotFound
+		}
+		session, err := a.pty.Close(ctx, ownerUserID, workloadID)
+		if err != nil {
+			return surfaceports.InteractiveWorkload{}, mapInteractiveError(err)
+		}
+		return a.sessionWorkload(kind, session), nil
+	case surfaceports.WorkloadKindNative:
+		if a.native == nil {
+			return surfaceports.InteractiveWorkload{}, surfaceports.ErrContinuityNotFound
+		}
+		session, err := a.native.Close(ctx, ownerUserID, workloadID)
+		if err != nil {
+			return surfaceports.InteractiveWorkload{}, mapInteractiveError(err)
+		}
+		return a.nativeWorkload(session), nil
+	default:
+		return surfaceports.InteractiveWorkload{}, surfaceports.ErrContinuityNotFound
+	}
+}
+
+// mapInteractiveError folds the runner sentinels into the continuity
+// not-found verdict; everything else keeps its own error value.
+func mapInteractiveError(err error) error {
+	switch {
+	case err == nil:
+		return nil
+	case errors.Is(err, ptydomain.ErrNotFound), errors.Is(err, nativedomain.ErrNotFound):
+		return surfaceports.ErrContinuityNotFound
+	default:
+		return err
+	}
+}
+
+// continuityAuthorization adapts the surface continuity application to the
+// runner ControlAuthorizer ports: the single-controller lease gate the PTY
+// write/resize and native input paths consult on every request.
+type continuityAuthorization struct {
+	service *surfaceapp.ContinuityService
+}
+
+func (a continuityAuthorization) AuthorizeInput(ctx context.Context, ownerUserID, workloadID, deviceID string) error {
+	return a.service.AuthorizeInput(ctx, ownerUserID, workloadID, deviceID)
 }

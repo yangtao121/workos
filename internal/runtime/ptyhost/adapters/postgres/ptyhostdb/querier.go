@@ -16,6 +16,7 @@ type Querier interface {
 	GetPtySession(ctx context.Context, arg GetPtySessionParams) (WorkosRuntimePtySession, error)
 	GetPtySessionByKey(ctx context.Context, arg GetPtySessionByKeyParams) (WorkosRuntimePtySession, error)
 	InsertPtySession(ctx context.Context, arg InsertPtySessionParams) (int64, error)
+	ListProjectPtySessions(ctx context.Context, arg ListProjectPtySessionsParams) ([]WorkosRuntimePtySession, error)
 	UpdatePtySessionState(ctx context.Context, arg UpdatePtySessionStateParams) (int64, error)
 }
 

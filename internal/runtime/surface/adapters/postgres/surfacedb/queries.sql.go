@@ -11,6 +11,28 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const clearSurfaceAttachmentControl = `-- name: ClearSurfaceAttachmentControl :execrows
+UPDATE workos_runtime.surface_attachments
+SET controls = false
+WHERE owner_user_id = $1
+  AND attachment_id = $2
+  AND control_generation <= $3
+`
+
+type ClearSurfaceAttachmentControlParams struct {
+	OwnerUserID       string `json:"owner_user_id"`
+	AttachmentID      string `json:"attachment_id"`
+	ControlGeneration int64  `json:"control_generation"`
+}
+
+func (q *Queries) ClearSurfaceAttachmentControl(ctx context.Context, arg ClearSurfaceAttachmentControlParams) (int64, error) {
+	result, err := q.db.Exec(ctx, clearSurfaceAttachmentControl, arg.OwnerUserID, arg.AttachmentID, arg.ControlGeneration)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const closeSession = `-- name: CloseSession :execrows
 UPDATE workos_runtime.surface_sessions
 SET closed_at = $4,
@@ -32,6 +54,114 @@ func (q *Queries) CloseSession(ctx context.Context, arg CloseSessionParams) (int
 		arg.ID,
 		arg.Now,
 	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const countLiveSurfaceAttachments = `-- name: CountLiveSurfaceAttachments :many
+SELECT workload_id::text AS workload_id, count(*)::int AS live_attachments
+FROM workos_runtime.surface_attachments
+WHERE owner_user_id = $1 AND project_id = $2 AND state = 'attached'
+GROUP BY workload_id
+`
+
+type CountLiveSurfaceAttachmentsParams struct {
+	OwnerUserID string `json:"owner_user_id"`
+	ProjectID   string `json:"project_id"`
+}
+
+type CountLiveSurfaceAttachmentsRow struct {
+	WorkloadID      string `json:"workload_id"`
+	LiveAttachments int32  `json:"live_attachments"`
+}
+
+func (q *Queries) CountLiveSurfaceAttachments(ctx context.Context, arg CountLiveSurfaceAttachmentsParams) ([]CountLiveSurfaceAttachmentsRow, error) {
+	rows, err := q.db.Query(ctx, countLiveSurfaceAttachments, arg.OwnerUserID, arg.ProjectID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []CountLiveSurfaceAttachmentsRow
+	for rows.Next() {
+		var i CountLiveSurfaceAttachmentsRow
+		if err := rows.Scan(&i.WorkloadID, &i.LiveAttachments); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const detachSurfaceAttachment = `-- name: DetachSurfaceAttachment :execrows
+UPDATE workos_runtime.surface_attachments
+SET state = 'detached', controls = false, detached_at = $1
+WHERE owner_user_id = $2
+  AND attachment_id = $3
+  AND state = 'attached'
+`
+
+type DetachSurfaceAttachmentParams struct {
+	Now          pgtype.Timestamptz `json:"now"`
+	OwnerUserID  string             `json:"owner_user_id"`
+	AttachmentID string             `json:"attachment_id"`
+}
+
+func (q *Queries) DetachSurfaceAttachment(ctx context.Context, arg DetachSurfaceAttachmentParams) (int64, error) {
+	result, err := q.db.Exec(ctx, detachSurfaceAttachment, arg.Now, arg.OwnerUserID, arg.AttachmentID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const expireElapsedSurfaceAttachments = `-- name: ExpireElapsedSurfaceAttachments :many
+UPDATE workos_runtime.surface_attachments
+SET state = 'expired', controls = false, detached_at = $1
+WHERE state = 'attached'
+  AND control_expires_at IS NOT NULL
+  AND control_expires_at < $1
+RETURNING attachment_id::text AS attachment_id
+`
+
+func (q *Queries) ExpireElapsedSurfaceAttachments(ctx context.Context, now pgtype.Timestamptz) ([]string, error) {
+	rows, err := q.db.Query(ctx, expireElapsedSurfaceAttachments, now)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []string
+	for rows.Next() {
+		var attachment_id string
+		if err := rows.Scan(&attachment_id); err != nil {
+			return nil, err
+		}
+		items = append(items, attachment_id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const expireSurfaceAttachmentsForWorkloads = `-- name: ExpireSurfaceAttachmentsForWorkloads :execrows
+UPDATE workos_runtime.surface_attachments
+SET state = 'expired', controls = false, detached_at = $1
+WHERE state = 'attached'
+  AND workload_id = ANY($2::uuid[])
+`
+
+type ExpireSurfaceAttachmentsForWorkloadsParams struct {
+	Now         pgtype.Timestamptz `json:"now"`
+	WorkloadIds []string           `json:"workload_ids"`
+}
+
+func (q *Queries) ExpireSurfaceAttachmentsForWorkloads(ctx context.Context, arg ExpireSurfaceAttachmentsForWorkloadsParams) (int64, error) {
+	result, err := q.db.Exec(ctx, expireSurfaceAttachmentsForWorkloads, arg.Now, arg.WorkloadIds)
 	if err != nil {
 		return 0, err
 	}
@@ -196,6 +326,79 @@ func (q *Queries) GetActiveSessionByBridgeToken(ctx context.Context, arg GetActi
 	return i, err
 }
 
+const getControllerAttachment = `-- name: GetControllerAttachment :one
+SELECT attachment_id, workload_id, surface_session_id, owner_user_id, project_id,
+       device_id, idempotency_key, controls, control_generation, state,
+       attached_at, control_expires_at, detached_at
+FROM workos_runtime.surface_attachments
+WHERE owner_user_id = $1 AND attachment_id = $2 AND device_id = $3
+`
+
+type GetControllerAttachmentParams struct {
+	OwnerUserID  string `json:"owner_user_id"`
+	AttachmentID string `json:"attachment_id"`
+	DeviceID     string `json:"device_id"`
+}
+
+func (q *Queries) GetControllerAttachment(ctx context.Context, arg GetControllerAttachmentParams) (WorkosRuntimeSurfaceAttachment, error) {
+	row := q.db.QueryRow(ctx, getControllerAttachment, arg.OwnerUserID, arg.AttachmentID, arg.DeviceID)
+	var i WorkosRuntimeSurfaceAttachment
+	err := row.Scan(
+		&i.AttachmentID,
+		&i.WorkloadID,
+		&i.SurfaceSessionID,
+		&i.OwnerUserID,
+		&i.ProjectID,
+		&i.DeviceID,
+		&i.IdempotencyKey,
+		&i.Controls,
+		&i.ControlGeneration,
+		&i.State,
+		&i.AttachedAt,
+		&i.ControlExpiresAt,
+		&i.DetachedAt,
+	)
+	return i, err
+}
+
+const getLiveAttachmentBySurfaceSession = `-- name: GetLiveAttachmentBySurfaceSession :one
+SELECT attachment_id, workload_id, surface_session_id, owner_user_id, project_id,
+       device_id, idempotency_key, controls, control_generation, state,
+       attached_at, control_expires_at, detached_at
+FROM workos_runtime.surface_attachments
+WHERE owner_user_id = $1 AND surface_session_id = $2 AND device_id = $3
+  AND state = 'attached'
+ORDER BY attached_at DESC
+LIMIT 1
+`
+
+type GetLiveAttachmentBySurfaceSessionParams struct {
+	OwnerUserID      string `json:"owner_user_id"`
+	SurfaceSessionID string `json:"surface_session_id"`
+	DeviceID         string `json:"device_id"`
+}
+
+func (q *Queries) GetLiveAttachmentBySurfaceSession(ctx context.Context, arg GetLiveAttachmentBySurfaceSessionParams) (WorkosRuntimeSurfaceAttachment, error) {
+	row := q.db.QueryRow(ctx, getLiveAttachmentBySurfaceSession, arg.OwnerUserID, arg.SurfaceSessionID, arg.DeviceID)
+	var i WorkosRuntimeSurfaceAttachment
+	err := row.Scan(
+		&i.AttachmentID,
+		&i.WorkloadID,
+		&i.SurfaceSessionID,
+		&i.OwnerUserID,
+		&i.ProjectID,
+		&i.DeviceID,
+		&i.IdempotencyKey,
+		&i.Controls,
+		&i.ControlGeneration,
+		&i.State,
+		&i.AttachedAt,
+		&i.ControlExpiresAt,
+		&i.DetachedAt,
+	)
+	return i, err
+}
+
 const getSession = `-- name: GetSession :one
 SELECT id, owner_user_id, device_id, idempotency_key, request_digest,
        project_id, app_instance_id, renderer, app_id, app_version,
@@ -290,6 +493,96 @@ func (q *Queries) GetSessionRequest(ctx context.Context, arg GetSessionRequestPa
 		&i.RequestDigest,
 		&i.SessionID,
 		&i.CreatedAt,
+	)
+	return i, err
+}
+
+const getSurfaceAttachment = `-- name: GetSurfaceAttachment :one
+SELECT attachment_id, workload_id, surface_session_id, owner_user_id, project_id,
+       device_id, idempotency_key, controls, control_generation, state,
+       attached_at, control_expires_at, detached_at
+FROM workos_runtime.surface_attachments
+WHERE owner_user_id = $1 AND attachment_id = $2
+`
+
+type GetSurfaceAttachmentParams struct {
+	OwnerUserID  string `json:"owner_user_id"`
+	AttachmentID string `json:"attachment_id"`
+}
+
+func (q *Queries) GetSurfaceAttachment(ctx context.Context, arg GetSurfaceAttachmentParams) (WorkosRuntimeSurfaceAttachment, error) {
+	row := q.db.QueryRow(ctx, getSurfaceAttachment, arg.OwnerUserID, arg.AttachmentID)
+	var i WorkosRuntimeSurfaceAttachment
+	err := row.Scan(
+		&i.AttachmentID,
+		&i.WorkloadID,
+		&i.SurfaceSessionID,
+		&i.OwnerUserID,
+		&i.ProjectID,
+		&i.DeviceID,
+		&i.IdempotencyKey,
+		&i.Controls,
+		&i.ControlGeneration,
+		&i.State,
+		&i.AttachedAt,
+		&i.ControlExpiresAt,
+		&i.DetachedAt,
+	)
+	return i, err
+}
+
+const getSurfaceAttachmentByKey = `-- name: GetSurfaceAttachmentByKey :one
+SELECT attachment_id, workload_id, surface_session_id, owner_user_id, project_id,
+       device_id, idempotency_key, controls, control_generation, state,
+       attached_at, control_expires_at, detached_at
+FROM workos_runtime.surface_attachments
+WHERE owner_user_id = $1 AND idempotency_key = $2
+`
+
+type GetSurfaceAttachmentByKeyParams struct {
+	OwnerUserID    string `json:"owner_user_id"`
+	IdempotencyKey string `json:"idempotency_key"`
+}
+
+func (q *Queries) GetSurfaceAttachmentByKey(ctx context.Context, arg GetSurfaceAttachmentByKeyParams) (WorkosRuntimeSurfaceAttachment, error) {
+	row := q.db.QueryRow(ctx, getSurfaceAttachmentByKey, arg.OwnerUserID, arg.IdempotencyKey)
+	var i WorkosRuntimeSurfaceAttachment
+	err := row.Scan(
+		&i.AttachmentID,
+		&i.WorkloadID,
+		&i.SurfaceSessionID,
+		&i.OwnerUserID,
+		&i.ProjectID,
+		&i.DeviceID,
+		&i.IdempotencyKey,
+		&i.Controls,
+		&i.ControlGeneration,
+		&i.State,
+		&i.AttachedAt,
+		&i.ControlExpiresAt,
+		&i.DetachedAt,
+	)
+	return i, err
+}
+
+const getSurfaceControlLease = `-- name: GetSurfaceControlLease :one
+SELECT workload_id, owner_user_id, control_generation, controller_attachment_id,
+       controller_device_id, granted_at, expires_at
+FROM workos_runtime.surface_control_leases
+WHERE workload_id = $1
+`
+
+func (q *Queries) GetSurfaceControlLease(ctx context.Context, workloadID string) (WorkosRuntimeSurfaceControlLease, error) {
+	row := q.db.QueryRow(ctx, getSurfaceControlLease, workloadID)
+	var i WorkosRuntimeSurfaceControlLease
+	err := row.Scan(
+		&i.WorkloadID,
+		&i.OwnerUserID,
+		&i.ControlGeneration,
+		&i.ControllerAttachmentID,
+		&i.ControllerDeviceID,
+		&i.GrantedAt,
+		&i.ExpiresAt,
 	)
 	return i, err
 }
@@ -416,6 +709,170 @@ func (q *Queries) InsertSessionRequest(ctx context.Context, arg InsertSessionReq
 	return result.RowsAffected(), nil
 }
 
+const insertSurfaceAttachment = `-- name: InsertSurfaceAttachment :execrows
+
+INSERT INTO workos_runtime.surface_attachments (
+    attachment_id, workload_id, surface_session_id, owner_user_id, project_id,
+    device_id, idempotency_key, controls, control_generation, state,
+    attached_at, control_expires_at
+) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+ON CONFLICT (owner_user_id, idempotency_key) DO NOTHING
+`
+
+type InsertSurfaceAttachmentParams struct {
+	AttachmentID      string             `json:"attachment_id"`
+	WorkloadID        string             `json:"workload_id"`
+	SurfaceSessionID  string             `json:"surface_session_id"`
+	OwnerUserID       string             `json:"owner_user_id"`
+	ProjectID         string             `json:"project_id"`
+	DeviceID          string             `json:"device_id"`
+	IdempotencyKey    string             `json:"idempotency_key"`
+	Controls          bool               `json:"controls"`
+	ControlGeneration int64              `json:"control_generation"`
+	State             string             `json:"state"`
+	AttachedAt        pgtype.Timestamptz `json:"attached_at"`
+	ControlExpiresAt  pgtype.Timestamptz `json:"control_expires_at"`
+}
+
+// Surface continuity facts (ADR-0031, migration 059): attachments are
+// per-device access relations to supervised interactive workloads; control is
+// a single-controller epoch advanced only by the explicit takeover RPC.
+func (q *Queries) InsertSurfaceAttachment(ctx context.Context, arg InsertSurfaceAttachmentParams) (int64, error) {
+	result, err := q.db.Exec(ctx, insertSurfaceAttachment,
+		arg.AttachmentID,
+		arg.WorkloadID,
+		arg.SurfaceSessionID,
+		arg.OwnerUserID,
+		arg.ProjectID,
+		arg.DeviceID,
+		arg.IdempotencyKey,
+		arg.Controls,
+		arg.ControlGeneration,
+		arg.State,
+		arg.AttachedAt,
+		arg.ControlExpiresAt,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const insertSurfaceControlLease = `-- name: InsertSurfaceControlLease :exec
+INSERT INTO workos_runtime.surface_control_leases (
+    workload_id, owner_user_id, control_generation, controller_attachment_id,
+    controller_device_id, granted_at, expires_at
+) VALUES ($1, $2, $3, $4, $5, $6, $7)
+`
+
+type InsertSurfaceControlLeaseParams struct {
+	WorkloadID             string             `json:"workload_id"`
+	OwnerUserID            string             `json:"owner_user_id"`
+	ControlGeneration      int64              `json:"control_generation"`
+	ControllerAttachmentID string             `json:"controller_attachment_id"`
+	ControllerDeviceID     string             `json:"controller_device_id"`
+	GrantedAt              pgtype.Timestamptz `json:"granted_at"`
+	ExpiresAt              pgtype.Timestamptz `json:"expires_at"`
+}
+
+func (q *Queries) InsertSurfaceControlLease(ctx context.Context, arg InsertSurfaceControlLeaseParams) error {
+	_, err := q.db.Exec(ctx, insertSurfaceControlLease,
+		arg.WorkloadID,
+		arg.OwnerUserID,
+		arg.ControlGeneration,
+		arg.ControllerAttachmentID,
+		arg.ControllerDeviceID,
+		arg.GrantedAt,
+		arg.ExpiresAt,
+	)
+	return err
+}
+
+const listLiveSurfaceAttachmentWorkloads = `-- name: ListLiveSurfaceAttachmentWorkloads :many
+SELECT DISTINCT workload_id::text AS workload_id, owner_user_id::text AS owner_user_id
+FROM workos_runtime.surface_attachments
+WHERE state = 'attached'
+`
+
+type ListLiveSurfaceAttachmentWorkloadsRow struct {
+	WorkloadID  string `json:"workload_id"`
+	OwnerUserID string `json:"owner_user_id"`
+}
+
+func (q *Queries) ListLiveSurfaceAttachmentWorkloads(ctx context.Context) ([]ListLiveSurfaceAttachmentWorkloadsRow, error) {
+	rows, err := q.db.Query(ctx, listLiveSurfaceAttachmentWorkloads)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListLiveSurfaceAttachmentWorkloadsRow
+	for rows.Next() {
+		var i ListLiveSurfaceAttachmentWorkloadsRow
+		if err := rows.Scan(&i.WorkloadID, &i.OwnerUserID); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const lockSurfaceControlLease = `-- name: LockSurfaceControlLease :one
+SELECT workload_id, owner_user_id, control_generation, controller_attachment_id,
+       controller_device_id, granted_at, expires_at
+FROM workos_runtime.surface_control_leases
+WHERE workload_id = $1
+FOR UPDATE
+`
+
+func (q *Queries) LockSurfaceControlLease(ctx context.Context, workloadID string) (WorkosRuntimeSurfaceControlLease, error) {
+	row := q.db.QueryRow(ctx, lockSurfaceControlLease, workloadID)
+	var i WorkosRuntimeSurfaceControlLease
+	err := row.Scan(
+		&i.WorkloadID,
+		&i.OwnerUserID,
+		&i.ControlGeneration,
+		&i.ControllerAttachmentID,
+		&i.ControllerDeviceID,
+		&i.GrantedAt,
+		&i.ExpiresAt,
+	)
+	return i, err
+}
+
+const markSurfaceAttachmentControl = `-- name: MarkSurfaceAttachmentControl :execrows
+UPDATE workos_runtime.surface_attachments
+SET controls = $1,
+    control_generation = $2,
+    control_expires_at = $3
+WHERE owner_user_id = $4
+  AND attachment_id = $5
+`
+
+type MarkSurfaceAttachmentControlParams struct {
+	Controls          bool               `json:"controls"`
+	ControlGeneration int64              `json:"control_generation"`
+	ControlExpiresAt  pgtype.Timestamptz `json:"control_expires_at"`
+	OwnerUserID       string             `json:"owner_user_id"`
+	AttachmentID      string             `json:"attachment_id"`
+}
+
+func (q *Queries) MarkSurfaceAttachmentControl(ctx context.Context, arg MarkSurfaceAttachmentControlParams) (int64, error) {
+	result, err := q.db.Exec(ctx, markSurfaceAttachmentControl,
+		arg.Controls,
+		arg.ControlGeneration,
+		arg.ControlExpiresAt,
+		arg.OwnerUserID,
+		arg.AttachmentID,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const rotateSessionBridgeToken = `-- name: RotateSessionBridgeToken :one
 UPDATE workos_runtime.surface_sessions
 SET bridge_token_hash = $1
@@ -501,4 +958,35 @@ func (q *Queries) RotateSessionBridgeToken(ctx context.Context, arg RotateSessio
 		&i.ClosedAt,
 	)
 	return i, err
+}
+
+const updateSurfaceControlLease = `-- name: UpdateSurfaceControlLease :exec
+UPDATE workos_runtime.surface_control_leases
+SET control_generation = $2,
+    controller_attachment_id = $3,
+    controller_device_id = $4,
+    granted_at = $5,
+    expires_at = $6
+WHERE workload_id = $1
+`
+
+type UpdateSurfaceControlLeaseParams struct {
+	WorkloadID             string             `json:"workload_id"`
+	ControlGeneration      int64              `json:"control_generation"`
+	ControllerAttachmentID string             `json:"controller_attachment_id"`
+	ControllerDeviceID     string             `json:"controller_device_id"`
+	GrantedAt              pgtype.Timestamptz `json:"granted_at"`
+	ExpiresAt              pgtype.Timestamptz `json:"expires_at"`
+}
+
+func (q *Queries) UpdateSurfaceControlLease(ctx context.Context, arg UpdateSurfaceControlLeaseParams) error {
+	_, err := q.db.Exec(ctx, updateSurfaceControlLease,
+		arg.WorkloadID,
+		arg.ControlGeneration,
+		arg.ControllerAttachmentID,
+		arg.ControllerDeviceID,
+		arg.GrantedAt,
+		arg.ExpiresAt,
+	)
+	return err
 }

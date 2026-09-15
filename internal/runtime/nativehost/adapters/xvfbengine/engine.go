@@ -2,7 +2,9 @@
 // per session one Xvfb display, one configured native X client, and one
 // ffmpeg x11grab/VP8 capture whose IVF frames feed the WebRTC video track.
 // Input events arrive on the workos.input data channel and map to xdotool
-// XTEST injection. Loopback topology only: host candidates, no STUN/TURN.
+// XTEST injection. The default topology is loopback-only host candidates; the
+// operator-configured "lan" candidate mode enumerates real host LAN
+// interfaces instead (ADR-0031 §5) — never STUN/TURN.
 package xvfbengine
 
 import (
@@ -41,19 +43,41 @@ const (
 	maxIVFFramePayload = 2 * 1024 * 1024
 )
 
+// Candidate modes (ADR-0031 §5). Loopback is the fail-safe default; "lan"
+// enumerates the host's real LAN interfaces for same-LAN devices. The mode is
+// operator configuration, never a client request.
+const (
+	CandidatesLoopback = "loopback"
+	CandidatesLAN      = "lan"
+)
+
 // Engine facts: process-level supervision only; no cgroup or namespace
 // isolation claim, no display auth beyond the single-uid Unix socket, and no
-// TURN relay (loopback host candidates only).
+// TURN relay. The enforced candidate scope follows the operator mode.
 type Engine struct {
 	Xvfb    string
 	Client  []string
 	FFmpeg  string
 	Xdotool string
 	Scratch string
+	// Candidates is "loopback" (default) or "lan" — the ICE candidate
+	// policy of every peer this engine builds.
+	Candidates string
 
 	launchMu sync.Mutex
 	mu       sync.Mutex
 	count    int
+}
+
+// candidatePolicy returns the ICE IP filter and whether loopback candidates
+// are force-included. Loopback mode admits loopback IPs only and includes
+// the loopback candidate explicitly; lan mode drops the filter so the host's
+// real interfaces are enumerable and does not force loopback inclusion.
+func (e *Engine) candidatePolicy() (filter func(ip net.IP) bool, includeLoopback bool) {
+	if e.Candidates == CandidatesLAN {
+		return nil, false
+	}
+	return func(ip net.IP) bool { return ip.IsLoopback() }, true
 }
 
 // resolveExecutable accepts an absolute path or a PATH-relative binary name
@@ -68,10 +92,17 @@ func resolveExecutable(name string) string {
 	return ""
 }
 
-func New(xvfb, client, ffmpeg, xdotool, scratch string) (*Engine, error) {
+func New(xvfb, client, ffmpeg, xdotool, scratch, candidates string) (*Engine, error) {
 	argv := strings.Fields(client)
 	if xvfb == "" || ffmpeg == "" || xdotool == "" || len(argv) == 0 || scratch == "" {
 		return nil, errors.New("native engine requires xvfb, client argv, ffmpeg, xdotool and scratch")
+	}
+	switch candidates {
+	case "":
+		candidates = CandidatesLoopback
+	case CandidatesLoopback, CandidatesLAN:
+	default:
+		return nil, fmt.Errorf("native candidate mode must be %q or %q", CandidatesLoopback, CandidatesLAN)
 	}
 	resolvedXvfb := resolveExecutable(xvfb)
 	resolvedFFmpeg := resolveExecutable(ffmpeg)
@@ -81,15 +112,19 @@ func New(xvfb, client, ffmpeg, xdotool, scratch string) (*Engine, error) {
 		return nil, fmt.Errorf("native engine toolchain is not executable (xvfb=%q client=%q ffmpeg=%q xdotool=%q)", xvfb, argv[0], ffmpeg, xdotool)
 	}
 	argv[0] = resolvedClient
-	return &Engine{Xvfb: resolvedXvfb, Client: argv, FFmpeg: resolvedFFmpeg, Xdotool: resolvedXdotool, Scratch: scratch}, nil
+	return &Engine{Xvfb: resolvedXvfb, Client: argv, FFmpeg: resolvedFFmpeg, Xdotool: resolvedXdotool, Scratch: scratch, Candidates: candidates}, nil
 }
 
 func (e *Engine) Facts() ports.EngineFacts {
+	candidateScope := "loopback-host-candidates-only"
+	if e.Candidates == CandidatesLAN {
+		candidateScope = "lan-host-candidates"
+	}
 	return ports.EngineFacts{
 		Engine:           "xvfb-x11grab-vp8-webrtc",
 		ProcessGroupKill: true,
 		ParentDeathSig:   true,
-		EnforcedLimits:   []string{"process-group-kill", "parent-death-signal", "input-rate", "session-ttl", "loopback-host-candidates-only", "peer-authorization-ttl-30s"},
+		EnforcedLimits:   []string{"process-group-kill", "parent-death-signal", "input-rate", "session-ttl", candidateScope, "peer-authorization-ttl-30s"},
 	}
 }
 
@@ -149,6 +184,10 @@ type display struct {
 	peerMu    sync.Mutex
 	peer      *webrtc.PeerConnection
 	peerEpoch uint64
+	// inputGate is the per-event control gate (ADR-0031 §4), guarded by
+	// peerMu like the peer it belongs to. nil admits events (no continuity
+	// enforcement bound).
+	inputGate func() bool
 
 	inputMu      sync.Mutex
 	inputTokens  float64
@@ -263,7 +302,10 @@ func (e *Engine) Launch(ctx context.Context, width, height int32, workingDirecto
 					return
 				}
 				d.peerMu.Lock()
-				if event.epoch == d.peerEpoch && !d.Exited() {
+				// The control gate is re-consulted at APPLY time: queued
+				// events of a superseded controller die here too, not only
+				// at enqueue (ADR-0031 §4).
+				if event.epoch == d.peerEpoch && !d.Exited() && d.inputAllowed() {
 					d.applyInput(event.raw)
 				}
 				d.peerMu.Unlock()
@@ -472,6 +514,17 @@ func ioReadFull(reader *bufio.Reader, buffer []byte) (int, error) {
 	return total, nil
 }
 
+// GuardInput installs the per-event control gate (ADR-0031 §4): input events
+// of the CURRENT peer — including events already queued but not yet injected
+// — are admitted only while the callback still reports control. The gate is
+// read under the peer lock at apply time, so a takeover or lease expiry
+// blocks the superseded device's queued input too. nil removes the gate.
+func (d *display) GuardInput(gate func() bool) {
+	d.peerMu.Lock()
+	d.inputGate = gate
+	d.peerMu.Unlock()
+}
+
 // Connect exchanges one complete offer for an answer and swaps the live peer.
 func (d *display) Connect(ctx context.Context, offerSDP string) (string, error) {
 	leaseDeadline := time.Now().Add(30 * time.Second)
@@ -482,8 +535,13 @@ func (d *display) Connect(ctx context.Context, offerSDP string) (string, error) 
 		return "", domain.ErrEngineUnavailable
 	}
 	settings := webrtc.SettingEngine{}
-	settings.SetIncludeLoopbackCandidate(true)
-	settings.SetIPFilter(func(ip net.IP) bool { return ip.IsLoopback() })
+	candidateFilter, includeLoopback := d.engine.candidatePolicy()
+	if includeLoopback {
+		settings.SetIncludeLoopbackCandidate(true)
+	}
+	if candidateFilter != nil {
+		settings.SetIPFilter(candidateFilter)
+	}
 	pc, err := webrtc.NewAPI(webrtc.WithSettingEngine(settings)).NewPeerConnection(webrtc.Configuration{})
 	if err != nil {
 		return "", err
@@ -571,6 +629,13 @@ func (d *display) Connect(ctx context.Context, offerSDP string) (string, error) 
 
 var _ ports.Display = (*display)(nil)
 var _ ports.Engine = (*Engine)(nil)
+
+// inputAllowed consults the CURRENT control gate; callers hold peerMu, the
+// same lock GuardInput registers the gate under, so every event observes the
+// freshest control verdict. No gate means no continuity enforcement is bound.
+func (d *display) inputAllowed() bool {
+	return d.inputGate == nil || d.inputGate()
+}
 
 // Detach releases the current peer only (ADR-0031): the display children
 // keep running and a later Connect rebuilds media and input.

@@ -46,7 +46,9 @@ func (h *PtyHandler) WritePtySession(ctx context.Context, req *connect.Request[s
 	if err != nil {
 		return nil, connect.NewError(connect.CodeUnauthenticated, err)
 	}
-	session, err := h.service.Write(ctx, owner.UserID, req.Msg.GetSessionId(), req.Msg.GetInput())
+	// The gateway-injected device identity rides along: the application
+	// consults the workload's control lease on every write (ADR-0031 §4).
+	session, err := h.service.Write(ctx, owner.UserID, owner.DeviceID, req.Msg.GetSessionId(), req.Msg.GetInput())
 	if err != nil {
 		return nil, ptyError(err)
 	}
@@ -70,7 +72,8 @@ func (h *PtyHandler) ResizePtySession(ctx context.Context, req *connect.Request[
 	if err != nil {
 		return nil, connect.NewError(connect.CodeUnauthenticated, err)
 	}
-	session, err := h.service.Resize(ctx, owner.UserID, req.Msg.GetSessionId(), req.Msg.GetColumns(), req.Msg.GetRows())
+	// Resize is control-path input like write: the current lease decides.
+	session, err := h.service.Resize(ctx, owner.UserID, owner.DeviceID, req.Msg.GetSessionId(), req.Msg.GetColumns(), req.Msg.GetRows())
 	if err != nil {
 		return nil, ptyError(err)
 	}
@@ -113,6 +116,8 @@ func ptyError(err error) error {
 		code = connect.CodeResourceExhausted
 	case errors.Is(err, domain.ErrEngineUnavailable), errors.Is(err, domain.ErrStoreUnavailable):
 		code = connect.CodeUnavailable
+	case errors.Is(err, domain.ErrControlDenied):
+		code = connect.CodePermissionDenied
 	}
 	return connect.NewError(code, errors.New("pty session request failed"))
 }

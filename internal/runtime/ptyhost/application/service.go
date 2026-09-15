@@ -23,6 +23,10 @@ type Service struct {
 	generator ids.Generator
 	logger    *slog.Logger
 	workspace ports.WorkspaceResolver
+	// control gates the input path on the server-side single-controller
+	// lease (ADR-0031 §4). nil keeps the plain owner-scoped path for hosts
+	// without the surface continuity service.
+	control ports.ControlAuthorizer
 
 	mu        sync.Mutex
 	terminals map[string]ports.Terminal
@@ -42,6 +46,14 @@ func (s *Service) Facts() ports.EngineFacts { return s.engine.Facts() }
 // Without one the shell starts in its default scratch directory.
 func (s *Service) WithWorkspace(workspace ports.WorkspaceResolver) *Service {
 	s.workspace = workspace
+	return s
+}
+
+// WithControlAuthorization binds the surface continuity control gate
+// (ADR-0031): with it, every write and resize consults the workload's
+// current control lease and a non-controlling device is refused.
+func (s *Service) WithControlAuthorization(control ports.ControlAuthorizer) *Service {
+	s.control = control
 	return s
 }
 
@@ -126,13 +138,54 @@ func (s *Service) terminal(ownerUserID, sessionID string) (ports.Terminal, bool)
 	return terminal, ok
 }
 
-func (s *Service) Write(ctx context.Context, ownerUserID, sessionID string, input []byte) (domain.Session, error) {
+// authorizeInput enforces the server-side control epoch on the input path.
+// A workload without attachments (the direct session flow) keeps the plain
+// owner-scoped path; once a continuity lease exists, only the live
+// controlling device may drive the session. Gate failures surface as the
+// sanitized ErrControlDenied, never the store's internals.
+func (s *Service) authorizeInput(ctx context.Context, ownerUserID, deviceID, sessionID string) error {
+	if s.control == nil {
+		return nil
+	}
+	if !domain.ValidUUIDv7(deviceID) {
+		return domain.ErrControlDenied
+	}
+	if err := s.control.AuthorizeInput(ctx, ownerUserID, sessionID, deviceID); err != nil {
+		return domain.ErrControlDenied
+	}
+	return nil
+}
+
+// Get reads one session for its owner.
+func (s *Service) Get(ctx context.Context, ownerUserID, sessionID string) (domain.Session, error) {
+	if !domain.ValidUUIDv7(ownerUserID) || !domain.ValidUUIDv7(sessionID) {
+		return domain.Session{}, domain.ErrInvalid
+	}
+	return s.store.GetSession(ctx, ownerUserID, sessionID)
+}
+
+// ListProject returns the owner's non-terminal sessions of one project — the
+// surface continuity discovery view (ADR-0031).
+func (s *Service) ListProject(ctx context.Context, ownerUserID, projectID string) ([]domain.Session, error) {
+	if !domain.ValidUUIDv7(ownerUserID) || !domain.ValidUUIDv7(projectID) {
+		return nil, domain.ErrInvalid
+	}
+	return s.store.ListProjectSessions(ctx, ownerUserID, projectID)
+}
+
+func (s *Service) Write(ctx context.Context, ownerUserID, deviceID, sessionID string, input []byte) (domain.Session, error) {
 	if !domain.ValidUUIDv7(ownerUserID) || !domain.ValidUUIDv7(sessionID) || !domain.ValidInput(input) {
 		return domain.Session{}, domain.ErrInvalid
 	}
+	// The session-state lookup precedes the control gate: a stopped or
+	// unknown workload is NotFound whatever the control lease says, while a
+	// live session enforces the current controller on the input path.
 	terminal, ok := s.terminal(ownerUserID, sessionID)
 	if !ok {
 		return domain.Session{}, domain.ErrNotFound
+	}
+	if err := s.authorizeInput(ctx, ownerUserID, deviceID, sessionID); err != nil {
+		return domain.Session{}, err
 	}
 	if err := terminal.Write(ctx, input); err != nil {
 		return domain.Session{}, domain.ErrEngineUnavailable
@@ -155,13 +208,18 @@ func (s *Service) Read(ctx context.Context, ownerUserID, sessionID string, after
 	return cursor, output, terminal.Exited(), nil
 }
 
-func (s *Service) Resize(ctx context.Context, ownerUserID, sessionID string, columns, rows int32) (domain.Session, error) {
+func (s *Service) Resize(ctx context.Context, ownerUserID, deviceID, sessionID string, columns, rows int32) (domain.Session, error) {
 	if !domain.ValidUUIDv7(ownerUserID) || !domain.ValidUUIDv7(sessionID) || !domain.ValidSize(columns, rows) {
 		return domain.Session{}, domain.ErrInvalid
 	}
+	// Same ordering as Write: NotFound for terminal sessions first, then
+	// the control gate for the live one.
 	terminal, ok := s.terminal(ownerUserID, sessionID)
 	if !ok {
 		return domain.Session{}, domain.ErrNotFound
+	}
+	if err := s.authorizeInput(ctx, ownerUserID, deviceID, sessionID); err != nil {
+		return domain.Session{}, err
 	}
 	if err := terminal.Resize(ctx, columns, rows); err != nil {
 		return domain.Session{}, domain.ErrEngineUnavailable

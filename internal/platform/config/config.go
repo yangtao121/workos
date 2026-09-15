@@ -120,6 +120,11 @@ type Runtime struct {
 	NativeXdotool string `yaml:"native_xdotool"`
 	// NativeScratch is the runner's private scratch root.
 	NativeScratch string `yaml:"native_scratch"`
+	// NativeCandidates selects the WebRTC ICE candidate scope of the native
+	// runner (ADR-0031 §5): "loopback" (default, fail-safe) or "lan" — the
+	// host's real LAN interfaces. It is operator configuration only; STUN/
+	// TURN stay out of scope.
+	NativeCandidates string `yaml:"native_candidates"`
 	// BuildTestProcessLimit scales the kernel NPROC bound for hosts that
 	// share one uid across many processes; the limit stays kernel enforced.
 	BuildTestProcessLimit int `yaml:"buildtest_process_limit"`
@@ -449,6 +454,7 @@ func Load() (Config, error) {
 	setString(&cfg.Runtime.NativeFFmpeg, "WORKOS_RUNTIME_NATIVE_FFMPEG")
 	setString(&cfg.Runtime.NativeXdotool, "WORKOS_RUNTIME_NATIVE_XDOTOOL")
 	setString(&cfg.Runtime.NativeScratch, "WORKOS_RUNTIME_NATIVE_SCRATCH")
+	setString(&cfg.Runtime.NativeCandidates, "WORKOS_RUNTIME_NATIVE_CANDIDATES")
 	if raw, ok := os.LookupEnv("WORKOS_RUNTIME_BUILDTEST_PROCESS_LIMIT"); ok {
 		value, err := strconv.Atoi(raw)
 		if err != nil || value < 64 {
@@ -719,6 +725,14 @@ func (c Config) ValidateRuntimeHost() error {
 	}
 	if c.Runtime.DeviceID == "" {
 		return errors.New("runtime service device identity is required")
+	}
+	// The native runner's ICE candidate scope is operator configuration with
+	// exactly two legal values (ADR-0031 §5); the empty default stays
+	// loopback and anything else fails startup before a peer is built.
+	switch c.Runtime.NativeCandidates {
+	case "", "loopback", "lan":
+	default:
+		return errors.New("WORKOS_RUNTIME_NATIVE_CANDIDATES must be loopback or lan")
 	}
 	return nil
 }

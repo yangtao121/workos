@@ -366,14 +366,15 @@ func run(logger *slog.Logger) error {
 	// Supervised terminal sessions (ADR-0028): real login shells behind the
 	// owner-identity gate; without a configured shell the capability stays
 	// honestly unavailable.
+	var ptyService *ptyhostapp.Service
 	if strings.TrimSpace(cfg.Runtime.PtyShell) != "" {
 		ptyEngine, engineErr := shellexec.New(cfg.Runtime.PtyShell)
 		if engineErr != nil {
 			return engineErr
 		}
-		ptyService, serviceErr := ptyhostapp.NewService(ptyhostpostgres.New(pool), ptyEngine, generator, logger)
-		if serviceErr != nil {
-			return serviceErr
+		ptyService, engineErr = ptyhostapp.NewService(ptyhostpostgres.New(pool), ptyEngine, generator, logger)
+		if engineErr != nil {
+			return engineErr
 		}
 		if workspaceHost != nil {
 			ptyService.WithWorkspace(workspaceHost)
@@ -404,12 +405,14 @@ func run(logger *slog.Logger) error {
 	// WebRTC video and data-channel input behind the owner-identity gate.
 	// Without the X11 toolchain the capability stays honestly unavailable.
 	nativeConfigured := strings.TrimSpace(cfg.Runtime.NativeDisplay) != ""
+	var nativeService *nativehostapp.Service
 	if nativeConfigured {
-		nativeEngine, engineErr := xvfbengine.New(cfg.Runtime.NativeDisplay, cfg.Runtime.NativeClient, cfg.Runtime.NativeFFmpeg, cfg.Runtime.NativeXdotool, cfg.Runtime.NativeScratch)
+		nativeEngine, engineErr := xvfbengine.New(cfg.Runtime.NativeDisplay, cfg.Runtime.NativeClient, cfg.Runtime.NativeFFmpeg, cfg.Runtime.NativeXdotool, cfg.Runtime.NativeScratch, cfg.Runtime.NativeCandidates)
 		if engineErr != nil {
 			return engineErr
 		}
-		nativeService, serviceErr := nativehostapp.NewService(nativehostpostgres.New(pool), nativeEngine, generator, logger)
+		var serviceErr error
+		nativeService, serviceErr = nativehostapp.NewService(nativehostpostgres.New(pool), nativeEngine, generator, logger)
 		if serviceErr != nil {
 			return serviceErr
 		}
@@ -441,6 +444,44 @@ func run(logger *slog.Logger) error {
 			}
 		}()
 	}
+
+	// The surface continuity service (ADR-0031): program execution and device
+	// access are separate lifecycles. The interactive workload runtime
+	// adapts the PTY and native runner services to the continuity ports; the
+	// single-controller lease gates the input paths of both runners at the
+	// application layer, and the bounded attachment sweep rides the same
+	// 30-second maintenance cadence as the session sweeps.
+	continuityRuntime := &surfaceInteractiveRuntime{pty: ptyService, native: nativeService}
+	continuityService, err := surfaceapp.NewContinuityService(surfacepostgres.NewContinuity(pool), continuityRuntime, generator, 30*time.Minute)
+	if err != nil {
+		return err
+	}
+	if ptyService != nil {
+		ptyService.WithControlAuthorization(continuityAuthorization{service: continuityService})
+	}
+	if nativeService != nil {
+		nativeService.WithControlAuthorization(continuityAuthorization{service: continuityService})
+	}
+	continuityPath, continuityHandler := surfacetransport.NewContinuityHandler(continuityService)
+	mux.Handle(continuityPath, identity.Middleware(continuityHandler))
+	continuityStop := make(chan struct{})
+	defer close(continuityStop)
+	go func() {
+		ticker := time.NewTicker(30 * time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-continuityStop:
+				return
+			case <-ticker.C:
+				if err := continuityService.Sweep(ctx); err != nil {
+					logger.Info("surface continuity sweep pending", "error", err)
+				}
+			}
+		}
+	}()
 
 	systemPath, systemHandler := commonv1connect.NewSystemServiceHandler(systemhandler.New("runtime-host", commonv1.HealthState_HEALTH_STATE_HEALTHY,
 		&commonv1.FeatureCapability{Id: "node-inspection", Available: true},

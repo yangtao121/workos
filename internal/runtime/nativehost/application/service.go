@@ -24,6 +24,10 @@ type Service struct {
 	generator ids.Generator
 	logger    *slog.Logger
 	workspace ports.WorkspaceResolver
+	// control gates the input path on the server-side single-controller
+	// lease (ADR-0031 §4). nil keeps the plain owner-scoped path for hosts
+	// without the surface continuity service.
+	control ports.ControlAuthorizer
 
 	opMu     sync.Mutex
 	mu       sync.Mutex
@@ -53,6 +57,24 @@ func (s *Service) Available(ctx context.Context) error { return s.engine.Availab
 func (s *Service) WithWorkspace(workspace ports.WorkspaceResolver) *Service {
 	s.workspace = workspace
 	return s
+}
+
+// WithControlAuthorization binds the surface continuity control gate
+// (ADR-0031): with it, every input event of a newly connected peer consults
+// the workload's current control lease at enqueue time, and the superseded
+// device's queued input is dropped.
+func (s *Service) WithControlAuthorization(control ports.ControlAuthorizer) *Service {
+	s.control = control
+	return s
+}
+
+// ListProject returns the owner's non-terminal sessions of one project — the
+// surface continuity discovery view (ADR-0031).
+func (s *Service) ListProject(ctx context.Context, ownerUserID, projectID string) ([]domain.Session, error) {
+	if !domain.ValidUUIDv7(ownerUserID) || !domain.ValidUUIDv7(projectID) {
+		return nil, domain.ErrInvalid
+	}
+	return s.store.ListProjectSessions(ctx, ownerUserID, projectID)
 }
 
 func requestDigest(projectID string, width, height int32, workingDirectory string) string {
@@ -147,10 +169,13 @@ func (s *Service) Create(ctx context.Context, ownerUserID, projectID, idempotenc
 
 // Connect exchanges one complete WebRTC offer for the answer of the session's
 // live display. A dead display is an honest engine failure, not a restart.
-func (s *Service) Connect(ctx context.Context, ownerUserID, sessionID, offerSDP string) (domain.Session, string, error) {
+// The connecting device identity gates input (ADR-0031 §4): with a control
+// authorizer bound, every input event of this peer consults the CURRENT
+// control lease at enqueue time.
+func (s *Service) Connect(ctx context.Context, ownerUserID, deviceID, sessionID, offerSDP string) (domain.Session, string, error) {
 	s.opMu.Lock()
 	defer s.opMu.Unlock()
-	if !domain.ValidUUIDv7(ownerUserID) || !domain.ValidUUIDv7(sessionID) || offerSDP == "" || len(offerSDP) > domain.MaxSDPBytes {
+	if !domain.ValidUUIDv7(ownerUserID) || !domain.ValidUUIDv7(sessionID) || !domain.ValidUUIDv7(deviceID) || offerSDP == "" || len(offerSDP) > domain.MaxSDPBytes {
 		return domain.Session{}, "", domain.ErrInvalid
 	}
 	session, err := s.store.GetSession(ctx, ownerUserID, sessionID)
@@ -178,6 +203,15 @@ func (s *Service) Connect(ctx context.Context, ownerUserID, sessionID, offerSDP 
 	answer, err := display.Connect(ctx, offerSDP)
 	if err != nil {
 		return domain.Session{}, "", domain.ErrEngineUnavailable
+	}
+	if s.control != nil {
+		// The gate re-consults the lease on EVERY event: a takeover or expiry
+		// blocks the superseded device immediately, including queued events.
+		display.GuardInput(func() bool {
+			return s.control.AuthorizeInput(context.Background(), ownerUserID, sessionID, deviceID) == nil
+		})
+	} else {
+		display.GuardInput(nil)
 	}
 	return session, answer, nil
 }

@@ -168,6 +168,48 @@ func (q *Queries) InsertPtySession(ctx context.Context, arg InsertPtySessionPara
 	return result.RowsAffected(), nil
 }
 
+const listProjectPtySessions = `-- name: ListProjectPtySessions :many
+SELECT session_id, owner_user_id, project_id, idempotency_key, request_digest,
+       state, created_at, updated_at, expires_at
+FROM workos_runtime.pty_sessions
+WHERE owner_user_id = $1 AND project_id = $2 AND state IN ('queued', 'running')
+`
+
+type ListProjectPtySessionsParams struct {
+	OwnerUserID string `json:"owner_user_id"`
+	ProjectID   string `json:"project_id"`
+}
+
+func (q *Queries) ListProjectPtySessions(ctx context.Context, arg ListProjectPtySessionsParams) ([]WorkosRuntimePtySession, error) {
+	rows, err := q.db.Query(ctx, listProjectPtySessions, arg.OwnerUserID, arg.ProjectID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []WorkosRuntimePtySession
+	for rows.Next() {
+		var i WorkosRuntimePtySession
+		if err := rows.Scan(
+			&i.SessionID,
+			&i.OwnerUserID,
+			&i.ProjectID,
+			&i.IdempotencyKey,
+			&i.RequestDigest,
+			&i.State,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.ExpiresAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const updatePtySessionState = `-- name: UpdatePtySessionState :execrows
 UPDATE workos_runtime.pty_sessions
 SET state = $3, updated_at = $4

@@ -1577,6 +1577,36 @@ Native 的创建、连接、关闭和 sweep 在 runtime-host 内串行协调；�
 排队输入不会跨续期复用。桌面正确协商 SCTP、映射 Ctrl/指针并回收迟到会话。
 详见 ADR-0029 修正段及 nativehost 的应用层/引擎回归测试。
 
+## Surface 连续性与单控制器（ADR-0031，B06/B07，2026-09-15）
+
+- `internal/runtime/surface/`：runtime-host 拥有的设备访问关系与控制权事实。
+  migration 059（workos_runtime.surface_attachments + surface_control_leases）；
+  `ports/continuity.go` 定义 ContinuityStore（事务性 attach/接管/detach/sweep）与
+  InteractiveWorkloadRuntime；`adapters/postgres/continuity.go` 以 FOR UPDATE 租约锁
+  实现原子代次推进（旧 controller 的 controls 标记同事务失效）。
+- `workos.surface.v1.SurfaceContinuityService`（Gateway 路由 + owner/device 身份）：
+  ListProjectSurfaces（owner 的非终态 PTY/Native 会话，renderer 如实映射：native=
+  REMOTE_NATIVE、pty=UNSPECIFIED，generation=1，策略 persistent=true +
+  keep_alive 1800s 即既有 30 分钟上限）；AttachSurface（幂等 per owner+key，首附
+  同事务授予 gen1 控制权，终态 workload → FailedPrecondition 带真实状态）；
+  DetachSurface（仅释放本设备：native 另释放媒体 peer；程序继续运行）；
+  RequestSurfaceControl（精确 controller 续期不升代次；其余为显式接管，代次+1）；
+  GetSurfaceControl；StopSurfaceWorkload（=既有 Close 确定性回收并过期 attachments）；
+  RestartSurfaceWorkload（pty/native 如实 FailedPrecondition，无持久 argv）。
+- 数据路径强制：PTY Write/Resize 携带 gateway 注入的 device 身份，每次请求复查
+  当前控制租约（非 controller / 已过期 epoch / controller 已 detach →
+  PermissionDenied，直至显式接管）；native 输入在 display 的 apply 时刻复查
+  GuardInput，被接管设备的排队输入同样失效。无租约的直连会话保持 owner-scoped。
+- 30s sweep：过期控制租约与终态 workload 的 attachment 标记 expired；策略保持
+  30 分钟单上限，无无限保活。
+- 媒体候选：WORKOS_RUNTIME_NATIVE_CANDIDATES=loopback（默认，单测锁定过滤不变）
+  或 lan（移除 IsLoopback 过滤且不强插 loopback 候选；需 host 网络；无 STUN/TURN）；
+  EngineFacts 如实报告候选范围。
+- `make test-surface-continuity`：仓库级真实 Postgres 状态机（含并发接管收敛）+
+  E2E（detach 后输出持续累积、二次 attach+显式接管恢复输入、双设备数据路径
+  PermissionDenied/接管矩阵、sweep 过期、stop 回收）。桌面窗口关闭→Detach 的迁移
+  属 B05/B08。
+
 移动端 canonical proof 使用配置的部署 origin；平台密钥槽按 origin 隔离。
 过期 Cookie 经同一持久密钥后端重建 session，原生 JSON RPC 经 Capacitor HTTP bridge
 访问严格校验的 Gateway，浏览器仍用标准 fetch。安全存储故障和 Forget 失败不伪报成功；

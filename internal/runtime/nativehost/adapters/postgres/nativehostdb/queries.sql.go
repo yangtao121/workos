@@ -215,6 +215,50 @@ func (q *Queries) ListActiveNativeSessions(ctx context.Context) ([]WorkosRuntime
 	return items, nil
 }
 
+const listProjectNativeSessions = `-- name: ListProjectNativeSessions :many
+SELECT session_id, owner_user_id, project_id, idempotency_key, request_digest,
+       state, width, height, created_at, updated_at, expires_at
+FROM workos_runtime.native_sessions
+WHERE owner_user_id = $1 AND project_id = $2 AND state IN ('queued', 'running')
+`
+
+type ListProjectNativeSessionsParams struct {
+	OwnerUserID string `json:"owner_user_id"`
+	ProjectID   string `json:"project_id"`
+}
+
+func (q *Queries) ListProjectNativeSessions(ctx context.Context, arg ListProjectNativeSessionsParams) ([]WorkosRuntimeNativeSession, error) {
+	rows, err := q.db.Query(ctx, listProjectNativeSessions, arg.OwnerUserID, arg.ProjectID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []WorkosRuntimeNativeSession
+	for rows.Next() {
+		var i WorkosRuntimeNativeSession
+		if err := rows.Scan(
+			&i.SessionID,
+			&i.OwnerUserID,
+			&i.ProjectID,
+			&i.IdempotencyKey,
+			&i.RequestDigest,
+			&i.State,
+			&i.Width,
+			&i.Height,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.ExpiresAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const updateNativeSessionState = `-- name: UpdateNativeSessionState :execrows
 UPDATE workos_runtime.native_sessions
 SET state = $3, updated_at = $4

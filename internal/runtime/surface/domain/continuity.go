@@ -9,11 +9,12 @@ import (
 // access relations to supervised workloads; control is a single-controller
 // epoch advanced only by explicit takeover.
 var (
-	ErrAttachmentNotFound = errors.New("surface attachment not found")
-	ErrAttachmentDetached = errors.New("surface attachment is detached")
-	ErrControlDenied      = errors.New("surface control is held by another attachment")
-	ErrControlExpired     = errors.New("surface control lease expired")
-	ErrWorkloadNotRunning = errors.New("surface workload is not running")
+	ErrAttachmentNotFound     = errors.New("surface attachment not found")
+	ErrAttachmentDetached     = errors.New("surface attachment is detached")
+	ErrControlDenied          = errors.New("surface control is held by another attachment")
+	ErrControlExpired         = errors.New("surface control lease expired")
+	ErrWorkloadNotRunning     = errors.New("surface workload is not running")
+	ErrWorkloadNotRestartable = errors.New("surface workload kind is not restartable; start a new session")
 )
 
 type AttachmentState string

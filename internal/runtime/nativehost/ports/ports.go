@@ -18,6 +18,9 @@ type SessionStore interface {
 	GetSession(ctx context.Context, ownerUserID, sessionID string) (domain.Session, error)
 	// GetSessionByKey resolves the stored session for an owner/key replay.
 	GetSessionByKey(ctx context.Context, ownerUserID, idempotencyKey string) (domain.Session, error)
+	// ListProjectSessions returns the owner's non-terminal sessions of one
+	// project: the surface continuity discovery view (ADR-0031).
+	ListProjectSessions(ctx context.Context, ownerUserID, projectID string) ([]domain.Session, error)
 	// UpdateState persists the live facts (state).
 	UpdateState(ctx context.Context, ownerUserID, sessionID string, state domain.State, now time.Time) error
 	// CloseSession terminal-updates a closed/failed session.
@@ -27,6 +30,15 @@ type SessionStore interface {
 	ExpireIdle(ctx context.Context, now time.Time) ([]string, error)
 	// CountActive returns the owner's non-terminal session count.
 	CountActive(ctx context.Context, ownerUserID string) (int, error)
+}
+
+// ControlAuthorizer is the server-side single-controller gate of the input
+// path (ADR-0031 §4). Native input events consult the CURRENT control lease
+// of the workload on every enqueue; a device whose attachment does not hold
+// the live control epoch is dropped. It is implemented by the surface
+// continuity application.
+type ControlAuthorizer interface {
+	AuthorizeInput(ctx context.Context, ownerUserID, workloadID, deviceID string) error
 }
 
 // EngineFacts as enforced for this runner.
@@ -43,6 +55,12 @@ type Display interface {
 	// Connect feeds the client's complete offer and returns the complete
 	// answer (candidates included). Reconnecting supersedes the prior peer.
 	Connect(ctx context.Context, offerSDP string) (string, error)
+	// GuardInput installs the per-event control gate (ADR-0031 §4): each
+	// input event from the current peer is admitted only while the callback
+	// still reports control — the gate is re-consulted on every event, so a
+	// takeover or expiry blocks the superseded device's queued input too.
+	// nil removes the gate.
+	GuardInput(gate func() bool)
 	// Detach closes the live media/input peer and drops its queued events
 	// without touching the display children (ADR-0031). The next Connect
 	// builds a fresh peer.

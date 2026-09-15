@@ -38,3 +38,9 @@ harness:
 telemetry:
   # Empty by default. Set OTEL_EXPORTER_OTLP_ENDPOINT to enable OTLP/HTTP traces.
   otlp_endpoint: ""
+runtime:
+  # Native runner WebRTC ICE candidate scope (ADR-0031 §5): "loopback" is
+  # the fail-safe default; "lan" enumerates the host's real LAN interfaces
+  # for same-LAN devices (requires host networking so the addresses are
+  # reachable; signaling stays behind the gateway's TLS; no STUN/TURN).
+  native_candidates: loopback

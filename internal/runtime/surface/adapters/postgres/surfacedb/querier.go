@@ -6,14 +6,26 @@ package surfacedb
 
 import (
 	"context"
+
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 type Querier interface {
+	ClearSurfaceAttachmentControl(ctx context.Context, arg ClearSurfaceAttachmentControlParams) (int64, error)
 	CloseSession(ctx context.Context, arg CloseSessionParams) (int64, error)
+	CountLiveSurfaceAttachments(ctx context.Context, arg CountLiveSurfaceAttachmentsParams) ([]CountLiveSurfaceAttachmentsRow, error)
+	DetachSurfaceAttachment(ctx context.Context, arg DetachSurfaceAttachmentParams) (int64, error)
+	ExpireElapsedSurfaceAttachments(ctx context.Context, now pgtype.Timestamptz) ([]string, error)
+	ExpireSurfaceAttachmentsForWorkloads(ctx context.Context, arg ExpireSurfaceAttachmentsForWorkloadsParams) (int64, error)
 	GetActiveSession(ctx context.Context, arg GetActiveSessionParams) (GetActiveSessionRow, error)
 	GetActiveSessionByBridgeToken(ctx context.Context, arg GetActiveSessionByBridgeTokenParams) (GetActiveSessionByBridgeTokenRow, error)
+	GetControllerAttachment(ctx context.Context, arg GetControllerAttachmentParams) (WorkosRuntimeSurfaceAttachment, error)
+	GetLiveAttachmentBySurfaceSession(ctx context.Context, arg GetLiveAttachmentBySurfaceSessionParams) (WorkosRuntimeSurfaceAttachment, error)
 	GetSession(ctx context.Context, arg GetSessionParams) (GetSessionRow, error)
 	GetSessionRequest(ctx context.Context, arg GetSessionRequestParams) (WorkosRuntimeSurfaceSessionRequest, error)
+	GetSurfaceAttachment(ctx context.Context, arg GetSurfaceAttachmentParams) (WorkosRuntimeSurfaceAttachment, error)
+	GetSurfaceAttachmentByKey(ctx context.Context, arg GetSurfaceAttachmentByKeyParams) (WorkosRuntimeSurfaceAttachment, error)
+	GetSurfaceControlLease(ctx context.Context, workloadID string) (WorkosRuntimeSurfaceControlLease, error)
 	// The idle-TTL source for the Workload Manager: whether any open, unexpired
 	// session still references the installed instance.
 	HasActiveSessionForInstance(ctx context.Context, arg HasActiveSessionForInstanceParams) (bool, error)
@@ -23,7 +35,16 @@ type Querier interface {
 	// mutation pins the epoch the user re-opened under.
 	InsertSession(ctx context.Context, arg InsertSessionParams) error
 	InsertSessionRequest(ctx context.Context, arg InsertSessionRequestParams) (int64, error)
+	// Surface continuity facts (ADR-0031, migration 059): attachments are
+	// per-device access relations to supervised interactive workloads; control is
+	// a single-controller epoch advanced only by the explicit takeover RPC.
+	InsertSurfaceAttachment(ctx context.Context, arg InsertSurfaceAttachmentParams) (int64, error)
+	InsertSurfaceControlLease(ctx context.Context, arg InsertSurfaceControlLeaseParams) error
+	ListLiveSurfaceAttachmentWorkloads(ctx context.Context) ([]ListLiveSurfaceAttachmentWorkloadsRow, error)
+	LockSurfaceControlLease(ctx context.Context, workloadID string) (WorkosRuntimeSurfaceControlLease, error)
+	MarkSurfaceAttachmentControl(ctx context.Context, arg MarkSurfaceAttachmentControlParams) (int64, error)
 	RotateSessionBridgeToken(ctx context.Context, arg RotateSessionBridgeTokenParams) (RotateSessionBridgeTokenRow, error)
+	UpdateSurfaceControlLease(ctx context.Context, arg UpdateSurfaceControlLeaseParams) error
 }
 
 var _ Querier = (*Queries)(nil)

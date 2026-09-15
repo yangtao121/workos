@@ -32,6 +32,12 @@ SELECT count(*) AS active
 FROM workos_runtime.pty_sessions
 WHERE owner_user_id = $1 AND state IN ('queued', 'running');
 
+-- name: ListProjectPtySessions :many
+SELECT session_id, owner_user_id, project_id, idempotency_key, request_digest,
+       state, created_at, updated_at, expires_at
+FROM workos_runtime.pty_sessions
+WHERE owner_user_id = $1 AND project_id = $2 AND state IN ('queued', 'running');
+
 -- name: ExpireIdlePtySessions :many
 UPDATE workos_runtime.pty_sessions
 SET state = 'closed', updated_at = $1, expires_at = $1

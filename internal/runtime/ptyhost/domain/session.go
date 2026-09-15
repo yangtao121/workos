@@ -36,6 +36,10 @@ var (
 	ErrSessionLimit      = errors.New("pty session limit reached")
 	ErrEngineUnavailable = errors.New("pty engine is unavailable")
 	ErrStoreUnavailable  = errors.New("pty store is temporarily unavailable")
+	// ErrControlDenied marks an input-path rejection by the server-side
+	// single-controller lease (ADR-0031 §4): another device's attachment
+	// holds the current control epoch.
+	ErrControlDenied = errors.New("pty session control is held by another device")
 )
 
 // Session is the durable pty session row.

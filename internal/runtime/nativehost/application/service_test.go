@@ -116,6 +116,14 @@ type fakeDisplay struct {
 	answers  []string
 	stopped  bool
 	detached bool
+	gate     func() bool
+}
+
+// GuardInput records the per-event control gate (ADR-0031 §4).
+func (f *fakeDisplay) GuardInput(gate func() bool) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.gate = gate
 }
 
 func (f *fakeDisplay) Connect(_ context.Context, offer string) (string, error) {
@@ -205,6 +213,7 @@ func (s *seqGenerator) New() string {
 const (
 	testOwner   = "01999999-9999-7999-8999-000000000001"
 	testProject = "01999999-9999-7999-8999-000000000002"
+	testDevice  = "01999999-9999-7999-8999-000000000003"
 )
 
 func newTestService(t *testing.T) (*Service, *fakeEngine) {
@@ -265,22 +274,22 @@ func TestNativeServiceConnectAndClose(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create: %v", err)
 	}
-	if _, _, err := service.Connect(ctx, testOwner, session.SessionID, ""); !errors.Is(err, domain.ErrInvalid) {
+	if _, _, err := service.Connect(ctx, testOwner, testDevice, session.SessionID, ""); !errors.Is(err, domain.ErrInvalid) {
 		t.Fatalf("empty offer: %v", err)
 	}
-	_, answer, err := service.Connect(ctx, testOwner, session.SessionID, "v=0\r\noffer")
+	_, answer, err := service.Connect(ctx, testOwner, testDevice, session.SessionID, "v=0\r\noffer")
 	if err != nil || answer == "" {
 		t.Fatalf("connect: %v %q", err, answer)
 	}
 	// Foreign owners never connect.
-	if _, _, err := service.Connect(ctx, "01999999-9999-7999-8999-000000000c99", session.SessionID, "v=0\r\noffer"); !errors.Is(err, domain.ErrNotFound) {
+	if _, _, err := service.Connect(ctx, "01999999-9999-7999-8999-000000000c99", testDevice, session.SessionID, "v=0\r\noffer"); !errors.Is(err, domain.ErrNotFound) {
 		t.Fatalf("foreign connect: %v", err)
 	}
 	closed, err := service.Close(ctx, testOwner, session.SessionID)
 	if err != nil || closed.State != domain.StateClosed {
 		t.Fatalf("close: %v %+v", err, closed)
 	}
-	if _, _, err := service.Connect(ctx, testOwner, session.SessionID, "v=0\r\noffer"); !errors.Is(err, domain.ErrInvalid) {
+	if _, _, err := service.Connect(ctx, testOwner, testDevice, session.SessionID, "v=0\r\noffer"); !errors.Is(err, domain.ErrInvalid) {
 		t.Fatalf("connect after close: %v", err)
 	}
 }
@@ -292,7 +301,7 @@ func TestNativeServiceDetachKeepsSessionRunning(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create: %v", err)
 	}
-	if _, _, err := service.Connect(ctx, testOwner, session.SessionID, "v=0\r\noffer"); err != nil {
+	if _, _, err := service.Connect(ctx, testOwner, testDevice, session.SessionID, "v=0\r\noffer"); err != nil {
 		t.Fatalf("connect: %v", err)
 	}
 	detached, err := service.Detach(ctx, testOwner, session.SessionID)
@@ -311,7 +320,7 @@ func TestNativeServiceDetachKeepsSessionRunning(t *testing.T) {
 	if !display.detached {
 		t.Fatal("detach did not release the media peer")
 	}
-	if _, _, err := service.Connect(ctx, testOwner, session.SessionID, "v=0\r\noffer"); err != nil {
+	if _, _, err := service.Connect(ctx, testOwner, testDevice, session.SessionID, "v=0\r\noffer"); err != nil {
 		t.Fatalf("reconnect after detach: %v", err)
 	}
 	// Detaching a closed session fails closed.
@@ -336,7 +345,7 @@ func TestNativeServiceDeadDisplayFailsClosed(t *testing.T) {
 	display.mu.Lock()
 	display.exited = true
 	display.mu.Unlock()
-	if _, _, err := service.Connect(ctx, testOwner, session.SessionID, "v=0\r\noffer"); !errors.Is(err, domain.ErrEngineUnavailable) {
+	if _, _, err := service.Connect(ctx, testOwner, testDevice, session.SessionID, "v=0\r\noffer"); !errors.Is(err, domain.ErrEngineUnavailable) {
 		t.Fatalf("dead display must be unavailable: %v", err)
 	}
 	stored, err := service.Get(ctx, testOwner, session.SessionID)
@@ -353,6 +362,18 @@ func TestNativeServiceLaunchFailureIsUnavailable(t *testing.T) {
 	if _, err := service.Create(context.Background(), testOwner, testProject, "boom", 800, 600); !errors.Is(err, domain.ErrEngineUnavailable) {
 		t.Fatalf("launch failure must surface unavailable: %v", err)
 	}
+}
+
+func (m *memoryStore) ListProjectSessions(_ context.Context, ownerUserID, projectID string) ([]domain.Session, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	var result []domain.Session
+	for _, session := range m.sessions {
+		if session.OwnerUserID == ownerUserID && session.ProjectID == projectID && !session.State.Terminal() {
+			result = append(result, session)
+		}
+	}
+	return result, nil
 }
 
 func (m *memoryStore) ListActive(_ context.Context) ([]domain.Session, error) {
@@ -396,7 +417,7 @@ func TestNativeRestartAndExpiryReclaimCapacity(t *testing.T) {
 	row.ExpiresAt = time.Now().Add(-time.Second)
 	store.sessions[second.SessionID] = row
 	store.mu.Unlock()
-	if _, _, err := restarted.Connect(ctx, testOwner, second.SessionID, "offer"); err == nil {
+	if _, _, err := restarted.Connect(ctx, testOwner, testDevice, second.SessionID, "offer"); err == nil {
 		t.Fatal("expired session connected before sweep")
 	}
 	if engine.count != 0 {
@@ -405,5 +426,58 @@ func TestNativeRestartAndExpiryReclaimCapacity(t *testing.T) {
 	closed, err := restarted.Close(ctx, testOwner, first.SessionID)
 	if err != nil || closed.State != domain.StateFailed {
 		t.Fatal("close replay disagreed with durable terminal state")
+	}
+}
+
+// gateAuthorizer admits exactly one device: the continuity control gate stub
+// for the input-path tests.
+type gateAuthorizer struct {
+	allowed string
+	calls   int
+}
+
+func (g *gateAuthorizer) AuthorizeInput(_ context.Context, _, _, deviceID string) error {
+	g.calls++
+	if deviceID != g.allowed {
+		return errors.New("control denied")
+	}
+	return nil
+}
+
+func TestNativeConnectInstallsControlGate(t *testing.T) {
+	service, engine := newTestService(t)
+	authorizer := &gateAuthorizer{allowed: testDevice}
+	service.WithControlAuthorization(authorizer)
+	ctx := context.Background()
+	session, err := service.Create(ctx, testOwner, testProject, "gate", 800, 600)
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	if _, _, err := service.Connect(ctx, testOwner, testDevice, session.SessionID, "v=0\r\noffer"); err != nil {
+		t.Fatalf("connect: %v", err)
+	}
+	engine.mu.Lock()
+	display := engine.displays[len(engine.displays)-1]
+	engine.mu.Unlock()
+	display.mu.Lock()
+	gate := display.gate
+	display.mu.Unlock()
+	if gate == nil {
+		t.Fatal("connect did not install the control gate")
+	}
+	if !gate() {
+		t.Fatal("controlling device's gate must admit")
+	}
+	// A superseded device reconnects: its gate consults the CURRENT lease on
+	// every event and refuses while another device holds control.
+	superseded := "01999999-9999-7999-8999-000000000004"
+	if _, _, err := service.Connect(ctx, testOwner, superseded, session.SessionID, "v=0\r\noffer"); err != nil {
+		t.Fatalf("reconnect: %v", err)
+	}
+	display.mu.Lock()
+	gate = display.gate
+	display.mu.Unlock()
+	if gate == nil || gate() {
+		t.Fatal("superseded device's gate must consult and refuse")
 	}
 }

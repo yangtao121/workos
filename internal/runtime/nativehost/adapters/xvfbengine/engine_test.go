@@ -5,6 +5,7 @@ import (
 	"context"
 	"log/slog"
 	"math"
+	"net"
 	"os"
 	"path/filepath"
 	"strings"
@@ -92,7 +93,7 @@ func TestRealEngineLifecycle(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 	scratch := t.TempDir()
-	e, err := New("Xvfb", "xterm", "ffmpeg", "xdotool", scratch)
+	e, err := New("Xvfb", "xterm", "ffmpeg", "xdotool", scratch, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -153,4 +154,85 @@ func TestPeerExpiryPreservesReplacement(t *testing.T) {
 	if d.peer != nil || second.ConnectionState() != webrtc.PeerConnectionStateClosed || d.peerEpoch != 3 {
 		t.Fatal("peer expiry failed to revoke input/media")
 	}
+}
+
+// TestCandidatePolicyLoopbackDefaultUnchanged pins the fail-safe default:
+// every candidate outside loopback is filtered and the loopback candidate is
+// force-included. The lan mode is the only way to widen the scope — and it
+// removes the filter entirely instead of adding unfiltered extras.
+func TestCandidatePolicyLoopbackDefaultUnchanged(t *testing.T) {
+	defaults := &Engine{}
+	filter, includeLoopback := defaults.candidatePolicy()
+	if filter == nil || !includeLoopback {
+		t.Fatal("default candidate policy must filter to loopback and include loopback candidates")
+	}
+	if filter(net.ParseIP("127.0.0.1")) != true || filter(net.ParseIP("192.168.1.10")) != false || filter(net.ParseIP("::1")) != true {
+		t.Fatal("default filter must admit loopback only")
+	}
+
+	lan := &Engine{Candidates: CandidatesLAN}
+	filter, includeLoopback = lan.candidatePolicy()
+	if filter != nil {
+		t.Fatal("lan mode must not install an IP filter")
+	}
+	if includeLoopback {
+		t.Fatal("lan mode must not force loopback candidate inclusion")
+	}
+
+	loopback := &Engine{Candidates: CandidatesLoopback}
+	filter, includeLoopback = loopback.candidatePolicy()
+	if filter == nil || !includeLoopback || filter(net.ParseIP("10.0.0.2")) != false {
+		t.Fatal("explicit loopback mode must behave exactly like the default")
+	}
+}
+
+// TestNewRejectsUnknownCandidateMode: candidate scope is operator
+// configuration with exactly two legal values; anything else fails startup.
+func TestNewRejectsUnknownCandidateMode(t *testing.T) {
+	// /bin/true stands in for the toolchain binaries: the candidate
+	// validation is under test, not the X11 toolchain.
+	if _, err := New("/bin/true", "/bin/true", "/bin/true", "/bin/true", t.TempDir(), "wider-internet"); err == nil {
+		t.Fatal("unknown candidate mode must be rejected")
+	}
+	if _, err := New("/bin/true", "/bin/true", "/bin/true", "/bin/true", t.TempDir(), CandidatesLAN); err != nil {
+		t.Fatalf("lan mode must be accepted: %v", err)
+	}
+	engine, err := New("/bin/true", "/bin/true", "/bin/true", "/bin/true", t.TempDir(), "")
+	if err != nil || engine.Candidates != CandidatesLoopback {
+		t.Fatal("empty candidate mode must default to loopback")
+	}
+	scope := ""
+	for _, limit := range engine.Facts().EnforcedLimits {
+		if limit == "lan-host-candidates" || limit == "loopback-host-candidates-only" {
+			scope = limit
+		}
+	}
+	if scope != "loopback-host-candidates-only" {
+		t.Fatalf("facts must report the honest candidate scope, got %q", scope)
+	}
+}
+
+// TestInputGateBlocksQueuedEvents pins the apply-time control check: a gate
+// that reports no control refuses queued events, a removed gate reopens the
+// plain owner-scoped path (no continuity enforcement bound).
+func TestInputGateBlocksQueuedEvents(t *testing.T) {
+	d := &display{}
+	d.GuardInput(func() bool { return false })
+	d.peerMu.Lock()
+	if d.inputAllowed() {
+		t.Fatal("blocked gate must refuse queued input")
+	}
+	d.peerMu.Unlock()
+	d.GuardInput(func() bool { return true })
+	d.peerMu.Lock()
+	if !d.inputAllowed() {
+		t.Fatal("admitting gate must pass input")
+	}
+	d.peerMu.Unlock()
+	d.GuardInput(nil)
+	d.peerMu.Lock()
+	if !d.inputAllowed() {
+		t.Fatal("no gate means no continuity enforcement is bound")
+	}
+	d.peerMu.Unlock()
 }

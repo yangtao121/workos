@@ -8,6 +8,32 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+type WorkosRuntimeSurfaceAttachment struct {
+	AttachmentID      string             `json:"attachment_id"`
+	WorkloadID        string             `json:"workload_id"`
+	SurfaceSessionID  string             `json:"surface_session_id"`
+	OwnerUserID       string             `json:"owner_user_id"`
+	ProjectID         string             `json:"project_id"`
+	DeviceID          string             `json:"device_id"`
+	IdempotencyKey    string             `json:"idempotency_key"`
+	Controls          bool               `json:"controls"`
+	ControlGeneration int64              `json:"control_generation"`
+	State             string             `json:"state"`
+	AttachedAt        pgtype.Timestamptz `json:"attached_at"`
+	ControlExpiresAt  pgtype.Timestamptz `json:"control_expires_at"`
+	DetachedAt        pgtype.Timestamptz `json:"detached_at"`
+}
+
+type WorkosRuntimeSurfaceControlLease struct {
+	WorkloadID             string             `json:"workload_id"`
+	OwnerUserID            string             `json:"owner_user_id"`
+	ControlGeneration      int64              `json:"control_generation"`
+	ControllerAttachmentID string             `json:"controller_attachment_id"`
+	ControllerDeviceID     string             `json:"controller_device_id"`
+	GrantedAt              pgtype.Timestamptz `json:"granted_at"`
+	ExpiresAt              pgtype.Timestamptz `json:"expires_at"`
+}
+
 type WorkosRuntimeSurfaceSessionRequest struct {
 	OwnerUserID    string             `json:"owner_user_id"`
 	IdempotencyKey string             `json:"idempotency_key"`

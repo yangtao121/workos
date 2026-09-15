@@ -83,6 +83,22 @@ func (r *Repository) GetSessionByKey(ctx context.Context, ownerUserID, idempoten
 	return sessionFromRow(row), nil
 }
 
+// ListProjectSessions returns the owner's non-terminal sessions of one
+// project (ADR-0031 discovery view).
+func (r *Repository) ListProjectSessions(ctx context.Context, ownerUserID, projectID string) ([]domain.Session, error) {
+	rows, err := r.queries.ListProjectPtySessions(ctx, ptyhostdb.ListProjectPtySessionsParams{
+		OwnerUserID: ownerUserID, ProjectID: projectID,
+	})
+	if err != nil {
+		return nil, transient(err)
+	}
+	sessions := make([]domain.Session, 0, len(rows))
+	for _, row := range rows {
+		sessions = append(sessions, sessionFromRow(row))
+	}
+	return sessions, nil
+}
+
 func (r *Repository) UpdateState(ctx context.Context, ownerUserID, sessionID string, state domain.State, now time.Time) error {
 	updated, err := r.queries.UpdatePtySessionState(ctx, ptyhostdb.UpdatePtySessionStateParams{
 		OwnerUserID: ownerUserID, SessionID: sessionID, State: string(state), UpdatedAt: now,

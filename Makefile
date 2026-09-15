@@ -1155,3 +1155,12 @@ test-workspace-execution:
 .PHONY: test-native-surface
 test-native-surface:
 	@set -eu; sh tools/native-surface/gate.sh
+
+# The surface continuity gate (ADR-0031): detach keeps the real program
+# running with output accumulating, stop deterministically reaps it, the
+# single-controller lease is enforced server-side on the PTY data path for
+# two independent device identities, and the bounded sweep expires elapsed
+# attachments.
+.PHONY: test-surface-continuity
+test-surface-continuity:
+	@set -eu; sh tools/surface-continuity/gate.sh

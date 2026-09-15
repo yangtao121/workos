@@ -144,6 +144,13 @@ services:
       WORKOS_CORE_URL: http://127.0.0.1:8081
       WORKOS_RUNTIME_INDEXER_URL: http://127.0.0.1:8085
       WORKOS_SURFACE_SESSION_TTL: ${WORKOS_SURFACE_SESSION_TTL:-15m}
+      # Native runner WebRTC ICE candidate scope (ADR-0031 §5). "loopback"
+      # (the fail-safe default) keeps media on the host's loopback
+      # interfaces; "lan" enumerates the host's real LAN interfaces for
+      # same-LAN devices. Host networking must stay enabled in lan mode so
+      # the LAN addresses are reachable; signaling always stays behind the
+      # gateway's TLS. STUN/TURN remain out of scope.
+      WORKOS_RUNTIME_NATIVE_CANDIDATES: ${WORKOS_RUNTIME_NATIVE_CANDIDATES:-loopback}
 
   reliability-host:
     <<: *workos-service

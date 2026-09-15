@@ -52,9 +52,11 @@ func (h *NativeHandler) ConnectNativeSession(ctx context.Context, req *connect.R
 	}
 	// Anchor the media lease before queueing/signaling, so delayed work cannot
 	// extend a previously authenticated request beyond its authorization window.
+	// The gateway-injected device identity gates the input path: the control
+	// lease is re-consulted on every input event of this peer (ADR-0031 §4).
 	leaseCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
-	session, answer, err := h.service.Connect(leaseCtx, owner.UserID, req.Msg.GetSessionId(), req.Msg.GetOfferSdp())
+	session, answer, err := h.service.Connect(leaseCtx, owner.UserID, owner.DeviceID, req.Msg.GetSessionId(), req.Msg.GetOfferSdp())
 	if err != nil {
 		return nil, nativeError(err)
 	}

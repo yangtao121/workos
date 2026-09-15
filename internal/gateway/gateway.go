@@ -110,6 +110,10 @@ var runtimeServicePrefixes = []string{
 	// Virtual-display native runner (ADR-0029): owner-identity gated; the
 	// Gateway carries signaling, the media path stays loopback WebRTC.
 	"/workos.surface.v1.NativeSessionService/",
+	// Surface continuity (ADR-0031): owner-identity gated discovery,
+	// attach/detach, single-controller takeover, and stop of the owner's
+	// running interactive workloads.
+	"/workos.surface.v1.SurfaceContinuityService/",
 	"/workos.bridge.v1.AppBridgeService/",
 }
 
