@@ -48,6 +48,9 @@ const (
 	// PtySessionServiceClosePtySessionProcedure is the fully-qualified name of the PtySessionService's
 	// ClosePtySession RPC.
 	PtySessionServiceClosePtySessionProcedure = "/workos.surface.v1.PtySessionService/ClosePtySession"
+	// PtySessionServiceDetachPtySessionProcedure is the fully-qualified name of the PtySessionService's
+	// DetachPtySession RPC.
+	PtySessionServiceDetachPtySessionProcedure = "/workos.surface.v1.PtySessionService/DetachPtySession"
 )
 
 // PtySessionServiceClient is a client for the workos.surface.v1.PtySessionService service.
@@ -56,7 +59,12 @@ type PtySessionServiceClient interface {
 	WritePtySession(context.Context, *connect.Request[v1.WritePtySessionRequest]) (*connect.Response[v1.WritePtySessionResponse], error)
 	ReadPtySession(context.Context, *connect.Request[v1.ReadPtySessionRequest]) (*connect.Response[v1.ReadPtySessionResponse], error)
 	ResizePtySession(context.Context, *connect.Request[v1.ResizePtySessionRequest]) (*connect.Response[v1.ResizePtySessionResponse], error)
+	// Close keeps its historical meaning: stop the shell and reclaim it.
 	ClosePtySession(context.Context, *connect.Request[v1.ClosePtySessionRequest]) (*connect.Response[v1.ClosePtySessionResponse], error)
+	// Detach releases only this device's access relation (output cursor state
+	// and input authorization). The shell keeps running under its bounded
+	// session policy (ADR-0031).
+	DetachPtySession(context.Context, *connect.Request[v1.DetachPtySessionRequest]) (*connect.Response[v1.DetachPtySessionResponse], error)
 }
 
 // NewPtySessionServiceClient constructs a client for the workos.surface.v1.PtySessionService
@@ -100,6 +108,12 @@ func NewPtySessionServiceClient(httpClient connect.HTTPClient, baseURL string, o
 			connect.WithSchema(ptySessionServiceMethods.ByName("ClosePtySession")),
 			connect.WithClientOptions(opts...),
 		),
+		detachPtySession: connect.NewClient[v1.DetachPtySessionRequest, v1.DetachPtySessionResponse](
+			httpClient,
+			baseURL+PtySessionServiceDetachPtySessionProcedure,
+			connect.WithSchema(ptySessionServiceMethods.ByName("DetachPtySession")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -110,6 +124,7 @@ type ptySessionServiceClient struct {
 	readPtySession   *connect.Client[v1.ReadPtySessionRequest, v1.ReadPtySessionResponse]
 	resizePtySession *connect.Client[v1.ResizePtySessionRequest, v1.ResizePtySessionResponse]
 	closePtySession  *connect.Client[v1.ClosePtySessionRequest, v1.ClosePtySessionResponse]
+	detachPtySession *connect.Client[v1.DetachPtySessionRequest, v1.DetachPtySessionResponse]
 }
 
 // CreatePtySession calls workos.surface.v1.PtySessionService.CreatePtySession.
@@ -137,13 +152,23 @@ func (c *ptySessionServiceClient) ClosePtySession(ctx context.Context, req *conn
 	return c.closePtySession.CallUnary(ctx, req)
 }
 
+// DetachPtySession calls workos.surface.v1.PtySessionService.DetachPtySession.
+func (c *ptySessionServiceClient) DetachPtySession(ctx context.Context, req *connect.Request[v1.DetachPtySessionRequest]) (*connect.Response[v1.DetachPtySessionResponse], error) {
+	return c.detachPtySession.CallUnary(ctx, req)
+}
+
 // PtySessionServiceHandler is an implementation of the workos.surface.v1.PtySessionService service.
 type PtySessionServiceHandler interface {
 	CreatePtySession(context.Context, *connect.Request[v1.CreatePtySessionRequest]) (*connect.Response[v1.CreatePtySessionResponse], error)
 	WritePtySession(context.Context, *connect.Request[v1.WritePtySessionRequest]) (*connect.Response[v1.WritePtySessionResponse], error)
 	ReadPtySession(context.Context, *connect.Request[v1.ReadPtySessionRequest]) (*connect.Response[v1.ReadPtySessionResponse], error)
 	ResizePtySession(context.Context, *connect.Request[v1.ResizePtySessionRequest]) (*connect.Response[v1.ResizePtySessionResponse], error)
+	// Close keeps its historical meaning: stop the shell and reclaim it.
 	ClosePtySession(context.Context, *connect.Request[v1.ClosePtySessionRequest]) (*connect.Response[v1.ClosePtySessionResponse], error)
+	// Detach releases only this device's access relation (output cursor state
+	// and input authorization). The shell keeps running under its bounded
+	// session policy (ADR-0031).
+	DetachPtySession(context.Context, *connect.Request[v1.DetachPtySessionRequest]) (*connect.Response[v1.DetachPtySessionResponse], error)
 }
 
 // NewPtySessionServiceHandler builds an HTTP handler from the service implementation. It returns
@@ -183,6 +208,12 @@ func NewPtySessionServiceHandler(svc PtySessionServiceHandler, opts ...connect.H
 		connect.WithSchema(ptySessionServiceMethods.ByName("ClosePtySession")),
 		connect.WithHandlerOptions(opts...),
 	)
+	ptySessionServiceDetachPtySessionHandler := connect.NewUnaryHandler(
+		PtySessionServiceDetachPtySessionProcedure,
+		svc.DetachPtySession,
+		connect.WithSchema(ptySessionServiceMethods.ByName("DetachPtySession")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/workos.surface.v1.PtySessionService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case PtySessionServiceCreatePtySessionProcedure:
@@ -195,6 +226,8 @@ func NewPtySessionServiceHandler(svc PtySessionServiceHandler, opts ...connect.H
 			ptySessionServiceResizePtySessionHandler.ServeHTTP(w, r)
 		case PtySessionServiceClosePtySessionProcedure:
 			ptySessionServiceClosePtySessionHandler.ServeHTTP(w, r)
+		case PtySessionServiceDetachPtySessionProcedure:
+			ptySessionServiceDetachPtySessionHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -222,4 +255,8 @@ func (UnimplementedPtySessionServiceHandler) ResizePtySession(context.Context, *
 
 func (UnimplementedPtySessionServiceHandler) ClosePtySession(context.Context, *connect.Request[v1.ClosePtySessionRequest]) (*connect.Response[v1.ClosePtySessionResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("workos.surface.v1.PtySessionService.ClosePtySession is not implemented"))
+}
+
+func (UnimplementedPtySessionServiceHandler) DetachPtySession(context.Context, *connect.Request[v1.DetachPtySessionRequest]) (*connect.Response[v1.DetachPtySessionResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("workos.surface.v1.PtySessionService.DetachPtySession is not implemented"))
 }

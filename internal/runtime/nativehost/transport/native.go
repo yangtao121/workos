@@ -87,6 +87,17 @@ func (h *NativeHandler) CloseNativeSession(ctx context.Context, req *connect.Req
 	return connect.NewResponse(&surfacev1.CloseNativeSessionResponse{Session: sessionProto(session, h.service.Facts().Engine)}), nil
 }
 
+func (h *NativeHandler) DetachNativeSession(ctx context.Context, req *connect.Request[surfacev1.DetachNativeSessionRequest]) (*connect.Response[surfacev1.DetachNativeSessionResponse], error) {
+	owner, err := identity.FromContext(ctx)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeUnauthenticated, err)
+	}
+	if _, err := h.service.Detach(ctx, owner.UserID, req.Msg.GetSessionId()); err != nil {
+		return nil, nativeError(err)
+	}
+	return connect.NewResponse(&surfacev1.DetachNativeSessionResponse{}), nil
+}
+
 func nativeError(err error) error {
 	code := connect.CodeInternal
 	switch {

@@ -66,6 +66,12 @@ message GetNativeSessionResponse {
   NativeSession session = 1;
 }
 
+message DetachNativeSessionRequest {
+  string session_id = 1;
+}
+
+message DetachNativeSessionResponse {}
+
 // Canonical workos.input data-channel payload, serialized as protobuf JSON.
 // The adapter rejects unknown fields/types, invalid combinations and oversized
 // events. Only the bounded text/key/pointer vocabulary below is supported.
@@ -92,5 +98,11 @@ service NativeSessionService {
   rpc CreateNativeSession(CreateNativeSessionRequest) returns (CreateNativeSessionResponse) {}
   rpc ConnectNativeSession(ConnectNativeSessionRequest) returns (ConnectNativeSessionResponse) {}
   rpc GetNativeSession(GetNativeSessionRequest) returns (GetNativeSessionResponse) {}
+  // Close keeps its historical meaning: stop the display, the X client, and
+  // the capture children, then reclaim everything.
   rpc CloseNativeSession(CloseNativeSessionRequest) returns (CloseNativeSessionResponse) {}
+  // Detach releases only this device's media peer, input subscription, and
+  // short-lived authorization. The supervised display session keeps running
+  // under its bounded policy until Close or expiry (ADR-0031).
+  rpc DetachNativeSession(DetachNativeSessionRequest) returns (DetachNativeSessionResponse) {}
 }

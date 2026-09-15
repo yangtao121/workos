@@ -12,7 +12,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file workos/surface/v1/pty.proto.
  */
 export const file_workos_surface_v1_pty: GenFile = /*@__PURE__*/
-  fileDesc("Cht3b3Jrb3Mvc3VyZmFjZS92MS9wdHkucHJvdG8SEXdvcmtvcy5zdXJmYWNlLnYxIsIBCgpQdHlTZXNzaW9uEgoKAmlkGAEgASgJEhUKDW93bmVyX3VzZXJfaWQYAiABKAkSEgoKcHJvamVjdF9pZBgDIAEoCRINCgVzdGF0ZRgEIAEoCRIOCgZlbmdpbmUYByABKAkSLgoKY3JlYXRlZF9hdBgFIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXASLgoKZXhwaXJlc19hdBgGIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXAiZQoXQ3JlYXRlUHR5U2Vzc2lvblJlcXVlc3QSFwoPaWRlbXBvdGVuY3lfa2V5GAEgASgJEhIKCnByb2plY3RfaWQYAiABKAkSDwoHY29sdW1ucxgDIAEoBRIMCgRyb3dzGAQgASgFIkoKGENyZWF0ZVB0eVNlc3Npb25SZXNwb25zZRIuCgdzZXNzaW9uGAEgASgLMh0ud29ya29zLnN1cmZhY2UudjEuUHR5U2Vzc2lvbiI7ChZXcml0ZVB0eVNlc3Npb25SZXF1ZXN0EhIKCnNlc3Npb25faWQYASABKAkSDQoFaW5wdXQYAiABKAwiSQoXV3JpdGVQdHlTZXNzaW9uUmVzcG9uc2USLgoHc2Vzc2lvbhgBIAEoCzIdLndvcmtvcy5zdXJmYWNlLnYxLlB0eVNlc3Npb24iTQoVUmVhZFB0eVNlc3Npb25SZXF1ZXN0EhIKCnNlc3Npb25faWQYASABKAkSDQoFYWZ0ZXIYAiABKAMSEQoJbWF4X2J5dGVzGAMgASgFIkgKFlJlYWRQdHlTZXNzaW9uUmVzcG9uc2USDgoGY3Vyc29yGAEgASgDEg4KBm91dHB1dBgCIAEoDBIOCgZjbG9zZWQYAyABKAgiTAoXUmVzaXplUHR5U2Vzc2lvblJlcXVlc3QSEgoKc2Vzc2lvbl9pZBgBIAEoCRIPCgdjb2x1bW5zGAIgASgFEgwKBHJvd3MYAyABKAUiSgoYUmVzaXplUHR5U2Vzc2lvblJlc3BvbnNlEi4KB3Nlc3Npb24YASABKAsyHS53b3Jrb3Muc3VyZmFjZS52MS5QdHlTZXNzaW9uIiwKFkNsb3NlUHR5U2Vzc2lvblJlcXVlc3QSEgoKc2Vzc2lvbl9pZBgBIAEoCSJJChdDbG9zZVB0eVNlc3Npb25SZXNwb25zZRIuCgdzZXNzaW9uGAEgASgLMh0ud29ya29zLnN1cmZhY2UudjEuUHR5U2Vzc2lvbjKyBAoRUHR5U2Vzc2lvblNlcnZpY2USbQoQQ3JlYXRlUHR5U2Vzc2lvbhIqLndvcmtvcy5zdXJmYWNlLnYxLkNyZWF0ZVB0eVNlc3Npb25SZXF1ZXN0Gisud29ya29zLnN1cmZhY2UudjEuQ3JlYXRlUHR5U2Vzc2lvblJlc3BvbnNlIgASagoPV3JpdGVQdHlTZXNzaW9uEikud29ya29zLnN1cmZhY2UudjEuV3JpdGVQdHlTZXNzaW9uUmVxdWVzdBoqLndvcmtvcy5zdXJmYWNlLnYxLldyaXRlUHR5U2Vzc2lvblJlc3BvbnNlIgASZwoOUmVhZFB0eVNlc3Npb24SKC53b3Jrb3Muc3VyZmFjZS52MS5SZWFkUHR5U2Vzc2lvblJlcXVlc3QaKS53b3Jrb3Muc3VyZmFjZS52MS5SZWFkUHR5U2Vzc2lvblJlc3BvbnNlIgASbQoQUmVzaXplUHR5U2Vzc2lvbhIqLndvcmtvcy5zdXJmYWNlLnYxLlJlc2l6ZVB0eVNlc3Npb25SZXF1ZXN0Gisud29ya29zLnN1cmZhY2UudjEuUmVzaXplUHR5U2Vzc2lvblJlc3BvbnNlIgASagoPQ2xvc2VQdHlTZXNzaW9uEikud29ya29zLnN1cmZhY2UudjEuQ2xvc2VQdHlTZXNzaW9uUmVxdWVzdBoqLndvcmtvcy5zdXJmYWNlLnYxLkNsb3NlUHR5U2Vzc2lvblJlc3BvbnNlIgBCQVo/Z2l0aHViLmNvbS95YW5ndGFvMTIxL3dvcmtvcy9nZW4vZ28vd29ya29zL3N1cmZhY2UvdjE7c3VyZmFjZXYxYgZwcm90bzM", [file_google_protobuf_timestamp]);
+  fileDesc("Cht3b3Jrb3Mvc3VyZmFjZS92MS9wdHkucHJvdG8SEXdvcmtvcy5zdXJmYWNlLnYxIsIBCgpQdHlTZXNzaW9uEgoKAmlkGAEgASgJEhUKDW93bmVyX3VzZXJfaWQYAiABKAkSEgoKcHJvamVjdF9pZBgDIAEoCRINCgVzdGF0ZRgEIAEoCRIOCgZlbmdpbmUYByABKAkSLgoKY3JlYXRlZF9hdBgFIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXASLgoKZXhwaXJlc19hdBgGIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXAiZQoXQ3JlYXRlUHR5U2Vzc2lvblJlcXVlc3QSFwoPaWRlbXBvdGVuY3lfa2V5GAEgASgJEhIKCnByb2plY3RfaWQYAiABKAkSDwoHY29sdW1ucxgDIAEoBRIMCgRyb3dzGAQgASgFIkoKGENyZWF0ZVB0eVNlc3Npb25SZXNwb25zZRIuCgdzZXNzaW9uGAEgASgLMh0ud29ya29zLnN1cmZhY2UudjEuUHR5U2Vzc2lvbiI7ChZXcml0ZVB0eVNlc3Npb25SZXF1ZXN0EhIKCnNlc3Npb25faWQYASABKAkSDQoFaW5wdXQYAiABKAwiSQoXV3JpdGVQdHlTZXNzaW9uUmVzcG9uc2USLgoHc2Vzc2lvbhgBIAEoCzIdLndvcmtvcy5zdXJmYWNlLnYxLlB0eVNlc3Npb24iTQoVUmVhZFB0eVNlc3Npb25SZXF1ZXN0EhIKCnNlc3Npb25faWQYASABKAkSDQoFYWZ0ZXIYAiABKAMSEQoJbWF4X2J5dGVzGAMgASgFIkgKFlJlYWRQdHlTZXNzaW9uUmVzcG9uc2USDgoGY3Vyc29yGAEgASgDEg4KBm91dHB1dBgCIAEoDBIOCgZjbG9zZWQYAyABKAgiTAoXUmVzaXplUHR5U2Vzc2lvblJlcXVlc3QSEgoKc2Vzc2lvbl9pZBgBIAEoCRIPCgdjb2x1bW5zGAIgASgFEgwKBHJvd3MYAyABKAUiSgoYUmVzaXplUHR5U2Vzc2lvblJlc3BvbnNlEi4KB3Nlc3Npb24YASABKAsyHS53b3Jrb3Muc3VyZmFjZS52MS5QdHlTZXNzaW9uIiwKFkNsb3NlUHR5U2Vzc2lvblJlcXVlc3QSEgoKc2Vzc2lvbl9pZBgBIAEoCSJJChdDbG9zZVB0eVNlc3Npb25SZXNwb25zZRIuCgdzZXNzaW9uGAEgASgLMh0ud29ya29zLnN1cmZhY2UudjEuUHR5U2Vzc2lvbiItChdEZXRhY2hQdHlTZXNzaW9uUmVxdWVzdBISCgpzZXNzaW9uX2lkGAEgASgJIhoKGERldGFjaFB0eVNlc3Npb25SZXNwb25zZTKhBQoRUHR5U2Vzc2lvblNlcnZpY2USbQoQQ3JlYXRlUHR5U2Vzc2lvbhIqLndvcmtvcy5zdXJmYWNlLnYxLkNyZWF0ZVB0eVNlc3Npb25SZXF1ZXN0Gisud29ya29zLnN1cmZhY2UudjEuQ3JlYXRlUHR5U2Vzc2lvblJlc3BvbnNlIgASagoPV3JpdGVQdHlTZXNzaW9uEikud29ya29zLnN1cmZhY2UudjEuV3JpdGVQdHlTZXNzaW9uUmVxdWVzdBoqLndvcmtvcy5zdXJmYWNlLnYxLldyaXRlUHR5U2Vzc2lvblJlc3BvbnNlIgASZwoOUmVhZFB0eVNlc3Npb24SKC53b3Jrb3Muc3VyZmFjZS52MS5SZWFkUHR5U2Vzc2lvblJlcXVlc3QaKS53b3Jrb3Muc3VyZmFjZS52MS5SZWFkUHR5U2Vzc2lvblJlc3BvbnNlIgASbQoQUmVzaXplUHR5U2Vzc2lvbhIqLndvcmtvcy5zdXJmYWNlLnYxLlJlc2l6ZVB0eVNlc3Npb25SZXF1ZXN0Gisud29ya29zLnN1cmZhY2UudjEuUmVzaXplUHR5U2Vzc2lvblJlc3BvbnNlIgASagoPQ2xvc2VQdHlTZXNzaW9uEikud29ya29zLnN1cmZhY2UudjEuQ2xvc2VQdHlTZXNzaW9uUmVxdWVzdBoqLndvcmtvcy5zdXJmYWNlLnYxLkNsb3NlUHR5U2Vzc2lvblJlc3BvbnNlIgASbQoQRGV0YWNoUHR5U2Vzc2lvbhIqLndvcmtvcy5zdXJmYWNlLnYxLkRldGFjaFB0eVNlc3Npb25SZXF1ZXN0Gisud29ya29zLnN1cmZhY2UudjEuRGV0YWNoUHR5U2Vzc2lvblJlc3BvbnNlIgBCQVo/Z2l0aHViLmNvbS95YW5ndGFvMTIxL3dvcmtvcy9nZW4vZ28vd29ya29zL3N1cmZhY2UvdjE7c3VyZmFjZXYxYgZwcm90bzM", [file_google_protobuf_timestamp]);
 
 /**
  * One supervised PTY session: an owner-started real login shell on the
@@ -302,6 +302,36 @@ export const ClosePtySessionResponseSchema: GenMessage<ClosePtySessionResponse> 
   messageDesc(file_workos_surface_v1_pty, 10);
 
 /**
+ * @generated from message workos.surface.v1.DetachPtySessionRequest
+ */
+export type DetachPtySessionRequest = Message<"workos.surface.v1.DetachPtySessionRequest"> & {
+  /**
+   * @generated from field: string session_id = 1;
+   */
+  sessionId: string;
+};
+
+/**
+ * Describes the message workos.surface.v1.DetachPtySessionRequest.
+ * Use `create(DetachPtySessionRequestSchema)` to create a new message.
+ */
+export const DetachPtySessionRequestSchema: GenMessage<DetachPtySessionRequest> = /*@__PURE__*/
+  messageDesc(file_workos_surface_v1_pty, 11);
+
+/**
+ * @generated from message workos.surface.v1.DetachPtySessionResponse
+ */
+export type DetachPtySessionResponse = Message<"workos.surface.v1.DetachPtySessionResponse"> & {
+};
+
+/**
+ * Describes the message workos.surface.v1.DetachPtySessionResponse.
+ * Use `create(DetachPtySessionResponseSchema)` to create a new message.
+ */
+export const DetachPtySessionResponseSchema: GenMessage<DetachPtySessionResponse> = /*@__PURE__*/
+  messageDesc(file_workos_surface_v1_pty, 12);
+
+/**
  * Supervised owner-scoped terminal sessions on the runtime host. Gateway
  * routes it with owner identity; the shell runs as the runtime's own user
  * with a bounded environment, and nothing here grants filesystem escapes.
@@ -342,12 +372,26 @@ export const PtySessionService: GenService<{
     output: typeof ResizePtySessionResponseSchema;
   },
   /**
+   * Close keeps its historical meaning: stop the shell and reclaim it.
+   *
    * @generated from rpc workos.surface.v1.PtySessionService.ClosePtySession
    */
   closePtySession: {
     methodKind: "unary";
     input: typeof ClosePtySessionRequestSchema;
     output: typeof ClosePtySessionResponseSchema;
+  },
+  /**
+   * Detach releases only this device's access relation (output cursor state
+   * and input authorization). The shell keeps running under its bounded
+   * session policy (ADR-0031).
+   *
+   * @generated from rpc workos.surface.v1.PtySessionService.DetachPtySession
+   */
+  detachPtySession: {
+    methodKind: "unary";
+    input: typeof DetachPtySessionRequestSchema;
+    output: typeof DetachPtySessionResponseSchema;
   },
 }> = /*@__PURE__*/
   serviceDesc(file_workos_surface_v1_pty, 0);

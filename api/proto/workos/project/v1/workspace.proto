@@ -1,0 +1,99 @@
+syntax = "proto3";
+
+package workos.project.v1;
+
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/yangtao121/workos/gen/go/workos/project/v1;projectv1";
+
+// A project workspace binding (ADR-0030): Core owns the ownership and
+// authorization facts; the runtime owns the actual directory assembly and
+// execution facts. Clients reference operator-registered workspace sources
+// by id and never submit host paths.
+
+enum WorkspaceBindingState {
+  WORKSPACE_BINDING_STATE_UNSPECIFIED = 0;
+  WORKSPACE_BINDING_STATE_ACTIVE = 1;
+  WORKSPACE_BINDING_STATE_ARCHIVED = 2;
+}
+
+message WorkspaceBinding {
+  string id = 1;
+  string owner_user_id = 2;
+  string project_id = 3;
+  // Opaque reference to an operator-registered workspace source on the
+  // runtime host. Never a host path.
+  string workspace_source_id = 4;
+  string display_name = 5;
+  bool read_only = 6;
+  WorkspaceBindingState state = 7;
+  // Monotonic revision; executions pin one revision and stale revisions
+  // refuse new authorizations.
+  int64 revision = 8;
+  google.protobuf.Timestamp created_at = 9;
+  google.protobuf.Timestamp updated_at = 10;
+  optional google.protobuf.Timestamp archived_at = 11;
+}
+
+message BindWorkspaceRequest {
+  string project_id = 1;
+  string workspace_source_id = 2;
+  string display_name = 3;
+  string idempotency_key = 4;
+}
+
+message BindWorkspaceResponse {
+  WorkspaceBinding binding = 1;
+}
+
+message GetWorkspaceRequest {
+  string binding_id = 1;
+}
+
+message GetWorkspaceResponse {
+  WorkspaceBinding binding = 1;
+}
+
+message ListProjectWorkspacesRequest {
+  string project_id = 1;
+  bool include_archived = 2;
+}
+
+message ListProjectWorkspacesResponse {
+  repeated WorkspaceBinding bindings = 1;
+}
+
+message UpdateWorkspaceAccessRequest {
+  string binding_id = 1;
+  int64 expected_revision = 2;
+  optional bool read_only = 3;
+}
+
+message UpdateWorkspaceAccessResponse {
+  WorkspaceBinding binding = 1;
+}
+
+message ArchiveWorkspaceRequest {
+  string binding_id = 1;
+  int64 expected_revision = 2;
+}
+
+message ArchiveWorkspaceResponse {
+  WorkspaceBinding binding = 1;
+}
+
+service ProjectWorkspaceService {
+  // BindWorkspace creates the single-owner association between a project and
+  // an operator-registered workspace source. The source must be currently
+  // reported by the runtime host; a client-supplied source id that the
+  // operator never registered is NotFound.
+  rpc BindWorkspace(BindWorkspaceRequest) returns (BindWorkspaceResponse) {}
+  rpc GetWorkspace(GetWorkspaceRequest) returns (GetWorkspaceResponse) {}
+  rpc ListProjectWorkspaces(ListProjectWorkspacesRequest) returns (ListProjectWorkspacesResponse) {}
+  // UpdateWorkspaceAccess flips the read/write mode under optimistic
+  // revision control. A read-only binding must fail every workspace write.
+  rpc UpdateWorkspaceAccess(UpdateWorkspaceAccessRequest) returns (UpdateWorkspaceAccessResponse) {}
+  // ArchiveWorkspace blocks new executions against this binding; running
+  // executions finish under their pinned revision.
+  rpc ArchiveWorkspace(ArchiveWorkspaceRequest) returns (ArchiveWorkspaceResponse) {}
+}

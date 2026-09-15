@@ -645,6 +645,86 @@ func (x *ClosePtySessionResponse) GetSession() *PtySession {
 	return nil
 }
 
+type DetachPtySessionRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	SessionId     string                 `protobuf:"bytes,1,opt,name=session_id,json=sessionId,proto3" json:"session_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DetachPtySessionRequest) Reset() {
+	*x = DetachPtySessionRequest{}
+	mi := &file_workos_surface_v1_pty_proto_msgTypes[11]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DetachPtySessionRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DetachPtySessionRequest) ProtoMessage() {}
+
+func (x *DetachPtySessionRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_workos_surface_v1_pty_proto_msgTypes[11]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DetachPtySessionRequest.ProtoReflect.Descriptor instead.
+func (*DetachPtySessionRequest) Descriptor() ([]byte, []int) {
+	return file_workos_surface_v1_pty_proto_rawDescGZIP(), []int{11}
+}
+
+func (x *DetachPtySessionRequest) GetSessionId() string {
+	if x != nil {
+		return x.SessionId
+	}
+	return ""
+}
+
+type DetachPtySessionResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DetachPtySessionResponse) Reset() {
+	*x = DetachPtySessionResponse{}
+	mi := &file_workos_surface_v1_pty_proto_msgTypes[12]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DetachPtySessionResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DetachPtySessionResponse) ProtoMessage() {}
+
+func (x *DetachPtySessionResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_workos_surface_v1_pty_proto_msgTypes[12]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DetachPtySessionResponse.ProtoReflect.Descriptor instead.
+func (*DetachPtySessionResponse) Descriptor() ([]byte, []int) {
+	return file_workos_surface_v1_pty_proto_rawDescGZIP(), []int{12}
+}
+
 var File_workos_surface_v1_pty_proto protoreflect.FileDescriptor
 
 const file_workos_surface_v1_pty_proto_rawDesc = "" +
@@ -696,13 +776,18 @@ const file_workos_surface_v1_pty_proto_rawDesc = "" +
 	"\n" +
 	"session_id\x18\x01 \x01(\tR\tsessionId\"R\n" +
 	"\x17ClosePtySessionResponse\x127\n" +
-	"\asession\x18\x01 \x01(\v2\x1d.workos.surface.v1.PtySessionR\asession2\xb2\x04\n" +
+	"\asession\x18\x01 \x01(\v2\x1d.workos.surface.v1.PtySessionR\asession\"8\n" +
+	"\x17DetachPtySessionRequest\x12\x1d\n" +
+	"\n" +
+	"session_id\x18\x01 \x01(\tR\tsessionId\"\x1a\n" +
+	"\x18DetachPtySessionResponse2\xa1\x05\n" +
 	"\x11PtySessionService\x12m\n" +
 	"\x10CreatePtySession\x12*.workos.surface.v1.CreatePtySessionRequest\x1a+.workos.surface.v1.CreatePtySessionResponse\"\x00\x12j\n" +
 	"\x0fWritePtySession\x12).workos.surface.v1.WritePtySessionRequest\x1a*.workos.surface.v1.WritePtySessionResponse\"\x00\x12g\n" +
 	"\x0eReadPtySession\x12(.workos.surface.v1.ReadPtySessionRequest\x1a).workos.surface.v1.ReadPtySessionResponse\"\x00\x12m\n" +
 	"\x10ResizePtySession\x12*.workos.surface.v1.ResizePtySessionRequest\x1a+.workos.surface.v1.ResizePtySessionResponse\"\x00\x12j\n" +
-	"\x0fClosePtySession\x12).workos.surface.v1.ClosePtySessionRequest\x1a*.workos.surface.v1.ClosePtySessionResponse\"\x00BAZ?github.com/yangtao121/workos/gen/go/workos/surface/v1;surfacev1b\x06proto3"
+	"\x0fClosePtySession\x12).workos.surface.v1.ClosePtySessionRequest\x1a*.workos.surface.v1.ClosePtySessionResponse\"\x00\x12m\n" +
+	"\x10DetachPtySession\x12*.workos.surface.v1.DetachPtySessionRequest\x1a+.workos.surface.v1.DetachPtySessionResponse\"\x00BAZ?github.com/yangtao121/workos/gen/go/workos/surface/v1;surfacev1b\x06proto3"
 
 var (
 	file_workos_surface_v1_pty_proto_rawDescOnce sync.Once
@@ -716,7 +801,7 @@ func file_workos_surface_v1_pty_proto_rawDescGZIP() []byte {
 	return file_workos_surface_v1_pty_proto_rawDescData
 }
 
-var file_workos_surface_v1_pty_proto_msgTypes = make([]protoimpl.MessageInfo, 11)
+var file_workos_surface_v1_pty_proto_msgTypes = make([]protoimpl.MessageInfo, 13)
 var file_workos_surface_v1_pty_proto_goTypes = []any{
 	(*PtySession)(nil),               // 0: workos.surface.v1.PtySession
 	(*CreatePtySessionRequest)(nil),  // 1: workos.surface.v1.CreatePtySessionRequest
@@ -729,11 +814,13 @@ var file_workos_surface_v1_pty_proto_goTypes = []any{
 	(*ResizePtySessionResponse)(nil), // 8: workos.surface.v1.ResizePtySessionResponse
 	(*ClosePtySessionRequest)(nil),   // 9: workos.surface.v1.ClosePtySessionRequest
 	(*ClosePtySessionResponse)(nil),  // 10: workos.surface.v1.ClosePtySessionResponse
-	(*timestamppb.Timestamp)(nil),    // 11: google.protobuf.Timestamp
+	(*DetachPtySessionRequest)(nil),  // 11: workos.surface.v1.DetachPtySessionRequest
+	(*DetachPtySessionResponse)(nil), // 12: workos.surface.v1.DetachPtySessionResponse
+	(*timestamppb.Timestamp)(nil),    // 13: google.protobuf.Timestamp
 }
 var file_workos_surface_v1_pty_proto_depIdxs = []int32{
-	11, // 0: workos.surface.v1.PtySession.created_at:type_name -> google.protobuf.Timestamp
-	11, // 1: workos.surface.v1.PtySession.expires_at:type_name -> google.protobuf.Timestamp
+	13, // 0: workos.surface.v1.PtySession.created_at:type_name -> google.protobuf.Timestamp
+	13, // 1: workos.surface.v1.PtySession.expires_at:type_name -> google.protobuf.Timestamp
 	0,  // 2: workos.surface.v1.CreatePtySessionResponse.session:type_name -> workos.surface.v1.PtySession
 	0,  // 3: workos.surface.v1.WritePtySessionResponse.session:type_name -> workos.surface.v1.PtySession
 	0,  // 4: workos.surface.v1.ResizePtySessionResponse.session:type_name -> workos.surface.v1.PtySession
@@ -743,13 +830,15 @@ var file_workos_surface_v1_pty_proto_depIdxs = []int32{
 	5,  // 8: workos.surface.v1.PtySessionService.ReadPtySession:input_type -> workos.surface.v1.ReadPtySessionRequest
 	7,  // 9: workos.surface.v1.PtySessionService.ResizePtySession:input_type -> workos.surface.v1.ResizePtySessionRequest
 	9,  // 10: workos.surface.v1.PtySessionService.ClosePtySession:input_type -> workos.surface.v1.ClosePtySessionRequest
-	2,  // 11: workos.surface.v1.PtySessionService.CreatePtySession:output_type -> workos.surface.v1.CreatePtySessionResponse
-	4,  // 12: workos.surface.v1.PtySessionService.WritePtySession:output_type -> workos.surface.v1.WritePtySessionResponse
-	6,  // 13: workos.surface.v1.PtySessionService.ReadPtySession:output_type -> workos.surface.v1.ReadPtySessionResponse
-	8,  // 14: workos.surface.v1.PtySessionService.ResizePtySession:output_type -> workos.surface.v1.ResizePtySessionResponse
-	10, // 15: workos.surface.v1.PtySessionService.ClosePtySession:output_type -> workos.surface.v1.ClosePtySessionResponse
-	11, // [11:16] is the sub-list for method output_type
-	6,  // [6:11] is the sub-list for method input_type
+	11, // 11: workos.surface.v1.PtySessionService.DetachPtySession:input_type -> workos.surface.v1.DetachPtySessionRequest
+	2,  // 12: workos.surface.v1.PtySessionService.CreatePtySession:output_type -> workos.surface.v1.CreatePtySessionResponse
+	4,  // 13: workos.surface.v1.PtySessionService.WritePtySession:output_type -> workos.surface.v1.WritePtySessionResponse
+	6,  // 14: workos.surface.v1.PtySessionService.ReadPtySession:output_type -> workos.surface.v1.ReadPtySessionResponse
+	8,  // 15: workos.surface.v1.PtySessionService.ResizePtySession:output_type -> workos.surface.v1.ResizePtySessionResponse
+	10, // 16: workos.surface.v1.PtySessionService.ClosePtySession:output_type -> workos.surface.v1.ClosePtySessionResponse
+	12, // 17: workos.surface.v1.PtySessionService.DetachPtySession:output_type -> workos.surface.v1.DetachPtySessionResponse
+	12, // [12:18] is the sub-list for method output_type
+	6,  // [6:12] is the sub-list for method input_type
 	6,  // [6:6] is the sub-list for extension type_name
 	6,  // [6:6] is the sub-list for extension extendee
 	0,  // [0:6] is the sub-list for field type_name
@@ -766,7 +855,7 @@ func file_workos_surface_v1_pty_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_workos_surface_v1_pty_proto_rawDesc), len(file_workos_surface_v1_pty_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   11,
+			NumMessages:   13,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

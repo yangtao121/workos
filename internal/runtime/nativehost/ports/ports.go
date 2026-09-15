@@ -43,6 +43,10 @@ type Display interface {
 	// Connect feeds the client's complete offer and returns the complete
 	// answer (candidates included). Reconnecting supersedes the prior peer.
 	Connect(ctx context.Context, offerSDP string) (string, error)
+	// Detach closes the live media/input peer and drops its queued events
+	// without touching the display children (ADR-0031). The next Connect
+	// builds a fresh peer.
+	Detach()
 	// Exited reports whether the display children are gone.
 	Exited() bool
 	// Stop kills the process group and removes the private scratch tree.

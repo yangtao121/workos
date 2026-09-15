@@ -168,6 +168,31 @@ func (s *Service) Connect(ctx context.Context, ownerUserID, sessionID, offerSDP 
 	return session, answer, nil
 }
 
+// Detach releases only this device's media peer and input subscription; the
+// supervised display session keeps running under its bounded policy
+// (ADR-0031). Closing the display stays with Close.
+func (s *Service) Detach(ctx context.Context, ownerUserID, sessionID string) (domain.Session, error) {
+	s.opMu.Lock()
+	defer s.opMu.Unlock()
+	if !domain.ValidUUIDv7(ownerUserID) || !domain.ValidUUIDv7(sessionID) {
+		return domain.Session{}, domain.ErrInvalid
+	}
+	session, err := s.store.GetSession(ctx, ownerUserID, sessionID)
+	if err != nil {
+		return domain.Session{}, err
+	}
+	if session.State.Terminal() {
+		return domain.Session{}, domain.ErrInvalid
+	}
+	s.mu.Lock()
+	display, ok := s.displays[sessionID]
+	s.mu.Unlock()
+	if ok {
+		display.Detach()
+	}
+	return session, nil
+}
+
 // Close terminates the session and reaps its display.
 func (s *Service) Close(ctx context.Context, ownerUserID, sessionID string) (domain.Session, error) {
 	s.opMu.Lock()

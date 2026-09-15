@@ -1,0 +1,159 @@
+syntax = "proto3";
+
+package workos.surface.v1;
+
+import "google/protobuf/timestamp.proto";
+import "workos/surface/v1/surface.proto";
+
+option go_package = "github.com/yangtao121/workos/gen/go/workos/surface/v1;surfacev1";
+
+// Surface continuity contracts (ADR-0031): program execution and device
+// access are separate lifecycles. A workload keeps running across window
+// close, project switch, and disconnects within its bounded policy; surfaces
+// are per-device access relations; interactive native/terminal surfaces have
+// exactly one controlling attachment at a time, switched only by explicit
+// takeover.
+
+// Effective lifecycle policy of a continuous workload. Bounded by the
+// existing 30-minute session ceiling in this phase; expiry stops the
+// program and is reported as the true reason.
+message WorkloadPolicy {
+  bool persistent = 1;
+  int64 keep_alive_seconds = 2;
+  int64 idle_stop_seconds = 3;
+}
+
+message SurfaceWorkloadView {
+  string workload_id = 1;
+  string project_id = 2;
+  // App association when the workload serves an installed app; empty for
+  // system tool workloads (native runner terminal, editor surfaces).
+  string app_instance_id = 3;
+  string app_id = 4;
+  string version = 5;
+  // Renderer vocabulary matches SurfaceSession.
+  SurfaceRenderer renderer = 6;
+  string display_name = 7;
+  // Server-derived generation; restart produces a new one.
+  int64 generation = 8;
+  string state = 9;
+  WorkloadPolicy policy = 10;
+  // Number of live device attachments right now.
+  int32 attachment_count = 11;
+  google.protobuf.Timestamp started_at = 12;
+  optional google.protobuf.Timestamp stopped_at = 13;
+}
+
+// A device's access relation to one workload. Attach never starts a program
+// that is not running under its policy; it opens an access path to the
+// existing instance.
+message SurfaceAttachment {
+  string id = 1;
+  string workload_id = 2;
+  string surface_session_id = 3;
+  // Gateway-injected device identity; never client-supplied.
+  string device_id = 4;
+  // Monotonic per-workload control epoch. Only one attachment holds control
+  // at a time; an explicit takeover atomically replaces the epoch and
+  // invalidates the previous controller's queued input, resize, and late
+  // renewals.
+  int64 control_generation = 5;
+  bool controls = 6;
+  string state = 7;
+  google.protobuf.Timestamp attached_at = 8;
+  google.protobuf.Timestamp control_expires_at = 9;
+  optional google.protobuf.Timestamp detached_at = 10;
+}
+
+message ListProjectSurfacesRequest {
+  string project_id = 1;
+}
+
+message ListProjectSurfacesResponse {
+  repeated SurfaceWorkloadView workloads = 1;
+}
+
+message AttachSurfaceRequest {
+  string workload_id = 1;
+  string idempotency_key = 2;
+  DeviceClass device_class = 3;
+  Viewport viewport = 4;
+}
+
+message AttachSurfaceResponse {
+  SurfaceSession session = 1;
+  SurfaceAttachment attachment = 2;
+}
+
+message DetachSurfaceRequest {
+  string surface_session_id = 1;
+}
+
+message DetachSurfaceResponse {}
+
+message RequestSurfaceControlRequest {
+  string surface_session_id = 1;
+}
+
+message RequestSurfaceControlResponse {
+  SurfaceAttachment attachment = 1;
+}
+
+message GetSurfaceControlRequest {
+  string workload_id = 1;
+}
+
+message GetSurfaceControlResponse {
+  int64 control_generation = 1;
+  string controller_device_id = 2;
+  string controller_attachment_id = 3;
+  google.protobuf.Timestamp control_expires_at = 4;
+  bool workload_running = 5;
+}
+
+message StopSurfaceWorkloadRequest {
+  string workload_id = 1;
+  string action_key = 2;
+}
+
+message StopSurfaceWorkloadResponse {
+  SurfaceWorkloadView workload = 1;
+}
+
+message RestartSurfaceWorkloadRequest {
+  string workload_id = 1;
+  string action_key = 2;
+}
+
+message RestartSurfaceWorkloadResponse {
+  SurfaceWorkloadView workload = 1;
+}
+
+service SurfaceContinuityService {
+  // ListProjectSurfaces discovers the project's running workload instances
+  // and their attachment summaries so a new device can find the original
+  // program without copying any client-side state.
+  rpc ListProjectSurfaces(ListProjectSurfacesRequest) returns (ListProjectSurfacesResponse) {}
+  // AttachSurface opens an access relation to an existing workload. It
+  // never creates a second program: attaching to a stopped workload fails
+  // with the true state so the caller can decide to start it.
+  rpc AttachSurface(AttachSurfaceRequest) returns (AttachSurfaceResponse) {}
+  // DetachSurface releases only this device's connection and media/input
+  // resources. The program keeps running under its policy. Legacy Close
+  // methods keep their stop semantics.
+  rpc DetachSurface(DetachSurfaceRequest) returns (DetachSurfaceResponse) {}
+  // RequestSurfaceControl performs the explicit single-controller takeover:
+  // it atomically advances the control generation, grants control to this
+  // attachment, and invalidates the previous controller's input, queued
+  // input, resize, and late renewals. Renewing an attachment that already
+  // holds control never steals it from another controller.
+  rpc RequestSurfaceControl(RequestSurfaceControlRequest) returns (RequestSurfaceControlResponse) {}
+  rpc GetSurfaceControl(GetSurfaceControlRequest) returns (GetSurfaceControlResponse) {}
+  // StopSurfaceWorkload deterministically stops and reclaims the program
+  // (process group, media workers, private scratch). Idempotent by action
+  // key.
+  rpc StopSurfaceWorkload(StopSurfaceWorkloadRequest) returns (StopSurfaceWorkloadResponse) {}
+  // RestartSurfaceWorkload recreates the program with a new generation; old
+  // attachments and control epochs are invalid afterwards.
+  rpc RestartSurfaceWorkload(RestartSurfaceWorkloadRequest) returns (RestartSurfaceWorkloadResponse) {}
+}

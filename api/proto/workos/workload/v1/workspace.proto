@@ -1,0 +1,59 @@
+syntax = "proto3";
+
+package workos.workload.v1;
+
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/yangtao121/workos/gen/go/workos/workload/v1;workloadv1";
+
+// Runtime-host workspace sources (ADR-0030). Private service: it is not on
+// the gateway allowlist. Core resolves bindings through it and the operator
+// registers roots through deployment configuration, never through this API.
+
+message WorkspaceSource {
+  string id = 1;
+  // Kind reuses the project vocabulary (local git / local directory only in
+  // this phase).
+  string kind = 2;
+  string display_name = 3;
+  bool read_only = 4;
+  // Bounded descriptive facts only: no absolute host paths, no credentials.
+  google.protobuf.Timestamp registered_at = 5;
+}
+
+message DescribeWorkspaceSourcesRequest {}
+
+message DescribeWorkspaceSourcesResponse {
+  repeated WorkspaceSource sources = 1;
+}
+
+message PrepareWorkspaceRequest {
+  // The Core-owned binding identity to prepare for execution.
+  string binding_id = 1;
+  string project_id = 2;
+  int64 binding_revision = 3;
+  // Execution roles share one environment vocabulary in this phase.
+  string consumer = 4;
+}
+
+message PrepareWorkspaceResponse {
+  // Environment handle the consumer (harness session, terminal, native
+  // development app) uses for all file/command operations. Opaque outside
+  // the runtime host.
+  string environment_id = 1;
+  string workspace_source_id = 2;
+  bool read_only = 3;
+  int64 binding_revision = 4;
+  google.protobuf.Timestamp prepared_at = 5;
+  google.protobuf.Timestamp expires_at = 6;
+}
+
+service WorkspaceHostService {
+  // DescribeWorkspaceSources lists the operator-configured directories this
+  // runtime host offers as workspace sources.
+  rpc DescribeWorkspaceSources(DescribeWorkspaceSourcesRequest) returns (DescribeWorkspaceSourcesResponse) {}
+  // PrepareWorkspace resolves a Core binding into a prepared execution
+  // environment for one consumer. Foreign projects, archived or stale
+  // revisions, and unknown sources fail closed.
+  rpc PrepareWorkspace(PrepareWorkspaceRequest) returns (PrepareWorkspaceResponse) {}
+}

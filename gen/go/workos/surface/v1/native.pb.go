@@ -533,6 +533,86 @@ func (x *GetNativeSessionResponse) GetSession() *NativeSession {
 	return nil
 }
 
+type DetachNativeSessionRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	SessionId     string                 `protobuf:"bytes,1,opt,name=session_id,json=sessionId,proto3" json:"session_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DetachNativeSessionRequest) Reset() {
+	*x = DetachNativeSessionRequest{}
+	mi := &file_workos_surface_v1_native_proto_msgTypes[9]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DetachNativeSessionRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DetachNativeSessionRequest) ProtoMessage() {}
+
+func (x *DetachNativeSessionRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_workos_surface_v1_native_proto_msgTypes[9]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DetachNativeSessionRequest.ProtoReflect.Descriptor instead.
+func (*DetachNativeSessionRequest) Descriptor() ([]byte, []int) {
+	return file_workos_surface_v1_native_proto_rawDescGZIP(), []int{9}
+}
+
+func (x *DetachNativeSessionRequest) GetSessionId() string {
+	if x != nil {
+		return x.SessionId
+	}
+	return ""
+}
+
+type DetachNativeSessionResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DetachNativeSessionResponse) Reset() {
+	*x = DetachNativeSessionResponse{}
+	mi := &file_workos_surface_v1_native_proto_msgTypes[10]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DetachNativeSessionResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DetachNativeSessionResponse) ProtoMessage() {}
+
+func (x *DetachNativeSessionResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_workos_surface_v1_native_proto_msgTypes[10]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DetachNativeSessionResponse.ProtoReflect.Descriptor instead.
+func (*DetachNativeSessionResponse) Descriptor() ([]byte, []int) {
+	return file_workos_surface_v1_native_proto_rawDescGZIP(), []int{10}
+}
+
 // Canonical workos.input data-channel payload, serialized as protobuf JSON.
 // The adapter rejects unknown fields/types, invalid combinations and oversized
 // events. Only the bounded text/key/pointer vocabulary below is supported.
@@ -556,7 +636,7 @@ type NativeInputEvent struct {
 
 func (x *NativeInputEvent) Reset() {
 	*x = NativeInputEvent{}
-	mi := &file_workos_surface_v1_native_proto_msgTypes[9]
+	mi := &file_workos_surface_v1_native_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -568,7 +648,7 @@ func (x *NativeInputEvent) String() string {
 func (*NativeInputEvent) ProtoMessage() {}
 
 func (x *NativeInputEvent) ProtoReflect() protoreflect.Message {
-	mi := &file_workos_surface_v1_native_proto_msgTypes[9]
+	mi := &file_workos_surface_v1_native_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -581,7 +661,7 @@ func (x *NativeInputEvent) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use NativeInputEvent.ProtoReflect.Descriptor instead.
 func (*NativeInputEvent) Descriptor() ([]byte, []int) {
-	return file_workos_surface_v1_native_proto_rawDescGZIP(), []int{9}
+	return file_workos_surface_v1_native_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *NativeInputEvent) GetType() string {
@@ -676,7 +756,11 @@ const file_workos_surface_v1_native_proto_rawDesc = "" +
 	"\n" +
 	"session_id\x18\x01 \x01(\tR\tsessionId\"V\n" +
 	"\x18GetNativeSessionResponse\x12:\n" +
-	"\asession\x18\x01 \x01(\v2 .workos.surface.v1.NativeSessionR\asession\"\x98\x01\n" +
+	"\asession\x18\x01 \x01(\v2 .workos.surface.v1.NativeSessionR\asession\";\n" +
+	"\x1aDetachNativeSessionRequest\x12\x1d\n" +
+	"\n" +
+	"session_id\x18\x01 \x01(\tR\tsessionId\"\x1d\n" +
+	"\x1bDetachNativeSessionResponse\"\x98\x01\n" +
 	"\x10NativeInputEvent\x12\x12\n" +
 	"\x04type\x18\x01 \x01(\tR\x04type\x12\x12\n" +
 	"\x04text\x18\x02 \x01(\tR\x04text\x12\x10\n" +
@@ -684,12 +768,13 @@ const file_workos_surface_v1_native_proto_rawDesc = "" +
 	"\x06action\x18\x04 \x01(\tR\x06action\x12\f\n" +
 	"\x01x\x18\x05 \x01(\x01R\x01x\x12\f\n" +
 	"\x01y\x18\x06 \x01(\x01R\x01y\x12\x16\n" +
-	"\x06button\x18\a \x01(\x05R\x06button2\xed\x03\n" +
+	"\x06button\x18\a \x01(\x05R\x06button2\xe5\x04\n" +
 	"\x14NativeSessionService\x12v\n" +
 	"\x13CreateNativeSession\x12-.workos.surface.v1.CreateNativeSessionRequest\x1a..workos.surface.v1.CreateNativeSessionResponse\"\x00\x12y\n" +
 	"\x14ConnectNativeSession\x12..workos.surface.v1.ConnectNativeSessionRequest\x1a/.workos.surface.v1.ConnectNativeSessionResponse\"\x00\x12m\n" +
 	"\x10GetNativeSession\x12*.workos.surface.v1.GetNativeSessionRequest\x1a+.workos.surface.v1.GetNativeSessionResponse\"\x00\x12s\n" +
-	"\x12CloseNativeSession\x12,.workos.surface.v1.CloseNativeSessionRequest\x1a-.workos.surface.v1.CloseNativeSessionResponse\"\x00BAZ?github.com/yangtao121/workos/gen/go/workos/surface/v1;surfacev1b\x06proto3"
+	"\x12CloseNativeSession\x12,.workos.surface.v1.CloseNativeSessionRequest\x1a-.workos.surface.v1.CloseNativeSessionResponse\"\x00\x12v\n" +
+	"\x13DetachNativeSession\x12-.workos.surface.v1.DetachNativeSessionRequest\x1a..workos.surface.v1.DetachNativeSessionResponse\"\x00BAZ?github.com/yangtao121/workos/gen/go/workos/surface/v1;surfacev1b\x06proto3"
 
 var (
 	file_workos_surface_v1_native_proto_rawDescOnce sync.Once
@@ -703,7 +788,7 @@ func file_workos_surface_v1_native_proto_rawDescGZIP() []byte {
 	return file_workos_surface_v1_native_proto_rawDescData
 }
 
-var file_workos_surface_v1_native_proto_msgTypes = make([]protoimpl.MessageInfo, 10)
+var file_workos_surface_v1_native_proto_msgTypes = make([]protoimpl.MessageInfo, 12)
 var file_workos_surface_v1_native_proto_goTypes = []any{
 	(*NativeSession)(nil),                // 0: workos.surface.v1.NativeSession
 	(*CreateNativeSessionRequest)(nil),   // 1: workos.surface.v1.CreateNativeSessionRequest
@@ -714,12 +799,14 @@ var file_workos_surface_v1_native_proto_goTypes = []any{
 	(*CloseNativeSessionResponse)(nil),   // 6: workos.surface.v1.CloseNativeSessionResponse
 	(*GetNativeSessionRequest)(nil),      // 7: workos.surface.v1.GetNativeSessionRequest
 	(*GetNativeSessionResponse)(nil),     // 8: workos.surface.v1.GetNativeSessionResponse
-	(*NativeInputEvent)(nil),             // 9: workos.surface.v1.NativeInputEvent
-	(*timestamppb.Timestamp)(nil),        // 10: google.protobuf.Timestamp
+	(*DetachNativeSessionRequest)(nil),   // 9: workos.surface.v1.DetachNativeSessionRequest
+	(*DetachNativeSessionResponse)(nil),  // 10: workos.surface.v1.DetachNativeSessionResponse
+	(*NativeInputEvent)(nil),             // 11: workos.surface.v1.NativeInputEvent
+	(*timestamppb.Timestamp)(nil),        // 12: google.protobuf.Timestamp
 }
 var file_workos_surface_v1_native_proto_depIdxs = []int32{
-	10, // 0: workos.surface.v1.NativeSession.created_at:type_name -> google.protobuf.Timestamp
-	10, // 1: workos.surface.v1.NativeSession.expires_at:type_name -> google.protobuf.Timestamp
+	12, // 0: workos.surface.v1.NativeSession.created_at:type_name -> google.protobuf.Timestamp
+	12, // 1: workos.surface.v1.NativeSession.expires_at:type_name -> google.protobuf.Timestamp
 	0,  // 2: workos.surface.v1.CreateNativeSessionResponse.session:type_name -> workos.surface.v1.NativeSession
 	0,  // 3: workos.surface.v1.ConnectNativeSessionResponse.session:type_name -> workos.surface.v1.NativeSession
 	0,  // 4: workos.surface.v1.CloseNativeSessionResponse.session:type_name -> workos.surface.v1.NativeSession
@@ -728,12 +815,14 @@ var file_workos_surface_v1_native_proto_depIdxs = []int32{
 	3,  // 7: workos.surface.v1.NativeSessionService.ConnectNativeSession:input_type -> workos.surface.v1.ConnectNativeSessionRequest
 	7,  // 8: workos.surface.v1.NativeSessionService.GetNativeSession:input_type -> workos.surface.v1.GetNativeSessionRequest
 	5,  // 9: workos.surface.v1.NativeSessionService.CloseNativeSession:input_type -> workos.surface.v1.CloseNativeSessionRequest
-	2,  // 10: workos.surface.v1.NativeSessionService.CreateNativeSession:output_type -> workos.surface.v1.CreateNativeSessionResponse
-	4,  // 11: workos.surface.v1.NativeSessionService.ConnectNativeSession:output_type -> workos.surface.v1.ConnectNativeSessionResponse
-	8,  // 12: workos.surface.v1.NativeSessionService.GetNativeSession:output_type -> workos.surface.v1.GetNativeSessionResponse
-	6,  // 13: workos.surface.v1.NativeSessionService.CloseNativeSession:output_type -> workos.surface.v1.CloseNativeSessionResponse
-	10, // [10:14] is the sub-list for method output_type
-	6,  // [6:10] is the sub-list for method input_type
+	9,  // 10: workos.surface.v1.NativeSessionService.DetachNativeSession:input_type -> workos.surface.v1.DetachNativeSessionRequest
+	2,  // 11: workos.surface.v1.NativeSessionService.CreateNativeSession:output_type -> workos.surface.v1.CreateNativeSessionResponse
+	4,  // 12: workos.surface.v1.NativeSessionService.ConnectNativeSession:output_type -> workos.surface.v1.ConnectNativeSessionResponse
+	8,  // 13: workos.surface.v1.NativeSessionService.GetNativeSession:output_type -> workos.surface.v1.GetNativeSessionResponse
+	6,  // 14: workos.surface.v1.NativeSessionService.CloseNativeSession:output_type -> workos.surface.v1.CloseNativeSessionResponse
+	10, // 15: workos.surface.v1.NativeSessionService.DetachNativeSession:output_type -> workos.surface.v1.DetachNativeSessionResponse
+	11, // [11:16] is the sub-list for method output_type
+	6,  // [6:11] is the sub-list for method input_type
 	6,  // [6:6] is the sub-list for extension type_name
 	6,  // [6:6] is the sub-list for extension extendee
 	0,  // [0:6] is the sub-list for field type_name
@@ -750,7 +839,7 @@ func file_workos_surface_v1_native_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_workos_surface_v1_native_proto_rawDesc), len(file_workos_surface_v1_native_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   10,
+			NumMessages:   12,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

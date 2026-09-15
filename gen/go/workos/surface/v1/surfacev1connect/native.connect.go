@@ -45,6 +45,9 @@ const (
 	// NativeSessionServiceCloseNativeSessionProcedure is the fully-qualified name of the
 	// NativeSessionService's CloseNativeSession RPC.
 	NativeSessionServiceCloseNativeSessionProcedure = "/workos.surface.v1.NativeSessionService/CloseNativeSession"
+	// NativeSessionServiceDetachNativeSessionProcedure is the fully-qualified name of the
+	// NativeSessionService's DetachNativeSession RPC.
+	NativeSessionServiceDetachNativeSessionProcedure = "/workos.surface.v1.NativeSessionService/DetachNativeSession"
 )
 
 // NativeSessionServiceClient is a client for the workos.surface.v1.NativeSessionService service.
@@ -52,7 +55,13 @@ type NativeSessionServiceClient interface {
 	CreateNativeSession(context.Context, *connect.Request[v1.CreateNativeSessionRequest]) (*connect.Response[v1.CreateNativeSessionResponse], error)
 	ConnectNativeSession(context.Context, *connect.Request[v1.ConnectNativeSessionRequest]) (*connect.Response[v1.ConnectNativeSessionResponse], error)
 	GetNativeSession(context.Context, *connect.Request[v1.GetNativeSessionRequest]) (*connect.Response[v1.GetNativeSessionResponse], error)
+	// Close keeps its historical meaning: stop the display, the X client, and
+	// the capture children, then reclaim everything.
 	CloseNativeSession(context.Context, *connect.Request[v1.CloseNativeSessionRequest]) (*connect.Response[v1.CloseNativeSessionResponse], error)
+	// Detach releases only this device's media peer, input subscription, and
+	// short-lived authorization. The supervised display session keeps running
+	// under its bounded policy until Close or expiry (ADR-0031).
+	DetachNativeSession(context.Context, *connect.Request[v1.DetachNativeSessionRequest]) (*connect.Response[v1.DetachNativeSessionResponse], error)
 }
 
 // NewNativeSessionServiceClient constructs a client for the workos.surface.v1.NativeSessionService
@@ -90,6 +99,12 @@ func NewNativeSessionServiceClient(httpClient connect.HTTPClient, baseURL string
 			connect.WithSchema(nativeSessionServiceMethods.ByName("CloseNativeSession")),
 			connect.WithClientOptions(opts...),
 		),
+		detachNativeSession: connect.NewClient[v1.DetachNativeSessionRequest, v1.DetachNativeSessionResponse](
+			httpClient,
+			baseURL+NativeSessionServiceDetachNativeSessionProcedure,
+			connect.WithSchema(nativeSessionServiceMethods.ByName("DetachNativeSession")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -99,6 +114,7 @@ type nativeSessionServiceClient struct {
 	connectNativeSession *connect.Client[v1.ConnectNativeSessionRequest, v1.ConnectNativeSessionResponse]
 	getNativeSession     *connect.Client[v1.GetNativeSessionRequest, v1.GetNativeSessionResponse]
 	closeNativeSession   *connect.Client[v1.CloseNativeSessionRequest, v1.CloseNativeSessionResponse]
+	detachNativeSession  *connect.Client[v1.DetachNativeSessionRequest, v1.DetachNativeSessionResponse]
 }
 
 // CreateNativeSession calls workos.surface.v1.NativeSessionService.CreateNativeSession.
@@ -121,13 +137,24 @@ func (c *nativeSessionServiceClient) CloseNativeSession(ctx context.Context, req
 	return c.closeNativeSession.CallUnary(ctx, req)
 }
 
+// DetachNativeSession calls workos.surface.v1.NativeSessionService.DetachNativeSession.
+func (c *nativeSessionServiceClient) DetachNativeSession(ctx context.Context, req *connect.Request[v1.DetachNativeSessionRequest]) (*connect.Response[v1.DetachNativeSessionResponse], error) {
+	return c.detachNativeSession.CallUnary(ctx, req)
+}
+
 // NativeSessionServiceHandler is an implementation of the workos.surface.v1.NativeSessionService
 // service.
 type NativeSessionServiceHandler interface {
 	CreateNativeSession(context.Context, *connect.Request[v1.CreateNativeSessionRequest]) (*connect.Response[v1.CreateNativeSessionResponse], error)
 	ConnectNativeSession(context.Context, *connect.Request[v1.ConnectNativeSessionRequest]) (*connect.Response[v1.ConnectNativeSessionResponse], error)
 	GetNativeSession(context.Context, *connect.Request[v1.GetNativeSessionRequest]) (*connect.Response[v1.GetNativeSessionResponse], error)
+	// Close keeps its historical meaning: stop the display, the X client, and
+	// the capture children, then reclaim everything.
 	CloseNativeSession(context.Context, *connect.Request[v1.CloseNativeSessionRequest]) (*connect.Response[v1.CloseNativeSessionResponse], error)
+	// Detach releases only this device's media peer, input subscription, and
+	// short-lived authorization. The supervised display session keeps running
+	// under its bounded policy until Close or expiry (ADR-0031).
+	DetachNativeSession(context.Context, *connect.Request[v1.DetachNativeSessionRequest]) (*connect.Response[v1.DetachNativeSessionResponse], error)
 }
 
 // NewNativeSessionServiceHandler builds an HTTP handler from the service implementation. It returns
@@ -161,6 +188,12 @@ func NewNativeSessionServiceHandler(svc NativeSessionServiceHandler, opts ...con
 		connect.WithSchema(nativeSessionServiceMethods.ByName("CloseNativeSession")),
 		connect.WithHandlerOptions(opts...),
 	)
+	nativeSessionServiceDetachNativeSessionHandler := connect.NewUnaryHandler(
+		NativeSessionServiceDetachNativeSessionProcedure,
+		svc.DetachNativeSession,
+		connect.WithSchema(nativeSessionServiceMethods.ByName("DetachNativeSession")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/workos.surface.v1.NativeSessionService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case NativeSessionServiceCreateNativeSessionProcedure:
@@ -171,6 +204,8 @@ func NewNativeSessionServiceHandler(svc NativeSessionServiceHandler, opts ...con
 			nativeSessionServiceGetNativeSessionHandler.ServeHTTP(w, r)
 		case NativeSessionServiceCloseNativeSessionProcedure:
 			nativeSessionServiceCloseNativeSessionHandler.ServeHTTP(w, r)
+		case NativeSessionServiceDetachNativeSessionProcedure:
+			nativeSessionServiceDetachNativeSessionHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -194,4 +229,8 @@ func (UnimplementedNativeSessionServiceHandler) GetNativeSession(context.Context
 
 func (UnimplementedNativeSessionServiceHandler) CloseNativeSession(context.Context, *connect.Request[v1.CloseNativeSessionRequest]) (*connect.Response[v1.CloseNativeSessionResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("workos.surface.v1.NativeSessionService.CloseNativeSession is not implemented"))
+}
+
+func (UnimplementedNativeSessionServiceHandler) DetachNativeSession(context.Context, *connect.Request[v1.DetachNativeSessionRequest]) (*connect.Response[v1.DetachNativeSessionResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("workos.surface.v1.NativeSessionService.DetachNativeSession is not implemented"))
 }

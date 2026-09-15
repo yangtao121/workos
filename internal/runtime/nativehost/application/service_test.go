@@ -111,10 +111,11 @@ func (m *memoryStore) CountActive(_ context.Context, ownerUserID string) (int, e
 }
 
 type fakeDisplay struct {
-	mu      sync.Mutex
-	exited  bool
-	answers []string
-	stopped bool
+	mu       sync.Mutex
+	exited   bool
+	answers  []string
+	stopped  bool
+	detached bool
 }
 
 func (f *fakeDisplay) Connect(_ context.Context, offer string) (string, error) {
@@ -127,6 +128,12 @@ func (f *fakeDisplay) Connect(_ context.Context, offer string) (string, error) {
 		return "", domain.ErrInvalid
 	}
 	return "v=0\r\nanswer", nil
+}
+
+func (f *fakeDisplay) Detach() {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.detached = true
 }
 
 func (f *fakeDisplay) Exited() bool {
@@ -275,6 +282,44 @@ func TestNativeServiceConnectAndClose(t *testing.T) {
 	}
 	if _, _, err := service.Connect(ctx, testOwner, session.SessionID, "v=0\r\noffer"); !errors.Is(err, domain.ErrInvalid) {
 		t.Fatalf("connect after close: %v", err)
+	}
+}
+
+func TestNativeServiceDetachKeepsSessionRunning(t *testing.T) {
+	service, engine := newTestService(t)
+	ctx := context.Background()
+	session, err := service.Create(ctx, testOwner, testProject, "detach", 800, 600)
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	if _, _, err := service.Connect(ctx, testOwner, session.SessionID, "v=0\r\noffer"); err != nil {
+		t.Fatalf("connect: %v", err)
+	}
+	detached, err := service.Detach(ctx, testOwner, session.SessionID)
+	if err != nil {
+		t.Fatalf("detach: %v", err)
+	}
+	if detached.State != domain.StateRunning {
+		t.Fatalf("detach changed session state: %s", detached.State)
+	}
+	engine.mu.Lock()
+	display := engine.displays[len(engine.displays)-1]
+	engine.mu.Unlock()
+	if display == nil || display.stopped {
+		t.Fatal("detach stopped the display")
+	}
+	if !display.detached {
+		t.Fatal("detach did not release the media peer")
+	}
+	if _, _, err := service.Connect(ctx, testOwner, session.SessionID, "v=0\r\noffer"); err != nil {
+		t.Fatalf("reconnect after detach: %v", err)
+	}
+	// Detaching a closed session fails closed.
+	if _, err := service.Close(ctx, testOwner, session.SessionID); err != nil {
+		t.Fatalf("close: %v", err)
+	}
+	if _, err := service.Detach(ctx, testOwner, session.SessionID); !errors.Is(err, domain.ErrInvalid) {
+		t.Fatalf("detach after close: %v", err)
 	}
 }
 

@@ -77,6 +77,12 @@ message ClosePtySessionResponse {
   PtySession session = 1;
 }
 
+message DetachPtySessionRequest {
+  string session_id = 1;
+}
+
+message DetachPtySessionResponse {}
+
 // Supervised owner-scoped terminal sessions on the runtime host. Gateway
 // routes it with owner identity; the shell runs as the runtime's own user
 // with a bounded environment, and nothing here grants filesystem escapes.
@@ -85,5 +91,10 @@ service PtySessionService {
   rpc WritePtySession(WritePtySessionRequest) returns (WritePtySessionResponse) {}
   rpc ReadPtySession(ReadPtySessionRequest) returns (ReadPtySessionResponse) {}
   rpc ResizePtySession(ResizePtySessionRequest) returns (ResizePtySessionResponse) {}
+  // Close keeps its historical meaning: stop the shell and reclaim it.
   rpc ClosePtySession(ClosePtySessionRequest) returns (ClosePtySessionResponse) {}
+  // Detach releases only this device's access relation (output cursor state
+  // and input authorization). The shell keeps running under its bounded
+  // session policy (ADR-0031).
+  rpc DetachPtySession(DetachPtySessionRequest) returns (DetachPtySessionResponse) {}
 }

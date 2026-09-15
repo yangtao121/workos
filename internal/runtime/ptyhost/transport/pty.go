@@ -89,6 +89,17 @@ func (h *PtyHandler) ClosePtySession(ctx context.Context, req *connect.Request[s
 	return connect.NewResponse(&surfacev1.ClosePtySessionResponse{Session: sessionProto(session, h.service.Facts().Engine)}), nil
 }
 
+func (h *PtyHandler) DetachPtySession(ctx context.Context, req *connect.Request[surfacev1.DetachPtySessionRequest]) (*connect.Response[surfacev1.DetachPtySessionResponse], error) {
+	owner, err := identity.FromContext(ctx)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeUnauthenticated, err)
+	}
+	if _, err := h.service.Detach(ctx, owner.UserID, req.Msg.GetSessionId()); err != nil {
+		return nil, ptyError(err)
+	}
+	return connect.NewResponse(&surfacev1.DetachPtySessionResponse{}), nil
+}
+
 func ptyError(err error) error {
 	code := connect.CodeInternal
 	switch {

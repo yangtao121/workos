@@ -10,8 +10,8 @@
 工作包 | 状态 | 依赖 | 实现入口/提交 | 验收编号 | 实际命令与结果 | 长期证据路径 | 未决问题/下一步
 ------ | ---- | ---- | -------------- | -------- | -------------- | ------------ | ---------------
 B00 | done | — | `docs/architecture/v2-harness-workspace-baseline.md`（本分支首个提交） | A01 | 见下"B00 证据" | 基线文档 + tmp/b00 探测脚本输出 | 上游无 wire 级 session resume；B03 采用"每会话常驻官方 runtime 进程 + jsonl 持久化"
-B01 | in_progress | B00 | ADR-0030/0031、`api/proto/workos/` 新增 session 与 surface continuity 契约 | — | — | — | 进行中
-B02 | todo | B00、B01 | — | A02、A03 | — | — | —
+B01 | done | B00 | ADR-0030/0031；`api/proto/workos/agent/v1/session.proto`、`project/v1/workspace.proto`、`workload/v1/workspace.proto`、`surface/v1/continuity.proto`；native/pty 新增 Detach；migration 057–059；domain 状态机（core agent session、runtime surface continuity） | 契约层 | `buf lint` 通过；`go build ./...`、`go vet`、`go test ./internal/core/agent/... ./internal/runtime/surface/... ./internal/runtime/{ptyhost,nativehost}/...` 全绿 | ADR + 契约 + migration + 状态机测试 | B02 起按新契约实现持久化与业务链路
+B02 | in_progress | B00、B01 | — | A02、A03 | — | — | —
 B03 | todo | B00–B02 | — | A04–A07 | — | — | —
 B04 | todo | B01–B03 | — | A08、A09 | — | — | —
 B05 | todo | B01、B03、B04 | — | A17（部分） | — | — | —
@@ -43,11 +43,12 @@ B10 | todo | 其余包 | — | A18 | — | — | —
 
 ## 恢复入口
 
-- 当前包：B01（契约与持久事实）。
-- 已完成动作：分支创建、任务记录、B00 基线文档与提交。
-- 正在运行的进程/日志：无（探测 fixture 已停止；tmp/b00/ 保存探测脚本与输出）。
-- 下一条具体动作：写 ADR-0030/0031，修改 `api/proto/workos/` 新增 harness session 与
-  surface continuity 契约，`make generate` 后进入 B02。
+- 当前包：B02（真实开发工作区）。
+- 已完成动作：B00 基线（f9cffa8）；B01 契约（ADR-0030/0031、四个新 proto、
+  migration 057–059、domain 状态机与测试、native/pty Detach 实现与测试）。
+- 正在运行的进程/日志：无。
+- 下一条具体动作：B02——Core workspace binding 持久化 + runtime workspace source
+  注册/PrepareWorkspace + 隔离边界验收。
 - 阻塞：无。
 
 ## 验收矩阵（A01–A18）

@@ -171,6 +171,24 @@ func (s *Service) Close(ctx context.Context, ownerUserID, sessionID string) (dom
 	return session, nil
 }
 
+// Detach releases only this device's access relation (ADR-0031). The shell
+// keeps running under its bounded session policy and output keeps
+// accumulating for a later Read from any authorized device. Stopping the
+// shell stays with Close.
+func (s *Service) Detach(ctx context.Context, ownerUserID, sessionID string) (domain.Session, error) {
+	if !domain.ValidUUIDv7(ownerUserID) || !domain.ValidUUIDv7(sessionID) {
+		return domain.Session{}, domain.ErrInvalid
+	}
+	session, err := s.store.GetSession(ctx, ownerUserID, sessionID)
+	if err != nil {
+		return domain.Session{}, err
+	}
+	if session.State.Terminal() {
+		return domain.Session{}, domain.ErrInvalid
+	}
+	return session, nil
+}
+
 func (s *Service) reap(sessionID string) {
 	s.mu.Lock()
 	terminal, hasTerminal := s.terminals[sessionID]

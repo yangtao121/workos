@@ -1,0 +1,229 @@
+syntax = "proto3";
+
+package workos.agent.v1;
+
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/yangtao121/workos/gen/go/workos/agent/v1;agentv1";
+
+// A continuous native harness session bound to one Project, one workspace
+// binding, and one provider/profile snapshot (ADR-0030). The native context
+// itself lives in the harness; WorkOS persists the association, the accepted
+// inputs, and a bounded projection for display, audit, and recovery.
+enum AgentSessionState {
+  AGENT_SESSION_STATE_UNSPECIFIED = 0;
+  AGENT_SESSION_STATE_ACTIVE = 1;
+  AGENT_SESSION_STATE_CLOSING = 2;
+  AGENT_SESSION_STATE_CLOSED = 3;
+}
+
+// Inputs are durable and idempotent per (session, client_input_id). Repeated
+// submission of the same key with different text is rejected as a conflict.
+enum AgentSessionInputState {
+  AGENT_SESSION_INPUT_STATE_UNSPECIFIED = 0;
+  // Accepted and persisted; will dispatch when the session has no active
+  // execution.
+  AGENT_SESSION_INPUT_STATE_ACCEPTED = 1;
+  // Bound to a Task run and submitted to the harness.
+  AGENT_SESSION_INPUT_STATE_DISPATCHED = 2;
+  // The run finished successfully.
+  AGENT_SESSION_INPUT_STATE_COMPLETED = 3;
+  // The run failed.
+  AGENT_SESSION_INPUT_STATE_FAILED = 4;
+  // The run was cancelled by the owner.
+  AGENT_SESSION_INPUT_STATE_CANCELLED = 5;
+}
+
+message AgentSession {
+  string id = 1;
+  string owner_user_id = 2;
+  string project_id = 3;
+  string workspace_binding_id = 4;
+  string provider_id = 5;
+  string profile_id = 6;
+  AgentSessionState state = 7;
+  // Opaque harness-side reference for the native session (never a host path
+  // or credential).
+  string native_session_ref = 8;
+  // The task currently executing on this session, empty when idle.
+  string active_task_id = 9;
+  int64 input_sequence = 10;
+  int64 last_event_sequence = 11;
+  google.protobuf.Timestamp created_at = 12;
+  google.protobuf.Timestamp updated_at = 13;
+  optional google.protobuf.Timestamp closed_at = 14;
+}
+
+message AgentSessionInput {
+  string id = 1;
+  string session_id = 2;
+  // Persistent idempotency key chosen by the client, unique per session.
+  string client_input_id = 3;
+  string text = 4;
+  AgentSessionInputState state = 5;
+  // The task this input dispatched to; empty until DISPATCHED.
+  string task_id = 6;
+  // Server-assigned ordering within the session (strictly increasing).
+  int64 sequence = 7;
+  // Bounded terminal summary for display; never the raw transcript.
+  string result_summary = 8;
+  google.protobuf.Timestamp created_at = 9;
+  google.protobuf.Timestamp updated_at = 10;
+}
+
+// Session-scoped lifecycle events. Assistant/tool/usage projections stay on
+// the linked task's event stream (WatchTaskEvents); this log records input
+// progression and session lifecycle only.
+message AgentSessionEvent {
+  int64 sequence = 1;
+  string session_id = 2;
+  google.protobuf.Timestamp occurred_at = 3;
+  oneof event {
+    SessionInputAccepted input_accepted = 4;
+    SessionInputDispatched input_dispatched = 5;
+    SessionInputTerminal input_terminal = 6;
+    SessionStateChanged state_changed = 7;
+  }
+}
+
+message SessionInputAccepted {
+  string input_id = 1;
+  bool queued = 2;
+}
+
+message SessionInputDispatched {
+  string input_id = 1;
+  string task_id = 2;
+}
+
+message SessionInputTerminal {
+  string input_id = 1;
+  string task_id = 2;
+  AgentSessionInputState terminal_state = 3;
+  string result_summary = 4;
+}
+
+message SessionStateChanged {
+  AgentSessionState previous = 1;
+  AgentSessionState current = 2;
+  string reason = 3;
+}
+
+message CreateSessionRequest {
+  string project_id = 1;
+  string idempotency_key = 2;
+  // Optional explicit binding snapshot; empty uses the project's current
+  // harness binding and active workspace binding.
+  optional string workspace_binding_id = 3;
+}
+
+message CreateSessionResponse {
+  AgentSession session = 1;
+}
+
+message ListSessionsRequest {
+  string project_id = 1;
+  bool include_closed = 2;
+  string page_token = 3;
+  int32 page_size = 4;
+}
+
+message ListSessionsResponse {
+  repeated AgentSession sessions = 1;
+  string next_page_token = 2;
+}
+
+message GetSessionRequest {
+  string session_id = 1;
+}
+
+message GetSessionResponse {
+  AgentSession session = 1;
+}
+
+message SubmitSessionInputRequest {
+  string session_id = 1;
+  string client_input_id = 2;
+  string text = 3;
+}
+
+message SubmitSessionInputResponse {
+  AgentSessionInput input = 1;
+}
+
+message GetSessionInputRequest {
+  string session_id = 1;
+  string client_input_id = 2;
+}
+
+message GetSessionInputResponse {
+  AgentSessionInput input = 1;
+}
+
+message ListSessionInputsRequest {
+  string session_id = 1;
+  int64 after_sequence = 2;
+  int32 limit = 3;
+}
+
+message ListSessionInputsResponse {
+  repeated AgentSessionInput inputs = 1;
+}
+
+message CancelSessionExecutionRequest {
+  string session_id = 1;
+  string reason = 2;
+}
+
+message CancelSessionExecutionResponse {
+  // The input whose execution was cancelled, or empty when the session was
+  // idle and only queued inputs were cancelled.
+  AgentSessionInput input = 1;
+  int64 cancelled_queued = 2;
+}
+
+message CloseSessionRequest {
+  string session_id = 1;
+}
+
+message CloseSessionResponse {
+  AgentSession session = 1;
+}
+
+message WatchSessionEventsRequest {
+  string session_id = 1;
+  // Inclusive-exclusive event cursor: returns events with sequence > after.
+  int64 after = 2;
+}
+
+message WatchSessionEventsResponse {
+  repeated AgentSessionEvent events = 1;
+}
+
+service AgentSessionService {
+  // CreateSession binds a new native harness session to the project's
+  // current provider/profile/workspace snapshot. Idempotent per key.
+  rpc CreateSession(CreateSessionRequest) returns (CreateSessionResponse) {}
+  rpc ListSessions(ListSessionsRequest) returns (ListSessionsResponse) {}
+  rpc GetSession(GetSessionRequest) returns (GetSessionResponse) {}
+  // SubmitSessionInput durably accepts one input. When the session already
+  // has an active execution the input is queued and dispatched in persistent
+  // order after it; a second submission with the same client_input_id returns
+  // the recorded input, and the same key with different text fails as a
+  // conflict.
+  rpc SubmitSessionInput(SubmitSessionInputRequest) returns (SubmitSessionInputResponse) {}
+  // GetSessionInput is the retry-safe read for timeout recovery: a client
+  // that lost a SubmitSessionInput response re-reads by its key instead of
+  // submitting a new input.
+  rpc GetSessionInput(GetSessionInputRequest) returns (GetSessionInputResponse) {}
+  rpc ListSessionInputs(ListSessionInputsRequest) returns (ListSessionInputsResponse) {}
+  // CancelSessionExecution cancels the active task run and every queued
+  // input; the session itself stays open for further inputs.
+  rpc CancelSessionExecution(CancelSessionExecutionRequest) returns (CancelSessionExecutionResponse) {}
+  // CloseSession forbids new inputs and releases the harness-side private
+  // session state per policy. Existing task history stays readable.
+  rpc CloseSession(CloseSessionRequest) returns (CloseSessionResponse) {}
+  // WatchSessionEvents streams the session lifecycle log from the cursor,
+  // then keeps the stream open for new events.
+  rpc WatchSessionEvents(WatchSessionEventsRequest) returns (stream WatchSessionEventsResponse) {}
+}

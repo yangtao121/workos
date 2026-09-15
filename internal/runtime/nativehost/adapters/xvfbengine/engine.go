@@ -565,6 +565,17 @@ func (d *display) Connect(ctx context.Context, offerSDP string) (string, error) 
 var _ ports.Display = (*display)(nil)
 var _ ports.Engine = (*Engine)(nil)
 
+// Detach releases the current peer only (ADR-0031): the display children
+// keep running and a later Connect rebuilds media and input.
+func (d *display) Detach() {
+	d.peerMu.Lock()
+	pc := d.peer
+	d.peerMu.Unlock()
+	if pc != nil {
+		d.expirePeer(pc)
+	}
+}
+
 // An old timer cannot close a newer authorized peer.
 func (d *display) expirePeer(pc *webrtc.PeerConnection) {
 	d.peerMu.Lock()
