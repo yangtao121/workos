@@ -17,10 +17,18 @@ import (
 
 const testSessionID = "0198d7ea-2110-7c42-b659-c5e4d73bd4bb"
 
+const testWorkosToolsPlugin = `export const name = 'workos-tools';
+export const inject = ['tools'];
+export function apply() {}
+`
+
 // sessionTestConfig mirrors validConfig but drives the persistent session
 // fake runtime. The fake records every initialize handshake to a counter
-// file so process reuse is observable.
-func sessionTestConfig(t *testing.T, mode, counter string) Config {
+// file so process reuse is observable. strict adds the exact-match WorkOS
+// tool env expectations the fake runtime asserts at initialize; the
+// owner-change respawn test needs them off because it deliberately spawns
+// under a different owner.
+func sessionTestConfig(t *testing.T, mode, counter string, strict bool) Config {
 	t.Helper()
 	executable, err := os.Executable()
 	if err != nil {
@@ -30,17 +38,44 @@ func sessionTestConfig(t *testing.T, mode, counter string) Config {
 	if err := os.WriteFile(cordis, []byte("plugins: []\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
+	pluginPath := t.TempDir() + "/" + workosToolsFileName
+	if err := os.WriteFile(pluginPath, []byte(testWorkosToolsPlugin), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	runtimeEnv := []string{
+		"WORKOS_DEEPSEEK_SESSION_FIXTURE_MODE=" + mode,
+		"WORKOS_DEEPSEEK_SESSION_COUNTER=" + counter,
+	}
+	if strict {
+		runtimeEnv = append(runtimeEnv,
+			"WORKOS_DEEPSEEK_SESSION_EXPECT_OWNER="+sessionOwner,
+			"WORKOS_DEEPSEEK_SESSION_EXPECT_PROJECT="+sessionProject,
+			"WORKOS_DEEPSEEK_SESSION_EXPECT_CORE=http://127.0.0.1:18081",
+		)
+	}
 	return Config{
 		Enabled: true, Environment: "test",
 		BaseURL: "http://127.0.0.1:18080", Model: DefaultModel, Timeout: 4 * time.Second,
-		RuntimePath: executable, CordisConfigPath: cordis,
+		RuntimePath: executable, CordisConfigPath: cordis, WorkosToolsPath: pluginPath,
+		CoreURL: "http://127.0.0.1:18081", DeviceID: "0198d7ea-2110-7c42-b659-c5e4d73bd501",
 		runtimeArgs: []string{"-test.run=^TestDeepSeekSessionRuntimeHelper$"},
-		runtimeEnv: []string{
-			"WORKOS_DEEPSEEK_SESSION_FIXTURE_MODE=" + mode,
-			"WORKOS_DEEPSEEK_SESSION_COUNTER=" + counter,
-		},
+		runtimeEnv:  runtimeEnv,
 	}
 }
+
+// strictSessionTestConfig is the default shape: every spawn under the fake
+// runtime must carry the exact WorkOS tool env facts.
+func strictSessionTestConfig(t *testing.T, mode, counter string) Config {
+	t.Helper()
+	return sessionTestConfig(t, mode, counter, true)
+}
+
+// sessionOwner and sessionProject are the server-derived WorkOS tool facts of
+// the fake session; the fake runtime asserts they arrive in the child env.
+const (
+	sessionOwner   = "0198d7ea-2110-7c42-b659-c5e4d73bd502"
+	sessionProject = "0198d7ea-2110-7c42-b659-c5e4d73bd503"
+)
 
 func initializeCount(t *testing.T, counter string) int {
 	t.Helper()
@@ -65,15 +100,15 @@ func collectEvents() (*[]*agentv1.AgentEvent, ports.Emit) {
 func TestSessionManagerReusesOneProcessAcrossTurns(t *testing.T) {
 	stateRoot := t.TempDir()
 	counter := filepath.Join(stateRoot, "counter")
-	manager := NewSessionManager(sessionTestConfig(t, "session-tools", counter), nil)
+	manager := NewSessionManager(strictSessionTestConfig(t, "session-tools", counter), nil)
 	defer manager.Shutdown()
 	secret := []byte("not-a-real-key")
 
-	proc, err := manager.Ensure(context.Background(), testSessionID, "", stateRoot, secret)
+	proc, err := manager.Ensure(context.Background(), testSessionID, "", stateRoot, secret, sessionOwner, sessionProject)
 	if err != nil {
 		t.Fatal(err)
 	}
-	reused, err := manager.Ensure(context.Background(), testSessionID, "", stateRoot, secret)
+	reused, err := manager.Ensure(context.Background(), testSessionID, "", stateRoot, secret, sessionOwner, sessionProject)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -100,14 +135,14 @@ func TestSessionManagerReusesOneProcessAcrossTurns(t *testing.T) {
 func TestSessionManagerRespawnsOnFingerprintChange(t *testing.T) {
 	stateRoot := t.TempDir()
 	counter := filepath.Join(stateRoot, "counter")
-	manager := NewSessionManager(sessionTestConfig(t, "session-tools", counter), nil)
+	manager := NewSessionManager(strictSessionTestConfig(t, "session-tools", counter), nil)
 	defer manager.Shutdown()
 
-	first, err := manager.Ensure(context.Background(), testSessionID, "", stateRoot, []byte("not-a-real-key"))
+	first, err := manager.Ensure(context.Background(), testSessionID, "", stateRoot, []byte("not-a-real-key"), sessionOwner, sessionProject)
 	if err != nil {
 		t.Fatal(err)
 	}
-	second, err := manager.Ensure(context.Background(), testSessionID, "", stateRoot, []byte("rotated-key"))
+	second, err := manager.Ensure(context.Background(), testSessionID, "", stateRoot, []byte("rotated-key"), sessionOwner, sessionProject)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -130,10 +165,10 @@ func TestSessionManagerRespawnsOnFingerprintChange(t *testing.T) {
 func TestSessionCordisConfigGeneration(t *testing.T) {
 	stateRoot := t.TempDir()
 	counter := filepath.Join(stateRoot, "counter")
-	manager := NewSessionManager(sessionTestConfig(t, "session-tools", counter), nil)
+	manager := NewSessionManager(strictSessionTestConfig(t, "session-tools", counter), nil)
 	defer manager.Shutdown()
 
-	if _, err := manager.Ensure(context.Background(), testSessionID, "", stateRoot, []byte("not-a-real-key")); err != nil {
+	if _, err := manager.Ensure(context.Background(), testSessionID, "", stateRoot, []byte("not-a-real-key"), sessionOwner, sessionProject); err != nil {
 		t.Fatal(err)
 	}
 	stateDir := filepath.Join(stateRoot, testSessionID)
@@ -178,14 +213,66 @@ func TestSessionCordisConfigGeneration(t *testing.T) {
 	if strings.Contains(generated, "plugins:") {
 		t.Fatalf("generated config must not derive from the single-shot config:\n%s", generated)
 	}
+	// The read-only WorkOS tools row (B04) is configuration-relative: the
+	// plugin file must sit beside the generated cordis.yml and the row name
+	// must reference it relatively, never as a bare closure package.
+	if !strings.Contains(generated, "name: './"+workosToolsFileName+"'\n") {
+		t.Fatalf("workos tools row is not configuration-relative:\n%s", generated)
+	}
+	plugin, err := os.ReadFile(filepath.Join(stateDir, workosToolsFileName))
+	if err != nil || string(plugin) != testWorkosToolsPlugin {
+		t.Fatalf("workos tools plugin was not copied into the session state directory: %v", err)
+	}
+}
+
+// TestSessionManagerRespawnsOnOwnerChange proves the WorkOS tool
+// authorization facts are part of the session identity: a different
+// owner/project pair never reuses a child spawned under another pair.
+func TestSessionManagerRespawnsOnOwnerChange(t *testing.T) {
+	stateRoot := t.TempDir()
+	counter := filepath.Join(stateRoot, "counter")
+	manager := NewSessionManager(sessionTestConfig(t, "session-tools", counter, false), nil)
+	defer manager.Shutdown()
+
+	first, err := manager.Ensure(context.Background(), testSessionID, "", stateRoot, []byte("not-a-real-key"), sessionOwner, sessionProject)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := manager.Ensure(context.Background(), testSessionID, "", stateRoot, []byte("not-a-real-key"), "0198d7ea-2110-7c42-b659-c5e4d73bd504", sessionProject)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first == second {
+		t.Fatal("an owner change reused the previous session process")
+	}
+}
+
+// TestSessionManagerRequiresWorkosToolsPlugin proves a session never starts
+// with a silently missing tool plugin: the spawn fails closed.
+func TestSessionManagerRequiresWorkosToolsPlugin(t *testing.T) {
+	stateRoot := t.TempDir()
+	counter := filepath.Join(stateRoot, "counter")
+	config := strictSessionTestConfig(t, "session-tools", counter)
+	config.WorkosToolsPath = filepath.Join(stateRoot, "missing.mjs")
+	manager := NewSessionManager(config, nil)
+	defer manager.Shutdown()
+
+	_, err := manager.Ensure(context.Background(), testSessionID, "", stateRoot, []byte("not-a-real-key"), sessionOwner, sessionProject)
+	if err == nil {
+		t.Fatal("a missing workos tools plugin must fail the session spawn")
+	}
+	var runErr *ports.RunError
+	if !errors.As(err, &runErr) || runErr.Kind != ports.ErrorKindConfiguration {
+		t.Fatalf("unexpected spawn failure classification: %v", err)
+	}
 }
 
 func TestSessionManagerMapsToolEvents(t *testing.T) {
 	stateRoot := t.TempDir()
 	counter := filepath.Join(stateRoot, "counter")
-	manager := NewSessionManager(sessionTestConfig(t, "session-tools", counter), nil)
+	manager := NewSessionManager(strictSessionTestConfig(t, "session-tools", counter), nil)
 	defer manager.Shutdown()
-	proc, err := manager.Ensure(context.Background(), testSessionID, "", stateRoot, []byte("not-a-real-key"))
+	proc, err := manager.Ensure(context.Background(), testSessionID, "", stateRoot, []byte("not-a-real-key"), sessionOwner, sessionProject)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -247,9 +334,9 @@ func TestSessionManagerMapsToolEvents(t *testing.T) {
 func TestSessionTurnErrorIsClassified(t *testing.T) {
 	stateRoot := t.TempDir()
 	counter := filepath.Join(stateRoot, "counter")
-	manager := NewSessionManager(sessionTestConfig(t, "session-error", counter), nil)
+	manager := NewSessionManager(strictSessionTestConfig(t, "session-error", counter), nil)
 	defer manager.Shutdown()
-	proc, err := manager.Ensure(context.Background(), testSessionID, "", stateRoot, []byte("not-a-real-key"))
+	proc, err := manager.Ensure(context.Background(), testSessionID, "", stateRoot, []byte("not-a-real-key"), sessionOwner, sessionProject)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -275,7 +362,7 @@ func TestSessionTurnErrorIsClassified(t *testing.T) {
 	if count := initializeCount(t, counter); count != 1 {
 		t.Fatalf("unexpected initialize count after failure: %d", count)
 	}
-	if _, err := manager.Ensure(context.Background(), testSessionID, "", stateRoot, []byte("not-a-real-key")); err != nil {
+	if _, err := manager.Ensure(context.Background(), testSessionID, "", stateRoot, []byte("not-a-real-key"), sessionOwner, sessionProject); err != nil {
 		t.Fatalf("respawn after failure failed: %v", err)
 	}
 	if count := initializeCount(t, counter); count != 2 {
@@ -286,10 +373,13 @@ func TestSessionTurnErrorIsClassified(t *testing.T) {
 func TestProviderRunsSessionTurnsThroughSessionManager(t *testing.T) {
 	stateRoot := t.TempDir()
 	counter := filepath.Join(stateRoot, "counter")
-	provider := New(sessionTestConfig(t, "session-tools", counter), fixedID("0198d7ea-2110-7c42-b659-c5e4d73bc401"))
+	provider := New(strictSessionTestConfig(t, "session-tools", counter), fixedID("0198d7ea-2110-7c42-b659-c5e4d73bc401"))
 	execution := ports.Execution{
 		TaskID: "task-1", Input: &agentv1.AgentTaskInput{Goal: "hello"}, Credential: testLease(),
-		Session: &ports.SessionExecution{SessionID: testSessionID, StateRoot: stateRoot},
+		Session: &ports.SessionExecution{
+			SessionID: testSessionID, StateRoot: stateRoot,
+			OwnerUserID: sessionOwner, ProjectID: sessionProject,
+		},
 	}
 	for turn := 0; turn < 2; turn++ {
 		events, emit := collectEvents()
@@ -317,7 +407,7 @@ func TestProviderRunsSessionTurnsThroughSessionManager(t *testing.T) {
 }
 
 func TestSessionBufferedNotificationsReplayBeforeWire(t *testing.T) {
-	manager := NewSessionManager(sessionTestConfig(t, "session-tools", ""), nil)
+	manager := NewSessionManager(strictSessionTestConfig(t, "session-tools", ""), nil)
 	defer manager.Shutdown()
 	buffered := rpcEnvelope{JSONRPC: jsonRPCVersion, Method: "session.status", Params: []byte(`{"sessionId":"s","status":"starting"}`)}
 	proc := &sessionProcess{sessionID: testSessionID, pending: []rpcEnvelope{buffered}}
@@ -387,6 +477,23 @@ func TestDeepSeekSessionRuntimeHelper(t *testing.T) {
 	}
 	if cwd := os.Getenv("DSH_CWD"); cwd == "" {
 		os.Exit(16)
+	}
+	// The read-only WorkOS tool context (B04) is injected per session child
+	// from the server-derived task facts; the fake runtime asserts the exact
+	// owner/project/core facts reach the environment and nothing else leaks.
+	if expected := os.Getenv("WORKOS_DEEPSEEK_SESSION_EXPECT_OWNER"); expected != "" {
+		if os.Getenv("WORKOS_TOOL_OWNER_ID") != expected {
+			os.Exit(22)
+		}
+		if os.Getenv("WORKOS_TOOL_PROJECT_ID") != os.Getenv("WORKOS_DEEPSEEK_SESSION_EXPECT_PROJECT") {
+			os.Exit(23)
+		}
+		if os.Getenv("WORKOS_TOOL_CORE_URL") != os.Getenv("WORKOS_DEEPSEEK_SESSION_EXPECT_CORE") {
+			os.Exit(24)
+		}
+		if os.Getenv("WORKOS_TOOL_DEVICE_ID") == "" {
+			os.Exit(25)
+		}
 	}
 	if counter := os.Getenv("WORKOS_DEEPSEEK_SESSION_COUNTER"); counter != "" {
 		file, err := os.OpenFile(counter, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)

@@ -103,6 +103,7 @@ COPY --from=deepseek-runtime /out/dsh-jsonrpc-agent /usr/local/libexec/workos/ds
 COPY --from=deepseek-runtime /out/dsh-jsonrpc-agent-rg /usr/local/libexec/workos/dsh-jsonrpc-agent-rg
 COPY --from=web /src/apps/desktop-web/dist/ /srv/workos/desktop/
 COPY deploy/harness/deepseek.cordis.yml /etc/workos/deepseek.cordis.yml
+COPY deploy/harness/workos-tools.mjs /usr/local/libexec/workos/workos-tools.mjs
 COPY --from=build /out/ /usr/local/bin/
 # The gateway-owned admin Unix socket lives here in production pairing mode
 # (systemd provides RuntimeDirectory on hosts; the image ships the mount

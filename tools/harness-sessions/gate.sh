@@ -28,7 +28,14 @@ cleanup() {
   # The gate shares the default compose project (like test-deepseek-fixture):
   # only the fixture profile is stopped; the shared stack keeps running.
   docker compose --profile deepseek-fixture stop deepseek-api-fixture >/dev/null 2>&1 || true
-  if [ "$result" -eq 0 ]; then printf 'harness-sessions: PASS (official runtime, two native turns, real tools)\n'; fi
+  if [ "$result" -eq 0 ]; then
+    printf 'harness-sessions: PASS (official runtime, three native turns, real bash + WorkOS tools)\n'
+    # The state tree is chowned to the image user (10001); drop it through a
+    # throwaway root container so the leftover cannot break host-side
+    # `go build ./...` walks of tmp/.
+    docker run --rm -v "$task_dir:/g" busybox:latest rm -rf /g/session-state >/dev/null 2>&1 || true
+    rm -rf "$task_dir"
+  fi
   exit "$result"
 }
 trap cleanup EXIT

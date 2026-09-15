@@ -220,6 +220,53 @@ func TestHarnessContinuousSessions(t *testing.T) {
 		t.Fatal("turn 2 answer proves the native context was NOT continued (has_turn1 missing/true)")
 	}
 
+	// Turn three on the SAME session: the model calls the harness's own
+	// read-only WorkOS tool. The tool result must carry the real project
+	// name created above — the proof that Harness → authorized WorkOS tool
+	// → Core → real business facts works end to end (B04). The owner and
+	// project never appear in the prompt: the tool derives them from the
+	// session child environment.
+	submit3 := connect.NewRequest(&agentv1.SubmitSessionInputRequest{
+		SessionId: sessionID, ClientInputId: "turn-3", Text: "SESSION_WORKOS_INFO report the project facts",
+	})
+	submit3.Header().Set(identity.UserHeader, owner)
+	submit3.Header().Set(identity.DeviceHeader, device)
+	turn3, err := sessions.SubmitSessionInput(ctx, submit3)
+	if err != nil {
+		t.Fatalf("submit turn 3: %v", err)
+	}
+	task3, events3 := waitTerminal(t, turn3.Msg.GetInput())
+	if task3.GetState() != agentv1.AgentTaskState_AGENT_TASK_STATE_COMPLETED {
+		t.Fatalf("turn 3 terminal state: %s", task3.GetState())
+	}
+	var workosCallID string
+	var workosToolDone *agentv1.ToolCallCompleted
+	sawWorkosAnswer := false
+	for _, event := range events3 {
+		if started := event.GetToolCallStarted(); started != nil && started.GetToolName() == "workos_project_info" {
+			workosCallID = started.GetToolCallId()
+		}
+		if completed := event.GetToolCallCompleted(); completed != nil && completed.GetToolCallId() == workosCallID && workosCallID != "" {
+			workosToolDone = completed
+		}
+		if message := event.GetAssistantMessage(); message != nil && strings.Contains(message.GetText(), "PROJECT_INFO:") {
+			sawWorkosAnswer = true
+		}
+	}
+	if workosToolDone == nil {
+		t.Fatal("turn 3 never executed the workos_project_info tool")
+	}
+	if !workosToolDone.GetSuccess() {
+		t.Fatalf("workos_project_info failed: %s", workosToolDone.GetOutput().GetFields()["text"].GetStringValue())
+	}
+	toolText := workosToolDone.GetOutput().GetFields()["text"].GetStringValue()
+	if !strings.Contains(toolText, project.Msg.GetProject().GetName()) {
+		t.Fatalf("workos tool result lacks the real project name %q: %s", project.Msg.GetProject().GetName(), toolText)
+	}
+	if !sawWorkosAnswer {
+		t.Fatal("turn 3 never surfaced the WorkOS tool round-trip answer")
+	}
+
 	// Input replay: the same client key returns the recorded input, never a
 	// second execution.
 	replay := connect.NewRequest(&agentv1.SubmitSessionInputRequest{
@@ -249,7 +296,7 @@ func TestHarnessContinuousSessions(t *testing.T) {
 		t.Fatalf("close: %v", err)
 	}
 	afterClose := connect.NewRequest(&agentv1.SubmitSessionInputRequest{
-		SessionId: sessionID, ClientInputId: "turn-3", Text: "SESSION_COUNT after close",
+		SessionId: sessionID, ClientInputId: "turn-4", Text: "SESSION_COUNT after close",
 	})
 	afterClose.Header().Set(identity.UserHeader, owner)
 	afterClose.Header().Set(identity.DeviceHeader, device)

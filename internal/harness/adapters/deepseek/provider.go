@@ -158,9 +158,11 @@ func (p *Provider) Run(ctx context.Context, execution ports.Execution) error {
 
 // executeSessionTurn runs one turn of a continuous harness session. The
 // credential lease secret enters only the session child's environment; the
-// plain goal text is the turn's single user content block.
+// plain goal text is the turn's single user content block. The server-derived
+// owner/project facts ride the child environment as the read-only WorkOS tool
+// context (B04) — they never enter the prompt.
 func (p *Provider) executeSessionTurn(ctx context.Context, session *ports.SessionExecution, input preparedInput, lease *ports.CredentialLease, emit ports.Emit) error {
-	proc, err := p.sessions.Ensure(ctx, session.SessionID, session.WorkspaceRoot, session.StateRoot, lease.Secret)
+	proc, err := p.sessions.Ensure(ctx, session.SessionID, session.WorkspaceRoot, session.StateRoot, lease.Secret, session.OwnerUserID, session.ProjectID)
 	if err != nil {
 		return err
 	}

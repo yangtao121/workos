@@ -65,6 +65,11 @@ func run(logger *slog.Logger) error {
 		BaseURL: cfg.Harness.DeepSeek.BaseURL, Model: cfg.Harness.DeepSeek.Model, Timeout: cfg.Harness.DeepSeek.Timeout,
 		RuntimePath: cfg.Harness.DeepSeek.RuntimePath, CordisConfigPath: cfg.Harness.DeepSeek.CordisConfigPath,
 		ConfigurationIssue: cfg.Harness.DeepSeek.ConfigurationIssue,
+		// The session child's read-only WorkOS tools (B04) call the ordinary
+		// Core listener over Connect with the harness host's device identity;
+		// authorization stays owner-scoped on the server side.
+		CoreURL:  cfg.Harness.CoreURL,
+		DeviceID: cfg.Auth.DeviceID,
 	}, ids.UUIDv7{})
 	providers := []ports.Provider{fake.New(ids.UUIDv7{}), deepSeekProvider}
 	if cfg.Harness.Generic.Enabled {

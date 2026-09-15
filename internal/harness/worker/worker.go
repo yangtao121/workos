@@ -328,10 +328,14 @@ func (w *Worker) process(parent context.Context, lease *taskv1.TaskLease) {
 			// session-bound native process. WorkspaceRoot stays empty in
 			// this slice — the harness host has no workspace registry — so
 			// the adapter runs the session in its private scratch
-			// workspace until the operator binding lands.
+			// workspace until the operator binding lands. The owner and
+			// project come from the same server-derived task facts: they
+			// back the session child's read-only WorkOS tool environment.
 			execution.Session = &ports.SessionExecution{
-				SessionID: sessionID,
-				StateRoot: w.sessionStateRoot,
+				SessionID:   sessionID,
+				StateRoot:   w.sessionStateRoot,
+				OwnerUserID: task.GetOwnerUserId(),
+				ProjectID:   task.GetInput().GetTargetScope().GetProjectId(),
 			}
 		}
 		err := w.broker.Run(runCtx, execution, task.GetProviderId())

@@ -55,6 +55,8 @@ type SessionManager struct {
 type sessionProcess struct {
 	sessionID      string
 	workspaceRoot  string
+	ownerUserID    string
+	projectID      string
 	keyFingerprint string
 	cmd            *exec.Cmd
 	stdin          io.WriteCloser
@@ -77,8 +79,11 @@ func NewSessionManager(config Config, logger *slog.Logger) *SessionManager {
 // Ensure returns the live process for the session, spawning one when needed.
 // An existing process is reused only when the child is alive, the credential
 // fingerprint matches, and the workspace binding is unchanged; anything else
-// kills the old process group and starts fresh.
-func (m *SessionManager) Ensure(ctx context.Context, sessionID, workspaceRoot, stateRoot string, secret []byte) (*sessionProcess, error) {
+// kills the old process group and starts fresh. ownerUserID and projectID are
+// the server-derived session authorization facts (ADR-0030); they enter only
+// the child's WorkOS tool environment and are never reused across a different
+// owner/project pair — a mismatch respawns the child like a rotation would.
+func (m *SessionManager) Ensure(ctx context.Context, sessionID, workspaceRoot, stateRoot string, secret []byte, ownerUserID, projectID string) (*sessionProcess, error) {
 	if !safeSessionComponent(sessionID) {
 		return nil, ports.NewRunError(ports.ErrorKindInvalidInput, "DeepSeek session id is not a safe identifier", false, nil)
 	}
@@ -106,13 +111,14 @@ func (m *SessionManager) Ensure(ctx context.Context, sessionID, workspaceRoot, s
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if existing := m.processes[sessionID]; existing != nil {
-		if processAlive(existing) && existing.keyFingerprint == fingerprint && existing.workspaceRoot == workspaceRoot {
+		if processAlive(existing) && existing.keyFingerprint == fingerprint && existing.workspaceRoot == workspaceRoot &&
+			existing.ownerUserID == ownerUserID && existing.projectID == projectID {
 			return existing, nil
 		}
 		m.terminate(existing)
 		delete(m.processes, sessionID)
 	}
-	proc, err := m.spawn(ctx, sessionID, workspaceRoot, stateDir, workspace, fingerprint, secret)
+	proc, err := m.spawn(ctx, sessionID, workspaceRoot, stateDir, workspace, fingerprint, secret, ownerUserID, projectID)
 	if err != nil {
 		return nil, err
 	}
@@ -239,7 +245,19 @@ func (m *SessionManager) SweepIdle(maxIdle time.Duration) {
 // initialize handshake before the process is published. The generated cordis
 // composition lives under the harness-host-private state directory; the
 // configured CordisConfigPath is deliberately ignored for sessions.
-func (m *SessionManager) spawn(ctx context.Context, sessionID, workspaceRoot, stateDir, workspace, fingerprint string, secret []byte) (*sessionProcess, error) {
+func (m *SessionManager) spawn(ctx context.Context, sessionID, workspaceRoot, stateDir, workspace, fingerprint string, secret []byte, ownerUserID, projectID string) (*sessionProcess, error) {
+	// The read-only WorkOS tools plugin (B04) is loaded as a
+	// configuration-relative row: the pinned runtime resolves './workos-tools.mjs'
+	// against the cordis.yml directory, so the image file is copied into this
+	// session's private state directory first. A missing plugin file fails the
+	// spawn closed — the tools never silently disappear from a session.
+	pluginSource, err := os.ReadFile(m.config.WorkosToolsPath)
+	if err != nil {
+		return nil, ports.NewRunError(ports.ErrorKindConfiguration, "DeepSeek session WorkOS tools plugin is unavailable", false, err)
+	}
+	if err := os.WriteFile(filepath.Join(stateDir, workosToolsFileName), pluginSource, 0o600); err != nil {
+		return nil, ports.NewRunError(ports.ErrorKindUnavailable, "DeepSeek session state directory is not writable", true, err)
+	}
 	cordisPath := filepath.Join(stateDir, "cordis.yml")
 	if err := os.WriteFile(cordisPath, renderCordisConfig(stateDir, workspace, m.config), 0o600); err != nil {
 		return nil, ports.NewRunError(ports.ErrorKindUnavailable, "DeepSeek session state directory is not writable", true, err)
@@ -252,11 +270,12 @@ func (m *SessionManager) spawn(ctx context.Context, sessionID, workspaceRoot, st
 	}
 	proc := &sessionProcess{
 		sessionID: sessionID, workspaceRoot: workspaceRoot, keyFingerprint: fingerprint,
+		ownerUserID: ownerUserID, projectID: projectID,
 		done: make(chan struct{}),
 	}
 	command := exec.Command(m.config.RuntimePath, m.config.runtimeArgs...)
 	command.Dir = workspace
-	command.Env = m.sessionEnvironment(stateDir, workspace, secret)
+	command.Env = m.sessionEnvironment(stateDir, workspace, secret, ownerUserID, projectID)
 	command.Stderr = stderrFile
 	command.SysProcAttr = &syscall.SysProcAttr{Setpgid: true, Pdeathsig: syscall.SIGKILL}
 	command.WaitDelay = shutdownTimeout
@@ -329,8 +348,14 @@ func (m *SessionManager) initialize(ctx context.Context, proc *sessionProcess, w
 // sessionEnvironment builds the allowlisted child environment for one
 // continuous session. The credential secret enters the child as the runtime's
 // API key variable and nowhere else; it never touches harness-host logs or
-// configuration.
-func (m *SessionManager) sessionEnvironment(stateDir, workspace string, secret []byte) []string {
+// configuration. The WORKOS_TOOL_* facts are the read-only WorkOS tool
+// context (B04): the server-derived owner/project of this session plus the
+// Core listener and the harness device identity for the Connect calls. They
+// are authorization facts for the tools, never prompt content: the model can
+// read what the tools return but cannot submit owner/project ids to widen
+// any scope. Missing facts (no CoreURL/DeviceID configured) are omitted and
+// the tools fail closed inside the child.
+func (m *SessionManager) sessionEnvironment(stateDir, workspace string, secret []byte, ownerUserID, projectID string) []string {
 	home := sessionHomeDir(stateDir)
 	environment := []string{
 		"HOME=" + home,
@@ -343,6 +368,14 @@ func (m *SessionManager) sessionEnvironment(stateDir, workspace string, secret [
 		"DSH_MODEL=" + m.config.Model,
 		"DSH_MAX_TOKENS=" + strconv.FormatInt(sessionEnvMaxTokens, 10),
 		"DSH_HOME=" + home,
+	}
+	if m.config.CoreURL != "" && m.config.DeviceID != "" && ownerUserID != "" && projectID != "" {
+		environment = append(environment,
+			"WORKOS_TOOL_CORE_URL="+m.config.CoreURL,
+			"WORKOS_TOOL_DEVICE_ID="+m.config.DeviceID,
+			"WORKOS_TOOL_OWNER_ID="+ownerUserID,
+			"WORKOS_TOOL_PROJECT_ID="+projectID,
+		)
 	}
 	for _, key := range []string{"PATH", "TZ", "SSL_CERT_FILE", "SSL_CERT_DIR"} {
 		if value, ok := os.LookupEnv(key); ok {
@@ -488,16 +521,23 @@ func ensureSessionDirectory(path string) error {
 }
 
 // cordisRowIDs is the exact official base composition verified loadable by
-// the pinned runtime (tmp/b00/probe_cordis.yml): tool traffic, workspace
-// sandboxing, and native session persistence included, and nothing else.
+// the pinned runtime (tmp/b00/probe_cordis.yml) plus the one
+// configuration-relative WorkOS row (B04): tool traffic, workspace
+// sandboxing, native session persistence, and the read-only WorkOS tools.
 var cordisRowIDs = []string{
 	"timer", "llm", "session", "session-title", "agent", "jobs", "llm-retry",
 	"session-persistence-jsonl", "subprocess", "sandbox", "sandbox-policy",
 	"bash-local", "shell-env", "approval", "tool-bash", "fs-observation-policy",
 	"fs-sandbox", "tool-fs", "tool-fs-search", "agent-instructions",
 	"timeout-policy", "tools", "system-prompt", "agent-loop", "llm-deepseek",
-	"sdk-jsonrpc-server",
+	"sdk-jsonrpc-server", "workos-tools",
 }
+
+// workosToolsFileName is the configuration-relative plugin row name. The
+// pinned runtime resolves relative row names against the cordis.yml
+// directory; the file itself is copied into the session state directory by
+// spawn from the adapter's configured WorkosToolsPath.
+const workosToolsFileName = "workos-tools.mjs"
 
 // renderCordisConfig writes the official 26-row base row list with exactly
 // three sanctioned substitutions: the persistence root, the sandbox
@@ -546,5 +586,8 @@ func renderCordisConfig(stateDir, workspace string, config Config) []byte {
 	fmt.Fprintf(&out, "  config:\n    apiKeyEnv: DEEPSEEK_API_KEY\n    baseURL: %s\n    streamIdleTimeoutMs: 120000\n    retryPolicy:\n      mode: normal\n      maxRetries: 1\n    models:\n      - id: %s\n        contextWindow: 1000000\n        maxTokens: 384000\n", config.BaseURL, config.Model)
 	row("sdk-jsonrpc-server", "@deepseek-ai/dsh-sdk-jsonrpc-server")
 	fmt.Fprint(&out, "  config:\n    maxTokensAsSuccess: true\n")
+	// The read-only WorkOS tools (B04): configuration-relative row, so the
+	// name is the file beside this cordis.yml, never a bare closure package.
+	row("workos-tools", "./"+workosToolsFileName)
 	return []byte(out.String())
 }

@@ -28,6 +28,9 @@ type chatRequest struct {
 	Messages []struct {
 		Role    string `json:"role"`
 		Content any    `json:"content"`
+		// ToolCallID identifies the tool result message of a tool call; the
+		// continuous-session WorkOS flow matches its own call by id.
+		ToolCallID string `json:"tool_call_id"`
 	} `json:"messages"`
 }
 
@@ -53,10 +56,11 @@ func main() {
 			return
 		}
 		// Continuous-session flows (ADR-0030): turn one drives a real bash
-		// Continuous-session flows (ADR-0030): turn one drives a real bash
 		// tool call; the tool result round trip answers TURN1_DONE; turn
 		// two reports whether turn one's text is still in the request
-		// history — the proof of native context continuation.
+		// history — the proof of native context continuation. The
+		// SESSION_WORKOS_INFO flow (B04) drives the harness's own
+		// workos_project_info tool and echoes its bounded result.
 		if strings.HasPrefix(goal, "SESSION_TOOL_TURN") {
 			hasToolResult := false
 			var parsed chatRequest
@@ -78,6 +82,46 @@ func main() {
 			toolCall := `{"command":"printf 'native-tool-evidence' > turn1-evidence.txt && cat turn1-evidence.txt","description":"write and read session evidence"}`
 			writeSSE(response, []string{
 				`{"choices":[{"delta":{"role":"assistant","content":null,"tool_calls":[{"index":0,"id":"call_session_1","type":"function","function":{"name":"bash","arguments":` + jsonString(toolCall) + `}}]}}]}`,
+				`[DONE]`,
+			})
+			return
+		}
+		if strings.HasPrefix(goal, "SESSION_WORKOS_INFO") {
+			// WorkOS tool flow (B04): the first request asks the model to
+			// report project facts, so the fixture answers with one real
+			// tool call to the session's workos_project_info tool; once the
+			// runtime has executed it (a tool message is in the history),
+			// the answer echoes the bounded tool result so the caller can
+			// prove the harness served authorized WorkOS facts.
+			// The session history already holds turn one's bash tool
+			// result, so the flow must match ITS OWN tool result by the
+			// tool call id, not any tool message.
+			toolText := ""
+			var parsed chatRequest
+			if json.Unmarshal(body, &parsed) == nil {
+				for _, message := range parsed.Messages {
+					if message.Role != "tool" || message.ToolCallID != "call_session_workos" {
+						continue
+					}
+					if text, ok := message.Content.(string); ok {
+						toolText = text
+					}
+				}
+			}
+			if toolText != "" {
+				excerpt := toolText
+				if len(excerpt) > 600 {
+					excerpt = excerpt[:600]
+				}
+				writeSSE(response, []string{
+					`{"choices":[{"delta":{"role":"assistant","content":null,"reasoning_content":""}}]}`,
+					`{"choices":[{"delta":{"content":` + jsonString("PROJECT_INFO:"+excerpt) + `},"finish_reason":"stop"}],"usage":{"prompt_tokens":15,"prompt_cache_hit_tokens":3,"completion_tokens":6}}`,
+					`[DONE]`,
+				})
+				return
+			}
+			writeSSE(response, []string{
+				`{"choices":[{"delta":{"role":"assistant","content":null,"tool_calls":[{"index":0,"id":"call_session_workos","type":"function","function":{"name":"workos_project_info","arguments":"{}"}}]}}]}`,
 				`[DONE]`,
 			})
 			return
@@ -276,7 +320,7 @@ func validate(request *http.Request, key string, body []byte) (string, error) {
 		}
 	}
 	switch {
-	case strings.HasPrefix(text, "SESSION_TOOL_TURN"), strings.HasPrefix(text, "SESSION_COUNT"):
+	case strings.HasPrefix(text, "SESSION_TOOL_TURN"), strings.HasPrefix(text, "SESSION_COUNT"), strings.HasPrefix(text, "SESSION_WORKOS_INFO"):
 		return text, nil
 	case text == "prove the DeepSeek project binding fixture" || text == "persist this completed run across service restart" ||
 		text == "fixture rate limit" || text == "fixture server unavailable" || text == "fixture malformed SSE" ||

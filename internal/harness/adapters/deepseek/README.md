@@ -71,11 +71,13 @@ as one `session/prompt` on that child.
   holds `home` (child HOME/TMPDIR/DSH_HOME), `state`, `ws` (scratch cwd),
   `persistence` (native jsonl session logs), the generated `cordis.yml`, and
   `runtime.stderr` (captured, never logged).
-- The generated `cordis.yml` is the exact 26-row official base composition
-  verified loadable by the pinned runtime (tools, sandbox policy, session
-  persistence), with only three substitutions: the persistence root, the
-  sandbox workspace root, and the llm-deepseek endpoint/model facts. The
-  operator's single-shot `cordis_config_path` is ignored on this path.
+- The generated `cordis.yml` is the exact official base composition verified
+  loadable by the pinned runtime (tools, sandbox policy, session
+  persistence) plus the one configuration-relative `workos-tools` row (see
+  below), with only three substitutions inside the base rows: the persistence
+  root, the sandbox workspace root, and the llm-deepseek endpoint/model
+  facts. The operator's single-shot `cordis_config_path` is ignored on this
+  path.
 - A living process is reused only while the credential fingerprint
   (SHA-256 of the lease secret) and workspace binding are unchanged; a
   rotation, rebinding, dead child, or turn error kills the process group and
@@ -88,6 +90,51 @@ as one `session/prompt` on that child.
   error.
 - `Describe()` is unchanged: sessions and tools are not advertised
   capabilities yet (B05/B09 own that once proven end to end).
+
+## Read-only WorkOS tools (B04)
+
+The generated session composition appends one configuration-relative row
+(`workos-tools` → `./workos-tools.mjs`) after the official 26-row base. The
+adapter copies `deploy/harness/workos-tools.mjs` (image location
+`/usr/local/libexec/workos/workos-tools.mjs`) into each session's private
+state directory so the pinned runtime resolves it beside the generated
+`cordis.yml`; a missing plugin file fails the session spawn closed instead of
+silently dropping the tools.
+
+The plugin registers exactly two tools in this slice, both read-only and both
+parameterless:
+
+- `workos_project_info` — project id, name, harness binding provider, bounded
+  workspace refs, revision of the CURRENT project;
+- `workos_list_artifacts` — up to 50 artifact ids/types/titles of the CURRENT
+  project.
+
+Authorization honesty:
+
+- The "current" owner/project are never model inputs. The worker derives them
+  from the server-owned task facts (`owner_user_id` and the project
+  `target_scope` of the session task) and the SessionManager injects them into
+  the session child environment (`WORKOS_TOOL_OWNER_ID`,
+  `WORKOS_TOOL_PROJECT_ID`) together with the ordinary Core listener
+  (`WORKOS_TOOL_CORE_URL`, from `WORKOS_CORE_URL`) and the harness device
+  identity (`WORKOS_TOOL_DEVICE_ID`, from the host's `WORKOS_DEVICE_ID`). The
+  tools call Core's Connect services (`ProjectService/GetProject`,
+  `ArtifactService/ListArtifacts`) with the owner-scoped identity headers, so
+  every read is authorized server-side for exactly this owner. The process is
+  respawned if the owner/project pair of a session id ever changes.
+- Missing environment facts make each tool call fail with an `Error:` result
+  (mapped to `ToolCallCompleted Success=false`), never a crash; Core errors and
+  non-200 responses surface as bounded `Error:` text. Every tool output is
+  bounded to 4 KiB with an explicit truncation marker, and no secret, prompt
+  content, or raw response body is ever echoed or logged.
+- The B04 set is deliberately read-only. Write-capable tools, artifact
+  creation, and approval-path integration remain future work; the runtime's
+  `approval` row keeps `policy: ask` and no WorkOS tool escalates around it.
+  ADR-0030 covers this direction — no separate decision record is needed.
+- The plugin file imports nothing: the packaged runtime resolves bare package
+  specifiers only inside its own closure, so an external
+  configuration-relative plugin must be plain language built-ins (`fetch`,
+  `JSON`, `Promise`).
 
 ## Configuration
 

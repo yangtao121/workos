@@ -42,6 +42,13 @@ func TestSessionManagerAgainstRealRuntime(t *testing.T) {
 		Timeout:     2 * time.Minute,
 		RuntimePath: runtimePath,
 	})
+	// The relative workos-tools row must resolve beside the generated
+	// cordis.yml, so the real-runtime probe loads the repository's plugin.
+	if plugin := os.Getenv("WORKOS_DEEPSEEK_WORKOS_TOOLS_PLUGIN"); plugin != "" {
+		config.WorkosToolsPath = plugin
+	} else if _, err := os.Stat(config.WorkosToolsPath); err != nil {
+		t.Fatalf("workos tools plugin not readable at %s (set WORKOS_DEEPSEEK_WORKOS_TOOLS_PLUGIN): %v", config.WorkosToolsPath, err)
+	}
 	manager := NewSessionManager(config, nil)
 	defer manager.Shutdown()
 
@@ -59,7 +66,7 @@ func TestSessionManagerAgainstRealRuntime(t *testing.T) {
 	if turn2Goal == "" {
 		turn2Goal = "COUNT_HISTORY now"
 	}
-	proc, err := manager.Ensure(context.Background(), "probe-session-1", "", stateRoot, []byte("workos-fixture-only-not-a-real-key"))
+	proc, err := manager.Ensure(context.Background(), "probe-session-1", "", stateRoot, []byte("workos-fixture-only-not-a-real-key"), "", "")
 	if err != nil {
 		t.Fatalf("ensure: %v", err)
 	}

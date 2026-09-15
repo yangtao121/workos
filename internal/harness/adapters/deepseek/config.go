@@ -22,6 +22,10 @@ const (
 	MaximumTimeout      = 10 * time.Minute
 	DefaultRuntimePath  = "/usr/local/libexec/workos/dsh-jsonrpc-agent"
 	DefaultCordisConfig = "/etc/workos/deepseek.cordis.yml"
+	// DefaultWorkosToolsPath is the image location of the read-only WorkOS
+	// tools cordis plugin (B04). The session manager copies it beside each
+	// generated cordis.yml and loads it as a configuration-relative row.
+	DefaultWorkosToolsPath = "/usr/local/libexec/workos/workos-tools.mjs"
 
 	maximumGoalBytes = 4 * 1024 * 1024
 )
@@ -46,6 +50,17 @@ type Config struct {
 	RuntimePath        string
 	CordisConfigPath   string
 	ConfigurationIssue string
+	// CoreURL is the ordinary Core HTTP listener the session child's
+	// read-only WorkOS tools call over Connect. Empty disables the tool
+	// environment facts (the tools then fail closed inside the child).
+	CoreURL string
+	// DeviceID is the harness host's operational device identity sent with
+	// the WorkOS tool calls. Authorization stays owner-scoped; the device
+	// only completes the Core identity headers.
+	DeviceID string
+	// WorkosToolsPath is the plugin file copied into each session state
+	// directory and loaded as the configuration-relative workos-tools row.
+	WorkosToolsPath string
 
 	// runtimeArgs and runtimeEnv exist solely for package tests. Production starts
 	// the pinned runtime with no caller-controlled arguments or environment.
@@ -77,6 +92,12 @@ func normalizeConfig(config Config) Config {
 	config.CordisConfigPath = strings.TrimSpace(config.CordisConfigPath)
 	if config.CordisConfigPath == "" {
 		config.CordisConfigPath = DefaultCordisConfig
+	}
+	config.CoreURL = strings.TrimRight(strings.TrimSpace(config.CoreURL), "/")
+	config.DeviceID = strings.TrimSpace(config.DeviceID)
+	config.WorkosToolsPath = strings.TrimSpace(config.WorkosToolsPath)
+	if config.WorkosToolsPath == "" {
+		config.WorkosToolsPath = DefaultWorkosToolsPath
 	}
 	config.ConfigurationIssue = strings.TrimSpace(config.ConfigurationIssue)
 	return config

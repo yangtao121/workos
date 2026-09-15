@@ -92,11 +92,17 @@ type ArtifactBatchSink func([]ArtifactOutput) error
 // (ADR-0030). SessionID doubles as the native harness session key;
 // WorkspaceRoot is the operator-registered directory ("" = scratch);
 // StateRoot is the harness-host-private directory holding the generated
-// cordis config and the native session persistence logs.
+// cordis config and the native session persistence logs. OwnerUserID and
+// ProjectID are the server-derived authorization facts of the session's
+// project scope: they reach the session child's WorkOS tool environment
+// (never the model) so read-only project tools answer for exactly this
+// owner/project and nothing the model submits.
 type SessionExecution struct {
 	SessionID     string
 	WorkspaceRoot string
 	StateRoot     string
+	OwnerUserID   string
+	ProjectID     string
 }
 
 type Execution struct {
