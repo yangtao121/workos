@@ -53,6 +53,42 @@ does not cross the WorkOS provider, Core, Proto, or database boundary.
   provider token usage, and one terminal event. Cost stays empty because no
   changing price table is embedded in WorkOS.
 
+## Continuous sessions (ADR-0030)
+
+`sessions.go` adds a second execution path for tasks that arrive with the
+server-derived `agent_session_id` linkage (set only by the Core session
+dispatcher; public `SubmitTask` rejects it). The native protocol has no
+wire-level resume, so continuity is process continuity: `SessionManager`
+keeps one pinned runtime child per Core session id and serializes each turn
+as one `session/prompt` on that child.
+
+- The worker routes such tasks through `ports.SessionExecution`
+  (`SessionID`, `WorkspaceRoot`, `StateRoot`). `WorkspaceRoot` stays empty in
+  this slice — the harness host has no workspace registry yet — so each
+  session runs in its private scratch workspace under the state root.
+- `StateRoot` is harness-host private (`WORKOS_HARNESS_SESSION_STATE_ROOT`,
+  default `/var/lib/workos/harness-sessions`, created 0700). Per session it
+  holds `home` (child HOME/TMPDIR/DSH_HOME), `state`, `ws` (scratch cwd),
+  `persistence` (native jsonl session logs), the generated `cordis.yml`, and
+  `runtime.stderr` (captured, never logged).
+- The generated `cordis.yml` is the exact 26-row official base composition
+  verified loadable by the pinned runtime (tools, sandbox policy, session
+  persistence), with only three substitutions: the persistence root, the
+  sandbox workspace root, and the llm-deepseek endpoint/model facts. The
+  operator's single-shot `cordis_config_path` is ignored on this path.
+- A living process is reused only while the credential fingerprint
+  (SHA-256 of the lease secret) and workspace binding are unchanged; a
+  rotation, rebinding, dead child, or turn error kills the process group and
+  the next turn respawns fresh. Turn timeouts and cancellations kill the
+  whole group — a partially consumed stream is never trusted again.
+- Session turns map tool traffic onto `ToolCallStarted`/`ToolCallCompleted`
+  (structured inputs via protojson, `text` outputs, `Error:` prefixes mark
+  failures) in addition to the canonical delta/message/usage/terminal
+  events. Unknown methods and events still fail closed with a protocol
+  error.
+- `Describe()` is unchanged: sessions and tools are not advertised
+  capabilities yet (B05/B09 own that once proven end to end).
+
 ## Configuration
 
 Non-secret defaults live in `deploy/config/dev.yaml`. To enable the adapter:

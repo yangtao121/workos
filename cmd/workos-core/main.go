@@ -19,6 +19,7 @@ import (
 	notificationv1connect "github.com/yangtao121/workos/gen/go/workos/notification/v1/notificationv1connect"
 	projectconnect "github.com/yangtao121/workos/gen/go/workos/project/v1/projectv1connect"
 	agentpostgres "github.com/yangtao121/workos/internal/core/agent/adapters/postgres"
+	agentdb "github.com/yangtao121/workos/internal/core/agent/adapters/postgres/agentdb"
 	agentapp "github.com/yangtao121/workos/internal/core/agent/application"
 	agenttransport "github.com/yangtao121/workos/internal/core/agent/transport"
 	manifestvalidator "github.com/yangtao121/workos/internal/core/appregistry/adapters/manifestvalidator"
@@ -378,6 +379,13 @@ func run(logger *slog.Logger) error {
 
 	agentPath, agentHandler := agentv1connect.NewAgentTaskServiceHandler(agenttransport.New(agentService, taskRouter))
 	mux.Handle(agentPath, identity.Middleware(agentHandler))
+
+	// Continuous harness sessions (ADR-0030): inputs dispatch through the
+	// same admission path as public task submission.
+	sessionRepository := agentpostgres.NewSessionRepository(agentdb.New(pool))
+	sessionService := agentapp.NewSessionService(sessionRepository, agenttransport.NewSessionTaskDispatcher(taskRouter, agentService), generator, logger)
+	sessionPath, sessionHandler := agenttransport.NewSessionHandler(sessionService)
+	mux.Handle(sessionPath, identity.Middleware(sessionHandler))
 	policyPath, policyHandler := agenttransport.NewPolicyConnectHandler(policyService)
 	mux.Handle(policyPath, identity.Middleware(policyHandler))
 	approvalPath, approvalHandler := agenttransport.NewApprovalConnectHandler(approvalService)

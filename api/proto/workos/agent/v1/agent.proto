@@ -41,6 +41,9 @@ message AgentTaskInput {
   // Core-derived immutable target for a private repair admission. Public
   // SubmitTask rejects both incident_id and repair_target.
   RepairTarget repair_target = 10;
+  // Server-derived linkage to a continuous harness session (ADR-0030);
+  // public SubmitTask rejects it.
+  string agent_session_id = 11;
 }
 
 // One Project-owned installation and revision read from the same snapshot.

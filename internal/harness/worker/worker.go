@@ -52,6 +52,11 @@ type Worker struct {
 	repairs      taskexecutionv1connect.RepairExecutionServiceClient
 	broker       *broker.Broker
 	logger       *slog.Logger
+	// sessionStateRoot is the harness-host-private root holding the
+	// generated cordis config and native persistence logs of continuous
+	// harness sessions (ADR-0030); empty keeps the session path
+	// unconfigured and providers reject session tasks.
+	sessionStateRoot string
 }
 
 // New builds the worker. httpClient is the caller-owned transport to the
@@ -73,6 +78,14 @@ func New(id, coreURL string, pollInterval time.Duration, value *broker.Broker, l
 		client:  taskexecutionv1connect.NewTaskExecutionServiceClient(httpClient, coreURL),
 		repairs: taskexecutionv1connect.NewRepairExecutionServiceClient(httpClient, coreURL, connect.WithReadMaxBytes(1024*1024)),
 	}
+}
+
+// WithSessionStateRoot sets the harness-host-private root for continuous
+// session state (ADR-0030). It is a separate setter so existing compositions
+// (and tests) keep the plain constructor.
+func (w *Worker) WithSessionStateRoot(root string) *Worker {
+	w.sessionStateRoot = root
+	return w
 }
 
 func (w *Worker) Run(ctx context.Context) {
@@ -287,7 +300,7 @@ func (w *Worker) process(parent context.Context, lease *taskv1.TaskLease) {
 			candidateSubmitted = true
 			return nil
 		}
-		err := w.broker.Run(runCtx, ports.Execution{
+		execution := ports.Execution{
 			TaskID: task.GetId(), Input: task.GetInput(), Credential: credentialLease, Artifacts: artifacts,
 			ArtifactsBatch: batch, Context: contextDocuments, Repair: repairInput, RepairSource: submitCandidate,
 			Emit: func(event *agentv1.AgentEvent) error {
@@ -308,7 +321,20 @@ func (w *Worker) process(parent context.Context, lease *taskv1.TaskLease) {
 					sawTerminal = true
 				}
 				return appendErr
-			}}, task.GetProviderId())
+			}}
+		if sessionID := task.GetInput().GetAgentSessionId(); sessionID != "" {
+			// One turn of a continuous harness session (ADR-0030): the
+			// server-derived linkage routes the task to the provider's
+			// session-bound native process. WorkspaceRoot stays empty in
+			// this slice — the harness host has no workspace registry — so
+			// the adapter runs the session in its private scratch
+			// workspace until the operator binding lands.
+			execution.Session = &ports.SessionExecution{
+				SessionID: sessionID,
+				StateRoot: w.sessionStateRoot,
+			}
+		}
+		err := w.broker.Run(runCtx, execution, task.GetProviderId())
 		terminal <- sawTerminal
 		result <- err
 	}()

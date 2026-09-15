@@ -96,7 +96,8 @@ func run(logger *slog.Logger) error {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	credentialClient := credentialv1connect.NewCredentialLeaseServiceClient(executionClient, cfg.Harness.ExecutionURL)
-	go worker.New(cfg.Harness.WorkerID, cfg.Harness.ExecutionURL, cfg.Harness.PollInterval, value, logger, credentialClient, executionClient).Run(ctx)
+	go worker.New(cfg.Harness.WorkerID, cfg.Harness.ExecutionURL, cfg.Harness.PollInterval, value, logger, credentialClient, executionClient).
+		WithSessionStateRoot(cfg.Harness.SessionStateRoot).Run(ctx)
 
 	mux := httpserver.NewMux("harness-host", nil)
 	harnessPath, harnessHandler := harnessv1connect.NewHarnessHostServiceHandler(harnesstransport.New(value))

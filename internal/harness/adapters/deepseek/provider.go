@@ -21,6 +21,9 @@ import (
 type Provider struct {
 	config Config
 	ids    ids.Generator
+	// sessions owns the per-session native runtime processes for continuous
+	// harness sessions (ADR-0030); single-shot tasks never touch it.
+	sessions *SessionManager
 
 	mu     sync.RWMutex
 	health commonv1.HealthState
@@ -44,7 +47,7 @@ type preparedInput struct {
 
 func New(config Config, generator ids.Generator) *Provider {
 	config = normalizeConfig(config)
-	provider := &Provider{config: config, ids: generator}
+	provider := &Provider{config: config, ids: generator, sessions: NewSessionManager(config, nil)}
 	if err := validateConfig(config); err != nil {
 		provider.health = commonv1.HealthState_HEALTH_STATE_UNAVAILABLE
 		provider.reason = err.Error()
@@ -126,8 +129,14 @@ func (p *Provider) Run(ctx context.Context, execution ports.Execution) error {
 	if err != nil {
 		return err
 	}
-	runID := p.ids.New()
-	err = p.execute(ctx, taskID, runID, prepared, lease, execution.ArtifactsBatch, emit)
+	if execution.Session != nil {
+		// One turn of a continuous harness session (ADR-0030): the native
+		// child process persists across turns keyed by the Core session id.
+		err = p.executeSessionTurn(ctx, execution.Session, prepared, lease, emit)
+	} else {
+		runID := p.ids.New()
+		err = p.execute(ctx, taskID, runID, prepared, lease, execution.ArtifactsBatch, emit)
+	}
 	if err == nil {
 		p.setHealth(commonv1.HealthState_HEALTH_STATE_HEALTHY, "")
 		return nil
@@ -135,16 +144,27 @@ func (p *Provider) Run(ctx context.Context, execution ports.Execution) error {
 	if errors.Is(err, context.Canceled) {
 		return err
 	}
-	var runErr *ports.RunError
-	if errors.As(err, &runErr) {
-		switch runErr.Kind {
+	var runErrTyped *ports.RunError
+	if errors.As(err, &runErrTyped) {
+		switch runErrTyped.Kind {
 		case ports.ErrorKindAuthentication, ports.ErrorKindConfiguration:
-			p.setHealth(commonv1.HealthState_HEALTH_STATE_UNAVAILABLE, runErr.Error())
+			p.setHealth(commonv1.HealthState_HEALTH_STATE_UNAVAILABLE, runErrTyped.Error())
 		case ports.ErrorKindRateLimit, ports.ErrorKindProvider, ports.ErrorKindTransport, ports.ErrorKindTimeout:
-			p.setHealth(commonv1.HealthState_HEALTH_STATE_DEGRADED, runErr.Error())
+			p.setHealth(commonv1.HealthState_HEALTH_STATE_DEGRADED, runErrTyped.Error())
 		}
 	}
 	return err
+}
+
+// executeSessionTurn runs one turn of a continuous harness session. The
+// credential lease secret enters only the session child's environment; the
+// plain goal text is the turn's single user content block.
+func (p *Provider) executeSessionTurn(ctx context.Context, session *ports.SessionExecution, input preparedInput, lease *ports.CredentialLease, emit ports.Emit) error {
+	proc, err := p.sessions.Ensure(ctx, session.SessionID, session.WorkspaceRoot, session.StateRoot, lease.Secret)
+	if err != nil {
+		return err
+	}
+	return p.sessions.Prompt(ctx, proc, p.ids.New(), input.goal, input.maxTokens, input.timeout, emit)
 }
 
 func (p *Provider) setHealth(health commonv1.HealthState, reason string) {

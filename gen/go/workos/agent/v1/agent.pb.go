@@ -300,9 +300,12 @@ type AgentTaskInput struct {
 	IncidentId            string                 `protobuf:"bytes,9,opt,name=incident_id,json=incidentId,proto3" json:"incident_id,omitempty"`
 	// Core-derived immutable target for a private repair admission. Public
 	// SubmitTask rejects both incident_id and repair_target.
-	RepairTarget  *RepairTarget `protobuf:"bytes,10,opt,name=repair_target,json=repairTarget,proto3" json:"repair_target,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	RepairTarget *RepairTarget `protobuf:"bytes,10,opt,name=repair_target,json=repairTarget,proto3" json:"repair_target,omitempty"`
+	// Server-derived linkage to a continuous harness session (ADR-0030);
+	// public SubmitTask rejects it.
+	AgentSessionId string `protobuf:"bytes,11,opt,name=agent_session_id,json=agentSessionId,proto3" json:"agent_session_id,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
 }
 
 func (x *AgentTaskInput) Reset() {
@@ -403,6 +406,13 @@ func (x *AgentTaskInput) GetRepairTarget() *RepairTarget {
 		return x.RepairTarget
 	}
 	return nil
+}
+
+func (x *AgentTaskInput) GetAgentSessionId() string {
+	if x != nil {
+		return x.AgentSessionId
+	}
+	return ""
 }
 
 // One Project-owned installation and revision read from the same snapshot.
@@ -2285,7 +2295,7 @@ const file_workos_agent_v1_agent_proto_rawDesc = "" +
 	"\n" +
 	"max_tokens\x18\x01 \x01(\x03R\tmaxTokens\x12(\n" +
 	"\x10max_cost_decimal\x18\x02 \x01(\tR\x0emaxCostDecimal\x12.\n" +
-	"\x13max_runtime_seconds\x18\x03 \x01(\x03R\x11maxRuntimeSeconds\"\xe5\x03\n" +
+	"\x13max_runtime_seconds\x18\x03 \x01(\x03R\x11maxRuntimeSeconds\"\x8f\x04\n" +
 	"\x0eAgentTaskInput\x12?\n" +
 	"\ftarget_scope\x18\x01 \x01(\v2\x1c.workos.agent.v1.TargetScopeR\vtargetScope\x12\x12\n" +
 	"\x04role\x18\x02 \x01(\tR\x04role\x12\x12\n" +
@@ -2298,7 +2308,8 @@ const file_workos_agent_v1_agent_proto_rawDesc = "" +
 	"\vincident_id\x18\t \x01(\tR\n" +
 	"incidentId\x12B\n" +
 	"\rrepair_target\x18\n" +
-	" \x01(\v2\x1d.workos.agent.v1.RepairTargetR\frepairTarget\"\xbb\x01\n" +
+	" \x01(\v2\x1d.workos.agent.v1.RepairTargetR\frepairTarget\x12(\n" +
+	"\x10agent_session_id\x18\v \x01(\tR\x0eagentSessionId\"\xbb\x01\n" +
 	"\fRepairTarget\x12&\n" +
 	"\x0fapp_instance_id\x18\x01 \x01(\tR\rappInstanceId\x12\x15\n" +
 	"\x06app_id\x18\x02 \x01(\tR\x05appId\x12\x18\n" +

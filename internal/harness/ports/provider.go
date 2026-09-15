@@ -88,6 +88,17 @@ type ContextDocument struct {
 // a partial batch is never observable.
 type ArtifactBatchSink func([]ArtifactOutput) error
 
+// SessionExecution carries the continuous-session facts of one task run
+// (ADR-0030). SessionID doubles as the native harness session key;
+// WorkspaceRoot is the operator-registered directory ("" = scratch);
+// StateRoot is the harness-host-private directory holding the generated
+// cordis config and the native session persistence logs.
+type SessionExecution struct {
+	SessionID     string
+	WorkspaceRoot string
+	StateRoot     string
+}
+
 type Execution struct {
 	TaskID         string
 	Input          *agentv1.AgentTaskInput
@@ -98,6 +109,10 @@ type Execution struct {
 	Context        []ContextDocument
 	Repair         *executionv1.RepairBuildInput
 	RepairSource   func([]*appv1.AppSourceFile) error
+	// Session is non-nil when the task is one turn of a continuous harness
+	// session: the provider must route it to the session-bound native
+	// process instead of a fresh single-shot run (ADR-0030).
+	Session *SessionExecution
 }
 
 type Provider interface {

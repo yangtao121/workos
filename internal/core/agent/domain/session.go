@@ -169,6 +169,15 @@ type SessionInput struct {
 	UpdatedAt     time.Time
 }
 
+// SessionEvent is one row of the bounded session lifecycle log.
+type SessionEvent struct {
+	Sequence   int64
+	SessionID  string
+	EventType  string
+	Payload    []byte
+	OccurredAt time.Time
+}
+
 // InputRequestDigest binds an idempotency key to its exact content: the same
 // key with different text is a conflict, not a replay.
 func InputRequestDigest(clientInputID, text string) string {

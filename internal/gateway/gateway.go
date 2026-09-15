@@ -83,6 +83,7 @@ type Handler struct {
 var publicServicePrefixes = []string{
 	"/workos.agent.v1.AgentApprovalService/",
 	"/workos.agent.v1.AgentAppPolicyService/",
+	"/workos.agent.v1.AgentSessionService/",
 	"/workos.agent.v1.AgentTaskService/",
 	"/workos.agent.v1.AgentAppUsageService/",
 	"/workos.app.v1.AppInstallationService/",

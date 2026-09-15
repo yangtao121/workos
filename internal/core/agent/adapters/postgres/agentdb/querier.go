@@ -15,9 +15,16 @@ type Querier interface {
 	// event's sequence forward; the task state itself never changes here.
 	AdvanceTaskPublicationSequence(ctx context.Context, arg AdvanceTaskPublicationSequenceParams) error
 	AdvanceTaskState(ctx context.Context, arg AdvanceTaskStateParams) error
+	AppendAgentSessionEvent(ctx context.Context, arg AppendAgentSessionEventParams) (int64, error)
+	BumpAgentSessionEventSequence(ctx context.Context, arg BumpAgentSessionEventSequenceParams) (int64, error)
+	CancelQueuedAgentSessionInputs(ctx context.Context, arg CancelQueuedAgentSessionInputsParams) (int64, error)
+	ClaimAgentSessionExecution(ctx context.Context, arg ClaimAgentSessionExecutionParams) (int64, error)
+	CloseAgentSession(ctx context.Context, arg CloseAgentSessionParams) (int64, error)
 	DecideAgentAppApproval(ctx context.Context, arg DecideAgentAppApprovalParams) (int64, error)
+	DispatchAgentSessionInput(ctx context.Context, arg DispatchAgentSessionInputParams) (int64, error)
 	ExpirePendingApprovals(ctx context.Context, arg ExpirePendingApprovalsParams) ([]ExpirePendingApprovalsRow, error)
 	ExpireTaskPendingApproval(ctx context.Context, arg ExpireTaskPendingApprovalParams) (int64, error)
+	FinishAgentSessionInput(ctx context.Context, arg FinishAgentSessionInputParams) (int64, error)
 	FinishPendingTaskRequest(ctx context.Context, arg FinishPendingTaskRequestParams) error
 	FinishTaskLease(ctx context.Context, arg FinishTaskLeaseParams) (int64, error)
 	GetAgentAppApproval(ctx context.Context, arg GetAgentAppApprovalParams) (WorkosCoreAgentAppApproval, error)
@@ -30,6 +37,10 @@ type Querier interface {
 	GetAgentAppTaskByTask(ctx context.Context, arg GetAgentAppTaskByTaskParams) (GetAgentAppTaskByTaskRow, error)
 	GetAgentAppTaskOwnerTask(ctx context.Context, arg GetAgentAppTaskOwnerTaskParams) (string, error)
 	GetAgentAppTaskRequest(ctx context.Context, arg GetAgentAppTaskRequestParams) (GetAgentAppTaskRequestRow, error)
+	GetAgentSession(ctx context.Context, arg GetAgentSessionParams) (WorkosCoreAgentSession, error)
+	GetAgentSessionByIdempotency(ctx context.Context, arg GetAgentSessionByIdempotencyParams) (WorkosCoreAgentSession, error)
+	GetAgentSessionInput(ctx context.Context, arg GetAgentSessionInputParams) (WorkosCoreAgentSessionInput, error)
+	GetAgentSessionInputById(ctx context.Context, inputID string) (WorkosCoreAgentSessionInput, error)
 	GetAgentTask(ctx context.Context, arg GetAgentTaskParams) (WorkosCoreAgentTask, error)
 	GetAgentTaskByIdempotency(ctx context.Context, arg GetAgentTaskByIdempotencyParams) (WorkosCoreAgentTask, error)
 	GetAgentTaskCredential(ctx context.Context, taskID string) (GetAgentTaskCredentialRow, error)
@@ -44,6 +55,8 @@ type Querier interface {
 	InsertAgentAppApproval(ctx context.Context, arg InsertAgentAppApprovalParams) (int64, error)
 	InsertAgentAppPolicyRequest(ctx context.Context, arg InsertAgentAppPolicyRequestParams) (int64, error)
 	InsertAgentAppTaskRequest(ctx context.Context, arg InsertAgentAppTaskRequestParams) (int64, error)
+	InsertAgentSession(ctx context.Context, arg InsertAgentSessionParams) (int64, error)
+	InsertAgentSessionInput(ctx context.Context, arg InsertAgentSessionInputParams) (int64, error)
 	InsertAgentTask(ctx context.Context, arg InsertAgentTaskParams) (int64, error)
 	// Durable per-task credential snapshot (ADR-0009): the exact credential ID
 	// and revision a fresh task was admitted with, persisted in the same
@@ -53,7 +66,11 @@ type Querier interface {
 	InsertTaskOutbox(ctx context.Context, arg InsertTaskOutboxParams) error
 	LeaseTask(ctx context.Context, arg LeaseTaskParams) error
 	ListAgentAppApprovals(ctx context.Context, arg ListAgentAppApprovalsParams) ([]WorkosCoreAgentAppApproval, error)
+	ListAgentSessionEvents(ctx context.Context, arg ListAgentSessionEventsParams) ([]ListAgentSessionEventsRow, error)
+	ListAgentSessionInputs(ctx context.Context, arg ListAgentSessionInputsParams) ([]WorkosCoreAgentSessionInput, error)
+	ListAgentSessions(ctx context.Context, arg ListAgentSessionsParams) ([]WorkosCoreAgentSession, error)
 	ListAgentTasks(ctx context.Context, arg ListAgentTasksParams) ([]WorkosCoreAgentTask, error)
+	ListDispatchableAgentSessionInputs(ctx context.Context, arg ListDispatchableAgentSessionInputsParams) ([]WorkosCoreAgentSessionInput, error)
 	ListTaskEvents(ctx context.Context, arg ListTaskEventsParams) ([]ListTaskEventsRow, error)
 	// Serializes every transaction that reads-or-writes one installation's policy
 	// chain (SetPolicy invalidation scans, waiting-approval creation). The
@@ -71,12 +88,14 @@ type Querier interface {
 	MarkAgentAppUsageBreach(ctx context.Context, arg MarkAgentAppUsageBreachParams) error
 	MarkTaskCancelled(ctx context.Context, arg MarkTaskCancelledParams) error
 	MarkTaskRunning(ctx context.Context, arg MarkTaskRunningParams) error
+	ReleaseAgentSessionExecution(ctx context.Context, arg ReleaseAgentSessionExecutionParams) (int64, error)
 	RenewTaskLease(ctx context.Context, arg RenewTaskLeaseParams) (bool, error)
 	RequestTaskCancellation(ctx context.Context, arg RequestTaskCancellationParams) error
 	ReserveAgentAppDailyQuota(ctx context.Context, arg ReserveAgentAppDailyQuotaParams) (ReserveAgentAppDailyQuotaRow, error)
 	SelectTaskClaim(ctx context.Context, lockedUntil pgtype.Timestamptz) (string, error)
 	TaskBelongsToOwner(ctx context.Context, arg TaskBelongsToOwnerParams) (bool, error)
 	UpdateAgentAppPolicyRequestResult(ctx context.Context, arg UpdateAgentAppPolicyRequestResultParams) error
+	UpdateAgentSessionInputSequence(ctx context.Context, arg UpdateAgentSessionInputSequenceParams) (int64, error)
 	UpsertAgentAppDailyUsage(ctx context.Context, arg UpsertAgentAppDailyUsageParams) error
 	UpsertAgentAppPolicy(ctx context.Context, arg UpsertAgentAppPolicyParams) (UpsertAgentAppPolicyRow, error)
 	UpsertAgentTaskUsage(ctx context.Context, arg UpsertAgentTaskUsageParams) (UpsertAgentTaskUsageRow, error)

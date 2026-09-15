@@ -225,6 +225,10 @@ type Harness struct {
 	ExecutionCAFile   string `yaml:"execution_ca_file"`
 	ExecutionCertFile string `yaml:"execution_cert_file"`
 	ExecutionKeyFile  string `yaml:"execution_key_file"`
+	// SessionStateRoot is the harness-host-private directory holding the
+	// generated cordis configs and native persistence logs of continuous
+	// harness sessions (ADR-0030). Created 0700 on use; must be absolute.
+	SessionStateRoot string `yaml:"session_state_root"`
 }
 
 type GenericCLI struct {
@@ -288,6 +292,7 @@ func defaults() Config {
 				BaseURL: "https://api.deepseek.com", Model: "deepseek-v4-flash", Timeout: 2 * time.Minute,
 				RuntimePath: "/usr/local/libexec/workos/dsh-jsonrpc-agent", CordisConfigPath: "/etc/workos/deepseek.cordis.yml",
 			},
+			SessionStateRoot: "/var/lib/workos/harness-sessions",
 		},
 		Surface: Surface{SessionTTL: 15 * time.Minute},
 		Runtime: Runtime{
@@ -355,6 +360,7 @@ func Load() (Config, error) {
 	setString(&cfg.Harness.ExecutionCAFile, "WORKOS_HARNESS_EXECUTION_CA_FILE")
 	setString(&cfg.Harness.ExecutionCertFile, "WORKOS_HARNESS_EXECUTION_CERT_FILE")
 	setString(&cfg.Harness.ExecutionKeyFile, "WORKOS_HARNESS_EXECUTION_KEY_FILE")
+	setString(&cfg.Harness.SessionStateRoot, "WORKOS_HARNESS_SESSION_STATE_ROOT")
 	for _, bound := range []struct {
 		key string
 		dst *time.Duration
@@ -751,6 +757,12 @@ func (c Config) ValidateHarness() error {
 		if strings.TrimSpace(field) == "" {
 			return errors.New("harness execution identity requires CA, certificate, and key files")
 		}
+	}
+	// The continuous-session state root is harness-host private; a relative
+	// value would leak session state into whatever the working directory
+	// happens to be, so it must be absolute when set (ADR-0030).
+	if root := strings.TrimSpace(c.Harness.SessionStateRoot); root != "" && !filepath.IsAbs(root) {
+		return errors.New("harness session state root must be an absolute path")
 	}
 	return nil
 }

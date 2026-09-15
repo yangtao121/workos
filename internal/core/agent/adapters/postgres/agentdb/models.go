@@ -47,6 +47,40 @@ type WorkosCoreAgentAppPolicy struct {
 	UpdatedAt                        pgtype.Timestamptz `json:"updated_at"`
 }
 
+type WorkosCoreAgentSession struct {
+	SessionID                string             `json:"session_id"`
+	OwnerUserID              string             `json:"owner_user_id"`
+	ProjectID                string             `json:"project_id"`
+	IdempotencyKey           string             `json:"idempotency_key"`
+	WorkspaceBindingID       pgtype.UUID        `json:"workspace_binding_id"`
+	WorkspaceBindingRevision int64              `json:"workspace_binding_revision"`
+	ProviderID               string             `json:"provider_id"`
+	ProfileID                string             `json:"profile_id"`
+	State                    string             `json:"state"`
+	NativeSessionRef         string             `json:"native_session_ref"`
+	ActiveTaskID             pgtype.UUID        `json:"active_task_id"`
+	InputSequence            int64              `json:"input_sequence"`
+	EventSequence            int64              `json:"event_sequence"`
+	CreatedAt                pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt                pgtype.Timestamptz `json:"updated_at"`
+	ClosedAt                 pgtype.Timestamptz `json:"closed_at"`
+}
+
+type WorkosCoreAgentSessionInput struct {
+	InputID       string             `json:"input_id"`
+	SessionID     string             `json:"session_id"`
+	OwnerUserID   string             `json:"owner_user_id"`
+	ClientInputID string             `json:"client_input_id"`
+	InputText     string             `json:"input_text"`
+	RequestDigest string             `json:"request_digest"`
+	State         string             `json:"state"`
+	TaskID        pgtype.UUID        `json:"task_id"`
+	Sequence      int64              `json:"sequence"`
+	ResultSummary string             `json:"result_summary"`
+	CreatedAt     pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt     pgtype.Timestamptz `json:"updated_at"`
+}
+
 type WorkosCoreAgentTask struct {
 	ID                      string             `json:"id"`
 	OwnerUserID             string             `json:"owner_user_id"`
