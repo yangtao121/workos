@@ -1134,6 +1134,13 @@ test-browser-pool:
 test-terminal-sessions:
 	@set -eu; sh tools/terminal-sessions/gate.sh
 
+# The harness continuous-session gate (ADR-0030/A04): the pinned official
+# DeepSeek runtime with tools runs as a persistent per-session child; two
+# native turns, real bash tool writes, replay/conflict/close semantics.
+.PHONY: test-harness-sessions
+test-harness-sessions:
+	@set -eu; sh tools/harness-sessions/gate.sh
+
 # The workspace execution gate (ADR-0030): one real git repository shared by
 # the owner's terminal and the host file view. pwd, git identity, and
 # bidirectional file flow resolve against the real disk tree.

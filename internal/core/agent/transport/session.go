@@ -41,7 +41,7 @@ func (d *sessionTaskDispatcher) Dispatch(ctx context.Context, ownerUserID, proje
 	}
 	return d.submitter.Submit(ctx, application.SubmitInput{
 		OwnerUserID: ownerUserID, IdempotencyKey: idempotencyKey, ProjectID: projectID,
-		Payload: payload,
+		ProviderID: providerID, Payload: payload,
 	})
 }
 
@@ -58,11 +58,12 @@ type SessionSnapshotSource interface {
 }
 
 type SessionHandler struct {
-	service *application.SessionService
+	service   *application.SessionService
+	snapshots SessionSnapshotSource
 }
 
-func NewSessionHandler(service *application.SessionService) (string, http.Handler) {
-	return agentv1connect.NewAgentSessionServiceHandler(&SessionHandler{service: service})
+func NewSessionHandler(service *application.SessionService, snapshots SessionSnapshotSource) (string, http.Handler) {
+	return agentv1connect.NewAgentSessionServiceHandler(&SessionHandler{service: service, snapshots: snapshots})
 }
 
 // NewSessionTaskDispatcher wires the shared admission path into the session
@@ -105,9 +106,16 @@ func (h *SessionHandler) CreateSession(ctx context.Context, req *connect.Request
 	if err != nil {
 		return nil, connect.NewError(connect.CodeUnauthenticated, err)
 	}
-	snapshot := application.SessionSnapshot{}
+	if h.snapshots == nil {
+		return nil, connect.NewError(connect.CodeInternal, errors.New("session snapshot source is not configured"))
+	}
+	snapshot, err := h.snapshots.Snapshot(ctx, owner.UserID, req.Msg.GetProjectId())
+	if err != nil {
+		return nil, sessionError(err)
+	}
 	if req.Msg.GetWorkspaceBindingId() != "" {
 		snapshot.WorkspaceBindingID = req.Msg.GetWorkspaceBindingId()
+		snapshot.WorkspaceBindingRevision = 0
 	}
 	session, err := h.service.Create(ctx, owner.UserID, req.Msg.GetProjectId(), req.Msg.GetIdempotencyKey(), snapshot)
 	if err != nil {

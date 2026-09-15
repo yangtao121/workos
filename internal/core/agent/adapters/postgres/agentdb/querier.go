@@ -42,6 +42,7 @@ type Querier interface {
 	GetAgentSessionInput(ctx context.Context, arg GetAgentSessionInputParams) (WorkosCoreAgentSessionInput, error)
 	GetAgentSessionInputById(ctx context.Context, inputID string) (WorkosCoreAgentSessionInput, error)
 	GetAgentTask(ctx context.Context, arg GetAgentTaskParams) (WorkosCoreAgentTask, error)
+	GetAgentTaskByID(ctx context.Context, id string) (WorkosCoreAgentTask, error)
 	GetAgentTaskByIdempotency(ctx context.Context, arg GetAgentTaskByIdempotencyParams) (WorkosCoreAgentTask, error)
 	GetAgentTaskCredential(ctx context.Context, taskID string) (GetAgentTaskCredentialRow, error)
 	GetAgentTaskForUpdate(ctx context.Context, arg GetAgentTaskForUpdateParams) (WorkosCoreAgentTask, error)

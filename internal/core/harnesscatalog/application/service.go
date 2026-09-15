@@ -231,3 +231,8 @@ func publicReason(health domain.Health) string {
 	}
 	return boundedText(reason, maximumUnavailableReasonRunes)
 }
+
+// DefaultProviderID returns the configured global default provider.
+func (s *Service) DefaultProviderID() string {
+	return s.defaultProviderID
+}

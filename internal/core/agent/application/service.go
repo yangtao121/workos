@@ -80,9 +80,10 @@ type AppRunEnforcement struct {
 }
 
 type Service struct {
-	repository ports.Repository
-	ids        ids.Generator
-	now        func() time.Time
+	repository       ports.Repository
+	ids              ids.Generator
+	now              func() time.Time
+	sessionFinalizer SessionTaskFinalizer
 }
 
 func New(repository ports.Repository, generator ids.Generator) *Service {
@@ -327,7 +328,52 @@ func (s *Service) Renew(ctx context.Context, leaseID, workerID string, duration 
 
 func (s *Service) AppendEvent(ctx context.Context, leaseID, workerID, eventType string, payload json.RawMessage, state domain.State, providerID, runID string, usage *domain.UsageReport) (domain.Event, error) {
 	event := domain.Event{ID: s.ids.New(), EventType: eventType, Payload: payload, OccurredAt: s.now()}
-	return s.repository.AppendEvent(ctx, leaseID, workerID, event, state, providerID, runID, usage, s.now())
+	appended, err := s.repository.AppendEvent(ctx, leaseID, workerID, event, state, providerID, runID, usage, s.now())
+	if err == nil && state.Terminal() {
+		s.finalizeSessionTask(ctx, appended, state)
+	}
+	return appended, err
+}
+
+// SessionTaskFinalizer closes the session input owning a terminal task and
+// dispatches the next queued input (ADR-0030).
+type SessionTaskFinalizer func(ctx context.Context, ownerUserID, sessionID, taskID string, terminal domain.SessionInputState, summary string) error
+
+// WithSessionFinalizer attaches the continuous-session terminal hook. It is
+// set by the composition root after both services exist.
+func (s *Service) WithSessionFinalizer(finalizer SessionTaskFinalizer) *Service {
+	s.sessionFinalizer = finalizer
+	return s
+}
+
+// finalizeSessionTask links one terminal task back to its session when the
+// task was dispatched as a session input. Failures never fail the event
+// append: the session sweeper reconciles leftovers.
+func (s *Service) finalizeSessionTask(ctx context.Context, event domain.Event, state domain.State) {
+	if s.sessionFinalizer == nil {
+		return
+	}
+	task, err := s.repository.GetTaskByID(context.WithoutCancel(ctx), event.TaskID)
+	if err != nil {
+		return
+	}
+	var input agentv1.AgentTaskInput
+	if err := protojson.Unmarshal(task.Input, &input); err != nil || input.GetAgentSessionId() == "" {
+		return
+	}
+	terminal := domain.SessionInputFailed
+	switch state {
+	case domain.StateCompleted:
+		terminal = domain.SessionInputCompleted
+	case domain.StateCancelled:
+		terminal = domain.SessionInputCancelled
+	}
+	summary := "task " + string(state)
+	if err := s.sessionFinalizer(context.WithoutCancel(ctx), task.OwnerUserID, input.GetAgentSessionId(), task.ID, terminal, summary); err != nil {
+		// Terminal linkage is a projection concern: its failure never fails
+		// the worker's event append; the session sweeper reconciles.
+		_ = err
+	}
 }
 
 func (s *Service) Finish(ctx context.Context, leaseID, workerID string) error {

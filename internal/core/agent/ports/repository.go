@@ -261,6 +261,9 @@ type TaskSubmission struct {
 
 type Repository interface {
 	Create(context.Context, domain.Task, string) (TaskSubmission, error)
+	// GetTaskByID loads one task by exact identity for terminal-state session
+	// linkage (ADR-0030); Core-internal, no owner scoping.
+	GetTaskByID(ctx context.Context, taskID string) (domain.Task, error)
 	// CreateForApp inserts the task, the App provenance mapping, the guarded
 	// daily quota reservation, and the task outbox row in one transaction
 	// (policy mode allow). A concurrent same-key mapping winner replays or

@@ -4,6 +4,7 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -11,6 +12,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 )
 
@@ -46,7 +48,65 @@ func main() {
 		body, _ := io.ReadAll(io.LimitReader(request.Body, maximumRequestBytes+1))
 		goal, err := validate(request, key, body)
 		if err != nil {
+			log.Printf("fixture rejected request: %v", err)
 			http.Error(response, "invalid fixture request", http.StatusBadRequest)
+			return
+		}
+		// Continuous-session flows (ADR-0030): turn one drives a real bash
+		// Continuous-session flows (ADR-0030): turn one drives a real bash
+		// tool call; the tool result round trip answers TURN1_DONE; turn
+		// two reports whether turn one's text is still in the request
+		// history — the proof of native context continuation.
+		if strings.HasPrefix(goal, "SESSION_TOOL_TURN") {
+			hasToolResult := false
+			var parsed chatRequest
+			if json.Unmarshal(body, &parsed) == nil {
+				for _, message := range parsed.Messages {
+					if message.Role == "tool" {
+						hasToolResult = true
+					}
+				}
+			}
+			if hasToolResult {
+				writeSSE(response, []string{
+					`{"choices":[{"delta":{"role":"assistant","content":null,"reasoning_content":""}}]}`,
+					`{"choices":[{"delta":{"content":"TURN1_DONE"},"finish_reason":"stop"}],"usage":{"prompt_tokens":11,"prompt_cache_hit_tokens":2,"completion_tokens":4}}`,
+					`[DONE]`,
+				})
+				return
+			}
+			toolCall := `{"command":"printf 'native-tool-evidence' > turn1-evidence.txt && cat turn1-evidence.txt","description":"write and read session evidence"}`
+			writeSSE(response, []string{
+				`{"choices":[{"delta":{"role":"assistant","content":null,"tool_calls":[{"index":0,"id":"call_session_1","type":"function","function":{"name":"bash","arguments":` + jsonString(toolCall) + `}}]}}]}`,
+				`[DONE]`,
+			})
+			return
+		}
+		if strings.HasPrefix(goal, "SESSION_COUNT") {
+			hasTurn1, total := false, 0
+			var parsed chatRequest
+			if json.Unmarshal(body, &parsed) == nil {
+				for _, message := range parsed.Messages {
+					if message.Role != "user" {
+						continue
+					}
+					if text, ok := message.Content.(string); ok {
+						total++
+						if strings.Contains(text, "SESSION_TOOL_TURN") {
+							hasTurn1 = true
+						}
+					}
+				}
+			}
+			answer := "HIST has_turn1=false total=" + strconv.Itoa(total)
+			if hasTurn1 {
+				answer = "HIST has_turn1=true total=" + strconv.Itoa(total)
+			}
+			writeSSE(response, []string{
+				`{"choices":[{"delta":{"role":"assistant","content":null,"reasoning_content":""}}]}`,
+				`{"choices":[{"delta":{"content":"` + answer + `"},"finish_reason":"stop"}],"usage":{"prompt_tokens":13,"prompt_cache_hit_tokens":4,"completion_tokens":5}}`,
+				`[DONE]`,
+			})
 			return
 		}
 		// Structured review mode: when the request carries the versioned
@@ -170,13 +230,35 @@ func validate(request *http.Request, key string, body []byte) (string, error) {
 	if value.Model != "deepseek-v4-flash" || (value.MaxTokens != 64 && value.MaxTokens != 2048 && value.MaxTokens != 8192) || !value.Stream || !value.StreamOptions.IncludeUsage || len(value.Messages) == 0 {
 		return "", errors.New("unexpected request mapping")
 	}
-	last := value.Messages[len(value.Messages)-1]
-	if last.Role != "user" {
-		return "", errors.New("goal was not mapped to a user message")
+	// The official base composition appends user-role runtime-context and
+	// system-reminder messages after the goal; the goal is the last user
+	// message that is not one of those injections.
+	text := ""
+	for index := len(value.Messages) - 1; index >= 0; index-- {
+		message := value.Messages[index]
+		if message.Role != "user" {
+			continue
+		}
+		content, ok := message.Content.(string)
+		if !ok {
+			continue
+		}
+		if strings.HasPrefix(content, "<system-reminder>") || strings.HasPrefix(content, "Current runtime context") {
+			continue
+		}
+		text = content
+		break
 	}
-	text, ok := last.Content.(string)
-	if !ok {
-		return "", errors.New("unexpected user goal")
+	if text == "" {
+		roles := make([]string, 0, len(value.Messages))
+		for _, message := range value.Messages {
+			excerpt, _ := message.Content.(string)
+			if len(excerpt) > 60 {
+				excerpt = excerpt[:60]
+			}
+			roles = append(roles, message.Role+":"+excerpt)
+		}
+		return "", fmt.Errorf("goal was not mapped to a user message (messages: %s)", strings.Join(roles, " | "))
 	}
 	// The adapter may wrap the goal in the versioned task envelope when the
 	// task carries pinned context (ADR-0010). The envelope is unwrapped and
@@ -193,16 +275,29 @@ func validate(request *http.Request, key string, body []byte) (string, error) {
 			}
 		}
 	}
-	switch text {
-	case "prove the DeepSeek project binding fixture", "persist this completed run across service restart",
-		"fixture rate limit", "fixture server unavailable", "fixture malformed SSE", "fixture early EOF",
-		"fixture unexpected content type", "review the pinned context", "review and propose changes",
-		"fixture malformed output", "fixture extra output", "fixture missing output",
-		"fixture oversize output", "fixture invalid output", "produce structured review":
+	switch {
+	case strings.HasPrefix(text, "SESSION_TOOL_TURN"), strings.HasPrefix(text, "SESSION_COUNT"):
+		return text, nil
+	case text == "prove the DeepSeek project binding fixture" || text == "persist this completed run across service restart" ||
+		text == "fixture rate limit" || text == "fixture server unavailable" || text == "fixture malformed SSE" ||
+		text == "fixture early EOF" || text == "fixture unexpected content type" || text == "review the pinned context" ||
+		text == "review and propose changes" || text == "fixture malformed output" || text == "fixture extra output" ||
+		text == "fixture missing output" || text == "fixture oversize output" || text == "fixture invalid output" ||
+		text == "produce structured review":
 		return text, nil
 	default:
-		return "", errors.New("unexpected user goal")
+		return "", fmt.Errorf("unexpected user goal %q", firstLine(text))
 	}
+}
+
+func firstLine(text string) string {
+	if index := strings.IndexByte(text, '\n'); index >= 0 {
+		return text[:index]
+	}
+	if len(text) > 120 {
+		return text[:120]
+	}
+	return text
 }
 
 // taskEnvelope mirrors only the facts the fixture validates.
@@ -247,17 +342,26 @@ func (c *outputContractInfo) hasType(artifactType string) bool {
 func writeSSE(response http.ResponseWriter, events []string) {
 	response.Header().Set("Content-Type", "text/event-stream")
 	response.Header().Set("Cache-Control", "no-cache")
+	response.Header().Set("Connection", "close")
+	flusher, _ := response.(http.Flusher)
 	for _, event := range events {
 		_, _ = fmt.Fprintf(response, "data: %s\n\n", event)
+		if flusher != nil {
+			flusher.Flush()
+		}
 	}
 }
 
 func jsonString(value string) string {
-	encoded, err := json.Marshal(value)
-	if err != nil {
+	// The real DeepSeek API never HTML-escapes JSON strings; the runtime's
+	// parser must see plain UTF-8 (no \u003e-style escapes).
+	var buffer bytes.Buffer
+	encoder := json.NewEncoder(&buffer)
+	encoder.SetEscapeHTML(false)
+	if err := encoder.Encode(value); err != nil {
 		return `""`
 	}
-	return string(encoded)
+	return strings.TrimRight(buffer.String(), "\n")
 }
 
 // extractOutputContract inspects the already-buffered body for the versioned

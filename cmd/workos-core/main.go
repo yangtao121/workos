@@ -384,7 +384,9 @@ func run(logger *slog.Logger) error {
 	// same admission path as public task submission.
 	sessionRepository := agentpostgres.NewSessionRepository(agentdb.New(pool))
 	sessionService := agentapp.NewSessionService(sessionRepository, agenttransport.NewSessionTaskDispatcher(taskRouter, agentService), generator, logger)
-	sessionPath, sessionHandler := agenttransport.NewSessionHandler(sessionService)
+	agentService.WithSessionFinalizer(sessionService.FinishTaskRun)
+	sessionSnapshots := &projectSessionSnapshots{projects: projectService, catalog: catalogService, workspaces: workspaceService}
+	sessionPath, sessionHandler := agenttransport.NewSessionHandler(sessionService, sessionSnapshots)
 	mux.Handle(sessionPath, identity.Middleware(sessionHandler))
 	policyPath, policyHandler := agenttransport.NewPolicyConnectHandler(policyService)
 	mux.Handle(policyPath, identity.Middleware(policyHandler))
@@ -605,4 +607,27 @@ func (a batchMaterializerAdapter) MaterializeTaskArtifactBatch(ctx context.Conte
 		batch = append(batch, orchestration.BatchOutput{Key: output.Key, Title: output.Title, Type: output.Type, Content: output.Content})
 	}
 	return a.m.MaterializeTaskArtifactBatch(ctx, leaseID, workerID, batch)
+}
+
+// projectSessionSnapshots derives the immutable binding facts a new agent
+// session pins (ADR-0030): the project's harness binding provider (or the
+// global default) and the project's active workspace binding.
+type projectSessionSnapshots struct {
+	projects   *projectapp.Service
+	catalog    *catalogapp.Service
+	workspaces *projectapp.WorkspaceService
+}
+
+func (p *projectSessionSnapshots) Snapshot(ctx context.Context, ownerUserID, projectID string) (agentapp.SessionSnapshot, error) {
+	snapshot := agentapp.SessionSnapshot{ProviderID: p.catalog.DefaultProviderID()}
+	if project, err := p.projects.Get(ctx, ownerUserID, projectID); err == nil && project.HarnessBinding != nil {
+		if project.HarnessBinding.ProviderID != "" {
+			snapshot.ProviderID = project.HarnessBinding.ProviderID
+		}
+	}
+	if binding, err := p.workspaces.ActiveForProject(ctx, ownerUserID, projectID); err == nil {
+		snapshot.WorkspaceBindingID = binding.ID
+		snapshot.WorkspaceBindingRevision = binding.Revision
+	}
+	return snapshot, nil
 }

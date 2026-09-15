@@ -965,3 +965,10 @@ func addEventMetadata(event *domain.Event) error {
 	event.Payload = payload
 	return nil
 }
+
+// GetTaskByID loads one task by exact identity for terminal-state linkage
+// (ADR-0030 session finalization). It is Core-internal: no owner scoping.
+func (r *Repository) GetTaskByID(ctx context.Context, taskID string) (domain.Task, error) {
+	task, err := taskFromDB(r.queries.GetAgentTaskByID(ctx, taskID))
+	return task, err
+}

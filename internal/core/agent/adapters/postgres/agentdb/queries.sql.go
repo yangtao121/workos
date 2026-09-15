@@ -823,6 +823,40 @@ func (q *Queries) GetAgentTask(ctx context.Context, arg GetAgentTaskParams) (Wor
 	return i, err
 }
 
+const getAgentTaskByID = `-- name: GetAgentTaskByID :one
+SELECT id, owner_user_id, idempotency_key, project_id, input, state, provider_id,
+       harness_instance_id, run_id, last_event_sequence, cancellation_requested, created_at, updated_at,
+       policy_source, policy_revision, policy_spec_digest, budget_max_output_tokens, budget_max_runtime_seconds
+FROM workos_core.agent_tasks
+WHERE id = $1
+`
+
+func (q *Queries) GetAgentTaskByID(ctx context.Context, id string) (WorkosCoreAgentTask, error) {
+	row := q.db.QueryRow(ctx, getAgentTaskByID, id)
+	var i WorkosCoreAgentTask
+	err := row.Scan(
+		&i.ID,
+		&i.OwnerUserID,
+		&i.IdempotencyKey,
+		&i.ProjectID,
+		&i.Input,
+		&i.State,
+		&i.ProviderID,
+		&i.HarnessInstanceID,
+		&i.RunID,
+		&i.LastEventSequence,
+		&i.CancellationRequested,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.PolicySource,
+		&i.PolicyRevision,
+		&i.PolicySpecDigest,
+		&i.BudgetMaxOutputTokens,
+		&i.BudgetMaxRuntimeSeconds,
+	)
+	return i, err
+}
+
 const getAgentTaskByIdempotency = `-- name: GetAgentTaskByIdempotency :one
 SELECT id, owner_user_id, idempotency_key, project_id, input, state, provider_id,
        harness_instance_id, run_id, last_event_sequence, cancellation_requested, created_at, updated_at,
@@ -1140,8 +1174,8 @@ func (q *Queries) InsertAgentAppTaskRequest(ctx context.Context, arg InsertAgent
 const insertAgentSession = `-- name: InsertAgentSession :execrows
 INSERT INTO workos_core.agent_sessions (
     session_id, owner_user_id, project_id, idempotency_key, workspace_binding_id,
-    workspace_binding_revision, provider_id, profile_id, native_session_ref, created_at, updated_at
-) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $10)
+    workspace_binding_revision, provider_id, profile_id, native_session_ref, state, created_at, updated_at
+) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'active', $10, $10)
 ON CONFLICT (owner_user_id, idempotency_key) DO NOTHING
 `
 
@@ -1179,8 +1213,8 @@ func (q *Queries) InsertAgentSession(ctx context.Context, arg InsertAgentSession
 
 const insertAgentSessionInput = `-- name: InsertAgentSessionInput :execrows
 INSERT INTO workos_core.agent_session_inputs (
-    input_id, session_id, owner_user_id, client_input_id, input_text, request_digest, sequence, created_at, updated_at
-) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $8)
+    input_id, session_id, owner_user_id, client_input_id, input_text, request_digest, state, sequence, result_summary, created_at, updated_at
+) VALUES ($1, $2, $3, $4, $5, $6, 'accepted', $7, '', $8, $8)
 ON CONFLICT (session_id, client_input_id) DO NOTHING
 `
 

@@ -67,7 +67,7 @@ func (s *SessionService) Create(ctx context.Context, ownerUserID, projectID, ide
 		}
 		return replay, nil
 	}
-	if err := s.appendEvent(ctx, session, "state_changed", map[string]any{"previous": "", "current": string(domain.SessionStateActive), "reason": "created"}, now); err != nil {
+	if err := s.appendEvent(ctx, session.OwnerUserID, session.ID, "state_changed", map[string]any{"previous": "", "current": string(domain.SessionStateActive), "reason": "created"}, now); err != nil {
 		return domain.Session{}, err
 	}
 	return s.repository.GetSession(ctx, ownerUserID, session.ID)
@@ -83,6 +83,9 @@ func (s *SessionService) Submit(ctx context.Context, ownerUserID, sessionID, cli
 	session, err := s.repository.GetSession(ctx, ownerUserID, sessionID)
 	if err != nil {
 		return domain.SessionInput{}, false, err
+	}
+	if session.State.Terminal() {
+		return domain.SessionInput{}, false, domain.ErrSessionClosed
 	}
 	now := s.now().UTC()
 	// Reserve the next sequence atomically before persisting the input.
@@ -112,7 +115,7 @@ func (s *SessionService) Submit(ctx context.Context, ownerUserID, sessionID, cli
 		}
 		return previous, previous.State != domain.SessionInputAccepted || previous.TaskID != "", nil
 	}
-	if err := s.appendEvent(ctx, session, "input_accepted", map[string]any{"input_id": input.ID, "queued": queued}, now); err != nil {
+	if err := s.appendEvent(ctx, session.OwnerUserID, session.ID, "input_accepted", map[string]any{"input_id": input.ID, "queued": queued}, now); err != nil {
 		return domain.SessionInput{}, false, err
 	}
 	if queued {
@@ -155,7 +158,7 @@ func (s *SessionService) dispatch(ctx context.Context, session domain.Session, i
 	}
 	input.State = domain.SessionInputDispatched
 	input.TaskID = task.ID
-	if err := s.appendEvent(ctx, session, "input_dispatched", map[string]any{"input_id": input.ID, "task_id": task.ID}, now); err != nil {
+	if err := s.appendEvent(ctx, session.OwnerUserID, session.ID, "input_dispatched", map[string]any{"input_id": input.ID, "task_id": task.ID}, now); err != nil {
 		return input, err
 	}
 	return input, nil
@@ -254,7 +257,7 @@ func (s *SessionService) Close(ctx context.Context, ownerUserID, sessionID strin
 		}
 		return domain.Session{}, domain.ErrInvalid
 	}
-	if err := s.appendEvent(ctx, session, "state_changed", map[string]any{"previous": string(session.State), "current": string(domain.SessionStateClosed), "reason": "owner"}, now); err != nil {
+	if err := s.appendEvent(ctx, session.OwnerUserID, session.ID, "state_changed", map[string]any{"previous": string(session.State), "current": string(domain.SessionStateClosed), "reason": "owner"}, now); err != nil {
 		return domain.Session{}, err
 	}
 	return s.repository.GetSession(ctx, ownerUserID, sessionID)
@@ -300,7 +303,7 @@ func (s *SessionService) FinishTaskRun(ctx context.Context, ownerUserID, session
 	if err := s.repository.ReleaseExecution(ctx, ownerUserID, sessionID, taskID, now); err != nil {
 		return err
 	}
-	if err := s.appendEvent(ctx, session, "input_terminal", map[string]any{"input_id": finished.ID, "task_id": taskID, "terminal_state": string(terminal), "result_summary": summary}, now); err != nil {
+	if err := s.appendEvent(ctx, session.OwnerUserID, session.ID, "input_terminal", map[string]any{"input_id": finished.ID, "task_id": taskID, "terminal_state": string(terminal), "result_summary": summary}, now); err != nil {
 		return err
 	}
 	// Dispatch the next queued input, if any.
@@ -324,23 +327,33 @@ func (s *SessionService) FinishTaskRun(ctx context.Context, ownerUserID, session
 	return nil
 }
 
-func (s *SessionService) appendEvent(ctx context.Context, session domain.Session, eventType string, payload map[string]any, now time.Time) error {
+// appendEvent appends one lifecycle event under optimistic sequence
+// control. Concurrent writers re-read the session and retry, so callers may
+// pass a stale snapshot.
+func (s *SessionService) appendEvent(ctx context.Context, ownerUserID, sessionID string, eventType string, payload map[string]any, now time.Time) error {
 	encoded, err := json.Marshal(payload)
 	if err != nil {
 		return domain.ErrInvalid
 	}
-	next := session.EventSequence + 1
-	if err := s.repository.AppendEvent(ctx, session.ID, next, eventType, encoded, now); err != nil {
-		return err
+	for attempt := 0; attempt < 8; attempt++ {
+		session, err := s.repository.GetSession(ctx, ownerUserID, sessionID)
+		if err != nil {
+			return err
+		}
+		next := session.EventSequence + 1
+		if err := s.repository.AppendEvent(ctx, session.ID, next, eventType, encoded, now); err != nil {
+			s.logger.Warn("session event append retry", "session", sessionID, "attempt", attempt, "next", next, "error", err)
+			continue
+		}
+		bumped, err := s.repository.BumpEventSequence(ctx, ownerUserID, sessionID, next, session.EventSequence, now)
+		if err != nil {
+			return err
+		}
+		if bumped {
+			return nil
+		}
 	}
-	bumped, err := s.repository.BumpEventSequence(ctx, session.OwnerUserID, session.ID, next, session.EventSequence, now)
-	if err != nil {
-		return err
-	}
-	if !bumped {
-		return domain.ErrSessionBusy
-	}
-	return nil
+	return domain.ErrSessionBusy
 }
 
 func validSessionOwner(value string) bool {

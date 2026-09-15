@@ -1,0 +1,12 @@
+# Harness continuous-session overlay (ADR-0030): the session state root is
+# a deployment-owned directory holding the generated cordis compositions,
+# per-session native persistence logs, and the private scratch workspaces.
+# Used by tools/harness-sessions/gate.sh.
+services:
+  harness-host:
+    environment:
+      WORKOS_HARNESS_SESSION_STATE_ROOT: /var/lib/workos/harness-sessions
+      WORKOS_DEEPSEEK_ENABLED: "true"
+      WORKOS_DEEPSEEK_BASE_URL: http://127.0.0.1:18086
+    volumes:
+      - ${WORKOS_HARNESS_SESSION_STATE_DIR:?}:/var/lib/workos/harness-sessions

@@ -461,3 +461,7 @@ func TestApprovalServiceListPagination(t *testing.T) {
 		}
 	})
 }
+
+func (r *stubRepository) GetTaskByID(ctx context.Context, taskID string) (domain.Task, error) {
+	return domain.Task{}, domain.ErrNotFound
+}
