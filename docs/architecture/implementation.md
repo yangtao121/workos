@@ -3,6 +3,10 @@
 本文把 `docs/structure.md` 的产品愿景映射为可执行边界。愿景与实现冲突时必须先写 ADR，不能在
 业务提交中顺手改变主线。
 
+2026-09-15 的 [V2 中期修订](../structure-v2.md)记录后续设计和路线，尚未改变本文的
+现行实现边界或已接受 ADR；[任务记录](../tasks/20260915-architecture-v2-midterm-review.md)
+列出本次文档检查范围与验证结果。
+
 ## 进程所有权
 
 | 进程             | 当前所有权                                                                                                                                             | 不拥有                     |
@@ -1503,13 +1507,20 @@ return 0 改为 return 42，保留原测试源码与配置；Core/Harness 重启
   门禁（`make test-build-engine`）。
 - Core `RepairVersionService`（私有 Reliability listener）：Register 派生
   staged manifest（仅替换 build source 绑定 + 确定性版本号 patch+1-repair.
-  {task8}，其余字节保留）、Publish 在 canary 后翻转、TransitionCandidate
+  {完整 task UUID hex}，其余字段保留）、Publish 在 canary 后翻转、TransitionCandidate
   精确 staged canary 切换。`app_versions.state`（migration 050）+ 任务映射表；
   owner 可见读取与默认版本选择只看 published。
 - Reliability `BuildCoordinator`：完成 repair task → Core 候选读取 → Runtime
   BuildTest 提交/轮询 → 成功才 Register + DeploymentController.Offer（带
   staged 事实，migration 052 持久化）；失败构建零部署副作用，pending 保留
   轮询。DeploymentDriver 增加 Publish；staged 候选走私有 TransitionCandidate。
+
+2026-09-15 中期静态检查补充：当前 `processexec.Engine.Run` 在返回时清理临时构建目录，
+`GetBuildTestResponse` 没有持久化可部署产物引用；`deriveStagedManifest` 保留原
+`runtime.image`。现有组合门禁证明构建测试命令、候选版本、Surface 创建及台账流转，
+不能据此证明部署后的服务执行了此次构建的新代码。源码、构建产物与运行版本的绑定仍需
+实现，并通过修复前后的真实服务行为验收；参见 V2 的 P3。这是证据边界澄清，没有新增
+功能或本次跨进程验收结论。
 
 ## Remote Browser Pool（ADR-0027，2026-09-08）
 
