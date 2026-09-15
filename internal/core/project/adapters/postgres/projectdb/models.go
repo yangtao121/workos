@@ -45,3 +45,18 @@ type WorkosCoreProjectCreateRequest struct {
 	Result         json.RawMessage    `json:"result"`
 	CreatedAt      pgtype.Timestamptz `json:"created_at"`
 }
+
+type WorkosCoreProjectWorkspaceBinding struct {
+	BindingID         string             `json:"binding_id"`
+	OwnerUserID       string             `json:"owner_user_id"`
+	ProjectID         string             `json:"project_id"`
+	WorkspaceSourceID string             `json:"workspace_source_id"`
+	IdempotencyKey    string             `json:"idempotency_key"`
+	DisplayName       string             `json:"display_name"`
+	ReadOnly          bool               `json:"read_only"`
+	State             string             `json:"state"`
+	Revision          int64              `json:"revision"`
+	CreatedAt         pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt         pgtype.Timestamptz `json:"updated_at"`
+	ArchivedAt        pgtype.Timestamptz `json:"archived_at"`
+}

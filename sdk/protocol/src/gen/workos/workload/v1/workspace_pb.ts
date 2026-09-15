@@ -12,7 +12,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file workos/workload/v1/workspace.proto.
  */
 export const file_workos_workload_v1_workspace: GenFile = /*@__PURE__*/
-  fileDesc("CiJ3b3Jrb3Mvd29ya2xvYWQvdjEvd29ya3NwYWNlLnByb3RvEhJ3b3Jrb3Mud29ya2xvYWQudjEihwEKD1dvcmtzcGFjZVNvdXJjZRIKCgJpZBgBIAEoCRIMCgRraW5kGAIgASgJEhQKDGRpc3BsYXlfbmFtZRgDIAEoCRIRCglyZWFkX29ubHkYBCABKAgSMQoNcmVnaXN0ZXJlZF9hdBgFIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXAiIQofRGVzY3JpYmVXb3Jrc3BhY2VTb3VyY2VzUmVxdWVzdCJYCiBEZXNjcmliZVdvcmtzcGFjZVNvdXJjZXNSZXNwb25zZRI0Cgdzb3VyY2VzGAEgAygLMiMud29ya29zLndvcmtsb2FkLnYxLldvcmtzcGFjZVNvdXJjZSJtChdQcmVwYXJlV29ya3NwYWNlUmVxdWVzdBISCgpiaW5kaW5nX2lkGAEgASgJEhIKCnByb2plY3RfaWQYAiABKAkSGAoQYmluZGluZ19yZXZpc2lvbhgDIAEoAxIQCghjb25zdW1lchgEIAEoCSLdAQoYUHJlcGFyZVdvcmtzcGFjZVJlc3BvbnNlEhYKDmVudmlyb25tZW50X2lkGAEgASgJEhsKE3dvcmtzcGFjZV9zb3VyY2VfaWQYAiABKAkSEQoJcmVhZF9vbmx5GAMgASgIEhgKEGJpbmRpbmdfcmV2aXNpb24YBCABKAMSLwoLcHJlcGFyZWRfYXQYBSABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wEi4KCmV4cGlyZXNfYXQYBiABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wMpECChRXb3Jrc3BhY2VIb3N0U2VydmljZRKHAQoYRGVzY3JpYmVXb3Jrc3BhY2VTb3VyY2VzEjMud29ya29zLndvcmtsb2FkLnYxLkRlc2NyaWJlV29ya3NwYWNlU291cmNlc1JlcXVlc3QaNC53b3Jrb3Mud29ya2xvYWQudjEuRGVzY3JpYmVXb3Jrc3BhY2VTb3VyY2VzUmVzcG9uc2UiABJvChBQcmVwYXJlV29ya3NwYWNlEisud29ya29zLndvcmtsb2FkLnYxLlByZXBhcmVXb3Jrc3BhY2VSZXF1ZXN0Giwud29ya29zLndvcmtsb2FkLnYxLlByZXBhcmVXb3Jrc3BhY2VSZXNwb25zZSIAQkNaQWdpdGh1Yi5jb20veWFuZ3RhbzEyMS93b3Jrb3MvZ2VuL2dvL3dvcmtvcy93b3JrbG9hZC92MTt3b3JrbG9hZHYxYgZwcm90bzM", [file_google_protobuf_timestamp]);
+  fileDesc("CiJ3b3Jrb3Mvd29ya2xvYWQvdjEvd29ya3NwYWNlLnByb3RvEhJ3b3Jrb3Mud29ya2xvYWQudjEihwEKD1dvcmtzcGFjZVNvdXJjZRIKCgJpZBgBIAEoCRIMCgRraW5kGAIgASgJEhQKDGRpc3BsYXlfbmFtZRgDIAEoCRIRCglyZWFkX29ubHkYBCABKAgSMQoNcmVnaXN0ZXJlZF9hdBgFIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXAiIQofRGVzY3JpYmVXb3Jrc3BhY2VTb3VyY2VzUmVxdWVzdCJYCiBEZXNjcmliZVdvcmtzcGFjZVNvdXJjZXNSZXNwb25zZRI0Cgdzb3VyY2VzGAEgAygLMiMud29ya29zLndvcmtsb2FkLnYxLldvcmtzcGFjZVNvdXJjZSI/ChdQcmVwYXJlV29ya3NwYWNlUmVxdWVzdBISCgpwcm9qZWN0X2lkGAEgASgJEhAKCGNvbnN1bWVyGAIgASgJIsMBChhQcmVwYXJlV29ya3NwYWNlUmVzcG9uc2USFgoOZW52aXJvbm1lbnRfaWQYASABKAkSGwoTd29ya3NwYWNlX3NvdXJjZV9pZBgCIAEoCRIRCglyZWFkX29ubHkYAyABKAgSLwoLcHJlcGFyZWRfYXQYBCABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wEi4KCmV4cGlyZXNfYXQYBSABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wMpECChRXb3Jrc3BhY2VIb3N0U2VydmljZRKHAQoYRGVzY3JpYmVXb3Jrc3BhY2VTb3VyY2VzEjMud29ya29zLndvcmtsb2FkLnYxLkRlc2NyaWJlV29ya3NwYWNlU291cmNlc1JlcXVlc3QaNC53b3Jrb3Mud29ya2xvYWQudjEuRGVzY3JpYmVXb3Jrc3BhY2VTb3VyY2VzUmVzcG9uc2UiABJvChBQcmVwYXJlV29ya3NwYWNlEisud29ya29zLndvcmtsb2FkLnYxLlByZXBhcmVXb3Jrc3BhY2VSZXF1ZXN0Giwud29ya29zLndvcmtsb2FkLnYxLlByZXBhcmVXb3Jrc3BhY2VSZXNwb25zZSIAQkNaQWdpdGh1Yi5jb20veWFuZ3RhbzEyMS93b3Jrb3MvZ2VuL2dvL3dvcmtvcy93b3JrbG9hZC92MTt3b3JrbG9hZHYxYgZwcm90bzM", [file_google_protobuf_timestamp]);
 
 /**
  * @generated from message workos.workload.v1.WorkspaceSource
@@ -91,26 +91,19 @@ export const DescribeWorkspaceSourcesResponseSchema: GenMessage<DescribeWorkspac
  */
 export type PrepareWorkspaceRequest = Message<"workos.workload.v1.PrepareWorkspaceRequest"> & {
   /**
-   * The Core-owned binding identity to prepare for execution.
+   * The project whose operator-registered mount to prepare. Owner identity
+   * arrives from the caller's injected headers; Core's binding revision is
+   * validated by Core, not replayed here.
    *
-   * @generated from field: string binding_id = 1;
-   */
-  bindingId: string;
-
-  /**
-   * @generated from field: string project_id = 2;
+   * @generated from field: string project_id = 1;
    */
   projectId: string;
 
   /**
-   * @generated from field: int64 binding_revision = 3;
-   */
-  bindingRevision: bigint;
-
-  /**
-   * Execution roles share one environment vocabulary in this phase.
+   * Execution roles sharing one environment vocabulary in this phase:
+   * harness | terminal | native | files.
    *
-   * @generated from field: string consumer = 4;
+   * @generated from field: string consumer = 2;
    */
   consumer: string;
 };
@@ -146,17 +139,12 @@ export type PrepareWorkspaceResponse = Message<"workos.workload.v1.PrepareWorksp
   readOnly: boolean;
 
   /**
-   * @generated from field: int64 binding_revision = 4;
-   */
-  bindingRevision: bigint;
-
-  /**
-   * @generated from field: google.protobuf.Timestamp prepared_at = 5;
+   * @generated from field: google.protobuf.Timestamp prepared_at = 4;
    */
   preparedAt?: Timestamp | undefined;
 
   /**
-   * @generated from field: google.protobuf.Timestamp expires_at = 6;
+   * @generated from field: google.protobuf.Timestamp expires_at = 5;
    */
   expiresAt?: Timestamp | undefined;
 };
@@ -174,7 +162,7 @@ export const PrepareWorkspaceResponseSchema: GenMessage<PrepareWorkspaceResponse
 export const WorkspaceHostService: GenService<{
   /**
    * DescribeWorkspaceSources lists the operator-configured directories this
-   * runtime host offers as workspace sources.
+   * runtime host offers as workspace sources, scoped to the calling owner.
    *
    * @generated from rpc workos.workload.v1.WorkspaceHostService.DescribeWorkspaceSources
    */
@@ -184,9 +172,9 @@ export const WorkspaceHostService: GenService<{
     output: typeof DescribeWorkspaceSourcesResponseSchema;
   },
   /**
-   * PrepareWorkspace resolves a Core binding into a prepared execution
-   * environment for one consumer. Foreign projects, archived or stale
-   * revisions, and unknown sources fail closed.
+   * PrepareWorkspace resolves the owner's operator-registered mount for the
+   * project into a prepared execution environment for one consumer. Foreign
+   * projects and unknown sources fail closed.
    *
    * @generated from rpc workos.workload.v1.WorkspaceHostService.PrepareWorkspace
    */

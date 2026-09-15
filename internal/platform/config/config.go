@@ -451,6 +451,13 @@ func Load() (Config, error) {
 		cfg.Runtime.BuildTestProcessLimit = value
 	}
 	setString(&cfg.Runtime.DeviceID, "WORKOS_RUNTIME_DEVICE_ID")
+	if raw, ok := os.LookupEnv("WORKOS_RUNTIME_WORKSPACE_MOUNTS"); ok && strings.TrimSpace(raw) != "" {
+		mounts, err := parseWorkspaceMounts(raw)
+		if err != nil {
+			return Config{}, err
+		}
+		cfg.Runtime.WorkspaceMounts = mounts
+	}
 	for _, override := range []struct {
 		key   string
 		dst   *time.Duration
@@ -502,6 +509,36 @@ func Load() (Config, error) {
 		cfg.Auth.DevBypass = value
 	}
 	return cfg, nil
+}
+
+// parseWorkspaceMounts reads the operator workspace mount override:
+// semicolon-separated entries of "owner:project:path[:ro]". Paths with ':'
+// are rejected by the grammar itself; everything must be absolute.
+func parseWorkspaceMounts(raw string) ([]WorkspaceMount, error) {
+	entries := strings.Split(raw, ";")
+	mounts := make([]WorkspaceMount, 0, len(entries))
+	for _, entry := range entries {
+		entry = strings.TrimSpace(entry)
+		if entry == "" {
+			continue
+		}
+		parts := strings.Split(entry, ":")
+		if (len(parts) != 3 && len(parts) != 4) || !strings.HasPrefix(parts[2], "/") {
+			return nil, fmt.Errorf("WORKOS_RUNTIME_WORKSPACE_MOUNTS entries must be owner:project:/abs/path[:ro]")
+		}
+		mount := WorkspaceMount{OwnerUserID: parts[0], ProjectID: parts[1], RootPath: parts[2]}
+		if len(parts) == 4 {
+			switch parts[3] {
+			case "ro":
+				mount.ReadOnly = true
+			case "rw":
+			default:
+				return nil, fmt.Errorf("WORKOS_RUNTIME_WORKSPACE_MOUNTS mode must be ro or rw")
+			}
+		}
+		mounts = append(mounts, mount)
+	}
+	return mounts, nil
 }
 
 func setString(dst *string, key string) {

@@ -23,6 +23,7 @@ type Service struct {
 	engine    ports.Engine
 	generator ids.Generator
 	logger    *slog.Logger
+	workspace ports.WorkspaceResolver
 
 	opMu     sync.Mutex
 	mu       sync.Mutex
@@ -47,8 +48,15 @@ func (s *Service) Facts() ports.EngineFacts { return s.engine.Facts() }
 // Available reports whether new sessions can start right now.
 func (s *Service) Available(ctx context.Context) error { return s.engine.Available(ctx) }
 
-func requestDigest(projectID string, width, height int32) string {
-	sum := sha256.Sum256([]byte(fmt.Sprintf("native:%s:%d:%d", projectID, width, height)))
+// WithWorkspace binds the operator-registered project workspace resolver.
+// Without one the X client starts in the display scratch directory.
+func (s *Service) WithWorkspace(workspace ports.WorkspaceResolver) *Service {
+	s.workspace = workspace
+	return s
+}
+
+func requestDigest(projectID string, width, height int32, workingDirectory string) string {
+	sum := sha256.Sum256([]byte(fmt.Sprintf("native:%s:%d:%d:%s", projectID, width, height, workingDirectory)))
 	return "sha256:" + hex.EncodeToString(sum[:])
 }
 
@@ -59,7 +67,13 @@ func (s *Service) Create(ctx context.Context, ownerUserID, projectID, idempotenc
 	if !domain.ValidUUIDv7(ownerUserID) || !domain.ValidUUIDv7(projectID) || idempotencyKey == "" || len(idempotencyKey) > 128 || !domain.ValidSize(width, height) {
 		return domain.Session{}, domain.ErrInvalid
 	}
-	digest := requestDigest(projectID, width, height)
+	workingDirectory := ""
+	if s.workspace != nil {
+		if dir, ok := s.workspace.WorkingDirectory(ownerUserID, projectID); ok {
+			workingDirectory = dir
+		}
+	}
+	digest := requestDigest(projectID, width, height, workingDirectory)
 	now := time.Now().UTC().Truncate(time.Microsecond)
 	session := domain.Session{
 		SessionID: s.generator.New(), OwnerUserID: ownerUserID, ProjectID: projectID,
@@ -111,7 +125,7 @@ func (s *Service) Create(ctx context.Context, ownerUserID, projectID, idempotenc
 		}
 		return domain.Session{}, domain.ErrEngineUnavailable
 	}
-	display, err := s.engine.Launch(ctx, width, height)
+	display, err := s.engine.Launch(ctx, width, height, workingDirectory)
 	if err != nil {
 		release()
 		s.logger.Warn("native display launch failed", "error", err)

@@ -94,6 +94,7 @@ var publicServicePrefixes = []string{
 	"/workos.notification.v1.NotificationService/",
 	"/workos.project.v1.ProjectHarnessBindingService/",
 	"/workos.project.v1.ProjectService/",
+	"/workos.project.v1.ProjectWorkspaceService/",
 }
 
 // runtimeServicePrefixes are the only public services routed to the Runtime

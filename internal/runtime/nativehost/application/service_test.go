@@ -180,7 +180,7 @@ func (f *fakeEngine) Reserve() (func(), error) {
 	}, nil
 }
 
-func (f *fakeEngine) Launch(_ context.Context, width, height int32) (ports.Display, error) {
+func (f *fakeEngine) Launch(_ context.Context, width, height int32, _ string) (ports.Display, error) {
 	f.mu.Lock()
 	if f.failNext {
 		f.mu.Unlock()

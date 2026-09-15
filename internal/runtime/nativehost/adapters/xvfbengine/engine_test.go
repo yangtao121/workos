@@ -97,7 +97,7 @@ func TestRealEngineLifecycle(t *testing.T) {
 		t.Fatal(err)
 	}
 	for range 3 {
-		value, err := e.Launch(ctx, 640, 480)
+		value, err := e.Launch(ctx, 640, 480, "")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -116,14 +116,14 @@ func TestRealEngineLifecycle(t *testing.T) {
 	// Executable present but launch failure / early exit must never serve an empty root.
 	for _, client := range []string{"/bin/false", filepath.Join(scratch, "missing-client")} {
 		e.Client = []string{client}
-		if value, err := e.Launch(ctx, 640, 480); err == nil {
+		if value, err := e.Launch(ctx, 640, 480, ""); err == nil {
 			value.Stop()
 			t.Fatal("failed client reported running")
 		}
 	}
 	e.Client = []string{"xterm"}
 	e.FFmpeg = "/bin/false"
-	if value, err := e.Launch(ctx, 640, 480); err == nil {
+	if value, err := e.Launch(ctx, 640, 480, ""); err == nil {
 		value.Stop()
 		t.Fatal("failed encoder reported running")
 	}

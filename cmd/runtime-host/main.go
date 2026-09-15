@@ -52,6 +52,8 @@ import (
 	workloadapp "github.com/yangtao121/workos/internal/runtime/workload/application"
 	workloadports "github.com/yangtao121/workos/internal/runtime/workload/ports"
 	workloadtransport "github.com/yangtao121/workos/internal/runtime/workload/transport"
+	workspacehostapp "github.com/yangtao121/workos/internal/runtime/workspacehost/application"
+	workspacehosttransport "github.com/yangtao121/workos/internal/runtime/workspacehost/transport"
 )
 
 func main() {
@@ -301,6 +303,18 @@ func run(logger *slog.Logger) error {
 		surfaceService.WithWorkspace(workspace)
 		bridgeService.WithWorkspace(workspace)
 	}
+	// The workspace host service (ADR-0030): operator-registered sources and
+	// prepared execution environments for terminals, native runners, and the
+	// harness. Private to the runtime listener; never on the gateway
+	// allowlist.
+	var workspaceHost *workspacehostapp.Service
+	if workspaceHostService, workspaceHostErr := workspacehostapp.New(time.Now().UTC(), cfg.Runtime.WorkspaceMounts); workspaceHostErr != nil {
+		logger.Warn("workspace host service unavailable", "error", workspaceHostErr)
+	} else {
+		workspaceHost = workspaceHostService
+		workspaceHostPath, workspaceHostHandler := workspacehosttransport.NewWorkspaceHostHandler(workspaceHost, time.Now)
+		mux.Handle(workspaceHostPath, identity.Middleware(workspaceHostHandler))
+	}
 	bridgePath, bridgeHandler := surfacetransport.NewBridgeConnectHandler(bridgeService)
 	mux.Handle(bridgePath, identity.Middleware(bridgeHandler))
 	// The asset route is served ahead of the ServeMux: mux path cleaning
@@ -361,6 +375,9 @@ func run(logger *slog.Logger) error {
 		if serviceErr != nil {
 			return serviceErr
 		}
+		if workspaceHost != nil {
+			ptyService.WithWorkspace(workspaceHost)
+		}
 		ptyPath, ptyHandler := ptyhosttransport.NewPtyHandler(ptyService)
 		mux.Handle(ptyPath, identity.Middleware(ptyHandler))
 		ptyStop := make(chan struct{})
@@ -395,6 +412,9 @@ func run(logger *slog.Logger) error {
 		nativeService, serviceErr := nativehostapp.NewService(nativehostpostgres.New(pool), nativeEngine, generator, logger)
 		if serviceErr != nil {
 			return serviceErr
+		}
+		if workspaceHost != nil {
+			nativeService.WithWorkspace(workspaceHost)
 		}
 		if err := nativeService.Sweep(ctx); err != nil {
 			return err

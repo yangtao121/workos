@@ -108,6 +108,32 @@ func (q *Queries) ArchiveProject(ctx context.Context, arg ArchiveProjectParams) 
 	return i, err
 }
 
+const archiveWorkspaceBinding = `-- name: ArchiveWorkspaceBinding :execrows
+UPDATE workos_core.project_workspace_bindings
+SET state = 'archived', revision = revision + 1, updated_at = $3, archived_at = $3
+WHERE owner_user_id = $1 AND binding_id = $2 AND state = 'active' AND revision = $4
+`
+
+type ArchiveWorkspaceBindingParams struct {
+	OwnerUserID string             `json:"owner_user_id"`
+	BindingID   string             `json:"binding_id"`
+	UpdatedAt   pgtype.Timestamptz `json:"updated_at"`
+	Revision    int64              `json:"revision"`
+}
+
+func (q *Queries) ArchiveWorkspaceBinding(ctx context.Context, arg ArchiveWorkspaceBindingParams) (int64, error) {
+	result, err := q.db.Exec(ctx, archiveWorkspaceBinding,
+		arg.OwnerUserID,
+		arg.BindingID,
+		arg.UpdatedAt,
+		arg.Revision,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const getActiveInstallationByApp = `-- name: GetActiveInstallationByApp :one
 SELECT id, owner_user_id, project_id, app_id, version, manifest_digest, granted_permissions, grant_revision, installed_at, uninstalled_at
 FROM workos_core.project_app_installations
@@ -146,6 +172,38 @@ func (q *Queries) GetActiveInstallationByApp(ctx context.Context, arg GetActiveI
 		&i.GrantRevision,
 		&i.InstalledAt,
 		&i.UninstalledAt,
+	)
+	return i, err
+}
+
+const getActiveWorkspaceBindingForProject = `-- name: GetActiveWorkspaceBindingForProject :one
+SELECT binding_id, owner_user_id, project_id, workspace_source_id, idempotency_key,
+       display_name, read_only, state, revision, created_at, updated_at, archived_at
+FROM workos_core.project_workspace_bindings
+WHERE owner_user_id = $1 AND project_id = $2 AND state = 'active'
+`
+
+type GetActiveWorkspaceBindingForProjectParams struct {
+	OwnerUserID string `json:"owner_user_id"`
+	ProjectID   string `json:"project_id"`
+}
+
+func (q *Queries) GetActiveWorkspaceBindingForProject(ctx context.Context, arg GetActiveWorkspaceBindingForProjectParams) (WorkosCoreProjectWorkspaceBinding, error) {
+	row := q.db.QueryRow(ctx, getActiveWorkspaceBindingForProject, arg.OwnerUserID, arg.ProjectID)
+	var i WorkosCoreProjectWorkspaceBinding
+	err := row.Scan(
+		&i.BindingID,
+		&i.OwnerUserID,
+		&i.ProjectID,
+		&i.WorkspaceSourceID,
+		&i.IdempotencyKey,
+		&i.DisplayName,
+		&i.ReadOnly,
+		&i.State,
+		&i.Revision,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.ArchivedAt,
 	)
 	return i, err
 }
@@ -328,6 +386,70 @@ func (q *Queries) GetProjectByIdempotency(ctx context.Context, arg GetProjectByI
 		&i.DefaultAgentRole,
 		&i.KnowledgeCollectionID,
 		&i.ArtifactCollectionID,
+		&i.Revision,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.ArchivedAt,
+	)
+	return i, err
+}
+
+const getWorkspaceBinding = `-- name: GetWorkspaceBinding :one
+SELECT binding_id, owner_user_id, project_id, workspace_source_id, idempotency_key,
+       display_name, read_only, state, revision, created_at, updated_at, archived_at
+FROM workos_core.project_workspace_bindings
+WHERE owner_user_id = $1 AND binding_id = $2
+`
+
+type GetWorkspaceBindingParams struct {
+	OwnerUserID string `json:"owner_user_id"`
+	BindingID   string `json:"binding_id"`
+}
+
+func (q *Queries) GetWorkspaceBinding(ctx context.Context, arg GetWorkspaceBindingParams) (WorkosCoreProjectWorkspaceBinding, error) {
+	row := q.db.QueryRow(ctx, getWorkspaceBinding, arg.OwnerUserID, arg.BindingID)
+	var i WorkosCoreProjectWorkspaceBinding
+	err := row.Scan(
+		&i.BindingID,
+		&i.OwnerUserID,
+		&i.ProjectID,
+		&i.WorkspaceSourceID,
+		&i.IdempotencyKey,
+		&i.DisplayName,
+		&i.ReadOnly,
+		&i.State,
+		&i.Revision,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.ArchivedAt,
+	)
+	return i, err
+}
+
+const getWorkspaceBindingByIdempotency = `-- name: GetWorkspaceBindingByIdempotency :one
+SELECT binding_id, owner_user_id, project_id, workspace_source_id, idempotency_key,
+       display_name, read_only, state, revision, created_at, updated_at, archived_at
+FROM workos_core.project_workspace_bindings
+WHERE owner_user_id = $1 AND idempotency_key = $2
+`
+
+type GetWorkspaceBindingByIdempotencyParams struct {
+	OwnerUserID    string `json:"owner_user_id"`
+	IdempotencyKey string `json:"idempotency_key"`
+}
+
+func (q *Queries) GetWorkspaceBindingByIdempotency(ctx context.Context, arg GetWorkspaceBindingByIdempotencyParams) (WorkosCoreProjectWorkspaceBinding, error) {
+	row := q.db.QueryRow(ctx, getWorkspaceBindingByIdempotency, arg.OwnerUserID, arg.IdempotencyKey)
+	var i WorkosCoreProjectWorkspaceBinding
+	err := row.Scan(
+		&i.BindingID,
+		&i.OwnerUserID,
+		&i.ProjectID,
+		&i.WorkspaceSourceID,
+		&i.IdempotencyKey,
+		&i.DisplayName,
+		&i.ReadOnly,
+		&i.State,
 		&i.Revision,
 		&i.CreatedAt,
 		&i.UpdatedAt,
@@ -573,6 +695,42 @@ func (q *Queries) InsertProjectOutbox(ctx context.Context, arg InsertProjectOutb
 	return err
 }
 
+const insertWorkspaceBinding = `-- name: InsertWorkspaceBinding :execrows
+INSERT INTO workos_core.project_workspace_bindings (
+    binding_id, owner_user_id, project_id, workspace_source_id, idempotency_key,
+    display_name, read_only, state, revision, created_at, updated_at
+) VALUES ($1, $2, $3, $4, $5, $6, $7, 'active', 1, $8, $8)
+ON CONFLICT (owner_user_id, idempotency_key) DO NOTHING
+`
+
+type InsertWorkspaceBindingParams struct {
+	BindingID         string             `json:"binding_id"`
+	OwnerUserID       string             `json:"owner_user_id"`
+	ProjectID         string             `json:"project_id"`
+	WorkspaceSourceID string             `json:"workspace_source_id"`
+	IdempotencyKey    string             `json:"idempotency_key"`
+	DisplayName       string             `json:"display_name"`
+	ReadOnly          bool               `json:"read_only"`
+	CreatedAt         pgtype.Timestamptz `json:"created_at"`
+}
+
+func (q *Queries) InsertWorkspaceBinding(ctx context.Context, arg InsertWorkspaceBindingParams) (int64, error) {
+	result, err := q.db.Exec(ctx, insertWorkspaceBinding,
+		arg.BindingID,
+		arg.OwnerUserID,
+		arg.ProjectID,
+		arg.WorkspaceSourceID,
+		arg.IdempotencyKey,
+		arg.DisplayName,
+		arg.ReadOnly,
+		arg.CreatedAt,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const listActiveInstallations = `-- name: ListActiveInstallations :many
 SELECT id, owner_user_id, project_id, app_id, version, manifest_digest, granted_permissions, grant_revision, installed_at, uninstalled_at
 FROM workos_core.project_app_installations
@@ -762,6 +920,52 @@ func (q *Queries) ListProjects(ctx context.Context, arg ListProjectsParams) ([]W
 			&i.DefaultAgentRole,
 			&i.KnowledgeCollectionID,
 			&i.ArtifactCollectionID,
+			&i.Revision,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.ArchivedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listWorkspaceBindings = `-- name: ListWorkspaceBindings :many
+SELECT binding_id, owner_user_id, project_id, workspace_source_id, idempotency_key,
+       display_name, read_only, state, revision, created_at, updated_at, archived_at
+FROM workos_core.project_workspace_bindings
+WHERE owner_user_id = $1 AND project_id = $2
+ORDER BY created_at DESC, binding_id
+`
+
+type ListWorkspaceBindingsParams struct {
+	OwnerUserID string `json:"owner_user_id"`
+	ProjectID   string `json:"project_id"`
+}
+
+func (q *Queries) ListWorkspaceBindings(ctx context.Context, arg ListWorkspaceBindingsParams) ([]WorkosCoreProjectWorkspaceBinding, error) {
+	rows, err := q.db.Query(ctx, listWorkspaceBindings, arg.OwnerUserID, arg.ProjectID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []WorkosCoreProjectWorkspaceBinding
+	for rows.Next() {
+		var i WorkosCoreProjectWorkspaceBinding
+		if err := rows.Scan(
+			&i.BindingID,
+			&i.OwnerUserID,
+			&i.ProjectID,
+			&i.WorkspaceSourceID,
+			&i.IdempotencyKey,
+			&i.DisplayName,
+			&i.ReadOnly,
+			&i.State,
 			&i.Revision,
 			&i.CreatedAt,
 			&i.UpdatedAt,
@@ -1166,4 +1370,32 @@ func (q *Queries) UpdateProject(ctx context.Context, arg UpdateProjectParams) (W
 		&i.ArchivedAt,
 	)
 	return i, err
+}
+
+const updateWorkspaceAccess = `-- name: UpdateWorkspaceAccess :execrows
+UPDATE workos_core.project_workspace_bindings
+SET read_only = $3, revision = revision + 1, updated_at = $4
+WHERE owner_user_id = $1 AND binding_id = $2 AND state = 'active' AND revision = $5
+`
+
+type UpdateWorkspaceAccessParams struct {
+	OwnerUserID string             `json:"owner_user_id"`
+	BindingID   string             `json:"binding_id"`
+	ReadOnly    bool               `json:"read_only"`
+	UpdatedAt   pgtype.Timestamptz `json:"updated_at"`
+	Revision    int64              `json:"revision"`
+}
+
+func (q *Queries) UpdateWorkspaceAccess(ctx context.Context, arg UpdateWorkspaceAccessParams) (int64, error) {
+	result, err := q.db.Exec(ctx, updateWorkspaceAccess,
+		arg.OwnerUserID,
+		arg.BindingID,
+		arg.ReadOnly,
+		arg.UpdatedAt,
+		arg.Revision,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }

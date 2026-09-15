@@ -1134,6 +1134,13 @@ test-browser-pool:
 test-terminal-sessions:
 	@set -eu; sh tools/terminal-sessions/gate.sh
 
+# The workspace execution gate (ADR-0030): one real git repository shared by
+# the owner's terminal and the host file view. pwd, git identity, and
+# bidirectional file flow resolve against the real disk tree.
+.PHONY: test-workspace-execution
+test-workspace-execution:
+	@set -eu; sh tools/workspace-execution/gate.sh
+
 # The virtual-display native runner gate (ADR-0029): real Xvfb displays with
 # ffmpeg x11grab/VP8 capture and loopback WebRTC video, data-channel input
 # through xdotool XTEST, driven by a Go peer and the real desktop Native

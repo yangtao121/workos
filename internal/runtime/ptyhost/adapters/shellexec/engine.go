@@ -92,15 +92,22 @@ type terminal struct {
 	logger  *slog.Logger
 }
 
-func (e *Engine) Launch(ctx context.Context, columns, rows int32) (ports.Terminal, error) {
+func (e *Engine) Launch(ctx context.Context, columns, rows int32, workingDirectory string) (ports.Terminal, error) {
 	if !domain.ValidSize(columns, rows) {
 		return nil, domain.ErrInvalid
+	}
+	if workingDirectory != "" {
+		info, err := os.Stat(workingDirectory)
+		if err != nil || !info.IsDir() {
+			return nil, domain.ErrInvalid
+		}
 	}
 	// The child outlives the admitting request; the done-channel monitor
 	// below releases the run context when the shell is reaped, so no path
 	// leaks it. Stop/Sweep still own the process lifetime.
 	runCtx, cancel := context.WithCancel(context.WithoutCancel(ctx))
 	cmd := exec.CommandContext(runCtx, e.Shell)
+	cmd.Dir = workingDirectory
 	cmd.Env = []string{"HOME=/tmp", "PATH=/usr/local/bin:/usr/bin:/bin", "LANG=C.UTF-8", "TERM=xterm-256color", "PS1=$ "}
 	// The pty library's start path adds Setsid+Setctty; Setpgid here would
 	// make the child its own group leader first and setsid would EPERM.

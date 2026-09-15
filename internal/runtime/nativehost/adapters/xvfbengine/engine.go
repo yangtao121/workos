@@ -157,9 +157,15 @@ type display struct {
 	inputDropped int64
 }
 
-func (e *Engine) Launch(ctx context.Context, width, height int32) (ports.Display, error) {
+func (e *Engine) Launch(ctx context.Context, width, height int32, workingDirectory string) (ports.Display, error) {
 	if !domain.ValidSize(width, height) {
 		return nil, domain.ErrInvalid
+	}
+	if workingDirectory != "" {
+		info, err := os.Stat(workingDirectory)
+		if err != nil || !info.IsDir() {
+			return nil, domain.ErrInvalid
+		}
 	}
 	e.launchMu.Lock()
 	defer e.launchMu.Unlock()
@@ -204,6 +210,7 @@ func (e *Engine) Launch(ctx context.Context, width, height int32) (ports.Display
 		return nil, err
 	}
 	client := exec.Command(e.Client[0], e.Client[1:]...)
+	client.Dir = workingDirectory
 	client.Env = env
 	client.SysProcAttr = &syscall.SysProcAttr{Setpgid: true, Pgid: xvfb.Process.Pid, Pdeathsig: syscall.SIGKILL}
 	d.clientCm = client

@@ -42,10 +42,20 @@ type Terminal interface {
 	Stop()
 }
 
+// WorkspaceResolver resolves the operator-registered working directory of
+// one owner's project. The bool reports whether a workspace is bound; the
+// path is always server-derived (ADR-0030).
+type WorkspaceResolver interface {
+	WorkingDirectory(ownerUserID, projectID string) (string, bool)
+}
+
 // Engine launches one supervised login shell per session.
 type Engine interface {
 	Facts() EngineFacts
 	Available(ctx context.Context) error
 	Reserve() (release func(), err error)
-	Launch(ctx context.Context, columns, rows int32) (Terminal, error)
+	// Launch starts one supervised shell. A non-empty working directory
+	// must be an operator-registered workspace root resolved by the
+	// application layer, never client input.
+	Launch(ctx context.Context, columns, rows int32, workingDirectory string) (Terminal, error)
 }

@@ -183,12 +183,13 @@ func (x *DescribeWorkspaceSourcesResponse) GetSources() []*WorkspaceSource {
 
 type PrepareWorkspaceRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// The Core-owned binding identity to prepare for execution.
-	BindingId       string `protobuf:"bytes,1,opt,name=binding_id,json=bindingId,proto3" json:"binding_id,omitempty"`
-	ProjectId       string `protobuf:"bytes,2,opt,name=project_id,json=projectId,proto3" json:"project_id,omitempty"`
-	BindingRevision int64  `protobuf:"varint,3,opt,name=binding_revision,json=bindingRevision,proto3" json:"binding_revision,omitempty"`
-	// Execution roles share one environment vocabulary in this phase.
-	Consumer      string `protobuf:"bytes,4,opt,name=consumer,proto3" json:"consumer,omitempty"`
+	// The project whose operator-registered mount to prepare. Owner identity
+	// arrives from the caller's injected headers; Core's binding revision is
+	// validated by Core, not replayed here.
+	ProjectId string `protobuf:"bytes,1,opt,name=project_id,json=projectId,proto3" json:"project_id,omitempty"`
+	// Execution roles sharing one environment vocabulary in this phase:
+	// harness | terminal | native | files.
+	Consumer      string `protobuf:"bytes,2,opt,name=consumer,proto3" json:"consumer,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -223,25 +224,11 @@ func (*PrepareWorkspaceRequest) Descriptor() ([]byte, []int) {
 	return file_workos_workload_v1_workspace_proto_rawDescGZIP(), []int{3}
 }
 
-func (x *PrepareWorkspaceRequest) GetBindingId() string {
-	if x != nil {
-		return x.BindingId
-	}
-	return ""
-}
-
 func (x *PrepareWorkspaceRequest) GetProjectId() string {
 	if x != nil {
 		return x.ProjectId
 	}
 	return ""
-}
-
-func (x *PrepareWorkspaceRequest) GetBindingRevision() int64 {
-	if x != nil {
-		return x.BindingRevision
-	}
-	return 0
 }
 
 func (x *PrepareWorkspaceRequest) GetConsumer() string {
@@ -259,9 +246,8 @@ type PrepareWorkspaceResponse struct {
 	EnvironmentId     string                 `protobuf:"bytes,1,opt,name=environment_id,json=environmentId,proto3" json:"environment_id,omitempty"`
 	WorkspaceSourceId string                 `protobuf:"bytes,2,opt,name=workspace_source_id,json=workspaceSourceId,proto3" json:"workspace_source_id,omitempty"`
 	ReadOnly          bool                   `protobuf:"varint,3,opt,name=read_only,json=readOnly,proto3" json:"read_only,omitempty"`
-	BindingRevision   int64                  `protobuf:"varint,4,opt,name=binding_revision,json=bindingRevision,proto3" json:"binding_revision,omitempty"`
-	PreparedAt        *timestamppb.Timestamp `protobuf:"bytes,5,opt,name=prepared_at,json=preparedAt,proto3" json:"prepared_at,omitempty"`
-	ExpiresAt         *timestamppb.Timestamp `protobuf:"bytes,6,opt,name=expires_at,json=expiresAt,proto3" json:"expires_at,omitempty"`
+	PreparedAt        *timestamppb.Timestamp `protobuf:"bytes,4,opt,name=prepared_at,json=preparedAt,proto3" json:"prepared_at,omitempty"`
+	ExpiresAt         *timestamppb.Timestamp `protobuf:"bytes,5,opt,name=expires_at,json=expiresAt,proto3" json:"expires_at,omitempty"`
 	unknownFields     protoimpl.UnknownFields
 	sizeCache         protoimpl.SizeCache
 }
@@ -317,13 +303,6 @@ func (x *PrepareWorkspaceResponse) GetReadOnly() bool {
 	return false
 }
 
-func (x *PrepareWorkspaceResponse) GetBindingRevision() int64 {
-	if x != nil {
-		return x.BindingRevision
-	}
-	return 0
-}
-
 func (x *PrepareWorkspaceResponse) GetPreparedAt() *timestamppb.Timestamp {
 	if x != nil {
 		return x.PreparedAt
@@ -351,23 +330,19 @@ const file_workos_workload_v1_workspace_proto_rawDesc = "" +
 	"\rregistered_at\x18\x05 \x01(\v2\x1a.google.protobuf.TimestampR\fregisteredAt\"!\n" +
 	"\x1fDescribeWorkspaceSourcesRequest\"a\n" +
 	" DescribeWorkspaceSourcesResponse\x12=\n" +
-	"\asources\x18\x01 \x03(\v2#.workos.workload.v1.WorkspaceSourceR\asources\"\x9e\x01\n" +
+	"\asources\x18\x01 \x03(\v2#.workos.workload.v1.WorkspaceSourceR\asources\"T\n" +
 	"\x17PrepareWorkspaceRequest\x12\x1d\n" +
 	"\n" +
-	"binding_id\x18\x01 \x01(\tR\tbindingId\x12\x1d\n" +
-	"\n" +
-	"project_id\x18\x02 \x01(\tR\tprojectId\x12)\n" +
-	"\x10binding_revision\x18\x03 \x01(\x03R\x0fbindingRevision\x12\x1a\n" +
-	"\bconsumer\x18\x04 \x01(\tR\bconsumer\"\xb1\x02\n" +
+	"project_id\x18\x01 \x01(\tR\tprojectId\x12\x1a\n" +
+	"\bconsumer\x18\x02 \x01(\tR\bconsumer\"\x86\x02\n" +
 	"\x18PrepareWorkspaceResponse\x12%\n" +
 	"\x0eenvironment_id\x18\x01 \x01(\tR\renvironmentId\x12.\n" +
 	"\x13workspace_source_id\x18\x02 \x01(\tR\x11workspaceSourceId\x12\x1b\n" +
-	"\tread_only\x18\x03 \x01(\bR\breadOnly\x12)\n" +
-	"\x10binding_revision\x18\x04 \x01(\x03R\x0fbindingRevision\x12;\n" +
-	"\vprepared_at\x18\x05 \x01(\v2\x1a.google.protobuf.TimestampR\n" +
+	"\tread_only\x18\x03 \x01(\bR\breadOnly\x12;\n" +
+	"\vprepared_at\x18\x04 \x01(\v2\x1a.google.protobuf.TimestampR\n" +
 	"preparedAt\x129\n" +
 	"\n" +
-	"expires_at\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampR\texpiresAt2\x91\x02\n" +
+	"expires_at\x18\x05 \x01(\v2\x1a.google.protobuf.TimestampR\texpiresAt2\x91\x02\n" +
 	"\x14WorkspaceHostService\x12\x87\x01\n" +
 	"\x18DescribeWorkspaceSources\x123.workos.workload.v1.DescribeWorkspaceSourcesRequest\x1a4.workos.workload.v1.DescribeWorkspaceSourcesResponse\"\x00\x12o\n" +
 	"\x10PrepareWorkspace\x12+.workos.workload.v1.PrepareWorkspaceRequest\x1a,.workos.workload.v1.PrepareWorkspaceResponse\"\x00BCZAgithub.com/yangtao121/workos/gen/go/workos/workload/v1;workloadv1b\x06proto3"

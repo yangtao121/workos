@@ -11,7 +11,7 @@
 ------ | ---- | ---- | -------------- | -------- | -------------- | ------------ | ---------------
 B00 | done | — | `docs/architecture/v2-harness-workspace-baseline.md`（本分支首个提交） | A01 | 见下"B00 证据" | 基线文档 + tmp/b00 探测脚本输出 | 上游无 wire 级 session resume；B03 采用"每会话常驻官方 runtime 进程 + jsonl 持久化"
 B01 | done | B00 | ADR-0030/0031；`api/proto/workos/agent/v1/session.proto`、`project/v1/workspace.proto`、`workload/v1/workspace.proto`、`surface/v1/continuity.proto`；native/pty 新增 Detach；migration 057–059；domain 状态机（core agent session、runtime surface continuity） | 契约层 | `buf lint` 通过；`go build ./...`、`go vet`、`go test ./internal/core/agent/... ./internal/runtime/surface/... ./internal/runtime/{ptyhost,nativehost}/...` 全绿 | ADR + 契约 + migration + 状态机测试 | B02 起按新契约实现持久化与业务链路
-B02 | in_progress | B00、B01 | — | A02、A03 | — | — | —
+B02 | done | B00、B01 | runtime `workspacehost`（sources/Prepare + 私有 WorkspaceHostService）；PTY/Native 引擎接工作目录（幂等摘要含目录）；Core `ProjectWorkspaceService` + migration 058 + workspaceclient；`WORKOS_RUNTIME_WORKSPACE_MOUNTS` 环境覆盖；`tools/workspace-execution` 门禁 | A02、A03（PTY/files 侧；harness 侧 B03） | `sh tools/workspace-execution/gate.sh` → PASS（PWD=注册目录、git HEAD 一致、marker 双向、shell 写入落盘、host 写入 shell 可读、archive 后无 active）；`go test ./internal/runtime/ptyhost/adapters/shellexec ./internal/runtime/workspacehost/... ./internal/core/project/...` 全绿 | gate 日志 tmp/gate-ws.log + 门禁脚本 | 容器无 git 二进制（已记录，读取 .git 文件验证；开发工具链镜像留 B08）
 B03 | todo | B00–B02 | — | A04–A07 | — | — | —
 B04 | todo | B01–B03 | — | A08、A09 | — | — | —
 B05 | todo | B01、B03、B04 | — | A17（部分） | — | — | —
@@ -43,12 +43,12 @@ B10 | todo | 其余包 | — | A18 | — | — | —
 
 ## 恢复入口
 
-- 当前包：B02（真实开发工作区）。
-- 已完成动作：B00 基线（f9cffa8）；B01 契约（ADR-0030/0031、四个新 proto、
-  migration 057–059、domain 状态机与测试、native/pty Detach 实现与测试）。
-- 正在运行的进程/日志：无。
-- 下一条具体动作：B02——Core workspace binding 持久化 + runtime workspace source
-  注册/PrepareWorkspace + 隔离边界验收。
+- 当前包：B03（DeepSeek 原生会话与真实文件/命令工具）。
+- 已完成动作：B00（f9cffa8）、B01（c0e28bc）、B02（workspacehost + binding +
+  PTY/Native 工作目录 + 门禁 PASS）。
+- 正在运行的进程/日志：无（workspace-execution 门禁已清理）。
+- 下一条具体动作：B03——harness-host 会话管理器（每会话常驻官方 runtime 进程）、
+  DeepSeek adapter 官方 base 组合（工具+持久化）、AgentSession Core 实现。
 - 阻塞：无。
 
 ## 验收矩阵（A01–A18）
@@ -58,4 +58,6 @@ B10 | todo | 其余包 | — | A18 | — | — | —
 | 编号 | 状态 | 证据 |
 | ---- | ---- | ---- |
 | A01 | pass（软件侧） | 基线文档能力矩阵 + 动态探测记录（tmp/b00 摘要已写入基线文档） |
-| A02–A18 | todo | — |
+| A02 | pass（软件侧，PTY+files+真实磁盘） | tools/workspace-execution/gate.sh PASS |
+| A03 | pass（软件侧） | store_linux_test（openat2 越界/只读）+ workspacehost 单测 + binding 归档/revision 测试 |
+| A04–A18 | todo | — |

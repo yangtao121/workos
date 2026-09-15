@@ -53,10 +53,20 @@ type Display interface {
 	Stop()
 }
 
+// WorkspaceResolver resolves the operator-registered working directory of
+// one owner's project. The bool reports whether a workspace is bound; the
+// path is always server-derived (ADR-0030).
+type WorkspaceResolver interface {
+	WorkingDirectory(ownerUserID, projectID string) (string, bool)
+}
+
 // Engine launches and supervises one virtual display per session.
 type Engine interface {
 	Facts() EngineFacts
 	Available(ctx context.Context) error
 	Reserve() (release func(), err error)
-	Launch(ctx context.Context, width, height int32) (Display, error)
+	// Launch starts one supervised display. A non-empty working directory
+	// must be an operator-registered workspace root resolved by the
+	// application layer, never client input.
+	Launch(ctx context.Context, width, height int32, workingDirectory string) (Display, error)
 }

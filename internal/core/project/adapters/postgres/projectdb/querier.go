@@ -12,12 +12,16 @@ type Querier interface {
 	ActiveInstallationAppIDs(ctx context.Context, projectID string) ([]string, error)
 	ApplyInstallationProjection(ctx context.Context, arg ApplyInstallationProjectionParams) (ApplyInstallationProjectionRow, error)
 	ArchiveProject(ctx context.Context, arg ArchiveProjectParams) (WorkosCoreProject, error)
+	ArchiveWorkspaceBinding(ctx context.Context, arg ArchiveWorkspaceBindingParams) (int64, error)
 	GetActiveInstallationByApp(ctx context.Context, arg GetActiveInstallationByAppParams) (GetActiveInstallationByAppRow, error)
+	GetActiveWorkspaceBindingForProject(ctx context.Context, arg GetActiveWorkspaceBindingForProjectParams) (WorkosCoreProjectWorkspaceBinding, error)
 	GetCreateRequest(ctx context.Context, arg GetCreateRequestParams) (WorkosCoreProjectCreateRequest, error)
 	GetInstallationById(ctx context.Context, arg GetInstallationByIdParams) (GetInstallationByIdRow, error)
 	GetInstallationRequest(ctx context.Context, arg GetInstallationRequestParams) (GetInstallationRequestRow, error)
 	GetProject(ctx context.Context, arg GetProjectParams) (WorkosCoreProject, error)
 	GetProjectByIdempotency(ctx context.Context, arg GetProjectByIdempotencyParams) (WorkosCoreProject, error)
+	GetWorkspaceBinding(ctx context.Context, arg GetWorkspaceBindingParams) (WorkosCoreProjectWorkspaceBinding, error)
+	GetWorkspaceBindingByIdempotency(ctx context.Context, arg GetWorkspaceBindingByIdempotencyParams) (WorkosCoreProjectWorkspaceBinding, error)
 	InsertCreateRequest(ctx context.Context, arg InsertCreateRequestParams) (int64, error)
 	InsertInstallation(ctx context.Context, arg InsertInstallationParams) error
 	InsertInstallationRequest(ctx context.Context, arg InsertInstallationRequestParams) (int64, error)
@@ -25,10 +29,12 @@ type Querier interface {
 	InsertProject(ctx context.Context, arg InsertProjectParams) (int64, error)
 	InsertProjectEvent(ctx context.Context, arg InsertProjectEventParams) error
 	InsertProjectOutbox(ctx context.Context, arg InsertProjectOutboxParams) error
+	InsertWorkspaceBinding(ctx context.Context, arg InsertWorkspaceBindingParams) (int64, error)
 	ListActiveInstallations(ctx context.Context, arg ListActiveInstallationsParams) ([]ListActiveInstallationsRow, error)
 	ListInstallationVersionsAsc(ctx context.Context, installationID string) ([]WorkosCoreProjectAppInstallationVersion, error)
 	ListInstallationVersionsPage(ctx context.Context, arg ListInstallationVersionsPageParams) ([]WorkosCoreProjectAppInstallationVersion, error)
 	ListProjects(ctx context.Context, arg ListProjectsParams) ([]WorkosCoreProject, error)
+	ListWorkspaceBindings(ctx context.Context, arg ListWorkspaceBindingsParams) ([]WorkosCoreProjectWorkspaceBinding, error)
 	LockProjectForInstallation(ctx context.Context, arg LockProjectForInstallationParams) (LockProjectForInstallationRow, error)
 	LockProjectForNotification(ctx context.Context, arg LockProjectForNotificationParams) (string, error)
 	NextInstallationVersionSequence(ctx context.Context, installationID string) (int32, error)
@@ -42,6 +48,7 @@ type Querier interface {
 	TrimInstallationVersions(ctx context.Context, arg TrimInstallationVersionsParams) error
 	UpdateInstallationVersion(ctx context.Context, arg UpdateInstallationVersionParams) (int64, error)
 	UpdateProject(ctx context.Context, arg UpdateProjectParams) (WorkosCoreProject, error)
+	UpdateWorkspaceAccess(ctx context.Context, arg UpdateWorkspaceAccessParams) (int64, error)
 }
 
 var _ Querier = (*Queries)(nil)

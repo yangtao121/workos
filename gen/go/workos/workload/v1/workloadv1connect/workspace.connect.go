@@ -44,11 +44,11 @@ const (
 // WorkspaceHostServiceClient is a client for the workos.workload.v1.WorkspaceHostService service.
 type WorkspaceHostServiceClient interface {
 	// DescribeWorkspaceSources lists the operator-configured directories this
-	// runtime host offers as workspace sources.
+	// runtime host offers as workspace sources, scoped to the calling owner.
 	DescribeWorkspaceSources(context.Context, *connect.Request[v1.DescribeWorkspaceSourcesRequest]) (*connect.Response[v1.DescribeWorkspaceSourcesResponse], error)
-	// PrepareWorkspace resolves a Core binding into a prepared execution
-	// environment for one consumer. Foreign projects, archived or stale
-	// revisions, and unknown sources fail closed.
+	// PrepareWorkspace resolves the owner's operator-registered mount for the
+	// project into a prepared execution environment for one consumer. Foreign
+	// projects and unknown sources fail closed.
 	PrepareWorkspace(context.Context, *connect.Request[v1.PrepareWorkspaceRequest]) (*connect.Response[v1.PrepareWorkspaceResponse], error)
 }
 
@@ -98,11 +98,11 @@ func (c *workspaceHostServiceClient) PrepareWorkspace(ctx context.Context, req *
 // service.
 type WorkspaceHostServiceHandler interface {
 	// DescribeWorkspaceSources lists the operator-configured directories this
-	// runtime host offers as workspace sources.
+	// runtime host offers as workspace sources, scoped to the calling owner.
 	DescribeWorkspaceSources(context.Context, *connect.Request[v1.DescribeWorkspaceSourcesRequest]) (*connect.Response[v1.DescribeWorkspaceSourcesResponse], error)
-	// PrepareWorkspace resolves a Core binding into a prepared execution
-	// environment for one consumer. Foreign projects, archived or stale
-	// revisions, and unknown sources fail closed.
+	// PrepareWorkspace resolves the owner's operator-registered mount for the
+	// project into a prepared execution environment for one consumer. Foreign
+	// projects and unknown sources fail closed.
 	PrepareWorkspace(context.Context, *connect.Request[v1.PrepareWorkspaceRequest]) (*connect.Response[v1.PrepareWorkspaceResponse], error)
 }
 

@@ -22,6 +22,7 @@ type Service struct {
 	engine    ports.Engine
 	generator ids.Generator
 	logger    *slog.Logger
+	workspace ports.WorkspaceResolver
 
 	mu        sync.Mutex
 	terminals map[string]ports.Terminal
@@ -37,8 +38,15 @@ func NewService(store ports.SessionStore, engine ports.Engine, generator ids.Gen
 
 func (s *Service) Facts() ports.EngineFacts { return s.engine.Facts() }
 
-func requestDigest(projectID string, columns, rows int32) string {
-	sum := sha256.Sum256([]byte(fmt.Sprintf("pty:%s:%d:%d", projectID, columns, rows)))
+// WithWorkspace binds the operator-registered project workspace resolver.
+// Without one the shell starts in its default scratch directory.
+func (s *Service) WithWorkspace(workspace ports.WorkspaceResolver) *Service {
+	s.workspace = workspace
+	return s
+}
+
+func requestDigest(projectID string, columns, rows int32, workingDirectory string) string {
+	sum := sha256.Sum256([]byte(fmt.Sprintf("pty:%s:%d:%d:%s", projectID, columns, rows, workingDirectory)))
 	return "sha256:" + hex.EncodeToString(sum[:])
 }
 
@@ -46,7 +54,13 @@ func (s *Service) Create(ctx context.Context, ownerUserID, projectID, idempotenc
 	if !domain.ValidUUIDv7(ownerUserID) || !domain.ValidUUIDv7(projectID) || idempotencyKey == "" || len(idempotencyKey) > 128 || !domain.ValidSize(columns, rows) {
 		return domain.Session{}, domain.ErrInvalid
 	}
-	digest := requestDigest(projectID, columns, rows)
+	workingDirectory := ""
+	if s.workspace != nil {
+		if dir, ok := s.workspace.WorkingDirectory(ownerUserID, projectID); ok {
+			workingDirectory = dir
+		}
+	}
+	digest := requestDigest(projectID, columns, rows, workingDirectory)
 	now := time.Now().UTC().Truncate(time.Microsecond)
 	session := domain.Session{
 		SessionID: s.generator.New(), OwnerUserID: ownerUserID, ProjectID: projectID,
@@ -83,7 +97,7 @@ func (s *Service) Create(ctx context.Context, ownerUserID, projectID, idempotenc
 		}
 		return domain.Session{}, domain.ErrEngineUnavailable
 	}
-	terminal, err := s.engine.Launch(ctx, columns, rows)
+	terminal, err := s.engine.Launch(ctx, columns, rows, workingDirectory)
 	if err != nil {
 		s.logger.Warn("pty launch failed", "error", err)
 		release()

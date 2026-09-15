@@ -28,12 +28,13 @@ message DescribeWorkspaceSourcesResponse {
 }
 
 message PrepareWorkspaceRequest {
-  // The Core-owned binding identity to prepare for execution.
-  string binding_id = 1;
-  string project_id = 2;
-  int64 binding_revision = 3;
-  // Execution roles share one environment vocabulary in this phase.
-  string consumer = 4;
+  // The project whose operator-registered mount to prepare. Owner identity
+  // arrives from the caller's injected headers; Core's binding revision is
+  // validated by Core, not replayed here.
+  string project_id = 1;
+  // Execution roles sharing one environment vocabulary in this phase:
+  // harness | terminal | native | files.
+  string consumer = 2;
 }
 
 message PrepareWorkspaceResponse {
@@ -43,17 +44,16 @@ message PrepareWorkspaceResponse {
   string environment_id = 1;
   string workspace_source_id = 2;
   bool read_only = 3;
-  int64 binding_revision = 4;
-  google.protobuf.Timestamp prepared_at = 5;
-  google.protobuf.Timestamp expires_at = 6;
+  google.protobuf.Timestamp prepared_at = 4;
+  google.protobuf.Timestamp expires_at = 5;
 }
 
 service WorkspaceHostService {
   // DescribeWorkspaceSources lists the operator-configured directories this
-  // runtime host offers as workspace sources.
+  // runtime host offers as workspace sources, scoped to the calling owner.
   rpc DescribeWorkspaceSources(DescribeWorkspaceSourcesRequest) returns (DescribeWorkspaceSourcesResponse) {}
-  // PrepareWorkspace resolves a Core binding into a prepared execution
-  // environment for one consumer. Foreign projects, archived or stale
-  // revisions, and unknown sources fail closed.
+  // PrepareWorkspace resolves the owner's operator-registered mount for the
+  // project into a prepared execution environment for one consumer. Foreign
+  // projects and unknown sources fail closed.
   rpc PrepareWorkspace(PrepareWorkspaceRequest) returns (PrepareWorkspaceResponse) {}
 }

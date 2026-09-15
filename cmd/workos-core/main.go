@@ -50,6 +50,8 @@ import (
 	"github.com/yangtao121/workos/internal/core/orchestration"
 	orchestrationtransport "github.com/yangtao121/workos/internal/core/orchestration/transport"
 	projectpostgres "github.com/yangtao121/workos/internal/core/project/adapters/postgres"
+	projectdb "github.com/yangtao121/workos/internal/core/project/adapters/postgres/projectdb"
+	workspaceclient "github.com/yangtao121/workos/internal/core/project/adapters/workspaceclient"
 	projectapp "github.com/yangtao121/workos/internal/core/project/application"
 	projecttransport "github.com/yangtao121/workos/internal/core/project/transport"
 	"github.com/yangtao121/workos/internal/platform/config"
@@ -127,6 +129,15 @@ func run(logger *slog.Logger) error {
 	projectService := projectapp.New(projectRepository, generator)
 	projectPath, projectHandler := projecttransport.NewProjectConnectHandler(projectService)
 	mux.Handle(projectPath, identity.Middleware(projectHandler))
+
+	// Project workspace bindings (ADR-0030): Core owns the association and
+	// authorization facts; the operator-registered source directory is read
+	// from the runtime host's private workspace service.
+	workspaceRepository := projectpostgres.NewWorkspaceRepository(projectdb.New(pool))
+	workspaceDirectory := workspaceclient.New(cfg.Services.Runtime, cfg.Runtime.DeviceID)
+	workspaceService := projectapp.NewWorkspaceService(workspaceRepository, workspaceDirectory, generator)
+	workspacePath, workspaceHandler := projecttransport.NewWorkspaceHandler(workspaceService)
+	mux.Handle(workspacePath, identity.Middleware(workspaceHandler))
 
 	privateHarnessClient := harnessv1connect.NewHarnessHostServiceClient(telemetry.HTTPClient(), cfg.Services.Harness)
 	catalogSource, err := cataloghost.New(privateHarnessClient, cfg.Agent.CatalogTimeout)

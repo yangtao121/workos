@@ -227,3 +227,45 @@ WHERE archived_at IS NOT NULL
   AND (archived_at, id) > (sqlc.arg(cursor_archived_at)::timestamptz, sqlc.arg(cursor_id)::uuid)
 ORDER BY archived_at, id
 LIMIT sqlc.arg(page_limit);
+
+-- name: InsertWorkspaceBinding :execrows
+INSERT INTO workos_core.project_workspace_bindings (
+    binding_id, owner_user_id, project_id, workspace_source_id, idempotency_key,
+    display_name, read_only, state, revision, created_at, updated_at
+) VALUES ($1, $2, $3, $4, $5, $6, $7, 'active', 1, $8, $8)
+ON CONFLICT (owner_user_id, idempotency_key) DO NOTHING;
+
+-- name: GetWorkspaceBinding :one
+SELECT binding_id, owner_user_id, project_id, workspace_source_id, idempotency_key,
+       display_name, read_only, state, revision, created_at, updated_at, archived_at
+FROM workos_core.project_workspace_bindings
+WHERE owner_user_id = $1 AND binding_id = $2;
+
+-- name: GetWorkspaceBindingByIdempotency :one
+SELECT binding_id, owner_user_id, project_id, workspace_source_id, idempotency_key,
+       display_name, read_only, state, revision, created_at, updated_at, archived_at
+FROM workos_core.project_workspace_bindings
+WHERE owner_user_id = $1 AND idempotency_key = $2;
+
+-- name: GetActiveWorkspaceBindingForProject :one
+SELECT binding_id, owner_user_id, project_id, workspace_source_id, idempotency_key,
+       display_name, read_only, state, revision, created_at, updated_at, archived_at
+FROM workos_core.project_workspace_bindings
+WHERE owner_user_id = $1 AND project_id = $2 AND state = 'active';
+
+-- name: ListWorkspaceBindings :many
+SELECT binding_id, owner_user_id, project_id, workspace_source_id, idempotency_key,
+       display_name, read_only, state, revision, created_at, updated_at, archived_at
+FROM workos_core.project_workspace_bindings
+WHERE owner_user_id = $1 AND project_id = $2
+ORDER BY created_at DESC, binding_id;
+
+-- name: UpdateWorkspaceAccess :execrows
+UPDATE workos_core.project_workspace_bindings
+SET read_only = $3, revision = revision + 1, updated_at = $4
+WHERE owner_user_id = $1 AND binding_id = $2 AND state = 'active' AND revision = $5;
+
+-- name: ArchiveWorkspaceBinding :execrows
+UPDATE workos_core.project_workspace_bindings
+SET state = 'archived', revision = revision + 1, updated_at = $3, archived_at = $3
+WHERE owner_user_id = $1 AND binding_id = $2 AND state = 'active' AND revision = $4;
