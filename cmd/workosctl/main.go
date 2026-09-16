@@ -57,10 +57,12 @@ func run(ctx context.Context, args []string) error {
 		return runIndex(ctx, cfg, args[1:])
 	case len(args) >= 2 && args[0] == "credential":
 		return runCredential(ctx, cfg, args[1:])
+	case len(args) >= 1 && args[0] == "runtime":
+		return runRuntime(ctx, args[1:])
 	case len(args) == 1 && args[0] == "doctor":
 		return doctor(ctx, cfg)
 	default:
-		return errors.New("usage: workosctl bootstrap | db migrate | owner init | device pair | device scan --fingerprint <sha256:...> | credential put|rotate|revoke|list | index status|rebuild|job|workspace | doctor")
+		return errors.New("usage: workosctl bootstrap | db migrate | owner init | device pair | device scan --fingerprint <sha256:...> | credential put|rotate|revoke|list | index status|rebuild|job|workspace | runtime import-artifact | doctor")
 	}
 }
 

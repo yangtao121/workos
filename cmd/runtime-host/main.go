@@ -36,6 +36,10 @@ import (
 	"github.com/yangtao121/workos/internal/runtime/buildtest/adapters/processexec"
 	buildtestapp "github.com/yangtao121/workos/internal/runtime/buildtest/application"
 	buildtesttransport "github.com/yangtao121/workos/internal/runtime/buildtest/transport"
+	artifactfiles "github.com/yangtao121/workos/internal/runtime/artifactstore/adapters/files"
+	artifactpostgres "github.com/yangtao121/workos/internal/runtime/artifactstore/adapters/postgres"
+	artifactapp "github.com/yangtao121/workos/internal/runtime/artifactstore/application"
+	artifacttransport "github.com/yangtao121/workos/internal/runtime/artifactstore/transport"
 	nativehostpostgres "github.com/yangtao121/workos/internal/runtime/nativehost/adapters/postgres"
 	xvfbengine "github.com/yangtao121/workos/internal/runtime/nativehost/adapters/xvfbengine"
 	nativehostapp "github.com/yangtao121/workos/internal/runtime/nativehost/application"
@@ -105,8 +109,16 @@ func workloadCapability(capability workloadports.Capability, id string) *commonv
 	return &commonv1.FeatureCapability{Id: id, Available: false, Reason: reason}
 }
 
-func run(logger *slog.Logger) error {
-	cfg, err := config.Load()
+// artifactFactsFor avoids a typed-nil interface: a nil service must leave
+// the handler's bundle queries honestly Unimplemented.
+func artifactFactsFor(service *artifactapp.Service) buildtesttransport.ArtifactFacts {
+	if service == nil {
+		return nil
+	}
+	return service
+}
+
+func run(logger *slog.Logger) error {	cfg, err := config.Load()
 	if err != nil {
 		return err
 	}
@@ -144,6 +156,41 @@ func run(logger *slog.Logger) error {
 	}
 	generator := ids.UUIDv7{}
 
+	// The runtime-owned release bundle repository (ADR-0033): 0700 private
+	// root, content-addressed bytes, PostgreSQL metadata. Empty root keeps
+	// bundle features honestly unavailable. Startup reconciliation runs
+	// before the admin socket can serve any import.
+	var artifactService *artifactapp.Service
+	if strings.TrimSpace(cfg.Runtime.ArtifactRoot) != "" {
+		bundleFiles, filesErr := artifactfiles.New(cfg.Runtime.ArtifactRoot)
+		if filesErr != nil {
+			return filesErr
+		}
+		artifactService = artifactapp.New(artifactpostgres.New(pool), bundleFiles)
+		if err := artifactService.Reconcile(ctx); err != nil {
+			return fmt.Errorf("reconcile artifact store: %w", err)
+		}
+		if strings.TrimSpace(cfg.Runtime.ArtifactAdminSocket) != "" {
+			adminPath, adminHandler := artifacttransport.NewArtifactAdminHandler(artifactService)
+			listener, adminServer, listenErr := artifacttransport.ListenAdminSocket(cfg.Runtime.ArtifactAdminSocket, adminHandler, logger)
+			if listenErr != nil {
+				return listenErr
+			}
+			defer func() {
+				shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+				_ = adminServer.Shutdown(shutdownCtx)
+				cancel()
+				_ = listener.Close()
+			}()
+			go func() {
+				if serveErr := adminServer.Serve(listener); serveErr != nil && !errors.Is(serveErr, http.ErrServerClosed) {
+					logger.Error("runtime admin socket failed", "error", serveErr)
+				}
+			}()
+			logger.Info("runtime artifact admin socket serving", "path", adminPath)
+		}
+	}
+
 	// The private Build/Test executor (ADR-0026): durable jobs, process-tier
 	// sandbox engine with kernel rlimits, and the Reliability-facing RPC.
 	// Empty scratch config disables the service honestly.
@@ -157,7 +204,7 @@ func run(logger *slog.Logger) error {
 		if serviceErr != nil {
 			return serviceErr
 		}
-		buildPath, buildHandler := buildtesttransport.NewBuildTestHandler(buildService)
+		buildPath, buildHandler := buildtesttransport.NewBuildTestHandler(buildService, artifactFactsFor(artifactService))
 		mux.Handle(buildPath, buildHandler)
 		buildStop := make(chan struct{})
 		defer close(buildStop)

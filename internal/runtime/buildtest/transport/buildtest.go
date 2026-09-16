@@ -12,6 +12,8 @@ import (
 
 	executionv1 "github.com/yangtao121/workos/gen/go/workos/taskexecution/v1"
 	"github.com/yangtao121/workos/gen/go/workos/taskexecution/v1/taskexecutionv1connect"
+	artifactapp "github.com/yangtao121/workos/internal/runtime/artifactstore/application"
+	artifactdomain "github.com/yangtao121/workos/internal/runtime/artifactstore/domain"
 	"github.com/yangtao121/workos/internal/runtime/buildtest/application"
 	"github.com/yangtao121/workos/internal/runtime/buildtest/domain"
 )
@@ -33,12 +35,24 @@ func unmarshalFacts(encoded []byte, facts *executionv1.BuildEngineFacts) error {
 	return nil
 }
 
-type BuildTestHandler struct{ service *application.Service }
+// ArtifactFacts is the artifact repository query surface the handler needs
+// for Core's independent verification (ADR-0033). It is satisfied by the
+// artifactstore application service.
+type ArtifactFacts interface {
+	Facts(ctx context.Context, query artifactapp.FactsQuery) (artifactdomain.Artifact, error)
+}
+
+type BuildTestHandler struct {
+	service   *application.Service
+	artifacts ArtifactFacts
+}
 
 // NewBuildTestHandler returns the mux path and handler. The read budget
-// covers the ADR-0024 bounded candidate payload with headroom.
-func NewBuildTestHandler(service *application.Service) (string, http.Handler) {
-	return taskexecutionv1connect.NewBuildTestServiceHandler(&BuildTestHandler{service: service}, connect.WithReadMaxBytes(2<<20))
+// covers the ADR-0024 bounded candidate payload with headroom. artifacts may
+// be nil when the artifact repository is not configured: bundle queries then
+// report Unimplemented instead of fabricating facts.
+func NewBuildTestHandler(service *application.Service, artifacts ArtifactFacts) (string, http.Handler) {
+	return taskexecutionv1connect.NewBuildTestServiceHandler(&BuildTestHandler{service: service, artifacts: artifacts}, connect.WithReadMaxBytes(2<<20))
 }
 
 func (h *BuildTestHandler) SubmitBuildTest(ctx context.Context, req *connect.Request[executionv1.SubmitBuildTestRequest]) (*connect.Response[executionv1.SubmitBuildTestResponse], error) {
@@ -111,11 +125,45 @@ func (h *BuildTestHandler) CancelBuildTest(ctx context.Context, req *connect.Req
 	return connect.NewResponse(&executionv1.CancelBuildTestResponse{State: string(state)}), nil
 }
 
-// GetBuildArtifact serves Core's independent verification query (ADR-0033).
-// The artifact repository lands with the store adapter; until then the RPC
-// reports Unimplemented rather than fabricating bundle facts.
+// GetBuildArtifact serves Core's independent verification query (ADR-0033
+// section 4): authoritative job/bundle metadata, never bundle bytes.
 func (h *BuildTestHandler) GetBuildArtifact(ctx context.Context, req *connect.Request[executionv1.GetBuildArtifactRequest]) (*connect.Response[executionv1.GetBuildArtifactResponse], error) {
-	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("artifact repository is not wired on this runtime host"))
+	if h.artifacts == nil {
+		return nil, connect.NewError(connect.CodeUnimplemented, errors.New("artifact repository is not wired on this runtime host"))
+	}
+	artifact, err := h.artifacts.Facts(ctx, artifactapp.FactsQuery{
+		TaskID:     req.Msg.GetTaskId(),
+		ArtifactID: req.Msg.GetArtifactId(),
+	})
+	if err != nil {
+		return nil, buildTestError(artifactError(err))
+	}
+	return connect.NewResponse(&executionv1.GetBuildArtifactResponse{
+		Artifact: &executionv1.BuildArtifactFacts{
+			ArtifactId: artifact.ID, ArtifactDigest: artifact.Digest, Format: artifact.Format,
+			Origin: artifact.Origin, SizeBytes: artifact.SizeBytes, FileCount: artifact.FileCount,
+			JobId: artifact.JobID, TaskId: artifact.TaskID, IncidentId: artifact.IncidentID,
+			OwnerUserId: artifact.OwnerUserID, ProjectId: artifact.ProjectID,
+			InstallationId: artifact.InstallationID, SourceBundleId: artifact.SourceBundleID,
+			SourceDigest: artifact.SourceDigest, ManifestDigest: artifact.ManifestDigest,
+			BaseImage: artifact.BaseImage, BuildCommand: artifact.BuildCommand,
+			TestCommand: artifact.TestCommand, OutputDirectory: artifact.OutputDirectory,
+			State: artifact.State,
+		},
+	}), nil
+}
+
+func artifactError(err error) error {
+	switch {
+	case errors.Is(err, artifactdomain.ErrNotFound):
+		return domain.ErrNotFound
+	case errors.Is(err, artifactdomain.ErrInvalidRequest):
+		return domain.ErrInvalid
+	case errors.Is(err, artifactdomain.ErrStoreUnavailable):
+		return domain.ErrStoreUnavailable
+	default:
+		return domain.ErrStoreUnavailable
+	}
 }
 
 func failureReasonString(reason domain.FailureReason) string {

@@ -128,6 +128,22 @@ type Runtime struct {
 	// BuildTestProcessLimit scales the kernel NPROC bound for hosts that
 	// share one uid across many processes; the limit stays kernel enforced.
 	BuildTestProcessLimit int `yaml:"buildtest_process_limit"`
+	// BuildTestEngine selects the P3 build engine (ADR-0033): "process"
+	// (default, ADR-0026 semantics, no deployable output) or "docker"
+	// (fixed digest toolchain image, network none, frozen app-bundle.v1
+	// output). "docker" additionally requires ArtifactRoot and
+	// DockerSocket.
+	BuildTestEngine string `yaml:"buildtest_engine"`
+	// ArtifactRoot is the runtime-owned release bundle repository root
+	// (ADR-0033); empty disables the artifact store and formal bundle
+	// launches.
+	ArtifactRoot string `yaml:"artifact_root"`
+	// ArtifactAdminSocket is the local operator import socket path; empty
+	// disables imports (verification queries still work).
+	ArtifactAdminSocket string `yaml:"artifact_admin_socket"`
+	// DockerSocket is the Runtime-controlled Docker Engine socket for the
+	// formal app runner and container build engine (ADR-0032/0033).
+	DockerSocket string `yaml:"docker_socket"`
 }
 
 // Surface configures the runtime-host Surface Broker session lifetime.
@@ -314,6 +330,7 @@ func defaults() Config {
 			BuildTestInterval:     5 * time.Second,
 			BuildTestLeaseTTL:     10 * time.Minute,
 			BuildTestProcessLimit: 4096,
+			BuildTestEngine:       "process",
 		},
 		Reliability: Reliability{
 			PollInterval:         5 * time.Second,
@@ -446,6 +463,10 @@ func Load() (Config, error) {
 	setString(&cfg.Indexer.PageTokenKey, "WORKOS_INDEX_PAGE_TOKEN_KEY")
 	setString(&cfg.Runtime.InstanceName, "WORKOS_RUNTIME_INSTANCE_NAME")
 	setString(&cfg.Runtime.BuildTestScratch, "WORKOS_RUNTIME_BUILDTEST_SCRATCH")
+	setString(&cfg.Runtime.BuildTestEngine, "WORKOS_RUNTIME_BUILDTEST_ENGINE")
+	setString(&cfg.Runtime.ArtifactRoot, "WORKOS_RUNTIME_ARTIFACT_ROOT")
+	setString(&cfg.Runtime.ArtifactAdminSocket, "WORKOS_RUNTIME_ADMIN_SOCKET")
+	setString(&cfg.Runtime.DockerSocket, "WORKOS_RUNTIME_DOCKER_SOCKET")
 	setString(&cfg.Runtime.BrowserBinary, "WORKOS_RUNTIME_BROWSER_BINARY")
 	setString(&cfg.Runtime.PtyShell, "WORKOS_RUNTIME_PTY_SHELL")
 	setString(&cfg.Runtime.BrowserScratch, "WORKOS_RUNTIME_BROWSER_SCRATCH")
