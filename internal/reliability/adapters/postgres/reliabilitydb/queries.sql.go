@@ -1060,7 +1060,7 @@ func (q *Queries) LoadSupervisorProgress(ctx context.Context, workloadID string)
 }
 
 const lockPendingDeployments = `-- name: LockPendingDeployments :many
-SELECT d.incident_id, d.owner_user_id, d.project_id, d.installation_id, d.target_version, d.state, d.canary_until, d.created_at, d.updated_at, d.expected_revision, d.attempts, d.canary_started_at, d.task_id, d.manifest_digest, d.base_version, EXISTS (
+SELECT d.incident_id, d.owner_user_id, d.project_id, d.installation_id, d.target_version, d.state, d.canary_until, d.created_at, d.updated_at, d.expected_revision, d.attempts, d.canary_started_at, d.task_id, d.manifest_digest, d.base_version, d.artifact_id, d.artifact_digest, d.base_artifact_digest, EXISTS (
     SELECT 1 FROM workos_reliability.incidents i
     WHERE i.owner_user_id = d.owner_user_id AND i.project_id = d.project_id
       AND i.app_instance_id = d.installation_id AND i.id <> d.incident_id
@@ -1073,22 +1073,25 @@ LIMIT $1 FOR UPDATE OF d SKIP LOCKED
 `
 
 type LockPendingDeploymentsRow struct {
-	IncidentID       string      `json:"incident_id"`
-	OwnerUserID      string      `json:"owner_user_id"`
-	ProjectID        string      `json:"project_id"`
-	InstallationID   string      `json:"installation_id"`
-	TargetVersion    string      `json:"target_version"`
-	State            string      `json:"state"`
-	CanaryUntil      time.Time   `json:"canary_until"`
-	CreatedAt        time.Time   `json:"created_at"`
-	UpdatedAt        time.Time   `json:"updated_at"`
-	ExpectedRevision int64       `json:"expected_revision"`
-	Attempts         int32       `json:"attempts"`
-	CanaryStartedAt  time.Time   `json:"canary_started_at"`
-	TaskID           pgtype.UUID `json:"task_id"`
-	ManifestDigest   pgtype.Text `json:"manifest_digest"`
-	BaseVersion      pgtype.Text `json:"base_version"`
-	NewIncident      bool        `json:"new_incident"`
+	IncidentID         string      `json:"incident_id"`
+	OwnerUserID        string      `json:"owner_user_id"`
+	ProjectID          string      `json:"project_id"`
+	InstallationID     string      `json:"installation_id"`
+	TargetVersion      string      `json:"target_version"`
+	State              string      `json:"state"`
+	CanaryUntil        time.Time   `json:"canary_until"`
+	CreatedAt          time.Time   `json:"created_at"`
+	UpdatedAt          time.Time   `json:"updated_at"`
+	ExpectedRevision   int64       `json:"expected_revision"`
+	Attempts           int32       `json:"attempts"`
+	CanaryStartedAt    time.Time   `json:"canary_started_at"`
+	TaskID             pgtype.UUID `json:"task_id"`
+	ManifestDigest     pgtype.Text `json:"manifest_digest"`
+	BaseVersion        pgtype.Text `json:"base_version"`
+	ArtifactID         pgtype.UUID `json:"artifact_id"`
+	ArtifactDigest     pgtype.Text `json:"artifact_digest"`
+	BaseArtifactDigest pgtype.Text `json:"base_artifact_digest"`
+	NewIncident        bool        `json:"new_incident"`
 }
 
 func (q *Queries) LockPendingDeployments(ctx context.Context, limit int32) ([]LockPendingDeploymentsRow, error) {
@@ -1116,6 +1119,9 @@ func (q *Queries) LockPendingDeployments(ctx context.Context, limit int32) ([]Lo
 			&i.TaskID,
 			&i.ManifestDigest,
 			&i.BaseVersion,
+			&i.ArtifactID,
+			&i.ArtifactDigest,
+			&i.BaseArtifactDigest,
 			&i.NewIncident,
 		); err != nil {
 			return nil, err

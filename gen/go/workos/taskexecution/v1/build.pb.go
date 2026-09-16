@@ -423,6 +423,10 @@ type GetBuildTestResponse struct {
 	Engine        *BuildEngineFacts `protobuf:"bytes,8,opt,name=engine,proto3" json:"engine,omitempty"`
 	SourceDigest  string            `protobuf:"bytes,9,opt,name=source_digest,json=sourceDigest,proto3" json:"source_digest,omitempty"`
 	Attempts      int32             `protobuf:"varint,10,opt,name=attempts,proto3" json:"attempts,omitempty"`
+	// The frozen release bundle this verdict committed (ADR-0033). Present only
+	// when state=succeeded AND a ready app-bundle.v1 artifact exists; a success
+	// verdict without it means the engine tier cannot produce deployable output.
+	Artifact      *BuildArtifactFacts `protobuf:"bytes,11,opt,name=artifact,proto3" json:"artifact,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -527,6 +531,317 @@ func (x *GetBuildTestResponse) GetAttempts() int32 {
 	return 0
 }
 
+func (x *GetBuildTestResponse) GetArtifact() *BuildArtifactFacts {
+	if x != nil {
+		return x.Artifact
+	}
+	return nil
+}
+
+// The authoritative, bounded metadata of one release bundle as Runtime owns
+// it (ADR-0033). Never carries bundle bytes. Core re-reads these facts from
+// Runtime before registering any version; a caller-supplied id/digest string
+// is only a reconciliation hint, never proof.
+type BuildArtifactFacts struct {
+	state      protoimpl.MessageState `protogen:"open.v1"`
+	ArtifactId string                 `protobuf:"bytes,1,opt,name=artifact_id,json=artifactId,proto3" json:"artifact_id,omitempty"`
+	// Content digest: sha256 over the complete app-bundle.v1 byte stream.
+	ArtifactDigest string `protobuf:"bytes,2,opt,name=artifact_digest,json=artifactDigest,proto3" json:"artifact_digest,omitempty"`
+	Format         string `protobuf:"bytes,3,opt,name=format,proto3" json:"format,omitempty"`
+	// build_job|operator_import. An imported bundle carries no proof that this
+	// round's Build/Test passed; projections must show it as an import.
+	Origin    string `protobuf:"bytes,4,opt,name=origin,proto3" json:"origin,omitempty"`
+	SizeBytes int64  `protobuf:"varint,5,opt,name=size_bytes,json=sizeBytes,proto3" json:"size_bytes,omitempty"`
+	FileCount int32  `protobuf:"varint,6,opt,name=file_count,json=fileCount,proto3" json:"file_count,omitempty"`
+	// Job provenance (empty for operator_import).
+	JobId          string `protobuf:"bytes,7,opt,name=job_id,json=jobId,proto3" json:"job_id,omitempty"`
+	TaskId         string `protobuf:"bytes,8,opt,name=task_id,json=taskId,proto3" json:"task_id,omitempty"`
+	IncidentId     string `protobuf:"bytes,9,opt,name=incident_id,json=incidentId,proto3" json:"incident_id,omitempty"`
+	OwnerUserId    string `protobuf:"bytes,10,opt,name=owner_user_id,json=ownerUserId,proto3" json:"owner_user_id,omitempty"`
+	ProjectId      string `protobuf:"bytes,11,opt,name=project_id,json=projectId,proto3" json:"project_id,omitempty"`
+	InstallationId string `protobuf:"bytes,12,opt,name=installation_id,json=installationId,proto3" json:"installation_id,omitempty"`
+	SourceBundleId string `protobuf:"bytes,13,opt,name=source_bundle_id,json=sourceBundleId,proto3" json:"source_bundle_id,omitempty"`
+	SourceDigest   string `protobuf:"bytes,14,opt,name=source_digest,json=sourceDigest,proto3" json:"source_digest,omitempty"`
+	ManifestDigest string `protobuf:"bytes,15,opt,name=manifest_digest,json=manifestDigest,proto3" json:"manifest_digest,omitempty"`
+	BaseImage      string `protobuf:"bytes,16,opt,name=base_image,json=baseImage,proto3" json:"base_image,omitempty"`
+	// The fixed recipe echo, so a verifier can compare the exact commands.
+	BuildCommand    []string `protobuf:"bytes,17,rep,name=build_command,json=buildCommand,proto3" json:"build_command,omitempty"`
+	TestCommand     []string `protobuf:"bytes,18,rep,name=test_command,json=testCommand,proto3" json:"test_command,omitempty"`
+	OutputDirectory string   `protobuf:"bytes,19,opt,name=output_directory,json=outputDirectory,proto3" json:"output_directory,omitempty"`
+	// preparing|ready|failed|unavailable. Only ready bundles may back a
+	// version; unavailable means metadata exists but the bytes are gone.
+	State         string `protobuf:"bytes,20,opt,name=state,proto3" json:"state,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *BuildArtifactFacts) Reset() {
+	*x = BuildArtifactFacts{}
+	mi := &file_workos_taskexecution_v1_build_proto_msgTypes[7]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *BuildArtifactFacts) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*BuildArtifactFacts) ProtoMessage() {}
+
+func (x *BuildArtifactFacts) ProtoReflect() protoreflect.Message {
+	mi := &file_workos_taskexecution_v1_build_proto_msgTypes[7]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use BuildArtifactFacts.ProtoReflect.Descriptor instead.
+func (*BuildArtifactFacts) Descriptor() ([]byte, []int) {
+	return file_workos_taskexecution_v1_build_proto_rawDescGZIP(), []int{7}
+}
+
+func (x *BuildArtifactFacts) GetArtifactId() string {
+	if x != nil {
+		return x.ArtifactId
+	}
+	return ""
+}
+
+func (x *BuildArtifactFacts) GetArtifactDigest() string {
+	if x != nil {
+		return x.ArtifactDigest
+	}
+	return ""
+}
+
+func (x *BuildArtifactFacts) GetFormat() string {
+	if x != nil {
+		return x.Format
+	}
+	return ""
+}
+
+func (x *BuildArtifactFacts) GetOrigin() string {
+	if x != nil {
+		return x.Origin
+	}
+	return ""
+}
+
+func (x *BuildArtifactFacts) GetSizeBytes() int64 {
+	if x != nil {
+		return x.SizeBytes
+	}
+	return 0
+}
+
+func (x *BuildArtifactFacts) GetFileCount() int32 {
+	if x != nil {
+		return x.FileCount
+	}
+	return 0
+}
+
+func (x *BuildArtifactFacts) GetJobId() string {
+	if x != nil {
+		return x.JobId
+	}
+	return ""
+}
+
+func (x *BuildArtifactFacts) GetTaskId() string {
+	if x != nil {
+		return x.TaskId
+	}
+	return ""
+}
+
+func (x *BuildArtifactFacts) GetIncidentId() string {
+	if x != nil {
+		return x.IncidentId
+	}
+	return ""
+}
+
+func (x *BuildArtifactFacts) GetOwnerUserId() string {
+	if x != nil {
+		return x.OwnerUserId
+	}
+	return ""
+}
+
+func (x *BuildArtifactFacts) GetProjectId() string {
+	if x != nil {
+		return x.ProjectId
+	}
+	return ""
+}
+
+func (x *BuildArtifactFacts) GetInstallationId() string {
+	if x != nil {
+		return x.InstallationId
+	}
+	return ""
+}
+
+func (x *BuildArtifactFacts) GetSourceBundleId() string {
+	if x != nil {
+		return x.SourceBundleId
+	}
+	return ""
+}
+
+func (x *BuildArtifactFacts) GetSourceDigest() string {
+	if x != nil {
+		return x.SourceDigest
+	}
+	return ""
+}
+
+func (x *BuildArtifactFacts) GetManifestDigest() string {
+	if x != nil {
+		return x.ManifestDigest
+	}
+	return ""
+}
+
+func (x *BuildArtifactFacts) GetBaseImage() string {
+	if x != nil {
+		return x.BaseImage
+	}
+	return ""
+}
+
+func (x *BuildArtifactFacts) GetBuildCommand() []string {
+	if x != nil {
+		return x.BuildCommand
+	}
+	return nil
+}
+
+func (x *BuildArtifactFacts) GetTestCommand() []string {
+	if x != nil {
+		return x.TestCommand
+	}
+	return nil
+}
+
+func (x *BuildArtifactFacts) GetOutputDirectory() string {
+	if x != nil {
+		return x.OutputDirectory
+	}
+	return ""
+}
+
+func (x *BuildArtifactFacts) GetState() string {
+	if x != nil {
+		return x.State
+	}
+	return ""
+}
+
+type GetBuildArtifactRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Either the producing task (build provenance) or the artifact id.
+	TaskId        string `protobuf:"bytes,1,opt,name=task_id,json=taskId,proto3" json:"task_id,omitempty"`
+	ArtifactId    string `protobuf:"bytes,2,opt,name=artifact_id,json=artifactId,proto3" json:"artifact_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetBuildArtifactRequest) Reset() {
+	*x = GetBuildArtifactRequest{}
+	mi := &file_workos_taskexecution_v1_build_proto_msgTypes[8]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetBuildArtifactRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetBuildArtifactRequest) ProtoMessage() {}
+
+func (x *GetBuildArtifactRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_workos_taskexecution_v1_build_proto_msgTypes[8]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetBuildArtifactRequest.ProtoReflect.Descriptor instead.
+func (*GetBuildArtifactRequest) Descriptor() ([]byte, []int) {
+	return file_workos_taskexecution_v1_build_proto_rawDescGZIP(), []int{8}
+}
+
+func (x *GetBuildArtifactRequest) GetTaskId() string {
+	if x != nil {
+		return x.TaskId
+	}
+	return ""
+}
+
+func (x *GetBuildArtifactRequest) GetArtifactId() string {
+	if x != nil {
+		return x.ArtifactId
+	}
+	return ""
+}
+
+type GetBuildArtifactResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Artifact      *BuildArtifactFacts    `protobuf:"bytes,1,opt,name=artifact,proto3" json:"artifact,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetBuildArtifactResponse) Reset() {
+	*x = GetBuildArtifactResponse{}
+	mi := &file_workos_taskexecution_v1_build_proto_msgTypes[9]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetBuildArtifactResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetBuildArtifactResponse) ProtoMessage() {}
+
+func (x *GetBuildArtifactResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_workos_taskexecution_v1_build_proto_msgTypes[9]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetBuildArtifactResponse.ProtoReflect.Descriptor instead.
+func (*GetBuildArtifactResponse) Descriptor() ([]byte, []int) {
+	return file_workos_taskexecution_v1_build_proto_rawDescGZIP(), []int{9}
+}
+
+func (x *GetBuildArtifactResponse) GetArtifact() *BuildArtifactFacts {
+	if x != nil {
+		return x.Artifact
+	}
+	return nil
+}
+
 type CancelBuildTestRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	TaskId        string                 `protobuf:"bytes,1,opt,name=task_id,json=taskId,proto3" json:"task_id,omitempty"`
@@ -536,7 +851,7 @@ type CancelBuildTestRequest struct {
 
 func (x *CancelBuildTestRequest) Reset() {
 	*x = CancelBuildTestRequest{}
-	mi := &file_workos_taskexecution_v1_build_proto_msgTypes[7]
+	mi := &file_workos_taskexecution_v1_build_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -548,7 +863,7 @@ func (x *CancelBuildTestRequest) String() string {
 func (*CancelBuildTestRequest) ProtoMessage() {}
 
 func (x *CancelBuildTestRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_workos_taskexecution_v1_build_proto_msgTypes[7]
+	mi := &file_workos_taskexecution_v1_build_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -561,7 +876,7 @@ func (x *CancelBuildTestRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CancelBuildTestRequest.ProtoReflect.Descriptor instead.
 func (*CancelBuildTestRequest) Descriptor() ([]byte, []int) {
-	return file_workos_taskexecution_v1_build_proto_rawDescGZIP(), []int{7}
+	return file_workos_taskexecution_v1_build_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *CancelBuildTestRequest) GetTaskId() string {
@@ -580,7 +895,7 @@ type CancelBuildTestResponse struct {
 
 func (x *CancelBuildTestResponse) Reset() {
 	*x = CancelBuildTestResponse{}
-	mi := &file_workos_taskexecution_v1_build_proto_msgTypes[8]
+	mi := &file_workos_taskexecution_v1_build_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -592,7 +907,7 @@ func (x *CancelBuildTestResponse) String() string {
 func (*CancelBuildTestResponse) ProtoMessage() {}
 
 func (x *CancelBuildTestResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_workos_taskexecution_v1_build_proto_msgTypes[8]
+	mi := &file_workos_taskexecution_v1_build_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -605,7 +920,7 @@ func (x *CancelBuildTestResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CancelBuildTestResponse.ProtoReflect.Descriptor instead.
 func (*CancelBuildTestResponse) Descriptor() ([]byte, []int) {
-	return file_workos_taskexecution_v1_build_proto_rawDescGZIP(), []int{8}
+	return file_workos_taskexecution_v1_build_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *CancelBuildTestResponse) GetState() string {
@@ -630,7 +945,7 @@ type RegisterRepairCandidateVersionRequest struct {
 
 func (x *RegisterRepairCandidateVersionRequest) Reset() {
 	*x = RegisterRepairCandidateVersionRequest{}
-	mi := &file_workos_taskexecution_v1_build_proto_msgTypes[9]
+	mi := &file_workos_taskexecution_v1_build_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -642,7 +957,7 @@ func (x *RegisterRepairCandidateVersionRequest) String() string {
 func (*RegisterRepairCandidateVersionRequest) ProtoMessage() {}
 
 func (x *RegisterRepairCandidateVersionRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_workos_taskexecution_v1_build_proto_msgTypes[9]
+	mi := &file_workos_taskexecution_v1_build_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -655,7 +970,7 @@ func (x *RegisterRepairCandidateVersionRequest) ProtoReflect() protoreflect.Mess
 
 // Deprecated: Use RegisterRepairCandidateVersionRequest.ProtoReflect.Descriptor instead.
 func (*RegisterRepairCandidateVersionRequest) Descriptor() ([]byte, []int) {
-	return file_workos_taskexecution_v1_build_proto_rawDescGZIP(), []int{9}
+	return file_workos_taskexecution_v1_build_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *RegisterRepairCandidateVersionRequest) GetTaskId() string {
@@ -715,7 +1030,7 @@ type RegisterRepairCandidateVersionResponse struct {
 
 func (x *RegisterRepairCandidateVersionResponse) Reset() {
 	*x = RegisterRepairCandidateVersionResponse{}
-	mi := &file_workos_taskexecution_v1_build_proto_msgTypes[10]
+	mi := &file_workos_taskexecution_v1_build_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -727,7 +1042,7 @@ func (x *RegisterRepairCandidateVersionResponse) String() string {
 func (*RegisterRepairCandidateVersionResponse) ProtoMessage() {}
 
 func (x *RegisterRepairCandidateVersionResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_workos_taskexecution_v1_build_proto_msgTypes[10]
+	mi := &file_workos_taskexecution_v1_build_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -740,7 +1055,7 @@ func (x *RegisterRepairCandidateVersionResponse) ProtoReflect() protoreflect.Mes
 
 // Deprecated: Use RegisterRepairCandidateVersionResponse.ProtoReflect.Descriptor instead.
 func (*RegisterRepairCandidateVersionResponse) Descriptor() ([]byte, []int) {
-	return file_workos_taskexecution_v1_build_proto_rawDescGZIP(), []int{10}
+	return file_workos_taskexecution_v1_build_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *RegisterRepairCandidateVersionResponse) GetVersion() string {
@@ -791,7 +1106,7 @@ type PublishRepairCandidateVersionRequest struct {
 
 func (x *PublishRepairCandidateVersionRequest) Reset() {
 	*x = PublishRepairCandidateVersionRequest{}
-	mi := &file_workos_taskexecution_v1_build_proto_msgTypes[11]
+	mi := &file_workos_taskexecution_v1_build_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -803,7 +1118,7 @@ func (x *PublishRepairCandidateVersionRequest) String() string {
 func (*PublishRepairCandidateVersionRequest) ProtoMessage() {}
 
 func (x *PublishRepairCandidateVersionRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_workos_taskexecution_v1_build_proto_msgTypes[11]
+	mi := &file_workos_taskexecution_v1_build_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -816,7 +1131,7 @@ func (x *PublishRepairCandidateVersionRequest) ProtoReflect() protoreflect.Messa
 
 // Deprecated: Use PublishRepairCandidateVersionRequest.ProtoReflect.Descriptor instead.
 func (*PublishRepairCandidateVersionRequest) Descriptor() ([]byte, []int) {
-	return file_workos_taskexecution_v1_build_proto_rawDescGZIP(), []int{11}
+	return file_workos_taskexecution_v1_build_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *PublishRepairCandidateVersionRequest) GetTaskId() string {
@@ -863,7 +1178,7 @@ type PublishRepairCandidateVersionResponse struct {
 
 func (x *PublishRepairCandidateVersionResponse) Reset() {
 	*x = PublishRepairCandidateVersionResponse{}
-	mi := &file_workos_taskexecution_v1_build_proto_msgTypes[12]
+	mi := &file_workos_taskexecution_v1_build_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -875,7 +1190,7 @@ func (x *PublishRepairCandidateVersionResponse) String() string {
 func (*PublishRepairCandidateVersionResponse) ProtoMessage() {}
 
 func (x *PublishRepairCandidateVersionResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_workos_taskexecution_v1_build_proto_msgTypes[12]
+	mi := &file_workos_taskexecution_v1_build_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -888,7 +1203,7 @@ func (x *PublishRepairCandidateVersionResponse) ProtoReflect() protoreflect.Mess
 
 // Deprecated: Use PublishRepairCandidateVersionResponse.ProtoReflect.Descriptor instead.
 func (*PublishRepairCandidateVersionResponse) Descriptor() ([]byte, []int) {
-	return file_workos_taskexecution_v1_build_proto_rawDescGZIP(), []int{12}
+	return file_workos_taskexecution_v1_build_proto_rawDescGZIP(), []int{15}
 }
 
 func (x *PublishRepairCandidateVersionResponse) GetPublished() bool {
@@ -912,7 +1227,7 @@ type TransitionCandidateVersionRequest struct {
 
 func (x *TransitionCandidateVersionRequest) Reset() {
 	*x = TransitionCandidateVersionRequest{}
-	mi := &file_workos_taskexecution_v1_build_proto_msgTypes[13]
+	mi := &file_workos_taskexecution_v1_build_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -924,7 +1239,7 @@ func (x *TransitionCandidateVersionRequest) String() string {
 func (*TransitionCandidateVersionRequest) ProtoMessage() {}
 
 func (x *TransitionCandidateVersionRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_workos_taskexecution_v1_build_proto_msgTypes[13]
+	mi := &file_workos_taskexecution_v1_build_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -937,7 +1252,7 @@ func (x *TransitionCandidateVersionRequest) ProtoReflect() protoreflect.Message 
 
 // Deprecated: Use TransitionCandidateVersionRequest.ProtoReflect.Descriptor instead.
 func (*TransitionCandidateVersionRequest) Descriptor() ([]byte, []int) {
-	return file_workos_taskexecution_v1_build_proto_rawDescGZIP(), []int{13}
+	return file_workos_taskexecution_v1_build_proto_rawDescGZIP(), []int{16}
 }
 
 func (x *TransitionCandidateVersionRequest) GetIdempotencyKey() string {
@@ -992,7 +1307,7 @@ type TransitionCandidateVersionResponse struct {
 
 func (x *TransitionCandidateVersionResponse) Reset() {
 	*x = TransitionCandidateVersionResponse{}
-	mi := &file_workos_taskexecution_v1_build_proto_msgTypes[14]
+	mi := &file_workos_taskexecution_v1_build_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1004,7 +1319,7 @@ func (x *TransitionCandidateVersionResponse) String() string {
 func (*TransitionCandidateVersionResponse) ProtoMessage() {}
 
 func (x *TransitionCandidateVersionResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_workos_taskexecution_v1_build_proto_msgTypes[14]
+	mi := &file_workos_taskexecution_v1_build_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1017,7 +1332,7 @@ func (x *TransitionCandidateVersionResponse) ProtoReflect() protoreflect.Message
 
 // Deprecated: Use TransitionCandidateVersionResponse.ProtoReflect.Descriptor instead.
 func (*TransitionCandidateVersionResponse) Descriptor() ([]byte, []int) {
-	return file_workos_taskexecution_v1_build_proto_rawDescGZIP(), []int{14}
+	return file_workos_taskexecution_v1_build_proto_rawDescGZIP(), []int{17}
 }
 
 func (x *TransitionCandidateVersionResponse) GetVersion() string {
@@ -1068,7 +1383,7 @@ const file_workos_taskexecution_v1_build_proto_rawDesc = "" +
 	"\x06engine\x18\x01 \x01(\tR\x06engine\x12)\n" +
 	"\x10network_isolated\x18\x02 \x01(\bR\x0fnetworkIsolated\x12!\n" +
 	"\fimage_pinned\x18\x03 \x01(\bR\vimagePinned\x12'\n" +
-	"\x0fenforced_limits\x18\x04 \x03(\tR\x0eenforcedLimits\"\xeb\x02\n" +
+	"\x0fenforced_limits\x18\x04 \x03(\tR\x0eenforcedLimits\"\xb4\x03\n" +
 	"\x14GetBuildTestResponse\x12\x15\n" +
 	"\x06job_id\x18\x01 \x01(\tR\x05jobId\x12\x17\n" +
 	"\atask_id\x18\x02 \x01(\tR\x06taskId\x12\x14\n" +
@@ -1080,7 +1395,42 @@ const file_workos_taskexecution_v1_build_proto_rawDesc = "" +
 	"\x06engine\x18\b \x01(\v2).workos.taskexecution.v1.BuildEngineFactsR\x06engine\x12#\n" +
 	"\rsource_digest\x18\t \x01(\tR\fsourceDigest\x12\x1a\n" +
 	"\battempts\x18\n" +
-	" \x01(\x05R\battempts\"1\n" +
+	" \x01(\x05R\battempts\x12G\n" +
+	"\bartifact\x18\v \x01(\v2+.workos.taskexecution.v1.BuildArtifactFactsR\bartifact\"\xa9\x05\n" +
+	"\x12BuildArtifactFacts\x12\x1f\n" +
+	"\vartifact_id\x18\x01 \x01(\tR\n" +
+	"artifactId\x12'\n" +
+	"\x0fartifact_digest\x18\x02 \x01(\tR\x0eartifactDigest\x12\x16\n" +
+	"\x06format\x18\x03 \x01(\tR\x06format\x12\x16\n" +
+	"\x06origin\x18\x04 \x01(\tR\x06origin\x12\x1d\n" +
+	"\n" +
+	"size_bytes\x18\x05 \x01(\x03R\tsizeBytes\x12\x1d\n" +
+	"\n" +
+	"file_count\x18\x06 \x01(\x05R\tfileCount\x12\x15\n" +
+	"\x06job_id\x18\a \x01(\tR\x05jobId\x12\x17\n" +
+	"\atask_id\x18\b \x01(\tR\x06taskId\x12\x1f\n" +
+	"\vincident_id\x18\t \x01(\tR\n" +
+	"incidentId\x12\"\n" +
+	"\rowner_user_id\x18\n" +
+	" \x01(\tR\vownerUserId\x12\x1d\n" +
+	"\n" +
+	"project_id\x18\v \x01(\tR\tprojectId\x12'\n" +
+	"\x0finstallation_id\x18\f \x01(\tR\x0einstallationId\x12(\n" +
+	"\x10source_bundle_id\x18\r \x01(\tR\x0esourceBundleId\x12#\n" +
+	"\rsource_digest\x18\x0e \x01(\tR\fsourceDigest\x12'\n" +
+	"\x0fmanifest_digest\x18\x0f \x01(\tR\x0emanifestDigest\x12\x1d\n" +
+	"\n" +
+	"base_image\x18\x10 \x01(\tR\tbaseImage\x12#\n" +
+	"\rbuild_command\x18\x11 \x03(\tR\fbuildCommand\x12!\n" +
+	"\ftest_command\x18\x12 \x03(\tR\vtestCommand\x12)\n" +
+	"\x10output_directory\x18\x13 \x01(\tR\x0foutputDirectory\x12\x14\n" +
+	"\x05state\x18\x14 \x01(\tR\x05state\"S\n" +
+	"\x17GetBuildArtifactRequest\x12\x17\n" +
+	"\atask_id\x18\x01 \x01(\tR\x06taskId\x12\x1f\n" +
+	"\vartifact_id\x18\x02 \x01(\tR\n" +
+	"artifactId\"c\n" +
+	"\x18GetBuildArtifactResponse\x12G\n" +
+	"\bartifact\x18\x01 \x01(\v2+.workos.taskexecution.v1.BuildArtifactFactsR\bartifact\"1\n" +
 	"\x16CancelBuildTestRequest\x12\x17\n" +
 	"\atask_id\x18\x01 \x01(\tR\x06taskId\"/\n" +
 	"\x17CancelBuildTestResponse\x12\x14\n" +
@@ -1120,11 +1470,12 @@ const file_workos_taskexecution_v1_build_proto_rawDesc = "" +
 	"\x19expected_project_revision\x18\x06 \x01(\x03R\x17expectedProjectRevision\"i\n" +
 	"\"TransitionCandidateVersionResponse\x12\x18\n" +
 	"\aversion\x18\x01 \x01(\tR\aversion\x12)\n" +
-	"\x10project_revision\x18\x02 \x01(\x03R\x0fprojectRevision2\xf1\x02\n" +
+	"\x10project_revision\x18\x02 \x01(\x03R\x0fprojectRevision2\xec\x03\n" +
 	"\x10BuildTestService\x12v\n" +
 	"\x0fSubmitBuildTest\x12/.workos.taskexecution.v1.SubmitBuildTestRequest\x1a0.workos.taskexecution.v1.SubmitBuildTestResponse\"\x00\x12m\n" +
 	"\fGetBuildTest\x12,.workos.taskexecution.v1.GetBuildTestRequest\x1a-.workos.taskexecution.v1.GetBuildTestResponse\"\x00\x12v\n" +
-	"\x0fCancelBuildTest\x12/.workos.taskexecution.v1.CancelBuildTestRequest\x1a0.workos.taskexecution.v1.CancelBuildTestResponse\"\x002\xf9\x03\n" +
+	"\x0fCancelBuildTest\x12/.workos.taskexecution.v1.CancelBuildTestRequest\x1a0.workos.taskexecution.v1.CancelBuildTestResponse\"\x00\x12y\n" +
+	"\x10GetBuildArtifact\x120.workos.taskexecution.v1.GetBuildArtifactRequest\x1a1.workos.taskexecution.v1.GetBuildArtifactResponse\"\x002\xf9\x03\n" +
 	"\x14RepairVersionService\x12\xa3\x01\n" +
 	"\x1eRegisterRepairCandidateVersion\x12>.workos.taskexecution.v1.RegisterRepairCandidateVersionRequest\x1a?.workos.taskexecution.v1.RegisterRepairCandidateVersionResponse\"\x00\x12\xa0\x01\n" +
 	"\x1dPublishRepairCandidateVersion\x12=.workos.taskexecution.v1.PublishRepairCandidateVersionRequest\x1a>.workos.taskexecution.v1.PublishRepairCandidateVersionResponse\"\x00\x12\x97\x01\n" +
@@ -1142,7 +1493,7 @@ func file_workos_taskexecution_v1_build_proto_rawDescGZIP() []byte {
 	return file_workos_taskexecution_v1_build_proto_rawDescData
 }
 
-var file_workos_taskexecution_v1_build_proto_msgTypes = make([]protoimpl.MessageInfo, 15)
+var file_workos_taskexecution_v1_build_proto_msgTypes = make([]protoimpl.MessageInfo, 18)
 var file_workos_taskexecution_v1_build_proto_goTypes = []any{
 	(*BuildTestJob)(nil),                           // 0: workos.taskexecution.v1.BuildTestJob
 	(*BuildTestInputFacts)(nil),                    // 1: workos.taskexecution.v1.BuildTestInputFacts
@@ -1151,40 +1502,47 @@ var file_workos_taskexecution_v1_build_proto_goTypes = []any{
 	(*GetBuildTestRequest)(nil),                    // 4: workos.taskexecution.v1.GetBuildTestRequest
 	(*BuildEngineFacts)(nil),                       // 5: workos.taskexecution.v1.BuildEngineFacts
 	(*GetBuildTestResponse)(nil),                   // 6: workos.taskexecution.v1.GetBuildTestResponse
-	(*CancelBuildTestRequest)(nil),                 // 7: workos.taskexecution.v1.CancelBuildTestRequest
-	(*CancelBuildTestResponse)(nil),                // 8: workos.taskexecution.v1.CancelBuildTestResponse
-	(*RegisterRepairCandidateVersionRequest)(nil),  // 9: workos.taskexecution.v1.RegisterRepairCandidateVersionRequest
-	(*RegisterRepairCandidateVersionResponse)(nil), // 10: workos.taskexecution.v1.RegisterRepairCandidateVersionResponse
-	(*PublishRepairCandidateVersionRequest)(nil),   // 11: workos.taskexecution.v1.PublishRepairCandidateVersionRequest
-	(*PublishRepairCandidateVersionResponse)(nil),  // 12: workos.taskexecution.v1.PublishRepairCandidateVersionResponse
-	(*TransitionCandidateVersionRequest)(nil),      // 13: workos.taskexecution.v1.TransitionCandidateVersionRequest
-	(*TransitionCandidateVersionResponse)(nil),     // 14: workos.taskexecution.v1.TransitionCandidateVersionResponse
-	(*RepairBuildInput)(nil),                       // 15: workos.taskexecution.v1.RepairBuildInput
-	(*v1.AppSourceFile)(nil),                       // 16: workos.app.v1.AppSourceFile
+	(*BuildArtifactFacts)(nil),                     // 7: workos.taskexecution.v1.BuildArtifactFacts
+	(*GetBuildArtifactRequest)(nil),                // 8: workos.taskexecution.v1.GetBuildArtifactRequest
+	(*GetBuildArtifactResponse)(nil),               // 9: workos.taskexecution.v1.GetBuildArtifactResponse
+	(*CancelBuildTestRequest)(nil),                 // 10: workos.taskexecution.v1.CancelBuildTestRequest
+	(*CancelBuildTestResponse)(nil),                // 11: workos.taskexecution.v1.CancelBuildTestResponse
+	(*RegisterRepairCandidateVersionRequest)(nil),  // 12: workos.taskexecution.v1.RegisterRepairCandidateVersionRequest
+	(*RegisterRepairCandidateVersionResponse)(nil), // 13: workos.taskexecution.v1.RegisterRepairCandidateVersionResponse
+	(*PublishRepairCandidateVersionRequest)(nil),   // 14: workos.taskexecution.v1.PublishRepairCandidateVersionRequest
+	(*PublishRepairCandidateVersionResponse)(nil),  // 15: workos.taskexecution.v1.PublishRepairCandidateVersionResponse
+	(*TransitionCandidateVersionRequest)(nil),      // 16: workos.taskexecution.v1.TransitionCandidateVersionRequest
+	(*TransitionCandidateVersionResponse)(nil),     // 17: workos.taskexecution.v1.TransitionCandidateVersionResponse
+	(*RepairBuildInput)(nil),                       // 18: workos.taskexecution.v1.RepairBuildInput
+	(*v1.AppSourceFile)(nil),                       // 19: workos.app.v1.AppSourceFile
 }
 var file_workos_taskexecution_v1_build_proto_depIdxs = []int32{
-	15, // 0: workos.taskexecution.v1.BuildTestJob.input:type_name -> workos.taskexecution.v1.RepairBuildInput
-	16, // 1: workos.taskexecution.v1.BuildTestJob.candidate_files:type_name -> workos.app.v1.AppSourceFile
+	18, // 0: workos.taskexecution.v1.BuildTestJob.input:type_name -> workos.taskexecution.v1.RepairBuildInput
+	19, // 1: workos.taskexecution.v1.BuildTestJob.candidate_files:type_name -> workos.app.v1.AppSourceFile
 	0,  // 2: workos.taskexecution.v1.SubmitBuildTestRequest.job:type_name -> workos.taskexecution.v1.BuildTestJob
 	1,  // 3: workos.taskexecution.v1.SubmitBuildTestRequest.input_facts:type_name -> workos.taskexecution.v1.BuildTestInputFacts
 	5,  // 4: workos.taskexecution.v1.GetBuildTestResponse.engine:type_name -> workos.taskexecution.v1.BuildEngineFacts
-	2,  // 5: workos.taskexecution.v1.BuildTestService.SubmitBuildTest:input_type -> workos.taskexecution.v1.SubmitBuildTestRequest
-	4,  // 6: workos.taskexecution.v1.BuildTestService.GetBuildTest:input_type -> workos.taskexecution.v1.GetBuildTestRequest
-	7,  // 7: workos.taskexecution.v1.BuildTestService.CancelBuildTest:input_type -> workos.taskexecution.v1.CancelBuildTestRequest
-	9,  // 8: workos.taskexecution.v1.RepairVersionService.RegisterRepairCandidateVersion:input_type -> workos.taskexecution.v1.RegisterRepairCandidateVersionRequest
-	11, // 9: workos.taskexecution.v1.RepairVersionService.PublishRepairCandidateVersion:input_type -> workos.taskexecution.v1.PublishRepairCandidateVersionRequest
-	13, // 10: workos.taskexecution.v1.RepairVersionService.TransitionCandidateVersion:input_type -> workos.taskexecution.v1.TransitionCandidateVersionRequest
-	3,  // 11: workos.taskexecution.v1.BuildTestService.SubmitBuildTest:output_type -> workos.taskexecution.v1.SubmitBuildTestResponse
-	6,  // 12: workos.taskexecution.v1.BuildTestService.GetBuildTest:output_type -> workos.taskexecution.v1.GetBuildTestResponse
-	8,  // 13: workos.taskexecution.v1.BuildTestService.CancelBuildTest:output_type -> workos.taskexecution.v1.CancelBuildTestResponse
-	10, // 14: workos.taskexecution.v1.RepairVersionService.RegisterRepairCandidateVersion:output_type -> workos.taskexecution.v1.RegisterRepairCandidateVersionResponse
-	12, // 15: workos.taskexecution.v1.RepairVersionService.PublishRepairCandidateVersion:output_type -> workos.taskexecution.v1.PublishRepairCandidateVersionResponse
-	14, // 16: workos.taskexecution.v1.RepairVersionService.TransitionCandidateVersion:output_type -> workos.taskexecution.v1.TransitionCandidateVersionResponse
-	11, // [11:17] is the sub-list for method output_type
-	5,  // [5:11] is the sub-list for method input_type
-	5,  // [5:5] is the sub-list for extension type_name
-	5,  // [5:5] is the sub-list for extension extendee
-	0,  // [0:5] is the sub-list for field type_name
+	7,  // 5: workos.taskexecution.v1.GetBuildTestResponse.artifact:type_name -> workos.taskexecution.v1.BuildArtifactFacts
+	7,  // 6: workos.taskexecution.v1.GetBuildArtifactResponse.artifact:type_name -> workos.taskexecution.v1.BuildArtifactFacts
+	2,  // 7: workos.taskexecution.v1.BuildTestService.SubmitBuildTest:input_type -> workos.taskexecution.v1.SubmitBuildTestRequest
+	4,  // 8: workos.taskexecution.v1.BuildTestService.GetBuildTest:input_type -> workos.taskexecution.v1.GetBuildTestRequest
+	10, // 9: workos.taskexecution.v1.BuildTestService.CancelBuildTest:input_type -> workos.taskexecution.v1.CancelBuildTestRequest
+	8,  // 10: workos.taskexecution.v1.BuildTestService.GetBuildArtifact:input_type -> workos.taskexecution.v1.GetBuildArtifactRequest
+	12, // 11: workos.taskexecution.v1.RepairVersionService.RegisterRepairCandidateVersion:input_type -> workos.taskexecution.v1.RegisterRepairCandidateVersionRequest
+	14, // 12: workos.taskexecution.v1.RepairVersionService.PublishRepairCandidateVersion:input_type -> workos.taskexecution.v1.PublishRepairCandidateVersionRequest
+	16, // 13: workos.taskexecution.v1.RepairVersionService.TransitionCandidateVersion:input_type -> workos.taskexecution.v1.TransitionCandidateVersionRequest
+	3,  // 14: workos.taskexecution.v1.BuildTestService.SubmitBuildTest:output_type -> workos.taskexecution.v1.SubmitBuildTestResponse
+	6,  // 15: workos.taskexecution.v1.BuildTestService.GetBuildTest:output_type -> workos.taskexecution.v1.GetBuildTestResponse
+	11, // 16: workos.taskexecution.v1.BuildTestService.CancelBuildTest:output_type -> workos.taskexecution.v1.CancelBuildTestResponse
+	9,  // 17: workos.taskexecution.v1.BuildTestService.GetBuildArtifact:output_type -> workos.taskexecution.v1.GetBuildArtifactResponse
+	13, // 18: workos.taskexecution.v1.RepairVersionService.RegisterRepairCandidateVersion:output_type -> workos.taskexecution.v1.RegisterRepairCandidateVersionResponse
+	15, // 19: workos.taskexecution.v1.RepairVersionService.PublishRepairCandidateVersion:output_type -> workos.taskexecution.v1.PublishRepairCandidateVersionResponse
+	17, // 20: workos.taskexecution.v1.RepairVersionService.TransitionCandidateVersion:output_type -> workos.taskexecution.v1.TransitionCandidateVersionResponse
+	14, // [14:21] is the sub-list for method output_type
+	7,  // [7:14] is the sub-list for method input_type
+	7,  // [7:7] is the sub-list for extension type_name
+	7,  // [7:7] is the sub-list for extension extendee
+	0,  // [0:7] is the sub-list for field type_name
 }
 
 func init() { file_workos_taskexecution_v1_build_proto_init() }
@@ -1199,7 +1557,7 @@ func file_workos_taskexecution_v1_build_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_workos_taskexecution_v1_build_proto_rawDesc), len(file_workos_taskexecution_v1_build_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   15,
+			NumMessages:   18,
 			NumExtensions: 0,
 			NumServices:   2,
 		},

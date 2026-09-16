@@ -7,19 +7,11 @@ INSERT INTO workos_runtime.build_jobs (
 ON CONFLICT (task_id) DO NOTHING;
 
 -- name: GetBuildJobByTask :one
-SELECT id, task_id, incident_id, owner_user_id, project_id, installation_id,
-       input_digest, source_bundle_id, source_digest, manifest_digest, base_image,
-       payload, state, stage, build_exit_code, test_exit_code, failure_reason,
-       engine_facts, attempts, log_tail, lease_owner, lease_until, created_at, updated_at
-FROM workos_runtime.build_jobs
+SELECT * FROM workos_runtime.build_jobs
 WHERE task_id = $1;
 
 -- name: ListRunnableBuildJobs :many
-SELECT id, task_id, incident_id, owner_user_id, project_id, installation_id,
-       input_digest, source_bundle_id, source_digest, manifest_digest, base_image,
-       payload, state, stage, build_exit_code, test_exit_code, failure_reason,
-       engine_facts, attempts, log_tail, lease_owner, lease_until, created_at, updated_at
-FROM workos_runtime.build_jobs
+SELECT * FROM workos_runtime.build_jobs
 WHERE state = 'queued'
    OR (state = 'running' AND lease_until IS NOT NULL AND lease_until < sqlc.arg(now))
 ORDER BY updated_at

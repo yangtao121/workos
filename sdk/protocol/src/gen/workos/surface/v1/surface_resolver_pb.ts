@@ -14,7 +14,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file workos/surface/v1/surface_resolver.proto.
  */
 export const file_workos_surface_v1_surface_resolver: GenFile = /*@__PURE__*/
-  fileDesc("Cih3b3Jrb3Mvc3VyZmFjZS92MS9zdXJmYWNlX3Jlc29sdmVyLnByb3RvEhF3b3Jrb3Muc3VyZmFjZS52MSKXAQoZV2ViQnVuZGxlTGF1bmNoRGVzY3JpcHRvchIOCgZhcHBfaWQYASABKAkSDwoHdmVyc2lvbhgCIAEoCRIXCg9tYW5pZmVzdF9kaWdlc3QYAyABKAkSEwoLYXJ0aWZhY3RfaWQYBCABKAkSFwoPYXJ0aWZhY3RfZGlnZXN0GAUgASgJEhIKCmVudHJ5cG9pbnQYBiABKAkiRgoXUmVzb2x2ZVdlYkJ1bmRsZVJlcXVlc3QSEgoKcHJvamVjdF9pZBgBIAEoCRIXCg9hcHBfaW5zdGFuY2VfaWQYAiABKAkijQEKGFJlc29sdmVXZWJCdW5kbGVSZXNwb25zZRI8CgZsYXVuY2gYASABKAsyLC53b3Jrb3Muc3VyZmFjZS52MS5XZWJCdW5kbGVMYXVuY2hEZXNjcmlwdG9yEhsKE2dyYW50ZWRfcGVybWlzc2lvbnMYAiADKAkSFgoOZ3JhbnRfcmV2aXNpb24YAyABKAMiXAoZUmVhZFdlYkJ1bmRsZUFzc2V0UmVxdWVzdBISCgpwcm9qZWN0X2lkGAEgASgJEhcKD2FwcF9pbnN0YW5jZV9pZBgCIAEoCRISCgphc3NldF9wYXRoGAMgASgJIk8KGlJlYWRXZWJCdW5kbGVBc3NldFJlc3BvbnNlEg8KB2NvbnRlbnQYASABKAwSEgoKbWVkaWFfdHlwZRgCIAEoCRIMCgRldGFnGAMgASgJInIKF0NvbnRhaW5lclJlc291cmNlUG9saWN5EhYKDmNwdV9oYXJkX2NvcmVzGAEgASgBEhYKDm1lbW9yeV9oaWdoX21iGAIgASgFEhUKDW1lbW9yeV9tYXhfbWIYAyABKAUSEAoIcGlkc19tYXgYBCABKAUiWgoVQ29udGFpbmVySGVhbHRoUG9saWN5EhEKCWh0dHBfcGF0aBgBIAEoCRIXCg9zdGFydHVwX3NlY29uZHMYAiABKAUSFQoNcmVzdGFydF9saW1pdBgDIAEoBSKTAgoZQ29udGFpbmVyTGF1bmNoRGVzY3JpcHRvchIOCgZhcHBfaWQYASABKAkSDwoHdmVyc2lvbhgCIAEoCRIXCg9tYW5pZmVzdF9kaWdlc3QYAyABKAkSDQoFaW1hZ2UYBCABKAkSDwoHY29tbWFuZBgFIAMoCRIMCgRwb3J0GAYgASgFEj0KCXJlc291cmNlcxgHIAEoCzIqLndvcmtvcy5zdXJmYWNlLnYxLkNvbnRhaW5lclJlc291cmNlUG9saWN5EjgKBmhlYWx0aBgIIAEoCzIoLndvcmtvcy5zdXJmYWNlLnYxLkNvbnRhaW5lckhlYWx0aFBvbGljeRIVCg1zdXJmYWNlX3JvdXRlGAkgASgJIkoKG1Jlc29sdmVTdXJmYWNlTGF1bmNoUmVxdWVzdBISCgpwcm9qZWN0X2lkGAEgASgJEhcKD2FwcF9pbnN0YW5jZV9pZBgCIAEoCSLwAQocUmVzb2x2ZVN1cmZhY2VMYXVuY2hSZXNwb25zZRJCCgp3ZWJfYnVuZGxlGAEgASgLMiwud29ya29zLnN1cmZhY2UudjEuV2ViQnVuZGxlTGF1bmNoRGVzY3JpcHRvckgAEk0KFXdlYl9zZXJ2aWNlX2NvbnRhaW5lchgCIAEoCzIsLndvcmtvcy5zdXJmYWNlLnYxLkNvbnRhaW5lckxhdW5jaERlc2NyaXB0b3JIABIbChNncmFudGVkX3Blcm1pc3Npb25zGAMgAygJEhYKDmdyYW50X3JldmlzaW9uGAQgASgDQggKBmxhdW5jaDL9AgocU3VyZmFjZUxhdW5jaFJlc29sdmVyU2VydmljZRJtChBSZXNvbHZlV2ViQnVuZGxlEioud29ya29zLnN1cmZhY2UudjEuUmVzb2x2ZVdlYkJ1bmRsZVJlcXVlc3QaKy53b3Jrb3Muc3VyZmFjZS52MS5SZXNvbHZlV2ViQnVuZGxlUmVzcG9uc2UiABJzChJSZWFkV2ViQnVuZGxlQXNzZXQSLC53b3Jrb3Muc3VyZmFjZS52MS5SZWFkV2ViQnVuZGxlQXNzZXRSZXF1ZXN0Gi0ud29ya29zLnN1cmZhY2UudjEuUmVhZFdlYkJ1bmRsZUFzc2V0UmVzcG9uc2UiABJ5ChRSZXNvbHZlU3VyZmFjZUxhdW5jaBIuLndvcmtvcy5zdXJmYWNlLnYxLlJlc29sdmVTdXJmYWNlTGF1bmNoUmVxdWVzdBovLndvcmtvcy5zdXJmYWNlLnYxLlJlc29sdmVTdXJmYWNlTGF1bmNoUmVzcG9uc2UiAEJBWj9naXRodWIuY29tL3lhbmd0YW8xMjEvd29ya29zL2dlbi9nby93b3Jrb3Mvc3VyZmFjZS92MTtzdXJmYWNldjFiBnByb3RvMw");
+  fileDesc("Cih3b3Jrb3Mvc3VyZmFjZS92MS9zdXJmYWNlX3Jlc29sdmVyLnByb3RvEhF3b3Jrb3Muc3VyZmFjZS52MSKXAQoZV2ViQnVuZGxlTGF1bmNoRGVzY3JpcHRvchIOCgZhcHBfaWQYASABKAkSDwoHdmVyc2lvbhgCIAEoCRIXCg9tYW5pZmVzdF9kaWdlc3QYAyABKAkSEwoLYXJ0aWZhY3RfaWQYBCABKAkSFwoPYXJ0aWZhY3RfZGlnZXN0GAUgASgJEhIKCmVudHJ5cG9pbnQYBiABKAkiRgoXUmVzb2x2ZVdlYkJ1bmRsZVJlcXVlc3QSEgoKcHJvamVjdF9pZBgBIAEoCRIXCg9hcHBfaW5zdGFuY2VfaWQYAiABKAkijQEKGFJlc29sdmVXZWJCdW5kbGVSZXNwb25zZRI8CgZsYXVuY2gYASABKAsyLC53b3Jrb3Muc3VyZmFjZS52MS5XZWJCdW5kbGVMYXVuY2hEZXNjcmlwdG9yEhsKE2dyYW50ZWRfcGVybWlzc2lvbnMYAiADKAkSFgoOZ3JhbnRfcmV2aXNpb24YAyABKAMiXAoZUmVhZFdlYkJ1bmRsZUFzc2V0UmVxdWVzdBISCgpwcm9qZWN0X2lkGAEgASgJEhcKD2FwcF9pbnN0YW5jZV9pZBgCIAEoCRISCgphc3NldF9wYXRoGAMgASgJIk8KGlJlYWRXZWJCdW5kbGVBc3NldFJlc3BvbnNlEg8KB2NvbnRlbnQYASABKAwSEgoKbWVkaWFfdHlwZRgCIAEoCRIMCgRldGFnGAMgASgJInIKF0NvbnRhaW5lclJlc291cmNlUG9saWN5EhYKDmNwdV9oYXJkX2NvcmVzGAEgASgBEhYKDm1lbW9yeV9oaWdoX21iGAIgASgFEhUKDW1lbW9yeV9tYXhfbWIYAyABKAUSEAoIcGlkc19tYXgYBCABKAUiWgoVQ29udGFpbmVySGVhbHRoUG9saWN5EhEKCWh0dHBfcGF0aBgBIAEoCRIXCg9zdGFydHVwX3NlY29uZHMYAiABKAUSFQoNcmVzdGFydF9saW1pdBgDIAEoBSJYCg9BcnRpZmFjdEJpbmRpbmcSEwoLYXJ0aWZhY3RfaWQYASABKAkSFwoPYXJ0aWZhY3RfZGlnZXN0GAIgASgJEhcKD2FydGlmYWN0X2Zvcm1hdBgDIAEoCSLJAgoZQ29udGFpbmVyTGF1bmNoRGVzY3JpcHRvchIOCgZhcHBfaWQYASABKAkSDwoHdmVyc2lvbhgCIAEoCRIXCg9tYW5pZmVzdF9kaWdlc3QYAyABKAkSDQoFaW1hZ2UYBCABKAkSDwoHY29tbWFuZBgFIAMoCRIMCgRwb3J0GAYgASgFEj0KCXJlc291cmNlcxgHIAEoCzIqLndvcmtvcy5zdXJmYWNlLnYxLkNvbnRhaW5lclJlc291cmNlUG9saWN5EjgKBmhlYWx0aBgIIAEoCzIoLndvcmtvcy5zdXJmYWNlLnYxLkNvbnRhaW5lckhlYWx0aFBvbGljeRIVCg1zdXJmYWNlX3JvdXRlGAkgASgJEjQKCGFydGlmYWN0GAogASgLMiIud29ya29zLnN1cmZhY2UudjEuQXJ0aWZhY3RCaW5kaW5nIkoKG1Jlc29sdmVTdXJmYWNlTGF1bmNoUmVxdWVzdBISCgpwcm9qZWN0X2lkGAEgASgJEhcKD2FwcF9pbnN0YW5jZV9pZBgCIAEoCSLwAQocUmVzb2x2ZVN1cmZhY2VMYXVuY2hSZXNwb25zZRJCCgp3ZWJfYnVuZGxlGAEgASgLMiwud29ya29zLnN1cmZhY2UudjEuV2ViQnVuZGxlTGF1bmNoRGVzY3JpcHRvckgAEk0KFXdlYl9zZXJ2aWNlX2NvbnRhaW5lchgCIAEoCzIsLndvcmtvcy5zdXJmYWNlLnYxLkNvbnRhaW5lckxhdW5jaERlc2NyaXB0b3JIABIbChNncmFudGVkX3Blcm1pc3Npb25zGAMgAygJEhYKDmdyYW50X3JldmlzaW9uGAQgASgDQggKBmxhdW5jaDL9AgocU3VyZmFjZUxhdW5jaFJlc29sdmVyU2VydmljZRJtChBSZXNvbHZlV2ViQnVuZGxlEioud29ya29zLnN1cmZhY2UudjEuUmVzb2x2ZVdlYkJ1bmRsZVJlcXVlc3QaKy53b3Jrb3Muc3VyZmFjZS52MS5SZXNvbHZlV2ViQnVuZGxlUmVzcG9uc2UiABJzChJSZWFkV2ViQnVuZGxlQXNzZXQSLC53b3Jrb3Muc3VyZmFjZS52MS5SZWFkV2ViQnVuZGxlQXNzZXRSZXF1ZXN0Gi0ud29ya29zLnN1cmZhY2UudjEuUmVhZFdlYkJ1bmRsZUFzc2V0UmVzcG9uc2UiABJ5ChRSZXNvbHZlU3VyZmFjZUxhdW5jaBIuLndvcmtvcy5zdXJmYWNlLnYxLlJlc29sdmVTdXJmYWNlTGF1bmNoUmVxdWVzdBovLndvcmtvcy5zdXJmYWNlLnYxLlJlc29sdmVTdXJmYWNlTGF1bmNoUmVzcG9uc2UiAEJBWj9naXRodWIuY29tL3lhbmd0YW8xMjEvd29ya29zL2dlbi9nby93b3Jrb3Mvc3VyZmFjZS92MTtzdXJmYWNldjFiBnByb3RvMw");
 
 /**
  * WebBundleLaunchDescriptor is the neutral, immutable launch fact for one
@@ -246,6 +246,40 @@ export const ContainerHealthPolicySchema: GenMessage<ContainerHealthPolicy> = /*
   messageDesc(file_workos_surface_v1_surface_resolver, 6);
 
 /**
+ * ArtifactBinding is the exact release bundle a bundle-profile container
+ * launch must run (ADR-0033): Runtime resolves the ready app-bundle.v1 by
+ * this identity and mounts it read-only at /app. Absent on legacy
+ * image-only manifests, which keep their original semantics; a bundle
+ * profile whose package cannot be verified fails resolution instead of
+ * falling back to the base image as if it were the app's new code.
+ *
+ * @generated from message workos.surface.v1.ArtifactBinding
+ */
+export type ArtifactBinding = Message<"workos.surface.v1.ArtifactBinding"> & {
+  /**
+   * @generated from field: string artifact_id = 1;
+   */
+  artifactId: string;
+
+  /**
+   * @generated from field: string artifact_digest = 2;
+   */
+  artifactDigest: string;
+
+  /**
+   * @generated from field: string artifact_format = 3;
+   */
+  artifactFormat: string;
+};
+
+/**
+ * Describes the message workos.surface.v1.ArtifactBinding.
+ * Use `create(ArtifactBindingSchema)` to create a new message.
+ */
+export const ArtifactBindingSchema: GenMessage<ArtifactBinding> = /*@__PURE__*/
+  messageDesc(file_workos_surface_v1_surface_resolver, 7);
+
+/**
  * ContainerLaunchDescriptor is the neutral, immutable launch fact for one
  * installed container instance: the pinned registry identity, the exact
  * digest-pinned OCI image reference, the bounded argv, the container port,
@@ -300,6 +334,14 @@ export type ContainerLaunchDescriptor = Message<"workos.surface.v1.ContainerLaun
    * @generated from field: string surface_route = 9;
    */
   surfaceRoute: string;
+
+  /**
+   * Present iff the installed version's canonical manifest carries
+   * runtime.artifact (bundle profile, ADR-0033).
+   *
+   * @generated from field: workos.surface.v1.ArtifactBinding artifact = 10;
+   */
+  artifact?: ArtifactBinding | undefined;
 };
 
 /**
@@ -307,7 +349,7 @@ export type ContainerLaunchDescriptor = Message<"workos.surface.v1.ContainerLaun
  * Use `create(ContainerLaunchDescriptorSchema)` to create a new message.
  */
 export const ContainerLaunchDescriptorSchema: GenMessage<ContainerLaunchDescriptor> = /*@__PURE__*/
-  messageDesc(file_workos_surface_v1_surface_resolver, 7);
+  messageDesc(file_workos_surface_v1_surface_resolver, 8);
 
 /**
  * @generated from message workos.surface.v1.ResolveSurfaceLaunchRequest
@@ -329,7 +371,7 @@ export type ResolveSurfaceLaunchRequest = Message<"workos.surface.v1.ResolveSurf
  * Use `create(ResolveSurfaceLaunchRequestSchema)` to create a new message.
  */
 export const ResolveSurfaceLaunchRequestSchema: GenMessage<ResolveSurfaceLaunchRequest> = /*@__PURE__*/
-  messageDesc(file_workos_surface_v1_surface_resolver, 8);
+  messageDesc(file_workos_surface_v1_surface_resolver, 9);
 
 /**
  * @generated from message workos.surface.v1.ResolveSurfaceLaunchResponse
@@ -372,7 +414,7 @@ export type ResolveSurfaceLaunchResponse = Message<"workos.surface.v1.ResolveSur
  * Use `create(ResolveSurfaceLaunchResponseSchema)` to create a new message.
  */
 export const ResolveSurfaceLaunchResponseSchema: GenMessage<ResolveSurfaceLaunchResponse> = /*@__PURE__*/
-  messageDesc(file_workos_surface_v1_surface_resolver, 9);
+  messageDesc(file_workos_surface_v1_surface_resolver, 10);
 
 /**
  * @generated from service workos.surface.v1.SurfaceLaunchResolverService

@@ -146,6 +146,17 @@ message WorkloadObservation {
   // Cumulative pids.events `max` counter. A generation-local increase means
   // the enforced pids.max limit rejected at least one task creation.
   uint64 pids_events_max = 20;
+  // Content digest of the app-bundle.v1 release bundle this workload's
+  // container actually mounts (ADR-0033); empty for legacy image-only
+  // workloads. Reliability matches it against the candidate artifact.
+  string artifact_digest = 21;
+  // The digest-pinned image the engine verified at launch.
+  string image_digest = 22;
+  // True iff the engine's post-start inspect matched the full launch
+  // identity (image digest, read-only /app mount source and digest label,
+  // argv, limits). A running workload never reports identity_verified
+  // without that readback.
+  bool identity_verified = 23;
 }
 
 message ListObservationsRequest {}

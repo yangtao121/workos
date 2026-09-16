@@ -14,7 +14,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file workos/taskexecution/v1/build.proto.
  */
 export const file_workos_taskexecution_v1_build: GenFile = /*@__PURE__*/
-  fileDesc("CiN3b3Jrb3MvdGFza2V4ZWN1dGlvbi92MS9idWlsZC5wcm90bxIXd29ya29zLnRhc2tleGVjdXRpb24udjEi6QEKDEJ1aWxkVGVzdEpvYhIPCgd0YXNrX2lkGAEgASgJEhMKC2luY2lkZW50X2lkGAIgASgJEhUKDW93bmVyX3VzZXJfaWQYAyABKAkSEgoKcHJvamVjdF9pZBgEIAEoCRIXCg9pbnN0YWxsYXRpb25faWQYBSABKAkSOAoFaW5wdXQYBiABKAsyKS53b3Jrb3MudGFza2V4ZWN1dGlvbi52MS5SZXBhaXJCdWlsZElucHV0EjUKD2NhbmRpZGF0ZV9maWxlcxgHIAMoCzIcLndvcmtvcy5hcHAudjEuQXBwU291cmNlRmlsZSJzChNCdWlsZFRlc3RJbnB1dEZhY3RzEhgKEHNvdXJjZV9idW5kbGVfaWQYASABKAkSFQoNc291cmNlX2RpZ2VzdBgCIAEoCRIXCg9tYW5pZmVzdF9kaWdlc3QYAyABKAkSEgoKYmFzZV9pbWFnZRgEIAEoCSKPAQoWU3VibWl0QnVpbGRUZXN0UmVxdWVzdBIyCgNqb2IYASABKAsyJS53b3Jrb3MudGFza2V4ZWN1dGlvbi52MS5CdWlsZFRlc3RKb2ISQQoLaW5wdXRfZmFjdHMYAiABKAsyLC53b3Jrb3MudGFza2V4ZWN1dGlvbi52MS5CdWlsZFRlc3RJbnB1dEZhY3RzIjoKF1N1Ym1pdEJ1aWxkVGVzdFJlc3BvbnNlEg4KBmpvYl9pZBgBIAEoCRIPCgdjcmVhdGVkGAIgASgIIiYKE0dldEJ1aWxkVGVzdFJlcXVlc3QSDwoHdGFza19pZBgBIAEoCSJrChBCdWlsZEVuZ2luZUZhY3RzEg4KBmVuZ2luZRgBIAEoCRIYChBuZXR3b3JrX2lzb2xhdGVkGAIgASgIEhQKDGltYWdlX3Bpbm5lZBgDIAEoCBIXCg9lbmZvcmNlZF9saW1pdHMYBCADKAkiggIKFEdldEJ1aWxkVGVzdFJlc3BvbnNlEg4KBmpvYl9pZBgBIAEoCRIPCgd0YXNrX2lkGAIgASgJEg0KBXN0YXRlGAMgASgJEg0KBXN0YWdlGAQgASgJEhcKD2J1aWxkX2V4aXRfY29kZRgFIAEoBRIWCg50ZXN0X2V4aXRfY29kZRgGIAEoBRIWCg5mYWlsdXJlX3JlYXNvbhgHIAEoCRI5CgZlbmdpbmUYCCABKAsyKS53b3Jrb3MudGFza2V4ZWN1dGlvbi52MS5CdWlsZEVuZ2luZUZhY3RzEhUKDXNvdXJjZV9kaWdlc3QYCSABKAkSEAoIYXR0ZW1wdHMYCiABKAUiKQoWQ2FuY2VsQnVpbGRUZXN0UmVxdWVzdBIPCgd0YXNrX2lkGAEgASgJIigKF0NhbmNlbEJ1aWxkVGVzdFJlc3BvbnNlEg0KBXN0YXRlGAEgASgJIqcBCiVSZWdpc3RlclJlcGFpckNhbmRpZGF0ZVZlcnNpb25SZXF1ZXN0Eg8KB3Rhc2tfaWQYASABKAkSEwoLaW5jaWRlbnRfaWQYAiABKAkSEgoKcHJvamVjdF9pZBgDIAEoCRIXCg9pbnN0YWxsYXRpb25faWQYBCABKAkSFAoMYnVpbGRfam9iX2lkGAUgASgJEhUKDXNvdXJjZV9kaWdlc3QYBiABKAkikwEKJlJlZ2lzdGVyUmVwYWlyQ2FuZGlkYXRlVmVyc2lvblJlc3BvbnNlEg8KB3ZlcnNpb24YASABKAkSFwoPbWFuaWZlc3RfZGlnZXN0GAIgASgJEg8KB2NyZWF0ZWQYAyABKAgSFAoMYmFzZV92ZXJzaW9uGAQgASgJEhgKEHByb2plY3RfcmV2aXNpb24YBSABKAMijgEKJFB1Ymxpc2hSZXBhaXJDYW5kaWRhdGVWZXJzaW9uUmVxdWVzdBIPCgd0YXNrX2lkGAEgASgJEhIKCnByb2plY3RfaWQYAiABKAkSFwoPaW5zdGFsbGF0aW9uX2lkGAMgASgJEg8KB3ZlcnNpb24YBCABKAkSFwoPbWFuaWZlc3RfZGlnZXN0GAUgASgJIjoKJVB1Ymxpc2hSZXBhaXJDYW5kaWRhdGVWZXJzaW9uUmVzcG9uc2USEQoJcHVibGlzaGVkGAEgASgIIrYBCiFUcmFuc2l0aW9uQ2FuZGlkYXRlVmVyc2lvblJlcXVlc3QSFwoPaWRlbXBvdGVuY3lfa2V5GAEgASgJEhIKCnByb2plY3RfaWQYAiABKAkSFwoPaW5zdGFsbGF0aW9uX2lkGAMgASgJEg8KB3ZlcnNpb24YBCABKAkSFwoPbWFuaWZlc3RfZGlnZXN0GAUgASgJEiEKGWV4cGVjdGVkX3Byb2plY3RfcmV2aXNpb24YBiABKAMiTwoiVHJhbnNpdGlvbkNhbmRpZGF0ZVZlcnNpb25SZXNwb25zZRIPCgd2ZXJzaW9uGAEgASgJEhgKEHByb2plY3RfcmV2aXNpb24YAiABKAMy8QIKEEJ1aWxkVGVzdFNlcnZpY2USdgoPU3VibWl0QnVpbGRUZXN0Ei8ud29ya29zLnRhc2tleGVjdXRpb24udjEuU3VibWl0QnVpbGRUZXN0UmVxdWVzdBowLndvcmtvcy50YXNrZXhlY3V0aW9uLnYxLlN1Ym1pdEJ1aWxkVGVzdFJlc3BvbnNlIgASbQoMR2V0QnVpbGRUZXN0Eiwud29ya29zLnRhc2tleGVjdXRpb24udjEuR2V0QnVpbGRUZXN0UmVxdWVzdBotLndvcmtvcy50YXNrZXhlY3V0aW9uLnYxLkdldEJ1aWxkVGVzdFJlc3BvbnNlIgASdgoPQ2FuY2VsQnVpbGRUZXN0Ei8ud29ya29zLnRhc2tleGVjdXRpb24udjEuQ2FuY2VsQnVpbGRUZXN0UmVxdWVzdBowLndvcmtvcy50YXNrZXhlY3V0aW9uLnYxLkNhbmNlbEJ1aWxkVGVzdFJlc3BvbnNlIgAy+QMKFFJlcGFpclZlcnNpb25TZXJ2aWNlEqMBCh5SZWdpc3RlclJlcGFpckNhbmRpZGF0ZVZlcnNpb24SPi53b3Jrb3MudGFza2V4ZWN1dGlvbi52MS5SZWdpc3RlclJlcGFpckNhbmRpZGF0ZVZlcnNpb25SZXF1ZXN0Gj8ud29ya29zLnRhc2tleGVjdXRpb24udjEuUmVnaXN0ZXJSZXBhaXJDYW5kaWRhdGVWZXJzaW9uUmVzcG9uc2UiABKgAQodUHVibGlzaFJlcGFpckNhbmRpZGF0ZVZlcnNpb24SPS53b3Jrb3MudGFza2V4ZWN1dGlvbi52MS5QdWJsaXNoUmVwYWlyQ2FuZGlkYXRlVmVyc2lvblJlcXVlc3QaPi53b3Jrb3MudGFza2V4ZWN1dGlvbi52MS5QdWJsaXNoUmVwYWlyQ2FuZGlkYXRlVmVyc2lvblJlc3BvbnNlIgASlwEKGlRyYW5zaXRpb25DYW5kaWRhdGVWZXJzaW9uEjoud29ya29zLnRhc2tleGVjdXRpb24udjEuVHJhbnNpdGlvbkNhbmRpZGF0ZVZlcnNpb25SZXF1ZXN0Gjsud29ya29zLnRhc2tleGVjdXRpb24udjEuVHJhbnNpdGlvbkNhbmRpZGF0ZVZlcnNpb25SZXNwb25zZSIAQk1aS2dpdGh1Yi5jb20veWFuZ3RhbzEyMS93b3Jrb3MvZ2VuL2dvL3dvcmtvcy90YXNrZXhlY3V0aW9uL3YxO3Rhc2tleGVjdXRpb252MWIGcHJvdG8z", [file_workos_app_v1_source, file_workos_taskexecution_v1_repair]);
+  fileDesc("CiN3b3Jrb3MvdGFza2V4ZWN1dGlvbi92MS9idWlsZC5wcm90bxIXd29ya29zLnRhc2tleGVjdXRpb24udjEi6QEKDEJ1aWxkVGVzdEpvYhIPCgd0YXNrX2lkGAEgASgJEhMKC2luY2lkZW50X2lkGAIgASgJEhUKDW93bmVyX3VzZXJfaWQYAyABKAkSEgoKcHJvamVjdF9pZBgEIAEoCRIXCg9pbnN0YWxsYXRpb25faWQYBSABKAkSOAoFaW5wdXQYBiABKAsyKS53b3Jrb3MudGFza2V4ZWN1dGlvbi52MS5SZXBhaXJCdWlsZElucHV0EjUKD2NhbmRpZGF0ZV9maWxlcxgHIAMoCzIcLndvcmtvcy5hcHAudjEuQXBwU291cmNlRmlsZSJzChNCdWlsZFRlc3RJbnB1dEZhY3RzEhgKEHNvdXJjZV9idW5kbGVfaWQYASABKAkSFQoNc291cmNlX2RpZ2VzdBgCIAEoCRIXCg9tYW5pZmVzdF9kaWdlc3QYAyABKAkSEgoKYmFzZV9pbWFnZRgEIAEoCSKPAQoWU3VibWl0QnVpbGRUZXN0UmVxdWVzdBIyCgNqb2IYASABKAsyJS53b3Jrb3MudGFza2V4ZWN1dGlvbi52MS5CdWlsZFRlc3RKb2ISQQoLaW5wdXRfZmFjdHMYAiABKAsyLC53b3Jrb3MudGFza2V4ZWN1dGlvbi52MS5CdWlsZFRlc3RJbnB1dEZhY3RzIjoKF1N1Ym1pdEJ1aWxkVGVzdFJlc3BvbnNlEg4KBmpvYl9pZBgBIAEoCRIPCgdjcmVhdGVkGAIgASgIIiYKE0dldEJ1aWxkVGVzdFJlcXVlc3QSDwoHdGFza19pZBgBIAEoCSJrChBCdWlsZEVuZ2luZUZhY3RzEg4KBmVuZ2luZRgBIAEoCRIYChBuZXR3b3JrX2lzb2xhdGVkGAIgASgIEhQKDGltYWdlX3Bpbm5lZBgDIAEoCBIXCg9lbmZvcmNlZF9saW1pdHMYBCADKAkiwQIKFEdldEJ1aWxkVGVzdFJlc3BvbnNlEg4KBmpvYl9pZBgBIAEoCRIPCgd0YXNrX2lkGAIgASgJEg0KBXN0YXRlGAMgASgJEg0KBXN0YWdlGAQgASgJEhcKD2J1aWxkX2V4aXRfY29kZRgFIAEoBRIWCg50ZXN0X2V4aXRfY29kZRgGIAEoBRIWCg5mYWlsdXJlX3JlYXNvbhgHIAEoCRI5CgZlbmdpbmUYCCABKAsyKS53b3Jrb3MudGFza2V4ZWN1dGlvbi52MS5CdWlsZEVuZ2luZUZhY3RzEhUKDXNvdXJjZV9kaWdlc3QYCSABKAkSEAoIYXR0ZW1wdHMYCiABKAUSPQoIYXJ0aWZhY3QYCyABKAsyKy53b3Jrb3MudGFza2V4ZWN1dGlvbi52MS5CdWlsZEFydGlmYWN0RmFjdHMiuAMKEkJ1aWxkQXJ0aWZhY3RGYWN0cxITCgthcnRpZmFjdF9pZBgBIAEoCRIXCg9hcnRpZmFjdF9kaWdlc3QYAiABKAkSDgoGZm9ybWF0GAMgASgJEg4KBm9yaWdpbhgEIAEoCRISCgpzaXplX2J5dGVzGAUgASgDEhIKCmZpbGVfY291bnQYBiABKAUSDgoGam9iX2lkGAcgASgJEg8KB3Rhc2tfaWQYCCABKAkSEwoLaW5jaWRlbnRfaWQYCSABKAkSFQoNb3duZXJfdXNlcl9pZBgKIAEoCRISCgpwcm9qZWN0X2lkGAsgASgJEhcKD2luc3RhbGxhdGlvbl9pZBgMIAEoCRIYChBzb3VyY2VfYnVuZGxlX2lkGA0gASgJEhUKDXNvdXJjZV9kaWdlc3QYDiABKAkSFwoPbWFuaWZlc3RfZGlnZXN0GA8gASgJEhIKCmJhc2VfaW1hZ2UYECABKAkSFQoNYnVpbGRfY29tbWFuZBgRIAMoCRIUCgx0ZXN0X2NvbW1hbmQYEiADKAkSGAoQb3V0cHV0X2RpcmVjdG9yeRgTIAEoCRINCgVzdGF0ZRgUIAEoCSI/ChdHZXRCdWlsZEFydGlmYWN0UmVxdWVzdBIPCgd0YXNrX2lkGAEgASgJEhMKC2FydGlmYWN0X2lkGAIgASgJIlkKGEdldEJ1aWxkQXJ0aWZhY3RSZXNwb25zZRI9CghhcnRpZmFjdBgBIAEoCzIrLndvcmtvcy50YXNrZXhlY3V0aW9uLnYxLkJ1aWxkQXJ0aWZhY3RGYWN0cyIpChZDYW5jZWxCdWlsZFRlc3RSZXF1ZXN0Eg8KB3Rhc2tfaWQYASABKAkiKAoXQ2FuY2VsQnVpbGRUZXN0UmVzcG9uc2USDQoFc3RhdGUYASABKAkipwEKJVJlZ2lzdGVyUmVwYWlyQ2FuZGlkYXRlVmVyc2lvblJlcXVlc3QSDwoHdGFza19pZBgBIAEoCRITCgtpbmNpZGVudF9pZBgCIAEoCRISCgpwcm9qZWN0X2lkGAMgASgJEhcKD2luc3RhbGxhdGlvbl9pZBgEIAEoCRIUCgxidWlsZF9qb2JfaWQYBSABKAkSFQoNc291cmNlX2RpZ2VzdBgGIAEoCSKTAQomUmVnaXN0ZXJSZXBhaXJDYW5kaWRhdGVWZXJzaW9uUmVzcG9uc2USDwoHdmVyc2lvbhgBIAEoCRIXCg9tYW5pZmVzdF9kaWdlc3QYAiABKAkSDwoHY3JlYXRlZBgDIAEoCBIUCgxiYXNlX3ZlcnNpb24YBCABKAkSGAoQcHJvamVjdF9yZXZpc2lvbhgFIAEoAyKOAQokUHVibGlzaFJlcGFpckNhbmRpZGF0ZVZlcnNpb25SZXF1ZXN0Eg8KB3Rhc2tfaWQYASABKAkSEgoKcHJvamVjdF9pZBgCIAEoCRIXCg9pbnN0YWxsYXRpb25faWQYAyABKAkSDwoHdmVyc2lvbhgEIAEoCRIXCg9tYW5pZmVzdF9kaWdlc3QYBSABKAkiOgolUHVibGlzaFJlcGFpckNhbmRpZGF0ZVZlcnNpb25SZXNwb25zZRIRCglwdWJsaXNoZWQYASABKAgitgEKIVRyYW5zaXRpb25DYW5kaWRhdGVWZXJzaW9uUmVxdWVzdBIXCg9pZGVtcG90ZW5jeV9rZXkYASABKAkSEgoKcHJvamVjdF9pZBgCIAEoCRIXCg9pbnN0YWxsYXRpb25faWQYAyABKAkSDwoHdmVyc2lvbhgEIAEoCRIXCg9tYW5pZmVzdF9kaWdlc3QYBSABKAkSIQoZZXhwZWN0ZWRfcHJvamVjdF9yZXZpc2lvbhgGIAEoAyJPCiJUcmFuc2l0aW9uQ2FuZGlkYXRlVmVyc2lvblJlc3BvbnNlEg8KB3ZlcnNpb24YASABKAkSGAoQcHJvamVjdF9yZXZpc2lvbhgCIAEoAzLsAwoQQnVpbGRUZXN0U2VydmljZRJ2Cg9TdWJtaXRCdWlsZFRlc3QSLy53b3Jrb3MudGFza2V4ZWN1dGlvbi52MS5TdWJtaXRCdWlsZFRlc3RSZXF1ZXN0GjAud29ya29zLnRhc2tleGVjdXRpb24udjEuU3VibWl0QnVpbGRUZXN0UmVzcG9uc2UiABJtCgxHZXRCdWlsZFRlc3QSLC53b3Jrb3MudGFza2V4ZWN1dGlvbi52MS5HZXRCdWlsZFRlc3RSZXF1ZXN0Gi0ud29ya29zLnRhc2tleGVjdXRpb24udjEuR2V0QnVpbGRUZXN0UmVzcG9uc2UiABJ2Cg9DYW5jZWxCdWlsZFRlc3QSLy53b3Jrb3MudGFza2V4ZWN1dGlvbi52MS5DYW5jZWxCdWlsZFRlc3RSZXF1ZXN0GjAud29ya29zLnRhc2tleGVjdXRpb24udjEuQ2FuY2VsQnVpbGRUZXN0UmVzcG9uc2UiABJ5ChBHZXRCdWlsZEFydGlmYWN0EjAud29ya29zLnRhc2tleGVjdXRpb24udjEuR2V0QnVpbGRBcnRpZmFjdFJlcXVlc3QaMS53b3Jrb3MudGFza2V4ZWN1dGlvbi52MS5HZXRCdWlsZEFydGlmYWN0UmVzcG9uc2UiADL5AwoUUmVwYWlyVmVyc2lvblNlcnZpY2USowEKHlJlZ2lzdGVyUmVwYWlyQ2FuZGlkYXRlVmVyc2lvbhI+Lndvcmtvcy50YXNrZXhlY3V0aW9uLnYxLlJlZ2lzdGVyUmVwYWlyQ2FuZGlkYXRlVmVyc2lvblJlcXVlc3QaPy53b3Jrb3MudGFza2V4ZWN1dGlvbi52MS5SZWdpc3RlclJlcGFpckNhbmRpZGF0ZVZlcnNpb25SZXNwb25zZSIAEqABCh1QdWJsaXNoUmVwYWlyQ2FuZGlkYXRlVmVyc2lvbhI9Lndvcmtvcy50YXNrZXhlY3V0aW9uLnYxLlB1Ymxpc2hSZXBhaXJDYW5kaWRhdGVWZXJzaW9uUmVxdWVzdBo+Lndvcmtvcy50YXNrZXhlY3V0aW9uLnYxLlB1Ymxpc2hSZXBhaXJDYW5kaWRhdGVWZXJzaW9uUmVzcG9uc2UiABKXAQoaVHJhbnNpdGlvbkNhbmRpZGF0ZVZlcnNpb24SOi53b3Jrb3MudGFza2V4ZWN1dGlvbi52MS5UcmFuc2l0aW9uQ2FuZGlkYXRlVmVyc2lvblJlcXVlc3QaOy53b3Jrb3MudGFza2V4ZWN1dGlvbi52MS5UcmFuc2l0aW9uQ2FuZGlkYXRlVmVyc2lvblJlc3BvbnNlIgBCTVpLZ2l0aHViLmNvbS95YW5ndGFvMTIxL3dvcmtvcy9nZW4vZ28vd29ya29zL3Rhc2tleGVjdXRpb24vdjE7dGFza2V4ZWN1dGlvbnYxYgZwcm90bzM", [file_workos_app_v1_source, file_workos_taskexecution_v1_repair]);
 
 /**
  * One bounded Build/Test job over an immutable repair candidate. Runtime is
@@ -262,6 +262,15 @@ export type GetBuildTestResponse = Message<"workos.taskexecution.v1.GetBuildTest
    * @generated from field: int32 attempts = 10;
    */
   attempts: number;
+
+  /**
+   * The frozen release bundle this verdict committed (ADR-0033). Present only
+   * when state=succeeded AND a ready app-bundle.v1 artifact exists; a success
+   * verdict without it means the engine tier cannot produce deployable output.
+   *
+   * @generated from field: workos.taskexecution.v1.BuildArtifactFacts artifact = 11;
+   */
+  artifact?: BuildArtifactFacts | undefined;
 };
 
 /**
@@ -270,6 +279,176 @@ export type GetBuildTestResponse = Message<"workos.taskexecution.v1.GetBuildTest
  */
 export const GetBuildTestResponseSchema: GenMessage<GetBuildTestResponse> = /*@__PURE__*/
   messageDesc(file_workos_taskexecution_v1_build, 6);
+
+/**
+ * The authoritative, bounded metadata of one release bundle as Runtime owns
+ * it (ADR-0033). Never carries bundle bytes. Core re-reads these facts from
+ * Runtime before registering any version; a caller-supplied id/digest string
+ * is only a reconciliation hint, never proof.
+ *
+ * @generated from message workos.taskexecution.v1.BuildArtifactFacts
+ */
+export type BuildArtifactFacts = Message<"workos.taskexecution.v1.BuildArtifactFacts"> & {
+  /**
+   * @generated from field: string artifact_id = 1;
+   */
+  artifactId: string;
+
+  /**
+   * Content digest: sha256 over the complete app-bundle.v1 byte stream.
+   *
+   * @generated from field: string artifact_digest = 2;
+   */
+  artifactDigest: string;
+
+  /**
+   * @generated from field: string format = 3;
+   */
+  format: string;
+
+  /**
+   * build_job|operator_import. An imported bundle carries no proof that this
+   * round's Build/Test passed; projections must show it as an import.
+   *
+   * @generated from field: string origin = 4;
+   */
+  origin: string;
+
+  /**
+   * @generated from field: int64 size_bytes = 5;
+   */
+  sizeBytes: bigint;
+
+  /**
+   * @generated from field: int32 file_count = 6;
+   */
+  fileCount: number;
+
+  /**
+   * Job provenance (empty for operator_import).
+   *
+   * @generated from field: string job_id = 7;
+   */
+  jobId: string;
+
+  /**
+   * @generated from field: string task_id = 8;
+   */
+  taskId: string;
+
+  /**
+   * @generated from field: string incident_id = 9;
+   */
+  incidentId: string;
+
+  /**
+   * @generated from field: string owner_user_id = 10;
+   */
+  ownerUserId: string;
+
+  /**
+   * @generated from field: string project_id = 11;
+   */
+  projectId: string;
+
+  /**
+   * @generated from field: string installation_id = 12;
+   */
+  installationId: string;
+
+  /**
+   * @generated from field: string source_bundle_id = 13;
+   */
+  sourceBundleId: string;
+
+  /**
+   * @generated from field: string source_digest = 14;
+   */
+  sourceDigest: string;
+
+  /**
+   * @generated from field: string manifest_digest = 15;
+   */
+  manifestDigest: string;
+
+  /**
+   * @generated from field: string base_image = 16;
+   */
+  baseImage: string;
+
+  /**
+   * The fixed recipe echo, so a verifier can compare the exact commands.
+   *
+   * @generated from field: repeated string build_command = 17;
+   */
+  buildCommand: string[];
+
+  /**
+   * @generated from field: repeated string test_command = 18;
+   */
+  testCommand: string[];
+
+  /**
+   * @generated from field: string output_directory = 19;
+   */
+  outputDirectory: string;
+
+  /**
+   * preparing|ready|failed|unavailable. Only ready bundles may back a
+   * version; unavailable means metadata exists but the bytes are gone.
+   *
+   * @generated from field: string state = 20;
+   */
+  state: string;
+};
+
+/**
+ * Describes the message workos.taskexecution.v1.BuildArtifactFacts.
+ * Use `create(BuildArtifactFactsSchema)` to create a new message.
+ */
+export const BuildArtifactFactsSchema: GenMessage<BuildArtifactFacts> = /*@__PURE__*/
+  messageDesc(file_workos_taskexecution_v1_build, 7);
+
+/**
+ * @generated from message workos.taskexecution.v1.GetBuildArtifactRequest
+ */
+export type GetBuildArtifactRequest = Message<"workos.taskexecution.v1.GetBuildArtifactRequest"> & {
+  /**
+   * Either the producing task (build provenance) or the artifact id.
+   *
+   * @generated from field: string task_id = 1;
+   */
+  taskId: string;
+
+  /**
+   * @generated from field: string artifact_id = 2;
+   */
+  artifactId: string;
+};
+
+/**
+ * Describes the message workos.taskexecution.v1.GetBuildArtifactRequest.
+ * Use `create(GetBuildArtifactRequestSchema)` to create a new message.
+ */
+export const GetBuildArtifactRequestSchema: GenMessage<GetBuildArtifactRequest> = /*@__PURE__*/
+  messageDesc(file_workos_taskexecution_v1_build, 8);
+
+/**
+ * @generated from message workos.taskexecution.v1.GetBuildArtifactResponse
+ */
+export type GetBuildArtifactResponse = Message<"workos.taskexecution.v1.GetBuildArtifactResponse"> & {
+  /**
+   * @generated from field: workos.taskexecution.v1.BuildArtifactFacts artifact = 1;
+   */
+  artifact?: BuildArtifactFacts | undefined;
+};
+
+/**
+ * Describes the message workos.taskexecution.v1.GetBuildArtifactResponse.
+ * Use `create(GetBuildArtifactResponseSchema)` to create a new message.
+ */
+export const GetBuildArtifactResponseSchema: GenMessage<GetBuildArtifactResponse> = /*@__PURE__*/
+  messageDesc(file_workos_taskexecution_v1_build, 9);
 
 /**
  * @generated from message workos.taskexecution.v1.CancelBuildTestRequest
@@ -286,7 +465,7 @@ export type CancelBuildTestRequest = Message<"workos.taskexecution.v1.CancelBuil
  * Use `create(CancelBuildTestRequestSchema)` to create a new message.
  */
 export const CancelBuildTestRequestSchema: GenMessage<CancelBuildTestRequest> = /*@__PURE__*/
-  messageDesc(file_workos_taskexecution_v1_build, 7);
+  messageDesc(file_workos_taskexecution_v1_build, 10);
 
 /**
  * @generated from message workos.taskexecution.v1.CancelBuildTestResponse
@@ -303,7 +482,7 @@ export type CancelBuildTestResponse = Message<"workos.taskexecution.v1.CancelBui
  * Use `create(CancelBuildTestResponseSchema)` to create a new message.
  */
 export const CancelBuildTestResponseSchema: GenMessage<CancelBuildTestResponse> = /*@__PURE__*/
-  messageDesc(file_workos_taskexecution_v1_build, 8);
+  messageDesc(file_workos_taskexecution_v1_build, 11);
 
 /**
  * @generated from message workos.taskexecution.v1.RegisterRepairCandidateVersionRequest
@@ -347,7 +526,7 @@ export type RegisterRepairCandidateVersionRequest = Message<"workos.taskexecutio
  * Use `create(RegisterRepairCandidateVersionRequestSchema)` to create a new message.
  */
 export const RegisterRepairCandidateVersionRequestSchema: GenMessage<RegisterRepairCandidateVersionRequest> = /*@__PURE__*/
-  messageDesc(file_workos_taskexecution_v1_build, 9);
+  messageDesc(file_workos_taskexecution_v1_build, 12);
 
 /**
  * @generated from message workos.taskexecution.v1.RegisterRepairCandidateVersionResponse
@@ -387,7 +566,7 @@ export type RegisterRepairCandidateVersionResponse = Message<"workos.taskexecuti
  * Use `create(RegisterRepairCandidateVersionResponseSchema)` to create a new message.
  */
 export const RegisterRepairCandidateVersionResponseSchema: GenMessage<RegisterRepairCandidateVersionResponse> = /*@__PURE__*/
-  messageDesc(file_workos_taskexecution_v1_build, 10);
+  messageDesc(file_workos_taskexecution_v1_build, 13);
 
 /**
  * @generated from message workos.taskexecution.v1.PublishRepairCandidateVersionRequest
@@ -424,7 +603,7 @@ export type PublishRepairCandidateVersionRequest = Message<"workos.taskexecution
  * Use `create(PublishRepairCandidateVersionRequestSchema)` to create a new message.
  */
 export const PublishRepairCandidateVersionRequestSchema: GenMessage<PublishRepairCandidateVersionRequest> = /*@__PURE__*/
-  messageDesc(file_workos_taskexecution_v1_build, 11);
+  messageDesc(file_workos_taskexecution_v1_build, 14);
 
 /**
  * @generated from message workos.taskexecution.v1.PublishRepairCandidateVersionResponse
@@ -441,7 +620,7 @@ export type PublishRepairCandidateVersionResponse = Message<"workos.taskexecutio
  * Use `create(PublishRepairCandidateVersionResponseSchema)` to create a new message.
  */
 export const PublishRepairCandidateVersionResponseSchema: GenMessage<PublishRepairCandidateVersionResponse> = /*@__PURE__*/
-  messageDesc(file_workos_taskexecution_v1_build, 12);
+  messageDesc(file_workos_taskexecution_v1_build, 15);
 
 /**
  * @generated from message workos.taskexecution.v1.TransitionCandidateVersionRequest
@@ -483,7 +662,7 @@ export type TransitionCandidateVersionRequest = Message<"workos.taskexecution.v1
  * Use `create(TransitionCandidateVersionRequestSchema)` to create a new message.
  */
 export const TransitionCandidateVersionRequestSchema: GenMessage<TransitionCandidateVersionRequest> = /*@__PURE__*/
-  messageDesc(file_workos_taskexecution_v1_build, 13);
+  messageDesc(file_workos_taskexecution_v1_build, 16);
 
 /**
  * @generated from message workos.taskexecution.v1.TransitionCandidateVersionResponse
@@ -505,10 +684,12 @@ export type TransitionCandidateVersionResponse = Message<"workos.taskexecution.v
  * Use `create(TransitionCandidateVersionResponseSchema)` to create a new message.
  */
 export const TransitionCandidateVersionResponseSchema: GenMessage<TransitionCandidateVersionResponse> = /*@__PURE__*/
-  messageDesc(file_workos_taskexecution_v1_build, 14);
+  messageDesc(file_workos_taskexecution_v1_build, 17);
 
 /**
- * Runtime's private Reliability-facing listener only; Gateway never routes it.
+ * Runtime's private Reliability/Core-facing listener only; Gateway never
+ * routes it. GetBuildArtifact lets Core independently verify job + ready
+ * bundle identity before registering any version (ADR-0033 section 4).
  *
  * @generated from service workos.taskexecution.v1.BuildTestService
  */
@@ -536,6 +717,14 @@ export const BuildTestService: GenService<{
     methodKind: "unary";
     input: typeof CancelBuildTestRequestSchema;
     output: typeof CancelBuildTestResponseSchema;
+  },
+  /**
+   * @generated from rpc workos.taskexecution.v1.BuildTestService.GetBuildArtifact
+   */
+  getBuildArtifact: {
+    methodKind: "unary";
+    input: typeof GetBuildArtifactRequestSchema;
+    output: typeof GetBuildArtifactResponseSchema;
   },
 }> = /*@__PURE__*/
   serviceDesc(file_workos_taskexecution_v1_build, 0);

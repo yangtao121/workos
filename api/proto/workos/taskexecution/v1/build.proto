@@ -69,6 +69,54 @@ message GetBuildTestResponse {
   BuildEngineFacts engine = 8;
   string source_digest = 9;
   int32 attempts = 10;
+  // The frozen release bundle this verdict committed (ADR-0033). Present only
+  // when state=succeeded AND a ready app-bundle.v1 artifact exists; a success
+  // verdict without it means the engine tier cannot produce deployable output.
+  BuildArtifactFacts artifact = 11;
+}
+
+// The authoritative, bounded metadata of one release bundle as Runtime owns
+// it (ADR-0033). Never carries bundle bytes. Core re-reads these facts from
+// Runtime before registering any version; a caller-supplied id/digest string
+// is only a reconciliation hint, never proof.
+message BuildArtifactFacts {
+  string artifact_id = 1;
+  // Content digest: sha256 over the complete app-bundle.v1 byte stream.
+  string artifact_digest = 2;
+  string format = 3;
+  // build_job|operator_import. An imported bundle carries no proof that this
+  // round's Build/Test passed; projections must show it as an import.
+  string origin = 4;
+  int64 size_bytes = 5;
+  int32 file_count = 6;
+  // Job provenance (empty for operator_import).
+  string job_id = 7;
+  string task_id = 8;
+  string incident_id = 9;
+  string owner_user_id = 10;
+  string project_id = 11;
+  string installation_id = 12;
+  string source_bundle_id = 13;
+  string source_digest = 14;
+  string manifest_digest = 15;
+  string base_image = 16;
+  // The fixed recipe echo, so a verifier can compare the exact commands.
+  repeated string build_command = 17;
+  repeated string test_command = 18;
+  string output_directory = 19;
+  // preparing|ready|failed|unavailable. Only ready bundles may back a
+  // version; unavailable means metadata exists but the bytes are gone.
+  string state = 20;
+}
+
+message GetBuildArtifactRequest {
+  // Either the producing task (build provenance) or the artifact id.
+  string task_id = 1;
+  string artifact_id = 2;
+}
+
+message GetBuildArtifactResponse {
+  BuildArtifactFacts artifact = 1;
 }
 
 message CancelBuildTestRequest {
@@ -79,11 +127,14 @@ message CancelBuildTestResponse {
   string state = 1;
 }
 
-// Runtime's private Reliability-facing listener only; Gateway never routes it.
+// Runtime's private Reliability/Core-facing listener only; Gateway never
+// routes it. GetBuildArtifact lets Core independently verify job + ready
+// bundle identity before registering any version (ADR-0033 section 4).
 service BuildTestService {
   rpc SubmitBuildTest(SubmitBuildTestRequest) returns (SubmitBuildTestResponse) {}
   rpc GetBuildTest(GetBuildTestRequest) returns (GetBuildTestResponse) {}
   rpc CancelBuildTest(CancelBuildTestRequest) returns (CancelBuildTestResponse) {}
+  rpc GetBuildArtifact(GetBuildArtifactRequest) returns (GetBuildArtifactResponse) {}
 }
 
 message RegisterRepairCandidateVersionRequest {

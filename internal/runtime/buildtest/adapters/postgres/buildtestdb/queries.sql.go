@@ -91,11 +91,7 @@ func (q *Queries) FailBuildJob(ctx context.Context, arg FailBuildJobParams) (int
 }
 
 const getBuildJobByTask = `-- name: GetBuildJobByTask :one
-SELECT id, task_id, incident_id, owner_user_id, project_id, installation_id,
-       input_digest, source_bundle_id, source_digest, manifest_digest, base_image,
-       payload, state, stage, build_exit_code, test_exit_code, failure_reason,
-       engine_facts, attempts, log_tail, lease_owner, lease_until, created_at, updated_at
-FROM workos_runtime.build_jobs
+SELECT id, task_id, incident_id, owner_user_id, project_id, installation_id, input_digest, source_bundle_id, source_digest, manifest_digest, base_image, payload, state, stage, build_exit_code, test_exit_code, failure_reason, engine_facts, attempts, log_tail, lease_owner, lease_until, created_at, updated_at, artifact_id, artifact_digest FROM workos_runtime.build_jobs
 WHERE task_id = $1
 `
 
@@ -127,6 +123,8 @@ func (q *Queries) GetBuildJobByTask(ctx context.Context, taskID string) (WorkosR
 		&i.LeaseUntil,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.ArtifactID,
+		&i.ArtifactDigest,
 	)
 	return i, err
 }
@@ -179,11 +177,7 @@ func (q *Queries) InsertBuildJob(ctx context.Context, arg InsertBuildJobParams) 
 }
 
 const listRunnableBuildJobs = `-- name: ListRunnableBuildJobs :many
-SELECT id, task_id, incident_id, owner_user_id, project_id, installation_id,
-       input_digest, source_bundle_id, source_digest, manifest_digest, base_image,
-       payload, state, stage, build_exit_code, test_exit_code, failure_reason,
-       engine_facts, attempts, log_tail, lease_owner, lease_until, created_at, updated_at
-FROM workos_runtime.build_jobs
+SELECT id, task_id, incident_id, owner_user_id, project_id, installation_id, input_digest, source_bundle_id, source_digest, manifest_digest, base_image, payload, state, stage, build_exit_code, test_exit_code, failure_reason, engine_facts, attempts, log_tail, lease_owner, lease_until, created_at, updated_at, artifact_id, artifact_digest FROM workos_runtime.build_jobs
 WHERE state = 'queued'
    OR (state = 'running' AND lease_until IS NOT NULL AND lease_until < $1)
 ORDER BY updated_at
@@ -229,6 +223,8 @@ func (q *Queries) ListRunnableBuildJobs(ctx context.Context, arg ListRunnableBui
 			&i.LeaseUntil,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.ArtifactID,
+			&i.ArtifactDigest,
 		); err != nil {
 			return nil, err
 		}

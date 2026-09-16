@@ -1,0 +1,53 @@
+syntax = "proto3";
+
+package workos.runtime.v1;
+
+option go_package = "github.com/yangtao121/workos/gen/go/workos/runtime/v1;runtimev1";
+
+// ---------------------------------------------------------------------------
+// Release bundle repository admin/query contract (ADR-0033).
+//
+// ArtifactAdminService is mounted ONLY on the runtime-host local admin Unix
+// socket (0600; filesystem permission is the identity). Gateway never routes
+// it, browsers and App Bridges can never reach it, and no RPC here accepts a
+// host path as an execution or deployment grant: the CLI reads the local file
+// and streams bytes.
+// ---------------------------------------------------------------------------
+
+message ImportArtifactStart {
+  // The fixed owner/app binding the imported bundle is declared for; the
+  // server records it and Core later re-verifies both against its own facts.
+  string owner_user_id = 1;
+  string app_id = 2;
+  // Caller's idempotency key: same key + same content imports exactly one
+  // bundle; same key + different content is a stable conflict.
+  string idempotency_key = 3;
+  // Optional claimed digest; when set, a mismatched actual digest rejects
+  // the import (the server always computes its own digest regardless).
+  string expected_digest = 4;
+}
+
+message ImportArtifactRequest {
+  oneof part {
+    ImportArtifactStart start = 1;
+    bytes data = 2;
+  }
+}
+
+message ImportArtifactResponse {
+  string artifact_id = 1;
+  string digest = 2;
+  int64 size_bytes = 3;
+  int32 file_count = 4;
+  bool created = 5;
+  // Always "operator_import": this path carries no proof that this round's
+  // Build/Test passed (ADR-0033 section 5).
+  string origin = 6;
+}
+
+service ArtifactAdminService {
+  // Client-streaming import of one app-bundle.v1 bundle. Enforced server
+  // side: format limits (files/bytes/count), path and type validation,
+  // deterministic digest recomputation, atomic durable write, quota.
+  rpc ImportArtifact(stream ImportArtifactRequest) returns (ImportArtifactResponse) {}
+}

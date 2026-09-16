@@ -788,8 +788,19 @@ type WorkloadObservation struct {
 	// Cumulative pids.events `max` counter. A generation-local increase means
 	// the enforced pids.max limit rejected at least one task creation.
 	PidsEventsMax uint64 `protobuf:"varint,20,opt,name=pids_events_max,json=pidsEventsMax,proto3" json:"pids_events_max,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	// Content digest of the app-bundle.v1 release bundle this workload's
+	// container actually mounts (ADR-0033); empty for legacy image-only
+	// workloads. Reliability matches it against the candidate artifact.
+	ArtifactDigest string `protobuf:"bytes,21,opt,name=artifact_digest,json=artifactDigest,proto3" json:"artifact_digest,omitempty"`
+	// The digest-pinned image the engine verified at launch.
+	ImageDigest string `protobuf:"bytes,22,opt,name=image_digest,json=imageDigest,proto3" json:"image_digest,omitempty"`
+	// True iff the engine's post-start inspect matched the full launch
+	// identity (image digest, read-only /app mount source and digest label,
+	// argv, limits). A running workload never reports identity_verified
+	// without that readback.
+	IdentityVerified bool `protobuf:"varint,23,opt,name=identity_verified,json=identityVerified,proto3" json:"identity_verified,omitempty"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
 }
 
 func (x *WorkloadObservation) Reset() {
@@ -961,6 +972,27 @@ func (x *WorkloadObservation) GetPidsEventsMax() uint64 {
 		return x.PidsEventsMax
 	}
 	return 0
+}
+
+func (x *WorkloadObservation) GetArtifactDigest() string {
+	if x != nil {
+		return x.ArtifactDigest
+	}
+	return ""
+}
+
+func (x *WorkloadObservation) GetImageDigest() string {
+	if x != nil {
+		return x.ImageDigest
+	}
+	return ""
+}
+
+func (x *WorkloadObservation) GetIdentityVerified() bool {
+	if x != nil {
+		return x.IdentityVerified
+	}
+	return false
 }
 
 type ListObservationsRequest struct {
@@ -1285,7 +1317,7 @@ const file_workos_workload_v1_workload_proto_rawDesc = "" +
 	"\x15StartWorkloadResponse\x12@\n" +
 	"\bworkload\x18\x01 \x01(\v2$.workos.workload.v1.WorkloadIdentityR\bworkload\"X\n" +
 	"\x14StopWorkloadResponse\x12@\n" +
-	"\bworkload\x18\x01 \x01(\v2$.workos.workload.v1.WorkloadIdentityR\bworkload\"\x93\x06\n" +
+	"\bworkload\x18\x01 \x01(\v2$.workos.workload.v1.WorkloadIdentityR\bworkload\"\x8c\a\n" +
 	"\x13WorkloadObservation\x12\x1f\n" +
 	"\vworkload_id\x18\x01 \x01(\tR\n" +
 	"workloadId\x12\x1e\n" +
@@ -1312,7 +1344,10 @@ const file_workos_workload_v1_workload_proto_rawDesc = "" +
 	"\x04idle\x18\x12 \x01(\bR\x04idle\x12\x1f\n" +
 	"\vobserved_at\x18\x13 \x01(\tR\n" +
 	"observedAt\x12&\n" +
-	"\x0fpids_events_max\x18\x14 \x01(\x04R\rpidsEventsMax\"\x19\n" +
+	"\x0fpids_events_max\x18\x14 \x01(\x04R\rpidsEventsMax\x12'\n" +
+	"\x0fartifact_digest\x18\x15 \x01(\tR\x0eartifactDigest\x12!\n" +
+	"\fimage_digest\x18\x16 \x01(\tR\vimageDigest\x12+\n" +
+	"\x11identity_verified\x18\x17 \x01(\bR\x10identityVerified\"\x19\n" +
 	"\x17ListObservationsRequest\"g\n" +
 	"\x18ListObservationsResponse\x12K\n" +
 	"\fobservations\x18\x01 \x03(\v2'.workos.workload.v1.WorkloadObservationR\fobservations\"X\n" +

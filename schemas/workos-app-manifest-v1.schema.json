@@ -72,6 +72,24 @@
         "artifactDigest": {
           "type": "string",
           "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "artifact": {
+          "type": "object",
+          "required": ["id", "digest", "format"],
+          "properties": {
+            "id": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+            },
+            "digest": {
+              "type": "string",
+              "pattern": "^sha256:[0-9a-f]{64}$"
+            },
+            "format": {
+              "const": "app-bundle.v1"
+            }
+          },
+          "additionalProperties": false
         }
       },
       "additionalProperties": false
@@ -155,12 +173,53 @@
             "minLength": 1,
             "maxLength": 4096
           }
+        },
+        "output": {
+          "type": "object",
+          "required": ["format", "directory"],
+          "properties": {
+            "format": {
+              "const": "app-bundle.v1"
+            },
+            "directory": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_-]+(\\.[A-Za-z0-9_-]+)*(/[A-Za-z0-9_-]+(\\.[A-Za-z0-9_-]+)*)*$",
+              "minLength": 1,
+              "maxLength": 64
+            }
+          },
+          "additionalProperties": false
         }
       },
       "additionalProperties": false
     }
   },
   "allOf": [
+    {
+      "if": {
+        "properties": {
+          "runtime": {
+            "$ref": "#/$defs/runtimeWithArtifact"
+          }
+        },
+        "required": ["runtime"]
+      },
+      "then": {
+        "properties": {
+          "runtime": {
+            "properties": {
+              "type": {
+                "const": "container"
+              }
+            }
+          },
+          "build": {
+            "required": ["sourceBundleId", "sourceDigest", "baseImage", "buildCommand", "testCommand", "output"]
+          }
+        },
+        "required": ["build"]
+      }
+    },
     {
       "if": {
         "properties": {
@@ -220,5 +279,11 @@
       }
     }
   ],
+  "$defs": {
+    "runtimeWithArtifact": {
+      "type": "object",
+      "required": ["artifact"]
+    }
+  },
   "additionalProperties": false
 }

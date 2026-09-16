@@ -71,6 +71,18 @@ message ContainerHealthPolicy {
   int32 restart_limit = 3;
 }
 
+// ArtifactBinding is the exact release bundle a bundle-profile container
+// launch must run (ADR-0033): Runtime resolves the ready app-bundle.v1 by
+// this identity and mounts it read-only at /app. Absent on legacy
+// image-only manifests, which keep their original semantics; a bundle
+// profile whose package cannot be verified fails resolution instead of
+// falling back to the base image as if it were the app's new code.
+message ArtifactBinding {
+  string artifact_id = 1;
+  string artifact_digest = 2;
+  string artifact_format = 3;
+}
+
 // ContainerLaunchDescriptor is the neutral, immutable launch fact for one
 // installed container instance: the pinned registry identity, the exact
 // digest-pinned OCI image reference, the bounded argv, the container port,
@@ -87,6 +99,9 @@ message ContainerLaunchDescriptor {
   ContainerResourcePolicy resources = 7;
   ContainerHealthPolicy health = 8;
   string surface_route = 9;
+  // Present iff the installed version's canonical manifest carries
+  // runtime.artifact (bundle profile, ADR-0033).
+  ArtifactBinding artifact = 10;
 }
 
 message ResolveSurfaceLaunchRequest {

@@ -36,4 +36,6 @@ type WorkosRuntimeBuildJob struct {
 	LeaseUntil     *time.Time      `json:"lease_until"`
 	CreatedAt      time.Time       `json:"created_at"`
 	UpdatedAt      time.Time       `json:"updated_at"`
+	ArtifactID     pgtype.UUID     `json:"artifact_id"`
+	ArtifactDigest pgtype.Text     `json:"artifact_digest"`
 }

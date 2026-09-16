@@ -111,6 +111,13 @@ func (h *BuildTestHandler) CancelBuildTest(ctx context.Context, req *connect.Req
 	return connect.NewResponse(&executionv1.CancelBuildTestResponse{State: string(state)}), nil
 }
 
+// GetBuildArtifact serves Core's independent verification query (ADR-0033).
+// The artifact repository lands with the store adapter; until then the RPC
+// reports Unimplemented rather than fabricating bundle facts.
+func (h *BuildTestHandler) GetBuildArtifact(ctx context.Context, req *connect.Request[executionv1.GetBuildArtifactRequest]) (*connect.Response[executionv1.GetBuildArtifactResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("artifact repository is not wired on this runtime host"))
+}
+
 func failureReasonString(reason domain.FailureReason) string {
 	if reason == domain.FailureNone {
 		return "none"

@@ -44,6 +44,9 @@ const (
 	// BuildTestServiceCancelBuildTestProcedure is the fully-qualified name of the BuildTestService's
 	// CancelBuildTest RPC.
 	BuildTestServiceCancelBuildTestProcedure = "/workos.taskexecution.v1.BuildTestService/CancelBuildTest"
+	// BuildTestServiceGetBuildArtifactProcedure is the fully-qualified name of the BuildTestService's
+	// GetBuildArtifact RPC.
+	BuildTestServiceGetBuildArtifactProcedure = "/workos.taskexecution.v1.BuildTestService/GetBuildArtifact"
 	// RepairVersionServiceRegisterRepairCandidateVersionProcedure is the fully-qualified name of the
 	// RepairVersionService's RegisterRepairCandidateVersion RPC.
 	RepairVersionServiceRegisterRepairCandidateVersionProcedure = "/workos.taskexecution.v1.RepairVersionService/RegisterRepairCandidateVersion"
@@ -60,6 +63,7 @@ type BuildTestServiceClient interface {
 	SubmitBuildTest(context.Context, *connect.Request[v1.SubmitBuildTestRequest]) (*connect.Response[v1.SubmitBuildTestResponse], error)
 	GetBuildTest(context.Context, *connect.Request[v1.GetBuildTestRequest]) (*connect.Response[v1.GetBuildTestResponse], error)
 	CancelBuildTest(context.Context, *connect.Request[v1.CancelBuildTestRequest]) (*connect.Response[v1.CancelBuildTestResponse], error)
+	GetBuildArtifact(context.Context, *connect.Request[v1.GetBuildArtifactRequest]) (*connect.Response[v1.GetBuildArtifactResponse], error)
 }
 
 // NewBuildTestServiceClient constructs a client for the workos.taskexecution.v1.BuildTestService
@@ -91,14 +95,21 @@ func NewBuildTestServiceClient(httpClient connect.HTTPClient, baseURL string, op
 			connect.WithSchema(buildTestServiceMethods.ByName("CancelBuildTest")),
 			connect.WithClientOptions(opts...),
 		),
+		getBuildArtifact: connect.NewClient[v1.GetBuildArtifactRequest, v1.GetBuildArtifactResponse](
+			httpClient,
+			baseURL+BuildTestServiceGetBuildArtifactProcedure,
+			connect.WithSchema(buildTestServiceMethods.ByName("GetBuildArtifact")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
 // buildTestServiceClient implements BuildTestServiceClient.
 type buildTestServiceClient struct {
-	submitBuildTest *connect.Client[v1.SubmitBuildTestRequest, v1.SubmitBuildTestResponse]
-	getBuildTest    *connect.Client[v1.GetBuildTestRequest, v1.GetBuildTestResponse]
-	cancelBuildTest *connect.Client[v1.CancelBuildTestRequest, v1.CancelBuildTestResponse]
+	submitBuildTest  *connect.Client[v1.SubmitBuildTestRequest, v1.SubmitBuildTestResponse]
+	getBuildTest     *connect.Client[v1.GetBuildTestRequest, v1.GetBuildTestResponse]
+	cancelBuildTest  *connect.Client[v1.CancelBuildTestRequest, v1.CancelBuildTestResponse]
+	getBuildArtifact *connect.Client[v1.GetBuildArtifactRequest, v1.GetBuildArtifactResponse]
 }
 
 // SubmitBuildTest calls workos.taskexecution.v1.BuildTestService.SubmitBuildTest.
@@ -116,12 +127,18 @@ func (c *buildTestServiceClient) CancelBuildTest(ctx context.Context, req *conne
 	return c.cancelBuildTest.CallUnary(ctx, req)
 }
 
+// GetBuildArtifact calls workos.taskexecution.v1.BuildTestService.GetBuildArtifact.
+func (c *buildTestServiceClient) GetBuildArtifact(ctx context.Context, req *connect.Request[v1.GetBuildArtifactRequest]) (*connect.Response[v1.GetBuildArtifactResponse], error) {
+	return c.getBuildArtifact.CallUnary(ctx, req)
+}
+
 // BuildTestServiceHandler is an implementation of the workos.taskexecution.v1.BuildTestService
 // service.
 type BuildTestServiceHandler interface {
 	SubmitBuildTest(context.Context, *connect.Request[v1.SubmitBuildTestRequest]) (*connect.Response[v1.SubmitBuildTestResponse], error)
 	GetBuildTest(context.Context, *connect.Request[v1.GetBuildTestRequest]) (*connect.Response[v1.GetBuildTestResponse], error)
 	CancelBuildTest(context.Context, *connect.Request[v1.CancelBuildTestRequest]) (*connect.Response[v1.CancelBuildTestResponse], error)
+	GetBuildArtifact(context.Context, *connect.Request[v1.GetBuildArtifactRequest]) (*connect.Response[v1.GetBuildArtifactResponse], error)
 }
 
 // NewBuildTestServiceHandler builds an HTTP handler from the service implementation. It returns the
@@ -149,6 +166,12 @@ func NewBuildTestServiceHandler(svc BuildTestServiceHandler, opts ...connect.Han
 		connect.WithSchema(buildTestServiceMethods.ByName("CancelBuildTest")),
 		connect.WithHandlerOptions(opts...),
 	)
+	buildTestServiceGetBuildArtifactHandler := connect.NewUnaryHandler(
+		BuildTestServiceGetBuildArtifactProcedure,
+		svc.GetBuildArtifact,
+		connect.WithSchema(buildTestServiceMethods.ByName("GetBuildArtifact")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/workos.taskexecution.v1.BuildTestService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case BuildTestServiceSubmitBuildTestProcedure:
@@ -157,6 +180,8 @@ func NewBuildTestServiceHandler(svc BuildTestServiceHandler, opts ...connect.Han
 			buildTestServiceGetBuildTestHandler.ServeHTTP(w, r)
 		case BuildTestServiceCancelBuildTestProcedure:
 			buildTestServiceCancelBuildTestHandler.ServeHTTP(w, r)
+		case BuildTestServiceGetBuildArtifactProcedure:
+			buildTestServiceGetBuildArtifactHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -176,6 +201,10 @@ func (UnimplementedBuildTestServiceHandler) GetBuildTest(context.Context, *conne
 
 func (UnimplementedBuildTestServiceHandler) CancelBuildTest(context.Context, *connect.Request[v1.CancelBuildTestRequest]) (*connect.Response[v1.CancelBuildTestResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("workos.taskexecution.v1.BuildTestService.CancelBuildTest is not implemented"))
+}
+
+func (UnimplementedBuildTestServiceHandler) GetBuildArtifact(context.Context, *connect.Request[v1.GetBuildArtifactRequest]) (*connect.Response[v1.GetBuildArtifactResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("workos.taskexecution.v1.BuildTestService.GetBuildArtifact is not implemented"))
 }
 
 // RepairVersionServiceClient is a client for the workos.taskexecution.v1.RepairVersionService

@@ -1,0 +1,51 @@
+syntax = "proto3";
+
+package workos.release.v1;
+
+option go_package = "github.com/yangtao121/workos/gen/go/workos/release/v1;releasev1";
+
+// ---------------------------------------------------------------------------
+// Owner-facing release pipeline projection (ADR-0033). Reliability owns the
+// deployment ledger and serves this read-only projection; the gateway routes
+// it with the same owner-identity scoping as the incident service. It never
+// exposes container IDs, host paths, raw errors, bundle bytes, or engine
+// internals — only sanitized states, digests and fixed failure categories.
+// ---------------------------------------------------------------------------
+
+message GetReleaseStatusRequest {
+  string project_id = 1;
+  string installation_id = 2;
+}
+
+message ReleaseStatus {
+  string installation_id = 1;
+  string app_id = 2;
+  // Fixed grammar of the newest deployment ledger state for this
+  // installation, or "idle" when no deployment exists:
+  // building|staged|starting|canary|published|rollback_pending|rolled_back|superseded|failed|idle
+  string state = 3;
+  // The candidate this pipeline is about (empty for idle).
+  string candidate_version = 4;
+  string candidate_artifact_digest = 5;
+  // The version the installation pinned when the pipeline started.
+  string base_version = 6;
+  string base_artifact_digest = 7;
+  // Fixed sanitized failure categories (empty string when none):
+  // build-failed|test-failed|output-failed|launch-failed|health-failed|package-unavailable|artifact-missing|unknown
+  string failure_category = 8;
+  // RFC 3339 UTC timestamp of the last ledger update.
+  string updated_at = 9;
+  // Monotonic ledger revision; clients use it as an etag.
+  int64 revision = 10;
+}
+
+message GetReleaseStatusResponse {
+  ReleaseStatus status = 1;
+}
+
+service ReleaseService {
+  // GetReleaseStatus returns the sanitized release state for one installed
+  // app. Owner scope is derived from the trusted request identity; foreign
+  // projects/installations are NotFound.
+  rpc GetReleaseStatus(GetReleaseStatusRequest) returns (GetReleaseStatusResponse) {}
+}

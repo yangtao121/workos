@@ -12,7 +12,7 @@
 | 包                     | 状态 | 依赖       | 实现/验收入口                                                       | 验收                              | 结果与未决项 |
 | ---------------------- | ---- | ---------- | ------------------------------------------------------------------- | --------------------------------- | ------------ |
 | C00 宿主探针           | done | 无         | tools/v2-p3-delivery/probe.sh                                       | A01                               | 20/20 检查通过；矩阵见下 |
-| C01 契约冻结           | todo | C00        | ADR-0033、manifest Schema、Proto、迁移 066–068                      | A02                               |              |
+| C01 契约冻结           | done | C00        | ADR-0033、manifest Schema、Proto、迁移 066–068                      | A02                               | 生成一致、buf breaking 无破坏、go build/vet/test 通过 |
 | C02 包仓库与导入       | todo | C01        | internal/runtime/artifactstore/、workosctl import、admin socket     | A03                               |              |
 | C03 构建输出冻结       | todo | C01、C02   | internal/runtime/buildtest/adapters/dockerbuild/                    | A05、A06、A08                     |              |
 | C04 Core 版本绑定      | todo | C01–C03    | appregistry staging/resolver、Runtime 反查                          | A04、A07                          |              |
@@ -28,7 +28,7 @@
 | 编号 | 验收事实                                 | 当前结果 | 实际证据（命令/路径/摘要） |
 | ---- | ---------------------------------------- | -------- | -------------------------- |
 | A01  | 可行正式 runner 与安全能力矩阵           | PASS      | [c00-probe.txt](evidence/20260916-v2-p3-delivery/c00-probe.txt)：20 项检查通过 |
-| A02  | Schema/Proto/ADR 向前兼容，生成一致      | todo     |                            |
+| A02  | Schema/Proto/ADR 向前兼容，生成一致      | PASS      | `make proto-check` 通过；`buf breaking <current> --against <main 基线>` 0 差异；迁移 066–068 仅增量（build_jobs 加列、state CHECK 扩展）；`make generate` 后仅预期生成物变化 |
 | A03  | Runtime 导入与包保存真实持久             | todo     |                            |
 | A04  | 旧版 A 经正式安装/Surface 运行           | todo     |                            |
 | A05  | build/test/output 单 job 绑定            | todo     |                            |
