@@ -391,6 +391,7 @@ func workloadFromRow(row workloaddb.WorkosRuntimeWorkload) domain.Workload {
 	workload := domain.Workload{
 		ID: row.ID, OwnerUserID: row.OwnerUserID, ProjectID: row.ProjectID,
 		AppInstanceID: row.AppInstanceID, AppID: row.AppID, AppVersion: row.AppVersion,
+		ArtifactID: row.ArtifactID, ArtifactDigest: row.ArtifactDigest,
 		ManifestDigest: row.ManifestDigest, Image: row.Image, Command: command,
 		Port: int64(row.Port), Requested: requested,
 		Effective: domain.EffectivePolicy{
@@ -452,6 +453,7 @@ func workloadParams(workload domain.Workload) workloaddb.InsertWorkloadParams {
 	return workloaddb.InsertWorkloadParams{
 		ID: workload.ID, OwnerUserID: workload.OwnerUserID, ProjectID: workload.ProjectID,
 		AppInstanceID: workload.AppInstanceID, AppID: workload.AppID, AppVersion: workload.AppVersion,
+		ArtifactID: workload.ArtifactID, ArtifactDigest: workload.ArtifactDigest,
 		ManifestDigest: workload.ManifestDigest, Image: workload.Image,
 		Command: command, Port: int32(workload.Port),
 		RequestedPolicy: requested, PolicyVersion: domain.PolicyVersion,

@@ -6,13 +6,13 @@ INSERT INTO workos_runtime.artifacts (
     base_image, build_command, test_command, output_directory,
     created_at, ready_at, updated_at
 ) VALUES (
-    $1, $2, $3, $4, $5, $6, 'ready', $7,
+    $1, $2, $3, $4, $5, $6, sqlc.arg(state), $7,
     $8, $9, $10, $11, $12, $13,
     $14, $15, $16, $17,
     $18, $19, $20, $21,
-    $22, $22, $22
+    $22, sqlc.narg(ready_at), $22
 )
-ON CONFLICT (owner_user_id, digest) DO NOTHING
+ON CONFLICT DO NOTHING
 RETURNING id;
 
 -- name: GetArtifactById :one
@@ -21,7 +21,8 @@ WHERE id = $1;
 
 -- name: GetArtifactByOwnerDigest :one
 SELECT * FROM workos_runtime.artifacts
-WHERE owner_user_id = $1 AND digest = $2;
+WHERE owner_user_id = $1 AND digest = $2
+ORDER BY created_at, id LIMIT 1;
 
 -- name: GetArtifactByTask :one
 SELECT * FROM workos_runtime.artifacts
@@ -35,7 +36,7 @@ WHERE owner_user_id = $1 AND origin = 'operator_import' AND idempotency_key = $2
 
 -- name: MarkArtifactState :execrows
 UPDATE workos_runtime.artifacts
-SET state = $2, updated_at = $3
+SET state = $2, updated_at = $3, ready_at = CASE WHEN $2 = 'ready' THEN COALESCE(ready_at, $3) ELSE ready_at END
 WHERE id = $1;
 
 -- name: SumOwnerArtifactBytes :one

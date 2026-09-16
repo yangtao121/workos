@@ -332,8 +332,9 @@ func (q *Queries) InsertAppSourceBundle(ctx context.Context, arg InsertAppSource
 const insertAppVersion = `-- name: InsertAppVersion :execrows
 INSERT INTO workos_core.app_versions (
     id, owner_user_id, app_id, version, scope, name, permissions,
-    manifest_digest, canonical_manifest, created_at
-) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+    manifest_digest, canonical_manifest, created_at,
+    artifact_id, artifact_digest, artifact_format
+) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
 ON CONFLICT DO NOTHING
 `
 
@@ -348,6 +349,9 @@ type InsertAppVersionParams struct {
 	ManifestDigest    string             `json:"manifest_digest"`
 	CanonicalManifest json.RawMessage    `json:"canonical_manifest"`
 	CreatedAt         pgtype.Timestamptz `json:"created_at"`
+	ArtifactID        pgtype.UUID        `json:"artifact_id"`
+	ArtifactDigest    pgtype.Text        `json:"artifact_digest"`
+	ArtifactFormat    pgtype.Text        `json:"artifact_format"`
 }
 
 func (q *Queries) InsertAppVersion(ctx context.Context, arg InsertAppVersionParams) (int64, error) {
@@ -362,6 +366,9 @@ func (q *Queries) InsertAppVersion(ctx context.Context, arg InsertAppVersionPara
 		arg.ManifestDigest,
 		arg.CanonicalManifest,
 		arg.CreatedAt,
+		arg.ArtifactID,
+		arg.ArtifactDigest,
+		arg.ArtifactFormat,
 	)
 	if err != nil {
 		return 0, err
@@ -455,8 +462,9 @@ func (q *Queries) InsertRepairSourceCandidate(ctx context.Context, arg InsertRep
 const insertStagedAppVersion = `-- name: InsertStagedAppVersion :execrows
 INSERT INTO workos_core.app_versions (
     id, owner_user_id, app_id, version, scope, name, permissions,
-    manifest_digest, canonical_manifest, state, created_at
-) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'staged', $10)
+    manifest_digest, canonical_manifest, state, created_at,
+    artifact_id, artifact_digest, artifact_format
+) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'staged', $10, $11, $12, $13)
 ON CONFLICT DO NOTHING
 `
 
@@ -471,6 +479,9 @@ type InsertStagedAppVersionParams struct {
 	ManifestDigest    string             `json:"manifest_digest"`
 	CanonicalManifest json.RawMessage    `json:"canonical_manifest"`
 	CreatedAt         pgtype.Timestamptz `json:"created_at"`
+	ArtifactID        pgtype.UUID        `json:"artifact_id"`
+	ArtifactDigest    pgtype.Text        `json:"artifact_digest"`
+	ArtifactFormat    pgtype.Text        `json:"artifact_format"`
 }
 
 func (q *Queries) InsertStagedAppVersion(ctx context.Context, arg InsertStagedAppVersionParams) (int64, error) {
@@ -485,6 +496,9 @@ func (q *Queries) InsertStagedAppVersion(ctx context.Context, arg InsertStagedAp
 		arg.ManifestDigest,
 		arg.CanonicalManifest,
 		arg.CreatedAt,
+		arg.ArtifactID,
+		arg.ArtifactDigest,
+		arg.ArtifactFormat,
 	)
 	if err != nil {
 		return 0, err

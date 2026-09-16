@@ -1,0 +1,2 @@
+ok  	github.com/yangtao121/workos/internal/runtime/workload/application	1.066s
+ok  	github.com/yangtao121/workos/internal/runtime/workload/adapters/dockerapp	(cached)

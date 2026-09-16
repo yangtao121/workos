@@ -29,6 +29,11 @@ type StagingRegistration struct {
 	InstallationID string
 	BuildJobID     string
 	SourceDigest   string
+	// Bundle profile facts verified from Runtime before this registration.
+	// Empty on the image-only repair path.
+	ArtifactID     string
+	ArtifactDigest string
+	ArtifactFormat string
 	// The verified original version facts resolved from the task's pinned
 	// repair target (ADR-0022 snapshot).
 	AppID              string
@@ -103,7 +108,18 @@ func (s *StagingService) Register(ctx context.Context, tx dbtx.Tx, registration 
 	if candidate.OwnerUserID != registration.OwnerUserID || candidate.Digest != registration.SourceDigest {
 		return StagingResult{}, domain.ErrSourceCorrupt
 	}
-	derived, digest, err := deriveStagedManifest(baseRaw, candidate, registration.BaseVersion, registration.TaskID)
+	baseRecipe, ok := domain.ParseBuildRecipe(baseRaw)
+	if !ok {
+		return StagingResult{}, domain.ErrSourceCorrupt
+	}
+	if baseRecipe != nil && baseRecipe.Output != nil {
+		if registration.ArtifactID == "" || registration.ArtifactDigest == "" {
+			return StagingResult{}, domain.ErrInvalid
+		}
+	} else if registration.ArtifactID != "" || registration.ArtifactDigest != "" {
+		return StagingResult{}, domain.ErrInvalid
+	}
+	derived, digest, err := deriveStagedManifest(baseRaw, candidate, registration.BaseVersion, registration.TaskID, registration.ArtifactID, registration.ArtifactDigest, registration.ArtifactFormat)
 	if err != nil {
 		return StagingResult{}, err
 	}
@@ -118,6 +134,8 @@ func (s *StagingService) Register(ctx context.Context, tx dbtx.Tx, registration 
 		Version: manifest.Version, Scope: manifest.Scope, Name: manifest.Name,
 		Permissions: manifest.Permissions, ManifestDigest: manifest.Digest,
 		CanonicalManifest: manifest.CanonicalJSON, CreatedAt: now,
+		ArtifactID: registration.ArtifactID, ArtifactDigest: registration.ArtifactDigest,
+		ArtifactFormat: registration.ArtifactFormat,
 	}
 	versionID, err := s.store.InsertStagedVersion(ctx, tx, version, now)
 	if err != nil {
@@ -216,7 +234,7 @@ func validateStagingRegistration(registration StagingRegistration) error {
 // label: {patch+1}-repair.{first 8 hex of the task id}. Every other field is
 // preserved byte-for-byte from the original manifest; only the version and
 // the two build source keys change.
-func deriveStagedManifest(baseRaw []byte, candidate domain.SourceBundle, baseVersion, taskID string) ([]byte, string, error) {
+func deriveStagedManifest(baseRaw []byte, candidate domain.SourceBundle, baseVersion, taskID, artifactID, artifactDigest, artifactFormat string) ([]byte, string, error) {
 	parsed, ok := domain.ParseVersion(baseVersion)
 	if !ok {
 		return nil, "", domain.ErrInvalid
@@ -225,8 +243,6 @@ func deriveStagedManifest(baseRaw []byte, candidate domain.SourceBundle, baseVer
 	if err := json.Unmarshal(baseRaw, &document); err != nil {
 		return nil, "", domain.ErrSourceCorrupt
 	}
-	// The full task hex keeps the label unique: UUIDv7 prefixes share
-	// milliseconds, so a short prefix collides for concurrent repairs.
 	label := fmt.Sprintf("%d.%d.%d-repair.%s", parsed.Major, parsed.Minor, parsed.Patch+1, strings.ReplaceAll(taskID, "-", ""))
 	if _, ok := domain.ParseVersion(label); !ok {
 		return nil, "", domain.ErrInvalid
@@ -238,6 +254,23 @@ func deriveStagedManifest(baseRaw []byte, candidate domain.SourceBundle, baseVer
 	}
 	build["sourceBundleId"] = candidate.ID
 	build["sourceDigest"] = candidate.Digest
+	if output, ok := build["output"].(map[string]any); ok && len(output) > 0 {
+		if artifactID == "" || artifactDigest == "" || artifactFormat == "" {
+			return nil, "", domain.ErrInvalid
+		}
+	}
+	if artifactID != "" || artifactDigest != "" || artifactFormat != "" {
+		if !domain.ValidWebBundleArtifactID(artifactID) || !domain.ValidWebBundleArtifactDigest(artifactDigest) || artifactFormat != "app-bundle.v1" {
+			return nil, "", domain.ErrInvalid
+		}
+		runtime, ok := document["runtime"].(map[string]any)
+		if !ok {
+			return nil, "", domain.ErrSourceCorrupt
+		}
+		runtime["artifact"] = map[string]any{
+			"id": artifactID, "digest": artifactDigest, "format": artifactFormat,
+		}
+	}
 	derived, err := domain.CanonicalJSON(document)
 	if err != nil {
 		return nil, "", domain.ErrSourceCorrupt

@@ -25,6 +25,9 @@ type AppVersion struct {
 	Permissions       []string
 	ManifestDigest    string
 	CanonicalManifest []byte
+	ArtifactID        string
+	ArtifactDigest    string
+	ArtifactFormat    string
 	IdempotencyKey    string
 	RequestDigest     string
 	CreatedAt         time.Time

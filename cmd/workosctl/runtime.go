@@ -11,7 +11,6 @@ import (
 	"strings"
 	"time"
 
-
 	runtimev1 "github.com/yangtao121/workos/gen/go/workos/runtime/v1"
 	"github.com/yangtao121/workos/gen/go/workos/runtime/v1/runtimev1connect"
 )

@@ -32,7 +32,7 @@ func (m *Manager) LookupRunning(ctx context.Context, workloadID string, generati
 		return domain.Workload{}, domain.ErrUnavailable
 	}
 	if workload.State != domain.StateRunning || workload.Generation != generation ||
-		!domain.ValidLoopbackEndpoint(workload.Endpoint) || workload.CgroupPath == "" {
+		!domain.ValidWorkloadEndpoint(workload.Endpoint) || workload.CgroupPath == "" {
 		return domain.Workload{}, domain.ErrNotFound
 	}
 	return workload, nil
@@ -65,7 +65,7 @@ func (m *Manager) Observe(ctx context.Context) ([]ports.Observation, error) {
 		}
 		observation.Idle = m.isIdleInternal(ctx, workload)
 		if workload.State == domain.StateRunning {
-			if workload.CgroupPath == "" || !domain.ValidLoopbackEndpoint(workload.Endpoint) {
+			if workload.CgroupPath == "" || !domain.ValidWorkloadEndpoint(workload.Endpoint) {
 				return nil, domain.ErrUnavailable
 			}
 			counters, err := m.cgroup.ReadCounters(ctx, workload.CgroupPath)
@@ -80,6 +80,11 @@ func (m *Manager) Observe(ctx context.Context) ([]ports.Observation, error) {
 			observation.MemoryOOMs = counters.MemoryOOMs
 			observation.PIDsCurrent = counters.PIDsCurrent
 			observation.PIDsLimitEvents = counters.PIDsLimitEvents
+			if facts, inspectErr := m.engine.InspectContainer(ctx, workload.ContainerName); inspectErr == nil {
+				observation.ArtifactDigest = facts.ArtifactDigest
+				observation.ImageDigest = facts.ImageDigest
+				observation.IdentityVerified = facts.Running && facts.IdentityVerified && matchesWorkloadContainer(workload, facts, m.capability)
+			}
 			probeCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
 			result, probeErr := m.prober.Probe(probeCtx, workload.Endpoint, workload.Effective.HealthPath, time.Second)
 			cancel()
@@ -223,7 +228,7 @@ func (m *Manager) reconcileRunning(ctx context.Context, workload domain.Workload
 		m.failRunning(ctx, workload, domain.ExitUnknown)
 		return
 	}
-	if !matchesWorkloadContainer(workload, facts) {
+	if !matchesWorkloadContainer(workload, facts, m.capability) {
 		m.failOwnedRunning(ctx, workload, facts, domain.ExitUnknown)
 		return
 	}
@@ -239,14 +244,14 @@ func (m *Manager) reconcileRunning(ctx context.Context, workload domain.Workload
 		m.failRunning(ctx, workload, category)
 		return
 	}
-	expectedEndpoint := "127.0.0.1:" + strconv.Itoa(int(facts.HostPort))
 	cgroupPath, cgroupErr := m.resolveCgroup(probeCtx, facts.PID)
-	if cgroupErr != nil || expectedEndpoint != workload.Endpoint || cgroupPath != workload.CgroupPath {
+	expected, err := workloadEndpoint(facts, m.capability)
+	if cgroupErr != nil || err != nil || expected != workload.Endpoint || cgroupPath != workload.CgroupPath {
 		m.failOwnedRunning(ctx, workload, facts, domain.ExitUnknown)
 		return
 	}
 	effective, effectiveErr := m.cgroup.ReadEffective(probeCtx, cgroupPath)
-	if effectiveErr != nil || !matchesEffectivePolicy(workload, effective) {
+	if effectiveErr != nil || !matchesEffectivePolicy(workload, effective, m.capability) {
 		m.failOwnedRunning(ctx, workload, facts, domain.ExitUnknown)
 		return
 	}

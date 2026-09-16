@@ -1080,3 +1080,7 @@ func buildtestProjectRevision(t *testing.T, fixture buildtestFixture) int64 {
 	revision, _ := rows[0]["revision"].(int64)
 	return revision
 }
+
+func (d *scriptedDriver) Verify(context.Context, *reliabilityapp.DeploymentCandidate) error {
+	return nil
+}

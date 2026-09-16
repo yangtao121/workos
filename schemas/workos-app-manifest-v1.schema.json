@@ -214,7 +214,14 @@
             }
           },
           "build": {
-            "required": ["sourceBundleId", "sourceDigest", "baseImage", "buildCommand", "testCommand", "output"]
+            "required": [
+              "sourceBundleId",
+              "sourceDigest",
+              "baseImage",
+              "buildCommand",
+              "testCommand",
+              "output"
+            ]
           }
         },
         "required": ["build"]

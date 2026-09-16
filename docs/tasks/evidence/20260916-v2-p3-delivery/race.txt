@@ -1,0 +1,10 @@
+ok  	github.com/yangtao121/workos/internal/runtime/buildtest/application	1.056s
+ok  	github.com/yangtao121/workos/internal/runtime/artifactstore/adapters/files	1.079s
+?   	github.com/yangtao121/workos/internal/runtime/artifactstore/adapters/postgres	[no test files]
+?   	github.com/yangtao121/workos/internal/runtime/artifactstore/adapters/postgres/artifactdb	[no test files]
+ok  	github.com/yangtao121/workos/internal/runtime/artifactstore/application	1.165s
+?   	github.com/yangtao121/workos/internal/runtime/artifactstore/domain	[no test files]
+?   	github.com/yangtao121/workos/internal/runtime/artifactstore/ports	[no test files]
+?   	github.com/yangtao121/workos/internal/runtime/artifactstore/transport	[no test files]
+ok  	github.com/yangtao121/workos/internal/reliability/application	1.035s
+ok  	github.com/yangtao121/workos/internal/reliability/transport	1.273s

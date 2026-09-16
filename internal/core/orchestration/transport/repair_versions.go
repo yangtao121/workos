@@ -66,6 +66,9 @@ func (h *RepairVersionHandler) TransitionCandidateVersion(ctx context.Context, r
 }
 
 func repairVersionError(err error) error {
+	if errors.Is(err, orchestration.ErrInstallationChanged) {
+		return connect.NewError(connect.CodeFailedPrecondition, errors.New("installation no longer pins the staged candidate"))
+	}
 	code := connect.CodeInternal
 	switch {
 	case errors.Is(err, agentdomain.ErrInvalid), errors.Is(err, projectdomain.ErrInvalid), errors.Is(err, registrydomain.ErrInvalid):
@@ -74,9 +77,9 @@ func repairVersionError(err error) error {
 		code = connect.CodeNotFound
 	case errors.Is(err, registrydomain.ErrIdempotencyConflict), errors.Is(err, projectdomain.ErrConflict):
 		code = connect.CodeAborted
-	case errors.Is(err, orchestration.ErrRepairCandidateNotReady), errors.Is(err, registryapp.ErrBuildUnavailable), errors.Is(err, registryapp.ErrNotStaged), errors.Is(err, orchestration.ErrInstallationChanged):
+	case errors.Is(err, orchestration.ErrRepairCandidateNotReady), errors.Is(err, registryapp.ErrBuildUnavailable), errors.Is(err, registryapp.ErrNotStaged):
 		code = connect.CodeFailedPrecondition
-	case errors.Is(err, agentports.ErrStoreUnavailable), errors.Is(err, registryports.ErrStoreUnavailable), errors.Is(err, projectports.ErrStoreUnavailable), dbtransient.IsTransient(err):
+	case errors.Is(err, agentports.ErrStoreUnavailable), errors.Is(err, registryports.ErrStoreUnavailable), errors.Is(err, projectports.ErrStoreUnavailable), errors.Is(err, orchestration.ErrRuntimeArtifactUnavailable), dbtransient.IsTransient(err):
 		code = connect.CodeUnavailable
 	}
 	return connect.NewError(code, errors.New("repair version request failed"))

@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"connectrpc.com/connect"
+	agentv1 "github.com/yangtao121/workos/gen/go/workos/agent/v1"
 	appv1 "github.com/yangtao121/workos/gen/go/workos/app/v1"
 	executionv1 "github.com/yangtao121/workos/gen/go/workos/taskexecution/v1"
 	"github.com/yangtao121/workos/gen/go/workos/taskexecution/v1/taskexecutionv1connect"
@@ -50,6 +51,7 @@ func (c *CandidateReaderClient) Read(ctx context.Context, ownerUserID, taskID st
 		SourceBundleID: message.GetCandidateSource().GetId(),
 		SourceDigest:   message.GetCandidateSource().GetDigest(),
 		BaseImage:      input.GetBaseImage(), BuildCommand: input.GetBuildCommand(), TestCommand: input.GetTestCommand(),
+		OutputDirectory: input.GetOutputDirectory(), RuntimeCommand: input.GetRuntimeCommand(),
 		Files: files,
 	}, nil
 }
@@ -72,8 +74,10 @@ func (c *BuildTestServiceClient) Submit(ctx context.Context, facts application.C
 		TaskId: facts.TaskID, IncidentId: facts.IncidentID, OwnerUserId: facts.OwnerUserID,
 		ProjectId: facts.ProjectID, InstallationId: facts.AppInstanceID,
 		Input: &executionv1.RepairBuildInput{
+			Target: &agentv1.RepairTarget{AppId: facts.AppID},
 			TaskId: facts.TaskID, BaseImage: facts.BaseImage,
 			BuildCommand: facts.BuildCommand, TestCommand: facts.TestCommand,
+			OutputDirectory: facts.OutputDirectory, RuntimeCommand: facts.RuntimeCommand,
 		},
 		CandidateFiles: files,
 	}
@@ -93,10 +97,18 @@ func (c *BuildTestServiceClient) Get(ctx context.Context, taskID string) (applic
 	if err != nil {
 		return application.BuildTestVerdict{}, err
 	}
-	return application.BuildTestVerdict{
+	verdict := application.BuildTestVerdict{
 		JobID: response.Msg.GetJobId(), State: response.Msg.GetState(), Stage: response.Msg.GetStage(),
 		FailureReason: response.Msg.GetFailureReason(), SourceDigest: response.Msg.GetSourceDigest(),
-	}, nil
+	}
+	if artifact := response.Msg.GetArtifact(); artifact != nil {
+		verdict.ArtifactID = artifact.GetArtifactId()
+		verdict.ArtifactDigest = artifact.GetArtifactDigest()
+		verdict.ArtifactOrigin = artifact.GetOrigin()
+		verdict.ArtifactState = artifact.GetState()
+		verdict.ArtifactFormat = artifact.GetFormat()
+	}
+	return verdict, nil
 }
 
 func (c *BuildTestServiceClient) Cancel(ctx context.Context, taskID string) error {

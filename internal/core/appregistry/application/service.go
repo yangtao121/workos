@@ -67,6 +67,7 @@ type Service struct {
 	validator  ManifestValidator
 	projects   ProjectDirectory
 	artifacts  ArtifactDirectory
+	bundles    ReleaseBundleDirectory
 	ids        ids.Generator
 	now        func() time.Time
 }
@@ -79,6 +80,18 @@ func New(repository ports.Repository, validator ManifestValidator, projects Proj
 		repository: repository, validator: validator, projects: projects, artifacts: artifacts,
 		ids: generator, now: func() time.Time { return time.Now().UTC() },
 	}, nil
+}
+
+// WithReleaseBundles attaches the Runtime-backed release bundle verifier
+// (ADR-0033). Tests leave it nil; bundle-profile Register then fails closed.
+func (s *Service) WithReleaseBundles(bundles ReleaseBundleDirectory) *Service {
+	s.bundles = bundles
+	return s
+}
+
+// ReleaseBundleDirectory verifies a runtime.artifact pin against Runtime.
+type ReleaseBundleDirectory interface {
+	VerifyReady(ctx context.Context, ownerUserID, artifactID, digest, appID string) error
 }
 
 // ValidateManifest returns the public summary for acceptable manifests and
@@ -129,12 +142,28 @@ func (s *Service) Register(ctx context.Context, ownerUserID, idempotencyKey stri
 			return domain.AppVersionSummary{}, domain.ErrNotFound
 		}
 	}
+	if manifest.Container != nil && manifest.Container.Artifact != nil {
+		if s.bundles == nil {
+			return domain.AppVersionSummary{}, errors.New("release bundle directory is not configured")
+		}
+		if err := s.bundles.VerifyReady(ctx, ownerUserID, manifest.Container.Artifact.ID, manifest.Container.Artifact.Digest, manifest.ID); err != nil {
+			if errors.Is(err, ErrArtifactDenied) {
+				return domain.AppVersionSummary{}, domain.ErrNotFound
+			}
+			return domain.AppVersionSummary{}, fmt.Errorf("verify release bundle: %w", err)
+		}
+	}
 
 	record := domain.AppVersion{
 		ID: s.ids.New(), OwnerUserID: ownerUserID, AppID: manifest.ID, Version: manifest.Version,
 		Scope: manifest.Scope, Name: manifest.Name, Permissions: manifest.Permissions,
 		ManifestDigest: manifest.Digest, CanonicalManifest: manifest.CanonicalJSON,
 		IdempotencyKey: idempotencyKey, RequestDigest: manifest.Digest, CreatedAt: s.now(),
+	}
+	if manifest.Container != nil && manifest.Container.Artifact != nil {
+		record.ArtifactID = manifest.Container.Artifact.ID
+		record.ArtifactDigest = manifest.Container.Artifact.Digest
+		record.ArtifactFormat = manifest.Container.Artifact.Format
 	}
 	return s.repository.Register(ctx, record)
 }

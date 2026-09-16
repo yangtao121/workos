@@ -3,6 +3,7 @@ package orchestration
 import (
 	"context"
 	"errors"
+	"slices"
 
 	agentdomain "github.com/yangtao121/workos/internal/core/agent/domain"
 	registryapp "github.com/yangtao121/workos/internal/core/appregistry/application"
@@ -22,18 +23,44 @@ type CandidateTransitioner interface {
 // RepairVersions coordinates the staged candidate lifecycle (ADR-0026):
 // Core re-derives every fact from durable task, candidate and installation
 // rows; Reliability only presents verified build verdicts.
+// ReleaseBundleVerifier is Core's independent Runtime query (ADR-0033).
+// Reliability-supplied ids are never proof.
+type ReleaseBundleVerifier interface {
+	GetByTask(ctx context.Context, taskID string) (VerifiedReleaseBundle, error)
+	GetByID(ctx context.Context, artifactID string) (VerifiedReleaseBundle, error)
+}
+
+type VerifiedReleaseBundle struct {
+	ID              string
+	Digest          string
+	Format          string
+	Origin          string
+	State           string
+	OwnerUserID     string
+	AppID           string
+	TaskID          string
+	JobID           string
+	SourceDigest    string
+	ManifestDigest  string
+	BaseImage       string
+	OutputDirectory string
+	BuildCommand    []string
+	TestCommand     []string
+}
+
 type RepairVersions struct {
 	pool        TaskTxSource
 	sources     *RepairSources
 	staging     *registryapp.StagingService
 	transitions CandidateTransitioner
+	bundles     ReleaseBundleVerifier
 }
 
-func NewRepairVersions(pool TaskTxSource, sources *RepairSources, staging *registryapp.StagingService, transitions CandidateTransitioner) (*RepairVersions, error) {
+func NewRepairVersions(pool TaskTxSource, sources *RepairSources, staging *registryapp.StagingService, transitions CandidateTransitioner, bundles ReleaseBundleVerifier) (*RepairVersions, error) {
 	if pool == nil || sources == nil || staging == nil {
 		return nil, errors.New("repair versions require transactions, sources and staging")
 	}
-	return &RepairVersions{pool: pool, sources: sources, staging: staging, transitions: transitions}, nil
+	return &RepairVersions{pool: pool, sources: sources, staging: staging, transitions: transitions, bundles: bundles}, nil
 }
 
 // Register verifies the completed repair task and creates the immutable
@@ -70,17 +97,37 @@ func (s *RepairVersions) Register(ctx context.Context, owner, taskID, projectID,
 	if err != nil {
 		return RegisteredCandidate{}, err
 	}
+	registration := registryapp.StagingRegistration{
+		OwnerUserID: owner, TaskID: taskID, IncidentID: completed.IncidentID,
+		ProjectID: projectID, InstallationID: installationID, BuildJobID: buildJobID,
+		SourceDigest: sourceDigest, AppID: target.GetAppId(),
+		BaseVersion: target.GetVersion(), BaseManifestDigest: target.GetManifestDigest(),
+	}
+	if recipe := completed.Input.Build.Recipe; recipe.Output != nil {
+		if s.bundles == nil {
+			return RegisteredCandidate{}, ErrRuntimeArtifactUnavailable
+		}
+		bundle, err := s.bundles.GetByTask(ctx, taskID)
+		if err != nil {
+			return RegisteredCandidate{}, err
+		}
+		if bundle.State != "ready" || bundle.Origin != "build_job" || bundle.Format != "app-bundle.v1" ||
+			bundle.AppID != target.GetAppId() || !slices.Equal(bundle.BuildCommand, recipe.BuildCommand) || !slices.Equal(bundle.TestCommand, recipe.TestCommand) ||
+			bundle.OwnerUserID != owner || bundle.TaskID != taskID || bundle.JobID != buildJobID ||
+			bundle.SourceDigest != sourceDigest || bundle.ManifestDigest != target.GetManifestDigest() ||
+			bundle.BaseImage != recipe.BaseImage || bundle.OutputDirectory != recipe.Output.Directory {
+			return RegisteredCandidate{}, agentdomain.ErrInvalid
+		}
+		registration.ArtifactID = bundle.ID
+		registration.ArtifactDigest = bundle.Digest
+		registration.ArtifactFormat = bundle.Format
+	}
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
 		return RegisteredCandidate{}, storeFailureContext("begin repair version registration", err)
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck
-	result, err := s.staging.Register(ctx, tx, registryapp.StagingRegistration{
-		OwnerUserID: owner, TaskID: taskID, IncidentID: completed.IncidentID,
-		ProjectID: projectID, InstallationID: installationID, BuildJobID: buildJobID,
-		SourceDigest: sourceDigest, AppID: target.GetAppId(),
-		BaseVersion: target.GetVersion(), BaseManifestDigest: target.GetManifestDigest(),
-	})
+	result, err := s.staging.Register(ctx, tx, registration)
 	if err != nil {
 		return RegisteredCandidate{}, err
 	}
@@ -126,6 +173,10 @@ func (s *RepairVersions) Publish(ctx context.Context, owner, taskID, projectID, 
 // ErrInstallationChanged is the stable publish rejection when the user moved
 // the installation off the canary pin (ADR-0026).
 var ErrInstallationChanged = errors.New("installation no longer pins the staged candidate")
+
+// ErrRuntimeArtifactUnavailable marks a missing or unreachable Runtime
+// artifact verifier. Bundle-profile registration must fail closed.
+var ErrRuntimeArtifactUnavailable = errors.New("runtime artifact verifier is unavailable")
 
 // TransitionCandidate pins the exact staged version for the canary window.
 // The durable staged mapping must still match the installation facts; a user

@@ -360,7 +360,7 @@ func (m *Manager) removeWorkloadContainer(ctx context.Context, workload domain.W
 	if facts.ID == "" {
 		return nil
 	}
-	if !matchesWorkloadContainer(workload, facts) {
+	if !matchesWorkloadContainer(workload, facts, m.capability) {
 		return domain.ErrCorrupt
 	}
 	return m.removeInspectedContainer(cleanupCtx, facts)
@@ -420,7 +420,7 @@ func (m *Manager) removeInspectedContainer(ctx context.Context, facts ports.Cont
 	return nil
 }
 
-func matchesWorkloadContainer(workload domain.Workload, facts ports.ContainerFacts) bool {
+func matchesWorkloadContainer(workload domain.Workload, facts ports.ContainerFacts, capability ports.Capability) bool {
 	if !matchesWorkloadIdentity(workload, facts) {
 		return false
 	}
@@ -433,14 +433,24 @@ func matchesWorkloadContainer(workload domain.Workload, facts ports.ContainerFac
 		}
 	}
 	tmpfs := facts.Tmpfs["/tmp"]
-	return facts.PublishedPorts == 1 && int64(facts.ContainerPort) == workload.Port &&
-		facts.HostIP == "127.0.0.1" && facts.HostPort > 0 && facts.HostPort <= 65535 &&
-		facts.ReadOnly && !facts.Privileged && facts.CapabilitiesAdded == 0 &&
+	securityOK := facts.ReadOnly && !facts.Privileged && facts.CapabilitiesAdded == 0 &&
 		facts.EffectiveCapabilities == 0 && facts.BoundingCapabilities == 0 &&
 		facts.NoNewPrivileges && facts.UnexpectedSecurityOpts == 0 && !facts.AutoRemove &&
-		facts.NetworkMode == "workos-app-internal" && facts.ConnectedNetworks == 1 && facts.InternalNetwork &&
-		facts.RestartPolicy == "no" && facts.BindMounts == 0 && facts.UnexpectedMounts == 0 && facts.Devices == 0 &&
+		facts.ConnectedNetworks == 1 && facts.InternalNetwork &&
+		facts.RestartPolicy == "no" && facts.Devices == 0 &&
 		len(facts.Tmpfs) == 1 && matchesWorkloadTmpfs(tmpfs)
+	if !securityOK {
+		return false
+	}
+	if capability.AllowBridgeEndpoint {
+		return facts.IdentityVerified && facts.ArtifactDigest == workload.ArtifactDigest && facts.PublishedPorts == 0 && facts.HostPort == int32(workload.Port) &&
+			facts.ContainerPort == int32(workload.Port) && (!facts.Running || (facts.HostIP != "" && facts.HostIP != "127.0.0.1")) &&
+			facts.BindMounts == 1 && facts.AppMountRO && facts.UnexpectedMounts == 0 &&
+			(facts.NetworkMode == "workos-app-internal" || strings.Contains(facts.NetworkMode, "workos-app-internal"))
+	}
+	return facts.PublishedPorts == 1 && int64(facts.ContainerPort) == workload.Port &&
+		facts.HostIP == "127.0.0.1" && facts.HostPort > 0 && facts.HostPort <= 65535 &&
+		facts.NetworkMode == "workos-app-internal" && facts.BindMounts == 0 && facts.UnexpectedMounts == 0
 }
 
 func matchesWorkloadTmpfs(options string) bool {

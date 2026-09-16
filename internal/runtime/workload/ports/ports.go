@@ -21,6 +21,14 @@ type Capability struct {
 	Reason        string
 	EngineVersion string
 	CgroupRoot    string // this process's delegated cgroup v2 subtree
+	// AllowBridgeEndpoint is the Docker formal-app profile: the host reaches
+	// the container at its bridge IPv4 instead of a loopback publish.
+	AllowBridgeEndpoint bool
+	// SkipMemoryHigh is honest for Docker: memory.high is unavailable.
+	SkipMemoryHigh bool
+	// HostCgroup accepts container cgroups outside this process's subtree
+	// (rootful Docker on the host hierarchy).
+	HostCgroup bool
 }
 
 // ContainerSpec is the complete, server-owned launch specification. The
@@ -33,6 +41,10 @@ type ContainerSpec struct {
 	Port    int64
 	Labels  map[string]string
 	Policy  domain.EffectivePolicy
+	// Bundle-profile launch facts (ADR-0033). Empty on the image-only path.
+	OwnerUserID    string
+	ArtifactID     string
+	ArtifactDigest string
 }
 
 // ContainerFacts is one bounded engine inspection read.
@@ -72,16 +84,24 @@ type ContainerFacts struct {
 	UnexpectedMounts       int
 	Devices                int
 	Tmpfs                  map[string]string
+	ArtifactDigest         string
+	ImageDigest            string
+	IdentityVerified       bool
+	AppMountRO             bool
+	AppMountSource         string
 }
 
 // CgroupCounters is one bounded numeric read of the workload's cgroup.
 type CgroupCounters struct {
-	CPUUsageUSec    uint64
-	MemoryCurrent   uint64
-	MemoryPeak      uint64
-	MemoryOOMs      uint64
-	PIDsCurrent     uint64
-	PIDsLimitEvents uint64
+	CPUUsageUSec     uint64
+	MemoryCurrent    uint64
+	MemoryPeak       uint64
+	MemoryOOMs       uint64
+	PIDsCurrent      uint64
+	PIDsLimitEvents  uint64
+	ArtifactDigest   string
+	ImageDigest      string
+	IdentityVerified bool
 }
 
 // EffectiveFacts is the enforced-policy read-back: the values as the kernel
@@ -206,6 +226,8 @@ type EnsureCommand struct {
 	Port           int64
 	Requested      domain.RequestedPolicy
 	OperationKey   string
+	ArtifactID     string
+	ArtifactDigest string
 }
 
 // RestartCommand is one validated restart request (reliability-driven).
@@ -225,26 +247,29 @@ type TerminateCommand struct {
 // carries no host endpoint, no cgroup path, no container ID, and no content:
 // exactly what the reliability policy engine may see.
 type Observation struct {
-	WorkloadID      string
-	OwnerUserID     string
-	ProjectID       string
-	AppInstanceID   string
-	AppID           string
-	ManifestDigest  string
-	Generation      int64
-	State           domain.State
-	RestartCount    int64
-	HealthVerdict   string
-	ExitCategory    string
-	OOMKilled       bool
-	Idle            bool
-	CPUUsageUSec    uint64
-	MemoryCurrent   uint64
-	MemoryPeak      uint64
-	MemoryOOMs      uint64
-	PIDsCurrent     uint64
-	PIDsLimitEvents uint64
-	ObservedAt      time.Time
+	WorkloadID       string
+	OwnerUserID      string
+	ProjectID        string
+	AppInstanceID    string
+	AppID            string
+	ManifestDigest   string
+	Generation       int64
+	State            domain.State
+	RestartCount     int64
+	HealthVerdict    string
+	ExitCategory     string
+	OOMKilled        bool
+	Idle             bool
+	CPUUsageUSec     uint64
+	MemoryCurrent    uint64
+	MemoryPeak       uint64
+	MemoryOOMs       uint64
+	PIDsCurrent      uint64
+	PIDsLimitEvents  uint64
+	ArtifactDigest   string
+	ImageDigest      string
+	IdentityVerified bool
+	ObservedAt       time.Time
 }
 
 // StoredOperation is the persisted command record used for idempotency

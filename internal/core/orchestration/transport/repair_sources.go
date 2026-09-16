@@ -75,7 +75,15 @@ func (h *RepairSourceHandler) GetRepairSourceCandidate(ctx context.Context, req 
 	return connect.NewResponse(&executionv1.GetRepairSourceCandidateResponse{Input: repairBuildProto(result.Input), CandidateSource: repairSourceProto(result.Candidate), ProjectId: result.ProjectID, IncidentId: result.IncidentID}), nil
 }
 func repairBuildProto(input orchestration.RepairBuildInput) *executionv1.RepairBuildInput {
-	return &executionv1.RepairBuildInput{TaskId: input.TaskID, Target: input.Target, Source: repairSourceProto(input.Build.Source), BaseImage: input.Build.Recipe.BaseImage, BuildCommand: input.Build.Recipe.BuildCommand, TestCommand: input.Build.Recipe.TestCommand}
+	message := &executionv1.RepairBuildInput{
+		TaskId: input.TaskID, Target: input.Target, Source: repairSourceProto(input.Build.Source),
+		BaseImage: input.Build.Recipe.BaseImage, BuildCommand: input.Build.Recipe.BuildCommand,
+		TestCommand: input.Build.Recipe.TestCommand, RuntimeCommand: input.Build.RuntimeCommand,
+	}
+	if input.Build.Recipe.Output != nil {
+		message.OutputDirectory = input.Build.Recipe.Output.Directory
+	}
+	return message
 }
 func repairSourceProto(source registrydomain.SourceBundle) *appv1.AppSourceBundle {
 	bundle := &appv1.AppSourceBundle{Id: source.ID, Digest: source.Digest, TotalSizeBytes: source.TotalSizeBytes, CreatedAt: timestamppb.New(source.CreatedAt)}

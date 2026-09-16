@@ -172,6 +172,32 @@ application 核验入队时的 manifest/source 摘要和固定配置；普通、
 非法与超大拒绝、证书/监听器隔离、升级后固定配置、真实 Core 重启及取消后的重放拒绝。
 该门禁由测试程序担任 worker；实际 Harness 候选 producer、Runtime Build/Test 及部署尚待接入。
 
+## V2 P3 app-bundle.v1 正式交付（ADR-0033）
+
+bundle profile（`build.output` + `runtime.artifact`）与既有 image-only repair-buildtest 并存。
+Runtime `dockerbuild` 用固定 digest 本地镜像、无网络和有界 tmpfs volume 构建；通过
+Docker archive API 冻结输出后再测试，不给构建进程宿主可写目录。作业用唯一 lease token
+及续期/到期 SQL 守卫裁决。包先写 preparing，只有持久 succeeded 作业精确绑定该包后，
+`GetBuildArtifact` 才可返回 ready；Core 注册前独立核对来源、owner/app、配方及内容摘要。
+包字节按摘要去重，metadata 按 task/import key 保留来源；实际磁盘配额含暂存和孤儿文件。
+
+Runtime `dockerapp` 将重算摘要的包只读挂载到 `/app`，用内部网桥 IP（无端口发布）和
+非 root 用户运行；inspect 比对真实镜像、mount、命令、网络、资源及标签。workloads
+持久化 artifact ID/digest（070），允许该 profile 的私网桥 endpoint（071）。Docker profile
+的 rootless、memory.high 明确 unavailable。原 Podman profile 不降低承诺。
+
+Reliability 进入 canary 前保存 Workload ID/generation（072），每轮及发布前核对 Core pin、
+运行身份与健康；用户换版 → superseded，代次改变或健康失败 → rollback。回滚重新解析
+Core 恢复的旧版本及旧包，不复用失败候选的 digest。桌面 VersionDialog 串行轮询 Release
+状态，查询失败显示 unavailable；截图来自真实组件、RPC fixture 和固定三尺寸。
+
+`make test-v2-p3-delivery` 启动自有 PostgreSQL、当前源码构建的六进程及真实 Docker runner，
+验证管理员流式导入 A、Generic CLI 修复/Build/Test、B 发布、人工与启动失败自动回滚 A、
+浏览器读取真实 Gateway Surface，以及 Core/Runtime/Reliability 重启恢复。依赖缺失即失败。
+`sh tools/v2-p3-delivery/gate.sh legacy` 在相同隔离环境运行原 image-only/process/fake-fixture
+修复、重启和回滚矩阵；它的结果仅证明旧软件链。完整证据和未覆盖项见
+[合并审查记录](../tasks/20260916-v2-p3-real-artifact-delivery.md)。
+
 ## Project App Installation
 
 Project App Installation 把 Registry 的一个 immutable version 变成 Project 持有的安装实例事实。

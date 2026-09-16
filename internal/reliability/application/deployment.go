@@ -10,16 +10,22 @@ import (
 )
 
 const (
-	DeploymentCandidateState = "candidate"
-	DeploymentStarting       = "starting"
-	DeploymentRollback       = "rollback"
-	DeploymentCanary         = "canary"
-	DeploymentPromoted       = "promoted"
-	DeploymentRolledBack     = "rolled_back"
-	DeploymentFailed         = "failed"
+	DeploymentCandidateState  = "candidate"
+	DeploymentStarting        = "starting"
+	DeploymentRollback        = "rollback"
+	DeploymentCanary          = "canary"
+	DeploymentPromoted        = "promoted"
+	DeploymentRolledBack      = "rolled_back"
+	DeploymentRollbackPending = "rollback_pending"
+	DeploymentFailed          = "failed"
+	DeploymentSuperseded      = "superseded"
 )
 
 var ErrDeploymentCandidateRequired = errors.New("deployment requires a verified candidate version and project revision")
+
+// ErrDeploymentSuperseded is the stable canary refusal when the user moved
+// the installation off the candidate pin. Automation never overrides that pin.
+var ErrDeploymentSuperseded = errors.New("installation pin moved off the candidate")
 
 // ErrDeploymentActive defers an offer while a different incident's
 // deployment is still in flight for the same installation (ADR-0026: one
@@ -34,15 +40,20 @@ var ErrDeploymentActive = errors.New("installation already has an active deploym
 // precondition — a user version change in between is a stable rejection,
 // never overridden by retries).
 type DeploymentCandidate struct {
-	IncidentID       string
-	OwnerUserID      string
-	ProjectID        string
-	InstallationID   string
-	TargetVersion    string
-	ExpectedRevision int64
-	TaskID           string
-	ManifestDigest   string
-	BaseVersion      string
+	IncidentID         string
+	OwnerUserID        string
+	ProjectID          string
+	InstallationID     string
+	TargetVersion      string
+	ExpectedRevision   int64
+	TaskID             string
+	ManifestDigest     string
+	BaseVersion        string
+	ArtifactID         string
+	ArtifactDigest     string
+	BaseArtifactDigest string
+	WorkloadID         string
+	WorkloadGeneration int64
 }
 
 // Staged reports whether this candidate went through the verified
@@ -53,6 +64,7 @@ func (c DeploymentCandidate) Staged() bool {
 
 type DeploymentRecord struct {
 	DeploymentCandidate
+	UpdatedAt       time.Time
 	State           string
 	Attempts        int32
 	CanaryStartedAt time.Time
@@ -61,6 +73,7 @@ type DeploymentRecord struct {
 }
 
 type DeploymentDriver interface {
+	Verify(context.Context, *DeploymentCandidate) error
 	Transition(context.Context, DeploymentCandidate, string) error
 	Rollback(context.Context, DeploymentCandidate, string) error
 	StartSurface(context.Context, DeploymentCandidate, string) error
@@ -147,18 +160,40 @@ func (c *DeploymentController) Pass(ctx context.Context, now time.Time, limit in
 				}
 				return nil
 			}
+			if err := c.driver.Verify(ctx, &row.DeploymentCandidate); err != nil {
+				if errors.Is(err, ErrDeploymentSuperseded) {
+					row.State = DeploymentSuperseded
+				} else if row.Attempts >= 8 {
+					row.State = DeploymentRollback
+					row.Attempts = 0
+				}
+				return nil
+			}
 			row.State = DeploymentCanary
 			row.Attempts = 0
 			row.CanaryStartedAt = time.Now().UTC()
 			row.CanaryUntil = row.CanaryStartedAt.Add(c.canaryWindow)
 		case DeploymentCanary:
+			if err := c.driver.Verify(ctx, &row.DeploymentCandidate); err != nil {
+				row.Attempts = 0
+				if errors.Is(err, ErrDeploymentSuperseded) {
+					row.State = DeploymentSuperseded
+				} else {
+					row.State = DeploymentRollback
+				}
+				return nil
+			}
 			if row.NewIncident {
 				row.State = DeploymentRollback
+				row.Attempts = 0
+				return nil
 			} else if !now.Before(row.CanaryUntil) {
-				// Promote first publishes the staged version (ADR-0026);
-				// only a published flip may mark the deployment promoted.
 				row.Attempts++
 				if err := c.driver.Publish(ctx, row.DeploymentCandidate); err != nil {
+					if errors.Is(err, ErrDeploymentSuperseded) {
+						row.State = DeploymentSuperseded
+						return nil
+					}
 					if row.Attempts >= 8 {
 						row.State = DeploymentFailed
 					}
@@ -166,9 +201,10 @@ func (c *DeploymentController) Pass(ctx context.Context, now time.Time, limit in
 				}
 				row.State = DeploymentPromoted
 			}
-		case DeploymentRollback:
+		case DeploymentRollback, DeploymentRollbackPending:
 			row.Attempts++
 			if err := c.driver.Rollback(ctx, row.DeploymentCandidate, "rollback-"+row.IncidentID); err != nil {
+				row.State = DeploymentRollbackPending
 				if row.Attempts >= 8 {
 					row.State = DeploymentFailed
 				}

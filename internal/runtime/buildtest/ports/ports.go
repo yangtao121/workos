@@ -22,19 +22,26 @@ type EngineFacts struct {
 	EnforcedLimits  []string `json:"enforced_limits"`
 }
 
-// RunSpec is the complete, server-owned execution request.
+// RunSpec is the complete, server-owned execution request. ScratchRoot is a
+// job-private directory the service created and owns: the engine materializes
+// the candidate tree inside it and must not remove it — the service freezes
+// any declared build output from there before reclaiming the directory.
 type RunSpec struct {
-	ScratchRoot  string
-	BaseImage    string
-	BuildCommand []string
-	TestCommand  []string
-	Files        []domain.File
-	Timeout      time.Duration
+	ScratchRoot     string
+	BaseImage       string
+	BuildCommand    []string
+	TestCommand     []string
+	Files           []domain.File
+	OutputDirectory string
+	RuntimeCommand  []string
+	Timeout         time.Duration
 }
 
 // RunResult is the deterministic verdict of one engine run. A non-nil
 // RunResult always terminates the job; an error marks a transient engine
-// failure the caller may retry within its bounded attempts.
+// failure the caller may retry within its bounded attempts. OutputDir is the
+// absolute host path of the declared build output the engine verified and
+// left in place for the freeze; empty means this tier produced no bundle.
 type RunResult struct {
 	Stage         domain.Stage
 	BuildExitCode int32
@@ -42,6 +49,7 @@ type RunResult struct {
 	Failure       domain.FailureReason
 	LogTail       string
 	Facts         EngineFacts
+	OutputDir     string
 }
 
 // ErrEngineUnavailable marks an engine that cannot execute at all (missing
@@ -71,6 +79,8 @@ type JobStore interface {
 	ListRunnable(ctx context.Context, limit int, now time.Time) ([]domain.Job, error)
 	// ClaimJob transitions one job to running under an exclusive lease.
 	ClaimJob(ctx context.Context, jobID, leaseOwner string, leaseUntil time.Time, now time.Time) (bool, error)
+	// RenewJobLease extends only a live lease held by this exact attempt.
+	RenewJobLease(context.Context, string, string, time.Time, time.Time) (bool, error)
 	// RecordVerdict persists the terminal verdict of the lease holder.
 	RecordVerdict(ctx context.Context, jobID, leaseOwner string, verdict domain.Job) error
 	// RequeueTransient returns a lease holder's job to queued for one more

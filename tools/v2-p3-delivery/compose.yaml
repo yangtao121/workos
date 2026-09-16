@@ -1,0 +1,145 @@
+x-environment: &environment
+  WORKOS_DATABASE_URL: ${WORKOS_P3_GATE_DATABASE_URL:?}
+  WORKOS_OWNER_ID: 01999999-9999-7999-8999-000000000c01
+  WORKOS_DEVICE_ID: 01999999-9999-7999-8999-000000000c02
+  WORKOS_DEV_AUTH_BYPASS: "true"
+  WORKOS_CORE_URL: http://127.0.0.1:${WORKOS_P3_GATE_CORE_PORT:?}
+  WORKOS_HARNESS_URL: http://127.0.0.1:${WORKOS_P3_GATE_HARNESS_PORT:?}
+  WORKOS_RUNTIME_URL: http://127.0.0.1:${WORKOS_P3_GATE_RUNTIME_PORT:?}
+  WORKOS_RELIABILITY_URL: http://127.0.0.1:${WORKOS_P3_GATE_RELIABILITY_PORT:?}
+  WORKOS_INDEXER_URL: http://127.0.0.1:${WORKOS_P3_GATE_INDEXER_PORT:?}
+  WORKOS_INDEX_PAGE_TOKEN_KEY: p3-gate-only-deterministic-page-token-key
+  PATH: /gate-bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+  WORKOS_RUNTIME_CONTAINER_NAMESPACE: ${WORKOS_P3_GATE_NAMESPACE:?}
+x-service: &service
+  image: workos:dev
+  user: ${WORKOS_P3_GATE_USER:?}
+  network_mode: host
+  restart: "no"
+  volumes:
+    - ${WORKOS_P3_GATE_DIR:?}/bin:/gate-bin:ro
+  depends_on:
+    bootstrap:
+      condition: service_completed_successfully
+services:
+  postgres:
+    image: pgvector/pgvector:pg18
+    environment:
+      POSTGRES_USER: workos
+      POSTGRES_PASSWORD: gate-only-fixture
+      POSTGRES_DB: workos
+    ports:
+      - "127.0.0.1:${WORKOS_P3_GATE_DATABASE_PORT:?}:5432"
+    tmpfs:
+      - /var/lib/postgresql
+    healthcheck:
+      test: [CMD-SHELL, pg_isready -U workos -d workos]
+      interval: 1s
+      timeout: 3s
+      retries: 60
+  bootstrap:
+    image: workos:dev
+    user: ${WORKOS_P3_GATE_USER:?}
+    network_mode: host
+    environment: *environment
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command:
+      - /bin/sh
+      - -c
+      - workosctl bootstrap && workos-dev-fixture -core-dir /fixture/core-execution -harness-dir /fixture/harness-execution -vault-dir /fixture/vault
+    volumes:
+      - ${WORKOS_P3_GATE_DIR:?}/bin:/gate-bin:ro
+      - ${WORKOS_P3_GATE_DIR:?}/core-execution:/fixture/core-execution
+      - ${WORKOS_P3_GATE_DIR:?}/harness-execution:/fixture/harness-execution
+      - ${WORKOS_P3_GATE_DIR:?}/vault:/fixture/vault
+  core:
+    <<: *service
+    command: [workos-core]
+    environment:
+      <<: *environment
+      WORKOS_AGENT_RECOVERY_PROVIDER: generic-cli
+      WORKOS_HTTP_ADDRESS: 127.0.0.1:${WORKOS_P3_GATE_CORE_PORT:?}
+      WORKOS_CREDENTIAL_MASTER_KEY_FILE: /fixture/vault/vault-master.key
+      WORKOS_CREDENTIAL_ADMIN_SOCKET: /run/workos/credential-admin.sock
+      WORKOS_CORE_EXECUTION_ADDRESS: 127.0.0.1:${WORKOS_P3_GATE_EXECUTION_PORT:?}
+      WORKOS_CORE_EXECUTION_CA_FILE: /fixture/execution/ca.crt
+      WORKOS_CORE_EXECUTION_CERT_FILE: /fixture/execution/core.crt
+      WORKOS_CORE_EXECUTION_KEY_FILE: /fixture/execution/core.key
+    volumes:
+      - ${WORKOS_P3_GATE_DIR:?}/bin:/gate-bin:ro
+      - ${WORKOS_P3_GATE_DIR:?}/run:/run/workos
+      - ${WORKOS_P3_GATE_DIR:?}/core-execution:/fixture/execution:ro
+      - ${WORKOS_P3_GATE_DIR:?}/vault:/fixture/vault:ro
+  harness:
+    <<: *service
+    command: [harness-host]
+    environment:
+      <<: *environment
+      WORKOS_HTTP_ADDRESS: 127.0.0.1:${WORKOS_P3_GATE_HARNESS_PORT:?}
+      WORKOS_CONFIG_FILE: /fixture/cli/config.yaml
+      WORKOS_MCP_ENABLED: "true"
+      WORKOS_MCP_SERVER: /gate-bin/mcp-server-fixture
+      WORKOS_CORE_EXECUTION_URL: https://127.0.0.1:${WORKOS_P3_GATE_EXECUTION_PORT:?}
+      WORKOS_HARNESS_EXECUTION_CA_FILE: /fixture/execution/ca.crt
+      WORKOS_HARNESS_EXECUTION_CERT_FILE: /fixture/execution/harness.crt
+      WORKOS_HARNESS_EXECUTION_KEY_FILE: /fixture/execution/harness.key
+    volumes:
+      - ${WORKOS_P3_GATE_DIR:?}/bin:/gate-bin:ro
+      - ${WORKOS_P3_GATE_DIR:?}/harness-execution:/fixture/execution:ro
+      - ${WORKOS_P3_GATE_DIR:?}/cli:/fixture/cli:ro
+  runtime:
+    image: workos:dev
+    pid: host
+    cgroup: host
+    user: ${WORKOS_P3_GATE_USER:?}
+    network_mode: host
+    restart: "no"
+    group_add:
+      - ${WORKOS_P3_GATE_DOCKER_GID:-0}
+    depends_on:
+      bootstrap:
+        condition: service_completed_successfully
+    command: [runtime-host]
+    environment:
+      <<: *environment
+      WORKOS_HTTP_ADDRESS: 127.0.0.1:${WORKOS_P3_GATE_RUNTIME_PORT:?}
+      WORKOS_RUNTIME_WORKLOAD_ENGINE: docker
+      WORKOS_RUNTIME_BUILDTEST_ENGINE: docker
+      WORKOS_RUNTIME_DOCKER_SOCKET: /var/run/docker.sock
+      WORKOS_RUNTIME_ARTIFACT_ROOT: ${WORKOS_P3_GATE_DIR:?}/artifacts
+      WORKOS_RUNTIME_ADMIN_SOCKET: /run/workos/artifact-admin.sock
+      WORKOS_RUNTIME_BUILDTEST_SCRATCH: ${WORKOS_P3_GATE_DIR:?}/buildtest
+      WORKOS_RUNTIME_BUILDTEST_INTERVAL: 1s
+      WORKOS_RUNTIME_RECONCILE_INTERVAL: 1s
+      WORKOS_RUNTIME_BUILDTEST_LEASE_TTL: 5s
+      WORKOS_RUNTIME_BUILDTEST_TIMEOUT: 5m
+    volumes:
+      - ${WORKOS_P3_GATE_DIR:?}/bin:/gate-bin:ro
+      - ${WORKOS_P3_GATE_DIR:?}/run:/run/workos
+      - ${WORKOS_P3_GATE_DIR:?}/artifacts:${WORKOS_P3_GATE_DIR:?}/artifacts
+      - ${WORKOS_P3_GATE_DIR:?}/buildtest:${WORKOS_P3_GATE_DIR:?}/buildtest
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /sys/fs/cgroup:/sys/fs/cgroup:ro
+  reliability:
+    <<: *service
+    command: [reliability-host]
+    environment:
+      <<: *environment
+      WORKOS_HTTP_ADDRESS: 127.0.0.1:${WORKOS_P3_GATE_RELIABILITY_PORT:?}
+      WORKOS_RELIABILITY_POLL_INTERVAL: 1s
+      WORKOS_RELIABILITY_POLL_TIMEOUT: 800ms
+  gateway:
+    <<: *service
+    command: [workos-gateway]
+    environment:
+      <<: *environment
+      WORKOS_HTTP_ADDRESS: 127.0.0.1:${WORKOS_P3_GATE_GATEWAY_PORT:?}
+      WORKOS_STATIC_DIR: /srv/workos/desktop
+  indexer:
+    <<: *service
+    command: [indexer]
+    environment:
+      <<: *environment
+      WORKOS_HTTP_ADDRESS: 127.0.0.1:${WORKOS_P3_GATE_INDEXER_PORT:?}

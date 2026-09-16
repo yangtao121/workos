@@ -8,6 +8,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/yangtao121/workos/internal/platform/bundleformat"
 	"io"
 	"log/slog"
 	"net"
@@ -78,30 +79,21 @@ type chunkReader struct {
 }
 
 func (c *chunkReader) Read(p []byte) (int, error) {
-	if !c.started {
-		c.started = true
-		if !c.stream.Receive() {
-			if err := c.stream.Err(); err != nil {
-				return 0, err
-			}
-			c.eof = true
-		}
-	}
 	for len(c.buf) == 0 && !c.eof {
-		if msg := c.stream.Msg(); msg != nil {
-			if msg.GetStart() != nil {
-				return 0, errors.New("duplicate start chunk in import stream")
-			}
-			c.buf = msg.GetData()
-			if len(c.buf) > 0 {
-				break
-			}
-		}
 		if !c.stream.Receive() {
 			if err := c.stream.Err(); err != nil {
 				return 0, err
 			}
 			c.eof = true
+			break
+		}
+		msg := c.stream.Msg()
+		if msg.GetStart() != nil {
+			return 0, errors.New("duplicate start chunk in import stream")
+		}
+		c.buf = msg.GetData()
+		if len(c.buf) > artifactChunkBytes {
+			return 0, bundleformat.ErrBundleTooLarge
 		}
 	}
 	if len(c.buf) == 0 {
@@ -117,8 +109,8 @@ func adminError(err error) error {
 	sanitized := "artifact import failed"
 	switch {
 	case errors.Is(err, domain.ErrInvalidRequest),
-		errors.Is(err, domain.ErrBundleInvalid),
-		errors.Is(err, domain.ErrBundleTooLarge):
+		errors.Is(err, bundleformat.ErrBundleInvalid),
+		errors.Is(err, bundleformat.ErrBundleTooLarge):
 		code = connect.CodeInvalidArgument
 		sanitized = "artifact bundle rejected: " + err.Error()
 	case errors.Is(err, domain.ErrConflict):
@@ -186,7 +178,7 @@ func ListenAdminSocket(path string, handler http.Handler, logger *slog.Logger) (
 		// Streaming imports of up to ~132 MiB need a generous body window;
 		// per-chunk and total bounds are enforced by the service.
 		ReadTimeout: 10 * time.Minute,
-		IdleTimeout:  60 * time.Second,
+		IdleTimeout: 60 * time.Second,
 	}
 	return listener, server, nil
 }

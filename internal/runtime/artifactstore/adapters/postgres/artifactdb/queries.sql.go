@@ -96,6 +96,7 @@ func (q *Queries) GetArtifactByImportKey(ctx context.Context, arg GetArtifactByI
 const getArtifactByOwnerDigest = `-- name: GetArtifactByOwnerDigest :one
 SELECT id, owner_user_id, digest, format, size_bytes, file_count, state, origin, idempotency_key, app_id, task_id, job_id, incident_id, project_id, installation_id, source_bundle_id, source_digest, manifest_digest, base_image, build_command, test_command, output_directory, created_at, ready_at, updated_at FROM workos_runtime.artifacts
 WHERE owner_user_id = $1 AND digest = $2
+ORDER BY created_at, id LIMIT 1
 `
 
 type GetArtifactByOwnerDigestParams struct {
@@ -184,13 +185,13 @@ INSERT INTO workos_runtime.artifacts (
     base_image, build_command, test_command, output_directory,
     created_at, ready_at, updated_at
 ) VALUES (
-    $1, $2, $3, $4, $5, $6, 'ready', $7,
+    $1, $2, $3, $4, $5, $6, $23, $7,
     $8, $9, $10, $11, $12, $13,
     $14, $15, $16, $17,
     $18, $19, $20, $21,
-    $22, $22, $22
+    $22, $24, $22
 )
-ON CONFLICT (owner_user_id, digest) DO NOTHING
+ON CONFLICT DO NOTHING
 RETURNING id
 `
 
@@ -217,6 +218,8 @@ type InsertArtifactReadyParams struct {
 	TestCommand     []string    `json:"test_command"`
 	OutputDirectory pgtype.Text `json:"output_directory"`
 	CreatedAt       time.Time   `json:"created_at"`
+	State           string      `json:"state"`
+	ReadyAt         *time.Time  `json:"ready_at"`
 }
 
 func (q *Queries) InsertArtifactReady(ctx context.Context, arg InsertArtifactReadyParams) (string, error) {
@@ -243,6 +246,8 @@ func (q *Queries) InsertArtifactReady(ctx context.Context, arg InsertArtifactRea
 		arg.TestCommand,
 		arg.OutputDirectory,
 		arg.CreatedAt,
+		arg.State,
+		arg.ReadyAt,
 	)
 	var id string
 	err := row.Scan(&id)
@@ -303,7 +308,7 @@ func (q *Queries) ListArtifactsByState(ctx context.Context, state string) ([]Wor
 
 const markArtifactState = `-- name: MarkArtifactState :execrows
 UPDATE workos_runtime.artifacts
-SET state = $2, updated_at = $3
+SET state = $2, updated_at = $3, ready_at = CASE WHEN $2 = 'ready' THEN COALESCE(ready_at, $3) ELSE ready_at END
 WHERE id = $1
 `
 

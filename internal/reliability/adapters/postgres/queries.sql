@@ -289,9 +289,10 @@ WHERE id = $2;
 INSERT INTO workos_reliability.deployment_ledger (
     incident_id, owner_user_id, project_id, installation_id, target_version,
     expected_revision, state, canary_until, canary_started_at, created_at, updated_at,
-    task_id, manifest_digest, base_version
+    task_id, manifest_digest, base_version, artifact_id, artifact_digest, base_artifact_digest
 ) VALUES ($1, $2, $3, $4, $5, $6, 'candidate', sqlc.arg(created_at), sqlc.arg(created_at), sqlc.arg(created_at), sqlc.arg(created_at),
-          sqlc.arg(task_id), sqlc.arg(manifest_digest), sqlc.arg(base_version))
+          sqlc.arg(task_id), sqlc.arg(manifest_digest), sqlc.arg(base_version),
+          sqlc.arg(artifact_id), sqlc.arg(artifact_digest), sqlc.arg(base_artifact_digest))
 ON CONFLICT (incident_id) DO UPDATE SET incident_id = EXCLUDED.incident_id
 WHERE deployment_ledger.owner_user_id = EXCLUDED.owner_user_id
   AND deployment_ledger.project_id = EXCLUDED.project_id
@@ -307,14 +308,15 @@ SELECT d.*, EXISTS (
       AND i.created_at >= d.created_at
 ) AS new_incident
 FROM workos_reliability.deployment_ledger d
-WHERE d.state IN ('candidate', 'starting', 'canary', 'rollback')
+WHERE d.state IN ('candidate', 'starting', 'canary', 'rollback', 'rollback_pending')
 ORDER BY d.updated_at, d.incident_id
 LIMIT $1 FOR UPDATE OF d SKIP LOCKED;
 
 -- name: SaveDeployment :exec
 UPDATE workos_reliability.deployment_ledger
-SET state = $2, attempts = $3, canary_started_at = $4, canary_until = $5, updated_at = $6
-WHERE incident_id = $1 AND state IN ('candidate', 'starting', 'canary', 'rollback');
+SET state = $2, attempts = $3, canary_started_at = $4, canary_until = $5, updated_at = $6,
+    workload_id = sqlc.narg(workload_id), workload_generation = sqlc.narg(workload_generation)
+WHERE incident_id = $1 AND state IN ('candidate', 'starting', 'canary', 'rollback', 'rollback_pending');
 
 -- name: ListRepairCompleted :many
 -- Rotate pending tasks, including failed RPCs and completed tasks whose
@@ -347,7 +349,7 @@ SELECT count(*) AS active
 FROM workos_reliability.deployment_ledger
 WHERE installation_id = sqlc.arg(installation_id)
   AND incident_id <> sqlc.arg(incident_id)
-  AND state IN ('candidate', 'starting', 'canary', 'rollback');
+  AND state IN ('candidate', 'starting', 'canary', 'rollback', 'rollback_pending');
 
 -- name: MarkRepairAwaitingManual :execrows
 INSERT INTO workos_reliability.repair_ledger (
@@ -360,3 +362,14 @@ WHERE workos_reliability.repair_ledger.state = 'submitted';
 SELECT i.project_id::text
 FROM workos_reliability.incidents i
 WHERE i.id = sqlc.arg(incident_id);
+
+-- name: GetLatestDeploymentForInstallation :one
+SELECT d.incident_id, d.owner_user_id, d.project_id, d.installation_id, d.target_version, d.state,
+       d.canary_until, d.created_at, d.updated_at, d.expected_revision, d.attempts, d.canary_started_at,
+       d.task_id, d.manifest_digest, d.base_version, d.artifact_id, d.artifact_digest, d.base_artifact_digest, d.workload_id, d.workload_generation
+FROM workos_reliability.deployment_ledger d
+WHERE d.owner_user_id = sqlc.arg(owner_user_id)
+  AND d.project_id = sqlc.arg(project_id)
+  AND d.installation_id = sqlc.arg(installation_id)
+ORDER BY d.updated_at DESC, d.incident_id DESC
+LIMIT 1;

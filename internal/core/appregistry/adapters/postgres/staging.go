@@ -48,6 +48,8 @@ func (r *Repository) InsertStagedVersion(ctx context.Context, tx dbtx.Tx, versio
 		Version: version.Version, Scope: string(version.Scope), Name: version.Name,
 		Permissions: version.Permissions, ManifestDigest: version.ManifestDigest,
 		CanonicalManifest: version.CanonicalManifest, CreatedAt: timestamp(createdAt),
+		ArtifactID: optionalUUID(version.ArtifactID), ArtifactDigest: optionalText(version.ArtifactDigest),
+		ArtifactFormat: optionalText(version.ArtifactFormat),
 	})
 	if err != nil {
 		return "", storeError("insert staged app version", err)

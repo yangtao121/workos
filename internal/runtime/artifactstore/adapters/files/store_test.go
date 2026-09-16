@@ -2,11 +2,10 @@ package files
 
 import (
 	"bytes"
+	"github.com/yangtao121/workos/internal/platform/appbundle"
 	"os"
 	"path/filepath"
 	"testing"
-
-	"github.com/yangtao121/workos/internal/runtime/artifactstore/domain"
 )
 
 const testOwner = "0198c0de-0000-7000-8000-000000000001"
@@ -24,7 +23,7 @@ func encodeTree(t *testing.T, files map[string]string) []byte {
 		}
 	}
 	var buf bytes.Buffer
-	if _, err := domain.EncodeDirectory(root, &buf); err != nil {
+	if _, err := appbundle.EncodeDirectory(root, &buf); err != nil {
 		t.Fatal(err)
 	}
 	return buf.Bytes()
@@ -32,7 +31,7 @@ func encodeTree(t *testing.T, files map[string]string) []byte {
 
 func digestOf(t *testing.T, raw []byte) string {
 	t.Helper()
-	stats, err := domain.Verify(bytes.NewReader(raw), "")
+	stats, err := appbundle.Verify(bytes.NewReader(raw), "")
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -29,21 +29,24 @@ const (
 // Observation is the neutral, bounded observation fact the supervisor
 // consumes. It carries identity, verdicts, and counters only.
 type Observation struct {
-	WorkloadID      string
-	OwnerUserID     string
-	ProjectID       string
-	AppInstanceID   string
-	AppID           string
-	ManifestDigest  string
-	Generation      int64
-	State           WorkloadState
-	RestartCount    int64
-	HealthVerdict   string // unknown | ok | failing
-	ExitCategory    string // none | exited | oom | pids | unknown
-	Idle            bool
-	MemoryOOMs      uint64
-	PIDsLimitEvents uint64
-	ObservedAt      time.Time
+	WorkloadID       string
+	OwnerUserID      string
+	ProjectID        string
+	AppInstanceID    string
+	AppID            string
+	ManifestDigest   string
+	Generation       int64
+	State            WorkloadState
+	RestartCount     int64
+	HealthVerdict    string // unknown | ok | failing
+	ExitCategory     string // none | exited | oom | pids | unknown
+	Idle             bool
+	MemoryOOMs       uint64
+	PIDsLimitEvents  uint64
+	ObservedAt       time.Time
+	ArtifactDigest   string
+	ImageDigest      string
+	IdentityVerified bool
 }
 
 // ControlOutcome is the sanitized control verdict replayed from the runtime.

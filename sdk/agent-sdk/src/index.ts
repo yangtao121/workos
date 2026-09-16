@@ -16,6 +16,7 @@ import {
   NativeSessionService,
   HarnessCatalogService,
   IncidentService,
+  ReleaseService,
   IndexService,
   NotificationService,
   ProjectHarnessBindingService,
@@ -48,6 +49,7 @@ export interface WorkOSClients {
   nativeSessions: Client<typeof NativeSessionService>;
   appBridge: Client<typeof AppBridgeService>;
   incidents: Client<typeof IncidentService>;
+  releases: Client<typeof ReleaseService>;
   index: Client<typeof IndexService>;
   notifications: Client<typeof NotificationService>;
 }
@@ -76,6 +78,7 @@ export function createWorkOSClients(baseUrl: string, transport?: Transport): Wor
     nativeSessions: createClient(NativeSessionService, activeTransport),
     appBridge: createClient(AppBridgeService, activeTransport),
     incidents: createClient(IncidentService, activeTransport),
+    releases: createClient(ReleaseService, activeTransport),
     index: createClient(IndexService, activeTransport),
     notifications: createClient(NotificationService, activeTransport),
   };

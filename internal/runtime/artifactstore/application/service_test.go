@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"github.com/yangtao121/workos/internal/platform/appbundle"
 	"os"
 	"path/filepath"
 	"strings"
@@ -36,7 +37,11 @@ func (m *memoryMeta) InsertReady(_ context.Context, artifact domain.Artifact) (d
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	key := artifact.OwnerUserID + "|" + artifact.Digest
-	if existing, ok := m.byDigest[key]; ok {
+	if artifact.Origin == domain.OriginBuildJob {
+		if existing, ok := m.byTask[artifact.TaskID]; ok {
+			return existing, false, nil
+		}
+	} else if existing, ok := m.byKey[artifact.OwnerUserID+"|"+artifact.IdempotencyKey]; ok {
 		return existing, false, nil
 	}
 	m.byID[artifact.ID] = artifact
@@ -158,7 +163,7 @@ func bundleBytes(t *testing.T, name, content string) []byte {
 		t.Fatal(err)
 	}
 	var buf bytes.Buffer
-	if _, err := domain.EncodeDirectory(root, &buf); err != nil {
+	if _, err := appbundle.EncodeDirectory(root, &buf); err != nil {
 		t.Fatal(err)
 	}
 	return buf.Bytes()
@@ -267,6 +272,105 @@ func TestCommitBuildAndFacts(t *testing.T) {
 	}
 }
 
+func TestCommitBuildTaskDriftIsStableConflict(t *testing.T) {
+	service, _ := newTestService(t)
+	outDir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(outDir, "dist"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(outDir, "dist", "server"), []byte("A"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	first, err := service.CommitBuild(context.Background(), BuildCommit{
+		OwnerUserID: ownerA, TaskID: taskOne,
+		SourceDigest: "sha256:" + strings.Repeat("1", 64), ManifestDigest: "sha256:" + strings.Repeat("2", 64),
+		BaseImage: "golang@sha256:" + strings.Repeat("3", 64), OutputDirectory: "dist",
+		IdempotencyKey: "build-task:" + taskOne, OutputDir: outDir,
+	})
+	if err != nil {
+		t.Fatalf("first commit: %v", err)
+	}
+	// Same task, different manifest provenance: stable conflict even with
+	// byte-identical output — the task already froze its first valid result.
+	if _, err := service.CommitBuild(context.Background(), BuildCommit{
+		OwnerUserID: ownerA, TaskID: taskOne,
+		SourceDigest: "sha256:" + strings.Repeat("1", 64), ManifestDigest: "sha256:" + strings.Repeat("9", 64),
+		BaseImage: "golang@sha256:" + strings.Repeat("3", 64), OutputDirectory: "dist",
+		IdempotencyKey: "build-task:" + taskOne, OutputDir: outDir,
+	}); !errors.Is(err, domain.ErrConflict) {
+		t.Fatalf("provenance drift must conflict, got %v", err)
+	}
+	if facts, err := service.Facts(context.Background(), FactsQuery{TaskID: taskOne}); err != nil || facts.ID != first.Artifact.ID {
+		t.Fatalf("the first valid freeze stays authoritative: %+v %v", facts, err)
+	}
+}
+
+func TestCommitBuildReplayCannotRestoreUnavailableRow(t *testing.T) {
+	service, meta := newTestService(t)
+	outDir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(outDir, "dist"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(outDir, "dist", "server"), []byte("R"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	commit := BuildCommit{
+		OwnerUserID: ownerA, TaskID: taskOne,
+		SourceDigest: "sha256:" + strings.Repeat("1", 64), ManifestDigest: "sha256:" + strings.Repeat("2", 64),
+		BaseImage: "golang@sha256:" + strings.Repeat("3", 64), OutputDirectory: "dist",
+		IdempotencyKey: "build-task:" + taskOne, OutputDir: outDir,
+	}
+	first, err := service.CommitBuild(context.Background(), commit)
+	if err != nil {
+		t.Fatalf("commit: %v", err)
+	}
+	// Simulate the bytes vanishing: the row degrades, then the same commit
+	// re-promotes verified bytes and converges back to ready.
+	if err := meta.MarkState(context.Background(), first.Artifact.ID, domain.StateUnavailable); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.CommitBuild(context.Background(), commit); !errors.Is(err, domain.ErrUnavailable) {
+		t.Fatalf("replay cannot resurrect unavailable provenance: %v", err)
+	}
+}
+
+func TestCommitBuildSameBytesPreserveEachTaskProvenance(t *testing.T) {
+	service, meta := newTestService(t)
+	outDir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(outDir, "dist"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(outDir, "dist", "server"), []byte("S"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	base := BuildCommit{
+		OwnerUserID:  ownerA,
+		SourceDigest: "sha256:" + strings.Repeat("1", 64), ManifestDigest: "sha256:" + strings.Repeat("2", 64),
+		BaseImage: "golang@sha256:" + strings.Repeat("3", 64), OutputDirectory: "dist", OutputDir: outDir,
+	}
+	first, err := service.CommitBuild(context.Background(), withTask(base, taskOne))
+	if err != nil {
+		t.Fatalf("first: %v", err)
+	}
+	taskTwo := "0198c0de-0000-7000-8000-0000000000aa"
+	second, err := service.CommitBuild(context.Background(), withTask(base, taskTwo))
+	if err != nil {
+		t.Fatalf("second: %v", err)
+	}
+	if !second.Created || second.Artifact.ID == first.Artifact.ID || second.Artifact.Digest != first.Artifact.Digest || second.Artifact.TaskID != taskTwo {
+		t.Fatalf("bytes deduplicate but task provenance must remain distinct: %+v vs %+v", second.Artifact, first.Artifact)
+	}
+	if len(meta.byID) != 2 {
+		t.Fatalf("want two provenance rows, got %d", len(meta.byID))
+	}
+}
+
+func withTask(commit BuildCommit, taskID string) BuildCommit {
+	commit.TaskID = taskID
+	commit.IdempotencyKey = "build-task:" + taskID
+	return commit
+}
+
 func TestOpenForLaunchVerifiesDigest(t *testing.T) {
 	service, _ := newTestService(t)
 	raw := bundleBytes(t, "dist/server", "A")
@@ -296,21 +400,22 @@ func TestOpenForLaunchVerifiesDigest(t *testing.T) {
 }
 
 func TestQuotaFailClosed(t *testing.T) {
-	service, meta := newTestService(t)
-	// Simulate an owner already at quota.
-	meta.mu.Lock()
-	meta.byDigest[ownerA+"|sha256:"+strings.Repeat("9", 64)] = domain.Artifact{
-		ID: "0198c0de-0000-7000-8000-0000000000dd", OwnerUserID: ownerA,
-		Digest: "sha256:" + strings.Repeat("9", 64), State: domain.StateReady,
-		SizeBytes: domain.OwnerQuotaBytes, Origin: domain.OriginOperatorImport,
+	service, _ := newTestService(t)
+	root := service.files.(*files.Store).Root()
+	if err := os.Mkdir(filepath.Join(root, ownerA), 0700); err != nil {
+		t.Fatal(err)
 	}
-	meta.byID["0198c0de-0000-7000-8000-0000000000dd"] = domain.Artifact{
-		ID: "0198c0de-0000-7000-8000-0000000000dd", OwnerUserID: ownerA,
-		Digest: "sha256:" + strings.Repeat("9", 64), State: domain.StateReady,
-		SizeBytes: domain.OwnerQuotaBytes, Origin: domain.OriginOperatorImport,
+	// An orphan consumes quota even without metadata. Sparse allocation keeps
+	// the test cheap while exercising real file-size accounting.
+	f, err := os.Create(filepath.Join(root, ownerA, "orphan.bundle"))
+	if err != nil {
+		t.Fatal(err)
 	}
-	meta.mu.Unlock()
-	_, err := service.Import(context.Background(), ImportRequest{
+	if err := f.Truncate(domain.OwnerQuotaBytes); err != nil {
+		t.Fatal(err)
+	}
+	f.Close()
+	_, err = service.Import(context.Background(), ImportRequest{
 		OwnerUserID: ownerA, AppID: "demo-app", IdempotencyKey: "quota", Reader: bytes.NewReader(bundleBytes(t, "s", "x")),
 	})
 	if !errors.Is(err, domain.ErrQuotaExceeded) {
@@ -364,11 +469,104 @@ func TestReconcileConvergesCrashWindows(t *testing.T) {
 	}
 }
 
+func TestFactsDegradesReadyWithoutBytes(t *testing.T) {
+	service, meta := newTestService(t)
+	service.WithBuildAuthority(func(context.Context, domain.Artifact) (bool, error) { return true, nil })
+	ghost := domain.Artifact{
+		ID: "0198c0de-0000-7000-8000-0000000000e3", OwnerUserID: ownerA,
+		Digest: "sha256:" + strings.Repeat("8", 64), State: domain.StateReady,
+		Origin: domain.OriginBuildJob, TaskID: taskOne,
+	}
+	meta.mu.Lock()
+	meta.byID[ghost.ID] = ghost
+	meta.byTask[taskOne] = ghost
+	meta.mu.Unlock()
+	got, err := service.Facts(context.Background(), FactsQuery{TaskID: taskOne})
+	if err != nil || got.State != domain.StateUnavailable {
+		t.Fatalf("ready facts without bytes must degrade: %+v %v", got, err)
+	}
+}
+
 func digestOfBytes(t *testing.T, raw []byte) string {
 	t.Helper()
-	stats, err := domain.Verify(bytes.NewReader(raw), "")
+	stats, err := appbundle.Verify(bytes.NewReader(raw), "")
 	if err != nil {
 		t.Fatal(err)
 	}
 	return stats.Digest
+}
+
+func TestBuildArtifactWaitsForDurableSuccess(t *testing.T) {
+	service, _ := newTestService(t)
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "server"), []byte("A"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	result, err := service.CommitBuild(context.Background(), BuildCommit{OwnerUserID: ownerA, TaskID: taskOne, IdempotencyKey: "build", OutputDir: dir})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, committed := range []bool{false, true, false} {
+		service.WithBuildAuthority(func(context.Context, domain.Artifact) (bool, error) { return committed, nil })
+		facts, err := service.Facts(context.Background(), FactsQuery{ArtifactID: result.Artifact.ID})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if (facts.State == domain.StateReady) != committed {
+			t.Fatalf("ready must require terminal success: %+v", facts)
+		}
+	}
+}
+func TestImportReplayCannotChangeApp(t *testing.T) {
+	service, _ := newTestService(t)
+	raw := bundleBytes(t, "server", "A")
+	req := ImportRequest{OwnerUserID: ownerA, AppID: "app-one", IdempotencyKey: "same", Reader: bytes.NewReader(raw)}
+	if _, err := service.Import(context.Background(), req); err != nil {
+		t.Fatal(err)
+	}
+	req.AppID = "app-two"
+	req.Reader = bytes.NewReader(raw)
+	if _, err := service.Import(context.Background(), req); !errors.Is(err, domain.ErrConflict) {
+		t.Fatalf("cross-app replay: %v", err)
+	}
+}
+
+func TestDuplicateBytesCannotHideCorruptStoredBundle(t *testing.T) {
+	service, _ := newTestService(t)
+	raw := bundleBytes(t, "server", "A")
+	req := ImportRequest{OwnerUserID: ownerA, AppID: "test-app", IdempotencyKey: "first", Reader: bytes.NewReader(raw)}
+	first, err := service.Import(context.Background(), req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	path, err := service.OpenForLaunch(context.Background(), ownerA, first.Artifact.Digest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte("corrupt"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	req.IdempotencyKey = "second"
+	req.Reader = bytes.NewReader(raw)
+	if _, err := service.Import(context.Background(), req); err == nil {
+		t.Fatal("existing path must reverify bytes before deduplication")
+	}
+}
+
+func TestBuildReplayBindsOutputBytes(t *testing.T) {
+	service, _ := newTestService(t)
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "server"), []byte("A"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	commit := BuildCommit{OwnerUserID: ownerA, TaskID: taskOne, OutputDir: dir, IdempotencyKey: "build"}
+	if _, err := service.CommitBuild(context.Background(), commit); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "server"), []byte("B"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.CommitBuild(context.Background(), commit); !errors.Is(err, domain.ErrConflict) {
+		t.Fatalf("different bytes under same task: %v", err)
+	}
 }

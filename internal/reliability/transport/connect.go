@@ -241,6 +241,8 @@ func (c *RuntimeClient) ListObservations(ctx context.Context) ([]ports.Observati
 			HealthVerdict: item.GetHealthVerdict(), ExitCategory: item.GetExitCategory(),
 			Idle: item.GetIdle(), MemoryOOMs: item.GetMemoryEventsOom(),
 			PIDsLimitEvents: pidsLimitEvents, ObservedAt: observedAt,
+			ArtifactDigest: item.GetArtifactDigest(), ImageDigest: item.GetImageDigest(),
+			IdentityVerified: item.GetIdentityVerified(),
 		})
 	}
 	return observations, nil

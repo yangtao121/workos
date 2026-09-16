@@ -48,6 +48,7 @@ const (
 	FailureTimeout      FailureReason = "timeout"
 	FailureEngineFailed FailureReason = "engine-failed"
 	FailureOutputBudget FailureReason = "output-budget"
+	FailureOutputFailed FailureReason = "output-failed"
 	FailureInputDrift   FailureReason = "input-drift"
 	FailureCancelled    FailureReason = "cancelled"
 	FailureNone         FailureReason = ""
@@ -80,13 +81,18 @@ type File struct {
 }
 
 // Payload is the exact immutable execution contract pinned at submit: the
-// pinned base image, the fixed build/test argv and the candidate files. The
-// canonical JSON digest binds replays to one input.
+// pinned base image, the fixed build/test argv, the candidate files, and the
+// manifest recipe echo (output directory + runtime command) that makes the
+// verdict's frozen bundle verifiable. The canonical JSON digest binds replays
+// to one input.
 type Payload struct {
-	BaseImage string   `json:"base_image"`
-	BuildCmd  []string `json:"build_command"`
-	TestCmd   []string `json:"test_command"`
-	Files     []File   `json:"files"`
+	AppID           string   `json:"app_id,omitempty"`
+	BaseImage       string   `json:"base_image"`
+	BuildCmd        []string `json:"build_command"`
+	TestCmd         []string `json:"test_command"`
+	Files           []File   `json:"files"`
+	OutputDirectory string   `json:"output_directory,omitempty"`
+	RuntimeCommand  []string `json:"runtime_command,omitempty"`
 }
 
 type Job struct {
@@ -110,8 +116,16 @@ type Job struct {
 	EngineFacts    json.RawMessage
 	Attempts       int32
 	LogTail        string
+	// The frozen release bundle this success verdict committed (ADR-0033).
+	// Set only by the lease-guarded verdict write together with an existing
+	// ready artifact; a success without them means this tier produced no
+	// deployable output.
+	ArtifactID     string
+	ArtifactDigest string
 	CreatedAt      time.Time
 	UpdatedAt      time.Time
+	LeaseOwner     string
+	LeaseUntil     *time.Time
 }
 
 // ValidUUIDv7 matches the canonical resource id grammar (lowercase).
@@ -175,7 +189,43 @@ func ValidatePayload(payload Payload) error {
 	if err := validateCommand(payload.TestCmd); err != nil {
 		return err
 	}
+	if payload.OutputDirectory != "" && !ValidOutputDirectory(payload.OutputDirectory) {
+		return ErrInvalid
+	}
+	if len(payload.RuntimeCommand) > 0 {
+		if err := validateCommand(payload.RuntimeCommand); err != nil {
+			return err
+		}
+	}
 	return ValidateFiles(payload.Files)
+}
+
+// ValidOutputDirectory matches the manifest build.output.directory grammar
+// (ADR-0033): relative slash-joined segments of [A-Za-z0-9_-] tokens with
+// inner dots, no empty/leading-dot-only segments, bounded length.
+func ValidOutputDirectory(value string) bool {
+	if value == "" || utf8.RuneCountInString(value) > 64 || value != path.Clean(value) || path.IsAbs(value) {
+		return false
+	}
+	for _, segment := range strings.Split(value, "/") {
+		tokens := strings.Split(segment, ".")
+		if len(tokens) == 0 {
+			return false
+		}
+		for _, token := range tokens {
+			if token == "" {
+				return false
+			}
+			for _, r := range token {
+				switch {
+				case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9', r == '-', r == '_':
+				default:
+					return false
+				}
+			}
+		}
+	}
+	return true
 }
 
 func validateCommand(command []string) error {

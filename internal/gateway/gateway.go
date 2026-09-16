@@ -133,6 +133,7 @@ const indexerServicePrefix = "/workos.index.v1.IndexService/"
 // is configured; the rest of the gateway (readiness included) never depends
 // on it, and the bridge credential stays stripped on the route.
 const incidentServicePrefix = "/workos.incident.v1.IncidentService/"
+const releaseServicePrefix = "/workos.release.v1.ReleaseService/"
 
 // surfaceAssetPrefix is the public, same-origin surface asset route.
 const surfaceAssetPrefix = "/surfaces/"
@@ -296,7 +297,7 @@ func (h *Handler) serveDev(w http.ResponseWriter, r *http.Request) {
 		h.gate(w, r, h.runtime)
 		return
 	}
-	if strings.HasPrefix(r.URL.Path, incidentServicePrefix) {
+	if strings.HasPrefix(r.URL.Path, incidentServicePrefix) || strings.HasPrefix(r.URL.Path, releaseServicePrefix) {
 		if h.reliability == nil {
 			http.NotFound(w, r)
 			return
@@ -382,7 +383,7 @@ func (h *Handler) serveProduction(w http.ResponseWriter, r *http.Request) {
 		}
 		h.runtime.ServeHTTP(w, r.WithContext(identity))
 		return
-	case strings.HasPrefix(path, incidentServicePrefix):
+	case strings.HasPrefix(path, incidentServicePrefix), strings.HasPrefix(path, releaseServicePrefix):
 		if h.reliability == nil {
 			http.NotFound(w, r)
 			return

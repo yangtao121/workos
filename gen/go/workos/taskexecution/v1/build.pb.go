@@ -342,8 +342,11 @@ type BuildEngineFacts struct {
 	Engine          string                 `protobuf:"bytes,1,opt,name=engine,proto3" json:"engine,omitempty"`
 	NetworkIsolated bool                   `protobuf:"varint,2,opt,name=network_isolated,json=networkIsolated,proto3" json:"network_isolated,omitempty"`
 	ImagePinned     bool                   `protobuf:"varint,3,opt,name=image_pinned,json=imagePinned,proto3" json:"image_pinned,omitempty"`
-	// Kernel-enforced limits actually applied, fixed grammar:
-	// cpu-seconds|address-space|file-size|processes|open-files|wall-clock|output-bytes
+	// Kernel/cgroup-enforced limits actually applied for this verdict, fixed
+	// grammar. Process tier: cpu-seconds|address-space|file-size|processes|
+	// open-files|wall-clock|output-bytes. Docker tier: memory-max|pids-max|
+	// cpu-max|read-only-rootfs|no-new-privileges|cap-drop-all|network-none|
+	// wall-clock|output-bytes.
 	EnforcedLimits []string `protobuf:"bytes,4,rep,name=enforced_limits,json=enforcedLimits,proto3" json:"enforced_limits,omitempty"`
 	unknownFields  protoimpl.UnknownFields
 	sizeCache      protoimpl.SizeCache
@@ -418,7 +421,7 @@ type GetBuildTestResponse struct {
 	BuildExitCode int32  `protobuf:"varint,5,opt,name=build_exit_code,json=buildExitCode,proto3" json:"build_exit_code,omitempty"`
 	TestExitCode  int32  `protobuf:"varint,6,opt,name=test_exit_code,json=testExitCode,proto3" json:"test_exit_code,omitempty"`
 	// Fixed grammar of the terminal reason on failure:
-	// build-failed|test-failed|timeout|engine-failed|output-budget|input-drift|cancelled|none
+	// build-failed|test-failed|timeout|engine-failed|output-budget|output-failed|input-drift|cancelled|none
 	FailureReason string            `protobuf:"bytes,7,opt,name=failure_reason,json=failureReason,proto3" json:"failure_reason,omitempty"`
 	Engine        *BuildEngineFacts `protobuf:"bytes,8,opt,name=engine,proto3" json:"engine,omitempty"`
 	SourceDigest  string            `protobuf:"bytes,9,opt,name=source_digest,json=sourceDigest,proto3" json:"source_digest,omitempty"`
@@ -570,7 +573,9 @@ type BuildArtifactFacts struct {
 	OutputDirectory string   `protobuf:"bytes,19,opt,name=output_directory,json=outputDirectory,proto3" json:"output_directory,omitempty"`
 	// preparing|ready|failed|unavailable. Only ready bundles may back a
 	// version; unavailable means metadata exists but the bytes are gone.
-	State         string `protobuf:"bytes,20,opt,name=state,proto3" json:"state,omitempty"`
+	State string `protobuf:"bytes,20,opt,name=state,proto3" json:"state,omitempty"`
+	// Operator-import and build provenance app identity (empty when unset).
+	AppId         string `protobuf:"bytes,21,opt,name=app_id,json=appId,proto3" json:"app_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -741,6 +746,13 @@ func (x *BuildArtifactFacts) GetOutputDirectory() string {
 func (x *BuildArtifactFacts) GetState() string {
 	if x != nil {
 		return x.State
+	}
+	return ""
+}
+
+func (x *BuildArtifactFacts) GetAppId() string {
+	if x != nil {
+		return x.AppId
 	}
 	return ""
 }
@@ -1396,7 +1408,7 @@ const file_workos_taskexecution_v1_build_proto_rawDesc = "" +
 	"\rsource_digest\x18\t \x01(\tR\fsourceDigest\x12\x1a\n" +
 	"\battempts\x18\n" +
 	" \x01(\x05R\battempts\x12G\n" +
-	"\bartifact\x18\v \x01(\v2+.workos.taskexecution.v1.BuildArtifactFactsR\bartifact\"\xa9\x05\n" +
+	"\bartifact\x18\v \x01(\v2+.workos.taskexecution.v1.BuildArtifactFactsR\bartifact\"\xc0\x05\n" +
 	"\x12BuildArtifactFacts\x12\x1f\n" +
 	"\vartifact_id\x18\x01 \x01(\tR\n" +
 	"artifactId\x12'\n" +
@@ -1424,7 +1436,8 @@ const file_workos_taskexecution_v1_build_proto_rawDesc = "" +
 	"\rbuild_command\x18\x11 \x03(\tR\fbuildCommand\x12!\n" +
 	"\ftest_command\x18\x12 \x03(\tR\vtestCommand\x12)\n" +
 	"\x10output_directory\x18\x13 \x01(\tR\x0foutputDirectory\x12\x14\n" +
-	"\x05state\x18\x14 \x01(\tR\x05state\"S\n" +
+	"\x05state\x18\x14 \x01(\tR\x05state\x12\x15\n" +
+	"\x06app_id\x18\x15 \x01(\tR\x05appId\"S\n" +
 	"\x17GetBuildArtifactRequest\x12\x17\n" +
 	"\atask_id\x18\x01 \x01(\tR\x06taskId\x12\x1f\n" +
 	"\vartifact_id\x18\x02 \x01(\tR\n" +

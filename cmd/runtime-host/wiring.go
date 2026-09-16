@@ -3,7 +3,9 @@ package main
 import (
 	"context"
 	"errors"
-	"fmt"
+	artifactdomain "github.com/yangtao121/workos/internal/runtime/artifactstore/domain"
+	buildtestdomain "github.com/yangtao121/workos/internal/runtime/buildtest/domain"
+	buildtestports "github.com/yangtao121/workos/internal/runtime/buildtest/ports"
 	ptyports "github.com/yangtao121/workos/internal/runtime/ptyhost/ports"
 	"time"
 
@@ -39,6 +41,7 @@ func (a *surfaceWorkloadLauncher) EnsureSurfaceWorkload(ctx context.Context, que
 			RestartLimit: query.Health.RestartLimit,
 		},
 		OperationKey: query.OperationKey,
+		ArtifactID:   query.ArtifactID, ArtifactDigest: query.ArtifactDigest,
 	})
 	if err != nil {
 		return surfaceports.WorkloadHandle{}, mapWorkloadError(err)
@@ -101,7 +104,7 @@ func (v *coreInstallationVerifier) VerifyLaunch(ctx context.Context, query workl
 		}
 		return workloadports.LaunchUnknown, nil
 	case resolved.ManifestDigest != query.ManifestDigest:
-		return workloadports.LaunchUnknown, fmt.Errorf("workload installation digest drifted: %w", workloadports.ErrDrift)
+		return workloadports.LaunchGone, nil
 	default:
 		return workloadports.LaunchInstalled, nil
 	}
@@ -304,3 +307,18 @@ func (a continuityAuthorization) AuthorizeInputGeneration(ctx context.Context, o
 }
 
 var _ ptyports.EpochControlAuthorizer = continuityAuthorization{}
+
+func buildArtifactAuthority(store buildtestports.JobStore) func(context.Context, artifactdomain.Artifact) (bool, error) {
+	return func(ctx context.Context, artifact artifactdomain.Artifact) (bool, error) {
+		job, err := store.GetJobByTask(ctx, artifact.TaskID)
+		if errors.Is(err, buildtestdomain.ErrNotFound) {
+			return false, nil
+		}
+		if err != nil {
+			return false, err
+		}
+		return job.State == buildtestdomain.StateSucceeded && job.ID == artifact.JobID &&
+			job.OwnerUserID == artifact.OwnerUserID && job.ArtifactID == artifact.ID &&
+			job.ArtifactDigest == artifact.Digest, nil
+	}
+}

@@ -67,15 +67,7 @@ func (q *Queries) ClearWorkloadIdle(ctx context.Context, arg ClearWorkloadIdlePa
 }
 
 const getActiveWorkloadByInstance = `-- name: GetActiveWorkloadByInstance :one
-SELECT id, owner_user_id, project_id, app_instance_id, app_id, app_version,
-       manifest_digest, image, command, port, requested_policy, policy_version,
-       effective_cpu_quota_us, effective_memory_high_bytes, effective_memory_max_bytes,
-       effective_pids_max, effective_startup_seconds, effective_restart_limit,
-       generation, state, restart_count, container_id, container_name, endpoint,
-       cgroup_path, health_verdict, last_exit_category,
-       baseline_memory_events_oom, baseline_pids_events_peak,
-       last_verified_at, lease_owner, lease_expires_at,
-       created_at, updated_at, started_at, stopped_at, idle_since
+SELECT id, owner_user_id, project_id, app_instance_id, app_id, app_version, manifest_digest, image, command, port, requested_policy, policy_version, effective_cpu_quota_us, effective_memory_high_bytes, effective_memory_max_bytes, effective_pids_max, effective_startup_seconds, effective_restart_limit, generation, state, restart_count, container_id, container_name, endpoint, cgroup_path, health_verdict, last_exit_category, baseline_memory_events_oom, baseline_pids_events_peak, last_verified_at, lease_owner, lease_expires_at, created_at, updated_at, started_at, stopped_at, idle_since, artifact_id, artifact_digest
 FROM workos_runtime.workloads
 WHERE owner_user_id = $1
   AND app_instance_id = $2
@@ -130,6 +122,8 @@ func (q *Queries) GetActiveWorkloadByInstance(ctx context.Context, arg GetActive
 		&i.StartedAt,
 		&i.StoppedAt,
 		&i.IdleSince,
+		&i.ArtifactID,
+		&i.ArtifactDigest,
 	)
 	return i, err
 }
@@ -172,15 +166,7 @@ func (q *Queries) GetPendingWorkloadOperation(ctx context.Context, arg GetPendin
 }
 
 const getWorkload = `-- name: GetWorkload :one
-SELECT id, owner_user_id, project_id, app_instance_id, app_id, app_version,
-       manifest_digest, image, command, port, requested_policy, policy_version,
-       effective_cpu_quota_us, effective_memory_high_bytes, effective_memory_max_bytes,
-       effective_pids_max, effective_startup_seconds, effective_restart_limit,
-       generation, state, restart_count, container_id, container_name, endpoint,
-       cgroup_path, health_verdict, last_exit_category,
-       baseline_memory_events_oom, baseline_pids_events_peak,
-       last_verified_at, lease_owner, lease_expires_at,
-       created_at, updated_at, started_at, stopped_at, idle_since
+SELECT id, owner_user_id, project_id, app_instance_id, app_id, app_version, manifest_digest, image, command, port, requested_policy, policy_version, effective_cpu_quota_us, effective_memory_high_bytes, effective_memory_max_bytes, effective_pids_max, effective_startup_seconds, effective_restart_limit, generation, state, restart_count, container_id, container_name, endpoint, cgroup_path, health_verdict, last_exit_category, baseline_memory_events_oom, baseline_pids_events_peak, last_verified_at, lease_owner, lease_expires_at, created_at, updated_at, started_at, stopped_at, idle_since, artifact_id, artifact_digest
 FROM workos_runtime.workloads
 WHERE id = $1
 `
@@ -226,6 +212,8 @@ func (q *Queries) GetWorkload(ctx context.Context, id string) (WorkosRuntimeWork
 		&i.StartedAt,
 		&i.StoppedAt,
 		&i.IdleSince,
+		&i.ArtifactID,
+		&i.ArtifactDigest,
 	)
 	return i, err
 }
@@ -263,21 +251,21 @@ const insertWorkload = `-- name: InsertWorkload :exec
 
 INSERT INTO workos_runtime.workloads (
     id, owner_user_id, project_id, app_instance_id, app_id, app_version,
-    manifest_digest, image, command, port, requested_policy, policy_version,
+    manifest_digest, artifact_id, artifact_digest, image, command, port, requested_policy, policy_version,
     effective_cpu_quota_us, effective_memory_high_bytes, effective_memory_max_bytes,
     effective_pids_max, effective_startup_seconds, effective_restart_limit,
     generation, state, container_name, health_verdict, last_exit_category,
     created_at, updated_at
 ) VALUES (
     $1, $2, $3, $4,
-    $5, $6, $7, $8,
-    $9, $10, $11, $12,
-    $13, $14,
+    $5, $6, $7, $8, $9, $10,
+    $11, $12, $13, $14,
     $15, $16,
     $17, $18,
-    $19, $20, $21,
-    $22, $23,
-    $24, $25
+    $19, $20,
+    $21, $22, $23,
+    $24, $25,
+    $26, $27
 )
 `
 
@@ -289,6 +277,8 @@ type InsertWorkloadParams struct {
 	AppID                    string          `json:"app_id"`
 	AppVersion               string          `json:"app_version"`
 	ManifestDigest           string          `json:"manifest_digest"`
+	ArtifactID               string          `json:"artifact_id"`
+	ArtifactDigest           string          `json:"artifact_digest"`
 	Image                    string          `json:"image"`
 	Command                  json.RawMessage `json:"command"`
 	Port                     int32           `json:"port"`
@@ -319,6 +309,8 @@ func (q *Queries) InsertWorkload(ctx context.Context, arg InsertWorkloadParams) 
 		arg.AppID,
 		arg.AppVersion,
 		arg.ManifestDigest,
+		arg.ArtifactID,
+		arg.ArtifactDigest,
 		arg.Image,
 		arg.Command,
 		arg.Port,
@@ -380,15 +372,7 @@ func (q *Queries) InsertWorkloadOperation(ctx context.Context, arg InsertWorkloa
 }
 
 const listWorkloads = `-- name: ListWorkloads :many
-SELECT id, owner_user_id, project_id, app_instance_id, app_id, app_version,
-       manifest_digest, image, command, port, requested_policy, policy_version,
-       effective_cpu_quota_us, effective_memory_high_bytes, effective_memory_max_bytes,
-       effective_pids_max, effective_startup_seconds, effective_restart_limit,
-       generation, state, restart_count, container_id, container_name, endpoint,
-       cgroup_path, health_verdict, last_exit_category,
-       baseline_memory_events_oom, baseline_pids_events_peak,
-       last_verified_at, lease_owner, lease_expires_at,
-       created_at, updated_at, started_at, stopped_at, idle_since
+SELECT id, owner_user_id, project_id, app_instance_id, app_id, app_version, manifest_digest, image, command, port, requested_policy, policy_version, effective_cpu_quota_us, effective_memory_high_bytes, effective_memory_max_bytes, effective_pids_max, effective_startup_seconds, effective_restart_limit, generation, state, restart_count, container_id, container_name, endpoint, cgroup_path, health_verdict, last_exit_category, baseline_memory_events_oom, baseline_pids_events_peak, last_verified_at, lease_owner, lease_expires_at, created_at, updated_at, started_at, stopped_at, idle_since, artifact_id, artifact_digest
 FROM workos_runtime.workloads
 ORDER BY created_at, id
 LIMIT $1
@@ -441,6 +425,8 @@ func (q *Queries) ListWorkloads(ctx context.Context, rowLimit int32) ([]WorkosRu
 			&i.StartedAt,
 			&i.StoppedAt,
 			&i.IdleSince,
+			&i.ArtifactID,
+			&i.ArtifactDigest,
 		); err != nil {
 			return nil, err
 		}

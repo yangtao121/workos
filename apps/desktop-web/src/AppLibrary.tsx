@@ -23,7 +23,7 @@ interface AppLibraryProps {
   deviceClass: DeviceClass;
   workosClients: Pick<
     WorkOSClients,
-    "appRegistry" | "appInstallations" | "projects" | "surfaces" | "appPolicies"
+    "appRegistry" | "appInstallations" | "projects" | "surfaces" | "appPolicies" | "releases"
   >;
   onProjectRefreshed: (project: Project) => void;
   onSurfaceOpened: (session: SurfaceSession) => void;

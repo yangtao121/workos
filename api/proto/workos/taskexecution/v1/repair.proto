@@ -16,6 +16,13 @@ message RepairBuildInput {
   string base_image = 4;
   repeated string build_command = 5;
   repeated string test_command = 6;
+  // The manifest build.output.directory echo (ADR-0033): the only subtree the
+  // engine may freeze into an app-bundle.v1 release. Empty means this tier
+  // produces no deployable bundle.
+  string output_directory = 7;
+  // The manifest runtime.command echo, so the engine can verify the bundle
+  // actually contains an executable entrypoint before freezing it.
+  repeated string runtime_command = 8;
 }
 
 message ResolveRepairBuildInputRequest {

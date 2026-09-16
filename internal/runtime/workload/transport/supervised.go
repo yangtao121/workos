@@ -69,6 +69,9 @@ func (h *supervisedHandler) ListObservations(ctx context.Context, _ *connect.Req
 			PidsEventsMax:      observation.PIDsLimitEvents,
 			Idle:               observation.Idle,
 			ObservedAt:         observation.ObservedAt.UTC().Format(time.RFC3339Nano),
+			ArtifactDigest:     observation.ArtifactDigest,
+			ImageDigest:        observation.ImageDigest,
+			IdentityVerified:   observation.IdentityVerified,
 		})
 	}
 	return connect.NewResponse(&workloadv1.ListObservationsResponse{Observations: items}), nil

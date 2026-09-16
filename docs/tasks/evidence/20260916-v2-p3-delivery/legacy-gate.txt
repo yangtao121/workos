@@ -1,0 +1,48 @@
+=== RUN   TestRepairBuildTestChain
+=== RUN   TestRepairBuildTestChain/SuccessPublishesVerifiedCandidate
+=== RUN   TestRepairBuildTestChain/TestFailureNeverDeploys
+=== RUN   TestRepairBuildTestChain/BuildFailureNeverDeploys
+=== RUN   TestRepairBuildTestChain/UserVersionChangeIsNotOverridden
+--- PASS: TestRepairBuildTestChain (73.07s)
+    --- PASS: TestRepairBuildTestChain/SuccessPublishesVerifiedCandidate (16.88s)
+    --- PASS: TestRepairBuildTestChain/TestFailureNeverDeploys (14.31s)
+    --- PASS: TestRepairBuildTestChain/BuildFailureNeverDeploys (9.98s)
+    --- PASS: TestRepairBuildTestChain/UserVersionChangeIsNotOverridden (31.90s)
+PASS
+ok  	github.com/yangtao121/workos/tests/integration	73.108s
+=== RUN   TestRepairBuildTestRestartSeed
+--- PASS: TestRepairBuildTestRestartSeed (2.83s)
+PASS
+ok  	github.com/yangtao121/workos/tests/integration	2.869s
+ Container p3-v2-p3-delivery-zazx02-runtime-1 Restarting
+ Container p3-v2-p3-delivery-zazx02-runtime-1 Started
+=== RUN   TestRepairBuildTestRestartRestore
+--- PASS: TestRepairBuildTestRestartRestore (41.80s)
+PASS
+ok  	github.com/yangtao121/workos/tests/integration	41.836s
+=== RUN   TestRepairRecoveryFallback
+--- PASS: TestRepairRecoveryFallback (15.37s)
+PASS
+ok  	github.com/yangtao121/workos/tests/integration	15.400s
+=== RUN   TestRepairRecoveryAwaitingManual
+--- PASS: TestRepairRecoveryAwaitingManual (5.50s)
+PASS
+ok  	github.com/yangtao121/workos/tests/integration	5.535s
+=== RUN   TestRepairBuildTestMatrixSeed
+--- PASS: TestRepairBuildTestMatrixSeed (27.00s)
+PASS
+ok  	github.com/yangtao121/workos/tests/integration	27.028s
+ Container p3-v2-p3-delivery-zazx02-reliability-1 Stopping
+ Container p3-v2-p3-delivery-zazx02-reliability-1 Stopped
+=== RUN   TestRepairBuildTestDeploymentMatrix
+=== RUN   TestRepairBuildTestDeploymentMatrix/StartupFaultRollsBackPreviousPin
+=== RUN   TestRepairBuildTestDeploymentMatrix/CanaryIncidentRollsBack
+=== RUN   TestRepairBuildTestDeploymentMatrix/RollbackRetriesAreBounded
+--- PASS: TestRepairBuildTestDeploymentMatrix (4.43s)
+    --- PASS: TestRepairBuildTestDeploymentMatrix/StartupFaultRollsBackPreviousPin (2.96s)
+    --- PASS: TestRepairBuildTestDeploymentMatrix/CanaryIncidentRollsBack (0.42s)
+    --- PASS: TestRepairBuildTestDeploymentMatrix/RollbackRetriesAreBounded (1.05s)
+PASS
+ok  	github.com/yangtao121/workos/tests/integration	4.465s
+P3 gate evidence: /home/aquatao/workos/tmp/v2-p3-delivery.ZAzX02
+v2-p3-delivery: PASS (legacy profile)

@@ -3,14 +3,14 @@
 -- name: InsertWorkload :exec
 INSERT INTO workos_runtime.workloads (
     id, owner_user_id, project_id, app_instance_id, app_id, app_version,
-    manifest_digest, image, command, port, requested_policy, policy_version,
+    manifest_digest, artifact_id, artifact_digest, image, command, port, requested_policy, policy_version,
     effective_cpu_quota_us, effective_memory_high_bytes, effective_memory_max_bytes,
     effective_pids_max, effective_startup_seconds, effective_restart_limit,
     generation, state, container_name, health_verdict, last_exit_category,
     created_at, updated_at
 ) VALUES (
     sqlc.arg(id), sqlc.arg(owner_user_id), sqlc.arg(project_id), sqlc.arg(app_instance_id),
-    sqlc.arg(app_id), sqlc.arg(app_version), sqlc.arg(manifest_digest), sqlc.arg(image),
+    sqlc.arg(app_id), sqlc.arg(app_version), sqlc.arg(manifest_digest), sqlc.arg(artifact_id), sqlc.arg(artifact_digest), sqlc.arg(image),
     sqlc.arg(command), sqlc.arg(port), sqlc.arg(requested_policy), sqlc.arg(policy_version),
     sqlc.arg(effective_cpu_quota_us), sqlc.arg(effective_memory_high_bytes),
     sqlc.arg(effective_memory_max_bytes), sqlc.arg(effective_pids_max),
@@ -32,28 +32,12 @@ INSERT INTO workos_runtime.workload_operations (
 ON CONFLICT (workload_id, operation_key) DO NOTHING;
 
 -- name: GetWorkload :one
-SELECT id, owner_user_id, project_id, app_instance_id, app_id, app_version,
-       manifest_digest, image, command, port, requested_policy, policy_version,
-       effective_cpu_quota_us, effective_memory_high_bytes, effective_memory_max_bytes,
-       effective_pids_max, effective_startup_seconds, effective_restart_limit,
-       generation, state, restart_count, container_id, container_name, endpoint,
-       cgroup_path, health_verdict, last_exit_category,
-       baseline_memory_events_oom, baseline_pids_events_peak,
-       last_verified_at, lease_owner, lease_expires_at,
-       created_at, updated_at, started_at, stopped_at, idle_since
+SELECT *
 FROM workos_runtime.workloads
 WHERE id = sqlc.arg(id);
 
 -- name: GetActiveWorkloadByInstance :one
-SELECT id, owner_user_id, project_id, app_instance_id, app_id, app_version,
-       manifest_digest, image, command, port, requested_policy, policy_version,
-       effective_cpu_quota_us, effective_memory_high_bytes, effective_memory_max_bytes,
-       effective_pids_max, effective_startup_seconds, effective_restart_limit,
-       generation, state, restart_count, container_id, container_name, endpoint,
-       cgroup_path, health_verdict, last_exit_category,
-       baseline_memory_events_oom, baseline_pids_events_peak,
-       last_verified_at, lease_owner, lease_expires_at,
-       created_at, updated_at, started_at, stopped_at, idle_since
+SELECT *
 FROM workos_runtime.workloads
 WHERE owner_user_id = sqlc.arg(owner_user_id)
   AND app_instance_id = sqlc.arg(app_instance_id)
@@ -62,15 +46,7 @@ ORDER BY created_at, id
 LIMIT 1;
 
 -- name: ListWorkloads :many
-SELECT id, owner_user_id, project_id, app_instance_id, app_id, app_version,
-       manifest_digest, image, command, port, requested_policy, policy_version,
-       effective_cpu_quota_us, effective_memory_high_bytes, effective_memory_max_bytes,
-       effective_pids_max, effective_startup_seconds, effective_restart_limit,
-       generation, state, restart_count, container_id, container_name, endpoint,
-       cgroup_path, health_verdict, last_exit_category,
-       baseline_memory_events_oom, baseline_pids_events_peak,
-       last_verified_at, lease_owner, lease_expires_at,
-       created_at, updated_at, started_at, stopped_at, idle_since
+SELECT *
 FROM workos_runtime.workloads
 ORDER BY created_at, id
 LIMIT sqlc.arg(row_limit);

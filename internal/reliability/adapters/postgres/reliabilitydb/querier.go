@@ -24,6 +24,7 @@ type Querier interface {
 	GetIncident(ctx context.Context, id string) (GetIncidentRow, error)
 	GetIncidentAction(ctx context.Context, arg GetIncidentActionParams) (WorkosReliabilityIncidentAction, error)
 	GetIncidentByOccurrence(ctx context.Context, occurrenceDigest string) (GetIncidentByOccurrenceRow, error)
+	GetLatestDeploymentForInstallation(ctx context.Context, arg GetLatestDeploymentForInstallationParams) (WorkosReliabilityDeploymentLedger, error)
 	GetRepairLedger(ctx context.Context, incidentID string) (WorkosReliabilityRepairLedger, error)
 	GetSupervisorCheckpoint(ctx context.Context) (WorkosReliabilitySupervisorCheckpoint, error)
 	IncidentAcknowledgeKeyExists(ctx context.Context, arg IncidentAcknowledgeKeyExistsParams) (bool, error)

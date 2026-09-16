@@ -49,8 +49,11 @@ message BuildEngineFacts {
   string engine = 1;
   bool network_isolated = 2;
   bool image_pinned = 3;
-  // Kernel-enforced limits actually applied, fixed grammar:
-  // cpu-seconds|address-space|file-size|processes|open-files|wall-clock|output-bytes
+  // Kernel/cgroup-enforced limits actually applied for this verdict, fixed
+  // grammar. Process tier: cpu-seconds|address-space|file-size|processes|
+  // open-files|wall-clock|output-bytes. Docker tier: memory-max|pids-max|
+  // cpu-max|read-only-rootfs|no-new-privileges|cap-drop-all|network-none|
+  // wall-clock|output-bytes.
   repeated string enforced_limits = 4;
 }
 
@@ -64,7 +67,7 @@ message GetBuildTestResponse {
   int32 build_exit_code = 5;
   int32 test_exit_code = 6;
   // Fixed grammar of the terminal reason on failure:
-  // build-failed|test-failed|timeout|engine-failed|output-budget|input-drift|cancelled|none
+  // build-failed|test-failed|timeout|engine-failed|output-budget|output-failed|input-drift|cancelled|none
   string failure_reason = 7;
   BuildEngineFacts engine = 8;
   string source_digest = 9;
@@ -107,6 +110,8 @@ message BuildArtifactFacts {
   // preparing|ready|failed|unavailable. Only ready bundles may back a
   // version; unavailable means metadata exists but the bytes are gone.
   string state = 20;
+  // Operator-import and build provenance app identity (empty when unset).
+  string app_id = 21;
 }
 
 message GetBuildArtifactRequest {

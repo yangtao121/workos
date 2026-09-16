@@ -26,15 +26,22 @@ const (
 
 // Execution projection of an immutable manifest, not a second manifest format.
 type RepairBuildInput struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	TaskId        string                 `protobuf:"bytes,1,opt,name=task_id,json=taskId,proto3" json:"task_id,omitempty"`
-	Target        *v1.RepairTarget       `protobuf:"bytes,2,opt,name=target,proto3" json:"target,omitempty"`
-	Source        *v11.AppSourceBundle   `protobuf:"bytes,3,opt,name=source,proto3" json:"source,omitempty"`
-	BaseImage     string                 `protobuf:"bytes,4,opt,name=base_image,json=baseImage,proto3" json:"base_image,omitempty"`
-	BuildCommand  []string               `protobuf:"bytes,5,rep,name=build_command,json=buildCommand,proto3" json:"build_command,omitempty"`
-	TestCommand   []string               `protobuf:"bytes,6,rep,name=test_command,json=testCommand,proto3" json:"test_command,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state        protoimpl.MessageState `protogen:"open.v1"`
+	TaskId       string                 `protobuf:"bytes,1,opt,name=task_id,json=taskId,proto3" json:"task_id,omitempty"`
+	Target       *v1.RepairTarget       `protobuf:"bytes,2,opt,name=target,proto3" json:"target,omitempty"`
+	Source       *v11.AppSourceBundle   `protobuf:"bytes,3,opt,name=source,proto3" json:"source,omitempty"`
+	BaseImage    string                 `protobuf:"bytes,4,opt,name=base_image,json=baseImage,proto3" json:"base_image,omitempty"`
+	BuildCommand []string               `protobuf:"bytes,5,rep,name=build_command,json=buildCommand,proto3" json:"build_command,omitempty"`
+	TestCommand  []string               `protobuf:"bytes,6,rep,name=test_command,json=testCommand,proto3" json:"test_command,omitempty"`
+	// The manifest build.output.directory echo (ADR-0033): the only subtree the
+	// engine may freeze into an app-bundle.v1 release. Empty means this tier
+	// produces no deployable bundle.
+	OutputDirectory string `protobuf:"bytes,7,opt,name=output_directory,json=outputDirectory,proto3" json:"output_directory,omitempty"`
+	// The manifest runtime.command echo, so the engine can verify the bundle
+	// actually contains an executable entrypoint before freezing it.
+	RuntimeCommand []string `protobuf:"bytes,8,rep,name=runtime_command,json=runtimeCommand,proto3" json:"runtime_command,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
 }
 
 func (x *RepairBuildInput) Reset() {
@@ -105,6 +112,20 @@ func (x *RepairBuildInput) GetBuildCommand() []string {
 func (x *RepairBuildInput) GetTestCommand() []string {
 	if x != nil {
 		return x.TestCommand
+	}
+	return nil
+}
+
+func (x *RepairBuildInput) GetOutputDirectory() string {
+	if x != nil {
+		return x.OutputDirectory
+	}
+	return ""
+}
+
+func (x *RepairBuildInput) GetRuntimeCommand() []string {
+	if x != nil {
+		return x.RuntimeCommand
 	}
 	return nil
 }
@@ -540,7 +561,7 @@ var File_workos_taskexecution_v1_repair_proto protoreflect.FileDescriptor
 
 const file_workos_taskexecution_v1_repair_proto_rawDesc = "" +
 	"\n" +
-	"$workos/taskexecution/v1/repair.proto\x12\x17workos.taskexecution.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1bworkos/agent/v1/agent.proto\x1a\x1aworkos/app/v1/source.proto\"\x81\x02\n" +
+	"$workos/taskexecution/v1/repair.proto\x12\x17workos.taskexecution.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1bworkos/agent/v1/agent.proto\x1a\x1aworkos/app/v1/source.proto\"\xd5\x02\n" +
 	"\x10RepairBuildInput\x12\x17\n" +
 	"\atask_id\x18\x01 \x01(\tR\x06taskId\x125\n" +
 	"\x06target\x18\x02 \x01(\v2\x1d.workos.agent.v1.RepairTargetR\x06target\x126\n" +
@@ -548,7 +569,9 @@ const file_workos_taskexecution_v1_repair_proto_rawDesc = "" +
 	"\n" +
 	"base_image\x18\x04 \x01(\tR\tbaseImage\x12#\n" +
 	"\rbuild_command\x18\x05 \x03(\tR\fbuildCommand\x12!\n" +
-	"\ftest_command\x18\x06 \x03(\tR\vtestCommand\"X\n" +
+	"\ftest_command\x18\x06 \x03(\tR\vtestCommand\x12)\n" +
+	"\x10output_directory\x18\a \x01(\tR\x0foutputDirectory\x12'\n" +
+	"\x0fruntime_command\x18\b \x03(\tR\x0eruntimeCommand\"X\n" +
 	"\x1eResolveRepairBuildInputRequest\x12\x19\n" +
 	"\blease_id\x18\x01 \x01(\tR\aleaseId\x12\x1b\n" +
 	"\tworker_id\x18\x02 \x01(\tR\bworkerId\"b\n" +

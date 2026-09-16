@@ -56,6 +56,7 @@ function clientsFixture(overrides: {
   history?: Array<{ version: string; sequence: string; source: string }>;
   transitionFn?: () => Promise<unknown>;
   rollbackFn?: () => Promise<unknown>;
+  release?: { state: string; candidateArtifactDigest?: string };
 }): WorkOSClients & DialogClients {
   const listAppVersionHistory = vi.fn(() =>
     Promise.resolve({ snapshots: overrides.history ?? [] }),
@@ -74,6 +75,16 @@ function clientsFixture(overrides: {
     Promise.resolve({ installations: [], page: { nextPageToken: "" } }),
   );
   const getProject = vi.fn(() => Promise.resolve({ project: project(9n) }));
+  const getReleaseStatus = vi.fn(() =>
+    Promise.resolve({
+      status: overrides.release
+        ? {
+            state: overrides.release.state,
+            candidateArtifactDigest: overrides.release.candidateArtifactDigest ?? "",
+          }
+        : undefined,
+    }),
+  );
   return {
     appInstallations: {
       listAppVersionHistory,
@@ -82,6 +93,7 @@ function clientsFixture(overrides: {
       listInstalledApps,
     },
     projects: { getProject },
+    releases: { getReleaseStatus },
   } as unknown as WorkOSClients & DialogClients;
 }
 
@@ -175,5 +187,41 @@ describe("VersionDialog", () => {
     await waitFor(() => {
       expect(screen.getByText(/Permissions need review/)).toBeTruthy();
     });
+  });
+
+  it("shows the sanitized release projection and short artifact digest", async () => {
+    const clients = clientsFixture({
+      history: [{ version: "1.1.0", sequence: "1", source: "install" }],
+      release: {
+        state: "published",
+        candidateArtifactDigest: "sha256:" + "ab".repeat(32),
+      },
+    });
+    renderDialog(clients);
+    const line = await screen.findByTestId("version-dialog-release");
+    expect(line.textContent).toMatch(/Release: published · sha256:abababababab/);
+  });
+  it("refreshes release status while the dialog remains open", async () => {
+    const release = { state: "canary" };
+    renderDialog(clientsFixture({ release }));
+    await screen.findByText("Release: canary");
+    release.state = "published";
+    await waitFor(
+      () => {
+        expect(screen.getByText("Release: published")).toBeTruthy();
+      },
+      {
+        timeout: 3500,
+      },
+    );
+  });
+
+  it("reports an unavailable release query instead of hiding the failure", async () => {
+    const clients = clientsFixture({});
+    vi.mocked(clients.releases.getReleaseStatus).mockRejectedValue(
+      new ConnectError("fixture", Code.Unavailable),
+    );
+    renderDialog(clients);
+    await screen.findByText("Release: unavailable");
   });
 });

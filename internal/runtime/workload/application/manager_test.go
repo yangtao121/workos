@@ -904,7 +904,7 @@ func TestWorkloadMatcherRejectsMountAndTmpfsDrift(t *testing.T) {
 		t.Fatalf("ensure: %v", err)
 	}
 	facts, err := engine.InspectContainer(context.Background(), workload.ContainerName)
-	if err != nil || !matchesWorkloadContainer(workload, facts) {
+	if err != nil || !matchesWorkloadContainer(workload, facts, ports.Capability{}) {
 		t.Fatalf("baseline facts=%+v err=%v", facts, err)
 	}
 
@@ -919,7 +919,7 @@ func TestWorkloadMatcherRejectsMountAndTmpfsDrift(t *testing.T) {
 	cases[5].ConnectedNetworks = 2
 	cases[6].AutoRemove = true
 	for index, drifted := range cases {
-		if matchesWorkloadContainer(workload, drifted) {
+		if matchesWorkloadContainer(workload, drifted, ports.Capability{}) {
 			t.Fatalf("mount drift case %d was adopted: %+v", index, drifted)
 		}
 	}
@@ -1153,5 +1153,38 @@ func TestReconcileStartingFinalizesOriginalRestartKey(t *testing.T) {
 	replay, err := manager.Restart(ctx, ports.RestartCommand{WorkloadID: workload.ID, OperationKey: "restart-reconcile-key"})
 	if err != nil || replay.Generation != 2 || engine.createCalls != creates {
 		t.Fatalf("replay=%+v err=%v creates=%d want=%d", replay, err, engine.createCalls, creates)
+	}
+}
+
+func TestCreatedBundleContainerCanBeAdoptedBeforeItHasAnIP(t *testing.T) {
+	engine := newFakeEngine()
+	repo := newFakeRepo()
+	manager := newTestManager(t, engine, repo)
+	workload, err := manager.Ensure(context.Background(), testEnsure(testOperation))
+	if err != nil {
+		t.Fatal(err)
+	}
+	facts, err := engine.InspectContainer(context.Background(), workload.ContainerName)
+	if err != nil {
+		t.Fatal(err)
+	}
+	workload.ArtifactDigest = "sha256:" + strings.Repeat("a", 64)
+	facts.ArtifactDigest = workload.ArtifactDigest
+	facts.Labels = domain.EngineLabels(workload)
+	facts.IdentityVerified = true
+	facts.PublishedPorts = 0
+	facts.HostPort = int32(workload.Port)
+	facts.ContainerPort = int32(workload.Port)
+	facts.HostIP = ""
+	facts.Running = false
+	facts.BindMounts = 1
+	facts.AppMountRO = true
+	capability := ports.Capability{AllowBridgeEndpoint: true}
+	if !matchesWorkloadContainer(workload, facts, capability) {
+		t.Fatal("created container has not received an IP yet; it must be adoptable")
+	}
+	facts.Running = true
+	if matchesWorkloadContainer(workload, facts, capability) {
+		t.Fatal("running container without an endpoint must fail closed")
 	}
 }

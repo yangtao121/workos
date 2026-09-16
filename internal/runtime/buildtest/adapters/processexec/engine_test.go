@@ -53,6 +53,7 @@ func TestEngineFactsAreHonest(t *testing.T) {
 func TestEngineSuccessRunsRealBuildAndTest(t *testing.T) {
 	engine := newTestEngine(t)
 	result, err := engine.Run(context.Background(), ports.RunSpec{
+		ScratchRoot:  t.TempDir(),
 		BaseImage:    "golang:1.26.7-bookworm",
 		BuildCommand: []string{"sh", "-c", "cat main.go > built.txt && echo built >> built.txt"},
 		TestCommand:  []string{"sh", "-c", "grep -q repair built.txt"},
@@ -75,6 +76,7 @@ func TestEngineSuccessRunsRealBuildAndTest(t *testing.T) {
 func TestEngineTestFailureIsTerminal(t *testing.T) {
 	engine := newTestEngine(t)
 	result, err := engine.Run(context.Background(), ports.RunSpec{
+		ScratchRoot:  t.TempDir(),
 		BaseImage:    "golang:1.26.7-bookworm",
 		BuildCommand: []string{"true"},
 		TestCommand:  []string{"false"},
@@ -95,6 +97,7 @@ func TestEngineTestFailureIsTerminal(t *testing.T) {
 func TestEngineBuildFailureNeverRunsTest(t *testing.T) {
 	engine := newTestEngine(t)
 	result, err := engine.Run(context.Background(), ports.RunSpec{
+		ScratchRoot:  t.TempDir(),
 		BaseImage:    "golang:1.26.7-bookworm",
 		BuildCommand: []string{"sh", "-c", "exit 7"},
 		TestCommand:  []string{"sh", "-c", "echo should-not-run >&2; exit 0"},
@@ -116,6 +119,7 @@ func TestEngineWallClockTimeoutIsEnforced(t *testing.T) {
 	engine := newTestEngine(t)
 	start := time.Now()
 	result, err := engine.Run(context.Background(), ports.RunSpec{
+		ScratchRoot:  t.TempDir(),
 		BaseImage:    "golang:1.26.7-bookworm",
 		BuildCommand: []string{"sh", "-c", "sleep 30"},
 		TestCommand:  []string{"true"},
@@ -136,6 +140,7 @@ func TestEngineWallClockTimeoutIsEnforced(t *testing.T) {
 func TestEngineOutputBudgetIsTerminal(t *testing.T) {
 	engine := newTestEngine(t)
 	result, err := engine.Run(context.Background(), ports.RunSpec{
+		ScratchRoot:  t.TempDir(),
 		BaseImage:    "golang:1.26.7-bookworm",
 		BuildCommand: []string{"sh", "-c", "yes flooding"},
 		TestCommand:  []string{"true"},
@@ -158,6 +163,7 @@ func TestEngineAddressSpaceLimitIsKernelEnforced(t *testing.T) {
 	}
 	engine := newTestEngine(t)
 	result, err := engine.Run(context.Background(), ports.RunSpec{
+		ScratchRoot:  t.TempDir(),
 		BaseImage:    "golang:1.26.7-bookworm",
 		BuildCommand: []string{"sh", "-c", `ulimit -v; awk 'BEGIN{a="xxxxxxxx"; while(1) a=a a}' 2>/dev/null; exit 0`},
 		TestCommand:  []string{"true"},
@@ -175,6 +181,7 @@ func TestEngineAddressSpaceLimitIsKernelEnforced(t *testing.T) {
 func TestEngineRejectsPathTraversalCandidates(t *testing.T) {
 	engine := newTestEngine(t)
 	result, err := engine.Run(context.Background(), ports.RunSpec{
+		ScratchRoot:  t.TempDir(),
 		BaseImage:    "golang:1.26.7-bookworm",
 		BuildCommand: []string{"true"},
 		TestCommand:  []string{"true"},
@@ -196,6 +203,7 @@ func TestEngineMinimalEnvironmentHasNoProxy(t *testing.T) {
 		t.Fatal(err)
 	}
 	result, err := engine.Run(context.Background(), ports.RunSpec{
+		ScratchRoot:  t.TempDir(),
 		BaseImage:    "golang:1.26.7-bookworm",
 		BuildCommand: []string{"env"},
 		TestCommand:  []string{"true"},

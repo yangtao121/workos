@@ -94,19 +94,22 @@ func ulimitScript(processes int) string {
 func (e *Engine) Run(ctx context.Context, spec ports.RunSpec) (ports.RunResult, error) {
 	facts := e.Facts()
 	result := ports.RunResult{Facts: facts}
-	if err := domain.ValidatePayload(domain.Payload{BaseImage: spec.BaseImage, BuildCmd: spec.BuildCommand, TestCmd: spec.TestCommand, Files: spec.Files}); err != nil {
+	payload := domain.Payload{
+		BaseImage: spec.BaseImage, BuildCmd: spec.BuildCommand, TestCmd: spec.TestCommand,
+		Files: spec.Files, OutputDirectory: spec.OutputDirectory, RuntimeCommand: spec.RuntimeCommand,
+	}
+	if err := domain.ValidatePayload(payload); err != nil {
 		return ports.RunResult{Facts: facts, Stage: domain.StageMaterialize, Failure: domain.FailureInputDrift}, nil
 	}
 	if err := e.Available(ctx); err != nil {
 		return ports.RunResult{}, err
 	}
-	directory, err := os.MkdirTemp(e.config.ScratchRoot, "build-")
-	if err != nil {
+	// The service owns this job-private directory; the engine never removes
+	// it. The process tier produces no frozen bundle, so nothing depends on
+	// the tree after the verdict.
+	directory := spec.ScratchRoot
+	if err := os.MkdirAll(directory, 0o700); err != nil {
 		return ports.RunResult{}, fmt.Errorf("scratch directory: %w", err)
-	}
-	defer os.RemoveAll(directory)
-	if err := os.Chmod(directory, 0o700); err != nil {
-		return ports.RunResult{}, fmt.Errorf("scratch permissions: %w", err)
 	}
 	if err := materialize(directory, spec.Files); err != nil {
 		return ports.RunResult{Facts: facts, Stage: domain.StageMaterialize, Failure: domain.FailureInputDrift, LogTail: domain.SanitizeLogTail([]byte(err.Error()))}, nil

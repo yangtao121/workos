@@ -22,6 +22,7 @@ import (
 type rollbackFixture struct {
 	appv1connect.UnimplementedAppInstallationServiceHandler
 	surfacev1connect.UnimplementedSurfaceServiceHandler
+	surfacev1connect.UnimplementedSurfaceLaunchResolverServiceHandler
 	calls                           []string
 	coreFails, runtimeFails, closed bool
 	candidate                       application.DeploymentCandidate
@@ -69,6 +70,7 @@ func TestRollbackWaitsForRecoveredSurfaceAndReplaysStableCommands(t *testing.T) 
 	mux := http.NewServeMux()
 	mux.Handle(appv1connect.NewAppInstallationServiceHandler(f))
 	mux.Handle(surfacev1connect.NewSurfaceServiceHandler(f))
+	mux.Handle(surfacev1connect.NewSurfaceLaunchResolverServiceHandler(f))
 	server := httptest.NewServer(mux)
 	defer server.Close()
 	driver := NewDeploymentDriverClient(server.URL, server.URL, "repair-device")
@@ -92,4 +94,9 @@ func TestRollbackWaitsForRecoveredSurfaceAndReplaysStableCommands(t *testing.T) 
 	if err := driver.Rollback(context.Background(), candidate, "rollback-incident"); connect.CodeOf(err) != connect.CodeFailedPrecondition {
 		t.Fatalf("closed replay reported active recovery: %v", err)
 	}
+}
+
+func (f *rollbackFixture) ResolveSurfaceLaunch(_ context.Context, req *connect.Request[surfacev1.ResolveSurfaceLaunchRequest]) (*connect.Response[surfacev1.ResolveSurfaceLaunchResponse], error) {
+	f.checkIdentity(req.Header())
+	return connect.NewResponse(&surfacev1.ResolveSurfaceLaunchResponse{Launch: &surfacev1.ResolveSurfaceLaunchResponse_WebServiceContainer{WebServiceContainer: &surfacev1.ContainerLaunchDescriptor{Version: "1.0.0"}}}), nil
 }

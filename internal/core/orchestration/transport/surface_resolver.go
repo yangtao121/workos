@@ -109,6 +109,12 @@ func (h *SurfaceResolverHandler) ResolveSurfaceLaunch(ctx context.Context, req *
 				SurfaceRoute: descriptor.Route,
 			},
 		}
+		if descriptor.Artifact != nil {
+			response.Launch.(*surfacev1.ResolveSurfaceLaunchResponse_WebServiceContainer).WebServiceContainer.Artifact = &surfacev1.ArtifactBinding{
+				ArtifactId: descriptor.Artifact.ID, ArtifactDigest: descriptor.Artifact.Digest,
+				ArtifactFormat: descriptor.Artifact.Format,
+			}
+		}
 	}
 	return connect.NewResponse(response), nil
 }

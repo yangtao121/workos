@@ -282,7 +282,7 @@ type Prober struct{}
 func NewProber() *Prober { return &Prober{} }
 
 func (p *Prober) Probe(ctx context.Context, endpoint, httpPath string, timeout time.Duration) (ports.HealthResult, error) {
-	if !domain.ValidLoopbackEndpoint(endpoint) {
+	if !domain.ValidWorkloadEndpoint(endpoint) {
 		return ports.HealthResult{Verdict: domain.HealthFailing}, domain.ErrInvalid
 	}
 	probeCtx, cancel := context.WithTimeout(ctx, timeout)

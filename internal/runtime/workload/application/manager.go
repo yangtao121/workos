@@ -9,7 +9,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/yangtao121/workos/internal/platform/identity"
 	"log/slog"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -152,7 +154,24 @@ func (m *Manager) Ensure(ctx context.Context, command ports.EnsureCommand) (doma
 	existing, err := m.repository.GetActiveByInstance(ctx, command.OwnerUserID, command.AppInstanceID)
 	switch {
 	case err == nil:
-		return m.ensureExisting(ctx, existing, command)
+		if sameEnsureDescriptor(existing, command) {
+			return m.ensureExisting(ctx, existing, command)
+		}
+		verifyCtx := identity.WithContext(ctx, identity.Identity{UserID: command.OwnerUserID, DeviceID: m.config.VerifyDeviceID})
+		desired, verifyErr := m.verifier.VerifyLaunch(verifyCtx, ports.LaunchQuery{OwnerUserID: command.OwnerUserID, ProjectID: command.ProjectID, AppInstanceID: command.AppInstanceID, ManifestDigest: command.ManifestDigest})
+		if verifyErr != nil || desired != ports.LaunchInstalled {
+			return domain.Workload{}, domain.ErrIdempotencyConflict
+		}
+		previous, verifyErr := m.verifier.VerifyLaunch(verifyCtx, ports.LaunchQuery{OwnerUserID: existing.OwnerUserID, ProjectID: existing.ProjectID, AppInstanceID: existing.AppInstanceID, ManifestDigest: existing.ManifestDigest})
+		if verifyErr != nil || previous != ports.LaunchGone {
+			return domain.Workload{}, domain.ErrIdempotencyConflict
+		}
+		if err := m.Terminate(ctx, ports.TerminateCommand{WorkloadID: existing.ID, OperationKey: "replace:" + command.ManifestDigest, Reason: "uninstalled"}); err != nil {
+			return domain.Workload{}, err
+		}
+		// The live Core pin authorizes the new descriptor and retired the old
+		// one. Reserve the newly free instance slot below.
+
 	case errors.Is(err, domain.ErrNotFound):
 		// fall through to reserve
 	case errors.Is(err, ports.ErrStoreUnavailable):
@@ -169,7 +188,7 @@ func (m *Manager) Ensure(ctx context.Context, command ports.EnsureCommand) (doma
 		ID: workloadID, OwnerUserID: command.OwnerUserID, ProjectID: command.ProjectID,
 		AppInstanceID: command.AppInstanceID, AppID: command.AppID, AppVersion: command.AppVersion,
 		ManifestDigest: command.ManifestDigest, Image: command.Image, Command: append([]string(nil), command.Command...),
-		Port: command.Port, Requested: command.Requested,
+		Port: command.Port, ArtifactID: command.ArtifactID, ArtifactDigest: command.ArtifactDigest, Requested: command.Requested,
 		Effective:  domain.EffectiveFromRequested(command.Requested),
 		Generation: 1, State: domain.StateStarting, RestartCount: 0,
 		ContainerName: domain.ContainerName(workloadID),
@@ -311,6 +330,7 @@ func sameEnsureDescriptor(existing domain.Workload, command ports.EnsureCommand)
 		existing.AppInstanceID != command.AppInstanceID || existing.AppID != command.AppID ||
 		existing.AppVersion != command.AppVersion || existing.ManifestDigest != command.ManifestDigest ||
 		existing.Image != command.Image || existing.Port != command.Port || existing.Requested != command.Requested ||
+		existing.ArtifactDigest != command.ArtifactDigest || existing.ArtifactID != command.ArtifactID ||
 		len(existing.Command) != len(command.Command) {
 		return false
 	}
@@ -362,7 +382,7 @@ func (m *Manager) driveLaunch(ctx context.Context, workload domain.Workload, ope
 			// the exact immutable labels is foreign. Never adopt or remove it.
 			return m.failLaunch(ctx, workload, operation, createdContainerID, domain.ErrCorrupt)
 		}
-		if !matchesWorkloadContainer(workload, facts) {
+		if !matchesWorkloadContainer(workload, facts, m.capability) {
 			// The identity labels prove this is our object. Immutable/security
 			// drift therefore has one safe convergence: remove this exact ID,
 			// then close the starting generation as a permanent failure.
@@ -372,6 +392,7 @@ func (m *Manager) driveLaunch(ctx context.Context, workload domain.Workload, ope
 		spec := ports.ContainerSpec{
 			Name: workload.ContainerName, Image: workload.Image, Command: workload.Command,
 			Port: workload.Port, Labels: domain.EngineLabels(workload), Policy: workload.Effective,
+			OwnerUserID: workload.OwnerUserID, ArtifactID: workload.ArtifactID, ArtifactDigest: workload.ArtifactDigest,
 		}
 		createdContainerID, err = m.engine.CreateContainer(ctx, spec)
 		if err != nil {
@@ -396,7 +417,7 @@ func (m *Manager) driveLaunch(ctx context.Context, workload domain.Workload, ope
 		// foreign object is never touched.
 		return m.failLaunch(ctx, workload, operation, createdContainerID, domain.ErrCorrupt)
 	}
-	if !matchesWorkloadContainer(workload, facts) {
+	if !matchesWorkloadContainer(workload, facts, m.capability) {
 		cleanupID := createdContainerID
 		if cleanupID == "" {
 			cleanupID = facts.ID
@@ -413,12 +434,10 @@ func (m *Manager) driveLaunch(ctx context.Context, workload domain.Workload, ope
 		}
 		return m.failLaunch(ctx, workload, operation, createdContainerID, cause)
 	}
-	// Verify the published endpoint is loopback-only before it is ever
-	// persisted or served.
-	if facts.HostIP != "127.0.0.1" || facts.HostPort < 1 || facts.HostPort > 65535 {
+	endpoint, err := workloadEndpoint(facts, m.capability)
+	if err != nil {
 		return m.failLaunch(ctx, workload, operation, createdContainerID, domain.ErrCorrupt)
 	}
-	endpoint := fmt.Sprintf("127.0.0.1:%d", facts.HostPort)
 	// Resolve and validate the real cgroup path against this process's
 	// delegated subtree, then read back the enforced limits. A configuration
 	// that failed to apply stops the launch; it is never warned-and-continued.
@@ -430,7 +449,7 @@ func (m *Manager) driveLaunch(ctx context.Context, workload domain.Workload, ope
 	if err != nil {
 		return m.failLaunch(ctx, workload, operation, createdContainerID, domain.ErrCorrupt)
 	}
-	if !matchesEffectivePolicy(workload, effective) {
+	if !matchesEffectivePolicy(workload, effective, m.capability) {
 		return m.failLaunch(ctx, workload, operation, createdContainerID, domain.ErrCorrupt)
 	}
 	// Startup health gate: no session is returned before the bounded probe
@@ -477,12 +496,34 @@ func (m *Manager) driveLaunch(ctx context.Context, workload domain.Workload, ope
 	return nil
 }
 
-func matchesEffectivePolicy(workload domain.Workload, effective ports.EffectiveFacts) bool {
-	return effective.CPUMaxUSec == workload.Effective.CPUQuotaUSec &&
-		effective.CPUPeriodUSec == domain.CPUPeriodUSec &&
-		effective.MemoryHigh == workload.Effective.MemoryHighBytes &&
-		effective.MemoryMax == workload.Effective.MemoryMaxBytes &&
-		effective.PIDsMax == workload.Effective.PidsMax
+func matchesEffectivePolicy(workload domain.Workload, effective ports.EffectiveFacts, capability ports.Capability) bool {
+	if effective.CPUMaxUSec != workload.Effective.CPUQuotaUSec ||
+		effective.CPUPeriodUSec != domain.CPUPeriodUSec ||
+		effective.MemoryMax != workload.Effective.MemoryMaxBytes ||
+		effective.PIDsMax != workload.Effective.PidsMax {
+		return false
+	}
+	if capability.SkipMemoryHigh {
+		return true
+	}
+	return effective.MemoryHigh == workload.Effective.MemoryHighBytes
+}
+
+func workloadEndpoint(facts ports.ContainerFacts, capability ports.Capability) (string, error) {
+	if facts.HostPort < 1 || facts.HostPort > 65535 || facts.HostIP == "" {
+		return "", domain.ErrCorrupt
+	}
+	endpoint := facts.HostIP + ":" + strconv.Itoa(int(facts.HostPort))
+	if capability.AllowBridgeEndpoint {
+		if !domain.ValidWorkloadEndpoint(endpoint) || facts.HostIP == "127.0.0.1" {
+			return "", domain.ErrCorrupt
+		}
+		return endpoint, nil
+	}
+	if facts.HostIP != "127.0.0.1" || !domain.ValidLoopbackEndpoint(endpoint) {
+		return "", domain.ErrCorrupt
+	}
+	return endpoint, nil
 }
 
 // resolveCgroup derives the workload's host cgroup v2 path from the engine
@@ -500,6 +541,12 @@ func (m *Manager) resolveCgroup(ctx context.Context, pid int) (string, error) {
 	path, err := m.cgroup.CgroupPathForPID(pid)
 	if err != nil {
 		return "", domain.ErrCorrupt
+	}
+	if m.capability.HostCgroup {
+		if path == "" || !strings.HasPrefix(path, "/sys/fs/cgroup/") {
+			return "", domain.ErrCorrupt
+		}
+		return path, nil
 	}
 	if !domain.ValidCgroupPath(path, subtree) {
 		return "", domain.ErrCorrupt

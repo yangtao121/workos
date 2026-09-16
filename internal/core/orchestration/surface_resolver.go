@@ -94,6 +94,7 @@ type ContainerDescriptor struct {
 	Resources      appregistrydomain.ContainerResourcePolicy
 	Health         appregistrydomain.ContainerHealthPolicy
 	Route          string
+	Artifact       *appregistrydomain.ReleaseArtifactRef
 }
 
 // SurfaceLaunch is the generic resolution result: the resolved launch kind
@@ -225,7 +226,7 @@ func (r *SurfaceLaunchResolver) ResolveSurfaceLaunch(ctx context.Context, ownerU
 				ManifestDigest: resolution.ManifestDigest,
 				Image:          launch.Image, Command: append([]string(nil), launch.Command...),
 				Port: launch.Port, Resources: launch.Resources, Health: launch.Health,
-				Route: "/",
+				Route: "/", Artifact: launch.Artifact,
 			},
 			GrantedPermissions: installation.GrantedPermissions,
 			GrantRevision:      installation.GrantRevision,

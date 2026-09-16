@@ -70,6 +70,12 @@ func run(logger *slog.Logger) error {
 	}
 	incidentPath, incidentHandler := transport.NewIncidentConnectHandlerWithTelemetry(incidentService, telemetryAggregator)
 	mux.Handle(incidentPath, identity.Middleware(incidentHandler))
+	releaseService, err := application.NewReleaseService(repository)
+	if err != nil {
+		return err
+	}
+	releasePath, releaseHandler := transport.NewReleaseConnectHandler(releaseService)
+	mux.Handle(releasePath, identity.Middleware(releaseHandler))
 
 	// The repair orchestrator (ADR-0016 §5): bounded passes turn open
 	// incidents into ordinary Agent repair tasks on Core, idempotently
@@ -77,8 +83,13 @@ func run(logger *slog.Logger) error {
 	repairSubmitter := transport.NewRepairSubmitterClient(cfg.Services.Core, cfg.Auth.DeviceID)
 
 	// Candidate reconciliation persists version requests before execution (ADR-0020).
+	runtimeClient, err := transport.NewRuntimeClient(
+		workloadv1connect.NewSupervisedWorkloadServiceClient(telemetry.HTTPClient(), cfg.Services.Runtime))
+	if err != nil {
+		return err
+	}
 	deploymentController, err := application.NewDeploymentController(
-		repository, transport.NewDeploymentDriverClient(cfg.Services.Core, cfg.Services.Runtime, cfg.Auth.DeviceID), cfg.Reliability.PollInterval*3)
+		repository, transport.NewDeploymentDriverClient(cfg.Services.Core, cfg.Services.Runtime, cfg.Auth.DeviceID).WithObserver(runtimeClient), cfg.Reliability.PollInterval*3)
 	if err != nil {
 		return err
 	}
@@ -110,14 +121,6 @@ func run(logger *slog.Logger) error {
 	publicationPath, publicationHandler := transport.NewPublicationSourceHandler(publicationService)
 	mux.Handle(publicationPath, identity.Middleware(publicationHandler))
 
-	// The runtime client observes and controls supervised workloads over the
-	// private, versioned contract. It is a hard dependency of the loop but
-	// never of the public incident RPCs: the UI degrades, the process lives.
-	runtimeClient, err := transport.NewRuntimeClient(
-		workloadv1connect.NewSupervisedWorkloadServiceClient(telemetry.HTTPClient(), cfg.Services.Runtime))
-	if err != nil {
-		return err
-	}
 	supervisor, err := application.NewSupervisor(runtimeClient, runtimeClient, repository,
 		ids.UUIDv7{}, application.Config{
 			StablePollsToResolve: cfg.Reliability.StablePollsToResolve,
@@ -154,7 +157,9 @@ func run(logger *slog.Logger) error {
 					logger.Info("repair pass submitted tasks", "count", submitted)
 				}
 				repairCancel()
-				deployCtx, deployCancel := context.WithTimeout(ctx, cfg.Reliability.PollTimeout)
+				// Starting a real container includes unpacking and a health gate.
+				// A telemetry poll deadline must not cancel that durable transition.
+				deployCtx, deployCancel := context.WithTimeout(ctx, max(cfg.Reliability.PollTimeout, 30*time.Second))
 				if _, err := deploymentController.Pass(deployCtx, time.Now().UTC(), 4); err != nil {
 					logger.Warn("deployment pass pending", "error", err)
 				}

@@ -10,14 +10,12 @@ import (
 	"github.com/yangtao121/workos/internal/runtime/artifactstore/domain"
 )
 
-// MetadataStore persists artifact rows. Implementations must make
-// (owner_user_id, digest) and (owner_user_id, origin, idempotency_key) the
-// concurrency arbiters; callers treat "not inserted" as replay, never as a
-// second row.
+// MetadataStore persists provenance separately from content-addressed bytes.
+// A build task or owner-scoped import key is the concurrency arbiter.
 type MetadataStore interface {
-	// InsertReady inserts a fully verified row in state ready. When a row
-	// with the same (owner, digest) already exists it returns that row with
-	// inserted=false (the caller compares identity and decides replay).
+	// InsertReady stores the supplied verified metadata state: preparing for
+	// a build awaiting its durable success verdict, ready for an admin import.
+	// A duplicate task/import key returns its original row for replay checks.
 	InsertReady(ctx context.Context, artifact domain.Artifact) (stored domain.Artifact, inserted bool, err error)
 	GetByID(ctx context.Context, id string) (domain.Artifact, error)
 	GetByOwnerDigest(ctx context.Context, owner, digest string) (domain.Artifact, error)
@@ -31,6 +29,8 @@ type MetadataStore interface {
 // BundleFiles is the runtime-owned on-disk repository: 0700 root, per-owner
 // directories, content addressed by digest, atomic durable writes.
 type BundleFiles interface {
+	LockOwner(context.Context, string) (func(), error)
+	UsageBytes(string) (int64, error)
 	// TempFile returns a staging file inside the owner area. The caller
 	// writes and seeks; PromoteFile makes it durable.
 	TempFile(owner string) (StagingFile, error)

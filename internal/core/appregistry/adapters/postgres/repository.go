@@ -63,7 +63,9 @@ func (r *Repository) Register(ctx context.Context, record domain.AppVersion) (do
 		ID: record.ID, OwnerUserID: record.OwnerUserID, AppID: record.AppID, Version: record.Version,
 		Scope: string(record.Scope), Name: record.Name, Permissions: record.Permissions,
 		ManifestDigest: record.ManifestDigest, CanonicalManifest: record.CanonicalManifest,
-		CreatedAt: timestamp(record.CreatedAt),
+		CreatedAt:  timestamp(record.CreatedAt),
+		ArtifactID: optionalUUID(record.ArtifactID), ArtifactDigest: optionalText(record.ArtifactDigest),
+		ArtifactFormat: optionalText(record.ArtifactFormat),
 	})
 	if err != nil {
 		return domain.AppVersionSummary{}, fmt.Errorf("insert app version: %w", err)
@@ -306,4 +308,22 @@ func storeError(operation string, err error) error {
 
 func timestamp(value time.Time) pgtype.Timestamptz {
 	return pgtype.Timestamptz{Time: value, Valid: true}
+}
+
+func optionalText(value string) pgtype.Text {
+	if value == "" {
+		return pgtype.Text{}
+	}
+	return pgtype.Text{String: value, Valid: true}
+}
+
+func optionalUUID(value string) pgtype.UUID {
+	if len(value) != 36 {
+		return pgtype.UUID{}
+	}
+	var out pgtype.UUID
+	if err := out.Scan(value); err != nil {
+		return pgtype.UUID{}
+	}
+	return out
 }

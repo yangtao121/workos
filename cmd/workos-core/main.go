@@ -290,6 +290,8 @@ func run(logger *slog.Logger) error {
 	if err != nil {
 		return err
 	}
+	runtimeArtifacts := orchestration.NewRuntimeArtifactClient(cfg.Services.Runtime)
+	appService.WithReleaseBundles(runtimeArtifacts)
 	appPath, appHandler := appregistrytransport.NewConnectHandler(appService)
 	mux.Handle(appPath, identity.Middleware(appHandler))
 	sourceService, err := appregistryapp.NewSourceService(appRepository, generator)
@@ -330,7 +332,7 @@ func run(logger *slog.Logger) error {
 	if err != nil {
 		return err
 	}
-	repairVersions, err := orchestration.NewRepairVersions(pool, repairSources, stagingService, installationService)
+	repairVersions, err := orchestration.NewRepairVersions(pool, repairSources, stagingService, installationService, runtimeArtifacts)
 	if err != nil {
 		return err
 	}

@@ -18,7 +18,7 @@ func (m *deploymentMemory) Start(_ context.Context, candidate DeploymentCandidat
 	return nil
 }
 func (m *deploymentMemory) Reconcile(_ context.Context, _ int, apply func(*DeploymentRecord) error) (int, error) {
-	if m.row == nil || m.row.State == DeploymentPromoted || m.row.State == DeploymentRolledBack || m.row.State == DeploymentFailed {
+	if m.row == nil || m.row.State == DeploymentPromoted || m.row.State == DeploymentRolledBack || m.row.State == DeploymentFailed || m.row.State == DeploymentSuperseded {
 		return 0, nil
 	}
 	return 1, apply(m.row)
@@ -28,6 +28,8 @@ type deploymentDriver struct {
 	calls        []string
 	failStart    bool
 	failRollback bool
+	publishErr   error
+	verifyErr    error
 	revision     int64
 }
 
@@ -40,7 +42,7 @@ func (d *deploymentDriver) Publish(_ context.Context, candidate DeploymentCandid
 	if candidate.Staged() {
 		d.calls = append(d.calls, "publish:"+candidate.TargetVersion)
 	}
-	return nil
+	return d.publishErr
 }
 
 func (d *deploymentDriver) StartSurface(_ context.Context, _ DeploymentCandidate, key string) error {
@@ -142,6 +144,18 @@ func TestDeploymentRejectsTaskCompletionWithoutCandidate(t *testing.T) {
 	}
 }
 
+func TestDeploymentPublishPinChangeSupersedes(t *testing.T) {
+	c, m, d := deploymentFixture(t)
+	d.publishErr = ErrDeploymentSuperseded
+	passDeployment(t, c, time.Now())
+	passDeployment(t, c, time.Now())
+	passDeployment(t, c, m.row.CanaryUntil)
+	passDeployment(t, c, m.row.CanaryUntil.Add(time.Hour))
+	if m.row.State != DeploymentSuperseded {
+		t.Fatalf("user pin change must supersede, got %s", m.row.State)
+	}
+}
+
 func TestDeploymentStartupIncidentPreventsCanary(t *testing.T) {
 	c, m, d := deploymentFixture(t)
 	passDeployment(t, c, time.Now())
@@ -149,5 +163,28 @@ func TestDeploymentStartupIncidentPreventsCanary(t *testing.T) {
 	passDeployment(t, c, time.Now())
 	if m.row.State != DeploymentRollback || len(d.calls) != 1 {
 		t.Fatalf("startup incident was ignored: state=%s calls=%v", m.row.State, d.calls)
+	}
+}
+
+func (d *deploymentDriver) Verify(context.Context, *DeploymentCandidate) error { return d.verifyErr }
+
+func TestCanaryRequiresLiveIdentityBeforePublish(t *testing.T) {
+	for _, superseded := range []bool{false, true} {
+		c, ledger, driver := deploymentFixture(t)
+		ledger.row.State = DeploymentCanary
+		ledger.row.CanaryUntil = time.Now().Add(-time.Minute)
+		driver.verifyErr = errors.New("runtime identity unavailable")
+		expected := DeploymentRollback
+		if superseded {
+			driver.verifyErr = ErrDeploymentSuperseded
+			expected = DeploymentSuperseded
+		}
+		passDeployment(t, c, time.Now())
+		if ledger.row.State != expected {
+			t.Fatalf("got %s want %s", ledger.row.State, expected)
+		}
+		if len(driver.calls) != 0 {
+			t.Fatalf("unverified canary must have no publish/rollback side effects: %v", driver.calls)
+		}
 	}
 }

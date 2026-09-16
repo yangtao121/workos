@@ -1,9 +1,10 @@
-package domain
+package appbundle
 
 import (
 	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
+	format "github.com/yangtao121/workos/internal/platform/bundleformat"
 	"os"
 	"path/filepath"
 	"strings"
@@ -177,21 +178,21 @@ func TestUnpackRoundTrip(t *testing.T) {
 }
 
 func TestBundleLimits(t *testing.T) {
-	if err := ValidBundlePath("../escape"); err == nil {
+	if err := format.ValidBundlePath("../escape"); err == nil {
 		t.Fatal("parent escape must be invalid")
 	}
-	if err := ValidBundlePath("a//b"); err == nil {
+	if err := format.ValidBundlePath("a//b"); err == nil {
 		t.Fatal("empty segment must be invalid")
 	}
-	if err := ValidBundlePath(strings.Repeat("a/", 70) + "b"); err == nil {
+	if err := format.ValidBundlePath(strings.Repeat("a/", 70) + "b"); err == nil {
 		t.Fatal("overlong path must be invalid")
 	}
-	if err := ValidBundlePath("dist/server.bin"); err != nil {
+	if err := format.ValidBundlePath("dist/server.bin"); err != nil {
 		t.Fatalf("legal path rejected: %v", err)
 	}
 	// File-count limit via synthetic paths.
-	if MaxBundleFiles != 1024 {
-		t.Fatalf("file limit changed: %d", MaxBundleFiles)
+	if format.MaxBundleFiles != 1024 {
+		t.Fatalf("file limit changed: %d", format.MaxBundleFiles)
 	}
 }
 

@@ -185,7 +185,7 @@ SELECT count(*) AS active
 FROM workos_reliability.deployment_ledger
 WHERE installation_id = $1
   AND incident_id <> $2
-  AND state IN ('candidate', 'starting', 'canary', 'rollback')
+  AND state IN ('candidate', 'starting', 'canary', 'rollback', 'rollback_pending')
 `
 
 type CountActiveDeploymentsForInstallationParams struct {
@@ -361,6 +361,52 @@ func (q *Queries) GetIncidentByOccurrence(ctx context.Context, occurrenceDigest 
 		&i.RepairTaskID,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const getLatestDeploymentForInstallation = `-- name: GetLatestDeploymentForInstallation :one
+SELECT d.incident_id, d.owner_user_id, d.project_id, d.installation_id, d.target_version, d.state,
+       d.canary_until, d.created_at, d.updated_at, d.expected_revision, d.attempts, d.canary_started_at,
+       d.task_id, d.manifest_digest, d.base_version, d.artifact_id, d.artifact_digest, d.base_artifact_digest, d.workload_id, d.workload_generation
+FROM workos_reliability.deployment_ledger d
+WHERE d.owner_user_id = $1
+  AND d.project_id = $2
+  AND d.installation_id = $3
+ORDER BY d.updated_at DESC, d.incident_id DESC
+LIMIT 1
+`
+
+type GetLatestDeploymentForInstallationParams struct {
+	OwnerUserID    string `json:"owner_user_id"`
+	ProjectID      string `json:"project_id"`
+	InstallationID string `json:"installation_id"`
+}
+
+func (q *Queries) GetLatestDeploymentForInstallation(ctx context.Context, arg GetLatestDeploymentForInstallationParams) (WorkosReliabilityDeploymentLedger, error) {
+	row := q.db.QueryRow(ctx, getLatestDeploymentForInstallation, arg.OwnerUserID, arg.ProjectID, arg.InstallationID)
+	var i WorkosReliabilityDeploymentLedger
+	err := row.Scan(
+		&i.IncidentID,
+		&i.OwnerUserID,
+		&i.ProjectID,
+		&i.InstallationID,
+		&i.TargetVersion,
+		&i.State,
+		&i.CanaryUntil,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.ExpectedRevision,
+		&i.Attempts,
+		&i.CanaryStartedAt,
+		&i.TaskID,
+		&i.ManifestDigest,
+		&i.BaseVersion,
+		&i.ArtifactID,
+		&i.ArtifactDigest,
+		&i.BaseArtifactDigest,
+		&i.WorkloadID,
+		&i.WorkloadGeneration,
 	)
 	return i, err
 }
@@ -1060,14 +1106,14 @@ func (q *Queries) LoadSupervisorProgress(ctx context.Context, workloadID string)
 }
 
 const lockPendingDeployments = `-- name: LockPendingDeployments :many
-SELECT d.incident_id, d.owner_user_id, d.project_id, d.installation_id, d.target_version, d.state, d.canary_until, d.created_at, d.updated_at, d.expected_revision, d.attempts, d.canary_started_at, d.task_id, d.manifest_digest, d.base_version, d.artifact_id, d.artifact_digest, d.base_artifact_digest, EXISTS (
+SELECT d.incident_id, d.owner_user_id, d.project_id, d.installation_id, d.target_version, d.state, d.canary_until, d.created_at, d.updated_at, d.expected_revision, d.attempts, d.canary_started_at, d.task_id, d.manifest_digest, d.base_version, d.artifact_id, d.artifact_digest, d.base_artifact_digest, d.workload_id, d.workload_generation, EXISTS (
     SELECT 1 FROM workos_reliability.incidents i
     WHERE i.owner_user_id = d.owner_user_id AND i.project_id = d.project_id
       AND i.app_instance_id = d.installation_id AND i.id <> d.incident_id
       AND i.created_at >= d.created_at
 ) AS new_incident
 FROM workos_reliability.deployment_ledger d
-WHERE d.state IN ('candidate', 'starting', 'canary', 'rollback')
+WHERE d.state IN ('candidate', 'starting', 'canary', 'rollback', 'rollback_pending')
 ORDER BY d.updated_at, d.incident_id
 LIMIT $1 FOR UPDATE OF d SKIP LOCKED
 `
@@ -1091,6 +1137,8 @@ type LockPendingDeploymentsRow struct {
 	ArtifactID         pgtype.UUID `json:"artifact_id"`
 	ArtifactDigest     pgtype.Text `json:"artifact_digest"`
 	BaseArtifactDigest pgtype.Text `json:"base_artifact_digest"`
+	WorkloadID         pgtype.UUID `json:"workload_id"`
+	WorkloadGeneration pgtype.Int8 `json:"workload_generation"`
 	NewIncident        bool        `json:"new_incident"`
 }
 
@@ -1122,6 +1170,8 @@ func (q *Queries) LockPendingDeployments(ctx context.Context, limit int32) ([]Lo
 			&i.ArtifactID,
 			&i.ArtifactDigest,
 			&i.BaseArtifactDigest,
+			&i.WorkloadID,
+			&i.WorkloadGeneration,
 			&i.NewIncident,
 		); err != nil {
 			return nil, err
@@ -1194,17 +1244,20 @@ func (q *Queries) RepairProjectForIncident(ctx context.Context, incidentID strin
 
 const saveDeployment = `-- name: SaveDeployment :exec
 UPDATE workos_reliability.deployment_ledger
-SET state = $2, attempts = $3, canary_started_at = $4, canary_until = $5, updated_at = $6
-WHERE incident_id = $1 AND state IN ('candidate', 'starting', 'canary', 'rollback')
+SET state = $2, attempts = $3, canary_started_at = $4, canary_until = $5, updated_at = $6,
+    workload_id = $7, workload_generation = $8
+WHERE incident_id = $1 AND state IN ('candidate', 'starting', 'canary', 'rollback', 'rollback_pending')
 `
 
 type SaveDeploymentParams struct {
-	IncidentID      string    `json:"incident_id"`
-	State           string    `json:"state"`
-	Attempts        int32     `json:"attempts"`
-	CanaryStartedAt time.Time `json:"canary_started_at"`
-	CanaryUntil     time.Time `json:"canary_until"`
-	UpdatedAt       time.Time `json:"updated_at"`
+	IncidentID         string      `json:"incident_id"`
+	State              string      `json:"state"`
+	Attempts           int32       `json:"attempts"`
+	CanaryStartedAt    time.Time   `json:"canary_started_at"`
+	CanaryUntil        time.Time   `json:"canary_until"`
+	UpdatedAt          time.Time   `json:"updated_at"`
+	WorkloadID         pgtype.UUID `json:"workload_id"`
+	WorkloadGeneration pgtype.Int8 `json:"workload_generation"`
 }
 
 func (q *Queries) SaveDeployment(ctx context.Context, arg SaveDeploymentParams) error {
@@ -1215,6 +1268,8 @@ func (q *Queries) SaveDeployment(ctx context.Context, arg SaveDeploymentParams) 
 		arg.CanaryStartedAt,
 		arg.CanaryUntil,
 		arg.UpdatedAt,
+		arg.WorkloadID,
+		arg.WorkloadGeneration,
 	)
 	return err
 }
@@ -1224,9 +1279,10 @@ const startDeploymentLedger = `-- name: StartDeploymentLedger :execrows
 INSERT INTO workos_reliability.deployment_ledger (
     incident_id, owner_user_id, project_id, installation_id, target_version,
     expected_revision, state, canary_until, canary_started_at, created_at, updated_at,
-    task_id, manifest_digest, base_version
+    task_id, manifest_digest, base_version, artifact_id, artifact_digest, base_artifact_digest
 ) VALUES ($1, $2, $3, $4, $5, $6, 'candidate', $7, $7, $7, $7,
-          $8, $9, $10)
+          $8, $9, $10,
+          $11, $12, $13)
 ON CONFLICT (incident_id) DO UPDATE SET incident_id = EXCLUDED.incident_id
 WHERE deployment_ledger.owner_user_id = EXCLUDED.owner_user_id
   AND deployment_ledger.project_id = EXCLUDED.project_id
@@ -1236,16 +1292,19 @@ WHERE deployment_ledger.owner_user_id = EXCLUDED.owner_user_id
 `
 
 type StartDeploymentLedgerParams struct {
-	IncidentID       string      `json:"incident_id"`
-	OwnerUserID      string      `json:"owner_user_id"`
-	ProjectID        string      `json:"project_id"`
-	InstallationID   string      `json:"installation_id"`
-	TargetVersion    string      `json:"target_version"`
-	ExpectedRevision int64       `json:"expected_revision"`
-	CreatedAt        time.Time   `json:"created_at"`
-	TaskID           pgtype.UUID `json:"task_id"`
-	ManifestDigest   pgtype.Text `json:"manifest_digest"`
-	BaseVersion      pgtype.Text `json:"base_version"`
+	IncidentID         string      `json:"incident_id"`
+	OwnerUserID        string      `json:"owner_user_id"`
+	ProjectID          string      `json:"project_id"`
+	InstallationID     string      `json:"installation_id"`
+	TargetVersion      string      `json:"target_version"`
+	ExpectedRevision   int64       `json:"expected_revision"`
+	CreatedAt          time.Time   `json:"created_at"`
+	TaskID             pgtype.UUID `json:"task_id"`
+	ManifestDigest     pgtype.Text `json:"manifest_digest"`
+	BaseVersion        pgtype.Text `json:"base_version"`
+	ArtifactID         pgtype.UUID `json:"artifact_id"`
+	ArtifactDigest     pgtype.Text `json:"artifact_digest"`
+	BaseArtifactDigest pgtype.Text `json:"base_artifact_digest"`
 }
 
 // Deployment controller (ADR-0016 section 6).
@@ -1261,6 +1320,9 @@ func (q *Queries) StartDeploymentLedger(ctx context.Context, arg StartDeployment
 		arg.TaskID,
 		arg.ManifestDigest,
 		arg.BaseVersion,
+		arg.ArtifactID,
+		arg.ArtifactDigest,
+		arg.BaseArtifactDigest,
 	)
 	if err != nil {
 		return 0, err

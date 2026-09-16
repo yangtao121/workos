@@ -2,77 +2,24 @@
 // artifact entity (ADR-0033). The codec is the security boundary between
 // untrusted bundle bytes and the Runtime-owned repository: every path, type,
 // and size rule is enforced identically on encode and decode.
-package domain
+package appbundle
 
 import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
 	"fmt"
+	format "github.com/yangtao121/workos/internal/platform/bundleformat"
 	"hash"
 	"io"
 	"os"
-	"path"
 	"path/filepath"
 	"sort"
 	"strings"
 )
 
-const (
-	// BundleFormat is the only release bundle format this Runtime accepts.
-	BundleFormat = "app-bundle.v1"
-
-	// Limits (ADR-0033 section 1, fail closed).
-	MaxBundleFiles        = 1024
-	MaxFileBytes          = int64(32 << 20)
-	MaxTotalContentBytes  = int64(128 << 20)
-	MaxPathBytes          = 128
-	MaxEncodedBundleBytes = int64(132 << 20)
-
-	blockSize  = 512
-	terminator = 2 // zero blocks ending the stream
-)
-
-var (
-	ErrBundleInvalid  = errors.New("artifactstore: invalid bundle")
-	ErrBundleTooLarge = errors.New("artifactstore: bundle exceeds limits")
-	ErrDigestMismatch = errors.New("artifactstore: bundle digest mismatch")
-)
-
-// Stats summarizes one verified bundle stream.
-type Stats struct {
-	Digest      string
-	FileCount   int
-	TotalBytes  int64
-	EncodedSize int64
-}
-
-// ValidBundlePath enforces the canonical relative path grammar: forward
-// slashes only, no absolute paths, no "." or ".." or empty segments, no
-// trailing/duplicate separators, bounded length.
-func ValidBundlePath(p string) error {
-	if p == "" {
-		return fmt.Errorf("%w: empty path", ErrBundleInvalid)
-	}
-	if len(p) > MaxPathBytes {
-		return fmt.Errorf("%w: path %q exceeds %d bytes", ErrBundleInvalid, p, MaxPathBytes)
-	}
-	if strings.HasPrefix(p, "/") {
-		return fmt.Errorf("%w: absolute path %q", ErrBundleInvalid, p)
-	}
-	if strings.ContainsRune(p, 0) {
-		return fmt.Errorf("%w: NUL byte in path %q", ErrBundleInvalid, p)
-	}
-	if p != path.Clean(p) {
-		return fmt.Errorf("%w: non-canonical path %q", ErrBundleInvalid, p)
-	}
-	for _, segment := range strings.Split(p, "/") {
-		if segment == "" || segment == "." || segment == ".." {
-			return fmt.Errorf("%w: illegal segment in path %q", ErrBundleInvalid, p)
-		}
-	}
-	return nil
-}
+const blockSize = 512
+const terminator = 2
 
 // splitUSTAR splits a validated path into ustar name/prefix fields. Both
 // bounds must hold: name = p[i+1:] fits in 100 bytes, prefix = p[:i] in 155.
@@ -93,7 +40,7 @@ func splitUSTAR(p string) (name, prefix string, err error) {
 			return p[i+1:], p[:i], nil
 		}
 	}
-	return "", "", fmt.Errorf("%w: path %q cannot be split into ustar fields", ErrBundleInvalid, p)
+	return "", "", fmt.Errorf("%w: path %q cannot be split into ustar fields", format.ErrBundleInvalid, p)
 }
 
 func octal(field []byte, value int64) {
@@ -148,7 +95,7 @@ func ustarHeader(entryPath string, isDir, executable bool, size int64) ([]byte, 
 // app-bundle.v1 stream to w. Symbolic links, special files, unreadable
 // entries, absolute or escaping paths, and every size/count limit are
 // rejected during the walk — never after the fact.
-func EncodeDirectory(dir string, w io.Writer) (Stats, error) {
+func EncodeDirectory(dir string, w io.Writer) (format.Stats, error) {
 	var paths []string
 	err := filepath.WalkDir(dir, func(p string, d os.DirEntry, err error) error {
 		if err != nil {
@@ -162,16 +109,16 @@ func EncodeDirectory(dir string, w io.Writer) (Stats, error) {
 			return statErr
 		}
 		if info.Mode()&os.ModeSymlink != 0 {
-			return fmt.Errorf("%w: symbolic link %q in build output", ErrBundleInvalid, p)
+			return fmt.Errorf("%w: symbolic link %q in build output", format.ErrBundleInvalid, p)
 		}
 		if !info.Mode().IsRegular() && !d.IsDir() {
-			return fmt.Errorf("%w: special file %q in build output", ErrBundleInvalid, p)
+			return fmt.Errorf("%w: special file %q in build output", format.ErrBundleInvalid, p)
 		}
 		paths = append(paths, p)
 		return nil
 	})
 	if err != nil {
-		return Stats{}, err
+		return format.Stats{}, err
 	}
 	sort.Slice(paths, func(i, j int) bool { return bundleSortKey(dir, paths[i]) < bundleSortKey(dir, paths[j]) })
 	entries := make([]entry, 0, len(paths))
@@ -180,30 +127,30 @@ func EncodeDirectory(dir string, w io.Writer) (Stats, error) {
 	for _, p := range paths {
 		rel, relErr := filepath.Rel(dir, p)
 		if relErr != nil {
-			return Stats{}, relErr
+			return format.Stats{}, relErr
 		}
 		rel = filepath.ToSlash(rel)
-		if err := ValidBundlePath(rel); err != nil {
-			return Stats{}, err
+		if err := format.ValidBundlePath(rel); err != nil {
+			return format.Stats{}, err
 		}
 		info, statErr := os.Lstat(p)
 		if statErr != nil {
-			return Stats{}, statErr
+			return format.Stats{}, statErr
 		}
 		if info.IsDir() {
 			entries = append(entries, entry{path: rel, isDir: true})
 			continue
 		}
 		files++
-		if files > MaxBundleFiles {
-			return Stats{}, fmt.Errorf("%w: more than %d files", ErrBundleTooLarge, MaxBundleFiles)
+		if files > format.MaxBundleFiles {
+			return format.Stats{}, fmt.Errorf("%w: more than %d files", format.ErrBundleTooLarge, format.MaxBundleFiles)
 		}
-		if info.Size() > MaxFileBytes {
-			return Stats{}, fmt.Errorf("%w: file %q exceeds %d bytes", ErrBundleTooLarge, rel, MaxFileBytes)
+		if info.Size() > format.MaxFileBytes {
+			return format.Stats{}, fmt.Errorf("%w: file %q exceeds %d bytes", format.ErrBundleTooLarge, rel, format.MaxFileBytes)
 		}
 		total += info.Size()
-		if total > MaxTotalContentBytes {
-			return Stats{}, fmt.Errorf("%w: bundle content exceeds %d bytes", ErrBundleTooLarge, MaxTotalContentBytes)
+		if total > format.MaxTotalContentBytes {
+			return format.Stats{}, fmt.Errorf("%w: bundle content exceeds %d bytes", format.ErrBundleTooLarge, format.MaxTotalContentBytes)
 		}
 		entries = append(entries, entry{path: rel, executable: info.Mode()&0o111 != 0, size: info.Size(), source: p})
 	}
@@ -227,23 +174,23 @@ func bundleSortKey(root, p string) string {
 	return filepath.ToSlash(rel)
 }
 
-func encodeEntries(w io.Writer, entries []entry) (Stats, error) {
+func encodeEntries(w io.Writer, entries []entry) (format.Stats, error) {
 	digest := newDigest()
 	sized := &countingWriter{w: io.MultiWriter(w, digest)}
 	seen := ""
-	var stats Stats
+	var stats format.Stats
 	for i := range entries {
 		e := entries[i]
 		if seen != "" && e.path <= seen {
-			return Stats{}, fmt.Errorf("%w: path order violation at %q", ErrBundleInvalid, e.path)
+			return format.Stats{}, fmt.Errorf("%w: path order violation at %q", format.ErrBundleInvalid, e.path)
 		}
 		seen = e.path
 		header, err := ustarHeader(e.path, e.isDir, e.executable, e.size)
 		if err != nil {
-			return Stats{}, err
+			return format.Stats{}, err
 		}
 		if _, err := sized.Write(header); err != nil {
-			return Stats{}, err
+			return format.Stats{}, err
 		}
 		stats.EncodedSize += blockSize
 		if e.isDir {
@@ -253,34 +200,34 @@ func encodeEntries(w io.Writer, entries []entry) (Stats, error) {
 		stats.TotalBytes += e.size
 		f, err := os.Open(e.source)
 		if err != nil {
-			return Stats{}, err
+			return format.Stats{}, err
 		}
 		written, copyErr := io.CopyN(sized, f, e.size)
 		closeErr := f.Close()
 		if copyErr != nil {
-			return Stats{}, copyErr
+			return format.Stats{}, copyErr
 		}
 		if written != e.size {
-			return Stats{}, fmt.Errorf("%w: file %q changed size during encode", ErrBundleInvalid, e.path)
+			return format.Stats{}, fmt.Errorf("%w: file %q changed size during encode", format.ErrBundleInvalid, e.path)
 		}
 		if closeErr != nil {
-			return Stats{}, closeErr
+			return format.Stats{}, closeErr
 		}
 		if pad := align512(e.size) - e.size; pad > 0 {
 			if _, err := sized.Write(make([]byte, pad)); err != nil {
-				return Stats{}, err
+				return format.Stats{}, err
 			}
 		}
 		stats.EncodedSize += align512(e.size)
 	}
 	terminatorBytes := make([]byte, blockSize*terminator)
 	if _, err := sized.Write(terminatorBytes); err != nil {
-		return Stats{}, err
+		return format.Stats{}, err
 	}
 	stats.EncodedSize += blockSize * terminator
 	stats.Digest = sumDigest(digest)
-	if stats.EncodedSize > MaxEncodedBundleBytes {
-		return Stats{}, fmt.Errorf("%w: encoded bundle exceeds %d bytes", ErrBundleTooLarge, MaxEncodedBundleBytes)
+	if stats.EncodedSize > format.MaxEncodedBundleBytes {
+		return format.Stats{}, fmt.Errorf("%w: encoded bundle exceeds %d bytes", format.ErrBundleTooLarge, format.MaxEncodedBundleBytes)
 	}
 	return stats, nil
 }
@@ -306,59 +253,59 @@ func (c *countingWriter) Write(p []byte) (int, error) {
 // Verify parses the complete bundle stream, enforces every format rule,
 // recomputes the content digest, and compares it to expected. The stream
 // must end exactly at the terminator.
-func Verify(r io.Reader, expected string) (Stats, error) {
+func Verify(r io.Reader, expected string) (format.Stats, error) {
 	return decode(r, expected, nil)
 }
 
 // Unpack is Verify plus extraction into dest (which must be empty or absent).
 // Extracted files keep only the format's fixed permission grammar.
-func Unpack(r io.Reader, expected, dest string) (Stats, error) {
+func Unpack(r io.Reader, expected, dest string) (format.Stats, error) {
 	if info, err := os.Lstat(dest); err == nil {
 		if !info.IsDir() {
-			return Stats{}, fmt.Errorf("%w: unpack destination %q is not a directory", ErrBundleInvalid, dest)
+			return format.Stats{}, fmt.Errorf("%w: unpack destination %q is not a directory", format.ErrBundleInvalid, dest)
 		}
 		entries, err := os.ReadDir(dest)
 		if err != nil || len(entries) > 0 {
-			return Stats{}, fmt.Errorf("%w: unpack destination %q is not empty", ErrBundleInvalid, dest)
+			return format.Stats{}, fmt.Errorf("%w: unpack destination %q is not empty", format.ErrBundleInvalid, dest)
 		}
 	}
 	return decode(r, expected, &dest)
 }
 
-func decode(r io.Reader, expected string, dest *string) (Stats, error) {
+func decode(r io.Reader, expected string, dest *string) (format.Stats, error) {
 	digest := newDigest()
 	reader := io.TeeReader(r, digest)
-	var stats Stats
+	var stats format.Stats
 	seen := ""
 	created := map[string]bool{}
 	for {
 		header := make([]byte, blockSize)
 		if _, err := io.ReadFull(reader, header); err != nil {
-			return Stats{}, fmt.Errorf("%w: truncated header: %v", ErrBundleInvalid, err)
+			return format.Stats{}, fmt.Errorf("%w: truncated header: %v", format.ErrBundleInvalid, err)
 		}
 		stats.EncodedSize += blockSize
 		if isZeroBlock(header) {
 			second := make([]byte, blockSize)
 			if _, err := io.ReadFull(reader, second); err != nil {
-				return Stats{}, fmt.Errorf("%w: truncated terminator: %v", ErrBundleInvalid, err)
+				return format.Stats{}, fmt.Errorf("%w: truncated terminator: %v", format.ErrBundleInvalid, err)
 			}
 			stats.EncodedSize += blockSize
 			if !isZeroBlock(second) {
-				return Stats{}, fmt.Errorf("%w: malformed terminator", ErrBundleInvalid)
+				return format.Stats{}, fmt.Errorf("%w: malformed terminator", format.ErrBundleInvalid)
 			}
 			// Nothing but EOF may follow the terminator.
 			var probe [1]byte
 			if n, _ := reader.Read(probe[:]); n != 0 {
-				return Stats{}, fmt.Errorf("%w: trailing bytes after terminator", ErrBundleInvalid)
+				return format.Stats{}, fmt.Errorf("%w: trailing bytes after terminator", format.ErrBundleInvalid)
 			}
 			break
 		}
 		if string(header[257:263]) != "ustar\x00" || string(header[263:265]) != "00" {
-			return Stats{}, fmt.Errorf("%w: not a ustar archive", ErrBundleInvalid)
+			return format.Stats{}, fmt.Errorf("%w: not a ustar archive", format.ErrBundleInvalid)
 		}
 		typeflag := header[156]
 		if typeflag != '0' && typeflag != '5' {
-			return Stats{}, fmt.Errorf("%w: entry type %q not allowed", ErrBundleInvalid, string(typeflag))
+			return format.Stats{}, fmt.Errorf("%w: entry type %q not allowed", format.ErrBundleInvalid, string(typeflag))
 		}
 		name := strings.TrimRight(string(header[0:100]), "\x00")
 		prefix := strings.TrimRight(string(header[345:500]), "\x00")
@@ -366,67 +313,67 @@ func decode(r io.Reader, expected string, dest *string) (Stats, error) {
 		if prefix != "" {
 			entryPath = prefix + "/" + name
 		}
-		if err := ValidBundlePath(entryPath); err != nil {
-			return Stats{}, err
+		if err := format.ValidBundlePath(entryPath); err != nil {
+			return format.Stats{}, err
 		}
 		if seen != "" && entryPath <= seen {
-			return Stats{}, fmt.Errorf("%w: unsorted or duplicate path %q", ErrBundleInvalid, entryPath)
+			return format.Stats{}, fmt.Errorf("%w: unsorted or duplicate path %q", format.ErrBundleInvalid, entryPath)
 		}
 		seen = entryPath
 		size, err := parseOctal(header[124:136])
 		if err != nil {
-			return Stats{}, fmt.Errorf("%w: bad size for %q", ErrBundleInvalid, entryPath)
+			return format.Stats{}, fmt.Errorf("%w: bad size for %q", format.ErrBundleInvalid, entryPath)
 		}
 		mode, err := parseOctal(header[100:108])
 		if err != nil {
-			return Stats{}, fmt.Errorf("%w: bad mode for %q", ErrBundleInvalid, entryPath)
+			return format.Stats{}, fmt.Errorf("%w: bad mode for %q", format.ErrBundleInvalid, entryPath)
 		}
 		if typeflag == '5' {
 			if size != 0 {
-				return Stats{}, fmt.Errorf("%w: directory %q carries data", ErrBundleInvalid, entryPath)
+				return format.Stats{}, fmt.Errorf("%w: directory %q carries data", format.ErrBundleInvalid, entryPath)
 			}
 			if dest != nil {
 				if err := createBundleDir(*dest, entryPath, created); err != nil {
-					return Stats{}, err
+					return format.Stats{}, err
 				}
 			}
 			continue
 		}
 		stats.FileCount++
-		if stats.FileCount > MaxBundleFiles {
-			return Stats{}, fmt.Errorf("%w: more than %d files", ErrBundleTooLarge, MaxBundleFiles)
+		if stats.FileCount > format.MaxBundleFiles {
+			return format.Stats{}, fmt.Errorf("%w: more than %d files", format.ErrBundleTooLarge, format.MaxBundleFiles)
 		}
-		if size > MaxFileBytes {
-			return Stats{}, fmt.Errorf("%w: file %q exceeds %d bytes", ErrBundleTooLarge, entryPath, MaxFileBytes)
+		if size > format.MaxFileBytes {
+			return format.Stats{}, fmt.Errorf("%w: file %q exceeds %d bytes", format.ErrBundleTooLarge, entryPath, format.MaxFileBytes)
 		}
 		stats.TotalBytes += size
-		if stats.TotalBytes > MaxTotalContentBytes {
-			return Stats{}, fmt.Errorf("%w: bundle content exceeds %d bytes", ErrBundleTooLarge, MaxTotalContentBytes)
+		if stats.TotalBytes > format.MaxTotalContentBytes {
+			return format.Stats{}, fmt.Errorf("%w: bundle content exceeds %d bytes", format.ErrBundleTooLarge, format.MaxTotalContentBytes)
 		}
 		remaining := io.LimitReader(reader, size)
 		if dest != nil {
 			if err := writeBundleFile(*dest, entryPath, mode&0o111 != 0, remaining, size, created); err != nil {
-				return Stats{}, err
+				return format.Stats{}, err
 			}
 		} else {
 			if skipped, err := io.CopyN(io.Discard, remaining, size); err != nil || skipped != size {
-				return Stats{}, fmt.Errorf("%w: truncated file %q", ErrBundleInvalid, entryPath)
+				return format.Stats{}, fmt.Errorf("%w: truncated file %q", format.ErrBundleInvalid, entryPath)
 			}
 		}
 		pad := align512(size) - size
 		if pad > 0 {
 			if _, err := io.CopyN(io.Discard, reader, pad); err != nil {
-				return Stats{}, fmt.Errorf("%w: truncated padding for %q", ErrBundleInvalid, entryPath)
+				return format.Stats{}, fmt.Errorf("%w: truncated padding for %q", format.ErrBundleInvalid, entryPath)
 			}
 		}
 		stats.EncodedSize += align512(size)
 	}
-	if stats.EncodedSize > MaxEncodedBundleBytes {
-		return Stats{}, fmt.Errorf("%w: encoded bundle exceeds %d bytes", ErrBundleTooLarge, MaxEncodedBundleBytes)
+	if stats.EncodedSize > format.MaxEncodedBundleBytes {
+		return format.Stats{}, fmt.Errorf("%w: encoded bundle exceeds %d bytes", format.ErrBundleTooLarge, format.MaxEncodedBundleBytes)
 	}
 	actual := sumDigest(digest)
 	if expected != "" && actual != expected {
-		return Stats{}, fmt.Errorf("%w: expected %s got %s", ErrDigestMismatch, expected, actual)
+		return format.Stats{}, fmt.Errorf("%w: expected %s got %s", format.ErrDigestMismatch, expected, actual)
 	}
 	stats.Digest = actual
 	return stats, nil
@@ -434,7 +381,7 @@ func decode(r io.Reader, expected string, dest *string) (Stats, error) {
 
 func createBundleDir(dest, rel string, created map[string]bool) error {
 	// Parents are materialized implicitly; every path component is already
-	// validated by ValidBundlePath.
+	// validated by format.ValidBundlePath.
 	target := filepath.Join(dest, filepath.FromSlash(rel))
 	if err := os.Mkdir(target, 0o755); err != nil && !errors.Is(err, os.ErrExist) {
 		return err
@@ -460,7 +407,7 @@ func writeBundleFile(dest, rel string, executable bool, content io.Reader, size 
 	}
 	written, copyErr := io.CopyN(f, content, size)
 	if copyErr == nil && written != size {
-		copyErr = fmt.Errorf("%w: short write for %q", ErrBundleInvalid, rel)
+		copyErr = fmt.Errorf("%w: short write for %q", format.ErrBundleInvalid, rel)
 	}
 	if syncErr := f.Sync(); syncErr != nil && copyErr == nil {
 		copyErr = syncErr
@@ -501,10 +448,10 @@ func parseOctal(field []byte) (int64, error) {
 }
 
 // VerifyFile is a convenience wrapper verifying a complete on-disk bundle.
-func VerifyFile(path, expected string) (Stats, error) {
+func VerifyFile(path, expected string) (format.Stats, error) {
 	f, err := os.Open(path)
 	if err != nil {
-		return Stats{}, err
+		return format.Stats{}, err
 	}
 	defer func() { _ = f.Close() }()
 	return Verify(f, expected)

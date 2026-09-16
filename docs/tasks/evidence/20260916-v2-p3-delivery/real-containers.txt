@@ -1,0 +1,10 @@
+=== RUN   TestRealEngineFreezesVerifiedOutput
+--- PASS: TestRealEngineFreezesVerifiedOutput (3.30s)
+=== RUN   TestRealEngineBuildFailureYieldsNoOutput
+--- PASS: TestRealEngineBuildFailureYieldsNoOutput (1.45s)
+PASS
+ok  	github.com/yangtao121/workos/internal/runtime/buildtest/adapters/dockerbuild	4.751s
+=== RUN   TestRealDockerAppServesDistinctBundles
+--- PASS: TestRealDockerAppServesDistinctBundles (28.44s)
+PASS
+ok  	github.com/yangtao121/workos/internal/runtime/workload/adapters/dockerapp	28.451s

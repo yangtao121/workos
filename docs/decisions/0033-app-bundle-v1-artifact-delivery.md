@@ -23,11 +23,13 @@
   它与 manifest 摘要是不同事实：前者证明包字节，后者证明版本声明。写入与读取前后都
   必须重算并比较内容摘要；不得以目录名、DB 字段或用户声明值代替实测。
 - 上限（fail closed）：普通文件 ≤1024 个、单文件 ≤32 MiB、内容总量 ≤128 MiB、
-  每 owner 的 ready+preparing 编码字节数合计 ≤2 GiB。超限在采集/解包流式阶段即拒绝，
+  每 owner 实际编码字节数（含暂存与孤儿文件）合计 ≤2 GiB。超限在采集/解包流式阶段即拒绝，
   不是事后压缩时才发现。
 - 磁盘仓库由 Runtime 独占拥有：0700 根目录、owner 隔离子目录、内容按摘要寻址
-  （`<owner>/<digest>.bundle`），`tmp → fsync → rename → dir fsync` 原子写入；只能经
-  Runtime 的受控 descriptor 打开。不做 ready 包自动 GC；配额到顶拒绝新构建。
+  （`<owner>/<digest>.bundle`），`tmp → fsync → link(no-replace) → dir fsync` 原子写入；只能经
+  Runtime 校验入口读取。每 owner 使用跨进程文件锁串行化写入、配额与暂存清理。
+  相同字节可以复用存储，但每个 build task/operator import key 保留独立来源记录；
+  不做 ready 包自动 GC，配额到顶拒绝新构建。
 
 ## 2. Manifest 契约（Schema v1 增量）
 
@@ -48,17 +50,22 @@
 - 引擎身份：`docker`（runtime-host 受监督 adapter，直接使用 Docker Engine API）。
   **不声称 rootless**；Podman/rootless profile 的既有保证不变。能力矩阵以 C00 实测为准，
   `memory.high` 软高水位在 Docker profile 明确 unavailable，不映射成其他保护冒充等价。
-- 网络：`workos-app-internal` internal 网络。容器无端口发布；endpoint 是容器桥 IP，
+- 网络：每个 Runtime namespace 独立的 internal bridge 网络。容器无端口发布；endpoint 是容器桥 IP，
   仅宿主网络命名空间可达（runtime-host 必须与宿主同 netns 或加入该网络）。容器出口
   内核不可达、外部 DNS 失败。
 - 启动：固定 digest 基础镜像（`repo@sha256:…`，pull=never，启动前 /images 校验）+
   从已验证 ready 包解包的只读 `/app` bind mount（解包后重算内容摘要）。
-  只读根、cap-drop ALL、no-new-privileges、pids/memory/cpu 上限、`/tmp` tmpfs、
+  以 65532:65532 非 root 用户运行；只读根、cap-drop ALL、no-new-privileges、pids/memory/cpu 上限、`/tmp` tmpfs、
   labels 携带 owner/app/version/artifact digest/generation 与 purpose `runtime-app`。
 - 启动后 inspect 逐项核对 image digest、mount 源与只读、argv、labels、资源上限；
   任一不符即停止容器并返回失败。Runtime 重启仅按完整标签对账自己拥有的容器；
   与 workspace/interactive purpose 互不清理。
 - 保护不能实施时该 profile 返回 unavailable，绝不降级为宿主进程或 fake engine。
+
+构建隔离：源代码通过 Docker archive API 放入 1 GiB 有界 tmpfs volume，构建容器
+不能写宿主 scratch。构建完成立即有界冻结输出（只接受普通目录/文件），再在另一容器
+执行测试；测试不能修改已冻结的包。整个作业墙钟预算、阶段 timeout、实时日志预算、
+CPU/内存/PID 限额与无网络策略共同限制执行；短租约续期失败或取消会终止执行。
 
 ## 4. 进程职责与数据所有权
 
@@ -85,12 +92,15 @@
 ## 6. 失败与回滚事实
 
 - ready 的前提：构建与测试都成功、输出完整冻结、内容摘要校验通过、且作业 lease/代次
-  仍拥有提交权。取消/超时/重试输家/崩溃半包绝不 ready。重启对账：preparing 且实测摘要
-  匹配 → ready；损坏/不完整 → failed；ready 元数据但文件缺失 → unavailable（不可启动）。
+  仍拥有提交权。先写 preparing 包，再由有 lease token/到期时间守卫的 SQL 写作业成功；
+  Facts 必须反查该作业 succeeded 且 artifact ID/digest 精确相符，才可晋升 ready。
+  重启不能仅凭包字节存在晋升；取消、超时、重试输家与半包不获得发布权。
+  ready 元数据但文件缺失或损坏 → unavailable（不可启动）。
 - 构建/测试/输出任一失败：无 ready 包、无 staged 版本、无 canary、无安装 pin 副作用。
 - 发布裁决（Reliability）：StartSurface 成功 = Core pin 精确匹配候选 + Runtime 有
-  running Workload 且 image/artifact/generation 精确匹配 + Surface 绑定该 generation +
-  健康端点真实通过。canary 期间身份漂移/进程死亡/包不可用/用户新 incident → 停止自动
+  running Workload 且 image/artifact 经 Runtime 验证 + Surface 绑定该 generation +
+  健康端点真实通过。进入 canary 前把 Workload ID/generation 持久化到 ledger（072）；
+  每轮及发布前复查，替代进程不能继承旧观察窗口。canary 期间身份漂移/进程死亡/包不可用/用户新 incident → 停止自动
   推广；用户主动改版 → 终态 `superseded`，不被自动流程覆盖。
 - 自动回滚：Core 精确 previous pin CAS → 终结/隔离失败容器 → 启动旧 version+artifact
   新 generation → Surface 重建 → 实测读到旧服务健康/行为，仅此时记 `rolled_back`；

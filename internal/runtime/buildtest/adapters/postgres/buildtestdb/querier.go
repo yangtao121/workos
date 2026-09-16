@@ -16,6 +16,7 @@ type Querier interface {
 	InsertBuildJob(ctx context.Context, arg InsertBuildJobParams) (int64, error)
 	ListRunnableBuildJobs(ctx context.Context, arg ListRunnableBuildJobsParams) ([]WorkosRuntimeBuildJob, error)
 	RecordBuildVerdict(ctx context.Context, arg RecordBuildVerdictParams) (int64, error)
+	RenewBuildJobLease(ctx context.Context, arg RenewBuildJobLeaseParams) (int64, error)
 	RequeueBuildJob(ctx context.Context, arg RequeueBuildJobParams) (int64, error)
 }
 

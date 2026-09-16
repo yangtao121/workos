@@ -1,8 +1,9 @@
 -- name: InsertAppVersion :execrows
 INSERT INTO workos_core.app_versions (
     id, owner_user_id, app_id, version, scope, name, permissions,
-    manifest_digest, canonical_manifest, created_at
-) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+    manifest_digest, canonical_manifest, created_at,
+    artifact_id, artifact_digest, artifact_format
+) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
 ON CONFLICT DO NOTHING;
 
 -- name: GetAppVersion :one
@@ -86,8 +87,9 @@ WHERE id = $1;
 -- name: InsertStagedAppVersion :execrows
 INSERT INTO workos_core.app_versions (
     id, owner_user_id, app_id, version, scope, name, permissions,
-    manifest_digest, canonical_manifest, state, created_at
-) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'staged', $10)
+    manifest_digest, canonical_manifest, state, created_at,
+    artifact_id, artifact_digest, artifact_format
+) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'staged', $10, $11, $12, $13)
 ON CONFLICT DO NOTHING;
 
 -- name: InsertRepairCandidateVersion :execrows

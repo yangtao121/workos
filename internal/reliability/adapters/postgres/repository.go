@@ -594,6 +594,8 @@ func (r *Repository) Start(ctx context.Context, candidate application.Deployment
 		CreatedAt: time.Now().UTC(),
 		TaskID:    uuidText(candidate.TaskID), ManifestDigest: pgtype.Text{String: candidate.ManifestDigest, Valid: candidate.ManifestDigest != ""},
 		BaseVersion: pgtype.Text{String: candidate.BaseVersion, Valid: candidate.BaseVersion != ""},
+		ArtifactID:  uuidText(candidate.ArtifactID), ArtifactDigest: pgtype.Text{String: candidate.ArtifactDigest, Valid: candidate.ArtifactDigest != ""},
+		BaseArtifactDigest: pgtype.Text{String: candidate.BaseArtifactDigest, Valid: candidate.BaseArtifactDigest != ""},
 	})
 	if err != nil {
 		return storeError("prepare deployment", err)
@@ -602,6 +604,31 @@ func (r *Repository) Start(ctx context.Context, candidate application.Deployment
 		return application.ErrDeploymentCandidateRequired
 	}
 	return nil
+}
+
+func (r *Repository) LatestDeployment(ctx context.Context, owner, projectID, installationID string) (application.DeploymentRecord, error) {
+	row, err := r.queries.GetLatestDeploymentForInstallation(ctx, reliabilitydb.GetLatestDeploymentForInstallationParams{
+		OwnerUserID: owner, ProjectID: projectID, InstallationID: installationID,
+	})
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return application.DeploymentRecord{}, domain.ErrNotFound
+		}
+		return application.DeploymentRecord{}, storeError("get latest deployment", err)
+	}
+	return application.DeploymentRecord{
+		DeploymentCandidate: application.DeploymentCandidate{
+			IncidentID: row.IncidentID, OwnerUserID: row.OwnerUserID,
+			ProjectID: row.ProjectID, InstallationID: row.InstallationID,
+			TargetVersion: row.TargetVersion, ExpectedRevision: row.ExpectedRevision,
+			TaskID: uuidFromPg(row.TaskID), ManifestDigest: row.ManifestDigest.String, BaseVersion: row.BaseVersion.String,
+			ArtifactID: uuidFromPg(row.ArtifactID), ArtifactDigest: row.ArtifactDigest.String, BaseArtifactDigest: row.BaseArtifactDigest.String,
+			WorkloadID: uuidFromPg(row.WorkloadID), WorkloadGeneration: row.WorkloadGeneration.Int64,
+		},
+		UpdatedAt: row.UpdatedAt,
+		State:     row.State, Attempts: row.Attempts, CanaryUntil: row.CanaryUntil,
+		CanaryStartedAt: row.CanaryStartedAt,
+	}, nil
 }
 
 func (r *Repository) Reconcile(ctx context.Context, limit int, apply func(*application.DeploymentRecord) error) (int, error) {
@@ -622,8 +649,11 @@ func (r *Repository) Reconcile(ctx context.Context, limit int, apply func(*appli
 				ProjectID: row.ProjectID, InstallationID: row.InstallationID,
 				TargetVersion: row.TargetVersion, ExpectedRevision: row.ExpectedRevision,
 				TaskID: uuidFromPg(row.TaskID), ManifestDigest: row.ManifestDigest.String, BaseVersion: row.BaseVersion.String,
+				ArtifactID: uuidFromPg(row.ArtifactID), ArtifactDigest: row.ArtifactDigest.String, BaseArtifactDigest: row.BaseArtifactDigest.String,
+				WorkloadID: uuidFromPg(row.WorkloadID), WorkloadGeneration: row.WorkloadGeneration.Int64,
 			},
-			State: row.State, Attempts: row.Attempts, CanaryUntil: row.CanaryUntil,
+			UpdatedAt: row.UpdatedAt,
+			State:     row.State, Attempts: row.Attempts, CanaryUntil: row.CanaryUntil,
 			CanaryStartedAt: row.CanaryStartedAt, NewIncident: row.NewIncident,
 		}
 		if err := apply(&record); err != nil {
@@ -632,6 +662,7 @@ func (r *Repository) Reconcile(ctx context.Context, limit int, apply func(*appli
 		if err := queries.SaveDeployment(ctx, reliabilitydb.SaveDeploymentParams{
 			IncidentID: record.IncidentID, State: record.State, Attempts: record.Attempts,
 			CanaryStartedAt: record.CanaryStartedAt, CanaryUntil: record.CanaryUntil,
+			WorkloadID: uuidText(record.WorkloadID), WorkloadGeneration: pgtype.Int8{Int64: record.WorkloadGeneration, Valid: record.WorkloadID != ""},
 			UpdatedAt: time.Now().UTC(),
 		}); err != nil {
 			return 0, storeError("save deployment", err)

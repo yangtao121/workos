@@ -4,14 +4,19 @@
 package files
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"github.com/yangtao121/workos/internal/platform/appbundle"
+	"golang.org/x/sys/unix"
 	"io"
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
+	"time"
 
 	"github.com/yangtao121/workos/internal/runtime/artifactstore/domain"
 	"github.com/yangtao121/workos/internal/runtime/artifactstore/ports"
@@ -57,6 +62,13 @@ func New(root string) (*Store, error) {
 	default:
 		return nil, err
 	}
+	if err := privateDir(absolute); err != nil {
+		return nil, err
+	}
+	resolved, err := filepath.EvalSymlinks(absolute)
+	if err != nil || resolved != absolute {
+		return nil, errors.New("artifactstore: symlink root is forbidden")
+	}
 	return &Store{root: absolute}, nil
 }
 
@@ -64,7 +76,11 @@ func (s *Store) ownerDir(owner string) (string, error) {
 	if !domain.ValidUUID(owner) {
 		return "", fmt.Errorf("%w: owner %q is not a UUIDv7", domain.ErrInvalidRequest, owner)
 	}
-	return filepath.Join(s.root, owner), nil
+	dir := filepath.Join(s.root, owner)
+	if err := privateDir(dir); err != nil {
+		return "", err
+	}
+	return dir, nil
 }
 
 func (s *Store) contentPath(owner, digest string) (string, error) {
@@ -84,7 +100,9 @@ type stagingFile struct {
 
 func (f *stagingFile) Write(p []byte) (int, error) { return f.file.Write(p) }
 
-func (f *stagingFile) Seek(offset int64, whence int) (int64, error) { return f.file.Seek(offset, whence) }
+func (f *stagingFile) Seek(offset int64, whence int) (int64, error) {
+	return f.file.Seek(offset, whence)
+}
 
 func (f *stagingFile) Name() string { return f.file.Name() }
 
@@ -115,10 +133,7 @@ func (s *Store) TempFile(owner string) (ports.StagingFile, error) {
 		return nil, err
 	}
 	tmpDir := filepath.Join(dir, "tmp")
-	if err := os.MkdirAll(tmpDir, rootDirMode); err != nil {
-		return nil, err
-	}
-	if err := os.Chmod(tmpDir, rootDirMode); err != nil {
+	if err := privateDir(tmpDir); err != nil {
 		return nil, err
 	}
 	var suffix [8]byte
@@ -138,16 +153,19 @@ func (s *Store) PromoteFile(owner, digest string, staging ports.StagingFile) err
 		staging.Discard()
 		return err
 	}
-	if _, statErr := os.Lstat(target); statErr == nil {
-		// Content-addressed duplicate: the bytes on disk already are this
-		// digest's canonical content; drop the staging copy.
-		staging.Discard()
-		return nil
-	}
-	if err := os.Rename(staging.Name(), target); err != nil {
-		staging.Discard()
+	// Link is an atomic no-replace promotion. Existing content must verify;
+	// neither a corrupt file nor a symlink is proof of a duplicate.
+	if err := os.Link(staging.Name(), target); err != nil {
+		if errors.Is(err, os.ErrExist) {
+			if _, _, verifyErr := s.OpenVerified(owner, digest); verifyErr != nil {
+				return verifyErr
+			}
+			staging.Discard()
+			return nil
+		}
 		return err
 	}
+	staging.Discard()
 	if err := fsyncDir(filepath.Dir(target)); err != nil {
 		return err
 	}
@@ -162,7 +180,7 @@ func (s *Store) OpenVerified(owner, digest string) (string, int64, error) {
 	if err != nil {
 		return "", 0, err
 	}
-	file, err := os.Open(path)
+	file, err := os.OpenFile(path, os.O_RDONLY|syscall.O_NOFOLLOW, 0)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			return "", 0, fmt.Errorf("%w: bundle bytes missing for %s", domain.ErrUnavailable, digest)
@@ -170,7 +188,11 @@ func (s *Store) OpenVerified(owner, digest string) (string, int64, error) {
 		return "", 0, err
 	}
 	defer func() { _ = file.Close() }()
-	stats, verifyErr := domain.Verify(file, digest)
+	info, err := file.Stat()
+	if err != nil || !info.Mode().IsRegular() || info.Mode().Perm() != fileMode {
+		return "", 0, domain.ErrUnavailable
+	}
+	stats, verifyErr := appbundle.Verify(file, digest)
 	if verifyErr != nil {
 		return "", 0, verifyErr
 	}
@@ -195,18 +217,32 @@ func (s *Store) CleanTemp() error {
 		if !owner.IsDir() {
 			continue
 		}
-		tmpDir := filepath.Join(s.root, owner.Name(), "tmp")
-		entries, readErr := os.ReadDir(tmpDir)
-		if readErr != nil {
-			if errors.Is(readErr, os.ErrNotExist) {
-				continue
-			}
-			return readErr
+		if !domain.ValidUUID(owner.Name()) {
+			continue
 		}
-		for _, entry := range entries {
-			if err := os.RemoveAll(filepath.Join(tmpDir, entry.Name())); err != nil {
-				return err
+		unlock, err := s.LockOwner(context.Background(), owner.Name())
+		if err != nil {
+			return err
+		}
+		err = func() error {
+			defer unlock()
+			tmpDir := filepath.Join(s.root, owner.Name(), "tmp")
+			entries, readErr := os.ReadDir(tmpDir)
+			if readErr != nil {
+				if errors.Is(readErr, os.ErrNotExist) {
+					return nil
+				}
+				return readErr
 			}
+			for _, entry := range entries {
+				if err := os.RemoveAll(filepath.Join(tmpDir, entry.Name())); err != nil {
+					return err
+				}
+			}
+			return nil
+		}()
+		if err != nil {
+			return err
 		}
 	}
 	return nil
@@ -229,3 +265,75 @@ var _ ports.BundleFiles = (*Store)(nil)
 
 // ensure io.Writer interface usage
 var _ io.Writer = (*stagingFile)(nil)
+
+// privateDir rejects links, foreign ownership and writable ancestor components
+// inside the runtime repository. The root itself is checked when opening it.
+func privateDir(dir string) error {
+	if err := os.Mkdir(dir, rootDirMode); err != nil && !errors.Is(err, os.ErrExist) {
+		return err
+	}
+	info, err := os.Lstat(dir)
+	if err != nil {
+		return err
+	}
+	stat, ok := info.Sys().(*syscall.Stat_t)
+	if !info.IsDir() || info.Mode().Perm() != rootDirMode || !ok || stat.Uid != uint32(os.Geteuid()) {
+		return errors.New("artifactstore: repository directory must be private and owned by runtime")
+	}
+	return nil
+}
+
+// LockOwner serializes imports, commits and recovery across runtime processes.
+func (s *Store) LockOwner(ctx context.Context, owner string) (func(), error) {
+	dir, err := s.ownerDir(owner)
+	if err != nil {
+		return nil, err
+	}
+	file, err := os.OpenFile(filepath.Join(dir, ".lock"), os.O_CREATE|os.O_RDWR|syscall.O_NOFOLLOW, fileMode)
+	if err != nil {
+		return nil, err
+	}
+	for {
+		if err := unix.Flock(int(file.Fd()), unix.LOCK_EX|unix.LOCK_NB); err == nil {
+			return func() { _ = unix.Flock(int(file.Fd()), unix.LOCK_UN); _ = file.Close() }, nil
+		} else if !errors.Is(err, unix.EWOULDBLOCK) {
+			file.Close()
+			return nil, err
+		}
+		select {
+		case <-ctx.Done():
+			file.Close()
+			return nil, ctx.Err()
+		case <-time.After(20 * time.Millisecond):
+		}
+	}
+}
+
+// UsageBytes includes staging files and orphaned durable files after a DB error.
+func (s *Store) UsageBytes(owner string) (int64, error) {
+	dir, err := s.ownerDir(owner)
+	if err != nil {
+		return 0, err
+	}
+	var total int64
+	err = filepath.WalkDir(dir, func(path string, entry os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if entry.Type()&os.ModeSymlink != 0 {
+			return domain.ErrUnavailable
+		}
+		if !entry.IsDir() {
+			info, err := entry.Info()
+			if err != nil {
+				return err
+			}
+			if !info.Mode().IsRegular() {
+				return domain.ErrUnavailable
+			}
+			total += info.Size()
+		}
+		return nil
+	})
+	return total, err
+}

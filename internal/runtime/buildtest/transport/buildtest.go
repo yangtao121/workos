@@ -71,10 +71,13 @@ func (h *BuildTestHandler) SubmitBuildTest(ctx context.Context, req *connect.Req
 		SourceBundleID: facts.GetSourceBundleId(), SourceDigest: facts.GetSourceDigest(),
 		ManifestDigest: facts.GetManifestDigest(), BaseImage: facts.GetBaseImage(),
 		Payload: domain.Payload{
-			BaseImage: job.GetInput().GetBaseImage(),
-			BuildCmd:  job.GetInput().GetBuildCommand(),
-			TestCmd:   job.GetInput().GetTestCommand(),
-			Files:     files,
+			AppID:           job.GetInput().GetTarget().GetAppId(),
+			BaseImage:       job.GetInput().GetBaseImage(),
+			BuildCmd:        job.GetInput().GetBuildCommand(),
+			TestCmd:         job.GetInput().GetTestCommand(),
+			Files:           files,
+			OutputDirectory: job.GetInput().GetOutputDirectory(),
+			RuntimeCommand:  job.GetInput().GetRuntimeCommand(),
 		},
 	}
 	if domainJob.BaseImage == "" {
@@ -114,6 +117,23 @@ func (h *BuildTestHandler) GetBuildTest(ctx context.Context, req *connect.Reques
 			response.Engine = facts
 		}
 	}
+	// A success verdict carries its frozen bundle only when the repository
+	// confirms a ready artifact right now; no facts, no bundle claim.
+	if job.State == domain.StateSucceeded && job.ArtifactID != "" && h.artifacts != nil {
+		if artifact, err := h.artifacts.Facts(ctx, artifactapp.FactsQuery{ArtifactID: job.ArtifactID}); err == nil && artifact.State == artifactdomain.StateReady {
+			response.Artifact = &executionv1.BuildArtifactFacts{
+				ArtifactId: artifact.ID, ArtifactDigest: artifact.Digest, Format: artifact.Format,
+				Origin: artifact.Origin, SizeBytes: artifact.SizeBytes, FileCount: artifact.FileCount,
+				JobId: artifact.JobID, TaskId: artifact.TaskID, IncidentId: artifact.IncidentID,
+				OwnerUserId: artifact.OwnerUserID, ProjectId: artifact.ProjectID,
+				InstallationId: artifact.InstallationID, SourceBundleId: artifact.SourceBundleID,
+				SourceDigest: artifact.SourceDigest, ManifestDigest: artifact.ManifestDigest,
+				BaseImage: artifact.BaseImage, BuildCommand: artifact.BuildCommand,
+				TestCommand: artifact.TestCommand, OutputDirectory: artifact.OutputDirectory,
+				State: artifact.State, AppId: artifact.AppID,
+			}
+		}
+	}
 	return connect.NewResponse(response), nil
 }
 
@@ -138,6 +158,9 @@ func (h *BuildTestHandler) GetBuildArtifact(ctx context.Context, req *connect.Re
 	if err != nil {
 		return nil, buildTestError(artifactError(err))
 	}
+	if artifact.State != artifactdomain.StateReady {
+		return nil, connect.NewError(connect.CodeFailedPrecondition, errors.New("release bundle is not ready"))
+	}
 	return connect.NewResponse(&executionv1.GetBuildArtifactResponse{
 		Artifact: &executionv1.BuildArtifactFacts{
 			ArtifactId: artifact.ID, ArtifactDigest: artifact.Digest, Format: artifact.Format,
@@ -148,7 +171,7 @@ func (h *BuildTestHandler) GetBuildArtifact(ctx context.Context, req *connect.Re
 			SourceDigest: artifact.SourceDigest, ManifestDigest: artifact.ManifestDigest,
 			BaseImage: artifact.BaseImage, BuildCommand: artifact.BuildCommand,
 			TestCommand: artifact.TestCommand, OutputDirectory: artifact.OutputDirectory,
-			State: artifact.State,
+			State: artifact.State, AppId: artifact.AppID,
 		},
 	}), nil
 }

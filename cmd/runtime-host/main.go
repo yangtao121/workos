@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -28,18 +29,20 @@ import (
 	"github.com/yangtao121/workos/internal/platform/logging"
 	"github.com/yangtao121/workos/internal/platform/systemhandler"
 	"github.com/yangtao121/workos/internal/platform/telemetry"
-	chromiumengine "github.com/yangtao121/workos/internal/runtime/browserpool/adapters/chromiumengine"
-	browserpoolpostgres "github.com/yangtao121/workos/internal/runtime/browserpool/adapters/postgres"
-	browserpoolapp "github.com/yangtao121/workos/internal/runtime/browserpool/application"
-	browserpooltransport "github.com/yangtao121/workos/internal/runtime/browserpool/transport"
-	buildtestpostgres "github.com/yangtao121/workos/internal/runtime/buildtest/adapters/postgres"
-	"github.com/yangtao121/workos/internal/runtime/buildtest/adapters/processexec"
-	buildtestapp "github.com/yangtao121/workos/internal/runtime/buildtest/application"
-	buildtesttransport "github.com/yangtao121/workos/internal/runtime/buildtest/transport"
 	artifactfiles "github.com/yangtao121/workos/internal/runtime/artifactstore/adapters/files"
 	artifactpostgres "github.com/yangtao121/workos/internal/runtime/artifactstore/adapters/postgres"
 	artifactapp "github.com/yangtao121/workos/internal/runtime/artifactstore/application"
 	artifacttransport "github.com/yangtao121/workos/internal/runtime/artifactstore/transport"
+	chromiumengine "github.com/yangtao121/workos/internal/runtime/browserpool/adapters/chromiumengine"
+	browserpoolpostgres "github.com/yangtao121/workos/internal/runtime/browserpool/adapters/postgres"
+	browserpoolapp "github.com/yangtao121/workos/internal/runtime/browserpool/application"
+	browserpooltransport "github.com/yangtao121/workos/internal/runtime/browserpool/transport"
+	"github.com/yangtao121/workos/internal/runtime/buildtest/adapters/dockerbuild"
+	buildtestpostgres "github.com/yangtao121/workos/internal/runtime/buildtest/adapters/postgres"
+	"github.com/yangtao121/workos/internal/runtime/buildtest/adapters/processexec"
+	buildtestapp "github.com/yangtao121/workos/internal/runtime/buildtest/application"
+	buildtestports "github.com/yangtao121/workos/internal/runtime/buildtest/ports"
+	buildtesttransport "github.com/yangtao121/workos/internal/runtime/buildtest/transport"
 	nativehostpostgres "github.com/yangtao121/workos/internal/runtime/nativehost/adapters/postgres"
 	xvfbengine "github.com/yangtao121/workos/internal/runtime/nativehost/adapters/xvfbengine"
 	nativehostapp "github.com/yangtao121/workos/internal/runtime/nativehost/application"
@@ -61,6 +64,7 @@ import (
 	surfaceapp "github.com/yangtao121/workos/internal/runtime/surface/application"
 	surfacetransport "github.com/yangtao121/workos/internal/runtime/surface/transport"
 	runtimetransport "github.com/yangtao121/workos/internal/runtime/transport"
+	"github.com/yangtao121/workos/internal/runtime/workload/adapters/dockerapp"
 	fakefixture "github.com/yangtao121/workos/internal/runtime/workload/adapters/fakefixture"
 	workloadpodman "github.com/yangtao121/workos/internal/runtime/workload/adapters/podman"
 	workloadpostgres "github.com/yangtao121/workos/internal/runtime/workload/adapters/postgres"
@@ -118,7 +122,8 @@ func artifactFactsFor(service *artifactapp.Service) buildtesttransport.ArtifactF
 	return service
 }
 
-func run(logger *slog.Logger) error {	cfg, err := config.Load()
+func run(logger *slog.Logger) error {
+	cfg, err := config.Load()
 	if err != nil {
 		return err
 	}
@@ -166,7 +171,7 @@ func run(logger *slog.Logger) error {	cfg, err := config.Load()
 		if filesErr != nil {
 			return filesErr
 		}
-		artifactService = artifactapp.New(artifactpostgres.New(pool), bundleFiles)
+		artifactService = artifactapp.New(artifactpostgres.New(pool), bundleFiles).WithBuildAuthority(buildArtifactAuthority(buildtestpostgres.New(pool)))
 		if err := artifactService.Reconcile(ctx); err != nil {
 			return fmt.Errorf("reconcile artifact store: %w", err)
 		}
@@ -191,16 +196,33 @@ func run(logger *slog.Logger) error {	cfg, err := config.Load()
 		}
 	}
 
-	// The private Build/Test executor (ADR-0026): durable jobs, process-tier
-	// sandbox engine with kernel rlimits, and the Reliability-facing RPC.
-	// Empty scratch config disables the service honestly.
+	// The private Build/Test executor (ADR-0026 + ADR-0033): durable jobs and
+	// the configured engine tier — "process" keeps the kernel-rlimit sandbox
+	// and its old gate semantics; "docker" runs each stage in a container
+	// from a digest-pinned toolchain image and freezes verified build output
+	// into the release bundle repository. Empty scratch config disables the
+	// service honestly.
 	if strings.TrimSpace(cfg.Runtime.BuildTestScratch) != "" {
-		buildEngine, engineErr := processexec.New(processexec.Config{ScratchRoot: cfg.Runtime.BuildTestScratch, Processes: cfg.Runtime.BuildTestProcessLimit})
-		if engineErr != nil {
-			return engineErr
+		var buildEngine buildtestports.BuildEngine
+		switch cfg.Runtime.BuildTestEngine {
+		case "docker":
+			dockerEngine, engineErr := dockerbuild.New(dockerbuild.Config{Socket: cfg.Runtime.DockerSocket})
+			if engineErr != nil {
+				return engineErr
+			}
+			buildEngine = dockerEngine
+			logger.Info("build test engine selected", "engine", "docker", "socket", cfg.Runtime.DockerSocket)
+		case "process":
+			processEngine, engineErr := processexec.New(processexec.Config{ScratchRoot: cfg.Runtime.BuildTestScratch, Processes: cfg.Runtime.BuildTestProcessLimit})
+			if engineErr != nil {
+				return engineErr
+			}
+			buildEngine = processEngine
+		default:
+			return fmt.Errorf("WORKOS_RUNTIME_BUILDTEST_ENGINE must be process or docker, got %q", cfg.Runtime.BuildTestEngine)
 		}
 		buildStore := buildtestpostgres.New(pool)
-		buildService, serviceErr := buildtestapp.NewService(buildStore, buildEngine, generator, cfg.Runtime.InstanceName, cfg.Runtime.BuildTestTimeout, cfg.Runtime.BuildTestLeaseTTL)
+		buildService, serviceErr := buildtestapp.NewService(buildStore, buildEngine, artifactService, generator, cfg.Runtime.InstanceName, cfg.Runtime.BuildTestScratch, cfg.Runtime.BuildTestTimeout, cfg.Runtime.BuildTestLeaseTTL)
 		if serviceErr != nil {
 			return serviceErr
 		}
@@ -240,15 +262,37 @@ func run(logger *slog.Logger) error {	cfg, err := config.Load()
 	}
 	var engine workloadports.Engine
 	var cgroupReader workloadports.CgroupReader
-	if cfg.Runtime.WorkloadEngine == "fake-fixture" {
+	switch cfg.Runtime.WorkloadEngine {
+	case "fake-fixture":
 		// ADR-0016 §2: the bounded in-process simulator proves the
 		// supervision software chain on hosts without rootless Podman. It
 		// never claims the container capability and is never a production
-		// fallback.
+		// fallback. It is not a P3 formal runner.
 		fixtureEngine, fixtureReader := fakefixture.New(cfg.Runtime.FixtureScenarioFile)
 		engine = fixtureEngine
 		cgroupReader = fixtureReader
-	} else {
+	case "docker":
+		if artifactService == nil {
+			return errors.New("WORKOS_RUNTIME_WORKLOAD_ENGINE=docker requires WORKOS_RUNTIME_ARTIFACT_ROOT")
+		}
+		socket := cfg.Runtime.DockerSocket
+		if socket == "" {
+			socket = "/var/run/docker.sock"
+		}
+		dockerEngine, engineErr := dockerapp.New(dockerapp.Config{
+			Socket: socket, UnpackRoot: filepath.Join(cfg.Runtime.ArtifactRoot, "unpack"),
+		}, artifactService)
+		if engineErr != nil {
+			return engineErr
+		}
+		engine = dockerEngine
+		reader, readerErr := workloadpodman.NewCgroupReader()
+		if readerErr != nil {
+			return fmt.Errorf("docker workload cgroup reader: %w", readerErr)
+		}
+		cgroupReader = reader
+		logger.Info("workload engine selected", "engine", "docker", "socket", socket)
+	default:
 		podmanEngine, engineErr := workloadpodman.New(cfg.Runtime.PodmanBin)
 		if engineErr == nil {
 			reader, readerErr := workloadpodman.NewCgroupReader()
@@ -256,9 +300,6 @@ func run(logger *slog.Logger) error {	cfg, err := config.Load()
 				engine = podmanEngine
 				cgroupReader = reader
 			} else {
-				// Podman without a readable cgroup v2 hierarchy is an unavailable
-				// combined runner capability, not a reason to take down runtime-host's
-				// DB-backed Surface and Workload fact services.
 				engine = workloadpodman.NewUnavailableEngine("cgroup v2 is not available")
 				cgroupReader = workloadpodman.NewUnavailableCgroupReader()
 			}
@@ -284,9 +325,9 @@ func run(logger *slog.Logger) error {	cfg, err := config.Load()
 	}
 	capability, _ := manager.ProbeRunner(ctx)
 	if capability.Available {
-		logger.Info("rootless container capability verified")
+		logger.Info("container capability verified", "rootless", capability.Rootless, "cgroup_v2", capability.CgroupV2)
 	} else {
-		logger.Warn("verified rootless container capability unavailable", "reason", capability.Reason)
+		logger.Warn("verified container capability unavailable", "reason", capability.Reason)
 	}
 	// The reconcile loop converges every crash window between the database
 	// and the engine, re-validates installations through Core, and enforces

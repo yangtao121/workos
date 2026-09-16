@@ -28,7 +28,7 @@ export function VersionDialog({
 }: {
   project: Project;
   installation: AppInstallation;
-  workosClients: Pick<WorkOSClients, "appInstallations" | "projects">;
+  workosClients: Pick<WorkOSClients, "appInstallations" | "projects" | "releases">;
   onFactsRefreshed: (project: Project, installations: AppInstallation[]) => void;
   // Applies the command's authoritative first response immediately. A
   // follow-up list failure must not leave the parent on a stale revision.
@@ -38,6 +38,8 @@ export function VersionDialog({
 }) {
   const [history, setHistory] = useState<AppInstallationVersionSnapshot[]>();
   const [historyUnavailable, setHistoryUnavailable] = useState(false);
+  const [releaseState, setReleaseState] = useState<string>();
+  const [releaseDigest, setReleaseDigest] = useState<string>();
   const [target, setTarget] = useState("");
   const [busy, setBusy] = useState(false);
   const [feedback, setFeedback] = useState<{ text: string; isError: boolean }>();
@@ -55,6 +57,8 @@ export function VersionDialog({
     const generation = ++historyGenerationRef.current;
     setHistory(undefined);
     setHistoryUnavailable(false);
+    setReleaseState(undefined);
+    setReleaseDigest(undefined);
     void workosClients.appInstallations
       .listAppVersionHistory({
         projectId: project.id,
@@ -69,10 +73,43 @@ export function VersionDialog({
         if (generation !== historyGenerationRef.current) return;
         setHistoryUnavailable(true);
       });
+    let releaseTimer: ReturnType<typeof setTimeout> | undefined;
+    const pollRelease = async () => {
+      try {
+        const response = await workosClients.releases.getReleaseStatus({
+          projectId: project.id,
+          installationId: installation.id,
+        });
+        if (generation !== historyGenerationRef.current) return;
+        setReleaseState(response.status?.state);
+        const digest = response.status?.candidateArtifactDigest;
+        setReleaseDigest(digest ? digest.slice(0, 19) : undefined);
+      } catch (reason) {
+        if (generation !== historyGenerationRef.current) return;
+        setReleaseState(
+          reason instanceof ConnectError && reason.code === Code.NotFound
+            ? undefined
+            : "unavailable",
+        );
+        setReleaseDigest(undefined);
+      } finally {
+        if (generation === historyGenerationRef.current) {
+          releaseTimer = setTimeout(() => void pollRelease(), 2000);
+        }
+      }
+    };
+    void pollRelease();
     return () => {
       historyGenerationRef.current += 1;
+      clearTimeout(releaseTimer);
     };
-  }, [installation.id, installation.version, project.id, workosClients.appInstallations]);
+  }, [
+    installation.id,
+    installation.version,
+    project.id,
+    workosClients.appInstallations,
+    workosClients.releases,
+  ]);
 
   const refreshFacts = useCallback(async () => {
     const [projectResponse, active] = await Promise.all([
@@ -189,6 +226,12 @@ export function VersionDialog({
           Versions · <span className="version-dialog-app-id">{installation.appId}</span> · pinned{" "}
           {installation.version}
         </h3>
+        {releaseState ? (
+          <p className="app-consent-note" data-testid="version-dialog-release">
+            Release: {releaseState}
+            {releaseDigest ? ` · ${releaseDigest}` : ""}
+          </p>
+        ) : null}
         <p id="version-dialog-description">
           Switching versions keeps this installation and its permissions. A target whose permissions
           do not cover the current grants is rejected — review permissions first. Version facts live

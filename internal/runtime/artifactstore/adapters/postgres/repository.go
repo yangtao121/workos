@@ -1,7 +1,5 @@
-// Package postgres persists artifact metadata (ADR-0033). The unique
-// constraints on (owner_user_id, digest) and (owner_user_id, origin,
-// idempotency_key) are the concurrency arbiters; no query ever creates a
-// second row for the same content.
+// Package postgres persists artifact provenance (ADR-0033). Each build task
+// or owner-scoped import key has its own row; equal bytes may share storage.
 package postgres
 
 import (
@@ -12,6 +10,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 
@@ -42,6 +41,7 @@ func (r *Repository) InsertReady(ctx context.Context, artifact domain.Artifact) 
 	_, err := r.queries.InsertArtifactReady(ctx, artifactdb.InsertArtifactReadyParams{
 		ID: artifact.ID, OwnerUserID: artifact.OwnerUserID, Digest: artifact.Digest,
 		Format: artifact.Format, SizeBytes: artifact.SizeBytes, FileCount: artifact.FileCount,
+		State: artifact.State, ReadyAt: artifact.ReadyAt,
 		Origin: artifact.Origin, IdempotencyKey: artifact.IdempotencyKey,
 		AppID: nullText(artifact.AppID), TaskID: nullUUID(artifact.TaskID), JobID: nullUUID(artifact.JobID),
 		IncidentID: nullUUID(artifact.IncidentID), ProjectID: nullUUID(artifact.ProjectID),
@@ -53,13 +53,31 @@ func (r *Repository) InsertReady(ctx context.Context, artifact domain.Artifact) 
 	})
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			// ON CONFLICT (owner, digest) DO NOTHING: identical content is
-			// already recorded; the caller replays that row.
-			existing, fetchErr := r.GetByOwnerDigest(ctx, artifact.OwnerUserID, artifact.Digest)
+			// ON CONFLICT DO NOTHING: the producing task or import key
+			// already has metadata; the caller verifies the replay identity.
+			var existing domain.Artifact
+			var fetchErr error
+			if artifact.Origin == domain.OriginBuildJob {
+				existing, fetchErr = r.GetByTask(ctx, artifact.TaskID)
+			} else {
+				existing, fetchErr = r.GetByImportKey(ctx, artifact.OwnerUserID, artifact.IdempotencyKey)
+			}
 			if fetchErr != nil {
 				return domain.Artifact{}, false, fetchErr
 			}
 			return existing, false, nil
+		}
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+			// Concurrent insert under the same (owner, origin, key): the
+			// winner's row is the replay target. A miss here means the
+			// constraint fired for a reason this store cannot resolve.
+			if artifact.TaskID != "" {
+				if existing, fetchErr := r.GetByTask(ctx, artifact.TaskID); fetchErr == nil {
+					return existing, false, nil
+				}
+			}
+			return domain.Artifact{}, false, domain.ErrConflict
 		}
 		return domain.Artifact{}, false, transient(err)
 	}

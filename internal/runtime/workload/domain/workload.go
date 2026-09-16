@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"net"
 	"strconv"
 	"strings"
 	"time"
@@ -247,6 +248,8 @@ type Workload struct {
 	Image          string
 	Command        []string
 	Port           int64
+	ArtifactID     string
+	ArtifactDigest string
 	Requested      RequestedPolicy
 	Effective      EffectivePolicy
 	Generation     int64
@@ -309,13 +312,22 @@ func ContainerName(workloadID string) string {
 // creates carries. Recovery adopts exactly the containers whose labels match
 // the persisted row; unlabeled or foreign containers are never touched.
 func EngineLabels(workload Workload) map[string]string {
-	return map[string]string{
+	labels := map[string]string{
 		"workos.managed":             "workos",
 		"workos.workload.id":         workload.ID,
 		"workos.workload.generation": strconv.FormatInt(workload.Generation, 10),
 		"workos.owner":               workload.OwnerUserID,
 		"workos.workload.instance":   workload.AppInstanceID,
+		"workos.purpose":             "runtime-app",
 	}
+	if workload.ArtifactDigest != "" {
+		labels["workos.artifact.digest"] = workload.ArtifactDigest
+		labels["workos.artifact.id"] = workload.ArtifactID
+	}
+	if workload.Image != "" {
+		labels["workos.image"] = workload.Image
+	}
+	return labels
 }
 
 // OperationDigest derives the canonical command digest of one operation:
@@ -408,6 +420,32 @@ func ValidCommand(command []string) bool {
 func ValidLoopbackEndpoint(value string) bool {
 	host, port, ok := strings.Cut(value, ":")
 	if !ok || host != "127.0.0.1" || port == "" || port[0] == '0' {
+		return false
+	}
+	for index := range port {
+		if port[index] < '0' || port[index] > '9' {
+			return false
+		}
+	}
+	number, err := strconv.Atoi(port)
+	if err != nil || number < 1 || number > 65535 {
+		return false
+	}
+	return true
+}
+
+// ValidWorkloadEndpoint accepts the server-derived endpoint: loopback publish
+// (Podman/fake) or a container bridge IPv4 plus port (Docker formal apps).
+func ValidWorkloadEndpoint(value string) bool {
+	if ValidLoopbackEndpoint(value) {
+		return true
+	}
+	host, port, ok := strings.Cut(value, ":")
+	if !ok || host == "" || port == "" || port[0] == '0' {
+		return false
+	}
+	ip := net.ParseIP(host)
+	if ip == nil || ip.To4() == nil || !ip.IsPrivate() {
 		return false
 	}
 	for index := range port {

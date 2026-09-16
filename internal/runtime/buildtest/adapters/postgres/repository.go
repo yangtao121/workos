@@ -7,6 +7,7 @@ import (
 	"errors"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -40,6 +41,25 @@ func int4(value *int32) pgtype.Int4 {
 		return pgtype.Int4{}
 	}
 	return pgtype.Int4{Int32: *value, Valid: true}
+}
+
+func nullUUID(value string) pgtype.UUID {
+	if value == "" {
+		return pgtype.UUID{}
+	}
+	parsed, err := uuid.Parse(value)
+	if err != nil {
+		return pgtype.UUID{}
+	}
+	return pgtype.UUID{Bytes: parsed, Valid: true}
+}
+
+func uuidText(value pgtype.UUID) string {
+	if !value.Valid {
+		return ""
+	}
+	parsed := uuid.UUID(value.Bytes)
+	return parsed.String()
 }
 
 func (r *Repository) InsertJob(ctx context.Context, job domain.Job) (string, bool, error) {
@@ -106,6 +126,7 @@ func (r *Repository) RecordVerdict(ctx context.Context, jobID, leaseOwner string
 		BuildExitCode: int4(verdict.BuildExitCode), TestExitCode: int4(verdict.TestExitCode),
 		FailureReason: failureText(verdict.FailureReason), EngineFacts: verdict.EngineFacts,
 		LogTail: text(verdict.LogTail), ID: jobID, LeaseOwner: text(leaseOwner), Now: time.Now().UTC(),
+		ArtifactID: nullUUID(verdict.ArtifactID), ArtifactDigest: text(verdict.ArtifactDigest),
 	})
 	if err != nil {
 		return transient(err)
@@ -169,7 +190,9 @@ func jobFromRow(row buildtestdb.WorkosRuntimeBuildJob) domain.Job {
 		ManifestDigest: row.ManifestDigest, BaseImage: row.BaseImage,
 		State: domain.State(row.State), Stage: domain.Stage(row.Stage),
 		EngineFacts: row.EngineFacts, Attempts: row.Attempts, LogTail: row.LogTail.String,
+		ArtifactID: uuidText(row.ArtifactID), ArtifactDigest: row.ArtifactDigest.String,
 		CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt,
+		LeaseOwner: row.LeaseOwner.String, LeaseUntil: row.LeaseUntil,
 	}
 	if row.BuildExitCode.Valid {
 		job.BuildExitCode = &row.BuildExitCode.Int32
@@ -184,4 +207,12 @@ func jobFromRow(row buildtestdb.WorkosRuntimeBuildJob) domain.Job {
 		_ = json.Unmarshal(row.Payload, &job.Payload)
 	}
 	return job
+}
+
+func (r *Repository) RenewJobLease(ctx context.Context, jobID, owner string, until, now time.Time) (bool, error) {
+	updated, err := r.queries.RenewBuildJobLease(ctx, buildtestdb.RenewBuildJobLeaseParams{ID: jobID, LeaseOwner: text(owner), LeaseUntil: &until, Now: &now})
+	if err != nil {
+		return false, transient(err)
+	}
+	return updated == 1, nil
 }

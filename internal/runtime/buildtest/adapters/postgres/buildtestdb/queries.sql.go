@@ -67,7 +67,7 @@ const failBuildJob = `-- name: FailBuildJob :execrows
 UPDATE workos_runtime.build_jobs
 SET state = 'failed', stage = $1, failure_reason = 'engine-failed',
     lease_owner = NULL, lease_until = NULL, updated_at = $2
-WHERE id = $3 AND lease_owner = $4 AND state = 'running'
+WHERE id = $3 AND lease_owner = $4 AND state = 'running' AND lease_until > $2
 `
 
 type FailBuildJobParams struct {
@@ -244,21 +244,25 @@ SET state = $1, stage = $2,
     failure_reason = $5,
     engine_facts = $6,
     log_tail = $7,
-    lease_owner = NULL, lease_until = NULL, updated_at = $8
-WHERE id = $9 AND lease_owner = $10 AND state = 'running'
+    artifact_id = $8,
+    artifact_digest = $9,
+    lease_owner = NULL, lease_until = NULL, updated_at = $10
+WHERE id = $11 AND lease_owner = $12 AND state = 'running' AND lease_until > $10
 `
 
 type RecordBuildVerdictParams struct {
-	State         string      `json:"state"`
-	Stage         string      `json:"stage"`
-	BuildExitCode pgtype.Int4 `json:"build_exit_code"`
-	TestExitCode  pgtype.Int4 `json:"test_exit_code"`
-	FailureReason pgtype.Text `json:"failure_reason"`
-	EngineFacts   []byte      `json:"engine_facts"`
-	LogTail       pgtype.Text `json:"log_tail"`
-	Now           time.Time   `json:"now"`
-	ID            string      `json:"id"`
-	LeaseOwner    pgtype.Text `json:"lease_owner"`
+	State          string      `json:"state"`
+	Stage          string      `json:"stage"`
+	BuildExitCode  pgtype.Int4 `json:"build_exit_code"`
+	TestExitCode   pgtype.Int4 `json:"test_exit_code"`
+	FailureReason  pgtype.Text `json:"failure_reason"`
+	EngineFacts    []byte      `json:"engine_facts"`
+	LogTail        pgtype.Text `json:"log_tail"`
+	ArtifactID     pgtype.UUID `json:"artifact_id"`
+	ArtifactDigest pgtype.Text `json:"artifact_digest"`
+	Now            time.Time   `json:"now"`
+	ID             string      `json:"id"`
+	LeaseOwner     pgtype.Text `json:"lease_owner"`
 }
 
 func (q *Queries) RecordBuildVerdict(ctx context.Context, arg RecordBuildVerdictParams) (int64, error) {
@@ -270,9 +274,38 @@ func (q *Queries) RecordBuildVerdict(ctx context.Context, arg RecordBuildVerdict
 		arg.FailureReason,
 		arg.EngineFacts,
 		arg.LogTail,
+		arg.ArtifactID,
+		arg.ArtifactDigest,
 		arg.Now,
 		arg.ID,
 		arg.LeaseOwner,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const renewBuildJobLease = `-- name: RenewBuildJobLease :execrows
+UPDATE workos_runtime.build_jobs
+SET lease_until = $1
+WHERE id = $2 AND state = 'running'
+  AND lease_owner = $3 AND lease_until > $4
+`
+
+type RenewBuildJobLeaseParams struct {
+	LeaseUntil *time.Time  `json:"lease_until"`
+	ID         string      `json:"id"`
+	LeaseOwner pgtype.Text `json:"lease_owner"`
+	Now        *time.Time  `json:"now"`
+}
+
+func (q *Queries) RenewBuildJobLease(ctx context.Context, arg RenewBuildJobLeaseParams) (int64, error) {
+	result, err := q.db.Exec(ctx, renewBuildJobLease,
+		arg.LeaseUntil,
+		arg.ID,
+		arg.LeaseOwner,
+		arg.Now,
 	)
 	if err != nil {
 		return 0, err
@@ -284,7 +317,7 @@ const requeueBuildJob = `-- name: RequeueBuildJob :execrows
 UPDATE workos_runtime.build_jobs
 SET state = 'queued', stage = $1,
     lease_owner = NULL, lease_until = NULL, updated_at = $2
-WHERE id = $3 AND lease_owner = $4 AND state = 'running'
+WHERE id = $3 AND lease_owner = $4 AND state = 'running' AND lease_until > $2
 `
 
 type RequeueBuildJobParams struct {

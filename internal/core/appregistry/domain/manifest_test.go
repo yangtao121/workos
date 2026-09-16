@@ -105,6 +105,46 @@ func TestPermissionVocabularyIsCentral(t *testing.T) {
 	}
 }
 
+func TestParseContainerLaunchBundleRequiresArtifact(t *testing.T) {
+	t.Parallel()
+	image := "localhost/workos-fixture@sha256:" + strings.Repeat("a", 64)
+	source := "0198c0de-0000-7000-8000-0000000000aa"
+	digest := "sha256:" + strings.Repeat("b", 64)
+	artifactID := "0198c0de-0000-7000-8000-0000000000cc"
+	base := map[string]any{
+		"runtime": map[string]any{
+			"type": "container", "image": image, "command": []any{"/app/server"}, "port": int64(8080),
+		},
+		"resources": map[string]any{"cpuHard": 1.0, "memoryHighMb": int64(64), "memoryMaxMb": int64(96), "pidsMax": int64(32)},
+		"health":    map[string]any{"httpPath": "/health", "startupSeconds": int64(10), "restartLimit": int64(2)},
+		"build": map[string]any{
+			"sourceBundleId": source, "sourceDigest": digest, "baseImage": image,
+			"buildCommand": []any{"go", "build"}, "testCommand": []any{"go", "test"},
+			"output": map[string]any{"format": "app-bundle.v1", "directory": "dist"},
+		},
+	}
+	if _, ok := ParseContainerLaunch(canonicalOrFatal(t, base)); ok {
+		t.Fatal("bundle profile without runtime.artifact must not parse as a launch")
+	}
+	withArtifact := base
+	runtime := withArtifact["runtime"].(map[string]any)
+	runtime["artifact"] = map[string]any{"id": artifactID, "digest": digest, "format": "app-bundle.v1"}
+	launch, ok := ParseContainerLaunch(canonicalOrFatal(t, withArtifact))
+	if !ok || launch.Artifact == nil || launch.Artifact.ID != artifactID {
+		t.Fatalf("bundle profile with artifact must parse: ok=%v launch=%+v", ok, launch)
+	}
+	imageOnly := map[string]any{
+		"runtime": map[string]any{
+			"type": "container", "image": image, "command": []any{"/workos-fixture", "serve"}, "port": int64(8080),
+		},
+		"resources": map[string]any{"cpuHard": 1.0, "memoryHighMb": int64(64), "memoryMaxMb": int64(96), "pidsMax": int64(32)},
+		"health":    map[string]any{"httpPath": "/health", "startupSeconds": int64(10), "restartLimit": int64(2)},
+	}
+	if launch, ok := ParseContainerLaunch(canonicalOrFatal(t, imageOnly)); !ok || launch.Artifact != nil {
+		t.Fatalf("image-only must still parse without artifact: ok=%v %+v", ok, launch)
+	}
+}
+
 func canonicalOrFatal(t *testing.T, value map[string]any) []byte {
 	t.Helper()
 	encoded, err := CanonicalJSON(value)

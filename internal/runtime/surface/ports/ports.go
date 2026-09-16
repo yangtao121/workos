@@ -100,12 +100,15 @@ type ResolvedLaunch struct {
 	ArtifactDigest string
 	Entrypoint     string
 	// Container profile.
-	Image     string
-	Command   []string
-	Port      int64
-	Resources ContainerPolicy
-	Health    HealthPolicy
-	Route     string
+	Image                 string
+	Command               []string
+	Port                  int64
+	Resources             ContainerPolicy
+	Health                HealthPolicy
+	Route                 string
+	ReleaseArtifactID     string
+	ReleaseArtifactDigest string
+	ReleaseArtifactFormat string
 }
 
 // ResolveQuery identifies one installed instance for launch resolution.
@@ -358,6 +361,8 @@ type SurfaceWorkloadQuery struct {
 	Resources      ContainerPolicy
 	Health         HealthPolicy
 	OperationKey   string
+	ArtifactID     string
+	ArtifactDigest string
 }
 
 // WorkloadHandle is the verified launch target of a web-service session: the

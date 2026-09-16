@@ -13,8 +13,9 @@ import (
 var ErrBuildUnavailable = errors.New("app version has no verified build input")
 
 type BuildInput struct {
-	Recipe domain.BuildRecipe
-	Source domain.SourceBundle
+	Recipe         domain.BuildRecipe
+	Source         domain.SourceBundle
+	RuntimeCommand []string
 }
 
 type BuildService struct {
@@ -55,7 +56,11 @@ func (s *BuildService) Resolve(ctx context.Context, tx dbtx.Tx, owner, appID, ve
 	if source.OwnerUserID != owner || source.ID != manifest.Build.SourceBundleID || source.Digest != manifest.Build.SourceDigest {
 		return BuildInput{}, domain.ErrSourceCorrupt
 	}
-	return BuildInput{Recipe: *manifest.Build, Source: source}, nil
+	input := BuildInput{Recipe: *manifest.Build, Source: source}
+	if manifest.Container != nil {
+		input.RuntimeCommand = append([]string(nil), manifest.Container.Command...)
+	}
+	return input, nil
 }
 
 // Caller holds the task stream lock, so creation and response-loss replay serialize.

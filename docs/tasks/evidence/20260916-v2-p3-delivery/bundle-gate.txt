@@ -1,0 +1,35 @@
+=== RUN   TestP3RealDelivery
+=== RUN   TestP3RealDelivery/publish_and_manual_rollback
+    p3_delivery_test.go:163: gateway Surface: P3-VALUE-0
+    p3_delivery_test.go:188: not_found: release status is not available
+    p3_delivery_test.go:195: release state: starting
+    p3_delivery_test.go:195: release state: canary
+    p3_delivery_test.go:195: release state: published
+    p3_delivery_test.go:163: gateway Surface: P3-VALUE-42
+    p3_delivery_test.go:220: verified B workload facts: map[artifact_digest:sha256:6dadca44cb70c96c33acf8566a69a50d3d779a77a0edc0a6bea6c64617d7da81 generation:1 workload_generation:1 workload_id:01a0ab18-7f9c-7d9b-8b6e-fd5e40a343ba]
+    p3_delivery_test.go:163: gateway Surface: P3-VALUE-0
+=== RUN   TestP3RealDelivery/startup_failure_automatically_restores_A
+    p3_delivery_test.go:163: gateway Surface: P3-VALUE-0
+    p3_delivery_test.go:188: not_found: release status is not available
+    p3_delivery_test.go:195: release state: starting
+    p3_delivery_test.go:195: release state: rollback_pending
+    p3_delivery_test.go:195: release state: rolled_back
+    p3_delivery_test.go:163: gateway Surface: P3-VALUE-0
+--- PASS: TestP3RealDelivery (163.29s)
+    --- PASS: TestP3RealDelivery/publish_and_manual_rollback (84.00s)
+    --- PASS: TestP3RealDelivery/startup_failure_automatically_restores_A (79.29s)
+PASS
+ok  	github.com/yangtao121/workos/tests/integration	163.324s
+
+Running 1 test using 1 worker
+
+  ✓  1 e2e/p3-delivery.spec.ts:5:1 › browser reads the real gateway Surface A, B, then restored A (2.8s)
+
+  1 passed (4.1s)
+=== RUN   TestP3RestartReplay
+    p3_delivery_test.go:163: gateway Surface: P3-VALUE-0
+--- PASS: TestP3RestartReplay (0.06s)
+PASS
+ok  	github.com/yangtao121/workos/tests/integration	0.087s
+P3 gate evidence: /home/aquatao/workos/tmp/v2-p3-delivery.lwhkEN
+v2-p3-delivery: PASS (bundle profile)

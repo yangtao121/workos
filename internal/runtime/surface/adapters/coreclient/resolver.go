@@ -115,6 +115,11 @@ func (r *Resolver) ResolveSurfaceLaunch(ctx context.Context, query ports.Resolve
 			}
 		}
 		resolved.Route = container.GetSurfaceRoute()
+		if binding := container.GetArtifact(); binding != nil {
+			resolved.ReleaseArtifactID = binding.GetArtifactId()
+			resolved.ReleaseArtifactDigest = binding.GetArtifactDigest()
+			resolved.ReleaseArtifactFormat = binding.GetArtifactFormat()
+		}
 		return resolved, nil
 	default:
 		return ports.ResolvedLaunch{}, fmt.Errorf("core surface resolver returned no launch descriptor")

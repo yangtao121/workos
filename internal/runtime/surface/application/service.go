@@ -335,6 +335,7 @@ func (s *Service) ensureWorkload(ctx context.Context, command CreateCommand, res
 		Image: resolved.Image, Command: resolved.Command, Port: resolved.Port,
 		Resources: resolved.Resources, Health: resolved.Health,
 		OperationKey: "surface-create:" + command.IdempotencyKey,
+		ArtifactID:   resolved.ReleaseArtifactID, ArtifactDigest: resolved.ReleaseArtifactDigest,
 	})
 	if err != nil {
 		switch {

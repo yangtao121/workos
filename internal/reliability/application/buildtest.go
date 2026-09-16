@@ -18,19 +18,21 @@ var ErrBuildPending = errors.New("repair build verdict is pending")
 // CandidateFacts is one completed repair task's immutable build input and
 // candidate source as read from Core's private RepairCandidateService.
 type CandidateFacts struct {
-	TaskID         string
-	IncidentID     string
-	ProjectID      string
-	OwnerUserID    string
-	AppInstanceID  string
-	AppID          string
-	BaseVersion    string
-	ManifestDigest string
-	SourceBundleID string
-	SourceDigest   string
-	BaseImage      string
-	BuildCommand   []string
-	TestCommand    []string
+	TaskID          string
+	IncidentID      string
+	ProjectID       string
+	OwnerUserID     string
+	AppInstanceID   string
+	AppID           string
+	BaseVersion     string
+	ManifestDigest  string
+	SourceBundleID  string
+	SourceDigest    string
+	BaseImage       string
+	BuildCommand    []string
+	TestCommand     []string
+	OutputDirectory string
+	RuntimeCommand  []string
 	// Files carries the bounded candidate source (ADR-0024 limits).
 	Files []CandidateFile
 }
@@ -44,11 +46,16 @@ type CandidateFile struct {
 
 // BuildTestVerdict is the bounded projection of one Runtime build job.
 type BuildTestVerdict struct {
-	JobID         string
-	State         string
-	Stage         string
-	FailureReason string
-	SourceDigest  string
+	JobID          string
+	State          string
+	Stage          string
+	FailureReason  string
+	SourceDigest   string
+	ArtifactID     string
+	ArtifactDigest string
+	ArtifactOrigin string
+	ArtifactState  string
+	ArtifactFormat string
 }
 
 // RegisteredVersion is Core's staged registration result.
@@ -133,6 +140,11 @@ func (c *BuildCoordinator) HandleRepairCompleted(ctx context.Context, row Repair
 	if verdict.SourceDigest != facts.SourceDigest {
 		return errors.New("repair build verdict source drifted")
 	}
+	if facts.OutputDirectory != "" {
+		if verdict.ArtifactState != "ready" || verdict.ArtifactDigest == "" || verdict.ArtifactID == "" || verdict.ArtifactFormat != "app-bundle.v1" {
+			return nil
+		}
+	}
 	registered, err := c.versions.Register(ctx, row.OwnerUserID, row.TaskID, row.ProjectID, row.AppInstanceID, jobID, facts.SourceDigest)
 	if err != nil {
 		return err
@@ -142,5 +154,7 @@ func (c *BuildCoordinator) HandleRepairCompleted(ctx context.Context, row Repair
 		InstallationID: row.AppInstanceID, TargetVersion: registered.Version,
 		ExpectedRevision: registered.ProjectRevision,
 		TaskID:           row.TaskID, ManifestDigest: registered.ManifestDigest,
+		BaseVersion: registered.BaseVersion,
+		ArtifactID:  verdict.ArtifactID, ArtifactDigest: verdict.ArtifactDigest,
 	})
 }

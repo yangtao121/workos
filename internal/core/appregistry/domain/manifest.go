@@ -267,12 +267,21 @@ type ContainerHealthPolicy struct {
 // exact digest-pinned image reference, the bounded argv, the container port,
 // and the requested resource/health policies. The digest is part of the
 // canonical manifest bytes, so the manifest digest covers every field here.
+// ReleaseArtifactRef is the exact app-bundle.v1 identity a bundle-profile
+// container version pins (ADR-0033). Nil on legacy image-only manifests.
+type ReleaseArtifactRef struct {
+	ID     string
+	Digest string
+	Format string
+}
+
 type ContainerLaunch struct {
 	Image     string
 	Command   []string
 	Port      int64
 	Resources ContainerResourcePolicy
 	Health    ContainerHealthPolicy
+	Artifact  *ReleaseArtifactRef
 }
 
 // ParseContainerLaunch extracts the container launch descriptor from canonical
@@ -283,10 +292,15 @@ type ContainerLaunch struct {
 func ParseContainerLaunch(canonical []byte) (ContainerLaunch, bool) {
 	var document struct {
 		Runtime struct {
-			Type    string   `json:"type"`
-			Image   string   `json:"image"`
-			Command []string `json:"command"`
-			Port    int64    `json:"port"`
+			Type     string   `json:"type"`
+			Image    string   `json:"image"`
+			Command  []string `json:"command"`
+			Port     int64    `json:"port"`
+			Artifact *struct {
+				ID     string `json:"id"`
+				Digest string `json:"digest"`
+				Format string `json:"format"`
+			} `json:"artifact"`
 		} `json:"runtime"`
 		Resources struct {
 			CPUHardCores float64 `json:"cpuHard"`
@@ -329,13 +343,34 @@ func ParseContainerLaunch(canonical []byte) (ContainerLaunch, bool) {
 	if !ValidContainerResourcePolicy(resources) || !ValidContainerHealthPolicy(health) {
 		return ContainerLaunch{}, false
 	}
-	return ContainerLaunch{
+	launch := ContainerLaunch{
 		Image:     document.Runtime.Image,
 		Command:   document.Runtime.Command,
 		Port:      document.Runtime.Port,
 		Resources: resources,
 		Health:    health,
-	}, true
+	}
+	if document.Runtime.Artifact != nil {
+		if !ValidWebBundleArtifactID(document.Runtime.Artifact.ID) ||
+			!ValidWebBundleArtifactDigest(document.Runtime.Artifact.Digest) ||
+			document.Runtime.Artifact.Format != "app-bundle.v1" {
+			return ContainerLaunch{}, false
+		}
+		launch.Artifact = &ReleaseArtifactRef{
+			ID: document.Runtime.Artifact.ID, Digest: document.Runtime.Artifact.Digest,
+			Format: document.Runtime.Artifact.Format,
+		}
+	}
+	recipe, ok := ParseBuildRecipe(canonical)
+	if !ok {
+		return ContainerLaunch{}, false
+	}
+	if recipe != nil && recipe.Output != nil && launch.Artifact == nil {
+		// Bundle-profile manifests never resolve as image-only: missing
+		// runtime.artifact is a corrupt stored fact, not a launch.
+		return ContainerLaunch{}, false
+	}
+	return launch, true
 }
 
 // Container policy bounds. These mirror the validator's cross-field rules and

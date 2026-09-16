@@ -1,0 +1,34 @@
+2026-09-16 UTC: make check exited 0.
+Executed with the repository Docker toolchains through workos-make:local.
+GO_RUN additionally set GOCACHE=/workspace/tmp/go-build-cache; all checks remained enabled.
+Proto format/lint + sqlc vet: PASS.
+Go format/vet/test ./...: PASS.
+TypeScript architecture + ESLint + Prettier + workspace checks + desktop build: PASS.
+Generated status check: PASS.
+
+Architecture check passed for 13 TypeScript workspaces.
+All matched files use Prettier code style!
+clients/window-manager check:  Test Files  1 passed (1)
+clients/window-manager check:       Tests  10 passed (10)
+clients/adaptive-shell check:  Test Files  6 passed (6)
+clients/adaptive-shell check:       Tests  40 passed (40)
+clients/device-auth check:  Test Files  5 passed (5)
+clients/device-auth check:       Tests  10 passed (10)
+sdk/surface-sdk check:  Test Files  1 passed (1)
+sdk/surface-sdk check:       Tests  5 passed (5)
+sdk/agent-sdk check:  Test Files  1 passed (1)
+sdk/agent-sdk check:       Tests  2 passed (2)
+sdk/app-sdk check:  Test Files  1 passed (1)
+sdk/app-sdk check:       Tests  16 passed (16)
+clients/app-host check:  Test Files  1 passed (1)
+clients/app-host check:       Tests  35 passed (35)
+apps/mobile-shell check:  Test Files  4 passed (4)
+apps/mobile-shell check:       Tests  8 passed (8)
+apps/desktop-web check:  Test Files  25 passed (25)
+apps/desktop-web check:       Tests  168 passed (168)
+✓ built in 635ms
+docker run --rm --user 1000:1000 -e HOME=/tmp -e COREPACK_NPM_REGISTRY=https://registry.npmmirror.com -e npm_config_registry=https://registry.npmmirror.com -v /home/aquatao/workos:/workspace -w /workspace node:24.19.0-bookworm-slim node tools/status/render.mjs --check
+
+make generate comparison: 191 generated files unchanged.
+buf breaking --against .git#ref=main: exit 0 (baseline 3820447).
+git diff --check: exit 0.

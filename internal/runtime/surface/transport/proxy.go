@@ -224,7 +224,11 @@ func validProxyTarget(target ports.ProxyTarget) bool {
 		return false
 	}
 	host, port, err := net.SplitHostPort(target.Endpoint)
-	if err != nil || host != "127.0.0.1" || port == "" || port[0] == '0' {
+	if err != nil || host == "" || port == "" || port[0] == '0' {
+		return false
+	}
+	ip := net.ParseIP(host)
+	if ip == nil || ip.To4() == nil || (!ip.IsPrivate() && !ip.IsLoopback()) {
 		return false
 	}
 	for index := range port {

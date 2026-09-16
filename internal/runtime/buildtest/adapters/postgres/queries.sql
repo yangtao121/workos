@@ -34,23 +34,31 @@ SET state = sqlc.arg(state), stage = sqlc.arg(stage),
     failure_reason = sqlc.arg(failure_reason),
     engine_facts = sqlc.arg(engine_facts),
     log_tail = sqlc.arg(log_tail),
+    artifact_id = sqlc.arg(artifact_id),
+    artifact_digest = sqlc.arg(artifact_digest),
     lease_owner = NULL, lease_until = NULL, updated_at = sqlc.arg(now)
-WHERE id = sqlc.arg(id) AND lease_owner = sqlc.arg(lease_owner) AND state = 'running';
+WHERE id = sqlc.arg(id) AND lease_owner = sqlc.arg(lease_owner) AND state = 'running' AND lease_until > sqlc.arg(now);
 
 -- name: RequeueBuildJob :execrows
 UPDATE workos_runtime.build_jobs
 SET state = 'queued', stage = sqlc.arg(stage),
     lease_owner = NULL, lease_until = NULL, updated_at = sqlc.arg(now)
-WHERE id = sqlc.arg(id) AND lease_owner = sqlc.arg(lease_owner) AND state = 'running';
+WHERE id = sqlc.arg(id) AND lease_owner = sqlc.arg(lease_owner) AND state = 'running' AND lease_until > sqlc.arg(now);
 
 -- name: FailBuildJob :execrows
 UPDATE workos_runtime.build_jobs
 SET state = 'failed', stage = sqlc.arg(stage), failure_reason = 'engine-failed',
     lease_owner = NULL, lease_until = NULL, updated_at = sqlc.arg(now)
-WHERE id = sqlc.arg(id) AND lease_owner = sqlc.arg(lease_owner) AND state = 'running';
+WHERE id = sqlc.arg(id) AND lease_owner = sqlc.arg(lease_owner) AND state = 'running' AND lease_until > sqlc.arg(now);
 
 -- name: CancelBuildJob :execrows
 UPDATE workos_runtime.build_jobs
 SET state = 'cancelled', failure_reason = 'cancelled',
     lease_owner = NULL, lease_until = NULL, updated_at = sqlc.arg(now)
 WHERE task_id = sqlc.arg(task_id) AND state IN ('queued', 'running');
+
+-- name: RenewBuildJobLease :execrows
+UPDATE workos_runtime.build_jobs
+SET lease_until = sqlc.arg(lease_until)
+WHERE id = sqlc.arg(id) AND state = 'running'
+  AND lease_owner = sqlc.arg(lease_owner) AND lease_until > sqlc.arg(now);
