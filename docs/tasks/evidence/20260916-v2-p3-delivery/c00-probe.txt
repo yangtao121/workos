@@ -1,0 +1,39 @@
+=== 1. versions and pinned base image ===
+docker=29.7.2/29.7.2 kernel=7.0.0-31-generic cgroup_fs=cgroup2fs
+base_image=golang@sha256:e8c859f5632dcfde7b32d2012b4351728f6437930887c2f6a91ea242459e5514
+PASS base image pinned by real repo digest
+=== 2. pull=never fail closed ===
+PASS nonexistent image refused with --pull=never
+=== 3. internal network reachability model ===
+PASS internal network created: workos-p3-probe-20260916133551-43552
+PASS fixture servers built offline inside the pinned image
+container_ip=172.18.0.2
+PASS container received a bridge IP on the internal network
+PASS host netns reaches app by bridge IP: WORKOS-P3-PROBE-A
+PASS health endpoint served from container
+PASS container egress kernel-unreachable (bash /dev/tcp 1.1.1.1:80 failed)
+PASS container egress blocked for second external IP
+PASS external DNS resolution fails from internal network
+NOTE port publishing is unsupported on internal networks (docker silently ignores -p); the app endpoint is the container bridge IP reachable only from the host netns
+=== 4. read-only /app + package swap changes behavior ===
+PASS /app mount is read-only inside the container
+inspect image: sha256:e8c859f5632dcfde7b32d2012b4351728f6437930887c2f6a91ea242459e5514
+inspect mounts: /tmp/workos-p3-probe.4sCVgJ/bundle-a:/app:false 
+inspect security: ["no-new-privileges"] capdrop=["ALL"] readonly=true
+PASS bundle B served: WORKOS-P3-PROBE-B (behavior differs by bundle content)
+=== 5. cgroup v2 readback ===
+memory.max=268435456 memory.high=max pids.max=64 cpu.max='150000 100000'
+PASS memory.max enforced (256m)
+PASS pids.max enforced (64)
+PASS cpu.max enforced (1.5 cores)
+NOTE memory.high NOT settable via --memory-reservation (reported max); soft high-water mark unavailable on this driver
+=== 6. capability drop / no-new-privs / read-only rootfs ===
+CapEff:	0000000000000000
+NoNewPrivs:	1
+PASS all capabilities dropped
+PASS no-new-privileges active
+PASS read-only rootfs enforced
+=== 7. label-based ownership survives client restart ===
+PASS labeled container discovered by fresh client (1)
+=== summary ===
+C00 PROBE: ALL CHECKS PASSED
