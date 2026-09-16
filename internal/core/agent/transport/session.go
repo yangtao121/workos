@@ -50,6 +50,10 @@ func (d *sessionTaskDispatcher) Cancel(ctx context.Context, ownerUserID, taskID,
 	return task, err
 }
 
+func (d *sessionTaskDispatcher) Get(ctx context.Context, owner, taskID string) (domain.Task, error) {
+	return d.service.Get(ctx, owner, taskID)
+}
+
 // SessionSnapshotSource derives the immutable binding facts a new session
 // pins: the effective provider (project binding or global default) and the
 // project's active workspace binding.
@@ -113,9 +117,8 @@ func (h *SessionHandler) CreateSession(ctx context.Context, req *connect.Request
 	if err != nil {
 		return nil, sessionError(err)
 	}
-	if req.Msg.GetWorkspaceBindingId() != "" {
-		snapshot.WorkspaceBindingID = req.Msg.GetWorkspaceBindingId()
-		snapshot.WorkspaceBindingRevision = 0
+	if requested := req.Msg.GetWorkspaceBindingId(); requested != "" && requested != snapshot.WorkspaceBindingID {
+		return nil, connect.NewError(connect.CodeFailedPrecondition, errors.New("workspace binding is not active for this project"))
 	}
 	session, err := h.service.Create(ctx, owner.UserID, req.Msg.GetProjectId(), req.Msg.GetIdempotencyKey(), snapshot)
 	if err != nil {

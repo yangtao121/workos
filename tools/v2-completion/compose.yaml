@@ -1,0 +1,135 @@
+x-environment: &environment
+  PATH: /fixture/bin:/usr/local/bin:/usr/bin:/bin
+  WORKOS_DATABASE_URL: ${WORKOS_V2_DATABASE_URL:?}
+  WORKOS_OWNER_ID: 01999999-9999-7999-8999-000000000b01
+  WORKOS_DEVICE_ID: 01999999-9999-7999-8999-000000000b02
+  WORKOS_DEV_AUTH_BYPASS: "true"
+  WORKOS_CORE_URL: http://127.0.0.1:${WORKOS_V2_CORE_PORT:?}
+  WORKOS_HARNESS_URL: http://127.0.0.1:${WORKOS_V2_HARNESS_PORT:?}
+  WORKOS_RUNTIME_URL: http://127.0.0.1:${WORKOS_V2_RUNTIME_PORT:?}
+  WORKOS_RELIABILITY_URL: http://127.0.0.1:${WORKOS_V2_RELIABILITY_PORT:?}
+  WORKOS_INDEXER_URL: http://127.0.0.1:${WORKOS_V2_INDEXER_PORT:?}
+x-service: &service
+  image: workos:dev
+  user: ${WORKOS_V2_USER:?}
+  network_mode: host
+  restart: "no"
+  volumes:
+    - ${WORKOS_V2_BIN:?}:/fixture/bin:ro
+  depends_on:
+    bootstrap:
+      condition: service_completed_successfully
+services:
+  bootstrap:
+    image: workos:dev
+    user: ${WORKOS_V2_USER:?}
+    network_mode: host
+    environment: *environment
+    command:
+      - /bin/sh
+      - -c
+      - workosctl bootstrap && workos-dev-fixture -core-dir /fixture/core-execution -harness-dir /fixture/harness-execution -vault-dir /fixture/vault
+    volumes:
+      - ${WORKOS_V2_BIN:?}:/fixture/bin:ro
+      - ${WORKOS_V2_DIR:?}/core-execution:/fixture/core-execution
+      - ${WORKOS_V2_DIR:?}/harness-execution:/fixture/harness-execution
+      - ${WORKOS_V2_DIR:?}/vault:/fixture/vault
+  core:
+    <<: *service
+    command: [workos-core]
+    environment:
+      <<: *environment
+      WORKOS_HTTP_ADDRESS: 127.0.0.1:${WORKOS_V2_CORE_PORT:?}
+      WORKOS_CREDENTIAL_MASTER_KEY_FILE: /fixture/vault/vault-master.key
+      WORKOS_CREDENTIAL_ADMIN_SOCKET: /run/workos/credential-admin.sock
+      WORKOS_CORE_EXECUTION_ADDRESS: 127.0.0.1:${WORKOS_V2_EXECUTION_PORT:?}
+      WORKOS_CORE_EXECUTION_CA_FILE: /fixture/execution/ca.crt
+      WORKOS_CORE_EXECUTION_CERT_FILE: /fixture/execution/core.crt
+      WORKOS_CORE_EXECUTION_KEY_FILE: /fixture/execution/core.key
+    volumes:
+      - ${WORKOS_V2_BIN:?}:/fixture/bin:ro
+      - ${WORKOS_V2_DIR:?}/run:/run/workos
+      - ${WORKOS_V2_DIR:?}/core-execution:/fixture/execution:ro
+      - ${WORKOS_V2_DIR:?}/vault:/fixture/vault:ro
+  harness:
+    <<: *service
+    command: [harness-host]
+    environment:
+      <<: *environment
+      WORKOS_HTTP_ADDRESS: 127.0.0.1:${WORKOS_V2_HARNESS_PORT:?}
+      WORKOS_CORE_EXECUTION_URL: https://127.0.0.1:${WORKOS_V2_EXECUTION_PORT:?}
+      WORKOS_HARNESS_EXECUTION_CA_FILE: /fixture/execution/ca.crt
+      WORKOS_HARNESS_EXECUTION_CERT_FILE: /fixture/execution/harness.crt
+      WORKOS_HARNESS_EXECUTION_KEY_FILE: /fixture/execution/harness.key
+      WORKOS_DEEPSEEK_ENABLED: "true"
+      WORKOS_DEEPSEEK_BASE_URL: http://127.0.0.1:${WORKOS_V2_MODEL_PORT:?}
+      WORKOS_HARNESS_SESSION_STATE_ROOT: /fixture/sessions
+    volumes:
+      - ${WORKOS_V2_BIN:?}:/fixture/bin:ro
+      - ${WORKOS_V2_DIR:?}/harness-execution:/fixture/execution:ro
+      - ${WORKOS_V2_DIR:?}/sessions:/fixture/sessions
+      - ../../deploy/harness/workos-tools.mjs:/usr/local/libexec/workos/workos-tools.mjs:ro
+      - ../../deploy/harness/workos-session.mjs:/usr/local/libexec/workos/workos-session.mjs:ro
+      - ../../deploy/harness/workos-workspace.mjs:/usr/local/libexec/workos/workos-workspace.mjs:ro
+  runtime:
+    <<: *service
+    image: workos-native-runtime:dev
+    group_add: ["${WORKOS_V2_DOCKER_GID:?}"]
+    command: [runtime-host]
+    environment:
+      <<: *environment
+      WORKOS_HTTP_ADDRESS: 127.0.0.1:${WORKOS_V2_RUNTIME_PORT:?}
+      WORKOS_RUNTIME_PTY_SHELL: /bin/bash
+      WORKOS_RUNTIME_WORKSPACE_MOUNTS: ${WORKOS_V2_WORKSPACE_MOUNTS:-}
+      WORKOS_WORKSPACE_DOCKER_SOCKET: /var/run/docker.sock
+      WORKOS_WORKSPACE_EXECUTION_IMAGE: workos-workspace-runtime:dev
+      WORKOS_RUNTIME_CONTAINER_NAMESPACE: ${WORKOS_V2_NAMESPACE:?}
+      WORKOS_PREVIEW_BRIDGE_ROOT: ${WORKOS_V2_DIR:?}/bridges
+      WORKOS_RUNTIME_NATIVE_DISPLAY: /usr/bin/Xvfb
+      WORKOS_RUNTIME_NATIVE_CLIENT: /usr/bin/xterm -geometry 96x32+0+0
+      WORKOS_RUNTIME_NATIVE_FFMPEG: /usr/bin/ffmpeg
+      WORKOS_RUNTIME_NATIVE_XDOTOOL: /usr/bin/xdotool
+      WORKOS_RUNTIME_NATIVE_SCRATCH: /var/workos-native
+      WORKOS_NATIVE_X11_HOST_DIRECTORY: ${WORKOS_V2_DIR:?}/x11
+    volumes:
+      - ${WORKOS_V2_BIN:?}:/fixture/bin:ro
+      - ${WORKOS_V2_DIR:?}/run:/run/workos
+      - ${WORKOS_V2_DIR:?}/project:${WORKOS_V2_DIR:?}/project
+      - ${WORKOS_V2_DIR:?}/bridges:${WORKOS_V2_DIR:?}/bridges
+      - ${WORKOS_V2_DIR:?}/x11:/tmp/.X11-unix
+      - /var/run/docker.sock:/var/run/docker.sock
+  gateway:
+    <<: *service
+    command: [workos-gateway]
+    environment:
+      <<: *environment
+      WORKOS_HTTP_ADDRESS: 127.0.0.1:${WORKOS_V2_GATEWAY_PORT:?}
+      WORKOS_RUNTIME_URL: http://127.0.0.1:${WORKOS_V2_RUNTIME_PORT:?}
+      WORKOS_STATIC_DIR: /srv/workos/desktop
+    volumes:
+      - ${WORKOS_V2_BIN:?}:/fixture/bin:ro
+      - ../../apps/desktop-web/dist:/srv/workos/desktop:ro
+  reliability:
+    <<: *service
+    command: [reliability-host]
+    environment:
+      <<: *environment
+      WORKOS_HTTP_ADDRESS: 127.0.0.1:${WORKOS_V2_RELIABILITY_PORT:?}
+  indexer:
+    <<: *service
+    command: [indexer]
+    environment:
+      <<: *environment
+      WORKOS_HTTP_ADDRESS: 127.0.0.1:${WORKOS_V2_INDEXER_PORT:?}
+      WORKOS_INDEX_ADMIN_SOCKET: /fixture/indexer-run/admin.sock
+      WORKOS_INDEX_PAGE_TOKEN_KEY: v2-fixture-pagination-key-only-0123456789abcdef
+    volumes:
+      - ${WORKOS_V2_BIN:?}:/fixture/bin:ro
+      - ${WORKOS_V2_DIR:?}/indexer-run:/fixture/indexer-run
+  model:
+    <<: *service
+    command: [deepseek-fixture]
+    environment:
+      PATH: /fixture/bin:/usr/local/bin:/usr/bin:/bin
+      WORKOS_DEEPSEEK_FIXTURE_ADDRESS: 127.0.0.1:${WORKOS_V2_MODEL_PORT:?}
+      WORKOS_DEEPSEEK_FIXTURE_KEY: workos-fixture-only-not-a-real-key

@@ -158,10 +158,54 @@ func (q *Queries) ClaimAgentSessionExecution(ctx context.Context, arg ClaimAgent
 	return result.RowsAffected(), nil
 }
 
+const claimSessionRecoveryBatch = `-- name: ClaimSessionRecoveryBatch :many
+WITH candidates AS (
+ SELECT s.session_id FROM workos_core.agent_sessions AS s
+ WHERE s.active_task_id IS NOT NULL OR (s.state = 'active' AND EXISTS (
+   SELECT 1 FROM workos_core.agent_session_inputs AS i
+   WHERE i.session_id = s.session_id AND i.state = 'accepted'))
+ ORDER BY s.recovery_checked_at, s.session_id
+ LIMIT $1 FOR UPDATE SKIP LOCKED
+)
+UPDATE workos_core.agent_sessions AS s SET recovery_checked_at = $2
+FROM candidates AS c WHERE s.session_id = c.session_id
+RETURNING s.session_id, s.owner_user_id
+`
+
+type ClaimSessionRecoveryBatchParams struct {
+	Limit             int32              `json:"limit"`
+	RecoveryCheckedAt pgtype.Timestamptz `json:"recovery_checked_at"`
+}
+
+type ClaimSessionRecoveryBatchRow struct {
+	SessionID   string `json:"session_id"`
+	OwnerUserID string `json:"owner_user_id"`
+}
+
+func (q *Queries) ClaimSessionRecoveryBatch(ctx context.Context, arg ClaimSessionRecoveryBatchParams) ([]ClaimSessionRecoveryBatchRow, error) {
+	rows, err := q.db.Query(ctx, claimSessionRecoveryBatch, arg.Limit, arg.RecoveryCheckedAt)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ClaimSessionRecoveryBatchRow
+	for rows.Next() {
+		var i ClaimSessionRecoveryBatchRow
+		if err := rows.Scan(&i.SessionID, &i.OwnerUserID); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const closeAgentSession = `-- name: CloseAgentSession :execrows
 UPDATE workos_core.agent_sessions
 SET state = 'closed', closed_at = $3, updated_at = $3
-WHERE owner_user_id = $1 AND session_id = $2 AND state = 'active'
+WHERE owner_user_id = $1 AND session_id = $2 AND state <> 'closed'
 `
 
 type CloseAgentSessionParams struct {
@@ -209,6 +253,31 @@ func (q *Queries) DecideAgentAppApproval(ctx context.Context, arg DecideAgentApp
 	return result.RowsAffected(), nil
 }
 
+const decideExecutionInteraction = `-- name: DecideExecutionInteraction :exec
+UPDATE workos_core.agent_execution_interactions SET state=$1,answers=$2,decision_key=$3,decision_digest=$4 WHERE owner_user_id=$5::uuid AND id=$6::uuid
+`
+
+type DecideExecutionInteractionParams struct {
+	State          string          `json:"state"`
+	Answers        json.RawMessage `json:"answers"`
+	DecisionKey    string          `json:"decision_key"`
+	DecisionDigest string          `json:"decision_digest"`
+	OwnerUserID    string          `json:"owner_user_id"`
+	ID             string          `json:"id"`
+}
+
+func (q *Queries) DecideExecutionInteraction(ctx context.Context, arg DecideExecutionInteractionParams) error {
+	_, err := q.db.Exec(ctx, decideExecutionInteraction,
+		arg.State,
+		arg.Answers,
+		arg.DecisionKey,
+		arg.DecisionDigest,
+		arg.OwnerUserID,
+		arg.ID,
+	)
+	return err
+}
+
 const dispatchAgentSessionInput = `-- name: DispatchAgentSessionInput :execrows
 UPDATE workos_core.agent_session_inputs
 SET state = 'dispatched', task_id = $2::uuid, updated_at = $3
@@ -227,6 +296,20 @@ func (q *Queries) DispatchAgentSessionInput(ctx context.Context, arg DispatchAge
 		return 0, err
 	}
 	return result.RowsAffected(), nil
+}
+
+const expireExecutionInteraction = `-- name: ExpireExecutionInteraction :exec
+UPDATE workos_core.agent_execution_interactions SET state='expired' WHERE owner_user_id=$1::uuid AND id=$2::uuid AND state='pending'
+`
+
+type ExpireExecutionInteractionParams struct {
+	OwnerUserID string `json:"owner_user_id"`
+	ID          string `json:"id"`
+}
+
+func (q *Queries) ExpireExecutionInteraction(ctx context.Context, arg ExpireExecutionInteractionParams) error {
+	_, err := q.db.Exec(ctx, expireExecutionInteraction, arg.OwnerUserID, arg.ID)
+	return err
 }
 
 const expirePendingApprovals = `-- name: ExpirePendingApprovals :many
@@ -654,7 +737,7 @@ func (q *Queries) GetAgentAppTaskRequest(ctx context.Context, arg GetAgentAppTas
 const getAgentSession = `-- name: GetAgentSession :one
 SELECT session_id, owner_user_id, project_id, idempotency_key, workspace_binding_id,
        workspace_binding_revision, provider_id, profile_id, state, native_session_ref,
-       active_task_id, input_sequence, event_sequence, created_at, updated_at, closed_at
+       active_task_id, input_sequence, event_sequence, created_at, updated_at, closed_at, recovery_checked_at
 FROM workos_core.agent_sessions
 WHERE owner_user_id = $1 AND session_id = $2
 `
@@ -684,6 +767,7 @@ func (q *Queries) GetAgentSession(ctx context.Context, arg GetAgentSessionParams
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.ClosedAt,
+		&i.RecoveryCheckedAt,
 	)
 	return i, err
 }
@@ -691,7 +775,7 @@ func (q *Queries) GetAgentSession(ctx context.Context, arg GetAgentSessionParams
 const getAgentSessionByIdempotency = `-- name: GetAgentSessionByIdempotency :one
 SELECT session_id, owner_user_id, project_id, idempotency_key, workspace_binding_id,
        workspace_binding_revision, provider_id, profile_id, state, native_session_ref,
-       active_task_id, input_sequence, event_sequence, created_at, updated_at, closed_at
+       active_task_id, input_sequence, event_sequence, created_at, updated_at, closed_at, recovery_checked_at
 FROM workos_core.agent_sessions
 WHERE owner_user_id = $1 AND idempotency_key = $2
 `
@@ -721,6 +805,7 @@ func (q *Queries) GetAgentSessionByIdempotency(ctx context.Context, arg GetAgent
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.ClosedAt,
+		&i.RecoveryCheckedAt,
 	)
 	return i, err
 }
@@ -999,6 +1084,99 @@ func (q *Queries) GetAgentTaskUnscoped(ctx context.Context, id string) (WorkosCo
 	return i, err
 }
 
+const getExecutionInteraction = `-- name: GetExecutionInteraction :one
+SELECT id, task_id, owner_user_id, project_id, lease_id, worker_id, request_key, questions, answers, state, decision_key, decision_digest, created_at, expires_at FROM workos_core.agent_execution_interactions WHERE owner_user_id=$1::uuid AND id=$2::uuid
+`
+
+type GetExecutionInteractionParams struct {
+	OwnerUserID string `json:"owner_user_id"`
+	ID          string `json:"id"`
+}
+
+func (q *Queries) GetExecutionInteraction(ctx context.Context, arg GetExecutionInteractionParams) (WorkosCoreAgentExecutionInteraction, error) {
+	row := q.db.QueryRow(ctx, getExecutionInteraction, arg.OwnerUserID, arg.ID)
+	var i WorkosCoreAgentExecutionInteraction
+	err := row.Scan(
+		&i.ID,
+		&i.TaskID,
+		&i.OwnerUserID,
+		&i.ProjectID,
+		&i.LeaseID,
+		&i.WorkerID,
+		&i.RequestKey,
+		&i.Questions,
+		&i.Answers,
+		&i.State,
+		&i.DecisionKey,
+		&i.DecisionDigest,
+		&i.CreatedAt,
+		&i.ExpiresAt,
+	)
+	return i, err
+}
+
+const getExecutionInteractionByKey = `-- name: GetExecutionInteractionByKey :one
+SELECT id, task_id, owner_user_id, project_id, lease_id, worker_id, request_key, questions, answers, state, decision_key, decision_digest, created_at, expires_at FROM workos_core.agent_execution_interactions WHERE task_id=$1::uuid AND request_key=$2
+`
+
+type GetExecutionInteractionByKeyParams struct {
+	TaskID     string `json:"task_id"`
+	RequestKey string `json:"request_key"`
+}
+
+func (q *Queries) GetExecutionInteractionByKey(ctx context.Context, arg GetExecutionInteractionByKeyParams) (WorkosCoreAgentExecutionInteraction, error) {
+	row := q.db.QueryRow(ctx, getExecutionInteractionByKey, arg.TaskID, arg.RequestKey)
+	var i WorkosCoreAgentExecutionInteraction
+	err := row.Scan(
+		&i.ID,
+		&i.TaskID,
+		&i.OwnerUserID,
+		&i.ProjectID,
+		&i.LeaseID,
+		&i.WorkerID,
+		&i.RequestKey,
+		&i.Questions,
+		&i.Answers,
+		&i.State,
+		&i.DecisionKey,
+		&i.DecisionDigest,
+		&i.CreatedAt,
+		&i.ExpiresAt,
+	)
+	return i, err
+}
+
+const getSessionInputByTask = `-- name: GetSessionInputByTask :one
+SELECT input_id, session_id, owner_user_id, client_input_id, input_text, request_digest,
+       state, task_id, sequence, result_summary, created_at, updated_at
+FROM workos_core.agent_session_inputs WHERE session_id = $1 AND task_id = $2
+`
+
+type GetSessionInputByTaskParams struct {
+	SessionID string      `json:"session_id"`
+	TaskID    pgtype.UUID `json:"task_id"`
+}
+
+func (q *Queries) GetSessionInputByTask(ctx context.Context, arg GetSessionInputByTaskParams) (WorkosCoreAgentSessionInput, error) {
+	row := q.db.QueryRow(ctx, getSessionInputByTask, arg.SessionID, arg.TaskID)
+	var i WorkosCoreAgentSessionInput
+	err := row.Scan(
+		&i.InputID,
+		&i.SessionID,
+		&i.OwnerUserID,
+		&i.ClientInputID,
+		&i.InputText,
+		&i.RequestDigest,
+		&i.State,
+		&i.TaskID,
+		&i.Sequence,
+		&i.ResultSummary,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const getTaskLeaseExpiry = `-- name: GetTaskLeaseExpiry :one
 SELECT o.locked_until
 FROM workos_events.outbox AS o
@@ -1172,11 +1350,15 @@ func (q *Queries) InsertAgentAppTaskRequest(ctx context.Context, arg InsertAgent
 }
 
 const insertAgentSession = `-- name: InsertAgentSession :execrows
-INSERT INTO workos_core.agent_sessions (
+WITH inserted AS (
+ INSERT INTO workos_core.agent_sessions (
     session_id, owner_user_id, project_id, idempotency_key, workspace_binding_id,
-    workspace_binding_revision, provider_id, profile_id, native_session_ref, state, created_at, updated_at
-) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'active', $10, $10)
-ON CONFLICT (owner_user_id, idempotency_key) DO NOTHING
+    workspace_binding_revision, provider_id, profile_id, native_session_ref, state, created_at, updated_at, event_sequence
+ ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'active', $10, $10, 1)
+ ON CONFLICT (owner_user_id, idempotency_key) DO NOTHING RETURNING session_id, created_at
+)
+INSERT INTO workos_core.agent_session_events(session_id,sequence,event_type,payload,occurred_at)
+SELECT session_id,1,'state_changed','{"previous":"","current":"active","reason":"created"}'::jsonb,created_at FROM inserted
 `
 
 type InsertAgentSessionParams struct {
@@ -1322,6 +1504,43 @@ func (q *Queries) InsertAgentTaskCredential(ctx context.Context, arg InsertAgent
 		arg.CreatedAt,
 	)
 	return err
+}
+
+const insertExecutionInteraction = `-- name: InsertExecutionInteraction :execrows
+INSERT INTO workos_core.agent_execution_interactions(id,task_id,owner_user_id,project_id,lease_id,worker_id,request_key,questions,state,created_at,expires_at)
+VALUES($1::uuid,$2::uuid,$3::uuid,$4::uuid,$5::uuid,$6,$7,$8,'pending',$9,$10) ON CONFLICT DO NOTHING
+`
+
+type InsertExecutionInteractionParams struct {
+	ID          string             `json:"id"`
+	TaskID      string             `json:"task_id"`
+	OwnerUserID string             `json:"owner_user_id"`
+	ProjectID   string             `json:"project_id"`
+	LeaseID     string             `json:"lease_id"`
+	WorkerID    string             `json:"worker_id"`
+	RequestKey  string             `json:"request_key"`
+	Questions   json.RawMessage    `json:"questions"`
+	CreatedAt   pgtype.Timestamptz `json:"created_at"`
+	ExpiresAt   pgtype.Timestamptz `json:"expires_at"`
+}
+
+func (q *Queries) InsertExecutionInteraction(ctx context.Context, arg InsertExecutionInteractionParams) (int64, error) {
+	result, err := q.db.Exec(ctx, insertExecutionInteraction,
+		arg.ID,
+		arg.TaskID,
+		arg.OwnerUserID,
+		arg.ProjectID,
+		arg.LeaseID,
+		arg.WorkerID,
+		arg.RequestKey,
+		arg.Questions,
+		arg.CreatedAt,
+		arg.ExpiresAt,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const insertTaskEvent = `-- name: InsertTaskEvent :exec
@@ -1564,9 +1783,9 @@ func (q *Queries) ListAgentSessionInputs(ctx context.Context, arg ListAgentSessi
 const listAgentSessions = `-- name: ListAgentSessions :many
 SELECT session_id, owner_user_id, project_id, idempotency_key, workspace_binding_id,
        workspace_binding_revision, provider_id, profile_id, state, native_session_ref,
-       active_task_id, input_sequence, event_sequence, created_at, updated_at, closed_at
+       active_task_id, input_sequence, event_sequence, created_at, updated_at, closed_at, recovery_checked_at
 FROM workos_core.agent_sessions
-WHERE owner_user_id = $1 AND project_id = $2 AND (state = 'active' OR $3::bool)
+WHERE owner_user_id = $1 AND project_id = $2 AND (state <> 'closed' OR $3::bool)
 ORDER BY updated_at DESC, session_id
 LIMIT $4
 `
@@ -1609,6 +1828,7 @@ func (q *Queries) ListAgentSessions(ctx context.Context, arg ListAgentSessionsPa
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.ClosedAt,
+			&i.RecoveryCheckedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -1683,6 +1903,41 @@ func (q *Queries) ListAgentTasks(ctx context.Context, arg ListAgentTasksParams) 
 	return items, nil
 }
 
+const listCancelledSessionAdmissions = `-- name: ListCancelledSessionAdmissions :many
+SELECT t.id, t.owner_user_id
+FROM workos_core.agent_tasks t
+JOIN workos_core.agent_sessions s ON s.session_id::text = t.input->>'agentSessionId' AND s.owner_user_id = t.owner_user_id
+JOIN workos_core.agent_session_inputs i ON i.session_id = s.session_id AND t.idempotency_key = 'session-' || s.session_id::text || '-input-' || i.input_id::text
+WHERE t.state = 'queued' AND i.task_id IS NULL
+  AND (s.state <> 'active' OR i.state <> 'accepted')
+ORDER BY t.created_at LIMIT 100
+`
+
+type ListCancelledSessionAdmissionsRow struct {
+	ID          string `json:"id"`
+	OwnerUserID string `json:"owner_user_id"`
+}
+
+func (q *Queries) ListCancelledSessionAdmissions(ctx context.Context) ([]ListCancelledSessionAdmissionsRow, error) {
+	rows, err := q.db.Query(ctx, listCancelledSessionAdmissions)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListCancelledSessionAdmissionsRow
+	for rows.Next() {
+		var i ListCancelledSessionAdmissionsRow
+		if err := rows.Scan(&i.ID, &i.OwnerUserID); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listDispatchableAgentSessionInputs = `-- name: ListDispatchableAgentSessionInputs :many
 SELECT input_id, session_id, owner_user_id, client_input_id, input_text, request_digest,
        state, task_id, sequence, result_summary, created_at, updated_at
@@ -1719,6 +1974,50 @@ func (q *Queries) ListDispatchableAgentSessionInputs(ctx context.Context, arg Li
 			&i.ResultSummary,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listExecutionInteractions = `-- name: ListExecutionInteractions :many
+SELECT id, task_id, owner_user_id, project_id, lease_id, worker_id, request_key, questions, answers, state, decision_key, decision_digest, created_at, expires_at FROM workos_core.agent_execution_interactions WHERE owner_user_id=$1::uuid AND task_id=$2::uuid ORDER BY created_at DESC LIMIT 20
+`
+
+type ListExecutionInteractionsParams struct {
+	OwnerUserID string `json:"owner_user_id"`
+	TaskID      string `json:"task_id"`
+}
+
+func (q *Queries) ListExecutionInteractions(ctx context.Context, arg ListExecutionInteractionsParams) ([]WorkosCoreAgentExecutionInteraction, error) {
+	rows, err := q.db.Query(ctx, listExecutionInteractions, arg.OwnerUserID, arg.TaskID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []WorkosCoreAgentExecutionInteraction
+	for rows.Next() {
+		var i WorkosCoreAgentExecutionInteraction
+		if err := rows.Scan(
+			&i.ID,
+			&i.TaskID,
+			&i.OwnerUserID,
+			&i.ProjectID,
+			&i.LeaseID,
+			&i.WorkerID,
+			&i.RequestKey,
+			&i.Questions,
+			&i.Answers,
+			&i.State,
+			&i.DecisionKey,
+			&i.DecisionDigest,
+			&i.CreatedAt,
+			&i.ExpiresAt,
 		); err != nil {
 			return nil, err
 		}
@@ -1797,6 +2096,54 @@ type LockAgentAppPolicyChainParams struct {
 func (q *Queries) LockAgentAppPolicyChain(ctx context.Context, arg LockAgentAppPolicyChainParams) error {
 	_, err := q.db.Exec(ctx, lockAgentAppPolicyChain, arg.LockNamespace, arg.LockKey)
 	return err
+}
+
+const lockAgentSession = `-- name: LockAgentSession :one
+SELECT session_id FROM workos_core.agent_sessions
+WHERE owner_user_id = $1 AND session_id = $2 FOR UPDATE
+`
+
+type LockAgentSessionParams struct {
+	OwnerUserID string `json:"owner_user_id"`
+	SessionID   string `json:"session_id"`
+}
+
+func (q *Queries) LockAgentSession(ctx context.Context, arg LockAgentSessionParams) (string, error) {
+	row := q.db.QueryRow(ctx, lockAgentSession, arg.OwnerUserID, arg.SessionID)
+	var session_id string
+	err := row.Scan(&session_id)
+	return session_id, err
+}
+
+const lockExecutionInteraction = `-- name: LockExecutionInteraction :one
+SELECT id, task_id, owner_user_id, project_id, lease_id, worker_id, request_key, questions, answers, state, decision_key, decision_digest, created_at, expires_at FROM workos_core.agent_execution_interactions WHERE owner_user_id=$1::uuid AND id=$2::uuid FOR UPDATE
+`
+
+type LockExecutionInteractionParams struct {
+	OwnerUserID string `json:"owner_user_id"`
+	ID          string `json:"id"`
+}
+
+func (q *Queries) LockExecutionInteraction(ctx context.Context, arg LockExecutionInteractionParams) (WorkosCoreAgentExecutionInteraction, error) {
+	row := q.db.QueryRow(ctx, lockExecutionInteraction, arg.OwnerUserID, arg.ID)
+	var i WorkosCoreAgentExecutionInteraction
+	err := row.Scan(
+		&i.ID,
+		&i.TaskID,
+		&i.OwnerUserID,
+		&i.ProjectID,
+		&i.LeaseID,
+		&i.WorkerID,
+		&i.RequestKey,
+		&i.Questions,
+		&i.Answers,
+		&i.State,
+		&i.DecisionKey,
+		&i.DecisionDigest,
+		&i.CreatedAt,
+		&i.ExpiresAt,
+	)
+	return i, err
 }
 
 const lockTaskArtifactStream = `-- name: LockTaskArtifactStream :one
@@ -1984,6 +2331,25 @@ func (q *Queries) MarkTaskRunning(ctx context.Context, arg MarkTaskRunningParams
 	return err
 }
 
+const pauseAgentSessionForReview = `-- name: PauseAgentSessionForReview :execrows
+UPDATE workos_core.agent_sessions SET state = 'needs_review', updated_at = $3
+WHERE owner_user_id = $1 AND session_id = $2 AND state = 'active'
+`
+
+type PauseAgentSessionForReviewParams struct {
+	OwnerUserID string             `json:"owner_user_id"`
+	SessionID   string             `json:"session_id"`
+	UpdatedAt   pgtype.Timestamptz `json:"updated_at"`
+}
+
+func (q *Queries) PauseAgentSessionForReview(ctx context.Context, arg PauseAgentSessionForReviewParams) (int64, error) {
+	result, err := q.db.Exec(ctx, pauseAgentSessionForReview, arg.OwnerUserID, arg.SessionID, arg.UpdatedAt)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const releaseAgentSessionExecution = `-- name: ReleaseAgentSessionExecution :execrows
 UPDATE workos_core.agent_sessions
 SET active_task_id = NULL, updated_at = $3
@@ -2117,6 +2483,13 @@ JOIN workos_core.agent_tasks AS t ON t.id = o.aggregate_id
 WHERE o.event_type = 'agent.task.requested.v1' AND o.processed_at IS NULL
   AND (o.locked_until IS NULL OR o.locked_until < $1)
   AND t.state IN ('queued', 'running', 'waiting')
+  AND (COALESCE(t.input->>'agentSessionId', '') = '' OR EXISTS (
+      SELECT 1 FROM workos_core.agent_sessions AS s
+      JOIN workos_core.agent_session_inputs AS i ON i.session_id = s.session_id
+      WHERE s.session_id::text = t.input->>'agentSessionId'
+        AND s.owner_user_id = t.owner_user_id AND s.active_task_id = t.id
+        AND i.task_id = t.id AND i.state = 'dispatched'
+  ))
 ORDER BY o.occurred_at
 FOR UPDATE OF o SKIP LOCKED
 LIMIT 1

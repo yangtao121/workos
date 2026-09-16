@@ -1,0 +1,50 @@
+syntax = "proto3";
+package workos.agent.v1;
+
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/yangtao121/workos/gen/go/workos/agent/v1;agentv1";
+message ExecutionQuestionChoice {
+  string label = 1;
+  string description = 2;
+}
+message ExecutionQuestion {
+  string id = 1;
+  string text = 2;
+  string detail = 3;
+  repeated ExecutionQuestionChoice choices = 4;
+  bool multiple = 5;
+}
+message ExecutionAnswer {
+  string question_id = 1;
+  repeated string selected = 2;
+  string text = 3;
+}
+message ExecutionInteraction {
+  string id = 1;
+  string task_id = 2;
+  string project_id = 3;
+  repeated ExecutionQuestion questions = 4;
+  // pending | answered | rejected | expired
+  string state = 5;
+  google.protobuf.Timestamp expires_at = 6;
+}
+message ListTaskInteractionsRequest {
+  string task_id = 1;
+}
+message ListTaskInteractionsResponse {
+  repeated ExecutionInteraction interactions = 1;
+}
+message RespondExecutionInteractionRequest {
+  string interaction_id = 1;
+  string idempotency_key = 2;
+  bool reject = 3;
+  repeated ExecutionAnswer answers = 4;
+}
+message RespondExecutionInteractionResponse {
+  ExecutionInteraction interaction = 1;
+}
+service AgentInteractionService {
+  rpc ListTaskInteractions(ListTaskInteractionsRequest) returns (ListTaskInteractionsResponse) {}
+  rpc RespondExecutionInteraction(RespondExecutionInteractionRequest) returns (RespondExecutionInteractionResponse) {}
+}

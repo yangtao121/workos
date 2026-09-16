@@ -10,6 +10,30 @@ import (
 	"time"
 )
 
+const beginPtyRestart = `-- name: BeginPtyRestart :one
+UPDATE workos_runtime.pty_sessions SET generation=generation+1,state='queued',updated_at=$3,expires_at=$4
+WHERE owner_user_id=$1 AND session_id=$2 RETURNING generation
+`
+
+type BeginPtyRestartParams struct {
+	OwnerUserID string    `json:"owner_user_id"`
+	SessionID   string    `json:"session_id"`
+	UpdatedAt   time.Time `json:"updated_at"`
+	ExpiresAt   time.Time `json:"expires_at"`
+}
+
+func (q *Queries) BeginPtyRestart(ctx context.Context, arg BeginPtyRestartParams) (int64, error) {
+	row := q.db.QueryRow(ctx, beginPtyRestart,
+		arg.OwnerUserID,
+		arg.SessionID,
+		arg.UpdatedAt,
+		arg.ExpiresAt,
+	)
+	var generation int64
+	err := row.Scan(&generation)
+	return generation, err
+}
+
 const closePtySession = `-- name: ClosePtySession :execrows
 UPDATE workos_runtime.pty_sessions
 SET state = $3, updated_at = $4, expires_at = $4
@@ -76,9 +100,25 @@ func (q *Queries) ExpireIdlePtySessions(ctx context.Context, updatedAt time.Time
 	return items, nil
 }
 
+const getPtyRestartReceipt = `-- name: GetPtyRestartReceipt :one
+SELECT generation FROM workos_runtime.pty_session_restarts WHERE session_id=$1 AND action_key=$2
+`
+
+type GetPtyRestartReceiptParams struct {
+	SessionID string `json:"session_id"`
+	ActionKey string `json:"action_key"`
+}
+
+func (q *Queries) GetPtyRestartReceipt(ctx context.Context, arg GetPtyRestartReceiptParams) (int64, error) {
+	row := q.db.QueryRow(ctx, getPtyRestartReceipt, arg.SessionID, arg.ActionKey)
+	var generation int64
+	err := row.Scan(&generation)
+	return generation, err
+}
+
 const getPtySession = `-- name: GetPtySession :one
 SELECT session_id, owner_user_id, project_id, idempotency_key, request_digest,
-       state, created_at, updated_at, expires_at
+       state, created_at, updated_at, expires_at, generation
 FROM workos_runtime.pty_sessions
 WHERE owner_user_id = $1 AND session_id = $2
 `
@@ -101,13 +141,14 @@ func (q *Queries) GetPtySession(ctx context.Context, arg GetPtySessionParams) (W
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.ExpiresAt,
+		&i.Generation,
 	)
 	return i, err
 }
 
 const getPtySessionByKey = `-- name: GetPtySessionByKey :one
 SELECT session_id, owner_user_id, project_id, idempotency_key, request_digest,
-       state, created_at, updated_at, expires_at
+       state, created_at, updated_at, expires_at, generation
 FROM workos_runtime.pty_sessions
 WHERE owner_user_id = $1 AND idempotency_key = $2
 `
@@ -130,8 +171,25 @@ func (q *Queries) GetPtySessionByKey(ctx context.Context, arg GetPtySessionByKey
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.ExpiresAt,
+		&i.Generation,
 	)
 	return i, err
+}
+
+const getPtyStopReceipt = `-- name: GetPtyStopReceipt :one
+SELECT generation FROM workos_runtime.pty_session_stops WHERE session_id=$1::uuid AND action_key=$2
+`
+
+type GetPtyStopReceiptParams struct {
+	SessionID string `json:"session_id"`
+	ActionKey string `json:"action_key"`
+}
+
+func (q *Queries) GetPtyStopReceipt(ctx context.Context, arg GetPtyStopReceiptParams) (int64, error) {
+	row := q.db.QueryRow(ctx, getPtyStopReceipt, arg.SessionID, arg.ActionKey)
+	var generation int64
+	err := row.Scan(&generation)
+	return generation, err
 }
 
 const insertPtySession = `-- name: InsertPtySession :execrows
@@ -170,7 +228,7 @@ func (q *Queries) InsertPtySession(ctx context.Context, arg InsertPtySessionPara
 
 const listActivePtySessions = `-- name: ListActivePtySessions :many
 SELECT session_id, owner_user_id, project_id, idempotency_key, request_digest,
-       state, created_at, updated_at, expires_at
+       state, created_at, updated_at, expires_at, generation
 FROM workos_runtime.pty_sessions
 WHERE state IN ('queued', 'running')
 `
@@ -194,6 +252,7 @@ func (q *Queries) ListActivePtySessions(ctx context.Context) ([]WorkosRuntimePty
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.ExpiresAt,
+			&i.Generation,
 		); err != nil {
 			return nil, err
 		}
@@ -207,7 +266,7 @@ func (q *Queries) ListActivePtySessions(ctx context.Context) ([]WorkosRuntimePty
 
 const listProjectPtySessions = `-- name: ListProjectPtySessions :many
 SELECT session_id, owner_user_id, project_id, idempotency_key, request_digest,
-       state, created_at, updated_at, expires_at
+       state, created_at, updated_at, expires_at, generation
 FROM workos_runtime.pty_sessions
 WHERE owner_user_id = $1 AND project_id = $2 AND state IN ('queued', 'running')
 `
@@ -236,6 +295,7 @@ func (q *Queries) ListProjectPtySessions(ctx context.Context, arg ListProjectPty
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.ExpiresAt,
+			&i.Generation,
 		); err != nil {
 			return nil, err
 		}
@@ -245,6 +305,52 @@ func (q *Queries) ListProjectPtySessions(ctx context.Context, arg ListProjectPty
 		return nil, err
 	}
 	return items, nil
+}
+
+const lockPtyRestart = `-- name: LockPtyRestart :one
+SELECT generation FROM workos_runtime.pty_sessions WHERE owner_user_id=$1 AND session_id=$2 FOR UPDATE
+`
+
+type LockPtyRestartParams struct {
+	OwnerUserID string `json:"owner_user_id"`
+	SessionID   string `json:"session_id"`
+}
+
+func (q *Queries) LockPtyRestart(ctx context.Context, arg LockPtyRestartParams) (int64, error) {
+	row := q.db.QueryRow(ctx, lockPtyRestart, arg.OwnerUserID, arg.SessionID)
+	var generation int64
+	err := row.Scan(&generation)
+	return generation, err
+}
+
+const recordPtyRestart = `-- name: RecordPtyRestart :exec
+INSERT INTO workos_runtime.pty_session_restarts(session_id,action_key,generation) VALUES($1,$2,$3)
+`
+
+type RecordPtyRestartParams struct {
+	SessionID  string `json:"session_id"`
+	ActionKey  string `json:"action_key"`
+	Generation int64  `json:"generation"`
+}
+
+func (q *Queries) RecordPtyRestart(ctx context.Context, arg RecordPtyRestartParams) error {
+	_, err := q.db.Exec(ctx, recordPtyRestart, arg.SessionID, arg.ActionKey, arg.Generation)
+	return err
+}
+
+const recordPtyStop = `-- name: RecordPtyStop :exec
+INSERT INTO workos_runtime.pty_session_stops(session_id,action_key,generation) VALUES($1::uuid,$2,$3)
+`
+
+type RecordPtyStopParams struct {
+	SessionID  string `json:"session_id"`
+	ActionKey  string `json:"action_key"`
+	Generation int64  `json:"generation"`
+}
+
+func (q *Queries) RecordPtyStop(ctx context.Context, arg RecordPtyStopParams) error {
+	_, err := q.db.Exec(ctx, recordPtyStop, arg.SessionID, arg.ActionKey, arg.Generation)
+	return err
 }
 
 const updatePtySessionState = `-- name: UpdatePtySessionState :execrows

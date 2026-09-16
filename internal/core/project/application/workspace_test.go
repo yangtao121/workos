@@ -121,7 +121,7 @@ func newWorkspaceService(directory ports.SourceDirectory) (*WorkspaceService, *f
 
 func TestBindRejectsUnregisteredSource(t *testing.T) {
 	service, _ := newWorkspaceService(&fakeDirectory{sources: []ports.WorkspaceSource{
-		{ID: "ws_registered0001", DisplayName: "project", ReadOnly: false},
+		{ID: "ws_registered0001", ProjectID: "0199bbbb-bbbb-7bbb-9bbb-bbbbbbbbbbbb", DisplayName: "project", ReadOnly: false},
 	}})
 	if _, err := service.Bind(context.Background(), "0199aaaa-aaaa-7aaa-8aaa-aaaaaaaaaaaa", "0199bbbb-bbbb-7bbb-9bbb-bbbbbbbbbbbb", "ws_evil_client_id", "name", "key-1"); !errors.Is(err, domain.ErrWorkspaceSourceUnknown) {
 		t.Fatalf("unregistered source accepted: %v", err)
@@ -130,7 +130,7 @@ func TestBindRejectsUnregisteredSource(t *testing.T) {
 
 func TestBindPersistsReadOnlyFactAndReplaysIdempotently(t *testing.T) {
 	service, repository := newWorkspaceService(&fakeDirectory{sources: []ports.WorkspaceSource{
-		{ID: "ws_registered0001", DisplayName: "project", ReadOnly: true},
+		{ID: "ws_registered0001", ProjectID: "0199bbbb-bbbb-7bbb-9bbb-bbbbbbbbbbbb", DisplayName: "project", ReadOnly: true},
 	}})
 	owner := "0199aaaa-aaaa-7aaa-8aaa-aaaaaaaaaaaa"
 	project := "0199bbbb-bbbb-7bbb-9bbb-bbbbbbbbbbbb"
@@ -156,7 +156,7 @@ func TestBindPersistsReadOnlyFactAndReplaysIdempotently(t *testing.T) {
 
 func TestUpdateAccessAndArchiveEnforceRevision(t *testing.T) {
 	service, _ := newWorkspaceService(&fakeDirectory{sources: []ports.WorkspaceSource{
-		{ID: "ws_registered0001", DisplayName: "project"},
+		{ID: "ws_registered0001", ProjectID: "0199bbbb-bbbb-7bbb-9bbb-bbbbbbbbbbbb", DisplayName: "project"},
 	}})
 	owner := "0199aaaa-aaaa-7aaa-8aaa-aaaaaaaaaaaa"
 	project := "0199bbbb-bbbb-7bbb-9bbb-bbbbbbbbbbbb"
@@ -191,5 +191,13 @@ func TestBindRejectsMalformedInput(t *testing.T) {
 	}
 	if _, err := service.Bind(context.Background(), owner, project, "ws_registered0001", "", "key"); !errors.Is(err, domain.ErrInvalid) {
 		t.Fatalf("empty display name accepted: %v", err)
+	}
+}
+
+func TestBindRejectsAnotherProjectsSource(t *testing.T) {
+	service, _ := newWorkspaceService(&fakeDirectory{sources: []ports.WorkspaceSource{{ID: "ws_registered0001", ProjectID: "0199cccc-cccc-7ccc-8ccc-cccccccccccc"}}})
+	_, err := service.Bind(context.Background(), "0199aaaa-aaaa-7aaa-8aaa-aaaaaaaaaaaa", "0199bbbb-bbbb-7bbb-9bbb-bbbbbbbbbbbb", "ws_registered0001", "foreign", "key")
+	if !errors.Is(err, domain.ErrWorkspaceSourceUnknown) {
+		t.Fatalf("foreign project source accepted: %v", err)
 	}
 }

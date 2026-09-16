@@ -126,7 +126,9 @@ func validText(text string) bool {
 }
 
 // pointerArgv maps normalized coordinates to the display pixel space; the
-// action set is exactly move/down/up/click with buttons 1..3.
+// action set is exactly move/down/up/click with buttons 1..3. Do not use
+// mousemove --sync: a repeated coordinate emits no motion event and would
+// block the ordered input worker until its timeout.
 func (d *display) pointerArgv(event *surfacev1.NativeInputEvent) []string {
 	if math.IsNaN(event.X) || math.IsNaN(event.Y) || event.X < 0 || event.X > 1 || event.Y < 0 || event.Y > 1 {
 		return nil
@@ -136,22 +138,22 @@ func (d *display) pointerArgv(event *surfacev1.NativeInputEvent) []string {
 	validButton := event.Button >= 1 && event.Button <= 3
 	switch event.Action {
 	case "move":
-		return []string{"mousemove", "--sync", strconv.Itoa(x), strconv.Itoa(y)}
+		return []string{"mousemove", strconv.Itoa(x), strconv.Itoa(y)}
 	case "down":
 		if !validButton {
 			return nil
 		}
-		return []string{"mousemove", "--sync", strconv.Itoa(x), strconv.Itoa(y), "mousedown", strconv.Itoa(int(event.Button))}
+		return []string{"mousemove", strconv.Itoa(x), strconv.Itoa(y), "mousedown", strconv.Itoa(int(event.Button))}
 	case "up":
 		if !validButton {
 			return nil
 		}
-		return []string{"mousemove", "--sync", strconv.Itoa(x), strconv.Itoa(y), "mouseup", strconv.Itoa(int(event.Button))}
+		return []string{"mousemove", strconv.Itoa(x), strconv.Itoa(y), "mouseup", strconv.Itoa(int(event.Button))}
 	case "click":
 		if !validButton {
 			return nil
 		}
-		return []string{"mousemove", "--sync", strconv.Itoa(x), strconv.Itoa(y), "click", strconv.Itoa(int(event.Button))}
+		return []string{"mousemove", strconv.Itoa(x), strconv.Itoa(y), "click", strconv.Itoa(int(event.Button))}
 	default:
 		return nil
 	}

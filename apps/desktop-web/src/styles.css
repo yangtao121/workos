@@ -3093,3 +3093,245 @@ svg {
   color: var(--muted);
   font-size: 12px;
 }
+
+.workspace-previews {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-height: 100%;
+  padding: 24px;
+  box-sizing: border-box;
+  overflow: auto;
+}
+.workspace-previews h2,
+.workspace-settings h3 {
+  margin: 0 0 8px;
+}
+.workspace-previews p,
+.workspace-settings p {
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.workspace-previews form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 100px;
+  gap: 12px;
+  align-items: end;
+}
+.workspace-previews label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.workspace-previews textarea,
+.workspace-previews input {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  color: inherit;
+  background: var(--color-surface, #151e2a);
+  border: 1px solid #3a4a60;
+  border-radius: 8px;
+  padding: 10px;
+  font: inherit;
+}
+.workspace-previews textarea {
+  min-height: 86px;
+  resize: vertical;
+}
+.workspace-previews ul,
+.workspace-settings ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.workspace-previews li,
+.workspace-settings li {
+  padding: 14px;
+  border: 1px solid #3a4a60;
+  border-radius: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.workspace-previews li strong {
+  display: block;
+  overflow-wrap: anywhere;
+  font-size: 14px;
+}
+.workspace-previews li span {
+  display: block;
+  margin-top: 6px;
+  font-size: 12px;
+}
+.preview-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.preview-note {
+  font-size: 12px;
+  opacity: 0.8;
+}
+.workspace-previews iframe {
+  flex: 1;
+  width: 100%;
+  min-height: 320px;
+  border: 1px solid #3a4a60;
+  border-radius: 8px;
+  background: white;
+}
+.workspace-settings {
+  padding: 24px;
+  border-bottom: 1px solid #3a4a60;
+}
+@media (max-width: 480px) {
+  .workspace-previews,
+  .workspace-settings {
+    padding: 16px;
+  }
+  .workspace-previews form {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.workspace-files {
+  padding: 24px;
+  overflow: auto;
+  box-sizing: border-box;
+  min-height: 100%;
+}
+.workspace-files h2 {
+  margin-top: 0;
+}
+.workspace-files ul {
+  list-style: none;
+  margin: 16px 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.workspace-files li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  overflow-wrap: anywhere;
+}
+.workspace-files li span {
+  font-size: 12px;
+  opacity: 0.8;
+}
+.workspace-file-editor textarea {
+  width: 100%;
+  min-height: 260px;
+  box-sizing: border-box;
+  resize: vertical;
+  background: #0b121b;
+  color: inherit;
+  border: 1px solid #3a4a60;
+  border-radius: 8px;
+  padding: 12px;
+  font: 13px/1.6 monospace;
+  margin-bottom: 12px;
+}
+.workspace-file-editor h3 {
+  overflow-wrap: anywhere;
+}
+@media (max-width: 480px) {
+  .workspace-files {
+    padding: 16px;
+  }
+}
+
+.execution-questions:empty {
+  display: none;
+}
+.execution-question {
+  padding: 16px;
+  border: 1px solid #536f97;
+  border-radius: 12px;
+  margin: 12px 0;
+  background: #182537;
+}
+.execution-question h3 {
+  margin-top: 0;
+}
+.execution-question fieldset {
+  min-width: 0;
+  border: 0;
+  padding: 0;
+  margin: 16px 0;
+}
+.execution-question legend {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.execution-question label {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  margin: 10px 0;
+}
+.execution-question textarea {
+  width: 100%;
+  box-sizing: border-box;
+  min-height: 70px;
+  color: inherit;
+  background: #0b121b;
+  border: 1px solid #536f97;
+  border-radius: 8px;
+  padding: 10px;
+}
+.execution-question pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font: inherit;
+}
+.files-views > nav {
+  padding: 16px 24px 0;
+}
+
+.execution-question label.execution-question-choice {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  gap: 8px;
+}
+.execution-question-choice input {
+  width: auto;
+  margin: 4px 0 0;
+}
+
+@media (max-width: 480px) {
+  .execution-question {
+    padding: 12px;
+  }
+  .execution-question h3 {
+    font-size: 16px;
+    margin-bottom: 8px;
+  }
+  .execution-question p {
+    font-size: 13px;
+    margin: 8px 0;
+  }
+  .execution-question fieldset {
+    margin: 12px 0;
+  }
+  .execution-question label {
+    margin: 8px 0;
+  }
+  .execution-question textarea {
+    min-height: 60px;
+  }
+  .execution-question .preview-actions .workos-button {
+    font-size: 12px;
+    padding: 8px;
+    min-height: 44px;
+  }
+}

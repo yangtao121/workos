@@ -20,4 +20,5 @@ type WorkosRuntimeNativeSession struct {
 	CreatedAt      time.Time `json:"created_at"`
 	UpdatedAt      time.Time `json:"updated_at"`
 	ExpiresAt      time.Time `json:"expires_at"`
+	Generation     int64     `json:"generation"`
 }

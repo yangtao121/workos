@@ -54,7 +54,7 @@ func (r *Repository) InsertSession(ctx context.Context, session domain.Session) 
 
 func sessionFromRow(row nativehostdb.WorkosRuntimeNativeSession) domain.Session {
 	return domain.Session{
-		SessionID: row.SessionID, OwnerUserID: row.OwnerUserID, ProjectID: row.ProjectID,
+		Generation: row.Generation, SessionID: row.SessionID, OwnerUserID: row.OwnerUserID, ProjectID: row.ProjectID,
 		IdempotencyKey: row.IdempotencyKey, RequestDigest: row.RequestDigest,
 		State: domain.State(row.State), Width: int32(row.Width), Height: int32(row.Height),
 		CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt, ExpiresAt: row.ExpiresAt,
@@ -149,4 +149,59 @@ func (r *Repository) ListActive(ctx context.Context) ([]domain.Session, error) {
 		sessions = append(sessions, sessionFromRow(row))
 	}
 	return sessions, nil
+}
+
+func (r *Repository) BeginRestart(ctx context.Context, owner, id, key string, now time.Time) (int64, bool, error) {
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return 0, false, err
+	}
+	defer tx.Rollback(ctx)
+	q := r.queries.WithTx(tx)
+	if _, err := q.LockNativeRestart(ctx, nativehostdb.LockNativeRestartParams{OwnerUserID: owner, SessionID: id}); err != nil {
+		return 0, false, domain.ErrNotFound
+	}
+	previous, err := q.GetNativeRestartReceipt(ctx, nativehostdb.GetNativeRestartReceiptParams{SessionID: id, ActionKey: key})
+	if err == nil {
+		return previous, false, tx.Commit(ctx)
+	}
+	if !errors.Is(err, pgx.ErrNoRows) {
+		return 0, false, err
+	}
+	generation, err := q.BeginNativeRestart(ctx, nativehostdb.BeginNativeRestartParams{OwnerUserID: owner, SessionID: id, UpdatedAt: now, ExpiresAt: now.Add(domain.SessionTTL)})
+	if err != nil {
+		return 0, false, err
+	}
+	if err := q.RecordNativeRestart(ctx, nativehostdb.RecordNativeRestartParams{SessionID: id, ActionKey: key, Generation: generation}); err != nil {
+		return 0, false, err
+	}
+	return generation, true, tx.Commit(ctx)
+}
+
+func (r *Repository) BeginStop(ctx context.Context, owner, id, key string, now time.Time) (bool, error) {
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return false, err
+	}
+	defer tx.Rollback(ctx)
+	q := r.queries.WithTx(tx)
+	generation, err := q.LockNativeRestart(ctx, nativehostdb.LockNativeRestartParams{OwnerUserID: owner, SessionID: id})
+	if err != nil {
+		return false, domain.ErrNotFound
+	}
+	_, err = q.GetNativeStopReceipt(ctx, nativehostdb.GetNativeStopReceiptParams{SessionID: id, ActionKey: key})
+	if err == nil {
+		return false, tx.Commit(ctx)
+	}
+	if !errors.Is(err, pgx.ErrNoRows) {
+		return false, err
+	}
+	if err = q.RecordNativeStop(ctx, nativehostdb.RecordNativeStopParams{SessionID: id, ActionKey: key, Generation: generation}); err != nil {
+		return false, err
+	}
+	_, err = q.CloseNativeSession(ctx, nativehostdb.CloseNativeSessionParams{OwnerUserID: owner, SessionID: id, State: string(domain.StateClosed), UpdatedAt: now})
+	if err != nil {
+		return false, err
+	}
+	return true, tx.Commit(ctx)
 }

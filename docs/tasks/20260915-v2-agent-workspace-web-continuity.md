@@ -1,174 +1,99 @@
 # V2 持续开发会话与 Web 应用接续（B00–B10）
 
-- 任务提示词：[docs/prompts/20260915-glm-5.3-v2-p0-p2-goal.md](../prompts/20260915-glm-5.3-v2-p0-p2-goal.md)
-- 基线：`main@a33e71f`；分支：`feat/v2-agent-workspace-web-continuity`
-- 依据：[V2 架构](../structure-v2.md) §3–4
-- 状态：软件侧收口（B00–B10 完成；A15 真实模型与 A16 第二台物理 LAN 设备
-  保持 BLOCKED 待操作员，入口与 runbook 已交付；本轮改动未提交，见 §最终报告）
-- 交付架构文档：[v2-agent-workspace-web-continuity.md](../architecture/v2-agent-workspace-web-continuity.md)
+- 范围：[任务书](../prompts/20260915-glm-5.3-v2-p0-p2-goal.md) 的 P0–P2；六进程边界不变。
+- 基线：本地 main `a33e71f`，接管任务分支 `feat/v2-agent-workspace-web-continuity@c2ff6de`。
+- 当前：软件交付完成，真实模型与最终仓库门禁通过；A16 按用户确认保留验收缺口；仅本地 main 合并，不 push。
+- 用户确认：使用 Runtime 专用 Docker 后端；真实模型总费用上限 ¥20；暂缺第二台物理设备，A16 保留缺口。
+- 决策：[ADR-0032](../decisions/0032-runtime-isolated-development.md)；[部署和用户操作](../architecture/v2-agent-workspace-web-continuity.md)。
+- 本记录替换旧的部分完成声明。历史过程可从 `c2ff6de` 读取，不将旧 PASS 推导为当前能力。
 
-## 工作包状态
+## 工作包
 
-| 工作包 | 状态                                                                                               | 依赖               | 实现入口/提交                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       | 验收编号                                                                                                                                    | 实际命令与结果                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     | 长期证据路径                                                                                                                                                             | 未决问题/下一步                                                                                                                                                                                                                                       |
-| ------ | -------------------------------------------------------------------------------------------------- | ------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| B00    | done                                                                                               | —                  | `docs/architecture/v2-harness-workspace-baseline.md`（本分支首个提交）                                                                                                                                                                                                                                                                                                                                                                                                                              | A01                                                                                                                                         | 见下"B00 证据"                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     | 基线文档 + tmp/b00 探测脚本输出                                                                                                                                          | 上游无 wire 级 session resume；B03 采用"每会话常驻官方 runtime 进程 + jsonl 持久化"                                                                                                                                                                   |
-| B01    | done                                                                                               | B00                | ADR-0030/0031；`api/proto/workos/agent/v1/session.proto`、`project/v1/workspace.proto`、`workload/v1/workspace.proto`、`surface/v1/continuity.proto`；native/pty 新增 Detach；migration 057–059；domain 状态机（core agent session、runtime surface continuity）                                                                                                                                                                                                                                    | 契约层                                                                                                                                      | `buf lint` 通过；`go build ./...`、`go vet`、`go test ./internal/core/agent/... ./internal/runtime/surface/... ./internal/runtime/{ptyhost,nativehost}/...` 全绿                                                                                                                                                                                                                                                                                                                                                                                   | ADR + 契约 + migration + 状态机测试                                                                                                                                      | B02 起按新契约实现持久化与业务链路                                                                                                                                                                                                                    |
-| B02    | done                                                                                               | B00、B01           | runtime `workspacehost`（sources/Prepare + 私有 WorkspaceHostService）；PTY/Native 引擎接工作目录（幂等摘要含目录）；Core `ProjectWorkspaceService` + migration 058 + workspaceclient；`WORKOS_RUNTIME_WORKSPACE_MOUNTS` 环境覆盖；`tools/workspace-execution` 门禁                                                                                                                                                                                                                                 | A02、A03（PTY/files 侧；harness 侧 B03）                                                                                                    | `sh tools/workspace-execution/gate.sh` → PASS（PWD=注册目录、git HEAD 一致、marker 双向、shell 写入落盘、host 写入 shell 可读、archive 后无 active）；`go test ./internal/runtime/ptyhost/adapters/shellexec ./internal/runtime/workspacehost/... ./internal/core/project/...` 全绿                                                                                                                                                                                                                                                                | gate 日志 tmp/gate-ws.log + 门禁脚本                                                                                                                                     | 容器无 git 二进制（已记录，读取 .git 文件验证；开发工具链镜像留 B08）                                                                                                                                                                                 |
-| B03    | done（软件侧；真实模型 A15 待外部凭据）                                                            | B00–B02            | Core AgentSessionService（migration 057、repository、应用、transport、gateway）；DeepSeek SessionManager（官方 base 组合常驻子进程、凭据指纹重生、工具事件映射）；worker 会话联动；终态钩子 FinishTaskRun；`tools/harness-sessions` 门禁                                                                                                                                                                                                                                                            | A04、A05（输入幂等）、A07（部分）                                                                                                           | `sh tools/harness-sessions/gate.sh` → PASS（官方 runtime 两轮原生续聊、真实 bash 工具写文件、has_turn1=true 上下文延续、重放/冲突/关闭语义）；单测全绿（deepseek adapter 7 项会话测试 + agent 包）                                                                                                                                                                                                                                                                                                                                                 | gate 日志 tmp/gate-hs-final.log；fixture 会话流                                                                                                                          | harness-host 重启后原生上下文不可恢复（上游无 wire resume，基线记录）；凭据轮换=进程重生（记录于 README）；A15 真实模型与 A06 harness 重启恢复的完整证据留 B09                                                                                        |
-| B04    | done（软件侧只读切片；写入工具/审批/预览留后续包）                                                 | B01–B03            | `deploy/harness/workos-tools.mjs`（零依赖 cordis 插件，configuration-relative 行）；deepseek sessions.go（workos-tools 行 + 按会话拷贝插件 + WORKOS*TOOL*\* 子环境）；ports.SessionExecution 增 OwnerUserID/ProjectID；worker 从 task owner/target_scope 派生；harness-host 传 CoreURL+DeviceID；Dockerfile 拷贝插件；fixture SESSION_WORKOS_INFO 流                                                                                                                                                | A08（只读链路 partial；A09 未动）                                                                                                           | `sh tools/harness-sessions/gate.sh` → PASS（三轮：bash 工具、上下文延续、workos_project_info 真实返回项目名）；`go build ./... && go test ./...` 全绿（docker golang:1.26.7-bookworm）                                                                                                                                                                                                                                                                                                                                                             | gate 输出 + internal/harness/adapters/deepseek README §Read-only WorkOS tools                                                                                            | 插件为外部文件不能 import 闭包内裸包名（schemastery 等）——零 import 原样注册；工具仅只读，审批行保持 policy: ask；写工具/成果创建/预览/审批路径留 B05+；真实模型证据仍留 A15                                                                          |
-| B05    | done（软件侧；会话窗口 + 恢复 + busy 契约；真实 DeepSeek 会话内容展示留 A15 栈）                   | B01、B03、B04      | `sdk/protocol/src/index.ts`（重导出 session/continuity/workspace pb）+ `sdk/agent-sdk`（agentSessions/surfaceContinuity/projectWorkspaces 客户端）；`apps/desktop-web/src/AgentSessions.tsx`（系统窗口 kind=agent-sessions，列表+会话视图）；Desktop.tsx 挂载/入口（palette/Home/dock/adaptive home 快捷键）；`clients/window-manager` WindowKind 扩展；`tools/v2-development-journey` 门禁 + Makefile `test-v2-development-journey`/`capture-v2-development-journey`                               | A17（部分：会话窗口、输入幂等恢复、cancel≠close、queued 展示、resume）                                                                      | `sh tools/v2-development-journey/gate.sh` → `v2-development-journey: PASS (agent sessions window, fake-provider loop, resume, busy-state contract)`；desktop-web 160 单测全绿（docker node:24.19.0 vitest）；`--filter @workos/desktop-web build` 通过；eslint/prettier 变更文件通过                                                                                                                                                                                                                                                               | gate 输出 + apps/desktop-web/e2e/agent-sessions.spec.ts + docs/ui/desktop-web/changes/20260915-v2-agent-workspace-ui/                                                    | 超时恢复 12s 常量；会话名=首输入摘录（每会话一次 ListSessionInputs limit=1）；时间线仅活跃+最近带 task 输入（旧输入只显示 result_summary，有界）                                                                                                      |
-| B06    | done（软件侧；桌面 Close→Detach 迁移属 B05/B08）                                                   | B01                | `internal/runtime/surface/{ports,application,transport}/continuity.go`；`adapters/postgres/continuity.go` + surfacedb 查询（migration 059 表）；PTY/Native `ListProjectSessions` 查询与仓库；runtime-host 挂载 + 30s attachment sweep；gateway allowlist 增加 `SurfaceContinuityService`；`tools/surface-continuity` 门禁 + Makefile `test-surface-continuity`                                                                                                                                      | A10、A11（PTY 侧真实链）、A13（部分：terminal 状态如实呈现、attachment 随 stop/sweep 过期；runtime 重启核对沿用既有 native reconcile 语义） | `go build ./...`、`go test ./...` 全绿（docker golang:1.26.7-bookworm）；`sh tools/surface-continuity/gate.sh` → PASS；回归 `sh tools/terminal-sessions/gate.sh` → PASS                                                                                                                                                                                                                                                                                                                                                                            | gate 日志 + `tests/integration/surface_continuity_test.go` + `internal/runtime/surface/adapters/postgres/continuity_repository_test.go`（真实 Postgres 状态机/并发接管） | attach 幂等且首附授予 gen1；attach 终态 workload → FailedPrecondition 带真实状态；pty/native restart 如实 FailedPrecondition（无持久 argv）；策略维持 30 分钟上限（persistent=true, keep_alive=1800s）；detach 后程序继续、输出持续累积，仅 stop 回收 |
-| B07    | done（软件侧）                                                                                     | B01、B06           | ContinuityStore 事务性接管（FOR UPDATE 锁 + 原子代次推进 + 旧 controller 失效同事务）；`AuthorizeInput` 数据路径门（PTY Write/Resize 每请求复查当前租约；Native `Display.GuardInput` 在 apply 时复查，排队输入同样失效）；xvfbengine `Candidates`（loopback 默认 / lan）+ `WORKOS_RUNTIME_NATIVE_CANDIDATES`（config 校验 + compose/deploy 文档）；`Facts()` 如实报告候选范围                                                                                                                       | A12（PTY 双设备真实输入链 + 仓库级并发接管收敛；Native 侧为引擎门 + 单测，真实双设备 LAN 验收留 A16）                                       | 同 B06（同一门禁包含仓库级真实 Postgres 状态机与并发接管测试）                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     | 同上                                                                                                                                                                     | dev-bypass gateway 固定单一设备身份，双设备证明直连 runtime 私有监听（生产 gateway 注入的同一身份头）；attach/重复 attach 绝不改变控制权，仅 RequestSurfaceControl 接管；租约到期全员拒绝直至显式接管                                                 |
-| B08    | done（软件侧；desktop Close→Detach 迁移 + Running apps + workspace 名只读；无 preview 工具链变更） | B02、B05、B06、B07 | `apps/desktop-web/src/nativeSession.ts`（discover→attach 同一 workload / detach / requestControl / stop）；`TerminalApp.tsx`（ListProjectSurfaces→AttachSurface 重开、DetachPtySession 关窗、显式 Stop、Take control 禁输入）；`NativeApp.tsx`（同构 + observer 态禁输入）；`RunningSurfaces.tsx`（Home 下 Running apps 小节）；AgentSessions 头部 workspace display name（ListProjectWorkspaces active）；native-surface-desktop.spec.ts 断言迁移（关窗=running、重开=同 session、Stop 后 closed） | A17                                                                                                                                         | 同 B05 同一门禁（含 terminal 控件/Running apps/native unavailable 三档截图）；`sh tools/terminal-sessions/gate.sh` → PASS；`sh tools/surface-continuity/gate.sh` → PASS；`sh tools/harness-sessions/gate.sh` → PASS                                                                                                                                                                                                                                                                                                                                | 同 B05 + docs/ui/desktop-web/changes/20260915-v2-agent-workspace-ui/notes.md                                                                                             | web-service preview 沿用既有 app install 流（未新增 preview 入口，按要求记录）；native 双设备 LAN 媒体验收仍留 A16                                                                                                                                    |
-| B09    | done（软件侧；A15/A16 BLOCKED 待操作员）                                                           | B00–B08            | A05：`tests/integration/harness_sessions_recovery_test.go` + harness-sessions 门禁 restart 相；A09：`internal/harness/adapters/deepseek/approvals_test.go` + README §Unsupported approvals；A13：ptyhost 启动 `Reconcile`（`ListActivePtySessions` 查询/仓库/port）+ surface-continuity 门禁 prepare/verify 两相；A15：`tools/real-model-acceptance/gate.sh` + `tests/integration/real_model_acceptance_test.go` + Makefile `test-real-model-acceptance`；A16：`docs/runbooks/lan-second-device.md` | A05、A09、A13、A14、A18（软件侧）                                                                                                           | `sh tools/harness-sessions/gate.sh` → `harness-sessions: PASS (official runtime, three native turns, real bash + WorkOS tools, core+harness restart recovery)`；`sh tools/surface-continuity/gate.sh` → `surface-continuity: PASS (detach keeps programs, single controller enforced, runtime restart reconciles dead workloads)`；`sh tools/workspace-execution/gate.sh` → `workspace-execution: PASS (shared real directory)`；`sh tools/terminal-sessions/gate.sh` → `terminal-sessions: PASS (real login shells)`；A18 检查矩阵全绿（见 §A18） | gate 日志 tmp/gate-{hs,sc,we,ts}-b09.log + 本记录 §验收矩阵                                                                                                              | A15/A16 见 BLOCKED 行；中间一次性失败两例已修复（ListSessionInputs limit=0 → invalid_argument；fixture 会话计数断言过严 has_turn1=false total=1 → 放宽为 has_turn1=false，计数为 runtime 注入细节）                                                   |
-| B10    | done（文档收口；本轮改动留在工作树未提交，按要求）                                                 | B00–B09            | `docs/architecture/v2-agent-workspace-web-continuity.md`（新）；implementation.md 补 B02/B03/B04 节 + B09 收口节；deepseek README 补重启/凭据轮换重生 + 审批不支持节；`docs/status.json`（DeepSeek 行更新 + 新增 Project Workspace / Agent Continuous Sessions 行 + Runtime/Surface A13 句）；README 状态区经 render 再生成（仅生成块 diff）                                                                                                                                                        | A18                                                                                                                                         | buf format/lint、sqlc vet、gofmt、go vet、go test ./...、pnpm architecture、eslint、prettier --check .、pnpm -r check（desktop 160 测试）、desktop-web build、render --check 全部通过（docker 容器执行）                                                                                                                                                                                                                                                                                                                                           | 本记录 + 生成的 README 状态区                                                                                                                                            | eslint 配置新增 `deploy/**/*.mjs` ignore（B04 插件为运行时执行的零依赖 JS，与 tools/\*\*/\*.mjs 同理）；6 个本流文件补 prettier 格式化                                                                                                                |
+| 包                | 状态              | 依赖          | 实现/验收入口                                                    | 验收            | 结果与未决项                                                                                    |
+| ----------------- | ----------------- | ------------- | ---------------------------------------------------------------- | --------------- | ----------------------------------------------------------------------------------------------- |
+| B00 官方基线      | done              | 官方 0.1.1rc1 | Dockerfile、DeepSeek README、ADR-0032                            | A01             | 官方 agents create/resume/followup、原生持久化和 fs/shell/userQuestions 扩展点实测；无自研 loop |
+| B01 契约/事实     | done              | B00           | agent/project/surface/workload Proto；迁移 060–065               | A02/A05–A07/A11 | 事务输入/事件/执行槽、未知结果 needs_review、持久 generation/动作回执和问答                     |
+| B02 工作区        | done              | B01           | Project binding、Runtime workspacehost、Docker/containerprocess  | A02/A03         | 文件、命令、PTY、Native 和预览共用已授权目录；App Bridge 同步核对 Core 当前授权                 |
+| B03 原生会话      | done              | B01/B02       | deploy/harness 三个薄插件、DeepSeek sessions                     | A04–A07/A15     | 每 Task 新凭据进程、已完成轮原生恢复、累计输出预算、真实两轮改码与测试                          |
+| B04 系统工具/交互 | done              | B02/B03       | task-lease Tools、session_tools、interaction                     | A08/A09         | 成果、预览、项目/工作区/应用查询；原生询问可回答/拒绝，权限升级 unavailable                     |
+| B05 会话窗口      | done              | B03/B04       | AgentSessions、ExecutionQuestions                                | A05/A09/A17     | 刷新补收、取消/关闭分开、needs-review、问题选择与提交                                           |
+| B06 程序持续运行  | done              | B01/B02       | PTY/Native/preview services                                      | A10/A11/A13     | detach 存活、显式 stop/restart、新 generation、TTL、重启对账                                    |
+| B07 接管/LAN      | blocked（仅 A16） | B06、外部设备 | Continuity、Native input/ICE、LAN runbook                        | A12/A16         | 双身份真实输入与旧代次拒绝通过；CIDR/UDP fail-closed；缺第二台物理设备                          |
+| B08 桌面闭环      | done              | B02/B05/B06   | WorkspaceSettings/Files/Previews、RunningSurfaces、AdaptiveShell | A17             | 三尺寸 24 张 after/current；移动询问 radio 的 focus 时序缺陷已修复                              |
+| B09 综合验收      | done（软件/模型） | B00–B08       | tools/v2-completion、real-model-acceptance                       | A02–A15/A17     | 独立六进程、真实 Docker/Chromium、真实 DeepSeek；A16 独立保留                                   |
+| B10 收口          | done              | B09           | 本记录、status、架构/部署/视觉文档                               | A18             | 最终生成无差异、make check PASS；交付到本地 main                                                |
 
-## B00 证据（2026-09-15，host probe）
+## 实际验收
 
-对官方锁定 runtime `deepseek_harness_runtime_bin==0.1.1rc1`（x86_64 wheel sha256
-`8eb31e3a…137b`，与 Dockerfile 一致）做了静态源码提取 + 动态协议探测。完整结论在
-[基线文档](../architecture/v2-harness-workspace-baseline.md)。关键事实：
+证据目录：[20260916-v2-completion](evidence/20260916-v2-completion/)。日志只保留专门测试
+项目的 ID、命令与结果，不包含 API key、请求头、真实用户数据或完整模型内容。
 
-- `sdk-jsonrpc-server` 仅 dispatch `initialize` / `session/prompt` / `shutdown`；
-  0.1.5rc1 相同 → 保持 0.1.1rc1 不升级。
-- 同进程同 sessionId 多轮续聊：第二轮模型请求包含第一轮 user/assistant（
-  `COUNT total=6 markers=TURN1`）→ 原生上下文累积成立。
-- 运行中追加输入：官方语义为排队到下一轮（`agent/inbox/spliced target=next-turn`）。
-- 官方 base 组合（非 agent-spine-demo）注册 `bash/read/write/edit/glob/grep`；
-  bash 真实执行 `pwd` 返回工作区路径；参数校验、[exit code] 标记真实存在。
-- `write` 工具越界写被 `workspace-write` sandbox 拒绝；工作区内成功。
-- bash 子进程 env 中 `DEEPSEEK_API_KEY`/`DSH_CORDIS_CONFIG` 计数为 0（官方 env 隔离）。
-- bash-local 执行器不 confine（`dsh-bash-sandbox` 未打入 runtime bin）→ bash 可越界写，
-  WorkOS 必须自己实施进程级边界（B02/B03 设计约束）。
-- `session-persistence-jsonl` 追加式持久化每会话事件日志；跨进程 wire 级 resume 在
-  0.1.1rc1/0.1.5rc1 均不存在（服务层 `agents.resume` 未暴露）。
+| 编号 | 当前结果                | 实际证据                                                                                                                                                                                                                                                                                                 |
+| ---- | ----------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| A01  | PASS                    | 官方 runtime 0.1.1rc1 固定 wheel SHA；实际官方 runtime 完成 fixture 和真实服务两轮；[adapter README](../../internal/harness/adapters/deepseek/README.md)                                                                                                                                                 |
+| A02  | PASS                    | `make test-v2-completion`：Harness 改 calculate.cjs 并用 node:test 测试，owner 文件 API 同目录读取；PTY 和 Native 写入同目录；真实预览 [六进程日志](evidence/20260916-v2-completion/isolated-stack.txt)                                                                                                  |
+| A03  | PASS                    | localfs/Docker 单测与实际容器；只读、撤权、旧绑定、路径/链接、跨 scope、停止旧程序 [矩阵](evidence/20260916-v2-completion/regression.txt)                                                                                                                                                                |
+| A04  | PASS                    | 同一官方原生 session：double→triple，各自真实 Bash 测试；第二轮 fixture 要求原生历史第一轮标记                                                                                                                                                                                                           |
+| A05  | PASS                    | Core/Harness/Gateway 真重启后原 session/task/history；输入幂等；浏览器刷新后 Agent 历史仍在；24 并发输入与事件序号事务                                                                                                                                                                                   |
+| A06  | PASS                    | 已完成轮原生 persistence 恢复；执行租约过期转 failed/needs_review，不再次领取；未关联取消 admission 被恢复流程收敛                                                                                                                                                                                       |
+| A07  | PASS                    | 输入重复/冲突/取消、205 输入恢复轮转；原生每次请求递减 maxTokens；缺 usage 拒绝下一请求；每执行关闭凭据进程                                                                                                                                                                                              |
+| A08  | PASS                    | 官方工具经私有 mTLS task lease：成果创建带 task provenance，真实预览启动/列表，撤权和跨项目拒绝                                                                                                                                                                                                          |
+| A09  | PASS（可用能力）        | 原生 ask_user_question→Core 持久交互→用户应答→原生继续；拒绝/过期/重放/撤权矩阵；无权限升级后端，明确 unavailable；旧 App 事前审批回归通过                                                                                                                                                               |
+| A10  | PASS                    | PTY detach 后 shell 内存和后台文件写仍在；Native Chromium reload 后同 workload/generation 且 shell 环境变量保留；预览两个客户端请求计数连续                                                                                                                                                              |
+| A11  | PASS                    | stop 真回收、restart 增代次；旧 stop 重试不杀新代次；进程 TTL（命令 5 分钟、交互 30 分钟）和并发上限；拒绝终态 attachment                                                                                                                                                                                |
+| A12  | PASS（软件）            | 两个可信设备身份 A/B 真实 PTY 输入/resize，B 接管拒绝 A；A 再接管仍拒绝自己旧 epoch；Native peer 信令及队列 gate；不等同 A16                                                                                                                                                                             |
+| A13  | PASS                    | 实际 Runtime 重启，旧程序不再 running，控制事实与 attach/IO 如实拒绝；相同部署 namespace 容器清理                                                                                                                                                                                                        |
+| A14  | PASS                    | 旧 App→Agent、成果、安装、grant no-op/撤销、Core 事前批准/拒绝、Task 幂等 PostgreSQL/真实 RPC 回归；[矩阵](evidence/20260916-v2-completion/regression.txt)；全 Go/Web 检查通过                                                                                                                           |
+| A15  | PASS                    | [真实 DeepSeek 记录](evidence/20260916-v2-completion/live-deepseek.txt)；官方 runtime 两轮实现/测试、独立容器重跑测试和行为断言；[用量](evidence/20260916-v2-completion/live-usage.jsonl)                                                                                                                |
+| A16  | BLOCKED（用户确认保留） | 2026-09-16 用户没有第二台物理设备；[LAN 操作手册](../runbooks/lan-second-device.md)；没有声称真实两台 LAN 图形链已通过                                                                                                                                                                                   |
+| A17  | PASS                    | [before](../ui/desktop-web/changes/20260916-v2-completion/before/)、[after](../ui/desktop-web/changes/20260916-v2-completion/after/)、[current](../ui/desktop-web/current/)、[notes](../ui/desktop-web/changes/20260916-v2-completion/notes.md)；三尺寸真实 radio 操作/iframe/错误状态断言               |
+| A18  | PASS                    | [make check](evidence/20260916-v2-completion/make-check.txt)：Proto/sqlc/Go vet/全部 Go 测试、13 个 TS workspace 架构检查、eslint/prettier、全部 Web check、desktop 165 测试、Vite 构建；[重复生成](evidence/20260916-v2-completion/generation.txt) 200 文件 byte-identical；完整门禁 4 个浏览器测试通过 |
 
-## 恢复入口
+## 真实模型与费用
 
-- 当前包：B09/B10 已完成（软件侧收口）；A15/A16 保持 BLOCKED 待操作员。
-  本轮 B09/B10 改动留在工作树未提交（用户指示 do NOT commit）。
-- 已完成动作：B00–B08 见上文各行与既有恢复记录；B09 = A05 restart 相 +
-  A09 fail-closed 单测 + A13 ptyhost 启动 Reconcile + 四门禁回归全 PASS +
-  A15/A16 操作员入口 + A18 检查矩阵全绿；B10 = 交付架构文档 + implementation
-  补节 + adapter README 补节 + status.json/README 状态区 + 本记录收口。
-- 正在运行的进程/日志：无（所有门禁已清理其 compose project/fixture profile；
-  共享 dev 栈 `workos-*` 容器保持运行）。门禁日志副本在 tmp/gate-\*-b09\*.log
-  （tmp/ 不入库，长期证据以本记录 + 门禁脚本 + 测试为准）。
-- 下一条具体动作（操作员）：A15 = `WORKOS_REAL_DEEPSEEK=1 make
-test-real-model-acceptance`（先按脚本头把真实 key 存入 vault）；A16 = 按
-  docs/runbooks/lan-second-device.md 执行并回填证据模板。两项完成前总任务
-  不得标记完全 done。
-- 阻塞：A15（真实 DeepSeek 凭据/额度授权）、A16（第二台物理 LAN 设备）。
-  环境注意不变：make/node/go 不在宿主机上，全部走 docker（buf 1.55.1 +
-  golang:1.26.7-bookworm + node:24.19.0-bookworm-slim，模块缓存卷
-  workos-go-cache；buf 需 `-e HOME=/tmp`，勿挂 /.cache 卷——非 root 用户
-  无权创建）。
+- 授权总上限 ¥20。实际执行仍使用更低的 ¥1.90 预留上限代理；无自动重试、未知请求不退还预留。
+- 固定目标 `https://api.deepseek.com/chat/completions`，沿用 `deepseek-v4-flash` 别名。
+  [2026-09-16 官方价格](https://api-docs.deepseek.com/zh-cn/quick_start/pricing/)说明其路由到 V4.1-Flash：
+  峰值输入 cache miss ¥2/M、cache hit ¥0.04/M，输出 ¥8/M。
+- 共 8 请求，输入 27,191 tokens、输出 999 tokens；保守请求预留共 ¥1.247284。
+  按返回缓存用量和峰值价格估算 **¥0.01696472**，不是账单结算值。
+- 第一次外部复核容器未指定用户，drop ALL 后 root 无权读取 uid 1000 的 0700 测试目录；
+  纠正验证容器为同 uid 后重跑同 input key，第一轮没有再次调用模型或执行副作用。
+- API key 通过 stdin 导入独立 Vault；Task 取得 lease，工具容器没有 key。完成后撤销凭据、
+  删除临时密钥文件。仓库只保存使用量，不保存请求/响应内容或密钥。
+- 默认普通检查完全离线于收费模型。复现：设置 `WORKOS_REAL_DEEPSEEK=1` 和权限 600 的
+  `WORKOS_REAL_DEEPSEEK_KEY_FILE` 后 `make test-real-model-acceptance`；只新建独立测试项目/DB/Vault。
 
-## 验收矩阵（A01–A18）
+## 交付前自检
 
-按提示词 §6 逐行登记。PASS 均为**软件侧证据**（确定性 fixture / 官方 runtime +
-本地 API fixture / 真实进程），不含真实模型与第二台物理设备。
+1. 官方 Harness 执行原生 agents、history、loop、tools；薄插件仅负责授权/协议/后端适配。
+2. 第二轮使用同一原生持久 session，fixture 和真实服务均完成继续开发，没有拼接 UI 聊天代替恢复。
+3. 文件、Terminal、Native、预览与 Harness 只挂同一授权目录；不能选任意宿主路径。
+4. 每 Task 重新取 lease；累计输出预算；Core 当前授权不可确认则拒绝/终止。Docker socket 仅 Runtime 持有。
+5. 关闭 UI 仅 detach；Native/PTY/预览内存续接已有实际证据；restart 是新 generation。
+6. 控制 device+epoch 在服务端逐请求/事件验证；旧输入、旧 resize、旧信令不会因同设备重新接管而恢复。
+7. 运行中断和未知命令不自动重放；Core 恢复队列持久游标，Runtime 终结已死亡程序。
+8. 普通 App 仍走 capability，文件 Bridge 的原路径/大小/etag 规则保留；已有 App→Agent 和事前审批回归。
+9. 未实现：权限升级审批、公网/TURN、WebSocket/HMR、多 owner/多机、P3 发布/回滚。预览不等于部署产物。
+10. A16 尚无物理设备证据；总目标不标记全验收完成。用户已明确接受保留该项缺口后交付软件。
 
-| 编号 | 状态                                                                 | 证据                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
-| ---- | -------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| A01  | pass（软件侧）                                                       | [基线文档](../architecture/v2-harness-workspace-baseline.md) 能力矩阵 + 动态探测（0.1.1rc1 wheel sha256 与 Dockerfile 一致；sdk-jsonrpc-server 仅 3 方法 dispatch；0.1.5rc1 相同不升级）                                                                                                                                                                                                                                                                                                                                                             |
-| A02  | pass（软件侧，PTY+files+真实磁盘）                                   | `sh tools/workspace-execution/gate.sh` → `workspace-execution: PASS (shared real directory)`（pwd/git HEAD/双向 marker 核对真实磁盘树）；harness 侧文件由 A04 门禁覆盖                                                                                                                                                                                                                                                                                                                                                                               |
-| A03  | pass（软件侧）                                                       | store_linux_test（openat2 越界/只读）+ workspacehost 单测 + binding 归档/revision 测试；跨项目隔离                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
-| A04  | pass（软件侧：官方 runtime + 本地模型 fixture + 真实 bash/文件工具） | `sh tools/harness-sessions/gate.sh` → `harness-sessions: PASS (official runtime, three native turns, real bash + WorkOS tools, core+harness restart recovery)`：turn1 真实 bash 写 turn1-evidence.txt（磁盘核对 native-tool-evidence）、turn2 has_turn1=true（同原生上下文）、turn3 workos_project_info 返回真实项目名。真实模型版 = A15（BLOCKED）                                                                                                                                                                                                  |
-| A05  | pass（软件侧）                                                       | harness-sessions 门禁 restart 相（`TestHarnessSessionRestartRecovery`）：workos-core+harness-host 真重启后 include_closed 列出已关闭会话、ListSessionInputs 恰三轮且各保持原 task id 与 COMPLETED、GetTask/WatchTaskEvents 重放、WatchSessionEvents 生命周期完整（每输入 accepted/dispatched/terminal 各一次 + CLOSED）、关闭后输入仍 FailedPrecondition、新会话执行全新原生轮（has_turn1=false）；页面刷新恢复由 v2-development-journey 门禁覆盖                                                                                                    |
-| A06  | partial（harness-host 重启 = 诚实重启语义，非 wire resume）          | 上游 0.1.1rc1 无 wire 级 resume（B00 基线）。已完成轮的持久事实（输入/task/事件投影）跨重启完整（A05 证据）；未完成轮的原生上下文有意丢失、子进程按需重生；轮错误分类 + 不盲目重放由 adapter 单测（turn error classification + respawn on fingerprint/owner change）覆盖                                                                                                                                                                                                                                                                             |
-| A07  | pass（软件侧）                                                       | harness-sessions 门禁：replay 同 key 返回已记录输入、同 key 异文 Aborted、关闭后 FailedPrecondition；会话轮走 Task lease/凭据指纹（respawn 单测）；取消=杀进程组（adapter 单测）。累计预算：会话轮子环境固定 8192 max_tokens + 轮超时杀组                                                                                                                                                                                                                                                                                                            |
-| A08  | pass（软件侧只读链路；写工具未接）                                   | harness-sessions 门禁 turn3：Harness → workos_project_info → Core GetProject → 真实项目名返回（owner/project 由 worker 从 task 事实派生，模型不可提交）；`workos_list_artifacts` 同插件注册。成果创建/预览请求为后续工作（记录于 adapter README）                                                                                                                                                                                                                                                                                                    |
-| A09  | pass（诚实不支持 + fail closed 路径）                                | pinned runtime 事件词汇表有 approval/asked/decided 但 sdk wire **无审批响应方法**。`TestSessionApprovalEventsFailClosed`：审批类 session 事件 → 非重试协议错误 + 零 canonical 事件 + composition 保持 `policy: ask`；B04 只读工具集不触发升级；README §Unsupported approvals 记录。WorkOS 自身 pre-run approval 回归不变（既有门禁）                                                                                                                                                                                                                 |
-| A10  | pass（软件侧，PTY 真实链）                                           | `sh tools/surface-continuity/gate.sh`：detach 后 late marker 持续出现（无设备附着时程序继续）、重开 attach 同一 workload；native 引擎级门 + 单测（test-native-surface）                                                                                                                                                                                                                                                                                                                                                                              |
-| A11  | pass（软件侧，真实进程）                                             | 同门禁：stop 后 write 404、attach 终态 FailedPrecondition、restart 如实拒绝、sweep 过期 elapsed controller、策略 persistent=true keep_alive=1800s 单上限                                                                                                                                                                                                                                                                                                                                                                                             |
-| A12  | pass（软件侧：PTY 双设备真实输入链 + 仓库级并发接管）                | 同门禁：B 观察者写/resize PermissionDenied、B 接管后可写、A 立即失效、A 重复 attach 不能夺回、过期租约全员拒绝直至显式接管；真实物理双设备 = A16（BLOCKED）                                                                                                                                                                                                                                                                                                                                                                                          |
-| A13  | pass（软件侧）                                                       | ptyhost 启动 `Reconcile`（ListActivePtySessions → 无活 terminal 的非终态行 failed）+ nativehost 既有启动 sweep；surface-continuity 门禁 restart 相（`TestSurfaceContinuityRestartReconcile` prepare/verify）：runtime 容器停/启后该 workload 不再列为 running、GetSurfaceControl Running=false、attach FailedPrecondition、死会话 IO NotFound                                                                                                                                                                                                        |
-| A14  | pass（软件侧）                                                       | 四门禁在 B09 变更后全量重跑：workspace-execution / harness-sessions / surface-continuity / terminal-sessions 全 PASS（本文档 B09 行）；native-surface 与 v2-development-journey 门禁在 B05/B08 已 PASS 且本轮未改其链路代码                                                                                                                                                                                                                                                                                                                          |
-| A15  | **BLOCKED（操作员执行，永不静默通过）**                              | 入口已交付：`make test-real-model-acceptance`（`tools/real-model-acceptance/gate.sh` + `tests/integration/real_model_acceptance_test.go`，build tag realmodelgate）。前置：`WORKOS_REAL_DEEPSEEK=1` + vault ACTIVE deepseek 凭据 + 非回环 base URL（缺任一即响亮 BLOCKED，已实测两条拒绝路径）。预期证据：两轮原生续聊 + 每轮 usage + 真实工具写文件 + 会话/task 标记输出                                                                                                                                                                            |
-| A16  | **BLOCKED（操作员执行）**                                            | runbook 已交付：[docs/runbooks/lan-second-device.md](../runbooks/lan-second-device.md)（物理设备 B 配对 → Running apps → Take control → A 输入被拒；证据模板：拓扑/设备 id/workload+generation 前后）。软件侧双设备身份真实输入链已由 surface-continuity 门禁证明（A12）                                                                                                                                                                                                                                                                             |
-| A17  | pass（软件侧）                                                       | `sh tools/v2-development-journey/gate.sh` → `v2-development-journey: PASS`；视觉证据 docs/ui/desktop-web/changes/20260915-v2-agent-workspace-ui/（before/after/current + notes，三尺寸）；真实 DeepSeek 会话内容展示与物理双设备留 A15/A16                                                                                                                                                                                                                                                                                                           |
-| A18  | pass                                                                 | 检查矩阵（docker 容器执行，宿主无 make）：buf format --diff --exit-code OK；buf lint OK；sqlc vet OK；gofmt -l cmd internal tests 空；go vet ./... OK；go test ./... 全绿；corepack pnpm architecture OK（13 workspaces）；eslint . OK（配置补 `deploy/**/*.mjs` ignore）；prettier --check . OK（6 个本流文件补格式化）；corepack pnpm -r --if-present check OK（desktop-web 160 测试）；corepack pnpm --filter @workos/desktop-web build OK；node tools/status/render.mjs --check OK。无 proto 变更 → 无 gen/ 漂移（sqlc 生成 = 新查询的预期产物） |
+## 恢复入口与合并
 
-## §9 交付前自检（提示词 §9 逐条回答）
+软件与限额真实模型验收已结束；本任务创建的独立测试容器、数据库和真实凭据已清理/撤销。
+日志保留于 `tmp/v2-completion-intake/`，长期脱敏证据在本记录链接目录。共享开发栈未重置；
+无 sudo 操作。不要为继续阅读文档再次调用收费模型。
 
-1. **是否仍基于官方 Harness？** 是。pinned `deepseek-harness-runtime-bin==0.1.1rc1`
-   （B00 探测锁定，Dockerfile sha256 校验）。原生会话（SessionManager 常驻官方
-   子进程）、原生工具（官方 base 组合 bash/read/write/…）、原生循环与上下文
-   均未重写；WorkOS 只做契约、授权、投影与进程边界。
-2. **第二条指令是否实际继续同一原生上下文？** 是。同一 Core 会话映射同一
-   常驻官方子进程，第二轮模型请求含第一轮 user/assistant（fixture 答
-   has_turn1=true；B00 探测 `COUNT total=6 markers=TURN1` 原始证据）；
-   不是重放展示文本——turn2 的答案由官方 runtime 基于原生历史生成。
-3. **是否真实改了同一工作区的文件、执行了项目测试？** 会话工具写落在
-   harness-host 私有 stateDir 的会话工作区（门禁磁盘核对）；用户侧 B02 工作区
-   由 workspace-execution 门禁证明 Terminal/文件界面/Harness 同一真实磁盘树。
-   “项目测试执行”在软件侧由真实 bash 工具 + 官方 runtime 证明（门禁内真实
-   执行命令）；完整“改真实项目代码并跑项目测试”的模型驱动版属 A15（BLOCKED）。
-   用户界面核对：Agent Sessions 时间线（WatchTaskEvents）+ Files/Terminal。
-4. **每轮授权/预算/凭据租约？** 是。每轮走 Task lease；lease secret SHA-256
-   指纹门控进程复用（轮换即重生，单测）；key 只进该轮子进程
-   DEEPSEEK_API_KEY（bash 子进程 env 计数 0，B00 探测）；预算：会话轮子环境
-   max_tokens 8192 + 轮超时杀进程组。工具与 App 无真实模型凭据（只读工具经
-   owner-scoped 身份头调 Core，不接触 key）。
-5. **关窗口后原程序是否还活着，B 是否同一 Workload/generation？** 是（软件
-   侧）。关窗=Detach，程序继续、输出持续累积（surface-continuity 门禁 late
-   marker）；重开=ListProjectSurfaces→AttachSurface 同一 workload id、
-   generation=1（会话型 workload 单代次事实）。物理设备 B = A16（BLOCKED）。
-6. **B 接管后 A 旧输入是否被服务端拒绝？** 是（软件侧）。PTY Write/Resize 与
-   native 输入 apply 时刻逐请求复查当前租约：A 写 PermissionDenied、A 排队/
-   resize 失效、A 重新 attach 不夺回、过期租约全员拒绝直至显式接管（门禁
-   断言）；精确 controller 续期不升代次不抢控制。
-7. **Runtime/Harness 重启与结果不明命令？** 如实处理。runtime 重启：死进程
-   启动 reconcile 终结为 failed，不再报 running（A13）；core+harness 重启：
-   持久事实完整、无重复执行、新会话可跑（A05）；结果不明：轮错误杀组 +
-   输入幂等（同 key 返回已记录输入，绝不自动重放副作用）。
-8. **是否区分本地 fixture / 真实模型 / 同机浏览器 / 真实设备证据？** 是。
-   A04（官方 runtime+本地模型 fixture）、A15（真实模型，BLOCKED）、A12
-   （双设备身份软件链）、A16（物理双设备，BLOCKED）分开登记；桌面 E2E 用
-   fake provider + 真 PTY（v2-development-journey）单独成门。
-9. **是否完整交付 B00–B10 并如实列阻塞？** 是。B00–B10 全部完成（软件侧），
-   A15/A16 保持 BLOCKED 且入口/runbook 已交付并验证 fail-closed；软件缺口
-   （wire resume、审批响应、写工具、runtime 容器 git、可重启 app workload）
-   记录为不支持/后续项，未改写为环境问题。
-10. **是否保留 P3/P4 边界，状态文件与 README 不夸大？** 是。构建产物发布/
-    回滚、preview 工具链镜像、更多 Provider 均标注 P3+ 未做；status.json 新
-    增行均为 working（本地 fixture 证据）并显式注明真实模型行保持 blocked；
-    README 状态区由 render 生成（diff 仅生成块）。
+保留未知 `scratchprobe`（不提交），原 GLM 未提交草稿备份于 `tmp/v2-completion-intake/`。
+提交本任务后快进合并本地 main，不 push；精确提交以 Git 历史为准。后续仅需在具备第二台
+物理设备时按 A16 runbook 补验，不能将此处软件 PASS 写成物理 LAN PASS。
 
-## 最终报告（goal §B10）
+实际命令：`sh tools/v2-completion/gate.sh`（完整六进程与 4 个浏览器测试）；已准备独立
+fixture 上 `sh tools/v2-completion/regression.sh`（PostgreSQL/旧链路/真实容器失败矩阵）；
+`sh tools/real-model-acceptance/run.sh`（同一 native session 的真实两轮验收）；固定 Docker
+工具链中 `make generate`、`make check`，再次 `make generate` 校验全部生成文件不变。
+主镜像及 Runtime Dockerfile 均实际构建成功。
 
-**完成的用户能力**（软件侧，均有门禁证据）：
-
-1. Project + DeepSeek 绑定 → Agent Sessions 窗口内持续会话：多条输入同一原生
-   会话连续执行（官方 runtime 真实工具读写/命令）、排队/取消/关闭语义明确、
-   刷新恢复、重启后历史完整且栈可继续服务。
-2. 一个真实共享工作区：操作员注册目录，Terminal/文件界面/Harness 工具/开发
-   应用读写同一磁盘树，只读/归档/越界/跨项目边界准确。
-3. 程序与连接分离：关窗/切项目=Detach（30 分钟有界策略内程序继续），Running
-   apps 发现并重挂同一实例，单控制端显式接管（旧输入服务端拒绝），显式
-   Stop 唯一停止，runtime 重启诚实终结死程序。
-4. Harness → 只读 WorkOS 系统工具（项目信息/成果列表）真实业务事实返回，
-   身份服务端派生。
-
-**B00–B10 状态**：全部 done（软件侧）。分支提交 f9cffa8(B00) → c0e28bc(B01)
-→ 5f97a96(B02) → 342bcc9+8b377de(B03) → 3d0411c(B04) → 8db208f(B05+B08) →
-d3994d6(B06+B07)；B09/B10 改动按要求留在工作树未提交（见下）。
-
-**证据**：验收矩阵 A01–A18（上文）；视觉证据
-docs/ui/desktop-web/changes/20260915-v2-agent-workspace-ui/；架构文档
-[v2-agent-workspace-web-continuity.md](../architecture/v2-agent-workspace-web-continuity.md)。
-
-**仍缺什么**：A15 真实模型两轮（操作员门已备，BLOCKED）；A16 第二台物理 LAN
-设备（runbook 已备，BLOCKED）；上游 wire 级 resume 缺失（harness 重启丢未完成
-轮上下文）；审批响应无官方 wire 路径（fail closed）；写工具/成果创建/预览请求
-未接；runtime 容器无 git；可重启持续 app workload 未接（P3）。
-
-**分支/提交**：`feat/v2-agent-workspace-web-continuity`（8 个已提交 checkpoint +
-本轮 B09/B10 未提交改动，由用户审阅后提交）。
-
-**如何启动和操作**：`make dev`（docker compose 全栈）→ 浏览器进桌面 →
-建/选 Project → 绑定 DeepSeek（本地 fixture：`make test-deepseek-fixture` 同款
-profile + vault 凭据）→ Agent Sessions 窗口开会话提需求 → Terminal/Native/
-Files 验证同一工作区 → 关窗后 Home → Running apps 重开/接管/Stop。门禁命令
-见 §验收命令（交付架构文档 §7）。
+最后补测发现并修复 Docker daemon 自身 deadline 与 Runtime kill 同时完成的竞态：
+已死亡容器的 kill 冲突经 inspect 确认为停止后返回 timeout，不能误报 unavailable。
+小于 1ms、非数字或非有限 timeout 在启动容器前拒绝，避免 timeout 被舍入为零而失效。
+修复后实际 Docker 矩阵与 `make check` 再次通过。

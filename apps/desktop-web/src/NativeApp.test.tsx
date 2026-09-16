@@ -28,13 +28,12 @@ function fixture(create = vi.fn(() => Promise.resolve({ session: { id: "session-
     closeNativeSession: vi.fn(() => Promise.resolve({})),
     detachNativeSession: vi.fn(() => Promise.resolve({})),
   };
-  // Surface continuity is honestly unavailable in the default fixture: the
-  // window falls back to creating its own session.
+  // No running workload: creation acquires the first controller epoch.
   const surfaceContinuity = {
-    listProjectSurfaces: vi.fn<() => Promise<unknown>>(() =>
-      Promise.reject(new Error("unavailable")),
+    listProjectSurfaces: vi.fn<() => Promise<unknown>>(() => Promise.resolve({ workloads: [] })),
+    attachSurface: vi.fn<() => Promise<unknown>>(() =>
+      Promise.resolve({ attachment: { controls: true, controlGeneration: 1n } }),
     ),
-    attachSurface: vi.fn<() => Promise<unknown>>(() => Promise.resolve({})),
     requestSurfaceControl: vi.fn<() => Promise<unknown>>(() => Promise.resolve({})),
     stopSurfaceWorkload: vi.fn<() => Promise<unknown>>(() => Promise.resolve({})),
   };
@@ -78,7 +77,7 @@ describe("Native window lifecycle and input", () => {
       ),
     );
     const view = render(<NativeApp workosClients={f.clients} activeProjectId="project" />);
-    // The continuity list fails first; the create call only starts after it.
+    // Discovery finishes before creating a program.
     await waitFor(() => {
       expect(f.nativeSessions.createNativeSession).toHaveBeenCalled();
     });
@@ -153,19 +152,20 @@ describe("Native window lifecycle and input", () => {
       expect(f.surfaceContinuity.attachSurface).toHaveBeenCalled();
     });
     expect(f.nativeSessions.createNativeSession).not.toHaveBeenCalled();
-    await waitFor(() => {
-      expect(f.nativeSessions.connectNativeSession).toHaveBeenCalledWith(
-        expect.objectContaining({ sessionId: "workload-1" }),
-      );
-    });
+    expect(f.nativeSessions.connectNativeSession).not.toHaveBeenCalled();
     // Observer attachment: the takeover button is the only way to input.
     expect(screen.getByTestId("native-take-control")).toBeTruthy();
     f.surfaceContinuity.requestSurfaceControl = vi.fn<() => Promise<unknown>>(() =>
-      Promise.resolve({ attachment: { controls: true } }),
+      Promise.resolve({ attachment: { controls: true, controlGeneration: 2n } }),
     );
     await userEvent.click(screen.getByTestId("native-take-control"));
     await waitFor(() => {
       expect(screen.queryByTestId("native-take-control")).toBeNull();
+    });
+    await waitFor(() => {
+      expect(f.nativeSessions.connectNativeSession).toHaveBeenCalledWith(
+        expect.objectContaining({ sessionId: "workload-1", controlGeneration: 2n }),
+      );
     });
     // The explicit stop affordance is the only stop path.
     await userEvent.click(screen.getByTestId("native-stop"));

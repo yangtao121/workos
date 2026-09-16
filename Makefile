@@ -1134,65 +1134,29 @@ test-browser-pool:
 test-terminal-sessions:
 	@set -eu; sh tools/terminal-sessions/gate.sh
 
-# The harness continuous-session gate (ADR-0030/A04): the pinned official
-# DeepSeek runtime with tools runs as a persistent per-session child; two
-# native turns, real bash tool writes, replay/conflict/close semantics.
-.PHONY: test-harness-sessions
-test-harness-sessions:
-	@set -eu; sh tools/harness-sessions/gate.sh
+# ADR-0032: the former slice gates now delegate to one isolated six-process
+# acceptance (official Harness, shared workspace, PTY/Native/preview, recovery).
+.PHONY: test-harness-sessions test-workspace-execution test-native-surface test-surface-continuity test-v2-development-journey
+test-harness-sessions test-workspace-execution test-native-surface test-surface-continuity test-v2-development-journey: test-v2-completion
 
-# OPERATOR-GATED (A15): the real DeepSeek API acceptance run. This spends
-# real quota and refuses to start without WORKOS_REAL_DEEPSEEK=1 plus an
-# ACTIVE vault credential; it never runs from the ordinary suite and never
-# silently passes. Preconditions and evidence duties are documented in the
-# script header.
+# Explicit opt-in only; owner-only secret file is imported through the isolated
+# Vault admin socket. The acceptance proxy reserves at most CNY 1.90.
 .PHONY: test-real-model-acceptance
 test-real-model-acceptance:
-	@set -eu; sh tools/real-model-acceptance/gate.sh
+	sh tools/real-model-acceptance/gate.sh
 
-# The workspace execution gate (ADR-0030): one real git repository shared by
-# the owner's terminal and the host file view. pwd, git identity, and
-# bidirectional file flow resolve against the real disk tree.
-.PHONY: test-workspace-execution
-test-workspace-execution:
-	@set -eu; sh tools/workspace-execution/gate.sh
-
-# The virtual-display native runner gate (ADR-0029): real Xvfb displays with
-# ffmpeg x11grab/VP8 capture and loopback WebRTC video, data-channel input
-# through xdotool XTEST, driven by a Go peer and the real desktop Native
-# window.
-.PHONY: test-native-surface
-test-native-surface:
-	@set -eu; sh tools/native-surface/gate.sh
-
-# The surface continuity gate (ADR-0031): detach keeps the real program
-# running with output accumulating, stop deterministically reaps it, the
-# single-controller lease is enforced server-side on the PTY data path for
-# two independent device identities, and the bounded sweep expires elapsed
-# attachments.
-.PHONY: test-surface-continuity
-test-surface-continuity:
-	@set -eu; sh tools/surface-continuity/gate.sh
-
-# The V2 development journey gate (ADR-0030 B05/B08): the real desktop Agent
-# Sessions window runs the deterministic fake-provider loop end to end on
-# the shared compose stack — create, submit, visible completion, refresh
-# resume, second input — plus the busy-state UI contract (running cancel
-# action distinct from closing, queued inputs). WORKOS_CAPTURE_DIR adds the
-# task's visual evidence capture (see capture-v2-development-journey).
-.PHONY: test-v2-development-journey
-test-v2-development-journey:
-	@set -eu; sh tools/v2-development-journey/gate.sh
-
-# Visual evidence capture for the V2 agent workspace slice: runs the same
-# gate with WORKOS_CAPTURE_DIR pointing at the task's docs/ui folder, then
-# updates the current/ baseline from the captured after/ set.
 .PHONY: capture-v2-development-journey
 capture-v2-development-journey:
 	@set -eu; \
-	capture="docs/ui/desktop-web/changes/20260915-v2-agent-workspace-ui/after"; \
+	capture="docs/ui/desktop-web/changes/20260916-v2-completion/after"; \
 	mkdir -p "$$capture"; \
-	WORKOS_CAPTURE_DIR="$(CURDIR)/$$capture" sh tools/v2-development-journey/gate.sh; \
-	for frame in "$$capture"/*.png; do \
-		cp "$$frame" "docs/ui/desktop-web/current/$$(basename "$$frame")"; \
-	done
+	WORKOS_V2_CAPTURE_DIR="/workspace/$$capture" sh tools/v2-completion/gate.sh; \
+	for frame in "$$capture"/*.png; do cp "$$frame" "docs/ui/desktop-web/current/$$(basename "$$frame")"; done
+
+.PHONY: build-workspace-runtime test-v2-completion
+build-workspace-runtime:
+	docker build -t workos-workspace-runtime:dev -f deploy/workspace.Dockerfile .
+	docker build -t workos-native-runtime:dev -f deploy/native-runtime.Dockerfile .
+
+test-v2-completion:
+	sh tools/v2-completion/gate.sh

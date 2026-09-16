@@ -72,6 +72,9 @@ func TestPrivateConnectServicesAreNotForwarded(t *testing.T) {
 		"/workos.credential.v1.CredentialAdminService/RevokeCredential",
 		"/workos.surface.v1.SurfaceLaunchResolverService/ResolveWebBundle",
 		"/workos.workload.v1.WorkloadService/StartWorkload",
+		"/workos.project.v1.WorkspaceExecutionAuthorizationService/ResolveWorkspaceExecution",
+		"/workos.workload.v1.WorkspaceExecutionService/ExecuteWorkspaceOperation",
+		"/workos.taskexecution.v1.TaskToolService/ExecuteTaskTool",
 	} {
 		response := httptest.NewRecorder()
 		handler.ServeHTTP(response, httptest.NewRequest(http.MethodPost, path, nil))

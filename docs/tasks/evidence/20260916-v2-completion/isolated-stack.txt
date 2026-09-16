@@ -1,0 +1,176 @@
+$ tsc --noEmit && vite build
+vite v8.2.2 building client environment for production...
+transforming...
+✓ 264 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/index.html                    0.57 kB │ gzip:   0.34 kB
+dist/assets/index-X8RxK38b.css    45.57 kB │ gzip:   9.60 kB
+dist/assets/browser-DTyecNSB.js   23.46 kB │ gzip:   8.85 kB
+dist/assets/index-4uMXcpUA.js    623.42 kB │ gzip: 178.35 kB
+
+✓ built in 390ms
+[plugin builtin:vite-reporter] 
+(!) Some chunks are larger than 500 kB after minification. Consider:
+- Using dynamic import() to code-split the application
+- Use build.rolldownOptions.output.codeSplitting to improve chunking: https://rolldown.rs/reference/OutputOptions.codeSplitting
+- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+ Container v2-completion-hucinv-bootstrap-1 Creating 
+ Container v2-completion-hucinv-bootstrap-1 Created 
+ Container v2-completion-hucinv-runtime-1 Creating 
+ Container v2-completion-hucinv-model-1 Creating 
+ Container v2-completion-hucinv-core-1 Creating 
+ Container v2-completion-hucinv-harness-1 Creating 
+ Container v2-completion-hucinv-gateway-1 Creating 
+ Container v2-completion-hucinv-reliability-1 Creating 
+ Container v2-completion-hucinv-indexer-1 Creating 
+ Container v2-completion-hucinv-runtime-1 Created 
+ Container v2-completion-hucinv-indexer-1 Created 
+ Container v2-completion-hucinv-gateway-1 Created 
+ Container v2-completion-hucinv-model-1 Created 
+ Container v2-completion-hucinv-core-1 Created 
+ Container v2-completion-hucinv-harness-1 Created 
+ Container v2-completion-hucinv-reliability-1 Created 
+ Container v2-completion-hucinv-bootstrap-1 Starting 
+ Container v2-completion-hucinv-bootstrap-1 Started 
+ Container v2-completion-hucinv-bootstrap-1 Waiting 
+ Container v2-completion-hucinv-bootstrap-1 Waiting 
+ Container v2-completion-hucinv-bootstrap-1 Waiting 
+ Container v2-completion-hucinv-bootstrap-1 Waiting 
+ Container v2-completion-hucinv-bootstrap-1 Waiting 
+ Container v2-completion-hucinv-bootstrap-1 Waiting 
+ Container v2-completion-hucinv-bootstrap-1 Waiting 
+ Container v2-completion-hucinv-bootstrap-1 Exited 
+ Container v2-completion-hucinv-indexer-1 Starting 
+ Container v2-completion-hucinv-bootstrap-1 Exited 
+ Container v2-completion-hucinv-reliability-1 Starting 
+ Container v2-completion-hucinv-bootstrap-1 Exited 
+ Container v2-completion-hucinv-runtime-1 Starting 
+ Container v2-completion-hucinv-bootstrap-1 Exited 
+ Container v2-completion-hucinv-bootstrap-1 Exited 
+ Container v2-completion-hucinv-harness-1 Starting 
+ Container v2-completion-hucinv-bootstrap-1 Exited 
+ Container v2-completion-hucinv-bootstrap-1 Exited 
+ Container v2-completion-hucinv-gateway-1 Starting 
+ Container v2-completion-hucinv-core-1 Starting 
+ Container v2-completion-hucinv-model-1 Starting 
+ Container v2-completion-hucinv-runtime-1 Started 
+ Container v2-completion-hucinv-reliability-1 Started 
+ Container v2-completion-hucinv-indexer-1 Started 
+ Container v2-completion-hucinv-core-1 Started 
+ Container v2-completion-hucinv-harness-1 Started 
+ Container v2-completion-hucinv-gateway-1 Started 
+ Container v2-completion-hucinv-model-1 Started 
+ Container v2-completion-hucinv-runtime-1 Recreate 
+ Container v2-completion-hucinv-runtime-1 Recreated 
+ Container v2-completion-hucinv-runtime-1 Starting 
+ Container v2-completion-hucinv-runtime-1 Started 
+first 01a0a8ab-9ba1-7339-bcaa-4e1e7f0682f6 AGENT_TASK_STATE_COMPLETED
+FIRST_TURN_PASS 01a0a8ab-9b83-78e2-b893-8afc28f417b9
+ Container v2-completion-hucinv-harness-1 Restarting 
+ Container v2-completion-hucinv-gateway-1 Restarting 
+ Container v2-completion-hucinv-core-1 Restarting 
+ Container v2-completion-hucinv-gateway-1 Started 
+ Container v2-completion-hucinv-harness-1 Started 
+ Container v2-completion-hucinv-core-1 Started 
+second 01a0a8ab-a6ac-77ad-87e7-640ee1617c09 AGENT_TASK_STATE_COMPLETED
+artifact 01a0a8ab-aecf-7e98-ba65-7a0bf863921b AGENT_TASK_STATE_COMPLETED
+preview 01a0a8ab-b4ee-7a2b-a016-e0a41a3e49e7 AGENT_TASK_STATE_COMPLETED
+question 01a0a8ab-bb14-7b5f-84c0-410deb7cfa68 AGENT_TASK_STATE_COMPLETED
+TWO_NATIVE_TURNS_RESTART_FILES_ARTIFACT_PREVIEW_QUESTION_PASS 01a0a8ab-9b83-78e2-b893-8afc28f417b9
+PTY_MEMORY_BACKGROUND_CONTROL_EPOCH_RESTART_PASS 01a0a8ab-c1b1-71af-a805-feb6e11a001a
+ Container v2-completion-hucinv-runtime-1 Restarting 
+ Container v2-completion-hucinv-runtime-1 Started 
+RUNTIME_RESTART_DEAD_PROGRAM_FENCED_PASS 01a0a8ab-c1b1-71af-a805-feb6e11a001a
+=== RUN   TestAppArtifacts
+--- PASS: TestAppArtifacts (2.73s)
+=== RUN   TestAppBridgeVerticalSlice
+=== PAUSE TestAppBridgeVerticalSlice
+=== RUN   TestAppAgentRequireApprovalVerticalSlice
+=== PAUSE TestAppAgentRequireApprovalVerticalSlice
+=== RUN   TestAppAgentRejectNeverExecutes
+=== PAUSE TestAppAgentRejectNeverExecutes
+=== RUN   TestPtyContainerRestartKeepsIdentity
+--- PASS: TestPtyContainerRestartKeepsIdentity (2.03s)
+=== RUN   TestPtyContainerReadonlyAndRevocation
+--- PASS: TestPtyContainerReadonlyAndRevocation (2.37s)
+=== RUN   TestMutableProjectAppGrantsVerticalSlice
+=== PAUSE TestMutableProjectAppGrantsVerticalSlice
+=== RUN   TestPreviewRealProcessContinuityAndRevocation
+--- PASS: TestPreviewRealProcessContinuityAndRevocation (2.08s)
+=== RUN   TestProjectAppInstallationVerticalSlice
+=== PAUSE TestProjectAppInstallationVerticalSlice
+=== RUN   TestSessionToolAuthorizationAndRevocation
+--- PASS: TestSessionToolAuthorizationAndRevocation (2.28s)
+=== RUN   TestSessionTransactionsAndInterruptedLease
+=== RUN   TestSessionTransactionsAndInterruptedLease/finalize_beyond_first_page_and_replay_after_service_restart
+=== RUN   TestSessionTransactionsAndInterruptedLease/closed_session_reaps_admission_committed_before_input_linkage
+--- PASS: TestSessionTransactionsAndInterruptedLease (6.73s)
+    --- PASS: TestSessionTransactionsAndInterruptedLease/finalize_beyond_first_page_and_replay_after_service_restart (5.37s)
+    --- PASS: TestSessionTransactionsAndInterruptedLease/closed_session_reaps_admission_committed_before_input_linkage (0.02s)
+=== RUN   TestTaskSubmissionIdentityArbitratesConcurrentInputs
+--- PASS: TestTaskSubmissionIdentityArbitratesConcurrentInputs (0.88s)
+=== CONT  TestAppBridgeVerticalSlice
+=== CONT  TestMutableProjectAppGrantsVerticalSlice
+=== CONT  TestProjectAppInstallationVerticalSlice
+=== CONT  TestAppAgentRejectNeverExecutes
+=== CONT  TestAppAgentRequireApprovalVerticalSlice
+=== RUN   TestProjectAppInstallationVerticalSlice/InstallPinsCurrentVersionIntoProjection
+=== RUN   TestProjectAppInstallationVerticalSlice/ExplicitVersionPinsExactImmutable
+=== RUN   TestAppBridgeVerticalSlice/GrantValidation
+=== RUN   TestMutableProjectAppGrantsVerticalSlice/RealChangeBumpsBothRevisionsExactlyOnce
+=== RUN   TestProjectAppInstallationVerticalSlice/HigherRegistryVersionDoesNotSilentlyUpgrade
+=== RUN   TestProjectAppInstallationVerticalSlice/IdempotentReplayAndConflicts
+=== RUN   TestAppAgentRequireApprovalVerticalSlice/PolicyIdempotency
+=== RUN   TestAppBridgeVerticalSlice/ProviderSnapshotAndOwnerVisibility
+=== RUN   TestAppBridgeVerticalSlice/RunIdempotency
+=== RUN   TestProjectAppInstallationVerticalSlice/NoOpSecondKeyKeepsRevisionAndEvents
+=== RUN   TestAppBridgeVerticalSlice/WatchEventsAndResume
+=== RUN   TestMutableProjectAppGrantsVerticalSlice/SameSetNoOpKeepsFactsButConsumesKey
+=== RUN   TestProjectAppInstallationVerticalSlice/UninstallTombstoneReplayAndReinstallIdentity
+--- PASS: TestAppAgentRejectNeverExecutes (0.20s)
+=== RUN   TestAppAgentRequireApprovalVerticalSlice/DecisionIdempotency
+=== RUN   TestProjectAppInstallationVerticalSlice/ErrorSurfacesAndFailClosedBoundaries
+=== RUN   TestMutableProjectAppGrantsVerticalSlice/ReplayReturnsFirstSnapshotAfterLaterMutations
+=== RUN   TestProjectAppInstallationVerticalSlice/EventsMirrorProjectRevisionWithStablePayloads
+=== RUN   TestMutableProjectAppGrantsVerticalSlice/FailedRequestsDoNotConsumeKey
+--- PASS: TestProjectAppInstallationVerticalSlice (0.30s)
+    --- PASS: TestProjectAppInstallationVerticalSlice/InstallPinsCurrentVersionIntoProjection (0.03s)
+    --- PASS: TestProjectAppInstallationVerticalSlice/ExplicitVersionPinsExactImmutable (0.03s)
+    --- PASS: TestProjectAppInstallationVerticalSlice/HigherRegistryVersionDoesNotSilentlyUpgrade (0.02s)
+    --- PASS: TestProjectAppInstallationVerticalSlice/IdempotentReplayAndConflicts (0.02s)
+    --- PASS: TestProjectAppInstallationVerticalSlice/NoOpSecondKeyKeepsRevisionAndEvents (0.04s)
+    --- PASS: TestProjectAppInstallationVerticalSlice/UninstallTombstoneReplayAndReinstallIdentity (0.06s)
+    --- PASS: TestProjectAppInstallationVerticalSlice/ErrorSurfacesAndFailClosedBoundaries (0.05s)
+    --- PASS: TestProjectAppInstallationVerticalSlice/EventsMirrorProjectRevisionWithStablePayloads (0.02s)
+=== RUN   TestMutableProjectAppGrantsVerticalSlice/ErrorMatrix
+=== RUN   TestAppBridgeVerticalSlice/CapabilityIsolation
+--- PASS: TestAppBridgeVerticalSlice (0.40s)
+    --- PASS: TestAppBridgeVerticalSlice/GrantValidation (0.01s)
+    --- PASS: TestAppBridgeVerticalSlice/ProviderSnapshotAndOwnerVisibility (0.00s)
+    --- PASS: TestAppBridgeVerticalSlice/RunIdempotency (0.01s)
+    --- PASS: TestAppBridgeVerticalSlice/WatchEventsAndResume (0.22s)
+    --- PASS: TestAppBridgeVerticalSlice/CapabilityIsolation (0.04s)
+=== RUN   TestMutableProjectAppGrantsVerticalSlice/SameKeyAcrossCommandsAndProjectsAborts
+--- PASS: TestMutableProjectAppGrantsVerticalSlice (0.52s)
+    --- PASS: TestMutableProjectAppGrantsVerticalSlice/RealChangeBumpsBothRevisionsExactlyOnce (0.09s)
+    --- PASS: TestMutableProjectAppGrantsVerticalSlice/SameSetNoOpKeepsFactsButConsumesKey (0.09s)
+    --- PASS: TestMutableProjectAppGrantsVerticalSlice/ReplayReturnsFirstSnapshotAfterLaterMutations (0.05s)
+    --- PASS: TestMutableProjectAppGrantsVerticalSlice/FailedRequestsDoNotConsumeKey (0.04s)
+    --- PASS: TestMutableProjectAppGrantsVerticalSlice/ErrorMatrix (0.08s)
+    --- PASS: TestMutableProjectAppGrantsVerticalSlice/SameKeyAcrossCommandsAndProjectsAborts (0.10s)
+--- PASS: TestAppAgentRequireApprovalVerticalSlice (0.63s)
+    --- PASS: TestAppAgentRequireApprovalVerticalSlice/PolicyIdempotency (0.02s)
+    --- PASS: TestAppAgentRequireApprovalVerticalSlice/DecisionIdempotency (0.01s)
+PASS
+ok  	github.com/yangtao121/workos/tests/integration	19.801s
+
+Running 4 tests using 1 worker
+
+  ✓  1 e2e/v2-completion-visual.spec.ts:15:3 › development states 1440x900 (9.4s)
+  ✓  2 e2e/v2-completion-visual.spec.ts:15:3 › development states 820x1180 (3.6s)
+  ✓  3 e2e/v2-completion-visual.spec.ts:15:3 › development states 390x844 (3.1s)
+  ✓  4 e2e/v2-completion.spec.ts:7:1 › shared files, resumed native display and real development preview (11.6s)
+
+  4 passed (29.0s)
+V2 fixture result=0 evidence=/home/aquatao/workos/tmp/v2-completion.HUCInv

@@ -7,6 +7,9 @@ import (
 	"fmt"
 	"log/slog"
 	"time"
+	"unicode/utf8"
+
+	"github.com/google/uuid"
 
 	"github.com/yangtao121/workos/internal/core/agent/domain"
 	"github.com/yangtao121/workos/internal/core/agent/ports"
@@ -65,10 +68,10 @@ func (s *SessionService) Create(ctx context.Context, ownerUserID, projectID, ide
 		if err != nil {
 			return domain.Session{}, err
 		}
+		if replay.ProjectID != projectID || replay.ProviderID != snapshot.ProviderID || replay.ProfileID != snapshot.ProfileID || replay.WorkspaceBindingID != snapshot.WorkspaceBindingID || replay.WorkspaceBindingRevision != snapshot.WorkspaceBindingRevision {
+			return domain.Session{}, domain.ErrSessionInputConflict
+		}
 		return replay, nil
-	}
-	if err := s.appendEvent(ctx, session.OwnerUserID, session.ID, "state_changed", map[string]any{"previous": "", "current": string(domain.SessionStateActive), "reason": "created"}, now); err != nil {
-		return domain.Session{}, err
 	}
 	return s.repository.GetSession(ctx, ownerUserID, session.ID)
 }
@@ -80,88 +83,136 @@ func (s *SessionService) Submit(ctx context.Context, ownerUserID, sessionID, cli
 	if !validSessionOwner(ownerUserID) || !validSessionOwner(sessionID) || clientInputID == "" || len(clientInputID) > 128 {
 		return domain.SessionInput{}, false, domain.ErrInvalid
 	}
-	session, err := s.repository.GetSession(ctx, ownerUserID, sessionID)
-	if err != nil {
-		return domain.SessionInput{}, false, err
-	}
-	if session.State.Terminal() {
-		return domain.SessionInput{}, false, domain.ErrSessionClosed
-	}
-	now := s.now().UTC()
-	// Reserve the next sequence atomically before persisting the input.
-	next := session.InputSequence + 1
-	bumped, err := s.repository.BumpInputSequence(ctx, ownerUserID, sessionID, next, session.InputSequence, now)
-	if err != nil {
-		return domain.SessionInput{}, false, err
-	}
-	if !bumped {
-		return domain.SessionInput{}, false, domain.ErrSessionBusy
-	}
-	input, queued, err := session.AcceptSessionInput(now, s.generator.New(), clientInputID, text)
-	if err != nil {
-		return domain.SessionInput{}, false, err
-	}
-	created, err := s.repository.InsertInput(ctx, input)
-	if err != nil {
-		return domain.SessionInput{}, false, err
-	}
-	if !created {
-		previous, readErr := s.repository.GetInput(ctx, sessionID, clientInputID)
-		if readErr != nil {
-			return domain.SessionInput{}, false, readErr
+	var input domain.SessionInput
+	err := s.withSession(ctx, ownerUserID, sessionID, func(locked *SessionService) error {
+		session, err := locked.repository.GetSession(ctx, ownerUserID, sessionID)
+		if err != nil {
+			return err
 		}
-		if previous.RequestDigest != input.RequestDigest {
-			return domain.SessionInput{}, false, domain.ErrSessionInputConflict
+		if session.State != domain.SessionStateActive {
+			return domain.ErrSessionClosed
 		}
-		return previous, previous.State != domain.SessionInputAccepted || previous.TaskID != "", nil
-	}
-	if err := s.appendEvent(ctx, session.OwnerUserID, session.ID, "input_accepted", map[string]any{"input_id": input.ID, "queued": queued}, now); err != nil {
+		previous, err := locked.repository.GetInput(ctx, sessionID, clientInputID)
+		if err == nil {
+			if previous.RequestDigest != domain.InputRequestDigest(clientInputID, text) {
+				return domain.ErrSessionInputConflict
+			}
+			input = previous
+			return nil
+		}
+		if !errors.Is(err, domain.ErrSessionNotFound) {
+			return err
+		}
+		now := s.now().UTC()
+		previousSequence := session.InputSequence
+		var queued bool
+		input, queued, err = session.AcceptSessionInput(now, s.generator.New(), clientInputID, text)
+		if err != nil {
+			return err
+		}
+		if ok, err := locked.repository.BumpInputSequence(ctx, ownerUserID, sessionID, session.InputSequence, previousSequence, now); err != nil {
+			return err
+		} else if !ok {
+			return domain.ErrSessionBusy
+		}
+		if ok, err := locked.repository.InsertInput(ctx, input); err != nil {
+			return err
+		} else if !ok {
+			return domain.ErrSessionInputConflict
+		}
+		return locked.appendEvent(ctx, ownerUserID, sessionID, "input_accepted", map[string]any{"input_id": input.ID, "queued": queued}, now)
+	})
+	if err != nil {
 		return domain.SessionInput{}, false, err
 	}
-	if queued {
-		return input, true, nil
+	// Acceptance is already durable. A failed dispatch is repaired using the
+	// same input identity, including a task whose admission acknowledgement was lost.
+	if err := s.dispatchNext(ctx, ownerUserID, sessionID); err != nil {
+		s.logger.Warn("session dispatch deferred", "session", sessionID)
 	}
-	dispatched, err := s.dispatch(ctx, session, input, now)
-	if err != nil {
-		return input, true, err
-	}
-	return dispatched, false, nil
+	input, err = s.repository.GetInput(ctx, sessionID, clientInputID)
+	return input, input.State == domain.SessionInputAccepted, err
 }
 
-// dispatch claims the single execution slot, submits the Task, and records
-// the linkage. A lost claim or failed submission leaves the input accepted
-// so the sweeper can retry it in order.
-func (s *SessionService) dispatch(ctx context.Context, session domain.Session, input domain.SessionInput, now time.Time) (domain.SessionInput, error) {
-	task, err := s.tasks.Dispatch(ctx, session.OwnerUserID, session.ProjectID, session.ProviderID, input.Text, fmt.Sprintf("session-%s-input-%s", session.ID, input.ID), session.ID)
-	if err != nil {
-		return input, err
-	}
-	claimed, err := s.repository.ClaimExecution(ctx, session.OwnerUserID, session.ID, task.ID, now)
-	if err != nil {
-		return input, err
-	}
-	if !claimed {
-		// Another input owns the slot; this input stays queued for the
-		// sweeper. The submitted task is still a valid execution record;
-		// it will be cancelled by the slot owner's terminal handling.
-		if _, cancelErr := s.tasks.Cancel(ctx, session.OwnerUserID, task.ID, "session execution slot lost"); cancelErr != nil {
-			s.logger.Warn("session slot-lost cancel failed", "task", task.ID, "error", cancelErr)
+func (s *SessionService) withSession(ctx context.Context, owner, id string, fn func(*SessionService) error) error {
+	return s.repository.WithinSession(ctx, owner, id, func(repository ports.SessionRepository) error {
+		locked := *s
+		locked.repository = repository
+		return fn(&locked)
+	})
+}
+
+// Admission may commit before this transaction, but the worker claim query
+// cannot see that task until its session slot AND input linkage commit.
+func (s *SessionService) dispatchNext(ctx context.Context, owner, id string) error {
+	var session domain.Session
+	var input domain.SessionInput
+	err := s.withSession(ctx, owner, id, func(locked *SessionService) error {
+		var err error
+		session, err = locked.repository.GetSession(ctx, owner, id)
+		if err != nil {
+			return err
 		}
-		return input, domain.ErrSessionBusy
+		if session.State != domain.SessionStateActive || session.ActiveTaskID != "" {
+			return nil
+		}
+		pending, err := locked.repository.ListDispatchableInputs(ctx, id, 1)
+		if err != nil {
+			return err
+		}
+		if len(pending) != 0 {
+			input = pending[0]
+		}
+		return nil
+	})
+	if err != nil || input.ID == "" {
+		return err
 	}
-	dispatched, err := s.repository.DispatchInput(ctx, input.ID, task.ID, now)
+	// Admission uses its own transaction. Never hold a session connection
+	// while asking it for another: concurrent waiters can exhaust the pool.
+	// Competing dispatchers use the same durable key; claim eligibility is
+	// withheld until the second transaction binds the winning task below.
+	task, err := s.tasks.Dispatch(ctx, owner, session.ProjectID, session.ProviderID, input.Text, fmt.Sprintf("session-%s-input-%s", id, input.ID), id)
 	if err != nil {
-		return input, err
+		return err
 	}
-	if !dispatched {
-		return input, domain.ErrSessionInputInvalid
+	cancelAdmitted := false
+	err = s.withSession(ctx, owner, id, func(locked *SessionService) error {
+		current, err := locked.repository.GetSession(ctx, owner, id)
+		if err != nil {
+			return err
+		}
+		saved, err := locked.repository.GetInput(ctx, id, input.ClientInputID)
+		if err != nil {
+			return err
+		}
+		if saved.TaskID == task.ID {
+			return nil
+		}
+		if saved.State != domain.SessionInputAccepted || current.State != domain.SessionStateActive {
+			cancelAdmitted = true
+			return nil
+		}
+		if current.ActiveTaskID != "" {
+			return domain.ErrSessionBusy
+		}
+		now := s.now().UTC()
+		if ok, err := locked.repository.ClaimExecution(ctx, owner, id, task.ID, now); err != nil {
+			return err
+		} else if !ok {
+			return domain.ErrSessionBusy
+		}
+		if ok, err := locked.repository.DispatchInput(ctx, input.ID, task.ID, now); err != nil {
+			return err
+		} else if !ok {
+			return domain.ErrSessionInputInvalid
+		}
+		return locked.appendEvent(ctx, owner, id, "input_dispatched", map[string]any{"input_id": input.ID, "task_id": task.ID}, now)
+	})
+	if err == nil && cancelAdmitted {
+		_, err = s.tasks.Cancel(ctx, owner, task.ID, "Session input cancelled before dispatch")
 	}
-	input.State = domain.SessionInputDispatched
-	input.TaskID = task.ID
-	if err := s.appendEvent(ctx, session.OwnerUserID, session.ID, "input_dispatched", map[string]any{"input_id": input.ID, "task_id": task.ID}, now); err != nil {
-		return input, err
-	}
-	return input, nil
+	return err
 }
 
 // GetInput is the timeout-safe read for a submitted key.
@@ -205,59 +256,52 @@ func (s *SessionService) CancelExecution(ctx context.Context, ownerUserID, sessi
 	if !validSessionOwner(ownerUserID) || !validSessionOwner(sessionID) {
 		return domain.SessionInput{}, 0, domain.ErrInvalid
 	}
-	session, err := s.repository.GetSession(ctx, ownerUserID, sessionID)
-	if err != nil {
-		return domain.SessionInput{}, 0, err
-	}
-	now := s.now().UTC()
-	cancelled, err := s.repository.CancelQueuedInputs(ctx, sessionID, now)
-	if err != nil {
-		return domain.SessionInput{}, 0, err
-	}
 	var active domain.SessionInput
-	if session.ActiveTaskID != "" {
-		if _, err := s.tasks.Cancel(ctx, ownerUserID, session.ActiveTaskID, reason); err != nil && !errors.Is(err, domain.ErrNotFound) {
-			return domain.SessionInput{}, cancelled, err
-		}
-		inputs, err := s.repository.ListInputs(ctx, sessionID, 0, 200)
+	var cancelled int64
+	err := s.withSession(ctx, ownerUserID, sessionID, func(locked *SessionService) error {
+		session, err := locked.repository.GetSession(ctx, ownerUserID, sessionID)
 		if err != nil {
-			return domain.SessionInput{}, cancelled, err
+			return err
 		}
-		for _, input := range inputs {
-			if input.TaskID == session.ActiveTaskID && input.State == domain.SessionInputDispatched {
-				active = input
-				break
-			}
+		cancelled, err = locked.repository.CancelQueuedInputs(ctx, sessionID, s.now().UTC())
+		if err != nil {
+			return err
 		}
+		if session.ActiveTaskID != "" {
+			active, err = locked.repository.InputByTask(ctx, sessionID, session.ActiveTaskID)
+		}
+		return err
+	})
+	if err == nil && active.TaskID != "" {
+		_, err = s.tasks.Cancel(ctx, ownerUserID, active.TaskID, reason)
 	}
-	return active, cancelled, nil
+	return active, cancelled, err
 }
 
-// Close forbids new inputs. Active executions keep running; queued inputs
-// are cancelled.
+// Close preserves the existing contract: the active execution can settle,
+// while no further queued or new input may start.
 func (s *SessionService) Close(ctx context.Context, ownerUserID, sessionID string) (domain.Session, error) {
 	if !validSessionOwner(ownerUserID) || !validSessionOwner(sessionID) {
 		return domain.Session{}, domain.ErrInvalid
 	}
-	session, err := s.repository.GetSession(ctx, ownerUserID, sessionID)
-	if err != nil {
-		return domain.Session{}, err
-	}
-	now := s.now().UTC()
-	if _, err := s.repository.CancelQueuedInputs(ctx, sessionID, now); err != nil {
-		return domain.Session{}, err
-	}
-	closed, err := s.repository.CloseSession(ctx, ownerUserID, sessionID, now)
-	if err != nil {
-		return domain.Session{}, err
-	}
-	if !closed {
-		if session.State.Terminal() {
-			return domain.Session{}, domain.ErrSessionClosed
+	err := s.withSession(ctx, ownerUserID, sessionID, func(locked *SessionService) error {
+		session, err := locked.repository.GetSession(ctx, ownerUserID, sessionID)
+		if err != nil {
+			return err
 		}
-		return domain.Session{}, domain.ErrInvalid
-	}
-	if err := s.appendEvent(ctx, session.OwnerUserID, session.ID, "state_changed", map[string]any{"previous": string(session.State), "current": string(domain.SessionStateClosed), "reason": "owner"}, now); err != nil {
+		if session.State.Terminal() {
+			return nil
+		}
+		now := s.now().UTC()
+		if _, err := locked.repository.CloseSession(ctx, ownerUserID, sessionID, now); err != nil {
+			return err
+		}
+		if _, err := locked.repository.CancelQueuedInputs(ctx, sessionID, now); err != nil {
+			return err
+		}
+		return locked.appendEvent(ctx, ownerUserID, sessionID, "state_changed", map[string]any{"previous": string(session.State), "current": "closed", "reason": "owner"}, now)
+	})
+	if err != nil {
 		return domain.Session{}, err
 	}
 	return s.repository.GetSession(ctx, ownerUserID, sessionID)
@@ -278,84 +322,134 @@ func (s *SessionService) Events(ctx context.Context, ownerUserID, sessionID stri
 // terminal-close the input owning the task and dispatch the next queued
 // input in order.
 func (s *SessionService) FinishTaskRun(ctx context.Context, ownerUserID, sessionID, taskID string, terminal domain.SessionInputState, summary string) error {
-	session, err := s.repository.GetSession(ctx, ownerUserID, sessionID)
-	if err != nil {
-		return err
+	if !terminal.Terminal() {
+		return domain.ErrSessionInputInvalid
 	}
-	now := s.now().UTC()
-	inputs, err := s.repository.ListInputs(ctx, sessionID, 0, 200)
-	if err != nil {
-		return err
-	}
-	var finished domain.SessionInput
-	for _, input := range inputs {
-		if input.TaskID == taskID && input.State == domain.SessionInputDispatched {
-			finished = input
-			break
+	if len(summary) > 2048 {
+		summary = summary[:2048]
+		for !utf8.ValidString(summary) {
+			summary = summary[:len(summary)-1]
 		}
 	}
-	if finished.ID == "" {
-		return nil
-	}
-	if _, err := s.repository.FinishInput(ctx, finished.ID, terminal, summary, now); err != nil {
-		return err
-	}
-	if err := s.repository.ReleaseExecution(ctx, ownerUserID, sessionID, taskID, now); err != nil {
-		return err
-	}
-	if err := s.appendEvent(ctx, session.OwnerUserID, session.ID, "input_terminal", map[string]any{"input_id": finished.ID, "task_id": taskID, "terminal_state": string(terminal), "result_summary": summary}, now); err != nil {
-		return err
-	}
-	// Dispatch the next queued input, if any.
-	fresh, err := s.repository.GetSession(ctx, ownerUserID, sessionID)
+	err := s.withSession(ctx, ownerUserID, sessionID, func(locked *SessionService) error {
+		input, err := locked.repository.InputByTask(ctx, sessionID, taskID)
+		if errors.Is(err, domain.ErrSessionNotFound) {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		if input.State.Terminal() {
+			return nil
+		}
+		now := s.now().UTC()
+		if ok, err := locked.repository.FinishInput(ctx, input.ID, terminal, summary, now); err != nil {
+			return err
+		} else if !ok {
+			return nil
+		}
+		if err := locked.repository.ReleaseExecution(ctx, ownerUserID, sessionID, taskID, now); err != nil {
+			return err
+		}
+		if terminal != domain.SessionInputCompleted {
+			paused, err := locked.repository.PauseForReview(ctx, ownerUserID, sessionID, now)
+			if err != nil {
+				return err
+			}
+			if paused {
+				if err := locked.appendEvent(ctx, ownerUserID, sessionID, "state_changed", map[string]any{"previous": "active", "current": "needs_review", "reason": "Execution failed or was interrupted. Inspect workspace effects before starting a new session."}, now); err != nil {
+					return err
+				}
+			}
+		}
+		return locked.appendEvent(ctx, ownerUserID, sessionID, "input_terminal", map[string]any{"input_id": input.ID, "task_id": taskID, "terminal_state": string(terminal), "result_summary": summary}, now)
+	})
 	if err != nil {
 		return err
 	}
-	if fresh.State.Terminal() || fresh.ActiveTaskID != "" {
-		return nil
+	return s.dispatchNext(ctx, ownerUserID, sessionID)
+}
+
+// Reconcile rotates durably through sessions after admission or terminal
+// acknowledgement loss. It never resubmits a dispatched input to the model.
+func (s *SessionService) Reconcile(ctx context.Context) error {
+	if recovery, ok := s.repository.(interface {
+		CancelledAdmissions(context.Context) ([]domain.Task, error)
+	}); ok {
+		tasks, err := recovery.CancelledAdmissions(ctx)
+		if err != nil {
+			return err
+		}
+		for _, task := range tasks {
+			if _, err := s.tasks.Cancel(ctx, task.OwnerUserID, task.ID, "Session input cancelled before dispatch"); err != nil {
+				return err
+			}
+		}
 	}
-	queued, err := s.repository.ListDispatchableInputs(ctx, sessionID, 1)
+
+	sessions, err := s.repository.RecoveryCandidates(ctx, s.now().UTC(), 100)
 	if err != nil {
 		return err
 	}
-	if len(queued) == 0 {
-		return nil
-	}
-	if _, err := s.dispatch(ctx, fresh, queued[0], now); err != nil {
-		s.logger.Warn("session queued dispatch failed", "session", sessionID, "input", queued[0].ID, "error", err)
+	for _, candidate := range sessions {
+		session, err := s.repository.GetSession(ctx, candidate.OwnerUserID, candidate.ID)
+		if err != nil {
+			return err
+		}
+		if session.ActiveTaskID == "" {
+			if err := s.dispatchNext(ctx, session.OwnerUserID, session.ID); err != nil {
+				s.logger.Warn("session recovery deferred", "session", session.ID)
+			}
+			continue
+		}
+		task, err := s.tasks.Get(ctx, session.OwnerUserID, session.ActiveTaskID)
+		if err != nil {
+			return err
+		}
+		var terminal domain.SessionInputState
+		switch task.State {
+		case domain.StateCompleted:
+			terminal = domain.SessionInputCompleted
+		case domain.StateFailed:
+			terminal = domain.SessionInputFailed
+		case domain.StateCancelled:
+			terminal = domain.SessionInputCancelled
+		default:
+			continue
+		}
+		if err := s.FinishTaskRun(ctx, session.OwnerUserID, session.ID, task.ID, terminal, ""); err != nil {
+			return err
+		}
 	}
 	return nil
 }
 
-// appendEvent appends one lifecycle event under optimistic sequence
-// control. Concurrent writers re-read the session and retry, so callers may
-// pass a stale snapshot.
-func (s *SessionService) appendEvent(ctx context.Context, ownerUserID, sessionID string, eventType string, payload map[string]any, now time.Time) error {
+// appendEvent is called only while the session row is locked. Event and
+// counter commit together, so interruption cannot leave a permanent gap.
+func (s *SessionService) appendEvent(ctx context.Context, owner, id, eventType string, payload map[string]any, now time.Time) error {
 	encoded, err := json.Marshal(payload)
 	if err != nil {
 		return domain.ErrInvalid
 	}
-	for attempt := 0; attempt < 8; attempt++ {
-		session, err := s.repository.GetSession(ctx, ownerUserID, sessionID)
-		if err != nil {
-			return err
-		}
-		next := session.EventSequence + 1
-		if err := s.repository.AppendEvent(ctx, session.ID, next, eventType, encoded, now); err != nil {
-			s.logger.Warn("session event append retry", "session", sessionID, "attempt", attempt, "next", next, "error", err)
-			continue
-		}
-		bumped, err := s.repository.BumpEventSequence(ctx, ownerUserID, sessionID, next, session.EventSequence, now)
-		if err != nil {
-			return err
-		}
-		if bumped {
-			return nil
-		}
+	session, err := s.repository.GetSession(ctx, owner, id)
+	if err != nil {
+		return err
 	}
-	return domain.ErrSessionBusy
+	next := session.EventSequence + 1
+	if err := s.repository.AppendEvent(ctx, id, next, eventType, encoded, now); err != nil {
+		return err
+	}
+	ok, err := s.repository.BumpEventSequence(ctx, owner, id, next, session.EventSequence, now)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return domain.ErrSessionBusy
+	}
+	return nil
 }
 
 func validSessionOwner(value string) bool {
-	return len(value) == 36 && value[8] == '-' && value[13] == '-' && value[18] == '-' && value[23] == '-'
+	parsed, err := uuid.Parse(value)
+	return err == nil && parsed.Version() == 7 && parsed.String() == value
 }

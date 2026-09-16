@@ -71,7 +71,7 @@ func TestReserveConcurrentRelease(t *testing.T) {
 func TestPointerPositionsAndBounds(t *testing.T) {
 	d := &display{width: 800, height: 600}
 	argv := d.pointerArgv(&surfacev1.NativeInputEvent{Action: "down", X: 1, Y: 1, Button: 3})
-	if strings.Join(argv, " ") != "mousemove --sync 799 599 mousedown 3" {
+	if strings.Join(argv, " ") != "mousemove 799 599 mousedown 3" {
 		t.Fatalf("wrong pointer mapping: %v", argv)
 	}
 	if d.pointerArgv(&surfacev1.NativeInputEvent{Action: "move", X: 1.1}) != nil {
@@ -171,9 +171,12 @@ func TestCandidatePolicyLoopbackDefaultUnchanged(t *testing.T) {
 	}
 
 	lan := &Engine{Candidates: CandidatesLAN}
+	if err := lan.WithLAN("192.168.1.0/24", "52000-52100"); err != nil {
+		t.Fatal(err)
+	}
 	filter, includeLoopback = lan.candidatePolicy()
-	if filter != nil {
-		t.Fatal("lan mode must not install an IP filter")
+	if filter == nil || !filter(net.ParseIP("192.168.1.10")) || filter(net.ParseIP("10.0.0.2")) || filter(net.ParseIP("8.8.8.8")) {
+		t.Fatal("lan mode must enforce configured CIDRs")
 	}
 	if includeLoopback {
 		t.Fatal("lan mode must not force loopback candidate inclusion")
@@ -235,4 +238,40 @@ func TestInputGateBlocksQueuedEvents(t *testing.T) {
 		t.Fatal("no gate means no continuity enforcement is bound")
 	}
 	d.peerMu.Unlock()
+}
+
+func TestRealContainerClientIsolation(t *testing.T) {
+	socket, root := os.Getenv("WORKOS_NATIVE_CONTAINER_X11_HOST"), os.Getenv("WORKOS_WORKSPACE_TEST_ROOT")
+	if socket == "" || root == "" {
+		t.Skip("requires Runtime native image, Docker socket and host-visible X11/workspace mounts")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	engine, err := New("Xvfb", "xterm", "ffmpeg", "xdotool", t.TempDir(), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	engine.WithContainers("/var/run/docker.sock", "workos-workspace-runtime:dev", socket)
+	engine.Client = []string{"/usr/bin/xterm", "-e", "/bin/bash", "--noprofile", "--norc", "-c", `set -e; test ! -e /var/run/docker.sock; test -z "$DEEPSEEK_API_KEY"; printf native-container > native-evidence.txt; sleep 120`}
+	display, err := engine.Launch(ctx, 640, 480, root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer display.Stop()
+	evidence, err := os.ReadFile(filepath.Join(root, "native-evidence.txt"))
+	if err != nil || string(evidence) != "native-container" {
+		t.Fatalf("native shared tree: %q %v", evidence, err)
+	}
+	display.Stop()
+	if !display.Exited() {
+		t.Fatal("native container stop did not settle")
+	}
+}
+
+func TestLANRejectsUnboundedPolicy(t *testing.T) {
+	for _, tc := range [][2]string{{"", "52000-52100"}, {"0.0.0.0/0", "52000-52100"}, {"10.0.0.0/7", "52000-52100"}, {"10.0.0.0/24", ""}, {"10.0.0.0/24", "1-65535"}} {
+		if err := (&Engine{Candidates: CandidatesLAN}).WithLAN(tc[0], tc[1]); err == nil {
+			t.Fatalf("accepted %v", tc)
+		}
+	}
 }

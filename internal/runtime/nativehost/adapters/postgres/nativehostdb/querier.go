@@ -10,14 +10,20 @@ import (
 )
 
 type Querier interface {
+	BeginNativeRestart(ctx context.Context, arg BeginNativeRestartParams) (int64, error)
 	CloseNativeSession(ctx context.Context, arg CloseNativeSessionParams) (int64, error)
 	CountActiveNativeSessions(ctx context.Context, ownerUserID string) (int64, error)
 	ExpireIdleNativeSessions(ctx context.Context, updatedAt time.Time) ([]string, error)
+	GetNativeRestartReceipt(ctx context.Context, arg GetNativeRestartReceiptParams) (int64, error)
 	GetNativeSession(ctx context.Context, arg GetNativeSessionParams) (WorkosRuntimeNativeSession, error)
 	GetNativeSessionByKey(ctx context.Context, arg GetNativeSessionByKeyParams) (WorkosRuntimeNativeSession, error)
+	GetNativeStopReceipt(ctx context.Context, arg GetNativeStopReceiptParams) (int64, error)
 	InsertNativeSession(ctx context.Context, arg InsertNativeSessionParams) (int64, error)
 	ListActiveNativeSessions(ctx context.Context) ([]WorkosRuntimeNativeSession, error)
 	ListProjectNativeSessions(ctx context.Context, arg ListProjectNativeSessionsParams) ([]WorkosRuntimeNativeSession, error)
+	LockNativeRestart(ctx context.Context, arg LockNativeRestartParams) (int64, error)
+	RecordNativeRestart(ctx context.Context, arg RecordNativeRestartParams) error
+	RecordNativeStop(ctx context.Context, arg RecordNativeStopParams) error
 	UpdateNativeSessionState(ctx context.Context, arg UpdateNativeSessionStateParams) (int64, error)
 }
 

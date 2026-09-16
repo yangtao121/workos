@@ -1,0 +1,10 @@
+ Container v2-completion-f1xkfw-model-1 Stopping 
+ Container v2-completion-f1xkfw-model-1 Stopped 
+=== RUN   TestRealModelDeepSeekContinuousSession
+LIVE_PROJECT=01a0a8a1-cf58-7657-84b1-afbe836af17f LIVE_SESSION=01a0a8a1-eba9-7b6f-b2fc-6b95b43270f9
+LIVE_TURN=1 TASK=01a0a8a1-ebc6-71d2-a0dd-45f362bdaf72 INPUT_TOKENS=8585 OUTPUT_TOKENS=272 CODE_AND_TESTS=PASS
+LIVE_TURN=2 TASK=01a0a8a3-58ea-7866-b406-b3bbee92a195 INPUT_TOKENS=18606 OUTPUT_TOKENS=727 CODE_AND_TESTS=PASS
+--- PASS: TestRealModelDeepSeekContinuousSession (11.84s)
+PASS
+ok  	github.com/yangtao121/workos/tests/integration	11.868s
+A15 PASS: live DeepSeek, two native development turns. Budget ledger: /home/aquatao/workos/tmp/v2-completion.F1xkfw/budget.jsonl

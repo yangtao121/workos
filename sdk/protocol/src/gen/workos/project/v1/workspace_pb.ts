@@ -12,7 +12,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file workos/project/v1/workspace.proto.
  */
 export const file_workos_project_v1_workspace: GenFile = /*@__PURE__*/
-  fileDesc("CiF3b3Jrb3MvcHJvamVjdC92MS93b3Jrc3BhY2UucHJvdG8SEXdvcmtvcy5wcm9qZWN0LnYxIoADChBXb3Jrc3BhY2VCaW5kaW5nEgoKAmlkGAEgASgJEhUKDW93bmVyX3VzZXJfaWQYAiABKAkSEgoKcHJvamVjdF9pZBgDIAEoCRIbChN3b3Jrc3BhY2Vfc291cmNlX2lkGAQgASgJEhQKDGRpc3BsYXlfbmFtZRgFIAEoCRIRCglyZWFkX29ubHkYBiABKAgSNwoFc3RhdGUYByABKA4yKC53b3Jrb3MucHJvamVjdC52MS5Xb3Jrc3BhY2VCaW5kaW5nU3RhdGUSEAoIcmV2aXNpb24YCCABKAMSLgoKY3JlYXRlZF9hdBgJIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXASLgoKdXBkYXRlZF9hdBgKIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXASNAoLYXJjaGl2ZWRfYXQYCyABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wSACIAQFCDgoMX2FyY2hpdmVkX2F0InYKFEJpbmRXb3Jrc3BhY2VSZXF1ZXN0EhIKCnByb2plY3RfaWQYASABKAkSGwoTd29ya3NwYWNlX3NvdXJjZV9pZBgCIAEoCRIUCgxkaXNwbGF5X25hbWUYAyABKAkSFwoPaWRlbXBvdGVuY3lfa2V5GAQgASgJIk0KFUJpbmRXb3Jrc3BhY2VSZXNwb25zZRI0CgdiaW5kaW5nGAEgASgLMiMud29ya29zLnByb2plY3QudjEuV29ya3NwYWNlQmluZGluZyIpChNHZXRXb3Jrc3BhY2VSZXF1ZXN0EhIKCmJpbmRpbmdfaWQYASABKAkiTAoUR2V0V29ya3NwYWNlUmVzcG9uc2USNAoHYmluZGluZxgBIAEoCzIjLndvcmtvcy5wcm9qZWN0LnYxLldvcmtzcGFjZUJpbmRpbmciTAocTGlzdFByb2plY3RXb3Jrc3BhY2VzUmVxdWVzdBISCgpwcm9qZWN0X2lkGAEgASgJEhgKEGluY2x1ZGVfYXJjaGl2ZWQYAiABKAgiVgodTGlzdFByb2plY3RXb3Jrc3BhY2VzUmVzcG9uc2USNQoIYmluZGluZ3MYASADKAsyIy53b3Jrb3MucHJvamVjdC52MS5Xb3Jrc3BhY2VCaW5kaW5nInMKHFVwZGF0ZVdvcmtzcGFjZUFjY2Vzc1JlcXVlc3QSEgoKYmluZGluZ19pZBgBIAEoCRIZChFleHBlY3RlZF9yZXZpc2lvbhgCIAEoAxIWCglyZWFkX29ubHkYAyABKAhIAIgBAUIMCgpfcmVhZF9vbmx5IlUKHVVwZGF0ZVdvcmtzcGFjZUFjY2Vzc1Jlc3BvbnNlEjQKB2JpbmRpbmcYASABKAsyIy53b3Jrb3MucHJvamVjdC52MS5Xb3Jrc3BhY2VCaW5kaW5nIkgKF0FyY2hpdmVXb3Jrc3BhY2VSZXF1ZXN0EhIKCmJpbmRpbmdfaWQYASABKAkSGQoRZXhwZWN0ZWRfcmV2aXNpb24YAiABKAMiUAoYQXJjaGl2ZVdvcmtzcGFjZVJlc3BvbnNlEjQKB2JpbmRpbmcYASABKAsyIy53b3Jrb3MucHJvamVjdC52MS5Xb3Jrc3BhY2VCaW5kaW5nKooBChVXb3Jrc3BhY2VCaW5kaW5nU3RhdGUSJwojV09SS1NQQUNFX0JJTkRJTkdfU1RBVEVfVU5TUEVDSUZJRUQQABIiCh5XT1JLU1BBQ0VfQklORElOR19TVEFURV9BQ1RJVkUQARIkCiBXT1JLU1BBQ0VfQklORElOR19TVEFURV9BUkNISVZFRBACMs0EChdQcm9qZWN0V29ya3NwYWNlU2VydmljZRJkCg1CaW5kV29ya3NwYWNlEicud29ya29zLnByb2plY3QudjEuQmluZFdvcmtzcGFjZVJlcXVlc3QaKC53b3Jrb3MucHJvamVjdC52MS5CaW5kV29ya3NwYWNlUmVzcG9uc2UiABJhCgxHZXRXb3Jrc3BhY2USJi53b3Jrb3MucHJvamVjdC52MS5HZXRXb3Jrc3BhY2VSZXF1ZXN0Gicud29ya29zLnByb2plY3QudjEuR2V0V29ya3NwYWNlUmVzcG9uc2UiABJ8ChVMaXN0UHJvamVjdFdvcmtzcGFjZXMSLy53b3Jrb3MucHJvamVjdC52MS5MaXN0UHJvamVjdFdvcmtzcGFjZXNSZXF1ZXN0GjAud29ya29zLnByb2plY3QudjEuTGlzdFByb2plY3RXb3Jrc3BhY2VzUmVzcG9uc2UiABJ8ChVVcGRhdGVXb3Jrc3BhY2VBY2Nlc3MSLy53b3Jrb3MucHJvamVjdC52MS5VcGRhdGVXb3Jrc3BhY2VBY2Nlc3NSZXF1ZXN0GjAud29ya29zLnByb2plY3QudjEuVXBkYXRlV29ya3NwYWNlQWNjZXNzUmVzcG9uc2UiABJtChBBcmNoaXZlV29ya3NwYWNlEioud29ya29zLnByb2plY3QudjEuQXJjaGl2ZVdvcmtzcGFjZVJlcXVlc3QaKy53b3Jrb3MucHJvamVjdC52MS5BcmNoaXZlV29ya3NwYWNlUmVzcG9uc2UiAEJBWj9naXRodWIuY29tL3lhbmd0YW8xMjEvd29ya29zL2dlbi9nby93b3Jrb3MvcHJvamVjdC92MTtwcm9qZWN0djFiBnByb3RvMw", [file_google_protobuf_timestamp]);
+  fileDesc("CiF3b3Jrb3MvcHJvamVjdC92MS93b3Jrc3BhY2UucHJvdG8SEXdvcmtvcy5wcm9qZWN0LnYxIoADChBXb3Jrc3BhY2VCaW5kaW5nEgoKAmlkGAEgASgJEhUKDW93bmVyX3VzZXJfaWQYAiABKAkSEgoKcHJvamVjdF9pZBgDIAEoCRIbChN3b3Jrc3BhY2Vfc291cmNlX2lkGAQgASgJEhQKDGRpc3BsYXlfbmFtZRgFIAEoCRIRCglyZWFkX29ubHkYBiABKAgSNwoFc3RhdGUYByABKA4yKC53b3Jrb3MucHJvamVjdC52MS5Xb3Jrc3BhY2VCaW5kaW5nU3RhdGUSEAoIcmV2aXNpb24YCCABKAMSLgoKY3JlYXRlZF9hdBgJIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXASLgoKdXBkYXRlZF9hdBgKIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXASNAoLYXJjaGl2ZWRfYXQYCyABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wSACIAQFCDgoMX2FyY2hpdmVkX2F0InYKFEJpbmRXb3Jrc3BhY2VSZXF1ZXN0EhIKCnByb2plY3RfaWQYASABKAkSGwoTd29ya3NwYWNlX3NvdXJjZV9pZBgCIAEoCRIUCgxkaXNwbGF5X25hbWUYAyABKAkSFwoPaWRlbXBvdGVuY3lfa2V5GAQgASgJIk0KFUJpbmRXb3Jrc3BhY2VSZXNwb25zZRI0CgdiaW5kaW5nGAEgASgLMiMud29ya29zLnByb2plY3QudjEuV29ya3NwYWNlQmluZGluZyIpChNHZXRXb3Jrc3BhY2VSZXF1ZXN0EhIKCmJpbmRpbmdfaWQYASABKAkiTAoUR2V0V29ya3NwYWNlUmVzcG9uc2USNAoHYmluZGluZxgBIAEoCzIjLndvcmtvcy5wcm9qZWN0LnYxLldvcmtzcGFjZUJpbmRpbmciTAocTGlzdFByb2plY3RXb3Jrc3BhY2VzUmVxdWVzdBISCgpwcm9qZWN0X2lkGAEgASgJEhgKEGluY2x1ZGVfYXJjaGl2ZWQYAiABKAgiVgodTGlzdFByb2plY3RXb3Jrc3BhY2VzUmVzcG9uc2USNQoIYmluZGluZ3MYASADKAsyIy53b3Jrb3MucHJvamVjdC52MS5Xb3Jrc3BhY2VCaW5kaW5nInMKHFVwZGF0ZVdvcmtzcGFjZUFjY2Vzc1JlcXVlc3QSEgoKYmluZGluZ19pZBgBIAEoCRIZChFleHBlY3RlZF9yZXZpc2lvbhgCIAEoAxIWCglyZWFkX29ubHkYAyABKAhIAIgBAUIMCgpfcmVhZF9vbmx5IlUKHVVwZGF0ZVdvcmtzcGFjZUFjY2Vzc1Jlc3BvbnNlEjQKB2JpbmRpbmcYASABKAsyIy53b3Jrb3MucHJvamVjdC52MS5Xb3Jrc3BhY2VCaW5kaW5nIkgKF0FyY2hpdmVXb3Jrc3BhY2VSZXF1ZXN0EhIKCmJpbmRpbmdfaWQYASABKAkSGQoRZXhwZWN0ZWRfcmV2aXNpb24YAiABKAMiUAoYQXJjaGl2ZVdvcmtzcGFjZVJlc3BvbnNlEjQKB2JpbmRpbmcYASABKAsyIy53b3Jrb3MucHJvamVjdC52MS5Xb3Jrc3BhY2VCaW5kaW5nIl0KGEF2YWlsYWJsZVdvcmtzcGFjZVNvdXJjZRIKCgJpZBgBIAEoCRIUCgxkaXNwbGF5X25hbWUYAiABKAkSDAoEa2luZBgDIAEoCRIRCglyZWFkX29ubHkYBCABKAgiNAoeTGlzdEF2YWlsYWJsZVdvcmtzcGFjZXNSZXF1ZXN0EhIKCnByb2plY3RfaWQYASABKAkiXwofTGlzdEF2YWlsYWJsZVdvcmtzcGFjZXNSZXNwb25zZRI8Cgdzb3VyY2VzGAEgAygLMisud29ya29zLnByb2plY3QudjEuQXZhaWxhYmxlV29ya3NwYWNlU291cmNlIj4KEldvcmtzcGFjZUZpbGVFbnRyeRIMCgRwYXRoGAEgASgJEgwKBGtpbmQYAiABKAkSDAoEc2l6ZRgDIAEoAyI9ChlMaXN0V29ya3NwYWNlRmlsZXNSZXF1ZXN0EhIKCnByb2plY3RfaWQYASABKAkSDAoEcGF0aBgCIAEoCSKDAQoaTGlzdFdvcmtzcGFjZUZpbGVzUmVzcG9uc2USNgoHZW50cmllcxgBIAMoCzIlLndvcmtvcy5wcm9qZWN0LnYxLldvcmtzcGFjZUZpbGVFbnRyeRIaChJ3b3Jrc3BhY2VfcmV2aXNpb24YAiABKAMSEQoJcmVhZF9vbmx5GAMgASgIIjwKGFJlYWRXb3Jrc3BhY2VGaWxlUmVxdWVzdBISCgpwcm9qZWN0X2lkGAEgASgJEgwKBHBhdGgYAiABKAkiaQoZUmVhZFdvcmtzcGFjZUZpbGVSZXNwb25zZRIPCgdjb250ZW50GAEgASgJEgwKBGV0YWcYAiABKAkSGgoSd29ya3NwYWNlX3JldmlzaW9uGAMgASgDEhEKCXJlYWRfb25seRgEIAEoCCKBAQoZV3JpdGVXb3Jrc3BhY2VGaWxlUmVxdWVzdBISCgpwcm9qZWN0X2lkGAEgASgJEgwKBHBhdGgYAiABKAkSDwoHY29udGVudBgDIAEoCRIVCg1leHBlY3RlZF9ldGFnGAQgASgJEhoKEndvcmtzcGFjZV9yZXZpc2lvbhgFIAEoAyIqChpXcml0ZVdvcmtzcGFjZUZpbGVSZXNwb25zZRIMCgRldGFnGAEgASgJIk0KIFJlc29sdmVXb3Jrc3BhY2VFeGVjdXRpb25SZXF1ZXN0EhUKDW93bmVyX3VzZXJfaWQYASABKAkSEgoKcHJvamVjdF9pZBgCIAEoCSJZCiFSZXNvbHZlV29ya3NwYWNlRXhlY3V0aW9uUmVzcG9uc2USNAoHYmluZGluZxgBIAEoCzIjLndvcmtvcy5wcm9qZWN0LnYxLldvcmtzcGFjZUJpbmRpbmcqigEKFVdvcmtzcGFjZUJpbmRpbmdTdGF0ZRInCiNXT1JLU1BBQ0VfQklORElOR19TVEFURV9VTlNQRUNJRklFRBAAEiIKHldPUktTUEFDRV9CSU5ESU5HX1NUQVRFX0FDVElWRRABEiQKIFdPUktTUEFDRV9CSU5ESU5HX1NUQVRFX0FSQ0hJVkVEEAIyrggKF1Byb2plY3RXb3Jrc3BhY2VTZXJ2aWNlEnMKEkxpc3RXb3Jrc3BhY2VGaWxlcxIsLndvcmtvcy5wcm9qZWN0LnYxLkxpc3RXb3Jrc3BhY2VGaWxlc1JlcXVlc3QaLS53b3Jrb3MucHJvamVjdC52MS5MaXN0V29ya3NwYWNlRmlsZXNSZXNwb25zZSIAEnAKEVJlYWRXb3Jrc3BhY2VGaWxlEisud29ya29zLnByb2plY3QudjEuUmVhZFdvcmtzcGFjZUZpbGVSZXF1ZXN0Giwud29ya29zLnByb2plY3QudjEuUmVhZFdvcmtzcGFjZUZpbGVSZXNwb25zZSIAEnMKEldyaXRlV29ya3NwYWNlRmlsZRIsLndvcmtvcy5wcm9qZWN0LnYxLldyaXRlV29ya3NwYWNlRmlsZVJlcXVlc3QaLS53b3Jrb3MucHJvamVjdC52MS5Xcml0ZVdvcmtzcGFjZUZpbGVSZXNwb25zZSIAEoIBChdMaXN0QXZhaWxhYmxlV29ya3NwYWNlcxIxLndvcmtvcy5wcm9qZWN0LnYxLkxpc3RBdmFpbGFibGVXb3Jrc3BhY2VzUmVxdWVzdBoyLndvcmtvcy5wcm9qZWN0LnYxLkxpc3RBdmFpbGFibGVXb3Jrc3BhY2VzUmVzcG9uc2UiABJkCg1CaW5kV29ya3NwYWNlEicud29ya29zLnByb2plY3QudjEuQmluZFdvcmtzcGFjZVJlcXVlc3QaKC53b3Jrb3MucHJvamVjdC52MS5CaW5kV29ya3NwYWNlUmVzcG9uc2UiABJhCgxHZXRXb3Jrc3BhY2USJi53b3Jrb3MucHJvamVjdC52MS5HZXRXb3Jrc3BhY2VSZXF1ZXN0Gicud29ya29zLnByb2plY3QudjEuR2V0V29ya3NwYWNlUmVzcG9uc2UiABJ8ChVMaXN0UHJvamVjdFdvcmtzcGFjZXMSLy53b3Jrb3MucHJvamVjdC52MS5MaXN0UHJvamVjdFdvcmtzcGFjZXNSZXF1ZXN0GjAud29ya29zLnByb2plY3QudjEuTGlzdFByb2plY3RXb3Jrc3BhY2VzUmVzcG9uc2UiABJ8ChVVcGRhdGVXb3Jrc3BhY2VBY2Nlc3MSLy53b3Jrb3MucHJvamVjdC52MS5VcGRhdGVXb3Jrc3BhY2VBY2Nlc3NSZXF1ZXN0GjAud29ya29zLnByb2plY3QudjEuVXBkYXRlV29ya3NwYWNlQWNjZXNzUmVzcG9uc2UiABJtChBBcmNoaXZlV29ya3NwYWNlEioud29ya29zLnByb2plY3QudjEuQXJjaGl2ZVdvcmtzcGFjZVJlcXVlc3QaKy53b3Jrb3MucHJvamVjdC52MS5BcmNoaXZlV29ya3NwYWNlUmVzcG9uc2UiADKzAQomV29ya3NwYWNlRXhlY3V0aW9uQXV0aG9yaXphdGlvblNlcnZpY2USiAEKGVJlc29sdmVXb3Jrc3BhY2VFeGVjdXRpb24SMy53b3Jrb3MucHJvamVjdC52MS5SZXNvbHZlV29ya3NwYWNlRXhlY3V0aW9uUmVxdWVzdBo0Lndvcmtvcy5wcm9qZWN0LnYxLlJlc29sdmVXb3Jrc3BhY2VFeGVjdXRpb25SZXNwb25zZSIAQkFaP2dpdGh1Yi5jb20veWFuZ3RhbzEyMS93b3Jrb3MvZ2VuL2dvL3dvcmtvcy9wcm9qZWN0L3YxO3Byb2plY3R2MWIGcHJvdG8z", [file_google_protobuf_timestamp]);
 
 /**
  * @generated from message workos.project.v1.WorkspaceBinding
@@ -293,6 +293,298 @@ export const ArchiveWorkspaceResponseSchema: GenMessage<ArchiveWorkspaceResponse
   messageDesc(file_workos_project_v1_workspace, 10);
 
 /**
+ * @generated from message workos.project.v1.AvailableWorkspaceSource
+ */
+export type AvailableWorkspaceSource = Message<"workos.project.v1.AvailableWorkspaceSource"> & {
+  /**
+   * @generated from field: string id = 1;
+   */
+  id: string;
+
+  /**
+   * @generated from field: string display_name = 2;
+   */
+  displayName: string;
+
+  /**
+   * @generated from field: string kind = 3;
+   */
+  kind: string;
+
+  /**
+   * @generated from field: bool read_only = 4;
+   */
+  readOnly: boolean;
+};
+
+/**
+ * Describes the message workos.project.v1.AvailableWorkspaceSource.
+ * Use `create(AvailableWorkspaceSourceSchema)` to create a new message.
+ */
+export const AvailableWorkspaceSourceSchema: GenMessage<AvailableWorkspaceSource> = /*@__PURE__*/
+  messageDesc(file_workos_project_v1_workspace, 11);
+
+/**
+ * @generated from message workos.project.v1.ListAvailableWorkspacesRequest
+ */
+export type ListAvailableWorkspacesRequest = Message<"workos.project.v1.ListAvailableWorkspacesRequest"> & {
+  /**
+   * @generated from field: string project_id = 1;
+   */
+  projectId: string;
+};
+
+/**
+ * Describes the message workos.project.v1.ListAvailableWorkspacesRequest.
+ * Use `create(ListAvailableWorkspacesRequestSchema)` to create a new message.
+ */
+export const ListAvailableWorkspacesRequestSchema: GenMessage<ListAvailableWorkspacesRequest> = /*@__PURE__*/
+  messageDesc(file_workos_project_v1_workspace, 12);
+
+/**
+ * @generated from message workos.project.v1.ListAvailableWorkspacesResponse
+ */
+export type ListAvailableWorkspacesResponse = Message<"workos.project.v1.ListAvailableWorkspacesResponse"> & {
+  /**
+   * @generated from field: repeated workos.project.v1.AvailableWorkspaceSource sources = 1;
+   */
+  sources: AvailableWorkspaceSource[];
+};
+
+/**
+ * Describes the message workos.project.v1.ListAvailableWorkspacesResponse.
+ * Use `create(ListAvailableWorkspacesResponseSchema)` to create a new message.
+ */
+export const ListAvailableWorkspacesResponseSchema: GenMessage<ListAvailableWorkspacesResponse> = /*@__PURE__*/
+  messageDesc(file_workos_project_v1_workspace, 13);
+
+/**
+ * @generated from message workos.project.v1.WorkspaceFileEntry
+ */
+export type WorkspaceFileEntry = Message<"workos.project.v1.WorkspaceFileEntry"> & {
+  /**
+   * @generated from field: string path = 1;
+   */
+  path: string;
+
+  /**
+   * @generated from field: string kind = 2;
+   */
+  kind: string;
+
+  /**
+   * @generated from field: int64 size = 3;
+   */
+  size: bigint;
+};
+
+/**
+ * Describes the message workos.project.v1.WorkspaceFileEntry.
+ * Use `create(WorkspaceFileEntrySchema)` to create a new message.
+ */
+export const WorkspaceFileEntrySchema: GenMessage<WorkspaceFileEntry> = /*@__PURE__*/
+  messageDesc(file_workos_project_v1_workspace, 14);
+
+/**
+ * @generated from message workos.project.v1.ListWorkspaceFilesRequest
+ */
+export type ListWorkspaceFilesRequest = Message<"workos.project.v1.ListWorkspaceFilesRequest"> & {
+  /**
+   * @generated from field: string project_id = 1;
+   */
+  projectId: string;
+
+  /**
+   * @generated from field: string path = 2;
+   */
+  path: string;
+};
+
+/**
+ * Describes the message workos.project.v1.ListWorkspaceFilesRequest.
+ * Use `create(ListWorkspaceFilesRequestSchema)` to create a new message.
+ */
+export const ListWorkspaceFilesRequestSchema: GenMessage<ListWorkspaceFilesRequest> = /*@__PURE__*/
+  messageDesc(file_workos_project_v1_workspace, 15);
+
+/**
+ * @generated from message workos.project.v1.ListWorkspaceFilesResponse
+ */
+export type ListWorkspaceFilesResponse = Message<"workos.project.v1.ListWorkspaceFilesResponse"> & {
+  /**
+   * @generated from field: repeated workos.project.v1.WorkspaceFileEntry entries = 1;
+   */
+  entries: WorkspaceFileEntry[];
+
+  /**
+   * @generated from field: int64 workspace_revision = 2;
+   */
+  workspaceRevision: bigint;
+
+  /**
+   * @generated from field: bool read_only = 3;
+   */
+  readOnly: boolean;
+};
+
+/**
+ * Describes the message workos.project.v1.ListWorkspaceFilesResponse.
+ * Use `create(ListWorkspaceFilesResponseSchema)` to create a new message.
+ */
+export const ListWorkspaceFilesResponseSchema: GenMessage<ListWorkspaceFilesResponse> = /*@__PURE__*/
+  messageDesc(file_workos_project_v1_workspace, 16);
+
+/**
+ * @generated from message workos.project.v1.ReadWorkspaceFileRequest
+ */
+export type ReadWorkspaceFileRequest = Message<"workos.project.v1.ReadWorkspaceFileRequest"> & {
+  /**
+   * @generated from field: string project_id = 1;
+   */
+  projectId: string;
+
+  /**
+   * @generated from field: string path = 2;
+   */
+  path: string;
+};
+
+/**
+ * Describes the message workos.project.v1.ReadWorkspaceFileRequest.
+ * Use `create(ReadWorkspaceFileRequestSchema)` to create a new message.
+ */
+export const ReadWorkspaceFileRequestSchema: GenMessage<ReadWorkspaceFileRequest> = /*@__PURE__*/
+  messageDesc(file_workos_project_v1_workspace, 17);
+
+/**
+ * @generated from message workos.project.v1.ReadWorkspaceFileResponse
+ */
+export type ReadWorkspaceFileResponse = Message<"workos.project.v1.ReadWorkspaceFileResponse"> & {
+  /**
+   * @generated from field: string content = 1;
+   */
+  content: string;
+
+  /**
+   * @generated from field: string etag = 2;
+   */
+  etag: string;
+
+  /**
+   * @generated from field: int64 workspace_revision = 3;
+   */
+  workspaceRevision: bigint;
+
+  /**
+   * @generated from field: bool read_only = 4;
+   */
+  readOnly: boolean;
+};
+
+/**
+ * Describes the message workos.project.v1.ReadWorkspaceFileResponse.
+ * Use `create(ReadWorkspaceFileResponseSchema)` to create a new message.
+ */
+export const ReadWorkspaceFileResponseSchema: GenMessage<ReadWorkspaceFileResponse> = /*@__PURE__*/
+  messageDesc(file_workos_project_v1_workspace, 18);
+
+/**
+ * @generated from message workos.project.v1.WriteWorkspaceFileRequest
+ */
+export type WriteWorkspaceFileRequest = Message<"workos.project.v1.WriteWorkspaceFileRequest"> & {
+  /**
+   * @generated from field: string project_id = 1;
+   */
+  projectId: string;
+
+  /**
+   * @generated from field: string path = 2;
+   */
+  path: string;
+
+  /**
+   * @generated from field: string content = 3;
+   */
+  content: string;
+
+  /**
+   * @generated from field: string expected_etag = 4;
+   */
+  expectedEtag: string;
+
+  /**
+   * @generated from field: int64 workspace_revision = 5;
+   */
+  workspaceRevision: bigint;
+};
+
+/**
+ * Describes the message workos.project.v1.WriteWorkspaceFileRequest.
+ * Use `create(WriteWorkspaceFileRequestSchema)` to create a new message.
+ */
+export const WriteWorkspaceFileRequestSchema: GenMessage<WriteWorkspaceFileRequest> = /*@__PURE__*/
+  messageDesc(file_workos_project_v1_workspace, 19);
+
+/**
+ * @generated from message workos.project.v1.WriteWorkspaceFileResponse
+ */
+export type WriteWorkspaceFileResponse = Message<"workos.project.v1.WriteWorkspaceFileResponse"> & {
+  /**
+   * @generated from field: string etag = 1;
+   */
+  etag: string;
+};
+
+/**
+ * Describes the message workos.project.v1.WriteWorkspaceFileResponse.
+ * Use `create(WriteWorkspaceFileResponseSchema)` to create a new message.
+ */
+export const WriteWorkspaceFileResponseSchema: GenMessage<WriteWorkspaceFileResponse> = /*@__PURE__*/
+  messageDesc(file_workos_project_v1_workspace, 20);
+
+/**
+ * Private Runtime-to-Core authorization; never routed by Gateway. The caller
+ * is Runtime, which derives owner/project from authenticated session facts.
+ *
+ * @generated from message workos.project.v1.ResolveWorkspaceExecutionRequest
+ */
+export type ResolveWorkspaceExecutionRequest = Message<"workos.project.v1.ResolveWorkspaceExecutionRequest"> & {
+  /**
+   * @generated from field: string owner_user_id = 1;
+   */
+  ownerUserId: string;
+
+  /**
+   * @generated from field: string project_id = 2;
+   */
+  projectId: string;
+};
+
+/**
+ * Describes the message workos.project.v1.ResolveWorkspaceExecutionRequest.
+ * Use `create(ResolveWorkspaceExecutionRequestSchema)` to create a new message.
+ */
+export const ResolveWorkspaceExecutionRequestSchema: GenMessage<ResolveWorkspaceExecutionRequest> = /*@__PURE__*/
+  messageDesc(file_workos_project_v1_workspace, 21);
+
+/**
+ * @generated from message workos.project.v1.ResolveWorkspaceExecutionResponse
+ */
+export type ResolveWorkspaceExecutionResponse = Message<"workos.project.v1.ResolveWorkspaceExecutionResponse"> & {
+  /**
+   * @generated from field: workos.project.v1.WorkspaceBinding binding = 1;
+   */
+  binding?: WorkspaceBinding | undefined;
+};
+
+/**
+ * Describes the message workos.project.v1.ResolveWorkspaceExecutionResponse.
+ * Use `create(ResolveWorkspaceExecutionResponseSchema)` to create a new message.
+ */
+export const ResolveWorkspaceExecutionResponseSchema: GenMessage<ResolveWorkspaceExecutionResponse> = /*@__PURE__*/
+  messageDesc(file_workos_project_v1_workspace, 22);
+
+/**
  * @generated from enum workos.project.v1.WorkspaceBindingState
  */
 export enum WorkspaceBindingState {
@@ -322,6 +614,38 @@ export const WorkspaceBindingStateSchema: GenEnum<WorkspaceBindingState> = /*@__
  * @generated from service workos.project.v1.ProjectWorkspaceService
  */
 export const ProjectWorkspaceService: GenService<{
+  /**
+   * @generated from rpc workos.project.v1.ProjectWorkspaceService.ListWorkspaceFiles
+   */
+  listWorkspaceFiles: {
+    methodKind: "unary";
+    input: typeof ListWorkspaceFilesRequestSchema;
+    output: typeof ListWorkspaceFilesResponseSchema;
+  },
+  /**
+   * @generated from rpc workos.project.v1.ProjectWorkspaceService.ReadWorkspaceFile
+   */
+  readWorkspaceFile: {
+    methodKind: "unary";
+    input: typeof ReadWorkspaceFileRequestSchema;
+    output: typeof ReadWorkspaceFileResponseSchema;
+  },
+  /**
+   * @generated from rpc workos.project.v1.ProjectWorkspaceService.WriteWorkspaceFile
+   */
+  writeWorkspaceFile: {
+    methodKind: "unary";
+    input: typeof WriteWorkspaceFileRequestSchema;
+    output: typeof WriteWorkspaceFileResponseSchema;
+  },
+  /**
+   * @generated from rpc workos.project.v1.ProjectWorkspaceService.ListAvailableWorkspaces
+   */
+  listAvailableWorkspaces: {
+    methodKind: "unary";
+    input: typeof ListAvailableWorkspacesRequestSchema;
+    output: typeof ListAvailableWorkspacesResponseSchema;
+  },
   /**
    * BindWorkspace creates the single-owner association between a project and
    * an operator-registered workspace source. The source must be currently
@@ -363,8 +687,7 @@ export const ProjectWorkspaceService: GenService<{
     output: typeof UpdateWorkspaceAccessResponseSchema;
   },
   /**
-   * ArchiveWorkspace blocks new executions against this binding; running
-   * executions finish under their pinned revision.
+   * ArchiveWorkspace revokes the binding; Runtime rechecks active executions.
    *
    * @generated from rpc workos.project.v1.ProjectWorkspaceService.ArchiveWorkspace
    */
@@ -375,4 +698,19 @@ export const ProjectWorkspaceService: GenService<{
   },
 }> = /*@__PURE__*/
   serviceDesc(file_workos_project_v1_workspace, 0);
+
+/**
+ * @generated from service workos.project.v1.WorkspaceExecutionAuthorizationService
+ */
+export const WorkspaceExecutionAuthorizationService: GenService<{
+  /**
+   * @generated from rpc workos.project.v1.WorkspaceExecutionAuthorizationService.ResolveWorkspaceExecution
+   */
+  resolveWorkspaceExecution: {
+    methodKind: "unary";
+    input: typeof ResolveWorkspaceExecutionRequestSchema;
+    output: typeof ResolveWorkspaceExecutionResponseSchema;
+  },
+}> = /*@__PURE__*/
+  serviceDesc(file_workos_project_v1_workspace, 1);
 

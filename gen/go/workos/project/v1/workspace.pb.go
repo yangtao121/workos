@@ -695,6 +695,672 @@ func (x *ArchiveWorkspaceResponse) GetBinding() *WorkspaceBinding {
 	return nil
 }
 
+type AvailableWorkspaceSource struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	DisplayName   string                 `protobuf:"bytes,2,opt,name=display_name,json=displayName,proto3" json:"display_name,omitempty"`
+	Kind          string                 `protobuf:"bytes,3,opt,name=kind,proto3" json:"kind,omitempty"`
+	ReadOnly      bool                   `protobuf:"varint,4,opt,name=read_only,json=readOnly,proto3" json:"read_only,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *AvailableWorkspaceSource) Reset() {
+	*x = AvailableWorkspaceSource{}
+	mi := &file_workos_project_v1_workspace_proto_msgTypes[11]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *AvailableWorkspaceSource) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AvailableWorkspaceSource) ProtoMessage() {}
+
+func (x *AvailableWorkspaceSource) ProtoReflect() protoreflect.Message {
+	mi := &file_workos_project_v1_workspace_proto_msgTypes[11]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AvailableWorkspaceSource.ProtoReflect.Descriptor instead.
+func (*AvailableWorkspaceSource) Descriptor() ([]byte, []int) {
+	return file_workos_project_v1_workspace_proto_rawDescGZIP(), []int{11}
+}
+
+func (x *AvailableWorkspaceSource) GetId() string {
+	if x != nil {
+		return x.Id
+	}
+	return ""
+}
+
+func (x *AvailableWorkspaceSource) GetDisplayName() string {
+	if x != nil {
+		return x.DisplayName
+	}
+	return ""
+}
+
+func (x *AvailableWorkspaceSource) GetKind() string {
+	if x != nil {
+		return x.Kind
+	}
+	return ""
+}
+
+func (x *AvailableWorkspaceSource) GetReadOnly() bool {
+	if x != nil {
+		return x.ReadOnly
+	}
+	return false
+}
+
+type ListAvailableWorkspacesRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	ProjectId     string                 `protobuf:"bytes,1,opt,name=project_id,json=projectId,proto3" json:"project_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListAvailableWorkspacesRequest) Reset() {
+	*x = ListAvailableWorkspacesRequest{}
+	mi := &file_workos_project_v1_workspace_proto_msgTypes[12]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListAvailableWorkspacesRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListAvailableWorkspacesRequest) ProtoMessage() {}
+
+func (x *ListAvailableWorkspacesRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_workos_project_v1_workspace_proto_msgTypes[12]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListAvailableWorkspacesRequest.ProtoReflect.Descriptor instead.
+func (*ListAvailableWorkspacesRequest) Descriptor() ([]byte, []int) {
+	return file_workos_project_v1_workspace_proto_rawDescGZIP(), []int{12}
+}
+
+func (x *ListAvailableWorkspacesRequest) GetProjectId() string {
+	if x != nil {
+		return x.ProjectId
+	}
+	return ""
+}
+
+type ListAvailableWorkspacesResponse struct {
+	state         protoimpl.MessageState      `protogen:"open.v1"`
+	Sources       []*AvailableWorkspaceSource `protobuf:"bytes,1,rep,name=sources,proto3" json:"sources,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListAvailableWorkspacesResponse) Reset() {
+	*x = ListAvailableWorkspacesResponse{}
+	mi := &file_workos_project_v1_workspace_proto_msgTypes[13]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListAvailableWorkspacesResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListAvailableWorkspacesResponse) ProtoMessage() {}
+
+func (x *ListAvailableWorkspacesResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_workos_project_v1_workspace_proto_msgTypes[13]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListAvailableWorkspacesResponse.ProtoReflect.Descriptor instead.
+func (*ListAvailableWorkspacesResponse) Descriptor() ([]byte, []int) {
+	return file_workos_project_v1_workspace_proto_rawDescGZIP(), []int{13}
+}
+
+func (x *ListAvailableWorkspacesResponse) GetSources() []*AvailableWorkspaceSource {
+	if x != nil {
+		return x.Sources
+	}
+	return nil
+}
+
+type WorkspaceFileEntry struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Path          string                 `protobuf:"bytes,1,opt,name=path,proto3" json:"path,omitempty"`
+	Kind          string                 `protobuf:"bytes,2,opt,name=kind,proto3" json:"kind,omitempty"`
+	Size          int64                  `protobuf:"varint,3,opt,name=size,proto3" json:"size,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *WorkspaceFileEntry) Reset() {
+	*x = WorkspaceFileEntry{}
+	mi := &file_workos_project_v1_workspace_proto_msgTypes[14]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *WorkspaceFileEntry) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*WorkspaceFileEntry) ProtoMessage() {}
+
+func (x *WorkspaceFileEntry) ProtoReflect() protoreflect.Message {
+	mi := &file_workos_project_v1_workspace_proto_msgTypes[14]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use WorkspaceFileEntry.ProtoReflect.Descriptor instead.
+func (*WorkspaceFileEntry) Descriptor() ([]byte, []int) {
+	return file_workos_project_v1_workspace_proto_rawDescGZIP(), []int{14}
+}
+
+func (x *WorkspaceFileEntry) GetPath() string {
+	if x != nil {
+		return x.Path
+	}
+	return ""
+}
+
+func (x *WorkspaceFileEntry) GetKind() string {
+	if x != nil {
+		return x.Kind
+	}
+	return ""
+}
+
+func (x *WorkspaceFileEntry) GetSize() int64 {
+	if x != nil {
+		return x.Size
+	}
+	return 0
+}
+
+type ListWorkspaceFilesRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	ProjectId     string                 `protobuf:"bytes,1,opt,name=project_id,json=projectId,proto3" json:"project_id,omitempty"`
+	Path          string                 `protobuf:"bytes,2,opt,name=path,proto3" json:"path,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListWorkspaceFilesRequest) Reset() {
+	*x = ListWorkspaceFilesRequest{}
+	mi := &file_workos_project_v1_workspace_proto_msgTypes[15]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListWorkspaceFilesRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListWorkspaceFilesRequest) ProtoMessage() {}
+
+func (x *ListWorkspaceFilesRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_workos_project_v1_workspace_proto_msgTypes[15]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListWorkspaceFilesRequest.ProtoReflect.Descriptor instead.
+func (*ListWorkspaceFilesRequest) Descriptor() ([]byte, []int) {
+	return file_workos_project_v1_workspace_proto_rawDescGZIP(), []int{15}
+}
+
+func (x *ListWorkspaceFilesRequest) GetProjectId() string {
+	if x != nil {
+		return x.ProjectId
+	}
+	return ""
+}
+
+func (x *ListWorkspaceFilesRequest) GetPath() string {
+	if x != nil {
+		return x.Path
+	}
+	return ""
+}
+
+type ListWorkspaceFilesResponse struct {
+	state             protoimpl.MessageState `protogen:"open.v1"`
+	Entries           []*WorkspaceFileEntry  `protobuf:"bytes,1,rep,name=entries,proto3" json:"entries,omitempty"`
+	WorkspaceRevision int64                  `protobuf:"varint,2,opt,name=workspace_revision,json=workspaceRevision,proto3" json:"workspace_revision,omitempty"`
+	ReadOnly          bool                   `protobuf:"varint,3,opt,name=read_only,json=readOnly,proto3" json:"read_only,omitempty"`
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
+}
+
+func (x *ListWorkspaceFilesResponse) Reset() {
+	*x = ListWorkspaceFilesResponse{}
+	mi := &file_workos_project_v1_workspace_proto_msgTypes[16]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListWorkspaceFilesResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListWorkspaceFilesResponse) ProtoMessage() {}
+
+func (x *ListWorkspaceFilesResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_workos_project_v1_workspace_proto_msgTypes[16]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListWorkspaceFilesResponse.ProtoReflect.Descriptor instead.
+func (*ListWorkspaceFilesResponse) Descriptor() ([]byte, []int) {
+	return file_workos_project_v1_workspace_proto_rawDescGZIP(), []int{16}
+}
+
+func (x *ListWorkspaceFilesResponse) GetEntries() []*WorkspaceFileEntry {
+	if x != nil {
+		return x.Entries
+	}
+	return nil
+}
+
+func (x *ListWorkspaceFilesResponse) GetWorkspaceRevision() int64 {
+	if x != nil {
+		return x.WorkspaceRevision
+	}
+	return 0
+}
+
+func (x *ListWorkspaceFilesResponse) GetReadOnly() bool {
+	if x != nil {
+		return x.ReadOnly
+	}
+	return false
+}
+
+type ReadWorkspaceFileRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	ProjectId     string                 `protobuf:"bytes,1,opt,name=project_id,json=projectId,proto3" json:"project_id,omitempty"`
+	Path          string                 `protobuf:"bytes,2,opt,name=path,proto3" json:"path,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ReadWorkspaceFileRequest) Reset() {
+	*x = ReadWorkspaceFileRequest{}
+	mi := &file_workos_project_v1_workspace_proto_msgTypes[17]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ReadWorkspaceFileRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ReadWorkspaceFileRequest) ProtoMessage() {}
+
+func (x *ReadWorkspaceFileRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_workos_project_v1_workspace_proto_msgTypes[17]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ReadWorkspaceFileRequest.ProtoReflect.Descriptor instead.
+func (*ReadWorkspaceFileRequest) Descriptor() ([]byte, []int) {
+	return file_workos_project_v1_workspace_proto_rawDescGZIP(), []int{17}
+}
+
+func (x *ReadWorkspaceFileRequest) GetProjectId() string {
+	if x != nil {
+		return x.ProjectId
+	}
+	return ""
+}
+
+func (x *ReadWorkspaceFileRequest) GetPath() string {
+	if x != nil {
+		return x.Path
+	}
+	return ""
+}
+
+type ReadWorkspaceFileResponse struct {
+	state             protoimpl.MessageState `protogen:"open.v1"`
+	Content           string                 `protobuf:"bytes,1,opt,name=content,proto3" json:"content,omitempty"`
+	Etag              string                 `protobuf:"bytes,2,opt,name=etag,proto3" json:"etag,omitempty"`
+	WorkspaceRevision int64                  `protobuf:"varint,3,opt,name=workspace_revision,json=workspaceRevision,proto3" json:"workspace_revision,omitempty"`
+	ReadOnly          bool                   `protobuf:"varint,4,opt,name=read_only,json=readOnly,proto3" json:"read_only,omitempty"`
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
+}
+
+func (x *ReadWorkspaceFileResponse) Reset() {
+	*x = ReadWorkspaceFileResponse{}
+	mi := &file_workos_project_v1_workspace_proto_msgTypes[18]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ReadWorkspaceFileResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ReadWorkspaceFileResponse) ProtoMessage() {}
+
+func (x *ReadWorkspaceFileResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_workos_project_v1_workspace_proto_msgTypes[18]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ReadWorkspaceFileResponse.ProtoReflect.Descriptor instead.
+func (*ReadWorkspaceFileResponse) Descriptor() ([]byte, []int) {
+	return file_workos_project_v1_workspace_proto_rawDescGZIP(), []int{18}
+}
+
+func (x *ReadWorkspaceFileResponse) GetContent() string {
+	if x != nil {
+		return x.Content
+	}
+	return ""
+}
+
+func (x *ReadWorkspaceFileResponse) GetEtag() string {
+	if x != nil {
+		return x.Etag
+	}
+	return ""
+}
+
+func (x *ReadWorkspaceFileResponse) GetWorkspaceRevision() int64 {
+	if x != nil {
+		return x.WorkspaceRevision
+	}
+	return 0
+}
+
+func (x *ReadWorkspaceFileResponse) GetReadOnly() bool {
+	if x != nil {
+		return x.ReadOnly
+	}
+	return false
+}
+
+type WriteWorkspaceFileRequest struct {
+	state             protoimpl.MessageState `protogen:"open.v1"`
+	ProjectId         string                 `protobuf:"bytes,1,opt,name=project_id,json=projectId,proto3" json:"project_id,omitempty"`
+	Path              string                 `protobuf:"bytes,2,opt,name=path,proto3" json:"path,omitempty"`
+	Content           string                 `protobuf:"bytes,3,opt,name=content,proto3" json:"content,omitempty"`
+	ExpectedEtag      string                 `protobuf:"bytes,4,opt,name=expected_etag,json=expectedEtag,proto3" json:"expected_etag,omitempty"`
+	WorkspaceRevision int64                  `protobuf:"varint,5,opt,name=workspace_revision,json=workspaceRevision,proto3" json:"workspace_revision,omitempty"`
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
+}
+
+func (x *WriteWorkspaceFileRequest) Reset() {
+	*x = WriteWorkspaceFileRequest{}
+	mi := &file_workos_project_v1_workspace_proto_msgTypes[19]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *WriteWorkspaceFileRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*WriteWorkspaceFileRequest) ProtoMessage() {}
+
+func (x *WriteWorkspaceFileRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_workos_project_v1_workspace_proto_msgTypes[19]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use WriteWorkspaceFileRequest.ProtoReflect.Descriptor instead.
+func (*WriteWorkspaceFileRequest) Descriptor() ([]byte, []int) {
+	return file_workos_project_v1_workspace_proto_rawDescGZIP(), []int{19}
+}
+
+func (x *WriteWorkspaceFileRequest) GetProjectId() string {
+	if x != nil {
+		return x.ProjectId
+	}
+	return ""
+}
+
+func (x *WriteWorkspaceFileRequest) GetPath() string {
+	if x != nil {
+		return x.Path
+	}
+	return ""
+}
+
+func (x *WriteWorkspaceFileRequest) GetContent() string {
+	if x != nil {
+		return x.Content
+	}
+	return ""
+}
+
+func (x *WriteWorkspaceFileRequest) GetExpectedEtag() string {
+	if x != nil {
+		return x.ExpectedEtag
+	}
+	return ""
+}
+
+func (x *WriteWorkspaceFileRequest) GetWorkspaceRevision() int64 {
+	if x != nil {
+		return x.WorkspaceRevision
+	}
+	return 0
+}
+
+type WriteWorkspaceFileResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Etag          string                 `protobuf:"bytes,1,opt,name=etag,proto3" json:"etag,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *WriteWorkspaceFileResponse) Reset() {
+	*x = WriteWorkspaceFileResponse{}
+	mi := &file_workos_project_v1_workspace_proto_msgTypes[20]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *WriteWorkspaceFileResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*WriteWorkspaceFileResponse) ProtoMessage() {}
+
+func (x *WriteWorkspaceFileResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_workos_project_v1_workspace_proto_msgTypes[20]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use WriteWorkspaceFileResponse.ProtoReflect.Descriptor instead.
+func (*WriteWorkspaceFileResponse) Descriptor() ([]byte, []int) {
+	return file_workos_project_v1_workspace_proto_rawDescGZIP(), []int{20}
+}
+
+func (x *WriteWorkspaceFileResponse) GetEtag() string {
+	if x != nil {
+		return x.Etag
+	}
+	return ""
+}
+
+// Private Runtime-to-Core authorization; never routed by Gateway. The caller
+// is Runtime, which derives owner/project from authenticated session facts.
+type ResolveWorkspaceExecutionRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	OwnerUserId   string                 `protobuf:"bytes,1,opt,name=owner_user_id,json=ownerUserId,proto3" json:"owner_user_id,omitempty"`
+	ProjectId     string                 `protobuf:"bytes,2,opt,name=project_id,json=projectId,proto3" json:"project_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ResolveWorkspaceExecutionRequest) Reset() {
+	*x = ResolveWorkspaceExecutionRequest{}
+	mi := &file_workos_project_v1_workspace_proto_msgTypes[21]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ResolveWorkspaceExecutionRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ResolveWorkspaceExecutionRequest) ProtoMessage() {}
+
+func (x *ResolveWorkspaceExecutionRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_workos_project_v1_workspace_proto_msgTypes[21]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ResolveWorkspaceExecutionRequest.ProtoReflect.Descriptor instead.
+func (*ResolveWorkspaceExecutionRequest) Descriptor() ([]byte, []int) {
+	return file_workos_project_v1_workspace_proto_rawDescGZIP(), []int{21}
+}
+
+func (x *ResolveWorkspaceExecutionRequest) GetOwnerUserId() string {
+	if x != nil {
+		return x.OwnerUserId
+	}
+	return ""
+}
+
+func (x *ResolveWorkspaceExecutionRequest) GetProjectId() string {
+	if x != nil {
+		return x.ProjectId
+	}
+	return ""
+}
+
+type ResolveWorkspaceExecutionResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Binding       *WorkspaceBinding      `protobuf:"bytes,1,opt,name=binding,proto3" json:"binding,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ResolveWorkspaceExecutionResponse) Reset() {
+	*x = ResolveWorkspaceExecutionResponse{}
+	mi := &file_workos_project_v1_workspace_proto_msgTypes[22]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ResolveWorkspaceExecutionResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ResolveWorkspaceExecutionResponse) ProtoMessage() {}
+
+func (x *ResolveWorkspaceExecutionResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_workos_project_v1_workspace_proto_msgTypes[22]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ResolveWorkspaceExecutionResponse.ProtoReflect.Descriptor instead.
+func (*ResolveWorkspaceExecutionResponse) Descriptor() ([]byte, []int) {
+	return file_workos_project_v1_workspace_proto_rawDescGZIP(), []int{22}
+}
+
+func (x *ResolveWorkspaceExecutionResponse) GetBinding() *WorkspaceBinding {
+	if x != nil {
+		return x.Binding
+	}
+	return nil
+}
+
 var File_workos_project_v1_workspace_proto protoreflect.FileDescriptor
 
 const file_workos_project_v1_workspace_proto_rawDesc = "" +
@@ -751,17 +1417,69 @@ const file_workos_project_v1_workspace_proto_rawDesc = "" +
 	"binding_id\x18\x01 \x01(\tR\tbindingId\x12+\n" +
 	"\x11expected_revision\x18\x02 \x01(\x03R\x10expectedRevision\"Y\n" +
 	"\x18ArchiveWorkspaceResponse\x12=\n" +
+	"\abinding\x18\x01 \x01(\v2#.workos.project.v1.WorkspaceBindingR\abinding\"~\n" +
+	"\x18AvailableWorkspaceSource\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\tR\x02id\x12!\n" +
+	"\fdisplay_name\x18\x02 \x01(\tR\vdisplayName\x12\x12\n" +
+	"\x04kind\x18\x03 \x01(\tR\x04kind\x12\x1b\n" +
+	"\tread_only\x18\x04 \x01(\bR\breadOnly\"?\n" +
+	"\x1eListAvailableWorkspacesRequest\x12\x1d\n" +
+	"\n" +
+	"project_id\x18\x01 \x01(\tR\tprojectId\"h\n" +
+	"\x1fListAvailableWorkspacesResponse\x12E\n" +
+	"\asources\x18\x01 \x03(\v2+.workos.project.v1.AvailableWorkspaceSourceR\asources\"P\n" +
+	"\x12WorkspaceFileEntry\x12\x12\n" +
+	"\x04path\x18\x01 \x01(\tR\x04path\x12\x12\n" +
+	"\x04kind\x18\x02 \x01(\tR\x04kind\x12\x12\n" +
+	"\x04size\x18\x03 \x01(\x03R\x04size\"N\n" +
+	"\x19ListWorkspaceFilesRequest\x12\x1d\n" +
+	"\n" +
+	"project_id\x18\x01 \x01(\tR\tprojectId\x12\x12\n" +
+	"\x04path\x18\x02 \x01(\tR\x04path\"\xa9\x01\n" +
+	"\x1aListWorkspaceFilesResponse\x12?\n" +
+	"\aentries\x18\x01 \x03(\v2%.workos.project.v1.WorkspaceFileEntryR\aentries\x12-\n" +
+	"\x12workspace_revision\x18\x02 \x01(\x03R\x11workspaceRevision\x12\x1b\n" +
+	"\tread_only\x18\x03 \x01(\bR\breadOnly\"M\n" +
+	"\x18ReadWorkspaceFileRequest\x12\x1d\n" +
+	"\n" +
+	"project_id\x18\x01 \x01(\tR\tprojectId\x12\x12\n" +
+	"\x04path\x18\x02 \x01(\tR\x04path\"\x95\x01\n" +
+	"\x19ReadWorkspaceFileResponse\x12\x18\n" +
+	"\acontent\x18\x01 \x01(\tR\acontent\x12\x12\n" +
+	"\x04etag\x18\x02 \x01(\tR\x04etag\x12-\n" +
+	"\x12workspace_revision\x18\x03 \x01(\x03R\x11workspaceRevision\x12\x1b\n" +
+	"\tread_only\x18\x04 \x01(\bR\breadOnly\"\xbc\x01\n" +
+	"\x19WriteWorkspaceFileRequest\x12\x1d\n" +
+	"\n" +
+	"project_id\x18\x01 \x01(\tR\tprojectId\x12\x12\n" +
+	"\x04path\x18\x02 \x01(\tR\x04path\x12\x18\n" +
+	"\acontent\x18\x03 \x01(\tR\acontent\x12#\n" +
+	"\rexpected_etag\x18\x04 \x01(\tR\fexpectedEtag\x12-\n" +
+	"\x12workspace_revision\x18\x05 \x01(\x03R\x11workspaceRevision\"0\n" +
+	"\x1aWriteWorkspaceFileResponse\x12\x12\n" +
+	"\x04etag\x18\x01 \x01(\tR\x04etag\"e\n" +
+	" ResolveWorkspaceExecutionRequest\x12\"\n" +
+	"\rowner_user_id\x18\x01 \x01(\tR\vownerUserId\x12\x1d\n" +
+	"\n" +
+	"project_id\x18\x02 \x01(\tR\tprojectId\"b\n" +
+	"!ResolveWorkspaceExecutionResponse\x12=\n" +
 	"\abinding\x18\x01 \x01(\v2#.workos.project.v1.WorkspaceBindingR\abinding*\x8a\x01\n" +
 	"\x15WorkspaceBindingState\x12'\n" +
 	"#WORKSPACE_BINDING_STATE_UNSPECIFIED\x10\x00\x12\"\n" +
 	"\x1eWORKSPACE_BINDING_STATE_ACTIVE\x10\x01\x12$\n" +
-	" WORKSPACE_BINDING_STATE_ARCHIVED\x10\x022\xcd\x04\n" +
-	"\x17ProjectWorkspaceService\x12d\n" +
+	" WORKSPACE_BINDING_STATE_ARCHIVED\x10\x022\xae\b\n" +
+	"\x17ProjectWorkspaceService\x12s\n" +
+	"\x12ListWorkspaceFiles\x12,.workos.project.v1.ListWorkspaceFilesRequest\x1a-.workos.project.v1.ListWorkspaceFilesResponse\"\x00\x12p\n" +
+	"\x11ReadWorkspaceFile\x12+.workos.project.v1.ReadWorkspaceFileRequest\x1a,.workos.project.v1.ReadWorkspaceFileResponse\"\x00\x12s\n" +
+	"\x12WriteWorkspaceFile\x12,.workos.project.v1.WriteWorkspaceFileRequest\x1a-.workos.project.v1.WriteWorkspaceFileResponse\"\x00\x12\x82\x01\n" +
+	"\x17ListAvailableWorkspaces\x121.workos.project.v1.ListAvailableWorkspacesRequest\x1a2.workos.project.v1.ListAvailableWorkspacesResponse\"\x00\x12d\n" +
 	"\rBindWorkspace\x12'.workos.project.v1.BindWorkspaceRequest\x1a(.workos.project.v1.BindWorkspaceResponse\"\x00\x12a\n" +
 	"\fGetWorkspace\x12&.workos.project.v1.GetWorkspaceRequest\x1a'.workos.project.v1.GetWorkspaceResponse\"\x00\x12|\n" +
 	"\x15ListProjectWorkspaces\x12/.workos.project.v1.ListProjectWorkspacesRequest\x1a0.workos.project.v1.ListProjectWorkspacesResponse\"\x00\x12|\n" +
 	"\x15UpdateWorkspaceAccess\x12/.workos.project.v1.UpdateWorkspaceAccessRequest\x1a0.workos.project.v1.UpdateWorkspaceAccessResponse\"\x00\x12m\n" +
-	"\x10ArchiveWorkspace\x12*.workos.project.v1.ArchiveWorkspaceRequest\x1a+.workos.project.v1.ArchiveWorkspaceResponse\"\x00BAZ?github.com/yangtao121/workos/gen/go/workos/project/v1;projectv1b\x06proto3"
+	"\x10ArchiveWorkspace\x12*.workos.project.v1.ArchiveWorkspaceRequest\x1a+.workos.project.v1.ArchiveWorkspaceResponse\"\x002\xb3\x01\n" +
+	"&WorkspaceExecutionAuthorizationService\x12\x88\x01\n" +
+	"\x19ResolveWorkspaceExecution\x123.workos.project.v1.ResolveWorkspaceExecutionRequest\x1a4.workos.project.v1.ResolveWorkspaceExecutionResponse\"\x00BAZ?github.com/yangtao121/workos/gen/go/workos/project/v1;projectv1b\x06proto3"
 
 var (
 	file_workos_project_v1_workspace_proto_rawDescOnce sync.Once
@@ -776,47 +1494,72 @@ func file_workos_project_v1_workspace_proto_rawDescGZIP() []byte {
 }
 
 var file_workos_project_v1_workspace_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_workos_project_v1_workspace_proto_msgTypes = make([]protoimpl.MessageInfo, 11)
+var file_workos_project_v1_workspace_proto_msgTypes = make([]protoimpl.MessageInfo, 23)
 var file_workos_project_v1_workspace_proto_goTypes = []any{
-	(WorkspaceBindingState)(0),            // 0: workos.project.v1.WorkspaceBindingState
-	(*WorkspaceBinding)(nil),              // 1: workos.project.v1.WorkspaceBinding
-	(*BindWorkspaceRequest)(nil),          // 2: workos.project.v1.BindWorkspaceRequest
-	(*BindWorkspaceResponse)(nil),         // 3: workos.project.v1.BindWorkspaceResponse
-	(*GetWorkspaceRequest)(nil),           // 4: workos.project.v1.GetWorkspaceRequest
-	(*GetWorkspaceResponse)(nil),          // 5: workos.project.v1.GetWorkspaceResponse
-	(*ListProjectWorkspacesRequest)(nil),  // 6: workos.project.v1.ListProjectWorkspacesRequest
-	(*ListProjectWorkspacesResponse)(nil), // 7: workos.project.v1.ListProjectWorkspacesResponse
-	(*UpdateWorkspaceAccessRequest)(nil),  // 8: workos.project.v1.UpdateWorkspaceAccessRequest
-	(*UpdateWorkspaceAccessResponse)(nil), // 9: workos.project.v1.UpdateWorkspaceAccessResponse
-	(*ArchiveWorkspaceRequest)(nil),       // 10: workos.project.v1.ArchiveWorkspaceRequest
-	(*ArchiveWorkspaceResponse)(nil),      // 11: workos.project.v1.ArchiveWorkspaceResponse
-	(*timestamppb.Timestamp)(nil),         // 12: google.protobuf.Timestamp
+	(WorkspaceBindingState)(0),                // 0: workos.project.v1.WorkspaceBindingState
+	(*WorkspaceBinding)(nil),                  // 1: workos.project.v1.WorkspaceBinding
+	(*BindWorkspaceRequest)(nil),              // 2: workos.project.v1.BindWorkspaceRequest
+	(*BindWorkspaceResponse)(nil),             // 3: workos.project.v1.BindWorkspaceResponse
+	(*GetWorkspaceRequest)(nil),               // 4: workos.project.v1.GetWorkspaceRequest
+	(*GetWorkspaceResponse)(nil),              // 5: workos.project.v1.GetWorkspaceResponse
+	(*ListProjectWorkspacesRequest)(nil),      // 6: workos.project.v1.ListProjectWorkspacesRequest
+	(*ListProjectWorkspacesResponse)(nil),     // 7: workos.project.v1.ListProjectWorkspacesResponse
+	(*UpdateWorkspaceAccessRequest)(nil),      // 8: workos.project.v1.UpdateWorkspaceAccessRequest
+	(*UpdateWorkspaceAccessResponse)(nil),     // 9: workos.project.v1.UpdateWorkspaceAccessResponse
+	(*ArchiveWorkspaceRequest)(nil),           // 10: workos.project.v1.ArchiveWorkspaceRequest
+	(*ArchiveWorkspaceResponse)(nil),          // 11: workos.project.v1.ArchiveWorkspaceResponse
+	(*AvailableWorkspaceSource)(nil),          // 12: workos.project.v1.AvailableWorkspaceSource
+	(*ListAvailableWorkspacesRequest)(nil),    // 13: workos.project.v1.ListAvailableWorkspacesRequest
+	(*ListAvailableWorkspacesResponse)(nil),   // 14: workos.project.v1.ListAvailableWorkspacesResponse
+	(*WorkspaceFileEntry)(nil),                // 15: workos.project.v1.WorkspaceFileEntry
+	(*ListWorkspaceFilesRequest)(nil),         // 16: workos.project.v1.ListWorkspaceFilesRequest
+	(*ListWorkspaceFilesResponse)(nil),        // 17: workos.project.v1.ListWorkspaceFilesResponse
+	(*ReadWorkspaceFileRequest)(nil),          // 18: workos.project.v1.ReadWorkspaceFileRequest
+	(*ReadWorkspaceFileResponse)(nil),         // 19: workos.project.v1.ReadWorkspaceFileResponse
+	(*WriteWorkspaceFileRequest)(nil),         // 20: workos.project.v1.WriteWorkspaceFileRequest
+	(*WriteWorkspaceFileResponse)(nil),        // 21: workos.project.v1.WriteWorkspaceFileResponse
+	(*ResolveWorkspaceExecutionRequest)(nil),  // 22: workos.project.v1.ResolveWorkspaceExecutionRequest
+	(*ResolveWorkspaceExecutionResponse)(nil), // 23: workos.project.v1.ResolveWorkspaceExecutionResponse
+	(*timestamppb.Timestamp)(nil),             // 24: google.protobuf.Timestamp
 }
 var file_workos_project_v1_workspace_proto_depIdxs = []int32{
 	0,  // 0: workos.project.v1.WorkspaceBinding.state:type_name -> workos.project.v1.WorkspaceBindingState
-	12, // 1: workos.project.v1.WorkspaceBinding.created_at:type_name -> google.protobuf.Timestamp
-	12, // 2: workos.project.v1.WorkspaceBinding.updated_at:type_name -> google.protobuf.Timestamp
-	12, // 3: workos.project.v1.WorkspaceBinding.archived_at:type_name -> google.protobuf.Timestamp
+	24, // 1: workos.project.v1.WorkspaceBinding.created_at:type_name -> google.protobuf.Timestamp
+	24, // 2: workos.project.v1.WorkspaceBinding.updated_at:type_name -> google.protobuf.Timestamp
+	24, // 3: workos.project.v1.WorkspaceBinding.archived_at:type_name -> google.protobuf.Timestamp
 	1,  // 4: workos.project.v1.BindWorkspaceResponse.binding:type_name -> workos.project.v1.WorkspaceBinding
 	1,  // 5: workos.project.v1.GetWorkspaceResponse.binding:type_name -> workos.project.v1.WorkspaceBinding
 	1,  // 6: workos.project.v1.ListProjectWorkspacesResponse.bindings:type_name -> workos.project.v1.WorkspaceBinding
 	1,  // 7: workos.project.v1.UpdateWorkspaceAccessResponse.binding:type_name -> workos.project.v1.WorkspaceBinding
 	1,  // 8: workos.project.v1.ArchiveWorkspaceResponse.binding:type_name -> workos.project.v1.WorkspaceBinding
-	2,  // 9: workos.project.v1.ProjectWorkspaceService.BindWorkspace:input_type -> workos.project.v1.BindWorkspaceRequest
-	4,  // 10: workos.project.v1.ProjectWorkspaceService.GetWorkspace:input_type -> workos.project.v1.GetWorkspaceRequest
-	6,  // 11: workos.project.v1.ProjectWorkspaceService.ListProjectWorkspaces:input_type -> workos.project.v1.ListProjectWorkspacesRequest
-	8,  // 12: workos.project.v1.ProjectWorkspaceService.UpdateWorkspaceAccess:input_type -> workos.project.v1.UpdateWorkspaceAccessRequest
-	10, // 13: workos.project.v1.ProjectWorkspaceService.ArchiveWorkspace:input_type -> workos.project.v1.ArchiveWorkspaceRequest
-	3,  // 14: workos.project.v1.ProjectWorkspaceService.BindWorkspace:output_type -> workos.project.v1.BindWorkspaceResponse
-	5,  // 15: workos.project.v1.ProjectWorkspaceService.GetWorkspace:output_type -> workos.project.v1.GetWorkspaceResponse
-	7,  // 16: workos.project.v1.ProjectWorkspaceService.ListProjectWorkspaces:output_type -> workos.project.v1.ListProjectWorkspacesResponse
-	9,  // 17: workos.project.v1.ProjectWorkspaceService.UpdateWorkspaceAccess:output_type -> workos.project.v1.UpdateWorkspaceAccessResponse
-	11, // 18: workos.project.v1.ProjectWorkspaceService.ArchiveWorkspace:output_type -> workos.project.v1.ArchiveWorkspaceResponse
-	14, // [14:19] is the sub-list for method output_type
-	9,  // [9:14] is the sub-list for method input_type
-	9,  // [9:9] is the sub-list for extension type_name
-	9,  // [9:9] is the sub-list for extension extendee
-	0,  // [0:9] is the sub-list for field type_name
+	12, // 9: workos.project.v1.ListAvailableWorkspacesResponse.sources:type_name -> workos.project.v1.AvailableWorkspaceSource
+	15, // 10: workos.project.v1.ListWorkspaceFilesResponse.entries:type_name -> workos.project.v1.WorkspaceFileEntry
+	1,  // 11: workos.project.v1.ResolveWorkspaceExecutionResponse.binding:type_name -> workos.project.v1.WorkspaceBinding
+	16, // 12: workos.project.v1.ProjectWorkspaceService.ListWorkspaceFiles:input_type -> workos.project.v1.ListWorkspaceFilesRequest
+	18, // 13: workos.project.v1.ProjectWorkspaceService.ReadWorkspaceFile:input_type -> workos.project.v1.ReadWorkspaceFileRequest
+	20, // 14: workos.project.v1.ProjectWorkspaceService.WriteWorkspaceFile:input_type -> workos.project.v1.WriteWorkspaceFileRequest
+	13, // 15: workos.project.v1.ProjectWorkspaceService.ListAvailableWorkspaces:input_type -> workos.project.v1.ListAvailableWorkspacesRequest
+	2,  // 16: workos.project.v1.ProjectWorkspaceService.BindWorkspace:input_type -> workos.project.v1.BindWorkspaceRequest
+	4,  // 17: workos.project.v1.ProjectWorkspaceService.GetWorkspace:input_type -> workos.project.v1.GetWorkspaceRequest
+	6,  // 18: workos.project.v1.ProjectWorkspaceService.ListProjectWorkspaces:input_type -> workos.project.v1.ListProjectWorkspacesRequest
+	8,  // 19: workos.project.v1.ProjectWorkspaceService.UpdateWorkspaceAccess:input_type -> workos.project.v1.UpdateWorkspaceAccessRequest
+	10, // 20: workos.project.v1.ProjectWorkspaceService.ArchiveWorkspace:input_type -> workos.project.v1.ArchiveWorkspaceRequest
+	22, // 21: workos.project.v1.WorkspaceExecutionAuthorizationService.ResolveWorkspaceExecution:input_type -> workos.project.v1.ResolveWorkspaceExecutionRequest
+	17, // 22: workos.project.v1.ProjectWorkspaceService.ListWorkspaceFiles:output_type -> workos.project.v1.ListWorkspaceFilesResponse
+	19, // 23: workos.project.v1.ProjectWorkspaceService.ReadWorkspaceFile:output_type -> workos.project.v1.ReadWorkspaceFileResponse
+	21, // 24: workos.project.v1.ProjectWorkspaceService.WriteWorkspaceFile:output_type -> workos.project.v1.WriteWorkspaceFileResponse
+	14, // 25: workos.project.v1.ProjectWorkspaceService.ListAvailableWorkspaces:output_type -> workos.project.v1.ListAvailableWorkspacesResponse
+	3,  // 26: workos.project.v1.ProjectWorkspaceService.BindWorkspace:output_type -> workos.project.v1.BindWorkspaceResponse
+	5,  // 27: workos.project.v1.ProjectWorkspaceService.GetWorkspace:output_type -> workos.project.v1.GetWorkspaceResponse
+	7,  // 28: workos.project.v1.ProjectWorkspaceService.ListProjectWorkspaces:output_type -> workos.project.v1.ListProjectWorkspacesResponse
+	9,  // 29: workos.project.v1.ProjectWorkspaceService.UpdateWorkspaceAccess:output_type -> workos.project.v1.UpdateWorkspaceAccessResponse
+	11, // 30: workos.project.v1.ProjectWorkspaceService.ArchiveWorkspace:output_type -> workos.project.v1.ArchiveWorkspaceResponse
+	23, // 31: workos.project.v1.WorkspaceExecutionAuthorizationService.ResolveWorkspaceExecution:output_type -> workos.project.v1.ResolveWorkspaceExecutionResponse
+	22, // [22:32] is the sub-list for method output_type
+	12, // [12:22] is the sub-list for method input_type
+	12, // [12:12] is the sub-list for extension type_name
+	12, // [12:12] is the sub-list for extension extendee
+	0,  // [0:12] is the sub-list for field type_name
 }
 
 func init() { file_workos_project_v1_workspace_proto_init() }
@@ -832,9 +1575,9 @@ func file_workos_project_v1_workspace_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_workos_project_v1_workspace_proto_rawDesc), len(file_workos_project_v1_workspace_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   11,
+			NumMessages:   23,
 			NumExtensions: 0,
-			NumServices:   1,
+			NumServices:   2,
 		},
 		GoTypes:           file_workos_project_v1_workspace_proto_goTypes,
 		DependencyIndexes: file_workos_project_v1_workspace_proto_depIdxs,

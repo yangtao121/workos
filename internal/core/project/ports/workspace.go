@@ -11,6 +11,7 @@ import (
 // host. It carries bounded descriptive facts only: never a host path.
 type WorkspaceSource struct {
 	ID          string
+	ProjectID   string
 	Kind        string
 	DisplayName string
 	ReadOnly    bool
@@ -34,4 +35,17 @@ type WorkspaceRepository interface {
 	ListWorkspaceBindings(ctx context.Context, ownerUserID, projectID string, includeArchived bool) ([]domain.WorkspaceBinding, error)
 	UpdateWorkspaceAccess(ctx context.Context, ownerUserID, bindingID string, readOnly bool, expectedRevision int64, now time.Time) (domain.WorkspaceBinding, error)
 	ArchiveWorkspaceBinding(ctx context.Context, ownerUserID, bindingID string, expectedRevision int64, now time.Time) (domain.WorkspaceBinding, error)
+}
+
+// FileExecution is the owner's explicit development-file policy. Ordinary App
+// file grants keep their separate 32 KiB, hidden-path and link restrictions.
+type FileExecution struct {
+	BindingID                                       string
+	Revision                                        int64
+	ID, OwnerUserID, ProjectID, SourceID, Operation string
+	ReadOnly                                        bool
+	Arguments                                       map[string]any
+}
+type WorkspaceFiles interface {
+	ExecuteFile(context.Context, FileExecution) (map[string]any, error)
 }

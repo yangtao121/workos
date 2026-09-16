@@ -20,13 +20,15 @@ device's inputs are then rejected server-side.
 1. The WorkOS stack runs on the LAN host with TLS + production device auth
    (`make test-lan-pairing` passes on the same host; the gateway profile
    `workos-gateway-tls` and `workos-mdns-announce` are the reference wiring).
-2. `WORKOS_RUNTIME_NATIVE_CANDIDATES=lan` is set on runtime-host for native
-   media (host networking required; loopback is the fail-safe default). For a
-   PTY workload this is not needed.
+2. `WORKOS_RUNTIME_NATIVE_CANDIDATES=lan`, an explicit private
+   `WORKOS_NATIVE_LAN_CIDRS` (for example `192.168.1.0/24`) and bounded
+   `WORKOS_NATIVE_UDP_PORTS` (for example `52000-52100`) are set on runtime-host.
+   Host networking and LAN-scoped firewall access to those UDP ports are required.
+   See [Docker deployment](../architecture/v2-agent-workspace-web-continuity.md).
+   Default loopback is unchanged; missing LAN policy makes native unavailable.
 3. Device A (existing paired device, desktop browser) is logged in and has a
-   project open with a running continuous workload (a Terminal session with
-   identifiable content is sufficient; a native session additionally proves
-   the media path).
+   project open with a running Native display and identifiable application
+   memory. PTY-only evidence does not satisfy the real graphics/input requirement.
 4. Device B is a distinct physical machine (or a physically separate
    browser+OS account on spare hardware that has never held A's profile)
    on the same LAN segment, with a Chromium-based browser.
@@ -49,7 +51,9 @@ device's inputs are then rejected server-side.
    generation, controller device id and control generation.
 5. **Open and take control.** Click **Open** on the running app row (this
    attaches the SAME workload instance — no second process is created). The
-   window opens in observer mode with **Take control** available. Click
+   window opens in observer mode with **Take control** available. Its video
+   connection starts after explicit takeover; the single-peer backend does not
+   provide simultaneous observer video. Click
    **Take control** (RequestSurfaceControl). The control generation must
    advance (typically +1) and device B becomes the controller.
 6. **Prove B's input works.** Type into the terminal (or drive the native
@@ -68,7 +72,7 @@ device's inputs are then rejected server-side.
 ## Evidence to record (append to the task record's A16 row)
 
 - Topology: host + two devices, LAN segment, browser versions, origin
-  (`https://<host>:8443`), `WORKOS_RUNTIME_NATIVE_CANDIDATES` value.
+  (`https://<host>:8443`), `WORKOS_RUNTIME_NATIVE_CANDIDATES`, CIDR allowlist and UDP range.
 - Device ids of A and B (Device Center) and their names.
 - Workload id + generation before B's takeover, and the control generation
   before/after (from Device Center / the takeover UI state or gateway logs).

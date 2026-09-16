@@ -55,130 +55,57 @@ does not cross the WorkOS provider, Core, Proto, or database boundary.
 
 ## Continuous sessions (ADR-0030)
 
-`sessions.go` adds a second execution path for tasks that arrive with the
-server-derived `agent_session_id` linkage (set only by the Core session
-dispatcher; public `SubmitTask` rejects it). The native protocol has no
-wire-level resume, so continuity is process continuity: `SessionManager`
-keeps one pinned runtime child per Core session id and serializes each turn
-as one `session/prompt` on that child.
+The pinned official runtime remains `0.1.1rc1`. `workos-session.mjs` adapts
+its `agents.create/resume`, native `followup` and JSONL persistence to a
+bounded JSON-RPC transport. No WorkOS agent loop or transcript replay is
+introduced. Each task creates a credential-bearing process, flushes native
+persistence before reporting idle, then releases the process. The next task
+loads the same native session with its own credential lease.
 
-- The worker routes such tasks through `ports.SessionExecution`
-  (`SessionID`, `WorkspaceRoot`, `StateRoot`). `WorkspaceRoot` stays empty in
-  this slice — the harness host has no workspace registry yet — so each
-  session runs in its private scratch workspace under the state root.
-- `StateRoot` is harness-host private (`WORKOS_HARNESS_SESSION_STATE_ROOT`,
-  default `/var/lib/workos/harness-sessions`, created 0700). Per session it
-  holds `home` (child HOME/TMPDIR/DSH_HOME), `state`, `ws` (scratch cwd),
-  `persistence` (native jsonl session logs), the generated `cordis.yml`, and
-  `runtime.stderr` (captured, never logged).
-- The generated `cordis.yml` is the exact official base composition verified
-  loadable by the pinned runtime (tools, sandbox policy, session
-  persistence) plus the one configuration-relative `workos-tools` row (see
-  below), with only three substitutions inside the base rows: the persistence
-  root, the sandbox workspace root, and the llm-deepseek endpoint/model
-  facts. The operator's single-shot `cordis_config_path` is ignored on this
-  path.
-- A living process is reused only while the credential fingerprint
-  (SHA-256 of the lease secret) and workspace binding are unchanged; a
-  rotation, rebinding, dead child, or turn error kills the process group and
-  the next turn respawns fresh. Turn timeouts and cancellations kill the
-  whole group — a partially consumed stream is never trusted again.
-- Session turns map tool traffic onto `ToolCallStarted`/`ToolCallCompleted`
-  (structured inputs via protojson, `text` outputs, `Error:` prefixes mark
-  failures) in addition to the canonical delta/message/usage/terminal
-  events. Unknown methods and events still fail closed with a protocol
-  error.
-- `Describe()` is unchanged: sessions and tools are not advertised
-  capabilities yet (B05/B09 own that once proven end to end).
+`workos-workspace.mjs` implements the official `ctx.fs` and `ctx.shell`
+backend seams. The native read/write/edit and Bash tools retain their native
+policy and rendering. Every operation passes through the parent worker's
+private mTLS `TaskToolService`; Core derives the owner, project and pinned
+workspace revision from the live task lease and rechecks authorization while
+commands run. Runtime resolves the actual registered directory. Neither tool
+arguments nor the Harness environment choose a host directory or device.
 
-### Session restart and credential-rotation respawn semantics (B09)
+Runtime commands use a dedicated Docker toolchain with only the project tree
+mounted at `/workspace`, no network, a read-only image, a bounded temporary
+filesystem, dropped capabilities, no-new-privileges and PID/CPU/memory limits.
+The Docker socket is available only to Runtime. Foreground timeout/cancellation
+removes the container and descendants. Missing backend configuration fails
+unavailable; there is no local Bash fallback. The official search plugin is
+not loaded because it bypasses the fs/shell seam through a host subprocess;
+search may use Bash in the same isolated workspace. Background Bash is disabled;
+application preview owns persistent processes.
 
-The pinned runtime has no wire-level session resume (the service-layer
-`agents.resume` exists upstream but the sdk-jsonrpc-server of 0.1.1rc1
-dispatches only `initialize` / `session/prompt` / `shutdown`), so session
-continuity is process continuity and restarts are honest:
+The per-turn output budget is applied to every native model request and
+reduced by reported usage. Missing usage blocks further requests. Provider
+retries are disabled for this composition. Core serializes durable input and
+event transitions, repairs lost dispatch/finalization acknowledgements, and
+never reclaims an expired continuous execution for another model run. Failed
+or interrupted sessions enter `needs_review`; queued inputs wait for the user
+to inspect effects and start a new session.
 
-- **harness-host restart**: every session child dies with the host
-  (process-group kill). WorkOS keeps the durable Core facts (session row,
-  accepted inputs with their task ids and terminal states, lifecycle event
-  log); the native context of unfinished work is NOT resurrected. The next
-  turn on a live session respawns a fresh child over the same per-session
-  state directory (native jsonl persistence and scratch workspace survive
-  on disk), and a brand-new session proves the stack recovered. The
-  `tools/harness-sessions` gate's restart phase asserts exactly this:
-  closed-session history is complete and readable after a
-  workos-core+harness-host restart, inputs keep their recorded task ids and
-  terminal states (no duplicate executions), and a new session executes a
-  fresh native turn (`has_turn1=false total=1`).
-- **Credential rotation**: sessions never cache a key. Each turn's
-  `Ensure` compares the SHA-256 fingerprint of the current lease secret
-  with the child's; a mismatch (rotation, revocation, new lease) plus any
-  owner/project change kills the process group and respawns under the new
-  secret — the previous native context is deliberately lost rather than
-  served under a different credential. Old keys never survive a rotation.
-- **Turn errors**: any mapped protocol/transport error fails the turn and
-  drops the child (the stream position is untrusted); the next `Ensure`
-  respawns. A crash mid-turn leaves results unknown by design — the worker
-  marks the input failed rather than blindly replaying side effects.
+System tools use the same lease-bound bridge: project/workspace facts,
+project artifact listing/reading, and review artifact publication through the
+existing task-provenance materializer. There are no synthetic owner/device
+headers. The official user-questions provider routes ask_user_question to a canonical
+Core interaction and the execution UI. Answers are task/lease scoped, expire
+after two minutes and are idempotent. Sandbox escalation remains unavailable;
+unsupported approval events fail closed. The system tools also list installed
+applications and start/list/stop isolated project development previews.
 
-### Unsupported approvals fail closed (B09, A09)
-
-The pinned runtime's event vocabulary contains `approval/asked` /
-`approval/decided` (and the ACP-style `session/request_permission`), but its
-sdk server wire exposes **no approval-response method** WorkOS could call,
-and B04's WorkOS toolset is read-only (nothing it registers can trigger an
-escalation). The adapter therefore treats any approval-style session event
-as unsupported: `sessionEventMapper` fails the turn with a non-retryable
-protocol error and emits nothing — never a silent continue that would read
-as an implicit approval. The generated composition keeps the official
-`approval` row at `policy: ask`; WorkOS maps no approval semantics onto the
-canonical protocol in this version. `TestSessionApprovalEventsFailClosed`
-pins all three facts (rejection, no events, `policy: ask`).
-
-## Read-only WorkOS tools (B04)
-
-The generated session composition appends one configuration-relative row
-(`workos-tools` → `./workos-tools.mjs`) after the official 26-row base. The
-adapter copies `deploy/harness/workos-tools.mjs` (image location
-`/usr/local/libexec/workos/workos-tools.mjs`) into each session's private
-state directory so the pinned runtime resolves it beside the generated
-`cordis.yml`; a missing plugin file fails the session spawn closed instead of
-silently dropping the tools.
-
-The plugin registers exactly two tools in this slice, both read-only and both
-parameterless:
-
-- `workos_project_info` — project id, name, harness binding provider, bounded
-  workspace refs, revision of the CURRENT project;
-- `workos_list_artifacts` — up to 50 artifact ids/types/titles of the CURRENT
-  project.
-
-Authorization honesty:
-
-- The "current" owner/project are never model inputs. The worker derives them
-  from the server-owned task facts (`owner_user_id` and the project
-  `target_scope` of the session task) and the SessionManager injects them into
-  the session child environment (`WORKOS_TOOL_OWNER_ID`,
-  `WORKOS_TOOL_PROJECT_ID`) together with the ordinary Core listener
-  (`WORKOS_TOOL_CORE_URL`, from `WORKOS_CORE_URL`) and the harness device
-  identity (`WORKOS_TOOL_DEVICE_ID`, from the host's `WORKOS_DEVICE_ID`). The
-  tools call Core's Connect services (`ProjectService/GetProject`,
-  `ArtifactService/ListArtifacts`) with the owner-scoped identity headers, so
-  every read is authorized server-side for exactly this owner. The process is
-  respawned if the owner/project pair of a session id ever changes.
-- Missing environment facts make each tool call fail with an `Error:` result
-  (mapped to `ToolCallCompleted Success=false`), never a crash; Core errors and
-  non-200 responses surface as bounded `Error:` text. Every tool output is
-  bounded to 4 KiB with an explicit truncation marker, and no secret, prompt
-  content, or raw response body is ever echoed or logged.
-- The B04 set is deliberately read-only. Write-capable tools, artifact
-  creation, and approval-path integration remain future work; the runtime's
-  `approval` row keeps `policy: ask` and no WorkOS tool escalates around it.
-  ADR-0030 covers this direction — no separate decision record is needed.
-- The plugin file imports nothing: the packaged runtime resolves bare package
-  specifiers only inside its own closure, so an external
-  configuration-relative plugin must be plain language built-ins (`fetch`,
-  `JSON`, `Promise`).
+Evidence distinguishes layers: `TestSessionTransactionsAndInterruptedLease`
+uses isolated PostgreSQL and includes concurrent input keys, rollback,
+expired leases, and recovery after more than 200 inputs.
+`TestRealWorkspaceContainerIsolation` runs real Docker commands and checks
+shared files, read-only access, escape denial and timeout.
+`TestSessionManagerAgainstRealRuntime` uses the pinned official binary, a
+local model fixture and the Runtime execution fixture, then reaps and replaces
+the native process before checking historical context. This is deterministic
+fixture evidence, not the still-pending real-model or second-device acceptance.
 
 ## Configuration
 
@@ -196,7 +123,7 @@ docker compose up -d --build harness-host
 Optional overrides are `WORKOS_DEEPSEEK_BASE_URL`,
 `WORKOS_DEEPSEEK_RUNTIME_PATH`, and `WORKOS_DEEPSEEK_CORDIS_CONFIG`. Never put a
 real key in YAML, Compose source, a fixture, a command transcript, or a task
-record. A key pasted into chat or logs must be revoked before use. The owner's
+record. The owner's
 vault credential is resolved by Core at binding time and snapshotted per task;
 rotating or revoking it stops new acquires and fails the next worker
 heartbeat.
@@ -218,9 +145,13 @@ API/SSE fixture. It proves Project binding, Task provider snapshot, streaming
 event persistence, idempotency after rebinding, and restart recovery without a
 real key or external API request.
 
-A real-API smoke is deliberately not an automated target in this slice. The
-current canonical budget can bound tokens and runtime but cannot enforce a
-provider-independent monetary ceiling, and this adapter intentionally does not
-hardcode a changing price table. Operators may enable the provider manually for
-diagnosis, but that is not CI evidence and must not be reported as a passed
-smoke test.
+The complete deterministic chain is `make test-v2-completion`: isolated
+PostgreSQL/Vault and six product processes, the official native runtime, real
+Docker tools, two code/test turns across Core/Harness/Gateway restart, review
+artifact, question, preview, control epochs and Chromium native input.
+
+Real API and physical-device acceptance remain separate from fixture evidence.
+The ordinary suite never spends quota. Monetary cost is not inferred from a
+hardcoded product price table; an explicitly budgeted acceptance must check
+current official rates and use bounded requests through Vault. See the task
+record for actual A15/A16 results.

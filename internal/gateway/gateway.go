@@ -84,6 +84,7 @@ var publicServicePrefixes = []string{
 	"/workos.agent.v1.AgentApprovalService/",
 	"/workos.agent.v1.AgentAppPolicyService/",
 	"/workos.agent.v1.AgentSessionService/",
+	"/workos.agent.v1.AgentInteractionService/",
 	"/workos.agent.v1.AgentTaskService/",
 	"/workos.agent.v1.AgentAppUsageService/",
 	"/workos.app.v1.AppInstallationService/",
@@ -114,6 +115,9 @@ var runtimeServicePrefixes = []string{
 	// attach/detach, single-controller takeover, and stop of the owner's
 	// running interactive workloads.
 	"/workos.surface.v1.SurfaceContinuityService/",
+	// Workspace dev previews (ADR-0030 B08): owner-identity gated bounded
+	// read-only serving of the operator-registered project workspaces.
+	"/workos.surface.v1.WorkspacePreviewService/",
 	"/workos.bridge.v1.AppBridgeService/",
 }
 
@@ -132,6 +136,10 @@ const incidentServicePrefix = "/workos.incident.v1.IncidentService/"
 
 // surfaceAssetPrefix is the public, same-origin surface asset route.
 const surfaceAssetPrefix = "/surfaces/"
+
+// previewAssetPrefix is the public, same-origin workspace dev preview route.
+// It is session-gated and identity-injected exactly like /surfaces/.
+const previewAssetPrefix = "/previews/"
 
 // notificationWatchPath is the resumable notification server stream. It is
 // the one route whose authorization the gateway re-validates mid-flight:
@@ -247,7 +255,11 @@ func newUpstreamProxy(target string, cfg config.Config, logger *slog.Logger, nam
 			request.Header.Set(identity.BridgeTokenHeader, bridgeToken)
 		}
 	}
-	proxy.ErrorHandler = func(w http.ResponseWriter, _ *http.Request, err error) {
+	proxy.ErrorHandler = func(w http.ResponseWriter, req *http.Request, err error) {
+		if strings.HasPrefix(req.URL.Path, previewAssetPrefix) {
+			http.Error(w, "preview unavailable", http.StatusServiceUnavailable)
+			return
+		}
 		logger.Error(name+" proxy failed", "error", err)
 		http.Error(w, "workos "+name+" unavailable", http.StatusServiceUnavailable)
 	}
@@ -272,11 +284,15 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 // serveDev keeps the loopback development behavior: the fixed configured
 // identity is injected into the context and every public path proxies.
 func (h *Handler) serveDev(w http.ResponseWriter, r *http.Request) {
+	if strings.HasPrefix(r.URL.Path, previewAssetPrefix) {
+		h.runtime.ServeHTTP(w, r)
+		return
+	}
 	if publicConnectPath(r.URL.Path) {
 		h.gate(w, r, h.proxy)
 		return
 	}
-	if runtimeConnectPath(r.URL.Path) || strings.HasPrefix(r.URL.Path, surfaceAssetPrefix) {
+	if runtimeConnectPath(r.URL.Path) || isSessionGatedAssetPath(r.URL.Path) {
 		h.gate(w, r, h.runtime)
 		return
 	}
@@ -312,6 +328,14 @@ func (h *Handler) serveProduction(w http.ResponseWriter, r *http.Request) {
 	// relax this.
 	if r.Host != h.originHost {
 		http.Error(w, "request origin rejected", http.StatusForbidden)
+		return
+	}
+	// Preview requests carry a 256-bit capability limited to one isolated
+	// server. Opaque-origin frames have no WorkOS device cookies. Runtime
+	// validates that capability and live Core grant on every request; all
+	// control RPCs below continue to require normal device authentication.
+	if strings.HasPrefix(r.URL.Path, previewAssetPrefix) {
+		h.runtime.ServeHTTP(w, r)
 		return
 	}
 	// Cross-site browser requests are rejected before any session work:
@@ -351,7 +375,7 @@ func (h *Handler) serveProduction(w http.ResponseWriter, r *http.Request) {
 		}
 		h.runtime.ServeHTTP(w, r.WithContext(identity))
 		return
-	case strings.HasPrefix(path, surfaceAssetPrefix):
+	case isSessionGatedAssetPath(path):
 		identity, ok := h.requireSession(w, r)
 		if !ok {
 			return
@@ -549,6 +573,14 @@ func runtimeConnectPath(path string) bool {
 		}
 	}
 	return false
+}
+
+// isSessionGatedAssetPath reports whether the path is one of the runtime's
+// public same-origin asset routes: /surfaces/ and /previews/. Both require a
+// valid device session and travel to the Runtime upstream with the trusted
+// identity headers.
+func isSessionGatedAssetPath(path string) bool {
+	return strings.HasPrefix(path, surfaceAssetPrefix)
 }
 
 func (h *Handler) serveStatic(w http.ResponseWriter, r *http.Request) {

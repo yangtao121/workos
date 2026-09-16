@@ -18,8 +18,8 @@ import (
 	"github.com/yangtao121/workos/gen/go/workos/harness/v1/harnessv1connect"
 	notificationv1connect "github.com/yangtao121/workos/gen/go/workos/notification/v1/notificationv1connect"
 	projectconnect "github.com/yangtao121/workos/gen/go/workos/project/v1/projectv1connect"
+	"github.com/yangtao121/workos/gen/go/workos/workload/v1/workloadv1connect"
 	agentpostgres "github.com/yangtao121/workos/internal/core/agent/adapters/postgres"
-	agentdb "github.com/yangtao121/workos/internal/core/agent/adapters/postgres/agentdb"
 	agentapp "github.com/yangtao121/workos/internal/core/agent/application"
 	agenttransport "github.com/yangtao121/workos/internal/core/agent/transport"
 	manifestvalidator "github.com/yangtao121/workos/internal/core/appregistry/adapters/manifestvalidator"
@@ -82,7 +82,8 @@ func run(logger *slog.Logger) error {
 	if err := cfg.ValidateCore(); err != nil {
 		return err
 	}
-	ctx := context.Background()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 	pool, err := database.Open(ctx, cfg.DatabaseURL)
 	if err != nil {
 		return err
@@ -136,9 +137,11 @@ func run(logger *slog.Logger) error {
 	// from the runtime host's private workspace service.
 	workspaceRepository := projectpostgres.NewWorkspaceRepository(projectdb.New(pool))
 	workspaceDirectory := workspaceclient.New(cfg.Services.Runtime, cfg.Runtime.DeviceID)
-	workspaceService := projectapp.NewWorkspaceService(workspaceRepository, workspaceDirectory, generator)
+	workspaceService := projectapp.NewWorkspaceService(workspaceRepository, workspaceDirectory, generator).WithProjects(projectService)
 	workspacePath, workspaceHandler := projecttransport.NewWorkspaceHandler(workspaceService)
 	mux.Handle(workspacePath, identity.Middleware(workspaceHandler))
+	authorizationPath, authorizationHandler := projecttransport.NewWorkspaceAuthorizationHandler(projectService, workspaceService)
+	mux.Handle(authorizationPath, authorizationHandler)
 
 	privateHarnessClient := harnessv1connect.NewHarnessHostServiceClient(telemetry.HTTPClient(), cfg.Services.Harness)
 	catalogSource, err := cataloghost.New(privateHarnessClient, cfg.Agent.CatalogTimeout)
@@ -382,8 +385,31 @@ func run(logger *slog.Logger) error {
 
 	// Continuous harness sessions (ADR-0030): inputs dispatch through the
 	// same admission path as public task submission.
-	sessionRepository := agentpostgres.NewSessionRepository(agentdb.New(pool))
+	sessionRepository := agentpostgres.NewSessionRepository(pool)
+	sessionTools := &orchestration.SessionTools{Installations: installationService, Publications: artifactMaterializer, Pool: pool, Tasks: agentRepository, Sessions: sessionRepository, Projects: projectService, Workspaces: workspaceService, Artifacts: artifactService, Runtime: workloadv1connect.NewWorkspaceExecutionServiceClient(telemetry.HTTPClient(), cfg.Services.Runtime)}
+	interactionService := agentapp.NewInteractionService(agentRepository, sessionTools, generator)
+	sessionTools.Interactions = interactionService
+	interactionPath, interactionHandler := agenttransport.NewInteractionHandler(interactionService)
+	mux.Handle(interactionPath, identity.Middleware(interactionHandler))
+	toolsPath, toolsHandler := agenttransport.NewToolHandler(sessionTools)
+	executionMux.Handle(toolsPath, toolsHandler)
+
 	sessionService := agentapp.NewSessionService(sessionRepository, agenttransport.NewSessionTaskDispatcher(taskRouter, agentService), generator, logger)
+	go func() {
+		ticker := time.NewTicker(2 * time.Second)
+		defer ticker.Stop()
+		for {
+			if err := sessionService.Reconcile(ctx); err != nil && ctx.Err() == nil {
+				logger.Warn("agent session recovery deferred")
+			}
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+			}
+		}
+	}()
+
 	agentService.WithSessionFinalizer(sessionService.FinishTaskRun)
 	sessionSnapshots := &projectSessionSnapshots{projects: projectService, catalog: catalogService, workspaces: workspaceService}
 	sessionPath, sessionHandler := agenttransport.NewSessionHandler(sessionService, sessionSnapshots)
@@ -620,14 +646,23 @@ type projectSessionSnapshots struct {
 
 func (p *projectSessionSnapshots) Snapshot(ctx context.Context, ownerUserID, projectID string) (agentapp.SessionSnapshot, error) {
 	snapshot := agentapp.SessionSnapshot{ProviderID: p.catalog.DefaultProviderID()}
-	if project, err := p.projects.Get(ctx, ownerUserID, projectID); err == nil && project.HarnessBinding != nil {
+	project, err := p.projects.Get(ctx, ownerUserID, projectID)
+	if err != nil {
+		return agentapp.SessionSnapshot{}, err
+	}
+	if project.HarnessBinding != nil {
 		if project.HarnessBinding.ProviderID != "" {
 			snapshot.ProviderID = project.HarnessBinding.ProviderID
 		}
 	}
-	if binding, err := p.workspaces.ActiveForProject(ctx, ownerUserID, projectID); err == nil {
-		snapshot.WorkspaceBindingID = binding.ID
-		snapshot.WorkspaceBindingRevision = binding.Revision
+	if project.ArchivedAt != nil {
+		return agentapp.SessionSnapshot{}, errors.New("project archived")
 	}
+	binding, err := p.workspaces.ActiveForProject(ctx, ownerUserID, projectID)
+	if err != nil {
+		return agentapp.SessionSnapshot{}, err
+	}
+	snapshot.WorkspaceBindingID = binding.ID
+	snapshot.WorkspaceBindingRevision = binding.Revision
 	return snapshot, nil
 }

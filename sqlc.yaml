@@ -109,6 +109,20 @@ sql:
             go_type: string
   - engine: postgresql
     schema: internal/platform/migrations/files
+    queries: internal/runtime/previewhost/adapters/postgres/queries.sql
+    gen:
+      go:
+        package: previewdb
+        out: internal/runtime/previewhost/adapters/postgres/previewdb
+        sql_package: pgx/v5
+        emit_interface: true
+        emit_json_tags: true
+        omit_unused_structs: true
+        overrides:
+          - db_type: uuid
+            go_type: string
+  - engine: postgresql
+    schema: internal/platform/migrations/files
     queries: internal/runtime/workload/adapters/postgres/queries.sql
     gen:
       go:
@@ -326,3 +340,21 @@ sql:
             go_type:
               type: "time.Time"
               pointer: true
+  - engine: postgresql
+    schema: internal/platform/migrations/files
+    queries: internal/runtime/workspacehost/adapters/postgres/queries.sql
+    gen:
+      go:
+        package: workspacedb
+        out: internal/runtime/workspacehost/adapters/postgres/workspacedb
+        sql_package: pgx/v5
+        emit_interface: true
+        emit_json_tags: true
+        omit_unused_structs: true
+        overrides:
+          - db_type: uuid
+            go_type: string
+          - db_type: jsonb
+            go_type:
+              import: encoding/json
+              type: RawMessage

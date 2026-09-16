@@ -31,6 +31,7 @@ const (
 // program: the session facts the surface continuity service lists, attaches
 // to, detaches from, and stops.
 type InteractiveWorkload struct {
+	Generation  int64
 	WorkloadID  string
 	Kind        WorkloadKind
 	OwnerUserID string
@@ -64,7 +65,7 @@ type InteractiveWorkloadRuntime interface {
 	// DetachWorkload releases only the connection resources of the workload
 	// (the native media peer; PTY sessions keep their attachment row as the
 	// only connection state). The program keeps running.
-	DetachWorkload(ctx context.Context, kind WorkloadKind, ownerUserID, workloadID string) error
+	DetachWorkload(ctx context.Context, kind WorkloadKind, ownerUserID, workloadID, deviceID string) error
 	// StopWorkload deterministically stops and reaps the program (the legacy
 	// Close semantics: process group, media workers, private scratch).
 	StopWorkload(ctx context.Context, kind WorkloadKind, ownerUserID, workloadID string) (InteractiveWorkload, error)
@@ -136,3 +137,13 @@ var (
 	// ErrContinuityStoreUnavailable marks a transient store failure.
 	ErrContinuityStoreUnavailable = errors.New("surface continuity store is temporarily unavailable")
 )
+
+// InteractiveRestarter is implemented by Runtime backends with durable
+// restart receipts. Unsupported backends stay explicitly unavailable.
+type InteractiveRestarter interface {
+	RestartWorkload(context.Context, WorkloadKind, string, string, string, func() error) (InteractiveWorkload, error)
+}
+
+type InteractiveStopper interface {
+	StopWorkloadAction(context.Context, WorkloadKind, string, string, string, func() error) (InteractiveWorkload, error)
+}

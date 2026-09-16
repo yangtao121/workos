@@ -1,0 +1,39 @@
+# Runtime is the sole Docker authority. The daemon and Runtime must see the
+# same absolute project/bridge paths. No socket, key or host root enters a
+# command, terminal, preview or native client container.
+services:
+  runtime-host:
+    image: workos-native-runtime:dev
+    build:
+      context: ..
+      dockerfile: deploy/native-runtime.Dockerfile
+    user: "${WORKOS_UID:?}:${WORKOS_GID:?}"
+    group_add: ["${WORKOS_DOCKER_GID:?}"]
+    environment:
+      WORKOS_RUNTIME_WORKSPACE_MOUNTS: ${WORKOS_RUNTIME_WORKSPACE_MOUNTS:?}
+      WORKOS_RUNTIME_CONTAINER_NAMESPACE: ${WORKOS_RUNTIME_CONTAINER_NAMESPACE:-workos}
+      WORKOS_WORKSPACE_DOCKER_SOCKET: /var/run/docker.sock
+      WORKOS_WORKSPACE_EXECUTION_IMAGE: workos-workspace-runtime:dev
+      WORKOS_PREVIEW_BRIDGE_ROOT: ${WORKOS_PREVIEW_BRIDGE_ROOT:?}
+      WORKOS_RUNTIME_PTY_SHELL: /bin/bash
+      WORKOS_RUNTIME_NATIVE_DISPLAY: /usr/bin/Xvfb
+      WORKOS_RUNTIME_NATIVE_CLIENT: /usr/bin/xterm -geometry 96x32+0+0
+      WORKOS_RUNTIME_NATIVE_FFMPEG: /usr/bin/ffmpeg
+      WORKOS_RUNTIME_NATIVE_XDOTOOL: /usr/bin/xdotool
+      WORKOS_RUNTIME_NATIVE_SCRATCH: /var/workos-native
+      WORKOS_NATIVE_X11_HOST_DIRECTORY: ${WORKOS_NATIVE_X11_HOST_DIRECTORY:?}
+      WORKOS_RUNTIME_NATIVE_CANDIDATES: ${WORKOS_RUNTIME_NATIVE_CANDIDATES:-loopback}
+      WORKOS_NATIVE_LAN_CIDRS: ${WORKOS_NATIVE_LAN_CIDRS:-}
+      WORKOS_NATIVE_UDP_PORTS: ${WORKOS_NATIVE_UDP_PORTS:-}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ${WORKOS_WORKSPACE_ROOTS:?}:${WORKOS_WORKSPACE_ROOTS:?}
+      - ${WORKOS_PREVIEW_BRIDGE_ROOT:?}:${WORKOS_PREVIEW_BRIDGE_ROOT:?}
+      - ${WORKOS_NATIVE_X11_HOST_DIRECTORY:?}:/tmp/.X11-unix
+  harness-host:
+    environment:
+      WORKOS_HARNESS_SESSION_STATE_ROOT: /var/lib/workos/harness-sessions
+    volumes:
+      - workos-harness-sessions:/var/lib/workos/harness-sessions
+volumes:
+  workos-harness-sessions:

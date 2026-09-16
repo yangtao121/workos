@@ -147,6 +147,10 @@ func HTTPClientWithTLS(tlsConfig *tls.Config) *http.Client {
 }
 
 func shouldTrace(request *http.Request) bool {
+	// Preview paths contain narrowly scoped bearer capabilities.
+	if strings.HasPrefix(request.URL.Path, "/previews/") {
+		return false
+	}
 	switch request.URL.Path {
 	case "/healthz", "/readyz", "/workos.taskexecution.v1.TaskExecutionService/ClaimTask":
 		return false

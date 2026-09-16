@@ -19,9 +19,12 @@ type Querier interface {
 	BumpAgentSessionEventSequence(ctx context.Context, arg BumpAgentSessionEventSequenceParams) (int64, error)
 	CancelQueuedAgentSessionInputs(ctx context.Context, arg CancelQueuedAgentSessionInputsParams) (int64, error)
 	ClaimAgentSessionExecution(ctx context.Context, arg ClaimAgentSessionExecutionParams) (int64, error)
+	ClaimSessionRecoveryBatch(ctx context.Context, arg ClaimSessionRecoveryBatchParams) ([]ClaimSessionRecoveryBatchRow, error)
 	CloseAgentSession(ctx context.Context, arg CloseAgentSessionParams) (int64, error)
 	DecideAgentAppApproval(ctx context.Context, arg DecideAgentAppApprovalParams) (int64, error)
+	DecideExecutionInteraction(ctx context.Context, arg DecideExecutionInteractionParams) error
 	DispatchAgentSessionInput(ctx context.Context, arg DispatchAgentSessionInputParams) (int64, error)
+	ExpireExecutionInteraction(ctx context.Context, arg ExpireExecutionInteractionParams) error
 	ExpirePendingApprovals(ctx context.Context, arg ExpirePendingApprovalsParams) ([]ExpirePendingApprovalsRow, error)
 	ExpireTaskPendingApproval(ctx context.Context, arg ExpireTaskPendingApprovalParams) (int64, error)
 	FinishAgentSessionInput(ctx context.Context, arg FinishAgentSessionInputParams) (int64, error)
@@ -47,6 +50,9 @@ type Querier interface {
 	GetAgentTaskCredential(ctx context.Context, taskID string) (GetAgentTaskCredentialRow, error)
 	GetAgentTaskForUpdate(ctx context.Context, arg GetAgentTaskForUpdateParams) (WorkosCoreAgentTask, error)
 	GetAgentTaskUnscoped(ctx context.Context, id string) (WorkosCoreAgentTask, error)
+	GetExecutionInteraction(ctx context.Context, arg GetExecutionInteractionParams) (WorkosCoreAgentExecutionInteraction, error)
+	GetExecutionInteractionByKey(ctx context.Context, arg GetExecutionInteractionByKeyParams) (WorkosCoreAgentExecutionInteraction, error)
+	GetSessionInputByTask(ctx context.Context, arg GetSessionInputByTaskParams) (WorkosCoreAgentSessionInput, error)
 	GetTaskLeaseExpiry(ctx context.Context, arg GetTaskLeaseExpiryParams) (pgtype.Timestamptz, error)
 	// Replay verification for one Core-minted artifact publication. The
 	// coordinator supplies the exact immutable identity; this query never
@@ -63,6 +69,7 @@ type Querier interface {
 	// and revision a fresh task was admitted with, persisted in the same
 	// transaction as the task row. No secret material is stored here.
 	InsertAgentTaskCredential(ctx context.Context, arg InsertAgentTaskCredentialParams) error
+	InsertExecutionInteraction(ctx context.Context, arg InsertExecutionInteractionParams) (int64, error)
 	InsertTaskEvent(ctx context.Context, arg InsertTaskEventParams) error
 	InsertTaskOutbox(ctx context.Context, arg InsertTaskOutboxParams) error
 	LeaseTask(ctx context.Context, arg LeaseTaskParams) error
@@ -71,7 +78,9 @@ type Querier interface {
 	ListAgentSessionInputs(ctx context.Context, arg ListAgentSessionInputsParams) ([]WorkosCoreAgentSessionInput, error)
 	ListAgentSessions(ctx context.Context, arg ListAgentSessionsParams) ([]WorkosCoreAgentSession, error)
 	ListAgentTasks(ctx context.Context, arg ListAgentTasksParams) ([]WorkosCoreAgentTask, error)
+	ListCancelledSessionAdmissions(ctx context.Context) ([]ListCancelledSessionAdmissionsRow, error)
 	ListDispatchableAgentSessionInputs(ctx context.Context, arg ListDispatchableAgentSessionInputsParams) ([]WorkosCoreAgentSessionInput, error)
+	ListExecutionInteractions(ctx context.Context, arg ListExecutionInteractionsParams) ([]WorkosCoreAgentExecutionInteraction, error)
 	ListTaskEvents(ctx context.Context, arg ListTaskEventsParams) ([]ListTaskEventsRow, error)
 	// Serializes every transaction that reads-or-writes one installation's policy
 	// chain (SetPolicy invalidation scans, waiting-approval creation). The
@@ -79,6 +88,8 @@ type Querier interface {
 	// first SetPolicy can never interleave between an approval-creation's policy
 	// read and its pending-approval insert.
 	LockAgentAppPolicyChain(ctx context.Context, arg LockAgentAppPolicyChainParams) error
+	LockAgentSession(ctx context.Context, arg LockAgentSessionParams) (string, error)
+	LockExecutionInteraction(ctx context.Context, arg LockExecutionInteractionParams) (WorkosCoreAgentExecutionInteraction, error)
 	LockTaskArtifactStream(ctx context.Context, arg LockTaskArtifactStreamParams) (LockTaskArtifactStreamRow, error)
 	// Credential-lease derivation inside the coordinator's transaction: the
 	// outbox lease row is locked so a concurrent finish cannot race the derive.
@@ -89,6 +100,7 @@ type Querier interface {
 	MarkAgentAppUsageBreach(ctx context.Context, arg MarkAgentAppUsageBreachParams) error
 	MarkTaskCancelled(ctx context.Context, arg MarkTaskCancelledParams) error
 	MarkTaskRunning(ctx context.Context, arg MarkTaskRunningParams) error
+	PauseAgentSessionForReview(ctx context.Context, arg PauseAgentSessionForReviewParams) (int64, error)
 	ReleaseAgentSessionExecution(ctx context.Context, arg ReleaseAgentSessionExecutionParams) (int64, error)
 	RenewTaskLease(ctx context.Context, arg RenewTaskLeaseParams) (bool, error)
 	RequestTaskCancellation(ctx context.Context, arg RequestTaskCancellationParams) error

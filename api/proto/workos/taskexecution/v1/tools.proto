@@ -1,0 +1,22 @@
+syntax = "proto3";
+package workos.taskexecution.v1;
+
+import "google/protobuf/struct.proto";
+
+option go_package = "github.com/yangtao121/workos/gen/go/workos/taskexecution/v1;taskexecutionv1";
+
+// Harness-side tools never choose an owner, project, workspace, credential,
+// or device. Each operation derives those facts from this live task lease.
+message ExecuteTaskToolRequest {
+  string lease_id = 1;
+  string worker_id = 2;
+  string operation_id = 3;
+  string operation = 4;
+  google.protobuf.Struct arguments = 5;
+}
+message ExecuteTaskToolResponse {
+  google.protobuf.Struct result = 1;
+}
+service TaskToolService {
+  rpc ExecuteTaskTool(ExecuteTaskToolRequest) returns (ExecuteTaskToolResponse) {}
+}

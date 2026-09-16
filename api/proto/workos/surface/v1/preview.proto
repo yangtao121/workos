@@ -1,0 +1,81 @@
+syntax = "proto3";
+
+package workos.surface.v1;
+
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/yangtao121/workos/gen/go/workos/surface/v1;surfacev1";
+
+// Bounded development server processes. Runtime owns the isolated process;
+// the opaque preview URL grants only access to this server, never Core APIs.
+message WorkspacePreview {
+  string id = 1;
+  string owner_user_id = 2;
+  string project_id = 3;
+  // workspace_source_id is the runtime host's opaque scope-derived source
+  // handle; the host path itself never leaves the runtime process.
+  string workspace_source_id = 4;
+  bool read_only = 5;
+  // url is the same-origin relative serving path /previews/<id>/.
+  string url = 6;
+  string state = 7;
+  google.protobuf.Timestamp created_at = 8;
+  google.protobuf.Timestamp expires_at = 9;
+  int64 generation = 10;
+  string command = 11;
+  int32 port = 12;
+}
+
+message StartWorkspacePreviewRequest {
+  string project_id = 1;
+  string idempotency_key = 2;
+  string command = 3;
+  int32 port = 4;
+}
+
+message StartWorkspacePreviewResponse {
+  WorkspacePreview preview = 1;
+}
+
+message GetWorkspacePreviewRequest {
+  string preview_id = 1;
+}
+
+message GetWorkspacePreviewResponse {
+  WorkspacePreview preview = 1;
+}
+
+message ListProjectWorkspacePreviewsRequest {
+  string project_id = 1;
+}
+
+message ListProjectWorkspacePreviewsResponse {
+  repeated WorkspacePreview previews = 1;
+}
+
+message StopWorkspacePreviewRequest {
+  string preview_id = 1;
+  // action_key makes the stop request idempotent per client intent, exactly
+  // like the interactive workload stop verbs.
+  string action_key = 2;
+}
+
+message StopWorkspacePreviewResponse {}
+message RestartWorkspacePreviewRequest {
+  string preview_id = 1;
+  string action_key = 2;
+}
+message RestartWorkspacePreviewResponse {
+  WorkspacePreview preview = 1;
+}
+
+service WorkspacePreviewService {
+  // Starts the requested server inside the authorized project container.
+  rpc StartWorkspacePreview(StartWorkspacePreviewRequest) returns (StartWorkspacePreviewResponse) {}
+  rpc GetWorkspacePreview(GetWorkspacePreviewRequest) returns (GetWorkspacePreviewResponse) {}
+  rpc ListProjectWorkspacePreviews(ListProjectWorkspacePreviewsRequest) returns (ListProjectWorkspacePreviewsResponse) {}
+  // StopWorkspacePreview revokes the preview: the serving route answers 404
+  // from the same request on. Idempotent per action key.
+  rpc RestartWorkspacePreview(RestartWorkspacePreviewRequest) returns (RestartWorkspacePreviewResponse) {}
+  rpc StopWorkspacePreview(StopWorkspacePreviewRequest) returns (StopWorkspacePreviewResponse) {}
+}

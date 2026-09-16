@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"google.golang.org/protobuf/types/known/structpb"
 
 	"connectrpc.com/connect"
 	workloadv1 "github.com/yangtao121/workos/gen/go/workos/workload/v1"
@@ -21,12 +22,14 @@ var ErrDirectoryUnavailable = errors.New("workspace source directory is unavaila
 type Client struct {
 	client   workloadv1connect.WorkspaceHostServiceClient
 	deviceID string
+	files    workloadv1connect.WorkspaceExecutionServiceClient
 }
 
 func New(runtimeURL, deviceID string) *Client {
 	return &Client{
 		client:   workloadv1connect.NewWorkspaceHostServiceClient(telemetry.HTTPClient(), runtimeURL),
 		deviceID: deviceID,
+		files:    workloadv1connect.NewWorkspaceExecutionServiceClient(telemetry.HTTPClient(), runtimeURL),
 	}
 }
 
@@ -44,7 +47,7 @@ func (c *Client) Sources(ctx context.Context, ownerUserID string) ([]ports.Works
 	for _, source := range response.Msg.GetSources() {
 		registered := source.GetRegisteredAt().AsTime()
 		sources = append(sources, ports.WorkspaceSource{
-			ID: source.GetId(), Kind: source.GetKind(), DisplayName: source.GetDisplayName(),
+			ID: source.GetId(), ProjectID: source.GetProjectId(), Kind: source.GetKind(), DisplayName: source.GetDisplayName(),
 			ReadOnly: source.GetReadOnly(), Registered: registered,
 		})
 	}
@@ -52,3 +55,15 @@ func (c *Client) Sources(ctx context.Context, ownerUserID string) ([]ports.Works
 }
 
 var _ ports.SourceDirectory = (*Client)(nil)
+
+func (c *Client) ExecuteFile(ctx context.Context, op ports.FileExecution) (map[string]any, error) {
+	args, err := structpb.NewStruct(op.Arguments)
+	if err != nil {
+		return nil, err
+	}
+	response, err := c.files.ExecuteWorkspaceOperation(ctx, connect.NewRequest(&workloadv1.ExecuteWorkspaceOperationRequest{WorkspaceBindingId: op.BindingID, WorkspaceRevision: op.Revision, OperationId: op.ID, OwnerUserId: op.OwnerUserID, ProjectId: op.ProjectID, WorkspaceSourceId: op.SourceID, ReadOnly: op.ReadOnly, Operation: op.Operation, Arguments: args}))
+	if err != nil {
+		return nil, ErrDirectoryUnavailable
+	}
+	return response.Msg.GetResult().AsMap(), nil
+}

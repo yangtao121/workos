@@ -19,6 +19,7 @@ import (
 	notificationports "github.com/yangtao121/workos/internal/core/notification/ports"
 	"github.com/yangtao121/workos/internal/platform/dbtransient"
 	"github.com/yangtao121/workos/internal/platform/dbtx"
+	"github.com/yangtao121/workos/internal/platform/ids"
 )
 
 // storeError wraps a storage failure at the port boundary. Transient
@@ -675,6 +676,45 @@ func (r *Repository) Claim(ctx context.Context, workerID string, duration time.D
 	}
 	if err != nil {
 		return nil, fmt.Errorf("select task claim: %w", err)
+	}
+	// A native session may have already changed files before its lease expired.
+	// Reclaiming it would replay unknown side effects; settle it for review.
+	previous, err := queries.GetAgentTaskUnscoped(ctx, taskID)
+	if err != nil {
+		return nil, err
+	}
+	var association struct {
+		SessionID string `json:"agentSessionId"`
+	}
+	if err := json.Unmarshal(previous.Input, &association); err != nil {
+		return nil, err
+	}
+	if association.SessionID != "" && previous.State != "queued" {
+		event := domain.Event{ID: (ids.UUIDv7{}).New(), TaskID: taskID, Sequence: previous.LastEventSequence + 1, EventType: "run_failed", OccurredAt: now,
+			Payload: json.RawMessage(`{"runFailed":{"code":"execution_outcome_unknown","message":"Execution lease expired. Inspect workspace effects before starting a new session."}}`)}
+		if err := addEventMetadata(&event); err != nil {
+			return nil, err
+		}
+		if err := queries.AdvanceTaskState(ctx, agentdb.AdvanceTaskStateParams{State: "failed", RunID: previous.RunID, Sequence: event.Sequence, UpdatedAt: timestamp(now), TaskID: taskID}); err != nil {
+			return nil, err
+		}
+		if err := insertEvent(ctx, queries, event); err != nil {
+			return nil, err
+		}
+		if err := queries.FinishPendingTaskRequest(ctx, agentdb.FinishPendingTaskRequestParams{ProcessedAt: timestamp(now), AggregateID: taskID}); err != nil {
+			return nil, err
+		}
+		fact, err := taskTerminalNotificationFact(previous.OwnerUserID, streamProjectIDString(previous.ProjectID), event.TaskID, "failed")
+		if err != nil {
+			return nil, err
+		}
+		if err := r.appendNotificationTx(ctx, tx, fact, now); err != nil {
+			return nil, err
+		}
+		if err := tx.Commit(ctx); err != nil {
+			return nil, err
+		}
+		return nil, nil
 	}
 	expires := now.Add(duration)
 	if err := queries.LeaseTask(ctx, agentdb.LeaseTaskParams{

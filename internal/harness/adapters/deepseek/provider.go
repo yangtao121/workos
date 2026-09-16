@@ -131,7 +131,7 @@ func (p *Provider) Run(ctx context.Context, execution ports.Execution) error {
 	}
 	if execution.Session != nil {
 		// One turn of a continuous harness session (ADR-0030): the native
-		// child process persists across turns keyed by the Core session id.
+		// native persistence resumes across task-scoped credential processes.
 		err = p.executeSessionTurn(ctx, execution.Session, prepared, lease, emit)
 	} else {
 		runID := p.ids.New()
@@ -158,14 +158,22 @@ func (p *Provider) Run(ctx context.Context, execution ports.Execution) error {
 
 // executeSessionTurn runs one turn of a continuous harness session. The
 // credential lease secret enters only the session child's environment; the
-// plain goal text is the turn's single user content block. The server-derived
-// owner/project facts ride the child environment as the read-only WorkOS tool
-// context (B04) — they never enter the prompt.
+// plain goal is the single user block. Tools use the private task-lease callback;
+// model-supplied owner/project facts cannot select authorization scope.
 func (p *Provider) executeSessionTurn(ctx context.Context, session *ports.SessionExecution, input preparedInput, lease *ports.CredentialLease, emit ports.Emit) error {
+	if session.Tools == nil {
+		return ports.NewRunError(ports.ErrorKindUnavailable, "Session workspace tools unavailable", false, nil)
+	}
+	if _, err := session.Tools(ctx, "workspace.info", map[string]any{}); err != nil {
+		return ports.NewRunError(ports.ErrorKindUnavailable, "Session workspace authorization failed", false, err)
+	}
 	proc, err := p.sessions.Ensure(ctx, session.SessionID, session.WorkspaceRoot, session.StateRoot, lease.Secret, session.OwnerUserID, session.ProjectID)
 	if err != nil {
 		return err
 	}
+	// Native persistence owns continuity; task-scoped secrets never outlive this execution.
+	defer p.sessions.Close(session.SessionID)
+	proc.tools = session.Tools
 	return p.sessions.Prompt(ctx, proc, p.ids.New(), input.goal, input.maxTokens, input.timeout, emit)
 }
 

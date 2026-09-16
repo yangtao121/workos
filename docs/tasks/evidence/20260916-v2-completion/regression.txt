@@ -1,0 +1,95 @@
+=== RUN   TestAppArtifacts
+--- PASS: TestAppArtifacts (1.80s)
+=== RUN   TestAppBridgeVerticalSlice
+=== PAUSE TestAppBridgeVerticalSlice
+=== RUN   TestAppAgentRequireApprovalVerticalSlice
+=== PAUSE TestAppAgentRequireApprovalVerticalSlice
+=== RUN   TestAppAgentRejectNeverExecutes
+=== PAUSE TestAppAgentRejectNeverExecutes
+=== RUN   TestPtyContainerRestartKeepsIdentity
+--- PASS: TestPtyContainerRestartKeepsIdentity (2.15s)
+=== RUN   TestPtyContainerReadonlyAndRevocation
+--- PASS: TestPtyContainerReadonlyAndRevocation (2.38s)
+=== RUN   TestMutableProjectAppGrantsVerticalSlice
+=== PAUSE TestMutableProjectAppGrantsVerticalSlice
+=== RUN   TestPreviewRealProcessContinuityAndRevocation
+--- PASS: TestPreviewRealProcessContinuityAndRevocation (2.19s)
+=== RUN   TestProjectAppInstallationVerticalSlice
+=== PAUSE TestProjectAppInstallationVerticalSlice
+=== RUN   TestSessionToolAuthorizationAndRevocation
+--- PASS: TestSessionToolAuthorizationAndRevocation (2.17s)
+=== RUN   TestSessionTransactionsAndInterruptedLease
+=== RUN   TestSessionTransactionsAndInterruptedLease/finalize_beyond_first_page_and_replay_after_service_restart
+=== RUN   TestSessionTransactionsAndInterruptedLease/closed_session_reaps_admission_committed_before_input_linkage
+--- PASS: TestSessionTransactionsAndInterruptedLease (6.32s)
+    --- PASS: TestSessionTransactionsAndInterruptedLease/finalize_beyond_first_page_and_replay_after_service_restart (5.15s)
+    --- PASS: TestSessionTransactionsAndInterruptedLease/closed_session_reaps_admission_committed_before_input_linkage (0.03s)
+=== RUN   TestTaskSubmissionIdentityArbitratesConcurrentInputs
+--- PASS: TestTaskSubmissionIdentityArbitratesConcurrentInputs (0.85s)
+=== CONT  TestAppBridgeVerticalSlice
+=== CONT  TestMutableProjectAppGrantsVerticalSlice
+=== CONT  TestAppAgentRejectNeverExecutes
+=== CONT  TestAppAgentRequireApprovalVerticalSlice
+=== CONT  TestProjectAppInstallationVerticalSlice
+=== RUN   TestProjectAppInstallationVerticalSlice/InstallPinsCurrentVersionIntoProjection
+=== RUN   TestProjectAppInstallationVerticalSlice/ExplicitVersionPinsExactImmutable
+=== RUN   TestMutableProjectAppGrantsVerticalSlice/RealChangeBumpsBothRevisionsExactlyOnce
+=== RUN   TestAppBridgeVerticalSlice/GrantValidation
+=== RUN   TestProjectAppInstallationVerticalSlice/HigherRegistryVersionDoesNotSilentlyUpgrade
+=== RUN   TestAppAgentRequireApprovalVerticalSlice/PolicyIdempotency
+=== RUN   TestProjectAppInstallationVerticalSlice/IdempotentReplayAndConflicts
+=== RUN   TestAppBridgeVerticalSlice/ProviderSnapshotAndOwnerVisibility
+=== RUN   TestAppBridgeVerticalSlice/RunIdempotency
+=== RUN   TestAppBridgeVerticalSlice/WatchEventsAndResume
+=== RUN   TestProjectAppInstallationVerticalSlice/NoOpSecondKeyKeepsRevisionAndEvents
+=== RUN   TestMutableProjectAppGrantsVerticalSlice/SameSetNoOpKeepsFactsButConsumesKey
+--- PASS: TestAppAgentRejectNeverExecutes (0.15s)
+=== RUN   TestAppAgentRequireApprovalVerticalSlice/DecisionIdempotency
+=== RUN   TestProjectAppInstallationVerticalSlice/UninstallTombstoneReplayAndReinstallIdentity
+=== RUN   TestProjectAppInstallationVerticalSlice/ErrorSurfacesAndFailClosedBoundaries
+=== RUN   TestMutableProjectAppGrantsVerticalSlice/ReplayReturnsFirstSnapshotAfterLaterMutations
+=== RUN   TestProjectAppInstallationVerticalSlice/EventsMirrorProjectRevisionWithStablePayloads
+--- PASS: TestProjectAppInstallationVerticalSlice (0.27s)
+    --- PASS: TestProjectAppInstallationVerticalSlice/InstallPinsCurrentVersionIntoProjection (0.02s)
+    --- PASS: TestProjectAppInstallationVerticalSlice/ExplicitVersionPinsExactImmutable (0.03s)
+    --- PASS: TestProjectAppInstallationVerticalSlice/HigherRegistryVersionDoesNotSilentlyUpgrade (0.02s)
+    --- PASS: TestProjectAppInstallationVerticalSlice/IdempotentReplayAndConflicts (0.03s)
+    --- PASS: TestProjectAppInstallationVerticalSlice/NoOpSecondKeyKeepsRevisionAndEvents (0.04s)
+    --- PASS: TestProjectAppInstallationVerticalSlice/UninstallTombstoneReplayAndReinstallIdentity (0.06s)
+    --- PASS: TestProjectAppInstallationVerticalSlice/ErrorSurfacesAndFailClosedBoundaries (0.04s)
+    --- PASS: TestProjectAppInstallationVerticalSlice/EventsMirrorProjectRevisionWithStablePayloads (0.02s)
+=== RUN   TestMutableProjectAppGrantsVerticalSlice/FailedRequestsDoNotConsumeKey
+=== RUN   TestMutableProjectAppGrantsVerticalSlice/ErrorMatrix
+=== RUN   TestAppBridgeVerticalSlice/CapabilityIsolation
+--- PASS: TestAppBridgeVerticalSlice (0.38s)
+    --- PASS: TestAppBridgeVerticalSlice/GrantValidation (0.01s)
+    --- PASS: TestAppBridgeVerticalSlice/ProviderSnapshotAndOwnerVisibility (0.01s)
+    --- PASS: TestAppBridgeVerticalSlice/RunIdempotency (0.01s)
+    --- PASS: TestAppBridgeVerticalSlice/WatchEventsAndResume (0.22s)
+    --- PASS: TestAppBridgeVerticalSlice/CapabilityIsolation (0.04s)
+=== RUN   TestMutableProjectAppGrantsVerticalSlice/SameKeyAcrossCommandsAndProjectsAborts
+--- PASS: TestMutableProjectAppGrantsVerticalSlice (0.45s)
+    --- PASS: TestMutableProjectAppGrantsVerticalSlice/RealChangeBumpsBothRevisionsExactlyOnce (0.09s)
+    --- PASS: TestMutableProjectAppGrantsVerticalSlice/SameSetNoOpKeepsFactsButConsumesKey (0.10s)
+    --- PASS: TestMutableProjectAppGrantsVerticalSlice/ReplayReturnsFirstSnapshotAfterLaterMutations (0.05s)
+    --- PASS: TestMutableProjectAppGrantsVerticalSlice/FailedRequestsDoNotConsumeKey (0.04s)
+    --- PASS: TestMutableProjectAppGrantsVerticalSlice/ErrorMatrix (0.07s)
+    --- PASS: TestMutableProjectAppGrantsVerticalSlice/SameKeyAcrossCommandsAndProjectsAborts (0.05s)
+--- PASS: TestAppAgentRequireApprovalVerticalSlice (0.57s)
+    --- PASS: TestAppAgentRequireApprovalVerticalSlice/PolicyIdempotency (0.02s)
+    --- PASS: TestAppAgentRequireApprovalVerticalSlice/DecisionIdempotency (0.01s)
+PASS
+ok  	github.com/yangtao121/workos/tests/integration	18.494s
+?   	github.com/yangtao121/workos/internal/runtime/workspacehost/adapters/coreclient	[no test files]
+=== RUN   TestRealWorkspaceContainerIsolation
+--- PASS: TestRealWorkspaceContainerIsolation (1.73s)
+=== RUN   TestInvalidTimeoutNeverStartsAContainer
+--- PASS: TestInvalidTimeoutNeverStartsAContainer (0.00s)
+PASS
+ok  	github.com/yangtao121/workos/internal/runtime/workspacehost/adapters/dockerexec	1.740s
+=== RUN   TestWorkspaceAtomicWritesAndBoundaries
+--- PASS: TestWorkspaceAtomicWritesAndBoundaries (0.02s)
+PASS
+ok  	github.com/yangtao121/workos/internal/runtime/workspacehost/adapters/localfs	0.022s
+?   	github.com/yangtao121/workos/internal/runtime/workspacehost/adapters/postgres	[no test files]
+?   	github.com/yangtao121/workos/internal/runtime/workspacehost/adapters/postgres/workspacedb	[no test files]

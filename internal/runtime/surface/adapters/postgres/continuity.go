@@ -108,6 +108,9 @@ func (r *ContinuityRepository) Attach(ctx context.Context, command ports.AttachC
 		if err != nil {
 			return domain.SurfaceAttachment{}, domain.ControlLease{}, continuityAttachmentError("query surface attachment", err)
 		}
+		if stored.WorkloadID != attachment.WorkloadID || stored.DeviceID != attachment.DeviceID || stored.ProjectID != attachment.ProjectID {
+			return domain.SurfaceAttachment{}, domain.ControlLease{}, domain.ErrInvalid
+		}
 		lease, found, err := readLease(ctx, queries, attachment.WorkloadID)
 		if err != nil {
 			return domain.SurfaceAttachment{}, domain.ControlLease{}, continuityStoreError("query control lease", err)

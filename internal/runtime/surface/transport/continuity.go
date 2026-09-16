@@ -128,13 +128,11 @@ func (h *ContinuityHandler) RestartSurfaceWorkload(ctx context.Context, req *con
 	if err != nil {
 		return nil, connect.NewError(connect.CodeUnauthenticated, err)
 	}
-	if _, err := h.service.RestartSurfaceWorkload(ctx, id.UserID, req.Msg.GetWorkloadId(), req.Msg.GetActionKey()); err != nil {
+	summary, err := h.service.RestartSurfaceWorkload(ctx, id.UserID, req.Msg.GetWorkloadId(), req.Msg.GetActionKey())
+	if err != nil {
 		return nil, continuityError(err)
 	}
-	// Unreachable today: every session workload kind refuses restart. Kept
-	// type-complete so a future restartable kind projects its new generation
-	// instead of an invented one.
-	return connect.NewResponse(&surfacev1.RestartSurfaceWorkloadResponse{}), nil
+	return connect.NewResponse(&surfacev1.RestartSurfaceWorkloadResponse{Workload: workloadViewProto(summary)}), nil
 }
 
 // workloadViewProto projects the application summary. Terminal workloads

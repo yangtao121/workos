@@ -164,7 +164,10 @@ export function AdaptiveShell({
       <div
         className="adaptive-pane"
         data-testid={testid}
-        onClickCapture={() => {
+        onPointerDownCapture={() => {
+          onFocusWindow(windowState.id);
+        }}
+        onFocusCapture={() => {
           onFocusWindow(windowState.id);
         }}
       >

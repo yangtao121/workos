@@ -56,7 +56,7 @@ func (h *NativeHandler) ConnectNativeSession(ctx context.Context, req *connect.R
 	// lease is re-consulted on every input event of this peer (ADR-0031 §4).
 	leaseCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
-	session, answer, err := h.service.Connect(leaseCtx, owner.UserID, owner.DeviceID, req.Msg.GetSessionId(), req.Msg.GetOfferSdp())
+	session, answer, err := h.service.Connect(leaseCtx, owner.UserID, owner.DeviceID, req.Msg.GetSessionId(), req.Msg.GetOfferSdp(), req.Msg.GetControlGeneration())
 	if err != nil {
 		return nil, nativeError(err)
 	}
@@ -94,7 +94,7 @@ func (h *NativeHandler) DetachNativeSession(ctx context.Context, req *connect.Re
 	if err != nil {
 		return nil, connect.NewError(connect.CodeUnauthenticated, err)
 	}
-	if _, err := h.service.Detach(ctx, owner.UserID, req.Msg.GetSessionId()); err != nil {
+	if _, err := h.service.Detach(ctx, owner.UserID, req.Msg.GetSessionId(), owner.DeviceID); err != nil {
 		return nil, nativeError(err)
 	}
 	return connect.NewResponse(&surfacev1.DetachNativeSessionResponse{}), nil
@@ -103,6 +103,8 @@ func (h *NativeHandler) DetachNativeSession(ctx context.Context, req *connect.Re
 func nativeError(err error) error {
 	code := connect.CodeInternal
 	switch {
+	case errors.Is(err, domain.ErrControlDenied):
+		code = connect.CodePermissionDenied
 	case errors.Is(err, domain.ErrInvalid):
 		code = connect.CodeInvalidArgument
 	case errors.Is(err, domain.ErrNotFound):

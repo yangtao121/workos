@@ -33,6 +33,8 @@ const (
 	AgentSessionState_AGENT_SESSION_STATE_ACTIVE      AgentSessionState = 1
 	AgentSessionState_AGENT_SESSION_STATE_CLOSING     AgentSessionState = 2
 	AgentSessionState_AGENT_SESSION_STATE_CLOSED      AgentSessionState = 3
+	// Execution failed or was interrupted; inspect the workspace before creating a new session.
+	AgentSessionState_AGENT_SESSION_STATE_NEEDS_REVIEW AgentSessionState = 4
 )
 
 // Enum value maps for AgentSessionState.
@@ -42,12 +44,14 @@ var (
 		1: "AGENT_SESSION_STATE_ACTIVE",
 		2: "AGENT_SESSION_STATE_CLOSING",
 		3: "AGENT_SESSION_STATE_CLOSED",
+		4: "AGENT_SESSION_STATE_NEEDS_REVIEW",
 	}
 	AgentSessionState_value = map[string]int32{
-		"AGENT_SESSION_STATE_UNSPECIFIED": 0,
-		"AGENT_SESSION_STATE_ACTIVE":      1,
-		"AGENT_SESSION_STATE_CLOSING":     2,
-		"AGENT_SESSION_STATE_CLOSED":      3,
+		"AGENT_SESSION_STATE_UNSPECIFIED":  0,
+		"AGENT_SESSION_STATE_ACTIVE":       1,
+		"AGENT_SESSION_STATE_CLOSING":      2,
+		"AGENT_SESSION_STATE_CLOSED":       3,
+		"AGENT_SESSION_STATE_NEEDS_REVIEW": 4,
 	}
 )
 
@@ -1826,12 +1830,13 @@ const file_workos_agent_v1_session_proto_rawDesc = "" +
 	"session_id\x18\x01 \x01(\tR\tsessionId\x12\x14\n" +
 	"\x05after\x18\x02 \x01(\x03R\x05after\"X\n" +
 	"\x1aWatchSessionEventsResponse\x12:\n" +
-	"\x06events\x18\x01 \x03(\v2\".workos.agent.v1.AgentSessionEventR\x06events*\x99\x01\n" +
+	"\x06events\x18\x01 \x03(\v2\".workos.agent.v1.AgentSessionEventR\x06events*\xbf\x01\n" +
 	"\x11AgentSessionState\x12#\n" +
 	"\x1fAGENT_SESSION_STATE_UNSPECIFIED\x10\x00\x12\x1e\n" +
 	"\x1aAGENT_SESSION_STATE_ACTIVE\x10\x01\x12\x1f\n" +
 	"\x1bAGENT_SESSION_STATE_CLOSING\x10\x02\x12\x1e\n" +
-	"\x1aAGENT_SESSION_STATE_CLOSED\x10\x03*\x8d\x02\n" +
+	"\x1aAGENT_SESSION_STATE_CLOSED\x10\x03\x12$\n" +
+	" AGENT_SESSION_STATE_NEEDS_REVIEW\x10\x04*\x8d\x02\n" +
 	"\x16AgentSessionInputState\x12)\n" +
 	"%AGENT_SESSION_INPUT_STATE_UNSPECIFIED\x10\x00\x12&\n" +
 	"\"AGENT_SESSION_INPUT_STATE_ACCEPTED\x10\x01\x12(\n" +

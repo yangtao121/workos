@@ -236,9 +236,10 @@ type WritePtySessionRequest struct {
 	state     protoimpl.MessageState `protogen:"open.v1"`
 	SessionId string                 `protobuf:"bytes,1,opt,name=session_id,json=sessionId,proto3" json:"session_id,omitempty"`
 	// Bounded raw terminal input bytes (UTF-8 or control sequences).
-	Input         []byte `protobuf:"bytes,2,opt,name=input,proto3" json:"input,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	Input             []byte `protobuf:"bytes,2,opt,name=input,proto3" json:"input,omitempty"`
+	ControlGeneration int64  `protobuf:"varint,3,opt,name=control_generation,json=controlGeneration,proto3" json:"control_generation,omitempty"`
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
 }
 
 func (x *WritePtySessionRequest) Reset() {
@@ -283,6 +284,13 @@ func (x *WritePtySessionRequest) GetInput() []byte {
 		return x.Input
 	}
 	return nil
+}
+
+func (x *WritePtySessionRequest) GetControlGeneration() int64 {
+	if x != nil {
+		return x.ControlGeneration
+	}
+	return 0
 }
 
 type WritePtySessionResponse struct {
@@ -454,12 +462,13 @@ func (x *ReadPtySessionResponse) GetClosed() bool {
 }
 
 type ResizePtySessionRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	SessionId     string                 `protobuf:"bytes,1,opt,name=session_id,json=sessionId,proto3" json:"session_id,omitempty"`
-	Columns       int32                  `protobuf:"varint,2,opt,name=columns,proto3" json:"columns,omitempty"`
-	Rows          int32                  `protobuf:"varint,3,opt,name=rows,proto3" json:"rows,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state             protoimpl.MessageState `protogen:"open.v1"`
+	SessionId         string                 `protobuf:"bytes,1,opt,name=session_id,json=sessionId,proto3" json:"session_id,omitempty"`
+	Columns           int32                  `protobuf:"varint,2,opt,name=columns,proto3" json:"columns,omitempty"`
+	Rows              int32                  `protobuf:"varint,3,opt,name=rows,proto3" json:"rows,omitempty"`
+	ControlGeneration int64                  `protobuf:"varint,4,opt,name=control_generation,json=controlGeneration,proto3" json:"control_generation,omitempty"`
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
 }
 
 func (x *ResizePtySessionRequest) Reset() {
@@ -509,6 +518,13 @@ func (x *ResizePtySessionRequest) GetColumns() int32 {
 func (x *ResizePtySessionRequest) GetRows() int32 {
 	if x != nil {
 		return x.Rows
+	}
+	return 0
+}
+
+func (x *ResizePtySessionRequest) GetControlGeneration() int64 {
+	if x != nil {
+		return x.ControlGeneration
 	}
 	return 0
 }
@@ -749,11 +765,12 @@ const file_workos_surface_v1_pty_proto_rawDesc = "" +
 	"\acolumns\x18\x03 \x01(\x05R\acolumns\x12\x12\n" +
 	"\x04rows\x18\x04 \x01(\x05R\x04rows\"S\n" +
 	"\x18CreatePtySessionResponse\x127\n" +
-	"\asession\x18\x01 \x01(\v2\x1d.workos.surface.v1.PtySessionR\asession\"M\n" +
+	"\asession\x18\x01 \x01(\v2\x1d.workos.surface.v1.PtySessionR\asession\"|\n" +
 	"\x16WritePtySessionRequest\x12\x1d\n" +
 	"\n" +
 	"session_id\x18\x01 \x01(\tR\tsessionId\x12\x14\n" +
-	"\x05input\x18\x02 \x01(\fR\x05input\"R\n" +
+	"\x05input\x18\x02 \x01(\fR\x05input\x12-\n" +
+	"\x12control_generation\x18\x03 \x01(\x03R\x11controlGeneration\"R\n" +
 	"\x17WritePtySessionResponse\x127\n" +
 	"\asession\x18\x01 \x01(\v2\x1d.workos.surface.v1.PtySessionR\asession\"i\n" +
 	"\x15ReadPtySessionRequest\x12\x1d\n" +
@@ -764,12 +781,13 @@ const file_workos_surface_v1_pty_proto_rawDesc = "" +
 	"\x16ReadPtySessionResponse\x12\x16\n" +
 	"\x06cursor\x18\x01 \x01(\x03R\x06cursor\x12\x16\n" +
 	"\x06output\x18\x02 \x01(\fR\x06output\x12\x16\n" +
-	"\x06closed\x18\x03 \x01(\bR\x06closed\"f\n" +
+	"\x06closed\x18\x03 \x01(\bR\x06closed\"\x95\x01\n" +
 	"\x17ResizePtySessionRequest\x12\x1d\n" +
 	"\n" +
 	"session_id\x18\x01 \x01(\tR\tsessionId\x12\x18\n" +
 	"\acolumns\x18\x02 \x01(\x05R\acolumns\x12\x12\n" +
-	"\x04rows\x18\x03 \x01(\x05R\x04rows\"S\n" +
+	"\x04rows\x18\x03 \x01(\x05R\x04rows\x12-\n" +
+	"\x12control_generation\x18\x04 \x01(\x03R\x11controlGeneration\"S\n" +
 	"\x18ResizePtySessionResponse\x127\n" +
 	"\asession\x18\x01 \x01(\v2\x1d.workos.surface.v1.PtySessionR\asession\"7\n" +
 	"\x16ClosePtySessionRequest\x12\x1d\n" +

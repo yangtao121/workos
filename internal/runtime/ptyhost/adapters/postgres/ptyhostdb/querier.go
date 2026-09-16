@@ -10,14 +10,20 @@ import (
 )
 
 type Querier interface {
+	BeginPtyRestart(ctx context.Context, arg BeginPtyRestartParams) (int64, error)
 	ClosePtySession(ctx context.Context, arg ClosePtySessionParams) (int64, error)
 	CountActivePtySessions(ctx context.Context, ownerUserID string) (int64, error)
 	ExpireIdlePtySessions(ctx context.Context, updatedAt time.Time) ([]string, error)
+	GetPtyRestartReceipt(ctx context.Context, arg GetPtyRestartReceiptParams) (int64, error)
 	GetPtySession(ctx context.Context, arg GetPtySessionParams) (WorkosRuntimePtySession, error)
 	GetPtySessionByKey(ctx context.Context, arg GetPtySessionByKeyParams) (WorkosRuntimePtySession, error)
+	GetPtyStopReceipt(ctx context.Context, arg GetPtyStopReceiptParams) (int64, error)
 	InsertPtySession(ctx context.Context, arg InsertPtySessionParams) (int64, error)
 	ListActivePtySessions(ctx context.Context) ([]WorkosRuntimePtySession, error)
 	ListProjectPtySessions(ctx context.Context, arg ListProjectPtySessionsParams) ([]WorkosRuntimePtySession, error)
+	LockPtyRestart(ctx context.Context, arg LockPtyRestartParams) (int64, error)
+	RecordPtyRestart(ctx context.Context, arg RecordPtyRestartParams) error
+	RecordPtyStop(ctx context.Context, arg RecordPtyStopParams) error
 	UpdatePtySessionState(ctx context.Context, arg UpdatePtySessionStateParams) (int64, error)
 }
 

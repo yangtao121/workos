@@ -47,6 +47,23 @@ type WorkosCoreAgentAppPolicy struct {
 	UpdatedAt                        pgtype.Timestamptz `json:"updated_at"`
 }
 
+type WorkosCoreAgentExecutionInteraction struct {
+	ID             string             `json:"id"`
+	TaskID         string             `json:"task_id"`
+	OwnerUserID    string             `json:"owner_user_id"`
+	ProjectID      string             `json:"project_id"`
+	LeaseID        string             `json:"lease_id"`
+	WorkerID       string             `json:"worker_id"`
+	RequestKey     string             `json:"request_key"`
+	Questions      json.RawMessage    `json:"questions"`
+	Answers        json.RawMessage    `json:"answers"`
+	State          string             `json:"state"`
+	DecisionKey    string             `json:"decision_key"`
+	DecisionDigest string             `json:"decision_digest"`
+	CreatedAt      pgtype.Timestamptz `json:"created_at"`
+	ExpiresAt      pgtype.Timestamptz `json:"expires_at"`
+}
+
 type WorkosCoreAgentSession struct {
 	SessionID                string             `json:"session_id"`
 	OwnerUserID              string             `json:"owner_user_id"`
@@ -64,6 +81,7 @@ type WorkosCoreAgentSession struct {
 	CreatedAt                pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt                pgtype.Timestamptz `json:"updated_at"`
 	ClosedAt                 pgtype.Timestamptz `json:"closed_at"`
+	RecoveryCheckedAt        pgtype.Timestamptz `json:"recovery_checked_at"`
 }
 
 type WorkosCoreAgentSessionInput struct {

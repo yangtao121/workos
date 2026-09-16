@@ -1577,158 +1577,28 @@ Native 的创建、连接、关闭和 sweep 在 runtime-host 内串行协调；�
 排队输入不会跨续期复用。桌面正确协商 SCTP、映射 Ctrl/指针并回收迟到会话。
 详见 ADR-0029 修正段及 nativehost 的应用层/引擎回归测试。
 
-## Project 工作区注册与共享执行（ADR-0030 B02，2026-09-15）
+## V2 项目开发与持续应用（2026-09-16，ADR-0032）
 
-- 契约：`project/v1/workspace.proto` `ProjectWorkspaceService`（Core）——
-  BindWorkspace/Get/ListProjectWorkspaces/UpdateWorkspaceAccess/ArchiveWorkspace，
-  binding 带单调 revision 与 read_only；客户端只引用操作员注册的
-  workspace_source_id，绝不提交宿主路径。migration 058（Core 拥有）。
-- runtime 侧 `internal/runtime/workspacehost/`：私有 WorkspaceHostService
-  报告可用 sources；操作员用 `WORKOS_RUNTIME_WORKSPACE_MOUNTS`
-  （`owner:project:/abs/path[:ro]` 分号分隔，非绝对路径/含 `:` 拒绝）注册。
-  PTY/Native 引擎启动时绑定该工作目录（请求幂等摘要含目录，变更即新会话）。
-- 边界：只读绑定写入失败；归档/revision 变更阻止旧授权；openat2 内核级
-  越界/符号链接拒绝；跨 Project 隔离（store_linux_test + workspacehost 单测）。
-- `make test-workspace-execution`：真实 git 树上核对 Terminal pwd/git HEAD、
-  host 写入 shell 可读、shell 写入文件界面可见、归档后无 active 绑定。
-  已知限制：runtime 容器无 git 二进制（读取 `.git` 文件验证 HEAD）。
+当前边界以 [ADR-0032](../decisions/0032-runtime-isolated-development.md) 和
+[部署/用户说明](v2-agent-workspace-web-continuity.md) 为准。Core 拥有工作区 binding、
+连续会话、输入/事件、执行问答及预算/凭据授权；Runtime 拥有真实目录、Docker 命令、
+PTY/Native/预览的运行事实；Harness 使用官方原生 create/resume/followup。
 
-## DeepSeek 原生持续会话与 Core 会话服务（ADR-0030 B03/B04，2026-09-15）
-
-- 契约：`agent/v1/session.proto` `AgentSessionService`（Gateway 路由 + owner
-  身份）：Create/List(include_closed)/Get/SubmitSessionInput/GetSessionInput/
-  ListSessionInputs/CancelSessionExecution/CloseSession/WatchSessionEvents。
-  输入按 (session, client_input_id) 持久幂等，同 key 异文 = Aborted；忙时
-  排队按持久顺序提交；migration 057（Core 拥有）。终态钩子把结果摘要写回
-  输入行（FinishTaskRun）。
-- DeepSeek adapter `sessions.go`：`SessionManager` 每 Core 会话 id 持有一个
-  常驻官方 runtime 子进程（无 wire resume，连续性 = 进程连续性）。生成的
-  cordis 组合 = 官方 26 行 base + 1 行 configuration-relative `workos-tools`
-  插件（spawn 时拷入会话私有 stateDir；缺文件 fail closed）。凭据指纹
-  （lease secret SHA-256）或 owner/project 变化即杀组重生；轮错误/超时杀组，
-  下一轮重生。会话轮映射 ToolCallStarted/Completed（结构化输入/输出）。
-- B04 只读 WorkOS 工具：`deploy/harness/workos-tools.mjs` 零依赖插件注册
-  `workos_project_info` / `workos_list_artifacts`；owner/project 由 worker 从
-  task 事实派生注入子环境（WORKOS*TOOL*\*），模型不可提交；缺事实时工具
-  返回 `Error:` 结果（fail closed），不崩溃。审批路径不支持：审批类事件
-  fail closed（非重试协议错误），composition 保持 `policy: ask`
-  （`TestSessionApprovalEventsFailClosed`）。
-- 环境变量：`WORKOS_HARNESS_SESSION_STATE_ROOT`（默认
-  `/var/lib/workos/harness-sessions`，0700；每会话 home/state/ws/persistence/
-  cordis.yml/runtime.stderr）。子环境最小化：key 只进
-  `DEEPSEEK_API_KEY`，bash 子进程 env 无 key（官方 env 隔离 + WorkOS 进程
-  边界；官方 bash-local 不 confine —— B00 记录）。
-- `make test-harness-sessions`：官方 runtime + 本地 API fixture 三轮（真实
-  bash 写文件、has_turn1 上下文延续、workos_project_info 真实项目名）+
-  replay/冲突/关闭语义。真实模型验收 A15 为独立操作员门
-  （`make test-real-model-acceptance`）。
-
-## Surface 连续性与单控制器（ADR-0031，B06/B07，2026-09-15）
-
-- `internal/runtime/surface/`：runtime-host 拥有的设备访问关系与控制权事实。
-  migration 059（workos_runtime.surface_attachments + surface_control_leases）；
-  `ports/continuity.go` 定义 ContinuityStore（事务性 attach/接管/detach/sweep）与
-  InteractiveWorkloadRuntime；`adapters/postgres/continuity.go` 以 FOR UPDATE 租约锁
-  实现原子代次推进（旧 controller 的 controls 标记同事务失效）。
-- `workos.surface.v1.SurfaceContinuityService`（Gateway 路由 + owner/device 身份）：
-  ListProjectSurfaces（owner 的非终态 PTY/Native 会话，renderer 如实映射：native=
-  REMOTE_NATIVE、pty=UNSPECIFIED，generation=1，策略 persistent=true +
-  keep_alive 1800s 即既有 30 分钟上限）；AttachSurface（幂等 per owner+key，首附
-  同事务授予 gen1 控制权，终态 workload → FailedPrecondition 带真实状态）；
-  DetachSurface（仅释放本设备：native 另释放媒体 peer；程序继续运行）；
-  RequestSurfaceControl（精确 controller 续期不升代次；其余为显式接管，代次+1）；
-  GetSurfaceControl；StopSurfaceWorkload（=既有 Close 确定性回收并过期 attachments）；
-  RestartSurfaceWorkload（pty/native 如实 FailedPrecondition，无持久 argv）。
-- 数据路径强制：PTY Write/Resize 携带 gateway 注入的 device 身份，每次请求复查
-  当前控制租约（非 controller / 已过期 epoch / controller 已 detach →
-  PermissionDenied，直至显式接管）；native 输入在 display 的 apply 时刻复查
-  GuardInput，被接管设备的排队输入同样失效。无租约的直连会话保持 owner-scoped。
-- 30s sweep：过期控制租约与终态 workload 的 attachment 标记 expired；策略保持
-  30 分钟单上限，无无限保活。
-- 重启 reconcile（B09 A13）：nativehost 沿用启动 sweep（无活 display 的持久行
-  → failed）；ptyhost 新增启动 `Reconcile`（`ListActivePtySessions` +
-  无活 terminal 的非终态行 → failed）——runtime-host 容器死亡时 PTY 子进程
-  随之死亡（setsid+Pdeathsig），重启后 ListProjectSurfaces 不再把死程序列为
-  running，attach 如实 FailedPrecondition，死会话 IO = NotFound。
-- 媒体候选：WORKOS_RUNTIME_NATIVE_CANDIDATES=loopback（默认，单测锁定过滤不变）
-  或 lan（移除 IsLoopback 过滤且不强插 loopback 候选；需 host 网络；无 STUN/TURN）；
-  EngineFacts 如实报告候选范围。
-- `make test-surface-continuity`：仓库级真实 Postgres 状态机（含并发接管收敛）+
-  E2E（detach 后输出持续累积、二次 attach+显式接管恢复输入、双设备数据路径
-  PermissionDenied/接管矩阵、sweep 过期、stop 回收）+ A13 重启相（prepare 固定
-  一个 live workload → 停/启 runtime 容器 → verify 断言不再列为 running、控制
-  事实 not-running、attach FailedPrecondition、死会话 IO NotFound）。桌面窗口
-  关闭→Detach 的迁移属 B05/B08。
-
-## Agent 会话窗口与桌面接续入口（ADR-0030 B05 / ADR-0031 B08，2026-09-15）
-
-- SDK（TS）：`sdk/protocol/src/index.ts` 重导出 `agent/v1/session_pb`、
-  `surface/v1/continuity_pb`、`project/v1/workspace_pb`；`sdk/agent-sdk` 的
-  WorkOSClients 增加 `agentSessions` / `surfaceContinuity` / `projectWorkspaces`
-  客户端。无 proto/Go 变更。
-- Desktop Agent Sessions 窗口（`apps/desktop-web/src/AgentSessions.tsx`）：
-  普通可关系统窗口（window kind `agent-sessions`，expanded/adaptive Home、命令面板、
-  adaptive home 快捷入口可达；无新增常驻侧栏）。列表 = ListSessions（不含已关闭）+
-  每会话首输入摘录；New session 使用组件态 idempotency key（失败重试复用同一 key）。
-  会话视图：ListSessionInputs 全量输入 + 活跃输入与最近一个带 task 输入各自的
-  WatchTaskEvents 时间线（终态后保留 replay，不清空会话）；提交 =
-  SubmitSessionInput（每次提交一个 client_input_id；12s 超时只以 GetSessionInput
-  同 key 恢复，绝不换 key 重发；失败 Retry 复用同一 client_input_id）；忙时轮询
-  2.5s 对账；「停止当前执行」（CancelSessionExecution，仅活跃 run 显示）与
-  「关闭会话」（CloseSession）为两个明确区分的显式动作；queued 输入显示排队态与
-  排队提示；provider id 与（若有）workspace display name 只读显示
-  （ListProjectWorkspaces active binding）。Project 切换/窗口关闭仅 unmount
-  （组件按 project key 重挂载、selected session 提升到 Desktop 状态以跨断点
-  remount 保留），绝不触发服务端取消；generation ref 使晚到响应 inert。
-- Native/Terminal 窗口生命周期迁移（B08）：窗口关闭与 project 切换改为
-  DetachNativeSession / DetachPtySession（程序按 30 分钟策略继续运行；旧
-  Close 语义仅保留在显式 Stop）。重开流程：ListProjectSurfaces 发现本 project
-  运行中的同类 workload（native=REMOTE_NATIVE、pty=UNSPECIFIED 且非 app
-  workload）→ AttachSurface 同一实例（绝不二次创建；continuity 不可用或无
-  运行实例时如实回退创建路径）；attach 后非 controller 时禁用输入并显示
-  Take control（RequestSurfaceControl）直到接管。两窗口工具条提供显式 Stop
-  （StopSurfaceWorkload，幂等 actionKey）；native 的媒体重连在 observer 态仅
-  观看。
-- Running apps（`RunningSurfaces.tsx`）：Home 启动台下的小节，ListProjectSurfaces
-  服务端事实（displayName/state/attachment 数，10s 轮询 + stop 后即时刷新），
-  Open 按类型路由（terminal/native 窗口或 app instance surface），Stop 为唯一
-  停止路径；continuity 不可用时如实显示不可用判定。
-- 门禁 `tools/v2-development-journey/gate.sh`（Makefile
-  `test-v2-development-journey` / `capture-v2-development-journey`）：独立
-  compose 项目（共享 dev postgres、一次性数据库与端口；runtime 启用
-  WORKOS_RUNTIME_PTY_SHELL=/bin/sh；harness-host 携 fake provider），真实
-  desktop E2E（agent-sessions.spec.ts）：全真链路（建会话→提交→fake provider
-  完成→刷新恢复→同会话第二轮）+ 传输层确定性 busy 契约（held WatchTaskEvents
-  下 running+停止按钮可见、第二输入排队、取消后会话仍开放）+ 三档 viewport 视觉
-  证据采集（WORKOS_CAPTURE_DIR）。native-surface-desktop.spec.ts 的关闭断言同步
-  迁移：关窗=detach（workload 仍 running）、重开=attach 同一 session（无第二次
-  Create）、显式 Stop 后 closed。
-
-## B09 收口：重启恢复、诚实不支持与操作员门（2026-09-15）
-
-- **A05 重启恢复**：`tools/harness-sessions/gate.sh` 追加 restart 相——phase 1
-  在 stdout 打印 `WORKOS_HARNESS_SESSION_GATE_SESSION_ID/PROJECT_ID`，
-  gate 捕获后 `docker compose restart workos-core harness-host`，等待
-  AgentSessionService 就绪，再跑
-  `TestHarnessSessionRestartRecovery`（同 build tag）：include_closed 列出已
-  关闭会话、ListSessionInputs 恰为三轮且各保持原 task id 与 COMPLETED、
-  GetTask/WatchTaskEvents 可重放、WatchSessionEvents 生命周期完整（每输入
-  accepted/dispatched/terminal 各一次 + CLOSED 状态变更）、关闭后输入仍
-  FailedPrecondition、**新会话执行全新原生轮**（fixture 答
-  `has_turn1=false total=1` 证明重启后的栈真的在跑）。
-- **A09 审批诚实不支持**：见上文 B03/B04 节——审批类 session 事件 fail closed
-  （`TestSessionApprovalEventsFailClosed`：非重试协议错误、零事件、
-  composition `policy: ask`）。pinned runtime 的 sdk wire 没有审批响应方法。
-- **A13 重启 reconcile**：见上文 Surface 节（ptyhost 启动 Reconcile + 门禁
-  prepare/verify 两相）。
-- **A15/A16 操作员门**：`make test-real-model-acceptance`
-  （`tools/real-model-acceptance/gate.sh`，build tag `realmodelgate`）——真实
-  DeepSeek API 两轮 + usage + 真实工具写；缺 `WORKOS_REAL_DEEPSEEK=1`、缺
-  vault ACTIVE 凭据或指向回环 fixture 时响亮 BLOCKED，绝不静默通过。
-  A16 runbook：`docs/runbooks/lan-second-device.md`（第二台物理设备配对 →
-  Running apps → Take control → A 输入被拒的证据模板）。
-- **A14 回归**：workspace-execution / harness-sessions / surface-continuity /
-  terminal-sessions 四门禁在 B09 变更后全量重跑（结果记入任务记录）。
+- migration 060–065 分别属于其声明的 Core/Runtime 模块；工作区操作先持久 pending，
+  完成才记录结果，未知结果不重放。会话输入、执行槽及事件序号事务化，恢复分页不截断。
+- Task 工具经私有 mTLS execution RPC，scope 从 lease 和 session 派生。Runtime 再核对
+  Core 当前项目与 binding revision；长期程序每秒复查。普通 App 文件 Bridge 保留窄权限。
+- 命令、Terminal、Native X 客户端和预览由 Runtime 专用 Docker 监督；仅挂授权项目，
+  不传 daemon socket 或凭据。预览采用单程序能力路径和 opaque-origin HTTP iframe。
+- 系统工具提供项目/工作区、安装应用查询、成果列出/读取/创建和预览 start/list/stop。
+  官方 ask_user_question 使用 canonical 持久交互、两分钟过期和幂等回答；权限升级 unavailable。
+- 窗口关闭 detach，stop 回收，restart 增加 generation。单控制端 input/resize/Native
+  peer 校验 device 与 control generation；观察者不能用重连替换当前控制端。
+- Runtime 重启清理自己 namespace 的容器，旧实例真实转 failed；已完成 Harness 轮次原生
+  恢复，运行中丢租约转 needs_review，不自动重放文件/命令副作用。
+- Desktop 新增工作区设置、当前文件编辑器、真实开发预览、执行问答和明确 restart 操作。
+  三尺寸视觉证据、整栈官方 Harness/真实 Docker/Chromium 验收与 A15/A16 外部验收分别
+  记录于 [总任务](../tasks/20260915-v2-agent-workspace-web-continuity.md)。
 
 移动端 canonical proof 使用配置的部署 origin；平台密钥槽按 origin 隔离。
 过期 Cookie 经同一持久密钥后端重建 session，原生 JSON RPC 经 Capacitor HTTP bridge

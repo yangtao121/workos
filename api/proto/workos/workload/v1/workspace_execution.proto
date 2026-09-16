@@ -1,0 +1,28 @@
+syntax = "proto3";
+package workos.workload.v1;
+
+import "google/protobuf/struct.proto";
+
+option go_package = "github.com/yangtao121/workos/gen/go/workos/workload/v1;workloadv1";
+
+// Private Runtime execution seam. Core derives every scope field from a live
+// task lease and the session's current authorized workspace revision.
+// Paths in arguments are execution-world paths rooted at /workspace.
+message ExecuteWorkspaceOperationRequest {
+  string owner_user_id = 1;
+  string project_id = 2;
+  string workspace_source_id = 3;
+  bool read_only = 4;
+  string operation_id = 5;
+  // Finite vocabulary: shell.run, fs.resolve/stat/list/read/write/edit, preview.start/list/stop.
+  string operation = 6;
+  google.protobuf.Struct arguments = 7;
+  string workspace_binding_id = 8;
+  int64 workspace_revision = 9;
+}
+message ExecuteWorkspaceOperationResponse {
+  google.protobuf.Struct result = 1;
+}
+service WorkspaceExecutionService {
+  rpc ExecuteWorkspaceOperation(ExecuteWorkspaceOperationRequest) returns (ExecuteWorkspaceOperationResponse) {}
+}

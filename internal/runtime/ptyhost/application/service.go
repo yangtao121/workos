@@ -18,11 +18,13 @@ import (
 )
 
 type Service struct {
-	store     ports.SessionStore
-	engine    ports.Engine
-	generator ids.Generator
-	logger    *slog.Logger
-	workspace ports.WorkspaceResolver
+	opMu          sync.Mutex
+	authorization ports.WorkspaceAuthorizer
+	store         ports.SessionStore
+	engine        ports.Engine
+	generator     ids.Generator
+	logger        *slog.Logger
+	workspace     ports.WorkspaceResolver
 	// control gates the input path on the server-side single-controller
 	// lease (ADR-0031 §4). nil keeps the plain owner-scoped path for hosts
 	// without the surface continuity service.
@@ -63,19 +65,21 @@ func requestDigest(projectID string, columns, rows int32, workingDirectory strin
 }
 
 func (s *Service) Create(ctx context.Context, ownerUserID, projectID, idempotencyKey string, columns, rows int32) (domain.Session, error) {
+	s.opMu.Lock()
+	defer s.opMu.Unlock()
 	if !domain.ValidUUIDv7(ownerUserID) || !domain.ValidUUIDv7(projectID) || idempotencyKey == "" || len(idempotencyKey) > 128 || !domain.ValidSize(columns, rows) {
 		return domain.Session{}, domain.ErrInvalid
 	}
-	workingDirectory := ""
-	if s.workspace != nil {
-		if dir, ok := s.workspace.WorkingDirectory(ownerUserID, projectID); ok {
-			workingDirectory = dir
-		}
+	grant, err := s.workspaceGrant(ctx, ownerUserID, projectID)
+	if err != nil {
+		return domain.Session{}, err
 	}
+	workingDirectory := grant.Directory
+
 	digest := requestDigest(projectID, columns, rows, workingDirectory)
 	now := time.Now().UTC().Truncate(time.Microsecond)
 	session := domain.Session{
-		SessionID: s.generator.New(), OwnerUserID: ownerUserID, ProjectID: projectID,
+		Generation: 1, SessionID: s.generator.New(), OwnerUserID: ownerUserID, ProjectID: projectID,
 		IdempotencyKey: idempotencyKey, RequestDigest: digest,
 		State: domain.StateQueued, CreatedAt: now, UpdatedAt: now, ExpiresAt: now.Add(domain.SessionTTL),
 	}
@@ -109,7 +113,7 @@ func (s *Service) Create(ctx context.Context, ownerUserID, projectID, idempotenc
 		}
 		return domain.Session{}, domain.ErrEngineUnavailable
 	}
-	terminal, err := s.engine.Launch(ctx, columns, rows, workingDirectory)
+	terminal, err := s.launch(ctx, columns, rows, grant)
 	if err != nil {
 		s.logger.Warn("pty launch failed", "error", err)
 		release()
@@ -124,6 +128,7 @@ func (s *Service) Create(ctx context.Context, ownerUserID, projectID, idempotenc
 		return domain.Session{}, err
 	}
 	session.State = domain.StateRunning
+	s.watchWorkspace(session, grant)
 	return session, nil
 }
 
@@ -173,7 +178,9 @@ func (s *Service) ListProject(ctx context.Context, ownerUserID, projectID string
 	return s.store.ListProjectSessions(ctx, ownerUserID, projectID)
 }
 
-func (s *Service) Write(ctx context.Context, ownerUserID, deviceID, sessionID string, input []byte) (domain.Session, error) {
+func (s *Service) Write(ctx context.Context, ownerUserID, deviceID, sessionID string, input []byte, epochs ...int64) (domain.Session, error) {
+	s.opMu.Lock()
+	defer s.opMu.Unlock()
 	if !domain.ValidUUIDv7(ownerUserID) || !domain.ValidUUIDv7(sessionID) || !domain.ValidInput(input) {
 		return domain.Session{}, domain.ErrInvalid
 	}
@@ -187,6 +194,16 @@ func (s *Service) Write(ctx context.Context, ownerUserID, deviceID, sessionID st
 	if err := s.authorizeInput(ctx, ownerUserID, deviceID, sessionID); err != nil {
 		return domain.Session{}, err
 	}
+	if authorizer, ok := s.control.(ports.EpochControlAuthorizer); ok {
+		epoch := int64(0)
+		if len(epochs) > 0 {
+			epoch = epochs[0]
+		}
+		if err := authorizer.AuthorizeInputGeneration(ctx, ownerUserID, sessionID, deviceID, epoch); err != nil {
+			return domain.Session{}, domain.ErrControlDenied
+		}
+	}
+
 	if err := terminal.Write(ctx, input); err != nil {
 		return domain.Session{}, domain.ErrEngineUnavailable
 	}
@@ -208,7 +225,9 @@ func (s *Service) Read(ctx context.Context, ownerUserID, sessionID string, after
 	return cursor, output, terminal.Exited(), nil
 }
 
-func (s *Service) Resize(ctx context.Context, ownerUserID, deviceID, sessionID string, columns, rows int32) (domain.Session, error) {
+func (s *Service) Resize(ctx context.Context, ownerUserID, deviceID, sessionID string, columns, rows int32, epochs ...int64) (domain.Session, error) {
+	s.opMu.Lock()
+	defer s.opMu.Unlock()
 	if !domain.ValidUUIDv7(ownerUserID) || !domain.ValidUUIDv7(sessionID) || !domain.ValidSize(columns, rows) {
 		return domain.Session{}, domain.ErrInvalid
 	}
@@ -221,6 +240,16 @@ func (s *Service) Resize(ctx context.Context, ownerUserID, deviceID, sessionID s
 	if err := s.authorizeInput(ctx, ownerUserID, deviceID, sessionID); err != nil {
 		return domain.Session{}, err
 	}
+	if authorizer, ok := s.control.(ports.EpochControlAuthorizer); ok {
+		epoch := int64(0)
+		if len(epochs) > 0 {
+			epoch = epochs[0]
+		}
+		if err := authorizer.AuthorizeInputGeneration(ctx, ownerUserID, sessionID, deviceID, epoch); err != nil {
+			return domain.Session{}, domain.ErrControlDenied
+		}
+	}
+
 	if err := terminal.Resize(ctx, columns, rows); err != nil {
 		return domain.Session{}, domain.ErrEngineUnavailable
 	}
@@ -228,8 +257,13 @@ func (s *Service) Resize(ctx context.Context, ownerUserID, deviceID, sessionID s
 }
 
 func (s *Service) Close(ctx context.Context, ownerUserID, sessionID string) (domain.Session, error) {
+	s.opMu.Lock()
+	defer s.opMu.Unlock()
 	if !domain.ValidUUIDv7(ownerUserID) || !domain.ValidUUIDv7(sessionID) {
 		return domain.Session{}, domain.ErrInvalid
+	}
+	if _, err := s.store.GetSession(ctx, ownerUserID, sessionID); err != nil {
+		return domain.Session{}, err
 	}
 	s.reap(sessionID)
 	if err := s.store.CloseSession(ctx, ownerUserID, sessionID, domain.StateClosed, time.Now().UTC()); err != nil {
@@ -316,4 +350,111 @@ func (s *Service) Reconcile(ctx context.Context) error {
 		}
 	}
 	return nil
+}
+
+// Restart preserves workload identity, reserves a durable new generation,
+// and starts only on the first delivery of this action key.
+func (s *Service) Restart(ctx context.Context, owner, id, key string, fence func() error) (domain.Session, error) {
+	s.opMu.Lock()
+	defer s.opMu.Unlock()
+	if !domain.ValidUUIDv7(owner) || !domain.ValidUUIDv7(id) || key == "" || len(key) > 128 {
+		return domain.Session{}, domain.ErrInvalid
+	}
+	session, err := s.store.GetSession(ctx, owner, id)
+	if err != nil {
+		return domain.Session{}, err
+	}
+	restarts, ok := s.store.(ports.RestartStore)
+	if !ok {
+		return domain.Session{}, domain.ErrEngineUnavailable
+	}
+	generation, fresh, err := restarts.BeginRestart(ctx, owner, id, key, time.Now().UTC())
+	if err != nil {
+		return domain.Session{}, err
+	}
+	if !fresh {
+		return s.store.GetSession(ctx, owner, id)
+	}
+	s.reap(id)
+	completed := false
+	defer func() {
+		if !completed {
+			s.reap(id)
+			cleanup, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+			defer cancel()
+			_ = s.store.CloseSession(cleanup, owner, id, domain.StateFailed, time.Now().UTC())
+		}
+	}()
+	if fence != nil {
+		if err := fence(); err != nil {
+			return domain.Session{}, err
+		}
+	}
+	count, err := s.store.CountActive(ctx, owner)
+	if err != nil {
+		return domain.Session{}, err
+	}
+	if count > domain.MaxSessions {
+		return domain.Session{}, domain.ErrSessionLimit
+	}
+	if err := s.engine.Available(ctx); err != nil {
+		return domain.Session{}, domain.ErrEngineUnavailable
+	}
+	grant, err := s.workspaceGrant(ctx, owner, session.ProjectID)
+	if err != nil {
+		return domain.Session{}, err
+	}
+
+	release, err := s.engine.Reserve()
+	if err != nil {
+		return domain.Session{}, err
+	}
+	terminal, err := s.launch(ctx, 80, 24, grant)
+	if err != nil {
+		release()
+		return domain.Session{}, domain.ErrEngineUnavailable
+	}
+	s.mu.Lock()
+	s.terminals[id] = terminal
+	s.slots[id] = release
+	s.mu.Unlock()
+	if err := s.store.UpdateState(ctx, owner, id, domain.StateRunning, time.Now().UTC()); err != nil {
+		return domain.Session{}, err
+	}
+	completed = true
+	result, err := s.store.GetSession(ctx, owner, id)
+	if err == nil && result.Generation != generation {
+		return domain.Session{}, domain.ErrStoreUnavailable
+	}
+	if err == nil {
+		s.watchWorkspace(result, grant)
+	}
+	return result, err
+}
+
+// Stop records the action before reaping. A delayed replay after restart
+// cannot stop the new generation or detach its devices.
+func (s *Service) Stop(ctx context.Context, owner, id, key string, fence func() error) (domain.Session, error) {
+	s.opMu.Lock()
+	defer s.opMu.Unlock()
+	if !domain.ValidUUIDv7(owner) || !domain.ValidUUIDv7(id) || key == "" || len(key) > 128 {
+		return domain.Session{}, domain.ErrInvalid
+	}
+	store, ok := s.store.(ports.StopStore)
+	if !ok {
+		return domain.Session{}, domain.ErrEngineUnavailable
+	}
+	fresh, err := store.BeginStop(ctx, owner, id, key, time.Now().UTC())
+	if err != nil {
+		return domain.Session{}, err
+	}
+	if fresh {
+		s.reap(id)
+		if fence != nil {
+			if err := fence(); err != nil {
+				return domain.Session{}, err
+			}
+		}
+	}
+	return s.store.GetSession(ctx, owner, id)
 }

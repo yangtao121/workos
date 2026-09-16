@@ -55,12 +55,59 @@ func main() {
 			http.Error(response, "invalid fixture request", http.StatusBadRequest)
 			return
 		}
+
+		if strings.HasPrefix(goal, "V2_DEVELOP_") || strings.HasPrefix(goal, "V2_ARTIFACT") || strings.HasPrefix(goal, "V2_PREVIEW") {
+			var parsed chatRequest
+			_ = json.Unmarshal(body, &parsed)
+			marker := strings.Fields(goal)[0]
+			callID := "call_" + marker
+			for _, message := range parsed.Messages {
+				if message.Role == "tool" && message.ToolCallID == callID {
+					writeSSE(response, []string{`{"choices":[{"delta":{"role":"assistant","content":"V2_TOOL_DONE"},"finish_reason":"stop"}],"usage":{"prompt_tokens":20,"completion_tokens":4}}`, `[DONE]`})
+					return
+				}
+			}
+			name := "bash"
+			var args any
+			if marker == "V2_DEVELOP_1" {
+				args = map[string]any{"command": "printf 'module.exports = n => n * 2;\\n' > calculate.cjs; printf \"const t=require('node:test'),a=require('node:assert/strict'),f=require('./calculate.cjs');t('double',()=>a.equal(f(3),6));\\n\" > calculate.test.cjs; node --test calculate.test.cjs", "description": "implement and test double"}
+			} else if marker == "V2_DEVELOP_2" {
+				if !strings.Contains(string(body), "V2_DEVELOP_1") {
+					http.Error(response, "native history missing", 400)
+					return
+				}
+				args = map[string]any{"command": "test -f calculate.test.cjs && printf 'module.exports = n => n * 3;\\n' > calculate.cjs; printf \"const t=require('node:test'),a=require('node:assert/strict'),f=require('./calculate.cjs');t('triple',()=>{a.equal(f(3),9);a.equal(f(0),0)});\\n\" > calculate.test.cjs; node --test calculate.test.cjs", "description": "continue implementation and run updated tests"}
+			} else if marker == "V2_ARTIFACT" {
+				name = "workos_create_artifact"
+				args = map[string]any{"outputKey": "v2-review", "title": "Development review", "type": "document.markdown.v1", "content": "# Development review\nTwo native turns changed calculate.cjs and ran node tests.\n"}
+			} else {
+				name = "workos_start_preview"
+				args = map[string]any{"outputKey": "v2-preview", "port": 3000, "command": "node preview.cjs"}
+			}
+			encoded, _ := json.Marshal(args)
+			writeSSE(response, []string{`{"choices":[{"delta":{"role":"assistant","content":null,"tool_calls":[{"index":0,"id":` + jsonString(callID) + `,"type":"function","function":{"name":` + jsonString(name) + `,"arguments":` + jsonString(string(encoded)) + `}}]}}]}`, `{"choices":[{"delta":{},"finish_reason":"tool_calls"}],"usage":{"prompt_tokens":12,"completion_tokens":2}}`, `[DONE]`})
+			return
+		}
 		// Continuous-session flows (ADR-0030): turn one drives a real bash
 		// tool call; the tool result round trip answers TURN1_DONE; turn
 		// two reports whether turn one's text is still in the request
 		// history — the proof of native context continuation. The
 		// SESSION_WORKOS_INFO flow (B04) drives the harness's own
 		// workos_project_info tool and echoes its bounded result.
+
+		if strings.HasPrefix(goal, "SESSION_QUESTION") {
+			var parsed chatRequest
+			_ = json.Unmarshal(body, &parsed)
+			for _, message := range parsed.Messages {
+				if message.Role == "tool" && message.ToolCallID == "call_question_1" {
+					writeSSE(response, []string{`{"choices":[{"delta":{"role":"assistant","content":"QUESTION_ANSWERED"},"finish_reason":"stop"}],"usage":{"prompt_tokens":10,"completion_tokens":3}}`, `[DONE]`})
+					return
+				}
+			}
+			toolCall := `{"questions":[{"id":"direction","question":"Choose the fixture direction","options":[{"label":"Continue"},{"label":"Stop"}]}]}`
+			writeSSE(response, []string{`{"choices":[{"delta":{"role":"assistant","content":null,"tool_calls":[{"index":0,"id":"call_question_1","type":"function","function":{"name":"ask_user_question","arguments":` + jsonString(toolCall) + `}}]}}]}`, `{"choices":[{"delta":{},"finish_reason":"tool_calls"}],"usage":{"prompt_tokens":8,"completion_tokens":2}}`, `[DONE]`})
+			return
+		}
 		if strings.HasPrefix(goal, "SESSION_TOOL_TURN") {
 			hasToolResult := false
 			var parsed chatRequest
@@ -72,6 +119,10 @@ func main() {
 				}
 			}
 			if hasToolResult {
+				if parsed.MaxTokens != 8190 {
+					http.Error(response, "session cumulative output budget was not reduced", http.StatusBadRequest)
+					return
+				}
 				writeSSE(response, []string{
 					`{"choices":[{"delta":{"role":"assistant","content":null,"reasoning_content":""}}]}`,
 					`{"choices":[{"delta":{"content":"TURN1_DONE"},"finish_reason":"stop"}],"usage":{"prompt_tokens":11,"prompt_cache_hit_tokens":2,"completion_tokens":4}}`,
@@ -82,6 +133,7 @@ func main() {
 			toolCall := `{"command":"printf 'native-tool-evidence' > turn1-evidence.txt && cat turn1-evidence.txt","description":"write and read session evidence"}`
 			writeSSE(response, []string{
 				`{"choices":[{"delta":{"role":"assistant","content":null,"tool_calls":[{"index":0,"id":"call_session_1","type":"function","function":{"name":"bash","arguments":` + jsonString(toolCall) + `}}]}}]}`,
+				`{"choices":[{"delta":{},"finish_reason":"tool_calls"}],"usage":{"prompt_tokens":8,"prompt_cache_hit_tokens":0,"completion_tokens":2}}`,
 				`[DONE]`,
 			})
 			return
@@ -122,6 +174,7 @@ func main() {
 			}
 			writeSSE(response, []string{
 				`{"choices":[{"delta":{"role":"assistant","content":null,"tool_calls":[{"index":0,"id":"call_session_workos","type":"function","function":{"name":"workos_project_info","arguments":"{}"}}]}}]}`,
+				`{"choices":[{"delta":{},"finish_reason":"tool_calls"}],"usage":{"prompt_tokens":8,"prompt_cache_hit_tokens":0,"completion_tokens":2}}`,
 				`[DONE]`,
 			})
 			return
@@ -271,7 +324,7 @@ func validate(request *http.Request, key string, body []byte) (string, error) {
 	if err := json.Unmarshal(body, &value); err != nil {
 		return "", errors.New("malformed request body")
 	}
-	if value.Model != "deepseek-v4-flash" || (value.MaxTokens != 64 && value.MaxTokens != 2048 && value.MaxTokens != 8192) || !value.Stream || !value.StreamOptions.IncludeUsage || len(value.Messages) == 0 {
+	if value.Model != "deepseek-v4-flash" || (value.MaxTokens < 1 || value.MaxTokens > 8192) || !value.Stream || !value.StreamOptions.IncludeUsage || len(value.Messages) == 0 {
 		return "", errors.New("unexpected request mapping")
 	}
 	// The official base composition appends user-role runtime-context and
@@ -320,7 +373,7 @@ func validate(request *http.Request, key string, body []byte) (string, error) {
 		}
 	}
 	switch {
-	case strings.HasPrefix(text, "SESSION_TOOL_TURN"), strings.HasPrefix(text, "SESSION_COUNT"), strings.HasPrefix(text, "SESSION_WORKOS_INFO"):
+	case strings.HasPrefix(text, "V2_DEVELOP_"), strings.HasPrefix(text, "V2_ARTIFACT"), strings.HasPrefix(text, "V2_PREVIEW"), strings.HasPrefix(text, "SESSION_QUESTION"), strings.HasPrefix(text, "SESSION_TOOL_TURN"), strings.HasPrefix(text, "SESSION_COUNT"), strings.HasPrefix(text, "SESSION_WORKOS_INFO"):
 		return text, nil
 	case text == "prove the DeepSeek project binding fixture" || text == "persist this completed run across service restart" ||
 		text == "fixture rate limit" || text == "fixture server unavailable" || text == "fixture malformed SSE" ||

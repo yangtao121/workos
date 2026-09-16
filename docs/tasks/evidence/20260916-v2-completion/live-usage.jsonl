@@ -1,0 +1,16 @@
+{"reserved_microcny": 152350, "request_bytes": 10639, "max_output_tokens": 8192}
+{"usage": {"prompt_tokens": 2637, "completion_tokens": 186, "total_tokens": 2823, "prompt_cache_hit_tokens": 0, "prompt_cache_miss_tokens": 2637}}
+{"reserved_microcny": 153004, "request_bytes": 11710, "max_output_tokens": 8006}
+{"usage": {"prompt_tokens": 2896, "completion_tokens": 81, "total_tokens": 2977, "prompt_cache_hit_tokens": 2688, "prompt_cache_miss_tokens": 208}}
+{"reserved_microcny": 153382, "request_bytes": 12223, "max_output_tokens": 7925}
+{"usage": {"prompt_tokens": 3052, "completion_tokens": 5, "total_tokens": 3057, "prompt_cache_hit_tokens": 2816, "prompt_cache_miss_tokens": 236}}
+{"reserved_microcny": 156204, "request_bytes": 12566, "max_output_tokens": 8192}
+{"usage": {"prompt_tokens": 3118, "completion_tokens": 301, "total_tokens": 3419, "prompt_cache_hit_tokens": 2944, "prompt_cache_miss_tokens": 174}}
+{"reserved_microcny": 156700, "request_bytes": 14018, "max_output_tokens": 7891}
+{"usage": {"prompt_tokens": 3484, "completion_tokens": 103, "total_tokens": 3587, "prompt_cache_hit_tokens": 3328, "prompt_cache_miss_tokens": 156}}
+{"reserved_microcny": 158226, "request_bytes": 15193, "max_output_tokens": 7788}
+{"usage": {"prompt_tokens": 3761, "completion_tokens": 237, "total_tokens": 3998, "prompt_cache_hit_tokens": 3584, "prompt_cache_miss_tokens": 177}}
+{"reserved_microcny": 158520, "request_bytes": 16288, "max_output_tokens": 7551}
+{"usage": {"prompt_tokens": 4043, "completion_tokens": 81, "total_tokens": 4124, "prompt_cache_hit_tokens": 3840, "prompt_cache_miss_tokens": 203}}
+{"reserved_microcny": 158898, "request_bytes": 16801, "max_output_tokens": 7470}
+{"usage": {"prompt_tokens": 4200, "completion_tokens": 5, "total_tokens": 4205, "prompt_cache_hit_tokens": 3968, "prompt_cache_miss_tokens": 232}}

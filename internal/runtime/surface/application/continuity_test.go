@@ -60,7 +60,7 @@ func (f *fakeRuntime) ListProject(_ context.Context, ownerUserID, projectID stri
 	return list, nil
 }
 
-func (f *fakeRuntime) DetachWorkload(_ context.Context, kind ports.WorkloadKind, _, workloadID string) error {
+func (f *fakeRuntime) DetachWorkload(_ context.Context, kind ports.WorkloadKind, _, workloadID, _ string) error {
 	if f.detachFailed {
 		return errors.New("engine down")
 	}
@@ -544,4 +544,16 @@ func TestContinuityListProjectSurfacesReportsFacts(t *testing.T) {
 	if _, err := service.ListProjectSurfaces(ctx, "not-a-uuid", continuityProject); !errors.Is(err, domain.ErrInvalid) {
 		t.Fatalf("invalid owner must fail closed: %v", err)
 	}
+}
+
+func (f *fakeRuntime) StopWorkloadAction(ctx context.Context, kind ports.WorkloadKind, owner, id, key string, fence func() error) (ports.InteractiveWorkload, error) {
+	workload := f.workloads[id]
+	var err error
+	if !workload.Terminal {
+		workload, err = f.StopWorkload(ctx, kind, owner, id)
+	}
+	if err == nil && fence != nil {
+		err = fence()
+	}
+	return workload, err
 }

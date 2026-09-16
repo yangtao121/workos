@@ -42,6 +42,12 @@ func sessionTestConfig(t *testing.T, mode, counter string, strict bool) Config {
 	if err := os.WriteFile(pluginPath, []byte(testWorkosToolsPlugin), 0o600); err != nil {
 		t.Fatal(err)
 	}
+	if err := os.WriteFile(filepath.Join(filepath.Dir(pluginPath), "workos-session.mjs"), []byte(testWorkosToolsPlugin), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(filepath.Dir(pluginPath), "workos-workspace.mjs"), []byte(testWorkosToolsPlugin), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	runtimeEnv := []string{
 		"WORKOS_DEEPSEEK_SESSION_FIXTURE_MODE=" + mode,
 		"WORKOS_DEEPSEEK_SESSION_COUNTER=" + counter,
@@ -188,7 +194,7 @@ func TestSessionCordisConfigGeneration(t *testing.T) {
 	if !strings.Contains(generated, "root: "+filepath.Join(stateDir, "persistence")+"\n") {
 		t.Fatalf("persistence root substitution missing:\n%s", generated)
 	}
-	if !strings.Contains(generated, "workspaceRoot: "+filepath.Join(stateDir, "ws")+"\n") {
+	if !strings.Contains(generated, "workspaceRoot: /workspace\n") {
 		t.Fatalf("workspace root substitution missing:\n%s", generated)
 	}
 	if !strings.Contains(generated, "baseURL: http://127.0.0.1:18080\n") || !strings.Contains(generated, "- id: "+DefaultModel+"\n") {
@@ -377,6 +383,7 @@ func TestProviderRunsSessionTurnsThroughSessionManager(t *testing.T) {
 	execution := ports.Execution{
 		TaskID: "task-1", Input: &agentv1.AgentTaskInput{Goal: "hello"}, Credential: testLease(),
 		Session: &ports.SessionExecution{
+			Tools:     func(context.Context, string, map[string]any) (map[string]any, error) { return map[string]any{}, nil },
 			SessionID: testSessionID, StateRoot: stateRoot,
 			OwnerUserID: sessionOwner, ProjectID: sessionProject,
 		},
@@ -400,8 +407,8 @@ func TestProviderRunsSessionTurnsThroughSessionManager(t *testing.T) {
 			t.Fatalf("provider session turn %d did not complete: %#v", turn, *events)
 		}
 	}
-	if count := initializeCount(t, counter); count != 1 {
-		t.Fatalf("provider session runs did not reuse one process, initializes=%d", count)
+	if count := initializeCount(t, counter); count != 2 {
+		t.Fatalf("provider must release the credential process after each task, initializes=%d", count)
 	}
 	provider.sessions.Shutdown()
 }
@@ -503,7 +510,7 @@ func TestDeepSeekSessionRuntimeHelper(t *testing.T) {
 		_, _ = file.WriteString("initialize\n")
 		_ = file.Close()
 	}
-	respond(initialize["id"].(float64), map[string]any{"serverInfo": map[string]string{"name": "deepseek-harness-sdk-runtime", "version": "0.0.1"}})
+	respond(initialize["id"].(float64), map[string]any{"serverInfo": map[string]string{"name": "workos-deepseek-session", "version": "0.0.1"}})
 
 	for {
 		request := readRequest()

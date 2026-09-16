@@ -52,7 +52,7 @@ func (r *Repository) InsertSession(ctx context.Context, session domain.Session) 
 
 func sessionFromRow(row ptyhostdb.WorkosRuntimePtySession) domain.Session {
 	return domain.Session{
-		SessionID: row.SessionID, OwnerUserID: row.OwnerUserID, ProjectID: row.ProjectID,
+		Generation: row.Generation, SessionID: row.SessionID, OwnerUserID: row.OwnerUserID, ProjectID: row.ProjectID,
 		IdempotencyKey: row.IdempotencyKey, RequestDigest: row.RequestDigest,
 		State: domain.State(row.State), CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt,
 		ExpiresAt: row.ExpiresAt,
@@ -149,4 +149,59 @@ func (r *Repository) CountActive(ctx context.Context, ownerUserID string) (int, 
 		return 0, transient(err)
 	}
 	return int(count), nil
+}
+
+func (r *Repository) BeginRestart(ctx context.Context, owner, id, key string, now time.Time) (int64, bool, error) {
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return 0, false, err
+	}
+	defer tx.Rollback(ctx)
+	q := r.queries.WithTx(tx)
+	if _, err := q.LockPtyRestart(ctx, ptyhostdb.LockPtyRestartParams{OwnerUserID: owner, SessionID: id}); err != nil {
+		return 0, false, domain.ErrNotFound
+	}
+	previous, err := q.GetPtyRestartReceipt(ctx, ptyhostdb.GetPtyRestartReceiptParams{SessionID: id, ActionKey: key})
+	if err == nil {
+		return previous, false, tx.Commit(ctx)
+	}
+	if !errors.Is(err, pgx.ErrNoRows) {
+		return 0, false, err
+	}
+	generation, err := q.BeginPtyRestart(ctx, ptyhostdb.BeginPtyRestartParams{OwnerUserID: owner, SessionID: id, UpdatedAt: now, ExpiresAt: now.Add(domain.SessionTTL)})
+	if err != nil {
+		return 0, false, err
+	}
+	if err := q.RecordPtyRestart(ctx, ptyhostdb.RecordPtyRestartParams{SessionID: id, ActionKey: key, Generation: generation}); err != nil {
+		return 0, false, err
+	}
+	return generation, true, tx.Commit(ctx)
+}
+
+func (r *Repository) BeginStop(ctx context.Context, owner, id, key string, now time.Time) (bool, error) {
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return false, err
+	}
+	defer tx.Rollback(ctx)
+	q := r.queries.WithTx(tx)
+	generation, err := q.LockPtyRestart(ctx, ptyhostdb.LockPtyRestartParams{OwnerUserID: owner, SessionID: id})
+	if err != nil {
+		return false, domain.ErrNotFound
+	}
+	_, err = q.GetPtyStopReceipt(ctx, ptyhostdb.GetPtyStopReceiptParams{SessionID: id, ActionKey: key})
+	if err == nil {
+		return false, tx.Commit(ctx)
+	}
+	if !errors.Is(err, pgx.ErrNoRows) {
+		return false, err
+	}
+	if err = q.RecordPtyStop(ctx, ptyhostdb.RecordPtyStopParams{SessionID: id, ActionKey: key, Generation: generation}); err != nil {
+		return false, err
+	}
+	_, err = q.ClosePtySession(ctx, ptyhostdb.ClosePtySessionParams{OwnerUserID: owner, SessionID: id, State: string(domain.StateClosed), UpdatedAt: now})
+	if err != nil {
+		return false, err
+	}
+	return true, tx.Commit(ctx)
 }

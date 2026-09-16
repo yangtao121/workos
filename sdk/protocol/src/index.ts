@@ -23,3 +23,7 @@ export * from "./gen/workos/surface/v1/continuity_pb.js";
 export * from "./gen/workos/taskexecution/v1/execution_pb.js";
 export * from "./gen/workos/workload/v1/workload_pb.js";
 export * from "./gen/workos/bridge/v1/bridge_pb.js";
+
+export * from "./gen/workos/surface/v1/preview_pb.js";
+
+export * from "./gen/workos/agent/v1/interaction_pb.js";

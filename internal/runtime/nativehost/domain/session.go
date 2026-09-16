@@ -34,6 +34,7 @@ const (
 )
 
 var (
+	ErrControlDenied     = errors.New("native control lease denied")
 	ErrInvalid           = errors.New("native session request is invalid")
 	ErrNotFound          = errors.New("native session not found")
 	ErrIdempotencyDrift  = errors.New("native session replay request drifted")
@@ -44,6 +45,7 @@ var (
 
 // Session is the durable native session row.
 type Session struct {
+	Generation     int64
 	SessionID      string
 	OwnerUserID    string
 	ProjectID      string

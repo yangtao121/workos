@@ -82,7 +82,59 @@ message ArchiveWorkspaceResponse {
   WorkspaceBinding binding = 1;
 }
 
+message AvailableWorkspaceSource {
+  string id = 1;
+  string display_name = 2;
+  string kind = 3;
+  bool read_only = 4;
+}
+message ListAvailableWorkspacesRequest {
+  string project_id = 1;
+}
+message ListAvailableWorkspacesResponse {
+  repeated AvailableWorkspaceSource sources = 1;
+}
+message WorkspaceFileEntry {
+  string path = 1;
+  string kind = 2;
+  int64 size = 3;
+}
+message ListWorkspaceFilesRequest {
+  string project_id = 1;
+  string path = 2;
+}
+message ListWorkspaceFilesResponse {
+  repeated WorkspaceFileEntry entries = 1;
+  int64 workspace_revision = 2;
+  bool read_only = 3;
+}
+message ReadWorkspaceFileRequest {
+  string project_id = 1;
+  string path = 2;
+}
+message ReadWorkspaceFileResponse {
+  string content = 1;
+  string etag = 2;
+  int64 workspace_revision = 3;
+  bool read_only = 4;
+}
+message WriteWorkspaceFileRequest {
+  string project_id = 1;
+  string path = 2;
+  string content = 3;
+  string expected_etag = 4;
+  int64 workspace_revision = 5;
+}
+message WriteWorkspaceFileResponse {
+  string etag = 1;
+}
 service ProjectWorkspaceService {
+  rpc ListWorkspaceFiles(ListWorkspaceFilesRequest) returns (ListWorkspaceFilesResponse) {}
+  rpc ReadWorkspaceFile(ReadWorkspaceFileRequest) returns (ReadWorkspaceFileResponse) {}
+  rpc WriteWorkspaceFile(WriteWorkspaceFileRequest) returns (WriteWorkspaceFileResponse) {}
+
+  rpc ListAvailableWorkspaces(ListAvailableWorkspacesRequest) returns (ListAvailableWorkspacesResponse) {}
+
   // BindWorkspace creates the single-owner association between a project and
   // an operator-registered workspace source. The source must be currently
   // reported by the runtime host; a client-supplied source id that the
@@ -93,7 +145,19 @@ service ProjectWorkspaceService {
   // UpdateWorkspaceAccess flips the read/write mode under optimistic
   // revision control. A read-only binding must fail every workspace write.
   rpc UpdateWorkspaceAccess(UpdateWorkspaceAccessRequest) returns (UpdateWorkspaceAccessResponse) {}
-  // ArchiveWorkspace blocks new executions against this binding; running
-  // executions finish under their pinned revision.
+  // ArchiveWorkspace revokes the binding; Runtime rechecks active executions.
   rpc ArchiveWorkspace(ArchiveWorkspaceRequest) returns (ArchiveWorkspaceResponse) {}
+}
+
+// Private Runtime-to-Core authorization; never routed by Gateway. The caller
+// is Runtime, which derives owner/project from authenticated session facts.
+message ResolveWorkspaceExecutionRequest {
+  string owner_user_id = 1;
+  string project_id = 2;
+}
+message ResolveWorkspaceExecutionResponse {
+  WorkspaceBinding binding = 1;
+}
+service WorkspaceExecutionAuthorizationService {
+  rpc ResolveWorkspaceExecution(ResolveWorkspaceExecutionRequest) returns (ResolveWorkspaceExecutionResponse) {}
 }

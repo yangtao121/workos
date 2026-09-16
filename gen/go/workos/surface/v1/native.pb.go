@@ -254,11 +254,12 @@ func (x *CreateNativeSessionResponse) GetSession() *NativeSession {
 // carry complete ICE candidates (no trickle). Each peer expires after 30 seconds;
 // continuing media/input requires another authenticated Connect through Gateway.
 type ConnectNativeSessionRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	SessionId     string                 `protobuf:"bytes,1,opt,name=session_id,json=sessionId,proto3" json:"session_id,omitempty"`
-	OfferSdp      string                 `protobuf:"bytes,2,opt,name=offer_sdp,json=offerSdp,proto3" json:"offer_sdp,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state             protoimpl.MessageState `protogen:"open.v1"`
+	SessionId         string                 `protobuf:"bytes,1,opt,name=session_id,json=sessionId,proto3" json:"session_id,omitempty"`
+	OfferSdp          string                 `protobuf:"bytes,2,opt,name=offer_sdp,json=offerSdp,proto3" json:"offer_sdp,omitempty"`
+	ControlGeneration int64                  `protobuf:"varint,3,opt,name=control_generation,json=controlGeneration,proto3" json:"control_generation,omitempty"`
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
 }
 
 func (x *ConnectNativeSessionRequest) Reset() {
@@ -303,6 +304,13 @@ func (x *ConnectNativeSessionRequest) GetOfferSdp() string {
 		return x.OfferSdp
 	}
 	return ""
+}
+
+func (x *ConnectNativeSessionRequest) GetControlGeneration() int64 {
+	if x != nil {
+		return x.ControlGeneration
+	}
+	return 0
 }
 
 type ConnectNativeSessionResponse struct {
@@ -738,11 +746,12 @@ const file_workos_surface_v1_native_proto_rawDesc = "" +
 	"\x05width\x18\x03 \x01(\x05R\x05width\x12\x16\n" +
 	"\x06height\x18\x04 \x01(\x05R\x06height\"Y\n" +
 	"\x1bCreateNativeSessionResponse\x12:\n" +
-	"\asession\x18\x01 \x01(\v2 .workos.surface.v1.NativeSessionR\asession\"Y\n" +
+	"\asession\x18\x01 \x01(\v2 .workos.surface.v1.NativeSessionR\asession\"\x88\x01\n" +
 	"\x1bConnectNativeSessionRequest\x12\x1d\n" +
 	"\n" +
 	"session_id\x18\x01 \x01(\tR\tsessionId\x12\x1b\n" +
-	"\toffer_sdp\x18\x02 \x01(\tR\bofferSdp\"y\n" +
+	"\toffer_sdp\x18\x02 \x01(\tR\bofferSdp\x12-\n" +
+	"\x12control_generation\x18\x03 \x01(\x03R\x11controlGeneration\"y\n" +
 	"\x1cConnectNativeSessionResponse\x12:\n" +
 	"\asession\x18\x01 \x01(\v2 .workos.surface.v1.NativeSessionR\asession\x12\x1d\n" +
 	"\n" +

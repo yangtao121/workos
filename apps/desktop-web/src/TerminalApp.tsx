@@ -21,6 +21,7 @@ export function TerminalApp(props: { workosClients?: WorkOSClients; activeProjec
   const [stopping, setStopping] = useState(false);
   const cursorRef = useRef(0n);
   const controlsRef = useRef(true);
+  const controlGeneration = useRef(0n);
   // Terminal input is order-sensitive: writes serialize through one promise
   // chain so concurrent per-key RPCs cannot transpose characters.
   const writeChainRef = useRef<Promise<unknown>>(Promise.resolve());
@@ -53,13 +54,15 @@ export function TerminalApp(props: { workosClients?: WorkOSClients; activeProjec
             idempotencyKey: `desktop-terminal-attach-${crypto.randomUUID()}`,
           });
           if (isCancelled()) return;
+          controlGeneration.current = attached.attachment?.controlGeneration ?? 0n;
           controlsRef.current = attached.attachment?.controls ?? false;
           setControls(controlsRef.current);
           setSessionId(attached.session?.id ?? live.workloadId);
           return;
         }
       } catch {
-        // Surface continuity unavailable in this deployment.
+        setVerdict("Could not discover running terminals. Retry after reconnecting.");
+        return;
       }
       try {
         const created = await clients.ptySessions.createPtySession({
@@ -70,8 +73,14 @@ export function TerminalApp(props: { workosClients?: WorkOSClients; activeProjec
         });
         if (isCancelled()) return;
         if (created.session?.id) {
-          controlsRef.current = true;
-          setControls(true);
+          const attached = await clients.surfaceContinuity.attachSurface({
+            workloadId: created.session.id,
+            idempotencyKey: `desktop-terminal-attach-${crypto.randomUUID()}`,
+          });
+          if (isCancelled()) return;
+          controlGeneration.current = attached.attachment?.controlGeneration ?? 0n;
+          controlsRef.current = attached.attachment?.controls ?? false;
+          setControls(controlsRef.current);
           setSessionId(created.session.id);
         }
       } catch {
@@ -143,6 +152,7 @@ export function TerminalApp(props: { workosClients?: WorkOSClients; activeProjec
     void clients.surfaceContinuity
       .requestSurfaceControl({ surfaceSessionId: sessionId })
       .then((response) => {
+        controlGeneration.current = response.attachment?.controlGeneration ?? 0n;
         controlsRef.current = response.attachment?.controls ?? false;
         setControls(controlsRef.current);
       })
@@ -174,8 +184,13 @@ export function TerminalApp(props: { workosClients?: WorkOSClients; activeProjec
       if (!clients || !sessionId || closed || !controlsRef.current) return;
       const encoded = new TextEncoder().encode(data);
       if (encoded.length === 0 || encoded.length > 16384) return;
+      const epoch = controlGeneration.current;
       writeChainRef.current = writeChainRef.current.then(() =>
-        clients.ptySessions.writePtySession({ sessionId, input: encoded }),
+        clients.ptySessions.writePtySession({
+          sessionId,
+          input: encoded,
+          controlGeneration: epoch,
+        }),
       );
       writeChainRef.current = writeChainRef.current.catch(() => {
         setVerdict("The terminal session ended.");

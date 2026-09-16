@@ -48,7 +48,7 @@ func (h *PtyHandler) WritePtySession(ctx context.Context, req *connect.Request[s
 	}
 	// The gateway-injected device identity rides along: the application
 	// consults the workload's control lease on every write (ADR-0031 §4).
-	session, err := h.service.Write(ctx, owner.UserID, owner.DeviceID, req.Msg.GetSessionId(), req.Msg.GetInput())
+	session, err := h.service.Write(ctx, owner.UserID, owner.DeviceID, req.Msg.GetSessionId(), req.Msg.GetInput(), req.Msg.GetControlGeneration())
 	if err != nil {
 		return nil, ptyError(err)
 	}
@@ -73,7 +73,7 @@ func (h *PtyHandler) ResizePtySession(ctx context.Context, req *connect.Request[
 		return nil, connect.NewError(connect.CodeUnauthenticated, err)
 	}
 	// Resize is control-path input like write: the current lease decides.
-	session, err := h.service.Resize(ctx, owner.UserID, owner.DeviceID, req.Msg.GetSessionId(), req.Msg.GetColumns(), req.Msg.GetRows())
+	session, err := h.service.Resize(ctx, owner.UserID, owner.DeviceID, req.Msg.GetSessionId(), req.Msg.GetColumns(), req.Msg.GetRows(), req.Msg.GetControlGeneration())
 	if err != nil {
 		return nil, ptyError(err)
 	}

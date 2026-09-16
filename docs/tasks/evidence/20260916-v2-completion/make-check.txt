@@ -1,0 +1,387 @@
+docker run --rm --user 1000:1000 -e HOME=/tmp -v /home/aquatao/workos:/workspace -w /workspace bufbuild/buf:1.55.1 format --diff --exit-code
+docker run --rm --user 1000:1000 -e HOME=/tmp -v /home/aquatao/workos:/workspace -w /workspace bufbuild/buf:1.55.1 lint
+docker run --rm --user 1000:1000 -e HOME=/tmp -v /home/aquatao/workos:/src -w /src sqlc/sqlc:1.30.0 vet
+docker run --rm --user 1000:1000 -e HOME=/tmp -e GOPATH=/tmp/workos-go -e GOMODCACHE=/go/pkg/mod -e GOCACHE=/tmp/go-cache -e GOPROXY=off -e GOMAXPROCS=4 -v /home/aquatao/workos:/workspace -w /workspace -v workos-go-cache:/go/pkg/mod -v /home/aquatao/workos/tmp/go-build-cache:/tmp/go-cache golang:1.26.7-bookworm sh -c 'test -z "$(gofmt -l cmd internal tests 2>/dev/null)" && go vet ./... && go test ./...'
+?   	github.com/yangtao121/workos/cmd/browser-worker-fixture	[no test files]
+?   	github.com/yangtao121/workos/cmd/codex-app-server-fixture	[no test files]
+?   	github.com/yangtao121/workos/cmd/generic-harness-fixture	[no test files]
+?   	github.com/yangtao121/workos/cmd/harness-host	[no test files]
+?   	github.com/yangtao121/workos/cmd/indexer	[no test files]
+?   	github.com/yangtao121/workos/cmd/mcp-server-fixture	[no test files]
+?   	github.com/yangtao121/workos/cmd/reliability-host	[no test files]
+?   	github.com/yangtao121/workos/cmd/runtime-host	[no test files]
+?   	github.com/yangtao121/workos/cmd/workos-core	[no test files]
+?   	github.com/yangtao121/workos/cmd/workos-gateway	[no test files]
+?   	github.com/yangtao121/workos/cmd/workos-mdns-announce	[no test files]
+?   	github.com/yangtao121/workos/cmd/workos-scaffold	[no test files]
+ok  	github.com/yangtao121/workos/cmd/workosctl	(cached)
+?   	github.com/yangtao121/workos/gen/go/workos/agent/v1	[no test files]
+?   	github.com/yangtao121/workos/gen/go/workos/agent/v1/agentv1connect	[no test files]
+?   	github.com/yangtao121/workos/gen/go/workos/app/v1	[no test files]
+?   	github.com/yangtao121/workos/gen/go/workos/app/v1/appv1connect	[no test files]
+?   	github.com/yangtao121/workos/gen/go/workos/artifact/v1	[no test files]
+?   	github.com/yangtao121/workos/gen/go/workos/artifact/v1/artifactv1connect	[no test files]
+?   	github.com/yangtao121/workos/gen/go/workos/auth/v1	[no test files]
+?   	github.com/yangtao121/workos/gen/go/workos/auth/v1/authv1connect	[no test files]
+?   	github.com/yangtao121/workos/gen/go/workos/bridge/v1	[no test files]
+?   	github.com/yangtao121/workos/gen/go/workos/bridge/v1/bridgev1connect	[no test files]
+?   	github.com/yangtao121/workos/gen/go/workos/common/v1	[no test files]
+?   	github.com/yangtao121/workos/gen/go/workos/common/v1/commonv1connect	[no test files]
+?   	github.com/yangtao121/workos/gen/go/workos/credential/v1	[no test files]
+?   	github.com/yangtao121/workos/gen/go/workos/credential/v1/credentialv1connect	[no test files]
+?   	github.com/yangtao121/workos/gen/go/workos/harness/v1	[no test files]
+?   	github.com/yangtao121/workos/gen/go/workos/harness/v1/harnessv1connect	[no test files]
+?   	github.com/yangtao121/workos/gen/go/workos/incident/v1	[no test files]
+?   	github.com/yangtao121/workos/gen/go/workos/incident/v1/incidentv1connect	[no test files]
+?   	github.com/yangtao121/workos/gen/go/workos/index/v1	[no test files]
+?   	github.com/yangtao121/workos/gen/go/workos/index/v1/indexv1connect	[no test files]
+?   	github.com/yangtao121/workos/gen/go/workos/notification/v1	[no test files]
+?   	github.com/yangtao121/workos/gen/go/workos/notification/v1/notificationv1connect	[no test files]
+?   	github.com/yangtao121/workos/gen/go/workos/project/v1	[no test files]
+?   	github.com/yangtao121/workos/gen/go/workos/project/v1/projectv1connect	[no test files]
+?   	github.com/yangtao121/workos/gen/go/workos/surface/v1	[no test files]
+?   	github.com/yangtao121/workos/gen/go/workos/surface/v1/surfacev1connect	[no test files]
+?   	github.com/yangtao121/workos/gen/go/workos/taskexecution/v1	[no test files]
+?   	github.com/yangtao121/workos/gen/go/workos/taskexecution/v1/taskexecutionv1connect	[no test files]
+?   	github.com/yangtao121/workos/gen/go/workos/workload/v1	[no test files]
+?   	github.com/yangtao121/workos/gen/go/workos/workload/v1/workloadv1connect	[no test files]
+ok  	github.com/yangtao121/workos/internal/architecture	0.057s
+?   	github.com/yangtao121/workos/internal/core/agent/adapters/postgres	[no test files]
+?   	github.com/yangtao121/workos/internal/core/agent/adapters/postgres/agentdb	[no test files]
+ok  	github.com/yangtao121/workos/internal/core/agent/application	(cached)
+ok  	github.com/yangtao121/workos/internal/core/agent/domain	(cached)
+?   	github.com/yangtao121/workos/internal/core/agent/ports	[no test files]
+ok  	github.com/yangtao121/workos/internal/core/agent/transport	(cached)
+ok  	github.com/yangtao121/workos/internal/core/appregistry/adapters/manifestvalidator	(cached)
+?   	github.com/yangtao121/workos/internal/core/appregistry/adapters/postgres	[no test files]
+?   	github.com/yangtao121/workos/internal/core/appregistry/adapters/postgres/appdb	[no test files]
+ok  	github.com/yangtao121/workos/internal/core/appregistry/application	(cached)
+ok  	github.com/yangtao121/workos/internal/core/appregistry/domain	(cached)
+?   	github.com/yangtao121/workos/internal/core/appregistry/ports	[no test files]
+ok  	github.com/yangtao121/workos/internal/core/appregistry/transport	(cached)
+?   	github.com/yangtao121/workos/internal/core/artifact/adapters/postgres	[no test files]
+?   	github.com/yangtao121/workos/internal/core/artifact/adapters/postgres/artifactdb	[no test files]
+ok  	github.com/yangtao121/workos/internal/core/artifact/application	(cached)
+ok  	github.com/yangtao121/workos/internal/core/artifact/domain	(cached)
+?   	github.com/yangtao121/workos/internal/core/artifact/ports	[no test files]
+ok  	github.com/yangtao121/workos/internal/core/artifact/transport	(cached)
+ok  	github.com/yangtao121/workos/internal/core/credential/adapters/cipher	(cached)
+?   	github.com/yangtao121/workos/internal/core/credential/adapters/postgres	[no test files]
+?   	github.com/yangtao121/workos/internal/core/credential/adapters/postgres/credentialdb	[no test files]
+?   	github.com/yangtao121/workos/internal/core/credential/application	[no test files]
+ok  	github.com/yangtao121/workos/internal/core/credential/domain	(cached)
+?   	github.com/yangtao121/workos/internal/core/credential/ports	[no test files]
+?   	github.com/yangtao121/workos/internal/core/credential/transport	[no test files]
+ok  	github.com/yangtao121/workos/internal/core/harnesscatalog/adapters/harnesshost	(cached)
+ok  	github.com/yangtao121/workos/internal/core/harnesscatalog/application	(cached)
+?   	github.com/yangtao121/workos/internal/core/harnesscatalog/domain	[no test files]
+?   	github.com/yangtao121/workos/internal/core/harnesscatalog/ports	[no test files]
+ok  	github.com/yangtao121/workos/internal/core/harnesscatalog/transport	(cached)
+?   	github.com/yangtao121/workos/internal/core/indexfeed/adapters/postgres	[no test files]
+?   	github.com/yangtao121/workos/internal/core/indexfeed/adapters/postgres/indexfeeddb	[no test files]
+?   	github.com/yangtao121/workos/internal/core/indexfeed/application	[no test files]
+?   	github.com/yangtao121/workos/internal/core/indexfeed/domain	[no test files]
+?   	github.com/yangtao121/workos/internal/core/indexfeed/ports	[no test files]
+?   	github.com/yangtao121/workos/internal/core/indexfeed/transport	[no test files]
+?   	github.com/yangtao121/workos/internal/core/notification/adapters/fixturerelay	[no test files]
+?   	github.com/yangtao121/workos/internal/core/notification/adapters/postgres	[no test files]
+?   	github.com/yangtao121/workos/internal/core/notification/adapters/postgres/notificationdb	[no test files]
+?   	github.com/yangtao121/workos/internal/core/notification/adapters/reliabilityclient	[no test files]
+?   	github.com/yangtao121/workos/internal/core/notification/adapters/unavailable	[no test files]
+ok  	github.com/yangtao121/workos/internal/core/notification/adapters/webpush	(cached)
+ok  	github.com/yangtao121/workos/internal/core/notification/application	(cached)
+ok  	github.com/yangtao121/workos/internal/core/notification/domain	(cached)
+?   	github.com/yangtao121/workos/internal/core/notification/ports	[no test files]
+ok  	github.com/yangtao121/workos/internal/core/notification/transport	(cached)
+ok  	github.com/yangtao121/workos/internal/core/orchestration	(cached)
+ok  	github.com/yangtao121/workos/internal/core/orchestration/transport	(cached)
+ok  	github.com/yangtao121/workos/internal/core/project/adapters/postgres	(cached)
+?   	github.com/yangtao121/workos/internal/core/project/adapters/postgres/projectdb	[no test files]
+?   	github.com/yangtao121/workos/internal/core/project/adapters/workspaceclient	[no test files]
+ok  	github.com/yangtao121/workos/internal/core/project/application	(cached)
+ok  	github.com/yangtao121/workos/internal/core/project/domain	(cached)
+?   	github.com/yangtao121/workos/internal/core/project/ports	[no test files]
+ok  	github.com/yangtao121/workos/internal/core/project/transport	(cached)
+ok  	github.com/yangtao121/workos/internal/gateway	(cached)
+?   	github.com/yangtao121/workos/internal/gateway/auth/adapters/corepush	[no test files]
+ok  	github.com/yangtao121/workos/internal/gateway/auth/adapters/postgres	(cached)
+?   	github.com/yangtao121/workos/internal/gateway/auth/adapters/postgres/gatewayauthdb	[no test files]
+?   	github.com/yangtao121/workos/internal/gateway/auth/adapters/randsource	[no test files]
+ok  	github.com/yangtao121/workos/internal/gateway/auth/application	(cached)
+ok  	github.com/yangtao121/workos/internal/gateway/auth/domain	(cached)
+?   	github.com/yangtao121/workos/internal/gateway/auth/ports	[no test files]
+ok  	github.com/yangtao121/workos/internal/gateway/auth/transport	(cached)
+ok  	github.com/yangtao121/workos/internal/harness/adapters/codex	(cached)
+ok  	github.com/yangtao121/workos/internal/harness/adapters/deepseek	(cached)
+ok  	github.com/yangtao121/workos/internal/harness/adapters/fake	(cached)
+ok  	github.com/yangtao121/workos/internal/harness/adapters/genericcli	(cached)
+ok  	github.com/yangtao121/workos/internal/harness/adapters/mcp	(cached)
+ok  	github.com/yangtao121/workos/internal/harness/broker	(cached)
+?   	github.com/yangtao121/workos/internal/harness/ports	[no test files]
+?   	github.com/yangtao121/workos/internal/harness/transport	[no test files]
+ok  	github.com/yangtao121/workos/internal/harness/worker	(cached)
+?   	github.com/yangtao121/workos/internal/indexer/adapters/coreclient	[no test files]
+ok  	github.com/yangtao121/workos/internal/indexer/adapters/localembedding	(cached)
+ok  	github.com/yangtao121/workos/internal/indexer/adapters/localmount	(cached)
+?   	github.com/yangtao121/workos/internal/indexer/adapters/postgres	[no test files]
+?   	github.com/yangtao121/workos/internal/indexer/adapters/postgres/indexerdb	[no test files]
+ok  	github.com/yangtao121/workos/internal/indexer/application	(cached)
+ok  	github.com/yangtao121/workos/internal/indexer/domain	(cached)
+?   	github.com/yangtao121/workos/internal/indexer/ports	[no test files]
+ok  	github.com/yangtao121/workos/internal/indexer/transport	(cached)
+ok  	github.com/yangtao121/workos/internal/platform/config	(cached)
+?   	github.com/yangtao121/workos/internal/platform/containerprocess	[no test files]
+?   	github.com/yangtao121/workos/internal/platform/database	[no test files]
+ok  	github.com/yangtao121/workos/internal/platform/dbtransient	(cached)
+?   	github.com/yangtao121/workos/internal/platform/dbtx	[no test files]
+ok  	github.com/yangtao121/workos/internal/platform/httpserver	(cached)
+?   	github.com/yangtao121/workos/internal/platform/identity	[no test files]
+?   	github.com/yangtao121/workos/internal/platform/ids	[no test files]
+?   	github.com/yangtao121/workos/internal/platform/logging	[no test files]
+?   	github.com/yangtao121/workos/internal/platform/migrations	[no test files]
+ok  	github.com/yangtao121/workos/internal/platform/privatetls	(cached)
+ok  	github.com/yangtao121/workos/internal/platform/scaffold	(cached)
+?   	github.com/yangtao121/workos/internal/platform/systemhandler	[no test files]
+ok  	github.com/yangtao121/workos/internal/platform/telemetry	(cached)
+?   	github.com/yangtao121/workos/internal/platform/transportprovider	[no test files]
+?   	github.com/yangtao121/workos/internal/platform/transportprovider/lansd	[no test files]
+?   	github.com/yangtao121/workos/internal/reliability/adapters/postgres	[no test files]
+?   	github.com/yangtao121/workos/internal/reliability/adapters/postgres/reliabilitydb	[no test files]
+?   	github.com/yangtao121/workos/internal/reliability/adapters/telemetryfile	[no test files]
+ok  	github.com/yangtao121/workos/internal/reliability/application	(cached)
+?   	github.com/yangtao121/workos/internal/reliability/domain	[no test files]
+?   	github.com/yangtao121/workos/internal/reliability/ports	[no test files]
+ok  	github.com/yangtao121/workos/internal/reliability/transport	(cached)
+?   	github.com/yangtao121/workos/internal/runtime/browserpool/adapters/chromiumengine	[no test files]
+?   	github.com/yangtao121/workos/internal/runtime/browserpool/adapters/postgres	[no test files]
+?   	github.com/yangtao121/workos/internal/runtime/browserpool/adapters/postgres/browserpooldb	[no test files]
+?   	github.com/yangtao121/workos/internal/runtime/browserpool/application	[no test files]
+?   	github.com/yangtao121/workos/internal/runtime/browserpool/domain	[no test files]
+?   	github.com/yangtao121/workos/internal/runtime/browserpool/ports	[no test files]
+?   	github.com/yangtao121/workos/internal/runtime/browserpool/transport	[no test files]
+?   	github.com/yangtao121/workos/internal/runtime/buildtest/adapters/postgres	[no test files]
+?   	github.com/yangtao121/workos/internal/runtime/buildtest/adapters/postgres/buildtestdb	[no test files]
+?   	github.com/yangtao121/workos/internal/runtime/buildtest/adapters/processexec	[no test files]
+ok  	github.com/yangtao121/workos/internal/runtime/buildtest/application	(cached)
+?   	github.com/yangtao121/workos/internal/runtime/buildtest/domain	[no test files]
+?   	github.com/yangtao121/workos/internal/runtime/buildtest/ports	[no test files]
+?   	github.com/yangtao121/workos/internal/runtime/buildtest/transport	[no test files]
+?   	github.com/yangtao121/workos/internal/runtime/nativehost/adapters/postgres	[no test files]
+?   	github.com/yangtao121/workos/internal/runtime/nativehost/adapters/postgres/nativehostdb	[no test files]
+ok  	github.com/yangtao121/workos/internal/runtime/nativehost/adapters/xvfbengine	(cached)
+ok  	github.com/yangtao121/workos/internal/runtime/nativehost/application	(cached)
+?   	github.com/yangtao121/workos/internal/runtime/nativehost/domain	[no test files]
+?   	github.com/yangtao121/workos/internal/runtime/nativehost/ports	[no test files]
+?   	github.com/yangtao121/workos/internal/runtime/nativehost/transport	[no test files]
+?   	github.com/yangtao121/workos/internal/runtime/previewhost/adapters/dockerpreview	[no test files]
+?   	github.com/yangtao121/workos/internal/runtime/previewhost/adapters/postgres	[no test files]
+?   	github.com/yangtao121/workos/internal/runtime/previewhost/adapters/postgres/previewdb	[no test files]
+?   	github.com/yangtao121/workos/internal/runtime/previewhost/application	[no test files]
+?   	github.com/yangtao121/workos/internal/runtime/previewhost/domain	[no test files]
+?   	github.com/yangtao121/workos/internal/runtime/previewhost/ports	[no test files]
+ok  	github.com/yangtao121/workos/internal/runtime/previewhost/transport	(cached)
+?   	github.com/yangtao121/workos/internal/runtime/ptyhost/adapters/dockerpty	[no test files]
+?   	github.com/yangtao121/workos/internal/runtime/ptyhost/adapters/postgres	[no test files]
+?   	github.com/yangtao121/workos/internal/runtime/ptyhost/adapters/postgres/ptyhostdb	[no test files]
+ok  	github.com/yangtao121/workos/internal/runtime/ptyhost/adapters/shellexec	(cached)
+?   	github.com/yangtao121/workos/internal/runtime/ptyhost/application	[no test files]
+?   	github.com/yangtao121/workos/internal/runtime/ptyhost/domain	[no test files]
+?   	github.com/yangtao121/workos/internal/runtime/ptyhost/ports	[no test files]
+?   	github.com/yangtao121/workos/internal/runtime/ptyhost/transport	[no test files]
+ok  	github.com/yangtao121/workos/internal/runtime/surface/adapters/coreclient	(cached)
+ok  	github.com/yangtao121/workos/internal/runtime/surface/adapters/indexerclient	(cached)
+ok  	github.com/yangtao121/workos/internal/runtime/surface/adapters/postgres	(cached)
+?   	github.com/yangtao121/workos/internal/runtime/surface/adapters/postgres/surfacedb	[no test files]
+ok  	github.com/yangtao121/workos/internal/runtime/surface/adapters/workspace	(cached)
+ok  	github.com/yangtao121/workos/internal/runtime/surface/application	(cached)
+ok  	github.com/yangtao121/workos/internal/runtime/surface/domain	(cached)
+?   	github.com/yangtao121/workos/internal/runtime/surface/ports	[no test files]
+ok  	github.com/yangtao121/workos/internal/runtime/surface/transport	(cached)
+?   	github.com/yangtao121/workos/internal/runtime/transport	[no test files]
+?   	github.com/yangtao121/workos/internal/runtime/workload/adapters/fakefixture	[no test files]
+ok  	github.com/yangtao121/workos/internal/runtime/workload/adapters/podman	(cached)
+ok  	github.com/yangtao121/workos/internal/runtime/workload/adapters/postgres	(cached)
+?   	github.com/yangtao121/workos/internal/runtime/workload/adapters/postgres/workloaddb	[no test files]
+ok  	github.com/yangtao121/workos/internal/runtime/workload/application	(cached)
+ok  	github.com/yangtao121/workos/internal/runtime/workload/domain	(cached)
+?   	github.com/yangtao121/workos/internal/runtime/workload/ports	[no test files]
+ok  	github.com/yangtao121/workos/internal/runtime/workload/transport	(cached)
+?   	github.com/yangtao121/workos/internal/runtime/workspacehost/adapters/coreclient	[no test files]
+ok  	github.com/yangtao121/workos/internal/runtime/workspacehost/adapters/dockerexec	0.007s
+ok  	github.com/yangtao121/workos/internal/runtime/workspacehost/adapters/localfs	(cached)
+?   	github.com/yangtao121/workos/internal/runtime/workspacehost/adapters/postgres	[no test files]
+?   	github.com/yangtao121/workos/internal/runtime/workspacehost/adapters/postgres/workspacedb	[no test files]
+ok  	github.com/yangtao121/workos/internal/runtime/workspacehost/application	(cached)
+?   	github.com/yangtao121/workos/internal/runtime/workspacehost/domain	[no test files]
+?   	github.com/yangtao121/workos/internal/runtime/workspacehost/ports	[no test files]
+?   	github.com/yangtao121/workos/internal/runtime/workspacehost/transport	[no test files]
+?   	github.com/yangtao121/workos/schemas	[no test files]
+ok  	github.com/yangtao121/workos/tests/devauth	(cached)
+?   	github.com/yangtao121/workos/tests/fixtures/deepseekapi	[no test files]
+?   	github.com/yangtao121/workos/tests/fixtures/embedding	[no test files]
+ok  	github.com/yangtao121/workos/tests/fixtures/pushrelay	(cached)
+?   	github.com/yangtao121/workos/tests/fixtures/workspaceexecution	[no test files]
+?   	github.com/yangtao121/workos/tests/lanpairing/gencert	[no test files]
+?   	github.com/yangtao121/workos/tests/podmanfixture/fixture	[no test files]
+?   	github.com/yangtao121/workos/tests/restart	[no test files]
+docker run --rm --user 1000:1000 -e HOME=/tmp -e COREPACK_NPM_REGISTRY=https://registry.npmmirror.com -e npm_config_registry=https://registry.npmmirror.com -v /home/aquatao/workos:/workspace -w /workspace node:24.19.0-bookworm-slim sh -c 'corepack pnpm architecture && corepack pnpm exec eslint . && corepack pnpm exec prettier --check . && corepack pnpm -r --if-present check && corepack pnpm --filter @workos/desktop-web build'
+$ node tools/architecture/check.mjs
+Architecture check passed for 13 TypeScript workspaces.
+Checking formatting...
+All matched files use Prettier code style!
+Scope: 13 of 14 workspace projects
+clients/ui-kit check$ tsc --noEmit
+clients/window-manager check$ tsc --noEmit && vitest run
+sdk/protocol check$ tsc --noEmit
+clients/ui-kit check: Done
+clients/window-manager check:  RUN  v4.1.11 /workspace/clients/window-manager
+sdk/protocol check: Done
+clients/window-manager check:  ✓ src/index.test.ts (10 tests) 15ms
+clients/window-manager check:  Test Files  1 passed (1)
+clients/window-manager check:       Tests  10 passed (10)
+clients/window-manager check:    Start at  05:30:48
+clients/window-manager check:    Duration  341ms (transform 72ms, setup 0ms, import 96ms, tests 15ms, environment 0ms)
+clients/window-manager check: Done
+clients/adaptive-shell check$ tsc --noEmit && vitest run
+clients/agent-center check$ tsc --noEmit
+clients/artifact-viewer check$ tsc --noEmit
+clients/device-auth check$ tsc --noEmit && vitest run src
+clients/agent-center check: Done
+sdk/agent-sdk check$ tsc --noEmit && vitest run src
+clients/artifact-viewer check: Done
+sdk/surface-sdk check$ tsc --noEmit && vitest run src
+clients/adaptive-shell check:  RUN  v4.1.11 /workspace/clients/adaptive-shell
+clients/device-auth check:  RUN  v4.1.11 /workspace/clients/device-auth
+clients/adaptive-shell check:  ✓ src/storage.test.ts (12 tests) 21ms
+clients/adaptive-shell check:  ✓ src/projection.test.ts (6 tests) 10ms
+clients/device-auth check:  ✓ src/keys.test.ts (1 test) 34ms
+clients/device-auth check:  ✓ src/backend.test.ts (3 tests) 40ms
+clients/adaptive-shell check:  ✓ src/device.test.ts (5 tests) 8ms
+clients/adaptive-shell check:  ✓ src/store.test.ts (6 tests) 13ms
+clients/adaptive-shell check:  ✓ src/layout.test.ts (10 tests) 17ms
+clients/adaptive-shell check:  ✓ src/hook.test.ts (1 test) 6ms
+clients/adaptive-shell check:  Test Files  6 passed (6)
+clients/adaptive-shell check:       Tests  40 passed (40)
+clients/adaptive-shell check:    Start at  05:30:51
+clients/adaptive-shell check:    Duration  857ms (transform 1.65s, setup 0ms, import 2.64s, tests 75ms, environment 1ms)
+clients/adaptive-shell check: Done
+clients/device-auth check:  ✓ src/challenge.test.ts (1 test) 8ms
+clients/device-auth check:  ✓ src/storage-failure.test.ts (1 test) 9ms
+clients/device-auth check:  ✓ src/transcript.test.ts (4 tests) 20ms
+clients/device-auth check:  Test Files  5 passed (5)
+clients/device-auth check:       Tests  10 passed (10)
+clients/device-auth check:    Start at  05:30:51
+clients/device-auth check:    Duration  820ms (transform 967ms, setup 0ms, import 1.88s, tests 111ms, environment 1ms)
+clients/device-auth check: Done
+sdk/surface-sdk check:  RUN  v4.1.11 /workspace/sdk/surface-sdk
+sdk/agent-sdk check:  RUN  v4.1.11 /workspace/sdk/agent-sdk
+sdk/surface-sdk check:  ✓ src/index.test.ts (5 tests) 11ms
+sdk/surface-sdk check:  Test Files  1 passed (1)
+sdk/surface-sdk check:       Tests  5 passed (5)
+sdk/surface-sdk check:    Start at  05:30:53
+sdk/surface-sdk check:    Duration  328ms (transform 66ms, setup 0ms, import 88ms, tests 11ms, environment 0ms)
+sdk/surface-sdk check: Done
+sdk/agent-sdk check:  ✓ src/notifications.test.ts (2 tests) 19ms
+sdk/agent-sdk check:  Test Files  1 passed (1)
+sdk/agent-sdk check:       Tests  2 passed (2)
+sdk/agent-sdk check:    Start at  05:30:53
+sdk/agent-sdk check:    Duration  777ms (transform 338ms, setup 0ms, import 527ms, tests 19ms, environment 0ms)
+sdk/agent-sdk check: Done
+apps/mobile-shell check$ tsc --noEmit && vitest run --exclude 'e2e/**'
+clients/app-host check$ tsc --noEmit && vitest run src
+sdk/app-sdk check$ tsc --noEmit && vitest run src
+sdk/app-sdk check:  RUN  v4.1.11 /workspace/sdk/app-sdk
+clients/app-host check:  RUN  v4.1.11 /workspace/clients/app-host
+sdk/app-sdk check:  ✓ src/index.test.ts (16 tests) 159ms
+sdk/app-sdk check:  Test Files  1 passed (1)
+sdk/app-sdk check:       Tests  16 passed (16)
+sdk/app-sdk check:    Start at  05:30:56
+sdk/app-sdk check:    Duration  1.08s (transform 105ms, setup 0ms, import 137ms, tests 159ms, environment 549ms)
+sdk/app-sdk check: Done
+apps/mobile-shell check:  RUN  v4.1.11 /workspace/apps/mobile-shell
+clients/app-host check:  ✓ src/index.test.ts (35 tests) 1081ms
+clients/app-host check:  Test Files  1 passed (1)
+clients/app-host check:       Tests  35 passed (35)
+clients/app-host check:    Start at  05:30:57
+clients/app-host check:    Duration  1.50s (transform 147ms, setup 0ms, import 193ms, tests 1.08s, environment 0ms)
+apps/mobile-shell check:  ✓ src/native.test.ts (2 tests) 14ms
+clients/app-host check: Done
+apps/mobile-shell check:  ✓ src/index.test.ts (1 test) 7ms
+apps/mobile-shell check:  ✓ src/transport.test.ts (2 tests) 58ms
+apps/mobile-shell check:  ✓ src/auth.test.ts (3 tests) 140ms
+apps/mobile-shell check:  Test Files  4 passed (4)
+apps/mobile-shell check:       Tests  8 passed (8)
+apps/mobile-shell check:    Start at  05:30:58
+apps/mobile-shell check:    Duration  1.02s (transform 1.06s, setup 0ms, import 1.96s, tests 219ms, environment 1ms)
+apps/mobile-shell check: Done
+apps/desktop-web check$ tsc --noEmit && vitest run src
+apps/desktop-web check:  RUN  v4.1.11 /workspace/apps/desktop-web
+apps/desktop-web check:  ✓ src/NotificationCenter.test.tsx (5 tests) 390ms
+apps/desktop-web check:  ✓ src/WorkspaceFiles.test.tsx (2 tests) 394ms
+apps/desktop-web check:    ✓ preserves a draft after a conflicting save and submits the observed revision and etag  348ms
+apps/desktop-web check:  ✓ src/PushSettings.test.tsx (9 tests) 442ms
+apps/desktop-web check:  ✓ src/KnowledgeCenter.test.tsx (3 tests) 512ms
+apps/desktop-web check:      ✓ drops a late response after the query changes  306ms
+apps/desktop-web check:  ✓ src/SystemApps.test.tsx (2 tests) 447ms
+apps/desktop-web check:  ✓ src/SystemMonitor.test.tsx (8 tests) 545ms
+apps/desktop-web check:  ✓ src/AgentSessions.test.tsx (8 tests) 765ms
+apps/desktop-web check:  ✓ src/PolicyApprovals.test.tsx (9 tests) 708ms
+apps/desktop-web check:  ✓ src/NativeApp.test.tsx (6 tests) 822ms
+apps/desktop-web check:  ✓ src/HarnessSettings.test.tsx (6 tests) 795ms
+apps/desktop-web check:  ✓ src/push-worker.test.ts (2 tests) 71ms
+apps/desktop-web check:  ✓ src/PermissionDialog.test.tsx (16 tests) 1226ms
+apps/desktop-web check:  ✓ src/bridgeErrors.test.ts (3 tests) 47ms
+apps/desktop-web check:  ✓ src/CommandPalette.test.tsx (6 tests) 388ms
+apps/desktop-web check:  ✓ src/WorkspaceFilePicker.test.tsx (2 tests) 384ms
+apps/desktop-web check:    ✓ retries a directory read, returns exact references and restores focus  345ms
+apps/desktop-web check:  ✓ src/AppLibrary.test.tsx (21 tests) 1512ms
+apps/desktop-web check:  ✓ src/VersionDialog.test.tsx (4 tests) 384ms
+apps/desktop-web check:  ✓ src/model.test.ts (4 tests) 11ms
+apps/desktop-web check:  ✓ src/Desktop.adaptive.test.tsx (10 tests) 1029ms
+apps/desktop-web check:      ✓ renders the compact phone shell with bottom navigation and single pane  307ms
+apps/desktop-web check:  ✓ src/DeviceCenter.test.tsx (3 tests) 338ms
+apps/desktop-web check:  ✓ src/WorkspacePreviews.test.tsx (2 tests) 309ms
+apps/desktop-web check:  ✓ src/ExecutionQuestions.test.tsx (1 test) 257ms
+apps/desktop-web check:  ✓ src/RunningSurfaces.test.tsx (2 tests) 319ms
+apps/desktop-web check:      ✓ renders server-derived workload facts with open and stop actions  301ms
+apps/desktop-web check:  ✓ src/ArtifactWindows.test.tsx (15 tests) 2394ms
+apps/desktop-web check:      ✓ lists the project's review artifacts and opens the authoritative viewer  681ms
+apps/desktop-web check:      ✓ shows loading, unavailable, and retry states without leaking server detail  304ms
+apps/desktop-web check:      ✓ pins a context chip and submits the exact id+digest ref  448ms
+apps/desktop-web check:      ✓ caps pinned context at four with an accessible hint  431ms
+apps/desktop-web check:  ✓ src/Desktop.test.tsx (16 tests) 7387ms
+apps/desktop-web check:      ✓ minimizes, restores and closes project tools through the window manager  779ms
+apps/desktop-web check:      ✓ reloads the Project after a revision conflict and resets the selection  480ms
+apps/desktop-web check:      ✓ uses the active Project's saved binding when switching Project spaces  358ms
+apps/desktop-web check:      ✓ isolates a pending save from a Project switch so a late success cannot overwrite the other editor  785ms
+apps/desktop-web check:      ✓ discards an unsaved draft and its feedback when leaving and returning to a Project  849ms
+apps/desktop-web check:      ✓ drops an ordinary failure that settles while its Project is inactive  530ms
+apps/desktop-web check:      ✓ keeps concurrent saves on different Projects isolated when they complete in reverse order  657ms
+apps/desktop-web check:      ✓ ignores binding responses that settle after the Desktop unmounts  432ms
+apps/desktop-web check:      ✓ activates a newly created Project even when it is missing from the refreshed first page  338ms
+apps/desktop-web check:      ✓ isolates a conflict refresh to its Project while the user edits another Project  525ms
+apps/desktop-web check:      ✓ closes surface windows of other projects when the active project switches  316ms
+apps/desktop-web check:      ✓ closes only the managed installation's surfaces after a grant change  566ms
+apps/desktop-web check:  Test Files  25 passed (25)
+apps/desktop-web check:       Tests  165 passed (165)
+apps/desktop-web check:    Start at  05:31:08
+apps/desktop-web check:    Duration  10.26s (transform 8.50s, setup 0ms, import 20.67s, tests 21.88s, environment 14.13s)
+apps/desktop-web check: Done
+$ tsc --noEmit && vite build
+vite v8.2.2 building client environment for production...
+transforming...
+✓ 264 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/index.html                    0.57 kB │ gzip:   0.34 kB
+dist/assets/index-X8RxK38b.css    45.57 kB │ gzip:   9.60 kB
+dist/assets/browser-DTyecNSB.js   23.46 kB │ gzip:   8.85 kB
+dist/assets/index-4uMXcpUA.js    623.42 kB │ gzip: 178.35 kB
+
+[plugin builtin:vite-reporter] 
+(!) Some chunks are larger than 500 kB after minification. Consider:
+- Using dynamic import() to code-split the application
+- Use build.rolldownOptions.output.codeSplitting to improve chunking: https://rolldown.rs/reference/OutputOptions.codeSplitting
+- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+✓ built in 387ms
+docker run --rm --user 1000:1000 -e HOME=/tmp -e COREPACK_NPM_REGISTRY=https://registry.npmmirror.com -e npm_config_registry=https://registry.npmmirror.com -v /home/aquatao/workos:/workspace -w /workspace node:24.19.0-bookworm-slim node tools/status/render.mjs --check

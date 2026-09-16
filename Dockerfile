@@ -104,13 +104,16 @@ COPY --from=deepseek-runtime /out/dsh-jsonrpc-agent-rg /usr/local/libexec/workos
 COPY --from=web /src/apps/desktop-web/dist/ /srv/workos/desktop/
 COPY deploy/harness/deepseek.cordis.yml /etc/workos/deepseek.cordis.yml
 COPY deploy/harness/workos-tools.mjs /usr/local/libexec/workos/workos-tools.mjs
+COPY deploy/harness/workos-session.mjs /usr/local/libexec/workos/workos-session.mjs
+COPY deploy/harness/workos-workspace.mjs /usr/local/libexec/workos/workos-workspace.mjs
 COPY --from=build /out/ /usr/local/bin/
 # The gateway-owned admin Unix socket lives here in production pairing mode
 # (systemd provides RuntimeDirectory on hosts; the image ships the mount
 # point for containerized runs).
 RUN install -d -m 0755 -o 10001 -g 10001 \
     /run/workos /run/workos/tls /run/workos/execution \
-    /run/workos/core-execution /run/workos/harness-execution /run/workos/vault
+    /run/workos/core-execution /run/workos/harness-execution /run/workos/vault \
+    /var/lib/workos/harness-sessions
 USER 10001:10001
 WORKDIR /tmp
 EXPOSE 8080 8081 8082 8083 8084 8085 8086

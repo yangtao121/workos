@@ -15,10 +15,17 @@ import (
 type SessionTaskDispatcher interface {
 	Dispatch(ctx context.Context, ownerUserID, projectID, providerID, goal, idempotencyKey, sessionID string) (domain.Task, error)
 	Cancel(ctx context.Context, ownerUserID, taskID, reason string) (domain.Task, error)
+	Get(ctx context.Context, ownerUserID, taskID string) (domain.Task, error)
 }
 
 // SessionRepository persists continuous harness session facts (ADR-0030).
 type SessionRepository interface {
+	// WithinSession serializes mutations on a scoped session row. All repository
+	// operations in apply commit together; external task admission remains idempotent.
+	WithinSession(context.Context, string, string, func(SessionRepository) error) error
+	RecoveryCandidates(context.Context, time.Time, int) ([]domain.Session, error)
+	InputByTask(context.Context, string, string) (domain.SessionInput, error)
+	PauseForReview(context.Context, string, string, time.Time) (bool, error)
 	InsertSession(ctx context.Context, session domain.Session) (bool, error)
 	GetSession(ctx context.Context, ownerUserID, sessionID string) (domain.Session, error)
 	GetSessionByIdempotency(ctx context.Context, ownerUserID, key string) (domain.Session, error)

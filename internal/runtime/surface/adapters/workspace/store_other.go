@@ -20,6 +20,9 @@ func (*Store) List(context.Context, ports.FileScope, string, string) (domain.Fil
 func (*Store) Read(context.Context, ports.FileScope, domain.FileRef) ([]byte, error) {
 	return nil, domain.ErrUnavailable
 }
+func (*Store) ReadCurrent(context.Context, ports.FileScope, string, int) ([]byte, string, error) {
+	return nil, "", domain.ErrUnavailable
+}
 func (*Store) Write(context.Context, ports.FileScope, domain.FileRef, []byte) (domain.FileRef, error) {
 	return domain.FileRef{}, domain.ErrUnavailable
 }

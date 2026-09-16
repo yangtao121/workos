@@ -21,9 +21,10 @@ var (
 type SessionState string
 
 const (
-	SessionStateActive  SessionState = "active"
-	SessionStateClosing SessionState = "closing"
-	SessionStateClosed  SessionState = "closed"
+	SessionStateNeedsReview SessionState = "needs_review"
+	SessionStateActive      SessionState = "active"
+	SessionStateClosing     SessionState = "closing"
+	SessionStateClosed      SessionState = "closed"
 )
 
 func (s SessionState) Terminal() bool {
@@ -75,10 +76,10 @@ const (
 // assigning the next strictly increasing sequence. The bool reports whether
 // the input must queue behind the active execution.
 func (s *Session) AcceptSessionInput(now time.Time, inputID, clientInputID, text string) (SessionInput, bool, error) {
-	if s.State.Terminal() {
+	if s.State != SessionStateActive {
 		return SessionInput{}, false, ErrSessionClosed
 	}
-	if utf8.RuneCountInString(text) == 0 || len(text) > maximumSessionInputBytes {
+	if !utf8.ValidString(text) || utf8.RuneCountInString(text) == 0 || len(text) > maximumSessionInputBytes {
 		return SessionInput{}, false, ErrSessionInputInvalid
 	}
 	queued := s.ActiveTaskID != ""

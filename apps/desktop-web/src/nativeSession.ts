@@ -16,6 +16,7 @@ export interface NativeSessionHandle {
   // Whether this device currently holds the single-controller lease; input
   // is disabled until an explicit RequestSurfaceControl takes it over.
   controls: Promise<boolean>;
+  controlGeneration: () => Promise<bigint>;
   requestControl: () => Promise<boolean>;
   stop: () => Promise<void>;
   release: () => void;
@@ -33,6 +34,7 @@ export class NativeSessionLease {
         projectId: string;
         session: Promise<string>;
         controls: Promise<boolean>;
+        generation: Promise<bigint>;
         users: number;
         timer?: ReturnType<typeof setTimeout>;
         released: boolean;
@@ -57,6 +59,7 @@ export class NativeSessionLease {
         projectId,
         session: session.then((facts) => facts.sessionId),
         controls,
+        generation: session.then((facts) => facts.generation).catch(() => 0n),
         users: 0,
         released: false,
       };
@@ -68,6 +71,7 @@ export class NativeSessionLease {
     return {
       session: lease.session,
       controls: lease.controls,
+      controlGeneration: () => lease.generation,
       requestControl: () => this.requestControl(lease),
       stop: () => this.stop(lease),
       release: () => {
@@ -85,8 +89,8 @@ export class NativeSessionLease {
   private async discover(
     clients: WorkOSClients,
     projectId: string,
-  ): Promise<{ sessionId: string; controls: boolean }> {
-    try {
+  ): Promise<{ sessionId: string; controls: boolean; generation: bigint }> {
+    {
       const listed = await clients.surfaceContinuity.listProjectSurfaces({ projectId });
       const live = listed.workloads.find(
         (workload) =>
@@ -100,11 +104,12 @@ export class NativeSessionLease {
           idempotencyKey: `desktop-native-attach-${crypto.randomUUID()}`,
         });
         const sessionId = attached.session?.id ?? live.workloadId;
-        return { sessionId, controls: attached.attachment?.controls ?? false };
+        return {
+          sessionId,
+          controls: attached.attachment?.controls ?? false,
+          generation: attached.attachment?.controlGeneration ?? 0n,
+        };
       }
-    } catch {
-      // Surface continuity is unavailable in this deployment; the honest
-      // fallback is the direct create path below.
     }
     const created = await clients.nativeSessions.createNativeSession({
       idempotencyKey: `desktop-native-${crypto.randomUUID()}`,
@@ -113,7 +118,15 @@ export class NativeSessionLease {
       height: 600,
     });
     if (!created.session?.id) throw new Error("missing native session");
-    return { sessionId: created.session.id, controls: true };
+    const attached = await clients.surfaceContinuity.attachSurface({
+      workloadId: created.session.id,
+      idempotencyKey: `desktop-native-attach-${crypto.randomUUID()}`,
+    });
+    return {
+      sessionId: created.session.id,
+      controls: attached.attachment?.controls ?? false,
+      generation: attached.attachment?.controlGeneration ?? 0n,
+    };
   }
 
   private async requestControl(
@@ -123,6 +136,8 @@ export class NativeSessionLease {
     const response = await lease.clients.surfaceContinuity.requestSurfaceControl({
       surfaceSessionId: sessionId,
     });
+    lease.generation = Promise.resolve(response.attachment?.controlGeneration ?? 0n);
+    lease.controls = Promise.resolve(response.attachment?.controls ?? false);
     return response.attachment?.controls ?? false;
   }
 

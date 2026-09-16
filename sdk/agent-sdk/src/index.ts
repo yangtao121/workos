@@ -5,6 +5,7 @@ import {
   AgentAppPolicyService,
   AgentAppUsageService,
   AgentSessionService,
+  AgentInteractionService,
   AgentTaskService,
   AppBridgeService,
   AppInstallationService,
@@ -22,6 +23,7 @@ import {
   ProjectWorkspaceService,
   SurfaceService,
   SurfaceContinuityService,
+  WorkspacePreviewService,
 } from "@workos/protocol";
 
 export interface WorkOSClients {
@@ -31,6 +33,7 @@ export interface WorkOSClients {
   harnessCatalog: Client<typeof HarnessCatalogService>;
   agentTasks: Client<typeof AgentTaskService>;
   agentSessions: Client<typeof AgentSessionService>;
+  agentInteractions: Client<typeof AgentInteractionService>;
   appPolicies: Client<typeof AgentAppPolicyService>;
   approvals: Client<typeof AgentApprovalService>;
   appUsage: Client<typeof AgentAppUsageService>;
@@ -39,6 +42,7 @@ export interface WorkOSClients {
   artifacts: Client<typeof ArtifactService>;
   surfaces: Client<typeof SurfaceService>;
   surfaceContinuity: Client<typeof SurfaceContinuityService>;
+  workspacePreviews: Client<typeof WorkspacePreviewService>;
   browserSessions: Client<typeof BrowserSessionService>;
   ptySessions: Client<typeof PtySessionService>;
   nativeSessions: Client<typeof NativeSessionService>;
@@ -57,6 +61,7 @@ export function createWorkOSClients(baseUrl: string, transport?: Transport): Wor
     harnessCatalog: createClient(HarnessCatalogService, activeTransport),
     agentTasks: createClient(AgentTaskService, activeTransport),
     agentSessions: createClient(AgentSessionService, activeTransport),
+    agentInteractions: createClient(AgentInteractionService, activeTransport),
     appPolicies: createClient(AgentAppPolicyService, activeTransport),
     approvals: createClient(AgentApprovalService, activeTransport),
     appUsage: createClient(AgentAppUsageService, activeTransport),
@@ -65,6 +70,7 @@ export function createWorkOSClients(baseUrl: string, transport?: Transport): Wor
     artifacts: createClient(ArtifactService, activeTransport),
     surfaces: createClient(SurfaceService, activeTransport),
     surfaceContinuity: createClient(SurfaceContinuityService, activeTransport),
+    workspacePreviews: createClient(WorkspacePreviewService, activeTransport),
     browserSessions: createClient(BrowserSessionService, activeTransport),
     ptySessions: createClient(PtySessionService, activeTransport),
     nativeSessions: createClient(NativeSessionService, activeTransport),

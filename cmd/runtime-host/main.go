@@ -2,6 +2,10 @@ package main
 
 import (
 	"context"
+	"errors"
+	"fmt"
+	"github.com/yangtao121/workos/gen/go/workos/project/v1/projectv1connect"
+	workspacecoreclient "github.com/yangtao121/workos/internal/runtime/workspacehost/adapters/coreclient"
 	"log/slog"
 	"net/http"
 	"os"
@@ -16,6 +20,7 @@ import (
 	surfacev1connect "github.com/yangtao121/workos/gen/go/workos/surface/v1/surfacev1connect"
 	"github.com/yangtao121/workos/gen/go/workos/workload/v1/workloadv1connect"
 	"github.com/yangtao121/workos/internal/platform/config"
+	"github.com/yangtao121/workos/internal/platform/containerprocess"
 	"github.com/yangtao121/workos/internal/platform/database"
 	"github.com/yangtao121/workos/internal/platform/httpserver"
 	"github.com/yangtao121/workos/internal/platform/identity"
@@ -35,9 +40,15 @@ import (
 	xvfbengine "github.com/yangtao121/workos/internal/runtime/nativehost/adapters/xvfbengine"
 	nativehostapp "github.com/yangtao121/workos/internal/runtime/nativehost/application"
 	nativehosttransport "github.com/yangtao121/workos/internal/runtime/nativehost/transport"
+	previewdocker "github.com/yangtao121/workos/internal/runtime/previewhost/adapters/dockerpreview"
+	previewhostpostgres "github.com/yangtao121/workos/internal/runtime/previewhost/adapters/postgres"
+	previewhostapp "github.com/yangtao121/workos/internal/runtime/previewhost/application"
+	previewhosttransport "github.com/yangtao121/workos/internal/runtime/previewhost/transport"
+	"github.com/yangtao121/workos/internal/runtime/ptyhost/adapters/dockerpty"
 	ptyhostpostgres "github.com/yangtao121/workos/internal/runtime/ptyhost/adapters/postgres"
 	shellexec "github.com/yangtao121/workos/internal/runtime/ptyhost/adapters/shellexec"
 	ptyhostapp "github.com/yangtao121/workos/internal/runtime/ptyhost/application"
+	ptyengineports "github.com/yangtao121/workos/internal/runtime/ptyhost/ports"
 	ptyhosttransport "github.com/yangtao121/workos/internal/runtime/ptyhost/transport"
 	surfacecoreclient "github.com/yangtao121/workos/internal/runtime/surface/adapters/coreclient"
 	indexerclient "github.com/yangtao121/workos/internal/runtime/surface/adapters/indexerclient"
@@ -52,7 +63,11 @@ import (
 	workloadapp "github.com/yangtao121/workos/internal/runtime/workload/application"
 	workloadports "github.com/yangtao121/workos/internal/runtime/workload/ports"
 	workloadtransport "github.com/yangtao121/workos/internal/runtime/workload/transport"
+	workspacehostdocker "github.com/yangtao121/workos/internal/runtime/workspacehost/adapters/dockerexec"
+	workspacehostfiles "github.com/yangtao121/workos/internal/runtime/workspacehost/adapters/localfs"
+	workspacehostpostgres "github.com/yangtao121/workos/internal/runtime/workspacehost/adapters/postgres"
 	workspacehostapp "github.com/yangtao121/workos/internal/runtime/workspacehost/application"
+	workspacehostports "github.com/yangtao121/workos/internal/runtime/workspacehost/ports"
 	workspacehosttransport "github.com/yangtao121/workos/internal/runtime/workspacehost/transport"
 )
 
@@ -300,30 +315,88 @@ func run(logger *slog.Logger) error {
 		logger.Warn("project workspace bindings unavailable")
 	} else {
 		defer workspace.Close()
-		surfaceService.WithWorkspace(workspace)
-		bridgeService.WithWorkspace(workspace)
 	}
 	// The workspace host service (ADR-0030): operator-registered sources and
 	// prepared execution environments for terminals, native runners, and the
 	// harness. Private to the runtime listener; never on the gateway
 	// allowlist.
+	workspaceAuthorizer := workspacecoreclient.Authorization{Client: projectv1connect.NewWorkspaceExecutionAuthorizationServiceClient(telemetry.HTTPClient(), cfg.Services.Core)}
+	workspaceOperations := &workspaceOperationRouter{authorization: workspaceAuthorizer}
 	var workspaceHost *workspacehostapp.Service
 	if workspaceHostService, workspaceHostErr := workspacehostapp.New(time.Now().UTC(), cfg.Runtime.WorkspaceMounts); workspaceHostErr != nil {
 		logger.Warn("workspace host service unavailable", "error", workspaceHostErr)
 	} else {
 		workspaceHost = workspaceHostService
+		var commandEngine workspacehostports.Executor
+		if socket, image := os.Getenv("WORKOS_WORKSPACE_DOCKER_SOCKET"), os.Getenv("WORKOS_WORKSPACE_EXECUTION_IMAGE"); socket != "" && image != "" {
+			if err := containerprocess.New(socket, image).Reconcile(ctx); err != nil {
+				return fmt.Errorf("workspace container recovery unavailable: %w", err)
+			}
+			commandEngine = workspacehostdocker.New(socket, image)
+		}
+		executionService := workspacehostapp.NewExecution(workspaceHost, &workspacehostfiles.Files{}, commandEngine, workspacehostpostgres.New(pool)).WithAuthorization(workspaceAuthorizer)
+		workspaceOperations.files = executionService
+		workspaceOperations.host = workspaceHost
+		executionPath, executionHandler := workspacehosttransport.NewExecutionHandler(workspaceOperations)
+		mux.Handle(executionPath, executionHandler)
+
 		workspaceHostPath, workspaceHostHandler := workspacehosttransport.NewWorkspaceHostHandler(workspaceHost, time.Now)
 		mux.Handle(workspaceHostPath, identity.Middleware(workspaceHostHandler))
 	}
+
+	if workspaceErr == nil && workspaceHost != nil {
+		guarded := authorizedAppWorkspace{files: workspace, authorization: previewWorkspaceAuthorization{workspaceHost, workspaceAuthorizer}}
+		surfaceService.WithWorkspace(guarded)
+		bridgeService.WithWorkspace(guarded)
+	}
+
+	// Development servers live in isolated containers and expose only a
+	// capability-scoped HTTP bridge; they receive no network or Runtime socket.
+	previewService, err := previewhostapp.New(previewhostpostgres.New(pool),
+		previewWorkspaceAuthorization{workspaceHost, workspaceAuthorizer},
+		previewdocker.New(os.Getenv("WORKOS_WORKSPACE_DOCKER_SOCKET"), os.Getenv("WORKOS_WORKSPACE_EXECUTION_IMAGE"), os.Getenv("WORKOS_PREVIEW_BRIDGE_ROOT")), generator)
+	if err != nil {
+		return err
+	}
+	workspaceOperations.previews = previewService
+	previewPath, previewHandler := previewhosttransport.NewPreviewHandler(previewService)
+	mux.Handle(previewPath, identity.Middleware(previewHandler))
+	defer previewService.Close()
+	if err := previewService.Sweep(ctx); err != nil {
+		return err
+	}
+	previewServing := previewhosttransport.NewServingHandler(previewService, logger)
+	previewStop := make(chan struct{})
+	defer close(previewStop)
+	go func() {
+		ticker := time.NewTicker(time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-previewStop:
+				return
+			case <-ticker.C:
+				if err := previewService.Sweep(ctx); err != nil {
+					logger.Info("workspace preview sweep pending", "error", err)
+				}
+			}
+		}
+	}()
 	bridgePath, bridgeHandler := surfacetransport.NewBridgeConnectHandler(bridgeService)
 	mux.Handle(bridgePath, identity.Middleware(bridgeHandler))
-	// The asset route is served ahead of the ServeMux: mux path cleaning
+	// The asset routes are served ahead of the ServeMux: mux path cleaning
 	// would redirect traversal-shaped requests instead of letting the asset
 	// policy fail closed on the raw path.
 	assetHandler := identity.Middleware(surfacetransport.NewAssetHandler(surfaceService, logger))
 	root := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if strings.HasPrefix(r.URL.Path, "/surfaces/") {
 			assetHandler.ServeHTTP(w, r)
+			return
+		}
+		if strings.HasPrefix(r.URL.Path, "/previews/") {
+			previewServing.ServeHTTP(w, r)
 			return
 		}
 		mux.ServeHTTP(w, r)
@@ -368,7 +441,14 @@ func run(logger *slog.Logger) error {
 	// honestly unavailable.
 	var ptyService *ptyhostapp.Service
 	if strings.TrimSpace(cfg.Runtime.PtyShell) != "" {
-		ptyEngine, engineErr := shellexec.New(cfg.Runtime.PtyShell)
+		localEngine, engineErr := shellexec.New(cfg.Runtime.PtyShell)
+		var ptyEngine ptyengineports.Engine = localEngine
+		if socket, image := os.Getenv("WORKOS_WORKSPACE_DOCKER_SOCKET"), os.Getenv("WORKOS_WORKSPACE_EXECUTION_IMAGE"); socket != "" {
+			if image == "" {
+				return errors.New("workspace image required with Docker socket")
+			}
+			ptyEngine = dockerpty.New(socket, image)
+		}
 		if engineErr != nil {
 			return engineErr
 		}
@@ -376,9 +456,7 @@ func run(logger *slog.Logger) error {
 		if engineErr != nil {
 			return engineErr
 		}
-		if workspaceHost != nil {
-			ptyService.WithWorkspace(workspaceHost)
-		}
+		ptyService.WithWorkspaceAuthorization(ptyWorkspaceAuthorization{workspaceHost, workspaceAuthorizer})
 		// Startup reconcile (A13): finalize durable rows whose child died
 		// with a previous runtime host (setsid+Pdeathsig) before serving,
 		// so the continuity discovery view never reports a dead program as
@@ -418,14 +496,18 @@ func run(logger *slog.Logger) error {
 		if engineErr != nil {
 			return engineErr
 		}
+		if err := nativeEngine.WithLAN(os.Getenv("WORKOS_NATIVE_LAN_CIDRS"), os.Getenv("WORKOS_NATIVE_UDP_PORTS")); err != nil {
+			return err
+		}
+		if socket := os.Getenv("WORKOS_WORKSPACE_DOCKER_SOCKET"); socket != "" {
+			nativeEngine.WithContainers(socket, os.Getenv("WORKOS_WORKSPACE_EXECUTION_IMAGE"), os.Getenv("WORKOS_NATIVE_X11_HOST_DIRECTORY"))
+		}
 		var serviceErr error
 		nativeService, serviceErr = nativehostapp.NewService(nativehostpostgres.New(pool), nativeEngine, generator, logger)
 		if serviceErr != nil {
 			return serviceErr
 		}
-		if workspaceHost != nil {
-			nativeService.WithWorkspace(workspaceHost)
-		}
+		nativeService.WithWorkspaceAuthorization(nativeWorkspaceAuthorization{workspaceHost, workspaceAuthorizer})
 		if err := nativeService.Sweep(ctx); err != nil {
 			return err
 		}

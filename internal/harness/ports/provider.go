@@ -97,7 +97,10 @@ type ArtifactBatchSink func([]ArtifactOutput) error
 // project scope: they reach the session child's WorkOS tool environment
 // (never the model) so read-only project tools answer for exactly this
 // owner/project and nothing the model submits.
+type ToolCall func(context.Context, string, map[string]any) (map[string]any, error)
+
 type SessionExecution struct {
+	Tools         ToolCall
 	SessionID     string
 	WorkspaceRoot string
 	StateRoot     string

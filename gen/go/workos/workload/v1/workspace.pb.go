@@ -32,6 +32,7 @@ type WorkspaceSource struct {
 	ReadOnly    bool   `protobuf:"varint,4,opt,name=read_only,json=readOnly,proto3" json:"read_only,omitempty"`
 	// Bounded descriptive facts only: no absolute host paths, no credentials.
 	RegisteredAt  *timestamppb.Timestamp `protobuf:"bytes,5,opt,name=registered_at,json=registeredAt,proto3" json:"registered_at,omitempty"`
+	ProjectId     string                 `protobuf:"bytes,6,opt,name=project_id,json=projectId,proto3" json:"project_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -99,6 +100,13 @@ func (x *WorkspaceSource) GetRegisteredAt() *timestamppb.Timestamp {
 		return x.RegisteredAt
 	}
 	return nil
+}
+
+func (x *WorkspaceSource) GetProjectId() string {
+	if x != nil {
+		return x.ProjectId
+	}
+	return ""
 }
 
 type DescribeWorkspaceSourcesRequest struct {
@@ -321,13 +329,15 @@ var File_workos_workload_v1_workspace_proto protoreflect.FileDescriptor
 
 const file_workos_workload_v1_workspace_proto_rawDesc = "" +
 	"\n" +
-	"\"workos/workload/v1/workspace.proto\x12\x12workos.workload.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"\xb6\x01\n" +
+	"\"workos/workload/v1/workspace.proto\x12\x12workos.workload.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"\xd5\x01\n" +
 	"\x0fWorkspaceSource\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
 	"\x04kind\x18\x02 \x01(\tR\x04kind\x12!\n" +
 	"\fdisplay_name\x18\x03 \x01(\tR\vdisplayName\x12\x1b\n" +
 	"\tread_only\x18\x04 \x01(\bR\breadOnly\x12?\n" +
-	"\rregistered_at\x18\x05 \x01(\v2\x1a.google.protobuf.TimestampR\fregisteredAt\"!\n" +
+	"\rregistered_at\x18\x05 \x01(\v2\x1a.google.protobuf.TimestampR\fregisteredAt\x12\x1d\n" +
+	"\n" +
+	"project_id\x18\x06 \x01(\tR\tprojectId\"!\n" +
 	"\x1fDescribeWorkspaceSourcesRequest\"a\n" +
 	" DescribeWorkspaceSourcesResponse\x12=\n" +
 	"\asources\x18\x01 \x03(\v2#.workos.workload.v1.WorkspaceSourceR\asources\"T\n" +

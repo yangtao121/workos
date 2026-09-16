@@ -19,6 +19,7 @@ export type WindowMode =
 export type WindowKind =
   | "agent-center"
   | "agent-sessions"
+  | "workspace-previews"
   | "app-surface"
   | "system-monitor"
   | "device-center"

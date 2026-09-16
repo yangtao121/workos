@@ -1,0 +1,3 @@
+=== RUN   TestRealContainerClientIsolation
+--- PASS: TestRealContainerClientIsolation (8.01s)
+PASS

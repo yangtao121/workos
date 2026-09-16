@@ -1,3 +1,4 @@
+import { ExecutionQuestions } from "./ExecutionQuestions.js";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AgentTimeline } from "@workos/agent-center";
 import type { WorkOSClients } from "@workos/agent-sdk";
@@ -544,7 +545,9 @@ function SessionView(props: {
   };
 
   const sessionClosed =
-    session?.state === AgentSessionState.CLOSED || session?.state === AgentSessionState.CLOSING;
+    session?.state === AgentSessionState.CLOSED ||
+    session?.state === AgentSessionState.CLOSING ||
+    session?.state === AgentSessionState.NEEDS_REVIEW;
 
   return (
     <div className="agent-sessions-app session-view" data-testid="agent-session-view">
@@ -590,6 +593,19 @@ function SessionView(props: {
           ) : null}
         </div>
       </header>
+      {watchedInputs.map((input) => (
+        <ExecutionQuestions
+          key={input.taskId}
+          taskId={input.taskId}
+          workosClients={workosClients}
+        />
+      ))}
+      {session?.state === AgentSessionState.NEEDS_REVIEW ? (
+        <p role="alert" className="session-error">
+          Execution stopped or its outcome is uncertain. Inspect the project files and tool results
+          before starting a new session. Queued inputs will not run automatically.
+        </p>
+      ) : null}
       {error ? (
         <p role="alert" className="sessions-verdict">
           {error}
@@ -692,6 +708,8 @@ function sessionStateName(state: AgentSessionState | undefined): string {
       return "closing";
     case AgentSessionState.CLOSED:
       return "closed";
+    case AgentSessionState.NEEDS_REVIEW:
+      return "needs review";
     default:
       return "unknown";
   }

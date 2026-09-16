@@ -14,6 +14,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/yangtao121/workos/internal/platform/containerprocess"
+	"github.com/yangtao121/workos/internal/platform/ids"
 	"log/slog"
 	"net"
 	"os"
@@ -55,14 +57,18 @@ const (
 // isolation claim, no display auth beyond the single-uid Unix socket, and no
 // TURN relay. The enforced candidate scope follows the operator mode.
 type Engine struct {
-	Xvfb    string
-	Client  []string
-	FFmpeg  string
-	Xdotool string
-	Scratch string
+	containers       *containerprocess.Client
+	x11HostDirectory string
+	Xvfb             string
+	Client           []string
+	FFmpeg           string
+	Xdotool          string
+	Scratch          string
 	// Candidates is "loopback" (default) or "lan" — the ICE candidate
 	// policy of every peer this engine builds.
-	Candidates string
+	Candidates     string
+	LANNetworks    []*net.IPNet
+	UDPMin, UDPMax uint16
 
 	launchMu sync.Mutex
 	mu       sync.Mutex
@@ -75,7 +81,17 @@ type Engine struct {
 // real interfaces are enumerable and does not force loopback inclusion.
 func (e *Engine) candidatePolicy() (filter func(ip net.IP) bool, includeLoopback bool) {
 	if e.Candidates == CandidatesLAN {
-		return nil, false
+		return func(ip net.IP) bool {
+			if ip.IsLoopback() || !ip.IsPrivate() {
+				return false
+			}
+			for _, network := range e.LANNetworks {
+				if network.Contains(ip) {
+					return true
+				}
+			}
+			return false
+		}, false
 	}
 	return func(ip net.IP) bool { return ip.IsLoopback() }, true
 }
@@ -115,6 +131,47 @@ func New(xvfb, client, ffmpeg, xdotool, scratch, candidates string) (*Engine, er
 	return &Engine{Xvfb: resolvedXvfb, Client: argv, FFmpeg: resolvedFFmpeg, Xdotool: resolvedXdotool, Scratch: scratch, Candidates: candidates}, nil
 }
 
+// WithLAN requires explicit private CIDRs and a bounded UDP range. Empty or
+// public ranges fail closed; neither browser requests nor discovered public
+// interfaces can widen this operator boundary.
+func (e *Engine) WithLAN(cidrs, portsRange string) error {
+	if e.Candidates != CandidatesLAN {
+		return nil
+	}
+	parts := strings.Split(portsRange, "-")
+	if len(parts) != 2 {
+		return errors.New("native LAN requires UDP min-max")
+	}
+	min, err := strconv.ParseUint(parts[0], 10, 16)
+	if err != nil {
+		return err
+	}
+	max, err := strconv.ParseUint(parts[1], 10, 16)
+	if err != nil || min < 1024 || max < min || max-min > 1023 {
+		return errors.New("invalid native UDP range")
+	}
+	var networks []*net.IPNet
+	for _, entry := range strings.Split(cidrs, ",") {
+		ip, network, err := net.ParseCIDR(strings.TrimSpace(entry))
+		if err != nil || !ip.IsPrivate() {
+			return errors.New("native LAN requires private CIDRs")
+		}
+		last := append(net.IP(nil), network.IP...)
+		for i := range last {
+			last[i] |= ^network.Mask[i]
+		}
+		if !network.IP.IsPrivate() || !last.IsPrivate() {
+			return errors.New("native LAN CIDR extends outside private space")
+		}
+		networks = append(networks, network)
+	}
+	if len(networks) == 0 {
+		return errors.New("native LAN allowlist empty")
+	}
+	e.LANNetworks, e.UDPMin, e.UDPMax = networks, uint16(min), uint16(max)
+	return nil
+}
+
 func (e *Engine) Facts() ports.EngineFacts {
 	candidateScope := "loopback-host-candidates-only"
 	if e.Candidates == CandidatesLAN {
@@ -128,7 +185,20 @@ func (e *Engine) Facts() ports.EngineFacts {
 	}
 }
 
+func (e *Engine) WithContainers(socket, image, x11HostDirectory string) *Engine {
+	e.containers = containerprocess.New(socket, image)
+	e.x11HostDirectory = x11HostDirectory
+	return e
+}
 func (e *Engine) Available(ctx context.Context) error {
+	if e.containers != nil {
+		if !filepath.IsAbs(e.x11HostDirectory) {
+			return domain.ErrEngineUnavailable
+		}
+		if err := e.containers.Available(ctx); err != nil {
+			return domain.ErrEngineUnavailable
+		}
+	}
 	for _, name := range []string{e.Xvfb, e.FFmpeg, e.Xdotool, e.Client[0]} {
 		if resolveExecutable(name) == "" {
 			return domain.ErrEngineUnavailable
@@ -160,6 +230,7 @@ type sampleSink func(frame []byte, duration time.Duration)
 
 // display couples the supervised children with at most one live WebRTC peer.
 type display struct {
+	container   *containerprocess.Process
 	engine      *Engine
 	dir         string
 	displayName string
@@ -197,6 +268,12 @@ type display struct {
 }
 
 func (e *Engine) Launch(ctx context.Context, width, height int32, workingDirectory string) (ports.Display, error) {
+	return e.LaunchWorkspace(ctx, width, height, workingDirectory, false)
+}
+func (e *Engine) LaunchWorkspace(ctx context.Context, width, height int32, workingDirectory string, readOnly bool) (ports.Display, error) {
+	if (readOnly || workingDirectory != "") && e.containers == nil {
+		return nil, domain.ErrEngineUnavailable
+	}
 	if !domain.ValidSize(width, height) {
 		return nil, domain.ErrInvalid
 	}
@@ -248,17 +325,31 @@ func (e *Engine) Launch(ctx context.Context, width, height int32, workingDirecto
 	if err := waitForSocket(ctx, socket, xvfbDone); err != nil {
 		return nil, err
 	}
-	client := exec.Command(e.Client[0], e.Client[1:]...)
-	client.Dir = workingDirectory
-	client.Env = env
-	client.SysProcAttr = &syscall.SysProcAttr{Setpgid: true, Pgid: xvfb.Process.Pid, Pdeathsig: syscall.SIGKILL}
-	d.clientCm = client
-	if err := client.Start(); err != nil {
-		return nil, fmt.Errorf("start native client: %w", err)
-	}
+
 	clientDone := make(chan struct{})
-	d.children.Add(1)
-	go func() { defer d.children.Done(); _ = client.Wait(); close(clientDone) }()
+	if e.containers != nil {
+		if !filepath.IsAbs(e.x11HostDirectory) {
+			return nil, domain.ErrEngineUnavailable
+		}
+		container, err := e.containers.Start(ctx, containerprocess.Spec{ID: (ids.UUIDv7{}).New(), Workspace: workingDirectory, ReadOnly: readOnly, Argv: e.Client, Environment: []string{"DISPLAY=" + name}, ExtraMounts: []string{filepath.Join(e.x11HostDirectory, filepath.Base(socket)) + ":" + socket + ":ro"}, Lifetime: domain.SessionTTL})
+		if err != nil {
+			return nil, domain.ErrEngineUnavailable
+		}
+		d.container = container
+		d.children.Add(1)
+		go func() { defer d.children.Done(); <-container.Done(); close(clientDone) }()
+	} else {
+		client := exec.Command(e.Client[0], e.Client[1:]...)
+		client.Dir = workingDirectory
+		client.Env = env
+		client.SysProcAttr = &syscall.SysProcAttr{Setpgid: true, Pgid: xvfb.Process.Pid, Pdeathsig: syscall.SIGKILL}
+		d.clientCm = client
+		if err := client.Start(); err != nil {
+			return nil, fmt.Errorf("start native client: %w", err)
+		}
+		d.children.Add(1)
+		go func() { defer d.children.Done(); _ = client.Wait(); close(clientDone) }()
+	}
 	if err := waitForClientWindow(ctx, env, e.Xdotool, clientDone); err != nil {
 		return nil, err
 	}
@@ -424,6 +515,9 @@ func (d *display) Stop() {
 	d.stopOnce.Do(func() {
 		close(d.exited)
 		d.cancel()
+		if d.container != nil {
+			d.container.Stop()
+		}
 		if d.xvfbCmd != nil && d.xvfbCmd.Process != nil {
 			_ = syscall.Kill(-d.xvfbCmd.Process.Pid, syscall.SIGKILL)
 		}
@@ -535,6 +629,14 @@ func (d *display) Connect(ctx context.Context, offerSDP string) (string, error) 
 		return "", domain.ErrEngineUnavailable
 	}
 	settings := webrtc.SettingEngine{}
+	if d.engine.Candidates == CandidatesLAN {
+		if len(d.engine.LANNetworks) == 0 || d.engine.UDPMin == 0 {
+			return "", domain.ErrEngineUnavailable
+		}
+		if err := settings.SetEphemeralUDPPortRange(d.engine.UDPMin, d.engine.UDPMax); err != nil {
+			return "", err
+		}
+	}
 	candidateFilter, includeLoopback := d.engine.candidatePolicy()
 	if includeLoopback {
 		settings.SetIncludeLoopbackCandidate(true)

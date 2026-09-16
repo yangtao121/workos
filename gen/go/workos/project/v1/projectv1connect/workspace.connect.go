@@ -23,6 +23,9 @@ const _ = connect.IsAtLeastVersion1_13_0
 const (
 	// ProjectWorkspaceServiceName is the fully-qualified name of the ProjectWorkspaceService service.
 	ProjectWorkspaceServiceName = "workos.project.v1.ProjectWorkspaceService"
+	// WorkspaceExecutionAuthorizationServiceName is the fully-qualified name of the
+	// WorkspaceExecutionAuthorizationService service.
+	WorkspaceExecutionAuthorizationServiceName = "workos.project.v1.WorkspaceExecutionAuthorizationService"
 )
 
 // These constants are the fully-qualified names of the RPCs defined in this package. They're
@@ -33,6 +36,18 @@ const (
 // reflection-formatted method names, remove the leading slash and convert the remaining slash to a
 // period.
 const (
+	// ProjectWorkspaceServiceListWorkspaceFilesProcedure is the fully-qualified name of the
+	// ProjectWorkspaceService's ListWorkspaceFiles RPC.
+	ProjectWorkspaceServiceListWorkspaceFilesProcedure = "/workos.project.v1.ProjectWorkspaceService/ListWorkspaceFiles"
+	// ProjectWorkspaceServiceReadWorkspaceFileProcedure is the fully-qualified name of the
+	// ProjectWorkspaceService's ReadWorkspaceFile RPC.
+	ProjectWorkspaceServiceReadWorkspaceFileProcedure = "/workos.project.v1.ProjectWorkspaceService/ReadWorkspaceFile"
+	// ProjectWorkspaceServiceWriteWorkspaceFileProcedure is the fully-qualified name of the
+	// ProjectWorkspaceService's WriteWorkspaceFile RPC.
+	ProjectWorkspaceServiceWriteWorkspaceFileProcedure = "/workos.project.v1.ProjectWorkspaceService/WriteWorkspaceFile"
+	// ProjectWorkspaceServiceListAvailableWorkspacesProcedure is the fully-qualified name of the
+	// ProjectWorkspaceService's ListAvailableWorkspaces RPC.
+	ProjectWorkspaceServiceListAvailableWorkspacesProcedure = "/workos.project.v1.ProjectWorkspaceService/ListAvailableWorkspaces"
 	// ProjectWorkspaceServiceBindWorkspaceProcedure is the fully-qualified name of the
 	// ProjectWorkspaceService's BindWorkspace RPC.
 	ProjectWorkspaceServiceBindWorkspaceProcedure = "/workos.project.v1.ProjectWorkspaceService/BindWorkspace"
@@ -48,11 +63,18 @@ const (
 	// ProjectWorkspaceServiceArchiveWorkspaceProcedure is the fully-qualified name of the
 	// ProjectWorkspaceService's ArchiveWorkspace RPC.
 	ProjectWorkspaceServiceArchiveWorkspaceProcedure = "/workos.project.v1.ProjectWorkspaceService/ArchiveWorkspace"
+	// WorkspaceExecutionAuthorizationServiceResolveWorkspaceExecutionProcedure is the fully-qualified
+	// name of the WorkspaceExecutionAuthorizationService's ResolveWorkspaceExecution RPC.
+	WorkspaceExecutionAuthorizationServiceResolveWorkspaceExecutionProcedure = "/workos.project.v1.WorkspaceExecutionAuthorizationService/ResolveWorkspaceExecution"
 )
 
 // ProjectWorkspaceServiceClient is a client for the workos.project.v1.ProjectWorkspaceService
 // service.
 type ProjectWorkspaceServiceClient interface {
+	ListWorkspaceFiles(context.Context, *connect.Request[v1.ListWorkspaceFilesRequest]) (*connect.Response[v1.ListWorkspaceFilesResponse], error)
+	ReadWorkspaceFile(context.Context, *connect.Request[v1.ReadWorkspaceFileRequest]) (*connect.Response[v1.ReadWorkspaceFileResponse], error)
+	WriteWorkspaceFile(context.Context, *connect.Request[v1.WriteWorkspaceFileRequest]) (*connect.Response[v1.WriteWorkspaceFileResponse], error)
+	ListAvailableWorkspaces(context.Context, *connect.Request[v1.ListAvailableWorkspacesRequest]) (*connect.Response[v1.ListAvailableWorkspacesResponse], error)
 	// BindWorkspace creates the single-owner association between a project and
 	// an operator-registered workspace source. The source must be currently
 	// reported by the runtime host; a client-supplied source id that the
@@ -63,8 +85,7 @@ type ProjectWorkspaceServiceClient interface {
 	// UpdateWorkspaceAccess flips the read/write mode under optimistic
 	// revision control. A read-only binding must fail every workspace write.
 	UpdateWorkspaceAccess(context.Context, *connect.Request[v1.UpdateWorkspaceAccessRequest]) (*connect.Response[v1.UpdateWorkspaceAccessResponse], error)
-	// ArchiveWorkspace blocks new executions against this binding; running
-	// executions finish under their pinned revision.
+	// ArchiveWorkspace revokes the binding; Runtime rechecks active executions.
 	ArchiveWorkspace(context.Context, *connect.Request[v1.ArchiveWorkspaceRequest]) (*connect.Response[v1.ArchiveWorkspaceResponse], error)
 }
 
@@ -79,6 +100,30 @@ func NewProjectWorkspaceServiceClient(httpClient connect.HTTPClient, baseURL str
 	baseURL = strings.TrimRight(baseURL, "/")
 	projectWorkspaceServiceMethods := v1.File_workos_project_v1_workspace_proto.Services().ByName("ProjectWorkspaceService").Methods()
 	return &projectWorkspaceServiceClient{
+		listWorkspaceFiles: connect.NewClient[v1.ListWorkspaceFilesRequest, v1.ListWorkspaceFilesResponse](
+			httpClient,
+			baseURL+ProjectWorkspaceServiceListWorkspaceFilesProcedure,
+			connect.WithSchema(projectWorkspaceServiceMethods.ByName("ListWorkspaceFiles")),
+			connect.WithClientOptions(opts...),
+		),
+		readWorkspaceFile: connect.NewClient[v1.ReadWorkspaceFileRequest, v1.ReadWorkspaceFileResponse](
+			httpClient,
+			baseURL+ProjectWorkspaceServiceReadWorkspaceFileProcedure,
+			connect.WithSchema(projectWorkspaceServiceMethods.ByName("ReadWorkspaceFile")),
+			connect.WithClientOptions(opts...),
+		),
+		writeWorkspaceFile: connect.NewClient[v1.WriteWorkspaceFileRequest, v1.WriteWorkspaceFileResponse](
+			httpClient,
+			baseURL+ProjectWorkspaceServiceWriteWorkspaceFileProcedure,
+			connect.WithSchema(projectWorkspaceServiceMethods.ByName("WriteWorkspaceFile")),
+			connect.WithClientOptions(opts...),
+		),
+		listAvailableWorkspaces: connect.NewClient[v1.ListAvailableWorkspacesRequest, v1.ListAvailableWorkspacesResponse](
+			httpClient,
+			baseURL+ProjectWorkspaceServiceListAvailableWorkspacesProcedure,
+			connect.WithSchema(projectWorkspaceServiceMethods.ByName("ListAvailableWorkspaces")),
+			connect.WithClientOptions(opts...),
+		),
 		bindWorkspace: connect.NewClient[v1.BindWorkspaceRequest, v1.BindWorkspaceResponse](
 			httpClient,
 			baseURL+ProjectWorkspaceServiceBindWorkspaceProcedure,
@@ -114,11 +159,35 @@ func NewProjectWorkspaceServiceClient(httpClient connect.HTTPClient, baseURL str
 
 // projectWorkspaceServiceClient implements ProjectWorkspaceServiceClient.
 type projectWorkspaceServiceClient struct {
-	bindWorkspace         *connect.Client[v1.BindWorkspaceRequest, v1.BindWorkspaceResponse]
-	getWorkspace          *connect.Client[v1.GetWorkspaceRequest, v1.GetWorkspaceResponse]
-	listProjectWorkspaces *connect.Client[v1.ListProjectWorkspacesRequest, v1.ListProjectWorkspacesResponse]
-	updateWorkspaceAccess *connect.Client[v1.UpdateWorkspaceAccessRequest, v1.UpdateWorkspaceAccessResponse]
-	archiveWorkspace      *connect.Client[v1.ArchiveWorkspaceRequest, v1.ArchiveWorkspaceResponse]
+	listWorkspaceFiles      *connect.Client[v1.ListWorkspaceFilesRequest, v1.ListWorkspaceFilesResponse]
+	readWorkspaceFile       *connect.Client[v1.ReadWorkspaceFileRequest, v1.ReadWorkspaceFileResponse]
+	writeWorkspaceFile      *connect.Client[v1.WriteWorkspaceFileRequest, v1.WriteWorkspaceFileResponse]
+	listAvailableWorkspaces *connect.Client[v1.ListAvailableWorkspacesRequest, v1.ListAvailableWorkspacesResponse]
+	bindWorkspace           *connect.Client[v1.BindWorkspaceRequest, v1.BindWorkspaceResponse]
+	getWorkspace            *connect.Client[v1.GetWorkspaceRequest, v1.GetWorkspaceResponse]
+	listProjectWorkspaces   *connect.Client[v1.ListProjectWorkspacesRequest, v1.ListProjectWorkspacesResponse]
+	updateWorkspaceAccess   *connect.Client[v1.UpdateWorkspaceAccessRequest, v1.UpdateWorkspaceAccessResponse]
+	archiveWorkspace        *connect.Client[v1.ArchiveWorkspaceRequest, v1.ArchiveWorkspaceResponse]
+}
+
+// ListWorkspaceFiles calls workos.project.v1.ProjectWorkspaceService.ListWorkspaceFiles.
+func (c *projectWorkspaceServiceClient) ListWorkspaceFiles(ctx context.Context, req *connect.Request[v1.ListWorkspaceFilesRequest]) (*connect.Response[v1.ListWorkspaceFilesResponse], error) {
+	return c.listWorkspaceFiles.CallUnary(ctx, req)
+}
+
+// ReadWorkspaceFile calls workos.project.v1.ProjectWorkspaceService.ReadWorkspaceFile.
+func (c *projectWorkspaceServiceClient) ReadWorkspaceFile(ctx context.Context, req *connect.Request[v1.ReadWorkspaceFileRequest]) (*connect.Response[v1.ReadWorkspaceFileResponse], error) {
+	return c.readWorkspaceFile.CallUnary(ctx, req)
+}
+
+// WriteWorkspaceFile calls workos.project.v1.ProjectWorkspaceService.WriteWorkspaceFile.
+func (c *projectWorkspaceServiceClient) WriteWorkspaceFile(ctx context.Context, req *connect.Request[v1.WriteWorkspaceFileRequest]) (*connect.Response[v1.WriteWorkspaceFileResponse], error) {
+	return c.writeWorkspaceFile.CallUnary(ctx, req)
+}
+
+// ListAvailableWorkspaces calls workos.project.v1.ProjectWorkspaceService.ListAvailableWorkspaces.
+func (c *projectWorkspaceServiceClient) ListAvailableWorkspaces(ctx context.Context, req *connect.Request[v1.ListAvailableWorkspacesRequest]) (*connect.Response[v1.ListAvailableWorkspacesResponse], error) {
+	return c.listAvailableWorkspaces.CallUnary(ctx, req)
 }
 
 // BindWorkspace calls workos.project.v1.ProjectWorkspaceService.BindWorkspace.
@@ -149,6 +218,10 @@ func (c *projectWorkspaceServiceClient) ArchiveWorkspace(ctx context.Context, re
 // ProjectWorkspaceServiceHandler is an implementation of the
 // workos.project.v1.ProjectWorkspaceService service.
 type ProjectWorkspaceServiceHandler interface {
+	ListWorkspaceFiles(context.Context, *connect.Request[v1.ListWorkspaceFilesRequest]) (*connect.Response[v1.ListWorkspaceFilesResponse], error)
+	ReadWorkspaceFile(context.Context, *connect.Request[v1.ReadWorkspaceFileRequest]) (*connect.Response[v1.ReadWorkspaceFileResponse], error)
+	WriteWorkspaceFile(context.Context, *connect.Request[v1.WriteWorkspaceFileRequest]) (*connect.Response[v1.WriteWorkspaceFileResponse], error)
+	ListAvailableWorkspaces(context.Context, *connect.Request[v1.ListAvailableWorkspacesRequest]) (*connect.Response[v1.ListAvailableWorkspacesResponse], error)
 	// BindWorkspace creates the single-owner association between a project and
 	// an operator-registered workspace source. The source must be currently
 	// reported by the runtime host; a client-supplied source id that the
@@ -159,8 +232,7 @@ type ProjectWorkspaceServiceHandler interface {
 	// UpdateWorkspaceAccess flips the read/write mode under optimistic
 	// revision control. A read-only binding must fail every workspace write.
 	UpdateWorkspaceAccess(context.Context, *connect.Request[v1.UpdateWorkspaceAccessRequest]) (*connect.Response[v1.UpdateWorkspaceAccessResponse], error)
-	// ArchiveWorkspace blocks new executions against this binding; running
-	// executions finish under their pinned revision.
+	// ArchiveWorkspace revokes the binding; Runtime rechecks active executions.
 	ArchiveWorkspace(context.Context, *connect.Request[v1.ArchiveWorkspaceRequest]) (*connect.Response[v1.ArchiveWorkspaceResponse], error)
 }
 
@@ -171,6 +243,30 @@ type ProjectWorkspaceServiceHandler interface {
 // and JSON codecs. They also support gzip compression.
 func NewProjectWorkspaceServiceHandler(svc ProjectWorkspaceServiceHandler, opts ...connect.HandlerOption) (string, http.Handler) {
 	projectWorkspaceServiceMethods := v1.File_workos_project_v1_workspace_proto.Services().ByName("ProjectWorkspaceService").Methods()
+	projectWorkspaceServiceListWorkspaceFilesHandler := connect.NewUnaryHandler(
+		ProjectWorkspaceServiceListWorkspaceFilesProcedure,
+		svc.ListWorkspaceFiles,
+		connect.WithSchema(projectWorkspaceServiceMethods.ByName("ListWorkspaceFiles")),
+		connect.WithHandlerOptions(opts...),
+	)
+	projectWorkspaceServiceReadWorkspaceFileHandler := connect.NewUnaryHandler(
+		ProjectWorkspaceServiceReadWorkspaceFileProcedure,
+		svc.ReadWorkspaceFile,
+		connect.WithSchema(projectWorkspaceServiceMethods.ByName("ReadWorkspaceFile")),
+		connect.WithHandlerOptions(opts...),
+	)
+	projectWorkspaceServiceWriteWorkspaceFileHandler := connect.NewUnaryHandler(
+		ProjectWorkspaceServiceWriteWorkspaceFileProcedure,
+		svc.WriteWorkspaceFile,
+		connect.WithSchema(projectWorkspaceServiceMethods.ByName("WriteWorkspaceFile")),
+		connect.WithHandlerOptions(opts...),
+	)
+	projectWorkspaceServiceListAvailableWorkspacesHandler := connect.NewUnaryHandler(
+		ProjectWorkspaceServiceListAvailableWorkspacesProcedure,
+		svc.ListAvailableWorkspaces,
+		connect.WithSchema(projectWorkspaceServiceMethods.ByName("ListAvailableWorkspaces")),
+		connect.WithHandlerOptions(opts...),
+	)
 	projectWorkspaceServiceBindWorkspaceHandler := connect.NewUnaryHandler(
 		ProjectWorkspaceServiceBindWorkspaceProcedure,
 		svc.BindWorkspace,
@@ -203,6 +299,14 @@ func NewProjectWorkspaceServiceHandler(svc ProjectWorkspaceServiceHandler, opts 
 	)
 	return "/workos.project.v1.ProjectWorkspaceService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
+		case ProjectWorkspaceServiceListWorkspaceFilesProcedure:
+			projectWorkspaceServiceListWorkspaceFilesHandler.ServeHTTP(w, r)
+		case ProjectWorkspaceServiceReadWorkspaceFileProcedure:
+			projectWorkspaceServiceReadWorkspaceFileHandler.ServeHTTP(w, r)
+		case ProjectWorkspaceServiceWriteWorkspaceFileProcedure:
+			projectWorkspaceServiceWriteWorkspaceFileHandler.ServeHTTP(w, r)
+		case ProjectWorkspaceServiceListAvailableWorkspacesProcedure:
+			projectWorkspaceServiceListAvailableWorkspacesHandler.ServeHTTP(w, r)
 		case ProjectWorkspaceServiceBindWorkspaceProcedure:
 			projectWorkspaceServiceBindWorkspaceHandler.ServeHTTP(w, r)
 		case ProjectWorkspaceServiceGetWorkspaceProcedure:
@@ -222,6 +326,22 @@ func NewProjectWorkspaceServiceHandler(svc ProjectWorkspaceServiceHandler, opts 
 // UnimplementedProjectWorkspaceServiceHandler returns CodeUnimplemented from all methods.
 type UnimplementedProjectWorkspaceServiceHandler struct{}
 
+func (UnimplementedProjectWorkspaceServiceHandler) ListWorkspaceFiles(context.Context, *connect.Request[v1.ListWorkspaceFilesRequest]) (*connect.Response[v1.ListWorkspaceFilesResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("workos.project.v1.ProjectWorkspaceService.ListWorkspaceFiles is not implemented"))
+}
+
+func (UnimplementedProjectWorkspaceServiceHandler) ReadWorkspaceFile(context.Context, *connect.Request[v1.ReadWorkspaceFileRequest]) (*connect.Response[v1.ReadWorkspaceFileResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("workos.project.v1.ProjectWorkspaceService.ReadWorkspaceFile is not implemented"))
+}
+
+func (UnimplementedProjectWorkspaceServiceHandler) WriteWorkspaceFile(context.Context, *connect.Request[v1.WriteWorkspaceFileRequest]) (*connect.Response[v1.WriteWorkspaceFileResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("workos.project.v1.ProjectWorkspaceService.WriteWorkspaceFile is not implemented"))
+}
+
+func (UnimplementedProjectWorkspaceServiceHandler) ListAvailableWorkspaces(context.Context, *connect.Request[v1.ListAvailableWorkspacesRequest]) (*connect.Response[v1.ListAvailableWorkspacesResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("workos.project.v1.ProjectWorkspaceService.ListAvailableWorkspaces is not implemented"))
+}
+
 func (UnimplementedProjectWorkspaceServiceHandler) BindWorkspace(context.Context, *connect.Request[v1.BindWorkspaceRequest]) (*connect.Response[v1.BindWorkspaceResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("workos.project.v1.ProjectWorkspaceService.BindWorkspace is not implemented"))
 }
@@ -240,4 +360,80 @@ func (UnimplementedProjectWorkspaceServiceHandler) UpdateWorkspaceAccess(context
 
 func (UnimplementedProjectWorkspaceServiceHandler) ArchiveWorkspace(context.Context, *connect.Request[v1.ArchiveWorkspaceRequest]) (*connect.Response[v1.ArchiveWorkspaceResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("workos.project.v1.ProjectWorkspaceService.ArchiveWorkspace is not implemented"))
+}
+
+// WorkspaceExecutionAuthorizationServiceClient is a client for the
+// workos.project.v1.WorkspaceExecutionAuthorizationService service.
+type WorkspaceExecutionAuthorizationServiceClient interface {
+	ResolveWorkspaceExecution(context.Context, *connect.Request[v1.ResolveWorkspaceExecutionRequest]) (*connect.Response[v1.ResolveWorkspaceExecutionResponse], error)
+}
+
+// NewWorkspaceExecutionAuthorizationServiceClient constructs a client for the
+// workos.project.v1.WorkspaceExecutionAuthorizationService service. By default, it uses the Connect
+// protocol with the binary Protobuf Codec, asks for gzipped responses, and sends uncompressed
+// requests. To use the gRPC or gRPC-Web protocols, supply the connect.WithGRPC() or
+// connect.WithGRPCWeb() options.
+//
+// The URL supplied here should be the base URL for the Connect or gRPC server (for example,
+// http://api.acme.com or https://acme.com/grpc).
+func NewWorkspaceExecutionAuthorizationServiceClient(httpClient connect.HTTPClient, baseURL string, opts ...connect.ClientOption) WorkspaceExecutionAuthorizationServiceClient {
+	baseURL = strings.TrimRight(baseURL, "/")
+	workspaceExecutionAuthorizationServiceMethods := v1.File_workos_project_v1_workspace_proto.Services().ByName("WorkspaceExecutionAuthorizationService").Methods()
+	return &workspaceExecutionAuthorizationServiceClient{
+		resolveWorkspaceExecution: connect.NewClient[v1.ResolveWorkspaceExecutionRequest, v1.ResolveWorkspaceExecutionResponse](
+			httpClient,
+			baseURL+WorkspaceExecutionAuthorizationServiceResolveWorkspaceExecutionProcedure,
+			connect.WithSchema(workspaceExecutionAuthorizationServiceMethods.ByName("ResolveWorkspaceExecution")),
+			connect.WithClientOptions(opts...),
+		),
+	}
+}
+
+// workspaceExecutionAuthorizationServiceClient implements
+// WorkspaceExecutionAuthorizationServiceClient.
+type workspaceExecutionAuthorizationServiceClient struct {
+	resolveWorkspaceExecution *connect.Client[v1.ResolveWorkspaceExecutionRequest, v1.ResolveWorkspaceExecutionResponse]
+}
+
+// ResolveWorkspaceExecution calls
+// workos.project.v1.WorkspaceExecutionAuthorizationService.ResolveWorkspaceExecution.
+func (c *workspaceExecutionAuthorizationServiceClient) ResolveWorkspaceExecution(ctx context.Context, req *connect.Request[v1.ResolveWorkspaceExecutionRequest]) (*connect.Response[v1.ResolveWorkspaceExecutionResponse], error) {
+	return c.resolveWorkspaceExecution.CallUnary(ctx, req)
+}
+
+// WorkspaceExecutionAuthorizationServiceHandler is an implementation of the
+// workos.project.v1.WorkspaceExecutionAuthorizationService service.
+type WorkspaceExecutionAuthorizationServiceHandler interface {
+	ResolveWorkspaceExecution(context.Context, *connect.Request[v1.ResolveWorkspaceExecutionRequest]) (*connect.Response[v1.ResolveWorkspaceExecutionResponse], error)
+}
+
+// NewWorkspaceExecutionAuthorizationServiceHandler builds an HTTP handler from the service
+// implementation. It returns the path on which to mount the handler and the handler itself.
+//
+// By default, handlers support the Connect, gRPC, and gRPC-Web protocols with the binary Protobuf
+// and JSON codecs. They also support gzip compression.
+func NewWorkspaceExecutionAuthorizationServiceHandler(svc WorkspaceExecutionAuthorizationServiceHandler, opts ...connect.HandlerOption) (string, http.Handler) {
+	workspaceExecutionAuthorizationServiceMethods := v1.File_workos_project_v1_workspace_proto.Services().ByName("WorkspaceExecutionAuthorizationService").Methods()
+	workspaceExecutionAuthorizationServiceResolveWorkspaceExecutionHandler := connect.NewUnaryHandler(
+		WorkspaceExecutionAuthorizationServiceResolveWorkspaceExecutionProcedure,
+		svc.ResolveWorkspaceExecution,
+		connect.WithSchema(workspaceExecutionAuthorizationServiceMethods.ByName("ResolveWorkspaceExecution")),
+		connect.WithHandlerOptions(opts...),
+	)
+	return "/workos.project.v1.WorkspaceExecutionAuthorizationService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case WorkspaceExecutionAuthorizationServiceResolveWorkspaceExecutionProcedure:
+			workspaceExecutionAuthorizationServiceResolveWorkspaceExecutionHandler.ServeHTTP(w, r)
+		default:
+			http.NotFound(w, r)
+		}
+	})
+}
+
+// UnimplementedWorkspaceExecutionAuthorizationServiceHandler returns CodeUnimplemented from all
+// methods.
+type UnimplementedWorkspaceExecutionAuthorizationServiceHandler struct{}
+
+func (UnimplementedWorkspaceExecutionAuthorizationServiceHandler) ResolveWorkspaceExecution(context.Context, *connect.Request[v1.ResolveWorkspaceExecutionRequest]) (*connect.Response[v1.ResolveWorkspaceExecutionResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("workos.project.v1.WorkspaceExecutionAuthorizationService.ResolveWorkspaceExecution is not implemented"))
 }

@@ -1,3 +1,4 @@
+import { WorkspaceFiles } from "./WorkspaceFiles.js";
 // Dock system applications (W6): Home launchpad, Files over the indexed
 // workspace projection, Docs and Code over the project's review artifacts,
 // and the sandboxed Browser window. Everything is read-only and bounded;
@@ -55,7 +56,7 @@ export function HomeApp(props: { apps: HomeAppEntry[]; children?: ReactNode }) {
 
 type IndexedHit = Awaited<ReturnType<WorkOSClients["index"]["searchHybrid"]>>["hits"][number];
 
-export function FilesApp({
+export function IndexedFilesApp({
   projectId,
   workosClients,
 }: {
@@ -527,6 +528,33 @@ export function BrowserApp(props: {
       {!sessionReady && !target ? (
         <p className="empty-state">Enter an address to browse inside WorkOS.</p>
       ) : null}
+    </div>
+  );
+}
+
+export function FilesApp(props: { projectId: string; workosClients: WorkOSClients }) {
+  const [view, setView] = useState<"current" | "indexed">("current");
+  return (
+    <div className="files-views">
+      <nav className="preview-actions" aria-label="File views">
+        <Button
+          aria-pressed={view === "current"}
+          onClick={() => {
+            setView("current");
+          }}
+        >
+          Current files
+        </Button>
+        <Button
+          aria-pressed={view === "indexed"}
+          onClick={() => {
+            setView("indexed");
+          }}
+        >
+          Indexed search
+        </Button>
+      </nav>
+      {view === "current" ? <WorkspaceFiles {...props} /> : <IndexedFilesApp {...props} />}
     </div>
   );
 }

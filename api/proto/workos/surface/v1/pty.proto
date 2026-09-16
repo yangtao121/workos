@@ -37,6 +37,7 @@ message WritePtySessionRequest {
   string session_id = 1;
   // Bounded raw terminal input bytes (UTF-8 or control sequences).
   bytes input = 2;
+  int64 control_generation = 3;
 }
 
 message WritePtySessionResponse {
@@ -63,6 +64,7 @@ message ResizePtySessionRequest {
   string session_id = 1;
   int32 columns = 2;
   int32 rows = 3;
+  int64 control_generation = 4;
 }
 
 message ResizePtySessionResponse {

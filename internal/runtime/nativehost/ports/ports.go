@@ -88,3 +88,30 @@ type Engine interface {
 	// application layer, never client input.
 	Launch(ctx context.Context, width, height int32, workingDirectory string) (Display, error)
 }
+
+// RestartStore reserves a new generation and records action-key replay in
+// one transaction before any process is launched.
+type RestartStore interface {
+	BeginRestart(context.Context, string, string, string, time.Time) (int64, bool, error)
+}
+
+// WorkspaceGrant is an immutable execution snapshot; Validate rechecks Core.
+type WorkspaceGrant struct {
+	Directory string
+	ReadOnly  bool
+	Validate  func(context.Context) error
+}
+type WorkspaceAuthorizer interface {
+	AuthorizeWorkspace(context.Context, string, string) (WorkspaceGrant, error)
+}
+type WorkspaceEngine interface {
+	LaunchWorkspace(context.Context, int32, int32, string, bool) (Display, error)
+}
+
+type StopStore interface {
+	BeginStop(context.Context, string, string, string, time.Time) (bool, error)
+}
+
+type EpochControlAuthorizer interface {
+	AuthorizeInputGeneration(context.Context, string, string, string, int64) error
+}

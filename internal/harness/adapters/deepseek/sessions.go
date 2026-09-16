@@ -35,12 +35,9 @@ const (
 	maximumPendingNotifications = 1024
 )
 
-// SessionManager owns one pinned official runtime child process per
-// continuous harness session (ADR-0030). The native protocol has no wire-level
-// resume, so continuity is process continuity: prompts of the same session
-// are serialized onto the same living child, and any credential or workspace
-// change respawns it (the previous native context is deliberately lost rather
-// than served under a different secret).
+// SessionManager manages the credential-bearing child for one execution.
+// Native persistence owns continuity across children; the provider closes
+// each child when its task ends.
 type SessionManager struct {
 	mu        sync.Mutex
 	config    Config
@@ -53,6 +50,7 @@ type SessionManager struct {
 // pending holds notifications that arrived while the initialize handshake was
 // still running and are replayed to the first prompt reader.
 type sessionProcess struct {
+	tools          ports.ToolCall
 	sessionID      string
 	workspaceRoot  string
 	ownerUserID    string
@@ -157,6 +155,8 @@ func (m *SessionManager) Prompt(ctx context.Context, proc *sessionProcess, runID
 	if err := writeRequest(ctx, proc.stdin, requestID, "session/prompt", map[string]any{
 		"sessionId":     proc.sessionID,
 		"contentBlocks": []map[string]string{{"type": "text", "text": text}},
+		"messageId":     runID,
+		"maxTokens":     maxTokens,
 	}); err != nil {
 		return m.fail(proc, processError(ctx, err))
 	}
@@ -166,6 +166,12 @@ func (m *SessionManager) Prompt(ctx context.Context, proc *sessionProcess, runID
 		envelope, err := m.nextFrame(ctx, proc)
 		if err != nil {
 			return m.fail(proc, processError(ctx, err))
+		}
+		if envelope.Method == "workos/tool" && len(envelope.ID) != 0 {
+			if err := m.handleTool(ctx, proc, envelope); err != nil {
+				return m.fail(proc, err)
+			}
+			continue
 		}
 		if len(envelope.ID) != 0 {
 			id, idErr := responseID(envelope)
@@ -258,6 +264,20 @@ func (m *SessionManager) spawn(ctx context.Context, sessionID, workspaceRoot, st
 	if err := os.WriteFile(filepath.Join(stateDir, workosToolsFileName), pluginSource, 0o600); err != nil {
 		return nil, ports.NewRunError(ports.ErrorKindUnavailable, "DeepSeek session state directory is not writable", true, err)
 	}
+	workspacePlugin, err := os.ReadFile(filepath.Join(filepath.Dir(m.config.WorkosToolsPath), "workos-workspace.mjs"))
+	if err != nil {
+		return nil, ports.NewRunError(ports.ErrorKindConfiguration, "Workspace backend plugin unavailable", false, err)
+	}
+	if err := os.WriteFile(filepath.Join(stateDir, "workos-workspace.mjs"), workspacePlugin, 0600); err != nil {
+		return nil, err
+	}
+	bridge, err := os.ReadFile(filepath.Join(filepath.Dir(m.config.WorkosToolsPath), "workos-session.mjs"))
+	if err != nil {
+		return nil, ports.NewRunError(ports.ErrorKindConfiguration, "DeepSeek session bridge is unavailable", false, err)
+	}
+	if err := os.WriteFile(filepath.Join(stateDir, "workos-session.mjs"), bridge, 0o600); err != nil {
+		return nil, err
+	}
 	cordisPath := filepath.Join(stateDir, "cordis.yml")
 	if err := os.WriteFile(cordisPath, renderCordisConfig(stateDir, workspace, m.config), 0o600); err != nil {
 		return nil, ports.NewRunError(ports.ErrorKindUnavailable, "DeepSeek session state directory is not writable", true, err)
@@ -316,7 +336,7 @@ func (m *SessionManager) initialize(ctx context.Context, proc *sessionProcess, w
 	requestID := proc.nextID + 1
 	proc.nextID = requestID
 	if err := writeRequest(ctx, proc.stdin, requestID, "initialize", map[string]any{
-		"cwd": workspace, "provider": "deepseek-official", "model": m.config.Model, "maxTokens": sessionEnvMaxTokens,
+		"cwd": "/workspace", "provider": "deepseek-official", "model": m.config.Model, "maxTokens": sessionEnvMaxTokens,
 	}); err != nil {
 		return processError(ctx, err)
 	}
@@ -334,7 +354,7 @@ func (m *SessionManager) initialize(ctx context.Context, proc *sessionProcess, w
 				return classifyRPCError(envelope.Error)
 			}
 			var initialized initializeResult
-			if err := json.Unmarshal(envelope.Result, &initialized); err != nil || initialized.ServerInfo.Name != "deepseek-harness-sdk-runtime" || initialized.ServerInfo.Version == "" {
+			if err := json.Unmarshal(envelope.Result, &initialized); err != nil || initialized.ServerInfo.Name != "workos-deepseek-session" || initialized.ServerInfo.Version == "" {
 				return protocolError("DeepSeek Harness initialization response is incompatible", err)
 			}
 			return nil
@@ -527,10 +547,10 @@ func ensureSessionDirectory(path string) error {
 var cordisRowIDs = []string{
 	"timer", "llm", "session", "session-title", "agent", "jobs", "llm-retry",
 	"session-persistence-jsonl", "subprocess", "sandbox", "sandbox-policy",
-	"bash-local", "shell-env", "approval", "tool-bash", "fs-observation-policy",
-	"fs-sandbox", "tool-fs", "tool-fs-search", "agent-instructions",
+	"workos-workspace", "shell-env", "approval", "tool-bash", "fs-observation-policy",
+	"tool-fs", "agent-instructions",
 	"timeout-policy", "tools", "system-prompt", "agent-loop", "llm-deepseek",
-	"sdk-jsonrpc-server", "workos-tools",
+	"user-questions", "tool-ask-user", "workos-session", "workos-tools",
 }
 
 // workosToolsFileName is the configuration-relative plugin row name. The
@@ -563,17 +583,17 @@ func renderCordisConfig(stateDir, workspace string, config Config) []byte {
 	row("subprocess", "@deepseek-ai/dsh-subprocess-local")
 	row("sandbox", "@deepseek-ai/dsh-sandbox-local")
 	row("sandbox-policy", "@deepseek-ai/dsh-sandbox-policy")
-	fmt.Fprintf(&out, "  config:\n    mode: workspace-write\n    workspaceRoot: %s\n", workspace)
-	row("bash-local", "@deepseek-ai/dsh-bash-local")
+	fmt.Fprintf(&out, "  config:\n    mode: workspace-write\n    workspaceRoot: /workspace\n")
+	row("workos-workspace", "./workos-workspace.mjs")
 	row("shell-env", "@deepseek-ai/dsh-shell-env")
 	row("approval", "@deepseek-ai/dsh-user-approval")
 	fmt.Fprint(&out, "  config:\n    policy: ask\n")
 	row("tool-bash", "@deepseek-ai/dsh-tool-bash")
+	fmt.Fprint(&out, "  config:\n    enableRunInBackground: false\n")
 	row("fs-observation-policy", "@deepseek-ai/dsh-fs-observation-policy")
-	row("fs-sandbox", "@deepseek-ai/dsh-fs-sandbox")
+
 	row("tool-fs", "@deepseek-ai/dsh-tool-fs")
-	row("tool-fs-search", "@deepseek-ai/dsh-tool-fs-search")
-	fmt.Fprint(&out, "  config:\n    sampleOverCapGlobResults: false\n")
+
 	row("agent-instructions", "@deepseek-ai/dsh-agent-instructions")
 	fmt.Fprint(&out, "  config:\n    maxBytes: 65536\n")
 	row("timeout-policy", "@deepseek-ai/dsh-tool-call-timeout-policy")
@@ -583,11 +603,46 @@ func renderCordisConfig(stateDir, workspace string, config Config) []byte {
 	row("agent-loop", "@deepseek-ai/dsh-agent-loop")
 	fmt.Fprint(&out, "  config:\n    agents: []\n")
 	row("llm-deepseek", "@deepseek-ai/dsh-llm-deepseek")
-	fmt.Fprintf(&out, "  config:\n    apiKeyEnv: DEEPSEEK_API_KEY\n    baseURL: %s\n    streamIdleTimeoutMs: 120000\n    retryPolicy:\n      mode: normal\n      maxRetries: 1\n    models:\n      - id: %s\n        contextWindow: 1000000\n        maxTokens: 384000\n", config.BaseURL, config.Model)
-	row("sdk-jsonrpc-server", "@deepseek-ai/dsh-sdk-jsonrpc-server")
-	fmt.Fprint(&out, "  config:\n    maxTokensAsSuccess: true\n")
+	fmt.Fprintf(&out, "  config:\n    apiKeyEnv: DEEPSEEK_API_KEY\n    baseURL: %s\n    streamIdleTimeoutMs: 120000\n    retryPolicy:\n      mode: normal\n      maxRetries: 0\n    models:\n      - id: %s\n        contextWindow: 1000000\n        maxTokens: 384000\n", config.BaseURL, config.Model)
+	row("user-questions", "@deepseek-ai/dsh-user-questions")
+	row("tool-ask-user", "@deepseek-ai/dsh-tool-ask-user")
+	row("workos-session", "./workos-session.mjs")
 	// The read-only WorkOS tools (B04): configuration-relative row, so the
 	// name is the file beside this cordis.yml, never a bare closure package.
 	row("workos-tools", "./"+workosToolsFileName)
 	return []byte(out.String())
+}
+
+func (m *SessionManager) handleTool(ctx context.Context, proc *sessionProcess, envelope rpcEnvelope) error {
+	var id int64
+	if err := json.Unmarshal(envelope.ID, &id); err != nil || id >= 0 {
+		return protocolError("Invalid tool identity", err)
+	}
+	var request struct {
+		Operation string         `json:"operation"`
+		Arguments map[string]any `json:"arguments"`
+	}
+	if err := json.Unmarshal(envelope.Params, &request); err != nil {
+		return protocolError("Invalid tool request", err)
+	}
+	response := map[string]any{"jsonrpc": "2.0", "id": id}
+	if proc.tools == nil {
+		response["error"] = map[string]any{"code": -32000, "message": "Workspace tools unavailable"}
+	} else {
+		result, err := proc.tools(ctx, request.Operation, request.Arguments)
+		if err != nil {
+			response["error"] = map[string]any{"code": -32000, "message": "WorkOS operation failed"}
+		} else {
+			response["result"] = result
+		}
+	}
+	data, err := json.Marshal(response)
+	if err != nil {
+		return err
+	}
+	if len(data) > 1024*1024 {
+		return protocolError("Tool response exceeds limit", nil)
+	}
+	_, err = proc.stdin.Write(append(data, '\n'))
+	return err
 }

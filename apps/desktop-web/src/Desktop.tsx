@@ -56,6 +56,8 @@ import { DeviceCenter } from "./DeviceCenter.js";
 import { HarnessSettings, type CatalogState } from "./HarnessSettings.js";
 import { KnowledgeCenter, type KnowledgeHit } from "./KnowledgeCenter.js";
 import { NotificationCenter } from "./NotificationCenter.js";
+import { WorkspacePreviews } from "./WorkspacePreviews.js";
+import { WorkspaceSettings } from "./WorkspaceSettings.js";
 import { RunningSurfaces } from "./RunningSurfaces.js";
 import { SystemMonitor } from "./SystemMonitor.js";
 import { CommandPalette, type PaletteAction } from "./CommandPalette.js";
@@ -609,6 +611,22 @@ export function Desktop({
     });
     recordLayout((state) => ({ ...state, activeSystemWindow: "browser" }));
   }, [recordLayout]);
+
+  const openWorkspacePreviews = useCallback(() => {
+    if (!activeProjectId) return;
+    dispatch({
+      type: "open",
+      window: {
+        id: "workspace-previews",
+        appId: "workspace-previews",
+        title: "Development previews",
+        kind: "workspace-previews",
+        rect: { x: 200, y: 120, width: 820, height: 620 },
+        mode: "normal",
+      },
+    });
+    recordLayout((state) => ({ ...state, activeSystemWindow: "workspace-previews" }));
+  }, [activeProjectId, recordLayout]);
 
   const openTerminal = useCallback(() => {
     if (!activeProjectId) return;
@@ -1516,6 +1534,14 @@ export function Desktop({
       open: openTerminal,
     },
     {
+      id: "workspace-previews",
+      label: "Development previews",
+      hint: "Run and reopen project web apps",
+      icon: "browser",
+      available: !!activeProjectId,
+      open: openWorkspacePreviews,
+    },
+    {
       id: "native",
       label: "Native",
       hint: "Virtual display over WebRTC",
@@ -1593,23 +1619,30 @@ export function Desktop({
   }
   function renderProjectSettings() {
     return activeProject ? (
-      <HarnessSettings
-        catalog={catalog}
-        catalogError={catalogError}
-        catalogState={catalogState}
-        draft={bindingDraft}
-        feedback={activeEditor?.feedback?.text}
-        feedbackIsError={activeEditor?.feedback?.isError}
-        project={activeProject}
-        saving={bindingSaving[activeProject.id] ?? false}
-        onRetry={() => void refreshCatalog()}
-        onSave={() => {
-          void saveHarnessBinding(activeProject.id, bindingDraft);
-        }}
-        onSelectionChange={(selection) => {
-          setBindingEditor({ projectId: activeProject.id, draft: selection });
-        }}
-      />
+      <>
+        <WorkspaceSettings
+          key={activeProject.id}
+          projectId={activeProject.id}
+          workosClients={workosClients}
+        />
+        <HarnessSettings
+          catalog={catalog}
+          catalogError={catalogError}
+          catalogState={catalogState}
+          draft={bindingDraft}
+          feedback={activeEditor?.feedback?.text}
+          feedbackIsError={activeEditor?.feedback?.isError}
+          project={activeProject}
+          saving={bindingSaving[activeProject.id] ?? false}
+          onRetry={() => void refreshCatalog()}
+          onSave={() => {
+            void saveHarnessBinding(activeProject.id, bindingDraft);
+          }}
+          onSelectionChange={(selection) => {
+            setBindingEditor({ projectId: activeProject.id, draft: selection });
+          }}
+        />
+      </>
     ) : null;
   }
 
@@ -1775,6 +1808,16 @@ export function Desktop({
           onOpenAppInstance={openAdaptiveAppInstance}
         />
       </HomeApp>
+    ) : windowState.kind === "workspace-previews" ? (
+      activeProject ? (
+        <WorkspacePreviews
+          key={activeProject.id}
+          projectId={activeProject.id}
+          workosClients={workosClients}
+        />
+      ) : (
+        <p>Create a project to run a preview.</p>
+      )
     ) : windowState.kind === "agent-sessions" ? (
       activeProject ? (
         <AgentSessionsApp

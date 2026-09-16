@@ -19,6 +19,7 @@ message WorkspaceSource {
   bool read_only = 4;
   // Bounded descriptive facts only: no absolute host paths, no credentials.
   google.protobuf.Timestamp registered_at = 5;
+  string project_id = 6;
 }
 
 message DescribeWorkspaceSourcesRequest {}

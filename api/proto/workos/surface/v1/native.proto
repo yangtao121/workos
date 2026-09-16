@@ -43,6 +43,7 @@ message CreateNativeSessionResponse {
 message ConnectNativeSessionRequest {
   string session_id = 1;
   string offer_sdp = 2;
+  int64 control_generation = 3;
 }
 
 message ConnectNativeSessionResponse {

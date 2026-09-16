@@ -38,7 +38,7 @@ func (h *Handler) DescribeWorkspaceSources(ctx context.Context, req *connect.Req
 	out := make([]*workloadv1.WorkspaceSource, 0, len(sources))
 	for _, source := range sources {
 		out = append(out, &workloadv1.WorkspaceSource{
-			Id: source.ID, Kind: source.Kind, DisplayName: source.DisplayName,
+			Id: source.ID, ProjectId: source.ProjectID, Kind: source.Kind, DisplayName: source.DisplayName,
 			ReadOnly: source.ReadOnly, RegisteredAt: timestamppb.New(source.Registered),
 		})
 	}

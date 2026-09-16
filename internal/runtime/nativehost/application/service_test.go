@@ -304,7 +304,7 @@ func TestNativeServiceDetachKeepsSessionRunning(t *testing.T) {
 	if _, _, err := service.Connect(ctx, testOwner, testDevice, session.SessionID, "v=0\r\noffer"); err != nil {
 		t.Fatalf("connect: %v", err)
 	}
-	detached, err := service.Detach(ctx, testOwner, session.SessionID)
+	detached, err := service.Detach(ctx, testOwner, session.SessionID, testDevice)
 	if err != nil {
 		t.Fatalf("detach: %v", err)
 	}
@@ -327,7 +327,7 @@ func TestNativeServiceDetachKeepsSessionRunning(t *testing.T) {
 	if _, err := service.Close(ctx, testOwner, session.SessionID); err != nil {
 		t.Fatalf("close: %v", err)
 	}
-	if _, err := service.Detach(ctx, testOwner, session.SessionID); !errors.Is(err, domain.ErrInvalid) {
+	if _, err := service.Detach(ctx, testOwner, session.SessionID, testDevice); !errors.Is(err, domain.ErrInvalid) {
 		t.Fatalf("detach after close: %v", err)
 	}
 }
@@ -468,16 +468,37 @@ func TestNativeConnectInstallsControlGate(t *testing.T) {
 	if !gate() {
 		t.Fatal("controlling device's gate must admit")
 	}
-	// A superseded device reconnects: its gate consults the CURRENT lease on
-	// every event and refuses while another device holds control.
+	// A late observer must not replace the active controller's peer or gate.
 	superseded := "01999999-9999-7999-8999-000000000004"
-	if _, _, err := service.Connect(ctx, testOwner, superseded, session.SessionID, "v=0\r\noffer"); err != nil {
-		t.Fatalf("reconnect: %v", err)
+	if _, _, err := service.Connect(ctx, testOwner, superseded, session.SessionID, "v=0\r\noffer"); !errors.Is(err, domain.ErrControlDenied) {
+		t.Fatalf("late reconnect must be denied: %v", err)
 	}
 	display.mu.Lock()
 	gate = display.gate
 	display.mu.Unlock()
-	if gate == nil || gate() {
-		t.Fatal("superseded device's gate must consult and refuse")
+	if gate == nil || !gate() {
+		t.Fatal("denied reconnect displaced controller")
+	}
+
+}
+
+func TestForeignDeviceDetachDoesNotCloseCurrentPeer(t *testing.T) {
+	service, engine := newTestService(t)
+	ctx := context.Background()
+	session, err := service.Create(ctx, testOwner, testProject, "detach-foreign", 800, 600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer service.Close(ctx, testOwner, session.SessionID)
+	if _, _, err := service.Connect(ctx, testOwner, testDevice, session.SessionID, "v=0\r\noffer"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.Detach(ctx, testOwner, session.SessionID, testProject); err != nil {
+		t.Fatal(err)
+	}
+	engine.mu.Lock()
+	defer engine.mu.Unlock()
+	if engine.displays[len(engine.displays)-1].detached {
+		t.Fatal("observer detached the controller peer")
 	}
 }

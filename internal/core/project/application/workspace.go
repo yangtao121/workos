@@ -18,6 +18,7 @@ import (
 
 // WorkspaceService binds operator-registered workspace sources to projects.
 type WorkspaceService struct {
+	projects   *Service
 	repository ports.WorkspaceRepository
 	directory  ports.SourceDirectory
 	generator  ids.Generator
@@ -47,7 +48,7 @@ func (s *WorkspaceService) Bind(ctx context.Context, ownerUserID, projectID, wor
 	registered := false
 	readOnly := false
 	for _, source := range sources {
-		if source.ID == workspaceSourceID {
+		if source.ID == workspaceSourceID && source.ProjectID == projectID {
 			registered = true
 			readOnly = source.ReadOnly
 			break
@@ -125,8 +126,7 @@ func (s *WorkspaceService) UpdateAccess(ctx context.Context, ownerUserID, bindin
 	return binding, nil
 }
 
-// Archive blocks new executions against this binding; running executions
-// finish under their pinned revision.
+// Archive revokes this binding; active consumers recheck its revision.
 func (s *WorkspaceService) Archive(ctx context.Context, ownerUserID, bindingID string, expectedRevision int64) (domain.WorkspaceBinding, error) {
 	if !domain.ValidProjectUUID(ownerUserID) || !domain.ValidProjectUUID(bindingID) || expectedRevision <= 0 {
 		return domain.WorkspaceBinding{}, domain.ErrInvalid
@@ -139,4 +139,78 @@ func (s *WorkspaceService) Archive(ctx context.Context, ownerUserID, bindingID s
 		return domain.WorkspaceBinding{}, err
 	}
 	return binding, nil
+}
+
+// AvailableForProject reveals only operator-registered sources belonging to
+// this owner and this project; the browser never supplies a host path.
+func (s *WorkspaceService) AvailableForProject(ctx context.Context, owner, project string) ([]ports.WorkspaceSource, error) {
+	if !domain.ValidProjectUUID(owner) || !domain.ValidProjectUUID(project) {
+		return nil, domain.ErrInvalid
+	}
+	sources, err := s.directory.Sources(ctx, owner)
+	if err != nil {
+		return nil, err
+	}
+	out := []ports.WorkspaceSource{}
+	for _, source := range sources {
+		if source.ProjectID == project {
+			out = append(out, source)
+		}
+	}
+	return out, nil
+}
+
+func (s *WorkspaceService) WithProjects(projects *Service) *WorkspaceService {
+	s.projects = projects
+	return s
+}
+
+// ExecuteFile derives scope from the authenticated owner and current binding.
+// Writes require both binding revision and the exact observed content digest.
+func (s *WorkspaceService) ExecuteFile(ctx context.Context, owner, project, operation, path, content, etag string, revision int64) (map[string]any, domain.WorkspaceBinding, error) {
+	empty := domain.WorkspaceBinding{}
+	if s.projects == nil {
+		return nil, empty, domain.ErrInvalid
+	}
+	facts, err := s.projects.Get(ctx, owner, project)
+	if err != nil {
+		return nil, empty, err
+	}
+	if facts.ArchivedAt != nil {
+		return nil, empty, domain.ErrNotFound
+	}
+	binding, err := s.ActiveForProject(ctx, owner, project)
+	if err != nil {
+		return nil, empty, err
+	}
+	files, ok := s.directory.(ports.WorkspaceFiles)
+	if !ok {
+		return nil, empty, domain.ErrWorkspaceSourceUnknown
+	}
+	args := map[string]any{"path": path}
+	switch operation {
+	case "fs.list", "fs.read":
+	case "fs.write":
+		if binding.ReadOnly || revision != binding.Revision || etag == "" || len(content) > 256*1024 {
+			return nil, empty, domain.ErrWorkspaceRevision
+		}
+		args["content"] = content
+		args["guard"] = "replaceIfVersion"
+		args["version"] = etag
+	default:
+		return nil, empty, domain.ErrInvalid
+	}
+	call, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	result, err := files.ExecuteFile(call, ports.FileExecution{BindingID: binding.ID, Revision: binding.Revision, ID: s.generator.New(), OwnerUserID: owner, ProjectID: project, SourceID: binding.WorkspaceSourceID, ReadOnly: binding.ReadOnly, Operation: operation, Arguments: args})
+	if err != nil {
+		return nil, empty, err
+	}
+	if failure, _ := result["error"].(string); failure != "" {
+		if failure == "FS_STALE_VERSION" {
+			return nil, empty, domain.ErrWorkspaceRevision
+		}
+		return nil, empty, domain.ErrInvalid
+	}
+	return result, binding, nil
 }

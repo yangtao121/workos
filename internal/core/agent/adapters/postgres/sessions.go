@@ -9,18 +9,21 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/yangtao121/workos/internal/core/agent/adapters/postgres/agentdb"
 	"github.com/yangtao121/workos/internal/core/agent/domain"
+	"github.com/yangtao121/workos/internal/core/agent/ports"
 )
 
 // SessionRepository persists continuous harness session facts (ADR-0030):
 // sessions, idempotent ordered inputs, and the bounded lifecycle event log.
 type SessionRepository struct {
+	pool    *pgxpool.Pool
 	queries *agentdb.Queries
 }
 
-func NewSessionRepository(queries *agentdb.Queries) *SessionRepository {
-	return &SessionRepository{queries: queries}
+func NewSessionRepository(pool *pgxpool.Pool) *SessionRepository {
+	return &SessionRepository{pool: pool, queries: agentdb.New(pool)}
 }
 
 func sessionError(operation string, err error) error {
@@ -308,4 +311,59 @@ func (r *SessionRepository) ListEvents(ctx context.Context, sessionID string, af
 		})
 	}
 	return out, nil
+}
+
+// WithinSession holds exactly one owner-scoped session row through commit.
+func (r *SessionRepository) WithinSession(ctx context.Context, owner, id string, apply func(ports.SessionRepository) error) error {
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+	q := r.queries.WithTx(tx)
+	if _, err := q.LockAgentSession(ctx, agentdb.LockAgentSessionParams{OwnerUserID: owner, SessionID: id}); err != nil {
+		return sessionError("lock session", err)
+	}
+	if err := apply(&SessionRepository{queries: q}); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
+}
+func (r *SessionRepository) InputByTask(ctx context.Context, sessionID, taskID string) (domain.SessionInput, error) {
+	id, err := requiredUUID(taskID)
+	if err != nil {
+		return domain.SessionInput{}, err
+	}
+	row, err := r.queries.GetSessionInputByTask(ctx, agentdb.GetSessionInputByTaskParams{SessionID: sessionID, TaskID: id})
+	return inputFromRow(row), sessionError("get session input by task", err)
+}
+func (r *SessionRepository) RecoveryCandidates(ctx context.Context, now time.Time, limit int) ([]domain.Session, error) {
+	rows, err := r.queries.ClaimSessionRecoveryBatch(ctx, agentdb.ClaimSessionRecoveryBatchParams{Limit: int32(limit), RecoveryCheckedAt: timestamp(now)})
+	if err != nil {
+		return nil, err
+	}
+	result := make([]domain.Session, 0, len(rows))
+	for _, row := range rows {
+		result = append(result, domain.Session{ID: row.SessionID, OwnerUserID: row.OwnerUserID})
+	}
+	return result, nil
+}
+
+func (r *SessionRepository) PauseForReview(ctx context.Context, owner, id string, now time.Time) (bool, error) {
+	n, err := r.queries.PauseAgentSessionForReview(ctx, agentdb.PauseAgentSessionForReviewParams{OwnerUserID: owner, SessionID: id, UpdatedAt: timestamp(now)})
+	return n != 0, err
+}
+
+// CancelledAdmissions finds the narrow crash window between durable task
+// admission and input linkage when the input/session was subsequently closed.
+func (r *SessionRepository) CancelledAdmissions(ctx context.Context) ([]domain.Task, error) {
+	rows, err := r.queries.ListCancelledSessionAdmissions(ctx)
+	if err != nil {
+		return nil, err
+	}
+	result := make([]domain.Task, 0, len(rows))
+	for _, row := range rows {
+		result = append(result, domain.Task{ID: row.ID, OwnerUserID: row.OwnerUserID})
+	}
+	return result, nil
 }

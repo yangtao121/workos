@@ -438,6 +438,13 @@ func requestedArtifactTypes(input []byte, projectID string) (map[string]bool, er
 		}
 		types[requested] = true
 	}
+	// Only Core can stamp agent_session_id (public SubmitTask rejects it).
+	// A continuous development turn may publish a review through its leased
+	// tool without promising that every turn produces mandatory outputs.
+	if parsed.GetAgentSessionId() != "" && projectID != "" {
+		types[artifactdomain.TypeMarkdown] = true
+		types[artifactdomain.TypeUnifiedDiff] = true
+	}
 	return types, nil
 }
 

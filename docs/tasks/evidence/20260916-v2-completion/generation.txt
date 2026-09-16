@@ -1,0 +1,2 @@
+make generate: PASS
+Second make generate: all 200 generated Go/TypeScript/sqlc/README files byte-identical.

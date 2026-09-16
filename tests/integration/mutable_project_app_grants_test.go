@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 	"strings"
 	"sync"
 	"testing"
@@ -17,9 +18,13 @@ import (
 	"github.com/yangtao121/workos/gen/go/workos/app/v1/appv1connect"
 )
 
-// gatewayOwnerID is the fixed DevBypass identity the acceptance gateway
-// injects (compose.yaml WORKOS_OWNER_ID); owner-scoped DB assertions use it.
-const gatewayOwnerID = "0198d7ea-2110-7c42-b659-c5e4d73bc337"
+// The owner must match the selected isolated Gateway, not another dev stack.
+var gatewayOwnerID = func() string {
+	if value := os.Getenv("WORKOS_TEST_OWNER_ID"); value != "" {
+		return value
+	}
+	return "0198d7ea-2110-7c42-b659-c5e4d73bc337"
+}()
 
 // mustSetGrants issues one SetAppGrants command and fails the test on
 // transport-level surprises, keeping call sites readable.

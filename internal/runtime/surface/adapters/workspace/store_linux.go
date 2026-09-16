@@ -171,6 +171,46 @@ func (s *Store) Read(ctx context.Context, scope ports.FileScope, ref domain.File
 	}
 	return data, nil
 }
+
+// ReadCurrent reads one workspace file without a pinned etag and returns the
+// exact bytes with their content digest. It backs the workspace dev preview
+// serving path (ADR-0030 B08): the caller bounds the read, and the openat2
+// resolution, regular-file check, and sandbox-escape denial stay identical
+// to the bridge read path. A file larger than limit is a limit error, never
+// a partial body.
+func (s *Store) ReadCurrent(ctx context.Context, scope ports.FileScope, path string, limit int) ([]byte, string, error) {
+	if limit <= 0 || !domain.ValidFilePath(path, false) {
+		return nil, "", domain.ErrInvalid
+	}
+	b, release, err := s.acquire(ctx, scope)
+	if err != nil {
+		return nil, "", err
+	}
+	defer release()
+	file, err := open(b.root, path, unix.O_RDONLY)
+	if err != nil {
+		return nil, "", err
+	}
+	defer file.Close() //nolint:errcheck
+	stat, err := file.Stat()
+	if err != nil {
+		return nil, "", domain.ErrUnavailable
+	}
+	if !stat.Mode().IsRegular() {
+		return nil, "", domain.ErrPermissionDenied
+	}
+	if stat.Size() > int64(limit) {
+		return nil, "", domain.ErrFileLimit
+	}
+	data, err := io.ReadAll(io.LimitReader(file, int64(limit)+1))
+	if err != nil {
+		return nil, "", domain.ErrUnavailable
+	}
+	if len(data) > limit {
+		return nil, "", domain.ErrFileLimit
+	}
+	return data, digest(data), nil
+}
 func (s *Store) List(ctx context.Context, scope ports.FileScope, directory, after string) (domain.FilePage, error) {
 	if !domain.ValidFilePath(directory, true) || !domain.ValidFilePath(after, true) || strings.Contains(after, "/") {
 		return domain.FilePage{}, domain.ErrInvalid

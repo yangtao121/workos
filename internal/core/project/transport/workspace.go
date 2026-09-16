@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"path"
 	"strings"
 
 	"connectrpc.com/connect"
@@ -118,4 +119,69 @@ func workspaceError(err error) error {
 		code = connect.CodeFailedPrecondition
 	}
 	return connect.NewError(code, errors.New("project workspace request failed"))
+}
+
+func (h *WorkspaceHandler) ListAvailableWorkspaces(ctx context.Context, req *connect.Request[projectv1.ListAvailableWorkspacesRequest]) (*connect.Response[projectv1.ListAvailableWorkspacesResponse], error) {
+	owner, err := identity.FromContext(ctx)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeUnauthenticated, err)
+	}
+	sources, err := h.service.AvailableForProject(ctx, owner.UserID, req.Msg.GetProjectId())
+	if err != nil {
+		return nil, workspaceError(err)
+	}
+	result := make([]*projectv1.AvailableWorkspaceSource, 0, len(sources))
+	for _, source := range sources {
+		result = append(result, &projectv1.AvailableWorkspaceSource{Id: source.ID, DisplayName: source.DisplayName, Kind: source.Kind, ReadOnly: source.ReadOnly})
+	}
+	return connect.NewResponse(&projectv1.ListAvailableWorkspacesResponse{Sources: result}), nil
+}
+
+func (h *WorkspaceHandler) ListWorkspaceFiles(ctx context.Context, req *connect.Request[projectv1.ListWorkspaceFilesRequest]) (*connect.Response[projectv1.ListWorkspaceFilesResponse], error) {
+	owner, err := identity.FromContext(ctx)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeUnauthenticated, err)
+	}
+	result, binding, err := h.service.ExecuteFile(ctx, owner.UserID, req.Msg.GetProjectId(), "fs.list", req.Msg.GetPath(), "", "", 0)
+	if err != nil {
+		return nil, workspaceError(err)
+	}
+	entries := []*projectv1.WorkspaceFileEntry{}
+	rows, _ := result["entries"].([]any)
+	for _, row := range rows {
+		entry, ok := row.(map[string]any)
+		if !ok {
+			continue
+		}
+		name, _ := entry["name"].(string)
+		kind, _ := entry["type"].(string)
+		size, _ := entry["size"].(float64)
+		entries = append(entries, &projectv1.WorkspaceFileEntry{Path: path.Join(req.Msg.GetPath(), name), Kind: kind, Size: int64(size)})
+	}
+	return connect.NewResponse(&projectv1.ListWorkspaceFilesResponse{Entries: entries, WorkspaceRevision: binding.Revision, ReadOnly: binding.ReadOnly}), nil
+}
+func (h *WorkspaceHandler) ReadWorkspaceFile(ctx context.Context, req *connect.Request[projectv1.ReadWorkspaceFileRequest]) (*connect.Response[projectv1.ReadWorkspaceFileResponse], error) {
+	owner, err := identity.FromContext(ctx)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeUnauthenticated, err)
+	}
+	result, binding, err := h.service.ExecuteFile(ctx, owner.UserID, req.Msg.GetProjectId(), "fs.read", req.Msg.GetPath(), "", "", 0)
+	if err != nil {
+		return nil, workspaceError(err)
+	}
+	content, _ := result["content"].(string)
+	etag, _ := result["version"].(string)
+	return connect.NewResponse(&projectv1.ReadWorkspaceFileResponse{Content: content, Etag: etag, WorkspaceRevision: binding.Revision, ReadOnly: binding.ReadOnly}), nil
+}
+func (h *WorkspaceHandler) WriteWorkspaceFile(ctx context.Context, req *connect.Request[projectv1.WriteWorkspaceFileRequest]) (*connect.Response[projectv1.WriteWorkspaceFileResponse], error) {
+	owner, err := identity.FromContext(ctx)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeUnauthenticated, err)
+	}
+	result, _, err := h.service.ExecuteFile(ctx, owner.UserID, req.Msg.GetProjectId(), "fs.write", req.Msg.GetPath(), req.Msg.GetContent(), req.Msg.GetExpectedEtag(), req.Msg.GetWorkspaceRevision())
+	if err != nil {
+		return nil, workspaceError(err)
+	}
+	etag, _ := result["version"].(string)
+	return connect.NewResponse(&projectv1.WriteWorkspaceFileResponse{Etag: etag}), nil
 }

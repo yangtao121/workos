@@ -84,7 +84,7 @@ describe("Running apps list", () => {
     await waitFor(() => {
       expect(f.stopSurfaceWorkload).toHaveBeenCalledWith({
         workloadId: "workload-terminal",
-        actionKey: expect.stringMatching(/^desktop-running-stop-/) as string,
+        actionKey: expect.any(String) as string,
       });
     });
   });

@@ -18,6 +18,8 @@ export function RunningSurfaces(props: {
   const { projectId, workosClients, onOpenTerminal, onOpenNative, onOpenAppInstance } = props;
   const [workloads, setWorkloads] = useState<SurfaceWorkloadView[]>([]);
   const [state, setState] = useState<"loading" | "ready" | "unavailable">("loading");
+  const [error, setError] = useState("");
+  const actions = useRef(new Map<string, string>());
   const [stopping, setStopping] = useState<string[]>([]);
   const generationRef = useRef(0);
   const reloadRef = useRef<() => void>(() => undefined);
@@ -56,17 +58,22 @@ export function RunningSurfaces(props: {
   }, [projectId, workosClients]);
 
   const stop = useCallback(
-    async (workloadId: string) => {
+    async (workloadId: string, restart = false) => {
       if (stopping.includes(workloadId)) return;
       const generation = generationRef.current;
       setStopping((current) => [...current, workloadId]);
+      const intent = `${restart ? "restart" : "stop"}:${workloadId}`;
+      const actionKey = actions.current.get(intent) ?? crypto.randomUUID();
+      actions.current.set(intent, actionKey);
+      setError("");
       try {
-        await workosClients.surfaceContinuity.stopSurfaceWorkload({
-          workloadId,
-          actionKey: `desktop-running-stop-${crypto.randomUUID()}`,
-        });
+        const request = { workloadId, actionKey };
+        if (restart) await workosClients.surfaceContinuity.restartSurfaceWorkload(request);
+        else await workosClients.surfaceContinuity.stopSurfaceWorkload(request);
+        actions.current.delete(intent);
       } catch {
-        // The immediate reload below reflects the authoritative state.
+        if (generation === generationRef.current)
+          setError("The action was not confirmed. Retry to check the same request.");
       } finally {
         if (generation === generationRef.current) {
           setStopping((current) => current.filter((id) => id !== workloadId));
@@ -100,6 +107,7 @@ export function RunningSurfaces(props: {
           Live app sessions are unavailable in this deployment.
         </p>
       ) : null}
+      {error ? <p role="alert">{error}</p> : null}
       <ul className="running-apps-list">
         {workloads.map((workload) => (
           <li
@@ -117,6 +125,7 @@ export function RunningSurfaces(props: {
             </span>
             <span className="running-app-actions">
               <Button
+                disabled={workload.state !== "running"}
                 onClick={() => {
                   openWorkload(workload);
                 }}
@@ -134,6 +143,13 @@ export function RunningSurfaces(props: {
                   {stopping.includes(workload.workloadId) ? "Stopping…" : "Stop"}
                 </Button>
               ) : null}
+              <Button
+                disabled={stopping.includes(workload.workloadId)}
+                onClick={() => void stop(workload.workloadId, true)}
+                type="button"
+              >
+                Restart
+              </Button>
             </span>
           </li>
         ))}

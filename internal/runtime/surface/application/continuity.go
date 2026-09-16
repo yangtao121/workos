@@ -24,10 +24,7 @@ import (
 const (
 	MinControlLeaseTTL = time.Minute
 	MaxControlLeaseTTL = 30 * time.Minute
-	// SessionWorkloadGeneration is the honest server-derived generation of
-	// the interactive session workloads today: one-shot processes that are
-	// never restarted (restart is refused for them), so every running session
-	// is its first and only generation.
+	// Older stored projections without generation start at one.
 	SessionWorkloadGeneration = 1
 )
 
@@ -100,7 +97,7 @@ func (s *ContinuityService) ListProjectSurfaces(ctx context.Context, ownerUserID
 	for _, workload := range workloads {
 		summaries = append(summaries, ContinuitySummary{
 			Workload:         workload,
-			Generation:       SessionWorkloadGeneration,
+			Generation:       max(SessionWorkloadGeneration, workload.Generation),
 			AttachmentCount:  counts[workload.WorkloadID],
 			KeepAliveSeconds: int64(s.controlTTL.Seconds()),
 		})
@@ -121,7 +118,7 @@ func (s *ContinuityService) AttachSurface(ctx context.Context, ownerUserID, devi
 	if err != nil {
 		return AttachResult{}, err
 	}
-	if workload.Terminal {
+	if workload.Terminal || workload.State != "running" {
 		// Honest stopped-state verdict: attaching never resurrects a program.
 		return AttachResult{Workload: workload}, fmt.Errorf("%w (state: %s)", domain.ErrWorkloadNotRunning, workload.State)
 	}
@@ -161,7 +158,7 @@ func (s *ContinuityService) DetachSurface(ctx context.Context, ownerUserID, devi
 		// The native runner releases the media peer and queued input of the
 		// current connection; PTY sessions carry no per-device connection
 		// state beyond the attachment row.
-		if detachErr := s.workloads.DetachWorkload(ctx, workload.Kind, ownerUserID, attachment.WorkloadID); detachErr != nil && !errors.Is(detachErr, ports.ErrContinuityNotFound) {
+		if detachErr := s.workloads.DetachWorkload(ctx, workload.Kind, ownerUserID, attachment.WorkloadID, deviceID); detachErr != nil && !errors.Is(detachErr, ports.ErrContinuityNotFound) {
 			return detachErr
 		}
 	}
@@ -210,7 +207,7 @@ func (s *ContinuityService) GetSurfaceControl(ctx context.Context, ownerUserID, 
 	if err != nil {
 		return ControlFacts{}, err
 	}
-	return ControlFacts{Lease: lease, Found: found, Running: !workload.Terminal}, nil
+	return ControlFacts{Lease: lease, Found: found, Running: !workload.Terminal && workload.State == "running"}, nil
 }
 
 // StopSurfaceWorkload deterministically stops and reclaims the program (the
@@ -225,22 +222,20 @@ func (s *ContinuityService) StopSurfaceWorkload(ctx context.Context, ownerUserID
 	if err != nil {
 		return ContinuitySummary{}, err
 	}
-	if !workload.Terminal {
-		workload, err = s.workloads.StopWorkload(ctx, workload.Kind, ownerUserID, workloadID)
+
+	if stopper, ok := s.workloads.(ports.InteractiveStopper); ok {
+		workload, err = stopper.StopWorkloadAction(ctx, workload.Kind, ownerUserID, workloadID, actionKey, func() error { return s.store.ExpireAttachmentsForWorkloads(ctx, []string{workloadID}, s.now()) })
 		if err != nil {
 			return ContinuitySummary{}, err
 		}
+	} else {
+		return ContinuitySummary{}, domain.ErrWorkloadNotRestartable
 	}
-	if err := s.store.ExpireAttachmentsForWorkloads(ctx, []string{workloadID}, s.now()); err != nil {
-		return ContinuitySummary{}, err
-	}
-	return ContinuitySummary{Workload: workload, Generation: SessionWorkloadGeneration, KeepAliveSeconds: int64(s.controlTTL.Seconds())}, nil
+
+	return ContinuitySummary{Workload: workload, Generation: max(SessionWorkloadGeneration, workload.Generation), KeepAliveSeconds: int64(s.controlTTL.Seconds())}, nil
 }
 
-// RestartSurfaceWorkload is honest about the workload kinds that exist: PTY
-// and native sessions are one-shot supervised processes without a persisted
-// argv, so restart is refused — the caller starts a new session. Restartable
-// app workloads arrive with the supervised workload manager integration.
+// RestartSurfaceWorkload starts a durable generation and fences old attachments.
 func (s *ContinuityService) RestartSurfaceWorkload(ctx context.Context, ownerUserID, workloadID, actionKey string) (ContinuitySummary, error) {
 	if !domain.ValidSessionUUID(ownerUserID) || !domain.ValidSessionUUID(workloadID) || !domain.ValidSessionIdempotencyKey(actionKey) {
 		return ContinuitySummary{}, domain.ErrInvalid
@@ -249,13 +244,19 @@ func (s *ContinuityService) RestartSurfaceWorkload(ctx context.Context, ownerUse
 	if err != nil {
 		return ContinuitySummary{}, err
 	}
-	switch workload.Kind {
-	case ports.WorkloadKindPty, ports.WorkloadKindNative:
-		return ContinuitySummary{}, domain.ErrWorkloadNotRestartable
-	default:
-		// Unknown kinds fail closed rather than pretending a restart.
+	restarter, ok := s.workloads.(ports.InteractiveRestarter)
+	if !ok {
 		return ContinuitySummary{}, domain.ErrWorkloadNotRestartable
 	}
+	// Only a fresh generation fences connections; replaying a restart must
+	// not detach devices that already attached to the resulting generation.
+	restarted, err := restarter.RestartWorkload(ctx, workload.Kind, ownerUserID, workloadID, actionKey, func() error {
+		return s.store.ExpireAttachmentsForWorkloads(ctx, []string{workloadID}, s.now())
+	})
+	if err != nil {
+		return ContinuitySummary{}, err
+	}
+	return ContinuitySummary{Workload: restarted, Generation: max(SessionWorkloadGeneration, restarted.Generation), KeepAliveSeconds: int64(s.controlTTL.Seconds())}, nil
 }
 
 // Sweep applies the bounded policy to the access relations: attachments
@@ -320,6 +321,25 @@ func (s *ContinuityService) AuthorizeInput(ctx context.Context, ownerUserID, wor
 		return ports.ErrContinuityDenied
 	}
 	if !controller.State.Live() || !controller.Controls || controller.DeviceID != deviceID {
+		return ports.ErrContinuityDenied
+	}
+	return nil
+}
+
+// AuthorizeInputGeneration pins a request or peer to the control epoch it
+// acquired. An old A connection remains invalid even after A later retakes B.
+func (s *ContinuityService) AuthorizeInputGeneration(ctx context.Context, owner, workload, device string, generation int64) error {
+	if err := s.AuthorizeInput(ctx, owner, workload, device); err != nil {
+		return err
+	}
+	lease, found, err := s.store.Lease(ctx, workload)
+	if err != nil {
+		return err
+	}
+	if found && lease.ControlGeneration != generation {
+		return ports.ErrContinuityDenied
+	}
+	if !found && generation != 0 {
 		return ports.ErrContinuityDenied
 	}
 	return nil

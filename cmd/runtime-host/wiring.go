@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	ptyports "github.com/yangtao121/workos/internal/runtime/ptyhost/ports"
 	"time"
 
 	nativehostapp "github.com/yangtao121/workos/internal/runtime/nativehost/application"
@@ -131,7 +132,7 @@ var _ surfaceports.InteractiveWorkloadRuntime = (*surfaceInteractiveRuntime)(nil
 func (a *surfaceInteractiveRuntime) sessionWorkload(kind surfaceports.WorkloadKind, session ptydomain.Session) surfaceports.InteractiveWorkload {
 	_ = kind
 	return surfaceports.InteractiveWorkload{
-		WorkloadID: session.SessionID, Kind: surfaceports.WorkloadKindPty, OwnerUserID: session.OwnerUserID,
+		Generation: session.Generation, WorkloadID: session.SessionID, Kind: surfaceports.WorkloadKindPty, OwnerUserID: session.OwnerUserID,
 		ProjectID: session.ProjectID, State: string(session.State), Terminal: session.State.Terminal(),
 		CreatedAt: session.CreatedAt, ExpiresAt: session.ExpiresAt,
 	}
@@ -139,7 +140,7 @@ func (a *surfaceInteractiveRuntime) sessionWorkload(kind surfaceports.WorkloadKi
 
 func (a *surfaceInteractiveRuntime) nativeWorkload(session nativedomain.Session) surfaceports.InteractiveWorkload {
 	return surfaceports.InteractiveWorkload{
-		WorkloadID: session.SessionID, Kind: surfaceports.WorkloadKindNative, OwnerUserID: session.OwnerUserID,
+		Generation: session.Generation, WorkloadID: session.SessionID, Kind: surfaceports.WorkloadKindNative, OwnerUserID: session.OwnerUserID,
 		ProjectID: session.ProjectID, State: string(session.State), Terminal: session.State.Terminal(),
 		CreatedAt: session.CreatedAt, ExpiresAt: session.ExpiresAt,
 		Width: session.Width, Height: session.Height,
@@ -186,13 +187,13 @@ func (a *surfaceInteractiveRuntime) ListProject(ctx context.Context, ownerUserID
 	return workloads, nil
 }
 
-func (a *surfaceInteractiveRuntime) DetachWorkload(ctx context.Context, kind surfaceports.WorkloadKind, ownerUserID, workloadID string) error {
+func (a *surfaceInteractiveRuntime) DetachWorkload(ctx context.Context, kind surfaceports.WorkloadKind, ownerUserID, workloadID, deviceID string) error {
 	switch kind {
 	case surfaceports.WorkloadKindNative:
 		if a.native == nil {
 			return surfaceports.ErrContinuityNotFound
 		}
-		if _, err := a.native.Detach(ctx, ownerUserID, workloadID); err != nil {
+		if _, err := a.native.Detach(ctx, ownerUserID, workloadID, deviceID); err != nil {
 			if errors.Is(err, nativedomain.ErrNotFound) || errors.Is(err, nativedomain.ErrInvalid) {
 				return surfaceports.ErrContinuityNotFound
 			}
@@ -256,3 +257,50 @@ type continuityAuthorization struct {
 func (a continuityAuthorization) AuthorizeInput(ctx context.Context, ownerUserID, workloadID, deviceID string) error {
 	return a.service.AuthorizeInput(ctx, ownerUserID, workloadID, deviceID)
 }
+
+func (a *surfaceInteractiveRuntime) RestartWorkload(ctx context.Context, kind surfaceports.WorkloadKind, owner, id, key string, fence func() error) (surfaceports.InteractiveWorkload, error) {
+	switch kind {
+	case surfaceports.WorkloadKindPty:
+		if a.pty == nil {
+			return surfaceports.InteractiveWorkload{}, surfaceports.ErrContinuityNotFound
+		}
+		session, err := a.pty.Restart(ctx, owner, id, key, fence)
+		if err != nil {
+			return surfaceports.InteractiveWorkload{}, mapInteractiveError(err)
+		}
+		return a.sessionWorkload(kind, session), nil
+	case surfaceports.WorkloadKindNative:
+		if a.native == nil {
+			return surfaceports.InteractiveWorkload{}, surfaceports.ErrContinuityNotFound
+		}
+		session, err := a.native.Restart(ctx, owner, id, key, fence)
+		if err != nil {
+			return surfaceports.InteractiveWorkload{}, mapInteractiveError(err)
+		}
+		return a.nativeWorkload(session), nil
+	default:
+		return surfaceports.InteractiveWorkload{}, surfaceports.ErrContinuityNotFound
+	}
+}
+
+func (a *surfaceInteractiveRuntime) StopWorkloadAction(ctx context.Context, kind surfaceports.WorkloadKind, owner, id, key string, fence func() error) (surfaceports.InteractiveWorkload, error) {
+	switch kind {
+	case surfaceports.WorkloadKindPty:
+		if a.pty != nil {
+			session, err := a.pty.Stop(ctx, owner, id, key, fence)
+			return a.sessionWorkload(kind, session), mapInteractiveError(err)
+		}
+	case surfaceports.WorkloadKindNative:
+		if a.native != nil {
+			session, err := a.native.Stop(ctx, owner, id, key, fence)
+			return a.nativeWorkload(session), mapInteractiveError(err)
+		}
+	}
+	return surfaceports.InteractiveWorkload{}, surfaceports.ErrContinuityNotFound
+}
+
+func (a continuityAuthorization) AuthorizeInputGeneration(ctx context.Context, owner, workload, device string, generation int64) error {
+	return a.service.AuthorizeInputGeneration(ctx, owner, workload, device, generation)
+}
+
+var _ ptyports.EpochControlAuthorizer = continuityAuthorization{}

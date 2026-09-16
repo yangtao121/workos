@@ -9,7 +9,9 @@ import (
 	"time"
 
 	"connectrpc.com/connect"
+	"github.com/yangtao121/workos/internal/platform/ids"
 	"google.golang.org/protobuf/types/known/durationpb"
+	"google.golang.org/protobuf/types/known/structpb"
 
 	agentv1 "github.com/yangtao121/workos/gen/go/workos/agent/v1"
 	appv1 "github.com/yangtao121/workos/gen/go/workos/app/v1"
@@ -47,6 +49,7 @@ type Worker struct {
 	// abandonAfter is the post-deadline grace; a field so tests can shorten
 	// the 5s default.
 	abandonAfter time.Duration
+	tools        taskexecutionv1connect.TaskToolServiceClient
 	client       taskexecutionv1connect.TaskExecutionServiceClient
 	credentials  CredentialLeases
 	repairs      taskexecutionv1connect.RepairExecutionServiceClient
@@ -76,6 +79,7 @@ func New(id, coreURL string, pollInterval time.Duration, value *broker.Broker, l
 		id: id, pollInterval: pollInterval, heartbeat: leaseDuration / 3, abandonAfter: abortGrace,
 		broker: value, logger: logger, credentials: credentials,
 		client:  taskexecutionv1connect.NewTaskExecutionServiceClient(httpClient, coreURL),
+		tools:   taskexecutionv1connect.NewTaskToolServiceClient(httpClient, coreURL, connect.WithReadMaxBytes(1024*1024)),
 		repairs: taskexecutionv1connect.NewRepairExecutionServiceClient(httpClient, coreURL, connect.WithReadMaxBytes(1024*1024)),
 	}
 }
@@ -332,6 +336,17 @@ func (w *Worker) process(parent context.Context, lease *taskv1.TaskLease) {
 			// project come from the same server-derived task facts: they
 			// back the session child's read-only WorkOS tool environment.
 			execution.Session = &ports.SessionExecution{
+				Tools: func(ctx context.Context, operation string, args map[string]any) (map[string]any, error) {
+					arguments, err := structpb.NewStruct(args)
+					if err != nil {
+						return nil, err
+					}
+					response, err := w.tools.ExecuteTaskTool(ctx, connect.NewRequest(&taskv1.ExecuteTaskToolRequest{LeaseId: lease.GetLeaseId(), WorkerId: w.id, OperationId: (ids.UUIDv7{}).New(), Operation: operation, Arguments: arguments}))
+					if err != nil {
+						return nil, err
+					}
+					return response.Msg.GetResult().AsMap(), nil
+				},
 				SessionID:   sessionID,
 				StateRoot:   w.sessionStateRoot,
 				OwnerUserID: task.GetOwnerUserId(),

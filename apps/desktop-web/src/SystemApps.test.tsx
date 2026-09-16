@@ -50,6 +50,7 @@ it("requests server-filtered file pages and recovers after a search failure", as
       workosClients={{ index: { searchHybrid } } as unknown as WorkOSClients}
     />,
   );
+  await userEvent.click(screen.getByRole("button", { name: "Indexed search" }));
   await userEvent.type(screen.getByLabelText("Search workspace files"), "notes");
   await userEvent.click(screen.getByRole("button", { name: "Search" }));
   expect(await screen.findByRole("alert")).toBeTruthy();

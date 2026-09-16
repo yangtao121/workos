@@ -24,6 +24,8 @@ export function NativeApp(props: {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const channelRef = useRef<RTCDataChannel | null>(null);
   const controlsRef = useRef(true);
+  const videoPlayingRef = useRef(false);
+  const reconnectRef = useRef<(() => Promise<void>) | undefined>(undefined);
   const handleRef = useRef<ReturnType<NativeSessionLease["acquire"]> | undefined>(undefined);
   const pointerStampRef = useRef(0);
 
@@ -63,6 +65,8 @@ export function NativeApp(props: {
         const renew = async () => {
           if (isDisposed()) return;
           setStatus("connecting");
+          videoPlayingRef.current = false;
+          channelRef.current = null;
           const previous = peer;
           const next = new RTCPeerConnection({});
           peer = next;
@@ -84,6 +88,10 @@ export function NativeApp(props: {
             }
             channel = event.channel;
             channelRef.current = channel;
+            channel.onopen = () => {
+              if (!disposed && peer === next && videoPlayingRef.current) setStatus("streaming");
+            };
+            if (channel.readyState === "open" && videoPlayingRef.current) setStatus("streaming");
           };
           next.onconnectionstatechange = () => {
             if (
@@ -103,6 +111,7 @@ export function NativeApp(props: {
           if (isDisposed()) return;
           const connected = await clients.nativeSessions.connectNativeSession({
             sessionId: session,
+            controlGeneration: await lease.controlGeneration(),
             offerSdp: next.localDescription?.sdp ?? "",
           });
           if (isDisposed()) return;
@@ -114,7 +123,14 @@ export function NativeApp(props: {
             });
           }, 20000);
         };
-        await renew();
+        reconnectRef.current = renew;
+        if (held) await renew();
+        else {
+          setStatus("unavailable");
+          setVerdict(
+            "Another device controls this display. Take control to reconnect its screen and input.",
+          );
+        }
       } catch {
         close();
         if (!disposed) {
@@ -126,6 +142,7 @@ export function NativeApp(props: {
     void run();
     return () => {
       disposed = true;
+      reconnectRef.current = undefined;
       close();
     };
   }, [clients, projectId, sessionLease]);
@@ -150,6 +167,12 @@ export function NativeApp(props: {
       .then((held) => {
         controlsRef.current = held;
         setControls(held);
+        if (held) {
+          setVerdict("");
+          void reconnectRef.current?.().catch(() => {
+            setStatus("ended");
+          });
+        }
       })
       .catch(() => undefined);
   };
@@ -311,7 +334,8 @@ export function NativeApp(props: {
           ref={videoRef}
           data-testid="native-video"
           onPlaying={() => {
-            setStatus("streaming");
+            videoPlayingRef.current = true;
+            if (channelRef.current?.readyState === "open") setStatus("streaming");
           }}
           autoPlay
           playsInline

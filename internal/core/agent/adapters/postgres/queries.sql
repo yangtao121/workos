@@ -89,6 +89,13 @@ JOIN workos_core.agent_tasks AS t ON t.id = o.aggregate_id
 WHERE o.event_type = 'agent.task.requested.v1' AND o.processed_at IS NULL
   AND (o.locked_until IS NULL OR o.locked_until < $1)
   AND t.state IN ('queued', 'running', 'waiting')
+  AND (COALESCE(t.input->>'agentSessionId', '') = '' OR EXISTS (
+      SELECT 1 FROM workos_core.agent_sessions AS s
+      JOIN workos_core.agent_session_inputs AS i ON i.session_id = s.session_id
+      WHERE s.session_id::text = t.input->>'agentSessionId'
+        AND s.owner_user_id = t.owner_user_id AND s.active_task_id = t.id
+        AND i.task_id = t.id AND i.state = 'dispatched'
+  ))
 ORDER BY o.occurred_at
 FOR UPDATE OF o SKIP LOCKED
 LIMIT 1;
@@ -397,32 +404,36 @@ WHERE o.lease_id = $1 AND o.locked_by = $2 AND o.processed_at IS NULL
 FOR UPDATE;
 
 -- name: InsertAgentSession :execrows
-INSERT INTO workos_core.agent_sessions (
+WITH inserted AS (
+ INSERT INTO workos_core.agent_sessions (
     session_id, owner_user_id, project_id, idempotency_key, workspace_binding_id,
-    workspace_binding_revision, provider_id, profile_id, native_session_ref, state, created_at, updated_at
-) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'active', $10, $10)
-ON CONFLICT (owner_user_id, idempotency_key) DO NOTHING;
+    workspace_binding_revision, provider_id, profile_id, native_session_ref, state, created_at, updated_at, event_sequence
+ ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'active', $10, $10, 1)
+ ON CONFLICT (owner_user_id, idempotency_key) DO NOTHING RETURNING session_id, created_at
+)
+INSERT INTO workos_core.agent_session_events(session_id,sequence,event_type,payload,occurred_at)
+SELECT session_id,1,'state_changed','{"previous":"","current":"active","reason":"created"}'::jsonb,created_at FROM inserted;
 
 -- name: GetAgentSession :one
 SELECT session_id, owner_user_id, project_id, idempotency_key, workspace_binding_id,
        workspace_binding_revision, provider_id, profile_id, state, native_session_ref,
-       active_task_id, input_sequence, event_sequence, created_at, updated_at, closed_at
+       active_task_id, input_sequence, event_sequence, created_at, updated_at, closed_at, recovery_checked_at
 FROM workos_core.agent_sessions
 WHERE owner_user_id = $1 AND session_id = $2;
 
 -- name: GetAgentSessionByIdempotency :one
 SELECT session_id, owner_user_id, project_id, idempotency_key, workspace_binding_id,
        workspace_binding_revision, provider_id, profile_id, state, native_session_ref,
-       active_task_id, input_sequence, event_sequence, created_at, updated_at, closed_at
+       active_task_id, input_sequence, event_sequence, created_at, updated_at, closed_at, recovery_checked_at
 FROM workos_core.agent_sessions
 WHERE owner_user_id = $1 AND idempotency_key = $2;
 
 -- name: ListAgentSessions :many
 SELECT session_id, owner_user_id, project_id, idempotency_key, workspace_binding_id,
        workspace_binding_revision, provider_id, profile_id, state, native_session_ref,
-       active_task_id, input_sequence, event_sequence, created_at, updated_at, closed_at
+       active_task_id, input_sequence, event_sequence, created_at, updated_at, closed_at, recovery_checked_at
 FROM workos_core.agent_sessions
-WHERE owner_user_id = $1 AND project_id = $2 AND (state = 'active' OR $3::bool)
+WHERE owner_user_id = $1 AND project_id = $2 AND (state <> 'closed' OR $3::bool)
 ORDER BY updated_at DESC, session_id
 LIMIT $4;
 
@@ -509,7 +520,7 @@ LIMIT $2;
 -- name: CloseAgentSession :execrows
 UPDATE workos_core.agent_sessions
 SET state = 'closed', closed_at = $3, updated_at = $3
-WHERE owner_user_id = $1 AND session_id = $2 AND state = 'active';
+WHERE owner_user_id = $1 AND session_id = $2 AND state <> 'closed';
 
 -- name: GetAgentTaskByID :one
 SELECT id, owner_user_id, idempotency_key, project_id, input, state, provider_id,
@@ -517,3 +528,60 @@ SELECT id, owner_user_id, idempotency_key, project_id, input, state, provider_id
        policy_source, policy_revision, policy_spec_digest, budget_max_output_tokens, budget_max_runtime_seconds
 FROM workos_core.agent_tasks
 WHERE id = $1;
+
+-- name: LockAgentSession :one
+SELECT session_id FROM workos_core.agent_sessions
+WHERE owner_user_id = $1 AND session_id = $2 FOR UPDATE;
+
+-- name: GetSessionInputByTask :one
+SELECT input_id, session_id, owner_user_id, client_input_id, input_text, request_digest,
+       state, task_id, sequence, result_summary, created_at, updated_at
+FROM workos_core.agent_session_inputs WHERE session_id = $1 AND task_id = $2;
+
+-- name: ClaimSessionRecoveryBatch :many
+WITH candidates AS (
+ SELECT s.session_id FROM workos_core.agent_sessions AS s
+ WHERE s.active_task_id IS NOT NULL OR (s.state = 'active' AND EXISTS (
+   SELECT 1 FROM workos_core.agent_session_inputs AS i
+   WHERE i.session_id = s.session_id AND i.state = 'accepted'))
+ ORDER BY s.recovery_checked_at, s.session_id
+ LIMIT $1 FOR UPDATE SKIP LOCKED
+)
+UPDATE workos_core.agent_sessions AS s SET recovery_checked_at = $2
+FROM candidates AS c WHERE s.session_id = c.session_id
+RETURNING s.session_id, s.owner_user_id;
+
+-- name: PauseAgentSessionForReview :execrows
+UPDATE workos_core.agent_sessions SET state = 'needs_review', updated_at = $3
+WHERE owner_user_id = $1 AND session_id = $2 AND state = 'active';
+
+-- name: InsertExecutionInteraction :execrows
+INSERT INTO workos_core.agent_execution_interactions(id,task_id,owner_user_id,project_id,lease_id,worker_id,request_key,questions,state,created_at,expires_at)
+VALUES(sqlc.arg(id)::uuid,sqlc.arg(task_id)::uuid,sqlc.arg(owner_user_id)::uuid,sqlc.arg(project_id)::uuid,sqlc.arg(lease_id)::uuid,sqlc.arg(worker_id),sqlc.arg(request_key),sqlc.arg(questions),'pending',sqlc.arg(created_at),sqlc.arg(expires_at)) ON CONFLICT DO NOTHING;
+
+-- name: GetExecutionInteraction :one
+SELECT * FROM workos_core.agent_execution_interactions WHERE owner_user_id=sqlc.arg(owner_user_id)::uuid AND id=sqlc.arg(id)::uuid;
+
+-- name: GetExecutionInteractionByKey :one
+SELECT * FROM workos_core.agent_execution_interactions WHERE task_id=sqlc.arg(task_id)::uuid AND request_key=sqlc.arg(request_key);
+
+-- name: LockExecutionInteraction :one
+SELECT * FROM workos_core.agent_execution_interactions WHERE owner_user_id=sqlc.arg(owner_user_id)::uuid AND id=sqlc.arg(id)::uuid FOR UPDATE;
+
+-- name: ListExecutionInteractions :many
+SELECT * FROM workos_core.agent_execution_interactions WHERE owner_user_id=sqlc.arg(owner_user_id)::uuid AND task_id=sqlc.arg(task_id)::uuid ORDER BY created_at DESC LIMIT 20;
+
+-- name: DecideExecutionInteraction :exec
+UPDATE workos_core.agent_execution_interactions SET state=sqlc.arg(state),answers=sqlc.arg(answers),decision_key=sqlc.arg(decision_key),decision_digest=sqlc.arg(decision_digest) WHERE owner_user_id=sqlc.arg(owner_user_id)::uuid AND id=sqlc.arg(id)::uuid;
+
+-- name: ExpireExecutionInteraction :exec
+UPDATE workos_core.agent_execution_interactions SET state='expired' WHERE owner_user_id=sqlc.arg(owner_user_id)::uuid AND id=sqlc.arg(id)::uuid AND state='pending';
+
+-- name: ListCancelledSessionAdmissions :many
+SELECT t.id, t.owner_user_id
+FROM workos_core.agent_tasks t
+JOIN workos_core.agent_sessions s ON s.session_id::text = t.input->>'agentSessionId' AND s.owner_user_id = t.owner_user_id
+JOIN workos_core.agent_session_inputs i ON i.session_id = s.session_id AND t.idempotency_key = 'session-' || s.session_id::text || '-input-' || i.input_id::text
+WHERE t.state = 'queued' AND i.task_id IS NULL
+  AND (s.state <> 'active' OR i.state <> 'accepted')
+ORDER BY t.created_at LIMIT 100;
