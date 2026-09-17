@@ -1122,9 +1122,14 @@ test-repair-buildtest:
 # V2 P3 formal artifact delivery (ADR-0033): docker build freeze + docker
 # formal app runner, isolated six-process A→B→A. Does not replace
 # test-repair-buildtest (image-only / process engine).
-.PHONY: test-v2-p3-delivery
+.PHONY: test-v2-p3-delivery test-v2-p3-faults
 test-v2-p3-delivery:
 	@set -eu; sh tools/v2-p3-delivery/gate.sh
+
+# Isolated P3 fault/closeout profile. The default bundle gate already invokes
+# TestP3Closeout; this target re-runs the same stack with the faults profile name.
+test-v2-p3-faults:
+	@set -eu; sh tools/v2-p3-delivery/gate.sh faults
 
 # The Remote Browser Pool gate (ADR-0027): real Chromium workers inside the
 # Playwright-image runtime-host. Proves real rendering, idempotency, drift

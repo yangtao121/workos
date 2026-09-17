@@ -401,8 +401,15 @@ func TestWebBundleSurfaceVerticalSlice(t *testing.T) {
 	// consumption; the second device gets a stable Aborted, the first keeps
 	// replaying its exact session.
 	t.Run("SurfaceIdempotencyBindsTrustedDevice", func(t *testing.T) {
-		deviceA := directRuntimeClients(t, "0198d7ea-2110-7c42-b659-c5e4d73bc337", "0198d7ea-2110-7c42-b659-c5e4d73bc331")
-		deviceB := directRuntimeClients(t, "0198d7ea-2110-7c42-b659-c5e4d73bc337", "0198d7ea-2110-7c42-b659-c5e4d73bc332")
+		// The direct-device identity must be the same owner the gateway
+		// injected when the fixture was installed, so derive it from the
+		// stack's owner env (the dev-stack default stays the fallback).
+		deviceOwner := os.Getenv("WORKOS_TEST_OWNER_ID")
+		if deviceOwner == "" {
+			deviceOwner = "0198d7ea-2110-7c42-b659-c5e4d73bc337"
+		}
+		deviceA := directRuntimeClients(t, deviceOwner, "0198d7ea-2110-7c42-b659-c5e4d73bc331")
+		deviceB := directRuntimeClients(t, deviceOwner, "0198d7ea-2110-7c42-b659-c5e4d73bc332")
 		key := fmt.Sprintf("surface-device-%d", stamp)
 		opened := func(client surfacev1connect.SurfaceServiceClient) *connect.Request[surfacev1.CreateSurfaceRequest] {
 			request := connect.NewRequest(&surfacev1.CreateSurfaceRequest{

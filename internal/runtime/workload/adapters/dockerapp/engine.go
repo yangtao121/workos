@@ -246,6 +246,13 @@ func (e *Engine) StartContainer(ctx context.Context, nameOrID string) error {
 	if errors.As(err, &apiErr) && apiErr.notFound() {
 		return ports.ErrContainerNotFound
 	}
+	// A start conflict means the engine is still finalizing the object's
+	// removal ("marked for removal and cannot be started"): the caller can
+	// converge the owned object instead of retrying a hopeless start.
+	if errors.As(err, &apiErr) && apiErr.status == http.StatusConflict &&
+		strings.Contains(apiErr.detail, "marked for removal") {
+		return ports.ErrContainerRemoving
+	}
 	return err
 }
 

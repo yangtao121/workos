@@ -139,27 +139,42 @@ func (m *Manager) Reconcile(ctx context.Context) error {
 		if !m.claimLease(ctx, workload.ID, now) {
 			continue
 		}
-		switch workload.State {
-		case domain.StatePending, domain.StateStarting:
-			// An interrupted ensure/restart: re-drive the same deterministic
-			// sequence. A missing operation row means the reserve transaction
-			// never committed, so the convergence below re-creates one.
-			m.reconcileStarting(ctx, workload)
-		case domain.StateRunning:
-			m.reconcileRunning(ctx, workload, now)
-		case domain.StateStopping:
-			m.reconcileStopping(ctx, workload)
-		default:
-			// Also converge legacy/crash-window engine objects left behind a
-			// terminal row. Identity verification ensures a foreign object is
-			// never touched.
-			if err := m.removeOwnedWorkloadContainer(ctx, workload); err != nil && !errors.Is(err, domain.ErrCorrupt) {
-				m.logger.Info("workload terminal cleanup pending", "error", err)
-			}
-		}
+		m.reconcileWorkload(ctx, workload.ID, now)
 	}
 	m.removeOrphans(ctx, known)
 	return nil
+}
+
+func (m *Manager) reconcileWorkload(ctx context.Context, workloadID string, now time.Time) {
+	ctx, cancel := context.WithTimeout(ctx, m.config.OperationTimeout)
+	defer cancel()
+	unlock, err := m.lockWorkload(ctx, workloadID)
+	if err != nil {
+		return
+	}
+	defer unlock()
+	workload, err := m.repository.Get(ctx, workloadID)
+	if err != nil {
+		return
+	}
+	switch workload.State {
+	case domain.StatePending, domain.StateStarting:
+		// An interrupted ensure/restart: re-drive the same deterministic
+		// sequence. A missing operation row means the reserve transaction
+		// never committed, so the convergence below re-creates one.
+		m.reconcileStarting(ctx, workload)
+	case domain.StateRunning:
+		m.reconcileRunning(ctx, workload, now)
+	case domain.StateStopping:
+		m.reconcileStopping(ctx, workload)
+	default:
+		// Also converge legacy/crash-window engine objects left behind a
+		// terminal row. Identity verification ensures a foreign object is
+		// never touched.
+		if err := m.removeOwnedWorkloadContainer(ctx, workload); err != nil && !errors.Is(err, domain.ErrCorrupt) {
+			m.logger.Info("workload terminal cleanup pending", "error", err)
+		}
+	}
 }
 
 func (m *Manager) claimLease(ctx context.Context, workloadID string, now time.Time) bool {
@@ -203,7 +218,7 @@ func (m *Manager) reconcileStarting(ctx context.Context, workload domain.Workloa
 			ResultGeneration: workload.Generation,
 		}
 	}
-	if err := m.driveLaunch(ctx, workload, operation); err != nil {
+	if err := m.driveLaunchLocked(ctx, workload, operation); err != nil {
 		m.logger.Info("workload reconcile launch re-drive", "error", err)
 	}
 }
@@ -269,7 +284,7 @@ func (m *Manager) reconcileRunning(ctx context.Context, workload domain.Workload
 	})
 	switch {
 	case verifyErr == nil && verdict == ports.LaunchGone:
-		_ = m.Terminate(ctx, ports.TerminateCommand{
+		_ = m.terminateLocked(ctx, ports.TerminateCommand{
 			WorkloadID: workload.ID, OperationKey: "reconcile:uninstalled", Reason: "uninstalled",
 		})
 		return
@@ -289,7 +304,7 @@ func (m *Manager) reconcileRunning(ctx context.Context, workload domain.Workload
 			anchor = *workload.LastVerifiedAt
 		}
 		if now.Sub(anchor) > m.config.CoreGrace {
-			_ = m.Terminate(ctx, ports.TerminateCommand{
+			_ = m.terminateLocked(ctx, ports.TerminateCommand{
 				WorkloadID: workload.ID, OperationKey: "reconcile:fail-safe", Reason: "fail_safe",
 			})
 		}
@@ -307,7 +322,7 @@ func (m *Manager) reconcileRunning(ctx context.Context, workload domain.Workload
 	}
 	idleSince, idleErr := m.repository.SetIdle(ctx, workload.ID, workload.Generation, true, now)
 	if idleErr == nil && idleSince != nil && now.Sub(*idleSince) > m.config.IdleTTL {
-		_ = m.Terminate(ctx, ports.TerminateCommand{
+		_ = m.terminateLocked(ctx, ports.TerminateCommand{
 			WorkloadID: workload.ID, OperationKey: "reconcile:idle", Reason: "idle",
 		})
 	}

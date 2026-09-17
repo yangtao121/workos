@@ -558,8 +558,8 @@ export type RegisterRepairCandidateVersionResponse = Message<"workos.taskexecuti
   created: boolean;
 
   /**
-   * The installation's current pin and project revision, captured before any
-   * deployment side effect (ADR-0026 offer-time preconditions).
+   * Immutable version and revision from the persisted repair target, checked
+   * before first registration and reused unchanged on every replay (ADR-0026).
    *
    * @generated from field: string base_version = 4;
    */

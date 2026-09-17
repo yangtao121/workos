@@ -47,17 +47,15 @@ func main() {
 	}
 	if repair := request.GetRepair(); repair != nil {
 		output := &executionv1.RepairSourceOutput{}
-		changed := false
 		for _, file := range repair.GetSource().GetFiles() {
 			next := proto.Clone(file).(*appv1.AppSourceFile)
-			if next.Path == "main.go" && bytes.Contains(next.Content, []byte("return 0")) {
+			// Idempotent repair: a target that already carries the fix emits
+			// identical bytes, so a duplicate incident converges through the
+			// verified chain instead of crashing the agent run.
+			if next.Path == "main.go" {
 				next.Content = bytes.ReplaceAll(next.Content, []byte("return 0"), []byte("return 42"))
-				changed = true
 			}
 			output.Files = append(output.Files, next)
-		}
-		if !changed {
-			fail()
 		}
 		write(&harnessv1.HarnessCLIResponse{Payload: &harnessv1.HarnessCLIResponse_RepairSource{RepairSource: output}})
 	}

@@ -9,6 +9,7 @@ x-environment: &environment
   WORKOS_RELIABILITY_URL: http://127.0.0.1:${WORKOS_P3_GATE_RELIABILITY_PORT:?}
   WORKOS_INDEXER_URL: http://127.0.0.1:${WORKOS_P3_GATE_INDEXER_PORT:?}
   WORKOS_INDEX_PAGE_TOKEN_KEY: p3-gate-only-deterministic-page-token-key
+  WORKOS_FAULT_DIR: ${WORKOS_P3_GATE_DIR:?}/faults
   PATH: /gate-bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
   WORKOS_RUNTIME_CONTAINER_NAMESPACE: ${WORKOS_P3_GATE_NAMESPACE:?}
 x-service: &service
@@ -18,6 +19,7 @@ x-service: &service
   restart: "no"
   volumes:
     - ${WORKOS_P3_GATE_DIR:?}/bin:/gate-bin:ro
+    - ${WORKOS_P3_GATE_DIR:?}/faults:${WORKOS_P3_GATE_DIR:?}/faults
   depends_on:
     bootstrap:
       condition: service_completed_successfully
@@ -69,6 +71,7 @@ services:
       WORKOS_CORE_EXECUTION_KEY_FILE: /fixture/execution/core.key
     volumes:
       - ${WORKOS_P3_GATE_DIR:?}/bin:/gate-bin:ro
+      - ${WORKOS_P3_GATE_DIR:?}/faults:${WORKOS_P3_GATE_DIR:?}/faults
       - ${WORKOS_P3_GATE_DIR:?}/run:/run/workos
       - ${WORKOS_P3_GATE_DIR:?}/core-execution:/fixture/execution:ro
       - ${WORKOS_P3_GATE_DIR:?}/vault:/fixture/vault:ro
@@ -87,6 +90,7 @@ services:
       WORKOS_HARNESS_EXECUTION_KEY_FILE: /fixture/execution/harness.key
     volumes:
       - ${WORKOS_P3_GATE_DIR:?}/bin:/gate-bin:ro
+      - ${WORKOS_P3_GATE_DIR:?}/faults:${WORKOS_P3_GATE_DIR:?}/faults
       - ${WORKOS_P3_GATE_DIR:?}/harness-execution:/fixture/execution:ro
       - ${WORKOS_P3_GATE_DIR:?}/cli:/fixture/cli:ro
   runtime:
@@ -117,6 +121,7 @@ services:
       WORKOS_RUNTIME_BUILDTEST_TIMEOUT: 5m
     volumes:
       - ${WORKOS_P3_GATE_DIR:?}/bin:/gate-bin:ro
+      - ${WORKOS_P3_GATE_DIR:?}/faults:${WORKOS_P3_GATE_DIR:?}/faults
       - ${WORKOS_P3_GATE_DIR:?}/run:/run/workos
       - ${WORKOS_P3_GATE_DIR:?}/artifacts:${WORKOS_P3_GATE_DIR:?}/artifacts
       - ${WORKOS_P3_GATE_DIR:?}/buildtest:${WORKOS_P3_GATE_DIR:?}/buildtest

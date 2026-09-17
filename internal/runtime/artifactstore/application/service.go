@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"github.com/yangtao121/workos/internal/platform/appbundle"
 	"github.com/yangtao121/workos/internal/platform/bundleformat"
+	"github.com/yangtao121/workos/internal/platform/faultinject"
 	"io"
 	"os"
 	"slices"
@@ -162,6 +163,7 @@ func (s *Service) Import(ctx context.Context, req ImportRequest) (Result, error)
 	if err != nil {
 		return Result{}, err
 	}
+	faultinject.Arrive(ctx, "import-committed")
 	if !inserted {
 		// The import key already has a row. Verify its provenance and
 		// bytes before replaying it.
@@ -259,6 +261,7 @@ func (s *Service) CommitBuild(ctx context.Context, commit BuildCommit) (Result, 
 		return Result{}, err
 	}
 	committed = true
+	faultinject.Arrive(ctx, "artifact-bytes")
 
 	now := s.nowUTC()
 	artifact := domain.Artifact{
@@ -292,6 +295,7 @@ func (s *Service) CommitBuild(ctx context.Context, commit BuildCommit) (Result, 
 	if err != nil {
 		return Result{}, err
 	}
+	faultinject.Arrive(ctx, "artifact-preparing")
 	if !inserted {
 		if !sameBuild(stored, commit, stats.Digest) {
 			return Result{}, domain.ErrConflict

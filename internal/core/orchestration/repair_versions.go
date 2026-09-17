@@ -7,6 +7,7 @@ import (
 
 	agentdomain "github.com/yangtao121/workos/internal/core/agent/domain"
 	registryapp "github.com/yangtao121/workos/internal/core/appregistry/application"
+	registrydomain "github.com/yangtao121/workos/internal/core/appregistry/domain"
 	projectapp "github.com/yangtao121/workos/internal/core/project/application"
 	projectports "github.com/yangtao121/workos/internal/core/project/ports"
 )
@@ -15,8 +16,8 @@ import (
 // adapted behind a neutral port so orchestration never imports transport.
 type CandidateTransitioner interface {
 	TransitionCandidate(ctx context.Context, input projectapp.TransitionInput) (projectports.InstallationResult, error)
-	// ActiveFacts resolves the current pinned version and project revision
-	// for the offer-time precondition snapshot (ADR-0026).
+	// ActiveFacts resolves the current pin and revision to verify the
+	// immutable repair-task preconditions before initial registration.
 	ActiveFacts(ctx context.Context, ownerUserID, projectID, installationID string) (version string, revision int64, err error)
 }
 
@@ -67,8 +68,8 @@ func NewRepairVersions(pool TaskTxSource, sources *RepairSources, staging *regis
 // staged candidate version. Same task replays exactly.
 type RegisteredCandidate struct {
 	registryapp.StagingResult
-	// BaseVersion and ProjectRevision are the offer-time preconditions: the
-	// installation pin observed when the staged version was registered.
+	// BaseVersion and ProjectRevision are immutable preconditions from the
+	// persisted repair task, never refreshed from a later installation pin.
 	BaseVersion     string
 	ProjectRevision int64
 }
@@ -90,12 +91,6 @@ func (s *RepairVersions) Register(ctx context.Context, owner, taskID, projectID,
 	}
 	if s.transitions == nil {
 		return RegisteredCandidate{}, agentdomain.ErrInvalid
-	}
-	// The offer-time preconditions resolve from the durable installation
-	// facts before any staged version exists: the current pin and revision.
-	baseVersion, revision, err := s.transitions.ActiveFacts(ctx, owner, projectID, installationID)
-	if err != nil {
-		return RegisteredCandidate{}, err
 	}
 	registration := registryapp.StagingRegistration{
 		OwnerUserID: owner, TaskID: taskID, IncidentID: completed.IncidentID,
@@ -127,6 +122,24 @@ func (s *RepairVersions) Register(ctx context.Context, owner, taskID, projectID,
 		return RegisteredCandidate{}, storeFailureContext("begin repair version registration", err)
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck
+	// Replay the first durable snapshot, even if the canary is already pinned.
+	// A new registration may only repair the task's immutable original version.
+	_, _, err = s.staging.Staged(ctx, tx, owner, taskID)
+	switch {
+	case err == nil:
+		// The immutable task already contains the persisted version/revision.
+		// Replays after pinning or publication keep those original facts.
+	case errors.Is(err, registrydomain.ErrNotFound):
+		baseVersion, revision, err := s.transitions.ActiveFacts(ctx, owner, projectID, installationID)
+		if err != nil {
+			return RegisteredCandidate{}, err
+		}
+		if baseVersion != target.GetVersion() || revision != target.GetProjectRevision() {
+			return RegisteredCandidate{}, ErrInstallationChanged
+		}
+	default:
+		return RegisteredCandidate{}, err
+	}
 	result, err := s.staging.Register(ctx, tx, registration)
 	if err != nil {
 		return RegisteredCandidate{}, err
@@ -134,7 +147,7 @@ func (s *RepairVersions) Register(ctx context.Context, owner, taskID, projectID,
 	if err := tx.Commit(ctx); err != nil {
 		return RegisteredCandidate{}, storeFailureContext("commit repair version registration", err)
 	}
-	return RegisteredCandidate{StagingResult: result, BaseVersion: baseVersion, ProjectRevision: revision}, nil
+	return RegisteredCandidate{StagingResult: result, BaseVersion: target.GetVersion(), ProjectRevision: target.GetProjectRevision()}, nil
 }
 
 // Publish flips the staged version to published after the canary window.
@@ -170,8 +183,8 @@ func (s *RepairVersions) Publish(ctx context.Context, owner, taskID, projectID, 
 	return published, nil
 }
 
-// ErrInstallationChanged is the stable publish rejection when the user moved
-// the installation off the canary pin (ADR-0026).
+// ErrInstallationChanged rejects registration after the repair target changed,
+// or publication after the installation moved off the canary (ADR-0026).
 var ErrInstallationChanged = errors.New("installation no longer pins the staged candidate")
 
 // ErrRuntimeArtifactUnavailable marks a missing or unreachable Runtime

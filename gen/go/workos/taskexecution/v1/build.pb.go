@@ -1032,8 +1032,8 @@ type RegisterRepairCandidateVersionResponse struct {
 	Version        string                 `protobuf:"bytes,1,opt,name=version,proto3" json:"version,omitempty"`
 	ManifestDigest string                 `protobuf:"bytes,2,opt,name=manifest_digest,json=manifestDigest,proto3" json:"manifest_digest,omitempty"`
 	Created        bool                   `protobuf:"varint,3,opt,name=created,proto3" json:"created,omitempty"`
-	// The installation's current pin and project revision, captured before any
-	// deployment side effect (ADR-0026 offer-time preconditions).
+	// Immutable version and revision from the persisted repair target, checked
+	// before first registration and reused unchanged on every replay (ADR-0026).
 	BaseVersion     string `protobuf:"bytes,4,opt,name=base_version,json=baseVersion,proto3" json:"base_version,omitempty"`
 	ProjectRevision int64  `protobuf:"varint,5,opt,name=project_revision,json=projectRevision,proto3" json:"project_revision,omitempty"`
 	unknownFields   protoimpl.UnknownFields

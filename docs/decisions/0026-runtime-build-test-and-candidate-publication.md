@@ -53,7 +53,9 @@ Core 私有 `RepairVersionService`（Reliability-facing listener）：
   从原版本 manifest 派生新 manifest（仅替换 build.sourceBundleId/sourceDigest，其余
   逐字节保留），经既有 schema 校验后创建 staged 版本，版本号确定性派生为
   `{patch+1}-repair.{task 前 8 hex}`。同 task 幂等重放第一个结果；installation 已变
-  更时拒绝（调用方走放弃路径）。
+  更时拒绝（调用方走放弃路径）。2026-09-17 修复明确：version/revision 取持久
+  repair target 快照，首次注册比对当前事实，所有重放复用该快照；不得把用户后来选择
+  的版本或 revision 当作旧候选的新基线。已取消构建与 superseded 注册均终结轮询。
 - `TransitionCandidateVersion`：canary 启动专用。语义同 ADR-0012 的精确版本切换
   （server 解析 registry 目标、grants 覆盖 fail-closed、幂等键），但允许 staged 目标
   并要求期望 revision 前置；该 RPC 只在私有 listener 上。

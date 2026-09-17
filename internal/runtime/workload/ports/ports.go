@@ -152,6 +152,10 @@ type Engine interface {
 
 var ErrContainerAlreadyExists = errors.New("container already exists")
 
+// ErrContainerRemoving marks an object the engine is still finalizing a
+// removal for: it occupies the deterministic name but can never start.
+var ErrContainerRemoving = errors.New("container is being removed")
+
 // CgroupReader reads the real cgroup v2 facts of one workload. Paths arrive
 // from engine inspection and are validated by the domain before use.
 type CgroupReader interface {

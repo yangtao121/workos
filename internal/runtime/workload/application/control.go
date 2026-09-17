@@ -23,6 +23,13 @@ func (m *Manager) Restart(ctx context.Context, command ports.RestartCommand) (do
 	if !domain.ValidWorkloadID(command.WorkloadID) || !domain.ValidOperationKey(command.OperationKey) {
 		return domain.Workload{}, domain.ErrInvalid
 	}
+	ctx, cancel := context.WithTimeout(ctx, m.config.OperationTimeout)
+	defer cancel()
+	unlock, err := m.lockWorkload(ctx, command.WorkloadID)
+	if err != nil {
+		return domain.Workload{}, err
+	}
+	defer unlock()
 	workload, err := m.repository.Get(ctx, command.WorkloadID)
 	if err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
@@ -74,7 +81,7 @@ func (m *Manager) Restart(ctx context.Context, command ports.RestartCommand) (do
 					Operation: domain.OperationRestart, RequestDigest: digest,
 					ResultGeneration: stored.ResultGeneration,
 				}
-				if err := m.driveLaunch(ctx, workload, operation); err != nil {
+				if err := m.driveLaunchLocked(ctx, workload, operation); err != nil {
 					return domain.Workload{}, err
 				}
 				result, err := m.repository.Get(ctx, workload.ID)
@@ -181,7 +188,7 @@ func (m *Manager) Restart(ctx context.Context, command ports.RestartCommand) (do
 		WorkloadID: workload.ID, OperationKey: command.OperationKey,
 		Operation: domain.OperationRestart, RequestDigest: digest, ResultGeneration: targetGeneration,
 	}
-	if err := m.driveLaunch(ctx, next, operation); err != nil {
+	if err := m.driveLaunchLocked(ctx, next, operation); err != nil {
 		return domain.Workload{}, err
 	}
 	result, err := m.repository.Get(ctx, workload.ID)
@@ -231,6 +238,17 @@ func (m *Manager) Terminate(ctx context.Context, command ports.TerminateCommand)
 		!domain.ValidTerminateReason(command.Reason) {
 		return domain.ErrInvalid
 	}
+	ctx, cancel := context.WithTimeout(ctx, m.config.OperationTimeout)
+	defer cancel()
+	unlock, err := m.lockWorkload(ctx, command.WorkloadID)
+	if err != nil {
+		return err
+	}
+	defer unlock()
+	return m.terminateLocked(ctx, command)
+}
+
+func (m *Manager) terminateLocked(ctx context.Context, command ports.TerminateCommand) error {
 	workload, err := m.repository.Get(ctx, command.WorkloadID)
 	if err != nil {
 		if errors.Is(err, domain.ErrNotFound) {

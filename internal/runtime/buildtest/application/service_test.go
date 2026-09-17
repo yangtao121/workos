@@ -259,6 +259,32 @@ func TestTransientEngineErrorsRequeueThenFail(t *testing.T) {
 	}
 }
 
+type cancelAfterListStore struct {
+	ports.JobStore
+	cancel context.CancelFunc
+}
+
+func (s cancelAfterListStore) ListRunnable(ctx context.Context, limit int, now time.Time) ([]domain.Job, error) {
+	jobs, err := s.JobStore.ListRunnable(ctx, limit, now)
+	s.cancel()
+	return jobs, err
+}
+
+func TestCancelledPassDoesNotClaimQueuedWork(t *testing.T) {
+	service, store := newTestService(t, &fakeEngine{facts: ports.EngineFacts{Engine: "process"}})
+	job := validJob()
+	if _, _, err := service.Submit(context.Background(), job); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	service.store = cancelAfterListStore{JobStore: store, cancel: cancel}
+	count, err := service.RunPass(ctx, time.Now().UTC())
+	if count != 0 || !errors.Is(err, context.Canceled) || store.jobs[job.TaskID].State != domain.StateQueued {
+		t.Fatalf("shutdown claimed queued work: count=%d err=%v job=%+v", count, err, store.jobs[job.TaskID])
+	}
+}
+
 func TestCancelIsTerminalAndImmutable(t *testing.T) {
 	service, _ := newTestService(t, &fakeEngine{facts: ports.EngineFacts{Engine: "process"}})
 	job := validJob()

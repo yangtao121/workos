@@ -22,10 +22,16 @@ func (c coordBuilds) Submit(context.Context, CandidateFacts) (string, bool, erro
 func (c coordBuilds) Get(context.Context, string) (BuildTestVerdict, error) { return c.verdict, nil }
 func (c coordBuilds) Cancel(context.Context, string) error                  { return nil }
 
-type coordVersions struct{ registered int }
+type coordVersions struct {
+	registered int
+	err        error
+}
 
 func (c *coordVersions) Register(context.Context, string, string, string, string, string, string) (RegisteredVersion, error) {
 	c.registered++
+	if c.err != nil {
+		return RegisteredVersion{}, c.err
+	}
 	return RegisteredVersion{Version: "1.0.1-repair.deadbeef", ManifestDigest: "sha256:" + strings.Repeat("d", 64), Created: true, BaseVersion: "1.0.0", ProjectRevision: 3}, nil
 }
 func (c *coordVersions) Publish(context.Context, string, string, string, string, string, string) (bool, error) {
@@ -76,6 +82,31 @@ func TestHandleRepairCompletedRequiresReadyBundle(t *testing.T) {
 	}
 }
 
+func TestCancelledRepairBuildCompletesWithoutDeployment(t *testing.T) {
+	id := func() string { return uuid.Must(uuid.NewV7()).String() }
+	row := RepairCompletedRow{TaskID: id(), RepairCandidate: RepairCandidate{
+		IncidentID: id(), OwnerUserID: id(), ProjectID: id(), AppInstanceID: id(),
+	}}
+	facts := CandidateFacts{TaskID: row.TaskID, IncidentID: row.IncidentID,
+		ProjectID: row.ProjectID, AppInstanceID: row.AppInstanceID}
+	versions := &coordVersions{}
+	deployments, err := NewDeploymentController(&deploymentMemory{}, &deploymentDriver{}, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	coordinator, err := NewBuildCoordinator(coordCandidates{facts: facts},
+		coordBuilds{verdict: BuildTestVerdict{JobID: id(), State: "cancelled"}}, versions, deployments)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := coordinator.HandleRepairCompleted(context.Background(), row); err != nil {
+		t.Fatalf("immutable cancellation must retire the repair poll: %v", err)
+	}
+	if versions.registered != 0 {
+		t.Fatal("cancelled build registered a version")
+	}
+}
+
 func TestHandleRepairCompletedImageOnlyDoesNotRequireArtifact(t *testing.T) {
 	id := func() string { return uuid.Must(uuid.NewV7()).String() }
 	row := RepairCompletedRow{TaskID: id(), RepairCandidate: RepairCandidate{
@@ -102,5 +133,27 @@ func TestHandleRepairCompletedImageOnlyDoesNotRequireArtifact(t *testing.T) {
 	}
 	if versions.registered != 1 {
 		t.Fatal("image-only success must still register")
+	}
+}
+
+func TestSupersededRepairCompletesWithoutOffer(t *testing.T) {
+	id := func() string { return uuid.Must(uuid.NewV7()).String() }
+	row := RepairCompletedRow{TaskID: id(), RepairCandidate: RepairCandidate{IncidentID: id(), OwnerUserID: id(), ProjectID: id(), AppInstanceID: id()}}
+	facts := CandidateFacts{TaskID: row.TaskID, IncidentID: row.IncidentID, ProjectID: row.ProjectID, AppInstanceID: row.AppInstanceID}
+	ledger := &deploymentMemory{}
+	deployments, err := NewDeploymentController(ledger, &deploymentDriver{}, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	versions := &coordVersions{err: ErrDeploymentSuperseded}
+	coordinator, err := NewBuildCoordinator(coordCandidates{facts: facts}, coordBuilds{verdict: BuildTestVerdict{JobID: id(), State: "succeeded"}}, versions, deployments)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := coordinator.HandleRepairCompleted(context.Background(), row); err != nil {
+		t.Fatal(err)
+	}
+	if versions.registered != 1 || ledger.row != nil {
+		t.Fatal("superseded repair must retire without deployment")
 	}
 }

@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/yangtao121/workos/internal/platform/faultinject"
 	"github.com/yangtao121/workos/internal/platform/ids"
 	artifactapp "github.com/yangtao121/workos/internal/runtime/artifactstore/application"
 	artifactdomain "github.com/yangtao121/workos/internal/runtime/artifactstore/domain"
@@ -139,6 +140,9 @@ func (s *Service) RunPass(ctx context.Context, now time.Time) (int, error) {
 	driven := 0
 	var lastErr error
 	for _, job := range jobs {
+		if err := ctx.Err(); err != nil {
+			return driven, err
+		}
 		if job.State == domain.StateRunning && job.ID == "" {
 			continue
 		}
@@ -205,6 +209,9 @@ func (s *Service) drive(ctx context.Context, job domain.Job) {
 			case <-ctx.Done():
 				return
 			case <-ticker.C:
+				if faultinject.SkipLeaseRenew() {
+					continue
+				}
 				checkCtx, stop := context.WithTimeout(ctx, time.Second)
 				now := time.Now().UTC()
 				renewed, err := s.store.RenewJobLease(checkCtx, job.ID, s.identity, now.Add(s.lease), now)
@@ -218,6 +225,7 @@ func (s *Service) drive(ctx context.Context, job domain.Job) {
 	}()
 	defer func() { close(watchDone); <-watchExited }()
 	result, err := s.engine.Run(ctx, spec)
+	faultinject.Arrive(ctx, "after-engine")
 	verdict := job
 	verdict.EngineFacts = ports.EngineFactsJSON(result.Facts)
 	verdict.LogTail = result.LogTail
@@ -251,9 +259,11 @@ func (s *Service) drive(ctx context.Context, job domain.Job) {
 			}
 		}
 	}
+	faultinject.Arrive(context.WithoutCancel(ctx), "before-verdict")
 	if err := s.store.RecordVerdict(context.WithoutCancel(ctx), job.ID, s.identity, verdict); err != nil && !errors.Is(err, domain.ErrNotFound) {
 		// Lease takeover or cancellation owns the authoritative verdict.
 	}
+	faultinject.Arrive(context.WithoutCancel(ctx), "after-verdict")
 }
 
 // commitOutput freezes the verified build output and fills the verdict's

@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/yangtao121/workos/internal/platform/faultinject"
 )
 
 const (
@@ -121,7 +122,11 @@ func (c *DeploymentController) Offer(ctx context.Context, candidate DeploymentCa
 			return ErrDeploymentCandidateRequired
 		}
 	}
-	return c.ledger.Start(ctx, candidate)
+	err := c.ledger.Start(ctx, candidate)
+	if err == nil {
+		faultinject.Arrive(ctx, "deployment-offer")
+	}
+	return err
 }
 
 // Task completion alone is not a deployment candidate. Admission of a
@@ -174,6 +179,7 @@ func (c *DeploymentController) Pass(ctx context.Context, now time.Time, limit in
 			row.CanaryStartedAt = time.Now().UTC()
 			row.CanaryUntil = row.CanaryStartedAt.Add(c.canaryWindow)
 		case DeploymentCanary:
+			faultinject.Arrive(ctx, "deployment-canary")
 			if err := c.driver.Verify(ctx, &row.DeploymentCandidate); err != nil {
 				row.Attempts = 0
 				if errors.Is(err, ErrDeploymentSuperseded) {

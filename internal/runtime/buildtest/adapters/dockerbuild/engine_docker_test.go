@@ -27,14 +27,14 @@ func realDockerEngine(t *testing.T) *Engine {
 		socket = "/var/run/docker.sock"
 	}
 	if _, err := os.Stat(socket); err != nil {
-		t.Skipf("docker socket %s not reachable: %v", socket, err)
+		t.Fatalf("required docker socket %s not reachable: %v", socket, err)
 	}
 	engine, err := New(Config{Socket: socket})
 	if err != nil {
 		t.Fatalf("engine: %v", err)
 	}
 	if err := engine.Available(context.Background()); err != nil {
-		t.Skipf("docker daemon unavailable: %v", err)
+		t.Fatalf("required docker daemon unavailable: %v", err)
 	}
 	return engine
 }
@@ -106,5 +106,44 @@ func TestRealEngineBuildFailureYieldsNoOutput(t *testing.T) {
 	}
 	if result.Failure != domain.FailureBuildFailed || result.OutputDir != "" || result.BuildExitCode != 3 {
 		t.Fatalf("failing build must not yield output: %+v", result)
+	}
+}
+
+func TestRealEngineFailureMatrix(t *testing.T) {
+	engine := realDockerEngine(t)
+	for _, tc := range []struct {
+		name, build, test string
+		failure           domain.FailureReason
+		timeout           time.Duration
+	}{
+		{name: "missing-output", build: "true", failure: domain.FailureOutputFailed},
+		{name: "empty-output", build: "mkdir dist", failure: domain.FailureOutputFailed},
+		{name: "missing-entrypoint", build: "mkdir dist; echo data > dist/other", failure: domain.FailureOutputFailed},
+		{name: "file-count", build: "mkdir dist; echo real-bundle > dist/server; chmod 755 dist/server; i=0; while [ $i -lt 1024 ]; do echo x > dist/f$i; i=$((i+1)); done", failure: domain.FailureOutputFailed},
+		{name: "single-file-limit", build: "mkdir dist; echo real-bundle > dist/server; truncate -s 33M dist/server; chmod 755 dist/server", failure: domain.FailureOutputFailed},
+		{name: "total-limit", build: "mkdir dist; echo real-bundle > dist/server; chmod 755 dist/server; for i in 1 2 3 4 5; do dd if=/dev/zero of=dist/f$i bs=1M count=27 2>/dev/null; done", failure: domain.FailureOutputFailed},
+		{name: "test-nonzero", test: "exit 7", failure: domain.FailureTestFailed},
+		{name: "timeout", build: "sleep 30", failure: domain.FailureTimeout, timeout: 5 * time.Second},
+		{name: "log-budget", build: "yes budget", failure: domain.FailureOutputBudget},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			spec := realSpec(t)
+			if tc.build != "" {
+				spec.BuildCommand = []string{"sh", "-c", tc.build}
+			}
+			if tc.test != "" {
+				spec.TestCommand = []string{"sh", "-c", tc.test}
+			}
+			if tc.timeout != 0 {
+				spec.Timeout = tc.timeout
+			}
+			result, err := engine.Run(context.Background(), spec)
+			if err != nil || result.Failure != tc.failure || result.OutputDir != "" {
+				t.Fatalf("failure must leave no deployable output: %+v, %v", result, err)
+			}
+			if tc.name == "test-nonzero" && (result.BuildExitCode != 0 || result.TestExitCode != 7) {
+				t.Fatalf("incorrect build/test exit facts: %+v", result)
+			}
+		})
 	}
 }

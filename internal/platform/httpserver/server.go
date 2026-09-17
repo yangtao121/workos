@@ -13,6 +13,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/yangtao121/workos/internal/platform/faultinject"
 	"github.com/yangtao121/workos/internal/platform/telemetry"
 )
 
@@ -72,7 +73,7 @@ func RunWithTLSConfigContext(parent context.Context, service, address string, ha
 		}
 	}()
 	server := &http.Server{
-		Addr: address, Handler: telemetry.Handler(service, handler),
+		Addr: address, Handler: faultinject.DropReply(telemetry.Handler(service, handler)),
 		TLSConfig:         tlsConfig,
 		ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 30 * time.Second,
 		WriteTimeout: 0, IdleTimeout: 90 * time.Second,

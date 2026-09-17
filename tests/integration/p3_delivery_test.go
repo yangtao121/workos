@@ -33,6 +33,7 @@ const p3Owner = "01999999-9999-7999-8999-000000000c01"
 type p3Fixture struct {
 	CandidateVersion string
 	Project          string
+	ProjectName      string
 	Installation     string
 	App              string
 	ArtifactID       string
@@ -41,7 +42,9 @@ type p3Fixture struct {
 
 func p3Poll(t *testing.T, description string, predicate func() bool) {
 	t.Helper()
-	deadline := time.Now().Add(4 * time.Minute)
+	// Repair chains can queue behind idempotent duplicate-repair builds on
+	// the single-flight engine, so release/deployment waits need slack.
+	deadline := time.Now().Add(6 * time.Minute)
 	for time.Now().Before(deadline) {
 		if predicate() {
 			return
@@ -52,11 +55,16 @@ func p3Poll(t *testing.T, description string, predicate func() bool) {
 }
 func p3Seed(t *testing.T, clients *buildtestClients, startupFailure bool) p3Fixture {
 	t.Helper()
+	return p3SeedNamed(t, clients, "P3 deterministic delivery", startupFailure)
+}
+
+func p3SeedNamed(t *testing.T, clients *buildtestClients, projectName string, startupFailure bool) p3Fixture {
+	t.Helper()
 	ctx := context.Background()
 	key := ids.UUIDv7{}.New()
 	appID := "p3-" + strings.ReplaceAll(key, "-", "")
 	project, err := clients.projects.CreateProject(ctx, connect.NewRequest(&projectv1.CreateProjectRequest{
-		IdempotencyKey: key, Name: "P3 deterministic delivery", HarnessBinding: &projectv1.HarnessBinding{ProviderId: "generic-cli", InstancePolicy: projectv1.HarnessInstancePolicy_HARNESS_INSTANCE_POLICY_EPHEMERAL, ResourcePolicyId: "project-no-tools"},
+		IdempotencyKey: key, Name: projectName, HarnessBinding: &projectv1.HarnessBinding{ProviderId: "generic-cli", InstancePolicy: projectv1.HarnessInstancePolicy_HARNESS_INSTANCE_POLICY_EPHEMERAL, ResourcePolicyId: "project-no-tools"},
 	}))
 	if err != nil {
 		t.Fatal(err)
@@ -69,7 +77,7 @@ func p3Seed(t *testing.T, clients *buildtestClients, startupFailure bool) p3Fixt
 import("fmt";"net/http";"os")
 func value() int { return 0 }
 func main() { _ = os.Args; ` + crash + `
-http.HandleFunc("/health",func(w http.ResponseWriter,r *http.Request){fmt.Fprint(w,"ok")})
+http.HandleFunc("/health",func(w http.ResponseWriter,r *http.Request){w.Header().Set("X-P3-Fixture","` + appID + `"); fmt.Fprint(w,"ok")})
 http.HandleFunc("/",func(w http.ResponseWriter,r *http.Request){w.Header().Set("Content-Type","text/html; charset=utf-8"); fmt.Fprintf(w,"<html><body>P3-VALUE-%d</body></html>",value())})
 if err:=http.ListenAndServe(":8080",nil); err!=nil { os.Exit(1) }
 }`
@@ -137,7 +145,58 @@ if err:=http.ListenAndServe(":8080",nil); err!=nil { os.Exit(1) }
 	if err != nil {
 		t.Fatal(err)
 	}
-	return p3Fixture{Project: project.Msg.GetProject().GetId(), Installation: installed.Msg.GetInstallation().GetId(), App: appID, ArtifactID: artifactID, Digest: stats.Digest}
+	fixture := p3Fixture{Project: project.Msg.GetProject().GetId(), ProjectName: projectName, Installation: installed.Msg.GetInstallation().GetId(), App: appID, ArtifactID: artifactID, Digest: stats.Digest}
+	t.Cleanup(func() { p3CleanupFixture(t, clients, fixture) })
+	return fixture
+}
+
+// Each fault case retires its own installation through the public API. An
+// intentionally broken candidate must not keep spawning repairs that consume
+// later cases' build queue or global fault barriers. Only explicit browser/
+// restart fixtures survive until the gate tears down its private namespace.
+func p3CleanupFixture(t *testing.T, clients *buildtestClients, f p3Fixture) {
+	t.Helper()
+	for _, name := range []string{"replay.json", "closeout-f02.json"} {
+		raw, err := os.ReadFile(filepath.Join(os.Getenv("WORKOS_P3_GATE_DIR"), name))
+		var saved p3Fixture
+		if err == nil && json.Unmarshal(raw, &saved) == nil && saved.Installation == f.Installation {
+			return
+		}
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	// Retire through public commands; concurrent canary CAS may require a
+	// fresh project revision. Never silently leave a broken fixture alive.
+	for attempt := 0; attempt < 3; attempt++ {
+		active := buildtestQuery(t, `SELECT i.id FROM workos_core.project_app_installations i JOIN workos_core.projects p ON p.id=i.project_id WHERE i.id=$1 AND i.uninstalled_at IS NULL AND p.archived_at IS NULL`, f.Installation)
+		if len(active) == 0 {
+			break
+		}
+		project, err := clients.projects.GetProject(ctx, connect.NewRequest(&projectv1.GetProjectRequest{ProjectId: f.Project}))
+		if err != nil {
+			t.Errorf("cleanup read project: %v", err)
+			break
+		}
+		_, err = clients.install.UninstallApp(ctx, connect.NewRequest(&appv1.UninstallAppRequest{
+			IdempotencyKey: fmt.Sprintf("cleanup-%s-%d", f.Installation, attempt), ProjectId: f.Project,
+			InstallationId: f.Installation, ExpectedProjectRevision: project.Msg.GetProject().GetRevision(),
+		}))
+		if err == nil {
+			break
+		}
+		if connect.CodeOf(err) != connect.CodeAborted && connect.CodeOf(err) != connect.CodeFailedPrecondition {
+			t.Errorf("cleanup uninstall: %v", err)
+			break
+		}
+	}
+	if active := buildtestQuery(t, `SELECT i.id FROM workos_core.project_app_installations i JOIN workos_core.projects p ON p.id=i.project_id WHERE i.id=$1 AND i.uninstalled_at IS NULL AND p.archived_at IS NULL`, f.Installation); len(active) > 0 {
+		t.Error("cleanup left the test installation active")
+	}
+	for _, row := range buildtestQuery(t, `SELECT task_id::text FROM workos_runtime.build_jobs WHERE installation_id=$1 AND state IN ('queued','running')`, f.Installation) {
+		if _, err := clients.builds.CancelBuildTest(ctx, connect.NewRequest(&executionv1.CancelBuildTestRequest{TaskId: fmt.Sprint(row["task_id"])})); err != nil {
+			t.Errorf("cleanup cancel build: %v", err)
+		}
+	}
 }
 
 func p3Surface(t *testing.T, clients *buildtestClients, f p3Fixture, expected string) {
@@ -167,13 +226,22 @@ func p3Surface(t *testing.T, clients *buildtestClients, f p3Fixture, expected st
 		return false
 	})
 }
+
+// p3StartRepair seeds an Incident row so the existing main chain can start
+// without a live Docker crash. It does not prove Runtime observation created
+// the Incident; TestP3Closeout covers that path.
 func p3StartRepair(t *testing.T, clients *buildtestClients, f p3Fixture) string {
 	t.Helper()
 	incident := ids.UUIDv7{}.New()
+	p3InsertIncident(t, f, incident)
+	return incident
+}
+
+func p3InsertIncident(t *testing.T, f p3Fixture, incident string) {
+	t.Helper()
 	buildtestExec(t, `INSERT INTO workos_reliability.incidents
 (id,owner_user_id,project_id,app_instance_id,app_id,workload_id,workload_generation,violation,severity,summary,occurrence_digest,evidence_digest,state,created_at,updated_at)
 VALUES($1,$2,$3,$4,$5,$6,1,'unexpected_exit','critical','P3 deterministic baseline regression',$7,$8,'open',now(),now())`, incident, p3Owner, f.Project, f.Installation, f.App, ids.UUIDv7{}.New(), "sha256:"+strings.Repeat("e", 32)+strings.ReplaceAll(incident, "-", ""), "sha256:"+strings.Repeat("a", 64))
-	return incident
 }
 func p3Release(t *testing.T, clients *buildtestClients, f p3Fixture, expected string) *releasev1.ReleaseStatus {
 	t.Helper()

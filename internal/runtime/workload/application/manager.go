@@ -9,13 +9,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/yangtao121/workos/internal/platform/identity"
 	"log/slog"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/yangtao121/workos/internal/platform/faultinject"
+	"github.com/yangtao121/workos/internal/platform/identity"
 	"github.com/yangtao121/workos/internal/platform/ids"
 	"github.com/yangtao121/workos/internal/runtime/workload/domain"
 	"github.com/yangtao121/workos/internal/runtime/workload/ports"
@@ -87,6 +88,11 @@ type Manager struct {
 
 	capabilityOnce sync.Once
 	capability     ports.Capability
+
+	// Lifecycle operations share the same cancellable lock, including stop
+	// and reconciliation. Entries are reclaimed after the last waiter leaves.
+	operationsMu sync.Mutex
+	operations   map[string]*workloadLock
 }
 
 func New(
@@ -364,9 +370,87 @@ func (m *Manager) verifyImage(ctx context.Context, image string) error {
 // starting window. Every step is idempotent given the deterministic container
 // name and the persisted row: reconciliation re-runs the exact same sequence
 // after any crash.
+func workloadContainerSpec(workload domain.Workload) ports.ContainerSpec {
+	return ports.ContainerSpec{
+		Name: workload.ContainerName, Image: workload.Image, Command: workload.Command,
+		Port: workload.Port, Labels: domain.EngineLabels(workload), Policy: workload.Effective,
+		OwnerUserID: workload.OwnerUserID, ArtifactID: workload.ArtifactID, ArtifactDigest: workload.ArtifactDigest,
+	}
+}
+
+// convergeStaleOwnedContainer removes an owned object that can never start
+// again (the engine is still finalizing its removal after a crash or stop)
+// and creates a fresh one under the same deterministic name. The caller has
+// already verified the identity labels; the removal re-verifies through the
+// owned-container path, so a foreign object is never touched.
+func (m *Manager) convergeStaleOwnedContainer(ctx context.Context, workload domain.Workload) (string, error) {
+	if err := m.removeOwnedWorkloadContainer(ctx, workload); err != nil {
+		return "", err
+	}
+	if err := m.awaitContainerRemoved(ctx, workload.ContainerName); err != nil {
+		return "", err
+	}
+	return m.engine.CreateContainer(ctx, workloadContainerSpec(workload))
+}
+
+// awaitContainerRemoved bounds the wait for the engine to finalize a
+// removal: the deterministic name must be free before a recreate, and an
+// unbounded wait would hold the launch operation forever.
+func (m *Manager) awaitContainerRemoved(ctx context.Context, name string) error {
+	deadline := time.Now().Add(15 * time.Second)
+	for time.Now().Before(deadline) {
+		_, err := m.engine.InspectContainer(ctx, name)
+		if errors.Is(err, ports.ErrContainerNotFound) {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		timer := time.NewTimer(200 * time.Millisecond)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return ctx.Err()
+		case <-timer.C:
+		}
+	}
+	return domain.ErrUnavailable
+}
+
 func (m *Manager) driveLaunch(ctx context.Context, workload domain.Workload, operation domain.WorkloadOperation) error {
 	ctx, cancel := context.WithTimeout(ctx, m.config.OperationTimeout)
 	defer cancel()
+	unlock, err := m.lockWorkload(ctx, workload.ID)
+	if err != nil {
+		return err
+	}
+	defer unlock()
+	return m.driveLaunchLocked(ctx, workload, operation)
+}
+
+func (m *Manager) driveLaunchLocked(ctx context.Context, workload domain.Workload, operation domain.WorkloadOperation) error {
+	ctx, cancel := context.WithTimeout(ctx, m.config.OperationTimeout)
+	defer cancel()
+	// Re-read after acquiring the lock. A stop or newer generation must
+	// invalidate the queued launch without any engine side effects.
+	fresh, err := m.repository.Get(ctx, workload.ID)
+	if err != nil {
+		if errors.Is(err, ports.ErrStoreUnavailable) {
+			return domain.ErrUnavailable
+		}
+		return err
+	}
+	if fresh.Generation != workload.Generation ||
+		(fresh.State != domain.StateStarting && fresh.State != domain.StateRunning) {
+		return domain.ErrUnavailable
+	}
+	if fresh.State == domain.StateRunning {
+		operation.ResultState = domain.StateRunning
+		operation.ResultGeneration = fresh.Generation
+		operation.UpdatedAt = m.now()
+		return m.persistOperation(ctx, operation)
+	}
+	workload = fresh
 	createdContainerID := ""
 
 	if err := m.verifyImage(ctx, workload.Image); err != nil {
@@ -389,24 +473,44 @@ func (m *Manager) driveLaunch(ctx context.Context, workload domain.Workload, ope
 			return m.failLaunch(ctx, workload, operation, facts.ID, domain.ErrCorrupt)
 		}
 	case errors.Is(err, ports.ErrContainerNotFound):
-		spec := ports.ContainerSpec{
-			Name: workload.ContainerName, Image: workload.Image, Command: workload.Command,
-			Port: workload.Port, Labels: domain.EngineLabels(workload), Policy: workload.Effective,
-			OwnerUserID: workload.OwnerUserID, ArtifactID: workload.ArtifactID, ArtifactDigest: workload.ArtifactDigest,
-		}
+		spec := workloadContainerSpec(workload)
+		adopted := false
 		createdContainerID, err = m.engine.CreateContainer(ctx, spec)
+		if errors.Is(err, ports.ErrContainerAlreadyExists) {
+			// A lost create reply can leave a valid object holding the name.
+			// Inspect and adopt it; a name conflict is not proof of removal.
+			existing, inspectErr := m.engine.InspectContainer(ctx, workload.ContainerName)
+			if inspectErr == nil && matchesWorkloadContainer(workload, existing, m.capability) {
+				createdContainerID, err = "", nil
+				adopted = true
+			} else if inspectErr == nil {
+				return m.failLaunch(ctx, workload, operation, "", domain.ErrCorrupt)
+			}
+		}
 		if err != nil {
 			return m.failLaunch(ctx, workload, operation, createdContainerID, m.classifyEngine(err))
 		}
-		if strings.TrimSpace(createdContainerID) == "" {
+		if !adopted && strings.TrimSpace(createdContainerID) == "" {
 			return m.failLaunch(ctx, workload, operation, createdContainerID, domain.ErrUnavailable)
 		}
 	default:
 		return m.failLaunch(ctx, workload, operation, createdContainerID, m.classifyEngine(err))
 	}
 	if err := m.engine.StartContainer(ctx, workload.ContainerName); err != nil && !errors.Is(err, ports.ErrContainerNotFound) {
-		return m.failLaunch(ctx, workload, operation, createdContainerID, m.classifyEngine(err))
+		if createdContainerID == "" && errors.Is(err, ports.ErrContainerRemoving) {
+			// The adopted object is stuck in the engine's removal queue (a
+			// crashed generation docker still finalizes). Converge the owned
+			// object now instead of bouncing the launch to reconcile backoff.
+			createdContainerID, err = m.convergeStaleOwnedContainer(ctx, workload)
+			if err == nil {
+				err = m.engine.StartContainer(ctx, workload.ContainerName)
+			}
+		}
+		if err != nil && !errors.Is(err, ports.ErrContainerNotFound) {
+			return m.failLaunch(ctx, workload, operation, createdContainerID, m.classifyEngine(err))
+		}
 	}
+	faultinject.Arrive(ctx, "workload-started")
 	facts, err = m.engine.InspectContainer(ctx, workload.ContainerName)
 	if err != nil {
 		return m.failLaunch(ctx, workload, operation, createdContainerID, m.classifyEngine(err))

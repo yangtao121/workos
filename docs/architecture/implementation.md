@@ -198,6 +198,25 @@ Core 恢复的旧版本及旧包，不复用失败候选的 digest。桌面 Vers
 修复、重启和回滚矩阵；它的结果仅证明旧软件链。完整证据和未覆盖项见
 [合并审查记录](../tasks/20260916-v2-p3-real-artifact-delivery.md)。
 
+2026-09-17 收尾在同一隔离门禁增加 `TestP3Closeout` 与桌面 `p3-closeout.spec.ts`：用核对过
+标签的 Docker kill 触发真实 Runtime observation → Reliability Incident，再走 Build/Test 发布；
+文件屏障注入 build/verdict/包字节窗口；Gateway 不暴露私有 BuildTest。`make test-v2-p3-faults`
+调用 `sh tools/v2-p3-delivery/gate.sh faults`。完整用例映射见任务记录 2026-09-17 收尾章节。
+同轮追加两类真实窗口/矩阵用例：`TestP3CloseoutWindows` 按已提交边界（artifact-bytes/
+preparing/verdict/容器回执/canary/publish）精确 kill 并重启本门禁进程，验证同键收敛、
+lease 接管与孤儿不越界；`TestP3CloseoutMatrix` 覆盖 owner 升级/手动回滚 superseded、
+卸载/归档无复活、同安装 newest-wins 抢占（ADR-0016 §6，旧行有界 rolled_back、新 offer
+串行接入）、缺基础镜像/包篡改/漂移、恶意流式包拒绝与迟到 Surface 回执按代次拒绝。
+Runtime 每个构建作业独立计时，不能让整批作业共用一个作业的预算。生命周期操作
+（启动、停止、重启、对账）按 workload 串行化，锁等待可取消且结束回收；等待后重读
+精确 generation/state，数据库不可用时不操作引擎。create 重名冲突只有完整 inspect 验证
+后才接管，不删除健康对象；仅 Docker 明确报告 marked-for-removal 才执行删除后重建。
+Core 注册候选以修复任务中持久化的 version/revision 为固定发布前提；首次注册核验当前
+安装，之后重放不刷新前提。迟到或已取消的修复在 Reliability 终结轮询，不覆盖新 pin。
+故障注入只编入显式 `-tags faultinject` 测试二进制，普通生产构建忽略全部注入配置；
+提交后丢回复同时验证 HTTP/1 和 HTTP/2，标记原子消费，撤除屏障会释放旧等待者。
+未覆盖的子矩阵保持 PARTIAL；rootless/memory.high、P2 第二台物理 LAN 与 P4 仍不在范围内。
+
 ## Project App Installation
 
 Project App Installation 把 Registry 的一个 immutable version 变成 Project 持有的安装实例事实。
@@ -845,7 +864,11 @@ supervision 决策/Incident/action ledger            → reliability-host
   inspect/cgroup/health 验证 → persist；create/start 后还会再次 inspect 完整 identity 与 immutable/
   security profile，engine 接受 argv 却放宽安全配置时精确删除本次 create 返回的 ID，绝不先落
   running。启动 reconcile + 周期 reconcile（lease 线性化）重驱中断
-  原 operation key、失败 exited workload 并清理 exact orphan；stop/restart 只有在 exact ID +
+  原 operation key、失败 exited workload 并清理 exact orphan；`driveLaunch` 按 workload ID
+  与 stop/restart/reconcile 共用可取消、可回收的实例锁，等锁方重读精确代次和状态；
+  旧请求不能将新代次当作自己的成功，也不能复活 stopped 对象。engine 明确报告 removal-finalizing 的 409 映射为
+  `ErrContainerRemoving`，认领该对象后就地 remove→await→recreate 而非退入长退避。
+  stop/restart 只有在 exact ID +
   完整 WorkOS labels 验真且删除后复查确实不存在，才落 stopped/推进 generation；restart/adoption
   额外要求 image/argv/security profile 全匹配，停止路径则允许精确删除已证实归属但 profile 漂移的
   对象，避免安全放宽把 live container 永久卡在 stopping；identity/旧 generation 不匹配的对象仍

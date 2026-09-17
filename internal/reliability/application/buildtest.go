@@ -127,10 +127,8 @@ func (c *BuildCoordinator) HandleRepairCompleted(ctx context.Context, row Repair
 	switch verdict.State {
 	case "queued", "running":
 		return ErrBuildPending
-	case "cancelled":
-		return errors.New("repair build was cancelled")
-	case "failed":
-		// A failed build is terminal for this candidate: no version, no
+	case "cancelled", "failed":
+		// A cancelled or failed build is terminal: no version, no
 		// deployment, no retry loop (a fresh repair task may re-run).
 		return nil
 	case "succeeded":
@@ -146,6 +144,9 @@ func (c *BuildCoordinator) HandleRepairCompleted(ctx context.Context, row Repair
 		}
 	}
 	registered, err := c.versions.Register(ctx, row.OwnerUserID, row.TaskID, row.ProjectID, row.AppInstanceID, jobID, facts.SourceDigest)
+	if errors.Is(err, ErrDeploymentSuperseded) {
+		return nil
+	}
 	if err != nil {
 		return err
 	}

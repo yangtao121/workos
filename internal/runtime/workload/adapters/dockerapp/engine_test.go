@@ -3,6 +3,7 @@ package dockerapp
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"github.com/yangtao121/workos/internal/platform/appbundle"
 	"github.com/yangtao121/workos/internal/runtime/workload/ports"
@@ -20,6 +21,25 @@ type fakeBundles struct{ path string }
 
 func (f fakeBundles) OpenForLaunch(context.Context, string, string) (string, error) {
 	return f.path, nil
+}
+
+func TestStartConflictOnlyConvergesRemoval(t *testing.T) {
+	for _, removal := range []bool{true, false} {
+		message := "container is paused"
+		if removal {
+			message = "container is marked for removal and cannot be started"
+		}
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(http.StatusConflict)
+			_ = json.NewEncoder(w).Encode(map[string]string{"message": message})
+		}))
+		t.Cleanup(server.Close)
+		engine := &Engine{client: server.Client(), baseURL: server.URL}
+		err := engine.StartContainer(context.Background(), "owned")
+		if err == nil || errors.Is(err, ports.ErrContainerRemoving) != removal {
+			t.Fatalf("conflict %q classified as %v", message, err)
+		}
+	}
 }
 
 func TestProbeReportsDockerProfile(t *testing.T) {

@@ -240,11 +240,12 @@ func run(logger *slog.Logger) error {
 				case <-buildStop:
 					return
 				case <-ticker.C:
-					driveCtx, cancel := context.WithTimeout(ctx, cfg.Runtime.BuildTestTimeout)
-					if _, err := buildService.RunPass(driveCtx, time.Now().UTC()); err != nil {
+					// The service gives each claimed job its own timeout. A
+					// batch-wide deadline spends later jobs' budget on earlier
+					// builds and then prevents their lease/verdict writes.
+					if _, err := buildService.RunPass(ctx, time.Now().UTC()); err != nil {
 						logger.Info("build test pass pending", "error", err)
 					}
-					cancel()
 				}
 			}
 		}()

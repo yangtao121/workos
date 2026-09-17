@@ -82,6 +82,34 @@ func TestEncodeRejectsSymlink(t *testing.T) {
 	}
 }
 
+func TestVerifyRejectsHardlinkTypeflag(t *testing.T) {
+	header := make([]byte, 512)
+	copy(header[0:], "link")
+	header[156] = '1'
+	copy(header[257:], "ustar\x00")
+	if _, err := Verify(bytes.NewReader(append(header, make([]byte, 1024)...)), ""); err == nil {
+		t.Fatal("hardlink typeflag must be rejected")
+	}
+}
+
+func TestVerifyRejectsNonRegularEntryTypes(t *testing.T) {
+	// The format whitelist is regular files and directories only; every
+	// device, fifo and link flavor must fail closed with the same boundary.
+	root := writeTree(t, map[string]string{"app": "hello"})
+	for _, typeflag := range []byte{'1', '2', '3', '4', '6', '7'} {
+		var buf bytes.Buffer
+		if _, err := EncodeDirectory(root, &buf); err != nil {
+			t.Fatal(err)
+		}
+		raw := buf.Bytes()
+		raw[156] = typeflag
+		if _, err := Verify(bytes.NewReader(raw), ""); err == nil ||
+			!strings.Contains(err.Error(), "not allowed") {
+			t.Fatalf("typeflag %q must be rejected as an illegal entry type, got %v", typeflag, err)
+		}
+	}
+}
+
 func TestVerifyRejectsTampering(t *testing.T) {
 	root := writeTree(t, map[string]string{"dist/app": "hello"})
 	var buf bytes.Buffer

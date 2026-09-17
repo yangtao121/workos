@@ -313,7 +313,9 @@ type buildtestTerminal struct {
 func waitForBuildtestJob(t *testing.T, clients *buildtestClients, taskID string, terminal func(state string) bool) buildtestTerminal {
 	t.Helper()
 	ctx := context.Background()
-	deadline := time.Now().Add(120 * time.Second)
+	// Idempotent duplicate repairs share the single-flight engine; a fresh
+	// submit may queue behind one or two convergence builds.
+	deadline := time.Now().Add(6 * time.Minute)
 	var lastErr error
 	var lastState string
 	for time.Now().Before(deadline) {

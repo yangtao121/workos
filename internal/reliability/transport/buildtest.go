@@ -135,6 +135,9 @@ func (c *RepairVersionClient) Register(ctx context.Context, ownerUserID, taskID,
 	request.Header().Set(identity.DeviceHeader, c.deviceID)
 	response, err := c.client.RegisterRepairCandidateVersion(ctx, request)
 	if err != nil {
+		if connect.CodeOf(err) == connect.CodeFailedPrecondition {
+			return application.RegisteredVersion{}, application.ErrDeploymentSuperseded
+		}
 		return application.RegisteredVersion{}, fmt.Errorf("register repair version: %w", err)
 	}
 	return application.RegisteredVersion{
