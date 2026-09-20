@@ -54,6 +54,8 @@ func (c *RuntimeArtifactClient) get(ctx context.Context, request *executionv1.Ge
 		ID: artifact.GetArtifactId(), Digest: artifact.GetArtifactDigest(), Format: artifact.GetFormat(),
 		Origin: artifact.GetOrigin(), State: artifact.GetState(), OwnerUserID: artifact.GetOwnerUserId(),
 		AppID: artifact.GetAppId(), TaskID: artifact.GetTaskId(), JobID: artifact.GetJobId(),
+		IncidentID: artifact.GetIncidentId(), ProjectID: artifact.GetProjectId(),
+		InstallationID: artifact.GetInstallationId(), SourceBundleID: artifact.GetSourceBundleId(),
 		SourceDigest: artifact.GetSourceDigest(), ManifestDigest: artifact.GetManifestDigest(),
 		BaseImage: artifact.GetBaseImage(), OutputDirectory: artifact.GetOutputDirectory(),
 		BuildCommand: artifact.GetBuildCommand(), TestCommand: artifact.GetTestCommand(),

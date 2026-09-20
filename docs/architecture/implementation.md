@@ -1656,3 +1656,18 @@ PTY/Native/预览的运行事实；Harness 使用官方原生 create/resume/foll
 访问严格校验的 Gateway，浏览器仍用标准 fetch。安全存储故障和 Forget 失败不伪报成功；
 StrictMode 不重复 claim 配对 ticket，配对 fragment 在请求前从地址栏移除，晚到的投影
 不得覆盖注销后的状态。平台二进制、设备 Cookie jar/证书/链接唤起/安全存储/推送仍未验证。
+
+## 2026-09-20 P3 来源与运行身份复核
+
+Core 注册修复候选时独立读取 Runtime ready artifact，并将 incident、project、installation
+和 source bundle ID 与持久修复任务逐一比较；不能仅凭相同的任务 ID、摘要或调用方提交的
+build job ID 认定来源。现有 Proto 已包含这些事实，不新增并行协议。
+已卸载安装或已归档项目在注册/发布时归为目标已变更，避免把永久退役误报为内部故障并无限重试。
+
+Docker app inspect 将 Entrypoint 与 Cmd 拼接为实际命令，并要求固定的 `65532:65532`
+用户与 `/app` 工作目录。canary 的原有精确代次、镜像、只读挂载、包摘要、资源限额和
+安全配置检查继续生效；配置漂移必须阻止晋升并按旧版本自己的 bundle 恢复。
+
+测试专用 faultinject 增加注册前及部署台账状态提交前屏障；生产构建不启用故障注入。
+V2 completion 门禁必须执行三个固定 viewport 的视觉用例，跳过用例不能再得到完整验收
+成功。完整故障矩阵的运行结果见 [本轮任务](../tasks/20260920-v2-p3-final-matrix.md)。

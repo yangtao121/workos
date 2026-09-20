@@ -63,6 +63,14 @@ func p3SeedNamed(t *testing.T, clients *buildtestClients, projectName string, st
 }
 
 func p3SeedNamedWithPermissions(t *testing.T, clients *buildtestClients, projectName string, startupFailure bool, permissions []string) p3Fixture {
+	return p3SeedProfile(t, clients, projectName, startupFailure, permissions, []string{"go", "test", "./..."})
+}
+
+func p3SeedProfile(t *testing.T, clients *buildtestClients, projectName string, startupFailure bool, permissions, testCommand []string) p3Fixture {
+	return p3SeedProfileWithRestart(t, clients, projectName, startupFailure, permissions, testCommand, 0)
+}
+
+func p3SeedProfileWithRestart(t *testing.T, clients *buildtestClients, projectName string, startupFailure bool, permissions, testCommand []string, restartLimit int) p3Fixture {
 	t.Helper()
 	if permissions == nil {
 		permissions = []string{}
@@ -141,8 +149,8 @@ if err:=http.ListenAndServe(":8080",nil); err!=nil { os.Exit(1) }
 		"runtime":  map[string]any{"type": "container", "image": p3Image, "command": []string{"/app/server"}, "port": 8080, "artifact": map[string]any{"id": artifactID, "digest": stats.Digest, "format": "app-bundle.v1"}},
 		"surfaces": []any{map[string]any{"id": "main", "renderer": "web-service", "route": "/"}}, "permissions": permissions,
 		"resources": map[string]any{"cpuHard": 1, "memoryHighMb": 64, "memoryMaxMb": 128, "pidsMax": 64},
-		"health":    map[string]any{"httpPath": "/health", "startupSeconds": 3, "restartLimit": 0}, "maintainer": map[string]any{},
-		"build": map[string]any{"sourceBundleId": source.Msg.GetBundle().GetId(), "sourceDigest": source.Msg.GetBundle().GetDigest(), "baseImage": p3Image, "buildCommand": []string{"sh", "-c", "mkdir -p dist && CGO_ENABLED=0 go build -trimpath -o dist/server ."}, "testCommand": []string{"go", "test", "./..."}, "output": map[string]any{"directory": "dist", "format": "app-bundle.v1"}},
+		"health":    map[string]any{"httpPath": "/health", "startupSeconds": 3, "restartLimit": restartLimit}, "maintainer": map[string]any{},
+		"build": map[string]any{"sourceBundleId": source.Msg.GetBundle().GetId(), "sourceDigest": source.Msg.GetBundle().GetDigest(), "baseImage": p3Image, "buildCommand": []string{"sh", "-c", "mkdir -p dist && CGO_ENABLED=0 go build -trimpath -o dist/server ."}, "testCommand": testCommand, "output": map[string]any{"directory": "dist", "format": "app-bundle.v1"}},
 	}
 	raw, _ := json.Marshal(manifest)
 	if _, err := clients.registry.RegisterApp(ctx, connect.NewRequest(&appv1.RegisterAppRequest{IdempotencyKey: key + "-register", ManifestYaml: raw})); err != nil {
@@ -199,11 +207,27 @@ func p3CleanupFixture(t *testing.T, clients *buildtestClients, f p3Fixture) {
 	if active := buildtestQuery(t, `SELECT i.id FROM workos_core.project_app_installations i JOIN workos_core.projects p ON p.id=i.project_id WHERE i.id=$1 AND i.uninstalled_at IS NULL AND p.archived_at IS NULL`, f.Installation); len(active) > 0 {
 		t.Error("cleanup left the test installation active")
 	}
-	for _, row := range buildtestQuery(t, `SELECT task_id::text FROM workos_runtime.build_jobs WHERE installation_id=$1 AND state IN ('queued','running')`, f.Installation) {
-		if _, err := clients.builds.CancelBuildTest(ctx, connect.NewRequest(&executionv1.CancelBuildTestRequest{TaskId: fmt.Sprint(row["task_id"])})); err != nil {
-			t.Errorf("cleanup cancel build: %v", err)
+	// A repair already admitted before uninstall can submit its build just
+	// after the first query. Drain across several coordinator ticks so that
+	// this retired fixture cannot consume the next case's worker or barrier.
+	quietSince := time.Now()
+	for ctx.Err() == nil {
+		rows := buildtestQuery(t, `SELECT task_id::text FROM workos_runtime.build_jobs WHERE installation_id=$1 AND state IN ('queued','running')`, f.Installation)
+		if len(rows) > 0 {
+			quietSince = time.Now()
 		}
+		for _, row := range rows {
+			if _, err := clients.builds.CancelBuildTest(ctx, connect.NewRequest(&executionv1.CancelBuildTestRequest{TaskId: fmt.Sprint(row["task_id"])})); err != nil {
+				t.Errorf("cleanup cancel build: %v", err)
+				return
+			}
+		}
+		if time.Since(quietSince) >= 3*time.Second {
+			return
+		}
+		time.Sleep(200 * time.Millisecond)
 	}
+	t.Error("cleanup build queue did not become quiet")
 }
 
 func p3Surface(t *testing.T, clients *buildtestClients, f p3Fixture, expected string) {

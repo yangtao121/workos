@@ -319,6 +319,7 @@ func (e *Engine) InspectContainer(ctx context.Context, nameOrID string) (ports.C
 	}
 	stats, bundleErr := appbundle.EncodeDirectory(facts.AppMountSource, io.Discard)
 	facts.IdentityVerified = imageErr == nil && imageID == document.Image && bundleErr == nil && stats.Digest == facts.ArtifactDigest &&
+		document.Config.User == "65532:65532" && document.Config.WorkingDir == "/app" &&
 		document.Config.Labels["workos.runtime"] == containerprocess.Namespace() && document.Config.Labels["workos.purpose"] == purposeLabel &&
 		facts.NoNewPrivileges && facts.ReadOnly && !facts.Privileged && facts.CapabilitiesAdded == 0 &&
 		facts.EffectiveCapabilities == 0 && facts.BoundingCapabilities == 0 && facts.UnexpectedSecurityOpts == 0 &&
@@ -412,6 +413,8 @@ type inspectDocument struct {
 	Args   []string
 	Config struct {
 		Image      string            `json:"Image"`
+		User       string            `json:"User"`
+		WorkingDir string            `json:"WorkingDir"`
 		Labels     map[string]string `json:"Labels"`
 		Entrypoint []string          `json:"Entrypoint"`
 		Cmd        []string          `json:"Cmd"`
@@ -460,9 +463,7 @@ type inspectDocument struct {
 func factsFromInspect(document inspectDocument) (ports.ContainerFacts, error) {
 	name := strings.TrimPrefix(document.Name, "/")
 	command := append([]string(nil), document.Config.Entrypoint...)
-	if len(command) == 0 {
-		command = append(command, document.Config.Cmd...)
-	}
+	command = append(command, document.Config.Cmd...)
 	facts := ports.ContainerFacts{
 		ID: document.ID, Name: name,
 		Running: document.State.Running, ExitCode: document.State.ExitCode,

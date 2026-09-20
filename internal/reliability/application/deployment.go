@@ -140,6 +140,12 @@ func (c *DeploymentController) Pass(ctx context.Context, now time.Time, limit in
 		return 0, errors.New("invalid deployment batch size")
 	}
 	return c.ledger.Reconcile(ctx, limit, func(row *DeploymentRecord) error {
+		previousState := row.State
+		defer func() {
+			if row.State != previousState {
+				faultinject.Arrive(ctx, "deployment-before-commit-"+string(row.State))
+			}
+		}()
 		switch row.State {
 		case DeploymentCandidateState:
 			row.Attempts++

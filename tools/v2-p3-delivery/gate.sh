@@ -41,6 +41,9 @@ cleanup() {
   if [ "${WORKOS_V2_KEEP:-}" != 1 ]; then
     compose down --timeout 5 --volumes > "$task_dir/cleanup.log" 2>&1 || result=1
     docker ps -aq --filter "label=workos.runtime=$WORKOS_P3_GATE_NAMESPACE" | xargs -r docker rm -f >> "$task_dir/cleanup.log" 2>&1 || result=1
+    # Reconciliation sentinels deliberately use a foreign runtime namespace.
+    # Their separate test-ownership label permits exact cleanup on signals.
+    docker ps -aq --filter "label=workos.acceptance=$WORKOS_P3_GATE_NAMESPACE" | xargs -r docker rm -f >> "$task_dir/cleanup.log" 2>&1 || result=1
     docker volume ls -q --filter "label=workos.runtime=$WORKOS_P3_GATE_NAMESPACE" | xargs -r docker volume rm >> "$task_dir/cleanup.log" 2>&1 || result=1
     docker network ls -q --filter "label=workos.runtime=$WORKOS_P3_GATE_NAMESPACE" | xargs -r docker network rm >> "$task_dir/cleanup.log" 2>&1 || result=1
   fi
@@ -161,12 +164,16 @@ run_e2e() {
  if [ "$status" -ne 0 ]; then exit "$status"; fi
  # A spec whose tests were all skipped or matched nothing must not pass the gate.
  grep -Eq '[1-9][0-9]* passed' "$log" || { printf 'v2-p3-delivery: no passed playwright tests in %s\n' "$spec" >&2; exit 1; }
+ if grep -Eq '[1-9][0-9]* skipped' "$log"; then printf 'v2-p3-delivery: required playwright test skipped\n' >&2; exit 1; fi
 }
 run_test TestP3RealDelivery
 run_test TestRealEngineFailureMatrix 5m ./internal/runtime/buildtest/adapters/dockerbuild
 run_test TestP3Closeout 40m
 run_test TestP3CloseoutWindows 60m
 run_test TestP3CloseoutMatrix 60m
+run_test TestP3FinalMatrix 60m
+run_test TestP3FinalAuthority 40m
+run_test TestP3FinalRuntime 40m
 run_e2e e2e/p3-delivery.spec.ts
 run_e2e e2e/p3-closeout.spec.ts
 compose restart core runtime reliability > "$task_dir/restart.log" 2>&1

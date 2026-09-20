@@ -9,6 +9,8 @@ import (
 	"context"
 	"errors"
 	"time"
+
+	"github.com/yangtao121/workos/internal/platform/faultinject"
 )
 
 // ErrBuildPending marks a submitted build whose terminal verdict has not
@@ -143,6 +145,7 @@ func (c *BuildCoordinator) HandleRepairCompleted(ctx context.Context, row Repair
 			return nil
 		}
 	}
+	faultinject.Arrive(ctx, "repair-before-register")
 	registered, err := c.versions.Register(ctx, row.OwnerUserID, row.TaskID, row.ProjectID, row.AppInstanceID, jobID, facts.SourceDigest)
 	if errors.Is(err, ErrDeploymentSuperseded) {
 		return nil

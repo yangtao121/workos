@@ -19,6 +19,19 @@ import (
 
 type fakeBundles struct{ path string }
 
+func TestInspectCommandIncludesEntrypointArguments(t *testing.T) {
+	var document inspectDocument
+	document.Config.Entrypoint = []string{"/app/server"}
+	document.Config.Cmd = []string{"unexpected-argument"}
+	facts, err := factsFromInspect(document)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(facts.Command) != 2 || facts.Command[1] != "unexpected-argument" {
+		t.Fatalf("Docker's executed argv was truncated: %+v", facts.Command)
+	}
+}
+
 func (f fakeBundles) OpenForLaunch(context.Context, string, string) (string, error) {
 	return f.path, nil
 }

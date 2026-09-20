@@ -63,7 +63,7 @@ func p3ContainerAction(t *testing.T, containerID, action string) {
 	}
 	defer response.Body.Close()
 	raw, _ := readAllLimited(response.Body)
-	if response.StatusCode >= 500 {
+	if response.StatusCode >= 300 && !(action == "start" && response.StatusCode == http.StatusNotModified) {
 		t.Fatalf("docker %s: %d %s", action, response.StatusCode, raw)
 	}
 }

@@ -9,6 +9,7 @@ import (
 	registryapp "github.com/yangtao121/workos/internal/core/appregistry/application"
 	registrydomain "github.com/yangtao121/workos/internal/core/appregistry/domain"
 	projectapp "github.com/yangtao121/workos/internal/core/project/application"
+	projectdomain "github.com/yangtao121/workos/internal/core/project/domain"
 	projectports "github.com/yangtao121/workos/internal/core/project/ports"
 )
 
@@ -41,6 +42,10 @@ type VerifiedReleaseBundle struct {
 	AppID           string
 	TaskID          string
 	JobID           string
+	IncidentID      string
+	ProjectID       string
+	InstallationID  string
+	SourceBundleID  string
 	SourceDigest    string
 	ManifestDigest  string
 	BaseImage       string
@@ -109,6 +114,8 @@ func (s *RepairVersions) Register(ctx context.Context, owner, taskID, projectID,
 		if bundle.State != "ready" || bundle.Origin != "build_job" || bundle.Format != "app-bundle.v1" ||
 			bundle.AppID != target.GetAppId() || !slices.Equal(bundle.BuildCommand, recipe.BuildCommand) || !slices.Equal(bundle.TestCommand, recipe.TestCommand) ||
 			bundle.OwnerUserID != owner || bundle.TaskID != taskID || bundle.JobID != buildJobID ||
+			bundle.IncidentID != completed.IncidentID || bundle.ProjectID != projectID || bundle.InstallationID != installationID ||
+			bundle.SourceBundleID != completed.Candidate.ID ||
 			bundle.SourceDigest != sourceDigest || bundle.ManifestDigest != target.GetManifestDigest() ||
 			bundle.BaseImage != recipe.BaseImage || bundle.OutputDirectory != recipe.Output.Directory {
 			return RegisteredCandidate{}, agentdomain.ErrInvalid
@@ -131,6 +138,9 @@ func (s *RepairVersions) Register(ctx context.Context, owner, taskID, projectID,
 		// Replays after pinning or publication keep those original facts.
 	case errors.Is(err, registrydomain.ErrNotFound):
 		baseVersion, revision, err := s.transitions.ActiveFacts(ctx, owner, projectID, installationID)
+		if errors.Is(err, projectdomain.ErrNotFound) {
+			return RegisteredCandidate{}, ErrInstallationChanged
+		}
 		if err != nil {
 			return RegisteredCandidate{}, err
 		}
@@ -162,6 +172,9 @@ func (s *RepairVersions) Publish(ctx context.Context, owner, taskID, projectID, 
 	// publish precondition is that the installation still pins the staged
 	// canary; anything else is a stable FailedPrecondition.
 	pinned, _, err := s.transitions.ActiveFacts(ctx, owner, projectID, installationID)
+	if errors.Is(err, projectdomain.ErrNotFound) {
+		return false, ErrInstallationChanged
+	}
 	if err != nil {
 		return false, err
 	}

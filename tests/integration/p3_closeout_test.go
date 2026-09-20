@@ -66,7 +66,7 @@ func p3ReleaseFault(t *testing.T, stage string) {
 
 func p3WaitArrived(t *testing.T, stage string) {
 	t.Helper()
-	deadline := time.Now().Add(2 * time.Minute)
+	deadline := time.Now().Add(3 * time.Minute)
 	path := filepath.Join(p3FaultDir(t), "arrived-"+stage)
 	for time.Now().Before(deadline) {
 		if _, err := os.Stat(path); err == nil {
@@ -102,6 +102,9 @@ func p3DockerDo(t *testing.T, method, path string, body io.Reader) []byte {
 	request, err := http.NewRequest(method, "http://docker"+path, body)
 	if err != nil {
 		t.Fatal(err)
+	}
+	if body != nil {
+		request.Header.Set("Content-Type", "application/json")
 	}
 	response, err := p3DockerClient().Do(request)
 	if err != nil {
@@ -459,15 +462,25 @@ func TestP3Closeout(t *testing.T) {
 				r.InputFacts.BaseImage = p3Image + "-drift"
 			}},
 		}
-		for _, mutation := range mutations {
-			t.Run(mutation.name, func(t *testing.T) {
-				request := proto.Clone(base.Msg).(*executionv1.SubmitBuildTestRequest)
-				mutation.mutate(request)
-				_, err := clients.builds.SubmitBuildTest(context.Background(), connect.NewRequest(request))
-				if connect.CodeOf(err) != connect.CodeAborted {
-					t.Fatalf("same-task %s drift must abort without changing the winner, got %v", mutation.name, err)
+		for _, phase := range []string{"before-restart", "after-restart"} {
+			if phase == "after-restart" {
+				p3ContainerAction(t, p3ServiceContainerID(t, "runtime"), "restart")
+				p3WaitHTTPReady(t, clients.runtimeURL+"/workos.taskexecution.v1.BuildTestService/GetBuildTest")
+				replay, err := clients.builds.SubmitBuildTest(context.Background(), connect.NewRequest(proto.Clone(base.Msg).(*executionv1.SubmitBuildTestRequest)))
+				if err != nil || replay.Msg.GetJobId() != winner || replay.Msg.GetCreated() {
+					t.Fatalf("restart changed idempotency identity: response=%v err=%v", replay, err)
 				}
-			})
+			}
+			for _, mutation := range mutations {
+				t.Run(phase+"/"+mutation.name, func(t *testing.T) {
+					request := proto.Clone(base.Msg).(*executionv1.SubmitBuildTestRequest)
+					mutation.mutate(request)
+					_, err := clients.builds.SubmitBuildTest(context.Background(), connect.NewRequest(request))
+					if connect.CodeOf(err) != connect.CodeAborted {
+						t.Fatalf("same-task %s drift must abort without changing the winner, got %v", mutation.name, err)
+					}
+				})
+			}
 		}
 		inconsistentFacts := proto.Clone(base.Msg).(*executionv1.SubmitBuildTestRequest)
 		inconsistentFacts.InputFacts.BaseImage = "golang:latest"
