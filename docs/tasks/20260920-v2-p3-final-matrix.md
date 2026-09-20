@@ -1,6 +1,6 @@
 # V2 P3 剩余验收矩阵
 
-- 状态：in_progress
+- 状态：done
 - 基线：`eaf6c4c`
 - Branch：`feat/v2-p3-final-matrix`
 - 设计：[V2](../structure-v2.md)
@@ -46,3 +46,11 @@ F14、F16、F17、F21、F23、F24、F25、F26 的未覆盖组合，修复发现�
 - SIGINT/SIGTERM 分别退出 130/143；Compose/runtime/acceptance 标签的自有容器及 runtime 网络、卷归零，无关 sentinel 保留。证据：`tmp/v2-p3-final-signals/results.json`。
 - 排查发现 Core 对注册前卸载/归档返回 Internal，导致已完成构建持续轮询。现在稳定返回目标已变更，并新增两个真实栈退役回归。
 - 首次完整 bundle 运行已通过 `TestP3Closeout`（含 F07 重启后全部漂移），因补入退役缺陷修复，在 F12 期间主动中止并清理（退出 143）；不算完整通过。已重新从源码构建最终完整门禁，输出 `tmp/v2-p3-final-bundle-v2.log`。
+
+## 最终验收
+
+最终源码 `3f51fa4` 的完整 bundle 门禁通过，运行目录 `tmp/v2-p3-delivery.nU7EES`，
+`TestP3Closeout`、Windows、Matrix、FinalMatrix、FinalAuthority、FinalRuntime 全通过，
+两条 Chromium 业务链和重启 replay 通过，namespace 清空。前述等待/首轮失败记录保留为历史。
+长期事实汇总见 [验收记录](evidence/20260920-v2-p3-final-matrix/results.md)。
+P3 F01–F27 已齐；下一任务为原生 goals/skills/subagents，不扩大到物理网络或 rootless。

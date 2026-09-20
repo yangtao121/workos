@@ -1671,3 +1671,5 @@ Docker app inspect 将 Entrypoint 与 Cmd 拼接为实际命令，并要求固�
 测试专用 faultinject 增加注册前及部署台账状态提交前屏障；生产构建不启用故障注入。
 V2 completion 门禁必须执行三个固定 viewport 的视觉用例，跳过用例不能再得到完整验收
 成功。完整故障矩阵的运行结果见 [本轮任务](../tasks/20260920-v2-p3-final-matrix.md)。
+
+2026-09-20 最终完整门禁已通过，F01–F27 缺项全部补齐；当前结论见 [最终验收](../tasks/evidence/20260920-v2-p3-final-matrix/results.md)。历史段落的 partial/scaffolded 描述仅代表当时验证范围。
