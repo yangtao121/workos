@@ -21,6 +21,9 @@ func NewToolHandler(executor SessionToolExecutor) (string, http.Handler) {
 }
 func (h *toolHandler) ExecuteTaskTool(ctx context.Context, req *connect.Request[taskv1.ExecuteTaskToolRequest]) (*connect.Response[taskv1.ExecuteTaskToolResponse], error) {
 	in := req.Msg
+	if in.DelegationId != "" {
+		return nil, connect.NewError(connect.CodeUnimplemented, errors.New("delegated workspace tools unavailable"))
+	}
 	result, err := h.executor.Execute(ctx, in.LeaseId, in.WorkerId, in.OperationId, in.Operation, in.GetArguments().AsMap())
 	if err != nil {
 		return nil, connect.NewError(connect.CodeFailedPrecondition, errors.New("tool authorization or execution failed; inspect workspace effects before retrying"))

@@ -5,6 +5,7 @@ package workos.agent.v1;
 import "google/protobuf/struct.proto";
 import "google/protobuf/timestamp.proto";
 import "workos/agent/v1/app_policy.proto";
+import "workos/agent/v1/automation.proto";
 import "workos/common/v1/common.proto";
 
 option go_package = "github.com/yangtao121/workos/gen/go/workos/agent/v1;agentv1";
@@ -44,6 +45,8 @@ message AgentTaskInput {
   // Server-derived linkage to a continuous harness session (ADR-0030);
   // public SubmitTask rejects it.
   string agent_session_id = 11;
+  // Core-derived explicit session command; public SubmitTask rejects it.
+  SessionDirective session_directive = 12;
 }
 
 // One Project-owned installation and revision read from the same snapshot.
@@ -156,6 +159,9 @@ message AgentEvent {
   string task_id = 2;
   int64 sequence = 3;
   google.protobuf.Timestamp occurred_at = 4;
+  // Empty for the parent. A child projection must name a delegation granted
+  // under this exact task; it cannot change the task's terminal state.
+  string delegation_id = 5;
   oneof event {
     RunStarted run_started = 10;
     AssistantDelta assistant_delta = 11;
@@ -173,6 +179,8 @@ message AgentEvent {
     // field numbers 10-21 are immutable.
     ApprovalDecided approval_decided = 22;
     ApprovalExpired approval_expired = 23;
+    GoalUpdated goal_updated = 24;
+    DelegationUpdated delegation_updated = 25;
   }
 }
 

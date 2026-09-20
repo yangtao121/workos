@@ -25,12 +25,15 @@ const (
 // Harness-side tools never choose an owner, project, workspace, credential,
 // or device. Each operation derives those facts from this live task lease.
 type ExecuteTaskToolRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	LeaseId       string                 `protobuf:"bytes,1,opt,name=lease_id,json=leaseId,proto3" json:"lease_id,omitempty"`
-	WorkerId      string                 `protobuf:"bytes,2,opt,name=worker_id,json=workerId,proto3" json:"worker_id,omitempty"`
-	OperationId   string                 `protobuf:"bytes,3,opt,name=operation_id,json=operationId,proto3" json:"operation_id,omitempty"`
-	Operation     string                 `protobuf:"bytes,4,opt,name=operation,proto3" json:"operation,omitempty"`
-	Arguments     *structpb.Struct       `protobuf:"bytes,5,opt,name=arguments,proto3" json:"arguments,omitempty"`
+	state       protoimpl.MessageState `protogen:"open.v1"`
+	LeaseId     string                 `protobuf:"bytes,1,opt,name=lease_id,json=leaseId,proto3" json:"lease_id,omitempty"`
+	WorkerId    string                 `protobuf:"bytes,2,opt,name=worker_id,json=workerId,proto3" json:"worker_id,omitempty"`
+	OperationId string                 `protobuf:"bytes,3,opt,name=operation_id,json=operationId,proto3" json:"operation_id,omitempty"`
+	Operation   string                 `protobuf:"bytes,4,opt,name=operation,proto3" json:"operation,omitempty"`
+	Arguments   *structpb.Struct       `protobuf:"bytes,5,opt,name=arguments,proto3" json:"arguments,omitempty"`
+	// Empty for the parent, otherwise a Core-issued grant under this exact
+	// live task lease. It selects an isolated Runtime worktree, never a path.
+	DelegationId  string `protobuf:"bytes,6,opt,name=delegation_id,json=delegationId,proto3" json:"delegation_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -100,6 +103,13 @@ func (x *ExecuteTaskToolRequest) GetArguments() *structpb.Struct {
 	return nil
 }
 
+func (x *ExecuteTaskToolRequest) GetDelegationId() string {
+	if x != nil {
+		return x.DelegationId
+	}
+	return ""
+}
+
 type ExecuteTaskToolResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Result        *structpb.Struct       `protobuf:"bytes,1,opt,name=result,proto3" json:"result,omitempty"`
@@ -148,13 +158,14 @@ var File_workos_taskexecution_v1_tools_proto protoreflect.FileDescriptor
 
 const file_workos_taskexecution_v1_tools_proto_rawDesc = "" +
 	"\n" +
-	"#workos/taskexecution/v1/tools.proto\x12\x17workos.taskexecution.v1\x1a\x1cgoogle/protobuf/struct.proto\"\xc8\x01\n" +
+	"#workos/taskexecution/v1/tools.proto\x12\x17workos.taskexecution.v1\x1a\x1cgoogle/protobuf/struct.proto\"\xed\x01\n" +
 	"\x16ExecuteTaskToolRequest\x12\x19\n" +
 	"\blease_id\x18\x01 \x01(\tR\aleaseId\x12\x1b\n" +
 	"\tworker_id\x18\x02 \x01(\tR\bworkerId\x12!\n" +
 	"\foperation_id\x18\x03 \x01(\tR\voperationId\x12\x1c\n" +
 	"\toperation\x18\x04 \x01(\tR\toperation\x125\n" +
-	"\targuments\x18\x05 \x01(\v2\x17.google.protobuf.StructR\targuments\"J\n" +
+	"\targuments\x18\x05 \x01(\v2\x17.google.protobuf.StructR\targuments\x12#\n" +
+	"\rdelegation_id\x18\x06 \x01(\tR\fdelegationId\"J\n" +
 	"\x17ExecuteTaskToolResponse\x12/\n" +
 	"\x06result\x18\x01 \x01(\v2\x17.google.protobuf.StructR\x06result2\x89\x01\n" +
 	"\x0fTaskToolService\x12v\n" +

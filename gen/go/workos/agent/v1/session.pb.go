@@ -167,6 +167,8 @@ type AgentSession struct {
 	CreatedAt         *timestamppb.Timestamp `protobuf:"bytes,12,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
 	UpdatedAt         *timestamppb.Timestamp `protobuf:"bytes,13,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
 	ClosedAt          *timestamppb.Timestamp `protobuf:"bytes,14,opt,name=closed_at,json=closedAt,proto3,oneof" json:"closed_at,omitempty"`
+	Goal              *SessionGoal           `protobuf:"bytes,15,opt,name=goal,proto3" json:"goal,omitempty"`
+	Delegations       []*AgentDelegation     `protobuf:"bytes,16,rep,name=delegations,proto3" json:"delegations,omitempty"`
 	unknownFields     protoimpl.UnknownFields
 	sizeCache         protoimpl.SizeCache
 }
@@ -299,6 +301,20 @@ func (x *AgentSession) GetClosedAt() *timestamppb.Timestamp {
 	return nil
 }
 
+func (x *AgentSession) GetGoal() *SessionGoal {
+	if x != nil {
+		return x.Goal
+	}
+	return nil
+}
+
+func (x *AgentSession) GetDelegations() []*AgentDelegation {
+	if x != nil {
+		return x.Delegations
+	}
+	return nil
+}
+
 type AgentSessionInput struct {
 	state     protoimpl.MessageState `protogen:"open.v1"`
 	Id        string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
@@ -315,6 +331,7 @@ type AgentSessionInput struct {
 	ResultSummary string                 `protobuf:"bytes,8,opt,name=result_summary,json=resultSummary,proto3" json:"result_summary,omitempty"`
 	CreatedAt     *timestamppb.Timestamp `protobuf:"bytes,9,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
 	UpdatedAt     *timestamppb.Timestamp `protobuf:"bytes,10,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
+	Directive     *SessionDirective      `protobuf:"bytes,11,opt,name=directive,proto3" json:"directive,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -415,6 +432,13 @@ func (x *AgentSessionInput) GetCreatedAt() *timestamppb.Timestamp {
 func (x *AgentSessionInput) GetUpdatedAt() *timestamppb.Timestamp {
 	if x != nil {
 		return x.UpdatedAt
+	}
+	return nil
+}
+
+func (x *AgentSessionInput) GetDirective() *SessionDirective {
+	if x != nil {
+		return x.Directive
 	}
 	return nil
 }
@@ -1111,6 +1135,9 @@ type SubmitSessionInputRequest struct {
 	SessionId     string                 `protobuf:"bytes,1,opt,name=session_id,json=sessionId,proto3" json:"session_id,omitempty"`
 	ClientInputId string                 `protobuf:"bytes,2,opt,name=client_input_id,json=clientInputId,proto3" json:"client_input_id,omitempty"`
 	Text          string                 `protobuf:"bytes,3,opt,name=text,proto3" json:"text,omitempty"`
+	// Text and directive are mutually exclusive. A directive uses the same
+	// persistent idempotency key and dispatch ordering as an ordinary input.
+	Directive     *SessionDirective `protobuf:"bytes,4,opt,name=directive,proto3" json:"directive,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1166,6 +1193,117 @@ func (x *SubmitSessionInputRequest) GetText() string {
 	return ""
 }
 
+func (x *SubmitSessionInputRequest) GetDirective() *SessionDirective {
+	if x != nil {
+		return x.Directive
+	}
+	return nil
+}
+
+type RequestSessionGoalPauseRequest struct {
+	state          protoimpl.MessageState `protogen:"open.v1"`
+	SessionId      string                 `protobuf:"bytes,1,opt,name=session_id,json=sessionId,proto3" json:"session_id,omitempty"`
+	IdempotencyKey string                 `protobuf:"bytes,2,opt,name=idempotency_key,json=idempotencyKey,proto3" json:"idempotency_key,omitempty"`
+	GoalRef        string                 `protobuf:"bytes,3,opt,name=goal_ref,json=goalRef,proto3" json:"goal_ref,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
+}
+
+func (x *RequestSessionGoalPauseRequest) Reset() {
+	*x = RequestSessionGoalPauseRequest{}
+	mi := &file_workos_agent_v1_session_proto_msgTypes[14]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RequestSessionGoalPauseRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RequestSessionGoalPauseRequest) ProtoMessage() {}
+
+func (x *RequestSessionGoalPauseRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_workos_agent_v1_session_proto_msgTypes[14]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RequestSessionGoalPauseRequest.ProtoReflect.Descriptor instead.
+func (*RequestSessionGoalPauseRequest) Descriptor() ([]byte, []int) {
+	return file_workos_agent_v1_session_proto_rawDescGZIP(), []int{14}
+}
+
+func (x *RequestSessionGoalPauseRequest) GetSessionId() string {
+	if x != nil {
+		return x.SessionId
+	}
+	return ""
+}
+
+func (x *RequestSessionGoalPauseRequest) GetIdempotencyKey() string {
+	if x != nil {
+		return x.IdempotencyKey
+	}
+	return ""
+}
+
+func (x *RequestSessionGoalPauseRequest) GetGoalRef() string {
+	if x != nil {
+		return x.GoalRef
+	}
+	return ""
+}
+
+type RequestSessionGoalPauseResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Session       *AgentSession          `protobuf:"bytes,1,opt,name=session,proto3" json:"session,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RequestSessionGoalPauseResponse) Reset() {
+	*x = RequestSessionGoalPauseResponse{}
+	mi := &file_workos_agent_v1_session_proto_msgTypes[15]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RequestSessionGoalPauseResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RequestSessionGoalPauseResponse) ProtoMessage() {}
+
+func (x *RequestSessionGoalPauseResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_workos_agent_v1_session_proto_msgTypes[15]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RequestSessionGoalPauseResponse.ProtoReflect.Descriptor instead.
+func (*RequestSessionGoalPauseResponse) Descriptor() ([]byte, []int) {
+	return file_workos_agent_v1_session_proto_rawDescGZIP(), []int{15}
+}
+
+func (x *RequestSessionGoalPauseResponse) GetSession() *AgentSession {
+	if x != nil {
+		return x.Session
+	}
+	return nil
+}
+
 type SubmitSessionInputResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Input         *AgentSessionInput     `protobuf:"bytes,1,opt,name=input,proto3" json:"input,omitempty"`
@@ -1175,7 +1313,7 @@ type SubmitSessionInputResponse struct {
 
 func (x *SubmitSessionInputResponse) Reset() {
 	*x = SubmitSessionInputResponse{}
-	mi := &file_workos_agent_v1_session_proto_msgTypes[14]
+	mi := &file_workos_agent_v1_session_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1187,7 +1325,7 @@ func (x *SubmitSessionInputResponse) String() string {
 func (*SubmitSessionInputResponse) ProtoMessage() {}
 
 func (x *SubmitSessionInputResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_workos_agent_v1_session_proto_msgTypes[14]
+	mi := &file_workos_agent_v1_session_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1200,7 +1338,7 @@ func (x *SubmitSessionInputResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SubmitSessionInputResponse.ProtoReflect.Descriptor instead.
 func (*SubmitSessionInputResponse) Descriptor() ([]byte, []int) {
-	return file_workos_agent_v1_session_proto_rawDescGZIP(), []int{14}
+	return file_workos_agent_v1_session_proto_rawDescGZIP(), []int{16}
 }
 
 func (x *SubmitSessionInputResponse) GetInput() *AgentSessionInput {
@@ -1220,7 +1358,7 @@ type GetSessionInputRequest struct {
 
 func (x *GetSessionInputRequest) Reset() {
 	*x = GetSessionInputRequest{}
-	mi := &file_workos_agent_v1_session_proto_msgTypes[15]
+	mi := &file_workos_agent_v1_session_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1232,7 +1370,7 @@ func (x *GetSessionInputRequest) String() string {
 func (*GetSessionInputRequest) ProtoMessage() {}
 
 func (x *GetSessionInputRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_workos_agent_v1_session_proto_msgTypes[15]
+	mi := &file_workos_agent_v1_session_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1245,7 +1383,7 @@ func (x *GetSessionInputRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetSessionInputRequest.ProtoReflect.Descriptor instead.
 func (*GetSessionInputRequest) Descriptor() ([]byte, []int) {
-	return file_workos_agent_v1_session_proto_rawDescGZIP(), []int{15}
+	return file_workos_agent_v1_session_proto_rawDescGZIP(), []int{17}
 }
 
 func (x *GetSessionInputRequest) GetSessionId() string {
@@ -1271,7 +1409,7 @@ type GetSessionInputResponse struct {
 
 func (x *GetSessionInputResponse) Reset() {
 	*x = GetSessionInputResponse{}
-	mi := &file_workos_agent_v1_session_proto_msgTypes[16]
+	mi := &file_workos_agent_v1_session_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1283,7 +1421,7 @@ func (x *GetSessionInputResponse) String() string {
 func (*GetSessionInputResponse) ProtoMessage() {}
 
 func (x *GetSessionInputResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_workos_agent_v1_session_proto_msgTypes[16]
+	mi := &file_workos_agent_v1_session_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1296,7 +1434,7 @@ func (x *GetSessionInputResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetSessionInputResponse.ProtoReflect.Descriptor instead.
 func (*GetSessionInputResponse) Descriptor() ([]byte, []int) {
-	return file_workos_agent_v1_session_proto_rawDescGZIP(), []int{16}
+	return file_workos_agent_v1_session_proto_rawDescGZIP(), []int{18}
 }
 
 func (x *GetSessionInputResponse) GetInput() *AgentSessionInput {
@@ -1317,7 +1455,7 @@ type ListSessionInputsRequest struct {
 
 func (x *ListSessionInputsRequest) Reset() {
 	*x = ListSessionInputsRequest{}
-	mi := &file_workos_agent_v1_session_proto_msgTypes[17]
+	mi := &file_workos_agent_v1_session_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1329,7 +1467,7 @@ func (x *ListSessionInputsRequest) String() string {
 func (*ListSessionInputsRequest) ProtoMessage() {}
 
 func (x *ListSessionInputsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_workos_agent_v1_session_proto_msgTypes[17]
+	mi := &file_workos_agent_v1_session_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1342,7 +1480,7 @@ func (x *ListSessionInputsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListSessionInputsRequest.ProtoReflect.Descriptor instead.
 func (*ListSessionInputsRequest) Descriptor() ([]byte, []int) {
-	return file_workos_agent_v1_session_proto_rawDescGZIP(), []int{17}
+	return file_workos_agent_v1_session_proto_rawDescGZIP(), []int{19}
 }
 
 func (x *ListSessionInputsRequest) GetSessionId() string {
@@ -1375,7 +1513,7 @@ type ListSessionInputsResponse struct {
 
 func (x *ListSessionInputsResponse) Reset() {
 	*x = ListSessionInputsResponse{}
-	mi := &file_workos_agent_v1_session_proto_msgTypes[18]
+	mi := &file_workos_agent_v1_session_proto_msgTypes[20]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1387,7 +1525,7 @@ func (x *ListSessionInputsResponse) String() string {
 func (*ListSessionInputsResponse) ProtoMessage() {}
 
 func (x *ListSessionInputsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_workos_agent_v1_session_proto_msgTypes[18]
+	mi := &file_workos_agent_v1_session_proto_msgTypes[20]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1400,7 +1538,7 @@ func (x *ListSessionInputsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListSessionInputsResponse.ProtoReflect.Descriptor instead.
 func (*ListSessionInputsResponse) Descriptor() ([]byte, []int) {
-	return file_workos_agent_v1_session_proto_rawDescGZIP(), []int{18}
+	return file_workos_agent_v1_session_proto_rawDescGZIP(), []int{20}
 }
 
 func (x *ListSessionInputsResponse) GetInputs() []*AgentSessionInput {
@@ -1420,7 +1558,7 @@ type CancelSessionExecutionRequest struct {
 
 func (x *CancelSessionExecutionRequest) Reset() {
 	*x = CancelSessionExecutionRequest{}
-	mi := &file_workos_agent_v1_session_proto_msgTypes[19]
+	mi := &file_workos_agent_v1_session_proto_msgTypes[21]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1432,7 +1570,7 @@ func (x *CancelSessionExecutionRequest) String() string {
 func (*CancelSessionExecutionRequest) ProtoMessage() {}
 
 func (x *CancelSessionExecutionRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_workos_agent_v1_session_proto_msgTypes[19]
+	mi := &file_workos_agent_v1_session_proto_msgTypes[21]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1445,7 +1583,7 @@ func (x *CancelSessionExecutionRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CancelSessionExecutionRequest.ProtoReflect.Descriptor instead.
 func (*CancelSessionExecutionRequest) Descriptor() ([]byte, []int) {
-	return file_workos_agent_v1_session_proto_rawDescGZIP(), []int{19}
+	return file_workos_agent_v1_session_proto_rawDescGZIP(), []int{21}
 }
 
 func (x *CancelSessionExecutionRequest) GetSessionId() string {
@@ -1474,7 +1612,7 @@ type CancelSessionExecutionResponse struct {
 
 func (x *CancelSessionExecutionResponse) Reset() {
 	*x = CancelSessionExecutionResponse{}
-	mi := &file_workos_agent_v1_session_proto_msgTypes[20]
+	mi := &file_workos_agent_v1_session_proto_msgTypes[22]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1486,7 +1624,7 @@ func (x *CancelSessionExecutionResponse) String() string {
 func (*CancelSessionExecutionResponse) ProtoMessage() {}
 
 func (x *CancelSessionExecutionResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_workos_agent_v1_session_proto_msgTypes[20]
+	mi := &file_workos_agent_v1_session_proto_msgTypes[22]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1499,7 +1637,7 @@ func (x *CancelSessionExecutionResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CancelSessionExecutionResponse.ProtoReflect.Descriptor instead.
 func (*CancelSessionExecutionResponse) Descriptor() ([]byte, []int) {
-	return file_workos_agent_v1_session_proto_rawDescGZIP(), []int{20}
+	return file_workos_agent_v1_session_proto_rawDescGZIP(), []int{22}
 }
 
 func (x *CancelSessionExecutionResponse) GetInput() *AgentSessionInput {
@@ -1525,7 +1663,7 @@ type CloseSessionRequest struct {
 
 func (x *CloseSessionRequest) Reset() {
 	*x = CloseSessionRequest{}
-	mi := &file_workos_agent_v1_session_proto_msgTypes[21]
+	mi := &file_workos_agent_v1_session_proto_msgTypes[23]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1537,7 +1675,7 @@ func (x *CloseSessionRequest) String() string {
 func (*CloseSessionRequest) ProtoMessage() {}
 
 func (x *CloseSessionRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_workos_agent_v1_session_proto_msgTypes[21]
+	mi := &file_workos_agent_v1_session_proto_msgTypes[23]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1550,7 +1688,7 @@ func (x *CloseSessionRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CloseSessionRequest.ProtoReflect.Descriptor instead.
 func (*CloseSessionRequest) Descriptor() ([]byte, []int) {
-	return file_workos_agent_v1_session_proto_rawDescGZIP(), []int{21}
+	return file_workos_agent_v1_session_proto_rawDescGZIP(), []int{23}
 }
 
 func (x *CloseSessionRequest) GetSessionId() string {
@@ -1569,7 +1707,7 @@ type CloseSessionResponse struct {
 
 func (x *CloseSessionResponse) Reset() {
 	*x = CloseSessionResponse{}
-	mi := &file_workos_agent_v1_session_proto_msgTypes[22]
+	mi := &file_workos_agent_v1_session_proto_msgTypes[24]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1581,7 +1719,7 @@ func (x *CloseSessionResponse) String() string {
 func (*CloseSessionResponse) ProtoMessage() {}
 
 func (x *CloseSessionResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_workos_agent_v1_session_proto_msgTypes[22]
+	mi := &file_workos_agent_v1_session_proto_msgTypes[24]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1594,7 +1732,7 @@ func (x *CloseSessionResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CloseSessionResponse.ProtoReflect.Descriptor instead.
 func (*CloseSessionResponse) Descriptor() ([]byte, []int) {
-	return file_workos_agent_v1_session_proto_rawDescGZIP(), []int{22}
+	return file_workos_agent_v1_session_proto_rawDescGZIP(), []int{24}
 }
 
 func (x *CloseSessionResponse) GetSession() *AgentSession {
@@ -1615,7 +1753,7 @@ type WatchSessionEventsRequest struct {
 
 func (x *WatchSessionEventsRequest) Reset() {
 	*x = WatchSessionEventsRequest{}
-	mi := &file_workos_agent_v1_session_proto_msgTypes[23]
+	mi := &file_workos_agent_v1_session_proto_msgTypes[25]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1627,7 +1765,7 @@ func (x *WatchSessionEventsRequest) String() string {
 func (*WatchSessionEventsRequest) ProtoMessage() {}
 
 func (x *WatchSessionEventsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_workos_agent_v1_session_proto_msgTypes[23]
+	mi := &file_workos_agent_v1_session_proto_msgTypes[25]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1640,7 +1778,7 @@ func (x *WatchSessionEventsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WatchSessionEventsRequest.ProtoReflect.Descriptor instead.
 func (*WatchSessionEventsRequest) Descriptor() ([]byte, []int) {
-	return file_workos_agent_v1_session_proto_rawDescGZIP(), []int{23}
+	return file_workos_agent_v1_session_proto_rawDescGZIP(), []int{25}
 }
 
 func (x *WatchSessionEventsRequest) GetSessionId() string {
@@ -1666,7 +1804,7 @@ type WatchSessionEventsResponse struct {
 
 func (x *WatchSessionEventsResponse) Reset() {
 	*x = WatchSessionEventsResponse{}
-	mi := &file_workos_agent_v1_session_proto_msgTypes[24]
+	mi := &file_workos_agent_v1_session_proto_msgTypes[26]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1678,7 +1816,7 @@ func (x *WatchSessionEventsResponse) String() string {
 func (*WatchSessionEventsResponse) ProtoMessage() {}
 
 func (x *WatchSessionEventsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_workos_agent_v1_session_proto_msgTypes[24]
+	mi := &file_workos_agent_v1_session_proto_msgTypes[26]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1691,7 +1829,7 @@ func (x *WatchSessionEventsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WatchSessionEventsResponse.ProtoReflect.Descriptor instead.
 func (*WatchSessionEventsResponse) Descriptor() ([]byte, []int) {
-	return file_workos_agent_v1_session_proto_rawDescGZIP(), []int{24}
+	return file_workos_agent_v1_session_proto_rawDescGZIP(), []int{26}
 }
 
 func (x *WatchSessionEventsResponse) GetEvents() []*AgentSessionEvent {
@@ -1705,7 +1843,7 @@ var File_workos_agent_v1_session_proto protoreflect.FileDescriptor
 
 const file_workos_agent_v1_session_proto_rawDesc = "" +
 	"\n" +
-	"\x1dworkos/agent/v1/session.proto\x12\x0fworkos.agent.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"\xfa\x04\n" +
+	"\x1dworkos/agent/v1/session.proto\x12\x0fworkos.agent.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a workos/agent/v1/automation.proto\"\xf0\x05\n" +
 	"\fAgentSession\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\"\n" +
 	"\rowner_user_id\x18\x02 \x01(\tR\vownerUserId\x12\x1d\n" +
@@ -1726,9 +1864,11 @@ const file_workos_agent_v1_session_proto_rawDesc = "" +
 	"created_at\x18\f \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x129\n" +
 	"\n" +
 	"updated_at\x18\r \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\x12<\n" +
-	"\tclosed_at\x18\x0e \x01(\v2\x1a.google.protobuf.TimestampH\x00R\bclosedAt\x88\x01\x01B\f\n" +
+	"\tclosed_at\x18\x0e \x01(\v2\x1a.google.protobuf.TimestampH\x00R\bclosedAt\x88\x01\x01\x120\n" +
+	"\x04goal\x18\x0f \x01(\v2\x1c.workos.agent.v1.SessionGoalR\x04goal\x12B\n" +
+	"\vdelegations\x18\x10 \x03(\v2 .workos.agent.v1.AgentDelegationR\vdelegationsB\f\n" +
 	"\n" +
-	"_closed_at\"\x8f\x03\n" +
+	"_closed_at\"\xd0\x03\n" +
 	"\x11AgentSessionInput\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x1d\n" +
 	"\n" +
@@ -1743,7 +1883,8 @@ const file_workos_agent_v1_session_proto_rawDesc = "" +
 	"created_at\x18\t \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x129\n" +
 	"\n" +
 	"updated_at\x18\n" +
-	" \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\"\xd7\x03\n" +
+	" \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\x12?\n" +
+	"\tdirective\x18\v \x01(\v2!.workos.agent.v1.SessionDirectiveR\tdirective\"\xd7\x03\n" +
 	"\x11AgentSessionEvent\x12\x1a\n" +
 	"\bsequence\x18\x01 \x01(\x03R\bsequence\x12\x1d\n" +
 	"\n" +
@@ -1792,12 +1933,20 @@ const file_workos_agent_v1_session_proto_rawDesc = "" +
 	"\n" +
 	"session_id\x18\x01 \x01(\tR\tsessionId\"M\n" +
 	"\x12GetSessionResponse\x127\n" +
-	"\asession\x18\x01 \x01(\v2\x1d.workos.agent.v1.AgentSessionR\asession\"v\n" +
+	"\asession\x18\x01 \x01(\v2\x1d.workos.agent.v1.AgentSessionR\asession\"\xb7\x01\n" +
 	"\x19SubmitSessionInputRequest\x12\x1d\n" +
 	"\n" +
 	"session_id\x18\x01 \x01(\tR\tsessionId\x12&\n" +
 	"\x0fclient_input_id\x18\x02 \x01(\tR\rclientInputId\x12\x12\n" +
-	"\x04text\x18\x03 \x01(\tR\x04text\"V\n" +
+	"\x04text\x18\x03 \x01(\tR\x04text\x12?\n" +
+	"\tdirective\x18\x04 \x01(\v2!.workos.agent.v1.SessionDirectiveR\tdirective\"\x83\x01\n" +
+	"\x1eRequestSessionGoalPauseRequest\x12\x1d\n" +
+	"\n" +
+	"session_id\x18\x01 \x01(\tR\tsessionId\x12'\n" +
+	"\x0fidempotency_key\x18\x02 \x01(\tR\x0eidempotencyKey\x12\x19\n" +
+	"\bgoal_ref\x18\x03 \x01(\tR\agoalRef\"Z\n" +
+	"\x1fRequestSessionGoalPauseResponse\x127\n" +
+	"\asession\x18\x01 \x01(\v2\x1d.workos.agent.v1.AgentSessionR\asession\"V\n" +
 	"\x1aSubmitSessionInputResponse\x128\n" +
 	"\x05input\x18\x01 \x01(\v2\".workos.agent.v1.AgentSessionInputR\x05input\"_\n" +
 	"\x16GetSessionInputRequest\x12\x1d\n" +
@@ -1843,13 +1992,14 @@ const file_workos_agent_v1_session_proto_rawDesc = "" +
 	"$AGENT_SESSION_INPUT_STATE_DISPATCHED\x10\x02\x12'\n" +
 	"#AGENT_SESSION_INPUT_STATE_COMPLETED\x10\x03\x12$\n" +
 	" AGENT_SESSION_INPUT_STATE_FAILED\x10\x04\x12'\n" +
-	"#AGENT_SESSION_INPUT_STATE_CANCELLED\x10\x052\xc5\a\n" +
+	"#AGENT_SESSION_INPUT_STATE_CANCELLED\x10\x052\xc5\b\n" +
 	"\x13AgentSessionService\x12`\n" +
 	"\rCreateSession\x12%.workos.agent.v1.CreateSessionRequest\x1a&.workos.agent.v1.CreateSessionResponse\"\x00\x12]\n" +
 	"\fListSessions\x12$.workos.agent.v1.ListSessionsRequest\x1a%.workos.agent.v1.ListSessionsResponse\"\x00\x12W\n" +
 	"\n" +
 	"GetSession\x12\".workos.agent.v1.GetSessionRequest\x1a#.workos.agent.v1.GetSessionResponse\"\x00\x12o\n" +
-	"\x12SubmitSessionInput\x12*.workos.agent.v1.SubmitSessionInputRequest\x1a+.workos.agent.v1.SubmitSessionInputResponse\"\x00\x12f\n" +
+	"\x12SubmitSessionInput\x12*.workos.agent.v1.SubmitSessionInputRequest\x1a+.workos.agent.v1.SubmitSessionInputResponse\"\x00\x12~\n" +
+	"\x17RequestSessionGoalPause\x12/.workos.agent.v1.RequestSessionGoalPauseRequest\x1a0.workos.agent.v1.RequestSessionGoalPauseResponse\"\x00\x12f\n" +
 	"\x0fGetSessionInput\x12'.workos.agent.v1.GetSessionInputRequest\x1a(.workos.agent.v1.GetSessionInputResponse\"\x00\x12l\n" +
 	"\x11ListSessionInputs\x12).workos.agent.v1.ListSessionInputsRequest\x1a*.workos.agent.v1.ListSessionInputsResponse\"\x00\x12{\n" +
 	"\x16CancelSessionExecution\x12..workos.agent.v1.CancelSessionExecutionRequest\x1a/.workos.agent.v1.CancelSessionExecutionResponse\"\x00\x12]\n" +
@@ -1869,85 +2019,97 @@ func file_workos_agent_v1_session_proto_rawDescGZIP() []byte {
 }
 
 var file_workos_agent_v1_session_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
-var file_workos_agent_v1_session_proto_msgTypes = make([]protoimpl.MessageInfo, 25)
+var file_workos_agent_v1_session_proto_msgTypes = make([]protoimpl.MessageInfo, 27)
 var file_workos_agent_v1_session_proto_goTypes = []any{
-	(AgentSessionState)(0),                 // 0: workos.agent.v1.AgentSessionState
-	(AgentSessionInputState)(0),            // 1: workos.agent.v1.AgentSessionInputState
-	(*AgentSession)(nil),                   // 2: workos.agent.v1.AgentSession
-	(*AgentSessionInput)(nil),              // 3: workos.agent.v1.AgentSessionInput
-	(*AgentSessionEvent)(nil),              // 4: workos.agent.v1.AgentSessionEvent
-	(*SessionInputAccepted)(nil),           // 5: workos.agent.v1.SessionInputAccepted
-	(*SessionInputDispatched)(nil),         // 6: workos.agent.v1.SessionInputDispatched
-	(*SessionInputTerminal)(nil),           // 7: workos.agent.v1.SessionInputTerminal
-	(*SessionStateChanged)(nil),            // 8: workos.agent.v1.SessionStateChanged
-	(*CreateSessionRequest)(nil),           // 9: workos.agent.v1.CreateSessionRequest
-	(*CreateSessionResponse)(nil),          // 10: workos.agent.v1.CreateSessionResponse
-	(*ListSessionsRequest)(nil),            // 11: workos.agent.v1.ListSessionsRequest
-	(*ListSessionsResponse)(nil),           // 12: workos.agent.v1.ListSessionsResponse
-	(*GetSessionRequest)(nil),              // 13: workos.agent.v1.GetSessionRequest
-	(*GetSessionResponse)(nil),             // 14: workos.agent.v1.GetSessionResponse
-	(*SubmitSessionInputRequest)(nil),      // 15: workos.agent.v1.SubmitSessionInputRequest
-	(*SubmitSessionInputResponse)(nil),     // 16: workos.agent.v1.SubmitSessionInputResponse
-	(*GetSessionInputRequest)(nil),         // 17: workos.agent.v1.GetSessionInputRequest
-	(*GetSessionInputResponse)(nil),        // 18: workos.agent.v1.GetSessionInputResponse
-	(*ListSessionInputsRequest)(nil),       // 19: workos.agent.v1.ListSessionInputsRequest
-	(*ListSessionInputsResponse)(nil),      // 20: workos.agent.v1.ListSessionInputsResponse
-	(*CancelSessionExecutionRequest)(nil),  // 21: workos.agent.v1.CancelSessionExecutionRequest
-	(*CancelSessionExecutionResponse)(nil), // 22: workos.agent.v1.CancelSessionExecutionResponse
-	(*CloseSessionRequest)(nil),            // 23: workos.agent.v1.CloseSessionRequest
-	(*CloseSessionResponse)(nil),           // 24: workos.agent.v1.CloseSessionResponse
-	(*WatchSessionEventsRequest)(nil),      // 25: workos.agent.v1.WatchSessionEventsRequest
-	(*WatchSessionEventsResponse)(nil),     // 26: workos.agent.v1.WatchSessionEventsResponse
-	(*timestamppb.Timestamp)(nil),          // 27: google.protobuf.Timestamp
+	(AgentSessionState)(0),                  // 0: workos.agent.v1.AgentSessionState
+	(AgentSessionInputState)(0),             // 1: workos.agent.v1.AgentSessionInputState
+	(*AgentSession)(nil),                    // 2: workos.agent.v1.AgentSession
+	(*AgentSessionInput)(nil),               // 3: workos.agent.v1.AgentSessionInput
+	(*AgentSessionEvent)(nil),               // 4: workos.agent.v1.AgentSessionEvent
+	(*SessionInputAccepted)(nil),            // 5: workos.agent.v1.SessionInputAccepted
+	(*SessionInputDispatched)(nil),          // 6: workos.agent.v1.SessionInputDispatched
+	(*SessionInputTerminal)(nil),            // 7: workos.agent.v1.SessionInputTerminal
+	(*SessionStateChanged)(nil),             // 8: workos.agent.v1.SessionStateChanged
+	(*CreateSessionRequest)(nil),            // 9: workos.agent.v1.CreateSessionRequest
+	(*CreateSessionResponse)(nil),           // 10: workos.agent.v1.CreateSessionResponse
+	(*ListSessionsRequest)(nil),             // 11: workos.agent.v1.ListSessionsRequest
+	(*ListSessionsResponse)(nil),            // 12: workos.agent.v1.ListSessionsResponse
+	(*GetSessionRequest)(nil),               // 13: workos.agent.v1.GetSessionRequest
+	(*GetSessionResponse)(nil),              // 14: workos.agent.v1.GetSessionResponse
+	(*SubmitSessionInputRequest)(nil),       // 15: workos.agent.v1.SubmitSessionInputRequest
+	(*RequestSessionGoalPauseRequest)(nil),  // 16: workos.agent.v1.RequestSessionGoalPauseRequest
+	(*RequestSessionGoalPauseResponse)(nil), // 17: workos.agent.v1.RequestSessionGoalPauseResponse
+	(*SubmitSessionInputResponse)(nil),      // 18: workos.agent.v1.SubmitSessionInputResponse
+	(*GetSessionInputRequest)(nil),          // 19: workos.agent.v1.GetSessionInputRequest
+	(*GetSessionInputResponse)(nil),         // 20: workos.agent.v1.GetSessionInputResponse
+	(*ListSessionInputsRequest)(nil),        // 21: workos.agent.v1.ListSessionInputsRequest
+	(*ListSessionInputsResponse)(nil),       // 22: workos.agent.v1.ListSessionInputsResponse
+	(*CancelSessionExecutionRequest)(nil),   // 23: workos.agent.v1.CancelSessionExecutionRequest
+	(*CancelSessionExecutionResponse)(nil),  // 24: workos.agent.v1.CancelSessionExecutionResponse
+	(*CloseSessionRequest)(nil),             // 25: workos.agent.v1.CloseSessionRequest
+	(*CloseSessionResponse)(nil),            // 26: workos.agent.v1.CloseSessionResponse
+	(*WatchSessionEventsRequest)(nil),       // 27: workos.agent.v1.WatchSessionEventsRequest
+	(*WatchSessionEventsResponse)(nil),      // 28: workos.agent.v1.WatchSessionEventsResponse
+	(*timestamppb.Timestamp)(nil),           // 29: google.protobuf.Timestamp
+	(*SessionGoal)(nil),                     // 30: workos.agent.v1.SessionGoal
+	(*AgentDelegation)(nil),                 // 31: workos.agent.v1.AgentDelegation
+	(*SessionDirective)(nil),                // 32: workos.agent.v1.SessionDirective
 }
 var file_workos_agent_v1_session_proto_depIdxs = []int32{
 	0,  // 0: workos.agent.v1.AgentSession.state:type_name -> workos.agent.v1.AgentSessionState
-	27, // 1: workos.agent.v1.AgentSession.created_at:type_name -> google.protobuf.Timestamp
-	27, // 2: workos.agent.v1.AgentSession.updated_at:type_name -> google.protobuf.Timestamp
-	27, // 3: workos.agent.v1.AgentSession.closed_at:type_name -> google.protobuf.Timestamp
-	1,  // 4: workos.agent.v1.AgentSessionInput.state:type_name -> workos.agent.v1.AgentSessionInputState
-	27, // 5: workos.agent.v1.AgentSessionInput.created_at:type_name -> google.protobuf.Timestamp
-	27, // 6: workos.agent.v1.AgentSessionInput.updated_at:type_name -> google.protobuf.Timestamp
-	27, // 7: workos.agent.v1.AgentSessionEvent.occurred_at:type_name -> google.protobuf.Timestamp
-	5,  // 8: workos.agent.v1.AgentSessionEvent.input_accepted:type_name -> workos.agent.v1.SessionInputAccepted
-	6,  // 9: workos.agent.v1.AgentSessionEvent.input_dispatched:type_name -> workos.agent.v1.SessionInputDispatched
-	7,  // 10: workos.agent.v1.AgentSessionEvent.input_terminal:type_name -> workos.agent.v1.SessionInputTerminal
-	8,  // 11: workos.agent.v1.AgentSessionEvent.state_changed:type_name -> workos.agent.v1.SessionStateChanged
-	1,  // 12: workos.agent.v1.SessionInputTerminal.terminal_state:type_name -> workos.agent.v1.AgentSessionInputState
-	0,  // 13: workos.agent.v1.SessionStateChanged.previous:type_name -> workos.agent.v1.AgentSessionState
-	0,  // 14: workos.agent.v1.SessionStateChanged.current:type_name -> workos.agent.v1.AgentSessionState
-	2,  // 15: workos.agent.v1.CreateSessionResponse.session:type_name -> workos.agent.v1.AgentSession
-	2,  // 16: workos.agent.v1.ListSessionsResponse.sessions:type_name -> workos.agent.v1.AgentSession
-	2,  // 17: workos.agent.v1.GetSessionResponse.session:type_name -> workos.agent.v1.AgentSession
-	3,  // 18: workos.agent.v1.SubmitSessionInputResponse.input:type_name -> workos.agent.v1.AgentSessionInput
-	3,  // 19: workos.agent.v1.GetSessionInputResponse.input:type_name -> workos.agent.v1.AgentSessionInput
-	3,  // 20: workos.agent.v1.ListSessionInputsResponse.inputs:type_name -> workos.agent.v1.AgentSessionInput
-	3,  // 21: workos.agent.v1.CancelSessionExecutionResponse.input:type_name -> workos.agent.v1.AgentSessionInput
-	2,  // 22: workos.agent.v1.CloseSessionResponse.session:type_name -> workos.agent.v1.AgentSession
-	4,  // 23: workos.agent.v1.WatchSessionEventsResponse.events:type_name -> workos.agent.v1.AgentSessionEvent
-	9,  // 24: workos.agent.v1.AgentSessionService.CreateSession:input_type -> workos.agent.v1.CreateSessionRequest
-	11, // 25: workos.agent.v1.AgentSessionService.ListSessions:input_type -> workos.agent.v1.ListSessionsRequest
-	13, // 26: workos.agent.v1.AgentSessionService.GetSession:input_type -> workos.agent.v1.GetSessionRequest
-	15, // 27: workos.agent.v1.AgentSessionService.SubmitSessionInput:input_type -> workos.agent.v1.SubmitSessionInputRequest
-	17, // 28: workos.agent.v1.AgentSessionService.GetSessionInput:input_type -> workos.agent.v1.GetSessionInputRequest
-	19, // 29: workos.agent.v1.AgentSessionService.ListSessionInputs:input_type -> workos.agent.v1.ListSessionInputsRequest
-	21, // 30: workos.agent.v1.AgentSessionService.CancelSessionExecution:input_type -> workos.agent.v1.CancelSessionExecutionRequest
-	23, // 31: workos.agent.v1.AgentSessionService.CloseSession:input_type -> workos.agent.v1.CloseSessionRequest
-	25, // 32: workos.agent.v1.AgentSessionService.WatchSessionEvents:input_type -> workos.agent.v1.WatchSessionEventsRequest
-	10, // 33: workos.agent.v1.AgentSessionService.CreateSession:output_type -> workos.agent.v1.CreateSessionResponse
-	12, // 34: workos.agent.v1.AgentSessionService.ListSessions:output_type -> workos.agent.v1.ListSessionsResponse
-	14, // 35: workos.agent.v1.AgentSessionService.GetSession:output_type -> workos.agent.v1.GetSessionResponse
-	16, // 36: workos.agent.v1.AgentSessionService.SubmitSessionInput:output_type -> workos.agent.v1.SubmitSessionInputResponse
-	18, // 37: workos.agent.v1.AgentSessionService.GetSessionInput:output_type -> workos.agent.v1.GetSessionInputResponse
-	20, // 38: workos.agent.v1.AgentSessionService.ListSessionInputs:output_type -> workos.agent.v1.ListSessionInputsResponse
-	22, // 39: workos.agent.v1.AgentSessionService.CancelSessionExecution:output_type -> workos.agent.v1.CancelSessionExecutionResponse
-	24, // 40: workos.agent.v1.AgentSessionService.CloseSession:output_type -> workos.agent.v1.CloseSessionResponse
-	26, // 41: workos.agent.v1.AgentSessionService.WatchSessionEvents:output_type -> workos.agent.v1.WatchSessionEventsResponse
-	33, // [33:42] is the sub-list for method output_type
-	24, // [24:33] is the sub-list for method input_type
-	24, // [24:24] is the sub-list for extension type_name
-	24, // [24:24] is the sub-list for extension extendee
-	0,  // [0:24] is the sub-list for field type_name
+	29, // 1: workos.agent.v1.AgentSession.created_at:type_name -> google.protobuf.Timestamp
+	29, // 2: workos.agent.v1.AgentSession.updated_at:type_name -> google.protobuf.Timestamp
+	29, // 3: workos.agent.v1.AgentSession.closed_at:type_name -> google.protobuf.Timestamp
+	30, // 4: workos.agent.v1.AgentSession.goal:type_name -> workos.agent.v1.SessionGoal
+	31, // 5: workos.agent.v1.AgentSession.delegations:type_name -> workos.agent.v1.AgentDelegation
+	1,  // 6: workos.agent.v1.AgentSessionInput.state:type_name -> workos.agent.v1.AgentSessionInputState
+	29, // 7: workos.agent.v1.AgentSessionInput.created_at:type_name -> google.protobuf.Timestamp
+	29, // 8: workos.agent.v1.AgentSessionInput.updated_at:type_name -> google.protobuf.Timestamp
+	32, // 9: workos.agent.v1.AgentSessionInput.directive:type_name -> workos.agent.v1.SessionDirective
+	29, // 10: workos.agent.v1.AgentSessionEvent.occurred_at:type_name -> google.protobuf.Timestamp
+	5,  // 11: workos.agent.v1.AgentSessionEvent.input_accepted:type_name -> workos.agent.v1.SessionInputAccepted
+	6,  // 12: workos.agent.v1.AgentSessionEvent.input_dispatched:type_name -> workos.agent.v1.SessionInputDispatched
+	7,  // 13: workos.agent.v1.AgentSessionEvent.input_terminal:type_name -> workos.agent.v1.SessionInputTerminal
+	8,  // 14: workos.agent.v1.AgentSessionEvent.state_changed:type_name -> workos.agent.v1.SessionStateChanged
+	1,  // 15: workos.agent.v1.SessionInputTerminal.terminal_state:type_name -> workos.agent.v1.AgentSessionInputState
+	0,  // 16: workos.agent.v1.SessionStateChanged.previous:type_name -> workos.agent.v1.AgentSessionState
+	0,  // 17: workos.agent.v1.SessionStateChanged.current:type_name -> workos.agent.v1.AgentSessionState
+	2,  // 18: workos.agent.v1.CreateSessionResponse.session:type_name -> workos.agent.v1.AgentSession
+	2,  // 19: workos.agent.v1.ListSessionsResponse.sessions:type_name -> workos.agent.v1.AgentSession
+	2,  // 20: workos.agent.v1.GetSessionResponse.session:type_name -> workos.agent.v1.AgentSession
+	32, // 21: workos.agent.v1.SubmitSessionInputRequest.directive:type_name -> workos.agent.v1.SessionDirective
+	2,  // 22: workos.agent.v1.RequestSessionGoalPauseResponse.session:type_name -> workos.agent.v1.AgentSession
+	3,  // 23: workos.agent.v1.SubmitSessionInputResponse.input:type_name -> workos.agent.v1.AgentSessionInput
+	3,  // 24: workos.agent.v1.GetSessionInputResponse.input:type_name -> workos.agent.v1.AgentSessionInput
+	3,  // 25: workos.agent.v1.ListSessionInputsResponse.inputs:type_name -> workos.agent.v1.AgentSessionInput
+	3,  // 26: workos.agent.v1.CancelSessionExecutionResponse.input:type_name -> workos.agent.v1.AgentSessionInput
+	2,  // 27: workos.agent.v1.CloseSessionResponse.session:type_name -> workos.agent.v1.AgentSession
+	4,  // 28: workos.agent.v1.WatchSessionEventsResponse.events:type_name -> workos.agent.v1.AgentSessionEvent
+	9,  // 29: workos.agent.v1.AgentSessionService.CreateSession:input_type -> workos.agent.v1.CreateSessionRequest
+	11, // 30: workos.agent.v1.AgentSessionService.ListSessions:input_type -> workos.agent.v1.ListSessionsRequest
+	13, // 31: workos.agent.v1.AgentSessionService.GetSession:input_type -> workos.agent.v1.GetSessionRequest
+	15, // 32: workos.agent.v1.AgentSessionService.SubmitSessionInput:input_type -> workos.agent.v1.SubmitSessionInputRequest
+	16, // 33: workos.agent.v1.AgentSessionService.RequestSessionGoalPause:input_type -> workos.agent.v1.RequestSessionGoalPauseRequest
+	19, // 34: workos.agent.v1.AgentSessionService.GetSessionInput:input_type -> workos.agent.v1.GetSessionInputRequest
+	21, // 35: workos.agent.v1.AgentSessionService.ListSessionInputs:input_type -> workos.agent.v1.ListSessionInputsRequest
+	23, // 36: workos.agent.v1.AgentSessionService.CancelSessionExecution:input_type -> workos.agent.v1.CancelSessionExecutionRequest
+	25, // 37: workos.agent.v1.AgentSessionService.CloseSession:input_type -> workos.agent.v1.CloseSessionRequest
+	27, // 38: workos.agent.v1.AgentSessionService.WatchSessionEvents:input_type -> workos.agent.v1.WatchSessionEventsRequest
+	10, // 39: workos.agent.v1.AgentSessionService.CreateSession:output_type -> workos.agent.v1.CreateSessionResponse
+	12, // 40: workos.agent.v1.AgentSessionService.ListSessions:output_type -> workos.agent.v1.ListSessionsResponse
+	14, // 41: workos.agent.v1.AgentSessionService.GetSession:output_type -> workos.agent.v1.GetSessionResponse
+	18, // 42: workos.agent.v1.AgentSessionService.SubmitSessionInput:output_type -> workos.agent.v1.SubmitSessionInputResponse
+	17, // 43: workos.agent.v1.AgentSessionService.RequestSessionGoalPause:output_type -> workos.agent.v1.RequestSessionGoalPauseResponse
+	20, // 44: workos.agent.v1.AgentSessionService.GetSessionInput:output_type -> workos.agent.v1.GetSessionInputResponse
+	22, // 45: workos.agent.v1.AgentSessionService.ListSessionInputs:output_type -> workos.agent.v1.ListSessionInputsResponse
+	24, // 46: workos.agent.v1.AgentSessionService.CancelSessionExecution:output_type -> workos.agent.v1.CancelSessionExecutionResponse
+	26, // 47: workos.agent.v1.AgentSessionService.CloseSession:output_type -> workos.agent.v1.CloseSessionResponse
+	28, // 48: workos.agent.v1.AgentSessionService.WatchSessionEvents:output_type -> workos.agent.v1.WatchSessionEventsResponse
+	39, // [39:49] is the sub-list for method output_type
+	29, // [29:39] is the sub-list for method input_type
+	29, // [29:29] is the sub-list for extension type_name
+	29, // [29:29] is the sub-list for extension extendee
+	0,  // [0:29] is the sub-list for field type_name
 }
 
 func init() { file_workos_agent_v1_session_proto_init() }
@@ -1955,6 +2117,7 @@ func file_workos_agent_v1_session_proto_init() {
 	if File_workos_agent_v1_session_proto != nil {
 		return
 	}
+	file_workos_agent_v1_automation_proto_init()
 	file_workos_agent_v1_session_proto_msgTypes[0].OneofWrappers = []any{}
 	file_workos_agent_v1_session_proto_msgTypes[2].OneofWrappers = []any{
 		(*AgentSessionEvent_InputAccepted)(nil),
@@ -1969,7 +2132,7 @@ func file_workos_agent_v1_session_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_workos_agent_v1_session_proto_rawDesc), len(file_workos_agent_v1_session_proto_rawDesc)),
 			NumEnums:      2,
-			NumMessages:   25,
+			NumMessages:   27,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

@@ -111,6 +111,9 @@ func (h *ExecutionHandler) AppendTaskEvent(ctx context.Context, req *connect.Req
 	if event == nil || event.Event == nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, domain.ErrInvalid)
 	}
+	if event.GetDelegationId() != "" || event.GetGoalUpdated() != nil || event.GetDelegationUpdated() != nil {
+		return nil, connect.NewError(connect.CodeUnimplemented, errors.New("native automation projections unavailable"))
+	}
 	// Fail closed: ArtifactCreated events are Core-minted facts published by
 	// AppendTaskArtifact from the verified artifact projection. A
 	// provider-built reference could name a foreign or nonexistent artifact

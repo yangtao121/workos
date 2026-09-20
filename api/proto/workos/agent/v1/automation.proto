@@ -1,0 +1,63 @@
+syntax = "proto3";
+
+package workos.agent.v1;
+
+option go_package = "github.com/yangtao121/workos/gen/go/workos/agent/v1;agentv1";
+
+// A bounded projection of the native session's goal log. The native harness
+// owns goal scheduling and history; Core owns commands, authorization and
+// display. ref is an opaque native reference, not a WorkOS resource ID.
+message SessionGoal {
+  string ref = 1;
+  int64 revision = 2;
+  string objective = 3;
+  // Finite vocabulary: active, paused, blocked, complete.
+  string phase = 4;
+  int32 rounds_started = 5;
+  int32 max_rounds = 6;
+  string blocked_reason = 7;
+  // Process-local authority: false after the linked Task ends or loses its
+  // lease, even when the durable native phase remains active.
+  bool armed = 8;
+  bool pause_requested = 9;
+}
+
+enum SessionDirectiveKind {
+  SESSION_DIRECTIVE_KIND_UNSPECIFIED = 0;
+  SESSION_DIRECTIVE_KIND_CREATE_GOAL = 1;
+  SESSION_DIRECTIVE_KIND_RESUME_GOAL = 2;
+  SESSION_DIRECTIVE_KIND_PAUSE_GOAL = 3;
+}
+
+// Explicit human commands enter the ordinary ordered SessionInput/Task path.
+// They are not synthesized from model output or accepted by public SubmitTask.
+message SessionDirective {
+  SessionDirectiveKind kind = 1;
+  string goal_ref = 2;
+  int64 expected_revision = 3;
+  string objective = 4;
+  int32 max_rounds = 5;
+}
+
+// One Core-issued delegation grant and its bounded native execution result.
+// It shares the parent Task's lease, budget and deadline. Runtime owns the
+// isolated Git worktree. No host paths, raw transcripts or credentials occur.
+message AgentDelegation {
+  string id = 1;
+  string task_id = 2;
+  string title = 3;
+  // preparing, running, completed, failed, cancelled, needs_review.
+  string state = 4;
+  string worktree_id = 5;
+  string base_commit = 6;
+  string result_summary = 7;
+  string result_artifact_id = 8;
+}
+
+message GoalUpdated {
+  SessionGoal goal = 1;
+}
+
+message DelegationUpdated {
+  AgentDelegation delegation = 1;
+}

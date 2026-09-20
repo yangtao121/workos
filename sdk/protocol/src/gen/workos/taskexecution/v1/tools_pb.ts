@@ -11,7 +11,7 @@ import type { JsonObject, Message } from "@bufbuild/protobuf";
  * Describes the file workos/taskexecution/v1/tools.proto.
  */
 export const file_workos_taskexecution_v1_tools: GenFile = /*@__PURE__*/
-  fileDesc("CiN3b3Jrb3MvdGFza2V4ZWN1dGlvbi92MS90b29scy5wcm90bxIXd29ya29zLnRhc2tleGVjdXRpb24udjEikgEKFkV4ZWN1dGVUYXNrVG9vbFJlcXVlc3QSEAoIbGVhc2VfaWQYASABKAkSEQoJd29ya2VyX2lkGAIgASgJEhQKDG9wZXJhdGlvbl9pZBgDIAEoCRIRCglvcGVyYXRpb24YBCABKAkSKgoJYXJndW1lbnRzGAUgASgLMhcuZ29vZ2xlLnByb3RvYnVmLlN0cnVjdCJCChdFeGVjdXRlVGFza1Rvb2xSZXNwb25zZRInCgZyZXN1bHQYASABKAsyFy5nb29nbGUucHJvdG9idWYuU3RydWN0MokBCg9UYXNrVG9vbFNlcnZpY2USdgoPRXhlY3V0ZVRhc2tUb29sEi8ud29ya29zLnRhc2tleGVjdXRpb24udjEuRXhlY3V0ZVRhc2tUb29sUmVxdWVzdBowLndvcmtvcy50YXNrZXhlY3V0aW9uLnYxLkV4ZWN1dGVUYXNrVG9vbFJlc3BvbnNlIgBCTVpLZ2l0aHViLmNvbS95YW5ndGFvMTIxL3dvcmtvcy9nZW4vZ28vd29ya29zL3Rhc2tleGVjdXRpb24vdjE7dGFza2V4ZWN1dGlvbnYxYgZwcm90bzM", [file_google_protobuf_struct]);
+  fileDesc("CiN3b3Jrb3MvdGFza2V4ZWN1dGlvbi92MS90b29scy5wcm90bxIXd29ya29zLnRhc2tleGVjdXRpb24udjEiqQEKFkV4ZWN1dGVUYXNrVG9vbFJlcXVlc3QSEAoIbGVhc2VfaWQYASABKAkSEQoJd29ya2VyX2lkGAIgASgJEhQKDG9wZXJhdGlvbl9pZBgDIAEoCRIRCglvcGVyYXRpb24YBCABKAkSKgoJYXJndW1lbnRzGAUgASgLMhcuZ29vZ2xlLnByb3RvYnVmLlN0cnVjdBIVCg1kZWxlZ2F0aW9uX2lkGAYgASgJIkIKF0V4ZWN1dGVUYXNrVG9vbFJlc3BvbnNlEicKBnJlc3VsdBgBIAEoCzIXLmdvb2dsZS5wcm90b2J1Zi5TdHJ1Y3QyiQEKD1Rhc2tUb29sU2VydmljZRJ2Cg9FeGVjdXRlVGFza1Rvb2wSLy53b3Jrb3MudGFza2V4ZWN1dGlvbi52MS5FeGVjdXRlVGFza1Rvb2xSZXF1ZXN0GjAud29ya29zLnRhc2tleGVjdXRpb24udjEuRXhlY3V0ZVRhc2tUb29sUmVzcG9uc2UiAEJNWktnaXRodWIuY29tL3lhbmd0YW8xMjEvd29ya29zL2dlbi9nby93b3Jrb3MvdGFza2V4ZWN1dGlvbi92MTt0YXNrZXhlY3V0aW9udjFiBnByb3RvMw", [file_google_protobuf_struct]);
 
 /**
  * Harness-side tools never choose an owner, project, workspace, credential,
@@ -44,6 +44,14 @@ export type ExecuteTaskToolRequest = Message<"workos.taskexecution.v1.ExecuteTas
    * @generated from field: google.protobuf.Struct arguments = 5;
    */
   arguments?: JsonObject | undefined;
+
+  /**
+   * Empty for the parent, otherwise a Core-issued grant under this exact
+   * live task lease. It selects an isolated Runtime worktree, never a path.
+   *
+   * @generated from field: string delegation_id = 6;
+   */
+  delegationId: string;
 };
 
 /**

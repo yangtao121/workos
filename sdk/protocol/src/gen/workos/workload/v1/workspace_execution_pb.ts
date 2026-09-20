@@ -11,7 +11,7 @@ import type { JsonObject, Message } from "@bufbuild/protobuf";
  * Describes the file workos/workload/v1/workspace_execution.proto.
  */
 export const file_workos_workload_v1_workspace_execution: GenFile = /*@__PURE__*/
-  fileDesc("Cix3b3Jrb3Mvd29ya2xvYWQvdjEvd29ya3NwYWNlX2V4ZWN1dGlvbi5wcm90bxISd29ya29zLndvcmtsb2FkLnYxIowCCiBFeGVjdXRlV29ya3NwYWNlT3BlcmF0aW9uUmVxdWVzdBIVCg1vd25lcl91c2VyX2lkGAEgASgJEhIKCnByb2plY3RfaWQYAiABKAkSGwoTd29ya3NwYWNlX3NvdXJjZV9pZBgDIAEoCRIRCglyZWFkX29ubHkYBCABKAgSFAoMb3BlcmF0aW9uX2lkGAUgASgJEhEKCW9wZXJhdGlvbhgGIAEoCRIqCglhcmd1bWVudHMYByABKAsyFy5nb29nbGUucHJvdG9idWYuU3RydWN0EhwKFHdvcmtzcGFjZV9iaW5kaW5nX2lkGAggASgJEhoKEndvcmtzcGFjZV9yZXZpc2lvbhgJIAEoAyJMCiFFeGVjdXRlV29ya3NwYWNlT3BlcmF0aW9uUmVzcG9uc2USJwoGcmVzdWx0GAEgASgLMhcuZ29vZ2xlLnByb3RvYnVmLlN0cnVjdDKoAQoZV29ya3NwYWNlRXhlY3V0aW9uU2VydmljZRKKAQoZRXhlY3V0ZVdvcmtzcGFjZU9wZXJhdGlvbhI0Lndvcmtvcy53b3JrbG9hZC52MS5FeGVjdXRlV29ya3NwYWNlT3BlcmF0aW9uUmVxdWVzdBo1Lndvcmtvcy53b3JrbG9hZC52MS5FeGVjdXRlV29ya3NwYWNlT3BlcmF0aW9uUmVzcG9uc2UiAEJDWkFnaXRodWIuY29tL3lhbmd0YW8xMjEvd29ya29zL2dlbi9nby93b3Jrb3Mvd29ya2xvYWQvdjE7d29ya2xvYWR2MWIGcHJvdG8z", [file_google_protobuf_struct]);
+  fileDesc("Cix3b3Jrb3Mvd29ya2xvYWQvdjEvd29ya3NwYWNlX2V4ZWN1dGlvbi5wcm90bxISd29ya29zLndvcmtsb2FkLnYxIrsCCiBFeGVjdXRlV29ya3NwYWNlT3BlcmF0aW9uUmVxdWVzdBIVCg1vd25lcl91c2VyX2lkGAEgASgJEhIKCnByb2plY3RfaWQYAiABKAkSGwoTd29ya3NwYWNlX3NvdXJjZV9pZBgDIAEoCRIRCglyZWFkX29ubHkYBCABKAgSFAoMb3BlcmF0aW9uX2lkGAUgASgJEhEKCW9wZXJhdGlvbhgGIAEoCRIqCglhcmd1bWVudHMYByABKAsyFy5nb29nbGUucHJvdG9idWYuU3RydWN0EhwKFHdvcmtzcGFjZV9iaW5kaW5nX2lkGAggASgJEhoKEndvcmtzcGFjZV9yZXZpc2lvbhgJIAEoAxIVCg1kZWxlZ2F0aW9uX2lkGAogASgJEhYKDnBhcmVudF90YXNrX2lkGAsgASgJIkwKIUV4ZWN1dGVXb3Jrc3BhY2VPcGVyYXRpb25SZXNwb25zZRInCgZyZXN1bHQYASABKAsyFy5nb29nbGUucHJvdG9idWYuU3RydWN0MqgBChlXb3Jrc3BhY2VFeGVjdXRpb25TZXJ2aWNlEooBChlFeGVjdXRlV29ya3NwYWNlT3BlcmF0aW9uEjQud29ya29zLndvcmtsb2FkLnYxLkV4ZWN1dGVXb3Jrc3BhY2VPcGVyYXRpb25SZXF1ZXN0GjUud29ya29zLndvcmtsb2FkLnYxLkV4ZWN1dGVXb3Jrc3BhY2VPcGVyYXRpb25SZXNwb25zZSIAQkNaQWdpdGh1Yi5jb20veWFuZ3RhbzEyMS93b3Jrb3MvZ2VuL2dvL3dvcmtvcy93b3JrbG9hZC92MTt3b3JrbG9hZHYxYgZwcm90bzM", [file_google_protobuf_struct]);
 
 /**
  * Private Runtime execution seam. Core derives every scope field from a live
@@ -47,7 +47,8 @@ export type ExecuteWorkspaceOperationRequest = Message<"workos.workload.v1.Execu
   operationId: string;
 
   /**
-   * Finite vocabulary: shell.run, fs.resolve/stat/list/read/write/edit, preview.start/list/stop.
+   * Finite vocabulary: shell.run, fs.resolve/stat/list/read/write/edit,
+   * preview.start/list/stop, delegation.create/inspect/diff.
    *
    * @generated from field: string operation = 6;
    */
@@ -67,6 +68,19 @@ export type ExecuteWorkspaceOperationRequest = Message<"workos.workload.v1.Execu
    * @generated from field: int64 workspace_revision = 9;
    */
   workspaceRevision: bigint;
+
+  /**
+   * Core-derived delegation identity; empty selects the project workspace.
+   * Runtime validates persisted owner/project/binding/task association.
+   *
+   * @generated from field: string delegation_id = 10;
+   */
+  delegationId: string;
+
+  /**
+   * @generated from field: string parent_task_id = 11;
+   */
+  parentTaskId: string;
 };
 
 /**

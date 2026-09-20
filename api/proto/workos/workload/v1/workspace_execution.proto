@@ -14,11 +14,16 @@ message ExecuteWorkspaceOperationRequest {
   string workspace_source_id = 3;
   bool read_only = 4;
   string operation_id = 5;
-  // Finite vocabulary: shell.run, fs.resolve/stat/list/read/write/edit, preview.start/list/stop.
+  // Finite vocabulary: shell.run, fs.resolve/stat/list/read/write/edit,
+  // preview.start/list/stop, delegation.create/inspect/diff.
   string operation = 6;
   google.protobuf.Struct arguments = 7;
   string workspace_binding_id = 8;
   int64 workspace_revision = 9;
+  // Core-derived delegation identity; empty selects the project workspace.
+  // Runtime validates persisted owner/project/binding/task association.
+  string delegation_id = 10;
+  string parent_task_id = 11;
 }
 message ExecuteWorkspaceOperationResponse {
   google.protobuf.Struct result = 1;

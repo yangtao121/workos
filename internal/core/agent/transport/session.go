@@ -62,6 +62,7 @@ type SessionSnapshotSource interface {
 }
 
 type SessionHandler struct {
+	agentv1connect.UnimplementedAgentSessionServiceHandler
 	service   *application.SessionService
 	snapshots SessionSnapshotSource
 }
@@ -156,6 +157,9 @@ func (h *SessionHandler) GetSession(ctx context.Context, req *connect.Request[ag
 }
 
 func (h *SessionHandler) SubmitSessionInput(ctx context.Context, req *connect.Request[agentv1.SubmitSessionInputRequest]) (*connect.Response[agentv1.SubmitSessionInputResponse], error) {
+	if req.Msg.GetDirective() != nil {
+		return nil, connect.NewError(connect.CodeUnimplemented, errors.New("session goal controls unavailable"))
+	}
 	owner, err := identity.FromContext(ctx)
 	if err != nil {
 		return nil, connect.NewError(connect.CodeUnauthenticated, err)

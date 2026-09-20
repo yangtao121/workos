@@ -304,8 +304,10 @@ type AgentTaskInput struct {
 	// Server-derived linkage to a continuous harness session (ADR-0030);
 	// public SubmitTask rejects it.
 	AgentSessionId string `protobuf:"bytes,11,opt,name=agent_session_id,json=agentSessionId,proto3" json:"agent_session_id,omitempty"`
-	unknownFields  protoimpl.UnknownFields
-	sizeCache      protoimpl.SizeCache
+	// Core-derived explicit session command; public SubmitTask rejects it.
+	SessionDirective *SessionDirective `protobuf:"bytes,12,opt,name=session_directive,json=sessionDirective,proto3" json:"session_directive,omitempty"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
 }
 
 func (x *AgentTaskInput) Reset() {
@@ -413,6 +415,13 @@ func (x *AgentTaskInput) GetAgentSessionId() string {
 		return x.AgentSessionId
 	}
 	return ""
+}
+
+func (x *AgentTaskInput) GetSessionDirective() *SessionDirective {
+	if x != nil {
+		return x.SessionDirective
+	}
+	return nil
 }
 
 // One Project-owned installation and revision read from the same snapshot.
@@ -1338,6 +1347,9 @@ type AgentEvent struct {
 	TaskId     string                 `protobuf:"bytes,2,opt,name=task_id,json=taskId,proto3" json:"task_id,omitempty"`
 	Sequence   int64                  `protobuf:"varint,3,opt,name=sequence,proto3" json:"sequence,omitempty"`
 	OccurredAt *timestamppb.Timestamp `protobuf:"bytes,4,opt,name=occurred_at,json=occurredAt,proto3" json:"occurred_at,omitempty"`
+	// Empty for the parent. A child projection must name a delegation granted
+	// under this exact task; it cannot change the task's terminal state.
+	DelegationId string `protobuf:"bytes,5,opt,name=delegation_id,json=delegationId,proto3" json:"delegation_id,omitempty"`
 	// Types that are valid to be assigned to Event:
 	//
 	//	*AgentEvent_RunStarted
@@ -1354,6 +1366,8 @@ type AgentEvent struct {
 	//	*AgentEvent_RunCancelled
 	//	*AgentEvent_ApprovalDecided
 	//	*AgentEvent_ApprovalExpired
+	//	*AgentEvent_GoalUpdated
+	//	*AgentEvent_DelegationUpdated
 	Event         isAgentEvent_Event `protobuf_oneof:"event"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -1415,6 +1429,13 @@ func (x *AgentEvent) GetOccurredAt() *timestamppb.Timestamp {
 		return x.OccurredAt
 	}
 	return nil
+}
+
+func (x *AgentEvent) GetDelegationId() string {
+	if x != nil {
+		return x.DelegationId
+	}
+	return ""
 }
 
 func (x *AgentEvent) GetEvent() isAgentEvent_Event {
@@ -1550,6 +1571,24 @@ func (x *AgentEvent) GetApprovalExpired() *ApprovalExpired {
 	return nil
 }
 
+func (x *AgentEvent) GetGoalUpdated() *GoalUpdated {
+	if x != nil {
+		if x, ok := x.Event.(*AgentEvent_GoalUpdated); ok {
+			return x.GoalUpdated
+		}
+	}
+	return nil
+}
+
+func (x *AgentEvent) GetDelegationUpdated() *DelegationUpdated {
+	if x != nil {
+		if x, ok := x.Event.(*AgentEvent_DelegationUpdated); ok {
+			return x.DelegationUpdated
+		}
+	}
+	return nil
+}
+
 type isAgentEvent_Event interface {
 	isAgentEvent_Event()
 }
@@ -1612,6 +1651,14 @@ type AgentEvent_ApprovalExpired struct {
 	ApprovalExpired *ApprovalExpired `protobuf:"bytes,23,opt,name=approval_expired,json=approvalExpired,proto3,oneof"`
 }
 
+type AgentEvent_GoalUpdated struct {
+	GoalUpdated *GoalUpdated `protobuf:"bytes,24,opt,name=goal_updated,json=goalUpdated,proto3,oneof"`
+}
+
+type AgentEvent_DelegationUpdated struct {
+	DelegationUpdated *DelegationUpdated `protobuf:"bytes,25,opt,name=delegation_updated,json=delegationUpdated,proto3,oneof"`
+}
+
 func (*AgentEvent_RunStarted) isAgentEvent_Event() {}
 
 func (*AgentEvent_AssistantDelta) isAgentEvent_Event() {}
@@ -1639,6 +1686,10 @@ func (*AgentEvent_RunCancelled) isAgentEvent_Event() {}
 func (*AgentEvent_ApprovalDecided) isAgentEvent_Event() {}
 
 func (*AgentEvent_ApprovalExpired) isAgentEvent_Event() {}
+
+func (*AgentEvent_GoalUpdated) isAgentEvent_Event() {}
+
+func (*AgentEvent_DelegationUpdated) isAgentEvent_Event() {}
 
 type SubmitTaskRequest struct {
 	state          protoimpl.MessageState `protogen:"open.v1"`
@@ -2280,7 +2331,7 @@ var File_workos_agent_v1_agent_proto protoreflect.FileDescriptor
 
 const file_workos_agent_v1_agent_proto_rawDesc = "" +
 	"\n" +
-	"\x1bworkos/agent/v1/agent.proto\x12\x0fworkos.agent.v1\x1a\x1cgoogle/protobuf/struct.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a workos/agent/v1/app_policy.proto\x1a\x1dworkos/common/v1/common.proto\"Q\n" +
+	"\x1bworkos/agent/v1/agent.proto\x12\x0fworkos.agent.v1\x1a\x1cgoogle/protobuf/struct.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a workos/agent/v1/app_policy.proto\x1a workos/agent/v1/automation.proto\x1a\x1dworkos/common/v1/common.proto\"Q\n" +
 	"\vTargetScope\x12\x18\n" +
 	"\x06global\x18\x01 \x01(\bH\x00R\x06global\x12\x1f\n" +
 	"\n" +
@@ -2295,7 +2346,7 @@ const file_workos_agent_v1_agent_proto_rawDesc = "" +
 	"\n" +
 	"max_tokens\x18\x01 \x01(\x03R\tmaxTokens\x12(\n" +
 	"\x10max_cost_decimal\x18\x02 \x01(\tR\x0emaxCostDecimal\x12.\n" +
-	"\x13max_runtime_seconds\x18\x03 \x01(\x03R\x11maxRuntimeSeconds\"\x8f\x04\n" +
+	"\x13max_runtime_seconds\x18\x03 \x01(\x03R\x11maxRuntimeSeconds\"\xdf\x04\n" +
 	"\x0eAgentTaskInput\x12?\n" +
 	"\ftarget_scope\x18\x01 \x01(\v2\x1c.workos.agent.v1.TargetScopeR\vtargetScope\x12\x12\n" +
 	"\x04role\x18\x02 \x01(\tR\x04role\x12\x12\n" +
@@ -2309,7 +2360,8 @@ const file_workos_agent_v1_agent_proto_rawDesc = "" +
 	"incidentId\x12B\n" +
 	"\rrepair_target\x18\n" +
 	" \x01(\v2\x1d.workos.agent.v1.RepairTargetR\frepairTarget\x12(\n" +
-	"\x10agent_session_id\x18\v \x01(\tR\x0eagentSessionId\"\xbb\x01\n" +
+	"\x10agent_session_id\x18\v \x01(\tR\x0eagentSessionId\x12N\n" +
+	"\x11session_directive\x18\f \x01(\v2!.workos.agent.v1.SessionDirectiveR\x10sessionDirective\"\xbb\x01\n" +
 	"\fRepairTarget\x12&\n" +
 	"\x0fapp_instance_id\x18\x01 \x01(\tR\rappInstanceId\x12\x15\n" +
 	"\x06app_id\x18\x02 \x01(\tR\x05appId\x12\x18\n" +
@@ -2380,14 +2432,16 @@ const file_workos_agent_v1_agent_proto_rawDesc = "" +
 	"\bdecision\x18\x02 \x01(\x0e2).workos.agent.v1.AppAgentApprovalDecisionR\bdecision\"2\n" +
 	"\x0fApprovalExpired\x12\x1f\n" +
 	"\vapproval_id\x18\x01 \x01(\tR\n" +
-	"approvalId\"\xac\t\n" +
+	"approvalId\"\xe9\n" +
+	"\n" +
 	"\n" +
 	"AgentEvent\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x17\n" +
 	"\atask_id\x18\x02 \x01(\tR\x06taskId\x12\x1a\n" +
 	"\bsequence\x18\x03 \x01(\x03R\bsequence\x12;\n" +
 	"\voccurred_at\x18\x04 \x01(\v2\x1a.google.protobuf.TimestampR\n" +
-	"occurredAt\x12>\n" +
+	"occurredAt\x12#\n" +
+	"\rdelegation_id\x18\x05 \x01(\tR\fdelegationId\x12>\n" +
 	"\vrun_started\x18\n" +
 	" \x01(\v2\x1b.workos.agent.v1.RunStartedH\x00R\n" +
 	"runStarted\x12J\n" +
@@ -2405,7 +2459,9 @@ const file_workos_agent_v1_agent_proto_rawDesc = "" +
 	"run_failed\x18\x14 \x01(\v2\x1a.workos.agent.v1.RunFailedH\x00R\trunFailed\x12D\n" +
 	"\rrun_cancelled\x18\x15 \x01(\v2\x1d.workos.agent.v1.RunCancelledH\x00R\frunCancelled\x12M\n" +
 	"\x10approval_decided\x18\x16 \x01(\v2 .workos.agent.v1.ApprovalDecidedH\x00R\x0fapprovalDecided\x12M\n" +
-	"\x10approval_expired\x18\x17 \x01(\v2 .workos.agent.v1.ApprovalExpiredH\x00R\x0fapprovalExpiredB\a\n" +
+	"\x10approval_expired\x18\x17 \x01(\v2 .workos.agent.v1.ApprovalExpiredH\x00R\x0fapprovalExpired\x12A\n" +
+	"\fgoal_updated\x18\x18 \x01(\v2\x1c.workos.agent.v1.GoalUpdatedH\x00R\vgoalUpdated\x12S\n" +
+	"\x12delegation_updated\x18\x19 \x01(\v2\".workos.agent.v1.DelegationUpdatedH\x00R\x11delegationUpdatedB\a\n" +
 	"\x05event\"s\n" +
 	"\x11SubmitTaskRequest\x12'\n" +
 	"\x0fidempotency_key\x18\x01 \x01(\tR\x0eidempotencyKey\x125\n" +
@@ -2515,64 +2571,70 @@ var file_workos_agent_v1_agent_proto_goTypes = []any{
 	(*WatchTaskEventsResponse)(nil),  // 31: workos.agent.v1.WatchTaskEventsResponse
 	(*CreateRepairTaskRequest)(nil),  // 32: workos.agent.v1.CreateRepairTaskRequest
 	(*CreateRepairTaskResponse)(nil), // 33: workos.agent.v1.CreateRepairTaskResponse
-	(*timestamppb.Timestamp)(nil),    // 34: google.protobuf.Timestamp
-	(*structpb.Struct)(nil),          // 35: google.protobuf.Struct
-	(AppAgentApprovalDecision)(0),    // 36: workos.agent.v1.AppAgentApprovalDecision
-	(*v1.PageRequest)(nil),           // 37: workos.common.v1.PageRequest
-	(*v1.PageResponse)(nil),          // 38: workos.common.v1.PageResponse
+	(*SessionDirective)(nil),         // 34: workos.agent.v1.SessionDirective
+	(*timestamppb.Timestamp)(nil),    // 35: google.protobuf.Timestamp
+	(*structpb.Struct)(nil),          // 36: google.protobuf.Struct
+	(AppAgentApprovalDecision)(0),    // 37: workos.agent.v1.AppAgentApprovalDecision
+	(*GoalUpdated)(nil),              // 38: workos.agent.v1.GoalUpdated
+	(*DelegationUpdated)(nil),        // 39: workos.agent.v1.DelegationUpdated
+	(*v1.PageRequest)(nil),           // 40: workos.common.v1.PageRequest
+	(*v1.PageResponse)(nil),          // 41: workos.common.v1.PageResponse
 }
 var file_workos_agent_v1_agent_proto_depIdxs = []int32{
 	1,  // 0: workos.agent.v1.AgentTaskInput.target_scope:type_name -> workos.agent.v1.TargetScope
 	2,  // 1: workos.agent.v1.AgentTaskInput.context_refs:type_name -> workos.agent.v1.ContextRef
 	3,  // 2: workos.agent.v1.AgentTaskInput.budget:type_name -> workos.agent.v1.AgentBudget
 	5,  // 3: workos.agent.v1.AgentTaskInput.repair_target:type_name -> workos.agent.v1.RepairTarget
-	4,  // 4: workos.agent.v1.AgentTask.input:type_name -> workos.agent.v1.AgentTaskInput
-	0,  // 5: workos.agent.v1.AgentTask.state:type_name -> workos.agent.v1.AgentTaskState
-	34, // 6: workos.agent.v1.AgentTask.created_at:type_name -> google.protobuf.Timestamp
-	34, // 7: workos.agent.v1.AgentTask.updated_at:type_name -> google.protobuf.Timestamp
-	35, // 8: workos.agent.v1.ToolCallStarted.input:type_name -> google.protobuf.Struct
-	35, // 9: workos.agent.v1.ToolCallCompleted.output:type_name -> google.protobuf.Struct
-	36, // 10: workos.agent.v1.ApprovalDecided.decision:type_name -> workos.agent.v1.AppAgentApprovalDecision
-	34, // 11: workos.agent.v1.AgentEvent.occurred_at:type_name -> google.protobuf.Timestamp
-	7,  // 12: workos.agent.v1.AgentEvent.run_started:type_name -> workos.agent.v1.RunStarted
-	8,  // 13: workos.agent.v1.AgentEvent.assistant_delta:type_name -> workos.agent.v1.AssistantDelta
-	9,  // 14: workos.agent.v1.AgentEvent.assistant_message:type_name -> workos.agent.v1.AssistantMessage
-	10, // 15: workos.agent.v1.AgentEvent.tool_call_started:type_name -> workos.agent.v1.ToolCallStarted
-	11, // 16: workos.agent.v1.AgentEvent.tool_call_completed:type_name -> workos.agent.v1.ToolCallCompleted
-	12, // 17: workos.agent.v1.AgentEvent.approval_required:type_name -> workos.agent.v1.ApprovalRequired
-	13, // 18: workos.agent.v1.AgentEvent.artifact_created:type_name -> workos.agent.v1.ArtifactCreated
-	14, // 19: workos.agent.v1.AgentEvent.usage_recorded:type_name -> workos.agent.v1.UsageRecorded
-	15, // 20: workos.agent.v1.AgentEvent.run_waiting:type_name -> workos.agent.v1.RunWaiting
-	16, // 21: workos.agent.v1.AgentEvent.run_completed:type_name -> workos.agent.v1.RunCompleted
-	17, // 22: workos.agent.v1.AgentEvent.run_failed:type_name -> workos.agent.v1.RunFailed
-	18, // 23: workos.agent.v1.AgentEvent.run_cancelled:type_name -> workos.agent.v1.RunCancelled
-	19, // 24: workos.agent.v1.AgentEvent.approval_decided:type_name -> workos.agent.v1.ApprovalDecided
-	20, // 25: workos.agent.v1.AgentEvent.approval_expired:type_name -> workos.agent.v1.ApprovalExpired
-	4,  // 26: workos.agent.v1.SubmitTaskRequest.input:type_name -> workos.agent.v1.AgentTaskInput
-	37, // 27: workos.agent.v1.ListTasksRequest.page:type_name -> workos.common.v1.PageRequest
-	6,  // 28: workos.agent.v1.ListTasksResponse.tasks:type_name -> workos.agent.v1.AgentTask
-	38, // 29: workos.agent.v1.ListTasksResponse.page:type_name -> workos.common.v1.PageResponse
-	6,  // 30: workos.agent.v1.SubmitTaskResponse.task:type_name -> workos.agent.v1.AgentTask
-	6,  // 31: workos.agent.v1.GetTaskResponse.task:type_name -> workos.agent.v1.AgentTask
-	6,  // 32: workos.agent.v1.CancelTaskResponse.task:type_name -> workos.agent.v1.AgentTask
-	21, // 33: workos.agent.v1.WatchTaskEventsResponse.event:type_name -> workos.agent.v1.AgentEvent
-	22, // 34: workos.agent.v1.AgentTaskService.SubmitTask:input_type -> workos.agent.v1.SubmitTaskRequest
-	23, // 35: workos.agent.v1.AgentTaskService.GetTask:input_type -> workos.agent.v1.GetTaskRequest
-	26, // 36: workos.agent.v1.AgentTaskService.ListTasks:input_type -> workos.agent.v1.ListTasksRequest
-	24, // 37: workos.agent.v1.AgentTaskService.CancelTask:input_type -> workos.agent.v1.CancelTaskRequest
-	25, // 38: workos.agent.v1.AgentTaskService.WatchTaskEvents:input_type -> workos.agent.v1.WatchTaskEventsRequest
-	32, // 39: workos.agent.v1.AgentRepairTaskService.CreateRepairTask:input_type -> workos.agent.v1.CreateRepairTaskRequest
-	28, // 40: workos.agent.v1.AgentTaskService.SubmitTask:output_type -> workos.agent.v1.SubmitTaskResponse
-	29, // 41: workos.agent.v1.AgentTaskService.GetTask:output_type -> workos.agent.v1.GetTaskResponse
-	27, // 42: workos.agent.v1.AgentTaskService.ListTasks:output_type -> workos.agent.v1.ListTasksResponse
-	30, // 43: workos.agent.v1.AgentTaskService.CancelTask:output_type -> workos.agent.v1.CancelTaskResponse
-	31, // 44: workos.agent.v1.AgentTaskService.WatchTaskEvents:output_type -> workos.agent.v1.WatchTaskEventsResponse
-	33, // 45: workos.agent.v1.AgentRepairTaskService.CreateRepairTask:output_type -> workos.agent.v1.CreateRepairTaskResponse
-	40, // [40:46] is the sub-list for method output_type
-	34, // [34:40] is the sub-list for method input_type
-	34, // [34:34] is the sub-list for extension type_name
-	34, // [34:34] is the sub-list for extension extendee
-	0,  // [0:34] is the sub-list for field type_name
+	34, // 4: workos.agent.v1.AgentTaskInput.session_directive:type_name -> workos.agent.v1.SessionDirective
+	4,  // 5: workos.agent.v1.AgentTask.input:type_name -> workos.agent.v1.AgentTaskInput
+	0,  // 6: workos.agent.v1.AgentTask.state:type_name -> workos.agent.v1.AgentTaskState
+	35, // 7: workos.agent.v1.AgentTask.created_at:type_name -> google.protobuf.Timestamp
+	35, // 8: workos.agent.v1.AgentTask.updated_at:type_name -> google.protobuf.Timestamp
+	36, // 9: workos.agent.v1.ToolCallStarted.input:type_name -> google.protobuf.Struct
+	36, // 10: workos.agent.v1.ToolCallCompleted.output:type_name -> google.protobuf.Struct
+	37, // 11: workos.agent.v1.ApprovalDecided.decision:type_name -> workos.agent.v1.AppAgentApprovalDecision
+	35, // 12: workos.agent.v1.AgentEvent.occurred_at:type_name -> google.protobuf.Timestamp
+	7,  // 13: workos.agent.v1.AgentEvent.run_started:type_name -> workos.agent.v1.RunStarted
+	8,  // 14: workos.agent.v1.AgentEvent.assistant_delta:type_name -> workos.agent.v1.AssistantDelta
+	9,  // 15: workos.agent.v1.AgentEvent.assistant_message:type_name -> workos.agent.v1.AssistantMessage
+	10, // 16: workos.agent.v1.AgentEvent.tool_call_started:type_name -> workos.agent.v1.ToolCallStarted
+	11, // 17: workos.agent.v1.AgentEvent.tool_call_completed:type_name -> workos.agent.v1.ToolCallCompleted
+	12, // 18: workos.agent.v1.AgentEvent.approval_required:type_name -> workos.agent.v1.ApprovalRequired
+	13, // 19: workos.agent.v1.AgentEvent.artifact_created:type_name -> workos.agent.v1.ArtifactCreated
+	14, // 20: workos.agent.v1.AgentEvent.usage_recorded:type_name -> workos.agent.v1.UsageRecorded
+	15, // 21: workos.agent.v1.AgentEvent.run_waiting:type_name -> workos.agent.v1.RunWaiting
+	16, // 22: workos.agent.v1.AgentEvent.run_completed:type_name -> workos.agent.v1.RunCompleted
+	17, // 23: workos.agent.v1.AgentEvent.run_failed:type_name -> workos.agent.v1.RunFailed
+	18, // 24: workos.agent.v1.AgentEvent.run_cancelled:type_name -> workos.agent.v1.RunCancelled
+	19, // 25: workos.agent.v1.AgentEvent.approval_decided:type_name -> workos.agent.v1.ApprovalDecided
+	20, // 26: workos.agent.v1.AgentEvent.approval_expired:type_name -> workos.agent.v1.ApprovalExpired
+	38, // 27: workos.agent.v1.AgentEvent.goal_updated:type_name -> workos.agent.v1.GoalUpdated
+	39, // 28: workos.agent.v1.AgentEvent.delegation_updated:type_name -> workos.agent.v1.DelegationUpdated
+	4,  // 29: workos.agent.v1.SubmitTaskRequest.input:type_name -> workos.agent.v1.AgentTaskInput
+	40, // 30: workos.agent.v1.ListTasksRequest.page:type_name -> workos.common.v1.PageRequest
+	6,  // 31: workos.agent.v1.ListTasksResponse.tasks:type_name -> workos.agent.v1.AgentTask
+	41, // 32: workos.agent.v1.ListTasksResponse.page:type_name -> workos.common.v1.PageResponse
+	6,  // 33: workos.agent.v1.SubmitTaskResponse.task:type_name -> workos.agent.v1.AgentTask
+	6,  // 34: workos.agent.v1.GetTaskResponse.task:type_name -> workos.agent.v1.AgentTask
+	6,  // 35: workos.agent.v1.CancelTaskResponse.task:type_name -> workos.agent.v1.AgentTask
+	21, // 36: workos.agent.v1.WatchTaskEventsResponse.event:type_name -> workos.agent.v1.AgentEvent
+	22, // 37: workos.agent.v1.AgentTaskService.SubmitTask:input_type -> workos.agent.v1.SubmitTaskRequest
+	23, // 38: workos.agent.v1.AgentTaskService.GetTask:input_type -> workos.agent.v1.GetTaskRequest
+	26, // 39: workos.agent.v1.AgentTaskService.ListTasks:input_type -> workos.agent.v1.ListTasksRequest
+	24, // 40: workos.agent.v1.AgentTaskService.CancelTask:input_type -> workos.agent.v1.CancelTaskRequest
+	25, // 41: workos.agent.v1.AgentTaskService.WatchTaskEvents:input_type -> workos.agent.v1.WatchTaskEventsRequest
+	32, // 42: workos.agent.v1.AgentRepairTaskService.CreateRepairTask:input_type -> workos.agent.v1.CreateRepairTaskRequest
+	28, // 43: workos.agent.v1.AgentTaskService.SubmitTask:output_type -> workos.agent.v1.SubmitTaskResponse
+	29, // 44: workos.agent.v1.AgentTaskService.GetTask:output_type -> workos.agent.v1.GetTaskResponse
+	27, // 45: workos.agent.v1.AgentTaskService.ListTasks:output_type -> workos.agent.v1.ListTasksResponse
+	30, // 46: workos.agent.v1.AgentTaskService.CancelTask:output_type -> workos.agent.v1.CancelTaskResponse
+	31, // 47: workos.agent.v1.AgentTaskService.WatchTaskEvents:output_type -> workos.agent.v1.WatchTaskEventsResponse
+	33, // 48: workos.agent.v1.AgentRepairTaskService.CreateRepairTask:output_type -> workos.agent.v1.CreateRepairTaskResponse
+	43, // [43:49] is the sub-list for method output_type
+	37, // [37:43] is the sub-list for method input_type
+	37, // [37:37] is the sub-list for extension type_name
+	37, // [37:37] is the sub-list for extension extendee
+	0,  // [0:37] is the sub-list for field type_name
 }
 
 func init() { file_workos_agent_v1_agent_proto_init() }
@@ -2581,6 +2643,7 @@ func file_workos_agent_v1_agent_proto_init() {
 		return
 	}
 	file_workos_agent_v1_app_policy_proto_init()
+	file_workos_agent_v1_automation_proto_init()
 	file_workos_agent_v1_agent_proto_msgTypes[0].OneofWrappers = []any{
 		(*TargetScope_Global)(nil),
 		(*TargetScope_ProjectId)(nil),
@@ -2600,6 +2663,8 @@ func file_workos_agent_v1_agent_proto_init() {
 		(*AgentEvent_RunCancelled)(nil),
 		(*AgentEvent_ApprovalDecided)(nil),
 		(*AgentEvent_ApprovalExpired)(nil),
+		(*AgentEvent_GoalUpdated)(nil),
+		(*AgentEvent_DelegationUpdated)(nil),
 	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
