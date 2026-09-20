@@ -4,7 +4,7 @@
 - 09-16 历史基线：本地 main `3820447`；接管 `feat/v2-p3-real-artifact-delivery@df47ecf` 与同任务未提交实现。
 - 用户已授权：审查、修复、验证并合并本地 main；不推送。无关 `.zcode/plans/` 文件保留。
 - 决策：[ADR-0033](../decisions/0033-app-bundle-v1-artifact-delivery.md)。
-- 当前结论：真实发布与回滚主链已具备端到端证据；完整 P3 验收矩阵仍有缺项，整体保持 **scaffolded**，不能宣称全部 V2 完成。
+- 当前结论：P3 F01–F27 完整矩阵已通过；见 [09-20 最终验收](evidence/20260920-v2-p3-final-matrix/results.md)。V2 的原生自动化、网络与移动交付继续独立推进。
 - [09-16 审查记录](evidence/20260916-v2-p3-delivery/review-validation.md) 保留历史；[09-17 修复接续](evidence/20260917-v2-p3-closeout/repair-validation.md) 为当前合并证据入口。
 
 ## 合并前审查与修复
@@ -29,50 +29,50 @@
 
 ## 工作包
 
-| 包                 | 状态       | 依赖     | 实现与证据                                                               |
-| ------------------ | ---------- | -------- | ------------------------------------------------------------------------ |
-| C00 宿主探针       | done       | 无       | 保留实测矩阵；Docker 不声称 rootless/memory.high                         |
-| C01 契约冻结       | done       | C00      | 增量 Proto/Schema，迁移 066–072；生成与仓库检查见验证记录                |
-| C02 包仓库与导入   | done       | C01      | 真正流式 CLI 导入、PG 持久化、重启重算；损坏与重放拒绝测试               |
-| C03 构建输出冻结   | done       | C01、C02 | 真实 Docker 构建/测试、隔离输出与来源绑定；异常矩阵部分依赖单测          |
-| C04 Core 版本绑定  | done       | C01–C03  | Core 独立反查 Runtime 权威事实；修复候选真实 staged/published            |
-| C05 正式 Workload  | done       | C00–C04  | Docker inspect/只读包/网关 HTTP A、B、A；重启恢复                        |
-| C06 发布与回滚裁决 | done       | C04、C05 | 发布、人工回滚、启动失败自动恢复的真实端到端证据；精确代次拒绝单测       |
-| C07 用户可见状态   | done       | C04–C06  | Release 轮询测试，真实组件三尺寸 before/after/current                    |
-| C08 完整回归矩阵   | scaffolded | C02–C07  | 新旧门禁全过；完整并发、精确中断、跨来源授权等仍有子场景缺口，见 F01–F27 |
-| C09 P3 门禁        | done       | C00–C07  | 六进程真实主链 + Chromium + 重启；按 namespace 清理                      |
-| C10 本次审查交付   | done       | C09      | 修复、测试、文档同步；完整 P3 的遗留验收单独列出                         |
+| 包                 | 状态 | 依赖     | 实现与证据                                                         |
+| ------------------ | ---- | -------- | ------------------------------------------------------------------ |
+| C00 宿主探针       | done | 无       | 保留实测矩阵；Docker 不声称 rootless/memory.high                   |
+| C01 契约冻结       | done | C00      | 增量 Proto/Schema，迁移 066–072；生成与仓库检查见验证记录          |
+| C02 包仓库与导入   | done | C01      | 真正流式 CLI 导入、PG 持久化、重启重算；损坏与重放拒绝测试         |
+| C03 构建输出冻结   | done | C01、C02 | 真实 Docker 构建/测试、隔离输出与来源绑定；异常矩阵部分依赖单测    |
+| C04 Core 版本绑定  | done | C01–C03  | Core 独立反查 Runtime 权威事实；修复候选真实 staged/published      |
+| C05 正式 Workload  | done | C00–C04  | Docker inspect/只读包/网关 HTTP A、B、A；重启恢复                  |
+| C06 发布与回滚裁决 | done | C04、C05 | 发布、人工回滚、启动失败自动恢复的真实端到端证据；精确代次拒绝单测 |
+| C07 用户可见状态   | done | C04–C06  | Release 轮询测试，真实组件三尺寸 before/after/current              |
+| C08 完整回归矩阵   | done | C02–C07  | F01–F27 全通过，最终六进程与浏览器证据见 09-20 记录。              |
+| C09 P3 门禁        | done | C00–C07  | 六进程真实主链 + Chromium + 重启；按 namespace 清理                |
+| C10 本次审查交付   | done | C09      | 修复、测试、文档同步；完整 P3 的遗留验收单独列出                   |
 
 ## 验收编号
 
 PASS 只覆盖证据列明的场景；PARTIAL 表示该编号要求的完整矩阵尚未实测，不能折算为 PASS。
 
-| 编号                    | 结果    | 实际证据与边界                                                                                                                              |
-| ----------------------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
-| P3-A01 runner/保护能力  | PASS    | C00 探针、真实 Docker adapter；rootless/memory.high unavailable                                                                             |
-| P3-A02 契约与生成       | PASS    | 增量 Proto、Schema、066–072；buf 检查、两次生成一致                                                                                         |
-| P3-A03 导入/持久化      | PASS    | 真实 CLI 分块导入→PG→安装；三进程重启后相同摘要 ready；损坏/缺失拒绝单测                                                                    |
-| P3-A04 正式 A           | PASS    | 隔离六进程 Gate 的真实 Docker A，Gateway Surface 返回 P3-VALUE-0                                                                            |
-| P3-A05 作业/产物绑定    | PASS    | Generic CLI 候选→真实 Docker Build/Test→Core staged，独立 HTTP B oracle                                                                     |
-| P3-A06 失败零发布       | PARTIAL | 真实 Docker build/test、缺输出和六种输出限量拒绝；提交前取消通过；执行/提交全组合仍未齐，见 F03–F06。                                       |
-| P3-A07 Core B 绑定      | PASS    | ready/provenance 校验、staged runtime.artifact，公开 B 摘要不同于 A                                                                         |
-| P3-A08 并发/重放        | PARTIAL | 真实 PG/Docker 双执行者接管、过期 token 拒绝、提交后丢回复已测；逐字段并发漂移和跨来源完整矩阵仍缺。                                        |
-| P3-A09 正式 B           | PASS    | 真实 Docker adapter inspect 与只读 mount；六进程启动 B                                                                                      |
-| P3-A10 Gateway/浏览器 B | PASS    | Chromium 经真实 Gateway Surface 读 A→B→A；独立于候选测试的 HTML marker                                                                      |
-| P3-A11 canary 事实      | PASS    | 实际 HTTP 健康、Core pin、Runtime identity；保存代次并每轮验证；代次漂移拒绝单测                                                            |
-| P3-A12 自动恢复 A       | PASS    | B 启动退出42→rollback_pending→rolled_back，随后公开 Surface 实测 A                                                                          |
-| P3-A13 人工 rollback    | PASS    | owner 公开 RPC + revision CAS；实际 A→B→A，Chromium 同链验证                                                                                |
-| P3-A14 崩溃恢复         | PARTIAL | 真实字节/metadata、preparing/verdict、容器回执中断已测；after-verdict 及全部 Reliability 台账前进程中断仍缺。                               |
-| P3-A15 授权/用户改版    | PARTIAL | 注册前与 canary 中 owner 改版/回滚、卸载、归档通过；完整 P3 canary 授权撤销组合仍缺。                                                       |
-| P3-A16 损坏/安全边界    | PARTIAL | 真实坏包/缺镜像/canary 包漂移、恶意 admin tar 与 engine 输出限量通过；跨 owner/app、配额与运行身份全矩阵仍缺。                              |
-| P3-A17 新旧回归         | PASS    | 本轮 legacy、V2 Workspace/Task lease、grants、Web Bundle、owner rollback 集成和 E2E 全过，见 09-17 修复实测。                               |
-| P3-A18 视觉证据         | PASS    | [notes](../ui/desktop-web/changes/20260916-v2-p3-real-artifact-delivery/notes.md)，真实组件固定 fixture，三状态×三尺寸 before/after/current |
-| P3-A19 门禁隔离         | PASS    | 自有 DB/六进程/端口/namespace，成功及失败路径清理；缺依赖不返回成功                                                                         |
-| P3-A20 仓库一致         | PASS    | make generate 无新增差异、make check、race、diff --check，见验证记录                                                                        |
+| 编号                    | 结果 | 实际证据与边界                                                                                                                              |
+| ----------------------- | ---- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| P3-A01 runner/保护能力  | PASS | C00 探针、真实 Docker adapter；rootless/memory.high unavailable                                                                             |
+| P3-A02 契约与生成       | PASS | 增量 Proto、Schema、066–072；buf 检查、两次生成一致                                                                                         |
+| P3-A03 导入/持久化      | PASS | 真实 CLI 分块导入→PG→安装；三进程重启后相同摘要 ready；损坏/缺失拒绝单测                                                                    |
+| P3-A04 正式 A           | PASS | 隔离六进程 Gate 的真实 Docker A，Gateway Surface 返回 P3-VALUE-0                                                                            |
+| P3-A05 作业/产物绑定    | PASS | Generic CLI 候选→真实 Docker Build/Test→Core staged，独立 HTTP B oracle                                                                     |
+| P3-A06 失败零发布       | PASS | F03–F06 失败与取消零发布完整矩阵通过。                                                                                                      |
+| P3-A07 Core B 绑定      | PASS | ready/provenance 校验、staged runtime.artifact，公开 B 摘要不同于 A                                                                         |
+| P3-A08 并发/重放        | PASS | F07–F10 并发、漂移、重启、丢回复和跨 owner 来源完整矩阵通过。                                                                               |
+| P3-A09 正式 B           | PASS | 真实 Docker adapter inspect 与只读 mount；六进程启动 B                                                                                      |
+| P3-A10 Gateway/浏览器 B | PASS | Chromium 经真实 Gateway Surface 读 A→B→A；独立于候选测试的 HTML marker                                                                      |
+| P3-A11 canary 事实      | PASS | 实际 HTTP 健康、Core pin、Runtime identity；保存代次并每轮验证；代次漂移拒绝单测                                                            |
+| P3-A12 自动恢复 A       | PASS | B 启动退出42→rollback_pending→rolled_back，随后公开 Surface 实测 A                                                                          |
+| P3-A13 人工 rollback    | PASS | owner 公开 RPC + revision CAS；实际 A→B→A，Chromium 同链验证                                                                                |
+| P3-A14 崩溃恢复         | PASS | F11–F17 真实进程中断窗口全部通过。                                                                                                          |
+| P3-A15 授权/用户改版    | PASS | F18–F20 用户改版、卸载/归档、grant epoch 与退役注册拒绝通过。                                                                               |
+| P3-A16 损坏/安全边界    | PASS | F21–F25 运行身份、配额、来源和生命周期安全矩阵通过。                                                                                        |
+| P3-A17 新旧回归         | PASS | 本轮 legacy、V2 Workspace/Task lease、grants、Web Bundle、owner rollback 集成和 E2E 全过，见 09-17 修复实测。                               |
+| P3-A18 视觉证据         | PASS | [notes](../ui/desktop-web/changes/20260916-v2-p3-real-artifact-delivery/notes.md)，真实组件固定 fixture，三状态×三尺寸 before/after/current |
+| P3-A19 门禁隔离         | PASS | 自有 DB/六进程/端口/namespace，成功及失败路径清理；缺依赖不返回成功                                                                         |
+| P3-A20 仓库一致         | PASS | make generate 无新增差异、make check、race、diff --check，见验证记录                                                                        |
 
 ## 未决风险与下一步
 
-- P3-A06/A08/A14/A15/A16 的当前缺项逐项维护在下方 F01–F27 表；部分子场景通过不能替代整行验收。
+- P3-A06/A08/A14/A15/A16 的缺项已于 09-20 补齐；历史接续记录保留原时点结论，当前结果以下方 F01–F27 表为准。
 - P3-A17 的本轮兼容回归结果见[修复实测记录](evidence/20260917-v2-p3-closeout/repair-validation.md)。
 - Release 投影仍未完整填充 AppID、旧包摘要和细粒度 failure category，保持空值，不虚构事实。
 - 不包含 rootless、Docker memory.high、P2-A16 第二台物理 LAN 或 P4，边界不变。
@@ -139,16 +139,16 @@ PASS 只覆盖证据列明的场景；PARTIAL 表示该编号要求的完整矩�
 
 ### 工作包
 
-| 包           | 状态    | 依赖    | 范围                                                                                           |
-| ------------ | ------- | ------- | ---------------------------------------------------------------------------------------------- |
-| D00 基线     | done    | 无      | HEAD/工作树记录；主门禁入口 `make test-v2-p3-delivery`                                         |
-| D01 故障注入 | done    | D00     | `-tags faultinject` 测试构建中的文件屏障和提交后丢回复；生产构建不可启用                       |
-| D02 F01/F02  | done    | D01     | `TestP3Closeout/F01_*` Docker kill→Incident→发布；`e2e/p3-closeout.spec.ts` 桌面 Versions 回滚 |
-| D03 F03–F10  | PARTIAL | D01     | `TestP3Closeout` 子测试：Docker build/test 失败、缺输出、取消、重放/漂移、lease、丢回复        |
-| D04 F11–F17  | PARTIAL | D03     | 已有 preparing/bytes 屏障；进程重启窗口未全部用真实 compose restart 注入                       |
-| D05 F18–F25  | PARTIAL | D02–D04 | F24 Gateway 隐藏私有 BuildTest 已测；授权/篡改/canary 用户改版矩阵未全部六进程                 |
-| D06 F26      | PARTIAL | D02–D05 | bundle、legacy、grants/Web Bundle/Workspace 全过；完整子矩阵及信号清理专项仍未齐               |
-| D07 F27      | done    | D00–D06 | `make generate`/整条 `make check`/受影响 race/buf breaking 通过                                |
+| 包           | 状态 | 依赖    | 范围                                                                                           |
+| ------------ | ---- | ------- | ---------------------------------------------------------------------------------------------- |
+| D00 基线     | done | 无      | HEAD/工作树记录；主门禁入口 `make test-v2-p3-delivery`                                         |
+| D01 故障注入 | done | D00     | `-tags faultinject` 测试构建中的文件屏障和提交后丢回复；生产构建不可启用                       |
+| D02 F01/F02  | done | D01     | `TestP3Closeout/F01_*` Docker kill→Incident→发布；`e2e/p3-closeout.spec.ts` 桌面 Versions 回滚 |
+| D03 F03–F10  | done | D01     | F03–F10 完整失败/并发/跨来源矩阵通过。                                                         |
+| D04 F11–F17  | done | D01     | F11–F17 全部真实中断窗口通过。                                                                 |
+| D05 F18–F25  | done | D01     | F18–F25 真实六进程授权/篡改/生命周期矩阵通过。                                                 |
+| D06 F26      | done | D01     | bundle/legacy/V2 completion 与双信号清理全通过。                                               |
+| D07 F27      | done | D00–D06 | `make generate`/整条 `make check`/受影响 race/buf breaking 通过                                |
 
 ### 前序收尾记录（接续修正见修复实测记录）
 
@@ -180,35 +180,35 @@ PASS 只覆盖证据列明的场景；PARTIAL 表示该编号要求的完整矩�
 
 ### F01–F27 映射
 
-| 编号 | 结果    | 已有证据与未覆盖项                                                                                                                                      |
-| ---- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| F01  | PASS    | 真实 Docker kill→监督 Incident→修复→B；同 occurrence 去重。最终轮次身份链见修复实测记录。                                                               |
-| F02  | PASS    | `F02_manual_rollback_after_supervised_kill` 已通过；真实 Desktop Versions 回滚 E2E 通过，查询 unavailable 有现有组件回归；无新可见 UI。                 |
-| F03  | PASS    | `F03_docker_build_failure_zero_publish`：真实修复链 build 失败，A HTTP 可用，无 ready/部署/pin 变化。                                                   |
-| F04  | PARTIAL | 真实 Docker test 非零与 Runtime API 终态通过；全量 Core/部署零副作用断言组合仍需补齐。                                                                  |
-| F05  | PASS    | Runtime 缺输出代表例；`TestRealEngineFailureMatrix` 六种输出拒绝，限量用例带有效入口。                                                                  |
-| F06  | PASS    | 提交前取消、真实 Docker timeout/log-budget，以及 `artifact-bytes`、`artifact-preparing`、`before-verdict` 三个提交窗口取消均通过；见 2026-09-19 证据。  |
-| F07  | PARTIAL | 四路同输入仅建一个 job，14 种输入/配方事实 drift 都 Aborted；跨 Runtime restart 后漂移组合仍未覆盖。                                                    |
-| F08  | PASS    | 两个真实 PG/Docker 执行者，过期 lease 接管；旧 renew/verdict 拒绝，成功包绑定唯一。                                                                     |
-| F09  | PARTIAL | Submit、注册/安装 CAS 与 Runtime admin import 提交后丢回复重放通过；其他结果/query 响应丢失组合仍缺。                                                   |
-| F10  | PARTIAL | 相同 bytes 不同 import key/app 保留独立 metadata，损坏去重命中拒绝；跨 owner 同摘要来源矩阵未齐。                                                       |
-| F11  | PASS    | 真实字节已落盘、metadata 未提交时 kill Runtime；无 ready，接管后同摘要单一包收敛。                                                                      |
-| F12  | PASS    | 真实 preparing/pre-verdict kill Runtime；提交前 not-ready，新 lease 成功后 ready。                                                                      |
-| F13  | PASS    | after-verdict 屏障后 kill/restart Runtime；允许并发 reconcile 已先晋升，重启后同 artifact/job/digest 身份唯一且 ready；定向真实栈通过。                 |
-| F14  | PARTIAL | 注册与安装 CAS 丢回复幂等；发布后注册重放保持原始 version/revision；候选注册前进程中断未补齐。                                                          |
-| F15  | PASS    | 真实容器已启动但 Workload 回执未落盘时 kill；重启 inspect 接管，无重复容器。                                                                            |
-| F16  | PARTIAL | Reliability canary 重启保持精确身份；真实 B 崩溃恢复 A；Runtime 中途重启下全量身份 drift 组合仍缺。                                                     |
-| F17  | PARTIAL | publish/rollback 提交后 RPC 丢回复通过；尚未对所有台账提交前窗口 kill Reliability。                                                                     |
-| F18  | PASS    | 新增注册前 owner 升级；canary 中公开升级 C/回滚 A，旧流程不得覆盖 pin。                                                                                 |
-| F19  | PASS    | 公开卸载/归档 + P3 `project.read` grant epoch 1→2→3；旧 token 撤权后及 regrant 后持续 PermissionDenied，新 Surface 仅获当前能力；真实 PG/Runtime 通过。 |
-| F20  | PASS    | 旧 canary 回滚，针对退役 B 的修复拒绝，新 A 任务接续；另一安装独立发布；重复 Offer 另见 legacy。                                                        |
-| F21  | PARTIAL | 缺基础镜像、启动前坏包、canary 包漂移；全部运行身份/挂载漂移组合仍缺。                                                                                  |
-| F22  | PASS    | 真实启动失败/健康故障/新 Incident 恢复 A；旧 A 包缺失时只能有界失败。                                                                                   |
-| F23  | PARTIAL | 真实 admin 恶意 tar 与 owner 2 GiB sparse orphan quota refusal、损坏去重拒绝通过；ready/preparing/staging 生命周期分别计费矩阵仍缺。                    |
-| F24  | PARTIAL | Gateway 隐藏 private BuildTest；Core 拒绝 foreign-owner 与 wrong-app ready artifact；cross-project 与 build/import 冒用全链组合仍缺。                   |
-| F25  | PARTIAL | 回滚清除 B 后仅存一个 A 容器，迟到旧 Surface close 不扰动 A；陈旧 stop/generation/异类容器清理组合仍缺。                                                |
-| F26  | PARTIAL | bundle、legacy、grants/Web Bundle/owner rollback、V2 Workspace/lease 兼容 gate 与 INT/TERM namespace 清理通过；其他 F 行剩余组合及跳过视觉验收仍缺。    |
-| F27  | PASS    | 整条 make check、重复生成、buf breaking(21b16f6)、受影响 race 已过；最终格式/工作树复核见交付记录。                                                     |
+| 编号 | 结果 | 已有证据与未覆盖项                                                                                                                                                                                |
+| ---- | ---- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| F01  | PASS | 真实 Docker kill→监督 Incident→修复→B；同 occurrence 去重。最终轮次身份链见修复实测记录。                                                                                                         |
+| F02  | PASS | `F02_manual_rollback_after_supervised_kill` 已通过；真实 Desktop Versions 回滚 E2E 通过，查询 unavailable 有现有组件回归；无新可见 UI。                                                           |
+| F03  | PASS | `F03_docker_build_failure_zero_publish`：真实修复链 build 失败，A HTTP 可用，无 ready/部署/pin 变化。                                                                                             |
+| F04  | PASS | 真实修复链 Docker test 非零，Core 无新版本、无部署台账、无 pin 变化，A HTTP 继续可用。 最终证据见 09-20 记录。                                                                                    |
+| F05  | PASS | Runtime 缺输出代表例；`TestRealEngineFailureMatrix` 六种输出拒绝，限量用例带有效入口。                                                                                                            |
+| F06  | PASS | 提交前取消、真实 Docker timeout/log-budget，以及 `artifact-bytes`、`artifact-preparing`、`before-verdict` 三个提交窗口取消均通过；见 2026-09-19 证据。                                            |
+| F07  | PASS | 四路并发单胜，输入/配方逐字段漂移均拒绝；Runtime 重启后的全部漂移组合通过。 最终证据见 09-20 记录。                                                                                               |
+| F08  | PASS | 两个真实 PG/Docker 执行者，过期 lease 接管；旧 renew/verdict 拒绝，成功包绑定唯一。                                                                                                               |
+| F09  | PASS | Submit、注册/安装 CAS、admin import、GetBuildTest/GetBuildArtifact 丢回复后同身份重放，Runtime 重启后事实不变。 最终证据见 09-20 记录。                                                           |
+| F10  | PASS | 不同 owner/key/app 的相同字节保留独立来源；一个 owner 的坏包不能污染另一个 owner 的去重。 最终证据见 09-20 记录。                                                                                 |
+| F11  | PASS | 真实字节已落盘、metadata 未提交时 kill Runtime；无 ready，接管后同摘要单一包收敛。                                                                                                                |
+| F12  | PASS | 真实 preparing/pre-verdict kill Runtime；提交前 not-ready，新 lease 成功后 ready。                                                                                                                |
+| F13  | PASS | after-verdict 屏障后 kill/restart Runtime；允许并发 reconcile 已先晋升，重启后同 artifact/job/digest 身份唯一且 ready；定向真实栈通过。                                                           |
+| F14  | PASS | 注册/安装丢回复与原始 revision 重放；真实 Reliability 在注册前 kill/start 后恰好收敛。 最终证据见 09-20 记录。                                                                                    |
+| F15  | PASS | 真实容器已启动但 Workload 回执未落盘时 kill；重启 inspect 接管，无重复容器。                                                                                                                      |
+| F16  | PASS | canary 进程重启和 Runtime 重启下 12 类真实身份/配置漂移均阻止误发布并恢复 A。 最终证据见 09-20 记录。                                                                                             |
+| F17  | PASS | publish/rollback 丢回复，以及 starting/canary/promoted/rolled_back 台账提交前真实 kill/start 全通过。 最终证据见 09-20 记录。                                                                     |
+| F18  | PASS | 新增注册前 owner 升级；canary 中公开升级 C/回滚 A，旧流程不得覆盖 pin。                                                                                                                           |
+| F19  | PASS | 公开卸载/归档 + P3 `project.read` grant epoch 1→2→3；旧 token 撤权后及 regrant 后持续 PermissionDenied，新 Surface 仅获当前能力；真实 PG/Runtime 通过。                                           |
+| F20  | PASS | 旧 canary 回滚，针对退役 B 的修复拒绝，新 A 任务接续；另一安装独立发布；重复 Offer 另见 legacy。                                                                                                  |
+| F21  | PASS | 坏包/缺镜像，加 workload ID、generation、memory、CPU、PIDs、restart policy、mounted bytes、Entrypoint+Cmd、working directory、user、writable mount、image 12 类漂移通过。 最终证据见 09-20 记录。 |
+| F22  | PASS | 真实启动失败/健康故障/新 Incident 恢复 A；旧 A 包缺失时只能有界失败。                                                                                                                             |
+| F23  | PASS | 恶意 tar、损坏去重、orphan 配额，以及 ready/preparing/staging 生命周期配额分别实测拒绝。 最终证据见 09-20 记录。                                                                                  |
+| F24  | PASS | 私有 RPC 隔离；foreign owner/app/project/installation/incident/source bundle 与 build/import 来源冒用拒绝。 最终证据见 09-20 记录。                                                               |
+| F25  | PASS | 旧 Surface close、陈旧 stop/generation 不扰动新实例；Runtime 对账保留无关容器，测试资源按 namespace 清理。 最终证据见 09-20 记录。                                                                |
+| F26  | PASS | 完整 bundle、legacy、V2 completion（含三个 viewport，无 skipped）通过；SIGINT 130/SIGTERM 143 后自有容器/网络/卷归零，无关 sentinel 保留。 最终证据见 09-20 记录。                                |
+| F27  | PASS | 整条 make check、重复生成、buf breaking(21b16f6)、受影响 race 已过；最终格式/工作树复核见交付记录。                                                                                               |
 
 修复接续记录：[代码修复与本轮实测](evidence/20260917-v2-p3-closeout/repair-validation.md)。
 本轮不涉及可见 UI；沿用 [P3-A18 三尺寸视觉证据](../ui/desktop-web/changes/20260916-v2-p3-real-artifact-delivery/notes.md)，另跑真实桌面业务 E2E。
@@ -217,3 +217,5 @@ PASS 只覆盖证据列明的场景；PARTIAL 表示该编号要求的完整矩�
 
 复现：`make test-v2-p3-delivery` 或 `sh tools/v2-p3-delivery/gate.sh`；故障专项 `make test-v2-p3-faults`。
 保留边界：P2-A16 第二台物理 LAN、P4、rootless、Docker memory.high。
+
+2026-09-20 最终结论：F01–F27 全部通过，完整运行证据、环境边界和清理结果见 [最终验收记录](evidence/20260920-v2-p3-final-matrix/results.md)。
