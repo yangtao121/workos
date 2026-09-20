@@ -319,21 +319,39 @@ func TestP3CloseoutWindows(t *testing.T) {
 
 	t.Run("F13_verdict_promotion_gates_on_bytes", func(t *testing.T) {
 		p3ResetFaults(t)
+		t.Cleanup(func() { p3EnsureServiceRunning(t, "runtime") })
 		f := p3SeedNamed(t, clients, "P3 closeout F13 promotion", false)
 		taskID := ids.UUIDv7{}.New()
+		p3ArmWait(t, "after-verdict")
 		if _, err := p3SubmitVariant(t, clients, f, taskID, ids.UUIDv7{}.New(), "success"); err != nil {
 			t.Fatal(err)
 		}
+		p3WaitArrived(t, "after-verdict")
 		verdict := p3WaitJobTerminal(t, clients, taskID, func(state string) bool { return state == "succeeded" })
-		rows := buildtestQuery(t, `SELECT id::text, digest, job_id::text AS job_id FROM workos_runtime.artifacts WHERE task_id=$1`, taskID)
+		rows := buildtestQuery(t, `SELECT id::text, digest, state, job_id::text AS job_id FROM workos_runtime.artifacts WHERE task_id=$1`, taskID)
 		if len(rows) != 1 {
 			t.Fatalf("expected one artifact: %+v", rows)
+		}
+		state := fmt.Sprint(rows[0]["state"])
+		if state != "preparing" && state != "ready" {
+			t.Fatalf("durable successful artifact has an invalid state before process restart: %+v", rows[0])
 		}
 		if rows[0]["job_id"] != verdict.JobID {
 			t.Fatalf("artifact is not bound to the succeeded job: %+v vs %s", rows[0], verdict.JobID)
 		}
 		artifactID := fmt.Sprint(rows[0]["id"])
 		digest := fmt.Sprint(rows[0]["digest"])
+		// Crash after the success verdict is durable. A concurrent reconciler may
+		// already have promoted the row, so either durable state is valid here;
+		// startup reconciliation must preserve the exact identities and readiness.
+		p3ContainerAction(t, p3ServiceContainerID(t, "runtime"), "kill")
+		p3ResetFaults(t)
+		p3ContainerAction(t, p3ServiceContainerID(t, "runtime"), "start")
+		p3WaitHTTPReady(t, clients.runtimeURL+"/workos.taskexecution.v1.BuildTestService/GetBuildTest")
+		recoveredRows := buildtestQuery(t, `SELECT id::text, digest, state, job_id::text AS job_id FROM workos_runtime.artifacts WHERE task_id=$1`, taskID)
+		if len(recoveredRows) != 1 || recoveredRows[0]["id"] != artifactID || recoveredRows[0]["digest"] != digest || recoveredRows[0]["job_id"] != verdict.JobID || fmt.Sprint(recoveredRows[0]["state"]) != "ready" {
+			t.Fatalf("startup did not promote the durable verdict under the same identities: %+v", recoveredRows)
+		}
 		first, err := clients.builds.GetBuildArtifact(context.Background(), connect.NewRequest(&executionv1.GetBuildArtifactRequest{ArtifactId: artifactID}))
 		if err != nil {
 			t.Fatal(err)

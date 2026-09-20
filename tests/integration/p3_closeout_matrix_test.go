@@ -19,13 +19,52 @@ import (
 
 	"connectrpc.com/connect"
 	appv1 "github.com/yangtao121/workos/gen/go/workos/app/v1"
+	bridgev1 "github.com/yangtao121/workos/gen/go/workos/bridge/v1"
+	"github.com/yangtao121/workos/gen/go/workos/bridge/v1/bridgev1connect"
 	projectv1 "github.com/yangtao121/workos/gen/go/workos/project/v1"
 	surfacev1 "github.com/yangtao121/workos/gen/go/workos/surface/v1"
 	"github.com/yangtao121/workos/gen/go/workos/surface/v1/surfacev1connect"
 	"github.com/yangtao121/workos/internal/platform/appbundle"
+	"github.com/yangtao121/workos/internal/platform/identity"
 	"github.com/yangtao121/workos/internal/platform/ids"
 	reliabilitytransport "github.com/yangtao121/workos/internal/reliability/transport"
+	artifactdomain "github.com/yangtao121/workos/internal/runtime/artifactstore/domain"
 )
+
+func p3TestBundle(t *testing.T) (string, string) {
+	t.Helper()
+	source := t.TempDir()
+	if err := os.WriteFile(filepath.Join(source, "server"), []byte("#!/bin/sh\nexec /app/server\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	var bundle bytes.Buffer
+	stats, err := appbundle.EncodeDirectory(source, &bundle)
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(t.TempDir(), "fixture.bundle")
+	if err := os.WriteFile(path, bundle.Bytes(), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return path, stats.Digest
+}
+
+func p3ImportArtifact(t *testing.T, owner, appID, key, path, digest string) (string, error) {
+	t.Helper()
+	dir := os.Getenv("WORKOS_P3_GATE_DIR")
+	output, err := exec.Command(filepath.Join(dir, "bin/workosctl"), "runtime", "import-artifact",
+		"--socket", filepath.Join(dir, "run/artifact-admin.sock"), "--owner", owner,
+		"--app", appID, "--key", key, "--digest", digest, "--bundle", path).CombinedOutput()
+	if err != nil {
+		return string(output), err
+	}
+	for _, line := range strings.Split(string(output), "\n") {
+		if strings.HasPrefix(line, "artifact_id=") {
+			return strings.TrimPrefix(line, "artifact_id="), nil
+		}
+	}
+	return string(output), fmt.Errorf("import output omitted artifact identity")
+}
 
 // p3RegisterVariant imports and registers one more immutable version of the
 // fixture app so an owner-driven transition has a real third target.
@@ -369,6 +408,86 @@ func TestP3CloseoutMatrix(t *testing.T) {
 		}
 	})
 
+	t.Run("F19_grant_epoch_revokes_old_bridge_and_regrant_uses_fresh_surface", func(t *testing.T) {
+		p3ResetFaults(t)
+		f := p3SeedNamedWithPermissions(t, clients, "P3 closeout grants", false, []string{"project.read"})
+		surfaces := p3GatewaySurfaces(t, clients)
+		create := func(key string) *surfacev1.SurfaceSession {
+			t.Helper()
+			response, err := surfaces.CreateSurface(context.Background(), connect.NewRequest(&surfacev1.CreateSurfaceRequest{
+				IdempotencyKey: key, ProjectId: f.Project, AppInstanceId: f.Installation,
+				DeviceClass: surfacev1.DeviceClass_DEVICE_CLASS_DESKTOP,
+				Viewport:    &surfacev1.Viewport{Width: 1280, Height: 800, PixelRatio: 1},
+			}))
+			if err != nil {
+				t.Fatalf("create grant-bound surface: %v", err)
+			}
+			return response.Msg.GetSession()
+		}
+		bridge := bridgev1connect.NewAppBridgeServiceClient(clients.http, clients.runtimeURL)
+		authorize := func(token, deviceID string) error {
+			t.Helper()
+			request := connect.NewRequest(&bridgev1.AuthorizeShellActionRequest{Method: "project.current"})
+			request.Header().Set("X-WorkOS-Bridge-Token", token)
+			request.Header().Set(identity.UserHeader, p3Owner)
+			request.Header().Set(identity.DeviceHeader, deviceID)
+			_, err := bridge.AuthorizeShellAction(context.Background(), request)
+			return err
+		}
+		deviceFor := func(session *surfacev1.SurfaceSession) string {
+			t.Helper()
+			rows := buildtestQuery(t, `SELECT device_id FROM workos_runtime.surface_sessions WHERE id=$1`, session.GetId())
+			if len(rows) != 1 {
+				t.Fatalf("surface session device identity missing: %s => %+v", session.GetId(), rows)
+			}
+			return fmt.Sprint(rows[0]["device_id"])
+		}
+		oldKey := ids.UUIDv7{}.New()
+		oldSession := create(oldKey)
+		oldDevice := deviceFor(oldSession)
+		if err := authorize(oldSession.GetBridgeToken(), oldDevice); err != nil {
+			t.Fatalf("initial project.read grant was not usable: %v", err)
+		}
+
+		empty, err := clients.install.SetAppGrants(context.Background(), connect.NewRequest(&appv1.SetAppGrantsRequest{
+			IdempotencyKey: ids.UUIDv7{}.New(), ProjectId: f.Project, InstallationId: f.Installation,
+			ExpectedProjectRevision: p3ProjectRevision(t, clients, f.Project),
+		}))
+		if err != nil || empty.Msg.GetInstallation().GetGrantRevision() != 2 || len(empty.Msg.GetInstallation().GetGrantedPermissions()) != 0 {
+			t.Fatalf("grant revoke did not advance epoch to 2: response=%v err=%v", empty, err)
+		}
+		if err := authorize(oldSession.GetBridgeToken(), oldDevice); connect.CodeOf(err) != connect.CodePermissionDenied {
+			t.Fatalf("revoked old bridge must be PermissionDenied, got %v", err)
+		}
+		if _, err := surfaces.CreateSurface(context.Background(), connect.NewRequest(&surfacev1.CreateSurfaceRequest{
+			IdempotencyKey: oldKey, ProjectId: f.Project, AppInstanceId: f.Installation,
+			DeviceClass: surfacev1.DeviceClass_DEVICE_CLASS_DESKTOP,
+			Viewport:    &surfacev1.Viewport{Width: 1280, Height: 800, PixelRatio: 1},
+		})); connect.CodeOf(err) != connect.CodeFailedPrecondition {
+			t.Fatalf("old surface create key must not mint a post-revocation token, got %v", err)
+		}
+
+		regranted, err := clients.install.SetAppGrants(context.Background(), connect.NewRequest(&appv1.SetAppGrantsRequest{
+			IdempotencyKey: ids.UUIDv7{}.New(), ProjectId: f.Project, InstallationId: f.Installation,
+			ExpectedProjectRevision: p3ProjectRevision(t, clients, f.Project), GrantedPermissions: []string{"project.read"},
+		}))
+		if err != nil || regranted.Msg.GetInstallation().GetGrantRevision() != 3 {
+			t.Fatalf("regrant did not advance epoch to 3: response=%v err=%v", regranted, err)
+		}
+		if err := authorize(oldSession.GetBridgeToken(), oldDevice); connect.CodeOf(err) != connect.CodePermissionDenied {
+			t.Fatalf("old token must remain stale after regrant, got %v", err)
+		}
+		fresh := create(ids.UUIDv7{}.New())
+		freshDevice := deviceFor(fresh)
+		if got := fresh.GetBridgeCapabilities(); len(got) != 1 || got[0] != "project.current" {
+			t.Fatalf("fresh surface did not receive the exact regranted capability: %v", got)
+		}
+		if err := authorize(fresh.GetBridgeToken(), freshDevice); err != nil {
+			t.Fatalf("new surface could not use regranted capability: %v", err)
+		}
+		p3Surface(t, clients, f, "P3-VALUE-0")
+	})
+
 	t.Run("F20_second_incident_serializes_behind_active_deployment", func(t *testing.T) {
 		p3ResetFaults(t)
 		f := p3SeedNamed(t, clients, "P3 closeout F20 serialize", false)
@@ -583,6 +702,98 @@ func TestP3CloseoutMatrix(t *testing.T) {
 		}
 	})
 
+	t.Run("F23_owner_quota_counts_orphaned_disk_bytes", func(t *testing.T) {
+		p3ResetFaults(t)
+		path, digest := p3TestBundle(t)
+		owner := ids.UUIDv7{}.New()
+		ownerDir := filepath.Join(os.Getenv("WORKOS_P3_GATE_DIR"), "artifacts", owner)
+		if err := os.MkdirAll(ownerDir, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		orphan := filepath.Join(ownerDir, "orphaned-after-commit.bundle")
+		file, err := os.Create(orphan)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := file.Truncate(artifactdomain.OwnerQuotaBytes); err != nil {
+			_ = file.Close()
+			t.Fatal(err)
+		}
+		if err := file.Close(); err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = os.RemoveAll(ownerDir) })
+		key := ids.UUIDv7{}.New()
+		if output, err := p3ImportArtifact(t, owner, "p3-quota-fixture", key, path, digest); err == nil {
+			t.Fatalf("owner at the real 2 GiB disk quota imported another bundle: %s", output)
+		}
+		if rows := buildtestQuery(t, `SELECT id FROM workos_runtime.artifacts WHERE owner_user_id=$1 AND idempotency_key=$2`, owner, key); len(rows) != 0 {
+			t.Fatalf("quota-refused import left artifact metadata: %+v", rows)
+		}
+	})
+
+	t.Run("F24_registry_rejects_foreign_owner_and_wrong_app_artifacts", func(t *testing.T) {
+		p3ResetFaults(t)
+		f := p3SeedNamed(t, clients, "P3 closeout F24 artifact provenance", false)
+		rows := buildtestQuery(t, `SELECT canonical_manifest FROM workos_core.app_versions WHERE owner_user_id=$1 AND app_id=$2 AND version='1.0.0'`, p3Owner, f.App)
+		if len(rows) != 1 {
+			t.Fatalf("fixture canonical manifest missing: %+v", rows)
+		}
+		base, err := json.Marshal(rows[0]["canonical_manifest"])
+		if err != nil {
+			t.Fatalf("encode canonical manifest fixture: %v", err)
+		}
+		registerVariant := func(version, artifactID, digest string) error {
+			t.Helper()
+			var manifest map[string]any
+			if err := json.Unmarshal(base, &manifest); err != nil {
+				t.Fatal(err)
+			}
+			manifest["version"] = version
+			runtime, ok := manifest["runtime"].(map[string]any)
+			if !ok {
+				t.Fatalf("fixture runtime is malformed: %#v", manifest["runtime"])
+			}
+			artifact, ok := runtime["artifact"].(map[string]any)
+			if !ok {
+				t.Fatalf("fixture artifact is malformed: %#v", runtime["artifact"])
+			}
+			artifact["id"], artifact["digest"] = artifactID, digest
+			raw, err := json.Marshal(manifest)
+			if err != nil {
+				t.Fatal(err)
+			}
+			_, err = clients.registry.RegisterApp(context.Background(), connect.NewRequest(&appv1.RegisterAppRequest{
+				IdempotencyKey: ids.UUIDv7{}.New(), ManifestYaml: raw,
+			}))
+			return err
+		}
+
+		bundlePath, digest := p3TestBundle(t)
+		foreignOwner := ids.UUIDv7{}.New()
+		foreignID, err := p3ImportArtifact(t, foreignOwner, f.App, ids.UUIDv7{}.New(), bundlePath, digest)
+		if err != nil {
+			t.Fatalf("seed foreign-owner artifact: %v", err)
+		}
+		if err := registerVariant("1.0.1", foreignID, digest); err == nil {
+			t.Fatal("Core registered an artifact owned by a different user")
+		}
+		if rows := buildtestQuery(t, `SELECT id FROM workos_core.app_versions WHERE owner_user_id=$1 AND app_id=$2 AND version='1.0.1'`, p3Owner, f.App); len(rows) != 0 {
+			t.Fatalf("foreign artifact registration left an app version: %+v", rows)
+		}
+
+		wrongAppID, err := p3ImportArtifact(t, p3Owner, "p3-not-the-fixture-app", ids.UUIDv7{}.New(), bundlePath, digest)
+		if err != nil {
+			t.Fatalf("seed wrong-app artifact: %v", err)
+		}
+		if err := registerVariant("1.0.2", wrongAppID, digest); err == nil {
+			t.Fatal("Core registered a ready artifact whose app identity does not match the manifest")
+		}
+		if rows := buildtestQuery(t, `SELECT id FROM workos_core.app_versions WHERE owner_user_id=$1 AND app_id=$2 AND version='1.0.2'`, p3Owner, f.App); len(rows) != 0 {
+			t.Fatalf("wrong-app artifact registration left an app version: %+v", rows)
+		}
+	})
+
 	t.Run("F25_late_surface_receipt_cannot_touch_new_generation", func(t *testing.T) {
 		p3ResetFaults(t)
 		f := p3SeedNamed(t, clients, "P3 closeout F25 late receipt", false)
@@ -607,10 +818,16 @@ func TestP3CloseoutMatrix(t *testing.T) {
 			t.Fatal(err)
 		}
 		p3Surface(t, clients, f, "P3-VALUE-0")
+		if count := p3OwnedContainerCount(t, f.Installation); count != 1 {
+			t.Fatalf("rollback must clean the retired B container while retaining exactly A: got %d containers", count)
+		}
 		// The stale B session's late receipt must neither stop nor downgrade
 		// the running A workload.
 		_, _ = surfaces.CloseSurface(context.Background(), connect.NewRequest(&surfacev1.CloseSurfaceRequest{SurfaceSessionId: oldSessionID}))
 		p3Surface(t, clients, f, "P3-VALUE-0")
+		if count := p3OwnedContainerCount(t, f.Installation); count != 1 {
+			t.Fatalf("late stale-session close created or retained an extra generation: got %d containers", count)
+		}
 		rows := buildtestQuery(t, `SELECT generation, artifact_digest FROM workos_runtime.workloads WHERE app_instance_id=$1 AND state='running'`, f.Installation)
 		if len(rows) != 1 || fmt.Sprint(rows[0]["artifact_digest"]) != f.Digest {
 			t.Fatalf("late old-session receipt disturbed the new workload: %+v", rows)

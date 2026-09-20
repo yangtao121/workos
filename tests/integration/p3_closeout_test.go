@@ -26,6 +26,7 @@ import (
 	"github.com/yangtao121/workos/gen/go/workos/surface/v1/surfacev1connect"
 	executionv1 "github.com/yangtao121/workos/gen/go/workos/taskexecution/v1"
 	"github.com/yangtao121/workos/internal/platform/ids"
+	"google.golang.org/protobuf/proto"
 )
 
 func p3FaultDir(t *testing.T) string {
@@ -351,28 +352,130 @@ func TestP3Closeout(t *testing.T) {
 		p3NoPublishSideEffects(t, f.Installation, "1.0.0")
 	})
 
+	for _, stage := range []string{"artifact-bytes", "artifact-preparing", "before-verdict"} {
+		stage := stage
+		t.Run("F06_cancel_wins_at_"+stage, func(t *testing.T) {
+			p3ResetFaults(t)
+			f := p3SeedNamed(t, clients, "P3 closeout cancel "+stage, false)
+			taskID := ids.UUIDv7{}.New()
+			p3ArmWait(t, stage)
+			t.Cleanup(func() {
+				p3ReleaseFault(t, stage)
+				_ = os.Remove(filepath.Join(p3FaultDir(t), "wait-"+stage))
+			})
+			if _, err := p3SubmitVariant(t, clients, f, taskID, ids.UUIDv7{}.New(), "fast"); err != nil {
+				t.Fatal(err)
+			}
+			p3WaitArrived(t, stage)
+			if _, err := clients.builds.CancelBuildTest(context.Background(), connect.NewRequest(&executionv1.CancelBuildTestRequest{TaskId: taskID})); err != nil {
+				t.Fatalf("cancel at %s: %v", stage, err)
+			}
+			p3ReleaseFault(t, stage)
+			verdict := p3WaitJobTerminal(t, clients, taskID, func(state string) bool {
+				return state == "cancelled" || state == "failed" || state == "succeeded"
+			})
+			if verdict.State != "cancelled" {
+				t.Fatalf("cancel committed before the success verdict but lost at %s: %+v", stage, verdict)
+			}
+			p3NoPublishSideEffects(t, f.Installation, "1.0.0")
+			ready := buildtestQuery(t, `SELECT id FROM workos_runtime.artifacts WHERE task_id=$1 AND state='ready'`, taskID)
+			if len(ready) != 0 {
+				t.Fatalf("cancel at %s produced a ready artifact: %+v", stage, ready)
+			}
+		})
+	}
+
 	t.Run("F07_idempotent_submit_and_drift", func(t *testing.T) {
 		p3ResetFaults(t)
 		f := p3SeedNamed(t, clients, "P3 closeout replay", false)
 		taskID := ids.UUIDv7{}.New()
 		incident := ids.UUIDv7{}.New()
-		created, err := p3SubmitVariant(t, clients, f, taskID, incident, "buildfail")
+		base, err := p3BuildTestRequest(t, clients, f, taskID, incident, "buildfail")
 		if err != nil {
 			t.Fatal(err)
 		}
-		if !created.Msg.GetCreated() {
-			t.Fatal("first submit must create the job")
+		type submitResult struct {
+			response *connect.Response[executionv1.SubmitBuildTestResponse]
+			err      error
 		}
-		replay, err := p3SubmitVariant(t, clients, f, taskID, incident, "buildfail")
-		if err != nil {
-			t.Fatal(err)
+		start := make(chan struct{})
+		results := make(chan submitResult, 4)
+		for range 4 {
+			go func() {
+				<-start
+				copy := proto.Clone(base.Msg).(*executionv1.SubmitBuildTestRequest)
+				response, err := clients.builds.SubmitBuildTest(context.Background(), connect.NewRequest(copy))
+				results <- submitResult{response: response, err: err}
+			}()
 		}
-		if replay.Msg.GetCreated() || replay.Msg.GetJobId() != created.Msg.GetJobId() {
-			t.Fatalf("same input must replay: first=%+v replay=%+v", created.Msg, replay.Msg)
+		close(start)
+		winner := ""
+		createdCount := 0
+		for range 4 {
+			result := <-results
+			if result.err != nil {
+				t.Fatalf("same-input concurrent submit failed: %v", result.err)
+			}
+			if winner == "" {
+				winner = result.response.Msg.GetJobId()
+			}
+			if result.response.Msg.GetJobId() != winner {
+				t.Fatalf("concurrent submits returned different jobs: winner=%s got=%s", winner, result.response.Msg.GetJobId())
+			}
+			if result.response.Msg.GetCreated() {
+				createdCount++
+			}
 		}
-		_, drift := p3SubmitVariant(t, clients, f, taskID, incident, "testfail")
-		if drift == nil || connect.CodeOf(drift) != connect.CodeAborted {
-			t.Fatalf("source drift must abort, err=%v", drift)
+		if createdCount != 1 {
+			t.Fatalf("same-input concurrency created %d jobs, want exactly one", createdCount)
+		}
+
+		otherDigest := "sha256:" + strings.Repeat("a", 64)
+		mutations := []struct {
+			name   string
+			mutate func(*executionv1.SubmitBuildTestRequest)
+		}{
+			{"owner", func(r *executionv1.SubmitBuildTestRequest) { r.Job.OwnerUserId = ids.UUIDv7{}.New() }},
+			{"project", func(r *executionv1.SubmitBuildTestRequest) { r.Job.ProjectId = ids.UUIDv7{}.New() }},
+			{"installation", func(r *executionv1.SubmitBuildTestRequest) { r.Job.InstallationId = ids.UUIDv7{}.New() }},
+			{"incident", func(r *executionv1.SubmitBuildTestRequest) { r.Job.IncidentId = ids.UUIDv7{}.New() }},
+			{"app", func(r *executionv1.SubmitBuildTestRequest) { r.Job.Input.Target.AppId += "-drift" }},
+			{"source-bundle-id", func(r *executionv1.SubmitBuildTestRequest) { r.InputFacts.SourceBundleId = ids.UUIDv7{}.New() }},
+			{"source-digest", func(r *executionv1.SubmitBuildTestRequest) { r.InputFacts.SourceDigest = otherDigest }},
+			{"manifest-digest", func(r *executionv1.SubmitBuildTestRequest) { r.InputFacts.ManifestDigest = otherDigest }},
+			{"build-command", func(r *executionv1.SubmitBuildTestRequest) {
+				r.Job.Input.BuildCommand = append(r.Job.Input.BuildCommand, "#drift")
+			}},
+			{"test-command", func(r *executionv1.SubmitBuildTestRequest) {
+				r.Job.Input.TestCommand = append(r.Job.Input.TestCommand, "#drift")
+			}},
+			{"output-directory", func(r *executionv1.SubmitBuildTestRequest) { r.Job.Input.OutputDirectory = "other-dist" }},
+			{"runtime-command", func(r *executionv1.SubmitBuildTestRequest) { r.Job.Input.RuntimeCommand = []string{"/app/other"} }},
+			{"candidate-bytes", func(r *executionv1.SubmitBuildTestRequest) {
+				r.Job.CandidateFiles[0].Content = append(r.Job.CandidateFiles[0].Content, '\n')
+			}},
+			{"base-image", func(r *executionv1.SubmitBuildTestRequest) {
+				r.Job.Input.BaseImage = p3Image + "-drift"
+				r.InputFacts.BaseImage = p3Image + "-drift"
+			}},
+		}
+		for _, mutation := range mutations {
+			t.Run(mutation.name, func(t *testing.T) {
+				request := proto.Clone(base.Msg).(*executionv1.SubmitBuildTestRequest)
+				mutation.mutate(request)
+				_, err := clients.builds.SubmitBuildTest(context.Background(), connect.NewRequest(request))
+				if connect.CodeOf(err) != connect.CodeAborted {
+					t.Fatalf("same-task %s drift must abort without changing the winner, got %v", mutation.name, err)
+				}
+			})
+		}
+		inconsistentFacts := proto.Clone(base.Msg).(*executionv1.SubmitBuildTestRequest)
+		inconsistentFacts.InputFacts.BaseImage = "golang:latest"
+		if _, err := clients.builds.SubmitBuildTest(context.Background(), connect.NewRequest(inconsistentFacts)); connect.CodeOf(err) != connect.CodeInvalidArgument {
+			t.Fatalf("facts disagreeing with the recipe must be rejected, got %v", err)
+		}
+		if rows := buildtestQuery(t, `SELECT id FROM workos_runtime.build_jobs WHERE task_id=$1`, taskID); len(rows) != 1 {
+			t.Fatalf("drifted requests replaced or duplicated the original winner: %+v", rows)
 		}
 	})
 
@@ -425,6 +528,70 @@ func TestP3Closeout(t *testing.T) {
 			t.Fatal("gateway must not serve the private BuildTest service")
 		}
 	})
+
+	t.Run("F09_operator_import_drop_reply_replays_one_identity", func(t *testing.T) {
+		p3ResetFaults(t)
+		path, digest := p3TestBundle(t)
+		key := ids.UUIDv7{}.New()
+		p3ArmDrop(t, "ImportArtifact")
+		if output, err := p3ImportArtifact(t, p3Owner, "p3-import-replay", key, path, digest); err == nil {
+			t.Fatalf("first import should commit but lose its reply, output=%s", output)
+		}
+		first := buildtestQuery(t, `SELECT id::text AS id, digest, app_id, origin FROM workos_runtime.artifacts WHERE owner_user_id=$1 AND idempotency_key=$2`, p3Owner, key)
+		if len(first) != 1 || first[0]["digest"] != digest || first[0]["app_id"] != "p3-import-replay" || first[0]["origin"] != "operator_import" {
+			t.Fatalf("dropped reply did not leave one precise committed import: %+v", first)
+		}
+		replayID, err := p3ImportArtifact(t, p3Owner, "p3-import-replay", key, path, digest)
+		if err != nil || replayID != fmt.Sprint(first[0]["id"]) {
+			t.Fatalf("same-key retry did not recover first artifact identity: id=%s rows=%+v err=%v", replayID, first, err)
+		}
+		if count := buildtestQuery(t, `SELECT id FROM workos_runtime.artifacts WHERE owner_user_id=$1 AND idempotency_key=$2`, p3Owner, key); len(count) != 1 {
+			t.Fatalf("drop-reply duplicated import metadata: %+v", count)
+		}
+	})
+
+	t.Run("F10_same_bytes_keep_distinct_source_metadata", func(t *testing.T) {
+		p3ResetFaults(t)
+		path, digest := p3TestBundle(t)
+		firstKey, secondKey := ids.UUIDv7{}.New(), ids.UUIDv7{}.New()
+		firstID, err := p3ImportArtifact(t, p3Owner, "p3-source-one", firstKey, path, digest)
+		if err != nil {
+			t.Fatal(err)
+		}
+		secondID, err := p3ImportArtifact(t, p3Owner, "p3-source-two", secondKey, path, digest)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if firstID == secondID {
+			t.Fatalf("separate import sources shared metadata identity %s", firstID)
+		}
+		rows := buildtestQuery(t, `SELECT id::text AS id, idempotency_key, app_id FROM workos_runtime.artifacts WHERE owner_user_id=$1 AND digest=$2 AND idempotency_key IN ($3,$4) ORDER BY idempotency_key`, p3Owner, digest, firstKey, secondKey)
+		if len(rows) != 2 || rows[0]["id"] == rows[1]["id"] || rows[0]["app_id"] == rows[1]["app_id"] {
+			t.Fatalf("identical bytes collapsed independent source metadata: %+v", rows)
+		}
+		storedPath := p3ArtifactBundlePath(t, p3Owner, digest)
+		if info, err := os.Stat(storedPath); err != nil || !info.Mode().IsRegular() {
+			t.Fatalf("shared content-addressed bytes are missing: info=%v err=%v", info, err)
+		}
+		original, err := os.ReadFile(storedPath)
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = os.WriteFile(storedPath, original, 0o600) })
+		if err := os.WriteFile(storedPath, append(append([]byte(nil), original...), 0), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		corruptKey := ids.UUIDv7{}.New()
+		if _, err := p3ImportArtifact(t, p3Owner, "p3-source-corrupt-reuse", corruptKey, path, digest); err == nil {
+			t.Fatal("corrupted content-addressed bytes were accepted as a dedupe hit")
+		}
+		if rows := buildtestQuery(t, `SELECT id FROM workos_runtime.artifacts WHERE owner_user_id=$1 AND idempotency_key=$2`, p3Owner, corruptKey); len(rows) != 0 {
+			t.Fatalf("corrupt dedupe refusal left metadata: %+v", rows)
+		}
+		if err := os.WriteFile(storedPath, original, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	})
 }
 
 func p3FailingJob(t *testing.T, clients *buildtestClients, f p3Fixture, variant string) string {
@@ -441,6 +608,14 @@ func p3FailingJob(t *testing.T, clients *buildtestClients, f p3Fixture, variant 
 }
 
 func p3SubmitVariant(t *testing.T, clients *buildtestClients, f p3Fixture, taskID, incidentID, variant string) (*connect.Response[executionv1.SubmitBuildTestResponse], error) {
+	request, err := p3BuildTestRequest(t, clients, f, taskID, incidentID, variant)
+	if err != nil {
+		return nil, err
+	}
+	return clients.builds.SubmitBuildTest(context.Background(), request)
+}
+
+func p3BuildTestRequest(t *testing.T, clients *buildtestClients, f p3Fixture, taskID, incidentID, variant string) (*connect.Request[executionv1.SubmitBuildTestRequest], error) {
 	t.Helper()
 	ctx := context.Background()
 	files := []*appv1.AppSourceFile{
@@ -511,5 +686,5 @@ func p3SubmitVariant(t *testing.T, clients *buildtestClients, f p3Fixture, taskI
 			ManifestDigest: manifest, BaseImage: baseImage,
 		},
 	})
-	return clients.builds.SubmitBuildTest(ctx, request)
+	return request, nil
 }

@@ -173,7 +173,7 @@ func ValidateJob(job Job) error {
 	if err := ValidatePayload(job.Payload); err != nil {
 		return err
 	}
-	if job.BaseImage == "" || utf8.RuneCountInString(job.BaseImage) > maxBaseImageRunes {
+	if job.BaseImage == "" || utf8.RuneCountInString(job.BaseImage) > maxBaseImageRunes || job.BaseImage != job.Payload.BaseImage {
 		return ErrInvalid
 	}
 	return nil

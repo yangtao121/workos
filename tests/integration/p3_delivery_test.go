@@ -59,7 +59,14 @@ func p3Seed(t *testing.T, clients *buildtestClients, startupFailure bool) p3Fixt
 }
 
 func p3SeedNamed(t *testing.T, clients *buildtestClients, projectName string, startupFailure bool) p3Fixture {
+	return p3SeedNamedWithPermissions(t, clients, projectName, startupFailure, nil)
+}
+
+func p3SeedNamedWithPermissions(t *testing.T, clients *buildtestClients, projectName string, startupFailure bool, permissions []string) p3Fixture {
 	t.Helper()
+	if permissions == nil {
+		permissions = []string{}
+	}
 	ctx := context.Background()
 	key := ids.UUIDv7{}.New()
 	appID := "p3-" + strings.ReplaceAll(key, "-", "")
@@ -132,7 +139,7 @@ if err:=http.ListenAndServe(":8080",nil); err!=nil { os.Exit(1) }
 	manifest := map[string]any{
 		"apiVersion": "workos.app/v1", "id": appID, "name": "P3 fixture", "version": "1.0.0", "scope": "project",
 		"runtime":  map[string]any{"type": "container", "image": p3Image, "command": []string{"/app/server"}, "port": 8080, "artifact": map[string]any{"id": artifactID, "digest": stats.Digest, "format": "app-bundle.v1"}},
-		"surfaces": []any{map[string]any{"id": "main", "renderer": "web-service", "route": "/"}}, "permissions": []string{},
+		"surfaces": []any{map[string]any{"id": "main", "renderer": "web-service", "route": "/"}}, "permissions": permissions,
 		"resources": map[string]any{"cpuHard": 1, "memoryHighMb": 64, "memoryMaxMb": 128, "pidsMax": 64},
 		"health":    map[string]any{"httpPath": "/health", "startupSeconds": 3, "restartLimit": 0}, "maintainer": map[string]any{},
 		"build": map[string]any{"sourceBundleId": source.Msg.GetBundle().GetId(), "sourceDigest": source.Msg.GetBundle().GetDigest(), "baseImage": p3Image, "buildCommand": []string{"sh", "-c", "mkdir -p dist && CGO_ENABLED=0 go build -trimpath -o dist/server ."}, "testCommand": []string{"go", "test", "./..."}, "output": map[string]any{"directory": "dist", "format": "app-bundle.v1"}},
@@ -141,7 +148,7 @@ if err:=http.ListenAndServe(":8080",nil); err!=nil { os.Exit(1) }
 	if _, err := clients.registry.RegisterApp(ctx, connect.NewRequest(&appv1.RegisterAppRequest{IdempotencyKey: key + "-register", ManifestYaml: raw})); err != nil {
 		t.Fatalf("register imported A: %v", err)
 	}
-	installed, err := clients.install.InstallApp(ctx, connect.NewRequest(&appv1.InstallAppRequest{IdempotencyKey: key + "-install", ProjectId: project.Msg.GetProject().GetId(), AppId: appID, Version: "1.0.0", ExpectedProjectRevision: project.Msg.GetProject().GetRevision()}))
+	installed, err := clients.install.InstallApp(ctx, connect.NewRequest(&appv1.InstallAppRequest{IdempotencyKey: key + "-install", ProjectId: project.Msg.GetProject().GetId(), AppId: appID, Version: "1.0.0", ExpectedProjectRevision: project.Msg.GetProject().GetRevision(), GrantedPermissions: permissions}))
 	if err != nil {
 		t.Fatal(err)
 	}

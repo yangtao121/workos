@@ -217,6 +217,8 @@ Core 注册候选以修复任务中持久化的 version/revision 为固定发布
 提交后丢回复同时验证 HTTP/1 和 HTTP/2，标记原子消费，撤除屏障会释放旧等待者。
 未覆盖的子矩阵保持 PARTIAL；rootless/memory.high、P2 第二台物理 LAN 与 P4 仍不在范围内。
 
+2026-09-19 补充验收：F06 覆盖执行提交过程的三个取消屏障；F07 覆盖四路同任务并发单胜及输入事实/配方字段漂移；F09 覆盖 Runtime admin import 已提交但响应丢失后的同身份重放；F10 验证相同字节、不同 key/app 保留来源 metadata，并拒绝损坏去重命中。F13 真实 Runtime 在 durable success verdict 后重启，同一 artifact/job/digest 最终 ready（并发 reconciler 可先完成晋升）；F19 验证 Bridge grant epoch 撤权/重新授权及旧会话失效；F23/F24/F25 新增真实配额、artifact provenance 与 rollback stale-Surface 清理子场景。修改后的完整 P3 bundle gate、legacy gate、V2 completion gate 和 SIGTERM namespace 清理均通过；V2 gate 的三个 viewport 视觉用例报告 skipped，不作视觉通过声明。完整结果及仍缺组合见 [2026-09-19 P3 验收记录](../tasks/evidence/20260919-v2-p3-acceptance/results.md)，P3 继续标记 scaffolded。
+
 ## Project App Installation
 
 Project App Installation 把 Registry 的一个 immutable version 变成 Project 持有的安装实例事实。

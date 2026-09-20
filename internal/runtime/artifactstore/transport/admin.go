@@ -21,6 +21,7 @@ import (
 
 	runtimev1 "github.com/yangtao121/workos/gen/go/workos/runtime/v1"
 	"github.com/yangtao121/workos/gen/go/workos/runtime/v1/runtimev1connect"
+	"github.com/yangtao121/workos/internal/platform/faultinject"
 	"github.com/yangtao121/workos/internal/runtime/artifactstore/application"
 	"github.com/yangtao121/workos/internal/runtime/artifactstore/domain"
 )
@@ -171,7 +172,10 @@ func ListenAdminSocket(path string, handler http.Handler, logger *slog.Logger) (
 		return nil, nil, fmt.Errorf("chmod admin socket: %w", err)
 	}
 	mux := http.NewServeMux()
-	mux.Handle("/", handler)
+	// The faultinject wrapper only changes explicitly tagged gate binaries;
+	// production builds have a compile-time no-op. This lets the isolated P3
+	// gate prove operator import idempotency after a committed response loss.
+	mux.Handle("/", faultinject.DropReply(handler))
 	server := &http.Server{
 		Handler:           mux,
 		ReadHeaderTimeout: 5 * time.Second,
