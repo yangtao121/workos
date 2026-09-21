@@ -20,6 +20,10 @@ import (
 
 type NativeHandler struct{ service *application.Service }
 
+func (h *NativeHandler) GetNativeConnectivity(context.Context, *connect.Request[surfacev1.GetNativeConnectivityRequest]) (*connect.Response[surfacev1.GetNativeConnectivityResponse], error) {
+	return nil, connect.NewError(connect.CodeUnavailable, errors.New("native connectivity is not configured"))
+}
+
 func NewNativeHandler(service *application.Service) (string, http.Handler) {
 	return surfacev1connect.NewNativeSessionServiceHandler(&NativeHandler{service: service}, connect.WithReadMaxBytes(128*1024))
 }

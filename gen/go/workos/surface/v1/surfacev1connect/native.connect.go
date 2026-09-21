@@ -33,6 +33,9 @@ const (
 // reflection-formatted method names, remove the leading slash and convert the remaining slash to a
 // period.
 const (
+	// NativeSessionServiceGetNativeConnectivityProcedure is the fully-qualified name of the
+	// NativeSessionService's GetNativeConnectivity RPC.
+	NativeSessionServiceGetNativeConnectivityProcedure = "/workos.surface.v1.NativeSessionService/GetNativeConnectivity"
 	// NativeSessionServiceCreateNativeSessionProcedure is the fully-qualified name of the
 	// NativeSessionService's CreateNativeSession RPC.
 	NativeSessionServiceCreateNativeSessionProcedure = "/workos.surface.v1.NativeSessionService/CreateNativeSession"
@@ -52,6 +55,9 @@ const (
 
 // NativeSessionServiceClient is a client for the workos.surface.v1.NativeSessionService service.
 type NativeSessionServiceClient interface {
+	// Requires the active session owner and current device control generation.
+	// Fetch before each offer; it does not grant control or extend media leases.
+	GetNativeConnectivity(context.Context, *connect.Request[v1.GetNativeConnectivityRequest]) (*connect.Response[v1.GetNativeConnectivityResponse], error)
 	CreateNativeSession(context.Context, *connect.Request[v1.CreateNativeSessionRequest]) (*connect.Response[v1.CreateNativeSessionResponse], error)
 	ConnectNativeSession(context.Context, *connect.Request[v1.ConnectNativeSessionRequest]) (*connect.Response[v1.ConnectNativeSessionResponse], error)
 	GetNativeSession(context.Context, *connect.Request[v1.GetNativeSessionRequest]) (*connect.Response[v1.GetNativeSessionResponse], error)
@@ -75,6 +81,12 @@ func NewNativeSessionServiceClient(httpClient connect.HTTPClient, baseURL string
 	baseURL = strings.TrimRight(baseURL, "/")
 	nativeSessionServiceMethods := v1.File_workos_surface_v1_native_proto.Services().ByName("NativeSessionService").Methods()
 	return &nativeSessionServiceClient{
+		getNativeConnectivity: connect.NewClient[v1.GetNativeConnectivityRequest, v1.GetNativeConnectivityResponse](
+			httpClient,
+			baseURL+NativeSessionServiceGetNativeConnectivityProcedure,
+			connect.WithSchema(nativeSessionServiceMethods.ByName("GetNativeConnectivity")),
+			connect.WithClientOptions(opts...),
+		),
 		createNativeSession: connect.NewClient[v1.CreateNativeSessionRequest, v1.CreateNativeSessionResponse](
 			httpClient,
 			baseURL+NativeSessionServiceCreateNativeSessionProcedure,
@@ -110,11 +122,17 @@ func NewNativeSessionServiceClient(httpClient connect.HTTPClient, baseURL string
 
 // nativeSessionServiceClient implements NativeSessionServiceClient.
 type nativeSessionServiceClient struct {
-	createNativeSession  *connect.Client[v1.CreateNativeSessionRequest, v1.CreateNativeSessionResponse]
-	connectNativeSession *connect.Client[v1.ConnectNativeSessionRequest, v1.ConnectNativeSessionResponse]
-	getNativeSession     *connect.Client[v1.GetNativeSessionRequest, v1.GetNativeSessionResponse]
-	closeNativeSession   *connect.Client[v1.CloseNativeSessionRequest, v1.CloseNativeSessionResponse]
-	detachNativeSession  *connect.Client[v1.DetachNativeSessionRequest, v1.DetachNativeSessionResponse]
+	getNativeConnectivity *connect.Client[v1.GetNativeConnectivityRequest, v1.GetNativeConnectivityResponse]
+	createNativeSession   *connect.Client[v1.CreateNativeSessionRequest, v1.CreateNativeSessionResponse]
+	connectNativeSession  *connect.Client[v1.ConnectNativeSessionRequest, v1.ConnectNativeSessionResponse]
+	getNativeSession      *connect.Client[v1.GetNativeSessionRequest, v1.GetNativeSessionResponse]
+	closeNativeSession    *connect.Client[v1.CloseNativeSessionRequest, v1.CloseNativeSessionResponse]
+	detachNativeSession   *connect.Client[v1.DetachNativeSessionRequest, v1.DetachNativeSessionResponse]
+}
+
+// GetNativeConnectivity calls workos.surface.v1.NativeSessionService.GetNativeConnectivity.
+func (c *nativeSessionServiceClient) GetNativeConnectivity(ctx context.Context, req *connect.Request[v1.GetNativeConnectivityRequest]) (*connect.Response[v1.GetNativeConnectivityResponse], error) {
+	return c.getNativeConnectivity.CallUnary(ctx, req)
 }
 
 // CreateNativeSession calls workos.surface.v1.NativeSessionService.CreateNativeSession.
@@ -145,6 +163,9 @@ func (c *nativeSessionServiceClient) DetachNativeSession(ctx context.Context, re
 // NativeSessionServiceHandler is an implementation of the workos.surface.v1.NativeSessionService
 // service.
 type NativeSessionServiceHandler interface {
+	// Requires the active session owner and current device control generation.
+	// Fetch before each offer; it does not grant control or extend media leases.
+	GetNativeConnectivity(context.Context, *connect.Request[v1.GetNativeConnectivityRequest]) (*connect.Response[v1.GetNativeConnectivityResponse], error)
 	CreateNativeSession(context.Context, *connect.Request[v1.CreateNativeSessionRequest]) (*connect.Response[v1.CreateNativeSessionResponse], error)
 	ConnectNativeSession(context.Context, *connect.Request[v1.ConnectNativeSessionRequest]) (*connect.Response[v1.ConnectNativeSessionResponse], error)
 	GetNativeSession(context.Context, *connect.Request[v1.GetNativeSessionRequest]) (*connect.Response[v1.GetNativeSessionResponse], error)
@@ -164,6 +185,12 @@ type NativeSessionServiceHandler interface {
 // and JSON codecs. They also support gzip compression.
 func NewNativeSessionServiceHandler(svc NativeSessionServiceHandler, opts ...connect.HandlerOption) (string, http.Handler) {
 	nativeSessionServiceMethods := v1.File_workos_surface_v1_native_proto.Services().ByName("NativeSessionService").Methods()
+	nativeSessionServiceGetNativeConnectivityHandler := connect.NewUnaryHandler(
+		NativeSessionServiceGetNativeConnectivityProcedure,
+		svc.GetNativeConnectivity,
+		connect.WithSchema(nativeSessionServiceMethods.ByName("GetNativeConnectivity")),
+		connect.WithHandlerOptions(opts...),
+	)
 	nativeSessionServiceCreateNativeSessionHandler := connect.NewUnaryHandler(
 		NativeSessionServiceCreateNativeSessionProcedure,
 		svc.CreateNativeSession,
@@ -196,6 +223,8 @@ func NewNativeSessionServiceHandler(svc NativeSessionServiceHandler, opts ...con
 	)
 	return "/workos.surface.v1.NativeSessionService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
+		case NativeSessionServiceGetNativeConnectivityProcedure:
+			nativeSessionServiceGetNativeConnectivityHandler.ServeHTTP(w, r)
 		case NativeSessionServiceCreateNativeSessionProcedure:
 			nativeSessionServiceCreateNativeSessionHandler.ServeHTTP(w, r)
 		case NativeSessionServiceConnectNativeSessionProcedure:
@@ -214,6 +243,10 @@ func NewNativeSessionServiceHandler(svc NativeSessionServiceHandler, opts ...con
 
 // UnimplementedNativeSessionServiceHandler returns CodeUnimplemented from all methods.
 type UnimplementedNativeSessionServiceHandler struct{}
+
+func (UnimplementedNativeSessionServiceHandler) GetNativeConnectivity(context.Context, *connect.Request[v1.GetNativeConnectivityRequest]) (*connect.Response[v1.GetNativeConnectivityResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("workos.surface.v1.NativeSessionService.GetNativeConnectivity is not implemented"))
+}
 
 func (UnimplementedNativeSessionServiceHandler) CreateNativeSession(context.Context, *connect.Request[v1.CreateNativeSessionRequest]) (*connect.Response[v1.CreateNativeSessionResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("workos.surface.v1.NativeSessionService.CreateNativeSession is not implemented"))
