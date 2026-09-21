@@ -61,6 +61,18 @@ func (e *Engine) call(ctx context.Context, method, endpoint string, input, outpu
 	return nil
 }
 func (e *Engine) Execute(ctx context.Context, root string, readOnly bool, op domain.Operation) (domain.Result, error) {
+	mode := "rw"
+	if readOnly {
+		mode = "ro"
+	}
+	binds := []string{root + ":/workspace:" + mode}
+	if op.GitDirectory != "" {
+		binds = append(binds, op.GitDirectory+":/git:"+mode)
+	}
+	return e.execute(ctx, readOnly, op, binds)
+}
+
+func (e *Engine) execute(ctx context.Context, readOnly bool, op domain.Operation, binds []string) (domain.Result, error) {
 	command, _ := op.Arguments["command"].(string)
 	cwd, _ := op.Arguments["workdir"].(string)
 	if command == "" || len(command) > 65536 || e.image == "" {
@@ -85,16 +97,12 @@ func (e *Engine) Execute(ctx context.Context, root string, readOnly bool, op dom
 	if requested, ok := op.Arguments["stdoutMaxBytes"].(float64); ok && requested > 0 && requested < float64(limit) {
 		limit = int(requested)
 	}
-	mode := "rw"
-	if readOnly {
-		mode = "ro"
-	}
 	configuration := map[string]any{
 		"Image": e.image, "User": fmt.Sprintf("%d:%d", os.Getuid(), os.Getgid()), "WorkingDir": cwd,
 		"Cmd":          []string{"/usr/bin/timeout", "--signal=KILL", fmt.Sprintf("%.3fs", timeout.Seconds()), "/bin/bash", "--noprofile", "--norc", "-c", command},
-		"Env":          []string{"HOME=/tmp", "PATH=/usr/local/go/bin:/usr/local/bin:/usr/bin:/bin", "TMPDIR=/tmp", "GOCACHE=/tmp/go-build", "GOPATH=/tmp/go", "GOPROXY=off", "TZ=UTC"},
+		"Env":          []string{"HOME=/tmp", "PATH=/usr/local/go/bin:/usr/local/bin:/usr/bin:/bin", "TMPDIR=/tmp", "GOCACHE=/tmp/go-build", "GOPATH=/tmp/go", "GOPROXY=off", "TZ=UTC", "GIT_CONFIG_NOSYSTEM=1", "GIT_CONFIG_GLOBAL=/dev/null", "GIT_CONFIG_SYSTEM=/dev/null", "GIT_CONFIG_COUNT=2", "GIT_CONFIG_KEY_0=core.hooksPath", "GIT_CONFIG_VALUE_0=/dev/null", "GIT_CONFIG_KEY_1=core.fsmonitor", "GIT_CONFIG_VALUE_1=false"},
 		"AttachStdout": true, "AttachStderr": true,
-		"HostConfig": map[string]any{"Binds": []string{root + ":/workspace:" + mode}, "NetworkMode": "none", "ReadonlyRootfs": true, "CapDrop": []string{"ALL"}, "SecurityOpt": []string{"no-new-privileges:true"}, "PidsLimit": 128, "Memory": int64(1024 * 1024 * 1024), "NanoCpus": int64(2_000_000_000), "Tmpfs": map[string]string{"/tmp": "rw,nosuid,nodev,size=268435456,mode=1777"}, "LogConfig": map[string]any{"Type": "json-file", "Config": map[string]string{"max-size": "1m", "max-file": "1"}}},
+		"HostConfig": map[string]any{"Binds": binds, "NetworkMode": "none", "ReadonlyRootfs": true, "CapDrop": []string{"ALL"}, "SecurityOpt": []string{"no-new-privileges:true"}, "PidsLimit": 128, "Memory": int64(1024 * 1024 * 1024), "NanoCpus": int64(2_000_000_000), "Tmpfs": map[string]string{"/tmp": "rw,nosuid,nodev,size=268435456,mode=1777"}, "LogConfig": map[string]any{"Type": "json-file", "Config": map[string]string{"max-size": "1m", "max-file": "1"}}},
 		"Labels":     map[string]string{"workos.owner": "runtime-workspace", "workos.runtime": containerprocess.Namespace(), "workos.operation": op.ID},
 	}
 	var created struct {

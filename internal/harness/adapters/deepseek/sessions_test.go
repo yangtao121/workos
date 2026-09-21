@@ -45,6 +45,9 @@ func sessionTestConfig(t *testing.T, mode, counter string, strict bool) Config {
 	if err := os.WriteFile(filepath.Join(filepath.Dir(pluginPath), "workos-session.mjs"), []byte(testWorkosToolsPlugin), 0o600); err != nil {
 		t.Fatal(err)
 	}
+	if err := os.WriteFile(filepath.Join(filepath.Dir(pluginPath), "workos-delegation.mjs"), []byte(testWorkosToolsPlugin), 0600); err != nil {
+		t.Fatal(err)
+	}
 	if err := os.WriteFile(filepath.Join(filepath.Dir(pluginPath), "workos-workspace.mjs"), []byte(testWorkosToolsPlugin), 0o600); err != nil {
 		t.Fatal(err)
 	}

@@ -37,7 +37,7 @@ cleanup() {
 trap cleanup EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM
-mkdir -p "$WORKOS_V2_DIR/core-execution" "$WORKOS_V2_DIR/harness-execution" "$WORKOS_V2_DIR/vault" "$WORKOS_V2_DIR/run" "$WORKOS_V2_DIR/sessions" "$WORKOS_V2_DIR/project" "$WORKOS_V2_DIR/bridges" "$WORKOS_V2_DIR/x11" "$WORKOS_V2_DIR/indexer-run"
+mkdir -p "$WORKOS_V2_DIR/core-execution" "$WORKOS_V2_DIR/harness-execution" "$WORKOS_V2_DIR/vault" "$WORKOS_V2_DIR/run" "$WORKOS_V2_DIR/sessions" "$WORKOS_V2_DIR/project" "$WORKOS_V2_DIR/bridges" "$WORKOS_V2_DIR/delegations" "$WORKOS_V2_DIR/x11" "$WORKOS_V2_DIR/indexer-run"
 chmod 1777 "$WORKOS_V2_DIR/x11"
 chmod 700 "$WORKOS_V2_DIR/indexer-run"
 printf '%s\n' 'Fixture workspace. No private data.' > "$WORKOS_V2_DIR/project/README.md"
@@ -65,7 +65,9 @@ with open(sys.argv[1],'a') as f:
   if key.startswith('WORKOS_V2_'): f.write('export '+key+'='+shlex.quote(value)+'\n')
 PY
 if [ "${WORKOS_V2_PREPARE_ONLY:-}" = 1 ]; then exit 0; fi
-if [ "${WORKOS_V2_REAL:-}" = 1 ]; then
+if [ "${WORKOS_NATIVE_AUTOMATION:-}" = 1 ]; then
+ sh tools/native-automation/test.sh
+elif [ "${WORKOS_V2_REAL:-}" = 1 ]; then
  sh tools/real-model-acceptance/run.sh
 else
  sh tools/v2-completion/test.sh

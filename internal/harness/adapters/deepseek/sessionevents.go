@@ -3,6 +3,7 @@ package deepseek
 import (
 	"bytes"
 	"encoding/json"
+	"github.com/google/uuid"
 	"strconv"
 	"strings"
 
@@ -17,24 +18,84 @@ import (
 // streamState it accepts tool traffic: tool calls surface as
 // ToolCallStarted/ToolCallCompleted with structured inputs and outputs.
 type sessionEventMapper struct {
-	sessionID  string
-	model      string
-	answer     bytes.Buffer
-	usages     map[string]tokenUsage
-	emit       ports.Emit
-	sawActive  bool
-	idle       bool
-	turnEnded  bool
-	turnReason turnEndReason
-	failure    llmFailure
+	usageEmitted bool
+	children     map[string]*sessionEventMapper
+	delegationID string
+	allowControl bool
+	goalPhase    string
+	pausedInRun  bool
+	sessionID    string
+	model        string
+	answer       bytes.Buffer
+	usages       map[string]tokenUsage
+	emit         ports.Emit
+	sawActive    bool
+	idle         bool
+	turnEnded    bool
+	turnReason   turnEndReason
+	failure      llmFailure
 }
 
 func (s *sessionEventMapper) handleNotification(envelope rpcEnvelope) error {
 	switch envelope.Method {
+	case "session.delegation":
+		var params struct {
+			SessionID    string `json:"sessionId"`
+			DelegationID string `json:"delegationId"`
+		}
+		if json.Unmarshal(envelope.Params, &params) != nil || !safeSessionComponent(params.SessionID) || params.SessionID == s.sessionID {
+			return protocolError("Malformed child scope", nil)
+		}
+		id, err := uuid.Parse(params.DelegationID)
+		if err != nil || id.Version() != 7 {
+			return protocolError("Malformed delegation identity", nil)
+		}
+		if s.children == nil {
+			s.children = make(map[string]*sessionEventMapper)
+		}
+		if child := s.children[params.SessionID]; child != nil {
+			if child.delegationID != params.DelegationID {
+				return protocolError("Child scope changed", nil)
+			}
+			return nil
+		}
+		s.children[params.SessionID] = &sessionEventMapper{sessionID: params.SessionID, delegationID: params.DelegationID, model: s.model, usages: s.usages, emit: func(event *agentv1.AgentEvent) error { event.DelegationId = params.DelegationID; return s.emit(event) }}
+		return nil
+	case "session.controlComplete":
+		var params struct {
+			SessionID string `json:"sessionId"`
+		}
+		if json.Unmarshal(envelope.Params, &params) != nil || params.SessionID != s.sessionID || !s.allowControl || s.sawActive {
+			return protocolError("Unexpected goal control completion", nil)
+		}
+		s.turnEnded, s.idle, s.turnReason = true, true, turnEndReason{Kind: "completed"}
+		return nil
+	case "session.goal":
+		var params struct {
+			SessionID string          `json:"sessionId"`
+			Goal      json.RawMessage `json:"goal"`
+		}
+		if json.Unmarshal(envelope.Params, &params) != nil || params.SessionID != s.sessionID {
+			return protocolError("Malformed session goal", nil)
+		}
+		var goal agentv1.SessionGoal
+		if err := protojson.Unmarshal(params.Goal, &goal); err != nil {
+			return protocolError("Malformed session goal", err)
+		}
+		s.pausedInRun = s.pausedInRun || (s.goalPhase == "active" && goal.Phase == "paused")
+		s.goalPhase = goal.Phase
+		return s.emit(&agentv1.AgentEvent{Event: &agentv1.AgentEvent_GoalUpdated{GoalUpdated: &agentv1.GoalUpdated{Goal: &goal}}})
 	case "session.event":
 		var params sessionEventParams
-		if err := json.Unmarshal(envelope.Params, &params); err != nil || params.SessionID != s.sessionID || params.Event.Type == "" {
+		if err := json.Unmarshal(envelope.Params, &params); err != nil || params.Event.Type == "" {
 			return protocolError("DeepSeek Harness session event is malformed", err)
+		}
+		if params.SessionID != s.sessionID {
+			child := s.children[params.SessionID]
+			if child == nil {
+				return protocolError("Unknown child scope", nil)
+			}
+			return child.handleSessionEvent(params.Event.Type, params.Event.Data)
 		}
 		return s.handleSessionEvent(params.Event.Type, params.Event.Data)
 	case "session.status":
@@ -222,8 +283,19 @@ func (s *sessionEventMapper) handleSessionEvent(eventType string, raw json.RawMe
 			s.failure = decodeFailure(data.Reason.Error)
 		}
 		return nil
-	case "turn/start", "step/start", "step/end", "user/message", "request/header", "request/context",
-		"session/title", "steering/message", "llm/retry", "llm/retry-started", "agent-preset/selected":
+	case "turn/start":
+		if s.turnEnded {
+			if err := s.finishTurn(); err != nil {
+				return err
+			}
+		}
+		s.turnEnded, s.idle = false, false
+		return nil
+	case "goal/change":
+		// The bridge sends a canonical goal view after the native fold commits.
+		return nil
+	case "step/start", "step/end", "user/message", "request/header", "request/context",
+		"subagent/descriptor", "session/title", "steering/message", "llm/retry", "llm/retry-started", "agent-preset/selected":
 		return nil
 	default:
 		if strings.HasPrefix(eventType, "agent/inbox/") {
@@ -244,7 +316,7 @@ func (s *sessionEventMapper) recordUsage(turn, step int64, raw json.RawMessage) 
 	if _, ok := addTokens(usage.InputTokens, usage.CacheReadTokens, usage.CacheWriteTokens); !ok || usage.OutputTokens < 0 {
 		return protocolError("DeepSeek Harness reported invalid token usage", nil)
 	}
-	s.usages[strconv.FormatInt(turn, 10)+":"+strconv.FormatInt(step, 10)] = usage
+	s.usages[s.sessionID+":"+strconv.FormatInt(turn, 10)+":"+strconv.FormatInt(step, 10)] = usage
 	return nil
 }
 
@@ -252,7 +324,12 @@ func (s *sessionEventMapper) finishTurn() error {
 	switch strings.ToLower(strings.ReplaceAll(s.turnReason.Kind, "_", "-")) {
 	case "completed", "max-tokens":
 		return nil
-	case "error", "blocked":
+	case "blocked":
+		if s.goalPhase == "paused" && s.pausedInRun {
+			return nil
+		}
+		return classifyFailure(s.failure)
+	case "error":
 		return classifyFailure(s.failure)
 	case "aborted", "interrupted":
 		return ports.NewRunError(ports.ErrorKindTransport, "DeepSeek Harness run was interrupted", true, nil)
@@ -269,6 +346,20 @@ func (s *sessionEventMapper) emitTurnSummary() error {
 			return err
 		}
 	}
+	if err := s.emitUsage(); err != nil {
+		return err
+	}
+
+	return s.emit(&agentv1.AgentEvent{Event: &agentv1.AgentEvent_RunCompleted{RunCompleted: &agentv1.RunCompleted{
+		Summary: "Session turn completed",
+	}}})
+}
+
+func (s *sessionEventMapper) emitUsage() error {
+	if s.usageEmitted {
+		return nil
+	}
+	s.usageEmitted = true
 	if len(s.usages) != 0 {
 		var inputTokens, outputTokens int64
 		for _, usage := range s.usages {
@@ -291,7 +382,5 @@ func (s *sessionEventMapper) emitTurnSummary() error {
 			return err
 		}
 	}
-	return s.emit(&agentv1.AgentEvent{Event: &agentv1.AgentEvent_RunCompleted{RunCompleted: &agentv1.RunCompleted{
-		Summary: "Session turn completed",
-	}}})
+	return nil
 }

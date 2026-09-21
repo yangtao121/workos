@@ -38,6 +38,8 @@ type CreateCommand struct {
 // publication record. The coordinator persists it inside one shared
 // transaction together with the Agent module's timeline event.
 type ReviewOutputCommand struct {
+	// DelegationID is stamped by Core after authorizing the child grant.
+	DelegationID  string
 	Artifact      domain.ReviewArtifact
 	Content       []byte
 	RequestDigest string
@@ -48,6 +50,7 @@ type ReviewOutputCommand struct {
 // consumed a (task, output key) identity, which artifact it minted, and the
 // exact first-published timeline event reference.
 type TaskOutputRecord struct {
+	DelegationID  string
 	RequestDigest string
 	OwnerUserID   string
 	ProjectID     string

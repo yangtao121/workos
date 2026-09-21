@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 """Acceptance-only spending guard. No model loop, retries, or credential storage.
 
-Peak Flash prices verified 2026-09-16: input 2/output 8 CNY per million.
+Peak Flash prices verified 2026-09-21: input 2/output 8 CNY per million.
 https://api-docs.deepseek.com/zh-cn/quick_start/pricing/
 Reserve worst-case byte-token input plus 32768 framing tokens and all requested
 output BEFORE forwarding. Failed/unknown requests keep their reservation.
 """
 import http.server
+import fcntl
 import json
 import os
 import pathlib
@@ -14,14 +15,21 @@ import threading
 import urllib.request
 import urllib.error
 
-LIMIT_MICROCNY = 1_900_000
+LIMIT_MICROCNY = 19_000_000
 MAX_BODY = 128 * 1024
 MAX_RESPONSE = 8 * 1024 * 1024
 
 class Budget:
     def __init__(self, ledger):
         self.ledger = pathlib.Path(ledger)
-        self.lock = threading.Lock()
+        self.lock = threading.RLock()
+        self.process_lock = open(str(self.ledger) + '.lock', 'a')
+        os.chmod(str(self.ledger) + '.lock', 0o600)
+        try:
+            fcntl.flock(self.process_lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except OSError:
+            self.process_lock.close()
+            raise
         self.spent = 0
         if self.ledger.exists():
             for line in self.ledger.read_text().splitlines():
@@ -44,7 +52,8 @@ class Budget:
             self.spent += cost
 
     def record(self, value):
-        with self.ledger.open('a') as stream:
+        with self.lock, self.ledger.open('a') as stream:
+            os.chmod(self.ledger, 0o600)
             stream.write(json.dumps(value) + '\n')
             stream.flush()
             os.fsync(stream.fileno())
@@ -97,6 +106,6 @@ class Handler(http.server.BaseHTTPRequestHandler):
 
 if __name__ == '__main__':
     import sys
-    server = http.server.HTTPServer(('127.0.0.1', int(sys.argv[1])), Handler)
+    server = http.server.ThreadingHTTPServer(('127.0.0.1', int(sys.argv[1])), Handler)
     server.budget = Budget(sys.argv[2])
     server.serve_forever()

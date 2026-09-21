@@ -4,7 +4,7 @@ set -eu
 umask 077
 cd "$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)"
 if [ "${WORKOS_REAL_DEEPSEEK:-}" != 1 ] || [ ! -f "${WORKOS_REAL_DEEPSEEK_KEY_FILE:-/nonexistent}" ]; then
- echo 'A15 BLOCKED: set WORKOS_REAL_DEEPSEEK=1 and WORKOS_REAL_DEEPSEEK_KEY_FILE to an owner-only secret file. Total reservation ceiling: CNY 1.90.' >&2
+ echo 'A15 BLOCKED: set WORKOS_REAL_DEEPSEEK=1 and WORKOS_REAL_DEEPSEEK_KEY_FILE to an owner-only secret file. Total reservation ceiling: CNY 19.00.' >&2
  exit 1
 fi
 python3 - "$WORKOS_REAL_DEEPSEEK_KEY_FILE" <<'PY'

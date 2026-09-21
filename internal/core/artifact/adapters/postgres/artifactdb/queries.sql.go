@@ -249,7 +249,7 @@ func (q *Queries) GetReviewArtifactContentByID(ctx context.Context, artifactID s
 }
 
 const getReviewArtifactOutput = `-- name: GetReviewArtifactOutput :one
-SELECT task_id, output_key, artifact_type, request_digest, owner_user_id, project_id,
+SELECT task_id, output_key, artifact_type, request_digest, owner_user_id, project_id, delegation_id,
        artifact_id, event_id, event_sequence, event_occurred_at, created_at
 FROM workos_core.project_review_artifact_outputs
 WHERE task_id = $1::uuid AND output_key = $2
@@ -260,11 +260,26 @@ type GetReviewArtifactOutputParams struct {
 	OutputKey string `json:"output_key"`
 }
 
+type GetReviewArtifactOutputRow struct {
+	TaskID          string             `json:"task_id"`
+	OutputKey       string             `json:"output_key"`
+	ArtifactType    string             `json:"artifact_type"`
+	RequestDigest   string             `json:"request_digest"`
+	OwnerUserID     string             `json:"owner_user_id"`
+	ProjectID       string             `json:"project_id"`
+	DelegationID    string             `json:"delegation_id"`
+	ArtifactID      string             `json:"artifact_id"`
+	EventID         string             `json:"event_id"`
+	EventSequence   int64              `json:"event_sequence"`
+	EventOccurredAt pgtype.Timestamptz `json:"event_occurred_at"`
+	CreatedAt       pgtype.Timestamptz `json:"created_at"`
+}
+
 // Adjudication mapping read for replay/conflict classification inside the
 // materialization coordinator's transaction.
-func (q *Queries) GetReviewArtifactOutput(ctx context.Context, arg GetReviewArtifactOutputParams) (WorkosCoreProjectReviewArtifactOutput, error) {
+func (q *Queries) GetReviewArtifactOutput(ctx context.Context, arg GetReviewArtifactOutputParams) (GetReviewArtifactOutputRow, error) {
 	row := q.db.QueryRow(ctx, getReviewArtifactOutput, arg.TaskID, arg.OutputKey)
-	var i WorkosCoreProjectReviewArtifactOutput
+	var i GetReviewArtifactOutputRow
 	err := row.Scan(
 		&i.TaskID,
 		&i.OutputKey,
@@ -272,6 +287,7 @@ func (q *Queries) GetReviewArtifactOutput(ctx context.Context, arg GetReviewArti
 		&i.RequestDigest,
 		&i.OwnerUserID,
 		&i.ProjectID,
+		&i.DelegationID,
 		&i.ArtifactID,
 		&i.EventID,
 		&i.EventSequence,
@@ -524,13 +540,13 @@ func (q *Queries) InsertReviewArtifact(ctx context.Context, arg InsertReviewArti
 
 const insertReviewArtifactOutput = `-- name: InsertReviewArtifactOutput :execrows
 INSERT INTO workos_core.project_review_artifact_outputs (
-    task_id, output_key, artifact_type, request_digest, owner_user_id, project_id,
+    task_id, output_key, artifact_type, request_digest, owner_user_id, project_id, delegation_id,
     artifact_id, event_id, event_sequence, event_occurred_at, created_at
 ) VALUES (
     $1, $2, $3,
-    $4, $5, $6,
-    $7, $8, $9,
-    $10, $11
+    $4, $5, $6, $7,
+    $8, $9, $10,
+    $11, $12
 )
 ON CONFLICT DO NOTHING
 `
@@ -542,6 +558,7 @@ type InsertReviewArtifactOutputParams struct {
 	RequestDigest   string             `json:"request_digest"`
 	OwnerUserID     string             `json:"owner_user_id"`
 	ProjectID       string             `json:"project_id"`
+	DelegationID    string             `json:"delegation_id"`
 	ArtifactID      string             `json:"artifact_id"`
 	EventID         string             `json:"event_id"`
 	EventSequence   int64              `json:"event_sequence"`
@@ -561,6 +578,7 @@ func (q *Queries) InsertReviewArtifactOutput(ctx context.Context, arg InsertRevi
 		arg.RequestDigest,
 		arg.OwnerUserID,
 		arg.ProjectID,
+		arg.DelegationID,
 		arg.ArtifactID,
 		arg.EventID,
 		arg.EventSequence,

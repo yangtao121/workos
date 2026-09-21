@@ -18,6 +18,15 @@ type SessionTaskDispatcher interface {
 	Get(ctx context.Context, ownerUserID, taskID string) (domain.Task, error)
 }
 
+type SessionDirectiveDispatcher interface {
+	DispatchDirective(ctx context.Context, ownerUserID, projectID, providerID, idempotencyKey, sessionID string, directive domain.SessionDirective) (domain.Task, error)
+}
+
+type SessionGoalPauseRepository interface {
+	GetGoalPauseRequest(context.Context, string, string) (string, error)
+	RecordGoalPauseRequest(context.Context, string, string, string, string, time.Time) error
+}
+
 // SessionRepository persists continuous harness session facts (ADR-0030).
 type SessionRepository interface {
 	// WithinSession serializes mutations on a scoped session row. All repository

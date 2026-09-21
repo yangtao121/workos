@@ -80,6 +80,17 @@ func (s *SessionService) Create(ctx context.Context, ownerUserID, projectID, ide
 // queues; when idle it dispatches immediately. Replays return the stored
 // input; the same key with different text conflicts.
 func (s *SessionService) Submit(ctx context.Context, ownerUserID, sessionID, clientInputID, text string) (domain.SessionInput, bool, error) {
+	return s.submit(ctx, ownerUserID, sessionID, clientInputID, text, nil)
+}
+
+func (s *SessionService) SubmitDirective(ctx context.Context, ownerUserID, sessionID, clientInputID string, directive domain.SessionDirective) (domain.SessionInput, bool, error) {
+	if err := directive.Validate(); err != nil {
+		return domain.SessionInput{}, false, err
+	}
+	return s.submit(ctx, ownerUserID, sessionID, clientInputID, "", &directive)
+}
+
+func (s *SessionService) submit(ctx context.Context, ownerUserID, sessionID, clientInputID, text string, directive *domain.SessionDirective) (domain.SessionInput, bool, error) {
 	if !validSessionOwner(ownerUserID) || !validSessionOwner(sessionID) || clientInputID == "" || len(clientInputID) > 128 {
 		return domain.SessionInput{}, false, domain.ErrInvalid
 	}
@@ -94,7 +105,11 @@ func (s *SessionService) Submit(ctx context.Context, ownerUserID, sessionID, cli
 		}
 		previous, err := locked.repository.GetInput(ctx, sessionID, clientInputID)
 		if err == nil {
-			if previous.RequestDigest != domain.InputRequestDigest(clientInputID, text) {
+			digest := domain.InputRequestDigest(clientInputID, text)
+			if directive != nil {
+				digest = domain.DirectiveRequestDigest(clientInputID, *directive)
+			}
+			if previous.RequestDigest != digest {
 				return domain.ErrSessionInputConflict
 			}
 			input = previous
@@ -106,7 +121,14 @@ func (s *SessionService) Submit(ctx context.Context, ownerUserID, sessionID, cli
 		now := s.now().UTC()
 		previousSequence := session.InputSequence
 		var queued bool
-		input, queued, err = session.AcceptSessionInput(now, s.generator.New(), clientInputID, text)
+		if directive == nil {
+			input, queued, err = session.AcceptSessionInput(now, s.generator.New(), clientInputID, text)
+		} else {
+			if err := validateSessionDirective(session, *directive); err != nil {
+				return err
+			}
+			input, queued, err = session.AcceptSessionDirective(now, s.generator.New(), clientInputID, *directive)
+		}
 		if err != nil {
 			return err
 		}
@@ -172,7 +194,17 @@ func (s *SessionService) dispatchNext(ctx context.Context, owner, id string) err
 	// while asking it for another: concurrent waiters can exhaust the pool.
 	// Competing dispatchers use the same durable key; claim eligibility is
 	// withheld until the second transaction binds the winning task below.
-	task, err := s.tasks.Dispatch(ctx, owner, session.ProjectID, session.ProviderID, input.Text, fmt.Sprintf("session-%s-input-%s", id, input.ID), id)
+	key := fmt.Sprintf("session-%s-input-%s", id, input.ID)
+	var task domain.Task
+	if input.Directive != nil {
+		dispatcher, ok := s.tasks.(ports.SessionDirectiveDispatcher)
+		if !ok {
+			return domain.ErrSessionInputInvalid
+		}
+		task, err = dispatcher.DispatchDirective(ctx, owner, session.ProjectID, session.ProviderID, key, id, *input.Directive)
+	} else {
+		task, err = s.tasks.Dispatch(ctx, owner, session.ProjectID, session.ProviderID, input.Text, key, id)
+	}
 	if err != nil {
 		return err
 	}

@@ -4,7 +4,8 @@ import userEvent from "@testing-library/user-event";
 import { act, useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { WorkOSClients } from "@workos/agent-sdk";
-import type { AgentEvent } from "@workos/protocol";
+import { AgentSessionSchema, type AgentEvent } from "@workos/protocol";
+import { create } from "@bufbuild/protobuf";
 import { AgentSessionsApp } from "./AgentSessions.js";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -24,13 +25,13 @@ function TestHost(props: { clients: WorkOSClients }) {
   );
 }
 
-const session = {
+const session = create(AgentSessionSchema, {
   id: "session-1",
   projectId: "project-1",
   providerId: "fake",
   state: 1,
   activeTaskId: "",
-};
+});
 
 function fixture() {
   const agentSessions = {

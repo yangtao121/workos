@@ -2,6 +2,7 @@ package orchestration
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -157,6 +158,12 @@ func (r *TaskRouter) SubmitWithResult(ctx context.Context, input agentapp.Submit
 	}
 	if err != nil {
 		return agentports.TaskSubmission{}, fmt.Errorf("resolve provider capabilities: %w", err)
+	}
+	var automation struct {
+		Directive json.RawMessage `json:"sessionDirective"`
+	}
+	if json.Unmarshal(input.Payload, &automation) == nil && len(automation.Directive) > 0 && string(automation.Directive) != "null" && !capabilities.SessionGoals {
+		return agentports.TaskSubmission{}, agentdomain.ErrProviderCapabilityMissing
 	}
 	if input.RepairSources && !capabilities.RepairSourceCandidates {
 		if !r.repairFallback(input) {

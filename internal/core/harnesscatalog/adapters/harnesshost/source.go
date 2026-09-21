@@ -71,6 +71,7 @@ func (s *Source) ListProviders(ctx context.Context) ([]domain.Provider, error) {
 				RequiresTaskCredentialLease: capabilities.GetRequiresTaskCredentialLease(),
 				RequiredCredentialPurpose:   capabilities.GetRequiredCredentialPurpose(),
 				RepairSourceCandidates:      capabilities.GetRepairSourceCandidates(),
+				SessionGoals:                capabilities.GetSessionGoals(), ProjectSkills: capabilities.GetProjectSkills(), MaxConcurrentSubagents: capabilities.GetMaxConcurrentSubagents(), MaxSubagentDepth: capabilities.GetMaxSubagentDepth(),
 			},
 		})
 	}

@@ -25,3 +25,17 @@ type Authorization struct {
 type Authorizer interface {
 	Resolve(context.Context, string, string) (Authorization, error)
 }
+
+type DelegationStore interface {
+	BeginDelegation(context.Context, domain.Delegation) (bool, error)
+	GetDelegation(context.Context, string) (domain.Delegation, error)
+	CompleteDelegation(context.Context, string, string) error
+	ReviewDelegation(context.Context, string) error
+}
+
+type Worktree struct{ Root, GitDirectory, BaseCommit string }
+type Worktrees interface {
+	Prepare(context.Context, string, domain.Operation) (Worktree, error)
+	Open(context.Context, domain.Delegation) (Worktree, error)
+	Diff(context.Context, Worktree, domain.Operation) (domain.Result, error)
+}

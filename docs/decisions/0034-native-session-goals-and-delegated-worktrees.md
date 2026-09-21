@@ -66,3 +66,12 @@ delegation grant，Runtime 依据持久 owner/project/binding/task 关联选择�
 证据。验收必须涵盖自动多轮、暂停/恢复、重启后不自发继续、技能作用域、两个并行子
 Agent、父/兄弟文件隔离、合计预算、撤权及异常中断。三尺寸视觉使用确定性 fixture；
 没有端到端证据的新增能力不能标记 working。
+
+## 成果名额（2026-09-21）
+
+Core Artifact 的 migration 075 将结果名额细化为 `(task, delegation, type)`；普通任务的
+`delegation` 为空，保留每种输出类型一个结果的原规则。子任务名额只能由 Core 专用
+materializer 在父 Task 事务锁内、经 Agent 模块 port 复核运行中 grant 后选择；公开
+Provider artifact RPC 不接受这个字段。`(task, output key)` 仍全局唯一，重放必须匹配
+原 delegation，不能用同一个键更换来源。每份 diff 仍与事件、索引和通知原子提交。
+工作区 source ID 是现有 Runtime 的不透明 `ws_…` 引用，不按 UUID 解析。

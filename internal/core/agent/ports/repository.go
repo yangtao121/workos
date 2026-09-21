@@ -74,6 +74,7 @@ type InstallationSource interface {
 // provider declared; zero means the corresponding hard capability is
 // unsupported.
 type ProviderCapabilities struct {
+	SessionGoals           bool
 	RepairSourceCandidates bool
 	HardTokenBudget        bool
 	HardRuntimeDeadline    bool

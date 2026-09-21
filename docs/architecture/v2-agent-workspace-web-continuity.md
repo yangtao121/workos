@@ -96,3 +96,32 @@ Core 授权或 workspace revision 改变时停止旧程序；Core 不可达也�
 
 真实模型验收仅在明确费用额度内、通过 Vault 对新建测试项目执行；物理第二台 LAN
 设备不能由两个浏览器 context 代替。当前执行结果以任务 A15/A16 行为准。
+
+## 原生自动目标、项目 Skills 与隔离子 Agent（ADR-0034）
+
+Core 通过 additive SessionDirective 接收目标创建/暂停/恢复，并保存带 ref/revision 的
+目标投影。运行中暂停经独立幂等控制请求送达原生 step 边界；原生 goal-round-driver
+拥有自动轮次。取消或失租约会撤销自动执行投影，恢复原生日志不自动重跑副作用。
+Desktop 会话展示目标、轮数、暂停状态以及子任务的状态和成果差异。
+
+DeepSeek adapter 使用锁定 runtime 的官方 skill registry，只从授权项目 `.dsh/skills`
+与 `.agents/skills` 加载；不读宿主 HOME，不启用 watcher，不添加权限。官方原生子
+session 不继承父对话；最多同时两个、深度一，不能调用提问、目标创建或再派生工具。
+父子请求与自动轮次共同预留 Task 输出预算，未知 usage 阻止继续请求，沿用硬截止时间。
+
+Runtime 为每个 delegation 持久化 scope 和准备回执，以只读项目 HEAD 创建专属 bare
+repository 与 Git worktree。拒绝 dirty 项目；子命令只挂载自己的工作树和 Git 元数据，
+无网络、无凭据并受既有资源限制。Core 在长操作期间持续复核父租约和项目/工作区授权。
+成功结果生成含新增文件的有界 diff；取消/撤权清理运行容器，未知文件效果保留待核对。
+父工作区不自动合并；已保存差异可由用户审阅。准备或中断后未生成差异的工作树须由
+操作者在 Runtime 的 delegation 存储中核对，不伪报已回滚。
+
+Core Agent 拥有 migration 073，Runtime WorkspaceHost 拥有 074，Core Artifact 拥有 075。
+第三项保留普通 Task 的单类型成果限制，并给经 Core 授权的每个子任务独立成果名额。
+生产 workspace overlay 在 preview bridge root 下配置独立 delegation 根；未配置或
+缺少干净 Git 基线时该次子任务执行明确 unavailable。
+
+完整验收入口 `make test-native-automation` 启动隔离六进程，使用固定模型响应驱动
+真实锁定 Harness、Docker worktree、Core 授权、成果审阅与浏览器恢复；包含取消/撤权
+回收和三尺寸视觉用例。真实外部模型单独经 Vault 与持久费用预留代理验收。
+当前进度及证据见 [任务记录](../tasks/20260920-v2-native-goals-skills-subagents.md)。

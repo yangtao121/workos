@@ -47,6 +47,25 @@ type WorkosCoreAgentAppPolicy struct {
 	UpdatedAt                        pgtype.Timestamptz `json:"updated_at"`
 }
 
+type WorkosCoreAgentDelegation struct {
+	ID               string             `json:"id"`
+	OwnerUserID      string             `json:"owner_user_id"`
+	SessionID        string             `json:"session_id"`
+	TaskID           string             `json:"task_id"`
+	IdempotencyKey   string             `json:"idempotency_key"`
+	Title            string             `json:"title"`
+	BindingID        string             `json:"binding_id"`
+	BindingRevision  int64              `json:"binding_revision"`
+	SourceID         string             `json:"source_id"`
+	State            string             `json:"state"`
+	WorktreeID       string             `json:"worktree_id"`
+	BaseCommit       string             `json:"base_commit"`
+	ResultSummary    string             `json:"result_summary"`
+	ResultArtifactID string             `json:"result_artifact_id"`
+	CreatedAt        pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt        pgtype.Timestamptz `json:"updated_at"`
+}
+
 type WorkosCoreAgentExecutionInteraction struct {
 	ID             string             `json:"id"`
 	TaskID         string             `json:"task_id"`
@@ -82,6 +101,8 @@ type WorkosCoreAgentSession struct {
 	UpdatedAt                pgtype.Timestamptz `json:"updated_at"`
 	ClosedAt                 pgtype.Timestamptz `json:"closed_at"`
 	RecoveryCheckedAt        pgtype.Timestamptz `json:"recovery_checked_at"`
+	GoalProjection           json.RawMessage    `json:"goal_projection"`
+	GoalPauseRef             string             `json:"goal_pause_ref"`
 }
 
 type WorkosCoreAgentSessionInput struct {
@@ -97,6 +118,7 @@ type WorkosCoreAgentSessionInput struct {
 	ResultSummary string             `json:"result_summary"`
 	CreatedAt     pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt     pgtype.Timestamptz `json:"updated_at"`
+	Directive     json.RawMessage    `json:"directive"`
 }
 
 type WorkosCoreAgentTask struct {

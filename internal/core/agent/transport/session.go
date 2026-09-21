@@ -87,6 +87,12 @@ func sessionToProto(session domain.Session) *agentv1.AgentSession {
 		LastEventSequence: session.EventSequence,
 		CreatedAt:         timestamppb.New(session.CreatedAt), UpdatedAt: timestamppb.New(session.UpdatedAt),
 	}
+	for _, child := range session.Delegations {
+		out.Delegations = append(out.Delegations, &agentv1.AgentDelegation{Id: child.ID, TaskId: child.TaskID, Title: child.Title, State: child.State, WorktreeId: child.WorktreeID, BaseCommit: child.BaseCommit, ResultSummary: child.ResultSummary, ResultArtifactId: child.ResultArtifactID})
+	}
+	if goal := session.Goal; goal != nil {
+		out.Goal = &agentv1.SessionGoal{Ref: goal.Ref, Revision: goal.Revision, Objective: goal.Objective, Phase: goal.Phase, RoundsStarted: goal.RoundsStarted, MaxRounds: goal.MaxRounds, BlockedReason: goal.BlockedReason, Armed: goal.Armed && session.ActiveTaskID != "" && session.State == domain.SessionStateActive, PauseRequested: session.GoalPauseRef == goal.Ref}
+	}
 	if session.ClosedAt != nil {
 		out.ClosedAt = timestamppb.New(*session.ClosedAt)
 	}
@@ -100,7 +106,7 @@ func inputStateToProto(state domain.SessionInputState) agentv1.AgentSessionInput
 func inputToProto(input domain.SessionInput) *agentv1.AgentSessionInput {
 	return &agentv1.AgentSessionInput{
 		Id: input.ID, SessionId: input.SessionID, ClientInputId: input.ClientInputID,
-		Text: input.Text, State: inputStateToProto(input.State), TaskId: input.TaskID,
+		Directive: directiveToProto(input.Directive), Text: input.Text, State: inputStateToProto(input.State), TaskId: input.TaskID,
 		Sequence: input.Sequence, ResultSummary: input.ResultSummary,
 		CreatedAt: timestamppb.New(input.CreatedAt), UpdatedAt: timestamppb.New(input.UpdatedAt),
 	}
@@ -157,14 +163,38 @@ func (h *SessionHandler) GetSession(ctx context.Context, req *connect.Request[ag
 }
 
 func (h *SessionHandler) SubmitSessionInput(ctx context.Context, req *connect.Request[agentv1.SubmitSessionInputRequest]) (*connect.Response[agentv1.SubmitSessionInputResponse], error) {
-	if req.Msg.GetDirective() != nil {
-		return nil, connect.NewError(connect.CodeUnimplemented, errors.New("session goal controls unavailable"))
+	if req.Msg.GetDirective() != nil && req.Msg.GetText() != "" {
+		return nil, sessionError(domain.ErrSessionInputInvalid)
 	}
 	owner, err := identity.FromContext(ctx)
 	if err != nil {
 		return nil, connect.NewError(connect.CodeUnauthenticated, err)
 	}
-	input, _, err := h.service.Submit(ctx, owner.UserID, req.Msg.GetSessionId(), req.Msg.GetClientInputId(), req.Msg.GetText())
+	var input domain.SessionInput
+	if value := req.Msg.GetDirective(); value != nil {
+		if _, readErr := h.service.GetInput(ctx, owner.UserID, req.Msg.GetSessionId(), req.Msg.GetClientInputId()); errors.Is(readErr, domain.ErrSessionNotFound) {
+			session, err := h.service.Get(ctx, owner.UserID, req.Msg.GetSessionId())
+			if err != nil {
+				return nil, sessionError(err)
+			}
+			source, ok := h.snapshots.(interface {
+				SupportsSessionGoals(context.Context, string, string) (bool, error)
+			})
+			if !ok {
+				return nil, sessionError(domain.ErrProviderCapabilityMissing)
+			}
+			available, err := source.SupportsSessionGoals(ctx, owner.UserID, session.ProviderID)
+			if err != nil || !available {
+				return nil, sessionError(domain.ErrProviderCapabilityMissing)
+			}
+		} else if readErr != nil {
+			return nil, sessionError(readErr)
+		}
+		directive := directiveFromProto(value)
+		input, _, err = h.service.SubmitDirective(ctx, owner.UserID, req.Msg.GetSessionId(), req.Msg.GetClientInputId(), directive)
+	} else {
+		input, _, err = h.service.Submit(ctx, owner.UserID, req.Msg.GetSessionId(), req.Msg.GetClientInputId(), req.Msg.GetText())
+	}
 	if err != nil {
 		return nil, sessionError(err)
 	}
@@ -293,7 +323,7 @@ func sessionError(err error) error {
 		code = connect.CodeInvalidArgument
 	case errors.Is(err, domain.ErrSessionNotFound), errors.Is(err, domain.ErrNotFound):
 		code = connect.CodeNotFound
-	case errors.Is(err, domain.ErrSessionClosed):
+	case errors.Is(err, domain.ErrSessionClosed), errors.Is(err, domain.ErrProviderCapabilityMissing):
 		code = connect.CodeFailedPrecondition
 	case errors.Is(err, domain.ErrSessionInputConflict):
 		code = connect.CodeAborted

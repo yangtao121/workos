@@ -31,7 +31,7 @@ func TestConfigAndDescribe(t *testing.T) {
 			t.Fatalf("unavailable provider reported unexpected health: %#v", description)
 		}
 		caps := description.GetCapabilities()
-		if !caps.GetStreaming() || !caps.GetUsageReporting() || caps.GetPersistentSessions() || caps.GetResume() || caps.GetSteerDuringRun() || caps.GetApprovals() || caps.GetToolRegistration() || caps.GetMcp() || caps.GetSubagents() || caps.GetWorkspaceMount() {
+		if !caps.GetStreaming() || !caps.GetUsageReporting() || caps.GetPersistentSessions() || caps.GetResume() || caps.GetSteerDuringRun() || caps.GetApprovals() || caps.GetToolRegistration() || caps.GetMcp() || caps.GetSubagents() || caps.GetSessionGoals() || caps.GetProjectSkills() || caps.GetMaxConcurrentSubagents() != 0 || caps.GetMaxSubagentDepth() != 0 || caps.GetWorkspaceMount() {
 			t.Fatalf("provider overclaimed capabilities: %#v", caps)
 		}
 		if !caps.GetHardTokenBudget() || !caps.GetHardRuntimeDeadline() {
@@ -50,6 +50,11 @@ func TestConfigAndDescribe(t *testing.T) {
 		provider := New(validConfig(t, "success"), fixedID("run-1"))
 		if got := provider.Describe(); got.GetHealth() != commonv1.HealthState_HEALTH_STATE_HEALTHY || got.GetUnavailableReason() != "" {
 			t.Fatalf("valid provider reported unexpected health: %#v", got)
+		}
+
+		caps := provider.Describe().GetCapabilities()
+		if !caps.PersistentSessions || !caps.Resume || !caps.SessionGoals || !caps.ProjectSkills || !caps.Subagents || caps.MaxConcurrentSubagents != 2 || caps.MaxSubagentDepth != 1 {
+			t.Fatal("native automation capabilities missing")
 		}
 	})
 

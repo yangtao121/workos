@@ -423,7 +423,11 @@ func run(logger *slog.Logger) error {
 			}
 			commandEngine = workspacehostdocker.New(socket, image)
 		}
-		executionService := workspacehostapp.NewExecution(workspaceHost, &workspacehostfiles.Files{}, commandEngine, workspacehostpostgres.New(pool)).WithAuthorization(workspaceAuthorizer)
+		workspaceJournal := workspacehostpostgres.New(pool)
+		executionService := workspacehostapp.NewExecution(workspaceHost, &workspacehostfiles.Files{}, commandEngine, workspaceJournal).WithAuthorization(workspaceAuthorizer)
+		if engine, ok := commandEngine.(*workspacehostdocker.Engine); ok && os.Getenv("WORKOS_WORKSPACE_DELEGATION_ROOT") != "" {
+			executionService.WithDelegations(workspaceJournal, workspacehostdocker.NewWorktrees(engine, os.Getenv("WORKOS_WORKSPACE_DELEGATION_ROOT")))
+		}
 		workspaceOperations.files = executionService
 		workspaceOperations.host = workspaceHost
 		executionPath, executionHandler := workspacehosttransport.NewExecutionHandler(workspaceOperations)

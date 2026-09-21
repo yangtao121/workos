@@ -25,20 +25,6 @@ type WorkosCoreProjectReviewArtifact struct {
 	SourceAppInstanceID pgtype.UUID        `json:"source_app_instance_id"`
 }
 
-type WorkosCoreProjectReviewArtifactOutput struct {
-	TaskID          string             `json:"task_id"`
-	OutputKey       string             `json:"output_key"`
-	ArtifactType    string             `json:"artifact_type"`
-	RequestDigest   string             `json:"request_digest"`
-	OwnerUserID     string             `json:"owner_user_id"`
-	ProjectID       string             `json:"project_id"`
-	ArtifactID      string             `json:"artifact_id"`
-	EventID         string             `json:"event_id"`
-	EventSequence   int64              `json:"event_sequence"`
-	EventOccurredAt pgtype.Timestamptz `json:"event_occurred_at"`
-	CreatedAt       pgtype.Timestamptz `json:"created_at"`
-}
-
 type WorkosCoreWebBundleArtifact struct {
 	ID             string             `json:"id"`
 	OwnerUserID    string             `json:"owner_user_id"`

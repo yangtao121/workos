@@ -51,6 +51,7 @@ function diffArtifact(id: string): Artifact {
 function artifactCreatedEvent(taskId: string, artifactId: string): AgentEvent {
   return {
     $typeName: "workos.agent.v1.AgentEvent",
+    delegationId: "",
     id: "event-2",
     taskId,
     sequence: 2n,
@@ -278,6 +279,7 @@ describe("Timeline artifact events", () => {
     };
     const started: AgentEvent = {
       $typeName: "workos.agent.v1.AgentEvent",
+      delegationId: "",
       id: "event-1",
       taskId: "task-1",
       sequence: 1n,

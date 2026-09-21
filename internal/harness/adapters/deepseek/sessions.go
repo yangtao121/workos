@@ -50,6 +50,7 @@ type SessionManager struct {
 // pending holds notifications that arrived while the initialize handshake was
 // still running and are replayed to the first prompt reader.
 type sessionProcess struct {
+	toolWrites     sync.Mutex
 	tools          ports.ToolCall
 	sessionID      string
 	workspaceRoot  string
@@ -131,6 +132,10 @@ func (m *SessionManager) Ensure(ctx context.Context, sessionID, workspaceRoot, s
 // status. A deadline or cancellation kills the whole process group — the
 // native context cannot survive a partial turn — and the run fails.
 func (m *SessionManager) Prompt(ctx context.Context, proc *sessionProcess, runID, text string, maxTokens int64, timeout time.Duration, emit ports.Emit) error {
+	return m.prompt(ctx, proc, runID, text, maxTokens, timeout, nil, emit)
+}
+
+func (m *SessionManager) prompt(ctx context.Context, proc *sessionProcess, runID, text string, maxTokens int64, timeout time.Duration, directive *agentv1.SessionDirective, emit ports.Emit) error {
 	if maxTokens <= 0 || maxTokens > MaximumMaxTokens {
 		return ports.NewRunError(ports.ErrorKindInvalidInput, "DeepSeek session max_tokens must be between 1 and 384000", false, nil)
 	}
@@ -157,10 +162,15 @@ func (m *SessionManager) Prompt(ctx context.Context, proc *sessionProcess, runID
 		"contentBlocks": []map[string]string{{"type": "text", "text": text}},
 		"messageId":     runID,
 		"maxTokens":     maxTokens,
+		"directive":     directive,
 	}); err != nil {
 		return m.fail(proc, processError(ctx, err))
 	}
-	mapper := &sessionEventMapper{sessionID: proc.sessionID, model: m.config.Model, emit: emit, usages: make(map[string]tokenUsage)}
+	mapper := &sessionEventMapper{allowControl: directive != nil && directive.Kind == agentv1.SessionDirectiveKind_SESSION_DIRECTIVE_KIND_PAUSE_GOAL, sessionID: proc.sessionID, model: m.config.Model, emit: emit, usages: make(map[string]tokenUsage)}
+	defer func() { _ = mapper.emitUsage() }()
+	var toolWorkers sync.WaitGroup
+	slots := make(chan struct{}, 64)
+	defer func() { stop(); cancel(); toolWorkers.Wait() }()
 	responded := false
 	for !(responded && mapper.turnEnded && mapper.idle) {
 		envelope, err := m.nextFrame(ctx, proc)
@@ -168,9 +178,19 @@ func (m *SessionManager) Prompt(ctx context.Context, proc *sessionProcess, runID
 			return m.fail(proc, processError(ctx, err))
 		}
 		if envelope.Method == "workos/tool" && len(envelope.ID) != 0 {
-			if err := m.handleTool(ctx, proc, envelope); err != nil {
-				return m.fail(proc, err)
+			select {
+			case slots <- struct{}{}:
+			default:
+				return m.fail(proc, protocolError("Too many pending tool operations", nil))
 			}
+			toolWorkers.Add(1)
+			go func() {
+				defer toolWorkers.Done()
+				defer func() { <-slots }()
+				if err := m.handleTool(ctx, proc, envelope); err != nil {
+					cancel()
+				}
+			}()
 			continue
 		}
 		if len(envelope.ID) != 0 {
@@ -276,6 +296,13 @@ func (m *SessionManager) spawn(ctx context.Context, sessionID, workspaceRoot, st
 		return nil, ports.NewRunError(ports.ErrorKindConfiguration, "DeepSeek session bridge is unavailable", false, err)
 	}
 	if err := os.WriteFile(filepath.Join(stateDir, "workos-session.mjs"), bridge, 0o600); err != nil {
+		return nil, err
+	}
+	delegationPlugin, err := os.ReadFile(filepath.Join(filepath.Dir(m.config.WorkosToolsPath), "workos-delegation.mjs"))
+	if err != nil {
+		return nil, ports.NewRunError(ports.ErrorKindConfiguration, "Delegation plugin unavailable", false, err)
+	}
+	if err := os.WriteFile(filepath.Join(stateDir, "workos-delegation.mjs"), delegationPlugin, 0600); err != nil {
 		return nil, err
 	}
 	cordisPath := filepath.Join(stateDir, "cordis.yml")
@@ -435,14 +462,16 @@ func (m *SessionManager) bufferNotification(proc *sessionProcess, envelope rpcEn
 // observable.
 func (m *SessionManager) watchdog(proc *sessionProcess, ctx context.Context) func() {
 	stopped := make(chan struct{})
+	settled := make(chan struct{})
 	go func() {
+		defer close(settled)
 		select {
 		case <-ctx.Done():
 			m.terminate(proc)
 		case <-stopped:
 		}
 	}()
-	return sync.OnceFunc(func() { close(stopped) })
+	return sync.OnceFunc(func() { close(stopped); <-settled })
 }
 
 // fail terminates the process and drops it from the map: after any turn
@@ -550,7 +579,7 @@ var cordisRowIDs = []string{
 	"workos-workspace", "shell-env", "approval", "tool-bash", "fs-observation-policy",
 	"tool-fs", "agent-instructions",
 	"timeout-policy", "tools", "system-prompt", "agent-loop", "llm-deepseek",
-	"user-questions", "tool-ask-user", "workos-session", "workos-tools",
+	"user-questions", "tool-ask-user", "goal", "goal-round-driver", "tool-goal", "skill", "skill-filesystem", "tool-skill", "subagent", "subagent-spawn-in-process", "tool-subagent", "workos-session", "workos-tools",
 }
 
 // workosToolsFileName is the configuration-relative plugin row name. The
@@ -606,6 +635,19 @@ func renderCordisConfig(stateDir, workspace string, config Config) []byte {
 	fmt.Fprintf(&out, "  config:\n    apiKeyEnv: DEEPSEEK_API_KEY\n    baseURL: %s\n    streamIdleTimeoutMs: 120000\n    retryPolicy:\n      mode: normal\n      maxRetries: 0\n    models:\n      - id: %s\n        contextWindow: 1000000\n        maxTokens: 384000\n", config.BaseURL, config.Model)
 	row("user-questions", "@deepseek-ai/dsh-user-questions")
 	row("tool-ask-user", "@deepseek-ai/dsh-tool-ask-user")
+	row("goal", "@deepseek-ai/dsh-goal")
+	fmt.Fprint(&out, "  config:\n    defaultMaxGoalRounds: 32\n")
+	row("goal-round-driver", "@deepseek-ai/dsh-goal-round-driver")
+	row("tool-goal", "@deepseek-ai/dsh-tool-goal")
+	row("skill", "@deepseek-ai/dsh-skill")
+	row("skill-filesystem", "@deepseek-ai/dsh-skill-filesystem")
+	fmt.Fprint(&out, "  config:\n    providerName: workos-project\n    includeDefaultRoots: false\n    customSkillDirs: ['/workspace/.dsh/skills', '/workspace/.agents/skills']\n    watch: false\n")
+	row("tool-skill", "@deepseek-ai/dsh-tool-skill")
+	row("subagent", "@deepseek-ai/dsh-subagent")
+	row("subagent-spawn-in-process", "@deepseek-ai/dsh-subagent-spawn-in-process")
+	fmt.Fprint(&out, "  config:\n    providerName: workos-native-spawn\n")
+	row("tool-subagent", "@deepseek-ai/dsh-tool-subagent")
+	fmt.Fprint(&out, "  config:\n    provider: workos-spawn\n    maxDepth: 1\n    enableRunInBackground: false\n    toolFilter:\n      deny: [subagent, create_goal, update_goal, ask_user_question]\n")
 	row("workos-session", "./workos-session.mjs")
 	// The read-only WorkOS tools (B04): configuration-relative row, so the
 	// name is the file beside this cordis.yml, never a bare closure package.
@@ -619,8 +661,9 @@ func (m *SessionManager) handleTool(ctx context.Context, proc *sessionProcess, e
 		return protocolError("Invalid tool identity", err)
 	}
 	var request struct {
-		Operation string         `json:"operation"`
-		Arguments map[string]any `json:"arguments"`
+		DelegationID string         `json:"delegationId"`
+		Operation    string         `json:"operation"`
+		Arguments    map[string]any `json:"arguments"`
 	}
 	if err := json.Unmarshal(envelope.Params, &request); err != nil {
 		return protocolError("Invalid tool request", err)
@@ -629,7 +672,7 @@ func (m *SessionManager) handleTool(ctx context.Context, proc *sessionProcess, e
 	if proc.tools == nil {
 		response["error"] = map[string]any{"code": -32000, "message": "Workspace tools unavailable"}
 	} else {
-		result, err := proc.tools(ctx, request.Operation, request.Arguments)
+		result, err := proc.tools(ports.WithToolDelegation(ctx, request.DelegationID), request.Operation, request.Arguments)
 		if err != nil {
 			response["error"] = map[string]any{"code": -32000, "message": "WorkOS operation failed"}
 		} else {
@@ -643,6 +686,8 @@ func (m *SessionManager) handleTool(ctx context.Context, proc *sessionProcess, e
 	if len(data) > 1024*1024 {
 		return protocolError("Tool response exceeds limit", nil)
 	}
+	proc.toolWrites.Lock()
+	defer proc.toolWrites.Unlock()
 	_, err = proc.stdin.Write(append(data, '\n'))
 	return err
 }

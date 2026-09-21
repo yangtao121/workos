@@ -1152,7 +1152,7 @@ test-terminal-sessions:
 test-harness-sessions test-workspace-execution test-native-surface test-surface-continuity test-v2-development-journey: test-v2-completion
 
 # Explicit opt-in only; owner-only secret file is imported through the isolated
-# Vault admin socket. The acceptance proxy reserves at most CNY 1.90.
+# Vault admin socket. The acceptance proxy reserves at most CNY 19 total.
 .PHONY: test-real-model-acceptance
 test-real-model-acceptance:
 	sh tools/real-model-acceptance/gate.sh
@@ -1172,3 +1172,7 @@ build-workspace-runtime:
 
 test-v2-completion:
 	sh tools/v2-completion/gate.sh
+
+.PHONY: test-native-automation
+test-native-automation:
+	sh tools/native-automation/gate.sh

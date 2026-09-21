@@ -79,6 +79,10 @@ function catalogFixture(): GetHarnessCatalogResponse {
         unavailableReason: "",
         capabilities: {
           $typeName: "workos.harness.v1.HarnessCapabilities",
+          sessionGoals: false,
+          projectSkills: false,
+          maxConcurrentSubagents: 0,
+          maxSubagentDepth: 0,
           streaming: true,
           persistentSessions: false,
           resume: false,

@@ -10,6 +10,8 @@ import (
 )
 
 type Execution struct {
+	delegations     ports.DelegationStore
+	worktrees       ports.Worktrees
 	authorization   ports.Authorizer
 	sources         *Service
 	files, commands ports.Executor
@@ -38,7 +40,7 @@ func (e *Execution) Execute(ctx context.Context, op domain.Operation) (domain.Re
 	}
 	var executor ports.Executor
 	switch op.Name {
-	case "shell.run":
+	case "delegation.create", "delegation.inspect", "delegation.diff", "shell.run":
 		executor = e.commands
 	case "fs.resolve", "fs.stat", "fs.list", "fs.read", "fs.write", "fs.edit":
 		executor = e.files
@@ -55,18 +57,27 @@ func (e *Execution) Execute(ctx context.Context, op domain.Operation) (domain.Re
 		return nil, domain.ErrUnavailable
 	}
 	readOnly := source.ReadOnly || op.ReadOnly
+	root := source.Path
+	if op.DelegationID != "" || op.ParentTaskID != "" || strings.HasPrefix(op.Name, "delegation.") {
+		tree, result, err := e.delegation(ctx, root, readOnly, op)
+		if err != nil || result != nil {
+			return result, err
+		}
+		root, op.GitDirectory = tree.Root, tree.GitDirectory
+	}
+
 	mutating := op.Name == "shell.run" || op.Name == "fs.write" || op.Name == "fs.edit"
 	if readOnly && strings.HasPrefix(op.Name, "fs.") && mutating {
 		return nil, domain.ErrDenied
 	}
 	if !mutating {
-		return executor.Execute(ctx, source.Path, readOnly, op)
+		return executor.Execute(ctx, root, readOnly, op)
 	}
 	cached, fresh, err := e.journal.Begin(ctx, op)
 	if err != nil || !fresh {
 		return cached, err
 	}
-	result, err := executor.Execute(ctx, source.Path, readOnly, op)
+	result, err := executor.Execute(ctx, root, readOnly, op)
 	// An infrastructure error after admission is deliberately left pending:
 	// restart/retry cannot prove that a partial side effect did not happen.
 	if err != nil {

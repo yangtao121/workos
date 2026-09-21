@@ -3335,3 +3335,60 @@ svg {
     min-height: 44px;
   }
 }
+
+.session-automation {
+  padding: 14px;
+  margin-bottom: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #1c2431;
+  overflow-wrap: anywhere;
+}
+.session-automation-heading,
+.session-automation-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  justify-content: space-between;
+}
+.session-automation p {
+  font-size: 13px;
+  line-height: 1.5;
+}
+.session-automation-detail {
+  color: var(--muted);
+}
+.session-goal-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding-top: 12px;
+}
+.session-goal-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.session-goal-form textarea {
+  min-height: 80px;
+  resize: vertical;
+}
+.session-goal-form input {
+  max-width: 90px;
+}
+.session-delegation-list {
+  list-style: none;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.session-delegation-list li {
+  border-top: 1px solid var(--border);
+  padding-top: 12px;
+}
+.session-delegation-review {
+  max-width: 100%;
+  overflow: auto;
+}

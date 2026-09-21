@@ -1,8 +1,17 @@
 // Versioned WorkOS transport for the pinned official Harness. This plugin
 // only adapts lifecycle, framing and execution policy. agents.create/resume,
 // followup, tools, history reconstruction and persistence remain upstream.
+import { attachDelegation } from "./workos-delegation.mjs";
+
 export const name = "workos-session";
-export const inject = ["agents", "sessionPersistence", "llm", "userQuestions"];
+export const inject = [
+  "agents",
+  "sessionPersistence",
+  "llm",
+  "userQuestions",
+  "goals",
+  "subagents",
+];
 const FRAME_LIMIT = 1024 * 1024;
 const OUTPUT_LIMIT = 4 * FRAME_LIMIT;
 
@@ -22,20 +31,33 @@ export function apply(ctx) {
   let closing = false;
   let remaining = 0;
   let requested = false;
-  let usageObserved = false;
+  const reservations = new Map();
+  let budgetUncertain = false;
   let bytes = "";
   let requests = Promise.resolve();
   let notifications = Promise.resolve();
   const usage = new Map();
   const toolCalls = new Map();
   let nextToolID = -1;
+  const delegation = attachDelegation(
+    ctx,
+    () => sessionID,
+    () => active && !closing,
+    (method, params) => enqueueNotification(() => notify(method, params)),
+    () => notifications,
+  );
   globalThis.__workosCall = (operation, args) =>
     new Promise((resolve, reject) => {
       if (!initialized || closing || toolCalls.size >= 64)
         return reject(new Error("Tool bridge unavailable"));
       const id = nextToolID--;
       toolCalls.set(id, { resolve, reject });
-      send({ jsonrpc: "2.0", id, method: "workos/tool", params: { operation, arguments: args } });
+      send({
+        jsonrpc: "2.0",
+        id,
+        method: "workos/tool",
+        params: { operation, arguments: args, delegationId: delegation.current() },
+      });
     });
 
   ctx.userQuestions.registerProvider({
@@ -94,7 +116,7 @@ export function apply(ctx) {
   }
 
   ctx.on("session/event", (session, event) => {
-    if (!active || String(session.id) !== sessionID) return;
+    if (!active || (String(session.id) !== sessionID && !delegation.session(session.id))) return;
     const data = event.data;
     const value =
       event.type === "assistant/chunk" && data.chunk.type === "usage"
@@ -103,40 +125,140 @@ export function apply(ctx) {
           ? data.usage
           : undefined;
     if (value) {
-      usageObserved = true;
       const output = value.outputTokens;
       if (!Number.isSafeInteger(output) || output < 0) throw new Error("Invalid model usage");
-      const key = `${data.turn}:${data.step}`;
+      const key = `${session.id}:${data.turn}:${data.step}`;
       const previous = usage.get(key) ?? 0;
       if (output < previous) throw new Error("Model usage regressed");
+      const reservation = reservations.get(key);
+      if (!reservation && output !== previous) throw new Error("Unreserved model usage");
+      if (reservation) {
+        if (output > reservation.limit) throw new Error("Model exceeded reserved budget");
+        reservation.used = output;
+        reservation.observed = true;
+      }
       remaining -= output - previous;
       usage.set(key, output);
       if (remaining < 0) throw new Error("Model exceeded execution output budget");
     }
-    if (event.type === "assistant/message" && !usageObserved)
-      throw new Error("Model usage unavailable");
-    enqueueNotification(() => notify("session.event", { sessionId: sessionID, event }));
+    if (event.type === "assistant/message") {
+      const key = `${session.id}:${data.turn}:${data.step}`;
+      if (!reservations.get(key)?.observed) {
+        budgetUncertain = true;
+        throw new Error("Model usage unavailable");
+      }
+      reservations.delete(key);
+    }
+    if (
+      event.type === "turn/end" &&
+      [...reservations.keys()].some((key) => key.startsWith(String(session.id) + ":"))
+    )
+      budgetUncertain = true;
+    enqueueNotification(() => notify("session.event", { sessionId: String(session.id), event }));
+    if (event.type === "user/message" && String(session.id) === sessionID)
+      publishGoal(handle?.agent);
   });
-  ctx.on("agent/request", async (_request, next) => {
-    if (!active || closing || remaining <= 0) throw new Error("Execution output budget exhausted");
-    if (requested && !usageObserved)
-      throw new Error("Previous request usage unavailable; retry refused");
-    requested = true;
-    usageObserved = false;
-    const config = await next();
-    return { ...config, maxTokens: Math.min(config.maxTokens ?? remaining, remaining) };
+  ctx.on("agent/request", (request, next) =>
+    delegation.withAgent(request.agent, async () => {
+      if (!active || closing || budgetUncertain || remaining <= 0)
+        throw new Error("Execution output budget exhausted or uncertain");
+      const id = String(request.agent.session.id);
+      if (id !== sessionID && !delegation.session(id)) throw new Error("Unknown agent scope");
+      if ([...reservations.keys()].some((key) => key.startsWith(id + ":")))
+        throw new Error("Previous request usage unavailable; retry refused");
+      const available =
+        remaining -
+        [...reservations.values()].reduce((total, item) => total + item.limit - item.used, 0);
+      if (available < 1) throw new Error("Execution output budget reserved");
+      const limit =
+        id === sessionID
+          ? available
+          : Math.max(1, Math.floor(available / (reservations.size === 0 ? 2 : 1)));
+      const key = `${id}:${request.turn}:${request.step}`;
+      const reservation = { limit, used: 0, observed: false };
+      reservations.set(key, reservation);
+      requested = true;
+      // Keep an unobserved reservation on failure. Retrying an ambiguous paid
+      // request cannot recover or double-spend its reserved output allowance.
+      const config = await next();
+      reservation.limit = Math.min(config.maxTokens ?? limit, limit);
+      return { ...config, maxTokens: reservation.limit };
+    }),
+  );
+
+  function publishGoal(agent) {
+    if (!active || !agent || String(agent.session.id) !== sessionID) return;
+    const goal = ctx.goals.get(agent);
+    if (!goal) return;
+    if (goal.maxGoalRounds > 32) throw new Error("Goal round limit exceeded");
+    const view = {
+      ref: goal.id,
+      revision: String(goal.revision),
+      objective: goal.objective,
+      phase: goal.phase,
+      roundsStarted: goal.roundsStarted,
+      maxRounds: goal.maxGoalRounds,
+      blockedReason: goal.blockedReason?.message || "",
+      armed: goal.activation === "armed",
+    };
+    enqueueNotification(() => notify("session.goal", { sessionId: sessionID, goal: view }));
+  }
+  async function settle(agent) {
+    if (!active || agent.status !== "idle" || delegation.hasChildren()) return;
+    const goal = ctx.goals.get(agent);
+    if (goal?.phase === "active" && goal.activation === "armed") return;
+    // Loading balances a native persistence flush. Recheck after the await:
+    // the upstream driver or a wrap-up tool may have queued a new turn.
+    await ctx.sessionPersistence.load(sessionID);
+    if (!active || agent.status !== "idle" || delegation.hasChildren()) return;
+    const latest = ctx.goals.get(agent);
+    if (latest?.phase === "active" && latest.activation === "armed") return;
+    publishGoal(agent);
+    enqueueNotification(() =>
+      notify(requested ? "session.status" : "session.controlComplete", {
+        sessionId: sessionID,
+        status: "idle",
+      }),
+    );
+    active = false;
+  }
+  ctx.on("goal/changed", ({ agent }) => {
+    publishGoal(agent);
+    if (active && String(agent.session.id) === sessionID) settle(agent).catch(fatal);
   });
+  ctx.on("agent/pre-step", ({ agent }, next) =>
+    delegation.withAgent(agent, async () => {
+      if (
+        active &&
+        String(agent.session.id) === sessionID &&
+        ctx.goals.get(agent)?.phase === "active"
+      ) {
+        const control = await globalThis.__workosCall("session.control", {});
+        const goal = ctx.goals.get(agent);
+        if (goal && control.pauseGoalRef === goal.id) {
+          ctx.goals.pause(agent, { id: goal.id, revision: goal.revision });
+          return { kind: "reject" };
+        }
+      }
+      return next();
+    }),
+  );
+  ctx.on("tools/execute", (execution, next) =>
+    delegation.withAgent(execution.agent, async () => {
+      if (
+        (execution.name === "create_goal" || execution.name === "update_goal") &&
+        execution.arguments?.max_goal_rounds !== undefined &&
+        (!Number.isSafeInteger(execution.arguments.max_goal_rounds) ||
+          execution.arguments.max_goal_rounds > 32)
+      )
+        throw new Error("Goal round limit must not exceed 32");
+      return next();
+    }),
+  );
   ctx.on("agent/status", ({ agent, status }) => {
     if (!active || String(agent.session.id) !== sessionID) return;
-    enqueueNotification(async () => {
-      if (status === "idle") {
-        // A live, balanced load flushes the native log before completion can
-        // reach Core. A failed flush must not produce a successful turn.
-        await ctx.sessionPersistence.load(sessionID);
-        active = false;
-      }
-      notify("session.status", { sessionId: sessionID, status });
-    });
+    if (status === "idle") settle(agent).catch(fatal);
+    else enqueueNotification(() => notify("session.status", { sessionId: sessionID, status }));
   });
 
   async function dispatch(method, params) {
@@ -170,7 +292,8 @@ export function apply(ctx) {
       remaining = params.maxTokens;
       usage.clear();
       requested = false;
-      usageObserved = false;
+      reservations.clear();
+      budgetUncertain = false;
       if (!handle) {
         const records = await ctx.sessionPersistence.list();
         const exists = records.some((record) => String(record.id) === sessionID);
@@ -198,7 +321,27 @@ export function apply(ctx) {
       });
       if (typeof message.id !== "string" || !message.id || message.id.length > 128)
         throw new Error("Invalid message identity");
-      handle.agent.followup(message);
+      const directive = params.directive;
+      if (directive) {
+        const ref = {
+          id: directive.goal_ref || directive.goalRef,
+          revision: Number(directive.expected_revision || directive.expectedRevision),
+        };
+        // Go's adapter carries the canonical enum as its numeric wire value.
+        if (directive.kind === 1) {
+          const rounds = directive.max_rounds || directive.maxRounds;
+          if (!Number.isSafeInteger(rounds) || rounds < 1 || rounds > 32)
+            throw new Error("Invalid goal round limit");
+          ctx.goals.create(handle.agent, { objective: directive.objective, maxGoalRounds: rounds });
+        } else if (directive.kind === 2) ctx.goals.resume(handle.agent, ref);
+        else if (directive.kind === 3) {
+          ctx.goals.pause(handle.agent, ref);
+          await settle(handle.agent);
+        } else throw new Error("Invalid goal directive");
+      } else {
+        publishGoal(handle.agent);
+        handle.agent.followup(message);
+      }
       return { messageId: message.id };
     }
     if (method === "shutdown") {

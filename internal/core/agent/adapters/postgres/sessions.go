@@ -2,6 +2,7 @@ package postgres
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
@@ -43,8 +44,13 @@ func uuidString(value pgtype.UUID) string {
 	return uuid.UUID(value.Bytes).String()
 }
 
-func sessionFromRow(row agentdb.WorkosCoreAgentSession) domain.Session {
+func sessionFromRow(row agentdb.WorkosCoreAgentSession) (domain.Session, error) {
+	goal, err := domain.DecodeGoalProjection(row.GoalProjection)
+	if err != nil {
+		return domain.Session{}, err
+	}
 	session := domain.Session{
+		Goal: goal, GoalPauseRef: row.GoalPauseRef,
 		ID:                       row.SessionID,
 		OwnerUserID:              row.OwnerUserID,
 		ProjectID:                row.ProjectID,
@@ -65,11 +71,19 @@ func sessionFromRow(row agentdb.WorkosCoreAgentSession) domain.Session {
 		closed := row.ClosedAt.Time
 		session.ClosedAt = &closed
 	}
-	return session
+	return session, nil
 }
 
-func inputFromRow(row agentdb.WorkosCoreAgentSessionInput) domain.SessionInput {
+func inputFromRow(row agentdb.WorkosCoreAgentSessionInput) (domain.SessionInput, error) {
+	var directive *domain.SessionDirective
+	if len(row.Directive) > 0 && string(row.Directive) != "{}" {
+		directive = new(domain.SessionDirective)
+		if json.Unmarshal(row.Directive, directive) != nil || directive.Validate() != nil {
+			return domain.SessionInput{}, domain.ErrInvalid
+		}
+	}
 	return domain.SessionInput{
+		Directive:     directive,
 		ID:            row.InputID,
 		SessionID:     row.SessionID,
 		OwnerUserID:   row.OwnerUserID,
@@ -82,7 +96,7 @@ func inputFromRow(row agentdb.WorkosCoreAgentSessionInput) domain.SessionInput {
 		ResultSummary: row.ResultSummary,
 		CreatedAt:     row.CreatedAt.Time,
 		UpdatedAt:     row.UpdatedAt.Time,
-	}
+	}, nil
 }
 
 // InsertSession creates the durable session row. The bool reports creation;
@@ -109,7 +123,18 @@ func (r *SessionRepository) GetSession(ctx context.Context, ownerUserID, session
 	if err != nil {
 		return domain.Session{}, sessionError("get agent session", err)
 	}
-	return sessionFromRow(row), nil
+	session, err := sessionFromRow(row)
+	if err != nil {
+		return domain.Session{}, err
+	}
+	children, err := r.queries.ListSessionDelegations(ctx, agentdb.ListSessionDelegationsParams{SessionID: sessionID, OwnerUserID: ownerUserID})
+	if err != nil {
+		return domain.Session{}, err
+	}
+	for _, child := range children {
+		session.Delegations = append(session.Delegations, delegationFromRow(child))
+	}
+	return session, nil
 }
 
 func (r *SessionRepository) GetSessionByIdempotency(ctx context.Context, ownerUserID, key string) (domain.Session, error) {
@@ -117,7 +142,7 @@ func (r *SessionRepository) GetSessionByIdempotency(ctx context.Context, ownerUs
 	if err != nil {
 		return domain.Session{}, sessionError("get agent session by key", err)
 	}
-	return sessionFromRow(row), nil
+	return sessionFromRow(row)
 }
 
 func (r *SessionRepository) ListSessions(ctx context.Context, ownerUserID, projectID string, includeClosed bool, limit int) ([]domain.Session, error) {
@@ -129,7 +154,11 @@ func (r *SessionRepository) ListSessions(ctx context.Context, ownerUserID, proje
 	}
 	out := make([]domain.Session, 0, len(rows))
 	for _, row := range rows {
-		out = append(out, sessionFromRow(row))
+		session, err := sessionFromRow(row)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, session)
 	}
 	return out, nil
 }
@@ -138,10 +167,21 @@ func (r *SessionRepository) ListSessions(ctx context.Context, ownerUserID, proje
 // creation; a consumed (session, client_input_id) pair must be read back so
 // the digest decides replay versus conflict.
 func (r *SessionRepository) InsertInput(ctx context.Context, input domain.SessionInput) (bool, error) {
+	directive := []byte("{}")
+	if input.Directive != nil {
+		if err := input.Directive.Validate(); err != nil {
+			return false, err
+		}
+		var err error
+		directive, err = json.Marshal(input.Directive)
+		if err != nil {
+			return false, err
+		}
+	}
 	created, err := r.queries.InsertAgentSessionInput(ctx, agentdb.InsertAgentSessionInputParams{
 		InputID: input.ID, SessionID: input.SessionID, OwnerUserID: input.OwnerUserID,
 		ClientInputID: input.ClientInputID, InputText: input.Text, RequestDigest: input.RequestDigest,
-		Sequence: input.Sequence, CreatedAt: timestamp(input.CreatedAt),
+		Sequence: input.Sequence, CreatedAt: timestamp(input.CreatedAt), Directive: directive,
 	})
 	if err != nil {
 		return false, sessionError("insert agent session input", err)
@@ -166,7 +206,7 @@ func (r *SessionRepository) GetInput(ctx context.Context, sessionID, clientInput
 	if err != nil {
 		return domain.SessionInput{}, sessionError("get agent session input", err)
 	}
-	return inputFromRow(row), nil
+	return inputFromRow(row)
 }
 
 func (r *SessionRepository) ListInputs(ctx context.Context, sessionID string, afterSequence int64, limit int) ([]domain.SessionInput, error) {
@@ -178,7 +218,11 @@ func (r *SessionRepository) ListInputs(ctx context.Context, sessionID string, af
 	}
 	out := make([]domain.SessionInput, 0, len(rows))
 	for _, row := range rows {
-		out = append(out, inputFromRow(row))
+		input, err := inputFromRow(row)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, input)
 	}
 	return out, nil
 }
@@ -258,7 +302,11 @@ func (r *SessionRepository) ListDispatchableInputs(ctx context.Context, sessionI
 	}
 	out := make([]domain.SessionInput, 0, len(rows))
 	for _, row := range rows {
-		out = append(out, inputFromRow(row))
+		input, err := inputFromRow(row)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, input)
 	}
 	return out, nil
 }
@@ -335,7 +383,10 @@ func (r *SessionRepository) InputByTask(ctx context.Context, sessionID, taskID s
 		return domain.SessionInput{}, err
 	}
 	row, err := r.queries.GetSessionInputByTask(ctx, agentdb.GetSessionInputByTaskParams{SessionID: sessionID, TaskID: id})
-	return inputFromRow(row), sessionError("get session input by task", err)
+	if err != nil {
+		return domain.SessionInput{}, sessionError("get session input by task", err)
+	}
+	return inputFromRow(row)
 }
 func (r *SessionRepository) RecoveryCandidates(ctx context.Context, now time.Time, limit int) ([]domain.Session, error) {
 	rows, err := r.queries.ClaimSessionRecoveryBatch(ctx, agentdb.ClaimSessionRecoveryBatchParams{Limit: int32(limit), RecoveryCheckedAt: timestamp(now)})

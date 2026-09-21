@@ -1821,6 +1821,7 @@ export function Desktop({
     ) : windowState.kind === "agent-sessions" ? (
       activeProject ? (
         <AgentSessionsApp
+          providers={catalog?.providers}
           key={activeProject.id}
           projectId={activeProject.id}
           workosClients={workosClients}

@@ -22,6 +22,9 @@ type workspaceOperationRouter struct {
 func (r *workspaceOperationRouter) Execute(ctx context.Context, op workspacedomain.Operation) (workspacedomain.Result, error) {
 	switch op.Name {
 	case "preview.start", "preview.list", "preview.stop":
+		if op.DelegationID != "" || op.ParentTaskID != "" {
+			return nil, workspacedomain.ErrDenied
+		}
 	default:
 		return r.files.Execute(ctx, op)
 	}

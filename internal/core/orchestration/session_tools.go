@@ -24,6 +24,7 @@ import (
 // SessionTools derives scope at every operation and rechecks it while a
 // command is running. The model never supplies identity headers or host paths.
 type SessionTools struct {
+	Delegations   agentports.DelegationRepository
 	Installations *projectapp.InstallationService
 	Interactions  *agentapp.InteractionService
 	Publications  *TaskArtifactMaterializer
@@ -88,6 +89,14 @@ func (s *SessionTools) scope(ctx context.Context, lease, worker string) (toolSco
 	return toolScope{facts, session, binding}, nil
 }
 func (s *SessionTools) Execute(ctx context.Context, lease, worker, id, operation string, args map[string]any) (map[string]any, error) {
+	return s.execute(ctx, lease, worker, id, operation, "", args)
+}
+
+func (s *SessionTools) ExecuteDelegated(ctx context.Context, lease, worker, id, operation, delegation string, args map[string]any) (map[string]any, error) {
+	return s.execute(ctx, lease, worker, id, operation, delegation, args)
+}
+
+func (s *SessionTools) execute(ctx context.Context, lease, worker, id, operation, delegation string, args map[string]any) (map[string]any, error) {
 	parsed, err := uuid.Parse(id)
 	if err != nil || parsed.Version() != 7 {
 		return nil, agentdomain.ErrInvalid
@@ -96,7 +105,33 @@ func (s *SessionTools) Execute(ctx context.Context, lease, worker, id, operation
 	if err != nil {
 		return nil, err
 	}
+	var child agentdomain.Delegation
+	if delegation != "" {
+		if s.Delegations == nil {
+			return nil, agentdomain.ErrProjectDenied
+		}
+		child, err = s.Delegations.GetTaskDelegation(ctx, lease, worker, delegation, time.Now().UTC())
+		if err != nil {
+			return nil, err
+		}
+		if child.BindingID != scope.binding.ID || child.BindingRevision != scope.binding.Revision || child.SourceID != scope.binding.WorkspaceSourceID {
+			return nil, agentdomain.ErrProjectDenied
+		}
+		if operation == "delegation.finish" {
+			return s.finishDelegation(ctx, scope, lease, worker, id, child, args)
+		}
+		if child.State != "running" {
+			return nil, agentdomain.ErrProjectDenied
+		}
+		if operation == "delegation.acquire" || operation == "session.control" || operation == "interaction.ask" || operation == "artifact.create" || strings.HasPrefix(operation, "preview.") {
+			return nil, agentdomain.ErrProjectDenied
+		}
+	}
 	switch operation {
+	case "delegation.acquire":
+		return s.acquireDelegation(ctx, scope, lease, worker, id, args)
+	case "session.control":
+		return map[string]any{"pauseGoalRef": scope.session.GoalPauseRef}, nil
 	case "interaction.ask":
 		if s.Interactions == nil {
 			return nil, agentdomain.ErrInvalid
@@ -187,32 +222,13 @@ func (s *SessionTools) Execute(ctx context.Context, lease, worker, id, operation
 	}
 	// Cancellation, revocation, binding revision changes, and lease loss close
 	// the Runtime request, which owns process-group/container teardown.
-	running, cancel := context.WithCancel(ctx)
-	defer cancel()
-	finished := make(chan struct{})
-	defer close(finished)
-	go func() {
-		ticker := time.NewTicker(time.Second)
-		defer ticker.Stop()
-		for {
-			select {
-			case <-finished:
-				return
-			case <-running.Done():
-				return
-			case <-ticker.C:
-				if _, err := s.scope(running, lease, worker); err != nil {
-					cancel()
-					return
-				}
-			}
-		}
-	}()
+	running, stop := s.watchToolScope(ctx, lease, worker, delegation, "running")
+	defer stop()
 	arguments, err := structpb.NewStruct(args)
 	if err != nil {
 		return nil, agentdomain.ErrInvalid
 	}
-	result, err := s.Runtime.ExecuteWorkspaceOperation(running, connect.NewRequest(&workloadv1.ExecuteWorkspaceOperationRequest{WorkspaceBindingId: scope.binding.ID, WorkspaceRevision: scope.binding.Revision, OwnerUserId: scope.task.OwnerUserID, ProjectId: scope.task.ProjectID, WorkspaceSourceId: scope.binding.WorkspaceSourceID, ReadOnly: scope.binding.ReadOnly, OperationId: id, Operation: operation, Arguments: arguments}))
+	result, err := s.Runtime.ExecuteWorkspaceOperation(running, connect.NewRequest(&workloadv1.ExecuteWorkspaceOperationRequest{DelegationId: delegation, ParentTaskId: map[bool]string{true: scope.task.TaskID}[delegation != ""], WorkspaceBindingId: scope.binding.ID, WorkspaceRevision: scope.binding.Revision, OwnerUserId: scope.task.OwnerUserID, ProjectId: scope.task.ProjectID, WorkspaceSourceId: scope.binding.WorkspaceSourceID, ReadOnly: scope.binding.ReadOnly, OperationId: id, Operation: operation, Arguments: arguments}))
 	if err != nil {
 		return nil, err
 	}
@@ -222,4 +238,35 @@ func (s *SessionTools) Execute(ctx context.Context, lease, worker, id, operation
 func (s *SessionTools) ValidateInteraction(ctx context.Context, lease, worker string) error {
 	_, err := s.scope(ctx, lease, worker)
 	return err
+}
+
+// watchToolScope bounds the authority of long Runtime calls, including worktree
+// preparation and diff generation, to the current task lease and project grant.
+func (s *SessionTools) watchToolScope(ctx context.Context, lease, worker, delegation, state string) (context.Context, context.CancelFunc) {
+	running, cancel := context.WithCancel(ctx)
+	settled := make(chan struct{})
+	go func() {
+		defer close(settled)
+		ticker := time.NewTicker(time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-running.Done():
+				return
+			case <-ticker.C:
+				if delegation != "" {
+					child, err := s.Delegations.GetTaskDelegation(running, lease, worker, delegation, time.Now().UTC())
+					if err != nil || child.State != state {
+						cancel()
+						return
+					}
+				}
+				if _, err := s.scope(running, lease, worker); err != nil {
+					cancel()
+					return
+				}
+			}
+		}
+	}()
+	return running, func() { cancel(); <-settled }
 }
