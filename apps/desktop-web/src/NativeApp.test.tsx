@@ -17,12 +17,20 @@ class Peer {
   setLocalDescription = vi.fn(() => Promise.resolve());
   setRemoteDescription = vi.fn(() => Promise.resolve());
   close = vi.fn();
-  constructor() {
+  constructor(readonly configuration?: RTCConfiguration) {
     Peer.instances.push(this);
   }
 }
 function fixture(create = vi.fn(() => Promise.resolve({ session: { id: "session-1" } }))) {
   const nativeSessions = {
+    getNativeConnectivity: vi.fn(() =>
+      Promise.resolve({
+        mode: "loopback",
+        relayOnly: false,
+        iceServers: [] as { urls: string[]; username: string; credential: string }[],
+        expiresAt: { seconds: BigInt(Math.floor(Date.now() / 1000) + 90), nanos: 0 },
+      }),
+    ),
     createNativeSession: create,
     connectNativeSession: vi.fn(() => Promise.resolve({ answerSdp: "answer" })),
     closeNativeSession: vi.fn(() => Promise.resolve({})),
@@ -51,6 +59,41 @@ afterEach(() => {
 });
 
 describe("Native window lifecycle and input", () => {
+  it("uses the issued relay policy and refuses expired transport capabilities", async () => {
+    const f = fixture();
+    f.nativeSessions.getNativeConnectivity.mockResolvedValueOnce({
+      mode: "relay",
+      relayOnly: true,
+      iceServers: [
+        {
+          urls: ["turn:relay.fixture:3478"],
+          username: "ephemeral",
+          credential: "fixture-capability",
+        },
+      ],
+      expiresAt: { seconds: BigInt(Math.floor(Date.now() / 1000) + 90), nanos: 0 },
+    });
+    const view = render(<NativeApp workosClients={f.clients} activeProjectId="project" />);
+    await waitFor(() => {
+      expect(f.nativeSessions.connectNativeSession).toHaveBeenCalledOnce();
+    });
+    expect(firstPeer().configuration?.iceTransportPolicy).toBe("relay");
+    expect(firstPeer().configuration?.iceServers?.[0]?.username).toBe("ephemeral");
+    view.unmount();
+    const expired = fixture();
+    expired.nativeSessions.getNativeConnectivity.mockResolvedValue({
+      mode: "relay",
+      relayOnly: true,
+      iceServers: [],
+      expiresAt: { seconds: 1n, nanos: 0 },
+    });
+    render(<NativeApp workosClients={expired.clients} activeProjectId="another-project" />);
+    await waitFor(() => {
+      expect(screen.getByTestId("native-status").textContent).toBe("unavailable");
+    });
+    expect(expired.nativeSessions.connectNativeSession).not.toHaveBeenCalled();
+    expect(Peer.instances).toHaveLength(1);
+  });
   it("negotiates SCTP and detaches (never closes) the session on unmount", async () => {
     const f = fixture();
     const view = render(<NativeApp workosClients={f.clients} activeProjectId="project" />);
@@ -58,6 +101,10 @@ describe("Native window lifecycle and input", () => {
       expect(f.nativeSessions.connectNativeSession).toHaveBeenCalled();
     });
     const peer = firstPeer();
+    expect(f.nativeSessions.getNativeConnectivity).toHaveBeenCalledWith({
+      sessionId: "session-1",
+      controlGeneration: 1n,
+    });
     expect(peer.createDataChannel).toHaveBeenCalled();
     view.unmount();
     expect(peer.close).toHaveBeenCalledOnce();

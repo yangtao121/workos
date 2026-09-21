@@ -17,8 +17,9 @@ export const file_workos_surface_v1_native: GenFile = /*@__PURE__*/
 /**
  * One supervised virtual-display native session (ADR-0029): a real Xvfb
  * display, a configured native X client, and an ffmpeg x11grab/VP8 capture
- * streamed to the desktop over loopback WebRTC. Input returns over a data
- * channel. Gateway routes the service with owner identity.
+ * streamed over operator-configured WebRTC (loopback, private LAN or TURN
+ * relay; ADR-0035). Input returns over a data channel. Gateway supplies the
+ * authenticated owner and device identity.
  *
  * @generated from message workos.surface.v1.NativeSession
  */

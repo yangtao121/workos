@@ -1,0 +1,11 @@
+# Apply with compose.workspace-runtime.yaml. The shared key file must be
+# owned by Runtime's uid with mode 0600; provision the same key in coturn.
+# Its contents must never be placed in an environment variable or argv.
+services:
+  runtime-host:
+    environment:
+      WORKOS_RUNTIME_NATIVE_CANDIDATES: relay
+      WORKOS_NATIVE_TURN_URLS: ${WORKOS_NATIVE_TURN_URLS:?}
+      WORKOS_NATIVE_TURN_SECRET_FILE: /run/workos/turn-auth.key
+    volumes:
+      - ${WORKOS_NATIVE_TURN_SECRET_FILE:?}:/run/workos/turn-auth.key:ro

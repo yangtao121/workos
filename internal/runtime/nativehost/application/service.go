@@ -19,6 +19,7 @@ import (
 )
 
 type Service struct {
+	connectivity  ports.ConnectivityIssuer
 	authorization ports.WorkspaceAuthorizer
 	store         ports.SessionStore
 	engine        ports.Engine

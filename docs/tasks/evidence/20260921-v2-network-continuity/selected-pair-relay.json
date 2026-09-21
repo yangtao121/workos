@@ -1,0 +1,6 @@
+{
+  "local": "relay",
+  "remote": "relay",
+  "localAddress": "172.22.0.2",
+  "remoteAddress": "172.22.0.2"
+}

@@ -20,8 +20,22 @@ import (
 
 type NativeHandler struct{ service *application.Service }
 
-func (h *NativeHandler) GetNativeConnectivity(context.Context, *connect.Request[surfacev1.GetNativeConnectivityRequest]) (*connect.Response[surfacev1.GetNativeConnectivityResponse], error) {
-	return nil, connect.NewError(connect.CodeUnavailable, errors.New("native connectivity is not configured"))
+func (h *NativeHandler) GetNativeConnectivity(ctx context.Context, req *connect.Request[surfacev1.GetNativeConnectivityRequest]) (*connect.Response[surfacev1.GetNativeConnectivityResponse], error) {
+	owner, err := identity.FromContext(ctx)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeUnauthenticated, err)
+	}
+	configuration, err := h.service.Connectivity(ctx, owner.UserID, owner.DeviceID, req.Msg.GetSessionId(), req.Msg.GetControlGeneration())
+	if err != nil {
+		return nil, nativeError(err)
+	}
+	result := &surfacev1.GetNativeConnectivityResponse{Mode: configuration.Mode, RelayOnly: configuration.RelayOnly, ExpiresAt: timestamppb.New(configuration.ExpiresAt)}
+	for _, server := range configuration.Servers {
+		result.IceServers = append(result.IceServers, &surfacev1.NativeIceServer{Urls: server.URLs, Username: server.Username, Credential: server.Credential})
+	}
+	response := connect.NewResponse(result)
+	response.Header().Set("Cache-Control", "no-store")
+	return response, nil
 }
 
 func NewNativeHandler(service *application.Service) (string, http.Handler) {

@@ -54,7 +54,9 @@ func TestPreviewRealProcessContinuityAndRevocation(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(root, "server.cjs"), []byte(source), 0600); err != nil {
 		t.Fatal(err)
 	}
-	bridgeRoot, err := os.MkdirTemp(base, "bridges-")
+	// The daemon accepts long mount paths, while Unix connect must use the
+	// directory-fd path to avoid sockaddr_un's 108-byte limit in worktrees.
+	bridgeRoot, err := os.MkdirTemp(base, "bridges-"+strings.Repeat("long", 25))
 	if err != nil {
 		t.Fatal(err)
 	}

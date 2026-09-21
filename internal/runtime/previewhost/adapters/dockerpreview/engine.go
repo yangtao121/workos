@@ -56,8 +56,17 @@ func (e *Engine) Launch(ctx context.Context, r ports.PreviewRecord, g ports.Work
 	if err != nil {
 		return nil, err
 	}
-	socket := filepath.Join(dir, "http.sock")
 	transport := &http.Transport{DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
+		// Linux sockaddr_un is limited to 108 bytes. Worktrees can make the
+		// host bridge path longer even though the container's /bridge path is
+		// short. Resolve through an open directory fd without a global symlink
+		// or a shared short-path directory; keep it open until connect returns.
+		directory, err := os.Open(dir)
+		if err != nil {
+			return nil, err
+		}
+		defer directory.Close()
+		socket := filepath.Join("/proc/self/fd", strconv.FormatUint(uint64(directory.Fd()), 10), "http.sock")
 		return (&net.Dialer{}).DialContext(ctx, "unix", socket)
 	}, MaxIdleConns: 4, MaxConnsPerHost: 8, ResponseHeaderTimeout: 10 * time.Second}
 	p := &server{process: process, transport: transport, client: &http.Client{Transport: transport, Timeout: 15 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}, directory: dir}

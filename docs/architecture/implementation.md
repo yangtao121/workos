@@ -1673,3 +1673,15 @@ V2 completion 门禁必须执行三个固定 viewport 的视觉用例，跳过�
 成功。完整故障矩阵的运行结果见 [本轮任务](../tasks/20260920-v2-p3-final-matrix.md)。
 
 2026-09-20 最终完整门禁已通过，F01–F27 缺项全部补齐；当前结论见 [最终验收](../tasks/evidence/20260920-v2-p3-final-matrix/results.md)。历史段落的 partial/scaffolded 描述仅代表当时验证范围。
+
+## 2026-09-21 Native 网络连接（ADR-0035）
+
+Native 的 GetNativeConnectivity 由 Runtime 验证当前设备、控制代次、程序和工作区权限，
+签发短期 TURN capability；静态密钥仅受控 Runtime adapter/coturn 读取。relay 模式强制
+两端 TURN candidate，未配置或中继故障明确失败；原有 loopback 和私有 LAN 模式保留。
+已通过生产 HTTPS/配对、独立 Docker LAN/NAT、真实 coturn/媒体/输入/续约/接管/故障恢复/
+撤权门禁。详见 [连接配置与限制](native-network-connectivity.md) 和
+[长期证据](../tasks/evidence/20260921-v2-network-continuity/results.md)。
+
+开发预览的 Linux Unix socket 连接采用打开的目录 fd，避免 worktree 的长路径超过
+sockaddr_un 上限；真实 Docker 长路径回归证明程序继续使用原工作区并保留运行身份。

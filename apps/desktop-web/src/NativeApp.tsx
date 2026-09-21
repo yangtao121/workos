@@ -68,7 +68,27 @@ export function NativeApp(props: {
           videoPlayingRef.current = false;
           channelRef.current = null;
           const previous = peer;
-          const next = new RTCPeerConnection({});
+          const generation = await lease.controlGeneration();
+          const connectivity = await clients.nativeSessions.getNativeConnectivity({
+            sessionId: session,
+            controlGeneration: generation,
+          });
+          if (isDisposed()) return;
+          if (
+            !connectivity.expiresAt ||
+            Number(connectivity.expiresAt.seconds) * 1000 <= Date.now() ||
+            (connectivity.relayOnly && connectivity.iceServers.length === 0)
+          ) {
+            throw new Error("native connection capability expired or unavailable");
+          }
+          const next = new RTCPeerConnection({
+            iceTransportPolicy: connectivity.relayOnly ? "relay" : "all",
+            iceServers: connectivity.iceServers.map((server) => ({
+              urls: server.urls,
+              username: server.username,
+              credential: server.credential,
+            })),
+          });
           peer = next;
           previous?.close();
           next.addTransceiver("video", { direction: "recvonly" });
@@ -111,7 +131,7 @@ export function NativeApp(props: {
           if (isDisposed()) return;
           const connected = await clients.nativeSessions.connectNativeSession({
             sessionId: session,
-            controlGeneration: await lease.controlGeneration(),
+            controlGeneration: generation,
             offerSdp: next.localDescription?.sdp ?? "",
           });
           if (isDisposed()) return;

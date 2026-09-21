@@ -1176,3 +1176,7 @@ test-v2-completion:
 .PHONY: test-native-automation
 test-native-automation:
 	sh tools/native-automation/gate.sh
+
+.PHONY: test-network-continuity
+test-network-continuity:
+	sh tools/network-continuity/gate.sh

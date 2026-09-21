@@ -1,0 +1,27 @@
+# Provision a separate private config containing static-auth-secret (>=32
+# random visible ASCII bytes); give the same owner-only key file to Runtime.
+use-auth-secret
+realm=workos
+fingerprint
+listening-port=3478
+tls-listening-port=5349
+min-port=49160
+max-port=49223
+# Coturn 4.6.1 may clamp allocations to the 600-second RFC minimum.
+# Credential admission expiry does not terminate existing allocations.
+# WorkOS enforces media/control authorization separately at most every 30s.
+max-allocate-lifetime=600
+user-quota=2
+total-quota=64
+max-bps=2000000
+bps-capacity=32000000
+no-multicast-peers
+no-cli
+no-tcp-relay
+# Force relay-to-relay traffic only: deny all destinations, then explicitly
+# allow the actual relay IPs/ranges for this deployment. Set listening-ip,
+# relay-ip, external-ip and TLS cert/pkey to the operator's topology.
+denied-peer-ip=0.0.0.0-255.255.255.255
+denied-peer-ip=::-ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff
+# allowed-peer-ip=<actual relay address>
+# static-auth-secret=<provision privately, never commit>
