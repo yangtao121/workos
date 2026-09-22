@@ -33,6 +33,9 @@ const (
 // reflection-formatted method names, remove the leading slash and convert the remaining slash to a
 // period.
 const (
+	// SurfaceContinuityServiceGetSurfaceWorkloadProcedure is the fully-qualified name of the
+	// SurfaceContinuityService's GetSurfaceWorkload RPC.
+	SurfaceContinuityServiceGetSurfaceWorkloadProcedure = "/workos.surface.v1.SurfaceContinuityService/GetSurfaceWorkload"
 	// SurfaceContinuityServiceListProjectSurfacesProcedure is the fully-qualified name of the
 	// SurfaceContinuityService's ListProjectSurfaces RPC.
 	SurfaceContinuityServiceListProjectSurfacesProcedure = "/workos.surface.v1.SurfaceContinuityService/ListProjectSurfaces"
@@ -59,6 +62,7 @@ const (
 // SurfaceContinuityServiceClient is a client for the workos.surface.v1.SurfaceContinuityService
 // service.
 type SurfaceContinuityServiceClient interface {
+	GetSurfaceWorkload(context.Context, *connect.Request[v1.GetSurfaceWorkloadRequest]) (*connect.Response[v1.GetSurfaceWorkloadResponse], error)
 	// ListProjectSurfaces discovers the project's running workload instances
 	// and their attachment summaries so a new device can find the original
 	// program without copying any client-side state.
@@ -98,6 +102,12 @@ func NewSurfaceContinuityServiceClient(httpClient connect.HTTPClient, baseURL st
 	baseURL = strings.TrimRight(baseURL, "/")
 	surfaceContinuityServiceMethods := v1.File_workos_surface_v1_continuity_proto.Services().ByName("SurfaceContinuityService").Methods()
 	return &surfaceContinuityServiceClient{
+		getSurfaceWorkload: connect.NewClient[v1.GetSurfaceWorkloadRequest, v1.GetSurfaceWorkloadResponse](
+			httpClient,
+			baseURL+SurfaceContinuityServiceGetSurfaceWorkloadProcedure,
+			connect.WithSchema(surfaceContinuityServiceMethods.ByName("GetSurfaceWorkload")),
+			connect.WithClientOptions(opts...),
+		),
 		listProjectSurfaces: connect.NewClient[v1.ListProjectSurfacesRequest, v1.ListProjectSurfacesResponse](
 			httpClient,
 			baseURL+SurfaceContinuityServiceListProjectSurfacesProcedure,
@@ -145,6 +155,7 @@ func NewSurfaceContinuityServiceClient(httpClient connect.HTTPClient, baseURL st
 
 // surfaceContinuityServiceClient implements SurfaceContinuityServiceClient.
 type surfaceContinuityServiceClient struct {
+	getSurfaceWorkload     *connect.Client[v1.GetSurfaceWorkloadRequest, v1.GetSurfaceWorkloadResponse]
 	listProjectSurfaces    *connect.Client[v1.ListProjectSurfacesRequest, v1.ListProjectSurfacesResponse]
 	attachSurface          *connect.Client[v1.AttachSurfaceRequest, v1.AttachSurfaceResponse]
 	detachSurface          *connect.Client[v1.DetachSurfaceRequest, v1.DetachSurfaceResponse]
@@ -152,6 +163,11 @@ type surfaceContinuityServiceClient struct {
 	getSurfaceControl      *connect.Client[v1.GetSurfaceControlRequest, v1.GetSurfaceControlResponse]
 	stopSurfaceWorkload    *connect.Client[v1.StopSurfaceWorkloadRequest, v1.StopSurfaceWorkloadResponse]
 	restartSurfaceWorkload *connect.Client[v1.RestartSurfaceWorkloadRequest, v1.RestartSurfaceWorkloadResponse]
+}
+
+// GetSurfaceWorkload calls workos.surface.v1.SurfaceContinuityService.GetSurfaceWorkload.
+func (c *surfaceContinuityServiceClient) GetSurfaceWorkload(ctx context.Context, req *connect.Request[v1.GetSurfaceWorkloadRequest]) (*connect.Response[v1.GetSurfaceWorkloadResponse], error) {
+	return c.getSurfaceWorkload.CallUnary(ctx, req)
 }
 
 // ListProjectSurfaces calls workos.surface.v1.SurfaceContinuityService.ListProjectSurfaces.
@@ -192,6 +208,7 @@ func (c *surfaceContinuityServiceClient) RestartSurfaceWorkload(ctx context.Cont
 // SurfaceContinuityServiceHandler is an implementation of the
 // workos.surface.v1.SurfaceContinuityService service.
 type SurfaceContinuityServiceHandler interface {
+	GetSurfaceWorkload(context.Context, *connect.Request[v1.GetSurfaceWorkloadRequest]) (*connect.Response[v1.GetSurfaceWorkloadResponse], error)
 	// ListProjectSurfaces discovers the project's running workload instances
 	// and their attachment summaries so a new device can find the original
 	// program without copying any client-side state.
@@ -227,6 +244,12 @@ type SurfaceContinuityServiceHandler interface {
 // and JSON codecs. They also support gzip compression.
 func NewSurfaceContinuityServiceHandler(svc SurfaceContinuityServiceHandler, opts ...connect.HandlerOption) (string, http.Handler) {
 	surfaceContinuityServiceMethods := v1.File_workos_surface_v1_continuity_proto.Services().ByName("SurfaceContinuityService").Methods()
+	surfaceContinuityServiceGetSurfaceWorkloadHandler := connect.NewUnaryHandler(
+		SurfaceContinuityServiceGetSurfaceWorkloadProcedure,
+		svc.GetSurfaceWorkload,
+		connect.WithSchema(surfaceContinuityServiceMethods.ByName("GetSurfaceWorkload")),
+		connect.WithHandlerOptions(opts...),
+	)
 	surfaceContinuityServiceListProjectSurfacesHandler := connect.NewUnaryHandler(
 		SurfaceContinuityServiceListProjectSurfacesProcedure,
 		svc.ListProjectSurfaces,
@@ -271,6 +294,8 @@ func NewSurfaceContinuityServiceHandler(svc SurfaceContinuityServiceHandler, opt
 	)
 	return "/workos.surface.v1.SurfaceContinuityService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
+		case SurfaceContinuityServiceGetSurfaceWorkloadProcedure:
+			surfaceContinuityServiceGetSurfaceWorkloadHandler.ServeHTTP(w, r)
 		case SurfaceContinuityServiceListProjectSurfacesProcedure:
 			surfaceContinuityServiceListProjectSurfacesHandler.ServeHTTP(w, r)
 		case SurfaceContinuityServiceAttachSurfaceProcedure:
@@ -293,6 +318,10 @@ func NewSurfaceContinuityServiceHandler(svc SurfaceContinuityServiceHandler, opt
 
 // UnimplementedSurfaceContinuityServiceHandler returns CodeUnimplemented from all methods.
 type UnimplementedSurfaceContinuityServiceHandler struct{}
+
+func (UnimplementedSurfaceContinuityServiceHandler) GetSurfaceWorkload(context.Context, *connect.Request[v1.GetSurfaceWorkloadRequest]) (*connect.Response[v1.GetSurfaceWorkloadResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("workos.surface.v1.SurfaceContinuityService.GetSurfaceWorkload is not implemented"))
+}
 
 func (UnimplementedSurfaceContinuityServiceHandler) ListProjectSurfaces(context.Context, *connect.Request[v1.ListProjectSurfacesRequest]) (*connect.Response[v1.ListProjectSurfacesResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("workos.surface.v1.SurfaceContinuityService.ListProjectSurfaces is not implemented"))

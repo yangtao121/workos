@@ -75,6 +75,15 @@ message ListProjectSurfacesResponse {
   repeated SurfaceWorkloadView workloads = 1;
 }
 
+message GetSurfaceWorkloadRequest {
+  string workload_id = 1;
+}
+
+message GetSurfaceWorkloadResponse {
+  // Includes stopped/interrupted facts. Reading never starts a program.
+  SurfaceWorkloadView workload = 1;
+}
+
 message AttachSurfaceRequest {
   string workload_id = 1;
   string idempotency_key = 2;
@@ -133,6 +142,7 @@ message RestartSurfaceWorkloadResponse {
 }
 
 service SurfaceContinuityService {
+  rpc GetSurfaceWorkload(GetSurfaceWorkloadRequest) returns (GetSurfaceWorkloadResponse) {}
   // ListProjectSurfaces discovers the project's running workload instances
   // and their attachment summaries so a new device can find the original
   // program without copying any client-side state.

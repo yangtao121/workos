@@ -16,7 +16,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file workos/surface/v1/continuity.proto.
  */
 export const file_workos_surface_v1_continuity: GenFile = /*@__PURE__*/
-  fileDesc("CiJ3b3Jrb3Mvc3VyZmFjZS92MS9jb250aW51aXR5LnByb3RvEhF3b3Jrb3Muc3VyZmFjZS52MSKVAQoOV29ya2xvYWRQb2xpY3kSEgoKcGVyc2lzdGVudBgBIAEoCBIaChJrZWVwX2FsaXZlX3NlY29uZHMYAiABKAMSGQoRaWRsZV9zdG9wX3NlY29uZHMYAyABKAMSOAoObGlmZWN5Y2xlX21vZGUYBCABKA4yIC53b3Jrb3Muc3VyZmFjZS52MS5MaWZlY3ljbGVNb2RlIqgDChNTdXJmYWNlV29ya2xvYWRWaWV3EhMKC3dvcmtsb2FkX2lkGAEgASgJEhIKCnByb2plY3RfaWQYAiABKAkSFwoPYXBwX2luc3RhbmNlX2lkGAMgASgJEg4KBmFwcF9pZBgEIAEoCRIPCgd2ZXJzaW9uGAUgASgJEjQKCHJlbmRlcmVyGAYgASgOMiIud29ya29zLnN1cmZhY2UudjEuU3VyZmFjZVJlbmRlcmVyEhQKDGRpc3BsYXlfbmFtZRgHIAEoCRISCgpnZW5lcmF0aW9uGAggASgDEg0KBXN0YXRlGAkgASgJEjEKBnBvbGljeRgKIAEoCzIhLndvcmtvcy5zdXJmYWNlLnYxLldvcmtsb2FkUG9saWN5EhgKEGF0dGFjaG1lbnRfY291bnQYCyABKAUSLgoKc3RhcnRlZF9hdBgMIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXASMwoKc3RvcHBlZF9hdBgNIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXBIAIgBAUINCgtfc3RvcHBlZF9hdCLPAgoRU3VyZmFjZUF0dGFjaG1lbnQSCgoCaWQYASABKAkSEwoLd29ya2xvYWRfaWQYAiABKAkSGgoSc3VyZmFjZV9zZXNzaW9uX2lkGAMgASgJEhEKCWRldmljZV9pZBgEIAEoCRIaChJjb250cm9sX2dlbmVyYXRpb24YBSABKAMSEAoIY29udHJvbHMYBiABKAgSDQoFc3RhdGUYByABKAkSLwoLYXR0YWNoZWRfYXQYCCABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wEjYKEmNvbnRyb2xfZXhwaXJlc19hdBgJIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXASNAoLZGV0YWNoZWRfYXQYCiABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wSACIAQFCDgoMX2RldGFjaGVkX2F0IjAKGkxpc3RQcm9qZWN0U3VyZmFjZXNSZXF1ZXN0EhIKCnByb2plY3RfaWQYASABKAkiWAobTGlzdFByb2plY3RTdXJmYWNlc1Jlc3BvbnNlEjkKCXdvcmtsb2FkcxgBIAMoCzImLndvcmtvcy5zdXJmYWNlLnYxLlN1cmZhY2VXb3JrbG9hZFZpZXciqQEKFEF0dGFjaFN1cmZhY2VSZXF1ZXN0EhMKC3dvcmtsb2FkX2lkGAEgASgJEhcKD2lkZW1wb3RlbmN5X2tleRgCIAEoCRI0CgxkZXZpY2VfY2xhc3MYAyABKA4yHi53b3Jrb3Muc3VyZmFjZS52MS5EZXZpY2VDbGFzcxItCgh2aWV3cG9ydBgEIAEoCzIbLndvcmtvcy5zdXJmYWNlLnYxLlZpZXdwb3J0IoUBChVBdHRhY2hTdXJmYWNlUmVzcG9uc2USMgoHc2Vzc2lvbhgBIAEoCzIhLndvcmtvcy5zdXJmYWNlLnYxLlN1cmZhY2VTZXNzaW9uEjgKCmF0dGFjaG1lbnQYAiABKAsyJC53b3Jrb3Muc3VyZmFjZS52MS5TdXJmYWNlQXR0YWNobWVudCIyChREZXRhY2hTdXJmYWNlUmVxdWVzdBIaChJzdXJmYWNlX3Nlc3Npb25faWQYASABKAkiFwoVRGV0YWNoU3VyZmFjZVJlc3BvbnNlIjoKHFJlcXVlc3RTdXJmYWNlQ29udHJvbFJlcXVlc3QSGgoSc3VyZmFjZV9zZXNzaW9uX2lkGAEgASgJIlkKHVJlcXVlc3RTdXJmYWNlQ29udHJvbFJlc3BvbnNlEjgKCmF0dGFjaG1lbnQYASABKAsyJC53b3Jrb3Muc3VyZmFjZS52MS5TdXJmYWNlQXR0YWNobWVudCIvChhHZXRTdXJmYWNlQ29udHJvbFJlcXVlc3QSEwoLd29ya2xvYWRfaWQYASABKAkiyQEKGUdldFN1cmZhY2VDb250cm9sUmVzcG9uc2USGgoSY29udHJvbF9nZW5lcmF0aW9uGAEgASgDEhwKFGNvbnRyb2xsZXJfZGV2aWNlX2lkGAIgASgJEiAKGGNvbnRyb2xsZXJfYXR0YWNobWVudF9pZBgDIAEoCRI2ChJjb250cm9sX2V4cGlyZXNfYXQYBCABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wEhgKEHdvcmtsb2FkX3J1bm5pbmcYBSABKAgiRQoaU3RvcFN1cmZhY2VXb3JrbG9hZFJlcXVlc3QSEwoLd29ya2xvYWRfaWQYASABKAkSEgoKYWN0aW9uX2tleRgCIAEoCSJXChtTdG9wU3VyZmFjZVdvcmtsb2FkUmVzcG9uc2USOAoId29ya2xvYWQYASABKAsyJi53b3Jrb3Muc3VyZmFjZS52MS5TdXJmYWNlV29ya2xvYWRWaWV3IoIBCh1SZXN0YXJ0U3VyZmFjZVdvcmtsb2FkUmVxdWVzdBITCgt3b3JrbG9hZF9pZBgBIAEoCRISCgphY3Rpb25fa2V5GAIgASgJEjgKDmxpZmVjeWNsZV9tb2RlGAMgASgOMiAud29ya29zLnN1cmZhY2UudjEuTGlmZWN5Y2xlTW9kZSJaCh5SZXN0YXJ0U3VyZmFjZVdvcmtsb2FkUmVzcG9uc2USOAoId29ya2xvYWQYASABKAsyJi53b3Jrb3Muc3VyZmFjZS52MS5TdXJmYWNlV29ya2xvYWRWaWV3MscGChhTdXJmYWNlQ29udGludWl0eVNlcnZpY2USdgoTTGlzdFByb2plY3RTdXJmYWNlcxItLndvcmtvcy5zdXJmYWNlLnYxLkxpc3RQcm9qZWN0U3VyZmFjZXNSZXF1ZXN0Gi4ud29ya29zLnN1cmZhY2UudjEuTGlzdFByb2plY3RTdXJmYWNlc1Jlc3BvbnNlIgASZAoNQXR0YWNoU3VyZmFjZRInLndvcmtvcy5zdXJmYWNlLnYxLkF0dGFjaFN1cmZhY2VSZXF1ZXN0Gigud29ya29zLnN1cmZhY2UudjEuQXR0YWNoU3VyZmFjZVJlc3BvbnNlIgASZAoNRGV0YWNoU3VyZmFjZRInLndvcmtvcy5zdXJmYWNlLnYxLkRldGFjaFN1cmZhY2VSZXF1ZXN0Gigud29ya29zLnN1cmZhY2UudjEuRGV0YWNoU3VyZmFjZVJlc3BvbnNlIgASfAoVUmVxdWVzdFN1cmZhY2VDb250cm9sEi8ud29ya29zLnN1cmZhY2UudjEuUmVxdWVzdFN1cmZhY2VDb250cm9sUmVxdWVzdBowLndvcmtvcy5zdXJmYWNlLnYxLlJlcXVlc3RTdXJmYWNlQ29udHJvbFJlc3BvbnNlIgAScAoRR2V0U3VyZmFjZUNvbnRyb2wSKy53b3Jrb3Muc3VyZmFjZS52MS5HZXRTdXJmYWNlQ29udHJvbFJlcXVlc3QaLC53b3Jrb3Muc3VyZmFjZS52MS5HZXRTdXJmYWNlQ29udHJvbFJlc3BvbnNlIgASdgoTU3RvcFN1cmZhY2VXb3JrbG9hZBItLndvcmtvcy5zdXJmYWNlLnYxLlN0b3BTdXJmYWNlV29ya2xvYWRSZXF1ZXN0Gi4ud29ya29zLnN1cmZhY2UudjEuU3RvcFN1cmZhY2VXb3JrbG9hZFJlc3BvbnNlIgASfwoWUmVzdGFydFN1cmZhY2VXb3JrbG9hZBIwLndvcmtvcy5zdXJmYWNlLnYxLlJlc3RhcnRTdXJmYWNlV29ya2xvYWRSZXF1ZXN0GjEud29ya29zLnN1cmZhY2UudjEuUmVzdGFydFN1cmZhY2VXb3JrbG9hZFJlc3BvbnNlIgBCQVo/Z2l0aHViLmNvbS95YW5ndGFvMTIxL3dvcmtvcy9nZW4vZ28vd29ya29zL3N1cmZhY2UvdjE7c3VyZmFjZXYxYgZwcm90bzM", [file_google_protobuf_timestamp, file_workos_surface_v1_lifecycle, file_workos_surface_v1_surface]);
+  fileDesc("CiJ3b3Jrb3Mvc3VyZmFjZS92MS9jb250aW51aXR5LnByb3RvEhF3b3Jrb3Muc3VyZmFjZS52MSKVAQoOV29ya2xvYWRQb2xpY3kSEgoKcGVyc2lzdGVudBgBIAEoCBIaChJrZWVwX2FsaXZlX3NlY29uZHMYAiABKAMSGQoRaWRsZV9zdG9wX3NlY29uZHMYAyABKAMSOAoObGlmZWN5Y2xlX21vZGUYBCABKA4yIC53b3Jrb3Muc3VyZmFjZS52MS5MaWZlY3ljbGVNb2RlIqgDChNTdXJmYWNlV29ya2xvYWRWaWV3EhMKC3dvcmtsb2FkX2lkGAEgASgJEhIKCnByb2plY3RfaWQYAiABKAkSFwoPYXBwX2luc3RhbmNlX2lkGAMgASgJEg4KBmFwcF9pZBgEIAEoCRIPCgd2ZXJzaW9uGAUgASgJEjQKCHJlbmRlcmVyGAYgASgOMiIud29ya29zLnN1cmZhY2UudjEuU3VyZmFjZVJlbmRlcmVyEhQKDGRpc3BsYXlfbmFtZRgHIAEoCRISCgpnZW5lcmF0aW9uGAggASgDEg0KBXN0YXRlGAkgASgJEjEKBnBvbGljeRgKIAEoCzIhLndvcmtvcy5zdXJmYWNlLnYxLldvcmtsb2FkUG9saWN5EhgKEGF0dGFjaG1lbnRfY291bnQYCyABKAUSLgoKc3RhcnRlZF9hdBgMIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXASMwoKc3RvcHBlZF9hdBgNIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXBIAIgBAUINCgtfc3RvcHBlZF9hdCLPAgoRU3VyZmFjZUF0dGFjaG1lbnQSCgoCaWQYASABKAkSEwoLd29ya2xvYWRfaWQYAiABKAkSGgoSc3VyZmFjZV9zZXNzaW9uX2lkGAMgASgJEhEKCWRldmljZV9pZBgEIAEoCRIaChJjb250cm9sX2dlbmVyYXRpb24YBSABKAMSEAoIY29udHJvbHMYBiABKAgSDQoFc3RhdGUYByABKAkSLwoLYXR0YWNoZWRfYXQYCCABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wEjYKEmNvbnRyb2xfZXhwaXJlc19hdBgJIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXASNAoLZGV0YWNoZWRfYXQYCiABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wSACIAQFCDgoMX2RldGFjaGVkX2F0IjAKGkxpc3RQcm9qZWN0U3VyZmFjZXNSZXF1ZXN0EhIKCnByb2plY3RfaWQYASABKAkiWAobTGlzdFByb2plY3RTdXJmYWNlc1Jlc3BvbnNlEjkKCXdvcmtsb2FkcxgBIAMoCzImLndvcmtvcy5zdXJmYWNlLnYxLlN1cmZhY2VXb3JrbG9hZFZpZXciMAoZR2V0U3VyZmFjZVdvcmtsb2FkUmVxdWVzdBITCgt3b3JrbG9hZF9pZBgBIAEoCSJWChpHZXRTdXJmYWNlV29ya2xvYWRSZXNwb25zZRI4Cgh3b3JrbG9hZBgBIAEoCzImLndvcmtvcy5zdXJmYWNlLnYxLlN1cmZhY2VXb3JrbG9hZFZpZXciqQEKFEF0dGFjaFN1cmZhY2VSZXF1ZXN0EhMKC3dvcmtsb2FkX2lkGAEgASgJEhcKD2lkZW1wb3RlbmN5X2tleRgCIAEoCRI0CgxkZXZpY2VfY2xhc3MYAyABKA4yHi53b3Jrb3Muc3VyZmFjZS52MS5EZXZpY2VDbGFzcxItCgh2aWV3cG9ydBgEIAEoCzIbLndvcmtvcy5zdXJmYWNlLnYxLlZpZXdwb3J0IoUBChVBdHRhY2hTdXJmYWNlUmVzcG9uc2USMgoHc2Vzc2lvbhgBIAEoCzIhLndvcmtvcy5zdXJmYWNlLnYxLlN1cmZhY2VTZXNzaW9uEjgKCmF0dGFjaG1lbnQYAiABKAsyJC53b3Jrb3Muc3VyZmFjZS52MS5TdXJmYWNlQXR0YWNobWVudCIyChREZXRhY2hTdXJmYWNlUmVxdWVzdBIaChJzdXJmYWNlX3Nlc3Npb25faWQYASABKAkiFwoVRGV0YWNoU3VyZmFjZVJlc3BvbnNlIjoKHFJlcXVlc3RTdXJmYWNlQ29udHJvbFJlcXVlc3QSGgoSc3VyZmFjZV9zZXNzaW9uX2lkGAEgASgJIlkKHVJlcXVlc3RTdXJmYWNlQ29udHJvbFJlc3BvbnNlEjgKCmF0dGFjaG1lbnQYASABKAsyJC53b3Jrb3Muc3VyZmFjZS52MS5TdXJmYWNlQXR0YWNobWVudCIvChhHZXRTdXJmYWNlQ29udHJvbFJlcXVlc3QSEwoLd29ya2xvYWRfaWQYASABKAkiyQEKGUdldFN1cmZhY2VDb250cm9sUmVzcG9uc2USGgoSY29udHJvbF9nZW5lcmF0aW9uGAEgASgDEhwKFGNvbnRyb2xsZXJfZGV2aWNlX2lkGAIgASgJEiAKGGNvbnRyb2xsZXJfYXR0YWNobWVudF9pZBgDIAEoCRI2ChJjb250cm9sX2V4cGlyZXNfYXQYBCABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wEhgKEHdvcmtsb2FkX3J1bm5pbmcYBSABKAgiRQoaU3RvcFN1cmZhY2VXb3JrbG9hZFJlcXVlc3QSEwoLd29ya2xvYWRfaWQYASABKAkSEgoKYWN0aW9uX2tleRgCIAEoCSJXChtTdG9wU3VyZmFjZVdvcmtsb2FkUmVzcG9uc2USOAoId29ya2xvYWQYASABKAsyJi53b3Jrb3Muc3VyZmFjZS52MS5TdXJmYWNlV29ya2xvYWRWaWV3IoIBCh1SZXN0YXJ0U3VyZmFjZVdvcmtsb2FkUmVxdWVzdBITCgt3b3JrbG9hZF9pZBgBIAEoCRISCgphY3Rpb25fa2V5GAIgASgJEjgKDmxpZmVjeWNsZV9tb2RlGAMgASgOMiAud29ya29zLnN1cmZhY2UudjEuTGlmZWN5Y2xlTW9kZSJaCh5SZXN0YXJ0U3VyZmFjZVdvcmtsb2FkUmVzcG9uc2USOAoId29ya2xvYWQYASABKAsyJi53b3Jrb3Muc3VyZmFjZS52MS5TdXJmYWNlV29ya2xvYWRWaWV3MrwHChhTdXJmYWNlQ29udGludWl0eVNlcnZpY2UScwoSR2V0U3VyZmFjZVdvcmtsb2FkEiwud29ya29zLnN1cmZhY2UudjEuR2V0U3VyZmFjZVdvcmtsb2FkUmVxdWVzdBotLndvcmtvcy5zdXJmYWNlLnYxLkdldFN1cmZhY2VXb3JrbG9hZFJlc3BvbnNlIgASdgoTTGlzdFByb2plY3RTdXJmYWNlcxItLndvcmtvcy5zdXJmYWNlLnYxLkxpc3RQcm9qZWN0U3VyZmFjZXNSZXF1ZXN0Gi4ud29ya29zLnN1cmZhY2UudjEuTGlzdFByb2plY3RTdXJmYWNlc1Jlc3BvbnNlIgASZAoNQXR0YWNoU3VyZmFjZRInLndvcmtvcy5zdXJmYWNlLnYxLkF0dGFjaFN1cmZhY2VSZXF1ZXN0Gigud29ya29zLnN1cmZhY2UudjEuQXR0YWNoU3VyZmFjZVJlc3BvbnNlIgASZAoNRGV0YWNoU3VyZmFjZRInLndvcmtvcy5zdXJmYWNlLnYxLkRldGFjaFN1cmZhY2VSZXF1ZXN0Gigud29ya29zLnN1cmZhY2UudjEuRGV0YWNoU3VyZmFjZVJlc3BvbnNlIgASfAoVUmVxdWVzdFN1cmZhY2VDb250cm9sEi8ud29ya29zLnN1cmZhY2UudjEuUmVxdWVzdFN1cmZhY2VDb250cm9sUmVxdWVzdBowLndvcmtvcy5zdXJmYWNlLnYxLlJlcXVlc3RTdXJmYWNlQ29udHJvbFJlc3BvbnNlIgAScAoRR2V0U3VyZmFjZUNvbnRyb2wSKy53b3Jrb3Muc3VyZmFjZS52MS5HZXRTdXJmYWNlQ29udHJvbFJlcXVlc3QaLC53b3Jrb3Muc3VyZmFjZS52MS5HZXRTdXJmYWNlQ29udHJvbFJlc3BvbnNlIgASdgoTU3RvcFN1cmZhY2VXb3JrbG9hZBItLndvcmtvcy5zdXJmYWNlLnYxLlN0b3BTdXJmYWNlV29ya2xvYWRSZXF1ZXN0Gi4ud29ya29zLnN1cmZhY2UudjEuU3RvcFN1cmZhY2VXb3JrbG9hZFJlc3BvbnNlIgASfwoWUmVzdGFydFN1cmZhY2VXb3JrbG9hZBIwLndvcmtvcy5zdXJmYWNlLnYxLlJlc3RhcnRTdXJmYWNlV29ya2xvYWRSZXF1ZXN0GjEud29ya29zLnN1cmZhY2UudjEuUmVzdGFydFN1cmZhY2VXb3JrbG9hZFJlc3BvbnNlIgBCQVo/Z2l0aHViLmNvbS95YW5ndGFvMTIxL3dvcmtvcy9nZW4vZ28vd29ya29zL3N1cmZhY2UvdjE7c3VyZmFjZXYxYgZwcm90bzM", [file_google_protobuf_timestamp, file_workos_surface_v1_lifecycle, file_workos_surface_v1_surface]);
 
 /**
  * Effective lifecycle policy of a continuous workload. Bounded by the
@@ -248,6 +248,42 @@ export const ListProjectSurfacesResponseSchema: GenMessage<ListProjectSurfacesRe
   messageDesc(file_workos_surface_v1_continuity, 4);
 
 /**
+ * @generated from message workos.surface.v1.GetSurfaceWorkloadRequest
+ */
+export type GetSurfaceWorkloadRequest = Message<"workos.surface.v1.GetSurfaceWorkloadRequest"> & {
+  /**
+   * @generated from field: string workload_id = 1;
+   */
+  workloadId: string;
+};
+
+/**
+ * Describes the message workos.surface.v1.GetSurfaceWorkloadRequest.
+ * Use `create(GetSurfaceWorkloadRequestSchema)` to create a new message.
+ */
+export const GetSurfaceWorkloadRequestSchema: GenMessage<GetSurfaceWorkloadRequest> = /*@__PURE__*/
+  messageDesc(file_workos_surface_v1_continuity, 5);
+
+/**
+ * @generated from message workos.surface.v1.GetSurfaceWorkloadResponse
+ */
+export type GetSurfaceWorkloadResponse = Message<"workos.surface.v1.GetSurfaceWorkloadResponse"> & {
+  /**
+   * Includes stopped/interrupted facts. Reading never starts a program.
+   *
+   * @generated from field: workos.surface.v1.SurfaceWorkloadView workload = 1;
+   */
+  workload?: SurfaceWorkloadView | undefined;
+};
+
+/**
+ * Describes the message workos.surface.v1.GetSurfaceWorkloadResponse.
+ * Use `create(GetSurfaceWorkloadResponseSchema)` to create a new message.
+ */
+export const GetSurfaceWorkloadResponseSchema: GenMessage<GetSurfaceWorkloadResponse> = /*@__PURE__*/
+  messageDesc(file_workos_surface_v1_continuity, 6);
+
+/**
  * @generated from message workos.surface.v1.AttachSurfaceRequest
  */
 export type AttachSurfaceRequest = Message<"workos.surface.v1.AttachSurfaceRequest"> & {
@@ -277,7 +313,7 @@ export type AttachSurfaceRequest = Message<"workos.surface.v1.AttachSurfaceReque
  * Use `create(AttachSurfaceRequestSchema)` to create a new message.
  */
 export const AttachSurfaceRequestSchema: GenMessage<AttachSurfaceRequest> = /*@__PURE__*/
-  messageDesc(file_workos_surface_v1_continuity, 5);
+  messageDesc(file_workos_surface_v1_continuity, 7);
 
 /**
  * @generated from message workos.surface.v1.AttachSurfaceResponse
@@ -299,7 +335,7 @@ export type AttachSurfaceResponse = Message<"workos.surface.v1.AttachSurfaceResp
  * Use `create(AttachSurfaceResponseSchema)` to create a new message.
  */
 export const AttachSurfaceResponseSchema: GenMessage<AttachSurfaceResponse> = /*@__PURE__*/
-  messageDesc(file_workos_surface_v1_continuity, 6);
+  messageDesc(file_workos_surface_v1_continuity, 8);
 
 /**
  * @generated from message workos.surface.v1.DetachSurfaceRequest
@@ -316,7 +352,7 @@ export type DetachSurfaceRequest = Message<"workos.surface.v1.DetachSurfaceReque
  * Use `create(DetachSurfaceRequestSchema)` to create a new message.
  */
 export const DetachSurfaceRequestSchema: GenMessage<DetachSurfaceRequest> = /*@__PURE__*/
-  messageDesc(file_workos_surface_v1_continuity, 7);
+  messageDesc(file_workos_surface_v1_continuity, 9);
 
 /**
  * @generated from message workos.surface.v1.DetachSurfaceResponse
@@ -329,7 +365,7 @@ export type DetachSurfaceResponse = Message<"workos.surface.v1.DetachSurfaceResp
  * Use `create(DetachSurfaceResponseSchema)` to create a new message.
  */
 export const DetachSurfaceResponseSchema: GenMessage<DetachSurfaceResponse> = /*@__PURE__*/
-  messageDesc(file_workos_surface_v1_continuity, 8);
+  messageDesc(file_workos_surface_v1_continuity, 10);
 
 /**
  * @generated from message workos.surface.v1.RequestSurfaceControlRequest
@@ -346,7 +382,7 @@ export type RequestSurfaceControlRequest = Message<"workos.surface.v1.RequestSur
  * Use `create(RequestSurfaceControlRequestSchema)` to create a new message.
  */
 export const RequestSurfaceControlRequestSchema: GenMessage<RequestSurfaceControlRequest> = /*@__PURE__*/
-  messageDesc(file_workos_surface_v1_continuity, 9);
+  messageDesc(file_workos_surface_v1_continuity, 11);
 
 /**
  * @generated from message workos.surface.v1.RequestSurfaceControlResponse
@@ -363,7 +399,7 @@ export type RequestSurfaceControlResponse = Message<"workos.surface.v1.RequestSu
  * Use `create(RequestSurfaceControlResponseSchema)` to create a new message.
  */
 export const RequestSurfaceControlResponseSchema: GenMessage<RequestSurfaceControlResponse> = /*@__PURE__*/
-  messageDesc(file_workos_surface_v1_continuity, 10);
+  messageDesc(file_workos_surface_v1_continuity, 12);
 
 /**
  * @generated from message workos.surface.v1.GetSurfaceControlRequest
@@ -380,7 +416,7 @@ export type GetSurfaceControlRequest = Message<"workos.surface.v1.GetSurfaceCont
  * Use `create(GetSurfaceControlRequestSchema)` to create a new message.
  */
 export const GetSurfaceControlRequestSchema: GenMessage<GetSurfaceControlRequest> = /*@__PURE__*/
-  messageDesc(file_workos_surface_v1_continuity, 11);
+  messageDesc(file_workos_surface_v1_continuity, 13);
 
 /**
  * @generated from message workos.surface.v1.GetSurfaceControlResponse
@@ -417,7 +453,7 @@ export type GetSurfaceControlResponse = Message<"workos.surface.v1.GetSurfaceCon
  * Use `create(GetSurfaceControlResponseSchema)` to create a new message.
  */
 export const GetSurfaceControlResponseSchema: GenMessage<GetSurfaceControlResponse> = /*@__PURE__*/
-  messageDesc(file_workos_surface_v1_continuity, 12);
+  messageDesc(file_workos_surface_v1_continuity, 14);
 
 /**
  * @generated from message workos.surface.v1.StopSurfaceWorkloadRequest
@@ -439,7 +475,7 @@ export type StopSurfaceWorkloadRequest = Message<"workos.surface.v1.StopSurfaceW
  * Use `create(StopSurfaceWorkloadRequestSchema)` to create a new message.
  */
 export const StopSurfaceWorkloadRequestSchema: GenMessage<StopSurfaceWorkloadRequest> = /*@__PURE__*/
-  messageDesc(file_workos_surface_v1_continuity, 13);
+  messageDesc(file_workos_surface_v1_continuity, 15);
 
 /**
  * @generated from message workos.surface.v1.StopSurfaceWorkloadResponse
@@ -456,7 +492,7 @@ export type StopSurfaceWorkloadResponse = Message<"workos.surface.v1.StopSurface
  * Use `create(StopSurfaceWorkloadResponseSchema)` to create a new message.
  */
 export const StopSurfaceWorkloadResponseSchema: GenMessage<StopSurfaceWorkloadResponse> = /*@__PURE__*/
-  messageDesc(file_workos_surface_v1_continuity, 14);
+  messageDesc(file_workos_surface_v1_continuity, 16);
 
 /**
  * @generated from message workos.surface.v1.RestartSurfaceWorkloadRequest
@@ -483,7 +519,7 @@ export type RestartSurfaceWorkloadRequest = Message<"workos.surface.v1.RestartSu
  * Use `create(RestartSurfaceWorkloadRequestSchema)` to create a new message.
  */
 export const RestartSurfaceWorkloadRequestSchema: GenMessage<RestartSurfaceWorkloadRequest> = /*@__PURE__*/
-  messageDesc(file_workos_surface_v1_continuity, 15);
+  messageDesc(file_workos_surface_v1_continuity, 17);
 
 /**
  * @generated from message workos.surface.v1.RestartSurfaceWorkloadResponse
@@ -500,12 +536,20 @@ export type RestartSurfaceWorkloadResponse = Message<"workos.surface.v1.RestartS
  * Use `create(RestartSurfaceWorkloadResponseSchema)` to create a new message.
  */
 export const RestartSurfaceWorkloadResponseSchema: GenMessage<RestartSurfaceWorkloadResponse> = /*@__PURE__*/
-  messageDesc(file_workos_surface_v1_continuity, 16);
+  messageDesc(file_workos_surface_v1_continuity, 18);
 
 /**
  * @generated from service workos.surface.v1.SurfaceContinuityService
  */
 export const SurfaceContinuityService: GenService<{
+  /**
+   * @generated from rpc workos.surface.v1.SurfaceContinuityService.GetSurfaceWorkload
+   */
+  getSurfaceWorkload: {
+    methodKind: "unary";
+    input: typeof GetSurfaceWorkloadRequestSchema;
+    output: typeof GetSurfaceWorkloadResponseSchema;
+  },
   /**
    * ListProjectSurfaces discovers the project's running workload instances
    * and their attachment summaries so a new device can find the original

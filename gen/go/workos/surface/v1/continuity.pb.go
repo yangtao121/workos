@@ -450,6 +450,95 @@ func (x *ListProjectSurfacesResponse) GetWorkloads() []*SurfaceWorkloadView {
 	return nil
 }
 
+type GetSurfaceWorkloadRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	WorkloadId    string                 `protobuf:"bytes,1,opt,name=workload_id,json=workloadId,proto3" json:"workload_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetSurfaceWorkloadRequest) Reset() {
+	*x = GetSurfaceWorkloadRequest{}
+	mi := &file_workos_surface_v1_continuity_proto_msgTypes[5]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetSurfaceWorkloadRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetSurfaceWorkloadRequest) ProtoMessage() {}
+
+func (x *GetSurfaceWorkloadRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_workos_surface_v1_continuity_proto_msgTypes[5]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetSurfaceWorkloadRequest.ProtoReflect.Descriptor instead.
+func (*GetSurfaceWorkloadRequest) Descriptor() ([]byte, []int) {
+	return file_workos_surface_v1_continuity_proto_rawDescGZIP(), []int{5}
+}
+
+func (x *GetSurfaceWorkloadRequest) GetWorkloadId() string {
+	if x != nil {
+		return x.WorkloadId
+	}
+	return ""
+}
+
+type GetSurfaceWorkloadResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Includes stopped/interrupted facts. Reading never starts a program.
+	Workload      *SurfaceWorkloadView `protobuf:"bytes,1,opt,name=workload,proto3" json:"workload,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetSurfaceWorkloadResponse) Reset() {
+	*x = GetSurfaceWorkloadResponse{}
+	mi := &file_workos_surface_v1_continuity_proto_msgTypes[6]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetSurfaceWorkloadResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetSurfaceWorkloadResponse) ProtoMessage() {}
+
+func (x *GetSurfaceWorkloadResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_workos_surface_v1_continuity_proto_msgTypes[6]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetSurfaceWorkloadResponse.ProtoReflect.Descriptor instead.
+func (*GetSurfaceWorkloadResponse) Descriptor() ([]byte, []int) {
+	return file_workos_surface_v1_continuity_proto_rawDescGZIP(), []int{6}
+}
+
+func (x *GetSurfaceWorkloadResponse) GetWorkload() *SurfaceWorkloadView {
+	if x != nil {
+		return x.Workload
+	}
+	return nil
+}
+
 type AttachSurfaceRequest struct {
 	state          protoimpl.MessageState `protogen:"open.v1"`
 	WorkloadId     string                 `protobuf:"bytes,1,opt,name=workload_id,json=workloadId,proto3" json:"workload_id,omitempty"`
@@ -462,7 +551,7 @@ type AttachSurfaceRequest struct {
 
 func (x *AttachSurfaceRequest) Reset() {
 	*x = AttachSurfaceRequest{}
-	mi := &file_workos_surface_v1_continuity_proto_msgTypes[5]
+	mi := &file_workos_surface_v1_continuity_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -474,7 +563,7 @@ func (x *AttachSurfaceRequest) String() string {
 func (*AttachSurfaceRequest) ProtoMessage() {}
 
 func (x *AttachSurfaceRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_workos_surface_v1_continuity_proto_msgTypes[5]
+	mi := &file_workos_surface_v1_continuity_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -487,7 +576,7 @@ func (x *AttachSurfaceRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AttachSurfaceRequest.ProtoReflect.Descriptor instead.
 func (*AttachSurfaceRequest) Descriptor() ([]byte, []int) {
-	return file_workos_surface_v1_continuity_proto_rawDescGZIP(), []int{5}
+	return file_workos_surface_v1_continuity_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *AttachSurfaceRequest) GetWorkloadId() string {
@@ -528,7 +617,7 @@ type AttachSurfaceResponse struct {
 
 func (x *AttachSurfaceResponse) Reset() {
 	*x = AttachSurfaceResponse{}
-	mi := &file_workos_surface_v1_continuity_proto_msgTypes[6]
+	mi := &file_workos_surface_v1_continuity_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -540,7 +629,7 @@ func (x *AttachSurfaceResponse) String() string {
 func (*AttachSurfaceResponse) ProtoMessage() {}
 
 func (x *AttachSurfaceResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_workos_surface_v1_continuity_proto_msgTypes[6]
+	mi := &file_workos_surface_v1_continuity_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -553,7 +642,7 @@ func (x *AttachSurfaceResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AttachSurfaceResponse.ProtoReflect.Descriptor instead.
 func (*AttachSurfaceResponse) Descriptor() ([]byte, []int) {
-	return file_workos_surface_v1_continuity_proto_rawDescGZIP(), []int{6}
+	return file_workos_surface_v1_continuity_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *AttachSurfaceResponse) GetSession() *SurfaceSession {
@@ -579,7 +668,7 @@ type DetachSurfaceRequest struct {
 
 func (x *DetachSurfaceRequest) Reset() {
 	*x = DetachSurfaceRequest{}
-	mi := &file_workos_surface_v1_continuity_proto_msgTypes[7]
+	mi := &file_workos_surface_v1_continuity_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -591,7 +680,7 @@ func (x *DetachSurfaceRequest) String() string {
 func (*DetachSurfaceRequest) ProtoMessage() {}
 
 func (x *DetachSurfaceRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_workos_surface_v1_continuity_proto_msgTypes[7]
+	mi := &file_workos_surface_v1_continuity_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -604,7 +693,7 @@ func (x *DetachSurfaceRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DetachSurfaceRequest.ProtoReflect.Descriptor instead.
 func (*DetachSurfaceRequest) Descriptor() ([]byte, []int) {
-	return file_workos_surface_v1_continuity_proto_rawDescGZIP(), []int{7}
+	return file_workos_surface_v1_continuity_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *DetachSurfaceRequest) GetSurfaceSessionId() string {
@@ -622,7 +711,7 @@ type DetachSurfaceResponse struct {
 
 func (x *DetachSurfaceResponse) Reset() {
 	*x = DetachSurfaceResponse{}
-	mi := &file_workos_surface_v1_continuity_proto_msgTypes[8]
+	mi := &file_workos_surface_v1_continuity_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -634,7 +723,7 @@ func (x *DetachSurfaceResponse) String() string {
 func (*DetachSurfaceResponse) ProtoMessage() {}
 
 func (x *DetachSurfaceResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_workos_surface_v1_continuity_proto_msgTypes[8]
+	mi := &file_workos_surface_v1_continuity_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -647,7 +736,7 @@ func (x *DetachSurfaceResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DetachSurfaceResponse.ProtoReflect.Descriptor instead.
 func (*DetachSurfaceResponse) Descriptor() ([]byte, []int) {
-	return file_workos_surface_v1_continuity_proto_rawDescGZIP(), []int{8}
+	return file_workos_surface_v1_continuity_proto_rawDescGZIP(), []int{10}
 }
 
 type RequestSurfaceControlRequest struct {
@@ -659,7 +748,7 @@ type RequestSurfaceControlRequest struct {
 
 func (x *RequestSurfaceControlRequest) Reset() {
 	*x = RequestSurfaceControlRequest{}
-	mi := &file_workos_surface_v1_continuity_proto_msgTypes[9]
+	mi := &file_workos_surface_v1_continuity_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -671,7 +760,7 @@ func (x *RequestSurfaceControlRequest) String() string {
 func (*RequestSurfaceControlRequest) ProtoMessage() {}
 
 func (x *RequestSurfaceControlRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_workos_surface_v1_continuity_proto_msgTypes[9]
+	mi := &file_workos_surface_v1_continuity_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -684,7 +773,7 @@ func (x *RequestSurfaceControlRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RequestSurfaceControlRequest.ProtoReflect.Descriptor instead.
 func (*RequestSurfaceControlRequest) Descriptor() ([]byte, []int) {
-	return file_workos_surface_v1_continuity_proto_rawDescGZIP(), []int{9}
+	return file_workos_surface_v1_continuity_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *RequestSurfaceControlRequest) GetSurfaceSessionId() string {
@@ -703,7 +792,7 @@ type RequestSurfaceControlResponse struct {
 
 func (x *RequestSurfaceControlResponse) Reset() {
 	*x = RequestSurfaceControlResponse{}
-	mi := &file_workos_surface_v1_continuity_proto_msgTypes[10]
+	mi := &file_workos_surface_v1_continuity_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -715,7 +804,7 @@ func (x *RequestSurfaceControlResponse) String() string {
 func (*RequestSurfaceControlResponse) ProtoMessage() {}
 
 func (x *RequestSurfaceControlResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_workos_surface_v1_continuity_proto_msgTypes[10]
+	mi := &file_workos_surface_v1_continuity_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -728,7 +817,7 @@ func (x *RequestSurfaceControlResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RequestSurfaceControlResponse.ProtoReflect.Descriptor instead.
 func (*RequestSurfaceControlResponse) Descriptor() ([]byte, []int) {
-	return file_workos_surface_v1_continuity_proto_rawDescGZIP(), []int{10}
+	return file_workos_surface_v1_continuity_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *RequestSurfaceControlResponse) GetAttachment() *SurfaceAttachment {
@@ -747,7 +836,7 @@ type GetSurfaceControlRequest struct {
 
 func (x *GetSurfaceControlRequest) Reset() {
 	*x = GetSurfaceControlRequest{}
-	mi := &file_workos_surface_v1_continuity_proto_msgTypes[11]
+	mi := &file_workos_surface_v1_continuity_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -759,7 +848,7 @@ func (x *GetSurfaceControlRequest) String() string {
 func (*GetSurfaceControlRequest) ProtoMessage() {}
 
 func (x *GetSurfaceControlRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_workos_surface_v1_continuity_proto_msgTypes[11]
+	mi := &file_workos_surface_v1_continuity_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -772,7 +861,7 @@ func (x *GetSurfaceControlRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetSurfaceControlRequest.ProtoReflect.Descriptor instead.
 func (*GetSurfaceControlRequest) Descriptor() ([]byte, []int) {
-	return file_workos_surface_v1_continuity_proto_rawDescGZIP(), []int{11}
+	return file_workos_surface_v1_continuity_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *GetSurfaceControlRequest) GetWorkloadId() string {
@@ -795,7 +884,7 @@ type GetSurfaceControlResponse struct {
 
 func (x *GetSurfaceControlResponse) Reset() {
 	*x = GetSurfaceControlResponse{}
-	mi := &file_workos_surface_v1_continuity_proto_msgTypes[12]
+	mi := &file_workos_surface_v1_continuity_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -807,7 +896,7 @@ func (x *GetSurfaceControlResponse) String() string {
 func (*GetSurfaceControlResponse) ProtoMessage() {}
 
 func (x *GetSurfaceControlResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_workos_surface_v1_continuity_proto_msgTypes[12]
+	mi := &file_workos_surface_v1_continuity_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -820,7 +909,7 @@ func (x *GetSurfaceControlResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetSurfaceControlResponse.ProtoReflect.Descriptor instead.
 func (*GetSurfaceControlResponse) Descriptor() ([]byte, []int) {
-	return file_workos_surface_v1_continuity_proto_rawDescGZIP(), []int{12}
+	return file_workos_surface_v1_continuity_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *GetSurfaceControlResponse) GetControlGeneration() int64 {
@@ -868,7 +957,7 @@ type StopSurfaceWorkloadRequest struct {
 
 func (x *StopSurfaceWorkloadRequest) Reset() {
 	*x = StopSurfaceWorkloadRequest{}
-	mi := &file_workos_surface_v1_continuity_proto_msgTypes[13]
+	mi := &file_workos_surface_v1_continuity_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -880,7 +969,7 @@ func (x *StopSurfaceWorkloadRequest) String() string {
 func (*StopSurfaceWorkloadRequest) ProtoMessage() {}
 
 func (x *StopSurfaceWorkloadRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_workos_surface_v1_continuity_proto_msgTypes[13]
+	mi := &file_workos_surface_v1_continuity_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -893,7 +982,7 @@ func (x *StopSurfaceWorkloadRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StopSurfaceWorkloadRequest.ProtoReflect.Descriptor instead.
 func (*StopSurfaceWorkloadRequest) Descriptor() ([]byte, []int) {
-	return file_workos_surface_v1_continuity_proto_rawDescGZIP(), []int{13}
+	return file_workos_surface_v1_continuity_proto_rawDescGZIP(), []int{15}
 }
 
 func (x *StopSurfaceWorkloadRequest) GetWorkloadId() string {
@@ -919,7 +1008,7 @@ type StopSurfaceWorkloadResponse struct {
 
 func (x *StopSurfaceWorkloadResponse) Reset() {
 	*x = StopSurfaceWorkloadResponse{}
-	mi := &file_workos_surface_v1_continuity_proto_msgTypes[14]
+	mi := &file_workos_surface_v1_continuity_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -931,7 +1020,7 @@ func (x *StopSurfaceWorkloadResponse) String() string {
 func (*StopSurfaceWorkloadResponse) ProtoMessage() {}
 
 func (x *StopSurfaceWorkloadResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_workos_surface_v1_continuity_proto_msgTypes[14]
+	mi := &file_workos_surface_v1_continuity_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -944,7 +1033,7 @@ func (x *StopSurfaceWorkloadResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StopSurfaceWorkloadResponse.ProtoReflect.Descriptor instead.
 func (*StopSurfaceWorkloadResponse) Descriptor() ([]byte, []int) {
-	return file_workos_surface_v1_continuity_proto_rawDescGZIP(), []int{14}
+	return file_workos_surface_v1_continuity_proto_rawDescGZIP(), []int{16}
 }
 
 func (x *StopSurfaceWorkloadResponse) GetWorkload() *SurfaceWorkloadView {
@@ -965,7 +1054,7 @@ type RestartSurfaceWorkloadRequest struct {
 
 func (x *RestartSurfaceWorkloadRequest) Reset() {
 	*x = RestartSurfaceWorkloadRequest{}
-	mi := &file_workos_surface_v1_continuity_proto_msgTypes[15]
+	mi := &file_workos_surface_v1_continuity_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -977,7 +1066,7 @@ func (x *RestartSurfaceWorkloadRequest) String() string {
 func (*RestartSurfaceWorkloadRequest) ProtoMessage() {}
 
 func (x *RestartSurfaceWorkloadRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_workos_surface_v1_continuity_proto_msgTypes[15]
+	mi := &file_workos_surface_v1_continuity_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -990,7 +1079,7 @@ func (x *RestartSurfaceWorkloadRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RestartSurfaceWorkloadRequest.ProtoReflect.Descriptor instead.
 func (*RestartSurfaceWorkloadRequest) Descriptor() ([]byte, []int) {
-	return file_workos_surface_v1_continuity_proto_rawDescGZIP(), []int{15}
+	return file_workos_surface_v1_continuity_proto_rawDescGZIP(), []int{17}
 }
 
 func (x *RestartSurfaceWorkloadRequest) GetWorkloadId() string {
@@ -1023,7 +1112,7 @@ type RestartSurfaceWorkloadResponse struct {
 
 func (x *RestartSurfaceWorkloadResponse) Reset() {
 	*x = RestartSurfaceWorkloadResponse{}
-	mi := &file_workos_surface_v1_continuity_proto_msgTypes[16]
+	mi := &file_workos_surface_v1_continuity_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1035,7 +1124,7 @@ func (x *RestartSurfaceWorkloadResponse) String() string {
 func (*RestartSurfaceWorkloadResponse) ProtoMessage() {}
 
 func (x *RestartSurfaceWorkloadResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_workos_surface_v1_continuity_proto_msgTypes[16]
+	mi := &file_workos_surface_v1_continuity_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1048,7 +1137,7 @@ func (x *RestartSurfaceWorkloadResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RestartSurfaceWorkloadResponse.ProtoReflect.Descriptor instead.
 func (*RestartSurfaceWorkloadResponse) Descriptor() ([]byte, []int) {
-	return file_workos_surface_v1_continuity_proto_rawDescGZIP(), []int{16}
+	return file_workos_surface_v1_continuity_proto_rawDescGZIP(), []int{18}
 }
 
 func (x *RestartSurfaceWorkloadResponse) GetWorkload() *SurfaceWorkloadView {
@@ -1112,7 +1201,12 @@ const file_workos_surface_v1_continuity_proto_rawDesc = "" +
 	"\n" +
 	"project_id\x18\x01 \x01(\tR\tprojectId\"c\n" +
 	"\x1bListProjectSurfacesResponse\x12D\n" +
-	"\tworkloads\x18\x01 \x03(\v2&.workos.surface.v1.SurfaceWorkloadViewR\tworkloads\"\xdc\x01\n" +
+	"\tworkloads\x18\x01 \x03(\v2&.workos.surface.v1.SurfaceWorkloadViewR\tworkloads\"<\n" +
+	"\x19GetSurfaceWorkloadRequest\x12\x1f\n" +
+	"\vworkload_id\x18\x01 \x01(\tR\n" +
+	"workloadId\"`\n" +
+	"\x1aGetSurfaceWorkloadResponse\x12B\n" +
+	"\bworkload\x18\x01 \x01(\v2&.workos.surface.v1.SurfaceWorkloadViewR\bworkload\"\xdc\x01\n" +
 	"\x14AttachSurfaceRequest\x12\x1f\n" +
 	"\vworkload_id\x18\x01 \x01(\tR\n" +
 	"workloadId\x12'\n" +
@@ -1156,8 +1250,9 @@ const file_workos_surface_v1_continuity_proto_rawDesc = "" +
 	"action_key\x18\x02 \x01(\tR\tactionKey\x12G\n" +
 	"\x0elifecycle_mode\x18\x03 \x01(\x0e2 .workos.surface.v1.LifecycleModeR\rlifecycleMode\"d\n" +
 	"\x1eRestartSurfaceWorkloadResponse\x12B\n" +
-	"\bworkload\x18\x01 \x01(\v2&.workos.surface.v1.SurfaceWorkloadViewR\bworkload2\xc7\x06\n" +
-	"\x18SurfaceContinuityService\x12v\n" +
+	"\bworkload\x18\x01 \x01(\v2&.workos.surface.v1.SurfaceWorkloadViewR\bworkload2\xbc\a\n" +
+	"\x18SurfaceContinuityService\x12s\n" +
+	"\x12GetSurfaceWorkload\x12,.workos.surface.v1.GetSurfaceWorkloadRequest\x1a-.workos.surface.v1.GetSurfaceWorkloadResponse\"\x00\x12v\n" +
 	"\x13ListProjectSurfaces\x12-.workos.surface.v1.ListProjectSurfacesRequest\x1a..workos.surface.v1.ListProjectSurfacesResponse\"\x00\x12d\n" +
 	"\rAttachSurface\x12'.workos.surface.v1.AttachSurfaceRequest\x1a(.workos.surface.v1.AttachSurfaceResponse\"\x00\x12d\n" +
 	"\rDetachSurface\x12'.workos.surface.v1.DetachSurfaceRequest\x1a(.workos.surface.v1.DetachSurfaceResponse\"\x00\x12|\n" +
@@ -1178,70 +1273,75 @@ func file_workos_surface_v1_continuity_proto_rawDescGZIP() []byte {
 	return file_workos_surface_v1_continuity_proto_rawDescData
 }
 
-var file_workos_surface_v1_continuity_proto_msgTypes = make([]protoimpl.MessageInfo, 17)
+var file_workos_surface_v1_continuity_proto_msgTypes = make([]protoimpl.MessageInfo, 19)
 var file_workos_surface_v1_continuity_proto_goTypes = []any{
 	(*WorkloadPolicy)(nil),                 // 0: workos.surface.v1.WorkloadPolicy
 	(*SurfaceWorkloadView)(nil),            // 1: workos.surface.v1.SurfaceWorkloadView
 	(*SurfaceAttachment)(nil),              // 2: workos.surface.v1.SurfaceAttachment
 	(*ListProjectSurfacesRequest)(nil),     // 3: workos.surface.v1.ListProjectSurfacesRequest
 	(*ListProjectSurfacesResponse)(nil),    // 4: workos.surface.v1.ListProjectSurfacesResponse
-	(*AttachSurfaceRequest)(nil),           // 5: workos.surface.v1.AttachSurfaceRequest
-	(*AttachSurfaceResponse)(nil),          // 6: workos.surface.v1.AttachSurfaceResponse
-	(*DetachSurfaceRequest)(nil),           // 7: workos.surface.v1.DetachSurfaceRequest
-	(*DetachSurfaceResponse)(nil),          // 8: workos.surface.v1.DetachSurfaceResponse
-	(*RequestSurfaceControlRequest)(nil),   // 9: workos.surface.v1.RequestSurfaceControlRequest
-	(*RequestSurfaceControlResponse)(nil),  // 10: workos.surface.v1.RequestSurfaceControlResponse
-	(*GetSurfaceControlRequest)(nil),       // 11: workos.surface.v1.GetSurfaceControlRequest
-	(*GetSurfaceControlResponse)(nil),      // 12: workos.surface.v1.GetSurfaceControlResponse
-	(*StopSurfaceWorkloadRequest)(nil),     // 13: workos.surface.v1.StopSurfaceWorkloadRequest
-	(*StopSurfaceWorkloadResponse)(nil),    // 14: workos.surface.v1.StopSurfaceWorkloadResponse
-	(*RestartSurfaceWorkloadRequest)(nil),  // 15: workos.surface.v1.RestartSurfaceWorkloadRequest
-	(*RestartSurfaceWorkloadResponse)(nil), // 16: workos.surface.v1.RestartSurfaceWorkloadResponse
-	(LifecycleMode)(0),                     // 17: workos.surface.v1.LifecycleMode
-	(SurfaceRenderer)(0),                   // 18: workos.surface.v1.SurfaceRenderer
-	(*timestamppb.Timestamp)(nil),          // 19: google.protobuf.Timestamp
-	(DeviceClass)(0),                       // 20: workos.surface.v1.DeviceClass
-	(*Viewport)(nil),                       // 21: workos.surface.v1.Viewport
-	(*SurfaceSession)(nil),                 // 22: workos.surface.v1.SurfaceSession
+	(*GetSurfaceWorkloadRequest)(nil),      // 5: workos.surface.v1.GetSurfaceWorkloadRequest
+	(*GetSurfaceWorkloadResponse)(nil),     // 6: workos.surface.v1.GetSurfaceWorkloadResponse
+	(*AttachSurfaceRequest)(nil),           // 7: workos.surface.v1.AttachSurfaceRequest
+	(*AttachSurfaceResponse)(nil),          // 8: workos.surface.v1.AttachSurfaceResponse
+	(*DetachSurfaceRequest)(nil),           // 9: workos.surface.v1.DetachSurfaceRequest
+	(*DetachSurfaceResponse)(nil),          // 10: workos.surface.v1.DetachSurfaceResponse
+	(*RequestSurfaceControlRequest)(nil),   // 11: workos.surface.v1.RequestSurfaceControlRequest
+	(*RequestSurfaceControlResponse)(nil),  // 12: workos.surface.v1.RequestSurfaceControlResponse
+	(*GetSurfaceControlRequest)(nil),       // 13: workos.surface.v1.GetSurfaceControlRequest
+	(*GetSurfaceControlResponse)(nil),      // 14: workos.surface.v1.GetSurfaceControlResponse
+	(*StopSurfaceWorkloadRequest)(nil),     // 15: workos.surface.v1.StopSurfaceWorkloadRequest
+	(*StopSurfaceWorkloadResponse)(nil),    // 16: workos.surface.v1.StopSurfaceWorkloadResponse
+	(*RestartSurfaceWorkloadRequest)(nil),  // 17: workos.surface.v1.RestartSurfaceWorkloadRequest
+	(*RestartSurfaceWorkloadResponse)(nil), // 18: workos.surface.v1.RestartSurfaceWorkloadResponse
+	(LifecycleMode)(0),                     // 19: workos.surface.v1.LifecycleMode
+	(SurfaceRenderer)(0),                   // 20: workos.surface.v1.SurfaceRenderer
+	(*timestamppb.Timestamp)(nil),          // 21: google.protobuf.Timestamp
+	(DeviceClass)(0),                       // 22: workos.surface.v1.DeviceClass
+	(*Viewport)(nil),                       // 23: workos.surface.v1.Viewport
+	(*SurfaceSession)(nil),                 // 24: workos.surface.v1.SurfaceSession
 }
 var file_workos_surface_v1_continuity_proto_depIdxs = []int32{
-	17, // 0: workos.surface.v1.WorkloadPolicy.lifecycle_mode:type_name -> workos.surface.v1.LifecycleMode
-	18, // 1: workos.surface.v1.SurfaceWorkloadView.renderer:type_name -> workos.surface.v1.SurfaceRenderer
+	19, // 0: workos.surface.v1.WorkloadPolicy.lifecycle_mode:type_name -> workos.surface.v1.LifecycleMode
+	20, // 1: workos.surface.v1.SurfaceWorkloadView.renderer:type_name -> workos.surface.v1.SurfaceRenderer
 	0,  // 2: workos.surface.v1.SurfaceWorkloadView.policy:type_name -> workos.surface.v1.WorkloadPolicy
-	19, // 3: workos.surface.v1.SurfaceWorkloadView.started_at:type_name -> google.protobuf.Timestamp
-	19, // 4: workos.surface.v1.SurfaceWorkloadView.stopped_at:type_name -> google.protobuf.Timestamp
-	19, // 5: workos.surface.v1.SurfaceAttachment.attached_at:type_name -> google.protobuf.Timestamp
-	19, // 6: workos.surface.v1.SurfaceAttachment.control_expires_at:type_name -> google.protobuf.Timestamp
-	19, // 7: workos.surface.v1.SurfaceAttachment.detached_at:type_name -> google.protobuf.Timestamp
+	21, // 3: workos.surface.v1.SurfaceWorkloadView.started_at:type_name -> google.protobuf.Timestamp
+	21, // 4: workos.surface.v1.SurfaceWorkloadView.stopped_at:type_name -> google.protobuf.Timestamp
+	21, // 5: workos.surface.v1.SurfaceAttachment.attached_at:type_name -> google.protobuf.Timestamp
+	21, // 6: workos.surface.v1.SurfaceAttachment.control_expires_at:type_name -> google.protobuf.Timestamp
+	21, // 7: workos.surface.v1.SurfaceAttachment.detached_at:type_name -> google.protobuf.Timestamp
 	1,  // 8: workos.surface.v1.ListProjectSurfacesResponse.workloads:type_name -> workos.surface.v1.SurfaceWorkloadView
-	20, // 9: workos.surface.v1.AttachSurfaceRequest.device_class:type_name -> workos.surface.v1.DeviceClass
-	21, // 10: workos.surface.v1.AttachSurfaceRequest.viewport:type_name -> workos.surface.v1.Viewport
-	22, // 11: workos.surface.v1.AttachSurfaceResponse.session:type_name -> workos.surface.v1.SurfaceSession
-	2,  // 12: workos.surface.v1.AttachSurfaceResponse.attachment:type_name -> workos.surface.v1.SurfaceAttachment
-	2,  // 13: workos.surface.v1.RequestSurfaceControlResponse.attachment:type_name -> workos.surface.v1.SurfaceAttachment
-	19, // 14: workos.surface.v1.GetSurfaceControlResponse.control_expires_at:type_name -> google.protobuf.Timestamp
-	1,  // 15: workos.surface.v1.StopSurfaceWorkloadResponse.workload:type_name -> workos.surface.v1.SurfaceWorkloadView
-	17, // 16: workos.surface.v1.RestartSurfaceWorkloadRequest.lifecycle_mode:type_name -> workos.surface.v1.LifecycleMode
-	1,  // 17: workos.surface.v1.RestartSurfaceWorkloadResponse.workload:type_name -> workos.surface.v1.SurfaceWorkloadView
-	3,  // 18: workos.surface.v1.SurfaceContinuityService.ListProjectSurfaces:input_type -> workos.surface.v1.ListProjectSurfacesRequest
-	5,  // 19: workos.surface.v1.SurfaceContinuityService.AttachSurface:input_type -> workos.surface.v1.AttachSurfaceRequest
-	7,  // 20: workos.surface.v1.SurfaceContinuityService.DetachSurface:input_type -> workos.surface.v1.DetachSurfaceRequest
-	9,  // 21: workos.surface.v1.SurfaceContinuityService.RequestSurfaceControl:input_type -> workos.surface.v1.RequestSurfaceControlRequest
-	11, // 22: workos.surface.v1.SurfaceContinuityService.GetSurfaceControl:input_type -> workos.surface.v1.GetSurfaceControlRequest
-	13, // 23: workos.surface.v1.SurfaceContinuityService.StopSurfaceWorkload:input_type -> workos.surface.v1.StopSurfaceWorkloadRequest
-	15, // 24: workos.surface.v1.SurfaceContinuityService.RestartSurfaceWorkload:input_type -> workos.surface.v1.RestartSurfaceWorkloadRequest
-	4,  // 25: workos.surface.v1.SurfaceContinuityService.ListProjectSurfaces:output_type -> workos.surface.v1.ListProjectSurfacesResponse
-	6,  // 26: workos.surface.v1.SurfaceContinuityService.AttachSurface:output_type -> workos.surface.v1.AttachSurfaceResponse
-	8,  // 27: workos.surface.v1.SurfaceContinuityService.DetachSurface:output_type -> workos.surface.v1.DetachSurfaceResponse
-	10, // 28: workos.surface.v1.SurfaceContinuityService.RequestSurfaceControl:output_type -> workos.surface.v1.RequestSurfaceControlResponse
-	12, // 29: workos.surface.v1.SurfaceContinuityService.GetSurfaceControl:output_type -> workos.surface.v1.GetSurfaceControlResponse
-	14, // 30: workos.surface.v1.SurfaceContinuityService.StopSurfaceWorkload:output_type -> workos.surface.v1.StopSurfaceWorkloadResponse
-	16, // 31: workos.surface.v1.SurfaceContinuityService.RestartSurfaceWorkload:output_type -> workos.surface.v1.RestartSurfaceWorkloadResponse
-	25, // [25:32] is the sub-list for method output_type
-	18, // [18:25] is the sub-list for method input_type
-	18, // [18:18] is the sub-list for extension type_name
-	18, // [18:18] is the sub-list for extension extendee
-	0,  // [0:18] is the sub-list for field type_name
+	1,  // 9: workos.surface.v1.GetSurfaceWorkloadResponse.workload:type_name -> workos.surface.v1.SurfaceWorkloadView
+	22, // 10: workos.surface.v1.AttachSurfaceRequest.device_class:type_name -> workos.surface.v1.DeviceClass
+	23, // 11: workos.surface.v1.AttachSurfaceRequest.viewport:type_name -> workos.surface.v1.Viewport
+	24, // 12: workos.surface.v1.AttachSurfaceResponse.session:type_name -> workos.surface.v1.SurfaceSession
+	2,  // 13: workos.surface.v1.AttachSurfaceResponse.attachment:type_name -> workos.surface.v1.SurfaceAttachment
+	2,  // 14: workos.surface.v1.RequestSurfaceControlResponse.attachment:type_name -> workos.surface.v1.SurfaceAttachment
+	21, // 15: workos.surface.v1.GetSurfaceControlResponse.control_expires_at:type_name -> google.protobuf.Timestamp
+	1,  // 16: workos.surface.v1.StopSurfaceWorkloadResponse.workload:type_name -> workos.surface.v1.SurfaceWorkloadView
+	19, // 17: workos.surface.v1.RestartSurfaceWorkloadRequest.lifecycle_mode:type_name -> workos.surface.v1.LifecycleMode
+	1,  // 18: workos.surface.v1.RestartSurfaceWorkloadResponse.workload:type_name -> workos.surface.v1.SurfaceWorkloadView
+	5,  // 19: workos.surface.v1.SurfaceContinuityService.GetSurfaceWorkload:input_type -> workos.surface.v1.GetSurfaceWorkloadRequest
+	3,  // 20: workos.surface.v1.SurfaceContinuityService.ListProjectSurfaces:input_type -> workos.surface.v1.ListProjectSurfacesRequest
+	7,  // 21: workos.surface.v1.SurfaceContinuityService.AttachSurface:input_type -> workos.surface.v1.AttachSurfaceRequest
+	9,  // 22: workos.surface.v1.SurfaceContinuityService.DetachSurface:input_type -> workos.surface.v1.DetachSurfaceRequest
+	11, // 23: workos.surface.v1.SurfaceContinuityService.RequestSurfaceControl:input_type -> workos.surface.v1.RequestSurfaceControlRequest
+	13, // 24: workos.surface.v1.SurfaceContinuityService.GetSurfaceControl:input_type -> workos.surface.v1.GetSurfaceControlRequest
+	15, // 25: workos.surface.v1.SurfaceContinuityService.StopSurfaceWorkload:input_type -> workos.surface.v1.StopSurfaceWorkloadRequest
+	17, // 26: workos.surface.v1.SurfaceContinuityService.RestartSurfaceWorkload:input_type -> workos.surface.v1.RestartSurfaceWorkloadRequest
+	6,  // 27: workos.surface.v1.SurfaceContinuityService.GetSurfaceWorkload:output_type -> workos.surface.v1.GetSurfaceWorkloadResponse
+	4,  // 28: workos.surface.v1.SurfaceContinuityService.ListProjectSurfaces:output_type -> workos.surface.v1.ListProjectSurfacesResponse
+	8,  // 29: workos.surface.v1.SurfaceContinuityService.AttachSurface:output_type -> workos.surface.v1.AttachSurfaceResponse
+	10, // 30: workos.surface.v1.SurfaceContinuityService.DetachSurface:output_type -> workos.surface.v1.DetachSurfaceResponse
+	12, // 31: workos.surface.v1.SurfaceContinuityService.RequestSurfaceControl:output_type -> workos.surface.v1.RequestSurfaceControlResponse
+	14, // 32: workos.surface.v1.SurfaceContinuityService.GetSurfaceControl:output_type -> workos.surface.v1.GetSurfaceControlResponse
+	16, // 33: workos.surface.v1.SurfaceContinuityService.StopSurfaceWorkload:output_type -> workos.surface.v1.StopSurfaceWorkloadResponse
+	18, // 34: workos.surface.v1.SurfaceContinuityService.RestartSurfaceWorkload:output_type -> workos.surface.v1.RestartSurfaceWorkloadResponse
+	27, // [27:35] is the sub-list for method output_type
+	19, // [19:27] is the sub-list for method input_type
+	19, // [19:19] is the sub-list for extension type_name
+	19, // [19:19] is the sub-list for extension extendee
+	0,  // [0:19] is the sub-list for field type_name
 }
 
 func init() { file_workos_surface_v1_continuity_proto_init() }
@@ -1259,7 +1359,7 @@ func file_workos_surface_v1_continuity_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_workos_surface_v1_continuity_proto_rawDesc), len(file_workos_surface_v1_continuity_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   17,
+			NumMessages:   19,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
