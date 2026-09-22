@@ -18,7 +18,8 @@ Watch 返回有序 revision 快照，持久 cursor 可补齐；缺口显式 rese
 程序启动必须是显式幂等操作，成功后才发布桌面引用；恢复路径只 attach 精确实例。
 共享焦点不授予 Native/PTY 控制权，仍采用显式接管和代次检查。
 
-新增 lifecycle_mode：默认/BOUNDED 保留原 30 分钟策略，MANUAL_STOP 用于新版桌面显式启动/重启。
+新增 lifecycle_mode：默认/BOUNDED 保留 PTY／Native／Preview 原 30 分钟策略及安装应用原空闲回收策略，
+MANUAL_STOP 用于新版桌面显式启动/重启。
 Runtime 持久化实际策略，MANUAL_STOP 的 expires_at 缺省；独立枚举不能以零秒或极远日期冒充无限。
 数据库、清扫器、进程 context、容器 timeout 同时遵循策略。此决策替代 ADR-0031 及 preview
 文档对交互程序固定 30 分钟的限制，不改变工具命令/Agent 时限、资源配额和授权检查。

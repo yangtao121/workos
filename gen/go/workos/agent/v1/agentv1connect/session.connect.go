@@ -93,7 +93,7 @@ type AgentSessionServiceClient interface {
 	// session state per policy. Existing task history stays readable.
 	CloseSession(context.Context, *connect.Request[v1.CloseSessionRequest]) (*connect.Response[v1.CloseSessionResponse], error)
 	// WatchSessionEvents streams the session lifecycle log from the cursor,
-	// then keeps the stream open for new events.
+	// then follows new events only when follow is true.
 	WatchSessionEvents(context.Context, *connect.Request[v1.WatchSessionEventsRequest]) (*connect.ServerStreamForClient[v1.WatchSessionEventsResponse], error)
 }
 
@@ -264,7 +264,7 @@ type AgentSessionServiceHandler interface {
 	// session state per policy. Existing task history stays readable.
 	CloseSession(context.Context, *connect.Request[v1.CloseSessionRequest]) (*connect.Response[v1.CloseSessionResponse], error)
 	// WatchSessionEvents streams the session lifecycle log from the cursor,
-	// then keeps the stream open for new events.
+	// then follows new events only when follow is true.
 	WatchSessionEvents(context.Context, *connect.Request[v1.WatchSessionEventsRequest], *connect.ServerStream[v1.WatchSessionEventsResponse]) error
 }
 

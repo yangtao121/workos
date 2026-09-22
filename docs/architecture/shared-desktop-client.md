@@ -12,7 +12,9 @@ Watch responses replace the projection, use monotonically increasing revisions,
 and persist the revision together with canonical window references in one
 origin-local storage value. Explicit reset responses replace the cursor.
 Reconnection, foregrounding and online events re-read server authority before
-watching again. Offline commands fail immediately; lost responses cause a
+watching again. A separate authoritative read runs five seconds after the previous
+read settles, so delayed stream delivery still converges without overlapping reads.
+Revision, reset epoch and lifecycle guards reject stale responses. Offline commands fail immediately; lost responses cause a
 refresh, never automatic replay of an old command.
 
 Project, window presence/order/focus and selected conversation are shared.

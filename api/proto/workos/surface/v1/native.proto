@@ -132,6 +132,6 @@ service NativeSessionService {
   rpc CloseNativeSession(CloseNativeSessionRequest) returns (CloseNativeSessionResponse) {}
   // Detach releases only this device's media peer, input subscription, and
   // short-lived authorization. The supervised display session keeps running
-  // under its bounded policy until Close or expiry (ADR-0031).
+  // under its lifecycle policy until Close, bounded expiry or failure.
   rpc DetachNativeSession(DetachNativeSessionRequest) returns (DetachNativeSessionResponse) {}
 }

@@ -32,3 +32,9 @@
 - WebKit 执行相同三个尺寸行为检查；不据此宣称物理 Safari 已验收。
 - 采集测试：`session-continuity-visual.spec.ts`；设置 `WORKOS_SESSION_CAPTURE_DIR`
   （或 `WORKOS_CAPTURE_DIR`），输出按浏览器分目录，避免 Chromium/WebKit 相互覆盖。
+
+## 最终集成接线
+
+`Desktop` 在身份结束时停止桌面/通知同步、卸载窗口和失效本地回调，等待布局及 journal 清理；`AuthGate` 的 Forget 只在确认退出后清理。journal 清理若数据库不可用、事务回滚或旧格式数据删除失败会拒绝，显式 Forget 显示错误供重试；不会声称失败的删除已完成。真实浏览器测试验证失败时保留、确认后清空。
+
+事务补丁及清理复核共 28 项测试，另有 AuthGate 失败/成功回归；Chromium/WebKit 全栈 20 项包含空闲三端会话完成、离线草稿、精确程序恢复及确定性视觉。旧版 localStorage 不再作为生产写入通道。

@@ -3,11 +3,11 @@ package domain
 import (
 	"testing"
 
-	"github.com/yangtao121/workos/internal/platform/ids"
+	"github.com/google/uuid"
 )
 
 func TestTargetsRejectContentAndMalformedReferences(t *testing.T) {
-	id := ids.UUIDv7{}.New()
+	id := uuid.Must(uuid.NewV7()).String()
 	for _, target := range []Target{
 		{Kind: "unknown"}, {Kind: "home", ProjectID: id}, {Kind: "terminal", ProjectID: id}, {Kind: "native", ProjectID: id, ResourceKind: "session", ResourceID: id}, {Kind: "agent-center", ProjectID: id, ResourceKind: "session", ResourceID: id}, {Kind: "agent-sessions", ProjectID: id, ResourceKind: "session", ResourceID: "https://secret"}, {Kind: "files", ProjectID: "not-uuid"}, {Kind: "browser", ResourceID: id},
 	} {
@@ -22,21 +22,21 @@ func TestTargetsRejectContentAndMalformedReferences(t *testing.T) {
 	}
 }
 func TestDesktopFocusAndSingletons(t *testing.T) {
-	g := ids.UUIDv7{}
-	p, q := g.New(), g.New()
+	generate := func() string { return uuid.Must(uuid.NewV7()).String() }
+	p, q := generate(), generate()
 	s := State{}
 	a := Target{Kind: "agent-sessions", ProjectID: p}
-	if err := s.Open(a, g.New); err != nil {
+	if err := s.Open(a, generate); err != nil {
 		t.Fatal(err)
 	}
 	original := s.Windows[0].ID
 	a.ResourceKind = "session"
-	a.ResourceID = g.New()
-	_ = s.Open(a, g.New)
+	a.ResourceID = generate()
+	_ = s.Open(a, generate)
 	if len(s.Windows) != 1 || s.Windows[0].ID != original {
 		t.Fatal("session selection duplicated window")
 	}
-	_ = s.Open(Target{Kind: "files", ProjectID: q}, g.New)
+	_ = s.Open(Target{Kind: "files", ProjectID: q}, generate)
 	s.Focus(original)
 	if s.ActiveProjectID != p || s.FocusedWindowID != original || s.Windows[1].ID != original {
 		t.Fatal("focus did not follow logical window")
@@ -48,8 +48,8 @@ func TestDesktopFocusAndSingletons(t *testing.T) {
 	}
 }
 func TestCorruptDesktopRejected(t *testing.T) {
-	g := ids.UUIDv7{}
-	id := g.New()
+	generate := func() string { return uuid.Must(uuid.NewV7()).String() }
+	id := generate()
 	for _, state := range []State{{Revision: -1}, {Revision: 1, FocusedWindowID: id}, {Revision: 0, ActiveProjectID: id}, {Revision: 1, Windows: []Window{{ID: id, Target: Target{Kind: "home"}}, {ID: id, Target: Target{Kind: "home"}}}}} {
 		if state.Validate() == nil {
 			t.Errorf("accepted %+v", state)
@@ -63,8 +63,8 @@ func TestCorruptDesktopRejected(t *testing.T) {
 }
 
 func TestAppWorkloadPinValidationAndReplacement(t *testing.T) {
-	g := ids.UUIDv7{}
-	target := Target{Kind: "app-surface", ProjectID: g.New(), ResourceKind: "app", ResourceID: g.New(), ExpectedWorkloadID: g.New(), ExpectedWorkloadGeneration: 1}
+	generate := func() string { return uuid.Must(uuid.NewV7()).String() }
+	target := Target{Kind: "app-surface", ProjectID: generate(), ResourceKind: "app", ResourceID: generate(), ExpectedWorkloadID: generate(), ExpectedWorkloadGeneration: 1}
 	if err := target.Validate(); err != nil {
 		t.Fatal(err)
 	}
@@ -76,32 +76,32 @@ func TestAppWorkloadPinValidationAndReplacement(t *testing.T) {
 		}
 	}
 	state := State{}
-	_ = state.Open(target, g.New)
+	_ = state.Open(target, generate)
 	id := state.Windows[0].ID
 	target.ExpectedWorkloadGeneration = 2
-	target.ExpectedWorkloadID = g.New()
-	_ = state.Open(target, g.New)
+	target.ExpectedWorkloadID = generate()
+	_ = state.Open(target, generate)
 	if len(state.Windows) != 1 || state.Windows[0].ID != id || state.Windows[0].Target.ExpectedWorkloadGeneration != 2 {
 		t.Fatal("explicit reopened app did not update same logical window")
 	}
 }
 
 func TestInteractiveGenerationPinsCannotBeRewound(t *testing.T) {
-	g := ids.UUIDv7{}
-	workload := g.New()
-	target := Target{Kind: "terminal", ProjectID: g.New(), ResourceKind: "workload", ResourceID: workload, ExpectedWorkloadID: workload, ExpectedWorkloadGeneration: 2}
+	generate := func() string { return uuid.Must(uuid.NewV7()).String() }
+	workload := generate()
+	target := Target{Kind: "terminal", ProjectID: generate(), ResourceKind: "workload", ResourceID: workload, ExpectedWorkloadID: workload, ExpectedWorkloadGeneration: 2}
 	if err := target.Validate(); err != nil {
 		t.Fatal(err)
 	}
 	state := State{}
-	_ = state.Open(target, g.New)
+	_ = state.Open(target, generate)
 	original := state.Windows[0].ID
 	target.ExpectedWorkloadGeneration = 1
-	_ = state.Open(target, g.New)
+	_ = state.Open(target, generate)
 	if len(state.Windows) != 1 || state.Windows[0].ID != original || state.Windows[0].Target.ExpectedWorkloadGeneration != 2 {
 		t.Fatal("late open rolled back generation")
 	}
-	target.ExpectedWorkloadID = g.New()
+	target.ExpectedWorkloadID = generate()
 	if target.Validate() == nil {
 		t.Fatal("interactive pin points to another workload")
 	}

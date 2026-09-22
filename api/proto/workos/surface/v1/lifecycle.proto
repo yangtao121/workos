@@ -6,7 +6,8 @@ option go_package = "github.com/yangtao121/workos/gen/go/workos/surface/v1;surfa
 
 // Program lifetime is independent of device, input and media authorization.
 enum LifecycleMode {
-  // Legacy callers retain the bounded 30-minute policy.
+  // Legacy callers retain bounded expiry: 30 minutes for PTY/native/preview,
+  // or the configured idle timeout for installed applications.
   LIFECYCLE_MODE_UNSPECIFIED = 0;
   LIFECYCLE_MODE_BOUNDED = 1;
   // No automatic time expiry; stop/revocation/failure still reclaim it.

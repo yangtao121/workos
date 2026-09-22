@@ -25,7 +25,8 @@ const (
 type LifecycleMode int32
 
 const (
-	// Legacy callers retain the bounded 30-minute policy.
+	// Legacy callers retain bounded expiry: 30 minutes for PTY/native/preview,
+	// or the configured idle timeout for installed applications.
 	LifecycleMode_LIFECYCLE_MODE_UNSPECIFIED LifecycleMode = 0
 	LifecycleMode_LIFECYCLE_MODE_BOUNDED     LifecycleMode = 1
 	// No automatic time expiry; stop/revocation/failure still reclaim it.

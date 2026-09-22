@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from "react"
 import type { DeviceAuthClient } from "@workos/device-auth";
 import { isAuthRequiredDeployment, isUnavailable, parsePairingFragment } from "@workos/device-auth";
 import { Button } from "@workos/ui-kit";
+import { clearLocalDesktopState } from "./desktopLocalState.js";
 
 // The Auth Gate state machine gates the entire Desktop: no business request
 // is issued before a device session exists.
@@ -128,9 +129,12 @@ export function AuthGate({ deviceAuth, children }: AuthGateProps) {
   const forget = useCallback(async () => {
     try {
       await deviceAuth.forget();
+      await clearLocalDesktopState();
     } catch {
-      // A transient outage must never delete the profile key; the store
-      // layer only clears after a confirmed logout or an auth-level error.
+      // Keep the failure visible: neither a failed logout nor failed local
+      // storage cleanup establishes that this browser has been forgotten.
+      if (mounted.current) setMessage("This browser could not be fully cleared. Try Forget again.");
+      return;
     }
     if (mounted.current) {
       setMessage(undefined);

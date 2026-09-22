@@ -18,7 +18,8 @@ export const file_workos_surface_v1_lifecycle: GenFile = /*@__PURE__*/
  */
 export enum LifecycleMode {
   /**
-   * Legacy callers retain the bounded 30-minute policy.
+   * Legacy callers retain bounded expiry: 30 minutes for PTY/native/preview,
+   * or the configured idle timeout for installed applications.
    *
    * @generated from enum value: LIFECYCLE_MODE_UNSPECIFIED = 0;
    */

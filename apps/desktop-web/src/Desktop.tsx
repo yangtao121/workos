@@ -1,11 +1,12 @@
 import { create } from "@bufbuild/protobuf";
-import { SharedDesktop, clearDesktopProjection, type DesktopProjection } from "./sharedDesktop.js";
+import { SharedDesktop, type DesktopProjection } from "./sharedDesktop.js";
 import {
   GLOBAL_WINDOWS,
   appSurfaceKey,
   projectSharedWindow,
   targetForWindow,
 } from "./sharedDesktopWindows.js";
+import { layoutStore, clearLocalDesktopState } from "./desktopLocalState.js";
 import { NativeSessionLease } from "./nativeSession.js";
 import { Code, ConnectError } from "@connectrpc/connect";
 import {
@@ -22,7 +23,6 @@ import { AgentTimeline } from "@workos/agent-center";
 import {
   DOCK_APP_INSTANCE_LIMIT,
   RECENT_APP_INSTANCE_LIMIT,
-  createLayoutStore,
   isValidCanonicalUuid,
   protoFromDeviceClass,
   pushRecentId,
@@ -93,11 +93,6 @@ import { selectionFromProject, taskStatus, type HarnessSelection } from "./model
 
 const clients = createWorkOSClients(window.location.origin);
 
-// One device-local layout store per app instance: origin-scoped IndexedDB
-// with an in-memory fallback. It only ever holds bounded UI references
-// (canonical IDs and preferences), never tokens, credentials, or content.
-const layoutStore = createLayoutStore();
-
 // The last active project survives a page reload so returning to the desktop
 // restores the context the user was working in. Storage failures (private
 // modes, embedded webviews) degrade to the previous first-project behavior.
@@ -159,6 +154,7 @@ export function Desktop({
   const [editorProjectId, setEditorProjectId] = useState<string | undefined>(activeProjectId);
   const activeProjectIdRef = useRef<string | undefined>(activeProjectId);
   const taskGenerationRef = useRef(0);
+  const sessionEndedRef = useRef(false);
   const taskAbortRef = useRef<AbortController | undefined>(undefined);
   const bindingOperationsRef = useRef<{ generation: number; tokens: Record<string, number> }>({
     generation: 0,
@@ -340,7 +336,7 @@ export function Desktop({
   const recordLayout = useCallback(
     (mutate: (state: DeviceLayoutState) => DeviceLayoutState) => {
       const projectId = activeProjectIdRef.current;
-      if (!projectId || !adaptive) return;
+      if (sessionEndedRef.current || !projectId || !adaptive) return;
       const generation = layoutGenerationRef.current;
       void layoutStore
         .update(deviceLayout.deviceClass, projectId, new Date().toISOString(), mutate)
@@ -516,7 +512,7 @@ export function Desktop({
             }),
           );
       }
-      if (!isCancelled())
+      if (!isCancelled() && !sessionEndedRef.current)
         sharedDesktop.start(
           create(DesktopInitializationSchema, { activeProjectId: projectId, windows: targets }),
         );
@@ -1369,7 +1365,7 @@ export function Desktop({
     void layoutStore
       .pruneAppInstance(installationId)
       .then(() => {
-        if (!projectId || !adaptive) return;
+        if (sessionEndedRef.current || !projectId || !adaptive) return;
         return layoutStore.load(deviceClass, projectId, new Date().toISOString()).then((state) => {
           if (projectId !== activeProjectIdRef.current) return;
           setDeviceLayoutState(state);
@@ -2344,9 +2340,19 @@ export function Desktop({
       deviceAuth ? (
         <DeviceCenter
           deviceAuth={deviceAuth}
-          onSessionEnded={() => {
-            clearDesktopProjection();
-            return layoutStore.clearAll();
+          onSessionEnded={async () => {
+            sessionEndedRef.current = true;
+            sharedDesktop?.stop();
+            notificationProjection?.stop();
+            taskAbortRef.current?.abort();
+            taskGenerationRef.current += 1;
+            layoutGenerationRef.current += 1;
+            bridgeCredentialsRef.current.clear();
+            sharedSurfaces.current.clear();
+            localDispatch({ type: "reconcile", windows: [], focusedId: "" });
+            setLocalActiveProjectId(undefined);
+            setDesktopProjection({ connection: "unavailable" });
+            await clearLocalDesktopState();
           }}
         />
       ) : (

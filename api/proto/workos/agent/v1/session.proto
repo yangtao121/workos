@@ -249,6 +249,6 @@ service AgentSessionService {
   // session state per policy. Existing task history stays readable.
   rpc CloseSession(CloseSessionRequest) returns (CloseSessionResponse) {}
   // WatchSessionEvents streams the session lifecycle log from the cursor,
-  // then keeps the stream open for new events.
+  // then follows new events only when follow is true.
   rpc WatchSessionEvents(WatchSessionEventsRequest) returns (stream WatchSessionEventsResponse) {}
 }

@@ -13,6 +13,9 @@ test("shared files, resumed native display and real development preview", async 
   await page.getByRole("button", { name: "calculate.cjs", exact: true }).click();
   await expect(page.getByLabel("File content")).toContainText("n * 3");
   await openDesktopApp(page, "agent-sessions");
+  // A previous device may have left a conversation selected on the owner desktop.
+  if (await page.getByTestId("agent-session-view").isVisible())
+    await page.getByRole("button", { name: "Sessions", exact: true }).click();
   await expect(page.getByTestId("agent-sessions-app")).toContainText("V2_DEVELOP_1");
   await page
     .getByTestId("agent-sessions-app")
@@ -21,8 +24,8 @@ test("shared files, resumed native display and real development preview", async 
     .click();
   await expect(page.getByTestId("agent-session-view")).toContainText("V2_DEVELOP_2");
   await page.reload();
-  await openDesktopApp(page, "agent-sessions");
-  await expect(page.getByTestId("agent-sessions-app")).toContainText("V2_DEVELOP_1");
+  // The owner desktop restores the selected conversation, including its history.
+  await expect(page.getByTestId("agent-session-view")).toContainText("V2_DEVELOP_2");
   await openDesktopApp(page, "Development previews");
   await page
     .getByTestId("workspace-previews")

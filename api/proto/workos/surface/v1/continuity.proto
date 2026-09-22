@@ -10,14 +10,14 @@ option go_package = "github.com/yangtao121/workos/gen/go/workos/surface/v1;surfa
 
 // Surface continuity contracts (ADR-0031): program execution and device
 // access are separate lifecycles. A workload keeps running across window
-// close, project switch, and disconnects within its bounded policy; surfaces
+// close, project switch, and disconnects within its lifecycle policy; surfaces
 // are per-device access relations; interactive native/terminal surfaces have
 // exactly one controlling attachment at a time, switched only by explicit
 // takeover.
 
-// Effective lifecycle policy of a continuous workload. Bounded by the
-// existing 30-minute session ceiling in this phase; expiry stops the
-// program and is reported as the true reason.
+// Effective lifecycle policy of a continuous workload. MANUAL_STOP has no
+// automatic time or idle expiry; BOUNDED retains the workload-specific limits.
+// Device access and input/media authorization remain separately bounded.
 message WorkloadPolicy {
   bool persistent = 1;
   int64 keep_alive_seconds = 2;

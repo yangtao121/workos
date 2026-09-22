@@ -997,7 +997,7 @@ export const AgentSessionService: GenService<{
   },
   /**
    * WatchSessionEvents streams the session lifecycle log from the cursor,
-   * then keeps the stream open for new events.
+   * then follows new events only when follow is true.
    *
    * @generated from rpc workos.agent.v1.AgentSessionService.WatchSessionEvents
    */

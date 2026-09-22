@@ -501,7 +501,7 @@ export const NativeSessionService: GenService<{
   /**
    * Detach releases only this device's media peer, input subscription, and
    * short-lived authorization. The supervised display session keeps running
-   * under its bounded policy until Close or expiry (ADR-0031).
+   * under its lifecycle policy until Close, bounded expiry or failure.
    *
    * @generated from rpc workos.surface.v1.NativeSessionService.DetachNativeSession
    */

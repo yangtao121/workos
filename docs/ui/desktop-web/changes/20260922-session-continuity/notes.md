@@ -49,3 +49,11 @@ The same tests also pass with `--browser webkit`, storing disposable outputs und
 `tmp/`; those results are browser-engine behavior evidence. Physical Android,
 iPhone and iPad acceptance remains separate. Later journal race fixes may require
 recapture on the final integration tree, using the same fixture and commands.
+
+## 集成复验与 Forget
+
+最终集成树（含事务 journal、5 秒桌面补读、退出清理）再次运行同一 fixture，Chromium/WebKit 共 20 项共享桌面门禁全部通过；当前 after/current 已更新为本次集成输出。手机离线草稿及桌面 Forget 失败画面已人工查看，未包含真实内容或凭据。
+
+补充 `auth-gate--forget-failed--1440x900.png`：同一 `session-forget.spec.ts` 固定 DeviceService 401／Logout 503，点击 Forget，before 在 `d39c275` 的真实旧 AuthGate 上采集，after 在本次集成构建采集。旧画面吞掉失败；新版显示无法完全清除并允许重试，保留本地内容，后续 Logout 成功才清理。基准服务是独立 Vite 端口6147，现已停止。
+
+复现：设置 `WORKOS_CAPTURE_DIR`，运行 `playwright.shared.config.ts`；旧版本采集额外设置 `WORKOS_FORGET_BASELINE=true` 并仅运行 `session-forget.spec.ts`。截图输出按浏览器分目录，current 使用 Chromium 固定1倍像素；WebKit结果作为行为验证。

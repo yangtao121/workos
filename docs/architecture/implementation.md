@@ -1692,3 +1692,21 @@ Native 的 GetNativeConnectivity 由 Runtime 验证当前设备、控制代次�
 
 开发预览的 Linux Unix socket 连接采用打开的目录 fd，避免 worktree 的长路径超过
 sockaddr_un 上限；真实 Docker 长路径回归证明程序继续使用原工作区并保留运行身份。
+
+## 2026-09-22 共享桌面与日常接续（ADR-0037）
+
+Core 新增 Desktop 模块，独占 migration 076 的桌面、幂等命令及 revision 事件；
+通过所属模块 port 校验资源，Gateway 公开 canonical DesktopService 并复查流式设备授权。
+项目、窗口、焦点和选中会话由服务端持久化；设备几何、草稿与 Surface capability 不进入桌面表。
+详见 [Core 边界](shared-desktop.md) 与 [客户端](shared-desktop-client.md)。
+
+Runtime 独占 migration 077。MANUAL_STOP 贯通持久策略、真实进程 context、Docker argv、
+Xvfb 与安装应用空闲清理；默认调用仍保持旧期限。精确恢复要求原 workload/generation，
+只获取设备访问，不启动替代程序；窗口关闭 detach，停止为显式操作。
+详见 [生命周期](runtime-lifecycle.md)。
+
+会话 follow 流有界续订，任务事件去重重连，空闲会话补齐其他设备输入；本地 journal 用
+IndexedDB 事务保存草稿和待确认回执，提交前必须持久化成功。未知结果先查同一输入 ID，
+不会自动重发；Forget 清理持久 epoch，阻止其他标签页迟到写入。显式清理失败显示错误，
+已确认的服务端 logout 仍会退出本页。
+[总任务及证据](../tasks/20260922-shared-desktop.md)区分真实栈、浏览器自动化和待执行真机项目。

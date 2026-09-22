@@ -22,9 +22,9 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
-// Effective lifecycle policy of a continuous workload. Bounded by the
-// existing 30-minute session ceiling in this phase; expiry stops the
-// program and is reported as the true reason.
+// Effective lifecycle policy of a continuous workload. MANUAL_STOP has no
+// automatic time or idle expiry; BOUNDED retains the workload-specific limits.
+// Device access and input/media authorization remain separately bounded.
 type WorkloadPolicy struct {
 	state            protoimpl.MessageState `protogen:"open.v1"`
 	Persistent       bool                   `protobuf:"varint,1,opt,name=persistent,proto3" json:"persistent,omitempty"`

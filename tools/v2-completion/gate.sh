@@ -31,6 +31,7 @@ cleanup() {
   docker ps -aq --filter "label=workos.runtime=$WORKOS_V2_NAMESPACE" | xargs -r docker rm -f >/dev/null 2>&1 || true
   docker ps -aq --filter "label=workos.network=$WORKOS_V2_NAMESPACE" | xargs -r docker rm -f >/dev/null 2>&1 || true
   docker network ls -q --filter "label=workos.network=$WORKOS_V2_NAMESPACE" | xargs -r docker network rm >/dev/null 2>&1 || true
+  docker network ls -q --filter "label=workos.runtime=$WORKOS_V2_NAMESPACE" | xargs -r docker network rm >/dev/null 2>&1 || true
   docker rm -f "$WORKOS_V2_NAMESPACE-db" >/dev/null 2>&1 || true
  fi
  printf 'V2 fixture result=%s evidence=%s\n' "$result" "$WORKOS_V2_DIR"
@@ -67,7 +68,9 @@ with open(sys.argv[1],'a') as f:
   if key.startswith('WORKOS_V2_'): f.write('export '+key+'='+shlex.quote(value)+'\n')
 PY
 if [ "${WORKOS_V2_PREPARE_ONLY:-}" = 1 ]; then exit 0; fi
-if [ "${WORKOS_ANDROID_AUTOMATION:-}" = 1 ]; then
+if [ "${WORKOS_SHARED_DESKTOP_AUTOMATION:-}" = 1 ]; then
+ sh tools/shared-desktop/test.sh
+elif [ "${WORKOS_ANDROID_AUTOMATION:-}" = 1 ]; then
  sh tools/android-acceptance/test.sh
 elif [ "${WORKOS_NETWORK_AUTOMATION:-}" = 1 ]; then
  sh tools/network-continuity/test.sh

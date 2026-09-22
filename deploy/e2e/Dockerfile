@@ -29,14 +29,14 @@ RUN npm install --global \
       --registry="${NPM_REGISTRY}" \
     && rm -rf /root/.npm
 
-RUN playwright install-deps chromium \
+RUN playwright install-deps chromium webkit \
     && rm -rf /var/lib/apt/lists/*
 
 RUN PLAYWRIGHT_DOWNLOAD_HOST="${PLAYWRIGHT_DOWNLOAD_HOST}" \
-      playwright install chromium \
+      playwright install chromium webkit \
     && chmod -R a+rX "${PLAYWRIGHT_BROWSERS_PATH}"
 
 WORKDIR /workspace/apps/desktop-web
 
 LABEL org.opencontainers.image.title="WorkOS Playwright test runner" \
-      org.opencontainers.image.description="Reproducible Chromium runner for the WorkOS desktop E2E suite"
+      org.opencontainers.image.description="Reproducible Chromium and WebKit runner for the WorkOS desktop E2E suite"

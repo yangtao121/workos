@@ -1184,3 +1184,9 @@ test-native-automation:
 .PHONY: test-network-continuity
 test-network-continuity:
 	sh tools/network-continuity/gate.sh
+
+# Shared owner desktop, idle conversation updates, exact program restoration,
+# installed Docker app lifecycle, and Chromium/WebKit at three screen sizes.
+.PHONY: test-shared-desktop
+test-shared-desktop:
+	sh tools/shared-desktop/gate.sh

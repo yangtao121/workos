@@ -54,8 +54,8 @@ The same three after images update `current/`.
 
 ## Handoff
 
-Parent must add its `clearSessionContinuity()` alongside `clearDesktopProjection()`
-and `layoutStore.clearAll()` in the existing Desktop identity-reset callback.
+Parent integrated `clearLocalDesktopState()` into Desktop identity reset and AuthGate Forget;
+active projections stop before transactional journal and layout deletion.
 Device-local Surface/bridge credentials remain memory only; shared cache contains
 canonical IDs and cursor only. Interrupted/stopped workloads remain references and
 never silently fall back to starting new programs. Ordinary app DOM/forms/scroll
