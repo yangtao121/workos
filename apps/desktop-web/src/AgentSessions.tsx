@@ -2,7 +2,10 @@ import { Code, ConnectError } from "@connectrpc/connect";
 import {
   MAX_DRAFT_LENGTH,
   readSessionContinuity,
-  writeSessionContinuity,
+  patchSessionContinuity,
+  sessionContinuityGeneration,
+  coalesceSessionRefresh,
+  type ContinuityPatch,
   sessionContinuityKey,
   sessionRetryDelay,
   type PendingSessionInput,
@@ -291,31 +294,36 @@ function SessionView(props: {
   const draftRef = useRef("");
   const storageKey = useRef("");
   const sessionCursor = useRef(0n);
-  const refreshNumber = useRef(0);
+  const storageEpoch = useRef("");
+  const journalGeneration = useRef(sessionContinuityGeneration());
+  const retries = useRef(new Set<AbortController>());
+  const journaling = useRef(false);
+  const refreshQueue = useRef<{ generation: number; run: () => Promise<boolean> } | undefined>(
+    undefined,
+  );
   const persist = useCallback(
-    () =>
-      writeSessionContinuity(storageKey.current, {
-        draft: draftRef.current,
-        pending: pendingRef.current,
-        cursor: sessionCursor.current,
+    (patch: ContinuityPatch) =>
+      patchSessionContinuity(storageKey.current, patch, {
+        epoch: storageEpoch.current,
+        generation: journalGeneration.current,
       }),
     [],
   );
-  const setPending = useCallback(
-    (update: (current: PendingInput[]) => PendingInput[]) => {
-      pendingRef.current = update(pendingRef.current);
-      persist();
-      setPendingState(pendingRef.current);
-    },
-    [persist],
-  );
+  const setPending = useCallback((update: (current: PendingInput[]) => PendingInput[]) => {
+    pendingRef.current = update(pendingRef.current);
+    setPendingState(pendingRef.current);
+  }, []);
   const setDraft = (value: string) => {
     draftRef.current = value;
     setDraftState(value);
-    if (storageKey.current && !persist())
-      setNotice(
-        "Draft storage is unavailable; keep this window open until your message is confirmed.",
-      );
+    const generation = generationRef.current;
+    if (storageKey.current)
+      void persist({ draft: value }).then((saved) => {
+        if (!saved && isLive(generation))
+          setNotice(
+            "Draft storage is unavailable; keep this window open until your message is confirmed.",
+          );
+      });
   };
   // Assistant/tool/usage timelines keyed by the input whose task produced
   // them. The active run streams live; the most recent task-bearing input
@@ -351,21 +359,26 @@ function SessionView(props: {
   }, [inputs, activeInput]);
   const watchedSignature = watchedInputs.map((input) => `${input.id}:${input.taskId}`).join("|");
 
-  const refresh = useCallback(
+  const loadSnapshot = useCallback(
     async (generation: number) => {
-      const refreshId = ++refreshNumber.current;
+      const abort = new AbortController();
+      retries.current.add(abort);
       try {
         const [sessionResponse, inputPages] = await Promise.all([
-          workosClients.agentSessions.getSession({ sessionId }),
+          workosClients.agentSessions.getSession({ sessionId }, { signal: abort.signal }),
           (async () => {
             const pages: AgentSessionInput[][] = [];
             let after = 0n;
             for (;;) {
-              const page = await workosClients.agentSessions.listSessionInputs({
-                sessionId,
-                afterSequence: after,
-                limit: 50,
-              });
+              if (!isLive(generation) || abort.signal.aborted) break;
+              const page = await workosClients.agentSessions.listSessionInputs(
+                {
+                  sessionId,
+                  afterSequence: after,
+                  limit: 50,
+                },
+                { signal: abort.signal },
+              );
               pages.push(page.inputs);
               if (page.inputs.length < 50) break;
               after = page.inputs[page.inputs.length - 1]?.sequence ?? after;
@@ -373,14 +386,18 @@ function SessionView(props: {
             return pages.flat();
           })(),
         ]);
-        if (!isLive(generation) || refreshId !== refreshNumber.current) return false;
+        if (!isLive(generation)) return false;
         if (sessionResponse.session) {
           const fact = sessionResponse.session;
           const key = sessionContinuityKey(fact.ownerUserId, fact.projectId, fact.id);
           if (key && key !== storageKey.current) {
+            const saved = await readSessionContinuity(key);
+            if (!isLive(generation)) return false;
             storageKey.current = key;
-            const saved = readSessionContinuity(key);
-            sessionCursor.current = saved.cursor;
+            storageEpoch.current = saved.epoch ?? "";
+            sessionCursor.current = saved.cursor > fact.lastEventSequence ? 0n : saved.cursor;
+            if (saved.cursor !== sessionCursor.current)
+              void persist({ resetCursor: sessionCursor.current });
             draftRef.current = saved.draft;
             setDraftState(saved.draft);
             pendingRef.current = saved.pending;
@@ -391,6 +408,7 @@ function SessionView(props: {
           // submission accepted just before this tab was killed.
           const accepted = new Set(inputPages.map((input) => input.clientInputId));
           setPending((current) => current.filter((item) => !accepted.has(item.clientInputId)));
+          void persist({ removePendingIds: [...accepted] });
         }
         setError(undefined);
         setInputs(inputPages.sort((left, right) => Number(left.sequence - right.sequence)));
@@ -398,9 +416,26 @@ function SessionView(props: {
       } catch (reason) {
         if (isLive(generation)) setError(asMessage(reason));
         return false;
+      } finally {
+        retries.current.delete(abort);
       }
     },
-    [isLive, sessionId, workosClients, setPending],
+    [isLive, sessionId, workosClients, setPending, persist],
+  );
+
+  const refresh = useCallback(
+    (generation: number) => {
+      if (!isLive(generation)) return Promise.resolve(false);
+      if (refreshQueue.current?.generation !== generation)
+        refreshQueue.current = {
+          generation,
+          run: coalesceSessionRefresh(() =>
+            isLive(generation) ? loadSnapshot(generation) : Promise.resolve(false),
+          ),
+        };
+      return refreshQueue.current.run();
+    },
+    [isLive, loadSnapshot],
   );
 
   useEffect(() => {
@@ -422,6 +457,8 @@ function SessionView(props: {
     });
     return () => {
       generationRef.current += 1;
+      for (const abort of retries.current) abort.abort();
+      retries.current.clear();
       for (const abort of taskStreamsRef.current.values()) abort.abort();
       taskStreamsRef.current.clear();
     };
@@ -459,7 +496,7 @@ function SessionView(props: {
               if (stopped() || !isLive(generation)) break;
               if (!refreshed) break;
               sessionCursor.current = last;
-              persist();
+              void persist({ cursor: last });
             }
             delay = 500;
           }
@@ -573,6 +610,7 @@ function SessionView(props: {
     const generation = generationRef.current;
     const reconcile = async () => {
       for (const item of recovering) {
+        if (!isLive(generation)) return;
         try {
           const response = await workosClients.agentSessions.getSessionInput({
             sessionId,
@@ -580,6 +618,7 @@ function SessionView(props: {
           });
           if (generation !== generationRef.current) return;
           if (response.input) {
+            void persist({ removePendingIds: [item.clientInputId] });
             setPending((current) =>
               current.filter((entry) => entry.clientInputId !== item.clientInputId),
             );
@@ -607,7 +646,7 @@ function SessionView(props: {
     return () => {
       window.clearTimeout(timer);
     };
-  }, [pending, refresh, sessionId, workosClients]);
+  }, [pending, refresh, sessionId, workosClients, persist, isLive]);
 
   const submit = async (text: string, directive?: SessionDirective) => {
     const trimmed = text.trim();
@@ -620,15 +659,31 @@ function SessionView(props: {
       setNotice("Confirm the pending messages before sending more.");
       return;
     }
+    if (journaling.current) return;
+    journaling.current = true;
     const clientInputId = crypto.randomUUID();
     const generation = generationRef.current;
-    setPending((current) => [
-      ...current,
-      { clientInputId, text: trimmed, directive, phase: "submitting" },
-    ]);
+    const item: PendingInput = { clientInputId, text: trimmed, directive, phase: "submitting" };
+    setPending((current) => [...current, item]);
+    const saved = await persist({
+      addPending: [item],
+      ...(!directive ? { clearDraftIf: text } : {}),
+    });
+    journaling.current = false;
+    if (!isLive(generation)) return;
+    if (!saved) {
+      setPending((current) => current.filter((entry) => entry.clientInputId !== clientInputId));
+      setNotice(
+        "Message was not sent because durable draft storage is unavailable. Your draft is still here.",
+      );
+      return;
+    }
     setError(undefined);
     setNotice(undefined);
-    if (!directive) setDraft("");
+    if (!directive && draftRef.current === text) {
+      draftRef.current = "";
+      setDraftState("");
+    }
     try {
       await withTimeout(
         workosClients.agentSessions.submitSessionInput({
@@ -640,6 +695,7 @@ function SessionView(props: {
         SUBMIT_TIMEOUT_MS,
       );
       if (generation !== generationRef.current) return;
+      void persist({ removePendingIds: [clientInputId] });
       setPending((current) => current.filter((entry) => entry.clientInputId !== clientInputId));
       await refresh(generation);
     } catch (reason) {
@@ -671,6 +727,9 @@ function SessionView(props: {
   // replays the recorded input instead of dispatching a second run.
   const retryPending = async (item: PendingInput) => {
     const generation = generationRef.current;
+    const abort = new AbortController();
+    retries.current.add(abort);
+    const live = () => isLive(generation) && !abort.signal.aborted;
     setPending((current) =>
       current.map((entry) =>
         entry.clientInputId === item.clientInputId ? { ...entry, phase: "submitting" } : entry,
@@ -678,42 +737,57 @@ function SessionView(props: {
     );
     try {
       try {
-        const found = await workosClients.agentSessions.getSessionInput({
-          sessionId,
-          clientInputId: item.clientInputId,
-        });
+        const found = await workosClients.agentSessions.getSessionInput(
+          { sessionId, clientInputId: item.clientInputId },
+          { signal: abort.signal },
+        );
+        if (!live()) return;
         if (found.input) {
-          if (isLive(generation)) {
-            setPending((current) =>
-              current.filter((entry) => entry.clientInputId !== item.clientInputId),
-            );
-            await refresh(generation);
-          }
+          await persist({ removePendingIds: [item.clientInputId] });
+          if (!live()) return;
+          setPending((current) =>
+            current.filter((entry) => entry.clientInputId !== item.clientInputId),
+          );
+          await refresh(generation);
           return;
         }
       } catch (reason) {
+        if (!live()) return;
         if (!(reason instanceof ConnectError) || reason.code !== Code.NotFound) throw reason;
       }
-      await workosClients.agentSessions.submitSessionInput({
-        sessionId,
-        clientInputId: item.clientInputId,
-        text: item.directive ? "" : item.text,
-        ...(item.directive ? { directive: item.directive } : {}),
-      });
-      if (generation !== generationRef.current) return;
+      if (!live()) return;
+      if (!navigator.onLine)
+        throw new Error("You are offline. The pending message remains on this device.");
+      // Re-confirm the receipt is durable before every explicit retry.
+      if (!(await persist({ addPending: [item] })))
+        throw new Error("Message was not sent because durable draft storage is unavailable.");
+      if (!live()) return;
+      await workosClients.agentSessions.submitSessionInput(
+        {
+          sessionId,
+          clientInputId: item.clientInputId,
+          text: item.directive ? "" : item.text,
+          ...(item.directive ? { directive: item.directive } : {}),
+        },
+        { signal: abort.signal },
+      );
+      if (!live()) return;
+      void persist({ removePendingIds: [item.clientInputId] });
       setPending((current) =>
         current.filter((entry) => entry.clientInputId !== item.clientInputId),
       );
       await refresh(generation);
     } catch (reason) {
-      if (generation !== generationRef.current) return;
-      setPending((current) =>
-        current.map((entry) =>
-          entry.clientInputId === item.clientInputId
-            ? { ...entry, phase: "failed", error: asMessage(reason) }
-            : entry,
-        ),
-      );
+      if (live())
+        setPending((current) =>
+          current.map((entry) =>
+            entry.clientInputId === item.clientInputId
+              ? { ...entry, phase: "failed", error: asMessage(reason) }
+              : entry,
+          ),
+        );
+    } finally {
+      retries.current.delete(abort);
     }
   };
 

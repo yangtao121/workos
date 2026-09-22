@@ -65,10 +65,11 @@ type SessionSnapshotSource interface {
 
 type SessionHandler struct {
 	agentv1connect.UnimplementedAgentSessionServiceHandler
-	service   *application.SessionService
-	snapshots SessionSnapshotSource
-	watchMu   sync.Mutex
-	watchers  map[string]int
+	service       *application.SessionService
+	snapshots     SessionSnapshotSource
+	watchMu       sync.Mutex
+	watchers      map[string]int
+	watchLifetime time.Duration
 }
 
 func NewSessionHandler(service *application.SessionService, snapshots SessionSnapshotSource) (string, http.Handler) {
@@ -290,15 +291,25 @@ func (h *SessionHandler) WatchSessionEvents(ctx context.Context, req *connect.Re
 			delete(h.watchers, owner.UserID)
 		}
 	}()
+	duration := h.watchLifetime
+	if duration == 0 {
+		duration = 2 * time.Minute
+	}
+	if req.Msg.GetFollow() {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, duration)
+		defer cancel()
+	}
 	poll := time.NewTicker(500 * time.Millisecond)
 	defer poll.Stop()
 	heartbeat := time.NewTicker(15 * time.Second)
 	defer heartbeat.Stop()
-	lifetime := time.NewTimer(2 * time.Minute)
-	defer lifetime.Stop()
 	after := req.Msg.GetAfter()
 	for {
 		events, err := h.service.Events(ctx, owner.UserID, req.Msg.GetSessionId(), after, 500)
+		if req.Msg.GetFollow() && ctx.Err() != nil {
+			return nil
+		}
 		if err != nil {
 			return sessionError(err)
 		}
@@ -315,8 +326,6 @@ func (h *SessionHandler) WatchSessionEvents(ctx context.Context, req *connect.Re
 			// Drain catch-up without inserting a delay between full pages.
 			select {
 			case <-ctx.Done():
-				return ctx.Err()
-			case <-lifetime.C:
 				return nil
 			default:
 				continue
@@ -324,8 +333,6 @@ func (h *SessionHandler) WatchSessionEvents(ctx context.Context, req *connect.Re
 		}
 		select {
 		case <-ctx.Done():
-			return ctx.Err()
-		case <-lifetime.C:
 			return nil
 		case <-heartbeat.C:
 			if err := stream.Send(&agentv1.WatchSessionEventsResponse{Heartbeat: true}); err != nil {

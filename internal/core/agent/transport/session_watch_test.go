@@ -123,3 +123,40 @@ func TestSessionWatchRejectsInvalidCursorAndForeignSession(t *testing.T) {
 		}
 	}
 }
+
+type blockedWatchRepository struct {
+	ports.SessionRepository
+	stopped chan struct{}
+}
+
+func (r *blockedWatchRepository) GetSession(ctx context.Context, _, _ string) (domain.Session, error) {
+	<-ctx.Done()
+	close(r.stopped)
+	return domain.Session{}, ctx.Err()
+}
+func TestSessionFollowLifetimeCancelsBlockedRead(t *testing.T) {
+	repo := &blockedWatchRepository{stopped: make(chan struct{})}
+	service := application.NewSessionService(repo, nil, nil, nil)
+	_, handler := agentv1connect.NewAgentSessionServiceHandler(&SessionHandler{service: service, watchLifetime: 20 * time.Millisecond})
+	server := httptest.NewServer(identity.Middleware(handler))
+	defer server.Close()
+	client := agentv1connect.NewAgentSessionServiceClient(server.Client(), server.URL)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	req := connect.NewRequest(&agentv1.WatchSessionEventsRequest{SessionId: watchSession, Follow: true})
+	req.Header().Set(identity.UserHeader, watchOwner)
+	req.Header().Set(identity.DeviceHeader, watchOwner)
+	stream, err := client.WatchSessionEvents(ctx, req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer stream.Close()
+	if stream.Receive() || stream.Err() != nil {
+		t.Fatal("expired follow should end cleanly", stream.Err())
+	}
+	select {
+	case <-repo.stopped:
+	default:
+		t.Fatal("blocked read was not cancelled")
+	}
+}

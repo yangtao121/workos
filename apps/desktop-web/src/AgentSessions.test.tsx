@@ -1,5 +1,13 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import "fake-indexeddb/auto";
+import { Code, ConnectError } from "@connectrpc/connect";
+import {
+  clearSessionContinuity,
+  readSessionContinuity,
+  sessionContinuityKey,
+  writeSessionContinuity,
+} from "./sessionContinuity.js";
+import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { act, useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -81,6 +89,14 @@ function fixture() {
   };
 }
 
+async function readyComposer(): Promise<HTMLTextAreaElement> {
+  const input = await screen.findByLabelText<HTMLTextAreaElement>("Session message");
+  await waitFor(() => {
+    expect(input.disabled).toBe(false);
+  });
+  return input;
+}
+
 async function* asyncGenerator(events: AgentEvent[]): AsyncGenerator<{ event?: AgentEvent }> {
   for (const event of events) {
     yield await Promise.resolve({ event });
@@ -91,14 +107,143 @@ function taskEvent(tag: string, partial: Record<string, unknown>): AgentEvent {
   return { id: `event-${tag}`, sequence: BigInt(tag), ...partial } as AgentEvent;
 }
 
-afterEach(() => {
+afterEach(async () => {
   cleanup();
-  localStorage.clear();
   vi.restoreAllMocks();
+  await clearSessionContinuity();
+  localStorage.clear();
   vi.useRealTimers();
 });
 
 describe("Agent session window", () => {
+  it("an idle second tab cannot overwrite another tab's draft or pending receipt", async () => {
+    const a = fixture(),
+      b = fixture();
+    a.agentSessions.submitSessionInput.mockImplementation(() => new Promise(() => undefined));
+    const first = render(
+      <AgentSessionsApp
+        projectId="project-1"
+        selectedSessionId="session-1"
+        workosClients={a.clients}
+        onSelectSession={() => undefined}
+      />,
+    );
+    const second = render(
+      <AgentSessionsApp
+        projectId="project-1"
+        selectedSessionId="session-1"
+        workosClients={b.clients}
+        onSelectSession={() => undefined}
+      />,
+    );
+    const inputA = within(first.container).getByLabelText<HTMLTextAreaElement>("Session message");
+    const inputB = within(second.container).getByLabelText<HTMLTextAreaElement>("Session message");
+    await waitFor(() => {
+      expect(inputA.disabled).toBe(false);
+      expect(inputB.disabled).toBe(false);
+    });
+    await userEvent.type(inputA, "Awaiting response");
+    await userEvent.click(within(first.container).getByRole("button", { name: "Send" }));
+    await waitFor(() => {
+      expect(a.agentSessions.submitSessionInput).toHaveBeenCalledTimes(1);
+    });
+    await userEvent.type(inputA, "New unsent thought");
+    await act(async () => {
+      window.dispatchEvent(new Event("online"));
+      await Promise.resolve();
+    });
+    await waitFor(() => {
+      expect(b.agentSessions.getSession.mock.calls.length).toBeGreaterThan(1);
+    });
+    const journal = await readSessionContinuity(
+      sessionContinuityKey("owner-1", "project-1", "session-1"),
+    );
+    expect(journal.pending.map((item) => item.text)).toEqual(["Awaiting response"]);
+    expect(journal.draft).toBe("New unsent thought");
+    expect(b.agentSessions.submitSessionInput).not.toHaveBeenCalled();
+  });
+
+  it("does not submit an old session after a delayed retry lookup and unmount", async () => {
+    const f = fixture();
+    f.agentSessions.submitSessionInput.mockRejectedValue(
+      new ConnectError("rejected", Code.InvalidArgument),
+    );
+    let reject!: (error: unknown) => void;
+    f.agentSessions.getSessionInput.mockImplementation(
+      () =>
+        new Promise((_, no) => {
+          reject = no;
+        }),
+    );
+    const view = render(<TestHost clients={f.clients} />);
+    await userEvent.click(await screen.findByTestId("agent-session-entry-session-1"));
+    await userEvent.type(await readyComposer(), "Original input");
+    await userEvent.click(screen.getByRole("button", { name: "Send" }));
+    await userEvent.click(await screen.findByRole("button", { name: "Retry" }));
+    await waitFor(() => {
+      expect(f.agentSessions.getSessionInput).toHaveBeenCalledTimes(1);
+    });
+    view.unmount();
+    await act(async () => {
+      reject(new ConnectError("missing", Code.NotFound));
+      await Promise.resolve();
+    });
+    expect(f.agentSessions.submitSessionInput).toHaveBeenCalledTimes(1);
+  });
+  it("commits a submission receipt before dispatching its RPC", async () => {
+    const f = fixture();
+    let recorded = "";
+    f.agentSessions.submitSessionInput.mockImplementation(async (request) => {
+      const stored = await readSessionContinuity(
+        sessionContinuityKey("owner-1", "project-1", "session-1"),
+      );
+      recorded =
+        stored.pending.find((item) => item.clientInputId === request.clientInputId)?.text ?? "";
+      return {};
+    });
+    render(<TestHost clients={f.clients} />);
+    await userEvent.click(await screen.findByTestId("agent-session-entry-session-1"));
+    await userEvent.type(await readyComposer(), "Durable before RPC");
+    await userEvent.click(screen.getByRole("button", { name: "Send" }));
+    await waitFor(() => {
+      expect(recorded).toBe("Durable before RPC");
+    });
+  });
+  it("keeps the draft and starts no RPC when the journal cannot commit", async () => {
+    const f = fixture();
+    render(<TestHost clients={f.clients} />);
+    await userEvent.click(await screen.findByTestId("agent-session-entry-session-1"));
+    await userEvent.type(await readyComposer(), "Keep this draft");
+    vi.spyOn(IDBObjectStore.prototype, "put").mockImplementation(() => {
+      throw new DOMException("quota", "QuotaExceededError");
+    });
+    await userEvent.click(screen.getByRole("button", { name: "Send" }));
+    expect(
+      await screen.findByText(
+        "Message was not sent because durable draft storage is unavailable. Your draft is still here.",
+      ),
+    ).toBeTruthy();
+    expect(f.agentSessions.submitSessionInput).not.toHaveBeenCalled();
+    expect(screen.getByLabelText<HTMLTextAreaElement>("Session message").value).toBe(
+      "Keep this draft",
+    );
+  });
+  it("resets a persisted cursor ahead of the server without losing its draft", async () => {
+    const f = fixture();
+    const key = sessionContinuityKey("owner-1", "project-1", "session-1");
+    await writeSessionContinuity(key, { draft: "Retain draft", pending: [], cursor: 100n });
+    render(<TestHost clients={f.clients} />);
+    await userEvent.click(await screen.findByTestId("agent-session-entry-session-1"));
+    await waitFor(() => {
+      expect(screen.getByLabelText<HTMLTextAreaElement>("Session message").value).toBe(
+        "Retain draft",
+      );
+    });
+    await waitFor(async () => {
+      expect((await readSessionContinuity(key)).cursor).toBe(0n);
+    });
+  });
+
   it("updates an idle conversation when another device submits an input", async () => {
     const f = fixture();
     let announce!: () => void;
@@ -175,7 +320,7 @@ describe("Agent session window", () => {
     const f = fixture();
     const first = render(<TestHost clients={f.clients} />);
     await userEvent.click(await screen.findByTestId("agent-session-entry-session-1"));
-    await userEvent.type(await screen.findByLabelText("Session message"), "Unsent local draft");
+    await userEvent.type(await readyComposer(), "Unsent local draft");
     first.unmount();
     render(<TestHost clients={f.clients} />);
     await userEvent.click(await screen.findByTestId("agent-session-entry-session-1"));
@@ -192,11 +337,11 @@ describe("Agent session window", () => {
     f.agentSessions.submitSessionInput.mockImplementation(() => new Promise(() => undefined));
     const first = render(<TestHost clients={f.clients} />);
     await userEvent.click(await screen.findByTestId("agent-session-entry-session-1"));
-    await userEvent.type(
-      await screen.findByLabelText("Session message"),
-      "Recover accepted request",
-    );
+    await userEvent.type(await readyComposer(), "Recover accepted request");
     await userEvent.click(screen.getByRole("button", { name: "Send" }));
+    await waitFor(() => {
+      expect(f.agentSessions.submitSessionInput).toHaveBeenCalledTimes(1);
+    });
     const key = f.agentSessions.submitSessionInput.mock.calls[0]?.[0].clientInputId;
     first.unmount();
     f.agentSessions.getSessionInput.mockResolvedValue({ input: { clientInputId: key } });
@@ -220,7 +365,7 @@ describe("Agent session window", () => {
     const f = fixture();
     render(<TestHost clients={f.clients} />);
     await userEvent.click(await screen.findByTestId("agent-session-entry-session-1"));
-    await userEvent.type(await screen.findByLabelText("Session message"), "Offline thought");
+    await userEvent.type(await readyComposer(), "Offline thought");
     vi.spyOn(navigator, "onLine", "get").mockReturnValue(false);
     await userEvent.click(screen.getByRole("button", { name: "Send" }));
     expect(screen.getByLabelText<HTMLTextAreaElement>("Session message").value).toBe(
@@ -260,7 +405,9 @@ describe("Agent session window", () => {
       });
     });
     expect(await screen.findByTestId("agent-session-view")).toBeTruthy();
-    expect(screen.getByTestId("agent-session-provider").textContent).toBe("Provider · fake");
+    await waitFor(() => {
+      expect(screen.getByTestId("agent-session-provider").textContent).toBe("Provider · fake");
+    });
     expect(await screen.findByText("Workspace · Fixture workspace")).toBeTruthy();
   });
 
@@ -316,7 +463,7 @@ describe("Agent session window", () => {
     );
     render(<TestHost clients={f.clients} />);
     await userEvent.click(await screen.findByTestId("new-agent-session"));
-    await userEvent.type(await screen.findByLabelText("Session message"), "prove the session run");
+    await userEvent.type(await readyComposer(), "prove the session run");
     await userEvent.click(screen.getByRole("button", { name: "Send" }));
     await waitFor(() => {
       expect(f.agentSessions.submitSessionInput).toHaveBeenCalledWith({
@@ -420,7 +567,7 @@ describe("Agent session window", () => {
     );
     render(<TestHost clients={f.clients} />);
     await userEvent.click(await screen.findByTestId("agent-session-entry-session-1"));
-    await userEvent.type(await screen.findByLabelText("Session message"), "slow submit");
+    await userEvent.type(await readyComposer(), "slow submit");
     vi.useFakeTimers();
     await act(async () => {
       screen.getByRole("button", { name: "Send" }).click();
