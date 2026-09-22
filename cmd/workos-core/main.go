@@ -34,6 +34,10 @@ import (
 	credentialapp "github.com/yangtao121/workos/internal/core/credential/application"
 	credentialports "github.com/yangtao121/workos/internal/core/credential/ports"
 	credentialtransport "github.com/yangtao121/workos/internal/core/credential/transport"
+	desktoppostgres "github.com/yangtao121/workos/internal/core/desktop/adapters/postgres"
+	desktopruntime "github.com/yangtao121/workos/internal/core/desktop/adapters/runtimeclient"
+	desktopapp "github.com/yangtao121/workos/internal/core/desktop/application"
+	desktoptransport "github.com/yangtao121/workos/internal/core/desktop/transport"
 	cataloghost "github.com/yangtao121/workos/internal/core/harnesscatalog/adapters/harnesshost"
 	catalogapp "github.com/yangtao121/workos/internal/core/harnesscatalog/application"
 	catalogtransport "github.com/yangtao121/workos/internal/core/harnesscatalog/transport"
@@ -414,6 +418,23 @@ func run(logger *slog.Logger) error {
 
 	agentService.WithSessionFinalizer(sessionService.FinishTaskRun)
 	sessionSnapshots := &projectSessionSnapshots{projects: projectService, catalog: catalogService, workspaces: workspaceService}
+	// Desktop commands hold their owner lock while consulting application
+	// ports. A separate pool prevents lock waiters from exhausting the
+	// owning modules' pool and deadlocking those authorization reads.
+	desktopPool, err := database.Open(ctx, cfg.DatabaseURL)
+	if err != nil {
+		return err
+	}
+	defer desktopPool.Close()
+	desktopReferences := &orchestration.DesktopReferences{
+		Projects: projectService, Installations: installationService,
+		Sessions: sessionService, Artifacts: artifactService,
+		Runtime: desktopruntime.New(cfg.Services.Runtime),
+	}
+	desktopService := desktopapp.New(desktoppostgres.New(desktopPool), desktopReferences, generator)
+	desktopPath, desktopHandler := desktoptransport.NewConnectHandler(desktopService)
+	mux.Handle(desktopPath, identity.Middleware(desktopHandler))
+
 	sessionPath, sessionHandler := agenttransport.NewSessionHandler(sessionService, sessionSnapshots)
 	mux.Handle(sessionPath, identity.Middleware(sessionHandler))
 	policyPath, policyHandler := agenttransport.NewPolicyConnectHandler(policyService)

@@ -74,7 +74,8 @@ type Handler struct {
 	logger      *slog.Logger
 	auth        *AuthStack
 	// originHost is the exact Host value requests must carry in production.
-	originHost string
+	originHost         string
+	streamRevalidation time.Duration
 	// pairingPath/devicePath are the Connect prefixes served locally.
 	pairingPath string
 	devicePath  string
@@ -92,6 +93,7 @@ var publicServicePrefixes = []string{
 	"/workos.app.v1.AppSourceBundleService/",
 	"/workos.artifact.v1.ArtifactService/",
 	"/workos.common.v1.SystemService/",
+	"/workos.desktop.v1.DesktopService/",
 	"/workos.harness.v1.HarnessCatalogService/",
 	"/workos.notification.v1.NotificationService/",
 	"/workos.project.v1.ProjectHarnessBindingService/",
@@ -142,14 +144,25 @@ const surfaceAssetPrefix = "/surfaces/"
 // It is session-gated and identity-injected exactly like /surfaces/.
 const previewAssetPrefix = "/previews/"
 
-// notificationWatchPath is the resumable notification server stream. It is
-// the one route whose authorization the gateway re-validates mid-flight:
+// notificationWatchPath is a resumable stream. Shared desktop and continuous
+// Agent sessions use the same mid-flight authorization revalidation:
 // a stream authorized at handshake must terminate in bounded time after
 // its session is revoked (ADR-0014).
 const notificationWatchPath = "/workos.notification.v1.NotificationService/WatchNotificationEvents"
 
+func revalidatedStreamPath(path string) bool {
+	switch path {
+	case notificationWatchPath,
+		"/workos.desktop.v1.DesktopService/WatchDesktop",
+		"/workos.agent.v1.AgentSessionService/WatchSessionEvents":
+		return true
+	default:
+		return false
+	}
+}
+
 // streamRevalidateInterval bounds how long a revoked session can keep an
-// authorized notification stream; the Core handler's own bounded stream
+// authorized persistent stream; the Core handler's own bounded stream
 // lifetime is the second bound. Store outages never cancel streams — only
 // a definitive authentication failure does.
 const (
@@ -188,7 +201,7 @@ func New(cfg config.Config, logger *slog.Logger, auth *AuthStack) (*Handler, err
 	}
 	handler := &Handler{
 		config: cfg, proxy: core, runtime: runtime, reliability: reliability, indexer: indexer,
-		logger: logger, auth: auth,
+		logger: logger, auth: auth, streamRevalidation: streamRevalidateInterval,
 	}
 	if !cfg.Auth.DevBypass {
 		// Production mode requires the auth stack: the constructor fails
@@ -363,7 +376,7 @@ func (h *Handler) serveProduction(w http.ResponseWriter, r *http.Request) {
 		if !ok {
 			return
 		}
-		if path == notificationWatchPath {
+		if revalidatedStreamPath(path) {
 			h.serveStreamWithRevalidation(w, r, identity)
 			return
 		}
@@ -503,7 +516,7 @@ func isUnsafeMethod(method string) bool {
 	}
 }
 
-// serveStreamWithRevalidation proxies the notification watch stream with a
+// serveStreamWithRevalidation proxies persistent watch streams with a
 // periodic session re-check: on a definitive authentication failure (session
 // revoked, expired, or replaced) the request context is cancelled, which
 // aborts the proxied stream in bounded time. A store outage keeps the
@@ -518,7 +531,7 @@ func (h *Handler) serveStreamWithRevalidation(w http.ResponseWriter, r *http.Req
 	streamCtx, cancel := context.WithCancel(identity)
 	defer cancel()
 	go func() {
-		ticker := time.NewTicker(streamRevalidateInterval)
+		ticker := time.NewTicker(h.streamRevalidation)
 		defer ticker.Stop()
 		for {
 			select {
