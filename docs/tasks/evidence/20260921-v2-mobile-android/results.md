@@ -1,5 +1,10 @@
 # 移动浏览器与 Android APK 验收（2026-09-22）
 
+2026-09-22 清理更新：旧工作树已删除；下文引用的现有 `tmp/*.log` 等根目录日志已按原字节
+归档至主工作目录的 `tmp/archived-worktree-evidence/20260922/workos-v2-mobile/tmp/`。
+完整清单、SHA256 与范围见 [清理记录](../../20260922-v2-merged-worktree-cleanup.md)。
+临时测试运行目录已清理，已提交的结果、截图与原日志摘要保留。
+
 基线 `49227c9`，在独立六进程/PostgreSQL/生产设备认证/受信 HTTPS fixture 上验证。
 Android 证据来自 KVM 模拟器；手机和平板浏览器来自两个独立触控 Chromium 容器。
 不把这些结果扩大为物理手机、物理 LAN 或公网验证。所有模型响应均为确定性 fixture。

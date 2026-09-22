@@ -1,5 +1,10 @@
 # 原生目标、技能与子 Agent 验收（2026-09-21）
 
+2026-09-22 清理更新：旧工作树已删除；下文引用的现有 `tmp/*.log` 等根目录日志已按原字节
+归档至主工作目录的 `tmp/archived-worktree-evidence/20260922/workos-v2-native/tmp/`。
+完整清单、SHA256 与范围见 [清理记录](../../20260922-v2-merged-worktree-cleanup.md)。
+临时测试运行目录已清理，已提交的结果、截图与原日志摘要保留。
+
 契约基线 `71e7c5d`，P3 收口证据 `8d507cc`；当前任务源码的六进程隔离栈，
 真实 PostgreSQL、Docker worktree、锁定官方 Harness `0.1.1rc1`、Chromium。
 

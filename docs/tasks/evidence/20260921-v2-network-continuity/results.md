@@ -1,5 +1,10 @@
 # HTTPS、LAN/NAT 与 TURN 验收（2026-09-21）
 
+2026-09-22 清理更新：旧工作树已删除；下文引用的现有 `tmp/*.log` 等根目录日志已按原字节
+归档至主工作目录的 `tmp/archived-worktree-evidence/20260922/workos-v2-network/tmp/`。
+完整清单、SHA256 与范围见 [清理记录](../../20260922-v2-merged-worktree-cleanup.md)。
+临时测试运行目录已清理，已提交的结果、截图与原日志摘要保留。
+
 契约 `83e76cd`，Native 基线 `2c3eb28`。本轮 Docker 模拟网络，不宣称物理设备或公网验收。
 
 | 范围         | 结果                                                                                                | 证据                                                                                                                                                    |

@@ -37,7 +37,8 @@
 
 ## 交付入口
 
-- 主工作目录 `/home/aquatao/workos`，集成分支 `feat/v2-final-integration`。
+- 主工作目录 `/home/aquatao/workos`，当前分支 `main`；全部功能已从集成分支快进合入。
+  旧功能分支和三个工作树已清理，见 [清理记录](../tasks/20260922-v2-merged-worktree-cleanup.md)。
 - 普通 Android debug APK 本机副本 `tmp/deliverables/workos-android-debug.apk`；
   源构建命令见 [Android 壳](android-shell.md)，摘要见移动证据。它不信任验收专用 CA，
   需要设备信任部署的有效 HTTPS 证书；首次启动输入 HTTPS 地址或粘贴配对链接。
