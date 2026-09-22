@@ -212,6 +212,9 @@ type SurfaceSession struct {
 	// intersection of the installation grant snapshot and the implemented
 	// bridge methods. Unimplemented capabilities never appear here.
 	BridgeCapabilities []string `protobuf:"bytes,12,rep,name=bridge_capabilities,json=bridgeCapabilities,proto3" json:"bridge_capabilities,omitempty"`
+	// Exact running program behind a container-backed surface; empty for static views.
+	WorkloadId         string `protobuf:"bytes,13,opt,name=workload_id,json=workloadId,proto3" json:"workload_id,omitempty"`
+	WorkloadGeneration int64  `protobuf:"varint,14,opt,name=workload_generation,json=workloadGeneration,proto3" json:"workload_generation,omitempty"`
 	unknownFields      protoimpl.UnknownFields
 	sizeCache          protoimpl.SizeCache
 }
@@ -330,6 +333,20 @@ func (x *SurfaceSession) GetBridgeCapabilities() []string {
 	return nil
 }
 
+func (x *SurfaceSession) GetWorkloadId() string {
+	if x != nil {
+		return x.WorkloadId
+	}
+	return ""
+}
+
+func (x *SurfaceSession) GetWorkloadGeneration() int64 {
+	if x != nil {
+		return x.WorkloadGeneration
+	}
+	return 0
+}
+
 type CreateSurfaceRequest struct {
 	state             protoimpl.MessageState `protogen:"open.v1"`
 	AppInstanceId     string                 `protobuf:"bytes,1,opt,name=app_instance_id,json=appInstanceId,proto3" json:"app_instance_id,omitempty"`
@@ -342,8 +359,13 @@ type CreateSurfaceRequest struct {
 	// launches use it to refuse a concurrently changed installation before
 	// starting a workload. Empty means the current pinned version.
 	ExpectedAppVersion string `protobuf:"bytes,7,opt,name=expected_app_version,json=expectedAppVersion,proto3" json:"expected_app_version,omitempty"`
-	unknownFields      protoimpl.UnknownFields
-	sizeCache          protoimpl.SizeCache
+	// Restore a device view without starting a program. Container-backed views
+	// require the exact existing workload identity below.
+	AttachOnly                 bool   `protobuf:"varint,8,opt,name=attach_only,json=attachOnly,proto3" json:"attach_only,omitempty"`
+	ExpectedWorkloadId         string `protobuf:"bytes,9,opt,name=expected_workload_id,json=expectedWorkloadId,proto3" json:"expected_workload_id,omitempty"`
+	ExpectedWorkloadGeneration int64  `protobuf:"varint,10,opt,name=expected_workload_generation,json=expectedWorkloadGeneration,proto3" json:"expected_workload_generation,omitempty"`
+	unknownFields              protoimpl.UnknownFields
+	sizeCache                  protoimpl.SizeCache
 }
 
 func (x *CreateSurfaceRequest) Reset() {
@@ -423,6 +445,27 @@ func (x *CreateSurfaceRequest) GetExpectedAppVersion() string {
 		return x.ExpectedAppVersion
 	}
 	return ""
+}
+
+func (x *CreateSurfaceRequest) GetAttachOnly() bool {
+	if x != nil {
+		return x.AttachOnly
+	}
+	return false
+}
+
+func (x *CreateSurfaceRequest) GetExpectedWorkloadId() string {
+	if x != nil {
+		return x.ExpectedWorkloadId
+	}
+	return ""
+}
+
+func (x *CreateSurfaceRequest) GetExpectedWorkloadGeneration() int64 {
+	if x != nil {
+		return x.ExpectedWorkloadGeneration
+	}
+	return 0
 }
 
 type CloseSurfaceRequest struct {
@@ -558,7 +601,7 @@ const file_workos_surface_v1_surface_proto_rawDesc = "" +
 	"\x05width\x18\x01 \x01(\x05R\x05width\x12\x16\n" +
 	"\x06height\x18\x02 \x01(\x05R\x06height\x12\x1f\n" +
 	"\vpixel_ratio\x18\x03 \x01(\x01R\n" +
-	"pixelRatio\"\xda\x03\n" +
+	"pixelRatio\"\xac\x04\n" +
 	"\x0eSurfaceSession\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12&\n" +
 	"\x0fapp_instance_id\x18\x02 \x01(\tR\rappInstanceId\x12\x1d\n" +
@@ -576,7 +619,10 @@ const file_workos_surface_v1_surface_proto_rawDesc = "" +
 	" \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x129\n" +
 	"\n" +
 	"expires_at\x18\v \x01(\v2\x1a.google.protobuf.TimestampR\texpiresAt\x12/\n" +
-	"\x13bridge_capabilities\x18\f \x03(\tR\x12bridgeCapabilities\"\x87\x03\n" +
+	"\x13bridge_capabilities\x18\f \x03(\tR\x12bridgeCapabilities\x12\x1f\n" +
+	"\vworkload_id\x18\r \x01(\tR\n" +
+	"workloadId\x12/\n" +
+	"\x13workload_generation\x18\x0e \x01(\x03R\x12workloadGeneration\"\x9c\x04\n" +
 	"\x14CreateSurfaceRequest\x12&\n" +
 	"\x0fapp_instance_id\x18\x01 \x01(\tR\rappInstanceId\x12\x1d\n" +
 	"\n" +
@@ -585,7 +631,12 @@ const file_workos_surface_v1_surface_proto_rawDesc = "" +
 	"\bviewport\x18\x04 \x01(\v2\x1b.workos.surface.v1.ViewportR\bviewport\x12Q\n" +
 	"\x12preferred_renderer\x18\x05 \x01(\x0e2\".workos.surface.v1.SurfaceRendererR\x11preferredRenderer\x12'\n" +
 	"\x0fidempotency_key\x18\x06 \x01(\tR\x0eidempotencyKey\x120\n" +
-	"\x14expected_app_version\x18\a \x01(\tR\x12expectedAppVersion\"C\n" +
+	"\x14expected_app_version\x18\a \x01(\tR\x12expectedAppVersion\x12\x1f\n" +
+	"\vattach_only\x18\b \x01(\bR\n" +
+	"attachOnly\x120\n" +
+	"\x14expected_workload_id\x18\t \x01(\tR\x12expectedWorkloadId\x12@\n" +
+	"\x1cexpected_workload_generation\x18\n" +
+	" \x01(\x03R\x1aexpectedWorkloadGeneration\"C\n" +
 	"\x13CloseSurfaceRequest\x12,\n" +
 	"\x12surface_session_id\x18\x01 \x01(\tR\x10surfaceSessionId\"\x16\n" +
 	"\x14CloseSurfaceResponse\"T\n" +

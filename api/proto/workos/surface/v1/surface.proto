@@ -47,6 +47,9 @@ message SurfaceSession {
   // intersection of the installation grant snapshot and the implemented
   // bridge methods. Unimplemented capabilities never appear here.
   repeated string bridge_capabilities = 12;
+  // Exact running program behind a container-backed surface; empty for static views.
+  string workload_id = 13;
+  int64 workload_generation = 14;
 }
 
 message CreateSurfaceRequest {
@@ -60,6 +63,11 @@ message CreateSurfaceRequest {
   // launches use it to refuse a concurrently changed installation before
   // starting a workload. Empty means the current pinned version.
   string expected_app_version = 7;
+  // Restore a device view without starting a program. Container-backed views
+  // require the exact existing workload identity below.
+  bool attach_only = 8;
+  string expected_workload_id = 9;
+  int64 expected_workload_generation = 10;
 }
 
 message CloseSurfaceRequest {

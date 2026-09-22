@@ -35,9 +35,12 @@ type DesktopWindowTarget struct {
 	//	*DesktopWindowTarget_PreviewId
 	//	*DesktopWindowTarget_SessionId
 	//	*DesktopWindowTarget_ArtifactId
-	Resource      isDesktopWindowTarget_Resource `protobuf_oneof:"resource"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	Resource isDesktopWindowTarget_Resource `protobuf_oneof:"resource"`
+	// Only app_instance_id targets can carry a pinned container identity.
+	ExpectedWorkloadId         string `protobuf:"bytes,8,opt,name=expected_workload_id,json=expectedWorkloadId,proto3" json:"expected_workload_id,omitempty"`
+	ExpectedWorkloadGeneration int64  `protobuf:"varint,9,opt,name=expected_workload_generation,json=expectedWorkloadGeneration,proto3" json:"expected_workload_generation,omitempty"`
+	unknownFields              protoimpl.UnknownFields
+	sizeCache                  protoimpl.SizeCache
 }
 
 func (x *DesktopWindowTarget) Reset() {
@@ -134,6 +137,20 @@ func (x *DesktopWindowTarget) GetArtifactId() string {
 		}
 	}
 	return ""
+}
+
+func (x *DesktopWindowTarget) GetExpectedWorkloadId() string {
+	if x != nil {
+		return x.ExpectedWorkloadId
+	}
+	return ""
+}
+
+func (x *DesktopWindowTarget) GetExpectedWorkloadGeneration() int64 {
+	if x != nil {
+		return x.ExpectedWorkloadGeneration
+	}
+	return 0
 }
 
 type isDesktopWindowTarget_Resource interface {
@@ -875,7 +892,7 @@ var File_workos_desktop_v1_desktop_proto protoreflect.FileDescriptor
 
 const file_workos_desktop_v1_desktop_proto_rawDesc = "" +
 	"\n" +
-	"\x1fworkos/desktop/v1/desktop.proto\x12\x11workos.desktop.v1\"\x86\x02\n" +
+	"\x1fworkos/desktop/v1/desktop.proto\x12\x11workos.desktop.v1\"\xfa\x02\n" +
 	"\x13DesktopWindowTarget\x12\x12\n" +
 	"\x04kind\x18\x01 \x01(\tR\x04kind\x12\x1d\n" +
 	"\n" +
@@ -888,7 +905,9 @@ const file_workos_desktop_v1_desktop_proto_rawDesc = "" +
 	"\n" +
 	"session_id\x18\x06 \x01(\tH\x00R\tsessionId\x12!\n" +
 	"\vartifact_id\x18\a \x01(\tH\x00R\n" +
-	"artifactIdB\n" +
+	"artifactId\x120\n" +
+	"\x14expected_workload_id\x18\b \x01(\tR\x12expectedWorkloadId\x12@\n" +
+	"\x1cexpected_workload_generation\x18\t \x01(\x03R\x1aexpectedWorkloadGenerationB\n" +
 	"\n" +
 	"\bresource\"_\n" +
 	"\rDesktopWindow\x12\x0e\n" +

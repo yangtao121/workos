@@ -17,6 +17,9 @@ message DesktopWindowTarget {
     string session_id = 6;
     string artifact_id = 7;
   }
+  // Only app_instance_id targets can carry a pinned container identity.
+  string expected_workload_id = 8;
+  int64 expected_workload_generation = 9;
 }
 
 message DesktopWindow {
