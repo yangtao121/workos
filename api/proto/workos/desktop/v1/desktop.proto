@@ -1,0 +1,88 @@
+syntax = "proto3";
+
+package workos.desktop.v1;
+
+option go_package = "github.com/yangtao121/workos/gen/go/workos/desktop/v1;desktopv1";
+
+// Canonical references only. kind is an allowlisted shell window kind;
+// project_id is required for project-scoped windows. Device surfaces, URLs,
+// geometry and user content never belong in this record.
+message DesktopWindowTarget {
+  string kind = 1;
+  string project_id = 2;
+  oneof resource {
+    string app_instance_id = 3;
+    string workload_id = 4;
+    string preview_id = 5;
+    string session_id = 6;
+    string artifact_id = 7;
+  }
+}
+
+message DesktopWindow {
+  // Server-minted UUIDv7, stable until this logical window is closed.
+  string id = 1;
+  DesktopWindowTarget target = 2;
+}
+
+message DesktopState {
+  string active_project_id = 1;
+  // Back to front; inactive projects retain their windows.
+  repeated DesktopWindow windows = 2;
+  string focused_window_id = 3;
+  // Zero means no desktop has yet been initialized.
+  int64 revision = 4;
+}
+
+message GetDesktopRequest {}
+message GetDesktopResponse {
+  DesktopState state = 1;
+}
+
+message DesktopProjectSelection {
+  string project_id = 1;
+}
+message DesktopWindowSelection {
+  string window_id = 1;
+}
+message DesktopSessionSelection {
+  string window_id = 1;
+  string session_id = 2;
+}
+message DesktopInitialization {
+  string active_project_id = 1;
+  repeated DesktopWindowTarget windows = 2;
+}
+
+message ApplyDesktopOperationRequest {
+  string idempotency_key = 1;
+  // Commands apply atomically to the latest state. There is no client
+  // snapshot overwrite. Initializing an existing desktop is a no-op.
+  oneof operation {
+    DesktopProjectSelection switch_project = 2;
+    DesktopWindowTarget open_window = 3;
+    DesktopWindowSelection close_window = 4;
+    DesktopWindowSelection focus_window = 5;
+    DesktopSessionSelection select_session = 6;
+    DesktopInitialization initialize = 7;
+  }
+}
+message ApplyDesktopOperationResponse {
+  DesktopState state = 1;
+}
+
+message WatchDesktopRequest {
+  int64 after_revision = 1;
+}
+message WatchDesktopResponse {
+  DesktopState state = 1;
+  bool heartbeat = 2;
+  // Client must replace its projection, not merge stale local windows.
+  bool reset_required = 3;
+}
+
+service DesktopService {
+  rpc GetDesktop(GetDesktopRequest) returns (GetDesktopResponse) {}
+  rpc ApplyDesktopOperation(ApplyDesktopOperationRequest) returns (ApplyDesktopOperationResponse) {}
+  rpc WatchDesktop(WatchDesktopRequest) returns (stream WatchDesktopResponse) {}
+}

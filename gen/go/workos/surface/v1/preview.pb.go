@@ -41,6 +41,7 @@ type WorkspacePreview struct {
 	Generation    int64                  `protobuf:"varint,10,opt,name=generation,proto3" json:"generation,omitempty"`
 	Command       string                 `protobuf:"bytes,11,opt,name=command,proto3" json:"command,omitempty"`
 	Port          int32                  `protobuf:"varint,12,opt,name=port,proto3" json:"port,omitempty"`
+	LifecycleMode LifecycleMode          `protobuf:"varint,13,opt,name=lifecycle_mode,json=lifecycleMode,proto3,enum=workos.surface.v1.LifecycleMode" json:"lifecycle_mode,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -159,12 +160,20 @@ func (x *WorkspacePreview) GetPort() int32 {
 	return 0
 }
 
+func (x *WorkspacePreview) GetLifecycleMode() LifecycleMode {
+	if x != nil {
+		return x.LifecycleMode
+	}
+	return LifecycleMode_LIFECYCLE_MODE_UNSPECIFIED
+}
+
 type StartWorkspacePreviewRequest struct {
 	state          protoimpl.MessageState `protogen:"open.v1"`
 	ProjectId      string                 `protobuf:"bytes,1,opt,name=project_id,json=projectId,proto3" json:"project_id,omitempty"`
 	IdempotencyKey string                 `protobuf:"bytes,2,opt,name=idempotency_key,json=idempotencyKey,proto3" json:"idempotency_key,omitempty"`
 	Command        string                 `protobuf:"bytes,3,opt,name=command,proto3" json:"command,omitempty"`
 	Port           int32                  `protobuf:"varint,4,opt,name=port,proto3" json:"port,omitempty"`
+	LifecycleMode  LifecycleMode          `protobuf:"varint,5,opt,name=lifecycle_mode,json=lifecycleMode,proto3,enum=workos.surface.v1.LifecycleMode" json:"lifecycle_mode,omitempty"`
 	unknownFields  protoimpl.UnknownFields
 	sizeCache      protoimpl.SizeCache
 }
@@ -225,6 +234,13 @@ func (x *StartWorkspacePreviewRequest) GetPort() int32 {
 		return x.Port
 	}
 	return 0
+}
+
+func (x *StartWorkspacePreviewRequest) GetLifecycleMode() LifecycleMode {
+	if x != nil {
+		return x.LifecycleMode
+	}
+	return LifecycleMode_LIFECYCLE_MODE_UNSPECIFIED
 }
 
 type StartWorkspacePreviewResponse struct {
@@ -541,6 +557,7 @@ type RestartWorkspacePreviewRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	PreviewId     string                 `protobuf:"bytes,1,opt,name=preview_id,json=previewId,proto3" json:"preview_id,omitempty"`
 	ActionKey     string                 `protobuf:"bytes,2,opt,name=action_key,json=actionKey,proto3" json:"action_key,omitempty"`
+	LifecycleMode LifecycleMode          `protobuf:"varint,3,opt,name=lifecycle_mode,json=lifecycleMode,proto3,enum=workos.surface.v1.LifecycleMode" json:"lifecycle_mode,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -587,6 +604,13 @@ func (x *RestartWorkspacePreviewRequest) GetActionKey() string {
 		return x.ActionKey
 	}
 	return ""
+}
+
+func (x *RestartWorkspacePreviewRequest) GetLifecycleMode() LifecycleMode {
+	if x != nil {
+		return x.LifecycleMode
+	}
+	return LifecycleMode_LIFECYCLE_MODE_UNSPECIFIED
 }
 
 type RestartWorkspacePreviewResponse struct {
@@ -637,7 +661,7 @@ var File_workos_surface_v1_preview_proto protoreflect.FileDescriptor
 
 const file_workos_surface_v1_preview_proto_rawDesc = "" +
 	"\n" +
-	"\x1fworkos/surface/v1/preview.proto\x12\x11workos.surface.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"\x9e\x03\n" +
+	"\x1fworkos/surface/v1/preview.proto\x12\x11workos.surface.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a!workos/surface/v1/lifecycle.proto\"\xe7\x03\n" +
 	"\x10WorkspacePreview\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\"\n" +
 	"\rowner_user_id\x18\x02 \x01(\tR\vownerUserId\x12\x1d\n" +
@@ -656,13 +680,15 @@ const file_workos_surface_v1_preview_proto_rawDesc = "" +
 	" \x01(\x03R\n" +
 	"generation\x12\x18\n" +
 	"\acommand\x18\v \x01(\tR\acommand\x12\x12\n" +
-	"\x04port\x18\f \x01(\x05R\x04port\"\x94\x01\n" +
+	"\x04port\x18\f \x01(\x05R\x04port\x12G\n" +
+	"\x0elifecycle_mode\x18\r \x01(\x0e2 .workos.surface.v1.LifecycleModeR\rlifecycleMode\"\xdd\x01\n" +
 	"\x1cStartWorkspacePreviewRequest\x12\x1d\n" +
 	"\n" +
 	"project_id\x18\x01 \x01(\tR\tprojectId\x12'\n" +
 	"\x0fidempotency_key\x18\x02 \x01(\tR\x0eidempotencyKey\x12\x18\n" +
 	"\acommand\x18\x03 \x01(\tR\acommand\x12\x12\n" +
-	"\x04port\x18\x04 \x01(\x05R\x04port\"^\n" +
+	"\x04port\x18\x04 \x01(\x05R\x04port\x12G\n" +
+	"\x0elifecycle_mode\x18\x05 \x01(\x0e2 .workos.surface.v1.LifecycleModeR\rlifecycleMode\"^\n" +
 	"\x1dStartWorkspacePreviewResponse\x12=\n" +
 	"\apreview\x18\x01 \x01(\v2#.workos.surface.v1.WorkspacePreviewR\apreview\";\n" +
 	"\x1aGetWorkspacePreviewRequest\x12\x1d\n" +
@@ -680,12 +706,13 @@ const file_workos_surface_v1_preview_proto_rawDesc = "" +
 	"preview_id\x18\x01 \x01(\tR\tpreviewId\x12\x1d\n" +
 	"\n" +
 	"action_key\x18\x02 \x01(\tR\tactionKey\"\x1e\n" +
-	"\x1cStopWorkspacePreviewResponse\"^\n" +
+	"\x1cStopWorkspacePreviewResponse\"\xa7\x01\n" +
 	"\x1eRestartWorkspacePreviewRequest\x12\x1d\n" +
 	"\n" +
 	"preview_id\x18\x01 \x01(\tR\tpreviewId\x12\x1d\n" +
 	"\n" +
-	"action_key\x18\x02 \x01(\tR\tactionKey\"`\n" +
+	"action_key\x18\x02 \x01(\tR\tactionKey\x12G\n" +
+	"\x0elifecycle_mode\x18\x03 \x01(\x0e2 .workos.surface.v1.LifecycleModeR\rlifecycleMode\"`\n" +
 	"\x1fRestartWorkspacePreviewResponse\x12=\n" +
 	"\apreview\x18\x01 \x01(\v2#.workos.surface.v1.WorkspacePreviewR\apreview2\xa3\x05\n" +
 	"\x17WorkspacePreviewService\x12|\n" +
@@ -721,29 +748,33 @@ var file_workos_surface_v1_preview_proto_goTypes = []any{
 	(*RestartWorkspacePreviewRequest)(nil),       // 9: workos.surface.v1.RestartWorkspacePreviewRequest
 	(*RestartWorkspacePreviewResponse)(nil),      // 10: workos.surface.v1.RestartWorkspacePreviewResponse
 	(*timestamppb.Timestamp)(nil),                // 11: google.protobuf.Timestamp
+	(LifecycleMode)(0),                           // 12: workos.surface.v1.LifecycleMode
 }
 var file_workos_surface_v1_preview_proto_depIdxs = []int32{
 	11, // 0: workos.surface.v1.WorkspacePreview.created_at:type_name -> google.protobuf.Timestamp
 	11, // 1: workos.surface.v1.WorkspacePreview.expires_at:type_name -> google.protobuf.Timestamp
-	0,  // 2: workos.surface.v1.StartWorkspacePreviewResponse.preview:type_name -> workos.surface.v1.WorkspacePreview
-	0,  // 3: workos.surface.v1.GetWorkspacePreviewResponse.preview:type_name -> workos.surface.v1.WorkspacePreview
-	0,  // 4: workos.surface.v1.ListProjectWorkspacePreviewsResponse.previews:type_name -> workos.surface.v1.WorkspacePreview
-	0,  // 5: workos.surface.v1.RestartWorkspacePreviewResponse.preview:type_name -> workos.surface.v1.WorkspacePreview
-	1,  // 6: workos.surface.v1.WorkspacePreviewService.StartWorkspacePreview:input_type -> workos.surface.v1.StartWorkspacePreviewRequest
-	3,  // 7: workos.surface.v1.WorkspacePreviewService.GetWorkspacePreview:input_type -> workos.surface.v1.GetWorkspacePreviewRequest
-	5,  // 8: workos.surface.v1.WorkspacePreviewService.ListProjectWorkspacePreviews:input_type -> workos.surface.v1.ListProjectWorkspacePreviewsRequest
-	9,  // 9: workos.surface.v1.WorkspacePreviewService.RestartWorkspacePreview:input_type -> workos.surface.v1.RestartWorkspacePreviewRequest
-	7,  // 10: workos.surface.v1.WorkspacePreviewService.StopWorkspacePreview:input_type -> workos.surface.v1.StopWorkspacePreviewRequest
-	2,  // 11: workos.surface.v1.WorkspacePreviewService.StartWorkspacePreview:output_type -> workos.surface.v1.StartWorkspacePreviewResponse
-	4,  // 12: workos.surface.v1.WorkspacePreviewService.GetWorkspacePreview:output_type -> workos.surface.v1.GetWorkspacePreviewResponse
-	6,  // 13: workos.surface.v1.WorkspacePreviewService.ListProjectWorkspacePreviews:output_type -> workos.surface.v1.ListProjectWorkspacePreviewsResponse
-	10, // 14: workos.surface.v1.WorkspacePreviewService.RestartWorkspacePreview:output_type -> workos.surface.v1.RestartWorkspacePreviewResponse
-	8,  // 15: workos.surface.v1.WorkspacePreviewService.StopWorkspacePreview:output_type -> workos.surface.v1.StopWorkspacePreviewResponse
-	11, // [11:16] is the sub-list for method output_type
-	6,  // [6:11] is the sub-list for method input_type
-	6,  // [6:6] is the sub-list for extension type_name
-	6,  // [6:6] is the sub-list for extension extendee
-	0,  // [0:6] is the sub-list for field type_name
+	12, // 2: workos.surface.v1.WorkspacePreview.lifecycle_mode:type_name -> workos.surface.v1.LifecycleMode
+	12, // 3: workos.surface.v1.StartWorkspacePreviewRequest.lifecycle_mode:type_name -> workos.surface.v1.LifecycleMode
+	0,  // 4: workos.surface.v1.StartWorkspacePreviewResponse.preview:type_name -> workos.surface.v1.WorkspacePreview
+	0,  // 5: workos.surface.v1.GetWorkspacePreviewResponse.preview:type_name -> workos.surface.v1.WorkspacePreview
+	0,  // 6: workos.surface.v1.ListProjectWorkspacePreviewsResponse.previews:type_name -> workos.surface.v1.WorkspacePreview
+	12, // 7: workos.surface.v1.RestartWorkspacePreviewRequest.lifecycle_mode:type_name -> workos.surface.v1.LifecycleMode
+	0,  // 8: workos.surface.v1.RestartWorkspacePreviewResponse.preview:type_name -> workos.surface.v1.WorkspacePreview
+	1,  // 9: workos.surface.v1.WorkspacePreviewService.StartWorkspacePreview:input_type -> workos.surface.v1.StartWorkspacePreviewRequest
+	3,  // 10: workos.surface.v1.WorkspacePreviewService.GetWorkspacePreview:input_type -> workos.surface.v1.GetWorkspacePreviewRequest
+	5,  // 11: workos.surface.v1.WorkspacePreviewService.ListProjectWorkspacePreviews:input_type -> workos.surface.v1.ListProjectWorkspacePreviewsRequest
+	9,  // 12: workos.surface.v1.WorkspacePreviewService.RestartWorkspacePreview:input_type -> workos.surface.v1.RestartWorkspacePreviewRequest
+	7,  // 13: workos.surface.v1.WorkspacePreviewService.StopWorkspacePreview:input_type -> workos.surface.v1.StopWorkspacePreviewRequest
+	2,  // 14: workos.surface.v1.WorkspacePreviewService.StartWorkspacePreview:output_type -> workos.surface.v1.StartWorkspacePreviewResponse
+	4,  // 15: workos.surface.v1.WorkspacePreviewService.GetWorkspacePreview:output_type -> workos.surface.v1.GetWorkspacePreviewResponse
+	6,  // 16: workos.surface.v1.WorkspacePreviewService.ListProjectWorkspacePreviews:output_type -> workos.surface.v1.ListProjectWorkspacePreviewsResponse
+	10, // 17: workos.surface.v1.WorkspacePreviewService.RestartWorkspacePreview:output_type -> workos.surface.v1.RestartWorkspacePreviewResponse
+	8,  // 18: workos.surface.v1.WorkspacePreviewService.StopWorkspacePreview:output_type -> workos.surface.v1.StopWorkspacePreviewResponse
+	14, // [14:19] is the sub-list for method output_type
+	9,  // [9:14] is the sub-list for method input_type
+	9,  // [9:9] is the sub-list for extension type_name
+	9,  // [9:9] is the sub-list for extension extendee
+	0,  // [0:9] is the sub-list for field type_name
 }
 
 func init() { file_workos_surface_v1_preview_proto_init() }
@@ -751,6 +782,7 @@ func file_workos_surface_v1_preview_proto_init() {
 	if File_workos_surface_v1_preview_proto != nil {
 		return
 	}
+	file_workos_surface_v1_lifecycle_proto_init()
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{

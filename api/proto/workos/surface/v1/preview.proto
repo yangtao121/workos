@@ -3,6 +3,7 @@ syntax = "proto3";
 package workos.surface.v1;
 
 import "google/protobuf/timestamp.proto";
+import "workos/surface/v1/lifecycle.proto";
 
 option go_package = "github.com/yangtao121/workos/gen/go/workos/surface/v1;surfacev1";
 
@@ -24,6 +25,7 @@ message WorkspacePreview {
   int64 generation = 10;
   string command = 11;
   int32 port = 12;
+  LifecycleMode lifecycle_mode = 13;
 }
 
 message StartWorkspacePreviewRequest {
@@ -31,6 +33,7 @@ message StartWorkspacePreviewRequest {
   string idempotency_key = 2;
   string command = 3;
   int32 port = 4;
+  LifecycleMode lifecycle_mode = 5;
 }
 
 message StartWorkspacePreviewResponse {
@@ -64,6 +67,7 @@ message StopWorkspacePreviewResponse {}
 message RestartWorkspacePreviewRequest {
   string preview_id = 1;
   string action_key = 2;
+  LifecycleMode lifecycle_mode = 3;
 }
 message RestartWorkspacePreviewResponse {
   WorkspacePreview preview = 1;

@@ -30,6 +30,7 @@ type WorkloadPolicy struct {
 	Persistent       bool                   `protobuf:"varint,1,opt,name=persistent,proto3" json:"persistent,omitempty"`
 	KeepAliveSeconds int64                  `protobuf:"varint,2,opt,name=keep_alive_seconds,json=keepAliveSeconds,proto3" json:"keep_alive_seconds,omitempty"`
 	IdleStopSeconds  int64                  `protobuf:"varint,3,opt,name=idle_stop_seconds,json=idleStopSeconds,proto3" json:"idle_stop_seconds,omitempty"`
+	LifecycleMode    LifecycleMode          `protobuf:"varint,4,opt,name=lifecycle_mode,json=lifecycleMode,proto3,enum=workos.surface.v1.LifecycleMode" json:"lifecycle_mode,omitempty"`
 	unknownFields    protoimpl.UnknownFields
 	sizeCache        protoimpl.SizeCache
 }
@@ -83,6 +84,13 @@ func (x *WorkloadPolicy) GetIdleStopSeconds() int64 {
 		return x.IdleStopSeconds
 	}
 	return 0
+}
+
+func (x *WorkloadPolicy) GetLifecycleMode() LifecycleMode {
+	if x != nil {
+		return x.LifecycleMode
+	}
+	return LifecycleMode_LIFECYCLE_MODE_UNSPECIFIED
 }
 
 type SurfaceWorkloadView struct {
@@ -950,6 +958,7 @@ type RestartSurfaceWorkloadRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	WorkloadId    string                 `protobuf:"bytes,1,opt,name=workload_id,json=workloadId,proto3" json:"workload_id,omitempty"`
 	ActionKey     string                 `protobuf:"bytes,2,opt,name=action_key,json=actionKey,proto3" json:"action_key,omitempty"`
+	LifecycleMode LifecycleMode          `protobuf:"varint,3,opt,name=lifecycle_mode,json=lifecycleMode,proto3,enum=workos.surface.v1.LifecycleMode" json:"lifecycle_mode,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -996,6 +1005,13 @@ func (x *RestartSurfaceWorkloadRequest) GetActionKey() string {
 		return x.ActionKey
 	}
 	return ""
+}
+
+func (x *RestartSurfaceWorkloadRequest) GetLifecycleMode() LifecycleMode {
+	if x != nil {
+		return x.LifecycleMode
+	}
+	return LifecycleMode_LIFECYCLE_MODE_UNSPECIFIED
 }
 
 type RestartSurfaceWorkloadResponse struct {
@@ -1046,13 +1062,14 @@ var File_workos_surface_v1_continuity_proto protoreflect.FileDescriptor
 
 const file_workos_surface_v1_continuity_proto_rawDesc = "" +
 	"\n" +
-	"\"workos/surface/v1/continuity.proto\x12\x11workos.surface.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1fworkos/surface/v1/surface.proto\"\x8a\x01\n" +
+	"\"workos/surface/v1/continuity.proto\x12\x11workos.surface.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a!workos/surface/v1/lifecycle.proto\x1a\x1fworkos/surface/v1/surface.proto\"\xd3\x01\n" +
 	"\x0eWorkloadPolicy\x12\x1e\n" +
 	"\n" +
 	"persistent\x18\x01 \x01(\bR\n" +
 	"persistent\x12,\n" +
 	"\x12keep_alive_seconds\x18\x02 \x01(\x03R\x10keepAliveSeconds\x12*\n" +
-	"\x11idle_stop_seconds\x18\x03 \x01(\x03R\x0fidleStopSeconds\"\xb7\x04\n" +
+	"\x11idle_stop_seconds\x18\x03 \x01(\x03R\x0fidleStopSeconds\x12G\n" +
+	"\x0elifecycle_mode\x18\x04 \x01(\x0e2 .workos.surface.v1.LifecycleModeR\rlifecycleMode\"\xb7\x04\n" +
 	"\x13SurfaceWorkloadView\x12\x1f\n" +
 	"\vworkload_id\x18\x01 \x01(\tR\n" +
 	"workloadId\x12\x1d\n" +
@@ -1131,12 +1148,13 @@ const file_workos_surface_v1_continuity_proto_rawDesc = "" +
 	"\n" +
 	"action_key\x18\x02 \x01(\tR\tactionKey\"a\n" +
 	"\x1bStopSurfaceWorkloadResponse\x12B\n" +
-	"\bworkload\x18\x01 \x01(\v2&.workos.surface.v1.SurfaceWorkloadViewR\bworkload\"_\n" +
+	"\bworkload\x18\x01 \x01(\v2&.workos.surface.v1.SurfaceWorkloadViewR\bworkload\"\xa8\x01\n" +
 	"\x1dRestartSurfaceWorkloadRequest\x12\x1f\n" +
 	"\vworkload_id\x18\x01 \x01(\tR\n" +
 	"workloadId\x12\x1d\n" +
 	"\n" +
-	"action_key\x18\x02 \x01(\tR\tactionKey\"d\n" +
+	"action_key\x18\x02 \x01(\tR\tactionKey\x12G\n" +
+	"\x0elifecycle_mode\x18\x03 \x01(\x0e2 .workos.surface.v1.LifecycleModeR\rlifecycleMode\"d\n" +
 	"\x1eRestartSurfaceWorkloadResponse\x12B\n" +
 	"\bworkload\x18\x01 \x01(\v2&.workos.surface.v1.SurfaceWorkloadViewR\bworkload2\xc7\x06\n" +
 	"\x18SurfaceContinuityService\x12v\n" +
@@ -1179,48 +1197,51 @@ var file_workos_surface_v1_continuity_proto_goTypes = []any{
 	(*StopSurfaceWorkloadResponse)(nil),    // 14: workos.surface.v1.StopSurfaceWorkloadResponse
 	(*RestartSurfaceWorkloadRequest)(nil),  // 15: workos.surface.v1.RestartSurfaceWorkloadRequest
 	(*RestartSurfaceWorkloadResponse)(nil), // 16: workos.surface.v1.RestartSurfaceWorkloadResponse
-	(SurfaceRenderer)(0),                   // 17: workos.surface.v1.SurfaceRenderer
-	(*timestamppb.Timestamp)(nil),          // 18: google.protobuf.Timestamp
-	(DeviceClass)(0),                       // 19: workos.surface.v1.DeviceClass
-	(*Viewport)(nil),                       // 20: workos.surface.v1.Viewport
-	(*SurfaceSession)(nil),                 // 21: workos.surface.v1.SurfaceSession
+	(LifecycleMode)(0),                     // 17: workos.surface.v1.LifecycleMode
+	(SurfaceRenderer)(0),                   // 18: workos.surface.v1.SurfaceRenderer
+	(*timestamppb.Timestamp)(nil),          // 19: google.protobuf.Timestamp
+	(DeviceClass)(0),                       // 20: workos.surface.v1.DeviceClass
+	(*Viewport)(nil),                       // 21: workos.surface.v1.Viewport
+	(*SurfaceSession)(nil),                 // 22: workos.surface.v1.SurfaceSession
 }
 var file_workos_surface_v1_continuity_proto_depIdxs = []int32{
-	17, // 0: workos.surface.v1.SurfaceWorkloadView.renderer:type_name -> workos.surface.v1.SurfaceRenderer
-	0,  // 1: workos.surface.v1.SurfaceWorkloadView.policy:type_name -> workos.surface.v1.WorkloadPolicy
-	18, // 2: workos.surface.v1.SurfaceWorkloadView.started_at:type_name -> google.protobuf.Timestamp
-	18, // 3: workos.surface.v1.SurfaceWorkloadView.stopped_at:type_name -> google.protobuf.Timestamp
-	18, // 4: workos.surface.v1.SurfaceAttachment.attached_at:type_name -> google.protobuf.Timestamp
-	18, // 5: workos.surface.v1.SurfaceAttachment.control_expires_at:type_name -> google.protobuf.Timestamp
-	18, // 6: workos.surface.v1.SurfaceAttachment.detached_at:type_name -> google.protobuf.Timestamp
-	1,  // 7: workos.surface.v1.ListProjectSurfacesResponse.workloads:type_name -> workos.surface.v1.SurfaceWorkloadView
-	19, // 8: workos.surface.v1.AttachSurfaceRequest.device_class:type_name -> workos.surface.v1.DeviceClass
-	20, // 9: workos.surface.v1.AttachSurfaceRequest.viewport:type_name -> workos.surface.v1.Viewport
-	21, // 10: workos.surface.v1.AttachSurfaceResponse.session:type_name -> workos.surface.v1.SurfaceSession
-	2,  // 11: workos.surface.v1.AttachSurfaceResponse.attachment:type_name -> workos.surface.v1.SurfaceAttachment
-	2,  // 12: workos.surface.v1.RequestSurfaceControlResponse.attachment:type_name -> workos.surface.v1.SurfaceAttachment
-	18, // 13: workos.surface.v1.GetSurfaceControlResponse.control_expires_at:type_name -> google.protobuf.Timestamp
-	1,  // 14: workos.surface.v1.StopSurfaceWorkloadResponse.workload:type_name -> workos.surface.v1.SurfaceWorkloadView
-	1,  // 15: workos.surface.v1.RestartSurfaceWorkloadResponse.workload:type_name -> workos.surface.v1.SurfaceWorkloadView
-	3,  // 16: workos.surface.v1.SurfaceContinuityService.ListProjectSurfaces:input_type -> workos.surface.v1.ListProjectSurfacesRequest
-	5,  // 17: workos.surface.v1.SurfaceContinuityService.AttachSurface:input_type -> workos.surface.v1.AttachSurfaceRequest
-	7,  // 18: workos.surface.v1.SurfaceContinuityService.DetachSurface:input_type -> workos.surface.v1.DetachSurfaceRequest
-	9,  // 19: workos.surface.v1.SurfaceContinuityService.RequestSurfaceControl:input_type -> workos.surface.v1.RequestSurfaceControlRequest
-	11, // 20: workos.surface.v1.SurfaceContinuityService.GetSurfaceControl:input_type -> workos.surface.v1.GetSurfaceControlRequest
-	13, // 21: workos.surface.v1.SurfaceContinuityService.StopSurfaceWorkload:input_type -> workos.surface.v1.StopSurfaceWorkloadRequest
-	15, // 22: workos.surface.v1.SurfaceContinuityService.RestartSurfaceWorkload:input_type -> workos.surface.v1.RestartSurfaceWorkloadRequest
-	4,  // 23: workos.surface.v1.SurfaceContinuityService.ListProjectSurfaces:output_type -> workos.surface.v1.ListProjectSurfacesResponse
-	6,  // 24: workos.surface.v1.SurfaceContinuityService.AttachSurface:output_type -> workos.surface.v1.AttachSurfaceResponse
-	8,  // 25: workos.surface.v1.SurfaceContinuityService.DetachSurface:output_type -> workos.surface.v1.DetachSurfaceResponse
-	10, // 26: workos.surface.v1.SurfaceContinuityService.RequestSurfaceControl:output_type -> workos.surface.v1.RequestSurfaceControlResponse
-	12, // 27: workos.surface.v1.SurfaceContinuityService.GetSurfaceControl:output_type -> workos.surface.v1.GetSurfaceControlResponse
-	14, // 28: workos.surface.v1.SurfaceContinuityService.StopSurfaceWorkload:output_type -> workos.surface.v1.StopSurfaceWorkloadResponse
-	16, // 29: workos.surface.v1.SurfaceContinuityService.RestartSurfaceWorkload:output_type -> workos.surface.v1.RestartSurfaceWorkloadResponse
-	23, // [23:30] is the sub-list for method output_type
-	16, // [16:23] is the sub-list for method input_type
-	16, // [16:16] is the sub-list for extension type_name
-	16, // [16:16] is the sub-list for extension extendee
-	0,  // [0:16] is the sub-list for field type_name
+	17, // 0: workos.surface.v1.WorkloadPolicy.lifecycle_mode:type_name -> workos.surface.v1.LifecycleMode
+	18, // 1: workos.surface.v1.SurfaceWorkloadView.renderer:type_name -> workos.surface.v1.SurfaceRenderer
+	0,  // 2: workos.surface.v1.SurfaceWorkloadView.policy:type_name -> workos.surface.v1.WorkloadPolicy
+	19, // 3: workos.surface.v1.SurfaceWorkloadView.started_at:type_name -> google.protobuf.Timestamp
+	19, // 4: workos.surface.v1.SurfaceWorkloadView.stopped_at:type_name -> google.protobuf.Timestamp
+	19, // 5: workos.surface.v1.SurfaceAttachment.attached_at:type_name -> google.protobuf.Timestamp
+	19, // 6: workos.surface.v1.SurfaceAttachment.control_expires_at:type_name -> google.protobuf.Timestamp
+	19, // 7: workos.surface.v1.SurfaceAttachment.detached_at:type_name -> google.protobuf.Timestamp
+	1,  // 8: workos.surface.v1.ListProjectSurfacesResponse.workloads:type_name -> workos.surface.v1.SurfaceWorkloadView
+	20, // 9: workos.surface.v1.AttachSurfaceRequest.device_class:type_name -> workos.surface.v1.DeviceClass
+	21, // 10: workos.surface.v1.AttachSurfaceRequest.viewport:type_name -> workos.surface.v1.Viewport
+	22, // 11: workos.surface.v1.AttachSurfaceResponse.session:type_name -> workos.surface.v1.SurfaceSession
+	2,  // 12: workos.surface.v1.AttachSurfaceResponse.attachment:type_name -> workos.surface.v1.SurfaceAttachment
+	2,  // 13: workos.surface.v1.RequestSurfaceControlResponse.attachment:type_name -> workos.surface.v1.SurfaceAttachment
+	19, // 14: workos.surface.v1.GetSurfaceControlResponse.control_expires_at:type_name -> google.protobuf.Timestamp
+	1,  // 15: workos.surface.v1.StopSurfaceWorkloadResponse.workload:type_name -> workos.surface.v1.SurfaceWorkloadView
+	17, // 16: workos.surface.v1.RestartSurfaceWorkloadRequest.lifecycle_mode:type_name -> workos.surface.v1.LifecycleMode
+	1,  // 17: workos.surface.v1.RestartSurfaceWorkloadResponse.workload:type_name -> workos.surface.v1.SurfaceWorkloadView
+	3,  // 18: workos.surface.v1.SurfaceContinuityService.ListProjectSurfaces:input_type -> workos.surface.v1.ListProjectSurfacesRequest
+	5,  // 19: workos.surface.v1.SurfaceContinuityService.AttachSurface:input_type -> workos.surface.v1.AttachSurfaceRequest
+	7,  // 20: workos.surface.v1.SurfaceContinuityService.DetachSurface:input_type -> workos.surface.v1.DetachSurfaceRequest
+	9,  // 21: workos.surface.v1.SurfaceContinuityService.RequestSurfaceControl:input_type -> workos.surface.v1.RequestSurfaceControlRequest
+	11, // 22: workos.surface.v1.SurfaceContinuityService.GetSurfaceControl:input_type -> workos.surface.v1.GetSurfaceControlRequest
+	13, // 23: workos.surface.v1.SurfaceContinuityService.StopSurfaceWorkload:input_type -> workos.surface.v1.StopSurfaceWorkloadRequest
+	15, // 24: workos.surface.v1.SurfaceContinuityService.RestartSurfaceWorkload:input_type -> workos.surface.v1.RestartSurfaceWorkloadRequest
+	4,  // 25: workos.surface.v1.SurfaceContinuityService.ListProjectSurfaces:output_type -> workos.surface.v1.ListProjectSurfacesResponse
+	6,  // 26: workos.surface.v1.SurfaceContinuityService.AttachSurface:output_type -> workos.surface.v1.AttachSurfaceResponse
+	8,  // 27: workos.surface.v1.SurfaceContinuityService.DetachSurface:output_type -> workos.surface.v1.DetachSurfaceResponse
+	10, // 28: workos.surface.v1.SurfaceContinuityService.RequestSurfaceControl:output_type -> workos.surface.v1.RequestSurfaceControlResponse
+	12, // 29: workos.surface.v1.SurfaceContinuityService.GetSurfaceControl:output_type -> workos.surface.v1.GetSurfaceControlResponse
+	14, // 30: workos.surface.v1.SurfaceContinuityService.StopSurfaceWorkload:output_type -> workos.surface.v1.StopSurfaceWorkloadResponse
+	16, // 31: workos.surface.v1.SurfaceContinuityService.RestartSurfaceWorkload:output_type -> workos.surface.v1.RestartSurfaceWorkloadResponse
+	25, // [25:32] is the sub-list for method output_type
+	18, // [18:25] is the sub-list for method input_type
+	18, // [18:18] is the sub-list for extension type_name
+	18, // [18:18] is the sub-list for extension extendee
+	0,  // [0:18] is the sub-list for field type_name
 }
 
 func init() { file_workos_surface_v1_continuity_proto_init() }
@@ -1228,6 +1249,7 @@ func file_workos_surface_v1_continuity_proto_init() {
 	if File_workos_surface_v1_continuity_proto != nil {
 		return
 	}
+	file_workos_surface_v1_lifecycle_proto_init()
 	file_workos_surface_v1_surface_proto_init()
 	file_workos_surface_v1_continuity_proto_msgTypes[1].OneofWrappers = []any{}
 	file_workos_surface_v1_continuity_proto_msgTypes[2].OneofWrappers = []any{}

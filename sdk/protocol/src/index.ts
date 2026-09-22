@@ -29,3 +29,6 @@ export * from "./gen/workos/bridge/v1/bridge_pb.js";
 export * from "./gen/workos/surface/v1/preview_pb.js";
 
 export * from "./gen/workos/agent/v1/interaction_pb.js";
+
+export * from "./gen/workos/desktop/v1/desktop_pb.js";
+export * from "./gen/workos/surface/v1/lifecycle_pb.js";

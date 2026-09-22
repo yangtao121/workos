@@ -1746,7 +1746,9 @@ type WatchSessionEventsRequest struct {
 	state     protoimpl.MessageState `protogen:"open.v1"`
 	SessionId string                 `protobuf:"bytes,1,opt,name=session_id,json=sessionId,proto3" json:"session_id,omitempty"`
 	// Inclusive-exclusive event cursor: returns events with sequence > after.
-	After         int64 `protobuf:"varint,2,opt,name=after,proto3" json:"after,omitempty"`
+	After int64 `protobuf:"varint,2,opt,name=after,proto3" json:"after,omitempty"`
+	// False preserves finite catch-up; true tails until the bounded stream renews.
+	Follow        bool `protobuf:"varint,3,opt,name=follow,proto3" json:"follow,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1795,9 +1797,17 @@ func (x *WatchSessionEventsRequest) GetAfter() int64 {
 	return 0
 }
 
+func (x *WatchSessionEventsRequest) GetFollow() bool {
+	if x != nil {
+		return x.Follow
+	}
+	return false
+}
+
 type WatchSessionEventsResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Events        []*AgentSessionEvent   `protobuf:"bytes,1,rep,name=events,proto3" json:"events,omitempty"`
+	Heartbeat     bool                   `protobuf:"varint,2,opt,name=heartbeat,proto3" json:"heartbeat,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1837,6 +1847,13 @@ func (x *WatchSessionEventsResponse) GetEvents() []*AgentSessionEvent {
 		return x.Events
 	}
 	return nil
+}
+
+func (x *WatchSessionEventsResponse) GetHeartbeat() bool {
+	if x != nil {
+		return x.Heartbeat
+	}
+	return false
 }
 
 var File_workos_agent_v1_session_proto protoreflect.FileDescriptor
@@ -1973,13 +1990,15 @@ const file_workos_agent_v1_session_proto_rawDesc = "" +
 	"\n" +
 	"session_id\x18\x01 \x01(\tR\tsessionId\"O\n" +
 	"\x14CloseSessionResponse\x127\n" +
-	"\asession\x18\x01 \x01(\v2\x1d.workos.agent.v1.AgentSessionR\asession\"P\n" +
+	"\asession\x18\x01 \x01(\v2\x1d.workos.agent.v1.AgentSessionR\asession\"h\n" +
 	"\x19WatchSessionEventsRequest\x12\x1d\n" +
 	"\n" +
 	"session_id\x18\x01 \x01(\tR\tsessionId\x12\x14\n" +
-	"\x05after\x18\x02 \x01(\x03R\x05after\"X\n" +
+	"\x05after\x18\x02 \x01(\x03R\x05after\x12\x16\n" +
+	"\x06follow\x18\x03 \x01(\bR\x06follow\"v\n" +
 	"\x1aWatchSessionEventsResponse\x12:\n" +
-	"\x06events\x18\x01 \x03(\v2\".workos.agent.v1.AgentSessionEventR\x06events*\xbf\x01\n" +
+	"\x06events\x18\x01 \x03(\v2\".workos.agent.v1.AgentSessionEventR\x06events\x12\x1c\n" +
+	"\theartbeat\x18\x02 \x01(\bR\theartbeat*\xbf\x01\n" +
 	"\x11AgentSessionState\x12#\n" +
 	"\x1fAGENT_SESSION_STATE_UNSPECIFIED\x10\x00\x12\x1e\n" +
 	"\x1aAGENT_SESSION_STATE_ACTIVE\x10\x01\x12\x1f\n" +

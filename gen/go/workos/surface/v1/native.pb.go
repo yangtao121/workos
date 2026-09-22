@@ -40,6 +40,7 @@ type NativeSession struct {
 	Height        int32                  `protobuf:"varint,7,opt,name=height,proto3" json:"height,omitempty"`
 	CreatedAt     *timestamppb.Timestamp `protobuf:"bytes,8,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
 	ExpiresAt     *timestamppb.Timestamp `protobuf:"bytes,9,opt,name=expires_at,json=expiresAt,proto3" json:"expires_at,omitempty"`
+	LifecycleMode LifecycleMode          `protobuf:"varint,10,opt,name=lifecycle_mode,json=lifecycleMode,proto3,enum=workos.surface.v1.LifecycleMode" json:"lifecycle_mode,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -137,13 +138,21 @@ func (x *NativeSession) GetExpiresAt() *timestamppb.Timestamp {
 	return nil
 }
 
+func (x *NativeSession) GetLifecycleMode() LifecycleMode {
+	if x != nil {
+		return x.LifecycleMode
+	}
+	return LifecycleMode_LIFECYCLE_MODE_UNSPECIFIED
+}
+
 type CreateNativeSessionRequest struct {
 	state          protoimpl.MessageState `protogen:"open.v1"`
 	IdempotencyKey string                 `protobuf:"bytes,1,opt,name=idempotency_key,json=idempotencyKey,proto3" json:"idempotency_key,omitempty"`
 	ProjectId      string                 `protobuf:"bytes,2,opt,name=project_id,json=projectId,proto3" json:"project_id,omitempty"`
 	// Fixed initial display size; later changes are not negotiated.
-	Width         int32 `protobuf:"varint,3,opt,name=width,proto3" json:"width,omitempty"`
-	Height        int32 `protobuf:"varint,4,opt,name=height,proto3" json:"height,omitempty"`
+	Width         int32         `protobuf:"varint,3,opt,name=width,proto3" json:"width,omitempty"`
+	Height        int32         `protobuf:"varint,4,opt,name=height,proto3" json:"height,omitempty"`
+	LifecycleMode LifecycleMode `protobuf:"varint,5,opt,name=lifecycle_mode,json=lifecycleMode,proto3,enum=workos.surface.v1.LifecycleMode" json:"lifecycle_mode,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -204,6 +213,13 @@ func (x *CreateNativeSessionRequest) GetHeight() int32 {
 		return x.Height
 	}
 	return 0
+}
+
+func (x *CreateNativeSessionRequest) GetLifecycleMode() LifecycleMode {
+	if x != nil {
+		return x.LifecycleMode
+	}
+	return LifecycleMode_LIFECYCLE_MODE_UNSPECIFIED
 }
 
 type CreateNativeSessionResponse struct {
@@ -909,7 +925,7 @@ var File_workos_surface_v1_native_proto protoreflect.FileDescriptor
 
 const file_workos_surface_v1_native_proto_rawDesc = "" +
 	"\n" +
-	"\x1eworkos/surface/v1/native.proto\x12\x11workos.surface.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"\xb4\x02\n" +
+	"\x1eworkos/surface/v1/native.proto\x12\x11workos.surface.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a!workos/surface/v1/lifecycle.proto\"\xfd\x02\n" +
 	"\rNativeSession\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\"\n" +
 	"\rowner_user_id\x18\x02 \x01(\tR\vownerUserId\x12\x1d\n" +
@@ -922,13 +938,16 @@ const file_workos_surface_v1_native_proto_rawDesc = "" +
 	"\n" +
 	"created_at\x18\b \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x129\n" +
 	"\n" +
-	"expires_at\x18\t \x01(\v2\x1a.google.protobuf.TimestampR\texpiresAt\"\x92\x01\n" +
+	"expires_at\x18\t \x01(\v2\x1a.google.protobuf.TimestampR\texpiresAt\x12G\n" +
+	"\x0elifecycle_mode\x18\n" +
+	" \x01(\x0e2 .workos.surface.v1.LifecycleModeR\rlifecycleMode\"\xdb\x01\n" +
 	"\x1aCreateNativeSessionRequest\x12'\n" +
 	"\x0fidempotency_key\x18\x01 \x01(\tR\x0eidempotencyKey\x12\x1d\n" +
 	"\n" +
 	"project_id\x18\x02 \x01(\tR\tprojectId\x12\x14\n" +
 	"\x05width\x18\x03 \x01(\x05R\x05width\x12\x16\n" +
-	"\x06height\x18\x04 \x01(\x05R\x06height\"Y\n" +
+	"\x06height\x18\x04 \x01(\x05R\x06height\x12G\n" +
+	"\x0elifecycle_mode\x18\x05 \x01(\x0e2 .workos.surface.v1.LifecycleModeR\rlifecycleMode\"Y\n" +
 	"\x1bCreateNativeSessionResponse\x12:\n" +
 	"\asession\x18\x01 \x01(\v2 .workos.surface.v1.NativeSessionR\asession\"\x88\x01\n" +
 	"\x1bConnectNativeSessionRequest\x12\x1d\n" +
@@ -1018,33 +1037,36 @@ var file_workos_surface_v1_native_proto_goTypes = []any{
 	(*GetNativeConnectivityResponse)(nil), // 13: workos.surface.v1.GetNativeConnectivityResponse
 	(*NativeInputEvent)(nil),              // 14: workos.surface.v1.NativeInputEvent
 	(*timestamppb.Timestamp)(nil),         // 15: google.protobuf.Timestamp
+	(LifecycleMode)(0),                    // 16: workos.surface.v1.LifecycleMode
 }
 var file_workos_surface_v1_native_proto_depIdxs = []int32{
 	15, // 0: workos.surface.v1.NativeSession.created_at:type_name -> google.protobuf.Timestamp
 	15, // 1: workos.surface.v1.NativeSession.expires_at:type_name -> google.protobuf.Timestamp
-	0,  // 2: workos.surface.v1.CreateNativeSessionResponse.session:type_name -> workos.surface.v1.NativeSession
-	0,  // 3: workos.surface.v1.ConnectNativeSessionResponse.session:type_name -> workos.surface.v1.NativeSession
-	0,  // 4: workos.surface.v1.CloseNativeSessionResponse.session:type_name -> workos.surface.v1.NativeSession
-	0,  // 5: workos.surface.v1.GetNativeSessionResponse.session:type_name -> workos.surface.v1.NativeSession
-	11, // 6: workos.surface.v1.GetNativeConnectivityResponse.ice_servers:type_name -> workos.surface.v1.NativeIceServer
-	15, // 7: workos.surface.v1.GetNativeConnectivityResponse.expires_at:type_name -> google.protobuf.Timestamp
-	12, // 8: workos.surface.v1.NativeSessionService.GetNativeConnectivity:input_type -> workos.surface.v1.GetNativeConnectivityRequest
-	1,  // 9: workos.surface.v1.NativeSessionService.CreateNativeSession:input_type -> workos.surface.v1.CreateNativeSessionRequest
-	3,  // 10: workos.surface.v1.NativeSessionService.ConnectNativeSession:input_type -> workos.surface.v1.ConnectNativeSessionRequest
-	7,  // 11: workos.surface.v1.NativeSessionService.GetNativeSession:input_type -> workos.surface.v1.GetNativeSessionRequest
-	5,  // 12: workos.surface.v1.NativeSessionService.CloseNativeSession:input_type -> workos.surface.v1.CloseNativeSessionRequest
-	9,  // 13: workos.surface.v1.NativeSessionService.DetachNativeSession:input_type -> workos.surface.v1.DetachNativeSessionRequest
-	13, // 14: workos.surface.v1.NativeSessionService.GetNativeConnectivity:output_type -> workos.surface.v1.GetNativeConnectivityResponse
-	2,  // 15: workos.surface.v1.NativeSessionService.CreateNativeSession:output_type -> workos.surface.v1.CreateNativeSessionResponse
-	4,  // 16: workos.surface.v1.NativeSessionService.ConnectNativeSession:output_type -> workos.surface.v1.ConnectNativeSessionResponse
-	8,  // 17: workos.surface.v1.NativeSessionService.GetNativeSession:output_type -> workos.surface.v1.GetNativeSessionResponse
-	6,  // 18: workos.surface.v1.NativeSessionService.CloseNativeSession:output_type -> workos.surface.v1.CloseNativeSessionResponse
-	10, // 19: workos.surface.v1.NativeSessionService.DetachNativeSession:output_type -> workos.surface.v1.DetachNativeSessionResponse
-	14, // [14:20] is the sub-list for method output_type
-	8,  // [8:14] is the sub-list for method input_type
-	8,  // [8:8] is the sub-list for extension type_name
-	8,  // [8:8] is the sub-list for extension extendee
-	0,  // [0:8] is the sub-list for field type_name
+	16, // 2: workos.surface.v1.NativeSession.lifecycle_mode:type_name -> workos.surface.v1.LifecycleMode
+	16, // 3: workos.surface.v1.CreateNativeSessionRequest.lifecycle_mode:type_name -> workos.surface.v1.LifecycleMode
+	0,  // 4: workos.surface.v1.CreateNativeSessionResponse.session:type_name -> workos.surface.v1.NativeSession
+	0,  // 5: workos.surface.v1.ConnectNativeSessionResponse.session:type_name -> workos.surface.v1.NativeSession
+	0,  // 6: workos.surface.v1.CloseNativeSessionResponse.session:type_name -> workos.surface.v1.NativeSession
+	0,  // 7: workos.surface.v1.GetNativeSessionResponse.session:type_name -> workos.surface.v1.NativeSession
+	11, // 8: workos.surface.v1.GetNativeConnectivityResponse.ice_servers:type_name -> workos.surface.v1.NativeIceServer
+	15, // 9: workos.surface.v1.GetNativeConnectivityResponse.expires_at:type_name -> google.protobuf.Timestamp
+	12, // 10: workos.surface.v1.NativeSessionService.GetNativeConnectivity:input_type -> workos.surface.v1.GetNativeConnectivityRequest
+	1,  // 11: workos.surface.v1.NativeSessionService.CreateNativeSession:input_type -> workos.surface.v1.CreateNativeSessionRequest
+	3,  // 12: workos.surface.v1.NativeSessionService.ConnectNativeSession:input_type -> workos.surface.v1.ConnectNativeSessionRequest
+	7,  // 13: workos.surface.v1.NativeSessionService.GetNativeSession:input_type -> workos.surface.v1.GetNativeSessionRequest
+	5,  // 14: workos.surface.v1.NativeSessionService.CloseNativeSession:input_type -> workos.surface.v1.CloseNativeSessionRequest
+	9,  // 15: workos.surface.v1.NativeSessionService.DetachNativeSession:input_type -> workos.surface.v1.DetachNativeSessionRequest
+	13, // 16: workos.surface.v1.NativeSessionService.GetNativeConnectivity:output_type -> workos.surface.v1.GetNativeConnectivityResponse
+	2,  // 17: workos.surface.v1.NativeSessionService.CreateNativeSession:output_type -> workos.surface.v1.CreateNativeSessionResponse
+	4,  // 18: workos.surface.v1.NativeSessionService.ConnectNativeSession:output_type -> workos.surface.v1.ConnectNativeSessionResponse
+	8,  // 19: workos.surface.v1.NativeSessionService.GetNativeSession:output_type -> workos.surface.v1.GetNativeSessionResponse
+	6,  // 20: workos.surface.v1.NativeSessionService.CloseNativeSession:output_type -> workos.surface.v1.CloseNativeSessionResponse
+	10, // 21: workos.surface.v1.NativeSessionService.DetachNativeSession:output_type -> workos.surface.v1.DetachNativeSessionResponse
+	16, // [16:22] is the sub-list for method output_type
+	10, // [10:16] is the sub-list for method input_type
+	10, // [10:10] is the sub-list for extension type_name
+	10, // [10:10] is the sub-list for extension extendee
+	0,  // [0:10] is the sub-list for field type_name
 }
 
 func init() { file_workos_surface_v1_native_proto_init() }
@@ -1052,6 +1074,7 @@ func file_workos_surface_v1_native_proto_init() {
 	if File_workos_surface_v1_native_proto != nil {
 		return
 	}
+	file_workos_surface_v1_lifecycle_proto_init()
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{

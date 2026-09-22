@@ -3,6 +3,7 @@ syntax = "proto3";
 package workos.surface.v1;
 
 import "google/protobuf/timestamp.proto";
+import "workos/surface/v1/lifecycle.proto";
 
 option go_package = "github.com/yangtao121/workos/gen/go/workos/surface/v1;surfacev1";
 
@@ -23,6 +24,7 @@ message NativeSession {
   int32 height = 7;
   google.protobuf.Timestamp created_at = 8;
   google.protobuf.Timestamp expires_at = 9;
+  LifecycleMode lifecycle_mode = 10;
 }
 
 message CreateNativeSessionRequest {
@@ -31,6 +33,7 @@ message CreateNativeSessionRequest {
   // Fixed initial display size; later changes are not negotiated.
   int32 width = 3;
   int32 height = 4;
+  LifecycleMode lifecycle_mode = 5;
 }
 
 message CreateNativeSessionResponse {

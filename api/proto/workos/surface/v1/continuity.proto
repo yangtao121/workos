@@ -3,6 +3,7 @@ syntax = "proto3";
 package workos.surface.v1;
 
 import "google/protobuf/timestamp.proto";
+import "workos/surface/v1/lifecycle.proto";
 import "workos/surface/v1/surface.proto";
 
 option go_package = "github.com/yangtao121/workos/gen/go/workos/surface/v1;surfacev1";
@@ -21,6 +22,7 @@ message WorkloadPolicy {
   bool persistent = 1;
   int64 keep_alive_seconds = 2;
   int64 idle_stop_seconds = 3;
+  LifecycleMode lifecycle_mode = 4;
 }
 
 message SurfaceWorkloadView {
@@ -123,6 +125,7 @@ message StopSurfaceWorkloadResponse {
 message RestartSurfaceWorkloadRequest {
   string workload_id = 1;
   string action_key = 2;
+  LifecycleMode lifecycle_mode = 3;
 }
 
 message RestartSurfaceWorkloadResponse {

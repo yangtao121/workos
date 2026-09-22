@@ -3,6 +3,7 @@ syntax = "proto3";
 package workos.surface.v1;
 
 import "google/protobuf/timestamp.proto";
+import "workos/surface/v1/lifecycle.proto";
 
 option go_package = "github.com/yangtao121/workos/gen/go/workos/surface/v1;surfacev1";
 
@@ -19,6 +20,7 @@ message PtySession {
   string engine = 7;
   google.protobuf.Timestamp created_at = 5;
   google.protobuf.Timestamp expires_at = 6;
+  LifecycleMode lifecycle_mode = 8;
 }
 
 message CreatePtySessionRequest {
@@ -27,6 +29,7 @@ message CreatePtySessionRequest {
   // Client-side terminal size for the initial pty window.
   int32 columns = 3;
   int32 rows = 4;
+  LifecycleMode lifecycle_mode = 5;
 }
 
 message CreatePtySessionResponse {

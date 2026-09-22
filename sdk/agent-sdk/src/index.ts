@@ -1,6 +1,7 @@
 import { createClient, type Client, type Transport } from "@connectrpc/connect";
 import { createConnectTransport } from "@connectrpc/connect-web";
 import {
+  DesktopService,
   AgentApprovalService,
   AgentAppPolicyService,
   AgentAppUsageService,
@@ -28,6 +29,7 @@ import {
 } from "@workos/protocol";
 
 export interface WorkOSClients {
+  desktop: Client<typeof DesktopService>;
   projects: Client<typeof ProjectService>;
   projectWorkspaces: Client<typeof ProjectWorkspaceService>;
   projectHarnessBindings: Client<typeof ProjectHarnessBindingService>;
@@ -57,6 +59,7 @@ export interface WorkOSClients {
 export function createWorkOSClients(baseUrl: string, transport?: Transport): WorkOSClients {
   const activeTransport = transport ?? createConnectTransport({ baseUrl });
   return {
+    desktop: createClient(DesktopService, activeTransport),
     projects: createClient(ProjectService, activeTransport),
     projectWorkspaces: createClient(ProjectWorkspaceService, activeTransport),
     projectHarnessBindings: createClient(ProjectHarnessBindingService, activeTransport),

@@ -213,10 +213,13 @@ message WatchSessionEventsRequest {
   string session_id = 1;
   // Inclusive-exclusive event cursor: returns events with sequence > after.
   int64 after = 2;
+  // False preserves finite catch-up; true tails until the bounded stream renews.
+  bool follow = 3;
 }
 
 message WatchSessionEventsResponse {
   repeated AgentSessionEvent events = 1;
+  bool heartbeat = 2;
 }
 
 service AgentSessionService {

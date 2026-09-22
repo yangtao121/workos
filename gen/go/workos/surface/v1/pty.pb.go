@@ -36,6 +36,7 @@ type PtySession struct {
 	Engine        string                 `protobuf:"bytes,7,opt,name=engine,proto3" json:"engine,omitempty"`
 	CreatedAt     *timestamppb.Timestamp `protobuf:"bytes,5,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
 	ExpiresAt     *timestamppb.Timestamp `protobuf:"bytes,6,opt,name=expires_at,json=expiresAt,proto3" json:"expires_at,omitempty"`
+	LifecycleMode LifecycleMode          `protobuf:"varint,8,opt,name=lifecycle_mode,json=lifecycleMode,proto3,enum=workos.surface.v1.LifecycleMode" json:"lifecycle_mode,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -119,13 +120,21 @@ func (x *PtySession) GetExpiresAt() *timestamppb.Timestamp {
 	return nil
 }
 
+func (x *PtySession) GetLifecycleMode() LifecycleMode {
+	if x != nil {
+		return x.LifecycleMode
+	}
+	return LifecycleMode_LIFECYCLE_MODE_UNSPECIFIED
+}
+
 type CreatePtySessionRequest struct {
 	state          protoimpl.MessageState `protogen:"open.v1"`
 	IdempotencyKey string                 `protobuf:"bytes,1,opt,name=idempotency_key,json=idempotencyKey,proto3" json:"idempotency_key,omitempty"`
 	ProjectId      string                 `protobuf:"bytes,2,opt,name=project_id,json=projectId,proto3" json:"project_id,omitempty"`
 	// Client-side terminal size for the initial pty window.
-	Columns       int32 `protobuf:"varint,3,opt,name=columns,proto3" json:"columns,omitempty"`
-	Rows          int32 `protobuf:"varint,4,opt,name=rows,proto3" json:"rows,omitempty"`
+	Columns       int32         `protobuf:"varint,3,opt,name=columns,proto3" json:"columns,omitempty"`
+	Rows          int32         `protobuf:"varint,4,opt,name=rows,proto3" json:"rows,omitempty"`
+	LifecycleMode LifecycleMode `protobuf:"varint,5,opt,name=lifecycle_mode,json=lifecycleMode,proto3,enum=workos.surface.v1.LifecycleMode" json:"lifecycle_mode,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -186,6 +195,13 @@ func (x *CreatePtySessionRequest) GetRows() int32 {
 		return x.Rows
 	}
 	return 0
+}
+
+func (x *CreatePtySessionRequest) GetLifecycleMode() LifecycleMode {
+	if x != nil {
+		return x.LifecycleMode
+	}
+	return LifecycleMode_LIFECYCLE_MODE_UNSPECIFIED
 }
 
 type CreatePtySessionResponse struct {
@@ -745,7 +761,7 @@ var File_workos_surface_v1_pty_proto protoreflect.FileDescriptor
 
 const file_workos_surface_v1_pty_proto_rawDesc = "" +
 	"\n" +
-	"\x1bworkos/surface/v1/pty.proto\x12\x11workos.surface.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"\x83\x02\n" +
+	"\x1bworkos/surface/v1/pty.proto\x12\x11workos.surface.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a!workos/surface/v1/lifecycle.proto\"\xcc\x02\n" +
 	"\n" +
 	"PtySession\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\"\n" +
@@ -757,13 +773,15 @@ const file_workos_surface_v1_pty_proto_rawDesc = "" +
 	"\n" +
 	"created_at\x18\x05 \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x129\n" +
 	"\n" +
-	"expires_at\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampR\texpiresAt\"\x8f\x01\n" +
+	"expires_at\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampR\texpiresAt\x12G\n" +
+	"\x0elifecycle_mode\x18\b \x01(\x0e2 .workos.surface.v1.LifecycleModeR\rlifecycleMode\"\xd8\x01\n" +
 	"\x17CreatePtySessionRequest\x12'\n" +
 	"\x0fidempotency_key\x18\x01 \x01(\tR\x0eidempotencyKey\x12\x1d\n" +
 	"\n" +
 	"project_id\x18\x02 \x01(\tR\tprojectId\x12\x18\n" +
 	"\acolumns\x18\x03 \x01(\x05R\acolumns\x12\x12\n" +
-	"\x04rows\x18\x04 \x01(\x05R\x04rows\"S\n" +
+	"\x04rows\x18\x04 \x01(\x05R\x04rows\x12G\n" +
+	"\x0elifecycle_mode\x18\x05 \x01(\x0e2 .workos.surface.v1.LifecycleModeR\rlifecycleMode\"S\n" +
 	"\x18CreatePtySessionResponse\x127\n" +
 	"\asession\x18\x01 \x01(\v2\x1d.workos.surface.v1.PtySessionR\asession\"|\n" +
 	"\x16WritePtySessionRequest\x12\x1d\n" +
@@ -835,31 +853,34 @@ var file_workos_surface_v1_pty_proto_goTypes = []any{
 	(*DetachPtySessionRequest)(nil),  // 11: workos.surface.v1.DetachPtySessionRequest
 	(*DetachPtySessionResponse)(nil), // 12: workos.surface.v1.DetachPtySessionResponse
 	(*timestamppb.Timestamp)(nil),    // 13: google.protobuf.Timestamp
+	(LifecycleMode)(0),               // 14: workos.surface.v1.LifecycleMode
 }
 var file_workos_surface_v1_pty_proto_depIdxs = []int32{
 	13, // 0: workos.surface.v1.PtySession.created_at:type_name -> google.protobuf.Timestamp
 	13, // 1: workos.surface.v1.PtySession.expires_at:type_name -> google.protobuf.Timestamp
-	0,  // 2: workos.surface.v1.CreatePtySessionResponse.session:type_name -> workos.surface.v1.PtySession
-	0,  // 3: workos.surface.v1.WritePtySessionResponse.session:type_name -> workos.surface.v1.PtySession
-	0,  // 4: workos.surface.v1.ResizePtySessionResponse.session:type_name -> workos.surface.v1.PtySession
-	0,  // 5: workos.surface.v1.ClosePtySessionResponse.session:type_name -> workos.surface.v1.PtySession
-	1,  // 6: workos.surface.v1.PtySessionService.CreatePtySession:input_type -> workos.surface.v1.CreatePtySessionRequest
-	3,  // 7: workos.surface.v1.PtySessionService.WritePtySession:input_type -> workos.surface.v1.WritePtySessionRequest
-	5,  // 8: workos.surface.v1.PtySessionService.ReadPtySession:input_type -> workos.surface.v1.ReadPtySessionRequest
-	7,  // 9: workos.surface.v1.PtySessionService.ResizePtySession:input_type -> workos.surface.v1.ResizePtySessionRequest
-	9,  // 10: workos.surface.v1.PtySessionService.ClosePtySession:input_type -> workos.surface.v1.ClosePtySessionRequest
-	11, // 11: workos.surface.v1.PtySessionService.DetachPtySession:input_type -> workos.surface.v1.DetachPtySessionRequest
-	2,  // 12: workos.surface.v1.PtySessionService.CreatePtySession:output_type -> workos.surface.v1.CreatePtySessionResponse
-	4,  // 13: workos.surface.v1.PtySessionService.WritePtySession:output_type -> workos.surface.v1.WritePtySessionResponse
-	6,  // 14: workos.surface.v1.PtySessionService.ReadPtySession:output_type -> workos.surface.v1.ReadPtySessionResponse
-	8,  // 15: workos.surface.v1.PtySessionService.ResizePtySession:output_type -> workos.surface.v1.ResizePtySessionResponse
-	10, // 16: workos.surface.v1.PtySessionService.ClosePtySession:output_type -> workos.surface.v1.ClosePtySessionResponse
-	12, // 17: workos.surface.v1.PtySessionService.DetachPtySession:output_type -> workos.surface.v1.DetachPtySessionResponse
-	12, // [12:18] is the sub-list for method output_type
-	6,  // [6:12] is the sub-list for method input_type
-	6,  // [6:6] is the sub-list for extension type_name
-	6,  // [6:6] is the sub-list for extension extendee
-	0,  // [0:6] is the sub-list for field type_name
+	14, // 2: workos.surface.v1.PtySession.lifecycle_mode:type_name -> workos.surface.v1.LifecycleMode
+	14, // 3: workos.surface.v1.CreatePtySessionRequest.lifecycle_mode:type_name -> workos.surface.v1.LifecycleMode
+	0,  // 4: workos.surface.v1.CreatePtySessionResponse.session:type_name -> workos.surface.v1.PtySession
+	0,  // 5: workos.surface.v1.WritePtySessionResponse.session:type_name -> workos.surface.v1.PtySession
+	0,  // 6: workos.surface.v1.ResizePtySessionResponse.session:type_name -> workos.surface.v1.PtySession
+	0,  // 7: workos.surface.v1.ClosePtySessionResponse.session:type_name -> workos.surface.v1.PtySession
+	1,  // 8: workos.surface.v1.PtySessionService.CreatePtySession:input_type -> workos.surface.v1.CreatePtySessionRequest
+	3,  // 9: workos.surface.v1.PtySessionService.WritePtySession:input_type -> workos.surface.v1.WritePtySessionRequest
+	5,  // 10: workos.surface.v1.PtySessionService.ReadPtySession:input_type -> workos.surface.v1.ReadPtySessionRequest
+	7,  // 11: workos.surface.v1.PtySessionService.ResizePtySession:input_type -> workos.surface.v1.ResizePtySessionRequest
+	9,  // 12: workos.surface.v1.PtySessionService.ClosePtySession:input_type -> workos.surface.v1.ClosePtySessionRequest
+	11, // 13: workos.surface.v1.PtySessionService.DetachPtySession:input_type -> workos.surface.v1.DetachPtySessionRequest
+	2,  // 14: workos.surface.v1.PtySessionService.CreatePtySession:output_type -> workos.surface.v1.CreatePtySessionResponse
+	4,  // 15: workos.surface.v1.PtySessionService.WritePtySession:output_type -> workos.surface.v1.WritePtySessionResponse
+	6,  // 16: workos.surface.v1.PtySessionService.ReadPtySession:output_type -> workos.surface.v1.ReadPtySessionResponse
+	8,  // 17: workos.surface.v1.PtySessionService.ResizePtySession:output_type -> workos.surface.v1.ResizePtySessionResponse
+	10, // 18: workos.surface.v1.PtySessionService.ClosePtySession:output_type -> workos.surface.v1.ClosePtySessionResponse
+	12, // 19: workos.surface.v1.PtySessionService.DetachPtySession:output_type -> workos.surface.v1.DetachPtySessionResponse
+	14, // [14:20] is the sub-list for method output_type
+	8,  // [8:14] is the sub-list for method input_type
+	8,  // [8:8] is the sub-list for extension type_name
+	8,  // [8:8] is the sub-list for extension extendee
+	0,  // [0:8] is the sub-list for field type_name
 }
 
 func init() { file_workos_surface_v1_pty_proto_init() }
@@ -867,6 +888,7 @@ func file_workos_surface_v1_pty_proto_init() {
 	if File_workos_surface_v1_pty_proto != nil {
 		return
 	}
+	file_workos_surface_v1_lifecycle_proto_init()
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
