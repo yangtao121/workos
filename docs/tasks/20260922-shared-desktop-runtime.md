@@ -31,3 +31,11 @@
 
 - 主任务负责完整 `make generate`／`make check`、多设备 E2E 和 UI 截图；本子任务不单独宣称整个共享桌面已验收。
 - 未改动共享部署栈；未读取或调用任何真实 Provider 凭据。
+
+## 安装应用真实栈补充门禁
+
+- 新增 `tools/shared-desktop/apps.sh` 与只用于独立 V2 fixture 的 `compose.override.yaml`：启用实际 Docker／artifact admin，idle TTL 30 秒、reconcile 1 秒；不改共享开发栈。
+- `TestSharedDesktopInstalledAppContinuity` 构建并导入无外部依赖的 HTTP 程序，分别启动 MANUAL_STOP 与 legacy 对照，关闭全部视图后等待对照的真实 idle-stop 回执；再通过第二设备精确 attach-only，核对进程内随机标识、容器 ID、workload 数量及 Ensure 回执数量不变。
+- 覆盖发现安装应用、旧 generation／不同 installation／其他 owner 拒绝、主动停止后观察者连续恢复均失败；测试只经公开 API 建立／清理自己的项目及安装，SQL 连接显式只读。
+- 静态验证通过：Go 1.26.7 `go test -tags=integration,shareddesktopapps -run '^$' ./tests/integration` 编译；`sh -n tools/shared-desktop/apps.sh`；组合 Compose `config --quiet`。真实执行由主任务在浏览器阶段后、Core 重启前运行，证据为 `$WORKOS_V2_DIR/shared-desktop-apps.log`。
+- runner 保留独立 namespace 供父门禁统一清理；安装应用网络的 label 为 `workos.runtime=$WORKOS_V2_NAMESPACE`，清理时需与现有 `workos.network` 一并处理。

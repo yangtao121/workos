@@ -1,0 +1,16 @@
+# Isolated V2 fixture only. Docker facts require the host PID/cgroup views.
+services:
+  runtime:
+    pid: host
+    cgroup: host
+    environment:
+      WORKOS_RUNTIME_WORKLOAD_ENGINE: docker
+      WORKOS_RUNTIME_DOCKER_SOCKET: /var/run/docker.sock
+      WORKOS_RUNTIME_ARTIFACT_ROOT: ${WORKOS_V2_DIR:?}/artifacts
+      WORKOS_RUNTIME_ADMIN_SOCKET: /run/workos/artifact-admin.sock
+      WORKOS_RUNTIME_CONTAINER_NAMESPACE: ${WORKOS_V2_NAMESPACE:?}
+      WORKOS_RUNTIME_IDLE_TTL: 30s
+      WORKOS_RUNTIME_RECONCILE_INTERVAL: 1s
+    volumes:
+      - ${WORKOS_V2_DIR:?}/artifacts:${WORKOS_V2_DIR:?}/artifacts
+      - /sys/fs/cgroup:/sys/fs/cgroup:ro
