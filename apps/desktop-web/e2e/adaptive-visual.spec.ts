@@ -227,6 +227,10 @@ test("captures the expanded and fold-fallback desktop states", async ({ page }) 
   await page.reload();
   await expect(page.getByTestId("open-agent-slideover")).toBeVisible({ timeout: 15_000 });
   await page.screenshot({ path: `${captureDir}/medium--home--820x1180.png` });
+  await page.getByTestId("toggle-dock").click();
+  await expect(page.getByTestId("adaptive-dock")).toBeVisible();
+  await page.screenshot({ path: `${captureDir}/medium--dock--820x1180.png` });
+  await page.getByTestId("toggle-dock").click();
   const agentHandle = page.getByTestId("open-agent-slideover");
   if (await agentHandle.isVisible()) {
     await agentHandle.click();

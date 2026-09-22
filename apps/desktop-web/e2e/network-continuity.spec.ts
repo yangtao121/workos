@@ -3,8 +3,10 @@ import { randomUUID } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { chromium, expect, test, type Page } from "@playwright/test";
 import { openDesktopApp } from "./open-app.js";
+import { mobileContinuation, touchHome } from "./mobile-continuity.js";
 
 const mode = process.env.WORKOS_NETWORK_MODE ?? "";
+const mobile = process.env.WORKOS_MOBILE_BROWSER === "1";
 test.skip(!mode, "requires isolated HTTPS and Docker network topology");
 test.setTimeout(300_000);
 
@@ -29,12 +31,24 @@ async function rpc(page: Page, service: string, method: string, data: object) {
 }
 
 async function openNative(page: Page) {
+  if (mobile) {
+    await touchHome(page);
+    await page.getByRole("button", { name: "Native", exact: true }).tap();
+    await expect(page.getByTestId("native-app")).toBeVisible();
+    return;
+  }
   await openDesktopApp(page, "home");
   await page.getByTestId("home-entry-native").click();
   await expect(page.getByTestId("native-app")).toBeVisible();
 }
 
 async function command(page: Page, value: string) {
+  if (mobile) {
+    await page.getByLabel("Native text", { exact: true }).fill(value);
+    await page.getByRole("button", { name: "Send text", exact: true }).tap();
+    await page.getByRole("button", { name: "Enter", exact: true }).tap();
+    return;
+  }
   await page.getByTestId("native-stage").click();
   await page.keyboard.type(value);
   await page.keyboard.press("Enter");
@@ -71,8 +85,20 @@ test("trusted HTTPS with independent clients preserves workload and control acro
   const a = await chromium.connect(process.env.WORKOS_NETWORK_A_WS ?? "");
   const b = await chromium.connect(process.env.WORKOS_NETWORK_B_WS ?? "");
   const contexts = await Promise.all([
-    a.newContext({ ignoreHTTPSErrors: false, viewport: { width: 1440, height: 900 } }),
-    b.newContext({ ignoreHTTPSErrors: false, viewport: { width: 1440, height: 900 } }),
+    a.newContext({
+      ignoreHTTPSErrors: false,
+      isMobile: mobile,
+      hasTouch: mobile,
+      deviceScaleFactor: 1,
+      viewport: mobile ? { width: 390, height: 844 } : { width: 1440, height: 900 },
+    }),
+    b.newContext({
+      ignoreHTTPSErrors: false,
+      isMobile: mobile,
+      hasTouch: mobile,
+      deviceScaleFactor: 1,
+      viewport: mobile ? { width: 820, height: 1180 } : { width: 1440, height: 900 },
+    }),
   ]);
   const pages: Page[] = [];
   try {
@@ -117,6 +143,7 @@ test("trusted HTTPS with independent clients preserves workload and control acro
         };
       });
       const page = await context.newPage();
+      page.setDefaultTimeout(15000);
       pages.push(page);
       const ticket = execFileSync(
         "docker",
@@ -134,7 +161,9 @@ test("trusted HTTPS with independent clients preserves workload and control acro
       await page.goto(pairing);
       await page.getByLabel("Device name").fill(`Network ${mode} ${String(index + 1)}`);
       await page.getByTestId("pairing-panel").getByRole("button", { name: "Pair device" }).click();
-      await expect(page.locator(".desktop-shell")).toBeVisible({ timeout: 30000 });
+      await expect(page.locator(mobile ? ".adaptive-shell" : ".desktop-shell")).toBeVisible({
+        timeout: 30000,
+      });
       expect(page.url()).not.toContain("#v=1");
       expect(await page.evaluate(() => window.isSecureContext)).toBe(true);
       const response = await page.goto(page.url());
@@ -147,10 +176,12 @@ test("trusted HTTPS with independent clients preserves workload and control acro
           (cookie) => cookie.name.startsWith("__Host-") && cookie.secure && cookie.httpOnly,
         ),
       ).toBe(true);
+      if (mobile) console.log(`MOBILE_PAIRED_${String(index + 1)}`);
     }
     const first = pages[0],
       second = pages[1];
     if (!first || !second) throw new Error("two browser clients required");
+    if (mobile) await mobileContinuation(first, second);
     let identity = { sessionId: "", controlGeneration: "" },
       connects = 0;
     first.on("response", (response) => {

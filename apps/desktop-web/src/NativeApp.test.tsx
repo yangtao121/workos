@@ -59,6 +59,40 @@ afterEach(() => {
 });
 
 describe("Native window lifecycle and input", () => {
+  it("sends committed touch text once and retains a draft when the input channel is full", async () => {
+    const f = fixture();
+    render(<NativeApp workosClients={f.clients} activeProjectId="project" />);
+    await waitFor(() => {
+      expect(f.nativeSessions.connectNativeSession).toHaveBeenCalled();
+    });
+    const send = vi.fn();
+    const channel = {
+      label: "workos.input",
+      readyState: "open",
+      bufferedAmount: 0,
+      send,
+      close: vi.fn(),
+    };
+    firstPeer().ondatachannel?.({ channel });
+    fireEvent.playing(screen.getByTestId("native-video"));
+    const input = screen.getByLabelText<HTMLInputElement>("Native text");
+    const form = screen.getByTestId("native-touch-controls");
+    fireEvent.compositionStart(input);
+    fireEvent.change(input, { target: { value: "你好" } });
+    fireEvent.submit(form);
+    expect(send).not.toHaveBeenCalled();
+    fireEvent.compositionEnd(input);
+    fireEvent.submit(form);
+    expect(send).toHaveBeenCalledExactlyOnceWith(JSON.stringify({ type: "text", text: "你好" }));
+    expect(input.value).toBe("");
+    await userEvent.click(screen.getByRole("button", { name: "Enter" }));
+    expect(send).toHaveBeenLastCalledWith(JSON.stringify({ type: "key", key: "Return" }));
+    channel.bufferedAmount = 100000;
+    fireEvent.change(input, { target: { value: "retained draft" } });
+    fireEvent.submit(form);
+    expect(input.value).toBe("retained draft");
+    expect(send).toHaveBeenCalledTimes(2);
+  });
   it("uses the issued relay policy and refuses expired transport capabilities", async () => {
     const f = fixture();
     f.nativeSessions.getNativeConnectivity.mockResolvedValueOnce({

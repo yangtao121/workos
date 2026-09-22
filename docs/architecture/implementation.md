@@ -443,6 +443,13 @@ harness-host worker（provider 经中立 ports.ArtifactSink 输出）
 
 ## Adaptive Desktop / Mobile Shell（2026-08-31）
 
+2026-09-22：[Android 壳](android-shell.md) 与 [移动任务](../tasks/20260921-v2-mobile-android.md)
+完成 KVM Android 15 上真实 APK 的 HTTPS/Keystore/配对/重启/通知/撤权端到端验收，
+Mobile Shell 更新为 working。手机和平板触控浏览器完成同一项目的 Agent 续写与 Native
+应用控制权接管；原生壳提供部署入口及项目/通知投影。完整证据见
+[验收记录](../tasks/evidence/20260921-v2-mobile-android/results.md)。iOS、物理手机、后台推送
+和商店签名不在本次范围。下面保留历次实现时点，早期“无 SDK”和 scaffolded 是历史状态。
+
 `@workos/adaptive-shell` 是 Desktop 与 `apps/mobile-shell` 共享的唯一设备布局契约：直接复用
 Proto `DeviceClass`，纯 `resolveDeviceLayout` 从 viewport/orientation/DPR 与可选 window
 segments 推导 Compact / Medium / Expanded / Fold-separated；DOM/Window Segments API 只存在于

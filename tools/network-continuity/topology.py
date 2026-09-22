@@ -97,7 +97,7 @@ def phase(mode, a, b, gateway):
     env=['-e','WORKOS_NETWORK_MODE='+mode,'-e','WORKOS_NETWORK_GATEWAY='+gateway,
          '-e','WORKOS_NETWORK_A_WS='+a[1],
          '-e','WORKOS_NETWORK_B_WS='+b[1],
-         '-e','WORKOS_V2_PROJECT_ID','-e','WORKOS_V2_NAMESPACE',
+         '-e','WORKOS_V2_PROJECT_ID','-e','WORKOS_V2_NAMESPACE','-e','WORKOS_MOBILE_BROWSER',
          '-e','WORKOS_E2E_URL=https://workos.fixture:'+os.environ['WORKOS_V2_GATEWAY_PORT'],
          '-e','WORKOS_E2E_OUTPUT_DIR=/workos-gate/network-results-'+mode,
          '-e','PLAYWRIGHT_JSON_OUTPUT_NAME=/workos-gate/network-'+mode+'.json']
@@ -110,61 +110,71 @@ def phase(mode, a, b, gateway):
 
 def stop_signal(sig,_): raise SystemExit(130 if sig==signal.SIGINT else 143)
 signal.signal(signal.SIGINT,stop_signal);signal.signal(signal.SIGTERM,stop_signal)
-try:
-    (root/'tls').mkdir();(root/'turn').mkdir()
-    run('docker','run','--rm','--user',user,'-e','HOME=/tmp','-e','GOMODCACHE=/go/pkg/mod',
-        '-v','workos-go-cache:/go/pkg/mod','-v',str(repo)+':/workspace','-v',str(root/'tls')+':/certs',
-        '-w','/workspace','golang:1.26.7-bookworm','go','run','./tests/lanpairing/gencert','-out','/certs','-hosts','workos.fixture')
-    wan,cidr,gateway=network('wan')
-    secret=secrets.token_hex(32)
-    (root/'turn/secret').write_text(secret);(root/'turn/secret').chmod(0o600)
-    # A separate TURN namespace preserves relay source addresses during hairpin
-    # traffic; a host bridge address is subject to Docker's host MASQUERADE rules.
-    turn=container('turn','--network',wan,'--user',user,'-v',str(root/'turn')+':/run/turn:ro',image,
-        'sh','-ec','while [ ! -f /run/turn/ready ]; do sleep .1; done; exec turnserver -c /run/turn/config')
-    relay=address(turn,wan)
-    # Allow only this task's actual relay address.
-    (root/'turn/config').write_text('\n'.join(['use-auth-secret','userdb=/tmp/turn.sqlite','relay-threads=2','static-auth-secret='+secret,'realm=workos.fixture','fingerprint',
-        'listening-ip='+relay,'relay-ip='+relay,'listening-port=3478','no-tls','no-dtls','no-cli','no-tcp-relay','no-multicast-peers',
-        'min-port=49160','max-port=49223','max-allocate-lifetime=600','user-quota=2','total-quota=64','max-bps=2000000','bps-capacity=32000000','verbose',
-        'denied-peer-ip=0.0.0.0-255.255.255.255','allowed-peer-ip='+relay,'log-file=stdout','pidfile=/tmp/coturn.pid'])+'\n')
-    (root/'turn/config').chmod(0o600)
-    (root/'turn/ready').touch()
-    wait_port(relay,3478)
-    configure('lan',gateway,cidr,relay)
-    run('docker','run','--rm','--network','host','--user',user,'-e','HOME=/tmp','-e','GOMODCACHE=/go/pkg/mod','-e','GOCACHE=/tmp/go-cache',
-        '-e','WORKOS_TURN_TEST_ADDRESS='+relay+':3478','-e','WORKOS_TURN_TEST_SECRET_FILE=/turn/secret',
-        '-v','workos-go-cache:/go/pkg/mod','-v',str(repo/'tmp/go-build-cache')+':/tmp/go-cache',
-        '-v',str(repo)+':/workspace','-v',str(root/'turn')+':/turn:ro','-w','/workspace','golang:1.26.7-bookworm',
-        'go','test','-count=1','-run','TestRealCoturnCapabilityExpiryAndForgery','-v','./internal/runtime/nativehost/adapters/turnauth')
-    if os.environ.get('WORKOS_NETWORK_DEBUG_RELAY_ONLY') != '1':
-        a=browser('lan-a',wan,gateway);b=browser('lan-b',wan,gateway)
-        phase('lan',a,b,gateway)
-        if os.environ.get('WORKOS_NETWORK_BASELINE_DIST'):
-            print('NETWORK_UI_BASELINE_LAN_PASS',flush=True)
-            raise SystemExit(0)
-        for name in [a[0],b[0]]:run('docker','rm','-f',name,capture=True);containers.remove(name)
-    left,_,_=network('private-a',True);right,_,_=network('private-b',True)
-    ra,ripa=router('router-a',wan,left,gateway,relay);rb,ripb=router('router-b',wan,right,gateway,relay)
-    configure('relay',gateway,cidr,relay)
-    a=browser('relay-a',left,gateway,ripa);b=browser('relay-b',right,gateway,ripb)
-    (root/'network-topology.json').write_text(json.dumps({'wan':cidr,'gateway':gateway,'relay':relay,'clientA':address(a[0],left),'clientB':address(b[0],right),'routerA':address(ra,wan),'routerB':address(rb,wan)},indent=2))
-    phase('relay',a,b,gateway)
-    for name in [ra,rb]:
-        counters=run('docker','exec',name,'iptables','-t','nat','-L','POSTROUTING','-nvx',capture=True)
-        line=next(line for line in counters.splitlines() if 'MASQUERADE' in line)
-        assert int(line.split()[0])>0,'source NAT did not carry traffic'
-        (root/(name+'-nat.txt')).write_text(counters)
-    print('HTTPS_RELAY_DEBUG_PASS' if os.environ.get('WORKOS_NETWORK_DEBUG_RELAY_ONLY') == '1' else 'HTTPS_LAN_NAT_TURN_CONTINUITY_PASS',flush=True)
-finally:
+
+def cleanup():
     for name in containers:
         # Store only fixture diagnostics; omit ephemeral TURN user capabilities.
         result=subprocess.run(['docker','logs',name],text=True,stdout=subprocess.PIPE,stderr=subprocess.STDOUT)
         safe=re.sub(r'\b\d{10}:[0-9a-f-]{36}\b','[temporary-turn-user]',result.stdout)
-        if 'secret' in globals(): safe=safe.replace(secret,'[fixture-secret]')
+        secret_path=root/'turn/secret'
+        if secret_path.exists(): safe=safe.replace(secret_path.read_text(),'[fixture-secret]')
         (root/(name+'-diagnostics.log')).write_text(safe)
         if '-router-' in name:
             result=subprocess.run(['docker','exec',name,'iptables','-L','FORWARD','-nvx'],text=True,stdout=subprocess.PIPE,stderr=subprocess.STDOUT)
             (root/(name+'-forward.txt')).write_text(result.stdout)
     for name in reversed(containers): subprocess.run(['docker','rm','-f',name],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
     for name in reversed(networks): subprocess.run(['docker','network','rm',name],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+
+
+def main():
+    try:
+        (root/'tls').mkdir();(root/'turn').mkdir()
+        run('docker','run','--rm','--user',user,'-e','HOME=/tmp','-e','GOMODCACHE=/go/pkg/mod',
+            '-v','workos-go-cache:/go/pkg/mod','-v',str(repo)+':/workspace','-v',str(root/'tls')+':/certs',
+            '-w','/workspace','golang:1.26.7-bookworm','go','run','./tests/lanpairing/gencert','-out','/certs','-hosts','workos.fixture')
+        wan,cidr,gateway=network('wan')
+        secret=secrets.token_hex(32)
+        (root/'turn/secret').write_text(secret);(root/'turn/secret').chmod(0o600)
+        # A separate TURN namespace preserves relay source addresses during hairpin
+        # traffic; a host bridge address is subject to Docker's host MASQUERADE rules.
+        turn=container('turn','--network',wan,'--user',user,'-v',str(root/'turn')+':/run/turn:ro',image,
+            'sh','-ec','while [ ! -f /run/turn/ready ]; do sleep .1; done; exec turnserver -c /run/turn/config')
+        relay=address(turn,wan)
+        # Allow only this task's actual relay address.
+        (root/'turn/config').write_text('\n'.join(['use-auth-secret','userdb=/tmp/turn.sqlite','relay-threads=2','static-auth-secret='+secret,'realm=workos.fixture','fingerprint',
+            'listening-ip='+relay,'relay-ip='+relay,'listening-port=3478','no-tls','no-dtls','no-cli','no-tcp-relay','no-multicast-peers',
+            'min-port=49160','max-port=49223','max-allocate-lifetime=600','user-quota=2','total-quota=64','max-bps=2000000','bps-capacity=32000000','verbose',
+            'denied-peer-ip=0.0.0.0-255.255.255.255','allowed-peer-ip='+relay,'log-file=stdout','pidfile=/tmp/coturn.pid'])+'\n')
+        (root/'turn/config').chmod(0o600)
+        (root/'turn/ready').touch()
+        wait_port(relay,3478)
+        configure('lan',gateway,cidr,relay)
+        run('docker','run','--rm','--network','host','--user',user,'-e','HOME=/tmp','-e','GOMODCACHE=/go/pkg/mod','-e','GOCACHE=/tmp/go-cache',
+            '-e','WORKOS_TURN_TEST_ADDRESS='+relay+':3478','-e','WORKOS_TURN_TEST_SECRET_FILE=/turn/secret',
+            '-v','workos-go-cache:/go/pkg/mod','-v',str(repo/'tmp/go-build-cache')+':/tmp/go-cache',
+            '-v',str(repo)+':/workspace','-v',str(root/'turn')+':/turn:ro','-w','/workspace','golang:1.26.7-bookworm',
+            'go','test','-count=1','-run','TestRealCoturnCapabilityExpiryAndForgery','-v','./internal/runtime/nativehost/adapters/turnauth')
+        if os.environ.get('WORKOS_NETWORK_DEBUG_RELAY_ONLY') != '1':
+            a=browser('lan-a',wan,gateway);b=browser('lan-b',wan,gateway)
+            phase('lan',a,b,gateway)
+            if os.environ.get('WORKOS_NETWORK_BASELINE_DIST'):
+                print('NETWORK_UI_BASELINE_LAN_PASS',flush=True)
+                raise SystemExit(0)
+            for name in [a[0],b[0]]:run('docker','rm','-f',name,capture=True);containers.remove(name)
+        left,_,_=network('private-a',True);right,_,_=network('private-b',True)
+        ra,ripa=router('router-a',wan,left,gateway,relay);rb,ripb=router('router-b',wan,right,gateway,relay)
+        configure('relay',gateway,cidr,relay)
+        a=browser('relay-a',left,gateway,ripa);b=browser('relay-b',right,gateway,ripb)
+        (root/'network-topology.json').write_text(json.dumps({'wan':cidr,'gateway':gateway,'relay':relay,'clientA':address(a[0],left),'clientB':address(b[0],right),'routerA':address(ra,wan),'routerB':address(rb,wan)},indent=2))
+        phase('relay',a,b,gateway)
+        for name in [ra,rb]:
+            counters=run('docker','exec',name,'iptables','-t','nat','-L','POSTROUTING','-nvx',capture=True)
+            line=next(line for line in counters.splitlines() if 'MASQUERADE' in line)
+            assert int(line.split()[0])>0,'source NAT did not carry traffic'
+            (root/(name+'-nat.txt')).write_text(counters)
+        print('HTTPS_RELAY_DEBUG_PASS' if os.environ.get('WORKOS_NETWORK_DEBUG_RELAY_ONLY') == '1' else 'HTTPS_LAN_NAT_TURN_CONTINUITY_PASS',flush=True)
+    finally:
+        cleanup()
+
+if __name__ == "__main__":
+    main()

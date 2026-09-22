@@ -687,6 +687,10 @@ test-mobile-wrappers: e2e-image
 		rm -rf "$$serve"
 	@echo "test-mobile-wrappers: PASS (launchable app, platform sources, Android sync, browser mount; native binaries unverified)"
 
+.PHONY: test-android-acceptance
+test-android-acceptance:
+	sh tools/android-acceptance/gate.sh
+
 # The push relay gate (ADR-0018, W5): relay payload whitelist
 # plus the bounded owner-scoped notification search (title substring,
 # deterministic ordering, closed-fail grammar, foreign-scope emptiness).

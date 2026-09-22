@@ -19,6 +19,7 @@ import type { WindowState, WorkOSWindow } from "@workos/window-manager";
 // segments.
 
 export type SystemWindowId =
+  | "native"
   | "agent-center"
   | "agent-sessions"
   | "system-monitor"
@@ -341,6 +342,15 @@ export function AdaptiveShell({
               <Button
                 disabled={!activeProject}
                 onClick={() => {
+                  openSystemWindow("native");
+                }}
+                type="button"
+              >
+                Native
+              </Button>
+              <Button
+                disabled={!activeProject}
+                onClick={() => {
                   setAppsOpen(true);
                 }}
                 type="button"
@@ -406,6 +416,15 @@ export function AdaptiveShell({
 
       {medium && dockRevealed ? (
         <nav aria-label="WorkOS Dock" className="adaptive-dock" data-testid="adaptive-dock">
+          <Button
+            onClick={() => {
+              setView("home");
+              setDockRevealed(false);
+            }}
+            type="button"
+          >
+            Home
+          </Button>
           <Button
             onClick={() => {
               openAgent();

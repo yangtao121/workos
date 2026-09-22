@@ -1,0 +1,9 @@
+{
+  "deviceId": "01a0c7f6-ed33-72a4-957a-52aa628aeb64",
+  "successorDeviceId": "01a0c7f7-1a09-766a-982b-3f34a9f2cef1",
+  "tls": "platform CA refusal + fixture CA trust + hostname refusal",
+  "identity": "encrypted at rest, restart and cookie-free proof",
+  "forget": "failure preserves identity, success removes it",
+  "revocation": "401 and unpaired",
+  "corruption": "unavailable"
+}

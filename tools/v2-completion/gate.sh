@@ -67,7 +67,9 @@ with open(sys.argv[1],'a') as f:
   if key.startswith('WORKOS_V2_'): f.write('export '+key+'='+shlex.quote(value)+'\n')
 PY
 if [ "${WORKOS_V2_PREPARE_ONLY:-}" = 1 ]; then exit 0; fi
-if [ "${WORKOS_NETWORK_AUTOMATION:-}" = 1 ]; then
+if [ "${WORKOS_ANDROID_AUTOMATION:-}" = 1 ]; then
+ sh tools/android-acceptance/test.sh
+elif [ "${WORKOS_NETWORK_AUTOMATION:-}" = 1 ]; then
  sh tools/network-continuity/test.sh
 elif [ "${WORKOS_NATIVE_AUTOMATION:-}" = 1 ]; then
  sh tools/native-automation/test.sh
