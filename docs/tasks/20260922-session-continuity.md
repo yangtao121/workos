@@ -19,3 +19,16 @@
 - 验证日志：`tmp/shared-session-go.log`、`tmp/shared-sessions-ui3.log`。
 - 待验收：最终集成树全仓检查、真实六进程跨浏览器、任务级 UI before/after/current。
   本任务尚不标记 done；物理设备验收与自动化证据分开。
+
+## 确定性视觉验收
+
+- 已补齐 [before](../ui/desktop-web/changes/20260922-session-continuity/before/chromium/)、
+  [after](../ui/desktop-web/changes/20260922-session-continuity/after/chromium/) 与
+  [采集说明](../ui/desktop-web/changes/20260922-session-continuity/notes.md)。
+- 同一选中会话、完成的消息/摘要、输入草稿，以及点击 Send 后的离线状态；固定
+  1440×900、820×1180、390×844，共六个状态，Chromium before/after 各三项测试通过。
+- before 运行真实基准提交 `b4f7020`，after 运行 `39daa2e` 的会话组件及共享桌面；
+  不修改 DOM 或注入截图文字。新版离线发送保留草稿且未调用 SubmitSessionInput。
+- WebKit 执行相同三个尺寸行为检查；不据此宣称物理 Safari 已验收。
+- 采集测试：`session-continuity-visual.spec.ts`；设置 `WORKOS_SESSION_CAPTURE_DIR`
+  （或 `WORKOS_CAPTURE_DIR`），输出按浏览器分目录，避免 Chromium/WebKit 相互覆盖。
