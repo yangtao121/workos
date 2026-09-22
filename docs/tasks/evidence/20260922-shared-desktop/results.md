@@ -20,7 +20,15 @@ make test-v2-completion
 
 独立 Runtime 31 分钟验证使用 `TestManualStopDockerLifetime`（详见 Runtime 任务）；不将缩短 TTL 的测试当成跨越真实旧期限证据。
 
-集成浏览器、服务重启与全仓检查结果正在本轮收尾，最终结果写回此文件后才标记 done。
+完整新 namespace 门禁 `WORKOS_V2_SKIP_BUILD=1 sh tools/shared-desktop/gate.sh` 通过，使用本轮已构建的 Go 二进制和 Web dist：
+
+- Chromium10项、WebKit10项，共20 passed，0 skipped／unexpected／flaky（56.6秒）。三独立浏览器进程验证会话输入和完成结果同步、重载/离线草稿与不重复提交；精确终端恢复、窗口操作和确定性视觉同时覆盖。
+- 安装应用真实栈37.44秒通过，Core/Gateway实际重启后完整 Desktop 投影相等。
+- 自动清理后该 namespace 没有所属应用容器/网络；验收仅使用独立 namespace，未重置默认开发栈数据卷；任务开始时恢复了默认栈停止的依赖服务。
+- 对应原始日志：`tmp/shared-desktop-clean-gate.log`、`tmp/v2-completion.gJ04Af/shared-browser-results.json`、`shared-desktop-apps.log`；另已归集到 `tmp/shared-desktop-evidence/integration/`。
+- `make generate` 重跑后217个生成文件（Go/TS/SQLC/README）哈希完全一致；Proto lint、SQLC vet、全Go测试/架构约束、TypeScript架构/ESLint/Prettier/各workspace测试和Web构建已分别通过。完整 `make check` 已通过（`tmp/shared-make-check-final.log`），Desktop共213项测试通过；旧V2新环境完整门禁已通过，12项主要跨进程回归及工作区容器/文件测试、4项浏览器与三尺寸视觉通过（32.5秒，0 skipped／unexpected／flaky）。原始日志：`tmp/shared-v2-final-regression.log`，fixture：`tmp/v2-completion.nIxSgM`。独立授权工作树探针仍按既有门禁配置跳过，不将其计入本次新增证据。
+
+浏览器真实栈使用固定loopback开发身份；其他owner/设备拒绝由独立PostgreSQL、Gateway鉴权与安装应用第二设备RPC测试验证。本轮不替代已有生产HTTPS配对专项或真机试用。
 
 ## 证据位置与限制
 

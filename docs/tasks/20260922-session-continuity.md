@@ -1,7 +1,7 @@
 # 持续会话跨设备接续
 
 - 日期：2026-09-22（UTC）
-- 状态：in_progress
+- 状态：done（自动化交付；物理设备试用另列）
 - 分支：feat/shared-desktop-integration
 - 范围：会话 follow watch、事件重连与去重、空闲会话更新、本地草稿和提交回执。
 - 依赖：ADR-0037 与共享桌面契约；桌面负责同步 selectedSessionId、身份结束清除本地 journal。
@@ -17,8 +17,7 @@
 - 已通过：Go transport 会话 watch catch-up/follow/归属失效/非法 cursor；前端 15 项测试涵盖
   空闲远端输入、事件 EOF 重连与重复事件、草稿重挂载、丢失响应重挂载、离线及原会话行为。
 - 验证日志：`tmp/shared-session-go.log`、`tmp/shared-sessions-ui3.log`。
-- 待验收：最终集成树全仓检查、真实六进程跨浏览器、任务级 UI before/after/current。
-  本任务尚不标记 done；物理设备验收与自动化证据分开。
+- 最终验收：集成树完整 `make check`、真实六进程跨浏览器和任务级 UI before/after/current 已通过；物理设备验收独立 pending。
 
 ## 确定性视觉验收
 

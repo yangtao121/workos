@@ -1,6 +1,6 @@
 # 共享桌面：Runtime 主动停止生命周期
 
-- 状态：Runtime 实现与自动验收完成；共享桌面总体验收由主任务跟踪
+- 状态：done（Runtime 实现与总任务跨进程自动验收完成；真机另列）
 - 分支：feat/shared-desktop-runtime
 - 依赖：bca25f8 生命周期协议；ADR-0037
 - 范围：PTY、Native、Preview 的真实进程生命周期、持久策略与幂等重启；连接/媒体期限保持独立。
@@ -17,15 +17,15 @@
 
 ## 已验证
 
-- Go 1.26.7 容器：`go vet ./... && go test ./...` 通过，见 `tmp/shared-desktop-runtime/lifecycle-go-all.log`。
-- 独立 PostgreSQL 18（`workos-lifecycle-pg`，非开发栈）：真实迁移、策略／NULL roundtrip、模拟一小时后 bounded 回收／manual 仍活、策略漂移与重启回执、真实 PTY shell 输入／退出、安装应用策略持久化；Surface attachment／控制状态机回归通过。见 `tmp/shared-desktop-runtime/lifecycle-postgres.log`。
-- `workos-native-runtime:dev` 执行 Xvfb 编译测试：实际 manual display 无 deadline，请求取消后继续，主动停止清理；旧 bounded display 仍有 30 分钟 deadline。见 `tmp/shared-desktop-runtime/lifecycle-native-engine.log`。
+- Go 1.26.7 容器：`go vet ./... && go test ./...` 通过，见 `tmp/shared-desktop-evidence/runtime/lifecycle-go-all.log`。
+- 独立 PostgreSQL 18（`workos-lifecycle-pg`，非开发栈）：真实迁移、策略／NULL roundtrip、模拟一小时后 bounded 回收／manual 仍活、策略漂移与重启回执、真实 PTY shell 输入／退出、安装应用策略持久化；Surface attachment／控制状态机回归通过。见 `tmp/shared-desktop-evidence/runtime/lifecycle-postgres.log`。
+- `workos-native-runtime:dev` 执行 Xvfb 编译测试：实际 manual display 无 deadline，请求取消后继续，主动停止清理；旧 bounded display 仍有 30 分钟 deadline。见 `tmp/shared-desktop-evidence/runtime/lifecycle-native-engine.log`。
 - SQLC 1.30.0 vet 通过，重新生成 Runtime SQLC 文件无变化；`git diff --check` 通过。
 
 ## 额外真实执行证据
 
-- 真实 Docker MANUAL_STOP 31 分钟门禁通过（`TestManualStopDockerLifetime`，1865 秒）：实际启动命令没有 `timeout` 包装，取消创建请求后保持运行，超过旧 30 分钟期限仍活，主动 Stop 确认回收；同时验证 legacy bounded 程序到期退出。CPU／内存／PIDs／无网络／只读根文件系统保持原限制。见 `tmp/shared-desktop-runtime/lifecycle-wallclock.log`。
-- 安装应用设备计数使用 Surface 自有表，按精确 workload generation、有效期、设备去重；旧 generation 和过期视图不计数。真实 PostgreSQL 跨模块 fixture 通过，见 `tmp/shared-desktop-runtime/lifecycle-app-device-count.log`（`go test -v ./tests/runtimelifecycle`）。
+- 真实 Docker MANUAL_STOP 31 分钟门禁通过（`TestManualStopDockerLifetime`，1865 秒）：实际启动命令没有 `timeout` 包装，取消创建请求后保持运行，超过旧 30 分钟期限仍活，主动 Stop 确认回收；同时验证 legacy bounded 程序到期退出。CPU／内存／PIDs／无网络／只读根文件系统保持原限制。见 `tmp/shared-desktop-evidence/runtime/lifecycle-wallclock.log`。
+- 安装应用设备计数使用 Surface 自有表，按精确 workload generation、有效期、设备去重；旧 generation 和过期视图不计数。真实 PostgreSQL 跨模块 fixture 通过，见 `tmp/shared-desktop-evidence/runtime/lifecycle-app-device-count.log`（`go test -v ./tests/runtimelifecycle`）。
 
 ## 集成交接
 

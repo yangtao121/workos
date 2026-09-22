@@ -1,6 +1,6 @@
 # 会话接续并发复核修复（2026-09-22）
 
-状态：scaffolded（复核修复完成，待总任务 UI/E2E 验收）。分支 `fix/session-continuity-review`，独立工作树沿用已提交的后端任务工作树。
+状态：done（复核修复及总任务 UI/E2E 自动验收通过）。分支 `fix/session-continuity-review`，独立工作树沿用已提交的后端任务工作树。
 
 范围：AgentSessions 生命周期回调、持久草稿/回执跨 tab 合并、refresh 排队、游标边界、服务端 follow 超时及回归测试。不修改桌面客户端其他模块、协议和 E2E。依赖 39daa2e。
 
@@ -25,4 +25,6 @@
 
 已验证：目标 ESLint/Prettier、24 个会话与事务存储测试、Go transport race 测试全部通过；没有调用 Provider 或改动共享开发栈。
 
-补充：以桌面 tsconfig 为基线、仅 include 本任务四个 TS/TSX 文件的临时配置类型检查通过（保留相同 compilerOptions）；临时配置已删除。最终 24 项测试日志为忽略目录 `tmp/session-continuity-review.log`；Go race 日志为 `tmp/session-continuity-go-review.log`。
+补充：以桌面 tsconfig 为基线、仅 include 本任务四个 TS/TSX 文件的临时配置类型检查通过（保留相同 compilerOptions）；临时配置已删除。最终 24 项测试日志为忽略目录 `tmp/shared-desktop-evidence/core/session-continuity-review.log`；Go race 日志为 `tmp/shared-desktop-evidence/core/session-continuity-go-review.log`。
+
+最终整合：28项会话/journal测试、AuthGate回归与完整213项Desktop测试通过；完整`make check`通过。跨浏览器真实栈、退出清理与before/after/current已在父任务归档，先前待验收说明为交接时点。清理函数在数据库不可用、事务失败或旧数据删除失败时拒绝，只有确认事务提交和清理完成才成功。

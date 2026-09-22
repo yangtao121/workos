@@ -1,7 +1,7 @@
 # Shared desktop UI consumer
 
-Status: implemented; integrated Core/Runtime gate and physical-device acceptance
-are tracked by [the parent task](20260922-shared-desktop.md). Branch:
+Status: done for implementation and automated acceptance. Integrated Core/Runtime
+gate passed; physical-device acceptance remains pending in [the parent task](20260922-shared-desktop.md). Branch:
 `feat/shared-desktop-ui`. Do not infer real Safari support from Linux WebKit.
 
 Scope: server-authoritative shared project/window/focus/session state, responsive
@@ -60,3 +60,5 @@ Device-local Surface/bridge credentials remain memory only; shared cache contain
 canonical IDs and cursor only. Interrupted/stopped workloads remain references and
 never silently fall back to starting new programs. Ordinary app DOM/forms/scroll
 state remains app-owned.
+
+Integrated validation: full `make check` passed, Desktop213 tests passed,20 Chromium/WebKit scenarios passed, plus24 updated development-state visual records. Worktrees were removed after patch equivalence and evidence copying.

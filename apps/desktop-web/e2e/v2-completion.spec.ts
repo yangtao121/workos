@@ -5,6 +5,7 @@ test.skip(process.env.WORKOS_V2_E2E !== "true", "requires isolated v2-completion
 test.setTimeout(180_000);
 const projectId = process.env.WORKOS_V2_PROJECT_ID ?? "";
 test("shared files, resumed native display and real development preview", async ({ page }) => {
+  page.setDefaultTimeout(20_000);
   await page.goto("/");
   await expect(page.getByRole("button", { name: "Switch project", exact: true })).toContainText(
     "Development fixture",
@@ -74,8 +75,7 @@ test("shared files, resumed native display and real development preview", async 
   );
   expect(before).toBeTruthy();
   await page.reload();
-  await openDesktopApp(page, "home");
-  await page.getByTestId("home-entry-native").click();
+  // The shared desktop restores this exact Native window automatically.
   await expect(page.getByTestId("native-status")).toHaveText(/streaming|unavailable/, {
     timeout: 60_000,
   });

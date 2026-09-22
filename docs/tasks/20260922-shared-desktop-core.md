@@ -1,12 +1,12 @@
 # 共享桌面 Core 与 Gateway（2026-09-22）
 
-状态：scaffolded（后端完成，待总任务跨进程验收）；分支 `feat/shared-desktop-core`；依赖已合并契约 bca25f8 / ADR-0037。
+状态：done（后端及总任务跨进程自动验收通过）；分支 `feat/shared-desktop-core`；依赖已合并契约 bca25f8 / ADR-0037。
 
 范围：Core 桌面领域/应用/端口/PostgreSQL/Connect，076 迁移，Core 装配，Gateway allowlist 与持续流设备复核，后端测试和模块文档。不得修改其他模块数据表或 UI；整体状态与 E2E 由总任务集成。
 
 验收：owner 隔离、引用所属模块授权、UUIDv7/有界输入、原子并发命令、持久幂等/游标/重启、关闭后迟到聚焦不复活、失效引用清理、Gateway 私有路由隔离与撤权。运行 Go 单元测试和隔离真实 PostgreSQL 测试，不改共享开发栈。
 
-本任务后端验证通过；没有跨进程证据前只声明 scaffolded。
+本任务后端验证及总任务20项Chromium/WebKit门禁、实际Core/Gateway重启持久性均通过；物理设备另列待验收。
 
 ## 实现与验证
 
@@ -32,4 +32,6 @@ WORKOS_DESKTOP_TEST_DATABASE_URL=<isolated-postgresql-url> go test -tags=integra
 
 后端实现与以上验证完成后仍按 scaffolded 交接；跨进程、客户端镜像及真机体验由 [总任务](20260922-shared-desktop.md) 统一验收并更新 `docs/status.json`。未修改共享开发栈、未调用付费 Provider、未改 UI 或生成协议。总任务合并后运行统一 `make generate`/`make check`；本分支只消费主线已合并的协议提交。
 
-最终结果：以上 Go vet、race 单元/Connect/Gateway 回归、两个 scratch PostgreSQL 集成测试全部通过；`sqlc vet` 与文档 Prettier 检查通过。运行日志为工作树忽略目录 `tmp/shared-desktop-core-check.log`。未执行共享栈破坏性操作。
+最终结果：以上 Go vet、race 单元/Connect/Gateway 回归、两个 scratch PostgreSQL 集成测试全部通过；`sqlc vet` 与文档 Prettier 检查通过。运行日志为工作树忽略目录 `tmp/shared-desktop-evidence/core/shared-desktop-core-check.log`。未执行共享栈破坏性操作。
+
+整合复核修正了 domain 测试对 platform/ids 的引用，测试现使用纯 UUID 库，完整架构检查通过。
