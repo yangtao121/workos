@@ -383,3 +383,11 @@ func continuityStoreError(operation string, err error) error {
 	}
 	return fmt.Errorf("%s: %w", operation, err)
 }
+
+func (r *ContinuityRepository) CountAppDevices(ctx context.Context, owner, project, workload string, generation int64, now time.Time) (int32, error) {
+	count, err := r.queries.CountAppSurfaceDevices(ctx, surfacedb.CountAppSurfaceDevicesParams{OwnerUserID: owner, ProjectID: project, WorkloadID: workload, Generation: pgtype.Int8{Int64: generation, Valid: true}, Now: timestamp(now)})
+	if err != nil {
+		return 0, continuityStoreError("count app surface devices", err)
+	}
+	return count, nil
+}

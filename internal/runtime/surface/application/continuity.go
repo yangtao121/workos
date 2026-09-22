@@ -93,10 +93,14 @@ func (s *ContinuityService) ListProjectSurfaces(ctx context.Context, ownerUserID
 	}
 	summaries := make([]ContinuitySummary, 0, len(workloads))
 	for _, workload := range workloads {
+		count, err := s.attachmentCount(ctx, workload, counts[workload.WorkloadID])
+		if err != nil {
+			return nil, err
+		}
 		summaries = append(summaries, ContinuitySummary{
 			Workload:         workload,
 			Generation:       max(SessionWorkloadGeneration, workload.Generation),
-			AttachmentCount:  counts[workload.WorkloadID],
+			AttachmentCount:  count,
 			KeepAliveSeconds: workloadKeepAlive(workload),
 		})
 	}
@@ -376,5 +380,21 @@ func (s *ContinuityService) GetSurfaceWorkload(ctx context.Context, owner, id st
 	if err != nil {
 		return ContinuitySummary{}, err
 	}
-	return ContinuitySummary{Workload: workload, Generation: max(SessionWorkloadGeneration, workload.Generation), AttachmentCount: counts[id], KeepAliveSeconds: workloadKeepAlive(workload)}, nil
+	count, err := s.attachmentCount(ctx, workload, counts[id])
+	if err != nil {
+		return ContinuitySummary{}, err
+	}
+	return ContinuitySummary{Workload: workload, Generation: max(SessionWorkloadGeneration, workload.Generation), AttachmentCount: count, KeepAliveSeconds: workloadKeepAlive(workload)}, nil
+}
+
+func (s *ContinuityService) attachmentCount(ctx context.Context, workload ports.InteractiveWorkload, interactive int32) (int32, error) {
+	if workload.Terminal {
+		return 0, nil
+	}
+	if workload.Kind == ports.WorkloadKindApp {
+		if counter, ok := s.store.(ports.AppDeviceCounter); ok {
+			return counter.CountAppDevices(ctx, workload.OwnerUserID, workload.ProjectID, workload.WorkloadID, workload.Generation, s.now())
+		}
+	}
+	return interactive, nil
 }

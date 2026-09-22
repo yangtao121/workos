@@ -206,3 +206,10 @@ UPDATE workos_runtime.surface_attachments
 SET state = 'expired', controls = false, detached_at = sqlc.arg(now)
 WHERE state = 'attached'
   AND workload_id = ANY(sqlc.arg(workload_ids)::uuid[]);
+
+-- name: CountAppSurfaceDevices :one
+SELECT count(DISTINCT device_id)::integer AS devices
+FROM workos_runtime.surface_sessions
+WHERE owner_user_id=sqlc.arg(owner_user_id) AND project_id=sqlc.arg(project_id)
+  AND workload_id=sqlc.arg(workload_id)::uuid AND workload_generation=sqlc.arg(generation)
+  AND renderer='web-service' AND closed_at IS NULL AND expires_at>sqlc.arg(now);

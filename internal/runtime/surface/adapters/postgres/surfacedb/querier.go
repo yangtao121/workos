@@ -13,6 +13,7 @@ import (
 type Querier interface {
 	ClearSurfaceAttachmentControl(ctx context.Context, arg ClearSurfaceAttachmentControlParams) (int64, error)
 	CloseSession(ctx context.Context, arg CloseSessionParams) (int64, error)
+	CountAppSurfaceDevices(ctx context.Context, arg CountAppSurfaceDevicesParams) (int32, error)
 	CountLiveSurfaceAttachments(ctx context.Context, arg CountLiveSurfaceAttachmentsParams) ([]CountLiveSurfaceAttachmentsRow, error)
 	DetachSurfaceAttachment(ctx context.Context, arg DetachSurfaceAttachmentParams) (int64, error)
 	ExpireElapsedSurfaceAttachments(ctx context.Context, now pgtype.Timestamptz) ([]string, error)

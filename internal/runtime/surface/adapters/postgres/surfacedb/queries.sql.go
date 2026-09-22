@@ -60,6 +60,35 @@ func (q *Queries) CloseSession(ctx context.Context, arg CloseSessionParams) (int
 	return result.RowsAffected(), nil
 }
 
+const countAppSurfaceDevices = `-- name: CountAppSurfaceDevices :one
+SELECT count(DISTINCT device_id)::integer AS devices
+FROM workos_runtime.surface_sessions
+WHERE owner_user_id=$1 AND project_id=$2
+  AND workload_id=$3::uuid AND workload_generation=$4
+  AND renderer='web-service' AND closed_at IS NULL AND expires_at>$5
+`
+
+type CountAppSurfaceDevicesParams struct {
+	OwnerUserID string             `json:"owner_user_id"`
+	ProjectID   string             `json:"project_id"`
+	WorkloadID  string             `json:"workload_id"`
+	Generation  pgtype.Int8        `json:"generation"`
+	Now         pgtype.Timestamptz `json:"now"`
+}
+
+func (q *Queries) CountAppSurfaceDevices(ctx context.Context, arg CountAppSurfaceDevicesParams) (int32, error) {
+	row := q.db.QueryRow(ctx, countAppSurfaceDevices,
+		arg.OwnerUserID,
+		arg.ProjectID,
+		arg.WorkloadID,
+		arg.Generation,
+		arg.Now,
+	)
+	var devices int32
+	err := row.Scan(&devices)
+	return devices, err
+}
+
 const countLiveSurfaceAttachments = `-- name: CountLiveSurfaceAttachments :many
 SELECT workload_id::text AS workload_id, count(*)::int AS live_attachments
 FROM workos_runtime.surface_attachments

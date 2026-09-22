@@ -152,3 +152,9 @@ type InteractiveRestarter interface {
 type InteractiveStopper interface {
 	StopWorkloadAction(context.Context, WorkloadKind, string, string, string, func() error) (InteractiveWorkload, error)
 }
+
+// AppDeviceCounter counts per-device web-service views of the exact generation.
+// It reads only Surface-owned rows; old generations never inflate discovery.
+type AppDeviceCounter interface {
+	CountAppDevices(context.Context, string, string, string, int64, time.Time) (int32, error)
+}
