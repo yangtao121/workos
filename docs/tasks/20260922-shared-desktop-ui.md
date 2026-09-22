@@ -19,6 +19,12 @@ shared desktop/lifecycle contracts and Core DesktopService producer.
 - Installed app restore uses attach-only exact generation pins; access capability
   expiry renews a device view without creating/restarting a program.
 - Manual-stop requests on explicit creates/restarts; window close only detaches.
+- A five-second authoritative read fallback keeps a quiet or delayed event stream
+  from blocking shared state convergence. Reads are sequential, with the next
+  timer starting after completion; slow reads are not periodically cancelled.
+  Revision checks reject older snapshots, and generation, abort, and reset guards
+  discard responses from a previous connection or server reset. Authorization
+  denial clears the cached projection and stops both stream and fallback reads.
 
 Module documentation: [shared desktop client](../architecture/shared-desktop-client.md).
 
@@ -35,6 +41,11 @@ shared deployments or calling a paid provider:
   WebKit passed. Explicit Chromium capture run: all four tests passed.
 - Root runs generated-code consistency, full `make check`, actual cross-process
   persistence/lifecycle gate, and session composer/pending visual states.
+- Follow-up fallback coverage: `vitest run src/sharedDesktop.test.ts` passes all
+  13 tests, including silent streams, slow reads without overlap/starvation,
+  stale responses after reconnect/stop/reset, transient recovery, and revoked
+  authentication. Desktop TypeScript and targeted ESLint/Prettier checks pass.
+  This controller-only change has no new visual layout; existing evidence applies.
 
 Visual evidence: [before](../ui/desktop-web/changes/20260922-shared-desktop-ui/before/),
 [after](../ui/desktop-web/changes/20260922-shared-desktop-ui/after/),

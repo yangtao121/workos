@@ -13,6 +13,13 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { SharedDesktop, readDesktopProjection } from "./sharedDesktop.js";
 
 const instances: SharedDesktop[] = [];
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((complete) => {
+    resolve = complete;
+  });
+  return { promise, resolve };
+}
 afterEach(() => {
   instances.forEach((instance) => {
     instance.stop();
@@ -20,13 +27,16 @@ afterEach(() => {
   instances.length = 0;
   localStorage.clear();
   vi.restoreAllMocks();
+  vi.useRealTimers();
 });
 function fixture(
   initial = create(DesktopStateSchema, { revision: 1n, activeProjectId: "project-a" }),
 ) {
   let state = initial;
   const watchers = new Set<(event: WatchDesktopResponse) => void>();
-  const get = vi.fn(() => Promise.resolve({ state }));
+  const get = vi.fn<
+    (request: unknown, options: { signal: AbortSignal }) => Promise<{ state: DesktopState }>
+  >(() => Promise.resolve({ state }));
   const apply = vi.fn(() => Promise.resolve({ state }));
   const watch = vi.fn(async function* (_request: unknown, options: { signal: AbortSignal }) {
     let resolve: ((event: WatchDesktopResponse | undefined) => void) | undefined;
@@ -67,6 +77,9 @@ function fixture(
     get,
     apply,
     watch,
+    setState(next: DesktopState) {
+      state = next;
+    },
     publish(next: DesktopState, resetRequired = false) {
       state = next;
       for (const receive of watchers)
@@ -180,4 +193,129 @@ describe("Shared desktop projection", () => {
     });
     expect(readDesktopProjection()).toBeUndefined();
   });
+  it("advances through a silent stream without overwriting newer streamed revisions", async () => {
+    vi.useFakeTimers();
+    const backend = fixture();
+    const device = backend.instance();
+    await vi.advanceTimersByTimeAsync(0);
+    backend.setState(create(DesktopStateSchema, { revision: 7n, activeProjectId: "remote" }));
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(device.current.state?.revision).toBe(7n);
+    expect(readDesktopProjection()?.activeProjectId).toBe("remote");
+    backend.publish(create(DesktopStateSchema, { revision: 9n }));
+    await vi.advanceTimersByTimeAsync(0);
+    backend.setState(create(DesktopStateSchema, { revision: 8n }));
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(device.current.state?.revision).toBe(9n);
+    expect(backend.get).toHaveBeenCalledTimes(3);
+    expect(backend.watch).toHaveBeenCalledOnce();
+    expect(backend.apply).not.toHaveBeenCalled();
+  });
+  it("lets a slow authoritative read finish before scheduling another read", async () => {
+    vi.useFakeTimers();
+    const backend = fixture();
+    const device = backend.instance();
+    await vi.advanceTimersByTimeAsync(0);
+    const pending = deferred<{ state: DesktopState }>();
+    backend.get.mockReturnValueOnce(pending.promise);
+    await vi.advanceTimersByTimeAsync(5000);
+    const signal = backend.get.mock.calls[1]?.[1].signal;
+    await vi.advanceTimersByTimeAsync(15000);
+    expect(backend.get).toHaveBeenCalledTimes(2);
+    expect(signal?.aborted).toBe(false);
+    expect(backend.watch).toHaveBeenCalledOnce();
+    pending.resolve({ state: create(DesktopStateSchema, { revision: 5n }) });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(device.current.state?.revision).toBe(5n);
+    await vi.advanceTimersByTimeAsync(4999);
+    expect(backend.get).toHaveBeenCalledTimes(2);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(backend.get).toHaveBeenCalledTimes(3);
+  });
+  it("discards a late read from before a reconnect even when its transport ignores abort", async () => {
+    vi.useFakeTimers();
+    const backend = fixture();
+    const device = backend.instance();
+    await vi.advanceTimersByTimeAsync(0);
+    const pending = deferred<{ state: DesktopState }>();
+    backend.get.mockReturnValueOnce(pending.promise);
+    await vi.advanceTimersByTimeAsync(5000);
+    const signal = backend.get.mock.calls[1]?.[1].signal;
+    backend.setState(create(DesktopStateSchema, { revision: 10n }));
+    window.dispatchEvent(new Event("online"));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(signal?.aborted).toBe(true);
+    expect(device.current.state?.revision).toBe(10n);
+    pending.resolve({ state: create(DesktopStateSchema, { revision: 99n }) });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(device.current.state?.revision).toBe(10n);
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(backend.get).toHaveBeenCalledTimes(4);
+  });
+  it("discards reads after stop and never schedules another poll", async () => {
+    vi.useFakeTimers();
+    const backend = fixture();
+    const device = backend.instance();
+    await vi.advanceTimersByTimeAsync(0);
+    const pending = deferred<{ state: DesktopState }>();
+    backend.get.mockReturnValueOnce(pending.promise);
+    await vi.advanceTimersByTimeAsync(5000);
+    device.stop();
+    pending.resolve({ state: create(DesktopStateSchema, { revision: 99n }) });
+    await vi.advanceTimersByTimeAsync(20000);
+    expect(device.current.state?.revision).toBe(1n);
+    expect(backend.get).toHaveBeenCalledTimes(2);
+    expect(backend.watch.mock.calls[0]?.[1].signal.aborted).toBe(true);
+  });
+  it("does not resurrect a pre-reset snapshot when a slow read finishes", async () => {
+    vi.useFakeTimers();
+    const backend = fixture(create(DesktopStateSchema, { revision: 99n }));
+    const device = backend.instance();
+    await vi.advanceTimersByTimeAsync(0);
+    const pending = deferred<{ state: DesktopState }>();
+    backend.get.mockReturnValueOnce(pending.promise);
+    await vi.advanceTimersByTimeAsync(5000);
+    backend.publish(create(DesktopStateSchema, { revision: 3n }), true);
+    await vi.advanceTimersByTimeAsync(0);
+    pending.resolve({ state: create(DesktopStateSchema, { revision: 100n }) });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(device.current.state?.revision).toBe(3n);
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(backend.get).toHaveBeenCalledTimes(3);
+  });
+  it("keeps the watch alive through a transient read failure and recovers on the next read", async () => {
+    vi.useFakeTimers();
+    const backend = fixture();
+    const device = backend.instance();
+    await vi.advanceTimersByTimeAsync(0);
+    backend.get.mockRejectedValueOnce(
+      new ConnectError("temporarily unavailable", Code.Unavailable),
+    );
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(device.current.connection).toBe("reconnecting");
+    expect(backend.watch.mock.calls[0]?.[1].signal.aborted).toBe(false);
+    backend.setState(create(DesktopStateSchema, { revision: 7n }));
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(device.current.connection).toBe("connected");
+    expect(device.current.state?.revision).toBe(7n);
+    expect(backend.watch).toHaveBeenCalledOnce();
+  });
+  it.each([Code.Unauthenticated, Code.PermissionDenied])(
+    "clears the projection and stops all synchronization after read authorization failure %s",
+    async (code) => {
+      vi.useFakeTimers();
+      const backend = fixture();
+      const device = backend.instance();
+      await vi.advanceTimersByTimeAsync(0);
+      backend.get.mockRejectedValueOnce(new ConnectError("revoked", code));
+      await vi.advanceTimersByTimeAsync(5000);
+      expect(device.current).toEqual({ connection: "unavailable" });
+      expect(readDesktopProjection()).toBeUndefined();
+      expect(backend.watch.mock.calls[0]?.[1].signal.aborted).toBe(true);
+      window.dispatchEvent(new Event("online"));
+      await vi.advanceTimersByTimeAsync(20000);
+      expect(backend.get).toHaveBeenCalledTimes(2);
+      expect(backend.watch).toHaveBeenCalledOnce();
+    },
+  );
 });

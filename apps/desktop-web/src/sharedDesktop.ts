@@ -14,6 +14,7 @@ export type DesktopOperation = NonNullable<
 export type DesktopConnection = "connecting" | "connected" | "reconnecting" | "unavailable";
 export type DesktopProjection = { state?: DesktopState; connection: DesktopConnection };
 const CACHE_KEY = "workos.desktop-projection.v1";
+const REFRESH_INTERVAL_MS = 5000;
 
 // Only canonical references and a cursor are cached. A cached projection is never
 // painted or sent as an operation before a fresh authenticated server read.
@@ -45,7 +46,9 @@ export class SharedDesktop {
   private listeners = new Set<(snapshot: DesktopProjection) => void>();
   private controller?: AbortController;
   private retry?: ReturnType<typeof setTimeout>;
+  private refresh?: ReturnType<typeof setTimeout>;
   private generation = 0;
+  private resetEpoch = 0;
   private running = false;
   private initialize?: DesktopInitialization;
   constructor(private readonly client: WorkOSClients["desktop"]) {}
@@ -66,6 +69,7 @@ export class SharedDesktop {
   private accept(state: DesktopState | undefined, reset = false) {
     if (!state || (!reset && this.snapshot.state && state.revision <= this.snapshot.state.revision))
       return;
+    if (reset) ++this.resetEpoch;
     persist(state);
     this.emit("connected", state);
   }
@@ -84,6 +88,7 @@ export class SharedDesktop {
     if (!this.running) return;
     this.controller?.abort();
     clearTimeout(this.retry);
+    clearTimeout(this.refresh);
     const generation = ++this.generation;
     const controller = new AbortController();
     this.controller = controller;
@@ -109,6 +114,7 @@ export class SharedDesktop {
       }
       this.accept(state, true);
       this.emit("connected");
+      this.scheduleRefresh(generation, controller);
       for await (const event of this.client.watchDesktop(
         { afterRevision: state.revision },
         { signal: controller.signal },
@@ -124,15 +130,51 @@ export class SharedDesktop {
         error instanceof ConnectError &&
         (error.code === Code.Unauthenticated || error.code === Code.PermissionDenied)
       ) {
-        clearDesktopProjection();
-        this.snapshot = { connection: "unavailable" };
-        this.emit("unavailable");
+        this.revoke();
         return;
       }
       this.scheduleReconnect();
     }
   }
+  private scheduleRefresh(generation: number, controller: AbortController) {
+    this.refresh = setTimeout(() => {
+      void this.readFallback(generation, controller);
+    }, REFRESH_INTERVAL_MS);
+  }
+  // A quiet or delayed stream must not prevent convergence. Schedule the next
+  // read after this one settles, so a slow read is neither overlapped nor starved.
+  private async readFallback(generation: number, controller: AbortController) {
+    const live = () => this.running && generation === this.generation && !controller.signal.aborted;
+    if (!live()) return;
+    const resetEpoch = this.resetEpoch;
+    try {
+      const response = await this.client.getDesktop({}, { signal: controller.signal });
+      if (!live() || resetEpoch !== this.resetEpoch) return;
+      this.accept(response.state);
+      this.emit("connected");
+    } catch (error) {
+      if (!live()) return;
+      if (
+        error instanceof ConnectError &&
+        (error.code === Code.Unauthenticated || error.code === Code.PermissionDenied)
+      ) {
+        this.revoke();
+        return;
+      }
+      this.emit("reconnecting");
+    } finally {
+      if (live()) this.scheduleRefresh(generation, controller);
+    }
+  }
+  private revoke() {
+    this.stop();
+    clearDesktopProjection();
+    this.snapshot = { connection: "unavailable" };
+    this.emit("unavailable");
+  }
   private scheduleReconnect() {
+    this.controller?.abort();
+    clearTimeout(this.refresh);
     this.emit("reconnecting");
     this.retry = setTimeout(this.reconnect, 1500);
   }
@@ -160,6 +202,7 @@ export class SharedDesktop {
     ++this.generation;
     this.controller?.abort();
     clearTimeout(this.retry);
+    clearTimeout(this.refresh);
     window.removeEventListener("online", this.reconnect);
     document.removeEventListener("visibilitychange", this.visible);
   }
