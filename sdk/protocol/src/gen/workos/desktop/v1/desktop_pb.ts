@@ -66,7 +66,8 @@ export type DesktopWindowTarget = Message<"workos.desktop.v1.DesktopWindowTarget
   } | { case: undefined; value?: undefined };
 
   /**
-   * Only app_instance_id targets can carry a pinned container identity.
+   * App, terminal and native targets may pin the exact program generation.
+   * For terminal/native, expected_workload_id must equal resource workload_id.
    *
    * @generated from field: string expected_workload_id = 8;
    */

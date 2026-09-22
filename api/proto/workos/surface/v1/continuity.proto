@@ -89,6 +89,9 @@ message AttachSurfaceRequest {
   string idempotency_key = 2;
   DeviceClass device_class = 3;
   Viewport viewport = 4;
+  // Zero preserves legacy behavior; a positive value refuses a replaced
+  // program before creating an attachment or changing control ownership.
+  int64 expected_workload_generation = 5;
 }
 
 message AttachSurfaceResponse {

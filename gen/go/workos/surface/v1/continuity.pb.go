@@ -545,8 +545,11 @@ type AttachSurfaceRequest struct {
 	IdempotencyKey string                 `protobuf:"bytes,2,opt,name=idempotency_key,json=idempotencyKey,proto3" json:"idempotency_key,omitempty"`
 	DeviceClass    DeviceClass            `protobuf:"varint,3,opt,name=device_class,json=deviceClass,proto3,enum=workos.surface.v1.DeviceClass" json:"device_class,omitempty"`
 	Viewport       *Viewport              `protobuf:"bytes,4,opt,name=viewport,proto3" json:"viewport,omitempty"`
-	unknownFields  protoimpl.UnknownFields
-	sizeCache      protoimpl.SizeCache
+	// Zero preserves legacy behavior; a positive value refuses a replaced
+	// program before creating an attachment or changing control ownership.
+	ExpectedWorkloadGeneration int64 `protobuf:"varint,5,opt,name=expected_workload_generation,json=expectedWorkloadGeneration,proto3" json:"expected_workload_generation,omitempty"`
+	unknownFields              protoimpl.UnknownFields
+	sizeCache                  protoimpl.SizeCache
 }
 
 func (x *AttachSurfaceRequest) Reset() {
@@ -605,6 +608,13 @@ func (x *AttachSurfaceRequest) GetViewport() *Viewport {
 		return x.Viewport
 	}
 	return nil
+}
+
+func (x *AttachSurfaceRequest) GetExpectedWorkloadGeneration() int64 {
+	if x != nil {
+		return x.ExpectedWorkloadGeneration
+	}
+	return 0
 }
 
 type AttachSurfaceResponse struct {
@@ -1206,13 +1216,14 @@ const file_workos_surface_v1_continuity_proto_rawDesc = "" +
 	"\vworkload_id\x18\x01 \x01(\tR\n" +
 	"workloadId\"`\n" +
 	"\x1aGetSurfaceWorkloadResponse\x12B\n" +
-	"\bworkload\x18\x01 \x01(\v2&.workos.surface.v1.SurfaceWorkloadViewR\bworkload\"\xdc\x01\n" +
+	"\bworkload\x18\x01 \x01(\v2&.workos.surface.v1.SurfaceWorkloadViewR\bworkload\"\x9e\x02\n" +
 	"\x14AttachSurfaceRequest\x12\x1f\n" +
 	"\vworkload_id\x18\x01 \x01(\tR\n" +
 	"workloadId\x12'\n" +
 	"\x0fidempotency_key\x18\x02 \x01(\tR\x0eidempotencyKey\x12A\n" +
 	"\fdevice_class\x18\x03 \x01(\x0e2\x1e.workos.surface.v1.DeviceClassR\vdeviceClass\x127\n" +
-	"\bviewport\x18\x04 \x01(\v2\x1b.workos.surface.v1.ViewportR\bviewport\"\x9a\x01\n" +
+	"\bviewport\x18\x04 \x01(\v2\x1b.workos.surface.v1.ViewportR\bviewport\x12@\n" +
+	"\x1cexpected_workload_generation\x18\x05 \x01(\x03R\x1aexpectedWorkloadGeneration\"\x9a\x01\n" +
 	"\x15AttachSurfaceResponse\x12;\n" +
 	"\asession\x18\x01 \x01(\v2!.workos.surface.v1.SurfaceSessionR\asession\x12D\n" +
 	"\n" +

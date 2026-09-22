@@ -36,7 +36,8 @@ type DesktopWindowTarget struct {
 	//	*DesktopWindowTarget_SessionId
 	//	*DesktopWindowTarget_ArtifactId
 	Resource isDesktopWindowTarget_Resource `protobuf_oneof:"resource"`
-	// Only app_instance_id targets can carry a pinned container identity.
+	// App, terminal and native targets may pin the exact program generation.
+	// For terminal/native, expected_workload_id must equal resource workload_id.
 	ExpectedWorkloadId         string `protobuf:"bytes,8,opt,name=expected_workload_id,json=expectedWorkloadId,proto3" json:"expected_workload_id,omitempty"`
 	ExpectedWorkloadGeneration int64  `protobuf:"varint,9,opt,name=expected_workload_generation,json=expectedWorkloadGeneration,proto3" json:"expected_workload_generation,omitempty"`
 	unknownFields              protoimpl.UnknownFields
