@@ -37,5 +37,7 @@
 - 新增 `tools/shared-desktop/apps.sh` 与只用于独立 V2 fixture 的 `compose.override.yaml`：启用实际 Docker／artifact admin，idle TTL 30 秒、reconcile 1 秒；不改共享开发栈。
 - `TestSharedDesktopInstalledAppContinuity` 构建并导入无外部依赖的 HTTP 程序，分别启动 MANUAL_STOP 与 legacy 对照，关闭全部视图后等待对照的真实 idle-stop 回执；再通过第二设备精确 attach-only，核对进程内随机标识、容器 ID、workload 数量及 Ensure 回执数量不变。
 - 覆盖发现安装应用、旧 generation／不同 installation／其他 owner 拒绝、主动停止后观察者连续恢复均失败；测试只经公开 API 建立／清理自己的项目及安装，SQL 连接显式只读。
-- 静态验证通过：Go 1.26.7 `go test -tags=integration,shareddesktopapps -run '^$' ./tests/integration` 编译；`sh -n tools/shared-desktop/apps.sh`；组合 Compose `config --quiet`。真实执行由主任务在浏览器阶段后、Core 重启前运行，证据为 `$WORKOS_V2_DIR/shared-desktop-apps.log`。
+- 静态验证通过：Go 1.26.7 `go test -tags=integration,shareddesktopapps -run '^$' ./tests/integration` 编译；`sh -n tools/shared-desktop/apps.sh`；组合 Compose `config --quiet`。真实执行安排在浏览器阶段后、Core 重启前，runner 证据为 `$WORKOS_V2_DIR/shared-desktop-apps.log`。
 - runner 保留独立 namespace 供父门禁统一清理；安装应用网络的 label 为 `workos.runtime=$WORKOS_V2_NAMESPACE`，清理时需与现有 `workos.network` 一并处理。
+
+- 独立真实六进程 fixture `tmp/v2-completion.INsipG` 的安装应用门禁已通过（37.49 秒）：完整关闭 30 秒后 legacy 收到 idle-stop 回执，manual 保持原容器和进程内随机标识，第二设备 attach-only／拒绝分支／主动停止后恢复均符合预期。见 `tmp/v2-completion.INsipG/shared-desktop-apps-fix.log`。首次运行暴露 fixture 缺少 schema 要求的 build 元数据；现已上传同一源码快照并注册对应 build profile，注册前调用 ValidateManifest 输出具体字段问题，未调用模型或 Build/Test 执行服务。

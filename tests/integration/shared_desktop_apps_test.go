@@ -126,17 +126,34 @@ func TestSharedDesktopInstalledAppContinuity(t *testing.T) {
 	foreign := surfacev1connect.NewSurfaceServiceClient(foreignHTTP, runtimeURL)
 	foreignContinuity := surfacev1connect.NewSurfaceContinuityServiceClient(foreignHTTP, runtimeURL)
 	appID := "shared-" + strings.ReplaceAll(ids.UUIDv7{}.New(), "-", "")
-	artifactID, digest := sharedDesktopImportApp(t, ctx, adminSocket, owner, appID)
+	artifactID, digest, files := sharedDesktopImportApp(t, ctx, adminSocket, owner, appID)
+	sources := appv1connect.NewAppSourceBundleServiceClient(client, gateway)
+	source, err := sources.CreateAppSourceBundle(ctx, connect.NewRequest(&appv1.CreateAppSourceBundleRequest{IdempotencyKey: ids.UUIDv7{}.New(), Files: files}))
+	if err != nil {
+		t.Fatalf("register immutable fixture source: %v", err)
+	}
 	manifest := map[string]any{
 		"apiVersion": "workos.app/v1", "id": appID, "name": "Shared desktop process fixture", "version": "1.0.0", "scope": "project",
 		"runtime":  map[string]any{"type": "container", "image": sharedDesktopAppImage, "command": []string{"/app/server"}, "port": 8080, "artifact": map[string]any{"id": artifactID, "digest": digest, "format": "app-bundle.v1"}},
 		"surfaces": []any{map[string]any{"id": "main", "renderer": "web-service", "route": "/"}}, "permissions": []string{},
 		"resources": map[string]any{"cpuHard": 1, "memoryHighMb": 64, "memoryMaxMb": 128, "pidsMax": 64},
 		"health":    map[string]any{"httpPath": "/health", "startupSeconds": 3, "restartLimit": 0}, "maintainer": map[string]any{},
+		"build": map[string]any{
+			"sourceBundleId": source.Msg.GetBundle().GetId(), "sourceDigest": source.Msg.GetBundle().GetDigest(),
+			"baseImage": sharedDesktopAppImage, "buildCommand": []string{"sh", "-c", "mkdir -p dist && CGO_ENABLED=0 go build -trimpath -o dist/server ."},
+			"testCommand": []string{"go", "test", "./..."}, "output": map[string]any{"directory": "dist", "format": "app-bundle.v1"},
+		},
 	}
 	raw, err := json.Marshal(manifest)
 	if err != nil {
 		t.Fatal(err)
+	}
+	validation, err := registry.ValidateManifest(ctx, connect.NewRequest(&appv1.ValidateManifestRequest{Yaml: raw}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !validation.Msg.GetValid() {
+		t.Fatalf("fixture manifest violates canonical schema: %v", validation.Msg.GetViolations())
 	}
 	if _, err := registry.RegisterApp(ctx, connect.NewRequest(&appv1.RegisterAppRequest{IdempotencyKey: ids.UUIDv7{}.New(), ManifestYaml: raw})); err != nil {
 		t.Fatal(err)
@@ -361,7 +378,7 @@ func TestSharedDesktopInstalledAppContinuity(t *testing.T) {
 	t.Log("second device retained exact process; stale/foreign targets refused; explicit stop stayed terminal without an Ensure")
 }
 
-func sharedDesktopImportApp(t *testing.T, ctx context.Context, socket, owner, app string) (string, string) {
+func sharedDesktopImportApp(t *testing.T, ctx context.Context, socket, owner, app string) (string, string, []*appv1.AppSourceFile) {
 	t.Helper()
 	src, output := t.TempDir(), t.TempDir()
 	// The random nonce exists only in process memory: a replacement binary
@@ -375,7 +392,9 @@ http.HandleFunc("/health",func(w http.ResponseWriter,r *http.Request){fmt.Fprint
 http.HandleFunc("/",func(w http.ResponseWriter,r *http.Request){w.Header().Set("Content-Type","text/plain");fmt.Fprint(w,"shared-desktop-process:"+hex.EncodeToString(nonce[:]))})
 if http.ListenAndServe(":8080",nil)!=nil{os.Exit(1)}}`,
 	}
+	sourceFiles := make([]*appv1.AppSourceFile, 0, len(files))
 	for name, content := range files {
+		sourceFiles = append(sourceFiles, &appv1.AppSourceFile{Path: name, Content: []byte(content)})
 		if err := os.WriteFile(filepath.Join(src, name), []byte(content), 0600); err != nil {
 			t.Fatal(err)
 		}
@@ -413,5 +432,5 @@ if http.ListenAndServe(":8080",nil)!=nil{os.Exit(1)}}`,
 	if response.Msg.GetDigest() != stats.Digest || response.Msg.GetArtifactId() == "" {
 		t.Fatal("artifact import did not preserve exact bytes")
 	}
-	return response.Msg.GetArtifactId(), stats.Digest
+	return response.Msg.GetArtifactId(), stats.Digest, sourceFiles
 }
