@@ -502,3 +502,39 @@ func TestForeignDeviceDetachDoesNotCloseCurrentPeer(t *testing.T) {
 		t.Fatal("observer detached the controller peer")
 	}
 }
+
+func (f *fakeEngine) LaunchLifecycle(ctx context.Context, width, height int32, directory string, _ bool, _ domain.LifecycleMode) (ports.Display, error) {
+	return f.Launch(ctx, width, height, directory)
+}
+func TestManualStopNativeStillReconcilesFailure(t *testing.T) {
+	service, engine := newTestService(t)
+	defer service.Shutdown()
+	ctx := context.Background()
+	session, err := service.Create(ctx, testOwner, testProject, "manual", 800, 600, domain.LifecycleManualStop)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !session.ExpiresAt.IsZero() || session.LifecycleMode != domain.LifecycleManualStop {
+		t.Fatal("manual policy not persisted")
+	}
+	if _, err := service.Create(ctx, testOwner, testProject, "manual", 800, 600); !errors.Is(err, domain.ErrIdempotencyDrift) {
+		t.Fatalf("policy drift accepted: %v", err)
+	}
+	if err := service.Sweep(ctx); err != nil {
+		t.Fatal(err)
+	}
+	live, err := service.Get(ctx, testOwner, session.SessionID)
+	if err != nil || live.State != domain.StateRunning {
+		t.Fatalf("manual stop expired: %#v %v", live, err)
+	}
+	engine.displays[0].mu.Lock()
+	engine.displays[0].exited = true
+	engine.displays[0].mu.Unlock()
+	if err := service.Sweep(ctx); err != nil {
+		t.Fatal(err)
+	}
+	failed, err := service.Get(ctx, testOwner, session.SessionID)
+	if err != nil || failed.State != domain.StateFailed {
+		t.Fatalf("actual display exit not reported: %#v %v", failed, err)
+	}
+}

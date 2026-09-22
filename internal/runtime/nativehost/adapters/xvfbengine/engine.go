@@ -189,7 +189,7 @@ func (e *Engine) Facts() ports.EngineFacts {
 		Engine:           "xvfb-x11grab-vp8-webrtc",
 		ProcessGroupKill: true,
 		ParentDeathSig:   true,
-		EnforcedLimits:   []string{"process-group-kill", "parent-death-signal", "input-rate", "session-ttl", candidateScope, "peer-authorization-ttl-30s"},
+		EnforcedLimits:   []string{"process-group-kill", "parent-death-signal", "input-rate", "program-lifecycle-policy", candidateScope, "peer-authorization-ttl-30s"},
 	}
 }
 
@@ -282,6 +282,17 @@ func (e *Engine) Launch(ctx context.Context, width, height int32, workingDirecto
 	return e.LaunchWorkspace(ctx, width, height, workingDirectory, false)
 }
 func (e *Engine) LaunchWorkspace(ctx context.Context, width, height int32, workingDirectory string, readOnly bool) (ports.Display, error) {
+	return e.LaunchLifecycle(ctx, width, height, workingDirectory, readOnly, domain.LifecycleBounded)
+}
+func (e *Engine) LaunchLifecycle(ctx context.Context, width, height int32, workingDirectory string, readOnly bool, mode domain.LifecycleMode) (ports.Display, error) {
+	mode, err := domain.NormalizeLifecycle(mode)
+	if err != nil {
+		return nil, err
+	}
+	lifetime := domain.SessionTTL
+	if mode == domain.LifecycleManualStop {
+		lifetime = 0
+	}
 	if (readOnly || workingDirectory != "") && e.containers == nil {
 		return nil, domain.ErrEngineUnavailable
 	}
@@ -303,7 +314,11 @@ func (e *Engine) LaunchWorkspace(ctx context.Context, width, height int32, worki
 	if err != nil {
 		return nil, err
 	}
-	runCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), domain.SessionTTL)
+	runCtx, cancel := context.WithCancel(context.WithoutCancel(ctx))
+	if mode != domain.LifecycleManualStop {
+		cancel()
+		runCtx, cancel = context.WithTimeout(context.WithoutCancel(ctx), lifetime)
+	}
 	d := &display{engine: e, dir: dir, width: width, height: height,
 		runCtx: runCtx, cancel: cancel, exited: make(chan struct{}), inputDone: make(chan struct{}), frameReady: make(chan struct{}),
 		inputQueue:  make(chan queuedInput, inputQueueDepth),
@@ -342,7 +357,7 @@ func (e *Engine) LaunchWorkspace(ctx context.Context, width, height int32, worki
 		if !filepath.IsAbs(e.x11HostDirectory) {
 			return nil, domain.ErrEngineUnavailable
 		}
-		container, err := e.containers.Start(ctx, containerprocess.Spec{ID: (ids.UUIDv7{}).New(), Workspace: workingDirectory, ReadOnly: readOnly, Argv: e.Client, Environment: []string{"DISPLAY=" + name}, ExtraMounts: []string{filepath.Join(e.x11HostDirectory, filepath.Base(socket)) + ":" + socket + ":ro"}, Lifetime: domain.SessionTTL})
+		container, err := e.containers.Start(ctx, containerprocess.Spec{ID: (ids.UUIDv7{}).New(), Workspace: workingDirectory, ReadOnly: readOnly, Argv: e.Client, Environment: []string{"DISPLAY=" + name}, ExtraMounts: []string{filepath.Join(e.x11HostDirectory, filepath.Base(socket)) + ":" + socket + ":ro"}, Lifetime: lifetime, ManualStop: mode == domain.LifecycleManualStop})
 		if err != nil {
 			return nil, domain.ErrEngineUnavailable
 		}

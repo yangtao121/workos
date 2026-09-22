@@ -11,15 +11,16 @@ import (
 )
 
 const beginPtyRestart = `-- name: BeginPtyRestart :one
-UPDATE workos_runtime.pty_sessions SET generation=generation+1,state='queued',updated_at=$3,expires_at=$4
+UPDATE workos_runtime.pty_sessions SET generation=generation+1,state='queued',updated_at=$3,expires_at=$4,lifecycle_mode=$5
 WHERE owner_user_id=$1 AND session_id=$2 RETURNING generation
 `
 
 type BeginPtyRestartParams struct {
-	OwnerUserID string    `json:"owner_user_id"`
-	SessionID   string    `json:"session_id"`
-	UpdatedAt   time.Time `json:"updated_at"`
-	ExpiresAt   time.Time `json:"expires_at"`
+	OwnerUserID   string     `json:"owner_user_id"`
+	SessionID     string     `json:"session_id"`
+	UpdatedAt     time.Time  `json:"updated_at"`
+	ExpiresAt     *time.Time `json:"expires_at"`
+	LifecycleMode int16      `json:"lifecycle_mode"`
 }
 
 func (q *Queries) BeginPtyRestart(ctx context.Context, arg BeginPtyRestartParams) (int64, error) {
@@ -28,6 +29,7 @@ func (q *Queries) BeginPtyRestart(ctx context.Context, arg BeginPtyRestartParams
 		arg.SessionID,
 		arg.UpdatedAt,
 		arg.ExpiresAt,
+		arg.LifecycleMode,
 	)
 	var generation int64
 	err := row.Scan(&generation)
@@ -36,7 +38,7 @@ func (q *Queries) BeginPtyRestart(ctx context.Context, arg BeginPtyRestartParams
 
 const closePtySession = `-- name: ClosePtySession :execrows
 UPDATE workos_runtime.pty_sessions
-SET state = $3, updated_at = $4, expires_at = $4
+SET state = $3, updated_at = $4, expires_at = CASE WHEN lifecycle_mode=1 THEN $4::timestamptz ELSE NULL END
 WHERE owner_user_id = $1 AND session_id = $2 AND state IN ('queued', 'running')
 `
 
@@ -76,7 +78,7 @@ func (q *Queries) CountActivePtySessions(ctx context.Context, ownerUserID string
 const expireIdlePtySessions = `-- name: ExpireIdlePtySessions :many
 UPDATE workos_runtime.pty_sessions
 SET state = 'closed', updated_at = $1, expires_at = $1
-WHERE state IN ('queued', 'running') AND expires_at < $1
+WHERE state IN ('queued', 'running') AND lifecycle_mode=1 AND expires_at <= $1
 RETURNING session_id::text AS session_id
 `
 
@@ -101,7 +103,7 @@ func (q *Queries) ExpireIdlePtySessions(ctx context.Context, updatedAt time.Time
 }
 
 const getPtyRestartReceipt = `-- name: GetPtyRestartReceipt :one
-SELECT generation FROM workos_runtime.pty_session_restarts WHERE session_id=$1 AND action_key=$2
+SELECT generation, lifecycle_mode FROM workos_runtime.pty_session_restarts WHERE session_id=$1 AND action_key=$2
 `
 
 type GetPtyRestartReceiptParams struct {
@@ -109,16 +111,21 @@ type GetPtyRestartReceiptParams struct {
 	ActionKey string `json:"action_key"`
 }
 
-func (q *Queries) GetPtyRestartReceipt(ctx context.Context, arg GetPtyRestartReceiptParams) (int64, error) {
+type GetPtyRestartReceiptRow struct {
+	Generation    int64 `json:"generation"`
+	LifecycleMode int16 `json:"lifecycle_mode"`
+}
+
+func (q *Queries) GetPtyRestartReceipt(ctx context.Context, arg GetPtyRestartReceiptParams) (GetPtyRestartReceiptRow, error) {
 	row := q.db.QueryRow(ctx, getPtyRestartReceipt, arg.SessionID, arg.ActionKey)
-	var generation int64
-	err := row.Scan(&generation)
-	return generation, err
+	var i GetPtyRestartReceiptRow
+	err := row.Scan(&i.Generation, &i.LifecycleMode)
+	return i, err
 }
 
 const getPtySession = `-- name: GetPtySession :one
 SELECT session_id, owner_user_id, project_id, idempotency_key, request_digest,
-       state, created_at, updated_at, expires_at, generation
+       state, created_at, updated_at, expires_at, generation, lifecycle_mode
 FROM workos_runtime.pty_sessions
 WHERE owner_user_id = $1 AND session_id = $2
 `
@@ -142,13 +149,14 @@ func (q *Queries) GetPtySession(ctx context.Context, arg GetPtySessionParams) (W
 		&i.UpdatedAt,
 		&i.ExpiresAt,
 		&i.Generation,
+		&i.LifecycleMode,
 	)
 	return i, err
 }
 
 const getPtySessionByKey = `-- name: GetPtySessionByKey :one
 SELECT session_id, owner_user_id, project_id, idempotency_key, request_digest,
-       state, created_at, updated_at, expires_at, generation
+       state, created_at, updated_at, expires_at, generation, lifecycle_mode
 FROM workos_runtime.pty_sessions
 WHERE owner_user_id = $1 AND idempotency_key = $2
 `
@@ -172,6 +180,7 @@ func (q *Queries) GetPtySessionByKey(ctx context.Context, arg GetPtySessionByKey
 		&i.UpdatedAt,
 		&i.ExpiresAt,
 		&i.Generation,
+		&i.LifecycleMode,
 	)
 	return i, err
 }
@@ -195,19 +204,20 @@ func (q *Queries) GetPtyStopReceipt(ctx context.Context, arg GetPtyStopReceiptPa
 const insertPtySession = `-- name: InsertPtySession :execrows
 INSERT INTO workos_runtime.pty_sessions (
     session_id, owner_user_id, project_id, idempotency_key, request_digest,
-    state, created_at, updated_at, expires_at
-) VALUES ($1, $2, $3, $4, $5, 'queued', $6, $6, $7)
+    state, created_at, updated_at, expires_at, lifecycle_mode
+) VALUES ($1, $2, $3, $4, $5, 'queued', $6, $6, $7, $8)
 ON CONFLICT (owner_user_id, idempotency_key) DO NOTHING
 `
 
 type InsertPtySessionParams struct {
-	SessionID      string    `json:"session_id"`
-	OwnerUserID    string    `json:"owner_user_id"`
-	ProjectID      string    `json:"project_id"`
-	IdempotencyKey string    `json:"idempotency_key"`
-	RequestDigest  string    `json:"request_digest"`
-	CreatedAt      time.Time `json:"created_at"`
-	ExpiresAt      time.Time `json:"expires_at"`
+	SessionID      string     `json:"session_id"`
+	OwnerUserID    string     `json:"owner_user_id"`
+	ProjectID      string     `json:"project_id"`
+	IdempotencyKey string     `json:"idempotency_key"`
+	RequestDigest  string     `json:"request_digest"`
+	CreatedAt      time.Time  `json:"created_at"`
+	ExpiresAt      *time.Time `json:"expires_at"`
+	LifecycleMode  int16      `json:"lifecycle_mode"`
 }
 
 func (q *Queries) InsertPtySession(ctx context.Context, arg InsertPtySessionParams) (int64, error) {
@@ -219,6 +229,7 @@ func (q *Queries) InsertPtySession(ctx context.Context, arg InsertPtySessionPara
 		arg.RequestDigest,
 		arg.CreatedAt,
 		arg.ExpiresAt,
+		arg.LifecycleMode,
 	)
 	if err != nil {
 		return 0, err
@@ -228,7 +239,7 @@ func (q *Queries) InsertPtySession(ctx context.Context, arg InsertPtySessionPara
 
 const listActivePtySessions = `-- name: ListActivePtySessions :many
 SELECT session_id, owner_user_id, project_id, idempotency_key, request_digest,
-       state, created_at, updated_at, expires_at, generation
+       state, created_at, updated_at, expires_at, generation, lifecycle_mode
 FROM workos_runtime.pty_sessions
 WHERE state IN ('queued', 'running')
 `
@@ -253,6 +264,7 @@ func (q *Queries) ListActivePtySessions(ctx context.Context) ([]WorkosRuntimePty
 			&i.UpdatedAt,
 			&i.ExpiresAt,
 			&i.Generation,
+			&i.LifecycleMode,
 		); err != nil {
 			return nil, err
 		}
@@ -266,7 +278,7 @@ func (q *Queries) ListActivePtySessions(ctx context.Context) ([]WorkosRuntimePty
 
 const listProjectPtySessions = `-- name: ListProjectPtySessions :many
 SELECT session_id, owner_user_id, project_id, idempotency_key, request_digest,
-       state, created_at, updated_at, expires_at, generation
+       state, created_at, updated_at, expires_at, generation, lifecycle_mode
 FROM workos_runtime.pty_sessions
 WHERE owner_user_id = $1 AND project_id = $2 AND state IN ('queued', 'running')
 `
@@ -296,6 +308,7 @@ func (q *Queries) ListProjectPtySessions(ctx context.Context, arg ListProjectPty
 			&i.UpdatedAt,
 			&i.ExpiresAt,
 			&i.Generation,
+			&i.LifecycleMode,
 		); err != nil {
 			return nil, err
 		}
@@ -324,17 +337,23 @@ func (q *Queries) LockPtyRestart(ctx context.Context, arg LockPtyRestartParams) 
 }
 
 const recordPtyRestart = `-- name: RecordPtyRestart :exec
-INSERT INTO workos_runtime.pty_session_restarts(session_id,action_key,generation) VALUES($1,$2,$3)
+INSERT INTO workos_runtime.pty_session_restarts(session_id,action_key,generation,lifecycle_mode) VALUES($1,$2,$3,$4)
 `
 
 type RecordPtyRestartParams struct {
-	SessionID  string `json:"session_id"`
-	ActionKey  string `json:"action_key"`
-	Generation int64  `json:"generation"`
+	SessionID     string `json:"session_id"`
+	ActionKey     string `json:"action_key"`
+	Generation    int64  `json:"generation"`
+	LifecycleMode int16  `json:"lifecycle_mode"`
 }
 
 func (q *Queries) RecordPtyRestart(ctx context.Context, arg RecordPtyRestartParams) error {
-	_, err := q.db.Exec(ctx, recordPtyRestart, arg.SessionID, arg.ActionKey, arg.Generation)
+	_, err := q.db.Exec(ctx, recordPtyRestart,
+		arg.SessionID,
+		arg.ActionKey,
+		arg.Generation,
+		arg.LifecycleMode,
+	)
 	return err
 }
 

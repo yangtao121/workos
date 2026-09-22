@@ -9,8 +9,8 @@ INSERT INTO workos_runtime.surface_sessions (
     manifest_digest, artifact_id, artifact_digest, entrypoint, path,
     workload_id, workload_generation,
     bridge_token_hash, bridge_capabilities, installation_grant_revision,
-    created_at, expires_at
-) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22);
+    created_at, expires_at, lifecycle_mode
+) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23);
 
 -- name: GetSessionRequest :one
 SELECT owner_user_id, idempotency_key, request_digest, session_id, created_at
@@ -29,7 +29,7 @@ SELECT id, owner_user_id, device_id, idempotency_key, request_digest,
        manifest_digest, artifact_id, artifact_digest, entrypoint, path,
        workload_id, workload_generation,
        bridge_token_hash, bridge_capabilities, installation_grant_revision,
-       created_at, expires_at, closed_at
+       created_at, expires_at, closed_at, lifecycle_mode
 FROM workos_runtime.surface_sessions
 WHERE owner_user_id = $1 AND device_id = $2 AND id = $3;
 
@@ -39,7 +39,7 @@ SELECT id, owner_user_id, device_id, idempotency_key, request_digest,
        manifest_digest, artifact_id, artifact_digest, entrypoint, path,
        workload_id, workload_generation,
        bridge_token_hash, bridge_capabilities, installation_grant_revision,
-       created_at, expires_at, closed_at
+       created_at, expires_at, closed_at, lifecycle_mode
 FROM workos_runtime.surface_sessions
 WHERE owner_user_id = $1 AND device_id = $2 AND id = $3
   AND closed_at IS NULL AND expires_at > sqlc.arg(now);
@@ -63,7 +63,7 @@ RETURNING id, owner_user_id, device_id, idempotency_key, request_digest,
           manifest_digest, artifact_id, artifact_digest, entrypoint, path,
           workload_id, workload_generation,
           bridge_token_hash, bridge_capabilities, installation_grant_revision,
-          created_at, expires_at, closed_at;
+          created_at, expires_at, closed_at, lifecycle_mode;
 
 -- name: GetActiveSessionByBridgeToken :one
 SELECT id, owner_user_id, device_id, idempotency_key, request_digest,
@@ -71,7 +71,7 @@ SELECT id, owner_user_id, device_id, idempotency_key, request_digest,
        manifest_digest, artifact_id, artifact_digest, entrypoint, path,
        workload_id, workload_generation,
        bridge_token_hash, bridge_capabilities, installation_grant_revision,
-       created_at, expires_at, closed_at
+       created_at, expires_at, closed_at, lifecycle_mode
 FROM workos_runtime.surface_sessions
 WHERE owner_user_id = sqlc.arg(owner_user_id)
   AND bridge_token_hash = sqlc.arg(token_hash)

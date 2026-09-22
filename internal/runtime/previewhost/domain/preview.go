@@ -25,9 +25,8 @@ const (
 
 // PreviewTTL is the bounded serving ceiling of one preview: the same
 // 30-minute session ceiling the PTY and native runner domains enforce
-// (their domain.SessionTTL). This module deliberately duplicates the value
-// rather than importing another module's domain package; the value must
-// never be relaxed to an unbounded keep-alive.
+// (their domain.SessionTTL). ADR-0037 adds an explicit manual-stop mode;
+// legacy requests keep this bounded duration.
 const PreviewTTL = 30 * time.Minute
 
 var (

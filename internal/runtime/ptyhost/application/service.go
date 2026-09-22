@@ -59,16 +59,24 @@ func (s *Service) WithControlAuthorization(control ports.ControlAuthorizer) *Ser
 	return s
 }
 
-func requestDigest(projectID string, columns, rows int32, workingDirectory string) string {
+func requestDigest(projectID string, columns, rows int32, workingDirectory string, modes ...domain.LifecycleMode) string {
+	mode, _ := domain.NormalizeLifecycle(modes...)
+	if mode == domain.LifecycleManualStop {
+		workingDirectory += "\x00lifecycle:manual_stop"
+	}
 	sum := sha256.Sum256([]byte(fmt.Sprintf("pty:%s:%d:%d:%s", projectID, columns, rows, workingDirectory)))
 	return "sha256:" + hex.EncodeToString(sum[:])
 }
 
-func (s *Service) Create(ctx context.Context, ownerUserID, projectID, idempotencyKey string, columns, rows int32) (domain.Session, error) {
+func (s *Service) Create(ctx context.Context, ownerUserID, projectID, idempotencyKey string, columns, rows int32, modes ...domain.LifecycleMode) (domain.Session, error) {
 	s.opMu.Lock()
 	defer s.opMu.Unlock()
 	if !domain.ValidUUIDv7(ownerUserID) || !domain.ValidUUIDv7(projectID) || idempotencyKey == "" || len(idempotencyKey) > 128 || !domain.ValidSize(columns, rows) {
 		return domain.Session{}, domain.ErrInvalid
+	}
+	mode, err := domain.NormalizeLifecycle(modes...)
+	if err != nil {
+		return domain.Session{}, err
 	}
 	grant, err := s.workspaceGrant(ctx, ownerUserID, projectID)
 	if err != nil {
@@ -76,12 +84,12 @@ func (s *Service) Create(ctx context.Context, ownerUserID, projectID, idempotenc
 	}
 	workingDirectory := grant.Directory
 
-	digest := requestDigest(projectID, columns, rows, workingDirectory)
+	digest := requestDigest(projectID, columns, rows, workingDirectory, mode)
 	now := time.Now().UTC().Truncate(time.Microsecond)
 	session := domain.Session{
-		Generation: 1, SessionID: s.generator.New(), OwnerUserID: ownerUserID, ProjectID: projectID,
+		LifecycleMode: mode, Generation: 1, SessionID: s.generator.New(), OwnerUserID: ownerUserID, ProjectID: projectID,
 		IdempotencyKey: idempotencyKey, RequestDigest: digest,
-		State: domain.StateQueued, CreatedAt: now, UpdatedAt: now, ExpiresAt: now.Add(domain.SessionTTL),
+		State: domain.StateQueued, CreatedAt: now, UpdatedAt: now, ExpiresAt: mode.Expiry(now),
 	}
 	storedDigest, created, err := s.store.InsertSession(ctx, session)
 	if err != nil {
@@ -113,7 +121,7 @@ func (s *Service) Create(ctx context.Context, ownerUserID, projectID, idempotenc
 		}
 		return domain.Session{}, domain.ErrEngineUnavailable
 	}
-	terminal, err := s.launch(ctx, columns, rows, grant)
+	terminal, err := s.launch(ctx, columns, rows, grant, mode)
 	if err != nil {
 		s.logger.Warn("pty launch failed", "error", err)
 		release()
@@ -166,7 +174,13 @@ func (s *Service) Get(ctx context.Context, ownerUserID, sessionID string) (domai
 	if !domain.ValidUUIDv7(ownerUserID) || !domain.ValidUUIDv7(sessionID) {
 		return domain.Session{}, domain.ErrInvalid
 	}
-	return s.store.GetSession(ctx, ownerUserID, sessionID)
+	s.opMu.Lock()
+	defer s.opMu.Unlock()
+	row, err := s.store.GetSession(ctx, ownerUserID, sessionID)
+	if err != nil {
+		return domain.Session{}, err
+	}
+	return s.reconcileSession(ctx, row)
 }
 
 // ListProject returns the owner's non-terminal sessions of one project — the
@@ -312,6 +326,8 @@ func (s *Service) reap(sessionID string) {
 
 // Sweep expires idle sessions and reaps their children.
 func (s *Service) Sweep(ctx context.Context) error {
+	s.opMu.Lock()
+	defer s.opMu.Unlock()
 	expired, err := s.store.ExpireIdle(ctx, time.Now().UTC())
 	if err != nil {
 		return err
@@ -319,7 +335,7 @@ func (s *Service) Sweep(ctx context.Context) error {
 	for _, sessionID := range expired {
 		s.reap(sessionID)
 	}
-	return nil
+	return s.reconcileActive(ctx)
 }
 
 // Reconcile finalizes durable rows whose process is gone (A13): the runtime
@@ -330,35 +346,56 @@ func (s *Service) Sweep(ctx context.Context) error {
 // startup sweep; the interactive IO path already refuses such rows (the
 // terminal lookup is NotFound), this makes the discovery view agree.
 func (s *Service) Reconcile(ctx context.Context) error {
+	s.opMu.Lock()
+	defer s.opMu.Unlock()
+	return s.reconcileActive(ctx)
+}
+func (s *Service) reconcileActive(ctx context.Context) error {
 	sessions, err := s.store.ListActive(ctx)
 	if err != nil {
 		return err
 	}
 	for _, session := range sessions {
-		if session.State.Terminal() {
-			continue
-		}
-		s.mu.Lock()
-		terminal := s.terminals[session.SessionID]
-		s.mu.Unlock()
-		if terminal != nil && !terminal.Exited() {
-			continue
-		}
-		s.reap(session.SessionID)
-		if err := s.store.CloseSession(ctx, session.OwnerUserID, session.SessionID, domain.StateFailed, time.Now().UTC()); err != nil {
+		if _, err := s.reconcileSession(ctx, session); err != nil {
 			return err
 		}
 	}
 	return nil
 }
+func (s *Service) reconcileSession(ctx context.Context, session domain.Session) (domain.Session, error) {
+	if session.State.Terminal() {
+		return session, nil
+	}
+	s.mu.Lock()
+	terminal := s.terminals[session.SessionID]
+	s.mu.Unlock()
+	state := session.State
+	if session.LifecycleMode.Expired(session.ExpiresAt, time.Now().UTC()) {
+		state = domain.StateClosed
+	} else if terminal == nil || terminal.Exited() {
+		state = domain.StateFailed
+	}
+	if state == session.State {
+		return session, nil
+	}
+	s.reap(session.SessionID)
+	if err := s.store.CloseSession(ctx, session.OwnerUserID, session.SessionID, state, time.Now().UTC()); err != nil {
+		return domain.Session{}, err
+	}
+	return s.store.GetSession(ctx, session.OwnerUserID, session.SessionID)
+}
 
 // Restart preserves workload identity, reserves a durable new generation,
 // and starts only on the first delivery of this action key.
-func (s *Service) Restart(ctx context.Context, owner, id, key string, fence func() error) (domain.Session, error) {
+func (s *Service) Restart(ctx context.Context, owner, id, key string, fence func() error, modes ...domain.LifecycleMode) (domain.Session, error) {
 	s.opMu.Lock()
 	defer s.opMu.Unlock()
 	if !domain.ValidUUIDv7(owner) || !domain.ValidUUIDv7(id) || key == "" || len(key) > 128 {
 		return domain.Session{}, domain.ErrInvalid
+	}
+	mode, err := domain.NormalizeLifecycle(modes...)
+	if err != nil {
+		return domain.Session{}, err
 	}
 	session, err := s.store.GetSession(ctx, owner, id)
 	if err != nil {
@@ -368,7 +405,7 @@ func (s *Service) Restart(ctx context.Context, owner, id, key string, fence func
 	if !ok {
 		return domain.Session{}, domain.ErrEngineUnavailable
 	}
-	generation, fresh, err := restarts.BeginRestart(ctx, owner, id, key, time.Now().UTC())
+	generation, fresh, err := restarts.BeginRestart(ctx, owner, id, key, time.Now().UTC(), mode)
 	if err != nil {
 		return domain.Session{}, err
 	}
@@ -409,7 +446,7 @@ func (s *Service) Restart(ctx context.Context, owner, id, key string, fence func
 	if err != nil {
 		return domain.Session{}, err
 	}
-	terminal, err := s.launch(ctx, 80, 24, grant)
+	terminal, err := s.launch(ctx, 80, 24, grant, mode)
 	if err != nil {
 		release()
 		return domain.Session{}, domain.ErrEngineUnavailable

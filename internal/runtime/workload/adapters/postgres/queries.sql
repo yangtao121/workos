@@ -7,7 +7,7 @@ INSERT INTO workos_runtime.workloads (
     effective_cpu_quota_us, effective_memory_high_bytes, effective_memory_max_bytes,
     effective_pids_max, effective_startup_seconds, effective_restart_limit,
     generation, state, container_name, health_verdict, last_exit_category,
-    created_at, updated_at
+    created_at, updated_at, lifecycle_mode
 ) VALUES (
     sqlc.arg(id), sqlc.arg(owner_user_id), sqlc.arg(project_id), sqlc.arg(app_instance_id),
     sqlc.arg(app_id), sqlc.arg(app_version), sqlc.arg(manifest_digest), sqlc.arg(artifact_id), sqlc.arg(artifact_digest), sqlc.arg(image),
@@ -17,7 +17,7 @@ INSERT INTO workos_runtime.workloads (
     sqlc.arg(effective_startup_seconds), sqlc.arg(effective_restart_limit),
     sqlc.arg(generation), sqlc.arg(state), sqlc.arg(container_name),
     sqlc.arg(health_verdict), sqlc.arg(last_exit_category),
-    sqlc.arg(created_at), sqlc.arg(updated_at)
+    sqlc.arg(created_at), sqlc.arg(updated_at), sqlc.arg(lifecycle_mode)
 );
 
 -- name: InsertWorkloadOperation :execrows
@@ -117,6 +117,7 @@ WHERE id = sqlc.arg(id) AND state = 'starting' AND generation = sqlc.arg(generat
 -- generation+1, clear the engine facts, and restart the count.
 UPDATE workos_runtime.workloads SET
     state = 'starting',
+    lifecycle_mode = CASE WHEN sqlc.arg(lifecycle_mode)::smallint=0 THEN lifecycle_mode ELSE sqlc.arg(lifecycle_mode)::smallint END,
     generation = sqlc.arg(generation),
     restart_count = sqlc.arg(restart_count),
     container_id = NULL,
@@ -133,7 +134,7 @@ UPDATE workos_runtime.workloads SET
     updated_at = sqlc.arg(updated_at)
 WHERE id = sqlc.arg(id)
   AND state = sqlc.arg(from_state)
-  AND state IN ('running', 'failed')
+  AND state IN ('running', 'failed', 'stopped')
   AND generation + 1 = sqlc.arg(generation)
   AND restart_count + 1 = sqlc.arg(restart_count);
 
@@ -191,3 +192,6 @@ UPDATE workos_runtime.workloads SET idle_since = NULL
 WHERE id = sqlc.arg(id) AND state = 'running'
   AND generation = sqlc.arg(generation)
   AND idle_since IS NOT NULL;
+
+-- name: ListProjectWorkloads :many
+SELECT * FROM workos_runtime.workloads WHERE owner_user_id=$1 AND project_id=$2 AND state NOT IN ('stopped','failed') ORDER BY created_at,id;

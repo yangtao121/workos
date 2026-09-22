@@ -17,6 +17,7 @@ type WorkspaceAuthorizer interface {
 	AuthorizeWorkspace(context.Context, string, string) (WorkspaceGrant, error)
 }
 type PreviewRecord struct {
+	LifecycleMode                                                        domain.LifecycleMode
 	PreviewID, OwnerUserID, ProjectID, IdempotencyKey, WorkspaceSourceID string
 	Command, AccessToken, RequestDigest, BindingID                       string
 	Port                                                                 int32
@@ -27,10 +28,10 @@ type PreviewRecord struct {
 }
 
 func (r PreviewRecord) Live(now time.Time) bool {
-	return r.State == domain.StateRunning && r.ExpiresAt.After(now)
+	return r.State == domain.StateRunning && !r.LifecycleMode.Expired(r.ExpiresAt, now)
 }
 func (r PreviewRecord) EffectiveState(now time.Time) string {
-	if (r.State == domain.StateRunning || r.State == domain.StateQueued) && !r.ExpiresAt.After(now) {
+	if (r.State == domain.StateRunning || r.State == domain.StateQueued) && r.LifecycleMode.Expired(r.ExpiresAt, now) {
 		return domain.StateExpired
 	}
 	return r.State
@@ -46,7 +47,7 @@ type Store interface {
 	ListActive(context.Context) ([]PreviewRecord, error)
 	// Action atomically consumes the key, changes state, and advances generation
 	// for restart. A duplicate never launches a process or reclaims a newer one.
-	Action(context.Context, string, string, string, string, time.Time) (PreviewRecord, bool, error)
+	Action(context.Context, string, string, string, string, time.Time, ...domain.LifecycleMode) (PreviewRecord, bool, error)
 }
 type Request struct {
 	Method, Path, Query string

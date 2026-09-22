@@ -51,6 +51,7 @@ type WorkosRuntimeWorkload struct {
 	IdleSince                *time.Time      `json:"idle_since"`
 	ArtifactID               string          `json:"artifact_id"`
 	ArtifactDigest           string          `json:"artifact_digest"`
+	LifecycleMode            int16           `json:"lifecycle_mode"`
 }
 
 type WorkosRuntimeWorkloadOperation struct {

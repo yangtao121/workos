@@ -25,7 +25,7 @@ func sessionProto(session domain.Session, engine string) *surfacev1.PtySession {
 	return &surfacev1.PtySession{
 		Id: session.SessionID, OwnerUserId: session.OwnerUserID, ProjectId: session.ProjectID,
 		State: string(session.State), Engine: engine,
-		CreatedAt: timestamppb.New(session.CreatedAt), ExpiresAt: timestamppb.New(session.ExpiresAt),
+		CreatedAt: timestamppb.New(session.CreatedAt), ExpiresAt: expiryProto(session), LifecycleMode: surfacev1.LifecycleMode(session.LifecycleMode),
 	}
 }
 
@@ -34,7 +34,7 @@ func (h *PtyHandler) CreatePtySession(ctx context.Context, req *connect.Request[
 	if err != nil {
 		return nil, connect.NewError(connect.CodeUnauthenticated, err)
 	}
-	session, err := h.service.Create(ctx, owner.UserID, req.Msg.GetProjectId(), req.Msg.GetIdempotencyKey(), req.Msg.GetColumns(), req.Msg.GetRows())
+	session, err := h.service.Create(ctx, owner.UserID, req.Msg.GetProjectId(), req.Msg.GetIdempotencyKey(), req.Msg.GetColumns(), req.Msg.GetRows(), domain.LifecycleMode(req.Msg.GetLifecycleMode()))
 	if err != nil {
 		return nil, ptyError(err)
 	}
@@ -120,4 +120,11 @@ func ptyError(err error) error {
 		code = connect.CodePermissionDenied
 	}
 	return connect.NewError(code, errors.New("pty session request failed"))
+}
+
+func expiryProto(session domain.Session) *timestamppb.Timestamp {
+	if session.LifecycleMode == domain.LifecycleManualStop {
+		return nil
+	}
+	return timestamppb.New(session.ExpiresAt)
 }

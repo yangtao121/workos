@@ -277,7 +277,7 @@ func (r *Repository) transition(ctx context.Context, queries workloaddb.Querier,
 		}
 		return nil
 	case to == domain.StateStarting && from != domain.StatePending:
-		rows, err := queries.RestartWorkloadFrom(ctx, workloaddb.RestartWorkloadFromParams{
+		rows, err := queries.RestartWorkloadFrom(ctx, workloaddb.RestartWorkloadFromParams{LifecycleMode: int16(facts.LifecycleMode),
 			FromState:    string(from),
 			Generation:   facts.Generation,
 			RestartCount: int32(facts.RestartCount),
@@ -389,7 +389,7 @@ func workloadFromRow(row workloaddb.WorkosRuntimeWorkload) domain.Workload {
 	var requested domain.RequestedPolicy
 	_ = json.Unmarshal(row.RequestedPolicy, &requested)
 	workload := domain.Workload{
-		ID: row.ID, OwnerUserID: row.OwnerUserID, ProjectID: row.ProjectID,
+		LifecycleMode: int32(row.LifecycleMode), ID: row.ID, OwnerUserID: row.OwnerUserID, ProjectID: row.ProjectID,
 		AppInstanceID: row.AppInstanceID, AppID: row.AppID, AppVersion: row.AppVersion,
 		ArtifactID: row.ArtifactID, ArtifactDigest: row.ArtifactDigest,
 		ManifestDigest: row.ManifestDigest, Image: row.Image, Command: command,
@@ -451,7 +451,7 @@ func workloadParams(workload domain.Workload) workloaddb.InsertWorkloadParams {
 		requested = []byte("{}")
 	}
 	return workloaddb.InsertWorkloadParams{
-		ID: workload.ID, OwnerUserID: workload.OwnerUserID, ProjectID: workload.ProjectID,
+		LifecycleMode: int16(max(int32(1), workload.LifecycleMode)), ID: workload.ID, OwnerUserID: workload.OwnerUserID, ProjectID: workload.ProjectID,
 		AppInstanceID: workload.AppInstanceID, AppID: workload.AppID, AppVersion: workload.AppVersion,
 		ArtifactID: workload.ArtifactID, ArtifactDigest: workload.ArtifactDigest,
 		ManifestDigest: workload.ManifestDigest, Image: workload.Image,
@@ -497,4 +497,16 @@ func storeError(operation string, err error) error {
 		return fmt.Errorf("%s: %w: %w", operation, ports.ErrStoreUnavailable, err)
 	}
 	return fmt.Errorf("%s: %w", operation, err)
+}
+
+func (r *Repository) ListProject(ctx context.Context, owner, project string) ([]domain.Workload, error) {
+	rows, err := r.queries.ListProjectWorkloads(ctx, workloaddb.ListProjectWorkloadsParams{OwnerUserID: owner, ProjectID: project})
+	if err != nil {
+		return nil, storeError("list project workloads", err)
+	}
+	result := make([]domain.Workload, 0, len(rows))
+	for _, row := range rows {
+		result = append(result, workloadFromRow(row))
+	}
+	return result, nil
 }

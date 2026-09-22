@@ -214,7 +214,7 @@ func (m *Manager) reconcileStarting(ctx context.Context, workload domain.Workloa
 		operation = domain.WorkloadOperation{
 			WorkloadID: workload.ID, OperationKey: "reconcile:" + fmt.Sprintf("%d", workload.Generation),
 			Operation: domain.OperationEnsure, RequestDigest: domain.OperationDigest(
-				domain.OperationEnsure, workload.ID, workload.Image, workload.Command, workload.Port, workload.Requested),
+				domain.OperationEnsure, workload.ID, workload.Image, workload.Command, workload.Port, workload.Requested, workload.LifecycleMode),
 			ResultGeneration: workload.Generation,
 		}
 	}
@@ -308,6 +308,9 @@ func (m *Manager) reconcileRunning(ctx context.Context, workload domain.Workload
 				WorkloadID: workload.ID, OperationKey: "reconcile:fail-safe", Reason: "fail_safe",
 			})
 		}
+	}
+	if workload.LifecycleMode == domain.LifecycleManualStop {
+		return
 	}
 	// Idle TTL is anchored to the durable beginning of the current no-surface
 	// interval, never a lifecycle/update timestamp. A newly idle long-lived
@@ -406,3 +409,32 @@ func (m *Manager) removeOrphans(ctx context.Context, known map[string]struct{}) 
 		}
 	}
 }
+
+// GetOwned returns exact workload facts, including stopped generations.
+func (m *Manager) GetOwned(ctx context.Context, owner, id string) (domain.Workload, error) {
+	if !domain.ValidUUIDv7(owner) || !domain.ValidUUIDv7(id) {
+		return domain.Workload{}, domain.ErrInvalid
+	}
+	row, err := m.repository.Get(ctx, id)
+	if err != nil {
+		if errors.Is(err, domain.ErrNotFound) {
+			return domain.Workload{}, domain.ErrNotFound
+		}
+		return domain.Workload{}, domain.ErrUnavailable
+	}
+	if row.OwnerUserID != owner {
+		return domain.Workload{}, domain.ErrNotFound
+	}
+	return row, nil
+}
+func (m *Manager) ListProject(ctx context.Context, owner, project string) ([]domain.Workload, error) {
+	if !domain.ValidUUIDv7(owner) || !domain.ValidUUIDv7(project) {
+		return nil, domain.ErrInvalid
+	}
+	repository, ok := m.repository.(ports.ProjectWorkloadRepository)
+	if !ok {
+		return nil, domain.ErrUnavailable
+	}
+	return repository.ListProject(ctx, owner, project)
+}
+func (m *Manager) IdleLimitSeconds() int64 { return int64(m.config.IdleTTL.Seconds()) }

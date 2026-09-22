@@ -9,14 +9,15 @@ import (
 )
 
 type WorkosRuntimePtySession struct {
-	SessionID      string    `json:"session_id"`
-	OwnerUserID    string    `json:"owner_user_id"`
-	ProjectID      string    `json:"project_id"`
-	IdempotencyKey string    `json:"idempotency_key"`
-	RequestDigest  string    `json:"request_digest"`
-	State          string    `json:"state"`
-	CreatedAt      time.Time `json:"created_at"`
-	UpdatedAt      time.Time `json:"updated_at"`
-	ExpiresAt      time.Time `json:"expires_at"`
-	Generation     int64     `json:"generation"`
+	SessionID      string     `json:"session_id"`
+	OwnerUserID    string     `json:"owner_user_id"`
+	ProjectID      string     `json:"project_id"`
+	IdempotencyKey string     `json:"idempotency_key"`
+	RequestDigest  string     `json:"request_digest"`
+	State          string     `json:"state"`
+	CreatedAt      time.Time  `json:"created_at"`
+	UpdatedAt      time.Time  `json:"updated_at"`
+	ExpiresAt      *time.Time `json:"expires_at"`
+	Generation     int64      `json:"generation"`
+	LifecycleMode  int16      `json:"lifecycle_mode"`
 }

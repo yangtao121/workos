@@ -275,3 +275,45 @@ func TestLANRejectsUnboundedPolicy(t *testing.T) {
 		}
 	}
 }
+
+func TestRealManualStopHasNoDisplayDeadline(t *testing.T) {
+	if os.Getenv("WORKOS_NATIVE_ENGINE_TEST") != "1" {
+		t.Skip("requires native X11 gate")
+	}
+	e, err := New("Xvfb", "xterm", "ffmpeg", "xdotool", t.TempDir(), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	value, err := e.LaunchLifecycle(ctx, 640, 480, "", false, domain.LifecycleManualStop)
+	if err != nil {
+		t.Fatal(err)
+	}
+	d := value.(*display)
+	defer d.Stop()
+	cancel()
+	if _, ok := d.runCtx.Deadline(); ok {
+		t.Fatal("manual display retains bounded context deadline")
+	}
+	select {
+	case <-d.runCtx.Done():
+		t.Fatal("admitting request stopped display")
+	case <-time.After(100 * time.Millisecond):
+	}
+	if d.Exited() {
+		t.Fatal("manual display exited")
+	}
+	d.Stop()
+	if !d.Exited() {
+		t.Fatal("explicit stop did not reap display")
+	}
+	bounded, err := e.Launch(context.Background(), 640, 480, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer bounded.Stop()
+	deadline, ok := bounded.(*display).runCtx.Deadline()
+	if !ok || time.Until(deadline) > domain.SessionTTL || time.Until(deadline) < domain.SessionTTL-time.Minute {
+		t.Fatal("legacy bounded deadline changed")
+	}
+}

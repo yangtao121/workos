@@ -44,6 +44,7 @@ var (
 
 // Session is the durable pty session row.
 type Session struct {
+	LifecycleMode  LifecycleMode
 	Generation     int64
 	SessionID      string
 	OwnerUserID    string

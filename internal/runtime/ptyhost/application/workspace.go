@@ -21,7 +21,13 @@ func (s *Service) workspaceGrant(ctx context.Context, owner, project string) (po
 	}
 	return grant, nil
 }
-func (s *Service) launch(ctx context.Context, a, b int32, g ports.WorkspaceGrant) (ports.Terminal, error) {
+func (s *Service) launch(ctx context.Context, a, b int32, g ports.WorkspaceGrant, mode domain.LifecycleMode) (ports.Terminal, error) {
+	if engine, ok := s.engine.(ports.LifecycleEngine); ok {
+		return engine.LaunchLifecycle(ctx, a, b, g.Directory, g.ReadOnly, mode)
+	}
+	if mode == domain.LifecycleManualStop {
+		return nil, domain.ErrEngineUnavailable
+	}
 	if engine, ok := s.engine.(ports.WorkspaceEngine); ok {
 		return engine.LaunchWorkspace(ctx, a, b, g.Directory, g.ReadOnly)
 	}

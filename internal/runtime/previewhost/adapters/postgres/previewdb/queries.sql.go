@@ -42,7 +42,7 @@ func (q *Queries) ActivateWorkspacePreview(ctx context.Context, arg ActivateWork
 }
 
 const getPreviewByOwnerKey = `-- name: GetPreviewByOwnerKey :one
-SELECT preview_id, owner_user_id, project_id, idempotency_key, workspace_source_id, read_only, state, created_at, updated_at, expires_at, command, port, generation, access_token, request_digest, binding_id, binding_revision FROM workos_runtime.workspace_previews WHERE owner_user_id=$1 AND idempotency_key=$2
+SELECT preview_id, owner_user_id, project_id, idempotency_key, workspace_source_id, read_only, state, created_at, updated_at, expires_at, command, port, generation, access_token, request_digest, binding_id, binding_revision, lifecycle_mode FROM workos_runtime.workspace_previews WHERE owner_user_id=$1 AND idempotency_key=$2
 `
 
 type GetPreviewByOwnerKeyParams struct {
@@ -71,12 +71,13 @@ func (q *Queries) GetPreviewByOwnerKey(ctx context.Context, arg GetPreviewByOwne
 		&i.RequestDigest,
 		&i.BindingID,
 		&i.BindingRevision,
+		&i.LifecycleMode,
 	)
 	return i, err
 }
 
 const getWorkspacePreview = `-- name: GetWorkspacePreview :one
-SELECT preview_id, owner_user_id, project_id, idempotency_key, workspace_source_id, read_only, state, created_at, updated_at, expires_at, command, port, generation, access_token, request_digest, binding_id, binding_revision FROM workos_runtime.workspace_previews WHERE preview_id=$1
+SELECT preview_id, owner_user_id, project_id, idempotency_key, workspace_source_id, read_only, state, created_at, updated_at, expires_at, command, port, generation, access_token, request_digest, binding_id, binding_revision, lifecycle_mode FROM workos_runtime.workspace_previews WHERE preview_id=$1
 `
 
 func (q *Queries) GetWorkspacePreview(ctx context.Context, previewID string) (WorkosRuntimeWorkspacePreview, error) {
@@ -100,12 +101,13 @@ func (q *Queries) GetWorkspacePreview(ctx context.Context, previewID string) (Wo
 		&i.RequestDigest,
 		&i.BindingID,
 		&i.BindingRevision,
+		&i.LifecycleMode,
 	)
 	return i, err
 }
 
 const getWorkspacePreviewAction = `-- name: GetWorkspacePreviewAction :one
-SELECT action FROM workos_runtime.workspace_preview_actions WHERE preview_id=$1 AND action_key=$2
+SELECT action, lifecycle_mode FROM workos_runtime.workspace_preview_actions WHERE preview_id=$1 AND action_key=$2
 `
 
 type GetWorkspacePreviewActionParams struct {
@@ -113,16 +115,21 @@ type GetWorkspacePreviewActionParams struct {
 	ActionKey string `json:"action_key"`
 }
 
-func (q *Queries) GetWorkspacePreviewAction(ctx context.Context, arg GetWorkspacePreviewActionParams) (string, error) {
+type GetWorkspacePreviewActionRow struct {
+	Action        string `json:"action"`
+	LifecycleMode int16  `json:"lifecycle_mode"`
+}
+
+func (q *Queries) GetWorkspacePreviewAction(ctx context.Context, arg GetWorkspacePreviewActionParams) (GetWorkspacePreviewActionRow, error) {
 	row := q.db.QueryRow(ctx, getWorkspacePreviewAction, arg.PreviewID, arg.ActionKey)
-	var action string
-	err := row.Scan(&action)
-	return action, err
+	var i GetWorkspacePreviewActionRow
+	err := row.Scan(&i.Action, &i.LifecycleMode)
+	return i, err
 }
 
 const insertWorkspacePreview = `-- name: InsertWorkspacePreview :execrows
-INSERT INTO workos_runtime.workspace_previews(preview_id,owner_user_id,project_id,idempotency_key,workspace_source_id,read_only,state,created_at,updated_at,expires_at,command,port,generation,access_token,request_digest,binding_id,binding_revision)
-VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17) ON CONFLICT DO NOTHING
+INSERT INTO workos_runtime.workspace_previews(preview_id,owner_user_id,project_id,idempotency_key,workspace_source_id,read_only,state,created_at,updated_at,expires_at,command,port,generation,access_token,request_digest,binding_id,binding_revision,lifecycle_mode)
+VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18) ON CONFLICT DO NOTHING
 `
 
 type InsertWorkspacePreviewParams struct {
@@ -143,6 +150,7 @@ type InsertWorkspacePreviewParams struct {
 	RequestDigest     string             `json:"request_digest"`
 	BindingID         string             `json:"binding_id"`
 	BindingRevision   int64              `json:"binding_revision"`
+	LifecycleMode     int16              `json:"lifecycle_mode"`
 }
 
 func (q *Queries) InsertWorkspacePreview(ctx context.Context, arg InsertWorkspacePreviewParams) (int64, error) {
@@ -164,6 +172,7 @@ func (q *Queries) InsertWorkspacePreview(ctx context.Context, arg InsertWorkspac
 		arg.RequestDigest,
 		arg.BindingID,
 		arg.BindingRevision,
+		arg.LifecycleMode,
 	)
 	if err != nil {
 		return 0, err
@@ -172,7 +181,7 @@ func (q *Queries) InsertWorkspacePreview(ctx context.Context, arg InsertWorkspac
 }
 
 const listActiveWorkspacePreviews = `-- name: ListActiveWorkspacePreviews :many
-SELECT preview_id, owner_user_id, project_id, idempotency_key, workspace_source_id, read_only, state, created_at, updated_at, expires_at, command, port, generation, access_token, request_digest, binding_id, binding_revision FROM workos_runtime.workspace_previews WHERE state IN ('queued','running')
+SELECT preview_id, owner_user_id, project_id, idempotency_key, workspace_source_id, read_only, state, created_at, updated_at, expires_at, command, port, generation, access_token, request_digest, binding_id, binding_revision, lifecycle_mode FROM workos_runtime.workspace_previews WHERE state IN ('queued','running')
 `
 
 func (q *Queries) ListActiveWorkspacePreviews(ctx context.Context) ([]WorkosRuntimeWorkspacePreview, error) {
@@ -202,6 +211,7 @@ func (q *Queries) ListActiveWorkspacePreviews(ctx context.Context) ([]WorkosRunt
 			&i.RequestDigest,
 			&i.BindingID,
 			&i.BindingRevision,
+			&i.LifecycleMode,
 		); err != nil {
 			return nil, err
 		}
@@ -214,7 +224,7 @@ func (q *Queries) ListActiveWorkspacePreviews(ctx context.Context) ([]WorkosRunt
 }
 
 const listProjectWorkspacePreviews = `-- name: ListProjectWorkspacePreviews :many
-SELECT preview_id, owner_user_id, project_id, idempotency_key, workspace_source_id, read_only, state, created_at, updated_at, expires_at, command, port, generation, access_token, request_digest, binding_id, binding_revision FROM workos_runtime.workspace_previews WHERE owner_user_id=$1 AND project_id=$2 ORDER BY created_at DESC,preview_id DESC LIMIT $3
+SELECT preview_id, owner_user_id, project_id, idempotency_key, workspace_source_id, read_only, state, created_at, updated_at, expires_at, command, port, generation, access_token, request_digest, binding_id, binding_revision, lifecycle_mode FROM workos_runtime.workspace_previews WHERE owner_user_id=$1 AND project_id=$2 ORDER BY created_at DESC,preview_id DESC LIMIT $3
 `
 
 type ListProjectWorkspacePreviewsParams struct {
@@ -250,6 +260,7 @@ func (q *Queries) ListProjectWorkspacePreviews(ctx context.Context, arg ListProj
 			&i.RequestDigest,
 			&i.BindingID,
 			&i.BindingRevision,
+			&i.LifecycleMode,
 		); err != nil {
 			return nil, err
 		}
@@ -262,7 +273,7 @@ func (q *Queries) ListProjectWorkspacePreviews(ctx context.Context, arg ListProj
 }
 
 const lockWorkspacePreview = `-- name: LockWorkspacePreview :one
-SELECT preview_id, owner_user_id, project_id, idempotency_key, workspace_source_id, read_only, state, created_at, updated_at, expires_at, command, port, generation, access_token, request_digest, binding_id, binding_revision FROM workos_runtime.workspace_previews WHERE owner_user_id=$1 AND preview_id=$2 FOR UPDATE
+SELECT preview_id, owner_user_id, project_id, idempotency_key, workspace_source_id, read_only, state, created_at, updated_at, expires_at, command, port, generation, access_token, request_digest, binding_id, binding_revision, lifecycle_mode FROM workos_runtime.workspace_previews WHERE owner_user_id=$1 AND preview_id=$2 FOR UPDATE
 `
 
 type LockWorkspacePreviewParams struct {
@@ -291,19 +302,21 @@ func (q *Queries) LockWorkspacePreview(ctx context.Context, arg LockWorkspacePre
 		&i.RequestDigest,
 		&i.BindingID,
 		&i.BindingRevision,
+		&i.LifecycleMode,
 	)
 	return i, err
 }
 
 const recordWorkspacePreviewAction = `-- name: RecordWorkspacePreviewAction :exec
-INSERT INTO workos_runtime.workspace_preview_actions(preview_id,action_key,action,generation) VALUES($1,$2,$3,$4)
+INSERT INTO workos_runtime.workspace_preview_actions(preview_id,action_key,action,generation,lifecycle_mode) VALUES($1,$2,$3,$4,$5)
 `
 
 type RecordWorkspacePreviewActionParams struct {
-	PreviewID  string `json:"preview_id"`
-	ActionKey  string `json:"action_key"`
-	Action     string `json:"action"`
-	Generation int64  `json:"generation"`
+	PreviewID     string `json:"preview_id"`
+	ActionKey     string `json:"action_key"`
+	Action        string `json:"action"`
+	Generation    int64  `json:"generation"`
+	LifecycleMode int16  `json:"lifecycle_mode"`
 }
 
 func (q *Queries) RecordWorkspacePreviewAction(ctx context.Context, arg RecordWorkspacePreviewActionParams) error {
@@ -312,19 +325,21 @@ func (q *Queries) RecordWorkspacePreviewAction(ctx context.Context, arg RecordWo
 		arg.ActionKey,
 		arg.Action,
 		arg.Generation,
+		arg.LifecycleMode,
 	)
 	return err
 }
 
 const restartWorkspacePreview = `-- name: RestartWorkspacePreview :one
-UPDATE workos_runtime.workspace_previews SET generation=generation+1,state='queued',updated_at=$3,expires_at=$4 WHERE owner_user_id=$1 AND preview_id=$2 RETURNING preview_id, owner_user_id, project_id, idempotency_key, workspace_source_id, read_only, state, created_at, updated_at, expires_at, command, port, generation, access_token, request_digest, binding_id, binding_revision
+UPDATE workos_runtime.workspace_previews SET generation=generation+1,state='queued',updated_at=$3,expires_at=$4,lifecycle_mode=$5 WHERE owner_user_id=$1 AND preview_id=$2 RETURNING preview_id, owner_user_id, project_id, idempotency_key, workspace_source_id, read_only, state, created_at, updated_at, expires_at, command, port, generation, access_token, request_digest, binding_id, binding_revision, lifecycle_mode
 `
 
 type RestartWorkspacePreviewParams struct {
-	OwnerUserID string             `json:"owner_user_id"`
-	PreviewID   string             `json:"preview_id"`
-	UpdatedAt   pgtype.Timestamptz `json:"updated_at"`
-	ExpiresAt   pgtype.Timestamptz `json:"expires_at"`
+	OwnerUserID   string             `json:"owner_user_id"`
+	PreviewID     string             `json:"preview_id"`
+	UpdatedAt     pgtype.Timestamptz `json:"updated_at"`
+	ExpiresAt     pgtype.Timestamptz `json:"expires_at"`
+	LifecycleMode int16              `json:"lifecycle_mode"`
 }
 
 func (q *Queries) RestartWorkspacePreview(ctx context.Context, arg RestartWorkspacePreviewParams) (WorkosRuntimeWorkspacePreview, error) {
@@ -333,6 +348,7 @@ func (q *Queries) RestartWorkspacePreview(ctx context.Context, arg RestartWorksp
 		arg.PreviewID,
 		arg.UpdatedAt,
 		arg.ExpiresAt,
+		arg.LifecycleMode,
 	)
 	var i WorkosRuntimeWorkspacePreview
 	err := row.Scan(
@@ -353,6 +369,7 @@ func (q *Queries) RestartWorkspacePreview(ctx context.Context, arg RestartWorksp
 		&i.RequestDigest,
 		&i.BindingID,
 		&i.BindingRevision,
+		&i.LifecycleMode,
 	)
 	return i, err
 }

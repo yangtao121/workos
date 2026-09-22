@@ -40,7 +40,7 @@ func (h *PreviewHandler) StartWorkspacePreview(ctx context.Context, req *connect
 	if err != nil {
 		return nil, connect.NewError(connect.CodeUnauthenticated, err)
 	}
-	record, err := h.service.Start(ctx, id.UserID, req.Msg.GetProjectId(), req.Msg.GetIdempotencyKey(), req.Msg.GetCommand(), req.Msg.GetPort())
+	record, err := h.service.Start(ctx, id.UserID, req.Msg.GetProjectId(), req.Msg.GetIdempotencyKey(), req.Msg.GetCommand(), req.Msg.GetPort(), domain.LifecycleMode(req.Msg.GetLifecycleMode()))
 	if err != nil {
 		if errors.Is(err, domain.ErrNoWorkspace) {
 			return nil, connect.NewError(connect.CodeFailedPrecondition,
@@ -95,7 +95,7 @@ func previewProto(record ports.PreviewRecord) *surfacev1.WorkspacePreview {
 		Id: record.PreviewID, OwnerUserId: record.OwnerUserID, ProjectId: record.ProjectID,
 		WorkspaceSourceId: record.WorkspaceSourceID, ReadOnly: record.ReadOnly,
 		Url: PreviewURL(record.PreviewID, record.AccessToken), State: record.State, Generation: record.Generation, Command: record.Command, Port: record.Port,
-		CreatedAt: timestamppb.New(record.CreatedAt), ExpiresAt: timestamppb.New(record.ExpiresAt),
+		CreatedAt: timestamppb.New(record.CreatedAt), ExpiresAt: expiryProto(record), LifecycleMode: surfacev1.LifecycleMode(record.LifecycleMode),
 	}
 }
 
@@ -122,9 +122,16 @@ func (h *PreviewHandler) RestartWorkspacePreview(ctx context.Context, req *conne
 	if err != nil {
 		return nil, connect.NewError(connect.CodeUnauthenticated, err)
 	}
-	record, err := h.service.Restart(ctx, id.UserID, req.Msg.GetPreviewId(), req.Msg.GetActionKey())
+	record, err := h.service.Restart(ctx, id.UserID, req.Msg.GetPreviewId(), req.Msg.GetActionKey(), domain.LifecycleMode(req.Msg.GetLifecycleMode()))
 	if err != nil {
 		return nil, previewError(err)
 	}
 	return connect.NewResponse(&surfacev1.RestartWorkspacePreviewResponse{Preview: previewProto(record)}), nil
+}
+
+func expiryProto(record ports.PreviewRecord) *timestamppb.Timestamp {
+	if record.LifecycleMode == domain.LifecycleManualStop {
+		return nil
+	}
+	return timestamppb.New(record.ExpiresAt)
 }

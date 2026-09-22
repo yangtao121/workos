@@ -349,6 +349,7 @@ type KnowledgeSearchClient interface {
 // server-side from the create key so the ensure is idempotent with the same
 // lifecycle.
 type SurfaceWorkloadQuery struct {
+	LifecycleMode  int32
 	OwnerUserID    string
 	ProjectID      string
 	AppInstanceID  string
@@ -370,9 +371,11 @@ type SurfaceWorkloadQuery struct {
 // the server verified at start. The endpoint is a host fact; it is consumed
 // by the proxy boundary only and is never projected into any public response.
 type WorkloadHandle struct {
-	ID         string
-	Generation int64
-	Endpoint   string
+	LifecycleMode                                                            int32
+	OwnerUserID, ProjectID, AppInstanceID, AppID, AppVersion, ManifestDigest string
+	ID                                                                       string
+	Generation                                                               int64
+	Endpoint                                                                 string
 }
 
 // WorkloadRuntime is the narrow Workload Manager surface the broker needs.

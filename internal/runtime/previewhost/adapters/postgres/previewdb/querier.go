@@ -12,7 +12,7 @@ type Querier interface {
 	ActivateWorkspacePreview(ctx context.Context, arg ActivateWorkspacePreviewParams) (int64, error)
 	GetPreviewByOwnerKey(ctx context.Context, arg GetPreviewByOwnerKeyParams) (WorkosRuntimeWorkspacePreview, error)
 	GetWorkspacePreview(ctx context.Context, previewID string) (WorkosRuntimeWorkspacePreview, error)
-	GetWorkspacePreviewAction(ctx context.Context, arg GetWorkspacePreviewActionParams) (string, error)
+	GetWorkspacePreviewAction(ctx context.Context, arg GetWorkspacePreviewActionParams) (GetWorkspacePreviewActionRow, error)
 	InsertWorkspacePreview(ctx context.Context, arg InsertWorkspacePreviewParams) (int64, error)
 	ListActiveWorkspacePreviews(ctx context.Context) ([]WorkosRuntimeWorkspacePreview, error)
 	ListProjectWorkspacePreviews(ctx context.Context, arg ListProjectWorkspacePreviewsParams) ([]WorkosRuntimeWorkspacePreview, error)

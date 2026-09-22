@@ -11,15 +11,16 @@ import (
 )
 
 const beginNativeRestart = `-- name: BeginNativeRestart :one
-UPDATE workos_runtime.native_sessions SET generation=generation+1,state='queued',updated_at=$3,expires_at=$4
+UPDATE workos_runtime.native_sessions SET generation=generation+1,state='queued',updated_at=$3,expires_at=$4,lifecycle_mode=$5
 WHERE owner_user_id=$1 AND session_id=$2 RETURNING generation
 `
 
 type BeginNativeRestartParams struct {
-	OwnerUserID string    `json:"owner_user_id"`
-	SessionID   string    `json:"session_id"`
-	UpdatedAt   time.Time `json:"updated_at"`
-	ExpiresAt   time.Time `json:"expires_at"`
+	OwnerUserID   string     `json:"owner_user_id"`
+	SessionID     string     `json:"session_id"`
+	UpdatedAt     time.Time  `json:"updated_at"`
+	ExpiresAt     *time.Time `json:"expires_at"`
+	LifecycleMode int16      `json:"lifecycle_mode"`
 }
 
 func (q *Queries) BeginNativeRestart(ctx context.Context, arg BeginNativeRestartParams) (int64, error) {
@@ -28,6 +29,7 @@ func (q *Queries) BeginNativeRestart(ctx context.Context, arg BeginNativeRestart
 		arg.SessionID,
 		arg.UpdatedAt,
 		arg.ExpiresAt,
+		arg.LifecycleMode,
 	)
 	var generation int64
 	err := row.Scan(&generation)
@@ -36,7 +38,7 @@ func (q *Queries) BeginNativeRestart(ctx context.Context, arg BeginNativeRestart
 
 const closeNativeSession = `-- name: CloseNativeSession :execrows
 UPDATE workos_runtime.native_sessions
-SET state = $3, updated_at = $4, expires_at = $4
+SET state = $3, updated_at = $4, expires_at = CASE WHEN lifecycle_mode=1 THEN $4::timestamptz ELSE NULL END
 WHERE owner_user_id = $1 AND session_id = $2 AND state IN ('queued', 'running')
 `
 
@@ -76,7 +78,7 @@ func (q *Queries) CountActiveNativeSessions(ctx context.Context, ownerUserID str
 const expireIdleNativeSessions = `-- name: ExpireIdleNativeSessions :many
 UPDATE workos_runtime.native_sessions
 SET state = 'closed', updated_at = $1, expires_at = $1
-WHERE state IN ('queued', 'running') AND expires_at < $1
+WHERE state IN ('queued', 'running') AND lifecycle_mode=1 AND expires_at <= $1
 RETURNING session_id::text AS session_id
 `
 
@@ -101,7 +103,7 @@ func (q *Queries) ExpireIdleNativeSessions(ctx context.Context, updatedAt time.T
 }
 
 const getNativeRestartReceipt = `-- name: GetNativeRestartReceipt :one
-SELECT generation FROM workos_runtime.native_session_restarts WHERE session_id=$1 AND action_key=$2
+SELECT generation, lifecycle_mode FROM workos_runtime.native_session_restarts WHERE session_id=$1 AND action_key=$2
 `
 
 type GetNativeRestartReceiptParams struct {
@@ -109,16 +111,21 @@ type GetNativeRestartReceiptParams struct {
 	ActionKey string `json:"action_key"`
 }
 
-func (q *Queries) GetNativeRestartReceipt(ctx context.Context, arg GetNativeRestartReceiptParams) (int64, error) {
+type GetNativeRestartReceiptRow struct {
+	Generation    int64 `json:"generation"`
+	LifecycleMode int16 `json:"lifecycle_mode"`
+}
+
+func (q *Queries) GetNativeRestartReceipt(ctx context.Context, arg GetNativeRestartReceiptParams) (GetNativeRestartReceiptRow, error) {
 	row := q.db.QueryRow(ctx, getNativeRestartReceipt, arg.SessionID, arg.ActionKey)
-	var generation int64
-	err := row.Scan(&generation)
-	return generation, err
+	var i GetNativeRestartReceiptRow
+	err := row.Scan(&i.Generation, &i.LifecycleMode)
+	return i, err
 }
 
 const getNativeSession = `-- name: GetNativeSession :one
 SELECT session_id, owner_user_id, project_id, idempotency_key, request_digest,
-       state, width, height, created_at, updated_at, expires_at, generation
+       state, width, height, created_at, updated_at, expires_at, generation, lifecycle_mode
 FROM workos_runtime.native_sessions
 WHERE owner_user_id = $1 AND session_id = $2
 `
@@ -144,13 +151,14 @@ func (q *Queries) GetNativeSession(ctx context.Context, arg GetNativeSessionPara
 		&i.UpdatedAt,
 		&i.ExpiresAt,
 		&i.Generation,
+		&i.LifecycleMode,
 	)
 	return i, err
 }
 
 const getNativeSessionByKey = `-- name: GetNativeSessionByKey :one
 SELECT session_id, owner_user_id, project_id, idempotency_key, request_digest,
-       state, width, height, created_at, updated_at, expires_at, generation
+       state, width, height, created_at, updated_at, expires_at, generation, lifecycle_mode
 FROM workos_runtime.native_sessions
 WHERE owner_user_id = $1 AND idempotency_key = $2
 `
@@ -176,6 +184,7 @@ func (q *Queries) GetNativeSessionByKey(ctx context.Context, arg GetNativeSessio
 		&i.UpdatedAt,
 		&i.ExpiresAt,
 		&i.Generation,
+		&i.LifecycleMode,
 	)
 	return i, err
 }
@@ -199,21 +208,22 @@ func (q *Queries) GetNativeStopReceipt(ctx context.Context, arg GetNativeStopRec
 const insertNativeSession = `-- name: InsertNativeSession :execrows
 INSERT INTO workos_runtime.native_sessions (
     session_id, owner_user_id, project_id, idempotency_key, request_digest,
-    state, width, height, created_at, updated_at, expires_at
-) VALUES ($1, $2, $3, $4, $5, 'queued', $6, $7, $8, $8, $9)
+    state, width, height, created_at, updated_at, expires_at, lifecycle_mode
+) VALUES ($1, $2, $3, $4, $5, 'queued', $6, $7, $8, $8, $9, $10)
 ON CONFLICT (owner_user_id, idempotency_key) DO NOTHING
 `
 
 type InsertNativeSessionParams struct {
-	SessionID      string    `json:"session_id"`
-	OwnerUserID    string    `json:"owner_user_id"`
-	ProjectID      string    `json:"project_id"`
-	IdempotencyKey string    `json:"idempotency_key"`
-	RequestDigest  string    `json:"request_digest"`
-	Width          int32     `json:"width"`
-	Height         int32     `json:"height"`
-	CreatedAt      time.Time `json:"created_at"`
-	ExpiresAt      time.Time `json:"expires_at"`
+	SessionID      string     `json:"session_id"`
+	OwnerUserID    string     `json:"owner_user_id"`
+	ProjectID      string     `json:"project_id"`
+	IdempotencyKey string     `json:"idempotency_key"`
+	RequestDigest  string     `json:"request_digest"`
+	Width          int32      `json:"width"`
+	Height         int32      `json:"height"`
+	CreatedAt      time.Time  `json:"created_at"`
+	ExpiresAt      *time.Time `json:"expires_at"`
+	LifecycleMode  int16      `json:"lifecycle_mode"`
 }
 
 func (q *Queries) InsertNativeSession(ctx context.Context, arg InsertNativeSessionParams) (int64, error) {
@@ -227,6 +237,7 @@ func (q *Queries) InsertNativeSession(ctx context.Context, arg InsertNativeSessi
 		arg.Height,
 		arg.CreatedAt,
 		arg.ExpiresAt,
+		arg.LifecycleMode,
 	)
 	if err != nil {
 		return 0, err
@@ -236,7 +247,7 @@ func (q *Queries) InsertNativeSession(ctx context.Context, arg InsertNativeSessi
 
 const listActiveNativeSessions = `-- name: ListActiveNativeSessions :many
 SELECT session_id, owner_user_id, project_id, idempotency_key, request_digest,
-       state, width, height, created_at, updated_at, expires_at, generation
+       state, width, height, created_at, updated_at, expires_at, generation, lifecycle_mode
 FROM workos_runtime.native_sessions
 WHERE state IN ('queued', 'running')
 `
@@ -263,6 +274,7 @@ func (q *Queries) ListActiveNativeSessions(ctx context.Context) ([]WorkosRuntime
 			&i.UpdatedAt,
 			&i.ExpiresAt,
 			&i.Generation,
+			&i.LifecycleMode,
 		); err != nil {
 			return nil, err
 		}
@@ -276,7 +288,7 @@ func (q *Queries) ListActiveNativeSessions(ctx context.Context) ([]WorkosRuntime
 
 const listProjectNativeSessions = `-- name: ListProjectNativeSessions :many
 SELECT session_id, owner_user_id, project_id, idempotency_key, request_digest,
-       state, width, height, created_at, updated_at, expires_at, generation
+       state, width, height, created_at, updated_at, expires_at, generation, lifecycle_mode
 FROM workos_runtime.native_sessions
 WHERE owner_user_id = $1 AND project_id = $2 AND state IN ('queued', 'running')
 `
@@ -308,6 +320,7 @@ func (q *Queries) ListProjectNativeSessions(ctx context.Context, arg ListProject
 			&i.UpdatedAt,
 			&i.ExpiresAt,
 			&i.Generation,
+			&i.LifecycleMode,
 		); err != nil {
 			return nil, err
 		}
@@ -336,17 +349,23 @@ func (q *Queries) LockNativeRestart(ctx context.Context, arg LockNativeRestartPa
 }
 
 const recordNativeRestart = `-- name: RecordNativeRestart :exec
-INSERT INTO workos_runtime.native_session_restarts(session_id,action_key,generation) VALUES($1,$2,$3)
+INSERT INTO workos_runtime.native_session_restarts(session_id,action_key,generation,lifecycle_mode) VALUES($1,$2,$3,$4)
 `
 
 type RecordNativeRestartParams struct {
-	SessionID  string `json:"session_id"`
-	ActionKey  string `json:"action_key"`
-	Generation int64  `json:"generation"`
+	SessionID     string `json:"session_id"`
+	ActionKey     string `json:"action_key"`
+	Generation    int64  `json:"generation"`
+	LifecycleMode int16  `json:"lifecycle_mode"`
 }
 
 func (q *Queries) RecordNativeRestart(ctx context.Context, arg RecordNativeRestartParams) error {
-	_, err := q.db.Exec(ctx, recordNativeRestart, arg.SessionID, arg.ActionKey, arg.Generation)
+	_, err := q.db.Exec(ctx, recordNativeRestart,
+		arg.SessionID,
+		arg.ActionKey,
+		arg.Generation,
+		arg.LifecycleMode,
+	)
 	return err
 }
 

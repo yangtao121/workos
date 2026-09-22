@@ -86,6 +86,7 @@ type LaunchDescriptor struct {
 // snapshot on every private Core call. None of them is ever projected into
 // public asset responses, logs, or errors.
 type SurfaceSession struct {
+	LifecycleMode  int32
 	ID             string
 	OwnerUserID    string
 	DeviceID       string

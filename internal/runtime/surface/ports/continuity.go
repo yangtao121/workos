@@ -22,6 +22,7 @@ const (
 	// WorkloadKindPty is a supervised terminal session (ADR-0028). Its
 	// workload id is the PTY session id.
 	WorkloadKindPty WorkloadKind = "pty"
+	WorkloadKindApp WorkloadKind = "app"
 	// WorkloadKindNative is a supervised virtual-display native session
 	// (ADR-0029). Its workload id is the native session id.
 	WorkloadKindNative WorkloadKind = "native"
@@ -31,15 +32,19 @@ const (
 // program: the session facts the surface continuity service lists, attaches
 // to, detaches from, and stops.
 type InteractiveWorkload struct {
-	Generation  int64
-	WorkloadID  string
-	Kind        WorkloadKind
-	OwnerUserID string
-	ProjectID   string
-	State       string
-	Terminal    bool
-	CreatedAt   time.Time
-	ExpiresAt   time.Time
+	AppInstanceID, AppID, AppVersion string
+	IdleStopSeconds                  int64
+	LifecycleMode                    int32
+	UpdatedAt                        time.Time
+	Generation                       int64
+	WorkloadID                       string
+	Kind                             WorkloadKind
+	OwnerUserID                      string
+	ProjectID                        string
+	State                            string
+	Terminal                         bool
+	CreatedAt                        time.Time
+	ExpiresAt                        time.Time
 	// Width/Height carry the native display geometry; PTY workloads keep 0.
 	Width  int32
 	Height int32
@@ -141,7 +146,7 @@ var (
 // InteractiveRestarter is implemented by Runtime backends with durable
 // restart receipts. Unsupported backends stay explicitly unavailable.
 type InteractiveRestarter interface {
-	RestartWorkload(context.Context, WorkloadKind, string, string, string, func() error) (InteractiveWorkload, error)
+	RestartWorkload(context.Context, WorkloadKind, string, string, string, func() error, ...int32) (InteractiveWorkload, error)
 }
 
 type InteractiveStopper interface {

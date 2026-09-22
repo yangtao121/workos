@@ -14,7 +14,7 @@ type Querier interface {
 	ClosePtySession(ctx context.Context, arg ClosePtySessionParams) (int64, error)
 	CountActivePtySessions(ctx context.Context, ownerUserID string) (int64, error)
 	ExpireIdlePtySessions(ctx context.Context, updatedAt time.Time) ([]string, error)
-	GetPtyRestartReceipt(ctx context.Context, arg GetPtyRestartReceiptParams) (int64, error)
+	GetPtyRestartReceipt(ctx context.Context, arg GetPtyRestartReceiptParams) (GetPtyRestartReceiptRow, error)
 	GetPtySession(ctx context.Context, arg GetPtySessionParams) (WorkosRuntimePtySession, error)
 	GetPtySessionByKey(ctx context.Context, arg GetPtySessionByKeyParams) (WorkosRuntimePtySession, error)
 	GetPtyStopReceipt(ctx context.Context, arg GetPtyStopReceiptParams) (int64, error)

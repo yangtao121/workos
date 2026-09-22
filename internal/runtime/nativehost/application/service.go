@@ -81,17 +81,25 @@ func (s *Service) ListProject(ctx context.Context, ownerUserID, projectID string
 	return s.store.ListProjectSessions(ctx, ownerUserID, projectID)
 }
 
-func requestDigest(projectID string, width, height int32, workingDirectory string) string {
+func requestDigest(projectID string, width, height int32, workingDirectory string, modes ...domain.LifecycleMode) string {
+	mode, _ := domain.NormalizeLifecycle(modes...)
+	if mode == domain.LifecycleManualStop {
+		workingDirectory += "\x00lifecycle:manual_stop"
+	}
 	sum := sha256.Sum256([]byte(fmt.Sprintf("native:%s:%d:%d:%s", projectID, width, height, workingDirectory)))
 	return "sha256:" + hex.EncodeToString(sum[:])
 }
 
 // Create admits one durable session per owner/key and starts its display.
-func (s *Service) Create(ctx context.Context, ownerUserID, projectID, idempotencyKey string, width, height int32) (domain.Session, error) {
+func (s *Service) Create(ctx context.Context, ownerUserID, projectID, idempotencyKey string, width, height int32, modes ...domain.LifecycleMode) (domain.Session, error) {
 	s.opMu.Lock()
 	defer s.opMu.Unlock()
 	if !domain.ValidUUIDv7(ownerUserID) || !domain.ValidUUIDv7(projectID) || idempotencyKey == "" || len(idempotencyKey) > 128 || !domain.ValidSize(width, height) {
 		return domain.Session{}, domain.ErrInvalid
+	}
+	mode, err := domain.NormalizeLifecycle(modes...)
+	if err != nil {
+		return domain.Session{}, err
 	}
 	grant, err := s.workspaceGrant(ctx, ownerUserID, projectID)
 	if err != nil {
@@ -99,13 +107,13 @@ func (s *Service) Create(ctx context.Context, ownerUserID, projectID, idempotenc
 	}
 	workingDirectory := grant.Directory
 
-	digest := requestDigest(projectID, width, height, workingDirectory)
+	digest := requestDigest(projectID, width, height, workingDirectory, mode)
 	now := time.Now().UTC().Truncate(time.Microsecond)
 	session := domain.Session{
-		Generation: 1, SessionID: s.generator.New(), OwnerUserID: ownerUserID, ProjectID: projectID,
+		LifecycleMode: mode, Generation: 1, SessionID: s.generator.New(), OwnerUserID: ownerUserID, ProjectID: projectID,
 		IdempotencyKey: idempotencyKey, RequestDigest: digest,
 		State: domain.StateQueued, Width: width, Height: height,
-		CreatedAt: now, UpdatedAt: now, ExpiresAt: now.Add(domain.SessionTTL),
+		CreatedAt: now, UpdatedAt: now, ExpiresAt: mode.Expiry(now),
 	}
 	storedDigest, created, err := s.store.InsertSession(ctx, session)
 	if err != nil {
@@ -151,7 +159,7 @@ func (s *Service) Create(ctx context.Context, ownerUserID, projectID, idempotenc
 		}
 		return domain.Session{}, domain.ErrEngineUnavailable
 	}
-	display, err := s.launch(ctx, width, height, grant)
+	display, err := s.launch(ctx, width, height, grant, mode)
 	if err != nil {
 		release()
 		s.logger.Warn("native display launch failed", "error", err)
@@ -314,7 +322,7 @@ func (s *Service) reconcile(ctx context.Context, session domain.Session) (domain
 	s.mu.Unlock()
 	now := time.Now().UTC()
 	state := session.State
-	if !session.ExpiresAt.After(now) {
+	if session.LifecycleMode.Expired(session.ExpiresAt, now) {
 		state = domain.StateClosed
 	} else if display == nil || display.Exited() {
 		state = domain.StateFailed
@@ -362,11 +370,15 @@ func (s *Service) Shutdown() {
 
 // Restart preserves workload identity, reserves a durable new generation,
 // and starts only on the first delivery of this action key.
-func (s *Service) Restart(ctx context.Context, owner, id, key string, fence func() error) (domain.Session, error) {
+func (s *Service) Restart(ctx context.Context, owner, id, key string, fence func() error, modes ...domain.LifecycleMode) (domain.Session, error) {
 	s.opMu.Lock()
 	defer s.opMu.Unlock()
 	if !domain.ValidUUIDv7(owner) || !domain.ValidUUIDv7(id) || key == "" || len(key) > 128 {
 		return domain.Session{}, domain.ErrInvalid
+	}
+	mode, err := domain.NormalizeLifecycle(modes...)
+	if err != nil {
+		return domain.Session{}, err
 	}
 	session, err := s.store.GetSession(ctx, owner, id)
 	if err != nil {
@@ -376,7 +388,7 @@ func (s *Service) Restart(ctx context.Context, owner, id, key string, fence func
 	if !ok {
 		return domain.Session{}, domain.ErrEngineUnavailable
 	}
-	generation, fresh, err := restarts.BeginRestart(ctx, owner, id, key, time.Now().UTC())
+	generation, fresh, err := restarts.BeginRestart(ctx, owner, id, key, time.Now().UTC(), mode)
 	if err != nil {
 		return domain.Session{}, err
 	}
@@ -417,7 +429,7 @@ func (s *Service) Restart(ctx context.Context, owner, id, key string, fence func
 	if err != nil {
 		return domain.Session{}, err
 	}
-	display, err := s.launch(ctx, session.Width, session.Height, grant)
+	display, err := s.launch(ctx, session.Width, session.Height, grant, mode)
 	if err != nil {
 		release()
 		return domain.Session{}, domain.ErrEngineUnavailable

@@ -37,18 +37,27 @@ func New(store ports.Store, authorization ports.WorkspaceAuthorizer, engine port
 	}
 	return &Service{store: store, authorization: authorization, engine: engine, ids: generator, live: map[string]liveProcess{}, now: func() time.Time { return time.Now().UTC() }}, nil
 }
-func digest(project, command string, port int32) string {
-	data, _ := json.Marshal([]any{project, command, port})
+func digest(project, command string, port int32, modes ...domain.LifecycleMode) string {
+	mode, _ := domain.NormalizeLifecycle(modes...)
+	values := []any{project, command, port}
+	if mode == domain.LifecycleManualStop {
+		values = append(values, mode)
+	}
+	data, _ := json.Marshal(values)
 	sum := sha256.Sum256(data)
 	return hex.EncodeToString(sum[:])
 }
-func (s *Service) Start(ctx context.Context, owner, project, key, command string, port int32) (ports.PreviewRecord, error) {
+func (s *Service) Start(ctx context.Context, owner, project, key, command string, port int32, modes ...domain.LifecycleMode) (ports.PreviewRecord, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if !domain.ValidPreviewUUID(owner) || !domain.ValidPreviewUUID(project) || !domain.ValidIdempotencyKey(key) || command == "" || len(command) > 4096 || port < 1024 || port > 65535 {
 		return ports.PreviewRecord{}, domain.ErrInvalid
 	}
-	hash := digest(project, command, port)
+	mode, err := domain.NormalizeLifecycle(modes...)
+	if err != nil {
+		return ports.PreviewRecord{}, err
+	}
+	hash := digest(project, command, port, mode)
 	if existing, found, err := s.store.FindByOwnerKey(ctx, owner, key); err != nil {
 		return ports.PreviewRecord{}, err
 	} else if found {
@@ -72,7 +81,7 @@ func (s *Service) Start(ctx context.Context, owner, project, key, command string
 		return ports.PreviewRecord{}, err
 	}
 	now := s.now()
-	record := ports.PreviewRecord{PreviewID: s.ids.New(), OwnerUserID: owner, ProjectID: project, IdempotencyKey: key, WorkspaceSourceID: grant.SourceID, BindingID: grant.BindingID, BindingRevision: grant.Revision, ReadOnly: grant.ReadOnly, Command: command, Port: port, RequestDigest: hash, AccessToken: hex.EncodeToString(token), Generation: 1, State: domain.StateQueued, CreatedAt: now, UpdatedAt: now, ExpiresAt: now.Add(domain.PreviewTTL)}
+	record := ports.PreviewRecord{LifecycleMode: mode, PreviewID: s.ids.New(), OwnerUserID: owner, ProjectID: project, IdempotencyKey: key, WorkspaceSourceID: grant.SourceID, BindingID: grant.BindingID, BindingRevision: grant.Revision, ReadOnly: grant.ReadOnly, Command: command, Port: port, RequestDigest: hash, AccessToken: hex.EncodeToString(token), Generation: 1, State: domain.StateQueued, CreatedAt: now, UpdatedAt: now, ExpiresAt: mode.Expiry(now)}
 	inserted, err := s.store.Insert(ctx, record)
 	if err != nil {
 		return ports.PreviewRecord{}, err
@@ -192,11 +201,15 @@ func (s *Service) Stop(ctx context.Context, owner, id, key string) error {
 	}
 	return err
 }
-func (s *Service) Restart(ctx context.Context, owner, id, key string) (ports.PreviewRecord, error) {
+func (s *Service) Restart(ctx context.Context, owner, id, key string, modes ...domain.LifecycleMode) (ports.PreviewRecord, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if !domain.ValidIdempotencyKey(key) {
 		return ports.PreviewRecord{}, domain.ErrInvalid
+	}
+	mode, err := domain.NormalizeLifecycle(modes...)
+	if err != nil {
+		return ports.PreviewRecord{}, err
 	}
 	r, err := s.owner(ctx, owner, id)
 	if err != nil {
@@ -212,7 +225,7 @@ func (s *Service) Restart(ctx context.Context, owner, id, key string) (ports.Pre
 	if _, ok := s.live[id]; !ok && len(s.live) >= 4 {
 		return ports.PreviewRecord{}, domain.ErrUnavailable
 	}
-	r, fresh, err := s.store.Action(ctx, owner, id, key, "restart", s.now())
+	r, fresh, err := s.store.Action(ctx, owner, id, key, "restart", s.now(), mode)
 	if err != nil || !fresh {
 		return r, err
 	}

@@ -67,7 +67,7 @@ func (q *Queries) ClearWorkloadIdle(ctx context.Context, arg ClearWorkloadIdlePa
 }
 
 const getActiveWorkloadByInstance = `-- name: GetActiveWorkloadByInstance :one
-SELECT id, owner_user_id, project_id, app_instance_id, app_id, app_version, manifest_digest, image, command, port, requested_policy, policy_version, effective_cpu_quota_us, effective_memory_high_bytes, effective_memory_max_bytes, effective_pids_max, effective_startup_seconds, effective_restart_limit, generation, state, restart_count, container_id, container_name, endpoint, cgroup_path, health_verdict, last_exit_category, baseline_memory_events_oom, baseline_pids_events_peak, last_verified_at, lease_owner, lease_expires_at, created_at, updated_at, started_at, stopped_at, idle_since, artifact_id, artifact_digest
+SELECT id, owner_user_id, project_id, app_instance_id, app_id, app_version, manifest_digest, image, command, port, requested_policy, policy_version, effective_cpu_quota_us, effective_memory_high_bytes, effective_memory_max_bytes, effective_pids_max, effective_startup_seconds, effective_restart_limit, generation, state, restart_count, container_id, container_name, endpoint, cgroup_path, health_verdict, last_exit_category, baseline_memory_events_oom, baseline_pids_events_peak, last_verified_at, lease_owner, lease_expires_at, created_at, updated_at, started_at, stopped_at, idle_since, artifact_id, artifact_digest, lifecycle_mode
 FROM workos_runtime.workloads
 WHERE owner_user_id = $1
   AND app_instance_id = $2
@@ -124,6 +124,7 @@ func (q *Queries) GetActiveWorkloadByInstance(ctx context.Context, arg GetActive
 		&i.IdleSince,
 		&i.ArtifactID,
 		&i.ArtifactDigest,
+		&i.LifecycleMode,
 	)
 	return i, err
 }
@@ -166,7 +167,7 @@ func (q *Queries) GetPendingWorkloadOperation(ctx context.Context, arg GetPendin
 }
 
 const getWorkload = `-- name: GetWorkload :one
-SELECT id, owner_user_id, project_id, app_instance_id, app_id, app_version, manifest_digest, image, command, port, requested_policy, policy_version, effective_cpu_quota_us, effective_memory_high_bytes, effective_memory_max_bytes, effective_pids_max, effective_startup_seconds, effective_restart_limit, generation, state, restart_count, container_id, container_name, endpoint, cgroup_path, health_verdict, last_exit_category, baseline_memory_events_oom, baseline_pids_events_peak, last_verified_at, lease_owner, lease_expires_at, created_at, updated_at, started_at, stopped_at, idle_since, artifact_id, artifact_digest
+SELECT id, owner_user_id, project_id, app_instance_id, app_id, app_version, manifest_digest, image, command, port, requested_policy, policy_version, effective_cpu_quota_us, effective_memory_high_bytes, effective_memory_max_bytes, effective_pids_max, effective_startup_seconds, effective_restart_limit, generation, state, restart_count, container_id, container_name, endpoint, cgroup_path, health_verdict, last_exit_category, baseline_memory_events_oom, baseline_pids_events_peak, last_verified_at, lease_owner, lease_expires_at, created_at, updated_at, started_at, stopped_at, idle_since, artifact_id, artifact_digest, lifecycle_mode
 FROM workos_runtime.workloads
 WHERE id = $1
 `
@@ -214,6 +215,7 @@ func (q *Queries) GetWorkload(ctx context.Context, id string) (WorkosRuntimeWork
 		&i.IdleSince,
 		&i.ArtifactID,
 		&i.ArtifactDigest,
+		&i.LifecycleMode,
 	)
 	return i, err
 }
@@ -255,7 +257,7 @@ INSERT INTO workos_runtime.workloads (
     effective_cpu_quota_us, effective_memory_high_bytes, effective_memory_max_bytes,
     effective_pids_max, effective_startup_seconds, effective_restart_limit,
     generation, state, container_name, health_verdict, last_exit_category,
-    created_at, updated_at
+    created_at, updated_at, lifecycle_mode
 ) VALUES (
     $1, $2, $3, $4,
     $5, $6, $7, $8, $9, $10,
@@ -265,7 +267,7 @@ INSERT INTO workos_runtime.workloads (
     $19, $20,
     $21, $22, $23,
     $24, $25,
-    $26, $27
+    $26, $27, $28
 )
 `
 
@@ -297,6 +299,7 @@ type InsertWorkloadParams struct {
 	LastExitCategory         string          `json:"last_exit_category"`
 	CreatedAt                time.Time       `json:"created_at"`
 	UpdatedAt                time.Time       `json:"updated_at"`
+	LifecycleMode            int16           `json:"lifecycle_mode"`
 }
 
 // Workload Manager persistence queries (runtime-host owned tables only).
@@ -329,6 +332,7 @@ func (q *Queries) InsertWorkload(ctx context.Context, arg InsertWorkloadParams) 
 		arg.LastExitCategory,
 		arg.CreatedAt,
 		arg.UpdatedAt,
+		arg.LifecycleMode,
 	)
 	return err
 }
@@ -371,8 +375,78 @@ func (q *Queries) InsertWorkloadOperation(ctx context.Context, arg InsertWorkloa
 	return result.RowsAffected(), nil
 }
 
+const listProjectWorkloads = `-- name: ListProjectWorkloads :many
+SELECT id, owner_user_id, project_id, app_instance_id, app_id, app_version, manifest_digest, image, command, port, requested_policy, policy_version, effective_cpu_quota_us, effective_memory_high_bytes, effective_memory_max_bytes, effective_pids_max, effective_startup_seconds, effective_restart_limit, generation, state, restart_count, container_id, container_name, endpoint, cgroup_path, health_verdict, last_exit_category, baseline_memory_events_oom, baseline_pids_events_peak, last_verified_at, lease_owner, lease_expires_at, created_at, updated_at, started_at, stopped_at, idle_since, artifact_id, artifact_digest, lifecycle_mode FROM workos_runtime.workloads WHERE owner_user_id=$1 AND project_id=$2 AND state NOT IN ('stopped','failed') ORDER BY created_at,id
+`
+
+type ListProjectWorkloadsParams struct {
+	OwnerUserID string `json:"owner_user_id"`
+	ProjectID   string `json:"project_id"`
+}
+
+func (q *Queries) ListProjectWorkloads(ctx context.Context, arg ListProjectWorkloadsParams) ([]WorkosRuntimeWorkload, error) {
+	rows, err := q.db.Query(ctx, listProjectWorkloads, arg.OwnerUserID, arg.ProjectID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []WorkosRuntimeWorkload
+	for rows.Next() {
+		var i WorkosRuntimeWorkload
+		if err := rows.Scan(
+			&i.ID,
+			&i.OwnerUserID,
+			&i.ProjectID,
+			&i.AppInstanceID,
+			&i.AppID,
+			&i.AppVersion,
+			&i.ManifestDigest,
+			&i.Image,
+			&i.Command,
+			&i.Port,
+			&i.RequestedPolicy,
+			&i.PolicyVersion,
+			&i.EffectiveCpuQuotaUs,
+			&i.EffectiveMemoryHighBytes,
+			&i.EffectiveMemoryMaxBytes,
+			&i.EffectivePidsMax,
+			&i.EffectiveStartupSeconds,
+			&i.EffectiveRestartLimit,
+			&i.Generation,
+			&i.State,
+			&i.RestartCount,
+			&i.ContainerID,
+			&i.ContainerName,
+			&i.Endpoint,
+			&i.CgroupPath,
+			&i.HealthVerdict,
+			&i.LastExitCategory,
+			&i.BaselineMemoryEventsOom,
+			&i.BaselinePidsEventsPeak,
+			&i.LastVerifiedAt,
+			&i.LeaseOwner,
+			&i.LeaseExpiresAt,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.StartedAt,
+			&i.StoppedAt,
+			&i.IdleSince,
+			&i.ArtifactID,
+			&i.ArtifactDigest,
+			&i.LifecycleMode,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listWorkloads = `-- name: ListWorkloads :many
-SELECT id, owner_user_id, project_id, app_instance_id, app_id, app_version, manifest_digest, image, command, port, requested_policy, policy_version, effective_cpu_quota_us, effective_memory_high_bytes, effective_memory_max_bytes, effective_pids_max, effective_startup_seconds, effective_restart_limit, generation, state, restart_count, container_id, container_name, endpoint, cgroup_path, health_verdict, last_exit_category, baseline_memory_events_oom, baseline_pids_events_peak, last_verified_at, lease_owner, lease_expires_at, created_at, updated_at, started_at, stopped_at, idle_since, artifact_id, artifact_digest
+SELECT id, owner_user_id, project_id, app_instance_id, app_id, app_version, manifest_digest, image, command, port, requested_policy, policy_version, effective_cpu_quota_us, effective_memory_high_bytes, effective_memory_max_bytes, effective_pids_max, effective_startup_seconds, effective_restart_limit, generation, state, restart_count, container_id, container_name, endpoint, cgroup_path, health_verdict, last_exit_category, baseline_memory_events_oom, baseline_pids_events_peak, last_verified_at, lease_owner, lease_expires_at, created_at, updated_at, started_at, stopped_at, idle_since, artifact_id, artifact_digest, lifecycle_mode
 FROM workos_runtime.workloads
 ORDER BY created_at, id
 LIMIT $1
@@ -427,6 +501,7 @@ func (q *Queries) ListWorkloads(ctx context.Context, rowLimit int32) ([]WorkosRu
 			&i.IdleSince,
 			&i.ArtifactID,
 			&i.ArtifactDigest,
+			&i.LifecycleMode,
 		); err != nil {
 			return nil, err
 		}
@@ -464,8 +539,9 @@ func (q *Queries) MarkWorkloadIdle(ctx context.Context, arg MarkWorkloadIdlePara
 const restartWorkloadFrom = `-- name: RestartWorkloadFrom :execrows
 UPDATE workos_runtime.workloads SET
     state = 'starting',
-    generation = $1,
-    restart_count = $2,
+    lifecycle_mode = CASE WHEN $1::smallint=0 THEN lifecycle_mode ELSE $1::smallint END,
+    generation = $2,
+    restart_count = $3,
     container_id = NULL,
     endpoint = NULL,
     cgroup_path = NULL,
@@ -477,26 +553,28 @@ UPDATE workos_runtime.workloads SET
     last_verified_at = NULL,
     started_at = NULL,
     stopped_at = NULL,
-    updated_at = $3
-WHERE id = $4
-  AND state = $5
-  AND state IN ('running', 'failed')
-  AND generation + 1 = $1
-  AND restart_count + 1 = $2
+    updated_at = $4
+WHERE id = $5
+  AND state = $6
+  AND state IN ('running', 'failed', 'stopped')
+  AND generation + 1 = $2
+  AND restart_count + 1 = $3
 `
 
 type RestartWorkloadFromParams struct {
-	Generation   int64     `json:"generation"`
-	RestartCount int32     `json:"restart_count"`
-	UpdatedAt    time.Time `json:"updated_at"`
-	ID           string    `json:"id"`
-	FromState    string    `json:"from_state"`
+	LifecycleMode int16     `json:"lifecycle_mode"`
+	Generation    int64     `json:"generation"`
+	RestartCount  int32     `json:"restart_count"`
+	UpdatedAt     time.Time `json:"updated_at"`
+	ID            string    `json:"id"`
+	FromState     string    `json:"from_state"`
 }
 
 // The guarded restart transition: re-open a running or failed workload under
 // generation+1, clear the engine facts, and restart the count.
 func (q *Queries) RestartWorkloadFrom(ctx context.Context, arg RestartWorkloadFromParams) (int64, error) {
 	result, err := q.db.Exec(ctx, restartWorkloadFrom,
+		arg.LifecycleMode,
 		arg.Generation,
 		arg.RestartCount,
 		arg.UpdatedAt,

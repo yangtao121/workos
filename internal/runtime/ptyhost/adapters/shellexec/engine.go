@@ -48,7 +48,7 @@ func (e *Engine) Facts() ports.EngineFacts {
 		Engine:           "login-shell",
 		ProcessGroupKill: true,
 		ParentDeathSig:   true,
-		EnforcedLimits:   []string{"process-group-kill", "parent-death-signal", "output-ring", "session-ttl"},
+		EnforcedLimits:   []string{"process-group-kill", "parent-death-signal", "output-ring", "program-lifecycle-policy"},
 	}
 }
 
@@ -93,6 +93,16 @@ type terminal struct {
 }
 
 func (e *Engine) Launch(ctx context.Context, columns, rows int32, workingDirectory string) (ports.Terminal, error) {
+	return e.LaunchLifecycle(ctx, columns, rows, workingDirectory, false, domain.LifecycleBounded)
+}
+func (e *Engine) LaunchLifecycle(ctx context.Context, columns, rows int32, workingDirectory string, readOnly bool, mode domain.LifecycleMode) (ports.Terminal, error) {
+	mode, err := domain.NormalizeLifecycle(mode)
+	if err != nil {
+		return nil, err
+	}
+	if readOnly {
+		return nil, domain.ErrEngineUnavailable
+	}
 	if !domain.ValidSize(columns, rows) {
 		return nil, domain.ErrInvalid
 	}
@@ -106,6 +116,10 @@ func (e *Engine) Launch(ctx context.Context, columns, rows int32, workingDirecto
 	// below releases the run context when the shell is reaped, so no path
 	// leaks it. Stop/Sweep still own the process lifetime.
 	runCtx, cancel := context.WithCancel(context.WithoutCancel(ctx))
+	if mode != domain.LifecycleManualStop {
+		cancel()
+		runCtx, cancel = context.WithTimeout(context.WithoutCancel(ctx), domain.SessionTTL)
+	}
 	cmd := exec.CommandContext(runCtx, e.Shell)
 	cmd.Dir = workingDirectory
 	cmd.Env = []string{"HOME=/tmp", "PATH=/usr/local/bin:/usr/bin:/bin", "LANG=C.UTF-8", "TERM=xterm-256color", "PS1=$ "}

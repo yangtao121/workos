@@ -45,6 +45,7 @@ var (
 
 // Session is the durable native session row.
 type Session struct {
+	LifecycleMode  LifecycleMode
 	Generation     int64
 	SessionID      string
 	OwnerUserID    string

@@ -26,4 +26,5 @@ type WorkosRuntimeWorkspacePreview struct {
 	RequestDigest     string             `json:"request_digest"`
 	BindingID         string             `json:"binding_id"`
 	BindingRevision   int64              `json:"binding_revision"`
+	LifecycleMode     int16              `json:"lifecycle_mode"`
 }

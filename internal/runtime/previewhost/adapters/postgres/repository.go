@@ -17,10 +17,12 @@ type Repository struct {
 	queries *previewdb.Queries
 }
 
-func New(pool *pgxpool.Pool) *Repository       { return &Repository{pool, previewdb.New(pool)} }
-func timestamp(t time.Time) pgtype.Timestamptz { return pgtype.Timestamptz{Time: t, Valid: true} }
+func New(pool *pgxpool.Pool) *Repository { return &Repository{pool, previewdb.New(pool)} }
+func timestamp(t time.Time) pgtype.Timestamptz {
+	return pgtype.Timestamptz{Time: t, Valid: !t.IsZero()}
+}
 func record(r previewdb.WorkosRuntimeWorkspacePreview) ports.PreviewRecord {
-	return ports.PreviewRecord{PreviewID: r.PreviewID, OwnerUserID: r.OwnerUserID, ProjectID: r.ProjectID, IdempotencyKey: r.IdempotencyKey, WorkspaceSourceID: r.WorkspaceSourceID, ReadOnly: r.ReadOnly, State: r.State, CreatedAt: r.CreatedAt.Time, UpdatedAt: r.UpdatedAt.Time, ExpiresAt: r.ExpiresAt.Time, Command: r.Command, Port: r.Port, Generation: r.Generation, AccessToken: r.AccessToken, RequestDigest: r.RequestDigest, BindingID: r.BindingID, BindingRevision: r.BindingRevision}
+	return ports.PreviewRecord{LifecycleMode: domain.LifecycleMode(r.LifecycleMode), PreviewID: r.PreviewID, OwnerUserID: r.OwnerUserID, ProjectID: r.ProjectID, IdempotencyKey: r.IdempotencyKey, WorkspaceSourceID: r.WorkspaceSourceID, ReadOnly: r.ReadOnly, State: r.State, CreatedAt: r.CreatedAt.Time, UpdatedAt: r.UpdatedAt.Time, ExpiresAt: r.ExpiresAt.Time, Command: r.Command, Port: r.Port, Generation: r.Generation, AccessToken: r.AccessToken, RequestDigest: r.RequestDigest, BindingID: r.BindingID, BindingRevision: r.BindingRevision}
 }
 func (r *Repository) FindByOwnerKey(ctx context.Context, owner, key string) (ports.PreviewRecord, bool, error) {
 	row, err := r.queries.GetPreviewByOwnerKey(ctx, previewdb.GetPreviewByOwnerKeyParams{OwnerUserID: owner, IdempotencyKey: key})
@@ -30,7 +32,12 @@ func (r *Repository) FindByOwnerKey(ctx context.Context, owner, key string) (por
 	return record(row), err == nil, err
 }
 func (r *Repository) Insert(ctx context.Context, p ports.PreviewRecord) (bool, error) {
-	count, err := r.queries.InsertWorkspacePreview(ctx, previewdb.InsertWorkspacePreviewParams{PreviewID: p.PreviewID, OwnerUserID: p.OwnerUserID, ProjectID: p.ProjectID, IdempotencyKey: p.IdempotencyKey, WorkspaceSourceID: p.WorkspaceSourceID, ReadOnly: p.ReadOnly, State: p.State, CreatedAt: timestamp(p.CreatedAt), UpdatedAt: timestamp(p.UpdatedAt), ExpiresAt: timestamp(p.ExpiresAt), Command: p.Command, Port: p.Port, Generation: p.Generation, AccessToken: p.AccessToken, RequestDigest: p.RequestDigest, BindingID: p.BindingID, BindingRevision: p.BindingRevision})
+	mode, err := domain.NormalizeLifecycle(p.LifecycleMode)
+	if err != nil {
+		return false, err
+	}
+	p.LifecycleMode = mode
+	count, err := r.queries.InsertWorkspacePreview(ctx, previewdb.InsertWorkspacePreviewParams{LifecycleMode: int16(p.LifecycleMode), PreviewID: p.PreviewID, OwnerUserID: p.OwnerUserID, ProjectID: p.ProjectID, IdempotencyKey: p.IdempotencyKey, WorkspaceSourceID: p.WorkspaceSourceID, ReadOnly: p.ReadOnly, State: p.State, CreatedAt: timestamp(p.CreatedAt), UpdatedAt: timestamp(p.UpdatedAt), ExpiresAt: timestamp(p.ExpiresAt), Command: p.Command, Port: p.Port, Generation: p.Generation, AccessToken: p.AccessToken, RequestDigest: p.RequestDigest, BindingID: p.BindingID, BindingRevision: p.BindingRevision})
 	return count == 1, err
 }
 func (r *Repository) Get(ctx context.Context, id string) (ports.PreviewRecord, error) {
@@ -70,7 +77,11 @@ func (r *Repository) Activate(ctx context.Context, p ports.PreviewRecord) error 
 	}
 	return err
 }
-func (r *Repository) Action(ctx context.Context, owner, id, key, action string, now time.Time) (ports.PreviewRecord, bool, error) {
+func (r *Repository) Action(ctx context.Context, owner, id, key, action string, now time.Time, modes ...domain.LifecycleMode) (ports.PreviewRecord, bool, error) {
+	mode, err := domain.NormalizeLifecycle(modes...)
+	if err != nil {
+		return ports.PreviewRecord{}, false, err
+	}
 	tx, err := r.pool.Begin(ctx)
 	if err != nil {
 		return ports.PreviewRecord{}, false, err
@@ -83,7 +94,7 @@ func (r *Repository) Action(ctx context.Context, owner, id, key, action string, 
 	}
 	prior, err := q.GetWorkspacePreviewAction(ctx, previewdb.GetWorkspacePreviewActionParams{PreviewID: id, ActionKey: key})
 	if err == nil {
-		if prior != action {
+		if prior.Action != action || (action == "restart" && prior.LifecycleMode != int16(mode)) {
 			return ports.PreviewRecord{}, false, domain.ErrConflict
 		}
 		return record(row), false, tx.Commit(ctx)
@@ -93,7 +104,7 @@ func (r *Repository) Action(ctx context.Context, owner, id, key, action string, 
 	}
 	switch action {
 	case "restart":
-		row, err = q.RestartWorkspacePreview(ctx, previewdb.RestartWorkspacePreviewParams{OwnerUserID: owner, PreviewID: id, UpdatedAt: timestamp(now), ExpiresAt: timestamp(now.Add(domain.PreviewTTL))})
+		row, err = q.RestartWorkspacePreview(ctx, previewdb.RestartWorkspacePreviewParams{OwnerUserID: owner, PreviewID: id, UpdatedAt: timestamp(now), ExpiresAt: timestamp(mode.Expiry(now)), LifecycleMode: int16(mode)})
 	case "stop":
 		_, err = q.UpdateWorkspacePreviewState(ctx, previewdb.UpdateWorkspacePreviewStateParams{OwnerUserID: owner, PreviewID: id, State: domain.StateStopped, UpdatedAt: timestamp(now)})
 		row.State = domain.StateStopped
@@ -103,7 +114,7 @@ func (r *Repository) Action(ctx context.Context, owner, id, key, action string, 
 	if err != nil {
 		return ports.PreviewRecord{}, false, err
 	}
-	if err = q.RecordWorkspacePreviewAction(ctx, previewdb.RecordWorkspacePreviewActionParams{PreviewID: id, ActionKey: key, Action: action, Generation: row.Generation}); err != nil {
+	if err = q.RecordWorkspacePreviewAction(ctx, previewdb.RecordWorkspacePreviewActionParams{PreviewID: id, ActionKey: key, Action: action, Generation: row.Generation, LifecycleMode: int16(mode)}); err != nil {
 		return ports.PreviewRecord{}, false, err
 	}
 	return record(row), true, tx.Commit(ctx)

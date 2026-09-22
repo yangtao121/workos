@@ -640,7 +640,7 @@ func run(logger *slog.Logger) error {
 	// single-controller lease gates the input paths of both runners at the
 	// application layer, and the bounded attachment sweep rides the same
 	// 30-second maintenance cadence as the session sweeps.
-	continuityRuntime := &surfaceInteractiveRuntime{pty: ptyService, native: nativeService}
+	continuityRuntime := &surfaceInteractiveRuntime{pty: ptyService, native: nativeService, manager: manager, resolver: resolverClient}
 	continuityService, err := surfaceapp.NewContinuityService(surfacepostgres.NewContinuity(pool), continuityRuntime, generator, 30*time.Minute)
 	if err != nil {
 		return err

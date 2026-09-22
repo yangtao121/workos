@@ -57,6 +57,7 @@ func (h *Handler) CreateSurface(ctx context.Context, req *connect.Request[surfac
 		ViewportRatio:      ratio,
 		PreferredRenderer:  renderer,
 		ExpectedAppVersion: req.Msg.GetExpectedAppVersion(),
+		AttachOnly:         req.Msg.GetAttachOnly(), ExpectedWorkloadID: req.Msg.GetExpectedWorkloadId(), ExpectedWorkloadGeneration: req.Msg.GetExpectedWorkloadGeneration(), LifecycleMode: int32(req.Msg.GetLifecycleMode()),
 	})
 	if err != nil {
 		return nil, mapError(err)
@@ -88,7 +89,8 @@ func (h *Handler) CloseSurface(ctx context.Context, req *connect.Request[surface
 func SessionToProto(session domain.SurfaceSession, bridgeToken string) *surfacev1.SurfaceSession {
 	return &surfacev1.SurfaceSession{
 		Id: session.ID, AppInstanceId: session.AppInstanceID, ProjectId: session.ProjectID,
-		Renderer:           rendererProto(session.Renderer),
+		Renderer:   rendererProto(session.Renderer),
+		WorkloadId: session.WorkloadID, WorkloadGeneration: session.WorkloadGeneration, LifecycleMode: surfacev1.LifecycleMode(max(int32(1), session.LifecycleMode)),
 		Url:                session.Path,
 		BridgeToken:        bridgeToken,
 		BridgeCapabilities: session.BridgeCapabilities,
@@ -162,6 +164,8 @@ func mapError(err error) error {
 		// ADR-0003 §3: the caller must reopen with a new create key; the
 		// verdict is fixed and content-free.
 		return connect.NewError(connect.CodeFailedPrecondition, errors.New("surface grants changed; create a new surface with a new idempotency key"))
+	case errors.Is(err, domain.ErrWorkloadNotRunning):
+		return connect.NewError(connect.CodeFailedPrecondition, errors.New("referenced app workload is no longer running"))
 	case errors.Is(err, domain.ErrUnsupported):
 		return connect.NewError(connect.CodeFailedPrecondition, errors.New("installed app version has no supported surface renderer"))
 	case errors.Is(err, ports.ErrResolverCorrupt):

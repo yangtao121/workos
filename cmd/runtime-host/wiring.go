@@ -14,6 +14,7 @@ import (
 	ptyhostapp "github.com/yangtao121/workos/internal/runtime/ptyhost/application"
 	ptydomain "github.com/yangtao121/workos/internal/runtime/ptyhost/domain"
 	surfaceapp "github.com/yangtao121/workos/internal/runtime/surface/application"
+	surfacedomain "github.com/yangtao121/workos/internal/runtime/surface/domain"
 	surfaceports "github.com/yangtao121/workos/internal/runtime/surface/ports"
 	workloadapp "github.com/yangtao121/workos/internal/runtime/workload/application"
 	workloaddomain "github.com/yangtao121/workos/internal/runtime/workload/domain"
@@ -29,7 +30,7 @@ type surfaceWorkloadLauncher struct {
 }
 
 func (a *surfaceWorkloadLauncher) EnsureSurfaceWorkload(ctx context.Context, query surfaceports.SurfaceWorkloadQuery) (surfaceports.WorkloadHandle, error) {
-	workload, err := a.manager.Ensure(ctx, workloadports.EnsureCommand{
+	workload, err := a.manager.Ensure(ctx, workloadports.EnsureCommand{LifecycleMode: query.LifecycleMode,
 		OwnerUserID: query.OwnerUserID, ProjectID: query.ProjectID,
 		AppInstanceID: query.AppInstanceID, AppID: query.AppID,
 		AppVersion: query.AppVersion, ManifestDigest: query.ManifestDigest,
@@ -46,7 +47,7 @@ func (a *surfaceWorkloadLauncher) EnsureSurfaceWorkload(ctx context.Context, que
 	if err != nil {
 		return surfaceports.WorkloadHandle{}, mapWorkloadError(err)
 	}
-	return surfaceports.WorkloadHandle{ID: workload.ID, Generation: workload.Generation, Endpoint: workload.Endpoint}, nil
+	return surfaceports.WorkloadHandle{LifecycleMode: workload.LifecycleMode, ID: workload.ID, Generation: workload.Generation, Endpoint: workload.Endpoint, OwnerUserID: workload.OwnerUserID, ProjectID: workload.ProjectID, AppInstanceID: workload.AppInstanceID, AppID: workload.AppID, AppVersion: workload.AppVersion, ManifestDigest: workload.ManifestDigest}, nil
 }
 
 func (a *surfaceWorkloadLauncher) LookupSurfaceWorkload(ctx context.Context, workloadID string, generation int64) (surfaceports.WorkloadHandle, error) {
@@ -54,7 +55,7 @@ func (a *surfaceWorkloadLauncher) LookupSurfaceWorkload(ctx context.Context, wor
 	if err != nil {
 		return surfaceports.WorkloadHandle{}, mapWorkloadError(err)
 	}
-	return surfaceports.WorkloadHandle{ID: workload.ID, Generation: workload.Generation, Endpoint: workload.Endpoint}, nil
+	return surfaceports.WorkloadHandle{LifecycleMode: workload.LifecycleMode, ID: workload.ID, Generation: workload.Generation, Endpoint: workload.Endpoint, OwnerUserID: workload.OwnerUserID, ProjectID: workload.ProjectID, AppInstanceID: workload.AppInstanceID, AppID: workload.AppID, AppVersion: workload.AppVersion, ManifestDigest: workload.ManifestDigest}, nil
 }
 
 func mapWorkloadError(err error) error {
@@ -126,8 +127,10 @@ func (s *surfaceReferenceSource) HasActiveSurface(ctx context.Context, ownerUser
 // neither module imports the other. An unconfigured runner is an honest
 // not-found, never an invented workload.
 type surfaceInteractiveRuntime struct {
-	pty    *ptyhostapp.Service
-	native *nativehostapp.Service
+	resolver surfaceports.LaunchResolver
+	manager  *workloadapp.Manager
+	pty      *ptyhostapp.Service
+	native   *nativehostapp.Service
 }
 
 var _ surfaceports.InteractiveWorkloadRuntime = (*surfaceInteractiveRuntime)(nil)
@@ -137,7 +140,7 @@ func (a *surfaceInteractiveRuntime) sessionWorkload(kind surfaceports.WorkloadKi
 	return surfaceports.InteractiveWorkload{
 		Generation: session.Generation, WorkloadID: session.SessionID, Kind: surfaceports.WorkloadKindPty, OwnerUserID: session.OwnerUserID,
 		ProjectID: session.ProjectID, State: string(session.State), Terminal: session.State.Terminal(),
-		CreatedAt: session.CreatedAt, ExpiresAt: session.ExpiresAt,
+		CreatedAt: session.CreatedAt, ExpiresAt: session.ExpiresAt, UpdatedAt: session.UpdatedAt, LifecycleMode: int32(session.LifecycleMode),
 	}
 }
 
@@ -145,7 +148,7 @@ func (a *surfaceInteractiveRuntime) nativeWorkload(session nativedomain.Session)
 	return surfaceports.InteractiveWorkload{
 		Generation: session.Generation, WorkloadID: session.SessionID, Kind: surfaceports.WorkloadKindNative, OwnerUserID: session.OwnerUserID,
 		ProjectID: session.ProjectID, State: string(session.State), Terminal: session.State.Terminal(),
-		CreatedAt: session.CreatedAt, ExpiresAt: session.ExpiresAt,
+		CreatedAt: session.CreatedAt, ExpiresAt: session.ExpiresAt, UpdatedAt: session.UpdatedAt, LifecycleMode: int32(session.LifecycleMode),
 		Width: session.Width, Height: session.Height,
 	}
 }
@@ -153,18 +156,42 @@ func (a *surfaceInteractiveRuntime) nativeWorkload(session nativedomain.Session)
 // Resolve finds the owner's interactive workload by id in the configured
 // runners; terminal sessions are returned with their true state so Attach
 // can report the stopped verdict.
-func (a *surfaceInteractiveRuntime) Resolve(ctx context.Context, ownerUserID, workloadID string) (surfaceports.InteractiveWorkload, error) {
+func (a *surfaceInteractiveRuntime) Resolve(ctx context.Context, owner, id string) (surfaceports.InteractiveWorkload, error) {
 	if a.pty != nil {
-		if session, err := a.pty.Get(ctx, ownerUserID, workloadID); err == nil {
-			return a.sessionWorkload(surfaceports.WorkloadKindPty, session), nil
+		row, err := a.pty.Get(ctx, owner, id)
+		if err == nil {
+			return a.sessionWorkload(surfaceports.WorkloadKindPty, row), nil
+		}
+		if !errors.Is(err, ptydomain.ErrNotFound) {
+			return surfaceports.InteractiveWorkload{}, mapInteractiveError(err)
 		}
 	}
 	if a.native != nil {
-		if session, err := a.native.Get(ctx, ownerUserID, workloadID); err == nil {
-			return a.nativeWorkload(session), nil
+		row, err := a.native.Get(ctx, owner, id)
+		if err == nil {
+			return a.nativeWorkload(row), nil
+		}
+		if !errors.Is(err, nativedomain.ErrNotFound) {
+			return surfaceports.InteractiveWorkload{}, mapInteractiveError(err)
+		}
+	}
+	if a.manager != nil {
+		row, err := a.manager.GetOwned(ctx, owner, id)
+		if err == nil {
+			return a.appWorkload(row), nil
+		}
+		if !errors.Is(err, workloaddomain.ErrNotFound) {
+			return surfaceports.InteractiveWorkload{}, surfaceports.ErrContinuityStoreUnavailable
 		}
 	}
 	return surfaceports.InteractiveWorkload{}, surfaceports.ErrContinuityNotFound
+}
+func (a *surfaceInteractiveRuntime) appWorkload(row workloaddomain.Workload) surfaceports.InteractiveWorkload {
+	started := row.CreatedAt
+	if row.StartedAt != nil {
+		started = *row.StartedAt
+	}
+	return surfaceports.InteractiveWorkload{WorkloadID: row.ID, Kind: surfaceports.WorkloadKindApp, OwnerUserID: row.OwnerUserID, ProjectID: row.ProjectID, AppInstanceID: row.AppInstanceID, AppID: row.AppID, AppVersion: row.AppVersion, Generation: row.Generation, State: string(row.State), Terminal: row.State.Terminal(), CreatedAt: started, UpdatedAt: row.UpdatedAt, LifecycleMode: max(int32(1), row.LifecycleMode), IdleStopSeconds: a.manager.IdleLimitSeconds()}
 }
 
 func (a *surfaceInteractiveRuntime) ListProject(ctx context.Context, ownerUserID, projectID string) ([]surfaceports.InteractiveWorkload, error) {
@@ -185,6 +212,15 @@ func (a *surfaceInteractiveRuntime) ListProject(ctx context.Context, ownerUserID
 		}
 		for _, session := range sessions {
 			workloads = append(workloads, a.nativeWorkload(session))
+		}
+	}
+	if a.manager != nil {
+		rows, err := a.manager.ListProject(ctx, ownerUserID, projectID)
+		if err != nil {
+			return nil, err
+		}
+		for _, row := range rows {
+			workloads = append(workloads, a.appWorkload(row))
 		}
 	}
 	return workloads, nil
@@ -243,7 +279,15 @@ func mapInteractiveError(err error) error {
 	switch {
 	case err == nil:
 		return nil
-	case errors.Is(err, ptydomain.ErrNotFound), errors.Is(err, nativedomain.ErrNotFound):
+	case errors.Is(err, ptydomain.ErrIdempotencyDrift), errors.Is(err, nativedomain.ErrIdempotencyDrift), errors.Is(err, workloaddomain.ErrIdempotencyConflict):
+		return surfacedomain.ErrIdempotencyConflict
+	case errors.Is(err, ptydomain.ErrInvalid), errors.Is(err, nativedomain.ErrInvalid), errors.Is(err, workloaddomain.ErrInvalid):
+		return surfacedomain.ErrInvalid
+	case errors.Is(err, ptydomain.ErrStoreUnavailable), errors.Is(err, nativedomain.ErrStoreUnavailable), errors.Is(err, workloaddomain.ErrUnavailable):
+		return surfaceports.ErrContinuityStoreUnavailable
+	case errors.Is(err, ptydomain.ErrEngineUnavailable), errors.Is(err, nativedomain.ErrEngineUnavailable), errors.Is(err, workloaddomain.ErrUnsupported), errors.Is(err, workloaddomain.ErrRunnerUnavailable), errors.Is(err, workloaddomain.ErrRestartLimitExhausted):
+		return surfacedomain.ErrUnsupported
+	case errors.Is(err, workloaddomain.ErrNotFound), errors.Is(err, ptydomain.ErrNotFound), errors.Is(err, nativedomain.ErrNotFound):
 		return surfaceports.ErrContinuityNotFound
 	default:
 		return err
@@ -261,13 +305,44 @@ func (a continuityAuthorization) AuthorizeInput(ctx context.Context, ownerUserID
 	return a.service.AuthorizeInput(ctx, ownerUserID, workloadID, deviceID)
 }
 
-func (a *surfaceInteractiveRuntime) RestartWorkload(ctx context.Context, kind surfaceports.WorkloadKind, owner, id, key string, fence func() error) (surfaceports.InteractiveWorkload, error) {
+func (a *surfaceInteractiveRuntime) RestartWorkload(ctx context.Context, kind surfaceports.WorkloadKind, owner, id, key string, fence func() error, modes ...int32) (surfaceports.InteractiveWorkload, error) {
+	mode := int32(1)
+	if len(modes) > 0 {
+		mode = modes[0]
+	}
 	switch kind {
+	case surfaceports.WorkloadKindApp:
+		if a.manager == nil {
+			return surfaceports.InteractiveWorkload{}, surfaceports.ErrContinuityNotFound
+		}
+		previous, err := a.manager.GetOwned(ctx, owner, id)
+		if err != nil {
+			return surfaceports.InteractiveWorkload{}, mapInteractiveError(err)
+		}
+		if a.resolver == nil {
+			return surfaceports.InteractiveWorkload{}, surfacedomain.ErrUnsupported
+		}
+		resolved, err := a.resolver.ResolveSurfaceLaunch(ctx, surfaceports.ResolveQuery{ProjectID: previous.ProjectID, AppInstanceID: previous.AppInstanceID})
+		if err != nil {
+			if errors.Is(err, surfaceports.ErrResolverUnavailable) {
+				return surfaceports.InteractiveWorkload{}, surfaceports.ErrContinuityStoreUnavailable
+			}
+			return surfaceports.InteractiveWorkload{}, surfaceports.ErrContinuityNotFound
+		}
+		if resolved.Kind != surfaceports.LaunchKindWebServiceContainer || resolved.AppID != previous.AppID || resolved.Version != previous.AppVersion || resolved.ManifestDigest != previous.ManifestDigest {
+			return surfaceports.InteractiveWorkload{}, surfacedomain.ErrUnsupported
+		}
+		row, err := a.manager.Restart(ctx, workloadports.RestartCommand{WorkloadID: id, OperationKey: "surface-restart:" + key, LifecycleMode: mode})
+		if err != nil {
+			return surfaceports.InteractiveWorkload{}, mapInteractiveError(err)
+		}
+		return a.appWorkload(row), nil
+
 	case surfaceports.WorkloadKindPty:
 		if a.pty == nil {
 			return surfaceports.InteractiveWorkload{}, surfaceports.ErrContinuityNotFound
 		}
-		session, err := a.pty.Restart(ctx, owner, id, key, fence)
+		session, err := a.pty.Restart(ctx, owner, id, key, fence, ptydomain.LifecycleMode(mode))
 		if err != nil {
 			return surfaceports.InteractiveWorkload{}, mapInteractiveError(err)
 		}
@@ -276,7 +351,7 @@ func (a *surfaceInteractiveRuntime) RestartWorkload(ctx context.Context, kind su
 		if a.native == nil {
 			return surfaceports.InteractiveWorkload{}, surfaceports.ErrContinuityNotFound
 		}
-		session, err := a.native.Restart(ctx, owner, id, key, fence)
+		session, err := a.native.Restart(ctx, owner, id, key, fence, nativedomain.LifecycleMode(mode))
 		if err != nil {
 			return surfaceports.InteractiveWorkload{}, mapInteractiveError(err)
 		}
@@ -288,6 +363,22 @@ func (a *surfaceInteractiveRuntime) RestartWorkload(ctx context.Context, kind su
 
 func (a *surfaceInteractiveRuntime) StopWorkloadAction(ctx context.Context, kind surfaceports.WorkloadKind, owner, id, key string, fence func() error) (surfaceports.InteractiveWorkload, error) {
 	switch kind {
+	case surfaceports.WorkloadKindApp:
+		if a.manager == nil {
+			return surfaceports.InteractiveWorkload{}, surfaceports.ErrContinuityNotFound
+		}
+		if _, err := a.manager.GetOwned(ctx, owner, id); err != nil {
+			return surfaceports.InteractiveWorkload{}, surfaceports.ErrContinuityNotFound
+		}
+		if err := a.manager.Terminate(ctx, workloadports.TerminateCommand{WorkloadID: id, OperationKey: "surface-stop:" + key, Reason: "policy"}); err != nil {
+			return surfaceports.InteractiveWorkload{}, mapInteractiveError(err)
+		}
+		row, err := a.manager.GetOwned(ctx, owner, id)
+		if err != nil {
+			return surfaceports.InteractiveWorkload{}, mapInteractiveError(err)
+		}
+		return a.appWorkload(row), nil
+
 	case surfaceports.WorkloadKindPty:
 		if a.pty != nil {
 			session, err := a.pty.Stop(ctx, owner, id, key, fence)

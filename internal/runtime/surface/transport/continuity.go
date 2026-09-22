@@ -53,7 +53,7 @@ func (h *ContinuityHandler) AttachSurface(ctx context.Context, req *connect.Requ
 	if err != nil {
 		return nil, connect.NewError(connect.CodeUnauthenticated, err)
 	}
-	result, err := h.service.AttachSurface(ctx, id.UserID, id.DeviceID, req.Msg.GetWorkloadId(), req.Msg.GetIdempotencyKey())
+	result, err := h.service.AttachSurface(ctx, id.UserID, id.DeviceID, req.Msg.GetWorkloadId(), req.Msg.GetIdempotencyKey(), req.Msg.GetExpectedWorkloadGeneration())
 	if err != nil {
 		if errors.Is(err, domain.ErrWorkloadNotRunning) {
 			// The true stopped state is the verdict: attach never starts a
@@ -128,7 +128,7 @@ func (h *ContinuityHandler) RestartSurfaceWorkload(ctx context.Context, req *con
 	if err != nil {
 		return nil, connect.NewError(connect.CodeUnauthenticated, err)
 	}
-	summary, err := h.service.RestartSurfaceWorkload(ctx, id.UserID, req.Msg.GetWorkloadId(), req.Msg.GetActionKey())
+	summary, err := h.service.RestartSurfaceWorkload(ctx, id.UserID, req.Msg.GetWorkloadId(), req.Msg.GetActionKey(), int32(req.Msg.GetLifecycleMode()))
 	if err != nil {
 		return nil, continuityError(err)
 	}
@@ -140,7 +140,8 @@ func (h *ContinuityHandler) RestartSurfaceWorkload(ctx context.Context, req *con
 // paths stamp it at reclaim.
 func workloadViewProto(summary application.ContinuitySummary) *surfacev1.SurfaceWorkloadView {
 	view := &surfacev1.SurfaceWorkloadView{
-		WorkloadId:  summary.Workload.WorkloadID,
+		WorkloadId:    summary.Workload.WorkloadID,
+		AppInstanceId: summary.Workload.AppInstanceID, AppId: summary.Workload.AppID, Version: summary.Workload.AppVersion,
 		ProjectId:   summary.Workload.ProjectID,
 		Renderer:    continuityRendererProto(summary.Workload.Kind),
 		DisplayName: workloadDisplayName(summary.Workload.Kind),
@@ -153,7 +154,10 @@ func workloadViewProto(summary application.ContinuitySummary) *surfacev1.Surface
 		Policy:          workloadPolicyProto(summary),
 	}
 	if summary.Workload.Terminal {
-		view.StoppedAt = timestamppb.New(summary.Workload.ExpiresAt)
+		view.StoppedAt = timestamppb.New(summary.Workload.UpdatedAt)
+	}
+	if summary.Workload.Kind == ports.WorkloadKindApp {
+		view.DisplayName = summary.Workload.AppID
 	}
 	return view
 }
@@ -168,13 +172,15 @@ func workloadDisplayName(kind ports.WorkloadKind) string {
 }
 
 func workloadPolicyProto(summary application.ContinuitySummary) *surfacev1.WorkloadPolicy {
+	idle := summary.Workload.IdleStopSeconds
+	if summary.Workload.LifecycleMode == 2 {
+		idle = 0
+	}
 	return &surfacev1.WorkloadPolicy{
-		// Honest bounded policy: sessions survive window close and detach
-		// within the existing 30-minute ceiling; expiry stops the program
-		// and is reported as the true reason. Idle stop stays unconfigured
-		// (0) — the absolute session ceiling is the only policy today.
+		// Actual program policy is independent of the renewable control lease.
 		Persistent:       true,
-		KeepAliveSeconds: summary.KeepAliveSeconds,
+		KeepAliveSeconds: summary.KeepAliveSeconds, IdleStopSeconds: idle,
+		LifecycleMode: surfacev1.LifecycleMode(max(int32(1), summary.Workload.LifecycleMode)),
 	}
 }
 
@@ -183,6 +189,9 @@ func workloadPolicyProto(summary application.ContinuitySummary) *surfacev1.Workl
 // sessions have no renderer concept and stay unspecified rather than
 // borrowing a wrong value.
 func continuityRendererProto(kind ports.WorkloadKind) surfacev1.SurfaceRenderer {
+	if kind == ports.WorkloadKindApp {
+		return surfacev1.SurfaceRenderer_SURFACE_RENDERER_WEB_SERVICE
+	}
 	if kind == ports.WorkloadKindNative {
 		return surfacev1.SurfaceRenderer_SURFACE_RENDERER_REMOTE_NATIVE
 	}
@@ -202,7 +211,7 @@ func continuitySessionProto(workload ports.InteractiveWorkload) *surfacev1.Surfa
 		// have a fixed capture geometry in this phase.
 		Resize:    workload.Kind == ports.WorkloadKindPty,
 		CreatedAt: timestamppb.New(workload.CreatedAt),
-		ExpiresAt: timestamppb.New(workload.ExpiresAt),
+		ExpiresAt: workloadExpiryProto(workload),
 	}
 }
 
@@ -233,8 +242,10 @@ func continuityError(err error) error {
 		return connect.NewError(connect.CodeInvalidArgument, errors.New("surface continuity request is invalid"))
 	case errors.Is(err, domain.ErrNotFound), errors.Is(err, ports.ErrContinuityNotFound):
 		return connect.NewError(connect.CodeNotFound, errors.New("surface continuity target is not available"))
-	case errors.Is(err, domain.ErrWorkloadNotRestartable):
-		return connect.NewError(connect.CodeFailedPrecondition, errors.New("session workloads are not restartable; start a new session"))
+	case errors.Is(err, domain.ErrIdempotencyConflict):
+		return connect.NewError(connect.CodeAborted, errors.New("surface action key conflicts with recorded request"))
+	case errors.Is(err, domain.ErrUnsupported), errors.Is(err, domain.ErrWorkloadNotRunning), errors.Is(err, domain.ErrWorkloadNotRestartable):
+		return connect.NewError(connect.CodeFailedPrecondition, errors.New("surface workload operation is not available"))
 	case errors.Is(err, domain.ErrControlDenied), errors.Is(err, domain.ErrControlExpired), errors.Is(err, ports.ErrContinuityDenied):
 		return connect.NewError(connect.CodePermissionDenied, errors.New("surface control is held by another device"))
 	case errors.Is(err, ports.ErrContinuityStoreUnavailable):
@@ -242,4 +253,23 @@ func continuityError(err error) error {
 	default:
 		return connect.NewError(connect.CodeInternal, errors.New("surface continuity operation failed"))
 	}
+}
+
+func workloadExpiryProto(workload ports.InteractiveWorkload) *timestamppb.Timestamp {
+	if workload.LifecycleMode == 2 {
+		return nil
+	}
+	return timestamppb.New(workload.ExpiresAt)
+}
+
+func (h *ContinuityHandler) GetSurfaceWorkload(ctx context.Context, req *connect.Request[surfacev1.GetSurfaceWorkloadRequest]) (*connect.Response[surfacev1.GetSurfaceWorkloadResponse], error) {
+	id, err := identity.FromContext(ctx)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeUnauthenticated, err)
+	}
+	result, err := h.service.GetSurfaceWorkload(ctx, id.UserID, req.Msg.GetWorkloadId())
+	if err != nil {
+		return nil, continuityError(err)
+	}
+	return connect.NewResponse(&surfacev1.GetSurfaceWorkloadResponse{Workload: workloadViewProto(result)}), nil
 }

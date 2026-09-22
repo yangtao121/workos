@@ -18,7 +18,7 @@ func New(socket, image string) *Engine {
 	return &Engine{containerprocess.New(socket, image), make(chan struct{}, 4)}
 }
 func (e *Engine) Facts() ports.EngineFacts {
-	return ports.EngineFacts{Engine: "docker-workspace-pty", ProcessGroupKill: true, EnforcedLimits: []string{"container-filesystem", "no-network", "readonly-root", "pids", "memory", "cpu", "output-ring", "session-ttl"}}
+	return ports.EngineFacts{Engine: "docker-workspace-pty", ProcessGroupKill: true, EnforcedLimits: []string{"container-filesystem", "no-network", "readonly-root", "pids", "memory", "cpu", "output-ring", "program-lifecycle-policy"}}
 }
 func (e *Engine) Available(ctx context.Context) error { return e.client.Available(ctx) }
 func (e *Engine) Reserve() (func(), error) {
@@ -34,10 +34,21 @@ func (e *Engine) Launch(ctx context.Context, columns, rows int32, root string) (
 	return e.LaunchWorkspace(ctx, columns, rows, root, false)
 }
 func (e *Engine) LaunchWorkspace(ctx context.Context, columns, rows int32, root string, readOnly bool) (ports.Terminal, error) {
+	return e.LaunchLifecycle(ctx, columns, rows, root, readOnly, domain.LifecycleBounded)
+}
+func (e *Engine) LaunchLifecycle(ctx context.Context, columns, rows int32, root string, readOnly bool, mode domain.LifecycleMode) (ports.Terminal, error) {
+	mode, err := domain.NormalizeLifecycle(mode)
+	if err != nil {
+		return nil, err
+	}
+	lifetime := domain.SessionTTL
+	if mode == domain.LifecycleManualStop {
+		lifetime = 0
+	}
 	if !domain.ValidSize(columns, rows) {
 		return nil, domain.ErrInvalid
 	}
-	process, err := e.client.Start(ctx, containerprocess.Spec{ID: (ids.UUIDv7{}).New(), Workspace: root, ReadOnly: readOnly, Tty: true, Argv: []string{"/bin/bash", "--noprofile", "--norc"}, Lifetime: domain.SessionTTL})
+	process, err := e.client.Start(ctx, containerprocess.Spec{ID: (ids.UUIDv7{}).New(), Workspace: root, ReadOnly: readOnly, Tty: true, Argv: []string{"/bin/bash", "--noprofile", "--norc"}, Lifetime: lifetime, ManualStop: mode == domain.LifecycleManualStop})
 	if err != nil {
 		return nil, domain.ErrEngineUnavailable
 	}

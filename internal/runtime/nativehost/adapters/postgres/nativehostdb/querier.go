@@ -14,7 +14,7 @@ type Querier interface {
 	CloseNativeSession(ctx context.Context, arg CloseNativeSessionParams) (int64, error)
 	CountActiveNativeSessions(ctx context.Context, ownerUserID string) (int64, error)
 	ExpireIdleNativeSessions(ctx context.Context, updatedAt time.Time) ([]string, error)
-	GetNativeRestartReceipt(ctx context.Context, arg GetNativeRestartReceiptParams) (int64, error)
+	GetNativeRestartReceipt(ctx context.Context, arg GetNativeRestartReceiptParams) (GetNativeRestartReceiptRow, error)
 	GetNativeSession(ctx context.Context, arg GetNativeSessionParams) (WorkosRuntimeNativeSession, error)
 	GetNativeSessionByKey(ctx context.Context, arg GetNativeSessionByKeyParams) (WorkosRuntimeNativeSession, error)
 	GetNativeStopReceipt(ctx context.Context, arg GetNativeStopReceiptParams) (int64, error)

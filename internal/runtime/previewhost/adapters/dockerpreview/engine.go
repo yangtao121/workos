@@ -52,7 +52,11 @@ func (e *Engine) Launch(ctx context.Context, r ports.PreviewRecord, g ports.Work
 	}()
 	// Command and bridge source travel as separate argv values, never interpolated.
 	argv := []string{"/bin/bash", "--noprofile", "--norc", "-c", `node -e "$1" & bridge=$!; /bin/bash --noprofile --norc -c "$2"; result=$?; kill "$bridge" 2>/dev/null; exit "$result"`, "workos-preview", bridge, r.Command}
-	process, err := e.client.Start(ctx, containerprocess.Spec{ID: r.PreviewID, Workspace: g.Directory, ReadOnly: g.ReadOnly, Argv: argv, Environment: []string{"PORT=" + strconv.Itoa(int(r.Port)), "WORKOS_PREVIEW_BASE=/previews/" + r.PreviewID + "/" + r.AccessToken + "/"}, ExtraMounts: []string{dir + ":/bridge:rw"}, Lifetime: domain.PreviewTTL})
+	lifetime := domain.PreviewTTL
+	if r.LifecycleMode == domain.LifecycleManualStop {
+		lifetime = 0
+	}
+	process, err := e.client.Start(ctx, containerprocess.Spec{ID: r.PreviewID, Workspace: g.Directory, ReadOnly: g.ReadOnly, Argv: argv, Environment: []string{"PORT=" + strconv.Itoa(int(r.Port)), "WORKOS_PREVIEW_BASE=/previews/" + r.PreviewID + "/" + r.AccessToken + "/"}, ExtraMounts: []string{dir + ":/bridge:rw"}, Lifetime: lifetime, ManualStop: r.LifecycleMode == domain.LifecycleManualStop})
 	if err != nil {
 		return nil, err
 	}

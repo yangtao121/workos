@@ -219,6 +219,7 @@ type SurfaceReferenceSource interface {
 
 // EnsureCommand is one validated ensure request.
 type EnsureCommand struct {
+	LifecycleMode  int32
 	OwnerUserID    string
 	ProjectID      string
 	AppInstanceID  string
@@ -236,8 +237,10 @@ type EnsureCommand struct {
 
 // RestartCommand is one validated restart request (reliability-driven).
 type RestartCommand struct {
-	WorkloadID   string
-	OperationKey string
+	// Zero keeps the persisted policy for automatic reliability restarts.
+	LifecycleMode int32
+	WorkloadID    string
+	OperationKey  string
 }
 
 // TerminateCommand is one validated terminate request.
@@ -326,6 +329,7 @@ type WorkloadRepository interface {
 
 // WorkloadFacts is the mutable fact bundle of one transition.
 type WorkloadFacts struct {
+	LifecycleMode int32
 	ContainerID   string
 	Endpoint      string
 	CgroupPath    string
@@ -353,4 +357,9 @@ func (o StoredOperation) Completed() bool {
 // be re-driven under the same key (failures never consume the key).
 func (o StoredOperation) Retryable() bool {
 	return o.ErrorKind == domain.ErrorFailed || o.ErrorKind == domain.ErrorUnavailable
+}
+
+// ProjectWorkloadRepository scopes discovery without a cross-owner global limit.
+type ProjectWorkloadRepository interface {
+	ListProject(context.Context, string, string) ([]domain.Workload, error)
 }

@@ -65,6 +65,7 @@ type Spec struct {
 	ReadOnly, Tty                  bool
 	Argv, Environment, ExtraMounts []string
 	Lifetime                       time.Duration
+	ManualStop                     bool
 }
 type Process struct {
 	client     *Client
@@ -77,7 +78,7 @@ type Process struct {
 }
 
 func (c *Client) Start(ctx context.Context, spec Spec) (*Process, error) {
-	if c.image == "" || len(spec.Argv) == 0 || spec.Lifetime <= 0 || spec.Lifetime > 30*time.Minute {
+	if c.image == "" || len(spec.Argv) == 0 || (!spec.ManualStop && (spec.Lifetime <= 0 || spec.Lifetime > 30*time.Minute)) || (spec.ManualStop && spec.Lifetime != 0) {
 		return nil, ErrUnavailable
 	}
 	mounts := append([]string{}, spec.ExtraMounts...)
@@ -90,7 +91,10 @@ func (c *Client) Start(ctx context.Context, spec Spec) (*Process, error) {
 		mounts = append(mounts, spec.Workspace+":/workspace:"+mode)
 		cwd = "/workspace"
 	}
-	command := append([]string{"/usr/bin/timeout", "--signal=KILL", strconv.FormatInt(int64(spec.Lifetime.Seconds()), 10)}, spec.Argv...)
+	command := append([]string{}, spec.Argv...)
+	if !spec.ManualStop {
+		command = append([]string{"/usr/bin/timeout", "--signal=KILL", strconv.FormatInt(int64(spec.Lifetime.Seconds()), 10)}, command...)
+	}
 	env := append([]string{"HOME=/tmp", "PATH=/usr/local/go/bin:/usr/local/bin:/usr/bin:/bin", "LANG=C.UTF-8", "TERM=xterm-256color", "TZ=UTC"}, spec.Environment...)
 	conf := map[string]any{"Image": c.image, "User": fmt.Sprintf("%d:%d", os.Getuid(), os.Getgid()), "WorkingDir": cwd, "Cmd": command, "Env": env, "Tty": spec.Tty, "OpenStdin": spec.Tty, "AttachStdin": spec.Tty, "AttachStdout": true, "AttachStderr": true,
 		"Labels":     map[string]string{"workos.owner": "runtime-interactive", "workos.runtime": c.namespace, "workos.operation": spec.ID},
@@ -101,7 +105,11 @@ func (c *Client) Start(ctx context.Context, spec Spec) (*Process, error) {
 	if err := c.request(ctx, "POST", "/containers/create", conf, &created); err != nil {
 		return nil, err
 	}
-	life, cancel := context.WithTimeout(context.WithoutCancel(ctx), spec.Lifetime)
+	life, cancel := context.WithCancel(context.WithoutCancel(ctx))
+	if !spec.ManualStop {
+		cancel()
+		life, cancel = context.WithTimeout(context.WithoutCancel(ctx), spec.Lifetime)
+	}
 	process := &Process{client: c, ID: created.ID, done: make(chan struct{}), cancel: cancel}
 	ok := false
 	defer func() {

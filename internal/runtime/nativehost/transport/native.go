@@ -47,7 +47,7 @@ func sessionProto(session domain.Session, engine string) *surfacev1.NativeSessio
 		Id: session.SessionID, OwnerUserId: session.OwnerUserID, ProjectId: session.ProjectID,
 		State: string(session.State), Engine: engine,
 		Width: session.Width, Height: session.Height,
-		CreatedAt: timestamppb.New(session.CreatedAt), ExpiresAt: timestamppb.New(session.ExpiresAt),
+		CreatedAt: timestamppb.New(session.CreatedAt), ExpiresAt: expiryProto(session), LifecycleMode: surfacev1.LifecycleMode(session.LifecycleMode),
 	}
 }
 
@@ -56,7 +56,7 @@ func (h *NativeHandler) CreateNativeSession(ctx context.Context, req *connect.Re
 	if err != nil {
 		return nil, connect.NewError(connect.CodeUnauthenticated, err)
 	}
-	session, err := h.service.Create(ctx, owner.UserID, req.Msg.GetProjectId(), req.Msg.GetIdempotencyKey(), req.Msg.GetWidth(), req.Msg.GetHeight())
+	session, err := h.service.Create(ctx, owner.UserID, req.Msg.GetProjectId(), req.Msg.GetIdempotencyKey(), req.Msg.GetWidth(), req.Msg.GetHeight(), domain.LifecycleMode(req.Msg.GetLifecycleMode()))
 	if err != nil {
 		return nil, nativeError(err)
 	}
@@ -135,4 +135,11 @@ func nativeError(err error) error {
 		code = connect.CodeUnavailable
 	}
 	return connect.NewError(code, errors.New("native session request failed"))
+}
+
+func expiryProto(session domain.Session) *timestamppb.Timestamp {
+	if session.LifecycleMode == domain.LifecycleManualStop {
+		return nil
+	}
+	return timestamppb.New(session.ExpiresAt)
 }

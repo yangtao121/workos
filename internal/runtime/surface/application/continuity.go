@@ -3,8 +3,8 @@
 // to the owner's running interactive workloads (PTY and native sessions
 // first); control is a single server-side epoch switched only by the explicit
 // takeover RPC. Detach releases the connection, never the program; Stop is
-// the legacy deterministic reclaim. The bounded policy stays the existing
-// 30-minute session ceiling: control leases and attachments expire with it.
+// the legacy deterministic reclaim. Program policy may be manual-stop;
+// short-lived control leases and device access remain independently bounded.
 package application
 
 import (
@@ -18,9 +18,7 @@ import (
 	"github.com/yangtao121/workos/internal/runtime/surface/ports"
 )
 
-// Continuity policy bounds. The control lease shares the single bounded
-// 30-minute ceiling of the interactive sessions; nothing here extends a
-// session's keep-alive.
+// Control lease bounds are independent from the program lifetime.
 const (
 	MinControlLeaseTTL = time.Minute
 	MaxControlLeaseTTL = 30 * time.Minute
@@ -70,7 +68,7 @@ func NewContinuityService(store ports.ContinuityStore, workloads ports.Interacti
 		return nil, errors.New("continuity service requires store, workload runtime and ids")
 	}
 	if controlTTL < MinControlLeaseTTL || controlTTL > MaxControlLeaseTTL {
-		return nil, errors.New("control lease TTL must stay within the bounded 30-minute session ceiling")
+		return nil, errors.New("control lease TTL must stay within the 30-minute authorization ceiling")
 	}
 	return &ContinuityService{
 		store: store, workloads: workloads, generator: generator,
@@ -99,7 +97,7 @@ func (s *ContinuityService) ListProjectSurfaces(ctx context.Context, ownerUserID
 			Workload:         workload,
 			Generation:       max(SessionWorkloadGeneration, workload.Generation),
 			AttachmentCount:  counts[workload.WorkloadID],
-			KeepAliveSeconds: int64(s.controlTTL.Seconds()),
+			KeepAliveSeconds: workloadKeepAlive(workload),
 		})
 	}
 	return summaries, nil
@@ -110,13 +108,19 @@ func (s *ContinuityService) ListProjectSurfaces(ctx context.Context, ownerUserID
 // the caller decides to start a new session. The first attach of a workload
 // with no lease becomes controller of generation 1; every later attach is a
 // plain observer until its device explicitly requests control.
-func (s *ContinuityService) AttachSurface(ctx context.Context, ownerUserID, deviceID, workloadID, idempotencyKey string) (AttachResult, error) {
+func (s *ContinuityService) AttachSurface(ctx context.Context, ownerUserID, deviceID, workloadID, idempotencyKey string, generations ...int64) (AttachResult, error) {
 	if !domain.ValidSessionUUID(ownerUserID) || !domain.ValidSessionUUID(workloadID) || !domain.ValidSessionUUID(deviceID) || !domain.ValidSessionIdempotencyKey(idempotencyKey) {
 		return AttachResult{}, domain.ErrInvalid
 	}
 	workload, err := s.workloads.Resolve(ctx, ownerUserID, workloadID)
 	if err != nil {
 		return AttachResult{}, err
+	}
+	if len(generations) > 0 && (generations[0] < 0 || (generations[0] > 0 && generations[0] != max(SessionWorkloadGeneration, workload.Generation))) {
+		return AttachResult{}, domain.ErrWorkloadNotRunning
+	}
+	if workload.Kind == ports.WorkloadKindApp {
+		return AttachResult{}, domain.ErrUnsupported
 	}
 	if workload.Terminal || workload.State != "running" {
 		// Honest stopped-state verdict: attaching never resurrects a program.
@@ -143,7 +147,7 @@ func (s *ContinuityService) AttachSurface(ctx context.Context, ownerUserID, devi
 
 // DetachSurface releases only this device's connection resources: the native
 // media peer (when the workload is native) and the attachment row. The
-// program keeps running under its bounded policy and output keeps
+// program keeps running under its persisted policy and output keeps
 // accumulating. A detaching controller does not free the lease: it expires or
 // another device takes over.
 func (s *ContinuityService) DetachSurface(ctx context.Context, ownerUserID, deviceID, surfaceSessionID string) error {
@@ -232,12 +236,19 @@ func (s *ContinuityService) StopSurfaceWorkload(ctx context.Context, ownerUserID
 		return ContinuitySummary{}, domain.ErrWorkloadNotRestartable
 	}
 
-	return ContinuitySummary{Workload: workload, Generation: max(SessionWorkloadGeneration, workload.Generation), KeepAliveSeconds: int64(s.controlTTL.Seconds())}, nil
+	return ContinuitySummary{Workload: workload, Generation: max(SessionWorkloadGeneration, workload.Generation), KeepAliveSeconds: workloadKeepAlive(workload)}, nil
 }
 
 // RestartSurfaceWorkload starts a durable generation and fences old attachments.
-func (s *ContinuityService) RestartSurfaceWorkload(ctx context.Context, ownerUserID, workloadID, actionKey string) (ContinuitySummary, error) {
+func (s *ContinuityService) RestartSurfaceWorkload(ctx context.Context, ownerUserID, workloadID, actionKey string, modes ...int32) (ContinuitySummary, error) {
 	if !domain.ValidSessionUUID(ownerUserID) || !domain.ValidSessionUUID(workloadID) || !domain.ValidSessionIdempotencyKey(actionKey) {
+		return ContinuitySummary{}, domain.ErrInvalid
+	}
+	mode := int32(1)
+	if len(modes) > 0 && modes[0] != 0 {
+		mode = modes[0]
+	}
+	if mode != 1 && mode != 2 {
 		return ContinuitySummary{}, domain.ErrInvalid
 	}
 	workload, err := s.workloads.Resolve(ctx, ownerUserID, workloadID)
@@ -252,17 +263,16 @@ func (s *ContinuityService) RestartSurfaceWorkload(ctx context.Context, ownerUse
 	// not detach devices that already attached to the resulting generation.
 	restarted, err := restarter.RestartWorkload(ctx, workload.Kind, ownerUserID, workloadID, actionKey, func() error {
 		return s.store.ExpireAttachmentsForWorkloads(ctx, []string{workloadID}, s.now())
-	})
+	}, mode)
 	if err != nil {
 		return ContinuitySummary{}, err
 	}
-	return ContinuitySummary{Workload: restarted, Generation: max(SessionWorkloadGeneration, restarted.Generation), KeepAliveSeconds: int64(s.controlTTL.Seconds())}, nil
+	return ContinuitySummary{Workload: restarted, Generation: max(SessionWorkloadGeneration, restarted.Generation), KeepAliveSeconds: workloadKeepAlive(restarted)}, nil
 }
 
 // Sweep applies the bounded policy to the access relations: attachments
 // whose control expiry elapsed expire, and attachments of workloads that
-// became terminal expire with them. The program TTL policy stays the single
-// bounded policy; no attachment outlives it.
+// became terminal expire with them. Access expiry never stops a program.
 func (s *ContinuityService) Sweep(ctx context.Context) error {
 	now := s.now()
 	if _, err := s.store.ExpireElapsedAttachments(ctx, now); err != nil {
@@ -343,4 +353,28 @@ func (s *ContinuityService) AuthorizeInputGeneration(ctx context.Context, owner,
 		return ports.ErrContinuityDenied
 	}
 	return nil
+}
+
+func workloadKeepAlive(workload ports.InteractiveWorkload) int64 {
+	if workload.LifecycleMode == 2 || workload.Kind == ports.WorkloadKindApp {
+		return 0
+	}
+	return int64((30 * time.Minute).Seconds())
+}
+
+// GetSurfaceWorkload resolves exact owner-scoped facts, including terminal
+// generations. It never starts a program or creates a device attachment.
+func (s *ContinuityService) GetSurfaceWorkload(ctx context.Context, owner, id string) (ContinuitySummary, error) {
+	if !domain.ValidSessionUUID(owner) || !domain.ValidSessionUUID(id) {
+		return ContinuitySummary{}, domain.ErrInvalid
+	}
+	workload, err := s.workloads.Resolve(ctx, owner, id)
+	if err != nil {
+		return ContinuitySummary{}, err
+	}
+	counts, err := s.store.CountLiveAttachments(ctx, owner, workload.ProjectID)
+	if err != nil {
+		return ContinuitySummary{}, err
+	}
+	return ContinuitySummary{Workload: workload, Generation: max(SessionWorkloadGeneration, workload.Generation), AttachmentCount: counts[id], KeepAliveSeconds: workloadKeepAlive(workload)}, nil
 }

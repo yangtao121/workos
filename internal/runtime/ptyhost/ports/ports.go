@@ -79,7 +79,7 @@ type Engine interface {
 // RestartStore reserves a new generation and records action-key replay in
 // one transaction before any process is launched.
 type RestartStore interface {
-	BeginRestart(context.Context, string, string, string, time.Time) (int64, bool, error)
+	BeginRestart(context.Context, string, string, string, time.Time, ...domain.LifecycleMode) (int64, bool, error)
 }
 
 // WorkspaceGrant is an immutable execution snapshot; Validate rechecks Core.
@@ -101,4 +101,9 @@ type StopStore interface {
 
 type EpochControlAuthorizer interface {
 	AuthorizeInputGeneration(context.Context, string, string, string, int64) error
+}
+
+// LifecycleEngine launches a program under its persisted lifetime policy.
+type LifecycleEngine interface {
+	LaunchLifecycle(context.Context, int32, int32, string, bool, domain.LifecycleMode) (Terminal, error)
 }

@@ -27,6 +27,7 @@ type Querier interface {
 	// The primary key is the same-key race arbiter: a concurrent reserve of the
 	// same (workload, key) inserts nothing and the caller re-reads instead.
 	InsertWorkloadOperation(ctx context.Context, arg InsertWorkloadOperationParams) (int64, error)
+	ListProjectWorkloads(ctx context.Context, arg ListProjectWorkloadsParams) ([]WorkosRuntimeWorkload, error)
 	ListWorkloads(ctx context.Context, rowLimit int32) ([]WorkosRuntimeWorkload, error)
 	// Idle bookkeeping belongs to the exact running generation observed by the
 	// caller; an old reconcile pass may not start the next generation's clock.

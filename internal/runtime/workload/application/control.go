@@ -20,7 +20,7 @@ import (
 // refusal once spent — the crash-loop bound is enforced here, by
 // deterministic code, regardless of who asks (ADR-0006 §6).
 func (m *Manager) Restart(ctx context.Context, command ports.RestartCommand) (domain.Workload, error) {
-	if !domain.ValidWorkloadID(command.WorkloadID) || !domain.ValidOperationKey(command.OperationKey) {
+	if command.LifecycleMode < 0 || command.LifecycleMode > 2 || !domain.ValidWorkloadID(command.WorkloadID) || !domain.ValidOperationKey(command.OperationKey) {
 		return domain.Workload{}, domain.ErrInvalid
 	}
 	ctx, cancel := context.WithTimeout(ctx, m.config.OperationTimeout)
@@ -40,7 +40,11 @@ func (m *Manager) Restart(ctx context.Context, command ports.RestartCommand) (do
 		}
 		return domain.Workload{}, fmt.Errorf("restart workload: %w", err)
 	}
-	digest := domain.OperationDigest(domain.OperationRestart, workload.ID, workload.Image, workload.Command, workload.Port, workload.Requested)
+	mode := command.LifecycleMode
+	if mode == 0 {
+		mode = max(int32(1), workload.LifecycleMode)
+	}
+	digest := domain.OperationDigest(domain.OperationRestart, workload.ID, workload.Image, workload.Command, workload.Port, workload.Requested, mode)
 	targetGeneration := workload.Generation + 1
 	stored, err := m.repository.LookupOperation(ctx, workload.ID, command.OperationKey)
 	if err != nil {
@@ -103,7 +107,7 @@ func (m *Manager) Restart(ctx context.Context, command ports.RestartCommand) (do
 			return domain.Workload{}, fmt.Errorf("restart workload: %w", err)
 		}
 	}
-	if workload.State != domain.StateRunning && workload.State != domain.StateFailed {
+	if workload.State != domain.StateRunning && workload.State != domain.StateFailed && !(workload.State == domain.StateStopped && command.LifecycleMode != 0) {
 		if err := m.persistOperation(context.WithoutCancel(ctx), domain.WorkloadOperation{
 			WorkloadID: workload.ID, OperationKey: command.OperationKey,
 			Operation: domain.OperationRestart, RequestDigest: digest,
@@ -157,6 +161,7 @@ func (m *Manager) Restart(ctx context.Context, command ports.RestartCommand) (do
 		return domain.Workload{}, err
 	}
 	next := workload
+	next.LifecycleMode = mode
 	next.Generation = targetGeneration
 	next.RestartCount = workload.RestartCount + 1
 	next.State = domain.StateStarting
@@ -175,7 +180,7 @@ func (m *Manager) Restart(ctx context.Context, command ports.RestartCommand) (do
 	next.StartedAt = nil
 	now := m.now()
 	if err := m.repository.Transition(ctx, workload.ID, workload.State, domain.StateStarting, ports.WorkloadFacts{
-		Generation: next.Generation, RestartCount: next.RestartCount,
+		Generation: next.Generation, RestartCount: next.RestartCount, LifecycleMode: mode,
 		HealthVerdict: domain.HealthUnknown, LastExit: domain.ExitNone,
 		ClearEngine: true,
 	}, now); err != nil {

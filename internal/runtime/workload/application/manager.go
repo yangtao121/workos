@@ -151,6 +151,9 @@ func (m *Manager) RunnerStatus(ctx context.Context) ports.Capability {
 // and never create unbounded orphans: reconciliation converges any partial
 // side effect.
 func (m *Manager) Ensure(ctx context.Context, command ports.EnsureCommand) (domain.Workload, error) {
+	if command.LifecycleMode == 0 {
+		command.LifecycleMode = 1
+	}
 	if !m.validEnsure(command) {
 		return domain.Workload{}, domain.ErrInvalid
 	}
@@ -191,7 +194,7 @@ func (m *Manager) Ensure(ctx context.Context, command ports.EnsureCommand) (doma
 	now := m.now()
 	workloadID := m.ids.New()
 	workload := domain.Workload{
-		ID: workloadID, OwnerUserID: command.OwnerUserID, ProjectID: command.ProjectID,
+		LifecycleMode: command.LifecycleMode, ID: workloadID, OwnerUserID: command.OwnerUserID, ProjectID: command.ProjectID,
 		AppInstanceID: command.AppInstanceID, AppID: command.AppID, AppVersion: command.AppVersion,
 		ManifestDigest: command.ManifestDigest, Image: command.Image, Command: append([]string(nil), command.Command...),
 		Port: command.Port, ArtifactID: command.ArtifactID, ArtifactDigest: command.ArtifactDigest, Requested: command.Requested,
@@ -201,7 +204,7 @@ func (m *Manager) Ensure(ctx context.Context, command ports.EnsureCommand) (doma
 		HealthVerdict: domain.HealthUnknown, LastExit: domain.ExitNone,
 		CreatedAt: now, UpdatedAt: now,
 	}
-	digest := domain.OperationDigest(domain.OperationEnsure, workload.ID, workload.Image, workload.Command, workload.Port, workload.Requested)
+	digest := domain.OperationDigest(domain.OperationEnsure, workload.ID, workload.Image, workload.Command, workload.Port, workload.Requested, workload.LifecycleMode)
 	operation := domain.WorkloadOperation{
 		WorkloadID: workload.ID, OperationKey: command.OperationKey,
 		Operation: domain.OperationEnsure, RequestDigest: digest,
@@ -243,7 +246,7 @@ func (m *Manager) Ensure(ctx context.Context, command ports.EnsureCommand) (doma
 }
 
 func (m *Manager) validEnsure(command ports.EnsureCommand) bool {
-	return domain.ValidUUIDv7(command.OwnerUserID) && domain.ValidUUIDv7(command.ProjectID) &&
+	return (command.LifecycleMode == 1 || command.LifecycleMode == 2) && domain.ValidUUIDv7(command.OwnerUserID) && domain.ValidUUIDv7(command.ProjectID) &&
 		domain.ValidUUIDv7(command.AppInstanceID) && domain.ValidOperationKey(command.OperationKey) &&
 		domain.ValidDescriptor(command.AppID, command.AppVersion, command.ManifestDigest,
 			command.Image, command.Command, command.Port, command.Requested)
@@ -253,7 +256,7 @@ func (m *Manager) ensureExisting(ctx context.Context, existing domain.Workload, 
 	if !sameEnsureDescriptor(existing, command) {
 		return domain.Workload{}, domain.ErrIdempotencyConflict
 	}
-	digest := domain.OperationDigest(domain.OperationEnsure, existing.ID, command.Image, command.Command, command.Port, command.Requested)
+	digest := domain.OperationDigest(domain.OperationEnsure, existing.ID, command.Image, command.Command, command.Port, command.Requested, command.LifecycleMode)
 	operation := domain.WorkloadOperation{
 		WorkloadID: existing.ID, OperationKey: command.OperationKey,
 		Operation: domain.OperationEnsure, RequestDigest: digest,
@@ -332,7 +335,7 @@ func (m *Manager) ensureExisting(ctx context.Context, existing domain.Workload, 
 }
 
 func sameEnsureDescriptor(existing domain.Workload, command ports.EnsureCommand) bool {
-	if existing.OwnerUserID != command.OwnerUserID || existing.ProjectID != command.ProjectID ||
+	if max(int32(1), existing.LifecycleMode) != max(int32(1), command.LifecycleMode) || existing.OwnerUserID != command.OwnerUserID || existing.ProjectID != command.ProjectID ||
 		existing.AppInstanceID != command.AppInstanceID || existing.AppID != command.AppID ||
 		existing.AppVersion != command.AppVersion || existing.ManifestDigest != command.ManifestDigest ||
 		existing.Image != command.Image || existing.Port != command.Port || existing.Requested != command.Requested ||

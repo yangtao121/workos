@@ -100,17 +100,21 @@ func NewWithWorkloads(repository ports.SessionRepository, resolver ports.LaunchR
 // CreateCommand is one validated-boundary create request. Owner and device
 // come exclusively from the trusted gateway identity, never the client body.
 type CreateCommand struct {
-	OwnerUserID        string
-	DeviceID           string
-	IdempotencyKey     string
-	ProjectID          string
-	AppInstanceID      string
-	DeviceClass        string
-	ViewportWidth      int32
-	ViewportHeight     int32
-	ViewportRatio      float64
-	PreferredRenderer  string
-	ExpectedAppVersion string
+	LifecycleMode              int32
+	OwnerUserID                string
+	DeviceID                   string
+	IdempotencyKey             string
+	ProjectID                  string
+	AppInstanceID              string
+	DeviceClass                string
+	ViewportWidth              int32
+	ViewportHeight             int32
+	ViewportRatio              float64
+	PreferredRenderer          string
+	ExpectedAppVersion         string
+	AttachOnly                 bool
+	ExpectedWorkloadID         string
+	ExpectedWorkloadGeneration int64
 }
 
 // CreatedSurface is the create result: the session snapshot plus the bridge
@@ -137,6 +141,12 @@ type CreatedSurface struct {
 // out a token bound to the superseded epoch — the caller must use a new
 // create key.
 func (s *Service) Create(ctx context.Context, command CreateCommand) (CreatedSurface, error) {
+	if command.LifecycleMode == 0 {
+		command.LifecycleMode = 1
+	}
+	if command.LifecycleMode != 1 && command.LifecycleMode != 2 {
+		return CreatedSurface{}, domain.ErrInvalid
+	}
 	if command.OwnerUserID == "" || command.DeviceID == "" ||
 		!domain.ValidSessionIdempotencyKey(command.IdempotencyKey) ||
 		!domain.ValidSessionUUID(command.ProjectID) || !domain.ValidSessionUUID(command.AppInstanceID) ||
@@ -144,6 +154,8 @@ func (s *Service) Create(ctx context.Context, command CreateCommand) (CreatedSur
 		!domain.ValidViewport(command.ViewportWidth, command.ViewportHeight, command.ViewportRatio) ||
 		!domain.ValidPreferredRenderer(command.PreferredRenderer) ||
 		len(command.ExpectedAppVersion) > 64 ||
+		(command.ExpectedWorkloadID != "" && !domain.ValidSessionUUID(command.ExpectedWorkloadID)) || command.ExpectedWorkloadGeneration < 0 ||
+		(!command.AttachOnly && (command.ExpectedWorkloadID != "" || command.ExpectedWorkloadGeneration != 0)) ||
 		strings.ContainsFunc(command.ExpectedAppVersion, func(r rune) bool { return r <= 0x20 || r >= 0x7f }) {
 		return CreatedSurface{}, domain.ErrInvalid
 	}
@@ -165,6 +177,15 @@ func (s *Service) Create(ctx context.Context, command CreateCommand) (CreatedSur
 	renderer, replayCandidates, err := s.rendererRuling(command.PreferredRenderer, resolved.Kind)
 	if err != nil {
 		return CreatedSurface{}, err
+	}
+	if command.AttachOnly {
+		if resolved.Kind == ports.LaunchKindWebServiceContainer {
+			if _, err := s.lookupAttachedWorkload(ctx, command, resolved); err != nil {
+				return CreatedSurface{}, err
+			}
+		} else if command.ExpectedWorkloadID != "" || command.ExpectedWorkloadGeneration != 0 {
+			return CreatedSurface{}, domain.ErrInvalid
+		}
 	}
 	if found {
 		// A different canonical request under the same key is a stable
@@ -191,7 +212,7 @@ func (s *Service) Create(ctx context.Context, command CreateCommand) (CreatedSur
 	}
 	digest := s.createDigest(command, replayCandidates[0])
 	now := s.now()
-	session := domain.SurfaceSession{
+	session := domain.SurfaceSession{LifecycleMode: 1,
 		ID: s.ids.New(), OwnerUserID: command.OwnerUserID, DeviceID: command.DeviceID,
 		IdempotencyKey: command.IdempotencyKey, RequestDigest: digest,
 		ProjectID: command.ProjectID, AppInstanceID: command.AppInstanceID,
@@ -223,6 +244,7 @@ func (s *Service) Create(ctx context.Context, command CreateCommand) (CreatedSur
 		}
 		session.WorkloadID = handle.ID
 		session.WorkloadGeneration = handle.Generation
+		session.LifecycleMode = max(int32(1), handle.LifecycleMode)
 	}
 	session.Path = domain.SessionPath(session.ID)
 	token, err := domain.NewBridgeToken()
@@ -288,6 +310,12 @@ func (s *Service) rendererRuling(preferred string, kind ports.LaunchKind) (strin
 // segment. The segment values are server facts: "auto:<kind>" for
 // server-selected creates, the explicit renderer for explicit ones.
 func (s *Service) createDigest(command CreateCommand, rendererSegment string) string {
+	if !command.AttachOnly && command.LifecycleMode == 2 {
+		rendererSegment += "\nlifecycle=manual_stop"
+	}
+	if command.AttachOnly {
+		rendererSegment += fmt.Sprintf("\nattach_only=%s:%d", command.ExpectedWorkloadID, command.ExpectedWorkloadGeneration)
+	}
 	if command.ExpectedAppVersion != "" {
 		rendererSegment += "\nexpected_version=" + command.ExpectedAppVersion
 	}
@@ -325,10 +353,13 @@ func (s *Service) resolveGeneric(ctx context.Context, command CreateCommand) (po
 // surface errors: capability or image misses are unsupported (failed
 // precondition), outages are unavailable, conflicts are idempotency aborts.
 func (s *Service) ensureWorkload(ctx context.Context, command CreateCommand, resolved ports.ResolvedLaunch) (ports.WorkloadHandle, error) {
+	if command.AttachOnly {
+		return s.lookupAttachedWorkload(ctx, command, resolved)
+	}
 	if s.workloads == nil {
 		return ports.WorkloadHandle{}, domain.ErrUnsupported
 	}
-	handle, err := s.workloads.EnsureSurfaceWorkload(ctx, ports.SurfaceWorkloadQuery{
+	handle, err := s.workloads.EnsureSurfaceWorkload(ctx, ports.SurfaceWorkloadQuery{LifecycleMode: command.LifecycleMode,
 		OwnerUserID: command.OwnerUserID, ProjectID: command.ProjectID,
 		AppInstanceID: command.AppInstanceID, AppID: resolved.AppID,
 		AppVersion: resolved.Version, ManifestDigest: resolved.ManifestDigest,
@@ -545,4 +576,26 @@ func (s *Service) proxyTargetForSession(ctx context.Context, session domain.Surf
 	return ports.ProxyTarget{
 		SessionID: session.ID, Endpoint: handle.Endpoint, BackendPath: "/" + normalized,
 	}, nil
+}
+
+// lookupAttachedWorkload never Ensures or starts a replacement. Immutable owner,
+// installation and version facts are returned by the Runtime composition root.
+func (s *Service) lookupAttachedWorkload(ctx context.Context, command CreateCommand, resolved ports.ResolvedLaunch) (ports.WorkloadHandle, error) {
+	if command.ExpectedWorkloadID == "" || command.ExpectedWorkloadGeneration < 1 {
+		return ports.WorkloadHandle{}, domain.ErrInvalid
+	}
+	if s.workloads == nil {
+		return ports.WorkloadHandle{}, domain.ErrUnsupported
+	}
+	handle, err := s.workloads.LookupSurfaceWorkload(ctx, command.ExpectedWorkloadID, command.ExpectedWorkloadGeneration)
+	if err != nil {
+		if errors.Is(err, ports.ErrWorkloadUnavailable) {
+			return ports.WorkloadHandle{}, domain.ErrUnavailable
+		}
+		return ports.WorkloadHandle{}, domain.ErrWorkloadNotRunning
+	}
+	if handle.ID != command.ExpectedWorkloadID || handle.Generation != command.ExpectedWorkloadGeneration || handle.OwnerUserID != command.OwnerUserID || handle.ProjectID != command.ProjectID || handle.AppInstanceID != command.AppInstanceID || handle.AppID != resolved.AppID || handle.AppVersion != resolved.Version || handle.ManifestDigest != resolved.ManifestDigest {
+		return ports.WorkloadHandle{}, domain.ErrWorkloadNotRunning
+	}
+	return handle, nil
 }

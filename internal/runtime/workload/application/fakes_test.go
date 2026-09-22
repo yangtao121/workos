@@ -478,7 +478,7 @@ func (r *fakeWorkloadRepo) Transition(_ context.Context, workloadID string, from
 				return domain.ErrNotFound
 			}
 		} else {
-			if from != domain.StateRunning && from != domain.StateFailed {
+			if from != domain.StateRunning && from != domain.StateFailed && !(from == domain.StateStopped && facts.LifecycleMode != 0) {
 				return domain.ErrNotFound
 			}
 			if facts.Generation != workload.Generation+1 || facts.RestartCount != workload.RestartCount+1 {
@@ -499,6 +499,9 @@ func (r *fakeWorkloadRepo) Transition(_ context.Context, workloadID string, from
 		return nil
 	}
 	workload.State = to
+	if facts.LifecycleMode != 0 {
+		workload.LifecycleMode = facts.LifecycleMode
+	}
 	workload.Generation = facts.Generation
 	workload.RestartCount = facts.RestartCount
 	workload.HealthVerdict = facts.HealthVerdict

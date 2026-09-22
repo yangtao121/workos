@@ -30,10 +30,15 @@ func transient(err error) error {
 }
 
 func (r *Repository) InsertSession(ctx context.Context, session domain.Session) (string, bool, error) {
+	mode, err := domain.NormalizeLifecycle(session.LifecycleMode)
+	if err != nil {
+		return "", false, err
+	}
+	session.LifecycleMode = mode
 	inserted, err := r.queries.InsertPtySession(ctx, ptyhostdb.InsertPtySessionParams{
 		SessionID: session.SessionID, OwnerUserID: session.OwnerUserID, ProjectID: session.ProjectID,
 		IdempotencyKey: session.IdempotencyKey, RequestDigest: session.RequestDigest,
-		CreatedAt: session.CreatedAt, ExpiresAt: session.ExpiresAt,
+		CreatedAt: session.CreatedAt, ExpiresAt: optionalTime(session.ExpiresAt), LifecycleMode: int16(session.LifecycleMode),
 	})
 	if err != nil {
 		return "", false, transient(err)
@@ -55,7 +60,7 @@ func sessionFromRow(row ptyhostdb.WorkosRuntimePtySession) domain.Session {
 		Generation: row.Generation, SessionID: row.SessionID, OwnerUserID: row.OwnerUserID, ProjectID: row.ProjectID,
 		IdempotencyKey: row.IdempotencyKey, RequestDigest: row.RequestDigest,
 		State: domain.State(row.State), CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt,
-		ExpiresAt: row.ExpiresAt,
+		ExpiresAt: timeValue(row.ExpiresAt), LifecycleMode: domain.LifecycleMode(row.LifecycleMode),
 	}
 }
 
@@ -151,7 +156,11 @@ func (r *Repository) CountActive(ctx context.Context, ownerUserID string) (int, 
 	return int(count), nil
 }
 
-func (r *Repository) BeginRestart(ctx context.Context, owner, id, key string, now time.Time) (int64, bool, error) {
+func (r *Repository) BeginRestart(ctx context.Context, owner, id, key string, now time.Time, modes ...domain.LifecycleMode) (int64, bool, error) {
+	mode, err := domain.NormalizeLifecycle(modes...)
+	if err != nil {
+		return 0, false, err
+	}
 	tx, err := r.pool.Begin(ctx)
 	if err != nil {
 		return 0, false, err
@@ -163,16 +172,19 @@ func (r *Repository) BeginRestart(ctx context.Context, owner, id, key string, no
 	}
 	previous, err := q.GetPtyRestartReceipt(ctx, ptyhostdb.GetPtyRestartReceiptParams{SessionID: id, ActionKey: key})
 	if err == nil {
-		return previous, false, tx.Commit(ctx)
+		if previous.LifecycleMode != int16(mode) {
+			return 0, false, domain.ErrIdempotencyDrift
+		}
+		return previous.Generation, false, tx.Commit(ctx)
 	}
 	if !errors.Is(err, pgx.ErrNoRows) {
 		return 0, false, err
 	}
-	generation, err := q.BeginPtyRestart(ctx, ptyhostdb.BeginPtyRestartParams{OwnerUserID: owner, SessionID: id, UpdatedAt: now, ExpiresAt: now.Add(domain.SessionTTL)})
+	generation, err := q.BeginPtyRestart(ctx, ptyhostdb.BeginPtyRestartParams{OwnerUserID: owner, SessionID: id, UpdatedAt: now, ExpiresAt: optionalTime(mode.Expiry(now)), LifecycleMode: int16(mode)})
 	if err != nil {
 		return 0, false, err
 	}
-	if err := q.RecordPtyRestart(ctx, ptyhostdb.RecordPtyRestartParams{SessionID: id, ActionKey: key, Generation: generation}); err != nil {
+	if err := q.RecordPtyRestart(ctx, ptyhostdb.RecordPtyRestartParams{SessionID: id, ActionKey: key, Generation: generation, LifecycleMode: int16(mode)}); err != nil {
 		return 0, false, err
 	}
 	return generation, true, tx.Commit(ctx)
@@ -204,4 +216,17 @@ func (r *Repository) BeginStop(ctx context.Context, owner, id, key string, now t
 		return false, err
 	}
 	return true, tx.Commit(ctx)
+}
+
+func optionalTime(value time.Time) *time.Time {
+	if value.IsZero() {
+		return nil
+	}
+	return &value
+}
+func timeValue(value *time.Time) time.Time {
+	if value == nil {
+		return time.Time{}
+	}
+	return *value
 }

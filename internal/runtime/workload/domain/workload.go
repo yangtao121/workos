@@ -237,7 +237,13 @@ func minInt64(a, b int64) int64 {
 // Workload is the durable supervised workload fact. ContainerID, Endpoint,
 // and CgroupPath are host facts persisted after engine verification; they are
 // never projected to public callers and never accepted from them.
+const (
+	LifecycleBounded    int32 = 1
+	LifecycleManualStop int32 = 2
+)
+
 type Workload struct {
+	LifecycleMode  int32
 	ID             string
 	OwnerUserID    string
 	ProjectID      string
@@ -333,11 +339,14 @@ func EngineLabels(workload Workload) map[string]string {
 // OperationDigest derives the canonical command digest of one operation:
 // same key + same canonical command replays; any difference is a stable
 // conflict. The digest covers every input that changes what the command does.
-func OperationDigest(operation Operation, workloadID, image string, command []string, port int64, policy RequestedPolicy) string {
+func OperationDigest(operation Operation, workloadID, image string, command []string, port int64, policy RequestedPolicy, modes ...int32) string {
 	canonical := fmt.Sprintf("workos.workload-operation.v1|%s|%s|%s|%s|%d|%.6f|%d|%d|%d|%s|%d|%d",
 		operation, workloadID, image, strings.Join(command, "\x1f"), port,
 		policy.CPUHardCores, policy.MemoryHighMB, policy.MemoryMaxMB, policy.PidsMax,
 		policy.HTTPPath, policy.StartupSeconds, policy.RestartLimit)
+	if len(modes) > 0 && modes[0] == 2 {
+		canonical += "|lifecycle:manual_stop"
+	}
 	sum := sha256.Sum256([]byte(canonical))
 	return "sha256:" + hex.EncodeToString(sum[:])
 }

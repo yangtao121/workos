@@ -174,7 +174,7 @@ SELECT id, owner_user_id, device_id, idempotency_key, request_digest,
        manifest_digest, artifact_id, artifact_digest, entrypoint, path,
        workload_id, workload_generation,
        bridge_token_hash, bridge_capabilities, installation_grant_revision,
-       created_at, expires_at, closed_at
+       created_at, expires_at, closed_at, lifecycle_mode
 FROM workos_runtime.surface_sessions
 WHERE owner_user_id = $1 AND device_id = $2 AND id = $3
   AND closed_at IS NULL AND expires_at > $4
@@ -211,6 +211,7 @@ type GetActiveSessionRow struct {
 	CreatedAt                 pgtype.Timestamptz `json:"created_at"`
 	ExpiresAt                 pgtype.Timestamptz `json:"expires_at"`
 	ClosedAt                  pgtype.Timestamptz `json:"closed_at"`
+	LifecycleMode             int16              `json:"lifecycle_mode"`
 }
 
 func (q *Queries) GetActiveSession(ctx context.Context, arg GetActiveSessionParams) (GetActiveSessionRow, error) {
@@ -245,6 +246,7 @@ func (q *Queries) GetActiveSession(ctx context.Context, arg GetActiveSessionPara
 		&i.CreatedAt,
 		&i.ExpiresAt,
 		&i.ClosedAt,
+		&i.LifecycleMode,
 	)
 	return i, err
 }
@@ -255,7 +257,7 @@ SELECT id, owner_user_id, device_id, idempotency_key, request_digest,
        manifest_digest, artifact_id, artifact_digest, entrypoint, path,
        workload_id, workload_generation,
        bridge_token_hash, bridge_capabilities, installation_grant_revision,
-       created_at, expires_at, closed_at
+       created_at, expires_at, closed_at, lifecycle_mode
 FROM workos_runtime.surface_sessions
 WHERE owner_user_id = $1
   AND bridge_token_hash = $2
@@ -293,6 +295,7 @@ type GetActiveSessionByBridgeTokenRow struct {
 	CreatedAt                 pgtype.Timestamptz `json:"created_at"`
 	ExpiresAt                 pgtype.Timestamptz `json:"expires_at"`
 	ClosedAt                  pgtype.Timestamptz `json:"closed_at"`
+	LifecycleMode             int16              `json:"lifecycle_mode"`
 }
 
 func (q *Queries) GetActiveSessionByBridgeToken(ctx context.Context, arg GetActiveSessionByBridgeTokenParams) (GetActiveSessionByBridgeTokenRow, error) {
@@ -322,6 +325,7 @@ func (q *Queries) GetActiveSessionByBridgeToken(ctx context.Context, arg GetActi
 		&i.CreatedAt,
 		&i.ExpiresAt,
 		&i.ClosedAt,
+		&i.LifecycleMode,
 	)
 	return i, err
 }
@@ -405,7 +409,7 @@ SELECT id, owner_user_id, device_id, idempotency_key, request_digest,
        manifest_digest, artifact_id, artifact_digest, entrypoint, path,
        workload_id, workload_generation,
        bridge_token_hash, bridge_capabilities, installation_grant_revision,
-       created_at, expires_at, closed_at
+       created_at, expires_at, closed_at, lifecycle_mode
 FROM workos_runtime.surface_sessions
 WHERE owner_user_id = $1 AND device_id = $2 AND id = $3
 `
@@ -440,6 +444,7 @@ type GetSessionRow struct {
 	CreatedAt                 pgtype.Timestamptz `json:"created_at"`
 	ExpiresAt                 pgtype.Timestamptz `json:"expires_at"`
 	ClosedAt                  pgtype.Timestamptz `json:"closed_at"`
+	LifecycleMode             int16              `json:"lifecycle_mode"`
 }
 
 func (q *Queries) GetSession(ctx context.Context, arg GetSessionParams) (GetSessionRow, error) {
@@ -469,6 +474,7 @@ func (q *Queries) GetSession(ctx context.Context, arg GetSessionParams) (GetSess
 		&i.CreatedAt,
 		&i.ExpiresAt,
 		&i.ClosedAt,
+		&i.LifecycleMode,
 	)
 	return i, err
 }
@@ -619,8 +625,8 @@ INSERT INTO workos_runtime.surface_sessions (
     manifest_digest, artifact_id, artifact_digest, entrypoint, path,
     workload_id, workload_generation,
     bridge_token_hash, bridge_capabilities, installation_grant_revision,
-    created_at, expires_at
-) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22)
+    created_at, expires_at, lifecycle_mode
+) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23)
 `
 
 type InsertSessionParams struct {
@@ -646,6 +652,7 @@ type InsertSessionParams struct {
 	InstallationGrantRevision int64              `json:"installation_grant_revision"`
 	CreatedAt                 pgtype.Timestamptz `json:"created_at"`
 	ExpiresAt                 pgtype.Timestamptz `json:"expires_at"`
+	LifecycleMode             int16              `json:"lifecycle_mode"`
 }
 
 // installation_grant_revision is the create-time grant epoch Core's private
@@ -676,6 +683,7 @@ func (q *Queries) InsertSession(ctx context.Context, arg InsertSessionParams) er
 		arg.InstallationGrantRevision,
 		arg.CreatedAt,
 		arg.ExpiresAt,
+		arg.LifecycleMode,
 	)
 	return err
 }
@@ -886,7 +894,7 @@ RETURNING id, owner_user_id, device_id, idempotency_key, request_digest,
           manifest_digest, artifact_id, artifact_digest, entrypoint, path,
           workload_id, workload_generation,
           bridge_token_hash, bridge_capabilities, installation_grant_revision,
-          created_at, expires_at, closed_at
+          created_at, expires_at, closed_at, lifecycle_mode
 `
 
 type RotateSessionBridgeTokenParams struct {
@@ -921,6 +929,7 @@ type RotateSessionBridgeTokenRow struct {
 	CreatedAt                 pgtype.Timestamptz `json:"created_at"`
 	ExpiresAt                 pgtype.Timestamptz `json:"expires_at"`
 	ClosedAt                  pgtype.Timestamptz `json:"closed_at"`
+	LifecycleMode             int16              `json:"lifecycle_mode"`
 }
 
 func (q *Queries) RotateSessionBridgeToken(ctx context.Context, arg RotateSessionBridgeTokenParams) (RotateSessionBridgeTokenRow, error) {
@@ -956,6 +965,7 @@ func (q *Queries) RotateSessionBridgeToken(ctx context.Context, arg RotateSessio
 		&i.CreatedAt,
 		&i.ExpiresAt,
 		&i.ClosedAt,
+		&i.LifecycleMode,
 	)
 	return i, err
 }

@@ -116,7 +116,7 @@ func (r *Repository) GetActiveSession(ctx context.Context, ownerUserID, deviceID
 		row.ProjectID, row.AppInstanceID, row.Renderer,
 		surfacedbLaunchDescriptor(row), workloadID, workloadGeneration, row.Path, row.BridgeTokenHash.String, row.BridgeCapabilities,
 		surfacedbGrantRevision(row),
-		row.CreatedAt, row.ExpiresAt, row.ClosedAt), nil
+		row.CreatedAt, row.ExpiresAt, row.ClosedAt, int32(row.LifecycleMode)), nil
 }
 
 // Close tombstones on first close and clears the bridge token hash in the
@@ -153,7 +153,7 @@ func (r *Repository) RotateBridgeToken(ctx context.Context, command ports.Rotate
 		row.ProjectID, row.AppInstanceID, row.Renderer,
 		surfacedbLaunchDescriptor(row), workloadID, workloadGeneration, row.Path, row.BridgeTokenHash.String, row.BridgeCapabilities,
 		surfacedbGrantRevision(row),
-		row.CreatedAt, row.ExpiresAt, row.ClosedAt), nil
+		row.CreatedAt, row.ExpiresAt, row.ClosedAt, int32(row.LifecycleMode)), nil
 }
 
 // GetActiveSessionByBridgeToken resolves the open, unexpired session that
@@ -170,7 +170,7 @@ func (r *Repository) GetActiveSessionByBridgeToken(ctx context.Context, ownerUse
 		row.ProjectID, row.AppInstanceID, row.Renderer,
 		surfacedbLaunchDescriptor(row), workloadID, workloadGeneration, row.Path, row.BridgeTokenHash.String, row.BridgeCapabilities,
 		surfacedbGrantRevision(row),
-		row.CreatedAt, row.ExpiresAt, row.ClosedAt), nil
+		row.CreatedAt, row.ExpiresAt, row.ClosedAt, int32(row.LifecycleMode)), nil
 }
 
 func (r *Repository) readSession(ctx context.Context, queries *surfacedb.Queries, ownerUserID, deviceID, sessionID string) (domain.SurfaceSession, error) {
@@ -185,7 +185,7 @@ func (r *Repository) readSession(ctx context.Context, queries *surfacedb.Queries
 		row.ProjectID, row.AppInstanceID, row.Renderer,
 		surfacedbLaunchDescriptor(row), workloadID, workloadGeneration, row.Path, row.BridgeTokenHash.String, row.BridgeCapabilities,
 		surfacedbGrantRevision(row),
-		row.CreatedAt, row.ExpiresAt, row.ClosedAt), nil
+		row.CreatedAt, row.ExpiresAt, row.ClosedAt, int32(row.LifecycleMode)), nil
 }
 
 func sessionParams(session domain.SurfaceSession, bridgeTokenHash string) surfacedb.InsertSessionParams {
@@ -199,10 +199,10 @@ func sessionParams(session domain.SurfaceSession, bridgeTokenHash string) surfac
 		Path: session.Path,
 		// The grant epoch is always the resolver-resolved value the
 		// application snapshotted — never a constant (queries.sql contract).
-		InstallationGrantRevision: session.InstallationGrantRevision,
-		BridgeTokenHash:           tokenHashParam(bridgeTokenHash),
-		BridgeCapabilities:        nonNilCapabilities(session.BridgeCapabilities),
-		CreatedAt:                 timestamp(session.CreatedAt), ExpiresAt: timestamp(session.ExpiresAt),
+		InstallationGrantRevision: session.InstallationGrantRevision, LifecycleMode: int16(max(int32(1), session.LifecycleMode)),
+		BridgeTokenHash:    tokenHashParam(bridgeTokenHash),
+		BridgeCapabilities: nonNilCapabilities(session.BridgeCapabilities),
+		CreatedAt:          timestamp(session.CreatedAt), ExpiresAt: timestamp(session.ExpiresAt),
 	}
 	// The renderer-specific columns are mutually exclusive by the database
 	// CHECK: web-bundle rows carry the artifact facts, web-service rows the
@@ -316,10 +316,15 @@ func sessionFromColumns(
 	descriptor domain.LaunchDescriptor, workloadID string, workloadGeneration int64, path string,
 	bridgeTokenHash string, bridgeCapabilities []string,
 	installationGrantRevision int64,
-	createdAt, expiresAt pgtype.Timestamptz, closedAt pgtype.Timestamptz,
+	createdAt, expiresAt pgtype.Timestamptz, closedAt pgtype.Timestamptz, modes ...int32,
 ) domain.SurfaceSession {
+	mode := int32(1)
+	if len(modes) > 0 {
+		mode = max(int32(1), modes[0])
+	}
 	session := domain.SurfaceSession{
-		ID: id, OwnerUserID: ownerUserID, DeviceID: deviceID,
+		LifecycleMode: mode,
+		ID:            id, OwnerUserID: ownerUserID, DeviceID: deviceID,
 		IdempotencyKey: idempotencyKey, RequestDigest: requestDigest,
 		ProjectID: projectID, AppInstanceID: appInstanceID,
 		Renderer:                  renderer,
