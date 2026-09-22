@@ -19,6 +19,8 @@ export function NativeApp(props: {
   const [verdict, setVerdict] = useState("");
   const [controls, setControls] = useState(true);
   const [stopping, setStopping] = useState(false);
+  const [inputDraft, setInputDraft] = useState("");
+  const composingRef = useRef(false);
   const clients = props.workosClients;
   const projectId = props.activeProjectId ?? "";
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -31,6 +33,8 @@ export function NativeApp(props: {
 
   useEffect(() => {
     if (!clients || !projectId) return;
+    setInputDraft("");
+    composingRef.current = false;
     let disposed = false;
     const isDisposed = () => disposed;
     const lease = sessionLease.acquire(clients, projectId);
@@ -68,7 +72,27 @@ export function NativeApp(props: {
           videoPlayingRef.current = false;
           channelRef.current = null;
           const previous = peer;
-          const next = new RTCPeerConnection({});
+          const generation = await lease.controlGeneration();
+          const connectivity = await clients.nativeSessions.getNativeConnectivity({
+            sessionId: session,
+            controlGeneration: generation,
+          });
+          if (isDisposed()) return;
+          if (
+            !connectivity.expiresAt ||
+            Number(connectivity.expiresAt.seconds) * 1000 <= Date.now() ||
+            (connectivity.relayOnly && connectivity.iceServers.length === 0)
+          ) {
+            throw new Error("native connection capability expired or unavailable");
+          }
+          const next = new RTCPeerConnection({
+            iceTransportPolicy: connectivity.relayOnly ? "relay" : "all",
+            iceServers: connectivity.iceServers.map((server) => ({
+              urls: server.urls,
+              username: server.username,
+              credential: server.credential,
+            })),
+          });
           peer = next;
           previous?.close();
           next.addTransceiver("video", { direction: "recvonly" });
@@ -111,7 +135,7 @@ export function NativeApp(props: {
           if (isDisposed()) return;
           const connected = await clients.nativeSessions.connectNativeSession({
             sessionId: session,
-            controlGeneration: await lease.controlGeneration(),
+            controlGeneration: generation,
             offerSdp: next.localDescription?.sdp ?? "",
           });
           if (isDisposed()) return;
@@ -151,12 +175,18 @@ export function NativeApp(props: {
   // fields from the generated contract instead of maintaining a second DTO.
   // Input stays disabled until this device holds the single-controller lease.
   const sendInput = (payload: Partial<Omit<NativeInputEvent, "$typeName" | "$unknown">>) => {
-    if (!controlsRef.current) return;
+    if (!controlsRef.current) return false;
     const channel = channelRef.current;
     if (channel && channel.readyState === "open") {
-      if (channel.bufferedAmount > 64 * 1024) return;
-      channel.send(JSON.stringify(payload));
+      if (channel.bufferedAmount > 64 * 1024) return false;
+      try {
+        channel.send(JSON.stringify(payload));
+        return true;
+      } catch {
+        return false;
+      }
     }
+    return false;
   };
 
   const takeControl = () => {
@@ -342,6 +372,60 @@ export function NativeApp(props: {
           muted
         />
       </div>
+      <form
+        className="native-touch-controls"
+        data-testid="native-touch-controls"
+        onSubmit={(event) => {
+          event.preventDefault();
+          if (composingRef.current || !inputDraft) return;
+          if (sendInput({ type: "text", text: inputDraft })) setInputDraft("");
+        }}
+      >
+        <input
+          aria-label="Native text"
+          placeholder="Text for the remote app"
+          value={inputDraft}
+          maxLength={256}
+          autoComplete="off"
+          autoCapitalize="none"
+          spellCheck={false}
+          disabled={!controls || status !== "streaming"}
+          onChange={(event) => {
+            setInputDraft(event.target.value);
+          }}
+          onCompositionStart={() => {
+            composingRef.current = true;
+          }}
+          onCompositionEnd={() => {
+            composingRef.current = false;
+          }}
+        />
+        <Button type="submit" disabled={!controls || status !== "streaming" || !inputDraft}>
+          Send text
+        </Button>
+        <div className="native-touch-keys">
+          {(
+            [
+              ["Enter", "Return"],
+              ["Backspace", "BackSpace"],
+              ["Tab", "Tab"],
+              ["Esc", "Escape"],
+              ["Ctrl+C", "ctrl+c"],
+            ] as const
+          ).map(([label, key]) => (
+            <Button
+              key={key}
+              type="button"
+              disabled={!controls || status !== "streaming"}
+              onClick={() => {
+                sendInput({ type: "key", key });
+              }}
+            >
+              {label}
+            </Button>
+          ))}
+        </div>
+      </form>
       <p className="native-hint">Click the stage, then type; input goes to the native display.</p>
     </div>
   );

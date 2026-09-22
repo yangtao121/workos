@@ -46,7 +46,7 @@ func TestRealModelDeepSeekContinuousSession(t *testing.T) {
 	session := created.Msg.Session.Id
 	fmt.Printf("LIVE_PROJECT=%s LIVE_SESSION=%s\n", project, session)
 	turns := []string{
-		"In /workspace create a tiny JavaScript CommonJS module calculate.cjs exporting a function that doubles a number. Create calculate.test.cjs using node:test and node:assert/strict to test it (include input 3). Execute node --test calculate.test.cjs with the Bash tool, fix any failure, then reply TURN1_OK. Do not ask questions, install packages, or use network. Use only these two files. Keep responses concise.",
+		"In /workspace create a tiny JavaScript CommonJS module calculate.cjs using module.exports = function(n) { return n * 2; } (export the callable function directly, not an object). Create calculate.test.cjs using node:test and node:assert/strict to test it (include input 3). Execute node --test calculate.test.cjs with the Bash tool, fix any failure, then reply TURN1_OK. Do not ask questions, install packages, or use network. Use only these two files. Keep responses concise.",
 		"Continue the previous work in this SAME native session. Change the function you just wrote to triple its input, update its tests, and execute those tests using Bash. Fix any failures and reply TURN2_OK. Do not create any other files or use network. Keep responses concise.",
 	}
 	for index, prompt := range turns {

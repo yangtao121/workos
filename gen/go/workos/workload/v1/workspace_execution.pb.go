@@ -32,13 +32,18 @@ type ExecuteWorkspaceOperationRequest struct {
 	WorkspaceSourceId string                 `protobuf:"bytes,3,opt,name=workspace_source_id,json=workspaceSourceId,proto3" json:"workspace_source_id,omitempty"`
 	ReadOnly          bool                   `protobuf:"varint,4,opt,name=read_only,json=readOnly,proto3" json:"read_only,omitempty"`
 	OperationId       string                 `protobuf:"bytes,5,opt,name=operation_id,json=operationId,proto3" json:"operation_id,omitempty"`
-	// Finite vocabulary: shell.run, fs.resolve/stat/list/read/write/edit, preview.start/list/stop.
+	// Finite vocabulary: shell.run, fs.resolve/stat/list/read/write/edit,
+	// preview.start/list/stop, delegation.create/inspect/diff.
 	Operation          string           `protobuf:"bytes,6,opt,name=operation,proto3" json:"operation,omitempty"`
 	Arguments          *structpb.Struct `protobuf:"bytes,7,opt,name=arguments,proto3" json:"arguments,omitempty"`
 	WorkspaceBindingId string           `protobuf:"bytes,8,opt,name=workspace_binding_id,json=workspaceBindingId,proto3" json:"workspace_binding_id,omitempty"`
 	WorkspaceRevision  int64            `protobuf:"varint,9,opt,name=workspace_revision,json=workspaceRevision,proto3" json:"workspace_revision,omitempty"`
-	unknownFields      protoimpl.UnknownFields
-	sizeCache          protoimpl.SizeCache
+	// Core-derived delegation identity; empty selects the project workspace.
+	// Runtime validates persisted owner/project/binding/task association.
+	DelegationId  string `protobuf:"bytes,10,opt,name=delegation_id,json=delegationId,proto3" json:"delegation_id,omitempty"`
+	ParentTaskId  string `protobuf:"bytes,11,opt,name=parent_task_id,json=parentTaskId,proto3" json:"parent_task_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *ExecuteWorkspaceOperationRequest) Reset() {
@@ -134,6 +139,20 @@ func (x *ExecuteWorkspaceOperationRequest) GetWorkspaceRevision() int64 {
 	return 0
 }
 
+func (x *ExecuteWorkspaceOperationRequest) GetDelegationId() string {
+	if x != nil {
+		return x.DelegationId
+	}
+	return ""
+}
+
+func (x *ExecuteWorkspaceOperationRequest) GetParentTaskId() string {
+	if x != nil {
+		return x.ParentTaskId
+	}
+	return ""
+}
+
 type ExecuteWorkspaceOperationResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Result        *structpb.Struct       `protobuf:"bytes,1,opt,name=result,proto3" json:"result,omitempty"`
@@ -182,7 +201,7 @@ var File_workos_workload_v1_workspace_execution_proto protoreflect.FileDescripto
 
 const file_workos_workload_v1_workspace_execution_proto_rawDesc = "" +
 	"\n" +
-	",workos/workload/v1/workspace_execution.proto\x12\x12workos.workload.v1\x1a\x1cgoogle/protobuf/struct.proto\"\x8b\x03\n" +
+	",workos/workload/v1/workspace_execution.proto\x12\x12workos.workload.v1\x1a\x1cgoogle/protobuf/struct.proto\"\xd6\x03\n" +
 	" ExecuteWorkspaceOperationRequest\x12\"\n" +
 	"\rowner_user_id\x18\x01 \x01(\tR\vownerUserId\x12\x1d\n" +
 	"\n" +
@@ -193,7 +212,10 @@ const file_workos_workload_v1_workspace_execution_proto_rawDesc = "" +
 	"\toperation\x18\x06 \x01(\tR\toperation\x125\n" +
 	"\targuments\x18\a \x01(\v2\x17.google.protobuf.StructR\targuments\x120\n" +
 	"\x14workspace_binding_id\x18\b \x01(\tR\x12workspaceBindingId\x12-\n" +
-	"\x12workspace_revision\x18\t \x01(\x03R\x11workspaceRevision\"T\n" +
+	"\x12workspace_revision\x18\t \x01(\x03R\x11workspaceRevision\x12#\n" +
+	"\rdelegation_id\x18\n" +
+	" \x01(\tR\fdelegationId\x12$\n" +
+	"\x0eparent_task_id\x18\v \x01(\tR\fparentTaskId\"T\n" +
 	"!ExecuteWorkspaceOperationResponse\x12/\n" +
 	"\x06result\x18\x01 \x01(\v2\x17.google.protobuf.StructR\x06result2\xa8\x01\n" +
 	"\x19WorkspaceExecutionService\x12\x8a\x01\n" +

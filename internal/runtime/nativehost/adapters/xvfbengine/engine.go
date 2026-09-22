@@ -4,7 +4,8 @@
 // Input events arrive on the workos.input data channel and map to xdotool
 // XTEST injection. The default topology is loopback-only host candidates; the
 // operator-configured "lan" candidate mode enumerates real host LAN
-// interfaces instead (ADR-0031 §5) — never STUN/TURN.
+// interfaces instead (ADR-0031 §5). The explicit relay mode uses short-lived
+// TURN capabilities exclusively (ADR-0035).
 package xvfbengine
 
 import (
@@ -51,12 +52,13 @@ const (
 const (
 	CandidatesLoopback = "loopback"
 	CandidatesLAN      = "lan"
+	CandidatesRelay    = "relay"
 )
 
-// Engine facts: process-level supervision only; no cgroup or namespace
-// isolation claim, no display auth beyond the single-uid Unix socket, and no
-// TURN relay. The enforced candidate scope follows the operator mode.
+// Engine facts describe process supervision and the operator ICE policy.
+// Docker workspace isolation is supplied separately; no rootless claim.
 type Engine struct {
+	connectivity     ports.ConnectivityIssuer
 	containers       *containerprocess.Client
 	x11HostDirectory string
 	Xvfb             string
@@ -64,7 +66,7 @@ type Engine struct {
 	FFmpeg           string
 	Xdotool          string
 	Scratch          string
-	// Candidates is "loopback" (default) or "lan" — the ICE candidate
+	// Candidates is loopback (default), lan or relay — the ICE candidate
 	// policy of every peer this engine builds.
 	Candidates     string
 	LANNetworks    []*net.IPNet
@@ -80,6 +82,9 @@ type Engine struct {
 // the loopback candidate explicitly; lan mode drops the filter so the host's
 // real interfaces are enumerable and does not force loopback inclusion.
 func (e *Engine) candidatePolicy() (filter func(ip net.IP) bool, includeLoopback bool) {
+	if e.Candidates == CandidatesRelay {
+		return nil, false // ICETransportPolicyRelay excludes direct candidates.
+	}
 	if e.Candidates == CandidatesLAN {
 		return func(ip net.IP) bool {
 			if ip.IsLoopback() || !ip.IsPrivate() {
@@ -116,9 +121,9 @@ func New(xvfb, client, ffmpeg, xdotool, scratch, candidates string) (*Engine, er
 	switch candidates {
 	case "":
 		candidates = CandidatesLoopback
-	case CandidatesLoopback, CandidatesLAN:
+	case CandidatesLoopback, CandidatesLAN, CandidatesRelay:
 	default:
-		return nil, fmt.Errorf("native candidate mode must be %q or %q", CandidatesLoopback, CandidatesLAN)
+		return nil, errors.New("native candidate mode must be loopback, lan or relay")
 	}
 	resolvedXvfb := resolveExecutable(xvfb)
 	resolvedFFmpeg := resolveExecutable(ffmpeg)
@@ -177,6 +182,9 @@ func (e *Engine) Facts() ports.EngineFacts {
 	if e.Candidates == CandidatesLAN {
 		candidateScope = "lan-host-candidates"
 	}
+	if e.Candidates == CandidatesRelay {
+		candidateScope = "turn-relay-candidates-only"
+	}
 	return ports.EngineFacts{
 		Engine:           "xvfb-x11grab-vp8-webrtc",
 		ProcessGroupKill: true,
@@ -191,6 +199,9 @@ func (e *Engine) WithContainers(socket, image, x11HostDirectory string) *Engine 
 	return e
 }
 func (e *Engine) Available(ctx context.Context) error {
+	if e.Candidates == CandidatesRelay && e.connectivity == nil {
+		return domain.ErrEngineUnavailable
+	}
 	if e.containers != nil {
 		if !filepath.IsAbs(e.x11HostDirectory) {
 			return domain.ErrEngineUnavailable
@@ -644,7 +655,14 @@ func (d *display) Connect(ctx context.Context, offerSDP string) (string, error) 
 	if candidateFilter != nil {
 		settings.SetIPFilter(candidateFilter)
 	}
-	pc, err := webrtc.NewAPI(webrtc.WithSettingEngine(settings)).NewPeerConnection(webrtc.Configuration{})
+	configuration, err := d.engine.peerConfiguration()
+	if err != nil {
+		return "", domain.ErrEngineUnavailable
+	}
+	if configuration.ICETransportPolicy == webrtc.ICETransportPolicyRelay {
+		settings.SetNetworkTypes([]webrtc.NetworkType{webrtc.NetworkTypeUDP4})
+	}
+	pc, err := webrtc.NewAPI(webrtc.WithSettingEngine(settings)).NewPeerConnection(configuration)
 	if err != nil {
 		return "", err
 	}
@@ -701,6 +719,10 @@ func (d *display) Connect(ctx context.Context, offerSDP string) (string, error) 
 	case <-ctx.Done():
 		_ = pc.Close()
 		return "", ctx.Err()
+	}
+	if d.engine.Candidates == CandidatesRelay && !strings.Contains(pc.LocalDescription().SDP, " typ relay") {
+		_ = pc.Close()
+		return "", domain.ErrEngineUnavailable
 	}
 	d.peerMu.Lock()
 	if d.Exited() || ctx.Err() != nil {

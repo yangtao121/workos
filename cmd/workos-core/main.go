@@ -388,7 +388,7 @@ func run(logger *slog.Logger) error {
 	// Continuous harness sessions (ADR-0030): inputs dispatch through the
 	// same admission path as public task submission.
 	sessionRepository := agentpostgres.NewSessionRepository(pool)
-	sessionTools := &orchestration.SessionTools{Installations: installationService, Publications: artifactMaterializer, Pool: pool, Tasks: agentRepository, Sessions: sessionRepository, Projects: projectService, Workspaces: workspaceService, Artifacts: artifactService, Runtime: workloadv1connect.NewWorkspaceExecutionServiceClient(telemetry.HTTPClient(), cfg.Services.Runtime)}
+	sessionTools := &orchestration.SessionTools{Delegations: agentRepository, Installations: installationService, Publications: artifactMaterializer, Pool: pool, Tasks: agentRepository, Sessions: sessionRepository, Projects: projectService, Workspaces: workspaceService, Artifacts: artifactService, Runtime: workloadv1connect.NewWorkspaceExecutionServiceClient(telemetry.HTTPClient(), cfg.Services.Runtime)}
 	interactionService := agentapp.NewInteractionService(agentRepository, sessionTools, generator)
 	sessionTools.Interactions = interactionService
 	interactionPath, interactionHandler := agenttransport.NewInteractionHandler(interactionService)
@@ -667,4 +667,17 @@ func (p *projectSessionSnapshots) Snapshot(ctx context.Context, ownerUserID, pro
 	snapshot.WorkspaceBindingID = binding.ID
 	snapshot.WorkspaceBindingRevision = binding.Revision
 	return snapshot, nil
+}
+
+func (p *projectSessionSnapshots) SupportsSessionGoals(ctx context.Context, owner, providerID string) (bool, error) {
+	catalog, err := p.catalog.GetForOwner(ctx, owner)
+	if err != nil {
+		return false, err
+	}
+	for _, provider := range catalog.Providers {
+		if provider.ID == providerID {
+			return provider.Health == "healthy" && provider.Capabilities.SessionGoals, nil
+		}
+	}
+	return false, nil
 }

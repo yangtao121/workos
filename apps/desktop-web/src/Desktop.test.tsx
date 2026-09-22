@@ -677,6 +677,7 @@ function task(id: string, providerId: string, state: AgentTaskState): AgentTask 
 function runStarted(taskId: string, providerId: string): AgentEvent {
   return {
     $typeName: "workos.agent.v1.AgentEvent",
+    delegationId: "",
     id: "event-1",
     taskId,
     sequence: 1n,
@@ -709,6 +710,10 @@ function provider(id: string, displayName: string): HarnessProviderInfo {
     unavailableReason: "",
     capabilities: {
       $typeName: "workos.harness.v1.HarnessCapabilities",
+      sessionGoals: false,
+      projectSkills: false,
+      maxConcurrentSubagents: 0,
+      maxSubagentDepth: 0,
       streaming: true,
       persistentSessions: false,
       resume: false,

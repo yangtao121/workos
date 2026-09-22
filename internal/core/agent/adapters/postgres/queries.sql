@@ -126,7 +126,7 @@ RETURNING t.cancellation_requested;
 
 -- name: LockTaskEventStream :one
 SELECT t.id, t.owner_user_id, t.project_id, t.last_event_sequence, t.state, t.provider_id,
-       t.created_at, t.budget_max_output_tokens
+       t.created_at, t.budget_max_output_tokens, t.input
 FROM workos_events.outbox AS o
 JOIN workos_core.agent_tasks AS t ON t.id = o.aggregate_id
 WHERE o.lease_id = $1 AND o.locked_by = $2 AND o.processed_at IS NULL AND o.locked_until >= $3
@@ -417,21 +417,21 @@ SELECT session_id,1,'state_changed','{"previous":"","current":"active","reason":
 -- name: GetAgentSession :one
 SELECT session_id, owner_user_id, project_id, idempotency_key, workspace_binding_id,
        workspace_binding_revision, provider_id, profile_id, state, native_session_ref,
-       active_task_id, input_sequence, event_sequence, created_at, updated_at, closed_at, recovery_checked_at
+       active_task_id, input_sequence, event_sequence, created_at, updated_at, closed_at, recovery_checked_at, goal_projection, goal_pause_ref
 FROM workos_core.agent_sessions
 WHERE owner_user_id = $1 AND session_id = $2;
 
 -- name: GetAgentSessionByIdempotency :one
 SELECT session_id, owner_user_id, project_id, idempotency_key, workspace_binding_id,
        workspace_binding_revision, provider_id, profile_id, state, native_session_ref,
-       active_task_id, input_sequence, event_sequence, created_at, updated_at, closed_at, recovery_checked_at
+       active_task_id, input_sequence, event_sequence, created_at, updated_at, closed_at, recovery_checked_at, goal_projection, goal_pause_ref
 FROM workos_core.agent_sessions
 WHERE owner_user_id = $1 AND idempotency_key = $2;
 
 -- name: ListAgentSessions :many
 SELECT session_id, owner_user_id, project_id, idempotency_key, workspace_binding_id,
        workspace_binding_revision, provider_id, profile_id, state, native_session_ref,
-       active_task_id, input_sequence, event_sequence, created_at, updated_at, closed_at, recovery_checked_at
+       active_task_id, input_sequence, event_sequence, created_at, updated_at, closed_at, recovery_checked_at, goal_projection, goal_pause_ref
 FROM workos_core.agent_sessions
 WHERE owner_user_id = $1 AND project_id = $2 AND (state <> 'closed' OR $3::bool)
 ORDER BY updated_at DESC, session_id
@@ -470,25 +470,25 @@ LIMIT $3;
 
 -- name: InsertAgentSessionInput :execrows
 INSERT INTO workos_core.agent_session_inputs (
-    input_id, session_id, owner_user_id, client_input_id, input_text, request_digest, state, sequence, result_summary, created_at, updated_at
-) VALUES ($1, $2, $3, $4, $5, $6, 'accepted', $7, '', $8, $8)
+    input_id, session_id, owner_user_id, client_input_id, input_text, request_digest, state, sequence, result_summary, created_at, updated_at, directive
+) VALUES ($1, $2, $3, $4, $5, $6, 'accepted', $7, '', $8, $8, $9)
 ON CONFLICT (session_id, client_input_id) DO NOTHING;
 
 -- name: GetAgentSessionInput :one
 SELECT input_id, session_id, owner_user_id, client_input_id, input_text, request_digest,
-       state, task_id, sequence, result_summary, created_at, updated_at
+       state, task_id, sequence, result_summary, created_at, updated_at, directive
 FROM workos_core.agent_session_inputs
 WHERE session_id = $1 AND client_input_id = $2;
 
 -- name: GetAgentSessionInputById :one
 SELECT input_id, session_id, owner_user_id, client_input_id, input_text, request_digest,
-       state, task_id, sequence, result_summary, created_at, updated_at
+       state, task_id, sequence, result_summary, created_at, updated_at, directive
 FROM workos_core.agent_session_inputs
 WHERE input_id = $1;
 
 -- name: ListAgentSessionInputs :many
 SELECT input_id, session_id, owner_user_id, client_input_id, input_text, request_digest,
-       state, task_id, sequence, result_summary, created_at, updated_at
+       state, task_id, sequence, result_summary, created_at, updated_at, directive
 FROM workos_core.agent_session_inputs
 WHERE session_id = $1 AND sequence > $2
 ORDER BY sequence
@@ -511,7 +511,7 @@ WHERE session_id = $1 AND state = 'accepted';
 
 -- name: ListDispatchableAgentSessionInputs :many
 SELECT input_id, session_id, owner_user_id, client_input_id, input_text, request_digest,
-       state, task_id, sequence, result_summary, created_at, updated_at
+       state, task_id, sequence, result_summary, created_at, updated_at, directive
 FROM workos_core.agent_session_inputs
 WHERE session_id = $1 AND state = 'accepted'
 ORDER BY sequence
@@ -535,7 +535,7 @@ WHERE owner_user_id = $1 AND session_id = $2 FOR UPDATE;
 
 -- name: GetSessionInputByTask :one
 SELECT input_id, session_id, owner_user_id, client_input_id, input_text, request_digest,
-       state, task_id, sequence, result_summary, created_at, updated_at
+       state, task_id, sequence, result_summary, created_at, updated_at, directive
 FROM workos_core.agent_session_inputs WHERE session_id = $1 AND task_id = $2;
 
 -- name: ClaimSessionRecoveryBatch :many
@@ -585,3 +585,46 @@ JOIN workos_core.agent_session_inputs i ON i.session_id = s.session_id AND t.ide
 WHERE t.state = 'queued' AND i.task_id IS NULL
   AND (s.state <> 'active' OR i.state <> 'accepted')
 ORDER BY t.created_at LIMIT 100;
+
+-- name: GetGoalPauseRequest :one
+SELECT goal_ref FROM workos_core.agent_goal_pause_requests WHERE session_id=$1 AND idempotency_key=$2;
+
+-- name: InsertGoalPauseRequest :exec
+INSERT INTO workos_core.agent_goal_pause_requests(session_id,idempotency_key,goal_ref,created_at) VALUES($1,$2,$3,$4);
+
+-- name: RequestSessionGoalPause :exec
+UPDATE workos_core.agent_sessions SET goal_pause_ref=$3,updated_at=$4 WHERE owner_user_id=$1 AND session_id=$2;
+
+-- name: ProjectSessionGoal :execrows
+UPDATE workos_core.agent_sessions SET goal_projection=$4,updated_at=$5,
+ goal_pause_ref=CASE WHEN $4::jsonb->>'phase' <> 'active' THEN '' ELSE goal_pause_ref END
+WHERE owner_user_id=$1 AND session_id=$2 AND active_task_id=$3;
+
+-- name: DisarmSessionGoal :exec
+UPDATE workos_core.agent_sessions SET goal_projection=CASE WHEN goal_projection='{}' THEN '{}'::jsonb ELSE jsonb_set(goal_projection,'{armed}','false') END
+WHERE active_task_id=$1;
+
+-- name: CountRunningDelegations :one
+SELECT count(*) FROM workos_core.agent_delegations WHERE task_id=$1 AND state IN ('preparing','running');
+
+-- name: GetAgentDelegation :one
+SELECT * FROM workos_core.agent_delegations WHERE id=$1 AND owner_user_id=$2 AND task_id=$3;
+
+-- name: GetAgentDelegationByKey :one
+SELECT * FROM workos_core.agent_delegations WHERE task_id=$1 AND idempotency_key=$2;
+
+-- name: ListSessionDelegations :many
+SELECT * FROM workos_core.agent_delegations WHERE session_id=$1 AND owner_user_id=$2
+ORDER BY created_at DESC,id DESC LIMIT 32;
+
+-- name: InsertAgentDelegation :exec
+INSERT INTO workos_core.agent_delegations(id,owner_user_id,session_id,task_id,idempotency_key,title,binding_id,binding_revision,source_id,state,created_at,updated_at)
+VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,'preparing',$10,$10);
+
+-- name: UpdateAgentDelegation :execrows
+UPDATE workos_core.agent_delegations SET state=$4,worktree_id=$5,base_commit=$6,result_summary=$7,result_artifact_id=$8,updated_at=$9
+WHERE id=$1 AND owner_user_id=$2 AND task_id=$3 AND state IN ('preparing','running');
+
+-- name: ReviewInterruptedDelegations :exec
+UPDATE workos_core.agent_delegations SET state='needs_review',updated_at=now()
+WHERE task_id=$1 AND state IN ('preparing','running');

@@ -56,6 +56,10 @@ func main() {
 			return
 		}
 
+		if nativeAutomation(response, request, body, goal) {
+			return
+		}
+
 		if strings.HasPrefix(goal, "V2_DEVELOP_") || strings.HasPrefix(goal, "V2_ARTIFACT") || strings.HasPrefix(goal, "V2_PREVIEW") {
 			var parsed chatRequest
 			_ = json.Unmarshal(body, &parsed)
@@ -373,6 +377,8 @@ func validate(request *http.Request, key string, body []byte) (string, error) {
 		}
 	}
 	switch {
+	case strings.Contains(text, "V2_NATIVE_"):
+		return text, nil
 	case strings.HasPrefix(text, "V2_DEVELOP_"), strings.HasPrefix(text, "V2_ARTIFACT"), strings.HasPrefix(text, "V2_PREVIEW"), strings.HasPrefix(text, "SESSION_QUESTION"), strings.HasPrefix(text, "SESSION_TOOL_TURN"), strings.HasPrefix(text, "SESSION_COUNT"), strings.HasPrefix(text, "SESSION_WORKOS_INFO"):
 		return text, nil
 	case text == "prove the DeepSeek project binding fixture" || text == "persist this completed run across service restart" ||

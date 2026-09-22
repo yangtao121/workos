@@ -1031,6 +1031,7 @@ export function Desktop({
       else if (id === "artifact-center") openArtifactCenter();
       else if (id === "knowledge-center") openKnowledgeCenter();
       else if (id === "agent-sessions") openAgentSessions();
+      else if (id === "native") openNative();
       else openNotificationCenter();
       const existing = windows.windows.some((item) => item.id === id);
       if (existing) dispatch({ type: "focus", id });
@@ -1038,6 +1039,7 @@ export function Desktop({
     },
     [
       openAgentSessions,
+      openNative,
       openArtifactCenter,
       openDeviceCenter,
       openKnowledgeCenter,
@@ -1821,6 +1823,7 @@ export function Desktop({
     ) : windowState.kind === "agent-sessions" ? (
       activeProject ? (
         <AgentSessionsApp
+          providers={catalog?.providers}
           key={activeProject.id}
           projectId={activeProject.id}
           workosClients={workosClients}

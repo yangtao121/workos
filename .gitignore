@@ -23,6 +23,8 @@ test-results/
 /tmp/
 
 # Local tool caches
+__pycache__/
+*.pyc
 /.cache/
 /.pnpm-store/
 /.tools/

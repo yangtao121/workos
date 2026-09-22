@@ -121,9 +121,8 @@ type Runtime struct {
 	// NativeScratch is the runner's private scratch root.
 	NativeScratch string `yaml:"native_scratch"`
 	// NativeCandidates selects the WebRTC ICE candidate scope of the native
-	// runner (ADR-0031 §5): "loopback" (default, fail-safe) or "lan" — the
-	// host's real LAN interfaces. It is operator configuration only; STUN/
-	// TURN stay out of scope.
+	// runner: loopback (default), private LAN, or mandatory TURN relay
+	// (ADR-0035). Only the operator chooses this policy.
 	NativeCandidates string `yaml:"native_candidates"`
 	// BuildTestProcessLimit scales the kernel NPROC bound for hosts that
 	// share one uid across many processes; the limit stays kernel enforced.
@@ -748,12 +747,12 @@ func (c Config) ValidateRuntimeHost() error {
 		return errors.New("runtime service device identity is required")
 	}
 	// The native runner's ICE candidate scope is operator configuration with
-	// exactly two legal values (ADR-0031 §5); the empty default stays
+	// three legal values (ADR-0035); the empty default stays
 	// loopback and anything else fails startup before a peer is built.
 	switch c.Runtime.NativeCandidates {
-	case "", "loopback", "lan":
+	case "", "loopback", "lan", "relay":
 	default:
-		return errors.New("WORKOS_RUNTIME_NATIVE_CANDIDATES must be loopback or lan")
+		return errors.New("WORKOS_RUNTIME_NATIVE_CANDIDATES must be loopback, lan or relay")
 	}
 	return nil
 }

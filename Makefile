@@ -687,6 +687,10 @@ test-mobile-wrappers: e2e-image
 		rm -rf "$$serve"
 	@echo "test-mobile-wrappers: PASS (launchable app, platform sources, Android sync, browser mount; native binaries unverified)"
 
+.PHONY: test-android-acceptance
+test-android-acceptance:
+	sh tools/android-acceptance/gate.sh
+
 # The push relay gate (ADR-0018, W5): relay payload whitelist
 # plus the bounded owner-scoped notification search (title substring,
 # deterministic ordering, closed-fail grammar, foreign-scope emptiness).
@@ -1152,7 +1156,7 @@ test-terminal-sessions:
 test-harness-sessions test-workspace-execution test-native-surface test-surface-continuity test-v2-development-journey: test-v2-completion
 
 # Explicit opt-in only; owner-only secret file is imported through the isolated
-# Vault admin socket. The acceptance proxy reserves at most CNY 1.90.
+# Vault admin socket. The acceptance proxy reserves at most CNY 19 total.
 .PHONY: test-real-model-acceptance
 test-real-model-acceptance:
 	sh tools/real-model-acceptance/gate.sh
@@ -1172,3 +1176,11 @@ build-workspace-runtime:
 
 test-v2-completion:
 	sh tools/v2-completion/gate.sh
+
+.PHONY: test-native-automation
+test-native-automation:
+	sh tools/native-automation/gate.sh
+
+.PHONY: test-network-continuity
+test-network-continuity:
+	sh tools/network-continuity/gate.sh

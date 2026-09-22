@@ -10,7 +10,7 @@ export WORKOS_V2_USER="$(id -u):$(id -g)"
 export WORKOS_V2_DOCKER_GID="$(stat -c %g /var/run/docker.sock)"
 export WORKOS_V2_NAMESPACE="$(basename "$WORKOS_V2_DIR" | tr '[:upper:].' '[:lower:]-')"
 export WORKOS_V2_BIN="$repo/tmp/v2-completion-intake/bin"
-mkdir -p "$WORKOS_V2_BIN"
+mkdir -p "$WORKOS_V2_BIN" "$repo/tmp/go-build-cache"
 python3 - "$WORKOS_V2_DIR/env" <<'PY'
 import socket,sys
 held=[]; lines=[]
@@ -29,6 +29,8 @@ cleanup() {
  if [ "${WORKOS_V2_KEEP:-}" != 1 ]; then
   compose down --timeout 5 >/dev/null 2>&1 || true
   docker ps -aq --filter "label=workos.runtime=$WORKOS_V2_NAMESPACE" | xargs -r docker rm -f >/dev/null 2>&1 || true
+  docker ps -aq --filter "label=workos.network=$WORKOS_V2_NAMESPACE" | xargs -r docker rm -f >/dev/null 2>&1 || true
+  docker network ls -q --filter "label=workos.network=$WORKOS_V2_NAMESPACE" | xargs -r docker network rm >/dev/null 2>&1 || true
   docker rm -f "$WORKOS_V2_NAMESPACE-db" >/dev/null 2>&1 || true
  fi
  printf 'V2 fixture result=%s evidence=%s\n' "$result" "$WORKOS_V2_DIR"
@@ -37,7 +39,7 @@ cleanup() {
 trap cleanup EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM
-mkdir -p "$WORKOS_V2_DIR/core-execution" "$WORKOS_V2_DIR/harness-execution" "$WORKOS_V2_DIR/vault" "$WORKOS_V2_DIR/run" "$WORKOS_V2_DIR/sessions" "$WORKOS_V2_DIR/project" "$WORKOS_V2_DIR/bridges" "$WORKOS_V2_DIR/x11" "$WORKOS_V2_DIR/indexer-run"
+mkdir -p "$WORKOS_V2_DIR/core-execution" "$WORKOS_V2_DIR/harness-execution" "$WORKOS_V2_DIR/vault" "$WORKOS_V2_DIR/run" "$WORKOS_V2_DIR/sessions" "$WORKOS_V2_DIR/project" "$WORKOS_V2_DIR/bridges" "$WORKOS_V2_DIR/delegations" "$WORKOS_V2_DIR/x11" "$WORKOS_V2_DIR/indexer-run"
 chmod 1777 "$WORKOS_V2_DIR/x11"
 chmod 700 "$WORKOS_V2_DIR/indexer-run"
 printf '%s\n' 'Fixture workspace. No private data.' > "$WORKOS_V2_DIR/project/README.md"
@@ -65,7 +67,13 @@ with open(sys.argv[1],'a') as f:
   if key.startswith('WORKOS_V2_'): f.write('export '+key+'='+shlex.quote(value)+'\n')
 PY
 if [ "${WORKOS_V2_PREPARE_ONLY:-}" = 1 ]; then exit 0; fi
-if [ "${WORKOS_V2_REAL:-}" = 1 ]; then
+if [ "${WORKOS_ANDROID_AUTOMATION:-}" = 1 ]; then
+ sh tools/android-acceptance/test.sh
+elif [ "${WORKOS_NETWORK_AUTOMATION:-}" = 1 ]; then
+ sh tools/network-continuity/test.sh
+elif [ "${WORKOS_NATIVE_AUTOMATION:-}" = 1 ]; then
+ sh tools/native-automation/test.sh
+elif [ "${WORKOS_V2_REAL:-}" = 1 ]; then
  sh tools/real-model-acceptance/run.sh
 else
  sh tools/v2-completion/test.sh

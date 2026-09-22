@@ -2,6 +2,10 @@ import { AppAgentApprovalDecision, type AgentEvent } from "@workos/protocol";
 
 export function describeAgentEvent(event: AgentEvent): string {
   switch (event.event.case) {
+    case "goalUpdated":
+      return `Goal · ${event.event.value.goal?.phase ?? "unavailable"}`;
+    case "delegationUpdated":
+      return `Delegated task · ${event.event.value.delegation?.title ?? ""} · ${event.event.value.delegation?.state.replaceAll("_", " ") ?? "unavailable"}`;
     case "runStarted":
       return `Run started · ${event.event.value.providerId}`;
     case "assistantDelta":
@@ -71,7 +75,10 @@ export function AgentTimeline({
                 <small>Open review</small>
               </button>
             ) : (
-              <p>{describeAgentEvent(event)}</p>
+              <p>
+                {event.delegationId ? "Sub-agent · " : ""}
+                {describeAgentEvent(event)}
+              </p>
             )}
           </li>
         );

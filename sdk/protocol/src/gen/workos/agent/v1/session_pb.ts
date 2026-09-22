@@ -6,13 +6,15 @@ import type { GenEnum, GenFile, GenMessage, GenService } from "@bufbuild/protobu
 import { enumDesc, fileDesc, messageDesc, serviceDesc } from "@bufbuild/protobuf/codegenv2";
 import type { Timestamp } from "@bufbuild/protobuf/wkt";
 import { file_google_protobuf_timestamp } from "@bufbuild/protobuf/wkt";
+import type { AgentDelegation, SessionDirective, SessionGoal } from "./automation_pb.js";
+import { file_workos_agent_v1_automation } from "./automation_pb.js";
 import type { Message } from "@bufbuild/protobuf";
 
 /**
  * Describes the file workos/agent/v1/session.proto.
  */
 export const file_workos_agent_v1_session: GenFile = /*@__PURE__*/
-  fileDesc("Ch13b3Jrb3MvYWdlbnQvdjEvc2Vzc2lvbi5wcm90bxIPd29ya29zLmFnZW50LnYxIsoDCgxBZ2VudFNlc3Npb24SCgoCaWQYASABKAkSFQoNb3duZXJfdXNlcl9pZBgCIAEoCRISCgpwcm9qZWN0X2lkGAMgASgJEhwKFHdvcmtzcGFjZV9iaW5kaW5nX2lkGAQgASgJEhMKC3Byb3ZpZGVyX2lkGAUgASgJEhIKCnByb2ZpbGVfaWQYBiABKAkSMQoFc3RhdGUYByABKA4yIi53b3Jrb3MuYWdlbnQudjEuQWdlbnRTZXNzaW9uU3RhdGUSGgoSbmF0aXZlX3Nlc3Npb25fcmVmGAggASgJEhYKDmFjdGl2ZV90YXNrX2lkGAkgASgJEhYKDmlucHV0X3NlcXVlbmNlGAogASgDEhsKE2xhc3RfZXZlbnRfc2VxdWVuY2UYCyABKAMSLgoKY3JlYXRlZF9hdBgMIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXASLgoKdXBkYXRlZF9hdBgNIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXASMgoJY2xvc2VkX2F0GA4gASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcEgAiAEBQgwKCl9jbG9zZWRfYXQirQIKEUFnZW50U2Vzc2lvbklucHV0EgoKAmlkGAEgASgJEhIKCnNlc3Npb25faWQYAiABKAkSFwoPY2xpZW50X2lucHV0X2lkGAMgASgJEgwKBHRleHQYBCABKAkSNgoFc3RhdGUYBSABKA4yJy53b3Jrb3MuYWdlbnQudjEuQWdlbnRTZXNzaW9uSW5wdXRTdGF0ZRIPCgd0YXNrX2lkGAYgASgJEhAKCHNlcXVlbmNlGAcgASgDEhYKDnJlc3VsdF9zdW1tYXJ5GAggASgJEi4KCmNyZWF0ZWRfYXQYCSABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wEi4KCnVwZGF0ZWRfYXQYCiABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wIvkCChFBZ2VudFNlc3Npb25FdmVudBIQCghzZXF1ZW5jZRgBIAEoAxISCgpzZXNzaW9uX2lkGAIgASgJEi8KC29jY3VycmVkX2F0GAMgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcBI/Cg5pbnB1dF9hY2NlcHRlZBgEIAEoCzIlLndvcmtvcy5hZ2VudC52MS5TZXNzaW9uSW5wdXRBY2NlcHRlZEgAEkMKEGlucHV0X2Rpc3BhdGNoZWQYBSABKAsyJy53b3Jrb3MuYWdlbnQudjEuU2Vzc2lvbklucHV0RGlzcGF0Y2hlZEgAEj8KDmlucHV0X3Rlcm1pbmFsGAYgASgLMiUud29ya29zLmFnZW50LnYxLlNlc3Npb25JbnB1dFRlcm1pbmFsSAASPQoNc3RhdGVfY2hhbmdlZBgHIAEoCzIkLndvcmtvcy5hZ2VudC52MS5TZXNzaW9uU3RhdGVDaGFuZ2VkSABCBwoFZXZlbnQiOAoUU2Vzc2lvbklucHV0QWNjZXB0ZWQSEAoIaW5wdXRfaWQYASABKAkSDgoGcXVldWVkGAIgASgIIjsKFlNlc3Npb25JbnB1dERpc3BhdGNoZWQSEAoIaW5wdXRfaWQYASABKAkSDwoHdGFza19pZBgCIAEoCSKSAQoUU2Vzc2lvbklucHV0VGVybWluYWwSEAoIaW5wdXRfaWQYASABKAkSDwoHdGFza19pZBgCIAEoCRI/Cg50ZXJtaW5hbF9zdGF0ZRgDIAEoDjInLndvcmtvcy5hZ2VudC52MS5BZ2VudFNlc3Npb25JbnB1dFN0YXRlEhYKDnJlc3VsdF9zdW1tYXJ5GAQgASgJIpABChNTZXNzaW9uU3RhdGVDaGFuZ2VkEjQKCHByZXZpb3VzGAEgASgOMiIud29ya29zLmFnZW50LnYxLkFnZW50U2Vzc2lvblN0YXRlEjMKB2N1cnJlbnQYAiABKA4yIi53b3Jrb3MuYWdlbnQudjEuQWdlbnRTZXNzaW9uU3RhdGUSDgoGcmVhc29uGAMgASgJIn8KFENyZWF0ZVNlc3Npb25SZXF1ZXN0EhIKCnByb2plY3RfaWQYASABKAkSFwoPaWRlbXBvdGVuY3lfa2V5GAIgASgJEiEKFHdvcmtzcGFjZV9iaW5kaW5nX2lkGAMgASgJSACIAQFCFwoVX3dvcmtzcGFjZV9iaW5kaW5nX2lkIkcKFUNyZWF0ZVNlc3Npb25SZXNwb25zZRIuCgdzZXNzaW9uGAEgASgLMh0ud29ya29zLmFnZW50LnYxLkFnZW50U2Vzc2lvbiJoChNMaXN0U2Vzc2lvbnNSZXF1ZXN0EhIKCnByb2plY3RfaWQYASABKAkSFgoOaW5jbHVkZV9jbG9zZWQYAiABKAgSEgoKcGFnZV90b2tlbhgDIAEoCRIRCglwYWdlX3NpemUYBCABKAUiYAoUTGlzdFNlc3Npb25zUmVzcG9uc2USLwoIc2Vzc2lvbnMYASADKAsyHS53b3Jrb3MuYWdlbnQudjEuQWdlbnRTZXNzaW9uEhcKD25leHRfcGFnZV90b2tlbhgCIAEoCSInChFHZXRTZXNzaW9uUmVxdWVzdBISCgpzZXNzaW9uX2lkGAEgASgJIkQKEkdldFNlc3Npb25SZXNwb25zZRIuCgdzZXNzaW9uGAEgASgLMh0ud29ya29zLmFnZW50LnYxLkFnZW50U2Vzc2lvbiJWChlTdWJtaXRTZXNzaW9uSW5wdXRSZXF1ZXN0EhIKCnNlc3Npb25faWQYASABKAkSFwoPY2xpZW50X2lucHV0X2lkGAIgASgJEgwKBHRleHQYAyABKAkiTwoaU3VibWl0U2Vzc2lvbklucHV0UmVzcG9uc2USMQoFaW5wdXQYASABKAsyIi53b3Jrb3MuYWdlbnQudjEuQWdlbnRTZXNzaW9uSW5wdXQiRQoWR2V0U2Vzc2lvbklucHV0UmVxdWVzdBISCgpzZXNzaW9uX2lkGAEgASgJEhcKD2NsaWVudF9pbnB1dF9pZBgCIAEoCSJMChdHZXRTZXNzaW9uSW5wdXRSZXNwb25zZRIxCgVpbnB1dBgBIAEoCzIiLndvcmtvcy5hZ2VudC52MS5BZ2VudFNlc3Npb25JbnB1dCJVChhMaXN0U2Vzc2lvbklucHV0c1JlcXVlc3QSEgoKc2Vzc2lvbl9pZBgBIAEoCRIWCg5hZnRlcl9zZXF1ZW5jZRgCIAEoAxINCgVsaW1pdBgDIAEoBSJPChlMaXN0U2Vzc2lvbklucHV0c1Jlc3BvbnNlEjIKBmlucHV0cxgBIAMoCzIiLndvcmtvcy5hZ2VudC52MS5BZ2VudFNlc3Npb25JbnB1dCJDCh1DYW5jZWxTZXNzaW9uRXhlY3V0aW9uUmVxdWVzdBISCgpzZXNzaW9uX2lkGAEgASgJEg4KBnJlYXNvbhgCIAEoCSJtCh5DYW5jZWxTZXNzaW9uRXhlY3V0aW9uUmVzcG9uc2USMQoFaW5wdXQYASABKAsyIi53b3Jrb3MuYWdlbnQudjEuQWdlbnRTZXNzaW9uSW5wdXQSGAoQY2FuY2VsbGVkX3F1ZXVlZBgCIAEoAyIpChNDbG9zZVNlc3Npb25SZXF1ZXN0EhIKCnNlc3Npb25faWQYASABKAkiRgoUQ2xvc2VTZXNzaW9uUmVzcG9uc2USLgoHc2Vzc2lvbhgBIAEoCzIdLndvcmtvcy5hZ2VudC52MS5BZ2VudFNlc3Npb24iPgoZV2F0Y2hTZXNzaW9uRXZlbnRzUmVxdWVzdBISCgpzZXNzaW9uX2lkGAEgASgJEg0KBWFmdGVyGAIgASgDIlAKGldhdGNoU2Vzc2lvbkV2ZW50c1Jlc3BvbnNlEjIKBmV2ZW50cxgBIAMoCzIiLndvcmtvcy5hZ2VudC52MS5BZ2VudFNlc3Npb25FdmVudCq/AQoRQWdlbnRTZXNzaW9uU3RhdGUSIwofQUdFTlRfU0VTU0lPTl9TVEFURV9VTlNQRUNJRklFRBAAEh4KGkFHRU5UX1NFU1NJT05fU1RBVEVfQUNUSVZFEAESHwobQUdFTlRfU0VTU0lPTl9TVEFURV9DTE9TSU5HEAISHgoaQUdFTlRfU0VTU0lPTl9TVEFURV9DTE9TRUQQAxIkCiBBR0VOVF9TRVNTSU9OX1NUQVRFX05FRURTX1JFVklFVxAEKo0CChZBZ2VudFNlc3Npb25JbnB1dFN0YXRlEikKJUFHRU5UX1NFU1NJT05fSU5QVVRfU1RBVEVfVU5TUEVDSUZJRUQQABImCiJBR0VOVF9TRVNTSU9OX0lOUFVUX1NUQVRFX0FDQ0VQVEVEEAESKAokQUdFTlRfU0VTU0lPTl9JTlBVVF9TVEFURV9ESVNQQVRDSEVEEAISJwojQUdFTlRfU0VTU0lPTl9JTlBVVF9TVEFURV9DT01QTEVURUQQAxIkCiBBR0VOVF9TRVNTSU9OX0lOUFVUX1NUQVRFX0ZBSUxFRBAEEicKI0FHRU5UX1NFU1NJT05fSU5QVVRfU1RBVEVfQ0FOQ0VMTEVEEAUyxQcKE0FnZW50U2Vzc2lvblNlcnZpY2USYAoNQ3JlYXRlU2Vzc2lvbhIlLndvcmtvcy5hZ2VudC52MS5DcmVhdGVTZXNzaW9uUmVxdWVzdBomLndvcmtvcy5hZ2VudC52MS5DcmVhdGVTZXNzaW9uUmVzcG9uc2UiABJdCgxMaXN0U2Vzc2lvbnMSJC53b3Jrb3MuYWdlbnQudjEuTGlzdFNlc3Npb25zUmVxdWVzdBolLndvcmtvcy5hZ2VudC52MS5MaXN0U2Vzc2lvbnNSZXNwb25zZSIAElcKCkdldFNlc3Npb24SIi53b3Jrb3MuYWdlbnQudjEuR2V0U2Vzc2lvblJlcXVlc3QaIy53b3Jrb3MuYWdlbnQudjEuR2V0U2Vzc2lvblJlc3BvbnNlIgASbwoSU3VibWl0U2Vzc2lvbklucHV0Eioud29ya29zLmFnZW50LnYxLlN1Ym1pdFNlc3Npb25JbnB1dFJlcXVlc3QaKy53b3Jrb3MuYWdlbnQudjEuU3VibWl0U2Vzc2lvbklucHV0UmVzcG9uc2UiABJmCg9HZXRTZXNzaW9uSW5wdXQSJy53b3Jrb3MuYWdlbnQudjEuR2V0U2Vzc2lvbklucHV0UmVxdWVzdBooLndvcmtvcy5hZ2VudC52MS5HZXRTZXNzaW9uSW5wdXRSZXNwb25zZSIAEmwKEUxpc3RTZXNzaW9uSW5wdXRzEikud29ya29zLmFnZW50LnYxLkxpc3RTZXNzaW9uSW5wdXRzUmVxdWVzdBoqLndvcmtvcy5hZ2VudC52MS5MaXN0U2Vzc2lvbklucHV0c1Jlc3BvbnNlIgASewoWQ2FuY2VsU2Vzc2lvbkV4ZWN1dGlvbhIuLndvcmtvcy5hZ2VudC52MS5DYW5jZWxTZXNzaW9uRXhlY3V0aW9uUmVxdWVzdBovLndvcmtvcy5hZ2VudC52MS5DYW5jZWxTZXNzaW9uRXhlY3V0aW9uUmVzcG9uc2UiABJdCgxDbG9zZVNlc3Npb24SJC53b3Jrb3MuYWdlbnQudjEuQ2xvc2VTZXNzaW9uUmVxdWVzdBolLndvcmtvcy5hZ2VudC52MS5DbG9zZVNlc3Npb25SZXNwb25zZSIAEnEKEldhdGNoU2Vzc2lvbkV2ZW50cxIqLndvcmtvcy5hZ2VudC52MS5XYXRjaFNlc3Npb25FdmVudHNSZXF1ZXN0Gisud29ya29zLmFnZW50LnYxLldhdGNoU2Vzc2lvbkV2ZW50c1Jlc3BvbnNlIgAwAUI9WjtnaXRodWIuY29tL3lhbmd0YW8xMjEvd29ya29zL2dlbi9nby93b3Jrb3MvYWdlbnQvdjE7YWdlbnR2MWIGcHJvdG8z", [file_google_protobuf_timestamp]);
+  fileDesc("Ch13b3Jrb3MvYWdlbnQvdjEvc2Vzc2lvbi5wcm90bxIPd29ya29zLmFnZW50LnYxIq0ECgxBZ2VudFNlc3Npb24SCgoCaWQYASABKAkSFQoNb3duZXJfdXNlcl9pZBgCIAEoCRISCgpwcm9qZWN0X2lkGAMgASgJEhwKFHdvcmtzcGFjZV9iaW5kaW5nX2lkGAQgASgJEhMKC3Byb3ZpZGVyX2lkGAUgASgJEhIKCnByb2ZpbGVfaWQYBiABKAkSMQoFc3RhdGUYByABKA4yIi53b3Jrb3MuYWdlbnQudjEuQWdlbnRTZXNzaW9uU3RhdGUSGgoSbmF0aXZlX3Nlc3Npb25fcmVmGAggASgJEhYKDmFjdGl2ZV90YXNrX2lkGAkgASgJEhYKDmlucHV0X3NlcXVlbmNlGAogASgDEhsKE2xhc3RfZXZlbnRfc2VxdWVuY2UYCyABKAMSLgoKY3JlYXRlZF9hdBgMIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXASLgoKdXBkYXRlZF9hdBgNIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXASMgoJY2xvc2VkX2F0GA4gASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcEgAiAEBEioKBGdvYWwYDyABKAsyHC53b3Jrb3MuYWdlbnQudjEuU2Vzc2lvbkdvYWwSNQoLZGVsZWdhdGlvbnMYECADKAsyIC53b3Jrb3MuYWdlbnQudjEuQWdlbnREZWxlZ2F0aW9uQgwKCl9jbG9zZWRfYXQi4wIKEUFnZW50U2Vzc2lvbklucHV0EgoKAmlkGAEgASgJEhIKCnNlc3Npb25faWQYAiABKAkSFwoPY2xpZW50X2lucHV0X2lkGAMgASgJEgwKBHRleHQYBCABKAkSNgoFc3RhdGUYBSABKA4yJy53b3Jrb3MuYWdlbnQudjEuQWdlbnRTZXNzaW9uSW5wdXRTdGF0ZRIPCgd0YXNrX2lkGAYgASgJEhAKCHNlcXVlbmNlGAcgASgDEhYKDnJlc3VsdF9zdW1tYXJ5GAggASgJEi4KCmNyZWF0ZWRfYXQYCSABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wEi4KCnVwZGF0ZWRfYXQYCiABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wEjQKCWRpcmVjdGl2ZRgLIAEoCzIhLndvcmtvcy5hZ2VudC52MS5TZXNzaW9uRGlyZWN0aXZlIvkCChFBZ2VudFNlc3Npb25FdmVudBIQCghzZXF1ZW5jZRgBIAEoAxISCgpzZXNzaW9uX2lkGAIgASgJEi8KC29jY3VycmVkX2F0GAMgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcBI/Cg5pbnB1dF9hY2NlcHRlZBgEIAEoCzIlLndvcmtvcy5hZ2VudC52MS5TZXNzaW9uSW5wdXRBY2NlcHRlZEgAEkMKEGlucHV0X2Rpc3BhdGNoZWQYBSABKAsyJy53b3Jrb3MuYWdlbnQudjEuU2Vzc2lvbklucHV0RGlzcGF0Y2hlZEgAEj8KDmlucHV0X3Rlcm1pbmFsGAYgASgLMiUud29ya29zLmFnZW50LnYxLlNlc3Npb25JbnB1dFRlcm1pbmFsSAASPQoNc3RhdGVfY2hhbmdlZBgHIAEoCzIkLndvcmtvcy5hZ2VudC52MS5TZXNzaW9uU3RhdGVDaGFuZ2VkSABCBwoFZXZlbnQiOAoUU2Vzc2lvbklucHV0QWNjZXB0ZWQSEAoIaW5wdXRfaWQYASABKAkSDgoGcXVldWVkGAIgASgIIjsKFlNlc3Npb25JbnB1dERpc3BhdGNoZWQSEAoIaW5wdXRfaWQYASABKAkSDwoHdGFza19pZBgCIAEoCSKSAQoUU2Vzc2lvbklucHV0VGVybWluYWwSEAoIaW5wdXRfaWQYASABKAkSDwoHdGFza19pZBgCIAEoCRI/Cg50ZXJtaW5hbF9zdGF0ZRgDIAEoDjInLndvcmtvcy5hZ2VudC52MS5BZ2VudFNlc3Npb25JbnB1dFN0YXRlEhYKDnJlc3VsdF9zdW1tYXJ5GAQgASgJIpABChNTZXNzaW9uU3RhdGVDaGFuZ2VkEjQKCHByZXZpb3VzGAEgASgOMiIud29ya29zLmFnZW50LnYxLkFnZW50U2Vzc2lvblN0YXRlEjMKB2N1cnJlbnQYAiABKA4yIi53b3Jrb3MuYWdlbnQudjEuQWdlbnRTZXNzaW9uU3RhdGUSDgoGcmVhc29uGAMgASgJIn8KFENyZWF0ZVNlc3Npb25SZXF1ZXN0EhIKCnByb2plY3RfaWQYASABKAkSFwoPaWRlbXBvdGVuY3lfa2V5GAIgASgJEiEKFHdvcmtzcGFjZV9iaW5kaW5nX2lkGAMgASgJSACIAQFCFwoVX3dvcmtzcGFjZV9iaW5kaW5nX2lkIkcKFUNyZWF0ZVNlc3Npb25SZXNwb25zZRIuCgdzZXNzaW9uGAEgASgLMh0ud29ya29zLmFnZW50LnYxLkFnZW50U2Vzc2lvbiJoChNMaXN0U2Vzc2lvbnNSZXF1ZXN0EhIKCnByb2plY3RfaWQYASABKAkSFgoOaW5jbHVkZV9jbG9zZWQYAiABKAgSEgoKcGFnZV90b2tlbhgDIAEoCRIRCglwYWdlX3NpemUYBCABKAUiYAoUTGlzdFNlc3Npb25zUmVzcG9uc2USLwoIc2Vzc2lvbnMYASADKAsyHS53b3Jrb3MuYWdlbnQudjEuQWdlbnRTZXNzaW9uEhcKD25leHRfcGFnZV90b2tlbhgCIAEoCSInChFHZXRTZXNzaW9uUmVxdWVzdBISCgpzZXNzaW9uX2lkGAEgASgJIkQKEkdldFNlc3Npb25SZXNwb25zZRIuCgdzZXNzaW9uGAEgASgLMh0ud29ya29zLmFnZW50LnYxLkFnZW50U2Vzc2lvbiKMAQoZU3VibWl0U2Vzc2lvbklucHV0UmVxdWVzdBISCgpzZXNzaW9uX2lkGAEgASgJEhcKD2NsaWVudF9pbnB1dF9pZBgCIAEoCRIMCgR0ZXh0GAMgASgJEjQKCWRpcmVjdGl2ZRgEIAEoCzIhLndvcmtvcy5hZ2VudC52MS5TZXNzaW9uRGlyZWN0aXZlIl8KHlJlcXVlc3RTZXNzaW9uR29hbFBhdXNlUmVxdWVzdBISCgpzZXNzaW9uX2lkGAEgASgJEhcKD2lkZW1wb3RlbmN5X2tleRgCIAEoCRIQCghnb2FsX3JlZhgDIAEoCSJRCh9SZXF1ZXN0U2Vzc2lvbkdvYWxQYXVzZVJlc3BvbnNlEi4KB3Nlc3Npb24YASABKAsyHS53b3Jrb3MuYWdlbnQudjEuQWdlbnRTZXNzaW9uIk8KGlN1Ym1pdFNlc3Npb25JbnB1dFJlc3BvbnNlEjEKBWlucHV0GAEgASgLMiIud29ya29zLmFnZW50LnYxLkFnZW50U2Vzc2lvbklucHV0IkUKFkdldFNlc3Npb25JbnB1dFJlcXVlc3QSEgoKc2Vzc2lvbl9pZBgBIAEoCRIXCg9jbGllbnRfaW5wdXRfaWQYAiABKAkiTAoXR2V0U2Vzc2lvbklucHV0UmVzcG9uc2USMQoFaW5wdXQYASABKAsyIi53b3Jrb3MuYWdlbnQudjEuQWdlbnRTZXNzaW9uSW5wdXQiVQoYTGlzdFNlc3Npb25JbnB1dHNSZXF1ZXN0EhIKCnNlc3Npb25faWQYASABKAkSFgoOYWZ0ZXJfc2VxdWVuY2UYAiABKAMSDQoFbGltaXQYAyABKAUiTwoZTGlzdFNlc3Npb25JbnB1dHNSZXNwb25zZRIyCgZpbnB1dHMYASADKAsyIi53b3Jrb3MuYWdlbnQudjEuQWdlbnRTZXNzaW9uSW5wdXQiQwodQ2FuY2VsU2Vzc2lvbkV4ZWN1dGlvblJlcXVlc3QSEgoKc2Vzc2lvbl9pZBgBIAEoCRIOCgZyZWFzb24YAiABKAkibQoeQ2FuY2VsU2Vzc2lvbkV4ZWN1dGlvblJlc3BvbnNlEjEKBWlucHV0GAEgASgLMiIud29ya29zLmFnZW50LnYxLkFnZW50U2Vzc2lvbklucHV0EhgKEGNhbmNlbGxlZF9xdWV1ZWQYAiABKAMiKQoTQ2xvc2VTZXNzaW9uUmVxdWVzdBISCgpzZXNzaW9uX2lkGAEgASgJIkYKFENsb3NlU2Vzc2lvblJlc3BvbnNlEi4KB3Nlc3Npb24YASABKAsyHS53b3Jrb3MuYWdlbnQudjEuQWdlbnRTZXNzaW9uIj4KGVdhdGNoU2Vzc2lvbkV2ZW50c1JlcXVlc3QSEgoKc2Vzc2lvbl9pZBgBIAEoCRINCgVhZnRlchgCIAEoAyJQChpXYXRjaFNlc3Npb25FdmVudHNSZXNwb25zZRIyCgZldmVudHMYASADKAsyIi53b3Jrb3MuYWdlbnQudjEuQWdlbnRTZXNzaW9uRXZlbnQqvwEKEUFnZW50U2Vzc2lvblN0YXRlEiMKH0FHRU5UX1NFU1NJT05fU1RBVEVfVU5TUEVDSUZJRUQQABIeChpBR0VOVF9TRVNTSU9OX1NUQVRFX0FDVElWRRABEh8KG0FHRU5UX1NFU1NJT05fU1RBVEVfQ0xPU0lORxACEh4KGkFHRU5UX1NFU1NJT05fU1RBVEVfQ0xPU0VEEAMSJAogQUdFTlRfU0VTU0lPTl9TVEFURV9ORUVEU19SRVZJRVcQBCqNAgoWQWdlbnRTZXNzaW9uSW5wdXRTdGF0ZRIpCiVBR0VOVF9TRVNTSU9OX0lOUFVUX1NUQVRFX1VOU1BFQ0lGSUVEEAASJgoiQUdFTlRfU0VTU0lPTl9JTlBVVF9TVEFURV9BQ0NFUFRFRBABEigKJEFHRU5UX1NFU1NJT05fSU5QVVRfU1RBVEVfRElTUEFUQ0hFRBACEicKI0FHRU5UX1NFU1NJT05fSU5QVVRfU1RBVEVfQ09NUExFVEVEEAMSJAogQUdFTlRfU0VTU0lPTl9JTlBVVF9TVEFURV9GQUlMRUQQBBInCiNBR0VOVF9TRVNTSU9OX0lOUFVUX1NUQVRFX0NBTkNFTExFRBAFMsUIChNBZ2VudFNlc3Npb25TZXJ2aWNlEmAKDUNyZWF0ZVNlc3Npb24SJS53b3Jrb3MuYWdlbnQudjEuQ3JlYXRlU2Vzc2lvblJlcXVlc3QaJi53b3Jrb3MuYWdlbnQudjEuQ3JlYXRlU2Vzc2lvblJlc3BvbnNlIgASXQoMTGlzdFNlc3Npb25zEiQud29ya29zLmFnZW50LnYxLkxpc3RTZXNzaW9uc1JlcXVlc3QaJS53b3Jrb3MuYWdlbnQudjEuTGlzdFNlc3Npb25zUmVzcG9uc2UiABJXCgpHZXRTZXNzaW9uEiIud29ya29zLmFnZW50LnYxLkdldFNlc3Npb25SZXF1ZXN0GiMud29ya29zLmFnZW50LnYxLkdldFNlc3Npb25SZXNwb25zZSIAEm8KElN1Ym1pdFNlc3Npb25JbnB1dBIqLndvcmtvcy5hZ2VudC52MS5TdWJtaXRTZXNzaW9uSW5wdXRSZXF1ZXN0Gisud29ya29zLmFnZW50LnYxLlN1Ym1pdFNlc3Npb25JbnB1dFJlc3BvbnNlIgASfgoXUmVxdWVzdFNlc3Npb25Hb2FsUGF1c2USLy53b3Jrb3MuYWdlbnQudjEuUmVxdWVzdFNlc3Npb25Hb2FsUGF1c2VSZXF1ZXN0GjAud29ya29zLmFnZW50LnYxLlJlcXVlc3RTZXNzaW9uR29hbFBhdXNlUmVzcG9uc2UiABJmCg9HZXRTZXNzaW9uSW5wdXQSJy53b3Jrb3MuYWdlbnQudjEuR2V0U2Vzc2lvbklucHV0UmVxdWVzdBooLndvcmtvcy5hZ2VudC52MS5HZXRTZXNzaW9uSW5wdXRSZXNwb25zZSIAEmwKEUxpc3RTZXNzaW9uSW5wdXRzEikud29ya29zLmFnZW50LnYxLkxpc3RTZXNzaW9uSW5wdXRzUmVxdWVzdBoqLndvcmtvcy5hZ2VudC52MS5MaXN0U2Vzc2lvbklucHV0c1Jlc3BvbnNlIgASewoWQ2FuY2VsU2Vzc2lvbkV4ZWN1dGlvbhIuLndvcmtvcy5hZ2VudC52MS5DYW5jZWxTZXNzaW9uRXhlY3V0aW9uUmVxdWVzdBovLndvcmtvcy5hZ2VudC52MS5DYW5jZWxTZXNzaW9uRXhlY3V0aW9uUmVzcG9uc2UiABJdCgxDbG9zZVNlc3Npb24SJC53b3Jrb3MuYWdlbnQudjEuQ2xvc2VTZXNzaW9uUmVxdWVzdBolLndvcmtvcy5hZ2VudC52MS5DbG9zZVNlc3Npb25SZXNwb25zZSIAEnEKEldhdGNoU2Vzc2lvbkV2ZW50cxIqLndvcmtvcy5hZ2VudC52MS5XYXRjaFNlc3Npb25FdmVudHNSZXF1ZXN0Gisud29ya29zLmFnZW50LnYxLldhdGNoU2Vzc2lvbkV2ZW50c1Jlc3BvbnNlIgAwAUI9WjtnaXRodWIuY29tL3lhbmd0YW8xMjEvd29ya29zL2dlbi9nby93b3Jrb3MvYWdlbnQvdjE7YWdlbnR2MWIGcHJvdG8z", [file_google_protobuf_timestamp, file_workos_agent_v1_automation]);
 
 /**
  * @generated from message workos.agent.v1.AgentSession
@@ -92,6 +94,16 @@ export type AgentSession = Message<"workos.agent.v1.AgentSession"> & {
    * @generated from field: optional google.protobuf.Timestamp closed_at = 14;
    */
   closedAt?: Timestamp | undefined;
+
+  /**
+   * @generated from field: workos.agent.v1.SessionGoal goal = 15;
+   */
+  goal?: SessionGoal | undefined;
+
+  /**
+   * @generated from field: repeated workos.agent.v1.AgentDelegation delegations = 16;
+   */
+  delegations: AgentDelegation[];
 };
 
 /**
@@ -162,6 +174,11 @@ export type AgentSessionInput = Message<"workos.agent.v1.AgentSessionInput"> & {
    * @generated from field: google.protobuf.Timestamp updated_at = 10;
    */
   updatedAt?: Timestamp | undefined;
+
+  /**
+   * @generated from field: workos.agent.v1.SessionDirective directive = 11;
+   */
+  directive?: SessionDirective | undefined;
 };
 
 /**
@@ -487,6 +504,14 @@ export type SubmitSessionInputRequest = Message<"workos.agent.v1.SubmitSessionIn
    * @generated from field: string text = 3;
    */
   text: string;
+
+  /**
+   * Text and directive are mutually exclusive. A directive uses the same
+   * persistent idempotency key and dispatch ordering as an ordinary input.
+   *
+   * @generated from field: workos.agent.v1.SessionDirective directive = 4;
+   */
+  directive?: SessionDirective | undefined;
 };
 
 /**
@@ -495,6 +520,50 @@ export type SubmitSessionInputRequest = Message<"workos.agent.v1.SubmitSessionIn
  */
 export const SubmitSessionInputRequestSchema: GenMessage<SubmitSessionInputRequest> = /*@__PURE__*/
   messageDesc(file_workos_agent_v1_session, 13);
+
+/**
+ * @generated from message workos.agent.v1.RequestSessionGoalPauseRequest
+ */
+export type RequestSessionGoalPauseRequest = Message<"workos.agent.v1.RequestSessionGoalPauseRequest"> & {
+  /**
+   * @generated from field: string session_id = 1;
+   */
+  sessionId: string;
+
+  /**
+   * @generated from field: string idempotency_key = 2;
+   */
+  idempotencyKey: string;
+
+  /**
+   * @generated from field: string goal_ref = 3;
+   */
+  goalRef: string;
+};
+
+/**
+ * Describes the message workos.agent.v1.RequestSessionGoalPauseRequest.
+ * Use `create(RequestSessionGoalPauseRequestSchema)` to create a new message.
+ */
+export const RequestSessionGoalPauseRequestSchema: GenMessage<RequestSessionGoalPauseRequest> = /*@__PURE__*/
+  messageDesc(file_workos_agent_v1_session, 14);
+
+/**
+ * @generated from message workos.agent.v1.RequestSessionGoalPauseResponse
+ */
+export type RequestSessionGoalPauseResponse = Message<"workos.agent.v1.RequestSessionGoalPauseResponse"> & {
+  /**
+   * @generated from field: workos.agent.v1.AgentSession session = 1;
+   */
+  session?: AgentSession | undefined;
+};
+
+/**
+ * Describes the message workos.agent.v1.RequestSessionGoalPauseResponse.
+ * Use `create(RequestSessionGoalPauseResponseSchema)` to create a new message.
+ */
+export const RequestSessionGoalPauseResponseSchema: GenMessage<RequestSessionGoalPauseResponse> = /*@__PURE__*/
+  messageDesc(file_workos_agent_v1_session, 15);
 
 /**
  * @generated from message workos.agent.v1.SubmitSessionInputResponse
@@ -511,7 +580,7 @@ export type SubmitSessionInputResponse = Message<"workos.agent.v1.SubmitSessionI
  * Use `create(SubmitSessionInputResponseSchema)` to create a new message.
  */
 export const SubmitSessionInputResponseSchema: GenMessage<SubmitSessionInputResponse> = /*@__PURE__*/
-  messageDesc(file_workos_agent_v1_session, 14);
+  messageDesc(file_workos_agent_v1_session, 16);
 
 /**
  * @generated from message workos.agent.v1.GetSessionInputRequest
@@ -533,7 +602,7 @@ export type GetSessionInputRequest = Message<"workos.agent.v1.GetSessionInputReq
  * Use `create(GetSessionInputRequestSchema)` to create a new message.
  */
 export const GetSessionInputRequestSchema: GenMessage<GetSessionInputRequest> = /*@__PURE__*/
-  messageDesc(file_workos_agent_v1_session, 15);
+  messageDesc(file_workos_agent_v1_session, 17);
 
 /**
  * @generated from message workos.agent.v1.GetSessionInputResponse
@@ -550,7 +619,7 @@ export type GetSessionInputResponse = Message<"workos.agent.v1.GetSessionInputRe
  * Use `create(GetSessionInputResponseSchema)` to create a new message.
  */
 export const GetSessionInputResponseSchema: GenMessage<GetSessionInputResponse> = /*@__PURE__*/
-  messageDesc(file_workos_agent_v1_session, 16);
+  messageDesc(file_workos_agent_v1_session, 18);
 
 /**
  * @generated from message workos.agent.v1.ListSessionInputsRequest
@@ -577,7 +646,7 @@ export type ListSessionInputsRequest = Message<"workos.agent.v1.ListSessionInput
  * Use `create(ListSessionInputsRequestSchema)` to create a new message.
  */
 export const ListSessionInputsRequestSchema: GenMessage<ListSessionInputsRequest> = /*@__PURE__*/
-  messageDesc(file_workos_agent_v1_session, 17);
+  messageDesc(file_workos_agent_v1_session, 19);
 
 /**
  * @generated from message workos.agent.v1.ListSessionInputsResponse
@@ -594,7 +663,7 @@ export type ListSessionInputsResponse = Message<"workos.agent.v1.ListSessionInpu
  * Use `create(ListSessionInputsResponseSchema)` to create a new message.
  */
 export const ListSessionInputsResponseSchema: GenMessage<ListSessionInputsResponse> = /*@__PURE__*/
-  messageDesc(file_workos_agent_v1_session, 18);
+  messageDesc(file_workos_agent_v1_session, 20);
 
 /**
  * @generated from message workos.agent.v1.CancelSessionExecutionRequest
@@ -616,7 +685,7 @@ export type CancelSessionExecutionRequest = Message<"workos.agent.v1.CancelSessi
  * Use `create(CancelSessionExecutionRequestSchema)` to create a new message.
  */
 export const CancelSessionExecutionRequestSchema: GenMessage<CancelSessionExecutionRequest> = /*@__PURE__*/
-  messageDesc(file_workos_agent_v1_session, 19);
+  messageDesc(file_workos_agent_v1_session, 21);
 
 /**
  * @generated from message workos.agent.v1.CancelSessionExecutionResponse
@@ -641,7 +710,7 @@ export type CancelSessionExecutionResponse = Message<"workos.agent.v1.CancelSess
  * Use `create(CancelSessionExecutionResponseSchema)` to create a new message.
  */
 export const CancelSessionExecutionResponseSchema: GenMessage<CancelSessionExecutionResponse> = /*@__PURE__*/
-  messageDesc(file_workos_agent_v1_session, 20);
+  messageDesc(file_workos_agent_v1_session, 22);
 
 /**
  * @generated from message workos.agent.v1.CloseSessionRequest
@@ -658,7 +727,7 @@ export type CloseSessionRequest = Message<"workos.agent.v1.CloseSessionRequest">
  * Use `create(CloseSessionRequestSchema)` to create a new message.
  */
 export const CloseSessionRequestSchema: GenMessage<CloseSessionRequest> = /*@__PURE__*/
-  messageDesc(file_workos_agent_v1_session, 21);
+  messageDesc(file_workos_agent_v1_session, 23);
 
 /**
  * @generated from message workos.agent.v1.CloseSessionResponse
@@ -675,7 +744,7 @@ export type CloseSessionResponse = Message<"workos.agent.v1.CloseSessionResponse
  * Use `create(CloseSessionResponseSchema)` to create a new message.
  */
 export const CloseSessionResponseSchema: GenMessage<CloseSessionResponse> = /*@__PURE__*/
-  messageDesc(file_workos_agent_v1_session, 22);
+  messageDesc(file_workos_agent_v1_session, 24);
 
 /**
  * @generated from message workos.agent.v1.WatchSessionEventsRequest
@@ -699,7 +768,7 @@ export type WatchSessionEventsRequest = Message<"workos.agent.v1.WatchSessionEve
  * Use `create(WatchSessionEventsRequestSchema)` to create a new message.
  */
 export const WatchSessionEventsRequestSchema: GenMessage<WatchSessionEventsRequest> = /*@__PURE__*/
-  messageDesc(file_workos_agent_v1_session, 23);
+  messageDesc(file_workos_agent_v1_session, 25);
 
 /**
  * @generated from message workos.agent.v1.WatchSessionEventsResponse
@@ -716,7 +785,7 @@ export type WatchSessionEventsResponse = Message<"workos.agent.v1.WatchSessionEv
  * Use `create(WatchSessionEventsResponseSchema)` to create a new message.
  */
 export const WatchSessionEventsResponseSchema: GenMessage<WatchSessionEventsResponse> = /*@__PURE__*/
-  messageDesc(file_workos_agent_v1_session, 24);
+  messageDesc(file_workos_agent_v1_session, 26);
 
 /**
  * A continuous native harness session bound to one Project, one workspace
@@ -860,6 +929,17 @@ export const AgentSessionService: GenService<{
     methodKind: "unary";
     input: typeof SubmitSessionInputRequestSchema;
     output: typeof SubmitSessionInputResponseSchema;
+  },
+  /**
+   * Requests a stop at the next native step boundary. Existing foreground
+   * effects settle; this is distinct from cancelling an interrupted Task.
+   *
+   * @generated from rpc workos.agent.v1.AgentSessionService.RequestSessionGoalPause
+   */
+  requestSessionGoalPause: {
+    methodKind: "unary";
+    input: typeof RequestSessionGoalPauseRequestSchema;
+    output: typeof RequestSessionGoalPauseResponseSchema;
   },
   /**
    * GetSessionInput is the retry-safe read for timeout recovery: a client

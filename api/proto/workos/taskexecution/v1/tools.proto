@@ -13,6 +13,9 @@ message ExecuteTaskToolRequest {
   string operation_id = 3;
   string operation = 4;
   google.protobuf.Struct arguments = 5;
+  // Empty for the parent, otherwise a Core-issued grant under this exact
+  // live task lease. It selects an isolated Runtime worktree, never a path.
+  string delegation_id = 6;
 }
 message ExecuteTaskToolResponse {
   google.protobuf.Struct result = 1;

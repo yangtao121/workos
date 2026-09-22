@@ -111,6 +111,16 @@ func (h *ExecutionHandler) AppendTaskEvent(ctx context.Context, req *connect.Req
 	if event == nil || event.Event == nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, domain.ErrInvalid)
 	}
+	if event.GetDelegationUpdated() != nil {
+		return nil, connect.NewError(connect.CodeUnimplemented, errors.New("native automation projections unavailable"))
+	}
+	if event.GetDelegationId() != "" {
+		switch event.Event.(type) {
+		case *agentv1.AgentEvent_AssistantDelta, *agentv1.AgentEvent_AssistantMessage, *agentv1.AgentEvent_ToolCallStarted, *agentv1.AgentEvent_ToolCallCompleted:
+		default:
+			return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("child events cannot control the parent task"))
+		}
+	}
 	// Fail closed: ArtifactCreated events are Core-minted facts published by
 	// AppendTaskArtifact from the verified artifact projection. A
 	// provider-built reference could name a foreign or nonexistent artifact
@@ -256,6 +266,8 @@ func (h *ExecutionHandler) ResolveTaskContext(ctx context.Context, req *connect.
 
 func classifyEvent(event *agentv1.AgentEvent) (string, domain.State, string, string) {
 	switch value := event.Event.(type) {
+	case *agentv1.AgentEvent_GoalUpdated:
+		return "goal_updated", domain.StateRunning, "", ""
 	case *agentv1.AgentEvent_RunStarted:
 		return "run_started", domain.StateRunning, value.RunStarted.GetProviderId(), value.RunStarted.GetRunId()
 	case *agentv1.AgentEvent_RunWaiting:

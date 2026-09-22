@@ -44,6 +44,7 @@ import (
 	buildtestports "github.com/yangtao121/workos/internal/runtime/buildtest/ports"
 	buildtesttransport "github.com/yangtao121/workos/internal/runtime/buildtest/transport"
 	nativehostpostgres "github.com/yangtao121/workos/internal/runtime/nativehost/adapters/postgres"
+	"github.com/yangtao121/workos/internal/runtime/nativehost/adapters/turnauth"
 	xvfbengine "github.com/yangtao121/workos/internal/runtime/nativehost/adapters/xvfbengine"
 	nativehostapp "github.com/yangtao121/workos/internal/runtime/nativehost/application"
 	nativehosttransport "github.com/yangtao121/workos/internal/runtime/nativehost/transport"
@@ -423,7 +424,11 @@ func run(logger *slog.Logger) error {
 			}
 			commandEngine = workspacehostdocker.New(socket, image)
 		}
-		executionService := workspacehostapp.NewExecution(workspaceHost, &workspacehostfiles.Files{}, commandEngine, workspacehostpostgres.New(pool)).WithAuthorization(workspaceAuthorizer)
+		workspaceJournal := workspacehostpostgres.New(pool)
+		executionService := workspacehostapp.NewExecution(workspaceHost, &workspacehostfiles.Files{}, commandEngine, workspaceJournal).WithAuthorization(workspaceAuthorizer)
+		if engine, ok := commandEngine.(*workspacehostdocker.Engine); ok && os.Getenv("WORKOS_WORKSPACE_DELEGATION_ROOT") != "" {
+			executionService.WithDelegations(workspaceJournal, workspacehostdocker.NewWorktrees(engine, os.Getenv("WORKOS_WORKSPACE_DELEGATION_ROOT")))
+		}
 		workspaceOperations.files = executionService
 		workspaceOperations.host = workspaceHost
 		executionPath, executionHandler := workspacehosttransport.NewExecutionHandler(workspaceOperations)
@@ -588,6 +593,11 @@ func run(logger *slog.Logger) error {
 		if err := nativeEngine.WithLAN(os.Getenv("WORKOS_NATIVE_LAN_CIDRS"), os.Getenv("WORKOS_NATIVE_UDP_PORTS")); err != nil {
 			return err
 		}
+		connectivity, err := turnauth.New(cfg.Runtime.NativeCandidates, os.Getenv("WORKOS_NATIVE_TURN_URLS"), os.Getenv("WORKOS_NATIVE_TURN_SECRET_FILE"))
+		if err != nil {
+			return err
+		}
+		nativeEngine.WithConnectivity(connectivity)
 		if socket := os.Getenv("WORKOS_WORKSPACE_DOCKER_SOCKET"); socket != "" {
 			nativeEngine.WithContainers(socket, os.Getenv("WORKOS_WORKSPACE_EXECUTION_IMAGE"), os.Getenv("WORKOS_NATIVE_X11_HOST_DIRECTORY"))
 		}
@@ -596,6 +606,7 @@ func run(logger *slog.Logger) error {
 		if serviceErr != nil {
 			return serviceErr
 		}
+		nativeService.WithConnectivity(connectivity)
 		nativeService.WithWorkspaceAuthorization(nativeWorkspaceAuthorization{workspaceHost, workspaceAuthorizer})
 		if err := nativeService.Sweep(ctx); err != nil {
 			return err
@@ -666,7 +677,7 @@ func run(logger *slog.Logger) error {
 		workloadCapability(capability, "container-runner"),
 		&commonv1.FeatureCapability{Id: "rootless-container-runner", Available: cfg.Runtime.WorkloadEngine != "fake-fixture" && capability.Available && capability.Rootless, Reason: rootlessRunnerReason(cfg.Runtime.WorkloadEngine, capability)},
 		&commonv1.FeatureCapability{Id: "native-runner", Available: strings.TrimSpace(cfg.Runtime.PtyShell) != "", Reason: "supervised PTY sessions require a configured login shell (ADR-0028)"},
-		&commonv1.FeatureCapability{Id: "virtual-display-native-runner", Available: nativeConfigured, Reason: "virtual-display WebRTC sessions require the Xvfb/ffmpeg/xdotool toolchain (ADR-0029); loopback host candidates only"},
+		&commonv1.FeatureCapability{Id: "virtual-display-native-runner", Available: nativeConfigured, Reason: "virtual-display WebRTC requires X11 tools; operator ICE policy: " + cfg.Runtime.NativeCandidates},
 		&commonv1.FeatureCapability{Id: "surface-broker", Available: true, Reason: "web bundle and supervised web service surfaces"},
 		&commonv1.FeatureCapability{Id: "app-bridge", Available: true, Reason: "grant-checked agent, knowledge, notifications, project and own-window methods; files require explicit workspace bindings"},
 		&commonv1.FeatureCapability{Id: "workspace-files", Available: workspaceErr == nil && len(mounts) > 0, Reason: "requires usable owner-bound workspace directories and explicit files.read/files.write grants"},

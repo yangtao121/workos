@@ -24,8 +24,9 @@ const (
 
 // One supervised virtual-display native session (ADR-0029): a real Xvfb
 // display, a configured native X client, and an ffmpeg x11grab/VP8 capture
-// streamed to the desktop over loopback WebRTC. Input returns over a data
-// channel. Gateway routes the service with owner identity.
+// streamed over operator-configured WebRTC (loopback, private LAN or TURN
+// relay; ADR-0035). Input returns over a data channel. Gateway supplies the
+// authenticated owner and device identity.
 type NativeSession struct {
 	state       protoimpl.MessageState `protogen:"open.v1"`
 	Id          string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
@@ -621,6 +622,189 @@ func (*DetachNativeSessionResponse) Descriptor() ([]byte, []int) {
 	return file_workos_surface_v1_native_proto_rawDescGZIP(), []int{10}
 }
 
+// Ephemeral transport capability, never a provider or TURN shared secret.
+// Values must not be persisted, logged, or exposed to embedded Apps.
+type NativeIceServer struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Urls          []string               `protobuf:"bytes,1,rep,name=urls,proto3" json:"urls,omitempty"`
+	Username      string                 `protobuf:"bytes,2,opt,name=username,proto3" json:"username,omitempty"`
+	Credential    string                 `protobuf:"bytes,3,opt,name=credential,proto3" json:"credential,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *NativeIceServer) Reset() {
+	*x = NativeIceServer{}
+	mi := &file_workos_surface_v1_native_proto_msgTypes[11]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *NativeIceServer) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*NativeIceServer) ProtoMessage() {}
+
+func (x *NativeIceServer) ProtoReflect() protoreflect.Message {
+	mi := &file_workos_surface_v1_native_proto_msgTypes[11]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use NativeIceServer.ProtoReflect.Descriptor instead.
+func (*NativeIceServer) Descriptor() ([]byte, []int) {
+	return file_workos_surface_v1_native_proto_rawDescGZIP(), []int{11}
+}
+
+func (x *NativeIceServer) GetUrls() []string {
+	if x != nil {
+		return x.Urls
+	}
+	return nil
+}
+
+func (x *NativeIceServer) GetUsername() string {
+	if x != nil {
+		return x.Username
+	}
+	return ""
+}
+
+func (x *NativeIceServer) GetCredential() string {
+	if x != nil {
+		return x.Credential
+	}
+	return ""
+}
+
+type GetNativeConnectivityRequest struct {
+	state             protoimpl.MessageState `protogen:"open.v1"`
+	SessionId         string                 `protobuf:"bytes,1,opt,name=session_id,json=sessionId,proto3" json:"session_id,omitempty"`
+	ControlGeneration int64                  `protobuf:"varint,2,opt,name=control_generation,json=controlGeneration,proto3" json:"control_generation,omitempty"`
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
+}
+
+func (x *GetNativeConnectivityRequest) Reset() {
+	*x = GetNativeConnectivityRequest{}
+	mi := &file_workos_surface_v1_native_proto_msgTypes[12]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetNativeConnectivityRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetNativeConnectivityRequest) ProtoMessage() {}
+
+func (x *GetNativeConnectivityRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_workos_surface_v1_native_proto_msgTypes[12]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetNativeConnectivityRequest.ProtoReflect.Descriptor instead.
+func (*GetNativeConnectivityRequest) Descriptor() ([]byte, []int) {
+	return file_workos_surface_v1_native_proto_rawDescGZIP(), []int{12}
+}
+
+func (x *GetNativeConnectivityRequest) GetSessionId() string {
+	if x != nil {
+		return x.SessionId
+	}
+	return ""
+}
+
+func (x *GetNativeConnectivityRequest) GetControlGeneration() int64 {
+	if x != nil {
+		return x.ControlGeneration
+	}
+	return 0
+}
+
+type GetNativeConnectivityResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Operator-selected loopback|lan|relay. Clients cannot widen this policy.
+	Mode          string                 `protobuf:"bytes,1,opt,name=mode,proto3" json:"mode,omitempty"`
+	IceServers    []*NativeIceServer     `protobuf:"bytes,2,rep,name=ice_servers,json=iceServers,proto3" json:"ice_servers,omitempty"`
+	RelayOnly     bool                   `protobuf:"varint,3,opt,name=relay_only,json=relayOnly,proto3" json:"relay_only,omitempty"`
+	ExpiresAt     *timestamppb.Timestamp `protobuf:"bytes,4,opt,name=expires_at,json=expiresAt,proto3" json:"expires_at,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetNativeConnectivityResponse) Reset() {
+	*x = GetNativeConnectivityResponse{}
+	mi := &file_workos_surface_v1_native_proto_msgTypes[13]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetNativeConnectivityResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetNativeConnectivityResponse) ProtoMessage() {}
+
+func (x *GetNativeConnectivityResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_workos_surface_v1_native_proto_msgTypes[13]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetNativeConnectivityResponse.ProtoReflect.Descriptor instead.
+func (*GetNativeConnectivityResponse) Descriptor() ([]byte, []int) {
+	return file_workos_surface_v1_native_proto_rawDescGZIP(), []int{13}
+}
+
+func (x *GetNativeConnectivityResponse) GetMode() string {
+	if x != nil {
+		return x.Mode
+	}
+	return ""
+}
+
+func (x *GetNativeConnectivityResponse) GetIceServers() []*NativeIceServer {
+	if x != nil {
+		return x.IceServers
+	}
+	return nil
+}
+
+func (x *GetNativeConnectivityResponse) GetRelayOnly() bool {
+	if x != nil {
+		return x.RelayOnly
+	}
+	return false
+}
+
+func (x *GetNativeConnectivityResponse) GetExpiresAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.ExpiresAt
+	}
+	return nil
+}
+
 // Canonical workos.input data-channel payload, serialized as protobuf JSON.
 // The adapter rejects unknown fields/types, invalid combinations and oversized
 // events. Only the bounded text/key/pointer vocabulary below is supported.
@@ -644,7 +828,7 @@ type NativeInputEvent struct {
 
 func (x *NativeInputEvent) Reset() {
 	*x = NativeInputEvent{}
-	mi := &file_workos_surface_v1_native_proto_msgTypes[11]
+	mi := &file_workos_surface_v1_native_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -656,7 +840,7 @@ func (x *NativeInputEvent) String() string {
 func (*NativeInputEvent) ProtoMessage() {}
 
 func (x *NativeInputEvent) ProtoReflect() protoreflect.Message {
-	mi := &file_workos_surface_v1_native_proto_msgTypes[11]
+	mi := &file_workos_surface_v1_native_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -669,7 +853,7 @@ func (x *NativeInputEvent) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use NativeInputEvent.ProtoReflect.Descriptor instead.
 func (*NativeInputEvent) Descriptor() ([]byte, []int) {
-	return file_workos_surface_v1_native_proto_rawDescGZIP(), []int{11}
+	return file_workos_surface_v1_native_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *NativeInputEvent) GetType() string {
@@ -769,7 +953,25 @@ const file_workos_surface_v1_native_proto_rawDesc = "" +
 	"\x1aDetachNativeSessionRequest\x12\x1d\n" +
 	"\n" +
 	"session_id\x18\x01 \x01(\tR\tsessionId\"\x1d\n" +
-	"\x1bDetachNativeSessionResponse\"\x98\x01\n" +
+	"\x1bDetachNativeSessionResponse\"a\n" +
+	"\x0fNativeIceServer\x12\x12\n" +
+	"\x04urls\x18\x01 \x03(\tR\x04urls\x12\x1a\n" +
+	"\busername\x18\x02 \x01(\tR\busername\x12\x1e\n" +
+	"\n" +
+	"credential\x18\x03 \x01(\tR\n" +
+	"credential\"l\n" +
+	"\x1cGetNativeConnectivityRequest\x12\x1d\n" +
+	"\n" +
+	"session_id\x18\x01 \x01(\tR\tsessionId\x12-\n" +
+	"\x12control_generation\x18\x02 \x01(\x03R\x11controlGeneration\"\xd2\x01\n" +
+	"\x1dGetNativeConnectivityResponse\x12\x12\n" +
+	"\x04mode\x18\x01 \x01(\tR\x04mode\x12C\n" +
+	"\vice_servers\x18\x02 \x03(\v2\".workos.surface.v1.NativeIceServerR\n" +
+	"iceServers\x12\x1d\n" +
+	"\n" +
+	"relay_only\x18\x03 \x01(\bR\trelayOnly\x129\n" +
+	"\n" +
+	"expires_at\x18\x04 \x01(\v2\x1a.google.protobuf.TimestampR\texpiresAt\"\x98\x01\n" +
 	"\x10NativeInputEvent\x12\x12\n" +
 	"\x04type\x18\x01 \x01(\tR\x04type\x12\x12\n" +
 	"\x04text\x18\x02 \x01(\tR\x04text\x12\x10\n" +
@@ -777,8 +979,9 @@ const file_workos_surface_v1_native_proto_rawDesc = "" +
 	"\x06action\x18\x04 \x01(\tR\x06action\x12\f\n" +
 	"\x01x\x18\x05 \x01(\x01R\x01x\x12\f\n" +
 	"\x01y\x18\x06 \x01(\x01R\x01y\x12\x16\n" +
-	"\x06button\x18\a \x01(\x05R\x06button2\xe5\x04\n" +
-	"\x14NativeSessionService\x12v\n" +
+	"\x06button\x18\a \x01(\x05R\x06button2\xe3\x05\n" +
+	"\x14NativeSessionService\x12|\n" +
+	"\x15GetNativeConnectivity\x12/.workos.surface.v1.GetNativeConnectivityRequest\x1a0.workos.surface.v1.GetNativeConnectivityResponse\"\x00\x12v\n" +
 	"\x13CreateNativeSession\x12-.workos.surface.v1.CreateNativeSessionRequest\x1a..workos.surface.v1.CreateNativeSessionResponse\"\x00\x12y\n" +
 	"\x14ConnectNativeSession\x12..workos.surface.v1.ConnectNativeSessionRequest\x1a/.workos.surface.v1.ConnectNativeSessionResponse\"\x00\x12m\n" +
 	"\x10GetNativeSession\x12*.workos.surface.v1.GetNativeSessionRequest\x1a+.workos.surface.v1.GetNativeSessionResponse\"\x00\x12s\n" +
@@ -797,44 +1000,51 @@ func file_workos_surface_v1_native_proto_rawDescGZIP() []byte {
 	return file_workos_surface_v1_native_proto_rawDescData
 }
 
-var file_workos_surface_v1_native_proto_msgTypes = make([]protoimpl.MessageInfo, 12)
+var file_workos_surface_v1_native_proto_msgTypes = make([]protoimpl.MessageInfo, 15)
 var file_workos_surface_v1_native_proto_goTypes = []any{
-	(*NativeSession)(nil),                // 0: workos.surface.v1.NativeSession
-	(*CreateNativeSessionRequest)(nil),   // 1: workos.surface.v1.CreateNativeSessionRequest
-	(*CreateNativeSessionResponse)(nil),  // 2: workos.surface.v1.CreateNativeSessionResponse
-	(*ConnectNativeSessionRequest)(nil),  // 3: workos.surface.v1.ConnectNativeSessionRequest
-	(*ConnectNativeSessionResponse)(nil), // 4: workos.surface.v1.ConnectNativeSessionResponse
-	(*CloseNativeSessionRequest)(nil),    // 5: workos.surface.v1.CloseNativeSessionRequest
-	(*CloseNativeSessionResponse)(nil),   // 6: workos.surface.v1.CloseNativeSessionResponse
-	(*GetNativeSessionRequest)(nil),      // 7: workos.surface.v1.GetNativeSessionRequest
-	(*GetNativeSessionResponse)(nil),     // 8: workos.surface.v1.GetNativeSessionResponse
-	(*DetachNativeSessionRequest)(nil),   // 9: workos.surface.v1.DetachNativeSessionRequest
-	(*DetachNativeSessionResponse)(nil),  // 10: workos.surface.v1.DetachNativeSessionResponse
-	(*NativeInputEvent)(nil),             // 11: workos.surface.v1.NativeInputEvent
-	(*timestamppb.Timestamp)(nil),        // 12: google.protobuf.Timestamp
+	(*NativeSession)(nil),                 // 0: workos.surface.v1.NativeSession
+	(*CreateNativeSessionRequest)(nil),    // 1: workos.surface.v1.CreateNativeSessionRequest
+	(*CreateNativeSessionResponse)(nil),   // 2: workos.surface.v1.CreateNativeSessionResponse
+	(*ConnectNativeSessionRequest)(nil),   // 3: workos.surface.v1.ConnectNativeSessionRequest
+	(*ConnectNativeSessionResponse)(nil),  // 4: workos.surface.v1.ConnectNativeSessionResponse
+	(*CloseNativeSessionRequest)(nil),     // 5: workos.surface.v1.CloseNativeSessionRequest
+	(*CloseNativeSessionResponse)(nil),    // 6: workos.surface.v1.CloseNativeSessionResponse
+	(*GetNativeSessionRequest)(nil),       // 7: workos.surface.v1.GetNativeSessionRequest
+	(*GetNativeSessionResponse)(nil),      // 8: workos.surface.v1.GetNativeSessionResponse
+	(*DetachNativeSessionRequest)(nil),    // 9: workos.surface.v1.DetachNativeSessionRequest
+	(*DetachNativeSessionResponse)(nil),   // 10: workos.surface.v1.DetachNativeSessionResponse
+	(*NativeIceServer)(nil),               // 11: workos.surface.v1.NativeIceServer
+	(*GetNativeConnectivityRequest)(nil),  // 12: workos.surface.v1.GetNativeConnectivityRequest
+	(*GetNativeConnectivityResponse)(nil), // 13: workos.surface.v1.GetNativeConnectivityResponse
+	(*NativeInputEvent)(nil),              // 14: workos.surface.v1.NativeInputEvent
+	(*timestamppb.Timestamp)(nil),         // 15: google.protobuf.Timestamp
 }
 var file_workos_surface_v1_native_proto_depIdxs = []int32{
-	12, // 0: workos.surface.v1.NativeSession.created_at:type_name -> google.protobuf.Timestamp
-	12, // 1: workos.surface.v1.NativeSession.expires_at:type_name -> google.protobuf.Timestamp
+	15, // 0: workos.surface.v1.NativeSession.created_at:type_name -> google.protobuf.Timestamp
+	15, // 1: workos.surface.v1.NativeSession.expires_at:type_name -> google.protobuf.Timestamp
 	0,  // 2: workos.surface.v1.CreateNativeSessionResponse.session:type_name -> workos.surface.v1.NativeSession
 	0,  // 3: workos.surface.v1.ConnectNativeSessionResponse.session:type_name -> workos.surface.v1.NativeSession
 	0,  // 4: workos.surface.v1.CloseNativeSessionResponse.session:type_name -> workos.surface.v1.NativeSession
 	0,  // 5: workos.surface.v1.GetNativeSessionResponse.session:type_name -> workos.surface.v1.NativeSession
-	1,  // 6: workos.surface.v1.NativeSessionService.CreateNativeSession:input_type -> workos.surface.v1.CreateNativeSessionRequest
-	3,  // 7: workos.surface.v1.NativeSessionService.ConnectNativeSession:input_type -> workos.surface.v1.ConnectNativeSessionRequest
-	7,  // 8: workos.surface.v1.NativeSessionService.GetNativeSession:input_type -> workos.surface.v1.GetNativeSessionRequest
-	5,  // 9: workos.surface.v1.NativeSessionService.CloseNativeSession:input_type -> workos.surface.v1.CloseNativeSessionRequest
-	9,  // 10: workos.surface.v1.NativeSessionService.DetachNativeSession:input_type -> workos.surface.v1.DetachNativeSessionRequest
-	2,  // 11: workos.surface.v1.NativeSessionService.CreateNativeSession:output_type -> workos.surface.v1.CreateNativeSessionResponse
-	4,  // 12: workos.surface.v1.NativeSessionService.ConnectNativeSession:output_type -> workos.surface.v1.ConnectNativeSessionResponse
-	8,  // 13: workos.surface.v1.NativeSessionService.GetNativeSession:output_type -> workos.surface.v1.GetNativeSessionResponse
-	6,  // 14: workos.surface.v1.NativeSessionService.CloseNativeSession:output_type -> workos.surface.v1.CloseNativeSessionResponse
-	10, // 15: workos.surface.v1.NativeSessionService.DetachNativeSession:output_type -> workos.surface.v1.DetachNativeSessionResponse
-	11, // [11:16] is the sub-list for method output_type
-	6,  // [6:11] is the sub-list for method input_type
-	6,  // [6:6] is the sub-list for extension type_name
-	6,  // [6:6] is the sub-list for extension extendee
-	0,  // [0:6] is the sub-list for field type_name
+	11, // 6: workos.surface.v1.GetNativeConnectivityResponse.ice_servers:type_name -> workos.surface.v1.NativeIceServer
+	15, // 7: workos.surface.v1.GetNativeConnectivityResponse.expires_at:type_name -> google.protobuf.Timestamp
+	12, // 8: workos.surface.v1.NativeSessionService.GetNativeConnectivity:input_type -> workos.surface.v1.GetNativeConnectivityRequest
+	1,  // 9: workos.surface.v1.NativeSessionService.CreateNativeSession:input_type -> workos.surface.v1.CreateNativeSessionRequest
+	3,  // 10: workos.surface.v1.NativeSessionService.ConnectNativeSession:input_type -> workos.surface.v1.ConnectNativeSessionRequest
+	7,  // 11: workos.surface.v1.NativeSessionService.GetNativeSession:input_type -> workos.surface.v1.GetNativeSessionRequest
+	5,  // 12: workos.surface.v1.NativeSessionService.CloseNativeSession:input_type -> workos.surface.v1.CloseNativeSessionRequest
+	9,  // 13: workos.surface.v1.NativeSessionService.DetachNativeSession:input_type -> workos.surface.v1.DetachNativeSessionRequest
+	13, // 14: workos.surface.v1.NativeSessionService.GetNativeConnectivity:output_type -> workos.surface.v1.GetNativeConnectivityResponse
+	2,  // 15: workos.surface.v1.NativeSessionService.CreateNativeSession:output_type -> workos.surface.v1.CreateNativeSessionResponse
+	4,  // 16: workos.surface.v1.NativeSessionService.ConnectNativeSession:output_type -> workos.surface.v1.ConnectNativeSessionResponse
+	8,  // 17: workos.surface.v1.NativeSessionService.GetNativeSession:output_type -> workos.surface.v1.GetNativeSessionResponse
+	6,  // 18: workos.surface.v1.NativeSessionService.CloseNativeSession:output_type -> workos.surface.v1.CloseNativeSessionResponse
+	10, // 19: workos.surface.v1.NativeSessionService.DetachNativeSession:output_type -> workos.surface.v1.DetachNativeSessionResponse
+	14, // [14:20] is the sub-list for method output_type
+	8,  // [8:14] is the sub-list for method input_type
+	8,  // [8:8] is the sub-list for extension type_name
+	8,  // [8:8] is the sub-list for extension extendee
+	0,  // [0:8] is the sub-list for field type_name
 }
 
 func init() { file_workos_surface_v1_native_proto_init() }
@@ -848,7 +1058,7 @@ func file_workos_surface_v1_native_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_workos_surface_v1_native_proto_rawDesc), len(file_workos_surface_v1_native_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   12,
+			NumMessages:   15,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

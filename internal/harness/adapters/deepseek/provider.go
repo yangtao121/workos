@@ -31,7 +31,8 @@ type Provider struct {
 }
 
 type preparedInput struct {
-	goal string
+	directive *agentv1.SessionDirective
+	goal      string
 	// envelope is the versioned canonical task envelope handed to the
 	// runtime as the single user content block when the task carries pinned
 	// context. Empty means a context-free run keeps the plain goal text.
@@ -61,6 +62,11 @@ func (p *Provider) Describe() *harnessv1.HarnessProviderInfo {
 	p.mu.RLock()
 	health, reason := p.health, p.reason
 	p.mu.RUnlock()
+	automation := health == commonv1.HealthState_HEALTH_STATE_HEALTHY
+	var childLimit, depthLimit int32
+	if automation {
+		childLimit, depthLimit = 2, 1
+	}
 	return &harnessv1.HarnessProviderInfo{
 		Id:                ProviderID,
 		DisplayName:       "DeepSeek Harness",
@@ -68,7 +74,9 @@ func (p *Provider) Describe() *harnessv1.HarnessProviderInfo {
 		Health:            health,
 		UnavailableReason: reason,
 		Capabilities: &harnessv1.HarnessCapabilities{
-			Streaming:      true,
+			Streaming:          true,
+			PersistentSessions: automation, Resume: automation,
+			SessionGoals: automation, ProjectSkills: automation, Subagents: automation, MaxConcurrentSubagents: childLimit, MaxSubagentDepth: depthLimit,
 			UsageReporting: true,
 			// The pinned runtime enforces max_tokens as a real provider cap
 			// and the adapter maps max_runtime_seconds onto a hard process
@@ -174,7 +182,7 @@ func (p *Provider) executeSessionTurn(ctx context.Context, session *ports.Sessio
 	// Native persistence owns continuity; task-scoped secrets never outlive this execution.
 	defer p.sessions.Close(session.SessionID)
 	proc.tools = session.Tools
-	return p.sessions.Prompt(ctx, proc, p.ids.New(), input.goal, input.maxTokens, input.timeout, emit)
+	return p.sessions.prompt(ctx, proc, p.ids.New(), input.goal, input.maxTokens, input.timeout, input.directive, emit)
 }
 
 func (p *Provider) setHealth(health commonv1.HealthState, reason string) {
@@ -345,7 +353,7 @@ func prepareInput(input *agentv1.AgentTaskInput, contexts []ports.ContextDocumen
 		envelope = string(encoded)
 	}
 	return preparedInput{
-		goal: goal, envelope: envelope, structured: structured,
+		goal: goal, envelope: envelope, structured: structured, directive: input.GetSessionDirective(),
 		requestedOutputs: requestedOutputs, maxTokens: maxTokens, timeout: timeout,
 	}, nil
 }

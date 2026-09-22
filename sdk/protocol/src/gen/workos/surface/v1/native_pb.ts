@@ -12,13 +12,14 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file workos/surface/v1/native.proto.
  */
 export const file_workos_surface_v1_native: GenFile = /*@__PURE__*/
-  fileDesc("Ch53b3Jrb3Mvc3VyZmFjZS92MS9uYXRpdmUucHJvdG8SEXdvcmtvcy5zdXJmYWNlLnYxIuQBCg1OYXRpdmVTZXNzaW9uEgoKAmlkGAEgASgJEhUKDW93bmVyX3VzZXJfaWQYAiABKAkSEgoKcHJvamVjdF9pZBgDIAEoCRINCgVzdGF0ZRgEIAEoCRIOCgZlbmdpbmUYBSABKAkSDQoFd2lkdGgYBiABKAUSDgoGaGVpZ2h0GAcgASgFEi4KCmNyZWF0ZWRfYXQYCCABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wEi4KCmV4cGlyZXNfYXQYCSABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wImgKGkNyZWF0ZU5hdGl2ZVNlc3Npb25SZXF1ZXN0EhcKD2lkZW1wb3RlbmN5X2tleRgBIAEoCRISCgpwcm9qZWN0X2lkGAIgASgJEg0KBXdpZHRoGAMgASgFEg4KBmhlaWdodBgEIAEoBSJQChtDcmVhdGVOYXRpdmVTZXNzaW9uUmVzcG9uc2USMQoHc2Vzc2lvbhgBIAEoCzIgLndvcmtvcy5zdXJmYWNlLnYxLk5hdGl2ZVNlc3Npb24iYAobQ29ubmVjdE5hdGl2ZVNlc3Npb25SZXF1ZXN0EhIKCnNlc3Npb25faWQYASABKAkSEQoJb2ZmZXJfc2RwGAIgASgJEhoKEmNvbnRyb2xfZ2VuZXJhdGlvbhgDIAEoAyJlChxDb25uZWN0TmF0aXZlU2Vzc2lvblJlc3BvbnNlEjEKB3Nlc3Npb24YASABKAsyIC53b3Jrb3Muc3VyZmFjZS52MS5OYXRpdmVTZXNzaW9uEhIKCmFuc3dlcl9zZHAYAiABKAkiLwoZQ2xvc2VOYXRpdmVTZXNzaW9uUmVxdWVzdBISCgpzZXNzaW9uX2lkGAEgASgJIk8KGkNsb3NlTmF0aXZlU2Vzc2lvblJlc3BvbnNlEjEKB3Nlc3Npb24YASABKAsyIC53b3Jrb3Muc3VyZmFjZS52MS5OYXRpdmVTZXNzaW9uIi0KF0dldE5hdGl2ZVNlc3Npb25SZXF1ZXN0EhIKCnNlc3Npb25faWQYASABKAkiTQoYR2V0TmF0aXZlU2Vzc2lvblJlc3BvbnNlEjEKB3Nlc3Npb24YASABKAsyIC53b3Jrb3Muc3VyZmFjZS52MS5OYXRpdmVTZXNzaW9uIjAKGkRldGFjaE5hdGl2ZVNlc3Npb25SZXF1ZXN0EhIKCnNlc3Npb25faWQYASABKAkiHQobRGV0YWNoTmF0aXZlU2Vzc2lvblJlc3BvbnNlInEKEE5hdGl2ZUlucHV0RXZlbnQSDAoEdHlwZRgBIAEoCRIMCgR0ZXh0GAIgASgJEgsKA2tleRgDIAEoCRIOCgZhY3Rpb24YBCABKAkSCQoBeBgFIAEoARIJCgF5GAYgASgBEg4KBmJ1dHRvbhgHIAEoBTLlBAoUTmF0aXZlU2Vzc2lvblNlcnZpY2USdgoTQ3JlYXRlTmF0aXZlU2Vzc2lvbhItLndvcmtvcy5zdXJmYWNlLnYxLkNyZWF0ZU5hdGl2ZVNlc3Npb25SZXF1ZXN0Gi4ud29ya29zLnN1cmZhY2UudjEuQ3JlYXRlTmF0aXZlU2Vzc2lvblJlc3BvbnNlIgASeQoUQ29ubmVjdE5hdGl2ZVNlc3Npb24SLi53b3Jrb3Muc3VyZmFjZS52MS5Db25uZWN0TmF0aXZlU2Vzc2lvblJlcXVlc3QaLy53b3Jrb3Muc3VyZmFjZS52MS5Db25uZWN0TmF0aXZlU2Vzc2lvblJlc3BvbnNlIgASbQoQR2V0TmF0aXZlU2Vzc2lvbhIqLndvcmtvcy5zdXJmYWNlLnYxLkdldE5hdGl2ZVNlc3Npb25SZXF1ZXN0Gisud29ya29zLnN1cmZhY2UudjEuR2V0TmF0aXZlU2Vzc2lvblJlc3BvbnNlIgAScwoSQ2xvc2VOYXRpdmVTZXNzaW9uEiwud29ya29zLnN1cmZhY2UudjEuQ2xvc2VOYXRpdmVTZXNzaW9uUmVxdWVzdBotLndvcmtvcy5zdXJmYWNlLnYxLkNsb3NlTmF0aXZlU2Vzc2lvblJlc3BvbnNlIgASdgoTRGV0YWNoTmF0aXZlU2Vzc2lvbhItLndvcmtvcy5zdXJmYWNlLnYxLkRldGFjaE5hdGl2ZVNlc3Npb25SZXF1ZXN0Gi4ud29ya29zLnN1cmZhY2UudjEuRGV0YWNoTmF0aXZlU2Vzc2lvblJlc3BvbnNlIgBCQVo/Z2l0aHViLmNvbS95YW5ndGFvMTIxL3dvcmtvcy9nZW4vZ28vd29ya29zL3N1cmZhY2UvdjE7c3VyZmFjZXYxYgZwcm90bzM", [file_google_protobuf_timestamp]);
+  fileDesc("Ch53b3Jrb3Mvc3VyZmFjZS92MS9uYXRpdmUucHJvdG8SEXdvcmtvcy5zdXJmYWNlLnYxIuQBCg1OYXRpdmVTZXNzaW9uEgoKAmlkGAEgASgJEhUKDW93bmVyX3VzZXJfaWQYAiABKAkSEgoKcHJvamVjdF9pZBgDIAEoCRINCgVzdGF0ZRgEIAEoCRIOCgZlbmdpbmUYBSABKAkSDQoFd2lkdGgYBiABKAUSDgoGaGVpZ2h0GAcgASgFEi4KCmNyZWF0ZWRfYXQYCCABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wEi4KCmV4cGlyZXNfYXQYCSABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wImgKGkNyZWF0ZU5hdGl2ZVNlc3Npb25SZXF1ZXN0EhcKD2lkZW1wb3RlbmN5X2tleRgBIAEoCRISCgpwcm9qZWN0X2lkGAIgASgJEg0KBXdpZHRoGAMgASgFEg4KBmhlaWdodBgEIAEoBSJQChtDcmVhdGVOYXRpdmVTZXNzaW9uUmVzcG9uc2USMQoHc2Vzc2lvbhgBIAEoCzIgLndvcmtvcy5zdXJmYWNlLnYxLk5hdGl2ZVNlc3Npb24iYAobQ29ubmVjdE5hdGl2ZVNlc3Npb25SZXF1ZXN0EhIKCnNlc3Npb25faWQYASABKAkSEQoJb2ZmZXJfc2RwGAIgASgJEhoKEmNvbnRyb2xfZ2VuZXJhdGlvbhgDIAEoAyJlChxDb25uZWN0TmF0aXZlU2Vzc2lvblJlc3BvbnNlEjEKB3Nlc3Npb24YASABKAsyIC53b3Jrb3Muc3VyZmFjZS52MS5OYXRpdmVTZXNzaW9uEhIKCmFuc3dlcl9zZHAYAiABKAkiLwoZQ2xvc2VOYXRpdmVTZXNzaW9uUmVxdWVzdBISCgpzZXNzaW9uX2lkGAEgASgJIk8KGkNsb3NlTmF0aXZlU2Vzc2lvblJlc3BvbnNlEjEKB3Nlc3Npb24YASABKAsyIC53b3Jrb3Muc3VyZmFjZS52MS5OYXRpdmVTZXNzaW9uIi0KF0dldE5hdGl2ZVNlc3Npb25SZXF1ZXN0EhIKCnNlc3Npb25faWQYASABKAkiTQoYR2V0TmF0aXZlU2Vzc2lvblJlc3BvbnNlEjEKB3Nlc3Npb24YASABKAsyIC53b3Jrb3Muc3VyZmFjZS52MS5OYXRpdmVTZXNzaW9uIjAKGkRldGFjaE5hdGl2ZVNlc3Npb25SZXF1ZXN0EhIKCnNlc3Npb25faWQYASABKAkiHQobRGV0YWNoTmF0aXZlU2Vzc2lvblJlc3BvbnNlIkUKD05hdGl2ZUljZVNlcnZlchIMCgR1cmxzGAEgAygJEhAKCHVzZXJuYW1lGAIgASgJEhIKCmNyZWRlbnRpYWwYAyABKAkiTgocR2V0TmF0aXZlQ29ubmVjdGl2aXR5UmVxdWVzdBISCgpzZXNzaW9uX2lkGAEgASgJEhoKEmNvbnRyb2xfZ2VuZXJhdGlvbhgCIAEoAyKqAQodR2V0TmF0aXZlQ29ubmVjdGl2aXR5UmVzcG9uc2USDAoEbW9kZRgBIAEoCRI3CgtpY2Vfc2VydmVycxgCIAMoCzIiLndvcmtvcy5zdXJmYWNlLnYxLk5hdGl2ZUljZVNlcnZlchISCgpyZWxheV9vbmx5GAMgASgIEi4KCmV4cGlyZXNfYXQYBCABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wInEKEE5hdGl2ZUlucHV0RXZlbnQSDAoEdHlwZRgBIAEoCRIMCgR0ZXh0GAIgASgJEgsKA2tleRgDIAEoCRIOCgZhY3Rpb24YBCABKAkSCQoBeBgFIAEoARIJCgF5GAYgASgBEg4KBmJ1dHRvbhgHIAEoBTLjBQoUTmF0aXZlU2Vzc2lvblNlcnZpY2USfAoVR2V0TmF0aXZlQ29ubmVjdGl2aXR5Ei8ud29ya29zLnN1cmZhY2UudjEuR2V0TmF0aXZlQ29ubmVjdGl2aXR5UmVxdWVzdBowLndvcmtvcy5zdXJmYWNlLnYxLkdldE5hdGl2ZUNvbm5lY3Rpdml0eVJlc3BvbnNlIgASdgoTQ3JlYXRlTmF0aXZlU2Vzc2lvbhItLndvcmtvcy5zdXJmYWNlLnYxLkNyZWF0ZU5hdGl2ZVNlc3Npb25SZXF1ZXN0Gi4ud29ya29zLnN1cmZhY2UudjEuQ3JlYXRlTmF0aXZlU2Vzc2lvblJlc3BvbnNlIgASeQoUQ29ubmVjdE5hdGl2ZVNlc3Npb24SLi53b3Jrb3Muc3VyZmFjZS52MS5Db25uZWN0TmF0aXZlU2Vzc2lvblJlcXVlc3QaLy53b3Jrb3Muc3VyZmFjZS52MS5Db25uZWN0TmF0aXZlU2Vzc2lvblJlc3BvbnNlIgASbQoQR2V0TmF0aXZlU2Vzc2lvbhIqLndvcmtvcy5zdXJmYWNlLnYxLkdldE5hdGl2ZVNlc3Npb25SZXF1ZXN0Gisud29ya29zLnN1cmZhY2UudjEuR2V0TmF0aXZlU2Vzc2lvblJlc3BvbnNlIgAScwoSQ2xvc2VOYXRpdmVTZXNzaW9uEiwud29ya29zLnN1cmZhY2UudjEuQ2xvc2VOYXRpdmVTZXNzaW9uUmVxdWVzdBotLndvcmtvcy5zdXJmYWNlLnYxLkNsb3NlTmF0aXZlU2Vzc2lvblJlc3BvbnNlIgASdgoTRGV0YWNoTmF0aXZlU2Vzc2lvbhItLndvcmtvcy5zdXJmYWNlLnYxLkRldGFjaE5hdGl2ZVNlc3Npb25SZXF1ZXN0Gi4ud29ya29zLnN1cmZhY2UudjEuRGV0YWNoTmF0aXZlU2Vzc2lvblJlc3BvbnNlIgBCQVo/Z2l0aHViLmNvbS95YW5ndGFvMTIxL3dvcmtvcy9nZW4vZ28vd29ya29zL3N1cmZhY2UvdjE7c3VyZmFjZXYxYgZwcm90bzM", [file_google_protobuf_timestamp]);
 
 /**
  * One supervised virtual-display native session (ADR-0029): a real Xvfb
  * display, a configured native X client, and an ffmpeg x11grab/VP8 capture
- * streamed to the desktop over loopback WebRTC. Input returns over a data
- * channel. Gateway routes the service with owner identity.
+ * streamed over operator-configured WebRTC (loopback, private LAN or TURN
+ * relay; ADR-0035). Input returns over a data channel. Gateway supplies the
+ * authenticated owner and device identity.
  *
  * @generated from message workos.surface.v1.NativeSession
  */
@@ -284,6 +285,92 @@ export const DetachNativeSessionResponseSchema: GenMessage<DetachNativeSessionRe
   messageDesc(file_workos_surface_v1_native, 10);
 
 /**
+ * Ephemeral transport capability, never a provider or TURN shared secret.
+ * Values must not be persisted, logged, or exposed to embedded Apps.
+ *
+ * @generated from message workos.surface.v1.NativeIceServer
+ */
+export type NativeIceServer = Message<"workos.surface.v1.NativeIceServer"> & {
+  /**
+   * @generated from field: repeated string urls = 1;
+   */
+  urls: string[];
+
+  /**
+   * @generated from field: string username = 2;
+   */
+  username: string;
+
+  /**
+   * @generated from field: string credential = 3;
+   */
+  credential: string;
+};
+
+/**
+ * Describes the message workos.surface.v1.NativeIceServer.
+ * Use `create(NativeIceServerSchema)` to create a new message.
+ */
+export const NativeIceServerSchema: GenMessage<NativeIceServer> = /*@__PURE__*/
+  messageDesc(file_workos_surface_v1_native, 11);
+
+/**
+ * @generated from message workos.surface.v1.GetNativeConnectivityRequest
+ */
+export type GetNativeConnectivityRequest = Message<"workos.surface.v1.GetNativeConnectivityRequest"> & {
+  /**
+   * @generated from field: string session_id = 1;
+   */
+  sessionId: string;
+
+  /**
+   * @generated from field: int64 control_generation = 2;
+   */
+  controlGeneration: bigint;
+};
+
+/**
+ * Describes the message workos.surface.v1.GetNativeConnectivityRequest.
+ * Use `create(GetNativeConnectivityRequestSchema)` to create a new message.
+ */
+export const GetNativeConnectivityRequestSchema: GenMessage<GetNativeConnectivityRequest> = /*@__PURE__*/
+  messageDesc(file_workos_surface_v1_native, 12);
+
+/**
+ * @generated from message workos.surface.v1.GetNativeConnectivityResponse
+ */
+export type GetNativeConnectivityResponse = Message<"workos.surface.v1.GetNativeConnectivityResponse"> & {
+  /**
+   * Operator-selected loopback|lan|relay. Clients cannot widen this policy.
+   *
+   * @generated from field: string mode = 1;
+   */
+  mode: string;
+
+  /**
+   * @generated from field: repeated workos.surface.v1.NativeIceServer ice_servers = 2;
+   */
+  iceServers: NativeIceServer[];
+
+  /**
+   * @generated from field: bool relay_only = 3;
+   */
+  relayOnly: boolean;
+
+  /**
+   * @generated from field: google.protobuf.Timestamp expires_at = 4;
+   */
+  expiresAt?: Timestamp | undefined;
+};
+
+/**
+ * Describes the message workos.surface.v1.GetNativeConnectivityResponse.
+ * Use `create(GetNativeConnectivityResponseSchema)` to create a new message.
+ */
+export const GetNativeConnectivityResponseSchema: GenMessage<GetNativeConnectivityResponse> = /*@__PURE__*/
+  messageDesc(file_workos_surface_v1_native, 13);
+
+/**
  * Canonical workos.input data-channel payload, serialized as protobuf JSON.
  * The adapter rejects unknown fields/types, invalid combinations and oversized
  * events. Only the bounded text/key/pointer vocabulary below is supported.
@@ -342,7 +429,7 @@ export type NativeInputEvent = Message<"workos.surface.v1.NativeInputEvent"> & {
  * Use `create(NativeInputEventSchema)` to create a new message.
  */
 export const NativeInputEventSchema: GenMessage<NativeInputEvent> = /*@__PURE__*/
-  messageDesc(file_workos_surface_v1_native, 11);
+  messageDesc(file_workos_surface_v1_native, 14);
 
 /**
  * Supervised owner-scoped virtual-display sessions on the runtime host
@@ -353,6 +440,17 @@ export const NativeInputEventSchema: GenMessage<NativeInputEvent> = /*@__PURE__*
  * @generated from service workos.surface.v1.NativeSessionService
  */
 export const NativeSessionService: GenService<{
+  /**
+   * Requires the active session owner and current device control generation.
+   * Fetch before each offer; it does not grant control or extend media leases.
+   *
+   * @generated from rpc workos.surface.v1.NativeSessionService.GetNativeConnectivity
+   */
+  getNativeConnectivity: {
+    methodKind: "unary";
+    input: typeof GetNativeConnectivityRequestSchema;
+    output: typeof GetNativeConnectivityResponseSchema;
+  },
   /**
    * @generated from rpc workos.surface.v1.NativeSessionService.CreateNativeSession
    */

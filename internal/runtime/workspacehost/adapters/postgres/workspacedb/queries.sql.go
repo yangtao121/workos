@@ -9,6 +9,37 @@ import (
 	"context"
 )
 
+const beginDelegatedWorktree = `-- name: BeginDelegatedWorktree :execrows
+INSERT INTO workos_runtime.delegated_worktrees(delegation_id,parent_task_id,owner_user_id,project_id,binding_id,binding_revision,source_id,state)
+VALUES($1,$2,$3,$4,$5,$6,$7,'preparing') ON CONFLICT(delegation_id) DO NOTHING
+`
+
+type BeginDelegatedWorktreeParams struct {
+	DelegationID    string `json:"delegation_id"`
+	ParentTaskID    string `json:"parent_task_id"`
+	OwnerUserID     string `json:"owner_user_id"`
+	ProjectID       string `json:"project_id"`
+	BindingID       string `json:"binding_id"`
+	BindingRevision int64  `json:"binding_revision"`
+	SourceID        string `json:"source_id"`
+}
+
+func (q *Queries) BeginDelegatedWorktree(ctx context.Context, arg BeginDelegatedWorktreeParams) (int64, error) {
+	result, err := q.db.Exec(ctx, beginDelegatedWorktree,
+		arg.DelegationID,
+		arg.ParentTaskID,
+		arg.OwnerUserID,
+		arg.ProjectID,
+		arg.BindingID,
+		arg.BindingRevision,
+		arg.SourceID,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const beginWorkspaceOperation = `-- name: BeginWorkspaceOperation :execrows
 INSERT INTO workos_runtime.workspace_operations(operation_id,owner_user_id,project_id,request_digest,state)
 VALUES($1,$2,$3,$4,'pending') ON CONFLICT(operation_id) DO NOTHING
@@ -28,6 +59,24 @@ func (q *Queries) BeginWorkspaceOperation(ctx context.Context, arg BeginWorkspac
 		arg.ProjectID,
 		arg.RequestDigest,
 	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const completeDelegatedWorktree = `-- name: CompleteDelegatedWorktree :execrows
+UPDATE workos_runtime.delegated_worktrees SET state='ready',base_commit=$2,updated_at=now()
+WHERE delegation_id=$1 AND state='preparing'
+`
+
+type CompleteDelegatedWorktreeParams struct {
+	DelegationID string `json:"delegation_id"`
+	BaseCommit   string `json:"base_commit"`
+}
+
+func (q *Queries) CompleteDelegatedWorktree(ctx context.Context, arg CompleteDelegatedWorktreeParams) (int64, error) {
+	result, err := q.db.Exec(ctx, completeDelegatedWorktree, arg.DelegationID, arg.BaseCommit)
 	if err != nil {
 		return 0, err
 	}
@@ -59,6 +108,30 @@ func (q *Queries) CompleteWorkspaceOperation(ctx context.Context, arg CompleteWo
 	return result.RowsAffected(), nil
 }
 
+const getDelegatedWorktree = `-- name: GetDelegatedWorktree :one
+SELECT delegation_id,parent_task_id,owner_user_id,project_id,binding_id,binding_revision,source_id,state,base_commit,created_at,updated_at
+FROM workos_runtime.delegated_worktrees WHERE delegation_id=$1
+`
+
+func (q *Queries) GetDelegatedWorktree(ctx context.Context, delegationID string) (WorkosRuntimeDelegatedWorktree, error) {
+	row := q.db.QueryRow(ctx, getDelegatedWorktree, delegationID)
+	var i WorkosRuntimeDelegatedWorktree
+	err := row.Scan(
+		&i.DelegationID,
+		&i.ParentTaskID,
+		&i.OwnerUserID,
+		&i.ProjectID,
+		&i.BindingID,
+		&i.BindingRevision,
+		&i.SourceID,
+		&i.State,
+		&i.BaseCommit,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const getWorkspaceOperation = `-- name: GetWorkspaceOperation :one
 SELECT owner_user_id,project_id,request_digest,state,result FROM workos_runtime.workspace_operations WHERE operation_id=$1
 `
@@ -82,4 +155,14 @@ func (q *Queries) GetWorkspaceOperation(ctx context.Context, operationID string)
 		&i.Result,
 	)
 	return i, err
+}
+
+const reviewDelegatedWorktree = `-- name: ReviewDelegatedWorktree :exec
+UPDATE workos_runtime.delegated_worktrees SET state='needs_review',updated_at=now()
+WHERE delegation_id=$1 AND state='preparing'
+`
+
+func (q *Queries) ReviewDelegatedWorktree(ctx context.Context, delegationID string) error {
+	_, err := q.db.Exec(ctx, reviewDelegatedWorktree, delegationID)
+	return err
 }

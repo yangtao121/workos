@@ -49,6 +49,7 @@ func (h *Handler) GetHarnessCatalog(ctx context.Context, _ *connect.Request[harn
 				RequiresTaskCredentialLease: provider.Capabilities.RequiresTaskCredentialLease,
 				RequiredCredentialPurpose:   provider.Capabilities.RequiredCredentialPurpose,
 				RepairSourceCandidates:      provider.Capabilities.RepairSourceCandidates,
+				SessionGoals:                provider.Capabilities.SessionGoals, ProjectSkills: provider.Capabilities.ProjectSkills, MaxConcurrentSubagents: provider.Capabilities.MaxConcurrentSubagents, MaxSubagentDepth: provider.Capabilities.MaxSubagentDepth,
 			},
 		})
 	}

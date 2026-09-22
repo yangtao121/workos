@@ -21,8 +21,10 @@ type Querier interface {
 	ClaimAgentSessionExecution(ctx context.Context, arg ClaimAgentSessionExecutionParams) (int64, error)
 	ClaimSessionRecoveryBatch(ctx context.Context, arg ClaimSessionRecoveryBatchParams) ([]ClaimSessionRecoveryBatchRow, error)
 	CloseAgentSession(ctx context.Context, arg CloseAgentSessionParams) (int64, error)
+	CountRunningDelegations(ctx context.Context, taskID string) (int64, error)
 	DecideAgentAppApproval(ctx context.Context, arg DecideAgentAppApprovalParams) (int64, error)
 	DecideExecutionInteraction(ctx context.Context, arg DecideExecutionInteractionParams) error
+	DisarmSessionGoal(ctx context.Context, activeTaskID pgtype.UUID) error
 	DispatchAgentSessionInput(ctx context.Context, arg DispatchAgentSessionInputParams) (int64, error)
 	ExpireExecutionInteraction(ctx context.Context, arg ExpireExecutionInteractionParams) error
 	ExpirePendingApprovals(ctx context.Context, arg ExpirePendingApprovalsParams) ([]ExpirePendingApprovalsRow, error)
@@ -40,6 +42,8 @@ type Querier interface {
 	GetAgentAppTaskByTask(ctx context.Context, arg GetAgentAppTaskByTaskParams) (GetAgentAppTaskByTaskRow, error)
 	GetAgentAppTaskOwnerTask(ctx context.Context, arg GetAgentAppTaskOwnerTaskParams) (string, error)
 	GetAgentAppTaskRequest(ctx context.Context, arg GetAgentAppTaskRequestParams) (GetAgentAppTaskRequestRow, error)
+	GetAgentDelegation(ctx context.Context, arg GetAgentDelegationParams) (WorkosCoreAgentDelegation, error)
+	GetAgentDelegationByKey(ctx context.Context, arg GetAgentDelegationByKeyParams) (WorkosCoreAgentDelegation, error)
 	GetAgentSession(ctx context.Context, arg GetAgentSessionParams) (WorkosCoreAgentSession, error)
 	GetAgentSessionByIdempotency(ctx context.Context, arg GetAgentSessionByIdempotencyParams) (WorkosCoreAgentSession, error)
 	GetAgentSessionInput(ctx context.Context, arg GetAgentSessionInputParams) (WorkosCoreAgentSessionInput, error)
@@ -52,6 +56,7 @@ type Querier interface {
 	GetAgentTaskUnscoped(ctx context.Context, id string) (WorkosCoreAgentTask, error)
 	GetExecutionInteraction(ctx context.Context, arg GetExecutionInteractionParams) (WorkosCoreAgentExecutionInteraction, error)
 	GetExecutionInteractionByKey(ctx context.Context, arg GetExecutionInteractionByKeyParams) (WorkosCoreAgentExecutionInteraction, error)
+	GetGoalPauseRequest(ctx context.Context, arg GetGoalPauseRequestParams) (string, error)
 	GetSessionInputByTask(ctx context.Context, arg GetSessionInputByTaskParams) (WorkosCoreAgentSessionInput, error)
 	GetTaskLeaseExpiry(ctx context.Context, arg GetTaskLeaseExpiryParams) (pgtype.Timestamptz, error)
 	// Replay verification for one Core-minted artifact publication. The
@@ -62,6 +67,7 @@ type Querier interface {
 	InsertAgentAppApproval(ctx context.Context, arg InsertAgentAppApprovalParams) (int64, error)
 	InsertAgentAppPolicyRequest(ctx context.Context, arg InsertAgentAppPolicyRequestParams) (int64, error)
 	InsertAgentAppTaskRequest(ctx context.Context, arg InsertAgentAppTaskRequestParams) (int64, error)
+	InsertAgentDelegation(ctx context.Context, arg InsertAgentDelegationParams) error
 	InsertAgentSession(ctx context.Context, arg InsertAgentSessionParams) (int64, error)
 	InsertAgentSessionInput(ctx context.Context, arg InsertAgentSessionInputParams) (int64, error)
 	InsertAgentTask(ctx context.Context, arg InsertAgentTaskParams) (int64, error)
@@ -70,6 +76,7 @@ type Querier interface {
 	// transaction as the task row. No secret material is stored here.
 	InsertAgentTaskCredential(ctx context.Context, arg InsertAgentTaskCredentialParams) error
 	InsertExecutionInteraction(ctx context.Context, arg InsertExecutionInteractionParams) (int64, error)
+	InsertGoalPauseRequest(ctx context.Context, arg InsertGoalPauseRequestParams) error
 	InsertTaskEvent(ctx context.Context, arg InsertTaskEventParams) error
 	InsertTaskOutbox(ctx context.Context, arg InsertTaskOutboxParams) error
 	LeaseTask(ctx context.Context, arg LeaseTaskParams) error
@@ -81,6 +88,7 @@ type Querier interface {
 	ListCancelledSessionAdmissions(ctx context.Context) ([]ListCancelledSessionAdmissionsRow, error)
 	ListDispatchableAgentSessionInputs(ctx context.Context, arg ListDispatchableAgentSessionInputsParams) ([]WorkosCoreAgentSessionInput, error)
 	ListExecutionInteractions(ctx context.Context, arg ListExecutionInteractionsParams) ([]WorkosCoreAgentExecutionInteraction, error)
+	ListSessionDelegations(ctx context.Context, arg ListSessionDelegationsParams) ([]WorkosCoreAgentDelegation, error)
 	ListTaskEvents(ctx context.Context, arg ListTaskEventsParams) ([]ListTaskEventsRow, error)
 	// Serializes every transaction that reads-or-writes one installation's policy
 	// chain (SetPolicy invalidation scans, waiting-approval creation). The
@@ -101,13 +109,17 @@ type Querier interface {
 	MarkTaskCancelled(ctx context.Context, arg MarkTaskCancelledParams) error
 	MarkTaskRunning(ctx context.Context, arg MarkTaskRunningParams) error
 	PauseAgentSessionForReview(ctx context.Context, arg PauseAgentSessionForReviewParams) (int64, error)
+	ProjectSessionGoal(ctx context.Context, arg ProjectSessionGoalParams) (int64, error)
 	ReleaseAgentSessionExecution(ctx context.Context, arg ReleaseAgentSessionExecutionParams) (int64, error)
 	RenewTaskLease(ctx context.Context, arg RenewTaskLeaseParams) (bool, error)
+	RequestSessionGoalPause(ctx context.Context, arg RequestSessionGoalPauseParams) error
 	RequestTaskCancellation(ctx context.Context, arg RequestTaskCancellationParams) error
 	ReserveAgentAppDailyQuota(ctx context.Context, arg ReserveAgentAppDailyQuotaParams) (ReserveAgentAppDailyQuotaRow, error)
+	ReviewInterruptedDelegations(ctx context.Context, taskID string) error
 	SelectTaskClaim(ctx context.Context, lockedUntil pgtype.Timestamptz) (string, error)
 	TaskBelongsToOwner(ctx context.Context, arg TaskBelongsToOwnerParams) (bool, error)
 	UpdateAgentAppPolicyRequestResult(ctx context.Context, arg UpdateAgentAppPolicyRequestResultParams) error
+	UpdateAgentDelegation(ctx context.Context, arg UpdateAgentDelegationParams) (int64, error)
 	UpdateAgentSessionInputSequence(ctx context.Context, arg UpdateAgentSessionInputSequenceParams) (int64, error)
 	UpsertAgentAppDailyUsage(ctx context.Context, arg UpsertAgentAppDailyUsageParams) error
 	UpsertAgentAppPolicy(ctx context.Context, arg UpsertAgentAppPolicyParams) (UpsertAgentAppPolicyRow, error)

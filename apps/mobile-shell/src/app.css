@@ -27,6 +27,9 @@ body,
   padding-top: env(safe-area-inset-top);
   padding-bottom: env(safe-area-inset-bottom);
 }
+.workos-mobile button {
+  min-height: 44px;
+}
 .mobile-topbar {
   display: flex;
   align-items: center;
@@ -105,11 +108,38 @@ body,
 }
 .mobile-footer {
   display: flex;
+  align-items: center;
   justify-content: space-between;
   padding: 8px 16px;
   border-top: 1px solid #2a3441;
   font-size: 11px;
   color: #6e7d8c;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.mobile-deployment-form {
+  display: grid;
+  gap: 12px;
+  margin: 16px 0;
+}
+.mobile-deployment-form label {
+  display: grid;
+  gap: 8px;
+  font-size: 14px;
+}
+.mobile-deployment-form input {
+  min-width: 0;
+  width: 100%;
+  min-height: 44px;
+  border-radius: 8px;
+  border: 1px solid #2a3441;
+  background: #0b0f14;
+  color: #e6edf3;
+  padding: 10px;
+  font: inherit;
+}
+.mobile-deployment-form button {
+  min-height: 44px;
 }
 
 /* Paired shell: tabs, notification list, keyboard-aware footer. */
@@ -179,7 +209,7 @@ body,
   color: #9aa7b4;
   border-radius: 8px;
   padding: 4px 8px;
-  font-size: 11px;
+  font-size: 12px;
 }
 /* The keyboard inset keeps the footer and composer visible above the soft
    keyboard without shrinking the scrolling content area. */

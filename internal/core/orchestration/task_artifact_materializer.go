@@ -110,6 +110,19 @@ func NewTaskArtifactMaterializer(
 // an already-consumed (task, output key) — or a second artifact of an
 // already-materialized type — fails closed with a stable conflict.
 func (m *TaskArtifactMaterializer) MaterializeTaskArtifact(ctx context.Context, leaseID, workerID, outputKey, rawTitle, artifactType string, content []byte) (*artifactv1.Artifact, *agentv1.AgentEvent, error) {
+	return m.materializeScopedArtifact(ctx, leaseID, workerID, "", outputKey, rawTitle, artifactType, content)
+}
+
+// MaterializeDelegationArtifact is a Core-only seam. Public provider RPCs
+// cannot select a delegation slot or bypass the ordinary task output limit.
+func (m *TaskArtifactMaterializer) MaterializeDelegationArtifact(ctx context.Context, leaseID, workerID, delegationID, title string, content []byte) (*artifactv1.Artifact, *agentv1.AgentEvent, error) {
+	if !artifactdomain.ValidArtifactUUID(delegationID) {
+		return nil, nil, artifactdomain.ErrInvalid
+	}
+	return m.materializeScopedArtifact(ctx, leaseID, workerID, delegationID, "delegation-"+delegationID, title, artifactdomain.TypeUnifiedDiff, content)
+}
+
+func (m *TaskArtifactMaterializer) materializeScopedArtifact(ctx context.Context, leaseID, workerID, delegationID, outputKey, rawTitle, artifactType string, content []byte) (*artifactv1.Artifact, *agentv1.AgentEvent, error) {
 	now := artifactdomain.CanonicalUTCTime(m.now())
 	tx, err := m.pool.Begin(ctx)
 	if err != nil {
@@ -138,8 +151,17 @@ func (m *TaskArtifactMaterializer) MaterializeTaskArtifact(ctx context.Context, 
 	if err != nil {
 		return nil, nil, err
 	}
+	if delegationID != "" {
+		authorizer, ok := m.streams.(agentports.DelegationPublicationStore)
+		if !ok {
+			return nil, nil, agentdomain.ErrProjectDenied
+		}
+		if err := authorizer.AuthorizeDelegationPublication(ctx, tx, stream, delegationID); err != nil {
+			return nil, nil, err
+		}
+	}
 	nextSeq := stream.LastEventSequence
-	artifact, event, err := m.materializeItem(ctx, tx, stream, requested, &nextSeq, outputKey, rawTitle, artifactType, content, now)
+	artifact, event, err := m.materializeItem(ctx, tx, stream, requested, &nextSeq, delegationID, outputKey, rawTitle, artifactType, content, now)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -195,7 +217,7 @@ func (m *TaskArtifactMaterializer) MaterializeTaskArtifactBatch(ctx context.Cont
 	artifacts := make([]*artifactv1.Artifact, 0, len(outputs))
 	events := make([]*agentv1.AgentEvent, 0, len(outputs))
 	for _, output := range outputs {
-		artifact, event, err := m.materializeItem(ctx, tx, stream, requested, &nextSeq,
+		artifact, event, err := m.materializeItem(ctx, tx, stream, requested, &nextSeq, "",
 			output.Key, output.Title, output.Type, output.Content, now)
 		if err != nil {
 			// The shared transaction rolls back: zero new writes for the batch.
@@ -224,7 +246,7 @@ type BatchOutput struct {
 func (m *TaskArtifactMaterializer) materializeItem(
 	ctx context.Context, tx dbtx.Tx, stream agentports.TaskStreamFacts,
 	requested map[string]bool, nextSeq *int64,
-	outputKey, rawTitle, artifactType string, content []byte,
+	delegationID, outputKey, rawTitle, artifactType string, content []byte,
 	now time.Time,
 ) (*artifactv1.Artifact, *agentv1.AgentEvent, error) {
 	// Scope and request verification: project review artifacts exist only
@@ -241,7 +263,7 @@ func (m *TaskArtifactMaterializer) materializeItem(
 	if existing, found, findErr := m.artifacts.FindTaskOutput(ctx, tx, stream.TaskID, outputKey); findErr != nil {
 		return nil, nil, findErr
 	} else if found {
-		if !validTaskOutputRecord(existing, stream, outputKey) {
+		if existing.DelegationID != delegationID || !validTaskOutputRecord(existing, stream, outputKey) {
 			return nil, nil, artifactdomain.ErrCorrupt
 		}
 		digest, digestable := artifactapp.ReviewOutputRequestDigestFor(
@@ -268,6 +290,7 @@ func (m *TaskArtifactMaterializer) materializeItem(
 		return nil, nil, artifactdomain.ErrCorrupt
 	}
 	command.Publication = publication
+	command.DelegationID = delegationID
 
 	// Atomic insert: artifact row + adjudication mapping. Zero rows means
 	// a concurrent winner consumed the (task, output key) identity or the
@@ -281,7 +304,7 @@ func (m *TaskArtifactMaterializer) materializeItem(
 		if findErr != nil {
 			return nil, nil, findErr
 		}
-		if found && !validTaskOutputRecord(existing, stream, outputKey) {
+		if found && (existing.DelegationID != delegationID || !validTaskOutputRecord(existing, stream, outputKey)) {
 			return nil, nil, artifactdomain.ErrCorrupt
 		}
 		if found && existing.RequestDigest == command.RequestDigest {

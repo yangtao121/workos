@@ -15,18 +15,20 @@ const (
 )
 
 type Capabilities struct {
-	RepairSourceCandidates bool
-	Streaming              bool
-	PersistentSessions     bool
-	Resume                 bool
-	SteerDuringRun         bool
-	Approvals              bool
-	ToolRegistration       bool
-	MCP                    bool
-	Subagents              bool
-	WorkspaceMount         bool
-	StructuredArtifacts    bool
-	UsageReporting         bool
+	SessionGoals, ProjectSkills              bool
+	MaxConcurrentSubagents, MaxSubagentDepth int32
+	RepairSourceCandidates                   bool
+	Streaming                                bool
+	PersistentSessions                       bool
+	Resume                                   bool
+	SteerDuringRun                           bool
+	Approvals                                bool
+	ToolRegistration                         bool
+	MCP                                      bool
+	Subagents                                bool
+	WorkspaceMount                           bool
+	StructuredArtifacts                      bool
+	UsageReporting                           bool
 	// HardTokenBudget and HardRuntimeDeadline are only true when the adapter
 	// demonstrably enforces the corresponding AgentBudget field (ADR-0005);
 	// adapters that cannot enforce them must report false.

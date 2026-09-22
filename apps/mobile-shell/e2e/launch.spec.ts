@@ -9,7 +9,7 @@ import { expect, test, type Route } from "@playwright/test";
 // for real against those deterministic responses.
 test.setTimeout(60_000);
 
-const CAPTURE = "../../docs/ui/mobile-shell/changes/20260914-merge-review/after";
+const CAPTURE = process.env.WORKOS_MOBILE_CAPTURE ?? "test-results/mobile-capture";
 
 await mkdir(CAPTURE, { recursive: true });
 
@@ -30,7 +30,7 @@ test("mounted shell renders posture and honest gateway state", async ({ page }) 
   const root = page.getByTestId("workos-mobile");
   await expect(root).toBeVisible();
   await expect(page.getByTestId("mobile-connection")).toContainText(
-    /Connecting|Gateway unavailable/,
+    /Connecting|Connection unavailable/,
     { timeout: 30_000 },
   );
   await expect(page.getByTestId("mobile-unavailable")).toBeVisible();
@@ -97,8 +97,15 @@ test("paired session lists projects and notifications and marks them read", asyn
       }),
     ),
   );
-  await page.route("**/workos.notification.v1.NotificationService/MarkNotificationRead", (route) =>
-    route.fulfill(json({ notification: {} })),
+  await page.route(
+    "**/workos.notification.v1.NotificationService/MarkNotificationRead",
+    async (route) => {
+      expect(route.request().postDataJSON()).toEqual({
+        notificationId: "01999999-9999-7999-8999-00000000bb01",
+        idempotencyKey: "mobile-read:01999999-9999-7999-8999-00000000bb01",
+      });
+      await route.fulfill(json({ notification: {} }));
+    },
   );
   await page.route("**/workos.auth.v1.DeviceService/Logout", (route) =>
     route.fulfill({

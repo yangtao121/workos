@@ -13,6 +13,11 @@ interface SecureStoragePluginDefinition {
 }
 
 const SecureStorage = registerPlugin<SecureStoragePluginDefinition>("SecureStoragePlugin");
+const AndroidSecureStorage = registerPlugin<
+  SecureStoragePluginDefinition & {
+    getStatus(): Promise<{ secure: boolean }>;
+  }
+>("WorkOSSecureStorage");
 
 export interface VaultStatus {
   secure: boolean;
@@ -28,13 +33,16 @@ export interface MobileVault {
 // contract. On native platforms the plugin is Keychain/Keystore-backed; on
 // the web its localStorage fallback is explicitly NOT secure storage.
 export function createMobileVault(): MobileVault {
+  const android = Capacitor.getPlatform() === "android";
+  const storage = android ? AndroidSecureStorage : SecureStorage;
   const nativeSecure =
-    Capacitor.isNativePlatform() && Capacitor.isPluginAvailable("SecureStoragePlugin");
+    Capacitor.isNativePlatform() &&
+    Capacitor.isPluginAvailable(android ? "WorkOSSecureStorage" : "SecureStoragePlugin");
   return {
     vault: {
       async get(key) {
         try {
-          const result = await SecureStorage.get({ key });
+          const result = await storage.get({ key });
           return result.value;
         } catch (error) {
           if (error instanceof Error && error.message === "Item with given key does not exist")
@@ -43,12 +51,12 @@ export function createMobileVault(): MobileVault {
         }
       },
       async set(key, value) {
-        const result = await SecureStorage.set({ key, value });
+        const result = await storage.set({ key, value });
         if (!result.value) throw new Error("secure storage write failed");
       },
       async remove(key) {
         try {
-          const result = await SecureStorage.remove({ key });
+          const result = await storage.remove({ key });
           if (!result.value) throw new Error("secure storage removal failed");
         } catch (error) {
           if (error instanceof Error && error.message === "Item with given key does not exist")
@@ -57,23 +65,28 @@ export function createMobileVault(): MobileVault {
         }
       },
     },
-    status(): Promise<VaultStatus> {
+    async status(): Promise<VaultStatus> {
       if (nativeSecure) {
-        return Promise.resolve({
+        if (android) {
+          const available = await AndroidSecureStorage.getStatus().catch(() => ({ secure: false }));
+          if (!available.secure)
+            return { secure: false, reason: "Android Keystore unavailable; pairing unavailable" };
+        }
+        return {
           secure: true,
           reason: "native secure storage (Keystore/Keychain)",
-        });
+        };
       }
       if (Capacitor.isNativePlatform()) {
-        return Promise.resolve({
+        return {
           secure: false,
           reason: "native secure storage plugin is not installed; pairing unavailable",
-        });
+        };
       }
-      return Promise.resolve({
+      return {
         secure: false,
         reason: "web runtime; profile storage fallback",
-      });
+      };
     },
   };
 }

@@ -1,3 +1,4 @@
+import { SessionAutomation } from "./SessionAutomation.js";
 import { ExecutionQuestions } from "./ExecutionQuestions.js";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AgentTimeline } from "@workos/agent-center";
@@ -9,6 +10,9 @@ import {
   type AgentEvent,
   type AgentSession,
   type AgentSessionInput,
+  type HarnessProviderInfo,
+  type SessionDirective,
+  SessionDirectiveKind,
 } from "@workos/protocol";
 import { Button } from "@workos/ui-kit";
 
@@ -26,6 +30,7 @@ import { Button } from "@workos/ui-kit";
 // the list.
 export function AgentSessionsApp(props: {
   projectId: string;
+  providers?: HarnessProviderInfo[] | undefined;
   workosClients: WorkOSClients;
   selectedSessionId?: string | undefined;
   onSelectSession: (sessionId: string | undefined) => void;
@@ -77,6 +82,7 @@ export function AgentSessionsApp(props: {
       onBack={() => {
         onSelectSession(undefined);
       }}
+      providers={props.providers}
       sessionId={selectedSessionId}
       workosClients={workosClients}
       workspaceName={workspaceName}
@@ -133,7 +139,12 @@ function SessionList(props: {
         listed.map((session) =>
           workosClients.agentSessions
             .listSessionInputs({ sessionId: session.id, afterSequence: 0n, limit: 1 })
-            .then((page) => ({ id: session.id, text: page.inputs[0]?.text ?? "" }))
+            .then((page) => ({
+              id: session.id,
+              text: page.inputs[0]?.directive
+                ? directiveLabel(page.inputs[0].directive)
+                : (page.inputs[0]?.text ?? ""),
+            }))
             .catch(() => ({ id: session.id, text: "" })),
         ),
       );
@@ -236,6 +247,7 @@ function SessionList(props: {
 interface PendingInput {
   clientInputId: string;
   text: string;
+  directive?: SessionDirective | undefined;
   phase: "submitting" | "recovering" | "failed";
   error?: string;
 }
@@ -244,6 +256,7 @@ const SUBMIT_TIMEOUT_MS = 12_000;
 const RECOVERY_POLL_MS = 4_000;
 
 function SessionView(props: {
+  providers?: HarnessProviderInfo[] | undefined;
   sessionId: string;
   workspaceName?: string | undefined;
   workosClients: WorkOSClients;
@@ -262,6 +275,8 @@ function SessionView(props: {
   const [notice, setNotice] = useState<string>();
   const [cancelling, setCancelling] = useState(false);
   const [closing, setClosing] = useState(false);
+  const [goalControlling, setGoalControlling] = useState(false);
+  const pauseKey = useRef({ ref: "", key: "" });
   const [loading, setLoading] = useState(true);
   const generationRef = useRef(0);
   // One task-event stream per watched input, abortable on session change.
@@ -436,12 +451,15 @@ function SessionView(props: {
     };
   }, [pending, refresh, sessionId, workosClients]);
 
-  const submit = async (text: string) => {
+  const submit = async (text: string, directive?: SessionDirective) => {
     const trimmed = text.trim();
-    if (!trimmed) return;
+    if (!trimmed && !directive) return;
     const clientInputId = crypto.randomUUID();
     const generation = generationRef.current;
-    setPending((current) => [...current, { clientInputId, text: trimmed, phase: "submitting" }]);
+    setPending((current) => [
+      ...current,
+      { clientInputId, text: trimmed, directive, phase: "submitting" },
+    ]);
     setError(undefined);
     setNotice(undefined);
     try {
@@ -449,7 +467,8 @@ function SessionView(props: {
         workosClients.agentSessions.submitSessionInput({
           sessionId,
           clientInputId,
-          text: trimmed,
+          text: directive ? "" : trimmed,
+          ...(directive ? { directive } : {}),
         }),
         SUBMIT_TIMEOUT_MS,
       );
@@ -490,7 +509,8 @@ function SessionView(props: {
       await workosClients.agentSessions.submitSessionInput({
         sessionId,
         clientInputId: item.clientInputId,
-        text: item.text,
+        text: item.directive ? "" : item.text,
+        ...(item.directive ? { directive: item.directive } : {}),
       });
       if (generation !== generationRef.current) return;
       setPending((current) =>
@@ -506,6 +526,29 @@ function SessionView(props: {
             : entry,
         ),
       );
+    }
+  };
+
+  const pauseGoal = async () => {
+    const goal = session?.goal;
+    if (!goal) return;
+    const generation = generationRef.current;
+    const activation = `${goal.ref}:${session.activeTaskId}`;
+    if (pauseKey.current.ref !== activation)
+      pauseKey.current = { ref: activation, key: crypto.randomUUID() };
+    setGoalControlling(true);
+    setError(undefined);
+    try {
+      await workosClients.agentSessions.requestSessionGoalPause({
+        sessionId,
+        goalRef: goal.ref,
+        idempotencyKey: pauseKey.current.key,
+      });
+      if (isLive(generation)) await refresh(generation);
+    } catch (reason) {
+      if (isLive(generation)) setError(asMessage(reason));
+    } finally {
+      if (isLive(generation)) setGoalControlling(false);
     }
   };
 
@@ -618,6 +661,19 @@ function SessionView(props: {
       ) : null}
       <div className="session-transcript" data-testid="agent-session-transcript">
         {loading ? <p role="status">Loading session…</p> : null}
+        {session ? (
+          <SessionAutomation
+            session={session}
+            capabilities={
+              props.providers?.find((provider) => provider.id === session.providerId)?.capabilities
+            }
+            busy={busy || pending.length > 0}
+            controlling={goalControlling || pending.length > 0}
+            submit={(directive) => void submit(directiveLabel(directive), directive)}
+            pause={() => void pauseGoal()}
+            workosClients={workosClients}
+          />
+        ) : null}
         <ol className="session-inputs">
           {inputs.map((input) => (
             <li
@@ -626,7 +682,9 @@ function SessionView(props: {
               key={input.id}
             >
               <div className="session-input-row">
-                <p className="session-input-text">{input.text}</p>
+                <p className="session-input-text">
+                  {input.directive ? directiveLabel(input.directive) : input.text}
+                </p>
                 <span className="session-input-state" data-testid="session-input-state">
                   {inputStateName(input.state)}
                 </span>
@@ -767,4 +825,17 @@ function withTimeout<T>(promise: Promise<T>, milliseconds: number): Promise<T> {
 function asMessage(reason: unknown): string {
   if (reason instanceof Error && reason.message) return reason.message;
   return "The agent session request failed.";
+}
+
+function directiveLabel(directive: SessionDirective): string {
+  switch (directive.kind) {
+    case SessionDirectiveKind.CREATE_GOAL:
+      return `Goal · ${directive.objective}`;
+    case SessionDirectiveKind.RESUME_GOAL:
+      return "Resume goal";
+    case SessionDirectiveKind.PAUSE_GOAL:
+      return "Pause goal";
+    default:
+      return "Goal control";
+  }
 }

@@ -23,7 +23,7 @@ type Querier interface {
 	GetReviewArtifactContentByID(ctx context.Context, artifactID string) (WorkosCoreProjectReviewArtifact, error)
 	// Adjudication mapping read for replay/conflict classification inside the
 	// materialization coordinator's transaction.
-	GetReviewArtifactOutput(ctx context.Context, arg GetReviewArtifactOutputParams) (WorkosCoreProjectReviewArtifactOutput, error)
+	GetReviewArtifactOutput(ctx context.Context, arg GetReviewArtifactOutputParams) (GetReviewArtifactOutputRow, error)
 	// Replay read of one stored review artifact row (identity re-validated by
 	// the caller against the lease-derived owner/project/task).
 	GetReviewFact(ctx context.Context, artifactID string) (WorkosCoreProjectReviewArtifact, error)

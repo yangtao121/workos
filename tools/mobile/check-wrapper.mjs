@@ -23,10 +23,13 @@ for (const file of required) {
 // the device key vault is only real when the platform project depends on it.
 const swift = await readFile(resolve(root, "ios/App/CapApp-SPM/Package.swift"), "utf8");
 if (!swift.includes("CapacitorSecureStoragePlugin")) missing.push("iOS secure-storage plugin link");
-const gradle = await readFile(resolve(root, "android/app/capacitor.build.gradle"), "utf8");
-if (!gradle.includes("capacitor-secure-storage-plugin")) {
-  missing.push("android secure-storage plugin link");
-}
+const activity = await readFile(
+  resolve(root, "android/app/src/main/java/dev/workos/mobile/MainActivity.java"),
+  "utf8",
+);
+if (!activity.includes("registerPlugin(WorkOSSecureStoragePlugin.class)"))
+  missing.push("android fail-closed Keystore plugin registration");
+await access(resolve(root, "android/app/src/main/java/dev/workos/mobile/DeviceKeyVault.java"));
 if (missing.length) {
   console.error(`Mobile wrapper software is incomplete: ${missing.join(", ")}`);
   process.exitCode = 1;

@@ -45,6 +45,9 @@ const (
 	// AgentSessionServiceSubmitSessionInputProcedure is the fully-qualified name of the
 	// AgentSessionService's SubmitSessionInput RPC.
 	AgentSessionServiceSubmitSessionInputProcedure = "/workos.agent.v1.AgentSessionService/SubmitSessionInput"
+	// AgentSessionServiceRequestSessionGoalPauseProcedure is the fully-qualified name of the
+	// AgentSessionService's RequestSessionGoalPause RPC.
+	AgentSessionServiceRequestSessionGoalPauseProcedure = "/workos.agent.v1.AgentSessionService/RequestSessionGoalPause"
 	// AgentSessionServiceGetSessionInputProcedure is the fully-qualified name of the
 	// AgentSessionService's GetSessionInput RPC.
 	AgentSessionServiceGetSessionInputProcedure = "/workos.agent.v1.AgentSessionService/GetSessionInput"
@@ -75,6 +78,9 @@ type AgentSessionServiceClient interface {
 	// the recorded input, and the same key with different text fails as a
 	// conflict.
 	SubmitSessionInput(context.Context, *connect.Request[v1.SubmitSessionInputRequest]) (*connect.Response[v1.SubmitSessionInputResponse], error)
+	// Requests a stop at the next native step boundary. Existing foreground
+	// effects settle; this is distinct from cancelling an interrupted Task.
+	RequestSessionGoalPause(context.Context, *connect.Request[v1.RequestSessionGoalPauseRequest]) (*connect.Response[v1.RequestSessionGoalPauseResponse], error)
 	// GetSessionInput is the retry-safe read for timeout recovery: a client
 	// that lost a SubmitSessionInput response re-reads by its key instead of
 	// submitting a new input.
@@ -126,6 +132,12 @@ func NewAgentSessionServiceClient(httpClient connect.HTTPClient, baseURL string,
 			connect.WithSchema(agentSessionServiceMethods.ByName("SubmitSessionInput")),
 			connect.WithClientOptions(opts...),
 		),
+		requestSessionGoalPause: connect.NewClient[v1.RequestSessionGoalPauseRequest, v1.RequestSessionGoalPauseResponse](
+			httpClient,
+			baseURL+AgentSessionServiceRequestSessionGoalPauseProcedure,
+			connect.WithSchema(agentSessionServiceMethods.ByName("RequestSessionGoalPause")),
+			connect.WithClientOptions(opts...),
+		),
 		getSessionInput: connect.NewClient[v1.GetSessionInputRequest, v1.GetSessionInputResponse](
 			httpClient,
 			baseURL+AgentSessionServiceGetSessionInputProcedure,
@@ -161,15 +173,16 @@ func NewAgentSessionServiceClient(httpClient connect.HTTPClient, baseURL string,
 
 // agentSessionServiceClient implements AgentSessionServiceClient.
 type agentSessionServiceClient struct {
-	createSession          *connect.Client[v1.CreateSessionRequest, v1.CreateSessionResponse]
-	listSessions           *connect.Client[v1.ListSessionsRequest, v1.ListSessionsResponse]
-	getSession             *connect.Client[v1.GetSessionRequest, v1.GetSessionResponse]
-	submitSessionInput     *connect.Client[v1.SubmitSessionInputRequest, v1.SubmitSessionInputResponse]
-	getSessionInput        *connect.Client[v1.GetSessionInputRequest, v1.GetSessionInputResponse]
-	listSessionInputs      *connect.Client[v1.ListSessionInputsRequest, v1.ListSessionInputsResponse]
-	cancelSessionExecution *connect.Client[v1.CancelSessionExecutionRequest, v1.CancelSessionExecutionResponse]
-	closeSession           *connect.Client[v1.CloseSessionRequest, v1.CloseSessionResponse]
-	watchSessionEvents     *connect.Client[v1.WatchSessionEventsRequest, v1.WatchSessionEventsResponse]
+	createSession           *connect.Client[v1.CreateSessionRequest, v1.CreateSessionResponse]
+	listSessions            *connect.Client[v1.ListSessionsRequest, v1.ListSessionsResponse]
+	getSession              *connect.Client[v1.GetSessionRequest, v1.GetSessionResponse]
+	submitSessionInput      *connect.Client[v1.SubmitSessionInputRequest, v1.SubmitSessionInputResponse]
+	requestSessionGoalPause *connect.Client[v1.RequestSessionGoalPauseRequest, v1.RequestSessionGoalPauseResponse]
+	getSessionInput         *connect.Client[v1.GetSessionInputRequest, v1.GetSessionInputResponse]
+	listSessionInputs       *connect.Client[v1.ListSessionInputsRequest, v1.ListSessionInputsResponse]
+	cancelSessionExecution  *connect.Client[v1.CancelSessionExecutionRequest, v1.CancelSessionExecutionResponse]
+	closeSession            *connect.Client[v1.CloseSessionRequest, v1.CloseSessionResponse]
+	watchSessionEvents      *connect.Client[v1.WatchSessionEventsRequest, v1.WatchSessionEventsResponse]
 }
 
 // CreateSession calls workos.agent.v1.AgentSessionService.CreateSession.
@@ -190,6 +203,11 @@ func (c *agentSessionServiceClient) GetSession(ctx context.Context, req *connect
 // SubmitSessionInput calls workos.agent.v1.AgentSessionService.SubmitSessionInput.
 func (c *agentSessionServiceClient) SubmitSessionInput(ctx context.Context, req *connect.Request[v1.SubmitSessionInputRequest]) (*connect.Response[v1.SubmitSessionInputResponse], error) {
 	return c.submitSessionInput.CallUnary(ctx, req)
+}
+
+// RequestSessionGoalPause calls workos.agent.v1.AgentSessionService.RequestSessionGoalPause.
+func (c *agentSessionServiceClient) RequestSessionGoalPause(ctx context.Context, req *connect.Request[v1.RequestSessionGoalPauseRequest]) (*connect.Response[v1.RequestSessionGoalPauseResponse], error) {
+	return c.requestSessionGoalPause.CallUnary(ctx, req)
 }
 
 // GetSessionInput calls workos.agent.v1.AgentSessionService.GetSessionInput.
@@ -231,6 +249,9 @@ type AgentSessionServiceHandler interface {
 	// the recorded input, and the same key with different text fails as a
 	// conflict.
 	SubmitSessionInput(context.Context, *connect.Request[v1.SubmitSessionInputRequest]) (*connect.Response[v1.SubmitSessionInputResponse], error)
+	// Requests a stop at the next native step boundary. Existing foreground
+	// effects settle; this is distinct from cancelling an interrupted Task.
+	RequestSessionGoalPause(context.Context, *connect.Request[v1.RequestSessionGoalPauseRequest]) (*connect.Response[v1.RequestSessionGoalPauseResponse], error)
 	// GetSessionInput is the retry-safe read for timeout recovery: a client
 	// that lost a SubmitSessionInput response re-reads by its key instead of
 	// submitting a new input.
@@ -278,6 +299,12 @@ func NewAgentSessionServiceHandler(svc AgentSessionServiceHandler, opts ...conne
 		connect.WithSchema(agentSessionServiceMethods.ByName("SubmitSessionInput")),
 		connect.WithHandlerOptions(opts...),
 	)
+	agentSessionServiceRequestSessionGoalPauseHandler := connect.NewUnaryHandler(
+		AgentSessionServiceRequestSessionGoalPauseProcedure,
+		svc.RequestSessionGoalPause,
+		connect.WithSchema(agentSessionServiceMethods.ByName("RequestSessionGoalPause")),
+		connect.WithHandlerOptions(opts...),
+	)
 	agentSessionServiceGetSessionInputHandler := connect.NewUnaryHandler(
 		AgentSessionServiceGetSessionInputProcedure,
 		svc.GetSessionInput,
@@ -318,6 +345,8 @@ func NewAgentSessionServiceHandler(svc AgentSessionServiceHandler, opts ...conne
 			agentSessionServiceGetSessionHandler.ServeHTTP(w, r)
 		case AgentSessionServiceSubmitSessionInputProcedure:
 			agentSessionServiceSubmitSessionInputHandler.ServeHTTP(w, r)
+		case AgentSessionServiceRequestSessionGoalPauseProcedure:
+			agentSessionServiceRequestSessionGoalPauseHandler.ServeHTTP(w, r)
 		case AgentSessionServiceGetSessionInputProcedure:
 			agentSessionServiceGetSessionInputHandler.ServeHTTP(w, r)
 		case AgentSessionServiceListSessionInputsProcedure:
@@ -351,6 +380,10 @@ func (UnimplementedAgentSessionServiceHandler) GetSession(context.Context, *conn
 
 func (UnimplementedAgentSessionServiceHandler) SubmitSessionInput(context.Context, *connect.Request[v1.SubmitSessionInputRequest]) (*connect.Response[v1.SubmitSessionInputResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("workos.agent.v1.AgentSessionService.SubmitSessionInput is not implemented"))
+}
+
+func (UnimplementedAgentSessionServiceHandler) RequestSessionGoalPause(context.Context, *connect.Request[v1.RequestSessionGoalPauseRequest]) (*connect.Response[v1.RequestSessionGoalPauseResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("workos.agent.v1.AgentSessionService.RequestSessionGoalPause is not implemented"))
 }
 
 func (UnimplementedAgentSessionServiceHandler) GetSessionInput(context.Context, *connect.Request[v1.GetSessionInputRequest]) (*connect.Response[v1.GetSessionInputResponse], error) {

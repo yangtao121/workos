@@ -63,6 +63,12 @@ message HarnessCapabilities {
   // proposal through the lease-bound candidate sink. Does not imply build,
   // deployment, token budgets or kernel isolation.
   bool repair_source_candidates = 20;
+  // Native continuous-session capabilities, independently evidenced. These
+  // do not grant App access, background execution or a larger Task budget.
+  bool session_goals = 21;
+  bool project_skills = 22;
+  int32 max_concurrent_subagents = 23;
+  int32 max_subagent_depth = 24;
 }
 
 message HarnessProviderInfo {

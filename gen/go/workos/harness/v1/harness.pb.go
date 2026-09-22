@@ -80,6 +80,12 @@ type HarnessCapabilities struct {
 	// proposal through the lease-bound candidate sink. Does not imply build,
 	// deployment, token budgets or kernel isolation.
 	RepairSourceCandidates bool `protobuf:"varint,20,opt,name=repair_source_candidates,json=repairSourceCandidates,proto3" json:"repair_source_candidates,omitempty"`
+	// Native continuous-session capabilities, independently evidenced. These
+	// do not grant App access, background execution or a larger Task budget.
+	SessionGoals           bool  `protobuf:"varint,21,opt,name=session_goals,json=sessionGoals,proto3" json:"session_goals,omitempty"`
+	ProjectSkills          bool  `protobuf:"varint,22,opt,name=project_skills,json=projectSkills,proto3" json:"project_skills,omitempty"`
+	MaxConcurrentSubagents int32 `protobuf:"varint,23,opt,name=max_concurrent_subagents,json=maxConcurrentSubagents,proto3" json:"max_concurrent_subagents,omitempty"`
+	MaxSubagentDepth       int32 `protobuf:"varint,24,opt,name=max_subagent_depth,json=maxSubagentDepth,proto3" json:"max_subagent_depth,omitempty"`
 	unknownFields          protoimpl.UnknownFields
 	sizeCache              protoimpl.SizeCache
 }
@@ -252,6 +258,34 @@ func (x *HarnessCapabilities) GetRepairSourceCandidates() bool {
 		return x.RepairSourceCandidates
 	}
 	return false
+}
+
+func (x *HarnessCapabilities) GetSessionGoals() bool {
+	if x != nil {
+		return x.SessionGoals
+	}
+	return false
+}
+
+func (x *HarnessCapabilities) GetProjectSkills() bool {
+	if x != nil {
+		return x.ProjectSkills
+	}
+	return false
+}
+
+func (x *HarnessCapabilities) GetMaxConcurrentSubagents() int32 {
+	if x != nil {
+		return x.MaxConcurrentSubagents
+	}
+	return 0
+}
+
+func (x *HarnessCapabilities) GetMaxSubagentDepth() int32 {
+	if x != nil {
+		return x.MaxSubagentDepth
+	}
+	return 0
 }
 
 type HarnessProviderInfo struct {
@@ -630,7 +664,7 @@ var File_workos_harness_v1_harness_proto protoreflect.FileDescriptor
 
 const file_workos_harness_v1_harness_proto_rawDesc = "" +
 	"\n" +
-	"\x1fworkos/harness/v1/harness.proto\x12\x11workos.harness.v1\x1a\x1bworkos/agent/v1/agent.proto\x1a\x1dworkos/common/v1/common.proto\"\x9a\a\n" +
+	"\x1fworkos/harness/v1/harness.proto\x12\x11workos.harness.v1\x1a\x1bworkos/agent/v1/agent.proto\x1a\x1dworkos/common/v1/common.proto\"\xce\b\n" +
 	"\x13HarnessCapabilities\x12\x1c\n" +
 	"\tstreaming\x18\x01 \x01(\bR\tstreaming\x12/\n" +
 	"\x13persistent_sessions\x18\x02 \x01(\bR\x12persistentSessions\x12\x16\n" +
@@ -652,7 +686,11 @@ const file_workos_harness_v1_harness_proto_rawDesc = "" +
 	"\x1erequires_task_credential_lease\x18\x11 \x01(\bR\x1brequiresTaskCredentialLease\x12=\n" +
 	"\x1bsupported_context_ref_types\x18\x12 \x03(\tR\x18supportedContextRefTypes\x12>\n" +
 	"\x1brequired_credential_purpose\x18\x13 \x01(\tR\x19requiredCredentialPurpose\x128\n" +
-	"\x18repair_source_candidates\x18\x14 \x01(\bR\x16repairSourceCandidates\"\xa3\x02\n" +
+	"\x18repair_source_candidates\x18\x14 \x01(\bR\x16repairSourceCandidates\x12#\n" +
+	"\rsession_goals\x18\x15 \x01(\bR\fsessionGoals\x12%\n" +
+	"\x0eproject_skills\x18\x16 \x01(\bR\rprojectSkills\x128\n" +
+	"\x18max_concurrent_subagents\x18\x17 \x01(\x05R\x16maxConcurrentSubagents\x12,\n" +
+	"\x12max_subagent_depth\x18\x18 \x01(\x05R\x10maxSubagentDepth\"\xa3\x02\n" +
 	"\x13HarnessProviderInfo\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12!\n" +
 	"\fdisplay_name\x18\x02 \x01(\tR\vdisplayName\x12'\n" +

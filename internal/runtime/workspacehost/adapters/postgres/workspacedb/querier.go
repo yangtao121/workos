@@ -9,9 +9,13 @@ import (
 )
 
 type Querier interface {
+	BeginDelegatedWorktree(ctx context.Context, arg BeginDelegatedWorktreeParams) (int64, error)
 	BeginWorkspaceOperation(ctx context.Context, arg BeginWorkspaceOperationParams) (int64, error)
+	CompleteDelegatedWorktree(ctx context.Context, arg CompleteDelegatedWorktreeParams) (int64, error)
 	CompleteWorkspaceOperation(ctx context.Context, arg CompleteWorkspaceOperationParams) (int64, error)
+	GetDelegatedWorktree(ctx context.Context, delegationID string) (WorkosRuntimeDelegatedWorktree, error)
 	GetWorkspaceOperation(ctx context.Context, operationID string) (GetWorkspaceOperationRow, error)
+	ReviewDelegatedWorktree(ctx context.Context, delegationID string) error
 }
 
 var _ Querier = (*Queries)(nil)

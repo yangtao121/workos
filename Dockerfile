@@ -105,6 +105,7 @@ COPY --from=web /src/apps/desktop-web/dist/ /srv/workos/desktop/
 COPY deploy/harness/deepseek.cordis.yml /etc/workos/deepseek.cordis.yml
 COPY deploy/harness/workos-tools.mjs /usr/local/libexec/workos/workos-tools.mjs
 COPY deploy/harness/workos-session.mjs /usr/local/libexec/workos/workos-session.mjs
+COPY deploy/harness/workos-delegation.mjs /usr/local/libexec/workos/workos-delegation.mjs
 COPY deploy/harness/workos-workspace.mjs /usr/local/libexec/workos/workos-workspace.mjs
 COPY --from=build /out/ /usr/local/bin/
 # The gateway-owned admin Unix socket lives here in production pairing mode

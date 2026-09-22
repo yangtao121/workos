@@ -341,7 +341,7 @@ func (w *Worker) process(parent context.Context, lease *taskv1.TaskLease) {
 					if err != nil {
 						return nil, err
 					}
-					response, err := w.tools.ExecuteTaskTool(ctx, connect.NewRequest(&taskv1.ExecuteTaskToolRequest{LeaseId: lease.GetLeaseId(), WorkerId: w.id, OperationId: (ids.UUIDv7{}).New(), Operation: operation, Arguments: arguments}))
+					response, err := w.tools.ExecuteTaskTool(ctx, connect.NewRequest(&taskv1.ExecuteTaskToolRequest{DelegationId: ports.ToolDelegation(ctx), LeaseId: lease.GetLeaseId(), WorkerId: w.id, OperationId: (ids.UUIDv7{}).New(), Operation: operation, Arguments: arguments}))
 					if err != nil {
 						return nil, err
 					}

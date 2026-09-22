@@ -7,6 +7,7 @@ export default tseslint.config(
     ignores: [
       "**/dist/**",
       "apps/mobile-shell/android/app/src/main/assets/**",
+      "apps/mobile-shell/android/**/build/**",
       "apps/mobile-shell/ios/App/App/public/**",
       "**/src/gen/**",
       "coverage/**",

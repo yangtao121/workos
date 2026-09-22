@@ -41,7 +41,7 @@ func (h *Handler) SubmitTask(ctx context.Context, req *connect.Request[agentv1.S
 	input := req.Msg.GetInput()
 	// agent_session_id is server-derived linkage (ADR-0030): only the session
 	// dispatcher may set it, exactly like incident_id and repair_target.
-	if input == nil || input.GetTargetScope() == nil || strings.TrimSpace(input.GetGoal()) == "" || input.GetIncidentId() != "" || input.GetRepairTarget() != nil || input.GetAgentSessionId() != "" {
+	if input == nil || input.GetTargetScope() == nil || strings.TrimSpace(input.GetGoal()) == "" || input.GetIncidentId() != "" || input.GetRepairTarget() != nil || input.GetAgentSessionId() != "" || input.GetSessionDirective() != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, domain.ErrInvalid)
 	}
 	projectID := ""

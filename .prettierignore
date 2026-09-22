@@ -8,5 +8,6 @@ docs/structure.md
 tmp/
 
 apps/mobile-shell/android/app/src/main/assets/
+apps/mobile-shell/android/**/build/
 apps/mobile-shell/ios/App/App/public/
 apps/mobile-shell/ios/App/App/capacitor.config.json

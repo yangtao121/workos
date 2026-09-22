@@ -3,6 +3,7 @@ syntax = "proto3";
 package workos.agent.v1;
 
 import "google/protobuf/timestamp.proto";
+import "workos/agent/v1/automation.proto";
 
 option go_package = "github.com/yangtao121/workos/gen/go/workos/agent/v1;agentv1";
 
@@ -54,6 +55,8 @@ message AgentSession {
   google.protobuf.Timestamp created_at = 12;
   google.protobuf.Timestamp updated_at = 13;
   optional google.protobuf.Timestamp closed_at = 14;
+  SessionGoal goal = 15;
+  repeated AgentDelegation delegations = 16;
 }
 
 message AgentSessionInput {
@@ -71,6 +74,7 @@ message AgentSessionInput {
   string result_summary = 8;
   google.protobuf.Timestamp created_at = 9;
   google.protobuf.Timestamp updated_at = 10;
+  SessionDirective directive = 11;
 }
 
 // Session-scoped lifecycle events. Assistant/tool/usage projections stay on
@@ -147,6 +151,19 @@ message SubmitSessionInputRequest {
   string session_id = 1;
   string client_input_id = 2;
   string text = 3;
+  // Text and directive are mutually exclusive. A directive uses the same
+  // persistent idempotency key and dispatch ordering as an ordinary input.
+  SessionDirective directive = 4;
+}
+
+message RequestSessionGoalPauseRequest {
+  string session_id = 1;
+  string idempotency_key = 2;
+  string goal_ref = 3;
+}
+
+message RequestSessionGoalPauseResponse {
+  AgentSession session = 1;
 }
 
 message SubmitSessionInputResponse {
@@ -214,6 +231,9 @@ service AgentSessionService {
   // the recorded input, and the same key with different text fails as a
   // conflict.
   rpc SubmitSessionInput(SubmitSessionInputRequest) returns (SubmitSessionInputResponse) {}
+  // Requests a stop at the next native step boundary. Existing foreground
+  // effects settle; this is distinct from cancelling an interrupted Task.
+  rpc RequestSessionGoalPause(RequestSessionGoalPauseRequest) returns (RequestSessionGoalPauseResponse) {}
   // GetSessionInput is the retry-safe read for timeout recovery: a client
   // that lost a SubmitSessionInput response re-reads by its key instead of
   // submitting a new input.

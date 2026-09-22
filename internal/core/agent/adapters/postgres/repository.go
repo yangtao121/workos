@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	agentv1 "github.com/yangtao121/workos/gen/go/workos/agent/v1"
+	"google.golang.org/protobuf/encoding/protojson"
 	"time"
 
 	"github.com/google/uuid"
@@ -474,6 +476,15 @@ func advanceTaskWithSystemEvent(ctx context.Context, queries *agentdb.Queries, t
 	if err := addEventMetadata(&event); err != nil {
 		return err
 	}
+	if state.Terminal() {
+		id, err := requiredUUID(task.ID)
+		if err != nil {
+			return err
+		}
+		if err := disarmTaskAutomation(ctx, queries, id.String()); err != nil {
+			return err
+		}
+	}
 	return insertEvent(ctx, queries, event)
 }
 
@@ -604,6 +615,13 @@ func (r *Repository) Cancel(ctx context.Context, ownerID, taskID, reason string,
 	if err := insertEvent(ctx, queries, event); err != nil {
 		return domain.Task{}, nil, err
 	}
+	id, err := requiredUUID(task.ID)
+	if err != nil {
+		return domain.Task{}, nil, err
+	}
+	if err := disarmTaskAutomation(ctx, queries, id.String()); err != nil {
+		return domain.Task{}, nil, err
+	}
 	// A cancelled waiting task can no longer be decided: its pending approval
 	// expires in the same transaction so the owner's list never shows a
 	// decideable approval whose task is gone.
@@ -701,6 +719,9 @@ func (r *Repository) Claim(ctx context.Context, workerID string, duration time.D
 		if err := insertEvent(ctx, queries, event); err != nil {
 			return nil, err
 		}
+		if err := disarmTaskAutomation(ctx, queries, taskID); err != nil {
+			return nil, err
+		}
 		if err := queries.FinishPendingTaskRequest(ctx, agentdb.FinishPendingTaskRequestParams{ProcessedAt: timestamp(now), AggregateID: taskID}); err != nil {
 			return nil, err
 		}
@@ -785,6 +806,24 @@ func (r *Repository) AppendEvent(ctx context.Context, leaseID, workerID string, 
 	if event.EventType == "run_started" && (providerID == "" || providerID != stream.ProviderID) {
 		return domain.Event{}, domain.ErrProviderMismatch
 	}
+	var envelope agentv1.AgentEvent
+	if err := protojson.Unmarshal(event.Payload, &envelope); err != nil {
+		return domain.Event{}, domain.ErrInvalid
+	}
+	if childID := envelope.GetDelegationId(); childID != "" {
+		switch event.EventType {
+		case "assistant_delta", "assistant_message", "tool_call_started", "tool_call_completed":
+		default:
+			return domain.Event{}, domain.ErrInvalid
+		}
+		if _, err := requiredUUID(childID); err != nil {
+			return domain.Event{}, domain.ErrInvalid
+		}
+		child, err := queries.GetAgentDelegation(ctx, agentdb.GetAgentDelegationParams{ID: childID, OwnerUserID: stream.OwnerUserID, TaskID: stream.ID})
+		if err != nil || child.State != "running" {
+			return domain.Event{}, domain.ErrProjectDenied
+		}
+	}
 	event.TaskID, event.Sequence = stream.ID, stream.LastEventSequence+1
 	if err := addEventMetadata(&event); err != nil {
 		return domain.Event{}, err
@@ -800,6 +839,20 @@ func (r *Repository) AppendEvent(ctx context.Context, leaseID, workerID string, 
 	}
 	if usage != nil {
 		if err := r.projectUsage(ctx, queries, tx, stream, *usage, now); err != nil {
+			return domain.Event{}, err
+		}
+	}
+	if event.EventType == "goal_updated" {
+		if err := projectSessionGoal(ctx, queries, stream, event, now); err != nil {
+			return domain.Event{}, err
+		}
+	}
+	if state.Terminal() {
+		taskID, err := requiredUUID(stream.ID)
+		if err != nil {
+			return domain.Event{}, err
+		}
+		if err := disarmTaskAutomation(ctx, queries, taskID.String()); err != nil {
 			return domain.Event{}, err
 		}
 	}

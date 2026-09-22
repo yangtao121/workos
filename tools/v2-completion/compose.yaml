@@ -70,6 +70,7 @@ services:
       - ${WORKOS_V2_DIR:?}/sessions:/fixture/sessions
       - ../../deploy/harness/workos-tools.mjs:/usr/local/libexec/workos/workos-tools.mjs:ro
       - ../../deploy/harness/workos-session.mjs:/usr/local/libexec/workos/workos-session.mjs:ro
+      - ../../deploy/harness/workos-delegation.mjs:/usr/local/libexec/workos/workos-delegation.mjs:ro
       - ../../deploy/harness/workos-workspace.mjs:/usr/local/libexec/workos/workos-workspace.mjs:ro
   runtime:
     <<: *service
@@ -83,6 +84,7 @@ services:
       WORKOS_RUNTIME_WORKSPACE_MOUNTS: ${WORKOS_V2_WORKSPACE_MOUNTS:-}
       WORKOS_WORKSPACE_DOCKER_SOCKET: /var/run/docker.sock
       WORKOS_WORKSPACE_EXECUTION_IMAGE: workos-workspace-runtime:dev
+      WORKOS_WORKSPACE_DELEGATION_ROOT: ${WORKOS_V2_DIR:?}/delegations
       WORKOS_RUNTIME_CONTAINER_NAMESPACE: ${WORKOS_V2_NAMESPACE:?}
       WORKOS_PREVIEW_BRIDGE_ROOT: ${WORKOS_V2_DIR:?}/bridges
       WORKOS_RUNTIME_NATIVE_DISPLAY: /usr/bin/Xvfb
@@ -96,6 +98,7 @@ services:
       - ${WORKOS_V2_DIR:?}/run:/run/workos
       - ${WORKOS_V2_DIR:?}/project:${WORKOS_V2_DIR:?}/project
       - ${WORKOS_V2_DIR:?}/bridges:${WORKOS_V2_DIR:?}/bridges
+      - ${WORKOS_V2_DIR:?}/delegations:${WORKOS_V2_DIR:?}/delegations
       - ${WORKOS_V2_DIR:?}/x11:/tmp/.X11-unix
       - /var/run/docker.sock:/var/run/docker.sock
   gateway:

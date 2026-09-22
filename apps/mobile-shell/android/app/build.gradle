@@ -17,11 +17,38 @@ android {
         }
     }
     buildTypes {
+        acceptance {
+            initWith debug
+            applicationIdSuffix ".acceptance"
+            matchingFallbacks = ['debug']
+            signingConfig signingConfigs.debug
+        }
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }
     }
+}
+
+// This separately named test APK trusts exactly the gate's disposable CA.
+// Debug/release source sets never include that certificate or this manifest.
+def acceptanceResources = layout.buildDirectory.dir('generated/workosAcceptance/res')
+android.sourceSets.acceptance.res.srcDir(acceptanceResources)
+def prepareAcceptanceCA = tasks.register('prepareAcceptanceCA') {
+    outputs.dir(acceptanceResources)
+    outputs.upToDateWhen { false }
+    doLast {
+        def source = providers.gradleProperty('workosAcceptanceCA').orNull
+        if (!source || !file(source).isFile()) throw new GradleException('Acceptance APK requires an explicit fixture CA file')
+        copy {
+            from file(source)
+            into acceptanceResources.get().dir('raw')
+            rename { 'workos_fixture_ca.crt' }
+        }
+    }
+}
+tasks.configureEach {
+    if (name == 'preAcceptanceBuild') dependsOn(prepareAcceptanceCA)
 }
 
 repositories {

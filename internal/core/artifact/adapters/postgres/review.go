@@ -94,6 +94,7 @@ func (r *Repository) FindTaskOutput(ctx context.Context, tx dbtx.Tx, taskID, out
 		return ports.TaskOutputRecord{}, false, storeError("query review artifact output", err)
 	}
 	record := ports.TaskOutputRecord{
+		DelegationID:  row.DelegationID,
 		RequestDigest: row.RequestDigest,
 		OwnerUserID:   row.OwnerUserID,
 		ProjectID:     row.ProjectID,
@@ -113,7 +114,7 @@ func (r *Repository) FindTaskOutput(ctx context.Context, tx dbtx.Tx, taskID, out
 }
 
 func validStoredTaskOutputRecord(record ports.TaskOutputRecord) bool {
-	return domain.ValidArtifactDigest(record.RequestDigest) &&
+	return (record.DelegationID == "" || domain.ValidArtifactUUID(record.DelegationID)) && domain.ValidArtifactDigest(record.RequestDigest) &&
 		domain.ValidArtifactUUID(record.OwnerUserID) &&
 		domain.ValidArtifactUUID(record.ProjectID) &&
 		domain.ValidArtifactUUID(record.TaskID) &&
@@ -130,7 +131,7 @@ func validStoredTaskOutputRecord(record ports.TaskOutputRecord) bool {
 // the (task, type) slot; zero rows tells the coordinator to re-classify.
 func (r *Repository) InsertTaskOutput(ctx context.Context, tx dbtx.Tx, command ports.ReviewOutputCommand) (int64, error) {
 	normalized, normalizeErr := domain.NormalizeReviewContent(command.Artifact.Type, command.Content)
-	if normalizeErr != nil || !bytes.Equal(normalized.Content, command.Content) ||
+	if normalizeErr != nil || (command.DelegationID != "" && !domain.ValidArtifactUUID(command.DelegationID)) || !bytes.Equal(normalized.Content, command.Content) ||
 		!domain.ValidStoredReviewFact(command.Artifact) ||
 		normalized.Digest != command.Artifact.Digest ||
 		normalized.ByteCount != command.Artifact.ByteCount ||
@@ -155,7 +156,8 @@ func (r *Repository) InsertTaskOutput(ctx context.Context, tx dbtx.Tx, command p
 		return 0, storeError("insert review artifact", err)
 	}
 	rows, err := queries.InsertReviewArtifactOutput(ctx, artifactdb.InsertReviewArtifactOutputParams{
-		TaskID: command.Artifact.SourceTask, OutputKey: command.Artifact.OutputKey,
+		DelegationID: command.DelegationID,
+		TaskID:       command.Artifact.SourceTask, OutputKey: command.Artifact.OutputKey,
 		ArtifactType: command.Artifact.Type, RequestDigest: command.RequestDigest,
 		OwnerUserID: command.Artifact.OwnerUserID, ProjectID: command.Artifact.ProjectID,
 		ArtifactID: command.Artifact.ID, EventID: command.Publication.EventID,

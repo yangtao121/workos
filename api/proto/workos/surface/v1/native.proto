@@ -8,8 +8,9 @@ option go_package = "github.com/yangtao121/workos/gen/go/workos/surface/v1;surfa
 
 // One supervised virtual-display native session (ADR-0029): a real Xvfb
 // display, a configured native X client, and an ffmpeg x11grab/VP8 capture
-// streamed to the desktop over loopback WebRTC. Input returns over a data
-// channel. Gateway routes the service with owner identity.
+// streamed over operator-configured WebRTC (loopback, private LAN or TURN
+// relay; ADR-0035). Input returns over a data channel. Gateway supplies the
+// authenticated owner and device identity.
 message NativeSession {
   string id = 1;
   string owner_user_id = 2;
@@ -73,6 +74,27 @@ message DetachNativeSessionRequest {
 
 message DetachNativeSessionResponse {}
 
+// Ephemeral transport capability, never a provider or TURN shared secret.
+// Values must not be persisted, logged, or exposed to embedded Apps.
+message NativeIceServer {
+  repeated string urls = 1;
+  string username = 2;
+  string credential = 3;
+}
+
+message GetNativeConnectivityRequest {
+  string session_id = 1;
+  int64 control_generation = 2;
+}
+
+message GetNativeConnectivityResponse {
+  // Operator-selected loopback|lan|relay. Clients cannot widen this policy.
+  string mode = 1;
+  repeated NativeIceServer ice_servers = 2;
+  bool relay_only = 3;
+  google.protobuf.Timestamp expires_at = 4;
+}
+
 // Canonical workos.input data-channel payload, serialized as protobuf JSON.
 // The adapter rejects unknown fields/types, invalid combinations and oversized
 // events. Only the bounded text/key/pointer vocabulary below is supported.
@@ -96,6 +118,9 @@ message NativeInputEvent {
 // as the runtime's own user with process-group supervision, and nothing here
 // grants filesystem or host-input escapes.
 service NativeSessionService {
+  // Requires the active session owner and current device control generation.
+  // Fetch before each offer; it does not grant control or extend media leases.
+  rpc GetNativeConnectivity(GetNativeConnectivityRequest) returns (GetNativeConnectivityResponse) {}
   rpc CreateNativeSession(CreateNativeSessionRequest) returns (CreateNativeSessionResponse) {}
   rpc ConnectNativeSession(ConnectNativeSessionRequest) returns (ConnectNativeSessionResponse) {}
   rpc GetNativeSession(GetNativeSessionRequest) returns (GetNativeSessionResponse) {}

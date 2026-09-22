@@ -443,6 +443,13 @@ harness-host worker（provider 经中立 ports.ArtifactSink 输出）
 
 ## Adaptive Desktop / Mobile Shell（2026-08-31）
 
+2026-09-22：[Android 壳](android-shell.md) 与 [移动任务](../tasks/20260921-v2-mobile-android.md)
+完成 KVM Android 15 上真实 APK 的 HTTPS/Keystore/配对/重启/通知/撤权端到端验收，
+Mobile Shell 更新为 working。手机和平板触控浏览器完成同一项目的 Agent 续写与 Native
+应用控制权接管；原生壳提供部署入口及项目/通知投影。完整证据见
+[验收记录](../tasks/evidence/20260921-v2-mobile-android/results.md)。iOS、物理手机、后台推送
+和商店签名不在本次范围。下面保留历次实现时点，早期“无 SDK”和 scaffolded 是历史状态。
+
 `@workos/adaptive-shell` 是 Desktop 与 `apps/mobile-shell` 共享的唯一设备布局契约：直接复用
 Proto `DeviceClass`，纯 `resolveDeviceLayout` 从 viewport/orientation/DPR 与可选 window
 segments 推导 Compact / Medium / Expanded / Fold-separated；DOM/Window Segments API 只存在于
@@ -1673,3 +1680,15 @@ V2 completion 门禁必须执行三个固定 viewport 的视觉用例，跳过�
 成功。完整故障矩阵的运行结果见 [本轮任务](../tasks/20260920-v2-p3-final-matrix.md)。
 
 2026-09-20 最终完整门禁已通过，F01–F27 缺项全部补齐；当前结论见 [最终验收](../tasks/evidence/20260920-v2-p3-final-matrix/results.md)。历史段落的 partial/scaffolded 描述仅代表当时验证范围。
+
+## 2026-09-21 Native 网络连接（ADR-0035）
+
+Native 的 GetNativeConnectivity 由 Runtime 验证当前设备、控制代次、程序和工作区权限，
+签发短期 TURN capability；静态密钥仅受控 Runtime adapter/coturn 读取。relay 模式强制
+两端 TURN candidate，未配置或中继故障明确失败；原有 loopback 和私有 LAN 模式保留。
+已通过生产 HTTPS/配对、独立 Docker LAN/NAT、真实 coturn/媒体/输入/续约/接管/故障恢复/
+撤权门禁。详见 [连接配置与限制](native-network-connectivity.md) 和
+[长期证据](../tasks/evidence/20260921-v2-network-continuity/results.md)。
+
+开发预览的 Linux Unix socket 连接采用打开的目录 fd，避免 worktree 的长路径超过
+sockaddr_un 上限；真实 Docker 长路径回归证明程序继续使用原工作区并保留运行身份。

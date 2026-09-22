@@ -21,7 +21,7 @@ func NewExecutionHandler(service Executor) (string, http.Handler) {
 }
 func (h *executionHandler) ExecuteWorkspaceOperation(ctx context.Context, req *connect.Request[workloadv1.ExecuteWorkspaceOperationRequest]) (*connect.Response[workloadv1.ExecuteWorkspaceOperationResponse], error) {
 	in := req.Msg
-	result, err := h.service.Execute(ctx, domain.Operation{BindingID: in.WorkspaceBindingId, Revision: in.WorkspaceRevision, ID: in.OperationId, OwnerUserID: in.OwnerUserId, ProjectID: in.ProjectId, SourceID: in.WorkspaceSourceId, ReadOnly: in.ReadOnly, Name: in.Operation, Arguments: in.GetArguments().AsMap()})
+	result, err := h.service.Execute(ctx, domain.Operation{DelegationID: in.DelegationId, ParentTaskID: in.ParentTaskId, BindingID: in.WorkspaceBindingId, Revision: in.WorkspaceRevision, ID: in.OperationId, OwnerUserID: in.OwnerUserId, ProjectID: in.ProjectId, SourceID: in.WorkspaceSourceId, ReadOnly: in.ReadOnly, Name: in.Operation, Arguments: in.GetArguments().AsMap()})
 	if err != nil {
 		code := connect.CodeUnavailable
 		switch {

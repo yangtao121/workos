@@ -8,6 +8,7 @@ import { classifyDevice } from "@workos/adaptive-shell";
 import { createWorkOSClients } from "@workos/agent-sdk";
 import { createMobileAuth, type MobileAuthPhase } from "./auth.js";
 import { type MobileVault } from "./native.js";
+import { DeploymentForm } from "./DeploymentForm.js";
 
 interface ShellProject {
   id: string;
@@ -28,6 +29,8 @@ export function MobileShell(props: {
   origin: string;
   secureVaultReady: boolean;
   vault: MobileVault;
+  initialPairingFragment?: string | undefined;
+  onChangeDeployment?: (() => void) | undefined;
 }) {
   const [posture, setPosture] = useState(() => detectPosture());
   const [keyboardInset, setKeyboardInset] = useState(0);
@@ -47,7 +50,8 @@ export function MobileShell(props: {
   const pendingReads = useRef(new Set<string>());
   const [actionError, setActionError] = useState("");
   const pairingFragment = useRef(
-    window.location.hash.length > 1 ? window.location.hash : undefined,
+    props.initialPairingFragment ??
+      (window.location.hash.length > 1 ? window.location.hash : undefined),
   );
 
   const auth = useMemo(() => {
@@ -190,7 +194,10 @@ export function MobileShell(props: {
       const epoch = authEpoch.current;
       const clients = createWorkOSClients(origin, auth.transport);
       try {
-        await clients.notifications.markNotificationRead({ notificationId });
+        await clients.notifications.markNotificationRead({
+          notificationId,
+          idempotencyKey: `mobile-read:${notificationId}`,
+        });
         if (epoch !== authEpoch.current) return;
         projectionEpoch.current++;
         setNotifications((current) =>
@@ -244,7 +251,7 @@ export function MobileShell(props: {
             data-testid="mobile-connection"
           >
             {authPhase.phase === "unavailable"
-              ? "Gateway unavailable"
+              ? "Connection unavailable"
               : authPhase.phase === "connecting"
                 ? "Connecting…"
                 : "Not paired"}
@@ -255,10 +262,10 @@ export function MobileShell(props: {
         {actionError ? <p role="alert">{actionError}</p> : null}
         {authPhase.phase === "unavailable" ? (
           <section className="mobile-card" data-testid="mobile-unavailable">
-            <h1>No gateway</h1>
+            <h1>Connection unavailable</h1>
             <p>
-              The WorkOS deployment at <code>{origin}</code> is not reachable. Check the network or
-              try again from the deployment LAN.
+              Could not establish a device session with <code>{origin}</code>. Check the network,
+              server certificate and device storage, then retry.
             </p>
             <button type="button" className="mobile-button" onClick={() => void begin()}>
               Retry
@@ -268,9 +275,16 @@ export function MobileShell(props: {
           <section className="mobile-card" data-testid="mobile-unpaired">
             <h1>Pair this device</h1>
             <p>
-              Scan the pairing QR code shown in Device Center on a paired desktop, or open the
-              pairing link on this device. The ticket binds this device key to your deployment.
+              Paste the pairing link from Device Center on a paired desktop. It authorizes this
+              device to connect to <code>{origin}</code>.
             </p>
+            <DeploymentForm
+              origin={origin}
+              onConnect={(_, fragment) => {
+                pairingFragment.current = fragment;
+                void begin();
+              }}
+            />
             <p className="mobile-hint">
               Remote push delivery needs the native push services (APNs/FCM); without those
               credentials notifications arrive while the app is open.
@@ -332,6 +346,11 @@ export function MobileShell(props: {
       <footer className="mobile-footer">
         <span data-testid="mobile-posture">{posture}</span>
         <span data-testid="mobile-key-status">{vaultReason}</span>
+        {props.onChangeDeployment ? (
+          <button type="button" className="mobile-logout" onClick={props.onChangeDeployment}>
+            Change server
+          </button>
+        ) : null}
         {paired ? (
           <button
             type="button"

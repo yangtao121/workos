@@ -307,6 +307,10 @@ function provider(
     unavailableReason,
     capabilities: {
       $typeName: "workos.harness.v1.HarnessCapabilities",
+      sessionGoals: false,
+      projectSkills: false,
+      maxConcurrentSubagents: 0,
+      maxSubagentDepth: 0,
       streaming: false,
       persistentSessions: false,
       resume: false,

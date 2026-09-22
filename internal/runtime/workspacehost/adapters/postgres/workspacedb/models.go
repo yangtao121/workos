@@ -3,3 +3,21 @@
 //   sqlc v1.30.0
 
 package workspacedb
+
+import (
+	"github.com/jackc/pgx/v5/pgtype"
+)
+
+type WorkosRuntimeDelegatedWorktree struct {
+	DelegationID    string             `json:"delegation_id"`
+	ParentTaskID    string             `json:"parent_task_id"`
+	OwnerUserID     string             `json:"owner_user_id"`
+	ProjectID       string             `json:"project_id"`
+	BindingID       string             `json:"binding_id"`
+	BindingRevision int64              `json:"binding_revision"`
+	SourceID        string             `json:"source_id"`
+	State           string             `json:"state"`
+	BaseCommit      string             `json:"base_commit"`
+	CreatedAt       pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt       pgtype.Timestamptz `json:"updated_at"`
+}

@@ -3,6 +3,7 @@ package domain
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"time"
 	"unicode/utf8"
@@ -65,6 +66,9 @@ type Session struct {
 	CreatedAt                time.Time
 	UpdatedAt                time.Time
 	ClosedAt                 *time.Time
+	Goal                     *GoalProjection
+	GoalPauseRef             string
+	Delegations              []Delegation
 }
 
 const (
@@ -76,13 +80,28 @@ const (
 // assigning the next strictly increasing sequence. The bool reports whether
 // the input must queue behind the active execution.
 func (s *Session) AcceptSessionInput(now time.Time, inputID, clientInputID, text string) (SessionInput, bool, error) {
+	return s.acceptSessionInput(now, inputID, clientInputID, text, nil)
+}
+
+func (s *Session) AcceptSessionDirective(now time.Time, inputID, clientInputID string, directive SessionDirective) (SessionInput, bool, error) {
+	if err := directive.Validate(); err != nil {
+		return SessionInput{}, false, err
+	}
+	return s.acceptSessionInput(now, inputID, clientInputID, "", &directive)
+}
+
+func (s *Session) acceptSessionInput(now time.Time, inputID, clientInputID, text string, directive *SessionDirective) (SessionInput, bool, error) {
 	if s.State != SessionStateActive {
 		return SessionInput{}, false, ErrSessionClosed
 	}
-	if !utf8.ValidString(text) || utf8.RuneCountInString(text) == 0 || len(text) > maximumSessionInputBytes {
+	if directive == nil && (!utf8.ValidString(text) || utf8.RuneCountInString(text) == 0 || len(text) > maximumSessionInputBytes) {
 		return SessionInput{}, false, ErrSessionInputInvalid
 	}
 	queued := s.ActiveTaskID != ""
+	digest := InputRequestDigest(clientInputID, text)
+	if directive != nil {
+		digest = DirectiveRequestDigest(clientInputID, *directive)
+	}
 	s.InputSequence++
 	return SessionInput{
 		ID:            inputID,
@@ -90,7 +109,8 @@ func (s *Session) AcceptSessionInput(now time.Time, inputID, clientInputID, text
 		OwnerUserID:   s.OwnerUserID,
 		ClientInputID: clientInputID,
 		Text:          text,
-		RequestDigest: InputRequestDigest(clientInputID, text),
+		RequestDigest: digest,
+		Directive:     directive,
 		State:         SessionInputAccepted,
 		Sequence:      s.InputSequence,
 		CreatedAt:     now,
@@ -168,6 +188,7 @@ type SessionInput struct {
 	ResultSummary string
 	CreatedAt     time.Time
 	UpdatedAt     time.Time
+	Directive     *SessionDirective
 }
 
 // SessionEvent is one row of the bounded session lifecycle log.
@@ -183,5 +204,11 @@ type SessionEvent struct {
 // key with different text is a conflict, not a replay.
 func InputRequestDigest(clientInputID, text string) string {
 	digest := sha256.Sum256([]byte(clientInputID + "\x00" + text))
+	return "sha256:" + hex.EncodeToString(digest[:])
+}
+
+func DirectiveRequestDigest(clientInputID string, directive SessionDirective) string {
+	encoded, _ := json.Marshal(directive)
+	digest := sha256.Sum256(append([]byte(clientInputID+"\x00native-directive\x00"), encoded...))
 	return "sha256:" + hex.EncodeToString(digest[:])
 }

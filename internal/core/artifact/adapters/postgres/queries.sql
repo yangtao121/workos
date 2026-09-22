@@ -134,7 +134,7 @@ LIMIT sqlc.arg(row_limit);
 -- Adjudication mapping read for replay/conflict classification inside the
 -- materialization coordinator's transaction.
 -- name: GetReviewArtifactOutput :one
-SELECT task_id, output_key, artifact_type, request_digest, owner_user_id, project_id,
+SELECT task_id, output_key, artifact_type, request_digest, owner_user_id, project_id, delegation_id,
        artifact_id, event_id, event_sequence, event_occurred_at, created_at
 FROM workos_core.project_review_artifact_outputs
 WHERE task_id = sqlc.arg(task_id)::uuid AND output_key = sqlc.arg(output_key);
@@ -156,11 +156,11 @@ INSERT INTO workos_core.project_review_artifacts (
 -- with GetReviewArtifactOutput.
 -- name: InsertReviewArtifactOutput :execrows
 INSERT INTO workos_core.project_review_artifact_outputs (
-    task_id, output_key, artifact_type, request_digest, owner_user_id, project_id,
+    task_id, output_key, artifact_type, request_digest, owner_user_id, project_id, delegation_id,
     artifact_id, event_id, event_sequence, event_occurred_at, created_at
 ) VALUES (
     sqlc.arg('task_id'), sqlc.arg('output_key'), sqlc.arg('artifact_type'),
-    sqlc.arg('request_digest'), sqlc.arg('owner_user_id'), sqlc.arg('project_id'),
+    sqlc.arg('request_digest'), sqlc.arg('owner_user_id'), sqlc.arg('project_id'), sqlc.arg('delegation_id'),
     sqlc.arg('artifact_id'), sqlc.arg('event_id'), sqlc.arg('event_sequence'),
     sqlc.arg('event_occurred_at'), sqlc.arg('created_at')
 )
