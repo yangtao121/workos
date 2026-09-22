@@ -12,6 +12,7 @@ import {
 } from "./sessionContinuity.js";
 
 afterEach(async () => {
+  vi.restoreAllMocks();
   await clearSessionContinuity();
   localStorage.clear();
 });
@@ -37,6 +38,66 @@ describe("transactional local session journal", () => {
     await clearSessionContinuity();
     expect((await readSessionContinuity(key)).cursor).toBe(0n);
     expect(localStorage.getItem("unrelated")).toBe("keep");
+  });
+  it("rejects an aborted clear, preserves its epoch, and still removes legacy journals", async () => {
+    await patchSessionContinuity(key, { draft: "private draft", addPending: [receipt("a")] });
+    const before = await readSessionContinuity(key);
+    localStorage.setItem(key, "legacy journal");
+    localStorage.setItem("unrelated", "keep");
+    // eslint-disable-next-line @typescript-eslint/unbound-method -- The spy supplies the native receiver with call.
+    const originalClear = IDBObjectStore.prototype.clear;
+    vi.spyOn(IDBObjectStore.prototype, "clear").mockImplementationOnce(function (
+      this: IDBObjectStore,
+    ) {
+      const request = originalClear.call(this);
+      request.onsuccess = () => {
+        this.transaction.abort();
+      };
+      return request;
+    });
+    await expect(clearSessionContinuity()).rejects.toThrow("Unable to clear local session data");
+    expect(await readSessionContinuity(key)).toEqual(before);
+    expect(localStorage.getItem(key)).toBeNull();
+    expect(localStorage.getItem("unrelated")).toBe("keep");
+    await clearSessionContinuity();
+    const after = await readSessionContinuity(key);
+    expect(after.draft).toBe("");
+    expect(after.pending).toEqual([]);
+    expect(after.epoch).not.toBe(before.epoch);
+  });
+  it("aborts queued deletion if persisting the new epoch throws", async () => {
+    await patchSessionContinuity(key, { draft: "private draft" });
+    const before = await readSessionContinuity(key);
+    vi.spyOn(IDBObjectStore.prototype, "put").mockImplementationOnce(() => {
+      throw new DOMException("Storage unavailable", "UnknownError");
+    });
+    await expect(clearSessionContinuity()).rejects.toThrow("Unable to clear local session data");
+    expect(await readSessionContinuity(key)).toEqual(before);
+  });
+  it("rejects unavailable IndexedDB while still attempting legacy cleanup", async () => {
+    localStorage.setItem(key, "legacy journal");
+    vi.resetModules();
+    vi.spyOn(indexedDB, "open").mockImplementationOnce(() => {
+      throw new DOMException("Storage unavailable", "SecurityError");
+    });
+    const unavailable = await import("./sessionContinuity.js");
+    await expect(unavailable.clearSessionContinuity()).rejects.toThrow(
+      "Unable to clear local session data",
+    );
+    expect(localStorage.getItem(key)).toBeNull();
+  });
+  it("reports failed legacy cleanup and still attempts other journal removals", async () => {
+    await patchSessionContinuity(key, { draft: "private draft" });
+    localStorage.setItem(key, "legacy journal");
+    const other = sessionContinuityKey("owner", "project", "other");
+    localStorage.setItem(other, "other legacy journal");
+    vi.spyOn(Storage.prototype, "removeItem").mockImplementationOnce(() => {
+      throw new DOMException("Storage unavailable", "SecurityError");
+    });
+    await expect(clearSessionContinuity()).rejects.toThrow("Unable to clear local session data");
+    expect((await readSessionContinuity(key)).draft).toBe("");
+    expect(localStorage.getItem(key)).toBe("legacy journal");
+    expect(localStorage.getItem(other)).toBeNull();
   });
   it("merges concurrent receipts without an idle tab overwriting another draft", async () => {
     await Promise.all([

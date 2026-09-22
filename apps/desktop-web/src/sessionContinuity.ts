@@ -235,34 +235,59 @@ export function writeSessionContinuity(key: string, value: SessionContinuity): P
     cursor: value.cursor,
   });
 }
+// Callers must await completion and report rejection: unavailable storage or an
+// aborted transaction cannot guarantee deletion or persist a new clear epoch.
+// Old writers in this page are fenced immediately, even if cleanup fails.
 export async function clearSessionContinuity(): Promise<void> {
   clearGeneration++;
-  const db = await open();
-  if (db)
-    await new Promise<void>((resolve) => {
+  const cleanupError = () => new Error("Unable to clear local session data. Please try again.");
+  let failed = false;
+  try {
+    const db = await open();
+    if (!db) throw cleanupError();
+    await new Promise<void>((resolve, reject) => {
+      let tx: IDBTransaction | undefined;
+      const fail = () => {
+        try {
+          tx?.abort();
+        } catch {
+          // The transaction may already have aborted or completed.
+        }
+        reject(cleanupError());
+      };
       try {
-        const tx = db.transaction(STORE, "readwrite");
+        tx = db.transaction(STORE, "readwrite");
+        tx.oncomplete = () => {
+          resolve();
+        };
+        tx.onabort = tx.onerror = fail;
         const store = tx.objectStore(STORE);
         store.clear();
         store.put(crypto.randomUUID(), EPOCH_KEY);
-        tx.oncomplete =
-          tx.onabort =
-          tx.onerror =
-            () => {
-              resolve();
-            };
       } catch {
-        resolve();
+        // Do not commit deletion without the epoch if queuing either write fails.
+        fail();
       }
     });
-  // Also remove pre-IDB journal records; no content remains after Forget.
-  try {
-    for (const key of Object.keys(localStorage)) {
-      if (key.startsWith(PREFIX)) localStorage.removeItem(key);
-    }
   } catch {
-    /* Browser storage may be disabled. */
+    failed = true;
+  } finally {
+    // Always attempt legacy cleanup too. Success means both stores were cleared;
+    // failure must remain visible to Forget callers even if one store succeeded.
+    try {
+      for (const key of Object.keys(localStorage)) {
+        if (!key.startsWith(PREFIX)) continue;
+        try {
+          localStorage.removeItem(key);
+        } catch {
+          failed = true;
+        }
+      }
+    } catch {
+      failed = true;
+    }
   }
+  if (failed) throw cleanupError();
 }
 
 // Every caller waits for a snapshot begun after its request. Concurrent callers
