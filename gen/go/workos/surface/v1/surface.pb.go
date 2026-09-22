@@ -213,8 +213,9 @@ type SurfaceSession struct {
 	// bridge methods. Unimplemented capabilities never appear here.
 	BridgeCapabilities []string `protobuf:"bytes,12,rep,name=bridge_capabilities,json=bridgeCapabilities,proto3" json:"bridge_capabilities,omitempty"`
 	// Exact running program behind a container-backed surface; empty for static views.
-	WorkloadId         string `protobuf:"bytes,13,opt,name=workload_id,json=workloadId,proto3" json:"workload_id,omitempty"`
-	WorkloadGeneration int64  `protobuf:"varint,14,opt,name=workload_generation,json=workloadGeneration,proto3" json:"workload_generation,omitempty"`
+	WorkloadId         string        `protobuf:"bytes,13,opt,name=workload_id,json=workloadId,proto3" json:"workload_id,omitempty"`
+	WorkloadGeneration int64         `protobuf:"varint,14,opt,name=workload_generation,json=workloadGeneration,proto3" json:"workload_generation,omitempty"`
+	LifecycleMode      LifecycleMode `protobuf:"varint,15,opt,name=lifecycle_mode,json=lifecycleMode,proto3,enum=workos.surface.v1.LifecycleMode" json:"lifecycle_mode,omitempty"`
 	unknownFields      protoimpl.UnknownFields
 	sizeCache          protoimpl.SizeCache
 }
@@ -347,6 +348,13 @@ func (x *SurfaceSession) GetWorkloadGeneration() int64 {
 	return 0
 }
 
+func (x *SurfaceSession) GetLifecycleMode() LifecycleMode {
+	if x != nil {
+		return x.LifecycleMode
+	}
+	return LifecycleMode_LIFECYCLE_MODE_UNSPECIFIED
+}
+
 type CreateSurfaceRequest struct {
 	state             protoimpl.MessageState `protogen:"open.v1"`
 	AppInstanceId     string                 `protobuf:"bytes,1,opt,name=app_instance_id,json=appInstanceId,proto3" json:"app_instance_id,omitempty"`
@@ -364,8 +372,10 @@ type CreateSurfaceRequest struct {
 	AttachOnly                 bool   `protobuf:"varint,8,opt,name=attach_only,json=attachOnly,proto3" json:"attach_only,omitempty"`
 	ExpectedWorkloadId         string `protobuf:"bytes,9,opt,name=expected_workload_id,json=expectedWorkloadId,proto3" json:"expected_workload_id,omitempty"`
 	ExpectedWorkloadGeneration int64  `protobuf:"varint,10,opt,name=expected_workload_generation,json=expectedWorkloadGeneration,proto3" json:"expected_workload_generation,omitempty"`
-	unknownFields              protoimpl.UnknownFields
-	sizeCache                  protoimpl.SizeCache
+	// Explicit launch policy; attach_only preserves the existing program policy.
+	LifecycleMode LifecycleMode `protobuf:"varint,11,opt,name=lifecycle_mode,json=lifecycleMode,proto3,enum=workos.surface.v1.LifecycleMode" json:"lifecycle_mode,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *CreateSurfaceRequest) Reset() {
@@ -466,6 +476,13 @@ func (x *CreateSurfaceRequest) GetExpectedWorkloadGeneration() int64 {
 		return x.ExpectedWorkloadGeneration
 	}
 	return 0
+}
+
+func (x *CreateSurfaceRequest) GetLifecycleMode() LifecycleMode {
+	if x != nil {
+		return x.LifecycleMode
+	}
+	return LifecycleMode_LIFECYCLE_MODE_UNSPECIFIED
 }
 
 type CloseSurfaceRequest struct {
@@ -596,12 +613,12 @@ var File_workos_surface_v1_surface_proto protoreflect.FileDescriptor
 
 const file_workos_surface_v1_surface_proto_rawDesc = "" +
 	"\n" +
-	"\x1fworkos/surface/v1/surface.proto\x12\x11workos.surface.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"Y\n" +
+	"\x1fworkos/surface/v1/surface.proto\x12\x11workos.surface.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a!workos/surface/v1/lifecycle.proto\"Y\n" +
 	"\bViewport\x12\x14\n" +
 	"\x05width\x18\x01 \x01(\x05R\x05width\x12\x16\n" +
 	"\x06height\x18\x02 \x01(\x05R\x06height\x12\x1f\n" +
 	"\vpixel_ratio\x18\x03 \x01(\x01R\n" +
-	"pixelRatio\"\xac\x04\n" +
+	"pixelRatio\"\xf5\x04\n" +
 	"\x0eSurfaceSession\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12&\n" +
 	"\x0fapp_instance_id\x18\x02 \x01(\tR\rappInstanceId\x12\x1d\n" +
@@ -622,7 +639,8 @@ const file_workos_surface_v1_surface_proto_rawDesc = "" +
 	"\x13bridge_capabilities\x18\f \x03(\tR\x12bridgeCapabilities\x12\x1f\n" +
 	"\vworkload_id\x18\r \x01(\tR\n" +
 	"workloadId\x12/\n" +
-	"\x13workload_generation\x18\x0e \x01(\x03R\x12workloadGeneration\"\x9c\x04\n" +
+	"\x13workload_generation\x18\x0e \x01(\x03R\x12workloadGeneration\x12G\n" +
+	"\x0elifecycle_mode\x18\x0f \x01(\x0e2 .workos.surface.v1.LifecycleModeR\rlifecycleMode\"\xe5\x04\n" +
 	"\x14CreateSurfaceRequest\x12&\n" +
 	"\x0fapp_instance_id\x18\x01 \x01(\tR\rappInstanceId\x12\x1d\n" +
 	"\n" +
@@ -636,7 +654,8 @@ const file_workos_surface_v1_surface_proto_rawDesc = "" +
 	"attachOnly\x120\n" +
 	"\x14expected_workload_id\x18\t \x01(\tR\x12expectedWorkloadId\x12@\n" +
 	"\x1cexpected_workload_generation\x18\n" +
-	" \x01(\x03R\x1aexpectedWorkloadGeneration\"C\n" +
+	" \x01(\x03R\x1aexpectedWorkloadGeneration\x12G\n" +
+	"\x0elifecycle_mode\x18\v \x01(\x0e2 .workos.surface.v1.LifecycleModeR\rlifecycleMode\"C\n" +
 	"\x13CloseSurfaceRequest\x12,\n" +
 	"\x12surface_session_id\x18\x01 \x01(\tR\x10surfaceSessionId\"\x16\n" +
 	"\x14CloseSurfaceResponse\"T\n" +
@@ -682,24 +701,27 @@ var file_workos_surface_v1_surface_proto_goTypes = []any{
 	(*CloseSurfaceResponse)(nil),  // 6: workos.surface.v1.CloseSurfaceResponse
 	(*CreateSurfaceResponse)(nil), // 7: workos.surface.v1.CreateSurfaceResponse
 	(*timestamppb.Timestamp)(nil), // 8: google.protobuf.Timestamp
+	(LifecycleMode)(0),            // 9: workos.surface.v1.LifecycleMode
 }
 var file_workos_surface_v1_surface_proto_depIdxs = []int32{
-	0, // 0: workos.surface.v1.SurfaceSession.renderer:type_name -> workos.surface.v1.SurfaceRenderer
-	8, // 1: workos.surface.v1.SurfaceSession.created_at:type_name -> google.protobuf.Timestamp
-	8, // 2: workos.surface.v1.SurfaceSession.expires_at:type_name -> google.protobuf.Timestamp
-	1, // 3: workos.surface.v1.CreateSurfaceRequest.device_class:type_name -> workos.surface.v1.DeviceClass
-	2, // 4: workos.surface.v1.CreateSurfaceRequest.viewport:type_name -> workos.surface.v1.Viewport
-	0, // 5: workos.surface.v1.CreateSurfaceRequest.preferred_renderer:type_name -> workos.surface.v1.SurfaceRenderer
-	3, // 6: workos.surface.v1.CreateSurfaceResponse.session:type_name -> workos.surface.v1.SurfaceSession
-	4, // 7: workos.surface.v1.SurfaceService.CreateSurface:input_type -> workos.surface.v1.CreateSurfaceRequest
-	5, // 8: workos.surface.v1.SurfaceService.CloseSurface:input_type -> workos.surface.v1.CloseSurfaceRequest
-	7, // 9: workos.surface.v1.SurfaceService.CreateSurface:output_type -> workos.surface.v1.CreateSurfaceResponse
-	6, // 10: workos.surface.v1.SurfaceService.CloseSurface:output_type -> workos.surface.v1.CloseSurfaceResponse
-	9, // [9:11] is the sub-list for method output_type
-	7, // [7:9] is the sub-list for method input_type
-	7, // [7:7] is the sub-list for extension type_name
-	7, // [7:7] is the sub-list for extension extendee
-	0, // [0:7] is the sub-list for field type_name
+	0,  // 0: workos.surface.v1.SurfaceSession.renderer:type_name -> workos.surface.v1.SurfaceRenderer
+	8,  // 1: workos.surface.v1.SurfaceSession.created_at:type_name -> google.protobuf.Timestamp
+	8,  // 2: workos.surface.v1.SurfaceSession.expires_at:type_name -> google.protobuf.Timestamp
+	9,  // 3: workos.surface.v1.SurfaceSession.lifecycle_mode:type_name -> workos.surface.v1.LifecycleMode
+	1,  // 4: workos.surface.v1.CreateSurfaceRequest.device_class:type_name -> workos.surface.v1.DeviceClass
+	2,  // 5: workos.surface.v1.CreateSurfaceRequest.viewport:type_name -> workos.surface.v1.Viewport
+	0,  // 6: workos.surface.v1.CreateSurfaceRequest.preferred_renderer:type_name -> workos.surface.v1.SurfaceRenderer
+	9,  // 7: workos.surface.v1.CreateSurfaceRequest.lifecycle_mode:type_name -> workos.surface.v1.LifecycleMode
+	3,  // 8: workos.surface.v1.CreateSurfaceResponse.session:type_name -> workos.surface.v1.SurfaceSession
+	4,  // 9: workos.surface.v1.SurfaceService.CreateSurface:input_type -> workos.surface.v1.CreateSurfaceRequest
+	5,  // 10: workos.surface.v1.SurfaceService.CloseSurface:input_type -> workos.surface.v1.CloseSurfaceRequest
+	7,  // 11: workos.surface.v1.SurfaceService.CreateSurface:output_type -> workos.surface.v1.CreateSurfaceResponse
+	6,  // 12: workos.surface.v1.SurfaceService.CloseSurface:output_type -> workos.surface.v1.CloseSurfaceResponse
+	11, // [11:13] is the sub-list for method output_type
+	9,  // [9:11] is the sub-list for method input_type
+	9,  // [9:9] is the sub-list for extension type_name
+	9,  // [9:9] is the sub-list for extension extendee
+	0,  // [0:9] is the sub-list for field type_name
 }
 
 func init() { file_workos_surface_v1_surface_proto_init() }
@@ -707,6 +729,7 @@ func file_workos_surface_v1_surface_proto_init() {
 	if File_workos_surface_v1_surface_proto != nil {
 		return
 	}
+	file_workos_surface_v1_lifecycle_proto_init()
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{

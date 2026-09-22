@@ -3,6 +3,7 @@ syntax = "proto3";
 package workos.surface.v1;
 
 import "google/protobuf/timestamp.proto";
+import "workos/surface/v1/lifecycle.proto";
 
 option go_package = "github.com/yangtao121/workos/gen/go/workos/surface/v1;surfacev1";
 
@@ -50,6 +51,7 @@ message SurfaceSession {
   // Exact running program behind a container-backed surface; empty for static views.
   string workload_id = 13;
   int64 workload_generation = 14;
+  LifecycleMode lifecycle_mode = 15;
 }
 
 message CreateSurfaceRequest {
@@ -68,6 +70,8 @@ message CreateSurfaceRequest {
   bool attach_only = 8;
   string expected_workload_id = 9;
   int64 expected_workload_generation = 10;
+  // Explicit launch policy; attach_only preserves the existing program policy.
+  LifecycleMode lifecycle_mode = 11;
 }
 
 message CloseSurfaceRequest {
