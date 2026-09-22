@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"sync"
+	"time"
 
 	"connectrpc.com/connect"
 	"google.golang.org/protobuf/encoding/protojson"
@@ -65,6 +67,8 @@ type SessionHandler struct {
 	agentv1connect.UnimplementedAgentSessionServiceHandler
 	service   *application.SessionService
 	snapshots SessionSnapshotSource
+	watchMu   sync.Mutex
+	watchers  map[string]int
 }
 
 func NewSessionHandler(service *application.SessionService, snapshots SessionSnapshotSource) (string, http.Handler) {
@@ -257,23 +261,79 @@ func (h *SessionHandler) CloseSession(ctx context.Context, req *connect.Request[
 	return connect.NewResponse(&agentv1.CloseSessionResponse{Session: sessionToProto(session)}), nil
 }
 
-// WatchSessionEvents serves the catch-up page; the live tail is the client's
-// cursor poll, matching the task event watch contract.
+// WatchSessionEvents preserves finite catch-up for legacy clients. Followers
+// tail the same durable log, rechecking session ownership on each read. Streams
+// renew periodically so Gateway can also enforce current device authorization.
 func (h *SessionHandler) WatchSessionEvents(ctx context.Context, req *connect.Request[agentv1.WatchSessionEventsRequest], stream *connect.ServerStream[agentv1.WatchSessionEventsResponse]) error {
 	owner, err := identity.FromContext(ctx)
 	if err != nil {
 		return connect.NewError(connect.CodeUnauthenticated, err)
 	}
-	events, err := h.service.Events(ctx, owner.UserID, req.Msg.GetSessionId(), req.Msg.GetAfter(), 500)
-	if err != nil {
-		return sessionError(err)
+	if req.Msg.GetAfter() < 0 {
+		return sessionError(domain.ErrInvalid)
 	}
-	if len(events) > 0 {
-		if err := stream.Send(&agentv1.WatchSessionEventsResponse{Events: sessionEventsToProto(events)}); err != nil {
-			return err
+	h.watchMu.Lock()
+	if h.watchers == nil {
+		h.watchers = make(map[string]int)
+	}
+	if h.watchers[owner.UserID] >= 16 || len(h.watchers) >= 128 && h.watchers[owner.UserID] == 0 {
+		h.watchMu.Unlock()
+		return connect.NewError(connect.CodeResourceExhausted, errors.New("session watch limit reached"))
+	}
+	h.watchers[owner.UserID]++
+	h.watchMu.Unlock()
+	defer func() {
+		h.watchMu.Lock()
+		defer h.watchMu.Unlock()
+		h.watchers[owner.UserID]--
+		if h.watchers[owner.UserID] == 0 {
+			delete(h.watchers, owner.UserID)
+		}
+	}()
+	poll := time.NewTicker(500 * time.Millisecond)
+	defer poll.Stop()
+	heartbeat := time.NewTicker(15 * time.Second)
+	defer heartbeat.Stop()
+	lifetime := time.NewTimer(2 * time.Minute)
+	defer lifetime.Stop()
+	after := req.Msg.GetAfter()
+	for {
+		events, err := h.service.Events(ctx, owner.UserID, req.Msg.GetSessionId(), after, 500)
+		if err != nil {
+			return sessionError(err)
+		}
+		if len(events) > 0 {
+			if err := stream.Send(&agentv1.WatchSessionEventsResponse{Events: sessionEventsToProto(events)}); err != nil {
+				return err
+			}
+			after = events[len(events)-1].Sequence
+		}
+		if !req.Msg.GetFollow() {
+			return nil
+		}
+		if len(events) == 500 {
+			// Drain catch-up without inserting a delay between full pages.
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case <-lifetime.C:
+				return nil
+			default:
+				continue
+			}
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-lifetime.C:
+			return nil
+		case <-heartbeat.C:
+			if err := stream.Send(&agentv1.WatchSessionEventsResponse{Heartbeat: true}); err != nil {
+				return err
+			}
+		case <-poll.C:
 		}
 	}
-	return nil
 }
 
 func sessionEventsToProto(events []domain.SessionEvent) []*agentv1.AgentSessionEvent {

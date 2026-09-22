@@ -1,3 +1,12 @@
+import { Code, ConnectError } from "@connectrpc/connect";
+import {
+  MAX_DRAFT_LENGTH,
+  readSessionContinuity,
+  writeSessionContinuity,
+  sessionContinuityKey,
+  sessionRetryDelay,
+  type PendingSessionInput,
+} from "./sessionContinuity.js";
 import { SessionAutomation } from "./SessionAutomation.js";
 import { ExecutionQuestions } from "./ExecutionQuestions.js";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -113,55 +122,73 @@ function SessionList(props: {
     [projectId],
   );
 
-  const load = useCallback(async () => {
-    const generation = generationRef.current;
-    setLoading(true);
-    setError(undefined);
-    try {
-      const listed: AgentSession[] = [];
-      let token = "";
-      for (;;) {
-        const response = await workosClients.agentSessions.listSessions({
-          projectId,
-          includeClosed: false,
-          pageToken: token,
-          pageSize: 20,
-        });
-        listed.push(...response.sessions);
-        token = response.nextPageToken;
-        if (token === "") break;
+  const listLoading = useRef(false);
+  const load = useCallback(
+    async (quiet = false) => {
+      if (listLoading.current) return;
+      listLoading.current = true;
+      const generation = generationRef.current;
+      if (!quiet) setLoading(true);
+      setError(undefined);
+      try {
+        const listed: AgentSession[] = [];
+        let token = "";
+        for (;;) {
+          const response = await workosClients.agentSessions.listSessions({
+            projectId,
+            includeClosed: false,
+            pageToken: token,
+            pageSize: 20,
+          });
+          listed.push(...response.sessions);
+          token = response.nextPageToken;
+          if (token === "") break;
+        }
+        if (generation !== generationRef.current) return;
+        setSessions(listed);
+        // Session names are the first input's excerpt; the excerpt never
+        // leaves this component and a failed read degrades to "Untitled".
+        const firstInputs = await Promise.all(
+          listed.map((session) =>
+            workosClients.agentSessions
+              .listSessionInputs({ sessionId: session.id, afterSequence: 0n, limit: 1 })
+              .then((page) => ({
+                id: session.id,
+                text: page.inputs[0]?.directive
+                  ? directiveLabel(page.inputs[0].directive)
+                  : (page.inputs[0]?.text ?? ""),
+              }))
+              .catch(() => ({ id: session.id, text: "" })),
+          ),
+        );
+        if (generation !== generationRef.current) return;
+        setExcerpts(Object.fromEntries(firstInputs.map((item) => [item.id, item.text])));
+      } catch (reason) {
+        if (generation !== generationRef.current) return;
+        setError(asMessage(reason));
+      } finally {
+        listLoading.current = false;
+        if (generation === generationRef.current) setLoading(false);
       }
-      if (generation !== generationRef.current) return;
-      setSessions(listed);
-      // Session names are the first input's excerpt; the excerpt never
-      // leaves this component and a failed read degrades to "Untitled".
-      const firstInputs = await Promise.all(
-        listed.map((session) =>
-          workosClients.agentSessions
-            .listSessionInputs({ sessionId: session.id, afterSequence: 0n, limit: 1 })
-            .then((page) => ({
-              id: session.id,
-              text: page.inputs[0]?.directive
-                ? directiveLabel(page.inputs[0].directive)
-                : (page.inputs[0]?.text ?? ""),
-            }))
-            .catch(() => ({ id: session.id, text: "" })),
-        ),
-      );
-      if (generation !== generationRef.current) return;
-      setExcerpts(Object.fromEntries(firstInputs.map((item) => [item.id, item.text])));
-    } catch (reason) {
-      if (generation !== generationRef.current) return;
-      setError(asMessage(reason));
-    } finally {
-      if (generation === generationRef.current) setLoading(false);
-    }
-  }, [projectId, workosClients]);
+    },
+    [projectId, workosClients],
+  );
 
   useEffect(() => {
     setSessions([]);
     setExcerpts({});
     void load();
+    const update = () => {
+      if (document.visibilityState !== "hidden") void load(true);
+    };
+    const timer = window.setInterval(update, 5000);
+    window.addEventListener("online", update);
+    document.addEventListener("visibilitychange", update);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener("online", update);
+      document.removeEventListener("visibilitychange", update);
+    };
   }, [load]);
 
   const createSession = async () => {
@@ -243,14 +270,7 @@ function SessionList(props: {
   );
 }
 
-// One submitted input the client is still reconciling with the server.
-interface PendingInput {
-  clientInputId: string;
-  text: string;
-  directive?: SessionDirective | undefined;
-  phase: "submitting" | "recovering" | "failed";
-  error?: string;
-}
+type PendingInput = PendingSessionInput;
 
 const SUBMIT_TIMEOUT_MS = 12_000;
 const RECOVERY_POLL_MS = 4_000;
@@ -265,7 +285,38 @@ function SessionView(props: {
   const { sessionId, workspaceName, workosClients, onBack } = props;
   const [session, setSession] = useState<AgentSession>();
   const [inputs, setInputs] = useState<AgentSessionInput[]>([]);
-  const [pending, setPending] = useState<PendingInput[]>([]);
+  const [pending, setPendingState] = useState<PendingInput[]>([]);
+  const pendingRef = useRef<PendingInput[]>([]);
+  const [draft, setDraftState] = useState("");
+  const draftRef = useRef("");
+  const storageKey = useRef("");
+  const sessionCursor = useRef(0n);
+  const refreshNumber = useRef(0);
+  const persist = useCallback(
+    () =>
+      writeSessionContinuity(storageKey.current, {
+        draft: draftRef.current,
+        pending: pendingRef.current,
+        cursor: sessionCursor.current,
+      }),
+    [],
+  );
+  const setPending = useCallback(
+    (update: (current: PendingInput[]) => PendingInput[]) => {
+      pendingRef.current = update(pendingRef.current);
+      persist();
+      setPendingState(pendingRef.current);
+    },
+    [persist],
+  );
+  const setDraft = (value: string) => {
+    draftRef.current = value;
+    setDraftState(value);
+    if (storageKey.current && !persist())
+      setNotice(
+        "Draft storage is unavailable; keep this window open until your message is confirmed.",
+      );
+  };
   // Assistant/tool/usage timelines keyed by the input whose task produced
   // them. The active run streams live; the most recent task-bearing input
   // keeps its replayed timeline after the run reached a terminal state, so
@@ -302,6 +353,7 @@ function SessionView(props: {
 
   const refresh = useCallback(
     async (generation: number) => {
+      const refreshId = ++refreshNumber.current;
       try {
         const [sessionResponse, inputPages] = await Promise.all([
           workosClients.agentSessions.getSession({ sessionId }),
@@ -321,14 +373,34 @@ function SessionView(props: {
             return pages.flat();
           })(),
         ]);
-        if (!isLive(generation)) return;
-        if (sessionResponse.session) setSession(sessionResponse.session);
+        if (!isLive(generation) || refreshId !== refreshNumber.current) return false;
+        if (sessionResponse.session) {
+          const fact = sessionResponse.session;
+          const key = sessionContinuityKey(fact.ownerUserId, fact.projectId, fact.id);
+          if (key && key !== storageKey.current) {
+            storageKey.current = key;
+            const saved = readSessionContinuity(key);
+            sessionCursor.current = saved.cursor;
+            draftRef.current = saved.draft;
+            setDraftState(saved.draft);
+            pendingRef.current = saved.pending;
+            setPendingState(saved.pending);
+          }
+          setSession(fact);
+          // A server-confirmed input retires its local receipt, including a
+          // submission accepted just before this tab was killed.
+          const accepted = new Set(inputPages.map((input) => input.clientInputId));
+          setPending((current) => current.filter((item) => !accepted.has(item.clientInputId)));
+        }
+        setError(undefined);
         setInputs(inputPages.sort((left, right) => Number(left.sequence - right.sequence)));
+        return true;
       } catch (reason) {
         if (isLive(generation)) setError(asMessage(reason));
+        return false;
       }
     },
-    [isLive, sessionId, workosClients],
+    [isLive, sessionId, workosClients, setPending],
   );
 
   useEffect(() => {
@@ -337,7 +409,10 @@ function SessionView(props: {
     taskStreamsRef.current.clear();
     setSession(undefined);
     setInputs([]);
-    setPending([]);
+    pendingRef.current = [];
+    setPendingState([]);
+    storageKey.current = "";
+    sessionCursor.current = 0n;
     setTimelines({});
     setError(undefined);
     setNotice(undefined);
@@ -352,59 +427,142 @@ function SessionView(props: {
     };
   }, [refresh, isLive]);
 
-  // While any input is still moving (queued, running, or being reconciled),
-  // poll the authoritative input list. The live assistant timeline comes
-  // from WatchTaskEvents below; this keeps the queue honest.
+  // Idle sessions also follow events from other devices. Lifecycle events
+  // invalidate the authoritative input projection; they never execute work.
   useEffect(() => {
-    if (!busy && pending.length === 0) return;
     const generation = generationRef.current;
-    const timer = window.setInterval(() => {
+    const stop = new AbortController();
+    const stopped = () => stop.signal.aborted;
+    let attempt: AbortController | undefined;
+    const wake = () => {
+      if (document.visibilityState === "hidden") return;
       void refresh(generation);
-    }, 2500);
-    return () => {
-      window.clearInterval(timer);
+      attempt?.abort();
     };
-  }, [busy, pending.length, refresh]);
+    window.addEventListener("online", wake);
+    document.addEventListener("visibilitychange", wake);
+    const run = async () => {
+      let delay = 500;
+      while (!stopped() && isLive(generation)) {
+        attempt = new AbortController();
+        const abort = () => attempt?.abort();
+        stop.signal.addEventListener("abort", abort, { once: true });
+        try {
+          for await (const page of workosClients.agentSessions.watchSessionEvents(
+            { sessionId, after: sessionCursor.current, follow: true },
+            { signal: attempt.signal },
+          )) {
+            if (stopped() || !isLive(generation)) break;
+            const last = page.events.at(-1)?.sequence;
+            if (last !== undefined && last > sessionCursor.current) {
+              const refreshed = await refresh(generation);
+              if (stopped() || !isLive(generation)) break;
+              if (!refreshed) break;
+              sessionCursor.current = last;
+              persist();
+            }
+            delay = 500;
+          }
+        } catch (reason) {
+          if (
+            reason instanceof ConnectError &&
+            [Code.Unauthenticated, Code.PermissionDenied, Code.NotFound].includes(reason.code)
+          ) {
+            if (isLive(generation))
+              setError(
+                "This session is no longer accessible. Reconnect your device or select another session.",
+              );
+            return;
+          }
+        } finally {
+          stop.signal.removeEventListener("abort", abort);
+        }
+        await sessionRetryDelay(delay, stop.signal);
+        delay = Math.min(delay * 2, 10_000);
+      }
+    };
+    void run();
+    // Reconcile snapshots even if a proxy truncates a stream without an error.
+    const timer = window.setInterval(() => {
+      if (document.visibilityState !== "hidden") void refresh(generation);
+    }, 5000);
+    return () => {
+      stop.abort();
+      attempt?.abort();
+      window.clearInterval(timer);
+      window.removeEventListener("online", wake);
+      document.removeEventListener("visibilitychange", wake);
+    };
+  }, [isLive, persist, refresh, sessionId, workosClients]);
 
-  // Each watched input's task drives its own assistant/tool/usage timeline
-  // through WatchTaskEvents (a full replay from sequence 0, then live for a
-  // running task). Streams are generation- and input-scoped: one input can
-  // never paint another run's events, and a finished run keeps its replayed
-  // timeline instead of silently blanking the conversation.
+  // Each stream reconnects from its accepted sequence. A new component has
+  // no transcript projection, so it deliberately rebuilds from the server.
   useEffect(() => {
     const generation = generationRef.current;
+    const controllers = taskStreamsRef.current;
     for (const input of watchedInputs) {
-      if (taskStreamsRef.current.has(input.id)) continue;
-      const abort = new AbortController();
-      taskStreamsRef.current.set(input.id, abort);
-      let terminal = false;
+      if (controllers.has(input.id)) continue;
+      const lifetime = new AbortController();
+      const disposed = () => lifetime.signal.aborted;
+      controllers.set(input.id, lifetime);
       const run = async () => {
-        try {
-          for await (const page of workosClients.agentTasks.watchTaskEvents(
-            { taskId: input.taskId, afterSequence: 0n },
-            { signal: abort.signal },
-          )) {
-            if (generation !== generationRef.current) break;
-            const received = page.event;
-            if (received) {
-              setTimelines((current) => ({
-                ...current,
-                [input.id]: [...(current[input.id] ?? []), received],
-              }));
+        let cursor = 0n;
+        let terminal = false;
+        let delay = 500;
+        let attempt: AbortController | undefined;
+        const wake = () => {
+          if (document.visibilityState !== "hidden") attempt?.abort();
+        };
+        const stop = () => attempt?.abort();
+        lifetime.signal.addEventListener("abort", stop, { once: true });
+        window.addEventListener("online", wake);
+        document.addEventListener("visibilitychange", wake);
+        while (!disposed() && isLive(generation) && !terminal) {
+          attempt = new AbortController();
+          try {
+            for await (const page of workosClients.agentTasks.watchTaskEvents(
+              { taskId: input.taskId, afterSequence: cursor },
+              { signal: attempt.signal },
+            )) {
+              if (disposed() || !isLive(generation)) break;
+              const received = page.event;
+              if (!received || received.sequence <= cursor) continue;
+              cursor = received.sequence;
+              setTimelines((current) => {
+                const previous = current[input.id] ?? [];
+                if (previous.some((event) => event.sequence === received.sequence)) return current;
+                return { ...current, [input.id]: [...previous, received] };
+              });
               if (isTerminalEvent(received)) terminal = true;
+              delay = 500;
             }
+          } catch (reason) {
+            if (
+              reason instanceof ConnectError &&
+              [Code.Unauthenticated, Code.PermissionDenied, Code.NotFound].includes(reason.code)
+            )
+              break;
           }
-        } catch {
-          // The poll loop reconciles the authoritative input state; the
-          // stream ending is not itself an error verdict.
+          if (!terminal) {
+            await sessionRetryDelay(delay, lifetime.signal);
+            delay = Math.min(delay * 2, 10_000);
+          }
         }
-        if (generation === generationRef.current && terminal) {
-          void refresh(generation);
-        }
+        lifetime.signal.removeEventListener("abort", stop);
+        window.removeEventListener("online", wake);
+        document.removeEventListener("visibilitychange", wake);
+        if (isLive(generation) && terminal) void refresh(generation);
       };
       void run();
     }
-  }, [watchedSignature, refresh, workosClients]);
+    // Only currently visible task projections keep a live transport.
+    for (const [id, controller] of controllers) {
+      if (!watchedInputs.some((input) => input.id === id)) {
+        controller.abort();
+        controllers.delete(id);
+      }
+    }
+  }, [watchedSignature, refresh, workosClients, isLive]);
 
   // A pending input whose SubmitSessionInput response timed out is only
   // ever recovered by re-reading GetSessionInput with the same key — a
@@ -454,6 +612,14 @@ function SessionView(props: {
   const submit = async (text: string, directive?: SessionDirective) => {
     const trimmed = text.trim();
     if (!trimmed && !directive) return;
+    if (!navigator.onLine) {
+      setNotice("You are offline. Your draft is kept on this device.");
+      return;
+    }
+    if (pendingRef.current.length >= 16) {
+      setNotice("Confirm the pending messages before sending more.");
+      return;
+    }
     const clientInputId = crypto.randomUUID();
     const generation = generationRef.current;
     setPending((current) => [
@@ -462,6 +628,7 @@ function SessionView(props: {
     ]);
     setError(undefined);
     setNotice(undefined);
+    if (!directive) setDraft("");
     try {
       await withTimeout(
         workosClients.agentSessions.submitSessionInput({
@@ -477,7 +644,11 @@ function SessionView(props: {
       await refresh(generation);
     } catch (reason) {
       if (generation !== generationRef.current) return;
-      if (reason instanceof TimeoutError) {
+      if (
+        reason instanceof TimeoutError ||
+        !(reason instanceof ConnectError) ||
+        [Code.Unavailable, Code.DeadlineExceeded, Code.Canceled, Code.Unknown].includes(reason.code)
+      ) {
         setPending((current) =>
           current.map((entry) =>
             entry.clientInputId === clientInputId ? { ...entry, phase: "recovering" } : entry,
@@ -506,6 +677,23 @@ function SessionView(props: {
       ),
     );
     try {
+      try {
+        const found = await workosClients.agentSessions.getSessionInput({
+          sessionId,
+          clientInputId: item.clientInputId,
+        });
+        if (found.input) {
+          if (isLive(generation)) {
+            setPending((current) =>
+              current.filter((entry) => entry.clientInputId !== item.clientInputId),
+            );
+            await refresh(generation);
+          }
+          return;
+        }
+      } catch (reason) {
+        if (!(reason instanceof ConnectError) || reason.code !== Code.NotFound) throw reason;
+      }
       await workosClients.agentSessions.submitSessionInput({
         sessionId,
         clientInputId: item.clientInputId,
@@ -733,10 +921,7 @@ function SessionView(props: {
         className="session-composer"
         onSubmit={(event) => {
           event.preventDefault();
-          const form = new FormData(event.currentTarget);
-          const text = form.get("text");
-          event.currentTarget.reset();
-          if (typeof text === "string") void submit(text);
+          void submit(draftRef.current);
         }}
       >
         {queuedInputs.length > 0 ? (
@@ -746,11 +931,16 @@ function SessionView(props: {
         ) : null}
         <textarea
           aria-label="Session message"
-          disabled={sessionClosed}
+          disabled={loading || !session || sessionClosed}
+          value={draft}
+          maxLength={MAX_DRAFT_LENGTH}
+          onChange={(event) => {
+            setDraft(event.currentTarget.value);
+          }}
           name="text"
           placeholder={sessionClosed ? "This session is closed." : "Message this session…"}
         />
-        <Button disabled={sessionClosed} type="submit">
+        <Button disabled={loading || !session || sessionClosed} type="submit">
           Send
         </Button>
       </form>

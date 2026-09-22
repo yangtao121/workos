@@ -27,6 +27,7 @@ function TestHost(props: { clients: WorkOSClients }) {
 
 const session = create(AgentSessionSchema, {
   id: "session-1",
+  ownerUserId: "owner-1",
   projectId: "project-1",
   providerId: "fake",
   state: 1,
@@ -92,10 +93,144 @@ function taskEvent(tag: string, partial: Record<string, unknown>): AgentEvent {
 
 afterEach(() => {
   cleanup();
+  localStorage.clear();
+  vi.restoreAllMocks();
   vi.useRealTimers();
 });
 
 describe("Agent session window", () => {
+  it("updates an idle conversation when another device submits an input", async () => {
+    const f = fixture();
+    let announce!: () => void;
+    const arrived = new Promise<void>((resolve) => {
+      announce = resolve;
+    });
+    f.agentSessions.watchSessionEvents.mockImplementation(async function* () {
+      await arrived;
+      yield { events: [{ sequence: 1n }] };
+    });
+    render(<TestHost clients={f.clients} />);
+    await userEvent.click(await screen.findByTestId("agent-session-entry-session-1"));
+    await screen.findByLabelText("Session message");
+    f.agentSessions.listSessionInputs.mockResolvedValue({
+      inputs: [
+        {
+          id: "remote-input",
+          clientInputId: "remote",
+          sequence: 1n,
+          text: "Message from another device",
+          taskId: "",
+          state: 1,
+        },
+      ],
+    });
+    await act(async () => {
+      announce();
+      await arrived;
+    });
+    expect(await screen.findByText("Message from another device")).toBeTruthy();
+    expect(f.agentSessions.watchSessionEvents).toHaveBeenCalledWith(
+      { sessionId: "session-1", after: 0n, follow: true },
+      expect.anything(),
+    );
+    expect(f.agentSessions.submitSessionInput).not.toHaveBeenCalled();
+  });
+
+  it("reconnects task events from the last sequence and ignores replayed events", async () => {
+    const f = fixture();
+    f.agentSessions.listSessionInputs.mockResolvedValue({
+      inputs: [
+        {
+          id: "stream-input",
+          clientInputId: "stream",
+          sequence: 1n,
+          text: "Streaming input",
+          taskId: "task-stream",
+          state: 2,
+        },
+      ],
+    });
+    const first = taskEvent("1", {
+      event: { case: "assistantMessage", value: { text: "unique-stream-text" } },
+    });
+    const last = taskEvent("2", {
+      event: { case: "runCompleted", value: { resultSummary: "stream complete" } },
+    });
+    f.agentTasks.watchTaskEvents
+      .mockImplementationOnce(() => asyncGenerator([first]))
+      .mockImplementationOnce(() => asyncGenerator([first, last]));
+    render(<TestHost clients={f.clients} />);
+    await userEvent.click(await screen.findByTestId("agent-session-entry-session-1"));
+    await waitFor(() => {
+      expect(f.agentTasks.watchTaskEvents).toHaveBeenCalledTimes(2);
+    });
+    expect(f.agentTasks.watchTaskEvents).toHaveBeenLastCalledWith(
+      { taskId: "task-stream", afterSequence: 1n },
+      expect.anything(),
+    );
+    expect(screen.getAllByText("unique-stream-text")).toHaveLength(1);
+  });
+
+  it("restores an unsent local draft after remount without submitting it", async () => {
+    const f = fixture();
+    const first = render(<TestHost clients={f.clients} />);
+    await userEvent.click(await screen.findByTestId("agent-session-entry-session-1"));
+    await userEvent.type(await screen.findByLabelText("Session message"), "Unsent local draft");
+    first.unmount();
+    render(<TestHost clients={f.clients} />);
+    await userEvent.click(await screen.findByTestId("agent-session-entry-session-1"));
+    await waitFor(() => {
+      expect(screen.getByLabelText<HTMLTextAreaElement>("Session message").value).toBe(
+        "Unsent local draft",
+      );
+    });
+    expect(f.agentSessions.submitSessionInput).not.toHaveBeenCalled();
+  });
+
+  it("queries a persisted submission receipt after remount without sending twice", async () => {
+    const f = fixture();
+    f.agentSessions.submitSessionInput.mockImplementation(() => new Promise(() => undefined));
+    const first = render(<TestHost clients={f.clients} />);
+    await userEvent.click(await screen.findByTestId("agent-session-entry-session-1"));
+    await userEvent.type(
+      await screen.findByLabelText("Session message"),
+      "Recover accepted request",
+    );
+    await userEvent.click(screen.getByRole("button", { name: "Send" }));
+    const key = f.agentSessions.submitSessionInput.mock.calls[0]?.[0].clientInputId;
+    first.unmount();
+    f.agentSessions.getSessionInput.mockResolvedValue({ input: { clientInputId: key } });
+    render(<TestHost clients={f.clients} />);
+    await userEvent.click(await screen.findByTestId("agent-session-entry-session-1"));
+    await screen.findByLabelText("Session message");
+
+    await waitFor(
+      () => {
+        expect(f.agentSessions.getSessionInput).toHaveBeenCalledWith({
+          sessionId: "session-1",
+          clientInputId: key,
+        });
+      },
+      { timeout: 6000 },
+    );
+    expect(f.agentSessions.submitSessionInput).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps an offline draft and never automatically queues its submission", async () => {
+    const f = fixture();
+    render(<TestHost clients={f.clients} />);
+    await userEvent.click(await screen.findByTestId("agent-session-entry-session-1"));
+    await userEvent.type(await screen.findByLabelText("Session message"), "Offline thought");
+    vi.spyOn(navigator, "onLine", "get").mockReturnValue(false);
+    await userEvent.click(screen.getByRole("button", { name: "Send" }));
+    expect(screen.getByLabelText<HTMLTextAreaElement>("Session message").value).toBe(
+      "Offline thought",
+    );
+    expect(f.agentSessions.submitSessionInput).not.toHaveBeenCalled();
+    expect(
+      await screen.findByText("You are offline. Your draft is kept on this device."),
+    ).toBeTruthy();
+  });
   it("lists sessions with first-input names and provider facts", async () => {
     const f = fixture();
     f.agentSessions.listSessionInputs = vi.fn(() =>
