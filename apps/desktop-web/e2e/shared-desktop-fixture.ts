@@ -93,6 +93,7 @@ export async function sharedDesktopFixture(initialTarget: Target = { kind: "home
             };
             state.windows.push(existing);
           }
+          existing.target = target;
           state.windows = [...state.windows.filter((item) => item !== existing), existing];
           state.focusedWindowId = existing.id;
         }
