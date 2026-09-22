@@ -59,6 +59,13 @@ export interface ArtifactRef {
 
 export interface WorkOSWindow {
   id: string;
+  sharedWindowId?: string | undefined;
+  projectId?: string | undefined;
+  workloadId?: string | undefined;
+  expectedWorkloadId?: string | undefined;
+  expectedWorkloadGeneration?: bigint | undefined;
+  previewId?: string | undefined;
+  sessionId?: string | undefined;
   appId: string;
   title: string;
   badge?: string;
@@ -78,6 +85,7 @@ export interface WindowState {
 }
 
 export type WindowAction =
+  | { type: "reconcile"; windows: WorkOSWindow[]; focusedId: string }
   | { type: "open"; window: Omit<WorkOSWindow, "zIndex" | "restoreRect"> }
   | { type: "focus"; id: string }
   | { type: "move"; id: string; x: number; y: number }
@@ -121,6 +129,34 @@ function restoreMinimized(item: WorkOSWindow): WorkOSWindow {
 }
 
 export function windowReducer(state: WindowState, action: WindowAction): WindowState {
+  if (action.type === "reconcile") {
+    const windows = action.windows.map((item, index) => {
+      const existing = state.windows.find(
+        (old) => old.id === item.id && old.sharedWindowId === item.sharedWindowId,
+      );
+      return {
+        ...item,
+        ...(existing
+          ? {
+              rect: existing.rect,
+              restoreRect: existing.restoreRect,
+              mode: existing.mode,
+              minimizedMode: existing.minimizedMode,
+            }
+          : {}),
+        ...(item.id === action.focusedId
+          ? {
+              mode:
+                existing?.mode === "minimized"
+                  ? (existing.minimizedMode ?? "normal")
+                  : (existing?.mode ?? item.mode),
+            }
+          : {}),
+        zIndex: index + 1,
+      };
+    });
+    return { windows, nextZIndex: windows.length + 1 };
+  }
   if (action.type === "work-area") {
     return {
       ...state,

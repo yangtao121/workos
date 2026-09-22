@@ -1,7 +1,7 @@
 import { expect, type Page } from "@playwright/test";
 
 const names: Record<string, string> = {
-  "agent-center": "Agent Center",
+  "agent-center": "Tasks and approvals",
   "agent-sessions": "Agent Sessions",
   "app-library": "App Library",
   settings: "Project settings",

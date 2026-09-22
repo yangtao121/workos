@@ -38,6 +38,19 @@ export const DOCK_APP_INSTANCE_LIMIT = 12;
 // The bounded set of system window ids the shell recognizes. Anything else
 // in a stored record is corruption and resets the key.
 export const SYSTEM_WINDOW_IDS: readonly string[] = [
+  "home",
+  "agent-sessions",
+  "workspace-previews",
+  "mission-control",
+  "app-library",
+  "settings",
+  "files",
+  "docs",
+  "code",
+  "browser",
+  "terminal",
+  "native",
+  "knowledge-center",
   "agent-center",
   "system-monitor",
   "device-center",

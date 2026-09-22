@@ -1,3 +1,4 @@
+import { Code, ConnectError } from "@connectrpc/connect";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { NativeSessionLease } from "./nativeSession.js";
 import type { NativeInputEvent } from "@workos/protocol";
@@ -11,10 +12,14 @@ import { Button } from "@workos/ui-kit";
 export function NativeApp(props: {
   workosClients?: WorkOSClients;
   activeProjectId?: string;
-  sessionLease?: NativeSessionLease;
+  sessionLease?: NativeSessionLease | undefined;
+  workloadId?: string | undefined;
+  expectedWorkloadGeneration?: bigint | undefined;
 }) {
   const ownLease = useMemo(() => new NativeSessionLease(), []);
   const sessionLease = props.sessionLease ?? ownLease;
+  const [stopped, setStopped] = useState(false);
+  const [attempt, setAttempt] = useState(0);
   const [status, setStatus] = useState("connecting");
   const [verdict, setVerdict] = useState("");
   const [controls, setControls] = useState(true);
@@ -32,19 +37,26 @@ export function NativeApp(props: {
   const pointerStampRef = useRef(0);
 
   useEffect(() => {
-    if (!clients || !projectId) return;
+    if (!clients || !projectId || stopped) return;
     setInputDraft("");
     composingRef.current = false;
     let disposed = false;
     const isDisposed = () => disposed;
-    const lease = sessionLease.acquire(clients, projectId);
+    const lease = sessionLease.acquire(
+      clients,
+      projectId,
+      props.workloadId,
+      props.expectedWorkloadGeneration,
+    );
     handleRef.current = lease;
     let session = "";
     let renewal: number | undefined;
+    let retry: ReturnType<typeof setTimeout> | undefined;
     let peer: RTCPeerConnection | undefined;
     let channel: RTCDataChannel | undefined;
     const close = () => {
       window.clearTimeout(renewal);
+      clearTimeout(retry);
       peer?.close();
       channel?.close();
       if (channelRef.current === channel) channelRef.current = null;
@@ -83,7 +95,10 @@ export function NativeApp(props: {
             Number(connectivity.expiresAt.seconds) * 1000 <= Date.now() ||
             (connectivity.relayOnly && connectivity.iceServers.length === 0)
           ) {
-            throw new Error("native connection capability expired or unavailable");
+            throw new ConnectError(
+              "native connection capability expired or unavailable",
+              Code.FailedPrecondition,
+            );
           }
           const next = new RTCPeerConnection({
             iceTransportPolicy: connectivity.relayOnly ? "relay" : "all",
@@ -125,7 +140,12 @@ export function NativeApp(props: {
                 next.connectionState === "disconnected" ||
                 next.connectionState === "closed")
             ) {
-              setStatus("ended");
+              setStatus("reconnecting");
+              window.clearTimeout(renewal);
+              clearTimeout(retry);
+              retry = setTimeout(() => {
+                if (!disposed) setAttempt((current) => current + 1);
+              }, 1500);
             }
           };
           const offer = await next.createOffer();
@@ -143,7 +163,12 @@ export function NativeApp(props: {
           renewal = window.setTimeout(() => {
             void renew().catch(() => {
               close();
-              if (!disposed) setStatus("ended");
+              if (!disposed) {
+                setStatus("reconnecting");
+                retry = setTimeout(() => {
+                  setAttempt((current) => current + 1);
+                }, 1500);
+              }
             });
           }, 20000);
         };
@@ -155,11 +180,28 @@ export function NativeApp(props: {
             "Another device controls this display. Take control to reconnect its screen and input.",
           );
         }
-      } catch {
+      } catch (error) {
         close();
         if (!disposed) {
-          setStatus("unavailable");
-          setVerdict("Native sessions are unavailable in this deployment.");
+          const terminal =
+            error instanceof ConnectError &&
+            [
+              Code.NotFound,
+              Code.PermissionDenied,
+              Code.Unauthenticated,
+              Code.FailedPrecondition,
+              Code.Unimplemented,
+            ].includes(error.code);
+          setStatus(terminal ? "unavailable" : "reconnecting");
+          setVerdict(
+            terminal
+              ? "This display is stopped or no longer accessible. Open Running apps to inspect it."
+              : "Connection interrupted. Reconnecting to this display…",
+          );
+          if (!terminal)
+            retry = setTimeout(() => {
+              setAttempt((current) => current + 1);
+            }, 1500);
         }
       }
     };
@@ -169,7 +211,15 @@ export function NativeApp(props: {
       reconnectRef.current = undefined;
       close();
     };
-  }, [clients, projectId, sessionLease]);
+  }, [
+    clients,
+    projectId,
+    sessionLease,
+    props.workloadId,
+    props.expectedWorkloadGeneration,
+    attempt,
+    stopped,
+  ]);
 
   // The flat scalar payload follows NativeInputEvent protobuf JSON. Derive its
   // fields from the generated contract instead of maintaining a second DTO.
@@ -200,7 +250,8 @@ export function NativeApp(props: {
         if (held) {
           setVerdict("");
           void reconnectRef.current?.().catch(() => {
-            setStatus("ended");
+            setStatus("reconnecting");
+            setAttempt((current) => current + 1);
           });
         }
       })
@@ -215,6 +266,9 @@ export function NativeApp(props: {
     void handle
       .stop()
       .then(() => {
+        setStopped(true);
+        setControls(false);
+        controlsRef.current = false;
         setStatus("ended");
         setVerdict("The native display was stopped.");
       })

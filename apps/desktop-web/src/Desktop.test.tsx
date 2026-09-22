@@ -527,6 +527,9 @@ function surfaceSession(
 ): SurfaceSession {
   return {
     $typeName: "workos.surface.v1.SurfaceSession",
+    workloadId: "",
+    workloadGeneration: 0n,
+    lifecycleMode: 0,
     id: sessionId,
     appInstanceId: installationId,
     projectId,

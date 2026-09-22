@@ -1,5 +1,5 @@
 import type { WorkOSClients } from "@workos/agent-sdk";
-import { SurfaceRenderer } from "@workos/protocol";
+import { LifecycleMode, SurfaceRenderer } from "@workos/protocol";
 
 // The desktop owns the session independently of the responsive window body.
 // The desktop retains it while the window exists, including hidden mobile panes.
@@ -32,6 +32,8 @@ export class NativeSessionLease {
     | {
         clients: WorkOSClients;
         projectId: string;
+        workloadId?: string | undefined;
+        expectedWorkloadGeneration: bigint;
         session: Promise<string>;
         controls: Promise<boolean>;
         generation: Promise<bigint>;
@@ -41,10 +43,18 @@ export class NativeSessionLease {
       }
     | undefined;
 
-  acquire(clients: WorkOSClients, projectId: string): NativeSessionHandle {
+  acquire(
+    clients: WorkOSClients,
+    projectId: string,
+    workloadId?: string,
+    expectedWorkloadGeneration = 0n,
+  ): NativeSessionHandle {
     if (
       this.current &&
-      (this.current.clients !== clients || this.current.projectId !== projectId)
+      (this.current.clients !== clients ||
+        this.current.projectId !== projectId ||
+        this.current.workloadId !== workloadId ||
+        this.current.expectedWorkloadGeneration !== expectedWorkloadGeneration)
     ) {
       this.releaseLease(this.current);
     }
@@ -52,11 +62,13 @@ export class NativeSessionLease {
       // Attach to the project's live native display when one exists; only a
       // project with no running native workload creates a new session. A
       // continuity-unavailable host degrades honestly to the create path.
-      const session = this.discover(clients, projectId);
+      const session = this.discover(clients, projectId, workloadId, expectedWorkloadGeneration);
       const controls = session.then((facts) => facts.controls).catch(() => false);
       this.current = {
         clients,
         projectId,
+        workloadId,
+        expectedWorkloadGeneration,
         session: session.then((facts) => facts.sessionId),
         controls,
         generation: session.then((facts) => facts.generation).catch(() => 0n),
@@ -89,7 +101,21 @@ export class NativeSessionLease {
   private async discover(
     clients: WorkOSClients,
     projectId: string,
+    workloadId?: string,
+    expectedWorkloadGeneration = 0n,
   ): Promise<{ sessionId: string; controls: boolean; generation: bigint }> {
+    if (workloadId) {
+      const attached = await clients.surfaceContinuity.attachSurface({
+        workloadId,
+        expectedWorkloadGeneration,
+        idempotencyKey: `desktop-native-attach-${crypto.randomUUID()}`,
+      });
+      return {
+        sessionId: attached.session?.id ?? workloadId,
+        controls: attached.attachment?.controls ?? false,
+        generation: attached.attachment?.controlGeneration ?? 0n,
+      };
+    }
     {
       const listed = await clients.surfaceContinuity.listProjectSurfaces({ projectId });
       const live = listed.workloads.find(
@@ -116,6 +142,7 @@ export class NativeSessionLease {
       projectId,
       width: 800,
       height: 600,
+      lifecycleMode: LifecycleMode.MANUAL_STOP,
     });
     if (!created.session?.id) throw new Error("missing native session");
     const attached = await clients.surfaceContinuity.attachSurface({

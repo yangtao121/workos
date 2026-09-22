@@ -199,3 +199,26 @@ describe("work area and minimized windows", () => {
     expect(state.windows[0]?.rect).toEqual(smaller);
   });
 });
+
+describe("shared desktop reconciliation", () => {
+  it("preserves local geometry while replacing server order and removes closed windows", () => {
+    const first = { ...normalWindow("files", "files"), sharedWindowId: "shared-files" };
+    const second = { ...normalWindow("docs", "docs"), sharedWindowId: "shared-docs" };
+    let state = windowReducer(initialWindowState, {
+      type: "reconcile",
+      windows: [first, second],
+      focusedId: second.id,
+    });
+    state = windowReducer(state, { type: "move", id: "files", x: 170, y: 190 });
+    state = windowReducer(state, {
+      type: "reconcile",
+      windows: [second, first],
+      focusedId: first.id,
+    });
+    expect(state.windows.map((item) => item.id)).toEqual(["docs", "files"]);
+    expect(state.windows[1]?.rect).toMatchObject({ x: 170, y: 190 });
+    state = windowReducer(state, { type: "reconcile", windows: [second], focusedId: second.id });
+    state = windowReducer(state, { type: "focus", id: first.id });
+    expect(state.windows.map((item) => item.id)).toEqual(["docs"]);
+  });
+});

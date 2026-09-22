@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { WorkOSClients } from "@workos/agent-sdk";
-import { SurfaceRenderer, type SurfaceWorkloadView } from "@workos/protocol";
+import { LifecycleMode, SurfaceRenderer, type SurfaceWorkloadView } from "@workos/protocol";
 import { Button } from "@workos/ui-kit";
 
 // Running apps (B08): the honest, server-derived list of the project's live
@@ -11,9 +11,9 @@ import { Button } from "@workos/ui-kit";
 export function RunningSurfaces(props: {
   projectId?: string | undefined;
   workosClients: WorkOSClients;
-  onOpenTerminal: () => void;
-  onOpenNative: () => void;
-  onOpenAppInstance: (appInstanceId: string) => void;
+  onOpenTerminal: (workloadId: string, generation?: bigint) => void;
+  onOpenNative: (workloadId: string, generation?: bigint) => void;
+  onOpenAppInstance: (appInstanceId: string, workloadId?: string, generation?: bigint) => void;
 }) {
   const { projectId, workosClients, onOpenTerminal, onOpenNative, onOpenAppInstance } = props;
   const [workloads, setWorkloads] = useState<SurfaceWorkloadView[]>([]);
@@ -68,8 +68,20 @@ export function RunningSurfaces(props: {
       setError("");
       try {
         const request = { workloadId, actionKey };
-        if (restart) await workosClients.surfaceContinuity.restartSurfaceWorkload(request);
-        else await workosClients.surfaceContinuity.stopSurfaceWorkload(request);
+        if (restart) {
+          const response = await workosClients.surfaceContinuity.restartSurfaceWorkload({
+            ...request,
+            lifecycleMode: LifecycleMode.MANUAL_STOP,
+          });
+          const workload = response.workload;
+          if (workload && generation === generationRef.current) {
+            if (workload.appInstanceId)
+              onOpenAppInstance(workload.appInstanceId, workload.workloadId, workload.generation);
+            else if (workload.renderer === SurfaceRenderer.REMOTE_NATIVE)
+              onOpenNative(workload.workloadId, workload.generation);
+            else onOpenTerminal(workload.workloadId, workload.generation);
+          }
+        } else await workosClients.surfaceContinuity.stopSurfaceWorkload(request);
         actions.current.delete(intent);
       } catch {
         if (generation === generationRef.current)
@@ -87,11 +99,12 @@ export function RunningSurfaces(props: {
   const openWorkload = useCallback(
     (workload: SurfaceWorkloadView) => {
       if (workload.appInstanceId) {
-        onOpenAppInstance(workload.appInstanceId);
+        onOpenAppInstance(workload.appInstanceId, workload.workloadId, workload.generation);
         return;
       }
-      if (workload.renderer === SurfaceRenderer.REMOTE_NATIVE) onOpenNative();
-      else onOpenTerminal();
+      if (workload.renderer === SurfaceRenderer.REMOTE_NATIVE)
+        onOpenNative(workload.workloadId, workload.generation);
+      else onOpenTerminal(workload.workloadId, workload.generation);
     },
     [onOpenAppInstance, onOpenNative, onOpenTerminal],
   );

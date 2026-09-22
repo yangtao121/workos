@@ -1,3 +1,11 @@
+import { create } from "@bufbuild/protobuf";
+import { SharedDesktop, clearDesktopProjection, type DesktopProjection } from "./sharedDesktop.js";
+import {
+  GLOBAL_WINDOWS,
+  appSurfaceKey,
+  projectSharedWindow,
+  targetForWindow,
+} from "./sharedDesktopWindows.js";
 import { NativeSessionLease } from "./nativeSession.js";
 import { Code, ConnectError } from "@connectrpc/connect";
 import {
@@ -15,6 +23,7 @@ import {
   DOCK_APP_INSTANCE_LIMIT,
   RECENT_APP_INSTANCE_LIMIT,
   createLayoutStore,
+  isValidCanonicalUuid,
   protoFromDeviceClass,
   pushRecentId,
   useDeviceLayout,
@@ -28,7 +37,12 @@ import {
   type WorkOSClients,
 } from "@workos/agent-sdk";
 import type { DeviceAuthClient } from "@workos/device-auth";
-import { SurfaceRenderer } from "@workos/protocol";
+import {
+  DesktopInitializationSchema,
+  DesktopWindowTargetSchema,
+  LifecycleMode,
+  SurfaceRenderer,
+} from "@workos/protocol";
 import type {
   AgentEvent,
   AgentTask,
@@ -44,6 +58,7 @@ import {
   fitRect,
   type Rect,
   type WorkOSWindow,
+  type WindowAction,
 } from "@workos/window-manager";
 import { AdaptiveShell, type SystemWindowId } from "./AdaptiveShell.js";
 import { AgentSessionsApp } from "./AgentSessions.js";
@@ -129,7 +144,7 @@ export function Desktop({
   // treat the initial empty array or an unavailable Project service as
   // authoritative server truth.
   const [projectsAuthoritative, setProjectsAuthoritative] = useState(false);
-  const [activeProjectId, setActiveProjectId] = useState<string | undefined>(
+  const [activeProjectId, setLocalActiveProjectId] = useState<string | undefined>(
     readStoredActiveProjectId,
   );
   const [events, setEvents] = useState<AgentEvent[]>([]);
@@ -149,12 +164,81 @@ export function Desktop({
     generation: 0,
     tokens: {},
   });
-  const [windows, dispatch] = useReducer(windowReducer, initialWindowState);
+  const [windows, localDispatch] = useReducer(windowReducer, initialWindowState);
+  const windowsRef = useRef(windows);
+  windowsRef.current = windows;
+  const sharedDesktop = useMemo(
+    () =>
+      (workosClients as Partial<WorkOSClients>).desktop
+        ? new SharedDesktop(workosClients.desktop)
+        : undefined,
+    [workosClients],
+  );
+  const [desktopProjection, setDesktopProjection] = useState<DesktopProjection>({
+    connection: "connecting",
+  });
+  const sharedSurfaces = useRef(new Map<string, SurfaceSession>());
+  const openingSurfaces = useRef(new Set<string>());
+  const surfaceFailures = useRef(new Set<string>());
+  const pendingSurfaces = useRef(new Set<string>());
+  const [surfaceRevision, setSurfaceRevision] = useState(0);
+  const applyDesktop = useCallback(
+    (operation: Parameters<SharedDesktop["apply"]>[0]) => {
+      if (!sharedDesktop) return;
+      void sharedDesktop.apply(operation).catch(() => {
+        setError("Desktop change was not confirmed. Wait for reconnection, then try again.");
+      });
+    },
+    [sharedDesktop],
+  );
+  const setActiveProjectId = useCallback(
+    (projectId: string | undefined) => {
+      if (sharedDesktop)
+        applyDesktop({ case: "switchProject", value: { projectId: projectId ?? "" } });
+      else setLocalActiveProjectId(projectId);
+    },
+    [sharedDesktop, applyDesktop],
+  );
+  const dispatch = useCallback(
+    (action: WindowAction) => {
+      if (!sharedDesktop || !["open", "close", "focus"].includes(action.type)) {
+        localDispatch(action);
+        return;
+      }
+      if (action.type === "open") {
+        if (action.window.kind === "agent-sessions") {
+          const existing = windowsRef.current.windows.find(
+            (item) => item.kind === "agent-sessions",
+          );
+          if (existing?.sharedWindowId) {
+            applyDesktop({ case: "focusWindow", value: { windowId: existing.sharedWindowId } });
+            return;
+          }
+        }
+        applyDesktop({
+          case: "openWindow",
+          value: targetForWindow(action.window, activeProjectIdRef.current ?? ""),
+        });
+      } else if (action.type === "focus" || action.type === "close") {
+        const target = windowsRef.current.windows.find((item) => item.id === action.id);
+        if (!target?.sharedWindowId) return;
+        if (
+          action.type === "focus" &&
+          sharedDesktop.current.state?.focusedWindowId === target.sharedWindowId
+        )
+          return;
+        applyDesktop({
+          case: action.type === "focus" ? "focusWindow" : "closeWindow",
+          value: { windowId: target.sharedWindowId },
+        });
+      }
+    },
+    [sharedDesktop, applyDesktop],
+  );
   const [appActivation, setAppActivation] = useState<{ id: string; sequence: number }>();
   const [agentView, setAgentView] = useState<AgentView>("tasks");
-  // The Agent Sessions window's selected session (B05): held here so the
-  // responsive breakpoint crossing — which remounts window bodies — keeps
-  // the session the user was reading instead of snapping back to the list.
+  // The selected session projects the shared window target. Keeping it at
+  // Desktop level also preserves selection during responsive body remounts.
   const [agentSessionViewId, setAgentSessionViewId] = useState<string>();
   // The owner notification projection (ADR-0014): an in-memory, discardable
   // projection reconciled from Core authority. The cursor and facts stay
@@ -218,7 +302,7 @@ export function Desktop({
   );
   const openProjectTool = useCallback(
     (kind: "app-library" | "settings") => {
-      if (adaptive) {
+      if (adaptive && !sharedDesktop) {
         setAppActivation((current) => ({ id: kind, sequence: (current?.sequence ?? 0) + 1 }));
         return;
       }
@@ -288,7 +372,7 @@ export function Desktop({
   useEffect(() => {
     setContextChips([]);
     setContextHint(undefined);
-    setAgentSessionViewId(undefined);
+    if (!sharedDesktop) setAgentSessionViewId(undefined);
   }, [activeProjectId]);
   useEffect(() => {
     if (!activeProjectId) return;
@@ -342,10 +426,11 @@ export function Desktop({
     }
     setProjects(listed);
     setProjectsAuthoritative(true);
-    setActiveProjectId((current) =>
-      current && listed.some((project) => project.id === current) ? current : listed[0]?.id,
-    );
-  }, [workosClients]);
+    if (!sharedDesktop)
+      setLocalActiveProjectId((current) =>
+        current && listed.some((project) => project.id === current) ? current : listed[0]?.id,
+      );
+  }, [workosClients, sharedDesktop]);
 
   const refreshCatalog = useCallback(async () => {
     setCatalogState("loading");
@@ -376,6 +461,7 @@ export function Desktop({
   }, [refreshCatalog]);
 
   useEffect(() => {
+    if (sharedDesktop) return;
     dispatch({
       type: "open",
       window: {
@@ -388,6 +474,205 @@ export function Desktop({
       },
     });
   }, []);
+
+  // Bootstrap once from verified project references. The server ignores
+  // initialize if another device already initialized this owner's desktop.
+  useEffect(() => {
+    if (!sharedDesktop || !projectsAuthoritative) return;
+    const stored = readStoredActiveProjectId();
+    const projectId = projects.find((item) => item.id === stored)?.id ?? projects[0]?.id ?? "";
+    const unsubscribe = sharedDesktop.subscribe(setDesktopProjection);
+    let cancelled = false;
+    const isCancelled = () => cancelled;
+    void (async () => {
+      const targets = [create(DesktopWindowTargetSchema, { kind: "home" })];
+      if (isValidCanonicalUuid(projectId)) {
+        const old = await layoutStore.load(
+          deviceLayout.deviceClass,
+          projectId,
+          new Date().toISOString(),
+        );
+        if (old.activeSystemWindow && !["terminal", "native"].includes(old.activeSystemWindow))
+          targets.push(
+            create(DesktopWindowTargetSchema, {
+              kind: old.activeSystemWindow,
+              projectId: GLOBAL_WINDOWS.has(old.activeSystemWindow) ? "" : projectId,
+            }),
+          );
+        if (old.activeAppInstanceId)
+          targets.push(
+            create(DesktopWindowTargetSchema, {
+              kind: "app-surface",
+              projectId,
+              resource: { case: "appInstanceId", value: old.activeAppInstanceId },
+            }),
+          );
+        if (old.activeArtifactId)
+          targets.push(
+            create(DesktopWindowTargetSchema, {
+              kind: "artifact-viewer",
+              projectId,
+              resource: { case: "artifactId", value: old.activeArtifactId },
+            }),
+          );
+      }
+      if (!isCancelled())
+        sharedDesktop.start(
+          create(DesktopInitializationSchema, { activeProjectId: projectId, windows: targets }),
+        );
+    })();
+    return () => {
+      cancelled = true;
+      unsubscribe();
+      sharedDesktop.stop();
+    };
+  }, [sharedDesktop, projectsAuthoritative]);
+
+  useEffect(() => {
+    const state = desktopProjection.state;
+    if (sharedDesktop && desktopProjection.connection === "unavailable") {
+      localDispatch({ type: "reconcile", windows: [], focusedId: "" });
+      setLocalActiveProjectId(undefined);
+      bridgeCredentialsRef.current.clear();
+      sharedSurfaces.current.clear();
+      return;
+    }
+    if (!sharedDesktop || !state) return;
+    setLocalActiveProjectId(state.activeProjectId || undefined);
+    const visible = state.windows.filter(
+      (item) =>
+        item.target && (!item.target.projectId || item.target.projectId === state.activeProjectId),
+    );
+    const session = visible.find((item) => item.target?.kind === "agent-sessions")?.target
+      ?.resource;
+    setAgentSessionViewId(session?.case === "sessionId" ? session.value : undefined);
+    const projected = visible.flatMap((item) => {
+      const mapped = projectSharedWindow(
+        item,
+        item.target ? sharedSurfaces.current.get(appSurfaceKey(item.target)) : undefined,
+      );
+      return mapped ? [mapped] : [];
+    });
+    const focused = projected.find((item) => item.sharedWindowId === state.focusedWindowId);
+    localDispatch({ type: "reconcile", windows: projected, focusedId: focused?.id ?? "" });
+    if (focused) setAppActivation({ id: focused.kind, sequence: Number(state.revision) });
+    const liveKeys = new Set(
+      visible.flatMap((item) =>
+        item.target?.kind === "app-surface" ? [appSurfaceKey(item.target)] : [],
+      ),
+    );
+    for (const key of surfaceFailures.current) {
+      if (!liveKeys.has(key)) surfaceFailures.current.delete(key);
+    }
+    for (const [key, surface] of sharedSurfaces.current) {
+      if (liveKeys.has(key) || pendingSurfaces.current.has(key)) continue;
+      sharedSurfaces.current.delete(key);
+      bridgeCredentialsRef.current.delete(surface.id);
+      openSurfaceSessionsRef.current = openSurfaceSessionsRef.current.filter(
+        (item) => item.surfaceSessionId !== surface.id,
+      );
+      void workosClients.surfaces
+        .closeSurface({ surfaceSessionId: surface.id })
+        .catch(() => undefined);
+    }
+    for (const item of visible) {
+      const target = item.target;
+      if (target?.kind !== "app-surface" || target.resource.case !== "appInstanceId") continue;
+      const key = appSurfaceKey(target);
+      if (
+        sharedSurfaces.current.has(key) ||
+        openingSurfaces.current.has(key) ||
+        surfaceFailures.current.has(key)
+      )
+        continue;
+      openingSurfaces.current.add(key);
+      void openInstallationSurface(
+        workosClients,
+        target.projectId,
+        target.resource.value,
+        protoFromDeviceClass(deviceLayout.deviceClass),
+        () =>
+          !!sharedDesktop.current.state?.windows.some(
+            (candidate) =>
+              candidate.id === item.id &&
+              candidate.target?.projectId === sharedDesktop.current.state?.activeProjectId,
+          ),
+        (surface) => {
+          sharedSurfaces.current.set(key, surface);
+          if (surface.bridgeToken)
+            bridgeCredentialsRef.current.set(surface.id, {
+              token: surface.bridgeToken,
+              capabilities: [...surface.bridgeCapabilities],
+            });
+          openSurfaceSessionsRef.current.push({ surfaceSessionId: surface.id });
+          setSurfaceRevision((value) => value + 1);
+        },
+        () => {
+          surfaceFailures.current.add(key);
+          setSurfaceRevision((value) => value + 1);
+        },
+        {
+          expectedWorkloadId: target.expectedWorkloadId,
+          expectedWorkloadGeneration: target.expectedWorkloadGeneration,
+        },
+      ).finally(() => openingSurfaces.current.delete(key));
+    }
+  }, [
+    desktopProjection.state,
+    sharedDesktop,
+    surfaceRevision,
+    workosClients,
+    deviceLayout.deviceClass,
+  ]);
+
+  // Program lifetime never prolongs a device capability. Renew only the
+  // access view using the already pinned program identity when its lease ends.
+  useEffect(() => {
+    if (!sharedDesktop) return;
+    const timed = [...sharedSurfaces.current.entries()].flatMap(([key, surface]) =>
+      surface.expiresAt
+        ? [{ key, surface, expires: Number(surface.expiresAt.seconds) * 1000 }]
+        : [],
+    );
+    if (timed.length === 0) return;
+    const earliest = Math.min(...timed.map((item) => item.expires));
+    const timer = setTimeout(
+      () => {
+        for (const item of timed) {
+          if (
+            item.expires > Date.now() + 1000 ||
+            sharedSurfaces.current.get(item.key) !== item.surface
+          )
+            continue;
+          sharedSurfaces.current.delete(item.key);
+          bridgeCredentialsRef.current.delete(item.surface.id);
+          openSurfaceSessionsRef.current = openSurfaceSessionsRef.current.filter(
+            (entry) => entry.surfaceSessionId !== item.surface.id,
+          );
+          void workosClients.surfaces
+            .closeSurface({ surfaceSessionId: item.surface.id })
+            .catch(() => undefined);
+        }
+        setSurfaceRevision((value) => value + 1);
+      },
+      Math.max(1000, Math.min(2147483647, earliest - Date.now())),
+    );
+    return () => {
+      clearTimeout(timer);
+    };
+  }, [sharedDesktop, surfaceRevision, workosClients]);
+  const previousDesktopConnection = useRef(desktopProjection.connection);
+  useEffect(() => {
+    if (
+      desktopProjection.connection === "connected" &&
+      previousDesktopConnection.current !== "connected" &&
+      surfaceFailures.current.size > 0
+    ) {
+      surfaceFailures.current.clear();
+      setSurfaceRevision((value) => value + 1);
+    }
+    previousDesktopConnection.current = desktopProjection.connection;
+  }, [desktopProjection.connection]);
 
   // System Monitor is a normal, non-permanent window opened from the dock:
   // closing it never affects supervision, and an unreachable reliability
@@ -628,21 +913,98 @@ export function Desktop({
     recordLayout((state) => ({ ...state, activeSystemWindow: "workspace-previews" }));
   }, [activeProjectId, recordLayout]);
 
-  const openTerminal = useCallback(() => {
-    if (!activeProjectId) return;
-    dispatch({
-      type: "open",
-      window: {
-        id: "terminal",
-        appId: "terminal",
-        title: "Terminal",
-        kind: "terminal",
-        rect: { x: 200, y: 120, width: 680, height: 440 },
-        mode: "normal",
-      },
-    });
-    recordLayout((state) => ({ ...state, activeSystemWindow: "terminal" }));
-  }, [activeProjectId, recordLayout]);
+  const startupIntents = useRef(
+    new Map<string, { key: string; workloadId?: string; busy: boolean }>(),
+  );
+  const openSessionWorkload = useCallback(
+    async (kind: "terminal" | "native", workloadId?: string, workloadGeneration?: bigint) => {
+      const projectId = activeProjectIdRef.current;
+      if (!projectId) return;
+      if (sharedDesktop && sharedDesktop.current.connection !== "connected") {
+        setError("Desktop is reconnecting. Try again when connected.");
+        return;
+      }
+      const existing = windowsRef.current.windows.find(
+        (item) => item.kind === kind && (!workloadId || item.workloadId === workloadId),
+      );
+      if (
+        existing &&
+        (!workloadGeneration || existing.expectedWorkloadGeneration === workloadGeneration)
+      ) {
+        dispatch({ type: "focus", id: existing.id });
+        return;
+      }
+      const intentKey = `${projectId}:${kind}`;
+      const intent = startupIntents.current.get(intentKey) ?? {
+        key: crypto.randomUUID(),
+        busy: false,
+      };
+      if (intent.busy) return;
+      intent.busy = true;
+      startupIntents.current.set(intentKey, intent);
+      try {
+        let id = workloadId ?? intent.workloadId;
+        if (!id) {
+          const created =
+            kind === "terminal"
+              ? await workosClients.ptySessions.createPtySession({
+                  projectId,
+                  idempotencyKey: intent.key,
+                  columns: 90,
+                  rows: 26,
+                  lifecycleMode: LifecycleMode.MANUAL_STOP,
+                })
+              : await workosClients.nativeSessions.createNativeSession({
+                  projectId,
+                  idempotencyKey: intent.key,
+                  width: 800,
+                  height: 600,
+                  lifecycleMode: LifecycleMode.MANUAL_STOP,
+                });
+          id = created.session?.id;
+          if (!id) throw new Error("Program startup returned no instance.");
+          intent.workloadId = id;
+        }
+        const facts = await workosClients.surfaceContinuity.getSurfaceWorkload({ workloadId: id });
+        if (!facts.workload || facts.workload.state !== "running")
+          throw new Error("Program is no longer running.");
+        const generation = workloadGeneration ?? facts.workload.generation;
+        // A project switch during startup must not publish an old project's
+        // window into the new workspace. The running instance remains listed.
+        if (activeProjectIdRef.current !== projectId) return;
+        const item = {
+          id: `${kind}-${id}`,
+          appId: kind,
+          kind,
+          projectId,
+          workloadId: id,
+          expectedWorkloadId: id,
+          expectedWorkloadGeneration: generation,
+          title: kind === "terminal" ? "Terminal" : "Native",
+          rect: { x: 220, y: 110, width: 760, height: 560 },
+          mode: "normal" as const,
+        };
+        if (sharedDesktop)
+          await sharedDesktop.apply({
+            case: "openWindow",
+            value: targetForWindow(item, projectId),
+          });
+        else localDispatch({ type: "open", window: item });
+        startupIntents.current.delete(intentKey);
+      } catch {
+        setError("Program startup was not confirmed. Retry to recover the same instance.");
+      } finally {
+        intent.busy = false;
+      }
+    },
+    [dispatch, sharedDesktop, workosClients],
+  );
+  const openTerminal = useCallback(
+    (workloadId?: string, generation?: bigint) => {
+      void openSessionWorkload("terminal", workloadId, generation);
+    },
+    [openSessionWorkload],
+  );
 
   const nativeSessionLease = useMemo(() => new NativeSessionLease(true), []);
   const nativeWindowOpen = windows.windows.some((window) => window.kind === "native");
@@ -656,21 +1018,12 @@ export function Desktop({
     [nativeSessionLease, activeProjectId],
   );
 
-  const openNative = useCallback(() => {
-    if (!activeProjectId) return;
-    dispatch({
-      type: "open",
-      window: {
-        id: "native",
-        appId: "native",
-        title: "Native",
-        kind: "native",
-        rect: { x: 220, y: 110, width: 760, height: 560 },
-        mode: "normal",
-      },
-    });
-    recordLayout((state) => ({ ...state, activeSystemWindow: "native" }));
-  }, [activeProjectId, recordLayout]);
+  const openNative = useCallback(
+    (workloadId?: string, generation?: bigint) => {
+      void openSessionWorkload("native", workloadId, generation);
+    },
+    [openSessionWorkload],
+  );
 
   // Agent Sessions (B05): a normal, closable work window — not a permanent
   // sidebar. Closing it never touches the server-side session lifecycle;
@@ -757,7 +1110,7 @@ export function Desktop({
   // Switching projects closes the previous project's app windows; their
   // sessions are closed best-effort and the backend keeps failing closed.
   useEffect(() => {
-    if (!activeProjectId) return;
+    if (!activeProjectId || sharedDesktop) return;
     for (const item of windows.windows) {
       if (
         item.kind === "artifact-viewer" &&
@@ -836,7 +1189,12 @@ export function Desktop({
   // The device-local layout record learns the active instance and the
   // recency lists (bounded canonical IDs only).
   function surfaceOpened(session: SurfaceSession) {
-    dispatch({ type: "close", id: "app-library" });
+    const sharedKey = `${session.projectId}:${session.appInstanceId}:${session.workloadId}:${String(session.workloadGeneration)}`;
+    if (sharedDesktop) {
+      sharedSurfaces.current.set(sharedKey, session);
+      pendingSurfaces.current.add(sharedKey);
+    }
+    if (!sharedDesktop) dispatch({ type: "close", id: "app-library" });
     openSurfaceSessionsRef.current = openSurfaceSessionsRef.current.concat({
       surfaceSessionId: session.id,
     });
@@ -860,6 +1218,29 @@ export function Desktop({
         DOCK_APP_INSTANCE_LIMIT,
       ),
     }));
+    if (sharedDesktop) {
+      void sharedDesktop
+        .apply({
+          case: "openWindow",
+          value: {
+            kind: "app-surface",
+            projectId: session.projectId,
+            resource: { case: "appInstanceId", value: session.appInstanceId },
+            expectedWorkloadId: session.workloadId,
+            expectedWorkloadGeneration: session.workloadGeneration,
+          },
+        })
+        .catch(() => {
+          setError(
+            "App opened, but its shared window was not confirmed. Reconnect and open it from Running apps.",
+          );
+        })
+        .finally(() => {
+          pendingSurfaces.current.delete(sharedKey);
+          setSurfaceRevision((value) => value + 1);
+        });
+      return;
+    }
     dispatch({
       type: "open",
       window: {
@@ -871,7 +1252,10 @@ export function Desktop({
           surfaceSessionId: session.id,
           url: session.url,
           projectId: session.projectId,
-          renderer: SurfaceRenderer[session.renderer],
+          renderer:
+            session.renderer === SurfaceRenderer.DECLARATIVE
+              ? "declarative"
+              : SurfaceRenderer[session.renderer],
         },
         // The app window opens over the launch area, beside — not on top of —
         // the Agent Center window, so approvals and usage stay reachable while
@@ -888,7 +1272,7 @@ export function Desktop({
   // stale id cannot linger after the fact.
   function closeWindow(windowId: string) {
     const target = windows.windows.find((item) => item.id === windowId);
-    if (target?.kind === "app-surface" && target.surface) {
+    if (!sharedDesktop && target?.kind === "app-surface" && target.surface) {
       openSurfaceSessionsRef.current = openSurfaceSessionsRef.current.filter(
         (item) => item.surfaceSessionId !== target.surface?.surfaceSessionId,
       );
@@ -1014,7 +1398,9 @@ export function Desktop({
 
   const openAdaptiveSystemWindow = useCallback(
     (id: SystemWindowId) => {
-      if (id === "agent-center")
+      if (id === "home") openHome();
+      else if (id === "app-library" || id === "settings") openProjectTool(id);
+      else if (id === "agent-center")
         dispatch({
           type: "open",
           window: {
@@ -1068,14 +1454,14 @@ export function Desktop({
       } else if (target.kind === "artifact-viewer" && target.artifact) {
         recordLayout((state) => ({ ...state, activeArtifactId: target.artifact?.artifactId }));
       } else {
-        recordLayout((state) => ({ ...state, activeSystemWindow: target.id }));
+        recordLayout((state) => ({ ...state, activeSystemWindow: target.kind }));
       }
     },
     [recordLayout, windows.windows],
   );
 
   const openAdaptiveAppInstance = useCallback(
-    (appInstanceId: string) => {
+    (appInstanceId: string, workloadId?: string, workloadGeneration?: bigint) => {
       const projectId = activeProjectIdRef.current;
       if (!projectId) return;
       void openInstallationSurface(
@@ -1085,7 +1471,12 @@ export function Desktop({
         protoFromDeviceClass(deviceLayout.deviceClass),
         () => activeProjectIdRef.current === projectId,
         surfaceOpened,
-        () => undefined,
+        () => {
+          setError("This app could not be opened. Check its running state and access.");
+        },
+        workloadId
+          ? { expectedWorkloadId: workloadId, expectedWorkloadGeneration: workloadGeneration ?? 0n }
+          : undefined,
       );
     },
     [deviceLayout.deviceClass, workosClients],
@@ -1320,6 +1711,14 @@ export function Desktop({
           });
           if (!response.approval) return "stale";
           assertCurrentGeneration();
+          if (sharedDesktop) {
+            await sharedDesktop.apply({
+              case: "openWindow",
+              value: { kind: "agent-center", projectId: response.approval.projectId },
+            });
+            setAgentView("approvals");
+            return "opened";
+          }
           setActiveProjectId(response.approval.projectId);
           setAgentView("approvals");
           dispatch({
@@ -1393,8 +1792,15 @@ export function Desktop({
             pageToken = installed.page?.nextPageToken ?? "";
           } while (!live && pageToken !== "");
           if (!live) return "stale";
-          setActiveProjectId(notification.projectId);
-          openProjectTool("app-library");
+          if (sharedDesktop)
+            await sharedDesktop.apply({
+              case: "openWindow",
+              value: { kind: "app-library", projectId: notification.projectId },
+            });
+          else {
+            setActiveProjectId(notification.projectId);
+            openProjectTool("app-library");
+          }
           return "opened";
         }
         return "stale";
@@ -1418,22 +1824,22 @@ export function Desktop({
       open: openHome,
     },
     {
-      id: "agent-center",
-      label: "Agent Center",
-      hint: "Ask, review and move work forward",
-      icon: "agent",
-      available: true,
-      open: () => {
-        openAdaptiveSystemWindow("agent-center");
-      },
-    },
-    {
       id: "agent-sessions",
       label: "Agent Sessions",
       hint: "Continue work in persistent sessions",
       icon: "agent",
       available: !!activeProjectId,
       open: openAgentSessions,
+    },
+    {
+      id: "agent-center",
+      label: "Tasks and approvals",
+      hint: "Review tasks, approvals and usage",
+      icon: "agent",
+      available: true,
+      open: () => {
+        openAdaptiveSystemWindow("agent-center");
+      },
     },
     {
       id: "files",
@@ -1652,6 +2058,28 @@ export function Desktop({
   // shell and the adaptive panes render exactly these bodies, so behavior
   // never forks per mode.
   function renderWindowBody(windowState: WorkOSWindow) {
+    if (windowState.kind === "app-surface" && !windowState.surface) {
+      const key = `${windowState.projectId ?? ""}:${windowState.appId}:${windowState.expectedWorkloadId ?? ""}:${String(windowState.expectedWorkloadGeneration ?? 0n)}`;
+      return (
+        <p role="status">
+          {surfaceFailures.current.has(key) ? (
+            <>
+              This app is unavailable. It may have stopped or its access changed.{" "}
+              <Button
+                onClick={() => {
+                  surfaceFailures.current.delete(key);
+                  setSurfaceRevision((value) => value + 1);
+                }}
+              >
+                Retry connection
+              </Button>
+            </>
+          ) : (
+            "Connecting to this app…"
+          )}
+        </p>
+      );
+    }
     if (windowState.kind === "app-library" || windowState.kind === "settings")
       return (
         <div className="project-tool-body">
@@ -1816,6 +2244,23 @@ export function Desktop({
           key={activeProject.id}
           projectId={activeProject.id}
           workosClients={workosClients}
+          selectedPreviewId={windowState.previewId}
+          onSelectPreview={
+            sharedDesktop
+              ? (previewId) => {
+                  applyDesktop({
+                    case: "openWindow",
+                    value: {
+                      kind: "workspace-previews",
+                      projectId: activeProject.id,
+                      ...(previewId
+                        ? { resource: { case: "previewId" as const, value: previewId } }
+                        : {}),
+                    },
+                  });
+                }
+              : undefined
+          }
         />
       ) : (
         <p>Create a project to run a preview.</p>
@@ -1828,7 +2273,14 @@ export function Desktop({
           projectId={activeProject.id}
           workosClients={workosClients}
           selectedSessionId={agentSessionViewId}
-          onSelectSession={setAgentSessionViewId}
+          onSelectSession={(sessionId) => {
+            if (sharedDesktop && windowState.sharedWindowId)
+              applyDesktop({
+                case: "selectSession",
+                value: { windowId: windowState.sharedWindowId, sessionId: sessionId ?? "" },
+              });
+            else setAgentSessionViewId(sessionId);
+          }}
         />
       ) : (
         <p className="empty-state">Create a project to start an agent session.</p>
@@ -1872,16 +2324,31 @@ export function Desktop({
     ) : windowState.kind === "browser" ? (
       <BrowserApp workosClients={workosClients} activeProjectId={activeProject?.id ?? ""} />
     ) : windowState.kind === "terminal" ? (
-      <TerminalApp workosClients={workosClients} activeProjectId={activeProject?.id ?? ""} />
+      <TerminalApp
+        key={`${windowState.workloadId ?? activeProjectId ?? ""}:${String(windowState.expectedWorkloadGeneration ?? 0n)}`}
+        workloadId={windowState.workloadId}
+        expectedWorkloadGeneration={windowState.expectedWorkloadGeneration}
+        workosClients={workosClients}
+        activeProjectId={activeProject?.id ?? ""}
+      />
     ) : windowState.kind === "native" ? (
       <NativeApp
-        sessionLease={nativeSessionLease}
+        key={`${windowState.workloadId ?? activeProjectId ?? ""}:${String(windowState.expectedWorkloadGeneration ?? 0n)}`}
+        expectedWorkloadGeneration={windowState.expectedWorkloadGeneration}
+        workloadId={windowState.workloadId}
+        sessionLease={sharedDesktop ? undefined : nativeSessionLease}
         workosClients={workosClients}
         activeProjectId={activeProject?.id ?? ""}
       />
     ) : windowState.kind === "device-center" ? (
       deviceAuth ? (
-        <DeviceCenter deviceAuth={deviceAuth} onSessionEnded={() => layoutStore.clearAll()} />
+        <DeviceCenter
+          deviceAuth={deviceAuth}
+          onSessionEnded={() => {
+            clearDesktopProjection();
+            return layoutStore.clearAll();
+          }}
+        />
       ) : (
         <p className="empty-state">Device management is not available in this deployment.</p>
       )
@@ -2012,9 +2479,14 @@ export function Desktop({
     return (
       <>
         <AdaptiveShell
+          sharedDesktop={!!sharedDesktop}
           layout={deviceLayout}
           windows={windows}
-          status={status}
+          status={
+            sharedDesktop && desktopProjection.connection !== "connected"
+              ? desktopProjection.connection
+              : status
+          }
           activeProject={activeProject}
           projects={projects}
           layoutState={deviceLayoutState}
@@ -2066,7 +2538,10 @@ export function Desktop({
           {activeProject?.name ?? "Global Space"} <Icon name="chevron" size={14} />
         </button>
         <span className="agent-status">
-          <i /> Project Agent · {status}
+          <i /> Project Agent ·{" "}
+          {sharedDesktop && desktopProjection.connection !== "connected"
+            ? desktopProjection.connection
+            : status}
         </span>
         <button
           aria-label={
@@ -2100,6 +2575,9 @@ export function Desktop({
             hidden={windowState.mode === "minimized"}
             data-window-id={windowState.id}
             data-mode={windowState.mode}
+            onFocusCapture={() => {
+              dispatch({ type: "focus", id: windowState.id });
+            }}
             onMouseDownCapture={() => {
               dispatch({ type: "focus", id: windowState.id });
             }}
@@ -2255,8 +2733,12 @@ export function Desktop({
         {systemApps
           .filter(
             (app) =>
-              ["home", "agent-center", "files", "app-library"].includes(app.id) ||
-              windows.windows.some((item) => item.kind === app.id),
+              [
+                "home",
+                sharedDesktop ? "agent-sessions" : "agent-center",
+                "files",
+                "app-library",
+              ].includes(app.id) || windows.windows.some((item) => item.kind === app.id),
           )
           .map((app) => (
             <button

@@ -27,8 +27,9 @@ export function HomeApp(props: { apps: HomeAppEntry[]; children?: ReactNode }) {
       <header className="app-heading">
         <p>YOUR WORKSPACE</p>
         <h1>Your workspace</h1>
-        <span>Open a tool to get started.</span>
+        <span>Continue your work or open an app.</span>
       </header>
+      {children}
       <ul className="home-grid">
         {apps.map((app) => (
           <li key={app.id}>
@@ -49,7 +50,6 @@ export function HomeApp(props: { apps: HomeAppEntry[]; children?: ReactNode }) {
           </li>
         ))}
       </ul>
-      {children}
     </div>
   );
 }

@@ -64,6 +64,7 @@ describe("Running apps list", () => {
         displayName: "Fixture web app",
         state: "running",
         attachmentCount: 1,
+        generation: 3n,
       },
     ]);
     render(element(f));
@@ -74,11 +75,11 @@ describe("Running apps list", () => {
 
     const rows = screen.getAllByRole("listitem");
     await userEvent.click(withinRow(rows[0] as HTMLElement, "Open"));
-    expect(f.openTerminal).toHaveBeenCalledOnce();
+    expect(f.openTerminal).toHaveBeenCalledWith("workload-terminal", undefined);
     await userEvent.click(withinRow(rows[1] as HTMLElement, "Open"));
-    expect(f.openNative).toHaveBeenCalledOnce();
+    expect(f.openNative).toHaveBeenCalledWith("workload-native", undefined);
     await userEvent.click(withinRow(rows[2] as HTMLElement, "Open"));
-    expect(f.openAppInstance).toHaveBeenCalledWith("app-instance-1");
+    expect(f.openAppInstance).toHaveBeenCalledWith("app-instance-1", "workload-app", 3n);
 
     await userEvent.click(withinRow(rows[0] as HTMLElement, "Stop"));
     await waitFor(() => {

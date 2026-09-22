@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { Code, ConnectError } from "@connectrpc/connect";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -204,6 +205,26 @@ describe("Native window lifecycle and input", () => {
     await waitFor(() => {
       expect(f.nativeSessions.detachNativeSession).toHaveBeenCalledOnce();
     });
+  });
+  it("restores an exact native workload and never falls back after it disappeared", async () => {
+    const f = fixture();
+    f.surfaceContinuity.attachSurface.mockRejectedValue(new ConnectError("stopped", Code.NotFound));
+    render(
+      <NativeApp
+        workosClients={f.clients}
+        activeProjectId="project"
+        workloadId="exact-native"
+        expectedWorkloadGeneration={3n}
+      />,
+    );
+    await waitFor(() => {
+      expect(screen.getByTestId("native-status").textContent).toBe("unavailable");
+    });
+    expect(f.surfaceContinuity.attachSurface).toHaveBeenCalledWith(
+      expect.objectContaining({ workloadId: "exact-native", expectedWorkloadGeneration: 3n }),
+    );
+    expect(f.surfaceContinuity.listProjectSurfaces).not.toHaveBeenCalled();
+    expect(f.nativeSessions.createNativeSession).not.toHaveBeenCalled();
   });
   it("reattaches the project's live native workload instead of creating one", async () => {
     const f = fixture();

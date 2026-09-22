@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   type DeviceClass,
   SurfaceRenderer,
+  LifecycleMode,
   type AppInstallation,
   type Project,
   type SurfaceSession,
@@ -677,6 +678,7 @@ export async function openInstallationSurface(
   isLive: () => boolean,
   onOpened: (session: SurfaceSession) => void,
   onError: (reason: unknown) => void,
+  restore?: { expectedWorkloadId: string; expectedWorkloadGeneration: bigint },
 ): Promise<void> {
   try {
     const response = await workosClients.surfaces.createSurface({
@@ -693,6 +695,13 @@ export async function openInstallationSurface(
       // descriptor: web bundles open as before, supervised container apps
       // start their workload first.
       preferredRenderer: SurfaceRenderer.UNSPECIFIED,
+      ...(restore
+        ? {
+            attachOnly: true,
+            expectedWorkloadId: restore.expectedWorkloadId,
+            expectedWorkloadGeneration: restore.expectedWorkloadGeneration,
+          }
+        : { lifecycleMode: LifecycleMode.MANUAL_STOP }),
     });
     const session = response.session;
     if (!session) throw new Error("missing surface session");

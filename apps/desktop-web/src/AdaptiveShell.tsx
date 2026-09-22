@@ -19,6 +19,9 @@ import type { WindowState, WorkOSWindow } from "@workos/window-manager";
 // segments.
 
 export type SystemWindowId =
+  | "home"
+  | "app-library"
+  | "settings"
   | "native"
   | "agent-center"
   | "agent-sessions"
@@ -29,6 +32,7 @@ export type SystemWindowId =
   | "notification-center";
 
 export interface AdaptiveShellProps {
+  sharedDesktop?: boolean | undefined;
   activation?: { id: string; sequence: number } | undefined;
   layout: DeviceLayout;
   windows: WindowState;
@@ -63,6 +67,7 @@ export interface AdaptiveShellProps {
 type ShellView = "home" | "window";
 
 export function AdaptiveShell({
+  sharedDesktop,
   layout,
   windows,
   status,
@@ -100,10 +105,11 @@ export function AdaptiveShell({
   useEffect(() => {
     if (!activation) return;
     setSlideOverOpen(false);
-    setAppsOpen(activation.id === "app-library");
-    setSheetOpen(activation.id === "settings");
+    setAppsOpen(!sharedDesktop && activation.id === "app-library");
+    setSheetOpen(!sharedDesktop && activation.id === "settings");
     setDockRevealed(false);
-    if (activation.id !== "app-library" && activation.id !== "settings") setView("window");
+    if (sharedDesktop || (activation.id !== "app-library" && activation.id !== "settings"))
+      setView("window");
   }, [activation]);
 
   // Opening an overlay collapses the others so the shell never stacks two
@@ -150,7 +156,7 @@ export function AdaptiveShell({
   const openAgent = () => {
     setView("window");
     setAppsOpen(false);
-    onOpenSystemWindow("agent-center");
+    onOpenSystemWindow(sharedDesktop ? "agent-sessions" : "agent-center");
   };
 
   const paneFor = (windowState: WorkOSWindow | undefined, testid: string | undefined) => {
@@ -255,7 +261,8 @@ export function AdaptiveShell({
               className="adaptive-bar-button"
               data-testid="open-agent-slideover"
               onClick={() => {
-                setSlideOverOpen((current) => !current);
+                if (sharedDesktop) openAgent();
+                else setSlideOverOpen((current) => !current);
               }}
               type="button"
             >
@@ -351,7 +358,8 @@ export function AdaptiveShell({
               <Button
                 disabled={!activeProject}
                 onClick={() => {
-                  setAppsOpen(true);
+                  if (sharedDesktop) openSystemWindow("app-library");
+                  else setAppsOpen(true);
                 }}
                 type="button"
               >
@@ -418,7 +426,8 @@ export function AdaptiveShell({
         <nav aria-label="WorkOS Dock" className="adaptive-dock" data-testid="adaptive-dock">
           <Button
             onClick={() => {
-              setView("home");
+              if (sharedDesktop) openSystemWindow("home");
+              else setView("home");
               setDockRevealed(false);
             }}
             type="button"
@@ -438,7 +447,8 @@ export function AdaptiveShell({
             disabled={!activeProject}
             onClick={() => {
               setDockRevealed(false);
-              setAppsOpen(true);
+              if (sharedDesktop) openSystemWindow("app-library");
+              else setAppsOpen(true);
             }}
             type="button"
           >
@@ -492,7 +502,8 @@ export function AdaptiveShell({
             className={view === "home" ? "adaptive-nav-item active" : "adaptive-nav-item"}
             data-testid="nav-home"
             onClick={() => {
-              setView("home");
+              if (sharedDesktop) openSystemWindow("home");
+              else setView("home");
               setAppsOpen(false);
             }}
             type="button"
@@ -500,9 +511,10 @@ export function AdaptiveShell({
             <Icon name="home" size={20} />
           </button>
           <button
-            aria-label="Agent Center"
+            aria-label={sharedDesktop ? "Agent Sessions" : "Agent Center"}
             className={
-              view === "window" && main?.kind === "agent-center"
+              view === "window" &&
+              main?.kind === (sharedDesktop ? "agent-sessions" : "agent-center")
                 ? "adaptive-nav-item active"
                 : "adaptive-nav-item"
             }
@@ -518,7 +530,8 @@ export function AdaptiveShell({
             data-testid="nav-apps"
             disabled={!activeProject}
             onClick={() => {
-              setAppsOpen(true);
+              if (sharedDesktop) openSystemWindow("app-library");
+              else setAppsOpen(true);
             }}
             type="button"
           >
@@ -641,7 +654,7 @@ export function AdaptiveShell({
 
       {slideOverOpen ? (
         <aside
-          aria-label="Agent Center"
+          aria-label={sharedDesktop ? "Agent Sessions" : "Agent Center"}
           className="adaptive-slideover"
           data-testid="agent-slideover"
         >

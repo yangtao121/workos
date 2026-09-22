@@ -1,12 +1,21 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { WorkOSClients } from "@workos/agent-sdk";
-import type { WorkspacePreview } from "@workos/protocol";
+import { LifecycleMode, type WorkspacePreview } from "@workos/protocol";
 import { Button } from "@workos/ui-kit";
 
-function WorkspacePreviewsBody(props: { projectId: string; workosClients: WorkOSClients }) {
+interface WorkspacePreviewsProps {
+  projectId: string;
+  workosClients: WorkOSClients;
+  selectedPreviewId?: string | undefined;
+  onSelectPreview?: ((id: string | undefined) => void) | undefined;
+}
+
+function WorkspacePreviewsBody(props: WorkspacePreviewsProps) {
   const { projectId, workosClients } = props;
   const [previews, setPreviews] = useState<WorkspacePreview[]>([]);
-  const [selected, setSelected] = useState<string>();
+  const [localSelected, setLocalSelected] = useState<string>();
+  const selected = props.onSelectPreview ? props.selectedPreviewId : localSelected;
+  const setSelected = props.onSelectPreview ?? setLocalSelected;
   const [command, setCommand] = useState(
     'npm run dev -- --host 127.0.0.1 --port "$PORT" --base "$WORKOS_PREVIEW_BASE"',
   );
@@ -67,12 +76,23 @@ function WorkspacePreviewsBody(props: { projectId: string; workosClients: WorkOS
       <header>
         <h2>Development previews</h2>
         <p>
-          Servers keep running when this window closes, for up to 30 minutes. Restart starts a new
-          generation. Saved project files remain.
+          New servers keep running until you stop them. Restart starts a new generation. Saved
+          project files remain.
         </p>
       </header>
       {error ? <p role="alert">{error}</p> : null}
-      {active ? (
+      {selected && !active ? (
+        <p role="status">
+          This preview is unavailable.{" "}
+          <Button
+            onClick={() => {
+              setSelected(undefined);
+            }}
+          >
+            All previews
+          </Button>
+        </p>
+      ) : active ? (
         <>
           <div className="preview-actions">
             <Button
@@ -109,6 +129,7 @@ function WorkspacePreviewsBody(props: { projectId: string; workosClients: WorkOS
                   command,
                   port: Number(port),
                   idempotencyKey: key,
+                  lifecycleMode: LifecycleMode.MANUAL_STOP,
                 });
                 if (mounted.current && result.preview) setSelected(result.preview.id);
               });
@@ -172,6 +193,7 @@ function WorkspacePreviewsBody(props: { projectId: string; workosClients: WorkOS
                         await workosClients.workspacePreviews.restartWorkspacePreview({
                           previewId: preview.id,
                           actionKey: key,
+                          lifecycleMode: LifecycleMode.MANUAL_STOP,
                         });
                       })
                     }
@@ -202,6 +224,6 @@ function WorkspacePreviewsBody(props: { projectId: string; workosClients: WorkOS
   );
 }
 
-export function WorkspacePreviews(props: { projectId: string; workosClients: WorkOSClients }) {
+export function WorkspacePreviews(props: WorkspacePreviewsProps) {
   return <WorkspacePreviewsBody key={props.projectId} {...props} />;
 }

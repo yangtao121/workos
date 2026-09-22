@@ -1,6 +1,7 @@
+import { Code, ConnectError } from "@connectrpc/connect";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { WorkOSClients } from "@workos/agent-sdk";
-import { SurfaceRenderer } from "@workos/protocol";
+import { LifecycleMode, SurfaceRenderer } from "@workos/protocol";
 import { Button } from "@workos/ui-kit";
 
 // TerminalApp consumes the supervised PTY sessions (ADR-0028): one owner-
@@ -12,7 +13,13 @@ import { Button } from "@workos/ui-kit";
 // stop. Re-opening discovers the project's live terminal workload through
 // ListProjectSurfaces and attaches the SAME shell instead of starting a
 // second one; input stays disabled until this device holds control.
-export function TerminalApp(props: { workosClients?: WorkOSClients; activeProjectId?: string }) {
+export function TerminalApp(props: {
+  workosClients?: WorkOSClients;
+  activeProjectId?: string;
+  workloadId?: string | undefined;
+  expectedWorkloadGeneration?: bigint | undefined;
+}) {
+  const [attachAttempt, setAttachAttempt] = useState(0);
   const [sessionId, setSessionId] = useState("");
   const [output, setOutput] = useState("");
   const [verdict, setVerdict] = useState("");
@@ -32,6 +39,7 @@ export function TerminalApp(props: { workosClients?: WorkOSClients; activeProjec
   useEffect(() => {
     if (!clients || !projectId || sessionId) return;
     let cancelled = false;
+    let retry: ReturnType<typeof setTimeout> | undefined;
     // Read through a closure: control-flow narrowing must not constant-fold
     // the flag while the cleanup closure can still flip it.
     const isCancelled = () => cancelled;
@@ -40,6 +48,25 @@ export function TerminalApp(props: { workosClients?: WorkOSClients; activeProjec
       // exists; only a project without one creates a new shell. A host
       // without surface continuity degrades honestly to the create path.
       try {
+        if (props.workloadId) {
+          const attached = await clients.surfaceContinuity.attachSurface({
+            workloadId: props.workloadId,
+            expectedWorkloadGeneration: props.expectedWorkloadGeneration ?? 0n,
+            idempotencyKey: `desktop-terminal-attach-${crypto.randomUUID()}`,
+          });
+          if (isCancelled()) {
+            if (attached.session?.id)
+              void clients.ptySessions
+                .detachPtySession({ sessionId: attached.session.id })
+                .catch(() => undefined);
+            return;
+          }
+          controlGeneration.current = attached.attachment?.controlGeneration ?? 0n;
+          controlsRef.current = attached.attachment?.controls ?? false;
+          setControls(controlsRef.current);
+          setSessionId(attached.session?.id ?? props.workloadId);
+          return;
+        }
         const listed = await clients.surfaceContinuity.listProjectSurfaces({ projectId });
         if (isCancelled()) return;
         const live = listed.workloads.find(
@@ -60,8 +87,27 @@ export function TerminalApp(props: { workosClients?: WorkOSClients; activeProjec
           setSessionId(attached.session?.id ?? live.workloadId);
           return;
         }
-      } catch {
-        setVerdict("Could not discover running terminals. Retry after reconnecting.");
+      } catch (error) {
+        if (isCancelled()) return;
+        if (
+          error instanceof ConnectError &&
+          [
+            Code.NotFound,
+            Code.PermissionDenied,
+            Code.Unauthenticated,
+            Code.FailedPrecondition,
+          ].includes(error.code)
+        ) {
+          setClosed(true);
+          setVerdict(
+            "This terminal is stopped or no longer accessible. Open Running apps to inspect it.",
+          );
+        } else {
+          setVerdict("Connection interrupted. Reconnecting to this terminal…");
+          retry = setTimeout(() => {
+            setAttachAttempt((attempt) => attempt + 1);
+          }, 1500);
+        }
         return;
       }
       try {
@@ -70,6 +116,7 @@ export function TerminalApp(props: { workosClients?: WorkOSClients; activeProjec
           projectId,
           columns: 90,
           rows: 26,
+          lifecycleMode: LifecycleMode.MANUAL_STOP,
         });
         if (isCancelled()) return;
         if (created.session?.id) {
@@ -90,21 +137,33 @@ export function TerminalApp(props: { workosClients?: WorkOSClients; activeProjec
     void open();
     return () => {
       cancelled = true;
+      clearTimeout(retry);
     };
-  }, [clients, projectId, sessionId]);
+  }, [
+    clients,
+    projectId,
+    sessionId,
+    props.workloadId,
+    props.expectedWorkloadGeneration,
+    attachAttempt,
+  ]);
 
   // Poll bounded output strictly after the cursor; closed sessions stop.
   useEffect(() => {
-    if (!clients || !sessionId) return;
+    if (!clients || !sessionId || closed) return;
     let stopped = false;
+    const isStopped = () => stopped;
+    let polling = false;
     const poll = async () => {
+      if (polling || isStopped()) return;
+      polling = true;
       try {
         const read = await clients.ptySessions.readPtySession({
           sessionId,
           after: cursorRef.current,
           maxBytes: 65536,
         });
-        if (stopped) return;
+        if (isStopped()) return;
         if (read.output.length > 0) {
           const decoder = new TextDecoder();
           setOutput((current) => (current + decoder.decode(read.output)).slice(-131072));
@@ -114,9 +173,25 @@ export function TerminalApp(props: { workosClients?: WorkOSClients; activeProjec
           setClosed(true);
           return;
         }
-      } catch {
-        setVerdict("The terminal session ended.");
-        setClosed(true);
+        setVerdict("");
+      } catch (error) {
+        if (isStopped()) return;
+        if (
+          error instanceof ConnectError &&
+          [
+            Code.NotFound,
+            Code.PermissionDenied,
+            Code.Unauthenticated,
+            Code.FailedPrecondition,
+          ].includes(error.code)
+        ) {
+          setClosed(true);
+          setControls(false);
+          controlsRef.current = false;
+          setVerdict("This terminal is stopped or no longer accessible.");
+        } else setVerdict("Connection interrupted. Reconnecting to this terminal…");
+      } finally {
+        polling = false;
       }
     };
     const timer = window.setInterval(() => void poll(), 300);
@@ -124,7 +199,7 @@ export function TerminalApp(props: { workosClients?: WorkOSClients; activeProjec
       stopped = true;
       window.clearInterval(timer);
     };
-  }, [clients, sessionId]);
+  }, [clients, sessionId, closed]);
 
   // Closing the window DETACHES instead of stopping: the shell keeps
   // running under its bounded policy (ADR-0031); the explicit Stop control
@@ -193,7 +268,9 @@ export function TerminalApp(props: { workosClients?: WorkOSClients; activeProjec
         }),
       );
       writeChainRef.current = writeChainRef.current.catch(() => {
-        setVerdict("The terminal session ended.");
+        setVerdict(
+          "Input was not confirmed. Check the connection and control owner before typing again.",
+        );
       });
     },
     [clients, sessionId, closed],

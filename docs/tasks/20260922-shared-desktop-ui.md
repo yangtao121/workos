@@ -1,0 +1,51 @@
+# Shared desktop UI consumer
+
+Status: implemented; integrated Core/Runtime gate and physical-device acceptance
+are tracked by [the parent task](20260922-shared-desktop.md). Branch:
+`feat/shared-desktop-ui`. Do not infer real Safari support from Linux WebKit.
+
+Scope: server-authoritative shared project/window/focus/session state, responsive
+shell, exact workload restoration and explicit manual-stop startup. Dependencies:
+shared desktop/lifecycle contracts and Core DesktopService producer.
+
+## Delivered
+
+- Typed operations, authenticated snapshot bootstrap, resumable stream with reset,
+  reference-only atomic projection/cursor cache, no stale offline command queue.
+- Shared project/window/focus/session selection, Home default, Agent Sessions
+  primary entry, local geometry, per-device capability reacquisition.
+- Explicit PTY/Native creation before publishing, exact generation attachment,
+  generation-aware restart/remount, transient network recovery.
+- Installed app restore uses attach-only exact generation pins; access capability
+  expiry renews a device view without creating/restarting a program.
+- Manual-stop requests on explicit creates/restarts; window close only detaches.
+
+Module documentation: [shared desktop client](../architecture/shared-desktop-client.md).
+
+## Validation
+
+Executed in pinned Node 24.19.0 / Playwright 1.62.1 containers without modifying
+shared deployments or calling a paid provider:
+
+- Desktop `tsc --noEmit`; full `vitest run src`: 29 files, 184 tests passed.
+- Window manager: 11 tests; adaptive shell: 40 tests. Targeted strict ESLint
+  and Prettier checks passed.
+- `playwright test shared-desktop.spec.ts --workers=1`: three independent browser
+  contexts synchronize project/window/focus and reload authority; Chromium and
+  WebKit passed. Explicit Chromium capture run: all four tests passed.
+- Root runs generated-code consistency, full `make check`, actual cross-process
+  persistence/lifecycle gate, and session composer/pending visual states.
+
+Visual evidence: [before](../ui/desktop-web/changes/20260922-shared-desktop-ui/before/),
+[after](../ui/desktop-web/changes/20260922-shared-desktop-ui/after/),
+[notes](../ui/desktop-web/changes/20260922-shared-desktop-ui/notes.md).
+The same three after images update `current/`.
+
+## Handoff
+
+Parent must add its `clearSessionContinuity()` alongside `clearDesktopProjection()`
+and `layoutStore.clearAll()` in the existing Desktop identity-reset callback.
+Device-local Surface/bridge credentials remain memory only; shared cache contains
+canonical IDs and cursor only. Interrupted/stopped workloads remain references and
+never silently fall back to starting new programs. Ordinary app DOM/forms/scroll
+state remains app-owned.
