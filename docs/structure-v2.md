@@ -7,6 +7,10 @@
 - 当前事实：[实现说明](architecture/implementation.md)、[进度记录](status.json)
 - 本次任务：[V2 中期架构修订](tasks/20260915-architecture-v2-midterm-review.md)
 
+2026-09-24 下一阶段设计见 [V3：浏览器原生桌面与 Harness 共同工作](structure-v3.md)。
+V3 确定浏览器唯一客户端主线、局域网、原生 WorkOS Code 与 SSH，停止新增 Mobile／Android
+原生客户端工作；新功能尚未实施。本文和 V2 交付证据保留各自时点，不回写历史能力范围。
+
 本文记录当前实现与产品目标之间的差距，明确下一阶段做什么、复用什么，以及如何验收。
 V2 是设计文档版本，不代表全部 RPC 升级为 v2，也不表示下述能力已经实现。
 现行实现仍遵循已接受 ADR；涉及其边界或行为的调整，须在后续功能任务中通过专项 ADR 采纳。

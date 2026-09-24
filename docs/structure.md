@@ -1,5 +1,9 @@
 # Agent WorkOS 完整架构方案 v0.2
 
+> 2026-09-24 下一阶段设计：[Agent WorkOS V3](structure-v3.md)。浏览器唯一客户端主线，
+> 浏览器合成器、原生 WorkOS Code、SSH 与 Harness 共同工作；功能尚未实施。
+> V2 当前交付事实见 [交付索引](architecture/v2-delivery-status.md)，本文保留为原始方案对照。
+>
 > 2026-09-15 中期修订：[Agent WorkOS V2](structure-v2.md)。V2 记录当前实现检查与后续路线，
 > 功能调整待专项 ADR 和实现任务落地；本文保留为原始方案对照。
 
