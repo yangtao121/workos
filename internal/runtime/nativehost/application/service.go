@@ -166,6 +166,9 @@ func (s *Service) Create(ctx context.Context, ownerUserID, projectID, idempotenc
 		_ = s.store.CloseSession(ctx, ownerUserID, session.SessionID, domain.StateFailed, time.Now().UTC())
 		return domain.Session{}, domain.ErrEngineUnavailable
 	}
+	if binder, ok := display.(interface{ BindSession(string) }); ok {
+		binder.BindSession(session.SessionID)
+	}
 	s.mu.Lock()
 	s.displays[session.SessionID] = display
 	s.releases[session.SessionID] = release

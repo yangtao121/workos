@@ -25,6 +25,8 @@ message NativeSession {
   google.protobuf.Timestamp created_at = 8;
   google.protobuf.Timestamp expires_at = 9;
   LifecycleMode lifecycle_mode = 10;
+  // Device pixel ratio times 1000. Zero means the client has not reported one.
+  int32 device_pixel_ratio_millis = 11;
 }
 
 message CreateNativeSessionRequest {
@@ -134,4 +136,39 @@ service NativeSessionService {
   // short-lived authorization. The supervised display session keeps running
   // under its lifecycle policy until Close, bounded expiry or failure.
   rpc DetachNativeSession(DetachNativeSessionRequest) returns (DetachNativeSessionResponse) {}
+  // OpenGreenfieldDisplay returns the runtime-local compositor connection.
+  // It is not an SDP offer. Gateway must proxy it after authentication.
+  rpc OpenGreenfieldDisplay(OpenGreenfieldDisplayRequest) returns (OpenGreenfieldDisplayResponse) {}
+  // TransferNativeClipboard moves bounded plain text. It is not NativeInputEvent.
+  rpc TransferNativeClipboard(TransferNativeClipboardRequest) returns (TransferNativeClipboardResponse) {}
+}
+
+message OpenGreenfieldDisplayRequest {
+  string session_id = 1;
+  int64 control_generation = 2;
+  int32 device_pixel_ratio_millis = 3;
+}
+
+message OpenGreenfieldDisplayResponse {
+  string websocket_path = 1;
+  string compositor_session_id = 2;
+  int32 width = 3;
+  int32 height = 4;
+  int32 device_pixel_ratio_millis = 5;
+  uint32 clipboard_max_bytes = 6;
+}
+
+message TransferNativeClipboardRequest {
+  string session_id = 1;
+  int64 control_generation = 2;
+  // host_to_app or app_to_host.
+  string direction = 3;
+  bytes text = 4;
+}
+
+message TransferNativeClipboardResponse {
+  // ok, denied, expired, too_large, disconnected, unavailable.
+  string status = 1;
+  bytes text = 2;
+  uint32 max_bytes = 3;
 }

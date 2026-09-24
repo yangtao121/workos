@@ -51,6 +51,12 @@ const (
 	// NativeSessionServiceDetachNativeSessionProcedure is the fully-qualified name of the
 	// NativeSessionService's DetachNativeSession RPC.
 	NativeSessionServiceDetachNativeSessionProcedure = "/workos.surface.v1.NativeSessionService/DetachNativeSession"
+	// NativeSessionServiceOpenGreenfieldDisplayProcedure is the fully-qualified name of the
+	// NativeSessionService's OpenGreenfieldDisplay RPC.
+	NativeSessionServiceOpenGreenfieldDisplayProcedure = "/workos.surface.v1.NativeSessionService/OpenGreenfieldDisplay"
+	// NativeSessionServiceTransferNativeClipboardProcedure is the fully-qualified name of the
+	// NativeSessionService's TransferNativeClipboard RPC.
+	NativeSessionServiceTransferNativeClipboardProcedure = "/workos.surface.v1.NativeSessionService/TransferNativeClipboard"
 )
 
 // NativeSessionServiceClient is a client for the workos.surface.v1.NativeSessionService service.
@@ -68,6 +74,11 @@ type NativeSessionServiceClient interface {
 	// short-lived authorization. The supervised display session keeps running
 	// under its lifecycle policy until Close, bounded expiry or failure.
 	DetachNativeSession(context.Context, *connect.Request[v1.DetachNativeSessionRequest]) (*connect.Response[v1.DetachNativeSessionResponse], error)
+	// OpenGreenfieldDisplay returns the runtime-local compositor connection.
+	// It is not an SDP offer. Gateway must proxy it after authentication.
+	OpenGreenfieldDisplay(context.Context, *connect.Request[v1.OpenGreenfieldDisplayRequest]) (*connect.Response[v1.OpenGreenfieldDisplayResponse], error)
+	// TransferNativeClipboard moves bounded plain text. It is not NativeInputEvent.
+	TransferNativeClipboard(context.Context, *connect.Request[v1.TransferNativeClipboardRequest]) (*connect.Response[v1.TransferNativeClipboardResponse], error)
 }
 
 // NewNativeSessionServiceClient constructs a client for the workos.surface.v1.NativeSessionService
@@ -117,17 +128,31 @@ func NewNativeSessionServiceClient(httpClient connect.HTTPClient, baseURL string
 			connect.WithSchema(nativeSessionServiceMethods.ByName("DetachNativeSession")),
 			connect.WithClientOptions(opts...),
 		),
+		openGreenfieldDisplay: connect.NewClient[v1.OpenGreenfieldDisplayRequest, v1.OpenGreenfieldDisplayResponse](
+			httpClient,
+			baseURL+NativeSessionServiceOpenGreenfieldDisplayProcedure,
+			connect.WithSchema(nativeSessionServiceMethods.ByName("OpenGreenfieldDisplay")),
+			connect.WithClientOptions(opts...),
+		),
+		transferNativeClipboard: connect.NewClient[v1.TransferNativeClipboardRequest, v1.TransferNativeClipboardResponse](
+			httpClient,
+			baseURL+NativeSessionServiceTransferNativeClipboardProcedure,
+			connect.WithSchema(nativeSessionServiceMethods.ByName("TransferNativeClipboard")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
 // nativeSessionServiceClient implements NativeSessionServiceClient.
 type nativeSessionServiceClient struct {
-	getNativeConnectivity *connect.Client[v1.GetNativeConnectivityRequest, v1.GetNativeConnectivityResponse]
-	createNativeSession   *connect.Client[v1.CreateNativeSessionRequest, v1.CreateNativeSessionResponse]
-	connectNativeSession  *connect.Client[v1.ConnectNativeSessionRequest, v1.ConnectNativeSessionResponse]
-	getNativeSession      *connect.Client[v1.GetNativeSessionRequest, v1.GetNativeSessionResponse]
-	closeNativeSession    *connect.Client[v1.CloseNativeSessionRequest, v1.CloseNativeSessionResponse]
-	detachNativeSession   *connect.Client[v1.DetachNativeSessionRequest, v1.DetachNativeSessionResponse]
+	getNativeConnectivity   *connect.Client[v1.GetNativeConnectivityRequest, v1.GetNativeConnectivityResponse]
+	createNativeSession     *connect.Client[v1.CreateNativeSessionRequest, v1.CreateNativeSessionResponse]
+	connectNativeSession    *connect.Client[v1.ConnectNativeSessionRequest, v1.ConnectNativeSessionResponse]
+	getNativeSession        *connect.Client[v1.GetNativeSessionRequest, v1.GetNativeSessionResponse]
+	closeNativeSession      *connect.Client[v1.CloseNativeSessionRequest, v1.CloseNativeSessionResponse]
+	detachNativeSession     *connect.Client[v1.DetachNativeSessionRequest, v1.DetachNativeSessionResponse]
+	openGreenfieldDisplay   *connect.Client[v1.OpenGreenfieldDisplayRequest, v1.OpenGreenfieldDisplayResponse]
+	transferNativeClipboard *connect.Client[v1.TransferNativeClipboardRequest, v1.TransferNativeClipboardResponse]
 }
 
 // GetNativeConnectivity calls workos.surface.v1.NativeSessionService.GetNativeConnectivity.
@@ -160,6 +185,16 @@ func (c *nativeSessionServiceClient) DetachNativeSession(ctx context.Context, re
 	return c.detachNativeSession.CallUnary(ctx, req)
 }
 
+// OpenGreenfieldDisplay calls workos.surface.v1.NativeSessionService.OpenGreenfieldDisplay.
+func (c *nativeSessionServiceClient) OpenGreenfieldDisplay(ctx context.Context, req *connect.Request[v1.OpenGreenfieldDisplayRequest]) (*connect.Response[v1.OpenGreenfieldDisplayResponse], error) {
+	return c.openGreenfieldDisplay.CallUnary(ctx, req)
+}
+
+// TransferNativeClipboard calls workos.surface.v1.NativeSessionService.TransferNativeClipboard.
+func (c *nativeSessionServiceClient) TransferNativeClipboard(ctx context.Context, req *connect.Request[v1.TransferNativeClipboardRequest]) (*connect.Response[v1.TransferNativeClipboardResponse], error) {
+	return c.transferNativeClipboard.CallUnary(ctx, req)
+}
+
 // NativeSessionServiceHandler is an implementation of the workos.surface.v1.NativeSessionService
 // service.
 type NativeSessionServiceHandler interface {
@@ -176,6 +211,11 @@ type NativeSessionServiceHandler interface {
 	// short-lived authorization. The supervised display session keeps running
 	// under its lifecycle policy until Close, bounded expiry or failure.
 	DetachNativeSession(context.Context, *connect.Request[v1.DetachNativeSessionRequest]) (*connect.Response[v1.DetachNativeSessionResponse], error)
+	// OpenGreenfieldDisplay returns the runtime-local compositor connection.
+	// It is not an SDP offer. Gateway must proxy it after authentication.
+	OpenGreenfieldDisplay(context.Context, *connect.Request[v1.OpenGreenfieldDisplayRequest]) (*connect.Response[v1.OpenGreenfieldDisplayResponse], error)
+	// TransferNativeClipboard moves bounded plain text. It is not NativeInputEvent.
+	TransferNativeClipboard(context.Context, *connect.Request[v1.TransferNativeClipboardRequest]) (*connect.Response[v1.TransferNativeClipboardResponse], error)
 }
 
 // NewNativeSessionServiceHandler builds an HTTP handler from the service implementation. It returns
@@ -221,6 +261,18 @@ func NewNativeSessionServiceHandler(svc NativeSessionServiceHandler, opts ...con
 		connect.WithSchema(nativeSessionServiceMethods.ByName("DetachNativeSession")),
 		connect.WithHandlerOptions(opts...),
 	)
+	nativeSessionServiceOpenGreenfieldDisplayHandler := connect.NewUnaryHandler(
+		NativeSessionServiceOpenGreenfieldDisplayProcedure,
+		svc.OpenGreenfieldDisplay,
+		connect.WithSchema(nativeSessionServiceMethods.ByName("OpenGreenfieldDisplay")),
+		connect.WithHandlerOptions(opts...),
+	)
+	nativeSessionServiceTransferNativeClipboardHandler := connect.NewUnaryHandler(
+		NativeSessionServiceTransferNativeClipboardProcedure,
+		svc.TransferNativeClipboard,
+		connect.WithSchema(nativeSessionServiceMethods.ByName("TransferNativeClipboard")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/workos.surface.v1.NativeSessionService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case NativeSessionServiceGetNativeConnectivityProcedure:
@@ -235,6 +287,10 @@ func NewNativeSessionServiceHandler(svc NativeSessionServiceHandler, opts ...con
 			nativeSessionServiceCloseNativeSessionHandler.ServeHTTP(w, r)
 		case NativeSessionServiceDetachNativeSessionProcedure:
 			nativeSessionServiceDetachNativeSessionHandler.ServeHTTP(w, r)
+		case NativeSessionServiceOpenGreenfieldDisplayProcedure:
+			nativeSessionServiceOpenGreenfieldDisplayHandler.ServeHTTP(w, r)
+		case NativeSessionServiceTransferNativeClipboardProcedure:
+			nativeSessionServiceTransferNativeClipboardHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -266,4 +322,12 @@ func (UnimplementedNativeSessionServiceHandler) CloseNativeSession(context.Conte
 
 func (UnimplementedNativeSessionServiceHandler) DetachNativeSession(context.Context, *connect.Request[v1.DetachNativeSessionRequest]) (*connect.Response[v1.DetachNativeSessionResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("workos.surface.v1.NativeSessionService.DetachNativeSession is not implemented"))
+}
+
+func (UnimplementedNativeSessionServiceHandler) OpenGreenfieldDisplay(context.Context, *connect.Request[v1.OpenGreenfieldDisplayRequest]) (*connect.Response[v1.OpenGreenfieldDisplayResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("workos.surface.v1.NativeSessionService.OpenGreenfieldDisplay is not implemented"))
+}
+
+func (UnimplementedNativeSessionServiceHandler) TransferNativeClipboard(context.Context, *connect.Request[v1.TransferNativeClipboardRequest]) (*connect.Response[v1.TransferNativeClipboardResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("workos.surface.v1.NativeSessionService.TransferNativeClipboard is not implemented"))
 }

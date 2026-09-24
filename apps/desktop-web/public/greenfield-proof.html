@@ -1,0 +1,20 @@
+<!doctype html>
+<html>
+  <body>
+    <canvas id="output" width="1440" height="900"></canvas>
+    <script type="module">
+      import { attachGreenfieldCompositor } from "/src/greenfieldCompositor.ts";
+      const canvas = document.getElementById("output");
+      try {
+        await attachGreenfieldCompositor({
+          canvas,
+          launchPath: "http://127.0.0.1:8081/code",
+          compositorSessionId: "workos-p0",
+        });
+        document.body.dataset.ready = "1";
+      } catch (error) {
+        document.body.dataset.error = String(error);
+      }
+    </script>
+  </body>
+</html>

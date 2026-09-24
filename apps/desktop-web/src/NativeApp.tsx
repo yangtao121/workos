@@ -1,5 +1,6 @@
 import { Code, ConnectError } from "@connectrpc/connect";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { GreenfieldApp } from "./GreenfieldApp.js";
 import { NativeSessionLease } from "./nativeSession.js";
 import type { NativeInputEvent } from "@workos/protocol";
 import type { WorkOSClients } from "@workos/agent-sdk";
@@ -25,6 +26,7 @@ export function NativeApp(props: {
   const [controls, setControls] = useState(true);
   const [stopping, setStopping] = useState(false);
   const [inputDraft, setInputDraft] = useState("");
+  const [greenfieldSession, setGreenfieldSession] = useState("");
   const composingRef = useRef(false);
   const clients = props.workosClients;
   const projectId = props.activeProjectId ?? "";
@@ -74,6 +76,15 @@ export function NativeApp(props: {
           return;
         }
         if (!session) throw new Error("missing native session");
+        const readSession = clients.nativeSessions.getNativeSession;
+        if (typeof readSession === "function") {
+          const facts = await readSession({ sessionId: session });
+          if (!isDisposed() && facts.session?.engine === "greenfield") {
+            setGreenfieldSession(session);
+            setStatus("attached");
+            return;
+          }
+        }
         const held = await lease.controls.catch(() => true);
         if (isDisposed()) return;
         controlsRef.current = held;
@@ -402,9 +413,17 @@ export function NativeApp(props: {
           {verdict}
         </p>
       ) : null}
+      {greenfieldSession ? (
+        <GreenfieldApp
+          clients={clients}
+          controlGeneration={props.expectedWorkloadGeneration}
+          sessionId={greenfieldSession}
+        />
+      ) : null}
       <div
         className="native-stage"
         data-testid="native-stage"
+        hidden={Boolean(greenfieldSession)}
         tabIndex={0}
         onContextMenu={(event) => {
           event.preventDefault();

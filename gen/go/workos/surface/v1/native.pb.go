@@ -41,8 +41,10 @@ type NativeSession struct {
 	CreatedAt     *timestamppb.Timestamp `protobuf:"bytes,8,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
 	ExpiresAt     *timestamppb.Timestamp `protobuf:"bytes,9,opt,name=expires_at,json=expiresAt,proto3" json:"expires_at,omitempty"`
 	LifecycleMode LifecycleMode          `protobuf:"varint,10,opt,name=lifecycle_mode,json=lifecycleMode,proto3,enum=workos.surface.v1.LifecycleMode" json:"lifecycle_mode,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	// Device pixel ratio times 1000. Zero means the client has not reported one.
+	DevicePixelRatioMillis int32 `protobuf:"varint,11,opt,name=device_pixel_ratio_millis,json=devicePixelRatioMillis,proto3" json:"device_pixel_ratio_millis,omitempty"`
+	unknownFields          protoimpl.UnknownFields
+	sizeCache              protoimpl.SizeCache
 }
 
 func (x *NativeSession) Reset() {
@@ -143,6 +145,13 @@ func (x *NativeSession) GetLifecycleMode() LifecycleMode {
 		return x.LifecycleMode
 	}
 	return LifecycleMode_LIFECYCLE_MODE_UNSPECIFIED
+}
+
+func (x *NativeSession) GetDevicePixelRatioMillis() int32 {
+	if x != nil {
+		return x.DevicePixelRatioMillis
+	}
+	return 0
 }
 
 type CreateNativeSessionRequest struct {
@@ -921,11 +930,285 @@ func (x *NativeInputEvent) GetButton() int32 {
 	return 0
 }
 
+type OpenGreenfieldDisplayRequest struct {
+	state                  protoimpl.MessageState `protogen:"open.v1"`
+	SessionId              string                 `protobuf:"bytes,1,opt,name=session_id,json=sessionId,proto3" json:"session_id,omitempty"`
+	ControlGeneration      int64                  `protobuf:"varint,2,opt,name=control_generation,json=controlGeneration,proto3" json:"control_generation,omitempty"`
+	DevicePixelRatioMillis int32                  `protobuf:"varint,3,opt,name=device_pixel_ratio_millis,json=devicePixelRatioMillis,proto3" json:"device_pixel_ratio_millis,omitempty"`
+	unknownFields          protoimpl.UnknownFields
+	sizeCache              protoimpl.SizeCache
+}
+
+func (x *OpenGreenfieldDisplayRequest) Reset() {
+	*x = OpenGreenfieldDisplayRequest{}
+	mi := &file_workos_surface_v1_native_proto_msgTypes[15]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *OpenGreenfieldDisplayRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*OpenGreenfieldDisplayRequest) ProtoMessage() {}
+
+func (x *OpenGreenfieldDisplayRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_workos_surface_v1_native_proto_msgTypes[15]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use OpenGreenfieldDisplayRequest.ProtoReflect.Descriptor instead.
+func (*OpenGreenfieldDisplayRequest) Descriptor() ([]byte, []int) {
+	return file_workos_surface_v1_native_proto_rawDescGZIP(), []int{15}
+}
+
+func (x *OpenGreenfieldDisplayRequest) GetSessionId() string {
+	if x != nil {
+		return x.SessionId
+	}
+	return ""
+}
+
+func (x *OpenGreenfieldDisplayRequest) GetControlGeneration() int64 {
+	if x != nil {
+		return x.ControlGeneration
+	}
+	return 0
+}
+
+func (x *OpenGreenfieldDisplayRequest) GetDevicePixelRatioMillis() int32 {
+	if x != nil {
+		return x.DevicePixelRatioMillis
+	}
+	return 0
+}
+
+type OpenGreenfieldDisplayResponse struct {
+	state                  protoimpl.MessageState `protogen:"open.v1"`
+	WebsocketPath          string                 `protobuf:"bytes,1,opt,name=websocket_path,json=websocketPath,proto3" json:"websocket_path,omitempty"`
+	CompositorSessionId    string                 `protobuf:"bytes,2,opt,name=compositor_session_id,json=compositorSessionId,proto3" json:"compositor_session_id,omitempty"`
+	Width                  int32                  `protobuf:"varint,3,opt,name=width,proto3" json:"width,omitempty"`
+	Height                 int32                  `protobuf:"varint,4,opt,name=height,proto3" json:"height,omitempty"`
+	DevicePixelRatioMillis int32                  `protobuf:"varint,5,opt,name=device_pixel_ratio_millis,json=devicePixelRatioMillis,proto3" json:"device_pixel_ratio_millis,omitempty"`
+	ClipboardMaxBytes      uint32                 `protobuf:"varint,6,opt,name=clipboard_max_bytes,json=clipboardMaxBytes,proto3" json:"clipboard_max_bytes,omitempty"`
+	unknownFields          protoimpl.UnknownFields
+	sizeCache              protoimpl.SizeCache
+}
+
+func (x *OpenGreenfieldDisplayResponse) Reset() {
+	*x = OpenGreenfieldDisplayResponse{}
+	mi := &file_workos_surface_v1_native_proto_msgTypes[16]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *OpenGreenfieldDisplayResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*OpenGreenfieldDisplayResponse) ProtoMessage() {}
+
+func (x *OpenGreenfieldDisplayResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_workos_surface_v1_native_proto_msgTypes[16]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use OpenGreenfieldDisplayResponse.ProtoReflect.Descriptor instead.
+func (*OpenGreenfieldDisplayResponse) Descriptor() ([]byte, []int) {
+	return file_workos_surface_v1_native_proto_rawDescGZIP(), []int{16}
+}
+
+func (x *OpenGreenfieldDisplayResponse) GetWebsocketPath() string {
+	if x != nil {
+		return x.WebsocketPath
+	}
+	return ""
+}
+
+func (x *OpenGreenfieldDisplayResponse) GetCompositorSessionId() string {
+	if x != nil {
+		return x.CompositorSessionId
+	}
+	return ""
+}
+
+func (x *OpenGreenfieldDisplayResponse) GetWidth() int32 {
+	if x != nil {
+		return x.Width
+	}
+	return 0
+}
+
+func (x *OpenGreenfieldDisplayResponse) GetHeight() int32 {
+	if x != nil {
+		return x.Height
+	}
+	return 0
+}
+
+func (x *OpenGreenfieldDisplayResponse) GetDevicePixelRatioMillis() int32 {
+	if x != nil {
+		return x.DevicePixelRatioMillis
+	}
+	return 0
+}
+
+func (x *OpenGreenfieldDisplayResponse) GetClipboardMaxBytes() uint32 {
+	if x != nil {
+		return x.ClipboardMaxBytes
+	}
+	return 0
+}
+
+type TransferNativeClipboardRequest struct {
+	state             protoimpl.MessageState `protogen:"open.v1"`
+	SessionId         string                 `protobuf:"bytes,1,opt,name=session_id,json=sessionId,proto3" json:"session_id,omitempty"`
+	ControlGeneration int64                  `protobuf:"varint,2,opt,name=control_generation,json=controlGeneration,proto3" json:"control_generation,omitempty"`
+	// host_to_app or app_to_host.
+	Direction     string `protobuf:"bytes,3,opt,name=direction,proto3" json:"direction,omitempty"`
+	Text          []byte `protobuf:"bytes,4,opt,name=text,proto3" json:"text,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *TransferNativeClipboardRequest) Reset() {
+	*x = TransferNativeClipboardRequest{}
+	mi := &file_workos_surface_v1_native_proto_msgTypes[17]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *TransferNativeClipboardRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*TransferNativeClipboardRequest) ProtoMessage() {}
+
+func (x *TransferNativeClipboardRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_workos_surface_v1_native_proto_msgTypes[17]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use TransferNativeClipboardRequest.ProtoReflect.Descriptor instead.
+func (*TransferNativeClipboardRequest) Descriptor() ([]byte, []int) {
+	return file_workos_surface_v1_native_proto_rawDescGZIP(), []int{17}
+}
+
+func (x *TransferNativeClipboardRequest) GetSessionId() string {
+	if x != nil {
+		return x.SessionId
+	}
+	return ""
+}
+
+func (x *TransferNativeClipboardRequest) GetControlGeneration() int64 {
+	if x != nil {
+		return x.ControlGeneration
+	}
+	return 0
+}
+
+func (x *TransferNativeClipboardRequest) GetDirection() string {
+	if x != nil {
+		return x.Direction
+	}
+	return ""
+}
+
+func (x *TransferNativeClipboardRequest) GetText() []byte {
+	if x != nil {
+		return x.Text
+	}
+	return nil
+}
+
+type TransferNativeClipboardResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// ok, denied, expired, too_large, disconnected, unavailable.
+	Status        string `protobuf:"bytes,1,opt,name=status,proto3" json:"status,omitempty"`
+	Text          []byte `protobuf:"bytes,2,opt,name=text,proto3" json:"text,omitempty"`
+	MaxBytes      uint32 `protobuf:"varint,3,opt,name=max_bytes,json=maxBytes,proto3" json:"max_bytes,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *TransferNativeClipboardResponse) Reset() {
+	*x = TransferNativeClipboardResponse{}
+	mi := &file_workos_surface_v1_native_proto_msgTypes[18]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *TransferNativeClipboardResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*TransferNativeClipboardResponse) ProtoMessage() {}
+
+func (x *TransferNativeClipboardResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_workos_surface_v1_native_proto_msgTypes[18]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use TransferNativeClipboardResponse.ProtoReflect.Descriptor instead.
+func (*TransferNativeClipboardResponse) Descriptor() ([]byte, []int) {
+	return file_workos_surface_v1_native_proto_rawDescGZIP(), []int{18}
+}
+
+func (x *TransferNativeClipboardResponse) GetStatus() string {
+	if x != nil {
+		return x.Status
+	}
+	return ""
+}
+
+func (x *TransferNativeClipboardResponse) GetText() []byte {
+	if x != nil {
+		return x.Text
+	}
+	return nil
+}
+
+func (x *TransferNativeClipboardResponse) GetMaxBytes() uint32 {
+	if x != nil {
+		return x.MaxBytes
+	}
+	return 0
+}
+
 var File_workos_surface_v1_native_proto protoreflect.FileDescriptor
 
 const file_workos_surface_v1_native_proto_rawDesc = "" +
 	"\n" +
-	"\x1eworkos/surface/v1/native.proto\x12\x11workos.surface.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a!workos/surface/v1/lifecycle.proto\"\xfd\x02\n" +
+	"\x1eworkos/surface/v1/native.proto\x12\x11workos.surface.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a!workos/surface/v1/lifecycle.proto\"\xb8\x03\n" +
 	"\rNativeSession\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\"\n" +
 	"\rowner_user_id\x18\x02 \x01(\tR\vownerUserId\x12\x1d\n" +
@@ -940,7 +1223,8 @@ const file_workos_surface_v1_native_proto_rawDesc = "" +
 	"\n" +
 	"expires_at\x18\t \x01(\v2\x1a.google.protobuf.TimestampR\texpiresAt\x12G\n" +
 	"\x0elifecycle_mode\x18\n" +
-	" \x01(\x0e2 .workos.surface.v1.LifecycleModeR\rlifecycleMode\"\xdb\x01\n" +
+	" \x01(\x0e2 .workos.surface.v1.LifecycleModeR\rlifecycleMode\x129\n" +
+	"\x19device_pixel_ratio_millis\x18\v \x01(\x05R\x16devicePixelRatioMillis\"\xdb\x01\n" +
 	"\x1aCreateNativeSessionRequest\x12'\n" +
 	"\x0fidempotency_key\x18\x01 \x01(\tR\x0eidempotencyKey\x12\x1d\n" +
 	"\n" +
@@ -998,14 +1282,38 @@ const file_workos_surface_v1_native_proto_rawDesc = "" +
 	"\x06action\x18\x04 \x01(\tR\x06action\x12\f\n" +
 	"\x01x\x18\x05 \x01(\x01R\x01x\x12\f\n" +
 	"\x01y\x18\x06 \x01(\x01R\x01y\x12\x16\n" +
-	"\x06button\x18\a \x01(\x05R\x06button2\xe3\x05\n" +
+	"\x06button\x18\a \x01(\x05R\x06button\"\xa7\x01\n" +
+	"\x1cOpenGreenfieldDisplayRequest\x12\x1d\n" +
+	"\n" +
+	"session_id\x18\x01 \x01(\tR\tsessionId\x12-\n" +
+	"\x12control_generation\x18\x02 \x01(\x03R\x11controlGeneration\x129\n" +
+	"\x19device_pixel_ratio_millis\x18\x03 \x01(\x05R\x16devicePixelRatioMillis\"\x93\x02\n" +
+	"\x1dOpenGreenfieldDisplayResponse\x12%\n" +
+	"\x0ewebsocket_path\x18\x01 \x01(\tR\rwebsocketPath\x122\n" +
+	"\x15compositor_session_id\x18\x02 \x01(\tR\x13compositorSessionId\x12\x14\n" +
+	"\x05width\x18\x03 \x01(\x05R\x05width\x12\x16\n" +
+	"\x06height\x18\x04 \x01(\x05R\x06height\x129\n" +
+	"\x19device_pixel_ratio_millis\x18\x05 \x01(\x05R\x16devicePixelRatioMillis\x12.\n" +
+	"\x13clipboard_max_bytes\x18\x06 \x01(\rR\x11clipboardMaxBytes\"\xa0\x01\n" +
+	"\x1eTransferNativeClipboardRequest\x12\x1d\n" +
+	"\n" +
+	"session_id\x18\x01 \x01(\tR\tsessionId\x12-\n" +
+	"\x12control_generation\x18\x02 \x01(\x03R\x11controlGeneration\x12\x1c\n" +
+	"\tdirection\x18\x03 \x01(\tR\tdirection\x12\x12\n" +
+	"\x04text\x18\x04 \x01(\fR\x04text\"j\n" +
+	"\x1fTransferNativeClipboardResponse\x12\x16\n" +
+	"\x06status\x18\x01 \x01(\tR\x06status\x12\x12\n" +
+	"\x04text\x18\x02 \x01(\fR\x04text\x12\x1b\n" +
+	"\tmax_bytes\x18\x03 \x01(\rR\bmaxBytes2\xe6\a\n" +
 	"\x14NativeSessionService\x12|\n" +
 	"\x15GetNativeConnectivity\x12/.workos.surface.v1.GetNativeConnectivityRequest\x1a0.workos.surface.v1.GetNativeConnectivityResponse\"\x00\x12v\n" +
 	"\x13CreateNativeSession\x12-.workos.surface.v1.CreateNativeSessionRequest\x1a..workos.surface.v1.CreateNativeSessionResponse\"\x00\x12y\n" +
 	"\x14ConnectNativeSession\x12..workos.surface.v1.ConnectNativeSessionRequest\x1a/.workos.surface.v1.ConnectNativeSessionResponse\"\x00\x12m\n" +
 	"\x10GetNativeSession\x12*.workos.surface.v1.GetNativeSessionRequest\x1a+.workos.surface.v1.GetNativeSessionResponse\"\x00\x12s\n" +
 	"\x12CloseNativeSession\x12,.workos.surface.v1.CloseNativeSessionRequest\x1a-.workos.surface.v1.CloseNativeSessionResponse\"\x00\x12v\n" +
-	"\x13DetachNativeSession\x12-.workos.surface.v1.DetachNativeSessionRequest\x1a..workos.surface.v1.DetachNativeSessionResponse\"\x00BAZ?github.com/yangtao121/workos/gen/go/workos/surface/v1;surfacev1b\x06proto3"
+	"\x13DetachNativeSession\x12-.workos.surface.v1.DetachNativeSessionRequest\x1a..workos.surface.v1.DetachNativeSessionResponse\"\x00\x12|\n" +
+	"\x15OpenGreenfieldDisplay\x12/.workos.surface.v1.OpenGreenfieldDisplayRequest\x1a0.workos.surface.v1.OpenGreenfieldDisplayResponse\"\x00\x12\x82\x01\n" +
+	"\x17TransferNativeClipboard\x121.workos.surface.v1.TransferNativeClipboardRequest\x1a2.workos.surface.v1.TransferNativeClipboardResponse\"\x00BAZ?github.com/yangtao121/workos/gen/go/workos/surface/v1;surfacev1b\x06proto3"
 
 var (
 	file_workos_surface_v1_native_proto_rawDescOnce sync.Once
@@ -1019,51 +1327,59 @@ func file_workos_surface_v1_native_proto_rawDescGZIP() []byte {
 	return file_workos_surface_v1_native_proto_rawDescData
 }
 
-var file_workos_surface_v1_native_proto_msgTypes = make([]protoimpl.MessageInfo, 15)
+var file_workos_surface_v1_native_proto_msgTypes = make([]protoimpl.MessageInfo, 19)
 var file_workos_surface_v1_native_proto_goTypes = []any{
-	(*NativeSession)(nil),                 // 0: workos.surface.v1.NativeSession
-	(*CreateNativeSessionRequest)(nil),    // 1: workos.surface.v1.CreateNativeSessionRequest
-	(*CreateNativeSessionResponse)(nil),   // 2: workos.surface.v1.CreateNativeSessionResponse
-	(*ConnectNativeSessionRequest)(nil),   // 3: workos.surface.v1.ConnectNativeSessionRequest
-	(*ConnectNativeSessionResponse)(nil),  // 4: workos.surface.v1.ConnectNativeSessionResponse
-	(*CloseNativeSessionRequest)(nil),     // 5: workos.surface.v1.CloseNativeSessionRequest
-	(*CloseNativeSessionResponse)(nil),    // 6: workos.surface.v1.CloseNativeSessionResponse
-	(*GetNativeSessionRequest)(nil),       // 7: workos.surface.v1.GetNativeSessionRequest
-	(*GetNativeSessionResponse)(nil),      // 8: workos.surface.v1.GetNativeSessionResponse
-	(*DetachNativeSessionRequest)(nil),    // 9: workos.surface.v1.DetachNativeSessionRequest
-	(*DetachNativeSessionResponse)(nil),   // 10: workos.surface.v1.DetachNativeSessionResponse
-	(*NativeIceServer)(nil),               // 11: workos.surface.v1.NativeIceServer
-	(*GetNativeConnectivityRequest)(nil),  // 12: workos.surface.v1.GetNativeConnectivityRequest
-	(*GetNativeConnectivityResponse)(nil), // 13: workos.surface.v1.GetNativeConnectivityResponse
-	(*NativeInputEvent)(nil),              // 14: workos.surface.v1.NativeInputEvent
-	(*timestamppb.Timestamp)(nil),         // 15: google.protobuf.Timestamp
-	(LifecycleMode)(0),                    // 16: workos.surface.v1.LifecycleMode
+	(*NativeSession)(nil),                   // 0: workos.surface.v1.NativeSession
+	(*CreateNativeSessionRequest)(nil),      // 1: workos.surface.v1.CreateNativeSessionRequest
+	(*CreateNativeSessionResponse)(nil),     // 2: workos.surface.v1.CreateNativeSessionResponse
+	(*ConnectNativeSessionRequest)(nil),     // 3: workos.surface.v1.ConnectNativeSessionRequest
+	(*ConnectNativeSessionResponse)(nil),    // 4: workos.surface.v1.ConnectNativeSessionResponse
+	(*CloseNativeSessionRequest)(nil),       // 5: workos.surface.v1.CloseNativeSessionRequest
+	(*CloseNativeSessionResponse)(nil),      // 6: workos.surface.v1.CloseNativeSessionResponse
+	(*GetNativeSessionRequest)(nil),         // 7: workos.surface.v1.GetNativeSessionRequest
+	(*GetNativeSessionResponse)(nil),        // 8: workos.surface.v1.GetNativeSessionResponse
+	(*DetachNativeSessionRequest)(nil),      // 9: workos.surface.v1.DetachNativeSessionRequest
+	(*DetachNativeSessionResponse)(nil),     // 10: workos.surface.v1.DetachNativeSessionResponse
+	(*NativeIceServer)(nil),                 // 11: workos.surface.v1.NativeIceServer
+	(*GetNativeConnectivityRequest)(nil),    // 12: workos.surface.v1.GetNativeConnectivityRequest
+	(*GetNativeConnectivityResponse)(nil),   // 13: workos.surface.v1.GetNativeConnectivityResponse
+	(*NativeInputEvent)(nil),                // 14: workos.surface.v1.NativeInputEvent
+	(*OpenGreenfieldDisplayRequest)(nil),    // 15: workos.surface.v1.OpenGreenfieldDisplayRequest
+	(*OpenGreenfieldDisplayResponse)(nil),   // 16: workos.surface.v1.OpenGreenfieldDisplayResponse
+	(*TransferNativeClipboardRequest)(nil),  // 17: workos.surface.v1.TransferNativeClipboardRequest
+	(*TransferNativeClipboardResponse)(nil), // 18: workos.surface.v1.TransferNativeClipboardResponse
+	(*timestamppb.Timestamp)(nil),           // 19: google.protobuf.Timestamp
+	(LifecycleMode)(0),                      // 20: workos.surface.v1.LifecycleMode
 }
 var file_workos_surface_v1_native_proto_depIdxs = []int32{
-	15, // 0: workos.surface.v1.NativeSession.created_at:type_name -> google.protobuf.Timestamp
-	15, // 1: workos.surface.v1.NativeSession.expires_at:type_name -> google.protobuf.Timestamp
-	16, // 2: workos.surface.v1.NativeSession.lifecycle_mode:type_name -> workos.surface.v1.LifecycleMode
-	16, // 3: workos.surface.v1.CreateNativeSessionRequest.lifecycle_mode:type_name -> workos.surface.v1.LifecycleMode
+	19, // 0: workos.surface.v1.NativeSession.created_at:type_name -> google.protobuf.Timestamp
+	19, // 1: workos.surface.v1.NativeSession.expires_at:type_name -> google.protobuf.Timestamp
+	20, // 2: workos.surface.v1.NativeSession.lifecycle_mode:type_name -> workos.surface.v1.LifecycleMode
+	20, // 3: workos.surface.v1.CreateNativeSessionRequest.lifecycle_mode:type_name -> workos.surface.v1.LifecycleMode
 	0,  // 4: workos.surface.v1.CreateNativeSessionResponse.session:type_name -> workos.surface.v1.NativeSession
 	0,  // 5: workos.surface.v1.ConnectNativeSessionResponse.session:type_name -> workos.surface.v1.NativeSession
 	0,  // 6: workos.surface.v1.CloseNativeSessionResponse.session:type_name -> workos.surface.v1.NativeSession
 	0,  // 7: workos.surface.v1.GetNativeSessionResponse.session:type_name -> workos.surface.v1.NativeSession
 	11, // 8: workos.surface.v1.GetNativeConnectivityResponse.ice_servers:type_name -> workos.surface.v1.NativeIceServer
-	15, // 9: workos.surface.v1.GetNativeConnectivityResponse.expires_at:type_name -> google.protobuf.Timestamp
+	19, // 9: workos.surface.v1.GetNativeConnectivityResponse.expires_at:type_name -> google.protobuf.Timestamp
 	12, // 10: workos.surface.v1.NativeSessionService.GetNativeConnectivity:input_type -> workos.surface.v1.GetNativeConnectivityRequest
 	1,  // 11: workos.surface.v1.NativeSessionService.CreateNativeSession:input_type -> workos.surface.v1.CreateNativeSessionRequest
 	3,  // 12: workos.surface.v1.NativeSessionService.ConnectNativeSession:input_type -> workos.surface.v1.ConnectNativeSessionRequest
 	7,  // 13: workos.surface.v1.NativeSessionService.GetNativeSession:input_type -> workos.surface.v1.GetNativeSessionRequest
 	5,  // 14: workos.surface.v1.NativeSessionService.CloseNativeSession:input_type -> workos.surface.v1.CloseNativeSessionRequest
 	9,  // 15: workos.surface.v1.NativeSessionService.DetachNativeSession:input_type -> workos.surface.v1.DetachNativeSessionRequest
-	13, // 16: workos.surface.v1.NativeSessionService.GetNativeConnectivity:output_type -> workos.surface.v1.GetNativeConnectivityResponse
-	2,  // 17: workos.surface.v1.NativeSessionService.CreateNativeSession:output_type -> workos.surface.v1.CreateNativeSessionResponse
-	4,  // 18: workos.surface.v1.NativeSessionService.ConnectNativeSession:output_type -> workos.surface.v1.ConnectNativeSessionResponse
-	8,  // 19: workos.surface.v1.NativeSessionService.GetNativeSession:output_type -> workos.surface.v1.GetNativeSessionResponse
-	6,  // 20: workos.surface.v1.NativeSessionService.CloseNativeSession:output_type -> workos.surface.v1.CloseNativeSessionResponse
-	10, // 21: workos.surface.v1.NativeSessionService.DetachNativeSession:output_type -> workos.surface.v1.DetachNativeSessionResponse
-	16, // [16:22] is the sub-list for method output_type
-	10, // [10:16] is the sub-list for method input_type
+	15, // 16: workos.surface.v1.NativeSessionService.OpenGreenfieldDisplay:input_type -> workos.surface.v1.OpenGreenfieldDisplayRequest
+	17, // 17: workos.surface.v1.NativeSessionService.TransferNativeClipboard:input_type -> workos.surface.v1.TransferNativeClipboardRequest
+	13, // 18: workos.surface.v1.NativeSessionService.GetNativeConnectivity:output_type -> workos.surface.v1.GetNativeConnectivityResponse
+	2,  // 19: workos.surface.v1.NativeSessionService.CreateNativeSession:output_type -> workos.surface.v1.CreateNativeSessionResponse
+	4,  // 20: workos.surface.v1.NativeSessionService.ConnectNativeSession:output_type -> workos.surface.v1.ConnectNativeSessionResponse
+	8,  // 21: workos.surface.v1.NativeSessionService.GetNativeSession:output_type -> workos.surface.v1.GetNativeSessionResponse
+	6,  // 22: workos.surface.v1.NativeSessionService.CloseNativeSession:output_type -> workos.surface.v1.CloseNativeSessionResponse
+	10, // 23: workos.surface.v1.NativeSessionService.DetachNativeSession:output_type -> workos.surface.v1.DetachNativeSessionResponse
+	16, // 24: workos.surface.v1.NativeSessionService.OpenGreenfieldDisplay:output_type -> workos.surface.v1.OpenGreenfieldDisplayResponse
+	18, // 25: workos.surface.v1.NativeSessionService.TransferNativeClipboard:output_type -> workos.surface.v1.TransferNativeClipboardResponse
+	18, // [18:26] is the sub-list for method output_type
+	10, // [10:18] is the sub-list for method input_type
 	10, // [10:10] is the sub-list for extension type_name
 	10, // [10:10] is the sub-list for extension extendee
 	0,  // [0:10] is the sub-list for field type_name
@@ -1081,7 +1397,7 @@ func file_workos_surface_v1_native_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_workos_surface_v1_native_proto_rawDesc), len(file_workos_surface_v1_native_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   15,
+			NumMessages:   19,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

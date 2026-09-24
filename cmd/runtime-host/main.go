@@ -45,7 +45,9 @@ import (
 	buildtesttransport "github.com/yangtao121/workos/internal/runtime/buildtest/transport"
 	nativehostpostgres "github.com/yangtao121/workos/internal/runtime/nativehost/adapters/postgres"
 	"github.com/yangtao121/workos/internal/runtime/nativehost/adapters/turnauth"
+	greenfieldengine "github.com/yangtao121/workos/internal/runtime/nativehost/adapters/greenfield"
 	xvfbengine "github.com/yangtao121/workos/internal/runtime/nativehost/adapters/xvfbengine"
+	nativeports "github.com/yangtao121/workos/internal/runtime/nativehost/ports"
 	nativehostapp "github.com/yangtao121/workos/internal/runtime/nativehost/application"
 	nativehosttransport "github.com/yangtao121/workos/internal/runtime/nativehost/transport"
 	previewdocker "github.com/yangtao121/workos/internal/runtime/previewhost/adapters/dockerpreview"
@@ -139,6 +141,7 @@ func run(logger *slog.Logger) error {
 	defer pool.Close()
 	ready := func(ctx context.Context) error { return pool.Ping(ctx) }
 	mux := httpserver.NewMux("runtime-host", ready)
+	mux.Handle("/native/greenfield/", identity.Middleware(http.HandlerFunc(greenfieldengine.ServeProxy)))
 
 	workloadPath, workloadHandler := workloadv1connect.NewWorkloadServiceHandler(runtimetransport.NewWorkloadHandler())
 	mux.Handle(workloadPath, workloadHandler)
@@ -583,23 +586,31 @@ func run(logger *slog.Logger) error {
 	// The virtual-display native runner (ADR-0029): real Xvfb displays with
 	// WebRTC video and data-channel input behind the owner-identity gate.
 	// Without the X11 toolchain the capability stays honestly unavailable.
-	nativeConfigured := strings.TrimSpace(cfg.Runtime.NativeDisplay) != ""
+	nativeConfigured := strings.TrimSpace(cfg.Runtime.NativeDisplay) != "" || cfg.Runtime.NativeEngine == "greenfield"
 	var nativeService *nativehostapp.Service
 	if nativeConfigured {
-		nativeEngine, engineErr := xvfbengine.New(cfg.Runtime.NativeDisplay, cfg.Runtime.NativeClient, cfg.Runtime.NativeFFmpeg, cfg.Runtime.NativeXdotool, cfg.Runtime.NativeScratch, cfg.Runtime.NativeCandidates)
-		if engineErr != nil {
-			return engineErr
-		}
-		if err := nativeEngine.WithLAN(os.Getenv("WORKOS_NATIVE_LAN_CIDRS"), os.Getenv("WORKOS_NATIVE_UDP_PORTS")); err != nil {
-			return err
-		}
-		connectivity, err := turnauth.New(cfg.Runtime.NativeCandidates, os.Getenv("WORKOS_NATIVE_TURN_URLS"), os.Getenv("WORKOS_NATIVE_TURN_SECRET_FILE"))
-		if err != nil {
-			return err
-		}
-		nativeEngine.WithConnectivity(connectivity)
-		if socket := os.Getenv("WORKOS_WORKSPACE_DOCKER_SOCKET"); socket != "" {
-			nativeEngine.WithContainers(socket, os.Getenv("WORKOS_WORKSPACE_EXECUTION_IMAGE"), os.Getenv("WORKOS_NATIVE_X11_HOST_DIRECTORY"))
+		var nativeEngine nativeports.Engine
+		var connectivity nativeports.ConnectivityIssuer
+		if cfg.Runtime.NativeEngine == "greenfield" {
+			nativeEngine = greenfieldengine.New(cfg.Runtime.NativeGreenfieldProxy, cfg.Runtime.NativeGreenfieldApp, cfg.Runtime.NativeScratch)
+		} else {
+			xvfb, engineErr := xvfbengine.New(cfg.Runtime.NativeDisplay, cfg.Runtime.NativeClient, cfg.Runtime.NativeFFmpeg, cfg.Runtime.NativeXdotool, cfg.Runtime.NativeScratch, cfg.Runtime.NativeCandidates)
+			if engineErr != nil {
+				return engineErr
+			}
+			if err := xvfb.WithLAN(os.Getenv("WORKOS_NATIVE_LAN_CIDRS"), os.Getenv("WORKOS_NATIVE_UDP_PORTS")); err != nil {
+				return err
+			}
+			issuer, err := turnauth.New(cfg.Runtime.NativeCandidates, os.Getenv("WORKOS_NATIVE_TURN_URLS"), os.Getenv("WORKOS_NATIVE_TURN_SECRET_FILE"))
+			if err != nil {
+				return err
+			}
+			xvfb.WithConnectivity(issuer)
+			connectivity = issuer
+			if socket := os.Getenv("WORKOS_WORKSPACE_DOCKER_SOCKET"); socket != "" {
+				xvfb.WithContainers(socket, os.Getenv("WORKOS_WORKSPACE_EXECUTION_IMAGE"), os.Getenv("WORKOS_NATIVE_X11_HOST_DIRECTORY"))
+			}
+			nativeEngine = xvfb
 		}
 		var serviceErr error
 		nativeService, serviceErr = nativehostapp.NewService(nativehostpostgres.New(pool), nativeEngine, generator, logger)

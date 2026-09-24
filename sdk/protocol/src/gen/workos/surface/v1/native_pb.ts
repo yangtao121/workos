@@ -14,7 +14,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file workos/surface/v1/native.proto.
  */
 export const file_workos_surface_v1_native: GenFile = /*@__PURE__*/
-  fileDesc("Ch53b3Jrb3Mvc3VyZmFjZS92MS9uYXRpdmUucHJvdG8SEXdvcmtvcy5zdXJmYWNlLnYxIp4CCg1OYXRpdmVTZXNzaW9uEgoKAmlkGAEgASgJEhUKDW93bmVyX3VzZXJfaWQYAiABKAkSEgoKcHJvamVjdF9pZBgDIAEoCRINCgVzdGF0ZRgEIAEoCRIOCgZlbmdpbmUYBSABKAkSDQoFd2lkdGgYBiABKAUSDgoGaGVpZ2h0GAcgASgFEi4KCmNyZWF0ZWRfYXQYCCABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wEi4KCmV4cGlyZXNfYXQYCSABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wEjgKDmxpZmVjeWNsZV9tb2RlGAogASgOMiAud29ya29zLnN1cmZhY2UudjEuTGlmZWN5Y2xlTW9kZSKiAQoaQ3JlYXRlTmF0aXZlU2Vzc2lvblJlcXVlc3QSFwoPaWRlbXBvdGVuY3lfa2V5GAEgASgJEhIKCnByb2plY3RfaWQYAiABKAkSDQoFd2lkdGgYAyABKAUSDgoGaGVpZ2h0GAQgASgFEjgKDmxpZmVjeWNsZV9tb2RlGAUgASgOMiAud29ya29zLnN1cmZhY2UudjEuTGlmZWN5Y2xlTW9kZSJQChtDcmVhdGVOYXRpdmVTZXNzaW9uUmVzcG9uc2USMQoHc2Vzc2lvbhgBIAEoCzIgLndvcmtvcy5zdXJmYWNlLnYxLk5hdGl2ZVNlc3Npb24iYAobQ29ubmVjdE5hdGl2ZVNlc3Npb25SZXF1ZXN0EhIKCnNlc3Npb25faWQYASABKAkSEQoJb2ZmZXJfc2RwGAIgASgJEhoKEmNvbnRyb2xfZ2VuZXJhdGlvbhgDIAEoAyJlChxDb25uZWN0TmF0aXZlU2Vzc2lvblJlc3BvbnNlEjEKB3Nlc3Npb24YASABKAsyIC53b3Jrb3Muc3VyZmFjZS52MS5OYXRpdmVTZXNzaW9uEhIKCmFuc3dlcl9zZHAYAiABKAkiLwoZQ2xvc2VOYXRpdmVTZXNzaW9uUmVxdWVzdBISCgpzZXNzaW9uX2lkGAEgASgJIk8KGkNsb3NlTmF0aXZlU2Vzc2lvblJlc3BvbnNlEjEKB3Nlc3Npb24YASABKAsyIC53b3Jrb3Muc3VyZmFjZS52MS5OYXRpdmVTZXNzaW9uIi0KF0dldE5hdGl2ZVNlc3Npb25SZXF1ZXN0EhIKCnNlc3Npb25faWQYASABKAkiTQoYR2V0TmF0aXZlU2Vzc2lvblJlc3BvbnNlEjEKB3Nlc3Npb24YASABKAsyIC53b3Jrb3Muc3VyZmFjZS52MS5OYXRpdmVTZXNzaW9uIjAKGkRldGFjaE5hdGl2ZVNlc3Npb25SZXF1ZXN0EhIKCnNlc3Npb25faWQYASABKAkiHQobRGV0YWNoTmF0aXZlU2Vzc2lvblJlc3BvbnNlIkUKD05hdGl2ZUljZVNlcnZlchIMCgR1cmxzGAEgAygJEhAKCHVzZXJuYW1lGAIgASgJEhIKCmNyZWRlbnRpYWwYAyABKAkiTgocR2V0TmF0aXZlQ29ubmVjdGl2aXR5UmVxdWVzdBISCgpzZXNzaW9uX2lkGAEgASgJEhoKEmNvbnRyb2xfZ2VuZXJhdGlvbhgCIAEoAyKqAQodR2V0TmF0aXZlQ29ubmVjdGl2aXR5UmVzcG9uc2USDAoEbW9kZRgBIAEoCRI3CgtpY2Vfc2VydmVycxgCIAMoCzIiLndvcmtvcy5zdXJmYWNlLnYxLk5hdGl2ZUljZVNlcnZlchISCgpyZWxheV9vbmx5GAMgASgIEi4KCmV4cGlyZXNfYXQYBCABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wInEKEE5hdGl2ZUlucHV0RXZlbnQSDAoEdHlwZRgBIAEoCRIMCgR0ZXh0GAIgASgJEgsKA2tleRgDIAEoCRIOCgZhY3Rpb24YBCABKAkSCQoBeBgFIAEoARIJCgF5GAYgASgBEg4KBmJ1dHRvbhgHIAEoBTLjBQoUTmF0aXZlU2Vzc2lvblNlcnZpY2USfAoVR2V0TmF0aXZlQ29ubmVjdGl2aXR5Ei8ud29ya29zLnN1cmZhY2UudjEuR2V0TmF0aXZlQ29ubmVjdGl2aXR5UmVxdWVzdBowLndvcmtvcy5zdXJmYWNlLnYxLkdldE5hdGl2ZUNvbm5lY3Rpdml0eVJlc3BvbnNlIgASdgoTQ3JlYXRlTmF0aXZlU2Vzc2lvbhItLndvcmtvcy5zdXJmYWNlLnYxLkNyZWF0ZU5hdGl2ZVNlc3Npb25SZXF1ZXN0Gi4ud29ya29zLnN1cmZhY2UudjEuQ3JlYXRlTmF0aXZlU2Vzc2lvblJlc3BvbnNlIgASeQoUQ29ubmVjdE5hdGl2ZVNlc3Npb24SLi53b3Jrb3Muc3VyZmFjZS52MS5Db25uZWN0TmF0aXZlU2Vzc2lvblJlcXVlc3QaLy53b3Jrb3Muc3VyZmFjZS52MS5Db25uZWN0TmF0aXZlU2Vzc2lvblJlc3BvbnNlIgASbQoQR2V0TmF0aXZlU2Vzc2lvbhIqLndvcmtvcy5zdXJmYWNlLnYxLkdldE5hdGl2ZVNlc3Npb25SZXF1ZXN0Gisud29ya29zLnN1cmZhY2UudjEuR2V0TmF0aXZlU2Vzc2lvblJlc3BvbnNlIgAScwoSQ2xvc2VOYXRpdmVTZXNzaW9uEiwud29ya29zLnN1cmZhY2UudjEuQ2xvc2VOYXRpdmVTZXNzaW9uUmVxdWVzdBotLndvcmtvcy5zdXJmYWNlLnYxLkNsb3NlTmF0aXZlU2Vzc2lvblJlc3BvbnNlIgASdgoTRGV0YWNoTmF0aXZlU2Vzc2lvbhItLndvcmtvcy5zdXJmYWNlLnYxLkRldGFjaE5hdGl2ZVNlc3Npb25SZXF1ZXN0Gi4ud29ya29zLnN1cmZhY2UudjEuRGV0YWNoTmF0aXZlU2Vzc2lvblJlc3BvbnNlIgBCQVo/Z2l0aHViLmNvbS95YW5ndGFvMTIxL3dvcmtvcy9nZW4vZ28vd29ya29zL3N1cmZhY2UvdjE7c3VyZmFjZXYxYgZwcm90bzM", [file_google_protobuf_timestamp, file_workos_surface_v1_lifecycle]);
+  fileDesc("Ch53b3Jrb3Mvc3VyZmFjZS92MS9uYXRpdmUucHJvdG8SEXdvcmtvcy5zdXJmYWNlLnYxIsECCg1OYXRpdmVTZXNzaW9uEgoKAmlkGAEgASgJEhUKDW93bmVyX3VzZXJfaWQYAiABKAkSEgoKcHJvamVjdF9pZBgDIAEoCRINCgVzdGF0ZRgEIAEoCRIOCgZlbmdpbmUYBSABKAkSDQoFd2lkdGgYBiABKAUSDgoGaGVpZ2h0GAcgASgFEi4KCmNyZWF0ZWRfYXQYCCABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wEi4KCmV4cGlyZXNfYXQYCSABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wEjgKDmxpZmVjeWNsZV9tb2RlGAogASgOMiAud29ya29zLnN1cmZhY2UudjEuTGlmZWN5Y2xlTW9kZRIhChlkZXZpY2VfcGl4ZWxfcmF0aW9fbWlsbGlzGAsgASgFIqIBChpDcmVhdGVOYXRpdmVTZXNzaW9uUmVxdWVzdBIXCg9pZGVtcG90ZW5jeV9rZXkYASABKAkSEgoKcHJvamVjdF9pZBgCIAEoCRINCgV3aWR0aBgDIAEoBRIOCgZoZWlnaHQYBCABKAUSOAoObGlmZWN5Y2xlX21vZGUYBSABKA4yIC53b3Jrb3Muc3VyZmFjZS52MS5MaWZlY3ljbGVNb2RlIlAKG0NyZWF0ZU5hdGl2ZVNlc3Npb25SZXNwb25zZRIxCgdzZXNzaW9uGAEgASgLMiAud29ya29zLnN1cmZhY2UudjEuTmF0aXZlU2Vzc2lvbiJgChtDb25uZWN0TmF0aXZlU2Vzc2lvblJlcXVlc3QSEgoKc2Vzc2lvbl9pZBgBIAEoCRIRCglvZmZlcl9zZHAYAiABKAkSGgoSY29udHJvbF9nZW5lcmF0aW9uGAMgASgDImUKHENvbm5lY3ROYXRpdmVTZXNzaW9uUmVzcG9uc2USMQoHc2Vzc2lvbhgBIAEoCzIgLndvcmtvcy5zdXJmYWNlLnYxLk5hdGl2ZVNlc3Npb24SEgoKYW5zd2VyX3NkcBgCIAEoCSIvChlDbG9zZU5hdGl2ZVNlc3Npb25SZXF1ZXN0EhIKCnNlc3Npb25faWQYASABKAkiTwoaQ2xvc2VOYXRpdmVTZXNzaW9uUmVzcG9uc2USMQoHc2Vzc2lvbhgBIAEoCzIgLndvcmtvcy5zdXJmYWNlLnYxLk5hdGl2ZVNlc3Npb24iLQoXR2V0TmF0aXZlU2Vzc2lvblJlcXVlc3QSEgoKc2Vzc2lvbl9pZBgBIAEoCSJNChhHZXROYXRpdmVTZXNzaW9uUmVzcG9uc2USMQoHc2Vzc2lvbhgBIAEoCzIgLndvcmtvcy5zdXJmYWNlLnYxLk5hdGl2ZVNlc3Npb24iMAoaRGV0YWNoTmF0aXZlU2Vzc2lvblJlcXVlc3QSEgoKc2Vzc2lvbl9pZBgBIAEoCSIdChtEZXRhY2hOYXRpdmVTZXNzaW9uUmVzcG9uc2UiRQoPTmF0aXZlSWNlU2VydmVyEgwKBHVybHMYASADKAkSEAoIdXNlcm5hbWUYAiABKAkSEgoKY3JlZGVudGlhbBgDIAEoCSJOChxHZXROYXRpdmVDb25uZWN0aXZpdHlSZXF1ZXN0EhIKCnNlc3Npb25faWQYASABKAkSGgoSY29udHJvbF9nZW5lcmF0aW9uGAIgASgDIqoBCh1HZXROYXRpdmVDb25uZWN0aXZpdHlSZXNwb25zZRIMCgRtb2RlGAEgASgJEjcKC2ljZV9zZXJ2ZXJzGAIgAygLMiIud29ya29zLnN1cmZhY2UudjEuTmF0aXZlSWNlU2VydmVyEhIKCnJlbGF5X29ubHkYAyABKAgSLgoKZXhwaXJlc19hdBgEIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXAicQoQTmF0aXZlSW5wdXRFdmVudBIMCgR0eXBlGAEgASgJEgwKBHRleHQYAiABKAkSCwoDa2V5GAMgASgJEg4KBmFjdGlvbhgEIAEoCRIJCgF4GAUgASgBEgkKAXkYBiABKAESDgoGYnV0dG9uGAcgASgFInEKHE9wZW5HcmVlbmZpZWxkRGlzcGxheVJlcXVlc3QSEgoKc2Vzc2lvbl9pZBgBIAEoCRIaChJjb250cm9sX2dlbmVyYXRpb24YAiABKAMSIQoZZGV2aWNlX3BpeGVsX3JhdGlvX21pbGxpcxgDIAEoBSK1AQodT3BlbkdyZWVuZmllbGREaXNwbGF5UmVzcG9uc2USFgoOd2Vic29ja2V0X3BhdGgYASABKAkSHQoVY29tcG9zaXRvcl9zZXNzaW9uX2lkGAIgASgJEg0KBXdpZHRoGAMgASgFEg4KBmhlaWdodBgEIAEoBRIhChlkZXZpY2VfcGl4ZWxfcmF0aW9fbWlsbGlzGAUgASgFEhsKE2NsaXBib2FyZF9tYXhfYnl0ZXMYBiABKA0icQoeVHJhbnNmZXJOYXRpdmVDbGlwYm9hcmRSZXF1ZXN0EhIKCnNlc3Npb25faWQYASABKAkSGgoSY29udHJvbF9nZW5lcmF0aW9uGAIgASgDEhEKCWRpcmVjdGlvbhgDIAEoCRIMCgR0ZXh0GAQgASgMIlIKH1RyYW5zZmVyTmF0aXZlQ2xpcGJvYXJkUmVzcG9uc2USDgoGc3RhdHVzGAEgASgJEgwKBHRleHQYAiABKAwSEQoJbWF4X2J5dGVzGAMgASgNMuYHChROYXRpdmVTZXNzaW9uU2VydmljZRJ8ChVHZXROYXRpdmVDb25uZWN0aXZpdHkSLy53b3Jrb3Muc3VyZmFjZS52MS5HZXROYXRpdmVDb25uZWN0aXZpdHlSZXF1ZXN0GjAud29ya29zLnN1cmZhY2UudjEuR2V0TmF0aXZlQ29ubmVjdGl2aXR5UmVzcG9uc2UiABJ2ChNDcmVhdGVOYXRpdmVTZXNzaW9uEi0ud29ya29zLnN1cmZhY2UudjEuQ3JlYXRlTmF0aXZlU2Vzc2lvblJlcXVlc3QaLi53b3Jrb3Muc3VyZmFjZS52MS5DcmVhdGVOYXRpdmVTZXNzaW9uUmVzcG9uc2UiABJ5ChRDb25uZWN0TmF0aXZlU2Vzc2lvbhIuLndvcmtvcy5zdXJmYWNlLnYxLkNvbm5lY3ROYXRpdmVTZXNzaW9uUmVxdWVzdBovLndvcmtvcy5zdXJmYWNlLnYxLkNvbm5lY3ROYXRpdmVTZXNzaW9uUmVzcG9uc2UiABJtChBHZXROYXRpdmVTZXNzaW9uEioud29ya29zLnN1cmZhY2UudjEuR2V0TmF0aXZlU2Vzc2lvblJlcXVlc3QaKy53b3Jrb3Muc3VyZmFjZS52MS5HZXROYXRpdmVTZXNzaW9uUmVzcG9uc2UiABJzChJDbG9zZU5hdGl2ZVNlc3Npb24SLC53b3Jrb3Muc3VyZmFjZS52MS5DbG9zZU5hdGl2ZVNlc3Npb25SZXF1ZXN0Gi0ud29ya29zLnN1cmZhY2UudjEuQ2xvc2VOYXRpdmVTZXNzaW9uUmVzcG9uc2UiABJ2ChNEZXRhY2hOYXRpdmVTZXNzaW9uEi0ud29ya29zLnN1cmZhY2UudjEuRGV0YWNoTmF0aXZlU2Vzc2lvblJlcXVlc3QaLi53b3Jrb3Muc3VyZmFjZS52MS5EZXRhY2hOYXRpdmVTZXNzaW9uUmVzcG9uc2UiABJ8ChVPcGVuR3JlZW5maWVsZERpc3BsYXkSLy53b3Jrb3Muc3VyZmFjZS52MS5PcGVuR3JlZW5maWVsZERpc3BsYXlSZXF1ZXN0GjAud29ya29zLnN1cmZhY2UudjEuT3BlbkdyZWVuZmllbGREaXNwbGF5UmVzcG9uc2UiABKCAQoXVHJhbnNmZXJOYXRpdmVDbGlwYm9hcmQSMS53b3Jrb3Muc3VyZmFjZS52MS5UcmFuc2Zlck5hdGl2ZUNsaXBib2FyZFJlcXVlc3QaMi53b3Jrb3Muc3VyZmFjZS52MS5UcmFuc2Zlck5hdGl2ZUNsaXBib2FyZFJlc3BvbnNlIgBCQVo/Z2l0aHViLmNvbS95YW5ndGFvMTIxL3dvcmtvcy9nZW4vZ28vd29ya29zL3N1cmZhY2UvdjE7c3VyZmFjZXYxYgZwcm90bzM", [file_google_protobuf_timestamp, file_workos_surface_v1_lifecycle]);
 
 /**
  * One supervised virtual-display native session (ADR-0029): a real Xvfb
@@ -79,6 +79,13 @@ export type NativeSession = Message<"workos.surface.v1.NativeSession"> & {
    * @generated from field: workos.surface.v1.LifecycleMode lifecycle_mode = 10;
    */
   lifecycleMode: LifecycleMode;
+
+  /**
+   * Device pixel ratio times 1000. Zero means the client has not reported one.
+   *
+   * @generated from field: int32 device_pixel_ratio_millis = 11;
+   */
+  devicePixelRatioMillis: number;
 };
 
 /**
@@ -444,6 +451,138 @@ export const NativeInputEventSchema: GenMessage<NativeInputEvent> = /*@__PURE__*
   messageDesc(file_workos_surface_v1_native, 14);
 
 /**
+ * @generated from message workos.surface.v1.OpenGreenfieldDisplayRequest
+ */
+export type OpenGreenfieldDisplayRequest = Message<"workos.surface.v1.OpenGreenfieldDisplayRequest"> & {
+  /**
+   * @generated from field: string session_id = 1;
+   */
+  sessionId: string;
+
+  /**
+   * @generated from field: int64 control_generation = 2;
+   */
+  controlGeneration: bigint;
+
+  /**
+   * @generated from field: int32 device_pixel_ratio_millis = 3;
+   */
+  devicePixelRatioMillis: number;
+};
+
+/**
+ * Describes the message workos.surface.v1.OpenGreenfieldDisplayRequest.
+ * Use `create(OpenGreenfieldDisplayRequestSchema)` to create a new message.
+ */
+export const OpenGreenfieldDisplayRequestSchema: GenMessage<OpenGreenfieldDisplayRequest> = /*@__PURE__*/
+  messageDesc(file_workos_surface_v1_native, 15);
+
+/**
+ * @generated from message workos.surface.v1.OpenGreenfieldDisplayResponse
+ */
+export type OpenGreenfieldDisplayResponse = Message<"workos.surface.v1.OpenGreenfieldDisplayResponse"> & {
+  /**
+   * @generated from field: string websocket_path = 1;
+   */
+  websocketPath: string;
+
+  /**
+   * @generated from field: string compositor_session_id = 2;
+   */
+  compositorSessionId: string;
+
+  /**
+   * @generated from field: int32 width = 3;
+   */
+  width: number;
+
+  /**
+   * @generated from field: int32 height = 4;
+   */
+  height: number;
+
+  /**
+   * @generated from field: int32 device_pixel_ratio_millis = 5;
+   */
+  devicePixelRatioMillis: number;
+
+  /**
+   * @generated from field: uint32 clipboard_max_bytes = 6;
+   */
+  clipboardMaxBytes: number;
+};
+
+/**
+ * Describes the message workos.surface.v1.OpenGreenfieldDisplayResponse.
+ * Use `create(OpenGreenfieldDisplayResponseSchema)` to create a new message.
+ */
+export const OpenGreenfieldDisplayResponseSchema: GenMessage<OpenGreenfieldDisplayResponse> = /*@__PURE__*/
+  messageDesc(file_workos_surface_v1_native, 16);
+
+/**
+ * @generated from message workos.surface.v1.TransferNativeClipboardRequest
+ */
+export type TransferNativeClipboardRequest = Message<"workos.surface.v1.TransferNativeClipboardRequest"> & {
+  /**
+   * @generated from field: string session_id = 1;
+   */
+  sessionId: string;
+
+  /**
+   * @generated from field: int64 control_generation = 2;
+   */
+  controlGeneration: bigint;
+
+  /**
+   * host_to_app or app_to_host.
+   *
+   * @generated from field: string direction = 3;
+   */
+  direction: string;
+
+  /**
+   * @generated from field: bytes text = 4;
+   */
+  text: Uint8Array;
+};
+
+/**
+ * Describes the message workos.surface.v1.TransferNativeClipboardRequest.
+ * Use `create(TransferNativeClipboardRequestSchema)` to create a new message.
+ */
+export const TransferNativeClipboardRequestSchema: GenMessage<TransferNativeClipboardRequest> = /*@__PURE__*/
+  messageDesc(file_workos_surface_v1_native, 17);
+
+/**
+ * @generated from message workos.surface.v1.TransferNativeClipboardResponse
+ */
+export type TransferNativeClipboardResponse = Message<"workos.surface.v1.TransferNativeClipboardResponse"> & {
+  /**
+   * ok, denied, expired, too_large, disconnected, unavailable.
+   *
+   * @generated from field: string status = 1;
+   */
+  status: string;
+
+  /**
+   * @generated from field: bytes text = 2;
+   */
+  text: Uint8Array;
+
+  /**
+   * @generated from field: uint32 max_bytes = 3;
+   */
+  maxBytes: number;
+};
+
+/**
+ * Describes the message workos.surface.v1.TransferNativeClipboardResponse.
+ * Use `create(TransferNativeClipboardResponseSchema)` to create a new message.
+ */
+export const TransferNativeClipboardResponseSchema: GenMessage<TransferNativeClipboardResponse> = /*@__PURE__*/
+  messageDesc(file_workos_surface_v1_native, 18);
+
+/**
  * Supervised owner-scoped virtual-display sessions on the runtime host
  * (ADR-0029). Gateway routes it with owner identity; the display children run
  * as the runtime's own user with process-group supervision, and nothing here
@@ -509,6 +648,27 @@ export const NativeSessionService: GenService<{
     methodKind: "unary";
     input: typeof DetachNativeSessionRequestSchema;
     output: typeof DetachNativeSessionResponseSchema;
+  },
+  /**
+   * OpenGreenfieldDisplay returns the runtime-local compositor connection.
+   * It is not an SDP offer. Gateway must proxy it after authentication.
+   *
+   * @generated from rpc workos.surface.v1.NativeSessionService.OpenGreenfieldDisplay
+   */
+  openGreenfieldDisplay: {
+    methodKind: "unary";
+    input: typeof OpenGreenfieldDisplayRequestSchema;
+    output: typeof OpenGreenfieldDisplayResponseSchema;
+  },
+  /**
+   * TransferNativeClipboard moves bounded plain text. It is not NativeInputEvent.
+   *
+   * @generated from rpc workos.surface.v1.NativeSessionService.TransferNativeClipboard
+   */
+  transferNativeClipboard: {
+    methodKind: "unary";
+    input: typeof TransferNativeClipboardRequestSchema;
+    output: typeof TransferNativeClipboardResponseSchema;
   },
 }> = /*@__PURE__*/
   serviceDesc(file_workos_surface_v1_native, 0);

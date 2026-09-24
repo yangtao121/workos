@@ -35,6 +35,9 @@ importers:
       '@connectrpc/connect':
         specifier: 2.1.2
         version: 2.1.2(@bufbuild/protobuf@2.14.0)
+      '@gfld/compositor':
+        specifier: 1.0.0-rc1
+        version: 1.0.0-rc1
       '@workos/adaptive-shell':
         specifier: workspace:*
         version: link:../../clients/adaptive-shell
@@ -476,6 +479,25 @@ packages:
   '@eslint/plugin-kit@0.3.5':
     resolution: {integrity: sha512-Z5kJ+wU3oA7MMIqVR9tyZRtjYPr4OC004Q4Rw7pgOKUOKkJfZ3O24nz3WYfGRpMDNmcOi3TwQOmgm7B7Tpii0w==}
     engines: {node: ^18.18.0 || ^20.9.0 || >=21.1.0}
+
+  '@gfld/common@1.0.0-rc1':
+    resolution: {integrity: sha512-mi0jUHx7K3OkScXfnqQRwugkiMiG0VC0M5yZp9mKfyWj9+rOzqVtzmrdLhHF8hJD1QPYUTL+rfso3nlFoP4iLQ==}
+
+  '@gfld/compositor-ffmpeg-h264@1.0.0-rc1':
+    resolution: {integrity: sha512-juipudORWObM7G0FXCGDW64i1O3oQ6t4gzcxg+DEfVihPywiYgijyjNNLLpW0PToNwy6iatNxG6nIj7HZunwcA==}
+
+  '@gfld/compositor-protocol@1.0.0-rc1':
+    resolution: {integrity: sha512-K6EdrUAlo295qwvbOt96hnTi0ARE6xvsu3EmFq4GmzhxlfrfXDBw3k/EoHMzpuVWx806N29/vYRymX3l8L1OqA==}
+
+  '@gfld/compositor-wasm@1.0.0-rc1':
+    resolution: {integrity: sha512-U/KaRGuYy9Yz6rg3RQr1j2ZLV3tWtpEPqwXPWP59z2Zdypy/fpjYHU/Iu3mgnIxLl0fcY2buZhFChSPHUUzYwA==}
+
+  '@gfld/compositor@1.0.0-rc1':
+    resolution: {integrity: sha512-xTmseyiI4XGb7HZLCOBDnsXo/mhWGvvoNgJwmSMQ0Cqhdq5RvdDVOP/nOlDkp1pcxLeUB7vpQZLhebaOW6g3Mw==}
+
+  '@gfld/xtsb@1.0.0-rc1':
+    resolution: {integrity: sha512-8QRloVtTnHv8bVZtAzBG9t5CuZvvDCXvz05OXOH8WZKqiSehlksNVlHLKx8Ml/fIDHWscRekajSCAgE9FxTqdA==}
+    engines: {node: '>=18.0.0'}
 
   '@humanfs/core@0.19.2':
     resolution: {integrity: sha512-UhXNm+CFMWcbChXywFwkmhqjs3PRCmcSa/hfBgLIb7oQ5HNb1wS0icWsGtSAUNgefHeI+eBrA8I1fxmbHsGdvA==}
@@ -2154,6 +2176,26 @@ snapshots:
     dependencies:
       '@eslint/core': 0.15.2
       levn: 0.4.1
+
+  '@gfld/common@1.0.0-rc1': {}
+
+  '@gfld/compositor-ffmpeg-h264@1.0.0-rc1': {}
+
+  '@gfld/compositor-protocol@1.0.0-rc1':
+    dependencies:
+      '@gfld/common': 1.0.0-rc1
+
+  '@gfld/compositor-wasm@1.0.0-rc1': {}
+
+  '@gfld/compositor@1.0.0-rc1':
+    dependencies:
+      '@gfld/common': 1.0.0-rc1
+      '@gfld/compositor-ffmpeg-h264': 1.0.0-rc1
+      '@gfld/compositor-protocol': 1.0.0-rc1
+      '@gfld/compositor-wasm': 1.0.0-rc1
+      '@gfld/xtsb': 1.0.0-rc1
+
+  '@gfld/xtsb@1.0.0-rc1': {}
 
   '@humanfs/core@0.19.2':
     dependencies:

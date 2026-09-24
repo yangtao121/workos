@@ -39,9 +39,14 @@ var (
 	ErrNotFound          = errors.New("native session not found")
 	ErrIdempotencyDrift  = errors.New("native session replay request drifted")
 	ErrSessionLimit      = errors.New("native session limit reached")
-	ErrEngineUnavailable = errors.New("native engine is unavailable")
-	ErrStoreUnavailable  = errors.New("native store is temporarily unavailable")
+	ErrEngineUnavailable     = errors.New("native engine is unavailable")
+	ErrStoreUnavailable      = errors.New("native store is temporarily unavailable")
+	ErrWrongEngine           = errors.New("native session engine does not accept this connection")
+	ErrClipboardTooLarge     = errors.New("native clipboard exceeds the byte limit")
+	ErrClipboardDisconnected = errors.New("native clipboard session is disconnected")
 )
+
+const MaxClipboardBytes = 256 * 1024
 
 // Session is the durable native session row.
 type Session struct {

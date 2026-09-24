@@ -107,6 +107,40 @@ func (h *NativeHandler) CloseNativeSession(ctx context.Context, req *connect.Req
 	return connect.NewResponse(&surfacev1.CloseNativeSessionResponse{Session: sessionProto(session, h.service.Facts().Engine)}), nil
 }
 
+func (h *NativeHandler) OpenGreenfieldDisplay(ctx context.Context, req *connect.Request[surfacev1.OpenGreenfieldDisplayRequest]) (*connect.Response[surfacev1.OpenGreenfieldDisplayResponse], error) {
+	owner, err := identity.FromContext(ctx)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeUnauthenticated, err)
+	}
+	path, compositor, width, height, dpr, err := h.service.OpenGreenfield(ctx, owner.UserID, owner.DeviceID, req.Msg.GetSessionId(), req.Msg.GetDevicePixelRatioMillis(), req.Msg.GetControlGeneration())
+	if err != nil {
+		return nil, nativeError(err)
+	}
+	response := connect.NewResponse(&surfacev1.OpenGreenfieldDisplayResponse{
+		WebsocketPath: path, CompositorSessionId: compositor,
+		Width: width, Height: height, DevicePixelRatioMillis: dpr,
+		ClipboardMaxBytes: uint32(domain.MaxClipboardBytes),
+	})
+	response.Header().Set("Cache-Control", "no-store")
+	return response, nil
+}
+
+func (h *NativeHandler) TransferNativeClipboard(ctx context.Context, req *connect.Request[surfacev1.TransferNativeClipboardRequest]) (*connect.Response[surfacev1.TransferNativeClipboardResponse], error) {
+	owner, err := identity.FromContext(ctx)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeUnauthenticated, err)
+	}
+	text, err := h.service.TransferClipboard(ctx, owner.UserID, owner.DeviceID, req.Msg.GetSessionId(), req.Msg.GetDirection(), req.Msg.GetText(), req.Msg.GetControlGeneration())
+	if err != nil {
+		return nil, nativeError(err)
+	}
+	response := connect.NewResponse(&surfacev1.TransferNativeClipboardResponse{
+		Status: "ok", Text: text, MaxBytes: uint32(domain.MaxClipboardBytes),
+	})
+	response.Header().Set("Cache-Control", "no-store")
+	return response, nil
+}
+
 func (h *NativeHandler) DetachNativeSession(ctx context.Context, req *connect.Request[surfacev1.DetachNativeSessionRequest]) (*connect.Response[surfacev1.DetachNativeSessionResponse], error) {
 	owner, err := identity.FromContext(ctx)
 	if err != nil {
@@ -133,6 +167,12 @@ func nativeError(err error) error {
 		code = connect.CodeResourceExhausted
 	case errors.Is(err, domain.ErrEngineUnavailable), errors.Is(err, domain.ErrStoreUnavailable):
 		code = connect.CodeUnavailable
+	case errors.Is(err, domain.ErrWrongEngine):
+		code = connect.CodeFailedPrecondition
+	case errors.Is(err, domain.ErrClipboardTooLarge):
+		code = connect.CodeResourceExhausted
+	case errors.Is(err, domain.ErrClipboardDisconnected):
+		code = connect.CodeFailedPrecondition
 	}
 	return connect.NewError(code, errors.New("native session request failed"))
 }

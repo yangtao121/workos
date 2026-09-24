@@ -1187,6 +1187,10 @@ test-network-continuity:
 
 # Shared owner desktop, idle conversation updates, exact program restoration,
 # installed Docker app lifecycle, and Chromium/WebKit at three screen sizes.
+.PHONY: test-v3-p0-native-experience
+test-v3-p0-native-experience:
+	$(GO_RUN) go test ./internal/runtime/nativehost/adapters/greenfield/ ./internal/runtime/nativehost/application/ ./internal/platform/config/
+
 .PHONY: test-shared-desktop
 test-shared-desktop:
 	sh tools/shared-desktop/gate.sh

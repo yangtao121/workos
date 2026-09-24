@@ -239,7 +239,15 @@ func newUpstreamProxy(target string, cfg config.Config, logger *slog.Logger, nam
 	proxy := httputil.NewSingleHostReverseProxy(parsed)
 	original := proxy.Director
 	proxy.Director = func(request *http.Request) {
+		publicHost := request.Host
 		original(request)
+		if strings.HasPrefix(request.URL.Path, "/native/greenfield/") && publicHost != "" {
+			scheme := "https"
+			if cfg.Auth.DevBypass {
+				scheme = "http"
+			}
+			request.Header.Set("WorkOS-Public-Origin", scheme+"://"+publicHost)
+		}
 		// Identity never comes from the inbound request. The gate resolved
 		// it from the validated session (or from configuration under the
 		// loopback development bypass) and stored it in the context; a
@@ -594,7 +602,7 @@ func runtimeConnectPath(path string) bool {
 // valid device session and travel to the Runtime upstream with the trusted
 // identity headers.
 func isSessionGatedAssetPath(path string) bool {
-	return strings.HasPrefix(path, surfaceAssetPrefix)
+	return strings.HasPrefix(path, surfaceAssetPrefix) || strings.HasPrefix(path, "/native/greenfield/")
 }
 
 func (h *Handler) serveStatic(w http.ResponseWriter, r *http.Request) {

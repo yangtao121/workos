@@ -111,6 +111,13 @@ type Runtime struct {
 	// NativeDisplay enables the virtual-display native runner with the Xvfb
 	// binary path (ADR-0029); empty keeps the capability unavailable.
 	NativeDisplay string `yaml:"native_display"`
+	// NativeEngine selects xvfb (default) or the greenfield experiment.
+	// greenfield never falls back to xvfb.
+	NativeEngine string `yaml:"native_engine"`
+	// NativeGreenfieldProxy is the compositor-proxy executable.
+	NativeGreenfieldProxy string `yaml:"native_greenfield_proxy"`
+	// NativeGreenfieldApp is the official desktop application executable.
+	NativeGreenfieldApp string `yaml:"native_greenfield_app"`
 	// NativeClient is the native X client argv run inside each session
 	// display (space separated, operator configured).
 	NativeClient string `yaml:"native_client"`
@@ -470,6 +477,9 @@ func Load() (Config, error) {
 	setString(&cfg.Runtime.PtyShell, "WORKOS_RUNTIME_PTY_SHELL")
 	setString(&cfg.Runtime.BrowserScratch, "WORKOS_RUNTIME_BROWSER_SCRATCH")
 	setString(&cfg.Runtime.NativeDisplay, "WORKOS_RUNTIME_NATIVE_DISPLAY")
+	setString(&cfg.Runtime.NativeEngine, "WORKOS_RUNTIME_NATIVE_ENGINE")
+	setString(&cfg.Runtime.NativeGreenfieldProxy, "WORKOS_RUNTIME_NATIVE_GREENFIELD_PROXY")
+	setString(&cfg.Runtime.NativeGreenfieldApp, "WORKOS_RUNTIME_NATIVE_GREENFIELD_APP")
 	setString(&cfg.Runtime.NativeClient, "WORKOS_RUNTIME_NATIVE_CLIENT")
 	setString(&cfg.Runtime.NativeFFmpeg, "WORKOS_RUNTIME_NATIVE_FFMPEG")
 	setString(&cfg.Runtime.NativeXdotool, "WORKOS_RUNTIME_NATIVE_XDOTOOL")
@@ -753,6 +763,11 @@ func (c Config) ValidateRuntimeHost() error {
 	case "", "loopback", "lan", "relay":
 	default:
 		return errors.New("WORKOS_RUNTIME_NATIVE_CANDIDATES must be loopback, lan or relay")
+	}
+	switch c.Runtime.NativeEngine {
+	case "", "xvfb", "greenfield":
+	default:
+		return errors.New("WORKOS_RUNTIME_NATIVE_ENGINE must be xvfb or greenfield")
 	}
 	return nil
 }

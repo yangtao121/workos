@@ -1,0 +1,21 @@
+--- a/packages/compositor-proxy/src/NativeAppContext.ts
++++ b/packages/compositor-proxy/src/NativeAppContext.ts
+@@ -150,14 +150,13 @@ export class NativeAppContext {
+ 
+   onDisconnect() {
+     this.signalingWebSocket = undefined
+-
+-    if (this.sigKillTimer === undefined && this.sigHupTimer === undefined) {
+-      this.sigHupTimer = setTimeout(() => {
+-        this.sigHupTimer = undefined
+-        this.kill('SIGHUP')
+-      }, 600 * 1000)
++    // WorkOS: a browser disconnect must not SIGHUP the native client.
++    // Runtime Stop and the application's own exit own the process lifetime.
++    if (this.sigHupTimer) {
++      clearTimeout(this.sigHupTimer)
++      this.sigHupTimer = undefined
+     }
+   }
+ 
+   sendConnectionRequest(channel: WebSocketChannel) {
