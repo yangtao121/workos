@@ -9,12 +9,12 @@ import (
 	"errors"
 	"fmt"
 	"net"
-	"strings"
 	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -37,7 +37,11 @@ type Engine struct {
 }
 
 func New(proxy, app, scratch string) *Engine {
-	return &Engine{Proxy: proxy, App: app, Scratch: scratch}
+	return &Engine{
+		Proxy: proxy, App: app, Scratch: scratch,
+		// Official Electron cannot open an X11 window in this container without these flags.
+		AppArgs: []string{"--ozone-platform=x11", "--disable-gpu", "--no-sandbox"},
+	}
 }
 
 func (e *Engine) Facts() ports.EngineFacts {
@@ -121,7 +125,8 @@ func (e *Engine) LaunchLifecycle(ctx context.Context, width, height int32, worki
 	if err != nil {
 		return nil, err
 	}
-	cmd := exec.Command(e.Proxy, "--bind-ip", "127.0.0.1", "--bind-port", strconv.Itoa(port), "--allow-origin", "http://localhost", "--base-url", "ws://127.0.0.1:"+strconv.Itoa(port), "--encoder", "x264", "--applications", appsPath)
+	proxyName, proxyArgs := e.proxyCommand(port, appsPath)
+	cmd := exec.Command(proxyName, proxyArgs...)
 	cmd.Env = append(os.Environ(), "RENDERER_ALLOW_SOFTWARE=1")
 	cmd.Stdout = logFile
 	cmd.Stderr = logFile
@@ -147,6 +152,21 @@ func (e *Engine) LaunchLifecycle(ctx context.Context, width, height int32, worki
 	d.appPID = pid
 	d.key = key
 	return d, nil
+}
+
+func (e *Engine) proxyCommand(port int, appsPath string) (string, []string) {
+	args := []string{
+		"--bind-ip", "127.0.0.1",
+		"--bind-port", strconv.Itoa(port),
+		"--allow-origin", "http://localhost",
+		"--base-url", "ws://127.0.0.1:" + strconv.Itoa(port),
+		"--encoder", "x264",
+		"--applications", appsPath,
+	}
+	if strings.HasSuffix(e.Proxy, ".js") {
+		return "node", append([]string{e.Proxy}, args...)
+	}
+	return e.Proxy, args
 }
 
 func freePort() (int, error) {

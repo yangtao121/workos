@@ -415,8 +415,10 @@ export function NativeApp(props: {
       ) : null}
       {greenfieldSession ? (
         <GreenfieldApp
-          clients={clients}
-          controlGeneration={props.expectedWorkloadGeneration}
+          {...(clients ? { clients } : {})}
+          {...(props.expectedWorkloadGeneration !== undefined
+            ? { controlGeneration: props.expectedWorkloadGeneration }
+            : {})}
           sessionId={greenfieldSession}
         />
       ) : null}
