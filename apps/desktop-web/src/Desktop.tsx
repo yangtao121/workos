@@ -2898,6 +2898,7 @@ export function Desktop({
             key={windowState.id}
             hidden={windowState.mode === "minimized"}
             data-window-id={windowState.id}
+            data-native-parent-window-id={windowState.nativeParentWindowId || undefined}
             data-mode={windowState.mode}
             onFocusCapture={() => {
               dispatch({ type: "focus", id: windowState.id });

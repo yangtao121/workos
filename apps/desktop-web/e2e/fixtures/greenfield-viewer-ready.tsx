@@ -2,6 +2,7 @@ import { create } from "@bufbuild/protobuf";
 import { createRoot } from "react-dom/client";
 import { useEffect, useMemo, useState } from "react";
 import type { WorkOSClients } from "@workos/agent-sdk";
+import { windowReducer, type WorkOSWindow } from "@workos/window-manager";
 import {
   GreenfieldInputVerdict,
   GreenfieldKeyAction,
@@ -10,6 +11,7 @@ import {
 } from "@workos/protocol";
 import { GreenfieldWindowApp } from "../../src/GreenfieldWindowApp.js";
 import { WindowCloseControl } from "../../src/WindowCloseControl.js";
+import { mergeGreenfieldWindows } from "../../src/projectGreenfieldWindows.js";
 import {
   GreenfieldWindowInputClient,
   type GreenfieldAttachment,
@@ -47,6 +49,44 @@ const windows = [
   }),
 ];
 const closePending = new URLSearchParams(location.search).has("close-pending");
+const parentFocused = new URLSearchParams(location.search).has("parent-focused");
+const fixtureStack = (() => {
+  const parent: WorkOSWindow = {
+    id: "anchor",
+    kind: "native",
+    appId: "code",
+    title: "Code anchor",
+    workloadId: initialAttachment.sessionId,
+    rect: { x: 190, y: 80, width: 870, height: 680 },
+    restoreRect: { x: 190, y: 80, width: 870, height: 680 },
+    mode: "normal",
+    zIndex: 1,
+  };
+  const projected: WorkOSWindow[] = windows.map((nativeWindow, index) => ({
+    ...parent,
+    id: nativeWindow.id,
+    kind: "native-window",
+    title: nativeWindow.title,
+    nativeWindowId: nativeWindow.id,
+    nativeParentWindowId: nativeWindow.parentWindowId,
+    rect: index
+      ? { x: 740, y: 332, width: 500, height: 340 }
+      : { x: 190, y: 80, width: 870, height: 680 },
+    restoreRect: index
+      ? { x: 740, y: 332, width: 500, height: 340 }
+      : { x: 190, y: 80, width: 870, height: 680 },
+    zIndex: index + 1,
+  }));
+  const focused = windowReducer(
+    { windows: projected, nextZIndex: 3 },
+    {
+      type: "focus",
+      id: windows[0]?.id ?? "",
+    },
+  );
+  const merged = mergeGreenfieldWindows({ windows: [parent], nextZIndex: 2 }, focused);
+  return new Map(merged.windows.map((item) => [item.nativeWindowId, item.zIndex]));
+})();
 
 async function pngFor(id: string): Promise<Uint8Array> {
   const dialog = id === windows[1]?.id;
@@ -166,7 +206,7 @@ function ResidentFixture() {
             top: index ? 332 : 80,
             width: index ? 500 : 870,
             height: index ? 340 : 680,
-            zIndex: index + 1,
+            zIndex: parentFocused ? fixtureStack.get(nativeWindow.id) : index + 1,
           }}
         >
           <header>

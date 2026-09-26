@@ -83,4 +83,61 @@ describe("resident native window shell projection", () => {
     const runtime = { windows: [orphan], nextZIndex: 2 };
     expect(mergeGreenfieldWindows({ windows: [], nextZIndex: 1 }, runtime).windows).toEqual([]);
   });
+
+  it("keeps a transient above a locally focused parent and preserves its moved, resized bounds", () => {
+    const code: WorkOSWindow = {
+      ...parent,
+      id: "native-window-workload-1-3-code",
+      kind: "native-window",
+      title: "Code",
+      nativeWindowId: "code",
+      zIndex: 1,
+    };
+    const dialog: WorkOSWindow = {
+      ...code,
+      id: "native-window-workload-1-3-dialog",
+      title: "Open File",
+      nativeWindowId: "dialog",
+      nativeParentWindowId: "code",
+      rect: { x: 320, y: 190, width: 460, height: 300 },
+      restoreRect: { x: 320, y: 190, width: 460, height: 300 },
+      zIndex: 2,
+    };
+    const initial = { windows: [code, dialog], nextZIndex: 3 };
+    const parentFocused = windowReducer(initial, { type: "focus", id: code.id });
+    expect(parentFocused.windows.find((item) => item.id === code.id)?.zIndex).toBeGreaterThan(
+      parentFocused.windows.find((item) => item.id === dialog.id)?.zIndex ?? 0,
+    );
+    const merged = mergeGreenfieldWindows(
+      { windows: [parent, docs], nextZIndex: 4 },
+      parentFocused,
+    );
+    const codeZ = merged.windows.find((item) => item.id === code.id)?.zIndex ?? 0;
+    const dialogZ = merged.windows.find((item) => item.id === dialog.id)?.zIndex ?? 0;
+    expect(dialogZ).toBeGreaterThan(codeZ);
+    expect(docs.zIndex * 129).toBeGreaterThan(dialogZ);
+
+    const moved = windowReducer(parentFocused, { type: "move", id: dialog.id, x: 255, y: 155 });
+    const resized = windowReducer(moved, {
+      type: "resize",
+      id: dialog.id,
+      width: 500,
+      height: 340,
+    });
+    const refreshed = windowReducer(resized, {
+      type: "reconcile",
+      windows: [code, dialog],
+      focusedId: code.id,
+    });
+    const retained = refreshed.windows.find((item) => item.id === dialog.id);
+    expect(retained?.nativeParentWindowId).toBe("code");
+    expect(retained?.rect).toEqual({ x: 255, y: 155, width: 500, height: 340 });
+    const refreshedMerged = mergeGreenfieldWindows(
+      { windows: [parent, docs], nextZIndex: 4 },
+      refreshed,
+    );
+    expect(refreshedMerged.windows.find((item) => item.id === dialog.id)?.zIndex).toBeGreaterThan(
+      refreshedMerged.windows.find((item) => item.id === code.id)?.zIndex ?? 0,
+    );
+  });
 });

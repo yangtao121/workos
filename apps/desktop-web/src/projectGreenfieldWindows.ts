@@ -50,6 +50,51 @@ export function projectGreenfieldWindows(
     });
 }
 
+// A native top level and its transients move as one stacking family. Local
+// focus may raise the parent above its child in the window reducer; keep the
+// child above its parent without allowing that family to escape the Core
+// workload's single z-order slot.
+function stackNativeFamilies(group: WorkOSWindow[]): WorkOSWindow[] {
+  const byNativeId = new Map(group.map((item) => [item.nativeWindowId, item]));
+  const families = new Map<string, WorkOSWindow[]>();
+  for (const item of group) {
+    let root = item;
+    const seen = new Set([item.id]);
+    while (root.nativeParentWindowId) {
+      const parent = byNativeId.get(root.nativeParentWindowId);
+      if (!parent || seen.has(parent.id)) break;
+      root = parent;
+      seen.add(parent.id);
+    }
+    const family = families.get(root.id) ?? [];
+    family.push(item);
+    families.set(root.id, family);
+  }
+  const orderedFamilies = [...families.values()].sort((left, right) => {
+    const priority = (family: WorkOSWindow[]) => Math.max(...family.map((item) => item.zIndex));
+    return (
+      priority(left) - priority(right) || (left[0]?.id ?? "").localeCompare(right[0]?.id ?? "")
+    );
+  });
+  const ordered: WorkOSWindow[] = [];
+  for (const family of orderedFamilies) {
+    const members = [...family].sort(
+      (left, right) => left.zIndex - right.zIndex || left.id.localeCompare(right.id),
+    );
+    const inFamily = new Set(members.map((item) => item.id));
+    const visited = new Set<string>();
+    const append = (item: WorkOSWindow) => {
+      if (visited.has(item.id)) return;
+      visited.add(item.id);
+      const parent = byNativeId.get(item.nativeParentWindowId ?? "");
+      if (parent && inFamily.has(parent.id)) append(parent);
+      ordered.push(item);
+    };
+    members.forEach(append);
+  }
+  return ordered;
+}
+
 // A native workload occupies one Core z-order slot. Its top-levels are
 // ordered within that slot, so focusing another WorkOS app raises it above
 // every native child and focusing a native child raises the whole group.
@@ -72,8 +117,7 @@ export function mergeGreenfieldWindows(core: WindowState, runtime: WindowState):
       mode: item.kind === "native" && group.length > 0 ? "minimized" : item.mode,
     });
     if (item.kind !== "native") continue;
-    group.sort((left, right) => left.zIndex - right.zIndex);
-    group.forEach((child, index) =>
+    stackNativeFamilies(group).forEach((child, index) =>
       windows.push({
         ...child,
         mode: item.mode === "minimized" ? "minimized" : child.mode,

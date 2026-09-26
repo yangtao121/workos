@@ -69,3 +69,28 @@ test("captures a native dialog while its exact close request awaits Runtime remo
   });
   await context.close();
 });
+
+test("captures the native child after the Code parent receives local focus", async ({
+  browser,
+}) => {
+  const context = await browser.newContext({
+    viewport: { width: 1440, height: 900 },
+    deviceScaleFactor: 1,
+    locale: "zh-CN",
+    timezoneId: "UTC",
+    reducedMotion: "reduce",
+  });
+  const page = await context.newPage();
+  await page.goto(`${appURL}/e2e/fixtures/greenfield-viewer-ready.html?parent-focused=1`);
+  await expect(page.locator('[data-frame-state="ready"]')).toHaveCount(2);
+  await page.evaluate(async () => document.fonts.ready);
+  await page.screenshot({
+    path: `${captureDir}/greenfield-resident-windows--parent-focus--1440x900.png`,
+    animations: "disabled",
+  });
+  const front = await page.evaluate(() =>
+    document.elementFromPoint(800, 400)?.closest(".workos-window")?.getAttribute("data-window-id"),
+  );
+  expect(front).toBe("01999999-9999-7999-8999-000000000013");
+  await context.close();
+});
