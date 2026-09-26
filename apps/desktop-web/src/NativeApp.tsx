@@ -27,6 +27,7 @@ export function NativeApp(props: {
   const [stopping, setStopping] = useState(false);
   const [inputDraft, setInputDraft] = useState("");
   const [greenfieldSession, setGreenfieldSession] = useState("");
+  const [greenfieldControlGeneration, setGreenfieldControlGeneration] = useState(0n);
   const composingRef = useRef(false);
   const clients = props.workosClients;
   const projectId = props.activeProjectId ?? "";
@@ -68,6 +69,7 @@ export function NativeApp(props: {
     setVerdict("");
     setControls(true);
     controlsRef.current = true;
+    setGreenfieldSession("");
     const run = async () => {
       try {
         session = await lease.session;
@@ -76,19 +78,25 @@ export function NativeApp(props: {
           return;
         }
         if (!session) throw new Error("missing native session");
+        const held = await lease.controls.catch(() => false);
+        if (isDisposed()) return;
+        controlsRef.current = held;
+        setControls(held);
         const readSession = clients.nativeSessions.getNativeSession;
         if (typeof readSession === "function") {
           const facts = await readSession({ sessionId: session });
           if (!isDisposed() && facts.session?.engine === "greenfield") {
+            setGreenfieldControlGeneration(await lease.controlGeneration());
             setGreenfieldSession(session);
-            setStatus("attached");
+            setStatus(held ? "attached" : "unavailable");
+            if (!held) {
+              setVerdict(
+                "Another device holds control. This Greenfield display cannot yet be observed without control.",
+              );
+            }
             return;
           }
         }
-        const held = await lease.controls.catch(() => true);
-        if (isDisposed()) return;
-        controlsRef.current = held;
-        setControls(held);
         const renew = async () => {
           if (isDisposed()) return;
           setStatus("connecting");
@@ -255,15 +263,20 @@ export function NativeApp(props: {
     if (!handle) return;
     void handle
       .requestControl()
-      .then((held) => {
+      .then(async (held) => {
         controlsRef.current = held;
         setControls(held);
         if (held) {
           setVerdict("");
-          void reconnectRef.current?.().catch(() => {
-            setStatus("reconnecting");
-            setAttempt((current) => current + 1);
-          });
+          if (greenfieldSession) {
+            setGreenfieldControlGeneration(await handle.controlGeneration());
+            setStatus("attached");
+          } else {
+            void reconnectRef.current?.().catch(() => {
+              setStatus("reconnecting");
+              setAttempt((current) => current + 1);
+            });
+          }
         }
       })
       .catch(() => undefined);
@@ -416,9 +429,8 @@ export function NativeApp(props: {
       {greenfieldSession ? (
         <GreenfieldApp
           {...(clients ? { clients } : {})}
-          {...(props.expectedWorkloadGeneration !== undefined
-            ? { controlGeneration: props.expectedWorkloadGeneration }
-            : {})}
+          controlGeneration={greenfieldControlGeneration}
+          controls={controls}
           sessionId={greenfieldSession}
         />
       ) : null}

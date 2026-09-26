@@ -277,6 +277,40 @@ describe("Native window lifecycle and input", () => {
       );
     });
   });
+  it("hands Greenfield the control epoch, not the workload generation", async () => {
+    const f = fixture();
+    f.surfaceContinuity.attachSurface.mockResolvedValue({
+      session: { id: "greenfield-session" },
+      attachment: { controls: false, controlGeneration: 8n },
+    });
+    f.surfaceContinuity.requestSurfaceControl.mockResolvedValue({
+      attachment: { controls: true, controlGeneration: 9n },
+    });
+    const openGreenfieldDisplay = vi.fn(() => Promise.reject(new Error("fixture has no proxy")));
+    Object.assign(f.nativeSessions, {
+      getNativeSession: vi.fn(() => Promise.resolve({ session: { engine: "greenfield" } })),
+      openGreenfieldDisplay,
+    });
+    render(
+      <NativeApp
+        workosClients={f.clients}
+        activeProjectId="project"
+        workloadId="greenfield-session"
+        expectedWorkloadGeneration={3n}
+      />,
+    );
+    await waitFor(() => {
+      expect(screen.getByTestId("greenfield-status").getAttribute("data-status")).toBe("observer");
+    });
+    expect(openGreenfieldDisplay).not.toHaveBeenCalled();
+    await userEvent.click(screen.getByTestId("native-take-control"));
+    await waitFor(() => {
+      expect(openGreenfieldDisplay).toHaveBeenCalledWith(
+        expect.objectContaining({ sessionId: "greenfield-session", controlGeneration: 9n }),
+      );
+    });
+    expect(f.nativeSessions.connectNativeSession).not.toHaveBeenCalled();
+  });
   it("releases a captured pointer outside the video and preserves right-button mapping", async () => {
     const f = fixture();
     render(<NativeApp workosClients={f.clients} activeProjectId="project" />);
