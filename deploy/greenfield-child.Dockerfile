@@ -30,6 +30,12 @@ RUN corepack pnpm --filter @workos/greenfield-child build \
 
 FROM ${GREENFIELD_BASE_IMAGE}
 USER root
+# Bookworm package version is fixed with the base image. The graphical editor
+# runs in its own networkless resident child, separate from Code.
+RUN apt-get update \
+    && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends mousepad=0.5.10-2 \
+    && test -x /usr/bin/mousepad \
+    && rm -rf /var/lib/apt/lists/*
 ENV PLAYWRIGHT_BROWSERS_PATH=/opt/workos/ms-playwright \
     XDG_RUNTIME_DIR=/tmp/xdg
 COPY --from=chromium-download /opt/workos/ms-playwright /opt/workos/ms-playwright

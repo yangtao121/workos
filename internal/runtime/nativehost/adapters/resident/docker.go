@@ -216,19 +216,26 @@ func childName(session domain.Session) string {
 }
 
 func childLabels(session domain.Session) map[string]string {
-	return map[string]string{
+	labels := map[string]string{
 		"workos.purpose":    childPurpose,
 		"workos.runtime":    containerprocess.Namespace(),
 		"workos.session":    session.SessionID,
 		"workos.owner":      session.OwnerUserID,
 		"workos.generation": strconv.FormatInt(session.Generation, 10),
 	}
+	if session.Application == domain.ApplicationTextEditor {
+		labels["workos.application"] = string(session.Application)
+	}
+	return labels
 }
 
 func childArgs(spec ports.ResidentLaunch, renderDevice string) []string {
 	args := []string{"--socket", "/run/workos/greenfield/bridge.sock", "--session-id", spec.Session.SessionID,
 		"--generation", strconv.FormatInt(spec.Session.Generation, 10), "--width", strconv.Itoa(int(spec.Session.Width)),
 		"--height", strconv.Itoa(int(spec.Session.Height)), "--render-device", renderDevice}
+	if spec.Session.Application == domain.ApplicationTextEditor {
+		args = append(args, "--application", string(spec.Session.Application))
+	}
 	if spec.Workspace.Directory != "" {
 		args = append(args, "--workspace", "/workspace")
 	}

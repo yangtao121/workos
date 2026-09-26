@@ -66,6 +66,7 @@ type Options = {
   width: number;
   height: number;
   workspace?: string;
+  application: "code" | "text_editor";
   renderDevice: string;
 };
 
@@ -73,6 +74,7 @@ const PAGE_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "page");
 const PRIVATE_DIR = "/tmp/workos/greenfield";
 const PROXY_MAIN = "/opt/greenfield/packages/compositor-proxy-cli/dist/main.js";
 const CODE_BINARY = "/usr/share/code/code";
+const TEXT_EDITOR_BINARY = "/usr/bin/mousepad";
 const MAX_SNAPSHOT_BYTES = 1024 * 1024;
 const MAX_FRAME_BYTES = 24 * 1024 * 1024;
 const MAX_TILE_BYTES = 2 * 1024 * 1024;
@@ -102,6 +104,7 @@ function parseOptions(argv: string[]): Options {
     "--width",
     "--height",
     "--workspace",
+    "--application",
     "--render-device",
   ]);
   if ([...values.keys()].some((key) => !permitted.has(key)))
@@ -113,6 +116,7 @@ function parseOptions(argv: string[]): Options {
   const height = Number(values.get("--height"));
   const renderDevice = values.get("--render-device") ?? "";
   const workspace = values.get("--workspace");
+  const application = values.get("--application") ?? "code";
   if (
     socket !== "/run/workos/greenfield/bridge.sock" ||
     !/^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(sessionId) ||
@@ -124,7 +128,8 @@ function parseOptions(argv: string[]): Options {
     width > 4096 ||
     height > 4096 ||
     !/^\/dev\/dri\/renderD[0-9]+$/.test(renderDevice) ||
-    (workspace !== undefined && workspace !== "/workspace")
+    (workspace !== undefined && workspace !== "/workspace") ||
+    (application !== "code" && application !== "text_editor")
   ) {
     throw new Error("CHILD_ARGUMENT_INVALID");
   }
@@ -135,6 +140,7 @@ function parseOptions(argv: string[]): Options {
     width,
     height,
     renderDevice,
+    application,
     ...(workspace ? { workspace } : {}),
   };
 }
@@ -239,20 +245,20 @@ async function launchProxy(
   await mkdir("/tmp/xdg", { recursive: true, mode: 0o700 });
   await mkdir("/tmp/.X11-unix", { recursive: true, mode: 0o1777 });
   const codeData = join(PRIVATE_DIR, "code-data");
-  await mkdir(codeData, { recursive: true, mode: 0o700 });
+  if (options.application === "code") await mkdir(codeData, { recursive: true, mode: 0o700 });
   const appsPath = join(PRIVATE_DIR, "apps.json");
-  const appArgs = [
-    "--ozone-platform=x11",
-    "--disable-gpu",
-    "--no-sandbox",
-    "--user-data-dir",
-    codeData,
-  ];
-  if (options.workspace) appArgs.push(options.workspace);
+  const appArgs =
+    options.application === "code"
+      ? ["--ozone-platform=x11", "--disable-gpu", "--no-sandbox", "--user-data-dir", codeData]
+      : [];
+  if (options.workspace && options.application === "code") appArgs.push(options.workspace);
+  const path = options.application === "code" ? "/code" : "/text-editor";
+  const name = options.application === "code" ? "Code" : "Text Editor";
+  const executable = options.application === "code" ? CODE_BINARY : TEXT_EDITOR_BINARY;
   await writeFile(
     appsPath,
     JSON.stringify({
-      "/code": { name: "Code", executable: CODE_BINARY, args: appArgs, env: { HOME: PRIVATE_DIR } },
+      [path]: { name, executable, args: appArgs, env: { HOME: PRIVATE_DIR } },
     }),
     { mode: 0o600 },
   );
@@ -283,7 +289,7 @@ async function launchProxy(
   proxy.once("exit", () => {
     proxyState.exited = true;
   });
-  const url = `http://127.0.0.1:${String(port)}/code`;
+  const url = `http://127.0.0.1:${String(port)}${path}`;
   try {
     for (let attempt = 0; attempt < 150; attempt++) {
       if (proxyState.exited) throw new Error("GREENFIELD_PROXY_EXITED");
@@ -292,7 +298,7 @@ async function launchProxy(
           headers: { Origin: origin, "x-compositor-session-id": "workos" },
           signal: AbortSignal.timeout(2000),
         });
-        if (response.status !== 201) throw new Error("CODE_LAUNCH_FAILED");
+        if (response.status !== 201) throw new Error("APP_LAUNCH_FAILED");
         const launch: unknown = await response.json();
         if (
           !launch ||
@@ -302,11 +308,11 @@ async function launchProxy(
           !(launch as { key: string }).key ||
           typeof (launch as { signalURL?: unknown }).signalURL !== "string"
         ) {
-          throw new Error("CODE_LAUNCH_FAILED");
+          throw new Error("APP_LAUNCH_FAILED");
         }
         return { process: proxy, launch, launchUrl: url };
       } catch (error) {
-        if (error instanceof Error && error.message === "CODE_LAUNCH_FAILED") throw error;
+        if (error instanceof Error && error.message === "APP_LAUNCH_FAILED") throw error;
         await new Promise((resolve) => setTimeout(resolve, 100));
       }
     }

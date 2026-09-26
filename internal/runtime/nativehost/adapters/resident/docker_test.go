@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"reflect"
 	"testing"
 	"time"
 
@@ -12,6 +13,27 @@ import (
 	"github.com/yangtao121/workos/internal/runtime/nativehost/domain"
 	"github.com/yangtao121/workos/internal/runtime/nativehost/ports"
 )
+
+func TestNativeChildApplicationIsPinnedToSession(t *testing.T) {
+	code := domain.Session{SessionID: ids.UUIDv7{}.New(), OwnerUserID: ids.UUIDv7{}.New(), ProjectID: ids.UUIDv7{}.New(), Generation: 1, State: domain.StateQueued, Width: 800, Height: 600, Application: domain.ApplicationCode}
+	if _, ok := childLabels(code)["workos.application"]; ok {
+		t.Fatal("legacy Code child profile changed")
+	}
+	codeArgs := childArgs(ports.ResidentLaunch{Session: code}, "/dev/dri/renderD128")
+	editor := code
+	editor.Application = domain.ApplicationTextEditor
+	editorArgs := childArgs(ports.ResidentLaunch{Session: editor}, "/dev/dri/renderD128")
+	if !reflect.DeepEqual(editorArgs, append(append([]string{}, codeArgs...), "--application", "text_editor")) {
+		t.Fatalf("editor child arguments do not pin the app: %v", editorArgs)
+	}
+	if childLabels(editor)["workos.application"] != "text_editor" || !validLaunch(ports.ResidentLaunch{Session: editor}) {
+		t.Fatal("editor child identity was not accepted")
+	}
+	editor.Application = "unknown"
+	if validLaunch(ports.ResidentLaunch{Session: editor}) {
+		t.Fatal("unknown child application accepted")
+	}
+}
 
 // Opt-in Docker inspect test catches daemon normalization that a synthetic
 // childInspect fixture cannot. The image needs Node but the bridge is not

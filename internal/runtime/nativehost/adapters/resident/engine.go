@@ -141,7 +141,8 @@ func (e *Engine) Launch(ctx context.Context, _, _ int32, _ string) (ports.Displa
 func validLaunch(spec ports.ResidentLaunch) bool {
 	s := spec.Session
 	return domain.ValidUUIDv7(s.SessionID) && domain.ValidUUIDv7(s.OwnerUserID) && domain.ValidUUIDv7(s.ProjectID) &&
-		s.Generation >= 1 && domain.ValidSize(s.Width, s.Height) && !s.State.Terminal()
+		s.Generation >= 1 && domain.ValidSize(s.Width, s.Height) && !s.State.Terminal() &&
+		(s.Application == "" || s.Application.Valid())
 }
 
 func validateWorkspace(root string) error {
