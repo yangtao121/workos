@@ -46,3 +46,26 @@ test("captures visible takeover after a rejected resident input", async ({ brows
   });
   await context.close();
 });
+
+test("captures a native dialog while its exact close request awaits Runtime removal", async ({
+  browser,
+}) => {
+  const context = await browser.newContext({
+    viewport: { width: 1440, height: 900 },
+    deviceScaleFactor: 1,
+    locale: "zh-CN",
+    timezoneId: "UTC",
+    reducedMotion: "reduce",
+  });
+  const page = await context.newPage();
+  await page.goto(`${appURL}/e2e/fixtures/greenfield-viewer-ready.html?close-pending=1`);
+  await expect(page.locator('[data-frame-state="ready"]')).toHaveCount(2);
+  await expect(page.getByRole("button", { name: "Close Dialog fixture window" })).toBeDisabled();
+  await expect(page.getByText("正在关闭…")).toBeVisible();
+  await page.evaluate(async () => document.fonts.ready);
+  await page.screenshot({
+    path: `${captureDir}/greenfield-resident-windows--close-pending--1440x900.png`,
+    animations: "disabled",
+  });
+  await context.close();
+});

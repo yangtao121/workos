@@ -85,3 +85,50 @@ func TestWindowObserverAndPerEventTakeoverGate(t *testing.T) {
 		t.Fatalf("detached observer stream stayed authorized: %v", err)
 	}
 }
+
+func TestNativeCloseEventRequiresPayloadAndController(t *testing.T) {
+	close := &surfacev1.GreenfieldWindowInputEvent{Sequence: 1, WindowId: testWindow,
+		Event: &surfacev1.GreenfieldWindowInputEvent_Close{Close: &surfacev1.GreenfieldWindowClose{}}}
+	if !validWindowEvent(close) {
+		t.Fatal("close event rejected before controller gate")
+	}
+	if validWindowEvent(&surfacev1.GreenfieldWindowInputEvent{Sequence: 1, WindowId: testWindow,
+		Event: &surfacev1.GreenfieldWindowInputEvent_Close{}}) {
+		t.Fatal("nil close payload accepted")
+	}
+	ctx := context.Background()
+	store := newResidentMemoryStore()
+	engine := &residentTestEngine{fakeEngine: &fakeEngine{}}
+	service, err := NewService(store, engine, &seqGenerator{}, slog.Default())
+	if err != nil {
+		t.Fatal(err)
+	}
+	gate := &windowGate{viewer: true, attachment: testAttachment, generation: 1}
+	service.WithWindowAuthorization(gate)
+	session, err := service.Create(ctx, testOwner, testProject, "window-close-gate", 800, 600, domain.LifecycleManualStop)
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := &surfacev1.SendGreenfieldWindowInputRequest{
+		SessionId: session.SessionID, AttachmentId: testAttachment,
+		ExpectedWorkloadGeneration: 1, ControlGeneration: 1,
+		Events: []*surfacev1.GreenfieldWindowInputEvent{close},
+	}
+	if _, err := service.SendWindowInput(ctx, testOwner, testDevice, request); !errors.Is(err, domain.ErrControlDenied) {
+		t.Fatalf("observer close should be denied before child: %v", err)
+	}
+	if len(engine.created[0].events) != 0 {
+		t.Fatal("observer close reached child")
+	}
+	gate.controller = true
+	var forwardedClose *surfacev1.GreenfieldWindowInputEvent
+	engine.created[0].onEvent = func(req *surfacev1.SendGreenfieldWindowInputRequest) {
+		forwardedClose = req.GetEvents()[0]
+	}
+	if _, err := service.SendWindowInput(ctx, testOwner, testDevice, request); err != nil {
+		t.Fatalf("controller close should reach child: %v", err)
+	}
+	if len(engine.created[0].events) != 1 || forwardedClose.GetClose() == nil {
+		t.Fatal("exact close event was not forwarded")
+	}
+}

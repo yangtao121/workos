@@ -239,8 +239,42 @@ async function nativeWindowId(window: Locator, sessionId: string, generation: st
 
 async function focusCode(window: Locator) {
   const canvas = window.getByTestId("greenfield-window-canvas");
-  await canvas.click({ position: { x: 220, y: 160 } });
+  const bounds = await canvas.boundingBox();
+  if (!bounds) throw new Error("Code editor canvas has no visible bounds");
+  // The Explorer occupies the left quarter of the native Code window. Keep
+  // keyboard focus in the central editor, away from the right Chat panel.
+  await canvas.click({ position: { x: bounds.width * 0.55, y: bounds.height * 0.36 } });
   await expect(window.getByLabel("原生窗口输入")).toBeFocused();
+}
+
+async function clickCodeNative(window: Locator, x: number, y: number) {
+  const canvas = window.getByTestId("greenfield-window-canvas");
+  const bounds = await canvas.boundingBox();
+  if (!bounds) throw new Error("Code canvas has no visible bounds");
+  const frame = await canvas.evaluate((node) => ({
+    width: (node as HTMLCanvasElement).width,
+    height: (node as HTMLCanvasElement).height,
+    dpr: devicePixelRatio,
+  }));
+  await canvas.click({
+    position: {
+      x: (x / (frame.width / frame.dpr)) * bounds.width,
+      y: (y / (frame.height / frame.dpr)) * bounds.height,
+    },
+  });
+}
+
+async function dismissCodeOnboarding(page: Page, window: Locator) {
+  const canvas = window.getByTestId("greenfield-window-canvas");
+  const bounds = await canvas.boundingBox();
+  if (!bounds) throw new Error("Code onboarding canvas has no visible bounds");
+  // A new official Code profile can show two Copilot welcome pages. Their
+  // lower-right buttons were measured in the pinned Code child fixture. On an
+  // already configured profile these clicks land in the editor, then the
+  // following Quick Open assertion still proves the intended native state.
+  await canvas.click({ position: { x: bounds.width * 0.73, y: bounds.height * 0.75 } });
+  await page.waitForTimeout(500);
+  await canvas.click({ position: { x: bounds.width * 0.76, y: bounds.height * 0.75 } });
 }
 
 async function paste(page: Page, window: Locator, value: string) {
@@ -289,6 +323,7 @@ function changedNativePixels(before: number[], after: number[]): number {
 }
 
 async function openEditorFile(page: Page, window: Locator) {
+  await dismissCodeOnboarding(page, window);
   await focusCode(window);
   await page.keyboard.press("Escape");
   const before = await nativePixels(window);
@@ -300,10 +335,51 @@ async function openEditorFile(page: Page, window: Locator) {
     })
     .toBeGreaterThan(120);
   await paste(page, window, relativeFile);
+  // The paste toolbar button owns browser focus. Restore the viewer's hidden
+  // native input without clicking the canvas, which would dismiss Quick Open.
+  await window.getByLabel("原生窗口输入").focus();
   await page.keyboard.press("Enter");
   await expect(window.locator(".window-identity strong")).toContainText(relativeFile, {
     timeout: 30_000,
   });
+}
+
+async function dialogClose(browser: Browser) {
+  const state = await readState();
+  const current = await profile(browser);
+  try {
+    await signIn(current.page, await secret());
+    await selectProject(current.page);
+    await openRunningNative(current.page, state.workloadId);
+    const code = await codeWindow(current.page);
+    expect(await nativeWindowId(code, state.workloadId, state.generation)).toBe(state.windowId);
+    await expect(code.locator(".greenfield-window-app")).toHaveAttribute("data-controller", "true");
+    await dismissCodeOnboarding(current.page, code);
+    // The pinned Code File menu's Open File item is a native XWayland dialog.
+    // The isolated child probe proved this menu path and the resulting child
+    // frame even when Ctrl+O delivery varied during fresh Code startup.
+    await clickCodeNative(code, 90, 50);
+    await clickCodeNative(code, 150, 182);
+    const dialog = current.page
+      .locator(".workos-window")
+      .filter({ has: current.page.locator(".window-identity strong", { hasText: /^Open File$/ }) })
+      .filter({ has: current.page.getByTestId("greenfield-window-canvas") });
+    await expect(dialog).toBeVisible({ timeout: 15_000 });
+    await expect(dialog.locator('[data-frame-state="ready"]')).toBeVisible({ timeout: 15_000 });
+    const childId = await nativeWindowId(dialog, state.workloadId, state.generation);
+    expect(childId).not.toBe(state.windowId);
+    await dialog.locator(".window-close").click();
+    // Desktop must leave this child mounted until Runtime reports removal.
+    await expect(dialog).toHaveCount(0, { timeout: 15_000 });
+    expect(await nativeWindowId(code, state.workloadId, state.generation)).toBe(state.windowId);
+    await expect(code).toBeVisible();
+    const live = await workload(current.page, state.workloadId);
+    expect(live.state).toBe("running");
+    expect(live.generation).toBe(state.generation);
+    await closeViewer(code);
+  } finally {
+    await current.context.close();
+  }
 }
 
 async function closeViewer(window: Locator) {
@@ -515,6 +591,18 @@ async function continuity(browser: Browser) {
     expect(await nativeWindowId(secondCode, state.workloadId, state.generation)).toBe(
       state.windowId,
     );
+    // A disconnected viewer may return after its renewable control lease has
+    // expired. Explicitly acquire a fresh generation before sending input.
+    if (
+      (await secondCode.locator(".greenfield-window-app").getAttribute("data-controller")) !==
+      "true"
+    ) {
+      await secondCode.getByTestId("greenfield-take-control").click();
+    }
+    await expect(secondCode.locator(".greenfield-window-app")).toHaveAttribute(
+      "data-controller",
+      "true",
+    );
     await focusCode(secondCode);
     await second.page.keyboard.press("Control+End");
     const composed = `WORKOS_P0_IME_${randomUUID()}_中文🙂`;
@@ -598,7 +686,8 @@ async function restart(browser: Browser) {
       )
       .toBe(true);
     const newWorkload = await workload(current.page, state.workloadId);
-    await row.getByRole("button", { name: "Open", exact: true }).click();
+    // RunningSurfaces.Restart opens the returned native generation itself.
+    // Its new Code window can cover the Home row before another click.
     const code = await codeWindow(current.page);
     const newWindowId = await nativeWindowId(code, state.workloadId, newWorkload.generation);
     expect(newWindowId).not.toBe(state.windowId);
@@ -763,6 +852,7 @@ test("real LAN Code P0 resident phase", async ({ browser }) => {
   expect(projectId).toMatch(/^[0-9a-f-]{36}$/);
   expect(stateFile.startsWith("/run/workos/p0-results/")).toBe(true);
   if (phase === "unsaved") await unsaved(browser);
+  else if (phase === "dialog-close") await dialogClose(browser);
   else if (phase === "continuity") await continuity(browser);
   else if (phase === "restart") await restart(browser);
   else if (phase === "latency") await performancePhase(browser);

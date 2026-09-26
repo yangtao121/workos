@@ -1,0 +1,28 @@
+{
+  "parentId": "01a0ddd4-206f-77c5-95bb-349b7b429e1f",
+  "childId": "01a0ddd4-3f83-7a46-b666-ee809ceee64c",
+  "before": [
+    {
+      "id": "01a0ddd4-206f-77c5-95bb-349b7b429e1f",
+      "parentWindowId": "",
+      "title": "Welcome - Visual Studio Code"
+    },
+    {
+      "id": "01a0ddd4-3f83-7a46-b666-ee809ceee64c",
+      "parentWindowId": "01a0ddd4-206f-77c5-95bb-349b7b429e1f",
+      "title": "Open File"
+    }
+  ],
+  "after": [
+    {
+      "id": "01a0ddd4-206f-77c5-95bb-349b7b429e1f",
+      "parentWindowId": "",
+      "title": "Welcome - Visual Studio Code"
+    }
+  ],
+  "childHadFullFrame": true,
+  "shortcutOpened": true,
+  "closeAcknowledged": true,
+  "childRemoved": true,
+  "closeError": ""
+}

@@ -144,6 +144,13 @@ if [[ $(snapshot_check hash) != "$original_sha256" ]]; then
 fi
 first_child=$(child_name "$results/state.json")
 inspect_child "$first_child" "$results/child-before.txt"
+run_phase dialog-close
+inspect_child "$first_child" "$results/child-after-dialog-close.txt"
+if ! cmp -s "$results/child-before.txt" "$results/child-after-dialog-close.txt"; then
+    echo 'test-code-p0: Code child identity changed while closing its Open File dialog' >&2
+    exit 1
+fi
+echo 'A02: native Open File child closed; Code top level and exact resident child stayed alive.'
 run_phase continuity
 saved_verified=false
 for attempt in {1..30}; do

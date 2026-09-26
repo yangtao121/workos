@@ -9,6 +9,7 @@ import {
   GreenfieldWindowSchema,
 } from "@workos/protocol";
 import { GreenfieldWindowApp } from "../../src/GreenfieldWindowApp.js";
+import { WindowCloseControl } from "../../src/WindowCloseControl.js";
 import {
   GreenfieldWindowInputClient,
   type GreenfieldAttachment,
@@ -45,6 +46,7 @@ const windows = [
     visualRect: { x: 180, y: 120, width: 320, height: 180 },
   }),
 ];
+const closePending = new URLSearchParams(location.search).has("close-pending");
 
 async function pngFor(id: string): Promise<Uint8Array> {
   const dialog = id === windows[1]?.id;
@@ -171,6 +173,13 @@ function ResidentFixture() {
             <span className="window-identity">
               <strong>{nativeWindow.title}</strong>
             </span>
+            <div className="window-controls">
+              <WindowCloseControl
+                title={nativeWindow.title}
+                pending={index === 1 && closePending}
+                onClose={() => undefined}
+              />
+            </div>
           </header>
           <GreenfieldWindowApp
             client={client}

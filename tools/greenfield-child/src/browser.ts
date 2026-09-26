@@ -6,6 +6,7 @@ import {
   type CompositorSurface,
 } from "@gfld/compositor";
 import { webInputOutput } from "@gfld/compositor/dist/web/WebInputOutput.js";
+import { requestNativeTransientClose } from "./nativeClose.js";
 
 type Rect = { x: number; y: number; width: number; height: number };
 type WindowFact = {
@@ -44,7 +45,7 @@ type BrowserMessage =
 type InputPayload = {
   windowId: string;
   event: {
-    case: "pointer" | "key" | "text" | "resize" | "clipboardWrite" | "focus";
+    case: "pointer" | "key" | "text" | "resize" | "clipboardWrite" | "focus" | "close";
     value: Record<string, unknown>;
   };
 };
@@ -76,7 +77,10 @@ type Surface = {
   role?: {
     window?: { transientFor?: { surface?: Surface } };
     desktopSurface?: {
-      role?: { configureSize?: (size: { width: number; height: number }) => void };
+      role?: {
+        configureSize?: (size: { width: number; height: number }) => void;
+        requestClose?: () => void;
+      };
     };
   };
 };
@@ -729,6 +733,14 @@ async function main(): Promise<void> {
         session.userShell.actions.activateSurface(record.surface);
         seat.notifyKeyboardFocusIn();
         session.flush();
+        return;
+      case "close":
+        requestNativeTransientClose(
+          record,
+          session.renderer.topLevelViews,
+          (view) => parentWindowId(view, windows),
+          () => session.flush(),
+        );
         return;
       case "pointer": {
         const x = Number(value.x);

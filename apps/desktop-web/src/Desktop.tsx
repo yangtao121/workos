@@ -10,6 +10,7 @@ import { layoutStore, clearLocalDesktopState } from "./desktopLocalState.js";
 import { NativeSessionLease } from "./nativeSession.js";
 import type { GreenfieldViewerState } from "./NativeApp.js";
 import { GreenfieldWindowApp } from "./GreenfieldWindowApp.js";
+import { WindowCloseControl } from "./WindowCloseControl.js";
 import { mergeGreenfieldWindows, projectGreenfieldWindows } from "./projectGreenfieldWindows.js";
 import { Code, ConnectError } from "@connectrpc/connect";
 import {
@@ -169,6 +170,32 @@ export function Desktop({
   const [nativeWindows, nativeDispatch] = useReducer(windowReducer, initialWindowState);
   const nativeWindowsRef = useRef(nativeWindows);
   nativeWindowsRef.current = nativeWindows;
+  const pendingNativeClose = useRef(new Map<string, number>());
+  const [closingNativeIds, setClosingNativeIds] = useState<Set<string>>(() => new Set());
+  const finishNativeClose = useCallback((id: string) => {
+    const timer = pendingNativeClose.current.get(id);
+    if (timer !== undefined) window.clearTimeout(timer);
+    pendingNativeClose.current.delete(id);
+    setClosingNativeIds((current) => {
+      if (!current.has(id)) return current;
+      const next = new Set(current);
+      next.delete(id);
+      return next;
+    });
+  }, []);
+  useEffect(() => {
+    const live = new Set(nativeWindows.windows.map((item) => item.id));
+    for (const id of pendingNativeClose.current.keys()) {
+      if (!live.has(id)) finishNativeClose(id);
+    }
+  }, [nativeWindows, finishNativeClose]);
+  useEffect(
+    () => () => {
+      for (const timer of pendingNativeClose.current.values()) window.clearTimeout(timer);
+      pendingNativeClose.current.clear();
+    },
+    [],
+  );
   const [greenfieldViewers, setGreenfieldViewers] = useState<Record<string, GreenfieldViewerState>>(
     {},
   );
@@ -243,8 +270,41 @@ export function Desktop({
           (item) => item.kind === "native" && item.workloadId === nativeTarget.workloadId,
         );
         if (action.type === "close") {
-          // Closing a WorkOS native window detaches this device's whole viewer.
-          // It never sends an application close or stops the workload.
+          if (nativeTarget.nativeParentWindowId) {
+            // A transient is an independent native top level within the same
+            // Code workload. Keep it visible until Runtime confirms removal.
+            const viewer = greenfieldViewersRef.current[nativeTarget.workloadId ?? ""];
+            if (
+              !nativeTarget.nativeWindowId ||
+              !viewer?.input.canControl ||
+              viewer.projection.connection !== "connected"
+            ) {
+              setError("原生弹窗关闭不可用：请先恢复连接或取得控制权。");
+              return;
+            }
+            if (pendingNativeClose.current.has(nativeTarget.id)) return;
+            const timer = window.setTimeout(() => {
+              pendingNativeClose.current.delete(nativeTarget.id);
+              setClosingNativeIds((current) => {
+                const next = new Set(current);
+                next.delete(nativeTarget.id);
+                return next;
+              });
+              if (nativeWindowsRef.current.windows.some((item) => item.id === nativeTarget.id))
+                setError("原生应用尚未关闭此弹窗；请在应用内关闭后重试。");
+            }, 5000);
+            pendingNativeClose.current.set(nativeTarget.id, timer);
+            setClosingNativeIds((current) => new Set(current).add(nativeTarget.id));
+            void viewer.input
+              .send(nativeTarget.nativeWindowId, [{ case: "close", value: {} }])
+              .catch(() => {
+                finishNativeClose(nativeTarget.id);
+                setError("原生弹窗关闭请求未被接受；请检查连接和控制权后重试。");
+              });
+            return;
+          }
+          // A WorkOS top-level close removes this device's Core anchor and
+          // detaches the viewer. It never sends native Close or Stop.
           if (parent?.sharedWindowId)
             applyDesktop({ case: "closeWindow", value: { windowId: parent.sharedWindowId } });
           else if (parent) localDispatch({ type: "close", id: parent.id });
@@ -298,7 +358,7 @@ export function Desktop({
         });
       }
     },
-    [sharedDesktop, applyDesktop],
+    [sharedDesktop, applyDesktop, finishNativeClose],
   );
   const [appActivation, setAppActivation] = useState<{ id: string; sequence: number }>();
   const [agentView, setAgentView] = useState<AgentView>("tasks");
@@ -2794,16 +2854,11 @@ export function Desktop({
                 >
                   <Icon name={windowState.mode === "normal" ? "maximize" : "restore"} size={15} />
                 </button>
-                <button
-                  type="button"
-                  className="window-close"
-                  aria-label={`Close ${windowState.title}`}
-                  onClick={() => {
-                    closeWindow(windowState.id);
-                  }}
-                >
-                  <Icon name="close" size={16} />
-                </button>
+                <WindowCloseControl
+                  title={windowState.title}
+                  pending={closingNativeIds.has(windowState.id)}
+                  onClose={() => closeWindow(windowState.id)}
+                />
               </div>
             </header>
             {renderWindowBody(windowState)}

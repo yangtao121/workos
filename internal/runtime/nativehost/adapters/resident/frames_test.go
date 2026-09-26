@@ -2,6 +2,7 @@ package resident
 
 import (
 	"bytes"
+	"errors"
 	"image"
 	"image/color"
 	"image/png"
@@ -9,6 +10,7 @@ import (
 	"time"
 
 	surfacev1 "github.com/yangtao121/workos/gen/go/workos/surface/v1"
+	"github.com/yangtao121/workos/internal/runtime/nativehost/domain"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
@@ -111,5 +113,29 @@ func TestBrokerRejectsOverlappingFullFrame(t *testing.T) {
 	}
 	if err := b.acceptTile(frameTestTile(t, 1, 1, 2, 0, true)); err == nil {
 		t.Fatal("overlapping full frame passed validation")
+	}
+}
+
+func TestBrokerNativeCloseOnlyTargetsCurrentTransient(t *testing.T) {
+	b := frameTestBroker(t)
+	childID := "01999999-9999-7999-8999-000000000103"
+	b.windows[childID] = &surfacev1.GreenfieldWindow{Id: childID, ParentWindowId: frameTestWindow}
+	if err := b.authorizeTransientClose(childID); err != nil {
+		t.Fatalf("current transient was denied: %v", err)
+	}
+	if err := b.authorizeTransientClose(frameTestWindow); !errors.Is(err, domain.ErrControlDenied) {
+		t.Fatalf("top-level close should not reach native client: %v", err)
+	}
+	delete(b.windows, childID)
+	if err := b.authorizeTransientClose(childID); !errors.Is(err, domain.ErrEngineUnavailable) {
+		t.Fatalf("stale transient should not be sent: %v", err)
+	}
+	b.windows[childID] = &surfacev1.GreenfieldWindow{Id: childID, ParentWindowId: "01999999-9999-7999-8999-000000000104"}
+	if err := b.authorizeTransientClose(childID); !errors.Is(err, domain.ErrControlDenied) {
+		t.Fatalf("orphaned transient should not be sent: %v", err)
+	}
+	b.snapshot.State = surfacev1.GreenfieldDisplayState_GREENFIELD_DISPLAY_STATE_STOPPED
+	if err := b.authorizeTransientClose(childID); !errors.Is(err, domain.ErrEngineUnavailable) {
+		t.Fatalf("stopped generation should not accept close: %v", err)
 	}
 }

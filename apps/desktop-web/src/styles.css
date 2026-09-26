@@ -365,6 +365,16 @@ svg {
   background: #963c49;
   color: white;
 }
+.window-controls .window-close:disabled {
+  opacity: 0.45;
+  cursor: wait;
+}
+.window-closing-status {
+  margin-right: 5px;
+  color: var(--muted);
+  font-size: 11px;
+  white-space: nowrap;
+}
 .workos-window > :nth-child(2) {
   height: calc(100% - 48px);
   min-height: 0;

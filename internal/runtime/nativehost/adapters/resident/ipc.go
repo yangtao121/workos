@@ -340,6 +340,13 @@ func (b *broker) exchange(ctx context.Context, envelope *surfacev1.GreenfieldChi
 }
 
 func (b *broker) sendEvent(ctx context.Context, request *surfacev1.SendGreenfieldWindowInputRequest) (*surfacev1.SendGreenfieldWindowInputResponse, error) {
+	// A WorkOS top-level Close detaches its Core anchor. Native close requests
+	// are reserved for a live transient of that exact resident generation.
+	if len(request.GetEvents()) == 1 && request.GetEvents()[0].GetClose() != nil {
+		if err := b.authorizeTransientClose(request.GetEvents()[0].GetWindowId()); err != nil {
+			return nil, err
+		}
+	}
 	answer, err := b.exchange(ctx, &surfacev1.GreenfieldChildEnvelope{Payload: &surfacev1.GreenfieldChildEnvelope_Input{Input: request}})
 	if err != nil {
 		return nil, err
@@ -350,6 +357,22 @@ func (b *broker) sendEvent(ctx context.Context, request *surfacev1.SendGreenfiel
 		return nil, domain.ErrEngineUnavailable
 	}
 	return result, nil
+}
+
+func (b *broker) authorizeTransientClose(windowID string) error {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if b.closed || b.fatal || b.snapshot == nil || b.snapshot.GetState() != surfacev1.GreenfieldDisplayState_GREENFIELD_DISPLAY_STATE_RUNNING {
+		return domain.ErrEngineUnavailable
+	}
+	window := b.windows[windowID]
+	if window == nil {
+		return domain.ErrEngineUnavailable
+	}
+	if window.GetParentWindowId() == "" || b.windows[window.GetParentWindowId()] == nil {
+		return domain.ErrControlDenied
+	}
+	return nil
 }
 
 func (b *broker) readClipboard(ctx context.Context, request *surfacev1.ReadGreenfieldClipboardRequest) (*surfacev1.ReadGreenfieldClipboardResponse, error) {

@@ -133,6 +133,8 @@ func validWindowEvent(event *surfacev1.GreenfieldWindowInputEvent) bool {
 		return len(text) <= maxWindowClipboardBytes && utf8.Valid(text)
 	case *surfacev1.GreenfieldWindowInputEvent_Focus:
 		return payload.Focus != nil
+	case *surfacev1.GreenfieldWindowInputEvent_Close:
+		return payload.Close != nil
 	default:
 		return false
 	}

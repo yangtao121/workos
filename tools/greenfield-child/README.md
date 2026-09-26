@@ -24,6 +24,19 @@ Notifications use request ID zero; one-event input and clipboard requests use
 nonzero IDs. The resident input ledger suppresses duplicate native actions
 after an ACK is lost and fails closed after an uncertain partial action.
 
+The `close` input is reserved for a projected transient with a current parent.
+Runtime checks the current snapshot before forwarding it; the browser child
+rechecks the exact compositor client/surface and parent relationship, then
+calls that surface's `DesktopSurface.role.requestClose()`. This requests the
+native window's own close protocol; it never terminates the whole Code client.
+For XWayland it also checks `WM_DELETE_WINDOW` support and flushes the XCB
+connection after the request. The pinned rc1 `XWindow.close()` queues the
+message without flushing it; Wayland session flush alone left a real Code
+Open File dialog visible in the isolated probe.
+The window remains projected until a new complete snapshot omits it. A native
+client that ignores close leaves the window visible and the Desktop reports
+that outcome.
+
 Build and start from the repo root:
 
 ```sh

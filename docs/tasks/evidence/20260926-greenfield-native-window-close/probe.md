@@ -1,0 +1,9 @@
+# Isolated Code Open File close probe
+
+2026-09-26 UTC. The pinned official Code child image was rebuilt from this task as `workos-greenfield-child:native-close-probe-flush`. A private UDS broker (`tools/greenfield-child/test/close-smoke.ts`) and a separate child container ran without an owner login or external network. The child used UID 10001, a read-only root, private `/tmp`, the allowed render node and GPU, and no user workspace mount.
+
+The broker waited for a complete real Code frame, passed onboarding, and sent sequenced native input. `Ctrl+O` opened `Open File` as a distinct XWayland top-level with `parentWindowId` pointing to the Code top-level and its own complete frame. It then sent the new `close` input for only the child UUID. The child returned `APPLIED`. The next complete window snapshot contained **only** the original Code parent; there was no extra native popup. [Structured snapshot and verdict](code-dialog-close.json).
+
+Before and after the close, `docker inspect` reported the same child container ID `ce0b58ccb5fc984b8e7dcdeb084fe6d4aaa279c153c0511914344b779a50aad7`, host PID `971680`, and StartedAt `2026-09-26T13:07:36.682811841Z`. The Code main process remained PID `89` with `/proc/89/stat` starttime `1435612` both times. These are diagnostic identities for this disposable child, not a production workload.
+
+The first two isolated attempts established the fault: rc1 `XWindow.close()` queued `WM_DELETE_WINDOW` but did not flush the XCB connection. Both returned an `APPLIED` input verdict while the child stayed in the snapshot for 15 seconds. The final implementation explicitly flushes that X connection after `requestClose()`, while retaining the current surface/parent and `WM_DELETE_WINDOW` checks. `session.flush()` alone addresses the Wayland transport and did not deliver the X event. The owner-run browser gate still must prove the Gateway/Runtime/Code path under HTTPS and its attachment/control checks.
