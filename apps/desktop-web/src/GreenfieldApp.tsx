@@ -231,7 +231,13 @@ export function GreenfieldApp(props: {
           {clipboardResult}
         </p>
       ) : null}
-      <p className="native-hint">点击画面直接输入；Mac 使用 Cmd+C／Cmd+V，Ctrl+C 仍由应用处理。</p>
+      <p className="native-hint">
+        {controls && canvasState === "connected"
+          ? "点击画面输入；Mac 使用 Cmd+C／Cmd+V，Ctrl+C 仍由应用处理。"
+          : status === "observer"
+            ? "只读观察；当前设备没有输入控制权。"
+            : "原生画面暂不可用，连接恢复后才能输入。"}
+      </p>
     </section>
   );
 }

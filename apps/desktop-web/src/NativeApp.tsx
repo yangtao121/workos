@@ -1,10 +1,23 @@
 import { Code, ConnectError } from "@connectrpc/connect";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { GreenfieldApp } from "./GreenfieldApp.js";
 import { NativeSessionLease } from "./nativeSession.js";
 import type { NativeInputEvent } from "@workos/protocol";
 import type { WorkOSClients } from "@workos/agent-sdk";
 import { Button } from "@workos/ui-kit";
+import type {
+  GreenfieldWindowInputClient,
+  GreenfieldAttachment,
+} from "./greenfieldWindowClient.js";
+import {
+  GreenfieldWindowProjection,
+  type GreenfieldWindowProjectionState,
+} from "./greenfieldWindowProjection.js";
+
+export interface GreenfieldViewerState {
+  attachment: GreenfieldAttachment;
+  input: GreenfieldWindowInputClient;
+  projection: GreenfieldWindowProjectionState;
+}
 
 // NativeApp consumes the virtual-display native runner (ADR-0029): one
 // owner-scoped WebRTC session per window. The video track renders the real
@@ -16,6 +29,7 @@ export function NativeApp(props: {
   sessionLease?: NativeSessionLease | undefined;
   workloadId?: string | undefined;
   expectedWorkloadGeneration?: bigint | undefined;
+  onGreenfieldViewer?: (viewer?: GreenfieldViewerState) => void;
 }) {
   const ownLease = useMemo(() => new NativeSessionLease(), []);
   const sessionLease = props.sessionLease ?? ownLease;
@@ -27,7 +41,11 @@ export function NativeApp(props: {
   const [stopping, setStopping] = useState(false);
   const [inputDraft, setInputDraft] = useState("");
   const [greenfieldSession, setGreenfieldSession] = useState("");
-  const [greenfieldControlGeneration, setGreenfieldControlGeneration] = useState(0n);
+  const [greenfieldProjection, setGreenfieldProjection] =
+    useState<GreenfieldWindowProjectionState>();
+  const viewerRef = useRef<GreenfieldViewerState | undefined>(undefined);
+  const viewerCallbackRef = useRef(props.onGreenfieldViewer);
+  viewerCallbackRef.current = props.onGreenfieldViewer;
   const composingRef = useRef(false);
   const clients = props.workosClients;
   const projectId = props.activeProjectId ?? "";
@@ -57,12 +75,20 @@ export function NativeApp(props: {
     let retry: ReturnType<typeof setTimeout> | undefined;
     let peer: RTCPeerConnection | undefined;
     let channel: RTCDataChannel | undefined;
+    let windowProjection: GreenfieldWindowProjection | undefined;
+    let unsubscribeProjection: (() => void) | undefined;
     const close = () => {
       window.clearTimeout(renewal);
       clearTimeout(retry);
       peer?.close();
       channel?.close();
       if (channelRef.current === channel) channelRef.current = null;
+      unsubscribeProjection?.();
+      windowProjection?.stop();
+      if (viewerRef.current) {
+        viewerRef.current = undefined;
+        viewerCallbackRef.current?.(undefined);
+      }
       lease.release();
     };
     setStatus("connecting");
@@ -70,6 +96,7 @@ export function NativeApp(props: {
     setControls(true);
     controlsRef.current = true;
     setGreenfieldSession("");
+    setGreenfieldProjection(undefined);
     const run = async () => {
       try {
         session = await lease.session;
@@ -86,13 +113,34 @@ export function NativeApp(props: {
         if (typeof readSession === "function") {
           const facts = await readSession({ sessionId: session });
           if (!isDisposed() && facts.session?.engine === "greenfield") {
-            setGreenfieldControlGeneration(await lease.controlGeneration());
+            const attachmentId = await lease.attachmentId();
+            const workloadGeneration = await lease.workloadGeneration();
+            const controlGeneration = await lease.controlGeneration();
+            if (!attachmentId || workloadGeneration < 1n)
+              throw new ConnectError("resident Greenfield viewer unavailable", Code.Unimplemented);
+            const attachment: GreenfieldAttachment = {
+              sessionId: session,
+              attachmentId,
+              workloadGeneration,
+              controlGeneration,
+              controls: held,
+            };
+            const input = sessionLease.greenfieldInputClient(clients.greenfieldWindows, attachment);
+            windowProjection = new GreenfieldWindowProjection(
+              clients.greenfieldWindows,
+              attachment,
+            );
+            unsubscribeProjection = windowProjection.subscribe((projection) => {
+              if (isDisposed()) return;
+              setGreenfieldProjection(projection);
+              viewerRef.current = { attachment: { ...attachment }, input, projection };
+              viewerCallbackRef.current?.(viewerRef.current);
+            });
+            windowProjection.start();
             setGreenfieldSession(session);
-            setStatus(held ? "attached" : "unavailable");
+            setStatus("attached");
             if (!held) {
-              setVerdict(
-                "Another device holds control. This Greenfield display cannot yet be observed without control.",
-              );
+              setVerdict("只读观察：另一设备持有输入控制权。");
             }
             return;
           }
@@ -269,7 +317,17 @@ export function NativeApp(props: {
         if (held) {
           setVerdict("");
           if (greenfieldSession) {
-            setGreenfieldControlGeneration(await handle.controlGeneration());
+            const viewer = viewerRef.current;
+            if (viewer) {
+              const generation = await handle.controlGeneration();
+              viewer.input.setControl(true, generation);
+              viewer.attachment = {
+                ...viewer.attachment,
+                controls: true,
+                controlGeneration: generation,
+              };
+              viewerCallbackRef.current?.({ ...viewer });
+            }
             setStatus("attached");
           } else {
             void reconnectRef.current?.().catch(() => {
@@ -427,12 +485,15 @@ export function NativeApp(props: {
         </p>
       ) : null}
       {greenfieldSession ? (
-        <GreenfieldApp
-          {...(clients ? { clients } : {})}
-          controlGeneration={greenfieldControlGeneration}
-          controls={controls}
-          sessionId={greenfieldSession}
-        />
+        <p className="native-greenfield-status" role="status">
+          {greenfieldProjection?.connection === "connected"
+            ? greenfieldProjection.snapshot?.windows.length
+              ? "原生窗口已显示在 WorkOS 桌面中"
+              : "原生应用运行中，等待窗口"
+            : greenfieldProjection?.connection === "unavailable"
+              ? "原生窗口服务不可用"
+              : "正在连接原生窗口服务"}
+        </p>
       ) : null}
       <div
         className="native-stage"
@@ -462,6 +523,7 @@ export function NativeApp(props: {
       <form
         className="native-touch-controls"
         data-testid="native-touch-controls"
+        hidden={Boolean(greenfieldSession)}
         onSubmit={(event) => {
           event.preventDefault();
           if (composingRef.current || !inputDraft) return;
@@ -513,7 +575,11 @@ export function NativeApp(props: {
           ))}
         </div>
       </form>
-      <p className="native-hint">Click the stage, then type; input goes to the native display.</p>
+      <p className="native-hint">
+        {greenfieldSession
+          ? "在 WorkOS 原生窗口中查看画面；关闭窗口会断开此设备，Code 继续运行。"
+          : "Click the stage, then type; input goes to the native display."}
+      </p>
     </div>
   );
 }

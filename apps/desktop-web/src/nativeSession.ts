@@ -1,5 +1,9 @@
 import type { WorkOSClients } from "@workos/agent-sdk";
 import { LifecycleMode, SurfaceRenderer } from "@workos/protocol";
+import {
+  GreenfieldWindowInputClient,
+  type GreenfieldAttachment,
+} from "./greenfieldWindowClient.js";
 
 // The desktop owns the session independently of the responsive window body.
 // The desktop retains it while the window exists, including hidden mobile panes.
@@ -13,6 +17,8 @@ import { LifecycleMode, SurfaceRenderer } from "@workos/protocol";
 // instead of creating a second session.
 export interface NativeSessionHandle {
   session: Promise<string>;
+  attachmentId: () => Promise<string>;
+  workloadGeneration: () => Promise<bigint>;
   // Whether this device currently holds the single-controller lease; input
   // is disabled until an explicit RequestSurfaceControl takes it over.
   controls: Promise<boolean>;
@@ -25,6 +31,43 @@ export interface NativeSessionHandle {
 export class NativeSessionLease {
   constructor(private readonly keepAlive = false) {}
 
+  // Responsive shell remounts retain the same live attachment. Its input
+  // sequence belongs to that attachment, not to the React window body.
+  private residentInput:
+    | {
+        client: WorkOSClients["greenfieldWindows"];
+        attachmentId: string;
+        sessionId: string;
+        workloadGeneration: bigint;
+        input: GreenfieldWindowInputClient;
+      }
+    | undefined;
+
+  greenfieldInputClient(
+    client: WorkOSClients["greenfieldWindows"],
+    attachment: GreenfieldAttachment,
+  ): GreenfieldWindowInputClient {
+    const current = this.residentInput;
+    if (
+      current?.client === client &&
+      current.attachmentId === attachment.attachmentId &&
+      current.sessionId === attachment.sessionId &&
+      current.workloadGeneration === attachment.workloadGeneration
+    ) {
+      current.input.setControl(attachment.controls, attachment.controlGeneration);
+      return current.input;
+    }
+    const input = new GreenfieldWindowInputClient(client, attachment);
+    this.residentInput = {
+      client,
+      attachmentId: attachment.attachmentId,
+      sessionId: attachment.sessionId,
+      workloadGeneration: attachment.workloadGeneration,
+      input,
+    };
+    return input;
+  }
+
   dispose() {
     if (this.current) this.releaseLease(this.current);
   }
@@ -35,6 +78,8 @@ export class NativeSessionLease {
         workloadId?: string | undefined;
         expectedWorkloadGeneration: bigint;
         session: Promise<string>;
+        attachmentId: Promise<string>;
+        workloadGeneration: Promise<bigint>;
         controls: Promise<boolean>;
         generation: Promise<bigint>;
         users: number;
@@ -70,6 +115,8 @@ export class NativeSessionLease {
         workloadId,
         expectedWorkloadGeneration,
         session: session.then((facts) => facts.sessionId),
+        attachmentId: session.then((facts) => facts.attachmentId).catch(() => ""),
+        workloadGeneration: session.then((facts) => facts.workloadGeneration).catch(() => 0n),
         controls,
         generation: session.then((facts) => facts.generation).catch(() => 0n),
         users: 0,
@@ -82,6 +129,8 @@ export class NativeSessionLease {
     let released = false;
     return {
       session: lease.session,
+      attachmentId: () => lease.attachmentId,
+      workloadGeneration: () => lease.workloadGeneration,
       controls: lease.controls,
       controlGeneration: () => lease.generation,
       requestControl: () => this.requestControl(lease),
@@ -103,7 +152,13 @@ export class NativeSessionLease {
     projectId: string,
     workloadId?: string,
     expectedWorkloadGeneration = 0n,
-  ): Promise<{ sessionId: string; controls: boolean; generation: bigint }> {
+  ): Promise<{
+    sessionId: string;
+    attachmentId: string;
+    workloadGeneration: bigint;
+    controls: boolean;
+    generation: bigint;
+  }> {
     if (workloadId) {
       const attached = await clients.surfaceContinuity.attachSurface({
         workloadId,
@@ -112,6 +167,8 @@ export class NativeSessionLease {
       });
       return {
         sessionId: attached.session?.id ?? workloadId,
+        attachmentId: attached.attachment?.id ?? "",
+        workloadGeneration: attached.session?.workloadGeneration ?? expectedWorkloadGeneration,
         controls: attached.attachment?.controls ?? false,
         generation: attached.attachment?.controlGeneration ?? 0n,
       };
@@ -132,6 +189,8 @@ export class NativeSessionLease {
         const sessionId = attached.session?.id ?? live.workloadId;
         return {
           sessionId,
+          attachmentId: attached.attachment?.id ?? "",
+          workloadGeneration: attached.session?.workloadGeneration ?? live.generation,
           controls: attached.attachment?.controls ?? false,
           generation: attached.attachment?.controlGeneration ?? 0n,
         };
@@ -151,6 +210,8 @@ export class NativeSessionLease {
     });
     return {
       sessionId: created.session.id,
+      attachmentId: attached.attachment?.id ?? "",
+      workloadGeneration: attached.session?.workloadGeneration ?? expectedWorkloadGeneration,
       controls: attached.attachment?.controls ?? false,
       generation: attached.attachment?.controlGeneration ?? 0n,
     };
@@ -181,10 +242,13 @@ export class NativeSessionLease {
     lease.released = true;
     clearTimeout(lease.timer);
     if (this.current === lease) this.current = undefined;
+    this.residentInput = undefined;
     // Detach (never Close): window close keeps the program running under
     // its bounded policy; the explicit Stop affordance is the only stop.
     void lease.session
-      .then((sessionId) => lease.clients.nativeSessions.detachNativeSession({ sessionId }))
+      .then((sessionId) =>
+        lease.clients.surfaceContinuity.detachSurface({ surfaceSessionId: sessionId }),
+      )
       .catch(() => undefined);
   }
 }

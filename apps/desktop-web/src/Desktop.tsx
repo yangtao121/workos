@@ -8,6 +8,9 @@ import {
 } from "./sharedDesktopWindows.js";
 import { layoutStore, clearLocalDesktopState } from "./desktopLocalState.js";
 import { NativeSessionLease } from "./nativeSession.js";
+import type { GreenfieldViewerState } from "./NativeApp.js";
+import { GreenfieldWindowApp } from "./GreenfieldWindowApp.js";
+import { mergeGreenfieldWindows, projectGreenfieldWindows } from "./projectGreenfieldWindows.js";
 import { Code, ConnectError } from "@connectrpc/connect";
 import {
   useCallback,
@@ -163,6 +166,39 @@ export function Desktop({
   const [windows, localDispatch] = useReducer(windowReducer, initialWindowState);
   const windowsRef = useRef(windows);
   windowsRef.current = windows;
+  const [nativeWindows, nativeDispatch] = useReducer(windowReducer, initialWindowState);
+  const nativeWindowsRef = useRef(nativeWindows);
+  nativeWindowsRef.current = nativeWindows;
+  const [greenfieldViewers, setGreenfieldViewers] = useState<Record<string, GreenfieldViewerState>>(
+    {},
+  );
+  const greenfieldViewersRef = useRef(greenfieldViewers);
+  greenfieldViewersRef.current = greenfieldViewers;
+  const shellWindows = useMemo(
+    () => mergeGreenfieldWindows(windows, nativeWindows),
+    [windows, nativeWindows],
+  );
+  useEffect(() => {
+    const projected = windows.windows.flatMap((parent) => {
+      if (parent.kind !== "native" || !parent.workloadId) return [];
+      const viewer = greenfieldViewers[parent.workloadId];
+      const snapshot = viewer?.projection.snapshot;
+      if (!snapshot || viewer.projection.connection === "unavailable") return [];
+      return projectGreenfieldWindows(parent, snapshot, {
+        x: 0,
+        y: 0,
+        width: window.innerWidth,
+        height: Math.max(220, window.innerHeight - 132),
+      });
+    });
+    const active = projected.find((item) => {
+      const viewer = greenfieldViewers[item.workloadId ?? ""];
+      return viewer?.projection.snapshot?.windows.find(
+        (native) => native.id === item.nativeWindowId,
+      )?.active;
+    });
+    nativeDispatch({ type: "reconcile", windows: projected, focusedId: active?.id ?? "" });
+  }, [windows, greenfieldViewers]);
   const sharedDesktop = useMemo(
     () =>
       (workosClients as Partial<WorkOSClients>).desktop
@@ -197,6 +233,39 @@ export function Desktop({
   );
   const dispatch = useCallback(
     (action: WindowAction) => {
+      if (action.type === "work-area") nativeDispatch(action);
+      const nativeTarget =
+        "id" in action
+          ? nativeWindowsRef.current.windows.find((item) => item.id === action.id)
+          : undefined;
+      if (nativeTarget) {
+        const parent = windowsRef.current.windows.find(
+          (item) => item.kind === "native" && item.workloadId === nativeTarget.workloadId,
+        );
+        if (action.type === "close") {
+          // Closing a WorkOS native window detaches this device's whole viewer.
+          // It never sends an application close or stops the workload.
+          if (parent?.sharedWindowId)
+            applyDesktop({ case: "closeWindow", value: { windowId: parent.sharedWindowId } });
+          else if (parent) localDispatch({ type: "close", id: parent.id });
+          return;
+        }
+        nativeDispatch(action);
+        if (action.type === "focus") {
+          if (parent?.sharedWindowId) {
+            if (sharedDesktop?.current.state?.focusedWindowId !== parent.sharedWindowId)
+              applyDesktop({ case: "focusWindow", value: { windowId: parent.sharedWindowId } });
+          } else if (parent) localDispatch({ type: "focus", id: parent.id });
+          const viewer = greenfieldViewersRef.current[nativeTarget.workloadId ?? ""];
+          if (viewer?.input.canControl && nativeTarget.nativeWindowId)
+            void viewer.input
+              .send(nativeTarget.nativeWindowId, [{ case: "focus", value: {} }])
+              .catch(() => {
+                setError("原生窗口焦点未被接受；请检查连接和控制权后重试。");
+              });
+        }
+        return;
+      }
       if (!sharedDesktop || !["open", "close", "focus"].includes(action.type)) {
         localDispatch(action);
         return;
@@ -1002,16 +1071,33 @@ export function Desktop({
     [openSessionWorkload],
   );
 
-  const nativeSessionLease = useMemo(() => new NativeSessionLease(true), []);
-  const nativeWindowOpen = windows.windows.some((window) => window.kind === "native");
+  const nativeSessionLeases = useRef(new Map<string, NativeSessionLease>());
+  const nativeSessionLeaseFor = (id: string) => {
+    let lease = nativeSessionLeases.current.get(id);
+    if (!lease) {
+      lease = new NativeSessionLease(true);
+      nativeSessionLeases.current.set(id, lease);
+    }
+    return lease;
+  };
   useEffect(() => {
-    if (!nativeWindowOpen) nativeSessionLease.dispose();
-  }, [nativeWindowOpen, nativeSessionLease]);
+    const live = new Set(
+      windows.windows
+        .filter((item) => item.kind === "native")
+        .map((item) => item.workloadId ?? item.id),
+    );
+    for (const [id, lease] of nativeSessionLeases.current) {
+      if (live.has(id)) continue;
+      lease.dispose();
+      nativeSessionLeases.current.delete(id);
+    }
+  }, [windows]);
   useEffect(
     () => () => {
-      nativeSessionLease.dispose();
+      for (const lease of nativeSessionLeases.current.values()) lease.dispose();
+      nativeSessionLeases.current.clear();
     },
-    [nativeSessionLease, activeProjectId],
+    [],
   );
 
   const openNative = useCallback(
@@ -1267,7 +1353,7 @@ export function Desktop({
   // device-local record drops the closed window's active reference so a
   // stale id cannot linger after the fact.
   function closeWindow(windowId: string) {
-    const target = windows.windows.find((item) => item.id === windowId);
+    const target = shellWindows.windows.find((item) => item.id === windowId);
     if (!sharedDesktop && target?.kind === "app-surface" && target.surface) {
       openSurfaceSessionsRef.current = openSurfaceSessionsRef.current.filter(
         (item) => item.surfaceSessionId !== target.surface?.surfaceSessionId,
@@ -1315,7 +1401,7 @@ export function Desktop({
   function beginWindowDrag(event: ReactMouseEvent<HTMLElement>, windowId: string, resize = false) {
     if (event.button !== 0 || (!resize && (event.target as HTMLElement).closest("button,input")))
       return;
-    const target = windows.windows.find((item) => item.id === windowId);
+    const target = shellWindows.windows.find((item) => item.id === windowId);
     if (!target || target.mode !== "normal") return;
     event.preventDefault();
     dragCleanup.current?.();
@@ -2327,14 +2413,43 @@ export function Desktop({
         workosClients={workosClients}
         activeProjectId={activeProject?.id ?? ""}
       />
+    ) : windowState.kind === "native-window" ? (
+      (() => {
+        const viewer = greenfieldViewers[windowState.workloadId ?? ""];
+        const nativeWindow = viewer?.projection.snapshot?.windows.find(
+          (item) => item.id === windowState.nativeWindowId,
+        );
+        return viewer && nativeWindow ? (
+          <GreenfieldWindowApp
+            key={`${windowState.id}:${String(nativeWindow.revision)}`}
+            client={workosClients.greenfieldWindows}
+            attachment={viewer.attachment}
+            input={viewer.input}
+            nativeWindow={nativeWindow}
+            connection={viewer.projection.connection}
+            connectionEpoch={viewer.projection.epoch}
+          />
+        ) : (
+          <p role="status">原生窗口连接不可用</p>
+        );
+      })()
     ) : windowState.kind === "native" ? (
       <NativeApp
         key={`${windowState.workloadId ?? activeProjectId ?? ""}:${String(windowState.expectedWorkloadGeneration ?? 0n)}`}
         expectedWorkloadGeneration={windowState.expectedWorkloadGeneration}
         workloadId={windowState.workloadId}
-        sessionLease={sharedDesktop ? undefined : nativeSessionLease}
+        sessionLease={nativeSessionLeaseFor(windowState.workloadId ?? windowState.id)}
         workosClients={workosClients}
         activeProjectId={activeProject?.id ?? ""}
+        onGreenfieldViewer={(viewer) => {
+          const workloadId = windowState.workloadId;
+          if (!workloadId) return;
+          setGreenfieldViewers((current) => {
+            if (!viewer && !current[workloadId]) return current;
+            if (viewer) return { ...current, [workloadId]: viewer };
+            return Object.fromEntries(Object.entries(current).filter(([id]) => id !== workloadId));
+          });
+        }}
       />
     ) : windowState.kind === "device-center" ? (
       deviceAuth ? (
@@ -2484,10 +2599,21 @@ export function Desktop({
   if (adaptive) {
     return (
       <>
+        {windows.windows
+          .filter(
+            (item) =>
+              item.kind === "native" &&
+              nativeWindows.windows.some((child) => child.workloadId === item.workloadId),
+          )
+          .map((item) => (
+            <div hidden key={`native-host-${item.id}`}>
+              {renderWindowBody(item)}
+            </div>
+          ))}
         <AdaptiveShell
           sharedDesktop={!!sharedDesktop}
           layout={deviceLayout}
-          windows={windows}
+          windows={shellWindows}
           status={
             sharedDesktop && desktopProjection.connection !== "connected"
               ? desktopProjection.connection
@@ -2572,7 +2698,7 @@ export function Desktop({
       </header>
 
       <section className="desktop-canvas">
-        {windows.windows.map((windowState) => (
+        {shellWindows.windows.map((windowState) => (
           <section
             className={
               windowState.kind === "app-surface" ? "workos-window app-window" : "workos-window"

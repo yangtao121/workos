@@ -4,8 +4,13 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { WorkOSClients } from "@workos/agent-sdk";
+import {
+  GreenfieldDisplayState,
+  GreenfieldInputVerdict,
+  GreenfieldKeyAction,
+} from "@workos/protocol";
 import { NativeSessionLease } from "./nativeSession.js";
-import { NativeApp } from "./NativeApp.js";
+import { NativeApp, type GreenfieldViewerState } from "./NativeApp.js";
 
 class Peer {
   static instances: Peer[] = [];
@@ -41,8 +46,12 @@ function fixture(create = vi.fn(() => Promise.resolve({ session: { id: "session-
   const surfaceContinuity = {
     listProjectSurfaces: vi.fn<() => Promise<unknown>>(() => Promise.resolve({ workloads: [] })),
     attachSurface: vi.fn<() => Promise<unknown>>(() =>
-      Promise.resolve({ attachment: { controls: true, controlGeneration: 1n } }),
+      Promise.resolve({
+        session: { workloadGeneration: 1n },
+        attachment: { id: "attachment-1", controls: true, controlGeneration: 1n },
+      }),
     ),
+    detachSurface: vi.fn<() => Promise<unknown>>(() => Promise.resolve({})),
     requestSurfaceControl: vi.fn<() => Promise<unknown>>(() => Promise.resolve({})),
     stopSurfaceWorkload: vi.fn<() => Promise<unknown>>(() => Promise.resolve({})),
   };
@@ -144,7 +153,9 @@ describe("Native window lifecycle and input", () => {
     view.unmount();
     expect(peer.close).toHaveBeenCalledOnce();
     await waitFor(() => {
-      expect(f.nativeSessions.detachNativeSession).toHaveBeenCalledWith({ sessionId: "session-1" });
+      expect(f.surfaceContinuity.detachSurface).toHaveBeenCalledWith({
+        surfaceSessionId: "session-1",
+      });
     });
     expect(f.nativeSessions.closeNativeSession).not.toHaveBeenCalled();
   });
@@ -166,8 +177,8 @@ describe("Native window lifecycle and input", () => {
     view.unmount();
     complete({ session: { id: "late-session" } });
     await waitFor(() => {
-      expect(f.nativeSessions.detachNativeSession).toHaveBeenCalledWith({
-        sessionId: "late-session",
+      expect(f.surfaceContinuity.detachSurface).toHaveBeenCalledWith({
+        surfaceSessionId: "late-session",
       });
     });
     expect(f.nativeSessions.closeNativeSession).not.toHaveBeenCalled();
@@ -203,7 +214,7 @@ describe("Native window lifecycle and input", () => {
     view.unmount();
     lease.dispose();
     await waitFor(() => {
-      expect(f.nativeSessions.detachNativeSession).toHaveBeenCalledOnce();
+      expect(f.surfaceContinuity.detachSurface).toHaveBeenCalledOnce();
     });
   });
   it("restores an exact native workload and never falls back after it disappeared", async () => {
@@ -277,39 +288,149 @@ describe("Native window lifecycle and input", () => {
       );
     });
   });
-  it("hands Greenfield the control epoch, not the workload generation", async () => {
+  it("watches resident Greenfield windows as an observer and hands off the control epoch", async () => {
     const f = fixture();
     f.surfaceContinuity.attachSurface.mockResolvedValue({
-      session: { id: "greenfield-session" },
-      attachment: { controls: false, controlGeneration: 8n },
+      session: { id: "greenfield-session", workloadGeneration: 3n },
+      attachment: { id: "attachment-greenfield", controls: false, controlGeneration: 8n },
     });
     f.surfaceContinuity.requestSurfaceControl.mockResolvedValue({
       attachment: { controls: true, controlGeneration: 9n },
     });
-    const openGreenfieldDisplay = vi.fn(() => Promise.reject(new Error("fixture has no proxy")));
+    const watchGreenfieldWindows = vi.fn(async function* () {
+      await Promise.resolve();
+      yield {
+        snapshot: {
+          sessionId: "greenfield-session",
+          workloadGeneration: 3n,
+          revision: 1n,
+          state: GreenfieldDisplayState.RUNNING,
+          windows: [],
+        },
+      };
+    });
+    const onGreenfieldViewer = vi.fn<(viewer?: GreenfieldViewerState) => void>();
     Object.assign(f.nativeSessions, {
       getNativeSession: vi.fn(() => Promise.resolve({ session: { engine: "greenfield" } })),
-      openGreenfieldDisplay,
     });
+    const clients = {
+      ...f.clients,
+      greenfieldWindows: { watchGreenfieldWindows },
+    } as unknown as WorkOSClients;
     render(
       <NativeApp
-        workosClients={f.clients}
+        workosClients={clients}
         activeProjectId="project"
         workloadId="greenfield-session"
         expectedWorkloadGeneration={3n}
+        onGreenfieldViewer={onGreenfieldViewer}
       />,
     );
     await waitFor(() => {
-      expect(screen.getByTestId("greenfield-status").getAttribute("data-status")).toBe("observer");
-    });
-    expect(openGreenfieldDisplay).not.toHaveBeenCalled();
-    await userEvent.click(screen.getByTestId("native-take-control"));
-    await waitFor(() => {
-      expect(openGreenfieldDisplay).toHaveBeenCalledWith(
-        expect.objectContaining({ sessionId: "greenfield-session", controlGeneration: 9n }),
+      expect(watchGreenfieldWindows).toHaveBeenCalledWith(
+        expect.objectContaining({
+          sessionId: "greenfield-session",
+          attachmentId: "attachment-greenfield",
+          expectedWorkloadGeneration: 3n,
+        }),
+        expect.anything(),
       );
     });
+    expect(
+      onGreenfieldViewer.mock.calls.some(([viewer]) => viewer?.attachment.controls === false),
+    ).toBe(true);
+    await userEvent.click(screen.getByTestId("native-take-control"));
+    await waitFor(() => {
+      expect(
+        onGreenfieldViewer.mock.calls.some(
+          ([viewer]) =>
+            viewer?.attachment.controls === true && viewer.attachment.controlGeneration === 9n,
+        ),
+      ).toBe(true);
+    });
     expect(f.nativeSessions.connectNativeSession).not.toHaveBeenCalled();
+  });
+  it("keeps one input sequence when the same attachment is remounted", async () => {
+    const f = fixture();
+    f.surfaceContinuity.attachSurface.mockResolvedValue({
+      session: { id: "greenfield-session", workloadGeneration: 3n },
+      attachment: { id: "attachment-greenfield", controls: true, controlGeneration: 8n },
+    });
+    Object.assign(f.nativeSessions, {
+      getNativeSession: vi.fn(() => Promise.resolve({ session: { engine: "greenfield" } })),
+    });
+    const watchGreenfieldWindows = vi.fn(async function* (
+      _request: unknown,
+      options: { signal: AbortSignal },
+    ) {
+      yield {
+        snapshot: {
+          sessionId: "greenfield-session",
+          workloadGeneration: 3n,
+          revision: 1n,
+          state: GreenfieldDisplayState.RUNNING,
+          windows: [],
+        },
+      };
+      await new Promise<void>((resolve) => {
+        options.signal.addEventListener(
+          "abort",
+          () => {
+            resolve();
+          },
+          { once: true },
+        );
+      });
+    });
+    const sendGreenfieldWindowInput = vi.fn((request: { events: { sequence: bigint }[] }) =>
+      Promise.resolve({
+        verdict: GreenfieldInputVerdict.APPLIED,
+        lastAppliedSequence: request.events.at(-1)?.sequence ?? 0n,
+      }),
+    );
+    const clients = {
+      ...f.clients,
+      greenfieldWindows: { watchGreenfieldWindows, sendGreenfieldWindowInput },
+    } as unknown as WorkOSClients;
+    const lease = new NativeSessionLease(true);
+    const onGreenfieldViewer = vi.fn<(viewer?: GreenfieldViewerState) => void>();
+    const app = (key: string) => (
+      <NativeApp
+        key={key}
+        sessionLease={lease}
+        workosClients={clients}
+        activeProjectId="project"
+        workloadId="greenfield-session"
+        expectedWorkloadGeneration={3n}
+        onGreenfieldViewer={onGreenfieldViewer}
+      />
+    );
+    const firstMount = render(app("first"));
+    await waitFor(() => {
+      expect(onGreenfieldViewer.mock.calls.some(([viewer]) => !!viewer)).toBe(true);
+    });
+    const first = onGreenfieldViewer.mock.calls.find(([viewer]) => !!viewer)?.[0];
+    if (!first) throw new Error("first resident viewer unavailable");
+    const down = {
+      case: "key" as const,
+      value: { action: GreenfieldKeyAction.DOWN, code: "KeyA", key: "a" },
+    };
+    await first.input.send("native-window", [down]);
+    firstMount.unmount();
+    onGreenfieldViewer.mockClear();
+    render(app("second"));
+    await waitFor(() => {
+      expect(onGreenfieldViewer.mock.calls.some(([viewer]) => !!viewer)).toBe(true);
+    });
+    const second = onGreenfieldViewer.mock.calls.find(([viewer]) => !!viewer)?.[0];
+    if (!second) throw new Error("second resident viewer unavailable");
+    expect(second.input).toBe(first.input);
+    await second.input.send("native-window", [down]);
+    expect(
+      sendGreenfieldWindowInput.mock.calls.map(([request]) => request.events[0]?.sequence),
+    ).toEqual([1n, 2n]);
+    expect(f.surfaceContinuity.attachSurface).toHaveBeenCalledTimes(1);
+    lease.dispose();
   });
   it("releases a captured pointer outside the video and preserves right-button mapping", async () => {
     const f = fixture();

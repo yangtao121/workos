@@ -36,7 +36,8 @@ export type WindowKind =
   | "code"
   | "browser"
   | "terminal"
-  | "native";
+  | "native"
+  | "native-window";
 
 // AppSurfaceRef binds a window to one durable surface session. The URL is
 // the same-origin relative path returned by CreateSurface — never a private
@@ -66,6 +67,8 @@ export interface WorkOSWindow {
   expectedWorkloadGeneration?: bigint | undefined;
   previewId?: string | undefined;
   sessionId?: string | undefined;
+  nativeWindowId?: string | undefined;
+  nativeParentWindowId?: string | undefined;
   appId: string;
   title: string;
   badge?: string;
