@@ -37,14 +37,14 @@ afterEach(() => {
 function clients(open: ReturnType<typeof vi.fn>): WorkOSClients {
   return { nativeSessions: { openGreenfieldDisplay: open } } as unknown as WorkOSClients;
 }
-function openDisplay() {
+function openDisplay(clipboardMaxBytes = 1024 * 1024) {
   return vi.fn(() =>
     Promise.resolve({
       websocketPath: "/native/greenfield/session/code",
       compositorSessionId: "workos",
       width: 1440,
       height: 900,
-      clipboardMaxBytes: 1024 * 1024,
+      clipboardMaxBytes,
     }),
   );
 }
@@ -105,9 +105,9 @@ describe("GreenfieldApp", () => {
     expect(screen.getByText(/复制失败：应用没有提供文本选区/)).toBeTruthy();
   });
 
-  it("reads clipboard during paste gesture and rejects oversized text before app input", async () => {
-    const open = openDisplay();
-    const readText = vi.fn(() => Promise.resolve("x".repeat(1024 * 1024 + 1)));
+  it("uses the Runtime clipboard limit for paste and composition feedback", async () => {
+    const open = openDisplay(256 * 1024);
+    const readText = vi.fn(() => Promise.resolve("x".repeat(256 * 1024 + 1)));
     Object.defineProperty(navigator, "clipboard", { configurable: true, value: { readText } });
     render(<GreenfieldApp clients={clients(open)} sessionId="session" />);
     await waitFor(() => {
@@ -116,7 +116,28 @@ describe("GreenfieldApp", () => {
     await userEvent.click(screen.getByRole("button", { name: "粘贴到应用" }));
     expect(readText).toHaveBeenCalledOnce();
     expect(bridge.pasteIntoApp).not.toHaveBeenCalled();
-    expect(screen.getByText("粘贴失败：文本超过 1 MiB")).toBeTruthy();
+    expect(screen.getByText("粘贴失败：文本超过 256 KiB")).toBeTruthy();
+    const input = attach.mock.calls[0]?.[0] as {
+      options: { maxClipboardBytes: number; onCompositionCommitted: (result: "too_large") => void };
+    };
+    expect(input.options.maxClipboardBytes).toBe(256 * 1024);
+    act(() => {
+      input.options.onCompositionCommitted("too_large");
+    });
+    expect(screen.getByText("输入失败：文本超过 256 KiB")).toBeTruthy();
+  });
+
+  it("rejects app selection above the Runtime clipboard limit before browser write", async () => {
+    const writeText = vi.fn(() => Promise.resolve());
+    Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText } });
+    bridge.copyFromApp.mockResolvedValue("x".repeat(256 * 1024 + 1));
+    render(<GreenfieldApp clients={clients(openDisplay(256 * 1024))} sessionId="session" />);
+    await waitFor(() => {
+      expect(screen.getByTestId("greenfield-status").getAttribute("data-canvas")).toBe("connected");
+    });
+    await userEvent.click(screen.getByRole("button", { name: "复制到本机" }));
+    expect(writeText).not.toHaveBeenCalled();
+    expect(screen.getByText("复制失败：文本超过 256 KiB")).toBeTruthy();
   });
 
   it("shows unavailable when the runtime rejects the display", async () => {

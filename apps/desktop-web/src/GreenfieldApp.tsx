@@ -6,6 +6,12 @@ import {
   type GreenfieldBridge,
 } from "./greenfieldCompositor.js";
 
+function clipboardLimitLabel(bytes: number): string {
+  if (bytes % (1024 * 1024) === 0) return `${String(bytes / (1024 * 1024))} MiB`;
+  if (bytes % 1024 === 0) return `${String(bytes / 1024)} KiB`;
+  return `${String(bytes)} 字节`;
+}
+
 // A Greenfield connection is a view of the supervised Code workload. Clipboard
 // buttons and macOS shortcuts act on the real Wayland text selection.
 export function GreenfieldApp(props: {
@@ -38,7 +44,7 @@ export function GreenfieldApp(props: {
     try {
       const text = await bridge.copyFromApp();
       if (new TextEncoder().encode(text).byteLength > maxBytesRef.current) {
-        setClipboardResult("复制失败：文本超过 1 MiB");
+        setClipboardResult(`复制失败：文本超过 ${clipboardLimitLabel(maxBytesRef.current)}`);
         return;
       }
       const clipboard = (navigator as { clipboard?: Clipboard }).clipboard;
@@ -65,7 +71,7 @@ export function GreenfieldApp(props: {
       // Call readText during the actual click/key gesture, before any await.
       const text = await clipboard.readText();
       if (new TextEncoder().encode(text).byteLength > maxBytesRef.current) {
-        setClipboardResult("粘贴失败：文本超过 1 MiB");
+        setClipboardResult(`粘贴失败：文本超过 ${clipboardLimitLabel(maxBytesRef.current)}`);
         return;
       }
       bridge.pasteIntoApp(text);
@@ -130,7 +136,10 @@ export function GreenfieldApp(props: {
               onPasteShortcut: () => void pasteIntoApp(),
               onCompositionCommitted: (result) => {
                 if (result === "sent") setClipboardResult("已向应用发送输入法文本");
-                else if (result === "too_large") setClipboardResult("输入失败：文本超过 1 MiB");
+                else if (result === "too_large")
+                  setClipboardResult(
+                    `输入失败：文本超过 ${clipboardLimitLabel(maxBytesRef.current)}`,
+                  );
                 else setClipboardResult("输入失败：显示连接或控制权不可用");
               },
               onConnectionStateChange: (next) => {

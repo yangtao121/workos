@@ -19,7 +19,9 @@ Copy requires a fresh application selection after Control+C. The browser
 reads `text/plain;charset=utf-8` or `text/plain` through the Greenfield
 data source and writes it to `navigator.clipboard` only from a user action.
 Paste reads the browser clipboard from a user action, offers the text to the
-application, and sends Control+V. Both directions reject text above 1 MiB.
+application, and sends Control+V. Both directions reject text above the
+`clipboardMaxBytes` value returned by Runtime's `OpenGreenfieldDisplay` RPC
+(currently 256 KiB). The planned resident viewer contract raises this to 1 MiB.
 The UI reports browser permission errors and missing application selections;
 the paste status states that an instruction was sent because the protocol has
 no application-consumption acknowledgement.
