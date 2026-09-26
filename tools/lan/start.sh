@@ -74,6 +74,19 @@ if [ "$action" = config ]; then
     exit 0
 fi
 
+if [ "$action" = set-password ]; then
+    # Password administration changes neither certificates nor the service
+    # graph. Require the already-running private Gateway admin socket before
+    # prompting, so an unavailable stack cannot consume a typed secret.
+    gateway_compose config --quiet
+    if ! gateway_compose exec -T workos-gateway sh -ec 'test -S "$WORKOS_AUTH_ADMIN_SOCKET"'; then
+        echo 'start.sh: Gateway admin socket is unavailable; start the LAN stack first' >&2
+        exit 1
+    fi
+    gateway_compose exec workos-gateway workosctl auth set-password
+    exit
+fi
+
 old_fingerprint=
 if [ -f "$WORKOS_LAN_TLS_DIR/leaf.crt" ]; then
     old_fingerprint=$(openssl x509 -in "$WORKOS_LAN_TLS_DIR/leaf.crt" -noout -fingerprint -sha256 2>/dev/null || true)
@@ -85,14 +98,6 @@ else
     "$here/cert.sh" "$WORKOS_LAN_IP" "$WORKOS_LAN_TLS_DIR"
 fi
 new_fingerprint=$(openssl x509 -in "$WORKOS_LAN_TLS_DIR/leaf.crt" -noout -fingerprint -sha256)
-
-if [ "$action" = set-password ]; then
-    # The CLI reads both values from this terminal; no password enters env,
-    # command arguments, Compose config, logs or the shell history.
-    gateway_compose config --quiet
-    gateway_compose exec workos-gateway workosctl auth set-password
-    exit
-fi
 
 if [ "$action" = renew-leaf ]; then
     gateway_compose config --quiet

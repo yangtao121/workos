@@ -123,4 +123,5 @@ PY
 fi
 
 grep -Fq 'endpoint: 127.0.0.1:4318' "$repo/deploy/otel-collector.yaml"
+sh "$here/test-set-password.sh"
 echo 'test-lan-https: PASS (CA persistence, leaf renewal, permissions, SAN, Compose binds)'

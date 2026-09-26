@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"strings"
 	"time"
-	"unicode"
 	"unicode/utf8"
 
 	"golang.org/x/crypto/argon2"
@@ -44,29 +43,6 @@ func NewPasswordService(repo ports.PasswordRepository, ownerID string, ttl time.
 		return nil, errors.New("invalid password auth configuration")
 	}
 	return &PasswordService{repo: repo, ownerID: ownerID, sessionTTL: ttl, clock: clock, entropy: entropy, ids: ids, hashSlots: make(chan struct{}, 4)}, nil
-}
-
-func validateUsername(raw string) (string, error) {
-	if !utf8.ValidString(raw) {
-		return "", domain.ErrInvalidRequest
-	}
-	value := strings.TrimSpace(raw)
-	if value == "" || len([]rune(value)) > 80 {
-		return "", domain.ErrInvalidRequest
-	}
-	for _, r := range value {
-		if unicode.IsControl(r) {
-			return "", domain.ErrInvalidRequest
-		}
-	}
-	return value, nil
-}
-
-func validatePassword(password string) error {
-	if !utf8.ValidString(password) || len([]byte(password)) < 12 || len([]byte(password)) > 1024 {
-		return domain.ErrInvalidRequest
-	}
-	return nil
 }
 
 func (s *PasswordService) acquireHashSlot(ctx context.Context) error {
@@ -112,11 +88,11 @@ func verifyPassword(password, encoded string) bool {
 // SetPassword rotates the only owner's password. The repository revokes all
 // password sessions in the same transaction as replacing the hash.
 func (s *PasswordService) SetPassword(ctx context.Context, username, password string) error {
-	username, err := validateUsername(username)
+	username, err := domain.NormalizeLoginUsername(username)
 	if err != nil {
 		return err
 	}
-	if err := validatePassword(password); err != nil {
+	if err := domain.ValidateOwnerPassword(password); err != nil {
 		return err
 	}
 	salt, err := s.entropy.Random(passwordSaltBytes)
@@ -148,7 +124,7 @@ func (s *PasswordService) Login(ctx context.Context, username, password, deviceN
 	if err != nil {
 		return PasswordLogin{}, err
 	}
-	username, err = validateUsername(username)
+	username, err = domain.NormalizeLoginUsername(username)
 	if err != nil {
 		return PasswordLogin{}, domain.ErrAuthenticationFailed
 	}
