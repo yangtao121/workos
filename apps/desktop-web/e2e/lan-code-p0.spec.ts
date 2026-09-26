@@ -97,12 +97,15 @@ async function secret(): Promise<string> {
   return value;
 }
 
-async function profile(browser: Browser): Promise<{ context: BrowserContext; page: Page }> {
+async function profile(
+  browser: Browser,
+  deviceScaleFactor = 1,
+): Promise<{ context: BrowserContext; page: Page }> {
   const context = await browser.newContext({
     baseURL: origin,
     ignoreHTTPSErrors: false,
     viewport: { width: 1440, height: 900 },
-    deviceScaleFactor: 1,
+    deviceScaleFactor,
     locale: "en-US",
     timezoneId: "UTC",
   });
@@ -256,10 +259,46 @@ async function copiedText(page: Page, window: Locator): Promise<string> {
   return page.evaluate(() => navigator.clipboard.readText());
 }
 
+async function nativePixels(window: Locator): Promise<number[]> {
+  // Read only the decoded real Code frame. No fixture, screenshot or RPC ack
+  // can satisfy a visible popup or scroll assertion.
+  return window.getByTestId("greenfield-window-canvas").evaluate((node) => {
+    const source = node as HTMLCanvasElement;
+    const sample = document.createElement("canvas");
+    sample.width = 160;
+    sample.height = 120;
+    const context = sample.getContext("2d", { willReadFrequently: true });
+    if (!context || !source.width || !source.height)
+      throw new Error("native Code frame unavailable");
+    context.drawImage(source, 0, 0, sample.width, sample.height);
+    return Array.from(context.getImageData(0, 0, sample.width, sample.height).data);
+  });
+}
+
+function changedNativePixels(before: number[], after: number[]): number {
+  if (before.length !== after.length) throw new Error("native Code frame sample changed size");
+  let changed = 0;
+  for (let index = 0; index < before.length; index += 4) {
+    const difference =
+      Math.abs((before[index] ?? 0) - (after[index] ?? 0)) +
+      Math.abs((before[index + 1] ?? 0) - (after[index + 1] ?? 0)) +
+      Math.abs((before[index + 2] ?? 0) - (after[index + 2] ?? 0));
+    if (difference > 60) changed++;
+  }
+  return changed;
+}
+
 async function openEditorFile(page: Page, window: Locator) {
   await focusCode(window);
   await page.keyboard.press("Escape");
+  const before = await nativePixels(window);
   await page.keyboard.press("Control+p");
+  await expect
+    .poll(async () => changedNativePixels(before, await nativePixels(window)), {
+      message: "A02: Code Quick Open must appear in real native pixels",
+      timeout: 10_000,
+    })
+    .toBeGreaterThan(120);
   await paste(page, window, relativeFile);
   await page.keyboard.press("Enter");
   await expect(window.locator(".window-identity strong")).toContainText(relativeFile, {
@@ -279,6 +318,76 @@ async function readState(): Promise<State> {
   expect(BigInt(state.generation)).toBeGreaterThan(0n);
   expect(state.unsavedMarker).toMatch(/^WORKOS_P0_UNSAVED_[0-9a-f-]{36}$/);
   return state;
+}
+
+async function nativeGeometry(window: Locator) {
+  return window.getByTestId("greenfield-window-canvas").evaluate((node) => {
+    const canvas = node as HTMLCanvasElement;
+    const stage = canvas.closest(".greenfield-window-input-stage");
+    if (!stage) throw new Error("native Code stage unavailable");
+    const bounds = stage.getBoundingClientRect();
+    return {
+      dpr: devicePixelRatio,
+      cssWidth: bounds.width,
+      cssHeight: bounds.height,
+      frameWidth: canvas.width,
+      frameHeight: canvas.height,
+    };
+  });
+}
+
+async function dprTwoAndResize(browser: Browser, state: State) {
+  const current = await profile(browser, 2);
+  try {
+    await signIn(current.page, await secret());
+    await selectProject(current.page);
+    await openRunningNative(current.page, state.workloadId);
+    const code = await codeWindow(current.page);
+    expect(await nativeWindowId(code, state.workloadId, state.generation)).toBe(state.windowId);
+    await expect(code.locator(".greenfield-window-app")).toHaveAttribute("data-controller", "true");
+    await openEditorFile(current.page, code);
+    await expect
+      .poll(
+        async () => {
+          const size = await nativeGeometry(code);
+          return (
+            size.dpr === 2 &&
+            size.cssWidth > 320 &&
+            size.cssHeight > 220 &&
+            Math.abs(size.frameWidth / size.cssWidth - 2) < 0.2 &&
+            Math.abs(size.frameHeight / size.cssHeight - 2) < 0.2
+          );
+        },
+        { message: "A03: DPR 2 must produce a native-resolution Code frame", timeout: 15_000 },
+      )
+      .toBe(true);
+    const before = await nativeGeometry(code);
+    await code.locator(".window-resize").press("ArrowLeft");
+    await expect
+      .poll(
+        async () => {
+          const size = await nativeGeometry(code);
+          return (
+            size.cssWidth < before.cssWidth - 5 &&
+            size.frameWidth < before.frameWidth - 10 &&
+            Math.abs(size.frameWidth / size.cssWidth - 2) < 0.2 &&
+            Math.abs(size.frameHeight / size.cssHeight - 2) < 0.2
+          );
+        },
+        { message: "A03: resizing must deliver a fresh DPR 2 native Code frame", timeout: 15_000 },
+      )
+      .toBe(true);
+    const after = await nativeGeometry(code);
+    await codeWindow(current.page);
+    await writeFile(
+      stateFile.replace(/state\.json$/, "dpr2.json"),
+      `${JSON.stringify({ viewport: { width: 1440, height: 900 }, before, after })}\n`,
+      { flag: "wx", mode: 0o600 },
+    );
+    await closeViewer(code);
+  } finally {
+    await current.context.close();
+  }
 }
 
 async function unsaved(browser: Browser) {
@@ -408,6 +517,30 @@ async function continuity(browser: Browser) {
     );
     await focusCode(secondCode);
     await second.page.keyboard.press("Control+End");
+    const composed = `WORKOS_P0_IME_${randomUUID()}_中文🙂`;
+    await secondCode.getByLabel("原生窗口输入").evaluate((node, text) => {
+      node.dispatchEvent(new CompositionEvent("compositionstart", { data: "", bubbles: true }));
+      node.dispatchEvent(new CompositionEvent("compositionend", { data: text, bubbles: true }));
+    }, composed);
+    await focusCode(secondCode);
+    await second.page.keyboard.press("Control+a");
+    expect((await copiedText(second.page, secondCode)).split(composed)).toHaveLength(2);
+    await focusCode(secondCode);
+    await second.page.keyboard.press("Control+End");
+    // The keyup lands outside the native input stage. The viewer must release
+    // its held modifier on blur so plain Code typing still reaches the file.
+    await second.page.keyboard.down("Control");
+    await secondCode.locator(".window-identity strong").click();
+    await second.page.keyboard.up("Control");
+    await focusCode(secondCode);
+    await second.page.keyboard.press("Control+End");
+    const released = `workos_p0_release_${randomUUID().replaceAll("-", "")}`;
+    await second.page.keyboard.type(released);
+    await focusCode(secondCode);
+    await second.page.keyboard.press("Control+a");
+    expect((await copiedText(second.page, secondCode)).includes(released)).toBe(true);
+    await focusCode(secondCode);
+    await second.page.keyboard.press("Control+End");
     const saved = `WORKOS_P0_SAVED_${randomUUID()}`;
     const mixed = "中文\t🙂 abcdefghijklmnop\n".repeat(256);
     const payload = `\n${saved}\n${mixed}`;
@@ -415,6 +548,15 @@ async function continuity(browser: Browser) {
     await paste(second.page, secondCode, payload);
     await focusCode(secondCode);
     await second.page.keyboard.press("Control+s");
+    const beforeScroll = await nativePixels(secondCode);
+    await secondCode.getByTestId("greenfield-window-canvas").hover();
+    await second.page.mouse.wheel(0, -12_000);
+    await expect
+      .poll(async () => changedNativePixels(beforeScroll, await nativePixels(secondCode)), {
+        message: "A04: wheel input must visibly scroll the real Code editor",
+        timeout: 10_000,
+      })
+      .toBeGreaterThan(120);
     await focusCode(secondCode);
     await second.page.keyboard.press("Control+a");
     expect((await copiedText(second.page, secondCode)).includes(payload)).toBe(true);
@@ -427,6 +569,7 @@ async function continuity(browser: Browser) {
     await Promise.all([first.context.close(), second.context.close()]);
   }
   await writeFile(savedFile, `${JSON.stringify(savedEvidence)}\n`, { flag: "wx", mode: 0o600 });
+  await dprTwoAndResize(browser, state);
 }
 
 async function restart(browser: Browser) {
