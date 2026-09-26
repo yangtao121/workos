@@ -57,9 +57,6 @@ func ServeProxy(w http.ResponseWriter, r *http.Request) {
 		original(req)
 		req.URL.Path = "/" + suffix
 		req.URL.RawPath = ""
-		if req.URL.RawQuery != "" {
-			req.URL.RawQuery = req.URL.RawQuery
-		}
 		req.Host = target.Host
 	}
 	proxy.ModifyResponse = func(resp *http.Response) error {

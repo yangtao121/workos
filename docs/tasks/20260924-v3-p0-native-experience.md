@@ -19,34 +19,34 @@
 
 ## 工作包
 
-| 包 | 状态 | 说明 |
-| --- | --- | --- |
-| W01 | done | 基线、验收表、before 视觉 |
-| W02 | partial | 真实 Code 进程保活已测；窗口编辑未通 |
+| 包  | 状态    | 说明                                           |
+| --- | ------- | ---------------------------------------------- |
+| W01 | done    | 基线、验收表、before 视觉                      |
+| W02 | partial | 真实 Code 进程保活已测；窗口编辑未通           |
 | W03 | partial | ADR-0038、Proto、greenfield 引擎、runtime 开关 |
-| W04 | partial | GreenfieldApp 只报告连接状态，未嵌入合成画布 |
-| W05 | partial | 引擎内有界剪贴板单测；没有真实双向粘贴 |
-| W06 | partial | `make test-v3-p0-native-experience` 已添加 |
-| W07 | partial | 运行说明和证据已写，完整门禁未跑 |
+| W04 | partial | GreenfieldApp 只报告连接状态，未嵌入合成画布   |
+| W05 | partial | 引擎内有界剪贴板单测；没有真实双向粘贴         |
+| W06 | partial | `make test-v3-p0-native-experience` 已添加     |
+| W07 | partial | 运行说明和证据已写，完整门禁未跑               |
 
 ## 验收矩阵
 
 旧 Native 证据只覆盖 Xvfb/VP8/WebRTC，不能代替本表。
 
-| 编号 | 场景 | Grok 自测结果 | 证据 | 命令 | 缺项 |
-| --- | --- | --- | --- | --- | --- |
-| A01 | 固定版本启动真实 Code | PARTIAL | [results.md](evidence/20260924-v3-p0-native-experience/results.md) | launch-code.sh | 未通过 GUI 改写并保存 fixture |
-| A02 | 多窗口、菜单和弹窗 | NOT_RUN | | | 浏览器合成器未编入 |
-| A03 | 尺寸/DPR/清晰度 | NOT_RUN | | | 无画面 |
-| A04 | 输入法和快捷键 | NOT_RUN | | | |
-| A05 | 双向文本剪贴板 | PARTIAL | greenfield engine_test.go | go test | 只覆盖引擎内存边界，不是系统剪贴板 |
-| A06 | 关闭所有客户端后恢复 | PARTIAL | results.md | launch-code.sh | 同一 pid 仍在；未证明未保存缓冲 |
-| A07 | 断网、换设备与控制接管 | NOT_RUN | | | |
-| A08 | Stop、退出、故障、Restart | PARTIAL | engine_test.go | go test | Stop 结束测试子进程；不是真实 Code |
-| A09 | 授权、不可用和失败 | PARTIAL | engine_test.go | go test | 缺二进制和 SDP 伪装已拒绝 |
-| A10 | 交互性能与资源 | NOT_RUN | | | |
-| A11 | Mac 与物理客户端 | NOT_RUN | | | 本环境无 macOS / 第二台物理设备 |
-| A12 | 回归与交付完整性 | NOT_RUN | | | make check 未作为本轮结果 |
+| 编号 | 场景                      | Grok 自测结果 | 证据                                                               | 命令           | 缺项                               |
+| ---- | ------------------------- | ------------- | ------------------------------------------------------------------ | -------------- | ---------------------------------- |
+| A01  | 固定版本启动真实 Code     | PARTIAL       | [results.md](evidence/20260924-v3-p0-native-experience/results.md) | launch-code.sh | 未通过 GUI 改写并保存 fixture      |
+| A02  | 多窗口、菜单和弹窗        | NOT_RUN       |                                                                    |                | 浏览器合成器未编入                 |
+| A03  | 尺寸/DPR/清晰度           | NOT_RUN       |                                                                    |                | 无画面                             |
+| A04  | 输入法和快捷键            | NOT_RUN       |                                                                    |                |                                    |
+| A05  | 双向文本剪贴板            | PARTIAL       | greenfield engine_test.go                                          | go test        | 只覆盖引擎内存边界，不是系统剪贴板 |
+| A06  | 关闭所有客户端后恢复      | PARTIAL       | results.md                                                         | launch-code.sh | 同一 pid 仍在；未证明未保存缓冲    |
+| A07  | 断网、换设备与控制接管    | NOT_RUN       |                                                                    |                |                                    |
+| A08  | Stop、退出、故障、Restart | PARTIAL       | engine_test.go                                                     | go test        | Stop 结束测试子进程；不是真实 Code |
+| A09  | 授权、不可用和失败        | PARTIAL       | engine_test.go                                                     | go test        | 缺二进制和 SDP 伪装已拒绝          |
+| A10  | 交互性能与资源            | NOT_RUN       |                                                                    |                |                                    |
+| A11  | Mac 与物理客户端          | NOT_RUN       |                                                                    |                | 本环境无 macOS / 第二台物理设备    |
+| A12  | 回归与交付完整性          | NOT_RUN       |                                                                    |                | make check 未作为本轮结果          |
 
 ## 验证记录
 

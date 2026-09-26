@@ -34,11 +34,11 @@ const (
 )
 
 var (
-	ErrControlDenied     = errors.New("native control lease denied")
-	ErrInvalid           = errors.New("native session request is invalid")
-	ErrNotFound          = errors.New("native session not found")
-	ErrIdempotencyDrift  = errors.New("native session replay request drifted")
-	ErrSessionLimit      = errors.New("native session limit reached")
+	ErrControlDenied         = errors.New("native control lease denied")
+	ErrInvalid               = errors.New("native session request is invalid")
+	ErrNotFound              = errors.New("native session not found")
+	ErrIdempotencyDrift      = errors.New("native session replay request drifted")
+	ErrSessionLimit          = errors.New("native session limit reached")
 	ErrEngineUnavailable     = errors.New("native engine is unavailable")
 	ErrStoreUnavailable      = errors.New("native store is temporarily unavailable")
 	ErrWrongEngine           = errors.New("native session engine does not accept this connection")

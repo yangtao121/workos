@@ -75,8 +75,10 @@ make generate
 make dev
 ```
 
-打开 <http://127.0.0.1:8080>。开发模式仅允许绑定 loopback，并注入固定的 owner/device
-身份；它不能用于局域网部署。
+打开 <http://127.0.0.1:8080>。开发模式默认仅绑定 loopback，并注入固定的 owner/device
+身份；它不能用于局域网部署。开发调试阶段如需让局域网设备免认证访问，运行
+`make dev-lan`（见 `deploy/compose.dev-lan.yaml`，开启
+`WORKOS_DEV_AUTH_BYPASS_ALLOW_LAN`，仅限可信开发局域网）。
 
 常用命令：
 

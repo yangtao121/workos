@@ -4,7 +4,9 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { WorkOSClients } from "@workos/agent-sdk";
 import { GreenfieldApp } from "./GreenfieldApp.js";
 
-afterEach(() => cleanup());
+afterEach(() => {
+  cleanup();
+});
 
 function clients(open: ReturnType<typeof vi.fn>): WorkOSClients {
   return { nativeSessions: { openGreenfieldDisplay: open } } as unknown as WorkOSClients;
@@ -25,9 +27,9 @@ describe("GreenfieldApp", () => {
         sessionId="018f1a00-0000-7000-8000-000000000001"
       />,
     );
-    await waitFor(() =>
-      expect(screen.getByTestId("greenfield-status").getAttribute("data-status")).toBe("attached"),
-    );
+    await waitFor(() => {
+      expect(screen.getByTestId("greenfield-status").getAttribute("data-status")).toBe("attached");
+    });
   });
 
   it("shows unavailable when the runtime rejects the display", async () => {
@@ -37,8 +39,10 @@ describe("GreenfieldApp", () => {
         sessionId="018f1a00-0000-7000-8000-000000000001"
       />,
     );
-    await waitFor(() =>
-      expect(screen.getByTestId("greenfield-status").getAttribute("data-status")).toBe("unavailable"),
-    );
+    await waitFor(() => {
+      expect(screen.getByTestId("greenfield-status").getAttribute("data-status")).toBe(
+        "unavailable",
+      );
+    });
   });
 });

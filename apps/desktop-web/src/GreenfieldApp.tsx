@@ -22,6 +22,11 @@ export function GreenfieldApp(props: {
       return;
     }
     let cancelled = false;
+    // The guard reads `cancelled` inside its own closure so the await points
+    // re-read the live flag instead of a narrowed stale one.
+    const setCanvasStateUnlessCancelled = (next: string) => {
+      if (!cancelled) setCanvasState(next);
+    };
     setStatus("connecting");
     clients.nativeSessions
       .openGreenfieldDisplay({
@@ -47,9 +52,9 @@ export function GreenfieldApp(props: {
             launchPath: response.websocketPath,
             compositorSessionId: response.compositorSessionId,
           });
-          if (!cancelled) setCanvasState("ready");
+          setCanvasStateUnlessCancelled("ready");
         } catch {
-          if (!cancelled) setCanvasState("unavailable");
+          setCanvasStateUnlessCancelled("unavailable");
         }
       })
       .catch(() => {
@@ -97,8 +102,12 @@ export function GreenfieldApp(props: {
         width={1440}
         height={900}
         tabIndex={0}
-        onKeyDown={(event) => noteKey("down", event.key)}
-        onKeyUp={(event) => noteKey("up", event.key)}
+        onKeyDown={(event) => {
+          noteKey("down", event.key);
+        }}
+        onKeyUp={(event) => {
+          noteKey("up", event.key);
+        }}
         onBlur={() => releasePressedKeys()}
       />
       <button type="button" onClick={() => void pasteText()}>

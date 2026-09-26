@@ -26,6 +26,41 @@ func TestDevBypassAllowsLoopback(t *testing.T) {
 	}
 }
 
+func TestDevBypassAllowLANAcceptsPublicBindWithoutTLS(t *testing.T) {
+	t.Parallel()
+	cfg := defaults()
+	cfg.HTTP.Address = "0.0.0.0:8080"
+	cfg.Auth.DevBypass = true
+	cfg.Auth.DevBypassAllowLAN = true
+	if err := cfg.ValidateGateway(); err != nil {
+		t.Fatalf("unexpected validation error: %v", err)
+	}
+}
+
+func TestDevBypassAllowLANDoesNotRelaxProductionValidation(t *testing.T) {
+	t.Parallel()
+	cfg := defaults()
+	cfg.HTTP.Address = "0.0.0.0:8080"
+	cfg.Auth.DevBypass = false
+	cfg.Auth.DevBypassAllowLAN = true
+	if err := cfg.ValidateGateway(); err == nil {
+		t.Fatal("expected non-loopback production gateway without TLS to stay rejected")
+	}
+}
+
+func TestLoadDevBypassAllowLANEnvironment(t *testing.T) {
+	t.Setenv("WORKOS_CONFIG_FILE", "")
+	_ = os.Unsetenv("WORKOS_CONFIG_FILE")
+	t.Setenv("WORKOS_DEV_AUTH_BYPASS_ALLOW_LAN", "true")
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !cfg.Auth.DevBypassAllowLAN {
+		t.Fatal("dev bypass LAN environment override was not loaded")
+	}
+}
+
 func TestDeepSeekDefaultsAreDisabledAndSecretFree(t *testing.T) {
 	t.Parallel()
 	cfg := defaults()

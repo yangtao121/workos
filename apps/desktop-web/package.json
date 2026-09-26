@@ -8,6 +8,7 @@
     "build": "tsc --noEmit && vite build",
     "check": "tsc --noEmit && vitest run src",
     "dev": "vite --host 127.0.0.1 --port 5173",
+    "dev:lan": "vite --host 0.0.0.0 --port 5173",
     "test": "vitest run src",
     "test:e2e": "playwright test",
     "typecheck": "tsc --noEmit"

@@ -1,0 +1,83 @@
+.DS_Store
+.env
+.env.*
+!.env.example
+.idea/
+.vscode/
+
+# Go
+/bin/
+/coverage/
+*.out
+
+# TypeScript
+node_modules/
+dist/
+.vite/
+playwright-report/
+test-results/
+
+# Generated runtime data
+/.workos/
+/data/
+/tmp/
+
+# Local tool caches
+__pycache__/
+*.pyc
+/.cache/
+/.pnpm-store/
+/.tools/
+
+# Accidental local build output (go build ./tests/restart writes ./restart,
+# go build ./cmd/workos-core writes ./workos-core); the exact root paths only —
+# tests/restart/ source stays tracked.
+/restart
+/workos-core
+/devauth
+/deepseekapi
+
+# A host-absolute capture path passed into a container can otherwise mirror
+# the host's /home/... tree under the repository working directory.
+/home/
+
+# Nested pnpm stores created by containerized installs
+.pnpm-store/
+
+# Stray Go build outputs (go build ./cmd/x writes into the working directory)
+/runtime-host
+/workos-core
+/harness-host
+/indexer
+/workos-gateway
+/reliability-host
+/workosctl
+/workos-dev-fixture
+
+# ===== ↑ 以上同步自 .gitignore（「从 .gitignore 同步」只重写以上部分）=====
+.git/
+.hg/
+.svn/
+bower_components/
+jspm_packages/
+site-packages/
+venv/
+coverage/
+htmlcov/
+lcov-report/
+cmakefiles/
+cmake-build-*/
+bazel-*/
+pods/
+deriveddata/
+storybook-static/
+allure-results/
+allure-report/
+cdk.out/
+*.egg-info/
+*.dist-info/
+eggs/
+pip-wheel-metadata/
+wheels/
+# ----- ↑ 以上为 ZCode 默认排除规则（自定义规则请写在本行下方，不会被同步/恢复改动）-----
+# 自定义规则写在下方（本行提示可删除）
