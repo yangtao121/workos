@@ -1221,6 +1221,45 @@ func (*GreenfieldWindowFocus) Descriptor() ([]byte, []int) {
 	return file_workos_surface_v1_native_window_proto_rawDescGZIP(), []int{12}
 }
 
+// Ask the native client to close this exact top-level window. The request is
+// asynchronous: only a later window snapshot without its ID proves closure.
+// WorkOS viewer detach remains a separate Core desktop operation.
+type GreenfieldWindowClose struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GreenfieldWindowClose) Reset() {
+	*x = GreenfieldWindowClose{}
+	mi := &file_workos_surface_v1_native_window_proto_msgTypes[13]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GreenfieldWindowClose) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GreenfieldWindowClose) ProtoMessage() {}
+
+func (x *GreenfieldWindowClose) ProtoReflect() protoreflect.Message {
+	mi := &file_workos_surface_v1_native_window_proto_msgTypes[13]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GreenfieldWindowClose.ProtoReflect.Descriptor instead.
+func (*GreenfieldWindowClose) Descriptor() ([]byte, []int) {
+	return file_workos_surface_v1_native_window_proto_rawDescGZIP(), []int{13}
+}
+
 // Plain UTF-8 text, at most 1 MiB. This sets the real native selection;
 // a memory-only cache cannot report success.
 type GreenfieldClipboardWrite struct {
@@ -1232,7 +1271,7 @@ type GreenfieldClipboardWrite struct {
 
 func (x *GreenfieldClipboardWrite) Reset() {
 	*x = GreenfieldClipboardWrite{}
-	mi := &file_workos_surface_v1_native_window_proto_msgTypes[13]
+	mi := &file_workos_surface_v1_native_window_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1244,7 +1283,7 @@ func (x *GreenfieldClipboardWrite) String() string {
 func (*GreenfieldClipboardWrite) ProtoMessage() {}
 
 func (x *GreenfieldClipboardWrite) ProtoReflect() protoreflect.Message {
-	mi := &file_workos_surface_v1_native_window_proto_msgTypes[13]
+	mi := &file_workos_surface_v1_native_window_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1257,7 +1296,7 @@ func (x *GreenfieldClipboardWrite) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GreenfieldClipboardWrite.ProtoReflect.Descriptor instead.
 func (*GreenfieldClipboardWrite) Descriptor() ([]byte, []int) {
-	return file_workos_surface_v1_native_window_proto_rawDescGZIP(), []int{13}
+	return file_workos_surface_v1_native_window_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *GreenfieldClipboardWrite) GetTextUtf8() []byte {
@@ -1282,6 +1321,7 @@ type GreenfieldWindowInputEvent struct {
 	//	*GreenfieldWindowInputEvent_Resize
 	//	*GreenfieldWindowInputEvent_ClipboardWrite
 	//	*GreenfieldWindowInputEvent_Focus
+	//	*GreenfieldWindowInputEvent_Close
 	Event         isGreenfieldWindowInputEvent_Event `protobuf_oneof:"event"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -1289,7 +1329,7 @@ type GreenfieldWindowInputEvent struct {
 
 func (x *GreenfieldWindowInputEvent) Reset() {
 	*x = GreenfieldWindowInputEvent{}
-	mi := &file_workos_surface_v1_native_window_proto_msgTypes[14]
+	mi := &file_workos_surface_v1_native_window_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1301,7 +1341,7 @@ func (x *GreenfieldWindowInputEvent) String() string {
 func (*GreenfieldWindowInputEvent) ProtoMessage() {}
 
 func (x *GreenfieldWindowInputEvent) ProtoReflect() protoreflect.Message {
-	mi := &file_workos_surface_v1_native_window_proto_msgTypes[14]
+	mi := &file_workos_surface_v1_native_window_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1314,7 +1354,7 @@ func (x *GreenfieldWindowInputEvent) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GreenfieldWindowInputEvent.ProtoReflect.Descriptor instead.
 func (*GreenfieldWindowInputEvent) Descriptor() ([]byte, []int) {
-	return file_workos_surface_v1_native_window_proto_rawDescGZIP(), []int{14}
+	return file_workos_surface_v1_native_window_proto_rawDescGZIP(), []int{15}
 }
 
 func (x *GreenfieldWindowInputEvent) GetSequence() uint64 {
@@ -1392,6 +1432,15 @@ func (x *GreenfieldWindowInputEvent) GetFocus() *GreenfieldWindowFocus {
 	return nil
 }
 
+func (x *GreenfieldWindowInputEvent) GetClose() *GreenfieldWindowClose {
+	if x != nil {
+		if x, ok := x.Event.(*GreenfieldWindowInputEvent_Close); ok {
+			return x.Close
+		}
+	}
+	return nil
+}
+
 type isGreenfieldWindowInputEvent_Event interface {
 	isGreenfieldWindowInputEvent_Event()
 }
@@ -1420,6 +1469,10 @@ type GreenfieldWindowInputEvent_Focus struct {
 	Focus *GreenfieldWindowFocus `protobuf:"bytes,8,opt,name=focus,proto3,oneof"`
 }
 
+type GreenfieldWindowInputEvent_Close struct {
+	Close *GreenfieldWindowClose `protobuf:"bytes,9,opt,name=close,proto3,oneof"`
+}
+
 func (*GreenfieldWindowInputEvent_Pointer) isGreenfieldWindowInputEvent_Event() {}
 
 func (*GreenfieldWindowInputEvent_Key) isGreenfieldWindowInputEvent_Event() {}
@@ -1431,6 +1484,8 @@ func (*GreenfieldWindowInputEvent_Resize) isGreenfieldWindowInputEvent_Event() {
 func (*GreenfieldWindowInputEvent_ClipboardWrite) isGreenfieldWindowInputEvent_Event() {}
 
 func (*GreenfieldWindowInputEvent_Focus) isGreenfieldWindowInputEvent_Event() {}
+
+func (*GreenfieldWindowInputEvent_Close) isGreenfieldWindowInputEvent_Event() {}
 
 type SendGreenfieldWindowInputRequest struct {
 	state                      protoimpl.MessageState `protogen:"open.v1"`
@@ -1446,7 +1501,7 @@ type SendGreenfieldWindowInputRequest struct {
 
 func (x *SendGreenfieldWindowInputRequest) Reset() {
 	*x = SendGreenfieldWindowInputRequest{}
-	mi := &file_workos_surface_v1_native_window_proto_msgTypes[15]
+	mi := &file_workos_surface_v1_native_window_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1458,7 +1513,7 @@ func (x *SendGreenfieldWindowInputRequest) String() string {
 func (*SendGreenfieldWindowInputRequest) ProtoMessage() {}
 
 func (x *SendGreenfieldWindowInputRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_workos_surface_v1_native_window_proto_msgTypes[15]
+	mi := &file_workos_surface_v1_native_window_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1471,7 +1526,7 @@ func (x *SendGreenfieldWindowInputRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SendGreenfieldWindowInputRequest.ProtoReflect.Descriptor instead.
 func (*SendGreenfieldWindowInputRequest) Descriptor() ([]byte, []int) {
-	return file_workos_surface_v1_native_window_proto_rawDescGZIP(), []int{15}
+	return file_workos_surface_v1_native_window_proto_rawDescGZIP(), []int{16}
 }
 
 func (x *SendGreenfieldWindowInputRequest) GetSessionId() string {
@@ -1524,7 +1579,7 @@ type SendGreenfieldWindowInputResponse struct {
 
 func (x *SendGreenfieldWindowInputResponse) Reset() {
 	*x = SendGreenfieldWindowInputResponse{}
-	mi := &file_workos_surface_v1_native_window_proto_msgTypes[16]
+	mi := &file_workos_surface_v1_native_window_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1536,7 +1591,7 @@ func (x *SendGreenfieldWindowInputResponse) String() string {
 func (*SendGreenfieldWindowInputResponse) ProtoMessage() {}
 
 func (x *SendGreenfieldWindowInputResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_workos_surface_v1_native_window_proto_msgTypes[16]
+	mi := &file_workos_surface_v1_native_window_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1549,7 +1604,7 @@ func (x *SendGreenfieldWindowInputResponse) ProtoReflect() protoreflect.Message 
 
 // Deprecated: Use SendGreenfieldWindowInputResponse.ProtoReflect.Descriptor instead.
 func (*SendGreenfieldWindowInputResponse) Descriptor() ([]byte, []int) {
-	return file_workos_surface_v1_native_window_proto_rawDescGZIP(), []int{16}
+	return file_workos_surface_v1_native_window_proto_rawDescGZIP(), []int{17}
 }
 
 func (x *SendGreenfieldWindowInputResponse) GetVerdict() GreenfieldInputVerdict {
@@ -1585,7 +1640,7 @@ type ReadGreenfieldClipboardRequest struct {
 
 func (x *ReadGreenfieldClipboardRequest) Reset() {
 	*x = ReadGreenfieldClipboardRequest{}
-	mi := &file_workos_surface_v1_native_window_proto_msgTypes[17]
+	mi := &file_workos_surface_v1_native_window_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1597,7 +1652,7 @@ func (x *ReadGreenfieldClipboardRequest) String() string {
 func (*ReadGreenfieldClipboardRequest) ProtoMessage() {}
 
 func (x *ReadGreenfieldClipboardRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_workos_surface_v1_native_window_proto_msgTypes[17]
+	mi := &file_workos_surface_v1_native_window_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1610,7 +1665,7 @@ func (x *ReadGreenfieldClipboardRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReadGreenfieldClipboardRequest.ProtoReflect.Descriptor instead.
 func (*ReadGreenfieldClipboardRequest) Descriptor() ([]byte, []int) {
-	return file_workos_surface_v1_native_window_proto_rawDescGZIP(), []int{17}
+	return file_workos_surface_v1_native_window_proto_rawDescGZIP(), []int{18}
 }
 
 func (x *ReadGreenfieldClipboardRequest) GetSessionId() string {
@@ -1653,7 +1708,7 @@ type ReadGreenfieldClipboardResponse struct {
 
 func (x *ReadGreenfieldClipboardResponse) Reset() {
 	*x = ReadGreenfieldClipboardResponse{}
-	mi := &file_workos_surface_v1_native_window_proto_msgTypes[18]
+	mi := &file_workos_surface_v1_native_window_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1665,7 +1720,7 @@ func (x *ReadGreenfieldClipboardResponse) String() string {
 func (*ReadGreenfieldClipboardResponse) ProtoMessage() {}
 
 func (x *ReadGreenfieldClipboardResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_workos_surface_v1_native_window_proto_msgTypes[18]
+	mi := &file_workos_surface_v1_native_window_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1678,7 +1733,7 @@ func (x *ReadGreenfieldClipboardResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReadGreenfieldClipboardResponse.ProtoReflect.Descriptor instead.
 func (*ReadGreenfieldClipboardResponse) Descriptor() ([]byte, []int) {
-	return file_workos_surface_v1_native_window_proto_rawDescGZIP(), []int{18}
+	return file_workos_surface_v1_native_window_proto_rawDescGZIP(), []int{19}
 }
 
 func (x *ReadGreenfieldClipboardResponse) GetTextUtf8() []byte {
@@ -1716,7 +1771,7 @@ type GreenfieldChildEnvelope struct {
 
 func (x *GreenfieldChildEnvelope) Reset() {
 	*x = GreenfieldChildEnvelope{}
-	mi := &file_workos_surface_v1_native_window_proto_msgTypes[19]
+	mi := &file_workos_surface_v1_native_window_proto_msgTypes[20]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1728,7 +1783,7 @@ func (x *GreenfieldChildEnvelope) String() string {
 func (*GreenfieldChildEnvelope) ProtoMessage() {}
 
 func (x *GreenfieldChildEnvelope) ProtoReflect() protoreflect.Message {
-	mi := &file_workos_surface_v1_native_window_proto_msgTypes[19]
+	mi := &file_workos_surface_v1_native_window_proto_msgTypes[20]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1741,7 +1796,7 @@ func (x *GreenfieldChildEnvelope) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GreenfieldChildEnvelope.ProtoReflect.Descriptor instead.
 func (*GreenfieldChildEnvelope) Descriptor() ([]byte, []int) {
-	return file_workos_surface_v1_native_window_proto_rawDescGZIP(), []int{19}
+	return file_workos_surface_v1_native_window_proto_rawDescGZIP(), []int{20}
 }
 
 func (x *GreenfieldChildEnvelope) GetProtocolVersion() uint32 {
@@ -1899,7 +1954,7 @@ type GreenfieldChildFailure struct {
 
 func (x *GreenfieldChildFailure) Reset() {
 	*x = GreenfieldChildFailure{}
-	mi := &file_workos_surface_v1_native_window_proto_msgTypes[20]
+	mi := &file_workos_surface_v1_native_window_proto_msgTypes[21]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1911,7 +1966,7 @@ func (x *GreenfieldChildFailure) String() string {
 func (*GreenfieldChildFailure) ProtoMessage() {}
 
 func (x *GreenfieldChildFailure) ProtoReflect() protoreflect.Message {
-	mi := &file_workos_surface_v1_native_window_proto_msgTypes[20]
+	mi := &file_workos_surface_v1_native_window_proto_msgTypes[21]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1924,7 +1979,7 @@ func (x *GreenfieldChildFailure) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GreenfieldChildFailure.ProtoReflect.Descriptor instead.
 func (*GreenfieldChildFailure) Descriptor() ([]byte, []int) {
-	return file_workos_surface_v1_native_window_proto_rawDescGZIP(), []int{20}
+	return file_workos_surface_v1_native_window_proto_rawDescGZIP(), []int{21}
 }
 
 func (x *GreenfieldChildFailure) GetReasonCode() string {
@@ -2022,9 +2077,10 @@ const file_workos_surface_v1_native_window_proto_rawDesc = "" +
 	"\rcontent_width\x18\x01 \x01(\rR\fcontentWidth\x12%\n" +
 	"\x0econtent_height\x18\x02 \x01(\rR\rcontentHeight\x129\n" +
 	"\x19device_pixel_ratio_millis\x18\x03 \x01(\x05R\x16devicePixelRatioMillis\"\x17\n" +
-	"\x15GreenfieldWindowFocus\"7\n" +
+	"\x15GreenfieldWindowFocus\"\x17\n" +
+	"\x15GreenfieldWindowClose\"7\n" +
 	"\x18GreenfieldClipboardWrite\x12\x1b\n" +
-	"\ttext_utf8\x18\x01 \x01(\fR\btextUtf8\"\xfe\x03\n" +
+	"\ttext_utf8\x18\x01 \x01(\fR\btextUtf8\"\xc0\x04\n" +
 	"\x1aGreenfieldWindowInputEvent\x12\x1a\n" +
 	"\bsequence\x18\x01 \x01(\x04R\bsequence\x12\x1b\n" +
 	"\twindow_id\x18\x02 \x01(\tR\bwindowId\x12E\n" +
@@ -2033,7 +2089,8 @@ const file_workos_surface_v1_native_window_proto_rawDesc = "" +
 	"\x04text\x18\x05 \x01(\v2'.workos.surface.v1.GreenfieldTextCommitH\x00R\x04text\x12C\n" +
 	"\x06resize\x18\x06 \x01(\v2).workos.surface.v1.GreenfieldWindowResizeH\x00R\x06resize\x12V\n" +
 	"\x0fclipboard_write\x18\a \x01(\v2+.workos.surface.v1.GreenfieldClipboardWriteH\x00R\x0eclipboardWrite\x12@\n" +
-	"\x05focus\x18\b \x01(\v2(.workos.surface.v1.GreenfieldWindowFocusH\x00R\x05focusB\a\n" +
+	"\x05focus\x18\b \x01(\v2(.workos.surface.v1.GreenfieldWindowFocusH\x00R\x05focus\x12@\n" +
+	"\x05close\x18\t \x01(\v2(.workos.surface.v1.GreenfieldWindowCloseH\x00R\x05closeB\a\n" +
 	"\x05event\"\x9e\x02\n" +
 	" SendGreenfieldWindowInputRequest\x12\x1d\n" +
 	"\n" +
@@ -2114,7 +2171,7 @@ func file_workos_surface_v1_native_window_proto_rawDescGZIP() []byte {
 }
 
 var file_workos_surface_v1_native_window_proto_enumTypes = make([]protoimpl.EnumInfo, 4)
-var file_workos_surface_v1_native_window_proto_msgTypes = make([]protoimpl.MessageInfo, 21)
+var file_workos_surface_v1_native_window_proto_msgTypes = make([]protoimpl.MessageInfo, 22)
 var file_workos_surface_v1_native_window_proto_goTypes = []any{
 	(GreenfieldDisplayState)(0),                 // 0: workos.surface.v1.GreenfieldDisplayState
 	(GreenfieldPointerAction)(0),                // 1: workos.surface.v1.GreenfieldPointerAction
@@ -2133,15 +2190,16 @@ var file_workos_surface_v1_native_window_proto_goTypes = []any{
 	(*GreenfieldTextCommit)(nil),                // 14: workos.surface.v1.GreenfieldTextCommit
 	(*GreenfieldWindowResize)(nil),              // 15: workos.surface.v1.GreenfieldWindowResize
 	(*GreenfieldWindowFocus)(nil),               // 16: workos.surface.v1.GreenfieldWindowFocus
-	(*GreenfieldClipboardWrite)(nil),            // 17: workos.surface.v1.GreenfieldClipboardWrite
-	(*GreenfieldWindowInputEvent)(nil),          // 18: workos.surface.v1.GreenfieldWindowInputEvent
-	(*SendGreenfieldWindowInputRequest)(nil),    // 19: workos.surface.v1.SendGreenfieldWindowInputRequest
-	(*SendGreenfieldWindowInputResponse)(nil),   // 20: workos.surface.v1.SendGreenfieldWindowInputResponse
-	(*ReadGreenfieldClipboardRequest)(nil),      // 21: workos.surface.v1.ReadGreenfieldClipboardRequest
-	(*ReadGreenfieldClipboardResponse)(nil),     // 22: workos.surface.v1.ReadGreenfieldClipboardResponse
-	(*GreenfieldChildEnvelope)(nil),             // 23: workos.surface.v1.GreenfieldChildEnvelope
-	(*GreenfieldChildFailure)(nil),              // 24: workos.surface.v1.GreenfieldChildFailure
-	(*timestamppb.Timestamp)(nil),               // 25: google.protobuf.Timestamp
+	(*GreenfieldWindowClose)(nil),               // 17: workos.surface.v1.GreenfieldWindowClose
+	(*GreenfieldClipboardWrite)(nil),            // 18: workos.surface.v1.GreenfieldClipboardWrite
+	(*GreenfieldWindowInputEvent)(nil),          // 19: workos.surface.v1.GreenfieldWindowInputEvent
+	(*SendGreenfieldWindowInputRequest)(nil),    // 20: workos.surface.v1.SendGreenfieldWindowInputRequest
+	(*SendGreenfieldWindowInputResponse)(nil),   // 21: workos.surface.v1.SendGreenfieldWindowInputResponse
+	(*ReadGreenfieldClipboardRequest)(nil),      // 22: workos.surface.v1.ReadGreenfieldClipboardRequest
+	(*ReadGreenfieldClipboardResponse)(nil),     // 23: workos.surface.v1.ReadGreenfieldClipboardResponse
+	(*GreenfieldChildEnvelope)(nil),             // 24: workos.surface.v1.GreenfieldChildEnvelope
+	(*GreenfieldChildFailure)(nil),              // 25: workos.surface.v1.GreenfieldChildFailure
+	(*timestamppb.Timestamp)(nil),               // 26: google.protobuf.Timestamp
 }
 var file_workos_surface_v1_native_window_proto_depIdxs = []int32{
 	4,  // 0: workos.surface.v1.GreenfieldWindow.content_rect:type_name -> workos.surface.v1.GreenfieldWindowRect
@@ -2150,37 +2208,38 @@ var file_workos_surface_v1_native_window_proto_depIdxs = []int32{
 	5,  // 3: workos.surface.v1.GreenfieldWindowSnapshot.windows:type_name -> workos.surface.v1.GreenfieldWindow
 	6,  // 4: workos.surface.v1.WatchGreenfieldWindowsResponse.snapshot:type_name -> workos.surface.v1.GreenfieldWindowSnapshot
 	11, // 5: workos.surface.v1.WatchGreenfieldWindowFramesResponse.tile:type_name -> workos.surface.v1.GreenfieldWindowFrameTile
-	25, // 6: workos.surface.v1.GreenfieldWindowFrameTile.rendered_at:type_name -> google.protobuf.Timestamp
+	26, // 6: workos.surface.v1.GreenfieldWindowFrameTile.rendered_at:type_name -> google.protobuf.Timestamp
 	1,  // 7: workos.surface.v1.GreenfieldPointerInput.action:type_name -> workos.surface.v1.GreenfieldPointerAction
 	2,  // 8: workos.surface.v1.GreenfieldKeyInput.action:type_name -> workos.surface.v1.GreenfieldKeyAction
 	12, // 9: workos.surface.v1.GreenfieldWindowInputEvent.pointer:type_name -> workos.surface.v1.GreenfieldPointerInput
 	13, // 10: workos.surface.v1.GreenfieldWindowInputEvent.key:type_name -> workos.surface.v1.GreenfieldKeyInput
 	14, // 11: workos.surface.v1.GreenfieldWindowInputEvent.text:type_name -> workos.surface.v1.GreenfieldTextCommit
 	15, // 12: workos.surface.v1.GreenfieldWindowInputEvent.resize:type_name -> workos.surface.v1.GreenfieldWindowResize
-	17, // 13: workos.surface.v1.GreenfieldWindowInputEvent.clipboard_write:type_name -> workos.surface.v1.GreenfieldClipboardWrite
+	18, // 13: workos.surface.v1.GreenfieldWindowInputEvent.clipboard_write:type_name -> workos.surface.v1.GreenfieldClipboardWrite
 	16, // 14: workos.surface.v1.GreenfieldWindowInputEvent.focus:type_name -> workos.surface.v1.GreenfieldWindowFocus
-	18, // 15: workos.surface.v1.SendGreenfieldWindowInputRequest.events:type_name -> workos.surface.v1.GreenfieldWindowInputEvent
-	3,  // 16: workos.surface.v1.SendGreenfieldWindowInputResponse.verdict:type_name -> workos.surface.v1.GreenfieldInputVerdict
-	6,  // 17: workos.surface.v1.GreenfieldChildEnvelope.windows:type_name -> workos.surface.v1.GreenfieldWindowSnapshot
-	11, // 18: workos.surface.v1.GreenfieldChildEnvelope.frame_tile:type_name -> workos.surface.v1.GreenfieldWindowFrameTile
-	19, // 19: workos.surface.v1.GreenfieldChildEnvelope.input:type_name -> workos.surface.v1.SendGreenfieldWindowInputRequest
-	20, // 20: workos.surface.v1.GreenfieldChildEnvelope.input_result:type_name -> workos.surface.v1.SendGreenfieldWindowInputResponse
-	21, // 21: workos.surface.v1.GreenfieldChildEnvelope.clipboard_read:type_name -> workos.surface.v1.ReadGreenfieldClipboardRequest
-	22, // 22: workos.surface.v1.GreenfieldChildEnvelope.clipboard_result:type_name -> workos.surface.v1.ReadGreenfieldClipboardResponse
-	24, // 23: workos.surface.v1.GreenfieldChildEnvelope.failure:type_name -> workos.surface.v1.GreenfieldChildFailure
-	7,  // 24: workos.surface.v1.GreenfieldWindowService.WatchGreenfieldWindows:input_type -> workos.surface.v1.WatchGreenfieldWindowsRequest
-	9,  // 25: workos.surface.v1.GreenfieldWindowService.WatchGreenfieldWindowFrames:input_type -> workos.surface.v1.WatchGreenfieldWindowFramesRequest
-	19, // 26: workos.surface.v1.GreenfieldWindowService.SendGreenfieldWindowInput:input_type -> workos.surface.v1.SendGreenfieldWindowInputRequest
-	21, // 27: workos.surface.v1.GreenfieldWindowService.ReadGreenfieldClipboard:input_type -> workos.surface.v1.ReadGreenfieldClipboardRequest
-	8,  // 28: workos.surface.v1.GreenfieldWindowService.WatchGreenfieldWindows:output_type -> workos.surface.v1.WatchGreenfieldWindowsResponse
-	10, // 29: workos.surface.v1.GreenfieldWindowService.WatchGreenfieldWindowFrames:output_type -> workos.surface.v1.WatchGreenfieldWindowFramesResponse
-	20, // 30: workos.surface.v1.GreenfieldWindowService.SendGreenfieldWindowInput:output_type -> workos.surface.v1.SendGreenfieldWindowInputResponse
-	22, // 31: workos.surface.v1.GreenfieldWindowService.ReadGreenfieldClipboard:output_type -> workos.surface.v1.ReadGreenfieldClipboardResponse
-	28, // [28:32] is the sub-list for method output_type
-	24, // [24:28] is the sub-list for method input_type
-	24, // [24:24] is the sub-list for extension type_name
-	24, // [24:24] is the sub-list for extension extendee
-	0,  // [0:24] is the sub-list for field type_name
+	17, // 15: workos.surface.v1.GreenfieldWindowInputEvent.close:type_name -> workos.surface.v1.GreenfieldWindowClose
+	19, // 16: workos.surface.v1.SendGreenfieldWindowInputRequest.events:type_name -> workos.surface.v1.GreenfieldWindowInputEvent
+	3,  // 17: workos.surface.v1.SendGreenfieldWindowInputResponse.verdict:type_name -> workos.surface.v1.GreenfieldInputVerdict
+	6,  // 18: workos.surface.v1.GreenfieldChildEnvelope.windows:type_name -> workos.surface.v1.GreenfieldWindowSnapshot
+	11, // 19: workos.surface.v1.GreenfieldChildEnvelope.frame_tile:type_name -> workos.surface.v1.GreenfieldWindowFrameTile
+	20, // 20: workos.surface.v1.GreenfieldChildEnvelope.input:type_name -> workos.surface.v1.SendGreenfieldWindowInputRequest
+	21, // 21: workos.surface.v1.GreenfieldChildEnvelope.input_result:type_name -> workos.surface.v1.SendGreenfieldWindowInputResponse
+	22, // 22: workos.surface.v1.GreenfieldChildEnvelope.clipboard_read:type_name -> workos.surface.v1.ReadGreenfieldClipboardRequest
+	23, // 23: workos.surface.v1.GreenfieldChildEnvelope.clipboard_result:type_name -> workos.surface.v1.ReadGreenfieldClipboardResponse
+	25, // 24: workos.surface.v1.GreenfieldChildEnvelope.failure:type_name -> workos.surface.v1.GreenfieldChildFailure
+	7,  // 25: workos.surface.v1.GreenfieldWindowService.WatchGreenfieldWindows:input_type -> workos.surface.v1.WatchGreenfieldWindowsRequest
+	9,  // 26: workos.surface.v1.GreenfieldWindowService.WatchGreenfieldWindowFrames:input_type -> workos.surface.v1.WatchGreenfieldWindowFramesRequest
+	20, // 27: workos.surface.v1.GreenfieldWindowService.SendGreenfieldWindowInput:input_type -> workos.surface.v1.SendGreenfieldWindowInputRequest
+	22, // 28: workos.surface.v1.GreenfieldWindowService.ReadGreenfieldClipboard:input_type -> workos.surface.v1.ReadGreenfieldClipboardRequest
+	8,  // 29: workos.surface.v1.GreenfieldWindowService.WatchGreenfieldWindows:output_type -> workos.surface.v1.WatchGreenfieldWindowsResponse
+	10, // 30: workos.surface.v1.GreenfieldWindowService.WatchGreenfieldWindowFrames:output_type -> workos.surface.v1.WatchGreenfieldWindowFramesResponse
+	21, // 31: workos.surface.v1.GreenfieldWindowService.SendGreenfieldWindowInput:output_type -> workos.surface.v1.SendGreenfieldWindowInputResponse
+	23, // 32: workos.surface.v1.GreenfieldWindowService.ReadGreenfieldClipboard:output_type -> workos.surface.v1.ReadGreenfieldClipboardResponse
+	29, // [29:33] is the sub-list for method output_type
+	25, // [25:29] is the sub-list for method input_type
+	25, // [25:25] is the sub-list for extension type_name
+	25, // [25:25] is the sub-list for extension extendee
+	0,  // [0:25] is the sub-list for field type_name
 }
 
 func init() { file_workos_surface_v1_native_window_proto_init() }
@@ -2188,15 +2247,16 @@ func file_workos_surface_v1_native_window_proto_init() {
 	if File_workos_surface_v1_native_window_proto != nil {
 		return
 	}
-	file_workos_surface_v1_native_window_proto_msgTypes[14].OneofWrappers = []any{
+	file_workos_surface_v1_native_window_proto_msgTypes[15].OneofWrappers = []any{
 		(*GreenfieldWindowInputEvent_Pointer)(nil),
 		(*GreenfieldWindowInputEvent_Key)(nil),
 		(*GreenfieldWindowInputEvent_Text)(nil),
 		(*GreenfieldWindowInputEvent_Resize)(nil),
 		(*GreenfieldWindowInputEvent_ClipboardWrite)(nil),
 		(*GreenfieldWindowInputEvent_Focus)(nil),
+		(*GreenfieldWindowInputEvent_Close)(nil),
 	}
-	file_workos_surface_v1_native_window_proto_msgTypes[19].OneofWrappers = []any{
+	file_workos_surface_v1_native_window_proto_msgTypes[20].OneofWrappers = []any{
 		(*GreenfieldChildEnvelope_Windows)(nil),
 		(*GreenfieldChildEnvelope_FrameTile)(nil),
 		(*GreenfieldChildEnvelope_Input)(nil),
@@ -2211,7 +2271,7 @@ func file_workos_surface_v1_native_window_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_workos_surface_v1_native_window_proto_rawDesc), len(file_workos_surface_v1_native_window_proto_rawDesc)),
 			NumEnums:      4,
-			NumMessages:   21,
+			NumMessages:   22,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

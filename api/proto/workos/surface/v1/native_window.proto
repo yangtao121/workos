@@ -158,6 +158,11 @@ message GreenfieldWindowResize {
 // the actual Greenfield/Wayland keyboard focus must then converge.
 message GreenfieldWindowFocus {}
 
+// Ask the native client to close this exact top-level window. The request is
+// asynchronous: only a later window snapshot without its ID proves closure.
+// WorkOS viewer detach remains a separate Core desktop operation.
+message GreenfieldWindowClose {}
+
 // Plain UTF-8 text, at most 1 MiB. This sets the real native selection;
 // a memory-only cache cannot report success.
 message GreenfieldClipboardWrite {
@@ -177,6 +182,7 @@ message GreenfieldWindowInputEvent {
     GreenfieldWindowResize resize = 6;
     GreenfieldClipboardWrite clipboard_write = 7;
     GreenfieldWindowFocus focus = 8;
+    GreenfieldWindowClose close = 9;
   }
 }
 
