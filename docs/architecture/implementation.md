@@ -20,6 +20,12 @@ Code/Chromium/Node 子容器；Surface 附件与控制租约在每个窗口事�
 至少每秒重验。Docker 身份、隔离配置及 GPU 子容器探针有针对性测试；最终 child 镜像、
 Gateway、Desktop 合并后的真实 Code/LAN HTTPS 验收仍待进行，因此 P0 状态不升级。
 
+Desktop 的 Home、命令面板与 Dock 中，Code 主入口现在调用现有 native session
+startup/focus 路径，向当前 Project 打开 WorkOS Code 对应的 `native` workload；Dock 将该
+workload 标为 Code 运行中。旧布局中的 `kind: "code"` 仍可恢复为补丁审阅窗口，Artifact Center
+继续提供成果审阅。该入口的固定 fixture 视觉记录和单元测试证明路由行为；真实 Code 像素、
+持久性与多设备验收仍以独立 LAN 浏览器门禁为准。
+
 ## 进程所有权
 
 | 进程             | 当前所有权                                                                                                                                             | 不拥有                     |

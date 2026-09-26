@@ -931,22 +931,6 @@ export function Desktop({
     recordLayout((state) => ({ ...state, activeSystemWindow: "docs" }));
   }, [activeProjectId, recordLayout]);
 
-  const openCode = useCallback(() => {
-    if (!activeProjectId) return;
-    dispatch({
-      type: "open",
-      window: {
-        id: "code",
-        appId: "code",
-        title: "Code",
-        kind: "code",
-        rect: { x: 260, y: 140, width: 560, height: 460 },
-        mode: "normal",
-      },
-    });
-    recordLayout((state) => ({ ...state, activeSystemWindow: "code" }));
-  }, [activeProjectId, recordLayout]);
-
   const openBrowser = useCallback(() => {
     dispatch({
       type: "open",
@@ -1952,10 +1936,10 @@ export function Desktop({
     {
       id: "code",
       label: "Code",
-      hint: "Review proposed changes",
+      hint: "Open WorkOS Code in this project",
       icon: "code",
       available: !!activeProjectId,
-      open: openCode,
+      open: openNative,
     },
     {
       id: "knowledge-center",
@@ -2047,6 +2031,11 @@ export function Desktop({
       setAppActivation((current) => ({ id: app.id, sequence: (current?.sequence ?? 0) + 1 }));
     },
   }));
+  const dockAppRunning = (id: string) =>
+    id !== "native" &&
+    windows.windows.some((item) =>
+      id === "code" ? item.kind === "native" || item.kind === "code" : item.kind === id,
+    );
   function paletteActions(): PaletteAction[] {
     return [
       ...systemApps
@@ -2871,7 +2860,7 @@ export function Desktop({
                 sharedDesktop ? "agent-sessions" : "agent-center",
                 "files",
                 "app-library",
-              ].includes(app.id) || windows.windows.some((item) => item.kind === app.id),
+              ].includes(app.id) || dockAppRunning(app.id),
           )
           .map((app) => (
             <button
@@ -2880,11 +2869,7 @@ export function Desktop({
               aria-label={`Open ${app.label}`}
               title={app.label}
               data-testid={`open-${app.id}`}
-              className={
-                windows.windows.some((item) => item.kind === app.id)
-                  ? "dock-app running"
-                  : "dock-app"
-              }
+              className={dockAppRunning(app.id) ? "dock-app running" : "dock-app"}
               disabled={!app.available}
               onClick={app.open}
             >

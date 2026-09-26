@@ -41,6 +41,49 @@ afterEach(() => {
 });
 
 describe("Desktop harness workflow", () => {
+  it("opens and refocuses WorkOS Code through one native project workload", async () => {
+    const workloadId = "01999999-9999-7999-8999-000000000021";
+    const createNativeSession = vi.fn(() => Promise.resolve({ session: { id: workloadId } }));
+    const workosClients = clientFixture({ projects: [project("project-1", "Project One", 1n)] });
+    Object.assign(workosClients, {
+      nativeSessions: {
+        createNativeSession,
+        getNativeSession: vi.fn(() => Promise.reject(new ConnectError("fixture", Code.NotFound))),
+      },
+      surfaceContinuity: {
+        listProjectSurfaces: vi.fn(() => Promise.resolve({ workloads: [] })),
+        getSurfaceWorkload: vi.fn(() =>
+          Promise.resolve({ workload: { workloadId, state: "running", generation: 1n } }),
+        ),
+        attachSurface: vi.fn(() =>
+          Promise.resolve({
+            session: { id: workloadId, workloadGeneration: 1n },
+            attachment: { controls: false, controlGeneration: 1n },
+          }),
+        ),
+      },
+    });
+    render(<Desktop workosClients={workosClients} />);
+
+    await userEvent.click(screen.getByTestId("open-home"));
+    await userEvent.click(await screen.findByTestId("home-entry-code"));
+    await waitFor(() => {
+      expect(createNativeSession).toHaveBeenCalledTimes(1);
+    });
+    expect(createNativeSession).toHaveBeenCalledWith(
+      expect.objectContaining({ projectId: "project-1", width: 800, height: 600 }),
+    );
+    expect(await screen.findByTestId("native-app")).toBeTruthy();
+    expect(screen.queryByTestId("code-app")).toBeNull();
+    const codeDock = screen.getByTestId("open-code");
+    expect(codeDock.className).toContain("running");
+    expect(screen.queryByTestId("open-native")).toBeNull();
+
+    await userEvent.click(codeDock);
+    expect(createNativeSession).toHaveBeenCalledTimes(1);
+    expect(screen.getByTestId("native-app")).toBeTruthy();
+  });
+
   it("minimizes, restores and closes project tools through the window manager", async () => {
     render(
       <Desktop

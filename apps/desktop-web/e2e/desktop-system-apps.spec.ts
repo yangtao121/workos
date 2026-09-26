@@ -117,7 +117,7 @@ test("Home launchpad opens system apps; Terminal states the deployment verdict",
   );
 });
 
-test("Docs, Code, and Files open per project with bounded empty states", async ({ page }) => {
+test("Docs, WorkOS Code, and Files open per project", async ({ page }) => {
   await page.goto("/");
   await createDesktopProject(page, `Apps ${String(Date.now())}`);
   await expect(page.getByRole("button", { name: "Switch project", exact: true })).toContainText(
@@ -128,7 +128,9 @@ test("Docs, Code, and Files open per project with bounded empty states", async (
   await expect(page.getByTestId("docs-app")).toBeVisible();
 
   await openDesktopApp(page, "code");
-  await expect(page.getByTestId("code-app")).toBeVisible();
+  await expect(page.getByTestId("native-app")).toBeVisible();
+  await expect(page.getByTestId("code-app")).toHaveCount(0);
+  await expect(page.getByTestId("open-code")).toHaveClass(/running/);
 
   await page.getByTestId("open-files").click();
   const files = page.getByTestId("files-app");

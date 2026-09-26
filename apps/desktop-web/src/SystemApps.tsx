@@ -1,8 +1,9 @@
 import { WorkspaceFiles } from "./WorkspaceFiles.js";
 // Dock system applications (W6): Home launchpad, Files over the indexed
-// workspace projection, Docs and Code over the project's review artifacts,
-// and the sandboxed Browser window. Everything is read-only and bounded;
-// the Browser renders external pages inside a sandboxed iframe whose
+// workspace projection, Docs over project documents, legacy Code review over
+// patch artifacts, and the sandboxed Browser window. The current Code action
+// opens the native IDE; existing review layouts still render CodeApp. The
+// Browser renders external pages inside a sandboxed iframe whose
 // missing allow-popups/allow-top-navigation flags are the _blank and
 // top-navigation interception boundary.
 import { IndexedDocumentPreview } from "./IndexedDocumentPreview.js";
