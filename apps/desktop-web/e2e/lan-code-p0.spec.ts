@@ -368,6 +368,88 @@ async function dialogClose(browser: Browser) {
     await expect(dialog.locator('[data-frame-state="ready"]')).toBeVisible({ timeout: 15_000 });
     const childId = await nativeWindowId(dialog, state.workloadId, state.generation);
     expect(childId).not.toBe(state.windowId);
+    await expect(dialog).toHaveAttribute("data-native-parent-window-id", state.windowId);
+
+    // A02: local focus may raise the Code shell window, but a real native
+    // transient must still be hit-tested above its parent at their overlap.
+    await code.locator("header .window-identity").click();
+    await expect(dialog).toBeVisible();
+    await expectNativeChildAboveParent(current.page, code, dialog);
+
+    const original = await dialog.boundingBox();
+    const grip = await dialog.locator("header .window-identity").boundingBox();
+    if (!original || !grip) throw new Error("A02: native Open File title bar has no bounds");
+    const deltaX = original.x > 100 ? -64 : 64;
+    const deltaY = original.y > 110 ? -48 : 48;
+    const startX = grip.x + Math.min(70, grip.width / 2);
+    const startY = grip.y + grip.height / 2;
+    await current.page.mouse.move(startX, startY);
+    await current.page.mouse.down();
+    await current.page.mouse.move(startX + deltaX, startY + deltaY, { steps: 8 });
+    await current.page.mouse.up();
+    await expect
+      .poll(
+        async () => {
+          const bounds = await dialog.boundingBox();
+          return (
+            !!bounds && Math.abs(bounds.x - original.x) > 30 && Math.abs(bounds.y - original.y) > 20
+          );
+        },
+        { message: "A02: dragging Open File must move its WorkOS window" },
+      )
+      .toBe(true);
+    const moved = await dialog.boundingBox();
+    if (!moved) throw new Error("A02: dragged Open File window disappeared");
+    await expectNativeChildAboveParent(current.page, code, dialog);
+
+    // A native resize changes both the shell size and the decoded complete
+    // frame. A snapshot/revision update must retain the locally dragged x/y.
+    const beforeResize = await nativeGeometry(dialog);
+    await dialog.locator(".window-resize").press("ArrowRight");
+    await dialog.locator(".window-resize").press("ArrowDown");
+    await expect
+      .poll(
+        async () => {
+          const size = await nativeGeometry(dialog);
+          return (
+            size.cssWidth > beforeResize.cssWidth + 12 &&
+            size.cssHeight > beforeResize.cssHeight + 12 &&
+            size.frameWidth > beforeResize.frameWidth + 8 &&
+            size.frameHeight > beforeResize.frameHeight + 8 &&
+            Math.abs(size.frameWidth / size.cssWidth - size.dpr) < 0.25 &&
+            Math.abs(size.frameHeight / size.cssHeight - size.dpr) < 0.25
+          );
+        },
+        {
+          message: "A02: resized Open File must receive a fresh native-resolution frame",
+          timeout: 20_000,
+        },
+      )
+      .toBe(true);
+    await expect(dialog.locator('[data-frame-state="ready"]')).toBeVisible();
+    const pixels = await nativePixels(dialog);
+    const colors = new Set<number>();
+    for (let index = 0; index < pixels.length; index += 4)
+      colors.add(
+        ((pixels[index] ?? 0) << 16) | ((pixels[index + 1] ?? 0) << 8) | (pixels[index + 2] ?? 0),
+      );
+    expect(colors.size, "A02: resized dialog frame must contain real image detail").toBeGreaterThan(
+      20,
+    );
+    await expect
+      .poll(
+        async () => {
+          const bounds = await dialog.boundingBox();
+          return !!bounds && Math.abs(bounds.x - moved.x) < 3 && Math.abs(bounds.y - moved.y) < 3;
+        },
+        { message: "A02: new native snapshot must retain dragged dialog position" },
+      )
+      .toBe(true);
+    expect(await nativeWindowId(dialog, state.workloadId, state.generation)).toBe(childId);
+    expect(await nativeWindowId(code, state.workloadId, state.generation)).toBe(state.windowId);
+    await expect(dialog).toHaveAttribute("data-native-parent-window-id", state.windowId);
+    await expectNativeChildAboveParent(current.page, code, dialog);
+
     await dialog.locator(".window-close").click();
     // Desktop must leave this child mounted until Runtime reports removal.
     await expect(dialog).toHaveCount(0, { timeout: 15_000 });
@@ -380,6 +462,34 @@ async function dialogClose(browser: Browser) {
   } finally {
     await current.context.close();
   }
+}
+
+async function expectNativeChildAboveParent(page: Page, parent: Locator, child: Locator) {
+  const parentBounds = await parent.boundingBox();
+  const childBounds = await child.boundingBox();
+  if (!parentBounds || !childBounds) throw new Error("A02: native parent or child is not visible");
+  const left = Math.max(parentBounds.x, childBounds.x);
+  const top = Math.max(parentBounds.y, childBounds.y);
+  const right = Math.min(parentBounds.x + parentBounds.width, childBounds.x + childBounds.width);
+  const bottom = Math.min(parentBounds.y + parentBounds.height, childBounds.y + childBounds.height);
+  expect(right - left, "A02: Code and Open File must overlap").toBeGreaterThan(20);
+  expect(bottom - top, "A02: Code and Open File must overlap").toBeGreaterThan(20);
+  const childIdentity = await child.getAttribute("data-window-id");
+  const point = { x: Math.floor((left + right) / 2), y: Math.floor((top + bottom) / 2) };
+  await expect
+    .poll(
+      () =>
+        page.evaluate(
+          ({ x, y }) =>
+            document
+              .elementFromPoint(x, y)
+              ?.closest(".workos-window")
+              ?.getAttribute("data-window-id"),
+          point,
+        ),
+      { message: "A02: modal native child must remain in front of its Code parent" },
+    )
+    .toBe(childIdentity);
 }
 
 async function closeViewer(window: Locator) {
@@ -846,7 +956,9 @@ async function performancePhase(browser: Browser) {
 }
 
 test("real LAN Code P0 resident phase", async ({ browser }) => {
-  test.setTimeout(phase === "latency" ? 6 * 60_000 : 3 * 60_000);
+  test.setTimeout(
+    phase === "latency" ? 6 * 60_000 : phase === "dialog-close" ? 4 * 60_000 : 3 * 60_000,
+  );
   expect(origin).toMatch(/^https:\/\/[0-9.]+:8443$/);
   expect(username.length).toBeGreaterThan(0);
   expect(projectId).toMatch(/^[0-9a-f-]{36}$/);
