@@ -7,6 +7,14 @@ import "workos/surface/v1/lifecycle.proto";
 
 option go_package = "github.com/yangtao121/workos/gen/go/workos/surface/v1;surfacev1";
 
+// The native application launched in the session's isolated child. Omitted
+// values on older clients select WorkOS Code for wire compatibility.
+enum NativeApplication {
+  NATIVE_APPLICATION_UNSPECIFIED = 0;
+  NATIVE_APPLICATION_CODE = 1;
+  NATIVE_APPLICATION_TEXT_EDITOR = 2;
+}
+
 // One supervised virtual-display native session (ADR-0029): a real Xvfb
 // display, a configured native X client, and an ffmpeg x11grab/VP8 capture
 // streamed over operator-configured WebRTC (loopback, private LAN or TURN
@@ -27,6 +35,7 @@ message NativeSession {
   LifecycleMode lifecycle_mode = 10;
   // Device pixel ratio times 1000. Zero means the client has not reported one.
   int32 device_pixel_ratio_millis = 11;
+  NativeApplication application = 12;
 }
 
 message CreateNativeSessionRequest {
@@ -36,6 +45,7 @@ message CreateNativeSessionRequest {
   int32 width = 3;
   int32 height = 4;
   LifecycleMode lifecycle_mode = 5;
+  NativeApplication application = 6;
 }
 
 message CreateNativeSessionResponse {

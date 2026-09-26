@@ -27,4 +27,5 @@ type WorkosRuntimeNativeSession struct {
 	ChildContainerID pgtype.Text `json:"child_container_id"`
 	ChildImageID     pgtype.Text `json:"child_image_id"`
 	ChildGeneration  pgtype.Int8 `json:"child_generation"`
+	AppKind          string      `json:"app_kind"`
 }

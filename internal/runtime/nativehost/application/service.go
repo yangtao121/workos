@@ -114,12 +114,31 @@ func requestDigest(projectID string, width, height int32, workingDirectory strin
 	return "sha256:" + hex.EncodeToString(sum[:])
 }
 
+func applicationRequestDigest(projectID string, width, height int32, workingDirectory string, application domain.Application, modes ...domain.LifecycleMode) string {
+	if application == domain.ApplicationCode {
+		// Preserve existing Code idempotency keys through this additive contract.
+		return requestDigest(projectID, width, height, workingDirectory, modes...)
+	}
+	mode, _ := domain.NormalizeLifecycle(modes...)
+	sum := sha256.Sum256([]byte(fmt.Sprintf("native:%s:%d:%d:%s:application:%s:lifecycle:%d", projectID, width, height, workingDirectory, application, mode)))
+	return "sha256:" + hex.EncodeToString(sum[:])
+}
+
 // Create admits one durable session per owner/key and starts its display.
 func (s *Service) Create(ctx context.Context, ownerUserID, projectID, idempotencyKey string, width, height int32, modes ...domain.LifecycleMode) (domain.Session, error) {
+	return s.CreateApplication(ctx, ownerUserID, projectID, idempotencyKey, width, height, domain.ApplicationCode, modes...)
+}
+
+// CreateApplication starts a separately supervised native application. The
+// stored application is immutable across replay, adoption and restart.
+func (s *Service) CreateApplication(ctx context.Context, ownerUserID, projectID, idempotencyKey string, width, height int32, application domain.Application, modes ...domain.LifecycleMode) (domain.Session, error) {
 	s.opMu.Lock()
 	defer s.opMu.Unlock()
-	if !domain.ValidUUIDv7(ownerUserID) || !domain.ValidUUIDv7(projectID) || idempotencyKey == "" || len(idempotencyKey) > 128 || !domain.ValidSize(width, height) {
+	if !domain.ValidUUIDv7(ownerUserID) || !domain.ValidUUIDv7(projectID) || idempotencyKey == "" || len(idempotencyKey) > 128 || !domain.ValidSize(width, height) || !application.Valid() {
 		return domain.Session{}, domain.ErrInvalid
+	}
+	if application == domain.ApplicationTextEditor && s.engine.Facts().Engine != "greenfield" {
+		return domain.Session{}, domain.ErrEngineUnavailable
 	}
 	mode, err := domain.NormalizeLifecycle(modes...)
 	if err != nil {
@@ -131,10 +150,10 @@ func (s *Service) Create(ctx context.Context, ownerUserID, projectID, idempotenc
 	}
 	workingDirectory := grant.Directory
 
-	digest := requestDigest(projectID, width, height, workingDirectory, mode)
+	digest := applicationRequestDigest(projectID, width, height, workingDirectory, application, mode)
 	now := time.Now().UTC().Truncate(time.Microsecond)
 	session := domain.Session{
-		LifecycleMode: mode, Generation: 1, SessionID: s.generator.New(), OwnerUserID: ownerUserID, ProjectID: projectID,
+		Application: application, LifecycleMode: mode, Generation: 1, SessionID: s.generator.New(), OwnerUserID: ownerUserID, ProjectID: projectID,
 		IdempotencyKey: idempotencyKey, RequestDigest: digest,
 		State: domain.StateQueued, Width: width, Height: height,
 		CreatedAt: now, UpdatedAt: now, ExpiresAt: mode.Expiry(now),

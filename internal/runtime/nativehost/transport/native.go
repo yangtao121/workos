@@ -46,8 +46,27 @@ func sessionProto(session domain.Session, engine string) *surfacev1.NativeSessio
 	return &surfacev1.NativeSession{
 		Id: session.SessionID, OwnerUserId: session.OwnerUserID, ProjectId: session.ProjectID,
 		State: string(session.State), Engine: engine,
-		Width: session.Width, Height: session.Height,
+		Application: applicationProto(session.Application),
+		Width:       session.Width, Height: session.Height,
 		CreatedAt: timestamppb.New(session.CreatedAt), ExpiresAt: expiryProto(session), LifecycleMode: surfacev1.LifecycleMode(session.LifecycleMode),
+	}
+}
+
+func applicationProto(application domain.Application) surfacev1.NativeApplication {
+	if application == domain.ApplicationTextEditor {
+		return surfacev1.NativeApplication_NATIVE_APPLICATION_TEXT_EDITOR
+	}
+	return surfacev1.NativeApplication_NATIVE_APPLICATION_CODE
+}
+
+func applicationFromProto(application surfacev1.NativeApplication) (domain.Application, error) {
+	switch application {
+	case surfacev1.NativeApplication_NATIVE_APPLICATION_UNSPECIFIED, surfacev1.NativeApplication_NATIVE_APPLICATION_CODE:
+		return domain.ApplicationCode, nil
+	case surfacev1.NativeApplication_NATIVE_APPLICATION_TEXT_EDITOR:
+		return domain.ApplicationTextEditor, nil
+	default:
+		return "", domain.ErrInvalid
 	}
 }
 
@@ -56,7 +75,11 @@ func (h *NativeHandler) CreateNativeSession(ctx context.Context, req *connect.Re
 	if err != nil {
 		return nil, connect.NewError(connect.CodeUnauthenticated, err)
 	}
-	session, err := h.service.Create(ctx, owner.UserID, req.Msg.GetProjectId(), req.Msg.GetIdempotencyKey(), req.Msg.GetWidth(), req.Msg.GetHeight(), domain.LifecycleMode(req.Msg.GetLifecycleMode()))
+	application, err := applicationFromProto(req.Msg.GetApplication())
+	if err != nil {
+		return nil, nativeError(err)
+	}
+	session, err := h.service.CreateApplication(ctx, owner.UserID, req.Msg.GetProjectId(), req.Msg.GetIdempotencyKey(), req.Msg.GetWidth(), req.Msg.GetHeight(), application, domain.LifecycleMode(req.Msg.GetLifecycleMode()))
 	if err != nil {
 		return nil, nativeError(err)
 	}

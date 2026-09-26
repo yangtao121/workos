@@ -43,6 +43,7 @@ func (r *Repository) InsertSession(ctx context.Context, session domain.Session) 
 		IdempotencyKey: session.IdempotencyKey, RequestDigest: session.RequestDigest,
 		Width: int32(session.Width), Height: int32(session.Height),
 		CreatedAt: session.CreatedAt, ExpiresAt: optionalTime(session.ExpiresAt), LifecycleMode: int16(session.LifecycleMode),
+		AppKind: string(session.Application),
 	})
 	if err != nil {
 		return "", false, transient(err)
@@ -61,7 +62,8 @@ func (r *Repository) InsertSession(ctx context.Context, session domain.Session) 
 
 func sessionFromRow(row nativehostdb.WorkosRuntimeNativeSession) domain.Session {
 	return domain.Session{
-		Generation: row.Generation, SessionID: row.SessionID, OwnerUserID: row.OwnerUserID, ProjectID: row.ProjectID,
+		Application: domain.Application(row.AppKind),
+		Generation:  row.Generation, SessionID: row.SessionID, OwnerUserID: row.OwnerUserID, ProjectID: row.ProjectID,
 		ChildContainerID: textValue(row.ChildContainerID), ChildImageID: textValue(row.ChildImageID), ChildGeneration: intValue(row.ChildGeneration),
 		IdempotencyKey: row.IdempotencyKey, RequestDigest: row.RequestDigest,
 		State: domain.State(row.State), Width: int32(row.Width), Height: int32(row.Height),

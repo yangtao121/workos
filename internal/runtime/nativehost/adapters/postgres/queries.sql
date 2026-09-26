@@ -1,21 +1,21 @@
 -- name: InsertNativeSession :execrows
 INSERT INTO workos_runtime.native_sessions (
     session_id, owner_user_id, project_id, idempotency_key, request_digest,
-    state, width, height, created_at, updated_at, expires_at, lifecycle_mode
-) VALUES ($1, $2, $3, $4, $5, 'queued', $6, $7, $8, $8, $9, $10)
+    state, width, height, created_at, updated_at, expires_at, lifecycle_mode, app_kind
+) VALUES ($1, $2, $3, $4, $5, 'queued', $6, $7, $8, $8, $9, $10, $11)
 ON CONFLICT (owner_user_id, idempotency_key) DO NOTHING;
 
 -- name: GetNativeSession :one
 SELECT session_id, owner_user_id, project_id, idempotency_key, request_digest,
        state, width, height, created_at, updated_at, expires_at, generation, lifecycle_mode,
-       child_container_id, child_image_id, child_generation
+       child_container_id, child_image_id, child_generation, app_kind
 FROM workos_runtime.native_sessions
 WHERE owner_user_id = $1 AND session_id = $2;
 
 -- name: GetNativeSessionByKey :one
 SELECT session_id, owner_user_id, project_id, idempotency_key, request_digest,
        state, width, height, created_at, updated_at, expires_at, generation, lifecycle_mode,
-       child_container_id, child_image_id, child_generation
+       child_container_id, child_image_id, child_generation, app_kind
 FROM workos_runtime.native_sessions
 WHERE owner_user_id = $1 AND idempotency_key = $2;
 
@@ -43,14 +43,14 @@ RETURNING session_id::text AS session_id;
 -- name: ListProjectNativeSessions :many
 SELECT session_id, owner_user_id, project_id, idempotency_key, request_digest,
        state, width, height, created_at, updated_at, expires_at, generation, lifecycle_mode,
-       child_container_id, child_image_id, child_generation
+       child_container_id, child_image_id, child_generation, app_kind
 FROM workos_runtime.native_sessions
 WHERE owner_user_id = $1 AND project_id = $2 AND state IN ('queued', 'running');
 
 -- name: ListActiveNativeSessions :many
 SELECT session_id, owner_user_id, project_id, idempotency_key, request_digest,
        state, width, height, created_at, updated_at, expires_at, generation, lifecycle_mode,
-       child_container_id, child_image_id, child_generation
+       child_container_id, child_image_id, child_generation, app_kind
 FROM workos_runtime.native_sessions
 WHERE state IN ('queued', 'running');
 

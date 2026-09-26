@@ -9,6 +9,17 @@ import (
 
 type State string
 
+type Application string
+
+const (
+	ApplicationCode       Application = "code"
+	ApplicationTextEditor Application = "text_editor"
+)
+
+func (a Application) Valid() bool {
+	return a == ApplicationCode || a == ApplicationTextEditor
+}
+
 const (
 	StateQueued  State = "queued"
 	StateRunning State = "running"
@@ -52,6 +63,7 @@ const MaxClipboardBytes = 256 * 1024
 
 // Session is the durable native session row.
 type Session struct {
+	Application      Application
 	LifecycleMode    LifecycleMode
 	Generation       int64
 	ChildContainerID string

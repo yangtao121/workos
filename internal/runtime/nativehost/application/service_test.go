@@ -161,10 +161,15 @@ type fakeEngine struct {
 	count    int
 	failNext bool
 	displays []*fakeDisplay
+	name     string
 }
 
 func (f *fakeEngine) Facts() ports.EngineFacts {
-	return ports.EngineFacts{Engine: "fake", ProcessGroupKill: true, ParentDeathSig: true}
+	name := f.name
+	if name == "" {
+		name = "fake"
+	}
+	return ports.EngineFacts{Engine: name, ProcessGroupKill: true, ParentDeathSig: true}
 }
 
 func (f *fakeEngine) Available(_ context.Context) error { return nil }
@@ -239,6 +244,36 @@ func TestNativeServiceCreateIdempotency(t *testing.T) {
 	}
 	if _, err := service.Create(ctx, testOwner, testProject, "key-1", 1024, 768); !errors.Is(err, domain.ErrIdempotencyDrift) {
 		t.Fatalf("drift must abort: %v", err)
+	}
+}
+
+func TestNativeApplicationIdentityAndReplay(t *testing.T) {
+	service, engine := newTestService(t)
+	ctx := context.Background()
+	if _, err := service.CreateApplication(ctx, testOwner, testProject, "editor", 800, 600, domain.ApplicationTextEditor); !errors.Is(err, domain.ErrEngineUnavailable) {
+		t.Fatalf("editor must not launch in the legacy display engine: %v", err)
+	}
+	engine.name = "greenfield"
+	code, err := service.Create(ctx, testOwner, testProject, "code", 800, 600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	editor, err := service.CreateApplication(ctx, testOwner, testProject, "editor", 800, 600, domain.ApplicationTextEditor)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if code.SessionID == editor.SessionID || code.Application != domain.ApplicationCode || editor.Application != domain.ApplicationTextEditor {
+		t.Fatalf("separate application sessions were not preserved: code=%+v editor=%+v", code, editor)
+	}
+	replay, err := service.CreateApplication(ctx, testOwner, testProject, "editor", 800, 600, domain.ApplicationTextEditor)
+	if err != nil || replay.SessionID != editor.SessionID {
+		t.Fatalf("editor replay launched a different instance: %v %+v", err, replay)
+	}
+	if _, err := service.Create(ctx, testOwner, testProject, "editor", 800, 600); !errors.Is(err, domain.ErrIdempotencyDrift) {
+		t.Fatalf("same key changed application: %v", err)
+	}
+	if _, err := service.CreateApplication(ctx, testOwner, testProject, "invalid", 800, 600, domain.Application("browser")); !errors.Is(err, domain.ErrInvalid) {
+		t.Fatalf("unknown application was accepted: %v", err)
 	}
 }
 

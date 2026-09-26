@@ -22,6 +22,57 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
+// The native application launched in the session's isolated child. Omitted
+// values on older clients select WorkOS Code for wire compatibility.
+type NativeApplication int32
+
+const (
+	NativeApplication_NATIVE_APPLICATION_UNSPECIFIED NativeApplication = 0
+	NativeApplication_NATIVE_APPLICATION_CODE        NativeApplication = 1
+	NativeApplication_NATIVE_APPLICATION_TEXT_EDITOR NativeApplication = 2
+)
+
+// Enum value maps for NativeApplication.
+var (
+	NativeApplication_name = map[int32]string{
+		0: "NATIVE_APPLICATION_UNSPECIFIED",
+		1: "NATIVE_APPLICATION_CODE",
+		2: "NATIVE_APPLICATION_TEXT_EDITOR",
+	}
+	NativeApplication_value = map[string]int32{
+		"NATIVE_APPLICATION_UNSPECIFIED": 0,
+		"NATIVE_APPLICATION_CODE":        1,
+		"NATIVE_APPLICATION_TEXT_EDITOR": 2,
+	}
+)
+
+func (x NativeApplication) Enum() *NativeApplication {
+	p := new(NativeApplication)
+	*p = x
+	return p
+}
+
+func (x NativeApplication) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (NativeApplication) Descriptor() protoreflect.EnumDescriptor {
+	return file_workos_surface_v1_native_proto_enumTypes[0].Descriptor()
+}
+
+func (NativeApplication) Type() protoreflect.EnumType {
+	return &file_workos_surface_v1_native_proto_enumTypes[0]
+}
+
+func (x NativeApplication) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use NativeApplication.Descriptor instead.
+func (NativeApplication) EnumDescriptor() ([]byte, []int) {
+	return file_workos_surface_v1_native_proto_rawDescGZIP(), []int{0}
+}
+
 // One supervised virtual-display native session (ADR-0029): a real Xvfb
 // display, a configured native X client, and an ffmpeg x11grab/VP8 capture
 // streamed over operator-configured WebRTC (loopback, private LAN or TURN
@@ -42,7 +93,8 @@ type NativeSession struct {
 	ExpiresAt     *timestamppb.Timestamp `protobuf:"bytes,9,opt,name=expires_at,json=expiresAt,proto3" json:"expires_at,omitempty"`
 	LifecycleMode LifecycleMode          `protobuf:"varint,10,opt,name=lifecycle_mode,json=lifecycleMode,proto3,enum=workos.surface.v1.LifecycleMode" json:"lifecycle_mode,omitempty"`
 	// Device pixel ratio times 1000. Zero means the client has not reported one.
-	DevicePixelRatioMillis int32 `protobuf:"varint,11,opt,name=device_pixel_ratio_millis,json=devicePixelRatioMillis,proto3" json:"device_pixel_ratio_millis,omitempty"`
+	DevicePixelRatioMillis int32             `protobuf:"varint,11,opt,name=device_pixel_ratio_millis,json=devicePixelRatioMillis,proto3" json:"device_pixel_ratio_millis,omitempty"`
+	Application            NativeApplication `protobuf:"varint,12,opt,name=application,proto3,enum=workos.surface.v1.NativeApplication" json:"application,omitempty"`
 	unknownFields          protoimpl.UnknownFields
 	sizeCache              protoimpl.SizeCache
 }
@@ -154,14 +206,22 @@ func (x *NativeSession) GetDevicePixelRatioMillis() int32 {
 	return 0
 }
 
+func (x *NativeSession) GetApplication() NativeApplication {
+	if x != nil {
+		return x.Application
+	}
+	return NativeApplication_NATIVE_APPLICATION_UNSPECIFIED
+}
+
 type CreateNativeSessionRequest struct {
 	state          protoimpl.MessageState `protogen:"open.v1"`
 	IdempotencyKey string                 `protobuf:"bytes,1,opt,name=idempotency_key,json=idempotencyKey,proto3" json:"idempotency_key,omitempty"`
 	ProjectId      string                 `protobuf:"bytes,2,opt,name=project_id,json=projectId,proto3" json:"project_id,omitempty"`
 	// Fixed initial display size; later changes are not negotiated.
-	Width         int32         `protobuf:"varint,3,opt,name=width,proto3" json:"width,omitempty"`
-	Height        int32         `protobuf:"varint,4,opt,name=height,proto3" json:"height,omitempty"`
-	LifecycleMode LifecycleMode `protobuf:"varint,5,opt,name=lifecycle_mode,json=lifecycleMode,proto3,enum=workos.surface.v1.LifecycleMode" json:"lifecycle_mode,omitempty"`
+	Width         int32             `protobuf:"varint,3,opt,name=width,proto3" json:"width,omitempty"`
+	Height        int32             `protobuf:"varint,4,opt,name=height,proto3" json:"height,omitempty"`
+	LifecycleMode LifecycleMode     `protobuf:"varint,5,opt,name=lifecycle_mode,json=lifecycleMode,proto3,enum=workos.surface.v1.LifecycleMode" json:"lifecycle_mode,omitempty"`
+	Application   NativeApplication `protobuf:"varint,6,opt,name=application,proto3,enum=workos.surface.v1.NativeApplication" json:"application,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -229,6 +289,13 @@ func (x *CreateNativeSessionRequest) GetLifecycleMode() LifecycleMode {
 		return x.LifecycleMode
 	}
 	return LifecycleMode_LIFECYCLE_MODE_UNSPECIFIED
+}
+
+func (x *CreateNativeSessionRequest) GetApplication() NativeApplication {
+	if x != nil {
+		return x.Application
+	}
+	return NativeApplication_NATIVE_APPLICATION_UNSPECIFIED
 }
 
 type CreateNativeSessionResponse struct {
@@ -1208,7 +1275,7 @@ var File_workos_surface_v1_native_proto protoreflect.FileDescriptor
 
 const file_workos_surface_v1_native_proto_rawDesc = "" +
 	"\n" +
-	"\x1eworkos/surface/v1/native.proto\x12\x11workos.surface.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a!workos/surface/v1/lifecycle.proto\"\xb8\x03\n" +
+	"\x1eworkos/surface/v1/native.proto\x12\x11workos.surface.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a!workos/surface/v1/lifecycle.proto\"\x80\x04\n" +
 	"\rNativeSession\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\"\n" +
 	"\rowner_user_id\x18\x02 \x01(\tR\vownerUserId\x12\x1d\n" +
@@ -1224,14 +1291,16 @@ const file_workos_surface_v1_native_proto_rawDesc = "" +
 	"expires_at\x18\t \x01(\v2\x1a.google.protobuf.TimestampR\texpiresAt\x12G\n" +
 	"\x0elifecycle_mode\x18\n" +
 	" \x01(\x0e2 .workos.surface.v1.LifecycleModeR\rlifecycleMode\x129\n" +
-	"\x19device_pixel_ratio_millis\x18\v \x01(\x05R\x16devicePixelRatioMillis\"\xdb\x01\n" +
+	"\x19device_pixel_ratio_millis\x18\v \x01(\x05R\x16devicePixelRatioMillis\x12F\n" +
+	"\vapplication\x18\f \x01(\x0e2$.workos.surface.v1.NativeApplicationR\vapplication\"\xa3\x02\n" +
 	"\x1aCreateNativeSessionRequest\x12'\n" +
 	"\x0fidempotency_key\x18\x01 \x01(\tR\x0eidempotencyKey\x12\x1d\n" +
 	"\n" +
 	"project_id\x18\x02 \x01(\tR\tprojectId\x12\x14\n" +
 	"\x05width\x18\x03 \x01(\x05R\x05width\x12\x16\n" +
 	"\x06height\x18\x04 \x01(\x05R\x06height\x12G\n" +
-	"\x0elifecycle_mode\x18\x05 \x01(\x0e2 .workos.surface.v1.LifecycleModeR\rlifecycleMode\"Y\n" +
+	"\x0elifecycle_mode\x18\x05 \x01(\x0e2 .workos.surface.v1.LifecycleModeR\rlifecycleMode\x12F\n" +
+	"\vapplication\x18\x06 \x01(\x0e2$.workos.surface.v1.NativeApplicationR\vapplication\"Y\n" +
 	"\x1bCreateNativeSessionResponse\x12:\n" +
 	"\asession\x18\x01 \x01(\v2 .workos.surface.v1.NativeSessionR\asession\"\x88\x01\n" +
 	"\x1bConnectNativeSessionRequest\x12\x1d\n" +
@@ -1304,7 +1373,11 @@ const file_workos_surface_v1_native_proto_rawDesc = "" +
 	"\x1fTransferNativeClipboardResponse\x12\x16\n" +
 	"\x06status\x18\x01 \x01(\tR\x06status\x12\x12\n" +
 	"\x04text\x18\x02 \x01(\fR\x04text\x12\x1b\n" +
-	"\tmax_bytes\x18\x03 \x01(\rR\bmaxBytes2\xe6\a\n" +
+	"\tmax_bytes\x18\x03 \x01(\rR\bmaxBytes*x\n" +
+	"\x11NativeApplication\x12\"\n" +
+	"\x1eNATIVE_APPLICATION_UNSPECIFIED\x10\x00\x12\x1b\n" +
+	"\x17NATIVE_APPLICATION_CODE\x10\x01\x12\"\n" +
+	"\x1eNATIVE_APPLICATION_TEXT_EDITOR\x10\x022\xe6\a\n" +
 	"\x14NativeSessionService\x12|\n" +
 	"\x15GetNativeConnectivity\x12/.workos.surface.v1.GetNativeConnectivityRequest\x1a0.workos.surface.v1.GetNativeConnectivityResponse\"\x00\x12v\n" +
 	"\x13CreateNativeSession\x12-.workos.surface.v1.CreateNativeSessionRequest\x1a..workos.surface.v1.CreateNativeSessionResponse\"\x00\x12y\n" +
@@ -1327,62 +1400,66 @@ func file_workos_surface_v1_native_proto_rawDescGZIP() []byte {
 	return file_workos_surface_v1_native_proto_rawDescData
 }
 
+var file_workos_surface_v1_native_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
 var file_workos_surface_v1_native_proto_msgTypes = make([]protoimpl.MessageInfo, 19)
 var file_workos_surface_v1_native_proto_goTypes = []any{
-	(*NativeSession)(nil),                   // 0: workos.surface.v1.NativeSession
-	(*CreateNativeSessionRequest)(nil),      // 1: workos.surface.v1.CreateNativeSessionRequest
-	(*CreateNativeSessionResponse)(nil),     // 2: workos.surface.v1.CreateNativeSessionResponse
-	(*ConnectNativeSessionRequest)(nil),     // 3: workos.surface.v1.ConnectNativeSessionRequest
-	(*ConnectNativeSessionResponse)(nil),    // 4: workos.surface.v1.ConnectNativeSessionResponse
-	(*CloseNativeSessionRequest)(nil),       // 5: workos.surface.v1.CloseNativeSessionRequest
-	(*CloseNativeSessionResponse)(nil),      // 6: workos.surface.v1.CloseNativeSessionResponse
-	(*GetNativeSessionRequest)(nil),         // 7: workos.surface.v1.GetNativeSessionRequest
-	(*GetNativeSessionResponse)(nil),        // 8: workos.surface.v1.GetNativeSessionResponse
-	(*DetachNativeSessionRequest)(nil),      // 9: workos.surface.v1.DetachNativeSessionRequest
-	(*DetachNativeSessionResponse)(nil),     // 10: workos.surface.v1.DetachNativeSessionResponse
-	(*NativeIceServer)(nil),                 // 11: workos.surface.v1.NativeIceServer
-	(*GetNativeConnectivityRequest)(nil),    // 12: workos.surface.v1.GetNativeConnectivityRequest
-	(*GetNativeConnectivityResponse)(nil),   // 13: workos.surface.v1.GetNativeConnectivityResponse
-	(*NativeInputEvent)(nil),                // 14: workos.surface.v1.NativeInputEvent
-	(*OpenGreenfieldDisplayRequest)(nil),    // 15: workos.surface.v1.OpenGreenfieldDisplayRequest
-	(*OpenGreenfieldDisplayResponse)(nil),   // 16: workos.surface.v1.OpenGreenfieldDisplayResponse
-	(*TransferNativeClipboardRequest)(nil),  // 17: workos.surface.v1.TransferNativeClipboardRequest
-	(*TransferNativeClipboardResponse)(nil), // 18: workos.surface.v1.TransferNativeClipboardResponse
-	(*timestamppb.Timestamp)(nil),           // 19: google.protobuf.Timestamp
-	(LifecycleMode)(0),                      // 20: workos.surface.v1.LifecycleMode
+	(NativeApplication)(0),                  // 0: workos.surface.v1.NativeApplication
+	(*NativeSession)(nil),                   // 1: workos.surface.v1.NativeSession
+	(*CreateNativeSessionRequest)(nil),      // 2: workos.surface.v1.CreateNativeSessionRequest
+	(*CreateNativeSessionResponse)(nil),     // 3: workos.surface.v1.CreateNativeSessionResponse
+	(*ConnectNativeSessionRequest)(nil),     // 4: workos.surface.v1.ConnectNativeSessionRequest
+	(*ConnectNativeSessionResponse)(nil),    // 5: workos.surface.v1.ConnectNativeSessionResponse
+	(*CloseNativeSessionRequest)(nil),       // 6: workos.surface.v1.CloseNativeSessionRequest
+	(*CloseNativeSessionResponse)(nil),      // 7: workos.surface.v1.CloseNativeSessionResponse
+	(*GetNativeSessionRequest)(nil),         // 8: workos.surface.v1.GetNativeSessionRequest
+	(*GetNativeSessionResponse)(nil),        // 9: workos.surface.v1.GetNativeSessionResponse
+	(*DetachNativeSessionRequest)(nil),      // 10: workos.surface.v1.DetachNativeSessionRequest
+	(*DetachNativeSessionResponse)(nil),     // 11: workos.surface.v1.DetachNativeSessionResponse
+	(*NativeIceServer)(nil),                 // 12: workos.surface.v1.NativeIceServer
+	(*GetNativeConnectivityRequest)(nil),    // 13: workos.surface.v1.GetNativeConnectivityRequest
+	(*GetNativeConnectivityResponse)(nil),   // 14: workos.surface.v1.GetNativeConnectivityResponse
+	(*NativeInputEvent)(nil),                // 15: workos.surface.v1.NativeInputEvent
+	(*OpenGreenfieldDisplayRequest)(nil),    // 16: workos.surface.v1.OpenGreenfieldDisplayRequest
+	(*OpenGreenfieldDisplayResponse)(nil),   // 17: workos.surface.v1.OpenGreenfieldDisplayResponse
+	(*TransferNativeClipboardRequest)(nil),  // 18: workos.surface.v1.TransferNativeClipboardRequest
+	(*TransferNativeClipboardResponse)(nil), // 19: workos.surface.v1.TransferNativeClipboardResponse
+	(*timestamppb.Timestamp)(nil),           // 20: google.protobuf.Timestamp
+	(LifecycleMode)(0),                      // 21: workos.surface.v1.LifecycleMode
 }
 var file_workos_surface_v1_native_proto_depIdxs = []int32{
-	19, // 0: workos.surface.v1.NativeSession.created_at:type_name -> google.protobuf.Timestamp
-	19, // 1: workos.surface.v1.NativeSession.expires_at:type_name -> google.protobuf.Timestamp
-	20, // 2: workos.surface.v1.NativeSession.lifecycle_mode:type_name -> workos.surface.v1.LifecycleMode
-	20, // 3: workos.surface.v1.CreateNativeSessionRequest.lifecycle_mode:type_name -> workos.surface.v1.LifecycleMode
-	0,  // 4: workos.surface.v1.CreateNativeSessionResponse.session:type_name -> workos.surface.v1.NativeSession
-	0,  // 5: workos.surface.v1.ConnectNativeSessionResponse.session:type_name -> workos.surface.v1.NativeSession
-	0,  // 6: workos.surface.v1.CloseNativeSessionResponse.session:type_name -> workos.surface.v1.NativeSession
-	0,  // 7: workos.surface.v1.GetNativeSessionResponse.session:type_name -> workos.surface.v1.NativeSession
-	11, // 8: workos.surface.v1.GetNativeConnectivityResponse.ice_servers:type_name -> workos.surface.v1.NativeIceServer
-	19, // 9: workos.surface.v1.GetNativeConnectivityResponse.expires_at:type_name -> google.protobuf.Timestamp
-	12, // 10: workos.surface.v1.NativeSessionService.GetNativeConnectivity:input_type -> workos.surface.v1.GetNativeConnectivityRequest
-	1,  // 11: workos.surface.v1.NativeSessionService.CreateNativeSession:input_type -> workos.surface.v1.CreateNativeSessionRequest
-	3,  // 12: workos.surface.v1.NativeSessionService.ConnectNativeSession:input_type -> workos.surface.v1.ConnectNativeSessionRequest
-	7,  // 13: workos.surface.v1.NativeSessionService.GetNativeSession:input_type -> workos.surface.v1.GetNativeSessionRequest
-	5,  // 14: workos.surface.v1.NativeSessionService.CloseNativeSession:input_type -> workos.surface.v1.CloseNativeSessionRequest
-	9,  // 15: workos.surface.v1.NativeSessionService.DetachNativeSession:input_type -> workos.surface.v1.DetachNativeSessionRequest
-	15, // 16: workos.surface.v1.NativeSessionService.OpenGreenfieldDisplay:input_type -> workos.surface.v1.OpenGreenfieldDisplayRequest
-	17, // 17: workos.surface.v1.NativeSessionService.TransferNativeClipboard:input_type -> workos.surface.v1.TransferNativeClipboardRequest
-	13, // 18: workos.surface.v1.NativeSessionService.GetNativeConnectivity:output_type -> workos.surface.v1.GetNativeConnectivityResponse
-	2,  // 19: workos.surface.v1.NativeSessionService.CreateNativeSession:output_type -> workos.surface.v1.CreateNativeSessionResponse
-	4,  // 20: workos.surface.v1.NativeSessionService.ConnectNativeSession:output_type -> workos.surface.v1.ConnectNativeSessionResponse
-	8,  // 21: workos.surface.v1.NativeSessionService.GetNativeSession:output_type -> workos.surface.v1.GetNativeSessionResponse
-	6,  // 22: workos.surface.v1.NativeSessionService.CloseNativeSession:output_type -> workos.surface.v1.CloseNativeSessionResponse
-	10, // 23: workos.surface.v1.NativeSessionService.DetachNativeSession:output_type -> workos.surface.v1.DetachNativeSessionResponse
-	16, // 24: workos.surface.v1.NativeSessionService.OpenGreenfieldDisplay:output_type -> workos.surface.v1.OpenGreenfieldDisplayResponse
-	18, // 25: workos.surface.v1.NativeSessionService.TransferNativeClipboard:output_type -> workos.surface.v1.TransferNativeClipboardResponse
-	18, // [18:26] is the sub-list for method output_type
-	10, // [10:18] is the sub-list for method input_type
-	10, // [10:10] is the sub-list for extension type_name
-	10, // [10:10] is the sub-list for extension extendee
-	0,  // [0:10] is the sub-list for field type_name
+	20, // 0: workos.surface.v1.NativeSession.created_at:type_name -> google.protobuf.Timestamp
+	20, // 1: workos.surface.v1.NativeSession.expires_at:type_name -> google.protobuf.Timestamp
+	21, // 2: workos.surface.v1.NativeSession.lifecycle_mode:type_name -> workos.surface.v1.LifecycleMode
+	0,  // 3: workos.surface.v1.NativeSession.application:type_name -> workos.surface.v1.NativeApplication
+	21, // 4: workos.surface.v1.CreateNativeSessionRequest.lifecycle_mode:type_name -> workos.surface.v1.LifecycleMode
+	0,  // 5: workos.surface.v1.CreateNativeSessionRequest.application:type_name -> workos.surface.v1.NativeApplication
+	1,  // 6: workos.surface.v1.CreateNativeSessionResponse.session:type_name -> workos.surface.v1.NativeSession
+	1,  // 7: workos.surface.v1.ConnectNativeSessionResponse.session:type_name -> workos.surface.v1.NativeSession
+	1,  // 8: workos.surface.v1.CloseNativeSessionResponse.session:type_name -> workos.surface.v1.NativeSession
+	1,  // 9: workos.surface.v1.GetNativeSessionResponse.session:type_name -> workos.surface.v1.NativeSession
+	12, // 10: workos.surface.v1.GetNativeConnectivityResponse.ice_servers:type_name -> workos.surface.v1.NativeIceServer
+	20, // 11: workos.surface.v1.GetNativeConnectivityResponse.expires_at:type_name -> google.protobuf.Timestamp
+	13, // 12: workos.surface.v1.NativeSessionService.GetNativeConnectivity:input_type -> workos.surface.v1.GetNativeConnectivityRequest
+	2,  // 13: workos.surface.v1.NativeSessionService.CreateNativeSession:input_type -> workos.surface.v1.CreateNativeSessionRequest
+	4,  // 14: workos.surface.v1.NativeSessionService.ConnectNativeSession:input_type -> workos.surface.v1.ConnectNativeSessionRequest
+	8,  // 15: workos.surface.v1.NativeSessionService.GetNativeSession:input_type -> workos.surface.v1.GetNativeSessionRequest
+	6,  // 16: workos.surface.v1.NativeSessionService.CloseNativeSession:input_type -> workos.surface.v1.CloseNativeSessionRequest
+	10, // 17: workos.surface.v1.NativeSessionService.DetachNativeSession:input_type -> workos.surface.v1.DetachNativeSessionRequest
+	16, // 18: workos.surface.v1.NativeSessionService.OpenGreenfieldDisplay:input_type -> workos.surface.v1.OpenGreenfieldDisplayRequest
+	18, // 19: workos.surface.v1.NativeSessionService.TransferNativeClipboard:input_type -> workos.surface.v1.TransferNativeClipboardRequest
+	14, // 20: workos.surface.v1.NativeSessionService.GetNativeConnectivity:output_type -> workos.surface.v1.GetNativeConnectivityResponse
+	3,  // 21: workos.surface.v1.NativeSessionService.CreateNativeSession:output_type -> workos.surface.v1.CreateNativeSessionResponse
+	5,  // 22: workos.surface.v1.NativeSessionService.ConnectNativeSession:output_type -> workos.surface.v1.ConnectNativeSessionResponse
+	9,  // 23: workos.surface.v1.NativeSessionService.GetNativeSession:output_type -> workos.surface.v1.GetNativeSessionResponse
+	7,  // 24: workos.surface.v1.NativeSessionService.CloseNativeSession:output_type -> workos.surface.v1.CloseNativeSessionResponse
+	11, // 25: workos.surface.v1.NativeSessionService.DetachNativeSession:output_type -> workos.surface.v1.DetachNativeSessionResponse
+	17, // 26: workos.surface.v1.NativeSessionService.OpenGreenfieldDisplay:output_type -> workos.surface.v1.OpenGreenfieldDisplayResponse
+	19, // 27: workos.surface.v1.NativeSessionService.TransferNativeClipboard:output_type -> workos.surface.v1.TransferNativeClipboardResponse
+	20, // [20:28] is the sub-list for method output_type
+	12, // [12:20] is the sub-list for method input_type
+	12, // [12:12] is the sub-list for extension type_name
+	12, // [12:12] is the sub-list for extension extendee
+	0,  // [0:12] is the sub-list for field type_name
 }
 
 func init() { file_workos_surface_v1_native_proto_init() }
@@ -1396,13 +1473,14 @@ func file_workos_surface_v1_native_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_workos_surface_v1_native_proto_rawDesc), len(file_workos_surface_v1_native_proto_rawDesc)),
-			NumEnums:      0,
+			NumEnums:      1,
 			NumMessages:   19,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
 		GoTypes:           file_workos_surface_v1_native_proto_goTypes,
 		DependencyIndexes: file_workos_surface_v1_native_proto_depIdxs,
+		EnumInfos:         file_workos_surface_v1_native_proto_enumTypes,
 		MessageInfos:      file_workos_surface_v1_native_proto_msgTypes,
 	}.Build()
 	File_workos_surface_v1_native_proto = out.File
