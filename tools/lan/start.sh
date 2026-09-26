@@ -109,18 +109,48 @@ else
     }
     resident_compose config --quiet
     mkdir -p "$WORKOS_GREENFIELD_IPC_ROOT" "$WORKOS_WORKSPACE_ROOTS"
-    WORKOS_GREENFIELD_IPC_ROOT=$(CDPATH= cd -- "$WORKOS_GREENFIELD_IPC_ROOT" && pwd -P)
-    WORKOS_WORKSPACE_ROOTS=$(CDPATH= cd -- "$WORKOS_WORKSPACE_ROOTS" && pwd -P)
+    # The prior invocation leaves the IPC root owned by uid 10001 with mode
+    # 0700. The host operator can resolve that directory but cannot cd into it.
+    WORKOS_GREENFIELD_IPC_ROOT=$(realpath -e -- "$WORKOS_GREENFIELD_IPC_ROOT")
+    WORKOS_WORKSPACE_ROOTS=$(realpath -e -- "$WORKOS_WORKSPACE_ROOTS")
     export WORKOS_GREENFIELD_IPC_ROOT WORKOS_WORKSPACE_ROOTS
     # The trusted Runtime and isolated child run as uid 10001. The one-shot
     # helper changes only the mount root, never project files or TLS keys.
     docker run --rm --user 0:0 \
         -v "$WORKOS_GREENFIELD_IPC_ROOT:/run/workos/greenfield-ipc" \
         debian:bookworm-slim sh -ec 'chown 10001:10001 /run/workos/greenfield-ipc && chmod 0700 /run/workos/greenfield-ipc'
-    # The child inherits the pinned Greenfield proxy and official Code image.
-    # Build both stages from this checkout so a clean host cannot accidentally
+    # Keep a checksummed source archive outside the image build. The local
+    # cache makes repeat starts independent of a slow source mirror, while a
+    # clean host still downloads the exact pinned Greenfield commit.
+    greenfield_commit=6c578f4db7ec027eb1d8a5f7ec6e09f7646dbb57
+    greenfield_sha256=97e0a72b0e139c8b22088fa4acde199d65d5794f8ee7f85590c435e9231cf433
+    greenfield_source="$repo/.workos/build-cache/greenfield-$greenfield_commit"
+    mkdir -p "$greenfield_source"
+    chmod 0700 "$greenfield_source"
+    [ ! -L "$greenfield_source/source.tar.gz" ] || { echo 'start.sh: Greenfield source cache must not be a symlink' >&2; exit 1; }
+    if [ ! -f "$greenfield_source/source.tar.gz" ]; then
+        temporary=$(mktemp "$greenfield_source/source.XXXXXX")
+        if ! curl -fsSL --connect-timeout 10 --max-time 180 --retry 2 \
+            "https://codeload.github.com/udevbe/greenfield/tar.gz/$greenfield_commit" -o "$temporary"; then
+            rm -f "$temporary"
+            echo 'start.sh: pinned Greenfield source download failed' >&2
+            exit 1
+        fi
+        if ! printf '%s  %s\n' "$greenfield_sha256" "$temporary" | sha256sum --check --strict >/dev/null; then
+            rm -f "$temporary"
+            echo 'start.sh: pinned Greenfield source checksum failed' >&2
+            exit 1
+        fi
+        mv "$temporary" "$greenfield_source/source.tar.gz"
+    fi
+    printf '%s  %s\n' "$greenfield_sha256" "$greenfield_source/source.tar.gz" | sha256sum --check --strict >/dev/null || {
+        echo 'start.sh: cached Greenfield source checksum failed' >&2
+        exit 1
+    }
+    # Build both stages from this checkout so a clean host cannot silently
     # reuse an older local base image under the same tag.
-    docker build -t workos-greenfield-runtime:p0 -f "$repo/deploy/greenfield-runtime.Dockerfile" "$repo"
+    docker build --build-context "greenfield-source=$greenfield_source" \
+        -t workos-greenfield-runtime:p0 -f "$repo/deploy/greenfield-runtime.Dockerfile" "$repo"
     docker build -t workos-greenfield-child:dev -f "$repo/deploy/greenfield-child.Dockerfile" "$repo"
     resident_compose up -d --build
     # Compose does not hash bind-mounted file contents; a previously running

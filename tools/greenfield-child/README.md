@@ -24,14 +24,16 @@ Notifications use request ID zero; one-event input and clipboard requests use
 nonzero IDs. The resident input ledger suppresses duplicate native actions
 after an ACK is lost and fails closed after an uncertain partial action.
 
-Build from the repo root:
+Build and start from the repo root:
 
 ```sh
-docker build -t workos-greenfield-runtime:p0 -f deploy/greenfield-runtime.Dockerfile .
-docker build -t workos-greenfield-child:dev -f deploy/greenfield-child.Dockerfile .
+./tools/lan/start.sh up
 ```
 
-The base Dockerfile pins the proxy source commit and Code package SHA-256.
+The launcher caches the exact Greenfield source archive under owner-only
+`.workos/build-cache/`, supplies it as a named Docker build context, and
+checks SHA-256 on both sides of the build. The base Dockerfile pins the proxy
+source commit and Code package SHA-256.
 This package pins the published compositor npm rc1 plus the checked-in patch.
 The child Dockerfile installs Chromium through pinned `playwright-core@1.62.1`.
 The broker specifies the entrypoint and checks image ID, UID, mounts, network,

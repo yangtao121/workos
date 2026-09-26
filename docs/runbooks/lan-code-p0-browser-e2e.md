@@ -13,7 +13,7 @@ This gate uses real, CA-trusted Chromium profiles against the HTTPS Gateway and 
 
 ```sh
 cd /home/aquatao/workos
-WORKOS_LAN_E2E_USERNAME=owner \
+WORKOS_LAN_E2E_USERNAME=aquatao \
 WORKOS_LAN_E2E_PASSWORD_FILE="$credential_file" \
 WORKOS_LAN_P0_PROJECT_FILE="$PWD/.workos/lan-code-project-<commit>.json" \
 ./tools/lan/test-code-p0.sh
@@ -21,6 +21,7 @@ rm -f "$credential_file"
 ```
 
 The runner imports `ca.crt` into Chromium's fresh NSS profile. Certificate verification remains enabled; the test has no route mocks. Passwords and cookies are absent from the results. Playwright screenshots, traces and video are disabled because the browser contains credentials and the source snapshot can contain user content.
+Use the exact username entered in `set-password` if it differs from the example above.
 
 The four phases have separate browser processes:
 

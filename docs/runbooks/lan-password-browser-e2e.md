@@ -25,13 +25,14 @@ This gate exercises the real Gateway and Desktop in two isolated Chromium browse
 
 ```sh
 WORKOS_LAN_IP=192.168.5.5 \
-WORKOS_LAN_E2E_USERNAME=owner \
+WORKOS_LAN_E2E_USERNAME=aquatao \
 WORKOS_LAN_E2E_PASSWORD_FILE="$credential_file" \
 ./tools/lan/test-browser.sh
 rm -f "$credential_file"
 ```
 
 The runner imports `ca.crt` into a fresh NSS profile and launches Chromium with certificate verification enabled. It never uses `ignoreHTTPSErrors` or `--ignore-certificate-errors`. Playwright traces, screenshots, and video are disabled for this credential-bearing test. The test makes no project writes and revokes only its newly signed-in devices.
+Use the exact username entered in `set-password` if it differs from the example above.
 
 For the real expiry phase, configure the Gateway with `WORKOS_AUTH_SESSION_TTL=5m`, restart it, and add `WORKOS_LAN_PASSWORD_EXPIRY_E2E=true` to the invocation above. That phase waits for actual server expiry, re-adds the stale cookie with a future browser expiry, and expects the Gateway to reject it. The regular phase takes under three minutes; the expiry phase adds about five minutes.
 

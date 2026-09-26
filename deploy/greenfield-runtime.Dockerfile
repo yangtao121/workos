@@ -21,7 +21,6 @@ ARG GREENFIELD_COMMIT=6c578f4db7ec027eb1d8a5f7ec6e09f7646dbb57
 ARG GREENFIELD_SHA256=97e0a72b0e139c8b22088fa4acde199d65d5794f8ee7f85590c435e9231cf433
 ARG VSCODE_VERSION=1.139.0
 ARG VSCODE_SHA256=5031849ea13d2297ec7c8f1af70c0bc7d585250cae306b53d668cb6a7a900623
-ARG GITHUB_MIRROR=https://ghfast.top/https://github.com
 ARG NPM_REGISTRY=https://registry.npmmirror.com
 ARG DEBIAN_MIRROR=http://mirrors.huaweicloud.com/debian
 ARG DEBIAN_SECURITY_MIRROR=http://mirrors.huaweicloud.com/debian-security
@@ -52,9 +51,8 @@ RUN sed -i \
 COPY deploy/patches/greenfield/0001-keep-clients-without-browser.patch /tmp/0001-keep-clients-without-browser.patch
 COPY deploy/patches/greenfield/0002-preserve-client-on-navigation.patch /tmp/0002-preserve-client-on-navigation.patch
 
-RUN curl -fsSL "${GITHUB_MIRROR}/udevbe/greenfield/archive/${GREENFIELD_COMMIT}.tar.gz" \
-      -o /tmp/greenfield.tar.gz \
-    && printf '%s  %s\n' "${GREENFIELD_SHA256}" /tmp/greenfield.tar.gz | sha256sum --check --strict \
+COPY --from=greenfield-source /source.tar.gz /tmp/greenfield.tar.gz
+RUN printf '%s  %s\n' "${GREENFIELD_SHA256}" /tmp/greenfield.tar.gz | sha256sum --check --strict \
     && mkdir -p /opt/greenfield \
     && tar -xzf /tmp/greenfield.tar.gz -C /opt/greenfield --strip-components=1 \
     && patch -d /opt/greenfield -p1 < /tmp/0001-keep-clients-without-browser.patch \
