@@ -109,6 +109,9 @@ runtime = services["runtime-host"]
 assert runtime["environment"]["WORKOS_RUNTIME_NATIVE_ENGINE"] == "greenfield"
 assert runtime["environment"]["WORKOS_RUNTIME_NATIVE_GREENFIELD_CHILD_IMAGE"] == "workos-greenfield-child:dev"
 assert runtime["environment"]["WORKOS_RUNTIME_NATIVE_GREENFIELD_IPC_ROOT"] == sys.argv[3] + "/greenfield-ipc"
+assert runtime["environment"]["WORKOS_RUNTIME_PTY_SHELL"] == "/bin/bash"
+assert runtime["environment"]["WORKOS_WORKSPACE_DOCKER_SOCKET"] == "/var/run/docker.sock"
+assert runtime["environment"]["WORKOS_WORKSPACE_EXECUTION_IMAGE"] == "workos-workspace-runtime:dev"
 runtime_sources = {volume["source"] for volume in runtime["volumes"]}
 assert "/var/run/docker.sock" in runtime_sources
 assert sys.argv[3] + "/greenfield-ipc" in runtime_sources

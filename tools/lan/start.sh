@@ -152,6 +152,9 @@ else
     docker build --build-context "greenfield-source=$greenfield_source" \
         -t workos-greenfield-runtime:p0 -f "$repo/deploy/greenfield-runtime.Dockerfile" "$repo"
     docker build -t workos-greenfield-child:dev -f "$repo/deploy/greenfield-child.Dockerfile" "$repo"
+    # The supervised PTY uses a separate no-network workspace container.
+    # Rebuild it with the resident child so Terminal is available on LAN P0.
+    docker build -t workos-workspace-runtime:dev -f "$repo/deploy/workspace.Dockerfile" "$repo"
     resident_compose up -d --build
     # Compose does not hash bind-mounted file contents; a previously running
     # collector needs a restart to load the new loopback-only receiver config.
