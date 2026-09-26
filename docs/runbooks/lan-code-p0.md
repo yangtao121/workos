@@ -2,6 +2,8 @@
 
 Use this procedure for the current WorkOS checkout selected for P0 Code acceptance. It creates a writable copy of tracked files at the final integration commit. The live checkout, `.git`, and `.workos/lan-tls/ca.key` are never mounted into the untrusted Code child.
 
+For an owner-run end-to-end acceptance with one local password prompt, use [`./tools/lan/run-browser-p0.sh`](lan-code-p0-browser-e2e.md#owner-run-one-command-gate). The staged preparation below is useful when inspecting a single step.
+
 1. Start the LAN stack, then set the owner password locally with `./tools/lan/start.sh set-password`. The prompt accepts a 1–80 character username and a 12–1024 byte UTF-8 password. It is interactive; do not put the password in shell arguments, environment variables, chat, or task records.
 2. Create a mode-0600 temporary password file as described in [the browser gate](lan-password-browser-e2e.md). Set `WORKOS_LAN_E2E_USERNAME` if the owner name differs from `owner`.
 3. After the final integration commit, run:

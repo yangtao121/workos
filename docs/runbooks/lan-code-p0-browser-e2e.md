@@ -2,6 +2,21 @@
 
 This gate uses real, CA-trusted Chromium profiles against the HTTPS Gateway and the prepared, isolated WorkOS source snapshot. It appends test text to that snapshot's `README.md` through the actual Code GUI. It creates and later stops/restarts only this project's new native workload. Do not point it at a project that already has a running native workload.
 
+## Owner-run one-command gate
+
+After setting the owner password locally with `./tools/lan/start.sh set-password`, run this from a local interactive terminal on a clean, committed checkout:
+
+```sh
+cd /home/aquatao/workos
+./tools/lan/run-browser-p0.sh
+```
+
+The default username is `aquatao`; set `WORKOS_LAN_E2E_USERNAME` in the environment if the configured owner name differs. Enter the existing password once at the no-echo TTY prompt. Do not put the password in a shell argument, environment variable, chat, or task record. The script keeps its temporary mode-0600 password file outside the checkout and removes it on exit or a catchable interruption. It preserves a mode-0700 `.workos/lan-browser-p0.*` directory containing only commit and stage results. The resident Code gate writes separate nonsecret identity/performance evidence under `.workos/lan-p0-e2e.*` once it starts.
+
+The script bootstraps an unavailable HTTPS Gateway without a password, then prepares the current HEAD's tracked-source snapshot and project, restarts the resident stack with that mount, binds the workspace, and runs `test-browser.sh` followed by `test-code-p0.sh`. It stops at the first failed stage and reports that stage's exit code. Install pinned workspace dependencies first if `apps/desktop-web/node_modules` is absent. This command does not create or change the owner password. The Code test edits and restarts only the isolated project it prepares; the live checkout is never the Code mount.
+
+The manual steps below remain available for a staged investigation or rerun of one browser gate with an existing private fixture. The owner-run command requires no fixture path and is the default acceptance path.
+
 ## Preconditions
 
 1. Finish the [LAN Code workspace preparation](lan-code-p0.md): owner password set locally, tracked snapshot prepared, resident stack running, and project workspace bound. The browser gate does not create the project or set a password.
