@@ -1,6 +1,6 @@
 # V3 P0 Greenfield diagnostic boundary
 
-The default Native engine remains Xvfb/WebRTC. Explicit `WORKOS_RUNTIME_NATIVE_ENGINE=greenfield` selects the experimental Greenfield adapter; a failed launch reports unavailable rather than falling back. This direct image is a technical probe. It currently runs Code beside the privileged Runtime process in one container and is **not suitable for the LAN product deployment**. The planned Runtime-owned resident compositor must isolate untrusted Code and Chromium in a private child container, keep the trusted Go broker separate, and avoid passing DB credentials or Docker socket access to that child.
+The default Native engine remains Xvfb/WebRTC. Explicit `WORKOS_RUNTIME_NATIVE_ENGINE=greenfield` selects Greenfield; a failed launch reports unavailable rather than falling back. The direct image described below is a historical technical probe: it runs Code beside the privileged Runtime process in one container and is **not suitable for the LAN product deployment**. The LAN stack now uses the [Runtime-owned resident compositor](../decisions/0040-resident-greenfield-window-media.md): Code and Chromium run in a private child container, while the trusted Go broker remains in runtime-host. The child receives neither database credentials nor Docker socket access. Its actual browser acceptance remains tracked in the [P0 integration task](../tasks/20260926-lan-p0-integration.md).
 
 ```sh
 WORKOS_RUNTIME_NATIVE_ENGINE=greenfield
