@@ -45,6 +45,7 @@ import {
   DesktopInitializationSchema,
   DesktopWindowTargetSchema,
   LifecycleMode,
+  NativeApplication,
   SurfaceRenderer,
 } from "@workos/protocol";
 import type {
@@ -167,6 +168,9 @@ export function Desktop({
   const [windows, localDispatch] = useReducer(windowReducer, initialWindowState);
   const windowsRef = useRef(windows);
   windowsRef.current = windows;
+  const [nativeApplications, setNativeApplications] = useState<Record<string, NativeApplication>>(
+    {},
+  );
   const [nativeWindows, nativeDispatch] = useReducer(windowReducer, initialWindowState);
   const nativeWindowsRef = useRef(nativeWindows);
   nativeWindowsRef.current = nativeWindows;
@@ -201,10 +205,53 @@ export function Desktop({
   );
   const greenfieldViewersRef = useRef(greenfieldViewers);
   greenfieldViewersRef.current = greenfieldViewers;
-  const shellWindows = useMemo(
-    () => mergeGreenfieldWindows(windows, nativeWindows),
-    [windows, nativeWindows],
-  );
+  const shellWindows = useMemo(() => {
+    const labeled = {
+      ...windows,
+      windows: windows.windows.map((item) => {
+        if (item.kind !== "native" || !item.workloadId) return item;
+        const application = nativeApplications[item.workloadId];
+        if (!application) return item;
+        return {
+          ...item,
+          appId: application === NativeApplication.TEXT_EDITOR ? "text-editor" : "code",
+          title: application === NativeApplication.TEXT_EDITOR ? "Text Editor" : "Code",
+        };
+      }),
+    };
+    return mergeGreenfieldWindows(labeled, nativeWindows);
+  }, [windows, nativeWindows, nativeApplications]);
+  useEffect(() => {
+    const ids = windows.windows
+      .filter((item) => item.kind === "native" && item.workloadId)
+      .map((item) => item.workloadId as string)
+      .filter((id) => nativeApplications[id] === undefined);
+    if (!ids.length) return;
+    let cancelled = false;
+    void Promise.all(
+      ids.map(async (id) => {
+        try {
+          const response = await workosClients.nativeSessions.getNativeSession({ sessionId: id });
+          return [id, response.session?.application ?? NativeApplication.CODE] as const;
+        } catch {
+          return undefined;
+        }
+      }),
+    ).then((results) => {
+      if (cancelled) return;
+      if (results.every((result) => !result)) return;
+      setNativeApplications((current) => {
+        const next = { ...current };
+        for (const result of results) {
+          if (result) next[result[0]] = result[1];
+        }
+        return next;
+      });
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [windows, nativeApplications, workosClients]);
   useEffect(() => {
     const projected = windows.windows.flatMap((parent) => {
       if (parent.kind !== "native" || !parent.workloadId) return [];
@@ -1026,15 +1073,79 @@ export function Desktop({
     new Map<string, { key: string; workloadId?: string; busy: boolean }>(),
   );
   const openSessionWorkload = useCallback(
-    async (kind: "terminal" | "native", workloadId?: string, workloadGeneration?: bigint) => {
+    async (
+      kind: "terminal" | "native",
+      workloadId?: string,
+      workloadGeneration?: bigint,
+      requestedApplication: NativeApplication = NativeApplication.CODE,
+    ) => {
       const projectId = activeProjectIdRef.current;
       if (!projectId) return;
       if (sharedDesktop && sharedDesktop.current.connection !== "connected") {
         setError("Desktop is reconnecting. Try again when connected.");
         return;
       }
+      let application = requestedApplication;
+      let selectedWorkloadId = workloadId;
+      try {
+        if (kind === "native") {
+          if (!selectedWorkloadId) {
+            selectedWorkloadId = windowsRef.current.windows.find(
+              (item) =>
+                item.kind === "native" &&
+                item.workloadId &&
+                nativeApplications[item.workloadId] === requestedApplication,
+            )?.workloadId;
+            if (!selectedWorkloadId) {
+              const response = await workosClients.surfaceContinuity.listProjectSurfaces({
+                projectId,
+              });
+              for (const candidate of response.workloads) {
+                if (
+                  candidate.renderer !== SurfaceRenderer.REMOTE_NATIVE ||
+                  candidate.state !== "running"
+                )
+                  continue;
+                const native = await workosClients.nativeSessions.getNativeSession({
+                  sessionId: candidate.workloadId,
+                });
+                const found =
+                  native.session?.application === NativeApplication.TEXT_EDITOR
+                    ? NativeApplication.TEXT_EDITOR
+                    : NativeApplication.CODE;
+                setNativeApplications((current) => ({ ...current, [candidate.workloadId]: found }));
+                if (found === requestedApplication) {
+                  selectedWorkloadId = candidate.workloadId;
+                  break;
+                }
+              }
+            }
+          } else {
+            const native = await workosClients.nativeSessions.getNativeSession({
+              sessionId: selectedWorkloadId,
+            });
+            if (!native.session || native.session.projectId !== projectId)
+              throw new Error("Native session project mismatch.");
+            application =
+              native.session.application === NativeApplication.TEXT_EDITOR
+                ? NativeApplication.TEXT_EDITOR
+                : NativeApplication.CODE;
+            setNativeApplications((current) => ({
+              ...current,
+              [selectedWorkloadId as string]: application,
+            }));
+          }
+        }
+      } catch {
+        setError("Native application discovery is unavailable. Retry when connected.");
+        return;
+      }
       const existing = windowsRef.current.windows.find(
-        (item) => item.kind === kind && (!workloadId || item.workloadId === workloadId),
+        (item) =>
+          item.kind === kind &&
+          (kind === "terminal" && !selectedWorkloadId
+            ? true
+            : item.workloadId === selectedWorkloadId),
       );
       if (
         existing &&
@@ -1043,7 +1154,7 @@ export function Desktop({
         dispatch({ type: "focus", id: existing.id });
         return;
       }
-      const intentKey = `${projectId}:${kind}`;
+      const intentKey = `${projectId}:${kind}:${kind === "native" ? application : ""}`;
       const intent = startupIntents.current.get(intentKey) ?? {
         key: crypto.randomUUID(),
         busy: false,
@@ -1052,7 +1163,7 @@ export function Desktop({
       intent.busy = true;
       startupIntents.current.set(intentKey, intent);
       try {
-        let id = workloadId ?? intent.workloadId;
+        let id = selectedWorkloadId ?? intent.workloadId;
         if (!id) {
           const created =
             kind === "terminal"
@@ -1069,11 +1180,14 @@ export function Desktop({
                   width: 800,
                   height: 600,
                   lifecycleMode: LifecycleMode.MANUAL_STOP,
+                  application,
                 });
           id = created.session?.id;
           if (!id) throw new Error("Program startup returned no instance.");
           intent.workloadId = id;
         }
+        if (kind === "native")
+          setNativeApplications((current) => ({ ...current, [id]: application }));
         const facts = await workosClients.surfaceContinuity.getSurfaceWorkload({ workloadId: id });
         if (!facts.workload || facts.workload.state !== "running")
           throw new Error("Program is no longer running.");
@@ -1083,13 +1197,23 @@ export function Desktop({
         if (activeProjectIdRef.current !== projectId) return;
         const item = {
           id: `${kind}-${id}`,
-          appId: kind,
+          appId:
+            kind === "terminal"
+              ? kind
+              : application === NativeApplication.TEXT_EDITOR
+                ? "text-editor"
+                : "code",
           kind,
           projectId,
           workloadId: id,
           expectedWorkloadId: id,
           expectedWorkloadGeneration: generation,
-          title: kind === "terminal" ? "Terminal" : "Native",
+          title:
+            kind === "terminal"
+              ? "Terminal"
+              : application === NativeApplication.TEXT_EDITOR
+                ? "Text Editor"
+                : "Code",
           rect: { x: 220, y: 110, width: 760, height: 560 },
           mode: "normal" as const,
         };
@@ -1106,7 +1230,7 @@ export function Desktop({
         intent.busy = false;
       }
     },
-    [dispatch, sharedDesktop, workosClients],
+    [dispatch, sharedDesktop, workosClients, nativeApplications],
   );
   const openTerminal = useCallback(
     (workloadId?: string, generation?: bigint) => {
@@ -1150,6 +1274,9 @@ export function Desktop({
     },
     [openSessionWorkload],
   );
+  const openTextEditor = useCallback(() => {
+    void openSessionWorkload("native", undefined, undefined, NativeApplication.TEXT_EDITOR);
+  }, [openSessionWorkload]);
 
   // Agent Sessions (B05): a normal, closable work window — not a permanent
   // sidebar. Closing it never touches the server-side session lifecycle;
@@ -2002,6 +2129,14 @@ export function Desktop({
       open: openNative,
     },
     {
+      id: "text-editor",
+      label: "Text Editor",
+      hint: "Edit plain text in a separate graphical app",
+      icon: "docs",
+      available: !!activeProjectId,
+      open: openTextEditor,
+    },
+    {
       id: "knowledge-center",
       label: "Knowledge Center",
       hint: "Find answers in project sources",
@@ -2093,9 +2228,16 @@ export function Desktop({
   }));
   const dockAppRunning = (id: string) =>
     id !== "native" &&
-    windows.windows.some((item) =>
-      id === "code" ? item.kind === "native" || item.kind === "code" : item.kind === id,
-    );
+    windows.windows.some((item) => {
+      if (id === "code" || id === "text-editor")
+        return (
+          item.kind === "native" &&
+          item.workloadId &&
+          (nativeApplications[item.workloadId] ?? NativeApplication.CODE) ===
+            (id === "code" ? NativeApplication.CODE : NativeApplication.TEXT_EDITOR)
+        );
+      return item.kind === id;
+    });
   function paletteActions(): PaletteAction[] {
     return [
       ...systemApps

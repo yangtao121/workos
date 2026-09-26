@@ -8,6 +8,7 @@ import {
   AgentTaskState,
   HarnessInstancePolicy,
   HealthState,
+  NativeApplication,
   type AgentEvent,
   type AgentTask,
   type GetHarnessCatalogResponse,
@@ -82,6 +83,57 @@ describe("Desktop harness workflow", () => {
     await userEvent.click(codeDock);
     expect(createNativeSession).toHaveBeenCalledTimes(1);
     expect(screen.getByTestId("native-app")).toBeTruthy();
+  });
+
+  it("opens Code and Text Editor as separate native workloads and refocuses each one", async () => {
+    const codeId = "01999999-9999-7999-8999-000000000021";
+    const editorId = "01999999-9999-7999-8999-000000000022";
+    const createNativeSession = vi.fn(({ application }: { application: NativeApplication }) =>
+      Promise.resolve({
+        session: {
+          id: application === NativeApplication.TEXT_EDITOR ? editorId : codeId,
+        },
+      }),
+    );
+    const workosClients = clientFixture({ projects: [project("project-1", "Project One", 1n)] });
+    Object.assign(workosClients, {
+      nativeSessions: {
+        createNativeSession,
+        getNativeSession: vi.fn(({ sessionId }: { sessionId: string }) =>
+          Promise.resolve({
+            session: {
+              id: sessionId,
+              projectId: "project-1",
+              application:
+                sessionId === editorId ? NativeApplication.TEXT_EDITOR : NativeApplication.CODE,
+            },
+          }),
+        ),
+      },
+      surfaceContinuity: {
+        listProjectSurfaces: vi.fn(() => Promise.resolve({ workloads: [] })),
+        getSurfaceWorkload: vi.fn(({ workloadId }: { workloadId: string }) =>
+          Promise.resolve({ workload: { workloadId, state: "running", generation: 1n } }),
+        ),
+        attachSurface: vi.fn(({ workloadId }: { workloadId: string }) =>
+          Promise.resolve({
+            session: { id: workloadId, workloadGeneration: 1n },
+            attachment: { controls: false, controlGeneration: 1n },
+          }),
+        ),
+      },
+    });
+    render(<Desktop workosClients={workosClients} />);
+    await userEvent.click(screen.getByTestId("open-home"));
+    await userEvent.click(await screen.findByTestId("home-entry-code"));
+    await waitFor(() => expect(createNativeSession).toHaveBeenCalledTimes(1));
+    await userEvent.click(await screen.findByTestId("home-entry-text-editor"));
+    await waitFor(() => expect(createNativeSession).toHaveBeenCalledTimes(2));
+    expect(createNativeSession.mock.calls[0]?.[0].application).toBe(NativeApplication.CODE);
+    expect(createNativeSession.mock.calls[1]?.[0].application).toBe(NativeApplication.TEXT_EDITOR);
+    await userEvent.click(screen.getByTestId("open-code"));
+    await userEvent.click(screen.getByTestId("open-text-editor"));
+    expect(createNativeSession).toHaveBeenCalledTimes(2);
   });
 
   it("minimizes, restores and closes project tools through the window manager", async () => {
