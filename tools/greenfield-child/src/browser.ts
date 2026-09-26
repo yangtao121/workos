@@ -60,7 +60,7 @@ declare global {
   interface Window {
     workosChildConfig?: Config;
     workosPush: (message: BrowserMessage) => Promise<void>;
-    workosChildApplyInput: (input: InputPayload) => Promise<void>;
+    workosChildApplyInput: (input: InputPayload) => void;
     workosChildReadClipboard: () => Promise<string>;
     workosChildForceFrames: () => Promise<void>;
     workosChildSnapshot: () => WindowFact[];
@@ -74,6 +74,7 @@ type Surface = {
   parent?: Surface;
   state: { bufferContents?: unknown };
   role?: {
+    window?: { transientFor?: { surface?: Surface } };
     desktopSurface?: {
       role?: { configureSize?: (size: { width: number; height: number }) => void };
     };
@@ -122,9 +123,11 @@ type WindowRecord = {
   title: string;
   appId: string;
   active: boolean;
+  parentWindowId: string;
   contentRect: Rect;
   visualRect: Rect;
   pixelRatio: number;
+  scenePixelRatio: number;
   zOrder: number;
   revision: bigint;
   frameSequence: bigint;
@@ -150,20 +153,37 @@ function uuidv7(): string {
   const now = BigInt(Date.now());
   for (let index = 0; index < 6; index++)
     bytes[5 - index] = Number((now >> BigInt(index * 8)) & 255n);
-  bytes[6] = (bytes[6]! & 0x0f) | 0x70;
-  bytes[8] = (bytes[8]! & 0x3f) | 0x80;
+  bytes[6] = (bytes[6] & 0x0f) | 0x70;
+  bytes[8] = (bytes[8] & 0x3f) | 0x80;
   const hex = [...bytes].map((byte) => byte.toString(16).padStart(2, "0")).join("");
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
 }
 
 function keyOf(surface: CompositorSurface): string {
-  return `${surface.client.id}:${surface.id}`;
+  return `${surface.client.id}:${String(surface.id)}`;
 }
 
 function sameSurface(view: View, surface: CompositorSurface): boolean {
   return (
     view.surface.resource.id === surface.id && view.surface.resource.client.id === surface.client.id
   );
+}
+
+function nativeSurfaceKey(surface: Surface): string {
+  return `${surface.resource.client.id}:${String(surface.resource.id)}`;
+}
+
+function parentWindowId(view: View, windows: Map<string, WindowRecord>): string {
+  // XDG/Wayland parents are represented by Surface.parent. XWayland's
+  // WM_TRANSIENT_FOR can also remain on XWindow.transientFor when the dialog is
+  // itself a top-level view, so inspect both fixed rc1 relationships.
+  let parent = view.surface.parent ?? view.surface.role?.window?.transientFor?.surface;
+  for (let depth = 0; parent && depth < 64; depth++) {
+    const record = windows.get(nativeSurfaceKey(parent));
+    if (record) return record.id;
+    parent = parent.parent ?? parent.role?.window?.transientFor?.surface;
+  }
+  return "";
 }
 
 function belongsTo(surface: Surface, root: Surface): boolean {
@@ -249,7 +269,7 @@ function hasSubstantiveContent(pixels: Uint8ClampedArray, width: number, height:
       const index = (y * width + x) * 4;
       if (pixels[index + 3] === 0) continue;
       const bucket =
-        ((pixels[index]! >> 4) << 8) | ((pixels[index + 1]! >> 4) << 4) | (pixels[index + 2]! >> 4);
+        ((pixels[index] >> 4) << 8) | ((pixels[index + 1] >> 4) << 4) | (pixels[index + 2] >> 4);
       colorBuckets.set(bucket, (colorBuckets.get(bucket) ?? 0) + 1);
       sampled++;
     }
@@ -260,16 +280,21 @@ function hasSubstantiveContent(pixels: Uint8ClampedArray, width: number, height:
 
 async function pngBase64(canvas: HTMLCanvasElement): Promise<{ base64: string; size: number }> {
   const blob = await new Promise<Blob>((resolve, reject) => {
-    canvas.toBlob(
-      (result) => (result ? resolve(result) : reject(new Error("PNG_ENCODE_FAILED"))),
-      "image/png",
-    );
+    canvas.toBlob((result) => {
+      if (result) resolve(result);
+      else reject(new Error("PNG_ENCODE_FAILED"));
+    }, "image/png");
   });
   if (blob.size > MAX_TILE_BYTES) throw new Error("TILE_TOO_LARGE");
   const dataUrl = await new Promise<string>((resolve, reject) => {
     const reader = new FileReader();
-    reader.onerror = () => reject(new Error("PNG_READ_FAILED"));
-    reader.onload = () => resolve(String(reader.result));
+    reader.onerror = () => {
+      reject(new Error("PNG_READ_FAILED"));
+    };
+    reader.onload = () => {
+      if (typeof reader.result === "string") resolve(reader.result);
+      else reject(new Error("PNG_READ_FAILED"));
+    };
     reader.readAsDataURL(blob);
   });
   return { base64: dataUrl.slice(dataUrl.indexOf(",") + 1), size: blob.size };
@@ -330,7 +355,9 @@ async function readSelection(source: SelectionSource): Promise<string> {
   const blob = await Promise.race([
     readFD.readBlob(),
     new Promise<never>((_, reject) =>
-      setTimeout(() => reject(new Error("SELECTION_TIMEOUT")), 3000),
+      setTimeout(() => {
+        reject(new Error("SELECTION_TIMEOUT"));
+      }, 3000),
     ),
   ]);
   try {
@@ -343,7 +370,7 @@ async function readSelection(source: SelectionSource): Promise<string> {
 
 async function main(): Promise<void> {
   const config = window.workosChildConfig;
-  if (!config || !window.workosPush) throw new Error("CHILD_CONFIG_MISSING");
+  if (!config || !Reflect.has(window, "workosPush")) throw new Error("CHILD_CONFIG_MISSING");
   await initWasm();
   const session = (await createCompositorSession(config.compositorSessionId)) as InternalSession;
   const seat = session.globals.seat as unknown as Seat;
@@ -354,8 +381,8 @@ async function main(): Promise<void> {
   if (!display || !windowContainer) throw new Error("CHILD_CANVAS_MISSING");
   display.width = config.width;
   display.height = config.height;
-  display.style.width = `${config.width}px`;
-  display.style.height = `${config.height}px`;
+  display.style.width = `${String(config.width)}px`;
+  display.style.height = `${String(config.height)}px`;
   session.renderer.initScene("workos-display", display);
 
   const facts = (): WindowFact[] =>
@@ -366,12 +393,12 @@ async function main(): Promise<void> {
       )
       .map((record) => ({
         id: record.id,
-        parentWindowId: "",
+        parentWindowId: record.parentWindowId,
         title: record.title,
         appId: record.appId,
         contentRect: record.contentRect,
         visualRect: record.visualRect,
-        devicePixelRatioMillis: Math.round(record.pixelRatio * 1000),
+        devicePixelRatioMillis: Math.round(record.scenePixelRatio * 1000),
         zOrder: record.zOrder,
         active: record.active,
         revision: record.revision.toString(),
@@ -384,7 +411,7 @@ async function main(): Promise<void> {
       sameSurface(view, record.surface),
     );
     if (topIndex < 0) return;
-    const top = session.renderer.topLevelViews[topIndex]!;
+    const top = session.renderer.topLevelViews[topIndex];
     if (!top.mapped) return;
     const content = viewRect(top);
     if (!content) return;
@@ -407,10 +434,13 @@ async function main(): Promise<void> {
       return;
     }
     const ready = Boolean(top.surface.state.bufferContents);
+    const parentId = parentWindowId(top, windows);
     const changed =
       !sameRect(content, record.contentRect) ||
       !sameRect(visual, record.visualRect) ||
       topIndex !== record.zOrder ||
+      parentId !== record.parentWindowId ||
+      record.pixelRatio !== record.scenePixelRatio ||
       ready !== record.readyForCapture;
     if (ready && !record.readyForCapture) record.firstNativeAt = Date.now();
     record.readyForCapture = ready;
@@ -418,6 +448,8 @@ async function main(): Promise<void> {
     record.contentRect = content;
     record.visualRect = visual;
     record.zOrder = topIndex;
+    record.parentWindowId = parentId;
+    record.scenePixelRatio = record.pixelRatio;
     record.revision++;
     record.forceFull = true;
     record.previousPixels = undefined;
@@ -426,6 +458,7 @@ async function main(): Promise<void> {
   };
 
   const capture = async (record: WindowRecord): Promise<void> => {
+    const hasCaptureAgain = () => record.captureAgain;
     if (record.capturePending) {
       record.captureAgain = true;
       return;
@@ -529,7 +562,7 @@ async function main(): Promise<void> {
         }
         if (fullRefresh) record.lastFullAt = now;
         record.forceFull = false;
-      } while (record.captureAgain);
+      } while (hasCaptureAgain());
     } catch (error) {
       fail(error instanceof Error ? error.message : "FRAME_CAPTURE_FAILED");
     } finally {
@@ -559,9 +592,11 @@ async function main(): Promise<void> {
       title: meta?.title ?? "",
       appId: meta?.appId ?? "",
       active: meta?.active ?? false,
+      parentWindowId: "",
       contentRect: emptyRect,
       visualRect: emptyRect,
       pixelRatio: config.devicePixelRatioMillis / 1000,
+      scenePixelRatio: 0,
       zOrder: -1,
       revision: 1n,
       frameSequence: 0n,
@@ -685,7 +720,7 @@ async function main(): Promise<void> {
     sendKey("ControlLeft", "Control", false);
   };
 
-  window.workosChildApplyInput = async (input) => {
+  window.workosChildApplyInput = (input) => {
     const record = findWindow(input.windowId);
     const { event } = input;
     const value = event.value;
@@ -808,7 +843,9 @@ async function main(): Promise<void> {
 }
 
 void main().catch((error: unknown) => {
-  void window.workosPush?.({
+  const push = Reflect.get(window, "workosPush") as Window["workosPush"] | undefined;
+  if (!push) return;
+  void push({
     kind: "failure",
     reasonCode: error instanceof Error ? error.message : "CHILD_COMPOSITOR_FAILED",
   });

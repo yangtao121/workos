@@ -82,11 +82,15 @@ const textDecoder = new TextDecoder("utf-8", { fatal: true });
 const safeCode = (reason: string) =>
   /^[A-Z][A-Z0-9_]{1,63}$/.test(reason) ? reason : "CHILD_COMPOSITOR_FAILED";
 
+function socketIsDestroyed(socket: Socket): boolean {
+  return socket.destroyed;
+}
+
 function parseOptions(argv: string[]): Options {
   const values = new Map<string, string>();
   for (let index = 0; index < argv.length; index += 2) {
-    const key = argv[index];
-    const value = argv[index + 1];
+    const key = argv.at(index);
+    const value = argv.at(index + 1);
     if (!key?.startsWith("--") || !value || values.has(key))
       throw new Error("CHILD_ARGUMENT_INVALID");
     values.set(key, value);
@@ -253,7 +257,7 @@ async function launchProxy(
     { mode: 0o600 },
   );
   const port = await freePort();
-  const origin = `http://127.0.0.1:${pagePort}`;
+  const origin = `http://127.0.0.1:${String(pagePort)}`;
   const proxy = spawn(
     process.execPath,
     [
@@ -265,7 +269,7 @@ async function launchProxy(
       "--allow-origin",
       origin,
       "--base-url",
-      `ws://127.0.0.1:${port}`,
+      `ws://127.0.0.1:${String(port)}`,
       "--encoder",
       "x264",
       "--render-device",
@@ -275,14 +279,14 @@ async function launchProxy(
     ],
     { cwd: "/opt/greenfield", env: childEnvironment(), stdio: "ignore" },
   );
-  let exited = false;
+  const proxyState = { exited: false };
   proxy.once("exit", () => {
-    exited = true;
+    proxyState.exited = true;
   });
-  const url = `http://127.0.0.1:${port}/code`;
+  const url = `http://127.0.0.1:${String(port)}/code`;
   try {
     for (let attempt = 0; attempt < 150; attempt++) {
-      if (exited) throw new Error("GREENFIELD_PROXY_EXITED");
+      if (proxyState.exited) throw new Error("GREENFIELD_PROXY_EXITED");
       try {
         const response = await fetch(url, {
           headers: { Origin: origin, "x-compositor-session-id": "workos" },
@@ -332,6 +336,14 @@ class ChildBridge {
 
   constructor(private readonly options: Options) {}
 
+  private isEnded(): boolean {
+    return this.ended;
+  }
+
+  private pageIfReady(): Page | undefined {
+    return this.page;
+  }
+
   private envelope(
     payload: GreenfieldChildEnvelope["payload"],
     requestId = 0n,
@@ -356,7 +368,7 @@ class ChildBridge {
     try {
       await Promise.race([once(socket, "drain"), once(socket, "close")]);
     } catch (error) {
-      if (!socket.destroyed) throw error;
+      if (!socketIsDestroyed(socket)) throw error;
     }
   }
 
@@ -460,7 +472,7 @@ class ChildBridge {
   private async handleInput(envelope: GreenfieldChildEnvelope, socket: Socket): Promise<void> {
     if (envelope.payload.case !== "input") return;
     const request = envelope.payload.value;
-    const event = request.events[0];
+    const event = request.events.at(0);
     if (
       request.events.length !== 1 ||
       !event ||
@@ -499,7 +511,9 @@ class ChildBridge {
           event.sequence,
           fingerprint,
         );
-        await this.page.evaluate((input) => window.workosChildApplyInput(input), payload);
+        await this.page.evaluate((input) => {
+          window.workosChildApplyInput(input);
+        }, payload);
         this.ledger.accept(
           request.attachmentId,
           this.options.generation,
@@ -620,9 +634,10 @@ class ChildBridge {
         if (!this.ended) setTimeout(() => void this.connectSocket(), 250);
       });
       await this.sendSnapshot();
-      if (this.page) await this.page.evaluate(() => window.workosChildForceFrames());
+      const page = this.pageIfReady();
+      if (page) await page.evaluate(() => window.workosChildForceFrames());
     } catch {
-      if (!this.ended) setTimeout(() => void this.connectSocket(), 250);
+      if (!this.isEnded()) setTimeout(() => void this.connectSocket(), 250);
     } finally {
       this.reconnecting = false;
     }
@@ -663,7 +678,7 @@ class ChildBridge {
           await this.fatal("CHILD_MEDIA_INVALID");
         }
       });
-      const origin = `http://127.0.0.1:${pageServer.port}`;
+      const origin = `http://127.0.0.1:${String(pageServer.port)}`;
       const launchUrl = proxy.launchUrl;
       await page.route(launchUrl, async (route) => {
         await route.fulfill({
@@ -686,7 +701,7 @@ class ChildBridge {
         })}`,
       });
       await page.goto(origin, { waitUntil: "load", timeout: 30_000 });
-      await page.waitForFunction(() => window.workosChildReady === true, null, { timeout: 30_000 });
+      await page.waitForFunction(() => window.workosChildReady, null, { timeout: 30_000 });
       await this.sendSnapshot();
       await page.evaluate(() => window.workosChildForceFrames());
       const reason = await Promise.race([

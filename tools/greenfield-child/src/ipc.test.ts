@@ -37,12 +37,16 @@ describe("child IPC record framing", () => {
   it("rejects malformed, oversized and wrong-version records", () => {
     const oversized = Buffer.alloc(4);
     oversized.writeUInt32BE(2_200_001);
-    expect(() => new RecordReader(() => undefined).push(oversized)).toThrow("IPC_RECORD_TOO_LARGE");
+    expect(() => {
+      new RecordReader(() => undefined).push(oversized);
+    }).toThrow("IPC_RECORD_TOO_LARGE");
     expect(() => encodeRecord({ ...envelope, protocolVersion: 2 })).toThrow("IPC_VERSION_INVALID");
     const record = encodeRecord(envelope);
     const invalid = Buffer.from(record);
     invalid[4] = 0;
-    expect(() => new RecordReader(() => undefined).push(invalid)).toThrow();
+    expect(() => {
+      new RecordReader(() => undefined).push(invalid);
+    }).toThrow();
   });
 
   it("encodes nested window facts supplied by the compositor", () => {

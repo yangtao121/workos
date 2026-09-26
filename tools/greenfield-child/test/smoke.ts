@@ -6,6 +6,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import {
   GreenfieldChildEnvelopeSchema,
+  GreenfieldInputVerdict,
   GreenfieldWindowFocusSchema,
   GreenfieldWindowInputEventSchema,
   SendGreenfieldWindowInputRequestSchema,
@@ -88,14 +89,17 @@ async function handle(socket: Socket, envelope: GreenfieldChildEnvelope): Promis
   }
   if (envelope.payload.case === "windows") {
     const windows = envelope.payload.value.windows;
-    if (windows.length && !firstWindow) firstWindow = windows[0]!.id;
-    if (connections === 2 && windows.length && windows[0]!.id !== firstWindow) {
+    if (windows.length && !firstWindow) firstWindow = windows[0].id;
+    if (connections === 2 && windows.length && windows[0].id !== firstWindow) {
       throw new Error("window identity changed across broker reconnect");
     }
     return;
   }
   if (envelope.payload.case === "inputResult") {
-    if (envelope.requestId !== 1n || envelope.payload.value.verdict !== 1) {
+    if (
+      envelope.requestId !== 1n ||
+      envelope.payload.value.verdict !== GreenfieldInputVerdict.APPLIED
+    ) {
       throw new Error("native focus input not applied");
     }
     sawInputResult = true;
@@ -116,7 +120,10 @@ async function handle(socket: Socket, envelope: GreenfieldChildEnvelope): Promis
       height: tile.height,
     });
     await mkdir(evidenceDir, { recursive: true });
-    await writeFile(join(evidenceDir, `tile-${tile.tileIndex}-${tile.x}-${tile.y}.png`), tile.png);
+    await writeFile(
+      join(evidenceDir, `tile-${String(tile.tileIndex)}-${String(tile.x)}-${String(tile.y)}.png`),
+      tile.png,
+    );
     if (firstFrameTiles === 1) {
       await writeFile(join(evidenceDir, "first-native-tile.png"), tile.png);
       firstFrameSequence = tile.frameSequence;
@@ -141,7 +148,9 @@ server.on("connection", (socket) => {
   const reader = new RecordReader((envelope) => {
     chain = chain
       .then(() => handle(socket, envelope))
-      .catch((error: unknown) => finish(error as Error));
+      .catch((error: unknown) => {
+        finish(error as Error);
+      });
   });
   socket.on("data", (chunk: Buffer) => {
     try {
@@ -154,7 +163,9 @@ server.on("connection", (socket) => {
 server.listen(socketPath, () => {
   listeningAt = Date.now();
   process.stdout.write("broker-listening\n");
-  timer = setTimeout(() => finish(new Error("child smoke timed out")), 120_000);
+  timer = setTimeout(() => {
+    finish(new Error("child smoke timed out"));
+  }, 120_000);
 });
 await done.finally(() => {
   clearTimeout(timer);

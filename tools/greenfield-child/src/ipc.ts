@@ -21,7 +21,7 @@ export function encodeRecord(envelope: GreenfieldChildEnvelope): Buffer {
 }
 
 export class RecordReader {
-  private buffered: Buffer<ArrayBufferLike> = Buffer.alloc(0);
+  private buffered: Buffer = Buffer.alloc(0);
   constructor(private readonly onEnvelope: (envelope: GreenfieldChildEnvelope) => void) {}
 
   push(chunk: Buffer): void {
@@ -57,7 +57,7 @@ export class InputSequenceLedger {
     event: GreenfieldWindowInputEvent,
     fingerprint: string,
   ): "new" | "duplicate" | "uncertain" | "invalid" {
-    const key = `${generation}:${attachmentId}`;
+    const key = `${String(generation)}:${attachmentId}`;
     const last = this.accepted.get(key);
     if (last && event.sequence === last.sequence) {
       return fingerprint === last.fingerprint ? "duplicate" : "invalid";
@@ -78,16 +78,16 @@ export class InputSequenceLedger {
     sequence: bigint,
     fingerprint: string,
   ): void {
-    this.attempted.set(`${generation}:${attachmentId}`, { sequence, fingerprint });
+    this.attempted.set(`${String(generation)}:${attachmentId}`, { sequence, fingerprint });
   }
 
   accept(attachmentId: string, generation: bigint, sequence: bigint, fingerprint: string): void {
-    const key = `${generation}:${attachmentId}`;
+    const key = `${String(generation)}:${attachmentId}`;
     this.accepted.set(key, { sequence, fingerprint });
     this.attempted.delete(key);
   }
 
   lastApplied(attachmentId: string, generation: bigint): bigint {
-    return this.accepted.get(`${generation}:${attachmentId}`)?.sequence ?? 0n;
+    return this.accepted.get(`${String(generation)}:${attachmentId}`)?.sequence ?? 0n;
   }
 }

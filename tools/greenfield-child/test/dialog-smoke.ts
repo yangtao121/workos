@@ -1,10 +1,11 @@
-// Manual native Open File dialog probe after menu-smoke leaves the File menu open.
+// Manual native Open File dialog probe after Code onboarding is complete.
 import { create } from "@bufbuild/protobuf";
 import { createServer, type Socket } from "node:net";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import {
   GreenfieldChildEnvelopeSchema,
+  GreenfieldInputVerdict,
   GreenfieldPointerAction,
   GreenfieldPointerInputSchema,
   GreenfieldWindowInputEventSchema,
@@ -38,8 +39,12 @@ const snapshots: Array<
 const waiting = new Map<bigint, (envelope: GreenfieldChildEnvelope) => void>();
 let finish!: (error?: Error) => void;
 const done = new Promise<void>((resolve, reject) => {
-  finish = (error) => (error ? reject(error) : resolve());
+  finish = (error) => {
+    if (error) reject(error);
+    else resolve();
+  };
 });
+const readyForInput = () => Boolean(windowId) && firstFrameReady;
 
 async function input(event: GreenfieldWindowInputEvent["event"]): Promise<void> {
   const connected = socket;
@@ -70,8 +75,11 @@ async function input(event: GreenfieldWindowInputEvent["event"]): Promise<void> 
   );
   connected.write(encodeRecord(envelope));
   const result = await response;
-  if (result.payload.case !== "inputResult" || result.payload.value.verdict !== 1) {
-    throw new Error(`input failed at sequence ${sequence - 1n}`);
+  if (
+    result.payload.case !== "inputResult" ||
+    result.payload.value.verdict !== GreenfieldInputVerdict.APPLIED
+  ) {
+    throw new Error(`input failed at sequence ${String(sequence - 1n)}`);
   }
 }
 
@@ -102,7 +110,7 @@ server.on("connection", (connected) => {
           appId: window.appId,
         })),
       );
-      if (!windowId && windows.length) windowId = windows[0]!.id;
+      if (!windowId && windows.length) windowId = windows[0].id;
     }
     if (!afterMenu && envelope.payload.case === "frameTile") {
       const tile = envelope.payload.value;
@@ -120,7 +128,10 @@ server.on("connection", (connected) => {
         if (capturingSequences.get(tile.windowId) !== tile.frameSequence) return;
         void mkdir(evidenceDir, { recursive: true }).then(() =>
           writeFile(
-            join(evidenceDir, `dialog-${tile.windowId}-${tile.tileIndex}-${tile.x}-${tile.y}.png`),
+            join(
+              evidenceDir,
+              `dialog-${tile.windowId}-${String(tile.tileIndex)}-${String(tile.x)}-${String(tile.y)}.png`,
+            ),
             tile.png,
           ),
         );
@@ -142,8 +153,10 @@ server.on("connection", (connected) => {
 server.listen(socketPath, () => process.stdout.write("menu-broker-listening\n"));
 
 try {
-  const timeout = setTimeout(() => finish(new Error("menu smoke timeout")), 90_000);
-  while (!windowId || !firstFrameReady) await pause(100);
+  const timeout = setTimeout(() => {
+    finish(new Error("menu smoke timeout"));
+  }, 90_000);
+  while (!readyForInput()) await pause(100);
   await pause(1000);
   const click = async (x: number, y: number) => {
     const pointer = (action: GreenfieldPointerAction) => ({
@@ -155,7 +168,9 @@ try {
     await input(pointer(GreenfieldPointerAction.DOWN));
     await input(pointer(GreenfieldPointerAction.UP));
   };
-  await click(150, 182); // Open File... in the already visible File menu
+  await click(90, 50); // File menu on Code's main native window
+  await pause(250);
+  await click(150, 182); // Open File... in the menu
   afterMenu = true;
   await pause(5000);
   clearTimeout(timeout);
