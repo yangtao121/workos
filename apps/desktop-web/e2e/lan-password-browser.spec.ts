@@ -11,7 +11,7 @@ const username = process.env.WORKOS_LAN_E2E_USERNAME ?? "";
 const passwordFile = process.env.WORKOS_LAN_E2E_PASSWORD_FILE ?? "";
 const enabled = process.env.WORKOS_LAN_PASSWORD_E2E === "true";
 const surfacePath = "/surfaces/01990000-0000-7000-8000-000000000001/";
-const nativePath = "/native/greenfield/01990000-0000-7000-8000-000000000001/";
+const disabledRawGreenfieldPath = "/native/greenfield/01990000-0000-7000-8000-000000000001/";
 
 test.skip(!enabled, "run with tools/lan/test-browser.sh against the integrated LAN stack");
 test.use({ trace: "off", screenshot: "off", video: "off" });
@@ -91,18 +91,18 @@ async function currentDevice(page: Page): Promise<Device> {
 
 async function protectedRoutesWork(page: Page): Promise<void> {
   expect((await rpc(page, "/workos.project.v1.ProjectService/ListProjects")).status).toBe(200);
-  for (const path of [surfacePath, nativePath]) {
-    const status = await getStatus(page, path);
-    expect(status).not.toBe(401);
-    expect(status).not.toBe(403);
-  }
+  const status = await getStatus(page, surfacePath);
+  expect(status).not.toBe(401);
+  expect(status).not.toBe(403);
+  // Production never routes the direct Greenfield proxy: its raw signaling
+  // key is unavailable even to an authenticated owner.
+  expect(await getStatus(page, disabledRawGreenfieldPath)).toBe(404);
 }
 
 async function protectedRoutesReject(page: Page): Promise<void> {
   expect((await rpc(page, "/workos.project.v1.ProjectService/ListProjects")).status).toBe(401);
-  for (const path of [surfacePath, nativePath]) {
-    expect(await getStatus(page, path)).toBe(401);
-  }
+  expect(await getStatus(page, surfacePath)).toBe(401);
+  expect(await getStatus(page, disabledRawGreenfieldPath)).toBe(404);
 }
 
 async function sessionCookie(context: BrowserContext) {
