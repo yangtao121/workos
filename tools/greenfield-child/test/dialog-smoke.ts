@@ -1,4 +1,4 @@
-// Manual native menu probe against a running resident Code child.
+// Manual native Open File dialog probe after menu-smoke leaves the File menu open.
 import { create } from "@bufbuild/protobuf";
 import { createServer, type Socket } from "node:net";
 import { mkdir, writeFile } from "node:fs/promises";
@@ -7,7 +7,6 @@ import {
   GreenfieldChildEnvelopeSchema,
   GreenfieldPointerAction,
   GreenfieldPointerInputSchema,
-  GreenfieldWindowFocusSchema,
   GreenfieldWindowInputEventSchema,
   SendGreenfieldWindowInputRequestSchema,
   type GreenfieldChildEnvelope,
@@ -31,6 +30,8 @@ let afterMenu = false;
 let savedFrame = false;
 let framesAfterMenu = 0;
 let firstFrameReady = false;
+const savedFrameWindowIds = new Set<string>();
+const capturingSequences = new Map<string, bigint>();
 const snapshots: Array<
   Array<{ id: string; parentWindowId: string; title: string; appId: string }>
 > = [];
@@ -111,13 +112,22 @@ server.on("connection", (connected) => {
     }
     if (afterMenu && envelope.payload.case === "frameTile") {
       const tile = envelope.payload.value;
-      if (tile.windowId !== windowId) return;
       if (tile.tileIndex === 0) framesAfterMenu++;
-      if (tile.fullRefresh && !savedFrame) {
+      if (tile.fullRefresh && !savedFrameWindowIds.has(tile.windowId)) {
+        if (!capturingSequences.has(tile.windowId)) {
+          capturingSequences.set(tile.windowId, tile.frameSequence);
+        }
+        if (capturingSequences.get(tile.windowId) !== tile.frameSequence) return;
         void mkdir(evidenceDir, { recursive: true }).then(() =>
-          writeFile(join(evidenceDir, `menu-${tile.tileIndex}-${tile.x}-${tile.y}.png`), tile.png),
+          writeFile(
+            join(evidenceDir, `dialog-${tile.windowId}-${tile.tileIndex}-${tile.x}-${tile.y}.png`),
+            tile.png,
+          ),
         );
-        if (tile.tileIndex + 1 === tile.tileCount) savedFrame = true;
+        if (tile.tileIndex + 1 === tile.tileCount) {
+          savedFrameWindowIds.add(tile.windowId);
+          savedFrame = true;
+        }
       }
     }
   });
@@ -135,7 +145,6 @@ try {
   const timeout = setTimeout(() => finish(new Error("menu smoke timeout")), 90_000);
   while (!windowId || !firstFrameReady) await pause(100);
   await pause(1000);
-  await input({ case: "focus", value: create(GreenfieldWindowFocusSchema) });
   const click = async (x: number, y: number) => {
     const pointer = (action: GreenfieldPointerAction) => ({
       case: "pointer" as const,
@@ -146,20 +155,19 @@ try {
     await input(pointer(GreenfieldPointerAction.DOWN));
     await input(pointer(GreenfieldPointerAction.UP));
   };
-  // A fresh Code profile presents two onboarding pages. These clicks select
-  // "Continue without Signing In" and then "Get Started"; after onboarding
-  // has already completed they only touch the editor area.
-  await click(1100, 730);
-  await pause(1200);
-  await click(1150, 730);
-  await pause(1200);
-  await click(90, 50); // File menu on Code's native top-level
+  await click(150, 182); // Open File... in the already visible File menu
   afterMenu = true;
-  await pause(4000);
+  await pause(5000);
   clearTimeout(timeout);
   await mkdir(evidenceDir, { recursive: true });
-  const result = { windowId, snapshots, framesAfterMenu, savedFrame };
-  await writeFile(join(evidenceDir, "menu.json"), JSON.stringify(result, null, 2));
+  const result = {
+    windowId,
+    snapshots,
+    framesAfterMenu,
+    savedFrame,
+    savedFrameWindowIds: [...savedFrameWindowIds],
+  };
+  await writeFile(join(evidenceDir, "dialog.json"), JSON.stringify(result, null, 2));
   process.stdout.write(`${JSON.stringify(result)}\n`);
   finish();
   await done;

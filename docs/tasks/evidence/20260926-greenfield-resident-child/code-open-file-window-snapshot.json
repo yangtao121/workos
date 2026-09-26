@@ -1,0 +1,41 @@
+{
+  "windowId": "01a0dd9c-8b9f-7b02-9672-6af1427cf170",
+  "snapshots": [
+    [
+      {
+        "id": "01a0dd9c-8b9f-7b02-9672-6af1427cf170",
+        "parentWindowId": "",
+        "title": "Welcome - workspace - Visual Studio Code",
+        "appId": ""
+      }
+    ],
+    [
+      {
+        "id": "01a0dd9c-8b9f-7b02-9672-6af1427cf170",
+        "parentWindowId": "",
+        "title": "Welcome - workspace - Visual Studio Code",
+        "appId": ""
+      }
+    ],
+    [
+      {
+        "id": "01a0dd9c-8b9f-7b02-9672-6af1427cf170",
+        "parentWindowId": "",
+        "title": "Welcome - workspace - Visual Studio Code",
+        "appId": ""
+      },
+      {
+        "id": "01a0dd9f-1da8-719b-8d0e-1de60e7fb0a2",
+        "parentWindowId": "",
+        "title": "Open File",
+        "appId": ""
+      }
+    ]
+  ],
+  "framesAfterMenu": 10,
+  "savedFrame": true,
+  "savedFrameWindowIds": [
+    "01a0dd9c-8b9f-7b02-9672-6af1427cf170",
+    "01a0dd9f-1da8-719b-8d0e-1de60e7fb0a2"
+  ]
+}

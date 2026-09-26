@@ -714,7 +714,10 @@ async function main(): Promise<void> {
           buttons: action === 2 ? 1 << buttonCode : 0,
           sceneId: "workos-display",
         };
-        seat.notifyMotion(pointer);
+        // Greenfield's browser/input queues only a button event for pointerup.
+        // A synthetic motion immediately before release can make an XWayland
+        // menu dismiss itself even though the pointer coordinates did not move.
+        if (action !== 3) seat.notifyMotion(pointer);
         if (action === 2 || action === 3) seat.notifyButton(pointer);
         if (action === 4)
           seat.notifyAxis({

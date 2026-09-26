@@ -28,6 +28,8 @@ let secondFrameTiles = 0;
 let sawInputResult = false;
 let firstFrameFull = false;
 let secondFrameFull = false;
+let firstFrameLatencyMs = 0;
+let listeningAt = 0;
 const firstTiles: Array<{ index: number; x: number; y: number; width: number; height: number }> =
   [];
 let timer: NodeJS.Timeout;
@@ -46,6 +48,7 @@ const summarize = () => ({
   secondFrameTiles,
   firstFrameFull,
   secondFrameFull,
+  firstFrameLatencyMs,
   sawInputResult,
   firstTiles,
 });
@@ -117,6 +120,7 @@ async function handle(socket: Socket, envelope: GreenfieldChildEnvelope): Promis
     if (firstFrameTiles === 1) {
       await writeFile(join(evidenceDir, "first-native-tile.png"), tile.png);
       firstFrameSequence = tile.frameSequence;
+      firstFrameLatencyMs = Date.now() - listeningAt;
     }
     if (tile.tileIndex + 1 === tile.tileCount) {
       socket.destroy();
@@ -133,8 +137,11 @@ async function handle(socket: Socket, envelope: GreenfieldChildEnvelope): Promis
 
 server.on("connection", (socket) => {
   connections++;
+  let chain = Promise.resolve();
   const reader = new RecordReader((envelope) => {
-    void handle(socket, envelope).catch((error: unknown) => finish(error as Error));
+    chain = chain
+      .then(() => handle(socket, envelope))
+      .catch((error: unknown) => finish(error as Error));
   });
   socket.on("data", (chunk: Buffer) => {
     try {
@@ -145,6 +152,7 @@ server.on("connection", (socket) => {
   });
 });
 server.listen(socketPath, () => {
+  listeningAt = Date.now();
   process.stdout.write("broker-listening\n");
   timer = setTimeout(() => finish(new Error("child smoke timed out")), 120_000);
 });
