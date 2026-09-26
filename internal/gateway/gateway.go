@@ -184,6 +184,9 @@ func revalidatedStreamPath(path string) bool {
 const (
 	streamRevalidateInterval = 30 * time.Second
 	streamRevalidateTimeout  = 5 * time.Second
+	// A resident media stream has no independent lifetime. Reserve the
+	// revalidation timeout inside its 30-second revocation bound.
+	greenfieldMediaRevalidateInterval = streamRevalidateInterval - streamRevalidateTimeout
 )
 
 func New(cfg config.Config, logger *slog.Logger, auth *AuthStack) (*Handler, error) {
@@ -596,7 +599,11 @@ func (h *Handler) serveStreamWithRevalidationPolicy(w http.ResponseWriter, r *ht
 	streamCtx, cancel := context.WithCancel(identity)
 	defer cancel()
 	go func() {
-		ticker := time.NewTicker(h.streamRevalidation)
+		interval := h.streamRevalidation
+		if failClosed && interval > greenfieldMediaRevalidateInterval {
+			interval = greenfieldMediaRevalidateInterval
+		}
+		ticker := time.NewTicker(interval)
 		defer ticker.Stop()
 		for {
 			select {

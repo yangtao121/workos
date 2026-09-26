@@ -17,19 +17,48 @@ export WORKOS_LAN_IP=${WORKOS_LAN_IP:-192.168.5.5}
 export WORKOS_LAN_TLS_DIR=${WORKOS_LAN_TLS_DIR:-"$repo/.workos/lan-tls"}
 export WORKOS_LAN_UID=$(id -u)
 export WORKOS_LAN_GID=$(id -g)
+export WORKOS_GREENFIELD_IPC_ROOT=${WORKOS_GREENFIELD_IPC_ROOT:-"$repo/.workos/greenfield-ipc"}
+export WORKOS_WORKSPACE_ROOTS=${WORKOS_WORKSPACE_ROOTS:-"$repo/.workos/workspaces"}
+export WORKOS_RUNTIME_WORKSPACE_MOUNTS=${WORKOS_RUNTIME_WORKSPACE_MOUNTS:-}
+[ -S /var/run/docker.sock ] || { echo 'start.sh: Docker socket is required for the isolated Greenfield child' >&2; exit 1; }
+export WORKOS_DOCKER_GID=$(stat -c %g /var/run/docker.sock)
+if [ -c /dev/dri/renderD128 ]; then
+    export WORKOS_GREENFIELD_RENDER_GID=$(stat -c %g /dev/dri/renderD128)
+else
+    # Keep Gateway/LAN administration available; Runtime reports native
+    # rendering unavailable instead of falling back to an older display.
+    export WORKOS_GREENFIELD_RENDER_GID=-1
+fi
+
+case "$WORKOS_GREENFIELD_IPC_ROOT:$WORKOS_WORKSPACE_ROOTS" in
+    /*:/*) ;;
+    *) echo 'start.sh: IPC and workspace roots must be absolute paths' >&2; exit 1 ;;
+esac
+[ ! -L "$WORKOS_GREENFIELD_IPC_ROOT" ] || { echo 'start.sh: IPC root must not be a symlink' >&2; exit 1; }
 
 mkdir -p "$WORKOS_LAN_TLS_DIR"
 WORKOS_LAN_TLS_DIR=$(CDPATH= cd -- "$WORKOS_LAN_TLS_DIR" && pwd -P)
 export WORKOS_LAN_TLS_DIR
 
-compose() {
+gateway_compose() {
     docker compose -f "$repo/compose.yaml" -f "$repo/deploy/compose.observability.yaml" \
         -f "$repo/deploy/compose.lan-https.yaml" "$@"
 }
 
+resident_compose() {
+    docker compose -f "$repo/compose.yaml" -f "$repo/deploy/compose.observability.yaml" \
+        -f "$repo/deploy/compose.greenfield-resident.yaml" \
+        -f "$repo/deploy/compose.lan-https.yaml" "$@"
+}
+
 if [ "$action" = config ]; then
-    compose config --quiet
-    echo 'LAN HTTPS Compose configuration is valid.'
+    if [ -f "$repo/deploy/compose.greenfield-resident.yaml" ]; then
+        resident_compose config --quiet
+        echo 'LAN HTTPS resident Compose configuration is valid.'
+    else
+        gateway_compose config --quiet
+        echo 'LAN HTTPS Gateway Compose configuration is valid; resident P0 overlay is pending.'
+    fi
     exit 0
 fi
 
@@ -44,27 +73,42 @@ else
     "$here/cert.sh" "$WORKOS_LAN_IP" "$WORKOS_LAN_TLS_DIR"
 fi
 new_fingerprint=$(openssl x509 -in "$WORKOS_LAN_TLS_DIR/leaf.crt" -noout -fingerprint -sha256)
-compose config --quiet
 
 if [ "$action" = set-password ]; then
     # The CLI reads both values from this terminal; no password enters env,
     # command arguments, Compose config, logs or the shell history.
-    exec docker compose -f "$repo/compose.yaml" -f "$repo/deploy/compose.observability.yaml" \
-        -f "$repo/deploy/compose.lan-https.yaml" \
-        exec workos-gateway workosctl auth set-password
+    gateway_compose config --quiet
+    gateway_compose exec workos-gateway workosctl auth set-password
+    exit
 fi
 
 if [ "$action" = renew-leaf ]; then
-    compose up -d --no-deps --force-recreate workos-gateway
+    gateway_compose config --quiet
+    gateway_compose up -d --no-deps --force-recreate workos-gateway
 else
-    compose up -d --build
+    [ -f "$repo/deploy/compose.greenfield-resident.yaml" ] || {
+        echo 'start.sh: resident P0 Compose overlay is not built yet' >&2
+        exit 1
+    }
+    resident_compose config --quiet
+    mkdir -p "$WORKOS_GREENFIELD_IPC_ROOT" "$WORKOS_WORKSPACE_ROOTS"
+    WORKOS_GREENFIELD_IPC_ROOT=$(CDPATH= cd -- "$WORKOS_GREENFIELD_IPC_ROOT" && pwd -P)
+    WORKOS_WORKSPACE_ROOTS=$(CDPATH= cd -- "$WORKOS_WORKSPACE_ROOTS" && pwd -P)
+    export WORKOS_GREENFIELD_IPC_ROOT WORKOS_WORKSPACE_ROOTS
+    # The trusted Runtime and isolated child run as uid 10001. The one-shot
+    # helper changes only the mount root, never project files or TLS keys.
+    docker run --rm --user 0:0 \
+        -v "$WORKOS_GREENFIELD_IPC_ROOT:/run/workos/greenfield-ipc" \
+        debian:bookworm-slim sh -ec 'chown 10001:10001 /run/workos/greenfield-ipc && chmod 0700 /run/workos/greenfield-ipc'
+    docker build -t workos-greenfield-child:dev -f "$repo/deploy/greenfield-child.Dockerfile" "$repo"
+    resident_compose up -d --build
     # Compose does not hash bind-mounted file contents; a previously running
     # collector needs a restart to load the new loopback-only receiver config.
-    compose up -d --no-deps --force-recreate otel-collector
+    resident_compose up -d --no-deps --force-recreate otel-collector
     # A bind mount of an already running gateway may still hold the old inode.
     # Restart only Gateway when automatic renewal replaced the leaf files.
     if [ -n "$old_fingerprint" ] && [ "$old_fingerprint" != "$new_fingerprint" ]; then
-        compose up -d --no-deps --force-recreate workos-gateway
+        resident_compose up -d --no-deps --force-recreate workos-gateway
     fi
 fi
 

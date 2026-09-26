@@ -570,7 +570,7 @@ Desktop 回到密码表单。DeviceService 列表、撤销与退出仍按当前 
 升级检查精确 Origin，并在连接期间定期重验设备会话，撤销后关闭连接。
 
 ADR-0040 的 resident Greenfield 窗口服务经 Gateway 单独 allowlist 转发到 Runtime。
-两个长期媒体 Watch 在开始时校验设备会话，运行中每 30 秒重验；撤销、过期或
+两个长期媒体 Watch 在开始时校验设备会话，运行中至迟每 25 秒启动重验；撤销、过期或
 Gateway auth store 故障均终止媒体流。Runtime 仍须按 live attachment 和 workload
 generation 至少每秒重验，写入须逐事件核对控制代次。原始 `/native/greenfield/`
 代理只留给回环诊断，生产 Gateway 不路由该路径。实现与真实 Code 链路验收见
