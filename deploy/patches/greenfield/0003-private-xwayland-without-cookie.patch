@@ -1,0 +1,49 @@
+--- a/libs/xtsb/src/auth.ts
++++ b/libs/xtsb/src/auth.ts
+@@ -40,6 +40,7 @@
+   authHost: string,
+   socketFamily: 'IPv4' | 'IPv6' | undefined,
+   cookie?: { authName: string; authData: string },
++  allowNoCookie = false,
+ ): Promise<Setup> {
+   return new Promise<Setup>(async (resolve) => {
+     xConnectionSocket.onData = (data) => {
+@@ -47,6 +48,6 @@
+       const setup = readServerHello(data)
+       resolve(setup)
+     }
+-    writeClientHello(xConnectionSocket, displayNum, authHost, socketFamily, cookie)
++    writeClientHello(xConnectionSocket, displayNum, authHost, socketFamily, cookie, allowNoCookie)
+   })
+ }
+@@ -57,7 +58,20 @@
+   authHost: string,
+   socketFamily: 'IPv4' | 'IPv6' | undefined,
+   cookie?: { authName: string; authData: string },
++  allowNoCookie = false,
+ ): Promise<void> {
+-  if (!cookie || paddedString(cookie.authData).length === 0 || paddedString(cookie.authName).length === 0) {
++  const authName = cookie?.authName ?? ''
++  const authData = cookie?.authData ?? ''
++  if (authName.length === 0 || authData.length === 0) {
++    // WorkOS only permits this on the private XWayland WM file descriptor.
++    // The XWayland instance starts with -ac and has no xauth cookie.
++    if (!allowNoCookie || authName.length !== 0 || authData.length !== 0) {
++      throw new Error('No Xauth Cookie found :(')
++    }
++    const authReq = pack('<BxHHHHxx', getByteOrder(), 11, 0, 0, 0)
++    xConnectionSocket.write(new Uint8Array(authReq))
++    return
++  }
++  if (!cookie) {
+     throw new Error('No Xauth Cookie found :(')
+   }
+--- a/libs/xtsb/src/nodeConnection.ts
++++ b/libs/xtsb/src/nodeConnection.ts
+@@ -201,5 +201,5 @@
+   const authHost = os.hostname()
+   const cookie = await getAuthenticationCookie(displayNum, authHost)
+-  const setup = await authenticate(xConnectionSocket, displayNum, authHost, undefined, cookie)
++  const setup = await authenticate(xConnectionSocket, displayNum, authHost, undefined, cookie, true)
+  return { setup, xConnectionSocket }
+ }

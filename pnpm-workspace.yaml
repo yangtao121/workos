@@ -7,3 +7,6 @@ allowBuilds:
   unrs-resolver: false
 
 minimumReleaseAge: 1440
+
+patchedDependencies:
+  '@gfld/compositor@1.0.0-rc1': patches/@gfld__compositor@1.0.0-rc1.patch

@@ -44,6 +44,7 @@ var (
 	ErrWrongEngine           = errors.New("native session engine does not accept this connection")
 	ErrClipboardTooLarge     = errors.New("native clipboard exceeds the byte limit")
 	ErrClipboardDisconnected = errors.New("native clipboard session is disconnected")
+	ErrClipboardUnavailable  = errors.New("native clipboard selection bridge is unavailable")
 )
 
 const MaxClipboardBytes = 256 * 1024

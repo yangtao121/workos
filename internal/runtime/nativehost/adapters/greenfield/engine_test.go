@@ -41,6 +41,7 @@ func serveTestProxy() {
 	_ = fs.String("allow-origin", "", "")
 	_ = fs.String("base-url", "", "")
 	_ = fs.String("encoder", "", "")
+	_ = fs.String("render-device", "", "")
 	_ = fs.Parse(os.Args[1:])
 	mux := http.NewServeMux()
 	mux.HandleFunc("/code", func(w http.ResponseWriter, r *http.Request) {
@@ -95,20 +96,39 @@ func TestUnavailableWithoutBinaries(t *testing.T) {
 	}
 }
 
+func TestUnavailableWithoutRenderDevice(t *testing.T) {
+	engine := New(os.Args[0], os.Args[0], t.TempDir())
+	engine.RenderDevice = filepath.Join(t.TempDir(), "missing-render-node")
+	if err := engine.Available(context.Background()); err == nil || !strings.Contains(err.Error(), "render device") {
+		t.Fatalf("expected render device failure, got %v", err)
+	}
+}
+
+func TestFailedEGLIsUnavailable(t *testing.T) {
+	logPath := filepath.Join(t.TempDir(), "proxy.log")
+	if err := os.WriteFile(logPath, []byte("Failed to initialize EGL context\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := checkRenderInitialization(logPath); err == nil {
+		t.Fatal("EGL failure was accepted")
+	}
+}
+
 func TestDetachKeepsAppAndStopEndsIt(t *testing.T) {
 	dir := t.TempDir()
 	marker := filepath.Join(dir, "note.txt")
 	t.Setenv("WORKOS_GREENFIELD_TEST_PROXY", "1")
 	t.Setenv("WORKOS_GREENFIELD_TEST_APP", "1")
 	engine := New(os.Args[0], os.Args[0], dir)
+	engine.testEnv = []string{"WORKOS_GREENFIELD_TEST_PROXY=1", "WORKOS_GREENFIELD_TEST_APP=1"}
 	engine.AppArgs = []string{}
+	engine.RenderDevice = "/dev/null"
 	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
 	defer cancel()
 	launched, err := engine.Launch(ctx, 1440, 900, marker)
 	if err != nil {
 		t.Fatal(err)
 	}
-	view := launched.(*display)
 	deadline := time.Now().Add(3 * time.Second)
 	for time.Now().Before(deadline) {
 		if raw, err := os.ReadFile(marker); err == nil && string(raw) == "v3-p0-marker\n" {
@@ -127,25 +147,20 @@ func TestDetachKeepsAppAndStopEndsIt(t *testing.T) {
 	if launched.Exited() {
 		t.Fatal("detach stopped the app")
 	}
-	if _, err := view.ReadClipboard(); err != domain.ErrClipboardDisconnected {
-		t.Fatalf("clipboard = %v", err)
-	}
-	view.AttachClipboard()
-	if err := view.WriteClipboard(string(make([]byte, domain.MaxClipboardBytes+1))); err != domain.ErrClipboardTooLarge {
-		t.Fatalf("oversize = %v", err)
-	}
-	if err := view.WriteClipboard("中文\n\temoji 😀"); err != nil {
-		t.Fatal(err)
-	}
-	got, err := view.ReadClipboard()
-	if err != nil || got != "中文\n\temoji 😀" {
-		t.Fatalf("clipboard read %q %v", got, err)
-	}
 	launched.Stop()
 	if !launched.Exited() {
 		t.Fatal("stop left the app running")
 	}
-	if _, err := view.ReadClipboard(); err != domain.ErrClipboardDisconnected {
-		t.Fatalf("clipboard after stop = %v", err)
+}
+
+func TestProxyAndCodeEnvironmentExcludeRuntimeSecrets(t *testing.T) {
+	t.Setenv("WORKOS_DATABASE_URL", "postgres://secret")
+	t.Setenv("WORKOS_CREDENTIAL_MASTER_KEY", "secret")
+	t.Setenv("WORKOS_AUTH_PUBLIC_ORIGIN", "https://workos.example")
+	env := New("proxy", "code", t.TempDir()).processEnv(t.TempDir())
+	for _, item := range env {
+		if strings.HasPrefix(item, "WORKOS_") || strings.Contains(item, "postgres://secret") {
+			t.Fatalf("runtime credential leaked to proxy: %s", item)
+		}
 	}
 }

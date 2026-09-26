@@ -159,15 +159,15 @@ func (s *Service) Create(ctx context.Context, ownerUserID, projectID, idempotenc
 		}
 		return domain.Session{}, domain.ErrEngineUnavailable
 	}
-	display, err := s.launch(ctx, width, height, grant, mode)
+	display, err := s.launch(ctx, session.SessionID, width, height, grant, mode)
 	if err != nil {
 		release()
 		s.logger.Warn("native display launch failed", "error", err)
 		_ = s.store.CloseSession(ctx, ownerUserID, session.SessionID, domain.StateFailed, time.Now().UTC())
 		return domain.Session{}, domain.ErrEngineUnavailable
 	}
-	if binder, ok := display.(interface{ BindSession(string) }); ok {
-		binder.BindSession(session.SessionID)
+	if binder, ok := display.(interface{ BindSession(string, string) }); ok {
+		binder.BindSession(session.SessionID, ownerUserID)
 	}
 	s.mu.Lock()
 	s.displays[session.SessionID] = display
@@ -432,10 +432,13 @@ func (s *Service) Restart(ctx context.Context, owner, id, key string, fence func
 	if err != nil {
 		return domain.Session{}, err
 	}
-	display, err := s.launch(ctx, session.Width, session.Height, grant, mode)
+	display, err := s.launch(ctx, session.SessionID, session.Width, session.Height, grant, mode)
 	if err != nil {
 		release()
 		return domain.Session{}, domain.ErrEngineUnavailable
+	}
+	if binder, ok := display.(interface{ BindSession(string, string) }); ok {
+		binder.BindSession(session.SessionID, owner)
 	}
 	s.mu.Lock()
 	s.displays[id] = display

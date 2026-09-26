@@ -9,9 +9,7 @@ import (
 
 type greenfieldDisplay interface {
 	Endpoint(dprMillis int32) (string, string, int32, int32, int32, error)
-	AttachClipboard()
-	WriteClipboard(string) error
-	ReadClipboard() (string, error)
+	BindController(deviceID string, authorized func() bool)
 }
 
 // OpenGreenfield returns the runtime-local compositor path. It does not
@@ -24,27 +22,27 @@ func (s *Service) OpenGreenfield(ctx context.Context, ownerUserID, deviceID, ses
 	if dprMillis != 0 && (dprMillis < 500 || dprMillis > 4000) {
 		return "", "", 0, 0, 0, domain.ErrInvalid
 	}
-	display.AttachClipboard()
-	return display.Endpoint(dprMillis)
+	path, compositor, width, height, dpr, err := display.Endpoint(dprMillis)
+	if err != nil {
+		return "", "", 0, 0, 0, err
+	}
+	gate := s.control.(ports.EpochControlAuthorizer)
+	display.BindController(deviceID, func() bool {
+		return gate.AuthorizeInputGeneration(context.Background(), ownerUserID, sessionID, deviceID, epoch) == nil
+	})
+	return path, compositor, width, height, dpr, nil
 }
 
 func (s *Service) TransferClipboard(ctx context.Context, ownerUserID, deviceID, sessionID, direction string, text []byte, epoch int64) ([]byte, error) {
-	display, _, err := s.greenfieldDisplay(ctx, ownerUserID, deviceID, sessionID, epoch)
+	_, _, err := s.greenfieldDisplay(ctx, ownerUserID, deviceID, sessionID, epoch)
 	if err != nil {
 		return nil, err
 	}
 	switch direction {
-	case "host_to_app":
-		if err := display.WriteClipboard(string(text)); err != nil {
-			return nil, err
-		}
-		return text, nil
-	case "app_to_host":
-		got, err := display.ReadClipboard()
-		if err != nil {
-			return nil, err
-		}
-		return []byte(got), nil
+	case "host_to_app", "app_to_host":
+		// Browser-side Wayland selection is separate. This legacy RPC has no
+		// system-selection bridge; never return an in-memory string as success.
+		return nil, domain.ErrClipboardUnavailable
 	default:
 		return nil, domain.ErrInvalid
 	}
@@ -61,10 +59,12 @@ func (s *Service) greenfieldDisplay(ctx context.Context, ownerUserID, deviceID, 
 	if session.State.Terminal() || session.State == domain.StateFailed {
 		return nil, domain.Session{}, domain.ErrEngineUnavailable
 	}
-	if gate, ok := s.control.(ports.EpochControlAuthorizer); ok {
-		if err := gate.AuthorizeInputGeneration(ctx, ownerUserID, sessionID, deviceID, epoch); err != nil {
-			return nil, domain.Session{}, err
-		}
+	gate, ok := s.control.(ports.EpochControlAuthorizer)
+	if !ok {
+		return nil, domain.Session{}, domain.ErrControlDenied
+	}
+	if err := gate.AuthorizeInputGeneration(ctx, ownerUserID, sessionID, deviceID, epoch); err != nil {
+		return nil, domain.Session{}, err
 	}
 	s.mu.Lock()
 	display, ok := s.displays[sessionID]

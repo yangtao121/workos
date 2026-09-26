@@ -68,3 +68,11 @@
 ## 交接
 
 进行中。
+
+## 2026-09-26 continuation: pinned Greenfield technical gate
+
+- Claimed work package: Greenfield Runtime image, official Code launch, GPU/XWayland/WebCodecs fixes, authenticated proxy attach and control revocation. Branch/worktree: `feat/v3-p0-greenfield` / `/home/aquatao/workos-v3-p0`. This supersedes the historical `main` worktree line for this continuation. Contract and browser input/clipboard work are separate agents/worktrees.
+- Scope/acceptance: reproducible pinned image and real browser pixels; GUI save must change the fixture; no second Code PID on attach; device/control generation must gate proxy traffic even after WebSocket upgrade; document actual reconnect result. No A06/A07/A02 acceptance claim without visual/state evidence.
+- Result: [gate record](evidence/20260924-v3-p0-native-experience/greenfield-gate.md), [pins](evidence/20260924-v3-p0-native-experience/versions.md), [UI before](../ui/desktop-web/changes/20260924-v3-p0-native-experience/before/greenfield-code--editor--1440x900.png), [after](../ui/desktop-web/changes/20260924-v3-p0-native-experience/after/greenfield-code--editor--1440x900.png), and [capture notes](../ui/desktop-web/changes/20260924-v3-p0-native-experience/notes.md). A01 isolated GUI edit/save passed. A05 X11→browser text selection passed in a diagnostic probe, while full bidirectional/Mac clipboard remains unpassed. A06 failed: same Code PID survived but the fresh browser canvas was blank. A02/A03/A07/A10/A11 remain unmet. The direct image cannot be enabled as a production LAN Compose overlay because Code shares Runtime's container.
+- Verification: `go test ./internal/runtime/nativehost/adapters/greenfield ./internal/runtime/nativehost/application ./cmd/runtime-host` passed in `golang:1.26.7-bookworm` with cached modules; `docker build -t workos-greenfield-runtime:p0 -f deploy/greenfield-runtime.Dockerfile .` passed; pinned `pnpm install --frozen-lockfile` passed. `make generate`/`make check` and full physical-client P0 acceptance remain open for the integrated resident-compositor design.
+- Next dependency: ADR-0040 resident Chromium/Greenfield compositor and child-container contract, followed by producer/consumer implementation and A01–A12 integrated tests. Keep this task `in_progress` and Greenfield capability no higher than scaffolded until those gates pass.

@@ -1,16 +1,14 @@
-# 固定版本
+# V3 P0 diagnostic pins
 
-| 组件       | 值                                                                                                                |
-| ---------- | ----------------------------------------------------------------------------------------------------------------- |
-| Greenfield | `6c578f4db7ec027eb1d8a5f7ec6e09f7646dbb57`                                                                        |
-| 源码镜像   | `https://ghfast.top/https://github.com/udevbe/greenfield/archive/6c578f4db7ec027eb1d8a5f7ec6e09f7646dbb57.tar.gz` |
-| 补丁       | `deploy/patches/greenfield/0001-keep-clients-without-browser.patch`（去掉浏览器断开后 600 秒 SIGHUP）             |
-| Debian     | `http://mirrors.huaweicloud.com/debian` bookworm                                                                  |
-| npm        | `https://registry.npmmirror.com`                                                                                  |
-| 镜像       | `workos-greenfield-runtime:p0`，id `sha256:73e2cc90af28fdbf0b2e3b3e7b8b96d6b4ba9c48e9da8ce2c476fa0731d9c78f`      |
-| VS Code    | 1.139.0，`2242ebbb54efeeb0129e08e919e7e8d43033cd83`                                                               |
-| deb sha256 | `5031849ea13d2297ec7c8f1af70c0bc7d585250cae306b53d668cb6a7a900623`                                                |
-| 基础镜像   | `node:24.19.0-bookworm-slim`                                                                                      |
-| 编码       | 容器内无 `/dev/dri/renderD128`，EGL/dmabuf 未初始化，软件路径未完成出画                                           |
+| Component | Pinned value |
+| --- | --- |
+| Greenfield source | commit `6c578f4db7ec027eb1d8a5f7ec6e09f7646dbb57`; source archive SHA-256 `97e0a72b0e139c8b22088fa4acde199d65d5794f8ee7f85590c435e9231cf433` |
+| Server patches | `deploy/patches/greenfield/0001-keep-clients-without-browser.patch`, `0002-preserve-client-on-navigation.patch`, `0003-private-xwayland-without-cookie.patch` |
+| Browser compositor | published `@gfld/compositor@1.0.0-rc1` with `patches/@gfld__compositor@1.0.0-rc1.patch` (WebCodecs coded rectangle) |
+| VS Code | official Linux desktop `.deb` 1.139.0; SHA-256 `5031849ea13d2297ec7c8f1af70c0bc7d585250cae306b53d668cb6a7a900623` |
+| Runtime build | `golang:1.26.7-bookworm`, built from this checkout inside `deploy/greenfield-runtime.Dockerfile` |
+| Browser proof | Playwright Chromium 151.0.7922.34, 1440×900/DPR 1, WebGL enabled |
+| Host GPU | NVIDIA RTX 2080 Ti, driver 595.91.07, renderD128 group 991; EGL 1.5/NVIDIA, DMA-BUF supported |
+| Container process | UID 10001, GID 10001 plus render group 991; Docker daemon trusted/privileged |
 
-上游默认 `onDisconnect` 会在 600 秒后 SIGHUP 应用。补丁去掉该定时器，进程寿命改由 Runtime Stop 和应用自身退出决定。
+The Docker image ID changes with local source edits; run `docker image inspect workos-greenfield-runtime:p0 --format '{{.Id}}'` to record the exact build under test. These pins describe an isolated technical probe. They do not make the direct same-container composition a supported LAN deployment.

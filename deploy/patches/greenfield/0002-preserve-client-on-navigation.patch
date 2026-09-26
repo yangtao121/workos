@@ -1,0 +1,12 @@
+--- a/packages/compositor-proxy/src/SessionController.ts
++++ b/packages/compositor-proxy/src/SessionController.ts
+@@ -245,9 +245,5 @@ function signal(session: Session, request: AppRequest, ws: WebSocket, url: URL) {
+   ws.onclose = (event) => {
+     logger.info(`Signaling connection closed. Code: ${event.code}. Message: ${event.reason}`)
+-    if (event.code === 1001) {
+-      nativeAppContext.kill('SIGHUP')
+-      return
+-    }
+     if (event.code === 4001) {
+       nativeAppContext.kill('SIGTERM')
+       return

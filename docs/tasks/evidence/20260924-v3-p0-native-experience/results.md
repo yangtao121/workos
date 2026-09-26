@@ -1,5 +1,7 @@
 # W02 / W03 自测记录
 
+> 2026-09-24 的历史基线；2026-09-26 GPU、真实 GUI 保存与同 PID 白屏重连结果见 [greenfield-gate.md](greenfield-gate.md)。下述“无画面”不代表当前首次连接仍无画面。
+
 ## 真实桌面 Code 进程
 
 命令：`docker run workos-greenfield-runtime:p0 sh tools/v3-p0-native-experience/launch-code.sh`

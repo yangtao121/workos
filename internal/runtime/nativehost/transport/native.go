@@ -173,6 +173,8 @@ func nativeError(err error) error {
 		code = connect.CodeResourceExhausted
 	case errors.Is(err, domain.ErrClipboardDisconnected):
 		code = connect.CodeFailedPrecondition
+	case errors.Is(err, domain.ErrClipboardUnavailable):
+		code = connect.CodeUnimplemented
 	}
 	return connect.NewError(code, errors.New("native session request failed"))
 }

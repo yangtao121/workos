@@ -1,0 +1,25 @@
+--- a/dist/remote/webcodec-buffer-decoder.js
++++ b/dist/remote/webcodec-buffer-decoder.js
+@@ -144,13 +144,18 @@
+         const opaqueVideoFrame = decodeResult.opaque.buffer;
+         const alphaVideoFrame = decodeResult.alpha?.buffer;
+         if (opaqueVideoFrame.format === 'I420') {
+-            const opaqueBuffer = new ArrayBuffer(opaqueVideoFrame.allocationSize());
+-            const opaquePromise = opaqueVideoFrame.copyTo(opaqueBuffer);
++            // copyTo() defaults to visibleRect, while the texture upload below
++            // uses codedWidth/codedHeight. Copy the coded rectangle so padded
++            // rows and columns are present in every YUV plane.
++            const opaqueRect = { x: 0, y: 0, width: opaqueVideoFrame.codedWidth, height: opaqueVideoFrame.codedHeight };
++            const opaqueBuffer = new ArrayBuffer(opaqueVideoFrame.allocationSize({ rect: opaqueRect }));
++            const opaquePromise = opaqueVideoFrame.copyTo(opaqueBuffer, { rect: opaqueRect });
+             let alphaBuffer;
+             let alphaPromise;
+             if (alphaVideoFrame) {
+-                alphaBuffer = new ArrayBuffer(alphaVideoFrame.allocationSize());
+-                alphaPromise = alphaVideoFrame.copyTo(alphaBuffer);
++                const alphaRect = { x: 0, y: 0, width: alphaVideoFrame.codedWidth, height: alphaVideoFrame.codedHeight };
++                alphaBuffer = new ArrayBuffer(alphaVideoFrame.allocationSize({ rect: alphaRect }));
++                alphaPromise = alphaVideoFrame.copyTo(alphaBuffer, { rect: alphaRect });
+             }
+             const dualPlaneYUVABuffer = {
+                 type: 'DualPlaneYUVAArrayBuffer',

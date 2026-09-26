@@ -9,6 +9,7 @@ ARG NPM_REGISTRY=https://registry.npmmirror.com
 ENV npm_config_registry=${NPM_REGISTRY}
 WORKDIR /src
 COPY .npmrc package.json pnpm-workspace.yaml pnpm-lock.yaml tsconfig.base.json ./
+COPY patches ./patches
 COPY apps ./apps
 COPY clients ./clients
 COPY sdk ./sdk

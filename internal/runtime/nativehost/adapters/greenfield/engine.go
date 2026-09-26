@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -23,25 +24,40 @@ import (
 	"github.com/yangtao121/workos/internal/runtime/nativehost/ports"
 )
 
-const clipboardMax = domain.MaxClipboardBytes
-
 // Engine launches one proxy process group per display.
 type Engine struct {
 	Proxy   string
 	App     string
 	AppArgs []string
 	Scratch string
+	// RenderDevice is the DRM render node used by Greenfield's EGL path.
+	RenderDevice string
+	PublicOrigin string
 
 	mu    sync.Mutex
 	count int
+	// testEnv is set only by this package's process fixture tests.
+	testEnv []string
 }
 
 func New(proxy, app, scratch string) *Engine {
 	return &Engine{
-		Proxy: proxy, App: app, Scratch: scratch,
+		Proxy: proxy, App: app, Scratch: scratch, RenderDevice: renderDevice(),
 		// Official Electron cannot open an X11 window in this container without these flags.
 		AppArgs: []string{"--ozone-platform=x11", "--disable-gpu", "--no-sandbox"},
 	}
+}
+
+func renderDevice() string {
+	if path := strings.TrimSpace(os.Getenv("WORKOS_RUNTIME_NATIVE_RENDER_DEVICE")); path != "" {
+		return path
+	}
+	return "/dev/dri/renderD128"
+}
+
+func (e *Engine) WithPublicOrigin(origin string) *Engine {
+	e.PublicOrigin = origin
+	return e
 }
 
 func (e *Engine) Facts() ports.EngineFacts {
@@ -64,6 +80,18 @@ func (e *Engine) Available(context.Context) error {
 	if _, err := os.Stat(e.App); err != nil {
 		return fmt.Errorf("greenfield app: %w", err)
 	}
+	device, err := os.Stat(e.RenderDevice)
+	if err != nil {
+		return fmt.Errorf("greenfield render device: %w", err)
+	}
+	if device.Mode()&os.ModeCharDevice == 0 {
+		return errors.New("greenfield render device is not a character device")
+	}
+	fd, err := os.OpenFile(e.RenderDevice, os.O_RDWR, 0)
+	if err != nil {
+		return fmt.Errorf("greenfield render device access: %w", err)
+	}
+	_ = fd.Close()
 	return nil
 }
 
@@ -82,16 +110,31 @@ func (e *Engine) Reserve() (func(), error) {
 }
 
 func (e *Engine) Launch(ctx context.Context, width, height int32, workingDirectory string) (ports.Display, error) {
-	return e.LaunchLifecycle(ctx, width, height, workingDirectory, false, domain.LifecycleManualStop)
+	return e.LaunchSessionLifecycle(ctx, "", width, height, workingDirectory, false, domain.LifecycleManualStop)
 }
 
 func (e *Engine) LaunchWorkspace(ctx context.Context, width, height int32, workingDirectory string, readOnly bool) (ports.Display, error) {
-	return e.LaunchLifecycle(ctx, width, height, workingDirectory, readOnly, domain.LifecycleManualStop)
+	return e.LaunchSessionLifecycle(ctx, "", width, height, workingDirectory, readOnly, domain.LifecycleManualStop)
 }
 
 func (e *Engine) LaunchLifecycle(ctx context.Context, width, height int32, workingDirectory string, _ bool, _ domain.LifecycleMode) (ports.Display, error) {
+	return e.LaunchSessionLifecycle(ctx, "", width, height, workingDirectory, false, domain.LifecycleManualStop)
+}
+
+// LaunchSessionLifecycle gives the proxy its final public base URL before any
+// Wayland client starts. Greenfield embeds that URL in WebSocket frames and
+// file-descriptor messages, so rewriting HTTP response bodies cannot fix it.
+func (e *Engine) LaunchSessionLifecycle(ctx context.Context, sessionID string, width, height int32, workingDirectory string, _ bool, _ domain.LifecycleMode) (ports.Display, error) {
 	if err := e.Available(ctx); err != nil {
 		return nil, err
+	}
+	if sessionID != "" {
+		if !domain.ValidUUIDv7(sessionID) {
+			return nil, domain.ErrInvalid
+		}
+		if _, err := e.publicBaseURL(sessionID); err != nil {
+			return nil, err
+		}
 	}
 	port, err := freePort()
 	if err != nil {
@@ -125,9 +168,9 @@ func (e *Engine) LaunchLifecycle(ctx context.Context, width, height int32, worki
 	if err != nil {
 		return nil, err
 	}
-	proxyName, proxyArgs := e.proxyCommand(port, appsPath)
+	proxyName, proxyArgs := e.proxyCommand(port, appsPath, sessionID)
 	cmd := exec.Command(proxyName, proxyArgs...)
-	cmd.Env = append(os.Environ(), "RENDERER_ALLOW_SOFTWARE=1")
+	cmd.Env = e.processEnv(dir)
 	cmd.Stdout = logFile
 	cmd.Stderr = logFile
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true, Pdeathsig: syscall.SIGKILL}
@@ -135,17 +178,29 @@ func (e *Engine) LaunchLifecycle(ctx context.Context, width, height int32, worki
 		logFile.Close()
 		return nil, err
 	}
+	compositorSession := sessionID
+	if compositorSession == "" {
+		compositorSession = "workos"
+	}
+	baseURL := "ws://127.0.0.1:" + strconv.Itoa(port)
+	if sessionID != "" {
+		baseURL, _ = e.publicBaseURL(sessionID)
+	}
 	d := &display{
 		cmd: cmd, port: port, width: width, height: height, dir: dir,
-		clipboardMax: clipboardMax, compositorSession: "workos",
+		compositorSession: compositorSession, publicBaseURL: baseURL,
 	}
 	d.localBase = fmt.Sprintf("127.0.0.1:%d", port)
 	if err := waitListen(ctx, logPath); err != nil {
 		d.Stop()
 		return nil, err
 	}
-	pid, key, err := launchApp(ctx, port)
+	pid, key, err := launchApp(ctx, port, compositorSession)
 	if err != nil {
+		d.Stop()
+		return nil, err
+	}
+	if err := checkRenderInitialization(logPath); err != nil {
 		d.Stop()
 		return nil, err
 	}
@@ -154,19 +209,77 @@ func (e *Engine) LaunchLifecycle(ctx context.Context, width, height int32, worki
 	return d, nil
 }
 
-func (e *Engine) proxyCommand(port int, appsPath string) (string, []string) {
+// The proxy launches Code as its child. Never pass Runtime's DB URL, bridge
+// credentials, or service tokens to either process through inherited env.
+// This is defense in depth; a production deployment also needs a separate
+// container boundary because Code shares this experimental image with Runtime.
+func (e *Engine) processEnv(dir string) []string {
+	env := []string{
+		"PATH=/usr/local/bin:/usr/bin:/bin",
+		"HOME=" + dir,
+		"XDG_RUNTIME_DIR=" + dir,
+		"XDG_CACHE_HOME=" + filepath.Join(dir, "cache"),
+		"XDG_CONFIG_HOME=" + filepath.Join(dir, "config"),
+		"LANG=C.UTF-8",
+		"ELECTRON_OZONE_PLATFORM_HINT=x11",
+	}
+	// These variables select graphics libraries injected by the container
+	// runtime. Their names are fixed; WORKOS_* and generic service env are not.
+	for _, name := range []string{
+		"LD_LIBRARY_PATH", "__EGL_VENDOR_LIBRARY_FILENAMES", "__GLX_VENDOR_LIBRARY_NAME",
+		"GBM_BACKEND", "LIBVA_DRIVER_NAME", "VK_ICD_FILENAMES", "NVIDIA_VISIBLE_DEVICES",
+		"NVIDIA_DRIVER_CAPABILITIES", "FONTCONFIG_FILE", "FONTCONFIG_PATH",
+	} {
+		if value, ok := os.LookupEnv(name); ok {
+			env = append(env, name+"="+value)
+		}
+	}
+	return append(env, e.testEnv...)
+}
+
+func (e *Engine) proxyCommand(port int, appsPath, sessionID string) (string, []string) {
+	baseURL := "ws://127.0.0.1:" + strconv.Itoa(port)
+	if sessionID != "" {
+		baseURL, _ = e.publicBaseURL(sessionID)
+	}
 	args := []string{
 		"--bind-ip", "127.0.0.1",
 		"--bind-port", strconv.Itoa(port),
 		"--allow-origin", "http://localhost",
-		"--base-url", "ws://127.0.0.1:" + strconv.Itoa(port),
+		"--base-url", baseURL,
 		"--encoder", "x264",
+		"--render-device", e.RenderDevice,
 		"--applications", appsPath,
 	}
 	if strings.HasSuffix(e.Proxy, ".js") {
 		return "node", append([]string{e.Proxy}, args...)
 	}
 	return e.Proxy, args
+}
+
+func (e *Engine) publicBaseURL(sessionID string) (string, error) {
+	origin, err := url.Parse(e.PublicOrigin)
+	if err != nil || origin == nil || (origin.Scheme != "http" && origin.Scheme != "https") || origin.Host == "" || origin.User != nil || origin.Path != "" || origin.RawQuery != "" || origin.Fragment != "" {
+		return "", errors.New("greenfield public origin must be a canonical http(s) origin")
+	}
+	if origin.Scheme == "https" {
+		origin.Scheme = "wss"
+	} else {
+		origin.Scheme = "ws"
+	}
+	origin.Path = proxyPrefix + sessionID
+	return origin.String(), nil
+}
+
+func checkRenderInitialization(logPath string) error {
+	raw, err := os.ReadFile(logPath)
+	if err != nil {
+		return err
+	}
+	if strings.Contains(string(raw), "Failed to initialize EGL") || strings.Contains(string(raw), "Can't initialize EGL") {
+		return errors.New("greenfield EGL initialization failed; check render device and GPU driver access")
+	}
+	return nil
 }
 
 func freePort() (int, error) {
@@ -193,12 +306,12 @@ func waitListen(ctx context.Context, logPath string) error {
 	return errors.New("greenfield proxy did not listen")
 }
 
-func launchApp(ctx context.Context, port int) (int, string, error) {
+func launchApp(ctx context.Context, port int, compositorSession string) (int, string, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://127.0.0.1:"+strconv.Itoa(port)+"/code", nil)
 	if err != nil {
 		return 0, "", err
 	}
-	req.Header.Set("x-compositor-session-id", "workos")
+	req.Header.Set("x-compositor-session-id", compositorSession)
 	client := &http.Client{Timeout: 10 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
@@ -232,11 +345,11 @@ type display struct {
 	appPID             int
 	key                string
 	sessionID          string
+	ownerUserID        string
+	controllerDeviceID string
 	localBase          string
 	compositorSession  string
-	clipboard          string
-	clipboardMax       int
-	clipboardConnected bool
+	publicBaseURL      string
 	stopped            bool
 	inputGate          func() bool
 }
@@ -247,11 +360,26 @@ func (d *display) Connect(context.Context, string) (string, error) {
 
 func (d *display) GuardInput(gate func() bool) { d.mu.Lock(); d.inputGate = gate; d.mu.Unlock() }
 
-func (d *display) Detach() {
+// BindController replaces the device and lease gate atomically. The proxy
+// consults this gate for each browser frame, including on already open sockets.
+func (d *display) BindController(deviceID string, authorized func() bool) {
 	d.mu.Lock()
-	d.clipboardConnected = false
-	d.clipboard = ""
+	d.controllerDeviceID = deviceID
+	d.inputGate = authorized
 	d.mu.Unlock()
+}
+
+func (d *display) canProxy(deviceID string) bool {
+	d.mu.Lock()
+	allowed := !d.stopped && deviceID != "" && deviceID == d.controllerDeviceID
+	gate := d.inputGate
+	d.mu.Unlock()
+	return allowed && gate != nil && gate()
+}
+
+func (d *display) Detach() {
+	// A browser connection is transient; only the proxy's WebSocket lifecycle
+	// changes. Runtime Stop owns the Code process lifetime.
 }
 
 func (d *display) Exited() bool {
@@ -268,8 +396,6 @@ func (d *display) Stop() {
 		return
 	}
 	d.stopped = true
-	d.clipboard = ""
-	d.clipboardConnected = false
 	if d.cmd != nil && d.cmd.Process != nil {
 		_ = syscall.Kill(-d.cmd.Process.Pid, syscall.SIGKILL)
 		_ = syscall.Kill(d.appPID, syscall.SIGKILL)
@@ -284,9 +410,10 @@ func (d *display) Stop() {
 }
 
 // BindSession publishes this display on the runtime-local proxy path.
-func (d *display) BindSession(id string) {
+func (d *display) BindSession(id, ownerUserID string) {
 	d.mu.Lock()
 	d.sessionID = id
+	d.ownerUserID = ownerUserID
 	d.mu.Unlock()
 	registerSession(id, d)
 }
@@ -306,32 +433,4 @@ func (d *display) Endpoint(dprMillis int32) (string, string, int32, int32, int32
 	}
 	path := "/native/greenfield/" + d.sessionID + "/code"
 	return path, d.compositorSession, d.width, d.height, d.dprMillis, nil
-}
-
-func (d *display) WriteClipboard(text string) error {
-	d.mu.Lock()
-	defer d.mu.Unlock()
-	if d.stopped || !d.clipboardConnected {
-		return domain.ErrClipboardDisconnected
-	}
-	if len(text) > d.clipboardMax {
-		return domain.ErrClipboardTooLarge
-	}
-	d.clipboard = text
-	return nil
-}
-
-func (d *display) ReadClipboard() (string, error) {
-	d.mu.Lock()
-	defer d.mu.Unlock()
-	if d.stopped || !d.clipboardConnected {
-		return "", domain.ErrClipboardDisconnected
-	}
-	return d.clipboard, nil
-}
-
-func (d *display) AttachClipboard() {
-	d.mu.Lock()
-	d.clipboardConnected = true
-	d.mu.Unlock()
 }

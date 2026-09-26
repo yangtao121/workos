@@ -592,7 +592,7 @@ func run(logger *slog.Logger) error {
 		var nativeEngine nativeports.Engine
 		var connectivity nativeports.ConnectivityIssuer
 		if cfg.Runtime.NativeEngine == "greenfield" {
-			nativeEngine = greenfieldengine.New(cfg.Runtime.NativeGreenfieldProxy, cfg.Runtime.NativeGreenfieldApp, cfg.Runtime.NativeScratch)
+			nativeEngine = greenfieldengine.New(cfg.Runtime.NativeGreenfieldProxy, cfg.Runtime.NativeGreenfieldApp, cfg.Runtime.NativeScratch).WithPublicOrigin(cfg.Auth.PublicOrigin)
 		} else {
 			xvfb, engineErr := xvfbengine.New(cfg.Runtime.NativeDisplay, cfg.Runtime.NativeClient, cfg.Runtime.NativeFFmpeg, cfg.Runtime.NativeXdotool, cfg.Runtime.NativeScratch, cfg.Runtime.NativeCandidates)
 			if engineErr != nil {

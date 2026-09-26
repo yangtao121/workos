@@ -4,6 +4,9 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
+patchedDependencies:
+  '@gfld/compositor@1.0.0-rc1': 5f7a1f1a5db16571b2e5278c56efa93a7d2639a2bc6811efafa92cb0c02cc485
+
 importers:
 
   .:
@@ -37,7 +40,7 @@ importers:
         version: 2.1.2(@bufbuild/protobuf@2.14.0)
       '@gfld/compositor':
         specifier: 1.0.0-rc1
-        version: 1.0.0-rc1
+        version: 1.0.0-rc1(patch_hash=5f7a1f1a5db16571b2e5278c56efa93a7d2639a2bc6811efafa92cb0c02cc485)
       '@workos/adaptive-shell':
         specifier: workspace:*
         version: link:../../clients/adaptive-shell
@@ -2187,7 +2190,7 @@ snapshots:
 
   '@gfld/compositor-wasm@1.0.0-rc1': {}
 
-  '@gfld/compositor@1.0.0-rc1':
+  '@gfld/compositor@1.0.0-rc1(patch_hash=5f7a1f1a5db16571b2e5278c56efa93a7d2639a2bc6811efafa92cb0c02cc485)':
     dependencies:
       '@gfld/common': 1.0.0-rc1
       '@gfld/compositor-ffmpeg-h264': 1.0.0-rc1
