@@ -33,18 +33,22 @@ const (
 // to, detaches from, and stops.
 type InteractiveWorkload struct {
 	AppInstanceID, AppID, AppVersion string
-	IdleStopSeconds                  int64
-	LifecycleMode                    int32
-	UpdatedAt                        time.Time
-	Generation                       int64
-	WorkloadID                       string
-	Kind                             WorkloadKind
-	OwnerUserID                      string
-	ProjectID                        string
-	State                            string
-	Terminal                         bool
-	CreatedAt                        time.Time
-	ExpiresAt                        time.Time
+	// DisplayName is a trusted label supplied by the workload runtime.
+	// Native sessions use their persisted application kind; an empty value
+	// keeps the transport's existing family-specific fallback.
+	DisplayName     string
+	IdleStopSeconds int64
+	LifecycleMode   int32
+	UpdatedAt       time.Time
+	Generation      int64
+	WorkloadID      string
+	Kind            WorkloadKind
+	OwnerUserID     string
+	ProjectID       string
+	State           string
+	Terminal        bool
+	CreatedAt       time.Time
+	ExpiresAt       time.Time
 	// Width/Height carry the native display geometry; PTY workloads keep 0.
 	Width  int32
 	Height int32
@@ -64,8 +68,8 @@ type InteractiveWorkloadRuntime interface {
 	// Resolve returns the owner's interactive workload by id, including
 	// terminal ones so Attach can report the true stopped state.
 	Resolve(ctx context.Context, ownerUserID, workloadID string) (InteractiveWorkload, error)
-	// ListProject returns the owner's non-terminal interactive workloads of
-	// one project.
+	// ListProject returns the owner's discoverable interactive workloads of
+	// one project, including the bounded recent Native terminal history.
 	ListProject(ctx context.Context, ownerUserID, projectID string) ([]InteractiveWorkload, error)
 	// DetachWorkload releases only the connection resources of the workload
 	// (the native media peer; PTY sessions keep their attachment row as the

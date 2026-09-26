@@ -32,9 +32,12 @@ attachment 或授予控制之前拒绝。
 
 `GetSurfaceWorkload` 是只读、owner 范围的精确事实查询，包含终态；读取不会 attach 或启动。
 `ListProjectSurfaces` 同时列出 PTY、Native 和安装应用的运行程序，报告真实 policy。
-Native 还保留每个项目最近最多 16 条（含活跃条目）的终态会话，以便同一
+Native 保留每个项目的全部活跃会话及最近最多 16 条终态会话，以便同一
 workload ID 执行精确 Restart。项目列表读取会立即核对仍标记运行的 Native
 子容器，不能靠后台扫描周期把已退出的程序继续显示为 running。
+Surface 列表使用 Native 会话持久化的应用类型，分别显示 `WorkOS Code` 和
+`Text Editor`，使两种应用同时运行时的 Stop／Restart 对象明确；PTY 继续显示
+`Terminal`，安装应用继续使用 app ID。
 安装应用的显式停止／重启复用 Workload Manager 的持久操作回执。
 
 安装应用恢复使用 `CreateSurface.attach_only` 加准确 workload ID／generation。

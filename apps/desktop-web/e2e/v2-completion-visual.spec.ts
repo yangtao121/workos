@@ -3,6 +3,9 @@ import { sharedDesktopFixture } from "./shared-desktop-fixture.js";
 import { openDesktopApp } from "./open-app.js";
 
 const directory = process.env.WORKOS_V2_CAPTURE_DIR;
+const homeOnly = process.env.WORKOS_V2_HOME_ONLY === "true";
+const nativeDisplayName =
+  process.env.WORKOS_V2_LEGACY_NATIVE_NAME === "true" ? "Native display" : "WorkOS Code";
 const projectId = "01999999-9999-7999-8999-000000000001";
 const sessionId = "01999999-9999-7999-8999-000000000010";
 const taskId = "01999999-9999-7999-8999-000000000011";
@@ -27,7 +30,7 @@ const workloads = [
     state: "running",
     generation: "7",
     attachmentCount: 1,
-    displayName: "Native display",
+    displayName: nativeDisplayName,
     policy: { lifecycleMode: "LIFECYCLE_MODE_MANUAL_STOP" },
   },
 ];
@@ -203,8 +206,9 @@ for (const [width, height] of [
       };
       await page.goto("/");
       await openDesktopApp(page, "home");
-      await expect(page.getByTestId("running-apps")).toContainText("Native display");
+      await expect(page.getByTestId("running-apps")).toContainText(nativeDisplayName);
       await capture("home--running-apps");
+      if (homeOnly) return;
       await openDesktopApp(page, "settings");
       await expect(page.getByRole("region", { name: "Project workspace" })).toContainText(
         "Studio source",

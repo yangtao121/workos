@@ -156,7 +156,7 @@ func workloadViewProto(summary application.ContinuitySummary) *surfacev1.Surface
 		AppInstanceId: summary.Workload.AppInstanceID, AppId: summary.Workload.AppID, Version: summary.Workload.AppVersion,
 		ProjectId:   summary.Workload.ProjectID,
 		Renderer:    continuityRendererProto(summary.Workload.Kind),
-		DisplayName: workloadDisplayName(summary.Workload.Kind),
+		DisplayName: workloadDisplayName(summary.Workload),
 		// System tool workloads serve no installed app association; the
 		// fields stay empty rather than inventing one.
 		Generation:      summary.Generation,
@@ -168,19 +168,23 @@ func workloadViewProto(summary application.ContinuitySummary) *surfacev1.Surface
 	if summary.Workload.Terminal {
 		view.StoppedAt = timestamppb.New(summary.Workload.UpdatedAt)
 	}
-	if summary.Workload.Kind == ports.WorkloadKindApp {
-		view.DisplayName = summary.Workload.AppID
-	}
 	return view
 }
 
-// workloadDisplayName labels the system tool surface families; installed app
-// workloads will carry their manifest name instead.
-func workloadDisplayName(kind ports.WorkloadKind) string {
-	if kind == ports.WorkloadKindNative {
+// workloadDisplayName preserves the installed-app and PTY labels while using
+// the Native application's persisted kind when the runtime supplies it.
+func workloadDisplayName(workload ports.InteractiveWorkload) string {
+	switch workload.Kind {
+	case ports.WorkloadKindNative:
+		if workload.DisplayName != "" {
+			return workload.DisplayName
+		}
 		return "Native display"
+	case ports.WorkloadKindApp:
+		return workload.AppID
+	default:
+		return "Terminal"
 	}
-	return "Terminal"
 }
 
 func workloadPolicyProto(summary application.ContinuitySummary) *surfacev1.WorkloadPolicy {

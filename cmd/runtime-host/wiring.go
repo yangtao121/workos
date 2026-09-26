@@ -145,9 +145,16 @@ func (a *surfaceInteractiveRuntime) sessionWorkload(kind surfaceports.WorkloadKi
 }
 
 func (a *surfaceInteractiveRuntime) nativeWorkload(session nativedomain.Session) surfaceports.InteractiveWorkload {
+	displayName := ""
+	switch session.Application {
+	case nativedomain.ApplicationCode:
+		displayName = "WorkOS Code"
+	case nativedomain.ApplicationTextEditor:
+		displayName = "Text Editor"
+	}
 	return surfaceports.InteractiveWorkload{
 		Generation: session.Generation, WorkloadID: session.SessionID, Kind: surfaceports.WorkloadKindNative, OwnerUserID: session.OwnerUserID,
-		ProjectID: session.ProjectID, State: string(session.State), Terminal: session.State.Terminal(),
+		ProjectID: session.ProjectID, State: string(session.State), Terminal: session.State.Terminal(), DisplayName: displayName,
 		CreatedAt: session.CreatedAt, ExpiresAt: session.ExpiresAt, UpdatedAt: session.UpdatedAt, LifecycleMode: int32(session.LifecycleMode),
 		Width: session.Width, Height: session.Height,
 	}
