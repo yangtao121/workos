@@ -59,6 +59,19 @@ type ContinuityService struct {
 	generator  ids.Generator
 	controlTTL time.Duration
 	now        func() time.Time
+	barrier    ports.ControlBarrier
+}
+
+func (s *ContinuityService) WithControlBarrier(barrier ports.ControlBarrier) *ContinuityService {
+	s.barrier = barrier
+	return s
+}
+
+func (s *ContinuityService) aroundControl(ctx context.Context, workloadID string, action func() error) error {
+	if s.barrier == nil {
+		return action()
+	}
+	return s.barrier.AroundControl(ctx, workloadID, action)
 }
 
 // NewContinuityService validates the bounded policy and wires the store, the
@@ -132,15 +145,16 @@ func (s *ContinuityService) AttachSurface(ctx context.Context, ownerUserID, devi
 	}
 	now := s.now().Truncate(time.Microsecond)
 	attachment := domain.SurfaceAttachment{
-		ID:               s.generator.New(),
-		WorkloadID:       workload.WorkloadID,
-		SurfaceSessionID: workload.WorkloadID,
-		OwnerUserID:      ownerUserID,
-		ProjectID:        workload.ProjectID,
-		DeviceID:         deviceID,
-		IdempotencyKey:   idempotencyKey,
-		State:            domain.AttachmentStateAttached,
-		AttachedAt:       now,
+		ID:                 s.generator.New(),
+		WorkloadID:         workload.WorkloadID,
+		WorkloadGeneration: max(SessionWorkloadGeneration, workload.Generation),
+		SurfaceSessionID:   workload.WorkloadID,
+		OwnerUserID:        ownerUserID,
+		ProjectID:          workload.ProjectID,
+		DeviceID:           deviceID,
+		IdempotencyKey:     idempotencyKey,
+		State:              domain.AttachmentStateAttached,
+		AttachedAt:         now,
 	}
 	stored, lease, err := s.store.Attach(ctx, ports.AttachCommand{Attachment: attachment, Until: now.Add(s.controlTTL)})
 	if err != nil {
@@ -158,7 +172,16 @@ func (s *ContinuityService) DetachSurface(ctx context.Context, ownerUserID, devi
 	if !domain.ValidSessionUUID(ownerUserID) || !domain.ValidSessionUUID(deviceID) || !domain.ValidSessionUUID(surfaceSessionID) {
 		return domain.ErrInvalid
 	}
-	attachment, err := s.store.LiveAttachmentBySurfaceSession(ctx, ownerUserID, surfaceSessionID, deviceID)
+	var attachment domain.SurfaceAttachment
+	err := s.aroundControl(ctx, surfaceSessionID, func() error {
+		var lookupErr error
+		attachment, lookupErr = s.store.LiveAttachmentBySurfaceSession(ctx, ownerUserID, surfaceSessionID, deviceID)
+		if lookupErr != nil {
+			return lookupErr
+		}
+		_, lookupErr = s.store.Detach(ctx, ownerUserID, attachment.ID, s.now())
+		return lookupErr
+	})
 	if err != nil {
 		return err
 	}
@@ -170,8 +193,7 @@ func (s *ContinuityService) DetachSurface(ctx context.Context, ownerUserID, devi
 			return detachErr
 		}
 	}
-	_, err = s.store.Detach(ctx, ownerUserID, attachment.ID, s.now())
-	return err
+	return nil
 }
 
 // RequestSurfaceControl is the explicit single-controller switch. The exact
@@ -183,15 +205,62 @@ func (s *ContinuityService) RequestSurfaceControl(ctx context.Context, ownerUser
 	if !domain.ValidSessionUUID(ownerUserID) || !domain.ValidSessionUUID(deviceID) || !domain.ValidSessionUUID(surfaceSessionID) {
 		return ControlResult{}, domain.ErrInvalid
 	}
-	attachment, err := s.store.LiveAttachmentBySurfaceSession(ctx, ownerUserID, surfaceSessionID, deviceID)
-	if err != nil {
-		return ControlResult{}, err
-	}
-	verdict, err := s.store.RequestControl(ctx, attachment, s.now(), s.now().Add(s.controlTTL))
+	var verdict ports.ControlVerdict
+	err := s.aroundControl(ctx, surfaceSessionID, func() error {
+		attachment, err := s.store.LiveAttachmentBySurfaceSession(ctx, ownerUserID, surfaceSessionID, deviceID)
+		if err != nil {
+			return err
+		}
+		now := s.now()
+		verdict, err = s.store.RequestControl(ctx, attachment, now, now.Add(s.controlTTL))
+		return err
+	})
 	if err != nil {
 		return ControlResult{}, err
 	}
 	return ControlResult{Attachment: verdict.Attachment, Lease: verdict.Lease, Renewed: verdict.Renewed}, nil
+}
+
+// AuthorizeWindowViewer checks the exact live attachment, including the
+// workload generation. The native service separately checks the session's
+// running state before invoking this neutral Surface-owned ledger check.
+func (s *ContinuityService) AuthorizeWindowViewer(ctx context.Context, owner, device, workload, attachmentID string, generation int64) error {
+	if !domain.ValidSessionUUID(owner) || !domain.ValidSessionUUID(device) || !domain.ValidSessionUUID(workload) || !domain.ValidSessionUUID(attachmentID) || generation < 1 {
+		return domain.ErrInvalid
+	}
+	attachment, err := s.store.GetAttachment(ctx, owner, attachmentID, device)
+	if err != nil {
+		return err
+	}
+	if !attachment.State.Live() || attachment.WorkloadID != workload || attachment.SurfaceSessionID != workload || attachment.OwnerUserID != owner || attachment.DeviceID != device || attachment.WorkloadGeneration != generation {
+		return ports.ErrContinuityDenied
+	}
+	latest, err := s.store.LiveAttachmentBySurfaceSession(ctx, owner, workload, device)
+	if err != nil || latest.ID != attachmentID {
+		return ports.ErrContinuityDenied
+	}
+	return nil
+}
+
+func (s *ContinuityService) AuthorizeWindowController(ctx context.Context, owner, device, workload, attachmentID string, generation, controlGeneration int64) error {
+	if err := s.AuthorizeWindowViewer(ctx, owner, device, workload, attachmentID, generation); err != nil {
+		return err
+	}
+	lease, found, err := s.store.Lease(ctx, workload)
+	if err != nil {
+		return err
+	}
+	if !found || lease.OwnerUserID != owner || lease.ControllerDeviceID != device || lease.ControllerAttachmentID != attachmentID || lease.ControlGeneration != controlGeneration || !lease.ControlValid(s.now()) {
+		return ports.ErrContinuityDenied
+	}
+	attachment, err := s.store.GetAttachment(ctx, owner, attachmentID, device)
+	if err != nil {
+		return err
+	}
+	if !attachment.State.Live() || !attachment.Controls || attachment.ControlGeneration != controlGeneration || attachment.WorkloadGeneration != generation {
+		return ports.ErrContinuityDenied
+	}
+	return nil
 }
 
 // ControlFacts is the GetSurfaceControl verdict.

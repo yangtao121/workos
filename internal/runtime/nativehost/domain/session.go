@@ -40,6 +40,7 @@ var (
 	ErrIdempotencyDrift      = errors.New("native session replay request drifted")
 	ErrSessionLimit          = errors.New("native session limit reached")
 	ErrEngineUnavailable     = errors.New("native engine is unavailable")
+	ErrResidentChildNotFound = errors.New("resident native child is absent")
 	ErrStoreUnavailable      = errors.New("native store is temporarily unavailable")
 	ErrWrongEngine           = errors.New("native session engine does not accept this connection")
 	ErrClipboardTooLarge     = errors.New("native clipboard exceeds the byte limit")
@@ -51,19 +52,22 @@ const MaxClipboardBytes = 256 * 1024
 
 // Session is the durable native session row.
 type Session struct {
-	LifecycleMode  LifecycleMode
-	Generation     int64
-	SessionID      string
-	OwnerUserID    string
-	ProjectID      string
-	IdempotencyKey string
-	RequestDigest  string
-	State          State
-	Width          int32
-	Height         int32
-	CreatedAt      time.Time
-	UpdatedAt      time.Time
-	ExpiresAt      time.Time
+	LifecycleMode    LifecycleMode
+	Generation       int64
+	ChildContainerID string
+	ChildImageID     string
+	ChildGeneration  int64
+	SessionID        string
+	OwnerUserID      string
+	ProjectID        string
+	IdempotencyKey   string
+	RequestDigest    string
+	State            State
+	Width            int32
+	Height           int32
+	CreatedAt        time.Time
+	UpdatedAt        time.Time
+	ExpiresAt        time.Time
 }
 
 // ValidUUIDv7 matches the canonical resource id grammar (lowercase).

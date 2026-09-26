@@ -43,8 +43,8 @@ import (
 	buildtestapp "github.com/yangtao121/workos/internal/runtime/buildtest/application"
 	buildtestports "github.com/yangtao121/workos/internal/runtime/buildtest/ports"
 	buildtesttransport "github.com/yangtao121/workos/internal/runtime/buildtest/transport"
-	greenfieldengine "github.com/yangtao121/workos/internal/runtime/nativehost/adapters/greenfield"
 	nativehostpostgres "github.com/yangtao121/workos/internal/runtime/nativehost/adapters/postgres"
+	greenfieldresident "github.com/yangtao121/workos/internal/runtime/nativehost/adapters/resident"
 	"github.com/yangtao121/workos/internal/runtime/nativehost/adapters/turnauth"
 	xvfbengine "github.com/yangtao121/workos/internal/runtime/nativehost/adapters/xvfbengine"
 	nativehostapp "github.com/yangtao121/workos/internal/runtime/nativehost/application"
@@ -141,7 +141,8 @@ func run(logger *slog.Logger) error {
 	defer pool.Close()
 	ready := func(ctx context.Context) error { return pool.Ping(ctx) }
 	mux := httpserver.NewMux("runtime-host", ready)
-	mux.Handle("/native/greenfield/", identity.Middleware(http.HandlerFunc(greenfieldengine.ServeProxy)))
+	// ADR-0040 keeps raw Greenfield signaling and its reusable key inside the
+	// isolated child. No public /native/greenfield proxy is registered.
 
 	workloadPath, workloadHandler := workloadv1connect.NewWorkloadServiceHandler(runtimetransport.NewWorkloadHandler())
 	mux.Handle(workloadPath, workloadHandler)
@@ -592,7 +593,14 @@ func run(logger *slog.Logger) error {
 		var nativeEngine nativeports.Engine
 		var connectivity nativeports.ConnectivityIssuer
 		if cfg.Runtime.NativeEngine == "greenfield" {
-			nativeEngine = greenfieldengine.New(cfg.Runtime.NativeGreenfieldProxy, cfg.Runtime.NativeGreenfieldApp, cfg.Runtime.NativeScratch).WithPublicOrigin(cfg.Auth.PublicOrigin)
+			nativeEngine = greenfieldresident.New(greenfieldresident.Config{
+				DockerSocket: cfg.Runtime.DockerSocket,
+				Image:        cfg.Runtime.NativeGreenfieldChildImage,
+				IPCRoot:      cfg.Runtime.NativeGreenfieldIPCRoot,
+				RenderDevice: cfg.Runtime.NativeRenderDevice,
+				RenderGID:    cfg.Runtime.NativeRenderGID,
+				GPUDriver:    cfg.Runtime.NativeGPUDriver,
+			})
 		} else {
 			xvfb, engineErr := xvfbengine.New(cfg.Runtime.NativeDisplay, cfg.Runtime.NativeClient, cfg.Runtime.NativeFFmpeg, cfg.Runtime.NativeXdotool, cfg.Runtime.NativeScratch, cfg.Runtime.NativeCandidates)
 			if engineErr != nil {
@@ -661,6 +669,10 @@ func run(logger *slog.Logger) error {
 	}
 	if nativeService != nil {
 		nativeService.WithControlAuthorization(continuityAuthorization{service: continuityService})
+		nativeService.WithWindowAuthorization(continuityService)
+		continuityService.WithControlBarrier(nativeService)
+		windowPath, windowHandler := nativehosttransport.NewWindowHandler(nativeService)
+		mux.Handle(windowPath, identity.Middleware(windowHandler))
 	}
 	continuityPath, continuityHandler := surfacetransport.NewContinuityHandler(continuityService)
 	mux.Handle(continuityPath, identity.Middleware(continuityHandler))

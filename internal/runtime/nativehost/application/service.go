@@ -30,12 +30,36 @@ type Service struct {
 	// lease (ADR-0031 §4). nil keeps the plain owner-scoped path for hosts
 	// without the surface continuity service.
 	control ports.ControlAuthorizer
+	windows ports.WindowAuthorizer
 
 	opMu        sync.Mutex
 	mu          sync.Mutex
 	displays    map[string]ports.Display
 	peerDevices map[string]string
 	releases    map[string]func()
+}
+
+func (s *Service) WithWindowAuthorization(windows ports.WindowAuthorizer) *Service {
+	s.windows = windows
+	return s
+}
+
+// AroundControl is the Surface control/attachment mutation barrier. Resident
+// input holds the same per-workload lock until the child acknowledges one
+// event, so takeover cannot return while an older event is still in flight.
+func (s *Service) AroundControl(ctx context.Context, sessionID string, action func() error) error {
+	s.mu.Lock()
+	display := s.displays[sessionID]
+	s.mu.Unlock()
+	if barrier, ok := display.(interface {
+		AroundControl(context.Context, func() error) error
+	}); ok {
+		return barrier.AroundControl(ctx, action)
+	}
+	if barrier, ok := display.(ports.InputBarrier); ok {
+		return barrier.AroundInput(ctx, action)
+	}
+	return action()
 }
 
 func NewService(store ports.SessionStore, engine ports.Engine, generator ids.Generator, logger *slog.Logger) (*Service, error) {
@@ -159,12 +183,17 @@ func (s *Service) Create(ctx context.Context, ownerUserID, projectID, idempotenc
 		}
 		return domain.Session{}, domain.ErrEngineUnavailable
 	}
-	display, err := s.launch(ctx, session.SessionID, width, height, grant, mode)
+	display, err := s.launchResident(ctx, session, grant)
 	if err != nil {
 		release()
 		s.logger.Warn("native display launch failed", "error", err)
 		_ = s.store.CloseSession(ctx, ownerUserID, session.SessionID, domain.StateFailed, time.Now().UTC())
 		return domain.Session{}, domain.ErrEngineUnavailable
+	}
+	if err := s.bindResidentChild(ctx, session, display); err != nil {
+		display.Stop()
+		release()
+		return domain.Session{}, err
 	}
 	if binder, ok := display.(interface{ BindSession(string, string) }); ok {
 		binder.BindSession(session.SessionID, ownerUserID)
@@ -277,8 +306,12 @@ func (s *Service) Close(ctx context.Context, ownerUserID, sessionID string) (dom
 	if err != nil {
 		return domain.Session{}, err
 	}
-	s.reap(sessionID)
-	if err := s.store.CloseSession(ctx, ownerUserID, sessionID, domain.StateClosed, time.Now().UTC()); err != nil {
+	if err := s.AroundControl(ctx, sessionID, func() error {
+		if err := s.reapExact(ctx, session); err != nil {
+			return err
+		}
+		return s.store.CloseSession(ctx, ownerUserID, sessionID, domain.StateClosed, time.Now().UTC())
+	}); err != nil {
 		return domain.Session{}, err
 	}
 	return s.store.GetSession(ctx, ownerUserID, session.SessionID)
@@ -314,8 +347,45 @@ func (s *Service) reap(sessionID string) {
 	}
 }
 
-// reconcile makes reads and replay agree with live resources and the absolute TTL.
-// A process restart cannot resurrect a display: its persisted row becomes failed.
+func (s *Service) reapExact(ctx context.Context, session domain.Session) error {
+	s.mu.Lock()
+	display := s.displays[session.SessionID]
+	s.mu.Unlock()
+	if stopper, ok := display.(ports.ExactStopper); ok {
+		if err := stopper.StopExact(ctx); err != nil {
+			return err
+		}
+	} else if engine, ok := s.engine.(ports.ResidentEngine); ok {
+		grant, err := s.workspaceGrant(ctx, session.OwnerUserID, session.ProjectID)
+		if err != nil {
+			return domain.ErrEngineUnavailable
+		}
+		if err := engine.ReapResident(ctx, ports.ResidentLaunch{Session: session, Workspace: grant}); err != nil {
+			return err
+		}
+	}
+	s.reap(session.SessionID)
+	return nil
+}
+
+func (s *Service) bindResidentChild(ctx context.Context, session domain.Session, display ports.Display) error {
+	resident, ok := display.(ports.ResidentDisplay)
+	if !ok {
+		return nil
+	}
+	store, ok := s.store.(ports.ResidentStore)
+	if !ok {
+		return domain.ErrStoreUnavailable
+	}
+	identity := resident.ChildIdentity()
+	if identity.ContainerID == "" || identity.ImageID == "" || identity.Generation != session.Generation {
+		return domain.ErrEngineUnavailable
+	}
+	return store.BindChild(ctx, session.OwnerUserID, session.SessionID, identity)
+}
+
+// reconcile makes reads and replay agree with live resources and the absolute
+// TTL. A resident process restart adopts only the exact persisted child.
 func (s *Service) reconcile(ctx context.Context, session domain.Session) (domain.Session, error) {
 	if session.State.Terminal() {
 		return session, nil
@@ -323,6 +393,41 @@ func (s *Service) reconcile(ctx context.Context, session domain.Session) (domain
 	s.mu.Lock()
 	display := s.displays[session.SessionID]
 	s.mu.Unlock()
+	if display == nil {
+		if engine, ok := s.engine.(ports.ResidentEngine); ok {
+			grant, err := s.workspaceGrant(ctx, session.OwnerUserID, session.ProjectID)
+			if err != nil {
+				return session, domain.ErrEngineUnavailable
+			}
+			release, err := s.engine.Reserve()
+			if err != nil {
+				return session, domain.ErrEngineUnavailable
+			}
+			adopted, err := engine.AdoptResident(ctx, ports.ResidentLaunch{Session: session, Workspace: grant})
+			if err == nil {
+				if bindErr := s.bindResidentChild(ctx, session, adopted); bindErr != nil {
+					if resident, ok := adopted.(ports.ResidentDisplay); ok {
+						resident.PreserveForAdoption()
+					} else {
+						adopted.Stop()
+					}
+					release()
+					return session, bindErr
+				}
+				s.mu.Lock()
+				s.displays[session.SessionID] = adopted
+				s.releases[session.SessionID] = release
+				s.mu.Unlock()
+				display = adopted
+				s.watchWorkspace(session, grant)
+			} else {
+				release()
+				if !errors.Is(err, domain.ErrResidentChildNotFound) {
+					return session, domain.ErrEngineUnavailable
+				}
+			}
+		}
+	}
 	now := time.Now().UTC()
 	state := session.State
 	if session.LifecycleMode.Expired(session.ExpiresAt, now) {
@@ -333,8 +438,12 @@ func (s *Service) reconcile(ctx context.Context, session domain.Session) (domain
 	if state == session.State {
 		return session, nil
 	}
-	s.reap(session.SessionID)
-	if err := s.store.CloseSession(ctx, session.OwnerUserID, session.SessionID, state, now); err != nil {
+	if err := s.AroundControl(ctx, session.SessionID, func() error {
+		if err := s.reapExact(ctx, session); err != nil {
+			return err
+		}
+		return s.store.CloseSession(ctx, session.OwnerUserID, session.SessionID, state, now)
+	}); err != nil {
 		return domain.Session{}, err
 	}
 	return s.store.GetSession(ctx, session.OwnerUserID, session.SessionID)
@@ -350,6 +459,10 @@ func (s *Service) Sweep(ctx context.Context) error {
 	}
 	for _, session := range sessions {
 		if _, err := s.reconcile(ctx, session); err != nil {
+			if errors.Is(err, domain.ErrEngineUnavailable) {
+				s.logger.Warn("resident native session reconciliation pending", "session_id", session.SessionID)
+				continue
+			}
 			return err
 		}
 	}
@@ -367,7 +480,21 @@ func (s *Service) Shutdown() {
 	}
 	s.mu.Unlock()
 	for _, id := range ids {
-		s.reap(id)
+		s.mu.Lock()
+		display := s.displays[id]
+		release := s.releases[id]
+		delete(s.displays, id)
+		delete(s.releases, id)
+		delete(s.peerDevices, id)
+		s.mu.Unlock()
+		if resident, ok := display.(ports.ResidentDisplay); ok {
+			resident.PreserveForAdoption()
+		} else if display != nil {
+			display.Stop()
+		}
+		if release != nil {
+			release()
+		}
 	}
 }
 
@@ -390,6 +517,9 @@ func (s *Service) Restart(ctx context.Context, owner, id, key string, fence func
 	restarts, ok := s.store.(ports.RestartStore)
 	if !ok {
 		return domain.Session{}, domain.ErrEngineUnavailable
+	}
+	if _, resident := s.engine.(ports.ResidentEngine); resident {
+		return s.restartResident(ctx, owner, id, key, fence, session, mode, restarts)
 	}
 	generation, fresh, err := restarts.BeginRestart(ctx, owner, id, key, time.Now().UTC(), mode)
 	if err != nil {
@@ -432,10 +562,17 @@ func (s *Service) Restart(ctx context.Context, owner, id, key string, fence func
 	if err != nil {
 		return domain.Session{}, err
 	}
-	display, err := s.launch(ctx, session.SessionID, session.Width, session.Height, grant, mode)
+	session.Generation = generation
+	session.LifecycleMode = mode
+	display, err := s.launchResident(ctx, session, grant)
 	if err != nil {
 		release()
 		return domain.Session{}, domain.ErrEngineUnavailable
+	}
+	if err := s.bindResidentChild(ctx, session, display); err != nil {
+		display.Stop()
+		release()
+		return domain.Session{}, err
 	}
 	if binder, ok := display.(interface{ BindSession(string, string) }); ok {
 		binder.BindSession(session.SessionID, owner)
@@ -469,6 +606,9 @@ func (s *Service) Stop(ctx context.Context, owner, id, key string, fence func() 
 	store, ok := s.store.(ports.StopStore)
 	if !ok {
 		return domain.Session{}, domain.ErrEngineUnavailable
+	}
+	if _, resident := s.engine.(ports.ResidentEngine); resident {
+		return s.stopResident(ctx, owner, id, key, fence, store)
 	}
 	fresh, err := store.BeginStop(ctx, owner, id, key, time.Now().UTC())
 	if err != nil {

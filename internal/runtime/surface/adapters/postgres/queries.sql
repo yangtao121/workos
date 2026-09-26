@@ -97,39 +97,39 @@ SELECT EXISTS (
 INSERT INTO workos_runtime.surface_attachments (
     attachment_id, workload_id, surface_session_id, owner_user_id, project_id,
     device_id, idempotency_key, controls, control_generation, state,
-    attached_at, control_expires_at
-) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+    attached_at, control_expires_at, workload_generation
+) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
 ON CONFLICT (owner_user_id, idempotency_key) DO NOTHING;
 
 -- name: GetSurfaceAttachmentByKey :one
 SELECT attachment_id, workload_id, surface_session_id, owner_user_id, project_id,
        device_id, idempotency_key, controls, control_generation, state,
-       attached_at, control_expires_at, detached_at
+       attached_at, control_expires_at, detached_at, workload_generation
 FROM workos_runtime.surface_attachments
 WHERE owner_user_id = $1 AND idempotency_key = $2;
 
 -- name: GetSurfaceAttachment :one
 SELECT attachment_id, workload_id, surface_session_id, owner_user_id, project_id,
        device_id, idempotency_key, controls, control_generation, state,
-       attached_at, control_expires_at, detached_at
+       attached_at, control_expires_at, detached_at, workload_generation
 FROM workos_runtime.surface_attachments
 WHERE owner_user_id = $1 AND attachment_id = $2;
 
 -- name: GetControllerAttachment :one
 SELECT attachment_id, workload_id, surface_session_id, owner_user_id, project_id,
        device_id, idempotency_key, controls, control_generation, state,
-       attached_at, control_expires_at, detached_at
+       attached_at, control_expires_at, detached_at, workload_generation
 FROM workos_runtime.surface_attachments
 WHERE owner_user_id = $1 AND attachment_id = $2 AND device_id = $3;
 
 -- name: GetLiveAttachmentBySurfaceSession :one
 SELECT attachment_id, workload_id, surface_session_id, owner_user_id, project_id,
        device_id, idempotency_key, controls, control_generation, state,
-       attached_at, control_expires_at, detached_at
+       attached_at, control_expires_at, detached_at, workload_generation
 FROM workos_runtime.surface_attachments
 WHERE owner_user_id = $1 AND surface_session_id = $2 AND device_id = $3
   AND state = 'attached'
-ORDER BY attached_at DESC
+ORDER BY attached_at DESC, attachment_id DESC
 LIMIT 1;
 
 -- name: DetachSurfaceAttachment :execrows

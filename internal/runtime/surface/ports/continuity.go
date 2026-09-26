@@ -130,6 +130,12 @@ type ContinuityStore interface {
 	ExpireAttachmentsForWorkloads(ctx context.Context, workloadIDs []string, now time.Time) error
 }
 
+// ControlBarrier serializes an attachment/control mutation with the native
+// broker's one-at-a-time child dispatch. Other workload kinds pass through.
+type ControlBarrier interface {
+	AroundControl(context.Context, string, func() error) error
+}
+
 // Continuity sentinels. They carry no storage internals; the transport maps
 // them to sanitized Connect codes.
 var (

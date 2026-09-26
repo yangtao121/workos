@@ -8,6 +8,8 @@ package nativehostdb
 import (
 	"context"
 	"time"
+
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 const beginNativeRestart = `-- name: BeginNativeRestart :one
@@ -34,6 +36,41 @@ func (q *Queries) BeginNativeRestart(ctx context.Context, arg BeginNativeRestart
 	var generation int64
 	err := row.Scan(&generation)
 	return generation, err
+}
+
+const bindNativeChild = `-- name: BindNativeChild :execrows
+UPDATE workos_runtime.native_sessions
+SET child_container_id = $1,
+    child_image_id = $2,
+    child_generation = $3
+WHERE owner_user_id = $4::uuid
+  AND session_id = $5::uuid
+  AND generation = $3
+  AND state IN ('queued', 'running')
+  AND (child_generation IS NULL OR child_generation < $3
+       OR (child_container_id = $1 AND child_image_id = $2))
+`
+
+type BindNativeChildParams struct {
+	ChildContainerID pgtype.Text `json:"child_container_id"`
+	ChildImageID     pgtype.Text `json:"child_image_id"`
+	ChildGeneration  pgtype.Int8 `json:"child_generation"`
+	OwnerUserID      string      `json:"owner_user_id"`
+	SessionID        string      `json:"session_id"`
+}
+
+func (q *Queries) BindNativeChild(ctx context.Context, arg BindNativeChildParams) (int64, error) {
+	result, err := q.db.Exec(ctx, bindNativeChild,
+		arg.ChildContainerID,
+		arg.ChildImageID,
+		arg.ChildGeneration,
+		arg.OwnerUserID,
+		arg.SessionID,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const closeNativeSession = `-- name: CloseNativeSession :execrows
@@ -125,7 +162,8 @@ func (q *Queries) GetNativeRestartReceipt(ctx context.Context, arg GetNativeRest
 
 const getNativeSession = `-- name: GetNativeSession :one
 SELECT session_id, owner_user_id, project_id, idempotency_key, request_digest,
-       state, width, height, created_at, updated_at, expires_at, generation, lifecycle_mode
+       state, width, height, created_at, updated_at, expires_at, generation, lifecycle_mode,
+       child_container_id, child_image_id, child_generation
 FROM workos_runtime.native_sessions
 WHERE owner_user_id = $1 AND session_id = $2
 `
@@ -152,13 +190,17 @@ func (q *Queries) GetNativeSession(ctx context.Context, arg GetNativeSessionPara
 		&i.ExpiresAt,
 		&i.Generation,
 		&i.LifecycleMode,
+		&i.ChildContainerID,
+		&i.ChildImageID,
+		&i.ChildGeneration,
 	)
 	return i, err
 }
 
 const getNativeSessionByKey = `-- name: GetNativeSessionByKey :one
 SELECT session_id, owner_user_id, project_id, idempotency_key, request_digest,
-       state, width, height, created_at, updated_at, expires_at, generation, lifecycle_mode
+       state, width, height, created_at, updated_at, expires_at, generation, lifecycle_mode,
+       child_container_id, child_image_id, child_generation
 FROM workos_runtime.native_sessions
 WHERE owner_user_id = $1 AND idempotency_key = $2
 `
@@ -185,6 +227,9 @@ func (q *Queries) GetNativeSessionByKey(ctx context.Context, arg GetNativeSessio
 		&i.ExpiresAt,
 		&i.Generation,
 		&i.LifecycleMode,
+		&i.ChildContainerID,
+		&i.ChildImageID,
+		&i.ChildGeneration,
 	)
 	return i, err
 }
@@ -247,7 +292,8 @@ func (q *Queries) InsertNativeSession(ctx context.Context, arg InsertNativeSessi
 
 const listActiveNativeSessions = `-- name: ListActiveNativeSessions :many
 SELECT session_id, owner_user_id, project_id, idempotency_key, request_digest,
-       state, width, height, created_at, updated_at, expires_at, generation, lifecycle_mode
+       state, width, height, created_at, updated_at, expires_at, generation, lifecycle_mode,
+       child_container_id, child_image_id, child_generation
 FROM workos_runtime.native_sessions
 WHERE state IN ('queued', 'running')
 `
@@ -275,6 +321,9 @@ func (q *Queries) ListActiveNativeSessions(ctx context.Context) ([]WorkosRuntime
 			&i.ExpiresAt,
 			&i.Generation,
 			&i.LifecycleMode,
+			&i.ChildContainerID,
+			&i.ChildImageID,
+			&i.ChildGeneration,
 		); err != nil {
 			return nil, err
 		}
@@ -288,7 +337,8 @@ func (q *Queries) ListActiveNativeSessions(ctx context.Context) ([]WorkosRuntime
 
 const listProjectNativeSessions = `-- name: ListProjectNativeSessions :many
 SELECT session_id, owner_user_id, project_id, idempotency_key, request_digest,
-       state, width, height, created_at, updated_at, expires_at, generation, lifecycle_mode
+       state, width, height, created_at, updated_at, expires_at, generation, lifecycle_mode,
+       child_container_id, child_image_id, child_generation
 FROM workos_runtime.native_sessions
 WHERE owner_user_id = $1 AND project_id = $2 AND state IN ('queued', 'running')
 `
@@ -321,6 +371,9 @@ func (q *Queries) ListProjectNativeSessions(ctx context.Context, arg ListProject
 			&i.ExpiresAt,
 			&i.Generation,
 			&i.LifecycleMode,
+			&i.ChildContainerID,
+			&i.ChildImageID,
+			&i.ChildGeneration,
 		); err != nil {
 			return nil, err
 		}

@@ -322,6 +322,60 @@ func TestContinuityAttachGrantsFirstControlThenObservers(t *testing.T) {
 	}
 }
 
+func TestWindowAttachmentAuthorizationUsesLatestLiveRelationAndExactLease(t *testing.T) {
+	service, _, _ := newContinuityFixture(nil)
+	ctx := context.Background()
+	const workload = "01999999-9999-7999-8999-000000000c01"
+	clock := time.Now().UTC()
+	service.now = func() time.Time { clock = clock.Add(time.Millisecond); return clock }
+	first, err := service.AttachSurface(ctx, continuityOwner, deviceA, workload, "window-a1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := service.AuthorizeWindowController(ctx, continuityOwner, deviceA, workload, first.Attachment.ID, 1, 1); err != nil {
+		t.Fatalf("first controller: %v", err)
+	}
+	second, err := service.AttachSurface(ctx, continuityOwner, deviceA, workload, "window-a2")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := service.AuthorizeWindowViewer(ctx, continuityOwner, deviceA, workload, first.Attachment.ID, 1); !errors.Is(err, ports.ErrContinuityDenied) {
+		t.Fatalf("old browser attach remained current: %v", err)
+	}
+	if err := service.AuthorizeWindowViewer(ctx, continuityOwner, deviceA, workload, second.Attachment.ID, 1); err != nil {
+		t.Fatalf("new same-device viewer: %v", err)
+	}
+	if err := service.AuthorizeWindowController(ctx, continuityOwner, deviceA, workload, second.Attachment.ID, 1, 1); !errors.Is(err, ports.ErrContinuityDenied) {
+		t.Fatalf("new attach stole old lease without request: %v", err)
+	}
+	control, err := service.RequestSurfaceControl(ctx, continuityOwner, deviceA, workload)
+	if err != nil || control.Lease.ControllerAttachmentID != second.Attachment.ID {
+		t.Fatalf("take control on latest attach: %v %+v", err, control)
+	}
+	if err := service.AuthorizeWindowController(ctx, continuityOwner, deviceA, workload, second.Attachment.ID, 1, control.Lease.ControlGeneration); err != nil {
+		t.Fatalf("exact latest controller: %v", err)
+	}
+	observer, err := service.AttachSurface(ctx, continuityOwner, deviceB, workload, "window-b")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := service.AuthorizeWindowViewer(ctx, continuityOwner, deviceB, workload, observer.Attachment.ID, 1); err != nil {
+		t.Fatalf("observer viewer: %v", err)
+	}
+	if err := service.AuthorizeWindowController(ctx, continuityOwner, deviceB, workload, observer.Attachment.ID, 1, control.Lease.ControlGeneration); !errors.Is(err, ports.ErrContinuityDenied) {
+		t.Fatalf("observer got input: %v", err)
+	}
+	if err := service.AuthorizeWindowViewer(ctx, continuityOwner, deviceB, workload, observer.Attachment.ID, 2); !errors.Is(err, ports.ErrContinuityDenied) {
+		t.Fatalf("stale generation got media: %v", err)
+	}
+	if err := service.DetachSurface(ctx, continuityOwner, deviceB, workload); err != nil {
+		t.Fatal(err)
+	}
+	if err := service.AuthorizeWindowViewer(ctx, continuityOwner, deviceB, workload, observer.Attachment.ID, 1); !errors.Is(err, ports.ErrContinuityDenied) {
+		t.Fatalf("detached observer got media: %v", err)
+	}
+}
+
 func TestContinuityAttachRefusesTerminalWorkloadWithTrueState(t *testing.T) {
 	service, _, _ := newContinuityFixture(nil)
 	ctx := context.Background()

@@ -34,17 +34,18 @@ func NewContinuity(pool *pgxpool.Pool) *ContinuityRepository {
 
 func attachmentFromRow(row surfacedb.WorkosRuntimeSurfaceAttachment) domain.SurfaceAttachment {
 	attachment := domain.SurfaceAttachment{
-		ID:                row.AttachmentID,
-		WorkloadID:        row.WorkloadID,
-		SurfaceSessionID:  row.SurfaceSessionID,
-		OwnerUserID:       row.OwnerUserID,
-		ProjectID:         row.ProjectID,
-		DeviceID:          row.DeviceID,
-		IdempotencyKey:    row.IdempotencyKey,
-		Controls:          row.Controls,
-		ControlGeneration: row.ControlGeneration,
-		State:             domain.AttachmentState(row.State),
-		AttachedAt:        row.AttachedAt.Time,
+		ID:                 row.AttachmentID,
+		WorkloadID:         row.WorkloadID,
+		WorkloadGeneration: row.WorkloadGeneration,
+		SurfaceSessionID:   row.SurfaceSessionID,
+		OwnerUserID:        row.OwnerUserID,
+		ProjectID:          row.ProjectID,
+		DeviceID:           row.DeviceID,
+		IdempotencyKey:     row.IdempotencyKey,
+		Controls:           row.Controls,
+		ControlGeneration:  row.ControlGeneration,
+		State:              domain.AttachmentState(row.State),
+		AttachedAt:         row.AttachedAt.Time,
 	}
 	if row.ControlExpiresAt.Valid {
 		expires := row.ControlExpiresAt.Time
@@ -72,7 +73,8 @@ func leaseFromRow(row surfacedb.WorkosRuntimeSurfaceControlLease) domain.Control
 func insertAttachmentParams(attachment domain.SurfaceAttachment, until time.Time) surfacedb.InsertSurfaceAttachmentParams {
 	return surfacedb.InsertSurfaceAttachmentParams{
 		AttachmentID: attachment.ID, WorkloadID: attachment.WorkloadID,
-		SurfaceSessionID: attachment.SurfaceSessionID, OwnerUserID: attachment.OwnerUserID,
+		WorkloadGeneration: attachment.WorkloadGeneration,
+		SurfaceSessionID:   attachment.SurfaceSessionID, OwnerUserID: attachment.OwnerUserID,
 		ProjectID: attachment.ProjectID, DeviceID: attachment.DeviceID,
 		IdempotencyKey: attachment.IdempotencyKey,
 		Controls:       false, ControlGeneration: 0,
@@ -108,7 +110,7 @@ func (r *ContinuityRepository) Attach(ctx context.Context, command ports.AttachC
 		if err != nil {
 			return domain.SurfaceAttachment{}, domain.ControlLease{}, continuityAttachmentError("query surface attachment", err)
 		}
-		if stored.WorkloadID != attachment.WorkloadID || stored.DeviceID != attachment.DeviceID || stored.ProjectID != attachment.ProjectID {
+		if stored.WorkloadID != attachment.WorkloadID || stored.WorkloadGeneration != attachment.WorkloadGeneration || stored.DeviceID != attachment.DeviceID || stored.ProjectID != attachment.ProjectID {
 			return domain.SurfaceAttachment{}, domain.ControlLease{}, domain.ErrInvalid
 		}
 		lease, found, err := readLease(ctx, queries, attachment.WorkloadID)

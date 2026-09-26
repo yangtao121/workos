@@ -11,6 +11,7 @@ import (
 
 type Querier interface {
 	BeginNativeRestart(ctx context.Context, arg BeginNativeRestartParams) (int64, error)
+	BindNativeChild(ctx context.Context, arg BindNativeChildParams) (int64, error)
 	CloseNativeSession(ctx context.Context, arg CloseNativeSessionParams) (int64, error)
 	CountActiveNativeSessions(ctx context.Context, ownerUserID string) (int64, error)
 	ExpireIdleNativeSessions(ctx context.Context, updatedAt time.Time) ([]string, error)

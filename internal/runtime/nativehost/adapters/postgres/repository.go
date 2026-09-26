@@ -8,10 +8,12 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/yangtao121/workos/internal/runtime/nativehost/adapters/postgres/nativehostdb"
 	"github.com/yangtao121/workos/internal/runtime/nativehost/domain"
+	"github.com/yangtao121/workos/internal/runtime/nativehost/ports"
 )
 
 type Repository struct {
@@ -60,10 +62,68 @@ func (r *Repository) InsertSession(ctx context.Context, session domain.Session) 
 func sessionFromRow(row nativehostdb.WorkosRuntimeNativeSession) domain.Session {
 	return domain.Session{
 		Generation: row.Generation, SessionID: row.SessionID, OwnerUserID: row.OwnerUserID, ProjectID: row.ProjectID,
+		ChildContainerID: textValue(row.ChildContainerID), ChildImageID: textValue(row.ChildImageID), ChildGeneration: intValue(row.ChildGeneration),
 		IdempotencyKey: row.IdempotencyKey, RequestDigest: row.RequestDigest,
 		State: domain.State(row.State), Width: int32(row.Width), Height: int32(row.Height),
 		CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt, ExpiresAt: timeValue(row.ExpiresAt), LifecycleMode: domain.LifecycleMode(row.LifecycleMode),
 	}
+}
+
+func (r *Repository) BindChild(ctx context.Context, owner, id string, identity ports.ChildIdentity) error {
+	updated, err := r.queries.BindNativeChild(ctx, nativehostdb.BindNativeChildParams{
+		OwnerUserID: owner, SessionID: id,
+		ChildContainerID: pgtype.Text{String: identity.ContainerID, Valid: true},
+		ChildImageID:     pgtype.Text{String: identity.ImageID, Valid: true},
+		ChildGeneration:  pgtype.Int8{Int64: identity.Generation, Valid: true},
+	})
+	if err != nil {
+		return transient(err)
+	}
+	if updated != 1 {
+		return domain.ErrStoreUnavailable
+	}
+	return nil
+}
+
+func (r *Repository) RestartReceipt(ctx context.Context, owner, id, key string) (int64, bool, error) {
+	if _, err := r.GetSession(ctx, owner, id); err != nil {
+		return 0, false, err
+	}
+	row, err := r.queries.GetNativeRestartReceipt(ctx, nativehostdb.GetNativeRestartReceiptParams{SessionID: id, ActionKey: key})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return 0, false, nil
+	}
+	if err != nil {
+		return 0, false, transient(err)
+	}
+	return row.Generation, true, nil
+}
+
+func (r *Repository) StopReceipt(ctx context.Context, owner, id, key string) (bool, error) {
+	if _, err := r.GetSession(ctx, owner, id); err != nil {
+		return false, err
+	}
+	_, err := r.queries.GetNativeStopReceipt(ctx, nativehostdb.GetNativeStopReceiptParams{SessionID: id, ActionKey: key})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return false, nil
+	}
+	if err != nil {
+		return false, transient(err)
+	}
+	return true, nil
+}
+
+func textValue(value pgtype.Text) string {
+	if !value.Valid {
+		return ""
+	}
+	return value.String
+}
+func intValue(value pgtype.Int8) int64 {
+	if !value.Valid {
+		return 0
+	}
+	return value.Int64
 }
 
 func (r *Repository) GetSession(ctx context.Context, ownerUserID, sessionID string) (domain.Session, error) {

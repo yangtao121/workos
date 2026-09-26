@@ -22,6 +22,9 @@ func (s *Service) workspaceGrant(ctx context.Context, owner, project string) (po
 	return grant, nil
 }
 func (s *Service) launch(ctx context.Context, sessionID string, a, b int32, g ports.WorkspaceGrant, mode domain.LifecycleMode) (ports.Display, error) {
+	if _, ok := s.engine.(ports.ResidentEngine); ok {
+		return nil, domain.ErrEngineUnavailable
+	}
 	if engine, ok := s.engine.(interface {
 		LaunchSessionLifecycle(context.Context, string, int32, int32, string, bool, domain.LifecycleMode) (ports.Display, error)
 	}); ok {
@@ -40,6 +43,14 @@ func (s *Service) launch(ctx context.Context, sessionID string, a, b int32, g po
 		return nil, domain.ErrEngineUnavailable
 	}
 	return s.engine.Launch(ctx, a, b, g.Directory)
+}
+
+func (s *Service) launchResident(ctx context.Context, session domain.Session, grant ports.WorkspaceGrant) (ports.Display, error) {
+	engine, ok := s.engine.(ports.ResidentEngine)
+	if !ok {
+		return s.launch(ctx, session.SessionID, session.Width, session.Height, grant, session.LifecycleMode)
+	}
+	return engine.LaunchResident(ctx, ports.ResidentLaunch{Session: session, Workspace: grant})
 }
 
 // Each watcher belongs to one generation. A late revocation cannot stop its

@@ -118,6 +118,14 @@ type Runtime struct {
 	NativeGreenfieldProxy string `yaml:"native_greenfield_proxy"`
 	// NativeGreenfieldApp is the official desktop application executable.
 	NativeGreenfieldApp string `yaml:"native_greenfield_app"`
+	// NativeGreenfieldChildImage is the Runtime-managed resident compositor image.
+	NativeGreenfieldChildImage string `yaml:"native_greenfield_child_image"`
+	// NativeGreenfieldIPCRoot is a host-visible directory shared only between
+	// trusted Runtime and each child through a workload-specific bind mount.
+	NativeGreenfieldIPCRoot string `yaml:"native_greenfield_ipc_root"`
+	NativeRenderDevice      string `yaml:"native_render_device"`
+	NativeRenderGID         string `yaml:"native_render_gid"`
+	NativeGPUDriver         string `yaml:"native_gpu_driver"`
 	// NativeClient is the native X client argv run inside each session
 	// display (space separated, operator configured).
 	NativeClient string `yaml:"native_client"`
@@ -485,6 +493,11 @@ func Load() (Config, error) {
 	setString(&cfg.Runtime.NativeEngine, "WORKOS_RUNTIME_NATIVE_ENGINE")
 	setString(&cfg.Runtime.NativeGreenfieldProxy, "WORKOS_RUNTIME_NATIVE_GREENFIELD_PROXY")
 	setString(&cfg.Runtime.NativeGreenfieldApp, "WORKOS_RUNTIME_NATIVE_GREENFIELD_APP")
+	setString(&cfg.Runtime.NativeGreenfieldChildImage, "WORKOS_RUNTIME_NATIVE_GREENFIELD_CHILD_IMAGE")
+	setString(&cfg.Runtime.NativeGreenfieldIPCRoot, "WORKOS_RUNTIME_NATIVE_GREENFIELD_IPC_ROOT")
+	setString(&cfg.Runtime.NativeRenderDevice, "WORKOS_RUNTIME_NATIVE_RENDER_DEVICE")
+	setString(&cfg.Runtime.NativeRenderGID, "WORKOS_RUNTIME_NATIVE_RENDER_GID")
+	setString(&cfg.Runtime.NativeGPUDriver, "WORKOS_RUNTIME_NATIVE_GPU_DRIVER")
 	setString(&cfg.Runtime.NativeClient, "WORKOS_RUNTIME_NATIVE_CLIENT")
 	setString(&cfg.Runtime.NativeFFmpeg, "WORKOS_RUNTIME_NATIVE_FFMPEG")
 	setString(&cfg.Runtime.NativeXdotool, "WORKOS_RUNTIME_NATIVE_XDOTOOL")

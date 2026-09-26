@@ -7,13 +7,15 @@ ON CONFLICT (owner_user_id, idempotency_key) DO NOTHING;
 
 -- name: GetNativeSession :one
 SELECT session_id, owner_user_id, project_id, idempotency_key, request_digest,
-       state, width, height, created_at, updated_at, expires_at, generation, lifecycle_mode
+       state, width, height, created_at, updated_at, expires_at, generation, lifecycle_mode,
+       child_container_id, child_image_id, child_generation
 FROM workos_runtime.native_sessions
 WHERE owner_user_id = $1 AND session_id = $2;
 
 -- name: GetNativeSessionByKey :one
 SELECT session_id, owner_user_id, project_id, idempotency_key, request_digest,
-       state, width, height, created_at, updated_at, expires_at, generation, lifecycle_mode
+       state, width, height, created_at, updated_at, expires_at, generation, lifecycle_mode,
+       child_container_id, child_image_id, child_generation
 FROM workos_runtime.native_sessions
 WHERE owner_user_id = $1 AND idempotency_key = $2;
 
@@ -40,13 +42,15 @@ RETURNING session_id::text AS session_id;
 
 -- name: ListProjectNativeSessions :many
 SELECT session_id, owner_user_id, project_id, idempotency_key, request_digest,
-       state, width, height, created_at, updated_at, expires_at, generation, lifecycle_mode
+       state, width, height, created_at, updated_at, expires_at, generation, lifecycle_mode,
+       child_container_id, child_image_id, child_generation
 FROM workos_runtime.native_sessions
 WHERE owner_user_id = $1 AND project_id = $2 AND state IN ('queued', 'running');
 
 -- name: ListActiveNativeSessions :many
 SELECT session_id, owner_user_id, project_id, idempotency_key, request_digest,
-       state, width, height, created_at, updated_at, expires_at, generation, lifecycle_mode
+       state, width, height, created_at, updated_at, expires_at, generation, lifecycle_mode,
+       child_container_id, child_image_id, child_generation
 FROM workos_runtime.native_sessions
 WHERE state IN ('queued', 'running');
 
@@ -68,3 +72,15 @@ SELECT generation FROM workos_runtime.native_session_stops WHERE session_id=sqlc
 
 -- name: RecordNativeStop :exec
 INSERT INTO workos_runtime.native_session_stops(session_id,action_key,generation) VALUES(sqlc.arg(session_id)::uuid,sqlc.arg(action_key),sqlc.arg(generation));
+
+-- name: BindNativeChild :execrows
+UPDATE workos_runtime.native_sessions
+SET child_container_id = sqlc.arg(child_container_id),
+    child_image_id = sqlc.arg(child_image_id),
+    child_generation = sqlc.arg(child_generation)
+WHERE owner_user_id = sqlc.arg(owner_user_id)::uuid
+  AND session_id = sqlc.arg(session_id)::uuid
+  AND generation = sqlc.arg(child_generation)
+  AND state IN ('queued', 'running')
+  AND (child_generation IS NULL OR child_generation < sqlc.arg(child_generation)
+       OR (child_container_id = sqlc.arg(child_container_id) AND child_image_id = sqlc.arg(child_image_id)));

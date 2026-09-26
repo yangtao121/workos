@@ -14,6 +14,12 @@ ADR-0032 至 ADR-0036 分阶段采纳。2026-09-22 的 [交付索引](v2-deliver
 客户端。LAN 密码入口由 ADR-0039 采纳，取代 V3 最初“不新增登录”的选择；其他现有边界与
 历史交付事实保留。文档交付不替代专项 ADR，也不升级模块实现状态。
 
+ADR-0040 的 Runtime producer 已增加常驻 Greenfield 子容器与私有 Unix broker：
+`runtime-host` 保留可信 Docker/数据库授权，按 workload 建立无网络、无端口的非 root
+Code/Chromium/Node 子容器；Surface 附件与控制租约在每个窗口事件前由 Go 核对，媒体流
+至少每秒重验。Docker 身份、隔离配置及 GPU 子容器探针有针对性测试；最终 child 镜像、
+Gateway、Desktop 合并后的真实 Code/LAN HTTPS 验收仍待进行，因此 P0 状态不升级。
+
 ## 进程所有权
 
 | 进程             | 当前所有权                                                                                                                                             | 不拥有                     |

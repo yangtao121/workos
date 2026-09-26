@@ -31,19 +31,20 @@ func (s AttachmentState) Live() bool {
 
 // SurfaceAttachment is one device's access relation to one workload.
 type SurfaceAttachment struct {
-	ID                string
-	WorkloadID        string
-	SurfaceSessionID  string
-	OwnerUserID       string
-	ProjectID         string
-	DeviceID          string
-	IdempotencyKey    string
-	Controls          bool
-	ControlGeneration int64
-	State             AttachmentState
-	AttachedAt        time.Time
-	ControlExpiresAt  *time.Time
-	DetachedAt        *time.Time
+	ID                 string
+	WorkloadID         string
+	WorkloadGeneration int64
+	SurfaceSessionID   string
+	OwnerUserID        string
+	ProjectID          string
+	DeviceID           string
+	IdempotencyKey     string
+	Controls           bool
+	ControlGeneration  int64
+	State              AttachmentState
+	AttachedAt         time.Time
+	ControlExpiresAt   *time.Time
+	DetachedAt         *time.Time
 }
 
 // ControlLease is the single controller epoch of one workload. The holder is

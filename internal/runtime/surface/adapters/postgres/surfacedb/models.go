@@ -9,19 +9,20 @@ import (
 )
 
 type WorkosRuntimeSurfaceAttachment struct {
-	AttachmentID      string             `json:"attachment_id"`
-	WorkloadID        string             `json:"workload_id"`
-	SurfaceSessionID  string             `json:"surface_session_id"`
-	OwnerUserID       string             `json:"owner_user_id"`
-	ProjectID         string             `json:"project_id"`
-	DeviceID          string             `json:"device_id"`
-	IdempotencyKey    string             `json:"idempotency_key"`
-	Controls          bool               `json:"controls"`
-	ControlGeneration int64              `json:"control_generation"`
-	State             string             `json:"state"`
-	AttachedAt        pgtype.Timestamptz `json:"attached_at"`
-	ControlExpiresAt  pgtype.Timestamptz `json:"control_expires_at"`
-	DetachedAt        pgtype.Timestamptz `json:"detached_at"`
+	AttachmentID       string             `json:"attachment_id"`
+	WorkloadID         string             `json:"workload_id"`
+	SurfaceSessionID   string             `json:"surface_session_id"`
+	OwnerUserID        string             `json:"owner_user_id"`
+	ProjectID          string             `json:"project_id"`
+	DeviceID           string             `json:"device_id"`
+	IdempotencyKey     string             `json:"idempotency_key"`
+	Controls           bool               `json:"controls"`
+	ControlGeneration  int64              `json:"control_generation"`
+	State              string             `json:"state"`
+	AttachedAt         pgtype.Timestamptz `json:"attached_at"`
+	ControlExpiresAt   pgtype.Timestamptz `json:"control_expires_at"`
+	DetachedAt         pgtype.Timestamptz `json:"detached_at"`
+	WorkloadGeneration int64              `json:"workload_generation"`
 }
 
 type WorkosRuntimeSurfaceControlLease struct {

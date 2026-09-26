@@ -362,7 +362,7 @@ func (q *Queries) GetActiveSessionByBridgeToken(ctx context.Context, arg GetActi
 const getControllerAttachment = `-- name: GetControllerAttachment :one
 SELECT attachment_id, workload_id, surface_session_id, owner_user_id, project_id,
        device_id, idempotency_key, controls, control_generation, state,
-       attached_at, control_expires_at, detached_at
+       attached_at, control_expires_at, detached_at, workload_generation
 FROM workos_runtime.surface_attachments
 WHERE owner_user_id = $1 AND attachment_id = $2 AND device_id = $3
 `
@@ -390,6 +390,7 @@ func (q *Queries) GetControllerAttachment(ctx context.Context, arg GetController
 		&i.AttachedAt,
 		&i.ControlExpiresAt,
 		&i.DetachedAt,
+		&i.WorkloadGeneration,
 	)
 	return i, err
 }
@@ -397,11 +398,11 @@ func (q *Queries) GetControllerAttachment(ctx context.Context, arg GetController
 const getLiveAttachmentBySurfaceSession = `-- name: GetLiveAttachmentBySurfaceSession :one
 SELECT attachment_id, workload_id, surface_session_id, owner_user_id, project_id,
        device_id, idempotency_key, controls, control_generation, state,
-       attached_at, control_expires_at, detached_at
+       attached_at, control_expires_at, detached_at, workload_generation
 FROM workos_runtime.surface_attachments
 WHERE owner_user_id = $1 AND surface_session_id = $2 AND device_id = $3
   AND state = 'attached'
-ORDER BY attached_at DESC
+ORDER BY attached_at DESC, attachment_id DESC
 LIMIT 1
 `
 
@@ -428,6 +429,7 @@ func (q *Queries) GetLiveAttachmentBySurfaceSession(ctx context.Context, arg Get
 		&i.AttachedAt,
 		&i.ControlExpiresAt,
 		&i.DetachedAt,
+		&i.WorkloadGeneration,
 	)
 	return i, err
 }
@@ -535,7 +537,7 @@ func (q *Queries) GetSessionRequest(ctx context.Context, arg GetSessionRequestPa
 const getSurfaceAttachment = `-- name: GetSurfaceAttachment :one
 SELECT attachment_id, workload_id, surface_session_id, owner_user_id, project_id,
        device_id, idempotency_key, controls, control_generation, state,
-       attached_at, control_expires_at, detached_at
+       attached_at, control_expires_at, detached_at, workload_generation
 FROM workos_runtime.surface_attachments
 WHERE owner_user_id = $1 AND attachment_id = $2
 `
@@ -562,6 +564,7 @@ func (q *Queries) GetSurfaceAttachment(ctx context.Context, arg GetSurfaceAttach
 		&i.AttachedAt,
 		&i.ControlExpiresAt,
 		&i.DetachedAt,
+		&i.WorkloadGeneration,
 	)
 	return i, err
 }
@@ -569,7 +572,7 @@ func (q *Queries) GetSurfaceAttachment(ctx context.Context, arg GetSurfaceAttach
 const getSurfaceAttachmentByKey = `-- name: GetSurfaceAttachmentByKey :one
 SELECT attachment_id, workload_id, surface_session_id, owner_user_id, project_id,
        device_id, idempotency_key, controls, control_generation, state,
-       attached_at, control_expires_at, detached_at
+       attached_at, control_expires_at, detached_at, workload_generation
 FROM workos_runtime.surface_attachments
 WHERE owner_user_id = $1 AND idempotency_key = $2
 `
@@ -596,6 +599,7 @@ func (q *Queries) GetSurfaceAttachmentByKey(ctx context.Context, arg GetSurfaceA
 		&i.AttachedAt,
 		&i.ControlExpiresAt,
 		&i.DetachedAt,
+		&i.WorkloadGeneration,
 	)
 	return i, err
 }
@@ -751,24 +755,25 @@ const insertSurfaceAttachment = `-- name: InsertSurfaceAttachment :execrows
 INSERT INTO workos_runtime.surface_attachments (
     attachment_id, workload_id, surface_session_id, owner_user_id, project_id,
     device_id, idempotency_key, controls, control_generation, state,
-    attached_at, control_expires_at
-) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+    attached_at, control_expires_at, workload_generation
+) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
 ON CONFLICT (owner_user_id, idempotency_key) DO NOTHING
 `
 
 type InsertSurfaceAttachmentParams struct {
-	AttachmentID      string             `json:"attachment_id"`
-	WorkloadID        string             `json:"workload_id"`
-	SurfaceSessionID  string             `json:"surface_session_id"`
-	OwnerUserID       string             `json:"owner_user_id"`
-	ProjectID         string             `json:"project_id"`
-	DeviceID          string             `json:"device_id"`
-	IdempotencyKey    string             `json:"idempotency_key"`
-	Controls          bool               `json:"controls"`
-	ControlGeneration int64              `json:"control_generation"`
-	State             string             `json:"state"`
-	AttachedAt        pgtype.Timestamptz `json:"attached_at"`
-	ControlExpiresAt  pgtype.Timestamptz `json:"control_expires_at"`
+	AttachmentID       string             `json:"attachment_id"`
+	WorkloadID         string             `json:"workload_id"`
+	SurfaceSessionID   string             `json:"surface_session_id"`
+	OwnerUserID        string             `json:"owner_user_id"`
+	ProjectID          string             `json:"project_id"`
+	DeviceID           string             `json:"device_id"`
+	IdempotencyKey     string             `json:"idempotency_key"`
+	Controls           bool               `json:"controls"`
+	ControlGeneration  int64              `json:"control_generation"`
+	State              string             `json:"state"`
+	AttachedAt         pgtype.Timestamptz `json:"attached_at"`
+	ControlExpiresAt   pgtype.Timestamptz `json:"control_expires_at"`
+	WorkloadGeneration int64              `json:"workload_generation"`
 }
 
 // Surface continuity facts (ADR-0031, migration 059): attachments are
@@ -788,6 +793,7 @@ func (q *Queries) InsertSurfaceAttachment(ctx context.Context, arg InsertSurface
 		arg.State,
 		arg.AttachedAt,
 		arg.ControlExpiresAt,
+		arg.WorkloadGeneration,
 	)
 	if err != nil {
 		return 0, err
