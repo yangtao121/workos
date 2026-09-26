@@ -14,17 +14,20 @@ ADR-0032 至 ADR-0036 分阶段采纳。2026-09-22 的 [交付索引](v2-deliver
 客户端。LAN 密码入口由 ADR-0039 采纳，取代 V3 最初“不新增登录”的选择；其他现有边界与
 历史交付事实保留。文档交付不替代专项 ADR，也不升级模块实现状态。
 
-ADR-0040 的 Runtime producer 已增加常驻 Greenfield 子容器与私有 Unix broker：
+ADR-0040 的 Runtime 已接入常驻 Greenfield 子容器与私有 Unix broker：
 `runtime-host` 保留可信 Docker/数据库授权，按 workload 建立无网络、无端口的非 root
 Code/Chromium/Node 子容器；Surface 附件与控制租约在每个窗口事件前由 Go 核对，媒体流
-至少每秒重验。Docker 身份、隔离配置及 GPU 子容器探针有针对性测试；最终 child 镜像、
-Gateway、Desktop 合并后的真实 Code/LAN HTTPS 验收仍待进行，因此 P0 状态不升级。
+至少每秒重验。Gateway 和 Desktop 已合入逐窗口画面、输入与控制路径；隔离探针取得真实
+Code 和 Mousepad 像素，Mousepad 的完整帧和焦点输入也通过私有 broker。带 owner 密码的
+LAN 浏览器验收仍由 owner 自行运行，因此 P0 状态不升级。
 
 Desktop 的 Home、命令面板与 Dock 中，Code 主入口现在调用现有 native session
 startup/focus 路径，向当前 Project 打开 WorkOS Code 对应的 `native` workload；Dock 将该
 workload 标为 Code 运行中。旧布局中的 `kind: "code"` 仍可恢复为补丁审阅窗口，Artifact Center
-继续提供成果审阅。该入口的固定 fixture 视觉记录和单元测试证明路由行为；真实 Code 像素、
-持久性与多设备验收仍以独立 LAN 浏览器门禁为准。
+继续提供成果审阅。Home 另有独立 Text Editor 入口，其 Native 会话以持久化的应用类型启动
+隔离 Mousepad 子容器；现有 WorkOS Terminal 保持 PTY 应用。固定 fixture 视觉记录和单元测试
+证明入口路由；真实 Code/Terminal/Editor 剪贴板、持久性与多浏览器验收仍以独立 LAN 浏览器
+门禁为准。
 
 ## 进程所有权
 
