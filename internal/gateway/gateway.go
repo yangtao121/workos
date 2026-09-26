@@ -402,7 +402,7 @@ func (h *Handler) serveProduction(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if revalidatedStreamPath(path) {
-			h.serveStreamWithRevalidation(w, r, identity)
+			h.serveStreamWithRevalidation(w, r, identity, h.proxy)
 			return
 		}
 		h.proxy.ServeHTTP(w, r.WithContext(identity))
@@ -417,6 +417,10 @@ func (h *Handler) serveProduction(w http.ResponseWriter, r *http.Request) {
 	case isSessionGatedAssetPath(path):
 		identity, ok := h.requireSession(w, r)
 		if !ok {
+			return
+		}
+		if websocketUpgrade(r) {
+			h.serveStreamWithRevalidation(w, r, identity, h.runtime)
 			return
 		}
 		h.runtime.ServeHTTP(w, r.WithContext(identity))
@@ -522,7 +526,7 @@ func (h *Handler) requireSession(w http.ResponseWriter, r *http.Request) (contex
 // must present the exact public Origin, and Fetch-Metadata may never
 // declare another site.
 func (h *Handler) enforceOriginPolicy(w http.ResponseWriter, r *http.Request) bool {
-	if isUnsafeMethod(r.Method) {
+	if isUnsafeMethod(r.Method) || websocketUpgrade(r) {
 		origin := r.Header.Get("Origin")
 		if origin != h.config.Auth.PublicOrigin {
 			http.Error(w, "request origin rejected", http.StatusForbidden)
@@ -553,7 +557,7 @@ func isUnsafeMethod(method string) bool {
 // aborts the proxied stream in bounded time. A store outage keeps the
 // stream alive — the Core handler's bounded lifetime and the next
 // reconnect through this gate are the remaining bounds.
-func (h *Handler) serveStreamWithRevalidation(w http.ResponseWriter, r *http.Request, identity context.Context) {
+func (h *Handler) serveStreamWithRevalidation(w http.ResponseWriter, r *http.Request, identity context.Context, proxy *httputil.ReverseProxy) {
 	cookie, err := r.Cookie(authtransport.SessionCookieName)
 	if err != nil || cookie.Value == "" {
 		http.Error(w, "device session required", http.StatusUnauthorized)
@@ -586,7 +590,12 @@ func (h *Handler) serveStreamWithRevalidation(w http.ResponseWriter, r *http.Req
 			}
 		}
 	}()
-	h.proxy.ServeHTTP(w, r.WithContext(streamCtx))
+	proxy.ServeHTTP(w, r.WithContext(streamCtx))
+}
+
+func websocketUpgrade(r *http.Request) bool {
+	return strings.EqualFold(r.Header.Get("Upgrade"), "websocket") &&
+		strings.Contains(strings.ToLower(r.Header.Get("Connection")), "upgrade")
 }
 
 // serveLocalConnect mounts one Gateway-local Connect handler with the live
