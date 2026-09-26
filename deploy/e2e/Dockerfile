@@ -36,6 +36,12 @@ RUN PLAYWRIGHT_DOWNLOAD_HOST="${PLAYWRIGHT_DOWNLOAD_HOST}" \
       playwright install chromium webkit \
     && chmod -R a+rX "${PLAYWRIGHT_BROWSERS_PATH}"
 
+# LAN HTTPS acceptance imports its local CA into Chromium's NSS profile.
+# Keep this after the large browser layers so adding trust tooling is cheap.
+RUN apt-get update \
+    && apt-get install --yes --no-install-recommends libnss3-tools \
+    && rm -rf /var/lib/apt/lists/*
+
 WORKDIR /workspace/apps/desktop-web
 
 LABEL org.opencontainers.image.title="WorkOS Playwright test runner" \
