@@ -126,9 +126,13 @@ describe("Desktop harness workflow", () => {
     render(<Desktop workosClients={workosClients} />);
     await userEvent.click(screen.getByTestId("open-home"));
     await userEvent.click(await screen.findByTestId("home-entry-code"));
-    await waitFor(() => expect(createNativeSession).toHaveBeenCalledTimes(1));
+    await waitFor(() => {
+      expect(createNativeSession).toHaveBeenCalledTimes(1);
+    });
     await userEvent.click(await screen.findByTestId("home-entry-text-editor"));
-    await waitFor(() => expect(createNativeSession).toHaveBeenCalledTimes(2));
+    await waitFor(() => {
+      expect(createNativeSession).toHaveBeenCalledTimes(2);
+    });
     expect(createNativeSession.mock.calls[0]?.[0].application).toBe(NativeApplication.CODE);
     expect(createNativeSession.mock.calls[1]?.[0].application).toBe(NativeApplication.TEXT_EDITOR);
     await userEvent.click(screen.getByTestId("open-code"));

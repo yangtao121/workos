@@ -1154,7 +1154,7 @@ export function Desktop({
         dispatch({ type: "focus", id: existing.id });
         return;
       }
-      const intentKey = `${projectId}:${kind}:${kind === "native" ? application : ""}`;
+      const intentKey = `${projectId}:${kind}:${kind === "native" ? String(application) : ""}`;
       const intent = startupIntents.current.get(intentKey) ?? {
         key: crypto.randomUUID(),
         busy: false,
