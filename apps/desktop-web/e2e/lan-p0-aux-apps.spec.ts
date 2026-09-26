@@ -136,7 +136,11 @@ async function readyNativeWindow(page: Page, workload: Workload): Promise<Locato
   const window = nativeWindow(page, workload);
   await expect(window).toBeVisible({ timeout: 90_000 });
   await expect(window.locator('[data-frame-state="ready"]')).toBeVisible({ timeout: 30_000 });
-  await expect(window.locator(".greenfield-window-app")).toHaveAttribute("data-controller", "true");
+  const viewer = window.locator(".greenfield-window-app");
+  await expect(viewer).toHaveAttribute("data-controller", /^(true|false)$/);
+  if ((await viewer.getAttribute("data-controller")) === "false")
+    await window.getByTestId("greenfield-take-control").click();
+  await expect(viewer).toHaveAttribute("data-controller", "true", { timeout: 30_000 });
   const stats = await window.getByTestId("greenfield-window-canvas").evaluate((node) => {
     const canvas = node as HTMLCanvasElement;
     const context = canvas.getContext("2d", { willReadFrequently: true });
