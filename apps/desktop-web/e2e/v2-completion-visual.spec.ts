@@ -128,6 +128,9 @@ for (const [width, height] of [
                 ],
           },
           ListProjectSurfaces: { workloads },
+          GetNativeSession: {
+            session: { id: nativeId, projectId, application: 1 },
+          },
           ReadPtySession: {
             output: btoa("$ node --test calculate.test.cjs\nok triple\n# tests 1\n# pass 1\n$ "),
             cursor: "72",
@@ -177,6 +180,10 @@ for (const [width, height] of [
         if (method === "ReadPtySession") {
           const request = route.request().postDataJSON() as { sessionId: string };
           expect(request.sessionId).toBe(terminalId);
+        }
+        if (method === "GetNativeSession") {
+          const request = route.request().postDataJSON() as { sessionId: string };
+          expect(request.sessionId).toBe(nativeId);
         }
         if (method === "WatchSessionEvents" || method === "WatchTaskEvents") {
           await route.abort();

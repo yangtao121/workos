@@ -1,6 +1,6 @@
 # P0 Native session display names
 
-- Status: in_progress.
+- Status: done (scoped display-name projection; overall V3 P0 remains scaffolded until owner browser acceptance).
 - Branch/worktree: `feat/p0-native-session-names` in `/home/aquatao/workos-p0-names`, based on `main@192e44b`.
 - Scope: carry a trusted, application-specific Native display name through the existing Runtime Surface continuity port. Show `WorkOS Code` and `Text Editor` in Home workload rows so Stop and Restart identify the intended application. Preserve PTY and installed-app labels.
 - Dependencies: persisted Native `Application` kind, Surface continuity projection, existing `SurfaceWorkloadView.display_name` Proto field; no Proto or migration change.
@@ -16,6 +16,6 @@ The Native store already persists `ApplicationCode` or `ApplicationTextEditor`, 
 - `TestNativeWorkloadCarriesPersistedApplicationName` and `TestContinuityWorkloadViewDisplaysApplicationName` cover the composition and transport seams, including both existing workload families and the Native fallback. `go test ./cmd/runtime-host ./internal/runtime/surface/transport` passed in `golang:1.26.7-bookworm` with the host proxy forwarded.
 - Deterministic Chromium visual tests passed at 1440×900, 820×1180, and 390×844 for both [before](../ui/desktop-web/changes/20260926-native-session-names/before/) and [after](../ui/desktop-web/changes/20260926-native-session-names/after/). The six after images were copied to `current/`. [Capture notes](../ui/desktop-web/changes/20260926-native-session-names/notes.md) describe the fixtures; no owner session or credentials were used.
 
-## Remaining integration gate
+## Integration verification
 
-The integration owner cherry-picks this branch, runs `make generate` with no generated diff and `make check` on the merged main tree, then updates the fact status. Until that gate passes this task remains in progress.
+The integration owner merged this branch as `18cf9c7`. On that merged tree, `make generate` left no generated diff and `make check` passed Proto/SQLC, Go, TypeScript, 261 Desktop tests and the production Vite build. The scoped display-name change is complete. The owner-authenticated LAN browser gate remains a separate P0 acceptance task, so `docs/status.json` keeps the V3 resident surface scaffolded.
