@@ -54,7 +54,7 @@ go-check:
 	$(GO_RUN) sh -c 'test -z "$$(gofmt -l cmd internal tests 2>/dev/null)" && go vet ./... && go test ./...'
 
 web-check:
-	$(NODE_RUN) sh -c 'corepack pnpm architecture && corepack pnpm exec eslint . && corepack pnpm exec prettier --check . && corepack pnpm -r --if-present check && corepack pnpm --filter @workos/desktop-web build'
+	$(NODE_RUN) sh -c 'corepack pnpm architecture && corepack pnpm exec eslint . && sh tools/check/prettier.sh && corepack pnpm -r --if-present check && corepack pnpm --filter @workos/desktop-web build'
 
 check: proto-check go-check web-check
 	$(NODE_RUN) node tools/status/render.mjs --check
@@ -67,7 +67,7 @@ check-native:
 	go test ./...
 	pnpm architecture
 	pnpm exec eslint .
-	pnpm exec prettier --check .
+	sh tools/check/prettier.sh
 	pnpm -r --if-present check
 	pnpm --filter @workos/desktop-web build
 	node tools/status/render.mjs --check

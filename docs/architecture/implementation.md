@@ -583,24 +583,27 @@ Desktop 回到密码表单。DeviceService 列表、撤销与退出仍按当前 
 
 ADR-0040 的 resident Greenfield 窗口服务经 Gateway 单独 allowlist 转发到 Runtime。
 两个长期媒体 Watch 在开始时校验设备会话，运行中至迟每 25 秒启动重验；撤销、过期或
-Gateway auth store 故障均终止媒体流。Runtime 仍须按 live attachment 和 workload
-generation 至少每秒重验，写入须逐事件核对控制代次。原始 `/native/greenfield/`
+Gateway auth store 故障均终止媒体流。Runtime 按 live attachment 和 workload
+generation 重验观察连接，写入逐事件核对控制代次。Runtime 监督网络隔离的 Greenfield
+child，常驻 Chromium 保存显示状态，并向浏览器发送逐窗口无损 PNG tile；控制续租使用
+renew-only RPC，旧控制端须显式点击接管才能重新获得输入。原始 `/native/greenfield/`
 代理只留给回环诊断，生产 Gateway 不路由该路径。实现与真实 Code 链路验收见
 [P0 集成任务](../tasks/20260926-lan-p0-integration.md)。
 
 `tools/lan/start.sh` 启动持久本地 CA 与含选定 IPv4 SAN 的 TLS leaf，Gateway 在该 IP 的
 8443 端口服务标准 Chromium；客户端只导入 `ca.crt`，CA 私钥不进入容器。PostgreSQL 和
 OTLP 只监听回环，旧的免认证 LAN HTTP 配置已移除。入口脚本的 CA/TLS/端口测试通过，
-Gateway 实际返回密码模式且未认证请求拒绝；完整密码登录与物理 Mac 信任库验收记录在
+Gateway 实际返回密码模式且未认证请求拒绝；完整密码登录与双 Chromium profile 验收记录在
 [`20260926-lan-p0-integration.md`](../tasks/20260926-lan-p0-integration.md)，完成前不宣称
-LAN 用户链路已全部通过。
+LAN 用户链路已全部通过。P0 以标准 Chromium 内核浏览器为目标；物理设备结果单独记录。
 
 P0 Code 验收使用 `tools/v3-p0-native-experience/prepare-workos-workspace.sh` 从最终提交导出
 仅含 tracked 文件的可写快照。`tools/lan/prepare-code-project.py` 经校验本地 CA 的密码
 Gateway 创建测试 Project，写入仅含 owner、project、路径的 0600 本地 mount 记录；
 Runtime 重启加载后再由公开 Workspace RPC 绑定。隔离子容器只收到该 Project 快照，不挂载
 主工作树、`.git` 或 `.workos/lan-tls/ca.key`。操作步骤与尚缺的实际 Code 验收见
-[LAN Code P0 runbook](../runbooks/lan-code-p0.md)。
+[LAN Code P0 runbook](../runbooks/lan-code-p0.md)；本机 owner 可用
+[`tools/lan/run-browser-p0.sh`](../../tools/lan/run-browser-p0.sh) 一次运行凭据相关的浏览器门禁。
 
 ## Project-scoped App Agent Bridge
 
