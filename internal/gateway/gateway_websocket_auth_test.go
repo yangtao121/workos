@@ -17,7 +17,7 @@ import (
 	"github.com/yangtao121/workos/internal/platform/identity"
 )
 
-func TestNativeWebSocketClosesAfterDeviceRevocation(t *testing.T) {
+func TestSurfaceWebSocketClosesAfterDeviceRevocation(t *testing.T) {
 	closed := make(chan struct{})
 	runtime := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get(identity.UserHeader) != testOwnerID || r.Header.Get(identity.DeviceHeader) != testDeviceID {
@@ -48,7 +48,7 @@ func TestNativeWebSocketClosesAfterDeviceRevocation(t *testing.T) {
 	}
 	defer conn.Close()
 	_ = conn.SetDeadline(time.Now().Add(2 * time.Second))
-	_, err = fmt.Fprintf(conn, "GET /native/greenfield/session HTTP/1.1\r\nHost: workos.example\r\nOrigin: %s\r\nConnection: Upgrade\r\nUpgrade: websocket\r\nSec-WebSocket-Version: 13\r\nSec-WebSocket-Key: MDEyMzQ1Njc4OWFiY2RlZg==\r\nCookie: %s=%s\r\n\r\n", testOrigin, transport.SessionCookieName, testSessionToken)
+	_, err = fmt.Fprintf(conn, "GET /surfaces/native-session HTTP/1.1\r\nHost: workos.example\r\nOrigin: %s\r\nConnection: Upgrade\r\nUpgrade: websocket\r\nSec-WebSocket-Version: 13\r\nSec-WebSocket-Key: MDEyMzQ1Njc4OWFiY2RlZg==\r\nCookie: %s=%s\r\n\r\n", testOrigin, transport.SessionCookieName, testSessionToken)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -67,6 +67,32 @@ func TestNativeWebSocketClosesAfterDeviceRevocation(t *testing.T) {
 	}
 	if store.calls.Load() < 2 {
 		t.Fatal("websocket did not revalidate session")
+	}
+}
+
+func TestProductionRawGreenfieldProxyIsNotRouted(t *testing.T) {
+	called := make(chan struct{}, 1)
+	runtime := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		called <- struct{}{}
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer runtime.Close()
+	store := newGateStore(true)
+	handler, err := New(config.Config{Services: config.URLs{Core: "http://127.0.0.1:1", Runtime: runtime.URL}, Auth: config.Auth{OwnerID: testOwnerID, PublicOrigin: testOrigin}}, newTestLogger(), newTestAuthStack(t, store))
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := httptest.NewRequest(http.MethodGet, testOrigin+"/native/greenfield/session/code", nil)
+	r.AddCookie(&http.Cookie{Name: transport.SessionCookieName, Value: testSessionToken})
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, r)
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("direct Greenfield proxy returned %d", w.Code)
+	}
+	select {
+	case <-called:
+		t.Fatal("raw proxy request reached Runtime")
+	default:
 	}
 }
 

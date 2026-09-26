@@ -379,6 +379,12 @@ func (h *Handler) serveProduction(w http.ResponseWriter, r *http.Request) {
 	}
 	path := r.URL.Path
 	switch {
+	case strings.HasPrefix(path, "/native/greenfield/"):
+		// The direct browser compositor was a loopback diagnostic. Its proxy
+		// exposes a reusable raw Greenfield signaling key; the LAN product
+		// uses the resident window service instead.
+		http.NotFound(w, r)
+		return
 	case strings.HasPrefix(path, h.pairingPath):
 		if h.config.Auth.Mode != "pairing" {
 			http.NotFound(w, r)
