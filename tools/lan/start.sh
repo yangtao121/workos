@@ -100,6 +100,10 @@ else
     docker run --rm --user 0:0 \
         -v "$WORKOS_GREENFIELD_IPC_ROOT:/run/workos/greenfield-ipc" \
         debian:bookworm-slim sh -ec 'chown 10001:10001 /run/workos/greenfield-ipc && chmod 0700 /run/workos/greenfield-ipc'
+    # The child inherits the pinned Greenfield proxy and official Code image.
+    # Build both stages from this checkout so a clean host cannot accidentally
+    # reuse an older local base image under the same tag.
+    docker build -t workos-greenfield-runtime:p0 -f "$repo/deploy/greenfield-runtime.Dockerfile" "$repo"
     docker build -t workos-greenfield-child:dev -f "$repo/deploy/greenfield-child.Dockerfile" "$repo"
     resident_compose up -d --build
     # Compose does not hash bind-mounted file contents; a previously running

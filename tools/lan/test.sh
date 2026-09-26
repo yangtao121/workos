@@ -85,5 +85,42 @@ for name in ("workos-core", "harness-host", "runtime-host", "reliability-host", 
     assert services[name]["environment"]["WORKOS_HTTP_ADDRESS"].startswith("127.0.0.1:")
 PY
 
+if [ -f "$repo/deploy/compose.greenfield-resident.yaml" ]; then
+    WORKOS_LAN_IP=192.168.5.6 \
+    WORKOS_LAN_TLS_DIR="$cert_dir" \
+    WORKOS_LAN_UID=$(id -u) \
+    WORKOS_LAN_GID=$(id -g) \
+    WORKOS_DOCKER_GID=1001 \
+    WORKOS_GREENFIELD_RENDER_GID=1002 \
+    WORKOS_GREENFIELD_IPC_ROOT="$temp_dir/greenfield-ipc" \
+    WORKOS_WORKSPACE_ROOTS="$temp_dir/workspaces" \
+        docker compose -f "$repo/compose.yaml" -f "$repo/deploy/compose.observability.yaml" \
+        -f "$repo/deploy/compose.greenfield-resident.yaml" \
+        -f "$repo/deploy/compose.lan-https.yaml" \
+        config --format json >"$temp_dir/resident-compose.json"
+    python3 - "$temp_dir/resident-compose.json" "$cert_dir" "$temp_dir" <<'PY'
+import json
+import sys
+
+with open(sys.argv[1], encoding="utf-8") as source:
+    services = json.load(source)["services"]
+gateway = services["workos-gateway"]
+runtime = services["runtime-host"]
+assert runtime["environment"]["WORKOS_RUNTIME_NATIVE_ENGINE"] == "greenfield"
+assert runtime["environment"]["WORKOS_RUNTIME_NATIVE_GREENFIELD_CHILD_IMAGE"] == "workos-greenfield-child:dev"
+assert runtime["environment"]["WORKOS_RUNTIME_NATIVE_GREENFIELD_IPC_ROOT"] == sys.argv[3] + "/greenfield-ipc"
+runtime_sources = {volume["source"] for volume in runtime["volumes"]}
+assert "/var/run/docker.sock" in runtime_sources
+assert sys.argv[3] + "/greenfield-ipc" in runtime_sources
+assert sys.argv[3] + "/workspaces" in runtime_sources
+assert not any(source.startswith(sys.argv[2]) for source in runtime_sources)
+assert {volume["source"] for volume in gateway["volumes"]} == {
+    sys.argv[2] + "/leaf.crt", sys.argv[2] + "/leaf.key"
+}
+assert "/var/run/docker.sock" not in {volume["source"] for volume in gateway["volumes"]}
+assert "greenfield-child" not in services
+PY
+fi
+
 grep -Fq 'endpoint: 127.0.0.1:4318' "$repo/deploy/otel-collector.yaml"
 echo 'test-lan-https: PASS (CA persistence, leaf renewal, permissions, SAN, Compose binds)'
