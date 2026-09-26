@@ -916,6 +916,113 @@ func (q *Queries) MarkSurfaceAttachmentControl(ctx context.Context, arg MarkSurf
 	return result.RowsAffected(), nil
 }
 
+const renewSurfaceAttachmentControl = `-- name: RenewSurfaceAttachmentControl :one
+UPDATE workos_runtime.surface_attachments
+SET control_expires_at = $1::timestamptz
+WHERE owner_user_id = $2
+  AND device_id = $3
+  AND workload_id = $4
+  AND surface_session_id = $4
+  AND workload_generation = $5
+  AND attachment_id = $6
+  AND control_generation = $7
+  AND state = 'attached' AND controls = true
+  AND control_expires_at > clock_timestamp()
+RETURNING attachment_id, workload_id, surface_session_id, owner_user_id,
+          project_id, device_id, idempotency_key, controls,
+          control_generation, state, attached_at, control_expires_at,
+          detached_at, workload_generation
+`
+
+type RenewSurfaceAttachmentControlParams struct {
+	Until                     pgtype.Timestamptz `json:"until"`
+	OwnerUserID               string             `json:"owner_user_id"`
+	DeviceID                  string             `json:"device_id"`
+	WorkloadID                string             `json:"workload_id"`
+	WorkloadGeneration        int64              `json:"workload_generation"`
+	AttachmentID              string             `json:"attachment_id"`
+	ExpectedControlGeneration int64              `json:"expected_control_generation"`
+}
+
+// The lease and attachment updates occur in one transaction. If Detach,
+// expiry, or a newer attachment won, this guard rolls the lease update back.
+func (q *Queries) RenewSurfaceAttachmentControl(ctx context.Context, arg RenewSurfaceAttachmentControlParams) (WorkosRuntimeSurfaceAttachment, error) {
+	row := q.db.QueryRow(ctx, renewSurfaceAttachmentControl,
+		arg.Until,
+		arg.OwnerUserID,
+		arg.DeviceID,
+		arg.WorkloadID,
+		arg.WorkloadGeneration,
+		arg.AttachmentID,
+		arg.ExpectedControlGeneration,
+	)
+	var i WorkosRuntimeSurfaceAttachment
+	err := row.Scan(
+		&i.AttachmentID,
+		&i.WorkloadID,
+		&i.SurfaceSessionID,
+		&i.OwnerUserID,
+		&i.ProjectID,
+		&i.DeviceID,
+		&i.IdempotencyKey,
+		&i.Controls,
+		&i.ControlGeneration,
+		&i.State,
+		&i.AttachedAt,
+		&i.ControlExpiresAt,
+		&i.DetachedAt,
+		&i.WorkloadGeneration,
+	)
+	return i, err
+}
+
+const renewSurfaceControlLease = `-- name: RenewSurfaceControlLease :one
+UPDATE workos_runtime.surface_control_leases
+SET expires_at = GREATEST(expires_at, $1::timestamptz)
+WHERE workload_id = $2
+  AND owner_user_id = $3
+  AND controller_device_id = $4
+  AND controller_attachment_id = $5
+  AND control_generation = $6
+  AND expires_at > clock_timestamp()
+  AND $1::timestamptz > clock_timestamp()
+RETURNING workload_id, owner_user_id, control_generation,
+          controller_attachment_id, controller_device_id, granted_at, expires_at
+`
+
+type RenewSurfaceControlLeaseParams struct {
+	Until                     pgtype.Timestamptz `json:"until"`
+	WorkloadID                string             `json:"workload_id"`
+	OwnerUserID               string             `json:"owner_user_id"`
+	DeviceID                  string             `json:"device_id"`
+	AttachmentID              string             `json:"attachment_id"`
+	ExpectedControlGeneration int64              `json:"expected_control_generation"`
+}
+
+// UPDATE is the serialization point against RequestControl takeover. A late
+// heartbeat cannot revive an expired lease or change its holder/generation.
+func (q *Queries) RenewSurfaceControlLease(ctx context.Context, arg RenewSurfaceControlLeaseParams) (WorkosRuntimeSurfaceControlLease, error) {
+	row := q.db.QueryRow(ctx, renewSurfaceControlLease,
+		arg.Until,
+		arg.WorkloadID,
+		arg.OwnerUserID,
+		arg.DeviceID,
+		arg.AttachmentID,
+		arg.ExpectedControlGeneration,
+	)
+	var i WorkosRuntimeSurfaceControlLease
+	err := row.Scan(
+		&i.WorkloadID,
+		&i.OwnerUserID,
+		&i.ControlGeneration,
+		&i.ControllerAttachmentID,
+		&i.ControllerDeviceID,
+		&i.GrantedAt,
+		&i.ExpiresAt,
+	)
+	return i, err
+}
+
 const rotateSessionBridgeToken = `-- name: RotateSessionBridgeToken :one
 UPDATE workos_runtime.surface_sessions
 SET bridge_token_hash = $1

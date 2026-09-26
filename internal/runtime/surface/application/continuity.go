@@ -221,6 +221,47 @@ func (s *ContinuityService) RequestSurfaceControl(ctx context.Context, ownerUser
 	return ControlResult{Attachment: verdict.Attachment, Lease: verdict.Lease, Renewed: verdict.Renewed}, nil
 }
 
+// RenewSurfaceControl extends only the exact still-live controller. It does
+// not call RequestControl: that method intentionally takes over when the
+// caller has lost control. The store repeats all comparisons atomically.
+func (s *ContinuityService) RenewSurfaceControl(ctx context.Context, owner, device, sessionID, attachmentID string, controlGeneration, workloadGeneration int64) (ControlResult, error) {
+	if !domain.ValidSessionUUID(owner) || !domain.ValidSessionUUID(device) || !domain.ValidSessionUUID(sessionID) ||
+		!domain.ValidSessionUUID(attachmentID) || controlGeneration < 1 || workloadGeneration < 1 {
+		return ControlResult{}, domain.ErrInvalid
+	}
+	var verdict ports.ControlVerdict
+	err := s.aroundControl(ctx, sessionID, func() error {
+		workload, err := s.workloads.Resolve(ctx, owner, sessionID)
+		if err != nil {
+			return err
+		}
+		if workload.Terminal || workload.State != "running" || max(SessionWorkloadGeneration, workload.Generation) != workloadGeneration {
+			return domain.ErrWorkloadNotRunning
+		}
+		if err := s.AuthorizeWindowViewer(ctx, owner, device, sessionID, attachmentID, workloadGeneration); err != nil {
+			return err
+		}
+		attachment, err := s.store.GetAttachment(ctx, owner, attachmentID, device)
+		if err != nil {
+			return err
+		}
+		if !attachment.Controls || attachment.ControlGeneration != controlGeneration {
+			return ports.ErrContinuityDenied
+		}
+		now := s.now()
+		verdict, err = s.store.RenewControl(ctx, ports.RenewControlCommand{
+			OwnerUserID: owner, DeviceID: device, WorkloadID: sessionID,
+			AttachmentID: attachmentID, WorkloadGeneration: workloadGeneration,
+			ExpectedControlGeneration: controlGeneration, Now: now, Until: now.Add(s.controlTTL),
+		})
+		return err
+	})
+	if err != nil {
+		return ControlResult{}, err
+	}
+	return ControlResult{Attachment: verdict.Attachment, Lease: verdict.Lease, Renewed: true}, nil
+}
+
 // AuthorizeWindowViewer checks the exact live attachment, including the
 // workload generation. The native service separately checks the session's
 // running state before invoking this neutral Surface-owned ledger check.

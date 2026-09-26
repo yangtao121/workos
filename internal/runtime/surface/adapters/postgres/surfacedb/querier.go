@@ -44,6 +44,12 @@ type Querier interface {
 	ListLiveSurfaceAttachmentWorkloads(ctx context.Context) ([]ListLiveSurfaceAttachmentWorkloadsRow, error)
 	LockSurfaceControlLease(ctx context.Context, workloadID string) (WorkosRuntimeSurfaceControlLease, error)
 	MarkSurfaceAttachmentControl(ctx context.Context, arg MarkSurfaceAttachmentControlParams) (int64, error)
+	// The lease and attachment updates occur in one transaction. If Detach,
+	// expiry, or a newer attachment won, this guard rolls the lease update back.
+	RenewSurfaceAttachmentControl(ctx context.Context, arg RenewSurfaceAttachmentControlParams) (WorkosRuntimeSurfaceAttachment, error)
+	// UPDATE is the serialization point against RequestControl takeover. A late
+	// heartbeat cannot revive an expired lease or change its holder/generation.
+	RenewSurfaceControlLease(ctx context.Context, arg RenewSurfaceControlLeaseParams) (WorkosRuntimeSurfaceControlLease, error)
 	RotateSessionBridgeToken(ctx context.Context, arg RotateSessionBridgeTokenParams) (RotateSessionBridgeTokenRow, error)
 	UpdateSurfaceControlLease(ctx context.Context, arg UpdateSurfaceControlLeaseParams) error
 }

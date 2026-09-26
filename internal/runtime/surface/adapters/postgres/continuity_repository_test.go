@@ -67,7 +67,7 @@ func newContinuityIDs(stamp string) continuityIDs {
 func attachmentFor(stamp string, ids continuityIDs, device, key string, n int) domain.SurfaceAttachment {
 	now := time.Now().UTC().Truncate(time.Microsecond)
 	return domain.SurfaceAttachment{
-		ID: continuityID(stamp, n), WorkloadID: ids.workload,
+		ID: continuityID(stamp, n), WorkloadID: ids.workload, WorkloadGeneration: 1,
 		SurfaceSessionID: ids.workload, OwnerUserID: ids.owner, ProjectID: ids.project,
 		DeviceID: device, IdempotencyKey: key, State: domain.AttachmentStateAttached,
 		AttachedAt: now,
@@ -178,6 +178,63 @@ func TestContinuityStoreStateMachineOnPostgres(t *testing.T) {
 	counts, err = store.CountLiveAttachments(ctx, ids.owner, ids.project)
 	if err != nil || len(counts) != 0 {
 		t.Fatalf("no live attachments may survive the sweep: %v %+v", err, counts)
+	}
+}
+
+func TestContinuityStoreRenewOnlyOnPostgres(t *testing.T) {
+	store := continuityTestStore(t)
+	ids := newContinuityIDs("eeeeee")
+	ctx := context.Background()
+	now := time.Now().UTC().Truncate(time.Microsecond)
+	first, _, err := store.Attach(ctx, ports.AttachCommand{
+		Attachment: attachmentFor("eeeeee", ids, ids.deviceA, "renew-a", 11), Until: now.Add(30 * time.Minute),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, _, err := store.Attach(ctx, ports.AttachCommand{
+		Attachment: attachmentFor("eeeeee", ids, ids.deviceB, "renew-b", 12), Until: now.Add(30 * time.Minute),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	command := ports.RenewControlCommand{
+		OwnerUserID: ids.owner, DeviceID: ids.deviceA, WorkloadID: ids.workload,
+		AttachmentID: first.ID, WorkloadGeneration: first.WorkloadGeneration,
+		ExpectedControlGeneration: 1, Now: now, Until: now.Add(40 * time.Minute),
+	}
+	renewed, err := store.RenewControl(ctx, command)
+	if err != nil || !renewed.Renewed || renewed.Lease.ControlGeneration != 1 ||
+		!renewed.Lease.ExpiresAt.Equal(*renewed.Attachment.ControlExpiresAt) {
+		t.Fatalf("exact controller renewal: %v %+v", err, renewed)
+	}
+	command.DeviceID = ids.deviceB
+	if _, err := store.RenewControl(ctx, command); !errors.Is(err, ports.ErrContinuityDenied) {
+		t.Fatalf("foreign device reused controller attachment: %v", err)
+	}
+	command.DeviceID = ids.deviceA
+	command.ExpectedControlGeneration = 2
+	if _, err := store.RenewControl(ctx, command); !errors.Is(err, ports.ErrContinuityDenied) {
+		t.Fatalf("stale expected generation: %v", err)
+	}
+	takeover, err := store.RequestControl(ctx, second, now, now.Add(50*time.Minute))
+	if err != nil || takeover.Lease.ControlGeneration != 2 {
+		t.Fatalf("explicit takeover: %v %+v", err, takeover)
+	}
+	command.ExpectedControlGeneration = 1
+	if _, err := store.RenewControl(ctx, command); !errors.Is(err, ports.ErrContinuityDenied) {
+		t.Fatalf("old controller renewed after takeover: %v", err)
+	}
+	current, _, err := store.Lease(ctx, ids.workload)
+	if err != nil || current.ControlGeneration != 2 || current.ControllerAttachmentID != second.ID {
+		t.Fatalf("denied renewal changed holder: %v %+v", err, current)
+	}
+	if _, err := store.Detach(ctx, ids.owner, second.ID, now); err != nil {
+		t.Fatal(err)
+	}
+	command.DeviceID, command.AttachmentID, command.ExpectedControlGeneration = ids.deviceB, second.ID, 2
+	if _, err := store.RenewControl(ctx, command); !errors.Is(err, ports.ErrContinuityDenied) {
+		t.Fatalf("detached controller renewed: %v", err)
 	}
 }
 

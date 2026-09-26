@@ -48,6 +48,9 @@ const (
 	// SurfaceContinuityServiceRequestSurfaceControlProcedure is the fully-qualified name of the
 	// SurfaceContinuityService's RequestSurfaceControl RPC.
 	SurfaceContinuityServiceRequestSurfaceControlProcedure = "/workos.surface.v1.SurfaceContinuityService/RequestSurfaceControl"
+	// SurfaceContinuityServiceRenewSurfaceControlProcedure is the fully-qualified name of the
+	// SurfaceContinuityService's RenewSurfaceControl RPC.
+	SurfaceContinuityServiceRenewSurfaceControlProcedure = "/workos.surface.v1.SurfaceContinuityService/RenewSurfaceControl"
 	// SurfaceContinuityServiceGetSurfaceControlProcedure is the fully-qualified name of the
 	// SurfaceContinuityService's GetSurfaceControl RPC.
 	SurfaceContinuityServiceGetSurfaceControlProcedure = "/workos.surface.v1.SurfaceContinuityService/GetSurfaceControl"
@@ -81,6 +84,9 @@ type SurfaceContinuityServiceClient interface {
 	// input, resize, and late renewals. Renewing an attachment that already
 	// holds control never steals it from another controller.
 	RequestSurfaceControl(context.Context, *connect.Request[v1.RequestSurfaceControlRequest]) (*connect.Response[v1.RequestSurfaceControlResponse], error)
+	// RenewSurfaceControl extends only the exact still-valid controller lease.
+	// It never grants control, even when the old lease has expired.
+	RenewSurfaceControl(context.Context, *connect.Request[v1.RenewSurfaceControlRequest]) (*connect.Response[v1.RenewSurfaceControlResponse], error)
 	GetSurfaceControl(context.Context, *connect.Request[v1.GetSurfaceControlRequest]) (*connect.Response[v1.GetSurfaceControlResponse], error)
 	// StopSurfaceWorkload deterministically stops and reclaims the program
 	// (process group, media workers, private scratch). Idempotent by action
@@ -132,6 +138,12 @@ func NewSurfaceContinuityServiceClient(httpClient connect.HTTPClient, baseURL st
 			connect.WithSchema(surfaceContinuityServiceMethods.ByName("RequestSurfaceControl")),
 			connect.WithClientOptions(opts...),
 		),
+		renewSurfaceControl: connect.NewClient[v1.RenewSurfaceControlRequest, v1.RenewSurfaceControlResponse](
+			httpClient,
+			baseURL+SurfaceContinuityServiceRenewSurfaceControlProcedure,
+			connect.WithSchema(surfaceContinuityServiceMethods.ByName("RenewSurfaceControl")),
+			connect.WithClientOptions(opts...),
+		),
 		getSurfaceControl: connect.NewClient[v1.GetSurfaceControlRequest, v1.GetSurfaceControlResponse](
 			httpClient,
 			baseURL+SurfaceContinuityServiceGetSurfaceControlProcedure,
@@ -160,6 +172,7 @@ type surfaceContinuityServiceClient struct {
 	attachSurface          *connect.Client[v1.AttachSurfaceRequest, v1.AttachSurfaceResponse]
 	detachSurface          *connect.Client[v1.DetachSurfaceRequest, v1.DetachSurfaceResponse]
 	requestSurfaceControl  *connect.Client[v1.RequestSurfaceControlRequest, v1.RequestSurfaceControlResponse]
+	renewSurfaceControl    *connect.Client[v1.RenewSurfaceControlRequest, v1.RenewSurfaceControlResponse]
 	getSurfaceControl      *connect.Client[v1.GetSurfaceControlRequest, v1.GetSurfaceControlResponse]
 	stopSurfaceWorkload    *connect.Client[v1.StopSurfaceWorkloadRequest, v1.StopSurfaceWorkloadResponse]
 	restartSurfaceWorkload *connect.Client[v1.RestartSurfaceWorkloadRequest, v1.RestartSurfaceWorkloadResponse]
@@ -188,6 +201,11 @@ func (c *surfaceContinuityServiceClient) DetachSurface(ctx context.Context, req 
 // RequestSurfaceControl calls workos.surface.v1.SurfaceContinuityService.RequestSurfaceControl.
 func (c *surfaceContinuityServiceClient) RequestSurfaceControl(ctx context.Context, req *connect.Request[v1.RequestSurfaceControlRequest]) (*connect.Response[v1.RequestSurfaceControlResponse], error) {
 	return c.requestSurfaceControl.CallUnary(ctx, req)
+}
+
+// RenewSurfaceControl calls workos.surface.v1.SurfaceContinuityService.RenewSurfaceControl.
+func (c *surfaceContinuityServiceClient) RenewSurfaceControl(ctx context.Context, req *connect.Request[v1.RenewSurfaceControlRequest]) (*connect.Response[v1.RenewSurfaceControlResponse], error) {
+	return c.renewSurfaceControl.CallUnary(ctx, req)
 }
 
 // GetSurfaceControl calls workos.surface.v1.SurfaceContinuityService.GetSurfaceControl.
@@ -227,6 +245,9 @@ type SurfaceContinuityServiceHandler interface {
 	// input, resize, and late renewals. Renewing an attachment that already
 	// holds control never steals it from another controller.
 	RequestSurfaceControl(context.Context, *connect.Request[v1.RequestSurfaceControlRequest]) (*connect.Response[v1.RequestSurfaceControlResponse], error)
+	// RenewSurfaceControl extends only the exact still-valid controller lease.
+	// It never grants control, even when the old lease has expired.
+	RenewSurfaceControl(context.Context, *connect.Request[v1.RenewSurfaceControlRequest]) (*connect.Response[v1.RenewSurfaceControlResponse], error)
 	GetSurfaceControl(context.Context, *connect.Request[v1.GetSurfaceControlRequest]) (*connect.Response[v1.GetSurfaceControlResponse], error)
 	// StopSurfaceWorkload deterministically stops and reclaims the program
 	// (process group, media workers, private scratch). Idempotent by action
@@ -274,6 +295,12 @@ func NewSurfaceContinuityServiceHandler(svc SurfaceContinuityServiceHandler, opt
 		connect.WithSchema(surfaceContinuityServiceMethods.ByName("RequestSurfaceControl")),
 		connect.WithHandlerOptions(opts...),
 	)
+	surfaceContinuityServiceRenewSurfaceControlHandler := connect.NewUnaryHandler(
+		SurfaceContinuityServiceRenewSurfaceControlProcedure,
+		svc.RenewSurfaceControl,
+		connect.WithSchema(surfaceContinuityServiceMethods.ByName("RenewSurfaceControl")),
+		connect.WithHandlerOptions(opts...),
+	)
 	surfaceContinuityServiceGetSurfaceControlHandler := connect.NewUnaryHandler(
 		SurfaceContinuityServiceGetSurfaceControlProcedure,
 		svc.GetSurfaceControl,
@@ -304,6 +331,8 @@ func NewSurfaceContinuityServiceHandler(svc SurfaceContinuityServiceHandler, opt
 			surfaceContinuityServiceDetachSurfaceHandler.ServeHTTP(w, r)
 		case SurfaceContinuityServiceRequestSurfaceControlProcedure:
 			surfaceContinuityServiceRequestSurfaceControlHandler.ServeHTTP(w, r)
+		case SurfaceContinuityServiceRenewSurfaceControlProcedure:
+			surfaceContinuityServiceRenewSurfaceControlHandler.ServeHTTP(w, r)
 		case SurfaceContinuityServiceGetSurfaceControlProcedure:
 			surfaceContinuityServiceGetSurfaceControlHandler.ServeHTTP(w, r)
 		case SurfaceContinuityServiceStopSurfaceWorkloadProcedure:
@@ -337,6 +366,10 @@ func (UnimplementedSurfaceContinuityServiceHandler) DetachSurface(context.Contex
 
 func (UnimplementedSurfaceContinuityServiceHandler) RequestSurfaceControl(context.Context, *connect.Request[v1.RequestSurfaceControlRequest]) (*connect.Response[v1.RequestSurfaceControlResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("workos.surface.v1.SurfaceContinuityService.RequestSurfaceControl is not implemented"))
+}
+
+func (UnimplementedSurfaceContinuityServiceHandler) RenewSurfaceControl(context.Context, *connect.Request[v1.RenewSurfaceControlRequest]) (*connect.Response[v1.RenewSurfaceControlResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("workos.surface.v1.SurfaceContinuityService.RenewSurfaceControl is not implemented"))
 }
 
 func (UnimplementedSurfaceContinuityServiceHandler) GetSurfaceControl(context.Context, *connect.Request[v1.GetSurfaceControlRequest]) (*connect.Response[v1.GetSurfaceControlResponse], error) {

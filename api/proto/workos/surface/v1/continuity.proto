@@ -113,6 +113,21 @@ message RequestSurfaceControlResponse {
   SurfaceAttachment attachment = 1;
 }
 
+// RenewSurfaceControl is a compare-and-extend operation, never a takeover.
+// The exact live attachment and current control generation act as the etag.
+// A stale, detached, expired, or superseded controller is denied without
+// advancing the generation or changing another device's lease.
+message RenewSurfaceControlRequest {
+  string surface_session_id = 1;
+  string attachment_id = 2;
+  int64 expected_control_generation = 3;
+  int64 expected_workload_generation = 4;
+}
+
+message RenewSurfaceControlResponse {
+  SurfaceAttachment attachment = 1;
+}
+
 message GetSurfaceControlRequest {
   string workload_id = 1;
 }
@@ -164,6 +179,9 @@ service SurfaceContinuityService {
   // input, resize, and late renewals. Renewing an attachment that already
   // holds control never steals it from another controller.
   rpc RequestSurfaceControl(RequestSurfaceControlRequest) returns (RequestSurfaceControlResponse) {}
+  // RenewSurfaceControl extends only the exact still-valid controller lease.
+  // It never grants control, even when the old lease has expired.
+  rpc RenewSurfaceControl(RenewSurfaceControlRequest) returns (RenewSurfaceControlResponse) {}
   rpc GetSurfaceControl(GetSurfaceControlRequest) returns (GetSurfaceControlResponse) {}
   // StopSurfaceWorkload deterministically stops and reclaims the program
   // (process group, media workers, private scratch). Idempotent by action

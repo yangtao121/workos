@@ -236,6 +236,42 @@ func (r *ContinuityRepository) RequestControl(ctx context.Context, attachment do
 	return verdict, nil
 }
 
+func (r *ContinuityRepository) RenewControl(ctx context.Context, command ports.RenewControlCommand) (ports.ControlVerdict, error) {
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return ports.ControlVerdict{}, continuityStoreError("begin surface control renewal", err)
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck
+	queries := r.queries.WithTx(tx)
+	leaseRow, err := queries.RenewSurfaceControlLease(ctx, surfacedb.RenewSurfaceControlLeaseParams{
+		Until: timestamp(command.Until), WorkloadID: command.WorkloadID,
+		OwnerUserID: command.OwnerUserID, DeviceID: command.DeviceID,
+		AttachmentID: command.AttachmentID, ExpectedControlGeneration: command.ExpectedControlGeneration,
+	})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return ports.ControlVerdict{}, ports.ErrContinuityDenied
+	}
+	if err != nil {
+		return ports.ControlVerdict{}, continuityStoreError("renew surface control lease", err)
+	}
+	attachmentRow, err := queries.RenewSurfaceAttachmentControl(ctx, surfacedb.RenewSurfaceAttachmentControlParams{
+		Until: leaseRow.ExpiresAt, OwnerUserID: command.OwnerUserID,
+		DeviceID: command.DeviceID, WorkloadID: command.WorkloadID,
+		WorkloadGeneration: command.WorkloadGeneration, AttachmentID: command.AttachmentID,
+		ExpectedControlGeneration: command.ExpectedControlGeneration,
+	})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return ports.ControlVerdict{}, ports.ErrContinuityDenied
+	}
+	if err != nil {
+		return ports.ControlVerdict{}, continuityStoreError("renew surface controller attachment", err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return ports.ControlVerdict{}, continuityStoreError("commit surface control renewal", err)
+	}
+	return ports.ControlVerdict{Attachment: attachmentFromRow(attachmentRow), Lease: leaseFromRow(leaseRow), Renewed: true}, nil
+}
+
 func (r *ContinuityRepository) Detach(ctx context.Context, ownerUserID, attachmentID string, now time.Time) (domain.SurfaceAttachment, error) {
 	if _, err := r.queries.DetachSurfaceAttachment(ctx, surfacedb.DetachSurfaceAttachmentParams{
 		OwnerUserID: ownerUserID, AttachmentID: attachmentID, Now: timestamp(now),

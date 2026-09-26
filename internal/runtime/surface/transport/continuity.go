@@ -92,6 +92,18 @@ func (h *ContinuityHandler) RequestSurfaceControl(ctx context.Context, req *conn
 	return connect.NewResponse(&surfacev1.RequestSurfaceControlResponse{Attachment: attachmentProto(result.Attachment)}), nil
 }
 
+func (h *ContinuityHandler) RenewSurfaceControl(ctx context.Context, req *connect.Request[surfacev1.RenewSurfaceControlRequest]) (*connect.Response[surfacev1.RenewSurfaceControlResponse], error) {
+	id, err := identity.FromContext(ctx)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeUnauthenticated, err)
+	}
+	result, err := h.service.RenewSurfaceControl(ctx, id.UserID, id.DeviceID, req.Msg.GetSurfaceSessionId(), req.Msg.GetAttachmentId(), req.Msg.GetExpectedControlGeneration(), req.Msg.GetExpectedWorkloadGeneration())
+	if err != nil {
+		return nil, continuityError(err)
+	}
+	return connect.NewResponse(&surfacev1.RenewSurfaceControlResponse{Attachment: attachmentProto(result.Attachment)}), nil
+}
+
 func (h *ContinuityHandler) GetSurfaceControl(ctx context.Context, req *connect.Request[surfacev1.GetSurfaceControlRequest]) (*connect.Response[surfacev1.GetSurfaceControlResponse], error) {
 	id, err := identity.FromContext(ctx)
 	if err != nil {
@@ -204,9 +216,9 @@ func continuityRendererProto(kind ports.WorkloadKind) surfacev1.SurfaceRenderer 
 // window. No bridge credential exists for system tool surfaces.
 func continuitySessionProto(workload ports.InteractiveWorkload) *surfacev1.SurfaceSession {
 	return &surfacev1.SurfaceSession{
-		Id:        workload.WorkloadID,
-		ProjectId: workload.ProjectID,
-		Renderer:  continuityRendererProto(workload.Kind),
+		Id: workload.WorkloadID, ProjectId: workload.ProjectID,
+		Renderer:           continuityRendererProto(workload.Kind),
+		WorkloadGeneration: max(application.SessionWorkloadGeneration, workload.Generation),
 		// Terminals resize through the PTY service; native display sessions
 		// have a fixed capture geometry in this phase.
 		Resize:    workload.Kind == ports.WorkloadKindPty,

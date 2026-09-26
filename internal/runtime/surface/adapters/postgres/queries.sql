@@ -182,6 +182,40 @@ SET control_generation = $2,
     expires_at = $6
 WHERE workload_id = $1;
 
+-- name: RenewSurfaceControlLease :one
+-- UPDATE is the serialization point against RequestControl takeover. A late
+-- heartbeat cannot revive an expired lease or change its holder/generation.
+UPDATE workos_runtime.surface_control_leases
+SET expires_at = GREATEST(expires_at, sqlc.arg(until)::timestamptz)
+WHERE workload_id = sqlc.arg(workload_id)
+  AND owner_user_id = sqlc.arg(owner_user_id)
+  AND controller_device_id = sqlc.arg(device_id)
+  AND controller_attachment_id = sqlc.arg(attachment_id)
+  AND control_generation = sqlc.arg(expected_control_generation)
+  AND expires_at > clock_timestamp()
+  AND sqlc.arg(until)::timestamptz > clock_timestamp()
+RETURNING workload_id, owner_user_id, control_generation,
+          controller_attachment_id, controller_device_id, granted_at, expires_at;
+
+-- name: RenewSurfaceAttachmentControl :one
+-- The lease and attachment updates occur in one transaction. If Detach,
+-- expiry, or a newer attachment won, this guard rolls the lease update back.
+UPDATE workos_runtime.surface_attachments
+SET control_expires_at = sqlc.arg(until)::timestamptz
+WHERE owner_user_id = sqlc.arg(owner_user_id)
+  AND device_id = sqlc.arg(device_id)
+  AND workload_id = sqlc.arg(workload_id)
+  AND surface_session_id = sqlc.arg(workload_id)
+  AND workload_generation = sqlc.arg(workload_generation)
+  AND attachment_id = sqlc.arg(attachment_id)
+  AND control_generation = sqlc.arg(expected_control_generation)
+  AND state = 'attached' AND controls = true
+  AND control_expires_at > clock_timestamp()
+RETURNING attachment_id, workload_id, surface_session_id, owner_user_id,
+          project_id, device_id, idempotency_key, controls,
+          control_generation, state, attached_at, control_expires_at,
+          detached_at, workload_generation;
+
 -- name: CountLiveSurfaceAttachments :many
 SELECT workload_id::text AS workload_id, count(*)::int AS live_attachments
 FROM workos_runtime.surface_attachments

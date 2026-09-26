@@ -163,12 +163,33 @@ func (m *memoryContinuityStore) RequestControl(_ context.Context, attachment dom
 	}
 	previous := *lease
 	lease.Takeover(now, until, stored)
+	expiry := until
+	stored.ControlExpiresAt = &expiry
 	if previous.ControllerAttachmentID != stored.ID {
 		if old, ok := m.attachments[previous.ControllerAttachmentID]; ok {
 			lease.InvalidateController(old)
 		}
 	}
 	return ports.ControlVerdict{Attachment: m.clone(stored), Lease: *lease}, nil
+}
+
+func (m *memoryContinuityStore) RenewControl(_ context.Context, command ports.RenewControlCommand) (ports.ControlVerdict, error) {
+	lease := m.leases[command.WorkloadID]
+	attachment := m.attachments[command.AttachmentID]
+	if lease == nil || attachment == nil || attachment.OwnerUserID != command.OwnerUserID ||
+		attachment.DeviceID != command.DeviceID || attachment.WorkloadID != command.WorkloadID ||
+		attachment.WorkloadGeneration != command.WorkloadGeneration || !attachment.State.Live() ||
+		!attachment.Controls || attachment.ControlGeneration != command.ExpectedControlGeneration ||
+		lease.ControlGeneration != command.ExpectedControlGeneration || !lease.Matches(attachment) ||
+		attachment.ControlExpiresAt == nil || !command.Now.Before(*attachment.ControlExpiresAt) {
+		return ports.ControlVerdict{}, ports.ErrContinuityDenied
+	}
+	if err := lease.Renew(command.Now, command.Until, attachment); err != nil {
+		return ports.ControlVerdict{}, err
+	}
+	expiry := lease.ExpiresAt
+	attachment.ControlExpiresAt = &expiry
+	return ports.ControlVerdict{Attachment: m.clone(attachment), Lease: *lease, Renewed: true}, nil
 }
 
 func (m *memoryContinuityStore) Detach(_ context.Context, ownerUserID, attachmentID string, now time.Time) (domain.SurfaceAttachment, error) {
@@ -439,6 +460,77 @@ func TestContinuityRequestControlRenewsAndTakesOver(t *testing.T) {
 	}
 	if err := service.AuthorizeInput(ctx, continuityOwner, workload, deviceA); !errors.Is(err, ports.ErrContinuityDenied) {
 		t.Fatalf("re-attached A still must not drive: %v", err)
+	}
+}
+
+func TestRenewSurfaceControlNeverTakesOver(t *testing.T) {
+	service, _, store := newContinuityFixture(nil)
+	ctx := context.Background()
+	const workload = "01999999-9999-7999-8999-000000000c01"
+	now := time.Now().UTC().Truncate(time.Microsecond)
+	service.now = func() time.Time { return now }
+	first, err := service.AttachSurface(ctx, continuityOwner, deviceA, workload, "renew-a")
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := service.AttachSurface(ctx, continuityOwner, deviceB, workload, "renew-b")
+	if err != nil {
+		t.Fatal(err)
+	}
+	initialExpiry := store.leases[workload].ExpiresAt
+	now = now.Add(10 * time.Minute)
+	renewed, err := service.RenewSurfaceControl(ctx, continuityOwner, deviceA, workload, first.Attachment.ID, 1, 1)
+	if err != nil || !renewed.Renewed || renewed.Lease.ControlGeneration != 1 || !renewed.Lease.ExpiresAt.After(initialExpiry) {
+		t.Fatalf("current attachment should extend the same generation: %v %+v", err, renewed)
+	}
+	if _, err := service.RenewSurfaceControl(ctx, continuityOwner, deviceB, workload, second.Attachment.ID, 1, 1); !errors.Is(err, ports.ErrContinuityDenied) {
+		t.Fatalf("observer must not renew or take over: %v", err)
+	}
+	if _, err := service.RenewSurfaceControl(ctx, continuityOwner, deviceA, workload, first.Attachment.ID, 2, 1); !errors.Is(err, ports.ErrContinuityDenied) {
+		t.Fatalf("wrong control generation must fail: %v", err)
+	}
+	if _, err := service.RenewSurfaceControl(ctx, continuityOwner, deviceA, workload, first.Attachment.ID, 1, 2); !errors.Is(err, domain.ErrWorkloadNotRunning) {
+		t.Fatalf("wrong workload generation must fail: %v", err)
+	}
+	takeover, err := service.RequestSurfaceControl(ctx, continuityOwner, deviceB, workload)
+	if err != nil || takeover.Lease.ControlGeneration != 2 {
+		t.Fatalf("explicit takeover: %v %+v", err, takeover)
+	}
+	before := store.leases[workload].ExpiresAt
+	if _, err := service.RenewSurfaceControl(ctx, continuityOwner, deviceA, workload, first.Attachment.ID, 1, 1); !errors.Is(err, ports.ErrContinuityDenied) {
+		t.Fatalf("old controller must not reclaim control: %v", err)
+	}
+	if store.leases[workload].ControlGeneration != 2 || !store.leases[workload].ExpiresAt.Equal(before) {
+		t.Fatal("denied renewal changed the current lease")
+	}
+	if _, err := service.RenewSurfaceControl(ctx, continuityOwner, deviceB, workload, second.Attachment.ID, 2, 1); err != nil {
+		t.Fatalf("new controller should renew: %v", err)
+	}
+	if err := service.DetachSurface(ctx, continuityOwner, deviceB, workload); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.RenewSurfaceControl(ctx, continuityOwner, deviceB, workload, second.Attachment.ID, 2, 1); err == nil {
+		t.Fatal("detached attachment renewed control")
+	}
+}
+
+func TestRenewSurfaceControlRejectsExpiredLease(t *testing.T) {
+	service, _, store := newContinuityFixture(nil)
+	ctx := context.Background()
+	const workload = "01999999-9999-7999-8999-000000000c01"
+	now := time.Now().UTC().Truncate(time.Microsecond)
+	service.now = func() time.Time { return now }
+	first, err := service.AttachSurface(ctx, continuityOwner, deviceA, workload, "expired-renew-a")
+	if err != nil {
+		t.Fatal(err)
+	}
+	original := *store.leases[workload]
+	now = original.ExpiresAt.Add(time.Second)
+	if _, err := service.RenewSurfaceControl(ctx, continuityOwner, deviceA, workload, first.Attachment.ID, 1, 1); !errors.Is(err, ports.ErrContinuityDenied) {
+		t.Fatalf("expired lease must require explicit takeover: %v", err)
+	}
+	if *store.leases[workload] != original {
+		t.Fatal("expired renewal mutated the lease")
 	}
 }
 

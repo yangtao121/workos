@@ -1,0 +1,7 @@
+# Surface controller lease renewal
+
+`SurfaceContinuityService.RenewSurfaceControl` extends the current controller lease without changing its holder or control generation. The caller supplies the live attachment ID, session ID, expected workload generation, and expected control generation. Gateway supplies the owner and device identity. These values are compared in the Surface application and again inside one Runtime-owned PostgreSQL transaction.
+
+The repository first conditionally updates the lease row while it is still unexpired and held by the exact attachment/device/generation. It then conditionally updates that attachment while it remains attached, controlling, and unexpired. Failure of either update rolls the transaction back. PostgreSQL serializes the lease update against `RequestSurfaceControl`, so a delayed renewal cannot regain control after another device takes over. The expiry only moves forward; renewal never inserts a lease or increments its generation. A stopped or restarted workload is rejected before the transaction, and its attachment is fenced by the existing lifecycle path.
+
+The browser uses the returned `SurfaceAttachment.control_expires_at` to renew ahead of expiry. A denied or uncertain renewal stops local input and requires a visible user action to request control again. The heartbeat never calls `RequestSurfaceControl`, since that method intentionally performs takeover for a non-controller. See [the task record](../tasks/20260926-p0-surface-control-renewal.md) for verification and remaining browser evidence.

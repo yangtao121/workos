@@ -92,6 +92,19 @@ type ControlVerdict struct {
 	Renewed bool
 }
 
+// RenewControlCommand is a compare-and-extend request. Every identity and
+// generation is checked again by the store at its transaction boundary.
+type RenewControlCommand struct {
+	OwnerUserID               string
+	DeviceID                  string
+	WorkloadID                string
+	AttachmentID              string
+	WorkloadGeneration        int64
+	ExpectedControlGeneration int64
+	Now                       time.Time
+	Until                     time.Time
+}
+
 // ContinuityStore owns the surface attachment and control lease rows
 // (migration 059). The two command methods are transactional: no reader can
 // observe a lease without its attachment flags or vice versa.
@@ -104,6 +117,9 @@ type ContinuityStore interface {
 	// the explicit takeover: the generation advances atomically, the previous
 	// controller attachment loses its control flag in the same transaction.
 	RequestControl(ctx context.Context, attachment domain.SurfaceAttachment, now, until time.Time) (ControlVerdict, error)
+	// RenewControl changes only the expiry of the exact current, live
+	// attachment/lease pair. It never creates a lease or advances its epoch.
+	RenewControl(ctx context.Context, command RenewControlCommand) (ControlVerdict, error)
 	// Detach marks one attachment detached and clears its control flag. The
 	// lease is untouched: it expires or is taken over.
 	Detach(ctx context.Context, ownerUserID, attachmentID string, now time.Time) (domain.SurfaceAttachment, error)
