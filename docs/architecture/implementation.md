@@ -8,10 +8,11 @@ ADR-0032 至 ADR-0036 分阶段采纳。2026-09-22 的 [交付索引](v2-deliver
 持续开发、真实发布回滚、原生自动化、跨网络及移动端的当前行为和验收边界。
 
 2026-09-24 的 [V3 设计](../structure-v3.md)确定浏览器唯一客户端主线，优先验证浏览器
-合成器，再推进原生 WorkOS Code、持久项目环境、SSH 与 Harness 共同操作。V3 功能尚未
-实施；Greenfield 上游能力不构成 WorkOS 接入证据。现有 Native 仍使用 Xvfb／VP8／WebRTC。
-后续只面向局域网，不新增 Mobile／Android 原生客户端或登录、配对、授权、审批工作流；
-现有实现、边界与历史交付事实保留。文档交付不替代专项 ADR，也不升级模块实现状态。
+合成器，再推进原生 WorkOS Code、持久项目环境、SSH 与 Harness 共同操作。P0 Greenfield
+实验已接入部分代码，完整体验门禁尚未通过；Greenfield 上游能力不构成 WorkOS 接入证据。
+默认 Native 仍使用 Xvfb／VP8／WebRTC。后续只面向局域网，不新增 Mobile／Android 原生
+客户端。LAN 密码入口由 ADR-0039 采纳，取代 V3 最初“不新增登录”的选择；其他现有边界与
+历史交付事实保留。文档交付不替代专项 ADR，也不升级模块实现状态。
 
 ## 进程所有权
 
@@ -555,6 +556,25 @@ admin socket ticket + 真实 Chromium（pair → HttpOnly Cookie → Core 动态
 重认证 → 撤销后 fail closed），临时证书/profile 目录 exit 清理。App/Surface/Bridge 的隔离
 （opaque origin iframe、CSP `connect-src 'none'`、bridge token 边界）不变；App 无权访问
 DeviceService、Cookie 或 IndexedDB 凭据。
+
+### LAN 密码模式与 HTTPS 入口（ADR-0039）
+
+Gateway 在生产启动时选择 `WORKOS_AUTH_MODE=pairing|password`。密码模式用 Gateway
+owner 的 migration `078` 保存 Argon2id verifier；`workosctl auth set-password` 只通过私有
+Unix socket 接收终端输入。设置或轮换密码时同一事务撤销旧密码会话。公开
+`PasswordAuthService.GetMode` 只返回模式；`Login` 在 TLS 上验证单 owner 用户名与密码，
+给每个浏览器签发独立 device ID 和现有 `__Host-workos_session` 安全 Cookie，不在 Proto
+响应中返回 token。密码模式禁用配对新设备与旧 P-256 静默重认证；会话过期、退出或撤销后
+Desktop 回到密码表单。DeviceService 列表、撤销与退出仍按当前 Cookie 的 owner/device
+授权。登录尝试有来源与全局限流，以及有界 Argon2id 并发。Gateway 的 Native WebSocket
+升级检查精确 Origin，并在连接期间定期重验设备会话，撤销后关闭连接。
+
+`tools/lan/start.sh` 启动持久本地 CA 与含选定 IPv4 SAN 的 TLS leaf，Gateway 在该 IP 的
+8443 端口服务标准 Chromium；客户端只导入 `ca.crt`，CA 私钥不进入容器。PostgreSQL 和
+OTLP 只监听回环，旧的免认证 LAN HTTP 配置已移除。入口脚本的 CA/TLS/端口测试通过，
+Gateway 实际返回密码模式且未认证请求拒绝；完整密码登录与物理 Mac 信任库验收记录在
+[`20260926-lan-p0-integration.md`](../tasks/20260926-lan-p0-integration.md)，完成前不宣称
+LAN 用户链路已全部通过。
 
 ## Project-scoped App Agent Bridge
 
