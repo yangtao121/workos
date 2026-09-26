@@ -16,6 +16,8 @@ test("captures two complete synthetic resident native windows", async ({ browser
   await page.goto(`${appURL}/e2e/fixtures/greenfield-viewer-ready.html`);
   await expect(page.locator('[data-frame-state="ready"]')).toHaveCount(2);
   await expect(page.getByText("只读观察；当前设备没有输入控制权。")).toHaveCount(2);
+  await expect(page.getByTestId("greenfield-take-control")).toHaveCount(2);
+  await expect(page.getByTestId("greenfield-take-control").first()).toBeEnabled();
   await page.evaluate(async () => document.fonts.ready);
   await page.screenshot({
     path: `${captureDir}/greenfield-resident-windows--synthetic-ready--1440x900.png`,

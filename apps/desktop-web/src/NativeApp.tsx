@@ -1,5 +1,5 @@
 import { Code, ConnectError } from "@connectrpc/connect";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { NativeSessionLease } from "./nativeSession.js";
 import type { NativeInputEvent } from "@workos/protocol";
 import type { WorkOSClients } from "@workos/agent-sdk";
@@ -17,6 +17,7 @@ export interface GreenfieldViewerState {
   attachment: GreenfieldAttachment;
   input: GreenfieldWindowInputClient;
   projection: GreenfieldWindowProjectionState;
+  requestControl: () => Promise<void>;
 }
 
 // NativeApp consumes the virtual-display native runner (ADR-0029): one
@@ -56,6 +57,39 @@ export function NativeApp(props: {
   const reconnectRef = useRef<(() => Promise<void>) | undefined>(undefined);
   const handleRef = useRef<ReturnType<NativeSessionLease["acquire"]> | undefined>(undefined);
   const pointerStampRef = useRef(0);
+
+  // The real top-level windows can cover the lifecycle host. Keep their
+  // takeover action tied to this same lease so a responsive remount retains
+  // the updated control generation and cannot reuse a stale input epoch.
+  const requestControl = useCallback(async (): Promise<void> => {
+    const handle = handleRef.current;
+    if (!handle) throw new Error("native attachment unavailable");
+    const held = await handle.requestControl();
+    controlsRef.current = held;
+    setControls(held);
+    if (!held) throw new Error("native control was not granted");
+    setVerdict("");
+    const viewer = viewerRef.current;
+    if (viewer) {
+      const generation = await handle.controlGeneration();
+      viewer.input.setControl(true, generation);
+      const updated: GreenfieldViewerState = {
+        ...viewer,
+        attachment: { ...viewer.attachment, controls: true, controlGeneration: generation },
+      };
+      viewerRef.current = updated;
+      viewerCallbackRef.current?.(updated);
+      setStatus("attached");
+      return;
+    }
+    try {
+      await reconnectRef.current?.();
+    } catch (error) {
+      setStatus("reconnecting");
+      setAttempt((current) => current + 1);
+      throw error;
+    }
+  }, []);
 
   useEffect(() => {
     if (!clients || !projectId || stopped) return;
@@ -133,7 +167,12 @@ export function NativeApp(props: {
             unsubscribeProjection = windowProjection.subscribe((projection) => {
               if (isDisposed()) return;
               setGreenfieldProjection(projection);
-              viewerRef.current = { attachment: { ...attachment }, input, projection };
+              viewerRef.current = {
+                attachment: { ...(viewerRef.current?.attachment ?? attachment) },
+                input,
+                projection,
+                requestControl,
+              };
               viewerCallbackRef.current?.(viewerRef.current);
             });
             windowProjection.start();
@@ -286,6 +325,7 @@ export function NativeApp(props: {
     props.expectedWorkloadGeneration,
     attempt,
     stopped,
+    requestControl,
   ]);
 
   // The flat scalar payload follows NativeInputEvent protobuf JSON. Derive its
@@ -307,37 +347,9 @@ export function NativeApp(props: {
   };
 
   const takeControl = () => {
-    const handle = handleRef.current;
-    if (!handle) return;
-    void handle
-      .requestControl()
-      .then(async (held) => {
-        controlsRef.current = held;
-        setControls(held);
-        if (held) {
-          setVerdict("");
-          if (greenfieldSession) {
-            const viewer = viewerRef.current;
-            if (viewer) {
-              const generation = await handle.controlGeneration();
-              viewer.input.setControl(true, generation);
-              viewer.attachment = {
-                ...viewer.attachment,
-                controls: true,
-                controlGeneration: generation,
-              };
-              viewerCallbackRef.current?.({ ...viewer });
-            }
-            setStatus("attached");
-          } else {
-            void reconnectRef.current?.().catch(() => {
-              setStatus("reconnecting");
-              setAttempt((current) => current + 1);
-            });
-          }
-        }
-      })
-      .catch(() => undefined);
+    void requestControl().catch(() => {
+      setVerdict("Taking control failed. Check the connection and try again.");
+    });
   };
 
   const stopWorkload = () => {

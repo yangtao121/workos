@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { Code, ConnectError } from "@connectrpc/connect";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { WorkOSClients } from "@workos/agent-sdk";
@@ -297,6 +297,10 @@ describe("Native window lifecycle and input", () => {
     f.surfaceContinuity.requestSurfaceControl.mockResolvedValue({
       attachment: { controls: true, controlGeneration: 9n },
     });
+    let releaseNextSnapshot: (() => void) | undefined;
+    const nextSnapshot = new Promise<void>((resolve) => {
+      releaseNextSnapshot = resolve;
+    });
     const watchGreenfieldWindows = vi.fn(async function* () {
       await Promise.resolve();
       yield {
@@ -304,6 +308,16 @@ describe("Native window lifecycle and input", () => {
           sessionId: "greenfield-session",
           workloadGeneration: 3n,
           revision: 1n,
+          state: GreenfieldDisplayState.RUNNING,
+          windows: [],
+        },
+      };
+      await nextSnapshot;
+      yield {
+        snapshot: {
+          sessionId: "greenfield-session",
+          workloadGeneration: 3n,
+          revision: 2n,
           state: GreenfieldDisplayState.RUNNING,
           windows: [],
         },
@@ -339,7 +353,13 @@ describe("Native window lifecycle and input", () => {
     expect(
       onGreenfieldViewer.mock.calls.some(([viewer]) => viewer?.attachment.controls === false),
     ).toBe(true);
-    await userEvent.click(screen.getByTestId("native-take-control"));
+    const observerViewer = onGreenfieldViewer.mock.calls.find(
+      ([viewer]) => viewer?.attachment.controls === false,
+    )?.[0];
+    expect(observerViewer).toBeTruthy();
+    await act(async () => {
+      await observerViewer?.requestControl();
+    });
     await waitFor(() => {
       expect(
         onGreenfieldViewer.mock.calls.some(
@@ -347,6 +367,15 @@ describe("Native window lifecycle and input", () => {
             viewer?.attachment.controls === true && viewer.attachment.controlGeneration === 9n,
         ),
       ).toBe(true);
+    });
+    act(() => {
+      releaseNextSnapshot?.();
+    });
+    await waitFor(() => {
+      const latest = onGreenfieldViewer.mock.calls.at(-1)?.[0];
+      expect(latest?.projection.snapshot?.revision).toBe(2n);
+      expect(latest?.attachment.controls).toBe(true);
+      expect(latest?.attachment.controlGeneration).toBe(9n);
     });
     expect(f.nativeSessions.connectNativeSession).not.toHaveBeenCalled();
   });

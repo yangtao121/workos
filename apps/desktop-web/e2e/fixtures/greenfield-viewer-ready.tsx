@@ -144,6 +144,7 @@ createRoot(root).render(
           nativeWindow={nativeWindow}
           connection="connected"
           connectionEpoch={1}
+          onTakeControl={() => Promise.resolve()}
         />
       </section>
     ))}

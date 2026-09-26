@@ -51,6 +51,7 @@ export function GreenfieldWindowApp(props: {
   nativeWindow: GreenfieldWindow;
   connection: GreenfieldWindowConnection;
   connectionEpoch: number;
+  onTakeControl: () => Promise<void>;
 }) {
   const { nativeWindow, input, attachment } = props;
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -64,6 +65,7 @@ export function GreenfieldWindowApp(props: {
   const lastResize = useRef("");
   const [frameState, setFrameState] = useState<GreenfieldFrameState>("waiting");
   const [message, setMessage] = useState("");
+  const [takingControl, setTakingControl] = useState(false);
   const interactive =
     attachment.controls &&
     input.canControl &&
@@ -281,6 +283,29 @@ export function GreenfieldWindowApp(props: {
   return (
     <div className="greenfield-window-app" data-controller={interactive ? "true" : "false"}>
       <div className="greenfield-window-actions">
+        {!attachment.controls ? (
+          <button
+            type="button"
+            data-testid="greenfield-take-control"
+            disabled={takingControl || props.connection !== "connected"}
+            onClick={() => {
+              setTakingControl(true);
+              void props
+                .onTakeControl()
+                .then(() => {
+                  setMessage("已接管原生窗口输入");
+                })
+                .catch(() => {
+                  setMessage("接管失败：控制权未被授予，请重试");
+                })
+                .finally(() => {
+                  setTakingControl(false);
+                });
+            }}
+          >
+            {takingControl ? "正在接管…" : "接管输入"}
+          </button>
+        ) : null}
         <button type="button" disabled={!interactive} onClick={() => void copy()}>
           复制到本机
         </button>

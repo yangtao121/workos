@@ -2428,6 +2428,7 @@ export function Desktop({
             nativeWindow={nativeWindow}
             connection={viewer.projection.connection}
             connectionEpoch={viewer.projection.epoch}
+            onTakeControl={viewer.requestControl}
           />
         ) : (
           <p role="status">原生窗口连接不可用</p>
