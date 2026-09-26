@@ -1,12 +1,12 @@
 {
   "connections": 2,
-  "firstWindow": "01a0ddfa-f7ca-7dda-a52d-d6e097a6c8a7",
-  "firstFrameSequence": "193",
+  "firstWindow": "01a0de0a-f874-7595-adb4-8a6d196c1511",
+  "firstFrameSequence": "1",
   "firstFrameTiles": 4,
   "secondFrameTiles": 4,
   "firstFrameFull": true,
   "secondFrameFull": true,
-  "firstFrameLatencyMs": 305,
+  "firstFrameLatencyMs": 3100,
   "sawInputResult": true,
   "firstTiles": [
     {
