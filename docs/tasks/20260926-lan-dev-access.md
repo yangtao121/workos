@@ -94,4 +94,3 @@ main 分支上一提交遗留的 `make check` 失败，已在分支内修复（�
 
 - 已合并至 main（04851a5，fast-forward）；日常局域网调试用 `make dev-lan`。
   如需 TLS 的局域网暴露，走既有 lan-pairing profile（ADR-0007）。
-
