@@ -1,0 +1,41 @@
+{
+  "connections": 2,
+  "firstWindow": "01a0ddfa-f7ca-7dda-a52d-d6e097a6c8a7",
+  "firstFrameSequence": "193",
+  "firstFrameTiles": 4,
+  "secondFrameTiles": 4,
+  "firstFrameFull": true,
+  "secondFrameFull": true,
+  "firstFrameLatencyMs": 305,
+  "sawInputResult": true,
+  "firstTiles": [
+    {
+      "index": 0,
+      "x": 0,
+      "y": 0,
+      "width": 512,
+      "height": 512
+    },
+    {
+      "index": 1,
+      "x": 512,
+      "y": 0,
+      "width": 204,
+      "height": 512
+    },
+    {
+      "index": 2,
+      "x": 0,
+      "y": 512,
+      "width": 512,
+      "height": 65
+    },
+    {
+      "index": 3,
+      "x": 512,
+      "y": 512,
+      "width": 204,
+      "height": 65
+    }
+  ]
+}

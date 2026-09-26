@@ -255,10 +255,14 @@ async function launchProxy(
   const path = options.application === "code" ? "/code" : "/text-editor";
   const name = options.application === "code" ? "Code" : "Text Editor";
   const executable = options.application === "code" ? CODE_BINARY : TEXT_EDITOR_BINARY;
+  const appEnv = {
+    HOME: PRIVATE_DIR,
+    ...(options.application === "text_editor" ? { GDK_BACKEND: "x11" } : {}),
+  };
   await writeFile(
     appsPath,
     JSON.stringify({
-      [path]: { name, executable, args: appArgs, env: { HOME: PRIVATE_DIR } },
+      [path]: { name, executable, args: appArgs, env: appEnv },
     }),
     { mode: 0o600 },
   );

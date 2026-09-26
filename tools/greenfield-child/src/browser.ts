@@ -839,6 +839,10 @@ async function main(): Promise<void> {
   window.workosChildSnapshot = facts;
   setInterval(() => {
     for (const record of windows.values()) {
+      // Some XWayland clients commit their first buffer after the display
+      // scene's initial refresh. Reconcile late mapping/readiness before the
+      // first periodic full frame so a static editor window is published.
+      refreshGeometry(record);
       if (Date.now() - record.lastFullAt >= 1000) {
         record.forceFull = true;
         void capture(record);
