@@ -183,8 +183,11 @@ type URLs struct {
 }
 
 type Auth struct {
-	DevBypass bool   `yaml:"dev_bypass"`
-	OwnerID   string `yaml:"owner_id"`
+	DevBypass bool `yaml:"dev_bypass"`
+	// Mode selects the exclusive production login path. Existing deployments
+	// default to pairing; LAN password deployments set password explicitly.
+	Mode    string `yaml:"mode"`
+	OwnerID string `yaml:"owner_id"`
 	// DeviceID is the development-mode fixed device identity only.
 	// Production device identities are minted by the Gateway device auth
 	// service; this value is never used when DevBypass is false.
@@ -302,6 +305,7 @@ func defaults() Config {
 			Runtime: "http://127.0.0.1:8083", Reliability: "http://127.0.0.1:8084", Indexer: "http://127.0.0.1:8085",
 		},
 		Auth: Auth{
+			Mode:     "pairing",
 			OwnerID:  "0198d7ea-2110-7c42-b659-c5e4d73bc337",
 			DeviceID: "0198d7ea-2110-7c42-b659-c5e4d73bc338",
 		},
@@ -375,6 +379,7 @@ func Load() (Config, error) {
 	setString(&cfg.Auth.OwnerID, "WORKOS_OWNER_ID")
 	setString(&cfg.Auth.DeviceID, "WORKOS_DEVICE_ID")
 	setString(&cfg.Auth.PublicOrigin, "WORKOS_AUTH_PUBLIC_ORIGIN")
+	setString(&cfg.Auth.Mode, "WORKOS_AUTH_MODE")
 	setString(&cfg.Auth.AdminSocketPath, "WORKOS_AUTH_ADMIN_SOCKET")
 	setString(&cfg.Credential.MasterKeyFile, "WORKOS_CREDENTIAL_MASTER_KEY_FILE")
 	setString(&cfg.Push.PrivateKeyFile, "WORKOS_PUSH_PRIVATE_KEY_FILE")
@@ -603,6 +608,9 @@ func validUpstreamURL(raw string) bool {
 
 // ValidateGateway enforces fail-closed public binding rules.
 func (c Config) ValidateGateway() error {
+	if c.Auth.Mode != "pairing" && c.Auth.Mode != "password" {
+		return errors.New("auth mode must be pairing or password")
+	}
 	host, _, err := net.SplitHostPort(c.HTTP.Address)
 	if err != nil {
 		return fmt.Errorf("invalid HTTP address: %w", err)

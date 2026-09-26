@@ -202,12 +202,17 @@ func (h *PairingHandler) CompleteDeviceSession(ctx context.Context, req *connect
 // DeviceHandler serves the session-authenticated DeviceService. Owner scope
 // always derives from the injected session context.
 type DeviceHandler struct {
-	app *application.Service
-	now func() time.Time
+	app      *application.Service
+	password *application.PasswordService
+	now      func() time.Time
 }
 
 func NewDeviceHandler(app *application.Service, now func() time.Time) *DeviceHandler {
 	return &DeviceHandler{app: app, now: now}
+}
+
+func NewPasswordDeviceHandler(app *application.PasswordService, now func() time.Time) *DeviceHandler {
+	return &DeviceHandler{password: app, now: now}
 }
 
 func (h *DeviceHandler) GetCurrentDevice(ctx context.Context, _ *connect.Request[authv1.GetCurrentDeviceRequest]) (*connect.Response[authv1.GetCurrentDeviceResponse], error) {
@@ -215,7 +220,14 @@ func (h *DeviceHandler) GetCurrentDevice(ctx context.Context, _ *connect.Request
 	if err != nil {
 		return nil, err
 	}
-	device, expires, err := h.app.CurrentDevice(ctx, session.Identity, session.SessionExpiry)
+	var device domain.Device
+	var expires time.Time
+	if h.password != nil {
+		device, err = h.password.CurrentDevice(ctx, session.Identity)
+		expires = session.SessionExpiry
+	} else {
+		device, expires, err = h.app.CurrentDevice(ctx, session.Identity, session.SessionExpiry)
+	}
 	if err != nil {
 		return nil, verdict(err)
 	}
@@ -232,7 +244,13 @@ func (h *DeviceHandler) ListDevices(ctx context.Context, req *connect.Request[au
 	if err != nil {
 		return nil, err
 	}
-	devices, next, err := h.app.ListDevices(ctx, session.Identity, int(req.Msg.GetPageSize()), req.Msg.GetPageToken())
+	var devices []domain.Device
+	var next string
+	if h.password != nil {
+		devices, next, err = h.password.ListDevices(ctx, session.Identity, int(req.Msg.GetPageSize()), req.Msg.GetPageToken())
+	} else {
+		devices, next, err = h.app.ListDevices(ctx, session.Identity, int(req.Msg.GetPageSize()), req.Msg.GetPageToken())
+	}
 	if err != nil {
 		return nil, verdict(err)
 	}
@@ -246,6 +264,9 @@ func (h *DeviceHandler) ListDevices(ctx context.Context, req *connect.Request[au
 }
 
 func (h *DeviceHandler) RotatePairingTicket(ctx context.Context, _ *connect.Request[authv1.RotatePairingTicketRequest]) (*connect.Response[authv1.RotatePairingTicketResponse], error) {
+	if h.password != nil {
+		return nil, connect.NewError(connect.CodeUnimplemented, errors.New("pairing is unavailable in password mode"))
+	}
 	session, err := SessionFromContext(ctx)
 	if err != nil {
 		return nil, err
@@ -264,11 +285,18 @@ func (h *DeviceHandler) RevokeDevice(ctx context.Context, req *connect.Request[a
 	if err != nil {
 		return nil, err
 	}
-	device, replayed, err := h.app.RevokeDevice(ctx, session.Identity, application.RevokeDeviceInput{
+	input := application.RevokeDeviceInput{
 		DeviceID:         req.Msg.GetDeviceId(),
 		IdempotencyKey:   req.Msg.GetIdempotencyKey(),
 		ExpectedRevision: req.Msg.GetExpectedRevision(),
-	})
+	}
+	var device domain.Device
+	var replayed bool
+	if h.password != nil {
+		device, replayed, err = h.password.RevokeDevice(ctx, session.Identity, input)
+	} else {
+		device, replayed, err = h.app.RevokeDevice(ctx, session.Identity, input)
+	}
 	if err != nil {
 		return nil, verdict(err)
 	}
@@ -292,10 +320,16 @@ func (h *DeviceHandler) Logout(ctx context.Context, _ *connect.Request[authv1.Lo
 	if err != nil {
 		return nil, err
 	}
-	if err := h.app.Logout(ctx, session.Identity); err != nil {
+	var now time.Time
+	if h.password != nil {
+		now, err = h.password.Logout(ctx, session.Identity)
+	} else {
+		err = h.app.Logout(ctx, session.Identity)
+		now = h.now()
+	}
+	if err != nil {
 		return nil, verdict(err)
 	}
-	now := h.now()
 	if writer, ok := connectHTTPWriter(ctx); ok {
 		ClearSessionCookie(writer)
 	}
@@ -307,20 +341,40 @@ func (h *DeviceHandler) Logout(ctx context.Context, _ *connect.Request[authv1.Lo
 // AdminHandler serves the private DeviceAuthAdminService. It is registered
 // exclusively on the Gateway-owned admin Unix socket mux.
 type AdminHandler struct {
-	app     *application.Service
-	ownerID string
+	app      *application.Service
+	password *application.PasswordService
+	ownerID  string
 }
 
 func NewAdminHandler(app *application.Service, ownerID string) *AdminHandler {
 	return &AdminHandler{app: app, ownerID: ownerID}
 }
 
+func NewPasswordAdminHandler(app *application.PasswordService) *AdminHandler {
+	return &AdminHandler{password: app}
+}
+
 func (h *AdminHandler) RotatePairingTicket(ctx context.Context, _ *connect.Request[authv1.DeviceAuthAdminServiceRotatePairingTicketRequest]) (*connect.Response[authv1.DeviceAuthAdminServiceRotatePairingTicketResponse], error) {
+	if h.password != nil {
+		return nil, connect.NewError(connect.CodeUnimplemented, errors.New("pairing is unavailable in password mode"))
+	}
 	info, err := h.app.RotatePairingTicket(ctx, h.ownerID)
 	if err != nil {
 		return nil, verdict(err)
 	}
 	response := connect.NewResponse(&authv1.DeviceAuthAdminServiceRotatePairingTicketResponse{Ticket: ticketInfo(info)})
+	noStore(response.Header())
+	return response, nil
+}
+
+func (h *AdminHandler) SetPassword(ctx context.Context, req *connect.Request[authv1.SetPasswordRequest]) (*connect.Response[authv1.SetPasswordResponse], error) {
+	if h.password == nil {
+		return nil, connect.NewError(connect.CodeUnimplemented, errors.New("password login is unavailable in pairing mode"))
+	}
+	if err := h.password.SetPassword(ctx, req.Msg.GetUsername(), req.Msg.GetPassword()); err != nil {
+		return nil, verdict(err)
+	}
+	response := connect.NewResponse(&authv1.SetPasswordResponse{})
 	noStore(response.Header())
 	return response, nil
 }

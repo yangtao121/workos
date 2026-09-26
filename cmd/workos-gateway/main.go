@@ -51,6 +51,7 @@ func run(logger *slog.Logger) error {
 	var tlsConfig *tls.Config
 	var adminHandler http.Handler
 	var authApp *application.Service
+	var passwordApp *application.PasswordService
 	if !cfg.Auth.DevBypass {
 		// Production mode: the Gateway terminates its own TLS 1.3 listener
 		// and the ticket snapshots pin the leaf certificate it actually
@@ -79,33 +80,42 @@ func run(logger *slog.Logger) error {
 		go (&application.PushRevocationConsumer{
 			Store: authpostgres.New(pool), Sink: corepush.New(telemetry.HTTPClient(), cfg.Services.Core),
 		}).Run(ctx, logger)
-		authApp, err = application.New(
-			authpostgres.New(pool),
-			application.Config{
-				OwnerID:        cfg.Auth.OwnerID,
-				PublicOrigin:   cfg.Auth.PublicOrigin,
-				TLSFingerprint: fingerprint,
-				TicketTTL:      authTTL(cfg.Auth.TicketTTL, 5*time.Minute),
-				ChallengeTTL:   authTTL(cfg.Auth.ChallengeTTL, 2*time.Minute),
-				SessionTTL:     authTTL(cfg.Auth.SessionTTL, 24*time.Hour),
-			},
-			randsource.Clock{}, randsource.Entropy{}, ids.UUIDv7{},
-		)
+		store := authpostgres.New(pool)
+		if cfg.Auth.Mode == "password" {
+			passwordApp, err = application.NewPasswordService(store, cfg.Auth.OwnerID,
+				authTTL(cfg.Auth.SessionTTL, 24*time.Hour), randsource.Clock{}, randsource.Entropy{}, ids.UUIDv7{})
+		} else {
+			authApp, err = application.New(store,
+				application.Config{
+					OwnerID: cfg.Auth.OwnerID, PublicOrigin: cfg.Auth.PublicOrigin,
+					TLSFingerprint: fingerprint, TicketTTL: authTTL(cfg.Auth.TicketTTL, 5*time.Minute),
+					ChallengeTTL: authTTL(cfg.Auth.ChallengeTTL, 2*time.Minute),
+					SessionTTL:   authTTL(cfg.Auth.SessionTTL, 24*time.Hour),
+				}, randsource.Clock{}, randsource.Entropy{}, ids.UUIDv7{})
+		}
 		if err != nil {
 			return err
 		}
 		now := func() time.Time { return randsource.Clock{}.Now() }
-		_, pairingConnect := authv1connect.NewDevicePairingServiceHandler(
-			authtransport.NewPairingHandler(authApp, now))
-		_, deviceConnect := authv1connect.NewDeviceServiceHandler(
-			authtransport.NewDeviceHandler(authApp, now))
-		_, adminConnect := authv1connect.NewDeviceAuthAdminServiceHandler(
-			authtransport.NewAdminHandler(authApp, cfg.Auth.OwnerID))
+		_, passwordConnect := authv1connect.NewPasswordAuthServiceHandler(authtransport.NewPasswordHandler(passwordApp, now))
+		var pairingConnect http.Handler
+		var deviceConnect http.Handler
+		var adminConnect http.Handler
+		if passwordApp != nil {
+			_, deviceConnect = authv1connect.NewDeviceServiceHandler(authtransport.NewPasswordDeviceHandler(passwordApp, now))
+			_, adminConnect = authv1connect.NewDeviceAuthAdminServiceHandler(authtransport.NewPasswordAdminHandler(passwordApp))
+		} else {
+			_, pairingConnect = authv1connect.NewDevicePairingServiceHandler(authtransport.NewPairingHandler(authApp, now))
+			_, deviceConnect = authv1connect.NewDeviceServiceHandler(authtransport.NewDeviceHandler(authApp, now))
+			_, adminConnect = authv1connect.NewDeviceAuthAdminServiceHandler(authtransport.NewAdminHandler(authApp, cfg.Auth.OwnerID))
+		}
 		adminHandler = adminConnect
 		authStack = &gateway.AuthStack{
-			Service: authApp,
-			Pairing: pairingConnect,
-			Device:  deviceConnect,
+			Service:         authApp,
+			PasswordService: passwordApp,
+			Pairing:         pairingConnect,
+			Password:        passwordConnect,
+			Device:          deviceConnect,
 			RemoteLimiter: application.NewRateLimiter(
 				gateway.AuthRemoteRateLimit, gateway.AuthRateWindow, gateway.AuthRateMaxKeys, randsource.Clock{},
 			),
@@ -138,6 +148,9 @@ func run(logger *slog.Logger) error {
 		// stale identity material.
 		if authApp != nil {
 			return authApp.Ready(ctx)
+		}
+		if passwordApp != nil {
+			return passwordApp.Ready(ctx)
 		}
 		return nil
 	}

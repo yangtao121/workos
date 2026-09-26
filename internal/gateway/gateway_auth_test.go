@@ -80,10 +80,12 @@ func newTestAuthStack(t *testing.T, store ports.Repository) *AuthStack {
 	}
 	now := func() time.Time { return clock.Now() }
 	_, pairingConnect := authv1connect.NewDevicePairingServiceHandler(authtransport.NewPairingHandler(app, now))
+	_, passwordConnect := authv1connect.NewPasswordAuthServiceHandler(authtransport.NewPasswordHandler(nil, now))
 	_, deviceConnect := authv1connect.NewDeviceServiceHandler(authtransport.NewDeviceHandler(app, now))
 	return &AuthStack{
 		Service:       app,
 		Pairing:       pairingConnect,
+		Password:      passwordConnect,
 		Device:        deviceConnect,
 		RemoteLimiter: application.NewRateLimiter(1000, time.Minute, 4096, clock),
 		GlobalLimiter: application.NewRateLimiter(1000, time.Minute, 1, clock),

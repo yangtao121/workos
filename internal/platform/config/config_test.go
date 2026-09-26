@@ -26,6 +26,23 @@ func TestDevBypassAllowsLoopback(t *testing.T) {
 	}
 }
 
+func TestGatewayAuthModeIsExplicitAndBounded(t *testing.T) {
+	t.Parallel()
+	cfg := defaults()
+	cfg.Auth.DevBypass = true
+	if cfg.Auth.Mode != "pairing" {
+		t.Fatalf("default auth mode = %q", cfg.Auth.Mode)
+	}
+	cfg.Auth.Mode = "password"
+	if err := cfg.ValidateGateway(); err != nil {
+		t.Fatalf("password mode rejected: %v", err)
+	}
+	cfg.Auth.Mode = "unknown"
+	if err := cfg.ValidateGateway(); err == nil {
+		t.Fatal("unknown auth mode accepted")
+	}
+}
+
 func TestRemovedDevBypassLANOverrideCannotExposeHTTP(t *testing.T) {
 	t.Setenv("WORKOS_CONFIG_FILE", "")
 	_ = os.Unsetenv("WORKOS_CONFIG_FILE")

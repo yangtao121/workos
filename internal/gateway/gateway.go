@@ -44,11 +44,13 @@ const (
 // AuthStack carries the production device-auth wiring. It is nil in the
 // development-bypass mode.
 type AuthStack struct {
-	Service *application.Service
+	Service         *application.Service
+	PasswordService *application.PasswordService
 	// Pairing and Device are the Connect transports of the Gateway-local
 	// services, built by the composition root from the same service.
-	Pairing http.Handler
-	Device  http.Handler
+	Pairing  http.Handler
+	Password http.Handler
+	Device   http.Handler
 	// RemoteLimiter and GlobalLimiter jointly bound the anonymous auth
 	// endpoints. Both are mandatory in production so address rotation can
 	// never bypass the process-wide budget.
@@ -77,8 +79,9 @@ type Handler struct {
 	originHost         string
 	streamRevalidation time.Duration
 	// pairingPath/devicePath are the Connect prefixes served locally.
-	pairingPath string
-	devicePath  string
+	pairingPath  string
+	passwordPath string
+	devicePath   string
 }
 
 var publicServicePrefixes = []string{
@@ -171,6 +174,9 @@ const (
 )
 
 func New(cfg config.Config, logger *slog.Logger, auth *AuthStack) (*Handler, error) {
+	if cfg.Auth.Mode == "" {
+		cfg.Auth.Mode = "pairing"
+	}
 	core, err := newUpstreamProxy(cfg.Services.Core, cfg, logger, "core")
 	if err != nil {
 		return nil, err
@@ -206,9 +212,12 @@ func New(cfg config.Config, logger *slog.Logger, auth *AuthStack) (*Handler, err
 	if !cfg.Auth.DevBypass {
 		// Production mode requires the auth stack: the constructor fails
 		// instead of serving a gate that cannot resolve sessions.
-		if auth == nil || auth.Service == nil || auth.Pairing == nil || auth.Device == nil ||
+		if auth == nil || auth.Password == nil || auth.Device == nil ||
 			auth.RemoteLimiter == nil || auth.GlobalLimiter == nil {
 			return nil, errors.New("production auth requires the device auth stack")
+		}
+		if (cfg.Auth.Mode == "password" && auth.PasswordService == nil) || (cfg.Auth.Mode == "pairing" && (auth.Service == nil || auth.Pairing == nil)) {
+			return nil, errors.New("production auth mode requires its service")
 		}
 		origin, err := url.Parse(cfg.Auth.PublicOrigin)
 		if err != nil || origin.Host == "" {
@@ -216,6 +225,7 @@ func New(cfg config.Config, logger *slog.Logger, auth *AuthStack) (*Handler, err
 		}
 		handler.originHost = origin.Host
 		handler.pairingPath = "/workos.auth.v1.DevicePairingService/"
+		handler.passwordPath = "/workos.auth.v1.PasswordAuthService/"
 		handler.devicePath = "/workos.auth.v1.DeviceService/"
 	}
 	return handler, nil
@@ -370,7 +380,14 @@ func (h *Handler) serveProduction(w http.ResponseWriter, r *http.Request) {
 	path := r.URL.Path
 	switch {
 	case strings.HasPrefix(path, h.pairingPath):
-		h.servePairing(w, r)
+		if h.config.Auth.Mode != "pairing" {
+			http.NotFound(w, r)
+			return
+		}
+		h.serveAnonymousAuth(w, r, h.auth.Pairing)
+		return
+	case strings.HasPrefix(path, h.passwordPath):
+		h.serveAnonymousAuth(w, r, h.auth.Password)
 		return
 	case strings.HasPrefix(path, h.devicePath):
 		identity, ok := h.requireSession(w, r)
@@ -439,7 +456,7 @@ func (h *Handler) serveProduction(w http.ResponseWriter, r *http.Request) {
 // servePairing runs the anonymous-but-TLS-only device pairing and session
 // proof endpoints: request-body budget, remote-IP rate limiting, and exact
 // Origin policy for browser posts, then the local Connect handler.
-func (h *Handler) servePairing(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) serveAnonymousAuth(w http.ResponseWriter, r *http.Request, handler http.Handler) {
 	if r.Body != nil {
 		r.Body = http.MaxBytesReader(w, r.Body, authMaxBodyBytes)
 	}
@@ -452,7 +469,7 @@ func (h *Handler) servePairing(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "too many attempts, retry later", http.StatusTooManyRequests)
 		return
 	}
-	h.serveLocalConnect(w, r, h.auth.Pairing)
+	h.serveLocalConnect(w, r, handler)
 }
 
 func remoteRateKey(remoteAddr string) string {
@@ -475,7 +492,13 @@ func (h *Handler) requireSession(w http.ResponseWriter, r *http.Request) (contex
 		http.Error(w, "device session required", http.StatusUnauthorized)
 		return nil, false
 	}
-	session, resolveErr := h.auth.Service.ResolveSession(r.Context(), cookie.Value)
+	var session domain.SessionIdentity
+	var resolveErr error
+	if h.config.Auth.Mode == "password" {
+		session, resolveErr = h.auth.PasswordService.ResolveSession(r.Context(), cookie.Value)
+	} else {
+		session, resolveErr = h.auth.Service.ResolveSession(r.Context(), cookie.Value)
+	}
 	if resolveErr != nil {
 		switch {
 		case errors.Is(resolveErr, domain.ErrStoreUnavailable):
@@ -547,7 +570,12 @@ func (h *Handler) serveStreamWithRevalidation(w http.ResponseWriter, r *http.Req
 				return
 			case <-ticker.C:
 				revalidateCtx, revalidateCancel := context.WithTimeout(streamCtx, streamRevalidateTimeout)
-				_, err := h.auth.Service.ResolveSession(revalidateCtx, cookie.Value)
+				var err error
+				if h.config.Auth.Mode == "password" {
+					_, err = h.auth.PasswordService.ResolveSession(revalidateCtx, cookie.Value)
+				} else {
+					_, err = h.auth.Service.ResolveSession(revalidateCtx, cookie.Value)
+				}
 				revalidateCancel()
 				if err != nil {
 					if errors.Is(err, domain.ErrAuthenticationFailed) {
