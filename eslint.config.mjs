@@ -11,6 +11,7 @@ export default tseslint.config(
       "apps/mobile-shell/ios/App/App/public/**",
       "**/src/gen/**",
       "coverage/**",
+      ".workos/**",
       "tmp/**",
       "eslint.config.mjs",
       "tools/**/*.mjs",
@@ -39,5 +40,11 @@ export default tseslint.config(
     files: ["apps/desktop-web/public/push-worker.js"],
     extends: [tseslint.configs.disableTypeChecked],
     languageOptions: { globals: globals.serviceworker },
+  },
+  {
+    files: ["tools/**/*.cjs"],
+    extends: [tseslint.configs.disableTypeChecked],
+    languageOptions: { parserOptions: { projectService: false } },
+    rules: { "@typescript-eslint/no-require-imports": "off" },
   },
 );

@@ -6,6 +6,7 @@ docs/structure.md
 .zcode/
 
 tmp/
+.workos/
 
 apps/mobile-shell/android/app/src/main/assets/
 apps/mobile-shell/android/**/build/
