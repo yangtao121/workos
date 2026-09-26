@@ -198,7 +198,14 @@ async function control(page: Page, code: Locator, workload: Workload): Promise<C
 }
 
 async function focusCode(code: Locator) {
-  await code.getByTestId("greenfield-window-canvas").click({ position: { x: 220, y: 160 } });
+  const canvas = code.getByTestId("greenfield-window-canvas");
+  const bounds = await canvas.boundingBox();
+  if (!bounds) throw new Error("Code canvas is not visible");
+  // The Explorer occupies the left side of the real Code frame. Focus the
+  // editor pane, regardless of the WorkOS window's current CSS size.
+  await canvas.click({
+    position: { x: Math.floor(bounds.width * 0.6), y: Math.floor(bounds.height * 0.35) },
+  });
   await expect(code.getByLabel("原生窗口输入")).toBeFocused();
 }
 
