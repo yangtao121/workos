@@ -14,7 +14,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file workos/auth/v1/device_auth.proto.
  */
 export const file_workos_auth_v1_device_auth: GenFile = /*@__PURE__*/
-  fileDesc("CiB3b3Jrb3MvYXV0aC92MS9kZXZpY2VfYXV0aC5wcm90bxIOd29ya29zLmF1dGgudjEilwEKDVBhaXJpbmdUaWNrZXQSEQoJdGlja2V0X2lkGAEgASgJEhMKC3BhaXJpbmdfdXJsGAIgASgJEhUKDXB1YmxpY19vcmlnaW4YAyABKAkSFwoPdGxzX2ZpbmdlcnByaW50GAQgASgJEi4KCmV4cGlyZXNfYXQYBSABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wIqQCCgpEZXZpY2VJbmZvEhEKCWRldmljZV9pZBgBIAEoCRIMCgRuYW1lGAIgASgJEjQKDGRldmljZV9jbGFzcxgDIAEoDjIeLndvcmtvcy5zdXJmYWNlLnYxLkRldmljZUNsYXNzEhAKCHJldmlzaW9uGAQgASgDEi4KCmNyZWF0ZWRfYXQYBSABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wEjkKFWxhc3RfYXV0aGVudGljYXRlZF9hdBgGIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXASLgoKcmV2b2tlZF9hdBgHIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXASEgoKaXNfY3VycmVudBgIIAEoCCIcChpSb3RhdGVQYWlyaW5nVGlja2V0UmVxdWVzdCJMChtSb3RhdGVQYWlyaW5nVGlja2V0UmVzcG9uc2USLQoGdGlja2V0GAEgASgLMh0ud29ya29zLmF1dGgudjEuUGFpcmluZ1RpY2tldCKRAQoTQmVnaW5QYWlyaW5nUmVxdWVzdBIWCg5wYWlyaW5nX3NlY3JldBgBIAEoCRIXCg9wdWJsaWNfa2V5X3Nwa2kYAiABKAwSEwoLZGV2aWNlX25hbWUYAyABKAkSNAoMZGV2aWNlX2NsYXNzGAQgASgOMh4ud29ya29zLnN1cmZhY2UudjEuRGV2aWNlQ2xhc3MirAEKCUNoYWxsZW5nZRIUCgxjaGFsbGVuZ2VfaWQYASABKAkSDQoFbm9uY2UYAiABKAwSLgoKZXhwaXJlc19hdBgDIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXASFQoNcHJvb2ZfdmVyc2lvbhgEIAEoDRIzCgdwdXJwb3NlGAUgASgOMiIud29ya29zLmF1dGgudjEuRGV2aWNlUHJvb2ZQdXJwb3NlImoKFEJlZ2luUGFpcmluZ1Jlc3BvbnNlEhEKCWRldmljZV9pZBgBIAEoCRIsCgljaGFsbGVuZ2UYAiABKAsyGS53b3Jrb3MuYXV0aC52MS5DaGFsbGVuZ2USEQoJdGlja2V0X2lkGAMgASgJIm0KFkNvbXBsZXRlUGFpcmluZ1JlcXVlc3QSEQoJZGV2aWNlX2lkGAEgASgJEhQKDGNoYWxsZW5nZV9pZBgCIAEoCRIRCglzaWduYXR1cmUYAyABKAwSFwoPcHVibGljX2tleV9zcGtpGAQgASgMIn0KF0NvbXBsZXRlUGFpcmluZ1Jlc3BvbnNlEioKBmRldmljZRgBIAEoCzIaLndvcmtvcy5hdXRoLnYxLkRldmljZUluZm8SNgoSc2Vzc2lvbl9leHBpcmVzX2F0GAIgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcCIuChlCZWdpbkRldmljZVNlc3Npb25SZXF1ZXN0EhEKCWRldmljZV9pZBgBIAEoCSJKChpCZWdpbkRldmljZVNlc3Npb25SZXNwb25zZRIsCgljaGFsbGVuZ2UYASABKAsyGS53b3Jrb3MuYXV0aC52MS5DaGFsbGVuZ2UiWgocQ29tcGxldGVEZXZpY2VTZXNzaW9uUmVxdWVzdBIRCglkZXZpY2VfaWQYASABKAkSFAoMY2hhbGxlbmdlX2lkGAIgASgJEhEKCXNpZ25hdHVyZRgDIAEoDCKDAQodQ29tcGxldGVEZXZpY2VTZXNzaW9uUmVzcG9uc2USKgoGZGV2aWNlGAEgASgLMhoud29ya29zLmF1dGgudjEuRGV2aWNlSW5mbxI2ChJzZXNzaW9uX2V4cGlyZXNfYXQYAiABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wIhkKF0dldEN1cnJlbnREZXZpY2VSZXF1ZXN0In4KGEdldEN1cnJlbnREZXZpY2VSZXNwb25zZRIqCgZkZXZpY2UYASABKAsyGi53b3Jrb3MuYXV0aC52MS5EZXZpY2VJbmZvEjYKEnNlc3Npb25fZXhwaXJlc19hdBgCIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXAiOwoSTGlzdERldmljZXNSZXF1ZXN0EhEKCXBhZ2Vfc2l6ZRgBIAEoBRISCgpwYWdlX3Rva2VuGAIgASgJIlsKE0xpc3REZXZpY2VzUmVzcG9uc2USKwoHZGV2aWNlcxgBIAMoCzIaLndvcmtvcy5hdXRoLnYxLkRldmljZUluZm8SFwoPbmV4dF9wYWdlX3Rva2VuGAIgASgJIlwKE1Jldm9rZURldmljZVJlcXVlc3QSEQoJZGV2aWNlX2lkGAEgASgJEhcKD2lkZW1wb3RlbmN5X2tleRgCIAEoCRIZChFleHBlY3RlZF9yZXZpc2lvbhgDIAEoAyJUChRSZXZva2VEZXZpY2VSZXNwb25zZRIqCgZkZXZpY2UYASABKAsyGi53b3Jrb3MuYXV0aC52MS5EZXZpY2VJbmZvEhAKCHJlcGxheWVkGAIgASgIIg8KDUxvZ291dFJlcXVlc3QiSAoOTG9nb3V0UmVzcG9uc2USNgoSc2Vzc2lvbl9yZXZva2VkX2F0GAEgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcCIyCjBEZXZpY2VBdXRoQWRtaW5TZXJ2aWNlUm90YXRlUGFpcmluZ1RpY2tldFJlcXVlc3QiYgoxRGV2aWNlQXV0aEFkbWluU2VydmljZVJvdGF0ZVBhaXJpbmdUaWNrZXRSZXNwb25zZRItCgZ0aWNrZXQYASABKAsyHS53b3Jrb3MuYXV0aC52MS5QYWlyaW5nVGlja2V0Kn4KEkRldmljZVByb29mUHVycG9zZRIkCiBERVZJQ0VfUFJPT0ZfUFVSUE9TRV9VTlNQRUNJRklFRBAAEiAKHERFVklDRV9QUk9PRl9QVVJQT1NFX1BBSVJJTkcQARIgChxERVZJQ0VfUFJPT0ZfUFVSUE9TRV9TRVNTSU9OEAIyuAMKFERldmljZVBhaXJpbmdTZXJ2aWNlElkKDEJlZ2luUGFpcmluZxIjLndvcmtvcy5hdXRoLnYxLkJlZ2luUGFpcmluZ1JlcXVlc3QaJC53b3Jrb3MuYXV0aC52MS5CZWdpblBhaXJpbmdSZXNwb25zZRJiCg9Db21wbGV0ZVBhaXJpbmcSJi53b3Jrb3MuYXV0aC52MS5Db21wbGV0ZVBhaXJpbmdSZXF1ZXN0Gicud29ya29zLmF1dGgudjEuQ29tcGxldGVQYWlyaW5nUmVzcG9uc2USawoSQmVnaW5EZXZpY2VTZXNzaW9uEikud29ya29zLmF1dGgudjEuQmVnaW5EZXZpY2VTZXNzaW9uUmVxdWVzdBoqLndvcmtvcy5hdXRoLnYxLkJlZ2luRGV2aWNlU2Vzc2lvblJlc3BvbnNlEnQKFUNvbXBsZXRlRGV2aWNlU2Vzc2lvbhIsLndvcmtvcy5hdXRoLnYxLkNvbXBsZXRlRGV2aWNlU2Vzc2lvblJlcXVlc3QaLS53b3Jrb3MuYXV0aC52MS5Db21wbGV0ZURldmljZVNlc3Npb25SZXNwb25zZTLiAwoNRGV2aWNlU2VydmljZRJlChBHZXRDdXJyZW50RGV2aWNlEicud29ya29zLmF1dGgudjEuR2V0Q3VycmVudERldmljZVJlcXVlc3QaKC53b3Jrb3MuYXV0aC52MS5HZXRDdXJyZW50RGV2aWNlUmVzcG9uc2USVgoLTGlzdERldmljZXMSIi53b3Jrb3MuYXV0aC52MS5MaXN0RGV2aWNlc1JlcXVlc3QaIy53b3Jrb3MuYXV0aC52MS5MaXN0RGV2aWNlc1Jlc3BvbnNlEm4KE1JvdGF0ZVBhaXJpbmdUaWNrZXQSKi53b3Jrb3MuYXV0aC52MS5Sb3RhdGVQYWlyaW5nVGlja2V0UmVxdWVzdBorLndvcmtvcy5hdXRoLnYxLlJvdGF0ZVBhaXJpbmdUaWNrZXRSZXNwb25zZRJZCgxSZXZva2VEZXZpY2USIy53b3Jrb3MuYXV0aC52MS5SZXZva2VEZXZpY2VSZXF1ZXN0GiQud29ya29zLmF1dGgudjEuUmV2b2tlRGV2aWNlUmVzcG9uc2USRwoGTG9nb3V0Eh0ud29ya29zLmF1dGgudjEuTG9nb3V0UmVxdWVzdBoeLndvcmtvcy5hdXRoLnYxLkxvZ291dFJlc3BvbnNlMrUBChZEZXZpY2VBdXRoQWRtaW5TZXJ2aWNlEpoBChNSb3RhdGVQYWlyaW5nVGlja2V0EkAud29ya29zLmF1dGgudjEuRGV2aWNlQXV0aEFkbWluU2VydmljZVJvdGF0ZVBhaXJpbmdUaWNrZXRSZXF1ZXN0GkEud29ya29zLmF1dGgudjEuRGV2aWNlQXV0aEFkbWluU2VydmljZVJvdGF0ZVBhaXJpbmdUaWNrZXRSZXNwb25zZUI7WjlnaXRodWIuY29tL3lhbmd0YW8xMjEvd29ya29zL2dlbi9nby93b3Jrb3MvYXV0aC92MTthdXRodjFiBnByb3RvMw", [file_google_protobuf_timestamp, file_workos_surface_v1_surface]);
+  fileDesc("CiB3b3Jrb3MvYXV0aC92MS9kZXZpY2VfYXV0aC5wcm90bxIOd29ya29zLmF1dGgudjEilwEKDVBhaXJpbmdUaWNrZXQSEQoJdGlja2V0X2lkGAEgASgJEhMKC3BhaXJpbmdfdXJsGAIgASgJEhUKDXB1YmxpY19vcmlnaW4YAyABKAkSFwoPdGxzX2ZpbmdlcnByaW50GAQgASgJEi4KCmV4cGlyZXNfYXQYBSABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wIqQCCgpEZXZpY2VJbmZvEhEKCWRldmljZV9pZBgBIAEoCRIMCgRuYW1lGAIgASgJEjQKDGRldmljZV9jbGFzcxgDIAEoDjIeLndvcmtvcy5zdXJmYWNlLnYxLkRldmljZUNsYXNzEhAKCHJldmlzaW9uGAQgASgDEi4KCmNyZWF0ZWRfYXQYBSABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wEjkKFWxhc3RfYXV0aGVudGljYXRlZF9hdBgGIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXASLgoKcmV2b2tlZF9hdBgHIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXASEgoKaXNfY3VycmVudBgIIAEoCCIcChpSb3RhdGVQYWlyaW5nVGlja2V0UmVxdWVzdCJMChtSb3RhdGVQYWlyaW5nVGlja2V0UmVzcG9uc2USLQoGdGlja2V0GAEgASgLMh0ud29ya29zLmF1dGgudjEuUGFpcmluZ1RpY2tldCKRAQoTQmVnaW5QYWlyaW5nUmVxdWVzdBIWCg5wYWlyaW5nX3NlY3JldBgBIAEoCRIXCg9wdWJsaWNfa2V5X3Nwa2kYAiABKAwSEwoLZGV2aWNlX25hbWUYAyABKAkSNAoMZGV2aWNlX2NsYXNzGAQgASgOMh4ud29ya29zLnN1cmZhY2UudjEuRGV2aWNlQ2xhc3MirAEKCUNoYWxsZW5nZRIUCgxjaGFsbGVuZ2VfaWQYASABKAkSDQoFbm9uY2UYAiABKAwSLgoKZXhwaXJlc19hdBgDIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXASFQoNcHJvb2ZfdmVyc2lvbhgEIAEoDRIzCgdwdXJwb3NlGAUgASgOMiIud29ya29zLmF1dGgudjEuRGV2aWNlUHJvb2ZQdXJwb3NlImoKFEJlZ2luUGFpcmluZ1Jlc3BvbnNlEhEKCWRldmljZV9pZBgBIAEoCRIsCgljaGFsbGVuZ2UYAiABKAsyGS53b3Jrb3MuYXV0aC52MS5DaGFsbGVuZ2USEQoJdGlja2V0X2lkGAMgASgJIm0KFkNvbXBsZXRlUGFpcmluZ1JlcXVlc3QSEQoJZGV2aWNlX2lkGAEgASgJEhQKDGNoYWxsZW5nZV9pZBgCIAEoCRIRCglzaWduYXR1cmUYAyABKAwSFwoPcHVibGljX2tleV9zcGtpGAQgASgMIn0KF0NvbXBsZXRlUGFpcmluZ1Jlc3BvbnNlEioKBmRldmljZRgBIAEoCzIaLndvcmtvcy5hdXRoLnYxLkRldmljZUluZm8SNgoSc2Vzc2lvbl9leHBpcmVzX2F0GAIgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcCIuChlCZWdpbkRldmljZVNlc3Npb25SZXF1ZXN0EhEKCWRldmljZV9pZBgBIAEoCSJKChpCZWdpbkRldmljZVNlc3Npb25SZXNwb25zZRIsCgljaGFsbGVuZ2UYASABKAsyGS53b3Jrb3MuYXV0aC52MS5DaGFsbGVuZ2UiWgocQ29tcGxldGVEZXZpY2VTZXNzaW9uUmVxdWVzdBIRCglkZXZpY2VfaWQYASABKAkSFAoMY2hhbGxlbmdlX2lkGAIgASgJEhEKCXNpZ25hdHVyZRgDIAEoDCKDAQodQ29tcGxldGVEZXZpY2VTZXNzaW9uUmVzcG9uc2USKgoGZGV2aWNlGAEgASgLMhoud29ya29zLmF1dGgudjEuRGV2aWNlSW5mbxI2ChJzZXNzaW9uX2V4cGlyZXNfYXQYAiABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wIhkKF0dldEN1cnJlbnREZXZpY2VSZXF1ZXN0In4KGEdldEN1cnJlbnREZXZpY2VSZXNwb25zZRIqCgZkZXZpY2UYASABKAsyGi53b3Jrb3MuYXV0aC52MS5EZXZpY2VJbmZvEjYKEnNlc3Npb25fZXhwaXJlc19hdBgCIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXAiOwoSTGlzdERldmljZXNSZXF1ZXN0EhEKCXBhZ2Vfc2l6ZRgBIAEoBRISCgpwYWdlX3Rva2VuGAIgASgJIlsKE0xpc3REZXZpY2VzUmVzcG9uc2USKwoHZGV2aWNlcxgBIAMoCzIaLndvcmtvcy5hdXRoLnYxLkRldmljZUluZm8SFwoPbmV4dF9wYWdlX3Rva2VuGAIgASgJIlwKE1Jldm9rZURldmljZVJlcXVlc3QSEQoJZGV2aWNlX2lkGAEgASgJEhcKD2lkZW1wb3RlbmN5X2tleRgCIAEoCRIZChFleHBlY3RlZF9yZXZpc2lvbhgDIAEoAyJUChRSZXZva2VEZXZpY2VSZXNwb25zZRIqCgZkZXZpY2UYASABKAsyGi53b3Jrb3MuYXV0aC52MS5EZXZpY2VJbmZvEhAKCHJlcGxheWVkGAIgASgIIg8KDUxvZ291dFJlcXVlc3QiSAoOTG9nb3V0UmVzcG9uc2USNgoSc2Vzc2lvbl9yZXZva2VkX2F0GAEgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcCIQCg5HZXRNb2RlUmVxdWVzdCI5Cg9HZXRNb2RlUmVzcG9uc2USJgoEbW9kZRgBIAEoDjIYLndvcmtvcy5hdXRoLnYxLkF1dGhNb2RlIn0KDExvZ2luUmVxdWVzdBIQCgh1c2VybmFtZRgBIAEoCRIQCghwYXNzd29yZBgCIAEoCRITCgtkZXZpY2VfbmFtZRgDIAEoCRI0CgxkZXZpY2VfY2xhc3MYBCABKA4yHi53b3Jrb3Muc3VyZmFjZS52MS5EZXZpY2VDbGFzcyJzCg1Mb2dpblJlc3BvbnNlEioKBmRldmljZRgBIAEoCzIaLndvcmtvcy5hdXRoLnYxLkRldmljZUluZm8SNgoSc2Vzc2lvbl9leHBpcmVzX2F0GAIgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcCIyCjBEZXZpY2VBdXRoQWRtaW5TZXJ2aWNlUm90YXRlUGFpcmluZ1RpY2tldFJlcXVlc3QiYgoxRGV2aWNlQXV0aEFkbWluU2VydmljZVJvdGF0ZVBhaXJpbmdUaWNrZXRSZXNwb25zZRItCgZ0aWNrZXQYASABKAsyHS53b3Jrb3MuYXV0aC52MS5QYWlyaW5nVGlja2V0IjgKElNldFBhc3N3b3JkUmVxdWVzdBIQCgh1c2VybmFtZRgBIAEoCRIQCghwYXNzd29yZBgCIAEoCSIVChNTZXRQYXNzd29yZFJlc3BvbnNlKn4KEkRldmljZVByb29mUHVycG9zZRIkCiBERVZJQ0VfUFJPT0ZfUFVSUE9TRV9VTlNQRUNJRklFRBAAEiAKHERFVklDRV9QUk9PRl9QVVJQT1NFX1BBSVJJTkcQARIgChxERVZJQ0VfUFJPT0ZfUFVSUE9TRV9TRVNTSU9OEAIqVAoIQXV0aE1vZGUSGQoVQVVUSF9NT0RFX1VOU1BFQ0lGSUVEEAASFQoRQVVUSF9NT0RFX1BBSVJJTkcQARIWChJBVVRIX01PREVfUEFTU1dPUkQQAjKnAQoTUGFzc3dvcmRBdXRoU2VydmljZRJKCgdHZXRNb2RlEh4ud29ya29zLmF1dGgudjEuR2V0TW9kZVJlcXVlc3QaHy53b3Jrb3MuYXV0aC52MS5HZXRNb2RlUmVzcG9uc2USRAoFTG9naW4SHC53b3Jrb3MuYXV0aC52MS5Mb2dpblJlcXVlc3QaHS53b3Jrb3MuYXV0aC52MS5Mb2dpblJlc3BvbnNlMrgDChREZXZpY2VQYWlyaW5nU2VydmljZRJZCgxCZWdpblBhaXJpbmcSIy53b3Jrb3MuYXV0aC52MS5CZWdpblBhaXJpbmdSZXF1ZXN0GiQud29ya29zLmF1dGgudjEuQmVnaW5QYWlyaW5nUmVzcG9uc2USYgoPQ29tcGxldGVQYWlyaW5nEiYud29ya29zLmF1dGgudjEuQ29tcGxldGVQYWlyaW5nUmVxdWVzdBonLndvcmtvcy5hdXRoLnYxLkNvbXBsZXRlUGFpcmluZ1Jlc3BvbnNlEmsKEkJlZ2luRGV2aWNlU2Vzc2lvbhIpLndvcmtvcy5hdXRoLnYxLkJlZ2luRGV2aWNlU2Vzc2lvblJlcXVlc3QaKi53b3Jrb3MuYXV0aC52MS5CZWdpbkRldmljZVNlc3Npb25SZXNwb25zZRJ0ChVDb21wbGV0ZURldmljZVNlc3Npb24SLC53b3Jrb3MuYXV0aC52MS5Db21wbGV0ZURldmljZVNlc3Npb25SZXF1ZXN0Gi0ud29ya29zLmF1dGgudjEuQ29tcGxldGVEZXZpY2VTZXNzaW9uUmVzcG9uc2Uy4gMKDURldmljZVNlcnZpY2USZQoQR2V0Q3VycmVudERldmljZRInLndvcmtvcy5hdXRoLnYxLkdldEN1cnJlbnREZXZpY2VSZXF1ZXN0Gigud29ya29zLmF1dGgudjEuR2V0Q3VycmVudERldmljZVJlc3BvbnNlElYKC0xpc3REZXZpY2VzEiIud29ya29zLmF1dGgudjEuTGlzdERldmljZXNSZXF1ZXN0GiMud29ya29zLmF1dGgudjEuTGlzdERldmljZXNSZXNwb25zZRJuChNSb3RhdGVQYWlyaW5nVGlja2V0Eioud29ya29zLmF1dGgudjEuUm90YXRlUGFpcmluZ1RpY2tldFJlcXVlc3QaKy53b3Jrb3MuYXV0aC52MS5Sb3RhdGVQYWlyaW5nVGlja2V0UmVzcG9uc2USWQoMUmV2b2tlRGV2aWNlEiMud29ya29zLmF1dGgudjEuUmV2b2tlRGV2aWNlUmVxdWVzdBokLndvcmtvcy5hdXRoLnYxLlJldm9rZURldmljZVJlc3BvbnNlEkcKBkxvZ291dBIdLndvcmtvcy5hdXRoLnYxLkxvZ291dFJlcXVlc3QaHi53b3Jrb3MuYXV0aC52MS5Mb2dvdXRSZXNwb25zZTKNAgoWRGV2aWNlQXV0aEFkbWluU2VydmljZRKaAQoTUm90YXRlUGFpcmluZ1RpY2tldBJALndvcmtvcy5hdXRoLnYxLkRldmljZUF1dGhBZG1pblNlcnZpY2VSb3RhdGVQYWlyaW5nVGlja2V0UmVxdWVzdBpBLndvcmtvcy5hdXRoLnYxLkRldmljZUF1dGhBZG1pblNlcnZpY2VSb3RhdGVQYWlyaW5nVGlja2V0UmVzcG9uc2USVgoLU2V0UGFzc3dvcmQSIi53b3Jrb3MuYXV0aC52MS5TZXRQYXNzd29yZFJlcXVlc3QaIy53b3Jrb3MuYXV0aC52MS5TZXRQYXNzd29yZFJlc3BvbnNlQjtaOWdpdGh1Yi5jb20veWFuZ3RhbzEyMS93b3Jrb3MvZ2VuL2dvL3dvcmtvcy9hdXRoL3YxO2F1dGh2MWIGcHJvdG8z", [file_google_protobuf_timestamp, file_workos_surface_v1_surface]);
 
 /**
  * PairingTicket describes one short-lived, single-purpose pairing
@@ -592,6 +592,90 @@ export const LogoutResponseSchema: GenMessage<LogoutResponse> = /*@__PURE__*/
   messageDesc(file_workos_auth_v1_device_auth, 20);
 
 /**
+ * @generated from message workos.auth.v1.GetModeRequest
+ */
+export type GetModeRequest = Message<"workos.auth.v1.GetModeRequest"> & {
+};
+
+/**
+ * Describes the message workos.auth.v1.GetModeRequest.
+ * Use `create(GetModeRequestSchema)` to create a new message.
+ */
+export const GetModeRequestSchema: GenMessage<GetModeRequest> = /*@__PURE__*/
+  messageDesc(file_workos_auth_v1_device_auth, 21);
+
+/**
+ * @generated from message workos.auth.v1.GetModeResponse
+ */
+export type GetModeResponse = Message<"workos.auth.v1.GetModeResponse"> & {
+  /**
+   * @generated from field: workos.auth.v1.AuthMode mode = 1;
+   */
+  mode: AuthMode;
+};
+
+/**
+ * Describes the message workos.auth.v1.GetModeResponse.
+ * Use `create(GetModeResponseSchema)` to create a new message.
+ */
+export const GetModeResponseSchema: GenMessage<GetModeResponse> = /*@__PURE__*/
+  messageDesc(file_workos_auth_v1_device_auth, 22);
+
+/**
+ * @generated from message workos.auth.v1.LoginRequest
+ */
+export type LoginRequest = Message<"workos.auth.v1.LoginRequest"> & {
+  /**
+   * @generated from field: string username = 1;
+   */
+  username: string;
+
+  /**
+   * @generated from field: string password = 2;
+   */
+  password: string;
+
+  /**
+   * @generated from field: string device_name = 3;
+   */
+  deviceName: string;
+
+  /**
+   * @generated from field: workos.surface.v1.DeviceClass device_class = 4;
+   */
+  deviceClass: DeviceClass;
+};
+
+/**
+ * Describes the message workos.auth.v1.LoginRequest.
+ * Use `create(LoginRequestSchema)` to create a new message.
+ */
+export const LoginRequestSchema: GenMessage<LoginRequest> = /*@__PURE__*/
+  messageDesc(file_workos_auth_v1_device_auth, 23);
+
+/**
+ * @generated from message workos.auth.v1.LoginResponse
+ */
+export type LoginResponse = Message<"workos.auth.v1.LoginResponse"> & {
+  /**
+   * @generated from field: workos.auth.v1.DeviceInfo device = 1;
+   */
+  device?: DeviceInfo | undefined;
+
+  /**
+   * @generated from field: google.protobuf.Timestamp session_expires_at = 2;
+   */
+  sessionExpiresAt?: Timestamp | undefined;
+};
+
+/**
+ * Describes the message workos.auth.v1.LoginResponse.
+ * Use `create(LoginResponseSchema)` to create a new message.
+ */
+export const LoginResponseSchema: GenMessage<LoginResponse> = /*@__PURE__*/
+  messageDesc(file_workos_auth_v1_device_auth, 24);
+
+/**
  * DeviceAuthAdminService is the private operator bootstrap edge. It is only
  * ever registered on the Gateway-owned admin Unix domain socket — never on
  * the public TCP listener, never in the reverse-proxy allowlist.
@@ -606,7 +690,7 @@ export type DeviceAuthAdminServiceRotatePairingTicketRequest = Message<"workos.a
  * Use `create(DeviceAuthAdminServiceRotatePairingTicketRequestSchema)` to create a new message.
  */
 export const DeviceAuthAdminServiceRotatePairingTicketRequestSchema: GenMessage<DeviceAuthAdminServiceRotatePairingTicketRequest> = /*@__PURE__*/
-  messageDesc(file_workos_auth_v1_device_auth, 21);
+  messageDesc(file_workos_auth_v1_device_auth, 25);
 
 /**
  * @generated from message workos.auth.v1.DeviceAuthAdminServiceRotatePairingTicketResponse
@@ -623,7 +707,42 @@ export type DeviceAuthAdminServiceRotatePairingTicketResponse = Message<"workos.
  * Use `create(DeviceAuthAdminServiceRotatePairingTicketResponseSchema)` to create a new message.
  */
 export const DeviceAuthAdminServiceRotatePairingTicketResponseSchema: GenMessage<DeviceAuthAdminServiceRotatePairingTicketResponse> = /*@__PURE__*/
-  messageDesc(file_workos_auth_v1_device_auth, 22);
+  messageDesc(file_workos_auth_v1_device_auth, 26);
+
+/**
+ * @generated from message workos.auth.v1.SetPasswordRequest
+ */
+export type SetPasswordRequest = Message<"workos.auth.v1.SetPasswordRequest"> & {
+  /**
+   * @generated from field: string username = 1;
+   */
+  username: string;
+
+  /**
+   * @generated from field: string password = 2;
+   */
+  password: string;
+};
+
+/**
+ * Describes the message workos.auth.v1.SetPasswordRequest.
+ * Use `create(SetPasswordRequestSchema)` to create a new message.
+ */
+export const SetPasswordRequestSchema: GenMessage<SetPasswordRequest> = /*@__PURE__*/
+  messageDesc(file_workos_auth_v1_device_auth, 27);
+
+/**
+ * @generated from message workos.auth.v1.SetPasswordResponse
+ */
+export type SetPasswordResponse = Message<"workos.auth.v1.SetPasswordResponse"> & {
+};
+
+/**
+ * Describes the message workos.auth.v1.SetPasswordResponse.
+ * Use `create(SetPasswordResponseSchema)` to create a new message.
+ */
+export const SetPasswordResponseSchema: GenMessage<SetPasswordResponse> = /*@__PURE__*/
+  messageDesc(file_workos_auth_v1_device_auth, 28);
 
 /**
  * DeviceProofPurpose is explicit on every challenge so a client never signs
@@ -653,6 +772,61 @@ export enum DeviceProofPurpose {
  */
 export const DeviceProofPurposeSchema: GenEnum<DeviceProofPurpose> = /*@__PURE__*/
   enumDesc(file_workos_auth_v1_device_auth, 0);
+
+/**
+ * The deployment's Gateway authentication mode. The development bypass has
+ * no public authentication endpoint and is never a production mode.
+ *
+ * @generated from enum workos.auth.v1.AuthMode
+ */
+export enum AuthMode {
+  /**
+   * @generated from enum value: AUTH_MODE_UNSPECIFIED = 0;
+   */
+  UNSPECIFIED = 0,
+
+  /**
+   * @generated from enum value: AUTH_MODE_PAIRING = 1;
+   */
+  PAIRING = 1,
+
+  /**
+   * @generated from enum value: AUTH_MODE_PASSWORD = 2;
+   */
+  PASSWORD = 2,
+}
+
+/**
+ * Describes the enum workos.auth.v1.AuthMode.
+ */
+export const AuthModeSchema: GenEnum<AuthMode> = /*@__PURE__*/
+  enumDesc(file_workos_auth_v1_device_auth, 1);
+
+/**
+ * PasswordAuthService is Gateway-local and TLS-only. Login returns an opaque
+ * session exclusively in the __Host- cookie, never in the response body.
+ *
+ * @generated from service workos.auth.v1.PasswordAuthService
+ */
+export const PasswordAuthService: GenService<{
+  /**
+   * @generated from rpc workos.auth.v1.PasswordAuthService.GetMode
+   */
+  getMode: {
+    methodKind: "unary";
+    input: typeof GetModeRequestSchema;
+    output: typeof GetModeResponseSchema;
+  },
+  /**
+   * @generated from rpc workos.auth.v1.PasswordAuthService.Login
+   */
+  login: {
+    methodKind: "unary";
+    input: typeof LoginRequestSchema;
+    output: typeof LoginResponseSchema;
+  },
+}> = /*@__PURE__*/
+  serviceDesc(file_workos_auth_v1_device_auth, 0);
 
 /**
  * DevicePairingService is the public, unauthenticated-but-TLS-only edge for
@@ -696,7 +870,7 @@ export const DevicePairingService: GenService<{
     output: typeof CompleteDeviceSessionResponseSchema;
   },
 }> = /*@__PURE__*/
-  serviceDesc(file_workos_auth_v1_device_auth, 0);
+  serviceDesc(file_workos_auth_v1_device_auth, 1);
 
 /**
  * DeviceService is the public, session-authenticated device management edge
@@ -747,7 +921,7 @@ export const DeviceService: GenService<{
     output: typeof LogoutResponseSchema;
   },
 }> = /*@__PURE__*/
-  serviceDesc(file_workos_auth_v1_device_auth, 1);
+  serviceDesc(file_workos_auth_v1_device_auth, 2);
 
 /**
  * @generated from service workos.auth.v1.DeviceAuthAdminService
@@ -761,6 +935,14 @@ export const DeviceAuthAdminService: GenService<{
     input: typeof DeviceAuthAdminServiceRotatePairingTicketRequestSchema;
     output: typeof DeviceAuthAdminServiceRotatePairingTicketResponseSchema;
   },
+  /**
+   * @generated from rpc workos.auth.v1.DeviceAuthAdminService.SetPassword
+   */
+  setPassword: {
+    methodKind: "unary";
+    input: typeof SetPasswordRequestSchema;
+    output: typeof SetPasswordResponseSchema;
+  },
 }> = /*@__PURE__*/
-  serviceDesc(file_workos_auth_v1_device_auth, 2);
+  serviceDesc(file_workos_auth_v1_device_auth, 3);
 

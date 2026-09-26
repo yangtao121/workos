@@ -21,6 +21,8 @@ import (
 const _ = connect.IsAtLeastVersion1_13_0
 
 const (
+	// PasswordAuthServiceName is the fully-qualified name of the PasswordAuthService service.
+	PasswordAuthServiceName = "workos.auth.v1.PasswordAuthService"
 	// DevicePairingServiceName is the fully-qualified name of the DevicePairingService service.
 	DevicePairingServiceName = "workos.auth.v1.DevicePairingService"
 	// DeviceServiceName is the fully-qualified name of the DeviceService service.
@@ -37,6 +39,12 @@ const (
 // reflection-formatted method names, remove the leading slash and convert the remaining slash to a
 // period.
 const (
+	// PasswordAuthServiceGetModeProcedure is the fully-qualified name of the PasswordAuthService's
+	// GetMode RPC.
+	PasswordAuthServiceGetModeProcedure = "/workos.auth.v1.PasswordAuthService/GetMode"
+	// PasswordAuthServiceLoginProcedure is the fully-qualified name of the PasswordAuthService's Login
+	// RPC.
+	PasswordAuthServiceLoginProcedure = "/workos.auth.v1.PasswordAuthService/Login"
 	// DevicePairingServiceBeginPairingProcedure is the fully-qualified name of the
 	// DevicePairingService's BeginPairing RPC.
 	DevicePairingServiceBeginPairingProcedure = "/workos.auth.v1.DevicePairingService/BeginPairing"
@@ -66,7 +74,107 @@ const (
 	// DeviceAuthAdminServiceRotatePairingTicketProcedure is the fully-qualified name of the
 	// DeviceAuthAdminService's RotatePairingTicket RPC.
 	DeviceAuthAdminServiceRotatePairingTicketProcedure = "/workos.auth.v1.DeviceAuthAdminService/RotatePairingTicket"
+	// DeviceAuthAdminServiceSetPasswordProcedure is the fully-qualified name of the
+	// DeviceAuthAdminService's SetPassword RPC.
+	DeviceAuthAdminServiceSetPasswordProcedure = "/workos.auth.v1.DeviceAuthAdminService/SetPassword"
 )
+
+// PasswordAuthServiceClient is a client for the workos.auth.v1.PasswordAuthService service.
+type PasswordAuthServiceClient interface {
+	GetMode(context.Context, *connect.Request[v1.GetModeRequest]) (*connect.Response[v1.GetModeResponse], error)
+	Login(context.Context, *connect.Request[v1.LoginRequest]) (*connect.Response[v1.LoginResponse], error)
+}
+
+// NewPasswordAuthServiceClient constructs a client for the workos.auth.v1.PasswordAuthService
+// service. By default, it uses the Connect protocol with the binary Protobuf Codec, asks for
+// gzipped responses, and sends uncompressed requests. To use the gRPC or gRPC-Web protocols, supply
+// the connect.WithGRPC() or connect.WithGRPCWeb() options.
+//
+// The URL supplied here should be the base URL for the Connect or gRPC server (for example,
+// http://api.acme.com or https://acme.com/grpc).
+func NewPasswordAuthServiceClient(httpClient connect.HTTPClient, baseURL string, opts ...connect.ClientOption) PasswordAuthServiceClient {
+	baseURL = strings.TrimRight(baseURL, "/")
+	passwordAuthServiceMethods := v1.File_workos_auth_v1_device_auth_proto.Services().ByName("PasswordAuthService").Methods()
+	return &passwordAuthServiceClient{
+		getMode: connect.NewClient[v1.GetModeRequest, v1.GetModeResponse](
+			httpClient,
+			baseURL+PasswordAuthServiceGetModeProcedure,
+			connect.WithSchema(passwordAuthServiceMethods.ByName("GetMode")),
+			connect.WithClientOptions(opts...),
+		),
+		login: connect.NewClient[v1.LoginRequest, v1.LoginResponse](
+			httpClient,
+			baseURL+PasswordAuthServiceLoginProcedure,
+			connect.WithSchema(passwordAuthServiceMethods.ByName("Login")),
+			connect.WithClientOptions(opts...),
+		),
+	}
+}
+
+// passwordAuthServiceClient implements PasswordAuthServiceClient.
+type passwordAuthServiceClient struct {
+	getMode *connect.Client[v1.GetModeRequest, v1.GetModeResponse]
+	login   *connect.Client[v1.LoginRequest, v1.LoginResponse]
+}
+
+// GetMode calls workos.auth.v1.PasswordAuthService.GetMode.
+func (c *passwordAuthServiceClient) GetMode(ctx context.Context, req *connect.Request[v1.GetModeRequest]) (*connect.Response[v1.GetModeResponse], error) {
+	return c.getMode.CallUnary(ctx, req)
+}
+
+// Login calls workos.auth.v1.PasswordAuthService.Login.
+func (c *passwordAuthServiceClient) Login(ctx context.Context, req *connect.Request[v1.LoginRequest]) (*connect.Response[v1.LoginResponse], error) {
+	return c.login.CallUnary(ctx, req)
+}
+
+// PasswordAuthServiceHandler is an implementation of the workos.auth.v1.PasswordAuthService
+// service.
+type PasswordAuthServiceHandler interface {
+	GetMode(context.Context, *connect.Request[v1.GetModeRequest]) (*connect.Response[v1.GetModeResponse], error)
+	Login(context.Context, *connect.Request[v1.LoginRequest]) (*connect.Response[v1.LoginResponse], error)
+}
+
+// NewPasswordAuthServiceHandler builds an HTTP handler from the service implementation. It returns
+// the path on which to mount the handler and the handler itself.
+//
+// By default, handlers support the Connect, gRPC, and gRPC-Web protocols with the binary Protobuf
+// and JSON codecs. They also support gzip compression.
+func NewPasswordAuthServiceHandler(svc PasswordAuthServiceHandler, opts ...connect.HandlerOption) (string, http.Handler) {
+	passwordAuthServiceMethods := v1.File_workos_auth_v1_device_auth_proto.Services().ByName("PasswordAuthService").Methods()
+	passwordAuthServiceGetModeHandler := connect.NewUnaryHandler(
+		PasswordAuthServiceGetModeProcedure,
+		svc.GetMode,
+		connect.WithSchema(passwordAuthServiceMethods.ByName("GetMode")),
+		connect.WithHandlerOptions(opts...),
+	)
+	passwordAuthServiceLoginHandler := connect.NewUnaryHandler(
+		PasswordAuthServiceLoginProcedure,
+		svc.Login,
+		connect.WithSchema(passwordAuthServiceMethods.ByName("Login")),
+		connect.WithHandlerOptions(opts...),
+	)
+	return "/workos.auth.v1.PasswordAuthService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case PasswordAuthServiceGetModeProcedure:
+			passwordAuthServiceGetModeHandler.ServeHTTP(w, r)
+		case PasswordAuthServiceLoginProcedure:
+			passwordAuthServiceLoginHandler.ServeHTTP(w, r)
+		default:
+			http.NotFound(w, r)
+		}
+	})
+}
+
+// UnimplementedPasswordAuthServiceHandler returns CodeUnimplemented from all methods.
+type UnimplementedPasswordAuthServiceHandler struct{}
+
+func (UnimplementedPasswordAuthServiceHandler) GetMode(context.Context, *connect.Request[v1.GetModeRequest]) (*connect.Response[v1.GetModeResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("workos.auth.v1.PasswordAuthService.GetMode is not implemented"))
+}
+
+func (UnimplementedPasswordAuthServiceHandler) Login(context.Context, *connect.Request[v1.LoginRequest]) (*connect.Response[v1.LoginResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("workos.auth.v1.PasswordAuthService.Login is not implemented"))
+}
 
 // DevicePairingServiceClient is a client for the workos.auth.v1.DevicePairingService service.
 type DevicePairingServiceClient interface {
@@ -394,6 +502,7 @@ func (UnimplementedDeviceServiceHandler) Logout(context.Context, *connect.Reques
 // DeviceAuthAdminServiceClient is a client for the workos.auth.v1.DeviceAuthAdminService service.
 type DeviceAuthAdminServiceClient interface {
 	RotatePairingTicket(context.Context, *connect.Request[v1.DeviceAuthAdminServiceRotatePairingTicketRequest]) (*connect.Response[v1.DeviceAuthAdminServiceRotatePairingTicketResponse], error)
+	SetPassword(context.Context, *connect.Request[v1.SetPasswordRequest]) (*connect.Response[v1.SetPasswordResponse], error)
 }
 
 // NewDeviceAuthAdminServiceClient constructs a client for the workos.auth.v1.DeviceAuthAdminService
@@ -413,12 +522,19 @@ func NewDeviceAuthAdminServiceClient(httpClient connect.HTTPClient, baseURL stri
 			connect.WithSchema(deviceAuthAdminServiceMethods.ByName("RotatePairingTicket")),
 			connect.WithClientOptions(opts...),
 		),
+		setPassword: connect.NewClient[v1.SetPasswordRequest, v1.SetPasswordResponse](
+			httpClient,
+			baseURL+DeviceAuthAdminServiceSetPasswordProcedure,
+			connect.WithSchema(deviceAuthAdminServiceMethods.ByName("SetPassword")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
 // deviceAuthAdminServiceClient implements DeviceAuthAdminServiceClient.
 type deviceAuthAdminServiceClient struct {
 	rotatePairingTicket *connect.Client[v1.DeviceAuthAdminServiceRotatePairingTicketRequest, v1.DeviceAuthAdminServiceRotatePairingTicketResponse]
+	setPassword         *connect.Client[v1.SetPasswordRequest, v1.SetPasswordResponse]
 }
 
 // RotatePairingTicket calls workos.auth.v1.DeviceAuthAdminService.RotatePairingTicket.
@@ -426,10 +542,16 @@ func (c *deviceAuthAdminServiceClient) RotatePairingTicket(ctx context.Context, 
 	return c.rotatePairingTicket.CallUnary(ctx, req)
 }
 
+// SetPassword calls workos.auth.v1.DeviceAuthAdminService.SetPassword.
+func (c *deviceAuthAdminServiceClient) SetPassword(ctx context.Context, req *connect.Request[v1.SetPasswordRequest]) (*connect.Response[v1.SetPasswordResponse], error) {
+	return c.setPassword.CallUnary(ctx, req)
+}
+
 // DeviceAuthAdminServiceHandler is an implementation of the workos.auth.v1.DeviceAuthAdminService
 // service.
 type DeviceAuthAdminServiceHandler interface {
 	RotatePairingTicket(context.Context, *connect.Request[v1.DeviceAuthAdminServiceRotatePairingTicketRequest]) (*connect.Response[v1.DeviceAuthAdminServiceRotatePairingTicketResponse], error)
+	SetPassword(context.Context, *connect.Request[v1.SetPasswordRequest]) (*connect.Response[v1.SetPasswordResponse], error)
 }
 
 // NewDeviceAuthAdminServiceHandler builds an HTTP handler from the service implementation. It
@@ -445,10 +567,18 @@ func NewDeviceAuthAdminServiceHandler(svc DeviceAuthAdminServiceHandler, opts ..
 		connect.WithSchema(deviceAuthAdminServiceMethods.ByName("RotatePairingTicket")),
 		connect.WithHandlerOptions(opts...),
 	)
+	deviceAuthAdminServiceSetPasswordHandler := connect.NewUnaryHandler(
+		DeviceAuthAdminServiceSetPasswordProcedure,
+		svc.SetPassword,
+		connect.WithSchema(deviceAuthAdminServiceMethods.ByName("SetPassword")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/workos.auth.v1.DeviceAuthAdminService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case DeviceAuthAdminServiceRotatePairingTicketProcedure:
 			deviceAuthAdminServiceRotatePairingTicketHandler.ServeHTTP(w, r)
+		case DeviceAuthAdminServiceSetPasswordProcedure:
+			deviceAuthAdminServiceSetPasswordHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -460,4 +590,8 @@ type UnimplementedDeviceAuthAdminServiceHandler struct{}
 
 func (UnimplementedDeviceAuthAdminServiceHandler) RotatePairingTicket(context.Context, *connect.Request[v1.DeviceAuthAdminServiceRotatePairingTicketRequest]) (*connect.Response[v1.DeviceAuthAdminServiceRotatePairingTicketResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("workos.auth.v1.DeviceAuthAdminService.RotatePairingTicket is not implemented"))
+}
+
+func (UnimplementedDeviceAuthAdminServiceHandler) SetPassword(context.Context, *connect.Request[v1.SetPasswordRequest]) (*connect.Response[v1.SetPasswordResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("workos.auth.v1.DeviceAuthAdminService.SetPassword is not implemented"))
 }

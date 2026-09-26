@@ -175,6 +175,37 @@ message LogoutResponse {
   google.protobuf.Timestamp session_revoked_at = 1;
 }
 
+// The deployment's Gateway authentication mode. The development bypass has
+// no public authentication endpoint and is never a production mode.
+enum AuthMode {
+  AUTH_MODE_UNSPECIFIED = 0;
+  AUTH_MODE_PAIRING = 1;
+  AUTH_MODE_PASSWORD = 2;
+}
+
+message GetModeRequest {}
+message GetModeResponse {
+  AuthMode mode = 1;
+}
+
+message LoginRequest {
+  string username = 1;
+  string password = 2;
+  string device_name = 3;
+  workos.surface.v1.DeviceClass device_class = 4;
+}
+message LoginResponse {
+  DeviceInfo device = 1;
+  google.protobuf.Timestamp session_expires_at = 2;
+}
+
+// PasswordAuthService is Gateway-local and TLS-only. Login returns an opaque
+// session exclusively in the __Host- cookie, never in the response body.
+service PasswordAuthService {
+  rpc GetMode(GetModeRequest) returns (GetModeResponse);
+  rpc Login(LoginRequest) returns (LoginResponse);
+}
+
 // DevicePairingService is the public, unauthenticated-but-TLS-only edge for
 // pairing a new browser profile and proving an existing device credential
 // to obtain a session cookie. It is served by the Gateway itself and never
@@ -205,6 +236,13 @@ message DeviceAuthAdminServiceRotatePairingTicketResponse {
   PairingTicket ticket = 1;
 }
 
+message SetPasswordRequest {
+  string username = 1;
+  string password = 2;
+}
+message SetPasswordResponse {}
+
 service DeviceAuthAdminService {
   rpc RotatePairingTicket(DeviceAuthAdminServiceRotatePairingTicketRequest) returns (DeviceAuthAdminServiceRotatePairingTicketResponse);
+  rpc SetPassword(SetPasswordRequest) returns (SetPasswordResponse);
 }
