@@ -1,0 +1,263 @@
+syntax = "proto3";
+
+package workos.surface.v1;
+
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/yangtao121/workos/gen/go/workos/surface/v1;surfacev1";
+
+// Runtime's logical compositor coordinates. The visual rectangle is the union
+// of a top level and its owned popup/subsurface content; it may extend beyond
+// the top level's content rectangle.
+message GreenfieldWindowRect {
+  int32 x = 1;
+  int32 y = 2;
+  uint32 width = 3;
+  uint32 height = 4;
+}
+
+enum GreenfieldDisplayState {
+  GREENFIELD_DISPLAY_STATE_UNSPECIFIED = 0;
+  GREENFIELD_DISPLAY_STATE_RUNNING = 1;
+  GREENFIELD_DISPLAY_STATE_FAILED = 2;
+  GREENFIELD_DISPLAY_STATE_STOPPED = 3;
+}
+
+// A runtime-assigned UUIDv7 identifies one native top level for its lifetime.
+// Popup and subsurface pixels belong to their parent top level's visual_rect.
+message GreenfieldWindow {
+  string id = 1;
+  string parent_window_id = 2;
+  string title = 3;
+  string app_id = 4;
+  GreenfieldWindowRect content_rect = 5;
+  GreenfieldWindowRect visual_rect = 6;
+  int32 device_pixel_ratio_millis = 7;
+  int32 z_order = 8;
+  bool active = 9;
+  // Changes when this window's geometry, child tree, title, app ID or stacking
+  // metadata changes. Frame tiles refer to this revision.
+  uint64 revision = 10;
+}
+
+// Each update is a complete snapshot, including the first update. Revisions
+// are monotonic within one workload generation. A failure is a real terminal
+// state, never a successful empty desktop. At most 128 windows and 1 MiB
+// serialized per snapshot; Runtime validates both limits.
+message GreenfieldWindowSnapshot {
+  string session_id = 1;
+  int64 workload_generation = 2;
+  uint64 revision = 3;
+  GreenfieldDisplayState state = 4;
+  repeated GreenfieldWindow windows = 5;
+}
+
+// attachment_id is the current SurfaceAttachment.id returned by AttachSurface.
+// Gateway supplies owner/device identity; Runtime resolves a live attachment
+// for that exact owner, device, session and generation. Observers may watch.
+message WatchGreenfieldWindowsRequest {
+  string session_id = 1;
+  string attachment_id = 2;
+  int64 expected_workload_generation = 3;
+}
+
+message WatchGreenfieldWindowsResponse {
+  GreenfieldWindowSnapshot snapshot = 1;
+}
+
+message WatchGreenfieldWindowFramesRequest {
+  string session_id = 1;
+  string attachment_id = 2;
+  int64 expected_workload_generation = 3;
+  string window_id = 4;
+}
+
+message WatchGreenfieldWindowFramesResponse {
+  GreenfieldWindowFrameTile tile = 1;
+}
+
+// One PNG tile of a single coherent window frame. The first frame on every
+// subscription and the next frame after any server-side drop are full_refresh.
+// A client becomes ready only after every tile of one frame has arrived,
+// decoded and been drawn. Bounds are pixels relative to visual_rect's origin.
+// ADR-0040 caps each tile at 512x512 and 2 MiB, each frame at 64 tiles/24 MiB.
+// A full refresh covers the entire frame exactly once; every tile in it has
+// full_refresh=true. No frame is visible until all its tiles are assembled.
+message GreenfieldWindowFrameTile {
+  string window_id = 1;
+  int64 workload_generation = 2;
+  uint64 window_revision = 3;
+  uint64 frame_sequence = 4;
+  uint32 tile_index = 5;
+  uint32 tile_count = 6;
+  uint32 x = 7;
+  uint32 y = 8;
+  uint32 width = 9;
+  uint32 height = 10;
+  bytes png = 11;
+  bool full_refresh = 12;
+  uint32 frame_width = 13;
+  uint32 frame_height = 14;
+  // UTC instant when the resident compositor produced this actual frame;
+  // never a broker send time or proof that a viewer has displayed it.
+  google.protobuf.Timestamp rendered_at = 15;
+}
+
+enum GreenfieldPointerAction {
+  GREENFIELD_POINTER_ACTION_UNSPECIFIED = 0;
+  GREENFIELD_POINTER_ACTION_MOVE = 1;
+  GREENFIELD_POINTER_ACTION_DOWN = 2;
+  GREENFIELD_POINTER_ACTION_UP = 3;
+  GREENFIELD_POINTER_ACTION_WHEEL = 4;
+}
+
+// x/y are finite logical coordinates relative to the window visual_rect;
+// wheel deltas are CSS pixels. An observer cannot send pointer events.
+message GreenfieldPointerInput {
+  GreenfieldPointerAction action = 1;
+  double x = 2;
+  double y = 3;
+  uint32 button = 4;
+  double delta_x = 5;
+  double delta_y = 6;
+}
+
+enum GreenfieldKeyAction {
+  GREENFIELD_KEY_ACTION_UNSPECIFIED = 0;
+  GREENFIELD_KEY_ACTION_DOWN = 1;
+  GREENFIELD_KEY_ACTION_UP = 2;
+}
+
+// Browser KeyboardEvent.code/key and modifiers. Runtime validates its finite
+// supported key vocabulary before forwarding; raw OS input is unavailable.
+message GreenfieldKeyInput {
+  GreenfieldKeyAction action = 1;
+  string code = 2;
+  string key = 3;
+  bool ctrl = 4;
+  bool alt = 5;
+  bool meta = 6;
+  bool shift = 7;
+  bool repeat = 8;
+}
+
+// Only committed text is sent; composition updates remain local to the
+// browser. Runtime must not insert text twice on composition end and keyup.
+// A single commit is at most 16 KiB of valid UTF-8.
+message GreenfieldTextCommit {
+  string text = 1;
+}
+
+message GreenfieldWindowResize {
+  uint32 content_width = 1;
+  uint32 content_height = 2;
+  int32 device_pixel_ratio_millis = 3;
+}
+
+// Presence requests native activation of event.window_id. Shell focus and
+// the actual Greenfield/Wayland keyboard focus must then converge.
+message GreenfieldWindowFocus {}
+
+// Plain UTF-8 text, at most 1 MiB. This sets the real native selection;
+// a memory-only cache cannot report success.
+message GreenfieldClipboardWrite {
+  bytes text_utf8 = 1;
+}
+
+// Sequence is strictly increasing per attachment and workload generation.
+// It is an idempotency key: a retry must never repeat an accepted key/text,
+// pointer button, resize or clipboard write. Every event is control-gated.
+message GreenfieldWindowInputEvent {
+  uint64 sequence = 1;
+  string window_id = 2;
+  oneof event {
+    GreenfieldPointerInput pointer = 3;
+    GreenfieldKeyInput key = 4;
+    GreenfieldTextCommit text = 5;
+    GreenfieldWindowResize resize = 6;
+    GreenfieldClipboardWrite clipboard_write = 7;
+    GreenfieldWindowFocus focus = 8;
+  }
+}
+
+message SendGreenfieldWindowInputRequest {
+  string session_id = 1;
+  string attachment_id = 2;
+  int64 expected_workload_generation = 3;
+  int64 control_generation = 4;
+  // At most 64 events per request. The Runtime checks control before each.
+  repeated GreenfieldWindowInputEvent events = 5;
+}
+
+enum GreenfieldInputVerdict {
+  GREENFIELD_INPUT_VERDICT_UNSPECIFIED = 0;
+  GREENFIELD_INPUT_VERDICT_APPLIED = 1;
+  GREENFIELD_INPUT_VERDICT_STALE_CONTROL = 2;
+  GREENFIELD_INPUT_VERDICT_INVALID_SEQUENCE = 3;
+  GREENFIELD_INPUT_VERDICT_UNAVAILABLE = 4;
+}
+
+// A partial batch reports its actual last applied and first rejected sequence;
+// STALE_CONTROL covers loss of control after earlier events were applied.
+// Authorization rejected before the first event is a Connect error, never an
+// APPLIED response. Transport failure must not fabricate an applied result.
+message SendGreenfieldWindowInputResponse {
+  GreenfieldInputVerdict verdict = 1;
+  uint64 last_applied_sequence = 2;
+  uint64 rejected_sequence = 3;
+}
+
+message ReadGreenfieldClipboardRequest {
+  string session_id = 1;
+  string attachment_id = 2;
+  int64 expected_workload_generation = 3;
+  int64 control_generation = 4;
+}
+
+// This reads the latest real Wayland selection. To copy selected text first,
+// the controller sends sequenced Ctrl+C key events, then calls this RPC.
+// A stale broker cache cannot be returned as a successful native read.
+message ReadGreenfieldClipboardResponse {
+  bytes text_utf8 = 1;
+}
+
+// Private Go broker <-> child Node bridge IPC uses one protobuf envelope per
+// 4-byte big-endian length-prefixed record on a per-workload Unix socket.
+// The protocol version is exactly 1; records above 2,200,000 bytes fail
+// closed. The child receives no public cookie or database credentials. The
+// broker alone authorizes viewers and control before forwarding an input.
+message GreenfieldChildEnvelope {
+  uint32 protocol_version = 1;
+  string session_id = 2;
+  int64 workload_generation = 3;
+  // Nonzero only for a broker request and its one matching child response.
+  uint64 request_id = 4;
+  oneof payload {
+    GreenfieldWindowSnapshot windows = 5;
+    GreenfieldWindowFrameTile frame_tile = 6;
+    SendGreenfieldWindowInputRequest input = 7;
+    SendGreenfieldWindowInputResponse input_result = 8;
+    ReadGreenfieldClipboardRequest clipboard_read = 9;
+    ReadGreenfieldClipboardResponse clipboard_result = 10;
+    GreenfieldChildFailure failure = 11;
+  }
+}
+
+// A fatal compositor, proxy, GPU or IPC failure terminates all media streams.
+// The reason is an operator-safe code, never raw user content or credentials.
+message GreenfieldChildFailure {
+  string reason_code = 1;
+}
+
+// ADR-0040. Native media is bounded PNG over Connect server streams. The raw
+// Greenfield signaling key and compositor proxy are private to Runtime.
+service GreenfieldWindowService {
+  // Initial snapshot and subsequent full snapshots. A live observer can read.
+  rpc WatchGreenfieldWindows(WatchGreenfieldWindowsRequest) returns (stream WatchGreenfieldWindowsResponse) {}
+  // Initial complete PNG frame, then changed tiles. A live observer can read.
+  rpc WatchGreenfieldWindowFrames(WatchGreenfieldWindowFramesRequest) returns (stream WatchGreenfieldWindowFramesResponse) {}
+  // Only the current controlling attachment can write. Each event is checked.
+  rpc SendGreenfieldWindowInput(SendGreenfieldWindowInputRequest) returns (SendGreenfieldWindowInputResponse) {}
+  // Only the current controlling attachment can read the native selection.
+  rpc ReadGreenfieldClipboard(ReadGreenfieldClipboardRequest) returns (ReadGreenfieldClipboardResponse) {}
+}

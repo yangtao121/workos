@@ -15,6 +15,7 @@ import {
   BrowserSessionService,
   PtySessionService,
   NativeSessionService,
+  GreenfieldWindowService,
   HarnessCatalogService,
   IncidentService,
   ReleaseService,
@@ -49,6 +50,7 @@ export interface WorkOSClients {
   browserSessions: Client<typeof BrowserSessionService>;
   ptySessions: Client<typeof PtySessionService>;
   nativeSessions: Client<typeof NativeSessionService>;
+  greenfieldWindows: Client<typeof GreenfieldWindowService>;
   appBridge: Client<typeof AppBridgeService>;
   incidents: Client<typeof IncidentService>;
   releases: Client<typeof ReleaseService>;
@@ -79,6 +81,7 @@ export function createWorkOSClients(baseUrl: string, transport?: Transport): Wor
     browserSessions: createClient(BrowserSessionService, activeTransport),
     ptySessions: createClient(PtySessionService, activeTransport),
     nativeSessions: createClient(NativeSessionService, activeTransport),
+    greenfieldWindows: createClient(GreenfieldWindowService, activeTransport),
     appBridge: createClient(AppBridgeService, activeTransport),
     incidents: createClient(IncidentService, activeTransport),
     releases: createClient(ReleaseService, activeTransport),

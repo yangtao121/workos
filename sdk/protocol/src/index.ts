@@ -21,6 +21,7 @@ export * from "./gen/workos/surface/v1/surface_pb.js";
 export * from "./gen/workos/surface/v1/browser_pb.js";
 export * from "./gen/workos/surface/v1/pty_pb.js";
 export * from "./gen/workos/surface/v1/native_pb.js";
+export * from "./gen/workos/surface/v1/native_window_pb.js";
 export * from "./gen/workos/surface/v1/continuity_pb.js";
 export * from "./gen/workos/taskexecution/v1/execution_pb.js";
 export * from "./gen/workos/workload/v1/workload_pb.js";
