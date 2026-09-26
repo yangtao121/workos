@@ -190,5 +190,6 @@ run_stage bind python3 "$here/prepare-code-project.py" bind \
 run_stage password-browser "$here/test-browser.sh"
 run_stage resident-code-browser "$here/test-code-p0.sh"
 run_stage resident-auth-failures "$here/test-code-p0-failures.sh"
+run_stage resident-code-control-renewal "$here/test-code-control-renewal.sh"
 
 echo "LAN P0 browser self-test passed. Stage evidence: $stage_file"

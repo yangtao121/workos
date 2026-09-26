@@ -629,6 +629,11 @@ async function continuity(browser: Browser) {
   let savedEvidence: { payload: string; deniedMarker: string } | undefined;
   try {
     await signIn(first.page, secretValue);
+    const firstDevice = await rpc<{ device: { deviceId: string } }>(
+      first.page,
+      "/workos.auth.v1.DeviceService/GetCurrentDevice",
+    );
+    expect(firstDevice.device.deviceId).toMatch(/^[0-9a-f-]{36}$/);
     await selectProject(first.page);
     await openRunningNative(first.page, state.workloadId);
     const firstCode = await codeWindow(first.page);
@@ -644,6 +649,12 @@ async function continuity(browser: Browser) {
     expect((await copiedText(first.page, firstCode)).includes(state.unsavedMarker)).toBe(true);
 
     await signIn(second.page, secretValue);
+    const secondDevice = await rpc<{ device: { deviceId: string } }>(
+      second.page,
+      "/workos.auth.v1.DeviceService/GetCurrentDevice",
+    );
+    expect(secondDevice.device.deviceId).toMatch(/^[0-9a-f-]{36}$/);
+    expect(secondDevice.device.deviceId).not.toBe(firstDevice.device.deviceId);
     await selectProject(second.page);
     // Shared Desktop normally projects the Core native anchor immediately.
     // If it has not arrived yet, open the exact running workload from Home.
@@ -666,6 +677,7 @@ async function continuity(browser: Browser) {
       "true",
     );
     const afterControl = await control(second.page, state.workloadId);
+    expect(afterControl.controllerDeviceId).toBe(secondDevice.device.deviceId);
     expect(BigInt(afterControl.controlGeneration)).toBeGreaterThan(
       BigInt(beforeControl.controlGeneration),
     );
