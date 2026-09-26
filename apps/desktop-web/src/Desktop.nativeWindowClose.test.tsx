@@ -126,8 +126,15 @@ function fixture(canControl = true) {
       getDesktop: vi.fn(() => Promise.resolve({ state: desktopState })),
       applyDesktopOperation,
       watchDesktop: async function* (_: unknown, options: { signal?: AbortSignal }) {
+        yield { state: desktopState };
         await new Promise<void>((resolve) => {
-          options.signal?.addEventListener("abort", () => resolve(), { once: true });
+          options.signal?.addEventListener(
+            "abort",
+            () => {
+              resolve();
+            },
+            { once: true },
+          );
         });
       },
     },
@@ -183,15 +190,15 @@ describe("Desktop resident window close routing", () => {
     expect(f.closeNativeSession).not.toHaveBeenCalled();
     expect(f.stopSurfaceWorkload).not.toHaveBeenCalled();
 
-    await act(async () => {
+    act(() => {
       publishViewer?.({
         ...viewer,
         projection: { ...viewer.projection, snapshot: snapshot(false) },
       });
     });
-    await waitFor(() =>
-      expect(screen.queryByRole("button", { name: "Close Open File" })).toBeNull(),
-    );
+    await waitFor(() => {
+      expect(screen.queryByRole("button", { name: "Close Open File" })).toBeNull();
+    });
     expect(screen.getByRole("button", { name: "Close Code" })).toBeTruthy();
   });
 
@@ -206,7 +213,9 @@ describe("Desktop resident window close routing", () => {
         }),
       );
     });
-    await waitFor(() => expect(screen.queryByRole("button", { name: "Close Code" })).toBeNull());
+    await waitFor(() => {
+      expect(screen.queryByRole("button", { name: "Close Code" })).toBeNull();
+    });
     expect(f.send).not.toHaveBeenCalledWith(mainId, [{ case: "close", value: {} }]);
     expect(f.closeNativeSession).not.toHaveBeenCalled();
     expect(f.stopSurfaceWorkload).not.toHaveBeenCalled();

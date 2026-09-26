@@ -739,7 +739,9 @@ async function main(): Promise<void> {
           record,
           session.renderer.topLevelViews,
           (view) => parentWindowId(view, windows),
-          () => session.flush(),
+          () => {
+            session.flush();
+          },
         );
         return;
       case "pointer": {

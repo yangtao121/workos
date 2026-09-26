@@ -45,34 +45,34 @@ describe("native transient close", () => {
 
   it("refuses top-level, stale, reparented and unsupported surfaces", () => {
     const f = fixture();
-    expect(() =>
+    expect(() => {
       requestNativeTransientClose(
         { ...f.record, parentWindowId: "" },
         [f.parent, f.child],
         () => "",
         f.flush,
-      ),
-    ).toThrow("WINDOW_CLOSE_UNAVAILABLE");
-    expect(() =>
+      );
+    }).toThrow("WINDOW_CLOSE_UNAVAILABLE");
+    expect(() => {
       requestNativeTransientClose(
         { ...f.record, surface: { id: 13, client: { id: "other-client" } } },
         [f.parent, f.child],
         () => "parent-uuid",
         f.flush,
-      ),
-    ).toThrow("WINDOW_CLOSE_UNAVAILABLE");
-    expect(() =>
-      requestNativeTransientClose(f.record, [f.parent, f.child], () => "new-parent", f.flush),
-    ).toThrow("WINDOW_CLOSE_UNAVAILABLE");
-    expect(() =>
+      );
+    }).toThrow("WINDOW_CLOSE_UNAVAILABLE");
+    expect(() => {
+      requestNativeTransientClose(f.record, [f.parent, f.child], () => "new-parent", f.flush);
+    }).toThrow("WINDOW_CLOSE_UNAVAILABLE");
+    expect(() => {
       requestNativeTransientClose(
         f.record,
         [f.parent, { surface: { ...f.child.surface, role: {} } }],
         () => "parent-uuid",
         f.flush,
-      ),
-    ).toThrow("WINDOW_CLOSE_UNAVAILABLE");
-    expect(() =>
+      );
+    }).toThrow("WINDOW_CLOSE_UNAVAILABLE");
+    expect(() => {
       requestNativeTransientClose(
         f.record,
         [
@@ -90,8 +90,8 @@ describe("native transient close", () => {
         ],
         () => "parent-uuid",
         f.flush,
-      ),
-    ).toThrow("WINDOW_CLOSE_UNAVAILABLE");
+      );
+    }).toThrow("WINDOW_CLOSE_UNAVAILABLE");
     expect(f.childClose).not.toHaveBeenCalled();
     expect(f.parentClose).not.toHaveBeenCalled();
     expect(f.xFlush).not.toHaveBeenCalled();

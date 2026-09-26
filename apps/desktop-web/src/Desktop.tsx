@@ -2857,7 +2857,9 @@ export function Desktop({
                 <WindowCloseControl
                   title={windowState.title}
                   pending={closingNativeIds.has(windowState.id)}
-                  onClose={() => closeWindow(windowState.id)}
+                  onClose={() => {
+                    closeWindow(windowState.id);
+                  }}
                 />
               </div>
             </header>
