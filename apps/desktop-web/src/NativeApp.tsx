@@ -71,6 +71,12 @@ export function NativeApp(props: {
     setVerdict("");
     const viewer = viewerRef.current;
     if (viewer) {
+      if ((await handle.attachmentId()) !== viewer.attachment.attachmentId) {
+        // Explicit recovery created a new attachment and input sequence. The
+        // old window projection must close before the new one starts.
+        setAttempt((current) => current + 1);
+        return;
+      }
       const generation = await handle.controlGeneration();
       viewer.input.setControl(true, generation);
       const updated: GreenfieldViewerState = {
@@ -104,6 +110,21 @@ export function NativeApp(props: {
       props.expectedWorkloadGeneration,
     );
     handleRef.current = lease;
+    const unsubscribeControl = lease.onControlChange((held) => {
+      if (disposed || handleRef.current !== lease || held) return;
+      controlsRef.current = false;
+      setControls(false);
+      setVerdict("输入控制已失效。请显式接管以恢复输入。");
+      const viewer = viewerRef.current;
+      if (!viewer) return;
+      viewer.input.setControl(false, viewer.attachment.controlGeneration);
+      const updated: GreenfieldViewerState = {
+        ...viewer,
+        attachment: { ...viewer.attachment, controls: false },
+      };
+      viewerRef.current = updated;
+      viewerCallbackRef.current?.(updated);
+    });
     let session = "";
     let renewal: number | undefined;
     let retry: ReturnType<typeof setTimeout> | undefined;
@@ -123,6 +144,7 @@ export function NativeApp(props: {
         viewerRef.current = undefined;
         viewerCallbackRef.current?.(undefined);
       }
+      unsubscribeControl();
       lease.release();
     };
     setStatus("connecting");

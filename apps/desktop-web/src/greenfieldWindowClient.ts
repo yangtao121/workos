@@ -29,7 +29,16 @@ export class GreenfieldWindowInputClient {
   constructor(
     private readonly client: WorkOSClients["greenfieldWindows"],
     private readonly attachment: GreenfieldAttachment,
+    private readonly onControlLost?: () => void,
   ) {}
+
+  private loseControl() {
+    if (!this.usable) return;
+    this.usable = false;
+    this.attachment.controls = false;
+    this.epoch++;
+    this.onControlLost?.();
+  }
 
   setControl(controls: boolean, controlGeneration: bigint) {
     if (
@@ -44,6 +53,10 @@ export class GreenfieldWindowInputClient {
 
   get canControl() {
     return this.usable && this.attachment.controls;
+  }
+
+  get needsFreshAttachment() {
+    return !this.usable;
   }
 
   send(windowId: string, inputs: GreenfieldWindowEvent[]): Promise<void> {
@@ -76,7 +89,7 @@ export class GreenfieldWindowInputClient {
         try {
           response = await this.client.sendGreenfieldWindowInput(request);
         } catch {
-          this.usable = false;
+          this.loseControl();
           throw new Error("native input result unknown; reconnect the viewer");
         }
       }
@@ -85,7 +98,7 @@ export class GreenfieldWindowInputClient {
         response.verdict !== GreenfieldInputVerdict.APPLIED ||
         response.lastAppliedSequence !== events[events.length - 1]?.sequence
       ) {
-        this.usable = false;
+        this.loseControl();
         throw new Error("native input was rejected");
       }
       this.sequence = response.lastAppliedSequence;
@@ -97,12 +110,18 @@ export class GreenfieldWindowInputClient {
 
   async readClipboard(): Promise<string> {
     if (!this.canControl) throw new Error("native control unavailable");
-    const response = await this.client.readGreenfieldClipboard({
-      sessionId: this.attachment.sessionId,
-      attachmentId: this.attachment.attachmentId,
-      expectedWorkloadGeneration: this.attachment.workloadGeneration,
-      controlGeneration: this.attachment.controlGeneration,
-    });
+    let response;
+    try {
+      response = await this.client.readGreenfieldClipboard({
+        sessionId: this.attachment.sessionId,
+        attachmentId: this.attachment.attachmentId,
+        expectedWorkloadGeneration: this.attachment.workloadGeneration,
+        controlGeneration: this.attachment.controlGeneration,
+      });
+    } catch (error) {
+      this.loseControl();
+      throw error;
+    }
     if (response.textUtf8.byteLength > GREENFIELD_CLIPBOARD_LIMIT)
       throw new Error("native clipboard is too large");
     return new TextDecoder("utf-8", { fatal: true }).decode(response.textUtf8);

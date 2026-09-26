@@ -79,4 +79,28 @@ describe("GreenfieldWindowInputClient", () => {
     await expect(queued).rejects.toThrow(/control unavailable/);
     expect(controller.sendGreenfieldWindowInput).not.toHaveBeenCalled();
   });
+
+  it("reports stale input and refuses to revive an ambiguous sequence in the same attachment", async () => {
+    const f = fixture();
+    const onControlLost = vi.fn();
+    const input = new GreenfieldWindowInputClient(
+      {
+        sendGreenfieldWindowInput: f.sendGreenfieldWindowInput,
+        readGreenfieldClipboard: f.readGreenfieldClipboard,
+      } as unknown as WorkOSClients["greenfieldWindows"],
+      f.attachment,
+      onControlLost,
+    );
+    f.sendGreenfieldWindowInput.mockResolvedValueOnce({
+      verdict: GreenfieldInputVerdict.UNAVAILABLE,
+      lastAppliedSequence: 0n,
+    });
+    await expect(input.send("window-a", [down])).rejects.toThrow(/rejected/);
+    expect(onControlLost).toHaveBeenCalledTimes(1);
+    expect(input.needsFreshAttachment).toBe(true);
+    input.setControl(true, 8n);
+    expect(input.canControl).toBe(false);
+    await expect(input.send("window-a", [down])).rejects.toThrow(/control unavailable/);
+    expect(f.sendGreenfieldWindowInput).toHaveBeenCalledTimes(1);
+  });
 });

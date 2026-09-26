@@ -27,6 +27,13 @@ class Peer {
     Peer.instances.push(this);
   }
 }
+function controlExpiry() {
+  return { seconds: BigInt(Math.floor(Date.now() / 1000) + 1800), nanos: 0 };
+}
+function controlExpirySoon(milliseconds: number) {
+  const expires = Date.now() + milliseconds;
+  return { seconds: BigInt(Math.floor(expires / 1000)), nanos: (expires % 1000) * 1_000_000 };
+}
 function fixture(create = vi.fn(() => Promise.resolve({ session: { id: "session-1" } }))) {
   const nativeSessions = {
     getNativeConnectivity: vi.fn(() =>
@@ -48,7 +55,12 @@ function fixture(create = vi.fn(() => Promise.resolve({ session: { id: "session-
     attachSurface: vi.fn<() => Promise<unknown>>(() =>
       Promise.resolve({
         session: { workloadGeneration: 1n },
-        attachment: { id: "attachment-1", controls: true, controlGeneration: 1n },
+        attachment: {
+          id: "attachment-1",
+          controls: true,
+          controlGeneration: 1n,
+          controlExpiresAt: controlExpiry(),
+        },
       }),
     ),
     detachSurface: vi.fn<() => Promise<unknown>>(() => Promise.resolve({})),
@@ -256,8 +268,8 @@ describe("Native window lifecycle and input", () => {
     );
     f.surfaceContinuity.attachSurface = vi.fn<() => Promise<unknown>>(() =>
       Promise.resolve({
-        session: { id: "workload-1" },
-        attachment: { controls: false, surfaceSessionId: "workload-1" },
+        session: { id: "workload-1", workloadGeneration: 1n },
+        attachment: { id: "attachment-1", controls: false, surfaceSessionId: "workload-1" },
       }),
     );
     render(<NativeApp workosClients={f.clients} activeProjectId="project" />);
@@ -269,7 +281,14 @@ describe("Native window lifecycle and input", () => {
     // Observer attachment: the takeover button is the only way to input.
     expect(screen.getByTestId("native-take-control")).toBeTruthy();
     f.surfaceContinuity.requestSurfaceControl = vi.fn<() => Promise<unknown>>(() =>
-      Promise.resolve({ attachment: { controls: true, controlGeneration: 2n } }),
+      Promise.resolve({
+        attachment: {
+          id: "attachment-1",
+          controls: true,
+          controlGeneration: 2n,
+          controlExpiresAt: controlExpiry(),
+        },
+      }),
     );
     await userEvent.click(screen.getByTestId("native-take-control"));
     await waitFor(() => {
@@ -295,7 +314,12 @@ describe("Native window lifecycle and input", () => {
       attachment: { id: "attachment-greenfield", controls: false, controlGeneration: 8n },
     });
     f.surfaceContinuity.requestSurfaceControl.mockResolvedValue({
-      attachment: { controls: true, controlGeneration: 9n },
+      attachment: {
+        id: "attachment-greenfield",
+        controls: true,
+        controlGeneration: 9n,
+        controlExpiresAt: controlExpiry(),
+      },
     });
     let releaseNextSnapshot: (() => void) | undefined;
     const nextSnapshot = new Promise<void>((resolve) => {
@@ -383,7 +407,12 @@ describe("Native window lifecycle and input", () => {
     const f = fixture();
     f.surfaceContinuity.attachSurface.mockResolvedValue({
       session: { id: "greenfield-session", workloadGeneration: 3n },
-      attachment: { id: "attachment-greenfield", controls: true, controlGeneration: 8n },
+      attachment: {
+        id: "attachment-greenfield",
+        controls: true,
+        controlGeneration: 8n,
+        controlExpiresAt: controlExpiry(),
+      },
     });
     Object.assign(f.nativeSessions, {
       getNativeSession: vi.fn(() => Promise.resolve({ session: { engine: "greenfield" } })),
@@ -459,6 +488,67 @@ describe("Native window lifecycle and input", () => {
       sendGreenfieldWindowInput.mock.calls.map(([request]) => request.events[0]?.sequence),
     ).toEqual([1n, 2n]);
     expect(f.surfaceContinuity.attachSurface).toHaveBeenCalledTimes(1);
+    lease.dispose();
+  });
+  it("shows visible takeover and disables resident input after renewal is denied", async () => {
+    const f = fixture();
+    f.surfaceContinuity.attachSurface.mockResolvedValue({
+      session: { id: "greenfield-session", workloadGeneration: 3n },
+      attachment: {
+        id: "attachment-greenfield",
+        controls: true,
+        controlGeneration: 8n,
+        controlExpiresAt: controlExpirySoon(500),
+      },
+    });
+    const renewSurfaceControl = vi
+      .fn()
+      .mockRejectedValue(new ConnectError("other device took control", Code.PermissionDenied));
+    Object.assign(f.surfaceContinuity, { renewSurfaceControl });
+    Object.assign(f.nativeSessions, {
+      getNativeSession: vi.fn(() => Promise.resolve({ session: { engine: "greenfield" } })),
+    });
+    const watchGreenfieldWindows = vi.fn(async function* () {
+      yield {
+        snapshot: {
+          sessionId: "greenfield-session",
+          workloadGeneration: 3n,
+          revision: 1n,
+          state: GreenfieldDisplayState.RUNNING,
+          windows: [],
+        },
+      };
+    });
+    const clients = {
+      ...f.clients,
+      greenfieldWindows: { watchGreenfieldWindows },
+    } as unknown as WorkOSClients;
+    const lease = new NativeSessionLease(true);
+    const onGreenfieldViewer = vi.fn<(viewer?: GreenfieldViewerState) => void>();
+    render(
+      <NativeApp
+        workosClients={clients}
+        activeProjectId="project"
+        workloadId="greenfield-session"
+        expectedWorkloadGeneration={3n}
+        sessionLease={lease}
+        onGreenfieldViewer={onGreenfieldViewer}
+      />,
+    );
+    await waitFor(() => {
+      expect(onGreenfieldViewer.mock.calls.some(([viewer]) => viewer?.attachment.controls)).toBe(
+        true,
+      );
+    });
+    await waitFor(() => {
+      expect(renewSurfaceControl).toHaveBeenCalledOnce();
+      expect(screen.getByTestId("native-take-control")).toBeTruthy();
+      expect(screen.getByTestId("native-verdict").textContent).toMatch(/显式接管/);
+    });
+    const latest = onGreenfieldViewer.mock.calls.at(-1)?.[0];
+    expect(latest?.attachment.controls).toBe(false);
+    expect(latest?.input.canControl).toBe(false);
+    expect(f.surfaceContinuity.requestSurfaceControl).not.toHaveBeenCalled();
     lease.dispose();
   });
   it("releases a captured pointer outside the video and preserves right-button mapping", async () => {

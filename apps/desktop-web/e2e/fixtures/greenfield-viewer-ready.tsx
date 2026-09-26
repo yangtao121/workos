@@ -1,7 +1,13 @@
 import { create } from "@bufbuild/protobuf";
 import { createRoot } from "react-dom/client";
+import { useEffect, useMemo, useState } from "react";
 import type { WorkOSClients } from "@workos/agent-sdk";
-import { GreenfieldWindowFrameTileSchema, GreenfieldWindowSchema } from "@workos/protocol";
+import {
+  GreenfieldInputVerdict,
+  GreenfieldKeyAction,
+  GreenfieldWindowFrameTileSchema,
+  GreenfieldWindowSchema,
+} from "@workos/protocol";
 import { GreenfieldWindowApp } from "../../src/GreenfieldWindowApp.js";
 import {
   GreenfieldWindowInputClient,
@@ -9,12 +15,12 @@ import {
 } from "../../src/greenfieldWindowClient.js";
 import "../../src/styles.css";
 
-const attachment: GreenfieldAttachment = {
+const initialAttachment: GreenfieldAttachment = {
   sessionId: "01999999-9999-7999-8999-000000000010",
   attachmentId: "01999999-9999-7999-8999-000000000011",
   workloadGeneration: 3n,
   controlGeneration: 8n,
-  controls: false,
+  controls: new URLSearchParams(location.search).has("lease-loss"),
 };
 
 const windows = [
@@ -76,6 +82,10 @@ async function pngFor(id: string): Promise<Uint8Array> {
 }
 
 const client = {
+  sendGreenfieldWindowInput: async () => ({
+    verdict: GreenfieldInputVerdict.UNAVAILABLE,
+    lastAppliedSequence: 0n,
+  }),
   watchGreenfieldWindowFrames: async function* (
     request: { windowId: string },
     options: { signal?: AbortSignal },
@@ -114,39 +124,63 @@ const client = {
     });
   },
 } as unknown as WorkOSClients["greenfieldWindows"];
-const input = new GreenfieldWindowInputClient(client, attachment);
+function ResidentFixture() {
+  const [attachment, setAttachment] = useState(initialAttachment);
+  const input = useMemo(
+    () =>
+      new GreenfieldWindowInputClient(client, attachment, () => {
+        setAttachment((current) => ({ ...current, controls: false }));
+      }),
+    [],
+  );
+  useEffect(() => {
+    if (!initialAttachment.controls) return;
+    const timer = setTimeout(() => {
+      void input
+        .send(windows[0]!.id, [
+          {
+            case: "key",
+            value: { action: GreenfieldKeyAction.DOWN, code: "KeyA", key: "a" },
+          },
+        ])
+        .catch(() => undefined);
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [input]);
+  return (
+    <main className="desktop-shell" style={{ width: "100vw", height: "100vh" }}>
+      {windows.map((nativeWindow, index) => (
+        <section
+          className="workos-window"
+          key={nativeWindow.id}
+          data-window-id={nativeWindow.id}
+          style={{
+            left: index ? 740 : 190,
+            top: index ? 332 : 80,
+            width: index ? 500 : 870,
+            height: index ? 340 : 680,
+            zIndex: index + 1,
+          }}
+        >
+          <header>
+            <span className="window-identity">
+              <strong>{nativeWindow.title}</strong>
+            </span>
+          </header>
+          <GreenfieldWindowApp
+            client={client}
+            attachment={attachment}
+            input={input}
+            nativeWindow={nativeWindow}
+            connection="connected"
+            connectionEpoch={1}
+            onTakeControl={() => Promise.resolve()}
+          />
+        </section>
+      ))}
+    </main>
+  );
+}
 const root = document.getElementById("fixture-root");
 if (!root) throw new Error("missing fixture root");
-createRoot(root).render(
-  <main className="desktop-shell" style={{ width: "100vw", height: "100vh" }}>
-    {windows.map((nativeWindow, index) => (
-      <section
-        className="workos-window"
-        key={nativeWindow.id}
-        data-window-id={nativeWindow.id}
-        style={{
-          left: index ? 740 : 190,
-          top: index ? 332 : 80,
-          width: index ? 500 : 870,
-          height: index ? 340 : 680,
-          zIndex: index + 1,
-        }}
-      >
-        <header>
-          <span className="window-identity">
-            <strong>{nativeWindow.title}</strong>
-          </span>
-        </header>
-        <GreenfieldWindowApp
-          client={client}
-          attachment={attachment}
-          input={input}
-          nativeWindow={nativeWindow}
-          connection="connected"
-          connectionEpoch={1}
-          onTakeControl={() => Promise.resolve()}
-        />
-      </section>
-    ))}
-  </main>,
-);
+createRoot(root).render(<ResidentFixture />);
