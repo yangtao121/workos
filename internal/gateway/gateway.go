@@ -640,10 +640,10 @@ func runtimeConnectPath(path string) bool {
 	return false
 }
 
-// isSessionGatedAssetPath reports whether the path is one of the runtime's
-// public same-origin asset routes: /surfaces/ and /previews/. Both require a
-// valid device session and travel to the Runtime upstream with the trusted
-// identity headers.
+// isSessionGatedAssetPath reports Runtime asset routes. The direct Greenfield
+// path remains available to the loopback development gate only; production
+// refuses it before this predicate is reached. Other paths require a valid
+// device session and trusted identity injection in production.
 func isSessionGatedAssetPath(path string) bool {
 	return strings.HasPrefix(path, surfaceAssetPrefix) || strings.HasPrefix(path, "/native/greenfield/")
 }

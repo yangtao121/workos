@@ -1,6 +1,6 @@
 {
   "$schema": "./status.schema.json",
-  "updated": "2026-09-24",
+  "updated": "2026-09-26",
   "modules": [
     {
       "name": "Access Gateway",
@@ -139,6 +139,12 @@
       "process": "workos-gateway",
       "status": "working",
       "evidence": "ADR-0019 LAN discovery is working end to end on the lan-pairing profile: the workos-mdns-announce compose service embeds the mDNS responder on host networking, advertising only the public origin plus the pairing-pinned TLS leaf fingerprint from the same certificate the gateway serves (fingerprint match by construction), and workosctl device scan browses the segment and lists only instances whose advertised fingerprint matches the pairing expectation in constant time, feeding the existing workosctl device pair flow (scan -> verify -> pair). make test-lan-pairing proves the discovery phase against the real TLS pairing stack (discovered origin https://localhost:8443); make test-mdns-discovery proves the announce/browse and constant-time verification plus forged-advertisement rejection. Discovery remains LAN-only. Native WebRTC now supports separately configured, Runtime-authorized UDP TURN relay (ADR-0035), verified in Docker NAT topology; Overlay transport remains unavailable. See docs/tasks/evidence/20260921-v2-network-continuity/results.md."
+    },
+    {
+      "name": "LAN HTTPS Password Entry",
+      "process": "workos-gateway",
+      "status": "scaffolded",
+      "evidence": "ADR-0039 adds mutually exclusive single-owner password mode, Argon2id credential storage, a private interactive admin socket, per-device Secure/HttpOnly/SameSite=Strict sessions, Gateway request and WebSocket revalidation, password Desktop entry and Device Center, and a persistent local CA with IP-SAN HTTPS on the LAN. On 2026-09-26 the six-process stack served https://192.168.5.5:8443, curl and an independent Chromium NSS profile verified the CA with certificate bypass disabled, anonymous protected RPCs returned 401, and a separate Docker network namespace reached the LAN IP. Unit, PostgreSQL and static LAN checks pass; the owner has chosen to set the live password locally. Credential-bearing two-profile Chromium login, revoke, logout and expiry tests, physical Mac trust and second-device access remain pending, so this new entry is scaffolded rather than working. See docs/tasks/20260926-lan-p0-integration.md and docs/tasks/20260926-lan-browser-e2e.md."
     }
   ]
 }
