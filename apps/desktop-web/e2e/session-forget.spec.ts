@@ -6,6 +6,12 @@ test("Forget preserves local content on failure and clears it after confirmed lo
 }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   let unavailable = true;
+  // This fixture exercises the paired-device logout path even when the
+  // surrounding isolated stack uses the development auth bypass. Force the
+  // public mode probe to the matching pairing mode before the device routes.
+  await page.route("**/workos.auth.v1.PasswordAuthService/GetMode", async (route) => {
+    await route.fulfill({ status: 200, json: { mode: "AUTH_MODE_PAIRING" } });
+  });
   await page.route("**/workos.auth.v1.DeviceService/*", async (route) => {
     const logout = route.request().url().endsWith("/Logout");
     await route.fulfill({
