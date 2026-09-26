@@ -2,8 +2,10 @@ packages:
   - "apps/*"
   - "clients/*"
   - "sdk/*"
+  - "tools/greenfield-child"
 
 allowBuilds:
+  esbuild: true
   unrs-resolver: false
 
 minimumReleaseAge: 1440

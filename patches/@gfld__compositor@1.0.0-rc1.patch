@@ -1,3 +1,19 @@
+diff --git a/dist/UserShellApi.js b/dist/UserShellApi.js
+--- a/dist/UserShellApi.js
++++ b/dist/UserShellApi.js
+@@ -15,6 +15,11 @@
+                 surface.role?.desktopSurface?.activate();
+             },
+             initScene: (sceneId, canvas) => addInputOutput(session, canvas, sceneId),
++            initWindowScene: (sceneId, canvas, compositorSurface) => {
++                const surface = lookupSurface(session, compositorSurface);
++                session.renderer.initWindowScene(sceneId, canvas, surface);
++            },
++            updateWindowScene: (sceneId, rect, pixelRatio) => session.renderer.updateWindowScene(sceneId, rect, pixelRatio),
+             refreshScene: () => {
+                 session.renderer.render();
+             },
+diff --git a/dist/remote/webcodec-buffer-decoder.js b/dist/remote/webcodec-buffer-decoder.js
 --- a/dist/remote/webcodec-buffer-decoder.js
 +++ b/dist/remote/webcodec-buffer-decoder.js
 @@ -144,13 +144,18 @@
@@ -23,3 +39,233 @@
              }
              const dualPlaneYUVABuffer = {
                  type: 'DualPlaneYUVAArrayBuffer',
+diff --git a/dist/render/Renderer.js b/dist/render/Renderer.js
+--- a/dist/render/Renderer.js
++++ b/dist/render/Renderer.js
+@@ -16,7 +16,7 @@
+         depth: false,
+         alpha: true,
+         premultipliedAlpha: false,
+-        preserveDrawingBuffer: false,
++        preserveDrawingBuffer: canvas.dataset.workosWindowScene === '1',
+         desynchronized: true,
+     });
+     if (gl === null) {
+@@ -35,14 +35,17 @@
+     static create(session) {
+         return new Renderer(session);
+     }
+-    createAndStoreScene(sceneId, canvas, output) {
++    createAndStoreScene(sceneId, canvas, output, windowSurface) {
+         const scene = Scene.create(this.session, setupCanvasGLContext(canvas), canvas, output, sceneId, () => {
+             this.render();
+         });
++        scene.windowSurface = windowSurface;
+         this.scenes = { ...this.scenes, [sceneId]: scene };
+         scene.onDestroy().then(() => {
+             delete this.scenes[sceneId];
+-            this.session.globals.unregisterOutput(output);
++            if (windowSurface === undefined) {
++                this.session.globals.unregisterOutput(output);
++            }
+         });
+     }
+     initScene(sceneId, canvas) {
+@@ -55,6 +58,32 @@
+         }
+         this.render();
+     }
++    // Window scenes are media outputs, not Wayland wl_output globals. Native
++    // clients keep seeing only the stable root output while each media canvas
++    // follows one top-level surface and its child/popup tree.
++    initWindowScene(sceneId, canvas, windowSurface) {
++        if (this.scenes[sceneId] !== undefined) {
++            throw new Error(`Scene ${sceneId} already exists.`);
++        }
++        canvas.dataset.workosWindowScene = '1';
++        const output = Output.create(canvas);
++        canvas.addEventListener('webglcontextlost', (event) => event.preventDefault(), false);
++        canvas.addEventListener('webglcontextrestored', () => this.createAndStoreScene(sceneId, canvas, output, windowSurface), false);
++        this.createAndStoreScene(sceneId, canvas, output, windowSurface);
++        this.render();
++    }
++    updateWindowScene(sceneId, rect, pixelRatio = 1) {
++        const scene = this.scenes[sceneId];
++        if (!scene?.windowSurface) {
++            throw new Error(`Window scene ${sceneId} does not exist.`);
++        }
++        scene.setWindowRect(rect, pixelRatio);
++        this.updateViewStack();
++        for (const view of this.viewStack) {
++            view.markDirty();
++        }
++        this.render();
++    }
+     updateCursor(view, hotspot) {
+         if (view.surface.state.bufferContents) {
+             const cursorBufferContents = view.surface.state.bufferContents;
+@@ -106,7 +135,16 @@
+                     return;
+                 }
+                 for (const scene of sceneList) {
+-                    scene.render(viewStack);
++                    scene.render(scene.windowSurface ? viewStack.filter((view) => {
++                        let parent = view.surface;
++                        while (parent) {
++                            if (parent === scene.windowSurface) {
++                                return true;
++                            }
++                            parent = parent.parent;
++                        }
++                        return false;
++                    }) : viewStack);
+                 }
+                 for (const callback of this.frameCallbacks) {
+                     callback.done(time);
+diff --git a/dist/render/Scene.js b/dist/render/Scene.js
+--- a/dist/render/Scene.js
++++ b/dist/render/Scene.js
+@@ -13,6 +13,7 @@
+         this.rgbaAnda2RGBA = rgbaAnda2RGBA;
+         this.output = output;
+         this.id = id;
++        this.pixelRatio = 1;
+         this.region = createPixmanRegion();
+         this._destroyPromise = new Promise((resolve) => {
+             this._destroyResolve = resolve;
+@@ -27,7 +28,7 @@
+     }
+     render(viewStack) {
+         this.sceneShader.use();
+-        this.sceneShader.updateSceneData(this.canvas);
++        this.sceneShader.updateSceneData(this.canvas, this.output, this.pixelRatio);
+         viewStack.forEach((view) => this.renderView(view));
+         this.sceneShader.release();
+         this.session.userShell.events.sceneRefreshed?.(this.id);
+@@ -37,6 +38,23 @@
+     }
+     onDestroy() {
+         return this._destroyPromise;
++    }
++    setWindowRect(rect, pixelRatio) {
++        if (!Number.isFinite(pixelRatio) || pixelRatio < 1 || pixelRatio > 4 ||
++            !Number.isInteger(rect.x) || !Number.isInteger(rect.y) ||
++            !Number.isInteger(rect.width) || !Number.isInteger(rect.height) ||
++            rect.width <= 0 || rect.height <= 0) {
++            throw new RangeError('Invalid window scene rectangle.');
++        }
++        this.pixelRatio = pixelRatio;
++        this.output.update({ x: rect.x, y: rect.y });
++        this.canvas.style.width = `${rect.width}px`;
++        this.canvas.style.height = `${rect.height}px`;
++        const physicalWidth = Math.round(rect.width * pixelRatio);
++        const physicalHeight = Math.round(rect.height * pixelRatio);
++        if (this.canvas.width !== physicalWidth) this.canvas.width = physicalWidth;
++        if (this.canvas.height !== physicalHeight) this.canvas.height = physicalHeight;
++        initRect(this.region, createRect(this.output, { width: rect.width, height: rect.height }));
+     }
+     ['image/bitmap'](webBufferContents, renderState) {
+         const { width, height } = webBufferContents.size;
+@@ -68,9 +86,14 @@
+     }
+     ensureResolution(needRender) {
+         const resizeTheCanvasToDisplaySize = (_entries) => {
+-            this.canvas.width = this.canvas.clientWidth;
+-            this.canvas.height = this.canvas.clientHeight;
+-            initRect(this.region, createRect(this.output, this.canvas));
++            const width = Math.round(this.canvas.clientWidth * this.pixelRatio);
++            const height = Math.round(this.canvas.clientHeight * this.pixelRatio);
++            if (this.canvas.width !== width) this.canvas.width = width;
++            if (this.canvas.height !== height) this.canvas.height = height;
++            initRect(this.region, createRect(this.output, {
++                width: this.canvas.clientWidth,
++                height: this.canvas.clientHeight,
++            }));
+             needRender();
+         };
+         const observer = new ResizeObserver(resizeTheCanvasToDisplaySize);
+diff --git a/dist/render/SceneShader.js b/dist/render/SceneShader.js
+--- a/dist/render/SceneShader.js
++++ b/dist/render/SceneShader.js
+@@ -67,7 +67,7 @@
+     release() {
+         this.gl.useProgram(null);
+     }
+-    updateSceneData(sceneSize) {
++    updateSceneData(sceneSize, origin = { x: 0, y: 0 }, pixelRatio = 1) {
+         const { width, height } = sceneSize;
+         this._sceneSize = sceneSize;
+         this.gl.viewport(0, 0, width, height);
+@@ -75,11 +75,13 @@
+         this.gl.clear(this.gl.COLOR_BUFFER_BIT | this.gl.DEPTH_BUFFER_BIT | this.gl.STENCIL_BUFFER_BIT);
+         this.gl.blendFunc(this.gl.ONE, this.gl.ONE_MINUS_SRC_ALPHA);
+         this.gl.enable(this.gl.BLEND);
++        const logicalWidth = width / pixelRatio;
++        const logicalHeight = height / pixelRatio;
+         this.program.setUniformM4(this.shaderArgs.u_projection, [
+-            2.0 / width, 0, 0, 0,
+-            0, 2.0 / -height, 0, 0,
++            2.0 / logicalWidth, 0, 0, 0,
++            0, 2.0 / -logicalHeight, 0, 0,
+             0, 0, 1, 0,
+-            -1, 1, 0, 1
++            -1 - 2 * origin.x / logicalWidth, 1 + 2 * origin.y / logicalHeight, 0, 1
+         ]);
+     }
+     updateViewData(view, renderState) {
+diff --git a/types/UserShellApi.d.ts b/types/UserShellApi.d.ts
+--- a/types/UserShellApi.d.ts
++++ b/types/UserShellApi.d.ts
+@@ -15,6 +15,8 @@
+ }
+ export interface UserShellApiActions {
+     initScene(sceneId: string, canvas: HTMLCanvasElement): void;
++    initWindowScene(sceneId: string, canvas: HTMLCanvasElement, compositorSurface: CompositorSurface): void;
++    updateWindowScene(sceneId: string, rect: { x: number; y: number; width: number; height: number }, pixelRatio: number): void;
+     refreshScene(): void;
+     destroyScene(sceneId: string): void;
+     setUserConfiguration(userConfiguration: Partial<CompositorConfiguration>): void;
+diff --git a/types/render/Renderer.d.ts b/types/render/Renderer.d.ts
+--- a/types/render/Renderer.d.ts
++++ b/types/render/Renderer.d.ts
+@@ -18,6 +18,8 @@
+     static create(session: Session): Renderer;
+     private createAndStoreScene;
+     initScene(sceneId: string, canvas: HTMLCanvasElement): void;
++    initWindowScene(sceneId: string, canvas: HTMLCanvasElement, windowSurface: Surface): void;
++    updateWindowScene(sceneId: string, rect: { x: number; y: number; width: number; height: number }, pixelRatio?: number): void;
+     updateCursor(view: View, hotspot: Point): void;
+     raiseSurface(surface: Surface): void;
+     render(afterUpdatePixelContent?: () => void): void;
+diff --git a/types/render/Scene.d.ts b/types/render/Scene.d.ts
+--- a/types/render/Scene.d.ts
++++ b/types/render/Scene.d.ts
+@@ -16,6 +16,8 @@
+     readonly rgbaAnda2RGBA: RGBXandA2RGBA;
+     readonly output: Output;
+     readonly id: string;
++    windowSurface?: import('../Surface').default;
++    pixelRatio: number;
+     region: number;
+     private _destroyResolve;
+     private readonly _destroyPromise;
+@@ -24,6 +26,7 @@
+     render(viewStack: View[]): void;
+     destroy(): void;
+     onDestroy(): Promise<void>;
++    setWindowRect(rect: { x: number; y: number; width: number; height: number }, pixelRatio: number): void;
+     ['image/bitmap'](webBufferContents: ImageBitmapBufferContents, renderState: RenderState): void;
+     ['video/h264'](decodedFrame: DecodedFrame, renderState: RenderState): void;
+     ['image/png'](decodedFrame: DecodedFrame, renderState: RenderState): void;
+diff --git a/types/render/SceneShader.d.ts b/types/render/SceneShader.d.ts
+--- a/types/render/SceneShader.d.ts
++++ b/types/render/SceneShader.d.ts
+@@ -19,7 +19,7 @@
+     private constructor();
+     use(): void;
+     release(): void;
+-    updateSceneData(sceneSize: Size): void;
++    updateSceneData(sceneSize: Size, origin?: { x: number; y: number }, pixelRatio?: number): void;
+     updateViewData(view: View, renderState: RenderState): void;
+     draw(): void;
+ }

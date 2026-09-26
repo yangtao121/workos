@@ -1,0 +1,25 @@
+{
+  "name": "@workos/greenfield-child",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "license": "Apache-2.0",
+  "scripts": {
+    "build": "vite build && esbuild src/bridge.ts --bundle --platform=node --format=esm --target=node24 --external:playwright-core --outfile=dist/bridge.mjs",
+    "check": "tsc --noEmit && vitest run src",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@bufbuild/protobuf": "2.14.0",
+    "@gfld/compositor": "1.0.0-rc1",
+    "@workos/protocol": "workspace:*",
+    "playwright-core": "1.62.1"
+  },
+  "devDependencies": {
+    "@types/node": "24.8.1",
+    "esbuild": "0.25.10",
+    "typescript": "5.9.2",
+    "vite": "8.2.2",
+    "vitest": "4.1.11"
+  }
+}
