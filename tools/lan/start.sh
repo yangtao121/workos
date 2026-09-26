@@ -19,6 +19,18 @@ export WORKOS_LAN_UID=$(id -u)
 export WORKOS_LAN_GID=$(id -g)
 export WORKOS_GREENFIELD_IPC_ROOT=${WORKOS_GREENFIELD_IPC_ROOT:-"$repo/.workos/greenfield-ipc"}
 export WORKOS_WORKSPACE_ROOTS=${WORKOS_WORKSPACE_ROOTS:-"$repo/.workos/workspaces"}
+mount_file="$repo/.workos/lan-code-workspace-mount"
+if [ "$action" = up ] && [ "${WORKOS_RUNTIME_WORKSPACE_MOUNTS+x}" != x ] && [ -f "$mount_file" ]; then
+    [ ! -L "$mount_file" ] && [ "$(stat -c %u:%a "$mount_file")" = "$(id -u):600" ] || {
+        echo 'start.sh: Code workspace mount file must be owner-only and not a symlink' >&2
+        exit 1
+    }
+    WORKOS_RUNTIME_WORKSPACE_MOUNTS=$(cat "$mount_file")
+    case "$WORKOS_RUNTIME_WORKSPACE_MOUNTS" in
+        *';'*|*'
+'*|'') echo 'start.sh: Code workspace mount file is invalid' >&2; exit 1 ;;
+    esac
+fi
 export WORKOS_RUNTIME_WORKSPACE_MOUNTS=${WORKOS_RUNTIME_WORKSPACE_MOUNTS:-}
 [ -S /var/run/docker.sock ] || { echo 'start.sh: Docker socket is required for the isolated Greenfield child' >&2; exit 1; }
 export WORKOS_DOCKER_GID=$(stat -c %g /var/run/docker.sock)

@@ -583,6 +583,13 @@ Gateway 实际返回密码模式且未认证请求拒绝；完整密码登录与
 [`20260926-lan-p0-integration.md`](../tasks/20260926-lan-p0-integration.md)，完成前不宣称
 LAN 用户链路已全部通过。
 
+P0 Code 验收使用 `tools/v3-p0-native-experience/prepare-workos-workspace.sh` 从最终提交导出
+仅含 tracked 文件的可写快照。`tools/lan/prepare-code-project.py` 经校验本地 CA 的密码
+Gateway 创建测试 Project，写入仅含 owner、project、路径的 0600 本地 mount 记录；
+Runtime 重启加载后再由公开 Workspace RPC 绑定。隔离子容器只收到该 Project 快照，不挂载
+主工作树、`.git` 或 `.workos/lan-tls/ca.key`。操作步骤与尚缺的实际 Code 验收见
+[LAN Code P0 runbook](../runbooks/lan-code-p0.md)。
+
 ## Project-scoped App Agent Bridge
 
 App Bridge 让已安装的不可信 Web Bundle App 在用户显式批准后调用 Project-scoped Agent 任务。
