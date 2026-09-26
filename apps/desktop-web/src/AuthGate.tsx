@@ -291,7 +291,9 @@ export function AuthGateView({
             <input
               autoComplete="username"
               name="username"
-              onChange={(event) => setUsername(event.target.value)}
+              onChange={(event) => {
+                setUsername(event.target.value);
+              }}
               required
               value={username}
             />
@@ -301,7 +303,9 @@ export function AuthGateView({
             <input
               autoComplete="current-password"
               name="password"
-              onChange={(event) => setPassword(event.target.value)}
+              onChange={(event) => {
+                setPassword(event.target.value);
+              }}
               required
               type="password"
               value={password}

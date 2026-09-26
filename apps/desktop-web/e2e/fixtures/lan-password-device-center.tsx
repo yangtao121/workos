@@ -12,14 +12,17 @@ const device = {
   isCurrent: true,
 } as DeviceInfo;
 const auth = {
-  getAuthMode: async () => "password" as const,
-  listDevices: async () => ({ devices: [device], nextPageToken: "" }),
-  getCurrentSession: async () => ({ device, sessionExpiresAt: new Date("2030-08-31T12:00:00Z") }),
-  logout: async () => {},
-  revokeDevice: async () => {},
+  getAuthMode: () => Promise.resolve("password" as const),
+  listDevices: () => Promise.resolve({ devices: [device], nextPageToken: "" }),
+  getCurrentSession: () =>
+    Promise.resolve({ device, sessionExpiresAt: new Date("2030-08-31T12:00:00Z") }),
+  logout: () => Promise.resolve(),
+  revokeDevice: () => Promise.resolve(),
 } as unknown as DeviceAuthClient;
 
-createRoot(document.getElementById("fixture-root")!).render(
+const root = document.getElementById("fixture-root");
+if (!root) throw new Error("missing fixture root");
+createRoot(root).render(
   <main className="desktop-shell" style={{ width: "100vw", height: "100vh" }}>
     <section className="workos-window" style={{ left: 700, top: 90, width: 560, height: 480 }}>
       <header>

@@ -48,34 +48,37 @@ it("retains drafts on failed Forget and clears local content only after success"
 });
 
 it("requires the password again after an expired session without proving a stored device key", async () => {
+  const reauthenticate = vi.fn();
+  const loginWithPassword = vi.fn().mockResolvedValue({ deviceId: "fixture-device" });
   const auth = {
     getAuthMode: vi.fn().mockResolvedValue("password"),
     restoreSession: vi.fn().mockResolvedValue(undefined),
-    reauthenticate: vi.fn(),
-    loginWithPassword: vi.fn().mockResolvedValue({ deviceId: "fixture-device" }),
+    reauthenticate,
+    loginWithPassword,
   } as unknown as DeviceAuthClient;
   render(<AuthGate deviceAuth={auth}>Private desktop</AuthGate>);
   const form = await screen.findByTestId("password-login");
   expect(form).toBeTruthy();
-  expect(auth.reauthenticate).not.toHaveBeenCalled();
+  expect(reauthenticate).not.toHaveBeenCalled();
   await userEvent.type(screen.getByRole("textbox", { name: "Username" }), "owner");
   await userEvent.type(screen.getByLabelText("Password"), "fixture-secret");
   await userEvent.click(screen.getByRole("button", { name: "Sign in" }));
   await screen.findByText("Private desktop");
-  expect(auth.loginWithPassword).toHaveBeenCalledWith({
+  expect(loginWithPassword).toHaveBeenCalledWith({
     username: "owner",
     password: "fixture-secret",
     deviceName: "Desktop browser",
     deviceClass: "desktop",
   });
-  expect(auth.reauthenticate).not.toHaveBeenCalled();
+  expect(reauthenticate).not.toHaveBeenCalled();
 });
 
 it("does not expose pairing UI or mount Desktop after a failed password", async () => {
+  const reauthenticate = vi.fn();
   const auth = {
     getAuthMode: vi.fn().mockResolvedValue("password"),
     restoreSession: vi.fn().mockResolvedValue(undefined),
-    reauthenticate: vi.fn(),
+    reauthenticate,
     loginWithPassword: vi.fn().mockRejectedValue(new ConnectError("wrong", Code.Unauthenticated)),
   } as unknown as DeviceAuthClient;
   render(<AuthGate deviceAuth={auth}>Private desktop</AuthGate>);
@@ -84,8 +87,10 @@ it("does not expose pairing UI or mount Desktop after a failed password", async 
   await userEvent.type(screen.getByLabelText("Password"), "wrong-fixture");
   await userEvent.click(screen.getByRole("button", { name: "Sign in" }));
   await screen.findByText(/Sign in failed/);
-  await waitFor(() => expect(screen.getByLabelText<HTMLInputElement>("Password").value).toBe(""));
+  await waitFor(() => {
+    expect(screen.getByLabelText<HTMLInputElement>("Password").value).toBe("");
+  });
   expect(screen.queryByText("Private desktop")).toBeNull();
   expect(screen.queryByText(/pairing QR code/)).toBeNull();
-  expect(auth.reauthenticate).not.toHaveBeenCalled();
+  expect(reauthenticate).not.toHaveBeenCalled();
 });
