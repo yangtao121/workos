@@ -255,6 +255,12 @@ export class NativeSessionLease {
     clearTimeout(lease.expiryTimer);
   }
 
+  // A lease may be disposed while an RPC is suspended. Read the current
+  // state again after each await before changing controller state.
+  private isReleased(lease: NonNullable<NativeSessionLease["current"]>) {
+    return lease.released;
+  }
+
   private loseControl(lease: NonNullable<NativeSessionLease["current"]>) {
     if (lease.released) return;
     lease.controlRevision++;
@@ -297,14 +303,14 @@ export class NativeSessionLease {
         lease.generation,
         lease.workloadGeneration,
       ]);
-      if (lease.released || lease.controlRevision !== revision) return;
+      if (this.isReleased(lease) || lease.controlRevision !== revision) return;
       const response = await lease.clients.surfaceContinuity.renewSurfaceControl({
         surfaceSessionId: sessionId,
         attachmentId,
         expectedControlGeneration: generation,
         expectedWorkloadGeneration: workloadGeneration,
       });
-      if (lease.released || lease.controlRevision !== revision) return;
+      if (this.isReleased(lease) || lease.controlRevision !== revision) return;
       const attachment = response.attachment;
       if (
         !attachment?.controls ||
@@ -316,15 +322,15 @@ export class NativeSessionLease {
       }
       this.scheduleRenewal(lease, timestampMillis(attachment.controlExpiresAt));
     } catch {
-      if (!lease.released && lease.controlRevision === revision) this.loseControl(lease);
+      if (!this.isReleased(lease) && lease.controlRevision === revision) this.loseControl(lease);
     }
   }
 
   private async reattach(lease: NonNullable<NativeSessionLease["current"]>) {
-    if (lease.released) throw new Error("native attachment unavailable");
+    if (this.isReleased(lease)) throw new Error("native attachment unavailable");
     const sessionId = await lease.session;
     const workloadGeneration = await lease.workloadGeneration;
-    if (lease.released) throw new Error("native attachment unavailable");
+    if (this.isReleased(lease)) throw new Error("native attachment unavailable");
     const attached = await lease.clients.surfaceContinuity.attachSurface({
       workloadId: sessionId,
       expectedWorkloadGeneration: workloadGeneration,
@@ -332,7 +338,7 @@ export class NativeSessionLease {
     });
     if (!attached.attachment?.id || attached.session?.workloadGeneration !== workloadGeneration)
       throw new Error("native attachment recovery failed");
-    if (lease.released) {
+    if (this.isReleased(lease)) {
       void lease.clients.surfaceContinuity.detachSurface({ surfaceSessionId: sessionId });
       throw new Error("native attachment unavailable");
     }
@@ -347,16 +353,16 @@ export class NativeSessionLease {
   private async requestControl(
     lease: NonNullable<NativeSessionLease["current"]>,
   ): Promise<boolean> {
-    if (lease.released) throw new Error("native attachment unavailable");
+    if (this.isReleased(lease)) throw new Error("native attachment unavailable");
     lease.controlRevision++;
     this.clearControlTimers(lease);
     const sessionId = await lease.session;
-    if (lease.released) throw new Error("native attachment unavailable");
+    if (this.isReleased(lease)) throw new Error("native attachment unavailable");
     try {
       if (this.residentInput?.input.needsFreshAttachment) await this.reattach(lease);
       let response;
       try {
-        if (lease.released) throw new Error("native attachment unavailable");
+        if (this.isReleased(lease)) throw new Error("native attachment unavailable");
         response = await lease.clients.surfaceContinuity.requestSurfaceControl({
           surfaceSessionId: sessionId,
         });
@@ -369,12 +375,12 @@ export class NativeSessionLease {
         )
           throw error;
         await this.reattach(lease);
-        if (lease.released) throw new Error("native attachment unavailable");
+        if (this.isReleased(lease)) throw new Error("native attachment unavailable");
         response = await lease.clients.surfaceContinuity.requestSurfaceControl({
           surfaceSessionId: sessionId,
         });
       }
-      if (lease.released) throw new Error("native attachment unavailable");
+      if (this.isReleased(lease)) throw new Error("native attachment unavailable");
       const attachment = response.attachment;
       const attachmentId = await lease.attachmentId;
       if (

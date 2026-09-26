@@ -12,31 +12,37 @@ function expiresIn(milliseconds: number) {
 }
 
 function fixture() {
-  const attachSurface = vi.fn().mockImplementation(async () => ({
-    session: { id: "session-1", workloadGeneration: 3n },
-    attachment: {
-      id: "attachment-1",
-      controls: true,
-      controlGeneration: 7n,
-      controlExpiresAt: expiresIn(60_000),
-    },
-  }));
-  const renewSurfaceControl = vi.fn().mockImplementation(async () => ({
-    attachment: {
-      id: "attachment-1",
-      controls: true,
-      controlGeneration: 7n,
-      controlExpiresAt: expiresIn(60_000),
-    },
-  }));
-  const requestSurfaceControl = vi.fn().mockImplementation(async () => ({
-    attachment: {
-      id: "attachment-1",
-      controls: true,
-      controlGeneration: 8n,
-      controlExpiresAt: expiresIn(60_000),
-    },
-  }));
+  const attachSurface = vi.fn().mockImplementation(() =>
+    Promise.resolve({
+      session: { id: "session-1", workloadGeneration: 3n },
+      attachment: {
+        id: "attachment-1",
+        controls: true,
+        controlGeneration: 7n,
+        controlExpiresAt: expiresIn(60_000),
+      },
+    }),
+  );
+  const renewSurfaceControl = vi.fn().mockImplementation(() =>
+    Promise.resolve({
+      attachment: {
+        id: "attachment-1",
+        controls: true,
+        controlGeneration: 7n,
+        controlExpiresAt: expiresIn(60_000),
+      },
+    }),
+  );
+  const requestSurfaceControl = vi.fn().mockImplementation(() =>
+    Promise.resolve({
+      attachment: {
+        id: "attachment-1",
+        controls: true,
+        controlGeneration: 8n,
+        controlExpiresAt: expiresIn(60_000),
+      },
+    }),
+  );
   const clients = {
     surfaceContinuity: {
       attachSurface,
@@ -102,28 +108,34 @@ describe("NativeSessionLease controller renewal", () => {
     f.renewSurfaceControl.mockRejectedValue(new ConnectError("expired", Code.PermissionDenied));
     f.requestSurfaceControl
       .mockRejectedValueOnce(new ConnectError("attachment gone", Code.NotFound))
-      .mockImplementationOnce(async () => ({
-        attachment: {
-          id: "attachment-2",
-          controls: true,
-          controlGeneration: 9n,
-          controlExpiresAt: expiresIn(60_000),
-        },
-      }));
+      .mockImplementationOnce(() =>
+        Promise.resolve({
+          attachment: {
+            id: "attachment-2",
+            controls: true,
+            controlGeneration: 9n,
+            controlExpiresAt: expiresIn(60_000),
+          },
+        }),
+      );
     f.attachSurface
-      .mockImplementationOnce(async () => ({
-        session: { id: "session-1", workloadGeneration: 3n },
-        attachment: {
-          id: "attachment-1",
-          controls: true,
-          controlGeneration: 7n,
-          controlExpiresAt: expiresIn(60_000),
-        },
-      }))
-      .mockImplementationOnce(async () => ({
-        session: { id: "session-1", workloadGeneration: 3n },
-        attachment: { id: "attachment-2", controls: false, controlGeneration: 8n },
-      }));
+      .mockImplementationOnce(() =>
+        Promise.resolve({
+          session: { id: "session-1", workloadGeneration: 3n },
+          attachment: {
+            id: "attachment-1",
+            controls: true,
+            controlGeneration: 7n,
+            controlExpiresAt: expiresIn(60_000),
+          },
+        }),
+      )
+      .mockImplementationOnce(() =>
+        Promise.resolve({
+          session: { id: "session-1", workloadGeneration: 3n },
+          attachment: { id: "attachment-2", controls: false, controlGeneration: 8n },
+        }),
+      );
     const lease = new NativeSessionLease(true);
     const handle = lease.acquire(f.clients, "project-1", "session-1", 3n);
     await handle.session;

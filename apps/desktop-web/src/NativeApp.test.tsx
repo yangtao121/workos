@@ -509,6 +509,7 @@ describe("Native window lifecycle and input", () => {
       getNativeSession: vi.fn(() => Promise.resolve({ session: { engine: "greenfield" } })),
     });
     const watchGreenfieldWindows = vi.fn(async function* () {
+      await Promise.resolve();
       yield {
         snapshot: {
           sessionId: "greenfield-session",

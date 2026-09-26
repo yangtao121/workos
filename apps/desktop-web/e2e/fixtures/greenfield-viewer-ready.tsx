@@ -82,10 +82,11 @@ async function pngFor(id: string): Promise<Uint8Array> {
 }
 
 const client = {
-  sendGreenfieldWindowInput: async () => ({
-    verdict: GreenfieldInputVerdict.UNAVAILABLE,
-    lastAppliedSequence: 0n,
-  }),
+  sendGreenfieldWindowInput: () =>
+    Promise.resolve({
+      verdict: GreenfieldInputVerdict.UNAVAILABLE,
+      lastAppliedSequence: 0n,
+    }),
   watchGreenfieldWindowFrames: async function* (
     request: { windowId: string },
     options: { signal?: AbortSignal },
@@ -136,8 +137,10 @@ function ResidentFixture() {
   useEffect(() => {
     if (!initialAttachment.controls) return;
     const timer = setTimeout(() => {
+      const firstWindow = windows[0];
+      if (!firstWindow) return;
       void input
-        .send(windows[0]!.id, [
+        .send(firstWindow.id, [
           {
             case: "key",
             value: { action: GreenfieldKeyAction.DOWN, code: "KeyA", key: "a" },
@@ -145,7 +148,9 @@ function ResidentFixture() {
         ])
         .catch(() => undefined);
     }, 500);
-    return () => clearTimeout(timer);
+    return () => {
+      clearTimeout(timer);
+    };
   }, [input]);
   return (
     <main className="desktop-shell" style={{ width: "100vw", height: "100vh" }}>
