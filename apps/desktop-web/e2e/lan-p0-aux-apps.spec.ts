@@ -112,6 +112,10 @@ function isEditor(entry: NativeEntry) {
   return entry.application.includes("TEXT_EDITOR") || entry.application === "2";
 }
 
+function isCode(entry: NativeEntry) {
+  return entry.application === "NATIVE_APPLICATION_CODE" || entry.application === "1";
+}
+
 async function getWorkload(page: Page, workloadId: string): Promise<Workload> {
   const response = await rpc<{ workload: Workload }>(page, `${continuity}/GetSurfaceWorkload`, {
     workloadId,
@@ -195,11 +199,13 @@ async function editorInkPixels(window: Locator): Promise<number> {
 }
 
 async function editorClipboard(page: Page, window: Locator): Promise<number> {
-  const text = `WorkOS editor ${randomUUID()}\n中文\t🙂 café\nsecond line\t終わり`;
+  const pastedText = `WorkOS editor ${randomUUID()}\n中文\t🙂 café\nsecond line\t終わり`;
+  const typedSuffix = `-typed-${randomUUID()}`;
+  const expected = `${pastedText}${typedSuffix}`;
   await window.getByTestId("greenfield-window-canvas").click({ position: { x: 250, y: 180 } });
   await expect(window.getByLabel("原生窗口输入")).toBeFocused();
   const blankInk = await editorInkPixels(window);
-  await page.evaluate(async (value) => navigator.clipboard.writeText(value), text);
+  await page.evaluate(async (value) => navigator.clipboard.writeText(value), pastedText);
   await window.getByRole("button", { name: "粘贴到应用" }).click();
   await expect(window.locator(".greenfield-window-actions [role='status']")).toContainText(
     "已向原生应用发送粘贴指令",
@@ -210,6 +216,13 @@ async function editorClipboard(page: Page, window: Locator): Promise<number> {
       timeout: 15_000,
     })
     .toBeGreaterThan(100);
+  // Type a fresh suffix through the actual native input path. The original
+  // clipboardWrite contains only pastedText, so a stale native clipboard
+  // cannot satisfy the reverse-copy assertion below.
+  await window.getByTestId("greenfield-window-canvas").click({ position: { x: 250, y: 180 } });
+  await expect(window.getByLabel("原生窗口输入")).toBeFocused();
+  await page.keyboard.press("Control+End");
+  await page.keyboard.type(typedSuffix);
   await page.evaluate(
     async (value) => navigator.clipboard.writeText(value),
     `copy-sentinel-${randomUUID()}`,
@@ -220,8 +233,8 @@ async function editorClipboard(page: Page, window: Locator): Promise<number> {
   await expect(window.locator(".greenfield-window-actions [role='status']")).toContainText(
     "已将当前原生剪贴板文本复制到本机",
   );
-  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(text);
-  return new TextEncoder().encode(text).length;
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(expected);
+  return new TextEncoder().encode(expected).length;
 }
 
 async function terminalClipboard(
@@ -257,11 +270,13 @@ async function terminalClipboard(
     );
   };
   await paste("stty -echo\n");
+  const nonce = randomUUID();
   const payload = Array.from(
     { length: 24 },
-    (_, index) => `顺序 ${String(index).padStart(2, "0")}\t🙂 café\t${"x".repeat(850)}`,
+    (_, index) => `顺序 ${String(index).padStart(2, "0")}\t🙂 café\t${nonce}\t${"x".repeat(850)}`,
   ).join("\n");
   const expected = createHash("sha256").update(`${payload}\n`, "utf8").digest("hex");
+  expect((await output.textContent())?.includes(expected)).toBe(false);
   const command = `cat <<'WORKOS_AUX_END' | sha256sum\n${payload}\nWORKOS_AUX_END\n`;
   const bytes = new TextEncoder().encode(command).length;
   expect(bytes).toBeGreaterThan(16 * 1024);
@@ -317,7 +332,7 @@ test("resident Code, Mousepad and Terminal keep independent sessions and real cl
     const before = (await nativeEntries(page)).filter(
       (entry) => entry.workload.state === "running",
     );
-    const code = before.filter((entry) => !isEditor(entry));
+    const code = before.filter(isCode);
     expect(code).toHaveLength(1);
     expect(before.filter(isEditor)).toHaveLength(0);
     const codeWorkload = code[0]?.workload;
@@ -351,8 +366,9 @@ test("resident Code, Mousepad and Terminal keep independent sessions and real cl
     const editorParent = page.locator(
       `.workos-window[data-window-id="native-${editorWorkload.workloadId}"]`,
     );
-    await expect(editorParent).toBeVisible();
-    await editorParent.locator(".window-close").click();
+    // The resident top level is visible while its Core lifecycle anchor is
+    // minimized. Its Close action detaches that anchor without stopping GTK.
+    await editorWindow.locator(".window-close").click();
     await expect(editorParent).toHaveCount(0);
     await expect(editorWindow).toHaveCount(0);
     expect((await getWorkload(page, editorWorkload.workloadId)).state).toBe("running");
