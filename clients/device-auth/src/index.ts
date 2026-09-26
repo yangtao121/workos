@@ -12,6 +12,8 @@ import {
   DevicePairingService,
   DeviceProofPurpose,
   DeviceService,
+  PasswordAuthService,
+  AuthMode,
   type DeviceInfo,
 } from "@workos/protocol";
 
@@ -38,6 +40,7 @@ export {
 export type { DeviceInfo } from "@workos/protocol";
 
 export type DeviceClass = "desktop" | "tablet" | "foldable" | "phone";
+export type AuthDeploymentMode = "password" | "pairing" | "dev_bypass";
 
 export interface PairingFragment {
   version: number;
@@ -51,8 +54,8 @@ export interface PairingFragment {
 // the device auth endpoints and answers with real Connect codes) from a
 // development-bypass gateway (which does not serve them at all). The probe
 // sends a grammar-invalid request: the production service rejects it with
-// InvalidArgument before any state is touched; an absent route surfaces as
-// an unknown-code error.
+// InvalidArgument before any state is touched; only an explicit missing-route
+// response counts as absent. Transport failures remain failures.
 export async function isAuthRequiredDeployment(
   client: Client<typeof DevicePairingService>,
 ): Promise<boolean> {
@@ -63,8 +66,18 @@ export async function isAuthRequiredDeployment(
     if (error instanceof ConnectError && error.code === Code.InvalidArgument) {
       return true;
     }
-    return false;
+    if (isMissingEndpoint(error)) return false;
+    throw error;
   }
+}
+
+function isMissingEndpoint(error: unknown): boolean {
+  return (
+    error instanceof ConnectError &&
+    (error.code === Code.NotFound ||
+      error.code === Code.Unimplemented ||
+      (error.code === Code.Unknown && /\b404\b|not found/i.test(error.message)))
+  );
 }
 
 export function parsePairingFragment(fragment: string): PairingFragment {
@@ -103,6 +116,7 @@ export function isUnavailable(error: unknown): boolean {
 export class DeviceAuthClient {
   private readonly pairing: Client<typeof DevicePairingService>;
   private readonly devices: Client<typeof DeviceService>;
+  private readonly passwords: Client<typeof PasswordAuthService>;
   private readonly keys: DeviceKeyBackend;
   private readonly canonicalOrigin: string;
 
@@ -116,7 +130,47 @@ export class DeviceAuthClient {
     const active = transport ?? createConnectTransport({ baseUrl });
     this.pairing = createClient(DevicePairingService, active);
     this.devices = createClient(DeviceService, active);
+    this.passwords = createClient(PasswordAuthService, active);
     this.keys = keyBackend ?? profileDeviceKeyBackend;
+  }
+
+  // The mode endpoint is public so the Desktop can select the correct entry
+  // before touching either a stored profile key or a password. Older pairing
+  // deployments have no mode endpoint; probe their pairing service only when
+  // the mode route itself is absent.
+  async getAuthMode(): Promise<AuthDeploymentMode> {
+    try {
+      const response = await this.passwords.getMode({});
+      if (response.mode === AuthMode.PASSWORD) return "password";
+      if (response.mode === AuthMode.PAIRING) return "pairing";
+      throw new Error("gateway returned an unknown authentication mode");
+    } catch (error) {
+      if (!isMissingEndpoint(error)) throw error;
+      if (await isAuthRequiredDeployment(this.pairing)) return "pairing";
+      const host = new URL(this.canonicalOrigin).hostname;
+      if (host === "localhost" || host === "127.0.0.1" || host === "[::1]") {
+        return "dev_bypass";
+      }
+      throw new Error("LAN Gateway has no authentication endpoint");
+    }
+  }
+
+  // Login leaves the password only in this request. The Gateway sets the
+  // session as a secure, HTTP-only cookie; no browser storage is written.
+  async loginWithPassword(input: {
+    username: string;
+    password: string;
+    deviceName: string;
+    deviceClass: DeviceClass;
+  }): Promise<DeviceInfo> {
+    const result = await this.passwords.login({
+      username: input.username,
+      password: input.password,
+      deviceName: input.deviceName,
+      deviceClass: deviceClassToProto(input.deviceClass),
+    });
+    if (!result.device) throw new Error("gateway returned no device after login");
+    return result.device;
   }
 
   // ensureProfileKey loads the stored key or creates and persists a new one

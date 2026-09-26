@@ -1,8 +1,8 @@
 import { Code, ConnectError } from "@connectrpc/connect";
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 
-import type { DeviceAuthClient } from "@workos/device-auth";
-import { isAuthRequiredDeployment, isUnavailable, parsePairingFragment } from "@workos/device-auth";
+import type { AuthDeploymentMode, DeviceAuthClient } from "@workos/device-auth";
+import { isUnavailable, parsePairingFragment } from "@workos/device-auth";
 import { Button } from "@workos/ui-kit";
 import { clearLocalDesktopState } from "./desktopLocalState.js";
 
@@ -11,6 +11,7 @@ import { clearLocalDesktopState } from "./desktopLocalState.js";
 //
 //	checking-session      — asking the Gateway whether the cookie is live
 //	paired-session-proof  — verifying the stored browser profile key
+//	password-login        — password deployment with no live cookie
 //	unpaired              — no usable credential: the bounded pairing screen
 //	pairing               — a valid pairing fragment was consumed
 //	authenticated         — the Desktop mounts
@@ -18,6 +19,7 @@ import { clearLocalDesktopState } from "./desktopLocalState.js";
 export type AuthGateState =
   | "checking-session"
   | "paired-session-proof"
+  | "password-login"
   | "unpaired"
   | "pairing"
   | "authenticated"
@@ -34,6 +36,8 @@ export function AuthGate({ deviceAuth, children }: AuthGateProps) {
   const [state, setState] = useState<AuthGateState>("checking-session");
   const [message, setMessage] = useState<string>();
   const [fragment, setFragment] = useState<string>();
+  const [mode, setMode] = useState<AuthDeploymentMode>();
+  const [attempt, setAttempt] = useState(0);
   const mounted = useRef(true);
 
   useEffect(() => {
@@ -43,26 +47,35 @@ export function AuthGate({ deviceAuth, children }: AuthGateProps) {
     };
   }, []);
 
-  // Initial determination: a valid pairing fragment wins; otherwise cookie,
-  // then silent session proof, then the unpaired screen.
+  // Determine the deployment mode before trying any device credential. A
+  // password deployment never silently proves a stored pairing key.
   useEffect(() => {
     const lifecycle: { cancelled: boolean } = { cancelled: false };
     const isCancelled = (): boolean => lifecycle.cancelled;
     void (async () => {
-      if (window.location.hash) {
-        try {
-          parsePairingFragment(window.location.hash);
-          if (!lifecycle.cancelled) {
-            setFragment(window.location.hash);
-            setState("pairing");
-          }
-          history.replaceState(null, "", window.location.pathname);
-          return;
-        } catch {
-          history.replaceState(null, "", window.location.pathname);
-        }
-      }
+      let resolvedMode: AuthDeploymentMode | undefined;
       try {
+        resolvedMode = await deviceAuth.getAuthMode();
+        if (isCancelled()) return;
+        setMode(resolvedMode);
+        const hash = window.location.hash;
+        if (hash) {
+          history.replaceState(null, "", window.location.pathname + window.location.search);
+          if (resolvedMode === "pairing") {
+            try {
+              parsePairingFragment(hash);
+              setFragment(hash);
+              setState("pairing");
+              return;
+            } catch {
+              // Ignore invalid fragments and continue with the current session.
+            }
+          }
+        }
+        if (resolvedMode === "dev_bypass") {
+          setState("authenticated");
+          return;
+        }
         const current = await deviceAuth.restoreSession();
         if (!isCancelled() && current !== undefined) {
           setState("authenticated");
@@ -75,14 +88,14 @@ export function AuthGate({ deviceAuth, children }: AuthGateProps) {
           return;
         }
         if (!(error instanceof ConnectError) || error.code !== Code.Unauthenticated) {
-          // The deployment does not serve the device auth endpoints at all
-          // (development bypass): the desktop mounts directly, exactly as it
-          // did before device pairing existed.
-          const supported = await isAuthRequiredDeployment(deviceAuth.pairingClient);
-          if (isCancelled()) return;
-          setState(supported ? "unpaired" : "authenticated");
+          setState("unavailable");
           return;
         }
+      }
+      if (isCancelled()) return;
+      if (resolvedMode === "password") {
+        setState("password-login");
+        return;
       }
       // No live cookie; prove the stored profile key if one exists.
       try {
@@ -100,7 +113,7 @@ export function AuthGate({ deviceAuth, children }: AuthGateProps) {
     return () => {
       lifecycle.cancelled = true;
     };
-  }, [deviceAuth]);
+  }, [attempt, deviceAuth]);
 
   const handlePaired = useCallback(() => {
     setState("authenticated");
@@ -112,6 +125,10 @@ export function AuthGate({ deviceAuth, children }: AuthGateProps) {
 
   const reauthenticate = useCallback(async () => {
     setState("checking-session");
+    if (mode === "password" || mode === undefined) {
+      setAttempt((current) => current + 1);
+      return;
+    }
     try {
       await deviceAuth.reauthenticate();
       if (mounted.current) setState("authenticated");
@@ -124,7 +141,7 @@ export function AuthGate({ deviceAuth, children }: AuthGateProps) {
       setState("unpaired");
       setMessage("This device can no longer be verified. Pair again to continue.");
     }
-  }, [deviceAuth]);
+  }, [deviceAuth, mode]);
 
   const forget = useCallback(async () => {
     try {
@@ -138,9 +155,9 @@ export function AuthGate({ deviceAuth, children }: AuthGateProps) {
     }
     if (mounted.current) {
       setMessage(undefined);
-      setState("unpaired");
+      setState(mode === "password" ? "password-login" : "unpaired");
     }
-  }, [deviceAuth]);
+  }, [deviceAuth, mode]);
 
   if (state === "authenticated") return <>{children}</>;
   return (
@@ -188,6 +205,10 @@ export function AuthGateView({
   const [gateError, setGateError] = useState<string>();
   const [secret, setSecret] = useState<string>();
   const [fingerprint, setFingerprint] = useState<string>();
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  const [loggingIn, setLoggingIn] = useState(false);
+  const [loginError, setLoginError] = useState<string>();
 
   useEffect(() => {
     if (!fragment) return;
@@ -223,11 +244,79 @@ export function AuthGateView({
     }
   }
 
+  async function submitPassword(event: React.SyntheticEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (loggingIn || !username.trim() || !password) return;
+    setLoggingIn(true);
+    setLoginError(undefined);
+    try {
+      await deviceAuth.loginWithPassword({
+        username: username.trim(),
+        password,
+        deviceName: defaultDeviceName(),
+        deviceClass: "desktop",
+      });
+      setPassword("");
+      onPaired();
+    } catch (error) {
+      setPassword("");
+      if (isUnavailable(error)) {
+        onPairingUnavailable();
+        return;
+      }
+      setLoginError(
+        error instanceof ConnectError && error.code === Code.ResourceExhausted
+          ? "Too many attempts. Wait a moment and try again."
+          : "Sign in failed. Check the username and password, then try again.",
+      );
+    } finally {
+      setLoggingIn(false);
+    }
+  }
+
   return (
     <section className="auth-gate" data-state={state} data-testid="auth-gate">
       <h1>WorkOS</h1>
       {state === "checking-session" ? <p>Checking this device&apos;s session…</p> : null}
       {state === "paired-session-proof" ? <p>Verifying this device…</p> : null}
+      {state === "password-login" ? (
+        <form
+          className="auth-gate-login"
+          data-testid="password-login"
+          onSubmit={(event) => void submitPassword(event)}
+        >
+          <p>Sign in to this WorkOS</p>
+          <label className="auth-gate-field">
+            Username
+            <input
+              autoComplete="username"
+              name="username"
+              onChange={(event) => setUsername(event.target.value)}
+              required
+              value={username}
+            />
+          </label>
+          <label className="auth-gate-field">
+            Password
+            <input
+              autoComplete="current-password"
+              name="password"
+              onChange={(event) => setPassword(event.target.value)}
+              required
+              type="password"
+              value={password}
+            />
+          </label>
+          {loginError ? (
+            <p className="auth-gate-error" role="alert">
+              {loginError}
+            </p>
+          ) : null}
+          <Button disabled={loggingIn} type="submit">
+            {loggingIn ? "Signing in…" : "Sign in"}
+          </Button>
+        </form>
+      ) : null}
       {state === "unavailable" ? (
         <>
           <p>

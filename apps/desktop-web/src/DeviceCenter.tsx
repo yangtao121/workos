@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Code, ConnectError } from "@connectrpc/connect";
-import type { DeviceAuthClient } from "@workos/device-auth";
+import type { AuthDeploymentMode, DeviceAuthClient } from "@workos/device-auth";
 import { type DeviceInfo } from "@workos/device-auth";
 import { DeviceClass as DeviceClassEnum } from "@workos/protocol";
 import { Button } from "@workos/ui-kit";
@@ -37,6 +37,7 @@ export function DeviceCenter({ deviceAuth, onSessionEnded }: DeviceCenterProps) 
   const [actionError, setActionError] = useState<string>();
   const [confirmingRevoke, setConfirmingRevoke] = useState<string>();
   const [busy, setBusy] = useState(false);
+  const [authMode, setAuthMode] = useState<AuthDeploymentMode>();
 
   const clearEndedSessionState = useCallback(async () => {
     try {
@@ -66,6 +67,21 @@ export function DeviceCenter({ deviceAuth, onSessionEnded }: DeviceCenterProps) 
   useEffect(() => {
     void refresh();
   }, [refresh]);
+
+  useEffect(() => {
+    let active = true;
+    void deviceAuth.getAuthMode().then(
+      (mode) => {
+        if (active) setAuthMode(mode);
+      },
+      () => {
+        if (active) setLoadError("Authentication mode is temporarily unavailable.");
+      },
+    );
+    return () => {
+      active = false;
+    };
+  }, [deviceAuth]);
 
   // A ticket is memory-only and disappears exactly at its server-provided
   // expiry. Replacing it cancels the old timer; unmounting destroys both the
@@ -188,7 +204,10 @@ export function DeviceCenter({ deviceAuth, onSessionEnded }: DeviceCenterProps) 
           {loadError}
         </p>
       ) : (
-        <ul className="device-list" aria-label="Paired devices">
+        <ul
+          className="device-list"
+          aria-label={authMode === "password" ? "Signed-in devices" : "Paired devices"}
+        >
           {devices.map((device) => (
             <li className="device-row" key={device.deviceId}>
               <div className="device-facts">
@@ -227,9 +246,11 @@ export function DeviceCenter({ deviceAuth, onSessionEnded }: DeviceCenterProps) 
         </p>
       ) : null}
       <div className="device-actions">
-        <Button disabled={busy} type="button" onClick={() => void rotateTicket()}>
-          {ticket ? "Replace pairing code" : "Pair another device"}
-        </Button>
+        {authMode === "pairing" ? (
+          <Button disabled={busy} type="button" onClick={() => void rotateTicket()}>
+            {ticket ? "Replace pairing code" : "Pair another device"}
+          </Button>
+        ) : null}
         <Button disabled={busy} type="button" onClick={() => void logout()}>
           Sign out
         </Button>

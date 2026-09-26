@@ -1086,6 +1086,33 @@ svg {
   min-width: 280px;
 }
 
+.auth-gate-login {
+  width: min(100%, 340px);
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 12px;
+  padding: 24px;
+  border: 1px solid var(--border, #475066);
+  border-radius: 12px;
+  background: var(--surface, #202735);
+  text-align: left;
+}
+
+.auth-gate-login p {
+  margin: 0;
+}
+
+.auth-gate-login .auth-gate-field {
+  margin: 0;
+}
+
+.auth-gate-login .auth-gate-field input {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+}
+
 .auth-gate-hint {
   font-size: 12px;
   opacity: 0.8;

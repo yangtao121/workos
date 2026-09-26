@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import "fake-indexeddb/auto";
 import { Code, ConnectError } from "@connectrpc/connect";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { DeviceAuthClient } from "@workos/device-auth";
 import { afterEach, expect, it, vi } from "vitest";
@@ -29,6 +29,7 @@ it("retains drafts on failed Forget and clears local content only after success"
   const forget = vi.fn().mockRejectedValueOnce(new Error("offline")).mockResolvedValue(undefined);
   const denied = () => Promise.reject(new ConnectError("unpaired", Code.Unauthenticated));
   const auth = {
+    getAuthMode: vi.fn().mockResolvedValue("pairing"),
     restoreSession: denied,
     reauthenticate: denied,
     forget,
@@ -44,4 +45,47 @@ it("retains drafts on failed Forget and clears local content only after success"
   expect(localStorage.getItem("workos.desktop-projection.v1")).toBeNull();
   expect(sessionStorage.getItem("workos.activeProjectId")).toBeNull();
   expect(screen.queryByText("Private desktop")).toBeNull();
+});
+
+it("requires the password again after an expired session without proving a stored device key", async () => {
+  const auth = {
+    getAuthMode: vi.fn().mockResolvedValue("password"),
+    restoreSession: vi.fn().mockResolvedValue(undefined),
+    reauthenticate: vi.fn(),
+    loginWithPassword: vi.fn().mockResolvedValue({ deviceId: "fixture-device" }),
+  } as unknown as DeviceAuthClient;
+  render(<AuthGate deviceAuth={auth}>Private desktop</AuthGate>);
+  const form = await screen.findByTestId("password-login");
+  expect(form).toBeTruthy();
+  expect(auth.reauthenticate).not.toHaveBeenCalled();
+  await userEvent.type(screen.getByRole("textbox", { name: "Username" }), "owner");
+  await userEvent.type(screen.getByLabelText("Password"), "fixture-secret");
+  await userEvent.click(screen.getByRole("button", { name: "Sign in" }));
+  await screen.findByText("Private desktop");
+  expect(auth.loginWithPassword).toHaveBeenCalledWith({
+    username: "owner",
+    password: "fixture-secret",
+    deviceName: "Desktop browser",
+    deviceClass: "desktop",
+  });
+  expect(auth.reauthenticate).not.toHaveBeenCalled();
+});
+
+it("does not expose pairing UI or mount Desktop after a failed password", async () => {
+  const auth = {
+    getAuthMode: vi.fn().mockResolvedValue("password"),
+    restoreSession: vi.fn().mockResolvedValue(undefined),
+    reauthenticate: vi.fn(),
+    loginWithPassword: vi.fn().mockRejectedValue(new ConnectError("wrong", Code.Unauthenticated)),
+  } as unknown as DeviceAuthClient;
+  render(<AuthGate deviceAuth={auth}>Private desktop</AuthGate>);
+  await screen.findByTestId("password-login");
+  await userEvent.type(screen.getByRole("textbox", { name: "Username" }), "owner");
+  await userEvent.type(screen.getByLabelText("Password"), "wrong-fixture");
+  await userEvent.click(screen.getByRole("button", { name: "Sign in" }));
+  await screen.findByText(/Sign in failed/);
+  await waitFor(() => expect(screen.getByLabelText<HTMLInputElement>("Password").value).toBe(""));
+  expect(screen.queryByText("Private desktop")).toBeNull();
+  expect(screen.queryByText(/pairing QR code/)).toBeNull();
+  expect(auth.reauthenticate).not.toHaveBeenCalled();
 });

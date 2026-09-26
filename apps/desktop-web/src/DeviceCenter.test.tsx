@@ -17,6 +17,14 @@ afterEach(() => {
 });
 
 describe("Device Center security state", () => {
+  it("shows password devices without offering a pairing QR", async () => {
+    const client = clientFixture({ getAuthMode: vi.fn().mockResolvedValue("password") });
+    render(<DeviceCenter deviceAuth={client} />);
+    await screen.findByRole("list", { name: "Signed-in devices" });
+    expect(screen.queryByRole("button", { name: "Pair another device" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Sign out" })).toBeTruthy();
+  });
+
   it("removes an in-memory pairing QR when its server expiry arrives", async () => {
     const client = clientFixture({
       rotatePairingTicket: vi.fn(() =>
@@ -83,6 +91,7 @@ describe("Device Center security state", () => {
 
 function clientFixture(
   overrides: Partial<{
+    getAuthMode: DeviceAuthClient["getAuthMode"];
     rotatePairingTicket: DeviceAuthClient["rotatePairingTicket"];
     revokeDevice: DeviceAuthClient["revokeDevice"];
   }> = {},
@@ -95,6 +104,7 @@ function clientFixture(
     isCurrent: false,
   } as unknown as DeviceInfo;
   return {
+    getAuthMode: overrides.getAuthMode ?? vi.fn(() => Promise.resolve("pairing")),
     listDevices: vi.fn(() => Promise.resolve({ devices: [device], nextPageToken: "" })),
     getCurrentSession: vi.fn(() => Promise.resolve({ device })),
     rotatePairingTicket:
