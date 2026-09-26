@@ -33,4 +33,6 @@ IPC 使用 `GreenfieldChildEnvelope` v1，4 字节大端长度 + Protobuf，单 
 
 另修复仅 DPR 改变时的 scene 更新：`record.pixelRatio` 是请求值，`record.scenePixelRatio` 是已应用值；不同则重投影、提升 window revision、强制完整帧并发布新 DPR。DPR1→2 的真实 UI 链路仍须在 A03 E2E 验证。
 
-已验证 `pnpm --filter @workos/greenfield-child build`、`tsc --noEmit`、child ESLint 和 5 个 IPC/序号单测，Prettier 与 `git diff --check` 通过。全仓 `make check` 的 Proto、Go vet/test 阶段通过；Web 阶段曾在 pnpm 的非 TTY `install --production` 自动清理提示处终止，需由集成基线重跑。其他 native app、DPR 真实 viewer 链路、真实 Code 输入到 viewer 像素 p95、内存/CPU/GPU、Mac E2E 仍是未决门禁。契约已合并，不因 child 单独可运行把 P0 标为 done。
+独立诊断镜像 `workos-greenfield-child:dpr-probe`（`sha256:a179a5a210bf2f8bfc251d85899b0f67141b7503c76cd1576b7dd7f9c41c65af`）上的真实 Code 子进程 probe 使用隔离、无网络、只读 root 的 child 及私有 UDS broker。broker 在首次完整原生帧后发送只改变 DPR 为 2000 的 `GreenfieldWindowResize`。输入 ACK 为 `APPLIED`，同一窗口 revision 从 3 增至 7，snapshot 报告 DPR 2000，随后收到 3152×2064 的完整刷新帧（35 tiles）；初始完整帧为 1512×968：[结构化结果](evidence/20260926-greenfield-resident-child/code-dpr2-window.json)。原生 Code 在 configure 后略微调整了逻辑窗口尺寸，因此物理帧并非初始尺寸的精确 2 倍。这证明 child 的输入→原生重配置→逐窗口场景→帧 IPC 链路；浏览器 viewer 绘制仍需 A03 端到端验证。probe 用的 `workos-gf-dpr-child` 和 `workos-gf-dpr-broker` 诊断容器已停止并删除，正式 `:dev` 镜像未被覆盖。
+
+已验证 `pnpm --filter @workos/greenfield-child build`、`tsc --noEmit`、child ESLint 和 5 个 IPC/序号单测，Prettier 与 `git diff --check` 通过。全仓 `make check` 的 Proto、Go vet/test 阶段通过；Web 阶段曾在 pnpm 的非 TTY `install --production` 自动清理提示处终止，需由集成基线重跑。其他 native app、DPR 真实 viewer 链路、真实 Code 输入到 viewer 像素 p95、内存/CPU/GPU、两种 Chromium profile 的端到端测试仍是 P0 未决门禁；物理设备另行验证。契约已合并，不因 child 单独可运行把 P0 标为 done。
