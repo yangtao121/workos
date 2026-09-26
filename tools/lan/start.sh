@@ -147,8 +147,8 @@ else
         echo 'start.sh: cached Greenfield source checksum failed' >&2
         exit 1
     }
-    # Build both stages from this checkout so a clean host cannot silently
-    # reuse an older local base image under the same tag.
+    # Build pinned images from this checkout so a clean host cannot silently
+    # reuse older local images under the same tags.
     docker build --build-context "greenfield-source=$greenfield_source" \
         -t workos-greenfield-runtime:p0 -f "$repo/deploy/greenfield-runtime.Dockerfile" "$repo"
     docker build -t workos-greenfield-child:dev -f "$repo/deploy/greenfield-child.Dockerfile" "$repo"

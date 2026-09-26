@@ -29,6 +29,10 @@ workload 标为 Code 运行中。旧布局中的 `kind: "code"` 仍可恢复为�
 证明入口路由；真实 Code/Terminal/Editor 剪贴板、持久性与多浏览器验收仍以独立 LAN 浏览器
 门禁为准。
 
+LAN resident Compose 为 Terminal 配置 `/bin/bash` 与 Runtime 监督的 Docker workspace
+执行镜像。`start.sh up` 从本仓库构建该镜像，再启动六进程栈；PTY 子容器与 Code/Mousepad
+子容器分别运行，不扩展可信进程或公开端口。
+
 ## 进程所有权
 
 | 进程             | 当前所有权                                                                                                                                             | 不拥有                     |
