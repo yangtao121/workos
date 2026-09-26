@@ -334,6 +334,23 @@ func (e *Engine) ReapResident(ctx context.Context, spec ports.ResidentLaunch) er
 	}
 	checked := spec
 	checked.Session = identity
+	// The child identity is durable but the original workspace grant is not.
+	// For deletion only, derive the mount descriptor from this exact pinned
+	// container's inspect result, then verify the complete allowed profile.
+	// Adoption still uses a fresh Core grant and does not take this path.
+	if checked.Workspace.Directory == "" {
+		for _, mount := range child.Mounts {
+			if mount.Destination != "/workspace" {
+				continue
+			}
+			if mount.Type != "bind" || !filepath.IsAbs(mount.Source) || filepath.Clean(mount.Source) != mount.Source || mount.Source == "/" ||
+				checked.Workspace.Directory != "" {
+				return domain.ErrEngineUnavailable
+			}
+			checked.Workspace.Directory = mount.Source
+			checked.Workspace.ReadOnly = !mount.RW
+		}
+	}
 	if err := e.verifyChildProfile(checked, cleanIPCDir(e.config.IPCRoot, identity), imageID, child, false); err != nil {
 		return err
 	}

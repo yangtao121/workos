@@ -356,11 +356,10 @@ func (s *Service) reapExact(ctx context.Context, session domain.Session) error {
 			return err
 		}
 	} else if engine, ok := s.engine.(ports.ResidentEngine); ok {
-		grant, err := s.workspaceGrant(ctx, session.OwnerUserID, session.ProjectID)
-		if err != nil {
-			return domain.ErrEngineUnavailable
-		}
-		if err := engine.ReapResident(ctx, ports.ResidentLaunch{Session: session, Workspace: grant}); err != nil {
+		// Cleanup is authority over an exact child identity, not a new launch.
+		// It must remain possible when Core has revoked the workspace or is
+		// temporarily unavailable after a Runtime restart.
+		if err := engine.ReapResident(ctx, ports.ResidentLaunch{Session: session}); err != nil {
 			return err
 		}
 	}

@@ -129,6 +129,12 @@ type residentTestEngine struct {
 	reaped  int
 }
 
+type unavailableWorkspaceGrant struct{}
+
+func (unavailableWorkspaceGrant) AuthorizeWorkspace(context.Context, string, string) (ports.WorkspaceGrant, error) {
+	return ports.WorkspaceGrant{}, errors.New("core unavailable")
+}
+
 func (e *residentTestEngine) LaunchResident(_ context.Context, spec ports.ResidentLaunch) (ports.Display, error) {
 	d := &residentTestDisplay{identity: ports.ChildIdentity{ContainerID: spec.Session.SessionID + ":" + string(rune('0'+spec.Session.Generation)), ImageID: "sha256:test", Generation: spec.Session.Generation}}
 	e.created = append(e.created, d)
@@ -192,6 +198,37 @@ func TestResidentRestartStopExactReapAndReplay(t *testing.T) {
 	newChild := engine.created[2]
 	if _, err := service.Stop(ctx, testOwner, session.SessionID, "stop-1", nil); err != nil || newChild.stopCalls != 0 {
 		t.Fatalf("old stop replay touched generation 3: %v calls=%d", err, newChild.stopCalls)
+	}
+}
+
+func TestResidentStopAfterHostRestartDoesNotNeedCoreGrant(t *testing.T) {
+	ctx := context.Background()
+	store := newResidentMemoryStore()
+	engine := &residentTestEngine{fakeEngine: &fakeEngine{}}
+	service, err := NewService(store, engine, &seqGenerator{}, slog.Default())
+	if err != nil {
+		t.Fatal(err)
+	}
+	stopTarget, err := service.Create(ctx, testOwner, testProject, "offline-stop", 800, 600, domain.LifecycleManualStop)
+	if err != nil {
+		t.Fatal(err)
+	}
+	restartTarget, err := service.Create(ctx, testOwner, testProject, "offline-restart", 800, 600, domain.LifecycleManualStop)
+	if err != nil {
+		t.Fatal(err)
+	}
+	service.Shutdown() // no in-process display; durable child identity remains
+	service.WithWorkspaceAuthorization(unavailableWorkspaceGrant{})
+	closed, err := service.Stop(ctx, testOwner, stopTarget.SessionID, "stop-with-core-down", nil)
+	if err != nil || closed.State != domain.StateClosed || engine.reaped != 1 {
+		t.Fatalf("stop of pinned child during Core outage: %v %+v reaped=%d", err, closed, engine.reaped)
+	}
+	if _, err := service.Restart(ctx, testOwner, restartTarget.SessionID, "restart-with-core-down", nil, domain.LifecycleManualStop); err == nil {
+		t.Fatal("restart launched without current Core workspace authorization")
+	}
+	current, err := store.GetSession(ctx, testOwner, restartTarget.SessionID)
+	if err != nil || current.Generation != 1 || current.State != domain.StateRunning || engine.reaped != 1 {
+		t.Fatalf("unavailable restart mutated the live child: %v %+v reaped=%d", err, current, engine.reaped)
 	}
 }
 

@@ -2,7 +2,9 @@ package resident
 
 import (
 	"context"
+	"errors"
 	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -72,6 +74,68 @@ func TestDockerProfileRealInspect(t *testing.T) {
 	withHiddenMount.Mounts[1].Source = "/var/run/docker.sock"
 	if err := e.verifyChildProfile(spec, dir, imageID, withHiddenMount, false); err == nil {
 		t.Fatal("adoption accepted an extra mount to an allowed destination")
+	}
+}
+
+func TestReapResidentExactIDWithoutWorkspaceGrant(t *testing.T) {
+	shared := os.Getenv("WORKOS_REAL_SHARED_ROOT")
+	if os.Getenv("WORKOS_REAL_DOCKER_REAP_TEST") != "1" || shared == "" {
+		t.Skip("set WORKOS_REAL_DOCKER_REAP_TEST=1 and a same-path Docker shared root")
+	}
+	image := os.Getenv("WORKOS_REAL_DOCKER_PROFILE_IMAGE")
+	if image == "" {
+		image = "workos-greenfield-runtime:p0"
+	}
+	root, err := os.MkdirTemp(shared, "resident-reap-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(root)
+	if err := os.Chmod(root, 0700); err != nil {
+		t.Fatal(err)
+	}
+	workspace := filepath.Join(root, "workspace")
+	if err := os.Mkdir(workspace, 0755); err != nil {
+		t.Fatal(err)
+	}
+	e := New(Config{DockerSocket: "/var/run/docker.sock", Image: image, IPCRoot: root,
+		RenderDevice: "/dev/dri/renderD128", RenderGID: os.Getenv("WORKOS_REAL_RENDER_GID"), GPUDriver: "nvidia"})
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	session := domain.Session{SessionID: ids.UUIDv7{}.New(), OwnerUserID: ids.UUIDv7{}.New(), ProjectID: ids.UUIDv7{}.New(),
+		Generation: 3, State: domain.StateRunning, Width: 800, Height: 600}
+	grant := ports.WorkspaceGrant{Directory: workspace, ReadOnly: true}
+	ipc := cleanIPCDir(root, session)
+	if err := os.Mkdir(ipc, 0700); err != nil {
+		t.Fatal(err)
+	}
+	id, err := e.docker.create(ctx, childName(session), e.childConfig(ports.ResidentLaunch{Session: session, Workspace: grant}, ipc))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		cleanup, done := context.WithTimeout(context.Background(), 10*time.Second)
+		defer done()
+		_ = e.docker.remove(cleanup, id)
+	}()
+	imageID, err := e.docker.imageID(ctx, image)
+	if err != nil {
+		t.Fatal(err)
+	}
+	session.ChildContainerID, session.ChildImageID, session.ChildGeneration = id, imageID, session.Generation
+	wrongOwner := session
+	wrongOwner.OwnerUserID = ids.UUIDv7{}.New()
+	if err := e.ReapResident(ctx, ports.ResidentLaunch{Session: wrongOwner}); err == nil {
+		t.Fatal("foreign owner deleted pinned child")
+	}
+	if _, err := e.docker.inspect(ctx, id); err != nil {
+		t.Fatalf("foreign-owner refusal removed child: %v", err)
+	}
+	if err := e.ReapResident(ctx, ports.ResidentLaunch{Session: session}); err != nil {
+		t.Fatalf("pinned-ID cleanup without Core workspace grant: %v", err)
+	}
+	if _, err := e.docker.inspect(ctx, id); !errors.Is(err, domain.ErrResidentChildNotFound) {
+		t.Fatalf("exact pinned child still exists: %v", err)
 	}
 }
 
