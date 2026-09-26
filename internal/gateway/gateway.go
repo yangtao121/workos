@@ -120,6 +120,10 @@ var runtimeServicePrefixes = []string{
 	// attach/detach, single-controller takeover, and stop of the owner's
 	// running interactive workloads.
 	"/workos.surface.v1.SurfaceContinuityService/",
+	// Resident Greenfield window snapshots, media and controller input (ADR-0040).
+	// Runtime rechecks the exact attachment and control generation; Gateway
+	// also revalidates the device session throughout both media streams.
+	"/workos.surface.v1.GreenfieldWindowService/",
 	// Workspace dev previews (ADR-0030 B08): owner-identity gated bounded
 	// read-only serving of the operator-registered project workspaces.
 	"/workos.surface.v1.WorkspacePreviewService/",
@@ -152,6 +156,15 @@ const previewAssetPrefix = "/previews/"
 // a stream authorized at handshake must terminate in bounded time after
 // its session is revoked (ADR-0014).
 const notificationWatchPath = "/workos.notification.v1.NotificationService/WatchNotificationEvents"
+
+const (
+	greenfieldWindowsWatchPath = "/workos.surface.v1.GreenfieldWindowService/WatchGreenfieldWindows"
+	greenfieldFramesWatchPath  = "/workos.surface.v1.GreenfieldWindowService/WatchGreenfieldWindowFrames"
+)
+
+func greenfieldMediaStreamPath(path string) bool {
+	return path == greenfieldWindowsWatchPath || path == greenfieldFramesWatchPath
+}
 
 func revalidatedStreamPath(path string) bool {
 	switch path {
@@ -418,6 +431,10 @@ func (h *Handler) serveProduction(w http.ResponseWriter, r *http.Request) {
 		if !ok {
 			return
 		}
+		if greenfieldMediaStreamPath(path) {
+			h.serveStreamWithRevalidationPolicy(w, r, identity, h.runtime, true)
+			return
+		}
 		h.runtime.ServeHTTP(w, r.WithContext(identity))
 		return
 	case isSessionGatedAssetPath(path):
@@ -564,6 +581,13 @@ func isUnsafeMethod(method string) bool {
 // stream alive — the Core handler's bounded lifetime and the next
 // reconnect through this gate are the remaining bounds.
 func (h *Handler) serveStreamWithRevalidation(w http.ResponseWriter, r *http.Request, identity context.Context, proxy *httputil.ReverseProxy) {
+	h.serveStreamWithRevalidationPolicy(w, r, identity, proxy, false)
+}
+
+// Resident native media has no inherent stream TTL. A failed auth-store
+// recheck must close it, while older bounded streams retain their established
+// behavior on transient store errors.
+func (h *Handler) serveStreamWithRevalidationPolicy(w http.ResponseWriter, r *http.Request, identity context.Context, proxy *httputil.ReverseProxy, failClosed bool) {
 	cookie, err := r.Cookie(authtransport.SessionCookieName)
 	if err != nil || cookie.Value == "" {
 		http.Error(w, "device session required", http.StatusUnauthorized)
@@ -588,7 +612,7 @@ func (h *Handler) serveStreamWithRevalidation(w http.ResponseWriter, r *http.Req
 				}
 				revalidateCancel()
 				if err != nil {
-					if errors.Is(err, domain.ErrAuthenticationFailed) {
+					if failClosed || errors.Is(err, domain.ErrAuthenticationFailed) {
 						cancel()
 						return
 					}

@@ -569,6 +569,13 @@ Desktop 回到密码表单。DeviceService 列表、撤销与退出仍按当前 
 授权。登录尝试有来源与全局限流，以及有界 Argon2id 并发。Gateway 的 Native WebSocket
 升级检查精确 Origin，并在连接期间定期重验设备会话，撤销后关闭连接。
 
+ADR-0040 的 resident Greenfield 窗口服务经 Gateway 单独 allowlist 转发到 Runtime。
+两个长期媒体 Watch 在开始时校验设备会话，运行中每 30 秒重验；撤销、过期或
+Gateway auth store 故障均终止媒体流。Runtime 仍须按 live attachment 和 workload
+generation 至少每秒重验，写入须逐事件核对控制代次。原始 `/native/greenfield/`
+代理只留给回环诊断，生产 Gateway 不路由该路径。实现与真实 Code 链路验收见
+[P0 集成任务](../tasks/20260926-lan-p0-integration.md)。
+
 `tools/lan/start.sh` 启动持久本地 CA 与含选定 IPv4 SAN 的 TLS leaf，Gateway 在该 IP 的
 8443 端口服务标准 Chromium；客户端只导入 `ca.crt`，CA 私钥不进入容器。PostgreSQL 和
 OTLP 只监听回环，旧的免认证 LAN HTTP 配置已移除。入口脚本的 CA/TLS/端口测试通过，
