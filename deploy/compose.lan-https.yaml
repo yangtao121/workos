@@ -1,0 +1,22 @@
+# LAN entry: one HTTPS Gateway bound to the selected host IPv4 address.
+# Use tools/lan/start.sh so the cert path, container UID and public origin agree.
+services:
+  workos-gateway:
+    # The leaf key stays mode 0600 on the host. Running only this process as
+    # the host operator lets it read that key without making it world-readable.
+    user: "${WORKOS_LAN_UID:?run tools/lan/start.sh}:${WORKOS_LAN_GID:?run tools/lan/start.sh}"
+    environment:
+      WORKOS_HTTP_ADDRESS: "${WORKOS_LAN_IP:?run tools/lan/start.sh}:8443"
+      WORKOS_HTTP_TLS_CERT_FILE: /run/workos/tls/leaf.crt
+      WORKOS_HTTP_TLS_KEY_FILE: /run/workos/tls/leaf.key
+      WORKOS_AUTH_PUBLIC_ORIGIN: "https://${WORKOS_LAN_IP:?run tools/lan/start.sh}:8443"
+      WORKOS_AUTH_MODE: password
+      WORKOS_AUTH_ADMIN_SOCKET: /run/workos/gateway-admin/gateway-admin.sock
+      WORKOS_DEV_AUTH_BYPASS: "false"
+    volumes:
+      # The CA key and even the CA certificate are intentionally absent from
+      # the Gateway container. Clients import ca.crt from the host once.
+      - "${WORKOS_LAN_TLS_DIR:?run tools/lan/start.sh}/leaf.crt:/run/workos/tls/leaf.crt:ro"
+      - "${WORKOS_LAN_TLS_DIR:?run tools/lan/start.sh}/leaf.key:/run/workos/tls/leaf.key:ro"
+    tmpfs:
+      - "/run/workos/gateway-admin:uid=${WORKOS_LAN_UID:?run tools/lan/start.sh},gid=${WORKOS_LAN_GID:?run tools/lan/start.sh},mode=0700"

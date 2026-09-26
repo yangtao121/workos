@@ -29,6 +29,9 @@ services:
   postgres:
     image: pgvector/pgvector:pg18
     network_mode: host
+    # Host networking is required by this development stack. PostgreSQL must
+    # still stay on loopback even when Gateway exposes the LAN HTTPS entry.
+    command: ["postgres", "-c", "listen_addresses=127.0.0.1"]
     environment:
       POSTGRES_USER: workos
       POSTGRES_PASSWORD: workos

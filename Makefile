@@ -23,7 +23,7 @@ NODE_RUN := docker run --rm $(USER_FLAGS) -e COREPACK_NPM_REGISTRY=$(NPM_REGISTR
 BUF_RUN := docker run --rm $(USER_FLAGS) $(MOUNT) $(BUF_IMAGE)
 SQLC_RUN := docker run --rm $(USER_FLAGS) -v $(CURDIR):/src -w /src $(SQLC_IMAGE)
 
-.PHONY: bootstrap generate docs check check-native proto-check go-check web-check test-semantic-knowledge test-workspace-indexing test-push-relay test-mobile-wrappers test-mdns-discovery test-desktop-system-apps capture-desktop-system-apps test test-integration test-credential-vault-expansion test-codex-harness test-mcp-harness test-artifact-context test-deepseek-fixture test-deepseek-structured-review test-credential-vault e2e-image test-e2e test-adaptive-shell test-app-version-rollback test-podman-fixture test-lan-pairing test-project-knowledge-search test-app-knowledge-search test-project-knowledge-rebuild test-notification-center test-incident-notifications test-app-notifications capture-notification-visual capture-artifact-context-visual capture-lan-pairing-visual capture-provider-catalog build web-build scaffold-module dev dev-lan down logs clean
+.PHONY: bootstrap generate docs check check-native proto-check go-check web-check test-semantic-knowledge test-workspace-indexing test-push-relay test-mobile-wrappers test-mdns-discovery test-desktop-system-apps capture-desktop-system-apps test test-integration test-credential-vault-expansion test-codex-harness test-mcp-harness test-artifact-context test-deepseek-fixture test-deepseek-structured-review test-credential-vault e2e-image test-e2e test-adaptive-shell test-app-version-rollback test-podman-fixture test-lan-pairing test-lan-https test-project-knowledge-search test-app-knowledge-search test-project-knowledge-rebuild test-notification-center test-incident-notifications test-app-notifications capture-notification-visual capture-artifact-context-visual capture-lan-pairing-visual capture-provider-catalog build web-build scaffold-module dev dev-lan lan-https down logs clean
 
 bootstrap:
 	@docker version >/dev/null
@@ -1035,11 +1035,16 @@ scaffold-module:
 dev:
 	docker compose up -d --build
 
-# Dev-bypass gateway exposed on all interfaces over plain HTTP with no
-# authentication (deploy/compose.dev-lan.yaml) for debugging from other
-# devices on a trusted development LAN.
-dev-lan:
-	docker compose -f compose.yaml -f deploy/compose.dev-lan.yaml up -d --build
+# The LAN entry generates a persistent host CA, serves only HTTPS on the
+# selected LAN IP, and requires the Gateway's owner-password mode.
+lan-https:
+	sh tools/lan/start.sh
+
+# Keep the old command name safe for operators who used it before HTTPS.
+dev-lan: lan-https
+
+test-lan-https:
+	sh tools/lan/test.sh
 
 down:
 	docker compose down

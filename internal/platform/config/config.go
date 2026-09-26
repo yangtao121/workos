@@ -189,12 +189,6 @@ type Auth struct {
 	// Production device identities are minted by the Gateway device auth
 	// service; this value is never used when DevBypass is false.
 	DeviceID string `yaml:"device_id"`
-	// DevBypassAllowLAN opts the development auth bypass into a non-loopback
-	// bind over plain HTTP, for debugging from other devices on a trusted
-	// development LAN. Everyone on that LAN then holds the fixed owner
-	// identity with no authentication and cleartext traffic. It never relaxes
-	// the production (DevBypass=false) validation rules.
-	DevBypassAllowLAN bool `yaml:"dev_bypass_allow_lan"`
 	// PublicOrigin is the canonical https origin users and devices trust
 	// (production mode): scheme https, no userinfo, no path/query/fragment.
 	PublicOrigin string `yaml:"public_origin"`
@@ -556,13 +550,6 @@ func Load() (Config, error) {
 		}
 		cfg.Auth.DevBypass = value
 	}
-	if raw, ok := os.LookupEnv("WORKOS_DEV_AUTH_BYPASS_ALLOW_LAN"); ok {
-		value, err := strconv.ParseBool(raw)
-		if err != nil {
-			return Config{}, fmt.Errorf("parse WORKOS_DEV_AUTH_BYPASS_ALLOW_LAN: %w", err)
-		}
-		cfg.Auth.DevBypassAllowLAN = value
-	}
 	return cfg, nil
 }
 
@@ -620,14 +607,9 @@ func (c Config) ValidateGateway() error {
 	if err != nil {
 		return fmt.Errorf("invalid HTTP address: %w", err)
 	}
-	// lanDevBypass is the explicit unauthenticated LAN development exception:
-	// DevBypass plus DevBypassAllowLAN on a non-loopback bind. It is the only
-	// path that may skip the loopback bypass rule and the TLS requirement;
-	// production validation below is never relaxed by it.
-	lanDevBypass := c.Auth.DevBypass && c.Auth.DevBypassAllowLAN && !isLoopback(host)
 	if c.Auth.DevBypass {
-		if !isLoopback(host) && !lanDevBypass {
-			return errors.New("development auth bypass requires a loopback bind address (WORKOS_DEV_AUTH_BYPASS_ALLOW_LAN opts into unauthenticated exposure on a trusted development LAN)")
+		if !isLoopback(host) {
+			return errors.New("development auth bypass requires a loopback bind address")
 		}
 		if c.Auth.OwnerID == "" || c.Auth.DeviceID == "" {
 			return errors.New("owner and device identity are required")
@@ -635,7 +617,7 @@ func (c Config) ValidateGateway() error {
 	} else if err := c.validateGatewayProduction(); err != nil {
 		return err
 	}
-	if !isLoopback(host) && !lanDevBypass && (c.HTTP.TLSCertFile == "" || c.HTTP.TLSKeyFile == "") {
+	if !isLoopback(host) && (c.HTTP.TLSCertFile == "" || c.HTTP.TLSKeyFile == "") {
 		return errors.New("non-loopback gateway requires TLS certificate and key")
 	}
 	if !validUpstreamURL(c.Services.Core) {

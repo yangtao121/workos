@@ -76,9 +76,10 @@ make dev
 ```
 
 打开 <http://127.0.0.1:8080>。开发模式默认仅绑定 loopback，并注入固定的 owner/device
-身份；它不能用于局域网部署。开发调试阶段如需让局域网设备免认证访问，运行
-`make dev-lan`（见 `deploy/compose.dev-lan.yaml`，开启
-`WORKOS_DEV_AUTH_BYPASS_ALLOW_LAN`，仅限可信开发局域网）。
+身份；它不能用于局域网部署。局域网使用 `./tools/lan/start.sh`（或 `make lan-https`），
+首次启动后运行 `./tools/lan/start.sh set-password`。入口为 `https://192.168.5.5:8443/`，
+IP 可用 `WORKOS_LAN_IP` 覆盖；其他设备首次信任主机生成的 CA。`make dev-lan` 现为同一
+HTTPS 入口。证书和信任步骤见[部署说明](deploy/README.md#lan-https-with-owner-password)。
 
 常用命令：
 

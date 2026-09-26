@@ -1,8 +1,8 @@
 # Deployment boundary
 
-The foundation is intentionally safe only on a single Linux host. With `WORKOS_DEV_AUTH_BYPASS=true` (loopback only, fixed configured identity, no cookies) it must never leave the machine; bypass on a non-loopback bind is rejected at startup.
+The default development stack is intentionally safe only on a single Linux host. With `WORKOS_DEV_AUTH_BYPASS=true` (loopback only, fixed configured identity, no cookies) it must never leave the machine; bypass on a non-loopback bind is rejected at startup. Use the password-protected LAN HTTPS entry below for another device.
 
-Production device authentication (ADR-0007) lets a trusted LAN client pair over an operator-shown QR and sign proofs with a browser profile key. It has real boundaries: the operator provides a trusted TLS certificate (no ACME, no automatic issuance), the browser still relies on its platform trust store (the pairing fingerprint is a human check, not native pinning), and mDNS discovery, mobile-native key storage, and public-internet exposure remain out of scope.
+The legacy device-pairing profile (ADR-0007) lets a trusted LAN client pair over an operator-shown QR and sign proofs with a browser profile key. It has real boundaries: the operator provides a trusted TLS certificate (no ACME, no automatic issuance for that profile), the browser still relies on its platform trust store (the pairing fingerprint is a human check, not native pinning), and mDNS discovery, mobile-native key storage, and public-internet exposure remain out of scope.
 
 ## Containers
 
@@ -53,6 +53,32 @@ docker compose -f compose.yaml -f deploy/compose.observability.yaml up -d
 ```
 
 The included collector logs spans through its debug exporter. Replace that exporter in a deployment-specific file; services only need `OTEL_EXPORTER_OTLP_ENDPOINT`.
+
+## LAN HTTPS with owner password
+
+The LAN entry runs the same six WorkOS processes but binds only Gateway to the selected LAN IPv4 address on port 8443. It uses `WORKOS_AUTH_MODE=password` and never enables the development bypass. PostgreSQL and the optional OTLP collector listen on `127.0.0.1`; every other WorkOS HTTP listener remains on loopback. The former `make dev-lan` command now starts this secure entry too.
+
+On the Linux host, run:
+
+```bash
+./tools/lan/start.sh
+./tools/lan/start.sh set-password
+```
+
+The first command builds and starts the stack, including the loopback-only telemetry collector, verifies a CA-trusted HTTPS response, and prints the URL and CA path. The second command prompts for the owner username and password in the terminal through `workosctl auth set-password`; it never puts them in an environment variable or command argument. There is no default password, and login fails until one is set. Later starts reuse the password and do not prompt or rotate it. Run the second command again only to change the credentials. `make lan-https` is equivalent to the first command; GNU Make is optional.
+
+The default URL is `https://192.168.5.5:8443/`. If the host has a different LAN IPv4 address, use the same override for later commands:
+
+```bash
+WORKOS_LAN_IP=192.168.5.42 ./tools/lan/start.sh
+WORKOS_LAN_IP=192.168.5.42 ./tools/lan/start.sh set-password
+```
+
+The host keeps `ca.key` and `ca.crt` in `.workos/lan-tls/`, which is ignored by Git and mode 0700. The CA key and Gateway leaf key are mode 0600; the Gateway container runs as the invoking host UID and mounts only `leaf.crt` and `leaf.key`, read-only. Keep `ca.key` on the host and back it up securely if clients must retain their trust across a host rebuild. `WORKOS_LAN_TLS_DIR` selects another persistent host directory. The CA lasts five years and is never silently replaced. The IP SAN leaf lasts 90 days; each start renews it when fewer than 14 days remain or the selected IP changes. `./tools/lan/start.sh renew-leaf` rotates it immediately and restarts only Gateway.
+
+Each client must trust **the CA certificate**, never the CA private key, once. Transfer `ca.crt` over a trusted channel and compare its SHA-256 fingerprint with the one printed on the host. On macOS, import the certificate into Keychain Access, open it, set Trust to **Always Trust**, then reopen Chrome or Edge. On another OS, import it into that user's trusted root certificate store and reopen the browser. The browser URL must use the IP in the certificate SAN. No browser extension, insecure-origin flag, or client certificate is required. If Chrome or Edge still shows a certificate error, correct the IP or trust installation before entering the password; do not bypass the warning.
+
+For a command-line trust check, run `curl --cacert .workos/lan-tls/ca.crt https://192.168.5.5:8443/` on the host, or use the transferred `ca.crt` on a second device. A 401/login response still proves the TLS chain and address match. The trust anchor is local to this WorkOS host; it is not a public CA or an Internet deployment. `sh tools/lan/test.sh` validates CA persistence, leaf renewal, permissions, SAN and Compose exposure without starting the stack.
 
 ## Production LAN pairing (ADR-0007)
 
