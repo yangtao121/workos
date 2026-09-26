@@ -167,15 +167,49 @@ async function readyNativeWindow(page: Page, workload: Workload): Promise<Locato
   return window;
 }
 
+async function editorInkPixels(window: Locator): Promise<number> {
+  return window.getByTestId("greenfield-window-canvas").evaluate((node) => {
+    const canvas = node as HTMLCanvasElement;
+    const context = canvas.getContext("2d", { willReadFrequently: true });
+    if (!context) throw new Error("Mousepad canvas is unavailable");
+    // The blank document starts below the native title/menu bars. This area
+    // contains only a caret before paste; it gains many dark glyph pixels
+    // when Mousepad actually inserts the text.
+    const left = 40;
+    const top = 90;
+    const right = Math.min(canvas.width, 500);
+    const bottom = Math.min(canvas.height, 230);
+    if (right <= left || bottom <= top) throw new Error("Mousepad document area is too small");
+    const data = context.getImageData(left, top, right - left, bottom - top).data;
+    let ink = 0;
+    for (let index = 0; index < data.length; index += 4) {
+      if (
+        (data[index] ?? 255) < 170 &&
+        (data[index + 1] ?? 255) < 170 &&
+        (data[index + 2] ?? 255) < 170
+      )
+        ink++;
+    }
+    return ink;
+  });
+}
+
 async function editorClipboard(page: Page, window: Locator): Promise<number> {
   const text = `WorkOS editor ${randomUUID()}\n中文\t🙂 café\nsecond line\t終わり`;
   await window.getByTestId("greenfield-window-canvas").click({ position: { x: 250, y: 180 } });
   await expect(window.getByLabel("原生窗口输入")).toBeFocused();
+  const blankInk = await editorInkPixels(window);
   await page.evaluate(async (value) => navigator.clipboard.writeText(value), text);
   await window.getByRole("button", { name: "粘贴到应用" }).click();
   await expect(window.locator(".greenfield-window-actions [role='status']")).toContainText(
     "已向原生应用发送粘贴指令",
   );
+  await expect
+    .poll(async () => (await editorInkPixels(window)) - blankInk, {
+      message: "Mousepad must render inserted text in its real document pixels",
+      timeout: 15_000,
+    })
+    .toBeGreaterThan(100);
   await page.evaluate(
     async (value) => navigator.clipboard.writeText(value),
     `copy-sentinel-${randomUUID()}`,
