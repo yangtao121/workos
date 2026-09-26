@@ -139,3 +139,25 @@ func TestBrokerNativeCloseOnlyTargetsCurrentTransient(t *testing.T) {
 		t.Fatalf("stopped generation should not accept close: %v", err)
 	}
 }
+
+func TestResidentApplicationTerminalStateRequiresExactSnapshot(t *testing.T) {
+	b := frameTestBroker(t)
+	d := &display{broker: b}
+	if got := d.TerminalState(); got != domain.StateFailed {
+		t.Fatalf("running snapshot cannot certify clean exit: %s", got)
+	}
+	terminal := &surfacev1.GreenfieldWindowSnapshot{
+		SessionId: frameTestSession, WorkloadGeneration: 2, Revision: 2,
+		State: surfacev1.GreenfieldDisplayState_GREENFIELD_DISPLAY_STATE_STOPPED,
+	}
+	if err := b.acceptSnapshot(terminal); !errors.Is(err, domain.ErrEngineUnavailable) {
+		t.Fatalf("terminal snapshot should stop input: %v", err)
+	}
+	if got := d.TerminalState(); got != domain.StateClosed {
+		t.Fatalf("clean app exit must close workload: %s", got)
+	}
+	b.snapshot = nil
+	if got := d.TerminalState(); got != domain.StateFailed {
+		t.Fatalf("lost child without terminal snapshot must fail: %s", got)
+	}
+}

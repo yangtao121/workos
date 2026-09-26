@@ -12,4 +12,10 @@ Within the Core workload's one z-order slot, each native top level and its trans
 
 A projected child with a current `parent_window_id` has a separate title-bar Close path under [ADR-0041](../decisions/0041-native-transient-window-close.md). Desktop sends a sequenced `GreenfieldWindowClose` through the same controller input client and keeps the child visible until Runtime's complete snapshot removes its ID. Runtime checks that the window and its parent are still present under the current workload generation; the resident child resolves the exact current client/surface and asks only that top-level role to close. A controller or connection failure, or a child that stays visible after the request, produces an explicit error. A parentless top-level still closes the Core anchor and never sends a native close request.
 
+When the application itself exits, the resident child publishes an empty
+STOPPED or FAILED snapshot for the exact generation. Projection removes the
+native windows and disables the old attachment. Home's App sessions section
+keeps recent terminal Native rows with their stopped/failed state and a
+Restart action; Open remains disabled for a terminal process.
+
 The deterministic fixture and unit tests prove client projection, frame assembly, sequence handling, and UI states. They do not prove real Code pixels, two-device observation, native focus, standard Chromium IME, browser clipboard permissions against the live HTTPS Gateway, or input-to-visible latency. Those remain P0 integration acceptance cases with Runtime and Gateway. A physical second device is a separate unverified scenario, not a macOS-specific P0 gate.

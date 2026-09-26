@@ -15,6 +15,7 @@ import (
 	"sync"
 	"time"
 
+	surfacev1 "github.com/yangtao121/workos/gen/go/workos/surface/v1"
 	"github.com/yangtao121/workos/internal/platform/ids"
 	"github.com/yangtao121/workos/internal/runtime/nativehost/domain"
 	"github.com/yangtao121/workos/internal/runtime/nativehost/ports"
@@ -396,6 +397,25 @@ func (d *display) Exited() bool {
 	return d.stopped || d.failed || d.broker.failed()
 }
 
+// TerminalState returns the exact child-reported application outcome. A lost
+// child or transport without a terminal snapshot remains a failure.
+func (d *display) TerminalState() domain.State {
+	d.broker.mu.Lock()
+	defer d.broker.mu.Unlock()
+	if d.broker.snapshot != nil &&
+		d.broker.snapshot.GetState() == surfacev1.GreenfieldDisplayState_GREENFIELD_DISPLAY_STATE_STOPPED {
+		return domain.StateClosed
+	}
+	return domain.StateFailed
+}
+
+func (d *display) hasTerminalSnapshot() bool {
+	d.broker.mu.Lock()
+	defer d.broker.mu.Unlock()
+	return d.broker.snapshot != nil &&
+		d.broker.snapshot.GetState() != surfacev1.GreenfieldDisplayState_GREENFIELD_DISPLAY_STATE_RUNNING
+}
+
 func (d *display) AroundInput(ctx context.Context, action func() error) error {
 	return d.broker.aroundInput(ctx, action)
 }
@@ -408,6 +428,7 @@ func (d *display) monitor() {
 	go func() {
 		ticker := time.NewTicker(time.Second)
 		defer ticker.Stop()
+		var absentSince time.Time
 		for range ticker.C {
 			d.mu.Lock()
 			stopped := d.stopped
@@ -415,16 +436,32 @@ func (d *display) monitor() {
 			if stopped {
 				return
 			}
+			if d.hasTerminalSnapshot() {
+				// The broker has already accepted an exact generation's
+				// terminal snapshot. Reconciliation will persist its state.
+				return
+			}
 			ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 			child, err := d.engine.docker.inspect(ctx, d.containerID)
 			cancel()
 			if errors.Is(err, domain.ErrResidentChildNotFound) || (err == nil && (!child.State.Running || child.State.OOMKilled || !sameChildIdentity(d.spec.Session, child))) {
+				if absentSince.IsZero() {
+					absentSince = time.Now()
+					continue
+				}
+				if time.Since(absentSince) < 2*time.Second {
+					continue
+				}
+				if d.hasTerminalSnapshot() {
+					return
+				}
 				d.mu.Lock()
 				d.failed = true
 				d.mu.Unlock()
 				d.broker.fail(domain.ErrEngineUnavailable)
 				return
 			}
+			absentSince = time.Time{}
 		}
 	}()
 }

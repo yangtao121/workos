@@ -96,13 +96,29 @@ func (s *Service) WithControlAuthorization(control ports.ControlAuthorizer) *Ser
 	return s
 }
 
-// ListProject returns the owner's non-terminal sessions of one project — the
-// surface continuity discovery view (ADR-0031).
+// ListProject returns active and recent terminal sessions for discovery and
+// Restart. Reconcile each active row so a dead child cannot remain running
+// until the periodic sweep.
 func (s *Service) ListProject(ctx context.Context, ownerUserID, projectID string) ([]domain.Session, error) {
+	s.opMu.Lock()
+	defer s.opMu.Unlock()
 	if !domain.ValidUUIDv7(ownerUserID) || !domain.ValidUUIDv7(projectID) {
 		return nil, domain.ErrInvalid
 	}
-	return s.store.ListProjectSessions(ctx, ownerUserID, projectID)
+	sessions, err := s.store.ListProjectSessions(ctx, ownerUserID, projectID)
+	if err != nil {
+		return nil, err
+	}
+	for index, session := range sessions {
+		if session.State.Terminal() {
+			continue
+		}
+		sessions[index], err = s.reconcile(ctx, session)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return sessions, nil
 }
 
 func requestDigest(projectID string, width, height int32, workingDirectory string, modes ...domain.LifecycleMode) string {
@@ -450,8 +466,13 @@ func (s *Service) reconcile(ctx context.Context, session domain.Session) (domain
 	state := session.State
 	if session.LifecycleMode.Expired(session.ExpiresAt, now) {
 		state = domain.StateClosed
-	} else if display == nil || display.Exited() {
+	} else if display == nil {
 		state = domain.StateFailed
+	} else if display.Exited() {
+		state = domain.StateFailed
+		if terminal, ok := display.(interface{ TerminalState() domain.State }); ok {
+			state = terminal.TerminalState()
+		}
 	}
 	if state == session.State {
 		return session, nil

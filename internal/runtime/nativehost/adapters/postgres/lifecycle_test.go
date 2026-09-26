@@ -83,3 +83,46 @@ func TestLifecyclePersistenceAndRestartReceipts(t *testing.T) {
 		t.Fatal("foreign owner resolved workload")
 	}
 }
+
+func TestProjectNativeDiscoveryKeepsAllLiveAndBoundsTerminalHistory(t *testing.T) {
+	r := lifecycleRepository(t)
+	ctx := context.Background()
+	generator := ids.UUIDv7{}
+	now := time.Now().UTC().Truncate(time.Microsecond)
+	owner, project := generator.New(), generator.New()
+	live := map[string]bool{}
+	for index := 0; index < 40; index++ {
+		row := domain.Session{
+			Application: domain.ApplicationCode, LifecycleMode: domain.LifecycleManualStop,
+			Generation: 1, SessionID: generator.New(), OwnerUserID: owner, ProjectID: project,
+			IdempotencyKey: generator.New(), RequestDigest: "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+			State: domain.StateQueued, Width: 800, Height: 600, CreatedAt: now, UpdatedAt: now,
+		}
+		if _, created, err := r.InsertSession(ctx, row); err != nil || !created {
+			t.Fatalf("insert session %d: %v %v", index, created, err)
+		}
+		if index < 20 {
+			live[row.SessionID] = true
+			if err := r.UpdateState(ctx, owner, row.SessionID, domain.StateRunning, now); err != nil {
+				t.Fatal(err)
+			}
+		} else if err := r.CloseSession(ctx, owner, row.SessionID, domain.StateClosed, now.Add(time.Duration(index)*time.Second)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	found, err := r.ListProjectSessions(ctx, owner, project)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(found) != 36 {
+		t.Fatalf("expected all 20 live and 16 recent terminal sessions, got %d", len(found))
+	}
+	for _, session := range found {
+		if session.State == domain.StateRunning {
+			delete(live, session.SessionID)
+		}
+	}
+	if len(live) != 0 {
+		t.Fatalf("project discovery dropped %d live sessions", len(live))
+	}
+}

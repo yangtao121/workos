@@ -269,3 +269,24 @@ diff --git a/types/render/SceneShader.d.ts b/types/render/SceneShader.d.ts
      updateViewData(view: View, renderState: RenderState): void;
      draw(): void;
  }
+diff --git a/dist/remote/RemoteAppLauncher.js b/dist/remote/RemoteAppLauncher.js
+--- a/dist/remote/RemoteAppLauncher.js
++++ b/dist/remote/RemoteAppLauncher.js
+@@ -125,7 +125,7 @@
+         this.terminated = true;
+         this.onStateChange('error');
+     }
+-    onAppTerminated(_exitState) {
++    onAppTerminated(exitState) {
+         if (this.terminated) {
+             throw new Error("BUG. Can't close, already terminated.");
+         }
+@@ -137,7 +137,7 @@
+             this.signalingWebSocket = undefined;
+         }
+         this.terminated = true;
+-        this.onStateChange('terminated');
++        this.onStateChange('terminated', exitState);
+     }
+     get state() {
+         if (this.terminated) {

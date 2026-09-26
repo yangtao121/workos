@@ -1,0 +1,13 @@
+{
+  "parentId": "01a0de0d-9a0c-7bcd-a135-76bb092d4c5e",
+  "mode": "normal",
+  "before": [
+    {
+      "id": "01a0de0d-9a0c-7bcd-a135-76bb092d4c5e",
+      "parentWindowId": "",
+      "title": "Welcome - Visual Studio Code"
+    }
+  ],
+  "after": [],
+  "terminalState": "3"
+}

@@ -89,9 +89,9 @@ func NewContinuityService(store ports.ContinuityStore, workloads ports.Interacti
 	}, nil
 }
 
-// ListProjectSurfaces discovers the owner's running interactive workloads of
-// one project with their live attachment counts. It never lists another
-// owner's rows and never invents a running instance.
+// ListProjectSurfaces discovers the owner's active workloads and the bounded
+// recent Native terminal history of one project with live attachment counts.
+// It never lists another owner's rows or invents a running instance.
 func (s *ContinuityService) ListProjectSurfaces(ctx context.Context, ownerUserID, projectID string) ([]ContinuitySummary, error) {
 	if !domain.ValidSessionUUID(ownerUserID) || !domain.ValidSessionUUID(projectID) {
 		return nil, domain.ErrInvalid

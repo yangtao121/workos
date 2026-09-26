@@ -10,6 +10,7 @@ tls_dir=${WORKOS_LAN_TLS_DIR:-"$repo/.workos/lan-tls"}
 secret_file=${WORKOS_LAN_E2E_PASSWORD_FILE:-}
 project_file=${WORKOS_LAN_P0_PROJECT_FILE:-}
 username=${WORKOS_LAN_E2E_USERNAME:-owner}
+results_pointer=${WORKOS_LAN_P0_RESULTS_POINTER:-}
 
 for required in "$secret_file" "$project_file"; do
     if [[ -z "$required" || "$required" != /* || ! -f "$required" || -L "$required" ]]; then
@@ -24,6 +25,17 @@ done
 if [[ ! "$lan_ip" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ || ! -f "$tls_dir/ca.crt" ]]; then
     echo 'test-code-p0: configure WORKOS_LAN_IP and run tools/lan/start.sh to create the local CA' >&2
     exit 2
+fi
+if [[ -n "$results_pointer" ]]; then
+    if [[ "$results_pointer" != /* || -e "$results_pointer" || -L "$results_pointer" ]]; then
+        echo 'test-code-p0: results pointer must be a fresh absolute path' >&2
+        exit 2
+    fi
+    pointer_parent=$(dirname -- "$results_pointer")
+    if [[ ! -d "$pointer_parent" || -L "$pointer_parent" || $(stat -c '%u' -- "$pointer_parent") != "$(id -u)" || -n $(find "$pointer_parent" -maxdepth 0 -perm /077 -print) ]]; then
+        echo 'test-code-p0: results pointer parent must be an owner-only directory' >&2
+        exit 2
+    fi
 fi
 if [[ ! -d "$repo/apps/desktop-web/node_modules" ]]; then
     echo 'test-code-p0: install pinned workspace dependencies before the browser gate' >&2
@@ -207,5 +219,17 @@ fi
 if [[ $latency_status -ne 0 ]]; then
     echo "A10: real Code latency gate failed; inspect $results/performance.json for measured samples or NOT_RUN." >&2
     exit "$latency_status"
+fi
+
+if [[ -n "$results_pointer" ]]; then
+    python3 - "$results_pointer" "$results" <<'PY'
+import os
+import sys
+
+pointer, results = sys.argv[1:]
+fd = os.open(pointer, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+with os.fdopen(fd, "w", encoding="utf-8") as output:
+    output.write(results + "\n")
+PY
 fi
 echo "LAN Code P0 Chromium gate passed. Raw performance and child identity facts: $results"

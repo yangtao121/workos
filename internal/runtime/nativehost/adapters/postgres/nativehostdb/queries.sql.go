@@ -341,11 +341,20 @@ func (q *Queries) ListActiveNativeSessions(ctx context.Context) ([]WorkosRuntime
 }
 
 const listProjectNativeSessions = `-- name: ListProjectNativeSessions :many
-SELECT session_id, owner_user_id, project_id, idempotency_key, request_digest,
-       state, width, height, created_at, updated_at, expires_at, generation, lifecycle_mode,
-       child_container_id, child_image_id, child_generation, app_kind
-FROM workos_runtime.native_sessions
-WHERE owner_user_id = $1 AND project_id = $2 AND state IN ('queued', 'running')
+WITH recent_terminal AS (
+  SELECT session_id
+  FROM workos_runtime.native_sessions
+  WHERE owner_user_id = $1 AND project_id = $2 AND state IN ('closed', 'failed')
+  ORDER BY updated_at DESC, session_id DESC
+  LIMIT 16
+)
+SELECT ns.session_id, ns.owner_user_id, ns.project_id, ns.idempotency_key, ns.request_digest,
+       ns.state, ns.width, ns.height, ns.created_at, ns.updated_at, ns.expires_at, ns.generation, ns.lifecycle_mode,
+       ns.child_container_id, ns.child_image_id, ns.child_generation, ns.app_kind
+FROM workos_runtime.native_sessions AS ns
+WHERE ns.owner_user_id = $1 AND ns.project_id = $2
+  AND (ns.state IN ('queued', 'running') OR ns.session_id IN (SELECT session_id FROM recent_terminal))
+ORDER BY CASE WHEN ns.state IN ('queued', 'running') THEN 0 ELSE 1 END, ns.updated_at DESC, ns.session_id DESC
 `
 
 type ListProjectNativeSessionsParams struct {

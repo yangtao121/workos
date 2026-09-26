@@ -3,8 +3,8 @@ import type { WorkOSClients } from "@workos/agent-sdk";
 import { LifecycleMode, SurfaceRenderer, type SurfaceWorkloadView } from "@workos/protocol";
 import { Button } from "@workos/ui-kit";
 
-// Running apps (B08): the honest, server-derived list of the project's live
-// session workloads. Rows show only facts ListProjectSurfaces reports —
+// App sessions (B08): the honest, server-derived list of the project's live
+// and recently terminated session workloads. Rows show only facts ListProjectSurfaces reports —
 // display name, state, attachment count — with open/stop actions. Open
 // re-attaches the same workload (never a second program); Stop is the
 // explicit stop that a window close deliberately is not (ADR-0031).
@@ -110,10 +110,10 @@ export function RunningSurfaces(props: {
   );
 
   return (
-    <section className="running-apps" data-testid="running-apps" aria-label="Running apps">
+    <section className="running-apps" data-testid="running-apps" aria-label="App sessions">
       <header className="running-apps-heading">
-        <h2>Running apps</h2>
-        <span>Live session workloads in this project.</span>
+        <h2>App sessions</h2>
+        <span>Live and recently stopped workloads in this project.</span>
       </header>
       {state === "unavailable" ? (
         <p className="running-apps-note" role="status">
@@ -168,7 +168,7 @@ export function RunningSurfaces(props: {
         ))}
       </ul>
       {state === "ready" && workloads.length === 0 ? (
-        <p className="running-apps-note">No live app sessions in this project.</p>
+        <p className="running-apps-note">No app sessions in this project.</p>
       ) : null}
     </section>
   );

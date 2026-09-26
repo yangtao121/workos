@@ -30,6 +30,12 @@ import {
   type GreenfieldWindowInputEvent,
 } from "@workos/protocol";
 import { CHILD_PROTOCOL_VERSION, encodeRecord, InputSequenceLedger, RecordReader } from "./ipc.js";
+import {
+  normalApplicationExit,
+  processAlive,
+  readProcessIdentity,
+  type ApplicationExit,
+} from "./applicationExit.js";
 
 type Rect = { x: number; y: number; width: number; height: number };
 type WindowFact = {
@@ -57,7 +63,8 @@ type BrowserMessage =
       renderedAt: string;
       tiles: Array<{ x: number; y: number; width: number; height: number; pngBase64: string }>;
     }
-  | { kind: "failure"; reasonCode: string };
+  | { kind: "failure"; reasonCode: string }
+  | { kind: "applicationExit"; exit?: ApplicationExit };
 
 type Options = {
   socket: string;
@@ -338,6 +345,10 @@ class ChildBridge {
   private latestWindows: WindowFact[] = [];
   private snapshotRevision = 1n;
   private latestWindowsJson = "[]";
+  private terminalState?: GreenfieldDisplayState;
+  private applicationMonitor?: NodeJS.Timeout;
+  private applicationPollInFlight = false;
+  private applicationMissingSince?: number;
   private readonly ledger = new InputSequenceLedger();
   private stopRun!: (reason: string) => void;
   private readonly stopped = new Promise<string>((resolve) => {
@@ -388,7 +399,7 @@ class ChildBridge {
       sessionId: this.options.sessionId,
       workloadGeneration: this.options.generation,
       revision: this.snapshotRevision,
-      state: GreenfieldDisplayState.RUNNING,
+      state: this.terminalState ?? GreenfieldDisplayState.RUNNING,
       windows: this.latestWindows.map((window) =>
         create(GreenfieldWindowSchema, {
           id: window.id,
@@ -415,6 +426,25 @@ class ChildBridge {
   }
 
   private async handleBrowserMessage(message: BrowserMessage): Promise<void> {
+    if (this.terminalState !== undefined) return;
+    if (message.kind === "applicationExit") {
+      this.terminalState = normalApplicationExit(message.exit)
+        ? GreenfieldDisplayState.STOPPED
+        : GreenfieldDisplayState.FAILED;
+      this.latestWindows = [];
+      this.latestWindowsJson = "[]";
+      this.snapshotRevision++;
+      try {
+        await this.sendSnapshot();
+      } finally {
+        this.stopRun(
+          this.terminalState === GreenfieldDisplayState.STOPPED
+            ? "APPLICATION_STOPPED"
+            : "APPLICATION_FAILED",
+        );
+      }
+      return;
+    }
     if (message.kind === "failure") {
       await this.fatal(message.reasonCode);
       return;
@@ -605,11 +635,35 @@ class ChildBridge {
   }
 
   private async fatal(code: string): Promise<void> {
+    if (this.terminalState !== undefined || this.ended) return;
     try {
       await this.failure(code);
     } finally {
       this.stopRun(safeCode(code));
     }
+  }
+
+  private watchApplication(pid: number, starttime: string): void {
+    this.applicationMonitor = setInterval(() => {
+      if (this.applicationPollInFlight || this.ended || this.terminalState !== undefined) return;
+      this.applicationPollInFlight = true;
+      void (async () => {
+        try {
+          const current = await readProcessIdentity(pid);
+          if (processAlive(starttime, current)) {
+            this.applicationMissingSince = undefined;
+          } else if (this.applicationMissingSince === undefined) {
+            this.applicationMissingSince = Date.now();
+          } else if (Date.now() - this.applicationMissingSince >= 1500) {
+            await this.fatal("APPLICATION_PROCESS_LOST");
+          }
+        } catch {
+          await this.fatal("APPLICATION_PROCESS_UNAVAILABLE");
+        } finally {
+          this.applicationPollInFlight = false;
+        }
+      })();
+    }, 250);
   }
 
   private async connectSocket(): Promise<void> {
@@ -664,6 +718,11 @@ class ChildBridge {
       this.proxy.once("exit", () => {
         if (!this.ended) void this.fatal("GREENFIELD_PROXY_EXITED");
       });
+      const applicationPid = Number((proxy.launch as { pid: string }).pid);
+      const identity = await readProcessIdentity(applicationPid);
+      if (!identity || !processAlive(identity.starttime, identity))
+        throw new Error("APPLICATION_PROCESS_LOST");
+      this.watchApplication(applicationPid, identity.starttime);
       const browser = await chromium.launch({
         headless: true,
         args: ["--no-sandbox", "--enable-webgl", "--ignore-gpu-blocklist"],
@@ -718,9 +777,13 @@ class ChildBridge {
         this.stopped,
         once(process, "SIGTERM").then(() => "SIGTERM"),
       ]);
-      if (reason !== "SIGTERM") throw new Error(reason);
+      // A clean application Exit is a workload terminal event, not a child
+      // crash. The terminal snapshot was sent above; Runtime reaps the exact
+      // child after it persists the stopped state.
+      if (reason !== "SIGTERM" && reason !== "APPLICATION_STOPPED") throw new Error(reason);
     } finally {
       this.ended = true;
+      if (this.applicationMonitor) clearInterval(this.applicationMonitor);
       this.socket?.destroy();
       await this.browser?.close().catch(() => undefined);
       this.proxy?.kill("SIGTERM");

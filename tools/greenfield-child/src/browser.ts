@@ -7,6 +7,7 @@ import {
 } from "@gfld/compositor";
 import { webInputOutput } from "@gfld/compositor/dist/web/WebInputOutput.js";
 import { requestNativeTransientClose } from "./nativeClose.js";
+import type { ApplicationExit } from "./applicationExit.js";
 
 type Rect = { x: number; y: number; width: number; height: number };
 type WindowFact = {
@@ -41,7 +42,8 @@ type BrowserMessage =
       renderedAt: string;
       tiles: FrameTile[];
     }
-  | { kind: "failure"; reasonCode: string };
+  | { kind: "failure"; reasonCode: string }
+  | { kind: "applicationExit"; exit?: ApplicationExit };
 type InputPayload = {
   windowId: string;
   event: {
@@ -853,8 +855,9 @@ async function main(): Promise<void> {
   session.globals.register();
   const launcher = createAppLauncher(session, "remote");
   const app = launcher.launch(new URL(config.launchUrl), () => undefined);
-  app.onStateChange = (state) => {
-    if (state === "error" || state === "terminated") fail("GREENFIELD_SIGNALING_FAILED");
+  app.onStateChange = (state, exit?: ApplicationExit) => {
+    if (state === "error") fail("GREENFIELD_SIGNALING_FAILED");
+    if (state === "terminated") void window.workosPush({ kind: "applicationExit", exit });
     if (state === "open") window.workosChildReady = true;
   };
   publishWindows();

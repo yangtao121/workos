@@ -20,6 +20,8 @@ const projectId = process.env.WORKOS_LAN_P0_PROJECT_ID ?? "";
 const stateFile = process.env.WORKOS_LAN_P0_STATE_FILE ?? "";
 const savedFile = process.env.WORKOS_LAN_P0_SAVED_FILE ?? "";
 const restartFile = process.env.WORKOS_LAN_P0_RESTART_FILE ?? "";
+const exitRestartFile = process.env.WORKOS_LAN_P0_EXIT_RESTART_FILE ?? "";
+const failedRestartFile = process.env.WORKOS_LAN_P0_FAILED_RESTART_FILE ?? "";
 const performanceFile = process.env.WORKOS_LAN_P0_PERFORMANCE_FILE ?? "";
 const originalSha256 = process.env.WORKOS_LAN_P0_ORIGINAL_SHA256 ?? "";
 const phase = process.env.WORKOS_LAN_P0_PHASE ?? "";
@@ -53,6 +55,7 @@ type State = {
   unsavedMarker: string;
   originalSha256: string;
 };
+type NativeIdentity = { workloadId: string; generation: string; windowId: string };
 
 async function rpcResult(
   page: Page,
@@ -272,9 +275,9 @@ async function dismissCodeOnboarding(page: Page, window: Locator) {
   // lower-right buttons were measured in the pinned Code child fixture. On an
   // already configured profile these clicks land in the editor, then the
   // following Quick Open assertion still proves the intended native state.
-  await canvas.click({ position: { x: bounds.width * 0.73, y: bounds.height * 0.75 } });
-  await page.waitForTimeout(500);
-  await canvas.click({ position: { x: bounds.width * 0.76, y: bounds.height * 0.75 } });
+  await canvas.click({ position: { x: bounds.width * 0.77, y: bounds.height * 0.785 } });
+  await page.waitForTimeout(1200);
+  await canvas.click({ position: { x: bounds.width * 0.77, y: bounds.height * 0.785 } });
 }
 
 async function paste(page: Page, window: Locator, value: string) {
@@ -504,6 +507,14 @@ async function readState(): Promise<State> {
   expect(BigInt(state.generation)).toBeGreaterThan(0n);
   expect(state.unsavedMarker).toMatch(/^WORKOS_P0_UNSAVED_[0-9a-f-]{36}$/);
   return state;
+}
+
+async function readIdentity(path: string): Promise<NativeIdentity> {
+  const identity = JSON.parse(await readFile(path, "utf8")) as NativeIdentity;
+  expect(identity.workloadId).toMatch(/^[0-9a-f-]{36}$/);
+  expect(BigInt(identity.generation)).toBeGreaterThan(0n);
+  expect(identity.windowId).toMatch(/^[0-9a-f-]{36}$/);
+  return identity;
 }
 
 async function nativeGeometry(window: Locator) {
@@ -824,6 +835,111 @@ async function restart(browser: Browser) {
   }
 }
 
+async function applicationExit(browser: Browser) {
+  const previous = await readIdentity(restartFile);
+  const current = await profile(browser);
+  try {
+    await signIn(current.page, await secret());
+    await selectProject(current.page);
+    await openRunningNative(current.page, previous.workloadId);
+    const code = await codeWindow(current.page);
+    expect(await nativeWindowId(code, previous.workloadId, previous.generation)).toBe(
+      previous.windowId,
+    );
+    await expect(code.locator(".greenfield-window-app")).toHaveAttribute("data-controller", "true");
+    // The latency phase leaves unsaved measured input. Save it before asking
+    // the real Code File menu to exit so no dirty-buffer dialog changes the
+    // application outcome being tested.
+    await focusCode(code);
+    await current.page.keyboard.press("Control+s");
+    await current.page.waitForTimeout(700);
+    await clickCodeNative(code, 90, 50);
+    await clickCodeNative(code, 115, 657);
+    await expect
+      .poll(async () => (await workload(current.page, previous.workloadId)).state, {
+        message: "A08: Code File > Exit must persist a stopped workload",
+        timeout: 30_000,
+      })
+      .toBe("stopped");
+    await expect(code).toHaveCount(0, { timeout: 30_000 });
+    await openDesktopApp(current.page, "home");
+    const row = current.page
+      .getByTestId("running-apps")
+      .locator(`[data-workload-id="${previous.workloadId}"]`);
+    await expect(row).toHaveAttribute("data-state", "stopped", { timeout: 30_000 });
+    await expect(row.getByRole("button", { name: "Restart" })).toBeEnabled();
+    await row.getByRole("button", { name: "Restart" }).click();
+    await expect
+      .poll(
+        async () => {
+          const found = await workload(current.page, previous.workloadId);
+          return (
+            found.state === "running" && BigInt(found.generation) > BigInt(previous.generation)
+          );
+        },
+        { timeout: 60_000 },
+      )
+      .toBe(true);
+    const next = await workload(current.page, previous.workloadId);
+    const restarted = await codeWindow(current.page);
+    const windowId = await nativeWindowId(restarted, previous.workloadId, next.generation);
+    expect(windowId).not.toBe(previous.windowId);
+    await writeFile(
+      exitRestartFile,
+      `${JSON.stringify({ workloadId: previous.workloadId, generation: next.generation, windowId })}\n`,
+      { flag: "wx", mode: 0o600 },
+    );
+    await closeViewer(restarted);
+  } finally {
+    await current.context.close();
+  }
+}
+
+async function forcedChildDeath(browser: Browser) {
+  const previous = await readIdentity(exitRestartFile);
+  const current = await profile(browser);
+  try {
+    await signIn(current.page, await secret());
+    await selectProject(current.page);
+    await expect
+      .poll(async () => (await workload(current.page, previous.workloadId)).state, {
+        message: "A08: exact killed child must fail its workload",
+        timeout: 30_000,
+      })
+      .toBe("failed");
+    await openDesktopApp(current.page, "home");
+    const row = current.page
+      .getByTestId("running-apps")
+      .locator(`[data-workload-id="${previous.workloadId}"]`);
+    await expect(row).toHaveAttribute("data-state", "failed", { timeout: 30_000 });
+    await expect(row.getByRole("button", { name: "Open" })).toBeDisabled();
+    await row.getByRole("button", { name: "Restart" }).click();
+    await expect
+      .poll(
+        async () => {
+          const found = await workload(current.page, previous.workloadId);
+          return (
+            found.state === "running" && BigInt(found.generation) > BigInt(previous.generation)
+          );
+        },
+        { timeout: 60_000 },
+      )
+      .toBe(true);
+    const next = await workload(current.page, previous.workloadId);
+    const restarted = await codeWindow(current.page);
+    const windowId = await nativeWindowId(restarted, previous.workloadId, next.generation);
+    expect(windowId).not.toBe(previous.windowId);
+    await writeFile(
+      failedRestartFile,
+      `${JSON.stringify({ workloadId: previous.workloadId, generation: next.generation, windowId })}\n`,
+      { flag: "wx", mode: 0o600 },
+    );
+    await closeViewer(restarted);
+  } finally {
+    await current.context.close();
+  }
+}
+
 async function measureOne(page: Page, code: Locator): Promise<number | null> {
   const canvas = code.getByTestId("greenfield-window-canvas");
   const armed = await canvas.evaluate((node) => {
@@ -980,5 +1096,7 @@ test("real LAN Code P0 resident phase", async ({ browser }) => {
   else if (phase === "continuity") await continuity(browser);
   else if (phase === "restart") await restart(browser);
   else if (phase === "latency") await performancePhase(browser);
+  else if (phase === "app-exit") await applicationExit(browser);
+  else if (phase === "forced-child-death") await forcedChildDeath(browser);
   else throw new Error("unknown LAN Code P0 phase");
 });

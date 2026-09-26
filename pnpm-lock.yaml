@@ -5,7 +5,7 @@ settings:
   excludeLinksFromLockfile: false
 
 patchedDependencies:
-  '@gfld/compositor@1.0.0-rc1': f930283f4665554f7a3e56ee6f323c40f550365721a33df337e6e724abb424dc
+  '@gfld/compositor@1.0.0-rc1': f54e680eac4fa4e513ef58d25a093b20cabc3c70a8f0d4ebbef0a95788c4590e
 
 importers:
 
@@ -40,7 +40,7 @@ importers:
         version: 2.1.2(@bufbuild/protobuf@2.14.0)
       '@gfld/compositor':
         specifier: 1.0.0-rc1
-        version: 1.0.0-rc1(patch_hash=f930283f4665554f7a3e56ee6f323c40f550365721a33df337e6e724abb424dc)
+        version: 1.0.0-rc1(patch_hash=f54e680eac4fa4e513ef58d25a093b20cabc3c70a8f0d4ebbef0a95788c4590e)
       '@workos/adaptive-shell':
         specifier: workspace:*
         version: link:../../clients/adaptive-shell
@@ -375,7 +375,7 @@ importers:
         version: 2.14.0
       '@gfld/compositor':
         specifier: 1.0.0-rc1
-        version: 1.0.0-rc1(patch_hash=f930283f4665554f7a3e56ee6f323c40f550365721a33df337e6e724abb424dc)
+        version: 1.0.0-rc1(patch_hash=f54e680eac4fa4e513ef58d25a093b20cabc3c70a8f0d4ebbef0a95788c4590e)
       '@workos/protocol':
         specifier: workspace:*
         version: link:../../sdk/protocol
@@ -2466,7 +2466,7 @@ snapshots:
 
   '@gfld/compositor-wasm@1.0.0-rc1': {}
 
-  '@gfld/compositor@1.0.0-rc1(patch_hash=f930283f4665554f7a3e56ee6f323c40f550365721a33df337e6e724abb424dc)':
+  '@gfld/compositor@1.0.0-rc1(patch_hash=f54e680eac4fa4e513ef58d25a093b20cabc3c70a8f0d4ebbef0a95788c4590e)':
     dependencies:
       '@gfld/common': 1.0.0-rc1
       '@gfld/compositor-ffmpeg-h264': 1.0.0-rc1

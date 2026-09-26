@@ -35,7 +35,7 @@ function element(f: ReturnType<typeof fixture>) {
   );
 }
 
-describe("Running apps list", () => {
+describe("App sessions list", () => {
   it("renders server-derived workload facts with open and stop actions", async () => {
     const f = fixture([
       {
@@ -100,7 +100,7 @@ describe("Running apps list", () => {
 
     const empty = fixture([]);
     render(element(empty));
-    expect(await screen.findByText("No live app sessions in this project.")).toBeTruthy();
+    expect(await screen.findByText("No app sessions in this project.")).toBeTruthy();
   });
 });
 

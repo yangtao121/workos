@@ -111,12 +111,13 @@ func (m *memoryStore) CountActive(_ context.Context, ownerUserID string) (int, e
 }
 
 type fakeDisplay struct {
-	mu       sync.Mutex
-	exited   bool
-	answers  []string
-	stopped  bool
-	detached bool
-	gate     func() bool
+	mu            sync.Mutex
+	exited        bool
+	terminalState domain.State
+	answers       []string
+	stopped       bool
+	detached      bool
+	gate          func() bool
 }
 
 // GuardInput records the per-event control gate (ADR-0031 §4).
@@ -148,6 +149,15 @@ func (f *fakeDisplay) Exited() bool {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return f.exited
+}
+
+func (f *fakeDisplay) TerminalState() domain.State {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.terminalState == domain.StateClosed {
+		return domain.StateClosed
+	}
+	return domain.StateFailed
 }
 
 func (f *fakeDisplay) Stop() {
@@ -389,6 +399,27 @@ func TestNativeServiceDeadDisplayFailsClosed(t *testing.T) {
 	}
 }
 
+func TestNativeServiceApplicationExitIsDiscoverableAndRestartable(t *testing.T) {
+	service, engine := newTestService(t)
+	ctx := context.Background()
+	session, err := service.Create(ctx, testOwner, testProject, "app-exit", 800, 600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	engine.displays[0].mu.Lock()
+	engine.displays[0].exited = true
+	engine.displays[0].terminalState = domain.StateClosed
+	engine.displays[0].mu.Unlock()
+	discovered, err := service.ListProject(ctx, testOwner, testProject)
+	if err != nil || len(discovered) != 1 || discovered[0].State != domain.StateClosed {
+		t.Fatalf("normal app exit must persist and remain discoverable: %+v %v", discovered, err)
+	}
+	closed, err := service.Get(ctx, testOwner, session.SessionID)
+	if err != nil || closed.State != domain.StateClosed {
+		t.Fatalf("normal app exit persisted incorrectly: %+v %v", closed, err)
+	}
+}
+
 func TestNativeServiceLaunchFailureIsUnavailable(t *testing.T) {
 	service, engine := newTestService(t)
 	engine.mu.Lock()
@@ -404,7 +435,7 @@ func (m *memoryStore) ListProjectSessions(_ context.Context, ownerUserID, projec
 	defer m.mu.Unlock()
 	var result []domain.Session
 	for _, session := range m.sessions {
-		if session.OwnerUserID == ownerUserID && session.ProjectID == projectID && !session.State.Terminal() {
+		if session.OwnerUserID == ownerUserID && session.ProjectID == projectID {
 			result = append(result, session)
 		}
 	}
