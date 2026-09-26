@@ -13,7 +13,7 @@ cd /home/aquatao/workos
 
 The default username is `aquatao`; set `WORKOS_LAN_E2E_USERNAME` in the environment if the configured owner name differs. Enter the existing password once at the no-echo TTY prompt. Do not put the password in a shell argument, environment variable, chat, or task record. The script keeps its temporary mode-0600 password file outside the checkout and removes it on exit or a catchable interruption. It preserves a mode-0700 `.workos/lan-browser-p0.*` directory containing only commit and stage results. The resident Code gate writes separate nonsecret identity/performance evidence under `.workos/lan-p0-e2e.*` once it starts.
 
-The script bootstraps an unavailable HTTPS Gateway without a password, then prepares the current HEAD's tracked-source snapshot and project, restarts the resident stack with that mount, binds the workspace, and runs `test-browser.sh`, `test-code-p0.sh`, the [active authorization failure gate](lan-code-p0-failure-e2e.md), and the final real Code control-renewal gate in order. The final stage waits for the actual 30-minute Runtime control lease to renew and can take roughly 30 minutes; it fails after a bounded 35-minute renewal wait. It stops at the first failed stage and reports that stage's exit code. Install pinned workspace dependencies first if `apps/desktop-web/node_modules` is absent. This command does not create or change the owner password. The Code test edits and restarts only the isolated project it prepares; the live checkout is never the Code mount.
+The script bootstraps an unavailable HTTPS Gateway without a password, then prepares the current HEAD's tracked-source snapshot and project, restarts the resident stack with that mount, binds the workspace, and runs the password browser, resident Code, [active authorization failure](lan-code-p0-failure-e2e.md), [Terminal and Text Editor](../tasks/20260926-p0-auxiliary-editor.md), Code application exit/failure lifecycle, and real Code control-renewal gates in order. The lifecycle stage uses the passed Code gate's owner-only results pointer to test File > Exit, unexpected child death, and Restart against the same workload. The final stage waits for the actual 30-minute Runtime control lease to renew and can take roughly 30 minutes; it fails after a bounded 35-minute renewal wait. It stops at the first failed stage and reports that stage's exit code. Install pinned workspace dependencies first if `apps/desktop-web/node_modules` is absent. This command does not create or change the owner password. The Code test edits and restarts only the isolated project it prepares; the live checkout is never the Code mount.
 
 The manual steps below remain available for a staged investigation or rerun of one browser gate with an existing private fixture. The owner-run command requires no fixture path and is the default acceptance path.
 
@@ -31,8 +31,12 @@ cd /home/aquatao/workos
 export WORKOS_LAN_E2E_USERNAME=aquatao
 export WORKOS_LAN_E2E_PASSWORD_FILE="$credential_file"
 export WORKOS_LAN_P0_PROJECT_FILE="$PWD/.workos/lan-code-project-<commit>.json"
+manual_evidence_dir=$(mktemp -d "$PWD/.workos/lan-manual-p0.XXXXXXXX")
+export WORKOS_LAN_P0_RESULTS_POINTER="$manual_evidence_dir/code-results.path"
 ./tools/lan/test-code-p0.sh
 ./tools/lan/test-code-p0-failures.sh
+./tools/lan/test-p0-aux-apps.sh
+./tools/lan/test-code-a08.sh
 ./tools/lan/test-code-control-renewal.sh
 rm -f "$credential_file"
 unset WORKOS_LAN_E2E_PASSWORD_FILE
@@ -52,5 +56,7 @@ The five phases have separate browser processes:
 Between phases 1 and 2, the host records the resident Docker child's ID, start instant and host PID. All three must remain equal after the all-client disconnect. After Stop/Restart, the new child must differ. The runner leaves the restarted isolated workload running for inspection and stores only nonsecret facts under the printed `.workos/lan-p0-e2e.*` directory, including Docker resource samples and host CPU/GPU facts when available.
 
 The final `test-code-control-renewal.sh` stage uses the same owner-only password and exact-commit project record. It identifies Code among any other native workloads through `GetNativeSession.application`, reopens that existing workload, and polls `GetSurfaceControl.controlExpiresAt` until the server reports a later expiry with the same device, attachment, control generation and window identity. It then types into real Code and verifies the marker exactly once through Chromium's text clipboard. It does not start or restart Code. Only nonsecret identity and timing facts are written to `.workos/lan-p0-renew.*/results.json`. This stage is live long-duration evidence; the shorter unit tests for the renewal timer do not substitute for it.
+
+The auxiliary gate opens WorkOS Terminal and Text Editor alongside Code. It checks separate workload identities, real editor pixels and Unicode clipboard, ordered large PTY paste/copy, detach and reopen, and isolated Stop. The A08 lifecycle gate then checks that Code's own File > Exit is persisted as stopped, a killed child is persisted as failed, and each Restart creates a new child generation. These gates require owner authentication and are pending until the owner runs them.
 
 Standard Chromium is the P0 browser target. Record A01–A10 with the actual command/result in [the task](../tasks/20260926-lan-p0-resident-browser-e2e.md); if an earlier phase fails, later phases are not claimed as run. The `Open File` phase tests one real dialog path; it does not exhaust all native menu/dialog stacking patterns. The composition event is dispatched by Chromium into the real Code input path, so it does not establish behavior of a physical OS IME. Two isolated local profiles establish independent browser clients, not a second physical device.

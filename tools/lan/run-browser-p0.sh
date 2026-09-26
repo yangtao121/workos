@@ -159,6 +159,7 @@ chmod 600 "$secret_file"
 export WORKOS_LAN_E2E_USERNAME="$username"
 export WORKOS_LAN_E2E_PASSWORD_FILE="$secret_file"
 export WORKOS_LAN_P0_PROJECT_FILE="$project_file"
+export WORKOS_LAN_P0_RESULTS_POINTER="$evidence_dir/code-results.path"
 
 run_stage prepare python3 "$here/prepare-code-project.py" prepare \
     --username "$username" --password-file "$secret_file"
@@ -190,6 +191,8 @@ run_stage bind python3 "$here/prepare-code-project.py" bind \
 run_stage password-browser "$here/test-browser.sh"
 run_stage resident-code-browser "$here/test-code-p0.sh"
 run_stage resident-auth-failures "$here/test-code-p0-failures.sh"
+run_stage resident-aux-apps "$here/test-p0-aux-apps.sh"
+run_stage resident-code-lifecycle "$here/test-code-a08.sh"
 run_stage resident-code-control-renewal "$here/test-code-control-renewal.sh"
 
 echo "LAN P0 browser self-test passed. Stage evidence: $stage_file"
